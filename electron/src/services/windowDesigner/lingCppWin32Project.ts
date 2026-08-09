@@ -1,5 +1,5 @@
 import { LingControl, LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
-import { getLingWindowSourceFileName } from './windowDesignerService';
+import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import {
   LingCppAst,
@@ -14,7 +14,14 @@ import {
   LingCppProgram,
   LingCppStatement
 } from '../lingCpp/types';
-import { InstalledModule, ModuleCommandBinding, ModuleDesignerRuntimeParameter } from '../modules/types';
+import {
+  InstalledModule,
+  ModuleCommandBinding,
+  ModuleDesignerControlContribution,
+  ModuleDesignerEventBindingMapping,
+  ModuleDesignerEventContribution,
+  ModuleDesignerRuntimeParameter
+} from '../modules/types';
 import {
   findModulePublicType,
   getEnabledModuleStructuredTypeDiagnostics,
@@ -56,8 +63,12 @@ import {
   generateWebSocketClientWindowMethods
 } from './webSocketClientRuntime';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
-import { getWin32ControlDefinition, WIN32_CONTROL_DEFINITIONS } from './win32ControlRegistry';
-import { getWindowEventHandlerName } from './windowEventRegistry';
+import {
+  getWin32ControlDefinition,
+  getWin32RuntimeControlContracts,
+  WIN32_CONTROL_DEFINITIONS
+} from './win32ControlRegistry';
+import { getWindowEventHandlerName, WINDOW_EVENT_DEFINITIONS } from './windowEventRegistry';
 import {
   isNewEmojiDarkBackground,
   getNewEmojiUnsupportedControlDiagnostics,
@@ -81,6 +92,7 @@ import {
   splitEplBinaryExpression
 } from './eplToCppRules';
 import { generateWindowsExecutableResourceFile, getSafeCustomWindowIconPath } from './windowsExecutableIconService';
+import { generateFbroBrowserManagerRuntime } from './fbroBrowserManagerRuntime';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -115,6 +127,14 @@ interface TranslatedStatementLine {
   kind: 'local' | 'statement' | 'native-cpp';
   symbolName?: string;
 }
+
+interface LingCppTranslationContext {
+  runtimeControlVariables: ReadonlySet<string>;
+}
+
+const EMPTY_TRANSLATION_CONTEXT: LingCppTranslationContext = {
+  runtimeControlVariables: new Set<string>()
+};
 
 interface AggregatedLingCppProjectSources {
   baseAst: LingCppAst;
@@ -152,7 +172,7 @@ export function generateLingCppNativeWin32Project(
   const usesNewEmojiDesigner = selectedBackendId === NEW_EMOJI_UI_BACKEND_ID;
   const hasNativeLayoutGenerator = selectedBackendId === WIN32_UI_BACKEND_ID || usesNewEmojiDesigner;
   const mainCppContent = usesNewEmojiDesigner
-    ? generateNewEmojiMainCpp(selectedWindow, aggregate.program, enabledModules)
+    ? generateNewEmojiMainCpp(project, selectedWindow, aggregate.program, enabledModules)
     : generateMainCpp(project, selectedWindow, { ...aggregate.baseAst, program: aggregate.program }, enabledModules);
   const backendModuleDiagnostics = usesNewEmojiDesigner && !newEmojiModuleEnabled
     ? ['当前窗口使用 new_emoji 后端，但项目尚未启用 lingbuilder.new_emoji.ui 模块。']
@@ -171,12 +191,25 @@ export function generateLingCppNativeWin32Project(
   const moduleConflictDiagnostics = enabledModules.flatMap(module => (module.manifest.compatibility?.conflicts || [])
     .filter(conflict => enabledModuleIds.has(conflict.moduleId))
     .map(conflict => `${module.manifest.name} 与 ${conflict.moduleId} 不能同时启用：${conflict.reason}`));
+  const fbroCefCompatibilityDiagnostics = enabledModuleIds.has('lingbuilder.fbro.browser')
+    && enabledModuleIds.has('lingbuilder.cef3.browser')
+    && project.windows.some(window => window.controls.some(control => control.type === 'FBroBrowser'
+      && (!control.properties?.processMode || control.properties.processMode === 'in-process')))
+    ? ['FBro 与 CEF3 同时启用时，所有 FBro 控件都必须设置为“独立进程嵌入”或“独立进程窗口”；进程内模式会加载 ABI 不兼容的 CEF 135/150。']
+    : [];
   const missingControlModuleDiagnostics = project.windows.flatMap(window => window.controls.flatMap(control => {
+    const contributedModuleId = control.designerType?.includes('/')
+      ? control.designerType.slice(0, control.designerType.indexOf('/'))
+      : '';
+    if (contributedModuleId && enabledModuleIds.has(contributedModuleId)) return [];
     const definition = getWin32ControlDefinition(control.type);
     if (!definition || definition.moduleId === 'lingbuilder.win32.basic' || enabledModuleIds.has(definition.moduleId)) return [];
     return [`窗口“${window.title}”中的控件“${control.name}”需要启用模块 ${definition.moduleId}；控件已保留，未静默降级。`];
   }));
   const resourceDiagnostics = validateDesignerResources(project);
+  const newEmojiControlReferenceDiagnostics = usesNewEmojiDesigner
+    ? validateNewEmojiDesignerControlReferences(selectedWindow, enabledModules)
+    : [];
   const requestedWindow = project.windows.find(window => window.id === options.activeWindowId);
   const sourceWindowSelectionDiagnostic = requestedWindow && requestedWindow.id !== selectedWindow.id
     ? [`活动源码属于窗口“${selectedWindow.title}”，已忽略过期的设计器窗口“${requestedWindow.title}”。`]
@@ -211,15 +244,17 @@ export function generateLingCppNativeWin32Project(
       ...sourceWindowSelectionDiagnostic,
       ...sourceClassMismatchDiagnostic,
       ...moduleConflictDiagnostics,
+      ...fbroCefCompatibilityDiagnostics,
       ...moduleTargetDiagnostics,
       ...missingControlModuleDiagnostics,
       ...(usesNewEmojiDesigner ? getNewEmojiUnsupportedControlDiagnostics(selectedWindow) : []),
       ...newEmojiFontStyleDiagnostics,
       ...customIconDiagnostics,
       ...legacyUploadDiagnostics,
+      ...newEmojiControlReferenceDiagnostics,
       ...resourceDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...customIconDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics],
     sourceMap,
     files: [
       {
@@ -400,12 +435,401 @@ function aggregateLingCppProjectSources(
   };
 }
 
+function getNewEmojiRuntimeControlContributions(enabledModules: InstalledModule[]): ModuleDesignerControlContribution[] {
+  return enabledModules
+    .filter(module => module.manifest.id === NEW_EMOJI_MODULE_ID)
+    .flatMap(module => module.manifest.contributes?.designerControls || [])
+    .filter(control => control.isVisual !== false && Boolean(control.runtime?.createCommand) && Boolean(control.runtimeControl));
+}
+
+function getNewEmojiRuntimeParameterKey(parameter: ModuleDesignerRuntimeParameter): string {
+  return parameter.propertyKey || snakeToCamel(parameter.name.replace(/_(bytes|len)$/u, ''));
+}
+
+function isNewEmojiDynamicContentParameter(key: string): boolean {
+  return /text|title|label|caption|body|content|message|desc|detail|subtitle|items|options/u.test(key);
+}
+
+function stringifyNewEmojiRuntimeDefault(value: unknown): string {
+  if (Array.isArray(value)) return value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('|');
+  if (value !== undefined && value !== null && typeof value === 'object') return JSON.stringify(value);
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function generateNewEmojiRuntimeControlCpp(enabledModules: InstalledModule[]): string {
+  return getNewEmojiRuntimeControlContributions(enabledModules).map(control => {
+    const contract = control.runtimeControl!;
+    const runtime = control.runtime!;
+    const utf8Variables = new Map<string, string>();
+    const beforeLines: string[] = [];
+    const argumentsList = (runtime.createParameters || []).map((parameter, index) => {
+      const name = parameter.name;
+      const key = getNewEmojiRuntimeParameterKey(parameter);
+      if (name === 'hwnd' || parameter.type === 'HWND') return 'g_newEmojiWindow';
+      if (name === 'parent_id') return 'parentId';
+      if (name === 'x') return 'x';
+      if (name === 'y') return 'y';
+      if (name === 'w') return 'std::max(1, width)';
+      if (name === 'h') return 'std::max(1, height)';
+      if (/Callback/u.test(parameter.type) || name === 'cb') return 'nullptr';
+      if (name.endsWith('_bytes')) {
+        const variable = `lb_runtime_utf8_${index + 1}`;
+        const defaultText = stringifyNewEmojiRuntimeDefault(control.defaultProps?.[key]);
+        const wideValue = isNewEmojiDynamicContentParameter(key)
+          ? 'content.c_str()'
+          : `L"${escapeWideString(defaultText)}"`;
+        beforeLines.push(`    const std::string ${variable} = LB_NE_ToUtf8(${wideValue});`);
+        utf8Variables.set(key, variable);
+        return `reinterpret_cast<const unsigned char*>(${variable}.data())`;
+      }
+      if (name.endsWith('_len')) {
+        const variable = utf8Variables.get(key);
+        return variable ? `static_cast<int>(${variable}.size())` : '0';
+      }
+      if (parameter.type === 'Color') {
+        const rawColor = control.defaultProps?.[key];
+        return toNewEmojiColor(typeof rawColor === 'string' ? rawColor : '', 0x00000000);
+      }
+      const rawValue = control.defaultProps?.[key];
+      if (typeof rawValue === 'boolean') return rawValue ? '1' : '0';
+      const numericValue = scaleNewEmojiRuntimeValue(rawValue, parameter);
+      if (numericValue !== undefined) {
+        return /\b(?:float|double)\b/u.test(parameter.type) ? `${numericValue}` : `${Math.trunc(numericValue)}`;
+      }
+      return '0';
+    });
+    const nativeType = escapeWideString(control.type);
+    const lingCppType = escapeWideString(contract.lingCppType);
+    return `static LingControlRef ${toCppIdentifier(contract.createCommand)}(
+    int parentId, int x, int y, int width, int height, const std::wstring& content,
+    const wchar_t* tagText = L"", std::optional<int> tagInteger = std::nullopt) {
+    if (!LB_NE_ValidateCreateParent(parentId) || !LB_NE_CanRegister(L"${lingCppType}", tagText, tagInteger)) return {};
+${beforeLines.join('\n')}
+    const int elementId = ${runtime.createCommand}(${argumentsList.join(', ')});
+    if (elementId <= 0) {
+        LB_NE_Log(L"运行时创建 ${lingCppType} 失败：new_emoji 未返回有效元素 ID。");
+        return {};
+    }
+    return LB_NE_RegisterElement(elementId, L"${nativeType}", L"${lingCppType}", parentId, nullptr, tagText, tagInteger, ${control.isContainer ? 'true' : 'false'});
+}
+
+static LingControlRef ${toCppIdentifier(contract.lookupByTagTextCommand)}(const wchar_t* tagText) {
+    return LB_NE_FindByTagText(L"${lingCppType}", tagText);
+}
+
+static LingControlRef ${toCppIdentifier(contract.lookupByTagIntegerCommand)}(int tagInteger) {
+    return LB_NE_FindByTagInteger(L"${lingCppType}", tagInteger);
+}`;
+  }).join('\n\n');
+}
+
+interface NewEmojiRuntimeEventEntry {
+  control: ModuleDesignerControlContribution;
+  event: ModuleDesignerEventContribution;
+  binding: ModuleDesignerEventBindingMapping;
+  bindCommand: string;
+  unbindCommand: string;
+}
+
+function getNewEmojiRuntimeEventEntries(enabledModules: InstalledModule[]): NewEmojiRuntimeEventEntry[] {
+  return getNewEmojiRuntimeControlContributions(enabledModules).flatMap(control => (
+    (control.runtime?.eventBindings || []).flatMap(binding => {
+      const event = (control.events || []).find(item => item.name === binding.eventName);
+      if (!event || !control.runtimeControl) return [];
+      return [{
+        control,
+        event,
+        binding,
+        bindCommand: `${control.runtimeControl.lingCppType}_绑定${event.label}`,
+        unbindCommand: `${control.runtimeControl.lingCppType}_解绑${event.label}`
+      }];
+    })
+  ));
+}
+
+function getNewEmojiBoundHandlerNames(source: string, command: string): string[] {
+  const escapedCommand = command.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const pattern = new RegExp(`${escapedCommand}\\s*[（(][^\\r\\n]*?&([\\p{L}_][\\p{L}\\p{N}_]*)`, 'gu');
+  return [...new Set(Array.from(source.matchAll(pattern)).map(match => match[1]).filter((name): name is string => Boolean(name)))];
+}
+
+function generateNewEmojiRuntimeEventDispatch(
+  entry: NewEmojiRuntimeEventEntry,
+  elementIdExpression: string,
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): string {
+  const handlerNames = getNewEmojiBoundHandlerNames(program.source, entry.bindCommand);
+  const methods = handlerNames
+    .map(name => findLingCppMethod(program, name))
+    .filter((method): method is LingCppMethod => Boolean(method));
+  const dispatchCases = methods.map((method, index) => {
+    const catalogBinding: NewEmojiCatalogEventBinding = {
+      ...entry.binding,
+      method
+    };
+    const body = generateNewEmojiCatalogEventBody(catalogBinding, enabledModules, program.dataTypes);
+    return `    ${index === 0 ? 'if' : 'else if'} (lb_handler == L"${escapeWideString(method.name)}") {
+${body}
+    }`;
+  }).join('\n');
+  return `    const std::wstring lb_handler = LB_NE_GetRuntimeEventHandler(${elementIdExpression}, L"${escapeWideString(entry.event.name)}");
+    if (!lb_handler.empty()) {
+${dispatchCases}
+${dispatchCases ? '    else ' : '    '}LB_NE_Log(L"new_emoji 动态事件处理器未找到或签名不匹配。");
+    }`;
+}
+
+function generateNewEmojiRuntimeEventCallback(
+  callbackName: string,
+  entries: NewEmojiRuntimeEventEntry[],
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): string {
+  const first = entries[0]!;
+  const signature = NEW_EMOJI_CALLBACK_SIGNATURES[first.binding.callbackType];
+  if (!signature) return '';
+  const firstId = signature.parameters.match(/\bint\s+(lb_[A-Za-z0-9_]+)/u)?.[1] || 'lb_element_id';
+  const dispatch = (entry: NewEmojiRuntimeEventEntry) => generateNewEmojiRuntimeEventDispatch(entry, firstId, program, enabledModules);
+  let body: string;
+  if (first.binding.callbackType === 'ElementMouseCallback') {
+    const cases = entries.filter(entry => entry.binding.eventCode !== undefined)
+      .map(entry => `        case ${entry.binding.eventCode}: {
+${dispatch(entry)}
+            break;
+        }`).join('\n');
+    body = `    switch (lb_event_code) {
+${cases}
+        default: break;
+    }`;
+  } else if (first.binding.callbackType === 'ElementFocusCallback') {
+    const focused = entries.find(entry => entry.binding.eventCode === 1);
+    const blurred = entries.find(entry => entry.binding.eventCode === 0);
+    body = `    if (lb_focused) {
+${focused ? dispatch(focused) : ''}
+    } else {
+${blurred ? dispatch(blurred) : ''}
+    }`;
+  } else if (first.binding.callbackType === 'RichListEventCallback') {
+    const cases = entries.filter(entry => entry.binding.payloadEvent).map(entry => {
+      const marker = `\\"event\\":\\"${escapeWideString(entry.binding.payloadEvent || '')}\\"`;
+      return `    if (lb_event_json.find(L"${marker}") != std::wstring::npos) {
+${dispatch(entry)}
+        return;
+    }`;
+    }).join('\n');
+    body = `    const std::wstring lb_event_json = LB_NE_FromUtf8(lb_utf8, lb_utf8_length);
+${cases}`;
+  } else if (first.binding.callbackType === 'TableVirtualRowCallback') {
+    const eventDispatch = dispatch(first);
+    return `static int __stdcall ${callbackName}(${signature.parameters}) {
+    static thread_local std::string lb_cached_utf8;
+    NE_清空表格虚拟行数据();
+${eventDispatch}
+    lb_cached_utf8 = LB_NE_ToUtf8(NE_取表格虚拟行数据());
+    const int lb_required = static_cast<int>(lb_cached_utf8.size());
+    if (!lb_buffer || lb_buffer_size <= 0) return lb_required;
+    const int lb_written = (std::min)(lb_required, lb_buffer_size);
+    if (lb_written > 0) std::memcpy(lb_buffer, lb_cached_utf8.data(), static_cast<size_t>(lb_written));
+    if (lb_written < lb_buffer_size) lb_buffer[lb_written] = 0;
+    return lb_written;
+}`;
+  } else {
+    body = dispatch(first);
+  }
+  const returnType = signature.returnValue === undefined ? 'void' : 'int';
+  const returnLine = signature.returnValue === undefined ? '' : `\n    return ${signature.returnValue};`;
+  return `static ${returnType} __stdcall ${callbackName}(${signature.parameters}) {
+${body}${returnLine}
+}`;
+}
+
+function generateNewEmojiRuntimeEventCpp(
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): { declarations: string; definitions: string } {
+  const entries = getNewEmojiRuntimeEventEntries(enabledModules);
+  const groups = new Map<string, NewEmojiRuntimeEventEntry[]>();
+  entries.forEach(entry => {
+    const key = `${entry.control.runtimeControl!.lingCppType}\0${entry.binding.command}`;
+    groups.set(key, [...(groups.get(key) || []), entry]);
+  });
+  const callbackNames = new Map<string, string>();
+  [...groups.keys()].forEach((key, index) => callbackNames.set(key, `LB_NE_RuntimeEvent_${index + 1}`));
+  const declarations = entries.flatMap(entry => [
+    `static bool ${toCppIdentifier(entry.bindCommand)}(int elementId, const wchar_t* handlerName);`,
+    `static bool ${toCppIdentifier(entry.unbindCommand)}(int elementId);`
+  ]).join('\n');
+  const callbacks = [...groups.entries()].map(([key, group]) => (
+    generateNewEmojiRuntimeEventCallback(callbackNames.get(key)!, group, program, enabledModules)
+  )).filter(Boolean).join('\n\n');
+  const methods = entries.flatMap(entry => {
+    const groupKey = `${entry.control.runtimeControl!.lingCppType}\0${entry.binding.command}`;
+    const group = groups.get(groupKey) || [entry];
+    const eventNames = group.map(item => `L"${escapeWideString(item.event.name)}"`).join(', ');
+    const callback = callbackNames.get(groupKey)!;
+    const type = escapeWideString(entry.control.runtimeControl!.lingCppType);
+    const eventName = escapeWideString(entry.event.name);
+    return [`static bool ${toCppIdentifier(entry.bindCommand)}(int elementId, const wchar_t* handlerName) {
+    if (!LB_NE_SetRuntimeEventHandler(elementId, L"${type}", L"${eventName}", handlerName)) return false;
+    ${entry.binding.command}(g_newEmojiWindow, elementId, ${callback});
+    return true;
+}`, `static bool ${toCppIdentifier(entry.unbindCommand)}(int elementId) {
+    if (!LB_NE_ClearRuntimeEventHandler(elementId, L"${type}", L"${eventName}")) return false;
+    if (!LB_NE_HasRuntimeEventHandler(elementId, { ${eventNames} })) {
+        ${entry.binding.command}(g_newEmojiWindow, elementId, nullptr);
+    }
+    return true;
+}`];
+  }).join('\n\n');
+  return { declarations, definitions: `${callbacks}\n\n${methods}` };
+}
+
+function generateNewEmojiMenuResourceRuntime(
+  project: LingWindowProject,
+  window: LingWindowModel,
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): string {
+  const resources = (project.resources || []).filter((resource): resource is LingMenuResource => (
+    (resource.type === 'ContextMenu' || resource.type === 'PopupMenu')
+    && resource.ownerWindowId === window.id
+  ));
+  if (resources.length === 0) return '';
+
+  const itemRows: string[] = [];
+  const menuRows: string[] = [];
+  const handlerNames = new Set<string>();
+  let itemOffset = 0;
+  for (const resource of resources) {
+    const items = resource.items || [];
+    menuRows.push(`    { L"${escapeWideString(resource.id)}", L"${escapeWideString(resource.name)}", ${resource.type === 'ContextMenu' ? 'true' : 'false'}, ${itemOffset}, ${items.length} }`);
+    for (const item of items) {
+      const handler = item.selectedHandler?.trim() || '';
+      if (handler) handlerNames.add(handler);
+      itemRows.push(`    { L"${escapeWideString(item.id)}", L"${escapeWideString(item.label || '')}", ${item.separator ? 'true' : 'false'}, ${item.enabled === false ? 'false' : 'true'}, ${item.checked ? 'true' : 'false'}, L"${escapeWideString(handler)}" }`);
+    }
+    itemOffset += items.length;
+  }
+  const handlerCases = [...handlerNames].flatMap(handlerName => {
+    const method = findLingCppMethod(program, handlerName);
+    if (!method || method.parameters.length > 0 || toCppType(method.returnType, 'return', enabledModules, program.dataTypes) !== 'void') return [];
+    const body = generateNewEmojiMethodBody(method, enabledModules, program.dataTypes);
+    return [`    if (handler == L"${escapeWideString(handlerName)}") {\n${body || '        // 空菜单处理器。'}\n        return;\n    }`];
+  }).join('\n');
+  const items = itemRows.length > 0
+    ? itemRows.join(',\n')
+    : '    { L"", L"", true, false, false, L"" }';
+
+  return `struct LB_NE_MenuItemSpec {
+    const wchar_t* id;
+    const wchar_t* label;
+    bool separator;
+    bool enabled;
+    bool checked;
+    const wchar_t* handler;
+};
+
+struct LB_NE_MenuResourceSpec {
+    const wchar_t* id;
+    const wchar_t* name;
+    bool contextMenu;
+    size_t itemOffset;
+    size_t itemCount;
+};
+
+static const LB_NE_MenuItemSpec g_neMenuItems[] = {
+${items}
+};
+static const LB_NE_MenuResourceSpec g_neMenuResources[] = {
+${menuRows.join(',\n')}
+};
+static std::unordered_map<std::wstring, std::wstring> g_neLastMenuItems;
+
+static const LB_NE_MenuResourceSpec* LB_NE_FindMenuResource(const wchar_t* componentName) {
+    if (!componentName || !*componentName) return nullptr;
+    for (const auto& resource : g_neMenuResources) {
+        if (std::wcscmp(resource.id, componentName) == 0 || std::wcscmp(resource.name, componentName) == 0) return &resource;
+    }
+    return nullptr;
+}
+
+static void LB_NE_DispatchMenuHandler(const wchar_t* handlerName) {
+    const std::wstring handler = handlerName ? handlerName : L"";
+${handlerCases || '    (void)handler;'}
+    if (!handler.empty()) 调试输出(L"菜单项处理器未绑定：", handler);
+}
+
+static bool LB_NE_ShowMenuResource(const LB_NE_MenuResourceSpec& resource, POINT point) {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return false;
+    HMENU menu = CreatePopupMenu();
+    if (!menu) return false;
+    std::map<UINT, const LB_NE_MenuItemSpec*> commands;
+    UINT commandId = 41000;
+    for (size_t index = 0; index < resource.itemCount; ++index) {
+        const LB_NE_MenuItemSpec& item = g_neMenuItems[resource.itemOffset + index];
+        if (item.separator) {
+            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+            continue;
+        }
+        UINT flags = MF_STRING;
+        if (!item.enabled) flags |= MF_GRAYED;
+        if (item.checked) flags |= MF_CHECKED;
+        AppendMenuW(menu, flags, commandId, item.label);
+        commands.emplace(commandId, &item);
+        ++commandId;
+    }
+    SetForegroundWindow(g_newEmojiWindow);
+    const UINT selected = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, g_newEmojiWindow, nullptr);
+    DestroyMenu(menu);
+    const auto found = commands.find(selected);
+    if (found == commands.end()) return false;
+    g_neLastMenuItems[resource.id] = found->second->id;
+    LB_NE_DispatchMenuHandler(found->second->handler);
+    return true;
+}
+
+static bool 上下文菜单_显示(const wchar_t* componentName) {
+    const LB_NE_MenuResourceSpec* resource = LB_NE_FindMenuResource(componentName);
+    if (!resource || !resource->contextMenu) return false;
+    POINT point{};
+    GetCursorPos(&point);
+    return LB_NE_ShowMenuResource(*resource, point);
+}
+
+static bool 弹出菜单_显示(const wchar_t* componentName) {
+    const LB_NE_MenuResourceSpec* resource = LB_NE_FindMenuResource(componentName);
+    if (!resource || resource->contextMenu) return false;
+    POINT point{};
+    GetCursorPos(&point);
+    return LB_NE_ShowMenuResource(*resource, point);
+}
+
+static bool 弹出菜单_在坐标显示(const wchar_t* componentName, int x, int y) {
+    const LB_NE_MenuResourceSpec* resource = LB_NE_FindMenuResource(componentName);
+    if (!resource || resource->contextMenu) return false;
+    return LB_NE_ShowMenuResource(*resource, POINT{ x, y });
+}
+
+static const wchar_t* 菜单_取最后项目(const wchar_t* componentName) {
+    const LB_NE_MenuResourceSpec* resource = LB_NE_FindMenuResource(componentName);
+    if (!resource) return L"";
+    const auto found = g_neLastMenuItems.find(resource->id);
+    return found == g_neLastMenuItems.end() ? L"" : found->second.c_str();
+}`;
+}
+
 function generateNewEmojiMainCpp(
+  project: LingWindowProject,
   window: LingWindowModel,
   program: LingCppProgram,
   enabledModules: InstalledModule[]
 ): string {
   const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  const fbroBrowserManagerRuntime = generateFbroBrowserManagerRuntime(fbroModuleEnabled);
+  const fbroInProcessEnabled = fbroModuleEnabled && window.controls.some(control =>
+    control.type === 'FBroBrowser' && (!control.properties?.processMode || control.properties.processMode === 'in-process')
+  );
   const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
   const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
   const protobufRuntime = generateProtobufRuntime(enabledModules);
@@ -432,6 +856,8 @@ function generateNewEmojiMainCpp(
   const webSocketServerGlobalMethods = generateWebSocketServerGlobalMethods(enabledModules);
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
   const projectGlobalsDefinition = generateProjectGlobalsDefinition(program, enabledModules);
+  const newEmojiRuntimeControlCpp = generateNewEmojiRuntimeControlCpp(enabledModules);
+  const newEmojiRuntimeEventCpp = generateNewEmojiRuntimeEventCpp(program, enabledModules);
   const newEmojiFunctionLibraries = generateNewEmojiFunctionLibraries(program, enabledModules);
   const fbroControls: LingControl[] = fbroModuleEnabled
     ? window.controls
@@ -482,7 +908,14 @@ function generateNewEmojiMainCpp(
       const method = handlerName ? findLingCppMethod(program, handlerName) : undefined;
       if (!method) continue;
       const group = groupedBindings.get(binding.command) || [];
-      group.push({ command: binding.command, eventName: binding.eventName, callbackType: binding.callbackType, eventCode: binding.eventCode, method });
+      group.push({
+        command: binding.command,
+        eventName: binding.eventName,
+        callbackType: binding.callbackType,
+        eventCode: binding.eventCode,
+        payloadEvent: binding.payloadEvent,
+        method
+      });
       groupedBindings.set(binding.command, group);
     }
     for (const [command, bindings] of groupedBindings) {
@@ -545,6 +978,13 @@ function generateNewEmojiMainCpp(
     const y = coordinateParent ? control.y - coordinateParent.y : control.y;
     const text = `L"${escapeWideString(control.content)}"`;
     const contractType = control.designerType?.split('/').pop() || control.type;
+    const runtimeContribution = enabledModules
+      .flatMap(module => module.manifest.contributes?.designerControls || [])
+      .find(item => item.namespacedType === control.designerType);
+    const lingCppType = runtimeContribution?.runtimeControl?.lingCppType || contractType;
+    const isContainer = runtimeContribution?.isContainer === true;
+    const tagText = control.tagText?.trim() || '';
+    const tagInteger = Number.isInteger(control.tagInteger) ? `${control.tagInteger}` : 'std::nullopt';
     const font = normalizeControlFont(control);
     const checked = control.properties?.checked === true ? 1 : 0;
     const progress = parseControlValue(control);
@@ -635,6 +1075,7 @@ function generateNewEmojiMainCpp(
       const pages = tabPagesByControl.get(control.id) || [];
       for (const page of pages) {
         pageLines.push(`    int ${page.variable} = EU_CreatePanel(g_newEmojiWindow, ${parentVariable}, ${int(x + contentBox.x)}, ${int(y + contentBox.y)}, ${int(contentBox.width)}, ${int(contentBox.height)});`);
+        pageLines.push(`    LB_NE_RegisterElement(${page.variable}, L"TabsPage", L"TabsPage", ${parentVariable}, nullptr, L"", std::nullopt, true);`);
         pageLines.push(`    EU_SetPanelLayout(g_newEmojiWindow, ${page.variable}, 0, 0);`);
         pageLines.push(`    NE_设置元素状态(g_newEmojiWindow, ${page.variable}, 1, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor('', tabPageBackground)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`);
         pageLines.push(`    EU_SetPanelStyle(g_newEmojiWindow, ${page.variable}, ${toNewEmojiColor('', tabPageBackground)}, 0x00000000u, 0.0f, 0.0f, 0);`);
@@ -652,15 +1093,25 @@ function generateNewEmojiMainCpp(
     return [
       ...beforeLines,
       `    int ${variable} = ${call};`,
-      `    g_newEmojiElementsByName.emplace(L"${escapeWideString(control.name)}", LB_NE_ElementRef{ ${variable}, L"${escapeWideString(contractType)}" });`,
+      `    LB_NE_RegisterElement(${variable}, L"${escapeWideString(contractType)}", L"${escapeWideString(lingCppType)}", ${parentVariable}, L"${escapeWideString(control.name)}", L"${escapeWideString(tagText)}", ${tagInteger}, ${isContainer ? 'true' : 'false'});`,
       `    NE_设置元素状态(g_newEmojiWindow, ${variable}, ${control.visibility === 'Collapsed' ? 0 : 1}, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor(control.background, 0x00000000)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`,
       `    NE_设置元素字体(g_newEmojiWindow, ${variable}, L"${escapeWideString(font.family)}", ${font.size});`,
-      ...generateNewEmojiCatalogPropertySetterCalls(control, variable, enabledModules),
+      ...generateNewEmojiCatalogPropertySetterCalls(control, variable, enabledModules, 'immediate', variables),
       ...generateNewEmojiCatalogComplexPropertySetterCalls(control, variable),
+      ...generateNewEmojiStructuredPropertySetterCalls(control, variable, 'immediate', variables),
       ...(catalogEventCallbacks.get(control.id) || []).map(binding => `    ${binding.command}(g_newEmojiWindow, ${variable}, ${binding.callback});`),
       ...extraLines,
       ...pageLines
     ];
+  });
+  const deferredRelationshipSetupLines = controls.flatMap(control => {
+    const variable = variables.get(control.id);
+    return variable
+      ? [
+          ...generateNewEmojiCatalogPropertySetterCalls(control, variable, enabledModules, 'relationship', variables),
+          ...generateNewEmojiStructuredPropertySetterCalls(control, variable, 'relationship', variables)
+        ]
+      : [];
   });
   const fbroCreateLines = generateNewEmojiFbroCreateLines(fbroControls, controls, variables);
   const createdHandler = findWindowCreatedHandler(window, program);
@@ -677,7 +1128,41 @@ function generateNewEmojiMainCpp(
   const initialFocusLine = initialFocusVariable
     ? `    if (${initialFocusVariable} > 0) NE_设置元素焦点(g_newEmojiWindow, ${initialFocusVariable});`
     : '';
-  const createWindow = darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口';
+  const windowFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
+  const createWindowCall = windowFrame.preset === 'system'
+    ? `${darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口'}(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))})`
+    : `NE_创建自定义框架窗口(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))}, ${windowFrame.flags})`;
+  const windowFrameSetup = windowFrame.preset === 'system' ? '' : [
+    `    NE_设置窗口缩放边框(g_newEmojiWindow, ${windowFrame.resizeBorder.left}, ${windowFrame.resizeBorder.top}, ${windowFrame.resizeBorder.right}, ${windowFrame.resizeBorder.bottom});`,
+    `    NE_设置窗口圆角(g_newEmojiWindow, ${windowFrame.cornerRadius > 0 ? 1 : 0}, ${windowFrame.cornerRadius});`
+  ].join('\n');
+  const browserShellHitRegionSetup = windowFrame.preset === 'browserShell'
+    ? '    LB_NE_UpdateBrowserShellHitRegions();'
+    : '';
+  const browserShellThemeSetup = windowFrame.preset !== 'browserShell' ? '' : [
+    '    EU_SetChromeThemePreset(g_newEmojiWindow, 1);',
+    '    const auto lbSetChromeThemeToken = [](const char* token, unsigned int value) {',
+    '        EU_SetThemeToken(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(token), static_cast<int>(std::strlen(token)), value);',
+    '    };',
+    '    lbSetChromeThemeToken("chrome.frame_bg", 0xFF202124u);',
+    '    lbSetChromeThemeToken("chrome.toolbar_bg", 0xFF202124u);',
+    '    lbSetChromeThemeToken("chrome.omnibox_bg", 0xFFF1F3F4u);',
+    '    lbSetChromeThemeToken("chrome.omnibox_focus_bg", 0xFFFFFFFFu);',
+    '    lbSetChromeThemeToken("chrome.omnibox_fg", 0xFF202124u);',
+    '    lbSetChromeThemeToken("chrome.omnibox_placeholder", 0xFF5F6368u);',
+    '    lbSetChromeThemeToken("chrome.omnibox_border", 0x00000000u);',
+    '    lbSetChromeThemeToken("chrome.omnibox_focus_border", 0xFF8AB4F8u);',
+    '    lbSetChromeThemeToken("chrome.icon_button_fg", 0xFFE8EAEDu);',
+    '    lbSetChromeThemeToken("chrome.viewport_bg", 0xFFFFFFFFu);',
+    '    lbSetChromeThemeToken("chrome.viewport_fg", 0xFF202124u);'
+  ].join('\n');
+  const windowCommandSetupLines = controls.flatMap(control => {
+    const variable = variables.get(control.id);
+    const command = Number(control.properties?.windowCommand);
+    return variable && Number.isInteger(command) && command >= 1 && command <= 3
+      ? [`    NE_设置元素窗口命令(g_newEmojiWindow, ${variable}, ${command});`]
+      : [];
+  });
   const modulePreamble = generateModuleCppPreamble(enabledModules);
   // new_emoji 模块的声明已经由模块前导区按稳定模块路径提供；再次通过
   // 通用头文件名包含会让同一组无 include guard 的 ABI 类型出现两份路径。
@@ -704,15 +1189,27 @@ function generateNewEmojiMainCpp(
     ? `    if (windowLargeIcon) DestroyIcon(windowLargeIcon);\n    if (windowSmallIcon && windowSmallIcon != windowLargeIcon) DestroyIcon(windowSmallIcon);`
     : '';
   const sourceClass = findLingCppClassForWindow(program, window);
+  const newEmojiUserMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
+  const newEmojiUserMethodDeclarations = newEmojiUserMethods.map(method => (
+    `static ${toCppType(method.returnType, 'return', enabledModules, program.dataTypes)} ${toCppIdentifier(method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)});`
+  )).join('\n');
+  const newEmojiUserMethodDefinitions = newEmojiUserMethods.map(method => {
+    const returnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
+    const body = generateNewEmojiMethodBody(method, enabledModules, program.dataTypes);
+    const fallback = defaultReturnStatement(returnType, program.dataTypes);
+    const statements = [body, fallback ? `    ${fallback}` : ''].filter(Boolean).join('\n') || '    // 空方法。';
+    return `static ${returnType} ${toCppIdentifier(method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${statements}\n}`;
+  }).join('\n\n');
   const webSocketHandlerMethods = (webSocketClientRuntime || webSocketServerRuntime || httpServerRuntime || httpClientRuntime)
     ? Array.from(new Map((sourceClass?.methods || [])
       .filter(method => method.parameters.length === 0)
       .map(method => [method.name, method])).values())
     : [];
-  const webSocketHandlerDeclarations = webSocketHandlerMethods.map(method => (
+  const webSocketInlineHandlerMethods = webSocketHandlerMethods.filter(method => method.kind !== 'method');
+  const webSocketHandlerDeclarations = webSocketInlineHandlerMethods.map(method => (
     `static ${toCppType(method.returnType, 'return', enabledModules, program.dataTypes)} ${toCppIdentifier(method.name)}();`
   )).join('\n');
-  const webSocketHandlerDefinitions = webSocketHandlerMethods.map(method => {
+  const webSocketHandlerDefinitions = webSocketInlineHandlerMethods.map(method => {
     const returnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
     const body = generateNewEmojiMethodBody(method, enabledModules, program.dataTypes);
     const fallback = defaultReturnStatement(returnType, program.dataTypes);
@@ -774,6 +1271,8 @@ ${uiaCleanupLine}
   const newEmojiWindowMembers = (sourceClass?.members || [])
     .map(member => `static ${formatCppVariableDeclaration(member, enabledModules, '', program.dataTypes)}`)
     .join('\n');
+  const newEmojiMenuResourceRuntime = generateNewEmojiMenuResourceRuntime(project, window, program, enabledModules);
+  const newEmojiWindowEventRuntime = generateNewEmojiWindowEventRuntime(window, program, enabledModules);
   const webSocketClientIntegration = webSocketClientRuntime ? `
 static constexpr UINT WM_LINGBUILDER_NE_WS_CLIENT_EVENT = WM_APP + 0x54;
 static HWND g_wsClientEventWindow = nullptr;
@@ -982,6 +1481,7 @@ ${uiaCleanupLine}
 #include <map>
 #include <set>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <new>
 #include <random>
@@ -1033,7 +1533,10 @@ ${webSocketClientRuntime}
 
 ${webSocketServerRuntime}
 
+${fbroModuleEnabled ? '#include <LingBuilderFbroProcessRuntime.hpp>' : ''}
+
 static HWND g_newEmojiWindow = nullptr;
+static constexpr UINT WM_LINGBUILDER_NE_BROWSER_SHELL_LAYOUT = WM_APP + 0x56;
 
 static void EnableNewEmojiDpiAwareness() {
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
@@ -1053,8 +1556,44 @@ static void EnableNewEmojiDpiAwareness() {
 struct LB_NE_ElementRef {
     int id = 0;
     std::wstring type;
+    std::wstring lingCppType;
+    int parentId = 0;
+    std::wstring name;
+    std::wstring tagText;
+    std::optional<int> tagInteger;
+    std::map<std::wstring, std::wstring> eventHandlers;
+    bool isContainer = false;
+    bool alive = true;
 };
-static std::unordered_map<std::wstring, LB_NE_ElementRef> g_newEmojiElementsByName;
+
+struct LingControlLifetimeState {
+    bool alive = true;
+};
+
+struct LingControlRef {
+    std::weak_ptr<LingControlLifetimeState> lifetime;
+    int stableId = 0;
+    std::wstring name;
+    std::wstring lingCppType;
+};
+
+static std::shared_ptr<LingControlLifetimeState> g_newEmojiControlLifetime = std::make_shared<LingControlLifetimeState>();
+static std::unordered_map<std::wstring, std::shared_ptr<LB_NE_ElementRef>> g_newEmojiElementsByName;
+static std::unordered_map<int, std::shared_ptr<LB_NE_ElementRef>> g_newEmojiElementsById;
+static unsigned int g_newEmojiRuntimeNameSequence = 0;
+
+static void LB_NE_Log(const wchar_t* message) {
+    OutputDebugStringW(message ? message : L"");
+    OutputDebugStringW(L"\\r\\n");
+}
+
+static std::wstring LB_NE_NormalizeTagText(const wchar_t* value) {
+    std::wstring result = value ? value : L"";
+    const auto first = result.find_first_not_of(L" \\t\\r\\n");
+    if (first == std::wstring::npos) return {};
+    const auto last = result.find_last_not_of(L" \\t\\r\\n");
+    return result.substr(first, last - first + 1);
+}
 
 static std::string LB_NE_ToUtf8(const wchar_t* value) {
     if (!value || !*value) return {};
@@ -1078,7 +1617,195 @@ static std::wstring LB_NE_FromUtf8(const unsigned char* value, int length) {
 static const LB_NE_ElementRef* LB_NE_FindElement(const wchar_t* controlName) {
     if (!controlName || !*controlName) return nullptr;
     const auto found = g_newEmojiElementsByName.find(controlName);
-    return found == g_newEmojiElementsByName.end() ? nullptr : &found->second;
+    return found == g_newEmojiElementsByName.end() || !found->second || !found->second->alive
+        ? nullptr
+        : found->second.get();
+}
+
+static const LB_NE_ElementRef* LB_NE_FindElementById(int elementId) {
+    if (elementId <= 0) return nullptr;
+    const auto found = g_newEmojiElementsById.find(elementId);
+    return found == g_newEmojiElementsById.end() || !found->second || !found->second->alive
+        ? nullptr
+        : found->second.get();
+}
+
+static LingControlRef LB_NE_MakeControlRef(const LB_NE_ElementRef* element) {
+    if (!element || !element->alive || !g_newEmojiControlLifetime || !g_newEmojiControlLifetime->alive) return {};
+    return LingControlRef{ g_newEmojiControlLifetime, element->id, element->name, element->lingCppType };
+}
+
+static bool 控件_是否有效(const LingControlRef& reference) {
+    const auto lifetime = reference.lifetime.lock();
+    const LB_NE_ElementRef* element = LB_NE_FindElementById(reference.stableId);
+    return lifetime && lifetime->alive && element && element->lingCppType == reference.lingCppType;
+}
+
+static bool 控件_是否有效(int stableId) {
+    return g_newEmojiControlLifetime && g_newEmojiControlLifetime->alive && LB_NE_FindElementById(stableId) != nullptr;
+}
+
+static bool LB_NE_CanRegister(const wchar_t* lingCppType, const wchar_t* rawTagText, const std::optional<int>& tagInteger) {
+    const std::wstring type = lingCppType ? lingCppType : L"";
+    const std::wstring tagText = LB_NE_NormalizeTagText(rawTagText);
+    for (const auto& entry : g_newEmojiElementsById) {
+        const auto& element = entry.second;
+        if (!element || !element->alive || element->lingCppType != type) continue;
+        if (!tagText.empty() && element->tagText == tagText) {
+            LB_NE_Log(L"运行时控件创建失败：当前窗口同类型控件的文本标记重复。");
+            return false;
+        }
+        if (tagInteger.has_value() && element->tagInteger == tagInteger) {
+            LB_NE_Log(L"运行时控件创建失败：当前窗口同类型控件的整数标记重复。");
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool LB_NE_ValidateCreateParent(int parentId) {
+    if (parentId == 0) return g_newEmojiWindow && IsWindow(g_newEmojiWindow);
+    const LB_NE_ElementRef* parent = LB_NE_FindElementById(parentId);
+    if (parent && parent->isContainer) return true;
+    LB_NE_Log(L"运行时控件创建失败：父级不是当前窗口内存活的容器或选项卡页面。");
+    return false;
+}
+
+static LingControlRef LB_NE_RegisterElement(
+    int elementId, const wchar_t* nativeType, const wchar_t* lingCppType, int parentId,
+    const wchar_t* requestedName, const wchar_t* rawTagText, std::optional<int> tagInteger, bool isContainer) {
+    if (elementId <= 0 || !g_newEmojiControlLifetime || !g_newEmojiControlLifetime->alive) return {};
+    if (g_newEmojiElementsById.find(elementId) != g_newEmojiElementsById.end()) {
+        LB_NE_Log(L"new_emoji 控件注册失败：元素 ID 已存在。");
+        return {};
+    }
+    const std::wstring tagText = LB_NE_NormalizeTagText(rawTagText);
+    if (!LB_NE_CanRegister(lingCppType, tagText.c_str(), tagInteger)) return {};
+    std::wstring name = requestedName ? requestedName : L"";
+    if (name.empty()) {
+        name = L"__ling_ne_runtime_" + std::wstring(lingCppType ? lingCppType : L"control")
+            + L"_" + std::to_wstring(elementId) + L"_" + std::to_wstring(++g_newEmojiRuntimeNameSequence);
+    }
+    if (g_newEmojiElementsByName.find(name) != g_newEmojiElementsByName.end()) {
+        LB_NE_Log(L"new_emoji 控件注册失败：控件名称已存在。");
+        return {};
+    }
+    auto element = std::make_shared<LB_NE_ElementRef>();
+    element->id = elementId;
+    element->type = nativeType ? nativeType : L"";
+    element->lingCppType = lingCppType ? lingCppType : element->type;
+    element->parentId = parentId;
+    element->name = name;
+    element->tagText = tagText;
+    element->tagInteger = tagInteger;
+    element->isContainer = isContainer;
+    g_newEmojiElementsByName.emplace(element->name, element);
+    g_newEmojiElementsById.emplace(element->id, element);
+    return LB_NE_MakeControlRef(element.get());
+}
+
+static bool LB_NE_GetElementWindowBounds(int elementId, int* x, int* y, int* width, int* height) {
+    if (!g_newEmojiWindow || elementId <= 0 || !x || !y || !width || !height) return false;
+    int resolvedX = 0;
+    int resolvedY = 0;
+    int resolvedWidth = 0;
+    int resolvedHeight = 0;
+    int currentId = elementId;
+    bool resolved = false;
+    for (int depth = 0; currentId > 0 && depth < 64; ++depth) {
+        int localX = 0, localY = 0, localWidth = 0, localHeight = 0;
+        if (EU_GetElementBounds(g_newEmojiWindow, currentId, &localX, &localY, &localWidth, &localHeight) <= 0) return false;
+        if (!resolved) {
+            resolvedWidth = localWidth;
+            resolvedHeight = localHeight;
+            resolved = true;
+        }
+        resolvedX += localX;
+        resolvedY += localY;
+        const LB_NE_ElementRef* current = LB_NE_FindElementById(currentId);
+        if (!current || current->parentId <= 0) break;
+        if (current->parentId == currentId) return false;
+        currentId = current->parentId;
+    }
+    if (!resolved) return false;
+    *x = resolvedX;
+    *y = resolvedY;
+    *width = resolvedWidth;
+    *height = resolvedHeight;
+    return true;
+}
+
+static LingControlRef LB_NE_FindByTagText(const wchar_t* lingCppType, const wchar_t* rawTagText) {
+    const std::wstring tagText = LB_NE_NormalizeTagText(rawTagText);
+    if (tagText.empty()) return {};
+    const std::wstring type = lingCppType ? lingCppType : L"";
+    for (const auto& entry : g_newEmojiElementsById) {
+        const auto& element = entry.second;
+        if (element && element->alive && element->lingCppType == type && element->tagText == tagText) {
+            return LB_NE_MakeControlRef(element.get());
+        }
+    }
+    return {};
+}
+
+static LingControlRef LB_NE_FindByTagInteger(const wchar_t* lingCppType, int tagInteger) {
+    const std::wstring type = lingCppType ? lingCppType : L"";
+    for (const auto& entry : g_newEmojiElementsById) {
+        const auto& element = entry.second;
+        if (element && element->alive && element->lingCppType == type
+            && element->tagInteger.has_value() && element->tagInteger.value() == tagInteger) {
+            return LB_NE_MakeControlRef(element.get());
+        }
+    }
+    return {};
+}
+
+static std::wstring LB_NE_GetRuntimeEventHandler(int elementId, const wchar_t* eventName) {
+    const LB_NE_ElementRef* element = LB_NE_FindElementById(elementId);
+    if (!element || !eventName || !eventName[0]) return {};
+    const auto handler = element->eventHandlers.find(eventName);
+    return handler == element->eventHandlers.end() ? std::wstring() : handler->second;
+}
+
+static bool LB_NE_SetRuntimeEventHandler(int elementId, const wchar_t* expectedType,
+                                        const wchar_t* eventName, const wchar_t* handlerName) {
+    const auto found = g_newEmojiElementsById.find(elementId);
+    if (found == g_newEmojiElementsById.end() || !found->second || !found->second->alive
+        || !eventName || !eventName[0] || !handlerName || !handlerName[0]) {
+        LB_NE_Log(L"new_emoji 控件事件绑定失败：控件、事件或处理器无效。");
+        return false;
+    }
+    if (expectedType && expectedType[0] && found->second->lingCppType != expectedType) {
+        LB_NE_Log(L"new_emoji 控件事件绑定失败：控件具体类型不匹配。");
+        return false;
+    }
+    found->second->eventHandlers[eventName] = handlerName;
+    return true;
+}
+
+static bool LB_NE_ClearRuntimeEventHandler(int elementId, const wchar_t* expectedType, const wchar_t* eventName) {
+    const auto found = g_newEmojiElementsById.find(elementId);
+    if (found == g_newEmojiElementsById.end() || !found->second || !found->second->alive || !eventName || !eventName[0]) return false;
+    if (expectedType && expectedType[0] && found->second->lingCppType != expectedType) return false;
+    found->second->eventHandlers.erase(eventName);
+    return true;
+}
+
+static bool LB_NE_HasRuntimeEventHandler(int elementId, std::initializer_list<const wchar_t*> eventNames) {
+    const LB_NE_ElementRef* element = LB_NE_FindElementById(elementId);
+    if (!element) return false;
+    for (const wchar_t* eventName : eventNames) {
+        if (eventName && element->eventHandlers.find(eventName) != element->eventHandlers.end()) return true;
+    }
+    return false;
+}
+
+static void LB_NE_InvalidateControls() {
+    if (g_newEmojiControlLifetime) g_newEmojiControlLifetime->alive = false;
+    for (auto& entry : g_newEmojiElementsById) if (entry.second) entry.second->alive = false;
+    g_newEmojiElementsByName.clear();
+    g_newEmojiElementsById.clear();
+    g_newEmojiControlLifetime.reset();
 }
 
 static int LingCppControlStableId(const wchar_t* controlName) {
@@ -1086,7 +1813,27 @@ static int LingCppControlStableId(const wchar_t* controlName) {
     return element ? element->id : 0;
 }
 
+static int LingCppControlStableId(const LingControlRef& reference) {
+    if (!控件_是否有效(reference)) {
+        LB_NE_Log(L"控件操作失败：控件引用无效或所属窗口已经销毁。");
+        return 0;
+    }
+    return reference.stableId;
+}
+
+static const wchar_t* LingCppControlWideName(const LingControlRef& reference) {
+    if (!控件_是否有效(reference)) {
+        LB_NE_Log(L"控件操作失败：控件引用无效或所属窗口已经销毁。");
+        return L"";
+    }
+    return reference.name.c_str();
+}
+
 static HWND LingCppControlNativeHandle(const wchar_t*) {
+    return nullptr;
+}
+
+static HWND LingCppControlNativeHandle(const LingControlRef&) {
     return nullptr;
 }
 
@@ -1095,6 +1842,10 @@ static bool LB_NE_IsType(const LB_NE_ElementRef* element, std::initializer_list<
     for (const wchar_t* type : types) if (type && element->type == type) return true;
     return false;
 }
+
+${newEmojiRuntimeControlCpp}
+
+${newEmojiRuntimeEventCpp.declarations}
 
 struct LingCppTextValue : std::wstring {
     using std::wstring::wstring;
@@ -1158,15 +1909,6 @@ static int 到整数(const std::wstring& text) {
 
 static int 取鼠标水平位置() { POINT point = {}; return GetCursorPos(&point) ? point.x : 0; }
 static int 取鼠标垂直位置() { POINT point = {}; return GetCursorPos(&point) ? point.y : 0; }
-
-static bool 窗口_取是否激活() { return g_newEmojiWindow && GetForegroundWindow() == g_newEmojiWindow; }
-static bool 窗口_取是否可见() { return g_newEmojiWindow && IsWindowVisible(g_newEmojiWindow) != FALSE; }
-static int 窗口_取当前状态() {
-    if (!g_newEmojiWindow) return 0;
-    if (IsIconic(g_newEmojiWindow)) return 1;
-    if (IsZoomed(g_newEmojiWindow)) return 2;
-    return 0;
-}
 
 static std::wstring 控件_取文本(const wchar_t* controlName) {
     const LB_NE_ElementRef* element = LB_NE_FindElement(controlName);
@@ -1368,10 +2110,13 @@ static int 信息框(const std::wstring& text, UINT flags = MB_OK, const std::ws
 
 static void 结束() {
     if (g_newEmojiWindow) {
+        LB_NE_InvalidateControls();
         NE_销毁窗口(g_newEmojiWindow);
         g_newEmojiWindow = nullptr;
     }
 }
+
+${newEmojiUserMethodDeclarations}
 
 ${generateNewEmojiFbroRuntime(fbroModuleEnabled, fbroControls, program, enabledModules)}
 
@@ -1395,22 +2140,32 @@ ${webSocketServerIntegration}
 
 ${newEmojiWindowMembers}
 
+${newEmojiMenuResourceRuntime}
+
+${newEmojiWindowEventRuntime.definitions}
+
+${newEmojiUserMethodDefinitions}
+
 ${webSocketHandlerDefinitions}
 
 ${catalogEventCallbackBlocks.join('\n\n')}
 
+${newEmojiRuntimeEventCpp.definitions}
+
 ${uploadCallbackBlocks.join('\n\n')}
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+${fbroModuleEnabled ? `    const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
+    if (fbroHostExitCode != LINGBUILDER_FBRO_HOST_NOT_REQUESTED) return fbroHostExitCode;` : ''}
     EnableNewEmojiDpiAwareness();
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-${fbroModuleEnabled ? `    if (!LB_NE_InitializeFbro()) {
+${fbroInProcessEnabled ? `    if (!LB_NE_InitializeFbro()) {
         MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时和 LingBuilderFbroBridge.dll。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
 ${uiaCleanupLine}
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 3;
     }` : ''}
-    g_newEmojiWindow = ${createWindow}(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))});
+    g_newEmojiWindow = ${createWindowCall};
 ${fbroModuleEnabled ? '    LB_NE_AttachFbroEventWindow();' : ''}
     if (!g_newEmojiWindow) {
         MessageBoxW(nullptr, L"new_emoji 原生窗口创建失败，请确认 new_emoji.dll 与 exe 位于同一目录。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
@@ -1424,11 +2179,19 @@ ${httpClientEventWindowSetup}
 ${webSocketEventWindowSetup}
 ${httpServerEventWindowSetup}
 ${iconSetup}
+${windowFrameSetup}
+${browserShellThemeSetup}
+${newEmojiWindowEventRuntime.setup}
 ${createLines.join('\n')}
 ${fbroCreateLines.join('\n')}
+${browserShellHitRegionSetup}
+${windowCommandSetupLines.join('\n')}
+${deferredRelationshipSetupLines.join('\n')}
 ${deferredTabPageSetupLines.join('\n')}
 ${initialFocusLine}
 ${createdBody}
+    LB_NE_UpdateBrowserShellBounds();
+${browserShellHitRegionSetup}
     if (!g_newEmojiWindow) {
 ${httpClientCleanup}
 ${httpServerCleanup}
@@ -1440,7 +2203,9 @@ ${uiaCleanupLine}
         return 0;
     }
     NE_显示并激活窗口(g_newEmojiWindow);
+    LB_NE_UpdateFbroTabVisibility(0, -1);
     int exitCode = NE_运行消息循环();
+    LB_NE_InvalidateControls();
 ${httpClientCleanup}
 ${httpServerCleanup}
 ${webSocketClientCleanup}
@@ -1564,6 +2329,312 @@ function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: Insta
     .replace(/^ {8}/gmu, '    ');
 }
 
+function generateNewEmojiWindowEventRuntime(
+  window: LingWindowModel,
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): { definitions: string; setup: string } {
+  const argumentExpressions: Record<string, string[]> = {
+    KeyDown: ['g_neWindowEventKeyCode', 'g_neWindowEventCtrl', 'g_neWindowEventShift', 'g_neWindowEventAlt'],
+    KeyUp: ['g_neWindowEventKeyCode', 'g_neWindowEventCtrl', 'g_neWindowEventShift', 'g_neWindowEventAlt'],
+    TextInput: ['g_neWindowEventCharacter'],
+    DpiChanged: ['g_neWindowEventDpi'],
+    FileDropped: ['g_neWindowDroppedFiles']
+  };
+  const dispatchCases = WINDOW_EVENT_DEFINITIONS.flatMap(definition => {
+    if (definition.name === 'Loaded') return [];
+    const handlerName = window.events?.[definition.name]?.trim() || getWindowEventHandlerName(window.className, definition.name);
+    const method = findLingCppMethod(program, handlerName);
+    if (!method) return [];
+    const expressions = argumentExpressions[definition.name] || [];
+    const parameterDeclarations = method.parameters.map((parameter, index) => (
+      `        ${toCppType(parameter.type, 'parameter', enabledModules, program.dataTypes)} ${toCppIdentifier(parameter.name)} = ${expressions[index] || '{}'};`
+    )).join('\n');
+    const body = generateNewEmojiMethodBody(method, enabledModules, program.dataTypes)
+      .split('\n')
+      .map(line => `    ${line}`)
+      .join('\n');
+    return [`    if (wcscmp(eventName, L"${definition.name}") == 0) {
+${parameterDeclarations}
+${body}
+        return;
+    }`];
+  });
+  const hasFileDroppedHandler = WINDOW_EVENT_DEFINITIONS.some(definition => definition.name === 'FileDropped' && (
+    Boolean(window.events?.FileDropped?.trim()) || Boolean(findLingCppMethod(program, getWindowEventHandlerName(window.className, definition.name)))
+  ));
+  const browserShellFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
+  const passiveBrowserShellTypes = ['/Container', '/Panel', '/Menu', '/Popover', '/BrowserViewport'];
+  const browserShellCaptionControls = window.controls.filter(control => {
+    const command = Number(control.properties?.windowCommand);
+    return control.visibility !== 'Collapsed' && Number.isInteger(command) && command >= 1 && command <= 3;
+  });
+  const browserShellTitleControls = window.controls.filter(control => {
+    const command = Number(control.properties?.windowCommand);
+    return control.visibility !== 'Collapsed'
+      && control.y < 40
+      && control.y + control.height > 0
+      && !(Number.isInteger(command) && command >= 1 && command <= 3)
+      && !passiveBrowserShellTypes.some(type => control.designerType?.endsWith(type));
+  });
+  const browserShellTitleBounds = browserShellTitleControls.map((control, index) => `    if (const auto* lbTitleControl${index + 1} = LB_NE_FindElement(L"${escapeWideString(control.name)}")) {
+        int x = 0, y = 0, width = 0, height = 0;
+        if (EU_GetElementBounds(g_newEmojiWindow, lbTitleControl${index + 1}->id, &x, &y, &width, &height) > 0) {
+            lbInteractiveTitleRight = (std::max)(lbInteractiveTitleRight, x + width);
+        }
+    }`).join('\n');
+  const browserShellCaptionBounds = browserShellCaptionControls.map((control, index) => `    if (const auto* lbCaptionControl${index + 1} = LB_NE_FindElement(L"${escapeWideString(control.name)}")) {
+        int x = 0, y = 0, width = 0, height = 0;
+        if (EU_GetElementBounds(g_newEmojiWindow, lbCaptionControl${index + 1}->id, &x, &y, &width, &height) > 0) {
+            NE_设置窗口非拖拽区(g_newEmojiWindow, x, y, (std::max)(1, width), (std::max)(1, height), 1);
+        }
+    }`).join('\n');
+  const browserShellNonDragHitTests = [...browserShellTitleControls, ...browserShellCaptionControls]
+    .map((control, index) => `    if (const auto* lbHitControl${index + 1} = LB_NE_FindElement(L"${escapeWideString(control.name)}")) {
+        int x = 0, y = 0, width = 0, height = 0;
+        if (EU_GetElementBounds(g_newEmojiWindow, lbHitControl${index + 1}->id, &x, &y, &width, &height) > 0
+            && logicalX >= x && logicalX < x + width && logicalY >= y && logicalY < y + height) return false;
+    }`)
+    .join('\n');
+  const browserShellHitRegionDefinitions = browserShellFrame.preset !== 'browserShell' ? '' : `
+static void LB_NE_UpdateBrowserShellHitRegions() {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return;
+    RECT client = {};
+    GetClientRect(g_newEmojiWindow, &client);
+    const UINT dpi = GetDpiForWindow(g_newEmojiWindow);
+    const int logicalWidth = (std::max)(1, MulDiv(client.right - client.left, 96, static_cast<int>(dpi ? dpi : 96)));
+    NE_清空窗口拖拽区(g_newEmojiWindow);
+    NE_清空窗口非拖拽区(g_newEmojiWindow);
+    NE_设置窗口拖拽区(g_newEmojiWindow, 0, 0, (std::max)(1, logicalWidth - 138), 40, 1);
+    NE_设置窗口拖拽区(g_newEmojiWindow, (std::max)(0, logicalWidth - 184), 40, 92, 50, 1);
+    int lbInteractiveTitleRight = 0;
+${browserShellTitleBounds}
+    if (lbInteractiveTitleRight > 0) {
+        const int width = (std::min)((std::max)(0, logicalWidth - 138), lbInteractiveTitleRight + 10);
+        if (width > 0) NE_设置窗口非拖拽区(g_newEmojiWindow, 0, 0, width, 40, 1);
+    }
+${browserShellCaptionBounds}
+    NE_设置窗口非拖拽区(g_newEmojiWindow, 0, 40, logicalWidth, 50, 1);
+}
+
+static bool LB_NE_IsBrowserShellDragPoint(POINT clientPoint) {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return false;
+    const UINT dpi = GetDpiForWindow(g_newEmojiWindow);
+    const int logicalX = MulDiv(clientPoint.x, 96, static_cast<int>(dpi ? dpi : 96));
+    const int logicalY = MulDiv(clientPoint.y, 96, static_cast<int>(dpi ? dpi : 96));
+    if (logicalX < 0 || logicalY < 0 || logicalY >= 40) return false;
+${browserShellNonDragHitTests}
+    return true;
+}
+`;
+  const browserShellHitRegionUpdate = browserShellFrame.preset === 'browserShell'
+    ? '    LB_NE_UpdateBrowserShellHitRegions();'
+    : '';
+  const browserShellLayoutMessageCase = browserShellFrame.preset === 'browserShell'
+    ? `        case WM_LINGBUILDER_NE_BROWSER_SHELL_LAYOUT:
+            LB_NE_UpdateBrowserShellBounds();
+            LB_NE_UpdateBrowserShellHitRegions();
+            return 0;`
+    : '';
+  const browserShellHitTestCase = browserShellFrame.preset === 'browserShell'
+    ? `        case WM_NCHITTEST: {
+            const LRESULT originalHit = DefSubclassProc(hwnd, message, wParam, lParam);
+            if (originalHit != HTCLIENT) return originalHit;
+            POINT clientPoint = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            ScreenToClient(hwnd, &clientPoint);
+            return LB_NE_IsBrowserShellDragPoint(clientPoint) ? HTCAPTION : originalHit;
+        }`
+    : '';
+  const definitions = `static bool g_neWindowClosingActive = false;
+static bool g_neWindowCloseCancelled = false;
+static bool g_neWindowCloseForwarded = false;
+static bool g_neWindowKeyboardActive = false;
+static bool g_neWindowKeyboardHandled = false;
+static bool g_neWindowActive = false;
+static bool g_neWindowVisible = false;
+static int g_neWindowState = 0;
+static int g_neWindowEventWidth = 0;
+static int g_neWindowEventHeight = 0;
+static int g_neWindowEventX = 0;
+static int g_neWindowEventY = 0;
+static int g_neWindowEventKeyCode = 0;
+static int g_neWindowEventDpi = 96;
+static bool g_neWindowEventCtrl = false;
+static bool g_neWindowEventShift = false;
+static bool g_neWindowEventAlt = false;
+static std::wstring g_neWindowEventCharacter;
+static std::vector<std::wstring> g_neWindowDroppedFiles;
+${browserShellHitRegionDefinitions}
+
+static bool 窗口_取消关闭() {
+    if (!g_neWindowClosingActive) return false;
+    g_neWindowCloseCancelled = true;
+    return true;
+}
+static int 窗口_取事件宽度() { return g_neWindowEventWidth; }
+static int 窗口_取事件高度() { return g_neWindowEventHeight; }
+static int 窗口_取事件横坐标() { return g_neWindowEventX; }
+static int 窗口_取事件纵坐标() { return g_neWindowEventY; }
+static bool 窗口_取是否激活() { return g_neWindowActive; }
+static bool 窗口_取是否可见() { return g_neWindowVisible; }
+static int 窗口_取当前状态() { return g_neWindowState; }
+static int 窗口_取事件键码() { return g_neWindowEventKeyCode; }
+static const wchar_t* 窗口_取事件字符() { return g_neWindowEventCharacter.c_str(); }
+static bool 窗口_取Ctrl键状态() { return g_neWindowEventCtrl; }
+static bool 窗口_取Shift键状态() { return g_neWindowEventShift; }
+static bool 窗口_取Alt键状态() { return g_neWindowEventAlt; }
+static bool 窗口_标记按键已处理() {
+    if (!g_neWindowKeyboardActive) return false;
+    g_neWindowKeyboardHandled = true;
+    return true;
+}
+static int 窗口_取事件DPI() { return g_neWindowEventDpi; }
+static int 窗口_取拖入文件数量() { return static_cast<int>(g_neWindowDroppedFiles.size()); }
+static const wchar_t* 窗口_取拖入文件(int index) {
+    return index >= 0 && index < static_cast<int>(g_neWindowDroppedFiles.size())
+        ? g_neWindowDroppedFiles[static_cast<size_t>(index)].c_str() : L"";
+}
+
+static void LB_NE_DispatchWindowEvent(const wchar_t* eventName) {
+    if (!eventName) return;
+${dispatchCases.join('\n')}
+}
+
+static void __stdcall LB_NE_WindowResizeCallback(HWND, int width, int height) {
+    g_neWindowEventWidth = width;
+    g_neWindowEventHeight = height;
+    LB_NE_DispatchWindowEvent(L"SizeChanged");
+    LB_NE_UpdateBrowserShellBounds();
+${browserShellHitRegionUpdate}
+}
+
+static void __stdcall LB_NE_WindowCloseCallback(HWND) {
+    if (g_neWindowCloseForwarded) {
+        g_neWindowCloseForwarded = false;
+        return;
+    }
+    g_neWindowCloseCancelled = false;
+    g_neWindowClosingActive = true;
+    LB_NE_DispatchWindowEvent(L"Closing");
+    g_neWindowClosingActive = false;
+}
+
+static void LB_NE_UpdateWindowKeyState(WPARAM key) {
+    g_neWindowEventKeyCode = static_cast<int>(key);
+    g_neWindowEventCtrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    g_neWindowEventShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    g_neWindowEventAlt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+}
+
+static LRESULT CALLBACK LB_NE_WindowEventSubclass(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
+    switch (message) {
+${browserShellHitTestCase}
+        case WM_CLOSE:
+            g_neWindowCloseCancelled = false;
+            g_neWindowClosingActive = true;
+            LB_NE_DispatchWindowEvent(L"Closing");
+            g_neWindowClosingActive = false;
+            if (g_neWindowCloseCancelled) return 0;
+            g_neWindowCloseForwarded = true;
+            break;
+        case WM_DESTROY:
+            LB_NE_DispatchWindowEvent(L"Closed");
+            RemoveWindowSubclass(hwnd, LB_NE_WindowEventSubclass, 0x4E455756);
+            break;
+        case WM_SHOWWINDOW: {
+            const bool visible = wParam != 0;
+            if (visible != g_neWindowVisible) {
+                g_neWindowVisible = visible;
+                LB_NE_DispatchWindowEvent(L"VisibilityChanged");
+            }
+            break;
+        }
+        case WM_MOVE:
+            g_neWindowEventX = GET_X_LPARAM(lParam);
+            g_neWindowEventY = GET_Y_LPARAM(lParam);
+            LB_NE_DispatchWindowEvent(L"Moved");
+            break;
+        case WM_ACTIVATE: {
+            const bool active = LOWORD(wParam) != WA_INACTIVE;
+            if (active != g_neWindowActive) {
+                g_neWindowActive = active;
+                LB_NE_DispatchWindowEvent(active ? L"Activated" : L"Deactivated");
+            }
+            break;
+        }
+        case WM_SIZE: {
+            const int nextState = wParam == SIZE_MINIMIZED ? 1 : wParam == SIZE_MAXIMIZED ? 2 : 0;
+            if (nextState != g_neWindowState) {
+                g_neWindowState = nextState;
+                LB_NE_DispatchWindowEvent(nextState == 1 ? L"Minimized" : nextState == 2 ? L"Maximized" : L"Restored");
+            }
+            break;
+        }
+        case WM_SETFOCUS: LB_NE_DispatchWindowEvent(L"GotFocus"); break;
+        case WM_KILLFOCUS: LB_NE_DispatchWindowEvent(L"LostFocus"); break;
+        case WM_KEYDOWN:
+        case WM_SYSKEYDOWN:
+            LB_NE_UpdateWindowKeyState(wParam);
+            g_neWindowKeyboardActive = true;
+            g_neWindowKeyboardHandled = false;
+            LB_NE_DispatchWindowEvent(L"KeyDown");
+            g_neWindowKeyboardActive = false;
+            if (g_neWindowKeyboardHandled) return 0;
+            break;
+        case WM_KEYUP:
+        case WM_SYSKEYUP:
+            LB_NE_UpdateWindowKeyState(wParam);
+            g_neWindowKeyboardActive = true;
+            g_neWindowKeyboardHandled = false;
+            LB_NE_DispatchWindowEvent(L"KeyUp");
+            g_neWindowKeyboardActive = false;
+            if (g_neWindowKeyboardHandled) return 0;
+            break;
+        case WM_CHAR:
+            g_neWindowEventCharacter.assign(1, static_cast<wchar_t>(wParam));
+            LB_NE_DispatchWindowEvent(L"TextInput");
+            break;
+        case WM_DPICHANGED:
+            g_neWindowEventDpi = HIWORD(wParam);
+            LB_NE_DispatchWindowEvent(L"DpiChanged");
+            LB_NE_UpdateBrowserShellBounds();
+${browserShellHitRegionUpdate}
+            break;
+        case WM_DROPFILES: {
+            HDROP drop = reinterpret_cast<HDROP>(wParam);
+            const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+            g_neWindowDroppedFiles.clear();
+            for (UINT index = 0; index < count; ++index) {
+                const UINT length = DragQueryFileW(drop, index, nullptr, 0);
+                std::wstring file(static_cast<size_t>(length) + 1, L'\\0');
+                DragQueryFileW(drop, index, file.data(), length + 1);
+                file.resize(length);
+                g_neWindowDroppedFiles.push_back(std::move(file));
+            }
+            DragFinish(drop);
+            LB_NE_DispatchWindowEvent(L"FileDropped");
+            return 0;
+        }
+${browserShellLayoutMessageCase}
+        default: break;
+    }
+    return DefSubclassProc(hwnd, message, wParam, lParam);
+}`;
+  const setup = [
+    '    RECT lbInitialClient = {};',
+    '    GetClientRect(g_newEmojiWindow, &lbInitialClient);',
+    '    g_neWindowEventWidth = lbInitialClient.right - lbInitialClient.left;',
+    '    g_neWindowEventHeight = lbInitialClient.bottom - lbInitialClient.top;',
+    '    g_neWindowEventDpi = static_cast<int>(GetDpiForWindow(g_newEmojiWindow));',
+    '    g_neWindowVisible = IsWindowVisible(g_newEmojiWindow) != FALSE;',
+    '    EU_SetWindowResizeCallback(g_newEmojiWindow, LB_NE_WindowResizeCallback);',
+    '    EU_SetWindowCloseCallback(g_newEmojiWindow, LB_NE_WindowCloseCallback);',
+    '    SetWindowSubclass(g_newEmojiWindow, LB_NE_WindowEventSubclass, 0x4E455756, 0);',
+    ...(hasFileDroppedHandler ? ['    DragAcceptFiles(g_newEmojiWindow, TRUE);'] : [])
+  ].join('\n');
+  return { definitions, setup };
+}
+
 function generateNewEmojiFbroTabsCallback(
   callback: string,
   bindings: NewEmojiCatalogEventBinding[],
@@ -1602,12 +2673,15 @@ function generateNewEmojiFbroCreateLines(
       ? control.properties.proxyServer
       : '';
     const fingerprint = typeof control.properties?.fingerprintProfile === 'string' ? control.properties.fingerprintProfile : '';
+    const processMode = control.properties?.processMode === 'independent-embedded'
+      ? 1
+      : control.properties?.processMode === 'independent-window' ? 2 : 0;
     const flags = (control.properties?.enableJs !== false ? 1 : 0)
       | (control.properties?.loadImages !== false ? 2 : 0)
       | (control.properties?.enableWebGL === true ? 4 : 0)
       | (control.properties?.muteAudio === true ? 8 : 0)
       | (control.properties?.enableDevTools !== false ? 16 : 0);
-    return `    LB_NE_RegisterFbro(L"${escapeWideString(control.name)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, L"${escapeWideString(url)}", L"${escapeWideString(cacheDirectory)}", L"${escapeWideString(userAgent)}", L"${escapeWideString(proxyServer)}", L"${escapeWideString(fingerprint)}", ${flags}, ${tabElement}, ${tabIndex}, ${control.visibility === 'Collapsed' ? 0 : 1});`;
+    return `    LB_NE_RegisterFbro(L"${escapeWideString(control.name)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, L"${escapeWideString(url)}", L"${escapeWideString(cacheDirectory)}", L"${escapeWideString(userAgent)}", L"${escapeWideString(proxyServer)}", L"${escapeWideString(fingerprint)}", ${flags}, ${processMode}, ${tabElement}, ${tabIndex}, ${control.visibility === 'Collapsed' ? 0 : 1});`;
   });
   lines.push('    FBro_创建(nullptr);');
   lines.push('    LB_NE_UpdateFbroTabVisibility(0, -1);');
@@ -1619,12 +2693,15 @@ function generateNewEmojiFbroEventDispatch(
   program: LingCppProgram | undefined,
   enabledModules: InstalledModule[]
 ): string {
-  if (!program) return 'static int LB_NE_DispatchFbroHandler(const wchar_t*) { return 0; }\nstatic bool LB_NE_DispatchFbroEvent(const wchar_t*, const wchar_t*) { return false; }';
+  if (!program) return 'static int LB_NE_DispatchFbroHandler(const wchar_t*) { return 0; }\nstatic bool LB_NE_DispatchFbroEvent(const wchar_t*, const wchar_t*) { return false; }\nstatic bool LB_NE_DispatchBrowserShellStatus(const wchar_t*, int, const std::wstring&, const std::wstring&, bool) { return false; }';
   const blocks: string[] = [];
   const cases: string[] = [];
   const handlerCases: string[] = [];
   const methods = new Map<string, LingCppMethod>();
-  program.classes.forEach(lingClass => lingClass.methods.forEach(method => methods.set(method.name, method)));
+  const fbroHandlerNames = new Set(controls.flatMap(control => Object.values(control.events || {}).filter(Boolean)));
+  program.classes.forEach(lingClass => lingClass.methods.forEach(method => {
+    if (fbroHandlerNames.has(method.name)) methods.set(method.name, method);
+  }));
   [...methods.values()].forEach((method, index) => {
     const callbackName = `LB_NE_FbroDynamicHandler_${index + 1}`;
     blocks.push(`static void ${callbackName}() {\n${generateNewEmojiMethodBody(method, enabledModules, program.dataTypes)}\n}`);
@@ -1636,7 +2713,23 @@ function generateNewEmojiFbroEventDispatch(
       cases.push(`    if (wcscmp(controlName, L"${escapeWideString(control.name)}") == 0 && wcscmp(eventName, L"${escapeWideString(eventName)}") == 0) { LB_NE_DispatchFbroHandler(L"${escapeWideString(handlerName)}"); return true; }`);
     });
   });
-  return `${blocks.join('\n\n')}\n\nstatic int LB_NE_DispatchFbroHandler(const wchar_t* handlerName) {\n    if (!handlerName) return 0;\n${handlerCases.join('\n')}\n    return 0;\n}\n\nstatic bool LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName) {\n    if (!controlName || !eventName) return false;\n${cases.join('\n')}\n    return false;\n}`;
+  const shellHandlerNames = getNewEmojiBoundHandlerNames(program.source, '浏览器外壳_创建');
+  const shellHandlers = shellHandlerNames
+    .map(name => findLingCppMethod(program, name))
+    .filter((method): method is LingCppMethod => Boolean(method));
+  const shellBlocks = shellHandlers.map((method, index) => {
+    const callbackName = `LB_NE_BrowserShellStatus_${index + 1}`;
+    const values = ['lb_tab_index', 'lb_address', 'lb_title', 'lb_loading'];
+    const parameters = method.parameters.map((parameter, parameterIndex) => (
+      `    ${toCppType(parameter.type, 'parameter', enabledModules, program.dataTypes)} ${toCppIdentifier(parameter.name)} = ${values[parameterIndex] || '{}'};`
+    )).join('\n');
+    const body = generateNewEmojiMethodBody(method, enabledModules, program.dataTypes);
+    return `static void ${callbackName}(int lb_tab_index, const std::wstring& lb_address, const std::wstring& lb_title, bool lb_loading) {\n${parameters}\n${body}\n}`;
+  });
+  const shellCases = shellHandlers.map((method, index) => (
+    `    if (wcscmp(handlerName, L"${escapeWideString(method.name)}") == 0) { LB_NE_BrowserShellStatus_${index + 1}(tabIndex, address, title, loading); return true; }`
+  ));
+  return `${blocks.join('\n\n')}\n\n${shellBlocks.join('\n\n')}\n\nstatic int LB_NE_DispatchFbroHandler(const wchar_t* handlerName) {\n    if (!handlerName) return 0;\n${handlerCases.join('\n')}\n    return 0;\n}\n\nstatic bool LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName) {\n    if (!controlName || !eventName) return false;\n${cases.join('\n')}\n    return false;\n}\n\nstatic bool LB_NE_DispatchBrowserShellStatus(const wchar_t* handlerName, int tabIndex, const std::wstring& address, const std::wstring& title, bool loading) {\n    if (!handlerName || !*handlerName) return false;\n${shellCases.join('\n')}\n    return false;\n}`;
 }
 
 function generateFbroObjectRuntime(availabilityMacro: string, staticFunctions: boolean): string {
@@ -1838,12 +2931,15 @@ function generateNewEmojiFbroRuntime(
   enabledModules: InstalledModule[] = []
 ): string {
   if (!enabled) {
-    return `static void LB_NE_UpdateFbroTabVisibility(int, int) {}\nstatic void LB_NE_ShutdownFbro() {}`;
+    return `static void LB_NE_UpdateFbroTabVisibility(int, int) {}\nstatic void LB_NE_UpdateBrowserShellBounds() {}\nstatic void LB_NE_ShutdownFbro() {}`;
   }
   const dispatch = generateNewEmojiFbroEventDispatch(controls, program, enabledModules);
   return String.raw`
 struct LB_NE_FbroBrowserInstance {
     std::wstring name;
+    std::wstring processInstanceId;
+    std::wstring stableTabId;
+    std::wstring title;
     HWND host = nullptr;
     LB_FBRO_HANDLE handle = 0;
     std::wstring url;
@@ -1851,6 +2947,9 @@ struct LB_NE_FbroBrowserInstance {
     std::wstring userAgent;
     std::wstring proxyServer;
     std::wstring fingerprintJson;
+    std::wstring createdAt;
+    std::wstring pluginStatus = L"插件加载中";
+    std::wstring pluginError;
     std::wstring lastEvent;
     std::wstring lastEventData;
     std::wstring lastEventJson;
@@ -1864,13 +2963,85 @@ struct LB_NE_FbroBrowserInstance {
     struct PopupState { std::wstring lastEvent; std::wstring lastEventData; std::wstring lastEventJson; LB_FBRO_OBJECT_HANDLE lastEventObject = 0; std::wstring lastError; };
     std::map<LB_FBRO_HANDLE, PopupState> chromeUiInstances;
     unsigned int flags = 0;
+    int processMode = LING_FBRO_PROCESS_IN_PROCESS;
     int tabElementId = 0;
     int tabIndex = -1;
+    int tabActiveIndex = 0;
+    bool loading = false;
+    bool shellManaged = false;
+    bool shellSessionOpen = false;
+    bool companionHost = false;
     bool configuredVisible = true;
+    int requestedViewportWidth = 0;
+    int requestedViewportHeight = 0;
 };
 static std::vector<LB_NE_FbroBrowserInstance> g_newEmojiFbroBrowsers;
 static bool g_newEmojiFbroInitialized = false;
 static constexpr UINT WM_LINGBUILDER_NE_FBRO_EVENT = WM_APP + 0x51;
+static constexpr UINT WM_LINGBUILDER_NE_FBRO_RESTORE_VISIBILITY = WM_APP + 0x57;
+static constexpr wchar_t LB_NE_BROWSER_SHELL_DEFAULT_URL[] = L"https://www.baidu.com";
+
+struct LB_NE_FbroShellState {
+    int tabsElementId = 0;
+    int viewportElementId = 0;
+    int richListElementId = 0;
+    std::wstring statusHandler;
+    std::vector<std::wstring> tabOrder;
+    std::wstring selectedTabId;
+    unsigned int nextTabSequence = 1;
+    bool suppressTabsCallback = false;
+    std::filesystem::path persistenceRoot;
+    std::filesystem::path persistencePath;
+    std::wstring persistenceError;
+    bool persistenceEnabled = false;
+    bool persistenceFaulted = false;
+    bool persistenceLoading = false;
+};
+static LB_NE_FbroShellState g_newEmojiFbroShell;
+
+static bool LB_NE_SaveBrowserShellState();
+static void LB_NE_SyncBrowserShellTabs();
+
+static std::wstring LB_NE_BrowserShellSafeSegment(const std::wstring& value) {
+    return lingbuilder_fbro_process_detail::SafePathSegment(value);
+}
+
+static std::wstring LB_NE_BrowserShellTimestamp() {
+    SYSTEMTIME now{};
+    GetSystemTime(&now);
+    wchar_t buffer[48]{};
+    swprintf_s(buffer, L"%04u-%02u-%02uT%02u:%02u:%02u.%03uZ",
+        now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond, now.wMilliseconds);
+    return buffer;
+}
+
+static std::filesystem::path LB_NE_BrowserShellExecutableDirectory() {
+    return std::filesystem::path(lingbuilder_fbro_process_detail::ExecutableDirectory());
+}
+
+static std::filesystem::path LB_NE_BrowserShellDataRoot(const std::wstring& workspaceKey) {
+    PWSTR localAppData = nullptr;
+    std::filesystem::path root;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr, &localAppData)) && localAppData) {
+        root = std::filesystem::path(localAppData) / L"LingBuilder" / L"browser-workspaces"
+            / LB_NE_BrowserShellSafeSegment(workspaceKey);
+        CoTaskMemFree(localAppData);
+    }
+    if (root.empty()) {
+        root = LB_NE_BrowserShellExecutableDirectory() / L"browser-data"
+            / LB_NE_BrowserShellSafeSegment(workspaceKey);
+    }
+    return root.lexically_normal();
+}
+
+static std::filesystem::path LB_NE_BrowserShellProfilePath(const std::wstring& stableId) {
+    return (g_newEmojiFbroShell.persistenceRoot / L"profiles"
+        / LB_NE_BrowserShellSafeSegment(stableId)).lexically_normal();
+}
+
+static std::filesystem::path LB_NE_BrowserShellExtensionPath() {
+    return (LB_NE_BrowserShellExecutableDirectory() / L"doubao-downloader").lexically_normal();
+}
 
 struct LB_NE_FbroEventPacket {
     LB_FBRO_HANDLE handle = 0;
@@ -1900,8 +3071,8 @@ static std::wstring LB_NE_ReadFbroJsonField(const std::wstring& json, const wcha
     std::wstring value;
     for (++position; position < json.size(); ++position) {
         wchar_t character = json[position]; if (character == L'"') break;
-        if (character == L'\\\\' && position + 1 < json.size()) {
-            wchar_t escaped = json[++position]; value += escaped == L'n' ? L'\\n' : escaped == L'r' ? L'\\r' : escaped == L't' ? L'\\t' : escaped;
+        if (character == L'\\' && position + 1 < json.size()) {
+            wchar_t escaped = json[++position]; value += escaped == L'n' ? L'\n' : escaped == L'r' ? L'\r' : escaped == L't' ? L'\t' : escaped;
         } else value += character;
     }
     return value;
@@ -1909,11 +3080,62 @@ static std::wstring LB_NE_ReadFbroJsonField(const std::wstring& json, const wcha
 
 static bool LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName);
 static int LB_NE_DispatchFbroHandler(const wchar_t* handlerName);
+static bool LB_NE_DispatchBrowserShellStatus(const wchar_t* handlerName, int tabIndex,
+                                             const std::wstring& address, const std::wstring& title,
+                                             bool loading);
+static void LB_NE_UpdateFbroTabVisibility(int elementId, int activeIndex);
+static void LB_NE_OnBrowserShellEvent(LB_NE_FbroBrowserInstance& browser, int eventCode);
+static void LB_NE_UpdateBrowserShellBounds();
+static void LB_NE_UpdateBrowserShellVisibility();
+
+static bool LB_NE_IsBrowserShellStateEvent(int eventCode) {
+    return eventCode == LB_FBRO_EVENT_CREATED
+        || eventCode == LB_FBRO_EVENT_LOAD_END
+        || eventCode == LB_FBRO_EVENT_ADDRESS_CHANGED
+        || eventCode == LB_FBRO_EVENT_TITLE_CHANGED
+        || eventCode == LB_FBRO_EVENT_ERROR
+        || eventCode == LB_FBRO_EVENT_CLOSED;
+}
 
 static LB_NE_FbroBrowserInstance* LB_NE_FindFbro(const wchar_t* controlName) {
     if (!controlName || !*controlName) return nullptr;
     for (auto& browser : g_newEmojiFbroBrowsers) if (browser.name == controlName) return &browser;
     return nullptr;
+}
+
+static bool LB_NE_IsFbroProcess(const LB_NE_FbroBrowserInstance* browser) {
+    return browser && browser->processMode != LING_FBRO_PROCESS_IN_PROCESS;
+}
+
+static bool LB_NE_FbroProcessRequest(LB_NE_FbroBrowserInstance* browser, const wchar_t* method,
+                                     const LingFbroProcessController::Json& payload,
+                                     LingFbroProcessController::Json& result) {
+    if (!LB_NE_IsFbroProcess(browser) || !method) return false;
+    if (LingFbroProcessController::Instance().Request(browser->processInstanceId, method, payload, result)) return true;
+    browser->lastError = LingFbroProcessController::Instance().LastError(browser->processInstanceId);
+    return false;
+}
+
+static bool LB_NE_FbroProcessNotify(LB_NE_FbroBrowserInstance* browser, const wchar_t* method,
+                                    const LingFbroProcessController::Json& payload = LingFbroProcessController::Json::object()) {
+    if (!LB_NE_IsFbroProcess(browser) || !method) return false;
+    if (LingFbroProcessController::Instance().Notify(browser->processInstanceId, method, payload)) return true;
+    browser->lastError = LingFbroProcessController::Instance().LastError(browser->processInstanceId);
+    return false;
+}
+
+static int LB_NE_FbroProcessBool(LB_NE_FbroBrowserInstance* browser, const wchar_t* method,
+                                 const LingFbroProcessController::Json& payload = LingFbroProcessController::Json::object()) {
+    LingFbroProcessController::Json result;
+    if (!LB_NE_FbroProcessRequest(browser, method, payload, result)) return 0;
+    return result.contains("value") ? (result.value("value", false) ? 1 : 0) : 1;
+}
+
+static std::wstring LB_NE_FbroProcessText(LB_NE_FbroBrowserInstance* browser, const wchar_t* method,
+                                          const LingFbroProcessController::Json& payload = LingFbroProcessController::Json::object()) {
+    LingFbroProcessController::Json result;
+    return LB_NE_FbroProcessRequest(browser, method, payload, result)
+        ? lingbuilder_fbro_process_detail::JsonWide(result, "value") : L"";
 }
 
 static void __stdcall LB_NE_FbroEvent(LB_FBRO_HANDLE handle, int eventCode, const wchar_t* data, void*) {
@@ -1993,6 +3215,63 @@ static void __stdcall LB_NE_FbroEventV3(const LB_FBRO_EVENT_PACKET_V3* source,
 
 static LRESULT CALLBACK LB_NE_FbroWindowSubclass(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
                                                   UINT_PTR subclassId, DWORD_PTR) {
+    if (message == WM_LINGBUILDER_NE_FBRO_RESTORE_VISIBILITY) {
+        for (auto& browser : g_newEmojiFbroBrowsers) {
+            if (browser.shellManaged && browser.stableTabId == g_newEmojiFbroShell.selectedTabId
+                && browser.shellSessionOpen) {
+                browser.configuredVisible = true;
+                break;
+            }
+        }
+        LB_NE_UpdateBrowserShellBounds();
+        LB_NE_UpdateBrowserShellVisibility();
+        return 0;
+    }
+    if (message == WM_LINGBUILDER_FBRO_PROCESS_EVENT) {
+        std::unique_ptr<LingFbroProcessEventPacket> packet(reinterpret_cast<LingFbroProcessEventPacket*>(lParam));
+        if (!packet) return 0;
+        for (auto& browser : g_newEmojiFbroBrowsers) {
+            if (browser.processInstanceId != packet->instanceId) continue;
+            browser.lastEvent = packet->eventName;
+            browser.lastEventJson = packet->dataJson;
+            browser.lastEventData = LB_NE_ReadFbroJsonField(packet->dataJson, L"value");
+            if (packet->eventName == L"AddressChanged") browser.url = browser.lastEventData;
+            if (packet->eventName == L"TitleChanged") browser.title = browser.lastEventData;
+            if (packet->eventName == L"ExtensionState") {
+                browser.pluginStatus = LB_NE_ReadFbroJsonField(packet->dataJson, L"statusText");
+                browser.pluginError = LB_NE_ReadFbroJsonField(packet->dataJson, L"error");
+                if (browser.pluginStatus.empty()) browser.pluginStatus = L"插件加载失败";
+            }
+            if (packet->eventName == L"Created") browser.loading = true;
+            if (packet->eventName == L"LoadEnd" || packet->eventName == L"Closed") browser.loading = false;
+            if (packet->eventName == L"Error") browser.lastError = browser.lastEventData;
+            if (packet->eventName == L"Created") {
+                if (browser.shellManaged) {
+                    LB_NE_UpdateBrowserShellBounds();
+                    LB_NE_UpdateBrowserShellVisibility();
+                } else {
+                    LB_NE_UpdateFbroTabVisibility(browser.tabElementId, browser.tabActiveIndex);
+                }
+            }
+            auto handler = browser.handlers.find(packet->eventName);
+            if (handler != browser.handlers.end()) LB_NE_DispatchFbroHandler(handler->second.c_str());
+            else LB_NE_DispatchFbroEvent(browser.name.c_str(), packet->eventName.c_str());
+            const int eventCode = packet->eventName == L"Created" ? LB_FBRO_EVENT_CREATED
+                : packet->eventName == L"LoadEnd" ? LB_FBRO_EVENT_LOAD_END
+                : packet->eventName == L"AddressChanged" ? LB_FBRO_EVENT_ADDRESS_CHANGED
+                : packet->eventName == L"TitleChanged" ? LB_FBRO_EVENT_TITLE_CHANGED
+                : packet->eventName == L"Closed" ? LB_FBRO_EVENT_CLOSED
+                : packet->eventName == L"Error" ? LB_FBRO_EVENT_ERROR : 0;
+            if (browser.shellManaged && eventCode) LB_NE_OnBrowserShellEvent(browser, eventCode);
+            if (browser.shellManaged && (packet->eventName == L"AddressChanged"
+                || packet->eventName == L"TitleChanged" || packet->eventName == L"ExtensionState")) {
+                LB_NE_SyncBrowserShellTabs();
+                LB_NE_SaveBrowserShellState();
+            }
+            break;
+        }
+        return 0;
+    }
     if (message == WM_LINGBUILDER_NE_FBRO_EVENT) {
         auto* packet = reinterpret_cast<LB_NE_FbroEventPacket*>(lParam);
         if (!packet) return 0;
@@ -2029,6 +3308,9 @@ static LRESULT CALLBACK LB_NE_FbroWindowSubclass(HWND hwnd, UINT message, WPARAM
                 packet->action = browser.eventAction;
                 packet->resultText = browser.eventResultText;
                 packet->responseJson = browser.eventResponseJson;
+                if (browser.shellManaged && LB_NE_IsBrowserShellStateEvent(packet->eventCode)) {
+                    LB_NE_OnBrowserShellEvent(browser, packet->eventCode);
+                }
                 break;
             }
             auto popup = browser.chromeUiInstances.find(packet->handle);
@@ -2045,8 +3327,27 @@ static LRESULT CALLBACK LB_NE_FbroWindowSubclass(HWND hwnd, UINT message, WPARAM
         if (!packet->synchronous) delete packet;
         return 0;
     }
-    if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, LB_NE_FbroWindowSubclass, subclassId);
-    return DefSubclassProc(hwnd, message, wParam, lParam);
+    const bool syncBrowserShellBoundsAfterMessage = message == WM_MOVE || message == WM_SIZE
+        || message == WM_DPICHANGED;
+    const bool syncBrowserShellVisibilityAfterMessage = syncBrowserShellBoundsAfterMessage
+        || message == WM_SHOWWINDOW || message == WM_ACTIVATE
+        || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP
+        || message == WM_RBUTTONDOWN || message == WM_RBUTTONUP
+        || message == WM_KEYDOWN || message == WM_KEYUP || message == WM_MOUSEMOVE;
+    if (message == WM_NCDESTROY) {
+        for (auto& browser : g_newEmojiFbroBrowsers) {
+            if (browser.shellManaged && browser.companionHost && browser.host && IsWindow(browser.host)) {
+                ShowWindow(browser.host, SW_HIDE);
+            }
+        }
+        RemoveWindowSubclass(hwnd, LB_NE_FbroWindowSubclass, subclassId);
+    }
+    const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+    if (g_newEmojiWindow && IsWindow(g_newEmojiWindow)) {
+        if (syncBrowserShellBoundsAfterMessage) LB_NE_UpdateBrowserShellBounds();
+        if (syncBrowserShellVisibilityAfterMessage) LB_NE_UpdateBrowserShellVisibility();
+    }
+    return result;
 }
 
 static void LB_NE_AttachFbroEventWindow() {
@@ -2055,20 +3356,22 @@ static void LB_NE_AttachFbroEventWindow() {
 
 static void LB_NE_RegisterFbro(const wchar_t* name, int x, int y, int width, int height,
     const wchar_t* url, const wchar_t* profile, const wchar_t* userAgent, const wchar_t* proxy,
-    const wchar_t* fingerprint, unsigned int flags, int tabElementId, int tabIndex, int visible) {
+    const wchar_t* fingerprint, unsigned int flags, int processMode, int tabElementId, int tabIndex, int visible) {
     const UINT dpi = g_newEmojiWindow ? GetDpiForWindow(g_newEmojiWindow) : 96;
     const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi), 96); };
-    // new_emoji 元素坐标使用逻辑像素，并以默认 30 逻辑像素标题栏之后为内容原点。
-    // 原生子 HWND 要求实际客户区像素，因此同时换算 DPI 与标题栏偏移。
-    constexpr int titleBarLogicalHeight = 30;
+    // HIDE_TITLEBAR 模式的元素原点就是客户区顶部；系统框架仍保留 30 逻辑像素内容偏移。
+    const int frameFlags = g_newEmojiWindow ? EU_GetWindowFrameFlags(g_newEmojiWindow) : 0;
+    const int titleBarLogicalHeight = (frameFlags & 0x20) != 0 ? 0 : 30;
     HWND host = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
         scale(x), scale(y + titleBarLogicalHeight), (std::max)(1, scale(width)), (std::max)(1, scale(height)),
         g_newEmojiWindow, nullptr, GetModuleHandleW(nullptr), nullptr);
     LB_NE_FbroBrowserInstance browser;
     browser.name = name ? name : L""; browser.host = host; browser.url = url ? url : L"about:blank";
+    browser.processInstanceId = L"new-emoji:" + std::to_wstring(reinterpret_cast<uintptr_t>(g_newEmojiWindow)) + L":" + browser.name;
     browser.profileDirectory = profile ? profile : L""; browser.userAgent = userAgent ? userAgent : L"";
     browser.proxyServer = proxy ? proxy : L""; browser.fingerprintJson = fingerprint ? fingerprint : L"";
-    browser.flags = flags; browser.tabElementId = tabElementId; browser.tabIndex = tabIndex;
+    browser.flags = flags; browser.processMode = processMode; browser.tabElementId = tabElementId; browser.tabIndex = tabIndex;
+    browser.tabActiveIndex = tabElementId > 0 ? (std::max)(0, EU_GetTabsActive(g_newEmojiWindow, tabElementId)) : -1;
     browser.configuredVisible = visible != 0;
     g_newEmojiFbroBrowsers.push_back(std::move(browser));
 }
@@ -2076,11 +3379,25 @@ static void LB_NE_RegisterFbro(const wchar_t* name, int x, int y, int width, int
 static void LB_NE_UpdateFbroTabVisibility(int elementId, int activeIndex) {
     for (auto& browser : g_newEmojiFbroBrowsers) {
         if (!browser.host || (elementId > 0 && browser.tabElementId != elementId)) continue;
+        if (elementId == browser.tabElementId && activeIndex >= 0) browser.tabActiveIndex = activeIndex;
         const int selected = browser.tabElementId > 0
-            ? (elementId == browser.tabElementId && activeIndex >= 0 ? activeIndex : EU_GetTabsActive(g_newEmojiWindow, browser.tabElementId))
+            ? browser.tabActiveIndex
             : -1;
         const bool visible = browser.configuredVisible && (browser.tabElementId <= 0 || browser.tabIndex == selected);
         ShowWindow(browser.host, visible ? SW_SHOW : SW_HIDE);
+        if (LB_NE_IsFbroProcess(&browser)) {
+            if (browser.processMode == LING_FBRO_PROCESS_WINDOW) {
+                LB_NE_FbroProcessNotify(&browser, visible ? L"show" : L"hide");
+            }
+            if (visible && LingFbroProcessController::Instance().State(browser.processInstanceId) == L"就绪") {
+                RECT bounds{}; GetClientRect(browser.host, &bounds);
+                LB_NE_FbroProcessNotify(&browser, L"resize", LingFbroProcessController::Json{
+                    {"width", (std::max)(1L, bounds.right - bounds.left)},
+                    {"height", (std::max)(1L, bounds.bottom - bounds.top)}
+                });
+            }
+            continue;
+        }
 #if LINGBUILDER_NE_FBRO_AVAILABLE
         if (visible && browser.handle) LB_FBro_Resize(browser.handle);
 #endif
@@ -2105,12 +3422,34 @@ static int LB_NE_InitializeFbro() {
 }
 
 static int FBro_创建(const wchar_t* controlName) {
-    if (!LB_NE_InitializeFbro()) return 0;
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     int created = 0;
     for (auto& browser : g_newEmojiFbroBrowsers) {
         if (controlName && *controlName && browser.name != controlName) continue;
         if (!browser.host || browser.handle) continue;
+        if (LB_NE_IsFbroProcess(&browser)) {
+            if (LingFbroProcessController::Instance().State(browser.processInstanceId) == L"就绪") { ++created; continue; }
+            RECT bounds{}; GetClientRect(browser.host, &bounds);
+            LingFbroProcessConfig config;
+            config.instanceId = browser.processInstanceId;
+            config.eventWindow = g_newEmojiWindow;
+            config.hostWindow = browser.host;
+            config.mode = browser.processMode;
+            config.width = (std::max)(1L, bounds.right - bounds.left);
+            config.height = (std::max)(1L, bounds.bottom - bounds.top);
+            config.visible = browser.configuredVisible
+                && (browser.tabElementId <= 0 || browser.tabIndex == browser.tabActiveIndex);
+            config.url = browser.url;
+            config.profileDirectory = browser.profileDirectory;
+            config.userAgent = browser.userAgent;
+            config.proxyServer = browser.proxyServer;
+            config.fingerprintJson = browser.fingerprintJson;
+            config.flags = browser.flags;
+            if (LingFbroProcessController::Instance().Start(config, false) > 0) ++created;
+            else browser.lastError = LingFbroProcessController::Instance().LastError(browser.processInstanceId);
+            continue;
+        }
+        if (!LB_NE_InitializeFbro()) continue;
         browser.handle = LB_FBro_CreateEx(browser.host, browser.url.c_str(), browser.profileDirectory.c_str(),
             browser.userAgent.c_str(), browser.flags, LB_NE_FbroEvent, nullptr);
         if (!browser.handle) { browser.lastError = L"创建 FBro 浏览器句柄失败"; continue; }
@@ -2128,7 +3467,9 @@ static int FBro_创建(const wchar_t* controlName) {
 
 static int FBro_导航(const wchar_t* name, const std::wstring& address) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_Navigate(browser->handle, address.c_str()) : 0;
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"navigate", {{"url", lingbuilder_fbro_process_detail::JsonUtf8(address)}});
+    return browser && browser->handle ? LB_FBro_Navigate(browser->handle, address.c_str()) : 0;
 #else
     (void)name; (void)address; return 0;
 #endif
@@ -2150,49 +3491,49 @@ static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const wchar_t
 static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const std::wstring& address) { return FBro_打开谷歌原生UI浏览器(name, address.c_str()); }
 static void FBro_刷新(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_Reload(browser->handle);
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) LB_NE_FbroProcessBool(browser, L"reload"); else if (browser && browser->handle) LB_FBro_Reload(browser->handle);
 #else
     (void)name;
 #endif
 }
 static int FBro_后退(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_GoBack(browser->handle) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"back"); return browser && browser->handle ? LB_FBro_GoBack(browser->handle) : 0;
 #else
     (void)name; return 0;
 #endif
 }
 static int FBro_前进(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_GoForward(browser->handle) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"forward"); return browser && browser->handle ? LB_FBro_GoForward(browser->handle) : 0;
 #else
     (void)name; return 0;
 #endif
 }
 static void FBro_停止(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_Stop(browser->handle);
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) LB_NE_FbroProcessBool(browser, L"stop"); else if (browser && browser->handle) LB_FBro_Stop(browser->handle);
 #else
     (void)name;
 #endif
 }
 static int FBro_是否可后退(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_CanGoBack(browser->handle) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"canGoBack"); return browser && browser->handle ? LB_FBro_CanGoBack(browser->handle) : 0;
 #else
     (void)name; return 0;
 #endif
 }
 static int FBro_是否可前进(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_CanGoForward(browser->handle) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"canGoForward"); return browser && browser->handle ? LB_FBro_CanGoForward(browser->handle) : 0;
 #else
     (void)name; return 0;
 #endif
 }
 static int FBro_是否加载中(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_IsLoading(browser->handle) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"isLoading"); return browser && browser->handle ? LB_FBro_IsLoading(browser->handle) : 0;
 #else
     (void)name; return 0;
 #endif
@@ -2200,7 +3541,9 @@ static int FBro_是否加载中(const wchar_t* name) {
 static double FBro_取缩放级别(const wchar_t* name) {
     double result = 0.0;
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_GetZoomLevel(browser->handle, &result);
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) { LingFbroProcessController::Json response; if (LB_NE_FbroProcessRequest(browser, L"getZoom", LingFbroProcessController::Json::object(), response)) result = response.value("value", 0.0); }
+    else if (browser && browser->handle) LB_FBro_GetZoomLevel(browser->handle, &result);
 #else
     (void)name;
 #endif
@@ -2208,28 +3551,28 @@ static double FBro_取缩放级别(const wchar_t* name) {
 }
 static int FBro_设置缩放级别(const wchar_t* name, double level) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_SetZoomLevel(browser->handle, level) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"setZoom", {{"value", level}}); return browser && browser->handle ? LB_FBro_SetZoomLevel(browser->handle, level) : 0;
 #else
     (void)name; (void)level; return 0;
 #endif
 }
 static int FBro_是否静音(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_IsAudioMuted(browser->handle) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"isMuted"); return browser && browser->handle ? LB_FBro_IsAudioMuted(browser->handle) : 0;
 #else
     (void)name; return 0;
 #endif
 }
 static int FBro_设置静音(const wchar_t* name, bool muted) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_SetAudioMuted(browser->handle, muted ? 1 : 0) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"setMuted", {{"value", muted}}); return browser && browser->handle ? LB_FBro_SetAudioMuted(browser->handle, muted ? 1 : 0) : 0;
 #else
     (void)name; (void)muted; return 0;
 #endif
 }
 static int FBro_设置焦点(const wchar_t* name, bool focused) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_SendFocusEvent(browser->handle, focused ? 1 : 0) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"focus", {{"value", focused}}); return browser && browser->handle ? LB_FBro_SendFocusEvent(browser->handle, focused ? 1 : 0) : 0;
 #else
     (void)name; (void)focused; return 0;
 #endif
@@ -2264,7 +3607,7 @@ static int FBro_关闭开发者工具(const wchar_t* name) {
 }
 static int FBro_强制刷新(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_ReloadIgnoreCache(browser->handle) : 0;
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"reloadIgnoreCache"); return browser && browser->handle ? LB_FBro_ReloadIgnoreCache(browser->handle) : 0;
 #else
     (void)name; return 0;
 #endif
@@ -2330,7 +3673,15 @@ static int FBro_设置自动调整大小(const wchar_t* name, bool enabled, int 
 static std::wstring LB_NE_ReadFbroText(const wchar_t* name, int kind) {
     wchar_t result[16384] = {};
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (!browser || !browser->handle) return L"";
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return L"";
+    if (LB_NE_IsFbroProcess(browser)) {
+        if (kind == 1) return LB_NE_FbroProcessText(browser, L"getTitle");
+        if (kind == 2) return LB_NE_FbroProcessText(browser, L"getUrl");
+        if (kind == 3) return browser->lastEvent;
+        const std::wstring controllerError = LingFbroProcessController::Instance().LastError(browser->processInstanceId);
+        return controllerError.empty() ? browser->lastError : controllerError;
+    }
+    if (!browser->handle) return L"";
     if (kind == 1) LB_FBro_GetTitle(browser->handle, result, 16384);
     else if (kind == 2) LB_FBro_GetUrl(browser->handle, result, 16384);
     else if (kind == 3) LB_FBro_GetLastEvent(browser->handle, result, 16384);
@@ -2343,11 +3694,16 @@ static std::wstring LB_NE_ReadFbroText(const wchar_t* name, int kind) {
 static std::wstring FBro_执行JS(const wchar_t* name, const wchar_t* script) {
     wchar_t result[8192] = {};
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle && LB_FBro_ExecuteJs(browser->handle, script, result, 8192) > 0) return result;
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessText(browser, L"executeJavaScript", {{"script", lingbuilder_fbro_process_detail::JsonUtf8(script ? script : L"")}});
+    if (browser && browser->handle && LB_FBro_ExecuteJs(browser->handle, script, result, 8192) > 0) return result;
 #else
     (void)name; (void)script;
 #endif
     return L"";
+}
+static std::wstring FBro_执行JS(const wchar_t* name, const std::wstring& script) {
+    return FBro_执行JS(name, script.c_str());
 }
 static long long FBro自动化_执行JS异步(const wchar_t* name, const wchar_t* script) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
@@ -2500,6 +3856,77 @@ static std::wstring FBro_取标题(const wchar_t* name) { return LB_NE_ReadFbroT
 static std::wstring FBro_取地址(const wchar_t* name) { return LB_NE_ReadFbroText(name, 2); }
 static std::wstring FBro_取最近事件(const wchar_t* name) { return LB_NE_ReadFbroText(name, 3); }
 static std::wstring FBro_取最近错误(const wchar_t* name) { return LB_NE_ReadFbroText(name, 4); }
+static std::wstring FBro_取进程状态(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name);
+    return LB_NE_IsFbroProcess(browser) ? LingFbroProcessController::Instance().State(browser->processInstanceId) : L"进程内";
+}
+static int FBro_取进程ID(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name);
+    return LB_NE_IsFbroProcess(browser) ? static_cast<int>(LingFbroProcessController::Instance().ProcessId(browser->processInstanceId)) : 0;
+}
+static int FBro_取调试端口(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name);
+    return LB_NE_IsFbroProcess(browser) ? LingFbroProcessController::Instance().DebuggingPort(browser->processInstanceId) : 0;
+}
+static int FBro_重启进程(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name); if (!LB_NE_IsFbroProcess(browser)) return 0;
+    const int result = LingFbroProcessController::Instance().Restart(browser->processInstanceId);
+    if (!result) browser->lastError = LingFbroProcessController::Instance().LastError(browser->processInstanceId);
+    return result;
+}
+static int FBro_显示(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0;
+    if (browser->host) ShowWindow(browser->host, SW_SHOW);
+    if (LB_NE_IsFbroProcess(browser) && browser->processMode == LING_FBRO_PROCESS_WINDOW) {
+        return LB_NE_FbroProcessNotify(browser, L"show") ? 1 : 0;
+    }
+    return browser->host ? 1 : 0;
+}
+static int FBro_隐藏(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0;
+    if (browser->host) ShowWindow(browser->host, SW_HIDE);
+    if (LB_NE_IsFbroProcess(browser) && browser->processMode == LING_FBRO_PROCESS_WINDOW) {
+        return LB_NE_FbroProcessNotify(browser, L"hide") ? 1 : 0;
+    }
+    return browser->host ? 1 : 0;
+}
+static int FBro_是否显示(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name);
+    return browser && browser->host && IsWindowVisible(browser->host) ? 1 : 0;
+}
+static int FBro_调整大小(const wchar_t* name, int width, int height) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser || width <= 0 || height <= 0) return 0;
+    if (browser->host) SetWindowPos(browser->host, nullptr, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessNotify(browser, L"resize", {{"width", width}, {"height", height}}) ? 1 : 0;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (browser->handle) { LB_FBro_Resize(browser->handle); return 1; }
+#endif
+    return browser->host ? 1 : 0;
+}
+static int FBro_截图到文件(const wchar_t* name, const wchar_t* path, const wchar_t* format, int quality) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser || !path || !*path) return 0;
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"screenshotToFile", {
+        {"path", lingbuilder_fbro_process_detail::JsonUtf8(path)},
+        {"format", lingbuilder_fbro_process_detail::JsonUtf8(format && *format ? format : L"png")},
+        {"quality", quality}
+    });
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (!browser->handle) return 0;
+    const LB_FBRO_TASK_HANDLE task = LB_FBro_CaptureScreenshotAsync(browser->handle,
+        format && *format ? format : L"png", quality, 0, 0, 0, 0, 1, 1, 1, nullptr, nullptr);
+    const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_TASK_COMPLETED;
+    const LB_FBRO_BUFFER_HANDLE buffer = completed ? LB_FBro_TaskGetBuffer(task) : 0;
+    const int result = buffer ? LB_FBro_BufferSaveFile(buffer, path) : 0;
+    if (buffer) LB_FBro_BufferRelease(buffer);
+    if (task) LB_FBro_TaskRelease(task);
+    return result > 0 ? 1 : 0;
+#else
+    (void)format; (void)quality; return 0;
+#endif
+}
+static int FBro_截图到文件(const wchar_t* name, const std::wstring& path, const std::wstring& format, int quality) {
+    return FBro_截图到文件(name, path.c_str(), format.c_str(), quality);
+}
 static std::wstring FBro_取事件数据(const wchar_t* name) { auto* browser = LB_NE_FindFbro(name); return browser ? browser->lastEventData : L""; }
 static long long FBro_取事件对象(const wchar_t* name) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0;
@@ -2563,10 +3990,14 @@ static int FBro_绑定事件(const wchar_t* name, const wchar_t* eventName, cons
 static int FBro_设置代理(const wchar_t* name, const wchar_t* proxy) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->proxyServer = proxy ? proxy : L"";
 #if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"setProxy", {{"value", lingbuilder_fbro_process_detail::JsonUtf8(browser->proxyServer)}});
     return browser->handle ? LB_FBro_SetProxy(browser->handle, browser->proxyServer.c_str(), L"", L"") : 1;
 #else
     return 0;
 #endif
+}
+static int FBro_设置代理(const wchar_t* name, const std::wstring& proxy) {
+    return FBro_设置代理(name, proxy.c_str());
 }
 static int FBro会话_设置代理认证(const wchar_t* name, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->proxyServer = proxy ? proxy : L"";
@@ -2664,19 +4095,28 @@ static int FBro_设置缓存目录(const wchar_t* name, const wchar_t* directory
 static int FBro_设置UserAgent(const wchar_t* name, const wchar_t* userAgent) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->userAgent = userAgent ? userAgent : L"";
 #if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"setUserAgent", {{"value", lingbuilder_fbro_process_detail::JsonUtf8(browser->userAgent)}});
     return browser->handle ? LB_FBro_SetUserAgent(browser->handle, browser->userAgent.c_str()) : 1;
 #else
     return 0;
 #endif
 }
+static int FBro_设置UserAgent(const wchar_t* name, const std::wstring& userAgent) {
+    return FBro_设置UserAgent(name, userAgent.c_str());
+}
 static std::wstring FBro_取Cookie(const wchar_t* name, const wchar_t* address) {
     wchar_t result[16384] = {};
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_GetCookies(browser->handle, address, result, 16384);
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessText(browser, L"getCookies", {{"url", lingbuilder_fbro_process_detail::JsonUtf8(address ? address : L"")}});
+    if (browser && browser->handle) LB_FBro_GetCookies(browser->handle, address, result, 16384);
 #else
     (void)name; (void)address;
 #endif
     return result;
+}
+static std::wstring FBro_取Cookie(const wchar_t* name, const std::wstring& address) {
+    return FBro_取Cookie(name, address.c_str());
 }
 static int FBro_清空Cookie(const wchar_t* name, const wchar_t* address) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
@@ -2688,10 +4128,14 @@ static int FBro_清空Cookie(const wchar_t* name, const wchar_t* address) {
 static int FBro指纹_应用配置(const wchar_t* name, const wchar_t* json) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->fingerprintJson = json ? json : L"";
 #if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"applyFingerprint", {{"value", lingbuilder_fbro_process_detail::JsonUtf8(browser->fingerprintJson)}});
     return browser->handle ? (LB_FBro_ApplyFingerprintJson(browser->handle, browser->fingerprintJson.c_str()) > 0 ? 1 : 0) : 1;
 #else
     return 0;
 #endif
+}
+static int FBro指纹_应用配置(const wchar_t* name, const std::wstring& json) {
+    return FBro指纹_应用配置(name, json.c_str());
 }
 static std::wstring FBro指纹_取已应用配置(const wchar_t* name) {
     wchar_t result[32768] = {};
@@ -2761,22 +4205,1589 @@ static int FBro指纹_设置启动代理(const wchar_t* url, const wchar_t* user
 #endif
 }
 ${generateFbroVipIndividualRuntime(true)}
+
+static LB_NE_FbroBrowserInstance* LB_NE_FindBrowserShellTab(const wchar_t* stableId) {
+    if (!stableId || !*stableId) return nullptr;
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (browser.shellManaged && browser.stableTabId == stableId) return &browser;
+    }
+    return nullptr;
+}
+
+static int LB_NE_FindBrowserShellTabIndex(const std::wstring& stableId) {
+    const auto found = std::find(g_newEmojiFbroShell.tabOrder.begin(), g_newEmojiFbroShell.tabOrder.end(), stableId);
+    return found == g_newEmojiFbroShell.tabOrder.end()
+        ? -1 : static_cast<int>(std::distance(g_newEmojiFbroShell.tabOrder.begin(), found));
+}
+
+static std::wstring LB_NE_SanitizeBrowserShellTabField(const std::wstring& value) {
+    std::wstring result = value;
+    for (wchar_t& character : result) if (character == L'\t' || character == L'\r' || character == L'\n' || character == L'|') character = L' ';
+    return result;
+}
+
+static void LB_NE_SetBrowserShellPlaceholder(int state, bool loading,
+                                              const wchar_t* title, const wchar_t* description,
+                                              const wchar_t* icon) {
+    if (!g_newEmojiWindow || g_newEmojiFbroShell.viewportElementId <= 0) return;
+    const std::string titleUtf8 = LB_NE_ToUtf8(title ? title : L"");
+    const std::string descriptionUtf8 = LB_NE_ToUtf8(description ? description : L"");
+    const std::string iconUtf8 = LB_NE_ToUtf8(icon ? icon : L"");
+    EU_SetBrowserViewportPlaceholder(g_newEmojiWindow, g_newEmojiFbroShell.viewportElementId,
+        reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()),
+        reinterpret_cast<const unsigned char*>(descriptionUtf8.data()), static_cast<int>(descriptionUtf8.size()),
+        reinterpret_cast<const unsigned char*>(iconUtf8.data()), static_cast<int>(iconUtf8.size()));
+    EU_SetBrowserViewportState(g_newEmojiWindow, g_newEmojiFbroShell.viewportElementId, state);
+    EU_SetBrowserViewportLoading(g_newEmojiWindow, g_newEmojiFbroShell.viewportElementId, loading ? 1 : 0, loading ? 35 : 100);
+}
+
+static HWND LB_NE_CreateBrowserShellCompanionHost(int x, int y, int width, int height) {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return nullptr;
+    const UINT dpi = GetDpiForWindow(g_newEmojiWindow);
+    const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
+    POINT origin{scale(x), scale(y)};
+    if (!ClientToScreen(g_newEmojiWindow, &origin)) return nullptr;
+    return CreateWindowExW(
+        WS_EX_TOOLWINDOW,
+        L"STATIC",
+        L"",
+        WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+        origin.x,
+        origin.y,
+        (std::max)(1, scale(width)),
+        (std::max)(1, scale(height)),
+        g_newEmojiWindow,
+        nullptr,
+        GetModuleHandleW(nullptr),
+        nullptr);
+}
+
+static bool LB_NE_StartBrowserShellProcess(LB_NE_FbroBrowserInstance& browser) {
+    if (browser.stableTabId.empty() || browser.processInstanceId.empty()
+        || g_newEmojiFbroShell.viewportElementId <= 0 || browser.shellSessionOpen) return false;
+    int x = 0, y = 0, width = 1, height = 1;
+    if (!LB_NE_GetElementWindowBounds(g_newEmojiFbroShell.viewportElementId, &x, &y, &width, &height)) return false;
+    HWND host = LB_NE_CreateBrowserShellCompanionHost(x, y, width, height);
+    if (!host) {
+        browser.lastError = L"无法创建浏览器伴随宿主窗口。";
+        return false;
+    }
+    SetWindowTextW(host, browser.stableTabId.c_str());
+    browser.host = host;
+    if (browser.requestedViewportWidth <= 0) browser.requestedViewportWidth = width;
+    if (browser.requestedViewportHeight <= 0) browser.requestedViewportHeight = height;
+    RECT bounds{};
+    GetClientRect(host, &bounds);
+    LingFbroProcessConfig config;
+    config.instanceId = browser.processInstanceId;
+    config.eventWindow = g_newEmojiWindow;
+    config.hostWindow = host;
+    config.mode = LING_FBRO_PROCESS_EMBEDDED;
+    config.width = (std::max)(1L, bounds.right - bounds.left);
+    config.height = (std::max)(1L, bounds.bottom - bounds.top);
+    config.visible = browser.configuredVisible;
+    config.url = browser.url;
+    config.profileDirectory = browser.profileDirectory;
+    config.userAgent = browser.userAgent;
+    config.proxyServer = browser.proxyServer;
+    config.fingerprintJson = browser.fingerprintJson;
+    config.extensionDirectory = LB_NE_BrowserShellExtensionPath().wstring();
+    config.flags = browser.flags;
+    if (LingFbroProcessController::Instance().Start(config, false) <= 0) {
+        browser.lastError = LingFbroProcessController::Instance().LastError(browser.processInstanceId);
+        DestroyWindow(host);
+        browser.host = nullptr;
+        browser.loading = false;
+        browser.shellSessionOpen = false;
+        return false;
+    }
+    browser.lastError.clear();
+    browser.loading = true;
+    browser.shellSessionOpen = true;
+    return true;
+}
+
+static bool LB_NE_HasOpenBrowserShellOverlay() {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return false;
+    for (const auto& entry : g_newEmojiElementsById) {
+        const auto* element = entry.second.get();
+        if (!element || !element->alive) continue;
+        if (LB_NE_IsType(element, {L"Menu", L"Popover", L"Dropdown"})
+            && EU_GetPopupOpen(g_newEmojiWindow, element->id) > 0) return true;
+    }
+    return false;
+}
+
+static bool LB_NE_ShouldShowBrowserShellHost(const LB_NE_FbroBrowserInstance& browser) {
+    return browser.shellManaged && browser.shellSessionOpen && browser.configuredVisible
+        && browser.stableTabId == g_newEmojiFbroShell.selectedTabId
+        && g_newEmojiWindow && IsWindow(g_newEmojiWindow)
+        && IsWindowVisible(g_newEmojiWindow) && !IsIconic(g_newEmojiWindow)
+        && !LB_NE_HasOpenBrowserShellOverlay();
+}
+
+static void LB_NE_UpdateBrowserShellBounds() {
+    if (!g_newEmojiWindow || g_newEmojiFbroShell.viewportElementId <= 0) return;
+    int x = 0, y = 0, width = 0, height = 0;
+    if (!LB_NE_GetElementWindowBounds(g_newEmojiFbroShell.viewportElementId, &x, &y, &width, &height)) return;
+    const UINT dpi = GetDpiForWindow(g_newEmojiWindow);
+    const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (!browser.shellManaged || !browser.host || !IsWindow(browser.host)) continue;
+        POINT origin{scale(x), scale(y)};
+        if (browser.companionHost && !ClientToScreen(g_newEmojiWindow, &origin)) continue;
+        const int browserWidth = browser.requestedViewportWidth > 0
+            ? (std::min)(scale(browser.requestedViewportWidth), (std::max)(1, scale(width)))
+            : (std::max)(1, scale(width));
+        const int browserHeight = browser.requestedViewportHeight > 0
+            ? (std::min)(scale(browser.requestedViewportHeight), (std::max)(1, scale(height)))
+            : (std::max)(1, scale(height));
+        SetWindowPos(browser.host, HWND_TOP, origin.x, origin.y,
+            browserWidth, browserHeight,
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOCOPYBITS
+                | (LB_NE_ShouldShowBrowserShellHost(browser) ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+        if (LB_NE_IsFbroProcess(&browser)
+            && LingFbroProcessController::Instance().State(browser.processInstanceId) == L"就绪") {
+            LB_NE_FbroProcessNotify(&browser, L"resize", {{"width", browserWidth}, {"height", browserHeight}});
+            continue;
+        }
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+        if (browser.handle) LB_FBro_Resize(browser.handle);
+#endif
+    }
+}
+
+static void LB_NE_UpdateBrowserShellVisibility() {
+    if (g_newEmojiFbroShell.selectedTabId.empty() && !g_newEmojiFbroShell.tabOrder.empty()) {
+        g_newEmojiFbroShell.selectedTabId = g_newEmojiFbroShell.tabOrder.front();
+    }
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (!browser.shellManaged || !browser.host) continue;
+        const bool visible = LB_NE_ShouldShowBrowserShellHost(browser);
+        ShowWindow(browser.host, visible ? SW_SHOW : SW_HIDE);
+        if (visible) {
+            SetWindowPos(browser.host, HWND_TOP, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+            if (browser.handle) LB_FBro_Resize(browser.handle);
+#endif
+        }
+    }
+    LB_NE_FbroBrowserInstance* selectedBrowser = LB_NE_FindBrowserShellTab(g_newEmojiFbroShell.selectedTabId.c_str());
+    if (selectedBrowser && !selectedBrowser->shellSessionOpen) {
+        LB_NE_SetBrowserShellPlaceholder(4, false, L"浏览器已关闭", L"点击列表中的“已关闭”状态可使用原会话和缓存目录重新打开。", L"↻");
+    } else if (g_newEmojiFbroShell.tabOrder.empty()) {
+        LB_NE_SetBrowserShellPlaceholder(4, false, L"新标签页", L"搜索或输入网址，开始浏览。", L"🌐");
+    }
+}
+
+static void LB_NE_SyncBrowserShellTabs() {
+    if (!g_newEmojiWindow || g_newEmojiFbroShell.tabsElementId <= 0) return;
+    std::wstring rows;
+    LingFbroProcessController::Json richListItems = LingFbroProcessController::Json::array();
+    for (const auto& stableId : g_newEmojiFbroShell.tabOrder) {
+        LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+        if (!browser) continue;
+        if (!rows.empty()) rows += L"|";
+        const std::wstring title = LB_NE_SanitizeBrowserShellTabField(browser->title.empty() ? L"新标签页" : browser->title);
+        const std::wstring id = LB_NE_SanitizeBrowserShellTabField(stableId);
+        const std::wstring address = LB_NE_SanitizeBrowserShellTabField(browser->url);
+        rows += title + L"\t" + id + L"\t" + address + L"\t🌐\t0\t1";
+        const std::wstring processState = browser->shellSessionOpen && LB_NE_IsFbroProcess(browser)
+            ? LingFbroProcessController::Instance().State(browser->processInstanceId)
+            : browser->shellSessionOpen ? L"进程内" : L"已关闭";
+        const unsigned long processId = browser->shellSessionOpen && LB_NE_IsFbroProcess(browser)
+            ? LingFbroProcessController::Instance().ProcessId(browser->processInstanceId) : 0;
+        const std::wstring meta = L"PID " + std::to_wstring(processId) + L" | "
+            + (browser->pluginStatus.empty() ? L"插件状态未知" : browser->pluginStatus);
+        richListItems.push_back({
+            {"key", lingbuilder_fbro_process_detail::JsonUtf8(stableId)},
+            {"data", {
+                {"title", lingbuilder_fbro_process_detail::JsonUtf8(browser->title.empty() ? stableId : browser->title)},
+                {"address", lingbuilder_fbro_process_detail::JsonUtf8(browser->url)},
+                {"status", lingbuilder_fbro_process_detail::JsonUtf8(browser->shellSessionOpen ? processState : L"已关闭")},
+                {"processState", lingbuilder_fbro_process_detail::JsonUtf8(processState)},
+                {"meta", lingbuilder_fbro_process_detail::JsonUtf8(meta)}
+            }}
+        });
+    }
+    const std::string rowsUtf8 = LB_NE_ToUtf8(rows.c_str());
+    g_newEmojiFbroShell.suppressTabsCallback = true;
+    EU_SetTabsItemsEx(g_newEmojiWindow, g_newEmojiFbroShell.tabsElementId,
+        reinterpret_cast<const unsigned char*>(rowsUtf8.data()), static_cast<int>(rowsUtf8.size()));
+    const int activeIndex = LB_NE_FindBrowserShellTabIndex(g_newEmojiFbroShell.selectedTabId);
+    if (activeIndex >= 0) EU_SetTabsActive(g_newEmojiWindow, g_newEmojiFbroShell.tabsElementId, activeIndex);
+    for (int index = 0; index < static_cast<int>(g_newEmojiFbroShell.tabOrder.size()); ++index) {
+        LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(g_newEmojiFbroShell.tabOrder[static_cast<size_t>(index)].c_str());
+        if (browser) EU_SetTabsItemChromeState(g_newEmojiWindow, g_newEmojiFbroShell.tabsElementId, index,
+            browser->loading ? 1 : 0, 0, 0, 0);
+    }
+    if (g_newEmojiFbroShell.richListElementId > 0) {
+        LingFbroProcessController::Json payload = {{"items", std::move(richListItems)}};
+        const std::string itemsJson = payload.dump();
+        EU_SetRichListItems(g_newEmojiWindow, g_newEmojiFbroShell.richListElementId,
+            reinterpret_cast<const unsigned char*>(itemsJson.data()), static_cast<int>(itemsJson.size()));
+        LingFbroProcessController::Json selected = LingFbroProcessController::Json::array();
+        if (!g_newEmojiFbroShell.selectedTabId.empty()) {
+            selected.push_back(lingbuilder_fbro_process_detail::JsonUtf8(g_newEmojiFbroShell.selectedTabId));
+        }
+        const std::string selectedJson = selected.dump();
+        EU_SetRichListSelectedKeys(g_newEmojiWindow, g_newEmojiFbroShell.richListElementId,
+            reinterpret_cast<const unsigned char*>(selectedJson.data()), static_cast<int>(selectedJson.size()));
+    }
+    g_newEmojiFbroShell.suppressTabsCallback = false;
+    if (g_newEmojiWindow && IsWindow(g_newEmojiWindow)) {
+        PostMessageW(g_newEmojiWindow, WM_LINGBUILDER_NE_BROWSER_SHELL_LAYOUT, 0, 0);
+    }
+}
+
+static bool 浏览器外壳_绑定实例列表(int richListElementId) {
+    const LB_NE_ElementRef* richList = LB_NE_FindElementById(richListElementId);
+    if (!g_newEmojiWindow || !LB_NE_IsType(richList, { L"RichList" })) {
+        调试输出(L"浏览器外壳绑定实例列表失败：必须传入当前窗口的 RichList 控件。");
+        return false;
+    }
+    g_newEmojiFbroShell.richListElementId = richListElementId;
+    LB_NE_SyncBrowserShellTabs();
+    return true;
+}
+
+static bool 浏览器外壳_选择标签页(const std::wstring& stableId);
+static bool 浏览器外壳_选择列表键(const std::wstring& selectedKeysJson) {
+    const std::string jsonUtf8 = LB_NE_ToUtf8(selectedKeysJson.c_str());
+    const auto selected = LingFbroProcessController::Json::parse(jsonUtf8, nullptr, false);
+    if (!selected.is_array() || selected.empty() || !selected.front().is_string()) return false;
+    const std::wstring stableId = lingbuilder_fbro_process_detail::Utf8ToWide(selected.front().get<std::string>());
+    if (stableId == g_newEmojiFbroShell.selectedTabId) return true;
+    return 浏览器外壳_选择标签页(stableId);
+}
+
+static bool 浏览器外壳_新建标签页(const std::wstring& stableId, const std::wstring& address, const std::wstring& title);
+static bool 浏览器外壳_新建独立实例(const std::wstring& stableId, const std::wstring& address,
+                                         const std::wstring& title, const std::wstring& profileDirectory);
+static bool 浏览器外壳_关闭标签页(const std::wstring& stableId);
+static bool 浏览器外壳_关闭实例(const std::wstring& stableId);
+static bool 浏览器外壳_重新打开实例(const std::wstring& stableId);
+static bool 浏览器外壳_删除实例(const std::wstring& stableId);
+static bool 浏览器外壳_关闭其他标签页();
+static int 浏览器外壳_取标签页数量();
+static bool 浏览器外壳_选择标签页(const std::wstring& stableId);
+static bool 浏览器外壳_重排标签页(const std::wstring& stableId, int newIndex);
+static bool 浏览器外壳_设置实例Cookie(const std::wstring& stableId, const std::wstring& address,
+                                              const std::wstring& cookieText);
+static std::wstring 浏览器外壳_打开Cookie对话框(const std::wstring& stableId, const std::wstring& defaultAddress);
+static std::wstring 浏览器外壳_处理实例列表动作(const std::wstring& eventJson);
+
+static void __stdcall LB_NE_BrowserShellTabsChanged(int elementId, int activeIndex, int, int) {
+    if (g_newEmojiFbroShell.suppressTabsCallback || elementId != g_newEmojiFbroShell.tabsElementId
+        || activeIndex < 0 || activeIndex >= static_cast<int>(g_newEmojiFbroShell.tabOrder.size())) return;
+    浏览器外壳_选择标签页(g_newEmojiFbroShell.tabOrder[static_cast<size_t>(activeIndex)]);
+}
+
+static void __stdcall LB_NE_BrowserShellTabsClosed(int elementId, int closedIndex, int, int) {
+    if (g_newEmojiFbroShell.suppressTabsCallback || elementId != g_newEmojiFbroShell.tabsElementId
+        || closedIndex < 0 || closedIndex >= static_cast<int>(g_newEmojiFbroShell.tabOrder.size())) return;
+    浏览器外壳_关闭标签页(g_newEmojiFbroShell.tabOrder[static_cast<size_t>(closedIndex)]);
+}
+
+static void __stdcall LB_NE_BrowserShellTabsAdded(int elementId, int, int, int) {
+    if (g_newEmojiFbroShell.suppressTabsCallback || elementId != g_newEmojiFbroShell.tabsElementId) return;
+    const std::wstring stableId = L"browser-tab-" + std::to_wstring(g_newEmojiFbroShell.nextTabSequence++);
+    浏览器外壳_新建标签页(stableId, LB_NE_BROWSER_SHELL_DEFAULT_URL, L"新标签页");
+}
+
+static void __stdcall LB_NE_BrowserShellTabsReordered(int elementId, int fromIndex, int toIndex, int) {
+    if (g_newEmojiFbroShell.suppressTabsCallback || elementId != g_newEmojiFbroShell.tabsElementId
+        || fromIndex < 0 || fromIndex >= static_cast<int>(g_newEmojiFbroShell.tabOrder.size())) return;
+    浏览器外壳_重排标签页(g_newEmojiFbroShell.tabOrder[static_cast<size_t>(fromIndex)], toIndex);
+}
+
+static bool 浏览器外壳_创建(int tabsElementId, int viewportElementId, const wchar_t* statusHandler) {
+    const LB_NE_ElementRef* tabs = LB_NE_FindElementById(tabsElementId);
+    const LB_NE_ElementRef* viewport = LB_NE_FindElementById(viewportElementId);
+    if (!g_newEmojiWindow || !LB_NE_IsType(tabs, { L"Tabs" }) || !LB_NE_IsType(viewport, { L"BrowserViewport" })) {
+        调试输出(L"浏览器外壳创建失败：必须传入当前窗口的 Tabs 和 BrowserViewport 控件。");
+        return false;
+    }
+    g_newEmojiFbroShell.tabsElementId = tabsElementId;
+    g_newEmojiFbroShell.viewportElementId = viewportElementId;
+    g_newEmojiFbroShell.statusHandler = statusHandler ? statusHandler : L"";
+    EU_SetTabsChromeMode(g_newEmojiWindow, tabsElementId, 1);
+    EU_SetTabsChangeCallback(g_newEmojiWindow, tabsElementId, LB_NE_BrowserShellTabsChanged);
+    EU_SetTabsCloseCallback(g_newEmojiWindow, tabsElementId, LB_NE_BrowserShellTabsClosed);
+    EU_SetTabsAddCallback(g_newEmojiWindow, tabsElementId, LB_NE_BrowserShellTabsAdded);
+    EU_SetTabsReorderCallback(g_newEmojiWindow, tabsElementId, LB_NE_BrowserShellTabsReordered);
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    return true;
+}
+
+static bool 浏览器外壳_新建标签页(const std::wstring& stableId, const std::wstring& address, const std::wstring& title) {
+    if (stableId.empty() || g_newEmojiFbroShell.viewportElementId <= 0 || LB_NE_FindBrowserShellTab(stableId.c_str())) return false;
+    if (!LB_NE_InitializeFbro()) return false;
+    int x = 0, y = 0, width = 1, height = 1;
+    if (!LB_NE_GetElementWindowBounds(g_newEmojiFbroShell.viewportElementId, &x, &y, &width, &height)) return false;
+    HWND host = LB_NE_CreateBrowserShellCompanionHost(x, y, width, height);
+    if (!host) return false;
+    LB_NE_FbroBrowserInstance browser;
+    browser.name = L"__lingbuilder_browser_shell__" + stableId;
+    browser.stableTabId = stableId;
+    browser.title = title.empty() ? L"新标签页" : title;
+    browser.url = address.empty() ? LB_NE_BROWSER_SHELL_DEFAULT_URL : address;
+    browser.host = host;
+    browser.flags = 7U;
+    browser.loading = true;
+    browser.shellManaged = true;
+    browser.shellSessionOpen = true;
+    browser.companionHost = true;
+    browser.configuredVisible = true;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    browser.handle = LB_FBro_CreateEx(browser.host, browser.url.c_str(), L"", L"", browser.flags, LB_NE_FbroEvent, nullptr);
+    if (browser.handle) {
+        LB_FBro_SetEventCallbackV2(browser.handle, LB_NE_FbroEventV2, nullptr);
+        LB_FBro_SetEventCallbackV3(browser.handle, LB_NE_FbroEventV3, nullptr);
+    }
+#endif
+    if (!browser.handle) {
+        DestroyWindow(host);
+        LB_NE_SetBrowserShellPlaceholder(3, false, L"浏览器创建失败", L"请检查 FBro Bridge 和 CEF 135 x64 运行时。", L"⚠");
+        return false;
+    }
+    g_newEmojiFbroBrowsers.push_back(std::move(browser));
+    g_newEmojiFbroShell.tabOrder.push_back(stableId);
+    g_newEmojiFbroShell.selectedTabId = stableId;
+    LB_NE_SyncBrowserShellTabs();
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    const int tabIndex = LB_NE_FindBrowserShellTabIndex(stableId);
+    LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(), tabIndex,
+        browser.url, title.empty() ? L"新标签页" : title, true);
+    return true;
+}
+
+static bool 浏览器外壳_新建独立实例(const std::wstring& stableId, const std::wstring& address,
+                                         const std::wstring& title, const std::wstring& profileDirectory) {
+    if (stableId.empty() || g_newEmojiFbroShell.viewportElementId <= 0 || LB_NE_FindBrowserShellTab(stableId.c_str())) return false;
+    const std::filesystem::path requestedProfile(profileDirectory);
+    const std::wstring resolvedProfile = (g_newEmojiFbroShell.persistenceEnabled
+        && (profileDirectory.empty() || requestedProfile.is_relative()))
+        ? LB_NE_BrowserShellProfilePath(stableId).wstring()
+        : (profileDirectory.empty() ? L".fbro-profiles/manager-" + stableId : profileDirectory);
+    for (const auto& existing : g_newEmojiFbroBrowsers) {
+        if (existing.shellManaged && !existing.profileDirectory.empty()
+            && _wcsicmp(existing.profileDirectory.c_str(), resolvedProfile.c_str()) == 0) return false;
+    }
+    LB_NE_FbroBrowserInstance browser;
+    browser.name = L"__lingbuilder_browser_process_shell__" + stableId;
+    browser.processInstanceId = L"new-emoji-shell:" + std::to_wstring(reinterpret_cast<uintptr_t>(g_newEmojiWindow)) + L":" + stableId;
+    browser.stableTabId = stableId;
+    browser.title = title.empty() ? stableId : title;
+    browser.url = address.empty() ? LB_NE_BROWSER_SHELL_DEFAULT_URL : address;
+    browser.profileDirectory = resolvedProfile;
+    browser.createdAt = LB_NE_BrowserShellTimestamp();
+    browser.flags = 7U;
+    browser.processMode = LING_FBRO_PROCESS_EMBEDDED;
+    browser.shellManaged = true;
+    browser.companionHost = true;
+    browser.configuredVisible = true;
+    g_newEmojiFbroBrowsers.push_back(std::move(browser));
+    LB_NE_FbroBrowserInstance* createdBrowser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!createdBrowser) {
+        return false;
+    }
+    if (!LB_NE_StartBrowserShellProcess(*createdBrowser)) {
+        g_newEmojiFbroBrowsers.erase(std::remove_if(g_newEmojiFbroBrowsers.begin(), g_newEmojiFbroBrowsers.end(),
+            [&](const auto& item) { return item.shellManaged && item.stableTabId == stableId; }), g_newEmojiFbroBrowsers.end());
+        LB_NE_SetBrowserShellPlaceholder(3, false, L"浏览器进程创建失败", L"请检查 FBro Bridge、CEF 135 x64 运行时和系统资源。", L"⚠");
+        return false;
+    }
+    g_newEmojiFbroShell.tabOrder.push_back(stableId);
+    g_newEmojiFbroShell.selectedTabId = stableId;
+    LB_NE_SyncBrowserShellTabs();
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    const int tabIndex = LB_NE_FindBrowserShellTabIndex(stableId);
+    LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(), tabIndex,
+        createdBrowser->url, createdBrowser->title, true);
+    LB_NE_SaveBrowserShellState();
+    return true;
+}
+
+static bool LB_NE_SaveBrowserShellState() {
+    if (!g_newEmojiFbroShell.persistenceEnabled || g_newEmojiFbroShell.persistenceLoading) return true;
+    if (g_newEmojiFbroShell.persistenceFaulted || g_newEmojiFbroShell.persistencePath.empty()) return false;
+    LingFbroProcessController::Json document = {
+        {"schemaVersion", 1},
+        {"workspaceType", "lingbuilder.multi-browser-workbench"},
+        {"selectedInstanceId", lingbuilder_fbro_process_detail::JsonUtf8(g_newEmojiFbroShell.selectedTabId)},
+        {"pluginDirectory", "doubao-downloader"},
+        {"instances", LingFbroProcessController::Json::array()}
+    };
+    int order = 0;
+    for (const auto& stableId : g_newEmojiFbroShell.tabOrder) {
+        const auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+        if (!browser) continue;
+        document["instances"].push_back({
+            {"id", lingbuilder_fbro_process_detail::JsonUtf8(browser->stableTabId)},
+            {"name", lingbuilder_fbro_process_detail::JsonUtf8(browser->title)},
+            {"order", order++},
+            {"cacheDirectory", lingbuilder_fbro_process_detail::JsonUtf8(
+                (std::filesystem::path(L"profiles") / LB_NE_BrowserShellSafeSegment(browser->stableTabId)).generic_wstring())},
+            {"lastUrl", lingbuilder_fbro_process_detail::JsonUtf8(browser->url)},
+            {"createdAt", lingbuilder_fbro_process_detail::JsonUtf8(browser->createdAt)},
+            {"restoreOpen", browser->shellSessionOpen},
+            {"pluginStatus", lingbuilder_fbro_process_detail::JsonUtf8(browser->pluginStatus)}
+        });
+    }
+    std::error_code directoryError;
+    std::filesystem::create_directories(g_newEmojiFbroShell.persistencePath.parent_path(), directoryError);
+    if (directoryError) {
+        g_newEmojiFbroShell.persistenceError = L"无法创建浏览器实例配置目录。";
+        return false;
+    }
+    const std::filesystem::path temporary = g_newEmojiFbroShell.persistencePath.wstring()
+        + L".tmp-" + std::to_wstring(GetCurrentProcessId());
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        const std::string utf8 = document.dump(2) + "\n";
+        stream.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
+        stream.flush();
+        if (!stream.good()) {
+            g_newEmojiFbroShell.persistenceError = L"浏览器实例配置临时文件写入失败。";
+            stream.close();
+            DeleteFileW(temporary.c_str());
+            return false;
+        }
+    }
+    const std::filesystem::path backup = g_newEmojiFbroShell.persistencePath.wstring() + L".bak";
+    if (std::filesystem::exists(g_newEmojiFbroShell.persistencePath)) {
+        CopyFileW(g_newEmojiFbroShell.persistencePath.c_str(), backup.c_str(), FALSE);
+    }
+    if (!MoveFileExW(temporary.c_str(), g_newEmojiFbroShell.persistencePath.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        g_newEmojiFbroShell.persistenceError = L"浏览器实例配置原子替换失败，错误码："
+            + std::to_wstring(GetLastError());
+        DeleteFileW(temporary.c_str());
+        return false;
+    }
+    g_newEmojiFbroShell.persistenceError.clear();
+    return true;
+}
+
+static LingFbroProcessController::Json LB_NE_ReadBrowserShellStateFile(const std::filesystem::path& file) {
+    std::ifstream stream(file, std::ios::binary);
+    if (!stream) return LingFbroProcessController::Json();
+    auto document = LingFbroProcessController::Json::parse(stream, nullptr, false);
+    return document.is_object() ? document : LingFbroProcessController::Json();
+}
+
+static int 浏览器外壳_启用实例持久化(const std::wstring& workspaceKey) {
+    if (workspaceKey.empty()) return -1;
+    g_newEmojiFbroShell.persistenceRoot = LB_NE_BrowserShellDataRoot(workspaceKey);
+    g_newEmojiFbroShell.persistencePath = g_newEmojiFbroShell.persistenceRoot / L"browser-instances.json";
+    g_newEmojiFbroShell.persistenceEnabled = true;
+    g_newEmojiFbroShell.persistenceFaulted = false;
+    g_newEmojiFbroShell.persistenceError.clear();
+    std::error_code directoryError;
+    std::filesystem::create_directories(g_newEmojiFbroShell.persistenceRoot / L"profiles", directoryError);
+    if (directoryError) {
+        g_newEmojiFbroShell.persistenceFaulted = true;
+        g_newEmojiFbroShell.persistenceError = L"无法创建浏览器实例数据目录。";
+        return -1;
+    }
+    if (!std::filesystem::exists(g_newEmojiFbroShell.persistencePath)) return 0;
+    auto document = LB_NE_ReadBrowserShellStateFile(g_newEmojiFbroShell.persistencePath);
+    if (document.is_null()) {
+        const std::filesystem::path backup = g_newEmojiFbroShell.persistencePath.wstring() + L".bak";
+        document = LB_NE_ReadBrowserShellStateFile(backup);
+        if (document.is_null()) {
+            g_newEmojiFbroShell.persistenceFaulted = true;
+            g_newEmojiFbroShell.persistenceError = L"浏览器实例配置损坏，备份也不可恢复；原文件已保留，当前仅使用临时默认实例。";
+            return -1;
+        }
+        const std::filesystem::path corrupt = g_newEmojiFbroShell.persistencePath.wstring()
+            + L".corrupt-" + LB_NE_BrowserShellSafeSegment(LB_NE_BrowserShellTimestamp());
+        MoveFileExW(g_newEmojiFbroShell.persistencePath.c_str(), corrupt.c_str(), MOVEFILE_WRITE_THROUGH);
+        g_newEmojiFbroShell.persistenceError = L"主配置损坏，已从原子写入备份恢复并保留损坏文件。";
+    }
+    if (document.value("schemaVersion", 0) != 1 || !document.contains("instances")
+        || !document["instances"].is_array()) {
+        g_newEmojiFbroShell.persistenceFaulted = true;
+        g_newEmojiFbroShell.persistenceError = L"浏览器实例配置版本或 instances 结构无效，原文件未覆盖。";
+        return -1;
+    }
+    struct RestoredItem { int order; LingFbroProcessController::Json value; };
+    std::vector<RestoredItem> restored;
+    for (const auto& item : document["instances"]) {
+        if (!item.is_object()) continue;
+        const std::wstring id = lingbuilder_fbro_process_detail::JsonWide(item, "id");
+        if (id.empty() || id != LB_NE_BrowserShellSafeSegment(id)) continue;
+        restored.push_back({item.value("order", static_cast<int>(restored.size())), item});
+    }
+    std::stable_sort(restored.begin(), restored.end(), [](const auto& left, const auto& right) {
+        return left.order < right.order;
+    });
+    g_newEmojiFbroShell.persistenceLoading = true;
+    int loaded = 0;
+    for (const auto& restoredItem : restored) {
+        const auto& item = restoredItem.value;
+        const std::wstring id = lingbuilder_fbro_process_detail::JsonWide(item, "id");
+        const std::wstring name = lingbuilder_fbro_process_detail::JsonWide(item, "name", id);
+        const std::wstring url = lingbuilder_fbro_process_detail::JsonWide(item, "lastUrl", LB_NE_BROWSER_SHELL_DEFAULT_URL);
+        if (!浏览器外壳_新建独立实例(id, url, name, LB_NE_BrowserShellProfilePath(id).wstring())) continue;
+        if (auto* browser = LB_NE_FindBrowserShellTab(id.c_str())) {
+            browser->createdAt = lingbuilder_fbro_process_detail::JsonWide(item, "createdAt", LB_NE_BrowserShellTimestamp());
+            if (!item.value("restoreOpen", true)) 浏览器外壳_关闭实例(id);
+        }
+        ++loaded;
+    }
+    g_newEmojiFbroShell.persistenceLoading = false;
+    const std::wstring selected = lingbuilder_fbro_process_detail::JsonWide(document, "selectedInstanceId");
+    if (!selected.empty() && LB_NE_FindBrowserShellTab(selected.c_str())) 浏览器外壳_选择标签页(selected);
+    else if (!g_newEmojiFbroShell.tabOrder.empty()) 浏览器外壳_选择标签页(g_newEmojiFbroShell.tabOrder.front());
+    if (loaded > 0) LB_NE_SaveBrowserShellState();
+    return loaded;
+}
+
+static std::wstring 浏览器外壳_取持久化诊断() {
+    return g_newEmojiFbroShell.persistenceError;
+}
+
+static bool 浏览器外壳_重命名实例(const std::wstring& stableId, const std::wstring& newName) {
+    auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    std::wstring normalized = newName;
+    while (!normalized.empty() && iswspace(normalized.front())) normalized.erase(normalized.begin());
+    while (!normalized.empty() && iswspace(normalized.back())) normalized.pop_back();
+    if (!browser || normalized.empty() || normalized.size() > 80) return false;
+    browser->title = normalized;
+    LB_NE_SyncBrowserShellTabs();
+    return LB_NE_SaveBrowserShellState();
+}
+
+static bool 浏览器外壳_新建空白标签页() {
+    const std::wstring stableId = L"browser-tab-" + std::to_wstring(g_newEmojiFbroShell.nextTabSequence++);
+    return 浏览器外壳_新建标签页(stableId, LB_NE_BROWSER_SHELL_DEFAULT_URL, L"新标签页");
+}
+
+static bool 浏览器外壳_关闭标签页(const std::wstring& stableId) {
+    const int index = LB_NE_FindBrowserShellTabIndex(stableId);
+    if (index < 0) return false;
+    const bool selected = g_newEmojiFbroShell.selectedTabId == stableId;
+    auto browser = std::find_if(g_newEmojiFbroBrowsers.begin(), g_newEmojiFbroBrowsers.end(), [&](const auto& item) {
+        return item.shellManaged && item.stableTabId == stableId;
+    });
+    if (browser != g_newEmojiFbroBrowsers.end()) {
+        if (LB_NE_IsFbroProcess(&*browser)) LingFbroProcessController::Instance().Close(browser->processInstanceId);
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+        else if (browser->handle) LB_FBro_Close(browser->handle);
+#endif
+        if (browser->host && IsWindow(browser->host)) DestroyWindow(browser->host);
+        g_newEmojiFbroBrowsers.erase(browser);
+    }
+    g_newEmojiFbroShell.tabOrder.erase(g_newEmojiFbroShell.tabOrder.begin() + index);
+    if (selected) {
+        const int next = (std::min)(index, static_cast<int>(g_newEmojiFbroShell.tabOrder.size()) - 1);
+        g_newEmojiFbroShell.selectedTabId = next >= 0 ? g_newEmojiFbroShell.tabOrder[static_cast<size_t>(next)] : L"";
+    }
+    LB_NE_SyncBrowserShellTabs();
+    LB_NE_UpdateBrowserShellVisibility();
+    const int selectedIndex = LB_NE_FindBrowserShellTabIndex(g_newEmojiFbroShell.selectedTabId);
+    if (auto* selectedBrowser = LB_NE_FindBrowserShellTab(g_newEmojiFbroShell.selectedTabId.c_str())) {
+        LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(), selectedIndex,
+            selectedBrowser->url, selectedBrowser->title, selectedBrowser->loading);
+    } else {
+        LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(), -1, L"", L"新标签页", false);
+    }
+    return true;
+}
+
+static bool 浏览器外壳_关闭实例(const std::wstring& stableId) {
+    LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser || !LB_NE_IsFbroProcess(browser) || g_newEmojiFbroShell.tabOrder.size() <= 1) return false;
+    if (!browser->shellSessionOpen) return true;
+    LingFbroProcessController::Instance().Close(browser->processInstanceId);
+    if (browser->host && IsWindow(browser->host)) DestroyWindow(browser->host);
+    browser->host = nullptr;
+    browser->handle = 0;
+    browser->loading = false;
+    browser->shellSessionOpen = false;
+    browser->lastError.clear();
+    LB_NE_SyncBrowserShellTabs();
+    LB_NE_UpdateBrowserShellVisibility();
+    if (g_newEmojiFbroShell.selectedTabId == stableId) {
+        LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(),
+            LB_NE_FindBrowserShellTabIndex(stableId), browser->url, browser->title, false);
+    }
+    return LB_NE_SaveBrowserShellState();
+}
+
+static bool 浏览器外壳_重新打开实例(const std::wstring& stableId) {
+    LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser || !LB_NE_IsFbroProcess(browser)) return false;
+    if (browser->shellSessionOpen) return 浏览器外壳_选择标签页(stableId);
+    browser->configuredVisible = true;
+    if (!LB_NE_StartBrowserShellProcess(*browser)) {
+        LB_NE_SyncBrowserShellTabs();
+        LB_NE_UpdateBrowserShellVisibility();
+        return false;
+    }
+    g_newEmojiFbroShell.selectedTabId = stableId;
+    LB_NE_SyncBrowserShellTabs();
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(),
+        LB_NE_FindBrowserShellTabIndex(stableId), browser->url, browser->title, true);
+    LB_NE_SaveBrowserShellState();
+    return true;
+}
+
+static bool 浏览器外壳_删除实例(const std::wstring& stableId) {
+    const int index = LB_NE_FindBrowserShellTabIndex(stableId);
+    LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (index < 0 || !browser || !LB_NE_IsFbroProcess(browser)
+        || g_newEmojiFbroShell.tabOrder.size() <= 1) return false;
+    const bool selected = g_newEmojiFbroShell.selectedTabId == stableId;
+    if (browser->shellSessionOpen) 浏览器外壳_关闭实例(stableId);
+    g_newEmojiFbroBrowsers.erase(std::remove_if(g_newEmojiFbroBrowsers.begin(), g_newEmojiFbroBrowsers.end(),
+        [&](const auto& item) { return item.shellManaged && item.stableTabId == stableId; }), g_newEmojiFbroBrowsers.end());
+    g_newEmojiFbroShell.tabOrder.erase(g_newEmojiFbroShell.tabOrder.begin() + index);
+    if (selected) {
+        g_newEmojiFbroShell.selectedTabId.clear();
+        if (!g_newEmojiFbroShell.tabOrder.empty()) {
+            const int pivot = (std::min)(index, static_cast<int>(g_newEmojiFbroShell.tabOrder.size()) - 1);
+            for (int current = pivot; current < static_cast<int>(g_newEmojiFbroShell.tabOrder.size()); ++current) {
+                auto* candidate = LB_NE_FindBrowserShellTab(g_newEmojiFbroShell.tabOrder[static_cast<size_t>(current)].c_str());
+                if (candidate && candidate->shellSessionOpen) { g_newEmojiFbroShell.selectedTabId = candidate->stableTabId; break; }
+            }
+            for (int current = pivot - 1; g_newEmojiFbroShell.selectedTabId.empty() && current >= 0; --current) {
+                auto* candidate = LB_NE_FindBrowserShellTab(g_newEmojiFbroShell.tabOrder[static_cast<size_t>(current)].c_str());
+                if (candidate && candidate->shellSessionOpen) { g_newEmojiFbroShell.selectedTabId = candidate->stableTabId; break; }
+            }
+            if (g_newEmojiFbroShell.selectedTabId.empty()) {
+                g_newEmojiFbroShell.selectedTabId = g_newEmojiFbroShell.tabOrder[static_cast<size_t>(pivot)];
+            }
+        }
+    }
+    LB_NE_SyncBrowserShellTabs();
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    if (auto* selectedBrowser = LB_NE_FindBrowserShellTab(g_newEmojiFbroShell.selectedTabId.c_str())) {
+        LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(),
+            LB_NE_FindBrowserShellTabIndex(selectedBrowser->stableTabId), selectedBrowser->url,
+            selectedBrowser->title, selectedBrowser->loading);
+    } else {
+        LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(), -1, L"", L"没有浏览器会话", false);
+    }
+    return LB_NE_SaveBrowserShellState();
+}
+
+static bool 浏览器外壳_关闭当前标签页() {
+    return !g_newEmojiFbroShell.selectedTabId.empty()
+        && 浏览器外壳_关闭标签页(g_newEmojiFbroShell.selectedTabId);
+}
+
+static bool 浏览器外壳_关闭其他标签页() {
+    if (g_newEmojiFbroShell.selectedTabId.empty()) return false;
+    const std::wstring selected = g_newEmojiFbroShell.selectedTabId;
+    const std::vector<std::wstring> tabs = g_newEmojiFbroShell.tabOrder;
+    for (const auto& stableId : tabs) {
+        if (stableId != selected) 浏览器外壳_关闭标签页(stableId);
+    }
+    return true;
+}
+
+static int 浏览器外壳_取标签页数量() {
+    return static_cast<int>(g_newEmojiFbroShell.tabOrder.size());
+}
+
+static bool 浏览器外壳_选择标签页(const std::wstring& stableId) {
+    const int index = LB_NE_FindBrowserShellTabIndex(stableId);
+    if (index < 0) return false;
+    g_newEmojiFbroShell.selectedTabId = stableId;
+    if (auto* selectedBrowser = LB_NE_FindBrowserShellTab(stableId.c_str())) selectedBrowser->configuredVisible = true;
+    g_newEmojiFbroShell.suppressTabsCallback = true;
+    EU_SetTabsActive(g_newEmojiWindow, g_newEmojiFbroShell.tabsElementId, index);
+    g_newEmojiFbroShell.suppressTabsCallback = false;
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    if (auto* selectedBrowser = LB_NE_FindBrowserShellTab(stableId.c_str())) {
+        const std::wstring selectedAddress = selectedBrowser->shellSessionOpen
+            ? LB_NE_ReadFbroText(selectedBrowser->name.c_str(), 2) : selectedBrowser->url;
+        LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(), index,
+            selectedAddress.empty() ? selectedBrowser->url : selectedAddress,
+            selectedBrowser->title, selectedBrowser->loading);
+    }
+    LB_NE_SaveBrowserShellState();
+    return true;
+}
+
+static bool 浏览器外壳_重排标签页(const std::wstring& stableId, int newIndex) {
+    const int oldIndex = LB_NE_FindBrowserShellTabIndex(stableId);
+    if (oldIndex < 0 || g_newEmojiFbroShell.tabOrder.empty()) return false;
+    newIndex = (std::max)(0, (std::min)(newIndex, static_cast<int>(g_newEmojiFbroShell.tabOrder.size()) - 1));
+    if (oldIndex != newIndex) {
+        const std::wstring item = g_newEmojiFbroShell.tabOrder[static_cast<size_t>(oldIndex)];
+        g_newEmojiFbroShell.tabOrder.erase(g_newEmojiFbroShell.tabOrder.begin() + oldIndex);
+        g_newEmojiFbroShell.tabOrder.insert(g_newEmojiFbroShell.tabOrder.begin() + newIndex, item);
+    }
+    LB_NE_SyncBrowserShellTabs();
+    return LB_NE_SaveBrowserShellState();
+}
+
+static LB_NE_FbroBrowserInstance* LB_NE_CurrentBrowserShellTab() {
+    return LB_NE_FindBrowserShellTab(g_newEmojiFbroShell.selectedTabId.c_str());
+}
+
+static bool 浏览器外壳_导航(const std::wstring& address) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (!browser || address.empty()) return false;
+    browser->url = address;
+    browser->loading = true;
+    if (LB_NE_IsFbroProcess(browser)) {
+        const bool result = LB_NE_FbroProcessBool(browser, L"navigate", {{"url", lingbuilder_fbro_process_detail::JsonUtf8(address)}}) > 0;
+        if (result) LB_NE_SaveBrowserShellState();
+        return result;
+    }
+    if (!browser->handle) return false;
+    return LB_FBro_Navigate(browser->handle, address.c_str()) > 0;
+#else
+    (void)address; return false;
+#endif
+}
+
+static bool 浏览器外壳_后退() {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"back") > 0;
+    return browser && browser->handle && LB_FBro_GoBack(browser->handle) > 0;
+#else
+    return false;
+#endif
+}
+
+static bool 浏览器外壳_前进() {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"forward") > 0;
+    return browser && browser->handle && LB_FBro_GoForward(browser->handle) > 0;
+#else
+    return false;
+#endif
+}
+
+static void 浏览器外壳_刷新() {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (LB_NE_IsFbroProcess(browser)) LB_NE_FbroProcessBool(browser, L"reload");
+    else if (browser && browser->handle) LB_FBro_Reload(browser->handle);
+#endif
+}
+
+static void 浏览器外壳_停止() {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (LB_NE_IsFbroProcess(browser)) LB_NE_FbroProcessBool(browser, L"stop");
+    else if (browser && browser->handle) LB_FBro_Stop(browser->handle);
+#endif
+}
+
+static std::wstring 浏览器外壳_取地址() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (!browser) return L"";
+    if (!browser->shellSessionOpen) return browser->url;
+    const std::wstring address = LB_NE_ReadFbroText(browser->name.c_str(), 2);
+    return address.empty() ? browser->url : address;
+}
+
+static std::wstring 浏览器外壳_取标题() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (!browser) return L"";
+    if (!browser->shellSessionOpen) return browser->title;
+    const std::wstring title = LB_NE_ReadFbroText(browser->name.c_str(), 1);
+    return title.empty() ? browser->title : title;
+}
+
+static std::wstring 浏览器外壳_取当前稳定ID() {
+    return g_newEmojiFbroShell.selectedTabId;
+}
+
+static std::wstring 浏览器外壳_取当前进程状态() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser && LB_NE_IsFbroProcess(browser)
+        ? LingFbroProcessController::Instance().State(browser->processInstanceId) : L"进程内";
+}
+
+static int 浏览器外壳_取当前进程ID() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser && LB_NE_IsFbroProcess(browser)
+        ? static_cast<int>(LingFbroProcessController::Instance().ProcessId(browser->processInstanceId)) : 0;
+}
+
+static int 浏览器外壳_取当前调试端口() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser && LB_NE_IsFbroProcess(browser)
+        ? LingFbroProcessController::Instance().DebuggingPort(browser->processInstanceId) : 0;
+}
+
+static std::wstring 浏览器外壳_取当前错误() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (!browser) return L"尚未创建浏览器实例。";
+    const std::wstring controllerError = LB_NE_IsFbroProcess(browser)
+        ? LingFbroProcessController::Instance().LastError(browser->processInstanceId) : L"";
+    return controllerError.empty() ? browser->lastError : controllerError;
+}
+
+static bool 浏览器外壳_强制刷新() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"reloadIgnoreCache") > 0;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return browser && browser->handle && LB_FBro_ReloadIgnoreCache(browser->handle) > 0;
+#else
+    return false;
+#endif
+}
+
+static std::wstring 浏览器外壳_执行JS(const std::wstring& script) {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser ? FBro_执行JS(browser->name.c_str(), script) : L"";
+}
+
+static std::wstring 浏览器外壳_取Cookie(const std::wstring& address) {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser ? FBro_取Cookie(browser->name.c_str(), address) : L"";
+}
+
+static std::wstring LB_NE_TrimBrowserShellText(const std::wstring& value) {
+    size_t start = 0;
+    while (start < value.size() && iswspace(value[start])) ++start;
+    size_t end = value.size();
+    while (end > start && iswspace(value[end - 1])) --end;
+    return value.substr(start, end - start);
+}
+
+static bool LB_NE_IsBrowserShellHttpAddress(const std::wstring& address) {
+    std::wstring lowered = LB_NE_TrimBrowserShellText(address);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
+    return lowered.rfind(L"https://", 0) == 0 || lowered.rfind(L"http://", 0) == 0;
+}
+
+static bool 浏览器外壳_设置实例Cookie(const std::wstring& stableId, const std::wstring& address,
+                                              const std::wstring& cookieText) {
+    LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser) return false;
+    if (!browser->shellSessionOpen || !LB_NE_IsFbroProcess(browser)) {
+        browser->lastError = L"浏览器已关闭，请重新打开后再置入 Cookie。";
+        return false;
+    }
+    const std::wstring targetAddress = LB_NE_TrimBrowserShellText(address);
+    std::wstring source = LB_NE_TrimBrowserShellText(cookieText);
+    if (!LB_NE_IsBrowserShellHttpAddress(targetAddress)) {
+        browser->lastError = L"Cookie 目标必须是有效的 http:// 或 https:// 地址。";
+        return false;
+    }
+    if (source.empty() || source.size() > 65536) {
+        browser->lastError = source.empty() ? L"Cookie 文本不能为空。" : L"Cookie 文本超过 64 KiB 限制。";
+        return false;
+    }
+    std::wstring prefix = source.substr(0, (std::min)(source.size(), static_cast<size_t>(7)));
+    std::transform(prefix.begin(), prefix.end(), prefix.begin(), [](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
+    if (prefix == L"cookie:") source = LB_NE_TrimBrowserShellText(source.substr(7));
+    std::vector<std::pair<std::wstring, std::wstring>> otherSessionCookies;
+    for (const auto& otherStableId : g_newEmojiFbroShell.tabOrder) {
+        LB_NE_FbroBrowserInstance* other = LB_NE_FindBrowserShellTab(otherStableId.c_str());
+        if (otherStableId != stableId && other && other->shellSessionOpen && LB_NE_IsFbroProcess(other)) {
+            otherSessionCookies.emplace_back(otherStableId,
+                LB_NE_FbroProcessText(other, L"getCookies",
+                    {{"url", lingbuilder_fbro_process_detail::JsonUtf8(targetAddress)}}));
+        }
+    }
+    bool setAny = false;
+    size_t start = 0;
+    while (start <= source.size()) {
+        const size_t end = source.find(L';', start);
+        const std::wstring part = LB_NE_TrimBrowserShellText(source.substr(start,
+            end == std::wstring::npos ? std::wstring::npos : end - start));
+        if (!part.empty()) {
+            const size_t equals = part.find(L'=');
+            if (equals == std::wstring::npos) {
+                browser->lastError = L"Cookie 文本格式错误，应使用“名称=值”，多个 Cookie 用分号分隔。";
+                return false;
+            }
+            const std::wstring name = LB_NE_TrimBrowserShellText(part.substr(0, equals));
+            const std::wstring value = LB_NE_TrimBrowserShellText(part.substr(equals + 1));
+            std::wstring loweredName = name;
+            std::transform(loweredName.begin(), loweredName.end(), loweredName.begin(), [](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
+            const bool attribute = loweredName == L"domain" || loweredName == L"path" || loweredName == L"expires"
+                || loweredName == L"max-age" || loweredName == L"samesite";
+            if (!attribute) {
+                if (name.empty()) {
+                    browser->lastError = L"Cookie 名称不能为空。";
+                    return false;
+                }
+                const bool secure = targetAddress.size() >= 8
+                    && _wcsnicmp(targetAddress.c_str(), L"https://", 8) == 0;
+                if (LB_NE_FbroProcessBool(browser, L"setCookie", {
+                        {"url", lingbuilder_fbro_process_detail::JsonUtf8(targetAddress)},
+                        {"name", lingbuilder_fbro_process_detail::JsonUtf8(name)},
+                        {"value", lingbuilder_fbro_process_detail::JsonUtf8(value)},
+                        {"domain", ""}, {"path", "/"}, {"secure", secure}, {"httpOnly", false}
+                    }) <= 0) {
+                    if (browser->lastError.empty()) browser->lastError = L"FBro Cookie API 返回失败。";
+                    return false;
+                }
+                setAny = true;
+            }
+        }
+        if (end == std::wstring::npos) break;
+        start = end + 1;
+    }
+    if (!setAny) {
+        browser->lastError = L"Cookie 文本中没有可置入的名称和值。";
+        return false;
+    }
+    for (const auto& [otherStableId, cookiesBefore] : otherSessionCookies) {
+        LB_NE_FbroBrowserInstance* other = LB_NE_FindBrowserShellTab(otherStableId.c_str());
+        if (!other || !other->shellSessionOpen || !LB_NE_IsFbroProcess(other)) {
+            browser->lastError = L"Cookie 隔离校验失败：其他浏览器会话状态已变化。";
+            return false;
+        }
+        const std::wstring cookiesAfter = LB_NE_FbroProcessText(other, L"getCookies",
+            {{"url", lingbuilder_fbro_process_detail::JsonUtf8(targetAddress)}});
+        if (cookiesAfter != cookiesBefore) {
+            browser->lastError = L"Cookie 隔离校验失败：非目标浏览器会话的 Cookie 发生变化。";
+            return false;
+        }
+    }
+    browser->lastError.clear();
+    return true;
+}
+
+static std::wstring 浏览器外壳_取实例Cookie(const std::wstring& stableId, const std::wstring& address) {
+    LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser || !browser->shellSessionOpen || !LB_NE_IsFbroProcess(browser)) return L"";
+    return LB_NE_FbroProcessText(browser, L"getCookies",
+        {{"url", lingbuilder_fbro_process_detail::JsonUtf8(address)}});
+}
+
+static std::wstring 浏览器外壳_取实例状态(const std::wstring& stableId) {
+    const auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    return browser ? (browser->shellSessionOpen ? L"已打开" : L"已关闭") : L"不存在";
+}
+
+static std::wstring 浏览器外壳_取实例缓存目录(const std::wstring& stableId) {
+    const auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    return browser ? browser->profileDirectory : L"";
+}
+
+static int 浏览器外壳_取实例进程ID(const std::wstring& stableId) {
+    const auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    return browser && browser->shellSessionOpen && LB_NE_IsFbroProcess(browser)
+        ? static_cast<int>(LingFbroProcessController::Instance().ProcessId(browser->processInstanceId)) : 0;
+}
+
+static long long 浏览器外壳_取实例宿主句柄(const std::wstring& stableId) {
+    const auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    return browser && browser->shellSessionOpen && browser->host && IsWindow(browser->host)
+        ? static_cast<long long>(reinterpret_cast<intptr_t>(browser->host)) : 0;
+}
+
+static bool LB_NE_IsOwnedBrowserProfile(const std::filesystem::path& candidate) {
+    if (!g_newEmojiFbroShell.persistenceEnabled || candidate.empty()) return false;
+    std::error_code error;
+    const auto root = std::filesystem::weakly_canonical(g_newEmojiFbroShell.persistenceRoot / L"profiles", error);
+    if (error) return false;
+    const auto resolved = std::filesystem::weakly_canonical(candidate, error);
+    if (error || resolved == root) return false;
+    const std::wstring rootText = root.wstring() + std::wstring(1, std::filesystem::path::preferred_separator);
+    const std::wstring resolvedText = resolved.wstring();
+    if (resolvedText.size() <= rootText.size()
+        || _wcsnicmp(resolvedText.c_str(), rootText.c_str(), rootText.size()) != 0) return false;
+    const DWORD attributes = GetFileAttributesW(resolved.c_str());
+    return attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+}
+
+static bool 浏览器外壳_打开实例缓存目录(const std::wstring& stableId) {
+    const auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser || !LB_NE_IsOwnedBrowserProfile(browser->profileDirectory)) return false;
+    std::error_code error;
+    std::filesystem::create_directories(browser->profileDirectory, error);
+    if (error) return false;
+    return reinterpret_cast<intptr_t>(ShellExecuteW(g_newEmojiWindow, L"open", browser->profileDirectory.c_str(),
+        nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+}
+
+static bool 浏览器外壳_清理实例缓存(const std::wstring& stableId, bool includeCookies) {
+    auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser || !browser->shellSessionOpen || !LB_NE_IsFbroProcess(browser)) return false;
+    if (MessageBoxW(g_newEmojiWindow,
+        includeCookies ? L"将清理当前实例的缓存、Cookie、站点存储和插件私有数据。其他实例不受影响。是否继续？"
+                       : L"将清理当前实例的网页缓存和站点存储，但保留 Cookie。是否继续？",
+        L"确认清理浏览器数据", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
+    const bool cleared = LB_NE_FbroProcessBool(browser, L"clearCache", {{"includeCookies", includeCookies}}) > 0;
+    if (!cleared && browser->lastError.empty()) browser->lastError = L"FBro 清理缓存任务失败。";
+    return cleared;
+}
+
+static std::wstring 浏览器外壳_确认删除实例(const std::wstring& stableId, bool clearData) {
+    auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser) return L"删除失败：实例不存在。";
+    if (g_newEmojiFbroShell.tabOrder.size() <= 1) return L"删除失败：至少必须保留一个可用浏览器实例。";
+    const std::filesystem::path profile = browser->profileDirectory;
+    const wchar_t* firstMessage = clearData
+        ? L"选择“删除实例并清除缓存和 Cookie”。此操作不可撤销，是否继续？"
+        : L"选择“仅删除实例记录并保留缓存”。缓存目录不会删除，是否继续？";
+    if (MessageBoxW(g_newEmojiWindow, firstMessage, L"删除浏览器实例",
+                    MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return L"已取消删除。";
+    if (clearData && MessageBoxW(g_newEmojiWindow,
+        L"再次确认：只会删除当前实例受管 Profile 内的数据。确认永久清除？",
+        L"二次确认清除数据", MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2) != IDYES) return L"已取消清除数据。";
+    if (clearData && !LB_NE_IsOwnedBrowserProfile(profile)) {
+        return L"删除失败：缓存目录不在当前工作台受管 profiles 根目录内。";
+    }
+    if (!浏览器外壳_删除实例(stableId)) return L"删除实例记录失败。";
+    if (!clearData) return L"实例记录已删除，缓存已保留。";
+    std::error_code removeError;
+    const auto removed = std::filesystem::remove_all(profile, removeError);
+    if (removeError) return L"实例记录已删除，但缓存清理失败："
+        + lingbuilder_fbro_process_detail::Utf8ToWide(removeError.message());
+    return L"实例及其独立缓存、Cookie 和插件存储已清除，共删除 " + std::to_wstring(removed) + L" 个文件系统项。";
+}
+
+static std::wstring 浏览器外壳_取当前插件状态() {
+    const auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser ? browser->pluginStatus : L"没有当前实例";
+}
+
+static std::wstring 浏览器外壳_取当前插件错误() {
+    const auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser ? browser->pluginError : L"";
+}
+
+static std::filesystem::path LB_NE_ResolveBrowserCookieFile(const std::wstring& fileName) {
+    std::filesystem::path requested(fileName);
+    if (requested.empty()) requested = L"cookies.lingbuilder.json";
+    if (requested.is_absolute()) return requested.lexically_normal();
+    const std::filesystem::path root = g_newEmojiFbroShell.persistenceEnabled
+        ? g_newEmojiFbroShell.persistenceRoot / L"cookie-files"
+        : LB_NE_BrowserShellExecutableDirectory() / L"cookie-files";
+    return (root / requested.filename()).lexically_normal();
+}
+
+static std::wstring LB_NE_CookieKey(const LingFbroProcessController::Json& cookie) {
+    return lingbuilder_fbro_process_detail::JsonWide(cookie, "domain") + L"\n"
+        + lingbuilder_fbro_process_detail::JsonWide(cookie, "path", L"/") + L"\n"
+        + lingbuilder_fbro_process_detail::JsonWide(cookie, "name");
+}
+
+static bool LB_NE_CookieExpired(const LingFbroProcessController::Json& cookie) {
+    if (cookie.value("session", false) || !cookie.value("hasExpires", false)
+        || !cookie.contains("expires") || !cookie["expires"].is_object()) return false;
+    const auto& expires = cookie["expires"];
+    SYSTEMTIME expiry{};
+    expiry.wYear = static_cast<WORD>(expires.value("year", 0));
+    expiry.wMonth = static_cast<WORD>(expires.value("month", 0));
+    expiry.wDay = static_cast<WORD>(expires.value("day", 0));
+    expiry.wHour = static_cast<WORD>(expires.value("hour", 0));
+    expiry.wMinute = static_cast<WORD>(expires.value("minute", 0));
+    expiry.wSecond = static_cast<WORD>(expires.value("second", 0));
+    expiry.wMilliseconds = static_cast<WORD>(expires.value("millisecond", 0));
+    FILETIME expiryFile{}, nowFile{};
+    SYSTEMTIME now{};
+    GetSystemTime(&now);
+    if (!SystemTimeToFileTime(&expiry, &expiryFile) || !SystemTimeToFileTime(&now, &nowFile)) return true;
+    ULARGE_INTEGER expiryValue{}, nowValue{};
+    expiryValue.LowPart = expiryFile.dwLowDateTime; expiryValue.HighPart = expiryFile.dwHighDateTime;
+    nowValue.LowPart = nowFile.dwLowDateTime; nowValue.HighPart = nowFile.dwHighDateTime;
+    return expiryValue.QuadPart <= nowValue.QuadPart;
+}
+
+static bool LB_NE_IsValidCookieRecord(const LingFbroProcessController::Json& cookie) {
+    return cookie.is_object() && cookie.contains("name") && cookie["name"].is_string()
+        && !cookie["name"].get<std::string>().empty()
+        && cookie.contains("value") && cookie["value"].is_string()
+        && cookie.contains("domain") && cookie["domain"].is_string()
+        && cookie.contains("path") && cookie["path"].is_string();
+}
+
+static std::wstring LB_NE_CookieUrl(const LingFbroProcessController::Json& cookie) {
+    std::wstring domain = lingbuilder_fbro_process_detail::JsonWide(cookie, "domain");
+    while (!domain.empty() && domain.front() == L'.') domain.erase(domain.begin());
+    if (domain.empty()) return L"";
+    return (cookie.value("secure", false) ? L"https://" : L"http://") + domain
+        + lingbuilder_fbro_process_detail::JsonWide(cookie, "path", L"/");
+}
+
+static std::wstring 浏览器外壳_导出实例Cookie(const std::wstring& stableId,
+                                                  const std::wstring& fileName,
+                                                  bool allSites) {
+    auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser || !browser->shellSessionOpen || !LB_NE_IsFbroProcess(browser)) return L"Cookie 导出失败：实例未运行。";
+    LingFbroProcessController::Json result;
+    if (!LB_NE_FbroProcessRequest(browser, L"visitCookies", {
+            {"allSites", allSites},
+            {"url", lingbuilder_fbro_process_detail::JsonUtf8(browser->url)}
+        }, result) || !result.contains("cookies") || !result["cookies"].is_array()) {
+        return L"Cookie 导出失败：" + browser->lastError;
+    }
+    LingFbroProcessController::Json document = {
+        {"format", "lingbuilder.browser.cookies"},
+        {"version", 1},
+        {"exportedAt", lingbuilder_fbro_process_detail::JsonUtf8(LB_NE_BrowserShellTimestamp())},
+        {"scope", {{"type", allSites ? "all" : "currentSite"},
+                   {"url", allSites ? "" : lingbuilder_fbro_process_detail::JsonUtf8(browser->url)}}},
+        {"cookies", result["cookies"]}
+    };
+    const auto output = LB_NE_ResolveBrowserCookieFile(fileName);
+    std::error_code error;
+    std::filesystem::create_directories(output.parent_path(), error);
+    if (error) return L"Cookie 导出失败：无法创建目标目录。";
+    const std::filesystem::path temporary = output.wstring() + L".tmp-" + std::to_wstring(GetCurrentProcessId());
+    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+    const std::string utf8 = document.dump(2) + "\n";
+    stream.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
+    stream.flush(); stream.close();
+    if (!MoveFileExW(temporary.c_str(), output.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporary.c_str());
+        return L"Cookie 导出失败：无法原子写入目标文件。";
+    }
+    return L"Cookie 已导出 " + std::to_wstring(result["cookies"].size()) + L" 条到：" + output.wstring();
+}
+
+static std::wstring 浏览器外壳_导入实例Cookie(const std::wstring& stableId,
+                                                  const std::wstring& fileName,
+                                                  bool overwriteConflicts,
+                                                  bool includeExpired) {
+    auto* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser || !browser->shellSessionOpen || !LB_NE_IsFbroProcess(browser)) return L"Cookie 导入失败：实例未运行。";
+    const auto input = LB_NE_ResolveBrowserCookieFile(fileName);
+    std::error_code sizeError;
+    if (!std::filesystem::is_regular_file(input, sizeError) || sizeError
+        || std::filesystem::file_size(input, sizeError) > 64ULL * 1024ULL * 1024ULL) {
+        return L"Cookie 导入失败：文件不存在、不可读或超过 64 MiB。";
+    }
+    std::ifstream stream(input, std::ios::binary);
+    auto document = LingFbroProcessController::Json::parse(stream, nullptr, false);
+    if (!document.is_object() || document.value("format", "") != "lingbuilder.browser.cookies"
+        || document.value("version", 0) != 1 || !document.contains("cookies") || !document["cookies"].is_array()) {
+        return L"Cookie 导入失败：不是兼容的 LingBuilder Cookie JSON。";
+    }
+    LingFbroProcessController::Json existingResult;
+    LB_NE_FbroProcessRequest(browser, L"visitCookies", {{"allSites", true}, {"url", ""}}, existingResult);
+    std::vector<std::wstring> existingKeys;
+    if (existingResult.contains("cookies") && existingResult["cookies"].is_array()) {
+        for (const auto& cookie : existingResult["cookies"]) existingKeys.push_back(LB_NE_CookieKey(cookie));
+    }
+    int valid = 0, invalid = 0, expired = 0, conflicts = 0;
+    std::vector<std::wstring> domains;
+    for (const auto& cookie : document["cookies"]) {
+        if (!LB_NE_IsValidCookieRecord(cookie)) { ++invalid; continue; }
+        ++valid;
+        if (LB_NE_CookieExpired(cookie)) ++expired;
+        const std::wstring key = LB_NE_CookieKey(cookie);
+        if (std::find(existingKeys.begin(), existingKeys.end(), key) != existingKeys.end()) ++conflicts;
+        const std::wstring domain = lingbuilder_fbro_process_detail::JsonWide(cookie, "domain");
+        if (!domain.empty() && std::find(domains.begin(), domains.end(), domain) == domains.end()) domains.push_back(domain);
+    }
+    std::wstring domainPreview;
+    for (size_t index = 0; index < domains.size() && index < 12; ++index) {
+        if (!domainPreview.empty()) domainPreview += L"、";
+        domainPreview += domains[index];
+    }
+    if (domains.size() > 12) domainPreview += L" 等";
+    const std::wstring preview = L"有效记录：" + std::to_wstring(valid)
+        + L"\n无效记录：" + std::to_wstring(invalid)
+        + L"\n过期记录：" + std::to_wstring(expired)
+        + L"\n冲突记录：" + std::to_wstring(conflicts)
+        + L"\n涉及域名：" + (domainPreview.empty() ? L"无" : domainPreview)
+        + L"\n\n无效记录将跳过；过期记录默认跳过。是否导入？";
+    if (MessageBoxW(g_newEmojiWindow, preview.c_str(), L"Cookie 导入预览",
+                    MB_YESNO | MB_ICONINFORMATION | MB_DEFBUTTON2) != IDYES) return L"已取消 Cookie 导入。";
+    int imported = 0, skipped = 0, failed = 0;
+    for (const auto& cookie : document["cookies"]) {
+        if (!LB_NE_IsValidCookieRecord(cookie) || (!includeExpired && LB_NE_CookieExpired(cookie))) { ++skipped; continue; }
+        const bool conflict = std::find(existingKeys.begin(), existingKeys.end(), LB_NE_CookieKey(cookie)) != existingKeys.end();
+        if (conflict && !overwriteConflicts) { ++skipped; continue; }
+        const std::wstring url = LB_NE_CookieUrl(cookie);
+        if (url.empty() || LB_NE_FbroProcessBool(browser, L"setCookieJson", {
+                {"url", lingbuilder_fbro_process_detail::JsonUtf8(url)}, {"cookie", cookie}
+            }) <= 0) ++failed;
+        else ++imported;
+    }
+    if (imported > 0) LB_NE_FbroProcessBool(browser, L"reload");
+    return L"Cookie 导入完成：成功 " + std::to_wstring(imported) + L"，跳过 "
+        + std::to_wstring(skipped) + L"，失败 " + std::to_wstring(failed) + L"。";
+}
+
+static std::wstring 浏览器外壳_取实例顺序JSON() {
+    LingFbroProcessController::Json order = LingFbroProcessController::Json::array();
+    for (const auto& stableId : g_newEmojiFbroShell.tabOrder) {
+        order.push_back(lingbuilder_fbro_process_detail::JsonUtf8(stableId));
+    }
+    return lingbuilder_fbro_process_detail::JsonText(order);
+}
+
+static std::wstring 浏览器外壳_生成稳定实例ID() {
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        const std::wstring candidate = L"browser-" + lingbuilder_fbro_process_detail::RandomHex(8);
+        if (!candidate.empty() && !LB_NE_FindBrowserShellTab(candidate.c_str())) return candidate;
+    }
+    return L"";
+}
+
+struct LB_NE_CookieDialogContext {
+    std::wstring stableId;
+    std::wstring defaultAddress;
+    std::wstring resultText;
+    HWND addressEdit = nullptr;
+    HWND cookieEdit = nullptr;
+    bool accepted = false;
+};
+
+static std::wstring LB_NE_ReadWindowText(HWND window) {
+    const int length = window ? GetWindowTextLengthW(window) : 0;
+    std::vector<wchar_t> buffer(static_cast<size_t>((std::max)(0, length)) + 1, L'\0');
+    if (window) GetWindowTextW(window, buffer.data(), static_cast<int>(buffer.size()));
+    return buffer.data();
+}
+
+static LRESULT CALLBACK LB_NE_CookieDialogWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    auto* context = reinterpret_cast<LB_NE_CookieDialogContext*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE) {
+        auto* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        context = reinterpret_cast<LB_NE_CookieDialogContext*>(create ? create->lpCreateParams : nullptr);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(context));
+    }
+    if (!context) return DefWindowProcW(window, message, wParam, lParam);
+    if (message == WM_CREATE) {
+        HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        auto createChild = [&](DWORD exStyle, const wchar_t* className, const wchar_t* text, DWORD style,
+                               int x, int y, int width, int height, int id) {
+            HWND child = CreateWindowExW(exStyle, className, text, WS_CHILD | WS_VISIBLE | style,
+                x, y, width, height, window, reinterpret_cast<HMENU>(static_cast<intptr_t>(id)), GetModuleHandleW(nullptr), nullptr);
+            if (child) SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+            return child;
+        };
+        createChild(0, L"STATIC", L"目标网址或域名", 0, 20, 18, 500, 22, 0);
+        context->addressEdit = createChild(WS_EX_CLIENTEDGE, L"EDIT", context->defaultAddress.c_str(),
+            ES_AUTOHSCROLL | WS_TABSTOP, 20, 44, 500, 30, 4101);
+        createChild(0, L"STATIC", L"Cookie 文本（名称=值；多个值用分号分隔）", 0, 20, 88, 500, 22, 0);
+        context->cookieEdit = createChild(WS_EX_CLIENTEDGE, L"EDIT", L"",
+            ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_TABSTOP,
+            20, 114, 500, 126, 4102);
+        createChild(0, L"STATIC", L"Cookie 仅写入当前稳定会话；操作日志不会记录明文。", 0, 20, 250, 500, 22, 0);
+        createChild(0, L"BUTTON", L"取消", BS_PUSHBUTTON | WS_TABSTOP, 340, 282, 84, 32, IDCANCEL);
+        HWND confirm = createChild(0, L"BUTTON", L"置入 Cookie", BS_DEFPUSHBUTTON | WS_TABSTOP, 434, 282, 86, 32, IDOK);
+        SendMessageW(window, DM_SETDEFID, IDOK, 0);
+        if (context->cookieEdit) SetFocus(context->cookieEdit);
+        (void)confirm;
+        return 0;
+    }
+    if (message == WM_COMMAND) {
+        const int command = LOWORD(wParam);
+        if (command == IDOK) {
+            const std::wstring address = LB_NE_ReadWindowText(context->addressEdit);
+            std::wstring cookie = LB_NE_ReadWindowText(context->cookieEdit);
+            if (!浏览器外壳_设置实例Cookie(context->stableId, address, cookie)) {
+                const auto* browser = LB_NE_FindBrowserShellTab(context->stableId.c_str());
+                const std::wstring error = browser && !browser->lastError.empty()
+                    ? browser->lastError : L"Cookie 置入失败。";
+                MessageBoxW(window, error.c_str(), L"Cookie 置入失败", MB_OK | MB_ICONWARNING);
+                std::fill(cookie.begin(), cookie.end(), L'\0');
+                return 0;
+            }
+            if (context->cookieEdit) SetWindowTextW(context->cookieEdit, L"");
+            std::fill(cookie.begin(), cookie.end(), L'\0');
+            context->accepted = true;
+            context->resultText = L"Cookie 已成功置入会话 “" + context->stableId + L"”。";
+            DestroyWindow(window);
+            return 0;
+        }
+        if (command == IDCANCEL) {
+            context->resultText = L"已取消 Cookie 置入。";
+            if (context->cookieEdit) SetWindowTextW(context->cookieEdit, L"");
+            DestroyWindow(window);
+            return 0;
+        }
+    }
+    if (message == WM_CLOSE) {
+        context->resultText = L"已取消 Cookie 置入。";
+        if (context->cookieEdit) SetWindowTextW(context->cookieEdit, L"");
+        DestroyWindow(window);
+        return 0;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+static std::wstring 浏览器外壳_打开Cookie对话框(const std::wstring& stableId, const std::wstring& defaultAddress) {
+    LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!browser) return L"Cookie 置入失败：浏览器会话不存在。";
+    if (!browser->shellSessionOpen) return L"Cookie 置入失败：浏览器已关闭，请先重新打开。";
+    浏览器外壳_选择标签页(stableId);
+    const bool restoreVisible = browser->configuredVisible;
+    browser->configuredVisible = false;
+    LB_NE_UpdateBrowserShellVisibility();
+    const wchar_t* className = L"LingBuilder.FBro.CookieInputDialog";
+    WNDCLASSEXW windowClass{};
+    windowClass.cbSize = sizeof(windowClass);
+    if (!GetClassInfoExW(GetModuleHandleW(nullptr), className, &windowClass)) {
+        windowClass.style = CS_DBLCLKS;
+        windowClass.lpfnWndProc = LB_NE_CookieDialogWindowProc;
+        windowClass.hInstance = GetModuleHandleW(nullptr);
+        windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        windowClass.lpszClassName = className;
+        RegisterClassExW(&windowClass);
+    }
+    LB_NE_CookieDialogContext context;
+    context.stableId = stableId;
+    context.defaultAddress = defaultAddress.empty() ? browser->url : defaultAddress;
+    RECT ownerBounds{};
+    GetWindowRect(g_newEmojiWindow, &ownerBounds);
+    const int width = 560;
+    const int height = 360;
+    const int x = ownerBounds.left + ((ownerBounds.right - ownerBounds.left) - width) / 2;
+    const int y = ownerBounds.top + ((ownerBounds.bottom - ownerBounds.top) - height) / 2;
+    HWND dialog = CreateWindowExW(WS_EX_DLGMODALFRAME, className, L"为当前浏览器置入 Cookie",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU, x, y, width, height, g_newEmojiWindow, nullptr,
+        GetModuleHandleW(nullptr), &context);
+    if (!dialog) {
+        browser->configuredVisible = restoreVisible;
+        LB_NE_UpdateBrowserShellVisibility();
+        return L"Cookie 输入对话框创建失败。";
+    }
+    EnableWindow(g_newEmojiWindow, FALSE);
+    ShowWindow(dialog, SW_SHOW);
+    UpdateWindow(dialog);
+    MSG message{};
+    bool receivedQuit = false;
+    int quitCode = 0;
+    while (IsWindow(dialog)) {
+        const BOOL result = GetMessageW(&message, nullptr, 0, 0);
+        if (result <= 0) {
+            if (result == 0) { receivedQuit = true; quitCode = static_cast<int>(message.wParam); }
+            break;
+        }
+        if (!IsDialogMessageW(dialog, &message)) {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    }
+    EnableWindow(g_newEmojiWindow, TRUE);
+    SetForegroundWindow(g_newEmojiWindow);
+    browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (browser && browser->shellSessionOpen) browser->configuredVisible = restoreVisible;
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    if (g_newEmojiWindow && IsWindow(g_newEmojiWindow)) {
+        PostMessageW(g_newEmojiWindow, WM_LINGBUILDER_NE_FBRO_RESTORE_VISIBILITY, 0, 0);
+    }
+    if (receivedQuit) PostQuitMessage(quitCode);
+    return context.resultText.empty() ? L"已取消 Cookie 置入。" : context.resultText;
+}
+
+static std::wstring 浏览器外壳_处理实例列表动作(const std::wstring& eventJson) {
+    const std::string jsonUtf8 = LB_NE_ToUtf8(eventJson.c_str());
+    const auto event = LingFbroProcessController::Json::parse(jsonUtf8, nullptr, false);
+    if (!event.is_object()) return L"列表操作失败：事件数据不是有效 JSON。";
+    const std::wstring stableId = lingbuilder_fbro_process_detail::JsonWide(event, "itemKey");
+    const std::wstring actionId = lingbuilder_fbro_process_detail::JsonWide(event, "actionId");
+    LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (stableId.empty() || !browser) return L"列表操作失败：找不到对应的稳定会话。";
+    if (actionId.empty()) {
+        return 浏览器外壳_选择标签页(stableId)
+            ? L"已切换到稳定会话 “" + stableId + L"”，其他已打开浏览器保持运行并隐藏。"
+            : L"切换浏览器失败：会话已经关闭或不可用。";
+    }
+    if (actionId == L"status") {
+        if (browser->shellSessionOpen) {
+            浏览器外壳_选择标签页(stableId);
+            return L"会话 “" + stableId + L"” 已打开。";
+        }
+        return 浏览器外壳_重新打开实例(stableId)
+            ? L"会话 “" + stableId + L"” 已使用原缓存目录重新打开。"
+            : L"重新打开失败：" + browser->lastError;
+    }
+    if (actionId == L"close") {
+        return 浏览器外壳_关闭实例(stableId)
+            ? L"已关闭会话 “" + stableId + L"”，RichList 表项和缓存目录均已保留。"
+            : L"关闭浏览器失败。";
+    }
+    if (actionId == L"delete") {
+        const std::wstring profile = browser->profileDirectory;
+        return 浏览器外壳_删除实例(stableId)
+            ? L"已删除会话 “" + stableId + L"” 的表项和运行时绑定；缓存目录仍保留：" + profile
+            : L"删除浏览器失败。";
+    }
+    if (actionId == L"cookie") return 浏览器外壳_打开Cookie对话框(stableId, browser->url);
+    const int oldIndex = LB_NE_FindBrowserShellTabIndex(stableId);
+    if (actionId == L"move-up") {
+        if (oldIndex <= 0) return L"该浏览器已经位于第一项。";
+        浏览器外壳_重排标签页(stableId, oldIndex - 1);
+        return L"已上移会话 “" + stableId + L"”。";
+    }
+    if (actionId == L"move-down") {
+        if (oldIndex < 0 || oldIndex >= static_cast<int>(g_newEmojiFbroShell.tabOrder.size()) - 1) return L"该浏览器已经位于最后一项。";
+        浏览器外壳_重排标签页(stableId, oldIndex + 1);
+        return L"已下移会话 “" + stableId + L"”。";
+    }
+    if (actionId == L"move-top") {
+        if (oldIndex <= 0) return L"该浏览器已经置顶。";
+        浏览器外壳_重排标签页(stableId, 0);
+        return L"已置顶会话 “" + stableId + L"”。";
+    }
+    if (actionId == L"move-bottom") {
+        const int lastIndex = static_cast<int>(g_newEmojiFbroShell.tabOrder.size()) - 1;
+        if (oldIndex == lastIndex) return L"该浏览器已经沉底。";
+        浏览器外壳_重排标签页(stableId, lastIndex);
+        return L"已将会话 “" + stableId + L"” 移到列表底部。";
+    }
+    return L"列表操作失败：未知动作 “" + actionId + L"”。";
+}
+
+static bool 浏览器外壳_截图到文件(const std::wstring& path, const std::wstring& format, int quality) {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    return browser && FBro_截图到文件(browser->name.c_str(), path, format, quality) > 0;
+}
+
+static bool 浏览器外壳_隐藏当前() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (!browser) return false;
+    browser->configuredVisible = false;
+    LB_NE_UpdateBrowserShellVisibility();
+    return true;
+}
+
+static bool 浏览器外壳_显示当前() {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (!browser) return false;
+    browser->configuredVisible = true;
+    LB_NE_UpdateBrowserShellBounds();
+    LB_NE_UpdateBrowserShellVisibility();
+    return true;
+}
+
+static std::wstring 浏览器外壳_取当前代理() { auto* browser = LB_NE_CurrentBrowserShellTab(); return browser ? browser->proxyServer : L""; }
+static std::wstring 浏览器外壳_取当前UserAgent() { auto* browser = LB_NE_CurrentBrowserShellTab(); return browser ? browser->userAgent : L""; }
+static std::wstring 浏览器外壳_取当前指纹配置() { auto* browser = LB_NE_CurrentBrowserShellTab(); return browser ? browser->fingerprintJson : L""; }
+static int 浏览器外壳_取当前视口宽度() { auto* browser = LB_NE_CurrentBrowserShellTab(); return browser ? browser->requestedViewportWidth : 0; }
+static int 浏览器外壳_取当前视口高度() { auto* browser = LB_NE_CurrentBrowserShellTab(); return browser ? browser->requestedViewportHeight : 0; }
+
+static bool 浏览器外壳_按配置重建当前(const std::wstring& proxy, const std::wstring& userAgent,
+                                           const std::wstring& fingerprintJson, int width, int height) {
+    auto* browser = LB_NE_CurrentBrowserShellTab();
+    if (!browser || !browser->shellSessionOpen || !browser->host || !LB_NE_IsFbroProcess(browser)) return false;
+    LingFbroProcessController::Instance().Close(browser->processInstanceId);
+    browser->proxyServer = proxy;
+    browser->userAgent = userAgent;
+    browser->fingerprintJson = fingerprintJson;
+    browser->requestedViewportWidth = (std::max)(320, width);
+    browser->requestedViewportHeight = (std::max)(240, height);
+    LB_NE_UpdateBrowserShellBounds();
+    RECT bounds{};
+    GetClientRect(browser->host, &bounds);
+    LingFbroProcessConfig config;
+    config.instanceId = browser->processInstanceId;
+    config.eventWindow = g_newEmojiWindow;
+    config.hostWindow = browser->host;
+    config.mode = LING_FBRO_PROCESS_EMBEDDED;
+    config.width = (std::max)(1L, bounds.right - bounds.left);
+    config.height = (std::max)(1L, bounds.bottom - bounds.top);
+    config.visible = LB_NE_ShouldShowBrowserShellHost(*browser);
+    config.url = browser->url;
+    config.profileDirectory = browser->profileDirectory;
+    config.userAgent = browser->userAgent;
+    config.proxyServer = browser->proxyServer;
+    config.fingerprintJson = browser->fingerprintJson;
+    config.extensionDirectory = LB_NE_BrowserShellExtensionPath().wstring();
+    config.flags = browser->flags;
+    browser->loading = true;
+    const bool started = LingFbroProcessController::Instance().Start(config, false) > 0;
+    if (!started) {
+        browser->lastError = LingFbroProcessController::Instance().LastError(browser->processInstanceId);
+        if (browser->host && IsWindow(browser->host)) DestroyWindow(browser->host);
+        browser->host = nullptr;
+        browser->loading = false;
+        browser->shellSessionOpen = false;
+    }
+    LB_NE_SyncBrowserShellTabs();
+    if (started) LB_NE_SaveBrowserShellState();
+    return started;
+}
+
+static bool 浏览器外壳_聚焦地址栏(int omniboxElementId) {
+    const LB_NE_ElementRef* omnibox = LB_NE_FindElementById(omniboxElementId);
+    if (!g_newEmojiWindow || !LB_NE_IsType(omnibox, { L"Omnibox" })) return false;
+    EU_SetElementFocus(g_newEmojiWindow, omniboxElementId);
+    return true;
+}
+
+static void LB_NE_OnBrowserShellEvent(LB_NE_FbroBrowserInstance& browser, int eventCode) {
+    const int tabIndex = LB_NE_FindBrowserShellTabIndex(browser.stableTabId);
+    if (tabIndex < 0) return;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    if (browser.handle && LB_FBro_GetUrl(browser.handle, value, 16384) > 0 && value[0]) browser.url = value;
+    value[0] = 0;
+    if (browser.handle && LB_FBro_GetTitle(browser.handle, value, 16384) > 0 && value[0]) browser.title = value;
+    const int loading = browser.handle ? LB_FBro_IsLoading(browser.handle) : 0;
+    if (loading >= 0) browser.loading = loading > 0;
+#endif
+    if (eventCode == LB_FBRO_EVENT_CREATED) browser.loading = true;
+    else if (eventCode == LB_FBRO_EVENT_LOAD_END || eventCode == LB_FBRO_EVENT_ERROR || eventCode == LB_FBRO_EVENT_CLOSED) browser.loading = false;
+    LB_NE_SyncBrowserShellTabs();
+    if (browser.stableTabId == g_newEmojiFbroShell.selectedTabId) {
+        if (eventCode == LB_FBRO_EVENT_ERROR) {
+            LB_NE_SetBrowserShellPlaceholder(3, false, L"页面加载失败", browser.lastError.c_str(), L"⚠");
+        } else {
+            EU_SetBrowserViewportState(g_newEmojiWindow, g_newEmojiFbroShell.viewportElementId, browser.loading ? 1 : 0);
+            EU_SetBrowserViewportLoading(g_newEmojiWindow, g_newEmojiFbroShell.viewportElementId, browser.loading ? 1 : 0, browser.loading ? 60 : 100);
+        }
+        LB_NE_DispatchBrowserShellStatus(g_newEmojiFbroShell.statusHandler.c_str(), tabIndex,
+            browser.url, browser.title.empty() ? L"新标签页" : browser.title, browser.loading);
+    }
+}
+
+static void 浏览器外壳_销毁() {
+    LB_NE_SaveBrowserShellState();
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (!browser.shellManaged) continue;
+        if (LB_NE_IsFbroProcess(&browser)) LingFbroProcessController::Instance().Close(browser.processInstanceId);
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+        else if (browser.handle) LB_FBro_Close(browser.handle);
+#endif
+        if (browser.host && IsWindow(browser.host)) DestroyWindow(browser.host);
+    }
+    g_newEmojiFbroBrowsers.erase(std::remove_if(g_newEmojiFbroBrowsers.begin(), g_newEmojiFbroBrowsers.end(),
+        [](const auto& browser) { return browser.shellManaged; }), g_newEmojiFbroBrowsers.end());
+    g_newEmojiFbroShell = LB_NE_FbroShellState{};
+}
+
 static void FBro_关闭(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_Close(browser->handle);
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) LingFbroProcessController::Instance().Close(browser->processInstanceId); else if (browser && browser->handle) LB_FBro_Close(browser->handle);
 #else
     (void)name;
 #endif
 }
 static void LB_NE_ShutdownFbro() {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
+    LB_NE_SaveBrowserShellState();
     for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (LB_NE_IsFbroProcess(&browser)) {
+            LingFbroProcessController::Instance().Close(browser.processInstanceId);
+            if (browser.host && IsWindow(browser.host)) DestroyWindow(browser.host);
+            continue;
+        }
         for (const auto& popup : browser.chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
         if (browser.handle) LB_FBro_Close(browser.handle);
+        if (browser.host && IsWindow(browser.host)) DestroyWindow(browser.host);
     }
     if (g_newEmojiFbroInitialized) LB_FBro_Shutdown();
 #endif
+    LingFbroProcessController::Instance().Shutdown();
     g_newEmojiFbroBrowsers.clear();
+    g_newEmojiFbroShell = LB_NE_FbroShellState{};
     g_newEmojiFbroInitialized = false;
 }
 
@@ -2789,6 +5800,7 @@ interface NewEmojiCatalogEventBinding {
   eventName: string;
   callbackType: string;
   eventCode?: number;
+  payloadEvent?: string;
   method: LingCppMethod;
 }
 
@@ -2797,6 +5809,7 @@ const NEW_EMOJI_CALLBACK_SIGNATURES: Record<string, { parameters: string; return
   ElementMouseCallback: { parameters: 'int lb_element_id, int lb_event_code, int lb_x, int lb_y, int lb_data' },
   ElementFocusCallback: { parameters: 'int lb_element_id, int lb_focused' },
   ElementTextCallback: { parameters: 'int lb_element_id, const unsigned char* lb_utf8, int lb_utf8_length' },
+  RichListEventCallback: { parameters: 'int lb_element_id, const unsigned char* lb_utf8, int lb_utf8_length' },
   ElementValueCallback: { parameters: 'int lb_element_id, int lb_value, int lb_range_start, int lb_range_end' },
   ElementReorderCallback: { parameters: 'int lb_element_id, int lb_from_index, int lb_to_index, int lb_count' },
   ElementBeforeCloseCallback: { parameters: 'int lb_element_id, int lb_action', returnValue: '1' },
@@ -2818,12 +5831,23 @@ function getNewEmojiEventArgumentExpressions(binding: NewEmojiCatalogEventBindin
   const eventKey = `${binding.command}.${binding.eventName}`;
   const eventArguments: Record<string, string[]> = {
     'EU_SetTabsChangeCallback.SelectionChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'EU_SetMenuSelectCallback.MenuCommand': [
+      'lb_item_index',
+      'LB_NE_FromUtf8(lb_path_utf8, lb_path_length)',
+      'LB_NE_FromUtf8(lb_command_utf8, lb_command_length)'
+    ],
     'TableCellCallback.CellClicked': ['lb_row', 'lb_col'],
     'TableCellCallback.CellAction': ['lb_row', 'lb_col', 'lb_action', 'lb_value'],
     'TableCellEditCallback.CellEdit': ['lb_row', 'lb_col', 'lb_action', 'LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
     'TableContextMenuCallback.ContextMenu': ['lb_row', 'lb_col', 'lb_area', 'lb_x', 'lb_y'],
     'TableVirtualRowCallback.VirtualRow': ['lb_row'],
     'ElementTextCallback.SelectionChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    'RichListEventCallback.ItemClicked': ['lb_event_json'],
+    'RichListEventCallback.ItemDoubleClicked': ['lb_event_json'],
+    'RichListEventCallback.ButtonClicked': ['lb_event_json'],
+    'RichListEventCallback.BadgeClicked': ['lb_event_json'],
+    'RichListEventCallback.CountdownEnd': ['lb_event_json'],
+    'RichListEventCallback.ContextMenu': ['lb_event_json'],
     'ElementValueCallback.ItemClicked': ['lb_value', 'lb_range_start', 'lb_range_end'],
     'ElementValueCallback.ItemDoubleClicked': ['lb_value', 'lb_range_start', 'lb_range_end'],
     'ListBoxEditCallback.Edit': ['lb_index', 'lb_field', 'lb_action', 'LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
@@ -2933,6 +5957,14 @@ function generateNewEmojiCatalogEventCallbackGroup(
     const focusedBody = focused ? generateNewEmojiMethodBody(focused.method, enabledModules, dataTypes) : '';
     const blurredBody = blurred ? generateNewEmojiMethodBody(blurred.method, enabledModules, dataTypes) : '';
     return `static void __stdcall ${callback}(int, int focused) {\n    if (focused) {\n${focusedBody}\n    } else {\n${blurredBody}\n    }\n}`;
+  }
+  if (first.callbackType === 'RichListEventCallback') {
+    const cases = bindings.map(binding => {
+      if (!binding.payloadEvent) return '';
+      const marker = `\\"event\\":\\"${escapeWideString(binding.payloadEvent)}\\"`;
+      return `    if (lb_event_json.find(L"${marker}") != std::wstring::npos) {\n${generateNewEmojiCatalogEventBody(binding, enabledModules, dataTypes)}\n        return;\n    }`;
+    }).filter(Boolean).join('\n');
+    return `static void __stdcall ${callback}(int lb_element_id, const unsigned char* lb_utf8, int lb_utf8_length) {\n    std::wstring lb_event_json = LB_NE_FromUtf8(lb_utf8, lb_utf8_length);\n${cases}\n}`;
   }
   return generateNewEmojiCatalogEventCallback(callback, first, enabledModules, dataTypes);
 }
@@ -3081,6 +6113,9 @@ function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown
   if (key === 'background') return control.background;
   if (key === 'visible') return control.visibility !== 'Collapsed';
   if (key === 'enabled') return control.isEnabled;
+  if (control.designerType?.endsWith('/Container') && key === 'flowEnabled') {
+    return control.properties?.flowEnabled ?? true;
+  }
   if (Object.prototype.hasOwnProperty.call(control.properties || {}, key)) {
     const value = control.properties?.[key];
     if (!isEmptyCollection(value) || !isNewEmojiTableDataKey(control, key)) return value;
@@ -3169,6 +6204,9 @@ function shouldGenerateNewEmojiCatalogPropertySetter(control: LingControl, comma
   // 没有 JSON ABI。结构化编辑器的数据先由基础 columns/rows 安全渲染，
   // 避免把内部行对象直接显示成 JSON 文本；旧字符串型 Ex 数据仍可调用。
   if (hasStructuredNewEmojiTableData(control, command)) return false;
+  if (control.designerType?.endsWith('/RichList') && command === 'EU_SetRichListVirtualItemCount') {
+    return Number(readNewEmojiCatalogProperty(control, 'virtualItemCount')) > 0;
+  }
   if (!control.designerType?.endsWith('/ListBox')) return true;
   if (command === 'EU_SetListBoxItemsEx') {
     return hasNonEmptyNewEmojiListValue(readNewEmojiCatalogProperty(control, 'listBoxItemsEx'));
@@ -3185,16 +6223,26 @@ function shouldGenerateNewEmojiCatalogPropertySetter(control: LingControl, comma
 function generateNewEmojiCatalogPropertySetterCalls(
   control: LingControl,
   variable: string,
-  enabledModules: InstalledModule[]
+  enabledModules: InstalledModule[],
+  phase: 'immediate' | 'relationship' = 'immediate',
+  controlVariables: ReadonlyMap<string, string> = new Map()
 ): string[] {
   if (!control.designerType) return [];
   const contribution = enabledModules
     .flatMap(module => module.manifest.contributes?.designerControls || [])
     .find(item => item.namespacedType === control.designerType);
   const setters = contribution?.runtime?.propertySetters || [];
+  const relationshipKeys = new Set((contribution?.properties || [])
+    .filter(property => property.type === 'controlRef')
+    .map(property => property.key));
   const lines: string[] = [];
   setters.forEach((setter, setterIndex) => {
     if (!shouldGenerateNewEmojiCatalogPropertySetter(control, setter.command)) return;
+    const setterRelationshipKeys = new Set(setter.parameters
+      .map(parameter => parameter.propertyKey || parameter.lengthOf)
+      .filter((key): key is string => Boolean(key) && relationshipKeys.has(key!)));
+    const relationshipSetter = setterRelationshipKeys.size > 0;
+    if ((phase === 'relationship') !== relationshipSetter) return;
     const utf8Variables = new Map<string, string>();
     const args = setter.parameters.map((parameter, parameterIndex) => {
       if (parameter.literal !== undefined) return String(parameter.literal);
@@ -3213,12 +6261,13 @@ function generateNewEmojiCatalogPropertySetterCalls(
         ? 'itemsEx'
         : propertyKey;
       const value = readNewEmojiCatalogProperty(control, valuePropertyKey);
+      if (relationshipKeys.has(valuePropertyKey)) {
+        return typeof value === 'string' && value ? controlVariables.get(value) || '0' : '0';
+      }
       if (setter.command === 'EU_SetImageStyle' && propertyKey === 'borderWidth' && control.properties?.borderless === true) return '0';
       if (parameter.type === 'const unsigned char*') {
         const stringVariable = `${variable}_setter_${setterIndex + 1}_${parameterIndex + 1}`;
-        const stringValue = Array.isArray(value)
-          ? value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('|')
-          : value === undefined || value === null ? '' : String(value);
+        const stringValue = serializeNewEmojiUtf8Property(control, valuePropertyKey, value);
         lines.push(`    std::string ${stringVariable} = LB_NE_ToUtf8(L"${escapeWideString(stringValue)}");`);
         utf8Variables.set(propertyKey, stringVariable);
         return `reinterpret_cast<const unsigned char*>(${stringVariable}.data())`;
@@ -3233,6 +6282,136 @@ function generateNewEmojiCatalogPropertySetterCalls(
     });
     lines.push(`    ${setter.command}(${args.join(', ')});`);
   });
+  return lines;
+}
+
+function serializeNewEmojiUtf8Property(control: LingControl, propertyKey: string, value: unknown): string {
+  if (control.designerType?.endsWith('/Omnibox') && Array.isArray(value)) {
+    const records = value.filter(item => item && typeof item === 'object') as Array<Record<string, unknown>>;
+    if (propertyKey === 'actionIcons') {
+      return records
+        .filter(item => item.enabled !== false)
+        .map(item => `${String(item.icon ?? '')}\t${String(item.tooltip ?? item.title ?? '')}`)
+        .join('|');
+    }
+    if (propertyKey === 'suggestions') {
+      return records.map(item => [item.id, item.icon, item.title, item.description, item.url]
+        .map(field => String(field ?? '').replace(/[\t\r\n]/gu, ' ')).join('\t')).join('\n');
+    }
+  }
+  if (Array.isArray(value)) return value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('|');
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function generateNewEmojiStructuredPropertySetterCalls(
+  control: LingControl,
+  variable: string,
+  phase: 'immediate' | 'relationship',
+  controlVariables: ReadonlyMap<string, string>
+): string[] {
+  if (control.designerType?.endsWith('/Tabs')) {
+    if (phase === 'relationship') return [];
+    const properties = control.properties || {};
+    const lines: string[] = [];
+    if (Object.prototype.hasOwnProperty.call(properties, 'chromeMode')) {
+      lines.push(`    EU_SetTabsChromeMode(g_newEmojiWindow, ${variable}, ${properties.chromeMode === true ? 1 : 0});`);
+    }
+    if (['chromeMinWidth', 'chromeMaxWidth', 'chromePinnedWidth', 'chromeTabHeight', 'chromeOverlap']
+      .some(key => Object.prototype.hasOwnProperty.call(properties, key))) {
+      const minimumWidth = Math.max(1, int(Number(properties.chromeMinWidth ?? 96)));
+      const maximumWidth = Math.max(minimumWidth, int(Number(properties.chromeMaxWidth ?? 220)));
+      const pinnedWidth = Math.max(1, int(Number(properties.chromePinnedWidth ?? 46)));
+      const tabHeight = Math.max(1, int(Number(properties.chromeTabHeight ?? 32)));
+      const overlap = Math.max(0, int(Number(properties.chromeOverlap ?? 0)));
+      lines.push(`    EU_SetTabsChromeMetrics(g_newEmojiWindow, ${variable}, ${minimumWidth}, ${maximumWidth}, ${pinnedWidth}, ${tabHeight}, ${overlap});`);
+    }
+    if (Object.prototype.hasOwnProperty.call(properties, 'newButtonVisible')) {
+      lines.push(`    EU_SetTabsNewButtonVisible(g_newEmojiWindow, ${variable}, ${properties.newButtonVisible === false ? 0 : 1});`);
+    }
+    if (Object.prototype.hasOwnProperty.call(properties, 'reorderEnabled')
+      || Object.prototype.hasOwnProperty.call(properties, 'detachEnabled')) {
+      lines.push(`    EU_SetTabsDragOptions(g_newEmojiWindow, ${variable}, ${properties.reorderEnabled === false ? 0 : 1}, ${properties.detachEnabled === true ? 1 : 0});`);
+    }
+    lines.push(...getTabControlPages(control).flatMap((page, index) => {
+      const lines: string[] = [];
+      if (page.icon) {
+        const iconVariable = `${variable}_tab_icon_${index + 1}`;
+        lines.push(`    std::string ${iconVariable} = LB_NE_ToUtf8(L"${escapeWideString(page.icon)}");`);
+        lines.push(`    EU_SetTabsItemIcon(g_newEmojiWindow, ${variable}, ${index}, reinterpret_cast<const unsigned char*>(${iconVariable}.data()), static_cast<int>(${iconVariable}.size()));`);
+      }
+      lines.push(`    EU_SetTabsItemClosable(g_newEmojiWindow, ${variable}, ${index}, ${page.closable === false ? 0 : 1});`);
+      lines.push(`    EU_SetTabsItemChromeState(g_newEmojiWindow, ${variable}, ${index}, ${page.loading ? 1 : 0}, ${page.pinned ? 1 : 0}, ${page.muted ? 1 : 0}, ${page.alerting ? 1 : 0});`);
+      return lines;
+    }));
+    return lines;
+  }
+  if (!control.designerType?.endsWith('/Menu')) return [];
+  const rawItems = control.properties?.menuItems;
+  const items = Array.isArray(rawItems)
+    ? rawItems.filter(item => item && typeof item === 'object') as Array<Record<string, unknown>>
+    : [];
+  if (phase === 'relationship') {
+    const lines = items.flatMap((item, index) => {
+      const stableId = typeof item.submenu === 'string' ? item.submenu : '';
+      if (!stableId) return [];
+      const submenuVariable = controlVariables.get(stableId);
+      return submenuVariable ? [`    EU_SetMenuItemSubmenu(g_newEmojiWindow, ${variable}, ${index}, ${submenuVariable});`] : [];
+    });
+    const anchorId = typeof control.properties?.anchorElementId === 'string'
+      ? control.properties.anchorElementId.trim()
+      : '';
+    const anchorVariable = anchorId ? controlVariables.get(anchorId) : undefined;
+    if (anchorVariable) {
+      lines.push(`    EU_SetPopupAnchorElement(g_newEmojiWindow, ${variable}, ${anchorVariable});`);
+      const trigger = String(control.properties?.popupTrigger || 'none');
+      const triggerCode = trigger === 'right_click' ? 1 : trigger === 'hover' ? 2 : trigger === 'focus' ? 3 : trigger === 'manual' ? 4 : 0;
+      if (trigger !== 'none' && trigger !== 'dropdown') {
+        lines.push(`    EU_SetElementPopup(g_newEmojiWindow, ${anchorVariable}, ${variable}, ${triggerCode});`);
+      }
+    }
+    return lines;
+  }
+  const sanitized = (value: unknown) => String(value ?? '').replace(/[|\t\r\n]/gu, ' ');
+  const lines: string[] = [];
+  if (items.length > 0) {
+    const titles = items.map(item => item.separator === true ? '-' : `${item.disabled === true ? '!' : ''}${sanitized(item.title)}`).join('|');
+    const icons = items.map(item => sanitized(item.icon)).join('|');
+    const commands = items.map(item => sanitized(item.command)).join('|');
+    const titlesVariable = `${variable}_menu_items`;
+    const iconsVariable = `${variable}_menu_icons`;
+    const commandsVariable = `${variable}_menu_commands`;
+    const emptyVariable = `${variable}_menu_empty_meta`;
+    lines.push(
+      `    std::string ${titlesVariable} = LB_NE_ToUtf8(L"${escapeWideString(titles)}");`,
+      `    EU_SetMenuItems(g_newEmojiWindow, ${variable}, reinterpret_cast<const unsigned char*>(${titlesVariable}.data()), static_cast<int>(${titlesVariable}.size()));`,
+      `    std::string ${iconsVariable} = LB_NE_ToUtf8(L"${escapeWideString(icons)}");`,
+      `    std::string ${commandsVariable} = LB_NE_ToUtf8(L"${escapeWideString(commands)}");`,
+      `    std::string ${emptyVariable};`,
+      `    EU_SetMenuItemMetaUtf8(g_newEmojiWindow, ${variable}, reinterpret_cast<const unsigned char*>(${iconsVariable}.data()), static_cast<int>(${iconsVariable}.size()), reinterpret_cast<const unsigned char*>(${emptyVariable}.data()), 0, reinterpret_cast<const unsigned char*>(${emptyVariable}.data()), 0, reinterpret_cast<const unsigned char*>(${emptyVariable}.data()), 0, reinterpret_cast<const unsigned char*>(${commandsVariable}.data()), static_cast<int>(${commandsVariable}.size()));`
+    );
+    items.forEach((item, index) => {
+      const icon = sanitized(item.icon);
+      if (icon) {
+        const iconVariable = `${variable}_menu_icon_${index + 1}`;
+        lines.push(`    std::string ${iconVariable} = LB_NE_ToUtf8(L"${escapeWideString(icon)}");`);
+        lines.push(`    EU_SetMenuItemIcon(g_newEmojiWindow, ${variable}, ${index}, reinterpret_cast<const unsigned char*>(${iconVariable}.data()), static_cast<int>(${iconVariable}.size()));`);
+      }
+      const shortcut = sanitized(item.shortcut);
+      if (shortcut) {
+        const shortcutVariable = `${variable}_menu_shortcut_${index + 1}`;
+        lines.push(`    std::string ${shortcutVariable} = LB_NE_ToUtf8(L"${escapeWideString(shortcut)}");`);
+        lines.push(`    EU_SetMenuItemShortcut(g_newEmojiWindow, ${variable}, ${index}, reinterpret_cast<const unsigned char*>(${shortcutVariable}.data()), static_cast<int>(${shortcutVariable}.size()));`);
+      }
+      lines.push(`    EU_SetMenuItemSeparator(g_newEmojiWindow, ${variable}, ${index}, ${item.separator === true ? 1 : 0});`);
+      lines.push(`    EU_SetMenuItemChecked(g_newEmojiWindow, ${variable}, ${index}, ${item.checked === true ? 1 : 0});`);
+    });
+  }
+  const placement = int(Number(control.properties?.popupPlacement ?? 3));
+  const offsetX = int(Number(control.properties?.popupOffsetX ?? 0));
+  const offsetY = int(Number(control.properties?.popupOffsetY ?? 0));
+  lines.push(`    EU_SetPopupPlacement(g_newEmojiWindow, ${variable}, ${placement}, ${offsetX}, ${offsetY});`);
+  lines.push(`    EU_SetPopupDismissBehavior(g_newEmojiWindow, ${variable}, ${control.properties?.popupCloseOnOutside === false ? 0 : 1}, ${control.properties?.popupCloseOnEscape === false ? 0 : 1});`);
+  lines.push(`    EU_SetPopupOpen(g_newEmojiWindow, ${variable}, ${control.properties?.popupOpen === true ? 1 : 0});`);
   return lines;
 }
 
@@ -3398,6 +6577,110 @@ function validateDesignerResources(project: LingWindowProject): string[] {
   return diagnostics;
 }
 
+function generateWin32RuntimeControlMethods(): string {
+  return [
+    ...getWin32RuntimeControlContracts('lingbuilder.win32.basic'),
+    ...getWin32RuntimeControlContracts('lingbuilder.win32.common-controls')
+  ].map(contract => {
+    const type = escapeWideString(contract.designerType);
+    const definition = getWin32ControlDefinition(contract.designerType);
+    const eventMethods = (definition?.events || []).flatMap(event => {
+      const bindCommand = `${contract.lingCppType}_绑定${event.label}`;
+      const unbindCommand = `${contract.lingCppType}_解绑${event.label}`;
+      const eventName = escapeWideString(event.name);
+      return [`    bool ${toCppIdentifier(bindCommand)}(const wchar_t* controlName, const wchar_t* handlerName) {
+        return BindRuntimeControlEvent(controlName, L"${type}", L"${eventName}", handlerName);
+    }`, `    bool ${toCppIdentifier(unbindCommand)}(const wchar_t* controlName) {
+        return UnbindRuntimeControlEvent(controlName, L"${type}", L"${eventName}");
+    }`];
+    }).join('\n');
+    return `    LingControlRef ${toCppIdentifier(contract.createCommand)}(
+        HWND parent, int x, int y, int width, int height, const wchar_t* text,
+        const wchar_t* tagText = L"", std::optional<int> tagInteger = std::nullopt) {
+        return CreateRuntimeControl(L"${type}", parent, x, y, width, height, text, tagText, tagInteger);
+    }
+    LingControlRef ${toCppIdentifier(contract.lookupByTagTextCommand)}(const wchar_t* tagText) const {
+        return FindControlByTagText(L"${type}", tagText);
+    }
+    LingControlRef ${toCppIdentifier(contract.lookupByTagIntegerCommand)}(int tagInteger) const {
+        return FindControlByTagInteger(L"${type}", tagInteger);
+    }
+${eventMethods}`;
+  }).join('\n');
+}
+
+function validateNewEmojiDesignerControlReferences(window: LingWindowModel, enabledModules: InstalledModule[]): string[] {
+  const diagnostics: string[] = [];
+  const contributions = new Map(enabledModules
+    .filter(module => module.manifest.id === NEW_EMOJI_MODULE_ID)
+    .flatMap(module => module.manifest.contributes?.designerControls || [])
+    .map(contribution => [contribution.namespacedType || `${NEW_EMOJI_MODULE_ID}/${contribution.type}`, contribution]));
+  const controlsById = new Map(window.controls.map(control => [control.id, control]));
+  const validateReference = (
+    owner: LingControl,
+    label: string,
+    value: unknown,
+    controlTypes?: string[]
+  ) => {
+    if (value === undefined || value === null || value === '') return;
+    if (typeof value !== 'string') {
+      diagnostics.push(`窗口“${window.title}”中的控件“${owner.name}”属性“${label}”仍使用旧数字元素 ID；请在属性面板重新选择目标控件。`);
+      return;
+    }
+    const target = controlsById.get(value);
+    if (!target) {
+      diagnostics.push(`窗口“${window.title}”中的控件“${owner.name}”属性“${label}”引用了不存在的控件 ID“${value}”。`);
+      return;
+    }
+    if (!controlTypes?.length) return;
+    const targetTypes = [target.designerType, target.type].filter((item): item is string => Boolean(item));
+    const compatible = targetTypes.some(type => controlTypes.includes(type) || controlTypes.some(allowed => allowed.endsWith(`/${type}`)));
+    if (!compatible) diagnostics.push(`窗口“${window.title}”中的控件“${owner.name}”属性“${label}”不能引用“${target.name}”，目标控件类型不兼容。`);
+  };
+
+  for (const control of window.controls) {
+    if (!control.designerType) continue;
+    const contribution = contributions.get(control.designerType);
+    if (!contribution) continue;
+    for (const property of contribution.properties || []) {
+      const value = isNewEmojiTabsControl(control) && property.key === 'items'
+        ? getTabControlPages(control)
+        : control.properties?.[property.key];
+      if (property.type === 'controlRef') {
+        validateReference(control, property.label, value, property.controlTypes);
+        continue;
+      }
+      if (property.type !== 'recordList') continue;
+      if (value !== undefined && !Array.isArray(value)) {
+        diagnostics.push(`窗口“${window.title}”中的控件“${control.name}”属性“${property.label}”必须是结构化记录列表。`);
+        continue;
+      }
+      const records = Array.isArray(value) ? value : [];
+      const recordKeys = new Set<string>();
+      records.forEach((record, index) => {
+        if (!record || typeof record !== 'object') {
+          diagnostics.push(`窗口“${window.title}”中的控件“${control.name}”属性“${property.label}”第 ${index + 1} 项不是有效记录。`);
+          return;
+        }
+        const item = record as Record<string, unknown>;
+        const stableKey = property.recordKey ? String(item[property.recordKey] ?? '').trim() : '';
+        if (property.recordKey && (!stableKey || recordKeys.has(stableKey))) {
+          diagnostics.push(`窗口“${window.title}”中的控件“${control.name}”属性“${property.label}”包含空白或重复的稳定 ID“${stableKey}”。`);
+        }
+        if (stableKey) recordKeys.add(stableKey);
+        for (const field of property.fields || []) {
+          const fieldValue = item[field.key];
+          if (field.required && String(fieldValue ?? '').trim() === '') {
+            diagnostics.push(`窗口“${window.title}”中的控件“${control.name}”属性“${property.label}”第 ${index + 1} 项缺少“${field.label}”。`);
+          }
+          if (field.type === 'controlRef') validateReference(control, `${property.label}.${field.label}`, fieldValue, field.controlTypes);
+        }
+      });
+    }
+  }
+  return diagnostics;
+}
+
 function generateMainCpp(
   project: LingWindowProject,
   selectedWindow: LingWindowModel,
@@ -3426,6 +6709,11 @@ function generateMainCpp(
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
     .join('\n');
   const moduleCppPreamble = generateModuleCppPreamble(enabledModules);
+  const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  const fbroBrowserManagerRuntime = generateFbroBrowserManagerRuntime(fbroModuleEnabled);
+  const fbroInProcessEnabled = fbroModuleEnabled && project.windows.some(window => window.controls.some(control =>
+    control.type === 'FBroBrowser' && (!control.properties?.processMode || control.properties.processMode === 'in-process')
+  ));
   const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
   const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
   const protobufRuntime = generateProtobufRuntime(enabledModules);
@@ -3462,12 +6750,16 @@ function generateMainCpp(
   const webSocketClientWindowField = webSocketClientRuntime ? '    LingWebSocketClientRuntime wsClientRuntime_;\n    std::wstring wsClientReturnText_;' : '';
   const webSocketClientShutdown = webSocketClientRuntime ? '        wsClientRuntime_.Shutdown();' : '';
   const webSocketServerRuntime = generateWebSocketServerRuntime(enabledModules);
+  const fbroProcessRuntime = fbroModuleEnabled
+    ? '#include <LingBuilderFbroProcessRuntime.hpp>'
+    : '';
   const webSocketServerWindowMethods = generateWebSocketServerWindowMethods(enabledModules);
   const webSocketServerConstructorInitializer = webSocketServerRuntime
     ? `,\n          wssRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_WSS_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
     : '';
   const webSocketServerWindowField = webSocketServerRuntime ? '    LingWebSocketServerRuntime wssRuntime_;' : '';
   const webSocketServerShutdown = webSocketServerRuntime ? '        wssRuntime_.Shutdown();' : '';
+  const win32RuntimeControlMethods = generateWin32RuntimeControlMethods();
   const moduleFeatureDefines = [
     enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
       ? `#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif\n#define LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR ${collectEdgeViewApiUsage(program.source).minimumRuntimeMajor}`
@@ -3628,6 +6920,7 @@ enum LB_FBRO_FALLBACK_EVENT_CODE {
 #include <utility>
 #include <mutex>
 #include <memory>
+#include <optional>
 #include <new>
 #include <stdexcept>
 #include <unordered_map>
@@ -3826,7 +7119,41 @@ struct ControlSpec {
     int value;
     int selectedIndex;
     unsigned int flags;
+    const wchar_t* tagText;
+    bool hasTagInteger;
+    int tagInteger;
     const wchar_t* events;
+};
+
+struct DynamicControlSpec {
+    ControlSpec value = {};
+    std::wstring type;
+    std::wstring name;
+    std::wstring text;
+    std::wstring fontFamily;
+    std::wstring data;
+    std::wstring data2;
+    std::wstring tooltip;
+    std::wstring containerSlot;
+    std::wstring option1;
+    std::wstring option2;
+    std::wstring tagText;
+    std::wstring events;
+
+    void SyncPointers() {
+        value.type = type.c_str();
+        value.name = name.c_str();
+        value.text = text.c_str();
+        value.fontFamily = fontFamily.c_str();
+        value.data = data.c_str();
+        value.data2 = data2.c_str();
+        value.tooltip = tooltip.c_str();
+        value.containerSlot = containerSlot.c_str();
+        value.option1 = option1.c_str();
+        value.option2 = option2.c_str();
+        value.tagText = tagText.c_str();
+        value.events = events.c_str();
+    }
 };
 
 struct ImageListSpec {
@@ -4365,6 +7692,19 @@ static int g_openWindowCount = 0;
 static const wchar_t* GENERATED_WINDOW_CLASS = L"LingBuilderChineseCppWindowClass";
 
 class LingWindowBase;
+struct LingControlLifetimeState {
+    LingWindowBase* owner = nullptr;
+};
+
+struct LingControlRef {
+    std::weak_ptr<LingControlLifetimeState> lifetime;
+    int stableId = 0;
+    std::wstring type;
+    std::wstring name;
+
+    explicit operator bool() const { return stableId != 0 && !lifetime.expired(); }
+};
+
 static LingWindowBase* CreateWindowObject(int windowIndex);
 struct LingCefAsyncState {
     std::mutex mutex;
@@ -5057,6 +8397,8 @@ ${webSocketClientRuntime}
 
 ${webSocketServerRuntime}
 
+${fbroProcessRuntime}
+
 class LingWindowBase {
 public:
     explicit LingWindowBase(const WindowSpec& spec)
@@ -5065,12 +8407,16 @@ public:
           windowBrush_(nullptr),
           menuBrush_(nullptr),
           menuFont_(nullptr),
+          controlLifetimeState_(std::make_shared<LingControlLifetimeState>()),
           dpi_(96),
-          socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer} {}
+          socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer} {
+        controlLifetimeState_->owner = this;
+    }
 
 ${functionLibraryMethods}
 
     virtual ~LingWindowBase() {
+        if (controlLifetimeState_) controlLifetimeState_->owner = nullptr;
 #ifdef LINGBUILDER_THREADING_MODULE
         if (threadOwnerToken_ != 0) {
             LingThreadProjectRuntime::Instance().ShutdownOwner(threadOwnerToken_);
@@ -5209,6 +8555,9 @@ protected:
     const WindowSpec& spec_;
     HWND hwnd_;
     std::vector<HWND> tooltipWindows_;
+    std::shared_ptr<LingControlLifetimeState> controlLifetimeState_;
+    std::deque<DynamicControlSpec> dynamicControlSpecs_;
+    std::map<int, std::map<std::wstring, std::wstring>> runtimeControlEventHandlers_;
     std::vector<RuntimeControl> runtimeControls_;
     std::vector<RuntimeTabPage> tabPages_;
     std::map<std::wstring, HIMAGELIST> imageLists_;
@@ -5232,6 +8581,7 @@ protected:
     bool moveBaselineReady_ = false;
     bool windowStateBaselineReady_ = false;
     int listScrollDragControlId_ = 0;
+    int nextDynamicControlId_ = 10000;
     int listScrollDragOffset_ = 0;
     std::map<int, int> listWheelDeltaRemainders_;
     int eventWidth_ = 0;
@@ -5391,6 +8741,8 @@ ${webSocketServerWindowField}
         int controlId = 0;
         HWND host = nullptr;
         LB_FBRO_HANDLE handle = 0;
+        std::wstring processInstanceId;
+        int processMode = 0;
         bool closed = false;
         std::wstring url;
         std::wstring profileDirectory;
@@ -5423,6 +8775,7 @@ ${webSocketServerWindowField}
     };
     std::map<int, std::unique_ptr<FbroBrowserInstance>> fbroBrowsers_;
     bool fbroInitialized_ = false;
+${fbroBrowserManagerRuntime.members}
 
     virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); DispatchWindowEvent(L"Loaded"); }
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
@@ -5468,7 +8821,7 @@ ${webSocketServerWindowField}
     }
 
     virtual void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) {
-        std::wstring handler = GetEventHandler(control, eventName);
+        std::wstring handler = ResolveControlEventHandler(control, eventName);
         if (handler.empty()) return;
         std::wstring message = L"已触发中文 C++ 事件：";
         message += handler;
@@ -6595,6 +9948,8 @@ ${edgeViewEventIdCases}
 
 ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
 
+${fbroBrowserManagerRuntime.methods}
+
     // ================= FBro 指纹浏览器模块运行时 =================
     FbroBrowserInstance* FBro_查找实例(const wchar_t* controlName) {
         if (!controlName) return nullptr;
@@ -6614,6 +9969,39 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
         fbroBrowsers_[controlId] = std::move(instance);
         return raw;
     }
+
+#if LINGBUILDER_FBRO_AVAILABLE
+    static bool FBro_是独立进程(const FbroBrowserInstance* instance) {
+        return instance && instance->processMode != LING_FBRO_PROCESS_IN_PROCESS;
+    }
+    bool FBro_进程请求(FbroBrowserInstance* instance, const wchar_t* method,
+                      const LingFbroProcessController::Json& payload,
+                      LingFbroProcessController::Json& result) {
+        if (!FBro_是独立进程(instance) || !method) return false;
+        if (LingFbroProcessController::Instance().Request(instance->processInstanceId, method, payload, result)) return true;
+        instance->lastError = LingFbroProcessController::Instance().LastError(instance->processInstanceId);
+        return false;
+    }
+    bool FBro_进程通知(FbroBrowserInstance* instance, const wchar_t* method,
+                       const LingFbroProcessController::Json& payload = LingFbroProcessController::Json::object()) {
+        if (!FBro_是独立进程(instance) || !method) return false;
+        if (LingFbroProcessController::Instance().Notify(instance->processInstanceId, method, payload)) return true;
+        instance->lastError = LingFbroProcessController::Instance().LastError(instance->processInstanceId);
+        return false;
+    }
+    int FBro_进程逻辑(FbroBrowserInstance* instance, const wchar_t* method,
+                     const LingFbroProcessController::Json& payload = LingFbroProcessController::Json::object()) {
+        LingFbroProcessController::Json result;
+        if (!FBro_进程请求(instance, method, payload, result)) return 0;
+        return result.contains("value") ? (result.value("value", false) ? 1 : 0) : 1;
+    }
+    std::wstring FBro_进程文本(FbroBrowserInstance* instance, const wchar_t* method,
+                              const LingFbroProcessController::Json& payload = LingFbroProcessController::Json::object()) {
+        LingFbroProcessController::Json result;
+        return FBro_进程请求(instance, method, payload, result)
+            ? lingbuilder_fbro_process_detail::JsonWide(result, "value") : L"";
+    }
+#endif
 
     int FBro_初始化() {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -6723,7 +10111,7 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
             if (controlName && controlName[0] && !TextEquals(control.name, controlName)) continue;
             hasTarget = true;
         }
-        if (!hasTarget || !FBro_初始化()) return 0;
+        if (!hasTarget) return 0;
 #if LINGBUILDER_FBRO_AVAILABLE
         int created = 0;
         for (int i = 0; i < spec_.controlCount; ++i) {
@@ -6735,6 +10123,28 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
             if (!runtime || !runtime->hwnd || instance->handle) continue;
             instance->host = runtime->hwnd;
             if (instance->url.empty()) instance->url = control.data && control.data[0] ? control.data : L"about:blank";
+            if (FBro_是独立进程(instance)) {
+                if (LingFbroProcessController::Instance().State(instance->processInstanceId) == L"就绪") { ++created; continue; }
+                RECT bounds{}; GetClientRect(instance->host, &bounds);
+                LingFbroProcessConfig config;
+                config.instanceId = instance->processInstanceId;
+                config.eventWindow = hwnd_;
+                config.hostWindow = instance->host;
+                config.mode = instance->processMode;
+                config.width = (std::max)(1L, bounds.right - bounds.left);
+                config.height = (std::max)(1L, bounds.bottom - bounds.top);
+                config.visible = IsWindowVisible(instance->host) != FALSE;
+                config.url = instance->url;
+                config.profileDirectory = instance->profileDirectory;
+                config.userAgent = instance->userAgent;
+                config.proxyServer = instance->proxyServer;
+                config.fingerprintJson = instance->fingerprintJson;
+                config.flags = static_cast<unsigned int>(control.value);
+                if (LingFbroProcessController::Instance().Start(config) > 0) ++created;
+                else instance->lastError = LingFbroProcessController::Instance().LastError(instance->processInstanceId);
+                continue;
+            }
+            if (!FBro_初始化()) continue;
             instance->handle = LB_FBro_CreateEx(instance->host, instance->url.c_str(), instance->profileDirectory.c_str(),
                 instance->userAgent.c_str(), static_cast<unsigned int>(control.value), FBro_桥接事件, this);
             if (!instance->handle) {
@@ -6755,7 +10165,9 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
 
     int FBro_导航(const wchar_t* controlName, const std::wstring& address) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_Navigate(instance->handle, address.c_str()) : 0;
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"navigate", {{"url", lingbuilder_fbro_process_detail::JsonUtf8(address)}});
+        return instance && instance->handle ? LB_FBro_Navigate(instance->handle, address.c_str()) : 0;
 #else
         (void)controlName; (void)address; return 0;
 #endif
@@ -6792,49 +10204,49 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
     }
     int FBro_后退(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_GoBack(instance->handle) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"back"); return instance && instance->handle ? LB_FBro_GoBack(instance->handle) : 0;
 #else
         (void)controlName; return 0;
 #endif
     }
     int FBro_前进(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_GoForward(instance->handle) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"forward"); return instance && instance->handle ? LB_FBro_GoForward(instance->handle) : 0;
 #else
         (void)controlName; return 0;
 #endif
     }
     void FBro_刷新(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_Reload(instance->handle);
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) FBro_进程逻辑(instance, L"reload"); else if (instance && instance->handle) LB_FBro_Reload(instance->handle);
 #else
         (void)controlName;
 #endif
     }
     void FBro_停止(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_Stop(instance->handle);
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) FBro_进程逻辑(instance, L"stop"); else if (instance && instance->handle) LB_FBro_Stop(instance->handle);
 #else
         (void)controlName;
 #endif
     }
     int FBro_是否可后退(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_CanGoBack(instance->handle) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"canGoBack"); return instance && instance->handle ? LB_FBro_CanGoBack(instance->handle) : 0;
 #else
         (void)controlName; return 0;
 #endif
     }
     int FBro_是否可前进(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_CanGoForward(instance->handle) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"canGoForward"); return instance && instance->handle ? LB_FBro_CanGoForward(instance->handle) : 0;
 #else
         (void)controlName; return 0;
 #endif
     }
     int FBro_是否加载中(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_IsLoading(instance->handle) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"isLoading"); return instance && instance->handle ? LB_FBro_IsLoading(instance->handle) : 0;
 #else
         (void)controlName; return 0;
 #endif
@@ -6842,7 +10254,9 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
     double FBro_取缩放级别(const wchar_t* controlName) {
         double result = 0.0;
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_GetZoomLevel(instance->handle, &result);
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) { LingFbroProcessController::Json response; if (FBro_进程请求(instance, L"getZoom", LingFbroProcessController::Json::object(), response)) result = response.value("value", 0.0); }
+        else if (instance && instance->handle) LB_FBro_GetZoomLevel(instance->handle, &result);
 #else
         (void)controlName;
 #endif
@@ -6850,28 +10264,28 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
     }
     int FBro_设置缩放级别(const wchar_t* controlName, double level) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_SetZoomLevel(instance->handle, level) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"setZoom", {{"value", level}}); return instance && instance->handle ? LB_FBro_SetZoomLevel(instance->handle, level) : 0;
 #else
         (void)controlName; (void)level; return 0;
 #endif
     }
     int FBro_是否静音(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_IsAudioMuted(instance->handle) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"isMuted"); return instance && instance->handle ? LB_FBro_IsAudioMuted(instance->handle) : 0;
 #else
         (void)controlName; return 0;
 #endif
     }
     int FBro_设置静音(const wchar_t* controlName, bool muted) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_SetAudioMuted(instance->handle, muted ? 1 : 0) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"setMuted", {{"value", muted}}); return instance && instance->handle ? LB_FBro_SetAudioMuted(instance->handle, muted ? 1 : 0) : 0;
 #else
         (void)controlName; (void)muted; return 0;
 #endif
     }
     int FBro_设置焦点(const wchar_t* controlName, bool focused) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_SendFocusEvent(instance->handle, focused ? 1 : 0) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"focus", {{"value", focused}}); return instance && instance->handle ? LB_FBro_SendFocusEvent(instance->handle, focused ? 1 : 0) : 0;
 #else
         (void)controlName; (void)focused; return 0;
 #endif
@@ -6906,7 +10320,7 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
     }
     int FBro_强制刷新(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_ReloadIgnoreCache(instance->handle) : 0;
+        auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"reloadIgnoreCache"); return instance && instance->handle ? LB_FBro_ReloadIgnoreCache(instance->handle) : 0;
 #else
         (void)controlName; return 0;
 #endif
@@ -6973,6 +10387,7 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
         wchar_t result[8192] = {};
 #if LINGBUILDER_FBRO_AVAILABLE
         auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) return FBro_进程文本(instance, L"executeJavaScript", {{"script", lingbuilder_fbro_process_detail::JsonUtf8(script ? script : L"")}});
         if (instance && instance->handle && LB_FBro_ExecuteJs(instance->handle, script, result, 8192) > 0) return result;
 #else
         (void)controlName; (void)script;
@@ -7130,6 +10545,94 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
     std::wstring FBro_取地址(const wchar_t* controlName) { return FBro_读取文本(controlName, 2); }
     std::wstring FBro_取最近事件(const wchar_t* controlName) { return FBro_读取文本(controlName, 3); }
     std::wstring FBro_取最近错误(const wchar_t* controlName) { return FBro_读取文本(controlName, 4); }
+    std::wstring FBro_取进程状态(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return FBro_是独立进程(instance) ? LingFbroProcessController::Instance().State(instance->processInstanceId) : L"进程内";
+#else
+        (void)controlName; return L"不可用";
+#endif
+    }
+    int FBro_取进程ID(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return FBro_是独立进程(instance) ? static_cast<int>(LingFbroProcessController::Instance().ProcessId(instance->processInstanceId)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_取调试端口(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return FBro_是独立进程(instance) ? LingFbroProcessController::Instance().DebuggingPort(instance->processInstanceId) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_重启进程(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!FBro_是独立进程(instance)) return 0;
+        const int result = LingFbroProcessController::Instance().Restart(instance->processInstanceId);
+        if (!result) instance->lastError = LingFbroProcessController::Instance().LastError(instance->processInstanceId);
+        return result;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_显示(const wchar_t* controlName) {
+        auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
+        if (instance->host) ShowWindow(instance->host, SW_SHOW);
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (FBro_是独立进程(instance) && instance->processMode == LING_FBRO_PROCESS_WINDOW) return FBro_进程通知(instance, L"show") ? 1 : 0;
+#endif
+        return instance->host ? 1 : 0;
+    }
+    int FBro_隐藏(const wchar_t* controlName) {
+        auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
+        if (instance->host) ShowWindow(instance->host, SW_HIDE);
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (FBro_是独立进程(instance) && instance->processMode == LING_FBRO_PROCESS_WINDOW) return FBro_进程通知(instance, L"hide") ? 1 : 0;
+#endif
+        return instance->host ? 1 : 0;
+    }
+    int FBro_是否显示(const wchar_t* controlName) {
+        auto* instance = FBro_查找实例(controlName);
+        return instance && instance->host && IsWindowVisible(instance->host) ? 1 : 0;
+    }
+    int FBro_调整大小(const wchar_t* controlName, int width, int height) {
+        auto* instance = FBro_查找实例(controlName); if (!instance || width <= 0 || height <= 0) return 0;
+        if (instance->host) SetWindowPos(instance->host, nullptr, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (FBro_是独立进程(instance)) return FBro_进程通知(instance, L"resize", {{"width", width}, {"height", height}}) ? 1 : 0;
+        if (instance->handle) { LB_FBro_Resize(instance->handle); return 1; }
+#endif
+        return instance->host ? 1 : 0;
+    }
+    int FBro_截图到文件(const wchar_t* controlName, const wchar_t* path, const wchar_t* format, int quality) {
+        auto* instance = FBro_查找实例(controlName); if (!instance || !path || !*path) return 0;
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"screenshotToFile", {
+            {"path", lingbuilder_fbro_process_detail::JsonUtf8(path)},
+            {"format", lingbuilder_fbro_process_detail::JsonUtf8(format && *format ? format : L"png")},
+            {"quality", quality}
+        });
+        if (!instance->handle) return 0;
+        const LB_FBRO_TASK_HANDLE task = LB_FBro_CaptureScreenshotAsync(instance->handle,
+            format && *format ? format : L"png", quality, 0, 0, 0, 0, 1, 1, 1, nullptr, nullptr);
+        const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_TASK_COMPLETED;
+        const LB_FBRO_BUFFER_HANDLE buffer = completed ? LB_FBro_TaskGetBuffer(task) : 0;
+        const int result = buffer ? LB_FBro_BufferSaveFile(buffer, path) : 0;
+        if (buffer) LB_FBro_BufferRelease(buffer);
+        if (task) LB_FBro_TaskRelease(task);
+        return result > 0 ? 1 : 0;
+#else
+        (void)format; (void)quality; return 0;
+#endif
+    }
+    int FBro_截图到文件(const wchar_t* controlName, const std::wstring& path, const std::wstring& format, int quality) {
+        return FBro_截图到文件(controlName, path.c_str(), format.c_str(), quality);
+    }
     std::wstring FBro_取事件数据(const wchar_t* controlName) {
         auto* instance = FBro_查找实例(controlName); return instance ? instance->lastEventData : L"";
     }
@@ -7216,6 +10719,9 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         }
         return L"";
     }
+    std::wstring FBro_执行JS(const wchar_t* controlName, const std::wstring& script) {
+        return FBro_执行JS(controlName, script.c_str());
+    }
     std::wstring FBro_实例取最近事件(long long instanceId) {
         const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
         for (auto& item : fbroBrowsers_) {
@@ -7246,7 +10752,15 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         wchar_t result[8192] = {};
 #if LINGBUILDER_FBRO_AVAILABLE
         auto* instance = FBro_查找实例(controlName);
-        if (!instance || !instance->handle) return L"";
+        if (!instance) return L"";
+        if (FBro_是独立进程(instance)) {
+            if (kind == 1) return FBro_进程文本(instance, L"getTitle");
+            if (kind == 2) return FBro_进程文本(instance, L"getUrl");
+            if (kind == 3) return instance->lastEvent;
+            const std::wstring controllerError = LingFbroProcessController::Instance().LastError(instance->processInstanceId);
+            return controllerError.empty() ? instance->lastError : controllerError;
+        }
+        if (!instance->handle) return L"";
         if (kind == 1) LB_FBro_GetTitle(instance->handle, result, 8192);
         else if (kind == 2) LB_FBro_GetUrl(instance->handle, result, 8192);
         else if (kind == 3) LB_FBro_GetLastEvent(instance->handle, result, 8192);
@@ -7260,10 +10774,14 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
         instance->proxyServer = proxy ? proxy : L"";
 #if LINGBUILDER_FBRO_AVAILABLE
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"setProxy", {{"value", lingbuilder_fbro_process_detail::JsonUtf8(instance->proxyServer)}});
         return instance->handle ? LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"") : 1;
 #else
         return 0;
 #endif
+    }
+    int FBro_设置代理(const wchar_t* controlName, const std::wstring& proxy) {
+        return FBro_设置代理(controlName, proxy.c_str());
     }
     int FBro会话_设置代理认证(const wchar_t* controlName, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
         auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
@@ -7366,10 +10884,14 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
         instance->userAgent = userAgent ? userAgent : L"";
 #if LINGBUILDER_FBRO_AVAILABLE
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"setUserAgent", {{"value", lingbuilder_fbro_process_detail::JsonUtf8(instance->userAgent)}});
         return instance->handle ? LB_FBro_SetUserAgent(instance->handle, instance->userAgent.c_str()) : 1;
 #else
         return 0;
 #endif
+    }
+    int FBro_设置UserAgent(const wchar_t* controlName, const std::wstring& userAgent) {
+        return FBro_设置UserAgent(controlName, userAgent.c_str());
     }
     std::wstring FBro_取Cookie(const wchar_t* controlName, const wchar_t* address) {
         wchar_t result[16384] = {};
@@ -7380,6 +10902,9 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         (void)controlName; (void)address;
 #endif
         return result;
+    }
+    std::wstring FBro_取Cookie(const wchar_t* controlName, const std::wstring& address) {
+        return FBro_取Cookie(controlName, address.c_str());
     }
     int FBro_清空Cookie(const wchar_t* controlName, const wchar_t* address) {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -7392,12 +10917,16 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
         instance->fingerprintJson = json ? json : L"";
 #if LINGBUILDER_FBRO_AVAILABLE
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"applyFingerprint", {{"value", lingbuilder_fbro_process_detail::JsonUtf8(instance->fingerprintJson)}});
         const int result = instance->handle ? LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str()) : 1;
         if (result == -4) instance->lastError = L"未配置 FBro VIP Key；请在 LingBuilder 设置 → 浏览器凭据中配置";
         return result > 0 ? 1 : 0;
 #else
         return 0;
 #endif
+    }
+    int FBro指纹_应用配置(const wchar_t* controlName, const std::wstring& json) {
+        return FBro指纹_应用配置(controlName, json.c_str());
     }
     std::wstring FBro指纹_取已应用配置(const wchar_t* controlName) {
         wchar_t result[32768] = {};
@@ -7470,19 +10999,34 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
 ${generateFbroVipIndividualRuntime(false)}
     void FBro_关闭(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_Close(instance->handle);
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) LingFbroProcessController::Instance().Close(instance->processInstanceId);
+        else if (instance && instance->handle) LB_FBro_Close(instance->handle);
 #else
         (void)controlName;
 #endif
     }
     void FBro_调整全部大小() {
 #if LINGBUILDER_FBRO_AVAILABLE
-        for (auto& item : fbroBrowsers_) if (item.second->handle) LB_FBro_Resize(item.second->handle);
+        for (auto& item : fbroBrowsers_) {
+            FbroBrowserInstance& instance = *item.second;
+            if (FBro_是独立进程(&instance)) {
+                RECT bounds{}; if (!instance.host || !GetClientRect(instance.host, &bounds)) continue;
+                FBro_进程通知(&instance, L"resize", {{"width", (std::max)(1L, bounds.right - bounds.left)}, {"height", (std::max)(1L, bounds.bottom - bounds.top)}});
+            } else if (instance.handle) LB_FBro_Resize(instance.handle);
+        }
 #endif
+        浏览器管理器_调整页面();
     }
     bool FBro_是否全部关闭() const {
 #if LINGBUILDER_FBRO_AVAILABLE
+        if (!浏览器管理器_是否全部关闭()) return false;
         for (const auto& item : fbroBrowsers_) {
+            if (FBro_是独立进程(item.second.get())) {
+                const std::wstring state = LingFbroProcessController::Instance().State(item.second->processInstanceId);
+                if (state != L"已关闭" && state != L"未启动" && state != L"故障") return false;
+                continue;
+            }
             if (!item.second->closed && item.second->handle) return false;
             if (!item.second->chromeUiInstances.empty()) return false;
         }
@@ -7491,19 +11035,31 @@ ${generateFbroVipIndividualRuntime(false)}
     }
     void FBro_开始应用关闭() {
 #if LINGBUILDER_FBRO_AVAILABLE
+        浏览器管理器_关闭全部();
+        bool hasInProcessBrowser = false;
         for (auto& item : fbroBrowsers_) {
+            if (FBro_是独立进程(item.second.get())) {
+                LingFbroProcessController::Instance().Close(item.second->processInstanceId);
+                continue;
+            }
             for (const auto& popup : item.second->chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
-            if (item.second->handle && !item.second->closed) LB_FBro_Close(item.second->handle);
+            if (item.second->handle && !item.second->closed) { hasInProcessBrowser = true; LB_FBro_Close(item.second->handle); }
         }
-        LB_FBro_Shutdown();
+        if (hasInProcessBrowser) LB_FBro_Shutdown();
 #endif
     }
     void FBro_关闭全部() {
 #if LINGBUILDER_FBRO_AVAILABLE
+        浏览器管理器_关闭全部();
         for (auto& item : fbroBrowsers_) {
+            if (FBro_是独立进程(item.second.get())) {
+                LingFbroProcessController::Instance().Close(item.second->processInstanceId);
+                continue;
+            }
             for (const auto& popup : item.second->chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
             if (item.second->handle) LB_FBro_Close(item.second->handle);
         }
+        LingFbroProcessController::Instance().Shutdown();
 #endif
         fbroBrowsers_.clear();
     }
@@ -7598,6 +11154,36 @@ ${generateFbroVipIndividualRuntime(false)}
         }
     }
 
+#if LINGBUILDER_FBRO_AVAILABLE
+    void FBro_处理独立进程事件(LingFbroProcessEventPacket& packet) {
+        if (浏览器管理器_处理进程事件(packet)) return;
+        for (auto& item : fbroBrowsers_) {
+            FbroBrowserInstance& instance = *item.second;
+            if (!FBro_是独立进程(&instance) || instance.processInstanceId != packet.instanceId) continue;
+            const ControlSpec* control = FindControl(instance.controlId);
+            if (!control) return;
+            instance.lastEvent = packet.eventName;
+            instance.lastEventJson = packet.dataJson;
+            instance.lastEventData = FBro_读取JSON字段(packet.dataJson, L"value");
+            if (packet.eventName == L"AddressChanged") instance.url = instance.lastEventData;
+            if (packet.eventName == L"Created") instance.closed = false;
+            if (packet.eventName == L"Closed") instance.closed = true;
+            if (packet.eventName == L"Error") instance.lastError = instance.lastEventData;
+            auto handler = instance.handlers.find(packet.eventName);
+            if (handler != instance.handlers.end()) {
+                DispatchFbroBrowserEvent(handler->second.c_str(), instance.controlId, 0,
+                    instance.lastEvent.c_str(), instance.lastEventData.c_str());
+                return;
+            }
+            const std::wstring designerHandler = GetEventHandler(*control, packet.eventName.c_str());
+            if (!designerHandler.empty()) DispatchFbroBrowserEvent(designerHandler.c_str(), instance.controlId, 0,
+                instance.lastEvent.c_str(), instance.lastEventData.c_str());
+            else DispatchLingEvent(*control, instance.lastEvent.c_str());
+            return;
+        }
+    }
+#endif
+
     virtual void DispatchFbroBrowserEvent(const wchar_t* handler, int controlId, LB_FBRO_HANDLE instanceId,
                                           const wchar_t* eventName, const wchar_t* data) {
         std::wstring message = L"FBro 事件未绑定到中文处理器：";
@@ -7627,6 +11213,66 @@ ${generateFbroVipIndividualRuntime(false)}
         std::vector<wchar_t> value(required, L'\\0');
         return getter(handle, value.data(), value.size(), &required) == LB_CEF3_OK ? std::wstring(value.data()) : L"";
     }
+
+    static std::vector<std::wstring> CEF3_Bridge读取文本列表(LB_CEF3_HANDLE list) {
+        std::vector<std::wstring> result;
+        const int64_t size = list ? LB_CEF3_ListGetSize(list) : 0;
+        if (size > 0) result.reserve(static_cast<size_t>(size));
+        for (int64_t index = 0; index < size; ++index) {
+            const auto value = LB_CEF3_ListGetValue(list, static_cast<uint64_t>(index));
+            result.push_back(CEF3_Bridge读取文本(value, LB_CEF3_ValueGetString));
+            if (value) LB_CEF3_ValueRelease(value);
+        }
+        if (list) LB_CEF3_ListRelease(list);
+        return result;
+    }
+
+    static LB_CEF3_HANDLE CEF3_Bridge创建文本列表(const std::vector<std::wstring>& values) {
+        const auto list = LB_CEF3_ListCreate();
+        if (!list || LB_CEF3_ListSetSize(list, static_cast<uint64_t>(values.size())) != LB_CEF3_OK) {
+            if (list) LB_CEF3_ListRelease(list);
+            return 0;
+        }
+        for (size_t index = 0; index < values.size(); ++index) {
+            const auto value = LB_CEF3_ValueCreate();
+            const bool succeeded = value
+                && LB_CEF3_ValueSetString(value, values[index].c_str()) == LB_CEF3_OK
+                && LB_CEF3_ListSetValue(list, static_cast<uint64_t>(index), value) == LB_CEF3_OK;
+            if (value) LB_CEF3_ValueRelease(value);
+            if (!succeeded) {
+                LB_CEF3_ListRelease(list);
+                return 0;
+            }
+        }
+        return list;
+    }
+
+    static std::wstring CEF3_Bridge读取字典文本(LB_CEF3_HANDLE dictionary, const wchar_t* key) {
+        const auto value = dictionary ? LB_CEF3_DictionaryGetValue(dictionary, key) : 0;
+        const auto result = CEF3_Bridge读取文本(value, LB_CEF3_ValueGetString);
+        if (value) LB_CEF3_ValueRelease(value);
+        return result;
+    }
+
+#if defined(LINGBUILDER_CEF3_MODULE)
+    static std::vector<CEF3命令行开关> CEF3_Bridge读取命令行开关列表(LB_CEF3_HANDLE list) {
+        std::vector<CEF3命令行开关> result;
+        const int64_t size = list ? LB_CEF3_ListGetSize(list) : 0;
+        if (size > 0) result.reserve(static_cast<size_t>(size));
+        for (int64_t index = 0; index < size; ++index) {
+            const auto value = LB_CEF3_ListGetValue(list, static_cast<uint64_t>(index));
+            const auto dictionary = value ? LB_CEF3_ValueGetDictionary(value) : 0;
+            CEF3命令行开关 item{};
+            item.名称 = CEF3_Bridge读取字典文本(dictionary, L"name");
+            item.值 = CEF3_Bridge读取字典文本(dictionary, L"value");
+            result.push_back(std::move(item));
+            if (dictionary) LB_CEF3_DictionaryRelease(dictionary);
+            if (value) LB_CEF3_ValueRelease(value);
+        }
+        if (list) LB_CEF3_ListRelease(list);
+        return result;
+    }
+#endif
 
     static std::map<std::wstring, std::wstring> CEF3_解析Bridge事件字段(const wchar_t* json) {
         std::map<std::wstring, std::wstring> fields;
@@ -8047,6 +11693,61 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
     }
 
+    long long CEF3Hook_注册脚本(const wchar_t* controlName, const wchar_t* name, const wchar_t* script,
+                                 const wchar_t* urlPattern, bool allFrames, bool executeExistingContexts) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->bridgeHandle || !name || !script) return 0;
+        return static_cast<long long>(LB_CEF3_JsHookRegister(
+            instance->bridgeHandle, name, script, urlPattern,
+            allFrames ? LB_CEF3_JSHOOK_ALL_FRAMES : LB_CEF3_JSHOOK_MAIN_FRAME,
+            executeExistingContexts ? 1 : 0));
+#else
+        (void)controlName; (void)name; (void)script; (void)urlPattern;
+        (void)allFrames; (void)executeExistingContexts; return 0;
+#endif
+    }
+
+    int CEF3Hook_移除脚本(long long hookHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_JsHookRemove(static_cast<LB_CEF3_HANDLE>(hookHandle)) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)hookHandle; return 0;
+#endif
+    }
+
+    int CEF3Hook_清空脚本(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance && instance->bridgeHandle
+            && LB_CEF3_JsHookClear(instance->bridgeHandle) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    std::wstring CEF3Hook_取脚本列表(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance && instance->bridgeHandle
+            ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_JsHookList) : L"[]";
+#else
+        (void)controlName; return L"[]";
+#endif
+    }
+
+    int CEF3Hook_回复页面消息(const wchar_t* controlName, long long requestId,
+                                  bool success, const wchar_t* responseText) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance && instance->bridgeHandle
+            && LB_CEF3_JsHookReply(instance->bridgeHandle, static_cast<uint64_t>(requestId),
+                                   success ? 1 : 0, responseText) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)controlName; (void)requestId; (void)success; (void)responseText; return 0;
+#endif
+    }
+
     int CEF3任务_取状态(long long taskId) {
 #if LINGBUILDER_CEF3_AVAILABLE
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
@@ -8456,6 +12157,82 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
 #else
         (void)controlName; return 0;
+#endif
+    }
+
+    long long CEF3开发工具_执行协议方法(const wchar_t* controlName, const wchar_t* method,
+                                      const wchar_t* parametersJson) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->created || !instance->enableDevTools || !method || !method[0]) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_DevToolsExecuteMethod(
+            instance->bridgeHandle, method, parametersJson && parametersJson[0] ? parametersJson : L"{}"));
+#else
+        // The standalone CEF fallback exposes Runtime.evaluate through the older
+        // automation path. DevTools observer subscriptions require the managed
+        // Bridge so that callbacks can cross the DLL boundary safely.
+        (void)parametersJson;
+        return 0;
+#endif
+#else
+        (void)controlName; (void)method; (void)parametersJson; return 0;
+#endif
+    }
+
+    int CEF3开发工具_订阅代理附加(const wchar_t* controlName, bool enabled) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->created && instance->enableDevTools
+            && LB_CEF3_DevToolsSubscribeAgentAttached(instance->bridgeHandle, enabled ? 1 : 0) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)instance; (void)enabled; return 0;
+#endif
+#else
+        (void)controlName; (void)enabled; return 0;
+#endif
+    }
+
+    int CEF3开发工具_订阅代理分离(const wchar_t* controlName, bool enabled) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->created && instance->enableDevTools
+            && LB_CEF3_DevToolsSubscribeAgentDetached(instance->bridgeHandle, enabled ? 1 : 0) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)instance; (void)enabled; return 0;
+#endif
+#else
+        (void)controlName; (void)enabled; return 0;
+#endif
+    }
+
+    int CEF3开发工具_订阅协议事件(const wchar_t* controlName, bool enabled) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->created && instance->enableDevTools
+            && LB_CEF3_DevToolsSubscribeEvent(instance->bridgeHandle, enabled ? 1 : 0) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)instance; (void)enabled; return 0;
+#endif
+#else
+        (void)controlName; (void)enabled; return 0;
+#endif
+    }
+
+    int CEF3开发工具_订阅协议消息(const wchar_t* controlName, bool enabled) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->created && instance->enableDevTools
+            && LB_CEF3_DevToolsSubscribeMessage(instance->bridgeHandle, enabled ? 1 : 0) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)instance; (void)enabled; return 0;
+#endif
+#else
+        (void)controlName; (void)enabled; return 0;
 #endif
     }
 
@@ -9898,6 +13675,436 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
     }
 
+    int CEF3平台_取退出代码() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_GetExitCode();
+#elif LINGBUILDER_CEF3_AVAILABLE
+        return CefGetExitCode();
+#else
+        return 0;
+#endif
+    }
+
+    int CEF3平台_是否从右到左() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_IsRtl();
+#elif LINGBUILDER_CEF3_AVAILABLE
+        return CefIsRTL() ? 1 : 0;
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3平台_取系统跟踪时间() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_NowFromSystemTraceTime());
+#elif LINGBUILDER_CEF3_AVAILABLE
+        return static_cast<long long>(CefNowFromSystemTraceTime());
+#else
+        return 0;
+#endif
+    }
+
+    int CEF3网络_证书状态是否错误(int status) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_IsCertStatusError(status);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        return CefIsCertStatusError(static_cast<cef_cert_status_t>(status)) ? 1 : 0;
+#else
+        (void)status; return 0;
+#endif
+    }
+
+    int CEF3_是否启用崩溃报告() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CrashReportingEnabled();
+#elif LINGBUILDER_CEF3_AVAILABLE
+        return CefCrashReportingEnabled() ? 1 : 0;
+#else
+        return 0;
+#endif
+    }
+
+    int CEF3_设置崩溃键值(const wchar_t* key, const wchar_t* value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_SetCrashKeyValue(key, value);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!key || !key[0] || !value) return -2;
+        CefSetCrashKeyValue(key, value);
+        return 1;
+#else
+        (void)key; (void)value; return 0;
+#endif
+    }
+
+    int CEF3_取命令资源ID(const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_IdForCommandIdName(name);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!name || !name[0]) return -2;
+        int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name, -1, nullptr, 0, nullptr, nullptr);
+        if (length <= 1) return -2;
+        std::string utf8(static_cast<size_t>(length - 1), '\\0');
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name, -1, utf8.data(), length, nullptr, nullptr) <= 0) return -2;
+        return cef_id_for_command_id_name(utf8.c_str());
+#else
+        (void)name; return -2;
+#endif
+    }
+
+    int CEF3网络_取资源ID(const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_IdForPackResourceName(name);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!name || !name[0]) return -2;
+        int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name, -1, nullptr, 0, nullptr, nullptr);
+        if (length <= 1) return -2;
+        std::string utf8(static_cast<size_t>(length - 1), '\\0');
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name, -1, utf8.data(), length, nullptr, nullptr) <= 0) return -2;
+        return cef_id_for_pack_resource_name(utf8.c_str());
+#else
+        (void)name; return -2;
+#endif
+    }
+
+    int CEF3_取资源字符串ID(const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_IdForPackStringName(name);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!name || !name[0]) return -2;
+        int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name, -1, nullptr, 0, nullptr, nullptr);
+        if (length <= 1) return -2;
+        std::string utf8(static_cast<size_t>(length - 1), '\\0');
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name, -1, utf8.data(), length, nullptr, nullptr) <= 0) return -2;
+        return cef_id_for_pack_string_name(utf8.c_str());
+#else
+        (void)name; return -2;
+#endif
+    }
+
+    int CEF3平台_目录是否存在(const wchar_t* path) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DirectoryExists(path);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!path || !path[0]) return -2;
+        CefString value(path);
+        return cef_directory_exists(value.GetStruct()) ? 1 : 0;
+#else
+        (void)path; return -2;
+#endif
+    }
+
+    int CEF3平台_创建目录(const wchar_t* path) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CreateDirectory(path);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!path || !path[0]) return -2;
+        CefString value(path);
+        return cef_create_directory(value.GetStruct()) ? 1 : 0;
+#else
+        (void)path; return -2;
+#endif
+    }
+
+    int CEF3平台_删除文件(const wchar_t* path, int recursive) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DeleteFile(path, recursive);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!path || !path[0]) return -2;
+        CefString value(path);
+        return cef_delete_file(value.GetStruct(), recursive) ? 1 : 0;
+#else
+        (void)path; (void)recursive; return -2;
+#endif
+    }
+
+    std::wstring CEF3平台_取临时目录() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_GetTempDirectory(nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_GetTempDirectory(result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#elif LINGBUILDER_CEF3_AVAILABLE
+        CefString result;
+        return CefGetTempDirectory(result) ? result.ToWString() : L"";
+#else
+        return L"";
+#endif
+    }
+
+    std::wstring CEF3平台_创建临时目录(const wchar_t* prefix) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_CreateNewTempDirectory(prefix, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_CreateNewTempDirectory(prefix, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#elif LINGBUILDER_CEF3_AVAILABLE
+        CefString result;
+        return CefCreateNewTempDirectory(prefix ? CefString(prefix) : CefString(), result)
+            ? result.ToWString() : L"";
+#else
+        (void)prefix; return L"";
+#endif
+    }
+
+    std::wstring CEF3平台_在目录创建临时目录(const wchar_t* baseDir, const wchar_t* prefix) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_CreateTempDirectoryInDirectory(baseDir, prefix, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_CreateTempDirectoryInDirectory(baseDir, prefix, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!baseDir || !baseDir[0]) return L"";
+        CefString result;
+        return CefCreateTempDirectoryInDirectory(CefString(baseDir), prefix ? CefString(prefix) : CefString(), result)
+            ? result.ToWString() : L"";
+#else
+        (void)baseDir; (void)prefix; return L"";
+#endif
+    }
+
+    int CEF3平台_压缩目录(const wchar_t* srcDir, const wchar_t* destFile, int includeHiddenFiles) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ZipDirectory(srcDir, destFile, includeHiddenFiles);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!srcDir || !srcDir[0] || !destFile || !destFile[0]) return -2;
+        return CefZipDirectory(CefString(srcDir), CefString(destFile), includeHiddenFiles != 0) ? 1 : 0;
+#else
+        (void)srcDir; (void)destFile; (void)includeHiddenFiles; return -2;
+#endif
+    }
+
+    int CEF3平台_加载CRL集合文件(const wchar_t* path) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_LoadCrlsetsFile(path);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (!path || !path[0]) return -2;
+        CefLoadCRLSetsFile(CefString(path));
+        return 1;
+#else
+        (void)path; return -2;
+#endif
+    }
+
+    std::wstring CEF3平台_取系统路径(int key) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_GetPath(key, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_GetPath(key, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#elif LINGBUILDER_CEF3_AVAILABLE
+        CefString result;
+        return CefGetPath(static_cast<PathKey>(key), result) ? result.ToWString() : L"";
+#else
+        (void)key; return L"";
+#endif
+    }
+
+    int CEF3平台_当前在线程(int threadId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CurrentlyOn(threadId);
+#elif LINGBUILDER_CEF3_AVAILABLE
+        if (threadId < 0 || threadId >= TID_NUM_VALUES) return -2;
+        return CefCurrentlyOn(static_cast<CefThreadId>(threadId)) ? 1 : 0;
+#else
+        (void)threadId; return -2;
+#endif
+    }
+
+    long long CEF3平台_取组件更新器() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ComponentUpdaterGet());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3平台_取任务管理器() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_TaskManagerGet());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3平台_任务管理器取任务数量(long long managerHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_TaskManagerGetTasksCount(
+            static_cast<LB_CEF3_HANDLE>(managerHandle)));
+#else
+        (void)managerHandle; return -10;
+#endif
+    }
+
+    std::wstring CEF3平台_任务管理器取任务ID数组(long long managerHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        const auto handle = static_cast<LB_CEF3_HANDLE>(managerHandle);
+        if (LB_CEF3_TaskManagerGetTaskIdsList(handle, nullptr, 0, &required)
+            != LB_CEF3_ERROR_BUFFER_TOO_SMALL || required == 0) return L"";
+        std::vector<wchar_t> value(required, L'\\0');
+        return LB_CEF3_TaskManagerGetTaskIdsList(handle, value.data(), value.size(), &required)
+            == LB_CEF3_OK ? std::wstring(value.data()) : L"";
+#else
+        (void)managerHandle; return L"";
+#endif
+    }
+
+    long long CEF3平台_任务管理器按浏览器取任务ID(long long managerHandle, int browserId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_TaskManagerGetTaskIdForBrowserId(
+            static_cast<LB_CEF3_HANDLE>(managerHandle), browserId));
+#else
+        (void)managerHandle; (void)browserId; return -10;
+#endif
+    }
+
+    int CEF3平台_任务管理器终止任务(long long managerHandle, long long taskId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_TaskManagerKillTask(
+            static_cast<LB_CEF3_HANDLE>(managerHandle), static_cast<int64_t>(taskId));
+#else
+        (void)managerHandle; (void)taskId; return -10;
+#endif
+    }
+
+    std::wstring CEF3平台_任务管理器取任务信息(long long managerHandle, long long taskId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        const auto handle = static_cast<LB_CEF3_HANDLE>(managerHandle);
+        if (LB_CEF3_TaskManagerGetTaskInfo(
+                handle, static_cast<int64_t>(taskId), nullptr, 0, &required)
+            != LB_CEF3_ERROR_BUFFER_TOO_SMALL || required == 0) return L"";
+        std::vector<wchar_t> value(required, L'\\0');
+        return LB_CEF3_TaskManagerGetTaskInfo(
+            handle, static_cast<int64_t>(taskId), value.data(), value.size(), &required)
+            == LB_CEF3_OK ? std::wstring(value.data()) : L"";
+#else
+        (void)managerHandle; (void)taskId; return L"";
+#endif
+    }
+
+    long long CEF3平台_取当前线程任务运行器() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_TaskRunnerGetForCurrentThread());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3平台_创建可等待事件(int automaticReset, int initiallySignaled) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_WaitableEventCreate(automaticReset, initiallySignaled));
+#else
+        (void)automaticReset; (void)initiallySignaled; return 0;
+#endif
+    }
+
+    int CEF3平台_可等待事件重置(long long eventHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_WaitableEventReset(static_cast<LB_CEF3_HANDLE>(eventHandle));
+#else
+        (void)eventHandle; return -10;
+#endif
+    }
+
+    int CEF3平台_可等待事件触发(long long eventHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_WaitableEventSignal(static_cast<LB_CEF3_HANDLE>(eventHandle));
+#else
+        (void)eventHandle; return -10;
+#endif
+    }
+
+    int CEF3平台_可等待事件是否已触发(long long eventHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_WaitableEventIsSignaled(static_cast<LB_CEF3_HANDLE>(eventHandle));
+#else
+        (void)eventHandle; return -10;
+#endif
+    }
+
+    int CEF3平台_可等待事件限时等待(long long eventHandle, long long maxMilliseconds) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_WaitableEventTimedWait(
+            static_cast<LB_CEF3_HANDLE>(eventHandle), static_cast<int64_t>(maxMilliseconds));
+#else
+        (void)eventHandle; (void)maxMilliseconds; return -10;
+#endif
+    }
+
+    int CEF3平台_可等待事件等待(long long eventHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_WaitableEventWait(static_cast<LB_CEF3_HANDLE>(eventHandle));
+#else
+        (void)eventHandle; return -10;
+#endif
+    }
+
+    long long CEF3传输_创建打印设置() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_PrintSettingsCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3自动化_创建进程消息(const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ProcessMessageCreate(name));
+#else
+        (void)name; return 0;
+#endif
+    }
+
+    long long CEF3网络_创建提交数据() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_PostDataCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3网络_创建提交数据元素() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_PostDataElementCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3网络_创建请求() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_RequestCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3网络_创建响应() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ResponseCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3自动化_创建共享消息构建器(const wchar_t* name, unsigned long long byteSize) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_SharedProcessMessageBuilderCreate(name, byteSize));
+#else
+        (void)name; (void)byteSize; return 0;
+#endif
+    }
+
     std::wstring CEF3平台_取MIME扩展名(const wchar_t* mimeType) {
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         size_t required = 0;
@@ -9908,6 +14115,400 @@ ${generateFbroVipIndividualRuntime(false)}
             ? std::wstring(result.data()) : L"[]";
 #else
         (void)mimeType; return L"[]";
+#endif
+    }
+
+    std::wstring CEF3平台_取MIME类型(const wchar_t* extension) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_GetMimeType(extension, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_GetMimeType(extension, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)extension; return L"";
+#endif
+    }
+
+    std::wstring CEF3平台_创建URL(long long partsHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        const auto handle = static_cast<LB_CEF3_HANDLE>(partsHandle);
+        if (LB_CEF3_CreateUrl(handle, nullptr, 0, &required) != LB_CEF3_ERROR_BUFFER_TOO_SMALL
+            || required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_CreateUrl(handle, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)partsHandle; return L"";
+#endif
+    }
+
+    long long CEF3平台_解析URL(const wchar_t* url) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ParseUrl(url));
+#else
+        (void)url; return 0;
+#endif
+    }
+
+    std::wstring CEF3平台_解析相对URL(const wchar_t* baseUrl, const wchar_t* relativeUrl) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        if (LB_CEF3_ResolveUrl(baseUrl, relativeUrl, nullptr, 0, &required) != LB_CEF3_ERROR_BUFFER_TOO_SMALL
+            || required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_ResolveUrl(baseUrl, relativeUrl, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)baseUrl; (void)relativeUrl; return L"";
+#endif
+    }
+
+    std::wstring CEF3平台_Base64编码(long long bufferHandle, unsigned long long dataSize) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        if (LB_CEF3_Base64Encode(static_cast<LB_CEF3_BUFFER_HANDLE>(bufferHandle), dataSize,
+                                 nullptr, 0, &required) != LB_CEF3_ERROR_BUFFER_TOO_SMALL
+            || required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_Base64Encode(static_cast<LB_CEF3_BUFFER_HANDLE>(bufferHandle), dataSize,
+                                    result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)bufferHandle; (void)dataSize; return L"";
+#endif
+    }
+
+    long long CEF3平台_Base64解码(const wchar_t* data) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_Base64Decode(data));
+#else
+        (void)data; return 0;
+#endif
+    }
+
+    std::wstring CEF3平台_格式化安全URL(const wchar_t* originUrl) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        if (LB_CEF3_FormatUrlForSecurityDisplay(originUrl, nullptr, 0, &required)
+            != LB_CEF3_ERROR_BUFFER_TOO_SMALL || required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_FormatUrlForSecurityDisplay(originUrl, result.data(), result.size(), &required)
+            == LB_CEF3_OK ? std::wstring(result.data()) : L"";
+#else
+        (void)originUrl; return L"";
+#endif
+    }
+
+    std::wstring CEF3平台_URI编码(const wchar_t* text, int usePlus) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        if (LB_CEF3_UriEncode(text, usePlus, nullptr, 0, &required)
+            != LB_CEF3_ERROR_BUFFER_TOO_SMALL || required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_UriEncode(text, usePlus, result.data(), result.size(), &required)
+            == LB_CEF3_OK ? std::wstring(result.data()) : L"";
+#else
+        (void)text; (void)usePlus; return L"";
+#endif
+    }
+
+    std::wstring CEF3平台_URI解码(const wchar_t* text, int convertToUtf8, int unescapeRule) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        if (LB_CEF3_UriDecode(text, convertToUtf8, unescapeRule, nullptr, 0, &required)
+            != LB_CEF3_ERROR_BUFFER_TOO_SMALL || required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_UriDecode(text, convertToUtf8, unescapeRule,
+                                  result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)text; (void)convertToUtf8; (void)unescapeRule; return L"";
+#endif
+    }
+
+    long long CEF3平台_解析JSON(const wchar_t* json, int options) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ParseJson(json, options));
+#else
+        (void)json; (void)options; return 0;
+#endif
+    }
+
+    long long CEF3平台_从缓冲解析JSON(long long bufferHandle, unsigned long long jsonSize, int options) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ParseJsonBuffer(
+            static_cast<LB_CEF3_BUFFER_HANDLE>(bufferHandle), jsonSize, options));
+#else
+        (void)bufferHandle; (void)jsonSize; (void)options; return 0;
+#endif
+    }
+
+    long long CEF3平台_解析JSON并返回错误(const wchar_t* json, int options) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ParseJsonAndReturnError(json, options, nullptr, 0, nullptr));
+#else
+        (void)json; (void)options; return 0;
+#endif
+    }
+
+    std::wstring CEF3平台_写出JSON(long long valueHandle, int options) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        if (LB_CEF3_WriteJson(static_cast<LB_CEF3_HANDLE>(valueHandle), options,
+                              nullptr, 0, &required) != LB_CEF3_ERROR_BUFFER_TOO_SMALL
+            || required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_WriteJson(static_cast<LB_CEF3_HANDLE>(valueHandle), options,
+                                 result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)valueHandle; (void)options; return L"";
+#endif
+    }
+
+    int CEF3平台_添加跨域白名单(const wchar_t* sourceOrigin, const wchar_t* targetProtocol,
+                               const wchar_t* targetDomain, int allowTargetSubdomains) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_AddCrossOriginWhitelistEntry(sourceOrigin, targetProtocol, targetDomain,
+                                                    allowTargetSubdomains);
+#else
+        (void)sourceOrigin; (void)targetProtocol; (void)targetDomain; (void)allowTargetSubdomains;
+        return 0;
+#endif
+    }
+
+    int CEF3平台_删除跨域白名单(const wchar_t* sourceOrigin, const wchar_t* targetProtocol,
+                               const wchar_t* targetDomain, int allowTargetSubdomains) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_RemoveCrossOriginWhitelistEntry(sourceOrigin, targetProtocol, targetDomain,
+                                                       allowTargetSubdomains);
+#else
+        (void)sourceOrigin; (void)targetProtocol; (void)targetDomain; (void)allowTargetSubdomains;
+        return 0;
+#endif
+    }
+
+    int CEF3平台_清空跨域白名单() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ClearCrossOriginWhitelist();
+#else
+        return 0;
+#endif
+    }
+
+    int CEF3平台_设置可嵌套任务(int allowed) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_SetNestableTasksAllowed(allowed);
+#else
+        (void)allowed; return 0;
+#endif
+    }
+
+    long long CEF3命令行_创建() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CommandLineCreate());
+#else
+        return 0;
+#endif
+    }
+
+    int CEF3命令行_是否有效(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineIsValid(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3命令行_是否只读(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineIsReadOnly(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3命令行_复制(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CommandLineCopy(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3命令行_从参数数组初始化(long long handle, const std::vector<std::wstring>& arguments) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto list = CEF3_Bridge创建文本列表(arguments);
+        if (!list) return LB_CEF3_ERROR_OPERATION_FAILED;
+        const int result = LB_CEF3_CommandLineInitFromArgv(static_cast<LB_CEF3_HANDLE>(handle), list);
+        LB_CEF3_ListRelease(list);
+        return result;
+#else
+        (void)handle; (void)arguments; return 0;
+#endif
+    }
+
+    int CEF3命令行_从文本初始化(long long handle, const wchar_t* commandLine) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineInitFromString(static_cast<LB_CEF3_HANDLE>(handle), commandLine);
+#else
+        (void)handle; (void)commandLine; return 0;
+#endif
+    }
+
+    std::wstring CEF3命令行_取完整文本(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CommandLineGetString);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3命令行_取程序(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CommandLineGetProgram);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    int CEF3命令行_设置程序(long long handle, const wchar_t* program) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineSetProgram(static_cast<LB_CEF3_HANDLE>(handle), program);
+#else
+        (void)handle; (void)program; return 0;
+#endif
+    }
+
+    int CEF3命令行_是否有开关(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineHasSwitches(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3命令行_是否有指定开关(long long handle, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineHasSwitch(static_cast<LB_CEF3_HANDLE>(handle), name);
+#else
+        (void)handle; (void)name; return 0;
+#endif
+    }
+
+    int CEF3命令行_添加开关(long long handle, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineAppendSwitch(static_cast<LB_CEF3_HANDLE>(handle), name);
+#else
+        (void)handle; (void)name; return 0;
+#endif
+    }
+
+    int CEF3命令行_添加带值开关(long long handle, const wchar_t* name, const wchar_t* value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineAppendSwitchWithValue(static_cast<LB_CEF3_HANDLE>(handle), name, value);
+#else
+        (void)handle; (void)name; (void)value; return 0;
+#endif
+    }
+
+    std::wstring CEF3命令行_取开关值(long long handle, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_CommandLineGetSwitchValue(static_cast<LB_CEF3_HANDLE>(handle), name, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_CommandLineGetSwitchValue(
+            static_cast<LB_CEF3_HANDLE>(handle), name, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)handle; (void)name; return L"";
+#endif
+    }
+
+    int CEF3命令行_移除开关(long long handle, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineRemoveSwitch(static_cast<LB_CEF3_HANDLE>(handle), name);
+#else
+        (void)handle; (void)name; return 0;
+#endif
+    }
+
+    int CEF3命令行_是否有参数(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineHasArguments(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3命令行_添加参数(long long handle, const wchar_t* argument) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineAppendArgument(static_cast<LB_CEF3_HANDLE>(handle), argument);
+#else
+        (void)handle; (void)argument; return 0;
+#endif
+    }
+
+    int CEF3命令行_重置(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineReset(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    std::vector<std::wstring> CEF3命令行_取参数向量(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本列表(LB_CEF3_CommandLineGetArgv(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return {};
+#endif
+    }
+
+    std::vector<std::wstring> CEF3命令行_取参数列表(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本列表(LB_CEF3_CommandLineGetArguments(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return {};
+#endif
+    }
+
+#if defined(LINGBUILDER_CEF3_MODULE)
+    std::vector<CEF3命令行开关> CEF3命令行_取开关列表(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取命令行开关列表(
+            LB_CEF3_CommandLineGetSwitches(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return {};
+#endif
+    }
+#endif
+
+    int CEF3命令行_前置包装器(long long handle, const wchar_t* wrapper) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLinePrependWrapper(static_cast<LB_CEF3_HANDLE>(handle), wrapper);
+#else
+        (void)handle; (void)wrapper; return 0;
+#endif
+    }
+
+    long long CEF3命令行_取全局() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CommandLineGetGlobal());
+#else
+        return 0;
+#endif
+    }
+
+    int CEF3命令行_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CommandLineRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
 #endif
     }
 
@@ -10040,6 +14641,670 @@ ${generateFbroVipIndividualRuntime(false)}
         return instance && LB_CEF3_BrowserIsLoading(instance->bridgeHandle) > 0 ? 1 : 0;
 #else
         return instance && instance->browser && instance->browser->IsLoading() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否有文档(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserHasDocument(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->HasDocument() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否禁用窗口渲染(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsWindowRenderingDisabled(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            && instance->browser->GetHost()->IsWindowRenderingDisabled() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否网页全屏(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsFullscreen(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            && instance->browser->GetHost()->IsFullscreen() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否使用浏览器视图(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserHasView(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            && instance->browser->GetHost()->HasView() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_取打开者浏览器ID(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserGetOpenerIdentifier(instance->bridgeHandle) : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            ? instance->browser->GetHost()->GetOpenerIdentifier() : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否已准备关闭(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsReadyToBeClosed(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            && instance->browser->GetHost()->IsReadyToBeClosed() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否渲染进程无响应(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsRenderProcessUnresponsive(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            && instance->browser->GetHost()->IsRenderProcessUnresponsive() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_取运行时样式(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!instance) return 0;
+        const int style = LB_CEF3_BrowserGetRuntimeStyle(instance->bridgeHandle);
+        return style >= 0 ? style : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            ? static_cast<int>(instance->browser->GetHost()->GetRuntimeStyle()) : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    double CEF3_取缩放级别(const wchar_t* controlName) {
+        double result = 0.0;
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (instance) LB_CEF3_BrowserGetZoomLevel(instance->bridgeHandle, &result);
+#else
+        if (instance && instance->browser && instance->browser->GetHost()) {
+            result = instance->browser->GetHost()->GetZoomLevel();
+        }
+#endif
+#else
+        (void)controlName;
+#endif
+        return result;
+    }
+
+    double CEF3_取默认缩放级别(const wchar_t* controlName) {
+        double result = 0.0;
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (instance) LB_CEF3_BrowserGetDefaultZoomLevel(instance->bridgeHandle, &result);
+#else
+        if (instance && instance->browser && instance->browser->GetHost()) {
+            result = instance->browser->GetHost()->GetDefaultZoomLevel();
+        }
+#endif
+#else
+        (void)controlName;
+#endif
+        return result;
+    }
+
+    int CEF3_设置缩放级别(const wchar_t* controlName, double level) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserSetZoomLevel(instance->bridgeHandle, level) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->SetZoomLevel(level);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)level; return 0;
+#endif
+    }
+
+    int CEF3_是否可缩放(const wchar_t* controlName, int command) {
+        if (command < 0 || command > 2) return 0;
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserCanZoom(instance->bridgeHandle, command) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            && instance->browser->GetHost()->CanZoom(static_cast<cef_zoom_command_t>(command)) ? 1 : 0;
+#endif
+#else
+        (void)controlName; (void)command; return 0;
+#endif
+    }
+
+    int CEF3_执行缩放(const wchar_t* controlName, int command) {
+        if (command < 0 || command > 2) return 0;
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserZoom(instance->bridgeHandle, command) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->Zoom(static_cast<cef_zoom_command_t>(command));
+        return 1;
+#endif
+#else
+        (void)controlName; (void)command; return 0;
+#endif
+    }
+
+    int CEF3_尝试关闭(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserTryClose(instance->bridgeHandle) : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            ? (instance->browser->GetHost()->TryCloseBrowser() ? 1 : 0) : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_通知窗口移动或调整大小(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserNotifyMoveOrResizeStarted(instance->bridgeHandle) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->NotifyMoveOrResizeStarted();
+        return 1;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_通知屏幕信息已改变(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserNotifyScreenInfoChanged(instance->bridgeHandle) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->NotifyScreenInfoChanged();
+        return 1;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_发送捕获丢失事件(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserSendCaptureLostEvent(instance->bridgeHandle) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->SendCaptureLostEvent();
+        return 1;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_取消输入法组合文本(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserImeCancelComposition(instance->bridgeHandle) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->ImeCancelComposition();
+        return 1;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_完成输入法组合文本(const wchar_t* controlName, bool keepSelection) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserImeFinishComposingText(
+            instance->bridgeHandle, keepSelection ? 1 : 0) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->ImeFinishComposingText(keepSelection);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)keepSelection; return 0;
+#endif
+    }
+
+    int CEF3_添加单词到词典(const wchar_t* controlName, const wchar_t* word) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (!word || !*word) return 0;
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserAddWordToDictionary(instance->bridgeHandle, word) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->AddWordToDictionary(CefString(word));
+        return 1;
+#endif
+#else
+        (void)controlName; (void)word; return 0;
+#endif
+    }
+
+    int CEF3_替换拼写错误(const wchar_t* controlName, const wchar_t* word) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (!word || !*word) return 0;
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserReplaceMisspelling(instance->bridgeHandle, word) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->ReplaceMisspelling(CefString(word));
+        return 1;
+#endif
+#else
+        (void)controlName; (void)word; return 0;
+#endif
+    }
+
+    int CEF3_通知系统拖放结束(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserDragSourceSystemDragEnded(instance->bridgeHandle) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->DragSourceSystemDragEnded();
+        return 1;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_通知拖放目标离开(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserDragTargetDragLeave(instance->bridgeHandle) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->DragTargetDragLeave();
+        return 1;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_通知隐藏状态(const wchar_t* controlName, bool hidden) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserWasHidden(instance->bridgeHandle, hidden ? 1 : 0) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->WasHidden(hidden);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)hidden; return 0;
+#endif
+    }
+
+    int CEF3_退出网页全屏(const wchar_t* controlName, bool willCauseResize) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? LB_CEF3_BrowserExitFullscreen(instance->bridgeHandle, willCauseResize ? 1 : 0) : 0;
+#else
+        if (!instance || !instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->ExitFullscreen(willCauseResize);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)willCauseResize; return 0;
+#endif
+    }
+
+    int CEF3_是否有效(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsValid(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->IsValid() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否弹出窗口(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsPopup(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->IsPopup() ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否同一实例(const wchar_t* controlName, const wchar_t* otherControlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        CefBrowserInstance* other = CEF3_查找实例(otherControlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && other
+            && LB_CEF3_BrowserIsSame(instance->bridgeHandle, other->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && other && instance->browser && other->browser
+            && instance->browser->IsSame(other->browser) ? 1 : 0;
+#endif
+#else
+        (void)controlName; (void)otherControlName; return 0;
+#endif
+    }
+
+    void CEF3_强制刷新(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (instance) LB_CEF3_BrowserReloadIgnoreCache(instance->bridgeHandle);
+#else
+        if (instance && instance->browser) instance->browser->ReloadIgnoreCache();
+#endif
+#else
+        (void)controlName;
+#endif
+    }
+
+    int CEF3_页内查找(const wchar_t* controlName, const wchar_t* searchText,
+                      bool forward, bool matchCase, bool findNext) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !searchText || !*searchText) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BrowserFind(instance->bridgeHandle, searchText,
+            forward ? 1 : 0, matchCase ? 1 : 0, findNext ? 1 : 0) == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->Find(searchText, forward, matchCase, findNext);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)searchText; (void)forward; (void)matchCase; (void)findNext; return 0;
+#endif
+    }
+
+    int CEF3_停止页内查找(const wchar_t* controlName, bool clearSelection) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BrowserStopFinding(instance->bridgeHandle, clearSelection ? 1 : 0)
+            == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->StopFinding(clearSelection);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)clearSelection; return 0;
+#endif
+    }
+
+    int CEF3_设置焦点(const wchar_t* controlName, bool focus) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BrowserSetFocus(instance->bridgeHandle, focus ? 1 : 0) == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser || !instance->browser->GetHost()) return 0;
+        instance->browser->GetHost()->SetFocus(focus);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)focus; return 0;
+#endif
+    }
+
+    int CEF3_发送鼠标单击事件(const wchar_t* controlName, int x, int y, long long modifiers,
+                              int buttonType, bool mouseUp, int clickCount) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_MOUSE_EVENT_V3 event{};
+        event.struct_size = sizeof(event);
+        event.abi_version = LB_CEF3_ABI_VERSION_V3;
+        event.x = x;
+        event.y = y;
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        return LB_CEF3_BrowserSendMouseClickEvent(instance->bridgeHandle, &event, buttonType,
+            mouseUp ? 1 : 0, clickCount) == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser || !instance->browser->GetHost()) return 0;
+        CefMouseEvent event{};
+        event.x = x;
+        event.y = y;
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        instance->browser->GetHost()->SendMouseClickEvent(
+            event, static_cast<cef_mouse_button_type_t>(buttonType), mouseUp, clickCount);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)x; (void)y; (void)modifiers; (void)buttonType;
+        (void)mouseUp; (void)clickCount; return 0;
+#endif
+    }
+
+    int CEF3_发送鼠标移动事件(const wchar_t* controlName, int x, int y, long long modifiers,
+                              bool mouseLeave) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_MOUSE_EVENT_V3 event{};
+        event.struct_size = sizeof(event);
+        event.abi_version = LB_CEF3_ABI_VERSION_V3;
+        event.x = x;
+        event.y = y;
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        return LB_CEF3_BrowserSendMouseMoveEvent(instance->bridgeHandle, &event,
+            mouseLeave ? 1 : 0) == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser || !instance->browser->GetHost()) return 0;
+        CefMouseEvent event{};
+        event.x = x;
+        event.y = y;
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        instance->browser->GetHost()->SendMouseMoveEvent(event, mouseLeave);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)x; (void)y; (void)modifiers; (void)mouseLeave; return 0;
+#endif
+    }
+
+    int CEF3_发送鼠标滚轮事件(const wchar_t* controlName, int x, int y, long long modifiers,
+                              int deltaX, int deltaY) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_MOUSE_EVENT_V3 event{};
+        event.struct_size = sizeof(event);
+        event.abi_version = LB_CEF3_ABI_VERSION_V3;
+        event.x = x;
+        event.y = y;
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        return LB_CEF3_BrowserSendMouseWheelEvent(instance->bridgeHandle, &event, deltaX,
+            deltaY) == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser || !instance->browser->GetHost()) return 0;
+        CefMouseEvent event{};
+        event.x = x;
+        event.y = y;
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        instance->browser->GetHost()->SendMouseWheelEvent(event, deltaX, deltaY);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)x; (void)y; (void)modifiers; (void)deltaX; (void)deltaY; return 0;
+#endif
+    }
+
+    int CEF3_发送触摸事件(const wchar_t* controlName, int touchId, double x, double y,
+                           double radiusX, double radiusY, double rotationAngle, double pressure,
+                           int eventType, long long modifiers, int pointerType) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_TOUCH_EVENT_V3 event{};
+        event.struct_size = sizeof(event);
+        event.abi_version = LB_CEF3_ABI_VERSION_V3;
+        event.id = touchId;
+        event.x = static_cast<float>(x);
+        event.y = static_cast<float>(y);
+        event.radius_x = static_cast<float>(radiusX);
+        event.radius_y = static_cast<float>(radiusY);
+        event.rotation_angle = static_cast<float>(rotationAngle);
+        event.pressure = static_cast<float>(pressure);
+        event.type = static_cast<uint32_t>(eventType);
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        event.pointer_type = static_cast<uint32_t>(pointerType);
+        return LB_CEF3_BrowserSendTouchEvent(instance->bridgeHandle, &event) == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser || !instance->browser->GetHost()) return 0;
+        CefTouchEvent event{};
+        event.id = touchId;
+        event.x = static_cast<float>(x);
+        event.y = static_cast<float>(y);
+        event.radius_x = static_cast<float>(radiusX);
+        event.radius_y = static_cast<float>(radiusY);
+        event.rotation_angle = static_cast<float>(rotationAngle);
+        event.pressure = static_cast<float>(pressure);
+        event.type = static_cast<cef_touch_event_type_t>(eventType);
+        event.modifiers = static_cast<uint32_t>(modifiers);
+        event.pointer_type = static_cast<cef_pointer_type_t>(pointerType);
+        instance->browser->GetHost()->SendTouchEvent(event);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)touchId; (void)x; (void)y; (void)radiusX; (void)radiusY;
+        (void)rotationAngle; (void)pressure; (void)eventType; (void)modifiers; (void)pointerType;
+        return 0;
+#endif
+    }
+
+    int CEF3_发送按键事件(const wchar_t* controlName, int type, long long modifiers,
+                          int windowsKeyCode, int nativeKeyCode, bool systemKey,
+                          int character, int unmodifiedCharacter, bool focusOnEditableField) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_KEY_EVENT_V3 nativeEvent{};
+        nativeEvent.struct_size = sizeof(nativeEvent);
+        nativeEvent.abi_version = LB_CEF3_ABI_VERSION_V3;
+        nativeEvent.type = static_cast<uint32_t>(type);
+        nativeEvent.modifiers = static_cast<uint32_t>(modifiers);
+        nativeEvent.windows_key_code = windowsKeyCode;
+        nativeEvent.native_key_code = nativeKeyCode;
+        nativeEvent.is_system_key = systemKey ? 1 : 0;
+        nativeEvent.character = static_cast<uint32_t>(character);
+        nativeEvent.unmodified_character = static_cast<uint32_t>(unmodifiedCharacter);
+        nativeEvent.focus_on_editable_field = focusOnEditableField ? 1 : 0;
+        return LB_CEF3_BrowserSendKeyEvent(instance->bridgeHandle, &nativeEvent) == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->browser) return 0;
+        CefKeyEvent nativeEvent{};
+        nativeEvent.type = static_cast<cef_key_event_type_t>(type);
+        nativeEvent.modifiers = static_cast<uint32_t>(modifiers);
+        nativeEvent.windows_key_code = windowsKeyCode;
+        nativeEvent.native_key_code = nativeKeyCode;
+        nativeEvent.is_system_key = systemKey;
+        nativeEvent.character = static_cast<char16_t>(character);
+        nativeEvent.unmodified_character = static_cast<char16_t>(unmodifiedCharacter);
+        nativeEvent.focus_on_editable_field = focusOnEditableField;
+        instance->browser->GetHost()->SendKeyEvent(nativeEvent);
+        return 1;
+#endif
+#else
+        (void)controlName; (void)type; (void)modifiers; (void)windowsKeyCode; (void)nativeKeyCode;
+        (void)systemKey; (void)character; (void)unmodifiedCharacter; (void)focusOnEditableField; return 0;
+#endif
+    }
+
+    int CEF3_是否静音(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsAudioMuted(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->GetHost()
+            && instance->browser->GetHost()->IsAudioMuted() ? 1 : 0;
 #endif
 #else
         (void)controlName; return 0;
@@ -11186,7 +16451,14 @@ ${webSocketServerWindowMethods}
             else ListView_DeleteAllItems(runtime->hwnd);
         }
         else if (IsType(*control, L"TreeView")) TreeView_DeleteAllItems(runtime->hwnd);
-        else if (IsType(*control, L"TabControl")) TabCtrl_DeleteAllItems(runtime->hwnd);
+        else if (IsType(*control, L"TabControl")) {
+            for (auto item = tabPages_.begin(); item != tabPages_.end();) {
+                if (item->tabControlId != control->id) { ++item; continue; }
+                if (item->hwnd && IsWindow(item->hwnd)) DestroyWindow(item->hwnd);
+                item = tabPages_.erase(item);
+            }
+            TabCtrl_DeleteAllItems(runtime->hwnd);
+        }
         else return false; return true;
     }
 ${DATA_GRID_NATIVE_METHODS}
@@ -11464,6 +16736,28 @@ ${DATA_GRID_NATIVE_METHODS}
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"TabControl")) return -1;
         TCITEMW item = {}; item.mask = TCIF_TEXT; item.pszText = const_cast<wchar_t*>(title ? title : L""); int index = TabCtrl_GetItemCount(runtime->hwnd);
         int inserted = TabCtrl_InsertItem(runtime->hwnd, index, &item);
+        if (inserted >= 0) {
+            RECT pageRect = {};
+            GetClientRect(runtime->hwnd, &pageRect);
+            if (!runtime->hideTabHeader) TabCtrl_AdjustRect(runtime->hwnd, FALSE, &pageRect);
+            HWND page = CreateWindowExW(
+                WS_EX_CONTROLPARENT, L"STATIC", L"",
+                WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | SS_NOTIFY,
+                pageRect.left, pageRect.top,
+                std::max(0L, pageRect.right - pageRect.left),
+                std::max(0L, pageRect.bottom - pageRect.top),
+                runtime->hwnd, nullptr, g_instance, nullptr);
+            if (!page) {
+                TabCtrl_DeleteItem(runtime->hwnd, inserted);
+                return -1;
+            }
+            const std::wstring slot = L"dynamic-" + std::to_wstring(inserted + 1);
+            SetWindowSubclass(page, TabPageSubclassProc,
+                static_cast<UINT_PTR>(control->id * 1000 + inserted + 501), reinterpret_cast<DWORD_PTR>(this));
+            tabPages_.push_back({control->id, slot, page, pageRect});
+            if (TabCtrl_GetCurSel(runtime->hwnd) < 0) TabCtrl_SetCurSel(runtime->hwnd, inserted);
+            UpdateTabChildren(*control);
+        }
         if (inserted >= 0) UpdateTabHeaderMinimumWidth(*control, *runtime);
         return inserted;
     }
@@ -11634,6 +16928,9 @@ private:
         for (int i = 0; i < spec_.controlCount; ++i) {
             if (spec_.controls[i].id == id) return &spec_.controls[i];
         }
+        for (const auto& dynamic : dynamicControlSpecs_) {
+            if (dynamic.value.id == id) return &dynamic.value;
+        }
         return nullptr;
     }
 
@@ -11654,6 +16951,7 @@ private:
     const ControlSpec* FindControlByName(const wchar_t* name) const {
         if (!name || !name[0]) return nullptr;
         for (int index = 0; index < spec_.controlCount; ++index) if (TextEquals(spec_.controls[index].name, name)) return &spec_.controls[index];
+        for (const auto& dynamic : dynamicControlSpecs_) if (TextEquals(dynamic.value.name, name)) return &dynamic.value;
         return nullptr;
     }
 
@@ -11662,13 +16960,244 @@ private:
     }
 
 protected:
+    std::wstring ResolveControlEventHandler(const ControlSpec& control, const wchar_t* eventName) const {
+        if (eventName && eventName[0]) {
+            const auto controlHandlers = runtimeControlEventHandlers_.find(control.id);
+            if (controlHandlers != runtimeControlEventHandlers_.end()) {
+                const auto handler = controlHandlers->second.find(eventName);
+                if (handler != controlHandlers->second.end()) return handler->second;
+            }
+        }
+        return GetEventHandler(control, eventName);
+    }
+
+    bool BindRuntimeControlEvent(const wchar_t* controlName, const wchar_t* expectedType,
+                                 const wchar_t* eventName, const wchar_t* handlerName) {
+        const ControlSpec* control = FindControlByName(controlName);
+        if (!control || !eventName || !eventName[0] || !handlerName || !handlerName[0]) {
+            调试输出(L"控件事件绑定失败：控件、事件或处理器无效。");
+            return false;
+        }
+        if (expectedType && expectedType[0] && !TextEquals(control->type, expectedType)) {
+            调试输出(L"控件事件绑定失败：控件具体类型不匹配。");
+            return false;
+        }
+        runtimeControlEventHandlers_[control->id][eventName] = handlerName;
+        return true;
+    }
+
+    bool UnbindRuntimeControlEvent(const wchar_t* controlName, const wchar_t* expectedType, const wchar_t* eventName) {
+        const ControlSpec* control = FindControlByName(controlName);
+        if (!control || !eventName || !eventName[0]) return false;
+        if (expectedType && expectedType[0] && !TextEquals(control->type, expectedType)) return false;
+        auto controlHandlers = runtimeControlEventHandlers_.find(control->id);
+        if (controlHandlers == runtimeControlEventHandlers_.end()) return true;
+        controlHandlers->second.erase(eventName);
+        if (controlHandlers->second.empty()) runtimeControlEventHandlers_.erase(controlHandlers);
+        return true;
+    }
+
+    LingControlRef MakeControlRef(const ControlSpec* control) const {
+        if (!control) return {};
+        LingControlRef result;
+        result.lifetime = controlLifetimeState_;
+        result.stableId = control->id;
+        result.type = control->type ? control->type : L"";
+        result.name = control->name ? control->name : L"";
+        return result;
+    }
+
+    bool 控件_是否有效(const LingControlRef& reference) const {
+        std::shared_ptr<LingControlLifetimeState> state = reference.lifetime.lock();
+        if (!state || state.get() != controlLifetimeState_.get() || state->owner != this || reference.stableId <= 0) return false;
+        const ControlSpec* control = FindControl(reference.stableId);
+        const RuntimeControl* runtime = FindRuntimeControl(reference.stableId);
+        return control && runtime && runtime->hwnd && IsWindow(runtime->hwnd)
+            && (reference.type.empty() || TextEquals(control->type, reference.type.c_str()));
+    }
+
+    bool 控件_是否有效(const wchar_t* name) const {
+        const ControlSpec* control = FindControlByName(name);
+        const RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
+        return runtime && runtime->hwnd && IsWindow(runtime->hwnd);
+    }
+
+    const wchar_t* LingCppControlWideName(const LingControlRef& reference) {
+        if (!控件_是否有效(reference)) {
+            调试输出(L"控件操作失败：控件引用无效或已经失效。");
+            return L"";
+        }
+        return reference.name.c_str();
+    }
+
+    const wchar_t* LingCppControlWideName(const wchar_t* name) const { return name ? name : L""; }
+
     int LingCppControlStableId(const wchar_t* name) {
         const ControlSpec* control = FindControlByName(name); return control ? control->id : 0;
     }
 
+    int LingCppControlStableId(const LingControlRef& reference) {
+        return 控件_是否有效(reference) ? reference.stableId : 0;
+    }
+
     HWND LingCppControlNativeHandle(const wchar_t* name) {
+        if (TextEquals(name, L"当前窗口")) return hwnd_;
         RuntimeControl* runtime = FindRuntimeControlByName(name); return runtime ? runtime->hwnd : nullptr;
     }
+
+    HWND LingCppControlNativeHandle(const LingControlRef& reference) {
+        if (!控件_是否有效(reference)) {
+            调试输出(L"控件操作失败：父级控件引用无效或已经失效。");
+            return nullptr;
+        }
+        RuntimeControl* runtime = FindRuntimeControl(reference.stableId);
+        return runtime ? runtime->hwnd : nullptr;
+    }
+
+    int AllocateDynamicControlId() {
+        for (int attempt = 0; attempt < 50000; ++attempt) {
+            if (nextDynamicControlId_ < 10000 || nextDynamicControlId_ > 59999) nextDynamicControlId_ = 10000;
+            const int candidate = nextDynamicControlId_++;
+            if (!FindControl(candidate)) return candidate;
+        }
+        return 0;
+    }
+
+    bool ResolveDynamicControlParent(HWND parentHwnd, int& parentId, std::wstring& containerSlot) {
+        parentId = 0;
+        containerSlot.clear();
+        if (!parentHwnd || parentHwnd == hwnd_) return parentHwnd == hwnd_;
+        for (const RuntimeTabPage& page : tabPages_) {
+            if (page.hwnd == parentHwnd) {
+                parentId = page.tabControlId;
+                containerSlot = page.slot;
+                return true;
+            }
+        }
+        for (const RuntimeControl& runtime : runtimeControls_) {
+            if (runtime.hwnd != parentHwnd && runtime.frameHwnd != parentHwnd) continue;
+            const ControlSpec* parent = FindControl(runtime.id);
+            if (parent && IsType(*parent, L"GroupBox")) {
+                parentId = parent->id;
+                return true;
+            }
+            调试输出(L"控件创建失败：指定父级不是窗口、分组框或选项卡页面容器。");
+            return false;
+        }
+        调试输出(L"控件创建失败：指定父级不属于当前窗口。");
+        return false;
+    }
+
+    bool HasDuplicateTag(const wchar_t* type, const std::wstring& tagText, const std::optional<int>& tagInteger) const {
+        auto conflicts = [&](const ControlSpec& control) {
+            if (!TextEquals(control.type, type)) return false;
+            if (!tagText.empty() && control.tagText && std::wcscmp(control.tagText, tagText.c_str()) == 0) return true;
+            return tagInteger.has_value() && control.hasTagInteger && control.tagInteger == *tagInteger;
+        };
+        for (int index = 0; index < spec_.controlCount; ++index) if (conflicts(spec_.controls[index])) return true;
+        for (const auto& dynamic : dynamicControlSpecs_) if (conflicts(dynamic.value)) return true;
+        return false;
+    }
+
+    LingControlRef FindControlByTagText(const wchar_t* type, const wchar_t* rawTagText) const {
+        std::wstring tag = rawTagText ? rawTagText : L"";
+        trim(tag);
+        if (tag.empty()) return {};
+        auto matches = [&](const ControlSpec& control) {
+            return TextEquals(control.type, type) && control.tagText && std::wcscmp(control.tagText, tag.c_str()) == 0;
+        };
+        for (int index = 0; index < spec_.controlCount; ++index) if (matches(spec_.controls[index])) return MakeControlRef(&spec_.controls[index]);
+        for (const auto& dynamic : dynamicControlSpecs_) if (matches(dynamic.value)) return MakeControlRef(&dynamic.value);
+        return {};
+    }
+
+    LingControlRef FindControlByTagInteger(const wchar_t* type, int tagInteger) const {
+        auto matches = [&](const ControlSpec& control) {
+            return TextEquals(control.type, type) && control.hasTagInteger && control.tagInteger == tagInteger;
+        };
+        for (int index = 0; index < spec_.controlCount; ++index) if (matches(spec_.controls[index])) return MakeControlRef(&spec_.controls[index]);
+        for (const auto& dynamic : dynamicControlSpecs_) if (matches(dynamic.value)) return MakeControlRef(&dynamic.value);
+        return {};
+    }
+
+    LingControlRef CreateRuntimeControl(const wchar_t* type, HWND parentHwnd, int x, int y, int width, int height,
+                                        const wchar_t* text, const wchar_t* rawTagText,
+                                        std::optional<int> tagInteger = std::nullopt) {
+        if (!hwnd_ || !IsWindow(hwnd_) || !type || !type[0]) {
+            调试输出(L"控件创建失败：当前窗口尚未建立或控件类型无效。");
+            return {};
+        }
+        if (width <= 0 || height <= 0) {
+            调试输出(L"控件创建失败：宽度和高度必须大于 0。");
+            return {};
+        }
+        int parentId = 0;
+        std::wstring containerSlot;
+        if (!ResolveDynamicControlParent(parentHwnd, parentId, containerSlot)) return {};
+        std::wstring tagText = rawTagText ? rawTagText : L"";
+        trim(tagText);
+        if (HasDuplicateTag(type, tagText, tagInteger)) {
+            调试输出(L"控件创建失败：当前窗口同类型控件的非空标记必须唯一。");
+            return {};
+        }
+        const int id = AllocateDynamicControlId();
+        if (!id) {
+            调试输出(L"控件创建失败：当前窗口没有可用的稳定控件 ID。");
+            return {};
+        }
+
+        DynamicControlSpec dynamic;
+        dynamic.type = type;
+        dynamic.name = L"__ling_runtime_" + dynamic.type + L"_" + std::to_wstring(id);
+        dynamic.text = text ? text : L"";
+        dynamic.fontFamily = L"Microsoft YaHei UI";
+        dynamic.containerSlot = containerSlot;
+        dynamic.tagText = tagText;
+        ControlSpec& control = dynamic.value;
+        control.id = id;
+        control.parentId = parentId;
+        control.x = x;
+        control.y = y;
+        control.width = width;
+        control.height = height;
+        control.fontSize = 12;
+        control.listBorderWidth = 1;
+        control.listBorderColor = RGB(100, 116, 139);
+        control.listSelectionStart = RGB(124, 58, 237);
+        control.listSelectionEnd = RGB(8, 145, 178);
+        control.listSelectionBorder = RGB(56, 189, 248);
+        control.listSelectionCornerRadius = 4;
+        control.listItemHeight = 28;
+        control.listHeaderHeight = 28;
+        control.listContentPadding = 4;
+        control.listScrollBarWidth = 8;
+        control.listScrollBarTrack = RGB(23, 32, 51);
+        control.listScrollBarThumb = RGB(14, 116, 144);
+        control.treeBorderWidth = 1;
+        control.treeBorderColor = RGB(100, 116, 139);
+        control.treeNodeSpacing = 2;
+        control.treeNodePadding = 3;
+        control.background = RGB(30, 41, 59);
+        control.foreground = RGB(226, 232, 240);
+        control.enabled = true;
+        control.minimum = 0;
+        control.maximum = 100;
+        control.flags = (TextEquals(type, L"ListBox") || TextEquals(type, L"GroupBox")) ? CF_SHOW_BORDER : 0;
+        control.hasTagInteger = tagInteger.has_value();
+        control.tagInteger = tagInteger.value_or(0);
+        dynamicControlSpecs_.push_back(std::move(dynamic));
+        DynamicControlSpec& stored = dynamicControlSpecs_.back();
+        stored.SyncPointers();
+        if (!CreateGeneratedControl(stored.value)) {
+            dynamicControlSpecs_.pop_back();
+            调试输出(L"控件创建失败：Win32 后端无法创建该控件实例。");
+            return {};
+        }
+        WireCompositeControls();
+        return MakeControlRef(&stored.value);
+    }
+
+${win32RuntimeControlMethods}
 
 private:
     HTREEITEM FindTreeItemByText(HWND tree, HTREEITEM item, const wchar_t* text) {
@@ -11767,14 +17296,14 @@ private:
     void UpdateTabChildren(const ControlSpec& tabControl) {
         RuntimeControl* tabRuntime = FindRuntimeControl(tabControl.id);
         if (!tabRuntime || !tabRuntime->hwnd) return;
-        auto tabs = DecodeControlRecords(tabControl.data, 3);
         int selectedIndex = TabCtrl_GetCurSel(tabRuntime->hwnd);
-        std::wstring activeSlot = selectedIndex >= 0 && selectedIndex < static_cast<int>(tabs.size()) ? tabs[selectedIndex][0] : L"";
         RuntimeTabPage* activePage = nullptr;
+        int pageIndex = 0;
         for (auto& page : tabPages_) {
             if (page.tabControlId != tabControl.id) continue;
-            if (page.slot == activeSlot) activePage = &page;
+            if (pageIndex == selectedIndex) activePage = &page;
             else ShowWindow(page.hwnd, SW_HIDE);
+            ++pageIndex;
         }
         RedrawWindow(tabRuntime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
         if (activePage) {
@@ -14568,15 +20097,20 @@ private:
         } else if (IsType(control, L"FBroBrowser")) {
             FbroBrowserInstance* instance = FBro_确保实例(control.id);
             instance->host = child;
+            instance->processInstanceId = L"win32:" + std::to_wstring(reinterpret_cast<uintptr_t>(hwnd_))
+                + L":" + std::to_wstring(control.id);
             instance->url = control.data && control.data[0] ? control.data : L"about:blank";
             if (control.data2 && control.data2[0]) {
-                auto records = DecodeControlRecords(control.data2, 5);
+                auto records = DecodeControlRecords(control.data2, 6);
+                if (records.empty()) records = DecodeControlRecords(control.data2, 5);
                 if (!records.empty()) {
                     const auto& fields = records[0];
                     if (fields.size() > 0) instance->profileDirectory = fields[0];
                     if (fields.size() > 1) instance->userAgent = fields[1];
                     if (fields.size() > 3 && fields[2] == L"custom") instance->proxyServer = fields[3];
                     if (fields.size() > 4) instance->fingerprintJson = fields[4];
+                    if (fields.size() > 5) instance->processMode = fields[5] == L"independent-embedded"
+                        ? 1 : fields[5] == L"independent-window" ? 2 : 0;
                 }
             }
         }
@@ -14586,6 +20120,10 @@ private:
     void RebuildControls() {
         std::vector<const ControlSpec*> pending;
         for (int i = 0; i < spec_.controlCount; ++i) pending.push_back(&spec_.controls[i]);
+        for (auto& dynamic : dynamicControlSpecs_) {
+            dynamic.SyncPointers();
+            pending.push_back(&dynamic.value);
+        }
         while (!pending.empty()) {
             size_t before = pending.size();
             for (auto item = pending.begin(); item != pending.end();) {
@@ -14741,6 +20279,13 @@ private:
             }
             return 0;
         }
+#if LINGBUILDER_FBRO_AVAILABLE
+        case WM_LINGBUILDER_FBRO_PROCESS_EVENT: {
+            std::unique_ptr<LingFbroProcessEventPacket> packet(reinterpret_cast<LingFbroProcessEventPacket*>(lParam));
+            if (packet) FBro_处理独立进程事件(*packet);
+            return 0;
+        }
+#endif
         case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
             const ControlSpec* control = FindControl(static_cast<int>(wParam));
             RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
@@ -14835,6 +20380,11 @@ private:
                     ShowWindow(hwnd_, SW_HIDE);
                     SetTimer(hwnd_, 0x4C46, 5000, nullptr);
                     FBro_开始应用关闭();
+                    if (FBro_是否全部关闭()) {
+                        KillTimer(hwnd_, 0x4C46);
+                        fbroClosePending_ = false;
+                        DestroyWindow(hwnd_);
+                    }
                     return 0;
                 }
 #endif
@@ -14860,11 +20410,6 @@ private:
             return 0;
         }
         case WM_SIZE:
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
-            EdgeView_调整全部大小();
-#endif
-            CEF3_调整全部大小();
-            FBro_调整全部大小();
             {
                 int nextWidth = static_cast<int>(LOWORD(lParam));
                 int nextHeight = static_cast<int>(HIWORD(lParam));
@@ -14881,6 +20426,11 @@ private:
                 sizeBaselineReady_ = true;
                 windowStateBaselineReady_ = true;
             }
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+            EdgeView_调整全部大小();
+#endif
+            CEF3_调整全部大小();
+            FBro_调整全部大小();
             return 0;
         case WM_ACTIVATE: {
             bool nextActive = LOWORD(wParam) != WA_INACTIVE;
@@ -14908,14 +20458,20 @@ private:
                 desired.right - desired.left, desired.bottom - desired.top,
                 SWP_NOZORDER | SWP_NOACTIVATE | (suggested ? 0 : SWP_NOMOVE));
             EdgeView_关闭设计器控件();
+            浏览器管理器_控件重建前();
             DestroyControls();
             CreateImageLists();
             RebuildControls();
+            浏览器管理器_控件重建后();
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_创建控件(nullptr);
 #endif
-            CEF3_调整全部大小();
             DispatchWindowEvent(L"DpiChanged");
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+            EdgeView_调整全部大小();
+#endif
+            CEF3_调整全部大小();
+            FBro_调整全部大小();
             return 0;
         }
         case WM_DROPFILES: {
@@ -14949,6 +20505,9 @@ private:
             if (HandleContextMenu(reinterpret_cast<HWND>(wParam), lParam)) return 0;
             break;
         case WM_TIMER:
+#if LINGBUILDER_FBRO_AVAILABLE
+            if (浏览器管理器_处理插件检查定时器(static_cast<UINT_PTR>(wParam))) return 0;
+#endif
             if (wParam == 0x4C46) {
                 KillTimer(hwnd_, 0x4C46);
                 fbroClosePending_ = false;
@@ -15705,6 +21264,10 @@ static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+#if LINGBUILDER_FBRO_AVAILABLE
+    const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
+    if (fbroHostExitCode != LINGBUILDER_FBRO_HOST_NOT_REQUESTED) return fbroHostExitCode;
+#endif
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
     int cefExitCode = LB_CEF3_ExecuteSubProcess(reinterpret_cast<uint64_t>(instance));
     if (cefExitCode >= 0) return cefExitCode;
@@ -15722,11 +21285,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     std::wstring fbroRuntimeDirectory = fbroModulePath;
     const size_t fbroSlash = fbroRuntimeDirectory.find_last_of(L"\\\\/");
     if (fbroSlash != std::wstring::npos) fbroRuntimeDirectory.resize(fbroSlash);
-    if (LB_FBro_Initialize(fbroRuntimeDirectory.c_str()) <= 0) {
+${fbroInProcessEnabled ? `    if (LB_FBro_Initialize(fbroRuntimeDirectory.c_str()) <= 0) {
         MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时完整性。", L"LingBuilder", MB_OK | MB_ICONERROR);
         CoUninitialize();
         return 0;
-    }
+    }` : ''}
 #endif
     Gdiplus::GdiplusStartupInput gdiplusInput;
     ULONG_PTR gdiplusToken = 0;
@@ -15753,7 +21316,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 
     if (!RegisterClassExW(&windowClass)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
 #if LINGBUILDER_FBRO_AVAILABLE
-        LB_FBro_Shutdown();
+${fbroInProcessEnabled ? '' : '        // 仅独立进程模式时主进程不能触发 CEF 135 的延迟导入。'}
+${fbroInProcessEnabled ? '        LB_FBro_Shutdown();' : ''}
 #endif
         ${uiaCleanupLine} CoUninitialize(); return 0; }
     HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
@@ -15775,7 +21339,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     CefShutdown();
 #endif
 #if LINGBUILDER_FBRO_AVAILABLE
-    LB_FBro_Shutdown();
+${fbroInProcessEnabled ? '    LB_FBro_Shutdown();' : ''}
+    LingFbroProcessController::Instance().Shutdown();
 #endif
 ${uiaCleanupLine}
     CoUninitialize();
@@ -16335,7 +21900,7 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   if (windowCreatedHandler && !windowEventBindings.has('Loaded')) {
     windowEventBindings.set('Loaded', windowCreatedHandler);
   }
-  const dispatchCases = handlers
+  const dispatchCases = methodHandlers
     .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
     .join('\n') || '        (void)control; (void)eventName;';
   const windowHandlerBindingCounts = new Map<string, number>();
@@ -16414,7 +21979,7 @@ ${edgeDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchWebSocketClientEvent(handler);
     }
     void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) override {
-        std::wstring handler = GetEventHandler(control, eventName);
+        std::wstring handler = ResolveControlEventHandler(control, eventName);
 ${dispatchCases}
         LingWindowBase::DispatchLingEvent(control, eventName);
     }
@@ -16567,9 +22132,10 @@ function generateMemberDeclaration(member: LingCppMember, enabledModules: Instal
 }
 
 function generateLocalDeclarations(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
+  const translationContext = createMethodTranslationContext(method, enabledModules, dataTypes);
   return (method.locals || [])
     .filter(local => !local.isConstant)
-    .map(local => `        ${formatCppVariableDeclaration(local, enabledModules, '', dataTypes)}`)
+    .map(local => `        ${formatCppVariableDeclaration(local, enabledModules, '', dataTypes, translationContext)}`)
     .join('\n');
 }
 
@@ -16577,12 +22143,13 @@ function formatCppVariableDeclaration(
   variable: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean },
   enabledModules: InstalledModule[],
   prefix = '',
-  dataTypes: LingCppDataType[] = []
+  dataTypes: LingCppDataType[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
 ): string {
   const itemType = toCppType(variable.type, 'variable', enabledModules, dataTypes);
   const cppType = variable.isArray ? `std::vector<${itemType}>` : itemType;
   const initializer = variable.initialValue?.trim()
-    ? ` = ${translateLingCppExpression(variable.initialValue, enabledModules)}`
+    ? ` = ${translateLingCppExpression(variable.initialValue, enabledModules, translationContext)}`
     : '{}';
   const constantSuffix = variable.isConstant ? ' const' : '';
   return `${prefix}${cppType}${constantSuffix} ${toCppIdentifier(variable.name)}${initializer};`;
@@ -16626,6 +22193,7 @@ function defaultReturnStatement(returnType: string, dataTypes: LingCppDataType[]
   if (returnType === 'void') return '';
   if (returnType === 'bool') return 'return false;';
   if (returnType === 'std::wstring') return 'return L"";';
+  if (returnType === 'LingControlRef') return 'return {};';
   if (returnType.startsWith('std::vector<')) return 'return {};';
   if (dataTypes.some(dataType => toCppIdentifier(dataType.name) === returnType)) return 'return {};';
   if (returnType.endsWith('*')) return 'return nullptr;';
@@ -16633,18 +22201,33 @@ function defaultReturnStatement(returnType: string, dataTypes: LingCppDataType[]
   return 'return 0;';
 }
 
+function createMethodTranslationContext(
+  method: LingCppMethod,
+  enabledModules: InstalledModule[],
+  dataTypes: LingCppDataType[] = []
+): LingCppTranslationContext {
+  const runtimeControlVariables = new Set<string>();
+  [...method.parameters, ...(method.locals || [])].forEach(variable => {
+    if (toCppType(variable.type, 'variable', enabledModules, dataTypes) === 'LingControlRef') {
+      runtimeControlVariables.add(normalizeIdentifier(variable.name));
+    }
+  });
+  return { runtimeControlVariables };
+}
+
 function translateMethodStatementsWithMetadata(
   method: LingCppMethod,
   enabledModules: InstalledModule[] = [],
   dataTypes: LingCppDataType[] = []
 ): TranslatedStatementLine[] {
-  const translated = translateLingCppStatementBlock(method.statements, enabledModules);
+  const translationContext = createMethodTranslationContext(method, enabledModules, dataTypes);
+  const translated = translateLingCppStatementBlock(method.statements, enabledModules, translationContext);
   const localConstants = [...(method.locals || [])]
     .filter(local => local.isConstant)
     .sort((left, right) => left.line - right.line);
   localConstants.forEach(local => {
     const entry: TranslatedStatementLine = {
-      code: formatCppVariableDeclaration(local, enabledModules, '', dataTypes),
+      code: formatCppVariableDeclaration(local, enabledModules, '', dataTypes, translationContext),
       sourceStartLine: local.line,
       sourceEndLine: local.line,
       kind: 'local',
@@ -16657,7 +22240,11 @@ function translateMethodStatementsWithMetadata(
   return translated;
 }
 
-function translateLingCppStatementBlock(statements: LingCppStatement[], enabledModules: InstalledModule[] = []): TranslatedStatementLine[] {
+function translateLingCppStatementBlock(
+  statements: LingCppStatement[],
+  enabledModules: InstalledModule[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): TranslatedStatementLine[] {
   const executableStatements = statements.filter(statement => !isLingCppCommentLine(statement.text));
   const lines: TranslatedStatementLine[] = [];
   const flowStack: Array<{ family: string; branchOpen?: boolean; hasCatch?: boolean; hasFinally?: boolean }> = [];
@@ -16702,6 +22289,7 @@ function translateLingCppStatementBlock(statements: LingCppStatement[], enabledM
         index,
         flowStack,
         enabledModules,
+        translationContext,
         finallyRegion
           ? executableStatements.slice(finallyRegion.finallyIndex + 1, finallyRegion.endIndex)
           : undefined
@@ -16715,7 +22303,7 @@ function translateLingCppStatementBlock(statements: LingCppStatement[], enabledM
       continue;
     }
 
-    lines.push(translateStatementToMetadata(currentStatement, enabledModules));
+    lines.push(translateStatementToMetadata(currentStatement, enabledModules, translationContext));
   }
 
   return lines;
@@ -16750,9 +22338,10 @@ function translateLingCppControlStatement(
   statementIndex: number,
   stack: Array<{ family: string; branchOpen?: boolean; hasCatch?: boolean; hasFinally?: boolean }>,
   enabledModules: InstalledModule[],
+  translationContext: LingCppTranslationContext,
   finallyStatements?: LingCppStatement[]
 ): string {
-  const expression = (value?: string) => translateLingCppExpression(value || '', enabledModules);
+  const expression = (value?: string) => translateLingCppExpression(value || '', enabledModules, translationContext);
   const current = () => stack.at(-1);
   const unique = `__ling_${statementIndex + 1}`;
 
@@ -16839,7 +22428,7 @@ function translateLingCppControlStatement(
       const hasFinally = Boolean(finallyStatements);
       stack.push({ family: 'try', hasFinally, hasCatch: false });
       if (!hasFinally) return 'try {';
-      const finalBody = translateLingCppStatementBlock(finallyStatements!, enabledModules)
+      const finalBody = translateLingCppStatementBlock(finallyStatements!, enabledModules, translationContext)
         .map(statement => `        ${statement.code}`)
         .join('\n');
       return `{ LingFinallyGuard ${unique}_finally([&]() {\n${finalBody}\n    }); try {`;
@@ -16865,12 +22454,16 @@ function translateLingCppControlStatement(
   return `// 暂不支持的控制流：${escapeCppComment(control.keyword)}`;
 }
 
-function translateStatementToMetadata(statement: LingCppStatement, enabledModules: InstalledModule[] = []): TranslatedStatementLine {
+function translateStatementToMetadata(
+  statement: LingCppStatement,
+  enabledModules: InstalledModule[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): TranslatedStatementLine {
   const text = statement.text.trim();
   const nativeCpp = parseNativeCppStatement(text);
 
   return {
-    code: nativeCpp !== undefined ? nativeCpp : translateStatement(text, enabledModules),
+    code: nativeCpp !== undefined ? nativeCpp : translateStatement(text, enabledModules, translationContext),
     sourceStartLine: statement.line,
     sourceEndLine: statement.line,
     kind: nativeCpp !== undefined ? 'native-cpp' : 'statement'
@@ -16887,7 +22480,11 @@ function translateMethodStatements(
     .join('\n');
 }
 
-function translateStatement(statement: string, enabledModules: InstalledModule[] = []): string {
+function translateStatement(
+  statement: string,
+  enabledModules: InstalledModule[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): string {
   const nativeCpp = parseNativeCppStatement(statement);
   if (nativeCpp !== undefined) return nativeCpp;
 
@@ -16901,7 +22498,7 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
 
   const ifCondition = parseIfCondition(statement);
   if (ifCondition !== undefined) {
-    return `if (${translateLingCppExpression(ifCondition, enabledModules)}) {`;
+    return `if (${translateLingCppExpression(ifCondition, enabledModules, translationContext)}) {`;
   }
   if (/^否则\s*$/u.test(statement)) {
     return '} else {';
@@ -16922,12 +22519,12 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
 
   const controlTextAssignment = parseEplControlMemberAssignmentRule(statement);
   if (controlTextAssignment) {
-    return `${controlTextAssignment.setterRuntimeName}(L"${escapeWideString(controlTextAssignment.controlName)}", ${translateLingCppExpression(controlTextAssignment.valueExpression, enabledModules)});`;
+    return `${controlTextAssignment.setterRuntimeName}(${translateControlReferenceOperand(controlTextAssignment.controlName, translationContext)}, ${translateLingCppExpression(controlTextAssignment.valueExpression, enabledModules, translationContext)});`;
   }
 
   const controlMethodCall = parseEplControlMethodCallRule(statement);
   if (controlMethodCall) {
-    return `${controlMethodCall.runtimeName}(L"${escapeWideString(controlMethodCall.controlName)}", ${translateCallArguments(controlMethodCall.argumentsText, enabledModules)});`;
+    return `${controlMethodCall.runtimeName}(${translateControlReferenceOperand(controlMethodCall.controlName, translationContext)}, ${translateCallArguments(controlMethodCall.argumentsText, enabledModules, translationContext)});`;
   }
 
   if (/^结束\s*[（(]?\s*[）)]?/.test(statement)) {
@@ -16936,7 +22533,7 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
 
   const returnValue = parseReturnValue(statement);
   if (returnValue !== undefined) {
-    return `return ${translateLingCppExpression(returnValue, enabledModules)};`;
+    return `return ${translateLingCppExpression(returnValue, enabledModules, translationContext)};`;
   }
 
   if (/^返回\b/.test(statement)) {
@@ -16946,15 +22543,15 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
   const variableAssignment = statement.match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
   if (variableAssignment) {
     const target = (variableAssignment[1] || '').split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
-    return `${target} = ${translateLingCppExpression(variableAssignment[2] || '', enabledModules)};`;
+    return `${target} = ${translateLingCppExpression(variableAssignment[2] || '', enabledModules, translationContext)};`;
   }
 
   const callStatement = parseCallStatement(statement);
   if (callStatement) {
     const binding = findModuleCommandBinding(callStatement.name, enabledModules);
     if (binding) {
-      const managedCall = translateManagedModuleInvocation(callStatement.argumentsText, binding, enabledModules);
-      return `${managedCall || `${toCppIdentifier(binding.runtimeName)}(${translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules)})`};`;
+      const managedCall = translateManagedModuleInvocation(callStatement.argumentsText, binding, enabledModules, translationContext);
+      return `${managedCall || `${toCppIdentifier(binding.runtimeName)}(${translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules, translationContext)})`};`;
     }
     const looksLikeModuleCommand = enabledModules.some(module =>
       (module.manifest.contributes?.commands || []).some(command =>
@@ -16963,7 +22560,7 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
     if (looksLikeModuleCommand) {
       return `// 模块命令缺少 v2 binding，无法生成确定性 C++ 调用：${escapeCppComment(callStatement.name)}`;
     }
-    return `${translateLingCppCallName(callStatement.name)}(${translateCallArguments(callStatement.argumentsText, enabledModules)});`;
+    return `${translateLingCppCallName(callStatement.name)}(${translateCallArguments(callStatement.argumentsText, enabledModules, translationContext)});`;
   }
 
   return `// 暂不支持的中文 C++ 语句：${escapeCppComment(statement)}`;
@@ -17073,20 +22670,38 @@ function parseCallStatement(statement: string): { name: string; argumentsText: s
   };
 }
 
-function translateCallArguments(raw: string, enabledModules: InstalledModule[] = []): string {
+function translateCallArguments(
+  raw: string,
+  enabledModules: InstalledModule[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): string {
   return splitCallArguments(raw)
-    .map(argument => translateLingCppExpression(argument, enabledModules))
+    .map(argument => translateLingCppExpression(argument, enabledModules, translationContext))
     .join(', ');
 }
 
-function translateModuleCallArguments(raw: string, binding: ModuleCommandBinding, enabledModules: InstalledModule[] = []): string {
+function translateModuleCallArguments(
+  raw: string,
+  binding: ModuleCommandBinding,
+  enabledModules: InstalledModule[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): string {
   return splitCallArguments(raw)
     .map((argument, index) => {
       const parameter = binding.parameters?.[index]
         || binding.parameters?.find(item => item.variadic === true && index >= (binding.parameters?.indexOf(item) || 0));
       const parameterType = parameter?.type;
       if (parameterType === 'controlRef') {
-        const controlName = argument.trim().match(/^[\p{L}_][\p{L}\p{N}_]*$/u)?.[0]
+        const bareControlName = argument.trim().match(/^[\p{L}_][\p{L}\p{N}_]*$/u)?.[0];
+        if (bareControlName === '当前窗口' && parameter.runtimeRepresentation === 'nativeHandle') return 'hwnd_';
+        if (bareControlName === '当前窗口' && parameter.runtimeRepresentation === 'stableId') return '0';
+        if (bareControlName && translationContext.runtimeControlVariables.has(normalizeIdentifier(bareControlName))) {
+          const reference = toCppIdentifier(bareControlName);
+          if ((parameter.runtimeRepresentation || 'wideName') === 'stableId') return `LingCppControlStableId(${reference})`;
+          if (parameter.runtimeRepresentation === 'nativeHandle') return `LingCppControlNativeHandle(${reference})`;
+          return `LingCppControlWideName(${reference})`;
+        }
+        const controlName = bareControlName
           || argument.trim().match(/^["“]([\p{L}_][\p{L}\p{N}_]*)["”]$/u)?.[1];
         if (controlName) {
           const wideName = `L"${escapeWideString(controlName)}"`;
@@ -17101,8 +22716,10 @@ function translateModuleCallArguments(raw: string, binding: ModuleCommandBinding
         const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
         if (chineseQuoted) return `L"${escapeWideString(chineseQuoted[1] || '')}"`;
       }
-      const translated = translateLingCppExpression(argument, enabledModules);
-      if (parameterType === 'wideString' && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) return `LingCppWideArg(${translated})`;
+      const translated = translateLingCppExpression(argument, enabledModules, translationContext);
+      if (parameterType === 'wideString' && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) {
+        return `LingCppWideArg(${translated})`;
+      }
       if (parameterType !== 'handler') return translated;
       const reference = argument.trim().match(/^&([\w\u4e00-\u9fa5]+)$/u);
       if (reference) return `L"${escapeWideString(reference[1] || '')}"`;
@@ -17114,7 +22731,8 @@ function translateModuleCallArguments(raw: string, binding: ModuleCommandBinding
 function translateManagedModuleInvocation(
   raw: string,
   binding: ModuleCommandBinding,
-  enabledModules: InstalledModule[] = []
+  enabledModules: InstalledModule[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
 ): string | undefined {
   const invocation = binding.invocation;
   if (!invocation || invocation.kind !== 'managedTask') return undefined;
@@ -17122,7 +22740,7 @@ function translateManagedModuleInvocation(
   const workerName = parseManagedHandlerReference(args[invocation.workerParameterIndex]);
   if (!workerName) return undefined;
   const valueArgs = args.slice(invocation.variadicParameterIndex);
-  const translatedValues = valueArgs.map(value => translateLingCppExpression(value, enabledModules));
+  const translatedValues = valueArgs.map(value => translateLingCppExpression(value, enabledModules, translationContext));
   const captures = translatedValues.map((value, index) => `lbArg${index + 1} = ${value}`);
   const captureList = ['this', ...captures].join(', ');
   const callValues = translatedValues.map((_, index) => `lbArg${index + 1}`).join(', ');
@@ -17132,13 +22750,13 @@ function translateManagedModuleInvocation(
     const fixedArguments = args
       .slice(0, invocation.variadicParameterIndex)
       .filter((_, index) => index !== invocation.workerParameterIndex)
-      .map(value => translateLingCppExpression(value, enabledModules));
+      .map(value => translateLingCppExpression(value, enabledModules, translationContext));
     return `${toCppIdentifier(binding.runtimeName)}(${[...fixedArguments, worker].join(', ')})`;
   }
 
   const generatedArguments: string[] = [];
   if (invocation.poolParameterIndex !== undefined) {
-    generatedArguments.push(translateLingCppExpression(args[invocation.poolParameterIndex] || '0', enabledModules));
+    generatedArguments.push(translateLingCppExpression(args[invocation.poolParameterIndex] || '0', enabledModules, translationContext));
   }
   generatedArguments.push(worker);
   if (invocation.progressParameterIndex !== undefined) {
@@ -17203,7 +22821,11 @@ function splitCallArguments(raw: string): string[] {
   return args;
 }
 
-function translateLingCppExpression(expression: string, enabledModules: InstalledModule[] = []): string {
+function translateLingCppExpression(
+  expression: string,
+  enabledModules: InstalledModule[] = [],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): string {
   const trimmed = normalizeLingCppLogicalExpression(expression.trim());
   if (!trimmed) return '';
   if (/^L"/u.test(trimmed)) return trimmed;
@@ -17212,16 +22834,16 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
   if (trimmed.startsWith('!') && !trimmed.startsWith('!=')) {
-    return `!(${translateLingCppExpression(trimmed.slice(1), enabledModules)})`;
+    return `!(${translateLingCppExpression(trimmed.slice(1), enabledModules, translationContext)})`;
   }
   const parenthesized = unwrapParenthesizedExpression(trimmed);
   if (parenthesized !== undefined) {
-    return `(${translateLingCppExpression(parenthesized, enabledModules)})`;
+    return `(${translateLingCppExpression(parenthesized, enabledModules, translationContext)})`;
   }
   const binaryExpression = splitEplBinaryExpression(trimmed);
   if (binaryExpression) {
-    const left = translateLingCppExpression(binaryExpression.left, enabledModules);
-    const right = translateLingCppExpression(binaryExpression.right, enabledModules);
+    const left = translateLingCppExpression(binaryExpression.left, enabledModules, translationContext);
+    const right = translateLingCppExpression(binaryExpression.right, enabledModules, translationContext);
     if (
       (binaryExpression.operator === '==' || binaryExpression.operator === '!=')
       && isDefinitelyWideStringExpression(binaryExpression.left, enabledModules)
@@ -17232,23 +22854,35 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
     return `${left}${binaryExpression.operator}${right}`;
   }
   const controlTextProperty = parseEplControlMemberRule(trimmed);
-  if (controlTextProperty) return `${controlTextProperty.getterRuntimeName}(L"${escapeWideString(controlTextProperty.controlName)}")`;
+  if (controlTextProperty) return `${controlTextProperty.getterRuntimeName}(${translateControlReferenceOperand(controlTextProperty.controlName, translationContext)})`;
   const controlMethodCall = parseEplControlMethodCallRule(trimmed);
   if (controlMethodCall) {
-    return `${controlMethodCall.runtimeName}(L"${escapeWideString(controlMethodCall.controlName)}", ${translateCallArguments(controlMethodCall.argumentsText, enabledModules)})`;
+    return `${controlMethodCall.runtimeName}(${translateControlReferenceOperand(controlMethodCall.controlName, translationContext)}, ${translateCallArguments(controlMethodCall.argumentsText, enabledModules, translationContext)})`;
   }
   const call = parseCallStatement(trimmed);
   if (call) {
     const binding = findModuleCommandBinding(call.name, enabledModules);
-    const managedCall = binding ? translateManagedModuleInvocation(call.argumentsText, binding, enabledModules) : undefined;
+    const managedCall = binding ? translateManagedModuleInvocation(call.argumentsText, binding, enabledModules, translationContext) : undefined;
     if (managedCall) return managedCall;
-    const argumentsText = binding ? translateModuleCallArguments(call.argumentsText, binding, enabledModules) : translateCallArguments(call.argumentsText, enabledModules);
+    const argumentsText = binding
+      ? translateModuleCallArguments(call.argumentsText, binding, enabledModules, translationContext)
+      : translateCallArguments(call.argumentsText, enabledModules, translationContext);
     return `${binding ? toCppIdentifier(binding.runtimeName) : translateLingCppCallName(call.name)}(${argumentsText})`;
   }
   if (/^[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*$/u.test(trimmed)) {
     return trimmed.split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
   }
   return trimmed;
+}
+
+function translateControlReferenceOperand(
+  controlName: string,
+  translationContext: LingCppTranslationContext
+): string {
+  if (translationContext.runtimeControlVariables.has(normalizeIdentifier(controlName))) {
+    return `LingCppControlWideName(${toCppIdentifier(controlName)})`;
+  }
+  return `L"${escapeWideString(controlName)}"`;
 }
 
 function isDefinitelyWideStringExpression(expression: string, enabledModules: InstalledModule[]): boolean {
@@ -17618,7 +23252,11 @@ function generateControlSpec(
   const treeNodePadding = treeControl ? clampInteger(control.properties?.nodePadding, 3, 0, 24) : 3;
   const font = normalizeControlFont(control);
   const controlText = control.type === 'DataGrid' ? String(control.properties?.emptyText || '暂无数据') : control.content;
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+  const tagText = typeof control.tagText === 'string' ? control.tagText.trim() : '';
+  const hasTagInteger = typeof control.tagInteger === 'number' && Number.isInteger(control.tagInteger)
+    && control.tagInteger >= -2147483648 && control.tagInteger <= 2147483647;
+  const tagInteger = hasTagInteger ? control.tagInteger! : 0;
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(tagText)}", ${hasTagInteger ? 'true' : 'false'}, ${tagInteger}, L"${escapeWideString(events)}" }`;
 }
 
 function controlColorProperty(control: LingControl, key: string, fallback: string): string {
@@ -17840,7 +23478,8 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const proxyMode = typeof properties.proxyMode === 'string' ? properties.proxyMode : 'system';
     const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
     const fingerprintProfile = typeof properties.fingerprintProfile === 'string' ? properties.fingerprintProfile : '';
-    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, fingerprintProfile])];
+    const processMode = typeof properties.processMode === 'string' ? properties.processMode : 'in-process';
+    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, fingerprintProfile, processMode])];
   }
   if (control.type === 'EdgeBrowser') {
     const url = typeof properties.url === 'string' ? properties.url : '';

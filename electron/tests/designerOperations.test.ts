@@ -3,6 +3,19 @@ const control=(id:string,x:number,y:number,w=20,h=10):any=>({id,type:'Button',na
 test('designer multi-selection aligns, sizes, distributes and nudges controls deterministically',()=>{ assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-left').controls.map(x=>x.x),[10,10,160]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-right').controls.slice(0,2).map(x=>x.x),[10,20]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-top').controls.slice(0,2).map(x=>x.y),[20,20]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'same-width').controls.slice(0,2).map(x=>x.width),[30,30]); const distributed=applyDesignerLayout(windowModel,['a','b','c'],'distribute-horizontal'); assert.ok(distributed.controls[1].x>40&&distributed.controls[1].x<150); const nudged=nudgeControls(windowModel,['a','b'],5,-10); assert.deepEqual(nudged.controls.slice(0,2).map(x=>[x.x,x.y]),[[15,10],[85,40]]); assert.throws(()=>applyDesignerLayout(windowModel,['a'],'align-left'),/至少/u); assert.throws(()=>applyDesignerLayout(windowModel,['a','b'],'distribute-vertical'),/三个/u); });
 test('designer history supports bounded undo/redo and clears redo after a new edit',()=>{ const project: LingWindowProject={id:'p',name:'p',windows:[windowModel]}; const history=new DesignerHistory(project,2); history.commit({...project,name:'one'}); history.commit({...project,name:'two'}); assert.equal(history.undo()?.name,'one'); assert.equal(history.redo()?.name,'two'); history.undo(); history.commit({...project,name:'branch'}); assert.equal(history.canRedo,false); history.commit({...project,name:'last'}); history.commit({...project,name:'bounded'}); assert.equal(history.undo()?.name,'last'); assert.equal(history.undo()?.name,'branch'); assert.equal(history.undo(),null); });
 
+test('designer history restores control tags through undo and redo', () => {
+  const project: LingWindowProject = { id: 'tag-history', name: 'tag-history', windows: [windowModel] };
+  const history = new DesignerHistory(project);
+  const tagged: LingWindowProject = {
+    ...project,
+    windows: [{ ...windowModel, controls: windowModel.controls.map(item => item.id === 'a' ? { ...item, tagText: '确认', tagInteger: 0 } : item) }]
+  };
+  history.commit(tagged);
+  assert.equal(history.value.windows[0].controls[0].tagInteger, 0);
+  assert.equal(history.undo()?.windows[0].controls[0].tagText, undefined);
+  assert.equal(history.redo()?.windows[0].controls[0].tagText, '确认');
+});
+
 test('moving a container translates every descendant exactly once', () => {
   const controls = [
     { ...control('group', 20, 30, 160, 120), type: 'GroupBox' },

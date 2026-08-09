@@ -7,20 +7,45 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "CEF3自动化模块：1 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "CEF3自动化模块：6 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.cef3.automation")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–1：CEF3自动化_执行JS异步 至 CEF3自动化_执行JS异步；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–6：CEF3自动化_执行JS异步 至 CEF3Hook_回复页面消息；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：CEF3自动化_执行JS异步
             // [1] CEF3自动化_执行JS异步(控件名, 脚本)
             // 功能：通过DevTools Runtime.evaluate异步执行JavaScript，返回受管任务ID。
             // 参数：控件名:controlRef，脚本:wideString；返回：longLong；可见性：advanced
             CEF3自动化_执行JS异步(演示CefBrowser控件, "演示参数2")
+            // 命令ID：CEF3Hook_注册脚本
+            // [2] CEF3Hook_注册脚本(控件名, 名称, 脚本, 地址匹配, 全部框架, 立即执行当前上下文)
+            // 功能：注册持久JSHook；它会在匹配Frame的V8上下文创建时执行，并在导航后自动重建。
+            // 参数：控件名:controlRef，名称:wideString，脚本:wideString，地址匹配:wideString，全部框架:bool，立即执行当前上下文:bool；返回：longLong；可见性：advanced
+            CEF3Hook_注册脚本(演示CefBrowser控件, "演示参数2", "演示参数3", "https://example.com", 真, 真)
+            // 命令ID：CEF3Hook_移除脚本
+            // [3] CEF3Hook_移除脚本(Hook句柄)
+            // 功能：移除指定JSHook并释放受管句柄。
+            // 参数：Hook句柄:longLong；返回：int；可见性：advanced
+            CEF3Hook_移除脚本(1)
+            // 命令ID：CEF3Hook_清空脚本
+            // [4] CEF3Hook_清空脚本(控件名)
+            // 功能：清空指定浏览器的全部已注册JSHook。
+            // 参数：控件名:controlRef；返回：int；可见性：advanced
+            CEF3Hook_清空脚本(演示CefBrowser控件)
+            // 命令ID：CEF3Hook_取脚本列表
+            // [5] CEF3Hook_取脚本列表(控件名)
+            // 功能：返回JSHook句柄、名称、地址匹配和Frame范围JSON。
+            // 参数：控件名:controlRef；返回：wideString；可见性：advanced
+            CEF3Hook_取脚本列表(演示CefBrowser控件)
+            // 命令ID：CEF3Hook_回复页面消息
+            // [6] CEF3Hook_回复页面消息(控件名, 请求ID, 是否成功, 返回文本)
+            // 功能：回复页面 LingBuilder调用宿主(name, payload) 产生的Promise请求。
+            // 参数：控件名:controlRef，请求ID:longLong，是否成功:bool，返回文本:wideString；返回：int；可见性：advanced
+            CEF3Hook_回复页面消息(演示CefBrowser控件, 1, 真, "演示参数4")
         如果结束
-        调试输出("已查看 命令 1–1：CEF3自动化_执行JS异步 至 CEF3自动化_执行JS异步；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 1–6：CEF3自动化_执行JS异步 至 CEF3Hook_回复页面消息；勾选允许实际执行后会使用演示参数调用。")
     结束
 
 结束类

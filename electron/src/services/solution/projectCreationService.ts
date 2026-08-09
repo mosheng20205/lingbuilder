@@ -40,7 +40,7 @@ export interface ProjectCreationPreview {
   designerProject: CreateSolutionProjectPlan['designerProject'];
   files: ProjectCreationFilePreview[];
   modules: {
-    selection: 'global-default' | 'explicit';
+    selection: 'global-default' | 'template-default' | 'explicit';
     projectModuleFile: string;
     requestedModuleIds: string[];
     dependencyModuleIds: string[];
@@ -199,17 +199,26 @@ export class ProjectCreationService {
     request: ProjectCreationRequest;
     plan: CreateSolutionProjectPlan;
     modulePlan: ProjectModuleEnablePlan;
-    moduleSelection: 'global-default' | 'explicit';
+    moduleSelection: 'global-default' | 'template-default' | 'explicit';
   }> {
-    const moduleSelection = request.enabledModuleIds === undefined ? 'global-default' : 'explicit';
-    const enabledModuleIds = moduleSelection === 'global-default'
-      ? normalizeModuleIds(await this.moduleService.getProjectModuleIds())
-      : normalizeModuleIds(request.enabledModuleIds);
+    const requestedTemplateId = request.templateId || 'blank-window';
+    const template = SOLUTION_PROJECT_TEMPLATES.find(item => item.id === requestedTemplateId);
+    if (!template) throw new Error(`不支持的项目模板：${requestedTemplateId}`);
+    const moduleSelection = request.enabledModuleIds !== undefined
+      ? 'explicit'
+      : template.moduleIds?.length
+        ? 'template-default'
+        : 'global-default';
+    const enabledModuleIds = moduleSelection === 'explicit'
+      ? normalizeModuleIds(request.enabledModuleIds)
+      : moduleSelection === 'template-default'
+        ? normalizeModuleIds([...(template.moduleIds || [])])
+        : normalizeModuleIds(await this.moduleService.getProjectModuleIds());
     const normalizedRequest: ProjectCreationRequest = {
       ...request,
       name: request.name?.trim() || request.name,
       projectId: request.projectId?.trim() || request.projectId,
-      templateId: request.templateId || 'blank-window',
+      templateId: requestedTemplateId,
       enabledModuleIds
     };
     const plan = await this.solutionService.previewCreateProject(normalizedRequest);
@@ -221,7 +230,7 @@ export class ProjectCreationService {
     plan: CreateSolutionProjectPlan,
     modulePlan: ProjectModuleEnablePlan,
     request: ProjectCreationRequest,
-    moduleSelection: 'global-default' | 'explicit'
+    moduleSelection: 'global-default' | 'template-default' | 'explicit'
   ): ProjectCreationPreview {
     const mainSource = plan.files.find(file => file.kind === 'source' && file.relativePath.endsWith('.lcpp'));
     const projectModuleFile = toWorkspaceRelativePath(this.workspaceRoot, modulePlan.targetPath);

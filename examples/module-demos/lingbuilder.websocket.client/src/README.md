@@ -2,7 +2,6 @@
 
 - 模块 ID：`lingbuilder.websocket.client`
 - 版本：`2.0.0`
-- 最低 LingBuilder：`0.2.8`
 - 类型：LingBuilder 内置模块
 - 命令数：51
 - 设计器控件数：0

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.776Z",
+  "generatedAt": "2026-08-07T09:07:19.426Z",
   "module": {
     "id": "lingbuilder.cef3.devtools",
     "name": "CEF3开发者工具模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "提供受设计器策略控制的DevTools入口。"
   },
-  "commandCount": 3,
+  "commandCount": 8,
   "commands": [
     {
       "index": 1,
@@ -104,6 +104,196 @@
         "encoding": "wide"
       },
       "demoInvocation": "CEF3开发工具_是否打开(演示CefBrowser控件)"
+    },
+    {
+      "index": 4,
+      "name": "CEF3开发工具_执行协议方法",
+      "aliases": [
+        "CefBrowserHost::ExecuteDevToolsMethod"
+      ],
+      "signature": "CEF3开发工具_执行协议方法(控件名, 方法名, 参数JSON)",
+      "description": "执行 DevTools Protocol 方法并返回受管任务句柄；参数必须是 JSON 对象，结果使用 CEF3任务_取结果读取。",
+      "insertText": "CEF3开发工具_执行协议方法(浏览器1, \"Runtime.enable\", \"{}\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3开发工具_执行协议方法",
+        "runtimeName": "CEF3开发工具_执行协议方法",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "方法名",
+            "type": "wideString"
+          },
+          {
+            "name": "参数JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "CEF3开发工具_执行协议方法(浏览器1, \"Runtime.enable\", \"{}\")"
+      },
+      "demoInvocation": "CEF3开发工具_执行协议方法(演示CefBrowser控件, \"演示参数2\", \"{}\")"
+    },
+    {
+      "index": 5,
+      "name": "CEF3开发工具_订阅代理附加",
+      "aliases": [
+        "CefDevToolsMessageObserver::OnDevToolsAgentAttached"
+      ],
+      "signature": "CEF3开发工具_订阅代理附加(控件名, 启用)",
+      "description": "启用后将 DevTools 代理附加通知投递为“开发工具代理已附加”浏览器事件。",
+      "insertText": "CEF3开发工具_订阅代理附加($1, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3开发工具_订阅代理附加",
+        "runtimeName": "CEF3开发工具_订阅代理附加",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3开发工具_订阅代理附加(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 6,
+      "name": "CEF3开发工具_订阅代理分离",
+      "aliases": [
+        "CefDevToolsMessageObserver::OnDevToolsAgentDetached"
+      ],
+      "signature": "CEF3开发工具_订阅代理分离(控件名, 启用)",
+      "description": "启用后将 DevTools 代理分离通知投递为“开发工具代理已分离”浏览器事件。",
+      "insertText": "CEF3开发工具_订阅代理分离($1, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3开发工具_订阅代理分离",
+        "runtimeName": "CEF3开发工具_订阅代理分离",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3开发工具_订阅代理分离(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 7,
+      "name": "CEF3开发工具_订阅协议事件",
+      "aliases": [
+        "CefDevToolsMessageObserver::OnDevToolsEvent"
+      ],
+      "signature": "CEF3开发工具_订阅协议事件(控件名, 启用)",
+      "description": "启用后将 DevTools Protocol 事件投递为“开发工具协议事件”；参数 JSON 会复制到 paramsJson 字段。",
+      "insertText": "CEF3开发工具_订阅协议事件($1, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3开发工具_订阅协议事件",
+        "runtimeName": "CEF3开发工具_订阅协议事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3开发工具_订阅协议事件(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 8,
+      "name": "CEF3开发工具_订阅协议消息",
+      "aliases": [
+        "CefDevToolsMessageObserver::OnDevToolsMessage"
+      ],
+      "signature": "CEF3开发工具_订阅协议消息(控件名, 启用)",
+      "description": "启用后将原始 DevTools Protocol 消息投递为“开发工具协议消息”；观察器始终返回未处理，不会拦截 CEF 后续回调。",
+      "insertText": "CEF3开发工具_订阅协议消息($1, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3开发工具_订阅协议消息",
+        "runtimeName": "CEF3开发工具_订阅协议消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3开发工具_订阅协议消息(演示CefBrowser控件, 真)"
     }
   ]
 }

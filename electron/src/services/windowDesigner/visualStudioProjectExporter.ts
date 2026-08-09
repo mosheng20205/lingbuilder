@@ -6,6 +6,7 @@ import { CRYPTO_SDK_MODULE_IDS } from '../modules/dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../modules/opencvModules';
 import { PROTOBUF_MODULE_ID } from '../modules/protobufModule';
 import { LingCppNativeProjectFile } from './lingCppWin32Project';
+import { createWindowsMsvcLinkLibraries } from './windowsSystemLibraries';
 
 export interface VisualStudioProjectExportResult {
   projectName: string;
@@ -48,6 +49,9 @@ export async function exportVisualStudioProject(
   const runtimeFiles = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-win32');
   const runtimeFilesX64 = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-x64');
   const hasFbro = options.enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  const fbroHostOnly = hasFbro && options.enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser'
+    || (module.manifest.id !== 'lingbuilder.fbro.browser' && (module.manifest.targets || []).some(target =>
+      (target.runtimeFiles || []).some(file => path.basename(file).toLowerCase() === 'libcef.dll'))));
   const hasCryptoSdk = usesCryptoSdk(options.enabledModules);
   const hasOpenCv = usesOpenCvSdk(options.enabledModules);
   const x64Only = options.enabledModules.some(module => {
@@ -72,6 +76,7 @@ export async function exportVisualStudioProject(
       runtimeFiles,
       runtimeFilesX64,
       hasFbro,
+      fbroHostOnly,
       fbroRuntimeFromBuildBin: options.fbroRuntimeFromBuildBin,
       contentFiles,
       requiredCppStandard: options.requiredCppStandard ?? (hasCryptoSdk ? 20 : undefined),
@@ -247,6 +252,7 @@ function generateVcxproj(options: {
   runtimeFiles: string[];
   runtimeFilesX64: string[];
   hasFbro: boolean;
+  fbroHostOnly?: boolean;
   fbroRuntimeFromBuildBin?: boolean;
   contentFiles: string[];
   requiredCppStandard?: 17 | 20;
@@ -257,22 +263,18 @@ function generateVcxproj(options: {
   const additionalIncludeDirectories = includeDirectories
     ? `${xmlEscape(includeDirectories)};%(AdditionalIncludeDirectories)`
     : '%(AdditionalIncludeDirectories)';
-  const additionalDependencies = [
-    'user32.lib',
-    'gdi32.lib',
-    'comctl32.lib',
-    ...options.libFiles.map(toWindowsPath)
-  ].join(';');
+  const additionalDependencies = createWindowsMsvcLinkLibraries(options.libFiles.map(toWindowsPath)).join(';');
   const additionalIncludeDirectoriesX64 = options.includeDirsX64.length
     ? `${xmlEscape(options.includeDirsX64.map(toWindowsPath).join(';'))};%(AdditionalIncludeDirectories)`
     : '%(AdditionalIncludeDirectories)';
-  const additionalDependenciesX64 = ['user32.lib', 'gdi32.lib', 'comctl32.lib', ...options.libFilesX64.map(toWindowsPath)].join(';');
+  const additionalDependenciesX64 = createWindowsMsvcLinkLibraries(options.libFilesX64.map(toWindowsPath)).join(';');
   const postBuild = generatePostBuildCommand(options.runtimeFiles, options.contentFiles);
   const postBuildX64 = generatePostBuildCommand(
     options.runtimeFilesX64,
     options.contentFiles,
     options.hasFbro,
-    options.fbroRuntimeFromBuildBin
+    options.fbroRuntimeFromBuildBin,
+    options.fbroHostOnly
   );
   const languageStandard = options.requiredCppStandard === 20 ? 'stdcpp20' : 'stdcpp17';
   const runtimeLibrary = options.requiresDynamicCrt
@@ -434,10 +436,20 @@ function generatePostBuildCommand(
   runtimeFiles: string[],
   contentFiles: string[],
   materializeFbro = false,
-  fbroRuntimeFromBuildBin = false
+  fbroRuntimeFromBuildBin = false,
+  fbroHostOnly = false
 ): string {
-  const runtimeCommands = runtimeFiles
-    .map(file => `if exist "$(ProjectDir)${toWindowsPath(file)}" copy /Y "$(ProjectDir)${toWindowsPath(file)}" "$(OutDir)"`);
+  const runtimeCommands = runtimeFiles.flatMap(file => {
+    const windowsFile = toWindowsPath(file);
+    const destination = toWindowsPath(getRuntimeOutputPath(file));
+    const destinationDirectory = path.win32.dirname(destination);
+    return [
+      ...(destinationDirectory === '.' ? [] : [
+        `if not exist "$(OutDir)${destinationDirectory}" mkdir "$(OutDir)${destinationDirectory}"`
+      ]),
+      `if exist "$(ProjectDir)${windowsFile}" copy /Y "$(ProjectDir)${windowsFile}" "$(OutDir)${destination}"`
+    ];
+  });
   const contentCommands = contentFiles.flatMap(file => {
     const windowsFile = toWindowsPath(file);
     const destinationDirectory = path.win32.dirname(windowsFile);
@@ -447,7 +459,7 @@ function generatePostBuildCommand(
     ];
   });
   const fbroCommands = materializeFbro
-    ? [`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)modules\\lingbuilder.fbro.browser\\materialize-fbro-runtime.ps1" -Destination "$(TargetDir)."${fbroRuntimeFromBuildBin ? ' -RuntimeRoot "$(ProjectDir)bin"' : ''}`]
+    ? [`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)modules\\lingbuilder.fbro.browser\\materialize-fbro-runtime.ps1" -Destination "$(TargetDir)."${fbroRuntimeFromBuildBin ? ' -RuntimeRoot "$(ProjectDir)bin"' : ''}${fbroHostOnly ? ' -HostOnly' : ''}`]
     : [];
   const commands = [...runtimeCommands, ...contentCommands, ...fbroCommands].join('\r\n');
   if (!commands) return '';
@@ -455,6 +467,14 @@ function generatePostBuildCommand(
     <PostBuildEvent>
       <Command>${xmlEscape(commands)}</Command>
     </PostBuildEvent>`;
+}
+
+function getRuntimeOutputPath(value: string): string {
+  const normalized = normalizeSlash(value);
+  const runtimeMarker = normalized.toLowerCase().lastIndexOf('/runtime/');
+  return runtimeMarker >= 0
+    ? normalized.slice(runtimeMarker + '/runtime/'.length)
+    : path.posix.basename(normalized);
 }
 
 function deterministicGuid(seed: string): string {

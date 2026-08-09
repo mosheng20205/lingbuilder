@@ -1,70 +1,496 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.850Z",
+  "generatedAt": "2026-08-07T17:07:05.335Z",
   "module": {
     "id": "lingbuilder.database.sqlite",
-    "name": "SQLite数据库桥接模块",
-    "version": "1.0.0",
-    "description": "动态加载用户提供的 sqlite3.dll，提供单连接执行和查询闭环；缺少运行库时返回明确错误。"
+    "name": "SQLite 数据库模块",
+    "version": "2.0.0",
+    "description": "面向生产项目的 SQLite 动态桥接：多连接、参数化预编译语句、强类型字段、事务、WAL、备份和完整错误诊断。"
   },
-  "commandCount": 7,
+  "commandCount": 67,
   "commands": [
     {
       "index": 1,
       "name": "SQLite_加载运行库",
       "signature": "SQLite_加载运行库(DLL路径)",
-      "description": "加载 sqlite3.dll 并检查所需 API；空路径尝试系统搜索。",
+      "description": "显式加载 SQLite 运行库并校验模块所需导出。存在活动连接时拒绝切换 DLL。",
       "insertText": "SQLite_加载运行库(\"$1\")",
       "returnType": "逻辑型",
+      "returnDescription": "全部必要导出可用时返回真，否则返回假并记录中文错误。",
+      "category": "运行库",
       "binding": {
         "command": "SQLite_加载运行库",
         "runtimeName": "SQLite_加载运行库",
         "parameters": [
           {
             "name": "DLL路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "sqlite3.dll 的绝对或相对路径；空文本按系统 DLL 搜索规则加载。"
           }
         ],
         "returnType": "bool",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "SQLite_加载运行库(\"sqlite3.dll\")"
       },
       "demoInvocation": "SQLite_加载运行库(\"module-demo-temp.txt\")"
     },
     {
       "index": 2,
+      "name": "SQLite_卸载运行库",
+      "signature": "SQLite_卸载运行库()",
+      "description": "在没有活动连接和语句时卸载 sqlite3.dll。",
+      "insertText": "SQLite_卸载运行库()",
+      "returnType": "逻辑型",
+      "category": "运行库",
+      "binding": {
+        "command": "SQLite_卸载运行库",
+        "runtimeName": "SQLite_卸载运行库",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_卸载运行库()"
+    },
+    {
+      "index": 3,
+      "name": "SQLite_取运行库版本",
+      "signature": "SQLite_取运行库版本()",
+      "description": "返回当前已加载 SQLite 运行库的版本号。",
+      "insertText": "SQLite_取运行库版本()",
+      "returnType": "文本型",
+      "category": "运行库",
+      "binding": {
+        "command": "SQLite_取运行库版本",
+        "runtimeName": "SQLite_取运行库版本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_取运行库版本()"
+    },
+    {
+      "index": 4,
+      "name": "SQLite_运行库线程安全",
+      "signature": "SQLite_运行库线程安全()",
+      "description": "返回运行库编译时是否启用了 SQLite 线程安全支持。",
+      "insertText": "SQLite_运行库线程安全()",
+      "returnType": "逻辑型",
+      "category": "运行库",
+      "binding": {
+        "command": "SQLite_运行库线程安全",
+        "runtimeName": "SQLite_运行库线程安全",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_运行库线程安全()"
+    },
+    {
+      "index": 5,
       "name": "SQLite_打开",
       "signature": "SQLite_打开(数据库路径)",
-      "description": "以 UTF-8 路径打开 SQLite 数据库。",
+      "description": "兼容接口：打开默认读写连接，自动创建文件、启用外键并设置 5 秒忙等待。",
       "insertText": "SQLite_打开(\"$1\")",
       "returnType": "逻辑型",
+      "category": "兼容接口",
       "binding": {
         "command": "SQLite_打开",
         "runtimeName": "SQLite_打开",
         "parameters": [
           {
             "name": "数据库路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "数据库文件路径。"
           }
         ],
         "returnType": "bool",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "SQLite_打开(\"data/app.db\")"
       },
       "demoInvocation": "SQLite_打开(\"module-demo-temp.txt\")"
     },
     {
-      "index": 3,
+      "index": 6,
+      "name": "SQLite_打开连接",
+      "signature": "SQLite_打开连接(数据库路径, 打开模式, 忙等待毫秒)",
+      "description": "打开独立的 FULLMUTEX 连接；成功后默认启用扩展错误码和外键约束。",
+      "insertText": "SQLite_打开连接(\"$1\", 0, 0)",
+      "returnType": "SQLite连接",
+      "returnDescription": "成功返回非 0 的 SQLite连接，失败返回 0。",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_打开连接",
+        "runtimeName": "SQLite_打开连接",
+        "parameters": [
+          {
+            "name": "数据库路径",
+            "type": "wideString",
+            "description": "数据库文件路径；模式 3 时作为内存库名称。"
+          },
+          {
+            "name": "打开模式",
+            "type": "int",
+            "description": "0=读写并创建，1=只读，2=读写但不创建，3=独立内存库。"
+          },
+          {
+            "name": "忙等待毫秒",
+            "type": "int",
+            "description": "遇到锁竞争时等待的毫秒数，范围 0～600000。"
+          }
+        ],
+        "returnType": "SQLite连接",
+        "encoding": "wide",
+        "example": "SQLite_打开连接(\"data/app.db\", 0, 5000)"
+      },
+      "demoInvocation": "SQLite_打开连接(\"module-demo-temp.txt\", 1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "SQLite_打开内存库",
+      "signature": "SQLite_打开内存库(名称)",
+      "description": "创建独立的内存数据库连接。",
+      "insertText": "SQLite_打开内存库(\"$1\")",
+      "returnType": "SQLite连接",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_打开内存库",
+        "runtimeName": "SQLite_打开内存库",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "用于诊断的内存库名称；每次调用创建独立数据库。"
+          }
+        ],
+        "returnType": "SQLite连接",
+        "encoding": "wide",
+        "example": "SQLite_打开内存库(\"测试库\")"
+      },
+      "demoInvocation": "SQLite_打开内存库(\"演示参数1\")"
+    },
+    {
+      "index": 8,
+      "name": "SQLite_关闭",
+      "signature": "SQLite_关闭()",
+      "description": "兼容接口：关闭默认连接；没有其它连接时同时卸载运行库。",
+      "insertText": "SQLite_关闭()",
+      "returnType": "空",
+      "category": "兼容接口",
+      "binding": {
+        "command": "SQLite_关闭",
+        "runtimeName": "SQLite_关闭",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "SQLite_关闭()"
+    },
+    {
+      "index": 9,
+      "name": "SQLite_关闭连接",
+      "signature": "SQLite_关闭连接(连接)",
+      "description": "释放连接所属全部语句后关闭连接。失效句柄会返回假。",
+      "insertText": "SQLite_关闭连接(0)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_关闭连接",
+        "runtimeName": "SQLite_关闭连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_关闭连接(0)"
+    },
+    {
+      "index": 10,
+      "name": "SQLite_关闭全部",
+      "signature": "SQLite_关闭全部()",
+      "description": "释放所有语句、关闭所有连接并卸载运行库。",
+      "insertText": "SQLite_关闭全部()",
+      "returnType": "空",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_关闭全部",
+        "runtimeName": "SQLite_关闭全部",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "SQLite_关闭全部()"
+    },
+    {
+      "index": 11,
+      "name": "SQLite_连接是否有效",
+      "signature": "SQLite_连接是否有效(连接)",
+      "description": "检查受管连接 ID 当前是否仍然有效。",
+      "insertText": "SQLite_连接是否有效(0)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_连接是否有效",
+        "runtimeName": "SQLite_连接是否有效",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_连接是否有效(0)"
+    },
+    {
+      "index": 12,
+      "name": "SQLite_连接是否只读",
+      "signature": "SQLite_连接是否只读(连接)",
+      "description": "检查连接的 main 数据库是否为只读。",
+      "insertText": "SQLite_连接是否只读(0)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_连接是否只读",
+        "runtimeName": "SQLite_连接是否只读",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_连接是否只读(0)"
+    },
+    {
+      "index": 13,
+      "name": "SQLite_连接是否在事务中",
+      "signature": "SQLite_连接是否在事务中(连接)",
+      "description": "返回连接是否处于显式事务或保存点中。",
+      "insertText": "SQLite_连接是否在事务中(0)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "SQLite_连接是否在事务中",
+        "runtimeName": "SQLite_连接是否在事务中",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_连接是否在事务中(0)"
+    },
+    {
+      "index": 14,
+      "name": "SQLite_设置忙等待",
+      "signature": "SQLite_设置忙等待(连接, 毫秒)",
+      "description": "设置连接遇到 SQLITE_BUSY 时的等待时间。",
+      "insertText": "SQLite_设置忙等待(0, 0)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_设置忙等待",
+        "runtimeName": "SQLite_设置忙等待",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "毫秒",
+            "type": "int",
+            "description": "范围 0～600000；0 表示不等待。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_设置忙等待(0, 1)"
+    },
+    {
+      "index": 15,
+      "name": "SQLite_设置外键",
+      "signature": "SQLite_设置外键(连接, 启用)",
+      "description": "启用或禁用 SQLite 外键约束；事务内修改会失败。",
+      "insertText": "SQLite_设置外键(0, 假)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "SQLite_设置外键",
+        "runtimeName": "SQLite_设置外键",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "启用",
+            "type": "bool",
+            "description": "真表示执行 PRAGMA foreign_keys=ON。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_设置外键(0, 真)"
+    },
+    {
+      "index": 16,
+      "name": "SQLite_设置同步模式",
+      "signature": "SQLite_设置同步模式(连接, 模式)",
+      "description": "设置 PRAGMA synchronous。",
+      "insertText": "SQLite_设置同步模式(0, 0)",
+      "returnType": "逻辑型",
+      "category": "WAL与持久化",
+      "binding": {
+        "command": "SQLite_设置同步模式",
+        "runtimeName": "SQLite_设置同步模式",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "模式",
+            "type": "int",
+            "description": "0=OFF，1=NORMAL，2=FULL，3=EXTRA。生产默认推荐 1 或 2。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_设置同步模式(0, 1)"
+    },
+    {
+      "index": 17,
+      "name": "SQLite_启用WAL",
+      "signature": "SQLite_启用WAL(连接)",
+      "description": "把文件数据库切换为 WAL 日志模式并确认 SQLite 返回 wal。",
+      "insertText": "SQLite_启用WAL(0)",
+      "returnType": "逻辑型",
+      "category": "WAL与持久化",
+      "binding": {
+        "command": "SQLite_启用WAL",
+        "runtimeName": "SQLite_启用WAL",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_启用WAL(0)"
+    },
+    {
+      "index": 18,
+      "name": "SQLite_设置WAL自动检查点",
+      "signature": "SQLite_设置WAL自动检查点(连接, 页数)",
+      "description": "设置 WAL 自动检查点页数。",
+      "insertText": "SQLite_设置WAL自动检查点(0, 0)",
+      "returnType": "逻辑型",
+      "category": "WAL与持久化",
+      "binding": {
+        "command": "SQLite_设置WAL自动检查点",
+        "runtimeName": "SQLite_设置WAL自动检查点",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "页数",
+            "type": "int",
+            "description": "触发自动检查点的 WAL 页数；必须大于 0。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_设置WAL自动检查点(0, 1)"
+    },
+    {
+      "index": 19,
+      "name": "SQLite_WAL检查点",
+      "signature": "SQLite_WAL检查点(连接, 模式)",
+      "description": "执行 WAL 检查点并返回状态：0 成功、1 忙、-1 失败。",
+      "insertText": "SQLite_WAL检查点(0, 0)",
+      "returnType": "整数型",
+      "category": "WAL与持久化",
+      "binding": {
+        "command": "SQLite_WAL检查点",
+        "runtimeName": "SQLite_WAL检查点",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "模式",
+            "type": "int",
+            "description": "0=PASSIVE，1=FULL，2=RESTART，3=TRUNCATE。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_WAL检查点(0, 1)"
+    },
+    {
+      "index": 20,
+      "name": "SQLite_取WAL日志帧数",
+      "signature": "SQLite_取WAL日志帧数()",
+      "description": "返回当前线程最近一次 WAL 检查点报告的日志帧数。",
+      "insertText": "SQLite_取WAL日志帧数()",
+      "returnType": "整数型",
+      "category": "WAL与持久化",
+      "binding": {
+        "command": "SQLite_取WAL日志帧数",
+        "runtimeName": "SQLite_取WAL日志帧数",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取WAL日志帧数()"
+    },
+    {
+      "index": 21,
+      "name": "SQLite_取WAL已检查点帧数",
+      "signature": "SQLite_取WAL已检查点帧数()",
+      "description": "返回当前线程最近一次 WAL 检查点报告的已检查点帧数。",
+      "insertText": "SQLite_取WAL已检查点帧数()",
+      "returnType": "整数型",
+      "category": "WAL与持久化",
+      "binding": {
+        "command": "SQLite_取WAL已检查点帧数",
+        "runtimeName": "SQLite_取WAL已检查点帧数",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取WAL已检查点帧数()"
+    },
+    {
+      "index": 22,
       "name": "SQLite_执行",
       "signature": "SQLite_执行(SQL语句)",
-      "description": "执行无结果 SQL。",
+      "description": "兼容接口：在默认连接执行无结果 SQL。",
       "insertText": "SQLite_执行(\"$1\")",
       "returnType": "逻辑型",
+      "category": "兼容接口",
       "binding": {
         "command": "SQLite_执行",
         "runtimeName": "SQLite_执行",
         "parameters": [
           {
             "name": "SQL语句",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "可包含多条 SQL；不得拼接不可信输入。"
           }
         ],
         "returnType": "bool",
@@ -73,12 +499,41 @@
       "demoInvocation": "SQLite_执行(\"演示参数1\")"
     },
     {
-      "index": 4,
+      "index": 23,
+      "name": "SQLite_执行于",
+      "signature": "SQLite_执行于(连接, SQL语句)",
+      "description": "在指定连接执行一条或多条无结果 SQL。",
+      "insertText": "SQLite_执行于(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "执行",
+      "binding": {
+        "command": "SQLite_执行于",
+        "runtimeName": "SQLite_执行于",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "SQL语句",
+            "type": "wideString",
+            "description": "可包含多条无参数 SQL。处理外部输入时应使用预编译语句。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_执行于(0, \"演示参数2\")"
+    },
+    {
+      "index": 24,
       "name": "SQLite_查询首值",
       "signature": "SQLite_查询首值(SQL语句)",
-      "description": "返回首行首列 UTF-8 文本。",
+      "description": "兼容接口：返回默认连接首行首列的文本表示。NULL、无行或失败均返回空文本，应结合错误码判断。",
       "insertText": "SQLite_查询首值(\"$1\")",
       "returnType": "文本型",
+      "category": "兼容接口",
       "binding": {
         "command": "SQLite_查询首值",
         "runtimeName": "SQLite_查询首值",
@@ -94,12 +549,914 @@
       "demoInvocation": "SQLite_查询首值(\"演示参数1\")"
     },
     {
-      "index": 5,
+      "index": 25,
+      "name": "SQLite_查询首值于",
+      "signature": "SQLite_查询首值于(连接, SQL语句)",
+      "description": "返回指定连接首行首列的文本表示；复杂查询应使用预编译语句。",
+      "insertText": "SQLite_查询首值于(0, \"$2\")",
+      "returnType": "文本型",
+      "category": "执行",
+      "binding": {
+        "command": "SQLite_查询首值于",
+        "runtimeName": "SQLite_查询首值于",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "SQL语句",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_查询首值于(0, \"演示参数2\")"
+    },
+    {
+      "index": 26,
+      "name": "SQLite_准备",
+      "signature": "SQLite_准备(连接, SQL语句)",
+      "description": "创建受管预编译语句，用于参数化执行和逐行读取。",
+      "insertText": "SQLite_准备(0, \"$2\")",
+      "returnType": "SQLite语句",
+      "returnDescription": "成功返回非 0 的 SQLite语句，失败返回 0。",
+      "category": "预编译语句",
+      "binding": {
+        "command": "SQLite_准备",
+        "runtimeName": "SQLite_准备",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "SQL语句",
+            "type": "wideString",
+            "description": "只允许一条 SQL；尾部除空白和分号外存在其它语句时拒绝。"
+          }
+        ],
+        "returnType": "SQLite语句",
+        "encoding": "wide",
+        "example": "SQLite_准备(数据库, \"SELECT id, name FROM users WHERE score >= ?1\")"
+      },
+      "demoInvocation": "SQLite_准备(0, \"演示参数2\")"
+    },
+    {
+      "index": 27,
+      "name": "SQLite_语句是否有效",
+      "signature": "SQLite_语句是否有效(语句)",
+      "description": "检查预编译语句 ID 当前是否仍然有效。",
+      "insertText": "SQLite_语句是否有效(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "SQLite_语句是否有效",
+        "runtimeName": "SQLite_语句是否有效",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_语句是否有效(0)"
+    },
+    {
+      "index": 28,
+      "name": "SQLite_语句步进",
+      "signature": "SQLite_语句步进(语句)",
+      "description": "执行或读取下一行：1=得到一行，0=执行完成，-1=失败。",
+      "insertText": "SQLite_语句步进(0)",
+      "returnType": "整数型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "SQLite_语句步进",
+        "runtimeName": "SQLite_语句步进",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_语句步进(0)"
+    },
+    {
+      "index": 29,
+      "name": "SQLite_语句重置",
+      "signature": "SQLite_语句重置(语句)",
+      "description": "把语句重置到首次步进前，保留现有参数绑定。",
+      "insertText": "SQLite_语句重置(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "SQLite_语句重置",
+        "runtimeName": "SQLite_语句重置",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_语句重置(0)"
+    },
+    {
+      "index": 30,
+      "name": "SQLite_语句清空绑定",
+      "signature": "SQLite_语句清空绑定(语句)",
+      "description": "把语句的全部参数恢复为 NULL。",
+      "insertText": "SQLite_语句清空绑定(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "SQLite_语句清空绑定",
+        "runtimeName": "SQLite_语句清空绑定",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_语句清空绑定(0)"
+    },
+    {
+      "index": 31,
+      "name": "SQLite_语句释放",
+      "signature": "SQLite_语句释放(语句)",
+      "description": "立即释放预编译语句；连接关闭时也会兜底释放。",
+      "insertText": "SQLite_语句释放(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "SQLite_语句释放",
+        "runtimeName": "SQLite_语句释放",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_语句释放(0)"
+    },
+    {
+      "index": 32,
+      "name": "SQLite_语句是否只读",
+      "signature": "SQLite_语句是否只读(语句)",
+      "description": "判断语句是否不会直接修改数据库内容。",
+      "insertText": "SQLite_语句是否只读(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "SQLite_语句是否只读",
+        "runtimeName": "SQLite_语句是否只读",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_语句是否只读(0)"
+    },
+    {
+      "index": 33,
+      "name": "SQLite_语句取参数数量",
+      "signature": "SQLite_语句取参数数量(语句)",
+      "description": "返回 SQL 中参数的最大索引。",
+      "insertText": "SQLite_语句取参数数量(0)",
+      "returnType": "整数型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_语句取参数数量",
+        "runtimeName": "SQLite_语句取参数数量",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_语句取参数数量(0)"
+    },
+    {
+      "index": 34,
+      "name": "SQLite_语句取参数索引",
+      "signature": "SQLite_语句取参数索引(语句, 参数名)",
+      "description": "返回命名参数的 1 起始索引，找不到返回 0。",
+      "insertText": "SQLite_语句取参数索引(0, \"$2\")",
+      "returnType": "整数型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_语句取参数索引",
+        "runtimeName": "SQLite_语句取参数索引",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数名",
+            "type": "wideString",
+            "description": "包含前缀的参数名，例如 :name、@name 或 $name。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_语句取参数索引(0, \"演示参数2\")"
+    },
+    {
+      "index": 35,
+      "name": "SQLite_绑定空值",
+      "signature": "SQLite_绑定空值(语句, 参数索引)",
+      "description": "把参数绑定为 SQL NULL。",
+      "insertText": "SQLite_绑定空值(0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_绑定空值",
+        "runtimeName": "SQLite_绑定空值",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_绑定空值(0, 1)"
+    },
+    {
+      "index": 36,
+      "name": "SQLite_绑定整数",
+      "signature": "SQLite_绑定整数(语句, 参数索引, 数值)",
+      "description": "把参数绑定为 32 位整数。",
+      "insertText": "SQLite_绑定整数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_绑定整数",
+        "runtimeName": "SQLite_绑定整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数值",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_绑定整数(0, 1, 1)"
+    },
+    {
+      "index": 37,
+      "name": "SQLite_绑定长整数",
+      "signature": "SQLite_绑定长整数(语句, 参数索引, 数值)",
+      "description": "把参数绑定为 64 位整数。",
+      "insertText": "SQLite_绑定长整数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_绑定长整数",
+        "runtimeName": "SQLite_绑定长整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数值",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_绑定长整数(0, 1, 1)"
+    },
+    {
+      "index": 38,
+      "name": "SQLite_绑定小数",
+      "signature": "SQLite_绑定小数(语句, 参数索引, 数值)",
+      "description": "把参数绑定为双精度小数。",
+      "insertText": "SQLite_绑定小数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_绑定小数",
+        "runtimeName": "SQLite_绑定小数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数值",
+            "type": "double"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_绑定小数(0, 1, 1.0)"
+    },
+    {
+      "index": 39,
+      "name": "SQLite_绑定文本",
+      "signature": "SQLite_绑定文本(语句, 参数索引, 文本)",
+      "description": "把参数安全绑定为文本。",
+      "insertText": "SQLite_绑定文本(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_绑定文本",
+        "runtimeName": "SQLite_绑定文本",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "按 UTF-8 编码并由 SQLite 复制。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_绑定文本(0, 1, \"演示参数3\")"
+    },
+    {
+      "index": 40,
+      "name": "SQLite_绑定字节集",
+      "signature": "SQLite_绑定字节集(语句, 参数索引, 数据)",
+      "description": "把参数安全绑定为 BLOB。",
+      "insertText": "SQLite_绑定字节集(0, 0, $3)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "SQLite_绑定字节集",
+        "runtimeName": "SQLite_绑定字节集",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "由 SQLite 复制的二进制数据。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_绑定字节集(0, 1, {})"
+    },
+    {
+      "index": 41,
+      "name": "SQLite_取列数量",
+      "signature": "SQLite_取列数量(语句)",
+      "description": "返回结果列数量。",
+      "insertText": "SQLite_取列数量(0)",
+      "returnType": "整数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列数量",
+        "runtimeName": "SQLite_取列数量",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取列数量(0)"
+    },
+    {
+      "index": 42,
+      "name": "SQLite_取列名称",
+      "signature": "SQLite_取列名称(语句, 列索引)",
+      "description": "返回结果列名。",
+      "insertText": "SQLite_取列名称(0, 0)",
+      "returnType": "文本型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列名称",
+        "runtimeName": "SQLite_取列名称",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_取列名称(0, 1)"
+    },
+    {
+      "index": 43,
+      "name": "SQLite_取列类型",
+      "signature": "SQLite_取列类型(语句, 列索引)",
+      "description": "返回当前行存储类型：1=整数，2=小数，3=文本，4=字节集，5=NULL；失败返回 0。",
+      "insertText": "SQLite_取列类型(0, 0)",
+      "returnType": "整数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列类型",
+        "runtimeName": "SQLite_取列类型",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取列类型(0, 1)"
+    },
+    {
+      "index": 44,
+      "name": "SQLite_取列是否为空",
+      "signature": "SQLite_取列是否为空(语句, 列索引)",
+      "description": "判断当前行指定列是否为 SQL NULL。",
+      "insertText": "SQLite_取列是否为空(0, 0)",
+      "returnType": "逻辑型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列是否为空",
+        "runtimeName": "SQLite_取列是否为空",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_取列是否为空(0, 1)"
+    },
+    {
+      "index": 45,
+      "name": "SQLite_取列整数",
+      "signature": "SQLite_取列整数(语句, 列索引)",
+      "description": "按 SQLite 转换规则读取 32 位整数。",
+      "insertText": "SQLite_取列整数(0, 0)",
+      "returnType": "整数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列整数",
+        "runtimeName": "SQLite_取列整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取列整数(0, 1)"
+    },
+    {
+      "index": 46,
+      "name": "SQLite_取列长整数",
+      "signature": "SQLite_取列长整数(语句, 列索引)",
+      "description": "按 SQLite 转换规则读取 64 位整数。",
+      "insertText": "SQLite_取列长整数(0, 0)",
+      "returnType": "长整数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列长整数",
+        "runtimeName": "SQLite_取列长整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "SQLite_取列长整数(0, 1)"
+    },
+    {
+      "index": 47,
+      "name": "SQLite_取列小数",
+      "signature": "SQLite_取列小数(语句, 列索引)",
+      "description": "按 SQLite 转换规则读取双精度小数。",
+      "insertText": "SQLite_取列小数(0, 0)",
+      "returnType": "双精度小数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列小数",
+        "runtimeName": "SQLite_取列小数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "SQLite_取列小数(0, 1)"
+    },
+    {
+      "index": 48,
+      "name": "SQLite_取列文本",
+      "signature": "SQLite_取列文本(语句, 列索引)",
+      "description": "读取 UTF-8 文本；SQL NULL 返回空文本，应用应先检查列类型。",
+      "insertText": "SQLite_取列文本(0, 0)",
+      "returnType": "文本型",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列文本",
+        "runtimeName": "SQLite_取列文本",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_取列文本(0, 1)"
+    },
+    {
+      "index": 49,
+      "name": "SQLite_取列字节集",
+      "signature": "SQLite_取列字节集(语句, 列索引)",
+      "description": "读取 BLOB 的独立副本；SQL NULL 返回空字节集。",
+      "insertText": "SQLite_取列字节集(0, 0)",
+      "returnType": "字节集",
+      "category": "结果读取",
+      "binding": {
+        "command": "SQLite_取列字节集",
+        "runtimeName": "SQLite_取列字节集",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "SQLite语句",
+            "description": "由 SQLite_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "SQLite_取列字节集(0, 1)"
+    },
+    {
+      "index": 50,
+      "name": "SQLite_开始事务",
+      "signature": "SQLite_开始事务(连接, 模式)",
+      "description": "开始显式事务；批量写入推荐 IMMEDIATE。",
+      "insertText": "SQLite_开始事务(0, 0)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "SQLite_开始事务",
+        "runtimeName": "SQLite_开始事务",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "模式",
+            "type": "int",
+            "description": "0=DEFERRED，1=IMMEDIATE，2=EXCLUSIVE。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_开始事务(0, 1)"
+    },
+    {
+      "index": 51,
+      "name": "SQLite_提交事务",
+      "signature": "SQLite_提交事务(连接)",
+      "description": "提交当前事务。失败时事务可能仍保持活动，应读取错误并决定回滚。",
+      "insertText": "SQLite_提交事务(0)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "SQLite_提交事务",
+        "runtimeName": "SQLite_提交事务",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_提交事务(0)"
+    },
+    {
+      "index": 52,
+      "name": "SQLite_回滚事务",
+      "signature": "SQLite_回滚事务(连接)",
+      "description": "回滚当前事务。",
+      "insertText": "SQLite_回滚事务(0)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "SQLite_回滚事务",
+        "runtimeName": "SQLite_回滚事务",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_回滚事务(0)"
+    },
+    {
+      "index": 53,
+      "name": "SQLite_创建保存点",
+      "signature": "SQLite_创建保存点(连接, 名称)",
+      "description": "创建可嵌套保存点。",
+      "insertText": "SQLite_创建保存点(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "SQLite_创建保存点",
+        "runtimeName": "SQLite_创建保存点",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "保存点名称会作为 SQLite 标识符安全引用。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_创建保存点(0, \"演示参数2\")"
+    },
+    {
+      "index": 54,
+      "name": "SQLite_释放保存点",
+      "signature": "SQLite_释放保存点(连接, 名称)",
+      "description": "释放并提交指定保存点。",
+      "insertText": "SQLite_释放保存点(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "SQLite_释放保存点",
+        "runtimeName": "SQLite_释放保存点",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_释放保存点(0, \"演示参数2\")"
+    },
+    {
+      "index": 55,
+      "name": "SQLite_回滚到保存点",
+      "signature": "SQLite_回滚到保存点(连接, 名称)",
+      "description": "回滚到指定保存点但不自动释放它。",
+      "insertText": "SQLite_回滚到保存点(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "SQLite_回滚到保存点",
+        "runtimeName": "SQLite_回滚到保存点",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_回滚到保存点(0, \"演示参数2\")"
+    },
+    {
+      "index": 56,
+      "name": "SQLite_备份到文件",
+      "signature": "SQLite_备份到文件(连接, 目标路径, 忙等待毫秒)",
+      "description": "使用 SQLite Online Backup API 生成一致性备份，不直接复制活动数据库文件。",
+      "insertText": "SQLite_备份到文件(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "category": "维护",
+      "binding": {
+        "command": "SQLite_备份到文件",
+        "runtimeName": "SQLite_备份到文件",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "目标路径",
+            "type": "wideString",
+            "description": "目标 SQLite 文件路径。"
+          },
+          {
+            "name": "忙等待毫秒",
+            "type": "int",
+            "description": "备份遇到 BUSY/LOCKED 时的总等待上限，范围 0～600000。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "SQLite_备份到文件(数据库, \"backup/app.db\", 10000)"
+      },
+      "demoInvocation": "SQLite_备份到文件(0, \"module-demo-temp.txt\", 1)"
+    },
+    {
+      "index": 57,
+      "name": "SQLite_完整性检查",
+      "signature": "SQLite_完整性检查(连接, 快速检查)",
+      "description": "执行数据库完整性检查并返回首条结果；正常结果为 ok。",
+      "insertText": "SQLite_完整性检查(0, 假)",
+      "returnType": "文本型",
+      "category": "维护",
+      "binding": {
+        "command": "SQLite_完整性检查",
+        "runtimeName": "SQLite_完整性检查",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          },
+          {
+            "name": "快速检查",
+            "type": "bool",
+            "description": "真执行 quick_check，假执行完整 integrity_check。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_完整性检查(0, 真)"
+    },
+    {
+      "index": 58,
+      "name": "SQLite_中断",
+      "signature": "SQLite_中断(连接)",
+      "description": "请求中断该连接当前正在执行的长查询；SQLite 会在安全点返回 SQLITE_INTERRUPT。",
+      "insertText": "SQLite_中断(0)",
+      "returnType": "逻辑型",
+      "category": "维护",
+      "binding": {
+        "command": "SQLite_中断",
+        "runtimeName": "SQLite_中断",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "SQLite_中断(0)"
+    },
+    {
+      "index": 59,
       "name": "SQLite_取更改行数",
       "signature": "SQLite_取更改行数()",
-      "description": "返回最近语句更改的行数。",
+      "description": "兼容接口：返回默认连接最近语句直接修改的行数。",
       "insertText": "SQLite_取更改行数()",
       "returnType": "整数型",
+      "category": "兼容接口",
       "binding": {
         "command": "SQLite_取更改行数",
         "runtimeName": "SQLite_取更改行数",
@@ -109,12 +1466,79 @@
       "demoInvocation": "SQLite_取更改行数()"
     },
     {
-      "index": 6,
+      "index": 60,
+      "name": "SQLite_取连接更改行数",
+      "signature": "SQLite_取连接更改行数(连接)",
+      "description": "返回指定连接最近语句直接修改的 64 位行数。",
+      "insertText": "SQLite_取连接更改行数(0)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "binding": {
+        "command": "SQLite_取连接更改行数",
+        "runtimeName": "SQLite_取连接更改行数",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "SQLite_取连接更改行数(0)"
+    },
+    {
+      "index": 61,
+      "name": "SQLite_取累计更改行数",
+      "signature": "SQLite_取累计更改行数(连接)",
+      "description": "返回连接自打开以来直接修改的累计 64 位行数；SQLite 不会因事务回滚减少该计数。",
+      "insertText": "SQLite_取累计更改行数(0)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "binding": {
+        "command": "SQLite_取累计更改行数",
+        "runtimeName": "SQLite_取累计更改行数",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "SQLite_取累计更改行数(0)"
+    },
+    {
+      "index": 62,
+      "name": "SQLite_取最后插入行号",
+      "signature": "SQLite_取最后插入行号(连接)",
+      "description": "返回连接最近一次成功 INSERT 的 rowid；事务回滚不会自动恢复该值。",
+      "insertText": "SQLite_取最后插入行号(0)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "binding": {
+        "command": "SQLite_取最后插入行号",
+        "runtimeName": "SQLite_取最后插入行号",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "SQLite连接",
+            "description": "由 SQLite_打开连接 或 SQLite_打开内存库 返回的受管连接。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "SQLite_取最后插入行号(0)"
+    },
+    {
+      "index": 63,
       "name": "SQLite_取错误",
       "signature": "SQLite_取错误()",
-      "description": "返回最近 SQLite 或运行库加载错误。",
+      "description": "返回当前线程最近一次 SQLite 模块错误，包含操作、主错误码和扩展错误码。",
       "insertText": "SQLite_取错误()",
       "returnType": "文本型",
+      "category": "错误诊断",
       "binding": {
         "command": "SQLite_取错误",
         "runtimeName": "SQLite_取错误",
@@ -125,19 +1549,74 @@
       "demoInvocation": "SQLite_取错误()"
     },
     {
-      "index": 7,
-      "name": "SQLite_关闭",
-      "signature": "SQLite_关闭()",
-      "description": "关闭数据库并卸载动态运行库。",
-      "insertText": "SQLite_关闭()",
-      "returnType": "空",
+      "index": 64,
+      "name": "SQLite_取错误码",
+      "signature": "SQLite_取错误码()",
+      "description": "返回当前线程最近一次 SQLite 主错误码。",
+      "insertText": "SQLite_取错误码()",
+      "returnType": "整数型",
+      "category": "错误诊断",
       "binding": {
-        "command": "SQLite_关闭",
-        "runtimeName": "SQLite_关闭",
+        "command": "SQLite_取错误码",
+        "runtimeName": "SQLite_取错误码",
         "parameters": [],
-        "returnType": "void"
+        "returnType": "int"
       },
-      "demoInvocation": "SQLite_关闭()"
+      "demoInvocation": "SQLite_取错误码()"
+    },
+    {
+      "index": 65,
+      "name": "SQLite_取扩展错误码",
+      "signature": "SQLite_取扩展错误码()",
+      "description": "返回当前线程最近一次 SQLite 扩展错误码。",
+      "insertText": "SQLite_取扩展错误码()",
+      "returnType": "整数型",
+      "category": "错误诊断",
+      "binding": {
+        "command": "SQLite_取扩展错误码",
+        "runtimeName": "SQLite_取扩展错误码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取扩展错误码()"
+    },
+    {
+      "index": 66,
+      "name": "SQLite_取系统错误码",
+      "signature": "SQLite_取系统错误码()",
+      "description": "返回当前线程最近一次 SQLite 关联的操作系统错误码；运行库不支持时为 0。",
+      "insertText": "SQLite_取系统错误码()",
+      "returnType": "整数型",
+      "category": "错误诊断",
+      "binding": {
+        "command": "SQLite_取系统错误码",
+        "runtimeName": "SQLite_取系统错误码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取系统错误码()"
+    },
+    {
+      "index": 67,
+      "name": "SQLite_错误码到文本",
+      "signature": "SQLite_错误码到文本(错误码)",
+      "description": "把 SQLite 错误码转换为运行库提供的英文稳定说明，便于日志和支持。",
+      "insertText": "SQLite_错误码到文本(0)",
+      "returnType": "文本型",
+      "category": "错误诊断",
+      "binding": {
+        "command": "SQLite_错误码到文本",
+        "runtimeName": "SQLite_错误码到文本",
+        "parameters": [
+          {
+            "name": "错误码",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_错误码到文本(1)"
     }
   ]
 }

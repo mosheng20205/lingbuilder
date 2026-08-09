@@ -1,6 +1,7 @@
 import { InstalledModule } from '../modules/types';
 import { generateCryptoRuntime } from './cryptoRuntime';
 import { OPENCV_RUNTIME } from './opencvRuntime';
+import { SQLITE_RUNTIME } from './sqliteRuntime';
 
 const CSV_RUNTIME = String.raw`
 static std::wstring LB_CsvEscape(const std::wstring& field) { if (field.find_first_of(L",\"\r\n") == std::wstring::npos) return field; std::wstring escaped = field; LB_ReplaceAll(escaped, L"\"", L"\"\""); return L"\"" + escaped + L"\""; }
@@ -36,24 +37,6 @@ const wchar_t* ODBC_查询首值(const wchar_t* sql) { if (g_lbOdbcConnection ==
 bool ODBC_设置自动提交(bool enabled) { return g_lbOdbcConnection != SQL_NULL_HDBC && SQLSetConnectAttr(g_lbOdbcConnection, SQL_ATTR_AUTOCOMMIT, reinterpret_cast<SQLPOINTER>(static_cast<UINT_PTR>(enabled ? SQL_AUTOCOMMIT_ON : SQL_AUTOCOMMIT_OFF)), 0) == SQL_SUCCESS; }
 bool ODBC_提交() { return g_lbOdbcConnection != SQL_NULL_HDBC && SQLEndTran(SQL_HANDLE_DBC, g_lbOdbcConnection, SQL_COMMIT) == SQL_SUCCESS; }
 bool ODBC_回滚() { return g_lbOdbcConnection != SQL_NULL_HDBC && SQLEndTran(SQL_HANDLE_DBC, g_lbOdbcConnection, SQL_ROLLBACK) == SQL_SUCCESS; }
-`;
-
-const SQLITE_RUNTIME = String.raw`
-struct sqlite3; struct sqlite3_stmt;
-static HMODULE g_lbSqliteModule = nullptr; static sqlite3* g_lbSqliteDatabase = nullptr; static std::wstring g_lbSqliteError;
-using LB_sqlite3_open = int(*)(const char*, sqlite3**); using LB_sqlite3_close = int(*)(sqlite3*); using LB_sqlite3_exec = int(*)(sqlite3*, const char*, void*, void*, char**); using LB_sqlite3_free = void(*)(void*); using LB_sqlite3_errmsg = const char*(*)(sqlite3*); using LB_sqlite3_changes = int(*)(sqlite3*); using LB_sqlite3_prepare_v2 = int(*)(sqlite3*, const char*, int, sqlite3_stmt**, const char**); using LB_sqlite3_step = int(*)(sqlite3_stmt*); using LB_sqlite3_column_text = const unsigned char*(*)(sqlite3_stmt*, int); using LB_sqlite3_finalize = int(*)(sqlite3_stmt*);
-static LB_sqlite3_open lb_sqlite3_open = nullptr; static LB_sqlite3_close lb_sqlite3_close = nullptr; static LB_sqlite3_exec lb_sqlite3_exec = nullptr; static LB_sqlite3_free lb_sqlite3_free = nullptr; static LB_sqlite3_errmsg lb_sqlite3_errmsg = nullptr; static LB_sqlite3_changes lb_sqlite3_changes = nullptr; static LB_sqlite3_prepare_v2 lb_sqlite3_prepare_v2 = nullptr; static LB_sqlite3_step lb_sqlite3_step = nullptr; static LB_sqlite3_column_text lb_sqlite3_column_text = nullptr; static LB_sqlite3_finalize lb_sqlite3_finalize = nullptr;
-void SQLite_关闭() { if (g_lbSqliteDatabase && lb_sqlite3_close) lb_sqlite3_close(g_lbSqliteDatabase); g_lbSqliteDatabase = nullptr; if (g_lbSqliteModule) FreeLibrary(g_lbSqliteModule); g_lbSqliteModule = nullptr; }
-const wchar_t* SQLite_取错误() { return LB_ReturnText(g_lbSqliteError); }
-bool SQLite_加载运行库(const wchar_t* path) { SQLite_关闭(); g_lbSqliteError.clear(); g_lbSqliteModule = LoadLibraryW(path && path[0] ? path : L"sqlite3.dll"); if (!g_lbSqliteModule) { g_lbSqliteError = L"无法加载 sqlite3.dll，请安装 SQLite 模块运行库或传入 DLL 路径。"; return false; } bool valid = true;
-#define LB_SQLITE_LOAD(name) lb_##name = reinterpret_cast<LB_##name>(GetProcAddress(g_lbSqliteModule, #name)); valid = valid && lb_##name
-    LB_SQLITE_LOAD(sqlite3_open); LB_SQLITE_LOAD(sqlite3_close); LB_SQLITE_LOAD(sqlite3_exec); LB_SQLITE_LOAD(sqlite3_free); LB_SQLITE_LOAD(sqlite3_errmsg); LB_SQLITE_LOAD(sqlite3_changes); LB_SQLITE_LOAD(sqlite3_prepare_v2); LB_SQLITE_LOAD(sqlite3_step); LB_SQLITE_LOAD(sqlite3_column_text); LB_SQLITE_LOAD(sqlite3_finalize);
-#undef LB_SQLITE_LOAD
-    if (!valid) { g_lbSqliteError = L"sqlite3.dll 缺少必要导出函数。"; SQLite_关闭(); return false; } return true; }
-bool SQLite_打开(const wchar_t* path) { if (!g_lbSqliteModule && !SQLite_加载运行库(L"")) return false; if (g_lbSqliteDatabase) { lb_sqlite3_close(g_lbSqliteDatabase); g_lbSqliteDatabase = nullptr; } const std::string utf8Path = LB_WideToUtf8(path); if (lb_sqlite3_open(utf8Path.c_str(), &g_lbSqliteDatabase) != 0) { g_lbSqliteError = g_lbSqliteDatabase ? LB_Utf8ToWide(lb_sqlite3_errmsg(g_lbSqliteDatabase)) : L"SQLite 数据库打开失败。"; return false; } return true; }
-bool SQLite_执行(const wchar_t* sql) { if (!g_lbSqliteDatabase) { g_lbSqliteError = L"SQLite 数据库尚未打开。"; return false; } const std::string query = LB_WideToUtf8(sql); char* error = nullptr; int result = lb_sqlite3_exec(g_lbSqliteDatabase, query.c_str(), nullptr, nullptr, &error); if (result != 0) { g_lbSqliteError = error ? LB_Utf8ToWide(error) : LB_Utf8ToWide(lb_sqlite3_errmsg(g_lbSqliteDatabase)); if (error) lb_sqlite3_free(error); return false; } return true; }
-const wchar_t* SQLite_查询首值(const wchar_t* sql) { if (!g_lbSqliteDatabase) return LB_ReturnText(L""); const std::string query = LB_WideToUtf8(sql); sqlite3_stmt* statement = nullptr; if (lb_sqlite3_prepare_v2(g_lbSqliteDatabase, query.c_str(), -1, &statement, nullptr) != 0) { g_lbSqliteError = LB_Utf8ToWide(lb_sqlite3_errmsg(g_lbSqliteDatabase)); return LB_ReturnText(L""); } std::wstring value; if (lb_sqlite3_step(statement) == 100) { const unsigned char* text = lb_sqlite3_column_text(statement, 0); if (text) value = LB_Utf8ToWide(reinterpret_cast<const char*>(text)); } lb_sqlite3_finalize(statement); return LB_ReturnText(std::move(value)); }
-int SQLite_取更改行数() { return g_lbSqliteDatabase && lb_sqlite3_changes ? lb_sqlite3_changes(g_lbSqliteDatabase) : 0; }
 `;
 
 const IMAGE_SUPPORT = String.raw`

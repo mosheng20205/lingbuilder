@@ -11,7 +11,9 @@ import { NEW_EMOJI_MODULE_ID } from './newEmojiDesignerAdapter';
 export const WIN32_UI_BACKEND_ID = 'win32';
 export const NEW_EMOJI_UI_BACKEND_ID = 'new-emoji';
 const WIN32_BASIC_MODULE_ID = 'lingbuilder.win32.basic';
+const WIN32_COMMON_CONTROLS_MODULE_ID = 'lingbuilder.win32.common-controls';
 const FBRO_BROWSER_MODULE_ID = 'lingbuilder.fbro.browser';
+const NEW_EMOJI_FBRO_SHELL_MODULE_ID = 'lingbuilder.new_emoji.fbro-shell';
 const HTTP_SERVER_MODULE_ID = 'lingbuilder.http.server';
 const WEBSOCKET_CLIENT_MODULE_ID = 'lingbuilder.websocket.client';
 const WEBSOCKET_SERVER_MODULE_ID = 'lingbuilder.websocket.server';
@@ -73,9 +75,30 @@ export const NEW_EMOJI_WIN32_BASIC_COMMANDS = new Set([
   '控件_取选择项',
   '控件_添加项目',
   '控件_清空项目',
+  '窗口_取消关闭',
+  '窗口_取事件宽度',
+  '窗口_取事件高度',
+  '窗口_取事件横坐标',
+  '窗口_取事件纵坐标',
   '窗口_取是否激活',
   '窗口_取是否可见',
-  '窗口_取当前状态'
+  '窗口_取当前状态',
+  '窗口_取事件键码',
+  '窗口_取事件字符',
+  '窗口_取Ctrl键状态',
+  '窗口_取Shift键状态',
+  '窗口_取Alt键状态',
+  '窗口_标记按键已处理',
+  '窗口_取事件DPI',
+  '窗口_取拖入文件数量',
+  '窗口_取拖入文件'
+]);
+
+export const NEW_EMOJI_WIN32_MENU_COMMANDS = new Set([
+  '上下文菜单_显示',
+  '弹出菜单_显示',
+  '弹出菜单_在坐标显示',
+  '菜单_取最后项目'
 ]);
 
 export const WIN32_UI_BACKEND_COMMAND_CONTRACT: NativeUiBackendCommandContract = {
@@ -92,8 +115,10 @@ export const NEW_EMOJI_UI_BACKEND_COMMAND_CONTRACT: NativeUiBackendCommandContra
   supportsCommand: ({ module, commandName }) => {
     if (module.manifest.id === NEW_EMOJI_MODULE_ID) return true;
     if (module.manifest.id === WIN32_BASIC_MODULE_ID) return NEW_EMOJI_WIN32_BASIC_COMMANDS.has(commandName);
+    if (module.manifest.id === WIN32_COMMON_CONTROLS_MODULE_ID) return NEW_EMOJI_WIN32_MENU_COMMANDS.has(commandName);
     // FBro 在 new_emoji 后端使用独立 HWND 子宿主，生成模板提供完整 C ABI 命令适配。
     if (module.manifest.id === FBRO_BROWSER_MODULE_ID) return true;
+    if (module.manifest.id === NEW_EMOJI_FBRO_SHELL_MODULE_ID) return true;
     // HTTP 服务端复用同一工作线程运行时，并通过 new_emoji UI 线程的消息窗口派发请求处理器。
     if (module.manifest.id === HTTP_SERVER_MODULE_ID) return true;
     // WebSocket 服务端复用同一 reactor，并通过 new_emoji UI 线程的消息窗口派发处理器。

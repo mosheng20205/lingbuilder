@@ -18,7 +18,7 @@ endif()
 
 add_library(LingBuilderCefBridge SHARED LingBuilderCefBridge.cpp)
 target_compile_features(LingBuilderCefBridge PRIVATE cxx_std_20)
-target_compile_options(LingBuilderCefBridge PRIVATE /utf-8)
+target_compile_options(LingBuilderCefBridge PRIVATE /utf-8 /bigobj)
 target_compile_definitions(LingBuilderCefBridge PRIVATE LINGBUILDER_CEF3_BRIDGE_EXPORTS UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN NDEBUG)
 target_include_directories(LingBuilderCefBridge PRIVATE "${CEF_SDK_ROOT}")
 target_link_libraries(LingBuilderCefBridge PRIVATE "${CEF_LIB}" "${CEF_WRAPPER_LIB}" user32.lib)
@@ -33,7 +33,7 @@ add_custom_command(TARGET LingBuilderCefBridge POST_BUILD
 
 add_executable(LingBuilderCefBridgeTests LingBuilderCefBridgeTests.cpp)
 target_compile_features(LingBuilderCefBridgeTests PRIVATE cxx_std_17)
-target_compile_options(LingBuilderCefBridgeTests PRIVATE /utf-8)
+target_compile_options(LingBuilderCefBridgeTests PRIVATE /utf-8 /UNDEBUG)
 target_compile_definitions(LingBuilderCefBridgeTests PRIVATE UNICODE _UNICODE NOMINMAX)
-target_link_libraries(LingBuilderCefBridgeTests PRIVATE LingBuilderCefBridge)
+target_link_libraries(LingBuilderCefBridgeTests PRIVATE LingBuilderCefBridge ws2_32.lib)
 set_property(TARGET LingBuilderCefBridgeTests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")

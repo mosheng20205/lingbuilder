@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.win32.common-controls",
+    "lingbuilder.fbro.browser",
+    "lingbuilder.fbro.events",
+    "lingbuilder.fbro.session",
+    "lingbuilder.fbro.transfer",
+    "lingbuilder.fbro.objects"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.win32.common-controls": "1.0.0",
+    "lingbuilder.fbro.browser": "2.1.0",
+    "lingbuilder.fbro.events": "2.1.0",
+    "lingbuilder.fbro.session": "2.1.0",
+    "lingbuilder.fbro.transfer": "2.1.0",
+    "lingbuilder.fbro.objects": "2.1.0"
+  }
+}

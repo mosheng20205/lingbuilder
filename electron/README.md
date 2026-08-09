@@ -1,5 +1,79 @@
 # LingBuilder Electron
 
+> 2026-08-09：CEF3 Textfield 颜色兼容组新增 7 项覆盖。CEF 150 的 `CEF_API_REMOVED(15000)` 已从 C++ wrapper 移除默认文本、选择文本、选择背景与占位文本颜色虚函数，因此 Bridge 不调用 C API 中的 removed 空槽：文本颜色和当前选择文本颜色通过仍受支持的 `CefTextfield::ApplyTextColor` 真实应用到 UI 线程对象，四类兼容颜色同时保存在 `managedViewHandle` sidecar 中供 direct/V4 稳定读回；选择背景和占位颜色明确属于 CEF 150 兼容状态，不伪造原生视觉效果。V4 严格限制无符号 32 位颜色，原生测试覆盖 setter/getter、类型/范围、释放失效和真实 Textfield。当前公开覆盖为 `1266/1384（91.47%）`，`planned=118`、`needsReview=118`。
+
+> 2026-08-09：CEF3 Custom Scheme / SchemeHandlerFactory 相邻组新增 5 项真实覆盖：`cef_app_t.on_register_custom_schemes`、`cef_scheme_registrar_t.add_custom_scheme`、全局与 RequestContext 的 `register_scheme_handler_factory`，以及 `cef_scheme_handler_factory_t.create`。自定义 Scheme 必须在每个进程调用 `ExecuteSubProcess` 前声明，`BridgeApp::OnRegisterCustomSchemes` 会复制冻结配置并真实调用 registrar；名称与 7 个正式 option 位严格校验。新增 `SCHEME_HANDLER_FACTORY` typed handle 仅保留受管 ResourceHandler 配置，CEF IO 线程每次 `Create` 都生成独立处理器实例，不暴露 CEF 指针，释放配置句柄不会撤销 CEF 已持有的工厂。全局和独立 RequestContext 注册均支持 factory=0 的官方注销语义并保留 CEF 原始 bool 结果。原生测试覆盖 direct/V4 五个官方哈希、错误目标/类型/范围、句柄释放，以及 `lingbuilder://` 与 `lingbuilderv4://` 两次真实导航和 Frame 源码回读。当前公开覆盖为 `1259/1384（90.97%）`，`planned=125`、`needsReview=125`。
+
+> 2026-08-09：CEF3 DOM 组新增 42 项真实覆盖，包含 `cef_domdocument_t` 全部 14 项、`cef_domnode_t` 全部 26 项、`cef_domvisitor_t.visit` 与 `cef_frame_t.visit_dom`。`VisitDOM` 只在渲染进程执行，Bridge 在 visitor 回调栈内递归复制节点、关系、属性、选择区与几何字段，通过 CEF 结构化进程消息送回并注册为 `DOM_DOCUMENT` / `DOM_NODE` typed snapshot handle；不保留或暴露任何 DOM 指针。`set_value` 与 `set_element_attribute` 返回受管任务，按节点路径重新进入渲染进程调用真实 CEF 写方法，浏览器关闭会失败化未完成任务，已取得的纯快照仍可读。属性集合与 V4 边界使用受管 Dictionary，字符串统一 UTF-16 两阶段读取。原生测试覆盖 direct/V4 全部 42 个官方签名哈希和真实写入回读；三项生成、Bridge、三项生成检查、覆盖测试、lint 和 build 均通过。当前公开覆盖为 `1254/1384（90.61%）`，`planned=130`、`needsReview=130`；complete 门禁仅按预期报告剩余 130 项。
+
+> 2026-08-09：CEF3 RenderProcessHandler 与 ResourceBundleHandler 组新增 7 项真实覆盖。`BridgeApp` 现在实际提供 `CefLoadHandler` 和 `CefResourceBundleHandler`；焦点 DOM 节点与未捕获 V8 异常只在渲染线程回调栈内读取，复制为受控字段后经进程消息送回浏览器订阅，WebKit 初始化状态支持按浏览器安全重放。资源字符串与二进制资源只能在初始化前配置，managedBuffer 会复制到 Bridge 自有冻结存储，CEF 初始化后拒绝修改，任何 ABI 都不返回资源地址。direct/V4 原生测试覆盖真实 ResourceBundle 读取、焦点变化、未捕获异常和 WebKit 初始化。当前公开覆盖为 `1212/1384（87.57%）`，`planned=172`、`needsReview=172`。
+
+> 2026-08-09：CEF3 控件委托与 MenuButton 组新增 8 项真实覆盖：TextfieldDelegate 2 项、ButtonDelegate 2 项、MenuButtonDelegate 1 项，以及 MenuButton 创建、显示、触发 3 项。三类委托均由受管 `VIEW_DELEGATE` typed handle 注册并实际传入 CEF 控件创建；回调只交付临时可 retain 的受管 View subject 和复制字段。MenuButton 菜单严格限制在当前 UI 线程、当前按钮的同步 pressed 回调栈内显示，pressed lock 仅在栈内持有，不跨 ABI。原生测试在真实顶层 Window 中完成 direct/V4 的 TriggerMenu、delegate 回调和 ShowMenu 链路。当前公开覆盖为 `1205/1384（87.07%）`，`planned=179`、`needsReview=179`。
+
+> 2026-08-09：CEF3 BrowserViewDelegate 组新增 9 项真实覆盖：`cef_browser_view_delegate_t` 的浏览器创建/销毁、Popup 创建、手势命令、运行时样式、Chrome 工具栏类型和三项画中画策略。Bridge 新增受管 `VIEW_DELEGATE` 配置并把真实 `BridgeBrowserViewDelegate` 传给 `CefBrowserView::CreateBrowserView`；事件只交付回调期受管 BrowserView/Browser subject 和结构化字段，不暴露 CEF 指针。delegate 的最终 CEF 引用固定在 UI 线程释放，直接 C ABI、9 个官方签名哈希 V4、严格参数校验及真实 BrowserView 创建/销毁原生测试均已接通。当前公开覆盖为 `1197/1384（86.49%）`，`planned=187`、`needsReview=187`。
+
+> 2026-08-09：CEF3 PrintHandler 相邻组新增 11 项真实覆盖：`cef_client_t.get_download_handler/get_print_handler`、`cef_print_handler_t` 全部 6 项、`cef_print_dialog_callback_t` 2 项和 `cef_print_job_callback_t.cont`。`BridgeClient` 实现真实打印处理器 override；打印设置只以回调期 typed handle 暴露并在返回后强制失效，打印对话框/任务回调使用可在事件内 retain 的一次性 typed handle，完成后拒绝重复调用，最终 CEF 引用只在 UI 线程释放。打印事件与 PDF 尺寸响应使用受控结构化 JSON 和 CEF 解析器，不暴露打印对象指针。当前公开覆盖为 `1188/1384（85.84%）`，`planned=196`、`needsReview=196`。
+
+> FBro 多实例浏览器管理器当前的插件状态分为“已注册”和“当前页面已生效”两层。Host 先创建独立 RequestContext，立即调用 VIP `LoadExtension`，再创建浏览器，运行时再通过页面 DOM 探针确认注入；仅路径匹配不能证明插件已经生效。FBro Alloy 嵌入模式不提供 Chromium 原生 `chrome://extensions/` 页面，管理器会在当前浏览器显示受管插件诊断页并保留该逻辑地址。
+
+首个匹配的豆包页面可能早于扩展注册完成；收到 `ExtensionState=插件已加载` 后，管理器只对当前页面执行一次受控刷新，再开始 DOM 探针重试，避免初始导航错过 Manifest V3 content script。
+
+> 2026-08-09：`lingbuilder.fbro.browser@2.4.0` 为普通 Win32 多实例浏览器管理器加入真实下载进度。Bridge 的兼容事件 `OnBeforeDownload` 默认继续下载，`OnDownloadUpdated` 只读上报 `percent/receivedBytes/totalBytes/currentSpeed/suggestedName/fullPath` 和完成/取消状态；独立 Host 协议与管理器运行时按实例隔离保存。项目界面新增只读下载详情、原生 ProgressBar 和“打开目录”，`smoke-win32-fbro-multi-browser-manager.ts --single-instance --download` 已验证 100%、`33 / 33` 字节、完成状态、文件名、目录及真实落盘内容。
+
+> 2026-08-08：新增最终普通 Win32 项目 `win32-fbro-multi-browser-manager`。目标界面仅启用 `lingbuilder.win32.basic` 和 `lingbuilder.win32.common-controls`，以隐藏表头的 TabControl 页面承载一实例一页面 HWND，并以 ListBox 作为唯一导航；每个稳定 ID 启动独立 `LingBuilderFbroHost.exe`、浏览器 HWND 和 LocalAppData Profile。`src/services/windowDesigner/fbroBrowserManagerRuntime.ts` 提供原子持久化、实例生命周期、真实 CookieManager 和安全删除边界，`native/fbro-bridge/LingBuilderFbroProcessRuntime.hpp` 提供版本化 Host 协议。
+
+> 插件由模块导出链部署到 `<exe所在目录>\doubao-downloader`，Host 在 CEF 命令行阶段加入 `load-extension`。FBro VIP 授权延迟到 `OnContextInitialized`，使用后立即清零；20 秒确认窗口内按部署路径计算扩展 ID，并通过 VIP `GetExtensionPath` 回读真实加载路径，只有路径一致才报告“插件已加载”。`OnBeforePopup` 直接让当前 Frame 加载目标 URL 并返回取消 popup。地址导航不设置 HTTP(S) 白名单，`chrome://extensions/`、`about:`、`file://` 等 Chromium 地址原样传入 Host，只拒绝空值和换行控制字符。`scripts/smoke-win32-fbro-multi-browser-manager.ts` 覆盖单/三实例两轮恢复、不同 PID/HWND/Profile、唯一可见页面、插件真实加载及回环 `window.open` 不新增 Host。
+
+> `scripts/export-win32-fbro-multi-browser-manager-package.ts` 生成 `exports/独立浏览器管理器.lcpppkg`，复制到新临时目录后再次 inspect/import，并从导入结果二次生成 C++；脚本阻断 `new_emoji`、浏览器用户数据、凭据和开发机绝对路径。`LcppSourcePackageService` 对 Windows 大型 SDK 临时目录清理采用有界 `EBUSY` 重试，避免成功导入被防病毒短暂文件占用覆盖。
+
+> 2026-08-08：`new-emoji-fbro-multi-browser-manager` 已完成多浏览器实例工作台闭环。`src/services/browserWorkbench/` 提供实例、原子持久化、Cookie、扩展、CommandService/MenuService 边界；RichList 右键菜单由同一命令契约生成并调用真实原生链路。每个实例具有随机稳定 ID、独立 Host、RequestContext、Profile、伴随 HWND 和浏览器 HWND；实例配置写入 LocalAppData，分享包只保存相对结构。`doubao-downloader` 在 RequestContext 创建后、浏览器创建前从真实 exe 同级目录加载，VS post-build 保留 `runtime/doubao-downloader/*` 的相对目录。VIP lifecycle 只有 `phase: extension` 才更新插件状态，其它 `contextInitialized/created` 生命周期不再误报插件失败。
+
+> `.lcpppkg` 分享门禁会排除 profiles、cache、localStorage、IndexedDB、Cookie JSON、凭据和构建缓存。多浏览器导出脚本会校验插件 Manifest V3、模块文档、结构配置、文件哈希及开发机绝对路径，并在临时目录重新导入；IDE 现有“项目：一键导出 LCPP 源码包”是用户入口，浏览器工作台另登记 `browserWorkbench.package.exportShare` 命令语义。
+
+> 2026-08-08 CEF3 navigation/SSL group: `cef_navigation_entry_t.get_sslstatus`, `cef_sslinfo_t.get_cert_status`, and `cef_sslinfo_t.get_x509_certificate` now have typed C ABI handles, official V4 dispatch, native tests, and generated references. Existing `cef_sslstatus_t` methods now use `managedSslStatusHandle`/`managedCertificateHandle`. Coverage is `982/1384` (70.95%), with `402` planned; complete coverage remains intentionally blocked until all public APIs are implemented.
+
+> 2026-08-08：新增独立项目 `new-emoji-fbro-richlist`（显示名“new_emoji RichList 动态多浏览器”）。项目以 `lingbuilder.new_emoji.fbro-shell@1.2.0` 为每个 RichList 稳定 ID 动态创建独立 FBro Host、伴随 HWND、Profile、Cookie 和生命周期；关闭可重开，删除默认保留缓存，重排不改变会话绑定。`smoke:new-emoji-fbro-richlist` 覆盖 4 个不同 PID/HWND/Profile、切换显隐、关闭/重开、删除、四种排序、Cookie 目标读回与跨会话隔离，并确认测试结束后无 Host 残留。
+
+> 2026-08-08：FBro Cookie 设置与落盘任务已改为等待实际 `SetCookie` / `FlushStore` 完成回调，独立 Host 在目标 Cookie 精确读回且其它会话快照不变后才报告成功；任何 Cookie 内容不会写入调试日志。模块参考通过 `npm run module:fbro-docs` 生成，并由 `npm run module:fbro-docs:check` 校验。
+
+> 2026-08-08：修复 new_emoji FBro 多浏览器管理器首次启动卡死。根因是主窗口在 `Created` 事件中同步等待 Host 显示跨进程子窗口，而 Host 又等待父窗口线程处理窗口消息。`LingFbroProcessController` 现以无响应通知发送 `show`、`hide`、`resize`；独立嵌入模式由主进程伴随父 `HWND` 控制显隐。`smoke:new-emoji-fbro-multi-browser-manager` 已增加主窗口 `Responding` 门禁，并验证 8 个 Host、真实网页像素、正确矩形和退出回收。
+
+> 2026-08-08：`lingbuilder.database.sqlite@2.0.0` 已升级为 67 条生产接口，使用受管 `SQLite连接` / `SQLite语句` 覆盖多连接、参数化 SQL、强类型字段、事务/保存点、WAL、Online Backup 和完整错误码，原 7 条默认连接命令保持兼容。项目需提供与 Win32/x64 目标一致、固定来源和 SHA-256 的官方 `sqlite3.dll`；`npm run smoke:sqlite-native` 已完成双架构编译与 x64 真实运行验证。正式说明位于 `docs/modules/sqlite/README.md`。
+
+> 2026-08-08：`lingbuilder.new_emoji.fbro-shell@1.2.0` 新增动态独立 FBro 实例管理。多浏览器管理器不再预建 6 个控件；`浏览器外壳_新建独立实例` 按稳定 ID 创建独立 Host/WebSocket/Profile/HWND，RichList 与隐藏 Tabs 由运行时同步。`npm run smoke:new-emoji-fbro-multi-browser-manager` 已真实验证 8 个不同 Host PID 和退出回收。
+
+> 2026-08-07（2026-08-08 已动态化）：new_emoji 多浏览器管理器接入真正的 FBro 内嵌网页，独立 Host 非阻塞启动并在 `Created` 事件后恢复显隐。原先 6 个预置 Host 的实现已由动态实例集合替代；当前 smoke 基线为 8 个不同 Host PID、8 个 Chromium 子窗口树、唯一可见实例和真实网页像素。
+
+> 2026-08-07（2026-08-08 已动态化）：`new-emoji-fbro-multi-browser-manager` 使用 RichList 与隐藏表头 Tabs 映射浏览器工作区。代理、User-Agent、指纹 JSON、视口尺寸、JavaScript、Cookie 与截图置于独立配置工作区页；运行时动态增加标签和 Host，不再预建 6 个页面。
+
+> 2026-08-07：修复 new_emoji + FBro 独立进程项目中 `LingBuilderFbroHost.exe` 因位于 `fbro-host/` 而找不到主目录 `new_emoji.dll` 的问题。Host 启动环境现在前置主 EXE 目录作为 DLL 搜索回退，同时仍优先使用 Host 目录内隔离的 CEF 135；`npm run smoke:new-emoji-fbro-multi-browser-manager` 会真实编译、拉起 6 个 Host 并验证退出回收。
+
+> 2026-08-08：CEF3 `3.0.0-alpha.3` 当前登记 979 `implemented`、8 `internal`、185 `notApplicable`、405 `planned`，即公开接口完成 `979 / 1384（70.74%）`。Request/Response、RequestContext 身份/共享/站点设置/内容设置/Chrome 配色、PrintSettings、Browser/Frame、BrowserHost 新增 21 个安全入口及图片下载/PDF 打印的 4 个主方法与回调接口、BrowserView 全部 6 个接口、基础 View、Panel/Layout/BoxLayout、ScrollView、LabelButton/Button 全部 18 个当前安全入口、Window 42 项安全入口、OverlayController 全部 19 个接口、CEF API 15000 当前存在的 25 个 Textfield 接口、Display 全部 16 个接口、DragData 全部 28 个接口、XmlReader 全部 30 个接口、ZipReader 全部 13 个接口以及 ResourceBundle 全部 4 个接口已进入 C ABI、固定哈希 V4 和原生测试闭环；MenuButton 和 `show_as_browser_modal_dialog` 在真实受管委托链路落地前继续保持 planned，Textfield 的 7 个 `removed=15000` 旧颜色接口也不以缓存或替代行为伪装实现。
+>
+> Views 对象统一使用受管 `View`、`Window`、`ViewDelegate`、`Layout`、`Display` 和 `DisplayCollection` typed handle，并调度到 CEF UI 线程。BrowserView 仍表现为受管 View，不暴露 Client、Delegate、CEF 指针或原生地址；创建句柄内部持有 Bridge Browser，挂载后才能取得可空 Browser 别名，反查和 Chrome 工具栏也保留 CEF 的可空结果。V4 BrowserSettings 只接受含 `javascript`、`images`、`webgl` 逻辑字段的受管 Dictionary，未知字段和错误类型直接拒绝。Display 全量枚举返回受管集合，使用计数与按索引取项 C ABI 安全访问，不把 64 位句柄编码为 JSON/Double；DIP/像素点和矩形使用带版本的定长结构，V4 由 Bridge 生成结构化 JSON，显示器 ID、缩放和旋转通过独立输出值保留 CEF 语义。布局、ScrollView 和 Textfield 继续执行父子关系、子类型、范围、命令、样式、布尔值和释放失效校验；Textfield `read_only` 保留为用户输入策略，程序化写入不被错误阻断。
+>
+> DragData 使用独立受管 typed handle，按 CEF 契约可在任意调用线程同步访问；所有 UTF-16 属性使用两阶段缓冲，文件名/路径返回受管 List，文件内容只接受可空的受管 StreamWriter，图像返回受管 Image，热点返回带版本点结构。Bridge 在所有写操作前检查 `IsReadOnly()`，释放后统一失效，不暴露 `CefRefPtr`、CEF 指针、原始地址或无所有权文件缓冲。
+>
+> XmlReader 只接受受管 StreamReader，并由专用 typed handle 记录创建线程。全部读取、游标移动、关闭和最终 HandleRelease 必须回到创建线程；显式关闭后其它方法返回对象已关闭，未显式关闭时在创建线程最终释放会自动关闭。节点、属性和 XML 文本均走 UTF-16 两阶段缓冲，深度、行号、节点类型及属性数量通过独立输出值保留合法整数语义。
+>
+> ZipReader 同样由创建线程拥有并只接受受管 StreamReader。文件名使用 UTF-16 两阶段读取，修改时间保留 CEF 的 Windows epoch 微秒值；文件内容只返回 managedBuffer，C ABI 与 V4 另行保留 `ReadFile` 的原始有符号返回值，使 EOF `0` 和负解析错误不会被误判为 Bridge 错误。
+
+> ResourceBundle 使用独立 `managedResourceBundleHandle` 包装 CEF 全局资源包；本地化字符串按 UTF-16 两阶段缓冲读取，资源二进制在 DLL 内完整复制为 managedBuffer。未知资源 ID 保留 CEF 的合法空结果，scale 参数仅接受 CEF 150 的正式枚举范围，不跨 ABI 暴露 `CefBinaryValue`。
+
+> RequestContext 的身份比较、全局/共享上下文、站点设置、内容设置、Chrome 配色以及上下文/全局 Scheme 工厂清理已使用 `managedRequestContextHandle` 接入。站点设置的 `CefValue` 输入先复制，输出注册为受管值句柄；UI 限定读写统一同步调度到 CEF UI 线程，内容类型、设置值、配色变体与 32 位颜色均严格校验。
+
+> Window 与 OverlayController 使用 `managedWindowHandle` / `managedOverlayHandle` 管理 `CefRefPtr` 生命周期，所有操作同步调度到 CEF UI 线程。`get_window_handle` 只验证平台窗口存在并返回新的受管 Window 别名，绝不返回原始 `HWND`；拖拽区域的 C ABI 使用带版本结构，V4 只接受逐字段校验的受管 List/Dictionary。窗口标题使用 UTF-16 两阶段读取，图像、菜单、显示器和内容 View 均通过现有 typed handle 类型校验，Overlay `Destroy` 后保留句柄但明确进入 CEF 失效状态，最终由 `HandleRelease` 释放。
+
+> LabelButton/Button 使用现有 `managedViewHandle`，创建时由 Bridge 提供受控内部 `CefButtonDelegate` 以满足 CEF 的非空委托前置条件；按钮状态、颜色、对齐、尺寸和可选图像均在 UI 线程调用前校验，文本读取使用 UTF-16 两阶段缓冲。内部委托不代表公开 ButtonDelegate 回调已实现，MenuButton 与委托回调仍保持 planned，直到受管任务事件生命周期接入。
+>
+> BrowserHost 的 Browser/Client/平台窗口查询只返回受管 typed handle；平台窗口返回保留的 Browser 别名，不暴露 `HWND`。DevTools 原始字节只接受 managedBuffer，IME 下划线的 V4 表示为严格字段化的受管 List/Dictionary，拖放只接受 managed DragData。Chrome 命令、OSR 帧率/重绘/外部帧、IME、拖放、可访问性和自动尺寸全部同步调度到 CEF UI 线程；文件对话框、图片下载和 PDF 打印均通过受管任务完成。下载结果 JSON 只包含 URL、HTTP 状态和是否有图像，真实 `CefImage` 只能经 `LB_CEF3_TaskTakeImageResult` 一次性转成 managed Image handle；PDF 只允许写入 `LB_CEF3_SetAllowedFileRoot` 配置的根目录。Client 随所属浏览器关闭失效并由 `HandleRelease` 管理。
+>
+> Frame 句柄保留所属浏览器并在浏览器关闭时定向失效，空 Frame/View/Delegate 查询保留 `OK + 0`；标识符、名称和所有文本通过受管集合或 UTF-16 两阶段缓冲返回。头映射、页范围和几何结构使用受控表示，拒绝非法元素、范围、类型和已释放句柄；负数 CEF 错误码及合法负枚举不会被误判为 Bridge 失败。Bridge 不暴露 `CefRefPtr`、CEF 指针、原始内存地址或未受控对象。
+
+> 2026-08-07：`lingbuilder.fbro.browser@2.2.0` 已补齐一浏览器一独立 Host 进程能力。设计器 `processMode` 支持进程内、独立进程嵌入和独立进程窗口；独立模式通过随机回环 WebSocket 与一次性 256 位 Token 控制导航、JS、缩放、静音、代理、指纹、显隐、尺寸、截图、关闭、PID/CDP 查询和受限重启。主进程用 Job Object 回收 Host，崩溃按 1/2/4 秒退避且十分钟最多三次。项目全部 FBro 控件独立时可与 CEF3 共存，F5 和 Visual Studio 导出只把 CEF 135 复制到 `fbro-host/`，主目录保留 CEF3 的 CEF 150；进程内 FBro 仍会在生成前阻断该组合。
+
+> 0.3.0 发布基线：new_emoji FBro 浏览器外壳模板与一键回读验证的 `.lcpppkg` 导出进入正式版本。该模板固定 Windows/MSVC x64，要求 `lingbuilder.new_emoji.ui@2.0.0`，并以真实 FBro 非分层伴随宿主渲染网页。
+
 > 0.2.9 发布基线：微信多开管理模块、第三方模块随 `.lcpppkg` 离线分发、Windows EXE 图标资源和无 IDE AI Bridge 多文件工作流进入正式安装包。`lingbuilder.wxhook.manager@1.1.1` 最低要求 LingBuilder `0.2.9`。
 
 > 0.2.8 发布基线：HTTP 客户端 2.0、WebSocket 客户端 2.0 和 WebSocket 服务端 2.0 最低要求 LingBuilder `0.2.8`；EdgeView、ListView 和 OpenCV 继续沿用已发布的 `0.2.7` 契约。
@@ -38,7 +112,7 @@
 
 > 2026-08-01：模块公开类型支持 manifest v2 向后兼容的 `opaque`、`record`、`array`。旧类型仍按不透明类型处理；公开记录声明字段、嵌套和字段数组，公开数组声明元素类型。模块清单校验、模块公开信息和搜索、AI 上下文、Monaco/新手补全与诊断、项目数据类型嵌套及普通 Win32/new_emoji 生成共用 `modulePublicTypeService`；记录生成 C++ `struct`，数组映射为 `std::vector<T>`。该映射只属于生成工程内部值语义，预编译 DLL 仍必须使用稳定 POD、缓冲区或受管句柄 ABI，不能直接跨边界传递 STL/C++ 对象。
 
-> 2026-07-31：CEF3 `3.0.0-alpha.2` 的覆盖 v2 当前登记 1577 项能力：265 `implemented`、8 `internal`、185 `notApplicable`、1119 `planned`。应用只包含/链接 `LingBuilderCefBridge`。objects 的 183 条命令与 session 的 19 条命令已清零各自 planned，真实覆盖 Value/Dictionary/List/Binary、Image、NavigationEntry、完整 MenuModel、X509Certificate/Principal/SSLStatus、导航历史、独立 RequestContext、Preference、Cookie、缓存和认证/连接清理。原生 x64 测试验证真实 HTTPS 证书、菜单快捷键/颜色/字体、导航历史 JSON、对象深复制与双会话隔离。Bridge 当前真实接通 27 个上游事件签名，仍有 86 个事件签名和其它网络/传输、自动化、OSR、Views、平台能力待实现，不能把 alpha 描述成 CEF 全功能完成。
+> 2026-08-06：CEF3 `3.0.0-alpha.3` 的覆盖 v2 当前登记 1577 项能力：505 `implemented`、8 `internal`、185 `notApplicable`、879 `planned`。应用只包含/链接 `LingBuilderCefBridge`，保留 v3 导出并通过 v4 固定操作 ID 接入新能力。objects、session 和 CommandLine 已清零各自 planned；浏览器状态、窗口渲染模式、网页全屏状态、关闭准备与优雅关闭、渲染进程响应状态、运行时样式、当前与默认缩放级别读写、缩放命令可用性查询与实际执行、窗口移动/调整大小通知、屏幕信息变化通知、捕获丢失输入通知、输入法组合取消与提交、自定义拼写词典写入、当前拼写错误替换、系统拖放源结束通知、拖放目标离开通知、OSR 宿主隐藏状态通知、键鼠输入、焦点、查找、JSDialog、ContextMenu、音频、权限、文件对话框和跟踪回调已通过安全 Bridge 接入。ContextMenu 会在真实右键流程中复制 20 项参数字段，并通过结构化命令 ID/事件标志完成或取消 Run callback，不暴露临时 CEF 对象。用户事件目录为 92 项名称，对应官方事件域 113 / 113 个签名已实现；其它网络/传输、自动化、OSR、Views、平台能力仍待实现，不能把 alpha 描述成 CEF 全功能完成。
 
 > 2026-08-01：FBro VIP 指纹子模块保持官方覆盖 188/188、planned=0。`lingbuilder.fbro.vip` 将 188 项官方能力逐项公开为 179 条单项安全命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力，并保留 10 条批量与通用高级入口。普通 Win32 与 New_Emoji 共用同一 Bridge；文件路径限制在生成程序目录，二进制只接受受管缓冲，授权信息脱敏且不回传 Key。全 FBro 普通 API 目录仍为 397 implemented、678 个非事件高级签名 planned、3 internal notApplicable、1 advanced notApplicable，因此不能把 VIP 或事件完成描述成 1079 项全功能完成。
 
@@ -56,7 +130,7 @@
 
 > 2026-07-28：FBro VIP Key 改为由每位 IDE 用户自行配置。“设置 → 浏览器凭据”提供保存、替换、清除与状态显示，使用 Electron `safeStorage` 写入当前 Windows 用户的加密凭据目录；renderer 只能读取“是否配置/来源”，不能取回现有明文。Key 仅在 F5、原生运行和新启动的 AI Bridge 子进程中通过临时环境注入，不进入项目、设计器模型、源码、日志、AI 上下文或设置同步包。`LINGBUILDER_FBRO_VIP_KEY` 继续作为无人值守和脱离 IDE 运行导出工程时的兼容后备。可运行 `npm run test:fbro-invalid-vip` 自动编译并启动真实 MSVC x64 程序；测试用假 Key 只存在于子进程环境，必须看到“FBro VIP 授权码校验失败”且不得输出 Key。退出使用 C++ SDK 的 `FBroShutdown(FALSE)` 并等待浏览器关闭回调，不能强制结束测试进程。
 
-> 2026-07-27：新增内置 `lingbuilder.fbro.browser`。启用后工具箱“媒体”分类显示 `FBro指纹浏览器 (FBroBrowser)`，可像 CEF3 控件一样拖入可视化窗口并绑定事件；每实例生成独立宿主 `HWND` 与 profile。用户工程只链接 `LingBuilderFbroBridge` C ABI，模块固定 MSVC x64 并与 CEF3/其它 `libcef.dll` 互斥。开发机运行 `npm run module:fbro-sdk -- --install` 可从官方 FBro 目录生成 `lingbuilder.fbro.sdk`；首次 F5 按 SHA-256 清单物化 CEF 135.0.21 的 78 项运行时（389,770,453 字节），后续只更新新增、缺失或损坏文件，VS 导出携带完整运行时和同一增量脚本。发布命令通过 `verify:fbro-release` / `verify:fbro-installer` 校验源 SDK、解包目录和安装包。正式随 IDE 分发前仍须确认官方重新打包许可。
+> 2026-07-27（2026-08-07 更新）：新增内置 `lingbuilder.fbro.browser`。启用后工具箱“媒体”分类显示 `FBro指纹浏览器 (FBroBrowser)`，可像 CEF3 控件一样拖入可视化窗口并绑定事件；每实例生成独立宿主 `HWND` 与 profile。用户工程只链接 `LingBuilderFbroBridge` C ABI，模块固定 MSVC x64；进程内 FBro 与 CEF3/其它版本 `libcef.dll` 互斥，全部 FBro 控件使用独立 Host 时按 `fbro-host/` 隔离规则允许与 CEF3 共存。开发机运行 `npm run module:fbro-sdk -- --install` 可从官方 FBro 目录生成 `lingbuilder.fbro.sdk`；首次 F5 按 SHA-256 清单物化 CEF 135.0.21 的 78 项运行时（389,770,453 字节），后续只更新新增、缺失或损坏文件，VS 导出携带完整运行时和同一增量脚本。发布命令通过 `verify:fbro-release` / `verify:fbro-installer` 校验源 SDK、解包目录和安装包。正式随 IDE 分发前仍须确认官方重新打包许可。
 
 > 2026-07-27：new_emoji 模块完成 92 控件属性/事件全量运行时封装。生成清单现含 698/698 属性与 902/902 事件映射；C++ 生成器应用结构化 Setter、表格复合配置、按钮经过/按下颜色和聚合鼠标/焦点/值变化回调。Upload 使用 `FilesSelected` / `UploadAction`。修改上游控件目录或导出后必须运行 `npm run module:new-emoji -- --install` 并保持模块完整性测试通过。
 
@@ -194,9 +268,11 @@ npm run package:win
 - 高级模块未启用时，工具箱显示依赖状态但不能新增高级控件；项目已有高级控件不得被删除或静默替换。
 - 内置 `lingbuilder.edgeview` 当前版本 `1.2.0`、最低生成器 `0.2.7`。窗口、分组框或选项卡内每个控件都有独立 HWND、Environment、Controller、WebView、Profile 和默认 `.edgeview/<controlId>` UDF；属性面板包含稳定运行期属性和 v2 创建期选项，并明确提示修改创建期属性后重建。`designer.edgeview.previewControl` 继续使用独立原生窗口，不向 React 画布嵌入 HWND。
 - EdgeView 的 71 项普通 HWND 事件和 2 项 CompositionController 排除事件由 `src/services/modules/edgeViewBrowserEvents.ts` 统一维护；面向用户的完整目录、字段说明和 `.lcpp` 示例在模块详情文档 `docs/modules/edgeview/README.md`。更新事件目录后执行 `npm run module:edgeview-docs`，可用 `npm run module:edgeview-docs:check` 检查文档是否同步。
+- FBro 面向用户的完整事件与接口参考位于模块详情文档 `docs/modules/fbro/README.md`：包含 89 项公开可绑定事件的字段、响应 schema、默认动作、超时和线程信息，另列出 85 项 Bridge 托管/内部分类以及模块族 461 条用户接口。核心模块 2.4 提供进程内、独立进程嵌入和独立进程窗口三种宿主模式；独立模式的 FBro CEF 135 固定放在 `fbro-host/`，只有进程内模式与 CEF3 冲突。更新 FBro 事件目录或 manifest 后执行 `npm run module:fbro-docs`，并用 `npm run module:fbro-docs:check` 检查文档漂移。
 - EdgeView 共提供 271 条中文命令：36 条兼容命令和 235 条目录化安全 API。v2 新增受管 Frame/Worker/Extension/Notification/Certificate/SharedBuffer/FileSystemHandle、完整 Options、资源响应正文、PDF 流、另存为和证书决策等。新处理器统一写 `&处理器名`；任务使用五态、`shared_ptr + generation` 和迟到回调拒绝，Loader 保持到进程退出。
 - `edgeViewApiCoverage.generated.json` 固定 SDK `1.0.3537.50` / Runtime 141 与 SDK `1.0.4078.44` / Runtime 150。新基线 995 个方法的结果为 public 330、internal 565、excluded 100、pending 0。运行 `npm run module:edgeview-coverage:complete` 检查双 SDK 哈希、目录、符号、测试和漂移；`npm run smoke:edgeview-native` 执行 Win32/x64 MSVC 原生冒烟。CompositionController、PointerInfo、AutomationProvider、实验 API、Host Object、裸 COM/指针继续排除。
-- 内置 `lingbuilder.cef3.browser` 模块按 v2 `contributes.designerControls` 贡献 `CEF3浏览器 (CefBrowser)` 设计器控件：项目启用后工具箱自动新增该控件，可在任意窗口添加多个实例，属性面板可设置打开地址、缓存目录、User-Agent、JavaScript/图片/WebGL 开关与代理；22 条 `CEF3_*` 中文命令和 92 项 CEF 150 浏览器回调同时进入补全、binding、设计器事件面板和确定性 C++ 运行时。事件通过 `WM_LINGBUILDER_CEF_EVENT` 回到所属窗口线程，同步决策支持默认/允许/拒绝/已处理，高频音频和进度回调限流。原生构建从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk`、已安装 SDK 载体模块 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk` 或 `C:\cef3-sdk` 受控发现 CEF3 SDK，支持 CEF 官方二进制发行包布局（`include/` + `Release/` + `Resources/`，已验证 150.0.14 x64）；推荐安装离线 SDK 模块包 `cef3-sdk-x64.lbmod`。CEF3 原生依赖计划固定要求 C++20 与 `/MD`，F5、AI Bridge 和生成的 Visual Studio 四组配置会共同应用，普通项目仍使用 C++17。CEF3 同 exe 全部控件共享缓存，需要会话隔离时使用 `lingbuilder.edgeview`。
+- 内置 `lingbuilder.cef3.browser` 模块按 v2 `contributes.designerControls` 贡献 `CEF3浏览器 (CefBrowser)` 设计器控件：项目启用后工具箱自动新增该控件，可在任意窗口添加多个实例，属性面板可设置打开地址、缓存目录、User-Agent、JavaScript/图片/WebGL 开关与代理；60 条 `CEF3_*` 中文命令和 92 项用户事件名称（对应 113 / 113 个官方事件签名）同时进入补全、binding、设计器事件面板和确定性 C++ 运行时，其中 `CEF3_是否有效`、`CEF3_是否弹出窗口`、`CEF3_是否同一实例`、`CEF3_是否有文档`、`CEF3_是否使用浏览器视图`、`CEF3_取打开者浏览器ID`、`CEF3_取运行时样式`、`CEF3_取缩放级别`、`CEF3_取默认缩放级别`、`CEF3_设置缩放级别`、`CEF3_是否可缩放`、`CEF3_执行缩放`、`CEF3_尝试关闭`、`CEF3_通知窗口移动或调整大小`、`CEF3_通知屏幕信息已改变`、`CEF3_发送捕获丢失事件`、`CEF3_取消输入法组合文本`、`CEF3_完成输入法组合文本`、`CEF3_添加单词到词典`、`CEF3_替换拼写错误`、`CEF3_通知系统拖放结束`、`CEF3_通知拖放目标离开`、`CEF3_通知隐藏状态`、`CEF3_退出网页全屏` 和 `CEF3_强制刷新` 分别对应 `CefBrowser` / `CefBrowserHost` 的安全状态、生命周期、CefBrowserView 承载查询、弹窗来源 ID 查询、网页全屏查询与退出、宿主窗口/屏幕通知、OSR 输入与 IME 状态、拼写词典与当前错误替换、系统拖放两端清理、OSR 宿主隐藏绘制状态、运行时/缩放状态、缩放动作和刷新接口，`CEF3_页内查找` / `CEF3_停止页内查找` 对应 FindHandler 闭环，`CEF3_是否静音` 对应 UI 线程安全的 `CefBrowserHost::IsAudioMuted` 查询。事件通过 `WM_LINGBUILDER_CEF_EVENT` 回到所属窗口线程，同步决策支持默认/允许/拒绝/已处理，高频音频和进度回调限流。原生构建从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk`、已安装 SDK 载体模块 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk` 或 `C:\cef3-sdk` 受控发现 CEF3 SDK，支持 CEF 官方二进制发行包布局（`include/` + `Release/` + `Resources/`，已验证 150.0.14 x64）；推荐安装离线 SDK 模块包 `cef3-sdk-x64.lbmod`。CEF3 原生依赖计划固定要求 C++20 与 `/MD`，F5、AI Bridge 和生成的 Visual Studio 四组配置会共同应用，普通项目仍使用 C++17。每个 CEF3 控件使用独立 `CefRequestContext` 和缓存子目录进行会话隔离。
+- CEF3 面向用户的完整事件与接口参考位于模块详情文档 `docs/modules/cef3/README.md`，统一列出 92 项事件名称、113 条官方事件签名和模块族中文接口，并明确提示目录中的 `planned` 能力不可视为已实现。传输模块另登记 `docs/modules/cef3/stream-handlers.md`，说明受管读写处理器、流句柄的生命周期和 64 MiB 内存边界。更新 CEF3 事件目录或 manifest 后执行 `npm run module:cef3-docs`，并用 `npm run module:cef3-docs:check` 检查文档漂移。
 - CEF3 `OnBeforePopup` 返回允许时可创建独立原生 popup 浏览器。`CEF3_打开原生UI浏览器` 使用 `CEF_RUNTIME_STYLE_CHROME`、空父句柄与 `WS_EX_APPWINDOW` 主动创建拥有独立根 HWND、原生地址栏和完整浏览器界面的桌面顶层窗口，不复用 LingBuilder 主窗口句柄，也不依赖可能被弹窗策略拦截的网页脚本。生成运行时分别保存内嵌主浏览器与其 popup 集合，popup 创建不会覆盖主控件句柄，popup 的加载/地址/标题事件不会污染主窗口工具栏；关闭控件或主窗口时会一并关闭全部 popup。`src/cef3-2` 提供“内嵌打开 / 谷歌原生UI”双入口示例。
 - CEF3 双形态宿主是固定契约：内嵌浏览器只能 `SetAsChild(控件宿主HWND, CefRect)`；谷歌原生 UI 必须 `SetAsPopup(nullptr, ...)`，并保持 `parent_window=nullptr`、`WS_EX_APPWINDOW`、非 `WS_CHILD` 和 `CEF_RUNTIME_STYLE_CHROME`。曾验证 `SetAsPopup(hwnd_, ...)` 会让 Chrome 原生界面覆盖进 LingBuilder 主窗口。2026-07-28 实机回归已确认修复后主窗口与 Chrome UI 窗口同时存在，均可独立移动和缩放。
 - 当前随附 CEF 150 SDK 仅支持 x64。新项目启用 CEF3 时会自动把工作区从默认 Win32 切换到 x64，并在 F5/解决方案构建前再次校正；模块面板与任务日志会显示该自动变更。
@@ -473,11 +549,30 @@ Visual C++ 项目使用固定的 `<sourceRoot>/项目数据类型.lcpp` 保存�
 
 # new_emoji 与收费模块
 
-`npm run module:new-emoji -- --install` 会读取上游 LingBuilder Designer Catalog，校验 92 个组件和 1566 个导出后生成/安装 v2 `.lbmod`。窗口后端在窗口属性顶部选择；已有控件的窗口不能直接切换后端。模块属性和事件由目录动态产生，底层 `NE_EU_*` 默认隐藏。
+`npm run module:new-emoji -- --install` 会读取上游 LingBuilder Designer Catalog，校验 93 个组件和 1618 个导出后生成/安装 v2 `.lbmod`。如果提交的目录仍是旧的 92 控件版本，脚本会在系统临时目录运行上游 Catalog Exporter 后继续生成，不会修改上游仓库。窗口后端在窗口属性顶部选择；已有控件的窗口不能直接切换后端。模块属性和事件由目录动态产生，底层 `NE_EU_*` 默认隐藏。
 
-目录完整性与运行时完整性分别验收：当前 92 个 `EU_Create*` 创建入口已经数据驱动接入，703 个专属属性中 219 个创建期属性可编辑；其余属性因缺少正式 setter 参数映射而锁定。目录中的 74 个事件也暂不显示为可绑定事件，直到上游导出 callback setter、签名和事件上下文映射。混合后端多窗口生成仍列为后续闭环项。
+目录完整性与运行时完整性分别验收：当前 93 个 `EU_Create*` 创建入口已经数据驱动接入，模块清单包含 718 个属性和 918 个事件映射。新增 `RichList / 富列表` 可在工具箱中直接创建，模板、项目、选择、样式、滚动和虚拟数量映射到真实 DLL ABI；专用画布预览读取项目 JSON。选择变化返回选中 key JSON，项目点击、双击、按钮、徽标、倒计时结束和右键菜单返回原生事件 JSON，并按其中的 `event` 字段分流。混合后端多窗口生成仍列为后续闭环项。
+
+当前 `lingbuilder.new_emoji.ui@2.0.0` 最低要求 LingBuilder `0.3.0`，生成清单包含 3784 条 contribution/binding。上游函数指针统一映射为带精确签名的 `handler`，处理器引用写作 `&处理器名`；Tabs、Menu、Omnibox 等集合使用 `recordList` schema，跨控件关系使用稳定 `controlRef`，生成器按先创建全部控件、后解析关系的顺序调用 setter。运行 `npm run module:new-emoji:check` 可比较临时生成、module-build、已安装模块和 `.lbmod` 的 manifest、文档及全部文件哈希。
+
+## new_emoji FBro 浏览器外壳
+
+内置 `lingbuilder.new_emoji.fbro-shell@1.0.0` 仅支持 Windows/MSVC x64，依赖 new_emoji UI、FBro Browser 与 FBro SDK。项目模板 ID 为 `new-emoji-fbro-browser-shell`，默认 1180 x 760、`new-emoji` 后端、`browserShell` 窗口框架预设和 x64 构建；该预设固定生成 new_emoji `0x3F` 窗口 flags。
+
+模板包含 Tabs、Omnibox、导航/窗口按钮、Menu、Popover 和 `BrowserViewport`。`BrowserViewport` 只提供设计器布局边界和加载/错误占位，真实网页由每标签独立 FBro 句柄与 `WS_EX_TOOLWINDOW + WS_POPUP` 非分层伴随宿主渲染；宿主按占位区屏幕坐标同步，并在弹层打开时受控隐藏。浏览器根 `Container` 显式关闭流式布局以保留绝对坐标。Tabs 只占用实际标签总宽度，独立“+”按钮紧随末尾，剩余顶部空白区可拖动窗口；新增、关闭和重排后异步刷新命中区。新标签默认打开 `https://www.baidu.com`。模板运行时支持 `Ctrl+L/T/W/R` 与 `Alt+Left/Right`，并在 `SizeChanged` / `DpiChanged` 中统一重排 new_emoji 控件、浏览器 HWND、弹层锚点和命中区域。
+
+模块详情与完整示例位于 `docs/modules/fbro-shell/`。基础浏览不要求 VIP Key；缺少 MSVC x64、FBro SDK、Bridge、CEF 运行时或哈希异常会在生成前阻断。原生验收命令：
+
+```bash
+npm run smoke:new-emoji-fbro-tabs
+npm run smoke:new-emoji-fbro-browser-shell
+```
+
+执行 `npm run demo:new-emoji-fbro-shell:export` 会导出并回读验证 `../exports/new_emoji-FBro浏览器外壳完整复刻.lcpppkg`；该源码包携带项目源码、设计器模型、x64 配置和所需离线模块资产，可由 LingBuilder `0.3.0` 或更高版本直接导入。
 
 收费模块需要桌面主进程登录云端并取得签名 Permit。本地服务在安装、启用、F5、原生预览和导出前复验；受管 AI Bridge 通过子进程环境只接收 Permit/公钥状态，不接收云端访问令牌。退出登录会清空 Permit 并停止仍持有旧授权的 Bridge。开发环境未配置支付商户网关时只能使用管理员手工授权，不能伪造支付成功。
+
+桌面主进程启动时会等待本地 renderer `/api/health`，再重试恢复 `safeStorage` 中的 Permit；签名正确但已过期时显示“模块离线授权已过期，请联网重新校验”，不会误报成未购买。云端账号会话能够恢复时会自动通过正式 Permit 接口换发并更新缓存。开发机的 Docker Compose 只提供 PostgreSQL、Redis 和 Mailpit；要刷新收费模块授权，还必须从仓库根目录运行 `npm run dev`，或至少运行 `npm run dev -w @lingbuilder/cloud-api` 启动 `http://127.0.0.1:17900`。
 
 # 可扩展设计器右键菜单与剪贴板
 
@@ -596,3 +691,77 @@ Tabs 页面绑定必须在所有页面子控件创建完成后执行；生成器
 Tabs 的 `headerVisible=false` 必须在创建 Tabs 后通过 `EU_SetTabsHeaderVisible(hwnd, tabs_id, 0)` 应用；缺省或 `true` 使用 `1`。表头隐藏后，设计器内容偏移和原生页面矩形都从 0 开始，不能继续预留标题栏高度。
 
 修改上述生成链路后，建议运行 `node --import tsx --test tests/windowDesigner.test.ts`，再用 `new-emoji-92-tabs-validation` 的 x64 Release exe 实际切换 17–24 页确认布局。
+
+## Win32 与 new_emoji 代码创建控件
+
+Win32 基础 12 项、高级 20 项和 new_emoji 93 项公开可视控件现在共用类型化运行时控件契约。设计器属性面板提供可空“标记文本”和“标记整数”；文本 trim 后为空表示未设置，整数 `0` 与负数有效，非空标记在当前窗口、具体控件类型和标记类别内唯一。
+
+`.lcpp` 可把创建或查找结果保存到具体控件类型的局部变量：
+
+```lcpp
+局部 按钮 动态按钮 = 控件_创建按钮(当前窗口, 20, 20, 120, 36, "确定", "确认", 1002)
+局部 按钮 查找按钮 = 通过标记文本获取按钮("确认")
+如果 (控件_是否有效(查找按钮))
+    控件_设置启用(查找按钮, 真)
+    按钮_绑定被单击(查找按钮, &动态按钮被单击)
+如果结束
+```
+
+控件变量只允许局部、方法参数和返回值；禁止常量、数组、程序集成员、项目全局和工作线程。动态控件只存在于运行时，不写回设计器。Win32 每实例保留独立主 `HWND`；new_emoji 使用窗口级稳定元素 ID。模块详情文档位于 `docs/modules/win32-basic/`、`docs/modules/win32-common-controls/`，new_emoji 说明随 `.lbmod` README 分发。
+
+生成和原生验证：
+
+```bash
+npm run module:new-emoji
+npm run module:control-ref-audit
+npm run smoke:runtime-controls-native
+```
+
+`server.ts` 的普通 AI 生成和多文件 `.lcpp` 重写入口都继续通过 `attachLingBuilderAiRulebook` 注入根目录 `LingBuilder AI 规则手册.md`，因此上述类型、标记和生命周期规则会进入代码类 AI 请求。
+> 2026-08-08 CEF3 message-loop/browser lookup group: added typed C ABI and official V4 dispatch for `cef_run_message_loop`, `cef_quit_message_loop`, and `cef_browser_host_get_browser_by_identifier`. The Bridge is configured for CEF multi-threaded message loop, so run/quit explicitly return `NOT_SUPPORTED` instead of violating CEF's single-thread contract; browser lookup dispatches to CEF UI and returns only a managed Browser alias. Coverage is `985/1384` (71.17%), with `399` planned; complete coverage remains intentionally blocked until all public APIs are implemented.
+> 2026-08-08 CEF3 ViewDelegate group: implemented all 11 public `cef_view_delegate_t` callbacks and size methods through typed `ViewDelegate`/`View` handles, CEF UI-thread dispatch, V3 size/rect structures, strict V4 argument validation, and JSON size results. Native tests use a real LabelButton delegate and cover direct ABI calls, official operation IDs, invalid types/ranges, and released-handle semantics. Coverage is `996/1384` (71.97%), with `388` planned; all generation, bridge, check, test, lint, and build commands pass.
+> 2026-08-08 CEF3 WindowDelegate group: implemented all 23 public `cef_window_delegate_t` entries with a managed no-op delegate for default top-level windows, typed Window aliases, V3 rect/key structures, UTF-16 two-stage JSON for Linux/titlebar structures, and official V4 dispatch. Parent windows remain managed handles; V4 parent metadata uses the result flag field without exposing native windows. Coverage is `1019/1384` (73.63%), with `365` planned; the full verification sequence passes.
+> 2026-08-08 CEF3 DownloadItem group: implemented all 20 public `cef_download_item_t` getters through callback-time value snapshots because CEF forbids retaining `CefDownloadItem` outside download callbacks. The Bridge exposes only managed `DOWNLOAD_ITEM` typed handles; strings use UTF-16 two-stage reads, signed progress/byte values preserve CEF `-1`, and download paths are resolved through the configured allowed root. Native tests exercise a real data-URL download, every direct ABI and official V4 operation ID, wrong/released handles, and snapshot validity after browser close. Coverage is `1039/1384` (75.07%), with `345` planned; generation, bridge, checks, coverage tests, lint, and build pass.
+> 2026-08-08 CEF3 DownloadHandler group: implemented `can_download`, `on_before_download`, and `on_download_updated` in the managed `BridgeClient` download handler. Per-browser C ABI subscription switches map the official signature hashes to strict V4 operations; callback-scoped download items remain immutable managed snapshots. `on_before_download` uses a managed continuation, revalidates any returned file path against the allowed root, and never blocks the CEF UI thread. Coverage is `1042/1384` (75.29%), with `342` planned; generation, bridge, checks, coverage tests, lint, and build pass.
+>
+> 2026-08-08 CEF3 download callback group: implemented `cef_before_download_callback_t.cont` plus `cef_download_item_callback_t.cancel`, `pause`, and `resume` with real C ABI exports and their official signature-hash V4 operations. Before-download completion consumes the existing managed continuation exactly once, validates UTF-16 paths against the allowed root, and preserves the dialog flag. Download controls use a dedicated managed `DOWNLOAD_CALLBACK` handle tied weakly to its Browser owner, execute on the CEF UI thread, and become released when that Browser closes; callback event handles are automatically released after notification unless the receiver retains them. Native tests drive Pause and Resume across real download updates and cover Cancel, path/range/type/count errors, explicit release, and Browser-close invalidation. Coverage is `1046/1384` (75.58%), with `338` planned.
+>
+> 2026-08-08 CEF3 base lifecycle group: implemented all four `cef_base_ref_counted_t` operations and `cef_base_scoped_t.del` as managed-handle ownership operations with real C ABI exports and official signature-hash V4 dispatch. The Bridge never exposes or mutates raw CEF base pointers: add/release/query operate on the registry reference count, `release` preserves its official last-reference boolean, and scoped deletion uses the same final-release checks. The shared release path retains creation-thread enforcement for XmlReader and ZipReader. Coverage is `1051/1384` (75.94%), with `333` planned.
+>
+> 2026-08-08 CEF3 RequestContext host resolution group: implemented `cef_request_context_t.resolve_host` and `cef_resolve_callback_t.on_resolve_completed` through a managed Task, real C ABI exports, and their official V4 hashes. ResolveHost dispatches to the CEF UI thread without blocking; callback-scoped CEF strings are copied immediately into the fixed `cef3.resolveHostResult.v1` JSON schema and read through a UTF-16 two-stage buffer. DNS error codes, including negative values, remain legal result fields instead of Bridge failures. Coverage is `1053/1384` (76.08%), with `331` planned.
+>
+> 2026-08-08 CEF3 RequestContext handler group: implemented `cef_request_context_t.get_handler` and `cef_request_context_handler_t.on_request_context_initialized` with a dedicated managed `REQUEST_CONTEXT_HANDLER` handle, stable C ABI, and official V4 hashes. The existing real Browser context handler records the actual context passed by CEF during initialization; callers receive only new managed Context aliases. Browser/Context state owns the handler record while the handler holds only a weak state reference, avoiding a CEF/managed ownership cycle. Coverage is `1055/1384` (76.23%), with `329` planned.
+>
+> 2026-08-08 CEF3 preference/setting observer group: implemented `add_preference_observer`, `on_preference_changed`, `add_setting_observer`, and `on_setting_changed` with real C ABI exports and official V4 hashes. A managed `OBSERVER_REGISTRATION` handle owns the CEF registration and distinguishes observer kinds; each `NextEvent` returns a managed Task. UI-thread callbacks copy temporary strings into bounded controlled JSON events, queued events are capped at 64, cross-kind calls are rejected, and releasing a registration on the CEF UI thread fails all pending tasks. Coverage is `1059/1384` (76.52%), with `325` planned.
+>
+> 2026-08-08 CEF3 MediaRouter acquisition group: implemented `cef_request_context_t.get_media_router` and `cef_media_router_get_global` with real C ABI exports and official V4 hashes. Both paths return a dedicated managed `MEDIA_ROUTER` handle immediately while an internal completion callback records CEF readiness; no callback object crosses the ABI. Acquisition and final release run on CEF UI. Coverage is `1061/1384` (76.66%), with `323` planned.
+>
+> 2026-08-08 CEF3 MediaSource group: implemented `cef_media_router_t.get_source` and all three `cef_media_source_t` queries with real C ABI exports and official V4 hashes. Sources use a dedicated managed `MEDIA_SOURCE` handle with strict Router/Source type checks, explicit release invalidation, and CEF UI-thread final-reference release. URNs and IDs remain UTF-16, ID reads use the two-stage buffer contract, and nullable `GetSource` results never expose a CEF pointer. Coverage is `1065/1384` (76.95%), with `319` planned.
+>
+> 2026-08-08 CEF3 MediaRouter refresh group: implemented `notify_current_routes` and `notify_current_sinks` with stable C ABI exports and official V4 hashes. Both commands require a live managed `MEDIA_ROUTER` target, reject all V4 arguments, dispatch to the CEF UI thread, and return no temporary CEF data. Calls made before CEF signals Router readiness are coalesced in managed state and executed after the internal readiness callback; releasing the handle first cancels them without leaving work in CEF's internal initialization queue. Coverage is `1067/1384` (77.10%), with `317` planned.
+>
+> 2026-08-08 CEF3 MediaObserver collection group: implemented `add_observer`, `on_sinks`, and `on_routes` with a managed `MEDIA_OBSERVER` registration and official V4 hashes. Each callback completes a managed Task whose JSON contains only the collection kind and count; the actual CEF vector is retained in a bounded managed collection result and can be taken exactly once as a Sink/Route collection handle. Indexed access creates only typed `MEDIA_SINK` or `MEDIA_ROUTE` handles, and every final CEF reference is released on CEF UI. CEF 150 fast-fails during process shutdown after activating its MediaRouter network subsystem in this test harness, so the native gate runs real notification assertions in a dedicated process and preserves the normal full `CefShutdown` regression in a second process. Coverage is `1070/1384` (77.31%), with `314` planned.
+>
+> 2026-08-08 CEF3 local HTTP Server group: implemented `cef_server_create`, five creation/lifecycle/HTTP handler callbacks, and all 12 non-WebSocket `cef_server_t` methods with stable C ABI and official signature-hash V4 dispatch. Creation and callbacks are managed Tasks; successful creation is taken exactly once as a `SERVER` typed handle, while each HTTP event retains its callback-scoped `CefRequest` for one-time conversion to a typed `REQUEST` handle. Queries that CEF restricts to the dedicated server thread use its official task runner. Bodies remain managed buffers, custom headers use a string-only managed Dictionary, and public creation is restricted to IPv4/IPv6 loopback. Native tests use a real loopback TCP client for 200, custom response/raw close, 404, 500, connection lifecycle, shutdown, type/range errors, and release invalidation. Coverage is `1088/1384` (78.61%), with `296` planned.
+>
+> 2026-08-08 CEF3 Server WebSocket group: implemented the three WebSocket handler callbacks and `send_web_socket_message` with official V4 hashes. A handshake event owns a managed continuation with a 30-second deadline and default reject action; an unobserved handshake is rejected immediately. Callback Request values remain typed handles, message bytes are copied immediately into an exactly-once managedBuffer task result, and outbound bytes accept only managedBuffer. Native tests perform a real RFC 6455 loopback Upgrade, accept through the continuation, send a masked `ping` frame, observe it through the managed task, return `pong`, and verify connection teardown. Coverage is `1092/1384` (78.90%), with `292` planned.
+>
+> 2026-08-08 CEF3 MediaRouter Sink/Route group: implemented all 17 remaining `CefMediaSink`, `CefMediaRoute`, route creation callback, device information callback, and route state/message observer signatures with real C ABI exports and official V4 hashes. Sink/Route objects stay behind typed managed handles; asynchronous device and route creation results use managed Tasks, observer messages are copied before callback return into an exactly-once managedBuffer result, and outbound route messages accept only managedBuffer. Route creation keeps the original CEF result code and error text in structured JSON while exposing any resulting route through a separate exactly-once typed result. Native coverage exercises all dispatch IDs and every available real Sink/Route read path without sending data to or terminating user devices. Coverage is `1109/1384` (80.13%), with `275` planned.
+>
+> 2026-08-08 CEF3 URLRequest group: implemented `cef_urlrequest_create`, `cef_frame_t.create_urlrequest`, all seven URLRequest methods, and all five URLRequestClient callbacks through real C ABI exports and official V4 hashes. Creation and object access run on CEF UI; the managed Client exposes bounded Tasks, copies download callback bytes into an exactly-once managedBuffer, and completes Basic-auth credentials on the originating CEF IO thread through a 30-second default-cancel continuation. Credential JSON uses CEF's structured parser, negative request errors remain valid values, and final URLRequest release cancels on CEF UI. Native tests cover loopback HTTP download, Frame POST with 256 KiB upload progress, 401 authentication retry, cancellation, every V4 ID, strict validation, and release semantics. Coverage is `1123/1384` (81.14%), with `261` planned.
+>
+> 2026-08-08 CEF3 RequestHandler navigation/render group: implemented `on_before_browse`, `on_open_urlfrom_tab`, `on_render_view_ready`, `on_render_process_terminated`, and `on_document_available_in_main_frame` as real `BridgeClient` callbacks with opt-in C ABI subscriptions and official V4 hashes. Subscription state is per managed Browser and cleared on close. Before-browse supplies a callback-scoped managed Request subject that must be explicitly retained to outlive dispatch; all other metadata is structured JSON and never embeds CEF pointers or handle values. Immediate V3/V4 responses retain CEF's cancel semantics. Native tests cover every direct and V4 subscription, strict target/type/count validation, Request subject typing, and real browser navigation/document delivery without changing the primary regression browser. Coverage is `1128/1384` (81.50%), with `256` planned.
+>
+> 2026-08-08 CEF3 client certificate selection group: implemented `on_select_client_certificate` and the selection callback with a per-browser subscription, `CERTIFICATE_COLLECTION` typed handle, and official V4 hashes. Candidate arrays never cross the ABI: collection items are managed Certificate handles, while the continuation privately retains and validates the exact original CEF candidates. Nullable selection and the 30-second default `Select(nullptr)` action return on the originating CEF UI thread. Native tests cover direct/V4 switches, nullable handle validation, collection/continuation type rejection, and wrong-lifecycle calls; no mutual-TLS endpoint is available in the native fixture, so it does not claim a live client-certificate challenge. Coverage is `1130/1384` (81.65%), with `254` planned.
+>
+> 2026-08-08 CEF3 ResourceRequestHandler lifecycle group: implemented before-load, protocol execution, load-complete, redirect, and response callbacks in the real `BridgeClient` IO-thread handler with per-browser subscriptions and official V4 hashes. The handler is returned only while a lifecycle subscription is active. Before-load uses a 30-second default-continue continuation on the originating CEF IO thread; protocol execution defaults to denied and requires structured `allow=true`; redirect/retry responses use CEF JSON parsing. Request values remain auto-released managed subjects. Native tests use a real data URL for before/response/complete and validate all five direct/V4 switches. Coverage is `1135/1384` (82.01%), with `249` planned.
+>
+> 2026-08-09 CEF3 CookieAccessFilter group: implemented the resource-handler cookie-filter getter plus send/save policy callbacks as real IO-thread overrides with three opt-in C ABI switches and official V4 hashes. The CEF filter never crosses the ABI; callback Requests are temporary managed subjects and Cookie values are copied into structured JSON. Policy responses use CEF JSON parsing, default to allow, and support explicit denial without blocking the IO thread. Native tests drive an actual loopback browser request with a seeded request cookie and a `Set-Cookie` response, alongside direct/V4 registration and validation coverage. Coverage is `1138/1384` (82.23%), with `246` planned.
+>
+> 2026-08-09 CEF3 ResponseFilter group: implemented the resource response-filter getter, initialization, and filtering through a managed `RESPONSE_FILTER` configuration handle, safe C ABI exports, and official V4 hashes. Find and replacement bytes are copied only from managedBuffer handles; each response gets an independent CEF IO-thread filter with cross-chunk matching, output backpressure, and a bounded queue. CEF buffer addresses never leave the callback, while diagnostic chunk events use auto-released managedBuffer subjects. Native tests cover direct/V4 configuration, attachment, type and release failures, then transform a real loopback HTML response and confirm the filtered text in page JavaScript. Coverage is `1141/1384` (82.44%), with `243` planned.
+>
+> 2026-08-09 CEF3 ResourceHandler group: implemented `get_resource_handler`, all seven custom resource methods, and both asynchronous continuation callbacks through a managed `RESOURCE_HANDLER` source configuration and ten official V4 hashes. URL interception uses parsed scheme/host/port/path-prefix matching; bodies stay in managedBuffer state and headers use the validated header-list codec. Each CEF request gets an independent handler snapshot. Modern and legacy open/read paths are supported. Async Read/Skip use truly deferred managed completion and CEF's thread-safe resource callbacks without querying a current task runner from Chromium's network sequence; only bounded bytes are copied into CEF-owned output memory. MIME values must be parameter-free `type/subtype` tokens, while charset belongs in managed headers. Cancel invalidates a held continuation. Native tests cover direct/V4 errors, MIME rejection, async and legacy HTML loads, Range Skip, and a canceled outstanding Read. Coverage is `1151/1384` (83.16%), with `233` planned.
+>
+> 2026-08-09 CEF3 Render/Accessibility/Frame handler group: implemented all 17 RenderHandler callbacks, both AccessibilityHandler callbacks, all five FrameHandler callbacks, and the Client render/frame getter queries with real CEF overrides, 26 C ABI exports, and official V4 hashes. Geometry, screen, touch, IME, selection, scroll, popup, keyboard, and drag data are copied into structured event fields. OSR BGRA bytes cross the ABI only through an ephemeral retainable managedBuffer capped at 64 MiB; accelerated paint never exposes the shared texture/native handle. Accessibility data uses copied managed Value snapshots. Frame lifecycle events use a managed Browser subject plus structured Frame metadata so attach/detach callbacks do not extend Chromium Frame lifetimes. Native coverage validates every direct/V4 entry and strict parameter handling, plus real OSR view/screen/paint callbacks and managed pixel-buffer typing. Coverage is `1177/1384` (85.04%), with `207` planned.
+>
+> 2026-08-09 CEF3 public API coverage is complete for CEF 150.0.14+g7c1aa68 on Windows MSVC x64: `1384/1384` (`100.00%`), `planned=0`, and `needsReview=0`. `npm run module:cef3-coverage:complete` now gates generated catalog and module documentation, C ABI exports, native test references, official V4 signature IDs, and the managed-handle/no-pointer ABI contract.

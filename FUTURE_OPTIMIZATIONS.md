@@ -1,5 +1,44 @@
 # LingBuilder 后期优化事项
 
+- 已修复并实机验证（2026-08-09）：普通 Win32 `win32-fbro-multi-browser-manager` 的地址栏、扩展状态和缩放行为已闭环。`AddressChanged` 与实例切换会直接回写地址 TextBox 的原生 HWND；每个实例在启用 FBro VIP 高级扩展能力后，先创建 RequestContext、立即经 FBro VIP `LoadExtension` 注册扩展、再创建浏览器，并用当前页面 DOM 探针区分“已加载（页面不适用）”“正在验证”“已生效”和“未在当前页面生效”。嵌入 Alloy 模式不支持 Chromium 自带扩展管理 UI，输入 `chrome://extensions/` 会在当前实例显示受管诊断页并保留逻辑地址。主窗口的 `SizeChanged`/`DpiChanged` 先执行 LCPP 布局、再调整 FBro 子窗口，地址栏和 TabControl 均以客户区与当前 DPI 重算。隔离 MSVC x64 smoke 已验证弹窗在本窗口导航后地址同步、受管扩展诊断和 1500x940 窗口缩放。后续若加入扩展调试、重载或多个插件，仍必须按 RequestContext 逐实例验证，不能恢复命令行 `load-extension` 或把路径回读当作注入成功。
+- 扩展注册完成后仅允许对首个匹配页面执行一次受控刷新；后续页面以正常导航触发 content script，禁止通过无限刷新掩盖注入失败。
+
+- 已完成并实机验证（2026-08-09）：普通 Win32 `win32-fbro-multi-browser-manager` 已加入下载事件和可见进度。FBro Bridge 在未订阅高级 v3 下载决策时默认继续下载，并只读转发 `OnBeforeDownload` / `OnDownloadUpdated` 的状态、速度、百分比、已接收/总字节、建议文件名和完整路径；管理器按稳定实例隔离这些状态。界面使用只读多行 TextBox、原生 ProgressBar 和“打开目录”按钮显示当前实例下载。隔离回环 smoke 已确认进度为 100、状态为“下载完成”、字节数为 `33 / 33`、文件名和目录正确，并读取落盘文件核对内容后清理。后续可增加下载历史、暂停/继续/取消入口和并发下载队列，但必须走 v3 受管延续与实例边界，不能让只读兼容事件改变下载行为。
+
+- 已完成并实机验证（2026-08-08）：新增普通 Win32 `win32-fbro-multi-browser-manager` 最终项目，可视界面只引用 `lingbuilder.win32.basic` 与 `lingbuilder.win32.common-controls`，隐藏表头的原生 TabControl 为每个实例创建独立页面 `HWND`，左侧 ListBox 是唯一导航。每个稳定 ID 映射独立 FBro Host PID、浏览器 HWND 和 LocalAppData Profile；插件在 CEF 启动阶段通过 `load-extension` 加载，VIP 授权延迟到 `OnContextInitialized` 校验，随后以扩展 ID 和 `GetExtensionPath` 回读真实路径，失败只禁用插件而不阻断浏览器。`OnBeforePopup` 会把目标 URL 交给当前 Frame 后取消 popup。地址导航已移除 HTTP(S) 白名单，`chrome://extensions/`、`about:`、`file://` 等非空 Chromium 地址会原样传入独立 Host。最终 Release EXE 和 `exports/独立浏览器管理器.lcpppkg` 已生成，复制后导入、二次 C++ 生成、单/三实例恢复及弹窗接管均通过。后续可增加资源占用预警和跨机器可选加密 Cookie 备份，但不得把授权码、Cookie、Profile、缓存或插件私有存储加入项目分享包。
+
+- 已修复（2026-08-08）：大型 `.lcpppkg` 导入或检查完成后，Windows 防病毒可能短暂占用 SDK DLL，旧清理流程会让成功导入被 `EBUSY` 临时目录清理错误覆盖。统一源码包服务现对递归临时目录清理使用有界重试；后续仍需保持目标工作区的原子重命名和路径校验，不能因清理重试放宽包内容安全门禁。
+
+- 已完成并实机验证（2026-08-08）：`new-emoji-fbro-multi-browser-manager` 已形成完整多浏览器实例工作台。`browserWorkbench` 服务层统一稳定 ID/相对 Profile、原子 JSON 与 `.bak` 恢复、Cookie 校验预览、扩展清单校验、CommandService 命令和 MenuService 右键菜单；原生运行时继续负责 HWND/Host 生命周期与真实 CookieManager。实例状态正式写入 `%LocalAppData%/LingBuilder/browser-workspaces/<工作台键>/browser-instances.json`，分享包只携带 `config/.../browser-instances.json` 的结构配置和 exe 同级 `doubao-downloader` 资源。通用 `.lcpppkg` 打包器会排除 profiles、cache、localStorage、IndexedDB 和 Cookie JSON。后续可增加资源占用预警、跨机器可选 Cookie 加密备份和 macOS 浏览器后端，但不得把浏览器用户数据并入普通项目分享包。
+
+- 已完成并实机验证（2026-08-08）：新增独立 `new-emoji-fbro-richlist` Demo，使用 `lingbuilder.new_emoji.fbro-shell@1.2.0` 和 new_emoji `RichList` 管理动态 FBro 会话。运行时以稳定 ID 映射会话配置、独立 Host PID、伴随 HWND 和唯一 Profile；RichList 索引只表示顺序。关闭只回收 Host/HWND，重开复用稳定 ID 与 Profile；删除移除表项和绑定但默认保留缓存。专项 smoke 已覆盖新建、切换、关闭/重开、删除、排序、Cookie 隔离和退出回收。后续如提供缓存清理功能，必须独立确认，不能绑定到删除表项。
+
+- 已完成并实机验证（2026-08-08）：FBro `LB_FBro_CookieSetAsync` 和 `LB_FBro_CookieFlushAsync` 不再把调用已受理视为成功，而是分别等待同一 RequestContext 的 `SetCookie` 与 `FlushStore` 完成回调。独立 Host 仅在按名称和值读回成功、且其它打开会话 Cookie 快照未变化时报告注入成功；任何失败只给出中文状态，日志不得记录 Cookie 明文。后续新 Cookie 操作必须复用此完成确认与脱敏约束。
+
+- 已修复并实机验证（2026-08-08）：`new-emoji-fbro-multi-browser-manager` 首次启动 8 个独立 Host 时，主窗口会在 `Created` 事件中同步等待 Host 执行 `show`，而 Host 的跨进程子窗口 `SetWindowPos` 又等待父窗口线程响应，形成确定性死锁。控制器现提供无响应 `Notify` 通道，`show`、`hide`、`resize` 不再阻塞 UI 线程；独立嵌入浏览器内部保持可见，由主进程拥有的伴随父 `HWND` 控制最终显隐。首次启动 smoke 增加主窗口 `Responding` 门禁，正式 EXE 连续 20 秒采样均保持响应。后续跨进程窗口命令不得恢复 UI 线程同步等待。
+
+- 已完成并实机验证（2026-08-08）：`new-emoji-fbro-multi-browser-manager` 移除固定 6 实例槽位，改为 `lingbuilder.new_emoji.fbro-shell@1.2.0` 运行时动态集合。每次添加会创建独立 Host、鉴权 WebSocket、Profile 与 HWND；RichList 和隐藏表头 Tabs 同步同一稳定 ID 映射。实例清单、顺序、名称、地址和恢复状态已使用原子 UTF-8 JSON 持久化，损坏时从 `.bak` 恢复。原生 smoke 已创建并验证 8 个不同 PID、唯一可见实例和退出后全部回收。后续可增加资源用量预警，但不得重新引入固定数量上限。
+
+- 已完成（2026-08-08）：`lingbuilder.database.sqlite@2.0.0` 从 7 条单连接原型升级为 67 条生产接口。模块使用独立 catalog/runtime，多连接与预编译语句采用不复用的受管 ID，同连接串行化并以 FULLMUTEX 打开；覆盖强类型绑定/列读取、事务与保存点、WAL、Online Backup、完整性检查、中断和完整错误码，旧默认连接入口继续兼容。Win32/x64 Release 编译及 x64 真实 DLL smoke 已通过。后续可把经过重新分发许可、固定版本和逐文件 SHA-256 的官方 SQLite 运行库封装为独立只读 SDK 模块，并增加故障注入、超大 BLOB、长事务、锁竞争、断电恢复与备份恢复压力测试；在这些资产门禁落地前不得自动联网下载或宣称内置数据库加密。
+
+- 已修复并实机验证（2026-08-07，2026-08-08 动态化）：`new-emoji-fbro-multi-browser-manager` 的顶部地址栏使用原生 `Omnibox`，按回车导航当前实例。左下角保留“添加实例”和“全局设置”；原先顺序启用 6 个预置 Host 的实现已由 2026-08-08 动态实例集合替代，不再存在固定数量上限。原生 smoke 的 fixture 产物隔离在 `new-emoji-fbro-multi-browser-manager-native-smoke`，正式 EXE 不得被测试 URL 覆盖。
+
+- 已修复并实机验证（2026-08-07）：new_emoji FBro 多浏览器管理器虽然有 6 个原生 Tabs 页，但旧源码在每次实例切换时先隐藏全部 Host，再通过 WebSocket 显示目标 Host，导致 Chromium 恢复绘制前短暂黑屏。现在首次进入只在目标页显示后收起其余页；后续切换始终先显示并置顶目标 Tab，再收起上一个 Host。画布内重复的窗口标题已删除，架构说明单独置于客户区顶部，避免与原生标题栏及副标题重叠。源码包导出和原生 smoke 都校验 Tabs 结构、无重复标题，以及“先显示、后收起”的顺序；后续不得恢复“隐藏全部浏览器”的切换实现。
+
+- 已修复并实机验证（2026-08-07）：多浏览器管理器的实例 Tabs 是内部页面/实例映射，不需要作为用户可见导航。原生 Tabs 表头现固定隐藏，6 个 Host 的真实浏览器视口从工作区顶部开始占满 `1252x760`，不再在地址栏与网页之间留下空白 Tab 条或空选中背景。左侧 RichList 继续作为唯一可见的实例切换入口；源码包和原生 smoke 必须拒绝 `browser-host-pages.headerVisible = true`。
+
+- 已修复并实机验证（2026-08-07）：new_emoji 多浏览器管理器过去虽然启动了 6 个 `LingBuilderFbroHost.exe`，但 Host 在主消息循环前串行等待、共用 CEF 根缓存，Tabs 页面初始化后又可能取得无效选中索引，最终只看到进程状态而没有网页。new_emoji 独立 Host 现改为非阻塞并行启动，每个 Host 使用独立根缓存与日志目录，并保存有效 Tabs 索引，在 Host `Created` 后统一同步显隐。原生 smoke 实测 18.2 秒完成编译和运行验收，6 个独立 PID 均有 4 个 Chromium 子窗口，只有当前实例可见，尺寸为 `1220x450`，网页像素为 `RGB(255,255,255)`；后续不得把 Host 进程存在或 PID 非零当成浏览器显示验收。
+
+- 已修复（2026-08-07）：FBro 独立 Host 复用生成主 EXE 时会继承 new_emoji 等导入依赖，但 Host 位于 `fbro-host/`，Windows 加载器过去无法回到主 `bin/` 目录查找 `new_emoji.dll`，导致 6 个实例全部显示“故障 / PID 0 / CDP 0”。Host 的私有启动环境现在把主 EXE 目录前置到 `PATH`，仍由应用目录优先级保证 CEF 135 从隔离 Host 目录加载，避免覆盖主目录中的其它 Chromium 运行时；新增 6 Host 真实编译、启动和 Job Object 回收 smoke 作为后续门禁。
+
+- 已修复（2026-08-07）：new_emoji + FBro 浏览器外壳在 Bridge 2.2.0 通过依赖检查后，F5 的分离编译链只显式链接四个基础库，导致 Winsock、WinHTTP、证书校验和文件拖放共 30 个符号无法解析。现在 F5 与 Visual Studio 导出共用统一 Windows/MSVC 系统库清单，覆盖 `ws2_32`、`winhttp`、`crypt32`、`shell32` 和 `delayimp` 等运行时依赖；后续新增生成运行时使用新的系统 API 时必须扩展这一份清单并补原生链接 smoke，不能只依赖某个生成模板中的 `#pragma comment(lib)`。Electron 开发启动也会尊重显式 `LINGBUILDER_WORKSPACE_ROOT`，可直接在导入项目上验证 F5，而不改变仓库默认工作区。
+
+- 进行中（2026-08-07）：CEF 150 安全接口全覆盖当前为 `558 / 1384（40.32%）`，剩余 826 项。本批完成 `cef_frame_t.send_process_message`、`CefProcessMessage`、`CefSharedProcessMessageBuilder` 和 `CefSharedMemoryRegion` 共 14 项受管 C ABI/V4 闭环；发送统一经 CEF UI 线程，消息发送后按所有权转移语义失效，参数列表、消息副本、共享内存区域及内存内容分别使用受管句柄或 `managedBuffer`，不跨 ABI 暴露 CEF 对象或原始地址。`planned` / `needsReview` 清零、Views 与 OSR 实机门禁完成前继续保持 `3.0.0-alpha.3`。
+
+- 已完成核心闭环、后续扩展高级面（2026-08-07，2026-08-08 更新）：FBro 2.2 已支持 `in-process`、`independent-embedded`、`independent-window`，两种独立模式实行一浏览器一 Host 进程，以随机回环 WebSocket、一次性 256 位 Token、实例/PID/连接/代次映射控制导航、JS、缩放、静音、代理、指纹、显隐、尺寸、截图、真实 Cookie 遍历/结构化写入、缓存清理、关闭和受限重启。主进程通过 Job Object 回收 Host。全部 FBro 控件独立时可与 CEF3 共存，CEF 135 只物化到 `fbro-host/`，CEF 150 保留在主 exe 目录；F5 与 VS 导出复用同一规则。后续若要让独立模式达到进程内模式的完整 API 面，仍需按版本化 WebSocket schema 远程化 Frame、其它受管对象/任务、事件决策与 VIP 单项能力，并补充大规模并发、Host 升级兼容和故障注入测试。
+
+- 进行中（2026-08-06）：CEF 150 安全接口全覆盖当前为 `505 / 1384（36.49%）`，剩余 879 项；浏览器事件域已完成 113 / 113 个官方签名，BrowserHost 已新增运行时样式、缩放读写、命令可用性查询与实际执行、`CEF3_尝试关闭`、窗口移动/调整大小通知、屏幕信息变化通知、捕获丢失输入通知、输入法组合取消与提交、自定义拼写词典写入、当前拼写错误替换、系统拖放源结束通知、拖放目标离开通知、OSR 宿主隐藏状态通知、网页全屏退出、CefBrowserView 承载状态查询和打开者浏览器 ID 查询，通过受管浏览器句柄、类型化逻辑值、UTF-16 文本和固定 v4 操作 ID 保留 CEF 的生命周期、宿主窗口、OSR 输入/绘制、IME、拼写检查、拖放状态、Fullscreen API、Views 边界与弹窗来源语义。`planned` / `needsReview` 清零、Views 与 OSR 实机门禁完成前，继续保持 `3.0.0-alpha.3`，不得发布或描述为 3.0.0 全覆盖。
+
 - 已修复（2026-08-05）：新手 `.lcpp` 结构编辑器在切换窗口设计器后会保留实际滚动/选区状态，不再因卸载时 DOM 引用已清空而回落到旧行；F5 现在直接提交当前中文源码与设计器模型到受控构建接口，保持代码编辑器视图，不再自动跳转到界面设计器。后续如抽取统一 `TaskService`，应继续复用这条“当前视图发起构建、输出面板反馈”的交互契约。
 
 - 已完成（2026-08-04）：建立 Electron `0.2.9` 发布基线。微信多开工具、`lingbuilder.wxhook.manager@1.1.1`、第三方模块随 `.lcpppkg` 离线分发、Windows EXE 图标资源和无 IDE AI Bridge 多文件工作流进入 Windows 安装包；微信模块最低版本设为 `0.2.9`，避免已发布的 0.2.8 客户端绕过生成器能力门禁。安装包继续使用不含正式 API 地址的 `offline` 云端模式。
@@ -46,7 +85,7 @@
 
 - 已修复（2026-08-01）：内置 Win32 `GroupBox` 与 `TabControl` 的模块贡献过去遗漏正式 `layout`，打开含有这两个容器的项目会输出兼容布局警告。现由同一内置控件映射声明 `win32.groupbox.absolute` 和 `win32.tab.slots`，并新增 manifest 回归测试；后续新增容器仍必须同时更新布局注册表、模块贡献和跨容器粘贴测试。
 
-- CEF 150 安全全覆盖进行中（2026-07-31）：`3.0.0-alpha.2` 的覆盖 v2 当前为 265 implemented、8 internal、185 notApplicable、1119 planned（1577 项记录）。objects 与 session 已清零各自 `planned`：183 条 objects 命令覆盖 Value/Dictionary/List/Binary、Image、NavigationEntry、完整 MenuModel、X509Certificate/Principal/SSLStatus 和导航历史；19 条 session 命令覆盖独立 RequestContext、Preference、Cookie、缓存、证书例外、HTTP 认证与连接回收。Bridge 原生 MSVC x64 测试验证真实 HTTPS 证书、历史 JSON、菜单索引/快捷键/颜色/字体、对象深复制和双会话隔离。全局 Cookie/Preference 与初始化注册器有明确内部替代，不允许破坏实例隔离。当前仍有 86 个事件签名以及 network/transfer/automation/DevTools/OSR/Views/platform 等 1119 项待完成；下一步优先接通剩余 Handler 的专用响应 schema，再进入 Scheme/ResourceHandler/Filter、下载/PDF、DOM/V8/进程消息、DevTools 订阅、真实 OSR、Views 和平台工具。`module:cef3-coverage:complete` 在 planned/needsReview 清零前仍必须失败。
+- CEF 150 安全全覆盖进行中（2026-08-07）：`3.0.0-alpha.3` 的覆盖 v2 当前为 558 implemented、8 internal、185 notApplicable、826 planned（1577 项记录）。objects、session 与 `cef_command_line_capi.h` 已清零各自 `planned`；浏览器状态、窗口渲染模式、网页全屏状态、关闭准备状态、渲染进程响应状态、键鼠输入、焦点、查找、JSDialog、ContextMenu、音频、权限、文件对话框、跟踪、受管读写流处理器，以及进程消息/共享消息构建器/共享内存区域已补齐 Bridge、V4 operation、原生测试和用户文档。受管 `CefReadHandler` / `CefWriteHandler` 只消费 Bridge 缓冲；进程消息发送统一调度到 CEF UI 线程，builder/region 内存只返回 `managedBuffer` 副本，所有 CEF 引用按句柄分类在最终浏览器关闭前释放。用户事件目录为 92 项名称，对应 113 / 113 个官方事件签名已实现；全目录仍有 network/transfer/automation/DevTools/OSR/Views/platform 等 826 项待完成。`module:cef3-coverage:complete` 在 planned/needsReview 清零前仍必须失败。
 
 - FBro VIP 子模块已完成（2026-08-01 更新）：官方 VIP 188 项全部为 implemented，`lingbuilder.fbro.vip planned=0`。188 项能力已逐项公开为 179 条单项安全命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力；另保留 10 条批量与通用高级入口，模块清单共 198 条。普通 Win32 与 New_Emoji 共用 C ABI 并生成同一套运行时包装器；双后端 MSVC x64 编译和运行 smoke 继续作为发布门禁。全 FBro 最新为 397 implemented、678 个非事件高级签名 planned、3 internal notApplicable、1 advanced notApplicable；事件目录已单独完成 174 个类方法槽位/158 个唯一签名的安全分类与 Bridge 接通。不能把 VIP 或事件完成误写成整个 FBro 1079 项全功能完成。
 
@@ -54,7 +93,7 @@
 
 - FBro 非事件高级 API 继续进行（2026-08-01）：覆盖基线仍为 FBro 5.38.49 / CEF 135.0.21 / MSVC x64 的 77 个头、1079 个签名。全目录当前为 397 implemented、678 planned、3 internal notApplicable、1 advanced notApplicable；剩余 678 项、Frame visitor、完整公开 V8、正式 OSR 设计器和其它高级网络/对象适配属于独立工作流。事件全覆盖完成不得被描述为整个 FBro 全功能完成，也不得据此注册空 OSR 模块。
 
-- 已完成（2026-07-30，2026-07-31 随 CEF3/FBro/EdgeView 扩展复测）：新增全模块演示项目与源码包自动生成链路。生成器从内置及已安装模块清单读取真实 contribution/binding，当前为 84 个唯一模块建立独立项目，逐条覆盖 3016 条命令；大型模块最多拆成 12 个 TabControl 分组，界面统一提供默认关闭的实际执行开关，资产 SDK 则展示版本、用途和消费边界而不伪造命令。项目源码集中在 `examples/module-demos/`，84 个 `.lcpppkg` 输出到根目录 `exports/`，并提供静态覆盖及逐包深度校验命令。后续新增或删除模块、命令时应重新生成并检查命令数量漂移，避免演示清单与运行时 binding 分叉。
+- 已完成（2026-08-06 随 CEF3 FindHandler 扩展复测）：全模块演示项目与源码包自动生成链路按当前清单生成 86 个唯一模块项目，逐条覆盖 4209 条命令；大型模块最多拆成 12 个 TabControl 分组，界面统一提供默认关闭的实际执行开关，资产 SDK 则展示版本、用途和消费边界而不伪造命令。项目源码集中在 `examples/module-demos/`，86 个 `.lcpppkg` 输出到根目录 `exports/`，并通过逐包深度校验。后续新增或删除模块、命令时应重新生成并检查命令数量漂移，避免演示清单与运行时 binding 分叉。
 
 - 已修复（2026-07-30）：LCPP 源码包过去只会随 CEF3/FBro 消费模块自动携带对应 SDK，四个通用密码学模块导出后可能缺少 `lingbuilder.crypto.sdk`。现在哈希、密码派生、对称和非对称模块均会自动携带 Botan/BLAKE3 只读资产，并新增专项回归测试。
 
@@ -161,7 +200,7 @@
 
 - 已修复（2026-07-26）：标准库 C++ 运行时的十六进制字符解析辅助函数 `LB_HexDigit` 移入所有内置运行时片段共享的公共区；项目只启用“编码转换模块”或“JSON 数据模块”、未启用“字节与十六进制模块”时，F5/导出不再因生成代码调用未声明辅助函数而触发 MSVC C3861。新增独立模块组合回归测试，确保辅助函数先定义且只生成一次。
 
-- 已完成基础闭环（2026-07-25，2026-07-31 扩展）：新增内置 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`），按 v2 manifest 提供设计器控件高级贡献；22 条兼容核心命令与 92 项浏览器侧事件目录进入模块上下文和确定性 C++ 运行时，其中 `CEF3_打开原生UI浏览器` 可创建 Chrome Runtime 顶层窗口。2026-07-31 已完成每实例 RequestContext/缓存子目录和真实 JavaScript JSON 返回。这里的“基础闭环”不等于 1564 个上游签名全覆盖；完整状态和剩余项以文件顶部的 CEF 安全覆盖条目为准。
+- 已完成基础闭环（2026-07-25，2026-08-05 扩展）：新增内置 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`），按 v2 manifest 提供设计器控件高级贡献；22 条兼容核心命令与 92 项浏览器侧事件目录进入模块上下文和确定性 C++ 运行时，其中 `CEF3_打开原生UI浏览器` 可创建 Chrome Runtime 顶层窗口。已完成每实例 RequestContext/缓存子目录、真实 JavaScript JSON 返回和完整 CommandLine 子域。这里的“基础闭环”不等于 1577 个上游目录项全覆盖；完整状态和剩余项以文件顶部的 CEF 安全覆盖条目为准。
 
 - 已修复（2026-07-25）：安装版工作区恢复状态与开发版状态分文件保存，首次安装或升级不再继承开发仓库的 `UI_CppLocProj` / `GameClient` 解决方案；安装包默认工作区也不再直接打包仓库根目录的 `src`、`config` 和设计器项目状态，而是在用户文档目录新的“起始工作区”中确定性创建“未命名解决方案 / 新建项目”，避免继续复用旧安装版的“示例工作区”残留。工作台新增“关闭当前解决方案”命令、文件菜单入口、解决方案树右键入口和载入失败页入口；关闭只切换到新的空白工作区并从最近记录移除旧工作区，不删除用户磁盘文件。
 
@@ -670,6 +709,7 @@
 - 未完成：new_emoji 生成器当前仍以所选启动窗口生成单窗口 `main.cpp`；同项目多窗口模型可以保存，但混合 Win32/new_emoji 后端的统一进程生命周期、窗口间打开命令和销毁顺序尚未闭环。
 - 已完成：云端商品、永久/期限报价、订单、权益、24 小时限免、支付回调幂等、退款撤销、管理员赠送/撤销和访问审计模型；金额使用 bigint 分，时间统一 UTC。
 - 已完成：Ed25519 Permit、购买最长 72 小时离线缓存、限免截止约束、时钟回拨检测，以及安装/启用/编辑/F5/预览/导出/AI Bridge 守卫。
+- 已修复（2026-08-07）：收费模块 Permit 启动恢复竞态与过期误报。Electron 现在等待本地 API 健康后有界重试安全缓存同步，失败输出中文日志；签名有效但过期的 Permit 保留 `MODULE_ENTITLEMENT_EXPIRED` 诊断，不再退化成“请购买”。云端账号会话可恢复时启动即通过正式接口换发 Permit 并原子更新 `safeStorage`。本机开发账号的永久 `ADMIN_GRANT` 已重新签发，new_emoji + FBro x64 F5 实际运行 10 秒保持响应。
 - 未完成：微信/支付宝目前是带签名的外部网关适配器，不是两家官方 SDK 的商户直连；管理后台退款发起和限免独立使用人数报表仍需补齐。正式生产前还必须配置真实网关 URL、Webhook 密钥与稳定 Permit PEM 密钥，并完成支付沙箱回放。
 - 已修复（2026-07-28）：FBro F5 空白窗口。原生依赖服务现在可从 `.lingbuilder-build/<project>/x64/Debug` 等深层目录正确定位工作区 SDK；SDK/桥接/运行时缺失或损坏会作为阻断诊断停止 F5 和 AI Bridge，不再编译并启动空白占位控件。修正 FBro 缓存根目录的 C++ 路径分隔符转义，避免把缓存路径拼成 `程序.exe\.fbro-*` 后引发 GPU/网络子进程失败。F5 中间 VS 工程从已校验 `bin` 物化，便携导出工程携带 78 项完整 runtime 和增量脚本。真实 MSVC x64 测试已收到浏览器创建与 `https://example.com` 加载完成事件，错误 VIP Key 同时返回明确授权错误且未泄露 Key。
 
@@ -713,7 +753,7 @@
 
 ## controlRef 语义后续优化（2026-08-01）
 
-- [x] 全部内置、官方和已安装模块进入逐方法/逐参数审计；当前覆盖 86 个模块、3249 个方法、10460 个参数、776 个 controlRef，并用摘要锁定目录变化；28 个模块 TypeScript 源文件也进入原始补全/示例/snippet 门禁，不再只验证加载后的归一化结果。
+- [x] 全部内置、官方和已安装模块进入逐方法/逐参数审计；当前覆盖 88 个模块、4169 个方法、12168 个参数、1203 个 controlRef，并用摘要锁定目录变化；42 个模块 TypeScript 源文件也进入原始补全/示例/snippet 门禁，不再只验证加载后的归一化结果。
 - [x] 新手编辑器与 Monaco 共用补全、缺失/歧义/类型/种类/作用域/引号诊断、快速修复、悬停、引用、重命名和独立语义颜色；Ctrl+单击、右键及命令面板共用稳定 ID 设计器导航。
 - [x] C++ 生成和 Win32/new_emoji 后端契约消费同一 binding；第三方清单与 SDK 拒绝文本型控件参数、缺失元数据和带引号示例。
 - [x] 安全迁移覆盖主解决方案、模块演示、便携工作区、嵌套导出项目和 smoke `build-request.json` 嵌入源码，只改写唯一解析且兼容的引用；新增只读迁移门禁，真实源码仍有可迁移或无法解析引用时直接失败。
@@ -794,3 +834,38 @@
 - [x] F5 开始时继续打开“输出窗口 (Output) - 编译与生成”，仅在窗口设计器报告 exe 已成功启动后自动切换到底部面板“调试日志”。
 - [x] 编译、代码生成、依赖准备或运行启动失败时保持“编译与生成”页，方便用户直接查看失败阶段和原始输出；新增 UI 回归断言锁定该成功/失败边界。
 - 已修复（2026-08-04）：删除输出面板右上角未接入构建状态、配置服务和 F5 链路的 Debug/Release、x86/x64/Any CPU 假选择器。工作区构建模式和架构现在只由状态栏入口写入 `.lingbuilder/build-configuration.json`，避免界面显示与实际构建配置冲突；后续新增构建配置入口必须复用同一 `BuildConfigurationService`，不得维护独立的局部选择状态。
+
+## new_emoji RichList 富列表（2026-08-05）
+
+- [x] 上游 RichList 已作为第 93 个命名空间设计器控件进入 `lingbuilder.new_emoji.ui`；模块生成器在提交目录仍为 92 控件时，会在系统临时目录调用上游 Catalog Exporter 获取当前 93 控件/1618 导出目录，不改写上游工作区。
+- [x] 模板 JSON、项目 JSON、选中 key、选择选项、样式、滚动和虚拟项目数均映射到真实 `EU_CreateRichList` / `EU_SetRichList*` ABI；设计器提供消费实际项目 JSON 的专用预览。
+- [x] 选择变化和六类语义事件接入原生回调。共享 JSON 回调按稳定 `event` 字段分流，避免一个事件误触发多个 `.lcpp` 处理器。
+- [ ] 后续可增加 RichList 模板节点和项目数据的结构化编辑器、JSON schema 诊断及可视化事件载荷查看器；在上游 schema 稳定前继续保留原始 JSON 可复制性。
+
+## 三界面模块运行时控件体系（2026-08-05）
+
+- [x] `LingControl` 增加可选 `tagText`/`tagInteger`，旧项目不升 schema；属性面板区分空整数与 `0`，统一校验 trim、int32 和非空标记的“当前窗口 + 具体类型 + 标记类别”唯一性。
+- [x] 设计器保存加载、撤销重做和复制粘贴保留标记；同窗口复制产生冲突时只清空冲突标记并返回中文提示，不阻止控件复制。
+- [x] 新手模式和 Monaco 支持具体控件类型局部变量、参数、返回值、`当前窗口`、类型推断、赋值/调用诊断、补全、悬停和定义跳转；常量、数组、成员、项目全局及工作线程传递被阻断。
+- [x] Win32 基础 12 项与高级 20 项共用窗口级注册、动态创建、两类标记查找、操作、完整事件绑定/解绑和失效规则，并保持每实例独立主 `HWND`。Grid、ReBar、Pager 排除。
+- [x] new_emoji 93 项由结构化目录生成创建器、查找器、通用/专属操作和 918 项事件 binding；真实输入元素 ID 使用类型化 `controlRef(stableId)`，输出指针、请求/数据 ID、索引和数组保持原 ABI。
+- [x] 新增 `smoke:runtime-controls-native`，覆盖 new_emoji 93 项目录工程及 Win32 32 项动态控件工程的 Win32/x64 链接。
+- [ ] 后续若允许动态控件写回设计器，必须设计明确的用户命令、稳定设计器 ID、撤销事务和源码/模型冲突预览；当前禁止自动持久化。
+- [ ] 第三方 UI 模块接入 `runtimeControl` 前，需补模块 SDK 脚手架和跨后端容器兼容预览；schema 已允许声明，但不自动推断或强制迁移现有模块。
+
+## new_emoji + FBro 浏览器外壳（2026-08-06）
+
+- [x] new_emoji 模块升级到 `2.0.0` / 最低 LingBuilder `0.3.0`，93 个控件和 3784 条 contribution/binding 从上游定义与设计器目录生成；`module:new-emoji:check` 已覆盖临时生成、module-build、安装目录和 `.lbmod` 的逐文件一致性。
+- [x] `LingWindowModel.windowFrame`、`system | browserShell | custom` 预设、`0x3F` 浏览器 flags、四边缩放边框、圆角及旧模型迁移已进入服务层和属性面板。
+- [x] 上游函数指针回调生成 `handler + handlerSignature`，`.lcpp` 使用 `&处理器名`；结构化集合使用 `recordList`，跨控件关系使用带约束的稳定 `controlRef`，原生生成按“先创建、后解析关系”两阶段执行。
+- [x] new_emoji 窗口适配器已覆盖 18 个共享窗口事件、取消关闭和事件尺寸/DPI/状态读取；浏览器模板在 `SizeChanged` 与 `DpiChanged` 中统一重排控件、FBro HWND、弹层锚点和命中区域。
+- [x] 新增 `lingbuilder.new_emoji.fbro-shell@1.0.0` 与 `new-emoji-fbro-browser-shell` 模板。每标签使用稳定 ID、独立 FBro 句柄和宿主 `HWND`；`BrowserViewport` 仅保留加载/错误占位语义，F5、原生预览和 VS 导出共用同一生成链。
+- [x] 新增本地 HTTP fixture x64 原生 smoke，覆盖多标签导航、选择、重排、标题/地址/加载状态、10 秒存活、运行时哈希、正常关闭和无残留 FBro 进程。
+- [x] 浏览器外壳模板已按 `chrome_shell_demo.py` 的 1180 x 760 结构补齐 Chrome Tabs、独立新建标签、Omnibox、下载/扩展/更多菜单、右键菜单、弹层和自绘窗口控制；`demo:new-emoji-fbro-shell:export` 会建立隔离工作区，生成、导出、回读和导入验证 `exports/new_emoji-FBro浏览器外壳完整复刻.lcpppkg`，确保分享包携带真实 `.lcpp`、设计器、x64 配置、new_emoji 和 FBro SDK 资产。
+- [x] 修复 `WS_EX_LAYERED` new_emoji 主窗口与 Chromium 子 HWND 的 DWM 合成冲突：浏览器外壳每标签改用 `WS_EX_TOOLWINDOW + WS_POPUP` 非分层伴随宿主，并同步 BrowserViewport 的屏幕坐标、DPI、主窗口显隐/最小化/恢复和销毁。模板根 `Container` 显式 `flowEnabled=false`，避免流式布局吞掉标签栏和地址栏；弹层打开时受控隐藏宿主。原生 smoke 新增 owner/style/矩形、单一可见标签和顶部/网页像素门禁。
+- [x] 修复浏览器模板局部变量初始化被 C++ 声明提升后造成的标签按钮错位：派生布局值改为声明后按顺序赋值，Tabs 宽度收缩为实际标签总宽度，顶部剩余区域恢复窗口拖拽；标签同步通过窗口消息在控件事件结束后刷新 BrowserViewport 与拖拽命中区。所有新标签默认打开 `https://www.baidu.com`。
+- [x] `new-emoji-fbro-multi-browser-manager` 的真实 FBro 独立子窗口不再与设置页重叠。右侧使用浏览器工作区与配置工作区两个稳定 Tabs 页面；浏览器实例页由运行时按稳定 ID 动态创建，不预置固定 Host 数量，左侧 RichList 与隐藏表头 Tabs 同步。进入配置页必须先隐藏全部 FBro HWND，返回后仅显示当前实例。以后新增 FBro 管理表单时继续使用独立页面或原生伴随窗口，禁止覆盖在 embedded Chromium HWND 上。
+- [x] 新增 `new-emoji-fbro-listbox` 固定三实例演示：new_emoji ListBox 使用 `browser-baidu`、`browser-bing`、`browser-github` 稳定 key，`.lcpp` 选择回调通过类型化 `FBro_显示` / `FBro_隐藏` 映射到三个独立 FBro 宿主和缓存目录。原生 smoke 覆盖生成映射、MSVC x64 编译、三个 renderer 存活及实际 ListBox 点击后的单一可见宿主切换。
+- [ ] macOS、ARM64 和其它浏览器后端尚未实现；后续必须新增独立 target、平台桥接与原生验收，当前继续在生成前返回明确不支持诊断。
+- [x] 浏览器外壳已完成稳定 ID、LocalAppData 独立 Profile、原子实例清单与备份恢复；重命名不改变 ID/Profile，恢复保持顺序、地址和开关状态。
+- [ ] 后续可增加下载管理和自动化可访问性测试；这些能力必须继续复用稳定标签 ID、受控命令和 FBro 生命周期，不得把 `BrowserViewport` 升级为第二套网页渲染器。

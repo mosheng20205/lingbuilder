@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-03T06:34:46.936Z",
+  "generatedAt": "2026-08-07T17:09:24.115Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -83,7 +83,7 @@
       "moduleId": "lingbuilder.cef3.automation",
       "moduleName": "CEF3自动化模块",
       "projectId": "module-demo-lingbuilder.cef3.automation",
-      "commandCount": 1,
+      "commandCount": 6,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
@@ -94,9 +94,9 @@
       "moduleId": "lingbuilder.cef3.browser",
       "moduleName": "CEF3浏览器模块",
       "projectId": "module-demo-lingbuilder.cef3.browser",
-      "commandCount": 22,
+      "commandCount": 64,
       "controlCount": 1,
-      "groupCount": 3,
+      "groupCount": 4,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.browser/src",
       "packageName": "CEF3浏览器模块完整演示.lcpppkg"
@@ -105,7 +105,7 @@
       "moduleId": "lingbuilder.cef3.devtools",
       "moduleName": "CEF3开发者工具模块",
       "projectId": "module-demo-lingbuilder.cef3.devtools",
-      "commandCount": 3,
+      "commandCount": 8,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
@@ -127,7 +127,7 @@
       "moduleId": "lingbuilder.cef3.network",
       "moduleName": "CEF3网络模块",
       "projectId": "module-demo-lingbuilder.cef3.network",
-      "commandCount": 1,
+      "commandCount": 2,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
@@ -149,9 +149,9 @@
       "moduleId": "lingbuilder.cef3.platform",
       "moduleName": "CEF3平台工具模块",
       "projectId": "module-demo-lingbuilder.cef3.platform",
-      "commandCount": 4,
+      "commandCount": 72,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 4,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.platform/src",
       "packageName": "CEF3平台工具模块完整演示.lcpppkg"
@@ -182,9 +182,9 @@
       "moduleId": "lingbuilder.cef3.transfer",
       "moduleName": "CEF3传输模块",
       "projectId": "module-demo-lingbuilder.cef3.transfer",
-      "commandCount": 2,
+      "commandCount": 34,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.transfer/src",
       "packageName": "CEF3传输模块完整演示.lcpppkg"
@@ -311,6 +311,17 @@
       "packageName": "JSON数据模块完整演示.lcpppkg"
     },
     {
+      "moduleId": "lingbuilder.data.protobuf",
+      "moduleName": "Protocol Buffers 模块",
+      "projectId": "module-demo-lingbuilder.data.protobuf",
+      "commandCount": 9,
+      "controlCount": 0,
+      "groupCount": 1,
+      "builtin": true,
+      "sourceRoot": "examples/module-demos/lingbuilder.data.protobuf/src",
+      "packageName": "ProtocolBuffers模块完整演示.lcpppkg"
+    },
+    {
       "moduleId": "lingbuilder.data.xml",
       "moduleName": "XML 文本模块",
       "projectId": "module-demo-lingbuilder.data.xml",
@@ -334,14 +345,15 @@
     },
     {
       "moduleId": "lingbuilder.database.sqlite",
-      "moduleName": "SQLite数据库桥接模块",
+      "moduleName": "SQLite 数据库模块",
       "projectId": "module-demo-lingbuilder.database.sqlite",
-      "commandCount": 7,
+      "commandCount": 67,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 4,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.database.sqlite/src",
-      "packageName": "SQLite数据库桥接模块完整演示.lcpppkg"
+      "packageName": "SQLite数据库模块完整演示.lcpppkg",
+      "packageBytes": 21452
     },
     {
       "moduleId": "lingbuilder.edgeview",
@@ -369,7 +381,7 @@
       "moduleId": "lingbuilder.fbro.browser",
       "moduleName": "FBro指纹浏览器模块",
       "projectId": "module-demo-lingbuilder.fbro.browser",
-      "commandCount": 42,
+      "commandCount": 51,
       "controlCount": 1,
       "groupCount": 3,
       "builtin": true,
@@ -385,8 +397,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.events/src",
-      "packageName": "FBro事件模块完整演示.lcpppkg",
-      "packageBytes": 11075
+      "packageName": "FBro事件模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.network",
@@ -485,8 +496,7 @@
       "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.http.server/src",
-      "packageName": "HTTP服务端模块完整演示.lcpppkg",
-      "packageBytes": 19378
+      "packageName": "HTTP服务端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.image.bitmap",
@@ -563,8 +573,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.input.mouse/src",
-      "packageName": "鼠标输入模块完整演示.lcpppkg",
-      "packageBytes": 13496
+      "packageName": "鼠标输入模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.ipc",
@@ -677,11 +686,22 @@
       "packageName": "URL解析模块完整演示.lcpppkg"
     },
     {
+      "moduleId": "lingbuilder.new_emoji.fbro-shell",
+      "moduleName": "new_emoji FBro 浏览器外壳",
+      "projectId": "module-demo-lingbuilder.new_emoji.fbro-shell",
+      "commandCount": 38,
+      "controlCount": 0,
+      "groupCount": 2,
+      "builtin": true,
+      "sourceRoot": "examples/module-demos/lingbuilder.new_emoji.fbro-shell/src",
+      "packageName": "new_emojiFBro浏览器外壳完整演示.lcpppkg"
+    },
+    {
       "moduleId": "lingbuilder.new_emoji.ui",
       "moduleName": "new_emoji 原生界面库",
       "projectId": "module-demo-lingbuilder.new_emoji.ui",
-      "commandCount": 1599,
-      "controlCount": 92,
+      "commandCount": 3784,
+      "controlCount": 93,
       "groupCount": 12,
       "builtin": false,
       "sourceRoot": "examples/module-demos/lingbuilder.new_emoji.ui/src",
@@ -693,7 +713,7 @@
       "projectId": "module-demo-lingbuilder.opencv",
       "commandCount": 33,
       "controlCount": 0,
-      "groupCount": 3,
+      "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.opencv/src",
       "packageName": "OpenCV图像处理模块完整演示.lcpppkg"
@@ -713,7 +733,7 @@
       "moduleId": "lingbuilder.std.bytes",
       "moduleName": "字节与十六进制模块",
       "projectId": "module-demo-lingbuilder.std.bytes",
-      "commandCount": 4,
+      "commandCount": 13,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
@@ -784,8 +804,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.clipboard/src",
-      "packageName": "剪贴板模块完整演示.lcpppkg",
-      "packageBytes": 10109
+      "packageName": "剪贴板模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.system.disk",
@@ -796,8 +815,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.disk/src",
-      "packageName": "磁盘信息模块完整演示.lcpppkg",
-      "packageBytes": 13665
+      "packageName": "磁盘信息模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.system.info",
@@ -830,8 +848,7 @@
       "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.threading/src",
-      "packageName": "多线程模块完整演示.lcpppkg",
-      "packageBytes": 17991
+      "packageName": "多线程模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.web.http",
@@ -853,8 +870,7 @@
       "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.websocket.client/src",
-      "packageName": "WebSocket客户端模块完整演示.lcpppkg",
-      "packageBytes": 19015
+      "packageName": "WebSocket客户端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.websocket.server",
@@ -865,8 +881,7 @@
       "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.websocket.server/src",
-      "packageName": "WebSocket服务端模块完整演示.lcpppkg",
-      "packageBytes": 18490
+      "packageName": "WebSocket服务端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.accessibility",
@@ -883,9 +898,9 @@
       "moduleId": "lingbuilder.win32.basic",
       "moduleName": "Win32窗口基础模块",
       "projectId": "module-demo-lingbuilder.win32.basic",
-      "commandCount": 39,
+      "commandCount": 206,
       "controlCount": 12,
-      "groupCount": 2,
+      "groupCount": 11,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.basic/src",
       "packageName": "Win32窗口基础模块完整演示.lcpppkg"
@@ -894,13 +909,12 @@
       "moduleId": "lingbuilder.win32.common-controls",
       "moduleName": "Win32高级控件模块",
       "projectId": "module-demo-lingbuilder.win32.common-controls",
-      "commandCount": 222,
+      "commandCount": 546,
       "controlCount": 26,
       "groupCount": 12,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.common-controls/src",
-      "packageName": "Win32高级控件模块完整演示.lcpppkg",
-      "packageBytes": 43409
+      "packageName": "Win32高级控件模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.menu",

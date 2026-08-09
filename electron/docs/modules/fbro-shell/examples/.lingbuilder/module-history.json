@@ -1,0 +1,68 @@
+[
+  {
+    "id": "module-history-1786155395462-1a9151",
+    "time": "2026-08-08T02:16:35.462Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.fbro.objects",
+    "moduleName": "FBro受管对象模块",
+    "version": "2.1.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 FBro受管对象模块",
+    "details": "项目 lingbuilder-project 已引用 lingbuilder.fbro.objects@2.1.0。"
+  },
+  {
+    "id": "module-history-1786155395459-0d9a09",
+    "time": "2026-08-08T02:16:35.459Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.fbro.transfer",
+    "moduleName": "FBro传输模块",
+    "version": "2.1.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 FBro传输模块",
+    "details": "项目 lingbuilder-project 已引用 lingbuilder.fbro.transfer@2.1.0。"
+  },
+  {
+    "id": "module-history-1786155395457-3ec92e",
+    "time": "2026-08-08T02:16:35.457Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.fbro.session",
+    "moduleName": "FBro会话模块",
+    "version": "2.1.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 FBro会话模块",
+    "details": "项目 lingbuilder-project 已引用 lingbuilder.fbro.session@2.1.0。"
+  },
+  {
+    "id": "module-history-1786155395454-487738",
+    "time": "2026-08-08T02:16:35.454Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.fbro.events",
+    "moduleName": "FBro事件模块",
+    "version": "2.1.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 FBro事件模块",
+    "details": "项目 lingbuilder-project 已引用 lingbuilder.fbro.events@2.1.0。"
+  },
+  {
+    "id": "module-history-1786155395451-1f515a",
+    "time": "2026-08-08T02:16:35.452Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.fbro.browser",
+    "moduleName": "FBro指纹浏览器模块",
+    "version": "2.1.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 FBro指纹浏览器模块",
+    "details": "项目 lingbuilder-project 已引用 lingbuilder.fbro.browser@2.1.0。"
+  },
+  {
+    "id": "module-history-1786155348170-f3f80a",
+    "time": "2026-08-08T02:15:48.170Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.win32.common-controls",
+    "moduleName": "Win32高级控件模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 Win32高级控件模块",
+    "details": "项目 lingbuilder-project 已引用 lingbuilder.win32.common-controls@1.0.0。"
+  }
+]

@@ -21,6 +21,7 @@ import {
   getLingCppEventBlockHighlights,
   getLingCppFoldingRanges,
   getLingCppHover,
+  getLingCppSourceDefinitionAtPosition,
   getLingCppInlineHints,
   getLingCppSemanticDiagnostics,
   getLingCppStructuredReadingRows,
@@ -878,6 +879,20 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           }
           const word = model.getWordAtPosition(position);
           if (!word?.word) return null;
+          const sourceDefinition = getLingCppSourceDefinitionAtPosition(
+            model.getValue(), position.lineNumber, position.column
+          );
+          if (sourceDefinition) {
+            return {
+              uri: model.uri,
+              range: {
+                startLineNumber: sourceDefinition.range.startLine,
+                startColumn: sourceDefinition.range.startColumn,
+                endLineNumber: sourceDefinition.range.endLine,
+                endColumn: sourceDefinition.range.endColumn
+              }
+            };
+          }
           const constant = lingCppProjectGlobalsSnapshot?.constants.find(item => item.name === word.word);
           const globalDefinition = lingCppProjectGlobalsSnapshot ? findProjectGlobalDefinition(word.word, lingCppProjectGlobalsSnapshot) : undefined;
           const typeDefinition = findProjectDataTypeDefinition(word.word, lingCppProjectTypesSnapshot);

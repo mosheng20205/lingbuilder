@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.807Z",
+  "generatedAt": "2026-08-07T08:51:35.749Z",
   "module": {
     "id": "lingbuilder.cef3.views",
     "name": "CEF3视图模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "提供Chrome Runtime独立窗口入口。"
   },
   "commandCount": 1,

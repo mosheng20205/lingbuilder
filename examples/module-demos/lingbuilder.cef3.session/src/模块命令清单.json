@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.801Z",
+  "generatedAt": "2026-08-07T08:51:35.743Z",
   "module": {
     "id": "lingbuilder.cef3.session",
     "name": "CEF3会话模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "提供每实例RequestContext、缓存和Cookie隔离会话能力。"
   },
   "commandCount": 19,

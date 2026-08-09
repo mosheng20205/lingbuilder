@@ -2,16 +2,19 @@ import {
   LingControl,
   LingControlType,
   LingDesignerEventInfo,
+  LingWindowFrame,
   LingWindowModel,
   LingWindowProject
 } from './types';
 import { normalizeControlHierarchy } from './controlHierarchy';
 import { DEFAULT_CONTROL_FONT_FAMILY, normalizeControlFont } from './controlFont';
+import { normalizeWindowControlTags } from './controlTagService';
 import {
   createDefaultControlProperties,
   getPrimaryWin32ControlEvent,
   getWin32ControlDefinition
 } from './win32ControlRegistry';
+import type { Win32ControlPropertyValue } from './win32ControlRegistry';
 import { getWindowEventDefinition } from './windowEventRegistry';
 import type { ModuleDesignerControlContribution } from '../modules/types';
 import { normalizeFbroEventId } from '../modules/fbroEventCatalog';
@@ -32,6 +35,71 @@ export const DEFAULT_WINDOW_TITLE_BAR_BACKGROUND = '#2D2D30';
 export const DEFAULT_WINDOW_TITLE_BAR_FOREGROUND = '#CBD5E1';
 export const DEFAULT_WINDOW_CORNER_STYLE = 'rounded' as const;
 export const DEFAULT_WINDOW_ICON_STYLE = 'lingbuilder' as const;
+export const NEW_EMOJI_BROWSER_SHELL_FRAME_FLAGS = 0x3F;
+export const NEW_EMOJI_WINDOW_FRAME_FLAG_OPTIONS = [
+  { flag: 0x01, label: '无系统边框' },
+  { flag: 0x02, label: '自绘标题区' },
+  { flag: 0x04, label: '自绘窗口按钮' },
+  { flag: 0x08, label: '允许缩放' },
+  { flag: 0x10, label: '启用圆角' },
+  { flag: 0x20, label: '隐藏系统标题栏' }
+] as const;
+const NEW_EMOJI_STABLE_RELATION_PROPERTY_KEYS = new Set([
+  'targetContainerId', 'containerId', 'targetElementId', 'anchorElementId', 'dropdownElementId'
+]);
+
+function migrateNewEmojiStableRelationships(properties: Record<string, Win32ControlPropertyValue>): Record<string, Win32ControlPropertyValue> {
+  let changed = false;
+  const next = { ...properties };
+  for (const key of NEW_EMOJI_STABLE_RELATION_PROPERTY_KEYS) {
+    if (next[key] === 0 || next[key] === '0') {
+      next[key] = '';
+      changed = true;
+    }
+  }
+  if (Array.isArray(next.menuItems)) {
+    const menuItems = next.menuItems.map(item => {
+      if (!item || typeof item !== 'object') return item;
+      const record = item as Record<string, unknown>;
+      if (record.submenu !== 0 && record.submenu !== '0') return item;
+      changed = true;
+      return { ...record, submenu: '' };
+    });
+    if (changed) next.menuItems = menuItems as Array<Record<string, unknown>>;
+  }
+  return changed ? next : properties;
+}
+
+function finiteFrameMetric(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(64, Math.trunc(numeric))) : fallback;
+}
+
+export function normalizeLingWindowFrame(
+  frame: Partial<LingWindowFrame> | undefined,
+  resizable = true,
+  cornerStyle: LingWindowModel['cornerStyle'] = DEFAULT_WINDOW_CORNER_STYLE
+): LingWindowFrame {
+  const preset = frame?.preset === 'browserShell' || frame?.preset === 'custom' ? frame.preset : 'system';
+  const defaultBorder = resizable ? 6 : 0;
+  const defaultRadius = cornerStyle === 'square' ? 0 : cornerStyle === 'small-rounded' ? 6 : 10;
+  const flags = preset === 'browserShell'
+    ? NEW_EMOJI_BROWSER_SHELL_FRAME_FLAGS
+    : preset === 'custom'
+      ? Math.max(0, Math.min(NEW_EMOJI_BROWSER_SHELL_FRAME_FLAGS, Math.trunc(Number(frame?.flags) || 0)))
+      : 0;
+  return {
+    preset,
+    flags,
+    resizeBorder: {
+      left: finiteFrameMetric(frame?.resizeBorder?.left, defaultBorder),
+      top: finiteFrameMetric(frame?.resizeBorder?.top, defaultBorder),
+      right: finiteFrameMetric(frame?.resizeBorder?.right, defaultBorder),
+      bottom: finiteFrameMetric(frame?.resizeBorder?.bottom, defaultBorder)
+    },
+    cornerRadius: finiteFrameMetric(frame?.cornerRadius, defaultRadius)
+  };
+}
 
 export interface PersistedWindowDesignerState {
   project: LingWindowProject;
@@ -259,6 +327,7 @@ export function createBlankWindow(index: number, designerBackend = 'win32'): Lin
     openPlacement: 'default',
     resizable: true,
     maximizable: true,
+    windowFrame: normalizeLingWindowFrame(undefined, true, DEFAULT_WINDOW_CORNER_STYLE),
     designerBackend,
     controls: designerBackend !== 'win32' ? [] : [
       {
@@ -618,8 +687,9 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       fontUnderline: window.menuFontUnderline
     });
     const hierarchyControls = normalizeControlHierarchy(window.controls || []);
-    let controlsChanged = hierarchyControls !== window.controls;
-    const controls = hierarchyControls.map(control => {
+    const normalizedTags = normalizeWindowControlTags(hierarchyControls);
+    let controlsChanged = hierarchyControls !== window.controls || normalizedTags.changed;
+    const controls = normalizedTags.controls.map(control => {
       const font = normalizeControlFont(control);
       let properties = control.properties || createDefaultControlProperties(control.type, control.content);
       let dataGridMigrated = false;
@@ -639,6 +709,11 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
         const migrated = migrateLegacyNewEmojiTableProperties(properties as Record<string, unknown>);
         dataGridMigrated = JSON.stringify(migrated) !== JSON.stringify(properties);
         properties = migrated as typeof properties;
+      }
+      const migratedRelationships = migrateNewEmojiStableRelationships(properties);
+      if (migratedRelationships !== properties) {
+        dataGridMigrated = true;
+        properties = migratedRelationships;
       }
       const missingComboBoxExDropDownHeight = control.type === 'ComboBoxEx'
         && !Number.isFinite(Number(properties.dropDownHeight));
@@ -682,11 +757,13 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     });
     const inferredDesignerBackend = window.designerBackend
       || (controls.some(control => control.designerType?.startsWith(NEW_EMOJI_DESIGNER_TYPE_PREFIX)) ? 'new-emoji' : undefined);
+    const normalizedWindowFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
     const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle || !window.menuBackground || !window.menuForeground
       || typeof window.resizable !== 'boolean' || typeof window.maximizable !== 'boolean'
       || window.menuFontFamily !== menuFont.family || window.menuFontSize !== menuFont.size || window.menuFontBold !== menuFont.bold
       || window.menuFontItalic !== menuFont.italic || window.menuFontUnderline !== menuFont.underline
-      || window.designerBackend !== inferredDesignerBackend;
+      || window.designerBackend !== inferredDesignerBackend
+      || JSON.stringify(window.windowFrame) !== JSON.stringify(normalizedWindowFrame);
     if (!controlsChanged && !appearanceChanged) return window;
     projectChanged = true;
     return {
@@ -705,6 +782,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       ...(inferredDesignerBackend ? { designerBackend: inferredDesignerBackend } : {}),
       resizable: window.resizable !== false,
       maximizable: window.maximizable !== false,
+      windowFrame: normalizedWindowFrame,
       controls
     };
   });
@@ -831,7 +909,8 @@ export function generateWindowXml(window: LingWindowModel): string {
     const stateAttr = !control.isEnabled ? ' 启用状态="禁用"' : '';
     const styleAttr = control.background !== 'transparent' ? ` 背景色="${control.background}"` : '';
     const font = normalizeControlFont(control);
-    const fontAttrs = ` 字体名称="${escapeXmlAttribute(font.family)}" 字体大小="${font.size}" 粗体="${font.bold ? '是' : '否'}" 斜体="${font.italic ? '是' : '否'}" 下划线="${font.underline ? '是' : '否'}"`;
+    const tagAttrs = `${control.tagText ? ` 标记文本="${escapeXmlAttribute(control.tagText)}"` : ''}${control.tagInteger !== undefined ? ` 标记整数="${control.tagInteger}"` : ''}`;
+    const fontAttrs = ` 字体名称="${escapeXmlAttribute(font.family)}" 字体大小="${font.size}" 粗体="${font.bold ? '是' : '否'}" 斜体="${font.italic ? '是' : '否'}" 下划线="${font.underline ? '是' : '否'}"${tagAttrs}`;
     const parentAttr = control.parentId ? ` 父级控件="${control.parentId}"` : '';
     const eventAttrs = Object.entries(control.events || {})
       .filter(([, handler]) => handler.trim())

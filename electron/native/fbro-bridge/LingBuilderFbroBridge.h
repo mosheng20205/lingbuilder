@@ -178,10 +178,23 @@ enum LB_FBRO_EVENT_CODE {
   LB_FBRO_EVENT_VIP_DEVTOOLS_EVENT = 12,
   LB_FBRO_EVENT_VIP_DEVTOOLS_ATTACHED = 13,
   LB_FBRO_EVENT_VIP_DEVTOOLS_DETACHED = 14,
-  LB_FBRO_EVENT_VIP_LIFECYCLE = 15
+  LB_FBRO_EVENT_VIP_LIFECYCLE = 15,
+  LB_FBRO_EVENT_DOWNLOAD_START = 16,
+  LB_FBRO_EVENT_DOWNLOAD_UPDATED = 17
 };
 
+typedef struct LB_FBRO_INITIALIZE_OPTIONS_V1 {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  const wchar_t* runtime_directory;
+  int32_t remote_debugging_port;
+} LB_FBRO_INITIALIZE_OPTIONS_V1;
+
+#define LB_FBRO_INITIALIZE_OPTIONS_VERSION_V1 0x00010000u
+
 LB_FBRO_API int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory);
+LB_FBRO_API int __stdcall LB_FBro_InitializeEx(
+    const LB_FBRO_INITIALIZE_OPTIONS_V1* options);
 LB_FBRO_API uint32_t __stdcall LB_FBro_GetAbiVersion(void);
 LB_FBRO_API int __stdcall LB_FBro_IsReady(void);
 LB_FBRO_API int __stdcall LB_FBro_GetVipLicenseInfoJson(wchar_t* result, size_t capacity);
@@ -197,6 +210,13 @@ LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx(HWND host, const wchar_t* 
                                                       const wchar_t* user_agent, unsigned int flags,
                                                       LB_FBRO_EVENT_CALLBACK callback,
                                                       void* user_data);
+LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx2(HWND host, const wchar_t* url,
+                                                       const wchar_t* profile_directory,
+                                                       const wchar_t* user_agent,
+                                                       const wchar_t* extension_directory,
+                                                       unsigned int flags,
+                                                       LB_FBRO_EVENT_CALLBACK callback,
+                                                       void* user_data);
 LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_CreateChromeUi(LB_FBRO_HANDLE owner,
                                                             const wchar_t* url,
                                                             LB_FBRO_EVENT_CALLBACK callback,
@@ -246,6 +266,9 @@ LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_CookieVisitUrlAsync(
 LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_CookieSetAsync(
     LB_FBRO_HANDLE browser, const wchar_t* url, const wchar_t* name, const wchar_t* value,
     const wchar_t* domain, const wchar_t* path, int secure, int http_only,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_CookieSetJsonAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* url, const wchar_t* cookie_json,
     LB_FBRO_TASK_CALLBACK callback, void* user_data);
 LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_CookieDeleteAsync(
     LB_FBRO_HANDLE browser, const wchar_t* url, const wchar_t* name,

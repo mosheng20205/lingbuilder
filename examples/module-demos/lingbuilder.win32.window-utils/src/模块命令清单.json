@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:26.046Z",
+  "generatedAt": "2026-08-07T08:51:36.036Z",
   "module": {
     "id": "lingbuilder.win32.window-utils",
     "name": "Win32窗口操作模块",

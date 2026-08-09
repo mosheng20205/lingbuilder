@@ -1,16 +1,91 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.770Z",
+  "generatedAt": "2026-08-07T08:51:35.720Z",
   "module": {
     "id": "lingbuilder.cef3.browser",
     "name": "CEF3浏览器模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。"
   },
-  "commandCount": 22,
+  "commandCount": 64,
   "commands": [
     {
       "index": 1,
+      "name": "CEF3_是否启用崩溃报告",
+      "aliases": [
+        "cef_crash_reporting_enabled"
+      ],
+      "signature": "CEF3_是否启用崩溃报告()",
+      "description": "返回当前 CEF 崩溃报告配置是否启用。",
+      "insertText": "CEF3_是否启用崩溃报告()",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_是否启用崩溃报告",
+        "runtimeName": "CEF3_是否启用崩溃报告",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3_是否启用崩溃报告()"
+    },
+    {
+      "index": 2,
+      "name": "CEF3_设置崩溃键值",
+      "aliases": [
+        "cef_set_crash_key_value"
+      ],
+      "signature": "CEF3_设置崩溃键值(键, 值)",
+      "description": "设置或清除发送到 CEF 崩溃报告的键值元数据；值为空文本时清除该键。",
+      "insertText": "CEF3_设置崩溃键值(\"场景\", \"首页\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_设置崩溃键值",
+        "runtimeName": "CEF3_设置崩溃键值",
+        "parameters": [
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_设置崩溃键值(\"场景\", \"首页\")"
+      },
+      "demoInvocation": "CEF3_设置崩溃键值(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "CEF3_取命令资源ID",
+      "aliases": [
+        "cef_id_for_command_id_name"
+      ],
+      "signature": "CEF3_取命令资源ID(名称)",
+      "description": "按当前 CEF/Chromium 版本把 IDC 命令名称转换为数值 ID；未知名称返回 -1。",
+      "insertText": "CEF3_取命令资源ID(\"IDC_BACK\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_取命令资源ID",
+        "runtimeName": "CEF3_取命令资源ID",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_取命令资源ID(\"IDC_BACK\")"
+      },
+      "demoInvocation": "CEF3_取命令资源ID(\"演示参数1\")"
+    },
+    {
+      "index": 4,
       "name": "CEF3_导航",
       "signature": "CEF3_导航(控件名, 地址)",
       "description": "让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。",
@@ -44,7 +119,7 @@
       "demoInvocation": "CEF3_导航(演示CefBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 2,
+      "index": 5,
       "name": "CEF3_打开原生UI浏览器",
       "signature": "CEF3_打开原生UI浏览器(控件名, 地址)",
       "description": "使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。",
@@ -78,7 +153,7 @@
       "demoInvocation": "CEF3_打开原生UI浏览器(演示CefBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 3,
+      "index": 6,
       "name": "CEF3_执行JS",
       "aliases": [
         "Runtime.evaluate"
@@ -115,7 +190,7 @@
       "demoInvocation": "CEF3_执行JS(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 4,
+      "index": 7,
       "name": "CEF3_后退",
       "signature": "CEF3_后退(控件名)",
       "description": "指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。",
@@ -144,7 +219,7 @@
       "demoInvocation": "CEF3_后退(演示CefBrowser控件)"
     },
     {
-      "index": 5,
+      "index": 8,
       "name": "CEF3_前进",
       "signature": "CEF3_前进(控件名)",
       "description": "指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。",
@@ -173,7 +248,7 @@
       "demoInvocation": "CEF3_前进(演示CefBrowser控件)"
     },
     {
-      "index": 6,
+      "index": 9,
       "name": "CEF3_刷新",
       "signature": "CEF3_刷新(控件名)",
       "description": "刷新指定 CEF3 浏览器控件的当前网页。",
@@ -202,7 +277,7 @@
       "demoInvocation": "CEF3_刷新(演示CefBrowser控件)"
     },
     {
-      "index": 7,
+      "index": 10,
       "name": "CEF3_停止",
       "signature": "CEF3_停止(控件名)",
       "description": "停止指定 CEF3 浏览器控件的当前导航。",
@@ -231,7 +306,7 @@
       "demoInvocation": "CEF3_停止(演示CefBrowser控件)"
     },
     {
-      "index": 8,
+      "index": 11,
       "name": "CEF3_取标题",
       "signature": "CEF3_取标题(控件名)",
       "description": "返回指定 CEF3 浏览器控件当前网页标题。",
@@ -260,7 +335,7 @@
       "demoInvocation": "CEF3_取标题(演示CefBrowser控件)"
     },
     {
-      "index": 9,
+      "index": 12,
       "name": "CEF3_取地址",
       "signature": "CEF3_取地址(控件名)",
       "description": "返回指定 CEF3 浏览器控件当前网页地址。",
@@ -289,7 +364,7 @@
       "demoInvocation": "CEF3_取地址(演示CefBrowser控件)"
     },
     {
-      "index": 10,
+      "index": 13,
       "name": "CEF3_设置缓存目录",
       "aliases": [
         "CefRequestContext::CreateContext"
@@ -325,7 +400,7 @@
       "demoInvocation": "CEF3_设置缓存目录(演示CefBrowser控件, \".\")"
     },
     {
-      "index": 11,
+      "index": 14,
       "name": "CEF3_设置代理",
       "aliases": [
         "CefPreferenceManager::SetPreference"
@@ -361,7 +436,7 @@
       "demoInvocation": "CEF3_设置代理(演示CefBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 12,
+      "index": 15,
       "name": "CEF3_创建",
       "signature": "CEF3_创建(控件名)",
       "description": "使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。",
@@ -390,7 +465,26 @@
       "demoInvocation": "CEF3_创建(演示CefBrowser控件)"
     },
     {
-      "index": 13,
+      "index": 16,
+      "name": "CEF3_执行消息循环工作",
+      "aliases": [
+        "cef_do_message_loop_work"
+      ],
+      "signature": "CEF3_执行消息循环工作()",
+      "description": "在 CEF 消息循环模式下执行一次非阻塞消息循环工作；Bridge 会安全调度到 CEF UI 线程。",
+      "insertText": "CEF3_执行消息循环工作()",
+      "returnType": "空",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_执行消息循环工作",
+        "runtimeName": "LB_CEF3_DoMessageLoopWork",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "CEF3_执行消息循环工作()"
+    },
+    {
+      "index": 17,
       "name": "CEF3_关闭",
       "signature": "CEF3_关闭(控件名)",
       "description": "关闭指定 CEF3 浏览器控件并释放 Chromium 资源。",
@@ -419,10 +513,10 @@
       "demoInvocation": "CEF3_关闭(演示CefBrowser控件)"
     },
     {
-      "index": 14,
+      "index": 18,
       "name": "CEF3_取最近事件",
       "signature": "CEF3_取最近事件(控件名)",
-      "description": "返回最近 CEF3 事件名；当前目录包含 92 个浏览器回调。",
+      "description": "返回最近 CEF3 事件名；当前目录包含 96 个浏览器回调。",
       "insertText": "CEF3_取最近事件($1)",
       "returnType": "文本型",
       "binding": {
@@ -448,7 +542,7 @@
       "demoInvocation": "CEF3_取最近事件(演示CefBrowser控件)"
     },
     {
-      "index": 15,
+      "index": 19,
       "name": "CEF3_取事件数据",
       "signature": "CEF3_取事件数据(控件名)",
       "description": "返回最近事件的主要文本数据。",
@@ -477,7 +571,7 @@
       "demoInvocation": "CEF3_取事件数据(演示CefBrowser控件)"
     },
     {
-      "index": 16,
+      "index": 20,
       "name": "CEF3_取事件字段",
       "signature": "CEF3_取事件字段(控件名, 字段名)",
       "description": "读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。",
@@ -510,7 +604,7 @@
       "demoInvocation": "CEF3_取事件字段(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 17,
+      "index": 21,
       "name": "CEF3_设置事件结果",
       "signature": "CEF3_设置事件结果(控件名, 结果)",
       "description": "设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。",
@@ -543,7 +637,7 @@
       "demoInvocation": "CEF3_设置事件结果(演示CefBrowser控件, 1)"
     },
     {
-      "index": 18,
+      "index": 22,
       "name": "CEF3_设置事件返回文本",
       "signature": "CEF3_设置事件返回文本(控件名, 文本)",
       "description": "设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。",
@@ -576,10 +670,10 @@
       "demoInvocation": "CEF3_设置事件返回文本(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 19,
+      "index": 23,
       "name": "CEF3_绑定事件",
       "signature": "CEF3_绑定事件(控件名, 事件名, 处理器)",
-      "description": "绑定 CEF3 浏览器事件目录（92 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。",
+      "description": "绑定 CEF3 浏览器事件目录（96 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。",
       "insertText": "CEF3_绑定事件($1, \"加载完成\", &$2)",
       "returnType": "整数型",
       "binding": {
@@ -616,7 +710,7 @@
       "demoInvocation": "CEF3_绑定事件(演示CefBrowser控件, \"演示事件\", &模块演示回调)"
     },
     {
-      "index": 20,
+      "index": 24,
       "name": "CEF3_是否可后退",
       "signature": "CEF3_是否可后退(控件名)",
       "description": "指定 CEF3 浏览器控件可以后退时返回 1。",
@@ -645,7 +739,7 @@
       "demoInvocation": "CEF3_是否可后退(演示CefBrowser控件)"
     },
     {
-      "index": 21,
+      "index": 25,
       "name": "CEF3_是否可前进",
       "signature": "CEF3_是否可前进(控件名)",
       "description": "指定 CEF3 浏览器控件可以前进时返回 1。",
@@ -674,7 +768,7 @@
       "demoInvocation": "CEF3_是否可前进(演示CefBrowser控件)"
     },
     {
-      "index": 22,
+      "index": 26,
       "name": "CEF3_是否加载中",
       "signature": "CEF3_是否加载中(控件名)",
       "description": "指定 CEF3 浏览器控件正在加载网页时返回 1。",
@@ -701,6 +795,1463 @@
         "encoding": "wide"
       },
       "demoInvocation": "CEF3_是否加载中(演示CefBrowser控件)"
+    },
+    {
+      "index": 27,
+      "name": "CEF3_是否有效",
+      "aliases": [
+        "is_valid"
+      ],
+      "signature": "CEF3_是否有效(控件名)",
+      "description": "指定 CEF3 浏览器控件的原生浏览器对象仍有效时返回 1。",
+      "insertText": "CEF3_是否有效($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_是否有效",
+        "runtimeName": "CEF3_是否有效",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否有效(演示CefBrowser控件)"
+    },
+    {
+      "index": 28,
+      "name": "CEF3_是否弹出窗口",
+      "aliases": [
+        "is_popup"
+      ],
+      "signature": "CEF3_是否弹出窗口(控件名)",
+      "description": "指定 CEF3 浏览器对象由弹出窗口流程创建时返回 1。",
+      "insertText": "CEF3_是否弹出窗口($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_是否弹出窗口",
+        "runtimeName": "CEF3_是否弹出窗口",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否弹出窗口(演示CefBrowser控件)"
+    },
+    {
+      "index": 29,
+      "name": "CEF3_是否同一实例",
+      "aliases": [
+        "is_same"
+      ],
+      "signature": "CEF3_是否同一实例(控件名, 另一控件名)",
+      "description": "两个 CEF3 浏览器控件引用同一原生浏览器对象时返回 1。",
+      "insertText": "CEF3_是否同一实例($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_是否同一实例",
+        "runtimeName": "CEF3_是否同一实例",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "另一控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否同一实例(演示CefBrowser控件, 演示CefBrowser控件)"
+    },
+    {
+      "index": 30,
+      "name": "CEF3_是否有文档",
+      "aliases": [
+        "has_document"
+      ],
+      "signature": "CEF3_是否有文档(控件名)",
+      "description": "指定 CEF3 浏览器控件已经加载文档时返回 1。",
+      "insertText": "CEF3_是否有文档($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_是否有文档",
+        "runtimeName": "CEF3_是否有文档",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否有文档(演示CefBrowser控件)"
+    },
+    {
+      "index": 31,
+      "name": "CEF3_是否禁用窗口渲染",
+      "aliases": [
+        "is_window_rendering_disabled"
+      ],
+      "signature": "CEF3_是否禁用窗口渲染(控件名)",
+      "description": "指定 CEF3 浏览器使用无窗口/OSR 渲染时返回 1；普通窗口浏览器返回 0。",
+      "insertText": "CEF3_是否禁用窗口渲染($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_是否禁用窗口渲染",
+        "runtimeName": "CEF3_是否禁用窗口渲染",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否禁用窗口渲染(演示CefBrowser控件)"
+    },
+    {
+      "index": 32,
+      "name": "CEF3_是否网页全屏",
+      "aliases": [
+        "is_fullscreen"
+      ],
+      "signature": "CEF3_是否网页全屏(控件名)",
+      "description": "指定 CEF3 浏览器的网页通过 JavaScript Fullscreen API 进入全屏时返回 1，不表示宿主窗口是否最大化。",
+      "insertText": "CEF3_是否网页全屏($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_是否网页全屏",
+        "runtimeName": "CEF3_是否网页全屏",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否网页全屏(演示CefBrowser控件)"
+    },
+    {
+      "index": 33,
+      "name": "CEF3_是否使用浏览器视图",
+      "aliases": [
+        "has_view"
+      ],
+      "signature": "CEF3_是否使用浏览器视图(控件名)",
+      "description": "指定浏览器由 CEF Views 框架的 CefBrowserView 包装时返回 1，否则返回 0。",
+      "insertText": "CEF3_是否使用浏览器视图($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_是否使用浏览器视图",
+        "runtimeName": "CEF3_是否使用浏览器视图",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否使用浏览器视图(演示CefBrowser控件)"
+    },
+    {
+      "index": 34,
+      "name": "CEF3_取打开者浏览器ID",
+      "aliases": [
+        "get_opener_identifier"
+      ],
+      "signature": "CEF3_取打开者浏览器ID(控件名)",
+      "description": "返回创建当前弹出浏览器的浏览器唯一 ID；当前浏览器不是弹出浏览器时返回 0。",
+      "insertText": "CEF3_取打开者浏览器ID($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_取打开者浏览器ID",
+        "runtimeName": "CEF3_取打开者浏览器ID",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取打开者浏览器ID(演示CefBrowser控件)"
+    },
+    {
+      "index": 35,
+      "name": "CEF3_是否已准备关闭",
+      "aliases": [
+        "is_ready_to_be_closed"
+      ],
+      "signature": "CEF3_是否已准备关闭(控件名)",
+      "description": "浏览器进入必须完成的关闭阶段时返回 1；返回 1 后应尽快销毁对应宿主窗口或视图层级。",
+      "insertText": "CEF3_是否已准备关闭($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_是否已准备关闭",
+        "runtimeName": "CEF3_是否已准备关闭",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否已准备关闭(演示CefBrowser控件)"
+    },
+    {
+      "index": 36,
+      "name": "CEF3_是否渲染进程无响应",
+      "aliases": [
+        "is_render_process_unresponsive"
+      ],
+      "signature": "CEF3_是否渲染进程无响应(控件名)",
+      "description": "关联渲染进程至少 15 秒未处理输入事件时返回 1；状态变化也可通过“渲染进程无响应/恢复响应”事件接收。",
+      "insertText": "CEF3_是否渲染进程无响应($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_是否渲染进程无响应",
+        "runtimeName": "CEF3_是否渲染进程无响应",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否渲染进程无响应(演示CefBrowser控件)"
+    },
+    {
+      "index": 37,
+      "name": "CEF3_取运行时样式",
+      "aliases": [
+        "get_runtime_style"
+      ],
+      "signature": "CEF3_取运行时样式(控件名)",
+      "description": "返回浏览器运行时样式：0 默认、1 Chrome、2 Alloy；无窗口/OSR 浏览器固定为 Alloy。",
+      "insertText": "CEF3_取运行时样式($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_取运行时样式",
+        "runtimeName": "CEF3_取运行时样式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取运行时样式(演示CefBrowser控件)"
+    },
+    {
+      "index": 38,
+      "name": "CEF3_取缩放级别",
+      "aliases": [
+        "get_zoom_level"
+      ],
+      "signature": "CEF3_取缩放级别(控件名)",
+      "description": "读取浏览器当前缩放级别；0.0 表示默认缩放，正数放大，负数缩小。",
+      "insertText": "CEF3_取缩放级别($1)",
+      "returnType": "小数型",
+      "binding": {
+        "command": "CEF3_取缩放级别",
+        "runtimeName": "CEF3_取缩放级别",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取缩放级别(演示CefBrowser控件)"
+    },
+    {
+      "index": 39,
+      "name": "CEF3_取默认缩放级别",
+      "aliases": [
+        "get_default_zoom_level"
+      ],
+      "signature": "CEF3_取默认缩放级别(控件名)",
+      "description": "读取浏览器宿主的默认缩放级别；未配置默认缩放时返回 0.0。",
+      "insertText": "CEF3_取默认缩放级别($1)",
+      "returnType": "小数型",
+      "binding": {
+        "command": "CEF3_取默认缩放级别",
+        "runtimeName": "CEF3_取默认缩放级别",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取默认缩放级别(演示CefBrowser控件)"
+    },
+    {
+      "index": 40,
+      "name": "CEF3_设置缩放级别",
+      "aliases": [
+        "set_zoom_level"
+      ],
+      "signature": "CEF3_设置缩放级别(控件名, 级别)",
+      "description": "设置浏览器当前缩放级别；传入 0.0 可恢复宿主默认缩放。",
+      "insertText": "CEF3_设置缩放级别($1, 0.0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_设置缩放级别",
+        "runtimeName": "CEF3_设置缩放级别",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "级别",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_设置缩放级别(演示CefBrowser控件, 1.0)"
+    },
+    {
+      "index": 41,
+      "name": "CEF3_是否可缩放",
+      "aliases": [
+        "can_zoom"
+      ],
+      "signature": "CEF3_是否可缩放(控件名, 缩放命令)",
+      "description": "判断浏览器是否可执行指定缩放命令：0 缩小、1 重置、2 放大；可执行时返回 1。",
+      "insertText": "CEF3_是否可缩放($1, 2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_是否可缩放",
+        "runtimeName": "CEF3_是否可缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "缩放命令",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_是否可缩放(浏览器1, 2)"
+      },
+      "demoInvocation": "CEF3_是否可缩放(演示CefBrowser控件, 1)"
+    },
+    {
+      "index": 42,
+      "name": "CEF3_执行缩放",
+      "aliases": [
+        "zoom"
+      ],
+      "signature": "CEF3_执行缩放(控件名, 缩放命令)",
+      "description": "执行浏览器缩放动作：0 缩小、1 重置、2 放大；调用前可用 CEF3_是否可缩放 查询，当前命令不可执行时返回失败状态。",
+      "insertText": "CEF3_执行缩放($1, 2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_执行缩放",
+        "runtimeName": "CEF3_执行缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "缩放命令",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_执行缩放(浏览器1, 2)"
+      },
+      "demoInvocation": "CEF3_执行缩放(演示CefBrowser控件, 1)"
+    },
+    {
+      "index": 43,
+      "name": "CEF3_尝试关闭",
+      "aliases": [
+        "try_close_browser"
+      ],
+      "signature": "CEF3_尝试关闭(控件名)",
+      "description": "按 CEF 生命周期协议请求关闭；返回 1 时宿主窗口可立即销毁，返回 0 时应等待关闭回调。",
+      "insertText": "CEF3_尝试关闭($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_尝试关闭",
+        "runtimeName": "CEF3_尝试关闭",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_尝试关闭(演示CefBrowser控件)"
+    },
+    {
+      "index": 44,
+      "name": "CEF3_通知窗口移动或调整大小",
+      "aliases": [
+        "notify_move_or_resize_started"
+      ],
+      "signature": "CEF3_通知窗口移动或调整大小(控件名)",
+      "description": "通知 CEF 浏览器宿主其顶层窗口已经开始移动或调整大小，使屏幕坐标、弹出层和渲染位置及时刷新。",
+      "insertText": "CEF3_通知窗口移动或调整大小($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_通知窗口移动或调整大小",
+        "runtimeName": "CEF3_通知窗口移动或调整大小",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_通知窗口移动或调整大小(演示CefBrowser控件)"
+    },
+    {
+      "index": 45,
+      "name": "CEF3_通知屏幕信息已改变",
+      "aliases": [
+        "notify_screen_info_changed"
+      ],
+      "signature": "CEF3_通知屏幕信息已改变(控件名)",
+      "description": "通知 CEF 屏幕尺寸、位置或缩放信息已经改变；用于 OSR 或客户端提供外部根窗口的浏览器。",
+      "insertText": "CEF3_通知屏幕信息已改变($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_通知屏幕信息已改变",
+        "runtimeName": "CEF3_通知屏幕信息已改变",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_通知屏幕信息已改变(演示CefBrowser控件)"
+    },
+    {
+      "index": 46,
+      "name": "CEF3_发送捕获丢失事件",
+      "aliases": [
+        "send_capture_lost_event"
+      ],
+      "signature": "CEF3_发送捕获丢失事件(控件名)",
+      "description": "在宿主失去鼠标捕获时通知指定 CEF 浏览器；主要用于禁用窗口渲染的 OSR 输入链路。",
+      "insertText": "CEF3_发送捕获丢失事件($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_发送捕获丢失事件",
+        "runtimeName": "CEF3_发送捕获丢失事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_发送捕获丢失事件(演示CefBrowser控件)"
+    },
+    {
+      "index": 47,
+      "name": "CEF3_取消输入法组合文本",
+      "aliases": [
+        "ime_cancel_composition"
+      ],
+      "signature": "CEF3_取消输入法组合文本(控件名)",
+      "description": "取消并丢弃指定 OSR 浏览器当前的输入法组合文本，不把组合节点内容提交到页面。",
+      "insertText": "CEF3_取消输入法组合文本($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_取消输入法组合文本",
+        "runtimeName": "CEF3_取消输入法组合文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取消输入法组合文本(演示CefBrowser控件)"
+    },
+    {
+      "index": 48,
+      "name": "CEF3_完成输入法组合文本",
+      "aliases": [
+        "ime_finish_composing_text"
+      ],
+      "signature": "CEF3_完成输入法组合文本(控件名, 保留选择)",
+      "description": "提交指定 OSR 浏览器当前的输入法组合文本，并选择是否保留现有选区。",
+      "insertText": "CEF3_完成输入法组合文本($1, 真)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_完成输入法组合文本",
+        "runtimeName": "CEF3_完成输入法组合文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "保留选择",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_完成输入法组合文本(浏览器1, 真)"
+      },
+      "demoInvocation": "CEF3_完成输入法组合文本(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 49,
+      "name": "CEF3_添加单词到词典",
+      "aliases": [
+        "add_word_to_dictionary"
+      ],
+      "signature": "CEF3_添加单词到词典(控件名, 单词)",
+      "description": "把非空单词加入指定浏览器配置使用的自定义拼写检查词典。",
+      "insertText": "CEF3_添加单词到词典($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_添加单词到词典",
+        "runtimeName": "CEF3_添加单词到词典",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "单词",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_添加单词到词典(浏览器1, \"LingBuilder\")"
+      },
+      "demoInvocation": "CEF3_添加单词到词典(演示CefBrowser控件, \"演示参数2\")"
+    },
+    {
+      "index": 50,
+      "name": "CEF3_替换拼写错误",
+      "aliases": [
+        "replace_misspelling"
+      ],
+      "signature": "CEF3_替换拼写错误(控件名, 单词)",
+      "description": "用非空单词替换指定浏览器页面中当前选中的拼写错误文本。",
+      "insertText": "CEF3_替换拼写错误($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_替换拼写错误",
+        "runtimeName": "CEF3_替换拼写错误",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "单词",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_替换拼写错误(浏览器1, \"LingBuilder\")"
+      },
+      "demoInvocation": "CEF3_替换拼写错误(演示CefBrowser控件, \"演示参数2\")"
+    },
+    {
+      "index": 51,
+      "name": "CEF3_通知系统拖放结束",
+      "aliases": [
+        "drag_source_system_drag_ended"
+      ],
+      "signature": "CEF3_通知系统拖放结束(控件名)",
+      "description": "在系统拖放循环结束后通知指定浏览器，使 CEF 清理拖放源状态。",
+      "insertText": "CEF3_通知系统拖放结束($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_通知系统拖放结束",
+        "runtimeName": "CEF3_通知系统拖放结束",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_通知系统拖放结束(浏览器1)"
+      },
+      "demoInvocation": "CEF3_通知系统拖放结束(演示CefBrowser控件)"
+    },
+    {
+      "index": 52,
+      "name": "CEF3_通知拖放目标离开",
+      "aliases": [
+        "drag_target_drag_leave"
+      ],
+      "signature": "CEF3_通知拖放目标离开(控件名)",
+      "description": "在拖动对象离开浏览器目标区域时通知 CEF 清理目标端拖放状态。",
+      "insertText": "CEF3_通知拖放目标离开($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_通知拖放目标离开",
+        "runtimeName": "CEF3_通知拖放目标离开",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_通知拖放目标离开(浏览器1)"
+      },
+      "demoInvocation": "CEF3_通知拖放目标离开(演示CefBrowser控件)"
+    },
+    {
+      "index": 53,
+      "name": "CEF3_通知隐藏状态",
+      "aliases": [
+        "was_hidden"
+      ],
+      "signature": "CEF3_通知隐藏状态(控件名, 是否隐藏)",
+      "description": "通知无窗口渲染浏览器的宿主已经隐藏或重新显示，使 CEF 暂停或恢复绘制。",
+      "insertText": "CEF3_通知隐藏状态($1, 真)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_通知隐藏状态",
+        "runtimeName": "CEF3_通知隐藏状态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "是否隐藏",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_通知隐藏状态(浏览器1, 真)"
+      },
+      "demoInvocation": "CEF3_通知隐藏状态(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 54,
+      "name": "CEF3_退出网页全屏",
+      "aliases": [
+        "exit_fullscreen"
+      ],
+      "signature": "CEF3_退出网页全屏(控件名, 是否调整大小)",
+      "description": "退出网页 Fullscreen API 状态；退出后将引起浏览器视图尺寸变化时，第二个参数传真。",
+      "insertText": "CEF3_退出网页全屏($1, 真)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_退出网页全屏",
+        "runtimeName": "CEF3_退出网页全屏",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "是否调整大小",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_退出网页全屏(浏览器1, 真)"
+      },
+      "demoInvocation": "CEF3_退出网页全屏(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 55,
+      "name": "CEF3_强制刷新",
+      "aliases": [
+        "reload_ignore_cache"
+      ],
+      "signature": "CEF3_强制刷新(控件名)",
+      "description": "忽略 HTTP 缓存重新加载指定 CEF3 浏览器控件的当前页面。",
+      "insertText": "CEF3_强制刷新($1)",
+      "returnType": "空",
+      "binding": {
+        "command": "CEF3_强制刷新",
+        "runtimeName": "CEF3_强制刷新",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "void",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_强制刷新(演示CefBrowser控件)"
+    },
+    {
+      "index": 56,
+      "name": "CEF3_页内查找",
+      "aliases": [
+        "find"
+      ],
+      "signature": "CEF3_页内查找(控件名, 文本, 向前, 区分大小写, 查找下一个)",
+      "description": "在指定 CEF3 浏览器的当前页面查找文本；查找进度和最终结果通过“页内查找结果”事件返回。",
+      "insertText": "CEF3_页内查找($1, \"$2\", 真, 假, 假)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_页内查找",
+        "runtimeName": "CEF3_页内查找",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "向前",
+            "type": "bool"
+          },
+          {
+            "name": "区分大小写",
+            "type": "bool"
+          },
+          {
+            "name": "查找下一个",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_页内查找(浏览器1, \"LingBuilder\", 真, 假, 假)"
+      },
+      "demoInvocation": "CEF3_页内查找(演示CefBrowser控件, \"演示参数2\", 真, 真, 真)"
+    },
+    {
+      "index": 57,
+      "name": "CEF3_停止页内查找",
+      "aliases": [
+        "stop_finding"
+      ],
+      "signature": "CEF3_停止页内查找(控件名, 清除选择)",
+      "description": "停止指定 CEF3 浏览器的页内查找，并可选择清除当前选区。",
+      "insertText": "CEF3_停止页内查找($1, 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_停止页内查找",
+        "runtimeName": "CEF3_停止页内查找",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "清除选择",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_停止页内查找(浏览器1, 真)"
+      },
+      "demoInvocation": "CEF3_停止页内查找(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 58,
+      "name": "CEF3_设置焦点",
+      "aliases": [
+        "set_focus"
+      ],
+      "signature": "CEF3_设置焦点(控件名, 是否聚焦)",
+      "description": "设置指定 CEF3 浏览器宿主的焦点状态。",
+      "insertText": "CEF3_设置焦点($1, 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_设置焦点",
+        "runtimeName": "CEF3_设置焦点",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "是否聚焦",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_设置焦点(浏览器1, 真)"
+      },
+      "demoInvocation": "CEF3_设置焦点(演示CefBrowser控件, 真)"
+    },
+    {
+      "index": 59,
+      "name": "CEF3_发送鼠标单击事件",
+      "aliases": [
+        "send_mouse_click_event"
+      ],
+      "signature": "CEF3_发送鼠标单击事件(控件名, X, Y, 修饰键, 按钮类型, 是否抬起, 单击次数)",
+      "description": "向指定 CEF3 浏览器发送类型化鼠标按下或抬起事件；按钮类型为 0 左键、1 中键、2 右键。",
+      "insertText": "CEF3_发送鼠标单击事件($1, 10, 10, 0, 0, 假, 1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_发送鼠标单击事件",
+        "runtimeName": "CEF3_发送鼠标单击事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "X",
+            "type": "int"
+          },
+          {
+            "name": "Y",
+            "type": "int"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong"
+          },
+          {
+            "name": "按钮类型",
+            "type": "int"
+          },
+          {
+            "name": "是否抬起",
+            "type": "bool"
+          },
+          {
+            "name": "单击次数",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_发送鼠标单击事件(浏览器1, 10, 10, 0, 0, 假, 1)"
+      },
+      "demoInvocation": "CEF3_发送鼠标单击事件(演示CefBrowser控件, 1, 1, 1, 1, 真, 1)"
+    },
+    {
+      "index": 60,
+      "name": "CEF3_发送鼠标移动事件",
+      "aliases": [
+        "send_mouse_move_event"
+      ],
+      "signature": "CEF3_发送鼠标移动事件(控件名, X, Y, 修饰键, 是否离开)",
+      "description": "向指定 CEF3 浏览器发送类型化鼠标移动事件；坐标相对浏览器视图左上角，离开时最后一个参数传真。",
+      "insertText": "CEF3_发送鼠标移动事件($1, 10, 10, 0, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_发送鼠标移动事件",
+        "runtimeName": "CEF3_发送鼠标移动事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "X",
+            "type": "int"
+          },
+          {
+            "name": "Y",
+            "type": "int"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong"
+          },
+          {
+            "name": "是否离开",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_发送鼠标移动事件(浏览器1, 10, 10, 0, 假)"
+      },
+      "demoInvocation": "CEF3_发送鼠标移动事件(演示CefBrowser控件, 1, 1, 1, 真)"
+    },
+    {
+      "index": 61,
+      "name": "CEF3_发送鼠标滚轮事件",
+      "aliases": [
+        "send_mouse_wheel_event"
+      ],
+      "signature": "CEF3_发送鼠标滚轮事件(控件名, X, Y, 修饰键, 横向增量, 纵向增量)",
+      "description": "向指定 CEF3 浏览器发送类型化鼠标滚轮事件；坐标相对浏览器视图左上角，增量可为负数。",
+      "insertText": "CEF3_发送鼠标滚轮事件($1, 10, 10, 0, 0, 120)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_发送鼠标滚轮事件",
+        "runtimeName": "CEF3_发送鼠标滚轮事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "X",
+            "type": "int"
+          },
+          {
+            "name": "Y",
+            "type": "int"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong"
+          },
+          {
+            "name": "横向增量",
+            "type": "int"
+          },
+          {
+            "name": "纵向增量",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_发送鼠标滚轮事件(浏览器1, 10, 10, 0, 0, 120)"
+      },
+      "demoInvocation": "CEF3_发送鼠标滚轮事件(演示CefBrowser控件, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 62,
+      "name": "CEF3_发送触摸事件",
+      "aliases": [
+        "send_touch_event"
+      ],
+      "signature": "CEF3_发送触摸事件(控件名, 触点ID, X, Y, 半径X, 半径Y, 旋转角度, 压力, 事件类型, 修饰键, 指针类型)",
+      "description": "向无窗口/OSR CEF3 浏览器发送类型化触摸事件；事件类型为 0 松开、1 按下、2 移动、3 取消，指针类型为 0 触摸、1 鼠标、2 笔、3 橡皮擦、4 未知，压力范围为 0.0 到 1.0。",
+      "insertText": "CEF3_发送触摸事件($1, 0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.5, 1, 0, 0)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_发送触摸事件",
+        "runtimeName": "CEF3_发送触摸事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "触点ID",
+            "type": "int"
+          },
+          {
+            "name": "X",
+            "type": "double"
+          },
+          {
+            "name": "Y",
+            "type": "double"
+          },
+          {
+            "name": "半径X",
+            "type": "double"
+          },
+          {
+            "name": "半径Y",
+            "type": "double"
+          },
+          {
+            "name": "旋转角度",
+            "type": "double"
+          },
+          {
+            "name": "压力",
+            "type": "double"
+          },
+          {
+            "name": "事件类型",
+            "type": "int"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong"
+          },
+          {
+            "name": "指针类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_发送触摸事件(浏览器1, 0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.5, 1, 0, 0)"
+      },
+      "demoInvocation": "CEF3_发送触摸事件(演示CefBrowser控件, 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1, 1, 1)"
+    },
+    {
+      "index": 63,
+      "name": "CEF3_发送按键事件",
+      "aliases": [
+        "send_key_event"
+      ],
+      "signature": "CEF3_发送按键事件(控件名, 类型, 修饰键, Windows键码, 原生键码, 是否系统键, 字符编码, 未修改字符编码, 焦点在可编辑字段)",
+      "description": "向指定 CEF3 浏览器发送类型化按键事件；类型取 0 原始按下、1 按下、2 松开或 3 字符，字符使用 UTF-16 代码单元。",
+      "insertText": "CEF3_发送按键事件($1, 0, 0, 65, 65, 假, 97, 97, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3_发送按键事件",
+        "runtimeName": "CEF3_发送按键事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "类型",
+            "type": "int"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong"
+          },
+          {
+            "name": "Windows键码",
+            "type": "int"
+          },
+          {
+            "name": "原生键码",
+            "type": "int"
+          },
+          {
+            "name": "是否系统键",
+            "type": "bool"
+          },
+          {
+            "name": "字符编码",
+            "type": "int"
+          },
+          {
+            "name": "未修改字符编码",
+            "type": "int"
+          },
+          {
+            "name": "焦点在可编辑字段",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_发送按键事件(演示CefBrowser控件, 1, 1, 1, 1, 真, 1, 1, 真)"
+    },
+    {
+      "index": 64,
+      "name": "CEF3_是否静音",
+      "aliases": [
+        "is_audio_muted"
+      ],
+      "signature": "CEF3_是否静音(控件名)",
+      "description": "指定 CEF3 浏览器控件的音频已静音时返回 1。",
+      "insertText": "CEF3_是否静音($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_是否静音",
+        "runtimeName": "CEF3_是否静音",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_是否静音(演示CefBrowser控件)"
     }
   ]
 }

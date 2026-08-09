@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.786Z",
+  "generatedAt": "2026-08-07T08:51:35.730Z",
   "module": {
     "id": "lingbuilder.cef3.network",
     "name": "CEF3网络模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "提供实例级代理及后续请求/响应扩展入口。"
   },
-  "commandCount": 1,
+  "commandCount": 2,
   "commands": [
     {
       "index": 1,
@@ -45,6 +45,30 @@
         "encoding": "wide"
       },
       "demoInvocation": "CEF3网络_设置代理(演示CefBrowser控件, \"https://example.com\")"
+    },
+    {
+      "index": 2,
+      "name": "CEF3网络_证书状态是否错误",
+      "aliases": [
+        "cef_is_cert_status_error"
+      ],
+      "signature": "CEF3网络_证书状态是否错误(证书状态)",
+      "description": "判断CEF证书状态位掩码是否包含错误；0表示CERT_STATUS_NONE。",
+      "insertText": "CEF3网络_证书状态是否错误($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3网络_证书状态是否错误",
+        "runtimeName": "CEF3网络_证书状态是否错误",
+        "parameters": [
+          {
+            "name": "证书状态",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3网络_证书状态是否错误(1)"
     }
   ]
 }

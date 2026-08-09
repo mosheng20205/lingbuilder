@@ -63,6 +63,8 @@ import {
   DEFAULT_WINDOW_ICON_STYLE,
   DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
   DEFAULT_WINDOW_TITLE_BAR_FOREGROUND,
+  NEW_EMOJI_BROWSER_SHELL_FRAME_FLAGS,
+  NEW_EMOJI_WINDOW_FRAME_FLAG_OPTIONS,
   getDesignerWindowContentOffset,
   getEplEventHandlerName,
   getEventsForType,
@@ -71,6 +73,7 @@ import {
   hasDesignerWindowMenu,
   notifyWindowDesignerDirtyStateChanged,
   normalizeWindowDesignerState,
+  normalizeLingWindowFrame,
   readWindowDesignerState,
   saveWindowDesignerState,
   WINDOW_DESIGNER_PROJECT_UPDATED,
@@ -107,10 +110,12 @@ import { parseMenuBarItems } from '../services/windowDesigner/menuBarItemsModel'
 import {
   getCreatableWin32ControlDefinitions,
   getWin32ControlDefinition,
+  getWin32RuntimeControlContract,
   WIN32_CONTROL_DEFINITIONS,
   Win32ControlPropertyDefinition,
   Win32ControlPropertyValue
 } from '../services/windowDesigner/win32ControlRegistry';
+import { findControlTagConflict, normalizeControlTagInteger, normalizeControlTagText } from '../services/windowDesigner/controlTagService';
 import { CONTROL_FONT_FAMILY_OPTIONS, DEFAULT_CONTROL_FONT_FAMILY, getControlFontCssStyle, normalizeControlFont } from '../services/windowDesigner/controlFont';
 import {
   buildControlHierarchy,
@@ -1200,7 +1205,7 @@ export default function WpfDesigner({
             properties: {
               ...(control.properties || {}),
               tabs: pages.map(page => ({ ...page })),
-              items: pages.map(page => page.title),
+              items: pages.map(page => ({ ...page })),
               selectedIndex,
               activeIndex: selectedIndex,
               ...(isNewEmojiTabsControl(control) ? { contentVisible: true } : {})
@@ -4486,6 +4491,15 @@ function WindowProperties({
   const [isSelectingIcon, setIsSelectingIcon] = useState(false);
   const [iconStatus, setIconStatus] = useState('');
   const openPlacement = window.openPlacement || 'default';
+  const windowFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
+  const updateWindowFrameFlag = (flag: number, enabled: boolean) => {
+    const flags = enabled ? windowFrame.flags | flag : windowFrame.flags & ~flag;
+    onChange({
+      windowFrame: { ...windowFrame, preset: 'custom', flags },
+      ...(flag === 0x08 ? { resizable: enabled } : {}),
+      ...(flag === 0x10 ? { cornerStyle: enabled ? 'rounded' : 'square' } : {})
+    });
+  };
   const handleOpenPlacementChange = (value: LingWindowOpenPlacement) => {
     onChange({
       openPlacement: value,
@@ -4583,7 +4597,11 @@ function WindowProperties({
         <PropertyRow label="窗口圆角" isDarkMode={isDarkMode}>
           <select
             value={window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE}
-            onChange={event => onChange({ cornerStyle: event.target.value as LingWindowCornerStyle })}
+            onChange={event => {
+              const cornerStyle = event.target.value as LingWindowCornerStyle;
+              const cornerRadius = cornerStyle === 'square' ? 0 : cornerStyle === 'small-rounded' ? 6 : 10;
+              onChange({ cornerStyle, windowFrame: { ...windowFrame, cornerRadius } });
+            }}
             className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
             aria-label="窗口圆角"
           >
@@ -4636,12 +4654,64 @@ function WindowProperties({
           </PropertyRow>
         )}
       </PropertyGroup>
+      {migrateDesignerBackend(window.designerBackend, newEmojiAvailable) === 'new-emoji' && (
+        <PropertyGroup title="当前窗口 / 原生框架" isDarkMode={isDarkMode}>
+          <PropertyRow label="框架预设" isDarkMode={isDarkMode}>
+            <select
+              value={windowFrame.preset}
+              onChange={event => {
+                const preset = event.target.value as 'system' | 'browserShell' | 'custom';
+                const flags = preset === 'browserShell' ? NEW_EMOJI_BROWSER_SHELL_FRAME_FLAGS : preset === 'system' ? 0 : windowFrame.flags;
+                onChange({
+                  windowFrame: { ...windowFrame, preset, flags },
+                  ...(preset === 'browserShell' ? { resizable: true, cornerStyle: 'rounded' as const } : {})
+                });
+              }}
+              className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}
+              aria-label="new_emoji 窗口框架预设"
+            >
+              <option value="system">系统窗口</option>
+              <option value="browserShell">浏览器外壳</option>
+              <option value="custom">自定义 flags</option>
+            </select>
+          </PropertyRow>
+          <ReadOnlyTextField label="精确 flags" value={`0x${windowFrame.flags.toString(16).padStart(2, '0').toUpperCase()}`} isDarkMode={isDarkMode} />
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 px-2 py-1">
+            {NEW_EMOJI_WINDOW_FRAME_FLAG_OPTIONS.map(option => (
+              <label key={option.flag} className="flex min-w-0 items-center gap-1.5 text-[10px] text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={(windowFrame.flags & option.flag) !== 0}
+                  onChange={event => updateWindowFrameFlag(option.flag, event.target.checked)}
+                  className="h-3.5 w-3.5 accent-fuchsia-500"
+                />
+                <span className="truncate">{option.label}</span>
+              </label>
+            ))}
+          </div>
+          <NumberField label="左缩放边框" value={windowFrame.resizeBorder.left} min={0} max={64} isDarkMode={isDarkMode} onChange={value => onChange({ windowFrame: { ...windowFrame, resizeBorder: { ...windowFrame.resizeBorder, left: value } } })} />
+          <NumberField label="上缩放边框" value={windowFrame.resizeBorder.top} min={0} max={64} isDarkMode={isDarkMode} onChange={value => onChange({ windowFrame: { ...windowFrame, resizeBorder: { ...windowFrame.resizeBorder, top: value } } })} />
+          <NumberField label="右缩放边框" value={windowFrame.resizeBorder.right} min={0} max={64} isDarkMode={isDarkMode} onChange={value => onChange({ windowFrame: { ...windowFrame, resizeBorder: { ...windowFrame.resizeBorder, right: value } } })} />
+          <NumberField label="下缩放边框" value={windowFrame.resizeBorder.bottom} min={0} max={64} isDarkMode={isDarkMode} onChange={value => onChange({ windowFrame: { ...windowFrame, resizeBorder: { ...windowFrame.resizeBorder, bottom: value } } })} />
+          <NumberField label="圆角半径" value={windowFrame.cornerRadius} min={0} max={64} isDarkMode={isDarkMode} onChange={value => onChange({ windowFrame: { ...windowFrame, cornerRadius: value } })} />
+        </PropertyGroup>
+      )}
       <PropertyGroup title="当前窗口 / 状态" isDarkMode={isDarkMode} defaultOpen={false}>
         <PropertyRow label="禁止拖拽调整大小" isDarkMode={isDarkMode}>
           <input
             type="checkbox"
             checked={window.resizable === false}
-            onChange={event => onChange({ resizable: !event.target.checked })}
+            onChange={event => {
+              const resizable = !event.target.checked;
+              onChange({
+                resizable,
+                windowFrame: {
+                  ...windowFrame,
+                  ...(windowFrame.preset === 'custom' ? { flags: resizable ? windowFrame.flags | 0x08 : windowFrame.flags & ~0x08 } : {}),
+                  resizeBorder: resizable ? windowFrame.resizeBorder : { left: 0, top: 0, right: 0, bottom: 0 }
+                }
+              });
+            }}
             aria-label="禁止拖拽窗口大小"
             className="h-4 w-4 accent-amber-500"
           />
@@ -5083,6 +5153,7 @@ function ControlProperties({
   const [treeViewEditorOpen, setTreeViewEditorOpen] = useState(false);
   const [modulePropertySearch, setModulePropertySearch] = useState('');
   const [showAdvancedModuleProperties, setShowAdvancedModuleProperties] = useState(false);
+  const [tagValidationMessage, setTagValidationMessage] = useState('');
 
   useEffect(() => {
     setListViewEditorKind(null);
@@ -5094,6 +5165,7 @@ function ControlProperties({
     setTabPagesEditorOpen(false);
     setMenuBarItemsEditorOpen(false);
     setTreeViewEditorOpen(false);
+    setTagValidationMessage('');
   }, [control?.id]);
 
   if (!control) {
@@ -5127,6 +5199,41 @@ function ControlProperties({
     && !descendantIds.has(item.id)
   ));
   const controlDefinition = getWin32ControlDefinition(control.type);
+  const supportsRuntimeTags = Boolean(moduleControl?.runtimeControl || (controlDefinition && getWin32RuntimeControlContract(controlDefinition)));
+  const updateTagText = (value: string) => {
+    const normalized = normalizeControlTagText(value);
+    const conflict = findControlTagConflict(controls, control.id, 'text', normalized);
+    if (conflict) {
+      setTagValidationMessage(`标记文本已被同类型控件“${conflict.controlName}”使用。`);
+      return;
+    }
+    setTagValidationMessage('');
+    onChange({ tagText: normalized });
+  };
+  const updateTagInteger = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setTagValidationMessage('');
+      onChange({ tagInteger: undefined });
+      return;
+    }
+    if (!/^-?\d+$/u.test(trimmed)) {
+      setTagValidationMessage('标记整数必须是有符号 32 位整数。');
+      return;
+    }
+    const normalized = normalizeControlTagInteger(Number(trimmed));
+    if (normalized === undefined) {
+      setTagValidationMessage('标记整数范围为 -2147483648 到 2147483647。');
+      return;
+    }
+    const conflict = findControlTagConflict(controls, control.id, 'integer', normalized);
+    if (conflict) {
+      setTagValidationMessage(`标记整数已被同类型控件“${conflict.controlName}”使用。`);
+      return;
+    }
+    setTagValidationMessage('');
+    onChange({ tagInteger: normalized });
+  };
   const listViewColumns = control.type === 'ListView'
     ? normalizeListViewColumns(control.properties?.columns)
     : [];
@@ -5235,6 +5342,28 @@ function ControlProperties({
           onChange={value => onChange({ height: value })}
         />
       </PropertyGroup>
+
+      {supportsRuntimeTags && (
+        <PropertyGroup title="控件 / 代码标记" isDarkMode={isDarkMode}>
+          <TextField label="标记文本" value={control.tagText || ''} isDarkMode={isDarkMode} onChange={updateTagText} />
+          <PropertyRow label="标记整数" isDarkMode={isDarkMode}>
+            <input
+              type="number"
+              min={-2147483648}
+              max={2147483647}
+              step={1}
+              value={control.tagInteger ?? ''}
+              placeholder="留空"
+              aria-label="标记整数"
+              onChange={event => updateTagInteger(event.target.value)}
+              className={`w-full min-w-0 rounded border px-2 py-1 text-xs outline-none focus:border-amber-500 ${
+                isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'
+              }`}
+            />
+          </PropertyRow>
+          {tagValidationMessage && <div role="alert" className="px-1 text-[10px] leading-4 text-red-400">{tagValidationMessage}</div>}
+        </PropertyGroup>
+      )}
 
       <PropertyGroup title="控件 / 外观" isDarkMode={isDarkMode}>
         <PropertyRow label="控件类型" isDarkMode={isDarkMode}>
@@ -5871,6 +6000,99 @@ function StructuredCollectionEditor({
   );
 }
 
+function getCompatibleDesignerControls(
+  controls: LingControl[],
+  constraint?: Pick<Win32ControlPropertyDefinition, 'controlTypes' | 'controlKinds'>
+): LingControl[] {
+  if (constraint?.controlKinds?.length && !constraint.controlKinds.includes('visual')) return [];
+  const allowedTypes = new Set(constraint?.controlTypes || []);
+  if (allowedTypes.size === 0) return controls;
+  return controls.filter(control => {
+    const candidates = [control.designerType, control.type].filter((value): value is string => Boolean(value));
+    return candidates.some(type => allowedTypes.has(type) || [...allowedTypes].some(allowed => allowed.endsWith(`/${type}`)));
+  });
+}
+
+function RecordListPropertyEditor({
+  definition,
+  value,
+  controls,
+  isDarkMode,
+  onChange
+}: {
+  definition: Win32ControlPropertyDefinition;
+  value: Win32ControlPropertyValue;
+  controls: LingControl[];
+  isDarkMode: boolean;
+  onChange: (value: Win32ControlPropertyValue) => void;
+}) {
+  const fields = definition.fields || [];
+  const items = Array.isArray(value)
+    ? value.map(item => item && typeof item === 'object' ? { ...(item as Record<string, unknown>) } : {})
+    : [];
+  const inputClass = `min-w-0 w-full rounded border px-1.5 py-1 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
+  const commit = (next: Array<Record<string, unknown>>) => onChange(next);
+  const updateField = (row: number, key: string, nextValue: unknown) => {
+    commit(items.map((item, index) => index === row ? { ...item, [key]: nextValue } : item));
+  };
+  const addItem = () => {
+    const next = Object.fromEntries(fields.map(field => [field.key, field.defaultValue ?? (field.type === 'boolean' ? false : field.type === 'number' ? 0 : '')]));
+    if (definition.recordKey) {
+      const used = new Set(items.map(item => String(item[definition.recordKey!] ?? '')));
+      let suffix = items.length + 1;
+      while (used.has(`${definition.recordKey}${suffix}`)) suffix += 1;
+      next[definition.recordKey] = `${definition.recordKey}${suffix}`;
+    }
+    commit([...items, next]);
+  };
+  return (
+    <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+      <div className="w-full space-y-1.5" aria-label={`${definition.label}结构化集合编辑器`}>
+        {items.map((item, index) => (
+          <section key={String(item[definition.recordKey || 'id'] ?? index)} className={`space-y-1 rounded border p-1.5 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+            {fields.map(field => {
+              const compatibleControls = field.type === 'controlRef'
+                ? getCompatibleDesignerControls(controls, field as Win32ControlPropertyDefinition)
+                : [];
+              return (
+                <label key={field.key} className="grid grid-cols-[68px_minmax(0,1fr)] items-center gap-1 text-[9px] text-slate-500">
+                  <span>{field.label}</span>
+                  {field.type === 'boolean' ? (
+                    <input type="checkbox" checked={item[field.key] === true} onChange={event => updateField(index, field.key, event.target.checked)} className="h-3.5 w-3.5 accent-fuchsia-500" />
+                  ) : field.type === 'enum' ? (
+                    <select value={String(item[field.key] ?? '')} onChange={event => updateField(index, field.key, event.target.value)} className={inputClass}>
+                      {(field.options || []).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  ) : field.type === 'controlRef' ? (
+                    <select value={String(item[field.key] ?? '')} onChange={event => updateField(index, field.key, event.target.value)} className={inputClass}>
+                      <option value="">未绑定</option>
+                      {compatibleControls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type === 'number' ? 'number' : field.type === 'color' ? 'color' : 'text'}
+                      value={String(item[field.key] ?? '')}
+                      required={field.required === true}
+                      onChange={event => updateField(index, field.key, field.type === 'number' ? Number(event.target.value) : event.target.value)}
+                      className={inputClass}
+                    />
+                  )}
+                </label>
+              );
+            })}
+            <div className="flex justify-end gap-1 text-[9px]">
+              <button type="button" disabled={index === 0} onClick={() => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; commit(next); }} className="px-1 text-cyan-500 disabled:opacity-30">上移</button>
+              <button type="button" disabled={index === items.length - 1} onClick={() => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; commit(next); }} className="px-1 text-cyan-500 disabled:opacity-30">下移</button>
+              <button type="button" onClick={() => commit(items.filter((_, row) => row !== index))} className="px-1 text-red-400">删除</button>
+            </div>
+          </section>
+        ))}
+        <button type="button" onClick={addItem} className="w-full rounded border border-emerald-500/30 py-1 text-[10px] text-emerald-500">+ 添加项目</button>
+      </div>
+    </PropertyRow>
+  );
+}
+
 function ModuleControlProperties({ control, definition, controls, imageLists, projectId, isDarkMode, search, showAdvanced, onSearchChange, onShowAdvancedChange, onPropertyChange, onEditTabPages, newEmojiTableColumnCount, newEmojiTableRowCount, onEditNewEmojiTable }: {
   control: LingControl;
   definition: ModuleDesignerControlContribution;
@@ -6069,14 +6291,18 @@ function ControlPropertyField({
     );
   }
   if (definition.type === 'controlRef') {
+    const compatibleControls = getCompatibleDesignerControls(controls, definition);
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
         <select value={String(value ?? '')} onChange={event => onChange(event.target.value)} className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}>
           <option value="">未绑定</option>
-          {controls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}
+          {compatibleControls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}
         </select>
       </PropertyRow>
     );
+  }
+  if (definition.type === 'recordList') {
+    return <RecordListPropertyEditor definition={definition} value={value} controls={controls} isDarkMode={isDarkMode} onChange={onChange} />;
   }
   if (definition.type === 'file' && definition.key === 'imageSource') {
     const chooseImage = async () => {

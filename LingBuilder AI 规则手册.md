@@ -1,5 +1,28 @@
 # LingBuilder AI 规则手册
 
+> 2026-08-09：`lingbuilder.fbro.browser@2.4.0` 的普通 Win32 多实例管理器已接通真实下载事件。AI 生成 `win32-fbro-multi-browser-manager` 时必须调用 `浏览器管理器_绑定下载视图(详情控件, 进度条)`，其中详情控件只能是裸 `TextBox/Label controlRef(nativeHandle)`，进度控件只能是裸 `ProgressBar controlRef(nativeHandle)`；界面必须显示当前实例的下载状态、百分比、已接收/总字节、文件名和完整目录，并提供 `浏览器管理器_打开当前下载目录()`。每个稳定实例单独保存下载 ID 与进度，切换实例时同步对应视图；未订阅 v3 高级事件时 `OnBeforeDownload` 必须继续默认下载，`OnDownloadUpdated` 只能观察，不能擅自暂停或取消。
+
+> 2026-08-08：AI 生成或修改普通 Win32 `win32-fbro-multi-browser-manager` 时，目标程序的窗口和全部可视控件只能使用 `lingbuilder.win32.basic` 与 `lingbuilder.win32.common-controls`。浏览器承载必须是隐藏表头的 Win32 TabControl 页面，每个稳定实例分别拥有页面 HWND、FBro Host PID、浏览器 HWND 和 Profile；左侧 ListBox 是唯一切换入口。不得加入或建议任何 `new_emoji`、Qt、Duilib、wxWidgets、WebView UI、React/HTML renderer 界面依赖，也不得预放固定 `FBroBrowser` 控件或让实例共享页面、Host 或 Profile。
+
+> 插件固定部署到真实 exe 同级 `doubao-downloader`。每个独立 Host 的 CEF 命令行初始化只启用 Chrome Runtime；启用 FBro VIP 高级扩展能力后，必须先创建独立 RequestContext，立即调用 FBro VIP `LoadExtension`，最后创建浏览器，保持与 FBro C# 独立浏览器示例相同的顺序。VIP 授权只能在受控运行时内使用并在使用后清零；授权码不得写入源码、命令行、项目配置、`.lcpppkg`、日志或 AI 上下文。扩展 ID 与 `GetExtensionPath` 回读只能证明注册，当前页面还必须用受控 DOM 探针确认扩展注入；不得把“已注册”或“路径匹配”显示为“插件已生效”。FBro Alloy 嵌入模式没有 Chromium 原生 `chrome://extensions/` 页面：该地址必须在当前实例显示受管插件诊断页，同时保持地址栏的逻辑地址。新窗口请求必须在 `OnBeforePopup` 中用当前 Frame 加载目标 URL 并取消 popup，不能创建新的 Host、窗口或 Profile。地址改变或当前实例切换必须同步原生地址栏 HWND。`浏览器管理器_导航` 不得限制为 HTTP(S)，应把 `chrome://`、`about:`、`file://`、`view-source:` 等非空 Chromium 地址原样传给 Host；仅 `chrome://extensions/` 使用受管诊断映射，其他地址仅拒绝空值和换行控制字符。大小和 DPI 事件必须先运行 LCPP 布局、再调整 FBro 子窗口。
+扩展注册后若当前 URL 匹配豆包页面，最多执行一次受控刷新以覆盖首屏竞态，随后按有限次数 DOM 探针验证；AI 不得生成无限 reload 或把刷新次数当作插件生效证据。
+
+> 最终分享包固定为 `exports/独立浏览器管理器.lcpppkg`，使用现有 `LcppSourcePackageService` 导出、复制后重新检查并导入，再从导入项目二次生成 C++。清单只允许两个 Win32 UI 模块、FBro 非界面运行时和插件资源模块；必须排除 `new_emoji`、Cookie、Profile、缓存、localStorage、IndexedDB、插件私有存储、凭据、授权码、构建缓存和开发机绝对路径。大型 SDK 临时目录在 Windows 清理时可以有界重试 `EBUSY`，但不得因此忽略包校验或导入失败。
+
+> 2026-08-08：AI 生成或修改 `new-emoji-fbro-multi-browser-manager` 时，必须保留 `electron/src/services/browserWorkbench/` 的实例、持久化、Cookie、扩展、命令和菜单边界。新增、删除、重命名、切换、Cookie 导入导出和分享包导出必须注册到 CommandService；实例右键菜单必须由 MenuService 贡献生成。原生 `.lcpp` 入口只能调用同一稳定 ID 语义的 `浏览器外壳_*` 命令，禁止在 React、菜单 JSX、索引分支或临时文件操作中复制业务逻辑。
+
+> 每个实例必须使用独立 Host、RequestContext、伴随 HWND、浏览器 HWND 和 `%LocalAppData%` Profile。持久化只保存稳定 ID、名称、顺序、`profiles/<稳定ID>` 相对结构、最后地址、创建时间、恢复状态和插件状态，使用临时文件、`.bak` 与原子替换；分享包不得包含 Cookie、Profile、缓存、localStorage、IndexedDB、插件私有存储、凭据或开发机绝对路径。插件固定从真实 exe 同级 `doubao-downloader` 加载，必须在创建浏览器前加载到每个 RequestContext；只有 `phase: "extension"` 的 VIP lifecycle 可以改变插件状态。
+
+> Cookie 导入导出必须访问选中 FBro Host 的真实 CookieManager，结构保留 `name/value/domain/path/expires/httpOnly/secure/sameSite/priority/session`。导入前必须统计有效、无效、过期、冲突和域名，默认跳过无效与过期并明确处理冲突；日志和 AI 上下文禁止包含 Cookie value 或完整导出文件。清除数据和删除 Profile 必须二次确认并验证目标位于当前工作台受管 `profiles` 根目录。
+
+> 2026-08-08：`new-emoji-fbro-richlist` 是 `new-emoji-fbro-listbox` 之外的独立 RichList 动态会话示例。AI 创建或修改此类项目时，必须使用 `lingbuilder.new_emoji.fbro-shell@1.2.0` 的 `浏览器外壳_新建独立实例`，并为每个新会话生成不依赖 RichList 索引的稳定 ID 和唯一 Profile。RichList 只保存/传递稳定 `itemKey`；排序仅调整 stable ID 显示顺序。禁止在设计器预放固定数量 `FBroBrowser` 控件，禁止多个稳定 ID 共享 Host、HWND、缓存或 Cookie。
+
+> 2026-08-08：RichList 浏览器会话的关闭、重开、删除、选择和 Cookie 操作必须调用 fbro-shell 的稳定 ID 命令。选择只能隐藏当前宿主并显示目标宿主，不能销毁其它已打开会话；关闭只释放该会话的 Host/HWND，重开复用原稳定 ID 与 Profile，删除先关闭再移除绑定并默认保留缓存。Cookie 必须通过 `浏览器外壳_打开Cookie对话框` 或 `浏览器外壳_设置实例Cookie` 使用 FBro Cookie API；成功必须等待 `SetCookie`/`FlushStore` 完成并在目标会话读回，禁止网页脚本注入和任何 Cookie 明文日志。所有控件参数继续使用裸标识符，所有回调处理器继续使用 `&处理器名`。
+
+> 2026-08-08：`lingbuilder.new_emoji.fbro-shell@1.2.0` 支持无固定软件数量上限的动态独立实例。AI 生成多浏览器管理器时不得预创建 6 个或其它固定数量的 `FBroBrowser` 控件，不得用增大常量冒充移除上限；应使用 `浏览器外壳_新建独立实例` 为每个稳定 ID 创建独立 Host/WebSocket/Profile/HWND，用 `浏览器外壳_绑定实例列表` 和 `浏览器外壳_选择列表键` 同步 RichList 与隐藏表头的 Tabs。实际资源耗尽必须报告中文失败，不得共享 Profile 或静默复用进程。
+
+> 2026-08-07 CEF3 状态：固定基线仍为 `150.0.14 / Chromium 150.0.7871.129 / Windows MSVC x64`，开发版本仍为 `3.0.0-alpha.3`；当前为 540 implemented、8 internal、185 notApplicable、844 planned，公开接口完成 `540 / 1384（39.02%）`。AI 只能生成已进入 contribution、binding、Bridge、测试和文档闭环的接口；`planned` 能力仍不可调用。`CEF3传输_从文件创建读取流`、`CEF3传输_从文件创建写入流`、`CEF3传输_从缓冲创建读取处理器` 和 `CEF3传输_创建写入处理器` 只能使用受管句柄：文件路径必须在项目允许根目录内，写入必须传受管缓冲、起始偏移和字节数，内存写入上限为 64 MiB；禁止生成绕过路径或内存校验的调用。
+
 > 0.2.9 版本约束：生成或修改使用 `lingbuilder.wxhook.manager@1.1.1` 的项目时，最低 LingBuilder 版本必须为 `0.2.9`。该模块的四个界面参数必须保持裸 `controlRef(nativeHandle)`，不得改写为字符串控件名；第四个参数是顶部切换样式 Button，总开关默认开启防撤回和撤回灰条提示，并必须绑定 `Click` 事件，在事件中调用 `微信多开_设置总防撤回(控件_取勾选(防撤回总开关))`；导出源码包时必须携带模块及 Host/Agent/SQLite 运行时。
 
 > 版本约束：生成或修改使用 HTTP 客户端 2.0、WebSocket 客户端 2.0 或 WebSocket 服务端 2.0 的项目时，最低 LingBuilder 版本必须为 `0.2.8`。不要把 EdgeView、ListView 或 OpenCV 既有项目的最低版本从 `0.2.7` 无差别提升。
@@ -17,6 +40,7 @@
 - 模块控件事件的 `.lcpp` 参数必须以启用模块 `contributes.designerControls[].events[].parameters` 为唯一契约。设计器“生成并打开”、Monaco、新手编辑器、语言诊断和 C++ 回调桥接必须消费同一份参数名称与类型；AI 不得把有原生参数的事件生成成空参数，也不得自行猜测回调参数。
 - `lingbuilder.new_emoji.ui/Table` 的 `CellClicked` 使用 `(整数型 行号, 整数型 列号)`，`CellAction` 使用 `(整数型 行号, 整数型 列号, 整数型 动作, 整数型 值)`，`CellEdit` 使用 `(整数型 行号, 整数型 列号, 整数型 动作, 文本型 文本)`，`ContextMenu` 使用 `(整数型 行号, 整数型 列号, 整数型 区域, 整数型 横坐标, 整数型 纵坐标)`，`VirtualRow` 使用 `(整数型 行号)`；鼠标按下/抬起/双击传坐标和按钮，移动传坐标，滚轮传坐标和增量。
 - `lingbuilder.new_emoji.ui/ListBox` 的 `SelectionChanged` 使用 `(文本型 选中键列表)`，`ItemClicked` 使用 `(整数型 项目索引, 整数型 起始位置, 整数型 结束位置)`，`ItemDoubleClicked` 使用 `(整数型 项目索引, 整数型 触发方式, 整数型 附加值)`，`Edit` 使用 `(整数型 项目索引, 整数型 编辑字段, 整数型 动作, 文本型 文本)`，`Reorder` 使用 `(整数型 原索引, 整数型 新索引, 整数型 数量)`，`ContextMenu` 使用 `(整数型 项目索引, 整数型 横坐标, 整数型 纵坐标)`；鼠标进入/离开和获得/失去焦点没有额外参数。
+- `lingbuilder.new_emoji.ui/RichList` 使用上游 JSON ABI。`templateJson`、`itemsJson`、`selectedKeys` 必须保持合法 JSON；`SelectionChanged` 使用 `(文本型 选中键列表)`，值是选中 key 的 JSON 数组。`ItemClicked`、`ItemDoubleClicked`、`ButtonClicked`、`BadgeClicked`、`CountdownEnd`、`ContextMenu` 均使用 `(文本型 事件数据)`，内容包含稳定 `event` 字段以及可用的 `itemKey`、`itemIndex`、`nodeId`、`actionId`、`x`、`y`。AI 不得自行拆出清单未声明的强类型参数，也不得把共享原生回调生成成同时调用全部事件处理器。
 - `lingbuilder.new_emoji.ui/Tabs` 的 `SelectionChanged` 必须生成 `(整数型 选中索引, 整数型 项目数量, 整数型 动作)`。三个值对应 `EU_SetTabsChangeCallback` 的 `value`、`range_start`、`range_end`；动作编号 `1/2/3/4/5/6` 分别表示代码设置、鼠标、键盘、关闭、新增、滚动。AI 不得把该事件生成为零参数，也不得把其它控件同名 `SelectionChanged` 的参数套到 Tabs；带 FBro 页面时仍必须保留同一参数声明。
 - `VirtualRow` 是同步数据提供事件。处理器必须调用 `NE_设置表格虚拟行数据("高级行协议")` 设置本次行数据；生成器负责转为 UTF-8，并按 new_emoji 的长度查询/缓冲区复制两阶段 ABI 返回。不得固定返回 0、重复执行处理器或把返回文本保存在跨事件共享的普通全局字符串中。
 - 已有零参数模块事件处理器继续兼容；从设计器重新打开时只允许把确认为零参数的旧签名安全升级为当前契约，不得覆盖用户已经自定义的非空参数。新建事件和补全必须直接生成当前强类型签名，参数数量或类型错误时提供中文阻断诊断。
@@ -32,15 +56,32 @@
 
 ## CEF3 3.0 安全封装生成规则
 
-- CEF3 固定基线为 `150.0.14 / Chromium 150.0.7871.129 / Windows MSVC x64`。当前开发版本为 `3.0.0-alpha.2`，Alpha.3 正在实施；覆盖 v2 目录共有 1577 项记录，其中 265 implemented、8 internal、185 notApplicable、1119 planned。objects 与 session 已清零模块内 planned：objects 的 183 条命令真实提供 Value/Dictionary/List/Binary、Image、NavigationEntry、MenuModel、证书/Principal/SSLStatus 和导航历史；session 的 19 条命令提供独立 RequestContext、Preference、Cookie、缓存及认证/连接清理。Image、Menu 和 RequestContext 的 CEF 调用由 Bridge 自动投递正确线程，跨边界只传类型化句柄、任务、UTF-16 JSON 和受管缓冲；AI 不得把句柄改写为地址或生成裸 CEF 类型。事件层仍有 86 个上游签名、全目录仍有 1119 项 planned；AI 不得把 `planned`、自动中文名或模块 contribution 描述成已经可运行，也不得在 `planned/needsReview` 清零前宣称全覆盖或 3.0.0 已发布。
+- CEF3 固定基线为 `150.0.14 / Chromium 150.0.7871.129 / Windows MSVC x64`。当前开发版本为 `3.0.0-alpha.3`；覆盖 v2 目录共有 1577 项记录，其中 505 implemented、8 internal、185 notApplicable、879 planned。objects、session 与 `cef_command_line_capi.h` 已清零各自 planned；CommandLine 的 23 个官方目录项通过类型化受管句柄、受管文本数组和 C ABI v4 固定操作 ID 接入。Image、Menu 和 RequestContext 的调用由 Bridge 自动调度，跨边界只传类型化句柄、任务、UTF-16 JSON 和受管缓冲；AI 不得生成裸地址、`CefRefPtr` 或 STL 跨 ABI。
+- 浏览器有效性、popup、实例比较、窗口渲染模式、网页全屏状态、关闭准备状态、渲染进程响应状态、运行时样式、当前与默认缩放级别读写、缩放命令可用性和实际执行、忽略缓存刷新、类型化键鼠输入、焦点和页内查找必须使用现有中文命令，不得用 JavaScript 或 DOM 轮询替代。`CEF3_是否网页全屏` 只表示网页通过 Fullscreen API 进入全屏，不表示宿主窗口最大化；`CEF3_是否已准备关闭` 返回真表示强制关闭流程必须完成，应尽快销毁宿主窗口或视图层级，不能把它当作可取消关闭的许可判断；`CEF3_是否渲染进程无响应` 由 Bridge 在 CEF UI 线程读取，表示渲染进程至少 15 秒未处理输入；`CEF3_取运行时样式` 返回 `0=默认、1=Chrome、2=Alloy`，无窗口/OSR 浏览器固定为 Alloy；`CEF3_取缩放级别` 返回当前 CEF 小数级别，`CEF3_取默认缩放级别` 返回宿主默认值，`CEF3_设置缩放级别` 接受有限小数并以 `0.0` 恢复默认缩放，`CEF3_执行缩放` 接受缩小、重置或放大的整数命令。Display、Find、Focus、Keyboard、LifeSpan、Load、JSDialog 与 ContextMenu 的 getter/override 已由 Bridge 托管；上下文菜单事件会复制坐标、URL、媒体/编辑状态、拼写建议和菜单摘要，禁止保留或泄露临时 `CefContextMenuParams`、`CefMenuModel` 或 callback 指针。
+- `CEF3_尝试关闭` 必须保留 CEF 官方返回语义：返回 `1` 表示宿主窗口可立即销毁，返回 `0` 表示关闭已启动或延迟并应等待关闭回调；不得把 `0` 描述为调用失败，也不得用强制关闭替代常规关闭流程。
+- `CEF3_通知窗口移动或调整大小` 仅用于 Windows/Linux 宿主窗口即将移动或调整大小时通知 CEF；必须传裸 `controlRef`，不得用字符串控件名、JavaScript 或 DOM 事件替代宿主通知。
+- `CEF3_通知屏幕信息已改变` 用于 OSR 或客户端提供外部根窗口的浏览器，向渲染进程同步屏幕尺寸、坐标与缩放变化；普通页面脚本不能替代宿主级屏幕信息通知。
+- `CEF3_发送捕获丢失事件` 只在 OSR/禁用窗口渲染的宿主失去鼠标捕获时调用，必须传裸 `controlRef`；不得把它描述成用户可绑定的浏览器回调。
+- `CEF3_取消输入法组合文本` 仅用于 OSR/禁用窗口渲染浏览器，丢弃当前未提交 IME 组合内容；它不是清空普通输入框文本的页面命令。
+- `CEF3_完成输入法组合文本` 仅用于 OSR/禁用窗口渲染浏览器，将当前 IME 组合文本提交给页面；第二参数决定是否保留现有选区，不得省略或用普通整数冒充逻辑值。
+- `CEF3_添加单词到词典` 把非空 UTF-16 单词加入指定浏览器配置的自定义拼写词典；控件名必须是裸 `controlRef`，单词必须是带引号的真实文本，不得颠倒两类参数。
+- `CEF3_替换拼写错误` 用非空 UTF-16 单词替换页面中当前选中的拼写错误文本，不会把单词加入自定义词典；没有有效拼写选区时由 CEF 安全忽略。
+- `CEF3_通知系统拖放结束(浏览器控件)` 只能接收裸 `controlRef`；系统拖放循环完成后调用，用于让 CEF 清理拖放源状态，不得把控件名写成字符串。
+- `CEF3_通知拖放目标离开(浏览器控件)` 只能接收裸 `controlRef`；拖动对象离开浏览器目标区域时调用，用于清理 CEF 目标端状态，不得附加拖放数据或坐标。
+- `CEF3_通知隐藏状态(浏览器控件, 是否隐藏)` 的首参必须是裸 `controlRef`，第二个参数必须是逻辑型；仅用于无窗口渲染宿主隐藏或显示时通知 CEF 暂停或恢复绘制。
+- `CEF3_退出网页全屏(浏览器控件, 是否调整大小)` 的首参必须是裸 `controlRef`，第二个参数必须是逻辑型；退出网页 Fullscreen API 状态后会改变视图尺寸时传真，否则传假，不得用它代替宿主窗口最大化或还原。
+- `CEF3_是否使用浏览器视图(浏览器控件)` 只接收裸 `controlRef`，返回 1 表示浏览器由 CEF Views 的 `CefBrowserView` 包装，否则返回 0；不得据此生成、保存或传递原生 View 指针。
+- `CEF3_取打开者浏览器ID(浏览器控件)` 只接收裸 `controlRef`，非弹出浏览器返回 0，弹出浏览器返回创建者浏览器唯一 ID；不得把该整数当作 CEF 指针或跨进程地址。
+- `CEF3_是否可缩放(浏览器控件, 缩放命令)` 与 `CEF3_执行缩放(浏览器控件, 缩放命令)` 的首参必须是裸 `controlRef`，第二参数只能是 `0=缩小`、`1=重置` 或 `2=放大`；前者返回 1 才允许调用后者，不能用当前缩放级别推测可用性。执行命令不会返回新的缩放数值，需要时再调用 `CEF3_取缩放级别`。
+- 事件目录当前提供 92 项用户事件名称，对应 113 / 113 个官方事件签名已由 Bridge 接通；全目录仍有 879 项 planned。音频数据包、文件对话框、权限、认证、证书错误、进程无响应和跟踪完成回调使用受管 continuation 与明确默认动作。AI 不得把 `planned`、自动中文名或模块 contribution 描述成已经可运行，也不得在 `planned/needsReview` 清零前宣称全覆盖或 3.0.0 已发布。
 - CEF3 生成工程只能包含 `LingBuilderCefBridge.h` 并链接 `LingBuilderCefBridge.lib`；不得生成 CEF 头、`CefRefPtr`、`CefClient`、Handler override，也不得让应用直接链接 `libcef.lib` 或 `libcef_dll_wrapper.lib`。CEF C++20 API、wrapper、UI/IO 线程投递与对象生命周期只允许存在于 Bridge DLL 内。
 - `.lcpp` 边界只允许 UTF-16、POD、版本化事件包、带类型和代际的 64 位句柄、任务 ID 与受管缓冲。事件处理器必须使用 `&处理器名`；不得生成裸指针、STL、任意地址或字符串处理器。
-- 每个浏览器实例使用独立 RequestContext 和全局 root cache 的直接子目录。核心已支持初始化/关闭、多实例、Chrome Runtime、导航、异步 JavaScript、下载、打印与 DevTools 基础操作；objects 已支持 Value/Dictionary/List/Binary 深复制受管句柄，session 已支持 RequestContext、HTTP 缓存清理和 Cookie 遍历/设置/删除/落盘异步任务。AI 必须保存并释放对象、上下文和任务句柄，Cookie 结果只作为 UTF-16 JSON 使用，不得生成 CEF 指针。当前仅 27 个上游事件签名有真实 Bridge override；其余 Handler、Preference/认证/证书/扩展、Scheme/Filter、PDF、DOM/V8、DevTools 订阅、OSR、Views 等尚未实现的能力不得伪造命令或用 JavaScript 模拟。
-- CEF3 与 FBro 使用不兼容的 CEF 运行时，必须保持模块互斥；不得建议用户绕过诊断或把两个版本的 `libcef.dll` 放入同一 exe 目录。
+- 每个浏览器实例使用独立 RequestContext 和全局 root cache 的直接子目录。核心已支持初始化/关闭、多实例、Chrome Runtime、导航、异步 JavaScript、下载、打印与 DevTools 基础操作；objects 已支持 Value/Dictionary/List/Binary 深复制受管句柄，session 已支持 RequestContext、HTTP 缓存清理和 Cookie 遍历/设置/删除/落盘异步任务。AI 必须保存并释放对象、上下文和任务句柄，Cookie 结果只作为 UTF-16 JSON 使用，不得生成 CEF 指针。当前 113 个官方事件签名均有真实 Bridge override/受管回调入口；其余 Preference/扩展、Scheme/Filter、PDF、DOM/V8、DevTools 订阅、OSR、Views 等尚未实现的能力不得伪造命令或用 JavaScript 模拟。
+- CEF3 的 CEF 150 只与 FBro 进程内模式的 CEF 135 互斥；全部 FBro 控件使用独立进程模式时允许同项目启用，但两个版本的 `libcef.dll` 必须分别留在主 exe 目录和 `fbro-host/`。不得建议用户绕过进程模式诊断或手工混放运行时。
 
 ## FBro 浏览器生成规则
 
-- FBro 2.1 子模块固定为 `lingbuilder.fbro.events/session/transfer/automation/objects/network/vip`，均依赖 `lingbuilder.fbro.browser >= 2.1.0`。AI 请求启用能力模块时必须使用模块服务的递归计划，不得手工只写子模块 ID；禁用核心前必须展示依赖它的模块并取得级联确认。
+- FBro 2.4 核心及 2.1 兼容子模块固定为 `lingbuilder.fbro.events/session/transfer/automation/objects/network/vip`，子模块均依赖 `lingbuilder.fbro.browser >= 2.1.0`。AI 请求启用能力模块时必须使用模块服务的递归计划，不得手工只写子模块 ID；禁用核心前必须展示依赖它的模块并取得级联确认。
 - FBro 中文命令可以有官方英文 `aliases`，两者必须解析到同一个 binding。专业模式 API 只在 `showAdvancedApi=true` 时进入补全；字符串和注释里的别名不得被当作真实调用。
 - FBro 主事件协议为兼容 C ABI v3，并保留 v1/v2 导出。v3 使用 `LB_FBRO_EVENT_PACKET_V3`、`LB_FBRO_EVENT_RESPONSE_V3`、稳定事件 ID、类型化对象句柄和受管延续句柄；跨边界只允许版本化 POD、UTF-16 字符串/JSON、任务 ID 和受管缓冲。AI 不得生成裸内存地址、`void*`、`CefRefPtr`、STL 跨 DLL 参数或让 `.lcpp` 释放 SDK 对象。任务、对象、缓冲和延续句柄必须按所属 API 完成、取消或释放。
 - `lingbuilder.fbro.vip` 的官方 VIP 目录已为 188/188 implemented、planned=0。188 项官方能力逐项公开为 179 条单项命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力，另保留 10 条“批量与通用高级入口”，模块清单共 198 条。AI 应优先生成固定官方动作的单项命令，例如 `FBroVIP_DOM_取文档(控件名, 参数JSON)`，不得让用户再传“命令名称”字符串；只有批量或通用高级场景才使用 `FBroVIP_DOM异步命令`、`FBroVIP_扩展异步命令`、`FBroVIP_资源规则异步命令`、`FBroVIP_开发者工具异步命令`。异步调用必须保存任务 ID，并按“等待 → 取结果/错误 → 释放”使用。自动管理与安全替代项为 `internal`，可在模块详情说明，但不得进入 Monaco 普通补全。不得因为 VIP 子模块完成而宣称整个 FBro 1079 项目录完成；全目录仍有其它模块的 `planned`。
@@ -50,7 +91,7 @@
 - FBro 事件目录按“所属类 + 方法名 + 完整签名”登记 174 个类方法槽位和 158 个唯一签名，当前 `planned=0`、`needsReview=0`；每个槽位必须具有确定分类、真实 override 或明确的 `managed/internal/notApplicable` 理由、字段/响应 schema 和测试。普通 Win32 与 New_Emoji 消费同一 v3 目录和协议，高频事件只有绑定后才订阅并按目录限流。不得把事件目录完成误写成全部 1079 个普通 API 完成：全目录仍有 678 个非事件高级签名处于 `planned`，Frame visitor、完整公开 V8 和正式 OSR 设计器是独立工作流。
 - Bridge 延续超时由单一受管计时线程维护，到期后移除句柄并投递回 CEF UI 线程；不得在 FBro 多线程模式下依赖不会执行的 UI delayed task。正常关闭必须先取消所属浏览器的未完成延续、隐藏最后窗口并保留宿主 HWND/消息泵等待 `OnBeforeClose`，5 秒后才允许安全 fallback。FBro 5.38.49 的可视 Basic Auth 登录 UI 未按预期经过 `FBroHsBroEvent::GetAuthCredentials` override；AI 不得声称该弹窗已有真实回调 smoke，也不得生成或索要不存在的测试账号密码。
 - Chrome UI 创建返回的实例 ID 与内嵌控件状态隔离；导航、查询事件、绑定和关闭必须针对相应实例，不能用最后一个 popup 覆盖所属内嵌实例状态。普通 Win32 和 New_Emoji 必须共用同一事件协议。
-- FBro 核心现有 42 条高层命令。浏览器状态、缩放、静音、焦点、页内查找和 DevTools 状态/关闭必须使用对应 `FBro_` 命令；忽略缓存刷新、浏览器标识、实例比较、popup/文档/视图状态、关闭协商和自动尺寸也已有 `FBro_强制刷新`、`FBro_取浏览器标识`、`FBro_是否同一实例`、`FBro_是否弹出窗口/是否有文档/是否有视图`、`FBro_尝试关闭` 与 `FBro_设置自动调整大小`。不要用 JavaScript 模拟这些已存在的宿主 API。尚为 `planned` 的覆盖目录项不得生成伪命令或宣称可运行。
+- FBro 2.4 核心现有 86 条高层命令。浏览器状态、缩放、静音、焦点、页内查找和 DevTools 状态/关闭必须使用对应 `FBro_` 命令；忽略缓存刷新、浏览器标识、实例比较、popup/文档/视图状态、关闭协商和自动尺寸也已有 `FBro_强制刷新`、`FBro_取浏览器标识`、`FBro_是否同一实例`、`FBro_是否弹出窗口/是否有文档/是否有视图`、`FBro_尝试关闭` 与 `FBro_设置自动调整大小`。独立进程状态、PID、CDP 调试端口、重启、显隐、大小、截图和下载视图使用对应 `FBro_` / `浏览器管理器_` 命令；不要用 JavaScript 模拟这些已存在的宿主 API。尚为 `planned` 的覆盖目录项不得生成伪命令或宣称可运行。
 - `lingbuilder.fbro.objects` 已提供 132 条高级命令，覆盖任务、缓冲、Value、Dictionary、List、Binary、StringList、Stream、Image、X509Certificate、X509CertPrincipal 与 DragData。AI 只能保存返回的长整数句柄；线程绑定对象必须在所属线程使用，Image/Certificate/Principal/DragData 是 Bridge 持有的不可变跨线程安全句柄。嵌套对象由父句柄管理，父对象释放后其借用/交付的子句柄会返回 `-7`，不得继续访问。二进制、PNG/JPEG、DER/PEM 通过 `FBro缓冲_*` 传递，JSON 结果保持 UTF-16；不得猜测句柄、转换成地址或生成裸指针/STL/CefRefPtr。错误类型句柄返回 `-8`，重复释放返回 `-7`。图像使用 `FBro图像_异步下载` → `FBro任务_等待` → `FBro任务_取对象` 生产，当前页面证书使用 `FBro证书_异步取当前` 生产；事件中的 Certificate/DragData 使用 `FBro_取事件对象` 读取。任务、对象和缓冲均须在用完后调用对应释放命令。
 - `lingbuilder.fbro.automation` 已提供 25 条命令。Frame 必须先通过 `FBro框架_取主框架/取焦点框架/按标识取框架/按名称取框架` 取得类型 16 的受管句柄，再读取属性或执行编辑、载入、脚本操作；标识和名称列表是 UTF-16 JSON。不得把框架句柄当地址，不得生成 `CefFrame`/`CefRefPtr`，使用结束后调用 `FBro对象_释放`。`取源代码/取文本/VisitDOM/V8` 尚未接通时不得伪造命令。
 - `lingbuilder.fbro.session` 已提供官方 CookieManager 的异步遍历、设置、删除、持久化刷新和实例/全局缓存清理。AI 必须保存任务 ID，先调用 `FBro任务_等待`，再单独调用 `FBro任务_取结果` 或 `FBro任务_取错误`，最后释放任务；不要在同一个函数实参列表中同时等待并取结果，因为 C++ 实参求值次序不保证符合源码书写顺序。Cookie 遍历结果为 UTF-16 JSON 数组，不得生成 RequestContext、CookieManager、Cookie 指针或直接调用 CEF API。全局缓存清理只在用户明确要求且启用专业模式时使用。
@@ -60,7 +101,12 @@
 - 浏览器式窗口的自适应布局应在窗口“大小被改变”事件中读取 `窗口_取事件宽度/高度`，再调用 `控件_设置位置大小(控件名, 横坐标, 纵坐标, 宽度, 高度)` 调整地址栏、导航按钮和浏览器宿主。浏览器宿主变化后必须同步刷新其内部浏览器子窗口大小。
 
 - FBro 模块 ID 固定为 `lingbuilder.fbro.browser`，设计器控件类型为 `FBroBrowser`。AI 可以把它放入可视化窗口，但必须让每个实例保留独立宿主 `HWND`、控件 ID 和 profile/cache 目录。
-- FBro 只支持 Windows、MSVC、x64；启用它时应切换并锁定 x64。它与 `lingbuilder.cef3.browser` 以及任何携带其它版本 `libcef.dll` 的模块互斥，不得建议用户绕过生成前诊断或把两个 CEF 运行时复制到同一 exe 目录。
+- 固定数量的 new_emoji ListBox 多浏览器界面必须用 `listBoxItemsEx` 的稳定 key 建立显式映射，并在 `SelectionChanged(文本型 选中键列表)` 中调用 `FBro_隐藏` / `FBro_显示` 切换裸 `controlRef`；每次选择后只能有一个浏览器宿主可见，切换不得销毁实例或共享缓存目录。三个固定实例的完整示例位于 `src/new-emoji-fbro-listbox`。需要动态增删或数量不固定时，必须改用 `lingbuilder.new_emoji.fbro-shell` 的稳定 ID 集合，不得无限堆叠固定 `FBroBrowser` 控件。
+- `FBroBrowser.properties.processMode` 只允许 `in-process`、`independent-embedded`、`independent-window`。缺省值为 `in-process`；独立嵌入模式由每个控件自己的 Host 进程创建浏览器并把顶层内容窗口嵌入设计器宿主，独立窗口模式由 Host 创建可移动的桌面顶层窗口。AI 不得用这三个值以外的字符串，也不得把“谷歌原生 UI”命令与独立进程窗口属性混为同一个生命周期。
+- FBro 只支持 Windows、MSVC、x64；启用它时应切换并锁定 x64。`in-process` 会把 CEF 135 加载到应用进程，因此与 `lingbuilder.cef3.browser` 的 CEF 150 互斥；只有项目中全部 FBro 控件均为两种独立进程模式时才允许二者共存。共存时主程序目录保留 CEF3 运行时，FBro CEF 135、Bridge 和资源只能物化到 `fbro-host/`，不得复制或重命名到主 exe 目录。
+- FBro 独立进程控制面只能监听随机本机回环端口，使用一次性 256 位 Token 鉴权；Token 只通过 Host 子进程环境传递，不得进入命令行、设计器模型、日志、AI 上下文或固定配置。控制器必须维护浏览器实例 ID、Host PID、WebSocket 连接和进程代次映射，拒绝旧代次连接/事件；不得固定端口或开放外部监听。
+- 独立模式当前覆盖创建、导航、前进后退、刷新、执行 JS、缩放、静音、代理、指纹、显隐、调整大小、截图、关闭和进程状态。高级 Frame、Cookie、受管对象、任务及 VIP 单项 API 仍以进程内 Bridge 为主，AI 不得在独立模式下宣称它们已经全部远程化；需要这些接口时应改用进程内模式，或明确说明尚需扩展 WebSocket 协议。
+- 独立 Host 异常退出后只能按 1/2/4 秒退避，并限制十分钟最多自动重启三次；主程序关闭时必须通过 Job Object 和正常关闭协议回收全部 Host。不得生成无限重启循环、遗留浏览器进程或复用其它实例的 profile/CDP 端口。
 - 生成程序只能调用 `LingBuilderFbroBridge` C ABI；不得让用户项目直接持有 `CefRefPtr`、FBro C++ 对象、STL ABI 或桥接层分配的裸指针。
 - 指纹配置使用结构化 JSON。每位 IDE 用户在“设置 → 浏览器凭据”中自行保存 VIP Key，主进程必须用 Electron `safeStorage` 加密；renderer 只能读取配置状态，不得回读现有明文。F5、原生运行和新启动的 AI Bridge 仅通过受控子进程环境临时注入，`LINGBUILDER_FBRO_VIP_KEY` 只作为无人值守/导出工程的兼容后备。不得保存到 `.lcpp`、设计器模型、项目文件、模块包、日志、AI 上下文、同步包或安装包。无 Key 时允许基础浏览器运行；错误 Key 必须返回脱敏的中文授权失败诊断，不得回显 Key。
 - FBro 生成程序正常退出时必须先请求关闭各浏览器，调用 C++ SDK 的 `FBroShutdown(FALSE)`，等待 `OnBeforeClose` 后再释放桥接对象；不得用强制结束进程替代关闭协议。
@@ -276,7 +322,7 @@ AI 必须遵守：
 - 多线程取消和关闭只允许协作完成。工作处理器应使用 `线程_是否请求取消(0)` 或 `线程_协作等待` 响应取消；禁止生成裸线程地址、裸 `HANDLE`、强制终止、挂起/恢复、DLL 注入或跨线程控件引用。旧的 `线程_启动延时输出`、`线程_等待全部`、`线程_活动数量`、`线程_硬件并发数`、`线程_休眠`、三条延时 UI 命令和 `线程_批量启动` 已删除，新代码不得继续生成。
 - LingBuilder 内置分类模块及命令事实来源为 `electron/src/services/modules/*LibraryModules.ts`，人类可读总表为根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。AI 只能根据当前项目实际启用模块使用文本、文件、系统、网络、数据库、图像等命令，不能因为模块是“内置”就假设项目已经启用。
 - `lingbuilder.system.clipboard@1.1.0` 提供 10 条剪贴板命令。图片参数和返回值必须使用 `字节集`/`bytes`；不得把图片原始数据伪装成文本或 `raw`。`剪贴板_置图片字节集` 接受 DIB/DIBV5、BMP 文件字节和 GIF87a/GIF89a，检测到 GIF 时必须走原始 GIF 动画路径；需要明确 GIF 语义时使用 `剪贴板_置GIF字节集` / `剪贴板_取GIF字节集`。生成 C++ 可以出现 `std::vector<unsigned char>`、`CF_DIB(V5)`、注册的 `GIF`、`image/gif` MIME 和 `HTML Format`，但 `.lcpp` 不得要求用户把图片字节写成字符串。单个图片/GIF 上限为 256 MB，目标程序只请求静态 DIB 时不能承诺它会保留动画。
-- `lingbuilder.database.sqlite` 需要可加载的 `sqlite3.dll`。未成功调用 `SQLite_加载运行库`/`SQLite_打开` 前，不得宣称数据库可用，也不得隐藏 DLL 缺失错误。
+- `lingbuilder.database.sqlite@2.0.0` 提供 67 条 SQLite 接口和 `SQLite连接` / `SQLite语句` 受管类型。未成功调用 `SQLite_加载运行库` 并取得非 0 连接前，不得宣称数据库可用，也不得隐藏 DLL 缺失、架构不符或导出不完整错误。新代码优先使用 `SQLite_打开连接`、`SQLite_准备`、强类型 `SQLite_绑定*` / `SQLite_取列*` 和显式释放；外部输入禁止拼接 SQL。批量写入应使用事务，活动数据库备份必须使用 `SQLite_备份到文件`，不能直接复制文件。项目必须随目标架构提供固定来源、版本和 SHA-256 的官方 `sqlite3.dll`；模块不承诺数据库加密，不得让 AI 编造密钥参数或自动下载未知 DLL。原 7 条默认连接命令只用于旧源码兼容。
 - `lingbuilder.net.mail` 当前只支持不加密 SMTP，不支持 STARTTLS。AI 不得建议把真实邮箱密码交给该模块；生产邮件应等待 TLS 能力或使用经过审核的外部模块。
 - `lingbuilder.archive` 只允许 ZIP 创建、解压和列出三个固定 tar 流程，不得借此拼接任意 shell 参数。
 - `lingbuilder.advanced.memory`、`lingbuilder.advanced.hook`、`lingbuilder.advanced.process-memory`、`lingbuilder.advanced.com`、`lingbuilder.advanced.assembly`、`lingbuilder.advanced.driver` 均为高风险模块。AI 必须说明风险并取得用户明确意图后才能建议启用；不得将其加入普通项目模板或用它们绕过 AI Bridge 的执行权限。
@@ -285,11 +331,11 @@ AI 必须遵守：
 - EdgeView 最低兼容基线是 SDK `1.0.3537.50` / Runtime 141，完整编译基线固定为 SDK `1.0.4078.44` / Runtime 150；不得按本机“最新目录”漂移。普通 HWND 提供 71 项事件。同步决策未设置时必须保持 WebView2 默认行为；创建期属性变更后必须重建。设计画布只显示占位，AI 可建议执行“运行此 Edge 控件预览”，不得声称网页实时嵌入 React 画布。
 - `edgeview.safe-api.v2` 覆盖受管对象、Frame/Worker、扩展、权限、通知、共享缓冲、附加文件对象、资源响应、证书、PDF 流和创建期 Options。AI 不得生成 CompositionController、PointerInfo、AutomationProvider、实验 API、裸 COM/指针、任意 Host Object 或未经用户明确选择的路径访问。
 - EdgeView 全局代理使用 `EdgeView_设置全局代理`，只影响之后创建的实例；单实例代理使用 `EdgeView_创建实例代理` 或 `EdgeView_创建区域代理` 并覆盖全局设置。代理切换必须重建实例，AI 不得声称能在不重建 WebView2 Environment 的情况下热切换代理。
-- 已启用 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`）时，设计器工具箱会新增 `CEF3浏览器 (CefBrowser)` 控件；可在任意窗口添加多个实例，属性面板可设置打开地址 `url`、缓存目录 `cacheDir`、User-Agent、JavaScript/图片/WebGL 开关和代理。除原有导航、JS、前进后退、状态和事件绑定命令外，可用 `CEF3_取事件字段` 读取复杂事件字段，用 `CEF3_设置事件结果` 和 `CEF3_设置事件返回文本` 响应同步决策事件。
+- 已启用 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`）时，设计器工具箱会新增 `CEF3浏览器 (CefBrowser)` 控件；可在任意窗口添加多个实例，属性面板可设置打开地址 `url`、缓存目录 `cacheDir`、User-Agent、JavaScript/图片/WebGL 开关和代理。除原有导航、JS、前进后退、状态和事件绑定命令外，可用 `CEF3_是否有效(控件名)` 判断原生浏览器对象是否仍有效、用 `CEF3_是否弹出窗口(控件名)` 判断对象是否由 popup 流程创建、用 `CEF3_是否有文档(控件名)` 判断文档是否已加载、用 `CEF3_是否禁用窗口渲染(控件名)` 判断是否使用无窗口/OSR 渲染、用 `CEF3_是否网页全屏(控件名)` 判断网页是否通过 Fullscreen API 进入全屏、用 `CEF3_是否已准备关闭(控件名)` 判断是否进入必须完成的关闭阶段、用 `CEF3_是否渲染进程无响应(控件名)` 查询至少 15 秒未处理输入的渲染进程状态、用 `CEF3_强制刷新(控件名)` 忽略缓存刷新、用 `CEF3_页内查找(控件名, 文本, 向前, 区分大小写, 查找下一个)` 发起查找、用 `CEF3_停止页内查找(控件名, 清除选择)` 停止查找、用 `CEF3_是否静音(控件名)` 读取浏览器音频静音状态、用 `CEF3_取事件字段` 读取复杂事件字段，并用 `CEF3_设置事件结果` 和 `CEF3_设置事件返回文本` 响应同步决策事件。
 - CEF3 同一 exe 内共享 Chromium 进程，但每个设计器控件必须创建独立 `CefRequestContext`；全局只设置 `root_cache_path`，实例 `cache_path` 必须映射为它的直接子目录，因此 Cookie/缓存可按实例隔离。代理必须在 RequestContext 初始化回调中通过 preference 应用；系统模式恢复默认 preference，直连使用 `direct`，固定代理使用 `fixed_servers`。`CEF3_设置缓存目录`/`CEF3_设置代理` 仍需在创建前调用，创建后调用无效。AI 不得继续使用“所有控件共享同一缓存”的旧说明。
 - CEF3 高级对象按 `CEF3值_*`、`CEF3字典_*`、`CEF3列表_*` 使用长整数句柄；容器写入和读取都返回独立深复制，调用方仍须分别释放原值、返回值和容器。会话流程为 `CEF3会话_取上下文` → Cookie/缓存异步命令 → `CEF3任务_取状态/取结果/取错误` → `CEF3任务_释放` → `CEF3会话_释放上下文`。不要在同一实参列表中同时查询任务状态和结果，也不要把负错误码当成“假”。同步事件只能通过 `CEF3_设置事件结果` 和 `CEF3_设置事件返回文本` 返回；普通通知不得假设会阻塞 CEF 线程。
-- CEF3 当前集中式 92 项目录是已接入的浏览器侧事件目录，不代表 CEF 150 全部 1564 个上游签名已经封装。完整覆盖状态以 `CEF3_API_COVERAGE.md` 和机器 JSON 为准；当前 alpha 存在 `planned` 时，AI 必须明确说明尚未全覆盖，不得把只有名称或目录项的能力描述为可运行。
-- `LingBuilderCefBridge` v3 是 CEF3 稳定 C ABI 边界；`.lcpp` 和生成代码不得取得裸指针、`CefRefPtr` 或 STL。当前 objects 子模块已接通 6 条受管缓冲命令，文件读写只允许 Bridge 配置的根目录；必须释放返回的缓冲句柄，并把无效/重复释放作为稳定错误处理。其它尚未跨 Bridge 验证的 CEF 能力仍按 `mapped/planned` 报告，不得因 DLL 已存在就标为完整实现。
+- CEF3 当前集中式目录包含 92 项用户事件名称和 113 条官方事件签名，事件域已完成；这不代表 CEF 150 全部 1577 个上游目录项已经封装。完整覆盖状态以 `CEF3_API_COVERAGE.md` 和机器 JSON 为准；当前 alpha 仍存在 879 项 `planned` / 879 项 `needsReview`，AI 必须明确说明尚未全覆盖，不得把只有名称或目录项的能力描述为可运行。
+- `LingBuilderCefBridge` 保留 v3 稳定 C ABI 导出，并用兼容式 v4 固定操作 ID、结构化结果和类型化句柄扩展新能力；`.lcpp` 和生成代码不得取得裸指针、`CefRefPtr` 或跨 DLL STL。文件读写只允许 Bridge 配置的根目录；必须释放返回的缓冲、列表和对象句柄，并把错误类型、只读、无效或重复释放作为稳定错误处理。其它尚未跨 Bridge 验证的 CEF 能力仍按 `mapped/planned` 报告，不得因 DLL 已存在就标为完整实现。
 - `CEF3_绑定事件` 及所有 CEF3 回调型命令的处理器参数必须使用 `&处理器名`；引号字符串只允许迁移诊断读取，不得由 AI 继续生成。事件响应必须按专用 schema/默认动作扩展，不能把 `0/1/2/3` 套到证书、菜单、尺寸等全部回调。
 - `CEF3_执行JS` 使用 DevTools `Runtime.evaluate` 返回真实 JSON，最长兼容等待 5 秒；应在主框架加载完成（例如加载状态变为非加载）后调用。新代码优先使用 `CEF3自动化_执行JS异步` 并通过 CEF3任务命令读取、取消和释放，不能声称旧命令仍然固定返回空文本。
 - CEF3 的“新窗口打开前”事件返回 `1` 或保持默认时，允许 CEF 创建独立原生 popup 浏览器；返回 `2` 时拒绝，返回 `3` 时表示 LCPP 已自行接管。允许 popup 时，生成运行时必须把主内嵌浏览器与 popup 分开跟踪：popup 的创建、地址变化和关闭不得覆盖主浏览器句柄、地址栏状态或前进后退目标，关闭主窗口/控件时必须同时关闭其全部 popup。需要主动创建带 Chrome 地址栏和完整浏览器界面的顶层窗口时，必须调用 `CEF3_打开原生UI浏览器(控件名, 地址)`；该命令显式使用 `CEF_RUNTIME_STYLE_CHROME`、空父句柄和独立桌面顶层 HWND，不能把 LingBuilder 主窗口 `HWND` 传给 Chrome Runtime，否则原生 UI 会覆盖进内嵌宿主。不能用可能被拦截的脚本 `window.open`，也不得另造不受管理的裸 `CefBrowser`。
@@ -612,17 +658,25 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 
 # new_emoji 目录与收费授权（2026-07-27）
 
-- AI 生成 new_emoji 界面时只能使用当前安装模块目录中存在的 92 个命名空间控件及其已声明属性和事件，不得猜测控件名、导出签名或回调参数。
-- 目录收录不等于运行时闭环。AI 只能编辑带 `runtimeCommand` 的 new_emoji 专属属性，也只能绑定带真实 callback runtime mapping 的事件；面板显示为锁定的属性或未出现的事件不得通过直接改 JSON 绕过。当前通用事件映射尚未完成，旧 Upload/DragUpload 回调仅用于兼容旧项目。
+- AI 生成 new_emoji 界面时只能使用当前安装模块目录中存在的 93 个命名空间控件及其已声明属性和事件，不得猜测控件名、导出签名或回调参数。`lingbuilder.new_emoji.ui@2.0.0` 当前由上游元数据生成 3784 条 contribution/binding；生成结果与 module-build、已安装模块和 `.lbmod` 必须通过 `npm run module:new-emoji:check` 保持逐文件一致。
+- 目录收录不等于运行时闭环。AI 只能编辑带 `runtimeCommand` 的 new_emoji 专属属性，也只能绑定带真实 callback runtime mapping 的事件；面板显示为锁定的属性或未出现的事件不得通过直接改 JSON 绕过。上游函数指针参数统一生成为带精确 `handlerSignature` 的 `handler`，`.lcpp` 必须写 `&处理器名`；不得把 callback 生成成整数、普通字符串或无参数处理器。
 - 默认优先生成安全 `NE_` 中文桥接命令。`NE_EU_*` 属于 advanced；除非用户明确开启底层 API 并要求底层调用，否则不要主动生成。
 - new_emoji 窗口必须保存 `designerBackend: new-emoji`，Win32 窗口保存 `designerBackend: win32`；同一窗口不得任意混用两类控件。唯一现行例外是已注册的 FBro 外部 `HWND` 子宿主：项目同时启用 `lingbuilder.new_emoji.ui` 和 `lingbuilder.fbro.browser` 时，`FBroBrowser` 可用 `parentId` + `containerSlot` 放入 New_Emoji Tabs 稳定页面；每页必须是独立浏览器实例和独立 profile，不能共用句柄或在 React 中模拟切换。其它 Win32 控件仍不允许混入。事件绑定继续保存处理器名，生成调用时使用 `&处理器名` 语义。
-- AI 不得通过手工调整生成后的 FBro `HWND` 坐标修复 New_Emoji Tabs。确定性生成器会把设计器逻辑坐标按窗口 DPI 换算，并补入 New_Emoji 默认 30 逻辑像素标题栏偏移；模块宏必须在桥接头探测前生成，FBro 成功验收需要真实 renderer 子进程，不能只看到白色宿主。
+- `windowFrame.preset` 只允许 `system`、`browserShell`、`custom`。浏览器外壳预设固定生成上游 `0x3F` 六项窗口 flags，并保存四边缩放边框和圆角；手工修改 flags 后必须切换为 `custom`。旧项目缺少该字段时按 `system` 迁移，不得把设计器自绘标题栏当作运行逻辑。
+- new_emoji 的 Tabs、Menu、Omnibox 等集合属性使用 manifest `recordList` 字段 schema；跨控件关系使用带允许类型、对象种类、作用域和 `stableId` 运行时表示的 `controlRef`。源码中的控件引用必须是裸标识符，设计器关系必须保存稳定对象 ID；生成器先创建全部控件，再统一解析关系和调用 setter。旧值 `0` 表示未绑定，无法唯一恢复的旧数字关系必须阻断并要求人工选择。
+- 真浏览器外壳使用 `lingbuilder.new_emoji.fbro-shell@1.0.0` 和模板 `new-emoji-fbro-browser-shell`。`BrowserViewport` 只表示布局边界及加载/错误占位，真实网页由“标签稳定 ID -> FBro 句柄 -> 非分层伴随宿主 HWND”映射渲染；伴随宿主必须使用顶层工具窗口并按占位区屏幕坐标同步移动、尺寸、DPI、显隐、层级和销毁，不能把 Chromium 子 HWND 放入 new_emoji 的 `WS_EX_LAYERED` 主窗口。切换页面只显示当前宿主，不得把网页像素画进 React 或占位控件。
+- 浏览器外壳状态处理器固定为 `(整数型 标签索引, 文本型 地址, 文本型 标题, 逻辑型 加载中)`，调用必须写 `浏览器外壳_创建(浏览器标签页, 浏览器页面占位, &浏览器状态改变)`。响应式布局在 `SizeChanged` 和 `DpiChanged` 中复用 `控件_设置位置大小`，同时调整 new_emoji 控件、FBro HWND、弹层锚点和命中区域。
+- 浏览器外壳正式目标仅为 Windows/MSVC x64。缺少 x64 SDK、FBro Bridge、CEF 运行时或哈希不一致时必须在生成前阻断；基础浏览不要求 VIP Key。F5、原生预览和 Visual Studio 导出必须消费同一项目模型、模块上下文、生成器与依赖计划，不能提供 IDE 内隐藏模拟或其它平台静默降级。
+- 完整复刻模板固定为 1180 x 760，必须保留 Chrome 式 Tabs、独立新建标签按钮、Omnibox、下载/扩展/更多菜单、右键菜单、弹层和窗口控制。分享该模板时只能使用 `npm run demo:new-emoji-fbro-shell:export` 生成并回读验证 `exports/new_emoji-FBro浏览器外壳完整复刻.lcpppkg`；包内必须是实际 `.lcpp`、设计器模型、x64 配置和 SDK 资产，不能替换成截图、Python 启动器或 IDE 模拟项目。
+- 浏览器外壳 Tabs 控件宽度必须按实际标签总宽度计算，独立新建按钮紧跟最后一个标签，窗口按钮之前必须保留可拖拽标题栏空白；新增、关闭或重排标签后必须在当前控件事件结束后刷新拖拽/非拖拽命中区。模板首个标签和运行时新标签默认打开 `https://www.baidu.com`，原生 smoke 的 `127.0.0.1` fixture 只能存在于测试生成目录，不能写入模板或 `.lcpppkg`。
+- AI 不得通过手工调整生成后的 FBro `HWND` 坐标修复 New_Emoji Tabs。确定性生成器会把设计器逻辑坐标按窗口 DPI 换算，并补入 New_Emoji 默认 30 逻辑像素标题栏偏移；浏览器外壳的根 `Container` 必须设置 `flowEnabled=false`，Menu/Popover/Dropdown 打开时由运行时受控隐藏伴随宿主，不能绕过弹层层级。模块宏必须在桥接头探测前生成，FBro 成功验收需要真实 renderer 子进程以及 HWND/像素门禁，不能只看到白色宿主。
 - New_Emoji Tabs 的 `headerVisible` 是独立的布尔属性，默认显示；AI 修改设计器模型时应使用 `headerVisible=false` 隐藏表头，不能把固定开启的 `contentVisible` 当作表头开关。生成器必须通过 `EU_SetTabsHeaderVisible` 写入 `0/1`，隐藏后页面内容区占满 Tabs 区域，旧项目缺少该字段时按显示兼容。
 - 设计器项目以工作区 `.lingbuilder/projects/<projectId>/window-designer.json` 为权威持久化数据；localStorage 只能保存按 `projectId` 隔离的临时界面状态，不能覆盖磁盘布局。发现 `lingbuilder.new_emoji.ui/*` 命名空间控件而窗口缺少后端时，应迁移并保存为 `designerBackend: new-emoji`，不得重新建立空窗口替换原控件。
 - new_emoji 设计器预览必须服从原生库深色/浅色主题令牌，不能用只存在于 React 的渐变、阴影或圆角承诺运行效果。原生生成器会默认聚焦首个可见且启用的 Input/EditBox；如用户要求其它启动焦点，应在窗口“创建完毕”处理器中使用真实焦点接口覆盖，不要用前端假光标模拟。
 - new_emoji 窗口未显式改图标时使用模块随包携带的 LingBuilder v2 ICO；AI 不要生成本机绝对图标路径。用户选择自定义图标时仍只能使用项目 `assets/` 下的相对 ICO 路径，选择“无图标”时不得强行恢复默认图标。
 - New_Emoji 生成的 `wWinMain` 必须在 COM、`NE_创建窗口` 和任何控件创建前动态启用 `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`，调用 `SetProcessDpiAwarenessContext` 不得静态链接以保持旧 Windows 启动兼容；API 不可用时才回退 `SetProcessDPIAware`。不得把启动显示器的系统 DPI 当作跨屏方案，也不得在生成后的 `main.cpp` 中手工补缩放。上游 DLL 会通过 `WM_DPICHANGED`、`GetDpiForWindow` 和元素树重排处理窗口拖到不同缩放屏幕的尺寸、字体和布局。
 - 收费模块没有有效 Permit 时，AI Bridge 不得把其启用上下文用于诊断、修改、构建或导出，也不得通过直接调用本地接口绕过登录、购买、限免结束或离线到期限制。
+- Permit 恢复失败时应区分未购买、离线 Permit 过期和本地授权服务未就绪；不得建议关闭收费守卫或伪造签名。开发环境应先确认 Docker 基础服务与 `127.0.0.1:17900` 云端 API 都已启动，再使用已授权开发账号经正式接口换发 Permit。
 
 ## 数据表格代码生成规则
 
@@ -668,7 +722,7 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 ### new_emoji Tabs 页面布局生成
 
 - 生成或修改 `lingbuilder.new_emoji.ui/Tabs` 项目时，AI 必须保留稳定页面槽位，并让原生生成器在页面子控件全部创建后再绑定 `EU_SetTabsPageElements`；不得通过手工修改生成后的 `main.cpp`、强制激活某一页或改坐标来掩盖布局错误。
-- `Container` 的设计器宽高必须保持 `EU_SetPanelLayout(..., 0, 0)` 语义，不能依赖默认 `fill_parent`。
+- `Container` 的设计器宽高必须保持 `EU_SetPanelLayout(..., 0, 0)` 语义，不能依赖默认 `fill_parent`。`flowEnabled` 默认保持 `true` 兼容旧项目；需要绝对坐标的浏览器外壳等布局必须显式设为 `false`，由 `EU_SetContainerLayout(..., 0, ...)` 禁用流式重排。
 
 ## 构建生成、字节集与 Protobuf
 
@@ -677,3 +731,12 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - 二进制数据统一使用 `字节集`（binding/ABI 名称 `bytes`）。真实字节序列不得新声明为 `raw`；opaque 原生类型才可使用 `raw`。跨 DLL 输入是 `const unsigned char* data + size_t size`，输出由调用方查询长度并提供缓冲区，禁止跨 DLL 传递或释放 STL。生成空数据、零长度、长度溢出和所有权代码前必须确认对应测试。
 - Protobuf 模块 ID 为 `lingbuilder.data.protobuf`，Provider 为 `lingbuilder.protobuf.protoc@1.0.0`，只使用官方反射 API 和 opaque 句柄。SDK 固定版本为 27.3.0，必须离线放在 `.lingbuilder/toolchains/protobuf`，并由 `runtime-manifest.json` 校验所有头文件、导入库、DLL 和 `bin/protoc.exe` 的大小/SHA-256。清单缺失、篡改、版本或目标架构不符时应中文阻断，不能自动下载或调用 PATH 中的 protoc。
 - Protobuf 的本地 import 必须进入构建输入和增量指纹，并随生成结果复制到构建/导出目录；Provider 只在 staging 目录写入，生成失败或取消时不得保留半成品。
+
+## 三界面模块运行时控件生成规则（2026-08-05）
+
+- Win32 基础模块只允许为当前目录中的 12 个可视控件生成代码创建接口；Win32 高级模块只允许为当前目录中的 20 个可视控件生成；`lingbuilder.new_emoji.ui` 只允许为当前 93 个公开可视控件生成。非可视组件以及旧兼容 Grid、ReBar、Pager 不得生成创建、标记查找或动态事件接口。
+- 必须从模块实际 `runtimeControl`/binding 目录选择真实存在的具体类型命令，不得臆造名称。创建签名是“父级、位置尺寸、文本或该类型必要参数、可选标记文本、可选标记整数”；父级使用 `当前窗口`、兼容容器变量或标签页容器。只传整数标记时，文本标记位置必须传 `""`。
+- `tagText` 和 `tagInteger` 始终可空。文本标记先 trim，空值表示未设置，按区分大小写的 UTF-16 精确匹配；整数标记为有符号 32 位，`0` 与负数有效。非空标记只在“当前窗口 + 具体控件类型 + 标记类别”范围唯一，不得把同窗口不同控件类型的相同标记误报为冲突。
+- 查找必须使用具体类型命令，例如 `通过标记文本获取按钮("确认")` 或 `通过标记整数获取编辑框(1001)`，结果保存到相同具体控件类型的局部变量。操作查找结果前优先生成 `控件_是否有效`；找不到、重复标记、错误父级、类型不兼容或窗口已销毁时必须安全失败并保留中文诊断。
+- 控件变量只允许局部变量、方法参数和返回值。禁止控件常量、数组、程序集成员、项目全局变量和工作线程传递。设计器裸控件名、控件变量、创建结果和查找结果可以进入兼容的通用/专属命令与成员语法；动态事件处理器必须使用 `&处理器名`。
+- 代码创建控件只属于当前运行时，不得写回设计器或暗示重启后仍存在。Win32 每实例必须创建独立主 `HWND`；new_emoji 使用窗口级元素记录和稳定 ID。AI 不得手写注册表、元素 ID 或生成后端专属转换，必须交给统一 binding 和 C++ 生成器。

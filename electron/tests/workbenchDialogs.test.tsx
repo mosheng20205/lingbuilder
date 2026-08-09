@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import CommandPalette from '../src/components/CommandPalette';
 import SettingsDialog from '../src/components/SettingsDialog';
 import ProjectNameDialog from '../src/components/ProjectNameDialog';
+import ProjectTypeDialog from '../src/components/ProjectTypeDialog';
 import type { CommandPresentation, RegisteredCommand } from '../src/services/commands';
 import {
   WORKBENCH_CONFIGURATION_METADATA,
@@ -111,6 +112,43 @@ test('new solution project uses an in-app input dialog instead of a browser prom
   assert.match(markup, /aria-label="项目名称"/u);
   assert.match(markup, /LingBuilder项目3/u);
   assert.match(markup, /创建项目/u);
+});
+
+test('welcome project type dialog exposes one available Windows UI project and three planned types', () => {
+  const markup = renderToStaticMarkup(
+    <ProjectTypeDialog
+      open
+      isDarkMode
+      onSelectWindowsUi={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+
+  assert.match(markup, /role="dialog"/u);
+  assert.match(markup, /aria-modal="true"/u);
+  assert.match(markup, /Windows 界面设计/u);
+  assert.match(markup, /Windows 平台 DLL 开发/u);
+  assert.match(markup, /Mac 界面设计/u);
+  assert.match(markup, /Mac 平台动态库开发/u);
+  assert.match(markup, /data-project-type="windows-ui"(?![^>]*\sdisabled="")/u);
+  assert.match(markup, /data-project-type="windows-dll"[^>]*\sdisabled=""/u);
+  assert.match(markup, /data-project-type="mac-ui"[^>]*\sdisabled=""/u);
+  assert.match(markup, /data-project-type="mac-library"[^>]*\sdisabled=""/u);
+  assert.equal((markup.match(/>规划中</gu) || []).length, 3);
+  assert.match(markup, /当前仅开放 Windows 界面设计/u);
+});
+
+test('closed project type dialog does not leave a hidden interactive surface', () => {
+  const markup = renderToStaticMarkup(
+    <ProjectTypeDialog
+      open={false}
+      isDarkMode
+      onSelectWindowsUi={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+
+  assert.equal(markup, '');
 });
 
 test('solution folders and project rename reuse the in-app name dialog', () => {

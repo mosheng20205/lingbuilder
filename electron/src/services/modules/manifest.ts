@@ -21,7 +21,8 @@ const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong'
 const CONTROL_REFERENCE_SCOPES = ['currentWindow', 'project'];
 const CONTROL_REFERENCE_KINDS = ['visual', 'nonVisual', 'resource'];
 const CONTROL_RUNTIME_REPRESENTATIONS = ['wideName', 'stableId', 'nativeHandle'];
-const DESIGNER_PROPERTY_TYPES = ['text', 'hotkey', 'hotKey', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'dataGridColumns', 'dataGridRows', 'treeNodes', 'tabs', 'date', 'controlRef'];
+const DESIGNER_PROPERTY_TYPES = ['text', 'hotkey', 'hotKey', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'dataGridColumns', 'dataGridRows', 'treeNodes', 'tabs', 'date', 'controlRef', 'recordList'];
+const DESIGNER_RECORD_FIELD_TYPES = ['text', 'number', 'boolean', 'enum', 'color', 'file', 'controlRef'];
 const DESIGNER_LAYOUT_MODES = ['absolute', 'flow', 'stack', 'grid', 'dock', 'slots', 'single', 'custom'];
 
 export function validateModuleManifest(value: unknown): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {
@@ -145,7 +146,10 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
           if (!DESIGNER_PROPERTY_TYPES.includes(property?.type)) diagnostics.push(`控件 ${control.type} 的属性 ${property?.key || propertyIndex} 类型不受支持。`);
           if (property?.type === 'file' && typeof property?.defaultValue === 'string' && property.defaultValue && !validateModuleRelativePath(property.defaultValue)) diagnostics.push(`控件 ${control.type} 的文件属性 ${property.key} 默认值不是安全相对路径。`);
           if (property?.level !== undefined && !['basic', 'advanced'].includes(property.level)) diagnostics.push(`控件 ${control.type} 的属性 ${property.key} level 无效。`);
+          validateDesignerControlReference(property, `控件 ${control.type} 的属性 ${property?.key || propertyIndex}`, diagnostics);
+          if (property?.type === 'recordList') validateDesignerRecordList(property, control.type, diagnostics);
         });
+        validateRuntimeControlContribution(control, controlIndex, contributes, raw.bindings, diagnostics);
       });
     }
   }
@@ -171,6 +175,98 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
 
   if (diagnostics.length > 0) return { diagnostics };
   return { manifest: raw as LingBuilderModuleManifest, diagnostics };
+}
+
+function validateDesignerRecordList(property: any, controlType: string, diagnostics: string[]): void {
+  const prefix = `控件 ${controlType} 的 recordList 属性 ${property?.key || ''}`;
+  if (!Array.isArray(property?.defaultValue)) diagnostics.push(`${prefix} 默认值必须是数组。`);
+  if (typeof property?.recordKey !== 'string' || !property.recordKey.trim()) diagnostics.push(`${prefix} 必须声明 recordKey。`);
+  if (!Array.isArray(property?.fields) || property.fields.length === 0) {
+    diagnostics.push(`${prefix} 必须声明非空 fields。`);
+    return;
+  }
+  const fieldKeys = new Set<string>();
+  for (const [index, field] of property.fields.entries()) {
+    const fieldPrefix = `${prefix}.fields[${index}]`;
+    if (typeof field?.key !== 'string' || !field.key.trim()) diagnostics.push(`${fieldPrefix}.key 不能为空。`);
+    if (fieldKeys.has(field?.key)) diagnostics.push(`${prefix} 字段重复：${field.key}`);
+    fieldKeys.add(field?.key);
+    if (typeof field?.label !== 'string' || !field.label.trim()) diagnostics.push(`${fieldPrefix}.label 不能为空。`);
+    if (!DESIGNER_RECORD_FIELD_TYPES.includes(field?.type)) diagnostics.push(`${fieldPrefix}.type 不受支持。`);
+    if (field?.required !== undefined && typeof field.required !== 'boolean') diagnostics.push(`${fieldPrefix}.required 必须是逻辑值。`);
+    validateDesignerControlReference(field, fieldPrefix, diagnostics);
+  }
+  if (property.recordKey && !fieldKeys.has(property.recordKey)) diagnostics.push(`${prefix}.recordKey 必须引用 fields 中的稳定字段。`);
+}
+
+function validateDesignerControlReference(value: any, prefix: string, diagnostics: string[]): void {
+  const metadata = ['controlTypes', 'controlKinds', 'scope', 'runtimeRepresentation'];
+  if (value?.type !== 'controlRef') {
+    if (metadata.some(key => value?.[key] !== undefined)) diagnostics.push(`${prefix} 只有 controlRef 可以声明控件引用约束。`);
+    return;
+  }
+  if (!Array.isArray(value.controlKinds) || value.controlKinds.length === 0) diagnostics.push(`${prefix}.controlKinds 必须显式声明。`);
+  if (!value.scope) diagnostics.push(`${prefix}.scope 必须显式声明。`);
+  if (!value.runtimeRepresentation) diagnostics.push(`${prefix}.runtimeRepresentation 必须显式声明。`);
+  if (value.controlTypes !== undefined && (!Array.isArray(value.controlTypes) || value.controlTypes.some((item: unknown) => typeof item !== 'string' || !item.trim()))) diagnostics.push(`${prefix}.controlTypes 必须是非空控件类型文本数组。`);
+  if (value.controlKinds !== undefined && (!Array.isArray(value.controlKinds) || value.controlKinds.some((item: unknown) => !CONTROL_REFERENCE_KINDS.includes(String(item))))) diagnostics.push(`${prefix}.controlKinds 不受支持。`);
+  if (value.scope !== undefined && !CONTROL_REFERENCE_SCOPES.includes(value.scope)) diagnostics.push(`${prefix}.scope 不受支持。`);
+  if (value.runtimeRepresentation !== undefined && !CONTROL_RUNTIME_REPRESENTATIONS.includes(value.runtimeRepresentation)) diagnostics.push(`${prefix}.runtimeRepresentation 不受支持。`);
+}
+
+function validateRuntimeControlContribution(control: any, controlIndex: number, contributes: any, bindings: any, diagnostics: string[]): void {
+  const contract = control?.runtimeControl;
+  if (contract === undefined) return;
+  const prefix = `designerControls[${controlIndex}].runtimeControl`;
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) {
+    diagnostics.push(`${prefix} 必须是对象。`);
+    return;
+  }
+  if (control?.isVisual === false) diagnostics.push(`${prefix} 只能用于可视控件。`);
+  if (typeof contract.lingCppType !== 'string' || !contract.lingCppType.trim()) diagnostics.push(`${prefix}.lingCppType 不能为空。`);
+  if (contract.cppType !== 'LingControlRef') diagnostics.push(`${prefix}.cppType 必须为 LingControlRef。`);
+  if (contract.tagScope !== 'currentWindowAndConcreteType') diagnostics.push(`${prefix}.tagScope 必须为 currentWindowAndConcreteType。`);
+  if (!Array.isArray(contract.parentKinds) || contract.parentKinds.length === 0
+    || contract.parentKinds.some((kind: unknown) => !['window', 'container', 'tabPage'].includes(String(kind)))) {
+    diagnostics.push(`${prefix}.parentKinds 必须声明 window、container 或 tabPage。`);
+  }
+  const commandFields = ['createCommand', 'lookupByTagTextCommand', 'lookupByTagIntegerCommand', 'validCommand'] as const;
+  commandFields.forEach(field => {
+    if (typeof contract[field] !== 'string' || !contract[field].trim()) diagnostics.push(`${prefix}.${field} 不能为空。`);
+  });
+  if (contract.validCommand !== '控件_是否有效') diagnostics.push(`${prefix}.validCommand 必须为 控件_是否有效。`);
+
+  const publicTypes = new Map((contributes?.types || []).map((type: any) => [type?.name, type]));
+  const publicType = publicTypes.get(contract.lingCppType) as any;
+  if (!publicType) diagnostics.push(`${prefix}.lingCppType 未在 contributes.types 中公开。`);
+  else if (publicType.cppType !== 'LingControlRef') diagnostics.push(`类型 ${contract.lingCppType} 的 cppType 必须为 LingControlRef。`);
+
+  const commandNames = new Set((contributes?.commands || []).map((command: any) => command?.name));
+  const bindingByCommand = new Map((bindings?.commands || []).map((binding: any) => [binding?.command, binding]));
+  for (const field of ['createCommand', 'lookupByTagTextCommand', 'lookupByTagIntegerCommand'] as const) {
+    const commandName = contract[field];
+    if (typeof commandName !== 'string') continue;
+    if (!commandNames.has(commandName)) diagnostics.push(`${prefix}.${field} 引用了未贡献的命令：${commandName}`);
+    if (!bindingByCommand.has(commandName)) diagnostics.push(`${prefix}.${field} 缺少 bindings.commands 映射：${commandName}`);
+  }
+  const createBinding = bindingByCommand.get(contract.createCommand) as any;
+  if (createBinding && createBinding.returnType !== contract.lingCppType) diagnostics.push(`命令 ${contract.createCommand} 必须返回 ${contract.lingCppType}。`);
+
+  if (!Array.isArray(contract.createParameters)) {
+    diagnostics.push(`${prefix}.createParameters 必须是数组。`);
+    return;
+  }
+  const roles = contract.createParameters.map((parameter: any) => parameter?.role);
+  for (const requiredRole of ['parent', 'x', 'y', 'width', 'height']) {
+    if (roles.filter((role: unknown) => role === requiredRole).length !== 1) diagnostics.push(`${prefix}.createParameters 必须且只能包含一个 ${requiredRole} 参数。`);
+  }
+  if (roles.at(-2) !== 'tagText' || roles.at(-1) !== 'tagInteger') diagnostics.push(`${prefix}.createParameters 末尾必须依次为 tagText、tagInteger。`);
+  contract.createParameters.forEach((parameter: any, parameterIndex: number) => {
+    if (typeof parameter?.name !== 'string' || !parameter.name.trim()) diagnostics.push(`${prefix}.createParameters[${parameterIndex}] 缺少 name。`);
+    if (!['parent', 'x', 'y', 'width', 'height', 'content', 'property', 'tagText', 'tagInteger'].includes(parameter?.role)) diagnostics.push(`${prefix}.createParameters[${parameterIndex}].role 无效。`);
+    if (parameter?.role === 'property' && (typeof parameter?.propertyKey !== 'string' || !parameter.propertyKey.trim())) diagnostics.push(`${prefix}.createParameters[${parameterIndex}] 的 property 角色必须声明 propertyKey。`);
+    if ((parameter?.role === 'tagText' || parameter?.role === 'tagInteger') && parameter?.optional !== true) diagnostics.push(`${prefix}.${parameter.role} 必须声明 optional: true。`);
+  });
 }
 
 function validateControlReferenceSnippets(snippets: unknown, bindings: unknown, diagnostics: string[]): void {
@@ -506,8 +602,26 @@ function validateBindings(bindings: any, commands: any[], types: any[], targets:
             }
           }
         }
+        if (looksLikeNativeCallbackParameterName(parameter?.name) && parameter?.type !== 'handler') {
+          diagnostics.push(`命令 ${binding.command} 的原生回调参数“${parameter.name}”必须声明为 handler，并使用 &处理器名。`);
+        }
+        if (parameter?.optional !== undefined && typeof parameter.optional !== 'boolean') {
+          diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].optional 必须是逻辑值。`);
+        }
+        if (parameter?.defaultValue !== undefined && parameter?.optional !== true) {
+          diagnostics.push(`命令 ${binding.command} 只有可选参数可以声明 defaultValue。`);
+        }
+        if (parameter?.defaultValue !== undefined && parameter.defaultValue !== null
+          && !['string', 'number', 'boolean'].includes(typeof parameter.defaultValue)) {
+          diagnostics.push(`命令 ${binding.command} 的 defaultValue 只能是文本、数字、逻辑值或 null。`);
+        }
       });
     }
+    let optionalSeen = false;
+    (binding.parameters || []).forEach((parameter: any) => {
+      if (parameter?.optional === true) optionalSeen = true;
+      else if (optionalSeen && parameter?.variadic !== true) diagnostics.push(`命令 ${binding.command} 的必填参数不能位于可选参数之后。`);
+    });
     const variadicIndexes = (binding.parameters || [])
       .map((parameter: any, parameterIndex: number) => parameter?.variadic === true ? parameterIndex : -1)
       .filter((parameterIndex: number) => parameterIndex >= 0);
@@ -523,6 +637,10 @@ function validateBindings(bindings: any, commands: any[], types: any[], targets:
       });
     }
   });
+}
+
+function looksLikeNativeCallbackParameterName(value: unknown): boolean {
+  return typeof value === 'string' && /^(?:cb|callback|callback_fn|回调|回调函数|回调函数指针)$/iu.test(value.trim());
 }
 
 function looksLikeByteSequence(...values: unknown[]): boolean {

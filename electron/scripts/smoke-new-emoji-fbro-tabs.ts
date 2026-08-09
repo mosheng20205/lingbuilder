@@ -5,15 +5,20 @@ import { promisify } from 'node:util';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { exportModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
 import type { InstalledModule } from '../src/services/modules/types';
+import { createSolutionService } from '../src/services/solution/solutionService';
+import { createDesignerAssetService } from '../src/services/windowDesigner/designerAssetService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
+import { createWindowsExecutableIconService } from '../src/services/windowDesigner/windowsExecutableIconService';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 const projectId = 'new-emoji-fbro-tabs';
 const buildDirectory = path.join(repoRoot, '.lingbuilder-build', 'new-emoji-fbro-tabs-native-smoke');
 const delay = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
+const independentMode = process.argv.includes('--independent');
+const buildOnly = process.argv.includes('--build-only');
 
 function builtin(id: string): InstalledModule {
   const manifest = BUILTIN_MODULES.find(item => item.id === id);
@@ -47,6 +52,14 @@ async function main() {
     path.join(repoRoot, '.lingbuilder', 'projects', projectId, 'window-designer.json'),
     'utf8'
   )) as LingWindowProject;
+  if (independentMode) {
+    for (const window of project.windows) {
+      for (const control of window.controls) {
+        if (control.type !== 'FBroBrowser') continue;
+        control.properties = { ...control.properties, processMode: 'independent-embedded' };
+      }
+    }
+  }
   const source = await fs.readFile(path.join(repoRoot, 'src', projectId, 'MainWindow.lcpp'), 'utf8');
   const generated = generateLingCppNativeWin32Project(project, { enabledModules, lingCppSourceCode: source });
   if (generated.blockingDiagnostics.length > 0) throw new Error(generated.blockingDiagnostics.join('\n'));
@@ -58,6 +71,15 @@ async function main() {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.content, 'utf8');
   }
+  const solution = await createSolutionService(repoRoot).getSolution();
+  const projectRef = solution.projects.find(item => item.id === projectId);
+  if (!projectRef) throw new Error(`解决方案缺少 smoke 项目：${projectId}`);
+  const iconService = createWindowsExecutableIconService(
+    repoRoot,
+    createDesignerAssetService(repoRoot),
+    path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v2.ico')
+  );
+  await iconService.materialize(projectRef, project.windows[0], [buildDirectory]);
   const dependencyDiagnostics = await exportModuleNativeDependencies(enabledModules, buildDirectory);
   if (dependencyDiagnostics.length > 0) throw new Error(dependencyDiagnostics.join('\n'));
   const exported = await exportVisualStudioProject({
@@ -82,6 +104,10 @@ async function main() {
   });
   const executable = path.join(buildDirectory, 'x64', 'Release', 'bin', `${exported.projectName}.exe`);
   await fs.access(executable);
+  if (buildOnly) {
+    console.log(JSON.stringify({ ok: true, buildOnly: true, independentMode, buildDirectory, executable }, null, 2));
+    return;
+  }
 
   const runtime = spawn(executable, [], {
     cwd: path.dirname(executable),

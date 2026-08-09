@@ -7,7 +7,7 @@ const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 const MODULE_ID = 'lingbuilder.fbro.sdk';
 const SDK_VERSION = '135.0.21';
-const BRIDGE_VERSION = '2.1.0';
+const BRIDGE_VERSION = '2.2.0';
 const DEFAULT_SOURCE = 'T:\\编程工具\\win_android\\plugins\\vprj_win\\classlib\\sys\\FBrowser';
 
 async function main() {
@@ -31,8 +31,16 @@ async function main() {
   await writeText(path.join(workRoot, 'lingbuilder.module.json'), `${JSON.stringify(buildModuleManifest(), null, 2)}\n`);
   await writeText(path.join(workRoot, 'README.md'), moduleReadme());
 
+  const includeRoot = await mkdir(path.join(sdkRoot, 'include'));
   await fs.copyFile(path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'),
-    path.join(await mkdir(path.join(sdkRoot, 'include')), 'LingBuilderFbroBridge.h'));
+    path.join(includeRoot, 'LingBuilderFbroBridge.h'));
+  await fs.copyFile(path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'LingBuilderFbroProcessRuntime.hpp'),
+    path.join(includeRoot, 'LingBuilderFbroProcessRuntime.hpp'));
+  const jsonIncludeRoot = await mkdir(path.join(includeRoot, 'nlohmann'));
+  await fs.copyFile(path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'third_party', 'nlohmann', 'json.hpp'),
+    path.join(jsonIncludeRoot, 'json.hpp'));
+  await fs.copyFile(path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'third_party', 'nlohmann', 'LICENSE.MIT'),
+    path.join(jsonIncludeRoot, 'LICENSE.MIT'));
   await fs.copyFile(path.join(bridgeBuild, 'Release', 'LingBuilderFbroBridge.lib'),
     path.join(await mkdir(path.join(sdkRoot, 'lib', 'x64')), 'LingBuilderFbroBridge.lib'));
   await fs.copyFile(path.join(bridgeBuild, 'Release', 'LingBuilderFbroBridge.dll'),

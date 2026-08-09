@@ -1,0 +1,761 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-07T17:09:24.109Z",
+  "module": {
+    "id": "lingbuilder.new_emoji.fbro-shell",
+    "name": "new_emoji FBro 浏览器外壳",
+    "version": "1.1.0",
+    "description": "在 new_emoji 浏览器框架窗口中管理 FBro x64 多标签独立 HWND、导航状态和 BrowserViewport 占位区。"
+  },
+  "commandCount": 38,
+  "commands": [
+    {
+      "index": 1,
+      "name": "浏览器外壳_创建",
+      "signature": "浏览器外壳_创建(标签页控件, 页面占位控件, 状态处理器)",
+      "description": "绑定 Tabs 和 BrowserViewport，占位区仅用于加载/错误提示，真实网页由独立 FBro HWND 渲染。",
+      "insertText": "浏览器外壳_创建($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_创建",
+        "runtimeName": "浏览器外壳_创建",
+        "parameters": [
+          {
+            "name": "标签页控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/Tabs"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "stableId"
+          },
+          {
+            "name": "页面占位控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/BrowserViewport"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "stableId"
+          },
+          {
+            "name": "状态处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [
+                "整数型",
+                "文本型",
+                "文本型",
+                "逻辑型"
+              ],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_创建(演示lingbuildernew_emojiuiTabs控件, 演示lingbuildernew_emojiuiBrowserViewport控件, &模块演示回调_整数型_文本型_文本型_逻辑型_空)"
+    },
+    {
+      "index": 2,
+      "name": "浏览器外壳_绑定实例列表",
+      "signature": "浏览器外壳_绑定实例列表(实例列表控件)",
+      "description": "把动态标签集合、进程状态、PID 和选中项同步到 RichList。",
+      "insertText": "浏览器外壳_绑定实例列表($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_绑定实例列表",
+        "runtimeName": "浏览器外壳_绑定实例列表",
+        "parameters": [
+          {
+            "name": "实例列表控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/RichList"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "stableId"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_绑定实例列表(演示lingbuildernew_emojiuiRichList控件)"
+    },
+    {
+      "index": 3,
+      "name": "浏览器外壳_选择列表键",
+      "signature": "浏览器外壳_选择列表键(选中键JSON)",
+      "description": "使用 RichList SelectionChanged 返回的选中键 JSON 切换动态实例。",
+      "insertText": "浏览器外壳_选择列表键($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_选择列表键",
+        "runtimeName": "浏览器外壳_选择列表键",
+        "parameters": [
+          {
+            "name": "选中键JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_选择列表键(\"{}\")"
+    },
+    {
+      "index": 4,
+      "name": "浏览器外壳_销毁",
+      "signature": "浏览器外壳_销毁()",
+      "description": "关闭全部受管标签页和 FBro 子宿主。",
+      "insertText": "浏览器外壳_销毁()",
+      "returnType": "空",
+      "binding": {
+        "command": "浏览器外壳_销毁",
+        "runtimeName": "浏览器外壳_销毁",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "浏览器外壳_销毁()"
+    },
+    {
+      "index": 5,
+      "name": "浏览器外壳_新建标签页",
+      "signature": "浏览器外壳_新建标签页(稳定ID, 地址, 标题)",
+      "description": "创建稳定 ID 对应的独立 FBro 句柄和宿主 HWND。",
+      "insertText": "浏览器外壳_新建标签页(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_新建标签页",
+        "runtimeName": "浏览器外壳_新建标签页",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_新建标签页(\"演示参数1\", \"https://example.com\", \"演示参数3\")"
+    },
+    {
+      "index": 6,
+      "name": "浏览器外壳_新建独立实例",
+      "signature": "浏览器外壳_新建独立实例(稳定ID, 地址, 标题, 缓存目录)",
+      "description": "动态创建一个独立 Host 进程、独立 WebSocket 会话、独立 Profile 和伴随 HWND；没有固定数量上限。",
+      "insertText": "浏览器外壳_新建独立实例(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_新建独立实例",
+        "runtimeName": "浏览器外壳_新建独立实例",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "缓存目录",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_新建独立实例(\"演示参数1\", \"https://example.com\", \"演示参数3\", \".\")"
+    },
+    {
+      "index": 7,
+      "name": "浏览器外壳_新建空白标签页",
+      "signature": "浏览器外壳_新建空白标签页()",
+      "description": "使用运行时生成的稳定 ID 新建并选择空白标签页。",
+      "insertText": "浏览器外壳_新建空白标签页()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_新建空白标签页",
+        "runtimeName": "浏览器外壳_新建空白标签页",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_新建空白标签页()"
+    },
+    {
+      "index": 8,
+      "name": "浏览器外壳_关闭标签页",
+      "signature": "浏览器外壳_关闭标签页(稳定ID)",
+      "description": "关闭并销毁指定稳定 ID 的标签页。",
+      "insertText": "浏览器外壳_关闭标签页(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_关闭标签页",
+        "runtimeName": "浏览器外壳_关闭标签页",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_关闭标签页(\"演示参数1\")"
+    },
+    {
+      "index": 9,
+      "name": "浏览器外壳_关闭当前标签页",
+      "signature": "浏览器外壳_关闭当前标签页()",
+      "description": "关闭当前选中的标签页。",
+      "insertText": "浏览器外壳_关闭当前标签页()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_关闭当前标签页",
+        "runtimeName": "浏览器外壳_关闭当前标签页",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_关闭当前标签页()"
+    },
+    {
+      "index": 10,
+      "name": "浏览器外壳_关闭其他标签页",
+      "signature": "浏览器外壳_关闭其他标签页()",
+      "description": "保留当前标签页并关闭、销毁其余标签页宿主。",
+      "insertText": "浏览器外壳_关闭其他标签页()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_关闭其他标签页",
+        "runtimeName": "浏览器外壳_关闭其他标签页",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_关闭其他标签页()"
+    },
+    {
+      "index": 11,
+      "name": "浏览器外壳_取标签页数量",
+      "signature": "浏览器外壳_取标签页数量()",
+      "description": "返回浏览器外壳当前受管标签页数量。",
+      "insertText": "浏览器外壳_取标签页数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器外壳_取标签页数量",
+        "runtimeName": "浏览器外壳_取标签页数量",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "浏览器外壳_取标签页数量()"
+    },
+    {
+      "index": 12,
+      "name": "浏览器外壳_选择标签页",
+      "signature": "浏览器外壳_选择标签页(稳定ID)",
+      "description": "只显示指定稳定 ID 的页面宿主。",
+      "insertText": "浏览器外壳_选择标签页(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_选择标签页",
+        "runtimeName": "浏览器外壳_选择标签页",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_选择标签页(\"演示参数1\")"
+    },
+    {
+      "index": 13,
+      "name": "浏览器外壳_重排标签页",
+      "signature": "浏览器外壳_重排标签页(稳定ID, 新索引)",
+      "description": "按稳定 ID 重排标签页和运行时映射。",
+      "insertText": "浏览器外壳_重排标签页(\"$1\", $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_重排标签页",
+        "runtimeName": "浏览器外壳_重排标签页",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString"
+          },
+          {
+            "name": "新索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_重排标签页(\"演示参数1\", 1)"
+    },
+    {
+      "index": 14,
+      "name": "浏览器外壳_导航",
+      "signature": "浏览器外壳_导航(地址)",
+      "description": "让当前标签页导航到地址。",
+      "insertText": "浏览器外壳_导航(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_导航",
+        "runtimeName": "浏览器外壳_导航",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_导航(\"https://example.com\")"
+    },
+    {
+      "index": 15,
+      "name": "浏览器外壳_后退",
+      "signature": "浏览器外壳_后退()",
+      "description": "当前标签页后退。",
+      "insertText": "浏览器外壳_后退()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_后退",
+        "runtimeName": "浏览器外壳_后退",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_后退()"
+    },
+    {
+      "index": 16,
+      "name": "浏览器外壳_前进",
+      "signature": "浏览器外壳_前进()",
+      "description": "当前标签页前进。",
+      "insertText": "浏览器外壳_前进()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_前进",
+        "runtimeName": "浏览器外壳_前进",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_前进()"
+    },
+    {
+      "index": 17,
+      "name": "浏览器外壳_刷新",
+      "signature": "浏览器外壳_刷新()",
+      "description": "刷新当前标签页。",
+      "insertText": "浏览器外壳_刷新()",
+      "returnType": "空",
+      "binding": {
+        "command": "浏览器外壳_刷新",
+        "runtimeName": "浏览器外壳_刷新",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "浏览器外壳_刷新()"
+    },
+    {
+      "index": 18,
+      "name": "浏览器外壳_停止",
+      "signature": "浏览器外壳_停止()",
+      "description": "停止当前标签页加载。",
+      "insertText": "浏览器外壳_停止()",
+      "returnType": "空",
+      "binding": {
+        "command": "浏览器外壳_停止",
+        "runtimeName": "浏览器外壳_停止",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "浏览器外壳_停止()"
+    },
+    {
+      "index": 19,
+      "name": "浏览器外壳_取地址",
+      "signature": "浏览器外壳_取地址()",
+      "description": "读取当前标签页地址。",
+      "insertText": "浏览器外壳_取地址()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取地址",
+        "runtimeName": "浏览器外壳_取地址",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取地址()"
+    },
+    {
+      "index": 20,
+      "name": "浏览器外壳_取标题",
+      "signature": "浏览器外壳_取标题()",
+      "description": "读取当前标签页标题。",
+      "insertText": "浏览器外壳_取标题()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取标题",
+        "runtimeName": "浏览器外壳_取标题",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取标题()"
+    },
+    {
+      "index": 21,
+      "name": "浏览器外壳_取当前稳定ID",
+      "signature": "浏览器外壳_取当前稳定ID()",
+      "description": "返回当前实例的稳定 ID。",
+      "insertText": "浏览器外壳_取当前稳定ID()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前稳定ID",
+        "runtimeName": "浏览器外壳_取当前稳定ID",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前稳定ID()"
+    },
+    {
+      "index": 22,
+      "name": "浏览器外壳_取当前进程状态",
+      "signature": "浏览器外壳_取当前进程状态()",
+      "description": "返回当前独立 Host 的启动状态。",
+      "insertText": "浏览器外壳_取当前进程状态()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前进程状态",
+        "runtimeName": "浏览器外壳_取当前进程状态",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前进程状态()"
+    },
+    {
+      "index": 23,
+      "name": "浏览器外壳_取当前进程ID",
+      "signature": "浏览器外壳_取当前进程ID()",
+      "description": "返回当前独立 Host 的 PID。",
+      "insertText": "浏览器外壳_取当前进程ID()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器外壳_取当前进程ID",
+        "runtimeName": "浏览器外壳_取当前进程ID",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "浏览器外壳_取当前进程ID()"
+    },
+    {
+      "index": 24,
+      "name": "浏览器外壳_取当前调试端口",
+      "signature": "浏览器外壳_取当前调试端口()",
+      "description": "返回当前独立 Host 的随机 CDP 端口。",
+      "insertText": "浏览器外壳_取当前调试端口()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器外壳_取当前调试端口",
+        "runtimeName": "浏览器外壳_取当前调试端口",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "浏览器外壳_取当前调试端口()"
+    },
+    {
+      "index": 25,
+      "name": "浏览器外壳_取当前错误",
+      "signature": "浏览器外壳_取当前错误()",
+      "description": "返回当前实例最近的进程或 FBro 错误。",
+      "insertText": "浏览器外壳_取当前错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前错误",
+        "runtimeName": "浏览器外壳_取当前错误",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前错误()"
+    },
+    {
+      "index": 26,
+      "name": "浏览器外壳_强制刷新",
+      "signature": "浏览器外壳_强制刷新()",
+      "description": "忽略缓存刷新当前实例。",
+      "insertText": "浏览器外壳_强制刷新()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_强制刷新",
+        "runtimeName": "浏览器外壳_强制刷新",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_强制刷新()"
+    },
+    {
+      "index": 27,
+      "name": "浏览器外壳_执行JS",
+      "signature": "浏览器外壳_执行JS(脚本)",
+      "description": "通过 WebSocket 在当前独立 Host 中同步执行 JavaScript。",
+      "insertText": "浏览器外壳_执行JS(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_执行JS",
+        "runtimeName": "浏览器外壳_执行JS",
+        "parameters": [
+          {
+            "name": "脚本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_执行JS(\"演示参数1\")"
+    },
+    {
+      "index": 28,
+      "name": "浏览器外壳_取Cookie",
+      "signature": "浏览器外壳_取Cookie(地址)",
+      "description": "通过 WebSocket 读取当前独立 Host 指定地址的 Cookie。",
+      "insertText": "浏览器外壳_取Cookie(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取Cookie",
+        "runtimeName": "浏览器外壳_取Cookie",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_取Cookie(\"https://example.com\")"
+    },
+    {
+      "index": 29,
+      "name": "浏览器外壳_截图到文件",
+      "signature": "浏览器外壳_截图到文件(路径, 格式, 质量)",
+      "description": "让当前独立 Host 截图并保存到文件。",
+      "insertText": "浏览器外壳_截图到文件(\"$1\", \"png\", 90)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_截图到文件",
+        "runtimeName": "浏览器外壳_截图到文件",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "格式",
+            "type": "wideString"
+          },
+          {
+            "name": "质量",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_截图到文件(\"module-demo-temp.txt\", \"演示参数2\", 1)"
+    },
+    {
+      "index": 30,
+      "name": "浏览器外壳_隐藏当前",
+      "signature": "浏览器外壳_隐藏当前()",
+      "description": "隐藏当前 Host，但保持进程和页面状态。",
+      "insertText": "浏览器外壳_隐藏当前()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_隐藏当前",
+        "runtimeName": "浏览器外壳_隐藏当前",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_隐藏当前()"
+    },
+    {
+      "index": 31,
+      "name": "浏览器外壳_显示当前",
+      "signature": "浏览器外壳_显示当前()",
+      "description": "恢复显示当前 Host。",
+      "insertText": "浏览器外壳_显示当前()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_显示当前",
+        "runtimeName": "浏览器外壳_显示当前",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_显示当前()"
+    },
+    {
+      "index": 32,
+      "name": "浏览器外壳_取当前代理",
+      "signature": "浏览器外壳_取当前代理()",
+      "description": "读取当前实例保存的代理地址。",
+      "insertText": "浏览器外壳_取当前代理()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前代理",
+        "runtimeName": "浏览器外壳_取当前代理",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前代理()"
+    },
+    {
+      "index": 33,
+      "name": "浏览器外壳_取当前UserAgent",
+      "signature": "浏览器外壳_取当前UserAgent()",
+      "description": "读取当前实例保存的 User-Agent。",
+      "insertText": "浏览器外壳_取当前UserAgent()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前UserAgent",
+        "runtimeName": "浏览器外壳_取当前UserAgent",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前UserAgent()"
+    },
+    {
+      "index": 34,
+      "name": "浏览器外壳_取当前指纹配置",
+      "signature": "浏览器外壳_取当前指纹配置()",
+      "description": "读取当前实例保存的指纹 JSON。",
+      "insertText": "浏览器外壳_取当前指纹配置()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前指纹配置",
+        "runtimeName": "浏览器外壳_取当前指纹配置",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前指纹配置()"
+    },
+    {
+      "index": 35,
+      "name": "浏览器外壳_取当前视口宽度",
+      "signature": "浏览器外壳_取当前视口宽度()",
+      "description": "读取当前实例视口宽度。",
+      "insertText": "浏览器外壳_取当前视口宽度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器外壳_取当前视口宽度",
+        "runtimeName": "浏览器外壳_取当前视口宽度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "浏览器外壳_取当前视口宽度()"
+    },
+    {
+      "index": 36,
+      "name": "浏览器外壳_取当前视口高度",
+      "signature": "浏览器外壳_取当前视口高度()",
+      "description": "读取当前实例视口高度。",
+      "insertText": "浏览器外壳_取当前视口高度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器外壳_取当前视口高度",
+        "runtimeName": "浏览器外壳_取当前视口高度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "浏览器外壳_取当前视口高度()"
+    },
+    {
+      "index": 37,
+      "name": "浏览器外壳_按配置重建当前",
+      "signature": "浏览器外壳_按配置重建当前(代理, UserAgent, 指纹JSON, 宽度, 高度)",
+      "description": "保留稳定 ID 与 Profile，关闭并按新配置重启当前独立 Host。",
+      "insertText": "浏览器外壳_按配置重建当前(\"$1\", \"$2\", \"$3\", $4, $5)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_按配置重建当前",
+        "runtimeName": "浏览器外壳_按配置重建当前",
+        "parameters": [
+          {
+            "name": "代理",
+            "type": "wideString"
+          },
+          {
+            "name": "UserAgent",
+            "type": "wideString"
+          },
+          {
+            "name": "指纹JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_按配置重建当前(\"演示参数1\", \"演示参数2\", \"{}\", 1, 1)"
+    },
+    {
+      "index": 38,
+      "name": "浏览器外壳_聚焦地址栏",
+      "signature": "浏览器外壳_聚焦地址栏(地址栏控件)",
+      "description": "把键盘焦点切换到指定 new_emoji Omnibox。",
+      "insertText": "浏览器外壳_聚焦地址栏($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_聚焦地址栏",
+        "runtimeName": "浏览器外壳_聚焦地址栏",
+        "parameters": [
+          {
+            "name": "地址栏控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/Omnibox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "stableId"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "浏览器外壳_聚焦地址栏(演示lingbuildernew_emojiuiOmnibox控件)"
+    }
+  ]
+}

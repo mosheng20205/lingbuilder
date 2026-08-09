@@ -40,7 +40,9 @@ export class ModuleAccessService {
       this.publicKeys.set(input.key.keyId, crypto.createPublicKey(input.key.publicKeyPem));
     }
     if (!input.permit) return undefined;
-    this.verify(input.permit);
+    // Keep a cryptographically valid expired permit so callers receive the
+    // actionable expiry diagnostic instead of falling back to "not purchased".
+    this.verify(input.permit, true);
     const serverTime = Date.parse(input.permit.payload.serverTime);
     if (Number.isFinite(serverTime)) this.lastServerTime = Math.max(this.lastServerTime, serverTime);
     this.permits.set(input.permit.payload.moduleId, structuredClone(input.permit));
@@ -63,16 +65,16 @@ export class ModuleAccessService {
     if (!status.allowed) throw Object.assign(new Error(status.reason || '收费模块授权无效。'), { status: 402, code: status.code || 'MODULE_PAYMENT_REQUIRED' });
   }
 
-  private verify(permit: LocalModuleAccessPermit): void {
+  private verify(permit: LocalModuleAccessPermit, allowExpired = false): void {
     const payload = permit?.payload;
     if (!payload || payload.version !== 1 || !payload.moduleId || !payload.userId) throw new Error('模块 Permit 内容无效。');
     const key = this.publicKeys.get(payload.keyId); if (!key) throw new Error('模块 Permit 的签发公钥尚未同步。');
     const issuedAt = Date.parse(payload.issuedAt); const expiresAt = Date.parse(payload.expiresAt); const serverTime = Date.parse(payload.serverTime);
     if (![issuedAt, expiresAt, serverTime].every(Number.isFinite) || expiresAt <= issuedAt) throw new Error('模块 Permit 时间字段无效。');
     const now = Date.now();
-    if (this.lastServerTime && now + 5 * 60_000 < this.lastServerTime) throw new Error('检测到系统时间明显回拨，请联网重新校验模块授权。');
-    if (now >= expiresAt) throw Object.assign(new Error(payload.source === 'free_window' ? '模块限时免费活动已经结束。' : '模块离线授权已过期，请联网重新校验。'), { code: payload.source === 'free_window' ? 'MODULE_FREE_WINDOW_ENDED' : 'MODULE_ENTITLEMENT_EXPIRED' });
     const valid = crypto.verify(null, Buffer.from(JSON.stringify(payload)), key, Buffer.from(permit.signature, 'base64url'));
     if (!valid) throw Object.assign(new Error('模块 Permit 签名无效。'), { code: 'MODULE_PERMIT_INVALID' });
+    if (this.lastServerTime && now + 5 * 60_000 < this.lastServerTime) throw new Error('检测到系统时间明显回拨，请联网重新校验模块授权。');
+    if (!allowExpired && now >= expiresAt) throw Object.assign(new Error(payload.source === 'free_window' ? '模块限时免费活动已经结束。' : '模块离线授权已过期，请联网重新校验。'), { code: payload.source === 'free_window' ? 'MODULE_FREE_WINDOW_ENDED' : 'MODULE_ENTITLEMENT_EXPIRED' });
   }
 }

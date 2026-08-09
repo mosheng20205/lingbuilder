@@ -1,9 +1,10 @@
 import { InstalledModule } from '../modules/types';
 
 export const WEBSOCKET_CLIENT_MODULE_ID = 'lingbuilder.websocket.client';
+const FBRO_BROWSER_MODULE_ID = 'lingbuilder.fbro.browser';
 
 export function generateWebSocketClientRuntime(enabledModules: InstalledModule[]): string {
-  if (!enabledModules.some(module => module.manifest.id === WEBSOCKET_CLIENT_MODULE_ID)) return '';
+  if (!enabledModules.some(module => module.manifest.id === WEBSOCKET_CLIENT_MODULE_ID || module.manifest.id === FBRO_BROWSER_MODULE_ID)) return '';
   return WEBSOCKET_CLIENT_RUNTIME;
 }
 

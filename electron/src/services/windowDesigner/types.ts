@@ -26,6 +26,19 @@ export type LingWindowOpenPlacement =
 
 export type LingWindowCornerStyle = 'system' | 'rounded' | 'small-rounded' | 'square';
 export type LingWindowIconStyle = 'lingbuilder' | 'system' | 'custom' | 'none';
+export type LingWindowFramePreset = 'system' | 'browserShell' | 'custom';
+
+export interface LingWindowFrame {
+  preset: LingWindowFramePreset;
+  flags: number;
+  resizeBorder: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  };
+  cornerRadius: number;
+}
 
 export interface LingControl {
   id: string;
@@ -34,6 +47,10 @@ export interface LingControl {
   type: LingControlType;
   /** 模块控件稳定 ID，例如 lingbuilder.new_emoji.ui/Button。 */
   designerType?: string;
+  /** 可选文本标记；持久化前去除首尾空白，按具体控件类型在当前窗口内唯一。 */
+  tagText?: string;
+  /** 可选有符号 32 位整数标记；0 和负数都是有效值。 */
+  tagInteger?: number;
   name: string;
   content: string;
   width: number;
@@ -89,6 +106,8 @@ export interface LingWindowModel {
   resizable?: boolean;
   /** 是否允许用户通过标题栏按钮或系统菜单最大化窗口；旧项目默认允许。 */
   maximizable?: boolean;
+  /** new_emoji/未来原生 UI 后端共享的精确窗口框架契约。 */
+  windowFrame?: LingWindowFrame;
   controls: LingControl[];
   menuName?: string;
   menuItems?: string;

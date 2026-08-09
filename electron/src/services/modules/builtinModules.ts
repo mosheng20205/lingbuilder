@@ -1,6 +1,6 @@
 import { LingBuilderModuleManifest, ModuleCommandBinding, ModuleCommandBindingParameter } from './types';
 import { normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, normalizeControlReferenceSnippet } from './bindingValueType';
-import { getWin32ControlsForModule, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
+import { getWin32ControlsForModule, getWin32RuntimeControlContract, getWin32RuntimeControlContracts, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
 import { STANDARD_LIBRARY_MODULES } from './standardLibraryModules';
 import { PROTOBUF_MODULE } from './protobufModule';
 import { SYSTEM_LIBRARY_MODULES } from './systemLibraryModules';
@@ -37,7 +37,8 @@ function createControlContributions(moduleId: Win32ControlModuleId) {
       name: event.name,
       label: event.label,
       handlerPattern: `_{controlName}_${event.handlerSuffix}`
-    }))
+    })),
+    runtimeControl: getWin32RuntimeControlContract(definition)
   }));
 }
 
@@ -52,11 +53,143 @@ function getBuiltinContainerLayout(type: string) {
 }
 
 function createControlTypes(moduleId: Win32ControlModuleId) {
-  return getWin32ControlsForModule(moduleId).map(definition => ({
-    name: definition.label.split('/')[0],
-    description: `Win32 ${definition.label}控件。`,
-    cppType: 'HWND'
-  }));
+  return getWin32ControlsForModule(moduleId).map(definition => {
+    const contract = getWin32RuntimeControlContract(definition);
+    return {
+      name: contract?.lingCppType || definition.label.split('/')[0],
+      description: contract
+        ? `Win32 ${definition.label}控件的非拥有型运行时引用。`
+        : `Win32 ${definition.label}组件。`,
+      cppType: contract?.cppType || 'HWND'
+    };
+  });
+}
+
+function createRuntimeControlCommandContributions(moduleId: Win32ControlModuleId) {
+  return getWin32RuntimeControlContracts(moduleId).flatMap(contract => [
+    {
+      name: contract.createCommand,
+      signature: `${contract.createCommand}(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])`,
+      description: `在当前窗口运行时创建${contract.lingCppType}；窗口拥有生命周期，代码获得非拥有型引用。`,
+      insertText: `${contract.createCommand}(当前窗口, $1, $2, $3, $4, "$5", "$6", $7)`,
+      returnType: contract.lingCppType
+    },
+    {
+      name: contract.lookupByTagTextCommand,
+      signature: `${contract.lookupByTagTextCommand}(标记文本)`,
+      description: `在当前窗口按区分大小写的非空文本标记查找${contract.lingCppType}，找不到时返回无效引用。`,
+      insertText: `${contract.lookupByTagTextCommand}("$1")`,
+      returnType: contract.lingCppType
+    },
+    {
+      name: contract.lookupByTagIntegerCommand,
+      signature: `${contract.lookupByTagIntegerCommand}(标记整数)`,
+      description: `在当前窗口按有符号 32 位整数标记查找${contract.lingCppType}，找不到时返回无效引用。`,
+      insertText: `${contract.lookupByTagIntegerCommand}($1)`,
+      returnType: contract.lingCppType
+    }
+  ]);
+}
+
+function createRuntimeControlEventCommandContributions(moduleId: Win32ControlModuleId) {
+  return getWin32ControlsForModule(moduleId).flatMap(definition => {
+    const contract = getWin32RuntimeControlContract(definition);
+    if (!contract) return [];
+    return definition.events.flatMap(event => {
+      const bindCommand = `${contract.lingCppType}_绑定${event.label}`;
+      const unbindCommand = `${contract.lingCppType}_解绑${event.label}`;
+      return [{
+        name: bindCommand,
+        signature: `${bindCommand}(控件, 处理器)`,
+        description: `为${contract.lingCppType}实例绑定“${event.label}”处理器，处理器必须使用 &名称。`,
+        insertText: `${bindCommand}($1, &$2)`,
+        returnType: '逻辑型'
+      }, {
+        name: unbindCommand,
+        signature: `${unbindCommand}(控件)`,
+        description: `移除${contract.lingCppType}实例由代码绑定的“${event.label}”处理器。`,
+        insertText: `${unbindCommand}($1)`,
+        returnType: '逻辑型'
+      }];
+    });
+  });
+}
+
+function createRuntimeControlBindings(moduleId: Win32ControlModuleId): ModuleCommandBinding[] {
+  return getWin32RuntimeControlContracts(moduleId).flatMap(contract => {
+    const parameters: ModuleCommandBindingParameter[] = contract.createParameters.map(parameter => parameter.role === 'parent'
+      ? {
+          name: parameter.name,
+          type: 'controlRef',
+          description: '当前窗口、可视容器控件或选项卡页面容器。',
+          controlKinds: ['visual'],
+          scope: 'currentWindow',
+          runtimeRepresentation: 'nativeHandle'
+        }
+      : {
+          name: parameter.name,
+          type: parameter.type,
+          optional: parameter.optional,
+          defaultValue: parameter.defaultValue
+        });
+    return [
+      {
+        command: contract.createCommand,
+        runtimeName: contract.createCommand,
+        parameters,
+        returnType: contract.lingCppType,
+        encoding: 'wide',
+        example: `${contract.createCommand}(当前窗口, 20, 20, 120, 36, "${contract.lingCppType}", "", 1001)`
+      },
+      {
+        command: contract.lookupByTagTextCommand,
+        runtimeName: contract.lookupByTagTextCommand,
+        parameters: [{ name: '标记文本', type: 'wideString' }],
+        returnType: contract.lingCppType,
+        encoding: 'wide'
+      },
+      {
+        command: contract.lookupByTagIntegerCommand,
+        runtimeName: contract.lookupByTagIntegerCommand,
+        parameters: [{ name: '标记整数', type: 'int' }],
+        returnType: contract.lingCppType
+      }
+    ];
+  });
+}
+
+function createRuntimeControlEventBindings(moduleId: Win32ControlModuleId): ModuleCommandBinding[] {
+  return getWin32ControlsForModule(moduleId).flatMap(definition => {
+    const contract = getWin32RuntimeControlContract(definition);
+    if (!contract) return [];
+    return definition.events.flatMap(event => {
+      const bindCommand = `${contract.lingCppType}_绑定${event.label}`;
+      const unbindCommand = `${contract.lingCppType}_解绑${event.label}`;
+      const controlParameter: ModuleCommandBindingParameter = {
+        name: '控件',
+        type: 'controlRef',
+        controlTypes: [definition.type],
+        controlKinds: ['visual'],
+        scope: 'currentWindow',
+        runtimeRepresentation: 'wideName'
+      };
+      return [{
+        command: bindCommand,
+        runtimeName: bindCommand,
+        parameters: [controlParameter, {
+          name: '处理器',
+          type: 'handler',
+          handlerSignature: { parameterTypes: [], returnType: '空' }
+        }],
+        returnType: 'bool'
+      }, {
+        command: unbindCommand,
+        runtimeName: unbindCommand,
+        parameters: [controlParameter],
+        returnType: 'bool'
+      }];
+    });
+  });
 }
 
 function ensureBuiltinX64Target(manifest: LingBuilderModuleManifest): LingBuilderModuleManifest {
@@ -197,6 +330,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '控件_取选择项', signature: '控件_取选择项(控件名)', description: '读取选择项索引。', insertText: '控件_取选择项($1)', returnType: '整数型' },
         { name: '控件_添加项目', signature: '控件_添加项目(控件名, 文本)', description: '向列表框、组合框或增强组合框追加项目。', insertText: '控件_添加项目($1, "$2")', returnType: '整数型' },
         { name: '控件_清空项目', signature: '控件_清空项目(控件名)', description: '清空集合控件项目。', insertText: '控件_清空项目($1)', returnType: '逻辑型' },
+        { name: '控件_是否有效', signature: '控件_是否有效(控件)', description: '判断类型化控件引用是否仍指向当前窗口内存活的控件。', insertText: '控件_是否有效($1)', returnType: '逻辑型' },
+        ...createRuntimeControlCommandContributions('lingbuilder.win32.basic'),
+        ...createRuntimeControlEventCommandContributions('lingbuilder.win32.basic'),
         { name: '窗口_取消关闭', signature: '窗口_取消关闭()', description: '在窗口“关闭前”事件中取消本次关闭请求。', insertText: '窗口_取消关闭()', returnType: '逻辑型' },
         { name: '窗口_取事件宽度', signature: '窗口_取事件宽度()', description: '返回最近窗口大小事件中的客户区宽度。', insertText: '窗口_取事件宽度()', returnType: '整数型' },
         { name: '窗口_取事件高度', signature: '窗口_取事件高度()', description: '返回最近窗口大小事件中的客户区高度。', insertText: '窗口_取事件高度()', returnType: '整数型' },
@@ -220,6 +356,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ...createControlTypes('lingbuilder.win32.basic')
       ],
       designerControls: createControlContributions('lingbuilder.win32.basic'),
+      docs: [{ title: 'Win32 基础控件运行时创建', path: 'docs/modules/win32-basic/README.md' }]
     },
     targets: [
       {
@@ -279,6 +416,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '控件_取选择项', runtimeName: '控件_取选择项', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
         { command: '控件_添加项目', runtimeName: '控件_添加项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '控件_清空项目', runtimeName: '控件_清空项目', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_是否有效', runtimeName: '控件_是否有效', parameters: [{ name: '控件', type: 'controlRef' }], returnType: 'bool' },
+        ...createRuntimeControlBindings('lingbuilder.win32.basic'),
+        ...createRuntimeControlEventBindings('lingbuilder.win32.basic'),
         { command: '窗口_取消关闭', runtimeName: '窗口_取消关闭', parameters: [], returnType: 'bool' },
         { command: '窗口_取事件宽度', runtimeName: '窗口_取事件宽度', parameters: [], returnType: 'int' },
         { command: '窗口_取事件高度', runtimeName: '窗口_取事件高度', parameters: [], returnType: 'int' },
@@ -310,6 +450,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     tags: ['内置', 'Win32', 'Common Controls', '富文本', '系统对话框'],
     contributes: {
       commands: [
+        ...createRuntimeControlCommandContributions('lingbuilder.win32.common-controls'),
+        ...createRuntimeControlEventCommandContributions('lingbuilder.win32.common-controls'),
         { name: '打开文件', signature: '打开文件(标题, 筛选器)', description: '显示 Windows 文件打开对话框并返回路径。', insertText: '打开文件("选择文件", "所有文件|*.*")', returnType: '文本型' },
         { name: '保存文件', signature: '保存文件(标题, 筛选器)', description: '显示 Windows 文件保存对话框并返回路径。', insertText: '保存文件("保存文件", "所有文件|*.*")', returnType: '文本型' },
         { name: '选择文件夹', signature: '选择文件夹(标题)', description: '显示 Windows 文件夹选择对话框并返回路径。', insertText: '选择文件夹("选择文件夹")', returnType: '文本型' },
@@ -378,6 +520,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '列表视图行集合', kind: 'array', elementType: '列表视图行', description: '可批量追加到 ListView 的类型化行数组。' }
       ],
       designerControls: createControlContributions('lingbuilder.win32.common-controls'),
+      docs: [{ title: 'Win32 高级控件运行时创建', path: 'docs/modules/win32-common-controls/README.md' }],
       snippets: [
         { label: '选择文件并输出', insertText: '调试输出(打开文件("选择文件", "所有文件|*.*"))', description: '选择一个文件并输出路径。' },
         { label: '任务对话框提示', insertText: '任务对话框("LingBuilder", "操作完成")', description: '显示标准 Windows 任务对话框。' }
@@ -390,6 +533,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     }],
     bindings: {
       commands: [
+        ...createRuntimeControlBindings('lingbuilder.win32.common-controls'),
+        ...createRuntimeControlEventBindings('lingbuilder.win32.common-controls'),
         { command: '打开文件', runtimeName: '打开文件', parameters: [{ name: '标题', type: 'wideString' }, { name: '筛选器', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '保存文件', runtimeName: '保存文件', parameters: [{ name: '标题', type: 'wideString' }, { name: '筛选器', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '选择文件夹', runtimeName: '选择文件夹', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
@@ -557,17 +702,17 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.cef3.browser',
     name: 'CEF3浏览器模块',
-    version: '3.0.0-alpha.2',
+    version: '3.0.0-alpha.3',
     category: '界面',
     description: '基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。',
     author: 'LingBuilder',
     tags: ['内置', 'CEF3', 'Chromium', '浏览器', 'JavaScript'],
-    compatibility: {
-      conflicts: [{ moduleId: 'lingbuilder.fbro.browser', reason: 'LingBuilder CEF3 使用 CEF 150，而 FBro 固定使用 CEF 135；同一进程不能加载两个 ABI 不兼容的 libcef.dll。' }]
-    },
     contributes: {
       designerControls: createControlContributions('lingbuilder.cef3.browser'),
       commands: [
+        { name: 'CEF3_是否启用崩溃报告', aliases: ['cef_crash_reporting_enabled'], signature: 'CEF3_是否启用崩溃报告()', description: '返回当前 CEF 崩溃报告配置是否启用。', insertText: 'CEF3_是否启用崩溃报告()', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_设置崩溃键值', aliases: ['cef_set_crash_key_value'], signature: 'CEF3_设置崩溃键值(键, 值)', description: '设置或清除发送到 CEF 崩溃报告的键值元数据；值为空文本时清除该键。', insertText: 'CEF3_设置崩溃键值("场景", "首页")', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_取命令资源ID', aliases: ['cef_id_for_command_id_name'], signature: 'CEF3_取命令资源ID(名称)', description: '按当前 CEF/Chromium 版本把 IDC 命令名称转换为数值 ID；未知名称返回 -1。', insertText: 'CEF3_取命令资源ID("IDC_BACK")', returnType: '整数型', visibility: 'advanced' },
         { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航($1, "https://www.baidu.com")', returnType: '整数型' },
         { name: 'CEF3_打开原生UI浏览器', signature: 'CEF3_打开原生UI浏览器(控件名, 地址)', description: '使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。', insertText: 'CEF3_打开原生UI浏览器($1, "https://www.baidu.com")', returnType: '整数型' },
         { name: 'CEF3_执行JS', aliases: ['Runtime.evaluate'], signature: 'CEF3_执行JS(控件名, 脚本)', description: '通过 DevTools Runtime.evaluate 执行 JavaScript，最多等待 5 秒并返回 JSON 结果；新代码优先使用异步任务接口。', insertText: 'CEF3_执行JS($1, "document.title")', returnType: '文本型' },
@@ -580,6 +725,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_设置缓存目录', aliases: ['CefRequestContext::CreateContext'], signature: 'CEF3_设置缓存目录(控件名, 目录)', description: '设置实例独立 RequestContext 的缓存目录标识；实际目录被安全映射到全局 root_cache_path 的直接子目录。需在创建前设置。', insertText: 'CEF3_设置缓存目录($1, "cache-2")', returnType: '整数型' },
         { name: 'CEF3_设置代理', aliases: ['CefPreferenceManager::SetPreference'], signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为实例独立 RequestContext 设置 HTTP/HTTPS/SOCKS5 代理；空文本使用直连。需在创建前设置。', insertText: 'CEF3_设置代理($1, "http://127.0.0.1:7890")', returnType: '整数型' },
         { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建($1)', returnType: '整数型' },
+        { name: 'CEF3_执行消息循环工作', aliases: ['cef_do_message_loop_work'], signature: 'CEF3_执行消息循环工作()', description: '在 CEF 消息循环模式下执行一次非阻塞消息循环工作；Bridge 会安全调度到 CEF UI 线程。', insertText: 'CEF3_执行消息循环工作()', returnType: '空', visibility: 'advanced' },
         { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭($1)', returnType: '空' },
         { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: `返回最近 CEF3 事件名；当前目录包含 ${CEF3_BROWSER_EVENT_NAMES.length} 个浏览器回调。`, insertText: 'CEF3_取最近事件($1)', returnType: '文本型' },
         { name: 'CEF3_取事件数据', signature: 'CEF3_取事件数据(控件名)', description: '返回最近事件的主要文本数据。', insertText: 'CEF3_取事件数据($1)', returnType: '文本型' },
@@ -589,17 +735,74 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器)', description: `绑定 CEF3 浏览器事件目录（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。`, insertText: 'CEF3_绑定事件($1, "加载完成", &$2)', returnType: '整数型' },
         { name: 'CEF3_是否可后退', signature: 'CEF3_是否可后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回 1。', insertText: 'CEF3_是否可后退($1)', returnType: '整数型' },
         { name: 'CEF3_是否可前进', signature: 'CEF3_是否可前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时返回 1。', insertText: 'CEF3_是否可前进($1)', returnType: '整数型' },
-        { name: 'CEF3_是否加载中', signature: 'CEF3_是否加载中(控件名)', description: '指定 CEF3 浏览器控件正在加载网页时返回 1。', insertText: 'CEF3_是否加载中($1)', returnType: '整数型' }
+        { name: 'CEF3_是否加载中', signature: 'CEF3_是否加载中(控件名)', description: '指定 CEF3 浏览器控件正在加载网页时返回 1。', insertText: 'CEF3_是否加载中($1)', returnType: '整数型' },
+        { name: 'CEF3_是否有效', aliases: ['is_valid'], signature: 'CEF3_是否有效(控件名)', description: '指定 CEF3 浏览器控件的原生浏览器对象仍有效时返回 1。', insertText: 'CEF3_是否有效($1)', returnType: '整数型' },
+        { name: 'CEF3_是否弹出窗口', aliases: ['is_popup'], signature: 'CEF3_是否弹出窗口(控件名)', description: '指定 CEF3 浏览器对象由弹出窗口流程创建时返回 1。', insertText: 'CEF3_是否弹出窗口($1)', returnType: '整数型' },
+        { name: 'CEF3_是否同一实例', aliases: ['is_same'], signature: 'CEF3_是否同一实例(控件名, 另一控件名)', description: '两个 CEF3 浏览器控件引用同一原生浏览器对象时返回 1。', insertText: 'CEF3_是否同一实例($1, $2)', returnType: '整数型' },
+        { name: 'CEF3_是否有文档', aliases: ['has_document'], signature: 'CEF3_是否有文档(控件名)', description: '指定 CEF3 浏览器控件已经加载文档时返回 1。', insertText: 'CEF3_是否有文档($1)', returnType: '整数型' },
+        { name: 'CEF3_是否禁用窗口渲染', aliases: ['is_window_rendering_disabled'], signature: 'CEF3_是否禁用窗口渲染(控件名)', description: '指定 CEF3 浏览器使用无窗口/OSR 渲染时返回 1；普通窗口浏览器返回 0。', insertText: 'CEF3_是否禁用窗口渲染($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_是否网页全屏', aliases: ['is_fullscreen'], signature: 'CEF3_是否网页全屏(控件名)', description: '指定 CEF3 浏览器的网页通过 JavaScript Fullscreen API 进入全屏时返回 1，不表示宿主窗口是否最大化。', insertText: 'CEF3_是否网页全屏($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_是否使用浏览器视图', aliases: ['has_view'], signature: 'CEF3_是否使用浏览器视图(控件名)', description: '指定浏览器由 CEF Views 框架的 CefBrowserView 包装时返回 1，否则返回 0。', insertText: 'CEF3_是否使用浏览器视图($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_取打开者浏览器ID', aliases: ['get_opener_identifier'], signature: 'CEF3_取打开者浏览器ID(控件名)', description: '返回创建当前弹出浏览器的浏览器唯一 ID；当前浏览器不是弹出浏览器时返回 0。', insertText: 'CEF3_取打开者浏览器ID($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_是否已准备关闭', aliases: ['is_ready_to_be_closed'], signature: 'CEF3_是否已准备关闭(控件名)', description: '浏览器进入必须完成的关闭阶段时返回 1；返回 1 后应尽快销毁对应宿主窗口或视图层级。', insertText: 'CEF3_是否已准备关闭($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_是否渲染进程无响应', aliases: ['is_render_process_unresponsive'], signature: 'CEF3_是否渲染进程无响应(控件名)', description: '关联渲染进程至少 15 秒未处理输入事件时返回 1；状态变化也可通过“渲染进程无响应/恢复响应”事件接收。', insertText: 'CEF3_是否渲染进程无响应($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_取运行时样式', aliases: ['get_runtime_style'], signature: 'CEF3_取运行时样式(控件名)', description: '返回浏览器运行时样式：0 默认、1 Chrome、2 Alloy；无窗口/OSR 浏览器固定为 Alloy。', insertText: 'CEF3_取运行时样式($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_取缩放级别', aliases: ['get_zoom_level'], signature: 'CEF3_取缩放级别(控件名)', description: '读取浏览器当前缩放级别；0.0 表示默认缩放，正数放大，负数缩小。', insertText: 'CEF3_取缩放级别($1)', returnType: '小数型' },
+        { name: 'CEF3_取默认缩放级别', aliases: ['get_default_zoom_level'], signature: 'CEF3_取默认缩放级别(控件名)', description: '读取浏览器宿主的默认缩放级别；未配置默认缩放时返回 0.0。', insertText: 'CEF3_取默认缩放级别($1)', returnType: '小数型' },
+        { name: 'CEF3_设置缩放级别', aliases: ['set_zoom_level'], signature: 'CEF3_设置缩放级别(控件名, 级别)', description: '设置浏览器当前缩放级别；传入 0.0 可恢复宿主默认缩放。', insertText: 'CEF3_设置缩放级别($1, 0.0)', returnType: '整数型' },
+        { name: 'CEF3_是否可缩放', aliases: ['can_zoom'], signature: 'CEF3_是否可缩放(控件名, 缩放命令)', description: '判断浏览器是否可执行指定缩放命令：0 缩小、1 重置、2 放大；可执行时返回 1。', insertText: 'CEF3_是否可缩放($1, 2)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_执行缩放', aliases: ['zoom'], signature: 'CEF3_执行缩放(控件名, 缩放命令)', description: '执行浏览器缩放动作：0 缩小、1 重置、2 放大；调用前可用 CEF3_是否可缩放 查询，当前命令不可执行时返回失败状态。', insertText: 'CEF3_执行缩放($1, 2)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_尝试关闭', aliases: ['try_close_browser'], signature: 'CEF3_尝试关闭(控件名)', description: '按 CEF 生命周期协议请求关闭；返回 1 时宿主窗口可立即销毁，返回 0 时应等待关闭回调。', insertText: 'CEF3_尝试关闭($1)', returnType: '整数型' },
+        { name: 'CEF3_通知窗口移动或调整大小', aliases: ['notify_move_or_resize_started'], signature: 'CEF3_通知窗口移动或调整大小(控件名)', description: '通知 CEF 浏览器宿主其顶层窗口已经开始移动或调整大小，使屏幕坐标、弹出层和渲染位置及时刷新。', insertText: 'CEF3_通知窗口移动或调整大小($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_通知屏幕信息已改变', aliases: ['notify_screen_info_changed'], signature: 'CEF3_通知屏幕信息已改变(控件名)', description: '通知 CEF 屏幕尺寸、位置或缩放信息已经改变；用于 OSR 或客户端提供外部根窗口的浏览器。', insertText: 'CEF3_通知屏幕信息已改变($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_发送捕获丢失事件', aliases: ['send_capture_lost_event'], signature: 'CEF3_发送捕获丢失事件(控件名)', description: '在宿主失去鼠标捕获时通知指定 CEF 浏览器；主要用于禁用窗口渲染的 OSR 输入链路。', insertText: 'CEF3_发送捕获丢失事件($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_取消输入法组合文本', aliases: ['ime_cancel_composition'], signature: 'CEF3_取消输入法组合文本(控件名)', description: '取消并丢弃指定 OSR 浏览器当前的输入法组合文本，不把组合节点内容提交到页面。', insertText: 'CEF3_取消输入法组合文本($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_完成输入法组合文本', aliases: ['ime_finish_composing_text'], signature: 'CEF3_完成输入法组合文本(控件名, 保留选择)', description: '提交指定 OSR 浏览器当前的输入法组合文本，并选择是否保留现有选区。', insertText: 'CEF3_完成输入法组合文本($1, 真)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_添加单词到词典', aliases: ['add_word_to_dictionary'], signature: 'CEF3_添加单词到词典(控件名, 单词)', description: '把非空单词加入指定浏览器配置使用的自定义拼写检查词典。', insertText: 'CEF3_添加单词到词典($1, "$2")', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_替换拼写错误', aliases: ['replace_misspelling'], signature: 'CEF3_替换拼写错误(控件名, 单词)', description: '用非空单词替换指定浏览器页面中当前选中的拼写错误文本。', insertText: 'CEF3_替换拼写错误($1, "$2")', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_通知系统拖放结束', aliases: ['drag_source_system_drag_ended'], signature: 'CEF3_通知系统拖放结束(控件名)', description: '在系统拖放循环结束后通知指定浏览器，使 CEF 清理拖放源状态。', insertText: 'CEF3_通知系统拖放结束($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_通知拖放目标离开', aliases: ['drag_target_drag_leave'], signature: 'CEF3_通知拖放目标离开(控件名)', description: '在拖动对象离开浏览器目标区域时通知 CEF 清理目标端拖放状态。', insertText: 'CEF3_通知拖放目标离开($1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_通知隐藏状态', aliases: ['was_hidden'], signature: 'CEF3_通知隐藏状态(控件名, 是否隐藏)', description: '通知无窗口渲染浏览器的宿主已经隐藏或重新显示，使 CEF 暂停或恢复绘制。', insertText: 'CEF3_通知隐藏状态($1, 真)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_退出网页全屏', aliases: ['exit_fullscreen'], signature: 'CEF3_退出网页全屏(控件名, 是否调整大小)', description: '退出网页 Fullscreen API 状态；退出后将引起浏览器视图尺寸变化时，第二个参数传真。', insertText: 'CEF3_退出网页全屏($1, 真)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_强制刷新', aliases: ['reload_ignore_cache'], signature: 'CEF3_强制刷新(控件名)', description: '忽略 HTTP 缓存重新加载指定 CEF3 浏览器控件的当前页面。', insertText: 'CEF3_强制刷新($1)', returnType: '空' },
+        { name: 'CEF3_页内查找', aliases: ['find'], signature: 'CEF3_页内查找(控件名, 文本, 向前, 区分大小写, 查找下一个)', description: '在指定 CEF3 浏览器的当前页面查找文本；查找进度和最终结果通过“页内查找结果”事件返回。', insertText: 'CEF3_页内查找($1, "$2", 真, 假, 假)', returnType: '整数型' },
+        { name: 'CEF3_停止页内查找', aliases: ['stop_finding'], signature: 'CEF3_停止页内查找(控件名, 清除选择)', description: '停止指定 CEF3 浏览器的页内查找，并可选择清除当前选区。', insertText: 'CEF3_停止页内查找($1, 真)', returnType: '整数型' },
+        { name: 'CEF3_设置焦点', aliases: ['set_focus'], signature: 'CEF3_设置焦点(控件名, 是否聚焦)', description: '设置指定 CEF3 浏览器宿主的焦点状态。', insertText: 'CEF3_设置焦点($1, 真)', returnType: '整数型' },
+        { name: 'CEF3_发送鼠标单击事件', aliases: ['send_mouse_click_event'], signature: 'CEF3_发送鼠标单击事件(控件名, X, Y, 修饰键, 按钮类型, 是否抬起, 单击次数)', description: '向指定 CEF3 浏览器发送类型化鼠标按下或抬起事件；按钮类型为 0 左键、1 中键、2 右键。', insertText: 'CEF3_发送鼠标单击事件($1, 10, 10, 0, 0, 假, 1)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_发送鼠标移动事件', aliases: ['send_mouse_move_event'], signature: 'CEF3_发送鼠标移动事件(控件名, X, Y, 修饰键, 是否离开)', description: '向指定 CEF3 浏览器发送类型化鼠标移动事件；坐标相对浏览器视图左上角，离开时最后一个参数传真。', insertText: 'CEF3_发送鼠标移动事件($1, 10, 10, 0, 假)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_发送鼠标滚轮事件', aliases: ['send_mouse_wheel_event'], signature: 'CEF3_发送鼠标滚轮事件(控件名, X, Y, 修饰键, 横向增量, 纵向增量)', description: '向指定 CEF3 浏览器发送类型化鼠标滚轮事件；坐标相对浏览器视图左上角，增量可为负数。', insertText: 'CEF3_发送鼠标滚轮事件($1, 10, 10, 0, 0, 120)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_发送触摸事件', aliases: ['send_touch_event'], signature: 'CEF3_发送触摸事件(控件名, 触点ID, X, Y, 半径X, 半径Y, 旋转角度, 压力, 事件类型, 修饰键, 指针类型)', description: '向无窗口/OSR CEF3 浏览器发送类型化触摸事件；事件类型为 0 松开、1 按下、2 移动、3 取消，指针类型为 0 触摸、1 鼠标、2 笔、3 橡皮擦、4 未知，压力范围为 0.0 到 1.0。', insertText: 'CEF3_发送触摸事件($1, 0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.5, 1, 0, 0)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_发送按键事件', aliases: ['send_key_event'], signature: 'CEF3_发送按键事件(控件名, 类型, 修饰键, Windows键码, 原生键码, 是否系统键, 字符编码, 未修改字符编码, 焦点在可编辑字段)', description: '向指定 CEF3 浏览器发送类型化按键事件；类型取 0 原始按下、1 按下、2 松开或 3 字符，字符使用 UTF-16 代码单元。', insertText: 'CEF3_发送按键事件($1, 0, 0, 65, 65, 假, 97, 97, 假)', returnType: '整数型', visibility: 'advanced' },
+        { name: 'CEF3_是否静音', aliases: ['is_audio_muted'], signature: 'CEF3_是否静音(控件名)', description: '指定 CEF3 浏览器控件的音频已静音时返回 1。', insertText: 'CEF3_是否静音($1)', returnType: '整数型' }
       ],
       types: [{ name: 'CEF3浏览器', description: '由 LingBuilderCefBridge 管理的 CEF 150 浏览器句柄。', cppType: 'LB_CEF3_HANDLE' }],
       snippets: [{ label: 'CEF3 浏览器导航与 JS 返回值', insertText: 'CEF3_导航(浏览器1, "https://www.baidu.com")\n调试输出(CEF3_执行JS(浏览器1, "document.title"))\n调试输出(CEF3_取最近事件(浏览器1))', description: '在 CEF3 浏览器控件中导航，并读取网页标题与最近事件。' }],
-      docs: [{ title: 'CEF3 模块说明', path: 'README.md' }],
+      docs: [
+        { title: 'CEF3 模块说明', path: 'README.md' },
+        { title: 'CEF3 事件与接口参考', path: 'docs/modules/cef3/README.md' },
+        { title: 'CEF3 基础浏览器官方接口参考', path: 'docs/modules/cef3/browser.md' },
+        { title: 'CEF3 事件与回调官方接口参考', path: 'docs/modules/cef3/events.md' },
+        { title: 'CEF3 会话与请求上下文官方接口参考', path: 'docs/modules/cef3/session.md' },
+        { title: 'CEF3 下载打印与传输官方接口参考', path: 'docs/modules/cef3/transfer.md' },
+        { title: 'CEF3 受管读写流处理器专题', path: 'docs/modules/cef3/stream-handlers.md' },
+        { title: 'CEF3 受管对象官方接口参考', path: 'docs/modules/cef3/objects.md' },
+        { title: 'CEF3 自动化 DOM V8 与 JSHook 参考', path: 'docs/modules/cef3/automation.md' },
+        { title: 'CEF3 网络请求与资源官方接口参考', path: 'docs/modules/cef3/network.md' },
+        { title: 'CEF3 开发者工具官方接口参考', path: 'docs/modules/cef3/devtools.md' },
+        { title: 'CEF3 DevTools Observer 用户指南', path: 'docs/modules/cef3/devtools-observer.md' },
+        { title: 'CEF3 Views 官方接口参考', path: 'docs/modules/cef3/views.md' },
+        { title: 'CEF3 OSR 官方接口参考', path: 'docs/modules/cef3/osr.md' },
+        { title: 'CEF3 平台与工具官方接口参考', path: 'docs/modules/cef3/platform.md' }
+      ],
       examples: [{ title: '双浏览器示例', path: 'examples/双浏览器示例.lcpp', description: '在同一窗口创建两个独立缓存目录的 CEF3 浏览器控件。' }]
     },
     targets: [
       { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/LingBuilderCefBridge.h'], libs: ['modules/lingbuilder.cef3.browser/lib/x64/LingBuilderCefBridge.lib'], runtimeFiles: ['bin/x64/libcef.dll', 'bin/x64/chrome_elf.dll', 'bin/x64/LingBuilderCefBridge.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] }
     ],
     bindings: { commands: [
+      { command: 'CEF3_是否启用崩溃报告', runtimeName: 'CEF3_是否启用崩溃报告', parameters: [], returnType: 'int' },
+      { command: 'CEF3_设置崩溃键值', runtimeName: 'CEF3_设置崩溃键值', parameters: [{ name: '键', type: 'wideString' }, { name: '值', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_设置崩溃键值("场景", "首页")' },
+      { command: 'CEF3_取命令资源ID', runtimeName: 'CEF3_取命令资源ID', parameters: [{ name: '名称', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_取命令资源ID("IDC_BACK")' },
       { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航(浏览器1, "https://www.baidu.com")' },
       { command: 'CEF3_打开原生UI浏览器', runtimeName: 'CEF3_打开原生UI浏览器', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_打开原生UI浏览器(浏览器1, "https://www.baidu.com")' },
       { command: 'CEF3_执行JS', runtimeName: 'CEF3_执行JS', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide', example: 'CEF3_执行JS(浏览器1, "document.title")' },
@@ -612,6 +815,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_设置缓存目录', runtimeName: 'CEF3_设置缓存目录', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_设置代理', runtimeName: 'CEF3_设置代理', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_创建', runtimeName: 'CEF3_创建', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_执行消息循环工作', runtimeName: 'LB_CEF3_DoMessageLoopWork', parameters: [], returnType: 'void' },
       { command: 'CEF3_关闭', runtimeName: 'CEF3_关闭', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
       { command: 'CEF3_取最近事件', runtimeName: 'CEF3_取最近事件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'CEF3_取事件数据', runtimeName: 'CEF3_取事件数据', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
@@ -621,7 +825,49 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_绑定事件', runtimeName: 'CEF3_绑定事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString', description: '事件名' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], returnType: 'int', encoding: 'wide', example: 'CEF3_绑定事件(浏览器1, "加载完成", &浏览器1_加载完成)' },
       { command: 'CEF3_是否可后退', runtimeName: 'CEF3_是否可后退', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_是否可前进', runtimeName: 'CEF3_是否可前进', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_是否加载中', runtimeName: 'CEF3_是否加载中', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
+      { command: 'CEF3_是否加载中', runtimeName: 'CEF3_是否加载中', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否有效', runtimeName: 'CEF3_是否有效', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否弹出窗口', runtimeName: 'CEF3_是否弹出窗口', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否同一实例', runtimeName: 'CEF3_是否同一实例', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '另一控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否有文档', runtimeName: 'CEF3_是否有文档', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否禁用窗口渲染', runtimeName: 'CEF3_是否禁用窗口渲染', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否网页全屏', runtimeName: 'CEF3_是否网页全屏', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否使用浏览器视图', runtimeName: 'CEF3_是否使用浏览器视图', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_取打开者浏览器ID', runtimeName: 'CEF3_取打开者浏览器ID', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否已准备关闭', runtimeName: 'CEF3_是否已准备关闭', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否渲染进程无响应', runtimeName: 'CEF3_是否渲染进程无响应', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_取运行时样式', runtimeName: 'CEF3_取运行时样式', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_取缩放级别', runtimeName: 'CEF3_取缩放级别', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'double', encoding: 'wide' },
+      { command: 'CEF3_取默认缩放级别', runtimeName: 'CEF3_取默认缩放级别', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'double', encoding: 'wide' },
+      { command: 'CEF3_设置缩放级别', runtimeName: 'CEF3_设置缩放级别', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '级别', type: 'double' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否可缩放', runtimeName: 'CEF3_是否可缩放', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '缩放命令', type: 'int' }], returnType: 'int', encoding: 'wide', example: 'CEF3_是否可缩放(浏览器1, 2)' },
+      { command: 'CEF3_执行缩放', runtimeName: 'CEF3_执行缩放', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '缩放命令', type: 'int' }], returnType: 'int', encoding: 'wide', example: 'CEF3_执行缩放(浏览器1, 2)' },
+      { command: 'CEF3_尝试关闭', runtimeName: 'CEF3_尝试关闭', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_通知窗口移动或调整大小', runtimeName: 'CEF3_通知窗口移动或调整大小', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_通知屏幕信息已改变', runtimeName: 'CEF3_通知屏幕信息已改变', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_发送捕获丢失事件', runtimeName: 'CEF3_发送捕获丢失事件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_取消输入法组合文本', runtimeName: 'CEF3_取消输入法组合文本', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_完成输入法组合文本', runtimeName: 'CEF3_完成输入法组合文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '保留选择', type: 'bool' }], returnType: 'int', encoding: 'wide', example: 'CEF3_完成输入法组合文本(浏览器1, 真)' },
+      { command: 'CEF3_添加单词到词典', runtimeName: 'CEF3_添加单词到词典', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '单词', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_添加单词到词典(浏览器1, "LingBuilder")' },
+      { command: 'CEF3_替换拼写错误', runtimeName: 'CEF3_替换拼写错误', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '单词', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_替换拼写错误(浏览器1, "LingBuilder")' },
+      { command: 'CEF3_通知系统拖放结束', runtimeName: 'CEF3_通知系统拖放结束', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide', example: 'CEF3_通知系统拖放结束(浏览器1)' },
+      { command: 'CEF3_通知拖放目标离开', runtimeName: 'CEF3_通知拖放目标离开', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide', example: 'CEF3_通知拖放目标离开(浏览器1)' },
+      { command: 'CEF3_通知隐藏状态', runtimeName: 'CEF3_通知隐藏状态', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否隐藏', type: 'bool' }], returnType: 'int', encoding: 'wide', example: 'CEF3_通知隐藏状态(浏览器1, 真)' },
+      { command: 'CEF3_退出网页全屏', runtimeName: 'CEF3_退出网页全屏', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否调整大小', type: 'bool' }], returnType: 'int', encoding: 'wide', example: 'CEF3_退出网页全屏(浏览器1, 真)' },
+      { command: 'CEF3_强制刷新', runtimeName: 'CEF3_强制刷新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
+      { command: 'CEF3_页内查找', runtimeName: 'CEF3_页内查找', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }, { name: '向前', type: 'bool' }, { name: '区分大小写', type: 'bool' }, { name: '查找下一个', type: 'bool' }], returnType: 'int', encoding: 'wide', example: 'CEF3_页内查找(浏览器1, "LingBuilder", 真, 假, 假)' },
+      { command: 'CEF3_停止页内查找', runtimeName: 'CEF3_停止页内查找', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '清除选择', type: 'bool' }], returnType: 'int', encoding: 'wide', example: 'CEF3_停止页内查找(浏览器1, 真)' },
+      { command: 'CEF3_设置焦点', runtimeName: 'CEF3_设置焦点', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否聚焦', type: 'bool' }], returnType: 'int', encoding: 'wide', example: 'CEF3_设置焦点(浏览器1, 真)' },
+      { command: 'CEF3_发送鼠标单击事件', runtimeName: 'CEF3_发送鼠标单击事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'X', type: 'int' }, { name: 'Y', type: 'int' }, { name: '修饰键', type: 'longLong' }, { name: '按钮类型', type: 'int' }, { name: '是否抬起', type: 'bool' }, { name: '单击次数', type: 'int' }], returnType: 'int', encoding: 'wide', example: 'CEF3_发送鼠标单击事件(浏览器1, 10, 10, 0, 0, 假, 1)' },
+      { command: 'CEF3_发送鼠标移动事件', runtimeName: 'CEF3_发送鼠标移动事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'X', type: 'int' }, { name: 'Y', type: 'int' }, { name: '修饰键', type: 'longLong' }, { name: '是否离开', type: 'bool' }], returnType: 'int', encoding: 'wide', example: 'CEF3_发送鼠标移动事件(浏览器1, 10, 10, 0, 假)' },
+      { command: 'CEF3_发送鼠标滚轮事件', runtimeName: 'CEF3_发送鼠标滚轮事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'X', type: 'int' }, { name: 'Y', type: 'int' }, { name: '修饰键', type: 'longLong' }, { name: '横向增量', type: 'int' }, { name: '纵向增量', type: 'int' }], returnType: 'int', encoding: 'wide', example: 'CEF3_发送鼠标滚轮事件(浏览器1, 10, 10, 0, 0, 120)' },
+      { command: 'CEF3_发送触摸事件', runtimeName: 'CEF3_发送触摸事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '触点ID', type: 'int' }, { name: 'X', type: 'double' }, { name: 'Y', type: 'double' }, { name: '半径X', type: 'double' }, { name: '半径Y', type: 'double' }, { name: '旋转角度', type: 'double' }, { name: '压力', type: 'double' }, { name: '事件类型', type: 'int' }, { name: '修饰键', type: 'longLong' }, { name: '指针类型', type: 'int' }], returnType: 'int', encoding: 'wide', example: 'CEF3_发送触摸事件(浏览器1, 0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.5, 1, 0, 0)' },
+      { command: 'CEF3_发送按键事件', runtimeName: 'CEF3_发送按键事件', parameters: [
+        { name: '控件名', type: 'controlRef' }, { name: '类型', type: 'int' }, { name: '修饰键', type: 'longLong' },
+        { name: 'Windows键码', type: 'int' }, { name: '原生键码', type: 'int' }, { name: '是否系统键', type: 'bool' },
+        { name: '字符编码', type: 'int' }, { name: '未修改字符编码', type: 'int' }, { name: '焦点在可编辑字段', type: 'bool' }
+      ], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否静音', runtimeName: 'CEF3_是否静音', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
     ] }
   },
   ...CEF3_SUBMODULES,
@@ -629,14 +875,11 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.fbro.browser',
     name: 'FBro指纹浏览器模块',
-    version: '2.1.0',
+    version: '2.4.0',
     category: '界面',
-    description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，提供设计器浏览器控件、基础浏览器控制和结构化指纹配置。',
+    description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。',
     author: 'LingBuilder',
     tags: ['内置', 'FBro', 'FBrowser', '指纹浏览器', 'CEF135', 'x64'],
-    compatibility: {
-      conflicts: [{ moduleId: 'lingbuilder.cef3.browser', reason: 'FBro 固定使用 CEF 135，而 LingBuilder CEF3 模块使用 CEF 150；同一进程不能加载两个 ABI 不兼容的 libcef.dll。' }]
-    },
     contributes: {
       designerControls: createControlContributions('lingbuilder.fbro.browser'),
       commands: [
@@ -681,14 +924,60 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'FBro指纹_取调用次数', aliases: ['LB_FBro_GetFingerprintCallCount'], signature: 'FBro指纹_取调用次数(控件名)', description: '返回 FBro VIP 指纹调用次数。', insertText: 'FBro指纹_取调用次数($1)', returnType: '文本型' },
         { name: 'FBro指纹_清空调用次数', aliases: ['LB_FBro_ClearFingerprintCallCount'], signature: 'FBro指纹_清空调用次数(控件名)', description: '清空指定浏览器的指纹调用次数。', insertText: 'FBro指纹_清空调用次数($1)', returnType: '整数型' },
         { name: 'FBro_取最近事件', aliases: ['LB_FBro_GetLastEvent'], signature: 'FBro_取最近事件(控件名)', description: '返回最近 FBro 浏览器事件名。', insertText: 'FBro_取最近事件($1)', returnType: '文本型' },
-        { name: 'FBro_取最近错误', aliases: ['LB_FBro_GetLastError'], signature: 'FBro_取最近错误(控件名)', description: '返回桥接层最近中文错误。', insertText: 'FBro_取最近错误($1)', returnType: '文本型' }
+        { name: 'FBro_取最近错误', aliases: ['LB_FBro_GetLastError'], signature: 'FBro_取最近错误(控件名)', description: '返回桥接层最近中文错误。', insertText: 'FBro_取最近错误($1)', returnType: '文本型' },
+        { name: 'FBro_取进程状态', signature: 'FBro_取进程状态(控件名)', description: '返回独立进程实例状态；进程内模式返回“进程内”。', insertText: 'FBro_取进程状态($1)', returnType: '文本型' },
+        { name: 'FBro_取进程ID', signature: 'FBro_取进程ID(控件名)', description: '返回独立 FBro Host 的进程 ID；进程内模式返回 0。', insertText: 'FBro_取进程ID($1)', returnType: '整数型' },
+        { name: 'FBro_取调试端口', signature: 'FBro_取调试端口(控件名)', description: '返回独立 FBro Host 的本机 CDP 调试端口；未启用开发者工具或进程内模式返回 0。', insertText: 'FBro_取调试端口($1)', returnType: '整数型' },
+        { name: 'FBro_重启进程', signature: 'FBro_重启进程(控件名)', description: '关闭并重新启动独立 FBro Host，保留该控件的配置与独立 Profile。', insertText: 'FBro_重启进程($1)', returnType: '整数型' },
+        { name: 'FBro_显示', signature: 'FBro_显示(控件名)', description: '显示独立浏览器窗口或嵌入宿主。', insertText: 'FBro_显示($1)', returnType: '整数型' },
+        { name: 'FBro_隐藏', signature: 'FBro_隐藏(控件名)', description: '隐藏独立浏览器窗口或嵌入宿主。', insertText: 'FBro_隐藏($1)', returnType: '整数型' },
+        { name: 'FBro_是否显示', signature: 'FBro_是否显示(控件名)', description: '返回 FBro 嵌入宿主当前是否可见；可用于过滤后台实例事件。', insertText: 'FBro_是否显示($1)', returnType: '整数型' },
+        { name: 'FBro_调整大小', signature: 'FBro_调整大小(控件名, 宽度, 高度)', description: '调整独立浏览器客户区大小。', insertText: 'FBro_调整大小($1, 960, 640)', returnType: '整数型' },
+        { name: 'FBro_截图到文件', signature: 'FBro_截图到文件(控件名, 路径, 格式, 质量)', description: '同步保存当前页面截图；格式为 png/jpeg/webp，质量范围 1-100。', insertText: 'FBro_截图到文件($1, "$2", "png", 90)', returnType: '整数型' },
+        { name: '浏览器管理器_初始化', signature: '浏览器管理器_初始化(页面选项卡, 实例列表, 工作区键)', description: '绑定普通 Win32 隐藏表头选项卡和列表框，恢复独立实例并为每个实例启动一个 FBro Host。', insertText: '浏览器管理器_初始化($1, $2, "$3")', returnType: '整数型' },
+        { name: '浏览器管理器_绑定地址栏', signature: '浏览器管理器_绑定地址栏(地址控件)', description: '绑定当前窗口文本框；网页地址事件和实例切换会直接同步真实当前地址。', insertText: '浏览器管理器_绑定地址栏($1)', returnType: '逻辑型' },
+        { name: '浏览器管理器_绑定下载视图', signature: '浏览器管理器_绑定下载视图(详情控件, 进度条)', description: '绑定只读文本框或标签及原生进度条；下载事件到达和实例切换时实时显示当前实例的文件、目录、百分比与完成状态。', insertText: '浏览器管理器_绑定下载视图($1, $2)', returnType: '逻辑型' },
+        { name: '浏览器管理器_新增实例', signature: '浏览器管理器_新增实例(名称, 地址)', description: '生成稳定 ID、独立页面 HWND 和独立 Profile，并启动新的嵌入式 FBro Host。', insertText: '浏览器管理器_新增实例("浏览器 $1", "https://www.baidu.com")', returnType: '逻辑型' },
+        { name: '浏览器管理器_切换索引', signature: '浏览器管理器_切换索引(索引)', description: '按左侧列表索引切换实例；先显示并聚焦目标页面，再隐藏其它页面。', insertText: '浏览器管理器_切换索引($1)', returnType: '逻辑型' },
+        { name: '浏览器管理器_重命名当前', signature: '浏览器管理器_重命名当前(名称)', description: '重命名当前实例，不改变稳定 ID、Profile 或登录状态。', insertText: '浏览器管理器_重命名当前("$1")', returnType: '逻辑型' },
+        { name: '浏览器管理器_删除当前', signature: '浏览器管理器_删除当前(清除数据)', description: '删除当前实例并可选二次确认清除受管 Profile；始终保留至少一个实例。', insertText: '浏览器管理器_删除当前($1)', returnType: '文本型' },
+        { name: '浏览器管理器_导航', signature: '浏览器管理器_导航(地址)', description: '让当前独立 Host 导航并持久化最后地址，不限制协议；chrome://extensions/ 在嵌入式 Alloy 模式中显示 LingBuilder 的真实扩展检查页。', insertText: '浏览器管理器_导航("$1")', returnType: '逻辑型' },
+        { name: '浏览器管理器_后退', signature: '浏览器管理器_后退()', description: '当前实例后退。', insertText: '浏览器管理器_后退()', returnType: '逻辑型' },
+        { name: '浏览器管理器_前进', signature: '浏览器管理器_前进()', description: '当前实例前进。', insertText: '浏览器管理器_前进()', returnType: '逻辑型' },
+        { name: '浏览器管理器_刷新', signature: '浏览器管理器_刷新()', description: '刷新当前实例。', insertText: '浏览器管理器_刷新()', returnType: '逻辑型' },
+        { name: '浏览器管理器_停止', signature: '浏览器管理器_停止()', description: '停止当前实例加载。', insertText: '浏览器管理器_停止()', returnType: '逻辑型' },
+        { name: '浏览器管理器_强制刷新', signature: '浏览器管理器_强制刷新()', description: '忽略缓存刷新当前实例。', insertText: '浏览器管理器_强制刷新()', returnType: '逻辑型' },
+        { name: '浏览器管理器_打开当前缓存目录', signature: '浏览器管理器_打开当前缓存目录()', description: '打开通过规范路径和重解析点边界校验的当前 Profile。', insertText: '浏览器管理器_打开当前缓存目录()', returnType: '逻辑型' },
+        { name: '浏览器管理器_打开当前下载目录', signature: '浏览器管理器_打开当前下载目录()', description: '验证最近下载目录真实存在后，在 Windows 文件资源管理器中打开。', insertText: '浏览器管理器_打开当前下载目录()', returnType: '逻辑型' },
+        { name: '浏览器管理器_清理当前缓存', signature: '浏览器管理器_清理当前缓存(包含Cookie)', description: '调用当前 FBro Host 清理真实缓存；包含 Cookie 时同时清理登录和插件存储。', insertText: '浏览器管理器_清理当前缓存($1)', returnType: '逻辑型' },
+        { name: '浏览器管理器_导出Cookie', signature: '浏览器管理器_导出Cookie(文件, 全部网站)', description: '预览数量和敏感信息警告后，从当前 Host 的 CookieManager 原子导出结构化 JSON。', insertText: '浏览器管理器_导出Cookie("cookies.lingbuilder.json", $1)', returnType: '文本型' },
+        { name: '浏览器管理器_导入Cookie', signature: '浏览器管理器_导入Cookie(文件, 覆盖冲突)', description: '预览有效、无效、过期、域名和冲突统计后写入当前 Host，并刷新页面。', insertText: '浏览器管理器_导入Cookie("cookies.lingbuilder.json", $1)', returnType: '文本型' },
+        { name: '浏览器管理器_取当前稳定ID', signature: '浏览器管理器_取当前稳定ID()', description: '返回当前实例稳定 ID。', insertText: '浏览器管理器_取当前稳定ID()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前名称', signature: '浏览器管理器_取当前名称()', description: '返回当前实例显示名称。', insertText: '浏览器管理器_取当前名称()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前地址', signature: '浏览器管理器_取当前地址()', description: '返回当前实例最后地址。', insertText: '浏览器管理器_取当前地址()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前插件状态', signature: '浏览器管理器_取当前插件状态()', description: '返回当前实例扩展登记及豆包页面 DOM 生效检查状态。', insertText: '浏览器管理器_取当前插件状态()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前插件错误', signature: '浏览器管理器_取当前插件错误()', description: '返回当前实例插件清单或加载错误。', insertText: '浏览器管理器_取当前插件错误()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前下载状态', signature: '浏览器管理器_取当前下载状态()', description: '返回当前实例最近下载的准备、进度、完成或取消状态。', insertText: '浏览器管理器_取当前下载状态()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前下载文件', signature: '浏览器管理器_取当前下载文件()', description: '返回当前实例最近下载的文件名。', insertText: '浏览器管理器_取当前下载文件()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前下载完整路径', signature: '浏览器管理器_取当前下载完整路径()', description: '返回 FBro 报告的当前实例最近下载完整路径。', insertText: '浏览器管理器_取当前下载完整路径()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前下载目录', signature: '浏览器管理器_取当前下载目录()', description: '返回从最近下载完整路径解析出的目录。', insertText: '浏览器管理器_取当前下载目录()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前错误', signature: '浏览器管理器_取当前错误()', description: '返回当前实例最近的 Host 错误。', insertText: '浏览器管理器_取当前错误()', returnType: '文本型' },
+        { name: '浏览器管理器_取持久化诊断', signature: '浏览器管理器_取持久化诊断()', description: '返回损坏恢复、重复实例或原子写入诊断。', insertText: '浏览器管理器_取持久化诊断()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前缓存目录', signature: '浏览器管理器_取当前缓存目录()', description: '返回当前实例由稳定 ID 派生的本机 Profile 目录。', insertText: '浏览器管理器_取当前缓存目录()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前进程状态', signature: '浏览器管理器_取当前进程状态()', description: '返回当前独立 Host 状态。', insertText: '浏览器管理器_取当前进程状态()', returnType: '文本型' },
+        { name: '浏览器管理器_取当前进程ID', signature: '浏览器管理器_取当前进程ID()', description: '返回当前独立 Host PID。', insertText: '浏览器管理器_取当前进程ID()', returnType: '整数型' },
+        { name: '浏览器管理器_取当前页面句柄', signature: '浏览器管理器_取当前页面句柄()', description: '返回当前实例独立页面 HWND，仅用于诊断生命周期。', insertText: '浏览器管理器_取当前页面句柄()', returnType: '长整数型' },
+        { name: '浏览器管理器_取实例数量', signature: '浏览器管理器_取实例数量()', description: '返回当前实例数量。', insertText: '浏览器管理器_取实例数量()', returnType: '整数型' },
+        { name: '浏览器管理器_取实例顺序JSON', signature: '浏览器管理器_取实例顺序JSON()', description: '返回稳定 ID 顺序 JSON。', insertText: '浏览器管理器_取实例顺序JSON()', returnType: '文本型' },
+        { name: '浏览器管理器_取运行快照JSON', signature: '浏览器管理器_取运行快照JSON()', description: '返回不含 Cookie 的 ID、Profile、页面 HWND、PID 和插件状态诊断快照。', insertText: '浏览器管理器_取运行快照JSON()', returnType: '文本型' }
       ],
       types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
-      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }]
+      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }],
+      docs: [{ title: 'FBro 事件与接口参考', path: 'docs/modules/fbro/README.md' }]
     },
     targets: [{
       id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
-      includeDirs: ['include'], headers: ['include/LingBuilderFbroBridge.h'],
+      includeDirs: ['include'], headers: ['include/LingBuilderFbroBridge.h', 'include/LingBuilderFbroProcessRuntime.hpp'],
       libs: ['modules/lingbuilder.fbro.browser/lib/x64/LingBuilderFbroBridge.lib'],
       runtimeFiles: ['bin/x64/LingBuilderFbroBridge.dll'], defines: ['LINGBUILDER_FBRO_MODULE']
     }],
@@ -734,7 +1023,220 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'FBro指纹_取调用次数', runtimeName: 'FBro指纹_取调用次数', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'FBro指纹_清空调用次数', runtimeName: 'FBro指纹_清空调用次数', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_取最近事件', runtimeName: 'FBro_取最近事件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro_取最近错误', runtimeName: 'FBro_取最近错误', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' }
+      { command: 'FBro_取最近错误', runtimeName: 'FBro_取最近错误', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取进程状态', runtimeName: 'FBro_取进程状态', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取进程ID', runtimeName: 'FBro_取进程ID', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取调试端口', runtimeName: 'FBro_取调试端口', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_重启进程', runtimeName: 'FBro_重启进程', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_显示', runtimeName: 'FBro_显示', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_隐藏', runtimeName: 'FBro_隐藏', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否显示', runtimeName: 'FBro_是否显示', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_调整大小', runtimeName: 'FBro_调整大小', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_截图到文件', runtimeName: 'FBro_截图到文件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '路径', type: 'wideString' }, { name: '格式', type: 'wideString' }, { name: '质量', type: 'int' }], returnType: 'int', encoding: 'wide' },
+      { command: '浏览器管理器_初始化', runtimeName: '浏览器管理器_初始化', parameters: [
+        { name: '页面选项卡', type: 'controlRef', controlTypes: ['TabControl'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'nativeHandle' },
+        { name: '实例列表', type: 'controlRef', controlTypes: ['ListBox'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'nativeHandle' },
+        { name: '工作区键', type: 'wideString' }
+      ], returnType: 'int', encoding: 'wide', example: '浏览器管理器_初始化(浏览器页面, 浏览器实例列表, "win32-fbro-multi-browser-manager")' },
+      { command: '浏览器管理器_绑定地址栏', runtimeName: '浏览器管理器_绑定地址栏', parameters: [
+        { name: '地址控件', type: 'controlRef', controlTypes: ['TextBox'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'nativeHandle' }
+      ], returnType: 'bool', encoding: 'wide', example: '浏览器管理器_绑定地址栏(地址输入)' },
+      { command: '浏览器管理器_绑定下载视图', runtimeName: '浏览器管理器_绑定下载视图', parameters: [
+        { name: '详情控件', type: 'controlRef', controlTypes: ['TextBox', 'Label'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'nativeHandle' },
+        { name: '进度条', type: 'controlRef', controlTypes: ['ProgressBar'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'nativeHandle' }
+      ], returnType: 'bool', encoding: 'wide', example: '浏览器管理器_绑定下载视图(实例详情, 下载进度)' },
+      { command: '浏览器管理器_新增实例', runtimeName: '浏览器管理器_新增实例', parameters: [{ name: '名称', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_切换索引', runtimeName: '浏览器管理器_切换索引', parameters: [{ name: '索引', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_重命名当前', runtimeName: '浏览器管理器_重命名当前', parameters: [{ name: '名称', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_删除当前', runtimeName: '浏览器管理器_删除当前', parameters: [{ name: '清除数据', type: 'bool' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_导航', runtimeName: '浏览器管理器_导航', parameters: [{ name: '地址', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_后退', runtimeName: '浏览器管理器_后退', parameters: [], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_前进', runtimeName: '浏览器管理器_前进', parameters: [], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_刷新', runtimeName: '浏览器管理器_刷新', parameters: [], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_停止', runtimeName: '浏览器管理器_停止', parameters: [], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_强制刷新', runtimeName: '浏览器管理器_强制刷新', parameters: [], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_打开当前缓存目录', runtimeName: '浏览器管理器_打开当前缓存目录', parameters: [], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_打开当前下载目录', runtimeName: '浏览器管理器_打开当前下载目录', parameters: [], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_清理当前缓存', runtimeName: '浏览器管理器_清理当前缓存', parameters: [{ name: '包含Cookie', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器管理器_导出Cookie', runtimeName: '浏览器管理器_导出Cookie', parameters: [{ name: '文件', type: 'wideString' }, { name: '全部网站', type: 'bool' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_导入Cookie', runtimeName: '浏览器管理器_导入Cookie', parameters: [{ name: '文件', type: 'wideString' }, { name: '覆盖冲突', type: 'bool' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前稳定ID', runtimeName: '浏览器管理器_取当前稳定ID', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前名称', runtimeName: '浏览器管理器_取当前名称', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前地址', runtimeName: '浏览器管理器_取当前地址', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前插件状态', runtimeName: '浏览器管理器_取当前插件状态', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前插件错误', runtimeName: '浏览器管理器_取当前插件错误', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前下载状态', runtimeName: '浏览器管理器_取当前下载状态', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前下载文件', runtimeName: '浏览器管理器_取当前下载文件', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前下载完整路径', runtimeName: '浏览器管理器_取当前下载完整路径', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前下载目录', runtimeName: '浏览器管理器_取当前下载目录', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前错误', runtimeName: '浏览器管理器_取当前错误', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取持久化诊断', runtimeName: '浏览器管理器_取持久化诊断', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前缓存目录', runtimeName: '浏览器管理器_取当前缓存目录', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前进程状态', runtimeName: '浏览器管理器_取当前进程状态', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取当前进程ID', runtimeName: '浏览器管理器_取当前进程ID', parameters: [], returnType: 'int', encoding: 'wide' },
+      { command: '浏览器管理器_取当前页面句柄', runtimeName: '浏览器管理器_取当前页面句柄', parameters: [], returnType: 'longLong', encoding: 'wide' },
+      { command: '浏览器管理器_取实例数量', runtimeName: '浏览器管理器_取实例数量', parameters: [], returnType: 'int', encoding: 'wide' },
+      { command: '浏览器管理器_取实例顺序JSON', runtimeName: '浏览器管理器_取实例顺序JSON', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器管理器_取运行快照JSON', runtimeName: '浏览器管理器_取运行快照JSON', parameters: [], returnType: 'wideString', encoding: 'wide' }
+    ] }
+  },
+  {
+    schemaVersion: 2,
+    id: 'lingbuilder.new_emoji.fbro-shell',
+    name: 'new_emoji FBro 浏览器外壳',
+    version: '1.2.0',
+    minLingBuilderVersion: '0.3.0',
+    category: '界面',
+    description: '在 new_emoji 浏览器框架窗口中按稳定 ID 管理 FBro x64 独立会话、RichList、原生 HWND 和隔离 Profile。',
+    author: 'LingBuilder',
+    tags: ['内置', 'new_emoji', 'FBro', '浏览器外壳', 'x64'],
+    dependencies: [
+      { moduleId: 'lingbuilder.new_emoji.ui', minimumVersion: '2.0.0' },
+      { moduleId: 'lingbuilder.fbro.browser', minimumVersion: '2.2.0' },
+      { moduleId: 'lingbuilder.fbro.sdk', minimumVersion: '2.2.0' }
+    ],
+    contributes: {
+      commands: [
+        { name: '浏览器外壳_创建', signature: '浏览器外壳_创建(标签页控件, 页面占位控件, 状态处理器)', description: '绑定 Tabs 和 BrowserViewport，占位区仅用于加载/错误提示，真实网页由独立 FBro HWND 渲染。', insertText: '浏览器外壳_创建($1, $2, &$3)', returnType: '逻辑型' },
+        { name: '浏览器外壳_绑定实例列表', signature: '浏览器外壳_绑定实例列表(实例列表控件)', description: '把动态标签集合、进程状态、PID 和选中项同步到 RichList。', insertText: '浏览器外壳_绑定实例列表($1)', returnType: '逻辑型' },
+        { name: '浏览器外壳_选择列表键', signature: '浏览器外壳_选择列表键(选中键JSON)', description: '使用 RichList SelectionChanged 返回的选中键 JSON 切换动态实例。', insertText: '浏览器外壳_选择列表键($1)', returnType: '逻辑型' },
+        { name: '浏览器外壳_销毁', signature: '浏览器外壳_销毁()', description: '关闭全部受管标签页和 FBro 子宿主。', insertText: '浏览器外壳_销毁()', returnType: '空' },
+        { name: '浏览器外壳_新建标签页', signature: '浏览器外壳_新建标签页(稳定ID, 地址, 标题)', description: '创建稳定 ID 对应的独立 FBro 句柄和宿主 HWND。', insertText: '浏览器外壳_新建标签页("$1", "$2", "$3")', returnType: '逻辑型' },
+        { name: '浏览器外壳_新建独立实例', signature: '浏览器外壳_新建独立实例(稳定ID, 地址, 标题, 缓存目录)', description: '动态创建一个独立 Host 进程、独立 WebSocket 会话、独立 Profile 和伴随 HWND；没有固定数量上限。', insertText: '浏览器外壳_新建独立实例("$1", "$2", "$3", "$4")', returnType: '逻辑型' },
+        { name: '浏览器外壳_启用实例持久化', signature: '浏览器外壳_启用实例持久化(工作台键)', description: '从 LocalAppData 中的 UTF-8 原子 JSON 恢复稳定 ID、名称、顺序、地址和独立 Profile；返回恢复数量，损坏时返回 -1。', insertText: '浏览器外壳_启用实例持久化("$1")', returnType: '整数型' },
+        { name: '浏览器外壳_取持久化诊断', signature: '浏览器外壳_取持久化诊断()', description: '返回配置恢复或原子写入的中文诊断，不包含 Cookie。', insertText: '浏览器外壳_取持久化诊断()', returnType: '文本型' },
+        { name: '浏览器外壳_重命名实例', signature: '浏览器外壳_重命名实例(稳定ID, 新名称)', description: '修改显示名称并立即持久化，不改变稳定 ID 或缓存路径。', insertText: '浏览器外壳_重命名实例("$1", "$2")', returnType: '逻辑型' },
+        { name: '浏览器外壳_关闭实例', signature: '浏览器外壳_关闭实例(稳定ID)', description: '释放指定独立会话的 Host 和伴随 HWND，但保留 RichList 表项、稳定 ID、地址与缓存目录。', insertText: '浏览器外壳_关闭实例("$1")', returnType: '逻辑型' },
+        { name: '浏览器外壳_重新打开实例', signature: '浏览器外壳_重新打开实例(稳定ID)', description: '使用原稳定 ID、地址和缓存目录重新创建已关闭的独立会话。', insertText: '浏览器外壳_重新打开实例("$1")', returnType: '逻辑型' },
+        { name: '浏览器外壳_删除实例', signature: '浏览器外壳_删除实例(稳定ID)', description: '关闭并删除指定会话的 RichList 表项和运行时绑定；默认保留缓存目录。', insertText: '浏览器外壳_删除实例("$1")', returnType: '逻辑型' },
+        { name: '浏览器外壳_确认删除实例', signature: '浏览器外壳_确认删除实例(稳定ID, 清除数据)', description: '提供保留缓存或二次确认清除数据两种路径，并限制删除目标只能位于当前工作台 profiles 根目录。', insertText: '浏览器外壳_确认删除实例("$1", $2)', returnType: '文本型' },
+        { name: '浏览器外壳_打开实例缓存目录', signature: '浏览器外壳_打开实例缓存目录(稳定ID)', description: '在资源管理器打开经过受管根目录校验的实例 Profile。', insertText: '浏览器外壳_打开实例缓存目录("$1")', returnType: '逻辑型' },
+        { name: '浏览器外壳_清理实例缓存', signature: '浏览器外壳_清理实例缓存(稳定ID, 包含Cookie)', description: '通过目标独立 FBro Host 清理真实缓存；可选择同时清理 Cookie 和插件私有数据。', insertText: '浏览器外壳_清理实例缓存("$1", $2)', returnType: '逻辑型' },
+        { name: '浏览器外壳_导出实例Cookie', signature: '浏览器外壳_导出实例Cookie(稳定ID, 文件, 全部网站)', description: '从目标实例的真实 FBro CookieManager 导出 LingBuilder JSON；不会写入普通日志。', insertText: '浏览器外壳_导出实例Cookie("$1", "$2", $3)', returnType: '文本型' },
+        { name: '浏览器外壳_导入实例Cookie', signature: '浏览器外壳_导入实例Cookie(稳定ID, 文件, 覆盖冲突, 包含过期)', description: '预览有效、无效、过期、域名和冲突后，将结构化 Cookie 写入目标实例并刷新页面。', insertText: '浏览器外壳_导入实例Cookie("$1", "$2", $3, $4)', returnType: '文本型' },
+        { name: '浏览器外壳_取当前插件状态', signature: '浏览器外壳_取当前插件状态()', description: '返回当前实例的插件已加载、加载中、加载失败或缺失状态。', insertText: '浏览器外壳_取当前插件状态()', returnType: '文本型' },
+        { name: '浏览器外壳_取当前插件错误', signature: '浏览器外壳_取当前插件错误()', description: '返回当前实例最近的插件清单或 FBro 加载错误。', insertText: '浏览器外壳_取当前插件错误()', returnType: '文本型' },
+        { name: '浏览器外壳_处理实例列表动作', signature: '浏览器外壳_处理实例列表动作(事件JSON)', description: '按 RichList ItemClicked/ButtonClicked 的 itemKey/actionId 切换会话，或执行关闭、删除、Cookie 和稳定 ID 排序，返回中文状态。', insertText: '浏览器外壳_处理实例列表动作($1)', returnType: '文本型' },
+        { name: '浏览器外壳_设置实例Cookie', signature: '浏览器外壳_设置实例Cookie(稳定ID, 地址, Cookie文本)', description: '通过指定独立 Host 的 FBro Cookie API 写入 Cookie；不会输出敏感明文。', insertText: '浏览器外壳_设置实例Cookie("$1", "$2", "$3")', returnType: '逻辑型' },
+        { name: '浏览器外壳_打开Cookie对话框', signature: '浏览器外壳_打开Cookie对话框(稳定ID, 默认地址)', description: '打开包含目标网址与 Cookie 文本输入的中文模态对话框，并仅写入指定稳定会话。', insertText: '浏览器外壳_打开Cookie对话框("$1", "$2")', returnType: '文本型' },
+        { name: '浏览器外壳_取实例Cookie', signature: '浏览器外壳_取实例Cookie(稳定ID, 地址)', description: '通过指定独立 Host 读取 Cookie，用于隔离验证；调用方不得记录敏感结果。', insertText: '浏览器外壳_取实例Cookie("$1", "$2")', returnType: '文本型' },
+        { name: '浏览器外壳_取实例状态', signature: '浏览器外壳_取实例状态(稳定ID)', description: '返回已打开、已关闭或不存在。', insertText: '浏览器外壳_取实例状态("$1")', returnType: '文本型' },
+        { name: '浏览器外壳_取实例缓存目录', signature: '浏览器外壳_取实例缓存目录(稳定ID)', description: '返回稳定会话绑定的独立缓存目录。', insertText: '浏览器外壳_取实例缓存目录("$1")', returnType: '文本型' },
+        { name: '浏览器外壳_取实例进程ID', signature: '浏览器外壳_取实例进程ID(稳定ID)', description: '返回指定已打开独立会话的 Host PID。', insertText: '浏览器外壳_取实例进程ID("$1")', returnType: '整数型' },
+        { name: '浏览器外壳_取实例宿主句柄', signature: '浏览器外壳_取实例宿主句柄(稳定ID)', description: '返回指定已打开独立会话的伴随宿主 HWND。', insertText: '浏览器外壳_取实例宿主句柄("$1")', returnType: '长整数型' },
+        { name: '浏览器外壳_取实例顺序JSON', signature: '浏览器外壳_取实例顺序JSON()', description: '返回当前 RichList 稳定 ID 顺序的 JSON 数组。', insertText: '浏览器外壳_取实例顺序JSON()', returnType: '文本型' },
+        { name: '浏览器外壳_生成稳定实例ID', signature: '浏览器外壳_生成稳定实例ID()', description: '使用系统随机数生成不会因重命名改变的浏览器实例 ID。', insertText: '浏览器外壳_生成稳定实例ID()', returnType: '文本型' },
+        { name: '浏览器外壳_新建空白标签页', signature: '浏览器外壳_新建空白标签页()', description: '使用运行时生成的稳定 ID 新建并选择空白标签页。', insertText: '浏览器外壳_新建空白标签页()', returnType: '逻辑型' },
+        { name: '浏览器外壳_关闭标签页', signature: '浏览器外壳_关闭标签页(稳定ID)', description: '关闭并销毁指定稳定 ID 的标签页。', insertText: '浏览器外壳_关闭标签页("$1")', returnType: '逻辑型' },
+        { name: '浏览器外壳_关闭当前标签页', signature: '浏览器外壳_关闭当前标签页()', description: '关闭当前选中的标签页。', insertText: '浏览器外壳_关闭当前标签页()', returnType: '逻辑型' },
+        { name: '浏览器外壳_关闭其他标签页', signature: '浏览器外壳_关闭其他标签页()', description: '保留当前标签页并关闭、销毁其余标签页宿主。', insertText: '浏览器外壳_关闭其他标签页()', returnType: '逻辑型' },
+        { name: '浏览器外壳_取标签页数量', signature: '浏览器外壳_取标签页数量()', description: '返回浏览器外壳当前受管标签页数量。', insertText: '浏览器外壳_取标签页数量()', returnType: '整数型' },
+        { name: '浏览器外壳_选择标签页', signature: '浏览器外壳_选择标签页(稳定ID)', description: '只显示指定稳定 ID 的页面宿主。', insertText: '浏览器外壳_选择标签页("$1")', returnType: '逻辑型' },
+        { name: '浏览器外壳_重排标签页', signature: '浏览器外壳_重排标签页(稳定ID, 新索引)', description: '按稳定 ID 重排标签页和运行时映射。', insertText: '浏览器外壳_重排标签页("$1", $2)', returnType: '逻辑型' },
+        { name: '浏览器外壳_导航', signature: '浏览器外壳_导航(地址)', description: '让当前标签页导航到地址。', insertText: '浏览器外壳_导航("$1")', returnType: '逻辑型' },
+        { name: '浏览器外壳_后退', signature: '浏览器外壳_后退()', description: '当前标签页后退。', insertText: '浏览器外壳_后退()', returnType: '逻辑型' },
+        { name: '浏览器外壳_前进', signature: '浏览器外壳_前进()', description: '当前标签页前进。', insertText: '浏览器外壳_前进()', returnType: '逻辑型' },
+        { name: '浏览器外壳_刷新', signature: '浏览器外壳_刷新()', description: '刷新当前标签页。', insertText: '浏览器外壳_刷新()', returnType: '空' },
+        { name: '浏览器外壳_停止', signature: '浏览器外壳_停止()', description: '停止当前标签页加载。', insertText: '浏览器外壳_停止()', returnType: '空' },
+        { name: '浏览器外壳_取地址', signature: '浏览器外壳_取地址()', description: '读取当前标签页地址。', insertText: '浏览器外壳_取地址()', returnType: '文本型' },
+        { name: '浏览器外壳_取标题', signature: '浏览器外壳_取标题()', description: '读取当前标签页标题。', insertText: '浏览器外壳_取标题()', returnType: '文本型' },
+        { name: '浏览器外壳_取当前稳定ID', signature: '浏览器外壳_取当前稳定ID()', description: '返回当前实例的稳定 ID。', insertText: '浏览器外壳_取当前稳定ID()', returnType: '文本型' },
+        { name: '浏览器外壳_取当前进程状态', signature: '浏览器外壳_取当前进程状态()', description: '返回当前独立 Host 的启动状态。', insertText: '浏览器外壳_取当前进程状态()', returnType: '文本型' },
+        { name: '浏览器外壳_取当前进程ID', signature: '浏览器外壳_取当前进程ID()', description: '返回当前独立 Host 的 PID。', insertText: '浏览器外壳_取当前进程ID()', returnType: '整数型' },
+        { name: '浏览器外壳_取当前调试端口', signature: '浏览器外壳_取当前调试端口()', description: '返回当前独立 Host 的随机 CDP 端口。', insertText: '浏览器外壳_取当前调试端口()', returnType: '整数型' },
+        { name: '浏览器外壳_取当前错误', signature: '浏览器外壳_取当前错误()', description: '返回当前实例最近的进程或 FBro 错误。', insertText: '浏览器外壳_取当前错误()', returnType: '文本型' },
+        { name: '浏览器外壳_强制刷新', signature: '浏览器外壳_强制刷新()', description: '忽略缓存刷新当前实例。', insertText: '浏览器外壳_强制刷新()', returnType: '逻辑型' },
+        { name: '浏览器外壳_执行JS', signature: '浏览器外壳_执行JS(脚本)', description: '通过 WebSocket 在当前独立 Host 中同步执行 JavaScript。', insertText: '浏览器外壳_执行JS("$1")', returnType: '文本型' },
+        { name: '浏览器外壳_取Cookie', signature: '浏览器外壳_取Cookie(地址)', description: '通过 WebSocket 读取当前独立 Host 指定地址的 Cookie。', insertText: '浏览器外壳_取Cookie("$1")', returnType: '文本型' },
+        { name: '浏览器外壳_截图到文件', signature: '浏览器外壳_截图到文件(路径, 格式, 质量)', description: '让当前独立 Host 截图并保存到文件。', insertText: '浏览器外壳_截图到文件("$1", "png", 90)', returnType: '逻辑型' },
+        { name: '浏览器外壳_隐藏当前', signature: '浏览器外壳_隐藏当前()', description: '隐藏当前 Host，但保持进程和页面状态。', insertText: '浏览器外壳_隐藏当前()', returnType: '逻辑型' },
+        { name: '浏览器外壳_显示当前', signature: '浏览器外壳_显示当前()', description: '恢复显示当前 Host。', insertText: '浏览器外壳_显示当前()', returnType: '逻辑型' },
+        { name: '浏览器外壳_取当前代理', signature: '浏览器外壳_取当前代理()', description: '读取当前实例保存的代理地址。', insertText: '浏览器外壳_取当前代理()', returnType: '文本型' },
+        { name: '浏览器外壳_取当前UserAgent', signature: '浏览器外壳_取当前UserAgent()', description: '读取当前实例保存的 User-Agent。', insertText: '浏览器外壳_取当前UserAgent()', returnType: '文本型' },
+        { name: '浏览器外壳_取当前指纹配置', signature: '浏览器外壳_取当前指纹配置()', description: '读取当前实例保存的指纹 JSON。', insertText: '浏览器外壳_取当前指纹配置()', returnType: '文本型' },
+        { name: '浏览器外壳_取当前视口宽度', signature: '浏览器外壳_取当前视口宽度()', description: '读取当前实例视口宽度。', insertText: '浏览器外壳_取当前视口宽度()', returnType: '整数型' },
+        { name: '浏览器外壳_取当前视口高度', signature: '浏览器外壳_取当前视口高度()', description: '读取当前实例视口高度。', insertText: '浏览器外壳_取当前视口高度()', returnType: '整数型' },
+        { name: '浏览器外壳_按配置重建当前', signature: '浏览器外壳_按配置重建当前(代理, UserAgent, 指纹JSON, 宽度, 高度)', description: '保留稳定 ID 与 Profile，关闭并按新配置重启当前独立 Host。', insertText: '浏览器外壳_按配置重建当前("$1", "$2", "$3", $4, $5)', returnType: '逻辑型' },
+        { name: '浏览器外壳_聚焦地址栏', signature: '浏览器外壳_聚焦地址栏(地址栏控件)', description: '把键盘焦点切换到指定 new_emoji Omnibox。', insertText: '浏览器外壳_聚焦地址栏($1)', returnType: '逻辑型' }
+      ],
+      snippets: [{ label: 'new_emoji FBro 浏览器外壳', insertText: '浏览器外壳_创建(浏览器标签页, 浏览器页面占位, &浏览器状态改变)\n浏览器外壳_新建标签页("home", "https://www.baidu.com", "新标签页")', description: '创建一个真实 FBro 标签页。' }],
+      docs: [{ title: 'new_emoji FBro 浏览器外壳', path: 'docs/modules/fbro-shell/README.md' }],
+      examples: [{ title: '完整浏览器外壳示例', path: 'docs/modules/fbro-shell/examples/MainWindow.lcpp' }]
+    },
+    targets: [{
+      id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
+      defines: ['LINGBUILDER_NEW_EMOJI_FBRO_SHELL_MODULE']
+    }],
+    bindings: { commands: [
+      { command: '浏览器外壳_创建', runtimeName: '浏览器外壳_创建', parameters: [
+        { name: '标签页控件', type: 'controlRef', controlTypes: ['lingbuilder.new_emoji.ui/Tabs'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' },
+        { name: '页面占位控件', type: 'controlRef', controlTypes: ['lingbuilder.new_emoji.ui/BrowserViewport'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' },
+        { name: '状态处理器', type: 'handler', handlerSignature: { parameterTypes: ['整数型', '文本型', '文本型', '逻辑型'], returnType: '空' } }
+      ], returnType: 'bool' },
+      { command: '浏览器外壳_绑定实例列表', runtimeName: '浏览器外壳_绑定实例列表', parameters: [
+        { name: '实例列表控件', type: 'controlRef', controlTypes: ['lingbuilder.new_emoji.ui/RichList'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' }
+      ], returnType: 'bool' },
+      { command: '浏览器外壳_选择列表键', runtimeName: '浏览器外壳_选择列表键', parameters: [{ name: '选中键JSON', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_销毁', runtimeName: '浏览器外壳_销毁', parameters: [], returnType: 'void' },
+      { command: '浏览器外壳_新建标签页', runtimeName: '浏览器外壳_新建标签页', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '标题', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_新建独立实例', runtimeName: '浏览器外壳_新建独立实例', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '标题', type: 'wideString' }, { name: '缓存目录', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_启用实例持久化', runtimeName: '浏览器外壳_启用实例持久化', parameters: [{ name: '工作台键', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: '浏览器外壳_取持久化诊断', runtimeName: '浏览器外壳_取持久化诊断', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_重命名实例', runtimeName: '浏览器外壳_重命名实例', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '新名称', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_关闭实例', runtimeName: '浏览器外壳_关闭实例', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_重新打开实例', runtimeName: '浏览器外壳_重新打开实例', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_删除实例', runtimeName: '浏览器外壳_删除实例', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_确认删除实例', runtimeName: '浏览器外壳_确认删除实例', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '清除数据', type: 'bool' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_打开实例缓存目录', runtimeName: '浏览器外壳_打开实例缓存目录', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_清理实例缓存', runtimeName: '浏览器外壳_清理实例缓存', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '包含Cookie', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_导出实例Cookie', runtimeName: '浏览器外壳_导出实例Cookie', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '文件', type: 'wideString' }, { name: '全部网站', type: 'bool' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_导入实例Cookie', runtimeName: '浏览器外壳_导入实例Cookie', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '文件', type: 'wideString' }, { name: '覆盖冲突', type: 'bool' }, { name: '包含过期', type: 'bool' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_取当前插件状态', runtimeName: '浏览器外壳_取当前插件状态', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取当前插件错误', runtimeName: '浏览器外壳_取当前插件错误', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_处理实例列表动作', runtimeName: '浏览器外壳_处理实例列表动作', parameters: [{ name: '事件JSON', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_设置实例Cookie', runtimeName: '浏览器外壳_设置实例Cookie', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: 'Cookie文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_打开Cookie对话框', runtimeName: '浏览器外壳_打开Cookie对话框', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '默认地址', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_取实例Cookie', runtimeName: '浏览器外壳_取实例Cookie', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_取实例状态', runtimeName: '浏览器外壳_取实例状态', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_取实例缓存目录', runtimeName: '浏览器外壳_取实例缓存目录', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_取实例进程ID', runtimeName: '浏览器外壳_取实例进程ID', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: '浏览器外壳_取实例宿主句柄', runtimeName: '浏览器外壳_取实例宿主句柄', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'longLong', encoding: 'wide' },
+      { command: '浏览器外壳_取实例顺序JSON', runtimeName: '浏览器外壳_取实例顺序JSON', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_生成稳定实例ID', runtimeName: '浏览器外壳_生成稳定实例ID', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_新建空白标签页', runtimeName: '浏览器外壳_新建空白标签页', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_关闭标签页', runtimeName: '浏览器外壳_关闭标签页', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_关闭当前标签页', runtimeName: '浏览器外壳_关闭当前标签页', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_关闭其他标签页', runtimeName: '浏览器外壳_关闭其他标签页', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_取标签页数量', runtimeName: '浏览器外壳_取标签页数量', parameters: [], returnType: 'int' },
+      { command: '浏览器外壳_选择标签页', runtimeName: '浏览器外壳_选择标签页', parameters: [{ name: '稳定ID', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_重排标签页', runtimeName: '浏览器外壳_重排标签页', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '新索引', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_导航', runtimeName: '浏览器外壳_导航', parameters: [{ name: '地址', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_后退', runtimeName: '浏览器外壳_后退', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_前进', runtimeName: '浏览器外壳_前进', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_刷新', runtimeName: '浏览器外壳_刷新', parameters: [], returnType: 'void' },
+      { command: '浏览器外壳_停止', runtimeName: '浏览器外壳_停止', parameters: [], returnType: 'void' },
+      { command: '浏览器外壳_取地址', runtimeName: '浏览器外壳_取地址', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取标题', runtimeName: '浏览器外壳_取标题', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取当前稳定ID', runtimeName: '浏览器外壳_取当前稳定ID', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取当前进程状态', runtimeName: '浏览器外壳_取当前进程状态', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取当前进程ID', runtimeName: '浏览器外壳_取当前进程ID', parameters: [], returnType: 'int' },
+      { command: '浏览器外壳_取当前调试端口', runtimeName: '浏览器外壳_取当前调试端口', parameters: [], returnType: 'int' },
+      { command: '浏览器外壳_取当前错误', runtimeName: '浏览器外壳_取当前错误', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_强制刷新', runtimeName: '浏览器外壳_强制刷新', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_执行JS', runtimeName: '浏览器外壳_执行JS', parameters: [{ name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_取Cookie', runtimeName: '浏览器外壳_取Cookie', parameters: [{ name: '地址', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: '浏览器外壳_截图到文件', runtimeName: '浏览器外壳_截图到文件', parameters: [{ name: '路径', type: 'wideString' }, { name: '格式', type: 'wideString' }, { name: '质量', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_隐藏当前', runtimeName: '浏览器外壳_隐藏当前', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_显示当前', runtimeName: '浏览器外壳_显示当前', parameters: [], returnType: 'bool' },
+      { command: '浏览器外壳_取当前代理', runtimeName: '浏览器外壳_取当前代理', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取当前UserAgent', runtimeName: '浏览器外壳_取当前UserAgent', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取当前指纹配置', runtimeName: '浏览器外壳_取当前指纹配置', parameters: [], returnType: 'wideString' },
+      { command: '浏览器外壳_取当前视口宽度', runtimeName: '浏览器外壳_取当前视口宽度', parameters: [], returnType: 'int' },
+      { command: '浏览器外壳_取当前视口高度', runtimeName: '浏览器外壳_取当前视口高度', parameters: [], returnType: 'int' },
+      { command: '浏览器外壳_按配置重建当前', runtimeName: '浏览器外壳_按配置重建当前', parameters: [{ name: '代理', type: 'wideString' }, { name: 'UserAgent', type: 'wideString' }, { name: '指纹JSON', type: 'wideString' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_聚焦地址栏', runtimeName: '浏览器外壳_聚焦地址栏', parameters: [
+        { name: '地址栏控件', type: 'controlRef', controlTypes: ['lingbuilder.new_emoji.ui/Omnibox'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' }
+      ], returnType: 'bool' }
     ] }
   },
   ...FBRO_SUBMODULES,

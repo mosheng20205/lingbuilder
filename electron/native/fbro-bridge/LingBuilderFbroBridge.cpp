@@ -85,12 +85,21 @@ bool g_continuation_timer_stop = false;
 std::thread g_continuation_timer_thread;
 std::atomic<bool> g_license_attempted{false};
 std::atomic<bool> g_license_valid{false};
+std::atomic<bool> g_extension_plus_requested{false};
+std::atomic<bool> g_extension_plus_enabled{false};
 bool g_winsock_started = false;
 CefRefPtr<FBroHsInitEvent> g_init_event;
 CefRefPtr<FBroVIPEvent> g_vip_event;
 std::filesystem::path g_runtime_directory;
 std::filesystem::path g_root_cache_directory;
 std::wstring g_license_error;
+std::vector<wchar_t> g_pending_license_credential;
+bool g_pending_credential_sets_browser_license = false;
+std::wstring g_startup_extension_directory;
+std::wstring g_startup_extension_status;
+std::wstring g_startup_extension_id;
+std::wstring g_startup_extension_event_path;
+std::wstring g_startup_extension_error;
 std::wstring g_vip_proxy_url;
 std::wstring g_vip_proxy_user;
 std::wstring g_vip_proxy_password;
@@ -151,6 +160,8 @@ struct BrowserState {
   std::wstring profile;
   std::wstring title;
   std::wstring user_agent;
+  std::wstring extension_directory;
+  std::wstring extension_id;
   std::wstring last_event;
   std::wstring last_event_json;
   std::wstring last_fingerprint_json;
@@ -171,6 +182,7 @@ struct BrowserState {
   CefRefPtr<FBroHsDevToolsMessageObserver> devtools_observer;
   std::unordered_map<std::wstring, std::shared_ptr<VipResourcePayload>> vip_resource_payloads;
   bool create_started = false;
+  bool extension_load_started = false;
   bool chrome_ui = false;
   unsigned int flags = 7;
 };
@@ -439,12 +451,18 @@ const wchar_t* EventName(int code) {
     case LB_FBRO_EVENT_VIP_DEVTOOLS_ATTACHED: return L"VipDevToolsAttached";
     case LB_FBRO_EVENT_VIP_DEVTOOLS_DETACHED: return L"VipDevToolsDetached";
     case LB_FBRO_EVENT_VIP_LIFECYCLE: return L"VipLifecycle";
+    case LB_FBRO_EVENT_DOWNLOAD_START: return L"OnBeforeDownload";
+    case LB_FBRO_EVENT_DOWNLOAD_UPDATED: return L"OnDownloadUpdated";
     default: return L"Unknown";
   }
 }
 
 const wchar_t* StableEventId(int code) {
   switch (code) {
+    case LB_FBRO_EVENT_DOWNLOAD_START:
+      return L"fbro.event.fbrohsbroevent.onbeforedownload.108a0eef290e";
+    case LB_FBRO_EVENT_DOWNLOAD_UPDATED:
+      return L"fbro.event.fbrohsbroevent.ondownloadupdated.d8506aae50d6";
 #define LB_FBRO_LEGACY_EVENT_ID_CASES
 #include "FbroEventOverrides.generated.inc"
 #undef LB_FBRO_LEGACY_EVENT_ID_CASES
@@ -479,6 +497,8 @@ const wchar_t* OfficialEventName(int code) {
     case LB_FBRO_EVENT_BEFORE_POPUP: return L"OnBeforePopup";
     case LB_FBRO_EVENT_CERTIFICATE_ERROR: return L"OnCertificateError";
     case LB_FBRO_EVENT_DRAG_ENTER: return L"OnDragEnter";
+    case LB_FBRO_EVENT_DOWNLOAD_START: return L"OnBeforeDownload";
+    case LB_FBRO_EVENT_DOWNLOAD_UPDATED: return L"OnDownloadUpdated";
     default: return EventName(code);
   }
 }
@@ -494,6 +514,8 @@ const wchar_t* ChineseEventName(int code) {
     case LB_FBRO_EVENT_BEFORE_POPUP: return L"新窗口打开前";
     case LB_FBRO_EVENT_CERTIFICATE_ERROR: return L"证书错误";
     case LB_FBRO_EVENT_DRAG_ENTER: return L"拖入浏览器";
+    case LB_FBRO_EVENT_DOWNLOAD_START: return L"下载开始";
+    case LB_FBRO_EVENT_DOWNLOAD_UPDATED: return L"下载进度更新";
     default: return EventName(code);
   }
 }
@@ -914,6 +936,20 @@ int Notify(BrowserState& state, int code, const std::wstring& data,
       BuildSafeFieldsJson({{field, data}}), code, flags, 0, object, 0, result_text);
 }
 
+bool DispatchPassiveLegacyEvent(LB_FBRO_HANDLE browser, int code,
+                                const std::wstring& fields_json) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  BrowserState* state = Find(browser);
+  if (!state || !state->callback) return false;
+  state->last_event = EventName(code);
+  state->last_event_json = L"{\"eventId\":\"" + JsonEscape(StableEventId(code))
+      + L"\",\"event\":\"" + JsonEscape(ChineseEventName(code))
+      + L"\",\"officialName\":\"" + JsonEscape(OfficialEventName(code))
+      + L"\",\"fields\":" + (fields_json.empty() ? std::wstring(L"{}") : fields_json) + L"}";
+  state->callback(state->handle, code, fields_json.c_str(), state->user_data);
+  return true;
+}
+
 int DispatchGeneratedBrowserEvent(LB_FBRO_HANDLE handle, const wchar_t* event_id,
                                   const wchar_t* official_name, const wchar_t* event_name,
                                   const std::wstring& fields_json, uint32_t flags,
@@ -1154,7 +1190,7 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
       Notify(*state, LB_FBRO_EVENT_CREATED, L"浏览器创建完成");
     }
   }
-  bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int,
+  bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int,
                      const CefString& target_url, const CefString&,
                      CefLifeSpanHandler::WindowOpenDisposition, bool,
                      const CefPopupFeatures&, CefWindowInfo&, CefBrowserSettings&,
@@ -1162,9 +1198,9 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
     std::unique_lock<std::recursive_mutex> lock(g_mutex);
     auto* state = Find(handle_);
     lock.unlock();
-    const int action = state ? Notify(*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url.ToWString()) : 0;
-    // 默认保持单窗口接管；处理器显式返回 1 时才允许 SDK 创建 popup。
-    return action != 1;
+    if (state) Notify(*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url.ToWString());
+    if (frame && !target_url.empty()) frame->LoadURL(target_url);
+    return true;
   }
   void OnBeforeClose(CefRefPtr<CefBrowser>) override {
     CancelContinuationsForBrowser(handle_);
@@ -1283,19 +1319,22 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
                         const CefString& suggested_name,
                         CefRefPtr<CefBeforeDownloadCallback> callback) override {
     if (!callback) return false;
-    return DispatchManagedBrowserEvent(handle_, L"OnBeforeDownload",
-        BuildSafeFieldsJson({
+    const std::wstring fields = BuildSafeFieldsJson({
             {L"downloadId", item ? std::to_wstring(FBroHsDownloadItem_GetDownloadId(item)) : L"0"},
             {L"url", item ? FromFbroString(FBroHsDownloadItem_GetDownloadURL(item)) : L""},
             {L"suggestedName", suggested_name.ToWString()},
-            {L"totalBytes", item ? std::to_wstring(FBroHsDownloadItem_GetTotalBytes(item)) : L"0"}}),
+            {L"totalBytes", item ? std::to_wstring(FBroHsDownloadItem_GetTotalBytes(item)) : L"0"}});
+    if (DispatchManagedBrowserEvent(handle_, L"OnBeforeDownload", fields,
         120000, [callback](int action, const std::wstring& response_json) {
           if (action != LB_FBRO_EVENT_ACTION_CONTINUE) return;
           const auto response = ParseEventResponse(response_json);
           FBroHsBeforeDownloadCallback_Continue(callback,
               CefString(EventResponseString(response, "path")),
               EventResponseBool(response, "showDialog", false));
-        });
+        })) return true;
+    if (!DispatchPassiveLegacyEvent(handle_, LB_FBRO_EVENT_DOWNLOAD_START, fields)) return false;
+    FBroHsBeforeDownloadCallback_Continue(callback, CefString(), false);
+    return true;
   }
 
   CefResourceRequestHandler::ReturnValue OnBeforeResourceLoad(
@@ -1333,13 +1372,19 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
   void OnDownloadUpdated(CefRefPtr<CefBrowser>, CefRefPtr<CefDownloadItem> item,
                          CefRefPtr<CefDownloadItemCallback> callback) override {
     if (!callback) return;
-    DispatchManagedBrowserEvent(handle_, L"OnDownloadUpdated",
-        BuildSafeFieldsJson({
+    const std::wstring fields = BuildSafeFieldsJson({
             {L"downloadId", item ? std::to_wstring(FBroHsDownloadItem_GetDownloadId(item)) : L"0"},
             {L"percent", item ? std::to_wstring(FBroHsDownloadItem_GetPercentComplete(item)) : L"-1"},
             {L"receivedBytes", item ? std::to_wstring(FBroHsDownloadItem_GetReceivedBytes(item)) : L"0"},
             {L"totalBytes", item ? std::to_wstring(FBroHsDownloadItem_GetTotalBytes(item)) : L"0"},
-            {L"fullPath", item ? FromFbroString(FBroHsDownloadItem_GetFullPath(item)) : L""}}),
+            {L"fullPath", item ? FromFbroString(FBroHsDownloadItem_GetFullPath(item)) : L""},
+            {L"suggestedName", item ? FromFbroString(FBroHsDownloadItem_GetSuggestedFileName(item)) : L""},
+            {L"url", item ? FromFbroString(FBroHsDownloadItem_GetDownloadURL(item)) : L""},
+            {L"isInProgress", item && FBroHsDownloadItem_IsInProgress(item) ? L"1" : L"0"},
+            {L"isComplete", item && FBroHsDownloadItem_IsComplete(item) ? L"1" : L"0"},
+            {L"isCanceled", item && FBroHsDownloadItem_IsCanceled(item) ? L"1" : L"0"},
+            {L"currentSpeed", item ? std::to_wstring(FBroHsDownloadItem_GetCurrentSpeed(item)) : L"0"}});
+    if (!DispatchManagedBrowserEvent(handle_, L"OnDownloadUpdated", fields,
         120000, [callback](int action, const std::wstring& response_json) {
           const auto response = ParseEventResponse(response_json);
           const int download_action = EventResponseInt(response, "downloadAction",
@@ -1347,7 +1392,9 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
           if (download_action == 1) FBroHsBeforeDownloadCallback_Pause(callback);
           else if (download_action == 2) FBroHsBeforeDownloadCallback_Resume(callback);
           else FBroHsBeforeDownloadCallback_Cancel(callback);
-        });
+        })) {
+      DispatchPassiveLegacyEvent(handle_, LB_FBRO_EVENT_DOWNLOAD_UPDATED, fields);
+    }
   }
 
   bool OnFileDialog(CefRefPtr<CefBrowser>, CefDialogHandler::FileDialogMode mode,
@@ -1563,6 +1610,10 @@ bool StartBrowser(BrowserState& state) {
     CefRequestContextSettings context_settings{};
     CefString(&context_settings.cache_path).FromWString(state.profile);
     context_settings.persist_session_cookies = true;
+    // Keep the C# FBro VIP ordering: create an isolated RequestContext, load
+    // the unpacked extension into it, then create the browser that owns it.
+    // Deferring LoadExtension to OnRequestContextInitialized proved unreliable
+    // for this FBro build because the first navigation could win that race.
     state.request_context = CefRequestContext::CreateContext(context_settings, nullptr);
   }
   if (state.request_context && !state.user_agent.empty()) {
@@ -1570,6 +1621,18 @@ bool StartBrowser(BrowserState& state) {
     value->SetString(state.user_agent);
     auto error = FBroString_Creat();
     FBroHsRequestContext_SetPreference(state.request_context, CefString("general.useragent.override"), value, error);
+  }
+  if (state.request_context && !state.extension_directory.empty() && g_extension_plus_enabled
+      && !state.extension_load_started) {
+    state.extension_load_started = true;
+    FBroHsVIPRequestContext_LoadExtension(state.request_context, state.extension_directory);
+  } else if (!state.extension_directory.empty() && !g_extension_plus_enabled) {
+    const std::wstring extension_directory = state.extension_directory;
+    state.extension_directory.clear();
+    Notify(state, LB_FBRO_EVENT_VIP_LIFECYCLE,
+           L"{\"phase\":\"extension\",\"status\":\"failed\","
+           L"\"extensionId\":\"\",\"path\":\"" + JsonEscape(extension_directory)
+           + L"\",\"error\":\"FBro VIP 授权不可用，浏览器插件未加载。\"}");
   }
   auto extra = CefDictionaryValue::Create();
   extra->SetString("flag", "LingBuilderFbroBridge");
@@ -1615,6 +1678,157 @@ void StartPendingBrowsers() {
   for (auto& item : g_browsers) StartBrowser(*item.second);
 }
 
+void SecureClearPendingLicenseCredential() {
+  if (!g_pending_license_credential.empty()) {
+    SecureZeroMemory(g_pending_license_credential.data(),
+                     g_pending_license_credential.size() * sizeof(wchar_t));
+    g_pending_license_credential.clear();
+    g_pending_license_credential.shrink_to_fit();
+  }
+  g_pending_credential_sets_browser_license = false;
+}
+
+std::wstring RedactLicenseCredential(std::wstring error,
+                                     const std::vector<wchar_t>& credential);
+
+// The online VIP licence check runs through FBrowserVIP -> FBrowserCEF3lib ->
+// libcef, so it must run AFTER FBroHsInitPro. Calling it earlier makes libcef
+// fail a CHECK (0x80000003) and kills the host process. It must still complete
+// before any browser is created, so the VIP extension hooks that content
+// scripts depend on are active by then.
+bool ApplyPendingLicenseAfterInitialize() {
+  std::vector<wchar_t> credential;
+  bool set_browser_license = false;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    credential.swap(g_pending_license_credential);
+    set_browser_license = g_pending_credential_sets_browser_license;
+    g_pending_credential_sets_browser_license = false;
+  }
+  if (credential.empty()) {
+    return !g_license_attempted || g_license_valid;
+  }
+
+  const CefString license_credential(credential.data());
+  if (set_browser_license) {
+    FBroHsBrowser_SetLicenceKey(license_credential);
+  }
+  const bool license_valid = FBroHsOnlineLicenseControl_SetKey(license_credential) == TRUE;
+  std::wstring license_error;
+  if (!license_valid) {
+    license_error = RedactLicenseCredential(
+        FromFbroString(FBroHsOnlineLicenseControl_GetError()), credential);
+    if (license_error.empty()) license_error = L"FBro VIP 授权码无效";
+  }
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    g_license_valid = license_valid;
+    g_license_error = std::move(license_error);
+  }
+
+  SecureZeroMemory(credential.data(), credential.size() * sizeof(wchar_t));
+  credential.clear();
+  credential.shrink_to_fit();
+  return license_valid;
+}
+
+std::wstring RedactLicenseCredential(std::wstring error,
+                                     const std::vector<wchar_t>& credential) {
+  if (credential.size() <= 1) return error;
+  const std::wstring supplied(credential.data(), credential.size() - 1);
+  size_t position = 0;
+  while (!supplied.empty()
+         && (position = error.find(supplied, position)) != std::wstring::npos) {
+    error.replace(position, supplied.size(), L"[已隐藏]");
+    position += 5;
+  }
+  return error;
+}
+
+void RejectPendingExtensions(const std::wstring& error) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  for (auto& [handle, state] : g_browsers) {
+    (void)handle;
+    if (!state || state->extension_directory.empty()) continue;
+    const std::wstring extension_directory = state->extension_directory;
+    state->extension_directory.clear();
+    state->extension_id.clear();
+    const std::wstring payload = L"{\"phase\":\"extension\",\"status\":\"failed\","
+        L"\"extensionId\":\"\",\"path\":\"" + JsonEscape(extension_directory)
+        + L"\",\"error\":\"" + JsonEscape(error) + L"\"}";
+    Notify(*state, LB_FBRO_EVENT_VIP_LIFECYCLE, payload);
+  }
+}
+
+void NotifyExtensionContext(CefRefPtr<CefRequestContext> request_context,
+                            const wchar_t* status,
+                            const CefString& extension_id = CefString(),
+                            const CefString& path = CefString(),
+                            const CefString& error = CefString()) {
+  std::filesystem::path event_path(path.ToWString());
+  if (event_path.empty() && request_context && !extension_id.empty()
+      && g_extension_plus_enabled) {
+    event_path = FromFbroString(FBroHsVIPRequestContext_GetExtensionPath(
+        request_context, extension_id));
+  }
+  // OnCreateExtension is also raised for FBro/Chromium built-in extensions.
+  // Those callbacks do not carry a filesystem path and must not be treated as
+  // the user-configured extension merely because only one browser exists.
+  if ((status && (wcscmp(status, L"loaded") == 0 || wcscmp(status, L"failed") == 0))
+      && event_path.empty()) {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    const bool known_extension = std::any_of(
+        g_browsers.begin(), g_browsers.end(), [&extension_id](const auto& item) {
+          return item.second && !extension_id.empty()
+              && item.second->extension_id == extension_id.ToWString();
+        });
+    if (!known_extension) return;
+  }
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  const bool startup_extension_event = !g_startup_extension_directory.empty()
+      && !event_path.empty()
+      && AbsoluteNormalizedPath(event_path)
+          == AbsoluteNormalizedPath(g_startup_extension_directory);
+  if (startup_extension_event) {
+    g_startup_extension_status = status ? status : L"";
+    g_startup_extension_id = extension_id.ToWString();
+    g_startup_extension_event_path = event_path.wstring();
+    g_startup_extension_error = error.ToWString();
+  }
+  for (auto& [handle, state] : g_browsers) {
+    (void)handle;
+    if (!state) continue;
+    const bool same_context = state->request_context && request_context
+        && request_context->IsSame(state->request_context);
+    const bool same_path = !event_path.empty() && !state->extension_directory.empty()
+        && AbsoluteNormalizedPath(event_path)
+            == AbsoluteNormalizedPath(state->extension_directory);
+    const bool single_configured_browser = g_browsers.size() == 1
+        && !state->extension_directory.empty();
+    if (!same_context && !same_path && !single_configured_browser) continue;
+    if (!event_path.empty() && !state->extension_directory.empty()) {
+      const auto configured = AbsoluteNormalizedPath(state->extension_directory);
+      const auto failed = AbsoluteNormalizedPath(event_path);
+      if (configured != failed && !IsChildPath(configured, failed)) continue;
+    }
+    if (status && wcscmp(status, L"failed") == 0 && event_path.empty()
+        && (state->extension_id.empty() || state->extension_id != extension_id.ToWString())) continue;
+    if (status && wcscmp(status, L"removed") == 0
+        && !state->extension_id.empty() && state->extension_id != extension_id.ToWString()) continue;
+    if (status && wcscmp(status, L"loaded") == 0 && !extension_id.empty()
+        && state->extension_id.empty()) {
+      state->extension_id = extension_id.ToWString();
+    }
+    const std::wstring payload = L"{\"phase\":\"extension\",\"status\":\""
+        + JsonEscape(status ? status : L"")
+        + L"\",\"extensionId\":\"" + JsonEscape(extension_id.ToWString())
+        + L"\",\"path\":\"" + JsonEscape(event_path.empty() && state
+            ? state->extension_directory : event_path.wstring())
+        + L"\",\"error\":\"" + JsonEscape(error.ToWString()) + L"\"}";
+    Notify(*state, LB_FBRO_EVENT_VIP_LIFECYCLE, payload);
+  }
+}
+
 class BridgeInitEvent final : public FBroHsInitEvent {
  public:
   BridgeInitEvent() { type_ = InitEventType; }
@@ -1623,14 +1837,39 @@ class BridgeInitEvent final : public FBroHsInitEvent {
   void OnBeforeCommandLineProcessing(const CefString&,
                                      CefRefPtr<CefCommandLine> command_line) override {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (command_line && g_extension_plus_requested) {
+      command_line->AppendSwitch("enable-chrome-runtime");
+    }
     if (command_line && !g_vip_proxy_url.empty()) {
       FBroHsVIPCommandLine_SetProxy(command_line, g_vip_proxy_url,
                                     g_vip_proxy_user, g_vip_proxy_password);
     }
   }
   void OnContextInitialized() override {
+    if (g_extension_plus_requested && !g_extension_plus_enabled) {
+      RejectPendingExtensions(g_license_error.empty()
+          ? L"FBro VIP 授权无效，浏览器插件未加载。" : g_license_error);
+    }
     g_ready = true;
     StartPendingBrowsers();
+  }
+  void OnCreateExtension(CefRefPtr<CefRequestContext> request_context,
+                         const CefString& extension_id) override {
+    NotifyExtensionContext(request_context, L"loaded", extension_id);
+  }
+  void OnCreateExtensionError(CefRefPtr<CefRequestContext> request_context,
+                              const CefString& extension_id,
+                              const CefString& path,
+                              const CefString& error) override {
+    NotifyExtensionContext(request_context, L"failed", extension_id, path, error);
+  }
+  void OnAddExtension(CefRefPtr<CefRequestContext> request_context,
+                      const CefString& extension_id) override {
+    NotifyExtensionContext(request_context, L"loaded", extension_id);
+  }
+  void OnRemoveExtension(CefRefPtr<CefRequestContext> request_context,
+                         const CefString& extension_id) override {
+    NotifyExtensionContext(request_context, L"removed", extension_id);
   }
 #define LB_FBRO_INIT_EVENT_OVERRIDES
 #include "FbroEventOverrides.generated.inc"
@@ -1917,6 +2156,7 @@ class BridgeCookieVisitor final : public FBroHsCookieVisitor {
         + L"\",\"httpOnly\":" + std::wstring(cookie->httponly ? L"true" : L"false")
         + L",\"secure\":" + std::wstring(cookie->secure ? L"true" : L"false")
         + L",\"hasExpires\":" + std::wstring(cookie->has_expires ? L"true" : L"false")
+        + L",\"session\":" + std::wstring(cookie->has_expires ? L"false" : L"true")
         + L",\"sameSite\":" + std::to_wstring(cookie->same_site)
         + L",\"priority\":" + std::to_wstring(cookie->priority)
         + L",\"expires\":" + CookieTimeJson(cookie->expires_time)
@@ -1935,7 +2175,34 @@ class BridgeCookieVisitor final : public FBroHsCookieVisitor {
   IMPLEMENT_REFCOUNTING(BridgeCookieVisitor);
 };
 
-enum class CookieTaskOperation { VisitAll, VisitUrl, Set, Delete, Flush };
+class BridgeSetCookieCallback final : public CefSetCookieCallback {
+ public:
+  explicit BridgeSetCookieCallback(std::shared_ptr<TaskState> task) : task_(std::move(task)) {}
+
+  void OnComplete(bool success) override {
+    CompleteTextTask(task_, success ? L"{\"success\":true}" : L"",
+                     success ? L"" : L"FBro 设置 Cookie 失败");
+  }
+
+ private:
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeSetCookieCallback);
+};
+
+class BridgeCookieFlushCallback final : public CefCompletionCallback {
+ public:
+  explicit BridgeCookieFlushCallback(std::shared_ptr<TaskState> task) : task_(std::move(task)) {}
+
+  void OnComplete() override {
+    CompleteTextTask(task_, L"{\"success\":true}");
+  }
+
+ private:
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeCookieFlushCallback);
+};
+
+enum class CookieTaskOperation { VisitAll, VisitUrl, Set, SetJson, Delete, Flush };
 
 class BridgeCookieTask final : public CefTask {
  public:
@@ -1971,21 +2238,73 @@ class BridgeCookieTask final : public CefTask {
       CefRefPtr<BridgeCookieVisitor> visitor = new BridgeCookieVisitor(task_);
       accepted = FBroHsCookieManager_VisitUrlCookies(
           manager, CefString(arguments_.empty() ? L"" : arguments_[0]), include_http_only_ != 0, visitor);
-    } else if (operation_ == CookieTaskOperation::Set) {
-      std::string name = ToUtf8(arguments_[1]);
-      std::string value = ToUtf8(arguments_[2]);
-      std::string domain = ToUtf8(arguments_[3]);
-      std::string path = ToUtf8(arguments_[4]);
-      E_COOKIEDATA cookie{};
-      cookie.name = name.empty() ? nullptr : name.data();
-      cookie.value = value.empty() ? nullptr : value.data();
-      cookie.domain = domain.empty() ? nullptr : domain.data();
-      cookie.path = path.empty() ? nullptr : path.data();
-      cookie.secure = secure_ != 0;
-      cookie.httponly = http_only_ != 0;
-      accepted = FBroHsCookieManager_SetCookie(manager, CefString(arguments_[0]), &cookie);
-      CompleteTextTask(task_, accepted ? L"{\"accepted\":true}" : L"",
-                       accepted ? L"" : L"FBro 拒绝设置 Cookie");
+    } else if (operation_ == CookieTaskOperation::Set || operation_ == CookieTaskOperation::SetJson) {
+      CefCookie cookie{};
+      if (operation_ == CookieTaskOperation::SetJson) {
+        const auto parsed_value = CefParseJSON(CefString(arguments_[1]), JSON_PARSER_RFC);
+        const auto parsed = parsed_value && parsed_value->GetType() == VTYPE_DICTIONARY
+            ? parsed_value->GetDictionary() : nullptr;
+        if (!parsed || parsed->GetType("name") != VTYPE_STRING || parsed->GetString("name").empty()) {
+          CompleteTextTask(task_, L"", L"Cookie JSON 缺少有效 name");
+          return;
+        }
+        const auto read_string = [&](const char* key) {
+          return parsed->GetType(key) == VTYPE_STRING ? parsed->GetString(key).ToWString() : std::wstring();
+        };
+        const auto read_bool = [&](const char* key, bool fallback) {
+          return parsed->GetType(key) == VTYPE_BOOL ? parsed->GetBool(key) : fallback;
+        };
+        const auto read_int = [](CefRefPtr<CefDictionaryValue> dictionary, const char* key, int fallback) {
+          return dictionary && dictionary->GetType(key) == VTYPE_INT ? dictionary->GetInt(key) : fallback;
+        };
+        CefString(&cookie.name) = read_string("name");
+        CefString(&cookie.value) = read_string("value");
+        CefString(&cookie.domain) = read_string("domain");
+        const std::wstring cookie_path = read_string("path");
+        CefString(&cookie.path) = cookie_path.empty() ? L"/" : cookie_path;
+        cookie.secure = read_bool("secure", false) ? 1 : 0;
+        cookie.httponly = read_bool("httpOnly", false) ? 1 : 0;
+        const bool session = read_bool("session", false);
+        const auto expires = parsed->GetType("expires") == VTYPE_DICTIONARY
+            ? parsed->GetDictionary("expires") : nullptr;
+        cookie.has_expires = !session && expires;
+        if (cookie.has_expires) {
+          cef_time_t expires_time{};
+          expires_time.year = read_int(expires, "year", 0);
+          expires_time.month = read_int(expires, "month", 0);
+          expires_time.day_of_month = read_int(expires, "day", 0);
+          expires_time.hour = read_int(expires, "hour", 0);
+          expires_time.minute = read_int(expires, "minute", 0);
+          expires_time.second = read_int(expires, "second", 0);
+          expires_time.millisecond = read_int(expires, "millisecond", 0);
+          SYSTEMTIME system_time{};
+          system_time.wYear = static_cast<WORD>(expires_time.year);
+          system_time.wMonth = static_cast<WORD>(expires_time.month);
+          system_time.wDay = static_cast<WORD>(expires_time.day_of_month);
+          system_time.wHour = static_cast<WORD>(expires_time.hour);
+          system_time.wMinute = static_cast<WORD>(expires_time.minute);
+          system_time.wSecond = static_cast<WORD>(expires_time.second);
+          system_time.wMilliseconds = static_cast<WORD>(expires_time.millisecond);
+          FILETIME file_time{};
+          if (!SystemTimeToFileTime(&system_time, &file_time)
+              || !cef_time_to_basetime(&expires_time, &cookie.expires)) {
+            CompleteTextTask(task_, L"", L"Cookie JSON 的 expires 无效");
+            return;
+          }
+        }
+        cookie.same_site = static_cast<cef_cookie_same_site_t>((std::max)(0, (std::min)(3, read_int(parsed, "sameSite", 0))));
+        cookie.priority = static_cast<cef_cookie_priority_t>((std::max)(0, (std::min)(3, read_int(parsed, "priority", 0))));
+      } else {
+        CefString(&cookie.name) = arguments_[1];
+        CefString(&cookie.value) = arguments_[2];
+        CefString(&cookie.domain) = arguments_[3];
+        CefString(&cookie.path) = arguments_[4].empty() ? L"/" : arguments_[4];
+        cookie.secure = secure_ != 0;
+        cookie.httponly = http_only_ != 0;
+      }
+      CefRefPtr<BridgeSetCookieCallback> callback = new BridgeSetCookieCallback(task_);
+      accepted = manager->SetCookie(CefString(arguments_[0]), cookie, callback);
+      if (!accepted) CompleteTextTask(task_, L"", L"FBro 拒绝提交 Cookie 写入");
       return;
     } else if (operation_ == CookieTaskOperation::Delete) {
       accepted = FBroHsCookieManager_DeleteCookies(manager, CefString(arguments_[0]), CefString(arguments_[1]));
@@ -1993,9 +2312,9 @@ class BridgeCookieTask final : public CefTask {
                        accepted ? L"" : L"FBro 拒绝删除 Cookie");
       return;
     } else {
-      accepted = FBroHsCookieManager_FlushStore(manager);
-      CompleteTextTask(task_, accepted ? L"{\"accepted\":true}" : L"",
-                       accepted ? L"" : L"FBro 拒绝刷新 Cookie 存储");
+      CefRefPtr<BridgeCookieFlushCallback> callback = new BridgeCookieFlushCallback(task_);
+      accepted = manager->FlushStore(callback);
+      if (!accepted) CompleteTextTask(task_, L"", L"FBro 拒绝刷新 Cookie 存储");
       return;
     }
     if (!accepted) CompleteTextTask(task_, L"", L"FBro 拒绝启动 Cookie 遍历");
@@ -2446,8 +2765,13 @@ class BridgeVipExtensionTask final : public CefTask {
       FBroHsVIPRequestContext_UnstallExtension(context, extension_id);
       CompleteTextTask(task_, L"{\"success\":true}");
     } else if (action == L"getextensionpath") {
-      CompleteTextTask(task_, L"{\"value\":\"" + JsonEscape(FromFbroString(
-          FBroHsVIPRequestContext_GetExtensionPath(context, extension_id))) + L"\"}");
+      std::wstring extension_path = FromFbroString(
+          FBroHsVIPRequestContext_GetExtensionPath(context, extension_id));
+      if (extension_path.empty() && !context->IsGlobal()) {
+        extension_path = FromFbroString(FBroHsVIPRequestContext_GetExtensionPath(
+            CefRequestContext::GetGlobalContext(), extension_id));
+      }
+      CompleteTextTask(task_, L"{\"value\":\"" + JsonEscape(extension_path) + L"\"}");
     } else if (action == L"getextensionurl") {
       CompleteTextTask(task_, L"{\"value\":\"" + JsonEscape(FromFbroString(
           FBroHsVIPRequestContext_GetExtensionURL(context, extension_id))) + L"\"}");
@@ -3184,14 +3508,44 @@ int __stdcall LB_FBro_SetVipStartupProxy(const wchar_t* url,
 }
 
 int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
+  LB_FBRO_INITIALIZE_OPTIONS_V1 options{};
+  options.struct_size = sizeof(options);
+  options.abi_version = LB_FBRO_INITIALIZE_OPTIONS_VERSION_V1;
+  options.runtime_directory = runtime_directory;
+  options.remote_debugging_port = 0;
+  return LB_FBro_InitializeEx(&options);
+}
+
+int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options) {
   if (g_initialized) return 1;
+  if (!options || options->struct_size < sizeof(LB_FBRO_INITIALIZE_OPTIONS_V1)
+      || options->abi_version != LB_FBRO_INITIALIZE_OPTIONS_VERSION_V1) return -1;
+  const wchar_t* runtime_directory = options->runtime_directory;
   if (!runtime_directory || !*runtime_directory) return -1;
+  if (options->remote_debugging_port != 0
+      && (options->remote_debugging_port < 1024 || options->remote_debugging_port > 65535)) return -1;
   g_shutdown_started = false;
   g_license_attempted = false;
   g_license_valid = false;
+  g_extension_plus_requested = false;
+  g_extension_plus_enabled = false;
   g_license_error.clear();
+  SecureClearPendingLicenseCredential();
+  g_ready = false;
+  g_startup_extension_directory.clear();
+  g_startup_extension_status.clear();
+  g_startup_extension_id.clear();
+  g_startup_extension_event_path.clear();
+  g_startup_extension_error.clear();
   g_runtime_directory = runtime_directory;
-  g_root_cache_directory = AbsoluteNormalizedPath(g_runtime_directory / L".fbro-global-cache");
+  wchar_t root_cache_override[32768]{};
+  const DWORD root_cache_length = GetEnvironmentVariableW(
+      L"LINGBUILDER_FBRO_ROOT_CACHE_DIRECTORY", root_cache_override,
+      static_cast<DWORD>(_countof(root_cache_override)));
+  g_root_cache_directory = root_cache_length > 0 && root_cache_length < _countof(root_cache_override)
+      ? AbsoluteNormalizedPath(root_cache_override)
+      : AbsoluteNormalizedPath(g_runtime_directory / L".fbro-global-cache");
+  SetEnvironmentVariableW(L"LINGBUILDER_FBRO_ROOT_CACHE_DIRECTORY", nullptr);
   std::error_code cache_error;
   std::filesystem::create_directories(g_root_cache_directory, cache_error);
   WSADATA winsock{};
@@ -3199,7 +3553,7 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   g_winsock_started = true;
   const auto subprocess = g_runtime_directory / L"FBroSubprocess.exe";
   const auto cache = g_root_cache_directory;
-  const auto log = g_runtime_directory / L"fbro.log";
+  const auto log = g_root_cache_directory / L"fbro.log";
   const auto locales = g_runtime_directory / L"locales";
   const std::string runtime_ansi = ToAnsi(g_runtime_directory.wstring());
   const std::string subprocess_ansi = ToAnsi(subprocess.wstring());
@@ -3209,6 +3563,11 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   wchar_t proxy_url[4096]{};
   wchar_t proxy_user[4096]{};
   wchar_t proxy_password[4096]{};
+  wchar_t disable_auto_multiple[8]{};
+  const bool auto_multiple_disabled = GetEnvironmentVariableW(
+      L"LINGBUILDER_FBRO_DISABLE_AUTO_MULTIPLE", disable_auto_multiple,
+      static_cast<DWORD>(_countof(disable_auto_multiple))) > 0;
+  SetEnvironmentVariableW(L"LINGBUILDER_FBRO_DISABLE_AUTO_MULTIPLE", nullptr);
   if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_PROXY_URL", proxy_url, 4096) > 0) {
     g_vip_proxy_url = proxy_url;
     GetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_PROXY_USER", proxy_user, 4096);
@@ -3219,26 +3578,40 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   SecureZeroMemory(proxy_password, sizeof(proxy_password));
   // DPI awareness is owned by the generated host and must be set before it creates any HWND.
   FBroSetV8DefaultsHeapSize(4, 2048);
+  wchar_t authorization_code[4096]{};
+  const DWORD authorization_length = GetEnvironmentVariableW(
+      L"LINGBUILDER_FBRO_VIP_AUTHORIZATION_CODE", authorization_code,
+      static_cast<DWORD>(_countof(authorization_code)));
+  SetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_AUTHORIZATION_CODE", nullptr);
   wchar_t vip_key[4096]{};
-  if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_KEY", vip_key, 4096) > 0) {
-    g_license_attempted = true;
-    FBroHsBrowser_SetLicenceKey(CefString(vip_key));
-    const BOOL license_result = FBroHsOnlineLicenseControl_SetKey(CefString(vip_key));
-    g_license_valid = license_result == TRUE;
-    if (!g_license_valid) {
-      g_license_error = FromFbroString(FBroHsOnlineLicenseControl_GetError());
-      const std::wstring supplied_key(vip_key);
-      if (!supplied_key.empty()) {
-        size_t position = 0;
-        while ((position = g_license_error.find(supplied_key, position)) != std::wstring::npos) {
-          g_license_error.replace(position, supplied_key.size(), L"[已隐藏]");
-          position += 5;
-        }
-      }
-      if (g_license_error.empty()) g_license_error = L"授权服务拒绝了该 VIP Key";
-    }
-    SecureZeroMemory(vip_key, sizeof(vip_key));
+  const DWORD vip_key_length = GetEnvironmentVariableW(
+      L"LINGBUILDER_FBRO_VIP_KEY", vip_key, static_cast<DWORD>(_countof(vip_key)));
+  SetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_KEY", nullptr);
+  g_license_attempted = authorization_length > 0 || vip_key_length > 0;
+  if (authorization_length > 0 && authorization_length < _countof(authorization_code)) {
+    g_pending_license_credential.assign(
+        authorization_code, authorization_code + authorization_length);
+    g_pending_license_credential.push_back(L'\0');
+  } else if (vip_key_length > 0 && vip_key_length < _countof(vip_key)) {
+    g_pending_license_credential.assign(vip_key, vip_key + vip_key_length);
+    g_pending_license_credential.push_back(L'\0');
+    g_pending_credential_sets_browser_license = true;
+  } else if (g_license_attempted) {
+    g_license_error = L"FBro VIP 授权码长度无效";
   }
+  g_extension_plus_requested = !g_pending_license_credential.empty();
+  SecureZeroMemory(authorization_code, sizeof(authorization_code));
+  SecureZeroMemory(vip_key, sizeof(vip_key));
+  wchar_t startup_extension[32768]{};
+  const DWORD startup_extension_length = GetEnvironmentVariableW(
+      L"LINGBUILDER_FBRO_STARTUP_EXTENSION", startup_extension,
+      static_cast<DWORD>(_countof(startup_extension)));
+  SetEnvironmentVariableW(L"LINGBUILDER_FBRO_STARTUP_EXTENSION", nullptr);
+  if (startup_extension_length > 0
+      && startup_extension_length < _countof(startup_extension)) {
+    g_startup_extension_directory.assign(startup_extension, startup_extension_length);
+  }
+  SecureZeroMemory(startup_extension, sizeof(startup_extension));
   FBroInitSettings settings{};
   settings.no_sandbox = TRUE;
   settings.browser_subprocess_path = const_cast<char*>(subprocess_ansi.c_str());
@@ -3254,16 +3627,33 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   settings.log_severity = LOGSEVERITY_DEFAULT;
   settings.resources_dir_path = const_cast<char*>(runtime_ansi.c_str());
   settings.locales_dir_path = const_cast<char*>(locales_ansi.c_str());
-  settings.enable_auto_multiple = TRUE;
+  settings.remote_debugging_port = options->remote_debugging_port;
+  settings.enable_auto_multiple = auto_multiple_disabled ? FALSE : TRUE;
   g_init_event = new BridgeInitEvent();
   g_vip_event = new BridgeVipEvent();
   FBroSetVipEvent(g_vip_event);
   if (!FBroHsInitPro(&settings, g_init_event, 1024)) {
+    SecureClearPendingLicenseCredential();
     g_init_event = nullptr;
     g_vip_event = nullptr;
     WSACleanup();
     g_winsock_started = false;
     return -2;
+  }
+  // The online VIP licence check runs through FBrowserVIP -> FBrowserCEF3lib ->
+  // libcef, so it must not execute before CEF exists. Calling it earlier makes
+  // libcef fail a CHECK (0x80000003) and kills the host process; a full crash
+  // dump resolved the faulting frame to LB_FBro_InitializeEx -> FBrowserVIP.
+  // The reference C# app gets away with the reverse order because it applies the
+  // code in a plain GUI process, not inside the CEF host itself.
+  if (!ApplyPendingLicenseAfterInitialize() && g_extension_plus_requested) {
+    // Keep running so ordinary browser functionality remains available;
+    // extension requests will receive a precise VIP authorization failure.
+    g_extension_plus_enabled = false;
+  }
+  if (g_extension_plus_requested && g_license_valid) {
+    FBroHsVIPRequestContext_EnableExtensionPlus();
+    g_extension_plus_enabled = true;
   }
   g_initialized = true;
   return 1;
@@ -3273,22 +3663,31 @@ int __stdcall LB_FBro_IsReady(void) { return g_ready ? 1 : 0; }
 
 int __stdcall LB_FBro_GetVipLicenseInfoJson(wchar_t* result, size_t capacity) {
   const auto text = [](CefRefPtr<FBroString> value) { return JsonEscape(FromFbroString(value)); };
+  const bool ready = g_ready.load();
+  std::wstring license_error;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    license_error = g_license_error;
+  }
   std::wstring json = L"{";
   json += L"\"licenseAttempted\":" + std::wstring(g_license_attempted ? L"true" : L"false") + L",";
   json += L"\"licenseValid\":" + std::wstring(g_license_valid ? L"true" : L"false") + L",";
-  json += L"\"sdkReportsLicense\":" + std::wstring(FBroBrowser_IsLicenceKey() ? L"true" : L"false") + L",";
-  json += L"\"machineCode\":\"" + text(FBroHsBrowser_GetMachineCode()) + L"\",";
-  json += L"\"expirationTime\":\"" + text(FBroHsBrowser_GetExpirationTime()) + L"\",";
-  json += L"\"registrationTime\":\"" + text(FBroHsBrowser_GetRegistrationTime()) + L"\",";
-  json += L"\"version\":\"" + text(FBroHsBrowser_GetVersionStr()) + L"\",";
-  json += L"\"functions\":\"" + text(FBroHsBrowser_GetFunctionStr()) + L"\",";
-  json += L"\"licenseType\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseType()) + L"\",";
-  json += L"\"licenseStartDate\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseStartDate()) + L"\",";
-  json += L"\"licenseEndDate\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseEndDate()) + L"\",";
-  json += L"\"devTools\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseDevTool()) + L"\",";
-  json += L"\"licensedFunctions\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseFunction()) + L"\",";
-  json += L"\"systemVersion\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseSysVersion()) + L"\",";
-  json += L"\"error\":\"" + JsonEscape(g_license_error) + L"\"}";
+  json += L"\"extensionPlusRequested\":" + std::wstring(g_extension_plus_requested ? L"true" : L"false") + L",";
+  json += L"\"extensionPlusEnabled\":" + std::wstring(g_extension_plus_enabled ? L"true" : L"false") + L",";
+  json += L"\"sdkReportsLicense\":"
+      + std::wstring(ready && FBroBrowser_IsLicenceKey() ? L"true" : L"false") + L",";
+  json += L"\"machineCode\":\"" + (ready ? text(FBroHsBrowser_GetMachineCode()) : L"") + L"\",";
+  json += L"\"expirationTime\":\"" + (ready ? text(FBroHsBrowser_GetExpirationTime()) : L"") + L"\",";
+  json += L"\"registrationTime\":\"" + (ready ? text(FBroHsBrowser_GetRegistrationTime()) : L"") + L"\",";
+  json += L"\"version\":\"" + (ready ? text(FBroHsBrowser_GetVersionStr()) : L"") + L"\",";
+  json += L"\"functions\":\"" + (ready ? text(FBroHsBrowser_GetFunctionStr()) : L"") + L"\",";
+  json += L"\"licenseType\":\"" + (ready ? text(FBroHsOnlineLicenseControl_GetShowLicenseType()) : L"") + L"\",";
+  json += L"\"licenseStartDate\":\"" + (ready ? text(FBroHsOnlineLicenseControl_GetShowLicenseStartDate()) : L"") + L"\",";
+  json += L"\"licenseEndDate\":\"" + (ready ? text(FBroHsOnlineLicenseControl_GetShowLicenseEndDate()) : L"") + L"\",";
+  json += L"\"devTools\":\"" + (ready ? text(FBroHsOnlineLicenseControl_GetShowLicenseDevTool()) : L"") + L"\",";
+  json += L"\"licensedFunctions\":\"" + (ready ? text(FBroHsOnlineLicenseControl_GetShowLicenseFunction()) : L"") + L"\",";
+  json += L"\"systemVersion\":\"" + (ready ? text(FBroHsOnlineLicenseControl_GetShowLicenseSysVersion()) : L"") + L"\",";
+  json += L"\"error\":\"" + JsonEscape(license_error) + L"\"}";
   return CopyResult(json, result, capacity);
 }
 
@@ -3302,6 +3701,15 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx(HWND host, const wchar_t* url,
                                           const wchar_t* profile_directory,
                                           const wchar_t* user_agent, unsigned int flags,
                                           LB_FBRO_EVENT_CALLBACK callback, void* user_data) {
+  return LB_FBro_CreateEx2(host, url, profile_directory, user_agent, L"", flags, callback, user_data);
+}
+
+LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx2(HWND host, const wchar_t* url,
+                                           const wchar_t* profile_directory,
+                                           const wchar_t* user_agent,
+                                           const wchar_t* extension_directory,
+                                           unsigned int flags,
+                                           LB_FBRO_EVENT_CALLBACK callback, void* user_data) {
   if (!g_initialized || !IsWindow(host)) return 0;
   auto state = std::make_unique<BrowserState>();
   state->handle = g_next_handle.fetch_add(1);
@@ -3312,6 +3720,7 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx(HWND host, const wchar_t* url,
                                            profile_warning).wstring();
   state->last_error = profile_warning;
   state->user_agent = user_agent ? user_agent : L"";
+  state->extension_directory = extension_directory ? extension_directory : L"";
   state->flags = flags;
   state->callback = callback;
   state->user_data = user_data;
@@ -3320,6 +3729,21 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx(HWND host, const wchar_t* url,
   {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
     g_browsers.emplace(handle, std::move(state));
+    auto* inserted = Find(handle);
+    if (inserted && !inserted->extension_directory.empty()
+        && !g_startup_extension_status.empty()
+        && AbsoluteNormalizedPath(inserted->extension_directory)
+            == AbsoluteNormalizedPath(g_startup_extension_directory)) {
+      if (g_startup_extension_status == L"loaded") {
+        inserted->extension_id = g_startup_extension_id;
+      }
+      const std::wstring payload = L"{\"phase\":\"extension\",\"status\":\""
+          + JsonEscape(g_startup_extension_status) + L"\",\"extensionId\":\""
+          + JsonEscape(g_startup_extension_id) + L"\",\"path\":\""
+          + JsonEscape(g_startup_extension_event_path) + L"\",\"error\":\""
+          + JsonEscape(g_startup_extension_error) + L"\"}";
+      Notify(*inserted, LB_FBRO_EVENT_VIP_LIFECYCLE, payload);
+    }
     should_start = g_ready && !g_shutdown_started;
   }
   if (should_start) ScheduleBrowserStart(handle);
@@ -3574,6 +3998,16 @@ LB_FBRO_TASK_HANDLE __stdcall LB_FBro_CookieSetAsync(
       {url, name, value ? value : L"", domain ? domain : L"", path ? path : L""},
       0, secure, http_only, task);
   ScheduleManagedTask(start, task, L"无法投递 Cookie 设置任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_CookieSetJsonAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* url, const wchar_t* cookie_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data) {
+  if (!url || !*url || !cookie_json || !*cookie_json) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeCookieTask> start = new BridgeCookieTask(
+      browser, CookieTaskOperation::SetJson, {url, cookie_json}, 0, 0, 0, task);
+  ScheduleManagedTask(start, task, L"无法投递结构化 Cookie 设置任务");
   return task->handle;
 }
 LB_FBRO_TASK_HANDLE __stdcall LB_FBro_CookieDeleteAsync(

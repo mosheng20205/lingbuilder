@@ -18,6 +18,26 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.3.0',
+    date: '2026-08-07',
+    title: 'new_emoji FBro 浏览器外壳与可分享源码包',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          'new_emoji 浏览器外壳模板完整提供 Chrome 风格标签页、地址栏、菜单、弹层、窗口控制和真实 FBro x64 子宿主。',
+          '新增可回读验证的一键导出入口，可生成携带设计器模型、x64 配置和 SDK 资产的 .lcpppkg 完整源码包。'
+        ]
+      },
+      {
+        title: '兼容性',
+        items: [
+          'new_emoji UI 2.0 与浏览器外壳模板要求 LingBuilder 0.3.0；F5、原生预览与 Visual Studio 导出继续共用同一生成和依赖物化链。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.2.9',
     date: '2026-08-04',
     title: '微信多开工具与无 IDE 构建闭环',

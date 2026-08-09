@@ -89,6 +89,8 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.equal(tools.tools.length, 13);
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.project.create'));
+    const projectCreateTool = tools.tools.find(tool => tool.name === 'lingbuilder.project.create');
+    assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('new-emoji-fbro-browser-shell'));
     const editTool = tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose');
     const editProperties = (editTool?.inputSchema as any)?.properties || {};
     assert.ok(editProperties.workspaceFiles, 'MCP edit.propose must accept current multi-file contents');
@@ -200,6 +202,77 @@ test('AI Bridge project creation inherits the workspace module manifest when omi
   assert.equal(explicitBasic.result?.modules.selection, 'explicit');
   await writeService.undoProjectCreate(explicitBasic.result!.receipt.receiptId, true);
   assert.equal(await exists(explicitPath), false);
+  await writeService.shutdown();
+});
+
+test('AI Bridge browser shell template previews defaults, creates atomically, and supports undo', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  await installTestModule(workspaceRoot, {
+    schemaVersion: 2,
+    id: 'lingbuilder.new_emoji.ui',
+    name: 'new_emoji 原生界面库',
+    version: '2.0.0',
+    minLingBuilderVersion: '0.3.0',
+    category: '界面',
+    description: 'AI Bridge 浏览器外壳模板测试用 new_emoji 模块。',
+    contributes: { docs: [{ title: '测试文档', path: 'docs/README.md' }] }
+  }, 'docs/README.md');
+  await installTestModule(workspaceRoot, {
+    schemaVersion: 2,
+    id: 'lingbuilder.fbro.sdk',
+    name: 'FBro SDK',
+    version: '135.0.21.2.1.0',
+    category: '界面',
+    description: 'AI Bridge 浏览器外壳模板测试用只读 SDK 资产模块。'
+  });
+
+  const request = {
+    name: 'AI 浏览器外壳',
+    projectId: 'ai-browser-shell',
+    templateId: 'new-emoji-fbro-browser-shell' as const,
+    openInWorkbench: false
+  };
+  const previewService = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const templates = await previewService.listProjectTemplates();
+  assert.ok(templates.templates.some(template => template.id === request.templateId));
+  const preview = await previewService.createProject(request);
+  assert.equal(preview.applied, false);
+  assert.equal(preview.preview.modules.selection, 'template-default');
+  assert.deepEqual(preview.preview.modules.requestedModuleIds, [
+    'lingbuilder.win32.basic',
+    'lingbuilder.new_emoji.ui',
+    'lingbuilder.fbro.browser',
+    'lingbuilder.fbro.sdk',
+    'lingbuilder.new_emoji.fbro-shell'
+  ]);
+  assert.equal(preview.preview.project.buildProperties?.architecture, 'x64');
+  const mainWindow = preview.preview.designerProject.windows[0];
+  assert.equal(mainWindow.width, 1180);
+  assert.equal(mainWindow.height, 760);
+  assert.equal(mainWindow.designerBackend, 'new-emoji');
+  assert.equal(mainWindow.windowFrame?.preset, 'browserShell');
+  assert.equal(mainWindow.windowFrame?.flags, 0x3f);
+  const sourcePreview = preview.preview.files.find(file => file.relativePath.endsWith('/MainWindow.lcpp'));
+  assert.match(sourcePreview?.content || '', /浏览器外壳_创建\(浏览器标签页, 浏览器页面占位, &浏览器状态改变\)/u);
+  assert.match(sourcePreview?.content || '', /Ctrl键按下 并且 键码 == 76/u);
+  assert.equal(await exists(path.join(workspaceRoot, 'src', request.projectId)), false);
+  assert.equal(await exists(path.join(workspaceRoot, '.lingbuilder', 'projects', request.projectId)), false);
+  await previewService.shutdown();
+
+  const writeService = new AiBridgeService({ ...createOptions(workspaceRoot, 'yolo'), token: 'browser-shell-create-token' });
+  const created = await writeService.createProject({ ...request, approved: true });
+  assert.equal(created.applied, true);
+  const moduleManifestPath = path.join(workspaceRoot, '.lingbuilder', 'projects', request.projectId, 'project-modules.json');
+  const savedModules = JSON.parse(await fs.readFile(moduleManifestPath, 'utf8')) as { enabledModuleIds: string[] };
+  assert.ok(savedModules.enabledModuleIds.includes('lingbuilder.new_emoji.fbro-shell'));
+  assert.ok(savedModules.enabledModuleIds.includes('lingbuilder.fbro.sdk'));
+  assert.ok(await exists(path.join(workspaceRoot, 'src', request.projectId, 'MainWindow.lcpp')));
+  assert.ok(await exists(path.join(workspaceRoot, '.lingbuilder', 'projects', request.projectId, 'window-designer.json')));
+
+  const undone = await writeService.undoProjectCreate(created.result!.receipt.receiptId, true);
+  assert.equal(undone.projectId, request.projectId);
+  assert.equal(await exists(path.join(workspaceRoot, 'src', request.projectId)), false);
+  assert.equal(await exists(path.join(workspaceRoot, '.lingbuilder', 'projects', request.projectId)), false);
   await writeService.shutdown();
 });
 
@@ -1004,6 +1077,39 @@ test('AI Bridge diagnostics and modules use LingCpp module context', async () =>
   assert.equal(typeof modules.summary, 'string');
 });
 
+test('AI Bridge diagnostics preserve typed runtime control reference errors', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const sourceCode = [
+    '类 MainWindow',
+    '    事件 创建完毕()',
+    '        局部 编辑框 输入框 = 通过标记文本获取编辑框("输入")',
+    '        按钮_绑定被单击(输入框, &处理点击)',
+    '    结束',
+    '    事件 处理点击()',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const result = await service.getLingCppDiagnostics({
+    filePath: 'src/MainWindow.lcpp',
+    sourceCode,
+    designerProject: {
+      schemaVersion: 2,
+      id: 'ai-runtime-control-project',
+      name: 'AI 运行时控件诊断',
+      windows: [{
+        id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+        width: 640, height: 480, background: '#ffffff', description: '', controls: []
+      }]
+    }
+  });
+  assert.ok(result.diagnostics.some(diagnostic => (
+    diagnostic.id.startsWith('lingcpp-control-reference-type-')
+    && diagnostic.message.includes('编辑框')
+    && diagnostic.message.includes('不能用于参数')
+  )), JSON.stringify(result.diagnostics));
+});
+
 test('AI Bridge diagnostics load project constants from the fixed symbol file', async () => {
   const workspaceRoot = await createTempWorkspace();
   const projectId = 'constants-project';
@@ -1475,6 +1581,21 @@ test('AI Bridge CLI handles SIGTERM by shutting down managed runs', { timeout: 1
 
 async function createTempWorkspace(): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-bridge-'));
+}
+
+async function installTestModule(
+  workspaceRoot: string,
+  manifest: Record<string, unknown>,
+  documentationPath?: string
+): Promise<void> {
+  const moduleRoot = path.join(workspaceRoot, '.lingbuilder', 'modules', String(manifest.id));
+  await fs.mkdir(moduleRoot, { recursive: true });
+  await fs.writeFile(path.join(moduleRoot, 'lingbuilder.module.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  if (documentationPath) {
+    const target = path.join(moduleRoot, ...documentationPath.split('/'));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, '# 测试模块文档\n', 'utf8');
+  }
 }
 
 function createDeferred<T>() {

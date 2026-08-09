@@ -11,7 +11,7 @@ import { PROTOBUF_MODULE_ID } from './protobufModule';
 import { validateProtobufSdk, type ProtobufTargetArchitecture } from './protobufSdk';
 
 const FBRO_SDK_VERSION = '135.0.21';
-const FBRO_BRIDGE_VERSION = '2.1.0';
+const FBRO_BRIDGE_VERSION = '2.2.0';
 const FBRO_V3_HEADER_MARKERS = [
   'LB_FBRO_ABI_VERSION_V3',
   'LB_FBRO_EVENT_PACKET_V3',
@@ -20,7 +20,9 @@ const FBRO_V3_HEADER_MARKERS = [
   'LB_FBro_SetEventCallbackV3',
   'LB_FBro_SetEventSubscription',
   'LB_FBro_CompleteEventContinuation',
-  'LB_FBro_CancelEventContinuation'
+  'LB_FBro_CancelEventContinuation',
+  'LB_FBro_CreateEx2',
+  'LB_FBro_CookieSetJsonAsync'
 ] as const;
 
 export interface ModuleNativeDependencyLayout {
@@ -61,19 +63,14 @@ export async function materializeModuleNativeDependencies(
   };
 
   const enabledIds = new Set(enabledModules.map(module => module.manifest.id));
-  if (enabledIds.has('lingbuilder.fbro.browser') && enabledIds.has('lingbuilder.cef3.browser')) {
-    addBlockingDiagnostic(plan, 'FBro 浏览器（CEF 135）与 LingBuilder CEF3 浏览器（CEF 150）不能在同一项目中启用。请禁用其中一个模块。');
-    return plan;
-  }
-  if (enabledIds.has('lingbuilder.fbro.browser')) {
-    const otherCefModule = enabledModules.find(module => module.manifest.id !== 'lingbuilder.fbro.browser'
-      && (module.manifest.targets || []).some(target => (target.runtimeFiles || [])
-        .some(file => path.basename(file).toLowerCase() === 'libcef.dll')));
-    if (otherCefModule) {
-      addBlockingDiagnostic(plan, `FBro 浏览器检测到其它模块 ${otherCefModule.manifest.name} 也携带 libcef.dll，已阻止混用不同 CEF 版本。`);
-      return plan;
-    }
-  }
+  // When another Chromium module is present, FBro's CEF 135 runtime is copied
+  // only to fbro-host. Project generation blocks any remaining in-process FBro
+  // controls before compilation, so the executable's libcef.dll stays owned by
+  // the other module (for example CEF3's CEF 150).
+  const fbroHostOnly = enabledIds.has('lingbuilder.fbro.browser') && enabledModules.some(module =>
+    module.manifest.id !== 'lingbuilder.fbro.browser' && (module.manifest.id === 'lingbuilder.cef3.browser'
+      || (module.manifest.targets || []).some(target => (target.runtimeFiles || [])
+        .some(file => path.basename(file).toLowerCase() === 'libcef.dll'))));
 
   if (enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')) {
     await materializeEdgeViewSdk(layout, plan);
@@ -84,7 +81,7 @@ export async function materializeModuleNativeDependencies(
   }
 
   if (enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser')) {
-    await materializeFbroSdk(layout, plan);
+    await materializeFbroSdk(layout, plan, fbroHostOnly);
   }
 
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
@@ -170,7 +167,11 @@ export async function materializeModuleNativeDependencies(
         continue;
       }
       const sourcePath = path.join(module.installPath, runtimeFile);
-      const targetPath = path.join(layout.binDir, path.basename(runtimeFile));
+      const normalizedRuntimeFile = runtimeFile.replaceAll('\\', '/');
+      const runtimePrefix = normalizedRuntimeFile.toLowerCase().startsWith('runtime/')
+        ? normalizedRuntimeFile.slice('runtime/'.length)
+        : path.basename(normalizedRuntimeFile);
+      const targetPath = path.join(layout.binDir, ...runtimePrefix.split('/'));
       try {
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
         await fs.copyFile(sourcePath, targetPath);
@@ -255,7 +256,12 @@ export async function exportModuleNativeDependencies(
     }, plan);
   }
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
-    const preferredTarget = getPreferredModuleTarget(module);
+    // Visual Studio 导出同时声明 Win32/x64 配置，因此可移植工程必须携带模块
+    // 已发布的全部 Windows MSVC target，不能只复制当前机器首选架构。
+    const exportTargets = (module.manifest.targets || []).filter(target => (
+      target.platform === 'windows' && target.toolchain === 'msvc'
+    ));
+    const preferredTarget = exportTargets[0] || getPreferredModuleTarget(module);
     if (!preferredTarget) {
       const diagnostic = getUnsupportedModuleTargetDiagnostic(module);
       if (diagnostic) diagnostics.push(diagnostic);
@@ -263,11 +269,6 @@ export async function exportModuleNativeDependencies(
     }
     if (!module.installPath || module.installPath.startsWith('builtin://')) continue;
     const exportModuleRoot = path.join(exportDir, 'modules', module.manifest.id);
-    // Visual Studio 导出同时声明 Win32/x64 配置，因此可移植工程必须携带模块
-    // 已发布的全部 Windows MSVC target，不能只复制当前机器首选架构。
-    const exportTargets = (module.manifest.targets || []).filter(target => (
-      target.platform === 'windows' && target.toolchain === 'msvc'
-    ));
     const targets = exportTargets.length > 0 ? exportTargets : [preferredTarget];
     for (const relativePath of unique([
       ...targets.flatMap(target => target.headers || []),
@@ -380,7 +381,8 @@ const fbroMaterializationLocks = new Map<string, Promise<void>>();
 
 async function materializeFbroSdk(
   layout: ModuleNativeDependencyLayout,
-  plan: ModuleNativeDependencyPlan
+  plan: ModuleNativeDependencyPlan,
+  hostOnly = false
 ): Promise<void> {
   plan.requiresMsvc = true;
   if (process.platform !== 'win32') {
@@ -402,7 +404,7 @@ async function materializeFbroSdk(
   const previous = fbroMaterializationLocks.get(lockKey) || Promise.resolve();
   const current = previous.then(() => withFbroFilesystemLock(
     layout.binDir,
-    () => materializeFbroSdkUnlocked(sdkRoot, layout, plan)
+    () => materializeFbroSdkUnlocked(sdkRoot, layout, plan, hostOnly)
   ));
   fbroMaterializationLocks.set(lockKey, current);
   try {
@@ -447,7 +449,8 @@ async function withFbroFilesystemLock(binDir: string, action: () => Promise<void
 async function materializeFbroSdkUnlocked(
   sdkRoot: string,
   layout: ModuleNativeDependencyLayout,
-  plan: ModuleNativeDependencyPlan
+  plan: ModuleNativeDependencyPlan,
+  hostOnly: boolean
 ): Promise<void> {
   const manifestPath = path.join(sdkRoot, 'runtime-manifest.json');
   let manifest: FbroRuntimeManifest;
@@ -469,9 +472,12 @@ async function materializeFbroSdkUnlocked(
 
   const moduleRoot = path.join('modules', 'lingbuilder.fbro.browser');
   const bridgeHeader = path.join(sdkRoot, 'include', 'LingBuilderFbroBridge.h');
+  const processRuntimeHeader = path.join(sdkRoot, 'include', 'LingBuilderFbroProcessRuntime.hpp');
+  const jsonHeader = path.join(sdkRoot, 'include', 'nlohmann', 'json.hpp');
+  const jsonLicense = path.join(sdkRoot, 'include', 'nlohmann', 'LICENSE.MIT');
   const bridgeLib = path.join(sdkRoot, 'lib', 'x64', 'LingBuilderFbroBridge.lib');
   const bridgeDll = path.join(sdkRoot, 'bridge', 'x64', 'LingBuilderFbroBridge.dll');
-  for (const required of [bridgeHeader, bridgeLib, bridgeDll]) {
+  for (const required of [bridgeHeader, processRuntimeHeader, jsonHeader, jsonLicense, bridgeLib, bridgeDll]) {
     if (!await pathExists(required)) {
       addBlockingDiagnostic(plan, `FBro SDK 文件缺失：${path.relative(sdkRoot, required).replace(/\\/g, '/')}`);
       return;
@@ -494,6 +500,9 @@ async function materializeFbroSdkUnlocked(
   try {
     for (const root of roots) {
       await copyFileAtomicallyIfDifferent(bridgeHeader, path.join(root, 'include', 'LingBuilderFbroBridge.h'));
+      await copyFileAtomicallyIfDifferent(processRuntimeHeader, path.join(root, 'include', 'LingBuilderFbroProcessRuntime.hpp'));
+      await copyFileAtomicallyIfDifferent(jsonHeader, path.join(root, 'include', 'nlohmann', 'json.hpp'));
+      await copyFileAtomicallyIfDifferent(jsonLicense, path.join(root, 'include', 'nlohmann', 'LICENSE.MIT'));
       await copyFileAtomicallyIfDifferent(bridgeLib, path.join(root, 'lib', 'x64', 'LingBuilderFbroBridge.lib'));
       await copyFileAtomicallyIfDifferent(bridgeDll, path.join(root, 'bin', 'x64', 'LingBuilderFbroBridge.dll'));
       await copyFileAtomicallyIfDifferent(manifestPath, path.join(root, 'runtime-manifest.json'));
@@ -501,9 +510,15 @@ async function materializeFbroSdkUnlocked(
     await writeTextAtomically(path.join(buildModuleRoot, 'materialize-fbro-runtime.ps1'), fbroExportMaterializerScript());
     await writeTextAtomically(path.join(exportModuleRoot, 'materialize-fbro-runtime.ps1'), fbroExportMaterializerScript());
     await fs.mkdir(layout.binDir, { recursive: true });
-    const bridgeTarget = path.join(layout.binDir, 'LingBuilderFbroBridge.dll');
-    await copyFileAtomicallyIfDifferent(bridgeDll, bridgeTarget);
-    plan.runtimeFiles.push(bridgeTarget);
+    if (!hostOnly) {
+      const bridgeTarget = path.join(layout.binDir, 'LingBuilderFbroBridge.dll');
+      await copyFileAtomicallyIfDifferent(bridgeDll, bridgeTarget);
+      plan.runtimeFiles.push(bridgeTarget);
+    }
+    const hostRuntimeDirectory = path.join(layout.binDir, 'fbro-host');
+    const hostBridgeTarget = path.join(hostRuntimeDirectory, 'LingBuilderFbroBridge.dll');
+    await copyFileAtomicallyIfDifferent(bridgeDll, hostBridgeTarget);
+    plan.runtimeFiles.push(hostBridgeTarget);
 
     const copiedFiles: FbroRuntimeManifestFile[] = [];
     for (const entry of manifest.files) {
@@ -513,16 +528,22 @@ async function materializeFbroSdkUnlocked(
       }
       const source = path.join(sdkRoot, 'runtime', 'x64', ...normalized.split('/'));
       const target = path.join(layout.binDir, ...normalized.split('/'));
+      const hostTarget = path.join(hostRuntimeDirectory, ...normalized.split('/'));
       const sourceMatches = await fileMatchesManifest(source, entry);
       if (!sourceMatches) throw new Error(`源 SDK 文件缺失或哈希错误：runtime/x64/${normalized}`);
-      if (!await fileMatchesManifest(target, entry)) {
+      if (!hostOnly && !await fileMatchesManifest(target, entry)) {
         await copyFileAtomically(source, target);
         if (!await fileMatchesManifest(target, entry)) throw new Error(`复制后校验失败：${normalized}`);
+      }
+      if (!await fileMatchesManifest(hostTarget, entry)) {
+        await copyFileAtomically(source, hostTarget);
+        if (!await fileMatchesManifest(hostTarget, entry)) throw new Error(`复制 FBro Host 后校验失败：${normalized}`);
       }
       const exportTarget = path.join(exportModuleRoot, 'runtime', 'x64', ...normalized.split('/'));
       if (!await fileMatchesManifest(exportTarget, entry)) await copyFileAtomically(source, exportTarget);
       copiedFiles.push(entry);
-      plan.runtimeFiles.push(target);
+      if (!hostOnly) plan.runtimeFiles.push(target);
+      plan.runtimeFiles.push(hostTarget);
     }
 
     const statePath = path.join(layout.binDir, '.lingbuilder-fbro-runtime.json');
@@ -543,16 +564,19 @@ async function materializeFbroSdkUnlocked(
 }
 
 function fbroExportMaterializerScript(): string {
-  return `param([Parameter(Mandatory=$true)][string]$Destination, [string]$RuntimeRoot = '')\n` +
+  return `param([Parameter(Mandatory=$true)][string]$Destination, [string]$RuntimeRoot = '', [switch]$HostOnly)\n` +
     `$ErrorActionPreference = 'Stop'\n` +
     `$moduleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path\n` +
     `$manifest = Get-Content -LiteralPath (Join-Path $moduleRoot 'runtime-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json\n` +
     `if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) { $RuntimeRoot = Join-Path $moduleRoot 'runtime\\x64' }\n` +
     `New-Item -ItemType Directory -Force -Path $Destination | Out-Null\n` +
+    `$hostDestination = Join-Path $Destination 'fbro-host'\n` +
+    `New-Item -ItemType Directory -Force -Path $hostDestination | Out-Null\n` +
     `foreach ($entry in $manifest.files) {\n` +
     `  $relative = $entry.path -replace '/', '\\'\n` +
     `  $source = Join-Path $RuntimeRoot $relative\n` +
-    `  $target = Join-Path $Destination $relative\n` +
+    `  $targets = if ($HostOnly) { @((Join-Path $hostDestination $relative)) } else { @((Join-Path $Destination $relative), (Join-Path $hostDestination $relative)) }\n` +
+    `  foreach ($target in $targets) {\n` +
     `  $copy = -not (Test-Path -LiteralPath $target)\n` +
     `  if (-not $copy) { $info = Get-Item -LiteralPath $target; $copy = $info.Length -ne [int64]$entry.size }\n` +
     `  if (-not $copy) { $copy = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256.ToLowerInvariant() }\n` +
@@ -562,7 +586,11 @@ function fbroExportMaterializerScript(): string {
     `    Copy-Item -LiteralPath $source -Destination $temporary -Force\n` +
     `    Move-Item -LiteralPath $temporary -Destination $target -Force\n` +
     `  }\n` +
-    `}\n`;
+    `  }\n` +
+    `}\n` +
+    `$bridge = Join-Path $Destination 'LingBuilderFbroBridge.dll'\n` +
+    `if (-not (Test-Path -LiteralPath $bridge)) { $bridge = Join-Path $moduleRoot 'bin\\x64\\LingBuilderFbroBridge.dll' }\n` +
+    `if (Test-Path -LiteralPath $bridge) { Copy-Item -LiteralPath $bridge -Destination (Join-Path $hostDestination 'LingBuilderFbroBridge.dll') -Force }\n`;
 }
 
 function validateFbroRuntimeManifest(value: FbroRuntimeManifest): string | null {

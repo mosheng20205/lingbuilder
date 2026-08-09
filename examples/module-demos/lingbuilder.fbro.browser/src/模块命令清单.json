@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.865Z",
+  "generatedAt": "2026-08-07T16:08:40.601Z",
   "module": {
     "id": "lingbuilder.fbro.browser",
     "name": "FBro指纹浏览器模块",
-    "version": "2.1.0",
-    "description": "通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，提供设计器浏览器控件、基础浏览器控制和结构化指纹配置。"
+    "version": "2.2.0",
+    "description": "通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。"
   },
-  "commandCount": 42,
+  "commandCount": 51,
   "commands": [
     {
       "index": 1,
@@ -1458,6 +1458,287 @@
         "encoding": "wide"
       },
       "demoInvocation": "FBro_取最近错误(演示FBroBrowser控件)"
+    },
+    {
+      "index": 43,
+      "name": "FBro_取进程状态",
+      "signature": "FBro_取进程状态(控件名)",
+      "description": "返回独立进程实例状态；进程内模式返回“进程内”。",
+      "insertText": "FBro_取进程状态($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取进程状态",
+        "runtimeName": "FBro_取进程状态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取进程状态(演示FBroBrowser控件)"
+    },
+    {
+      "index": 44,
+      "name": "FBro_取进程ID",
+      "signature": "FBro_取进程ID(控件名)",
+      "description": "返回独立 FBro Host 的进程 ID；进程内模式返回 0。",
+      "insertText": "FBro_取进程ID($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_取进程ID",
+        "runtimeName": "FBro_取进程ID",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取进程ID(演示FBroBrowser控件)"
+    },
+    {
+      "index": 45,
+      "name": "FBro_取调试端口",
+      "signature": "FBro_取调试端口(控件名)",
+      "description": "返回独立 FBro Host 的本机 CDP 调试端口；未启用开发者工具或进程内模式返回 0。",
+      "insertText": "FBro_取调试端口($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_取调试端口",
+        "runtimeName": "FBro_取调试端口",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取调试端口(演示FBroBrowser控件)"
+    },
+    {
+      "index": 46,
+      "name": "FBro_重启进程",
+      "signature": "FBro_重启进程(控件名)",
+      "description": "关闭并重新启动独立 FBro Host，保留该控件的配置与独立 Profile。",
+      "insertText": "FBro_重启进程($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_重启进程",
+        "runtimeName": "FBro_重启进程",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_重启进程(演示FBroBrowser控件)"
+    },
+    {
+      "index": 47,
+      "name": "FBro_显示",
+      "signature": "FBro_显示(控件名)",
+      "description": "显示独立浏览器窗口或嵌入宿主。",
+      "insertText": "FBro_显示($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_显示",
+        "runtimeName": "FBro_显示",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_显示(演示FBroBrowser控件)"
+    },
+    {
+      "index": 48,
+      "name": "FBro_隐藏",
+      "signature": "FBro_隐藏(控件名)",
+      "description": "隐藏独立浏览器窗口或嵌入宿主。",
+      "insertText": "FBro_隐藏($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_隐藏",
+        "runtimeName": "FBro_隐藏",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_隐藏(演示FBroBrowser控件)"
+    },
+    {
+      "index": 49,
+      "name": "FBro_是否显示",
+      "signature": "FBro_是否显示(控件名)",
+      "description": "返回 FBro 嵌入宿主当前是否可见；可用于过滤后台实例事件。",
+      "insertText": "FBro_是否显示($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_是否显示",
+        "runtimeName": "FBro_是否显示",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_是否显示(演示FBroBrowser控件)"
+    },
+    {
+      "index": 50,
+      "name": "FBro_调整大小",
+      "signature": "FBro_调整大小(控件名, 宽度, 高度)",
+      "description": "调整独立浏览器客户区大小。",
+      "insertText": "FBro_调整大小($1, 960, 640)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_调整大小",
+        "runtimeName": "FBro_调整大小",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_调整大小(演示FBroBrowser控件, 1, 1)"
+    },
+    {
+      "index": 51,
+      "name": "FBro_截图到文件",
+      "signature": "FBro_截图到文件(控件名, 路径, 格式, 质量)",
+      "description": "同步保存当前页面截图；格式为 png/jpeg/webp，质量范围 1-100。",
+      "insertText": "FBro_截图到文件($1, \"$2\", \"png\", 90)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_截图到文件",
+        "runtimeName": "FBro_截图到文件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "格式",
+            "type": "wideString"
+          },
+          {
+            "name": "质量",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_截图到文件(演示FBroBrowser控件, \"module-demo-temp.txt\", \"演示参数3\", 1)"
     }
   ]
 }

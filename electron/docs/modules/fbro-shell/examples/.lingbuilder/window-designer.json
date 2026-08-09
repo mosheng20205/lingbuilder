@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-ui-project",
+  "name": "新建项目",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "新建项目主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "新建项目 默认主窗口",
+      "designerBackend": "win32",
+      "controls": [],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "resizable": true,
+      "maximizable": true
+    }
+  ]
+}

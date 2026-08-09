@@ -152,6 +152,14 @@
       "references": []
     },
     {
+      "id": "new-emoji-fbro-listbox",
+      "name": "new_emoji ListBox 三浏览器",
+      "type": "visual-cpp",
+      "sourceRoot": "src/new-emoji-fbro-listbox",
+      "solutionFolderId": "newemoji",
+      "references": []
+    },
+    {
       "id": "datagrid-api-demo",
       "name": "Win32 DataGrid 完整接口示例",
       "type": "visual-cpp",
@@ -481,7 +489,7 @@
     },
     {
       "id": "module-demo-lingbuilder.database.sqlite",
-      "name": "SQLite数据库桥接模块完整演示",
+      "name": "SQLite 数据库模块完整演示",
       "type": "visual-cpp",
       "sourceRoot": "examples/module-demos/lingbuilder.database.sqlite/src",
       "solutionFolderId": "module-complete-demos",
@@ -996,6 +1004,44 @@
       "name": "微信4.1.10.27多开",
       "type": "visual-cpp",
       "sourceRoot": "src/wxmore-tool",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.data.protobuf",
+      "name": "Protocol Buffers 模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.data.protobuf/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.new_emoji.fbro-shell",
+      "name": "new_emoji FBro 浏览器外壳完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.new_emoji.fbro-shell/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "new-emoji-fbro-multi-browser-manager",
+      "name": "new_emoji FBro 多浏览器管理器",
+      "type": "visual-cpp",
+      "sourceRoot": "src/new-emoji-fbro-multi-browser-manager",
+      "references": []
+    },
+    {
+      "id": "new-emoji-fbro-richlist",
+      "name": "new_emoji RichList 动态多浏览器",
+      "type": "visual-cpp",
+      "sourceRoot": "src/new-emoji-fbro-richlist",
+      "solutionFolderId": "newemoji",
+      "references": []
+    },
+    {
+      "id": "win32-fbro-multi-browser-manager",
+      "name": "独立浏览器管理器",
+      "type": "visual-cpp",
+      "sourceRoot": "src/win32-fbro-multi-browser-manager",
       "references": []
     }
   ]

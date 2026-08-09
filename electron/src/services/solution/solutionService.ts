@@ -2,13 +2,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import { decodeTextFile } from '../files/textFileService';
 import type { TextFileSnapshot } from '../files/types';
-import { LingWindowProject } from '../windowDesigner/types';
+import { LingWindowProject, type LingControl } from '../windowDesigner/types';
 import { normalizeStartupProjects, topologicalProjectOrder, validateProjectDependencies } from './projectDependencyGraph';
 import { ExternalProjectService, validateProperties, type ExternalProjectProperties } from './externalProjectService';
 import { writeSolutionEntry } from './solutionEntryFile';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, PROJECT_GLOBALS_FILE_NAME } from '../lingCpp/projectGlobalService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '../lingCpp/projectDataTypeService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
+import type { Win32ControlPropertyValue } from '../windowDesigner/win32ControlRegistry';
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
@@ -51,12 +52,14 @@ export interface CreateSolutionProjectRequest {
   windowTitle?: string;
 }
 
-export type SolutionProjectTemplateId = 'blank-window' | 'hello-window';
+export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'new-emoji-fbro-browser-shell';
 
 export interface SolutionProjectTemplate {
   id: SolutionProjectTemplateId;
   name: string;
   description: string;
+  moduleIds?: readonly string[];
+  architecture?: 'Win32' | 'x64';
 }
 
 export interface PlannedSolutionProjectFile {
@@ -82,6 +85,19 @@ export const SOLUTION_PROJECT_TEMPLATES: readonly SolutionProjectTemplate[] = [
     id: 'hello-window',
     name: '你好 LingBuilder',
     description: '创建包含标题、按钮和中文单击事件的最小可运行 Win32 示例。'
+  },
+  {
+    id: 'new-emoji-fbro-browser-shell',
+    name: 'new_emoji FBro 浏览器外壳',
+    description: '创建带标签页、地址栏、菜单、弹层、窗口按钮和真实 FBro x64 网页宿主的浏览器外壳。',
+    architecture: 'x64',
+    moduleIds: [
+      'lingbuilder.win32.basic',
+      'lingbuilder.new_emoji.ui',
+      'lingbuilder.fbro.browser',
+      'lingbuilder.fbro.sdk',
+      'lingbuilder.new_emoji.fbro-shell'
+    ]
   }
 ];
 
@@ -336,7 +352,10 @@ export class SolutionService {
       sourceRoot: `src/${projectId}`,
       configRoot: `config/${projectId}`,
       designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
-      references: []
+      references: [],
+      ...(template.architecture ? {
+        buildProperties: { configuration: 'Debug', architecture: template.architecture, additionalArguments: [] }
+      } : {})
     };
     const designerProject = createDesignerProject(project.id, project.name, template.id, request.windowTitle);
     return this.createMaterializationPlan(project, designerProject, template);
@@ -474,6 +493,7 @@ function createDesignerProject(
   requestedWindowTitle?: string
 ): LingWindowProject {
   const windowTitle = normalizeWindowTitle(requestedWindowTitle, `${name}主窗口`);
+  const browserShell = templateId === 'new-emoji-fbro-browser-shell';
   return {
     schemaVersion: 2,
     id: projectId,
@@ -485,18 +505,40 @@ function createDesignerProject(
         fileName: 'MainWindow.xml',
         className: 'MainWindow',
         title: windowTitle,
-        width: 900,
-        height: 560,
-        background: '#1f2937',
+        width: browserShell ? 1180 : 900,
+        height: browserShell ? 760 : 560,
+        background: browserShell ? '#202124' : '#1f2937',
         description: `${name} 默认主窗口`,
-        designerBackend: 'win32',
-        controls: templateId === 'hello-window' ? createHelloWindowControls() : []
+        designerBackend: browserShell ? 'new-emoji' : 'win32',
+        ...(browserShell ? {
+          resizable: true,
+          maximizable: true,
+          cornerStyle: 'rounded' as const,
+          windowFrame: {
+            preset: 'browserShell' as const,
+            flags: 0x3f,
+            resizeBorder: { left: 6, top: 6, right: 6, bottom: 6 },
+            cornerRadius: 10
+          },
+          events: {
+            Loaded: '_MainWindow_创建完毕',
+            SizeChanged: '_MainWindow_大小被改变',
+            KeyDown: '_MainWindow_按键被按下',
+            DpiChanged: '_MainWindow_DPI被改变'
+          }
+        } : {}),
+        controls: templateId === 'hello-window'
+          ? createHelloWindowControls()
+          : browserShell
+            ? createNewEmojiFbroBrowserShellControls()
+            : []
       }
     ]
   };
 }
 
 function createTemplateLingCppSource(className: string, templateId: SolutionProjectTemplateId): string {
+  if (templateId === 'new-emoji-fbro-browser-shell') return createNewEmojiFbroBrowserShellSource(className);
   if (templateId === 'hello-window') {
     return [
       `类 ${className}`,
@@ -521,6 +563,217 @@ function createTemplateLingCppSource(className: string, templateId: SolutionProj
   ].join('\n');
 }
 
+function createNewEmojiFbroBrowserShellSource(className: string): string {
+  return [
+    `类 ${className} : 公开 窗口`,
+    '    构造()',
+    '        调试输出("正在初始化 chrome_shell_demo.py 完整复刻版 new_emoji FBro 浏览器外壳。")',
+    '',
+    '    事件 _MainWindow_创建完毕()',
+    '        浏览器外壳_创建(浏览器标签页, 浏览器页面占位, &浏览器状态改变)',
+    '        浏览器外壳_新建标签页("home", "https://www.baidu.com", "新标签页")',
+    '        控件_设置文本(地址栏, "https://www.baidu.com")',
+    '        重排浏览器布局()',
+    '    结束',
+    '',
+    '    空 重排浏览器布局()',
+    '        局部 整数型 窗口宽度 = 窗口_取事件宽度()',
+    '        局部 整数型 窗口高度 = 窗口_取事件高度()',
+    '        局部 整数型 当前DPI = 窗口_取事件DPI()',
+    '        如果 (当前DPI <= 0)',
+    '            当前DPI = 96',
+    '        如果结束',
+    '        窗口宽度 = 窗口宽度 * 96 / 当前DPI',
+    '        窗口高度 = 窗口高度 * 96 / 当前DPI',
+    '        如果 (窗口宽度 < 760)',
+    '            窗口宽度 = 760',
+    '        如果结束',
+    '        如果 (窗口高度 < 420)',
+    '            窗口高度 = 420',
+    '        如果结束',
+    '        局部 整数型 标签数量 = 浏览器外壳_取标签页数量()',
+    '        局部 整数型 标签区宽度 = 0',
+    '        局部 整数型 标签宽度 = 0',
+    '        局部 整数型 标签控件宽度 = 0',
+    '        局部 整数型 标签栏右边 = 0',
+    '        局部 整数型 新建标签横坐标 = 0',
+    '        局部 整数型 更多横坐标 = 0',
+    '        局部 整数型 扩展横坐标 = 0',
+    '        局部 整数型 下载横坐标 = 0',
+    '        局部 整数型 地址栏宽度 = 0',
+    '        如果 (标签数量 < 1)',
+    '            标签数量 = 1',
+    '        如果结束',
+    '        标签区宽度 = 窗口宽度 - 300',
+    '        如果 (标签区宽度 < 220)',
+    '            标签区宽度 = 220',
+    '        如果结束',
+    '        标签宽度 = 标签区宽度 / 标签数量',
+    '        如果 (标签宽度 > 220)',
+    '            标签宽度 = 220',
+    '        如果结束',
+    '        如果 (标签宽度 < 96)',
+    '            标签宽度 = 96',
+    '        如果结束',
+    '        标签控件宽度 = 标签数量 * 标签宽度',
+    '        标签栏右边 = 16 + 标签控件宽度',
+    '        如果 (标签栏右边 > 窗口宽度 - 184)',
+    '            标签栏右边 = 窗口宽度 - 184',
+    '        如果结束',
+    '        新建标签横坐标 = 标签栏右边 + 8',
+    '        如果 (新建标签横坐标 > 窗口宽度 - 176)',
+    '            新建标签横坐标 = 窗口宽度 - 176',
+    '        如果结束',
+    '        更多横坐标 = 窗口宽度 - 58',
+    '        如果 (更多横坐标 < 392)',
+    '            更多横坐标 = 392',
+    '        如果结束',
+    '        扩展横坐标 = 更多横坐标 - 42',
+    '        下载横坐标 = 扩展横坐标 - 42',
+    '        地址栏宽度 = 下载横坐标 - 16 - 132',
+    '        如果 (地址栏宽度 < 220)',
+    '            地址栏宽度 = 220',
+    '        如果结束',
+    '        控件_设置位置大小(浏览器根容器, 0, 0, 窗口宽度, 窗口高度)',
+    '        控件_设置位置大小(标签栏背景, 0, 0, 窗口宽度, 40)',
+    '        控件_设置位置大小(工具栏背景, 0, 40, 窗口宽度, 50)',
+    '        控件_设置位置大小(浏览器标签页, 16, 4, 标签控件宽度, 34)',
+    '        控件_设置位置大小(新建标签按钮, 新建标签横坐标, 5, 30, 30)',
+    '        控件_设置位置大小(后退按钮, 12, 46, 34, 34)',
+    '        控件_设置位置大小(前进按钮, 50, 46, 34, 34)',
+    '        控件_设置位置大小(刷新按钮, 88, 46, 34, 34)',
+    '        控件_设置位置大小(地址栏, 132, 46, 地址栏宽度, 34)',
+    '        控件_设置位置大小(下载按钮, 下载横坐标, 46, 34, 34)',
+    '        控件_设置位置大小(扩展按钮, 扩展横坐标, 46, 34, 34)',
+    '        控件_设置位置大小(更多按钮, 更多横坐标, 46, 34, 34)',
+    '        控件_设置位置大小(最小化按钮, 窗口宽度 - 138, 0, 46, 32)',
+    '        控件_设置位置大小(最大化按钮, 窗口宽度 - 92, 0, 46, 32)',
+    '        控件_设置位置大小(关闭按钮, 窗口宽度 - 46, 0, 46, 32)',
+    '        控件_设置位置大小(浏览器页面占位, 0, 90, 窗口宽度, 窗口高度 - 90)',
+    '    结束',
+    '',
+    '    事件 _MainWindow_大小被改变()',
+    '        重排浏览器布局()',
+    '    结束',
+    '',
+    '    事件 _MainWindow_DPI被改变(整数型 新DPI)',
+    '        重排浏览器布局()',
+    '    结束',
+    '',
+    '    事件 _MainWindow_按键被按下(整数型 键码，逻辑型 Ctrl键按下，逻辑型 Shift键按下，逻辑型 Alt键按下)',
+    '        如果 (Ctrl键按下 并且 键码 == 76)',
+    '            浏览器外壳_聚焦地址栏(地址栏)',
+    '            窗口_标记按键已处理()',
+    '        如果结束',
+    '        如果 (Ctrl键按下 并且 键码 == 84)',
+    '            浏览器外壳_新建空白标签页()',
+    '            重排浏览器布局()',
+    '            窗口_标记按键已处理()',
+    '        如果结束',
+    '        如果 (Ctrl键按下 并且 键码 == 87)',
+    '            浏览器外壳_关闭当前标签页()',
+    '            重排浏览器布局()',
+    '            窗口_标记按键已处理()',
+    '        如果结束',
+    '        如果 (Ctrl键按下 并且 键码 == 82)',
+    '            浏览器外壳_刷新()',
+    '            窗口_标记按键已处理()',
+    '        如果结束',
+    '        如果 (Alt键按下 并且 键码 == 37)',
+    '            浏览器外壳_后退()',
+    '            窗口_标记按键已处理()',
+    '        如果结束',
+    '        如果 (Alt键按下 并且 键码 == 39)',
+    '            浏览器外壳_前进()',
+    '            窗口_标记按键已处理()',
+    '        如果结束',
+    '    结束',
+    '',
+    '    事件 _地址栏_提交(文本型 地址)',
+    '        浏览器外壳_导航(地址)',
+    '    结束',
+    '',
+    '    事件 _地址栏_动作图标(整数型 图标索引，整数型 起始位置，整数型 结束位置)',
+    '        调试输出("地址栏动作图标", 图标索引, 起始位置, 结束位置)',
+    '    结束',
+    '',
+    '    事件 _新建标签按钮_被单击()',
+    '        浏览器外壳_新建空白标签页()',
+    '        重排浏览器布局()',
+    '    结束',
+    '',
+    '    事件 _后退按钮_被单击()',
+    '        浏览器外壳_后退()',
+    '    结束',
+    '',
+    '    事件 _前进按钮_被单击()',
+    '        浏览器外壳_前进()',
+    '    结束',
+    '',
+    '    事件 _刷新按钮_被单击()',
+    '        浏览器外壳_刷新()',
+    '    结束',
+    '',
+    '    事件 _浏览器标签页_选择变化(整数型 选中索引，整数型 项目数量，整数型 动作)',
+    '        重排浏览器布局()',
+    '    结束',
+    '',
+    '    事件 _下载菜单_命令(整数型 项目索引，文本型 菜单路径，文本型 命令)',
+    '        调试输出("下载菜单", 项目索引, 菜单路径, 命令)',
+    '    结束',
+    '',
+    '    事件 _扩展菜单_命令(整数型 项目索引，文本型 菜单路径，文本型 命令)',
+    '        调试输出("扩展菜单", 项目索引, 菜单路径, 命令)',
+    '    结束',
+    '',
+    '    事件 _更多菜单_命令(整数型 项目索引，文本型 菜单路径，文本型 命令)',
+    '        如果 (项目索引 == 0)',
+    '            浏览器外壳_新建空白标签页()',
+    '            重排浏览器布局()',
+    '        如果结束',
+    '        如果 (项目索引 == 17)',
+    '            调试输出("请使用右上角关闭按钮退出浏览器外壳。")',
+    '        如果结束',
+    '        调试输出("更多菜单", 项目索引, 菜单路径, 命令)',
+    '    结束',
+    '',
+    '    事件 _标签页菜单_命令(整数型 项目索引，文本型 菜单路径，文本型 命令)',
+    '        如果 (项目索引 == 0)',
+    '            浏览器外壳_新建空白标签页()',
+    '        如果结束',
+    '        如果 (项目索引 == 1)',
+    '            浏览器外壳_关闭当前标签页()',
+    '        如果结束',
+    '        如果 (项目索引 == 2)',
+    '            浏览器外壳_关闭其他标签页()',
+    '        如果结束',
+    '        重排浏览器布局()',
+    '    结束',
+    '',
+    '    事件 _地址栏菜单_命令(整数型 项目索引，文本型 菜单路径，文本型 命令)',
+    '        调试输出("地址栏右键菜单", 项目索引, 菜单路径, 命令)',
+    '    结束',
+    '',
+    '    事件 _网页菜单_命令(整数型 项目索引，文本型 菜单路径，文本型 命令)',
+    '        如果 (项目索引 == 0)',
+    '            浏览器外壳_后退()',
+    '        如果结束',
+    '        如果 (项目索引 == 1)',
+    '            浏览器外壳_刷新()',
+    '        如果结束',
+    '        调试输出("网页右键菜单", 项目索引, 菜单路径, 命令)',
+    '    结束',
+    '',
+    '    事件 浏览器状态改变(整数型 标签索引，文本型 地址，文本型 标题，逻辑型 加载中)',
+    '        控件_设置文本(地址栏, 地址)',
+    '        重排浏览器布局()',
+    '        调试输出("浏览器状态", 标签索引, 地址, 标题, 加载中)',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n');
+}
+
 function createHelloWindowControls(): LingWindowProject['windows'][number]['controls'] {
   return [
     {
@@ -533,6 +786,273 @@ function createHelloWindowControls(): LingWindowProject['windows'][number]['cont
       width: 140, height: 38, x: 48, y: 120, fontSize: 13,
       background: '#2563eb', foreground: '#ffffff', isEnabled: true, visibility: 'Visible',
       events: { Click: '_问候按钮_被单击' }
+    }
+  ];
+}
+
+function createNewEmojiFbroBrowserShellControls(): LingControl[] {
+  const make = (
+    id: string,
+    type: string,
+    name: string,
+    content: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    properties: Record<string, Win32ControlPropertyValue> = {},
+    events: Record<string, string> = {}
+  ): LingControl => ({
+    id,
+    type: type === 'Tabs' ? 'TabControl' : type === 'Container' || type === 'Panel' ? 'Grid' : 'Label',
+    designerType: `lingbuilder.new_emoji.ui/${type}`,
+    name,
+    content,
+    x,
+    y,
+    width,
+    height,
+    fontSize: 13,
+    fontFamily: 'Microsoft YaHei UI',
+    fontBold: false,
+    fontItalic: false,
+    fontUnderline: false,
+    background: 'transparent',
+    foreground: '#e8eaed',
+    isEnabled: true,
+    visibility: 'Visible',
+    properties,
+    events
+  });
+  const iconButton = (
+    id: string,
+    name: string,
+    icon: string,
+    tooltip: string,
+    x: number,
+    y: number,
+    width = 34,
+    height = 34,
+    properties: Record<string, Win32ControlPropertyValue> = {},
+    events: Record<string, string> = {}
+  ) => make(id, 'IconButton', name, icon, x, y, width, height, {
+    icon,
+    tooltip,
+    shape: width === 46 ? 0 : 1,
+    radius: width === 46 ? 0 : 17,
+    iconSize: 17,
+    normalBg: '#00000000',
+    hoverBg: '#1AFFFFFF',
+    pressedBg: '#26FFFFFF',
+    checkedBg: '#26000000',
+    disabledBg: '#00000000',
+    iconColor: '#FFE8EAED',
+    disabledIconColor: '#FF5F6368',
+    ...properties
+  }, events);
+
+  const child = (control: LingControl): LingControl => ({ ...control, parentId: 'browser-root' });
+  const menuItem = (
+    id: string,
+    command: string,
+    title: string,
+    icon = '',
+    shortcut = '',
+    separator = false,
+    disabled = false
+  ) => ({ id, command, title, icon, shortcut, separator, checked: false, disabled, submenu: '' });
+  const menuProperties = (
+    anchorElementId: string,
+    popupTrigger: 'dropdown' | 'right_click',
+    popupPlacement: number,
+    popupOffsetY: number,
+    menuItems: ReturnType<typeof menuItem>[]
+  ): Record<string, Win32ControlPropertyValue> => ({
+    orientation: '1',
+    activeIndex: 0,
+    collapsed: false,
+    menuBackgroundColor: '#FF292A2D',
+    menuTextColor: '#FFE8EAED',
+    menuActiveTextColor: '#FFE8EAED',
+    menuHoverBackgroundColor: '#FF3C4043',
+    menuDisabledTextColor: '#FF9AA0A6',
+    menuBorderColor: '#FF3C4043',
+    anchorElementId,
+    popupTrigger,
+    popupPlacement,
+    popupOffsetX: 0,
+    popupOffsetY,
+    popupOpen: false,
+    popupCloseOnOutside: true,
+    popupCloseOnEscape: true,
+    menuItems
+  });
+
+  const homeTab = {
+    id: 'home', title: '新标签页', icon: '🌐', closable: true,
+    disabled: false, pinned: false, loading: false, muted: false, alerting: false
+  };
+  return [
+    make('browser-root', 'Container', '浏览器根容器', '浏览器根容器', 0, 0, 1180, 760, {
+      flowEnabled: false,
+      orientation: 0,
+      gap: 0,
+      backgroundColor: '#FF202124',
+      borderColor: '#00000000'
+    }),
+    child(make('browser-viewport', 'BrowserViewport', '浏览器页面占位', '浏览器页面宿主', 0, 90, 1180, 670, {
+      state: 4,
+      loading: false,
+      progress: 0,
+      placeholderTitle: '新标签页 🌐',
+      placeholderDesc: '浏览器式外壳示例：标签栏、地址栏、工具按钮、菜单和内容占位区均由 D2D Element 绘制。',
+      placeholderIcon: '🌐',
+      screenshot: ''
+    })),
+    child(make('tab-background', 'Panel', '标签栏背景', '', 0, 0, 1180, 40, {
+      backgroundColor: '#FF202124', borderColor: '#00000000', borderWidth: 0, cornerRadius: 0, padding: 0
+    })),
+    child(make('toolbar-background', 'Panel', '工具栏背景', '', 0, 40, 1180, 50, {
+      backgroundColor: '#FF202124', borderColor: '#00000000', borderWidth: 0, cornerRadius: 0, padding: 0
+    })),
+    child(make('browser-tabs', 'Tabs', '浏览器标签页', '浏览器标签页', 16, 4, 220, 34, {
+      items: [homeTab], tabs: [{ ...homeTab, image: -1 }], activeIndex: 0,
+      selectedIndex: 0, tabType: 0, position: 0, headerVisible: true,
+      contentVisible: false, closable: true, addable: false, editable: false,
+      chromeMode: true, chromeMinWidth: 96, chromeMaxWidth: 220,
+      chromePinnedWidth: 46, chromeTabHeight: 32, chromeOverlap: 0,
+      newButtonVisible: false, reorderEnabled: true, detachEnabled: false
+    }, { SelectionChanged: '_浏览器标签页_选择变化' })),
+    child(iconButton('new-tab-button', '新建标签按钮', '+', '新建标签页', 244, 5, 30, 30, {
+      radius: 15, iconSize: 18, paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0
+    }, { Clicked: '_新建标签按钮_被单击' })),
+    child(iconButton('back-button', '后退按钮', '←', '后退', 12, 46, 34, 34, {}, { Clicked: '_后退按钮_被单击' })),
+    child(iconButton('forward-button', '前进按钮', '→', '前进', 50, 46, 34, 34, {}, { Clicked: '_前进按钮_被单击' })),
+    child(iconButton('reload-button', '刷新按钮', '↻', '刷新', 88, 46, 34, 34, {}, { Clicked: '_刷新按钮_被单击' })),
+    child(make('browser-omnibox', 'Omnibox', '地址栏', '', 132, 46, 890, 34, {
+      value: 'https://www.baidu.com',
+      placeholder: '搜索或输入网址',
+      securityState: 5,
+      securityText: '',
+      prefixIcon: '',
+      prefixText: '',
+      prefixBg: '#00000000',
+      prefixFg: '#00000000',
+      actionIcons: [
+        { id: 'favorite', icon: '☆', tooltip: '收藏', enabled: true },
+        { id: 'share', icon: '↗', tooltip: '分享', enabled: true }
+      ],
+      suggestions: [
+        { id: '搜索', title: '搜索 new_emoji 浏览器式外壳', url: 'new_emoji 浏览器式外壳', icon: '🔍', description: '默认搜索' },
+        { id: '历史', title: '组件封装进度', url: '组件封装进度.md', icon: '🕘', description: '本地文档' },
+        { id: '书签', title: 'API 索引', url: 'docs/api-index.md', icon: '☆', description: 'docs/api-index.md' }
+      ],
+      suggestionOpen: false,
+      suggestionSelected: 0
+    }, { TextChanged: '_地址栏_提交', ValueChanged: '_地址栏_动作图标' })),
+    child(iconButton('download-button', '下载按钮', '⇩', '下载', 1038, 46, 34, 34, {
+      badge: '2', badgeVisible: true, dropdownElementId: 'download-menu'
+    })),
+    child(iconButton('extensions-button', '扩展按钮', '◆', '扩展程序', 1080, 46, 34, 34, {
+      checked: true, dropdownElementId: 'extensions-menu'
+    })),
+    child(iconButton('more-button', '更多按钮', '⋮', '自定义及控制', 1122, 46, 34, 34, {
+      dropdownElementId: 'browser-menu'
+    })),
+    child(iconButton('min-button', '最小化按钮', '−', '最小化', 1042, 0, 46, 32, {
+      shape: 0, radius: 0, iconSize: 16, paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0, windowCommand: '1'
+    })),
+    child(iconButton('max-button', '最大化按钮', '□', '最大化/还原', 1088, 0, 46, 32, {
+      shape: 0, radius: 0, iconSize: 16, paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0, windowCommand: '2'
+    })),
+    child(iconButton('close-button', '关闭按钮', '×', '关闭', 1134, 0, 46, 32, {
+      shape: 0, radius: 0, iconSize: 16, paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0,
+      hoverBg: '#FFE81123', pressedBg: '#FFD7001B', checkedBg: '#00000000', windowCommand: '3'
+    })),
+    child(make('download-menu', 'Menu', '下载菜单', '下载菜单', -900, 0, 330, 248,
+      menuProperties('download-button', 'dropdown', 5, 8, [
+        menuItem('download-title', 'download-title', '下载', '', '', false, true),
+        menuItem('download-recent', 'download-recent', '最近下载', '', '', false, true),
+        menuItem('download-dll', 'download-dll', 'new_emoji.dll', '📦', '已完成'),
+        menuItem('download-demo', 'download-demo', 'chrome_shell_demo.py', '🐍', '已完成'),
+        menuItem('download-separator', 'download-separator', '-', '', '', true),
+        menuItem('download-open', 'download-open', '打开下载内容', '↗', 'Ctrl+J'),
+        menuItem('download-clear', 'download-clear', '清除所有')
+      ]), { MenuCommand: '_下载菜单_命令' })),
+    child(make('extensions-menu', 'Menu', '扩展菜单', '扩展菜单', -900, 0, 330, 248,
+      menuProperties('extensions-button', 'dropdown', 5, 8, [
+        menuItem('extensions-title', 'extensions-title', '扩展程序', '', '', false, true),
+        menuItem('extensions-pinned', 'extensions-pinned', '已固定扩展', '', '', false, true),
+        menuItem('extensions-inspector', 'extensions-inspector', '组件检查器', '🧪'),
+        menuItem('extensions-theme', 'extensions-theme', '主题助手', '🎨'),
+        menuItem('extensions-separator', 'extensions-separator', '-', '', '', true),
+        menuItem('extensions-manage', 'extensions-manage', '管理扩展程序', '🧩'),
+        menuItem('extensions-permission', 'extensions-permission', '权限状态正常', '🔒')
+      ]), { MenuCommand: '_扩展菜单_命令' })),
+    child(make('browser-menu', 'Menu', '更多菜单', '更多菜单', -900, 0, 318, 628,
+      menuProperties('more-button', 'dropdown', 5, 8, [
+        menuItem('new-tab', 'new-tab', '新标签页', '', 'Ctrl+T'),
+        menuItem('new-window', 'new-window', '新窗口', '', 'Ctrl+N'),
+        menuItem('new-incognito-window', 'new-incognito-window', '新建无痕窗口', '', 'Ctrl+Shift+N'),
+        menuItem('more-separator-1', 'more-separator-1', '-', '', '', true),
+        menuItem('history', 'history', '历史记录'),
+        menuItem('downloads', 'downloads', '下载内容', '', 'Ctrl+J'),
+        menuItem('bookmarks', 'bookmarks', '书签和清单'),
+        menuItem('extensions', 'extensions', '扩展程序'),
+        menuItem('more-separator-2', 'more-separator-2', '-', '', '', true),
+        menuItem('zoom', 'zoom', '缩放', '', '100%'),
+        menuItem('print', 'print', '打印...', '', 'Ctrl+P'),
+        menuItem('cast', 'cast', '投放...'),
+        menuItem('find', 'find', '查找...', '', 'Ctrl+F'),
+        menuItem('more-tools', 'more-tools', '更多工具'),
+        menuItem('more-separator-3', 'more-separator-3', '-', '', '', true),
+        menuItem('settings', 'settings', '设置'),
+        menuItem('help', 'help', '帮助'),
+        menuItem('exit', 'exit', '退出')
+      ]), { MenuCommand: '_更多菜单_命令' })),
+    child(make('omnibox-menu', 'Menu', '地址栏菜单', '地址栏菜单', -900, 0, 248, 174,
+      menuProperties('browser-omnibox', 'right_click', 3, 0, [
+        menuItem('copy-url', 'copy-url', '复制网址', '📋'),
+        menuItem('paste-go', 'paste-go', '粘贴并转到', '📥'),
+        menuItem('select-all', 'select-all', '全选文字', '✅'),
+        menuItem('edit-search-engine', 'edit-search-engine', '编辑搜索引擎', '⚙️')
+      ]), { MenuCommand: '_地址栏菜单_命令' })),
+    child(make('tabs-menu', 'Menu', '标签页菜单', '标签页菜单', -900, 0, 238, 138,
+      menuProperties('browser-tabs', 'right_click', 3, 0, [
+        menuItem('tabs-new', 'tabs-new', '新建标签页', '🌐'),
+        menuItem('tabs-close', 'tabs-close', '关闭标签页', '✖'),
+        menuItem('tabs-close-other', 'tabs-close-other', '关闭其他标签页', '🧹')
+      ]), { MenuCommand: '_标签页菜单_命令' })),
+    child(make('viewport-menu', 'Menu', '网页菜单', '网页菜单', -900, 0, 286, 356,
+      menuProperties('browser-viewport', 'right_click', 3, 0, [
+        menuItem('viewport-back', 'viewport-back', '返回', '', '', false, true),
+        menuItem('viewport-reload', 'viewport-reload', '重新加载', '', 'Ctrl+R'),
+        menuItem('viewport-separator-1', 'viewport-separator-1', '-', '', '', true),
+        menuItem('viewport-save', 'viewport-save', '另存为...'),
+        menuItem('viewport-print', 'viewport-print', '打印...', '', 'Ctrl+P'),
+        menuItem('viewport-cast', 'viewport-cast', '投放...'),
+        menuItem('viewport-translate', 'viewport-translate', '翻译成中文'),
+        menuItem('viewport-separator-2', 'viewport-separator-2', '-', '', '', true),
+        menuItem('viewport-source', 'viewport-source', '查看网页源代码', '', 'Ctrl+U'),
+        menuItem('viewport-inspect', 'viewport-inspect', '检查', '', 'Ctrl+Shift+I')
+      ]), { MenuCommand: '_网页菜单_命令' })),
+    {
+      ...child(make('download-popover', 'Popover', '下载弹层', '最近下载\n📦 new_emoji.dll\n🐍 chrome_shell_demo.py\n✅ 全部下载已完成', -1200, 0, 286, 178, {
+        label: '', title: '下载 📥', content: '最近下载\n📦 new_emoji.dll\n🐍 chrome_shell_demo.py\n✅ 全部下载已完成',
+        placement: 5, open: false, popupWidth: 286, popupHeight: 178,
+        closable: false, triggerMode: 0, closeOnOutside: true, showArrow: true, offset: 6,
+        anchorElementId: 'download-button', arrowSize: 8, elevation: 2, autoPlacement: true, closeOnEscape: true
+      })),
+      visibility: 'Collapsed'
+    },
+    {
+      ...child(make('extensions-popover', 'Popover', '扩展弹层', '已固定扩展\n🧪 组件检查器\n🎨 主题助手\n🔒 权限状态正常', -1200, 0, 286, 178, {
+        label: '', title: '扩展程序 🧩', content: '已固定扩展\n🧪 组件检查器\n🎨 主题助手\n🔒 权限状态正常',
+        placement: 5, open: false, popupWidth: 286, popupHeight: 178,
+        closable: false, triggerMode: 0, closeOnOutside: true, showArrow: true, offset: 6,
+        anchorElementId: 'extensions-button', arrowSize: 8, elevation: 2, autoPlacement: true, closeOnEscape: true
+      })),
+      visibility: 'Collapsed'
     }
   ];
 }

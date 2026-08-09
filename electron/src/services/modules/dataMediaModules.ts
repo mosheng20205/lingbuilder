@@ -1,6 +1,7 @@
 import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
+import { SQLITE_MODULE } from './sqliteModule';
 
 export const CRYPTO_SDK_MODULE_IDS = [
   'lingbuilder.crypto.hash',
@@ -164,19 +165,6 @@ const odbc = createStandardModule({
   ]
 });
 
-const sqlite = createStandardModule({
-  id: 'lingbuilder.database.sqlite', name: 'SQLite数据库桥接模块', category: '数据库', description: '动态加载用户提供的 sqlite3.dll，提供单连接执行和查询闭环；缺少运行库时返回明确错误。', tags: ['数据库', 'SQLite'],
-  commands: [
-    command('SQLite_加载运行库', [{ name: 'DLL路径', type: 'wideString' }], 'bool', '加载 sqlite3.dll 并检查所需 API；空路径尝试系统搜索。'),
-    command('SQLite_打开', [{ name: '数据库路径', type: 'wideString' }], 'bool', '以 UTF-8 路径打开 SQLite 数据库。'),
-    command('SQLite_执行', [{ name: 'SQL语句', type: 'wideString' }], 'bool', '执行无结果 SQL。'),
-    command('SQLite_查询首值', [{ name: 'SQL语句', type: 'wideString' }], 'wideString', '返回首行首列 UTF-8 文本。'),
-    command('SQLite_取更改行数', [], 'int', '返回最近语句更改的行数。'),
-    command('SQLite_取错误', [], 'wideString', '返回最近 SQLite 或运行库加载错误。'),
-    command('SQLite_关闭', [], 'void', '关闭数据库并卸载动态运行库。')
-  ]
-});
-
 const imageCore = createStandardModule({
   id: 'lingbuilder.image.core', name: '图像基础模块', category: '图像', description: '基于 GDI+ 提供图片尺寸、格式转换、缩放、裁剪和旋转。', tags: ['图像', 'GDI+'],
   commands: [
@@ -241,4 +229,4 @@ const audio = createStandardModule({
   ]
 });
 
-export const DATA_MEDIA_MODULES: LingBuilderModuleManifest[] = [csv, hash, password, symmetric, asymmetric, crypto, odbc, sqlite, imageCore, imageCapture, bitmap, icon, recognition, audio];
+export const DATA_MEDIA_MODULES: LingBuilderModuleManifest[] = [csv, hash, password, symmetric, asymmetric, crypto, odbc, SQLITE_MODULE, imageCore, imageCapture, bitmap, icon, recognition, audio];

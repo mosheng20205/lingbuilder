@@ -1,4 +1,5 @@
 const fs = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
@@ -9,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const MODULE_ID = 'lingbuilder.new_emoji.ui';
 const MODULE_NAME = 'new_emoji 原生界面库';
 const DEFAULT_SOURCE = 'T:\\github\\new_emoji';
+const EXPECTED_DESIGNER_COMPONENT_COUNT = 93;
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -16,78 +18,136 @@ async function main() {
   const repoRoot = path.resolve(scriptDir, '..', '..');
   const sourceRoot = path.resolve(args.source || process.env.NEW_EMOJI_ROOT || DEFAULT_SOURCE);
   const workRoot = path.join(repoRoot, '.lingbuilder', 'module-build', MODULE_ID);
+  const installPath = path.join(repoRoot, '.lingbuilder', 'modules', MODULE_ID);
   const packageDir = path.join(repoRoot, '.lingbuilder', 'module-packages');
   const packagePath = path.join(packageDir, 'new_emoji.lbmod');
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-new-emoji-module-'));
+  const generatedRoot = path.join(tempRoot, MODULE_ID);
 
-  await assertNewEmojiSource(sourceRoot);
-  await fs.rm(workRoot, { recursive: true, force: true });
-  await fs.mkdir(workRoot, { recursive: true });
+  try {
+    await assertNewEmojiSource(sourceRoot);
+    await fs.mkdir(generatedRoot, { recursive: true });
 
-  const exports = await parseExports(path.join(sourceRoot, 'src', 'new_emoji.def'));
-  const prototypes = await parsePrototypes(path.join(sourceRoot, 'src', 'exports.h'));
-  const apiManifest = await readJson(path.join(sourceRoot, 'docs', 'ai', 'api_manifest.full.json'), []);
-  const designerCatalogPath = path.join(sourceRoot, 'docs', 'ai', 'lingbuilder_designer_catalog.json');
-  const designerCatalogSource = await fs.readFile(designerCatalogPath, 'utf8');
-  const designerCatalog = JSON.parse(designerCatalogSource);
-  validateDesignerCatalog(designerCatalog, exports, prototypes);
-  const commands = buildCommands(exports, prototypes, apiManifest);
+    const exports = await parseExports(path.join(sourceRoot, 'src', 'new_emoji.def'));
+    const prototypes = await parsePrototypes(path.join(sourceRoot, 'src', 'exports.h'));
+    const callbackTypes = await parseCallbackTypedefs(path.join(sourceRoot, 'src', 'element_types.h'));
+    const apiManifest = await readJson(path.join(sourceRoot, 'docs', 'ai', 'api_manifest.full.json'), []);
+    const { catalog: designerCatalog, source: designerCatalogSource } = await loadDesignerCatalog(sourceRoot, exports, prototypes);
+    const commands = buildCommands(exports, prototypes, apiManifest, callbackTypes);
 
-  const designerCatalogSha256 = crypto.createHash('sha256').update(designerCatalogSource).digest('hex');
-  await writeText(path.join(workRoot, 'lingbuilder.module.json'), JSON.stringify(buildManifest(commands, designerCatalog, designerCatalogSha256), null, 2) + '\n');
-  await writeText(path.join(workRoot, 'include', 'new_emoji_bridge.h'), bridgeHeader());
-  await writeText(path.join(workRoot, 'src', 'new_emoji_bridge.cpp'), bridgeSource());
-  await copyFile(path.join(sourceRoot, 'src', 'exports.h'), path.join(workRoot, 'include', 'exports.h'));
-  await copyFile(path.join(sourceRoot, 'src', 'element_types.h'), path.join(workRoot, 'include', 'element_types.h'));
-  await writeText(path.join(workRoot, 'docs', 'lingbuilder-designer-catalog.json'), designerCatalogSource.endsWith('\n') ? designerCatalogSource : `${designerCatalogSource}\n`);
-  await writeText(path.join(workRoot, 'docs', 'new_emoji-api.json'), JSON.stringify({
-    source: sourceRoot,
-    generatedAt: new Date().toISOString(),
-    exportCount: exports.length,
-    commands
-  }, null, 2) + '\n');
-  await writeText(path.join(workRoot, 'README.md'), moduleReadme(exports.length));
+    const designerCatalogSha256 = crypto.createHash('sha256').update(designerCatalogSource).digest('hex');
+    const manifest = buildManifest(commands, designerCatalog, designerCatalogSha256);
+    validateGeneratedCallbackBindings(manifest, commands);
+    await writeText(path.join(generatedRoot, 'lingbuilder.module.json'), JSON.stringify(manifest, null, 2) + '\n');
+    await writeText(path.join(generatedRoot, 'include', 'new_emoji_bridge.h'), bridgeHeader());
+    await writeText(path.join(generatedRoot, 'src', 'new_emoji_bridge.cpp'), bridgeSource());
+    await copyFile(path.join(sourceRoot, 'src', 'exports.h'), path.join(generatedRoot, 'include', 'exports.h'));
+    await copyFile(path.join(sourceRoot, 'src', 'element_types.h'), path.join(generatedRoot, 'include', 'element_types.h'));
+    await writeText(path.join(generatedRoot, 'docs', 'lingbuilder-designer-catalog.json'), designerCatalogSource.endsWith('\n') ? designerCatalogSource : `${designerCatalogSource}\n`);
+    await copyFile(path.join(sourceRoot, 'docs', 'components', 'rich-list.md'), path.join(generatedRoot, 'docs', 'rich-list.md'));
+    await copyFile(path.join(sourceRoot, 'docs', 'components', 'window-frame.md'), path.join(generatedRoot, 'docs', 'window-frame.md'));
+    await writeText(path.join(generatedRoot, 'docs', 'new_emoji-api.json'), JSON.stringify({
+      source: 'new_emoji upstream headers and AI manifests',
+      exportCount: exports.length,
+      commands
+    }, null, 2) + '\n');
+    await writeText(path.join(generatedRoot, 'README.md'), moduleReadme(exports.length));
 
-  await copyFile(path.join(sourceRoot, 'bin', 'Win32', 'Release', 'new_emoji.dll'), path.join(workRoot, 'bin', 'Win32', 'new_emoji.dll'));
-  await copyFile(path.join(sourceRoot, 'bin', 'Win32', 'Release', 'new_emoji.lib'), path.join(workRoot, 'lib', 'Win32', 'new_emoji.lib'));
-  await copyFile(path.join(sourceRoot, 'bin', 'x64', 'Release', 'new_emoji.dll'), path.join(workRoot, 'bin', 'x64', 'new_emoji.dll'));
-  await copyFile(path.join(sourceRoot, 'bin', 'x64', 'Release', 'new_emoji.lib'), path.join(workRoot, 'lib', 'x64', 'new_emoji.lib'));
-  await copyFile(path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v2.ico'), path.join(workRoot, 'assets', 'lingbuilder-newemoji-window.ico'));
-  await copyFile(path.join(sourceRoot, 'LICENSE'), path.join(workRoot, 'LICENSE'));
+    await copyFile(path.join(sourceRoot, 'bin', 'Win32', 'Release', 'new_emoji.dll'), path.join(generatedRoot, 'bin', 'Win32', 'new_emoji.dll'));
+    await copyFile(path.join(sourceRoot, 'bin', 'Win32', 'Release', 'new_emoji.lib'), path.join(generatedRoot, 'lib', 'Win32', 'new_emoji.lib'));
+    await copyFile(path.join(sourceRoot, 'bin', 'x64', 'Release', 'new_emoji.dll'), path.join(generatedRoot, 'bin', 'x64', 'new_emoji.dll'));
+    await copyFile(path.join(sourceRoot, 'bin', 'x64', 'Release', 'new_emoji.lib'), path.join(generatedRoot, 'lib', 'x64', 'new_emoji.lib'));
+    await copyFile(path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v2.ico'), path.join(generatedRoot, 'assets', 'lingbuilder-newemoji-window.ico'));
+    await copyFile(path.join(sourceRoot, 'LICENSE'), path.join(generatedRoot, 'LICENSE'));
 
-  await fs.mkdir(packageDir, { recursive: true });
-  await fs.rm(packagePath, { force: true });
-  await compressArchive(workRoot, packagePath);
+    if (args.check) {
+      await assertDirectoryMatches(generatedRoot, workRoot, 'module-build');
+      await assertDirectoryMatches(generatedRoot, installPath, 'installed module');
+      await assertPackageMatches(generatedRoot, packagePath, tempRoot);
+      console.log(`Verified ${MODULE_ID}: module-build, installed module and package are identical.`);
+    } else {
+      await replaceDirectoryAtomically(generatedRoot, workRoot);
+      await fs.mkdir(packageDir, { recursive: true });
+      const tempPackage = path.join(tempRoot, 'new_emoji.lbmod');
+      await compressArchive(workRoot, tempPackage);
+      await replaceFileAtomically(tempPackage, packagePath);
 
-  if (args.install) {
-    const installPath = path.join(repoRoot, '.lingbuilder', 'modules', MODULE_ID);
-    await fs.rm(installPath, { recursive: true, force: true });
-    await copyDirectory(workRoot, installPath);
-    console.log(`Installed ${MODULE_ID} to ${installPath}`);
-    console.log('Project module references were left unchanged.');
+      if (args.install) {
+        const installTemp = path.join(tempRoot, `${MODULE_ID}-install`);
+        await copyDirectory(workRoot, installTemp);
+        await replaceDirectoryAtomically(installTemp, installPath);
+        console.log(`Installed ${MODULE_ID} to ${installPath}`);
+        console.log('Project module references were left unchanged.');
+      }
+
+      console.log(`Generated ${MODULE_NAME}`);
+      console.log(`Module directory: ${workRoot}`);
+      console.log(`Package: ${packagePath}`);
+      console.log(`Command count: ${commands.length}`);
+    }
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
   }
-
-  console.log(`Generated ${MODULE_NAME}`);
-  console.log(`Module directory: ${workRoot}`);
-  console.log(`Package: ${packagePath}`);
-  console.log(`Command count: ${commands.length}`);
 }
 
 function validateDesignerCatalog(catalog, exports, prototypes) {
   if (catalog?.schemaVersion !== 1 || catalog?.moduleId !== MODULE_ID) throw new Error('new_emoji LingBuilder Designer Catalog 版本或模块 ID 无效。');
-  if (!Array.isArray(catalog.components) || catalog.components.length !== 92) throw new Error(`new_emoji 组件目录必须包含 92 个组件，实际 ${catalog?.components?.length || 0}。`);
+  if (!Array.isArray(catalog.components) || catalog.components.length !== EXPECTED_DESIGNER_COMPONENT_COUNT) throw new Error(`new_emoji 组件目录必须包含 ${EXPECTED_DESIGNER_COMPONENT_COUNT} 个组件，实际 ${catalog?.components?.length || 0}。`);
   if (!Array.isArray(catalog.rawExports) || catalog.rawExports.length !== exports.length) throw new Error(`new_emoji 导出目录数量与 .def 不一致：${catalog?.rawExports?.length || 0}/${exports.length}。`);
   const catalogExports = new Set(catalog.rawExports.map(item => item.name));
   const missing = exports.filter(name => !catalogExports.has(name) || !prototypes.has(name));
   if (missing.length) throw new Error(`new_emoji 存在未分类或无声明导出：${missing.slice(0, 20).join(', ')}`);
 }
 
+async function loadDesignerCatalog(sourceRoot, exports, prototypes) {
+  const catalogPath = path.join(sourceRoot, 'docs', 'ai', 'lingbuilder_designer_catalog.json');
+  const source = await fs.readFile(catalogPath, 'utf8');
+  const catalog = JSON.parse(source);
+  try {
+    validateDesignerCatalog(catalog, exports, prototypes);
+    return { catalog, source: normalizeDesignerCatalogSource(catalog) };
+  } catch (catalogError) {
+    const exporterProject = path.join(sourceRoot, 'tools', 'LingBuilderCatalogExporter', 'LingBuilderCatalogExporter.csproj');
+    try {
+      await fs.stat(exporterProject);
+    } catch {
+      throw catalogError;
+    }
+
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-new-emoji-catalog-'));
+    const generatedPath = path.join(tempRoot, 'lingbuilder_designer_catalog.json');
+    try {
+      console.log(`Designer Catalog 已过期，正在从上游元数据重新生成：${catalogError.message}`);
+      await execFileAsync('dotnet', [
+        'run', '--project', exporterProject, '-f', 'net48', '--no-restore', '--', sourceRoot, generatedPath
+      ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
+      const generatedSource = await fs.readFile(generatedPath, 'utf8');
+      const generatedCatalog = JSON.parse(generatedSource);
+      validateDesignerCatalog(generatedCatalog, exports, prototypes);
+      return { catalog: generatedCatalog, source: normalizeDesignerCatalogSource(generatedCatalog) };
+    } catch (error) {
+      throw new Error(`${catalogError.message}\n自动重新生成 Designer Catalog 失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  }
+}
+
+function normalizeDesignerCatalogSource(catalog) {
+  const stableCatalog = structuredClone(catalog);
+  delete stableCatalog.generatedAt;
+  return `${JSON.stringify(stableCatalog, null, 2)}\n`;
+}
+
 function parseArgs(args) {
-  const result = { install: false, source: '' };
+  const result = { install: false, check: false, source: '' };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--install') result.install = true;
+    if (arg === '--check') result.check = true;
     if (arg === '--source') result.source = args[index + 1] || '';
   }
+  if (result.check && result.install) throw new Error('--check 与 --install 不能同时使用。');
   return result;
 }
 
@@ -95,7 +155,10 @@ async function assertNewEmojiSource(sourceRoot) {
   const required = [
     'src/new_emoji.def',
     'src/exports.h',
+    'src/element_types.h',
     'docs/ai/api_manifest.full.json',
+    'docs/components/rich-list.md',
+    'docs/components/window-frame.md',
     'bin/Win32/Release/new_emoji.dll',
     'bin/Win32/Release/new_emoji.lib',
     'bin/x64/Release/new_emoji.dll',
@@ -139,6 +202,23 @@ async function parsePrototypes(exportsHeaderPath) {
   return prototypes;
 }
 
+async function parseCallbackTypedefs(elementTypesPath) {
+  const text = await fs.readFile(elementTypesPath, 'utf8');
+  const pattern = /typedef\s+(.+?)\s*\(\s*__stdcall\s*\*\s*(\w+)\s*\)\s*\((.*?)\)\s*;/gsu;
+  const callbacks = new Map();
+  let match;
+  while ((match = pattern.exec(text))) {
+    callbacks.set(match[2], {
+      returnType: normalizeSpace(match[1]),
+      params: splitParams(match[3]).map(parseParam)
+    });
+  }
+  if (!callbacks.has('WindowResizeCallback') || !callbacks.has('WindowCloseCallback')) {
+    throw new Error('new_emoji element_types.h 缺少窗口回调 typedef。');
+  }
+  return callbacks;
+}
+
 function splitParams(params) {
   const result = [];
   let current = '';
@@ -167,7 +247,7 @@ function parseParam(param) {
   return { type: normalizeSpace(match[1]), name: match[2] };
 }
 
-function buildCommands(exports, prototypes, apiManifest) {
+function buildCommands(exports, prototypes, apiManifest, callbackTypes) {
   const commandNamesByExport = new Map();
   for (const item of apiManifest) {
     const entry = item?.bindings?.e_language?.entry || item?.create_export;
@@ -189,6 +269,10 @@ function buildCommands(exports, prototypes, apiManifest) {
     let name = commandNamesByExport.get(exportName) || `NE_${exportName}`;
     if (seen.has(name)) name = `NE_${exportName}`;
     seen.add(name);
+    const nativeParameters = prototype.params.map(parameter => {
+      const callback = callbackTypes.get(parameter.type);
+      return callback ? { ...parameter, callbackSignature: callback } : parameter;
+    });
     commands.push({
       name,
       signature: `${name}(${prototype.params.map(param => param.name).join(', ')})`,
@@ -196,6 +280,7 @@ function buildCommands(exports, prototypes, apiManifest) {
       insertText: `${name}(${prototype.params.map((_, index) => `$${index + 1}`).join(', ')})`,
       returnType: mapReturnType(prototype.returnType),
       runtimeName: exportName,
+      nativeParameters,
       visibility: 'advanced'
     });
   }
@@ -207,6 +292,8 @@ function bridgeCommands() {
   return [
     ['NE_创建窗口', 'NE_创建窗口(标题, X, Y, 宽度, 高度)', '创建 new_emoji 原生窗口。', '窗口句柄'],
     ['NE_创建深色窗口', 'NE_创建深色窗口(标题, X, Y, 宽度, 高度)', '创建 new_emoji 深色原生窗口。', '窗口句柄'],
+    ['NE_创建浏览器外壳窗口', 'NE_创建浏览器外壳窗口(标题, X, Y, 宽度, 高度)', '使用 0x3F 浏览器框架预设创建无系统标题栏窗口。', '窗口句柄'],
+    ['NE_创建自定义框架窗口', 'NE_创建自定义框架窗口(标题, X, Y, 宽度, 高度, 框架标志)', '使用精确 frame flags 创建 new_emoji 窗口。', '窗口句柄'],
     ['NE_显示窗口', 'NE_显示窗口(窗口句柄, 是否显示)', '显示或隐藏 new_emoji 窗口。', '空'],
     ['NE_显示并激活窗口', 'NE_显示并激活窗口(窗口句柄)', '恢复、显示并激活 new_emoji 窗口。', '空'],
     ['NE_运行消息循环', 'NE_运行消息循环()', '运行 new_emoji Win32 消息循环。', '整数型'],
@@ -232,6 +319,13 @@ function bridgeCommands() {
     ['NE_取最近上传进度值', 'NE_取最近上传进度值()', '在上传操作事件中返回进度或动作附加值。', '整数型'],
     ['NE_设置表格虚拟行数据', 'NE_设置表格虚拟行数据(行数据)', '在 Table 的 VirtualRow 同步事件中设置本次返回的 UTF-8 高级行协议文本。', '空'],
     ['NE_设置窗口标题', 'NE_设置窗口标题(窗口句柄, 标题)', '设置 new_emoji 窗口标题。', '空']
+    ,['NE_设置窗口缩放边框', 'NE_设置窗口缩放边框(窗口句柄, 左, 上, 右, 下)', '设置无边框窗口四边缩放命中尺寸。', '空']
+    ,['NE_清空窗口拖拽区', 'NE_清空窗口拖拽区(窗口句柄)', '清空窗口全部自定义拖拽区域。', '空']
+    ,['NE_设置窗口拖拽区', 'NE_设置窗口拖拽区(窗口句柄, X, Y, 宽度, 高度, 是否启用)', '添加或移除窗口自定义拖拽区域。', '空']
+    ,['NE_清空窗口非拖拽区', 'NE_清空窗口非拖拽区(窗口句柄)', '清空窗口全部交互排除区域。', '空']
+    ,['NE_设置窗口非拖拽区', 'NE_设置窗口非拖拽区(窗口句柄, X, Y, 宽度, 高度, 是否启用)', '添加或移除窗口交互排除区域。', '空']
+    ,['NE_设置元素窗口命令', 'NE_设置元素窗口命令(窗口句柄, 元素ID, 命令)', '把元素点击映射为最小化、最大化/还原或关闭。', '空']
+    ,['NE_设置窗口圆角', 'NE_设置窗口圆角(窗口句柄, 是否启用, 半径)', '设置窗口圆角和逻辑像素半径。', '空']
   ].map(([name, signature, description, returnType]) => ({
     name,
     signature,
@@ -249,20 +343,51 @@ function buildInsertTextFromSignature(name, signature) {
 }
 
 function buildManifest(commands, designerCatalog, designerCatalogSha256) {
-  const commandContributions = commands.map(({ runtimeName, ...command }) => command);
-  const bindings = commands.map(command => ({
-    command: command.name,
-    runtimeName: command.runtimeName || command.name,
-    parameters: parseBindingParameters(command.signature),
-    returnType: mapBindingReturnType(command.returnType),
-    encoding: command.name.startsWith('NE_EU_') ? 'raw' : 'wide',
-    example: command.insertText || command.signature
-  }));
+  const designerControls = newEmojiDesignerControls(designerCatalog);
+  const runtimeCatalog = buildNewEmojiRuntimeControlCatalog(designerControls);
+  const controlBindingContext = buildNewEmojiControlBindingContext(designerControls);
+  const portableControlCommands = buildPortableControlCommands();
+  const commandContributions = [
+    ...commands.map(({ runtimeName, nativeParameters, ...command }) => command),
+    ...portableControlCommands.map(item => item.command),
+    {
+      name: '控件_是否有效',
+      signature: '控件_是否有效(控件)',
+      description: '判断 new_emoji 类型化控件引用是否仍指向当前窗口内存活的元素。',
+      insertText: '控件_是否有效($1)',
+      returnType: '逻辑型'
+    },
+    ...runtimeCatalog.flatMap(item => item.commands)
+  ];
+  const bindings = [...commands.map(command => {
+    const runtimeName = command.runtimeName || command.name;
+    return {
+      command: command.name,
+      runtimeName,
+      parameters: parseBindingParameters(command.signature).map((parameter, index) => normalizeNewEmojiControlBindingParameter(
+        parameter,
+        runtimeName,
+        command.nativeParameters?.[index],
+        controlBindingContext
+      )),
+      returnType: mapBindingReturnType(command.returnType),
+      encoding: command.name.startsWith('NE_EU_') ? 'raw' : 'wide',
+      example: command.insertText || command.signature
+    };
+  }), ...portableControlCommands.map(item => item.binding), {
+    command: '控件_是否有效',
+    runtimeName: '控件_是否有效',
+    parameters: [{
+      name: '控件', type: 'controlRef', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId'
+    }],
+    returnType: 'bool'
+  }, ...runtimeCatalog.flatMap(item => item.bindings)];
   return {
     schemaVersion: 2,
     id: MODULE_ID,
     name: MODULE_NAME,
-    version: '1.0.0',
+    version: '2.0.0',
+    minLingBuilderVersion: '0.3.0',
     category: '界面',
     description: '集成 new_emoji Windows 原生 Direct2D/DirectWrite UI DLL，提供中文/emoji 友好的原生控件能力。',
     author: 'new_emoji contributors / LingBuilder',
@@ -270,10 +395,15 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
     tags: ['界面', 'Direct2D', 'DirectWrite', 'emoji', 'Windows', '原生控件'],
     contributes: {
       commands: commandContributions,
-      designerControls: newEmojiDesignerControls(designerCatalog),
+      designerControls,
       types: [
         { name: 'NE窗口句柄', description: 'new_emoji 原生窗口句柄。', cppType: 'HWND' },
-        { name: 'NE元素ID', description: 'new_emoji Element 元素编号。', cppType: 'int' }
+        { name: 'NE元素ID', description: 'new_emoji Element 元素编号。', cppType: 'int' },
+        ...runtimeCatalog.map(item => ({
+          name: item.contract.lingCppType,
+          description: `new_emoji ${item.control.label}的非拥有型运行时控件引用。`,
+          cppType: 'LingControlRef'
+        }))
       ],
       snippets: [
         {
@@ -287,6 +417,8 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
       ],
       docs: [
         { title: 'new_emoji API 索引', path: 'docs/new_emoji-api.json' },
+        { title: 'RichList 富列表', path: 'docs/rich-list.md' },
+        { title: '窗口框架与浏览器外壳', path: 'docs/window-frame.md' },
         { title: 'new_emoji 模块说明', path: 'README.md' }
       ]
     },
@@ -322,14 +454,319 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
       path: 'docs/lingbuilder-designer-catalog.json',
       schemaVersion: designerCatalog.schemaVersion,
       sha256: designerCatalogSha256
-    },
-    publish: {
-      repository: 'T:/github/new_emoji'
     }
   };
 }
 
+function buildNewEmojiControlBindingContext(designerControls) {
+  const controlTypesByCommand = new Map();
+  const add = (command, controlType) => {
+    if (!command || !controlType) return;
+    const types = controlTypesByCommand.get(command) || new Set();
+    types.add(controlType);
+    controlTypesByCommand.set(command, types);
+  };
+  for (const control of designerControls.filter(item => item.isVisual !== false)) {
+    const controlType = control.namespacedType;
+    add(control.runtime?.createCommand, controlType);
+    for (const setter of control.runtime?.propertySetters || []) add(setter.command, controlType);
+    for (const event of control.runtime?.eventBindings || []) add(event.command, controlType);
+  }
+  return {
+    designerControls,
+    controlTypesByCommand,
+    containerTypes: designerControls
+      .filter(control => control.isVisual !== false && control.isContainer === true)
+      .map(control => control.namespacedType)
+  };
+}
+
+const NEW_EMOJI_SINGLE_CONTROL_ID_PARAMETERS = new Set([
+  'element_id', 'parent_id', 'container_id', 'target_element_id', 'popup_id', 'anchor_element_id',
+  'child_id', 'layout_id', 'dropdown_element_id', 'submenu_element_id', 'target_container_id',
+  'loading_id', 'primary_id', '元素ID', '父元素ID'
+]);
+
+function normalizeNewEmojiControlBindingParameter(parameter, runtimeName, nativeParameter, context) {
+  if (nativeParameter?.callbackSignature) {
+    return {
+      name: parameter.name,
+      type: 'handler',
+      description: `new_emoji ${nativeParameter.type} 回调处理器，源码必须使用 &处理器名。`,
+      handlerSignature: toLingCppHandlerSignature(nativeParameter.callbackSignature)
+    };
+  }
+  if (!NEW_EMOJI_SINGLE_CONTROL_ID_PARAMETERS.has(parameter.name)) return parameter;
+  if (nativeParameter?.type?.includes('*')) return parameter;
+
+  let controlTypes;
+  if (parameter.name === 'parent_id' || parameter.name === '父元素ID' || parameter.name === 'target_container_id') {
+    controlTypes = context.containerTypes;
+  } else if (parameter.name === 'element_id') {
+    controlTypes = [...(context.controlTypesByCommand.get(runtimeName) || inferNewEmojiCommandControlTypes(runtimeName, context.designerControls))];
+  } else if (parameter.name === '元素ID' && /上传/u.test(runtimeName)) {
+    controlTypes = context.designerControls.filter(control => control.type === 'Upload').map(control => control.namespacedType);
+  } else {
+    const typeByParameter = {
+      layout_id: 'Layout',
+      dropdown_element_id: 'Dropdown',
+      submenu_element_id: 'Menu',
+      loading_id: 'Loading'
+    };
+    const expectedType = typeByParameter[parameter.name];
+    controlTypes = expectedType
+      ? context.designerControls.filter(control => control.type === expectedType).map(control => control.namespacedType)
+      : [];
+  }
+
+  return {
+    name: parameter.name,
+    type: 'controlRef',
+    ...(controlTypes?.length ? { controlTypes } : {}),
+    controlKinds: ['visual'],
+    scope: 'currentWindow',
+    runtimeRepresentation: 'stableId'
+  };
+}
+
+function toLingCppHandlerSignature(callback) {
+  const parameterTypes = [];
+  for (let index = 0; index < callback.params.length; index += 1) {
+    const parameter = callback.params[index];
+    const next = callback.params[index + 1];
+    if (/unsigned char\s*\*/u.test(parameter.type)) {
+      parameterTypes.push('文本型');
+      if (next && next.type === 'int' && /len|length|size/u.test(next.name)) index += 1;
+      continue;
+    }
+    if (/wchar_t\s*\*/u.test(parameter.type)) {
+      parameterTypes.push('文本型');
+      continue;
+    }
+    if (parameter.type === 'HWND') parameterTypes.push('NE窗口句柄');
+    else if (parameter.type === 'float' || parameter.type === 'double') parameterTypes.push('小数型');
+    else if (/long long|int64|uint64/u.test(parameter.type)) parameterTypes.push('长整数型');
+    else parameterTypes.push('整数型');
+  }
+  return {
+    parameterTypes,
+    returnType: callback.returnType === 'void' ? '空' : callback.returnType === 'float' || callback.returnType === 'double' ? '小数型' : '整数型'
+  };
+}
+
+function validateGeneratedCallbackBindings(manifest, commands) {
+  const nativeCallbackCommands = new Map(commands
+    .filter(command => command.nativeParameters?.some(parameter => parameter.callbackSignature))
+    .map(command => [command.name, command]));
+  const bindings = new Map((manifest.bindings?.commands || []).map(binding => [binding.command, binding]));
+  const invalid = [];
+  for (const [name, command] of nativeCallbackCommands) {
+    const binding = bindings.get(name);
+    const callbackIndexes = command.nativeParameters
+      .map((parameter, index) => parameter.callbackSignature ? index : -1)
+      .filter(index => index >= 0);
+    if (!binding || callbackIndexes.some(index => binding.parameters?.[index]?.type !== 'handler' || !binding.parameters?.[index]?.handlerSignature)) {
+      invalid.push(name);
+    }
+  }
+  if (invalid.length) throw new Error(`new_emoji 回调 binding 未声明为 handler：${invalid.slice(0, 20).join(', ')}`);
+}
+
+function inferNewEmojiCommandControlTypes(runtimeName, designerControls) {
+  if (!runtimeName.startsWith('EU_') || /Element/u.test(runtimeName)) return [];
+  const matching = designerControls
+    .filter(control => control.isVisual !== false && runtimeName.includes(control.type))
+    .sort((left, right) => right.type.length - left.type.length);
+  if (!matching.length) return [];
+  const longest = matching[0].type.length;
+  return matching.filter(control => control.type.length === longest).map(control => control.namespacedType);
+}
+
+function buildPortableControlCommands() {
+  const specs = [
+    ['控件_取文本', '控件_取文本(控件)', '读取控件当前文本。', '文本型', [], 'wideString'],
+    ['控件_设置文本', '控件_设置文本(控件, 文本)', '设置控件文本。', '逻辑型', [['文本', 'wideString']], 'bool'],
+    ['控件_设置图片', '控件_设置图片(控件, 图片路径)', '设置图片控件的本地图片路径。', '逻辑型', [['图片路径', 'wideString']], 'bool'],
+    ['控件_设置启用', '控件_设置启用(控件, 启用)', '启用或禁用控件。', '逻辑型', [['启用', 'bool']], 'bool'],
+    ['控件_设置可见', '控件_设置可见(控件, 可见)', '显示或隐藏控件。', '逻辑型', [['可见', 'bool']], 'bool'],
+    ['控件_设置位置大小', '控件_设置位置大小(控件, 横坐标, 纵坐标, 宽度, 高度)', '设置控件的位置和尺寸。', '逻辑型', [['横坐标', 'int'], ['纵坐标', 'int'], ['宽度', 'int'], ['高度', 'int']], 'bool'],
+    ['控件_设置勾选', '控件_设置勾选(控件, 勾选)', '设置支持勾选状态的控件。', '逻辑型', [['勾选', 'bool']], 'bool'],
+    ['控件_取勾选', '控件_取勾选(控件)', '读取控件勾选状态。', '逻辑型', [], 'bool'],
+    ['控件_设置数值', '控件_设置数值(控件, 数值)', '设置数值型控件的当前值。', '逻辑型', [['数值', 'int']], 'bool'],
+    ['控件_取数值', '控件_取数值(控件)', '读取数值型控件的当前值。', '整数型', [], 'int'],
+    ['控件_设置选择项', '控件_设置选择项(控件, 索引)', '设置选择型控件的当前项。', '逻辑型', [['索引', 'int']], 'bool'],
+    ['控件_取选择项', '控件_取选择项(控件)', '读取选择型控件的当前项。', '整数型', [], 'int'],
+    ['控件_添加项目', '控件_添加项目(控件, 文本)', '向支持的集合控件添加项目。', '整数型', [['文本', 'wideString']], 'int'],
+    ['控件_清空项目', '控件_清空项目(控件)', '清空支持的集合控件项目。', '逻辑型', [], 'bool']
+  ];
+  return specs.map(([name, signature, description, returnType, parameters, bindingReturnType]) => ({
+    command: {
+      name,
+      signature,
+      description,
+      insertText: buildInsertTextFromSignature(name, signature),
+      returnType
+    },
+    binding: {
+      command: name,
+      runtimeName: name,
+      parameters: [{
+        name: '控件', type: 'controlRef', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'wideName'
+      }, ...parameters.map(([parameterName, type]) => ({ name: parameterName, type }))],
+      returnType: bindingReturnType,
+      encoding: parameters.some(([, type]) => type === 'wideString') || bindingReturnType === 'wideString' ? 'wide' : undefined
+    }
+  }));
+}
+
+function buildNewEmojiRuntimeControlCatalog(designerControls) {
+  const visualControls = designerControls.filter(control => control.isVisual !== false);
+  const typeNames = new Set();
+  const commandNames = new Set();
+  return visualControls.map(control => {
+    const lingCppType = newEmojiLingCppType(control);
+    if (typeNames.has(lingCppType)) throw new Error(`new_emoji 运行时控件类型名重复：${lingCppType}`);
+    typeNames.add(lingCppType);
+    const contract = {
+      lingCppType,
+      cppType: 'LingControlRef',
+      createCommand: `控件_创建${lingCppType}`,
+      createParameters: [
+        { name: '父级', type: '控件容器', role: 'parent' },
+        { name: '横坐标', type: 'int', role: 'x' },
+        { name: '纵坐标', type: 'int', role: 'y' },
+        { name: '宽度', type: 'int', role: 'width' },
+        { name: '高度', type: 'int', role: 'height' },
+        { name: '文本', type: 'wideString', role: 'content' },
+        { name: '标记文本', type: 'wideString', role: 'tagText', optional: true, defaultValue: '' },
+        { name: '标记整数', type: 'int', role: 'tagInteger', optional: true, defaultValue: null }
+      ],
+      lookupByTagTextCommand: `通过标记文本获取${lingCppType}`,
+      lookupByTagIntegerCommand: `通过标记整数获取${lingCppType}`,
+      validCommand: '控件_是否有效',
+      parentKinds: ['window', 'container', 'tabPage'],
+      tagScope: 'currentWindowAndConcreteType'
+    };
+    [contract.createCommand, contract.lookupByTagTextCommand, contract.lookupByTagIntegerCommand].forEach(command => {
+      if (commandNames.has(command)) throw new Error(`new_emoji 运行时控件命令名重复：${command}`);
+      commandNames.add(command);
+    });
+    control.runtimeControl = contract;
+    const runtimeEvents = (control.runtime?.eventBindings || []).map(eventBinding => {
+      const event = (control.events || []).find(item => item.name === eventBinding.eventName);
+      if (!event) throw new Error(`new_emoji ${control.type}.${eventBinding.eventName} 缺少事件贡献。`);
+      const bindCommand = `${lingCppType}_绑定${event.label}`;
+      const unbindCommand = `${lingCppType}_解绑${event.label}`;
+      [bindCommand, unbindCommand].forEach(command => {
+        if (commandNames.has(command)) throw new Error(`new_emoji 运行时事件命令名重复：${command}`);
+        commandNames.add(command);
+      });
+      return { event, eventBinding, bindCommand, unbindCommand };
+    });
+    return {
+      control,
+      contract,
+      commands: [{
+        name: contract.createCommand,
+        signature: `${contract.createCommand}(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])`,
+        description: `在当前 new_emoji 窗口运行时创建${lingCppType}，窗口拥有元素生命周期。`,
+        insertText: `${contract.createCommand}(当前窗口, $1, $2, $3, $4, "$5", "$6", $7)`,
+        returnType: lingCppType
+      }, {
+        name: contract.lookupByTagTextCommand,
+        signature: `${contract.lookupByTagTextCommand}(标记文本)`,
+        description: `按区分大小写的非空文本标记查找${lingCppType}，找不到时返回无效引用。`,
+        insertText: `${contract.lookupByTagTextCommand}("$1")`,
+        returnType: lingCppType
+      }, {
+        name: contract.lookupByTagIntegerCommand,
+        signature: `${contract.lookupByTagIntegerCommand}(标记整数)`,
+        description: `按有符号 32 位整数标记查找${lingCppType}，找不到时返回无效引用。`,
+        insertText: `${contract.lookupByTagIntegerCommand}($1)`,
+        returnType: lingCppType
+      }, ...runtimeEvents.flatMap(item => [{
+        name: item.bindCommand,
+        signature: `${item.bindCommand}(控件, 处理器)`,
+        description: `为${lingCppType}实例绑定“${item.event.label}”处理器，处理器必须使用 &名称。`,
+        insertText: `${item.bindCommand}($1, &$2)`,
+        returnType: '逻辑型'
+      }, {
+        name: item.unbindCommand,
+        signature: `${item.unbindCommand}(控件)`,
+        description: `移除${lingCppType}实例由代码绑定的“${item.event.label}”处理器。`,
+        insertText: `${item.unbindCommand}($1)`,
+        returnType: '逻辑型'
+      }])],
+      bindings: [{
+        command: contract.createCommand,
+        runtimeName: contract.createCommand,
+        parameters: [{
+          name: '父级', type: 'controlRef', description: '当前窗口、new_emoji 容器或标签页页面。',
+          controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId'
+        },
+        { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' },
+        { name: '宽度', type: 'int' }, { name: '高度', type: 'int' },
+        { name: '文本', type: 'wideString' },
+        { name: '标记文本', type: 'wideString', optional: true, defaultValue: '' },
+        { name: '标记整数', type: 'int', optional: true, defaultValue: null }],
+        returnType: lingCppType,
+        encoding: 'wide',
+        example: `${contract.createCommand}(当前窗口, 20, 20, 120, 36, "${lingCppType}", "", 0)`
+      }, {
+        command: contract.lookupByTagTextCommand,
+        runtimeName: contract.lookupByTagTextCommand,
+        parameters: [{ name: '标记文本', type: 'wideString' }],
+        returnType: lingCppType,
+        encoding: 'wide'
+      }, {
+        command: contract.lookupByTagIntegerCommand,
+        runtimeName: contract.lookupByTagIntegerCommand,
+        parameters: [{ name: '标记整数', type: 'int' }],
+        returnType: lingCppType
+      }, ...runtimeEvents.flatMap(item => {
+        const controlParameter = {
+          name: '控件', type: 'controlRef', controlTypes: [control.namespacedType], controlKinds: ['visual'],
+          scope: 'currentWindow', runtimeRepresentation: 'stableId'
+        };
+        return [{
+          command: item.bindCommand,
+          runtimeName: item.bindCommand,
+          parameters: [controlParameter, {
+            name: '处理器', type: 'handler', handlerSignature: {
+              parameterTypes: (item.event.parameters || []).map(parameter => parameter.type),
+              returnType: '空'
+            }
+          }],
+          returnType: 'bool'
+        }, {
+          command: item.unbindCommand,
+          runtimeName: item.unbindCommand,
+          parameters: [controlParameter],
+          returnType: 'bool'
+        }];
+      })]
+    };
+  });
+}
+
+function newEmojiLingCppType(control) {
+  const englishSuffix = new RegExp(`\\s+${escapeRegExp(control.type)}$`, 'iu');
+  const label = String(control.label || control.type).replace(englishSuffix, '').replace(/[^\p{L}\p{N}_]+/gu, '');
+  return `NE${label || control.type.replace(/[^A-Za-z0-9_]+/gu, '')}`;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
 function newEmojiDesignerControls(catalog) {
+  const componentTypes = new Map(catalog.components.map(component => [
+    component.id,
+    component.namespacedId || `${MODULE_ID}/${component.id}`
+  ]));
+  const containerTypes = catalog.components
+    .filter(component => component.isVisual !== false && component.isContainer === true)
+    .map(component => component.namespacedId || `${MODULE_ID}/${component.id}`);
   return catalog.components.map(component => {
     const componentEvents = [...(component.events || []), ...(component.isVisual === false ? [] : COMMON_DESIGNER_EVENTS)]
       .filter((event, index, items) => items.findIndex(item => item.name === event.name) === index);
@@ -357,25 +794,177 @@ function newEmojiDesignerControls(catalog) {
     const setterByProperty = new Map(propertySetters.flatMap(setter => setter.propertyKeys.map(key => [key, setter.command])));
     Object.entries(specialPropertyCommands).forEach(([key, command]) => setterByProperty.set(key, command));
     const bindingByEvent = new Map(eventBindings.map(binding => [binding.eventName, binding.command]));
-    const properties = (component.properties || []).map(property => ({
-      key: property.key,
-      label: property.label,
-      type: property.type,
-      defaultValue: component.id === 'Tabs' && property.key === 'items'
-        ? ['标签页 1']
-        : component.id === 'Tabs' && property.key === 'contentVisible'
-          ? true
-          : property.defaultValue,
-      options: property.options,
-      description: property.description,
-      group: property.group,
-      level: property.level,
-      ...(createPropertyKeys.has(property.key)
-        ? { runtimeCommand: component.createExport }
-        : setterByProperty.has(property.key)
-          ? { runtimeCommand: setterByProperty.get(property.key) }
-          : {})
-    }));
+    const properties = (component.properties || []).map(property => {
+      const contractKey = `${component.id}.${property.key}`;
+      const relationship = NEW_EMOJI_DESIGNER_RELATIONSHIPS[contractKey];
+      const recordList = NEW_EMOJI_DESIGNER_RECORD_LISTS[contractKey];
+      return {
+        key: property.key,
+        label: property.label,
+        type: relationship ? 'controlRef' : recordList ? 'recordList' : property.type,
+        defaultValue: relationship
+          ? ''
+          : recordList
+            ? recordList.defaultValue
+            : component.id === 'Tabs' && property.key === 'contentVisible'
+              ? true
+              : property.defaultValue,
+        options: property.options,
+        description: property.description,
+        group: property.group,
+        level: property.level,
+        ...(relationship ? {
+          controlTypes: relationship.controlTypes === 'containers'
+            ? containerTypes
+            : (relationship.controlTypes || []).map(type => componentTypes.get(type) || `${MODULE_ID}/${type}`),
+          controlKinds: ['visual'],
+          scope: 'currentWindow',
+          runtimeRepresentation: 'stableId'
+        } : {}),
+        ...(recordList ? {
+          recordKey: recordList.recordKey,
+          fields: recordList.fields.map(field => ({
+            ...field,
+            ...(field.controlTypes ? {
+              controlTypes: field.controlTypes.map(type => componentTypes.get(type) || `${MODULE_ID}/${type}`)
+            } : {})
+          }))
+        } : {}),
+        ...(createPropertyKeys.has(property.key)
+          ? { runtimeCommand: component.createExport }
+          : setterByProperty.has(property.key)
+            ? { runtimeCommand: setterByProperty.get(property.key) }
+            : {})
+      };
+    });
+    for (const synthetic of NEW_EMOJI_SYNTHETIC_RECORD_LISTS[component.id] || []) {
+      properties.push({
+        ...synthetic,
+        type: 'recordList',
+        defaultValue: synthetic.defaultValue || [],
+        fields: synthetic.fields.map(field => ({
+          ...field,
+          ...(field.controlTypes ? {
+            controlTypes: field.controlTypes.map(type => componentTypes.get(type) || `${MODULE_ID}/${type}`)
+          } : {})
+        }))
+      });
+    }
+    if (component.id === 'Container' && !properties.some(property => property.key === 'flowEnabled')) {
+      properties.push({
+        key: 'flowEnabled',
+        label: '启用流式布局',
+        type: 'boolean',
+        defaultValue: true,
+        description: '关闭后保留子控件的绝对坐标，适用于浏览器外壳等自由布局。',
+        group: '布局',
+        level: 'basic',
+        runtimeCommand: 'EU_SetContainerLayout'
+      });
+    }
+    if (component.id === 'IconButton' && !properties.some(property => property.key === 'windowCommand')) {
+      properties.push({
+        key: 'windowCommand',
+        label: '窗口命令',
+        type: 'enum',
+        defaultValue: '0',
+        options: [
+          { value: '0', label: '无' },
+          { value: '1', label: '最小化' },
+          { value: '2', label: '最大化/还原' },
+          { value: '3', label: '关闭' }
+        ],
+        description: '为浏览器框架窗口提供原生窗口按钮命中行为。',
+        group: '窗口框架',
+        level: 'basic',
+        runtimeCommand: 'NE_设置元素窗口命令'
+      });
+    }
+    if (component.id === 'Tabs') {
+      properties.push(
+        {
+          key: 'chromeMode', label: 'Chrome 标签样式', type: 'boolean', defaultValue: false,
+          description: '启用浏览器式标签页绘制。', group: '浏览器外壳', level: 'basic', runtimeCommand: 'EU_SetTabsChromeMode'
+        },
+        {
+          key: 'chromeMinWidth', label: '标签最小宽度', type: 'number', defaultValue: 96,
+          description: 'Chrome 模式下单个标签页的最小逻辑宽度。', group: '浏览器外壳', level: 'advanced', runtimeCommand: 'EU_SetTabsChromeMetrics'
+        },
+        {
+          key: 'chromeMaxWidth', label: '标签最大宽度', type: 'number', defaultValue: 220,
+          description: 'Chrome 模式下单个标签页的最大逻辑宽度。', group: '浏览器外壳', level: 'advanced', runtimeCommand: 'EU_SetTabsChromeMetrics'
+        },
+        {
+          key: 'chromePinnedWidth', label: '固定标签宽度', type: 'number', defaultValue: 46,
+          description: 'Chrome 模式下固定标签页的逻辑宽度。', group: '浏览器外壳', level: 'advanced', runtimeCommand: 'EU_SetTabsChromeMetrics'
+        },
+        {
+          key: 'chromeTabHeight', label: '标签高度', type: 'number', defaultValue: 32,
+          description: 'Chrome 模式下标签页标题的逻辑高度。', group: '浏览器外壳', level: 'advanced', runtimeCommand: 'EU_SetTabsChromeMetrics'
+        },
+        {
+          key: 'chromeOverlap', label: '标签重叠', type: 'number', defaultValue: 0,
+          description: '相邻 Chrome 标签页的重叠逻辑像素。', group: '浏览器外壳', level: 'advanced', runtimeCommand: 'EU_SetTabsChromeMetrics'
+        },
+        {
+          key: 'newButtonVisible', label: '内置新建按钮', type: 'boolean', defaultValue: true,
+          description: '显示 Tabs 自带的新建标签按钮；独立按钮布局可关闭此项。', group: '浏览器外壳', level: 'basic', runtimeCommand: 'EU_SetTabsNewButtonVisible'
+        },
+        {
+          key: 'reorderEnabled', label: '允许标签重排', type: 'boolean', defaultValue: true,
+          description: '允许用户拖动标签页改变顺序。', group: '浏览器外壳', level: 'basic', runtimeCommand: 'EU_SetTabsDragOptions'
+        },
+        {
+          key: 'detachEnabled', label: '允许标签分离', type: 'boolean', defaultValue: false,
+          description: '允许把标签页拖出当前窗口。', group: '浏览器外壳', level: 'advanced', runtimeCommand: 'EU_SetTabsDragOptions'
+        }
+      );
+    }
+    if (component.id === 'Menu') {
+      properties.push(
+        {
+          key: 'anchorElementId', label: '弹层锚点', type: 'controlRef', defaultValue: '',
+          description: '菜单弹出时使用的可视控件稳定 ID。', group: '弹层', level: 'basic',
+          controlTypes: [], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId',
+          runtimeCommand: 'EU_SetPopupAnchorElement'
+        },
+        {
+          key: 'popupTrigger', label: '弹出触发', type: 'enum', defaultValue: 'none',
+          options: [
+            { value: 'none', label: '仅由代码控制' },
+            { value: 'dropdown', label: '按钮下拉' },
+            { value: 'right_click', label: '右键' },
+            { value: 'left_click', label: '左键' },
+            { value: 'hover', label: '悬停' }
+          ],
+          description: '右键等触发会在创建全部控件后绑定到锚点。', group: '弹层', level: 'basic', runtimeCommand: 'EU_SetElementPopup'
+        },
+        {
+          key: 'popupPlacement', label: '弹出位置', type: 'number', defaultValue: 3,
+          description: 'new_emoji 原生弹层位置编号。', group: '弹层', level: 'basic', runtimeCommand: 'EU_SetPopupPlacement'
+        },
+        {
+          key: 'popupOffsetX', label: '水平偏移', type: 'number', defaultValue: 0,
+          description: '弹层相对锚点的水平逻辑像素偏移。', group: '弹层', level: 'advanced', runtimeCommand: 'EU_SetPopupPlacement'
+        },
+        {
+          key: 'popupOffsetY', label: '垂直偏移', type: 'number', defaultValue: 0,
+          description: '弹层相对锚点的垂直逻辑像素偏移。', group: '弹层', level: 'advanced', runtimeCommand: 'EU_SetPopupPlacement'
+        },
+        {
+          key: 'popupOpen', label: '初始打开', type: 'boolean', defaultValue: false,
+          description: '窗口创建后是否立即打开菜单。', group: '弹层', level: 'advanced', runtimeCommand: 'EU_SetPopupOpen'
+        },
+        {
+          key: 'popupCloseOnOutside', label: '外部单击关闭', type: 'boolean', defaultValue: true,
+          description: '单击菜单外部时关闭弹层。', group: '弹层', level: 'basic', runtimeCommand: 'EU_SetPopupDismissBehavior'
+        },
+        {
+          key: 'popupCloseOnEscape', label: 'Escape 关闭', type: 'boolean', defaultValue: true,
+          description: '按 Escape 时关闭弹层。', group: '弹层', level: 'basic', runtimeCommand: 'EU_SetPopupDismissBehavior'
+        }
+      );
+    }
     return {
       type: component.id,
       namespacedType: component.namespacedId || `${MODULE_ID}/${component.id}`,
@@ -430,8 +1019,83 @@ function newEmojiDesignerControls(catalog) {
   });
 }
 
+const NEW_EMOJI_DESIGNER_RELATIONSHIPS = {
+  'Anchor.targetContainerId': { controlTypes: 'containers' },
+  'Watermark.containerId': { controlTypes: 'containers' },
+  'Tour.targetElementId': {},
+  'Loading.targetElementId': {},
+  'Popover.anchorElementId': {},
+  'IconButton.dropdownElementId': { controlTypes: ['Dropdown', 'Menu', 'Popover'] }
+};
+
+const NEW_EMOJI_DESIGNER_RECORD_LISTS = {
+  'Tabs.items': {
+    recordKey: 'id',
+    defaultValue: [{ id: 'page1', title: '标签页 1', icon: '', closable: true, disabled: false, pinned: false, loading: false, muted: false, alerting: false }],
+    fields: [
+      { key: 'id', label: '稳定 ID', type: 'text', required: true },
+      { key: 'title', label: '标题', type: 'text', required: true },
+      { key: 'icon', label: '图标', type: 'text', defaultValue: '' },
+      { key: 'closable', label: '可关闭', type: 'boolean', defaultValue: true },
+      { key: 'disabled', label: '禁用', type: 'boolean', defaultValue: false },
+      { key: 'pinned', label: '固定', type: 'boolean', defaultValue: false },
+      { key: 'loading', label: '加载中', type: 'boolean', defaultValue: false },
+      { key: 'muted', label: '静音', type: 'boolean', defaultValue: false },
+      { key: 'alerting', label: '提醒', type: 'boolean', defaultValue: false }
+    ]
+  },
+  'Omnibox.suggestions': {
+    recordKey: 'id',
+    defaultValue: [],
+    fields: [
+      { key: 'id', label: '稳定 ID', type: 'text', required: true },
+      { key: 'title', label: '标题', type: 'text', required: true },
+      { key: 'url', label: '地址', type: 'text', defaultValue: '' },
+      { key: 'icon', label: '图标', type: 'text', defaultValue: '' },
+      { key: 'description', label: '说明', type: 'text', defaultValue: '' }
+    ]
+  },
+  'Omnibox.actionIcons': {
+    recordKey: 'id',
+    defaultValue: [],
+    fields: [
+      { key: 'id', label: '稳定 ID', type: 'text', required: true },
+      { key: 'icon', label: '图标', type: 'text', required: true },
+      { key: 'tooltip', label: '提示', type: 'text', defaultValue: '' },
+      { key: 'enabled', label: '启用', type: 'boolean', defaultValue: true }
+    ]
+  }
+};
+
+const NEW_EMOJI_SYNTHETIC_RECORD_LISTS = {
+  Menu: [{
+    key: 'menuItems',
+    label: '菜单项',
+    recordKey: 'id',
+    defaultValue: [],
+    group: '菜单项',
+    level: 'basic',
+    runtimeCommand: 'LB_NE_ApplyMenuItems',
+    fields: [
+      { key: 'id', label: '稳定 ID', type: 'text', required: true },
+      { key: 'command', label: '命令', type: 'text', required: true },
+      { key: 'title', label: '标题', type: 'text', required: true },
+      { key: 'icon', label: '图标', type: 'text', defaultValue: '' },
+      { key: 'shortcut', label: '快捷键', type: 'text', defaultValue: '' },
+      { key: 'separator', label: '分隔符', type: 'boolean', defaultValue: false },
+      { key: 'checked', label: '勾选', type: 'boolean', defaultValue: false },
+      { key: 'disabled', label: '禁用', type: 'boolean', defaultValue: false },
+      {
+        key: 'submenu', label: '子菜单', type: 'controlRef', defaultValue: '', controlTypes: ['Menu'],
+        controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId'
+      }
+    ]
+  }]
+};
+
 const CREATE_PARAMETER_ALIASES = {
   MessageBox: { text: 'body', boxType: 'messageType' },
+  RichList: { template: 'templateJson', items: 'itemsJson' },
   Header: { text: 'title' },
   Aside: { text: 'title' },
   Main: { text: 'title' },
@@ -454,7 +1118,7 @@ const PROPERTY_PARAMETER_ALIASES = {
     pressedBg: 'pressedBackgroundColor', pressedBorder: 'pressedBorderColor', pressedFg: 'pressedForegroundColor'
   },
   'Panel.EU_SetPanelStyle': { bg: 'backgroundColor', border: 'borderColor', radius: 'cornerRadius' },
-  'Container.EU_SetContainerLayout': { direction: 'orientation' },
+  'Container.EU_SetContainerLayout': { enabled: 'flowEnabled', direction: 'orientation' },
   'Border.EU_SetBorderOptions': { color: 'borderColor', width: 'borderWidth' },
   'InfoBox.EU_SetInfoBoxOptions': { type: 'infoType', accent: 'accentColor' },
   'Divider.EU_SetDividerOptions': { width: 'lineWidth', text: 'content' },
@@ -555,6 +1219,10 @@ const PROPERTY_PARAMETER_ALIASES = {
   'ListBox.EU_SetListBoxSelectedIndex': { index: 'selectedIndex' },
   'ListBox.EU_SetListBoxSelectedKeys': { keys: 'selectedKeys' },
   'ListBox.EU_SetListBoxVirtualItemCount': { count: 'virtualItemCount' },
+  'RichList.EU_SetRichListTemplate': { bytes: 'templateJson' },
+  'RichList.EU_SetRichListItems': { bytes: 'itemsJson' },
+  'RichList.EU_SetRichListSelectedKeys': { bytes: 'selectedKeys' },
+  'RichList.EU_SetRichListVirtualItemCount': { count: 'virtualItemCount' },
   'Menu.EU_SetMenuExpandedUtf8': { indices: 'expandedIndices' },
   'Tabs.EU_SetTabsPosition': { tabPosition: 'position' },
   'Tabs.EU_SetTabsHeaderAlign': { align: 'headerAlign' },
@@ -611,7 +1279,6 @@ const PROPERTY_PARAMETER_ALIASES = {
 };
 
 const PROPERTY_PARAMETER_LITERALS = {
-  'Container.EU_SetContainerLayout': { enabled: 1 },
   'Dialog.EU_SetDialogOptions': { closeOnMask: 1 },
   'Slider.EU_SetSliderOptions': { showTooltip: 1 }
 };
@@ -849,6 +1516,19 @@ const NEW_EMOJI_EVENT_PARAMETERS = {
     eventParameter('项目数量', 'int', '当前标签页项目总数。'),
     eventParameter('动作', 'int', '动作编号：1 代码设置，2 鼠标，3 键盘，4 关闭，5 新增，6 滚动。')
   ],
+  'Omnibox.TextChanged': [
+    eventParameter('地址', 'wideString', '用户提交的 UTF-8 地址或搜索文本。')
+  ],
+  'Omnibox.ValueChanged': [
+    eventParameter('图标索引', 'int', '被触发动作图标的索引。'),
+    eventParameter('起始位置', 'int', '上游回调提供的选择起始位置。'),
+    eventParameter('结束位置', 'int', '上游回调提供的选择结束位置。')
+  ],
+  'Menu.MenuCommand': [
+    eventParameter('项目索引', 'int', '从 0 开始的菜单项索引。'),
+    eventParameter('菜单路径', 'wideString', '按 UTF-8 解码后的层级菜单路径。'),
+    eventParameter('命令', 'wideString', '菜单项 recordList 中保存的稳定命令。')
+  ],
   'ListBox.SelectionChanged': [
     eventParameter('选中键列表', 'wideString', '当前选中项目的 key 列表，按 new_emoji 的 UTF-8 文本协议返回。')
   ],
@@ -877,7 +1557,16 @@ const NEW_EMOJI_EVENT_PARAMETERS = {
     eventParameter('项目索引', 'int', '触发右键菜单的项目索引，从 0 开始。'),
     eventParameter('横坐标', 'int', '右键位置相对控件内容区的 X 坐标。'),
     eventParameter('纵坐标', 'int', '右键位置相对控件内容区的 Y 坐标。')
-  ]
+  ],
+  'RichList.SelectionChanged': [
+    eventParameter('选中键列表', 'wideString', '当前选中项目 key 的 JSON 数组。')
+  ],
+  'RichList.ItemClicked': [eventParameter('事件数据', 'wideString', '包含项目 key、索引和坐标的原生 JSON。')],
+  'RichList.ItemDoubleClicked': [eventParameter('事件数据', 'wideString', '包含项目 key、索引和坐标的原生 JSON。')],
+  'RichList.ButtonClicked': [eventParameter('事件数据', 'wideString', '包含项目、节点和 actionId 的原生 JSON。')],
+  'RichList.BadgeClicked': [eventParameter('事件数据', 'wideString', '包含项目、节点和 actionId 的原生 JSON。')],
+  'RichList.CountdownEnd': [eventParameter('事件数据', 'wideString', '包含项目、倒计时节点和 actionId 的原生 JSON。')],
+  'RichList.ContextMenu': [eventParameter('事件数据', 'wideString', '包含项目 key、索引和坐标的原生 JSON。')]
 };
 
 const NEW_EMOJI_EVENT_STARTERS = {
@@ -927,6 +1616,13 @@ const EVENT_BINDINGS = {
   'ListBox.Edit': ['EU_SetListBoxEditCallback', 'ListBoxEditCallback'],
   'ListBox.Reorder': ['EU_SetListBoxReorderCallback', 'ElementReorderCallback'],
   'ListBox.ContextMenu': ['EU_SetListBoxContextMenuCallback', 'ElementValueCallback'],
+  'RichList.SelectionChanged': ['EU_SetRichListChangeCallback', 'ElementTextCallback'],
+  'RichList.ItemClicked': ['EU_SetRichListEventCallback', 'RichListEventCallback'],
+  'RichList.ItemDoubleClicked': ['EU_SetRichListEventCallback', 'RichListEventCallback'],
+  'RichList.ButtonClicked': ['EU_SetRichListEventCallback', 'RichListEventCallback'],
+  'RichList.BadgeClicked': ['EU_SetRichListEventCallback', 'RichListEventCallback'],
+  'RichList.CountdownEnd': ['EU_SetRichListEventCallback', 'RichListEventCallback'],
+  'RichList.ContextMenu': ['EU_SetRichListEventCallback', 'RichListEventCallback'],
   'Card.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback'],
   'Menu.MenuCommand': ['EU_SetMenuSelectCallback', 'MenuSelectCallback'],
   'Tabs.SelectionChanged': ['EU_SetTabsChangeCallback', 'ElementValueCallback'],
@@ -989,13 +1685,23 @@ const EVENT_BINDINGS = {
   ,'IconButton.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback']
 };
 
+const RICH_LIST_EVENT_PAYLOADS = {
+  'RichList.ItemClicked': 'item_click',
+  'RichList.ItemDoubleClicked': 'item_double_click',
+  'RichList.ButtonClicked': 'button_click',
+  'RichList.BadgeClicked': 'badge_click',
+  'RichList.CountdownEnd': 'countdown_end',
+  'RichList.ContextMenu': 'context_menu'
+};
+
 function inferEventBindings(component, rawExports) {
   const available = new Set(rawExports.map(item => item.name));
   return (component.events || []).flatMap(event => {
     const binding = EVENT_BINDINGS[`${component.id}.${event.name}`] || COMMON_EVENT_BINDINGS[event.name];
     if (!binding || !available.has(binding[0])) return [];
     const aliases = newEmojiEventAliases(component.id, event.name);
-    return [{ eventName: event.name, ...(aliases.length ? { aliases } : {}), command: binding[0], callbackType: binding[1], ...(binding[2] === undefined ? {} : { eventCode: binding[2] }) }];
+    const payloadEvent = RICH_LIST_EVENT_PAYLOADS[`${component.id}.${event.name}`];
+    return [{ eventName: event.name, ...(aliases.length ? { aliases } : {}), command: binding[0], callbackType: binding[1], ...(binding[2] === undefined ? {} : { eventCode: binding[2] }), ...(payloadEvent ? { payloadEvent } : {}) }];
   });
 }
 
@@ -1007,7 +1713,7 @@ function inferPreviewType(type, isContainer) {
   if (/Checkbox/u.test(type)) return 'CheckBox';
   if (/Radio/u.test(type)) return 'RadioButton';
   if (/ListBox|Menu|Dropdown/u.test(type)) return 'ListBox';
-  if (/Table|Descriptions/u.test(type)) return 'ListView';
+  if (/Table|Descriptions|RichList/u.test(type)) return 'ListView';
   if (/Tree/u.test(type)) return 'TreeView';
   if (/Image|Avatar|Carousel|Rate/u.test(type)) return 'Image';
   if (/Progress|Slider/u.test(type)) return 'ProgressBar';
@@ -1049,6 +1755,8 @@ function bridgeHeader() {
 
 HWND NE_创建窗口(const wchar_t* title, int x, int y, int width, int height);
 HWND NE_创建深色窗口(const wchar_t* title, int x, int y, int width, int height);
+HWND NE_创建浏览器外壳窗口(const wchar_t* title, int x, int y, int width, int height);
+HWND NE_创建自定义框架窗口(const wchar_t* title, int x, int y, int width, int height, int frameFlags);
 void NE_显示窗口(HWND hwnd, int visible);
 void NE_显示并激活窗口(HWND hwnd);
 int NE_运行消息循环();
@@ -1082,6 +1790,13 @@ void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, u
 void NE_设置元素焦点(HWND hwnd, int elementId);
 void NE_设置元素字体(HWND hwnd, int elementId, const wchar_t* fontFamily, int fontSize);
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title);
+void NE_设置窗口缩放边框(HWND hwnd, int left, int top, int right, int bottom);
+void NE_清空窗口拖拽区(HWND hwnd);
+void NE_设置窗口拖拽区(HWND hwnd, int x, int y, int width, int height, int enabled);
+void NE_清空窗口非拖拽区(HWND hwnd);
+void NE_设置窗口非拖拽区(HWND hwnd, int x, int y, int width, int height, int enabled);
+void NE_设置元素窗口命令(HWND hwnd, int elementId, int command);
+void NE_设置窗口圆角(HWND hwnd, int enabled, int radius);
 `;
 }
 
@@ -1095,6 +1810,7 @@ function bridgeSource() {
 using NEColor = unsigned int;
 
 __declspec(dllimport) HWND __stdcall EU_CreateWindow(const unsigned char* title_bytes, int title_len, int x, int y, int w, int h, NEColor titlebar_color);
+__declspec(dllimport) HWND __stdcall EU_CreateWindowEx(const unsigned char* title_bytes, int title_len, int x, int y, int w, int h, NEColor titlebar_color, int frame_flags);
 __declspec(dllimport) HWND __stdcall EU_CreateWindowDark(const unsigned char* title_bytes, int title_len, int x, int y, int w, int h, NEColor titlebar_color);
 __declspec(dllimport) void __stdcall EU_ShowWindow(HWND hwnd, int visible);
 __declspec(dllimport) int __stdcall EU_RunMessageLoop();
@@ -1128,6 +1844,13 @@ __declspec(dllimport) void __stdcall EU_SetElementColor(HWND hwnd, int element_i
 __declspec(dllimport) void __stdcall EU_SetElementFocus(HWND hwnd, int element_id);
 __declspec(dllimport) void __stdcall EU_SetElementFontInt(HWND hwnd, int element_id, const unsigned char* font_bytes, int font_len, int size);
 __declspec(dllimport) void __stdcall EU_SetWindowTitle(HWND hwnd, const unsigned char* bytes, int len);
+__declspec(dllimport) void __stdcall EU_SetWindowResizeBorder(HWND hwnd, int left, int top, int right, int bottom);
+__declspec(dllimport) void __stdcall EU_ClearWindowDragRegions(HWND hwnd);
+__declspec(dllimport) void __stdcall EU_SetWindowDragRegion(HWND hwnd, int x, int y, int w, int h, int enabled);
+__declspec(dllimport) void __stdcall EU_ClearWindowNoDragRegions(HWND hwnd);
+__declspec(dllimport) void __stdcall EU_SetWindowNoDragRegion(HWND hwnd, int x, int y, int w, int h, int enabled);
+__declspec(dllimport) void __stdcall EU_SetElementWindowCommand(HWND hwnd, int element_id, int command);
+__declspec(dllimport) void __stdcall EU_SetWindowRoundedCorners(HWND hwnd, int enabled, int radius);
 
 static std::vector<std::unique_ptr<std::string>>& NE_Utf8Pool() {
     static auto* pool = new std::vector<std::unique_ptr<std::string>>();
@@ -1197,6 +1920,17 @@ HWND NE_创建深色窗口(const wchar_t* title, int x, int y, int width, int he
     return hwnd;
 }
 
+HWND NE_创建自定义框架窗口(const wchar_t* title, int x, int y, int width, int height, int frameFlags) {
+    const std::string& titleBytes = NE_KeepUtf8(title);
+    HWND hwnd = EU_CreateWindowEx(reinterpret_cast<const unsigned char*>(titleBytes.c_str()), static_cast<int>(titleBytes.size()), x, y, width, height, 0xFF202020, frameFlags);
+    if (hwnd) EU_ShowWindow(hwnd, 1);
+    return hwnd;
+}
+
+HWND NE_创建浏览器外壳窗口(const wchar_t* title, int x, int y, int width, int height) {
+    return NE_创建自定义框架窗口(title, x, y, width, height, 0x3F);
+}
+
 void NE_显示窗口(HWND hwnd, int visible) {
     EU_ShowWindow(hwnd, visible);
 }
@@ -1239,6 +1973,14 @@ int NE_运行消息循环() {
 void NE_销毁窗口(HWND hwnd) {
     EU_DestroyWindow(hwnd);
 }
+
+void NE_设置窗口缩放边框(HWND hwnd, int left, int top, int right, int bottom) { EU_SetWindowResizeBorder(hwnd, left, top, right, bottom); }
+void NE_清空窗口拖拽区(HWND hwnd) { EU_ClearWindowDragRegions(hwnd); }
+void NE_设置窗口拖拽区(HWND hwnd, int x, int y, int width, int height, int enabled) { EU_SetWindowDragRegion(hwnd, x, y, width, height, enabled); }
+void NE_清空窗口非拖拽区(HWND hwnd) { EU_ClearWindowNoDragRegions(hwnd); }
+void NE_设置窗口非拖拽区(HWND hwnd, int x, int y, int width, int height, int enabled) { EU_SetWindowNoDragRegion(hwnd, x, y, width, height, enabled); }
+void NE_设置元素窗口命令(HWND hwnd, int elementId, int command) { EU_SetElementWindowCommand(hwnd, elementId, command); }
+void NE_设置窗口圆角(HWND hwnd, int enabled, int radius) { EU_SetWindowRoundedCorners(hwnd, enabled, radius); }
 
 int NE_创建容器(HWND hwnd, int parentId, int x, int y, int width, int height) {
     return EU_CreateContainer(hwnd, parentId, x, y, width, height);
@@ -1365,6 +2107,27 @@ function moduleReadme(exportCount) {
 
 推荐在 .lcpp 中优先使用 NE_ 前缀的中文桥接命令；NE_EU_* 命令是底层高级入口，参数仍遵循 new_emoji DLL 的 UTF-8 字节指针和长度规则。Tabs 的“显示标签页表头”属性对应 EU_SetTabsHeaderVisible，关闭后内容区占满标签页区域。
 
+## 运行时控件引用
+
+93 个公开可视控件都提供类型化 LingCpp 变量、高层创建、文本标记查找、整数标记查找和已声明事件的绑定/解绑命令。创建命令统一为 \`控件_创建NE类型(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])\`；父级可使用只读 \`当前窗口\`、容器引用或标签页容器。代码创建的元素只属于本次窗口运行时，不写回设计器模型。
+
+标记始终可省略。文本标记会先去除首尾空白，空文本表示未设置，并按区分大小写的 UTF-16 文本精确匹配；整数标记是有符号 32 位值，0 和负数都有效。非空标记在“当前窗口 + 具体控件类型 + 标记类别”范围内唯一，重复创建返回无效引用并输出中文原因。只传整数标记时，文本位置传 \`""\`。
+
+\`控件_是否有效\`用于检查创建或查找结果。窗口销毁后引用自动失效；对无效引用执行操作会安全失败，不访问旧元素 ID。通用命令、专属 \`NE_EU_*\` 命令和成员语法都接受兼容的控件变量；专属命令会按具体控件类型诊断错误变量。原生元素 ID 参数在 binding 中使用 \`controlRef(stableId)\`，输出指针、请求 ID、索引和 ID 数组仍保持原 ABI 类型。
+
+\`\`\`lcpp
+局部 NE按钮 动态按钮 = 控件_创建NE按钮(当前窗口, 20, 20, 120, 36, "确定", "确认", 1002)
+局部 NE按钮 查找按钮 = 通过标记文本获取NE按钮("确认")
+如果 (控件_是否有效(查找按钮))
+    查找按钮.内容 = "已找到"
+    NE按钮_绑定被点击(查找按钮, &动态按钮被点击)
+如果结束
+\`\`\`
+
+非可视组件不生成上述接口。运行时控件引用只能作为局部变量、方法参数或返回值，不能作为常量、数组、程序集成员、项目全局变量，也不能传入工作线程。
+
+RichList / 富列表已作为命名空间设计器控件提供，设计器属性直接配置模板 JSON、项目 JSON、选择模式、样式、滚动和虚拟项目数。选择变化事件返回选中 key 的 JSON 数组，其余富列表事件返回包含 event、itemKey、itemIndex、nodeId、actionId、x、y 的原生 JSON。
+
 Table 事件会按原生 ABI 自动生成行号、列号、动作、文本、坐标等强类型参数。VirtualRow 处理器接收行号，并通过 NE_设置表格虚拟行数据("高级行协议") 返回本次虚拟行；生成器负责 UTF-8 转换和两阶段缓冲区查询。
 
  ListBox 的 SelectionChanged、ItemClicked、ItemDoubleClicked、Edit、Reorder、ContextMenu 事件会按 new_emoji 回调 ABI 自动生成选中键、项目索引、编辑字段/动作、重排索引和右键坐标等强类型参数；MouseDown、MouseUp、MouseDoubleClick、MouseMove、MouseWheel 同样保留坐标/按钮/滚轮参数，进入、离开和焦点事件无额外参数。
@@ -1412,6 +2175,88 @@ async function copyDirectory(source, target) {
     if (entry.isDirectory()) await copyDirectory(sourcePath, targetPath);
     else if (entry.isFile()) await copyFile(sourcePath, targetPath);
   }
+}
+
+async function replaceDirectoryAtomically(source, target) {
+  const parent = path.dirname(target);
+  const next = path.join(parent, `.${path.basename(target)}.next-${process.pid}`);
+  const previous = path.join(parent, `.${path.basename(target)}.previous-${process.pid}`);
+  await fs.mkdir(parent, { recursive: true });
+  await fs.rm(next, { recursive: true, force: true });
+  await fs.rm(previous, { recursive: true, force: true });
+  await fs.rename(source, next);
+  let hadPrevious = false;
+  try {
+    await fs.rename(target, previous);
+    hadPrevious = true;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  try {
+    await fs.rename(next, target);
+    await fs.rm(previous, { recursive: true, force: true });
+  } catch (error) {
+    if (hadPrevious) await fs.rename(previous, target).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function replaceFileAtomically(source, target) {
+  const next = `${target}.next-${process.pid}`;
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.rm(next, { force: true });
+  await fs.rename(source, next);
+  await fs.rm(target, { force: true });
+  await fs.rename(next, target);
+}
+
+async function directoryDigest(root) {
+  const files = [];
+  async function visit(current, relative) {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+    for (const entry of entries) {
+      const entryRelative = relative ? `${relative}/${entry.name}` : entry.name;
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) await visit(entryPath, entryRelative);
+      else if (entry.isFile()) {
+        const content = await fs.readFile(entryPath);
+        files.push(`${entryRelative}\0${crypto.createHash('sha256').update(content).digest('hex')}`);
+      }
+    }
+  }
+  await visit(root, '');
+  return crypto.createHash('sha256').update(files.join('\n')).digest('hex');
+}
+
+async function assertDirectoryMatches(expected, actual, label) {
+  try {
+    await fs.stat(actual);
+  } catch {
+    throw new Error(`${label} 不存在：${actual}`);
+  }
+  const [expectedDigest, actualDigest] = await Promise.all([directoryDigest(expected), directoryDigest(actual)]);
+  if (expectedDigest !== actualDigest) {
+    throw new Error(`${label} 与当前上游生成结果不一致；请运行 npm run module:new-emoji -- --install。`);
+  }
+}
+
+async function assertPackageMatches(expected, packagePath, tempRoot) {
+  try {
+    await fs.stat(packagePath);
+  } catch {
+    throw new Error(`模块包不存在：${packagePath}`);
+  }
+  const zipPath = path.join(tempRoot, 'installed-package.zip');
+  const extractRoot = path.join(tempRoot, 'installed-package');
+  await fs.copyFile(packagePath, zipPath);
+  await fs.mkdir(extractRoot, { recursive: true });
+  await execFileAsync('powershell.exe', [
+    '-NoProfile',
+    '-Command',
+    `Expand-Archive -LiteralPath ${quotePs(zipPath)} -DestinationPath ${quotePs(extractRoot)} -Force`
+  ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
+  await assertDirectoryMatches(expected, extractRoot, 'new_emoji.lbmod');
 }
 
 async function compressArchive(sourceDir, targetPath) {

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:26.030Z",
+  "generatedAt": "2026-08-07T08:51:36.011Z",
   "module": {
     "id": "lingbuilder.win32.basic",
     "name": "Win32窗口基础模块",
     "version": "1.0.0",
     "description": "提供窗口、基础控件、信息框、调试输出和结束等中文 C++ 基础能力。"
   },
-  "commandCount": 39,
+  "commandCount": 206,
   "commands": [
     {
       "index": 1,
@@ -52,14 +52,15 @@
         "parameters": [
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "lingValue",
+            "variadic": true
           }
         ],
         "returnType": "void",
         "encoding": "wide",
-        "example": "调试输出(\"当前选择项\", 控件_取选择项(\"列表框1\"), 真)"
+        "example": "调试输出(\"当前选择项\", 控件_取选择项(列表框1), 真)"
       },
-      "demoInvocation": "调试输出(\"演示参数1\")"
+      "demoInvocation": "调试输出()"
     },
     {
       "index": 3,
@@ -591,6 +592,5403 @@
     },
     {
       "index": 23,
+      "name": "控件_是否有效",
+      "signature": "控件_是否有效(控件)",
+      "description": "判断类型化控件引用是否仍指向当前窗口内存活的控件。",
+      "insertText": "控件_是否有效($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "控件_是否有效",
+        "runtimeName": "控件_是否有效",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "控件_是否有效(演示状态)"
+    },
+    {
+      "index": 24,
+      "name": "控件_创建按钮",
+      "signature": "控件_创建按钮(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建按钮；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建按钮(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "按钮",
+      "binding": {
+        "command": "控件_创建按钮",
+        "runtimeName": "控件_创建按钮",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "按钮",
+        "encoding": "wide",
+        "example": "控件_创建按钮(当前窗口, 20, 20, 120, 36, \"按钮\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建按钮(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 25,
+      "name": "通过标记文本获取按钮",
+      "signature": "通过标记文本获取按钮(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找按钮，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取按钮(\"$1\")",
+      "returnType": "按钮",
+      "binding": {
+        "command": "通过标记文本获取按钮",
+        "runtimeName": "通过标记文本获取按钮",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "按钮",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取按钮(\"演示参数1\")"
+    },
+    {
+      "index": 26,
+      "name": "通过标记整数获取按钮",
+      "signature": "通过标记整数获取按钮(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找按钮，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取按钮($1)",
+      "returnType": "按钮",
+      "binding": {
+        "command": "通过标记整数获取按钮",
+        "runtimeName": "通过标记整数获取按钮",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "按钮"
+      },
+      "demoInvocation": "通过标记整数获取按钮(1)"
+    },
+    {
+      "index": 27,
+      "name": "控件_创建编辑框",
+      "signature": "控件_创建编辑框(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建编辑框；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建编辑框(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "编辑框",
+      "binding": {
+        "command": "控件_创建编辑框",
+        "runtimeName": "控件_创建编辑框",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "编辑框",
+        "encoding": "wide",
+        "example": "控件_创建编辑框(当前窗口, 20, 20, 120, 36, \"编辑框\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建编辑框(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 28,
+      "name": "通过标记文本获取编辑框",
+      "signature": "通过标记文本获取编辑框(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找编辑框，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取编辑框(\"$1\")",
+      "returnType": "编辑框",
+      "binding": {
+        "command": "通过标记文本获取编辑框",
+        "runtimeName": "通过标记文本获取编辑框",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "编辑框",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取编辑框(\"演示参数1\")"
+    },
+    {
+      "index": 29,
+      "name": "通过标记整数获取编辑框",
+      "signature": "通过标记整数获取编辑框(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找编辑框，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取编辑框($1)",
+      "returnType": "编辑框",
+      "binding": {
+        "command": "通过标记整数获取编辑框",
+        "runtimeName": "通过标记整数获取编辑框",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "编辑框"
+      },
+      "demoInvocation": "通过标记整数获取编辑框(1)"
+    },
+    {
+      "index": 30,
+      "name": "控件_创建标签",
+      "signature": "控件_创建标签(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建标签；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建标签(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "标签",
+      "binding": {
+        "command": "控件_创建标签",
+        "runtimeName": "控件_创建标签",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "标签",
+        "encoding": "wide",
+        "example": "控件_创建标签(当前窗口, 20, 20, 120, 36, \"标签\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建标签(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 31,
+      "name": "通过标记文本获取标签",
+      "signature": "通过标记文本获取标签(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找标签，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取标签(\"$1\")",
+      "returnType": "标签",
+      "binding": {
+        "command": "通过标记文本获取标签",
+        "runtimeName": "通过标记文本获取标签",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "标签",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取标签(\"演示参数1\")"
+    },
+    {
+      "index": 32,
+      "name": "通过标记整数获取标签",
+      "signature": "通过标记整数获取标签(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找标签，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取标签($1)",
+      "returnType": "标签",
+      "binding": {
+        "command": "通过标记整数获取标签",
+        "runtimeName": "通过标记整数获取标签",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "标签"
+      },
+      "demoInvocation": "通过标记整数获取标签(1)"
+    },
+    {
+      "index": 33,
+      "name": "控件_创建复选框",
+      "signature": "控件_创建复选框(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建复选框；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建复选框(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "复选框",
+      "binding": {
+        "command": "控件_创建复选框",
+        "runtimeName": "控件_创建复选框",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "复选框",
+        "encoding": "wide",
+        "example": "控件_创建复选框(当前窗口, 20, 20, 120, 36, \"复选框\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建复选框(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 34,
+      "name": "通过标记文本获取复选框",
+      "signature": "通过标记文本获取复选框(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找复选框，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取复选框(\"$1\")",
+      "returnType": "复选框",
+      "binding": {
+        "command": "通过标记文本获取复选框",
+        "runtimeName": "通过标记文本获取复选框",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "复选框",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取复选框(\"演示参数1\")"
+    },
+    {
+      "index": 35,
+      "name": "通过标记整数获取复选框",
+      "signature": "通过标记整数获取复选框(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找复选框，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取复选框($1)",
+      "returnType": "复选框",
+      "binding": {
+        "command": "通过标记整数获取复选框",
+        "runtimeName": "通过标记整数获取复选框",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "复选框"
+      },
+      "demoInvocation": "通过标记整数获取复选框(1)"
+    },
+    {
+      "index": 36,
+      "name": "控件_创建单选框",
+      "signature": "控件_创建单选框(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建单选框；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建单选框(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "单选框",
+      "binding": {
+        "command": "控件_创建单选框",
+        "runtimeName": "控件_创建单选框",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "单选框",
+        "encoding": "wide",
+        "example": "控件_创建单选框(当前窗口, 20, 20, 120, 36, \"单选框\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建单选框(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 37,
+      "name": "通过标记文本获取单选框",
+      "signature": "通过标记文本获取单选框(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找单选框，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取单选框(\"$1\")",
+      "returnType": "单选框",
+      "binding": {
+        "command": "通过标记文本获取单选框",
+        "runtimeName": "通过标记文本获取单选框",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "单选框",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取单选框(\"演示参数1\")"
+    },
+    {
+      "index": 38,
+      "name": "通过标记整数获取单选框",
+      "signature": "通过标记整数获取单选框(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找单选框，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取单选框($1)",
+      "returnType": "单选框",
+      "binding": {
+        "command": "通过标记整数获取单选框",
+        "runtimeName": "通过标记整数获取单选框",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "单选框"
+      },
+      "demoInvocation": "通过标记整数获取单选框(1)"
+    },
+    {
+      "index": 39,
+      "name": "控件_创建列表框",
+      "signature": "控件_创建列表框(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建列表框；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建列表框(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "列表框",
+      "binding": {
+        "command": "控件_创建列表框",
+        "runtimeName": "控件_创建列表框",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "列表框",
+        "encoding": "wide",
+        "example": "控件_创建列表框(当前窗口, 20, 20, 120, 36, \"列表框\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建列表框(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 40,
+      "name": "通过标记文本获取列表框",
+      "signature": "通过标记文本获取列表框(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找列表框，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取列表框(\"$1\")",
+      "returnType": "列表框",
+      "binding": {
+        "command": "通过标记文本获取列表框",
+        "runtimeName": "通过标记文本获取列表框",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "列表框",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取列表框(\"演示参数1\")"
+    },
+    {
+      "index": 41,
+      "name": "通过标记整数获取列表框",
+      "signature": "通过标记整数获取列表框(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找列表框，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取列表框($1)",
+      "returnType": "列表框",
+      "binding": {
+        "command": "通过标记整数获取列表框",
+        "runtimeName": "通过标记整数获取列表框",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "列表框"
+      },
+      "demoInvocation": "通过标记整数获取列表框(1)"
+    },
+    {
+      "index": 42,
+      "name": "控件_创建组合框",
+      "signature": "控件_创建组合框(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建组合框；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建组合框(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "组合框",
+      "binding": {
+        "command": "控件_创建组合框",
+        "runtimeName": "控件_创建组合框",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "组合框",
+        "encoding": "wide",
+        "example": "控件_创建组合框(当前窗口, 20, 20, 120, 36, \"组合框\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建组合框(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 43,
+      "name": "通过标记文本获取组合框",
+      "signature": "通过标记文本获取组合框(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找组合框，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取组合框(\"$1\")",
+      "returnType": "组合框",
+      "binding": {
+        "command": "通过标记文本获取组合框",
+        "runtimeName": "通过标记文本获取组合框",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "组合框",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取组合框(\"演示参数1\")"
+    },
+    {
+      "index": 44,
+      "name": "通过标记整数获取组合框",
+      "signature": "通过标记整数获取组合框(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找组合框，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取组合框($1)",
+      "returnType": "组合框",
+      "binding": {
+        "command": "通过标记整数获取组合框",
+        "runtimeName": "通过标记整数获取组合框",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "组合框"
+      },
+      "demoInvocation": "通过标记整数获取组合框(1)"
+    },
+    {
+      "index": 45,
+      "name": "控件_创建分组框",
+      "signature": "控件_创建分组框(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建分组框；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建分组框(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "分组框",
+      "binding": {
+        "command": "控件_创建分组框",
+        "runtimeName": "控件_创建分组框",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "分组框",
+        "encoding": "wide",
+        "example": "控件_创建分组框(当前窗口, 20, 20, 120, 36, \"分组框\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建分组框(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 46,
+      "name": "通过标记文本获取分组框",
+      "signature": "通过标记文本获取分组框(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找分组框，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取分组框(\"$1\")",
+      "returnType": "分组框",
+      "binding": {
+        "command": "通过标记文本获取分组框",
+        "runtimeName": "通过标记文本获取分组框",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "分组框",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取分组框(\"演示参数1\")"
+    },
+    {
+      "index": 47,
+      "name": "通过标记整数获取分组框",
+      "signature": "通过标记整数获取分组框(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找分组框，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取分组框($1)",
+      "returnType": "分组框",
+      "binding": {
+        "command": "通过标记整数获取分组框",
+        "runtimeName": "通过标记整数获取分组框",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "分组框"
+      },
+      "demoInvocation": "通过标记整数获取分组框(1)"
+    },
+    {
+      "index": 48,
+      "name": "控件_创建滚动条",
+      "signature": "控件_创建滚动条(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建滚动条；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建滚动条(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "滚动条",
+      "binding": {
+        "command": "控件_创建滚动条",
+        "runtimeName": "控件_创建滚动条",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "滚动条",
+        "encoding": "wide",
+        "example": "控件_创建滚动条(当前窗口, 20, 20, 120, 36, \"滚动条\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建滚动条(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 49,
+      "name": "通过标记文本获取滚动条",
+      "signature": "通过标记文本获取滚动条(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找滚动条，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取滚动条(\"$1\")",
+      "returnType": "滚动条",
+      "binding": {
+        "command": "通过标记文本获取滚动条",
+        "runtimeName": "通过标记文本获取滚动条",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "滚动条",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取滚动条(\"演示参数1\")"
+    },
+    {
+      "index": 50,
+      "name": "通过标记整数获取滚动条",
+      "signature": "通过标记整数获取滚动条(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找滚动条，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取滚动条($1)",
+      "returnType": "滚动条",
+      "binding": {
+        "command": "通过标记整数获取滚动条",
+        "runtimeName": "通过标记整数获取滚动条",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "滚动条"
+      },
+      "demoInvocation": "通过标记整数获取滚动条(1)"
+    },
+    {
+      "index": 51,
+      "name": "控件_创建图片框",
+      "signature": "控件_创建图片框(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建图片框；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建图片框(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "图片框",
+      "binding": {
+        "command": "控件_创建图片框",
+        "runtimeName": "控件_创建图片框",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "图片框",
+        "encoding": "wide",
+        "example": "控件_创建图片框(当前窗口, 20, 20, 120, 36, \"图片框\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建图片框(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 52,
+      "name": "通过标记文本获取图片框",
+      "signature": "通过标记文本获取图片框(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找图片框，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取图片框(\"$1\")",
+      "returnType": "图片框",
+      "binding": {
+        "command": "通过标记文本获取图片框",
+        "runtimeName": "通过标记文本获取图片框",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "图片框",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取图片框(\"演示参数1\")"
+    },
+    {
+      "index": 53,
+      "name": "通过标记整数获取图片框",
+      "signature": "通过标记整数获取图片框(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找图片框，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取图片框($1)",
+      "returnType": "图片框",
+      "binding": {
+        "command": "通过标记整数获取图片框",
+        "runtimeName": "通过标记整数获取图片框",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "图片框"
+      },
+      "demoInvocation": "通过标记整数获取图片框(1)"
+    },
+    {
+      "index": 54,
+      "name": "控件_创建动态图像控件",
+      "signature": "控件_创建动态图像控件(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建动态图像控件；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建动态图像控件(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "动态图像控件",
+      "binding": {
+        "command": "控件_创建动态图像控件",
+        "runtimeName": "控件_创建动态图像控件",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "动态图像控件",
+        "encoding": "wide",
+        "example": "控件_创建动态图像控件(当前窗口, 20, 20, 120, 36, \"动态图像控件\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建动态图像控件(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 55,
+      "name": "通过标记文本获取动态图像控件",
+      "signature": "通过标记文本获取动态图像控件(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找动态图像控件，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取动态图像控件(\"$1\")",
+      "returnType": "动态图像控件",
+      "binding": {
+        "command": "通过标记文本获取动态图像控件",
+        "runtimeName": "通过标记文本获取动态图像控件",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "动态图像控件",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取动态图像控件(\"演示参数1\")"
+    },
+    {
+      "index": 56,
+      "name": "通过标记整数获取动态图像控件",
+      "signature": "通过标记整数获取动态图像控件(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找动态图像控件，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取动态图像控件($1)",
+      "returnType": "动态图像控件",
+      "binding": {
+        "command": "通过标记整数获取动态图像控件",
+        "runtimeName": "通过标记整数获取动态图像控件",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "动态图像控件"
+      },
+      "demoInvocation": "通过标记整数获取动态图像控件(1)"
+    },
+    {
+      "index": 57,
+      "name": "控件_创建进度条",
+      "signature": "控件_创建进度条(父级, 横坐标, 纵坐标, 宽度, 高度, 文本, [标记文本], [标记整数])",
+      "description": "在当前窗口运行时创建进度条；窗口拥有生命周期，代码获得非拥有型引用。",
+      "insertText": "控件_创建进度条(当前窗口, $1, $2, $3, $4, \"$5\", \"$6\", $7)",
+      "returnType": "进度条",
+      "binding": {
+        "command": "控件_创建进度条",
+        "runtimeName": "控件_创建进度条",
+        "parameters": [
+          {
+            "name": "父级",
+            "type": "controlRef",
+            "description": "当前窗口、可视容器控件或选项卡页面容器。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "标记文本",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ""
+          },
+          {
+            "name": "标记整数",
+            "type": "int",
+            "optional": true,
+            "defaultValue": null
+          }
+        ],
+        "returnType": "进度条",
+        "encoding": "wide",
+        "example": "控件_创建进度条(当前窗口, 20, 20, 120, 36, \"进度条\", \"\", 1001)"
+      },
+      "demoInvocation": "控件_创建进度条(演示状态, 1, 1, 1, 1, \"演示参数6\", \"演示参数7\", 1)"
+    },
+    {
+      "index": 58,
+      "name": "通过标记文本获取进度条",
+      "signature": "通过标记文本获取进度条(标记文本)",
+      "description": "在当前窗口按区分大小写的非空文本标记查找进度条，找不到时返回无效引用。",
+      "insertText": "通过标记文本获取进度条(\"$1\")",
+      "returnType": "进度条",
+      "binding": {
+        "command": "通过标记文本获取进度条",
+        "runtimeName": "通过标记文本获取进度条",
+        "parameters": [
+          {
+            "name": "标记文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "进度条",
+        "encoding": "wide"
+      },
+      "demoInvocation": "通过标记文本获取进度条(\"演示参数1\")"
+    },
+    {
+      "index": 59,
+      "name": "通过标记整数获取进度条",
+      "signature": "通过标记整数获取进度条(标记整数)",
+      "description": "在当前窗口按有符号 32 位整数标记查找进度条，找不到时返回无效引用。",
+      "insertText": "通过标记整数获取进度条($1)",
+      "returnType": "进度条",
+      "binding": {
+        "command": "通过标记整数获取进度条",
+        "runtimeName": "通过标记整数获取进度条",
+        "parameters": [
+          {
+            "name": "标记整数",
+            "type": "int"
+          }
+        ],
+        "returnType": "进度条"
+      },
+      "demoInvocation": "通过标记整数获取进度条(1)"
+    },
+    {
+      "index": 60,
+      "name": "按钮_绑定被单击",
+      "signature": "按钮_绑定被单击(控件, 处理器)",
+      "description": "为按钮实例绑定“被单击”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定被单击($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定被单击",
+        "runtimeName": "按钮_绑定被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定被单击(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 61,
+      "name": "按钮_解绑被单击",
+      "signature": "按钮_解绑被单击(控件)",
+      "description": "移除按钮实例由代码绑定的“被单击”处理器。",
+      "insertText": "按钮_解绑被单击($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑被单击",
+        "runtimeName": "按钮_解绑被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑被单击(演示Button控件)"
+    },
+    {
+      "index": 62,
+      "name": "按钮_绑定鼠标按下",
+      "signature": "按钮_绑定鼠标按下(控件, 处理器)",
+      "description": "为按钮实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定鼠标按下",
+        "runtimeName": "按钮_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定鼠标按下(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 63,
+      "name": "按钮_解绑鼠标按下",
+      "signature": "按钮_解绑鼠标按下(控件)",
+      "description": "移除按钮实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "按钮_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑鼠标按下",
+        "runtimeName": "按钮_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑鼠标按下(演示Button控件)"
+    },
+    {
+      "index": 64,
+      "name": "按钮_绑定鼠标移入",
+      "signature": "按钮_绑定鼠标移入(控件, 处理器)",
+      "description": "为按钮实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定鼠标移入",
+        "runtimeName": "按钮_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定鼠标移入(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 65,
+      "name": "按钮_解绑鼠标移入",
+      "signature": "按钮_解绑鼠标移入(控件)",
+      "description": "移除按钮实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "按钮_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑鼠标移入",
+        "runtimeName": "按钮_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑鼠标移入(演示Button控件)"
+    },
+    {
+      "index": 66,
+      "name": "按钮_绑定鼠标移出",
+      "signature": "按钮_绑定鼠标移出(控件, 处理器)",
+      "description": "为按钮实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定鼠标移出",
+        "runtimeName": "按钮_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定鼠标移出(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 67,
+      "name": "按钮_解绑鼠标移出",
+      "signature": "按钮_解绑鼠标移出(控件)",
+      "description": "移除按钮实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "按钮_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑鼠标移出",
+        "runtimeName": "按钮_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑鼠标移出(演示Button控件)"
+    },
+    {
+      "index": 68,
+      "name": "按钮_绑定获得焦点",
+      "signature": "按钮_绑定获得焦点(控件, 处理器)",
+      "description": "为按钮实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定获得焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定获得焦点",
+        "runtimeName": "按钮_绑定获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定获得焦点(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 69,
+      "name": "按钮_解绑获得焦点",
+      "signature": "按钮_解绑获得焦点(控件)",
+      "description": "移除按钮实例由代码绑定的“获得焦点”处理器。",
+      "insertText": "按钮_解绑获得焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑获得焦点",
+        "runtimeName": "按钮_解绑获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑获得焦点(演示Button控件)"
+    },
+    {
+      "index": 70,
+      "name": "按钮_绑定失去焦点",
+      "signature": "按钮_绑定失去焦点(控件, 处理器)",
+      "description": "为按钮实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定失去焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定失去焦点",
+        "runtimeName": "按钮_绑定失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定失去焦点(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 71,
+      "name": "按钮_解绑失去焦点",
+      "signature": "按钮_解绑失去焦点(控件)",
+      "description": "移除按钮实例由代码绑定的“失去焦点”处理器。",
+      "insertText": "按钮_解绑失去焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑失去焦点",
+        "runtimeName": "按钮_解绑失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑失去焦点(演示Button控件)"
+    },
+    {
+      "index": 72,
+      "name": "编辑框_绑定内容被改变",
+      "signature": "编辑框_绑定内容被改变(控件, 处理器)",
+      "description": "为编辑框实例绑定“内容被改变”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定内容被改变($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定内容被改变",
+        "runtimeName": "编辑框_绑定内容被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定内容被改变(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 73,
+      "name": "编辑框_解绑内容被改变",
+      "signature": "编辑框_解绑内容被改变(控件)",
+      "description": "移除编辑框实例由代码绑定的“内容被改变”处理器。",
+      "insertText": "编辑框_解绑内容被改变($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑内容被改变",
+        "runtimeName": "编辑框_解绑内容被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑内容被改变(演示TextBox控件)"
+    },
+    {
+      "index": 74,
+      "name": "编辑框_绑定获得焦点",
+      "signature": "编辑框_绑定获得焦点(控件, 处理器)",
+      "description": "为编辑框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定获得焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定获得焦点",
+        "runtimeName": "编辑框_绑定获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定获得焦点(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 75,
+      "name": "编辑框_解绑获得焦点",
+      "signature": "编辑框_解绑获得焦点(控件)",
+      "description": "移除编辑框实例由代码绑定的“获得焦点”处理器。",
+      "insertText": "编辑框_解绑获得焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑获得焦点",
+        "runtimeName": "编辑框_解绑获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑获得焦点(演示TextBox控件)"
+    },
+    {
+      "index": 76,
+      "name": "编辑框_绑定失去焦点",
+      "signature": "编辑框_绑定失去焦点(控件, 处理器)",
+      "description": "为编辑框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定失去焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定失去焦点",
+        "runtimeName": "编辑框_绑定失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定失去焦点(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 77,
+      "name": "编辑框_解绑失去焦点",
+      "signature": "编辑框_解绑失去焦点(控件)",
+      "description": "移除编辑框实例由代码绑定的“失去焦点”处理器。",
+      "insertText": "编辑框_解绑失去焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑失去焦点",
+        "runtimeName": "编辑框_解绑失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑失去焦点(演示TextBox控件)"
+    },
+    {
+      "index": 78,
+      "name": "编辑框_绑定鼠标按下",
+      "signature": "编辑框_绑定鼠标按下(控件, 处理器)",
+      "description": "为编辑框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定鼠标按下",
+        "runtimeName": "编辑框_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定鼠标按下(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 79,
+      "name": "编辑框_解绑鼠标按下",
+      "signature": "编辑框_解绑鼠标按下(控件)",
+      "description": "移除编辑框实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "编辑框_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑鼠标按下",
+        "runtimeName": "编辑框_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑鼠标按下(演示TextBox控件)"
+    },
+    {
+      "index": 80,
+      "name": "编辑框_绑定鼠标移入",
+      "signature": "编辑框_绑定鼠标移入(控件, 处理器)",
+      "description": "为编辑框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定鼠标移入",
+        "runtimeName": "编辑框_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定鼠标移入(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 81,
+      "name": "编辑框_解绑鼠标移入",
+      "signature": "编辑框_解绑鼠标移入(控件)",
+      "description": "移除编辑框实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "编辑框_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑鼠标移入",
+        "runtimeName": "编辑框_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑鼠标移入(演示TextBox控件)"
+    },
+    {
+      "index": 82,
+      "name": "编辑框_绑定鼠标移出",
+      "signature": "编辑框_绑定鼠标移出(控件, 处理器)",
+      "description": "为编辑框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定鼠标移出",
+        "runtimeName": "编辑框_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定鼠标移出(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 83,
+      "name": "编辑框_解绑鼠标移出",
+      "signature": "编辑框_解绑鼠标移出(控件)",
+      "description": "移除编辑框实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "编辑框_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑鼠标移出",
+        "runtimeName": "编辑框_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑鼠标移出(演示TextBox控件)"
+    },
+    {
+      "index": 84,
+      "name": "标签_绑定被单击",
+      "signature": "标签_绑定被单击(控件, 处理器)",
+      "description": "为标签实例绑定“被单击”处理器，处理器必须使用 &名称。",
+      "insertText": "标签_绑定被单击($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_绑定被单击",
+        "runtimeName": "标签_绑定被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_绑定被单击(演示状态, &模块演示回调)"
+    },
+    {
+      "index": 85,
+      "name": "标签_解绑被单击",
+      "signature": "标签_解绑被单击(控件)",
+      "description": "移除标签实例由代码绑定的“被单击”处理器。",
+      "insertText": "标签_解绑被单击($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_解绑被单击",
+        "runtimeName": "标签_解绑被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_解绑被单击(演示状态)"
+    },
+    {
+      "index": 86,
+      "name": "标签_绑定鼠标按下",
+      "signature": "标签_绑定鼠标按下(控件, 处理器)",
+      "description": "为标签实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "标签_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_绑定鼠标按下",
+        "runtimeName": "标签_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_绑定鼠标按下(演示状态, &模块演示回调)"
+    },
+    {
+      "index": 87,
+      "name": "标签_解绑鼠标按下",
+      "signature": "标签_解绑鼠标按下(控件)",
+      "description": "移除标签实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "标签_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_解绑鼠标按下",
+        "runtimeName": "标签_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_解绑鼠标按下(演示状态)"
+    },
+    {
+      "index": 88,
+      "name": "标签_绑定鼠标移入",
+      "signature": "标签_绑定鼠标移入(控件, 处理器)",
+      "description": "为标签实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "标签_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_绑定鼠标移入",
+        "runtimeName": "标签_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_绑定鼠标移入(演示状态, &模块演示回调)"
+    },
+    {
+      "index": 89,
+      "name": "标签_解绑鼠标移入",
+      "signature": "标签_解绑鼠标移入(控件)",
+      "description": "移除标签实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "标签_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_解绑鼠标移入",
+        "runtimeName": "标签_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_解绑鼠标移入(演示状态)"
+    },
+    {
+      "index": 90,
+      "name": "标签_绑定鼠标移出",
+      "signature": "标签_绑定鼠标移出(控件, 处理器)",
+      "description": "为标签实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "标签_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_绑定鼠标移出",
+        "runtimeName": "标签_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_绑定鼠标移出(演示状态, &模块演示回调)"
+    },
+    {
+      "index": 91,
+      "name": "标签_解绑鼠标移出",
+      "signature": "标签_解绑鼠标移出(控件)",
+      "description": "移除标签实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "标签_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_解绑鼠标移出",
+        "runtimeName": "标签_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_解绑鼠标移出(演示状态)"
+    },
+    {
+      "index": 92,
+      "name": "复选框_绑定被选中",
+      "signature": "复选框_绑定被选中(控件, 处理器)",
+      "description": "为复选框实例绑定“被选中”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定被选中($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定被选中",
+        "runtimeName": "复选框_绑定被选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定被选中(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 93,
+      "name": "复选框_解绑被选中",
+      "signature": "复选框_解绑被选中(控件)",
+      "description": "移除复选框实例由代码绑定的“被选中”处理器。",
+      "insertText": "复选框_解绑被选中($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑被选中",
+        "runtimeName": "复选框_解绑被选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑被选中(允许实际执行)"
+    },
+    {
+      "index": 94,
+      "name": "复选框_绑定被取消选中",
+      "signature": "复选框_绑定被取消选中(控件, 处理器)",
+      "description": "为复选框实例绑定“被取消选中”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定被取消选中($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定被取消选中",
+        "runtimeName": "复选框_绑定被取消选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定被取消选中(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 95,
+      "name": "复选框_解绑被取消选中",
+      "signature": "复选框_解绑被取消选中(控件)",
+      "description": "移除复选框实例由代码绑定的“被取消选中”处理器。",
+      "insertText": "复选框_解绑被取消选中($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑被取消选中",
+        "runtimeName": "复选框_解绑被取消选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑被取消选中(允许实际执行)"
+    },
+    {
+      "index": 96,
+      "name": "复选框_绑定鼠标按下",
+      "signature": "复选框_绑定鼠标按下(控件, 处理器)",
+      "description": "为复选框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定鼠标按下",
+        "runtimeName": "复选框_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定鼠标按下(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 97,
+      "name": "复选框_解绑鼠标按下",
+      "signature": "复选框_解绑鼠标按下(控件)",
+      "description": "移除复选框实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "复选框_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑鼠标按下",
+        "runtimeName": "复选框_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑鼠标按下(允许实际执行)"
+    },
+    {
+      "index": 98,
+      "name": "复选框_绑定鼠标移入",
+      "signature": "复选框_绑定鼠标移入(控件, 处理器)",
+      "description": "为复选框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定鼠标移入",
+        "runtimeName": "复选框_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定鼠标移入(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 99,
+      "name": "复选框_解绑鼠标移入",
+      "signature": "复选框_解绑鼠标移入(控件)",
+      "description": "移除复选框实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "复选框_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑鼠标移入",
+        "runtimeName": "复选框_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑鼠标移入(允许实际执行)"
+    },
+    {
+      "index": 100,
+      "name": "复选框_绑定鼠标移出",
+      "signature": "复选框_绑定鼠标移出(控件, 处理器)",
+      "description": "为复选框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定鼠标移出",
+        "runtimeName": "复选框_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定鼠标移出(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 101,
+      "name": "复选框_解绑鼠标移出",
+      "signature": "复选框_解绑鼠标移出(控件)",
+      "description": "移除复选框实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "复选框_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑鼠标移出",
+        "runtimeName": "复选框_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑鼠标移出(允许实际执行)"
+    },
+    {
+      "index": 102,
+      "name": "复选框_绑定获得焦点",
+      "signature": "复选框_绑定获得焦点(控件, 处理器)",
+      "description": "为复选框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定获得焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定获得焦点",
+        "runtimeName": "复选框_绑定获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定获得焦点(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 103,
+      "name": "复选框_解绑获得焦点",
+      "signature": "复选框_解绑获得焦点(控件)",
+      "description": "移除复选框实例由代码绑定的“获得焦点”处理器。",
+      "insertText": "复选框_解绑获得焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑获得焦点",
+        "runtimeName": "复选框_解绑获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑获得焦点(允许实际执行)"
+    },
+    {
+      "index": 104,
+      "name": "复选框_绑定失去焦点",
+      "signature": "复选框_绑定失去焦点(控件, 处理器)",
+      "description": "为复选框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定失去焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定失去焦点",
+        "runtimeName": "复选框_绑定失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定失去焦点(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 105,
+      "name": "复选框_解绑失去焦点",
+      "signature": "复选框_解绑失去焦点(控件)",
+      "description": "移除复选框实例由代码绑定的“失去焦点”处理器。",
+      "insertText": "复选框_解绑失去焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑失去焦点",
+        "runtimeName": "复选框_解绑失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑失去焦点(允许实际执行)"
+    },
+    {
+      "index": 106,
+      "name": "单选框_绑定被选中",
+      "signature": "单选框_绑定被选中(控件, 处理器)",
+      "description": "为单选框实例绑定“被选中”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定被选中($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定被选中",
+        "runtimeName": "单选框_绑定被选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定被选中(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 107,
+      "name": "单选框_解绑被选中",
+      "signature": "单选框_解绑被选中(控件)",
+      "description": "移除单选框实例由代码绑定的“被选中”处理器。",
+      "insertText": "单选框_解绑被选中($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑被选中",
+        "runtimeName": "单选框_解绑被选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑被选中(演示RadioButton控件)"
+    },
+    {
+      "index": 108,
+      "name": "单选框_绑定被取消选中",
+      "signature": "单选框_绑定被取消选中(控件, 处理器)",
+      "description": "为单选框实例绑定“被取消选中”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定被取消选中($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定被取消选中",
+        "runtimeName": "单选框_绑定被取消选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定被取消选中(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 109,
+      "name": "单选框_解绑被取消选中",
+      "signature": "单选框_解绑被取消选中(控件)",
+      "description": "移除单选框实例由代码绑定的“被取消选中”处理器。",
+      "insertText": "单选框_解绑被取消选中($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑被取消选中",
+        "runtimeName": "单选框_解绑被取消选中",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑被取消选中(演示RadioButton控件)"
+    },
+    {
+      "index": 110,
+      "name": "单选框_绑定鼠标按下",
+      "signature": "单选框_绑定鼠标按下(控件, 处理器)",
+      "description": "为单选框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定鼠标按下",
+        "runtimeName": "单选框_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定鼠标按下(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 111,
+      "name": "单选框_解绑鼠标按下",
+      "signature": "单选框_解绑鼠标按下(控件)",
+      "description": "移除单选框实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "单选框_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑鼠标按下",
+        "runtimeName": "单选框_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑鼠标按下(演示RadioButton控件)"
+    },
+    {
+      "index": 112,
+      "name": "单选框_绑定鼠标移入",
+      "signature": "单选框_绑定鼠标移入(控件, 处理器)",
+      "description": "为单选框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定鼠标移入",
+        "runtimeName": "单选框_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定鼠标移入(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 113,
+      "name": "单选框_解绑鼠标移入",
+      "signature": "单选框_解绑鼠标移入(控件)",
+      "description": "移除单选框实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "单选框_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑鼠标移入",
+        "runtimeName": "单选框_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑鼠标移入(演示RadioButton控件)"
+    },
+    {
+      "index": 114,
+      "name": "单选框_绑定鼠标移出",
+      "signature": "单选框_绑定鼠标移出(控件, 处理器)",
+      "description": "为单选框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定鼠标移出",
+        "runtimeName": "单选框_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定鼠标移出(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 115,
+      "name": "单选框_解绑鼠标移出",
+      "signature": "单选框_解绑鼠标移出(控件)",
+      "description": "移除单选框实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "单选框_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑鼠标移出",
+        "runtimeName": "单选框_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑鼠标移出(演示RadioButton控件)"
+    },
+    {
+      "index": 116,
+      "name": "单选框_绑定获得焦点",
+      "signature": "单选框_绑定获得焦点(控件, 处理器)",
+      "description": "为单选框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定获得焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定获得焦点",
+        "runtimeName": "单选框_绑定获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定获得焦点(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 117,
+      "name": "单选框_解绑获得焦点",
+      "signature": "单选框_解绑获得焦点(控件)",
+      "description": "移除单选框实例由代码绑定的“获得焦点”处理器。",
+      "insertText": "单选框_解绑获得焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑获得焦点",
+        "runtimeName": "单选框_解绑获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑获得焦点(演示RadioButton控件)"
+    },
+    {
+      "index": 118,
+      "name": "单选框_绑定失去焦点",
+      "signature": "单选框_绑定失去焦点(控件, 处理器)",
+      "description": "为单选框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定失去焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定失去焦点",
+        "runtimeName": "单选框_绑定失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定失去焦点(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 119,
+      "name": "单选框_解绑失去焦点",
+      "signature": "单选框_解绑失去焦点(控件)",
+      "description": "移除单选框实例由代码绑定的“失去焦点”处理器。",
+      "insertText": "单选框_解绑失去焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑失去焦点",
+        "runtimeName": "单选框_解绑失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑失去焦点(演示RadioButton控件)"
+    },
+    {
+      "index": 120,
+      "name": "列表框_绑定选择项被改变",
+      "signature": "列表框_绑定选择项被改变(控件, 处理器)",
+      "description": "为列表框实例绑定“选择项被改变”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定选择项被改变($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定选择项被改变",
+        "runtimeName": "列表框_绑定选择项被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定选择项被改变(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 121,
+      "name": "列表框_解绑选择项被改变",
+      "signature": "列表框_解绑选择项被改变(控件)",
+      "description": "移除列表框实例由代码绑定的“选择项被改变”处理器。",
+      "insertText": "列表框_解绑选择项被改变($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑选择项被改变",
+        "runtimeName": "列表框_解绑选择项被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑选择项被改变(演示ListBox控件)"
+    },
+    {
+      "index": 122,
+      "name": "列表框_绑定被双击",
+      "signature": "列表框_绑定被双击(控件, 处理器)",
+      "description": "为列表框实例绑定“被双击”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定被双击($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定被双击",
+        "runtimeName": "列表框_绑定被双击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定被双击(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 123,
+      "name": "列表框_解绑被双击",
+      "signature": "列表框_解绑被双击(控件)",
+      "description": "移除列表框实例由代码绑定的“被双击”处理器。",
+      "insertText": "列表框_解绑被双击($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑被双击",
+        "runtimeName": "列表框_解绑被双击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑被双击(演示ListBox控件)"
+    },
+    {
+      "index": 124,
+      "name": "列表框_绑定鼠标按下",
+      "signature": "列表框_绑定鼠标按下(控件, 处理器)",
+      "description": "为列表框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定鼠标按下",
+        "runtimeName": "列表框_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定鼠标按下(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 125,
+      "name": "列表框_解绑鼠标按下",
+      "signature": "列表框_解绑鼠标按下(控件)",
+      "description": "移除列表框实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "列表框_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑鼠标按下",
+        "runtimeName": "列表框_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑鼠标按下(演示ListBox控件)"
+    },
+    {
+      "index": 126,
+      "name": "列表框_绑定鼠标移入",
+      "signature": "列表框_绑定鼠标移入(控件, 处理器)",
+      "description": "为列表框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定鼠标移入",
+        "runtimeName": "列表框_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定鼠标移入(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 127,
+      "name": "列表框_解绑鼠标移入",
+      "signature": "列表框_解绑鼠标移入(控件)",
+      "description": "移除列表框实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "列表框_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑鼠标移入",
+        "runtimeName": "列表框_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑鼠标移入(演示ListBox控件)"
+    },
+    {
+      "index": 128,
+      "name": "列表框_绑定鼠标移出",
+      "signature": "列表框_绑定鼠标移出(控件, 处理器)",
+      "description": "为列表框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定鼠标移出",
+        "runtimeName": "列表框_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定鼠标移出(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 129,
+      "name": "列表框_解绑鼠标移出",
+      "signature": "列表框_解绑鼠标移出(控件)",
+      "description": "移除列表框实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "列表框_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑鼠标移出",
+        "runtimeName": "列表框_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑鼠标移出(演示ListBox控件)"
+    },
+    {
+      "index": 130,
+      "name": "列表框_绑定获得焦点",
+      "signature": "列表框_绑定获得焦点(控件, 处理器)",
+      "description": "为列表框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定获得焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定获得焦点",
+        "runtimeName": "列表框_绑定获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定获得焦点(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 131,
+      "name": "列表框_解绑获得焦点",
+      "signature": "列表框_解绑获得焦点(控件)",
+      "description": "移除列表框实例由代码绑定的“获得焦点”处理器。",
+      "insertText": "列表框_解绑获得焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑获得焦点",
+        "runtimeName": "列表框_解绑获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑获得焦点(演示ListBox控件)"
+    },
+    {
+      "index": 132,
+      "name": "列表框_绑定失去焦点",
+      "signature": "列表框_绑定失去焦点(控件, 处理器)",
+      "description": "为列表框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定失去焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定失去焦点",
+        "runtimeName": "列表框_绑定失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定失去焦点(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 133,
+      "name": "列表框_解绑失去焦点",
+      "signature": "列表框_解绑失去焦点(控件)",
+      "description": "移除列表框实例由代码绑定的“失去焦点”处理器。",
+      "insertText": "列表框_解绑失去焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑失去焦点",
+        "runtimeName": "列表框_解绑失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑失去焦点(演示ListBox控件)"
+    },
+    {
+      "index": 134,
+      "name": "组合框_绑定选择项被改变",
+      "signature": "组合框_绑定选择项被改变(控件, 处理器)",
+      "description": "为组合框实例绑定“选择项被改变”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定选择项被改变($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定选择项被改变",
+        "runtimeName": "组合框_绑定选择项被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定选择项被改变(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 135,
+      "name": "组合框_解绑选择项被改变",
+      "signature": "组合框_解绑选择项被改变(控件)",
+      "description": "移除组合框实例由代码绑定的“选择项被改变”处理器。",
+      "insertText": "组合框_解绑选择项被改变($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑选择项被改变",
+        "runtimeName": "组合框_解绑选择项被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑选择项被改变(演示ComboBox控件)"
+    },
+    {
+      "index": 136,
+      "name": "组合框_绑定内容被改变",
+      "signature": "组合框_绑定内容被改变(控件, 处理器)",
+      "description": "为组合框实例绑定“内容被改变”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定内容被改变($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定内容被改变",
+        "runtimeName": "组合框_绑定内容被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定内容被改变(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 137,
+      "name": "组合框_解绑内容被改变",
+      "signature": "组合框_解绑内容被改变(控件)",
+      "description": "移除组合框实例由代码绑定的“内容被改变”处理器。",
+      "insertText": "组合框_解绑内容被改变($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑内容被改变",
+        "runtimeName": "组合框_解绑内容被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑内容被改变(演示ComboBox控件)"
+    },
+    {
+      "index": 138,
+      "name": "组合框_绑定鼠标按下",
+      "signature": "组合框_绑定鼠标按下(控件, 处理器)",
+      "description": "为组合框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定鼠标按下",
+        "runtimeName": "组合框_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定鼠标按下(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 139,
+      "name": "组合框_解绑鼠标按下",
+      "signature": "组合框_解绑鼠标按下(控件)",
+      "description": "移除组合框实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "组合框_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑鼠标按下",
+        "runtimeName": "组合框_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑鼠标按下(演示ComboBox控件)"
+    },
+    {
+      "index": 140,
+      "name": "组合框_绑定鼠标移入",
+      "signature": "组合框_绑定鼠标移入(控件, 处理器)",
+      "description": "为组合框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定鼠标移入",
+        "runtimeName": "组合框_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定鼠标移入(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 141,
+      "name": "组合框_解绑鼠标移入",
+      "signature": "组合框_解绑鼠标移入(控件)",
+      "description": "移除组合框实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "组合框_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑鼠标移入",
+        "runtimeName": "组合框_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑鼠标移入(演示ComboBox控件)"
+    },
+    {
+      "index": 142,
+      "name": "组合框_绑定鼠标移出",
+      "signature": "组合框_绑定鼠标移出(控件, 处理器)",
+      "description": "为组合框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定鼠标移出",
+        "runtimeName": "组合框_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定鼠标移出(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 143,
+      "name": "组合框_解绑鼠标移出",
+      "signature": "组合框_解绑鼠标移出(控件)",
+      "description": "移除组合框实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "组合框_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑鼠标移出",
+        "runtimeName": "组合框_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑鼠标移出(演示ComboBox控件)"
+    },
+    {
+      "index": 144,
+      "name": "组合框_绑定获得焦点",
+      "signature": "组合框_绑定获得焦点(控件, 处理器)",
+      "description": "为组合框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定获得焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定获得焦点",
+        "runtimeName": "组合框_绑定获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定获得焦点(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 145,
+      "name": "组合框_解绑获得焦点",
+      "signature": "组合框_解绑获得焦点(控件)",
+      "description": "移除组合框实例由代码绑定的“获得焦点”处理器。",
+      "insertText": "组合框_解绑获得焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑获得焦点",
+        "runtimeName": "组合框_解绑获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑获得焦点(演示ComboBox控件)"
+    },
+    {
+      "index": 146,
+      "name": "组合框_绑定失去焦点",
+      "signature": "组合框_绑定失去焦点(控件, 处理器)",
+      "description": "为组合框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定失去焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定失去焦点",
+        "runtimeName": "组合框_绑定失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定失去焦点(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 147,
+      "name": "组合框_解绑失去焦点",
+      "signature": "组合框_解绑失去焦点(控件)",
+      "description": "移除组合框实例由代码绑定的“失去焦点”处理器。",
+      "insertText": "组合框_解绑失去焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑失去焦点",
+        "runtimeName": "组合框_解绑失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑失去焦点(演示ComboBox控件)"
+    },
+    {
+      "index": 148,
+      "name": "分组框_绑定鼠标按下",
+      "signature": "分组框_绑定鼠标按下(控件, 处理器)",
+      "description": "为分组框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "分组框_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_绑定鼠标按下",
+        "runtimeName": "分组框_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_绑定鼠标按下(演示GroupBox控件, &模块演示回调)"
+    },
+    {
+      "index": 149,
+      "name": "分组框_解绑鼠标按下",
+      "signature": "分组框_解绑鼠标按下(控件)",
+      "description": "移除分组框实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "分组框_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_解绑鼠标按下",
+        "runtimeName": "分组框_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_解绑鼠标按下(演示GroupBox控件)"
+    },
+    {
+      "index": 150,
+      "name": "分组框_绑定鼠标移入",
+      "signature": "分组框_绑定鼠标移入(控件, 处理器)",
+      "description": "为分组框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "分组框_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_绑定鼠标移入",
+        "runtimeName": "分组框_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_绑定鼠标移入(演示GroupBox控件, &模块演示回调)"
+    },
+    {
+      "index": 151,
+      "name": "分组框_解绑鼠标移入",
+      "signature": "分组框_解绑鼠标移入(控件)",
+      "description": "移除分组框实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "分组框_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_解绑鼠标移入",
+        "runtimeName": "分组框_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_解绑鼠标移入(演示GroupBox控件)"
+    },
+    {
+      "index": 152,
+      "name": "分组框_绑定鼠标移出",
+      "signature": "分组框_绑定鼠标移出(控件, 处理器)",
+      "description": "为分组框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "分组框_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_绑定鼠标移出",
+        "runtimeName": "分组框_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_绑定鼠标移出(演示GroupBox控件, &模块演示回调)"
+    },
+    {
+      "index": 153,
+      "name": "分组框_解绑鼠标移出",
+      "signature": "分组框_解绑鼠标移出(控件)",
+      "description": "移除分组框实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "分组框_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_解绑鼠标移出",
+        "runtimeName": "分组框_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_解绑鼠标移出(演示GroupBox控件)"
+    },
+    {
+      "index": 154,
+      "name": "滚动条_绑定数值被改变",
+      "signature": "滚动条_绑定数值被改变(控件, 处理器)",
+      "description": "为滚动条实例绑定“数值被改变”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定数值被改变($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定数值被改变",
+        "runtimeName": "滚动条_绑定数值被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定数值被改变(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 155,
+      "name": "滚动条_解绑数值被改变",
+      "signature": "滚动条_解绑数值被改变(控件)",
+      "description": "移除滚动条实例由代码绑定的“数值被改变”处理器。",
+      "insertText": "滚动条_解绑数值被改变($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑数值被改变",
+        "runtimeName": "滚动条_解绑数值被改变",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑数值被改变(演示ScrollBar控件)"
+    },
+    {
+      "index": 156,
+      "name": "滚动条_绑定鼠标按下",
+      "signature": "滚动条_绑定鼠标按下(控件, 处理器)",
+      "description": "为滚动条实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定鼠标按下",
+        "runtimeName": "滚动条_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定鼠标按下(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 157,
+      "name": "滚动条_解绑鼠标按下",
+      "signature": "滚动条_解绑鼠标按下(控件)",
+      "description": "移除滚动条实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "滚动条_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑鼠标按下",
+        "runtimeName": "滚动条_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑鼠标按下(演示ScrollBar控件)"
+    },
+    {
+      "index": 158,
+      "name": "滚动条_绑定鼠标移入",
+      "signature": "滚动条_绑定鼠标移入(控件, 处理器)",
+      "description": "为滚动条实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定鼠标移入",
+        "runtimeName": "滚动条_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定鼠标移入(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 159,
+      "name": "滚动条_解绑鼠标移入",
+      "signature": "滚动条_解绑鼠标移入(控件)",
+      "description": "移除滚动条实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "滚动条_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑鼠标移入",
+        "runtimeName": "滚动条_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑鼠标移入(演示ScrollBar控件)"
+    },
+    {
+      "index": 160,
+      "name": "滚动条_绑定鼠标移出",
+      "signature": "滚动条_绑定鼠标移出(控件, 处理器)",
+      "description": "为滚动条实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定鼠标移出",
+        "runtimeName": "滚动条_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定鼠标移出(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 161,
+      "name": "滚动条_解绑鼠标移出",
+      "signature": "滚动条_解绑鼠标移出(控件)",
+      "description": "移除滚动条实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "滚动条_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑鼠标移出",
+        "runtimeName": "滚动条_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑鼠标移出(演示ScrollBar控件)"
+    },
+    {
+      "index": 162,
+      "name": "滚动条_绑定获得焦点",
+      "signature": "滚动条_绑定获得焦点(控件, 处理器)",
+      "description": "为滚动条实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定获得焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定获得焦点",
+        "runtimeName": "滚动条_绑定获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定获得焦点(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 163,
+      "name": "滚动条_解绑获得焦点",
+      "signature": "滚动条_解绑获得焦点(控件)",
+      "description": "移除滚动条实例由代码绑定的“获得焦点”处理器。",
+      "insertText": "滚动条_解绑获得焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑获得焦点",
+        "runtimeName": "滚动条_解绑获得焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑获得焦点(演示ScrollBar控件)"
+    },
+    {
+      "index": 164,
+      "name": "滚动条_绑定失去焦点",
+      "signature": "滚动条_绑定失去焦点(控件, 处理器)",
+      "description": "为滚动条实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定失去焦点($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定失去焦点",
+        "runtimeName": "滚动条_绑定失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定失去焦点(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 165,
+      "name": "滚动条_解绑失去焦点",
+      "signature": "滚动条_解绑失去焦点(控件)",
+      "description": "移除滚动条实例由代码绑定的“失去焦点”处理器。",
+      "insertText": "滚动条_解绑失去焦点($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑失去焦点",
+        "runtimeName": "滚动条_解绑失去焦点",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑失去焦点(演示ScrollBar控件)"
+    },
+    {
+      "index": 166,
+      "name": "图片框_绑定被单击",
+      "signature": "图片框_绑定被单击(控件, 处理器)",
+      "description": "为图片框实例绑定“被单击”处理器，处理器必须使用 &名称。",
+      "insertText": "图片框_绑定被单击($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_绑定被单击",
+        "runtimeName": "图片框_绑定被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_绑定被单击(演示Image控件, &模块演示回调)"
+    },
+    {
+      "index": 167,
+      "name": "图片框_解绑被单击",
+      "signature": "图片框_解绑被单击(控件)",
+      "description": "移除图片框实例由代码绑定的“被单击”处理器。",
+      "insertText": "图片框_解绑被单击($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_解绑被单击",
+        "runtimeName": "图片框_解绑被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_解绑被单击(演示Image控件)"
+    },
+    {
+      "index": 168,
+      "name": "图片框_绑定鼠标按下",
+      "signature": "图片框_绑定鼠标按下(控件, 处理器)",
+      "description": "为图片框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "图片框_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_绑定鼠标按下",
+        "runtimeName": "图片框_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_绑定鼠标按下(演示Image控件, &模块演示回调)"
+    },
+    {
+      "index": 169,
+      "name": "图片框_解绑鼠标按下",
+      "signature": "图片框_解绑鼠标按下(控件)",
+      "description": "移除图片框实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "图片框_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_解绑鼠标按下",
+        "runtimeName": "图片框_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_解绑鼠标按下(演示Image控件)"
+    },
+    {
+      "index": 170,
+      "name": "图片框_绑定鼠标移入",
+      "signature": "图片框_绑定鼠标移入(控件, 处理器)",
+      "description": "为图片框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "图片框_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_绑定鼠标移入",
+        "runtimeName": "图片框_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_绑定鼠标移入(演示Image控件, &模块演示回调)"
+    },
+    {
+      "index": 171,
+      "name": "图片框_解绑鼠标移入",
+      "signature": "图片框_解绑鼠标移入(控件)",
+      "description": "移除图片框实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "图片框_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_解绑鼠标移入",
+        "runtimeName": "图片框_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_解绑鼠标移入(演示Image控件)"
+    },
+    {
+      "index": 172,
+      "name": "图片框_绑定鼠标移出",
+      "signature": "图片框_绑定鼠标移出(控件, 处理器)",
+      "description": "为图片框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "图片框_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_绑定鼠标移出",
+        "runtimeName": "图片框_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_绑定鼠标移出(演示Image控件, &模块演示回调)"
+    },
+    {
+      "index": 173,
+      "name": "图片框_解绑鼠标移出",
+      "signature": "图片框_解绑鼠标移出(控件)",
+      "description": "移除图片框实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "图片框_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_解绑鼠标移出",
+        "runtimeName": "图片框_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_解绑鼠标移出(演示Image控件)"
+    },
+    {
+      "index": 174,
+      "name": "动态图像控件_绑定被单击",
+      "signature": "动态图像控件_绑定被单击(控件, 处理器)",
+      "description": "为动态图像控件实例绑定“被单击”处理器，处理器必须使用 &名称。",
+      "insertText": "动态图像控件_绑定被单击($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_绑定被单击",
+        "runtimeName": "动态图像控件_绑定被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_绑定被单击(演示AnimatedImage控件, &模块演示回调)"
+    },
+    {
+      "index": 175,
+      "name": "动态图像控件_解绑被单击",
+      "signature": "动态图像控件_解绑被单击(控件)",
+      "description": "移除动态图像控件实例由代码绑定的“被单击”处理器。",
+      "insertText": "动态图像控件_解绑被单击($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_解绑被单击",
+        "runtimeName": "动态图像控件_解绑被单击",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_解绑被单击(演示AnimatedImage控件)"
+    },
+    {
+      "index": 176,
+      "name": "动态图像控件_绑定鼠标按下",
+      "signature": "动态图像控件_绑定鼠标按下(控件, 处理器)",
+      "description": "为动态图像控件实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "动态图像控件_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_绑定鼠标按下",
+        "runtimeName": "动态图像控件_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_绑定鼠标按下(演示AnimatedImage控件, &模块演示回调)"
+    },
+    {
+      "index": 177,
+      "name": "动态图像控件_解绑鼠标按下",
+      "signature": "动态图像控件_解绑鼠标按下(控件)",
+      "description": "移除动态图像控件实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "动态图像控件_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_解绑鼠标按下",
+        "runtimeName": "动态图像控件_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_解绑鼠标按下(演示AnimatedImage控件)"
+    },
+    {
+      "index": 178,
+      "name": "动态图像控件_绑定鼠标移入",
+      "signature": "动态图像控件_绑定鼠标移入(控件, 处理器)",
+      "description": "为动态图像控件实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "动态图像控件_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_绑定鼠标移入",
+        "runtimeName": "动态图像控件_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_绑定鼠标移入(演示AnimatedImage控件, &模块演示回调)"
+    },
+    {
+      "index": 179,
+      "name": "动态图像控件_解绑鼠标移入",
+      "signature": "动态图像控件_解绑鼠标移入(控件)",
+      "description": "移除动态图像控件实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "动态图像控件_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_解绑鼠标移入",
+        "runtimeName": "动态图像控件_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_解绑鼠标移入(演示AnimatedImage控件)"
+    },
+    {
+      "index": 180,
+      "name": "动态图像控件_绑定鼠标移出",
+      "signature": "动态图像控件_绑定鼠标移出(控件, 处理器)",
+      "description": "为动态图像控件实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "动态图像控件_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_绑定鼠标移出",
+        "runtimeName": "动态图像控件_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_绑定鼠标移出(演示AnimatedImage控件, &模块演示回调)"
+    },
+    {
+      "index": 181,
+      "name": "动态图像控件_解绑鼠标移出",
+      "signature": "动态图像控件_解绑鼠标移出(控件)",
+      "description": "移除动态图像控件实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "动态图像控件_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_解绑鼠标移出",
+        "runtimeName": "动态图像控件_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_解绑鼠标移出(演示AnimatedImage控件)"
+    },
+    {
+      "index": 182,
+      "name": "动态图像控件_绑定播放完毕",
+      "signature": "动态图像控件_绑定播放完毕(控件, 处理器)",
+      "description": "为动态图像控件实例绑定“播放完毕”处理器，处理器必须使用 &名称。",
+      "insertText": "动态图像控件_绑定播放完毕($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_绑定播放完毕",
+        "runtimeName": "动态图像控件_绑定播放完毕",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_绑定播放完毕(演示AnimatedImage控件, &模块演示回调)"
+    },
+    {
+      "index": 183,
+      "name": "动态图像控件_解绑播放完毕",
+      "signature": "动态图像控件_解绑播放完毕(控件)",
+      "description": "移除动态图像控件实例由代码绑定的“播放完毕”处理器。",
+      "insertText": "动态图像控件_解绑播放完毕($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_解绑播放完毕",
+        "runtimeName": "动态图像控件_解绑播放完毕",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_解绑播放完毕(演示AnimatedImage控件)"
+    },
+    {
+      "index": 184,
+      "name": "进度条_绑定鼠标按下",
+      "signature": "进度条_绑定鼠标按下(控件, 处理器)",
+      "description": "为进度条实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
+      "insertText": "进度条_绑定鼠标按下($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_绑定鼠标按下",
+        "runtimeName": "进度条_绑定鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_绑定鼠标按下(演示ProgressBar控件, &模块演示回调)"
+    },
+    {
+      "index": 185,
+      "name": "进度条_解绑鼠标按下",
+      "signature": "进度条_解绑鼠标按下(控件)",
+      "description": "移除进度条实例由代码绑定的“鼠标按下”处理器。",
+      "insertText": "进度条_解绑鼠标按下($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_解绑鼠标按下",
+        "runtimeName": "进度条_解绑鼠标按下",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_解绑鼠标按下(演示ProgressBar控件)"
+    },
+    {
+      "index": 186,
+      "name": "进度条_绑定鼠标移入",
+      "signature": "进度条_绑定鼠标移入(控件, 处理器)",
+      "description": "为进度条实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
+      "insertText": "进度条_绑定鼠标移入($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_绑定鼠标移入",
+        "runtimeName": "进度条_绑定鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_绑定鼠标移入(演示ProgressBar控件, &模块演示回调)"
+    },
+    {
+      "index": 187,
+      "name": "进度条_解绑鼠标移入",
+      "signature": "进度条_解绑鼠标移入(控件)",
+      "description": "移除进度条实例由代码绑定的“鼠标移入”处理器。",
+      "insertText": "进度条_解绑鼠标移入($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_解绑鼠标移入",
+        "runtimeName": "进度条_解绑鼠标移入",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_解绑鼠标移入(演示ProgressBar控件)"
+    },
+    {
+      "index": 188,
+      "name": "进度条_绑定鼠标移出",
+      "signature": "进度条_绑定鼠标移出(控件, 处理器)",
+      "description": "为进度条实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
+      "insertText": "进度条_绑定鼠标移出($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_绑定鼠标移出",
+        "runtimeName": "进度条_绑定鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_绑定鼠标移出(演示ProgressBar控件, &模块演示回调)"
+    },
+    {
+      "index": 189,
+      "name": "进度条_解绑鼠标移出",
+      "signature": "进度条_解绑鼠标移出(控件)",
+      "description": "移除进度条实例由代码绑定的“鼠标移出”处理器。",
+      "insertText": "进度条_解绑鼠标移出($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_解绑鼠标移出",
+        "runtimeName": "进度条_解绑鼠标移出",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_解绑鼠标移出(演示ProgressBar控件)"
+    },
+    {
+      "index": 190,
       "name": "窗口_取消关闭",
       "signature": "窗口_取消关闭()",
       "description": "在窗口“关闭前”事件中取消本次关闭请求。",
@@ -605,7 +6003,7 @@
       "demoInvocation": "窗口_取消关闭()"
     },
     {
-      "index": 24,
+      "index": 191,
       "name": "窗口_取事件宽度",
       "signature": "窗口_取事件宽度()",
       "description": "返回最近窗口大小事件中的客户区宽度。",
@@ -620,7 +6018,7 @@
       "demoInvocation": "窗口_取事件宽度()"
     },
     {
-      "index": 25,
+      "index": 192,
       "name": "窗口_取事件高度",
       "signature": "窗口_取事件高度()",
       "description": "返回最近窗口大小事件中的客户区高度。",
@@ -635,7 +6033,7 @@
       "demoInvocation": "窗口_取事件高度()"
     },
     {
-      "index": 26,
+      "index": 193,
       "name": "窗口_取事件横坐标",
       "signature": "窗口_取事件横坐标()",
       "description": "返回最近窗口移动事件中的屏幕横坐标。",
@@ -650,7 +6048,7 @@
       "demoInvocation": "窗口_取事件横坐标()"
     },
     {
-      "index": 27,
+      "index": 194,
       "name": "窗口_取事件纵坐标",
       "signature": "窗口_取事件纵坐标()",
       "description": "返回最近窗口移动事件中的屏幕纵坐标。",
@@ -665,7 +6063,7 @@
       "demoInvocation": "窗口_取事件纵坐标()"
     },
     {
-      "index": 28,
+      "index": 195,
       "name": "窗口_取是否激活",
       "signature": "窗口_取是否激活()",
       "description": "返回当前窗口是否为活动窗口。",
@@ -680,7 +6078,7 @@
       "demoInvocation": "窗口_取是否激活()"
     },
     {
-      "index": 29,
+      "index": 196,
       "name": "窗口_取是否可见",
       "signature": "窗口_取是否可见()",
       "description": "返回当前窗口是否可见。",
@@ -695,7 +6093,7 @@
       "demoInvocation": "窗口_取是否可见()"
     },
     {
-      "index": 30,
+      "index": 197,
       "name": "窗口_取当前状态",
       "signature": "窗口_取当前状态()",
       "description": "返回窗口状态：0 正常、1 最小化、2 最大化。",
@@ -710,7 +6108,7 @@
       "demoInvocation": "窗口_取当前状态()"
     },
     {
-      "index": 31,
+      "index": 198,
       "name": "窗口_取事件键码",
       "signature": "窗口_取事件键码()",
       "description": "返回最近键盘事件中的 Win32 虚拟键码。",
@@ -725,7 +6123,7 @@
       "demoInvocation": "窗口_取事件键码()"
     },
     {
-      "index": 32,
+      "index": 199,
       "name": "窗口_取事件字符",
       "signature": "窗口_取事件字符()",
       "description": "返回最近字符输入事件中的 Unicode 字符。",
@@ -741,7 +6139,7 @@
       "demoInvocation": "窗口_取事件字符()"
     },
     {
-      "index": 33,
+      "index": 200,
       "name": "窗口_取Ctrl键状态",
       "signature": "窗口_取Ctrl键状态()",
       "description": "返回最近键盘事件发生时 Ctrl 键是否按下。",
@@ -756,7 +6154,7 @@
       "demoInvocation": "窗口_取Ctrl键状态()"
     },
     {
-      "index": 34,
+      "index": 201,
       "name": "窗口_取Shift键状态",
       "signature": "窗口_取Shift键状态()",
       "description": "返回最近键盘事件发生时 Shift 键是否按下。",
@@ -771,7 +6169,7 @@
       "demoInvocation": "窗口_取Shift键状态()"
     },
     {
-      "index": 35,
+      "index": 202,
       "name": "窗口_取Alt键状态",
       "signature": "窗口_取Alt键状态()",
       "description": "返回最近键盘事件发生时 Alt 键是否按下。",
@@ -786,7 +6184,7 @@
       "demoInvocation": "窗口_取Alt键状态()"
     },
     {
-      "index": 36,
+      "index": 203,
       "name": "窗口_标记按键已处理",
       "signature": "窗口_标记按键已处理()",
       "description": "在窗口键盘事件中阻止消息继续交给子控件或默认窗口过程。",
@@ -801,7 +6199,7 @@
       "demoInvocation": "窗口_标记按键已处理()"
     },
     {
-      "index": 37,
+      "index": 204,
       "name": "窗口_取事件DPI",
       "signature": "窗口_取事件DPI()",
       "description": "返回最近 DPI 改变事件中的新 DPI。",
@@ -816,7 +6214,7 @@
       "demoInvocation": "窗口_取事件DPI()"
     },
     {
-      "index": 38,
+      "index": 205,
       "name": "窗口_取拖入文件数量",
       "signature": "窗口_取拖入文件数量()",
       "description": "返回最近文件拖入事件中的文件和目录数量。",
@@ -831,7 +6229,7 @@
       "demoInvocation": "窗口_取拖入文件数量()"
     },
     {
-      "index": 39,
+      "index": 206,
       "name": "窗口_取拖入文件",
       "signature": "窗口_取拖入文件(索引)",
       "description": "按从 0 开始的索引返回最近拖入的 Unicode 路径，越界返回空文本。",

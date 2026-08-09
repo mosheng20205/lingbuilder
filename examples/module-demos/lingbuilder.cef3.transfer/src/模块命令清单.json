@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.804Z",
+  "generatedAt": "2026-08-07T08:51:35.746Z",
   "module": {
     "id": "lingbuilder.cef3.transfer",
     "name": "CEF3传输模块",
-    "version": "3.0.0-alpha.2",
-    "description": "提供下载和打印能力。"
+    "version": "3.0.0-alpha.3",
+    "description": "提供下载、打印、受管二进制流和读写处理器能力。"
   },
-  "commandCount": 2,
+  "commandCount": 34,
   "commands": [
     {
       "index": 1,
@@ -76,6 +76,844 @@
         "encoding": "wide"
       },
       "demoInvocation": "CEF3传输_打印(演示CefBrowser控件)"
+    },
+    {
+      "index": 3,
+      "name": "CEF3传输_从缓冲创建读取流",
+      "aliases": [
+        "CefStreamReader::CreateForData"
+      ],
+      "signature": "CEF3传输_从缓冲创建读取流(缓冲句柄)",
+      "description": "从Bridge受管缓冲创建可跨线程使用的CEF读取流。读取流会保留源缓冲，即使源缓冲句柄已释放也能继续读取。",
+      "insertText": "CEF3传输_从缓冲创建读取流($1)",
+      "returnType": "CEF3读取流句柄",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_从缓冲创建读取流",
+        "runtimeName": "LB_CEF3_StreamReaderCreateForBuffer",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "CEF3读取流句柄"
+      },
+      "demoInvocation": "CEF3传输_从缓冲创建读取流(1)"
+    },
+    {
+      "index": 4,
+      "name": "CEF3传输_从文件创建读取流",
+      "aliases": [
+        "CefStreamReader::CreateForFile"
+      ],
+      "signature": "CEF3传输_从文件创建读取流(路径)",
+      "description": "在当前项目允许的文件根目录内打开文件并创建受管CEF读取流；越界、空路径或无法打开的文件返回0。",
+      "insertText": "CEF3传输_从文件创建读取流(\"$1\")",
+      "returnType": "CEF3读取流句柄",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_从文件创建读取流",
+        "runtimeName": "LB_CEF3_StreamReaderCreateForFile",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "CEF3读取流句柄",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3传输_从文件创建读取流(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 5,
+      "name": "CEF3传输_从缓冲创建读取处理器",
+      "aliases": [
+        "CefReadHandler"
+      ],
+      "signature": "CEF3传输_从缓冲创建读取处理器(缓冲句柄, 可能阻塞)",
+      "description": "从受管缓冲创建可供CEF异步读取的线程安全读取处理器；处理器保留源缓冲，可能阻塞仅作为CEF线程调度提示。",
+      "insertText": "CEF3传输_从缓冲创建读取处理器($1, 假)",
+      "returnType": "CEF3读取处理器句柄",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_从缓冲创建读取处理器",
+        "runtimeName": "LB_CEF3_ReadHandlerCreateForBuffer",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "可能阻塞",
+            "type": "bool"
+          }
+        ],
+        "returnType": "CEF3读取处理器句柄"
+      },
+      "demoInvocation": "CEF3传输_从缓冲创建读取处理器(1, 真)"
+    },
+    {
+      "index": 6,
+      "name": "CEF3传输_读取处理器读取",
+      "aliases": [
+        "CefReadHandler::Read"
+      ],
+      "signature": "CEF3传输_读取处理器读取(读取处理器句柄, 最大字节数)",
+      "description": "从读取处理器读取至多64MiB并返回新的受管缓冲句柄；通过CEF3缓冲_释放释放结果。",
+      "insertText": "CEF3传输_读取处理器读取($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_读取处理器读取",
+        "runtimeName": "LB_CEF3_ReadHandlerRead",
+        "parameters": [
+          {
+            "name": "读取处理器句柄",
+            "type": "CEF3读取处理器句柄"
+          },
+          {
+            "name": "最大字节数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_读取处理器读取(0, 1)"
+    },
+    {
+      "index": 7,
+      "name": "CEF3传输_定位读取处理器",
+      "aliases": [
+        "CefReadHandler::Seek"
+      ],
+      "signature": "CEF3传输_定位读取处理器(读取处理器句柄, 偏移量, 基准)",
+      "description": "按官方Seek语义定位读取处理器：基准0为开头、1为当前位置、2为结尾；无法定位返回负错误码。",
+      "insertText": "CEF3传输_定位读取处理器($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_定位读取处理器",
+        "runtimeName": "LB_CEF3_ReadHandlerSeek",
+        "parameters": [
+          {
+            "name": "读取处理器句柄",
+            "type": "CEF3读取处理器句柄"
+          },
+          {
+            "name": "偏移量",
+            "type": "longLong"
+          },
+          {
+            "name": "基准",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_定位读取处理器(0, 1, 1)"
+    },
+    {
+      "index": 8,
+      "name": "CEF3传输_取读取处理器位置",
+      "aliases": [
+        "CefReadHandler::Tell"
+      ],
+      "signature": "CEF3传输_取读取处理器位置(读取处理器句柄)",
+      "description": "返回读取处理器当前字节偏移。",
+      "insertText": "CEF3传输_取读取处理器位置($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_取读取处理器位置",
+        "runtimeName": "LB_CEF3_ReadHandlerTell",
+        "parameters": [
+          {
+            "name": "读取处理器句柄",
+            "type": "CEF3读取处理器句柄"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_取读取处理器位置(0)"
+    },
+    {
+      "index": 9,
+      "name": "CEF3传输_读取处理器是否结束",
+      "aliases": [
+        "CefReadHandler::Eof"
+      ],
+      "signature": "CEF3传输_读取处理器是否结束(读取处理器句柄)",
+      "description": "返回读取处理器是否已到达受管缓冲结尾。",
+      "insertText": "CEF3传输_读取处理器是否结束($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_读取处理器是否结束",
+        "runtimeName": "LB_CEF3_ReadHandlerEof",
+        "parameters": [
+          {
+            "name": "读取处理器句柄",
+            "type": "CEF3读取处理器句柄"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3传输_读取处理器是否结束(0)"
+    },
+    {
+      "index": 10,
+      "name": "CEF3传输_读取处理器是否可能阻塞",
+      "aliases": [
+        "CefReadHandler::MayBlock"
+      ],
+      "signature": "CEF3传输_读取处理器是否可能阻塞(读取处理器句柄)",
+      "description": "返回创建读取处理器时声明的可能阻塞提示。",
+      "insertText": "CEF3传输_读取处理器是否可能阻塞($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_读取处理器是否可能阻塞",
+        "runtimeName": "LB_CEF3_ReadHandlerMayBlock",
+        "parameters": [
+          {
+            "name": "读取处理器句柄",
+            "type": "CEF3读取处理器句柄"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3传输_读取处理器是否可能阻塞(0)"
+    },
+    {
+      "index": 11,
+      "name": "CEF3传输_从读取处理器创建流",
+      "aliases": [
+        "CefStreamReader::CreateForHandler"
+      ],
+      "signature": "CEF3传输_从读取处理器创建流(读取处理器句柄)",
+      "description": "将受管读取处理器接入真实CefStreamReader；流与处理器共享位置，并在任一端释放后由CEF引用计数保持安全生命周期。",
+      "insertText": "CEF3传输_从读取处理器创建流($1)",
+      "returnType": "CEF3读取流句柄",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_从读取处理器创建流",
+        "runtimeName": "LB_CEF3_StreamReaderCreateForHandler",
+        "parameters": [
+          {
+            "name": "读取处理器句柄",
+            "type": "CEF3读取处理器句柄"
+          }
+        ],
+        "returnType": "CEF3读取流句柄"
+      },
+      "demoInvocation": "CEF3传输_从读取处理器创建流(0)"
+    },
+    {
+      "index": 12,
+      "name": "CEF3传输_释放读取处理器",
+      "aliases": [
+        "CefReadHandler::Release"
+      ],
+      "signature": "CEF3传输_释放读取处理器(读取处理器句柄)",
+      "description": "释放受管读取处理器句柄；已创建的读取流会继续保持CEF对处理器的引用。",
+      "insertText": "CEF3传输_释放读取处理器($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_释放读取处理器",
+        "runtimeName": "LB_CEF3_HandleRelease",
+        "parameters": [
+          {
+            "name": "读取处理器句柄",
+            "type": "CEF3读取处理器句柄"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_释放读取处理器(0)"
+    },
+    {
+      "index": 13,
+      "name": "CEF3传输_从文件创建写入流",
+      "aliases": [
+        "CefStreamWriter::CreateForFile"
+      ],
+      "signature": "CEF3传输_从文件创建写入流(路径)",
+      "description": "在当前项目允许的文件根目录内创建或截断文件并返回受管CEF写入流；越界、空路径或无法创建的文件返回0。",
+      "insertText": "CEF3传输_从文件创建写入流(\"$1\")",
+      "returnType": "CEF3写入流句柄",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_从文件创建写入流",
+        "runtimeName": "LB_CEF3_StreamWriterCreateForFile",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "CEF3写入流句柄",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3传输_从文件创建写入流(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 14,
+      "name": "CEF3传输_创建写入处理器",
+      "aliases": [
+        "CefWriteHandler"
+      ],
+      "signature": "CEF3传输_创建写入处理器(可能阻塞)",
+      "description": "创建线程安全的内存写入处理器；总容量限制为64MiB，可能阻塞仅作为CEF线程调度提示。",
+      "insertText": "CEF3传输_创建写入处理器(假)",
+      "returnType": "CEF3写入处理器句柄",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_创建写入处理器",
+        "runtimeName": "LB_CEF3_WriteHandlerCreate",
+        "parameters": [
+          {
+            "name": "可能阻塞",
+            "type": "bool"
+          }
+        ],
+        "returnType": "CEF3写入处理器句柄"
+      },
+      "demoInvocation": "CEF3传输_创建写入处理器(真)"
+    },
+    {
+      "index": 15,
+      "name": "CEF3传输_写入处理器写入",
+      "aliases": [
+        "CefWriteHandler::Write"
+      ],
+      "signature": "CEF3传输_写入处理器写入(写入处理器句柄, 缓冲句柄, 起始偏移, 写入字节数)",
+      "description": "从受管缓冲的指定范围写入内存处理器；单次和总容量均不超过64MiB，返回实际写入字节数。",
+      "insertText": "CEF3传输_写入处理器写入($1, $2, $3, $4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_写入处理器写入",
+        "runtimeName": "LB_CEF3_WriteHandlerWrite",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "起始偏移",
+            "type": "longLong"
+          },
+          {
+            "name": "写入字节数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_写入处理器写入(0, 1, 1, 1)"
+    },
+    {
+      "index": 16,
+      "name": "CEF3传输_定位写入处理器",
+      "aliases": [
+        "CefWriteHandler::Seek"
+      ],
+      "signature": "CEF3传输_定位写入处理器(写入处理器句柄, 偏移量, 基准)",
+      "description": "按官方Seek语义定位写入处理器：基准0为开头、1为当前位置、2为当前内存结尾；越界返回负错误码。",
+      "insertText": "CEF3传输_定位写入处理器($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_定位写入处理器",
+        "runtimeName": "LB_CEF3_WriteHandlerSeek",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          },
+          {
+            "name": "偏移量",
+            "type": "longLong"
+          },
+          {
+            "name": "基准",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_定位写入处理器(0, 1, 1)"
+    },
+    {
+      "index": 17,
+      "name": "CEF3传输_取写入处理器位置",
+      "aliases": [
+        "CefWriteHandler::Tell"
+      ],
+      "signature": "CEF3传输_取写入处理器位置(写入处理器句柄)",
+      "description": "返回写入处理器当前字节偏移。",
+      "insertText": "CEF3传输_取写入处理器位置($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_取写入处理器位置",
+        "runtimeName": "LB_CEF3_WriteHandlerTell",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_取写入处理器位置(0)"
+    },
+    {
+      "index": 18,
+      "name": "CEF3传输_刷新写入处理器",
+      "aliases": [
+        "CefWriteHandler::Flush"
+      ],
+      "signature": "CEF3传输_刷新写入处理器(写入处理器句柄)",
+      "description": "刷新写入处理器；内存处理器不落盘，成功返回0。",
+      "insertText": "CEF3传输_刷新写入处理器($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_刷新写入处理器",
+        "runtimeName": "LB_CEF3_WriteHandlerFlush",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_刷新写入处理器(0)"
+    },
+    {
+      "index": 19,
+      "name": "CEF3传输_写入处理器是否可能阻塞",
+      "aliases": [
+        "CefWriteHandler::MayBlock"
+      ],
+      "signature": "CEF3传输_写入处理器是否可能阻塞(写入处理器句柄)",
+      "description": "返回创建写入处理器时声明的可能阻塞提示。",
+      "insertText": "CEF3传输_写入处理器是否可能阻塞($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_写入处理器是否可能阻塞",
+        "runtimeName": "LB_CEF3_WriteHandlerMayBlock",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3传输_写入处理器是否可能阻塞(0)"
+    },
+    {
+      "index": 20,
+      "name": "CEF3传输_取写入处理器缓冲",
+      "aliases": [
+        "CefWriteHandler::Snapshot"
+      ],
+      "signature": "CEF3传输_取写入处理器缓冲(写入处理器句柄)",
+      "description": "复制写入处理器当前内存内容为新的受管缓冲句柄；通过CEF3缓冲_释放释放结果。",
+      "insertText": "CEF3传输_取写入处理器缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_取写入处理器缓冲",
+        "runtimeName": "LB_CEF3_WriteHandlerGetBuffer",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_取写入处理器缓冲(0)"
+    },
+    {
+      "index": 21,
+      "name": "CEF3传输_从写入处理器创建流",
+      "aliases": [
+        "CefStreamWriter::CreateForHandler"
+      ],
+      "signature": "CEF3传输_从写入处理器创建流(写入处理器句柄)",
+      "description": "将受管写入处理器接入真实CefStreamWriter；流与处理器共享位置，适合供CEF回调写入受管内存。",
+      "insertText": "CEF3传输_从写入处理器创建流($1)",
+      "returnType": "CEF3写入流句柄",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_从写入处理器创建流",
+        "runtimeName": "LB_CEF3_StreamWriterCreateForHandler",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          }
+        ],
+        "returnType": "CEF3写入流句柄"
+      },
+      "demoInvocation": "CEF3传输_从写入处理器创建流(0)"
+    },
+    {
+      "index": 22,
+      "name": "CEF3传输_释放写入处理器",
+      "aliases": [
+        "CefWriteHandler::Release"
+      ],
+      "signature": "CEF3传输_释放写入处理器(写入处理器句柄)",
+      "description": "释放受管写入处理器句柄；已创建的写入流会继续保持CEF对处理器的引用。",
+      "insertText": "CEF3传输_释放写入处理器($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_释放写入处理器",
+        "runtimeName": "LB_CEF3_HandleRelease",
+        "parameters": [
+          {
+            "name": "写入处理器句柄",
+            "type": "CEF3写入处理器句柄"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_释放写入处理器(0)"
+    },
+    {
+      "index": 23,
+      "name": "CEF3传输_写入流",
+      "aliases": [
+        "CefStreamWriter::Write"
+      ],
+      "signature": "CEF3传输_写入流(写入流句柄, 缓冲句柄, 起始偏移, 写入字节数)",
+      "description": "从受管缓冲的指定范围写入至多64MiB，返回实际写入字节数；越界或句柄错误返回负错误码。",
+      "insertText": "CEF3传输_写入流($1, $2, $3, $4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_写入流",
+        "runtimeName": "LB_CEF3_StreamWriterWrite",
+        "parameters": [
+          {
+            "name": "写入流句柄",
+            "type": "CEF3写入流句柄"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "起始偏移",
+            "type": "longLong"
+          },
+          {
+            "name": "写入字节数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_写入流(0, 1, 1, 1)"
+    },
+    {
+      "index": 24,
+      "name": "CEF3传输_定位写入流",
+      "aliases": [
+        "CefStreamWriter::Seek"
+      ],
+      "signature": "CEF3传输_定位写入流(写入流句柄, 偏移量, 基准)",
+      "description": "按官方Seek语义定位写入流：基准0为开头、1为当前位置、2为结尾；返回0表示成功。",
+      "insertText": "CEF3传输_定位写入流($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_定位写入流",
+        "runtimeName": "LB_CEF3_StreamWriterSeek",
+        "parameters": [
+          {
+            "name": "写入流句柄",
+            "type": "CEF3写入流句柄"
+          },
+          {
+            "name": "偏移量",
+            "type": "longLong"
+          },
+          {
+            "name": "基准",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_定位写入流(0, 1, 1)"
+    },
+    {
+      "index": 25,
+      "name": "CEF3传输_取写入流位置",
+      "aliases": [
+        "CefStreamWriter::Tell"
+      ],
+      "signature": "CEF3传输_取写入流位置(写入流句柄)",
+      "description": "返回写入流当前字节偏移。",
+      "insertText": "CEF3传输_取写入流位置($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_取写入流位置",
+        "runtimeName": "LB_CEF3_StreamWriterTell",
+        "parameters": [
+          {
+            "name": "写入流句柄",
+            "type": "CEF3写入流句柄"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_取写入流位置(0)"
+    },
+    {
+      "index": 26,
+      "name": "CEF3传输_刷新写入流",
+      "aliases": [
+        "CefStreamWriter::Flush"
+      ],
+      "signature": "CEF3传输_刷新写入流(写入流句柄)",
+      "description": "将写入流的待写数据刷新到文件；返回0表示成功。",
+      "insertText": "CEF3传输_刷新写入流($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_刷新写入流",
+        "runtimeName": "LB_CEF3_StreamWriterFlush",
+        "parameters": [
+          {
+            "name": "写入流句柄",
+            "type": "CEF3写入流句柄"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_刷新写入流(0)"
+    },
+    {
+      "index": 27,
+      "name": "CEF3传输_写入流是否可能阻塞",
+      "aliases": [
+        "CefStreamWriter::MayBlock"
+      ],
+      "signature": "CEF3传输_写入流是否可能阻塞(写入流句柄)",
+      "description": "返回CEF对当前写入流可能执行阻塞文件操作的提示；文件写入流通常返回真。",
+      "insertText": "CEF3传输_写入流是否可能阻塞($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_写入流是否可能阻塞",
+        "runtimeName": "LB_CEF3_StreamWriterMayBlock",
+        "parameters": [
+          {
+            "name": "写入流句柄",
+            "type": "CEF3写入流句柄"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3传输_写入流是否可能阻塞(0)"
+    },
+    {
+      "index": 28,
+      "name": "CEF3传输_释放写入流",
+      "aliases": [
+        "CefStreamWriter::Release"
+      ],
+      "signature": "CEF3传输_释放写入流(写入流句柄)",
+      "description": "释放受管写入流句柄；释放前应先刷新写入流，重复释放返回稳定错误码。",
+      "insertText": "CEF3传输_释放写入流($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_释放写入流",
+        "runtimeName": "LB_CEF3_HandleRelease",
+        "parameters": [
+          {
+            "name": "写入流句柄",
+            "type": "CEF3写入流句柄"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_释放写入流(0)"
+    },
+    {
+      "index": 29,
+      "name": "CEF3传输_读取流",
+      "aliases": [
+        "CefStreamReader::Read"
+      ],
+      "signature": "CEF3传输_读取流(读取流句柄, 最大字节数)",
+      "description": "读取至多64MiB数据并返回新的受管缓冲句柄；返回的缓冲需通过CEF3缓冲_释放释放。",
+      "insertText": "CEF3传输_读取流($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_读取流",
+        "runtimeName": "LB_CEF3_StreamReaderRead",
+        "parameters": [
+          {
+            "name": "读取流句柄",
+            "type": "CEF3读取流句柄"
+          },
+          {
+            "name": "最大字节数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_读取流(0, 1)"
+    },
+    {
+      "index": 30,
+      "name": "CEF3传输_定位读取流",
+      "aliases": [
+        "CefStreamReader::Seek"
+      ],
+      "signature": "CEF3传输_定位读取流(读取流句柄, 偏移量, 基准)",
+      "description": "按官方Seek语义定位读取流：基准0为开头、1为当前位置、2为结尾；返回0表示成功。",
+      "insertText": "CEF3传输_定位读取流($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_定位读取流",
+        "runtimeName": "LB_CEF3_StreamReaderSeek",
+        "parameters": [
+          {
+            "name": "读取流句柄",
+            "type": "CEF3读取流句柄"
+          },
+          {
+            "name": "偏移量",
+            "type": "longLong"
+          },
+          {
+            "name": "基准",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_定位读取流(0, 1, 1)"
+    },
+    {
+      "index": 31,
+      "name": "CEF3传输_取读取流位置",
+      "aliases": [
+        "CefStreamReader::Tell"
+      ],
+      "signature": "CEF3传输_取读取流位置(读取流句柄)",
+      "description": "返回读取流当前字节偏移。",
+      "insertText": "CEF3传输_取读取流位置($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_取读取流位置",
+        "runtimeName": "LB_CEF3_StreamReaderTell",
+        "parameters": [
+          {
+            "name": "读取流句柄",
+            "type": "CEF3读取流句柄"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3传输_取读取流位置(0)"
+    },
+    {
+      "index": 32,
+      "name": "CEF3传输_读取流是否结束",
+      "aliases": [
+        "CefStreamReader::Eof"
+      ],
+      "signature": "CEF3传输_读取流是否结束(读取流句柄)",
+      "description": "返回当前读取位置是否已到流末尾。",
+      "insertText": "CEF3传输_读取流是否结束($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_读取流是否结束",
+        "runtimeName": "LB_CEF3_StreamReaderEof",
+        "parameters": [
+          {
+            "name": "读取流句柄",
+            "type": "CEF3读取流句柄"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3传输_读取流是否结束(0)"
+    },
+    {
+      "index": 33,
+      "name": "CEF3传输_读取流是否可能阻塞",
+      "aliases": [
+        "CefStreamReader::MayBlock"
+      ],
+      "signature": "CEF3传输_读取流是否可能阻塞(读取流句柄)",
+      "description": "返回CEF对当前读取流可能执行阻塞文件操作的提示；内存缓冲读取流通常返回假。",
+      "insertText": "CEF3传输_读取流是否可能阻塞($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_读取流是否可能阻塞",
+        "runtimeName": "LB_CEF3_StreamReaderMayBlock",
+        "parameters": [
+          {
+            "name": "读取流句柄",
+            "type": "CEF3读取流句柄"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3传输_读取流是否可能阻塞(0)"
+    },
+    {
+      "index": 34,
+      "name": "CEF3传输_释放读取流",
+      "aliases": [
+        "CefStreamReader::Release"
+      ],
+      "signature": "CEF3传输_释放读取流(读取流句柄)",
+      "description": "释放受管读取流句柄和其保留的源缓冲引用；重复释放返回稳定错误码。",
+      "insertText": "CEF3传输_释放读取流($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3传输_释放读取流",
+        "runtimeName": "LB_CEF3_HandleRelease",
+        "parameters": [
+          {
+            "name": "读取流句柄",
+            "type": "CEF3读取流句柄"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3传输_释放读取流(0)"
     }
   ]
 }

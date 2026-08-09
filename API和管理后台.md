@@ -127,6 +127,7 @@ npm run admin:bootstrap -w @lingbuilder/cloud-api -- admin@example.com StrongPas
 
 - 根目录已有被 Git 忽略的本机开发 `.env`；其中密钥只能用于开发，不能带到生产环境。
 - Docker Desktop Linux 引擎正常，`postgres`、`redis`、`mailpit` 三个容器均为健康状态。
+- Docker Compose 只负责上述三个基础服务，不会自动启动 NestJS 云端 API。需要从根目录运行 `npm run dev`，或单独运行 `npm run dev -w @lingbuilder/cloud-api`，并确认 `http://127.0.0.1:17900/health` 返回成功后再登录或刷新 Permit。
 - Prisma Client 已生成，数据库迁移 `202607270001_module_commerce` 已应用。
 - 云端 API 正在监听 `127.0.0.1:17900`，`/health` 已同时通过数据库与 Redis 检查。
 - 管理后台正在监听 `127.0.0.1:17901`，HTTP 状态为 200。
@@ -158,6 +159,8 @@ npm run admin:bootstrap -w @lingbuilder/cloud-api -- admin@example.com StrongPas
 3. 使用上面的本机测试账号登录。
 4. 打开“模块”页面并点击“刷新”。
 5. 点击 new_emoji 模块的“启用”。
+
+Electron 会在启动时等待 renderer 健康并重试恢复安全缓存；若账号会话仍有效，还会自动换发 Permit。超过 72 小时且无法连接云端时，F5 会明确提示“模块离线授权已过期，请联网重新校验”，不应重新购买或修改本地收费门禁。
 
 永久开发授权只存在于当前本机数据库，24 小时限免结束后该测试账号仍可使用 new_emoji。Permit 到期时保持联网并重新点击一次“启用”，即可取得新的 72 小时 Permit。如果 API 进程重启，由于开发环境当前使用临时 Permit 密钥，也需要重新点击一次“启用”。
 

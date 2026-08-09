@@ -10,8 +10,10 @@ import { promisify } from 'node:util';
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
+import { CEF3_SAFE_API_CATALOG } from '../src/services/modules/cef3SafeApiCatalog.generated';
 import { EDGEVIEW_BROWSER_EVENTS, EDGEVIEW_COMPOSITION_ONLY_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import { EDGEVIEW_SAFE_API_CATALOG, validateEdgeViewApiCatalog } from '../src/services/modules/edgeViewApiCatalog';
+import { FBRO_EVENT_CATALOG, FBRO_PUBLIC_BROWSER_EVENTS } from '../src/services/modules/fbroEventCatalog';
 import { FBRO_VIP_API_CATALOG, generateFbroVipIndividualRuntime } from '../src/services/modules/fbroVipApiCatalog';
 import { STANDARD_LIBRARY_MODULES } from '../src/services/modules/standardLibraryModules';
 import { SYSTEM_LIBRARY_MODULES } from '../src/services/modules/systemLibraryModules';
@@ -58,6 +60,7 @@ import { generateLingCppNativeWin32Project } from '../src/services/windowDesigne
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { createControlToolboxGroups } from '../src/services/windowDesigner/controlToolboxModel';
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
+import { createWindowsMsvcLinkLibraries } from '../src/services/windowDesigner/windowsSystemLibraries';
 import { OPENCV_COMMAND_NAMES, OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../src/services/modules/opencvModules';
 import { normalizeControlReferenceCallSnippet } from '../src/services/modules/bindingValueType';
 import { getEnabledModuleStructuredTypeDiagnostics } from '../src/services/modules/modulePublicTypeService';
@@ -66,6 +69,9 @@ import { HTTP_SERVER_COMMAND_SPECS } from '../src/services/modules/httpServerMod
 import { WEBSOCKET_CLIENT_COMMAND_SPECS } from '../src/services/modules/webSocketClientModule';
 import { WEBSOCKET_SERVER_COMMAND_SPECS } from '../src/services/modules/webSocketServerModule';
 import { normalizeControlReferenceSourceLiterals } from '../scripts/lib/control-reference-source-audit';
+import { getWin32RuntimeControlContracts } from '../src/services/windowDesigner/win32ControlRegistry';
+import { getLingCppControlReferenceDiagnostics } from '../src/services/lingCpp/controlReferenceService';
+import { generateFbroBrowserManagerRuntime } from '../src/services/windowDesigner/fbroBrowserManagerRuntime';
 
 const sampleProject: LingWindowProject = {
   id: 'module-test-project',
@@ -137,12 +143,12 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       parameterDigest: audit.parameterDigest
     },
     {
-      modules: 81,
-      commands: 1982,
-      parameters: 3412,
-      controlReferences: 769,
-      commandDigest: 'a17e5044',
-      parameterDigest: '525b8cdf'
+      modules: 82,
+      commands: 2792,
+      parameters: 4758,
+      controlReferences: 1262,
+      commandDigest: '53d101ab',
+      parameterDigest: 'cd991680'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -160,7 +166,12 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
         if (parameter.type !== 'controlRef') continue;
         assert.ok(parameter.controlKinds?.length, `${manifest.id}/${binding.command}/${parameter.name} 缺少 controlKinds`);
         assert.ok(parameter.scope, `${manifest.id}/${binding.command}/${parameter.name} 缺少 scope`);
-        assert.equal(parameter.runtimeRepresentation, 'wideName', `${manifest.id}/${binding.command}/${parameter.name} 必须确定性传递宽字符控件名`);
+        assert.ok(
+          parameter.runtimeRepresentation === 'wideName'
+            || parameter.runtimeRepresentation === 'stableId'
+            || parameter.runtimeRepresentation === 'nativeHandle',
+          `${manifest.id}/${binding.command}/${parameter.name} 必须声明确定性的控件运行时表示`
+        );
       }
       if (!(binding.parameters || []).some(parameter => parameter.type === 'controlRef')) continue;
       const contribution = contributions.get(binding.command);
@@ -193,6 +204,41 @@ test('Win32 内置容器贡献声明与设计器布局注册表保持一致', ()
   assert.equal(validateModuleManifest(commonControls).diagnostics.length, 0);
 });
 
+test('Win32 32 个公开可视控件声明类型化运行时创建和标记查找契约', () => {
+  const contracts = [
+    ...getWin32RuntimeControlContracts('lingbuilder.win32.basic'),
+    ...getWin32RuntimeControlContracts('lingbuilder.win32.common-controls')
+  ];
+  assert.equal(contracts.length, 32);
+  assert.equal(new Set(contracts.map(contract => contract.lingCppType)).size, 32);
+  assert.equal(new Set(contracts.map(contract => contract.createCommand)).size, 32);
+  for (const contract of contracts) {
+    assert.equal(contract.cppType, 'LingControlRef');
+    assert.deepEqual(contract.createParameters.slice(-2).map(parameter => [parameter.role, parameter.optional, parameter.defaultValue]), [
+      ['tagText', true, ''],
+      ['tagInteger', true, null]
+    ]);
+    const manifest = BUILTIN_MODULES.find(module => module.contributes?.designerControls?.some(control => control.type === contract.designerType && control.runtimeControl?.lingCppType === contract.lingCppType));
+    assert.ok(manifest, `${contract.designerType} 必须由内置模块贡献运行时契约`);
+    assert.ok(manifest.contributes?.commands?.some(command => command.name === contract.createCommand));
+    assert.ok(manifest.contributes?.commands?.some(command => command.name === contract.lookupByTagTextCommand));
+    assert.ok(manifest.contributes?.commands?.some(command => command.name === contract.lookupByTagIntegerCommand));
+    assert.equal(manifest.bindings?.commands?.find(binding => binding.command === contract.createCommand)?.returnType, contract.lingCppType);
+  }
+});
+
+test('模块清单拒绝缺失运行时创建映射和非尾部可选参数', () => {
+  const basic = structuredClone(BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!);
+  const firstControl = basic.contributes!.designerControls!.find(control => control.runtimeControl)!;
+  basic.bindings!.commands = basic.bindings!.commands!.filter(binding => binding.command !== firstControl.runtimeControl!.createCommand);
+  assert.ok(validateModuleManifest(basic).diagnostics.some(diagnostic => diagnostic.includes('缺少 bindings.commands 映射')));
+
+  const optionalOrder = structuredClone(BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!);
+  const createBinding = optionalOrder.bindings!.commands!.find(binding => binding.command.startsWith('控件_创建'))!;
+  createBinding.parameters!.push({ name: '错误必填参数', type: 'int' });
+  assert.ok(validateModuleManifest(optionalOrder).diagnostics.some(diagnostic => diagnostic.includes('必填参数不能位于可选参数之后')));
+});
+
 test('模块源目录中的 controlRef 补全、示例和代码片段全部保持裸引用', async () => {
   const moduleSourceRoot = path.resolve(process.cwd(), 'src', 'services', 'modules');
   const sourceFiles = await collectModuleSourceFilesForControlRefAudit(moduleSourceRoot);
@@ -202,7 +248,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 41, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 43, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -417,12 +463,12 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     commandDigest: audit.commandDigest,
     parameterDigest: audit.parameterDigest
   }, {
-    modules: 88,
-    commands: 3603,
-    parameters: 10995,
-    controlReferences: 772,
-    commandDigest: 'c03dde32',
-    parameterDigest: '837d7648'
+      modules: 90,
+      commands: 6595,
+      parameters: 16301,
+      controlReferences: 4806,
+      commandDigest: '051416ad',
+      parameterDigest: 'a0140610'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -906,6 +952,63 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   assert.match(mainCpp, /bool 音频_播放WAV/u);
 });
 
+test('SQLite 2.0 提供多连接、参数化查询、事务、WAL、备份和完整错误闭环', () => {
+  const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.database.sqlite')!;
+  const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
+  const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
+  assert.equal(manifest.version, '2.0.0');
+  assert.equal(commandNames.length, 67);
+  assert.deepEqual(bindingNames, commandNames);
+  assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [
+    ['SQLite连接', 'long long'],
+    ['SQLite语句', 'long long']
+  ]);
+  for (const required of [
+    'SQLite_打开连接', 'SQLite_准备', 'SQLite_绑定空值', 'SQLite_绑定长整数', 'SQLite_绑定文本', 'SQLite_绑定字节集',
+    'SQLite_语句步进', 'SQLite_取列类型', 'SQLite_取列字节集', 'SQLite_开始事务', 'SQLite_创建保存点',
+    'SQLite_启用WAL', 'SQLite_WAL检查点', 'SQLite_备份到文件', 'SQLite_完整性检查', 'SQLite_中断',
+    'SQLite_取扩展错误码', 'SQLite_取系统错误码'
+  ]) {
+    assert.ok(commandNames.includes(required), `SQLite 2.0 缺少 ${required}`);
+  }
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_绑定字节集')?.parameters?.map(parameter => parameter.type),
+    ['SQLite语句', 'int', 'bytes']
+  );
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_取列字节集')?.returnType, 'bytes');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开连接')?.returnType, 'SQLite连接');
+  assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/sqlite/README.md');
+
+  const enabledModules: InstalledModule[] = [{
+    manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 SQLite连接 数据库 = SQLite_打开连接("data/app.db", 0, 5000)',
+      '        局部 SQLite语句 查询 = SQLite_准备(数据库, "SELECT ?1")',
+      '        SQLite_绑定文本(查询, 1, "中文")',
+      '        SQLite_语句释放(查询)',
+      '        SQLite_关闭连接(数据库)',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  for (const runtimeSymbol of [
+    'namespace LingBuilderSqlite', 'long long SQLite_打开连接', 'long long SQLite_准备',
+    'bool SQLite_绑定字节集', 'std::vector<unsigned char> SQLite_取列字节集',
+    'bool SQLite_备份到文件', 'const wchar_t* SQLite_完整性检查'
+  ]) {
+    assert.ok(mainCpp.includes(runtimeSymbol), `SQLite 生成运行时缺少 ${runtimeSymbol}`);
+  }
+  assert.match(mainCpp, /SQLite_打开连接\(L"data\/app\.db", 0, 5000\)/u);
+  assert.match(mainCpp, /SQLite_绑定文本\(查询, 1, L"中文"\)/u);
+});
+
 test('平台扩展和高风险模块保持独立启用并具有确定性运行时', () => {
   assert.equal(PLATFORM_ADVANCED_MODULES.length, 12);
   for (const manifest of PLATFORM_ADVANCED_MODULES) {
@@ -924,7 +1027,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 30/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 39/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 206/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
@@ -1069,7 +1172,7 @@ test('FBro submodules recursively enable the 2.1.0 v3 event core and require con
   assert.ok(!enabled.some(item => item.manifest.id.startsWith('lingbuilder.fbro.')));
 });
 
-test('all callable FBro modules stay on 2.1.0 and depend on the matching v3 event core', () => {
+test('FBro browser 2.4 keeps 2.1 submodules compatible with the v3 event core', () => {
   const callable = BUILTIN_MODULES.filter(module => module.id.startsWith('lingbuilder.fbro.')
     && module.id !== 'lingbuilder.fbro.sdk');
   assert.deepEqual(new Set(callable.map(module => module.id)), new Set([
@@ -1082,7 +1185,8 @@ test('all callable FBro modules stay on 2.1.0 and depend on the matching v3 even
     'lingbuilder.fbro.network',
     'lingbuilder.fbro.vip'
   ]));
-  assert.ok(callable.every(module => module.version === '2.1.0'));
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.4.0');
+  assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module => module.version === '2.1.0'));
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module =>
     module.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.fbro.browser'
       && dependency.minimumVersion === '2.1.0')));
@@ -1096,7 +1200,7 @@ test('FBro module family exposes one manager entry and atomically enables the st
   const family = getFbroFamilyModules(installed);
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
-  assert.equal(countModuleCommands(family), 426);
+  assert.equal(countModuleCommands(family), 471);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -1377,14 +1481,19 @@ test('FBro Session CookieManager 与缓存清理使用受管异步任务和官�
   for (const symbol of [
     'FBroHsBrowserHost_GetRequestContext', 'FBroHsRequestContext_GetCookieManager',
     'FBroHsCookieManager_GetGlobalManager', 'FBroHsCookieManager_VisitAllCookies',
-    'FBroHsCookieManager_VisitUrlCookies', 'FBroHsCookieManager_SetCookie',
-    'FBroHsCookieManager_DeleteCookies', 'FBroHsCookieManager_FlushStore',
+    'FBroHsCookieManager_VisitUrlCookies', 'FBroHsCookieManager_DeleteCookies',
     'FBroHsBrowser_ClearCacheData', 'FBroHsBrowser_ClearGlobalCacheData',
     'FBroHsBrowserHost_StartDownload', 'FBroHsBrowserHost_Print'
   ]) assert.match(bridge, new RegExp(`\\b${symbol}\\b`, 'u'));
+  assert.match(bridge, /class BridgeSetCookieCallback[\s\S]*?OnComplete\(bool success\)[\s\S]*?CompleteTextTask/u);
+  assert.match(bridge, /class BridgeCookieFlushCallback[\s\S]*?OnComplete\(\)[\s\S]*?CompleteTextTask/u);
+  assert.match(bridge, /CefRefPtr<BridgeSetCookieCallback> callback = new BridgeSetCookieCallback\(task_\);/u);
+  assert.match(bridge, /manager->SetCookie\(CefString\(arguments_\[0\]\), cookie, callback\)/u);
+  assert.match(bridge, /CefRefPtr<BridgeCookieFlushCallback> callback = new BridgeCookieFlushCallback\(task_\);/u);
+  assert.match(bridge, /manager->FlushStore\(callback\)/u);
   const bridgeHeader = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8');
   const sessionDeclarations = bridgeHeader.match(/LB_FBro_(?:Cookie\w+Async|Clear(?:Global)?CacheAsync)\([^;]+;/gu) || [];
-  assert.equal(sessionDeclarations.length, 7);
+  assert.equal(sessionDeclarations.length, 8);
   assert.ok(sessionDeclarations.every(declaration => !/CefRefPtr|std::|CefCookieManager/u.test(declaration)));
   assert.match(bridge, /LB_FBro_TaskRelease[\s\S]*?status = LB_FBRO_TASK_CANCELLED;[\s\S]*?callback = nullptr;/u);
 });
@@ -1648,6 +1757,26 @@ test('built-in module documentation resolves from its packaged asset module', as
     diagnostics: []
   }, threadingDocumentPath, { workspaceRoot: root, resourceRoot });
   assert.match(threadingDocument.content, /多线程模块使用说明/u);
+});
+
+test('Win32 runtime control module documents are declared and readable from packaged resources', async () => {
+  const resourceRoot = path.resolve('.');
+  for (const id of ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls']) {
+    const manifest = BUILTIN_MODULES.find(candidate => candidate.id === id);
+    assert.ok(manifest);
+    const declared = manifest.contributes?.docs?.[0];
+    assert.ok(declared?.path.startsWith('docs/modules/win32-'));
+    const document = await readModuleDocumentation({
+      manifest,
+      installPath: `builtin://${id}`,
+      isBuiltin: true,
+      isInstalled: true,
+      diagnostics: []
+    }, declared.path, { workspaceRoot: path.resolve('..'), resourceRoot });
+    assert.match(document.content, /标记文本/u);
+    assert.match(document.content, /控件_是否有效/u);
+    assert.match(document.content, /Win32\/x64/u);
+  }
 });
 
 test('market index can store portable workspace-relative package paths without changing CLI defaults', async () => {
@@ -2186,6 +2315,208 @@ test('EdgeView user documentation is generated from the unified event catalog', 
   }
   for (const event of EDGEVIEW_COMPOSITION_ONLY_EVENTS) {
     assert.ok(document.includes(`| \`${event.id}\` | ${event.name} |`));
+  }
+});
+
+test('CEF3 user documentation covers the unified event catalog and every public family command', async () => {
+  const coreManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(coreManifest);
+  assert.ok(coreManifest.contributes?.docs?.some(document => (
+    document.path === 'docs/modules/cef3/README.md'
+  )));
+  const expectedCoverageDocuments = [
+    'browser', 'events', 'session', 'transfer', 'objects', 'automation',
+    'network', 'devtools', 'views', 'osr', 'platform'
+  ].map(name => `docs/modules/cef3/${name}.md`);
+  assert.ok(expectedCoverageDocuments.every(expected => (
+    coreManifest.contributes?.docs?.some(document => document.path === expected)
+  )));
+
+  const family = BUILTIN_MODULES.filter(item => item.id.startsWith('lingbuilder.cef3'));
+  const publicCommands = family.flatMap(module => (
+    module.contributes?.commands?.filter(command => command.visibility !== 'internal') || []
+  ));
+  const document = await fs.readFile(
+    new URL('../docs/modules/cef3/README.md', import.meta.url),
+    'utf8'
+  );
+
+  assert.equal(CEF3_BROWSER_EVENTS.length, 96);
+  assert.equal(publicCommands.length, 395);
+  const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
+  assert.equal(threadEntries.length, 5);
+  assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
+  assert.deepEqual(
+    threadEntries.find(entry => entry.officialName === 'cef_thread_create')?.inputCodecs,
+    ['utf16', 'integer', 'integer', 'boolean', 'integer']
+  );
+  assert.equal(
+    threadEntries.find(entry => entry.officialName === 'get_platform_thread_id')?.outputCodec,
+    'integer'
+  );
+  assert.equal(
+    threadEntries.find(entry => entry.officialName === 'get_task_runner')?.ownership,
+    'managedTaskRunnerHandle'
+  );
+  assert.equal(threadEntries.find(entry => entry.officialName === 'is_running')?.outputCodec, 'boolean');
+  assert.equal(threadEntries.find(entry => entry.officialName === 'stop')?.outputCodec, 'void');
+  const beginTracingEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'cef_begin_tracing');
+  assert.deepEqual(beginTracingEntry?.inputCodecs, ['utf16']);
+  assert.equal(beginTracingEntry?.outputCodec, 'typedHandle');
+  assert.equal(beginTracingEntry?.ownership, 'managedTaskHandle');
+  assert.equal(beginTracingEntry?.execution, 'asyncTask');
+  assert.equal(beginTracingEntry?.implementationStatus, 'implemented');
+  const endTracingEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'cef_end_tracing');
+  assert.deepEqual(endTracingEntry?.inputCodecs, ['utf16']);
+  assert.equal(endTracingEntry?.outputCodec, 'typedHandle');
+  assert.equal(endTracingEntry?.ownership, 'managedTaskHandle');
+  assert.equal(endTracingEntry?.execution, 'asyncTask');
+  assert.equal(endTracingEntry?.implementationStatus, 'implemented');
+  const imeFinishEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'ime_finish_composing_text');
+  assert.deepEqual(imeFinishEntry?.inputCodecs, ['typedHandle', 'boolean']);
+  assert.equal(imeFinishEntry?.implementationStatus, 'implemented');
+  const addWordEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'add_word_to_dictionary');
+  assert.deepEqual(addWordEntry?.inputCodecs, ['typedHandle', 'utf16']);
+  assert.equal(addWordEntry?.implementationStatus, 'implemented');
+  const replaceMisspellingEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'replace_misspelling');
+  assert.deepEqual(replaceMisspellingEntry?.inputCodecs, ['typedHandle', 'utf16']);
+  assert.equal(replaceMisspellingEntry?.implementationStatus, 'implemented');
+  const dragSourceEndedEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'drag_source_system_drag_ended');
+  assert.deepEqual(dragSourceEndedEntry?.inputCodecs, ['typedHandle']);
+  assert.equal(dragSourceEndedEntry?.implementationStatus, 'implemented');
+  const dragTargetLeaveEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'drag_target_drag_leave');
+  assert.deepEqual(dragTargetLeaveEntry?.inputCodecs, ['typedHandle']);
+  assert.equal(dragTargetLeaveEntry?.implementationStatus, 'implemented');
+  const wasHiddenEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'was_hidden');
+  assert.deepEqual(wasHiddenEntry?.inputCodecs, ['typedHandle', 'boolean']);
+  assert.equal(wasHiddenEntry?.implementationStatus, 'implemented');
+  const exitFullscreenEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'exit_fullscreen');
+  assert.deepEqual(exitFullscreenEntry?.inputCodecs, ['typedHandle', 'boolean']);
+  assert.equal(exitFullscreenEntry?.implementationStatus, 'implemented');
+  const hasViewEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'has_view');
+  assert.deepEqual(hasViewEntry?.inputCodecs, ['typedHandle']);
+  assert.equal(hasViewEntry?.outputCodec, 'boolean');
+  assert.equal(hasViewEntry?.implementationStatus, 'implemented');
+  const zoomEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'zoom');
+  assert.deepEqual(zoomEntry?.inputCodecs, ['typedHandle', 'integer']);
+  assert.equal(zoomEntry?.outputCodec, 'void');
+  assert.equal(zoomEntry?.implementationStatus, 'implemented');
+  const mouseMoveEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'send_mouse_move_event');
+  assert.deepEqual(mouseMoveEntry?.inputCodecs, ['typedHandle', 'integer', 'integer', 'integer', 'boolean']);
+  assert.equal(mouseMoveEntry?.outputCodec, 'void');
+  assert.equal(mouseMoveEntry?.implementationStatus, 'implemented');
+  const mouseWheelEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'send_mouse_wheel_event');
+  assert.deepEqual(mouseWheelEntry?.inputCodecs, ['typedHandle', 'integer', 'integer', 'integer', 'integer']);
+  assert.equal(mouseWheelEntry?.outputCodec, 'void');
+  assert.equal(mouseWheelEntry?.implementationStatus, 'implemented');
+  const touchEntry = CEF3_SAFE_API_CATALOG.find(entry => entry.officialName === 'send_touch_event');
+  assert.deepEqual(touchEntry?.inputCodecs, ['typedHandle', 'integer', 'double', 'double', 'double', 'double', 'double', 'double', 'integer', 'integer', 'integer']);
+  assert.equal(touchEntry?.outputCodec, 'void');
+  assert.equal(touchEntry?.implementationStatus, 'implemented');
+  assert.ok(document.includes('`CEF3_执行缩放`'));
+  assert.ok(document.includes('`CEF3_发送鼠标移动事件`'));
+  assert.ok(document.includes('`CEF3_发送鼠标滚轮事件`'));
+  assert.ok(document.includes('`CEF3_发送触摸事件`'));
+  assert.ok(document.includes('CEF3_绑定事件(浏览器1, "新窗口打开前", &处理新窗口)'));
+  assert.ok(document.includes(`目录项数：${CEF3_BROWSER_EVENTS.length}；模块数：${family.length}；用户接口数：${publicCommands.length}。`));
+  for (const [index, event] of CEF3_BROWSER_EVENTS.entries()) {
+    assert.ok(
+      document.includes(`| ${index + 1} | ${event.name} | \`${event.id}\``),
+      `CEF3 用户文档缺少事件：${event.name}`
+    );
+  }
+  for (const command of publicCommands) {
+    assert.ok(
+      document.includes(`| \`${command.name}\` | \`${command.signature}\``),
+      `CEF3 用户文档缺少接口：${command.name}`
+    );
+  }
+  const browserReference = await fs.readFile(
+    new URL('../docs/modules/cef3/browser.md', import.meta.url),
+    'utf8'
+  );
+  assert.ok(browserReference.includes('CEF3_是否禁用窗口渲染'));
+  assert.ok(browserReference.includes('`is_window_rendering_disabled`'));
+  assert.ok(browserReference.includes('CEF3_是否已准备关闭'));
+  assert.ok(browserReference.includes('`is_ready_to_be_closed`'));
+  assert.ok(browserReference.includes('CEF3_是否渲染进程无响应'));
+  assert.ok(browserReference.includes('`is_render_process_unresponsive`'));
+  assert.ok(browserReference.includes('CEF3_取运行时样式'));
+  assert.ok(browserReference.includes('`get_runtime_style`'));
+  assert.ok(browserReference.includes('CEF3_取缩放级别'));
+  assert.ok(browserReference.includes('`get_zoom_level`'));
+  assert.ok(browserReference.includes('CEF3_取默认缩放级别'));
+  assert.ok(browserReference.includes('`get_default_zoom_level`'));
+  assert.ok(browserReference.includes('CEF3_设置缩放级别'));
+  assert.ok(browserReference.includes('`set_zoom_level`'));
+  assert.ok(browserReference.includes('CEF3_执行缩放'));
+  assert.ok(browserReference.includes('`zoom`'));
+  assert.ok(browserReference.includes('CEF3_尝试关闭'));
+  assert.ok(browserReference.includes('`try_close_browser`'));
+  assert.ok(browserReference.includes('CEF3_通知窗口移动或调整大小'));
+  assert.ok(browserReference.includes('`notify_move_or_resize_started`'));
+  assert.ok(browserReference.includes('CEF3_通知屏幕信息已改变'));
+  assert.ok(browserReference.includes('`notify_screen_info_changed`'));
+  assert.ok(browserReference.includes('CEF3_发送捕获丢失事件'));
+  assert.ok(browserReference.includes('`send_capture_lost_event`'));
+  assert.ok(browserReference.includes('CEF3_取消输入法组合文本'));
+  assert.ok(browserReference.includes('`ime_cancel_composition`'));
+  assert.ok(browserReference.includes('CEF3_完成输入法组合文本'));
+  assert.ok(browserReference.includes('`ime_finish_composing_text`'));
+  assert.ok(browserReference.includes('CEF3_添加单词到词典'));
+  assert.ok(browserReference.includes('`add_word_to_dictionary`'));
+  assert.ok(browserReference.includes('CEF3_替换拼写错误'));
+  assert.ok(browserReference.includes('CEF3_通知系统拖放结束'));
+  assert.ok(browserReference.includes('CEF3_通知拖放目标离开'));
+  assert.ok(browserReference.includes('CEF3_通知隐藏状态'));
+  assert.ok(browserReference.includes('`replace_misspelling`'));
+  assert.ok(browserReference.includes('CEF3_退出网页全屏'));
+  assert.ok(browserReference.includes('`exit_fullscreen`'));
+  assert.ok(browserReference.includes('CEF3_是否使用浏览器视图'));
+  assert.ok(browserReference.includes('`has_view`'));
+  assert.ok(browserReference.includes('CEF3_取打开者浏览器ID'));
+  assert.ok(browserReference.includes('`get_opener_identifier`'));
+});
+
+test('FBro user documentation covers public events, classified slots and public family commands', async () => {
+  const coreManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(coreManifest);
+  assert.ok(coreManifest.contributes?.docs?.some(document => (
+    document.path === 'docs/modules/fbro/README.md'
+  )));
+
+  const family = BUILTIN_MODULES.filter(item => item.id.startsWith('lingbuilder.fbro'));
+  const allCommands = family.flatMap(module => module.contributes?.commands || []);
+  const publicCommands = allCommands.filter(command => command.visibility !== 'internal');
+  const internalCommands = allCommands.filter(command => command.visibility === 'internal');
+  const managedCount = FBRO_EVENT_CATALOG.filter(event => event.exposure === 'managed').length;
+  const internalCount = FBRO_EVENT_CATALOG.filter(event => event.exposure === 'internal').length;
+  const notApplicableCount = FBRO_EVENT_CATALOG.filter(event => event.exposure === 'notApplicable').length;
+  const document = await fs.readFile(
+    new URL('../docs/modules/fbro/README.md', import.meta.url),
+    'utf8'
+  );
+
+  assert.equal(FBRO_EVENT_CATALOG.length, 174);
+  assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
+  assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 89);
+  assert.equal(publicCommands.length, 462);
+  assert.equal(internalCommands.length, 9);
+  assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
+  assert.ok(document.includes(
+    `类方法事件槽位：${FBRO_EVENT_CATALOG.length}；唯一事件签名：158；公开事件：${FBRO_PUBLIC_BROWSER_EVENTS.length}；Bridge 托管：${managedCount}；内部事件：${internalCount}；不适用：${notApplicableCount}；模块数：${family.length}；用户接口数：${publicCommands.length}。`
+  ));
+  for (const event of FBRO_EVENT_CATALOG) {
+    assert.ok(document.includes(`\`${event.eventId}\``), `FBro 用户文档缺少事件槽位：${event.eventId}`);
+  }
+  for (const command of publicCommands) {
+    assert.ok(
+      document.includes(`| \`${command.name}\` | \`${command.signature}\``),
+      `FBro 用户文档缺少接口：${command.name}`
+    );
+  }
+  for (const command of internalCommands) {
+    assert.ok(!document.includes(`\`${command.name}\``), `FBro 内部接口不应出现在用户文档：${command.name}`);
   }
 });
 
@@ -2831,8 +3162,108 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取事件字段'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_设置事件结果'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_打开原生UI浏览器'));
-  assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.fbro.browser'));
-  assert.equal(manifest.version, '3.0.0-alpha.2');
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否静音'
+    && command.aliases?.includes('is_audio_muted')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否有文档'
+    && command.aliases?.includes('has_document')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否有效'
+    && command.aliases?.includes('is_valid')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否弹出窗口'
+    && command.aliases?.includes('is_popup')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否同一实例'
+    && command.aliases?.includes('is_same')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否禁用窗口渲染'
+    && command.aliases?.includes('is_window_rendering_disabled')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否网页全屏'
+    && command.aliases?.includes('is_fullscreen')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否已准备关闭'
+    && command.aliases?.includes('is_ready_to_be_closed')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否渲染进程无响应'
+    && command.aliases?.includes('is_render_process_unresponsive')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取运行时样式'
+    && command.aliases?.includes('get_runtime_style')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取缩放级别'
+    && command.aliases?.includes('get_zoom_level')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取默认缩放级别'
+    && command.aliases?.includes('get_default_zoom_level')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_设置缩放级别'
+    && command.aliases?.includes('set_zoom_level')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_执行缩放'
+    && command.aliases?.includes('zoom')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_尝试关闭'
+    && command.aliases?.includes('try_close_browser')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_通知窗口移动或调整大小'
+    && command.aliases?.includes('notify_move_or_resize_started')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_通知屏幕信息已改变'
+    && command.aliases?.includes('notify_screen_info_changed')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_发送捕获丢失事件'
+    && command.aliases?.includes('send_capture_lost_event')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取消输入法组合文本'
+    && command.aliases?.includes('ime_cancel_composition')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_完成输入法组合文本'
+    && command.aliases?.includes('ime_finish_composing_text')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_添加单词到词典'
+    && command.aliases?.includes('add_word_to_dictionary')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_替换拼写错误'
+    && command.aliases?.includes('replace_misspelling')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_通知系统拖放结束'
+    && command.aliases?.includes('drag_source_system_drag_ended')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_通知拖放目标离开'
+    && command.aliases?.includes('drag_target_drag_leave')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_通知隐藏状态'
+    && command.aliases?.includes('was_hidden')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_强制刷新'
+    && command.aliases?.includes('reload_ignore_cache')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_发送按键事件'
+    && command.aliases?.includes('send_key_event')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_发送鼠标移动事件'
+    && command.aliases?.includes('send_mouse_move_event')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_发送鼠标滚轮事件'
+    && command.aliases?.includes('send_mouse_wheel_event')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_发送触摸事件'
+    && command.aliases?.includes('send_touch_event')));
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否静音')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否有文档')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否有效')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否弹出窗口')?.parameters?.[0]?.type, 'controlRef');
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否同一实例')?.parameters?.map(parameter => parameter.type), ['controlRef', 'controlRef']);
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否禁用窗口渲染')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否网页全屏')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否已准备关闭')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_是否渲染进程无响应')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_取运行时样式')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_取缩放级别')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_取默认缩放级别')?.parameters?.[0]?.type, 'controlRef');
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_设置缩放级别')?.parameters?.map(parameter => parameter.type), ['controlRef', 'double']);
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_执行缩放')?.parameters?.map(parameter => parameter.type), ['controlRef', 'int']);
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_尝试关闭')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_通知窗口移动或调整大小')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_通知屏幕信息已改变')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_发送捕获丢失事件')?.parameters?.[0]?.type, 'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_取消输入法组合文本')?.parameters?.[0]?.type, 'controlRef');
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_完成输入法组合文本')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'bool']);
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_添加单词到词典')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'wideString']);
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_替换拼写错误')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'wideString']);
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_通知系统拖放结束')?.parameters?.[0]?.type,
+    'controlRef');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_通知拖放目标离开')?.parameters?.[0]?.type,
+    'controlRef');
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_通知隐藏状态')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'bool']);
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_强制刷新')?.parameters?.[0]?.type, 'controlRef');
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_发送按键事件')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'int', 'longLong', 'int', 'int', 'bool', 'int', 'int', 'bool']);
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_发送鼠标移动事件')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'int', 'int', 'longLong', 'bool']);
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_发送鼠标滚轮事件')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'int', 'int', 'longLong', 'int', 'int']);
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_发送触摸事件')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'int', 'double', 'double', 'double', 'double', 'double', 'double', 'int', 'longLong', 'int']);
+  assert.equal(manifest.compatibility?.conflicts?.length || 0, 0);
+  assert.equal(manifest.version, '3.0.0-alpha.3');
   assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
   assert.ok(manifest.targets?.[0]?.libs?.some(item => item.endsWith('LingBuilderCefBridge.lib')));
   assert.ok(!manifest.targets?.[0]?.libs?.some(item => item.endsWith('libcef.lib')));
@@ -2899,6 +3330,44 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
     assert.ok(session?.contributes?.commands?.some(item => item.name === command), `CEF3 session 缺少 ${command}`);
     assert.ok(session?.bindings?.commands?.some(item => item.command === command), `CEF3 session 缺少 ${command} binding`);
   }
+  const automation = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.automation');
+  for (const command of ['CEF3Hook_注册脚本', 'CEF3Hook_移除脚本', 'CEF3Hook_清空脚本',
+    'CEF3Hook_取脚本列表', 'CEF3Hook_回复页面消息']) {
+    assert.ok(automation?.contributes?.commands?.some(item => item.name === command), `CEF3 automation 缺少 ${command}`);
+    assert.ok(automation?.bindings?.commands?.some(item => item.command === command), `CEF3 automation 缺少 ${command} binding`);
+  }
+  const platform = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.platform');
+  assert.ok(platform?.contributes?.commands?.some(item => item.name === 'CEF3平台_设置可嵌套任务'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3平台_设置可嵌套任务'));
+  assert.ok(platform?.contributes?.commands?.some(item => item.name === 'CEF3平台_结束跟踪'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3平台_结束跟踪'));
+  assert.ok(platform?.contributes?.commands?.some(item => item.name === 'CEF3命令行_创建'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_创建'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_是否有效'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_是否只读'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_复制'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_从参数数组初始化'
+    && item.parameters?.[1]?.type === 'CEF3文本数组'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_从文本初始化'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_取完整文本'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_取程序'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_设置程序'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_是否有开关'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_是否有指定开关'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_添加开关'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_添加带值开关'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_取开关值'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_移除开关'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_是否有参数'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_添加参数'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_重置'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_取参数向量' && item.returnType === 'CEF3文本数组'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_取参数列表' && item.returnType === 'CEF3文本数组'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_取开关列表' && item.returnType === 'CEF3命令行开关数组'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_前置包装器'));
+  assert.ok(platform?.bindings?.commands?.some(item => item.command === 'CEF3命令行_取全局'));
+  assert.ok(platform?.contributes?.types?.some(item => item.name === 'CEF3文本数组' && item.kind === 'array'));
+  assert.ok(platform?.contributes?.types?.some(item => item.name === 'CEF3命令行开关' && item.kind === 'record'));
 
   const module: InstalledModule = {
     manifest,
@@ -2934,7 +3403,58 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.match(cpp, /LB_CEF3_ExecuteSubProcess/);
   assert.match(cpp, /LB_CEF3_Initialize/);
   assert.match(cpp, /LB_CEF3_BrowserCreate/);
+  assert.match(cpp, /LB_CEF3_BrowserIsValid/);
+  assert.match(cpp, /LB_CEF3_BrowserIsPopup/);
+  assert.match(cpp, /LB_CEF3_BrowserIsSame/);
+  assert.match(cpp, /LB_CEF3_BrowserIsWindowRenderingDisabled/);
+  assert.match(cpp, /LB_CEF3_BrowserIsFullscreen/);
+  assert.match(cpp, /LB_CEF3_BrowserIsReadyToBeClosed/);
+  assert.match(cpp, /LB_CEF3_BrowserIsRenderProcessUnresponsive/);
+  assert.match(cpp, /LB_CEF3_BrowserGetRuntimeStyle/);
+  assert.match(cpp, /LB_CEF3_BrowserGetZoomLevel/);
+  assert.match(cpp, /LB_CEF3_BrowserGetDefaultZoomLevel/);
+  assert.match(cpp, /LB_CEF3_BrowserSetZoomLevel/);
+  assert.match(cpp, /LB_CEF3_BrowserTryClose/);
+  assert.match(cpp, /LB_CEF3_BrowserNotifyMoveOrResizeStarted/);
+  assert.match(cpp, /LB_CEF3_BrowserNotifyScreenInfoChanged/);
+  assert.match(cpp, /LB_CEF3_BrowserSendCaptureLostEvent/);
+  assert.match(cpp, /LB_CEF3_BrowserImeCancelComposition/);
+  assert.match(cpp, /LB_CEF3_BrowserReloadIgnoreCache/);
+  assert.match(cpp, /LB_CEF3_BrowserSendKeyEvent/);
+  assert.match(cpp, /LB_CEF3_BrowserHasDocument/);
+  assert.match(cpp, /LB_CEF3_BrowserIsAudioMuted/);
   assert.match(cpp, /LB_CEF3_BrowserEvaluateJavaScript/);
+  assert.match(cpp, /LB_CEF3_JsHookRegister/);
+  assert.match(cpp, /LB_CEF3_JsHookRemove/);
+  assert.match(cpp, /LB_CEF3_JsHookList/);
+  assert.match(cpp, /LB_CEF3_JsHookReply/);
+  assert.match(cpp, /LB_CEF3_GetMimeType/);
+  assert.match(cpp, /LB_CEF3_SetNestableTasksAllowed/);
+  assert.match(cpp, /LB_CEF3_CommandLineCreate/);
+  assert.match(cpp, /LB_CEF3_CommandLineIsValid/);
+  assert.match(cpp, /LB_CEF3_CommandLineIsReadOnly/);
+  assert.match(cpp, /LB_CEF3_CommandLineCopy/);
+  assert.match(cpp, /LB_CEF3_CommandLineInitFromArgv/);
+  assert.match(cpp, /LB_CEF3_CommandLineInitFromString/);
+  assert.match(cpp, /LB_CEF3_CommandLineGetString/);
+  assert.match(cpp, /LB_CEF3_CommandLineGetProgram/);
+  assert.match(cpp, /LB_CEF3_CommandLineSetProgram/);
+  assert.match(cpp, /LB_CEF3_CommandLineHasSwitches/);
+  assert.match(cpp, /LB_CEF3_CommandLineHasSwitch/);
+  assert.match(cpp, /LB_CEF3_CommandLineAppendSwitch/);
+  assert.match(cpp, /LB_CEF3_CommandLineAppendSwitchWithValue/);
+  assert.match(cpp, /LB_CEF3_CommandLineGetSwitchValue/);
+  assert.match(cpp, /LB_CEF3_CommandLineRemoveSwitch/);
+  assert.match(cpp, /LB_CEF3_CommandLineHasArguments/);
+  assert.match(cpp, /LB_CEF3_CommandLineAppendArgument/);
+  assert.match(cpp, /LB_CEF3_CommandLineReset/);
+  assert.match(cpp, /LB_CEF3_CommandLineGetArgv/);
+  assert.match(cpp, /LB_CEF3_CommandLineGetArguments/);
+  assert.match(cpp, /LB_CEF3_CommandLineGetSwitches/);
+  assert.match(cpp, /LB_CEF3_CommandLinePrependWrapper/);
+  assert.match(cpp, /LB_CEF3_CommandLineGetGlobal/);
+  assert.match(cpp, /std::vector<CEF3命令行开关>/);
+  assert.match(cpp, /LB_CEF3_CommandLineRelease/);
   assert.match(cpp, /LB_CEF3_BufferCreate/);
   assert.match(cpp, /LB_CEF3_BufferClone/);
   assert.match(cpp, /LB_CEF3_BufferSaveFile/);
@@ -2990,13 +3510,15 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   assert.ok(manifest);
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
   assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
-  assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.cef3.browser'));
+  assert.equal(manifest.compatibility?.conflicts?.length || 0, 0);
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro_打开谷歌原生UI浏览器'));
   for (const name of ['FBro_是否可后退', 'FBro_是否可前进', 'FBro_是否加载中', 'FBro_取缩放级别',
     'FBro_设置缩放级别', 'FBro_是否静音', 'FBro_设置静音', 'FBro_设置焦点', 'FBro_查找',
     'FBro_停止查找', 'FBro_是否打开开发者工具', 'FBro_关闭开发者工具', 'FBro_强制刷新',
     'FBro_取浏览器标识', 'FBro_是否同一实例', 'FBro_是否弹出窗口', 'FBro_是否有文档',
-    'FBro_尝试关闭', 'FBro_设置宿主焦点', 'FBro_是否有视图', 'FBro_设置自动调整大小']) {
+    'FBro_尝试关闭', 'FBro_设置宿主焦点', 'FBro_是否有视图', 'FBro_设置自动调整大小',
+    'FBro_取进程状态', 'FBro_取进程ID', 'FBro_取调试端口', 'FBro_重启进程',
+    'FBro_显示', 'FBro_隐藏', 'FBro_调整大小', 'FBro_截图到文件']) {
     assert.ok(manifest.contributes?.commands?.some(command => command.name === name), `缺少 ${name} contribution`);
     assert.ok(manifest.bindings?.commands?.some(binding => binding.command === name), `缺少 ${name} binding`);
   }
@@ -3073,7 +3595,8 @@ test('FBro bridge serializes browser creation onto the CEF UI thread and contain
   assert.doesNotMatch(bridgeSource, /g_browsers\.emplace\(handle, std::move\(state\)\);\s*StartBrowser\(\*raw\)/u);
   assert.match(bridgeSource, /LB_FBRO_EVENT_BEFORE_POPUP/u);
   assert.match(bridgeSource, /Notify\(\*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url\.ToWString\(\)\)/u);
-  assert.match(bridgeSource, /return action != 1;\s*\}\s*void OnBeforeClose/u, '即将打开新窗口默认取消；同步事件显式放行时才创建弹窗');
+  assert.match(bridgeSource, /if \(frame && !target_url\.empty\(\)\) frame->LoadURL\(target_url\);\s*return true;\s*\}\s*void OnBeforeClose/u,
+    '即将打开新窗口必须在当前浏览器 frame 中打开，并阻止额外弹窗');
   assert.match(bridgeSource, /LB_FBRO_EVENT_PACKET_V2/u);
   assert.match(bridgeSource, /LB_FBro_SetEventCallbackV2/u);
   assert.match(bridgeSource, /LB_FBro_CreateChromeUi/u);
@@ -3087,6 +3610,127 @@ test('FBro bridge serializes browser creation onto the CEF UI thread and contain
   assert.match(bridgeSource, /g_continuation_timer_condition\.wait_until/u);
   assert.doesNotMatch(bridgeSource, /BridgeContinuationTimeoutTask/u);
   assert.match(bridgeSource, /callback->Cancel\(\)/u);
+});
+
+test('FBro browser manager passes Chromium internal URLs without an HTTP allowlist', async () => {
+  const runtime = generateFbroBrowserManagerRuntime(true).methods;
+  assert.match(runtime, /return !value\.empty\(\) && value\.find_first_of\(L"\\r\\n"\) == std::wstring::npos/u);
+  assert.match(runtime, /if \(!instance \|\| !浏览器管理器_地址可导航\(url\)\) return false;/u);
+  assert.doesNotMatch(runtime, /url\.rfind\(L"https?:\/\//u);
+  assert.match(runtime, /normalized == L"chrome:\/\/extensions"/u);
+  assert.match(runtime, /FBro 嵌入式 Alloy 运行时不提供 Chrome 自带的扩展管理界面/u);
+  assert.match(runtime, /data:text\/html;charset=utf-8,/u);
+
+  const projectSource = await fs.readFile(
+    path.resolve(import.meta.dirname, '..', '..', 'src', 'win32-fbro-multi-browser-manager', 'MainWindow.lcpp'),
+    'utf8'
+  );
+  assert.doesNotMatch(projectSource, /请输入 http:\/\/ 或 https:\/\/ 地址/u);
+});
+
+test('FBro browser manager synchronizes addresses, verifies extension injection, and resizes after source layout', async () => {
+  const [bridgeSource, projectSource, win32GeneratorSource] = await Promise.all([
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', '..', 'src', 'win32-fbro-multi-browser-manager', 'MainWindow.lcpp'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'src', 'services', 'windowDesigner', 'lingCppWin32Project.ts'), 'utf8')
+  ]);
+  const generatedRuntime = generateFbroBrowserManagerRuntime(true);
+  const runtime = generatedRuntime.methods;
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  const bindAddress = manifest?.bindings?.commands.find(item => item.command === '浏览器管理器_绑定地址栏');
+
+  assert.equal(bindAddress?.parameters[0]?.type, 'controlRef');
+  assert.deepEqual(bindAddress?.parameters[0]?.controlTypes, ['TextBox']);
+  assert.equal(bindAddress?.parameters[0]?.runtimeRepresentation, 'nativeHandle');
+  assert.match(generatedRuntime.members, /int addressControlId = 0;/u);
+  assert.match(runtime, /SetWindowTextW\(address->hwnd, instance \? instance->url\.c_str\(\) : L""\)/u);
+  assert.match(runtime, /packet\.eventName == L"AddressChanged"/u);
+  assert.match(runtime, /document\.getElementById\('doubao-downloader'\) \? 'root'/u);
+  assert.match(runtime, /data-lingbuilder-doubao-downloader/u);
+  assert.match(generatedRuntime.members, /bool pluginReloadedAfterRegistration = false;/u);
+  assert.match(runtime, /浏览器管理器_逻辑\(instance, L"reload"\)/u);
+  assert.match(runtime, /instance\.pluginStatus = L"插件已生效"/u);
+  assert.match(runtime, /instance\.pluginStatus = L"插件未在当前页面生效"/u);
+  assert.match(runtime, /浏览器管理器_处理插件检查定时器/u);
+  assert.match(bridgeSource, /CefRequestContext::CreateContext\(context_settings, nullptr\)/u);
+  assert.match(bridgeSource, /FBroHsVIPRequestContext_LoadExtension\(state\.request_context, state\.extension_directory\)/u);
+  // 在线 VIP 授权校验会经 FBrowserVIP -> FBrowserCEF3lib -> libcef，因此必须在 CEF
+  // 初始化完成之后调用。放在 InitPro 之前会让 libcef 触发 CHECK(0x80000003) 并杀死
+  // Host 进程；完整崩溃转储已把出错帧定位到 LB_FBro_InitializeEx -> FBrowserVIP。
+  // 断言比较的是 LB_FBro_InitializeEx 内的真实调用顺序，而不是函数定义位置。
+  assert.match(bridgeSource, /ApplyPendingLicenseAfterInitialize\(\)/u);
+  const initializeBody = bridgeSource.slice(
+    bridgeSource.indexOf('int __stdcall LB_FBro_InitializeEx(')
+  );
+  const initProCall = initializeBody.indexOf('if (!FBroHsInitPro(&settings, g_init_event, 1024))');
+  const licenseCall = initializeBody.indexOf('ApplyPendingLicenseAfterInitialize()');
+  const extensionPlusCall = initializeBody.indexOf('FBroHsVIPRequestContext_EnableExtensionPlus();');
+  assert.ok(initProCall >= 0 && licenseCall >= 0 && extensionPlusCall >= 0,
+    'LB_FBro_InitializeEx 必须同时包含 InitPro、授权应用与高级扩展开关调用');
+  assert.ok(initProCall < licenseCall, 'FBro VIP 在线授权必须在 FBro 初始化之后设置');
+  assert.ok(initProCall < extensionPlusCall, '高级扩展开关必须在 InitPro 之后启用');
+  assert.match(bridgeSource, /SecureZeroMemory\(credential\.data\(\), credential\.size\(\) \* sizeof\(wchar_t\)\)/u);
+  assert.match(bridgeSource, /OnCreateExtension is also raised for FBro\/Chromium built-in extensions/u);
+  assert.ok(
+    bridgeSource.indexOf('FBroHsVIPRequestContext_LoadExtension(state.request_context, state.extension_directory)')
+      < bridgeSource.indexOf('if (!FBroHsCreate('),
+    '扩展必须在创建浏览器前加载到独立 RequestContext'
+  );
+  assert.doesNotMatch(bridgeSource, /AppendSwitchWithValue\(\s*"load-extension"/u);
+  assert.match(projectSource, /浏览器管理器_绑定地址栏\(地址输入\)/u);
+  assert.match(projectSource, /空 调整布局\(\)[\s\S]*控件_设置位置大小\(浏览器页面,[\s\S]*窗口高度 - 92 \* 当前DPI \/ 96\)/u);
+  assert.match(projectSource, /事件 _MainWindow_大小被改变\(\)\s+调整布局\(\)/u);
+  const sizeBlockStart = win32GeneratorSource.indexOf('        case WM_SIZE:',
+    win32GeneratorSource.indexOf('class LingWindowBase'));
+  const sizeBlock = win32GeneratorSource.slice(
+    sizeBlockStart,
+    win32GeneratorSource.indexOf('        case WM_ACTIVATE:', sizeBlockStart)
+  );
+  assert.ok(sizeBlock.indexOf('DispatchWindowEvent(L"SizeChanged")') < sizeBlock.indexOf('FBro_调整全部大小()'));
+  assert.match(win32GeneratorSource, /浏览器管理器_处理插件检查定时器\(static_cast<UINT_PTR>\(wParam\)\)/u);
+});
+
+test('FBro browser manager observes downloads without canceling the default transfer', async () => {
+  const [bridgeSource, bridgeHeader, processRuntime, projectSource, designerText] = await Promise.all([
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroProcessRuntime.hpp'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', '..', 'src', 'win32-fbro-multi-browser-manager', 'MainWindow.lcpp'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', '..', '.lingbuilder', 'projects', 'win32-fbro-multi-browser-manager', 'window-designer.json'), 'utf8')
+  ]);
+  const runtime = generateFbroBrowserManagerRuntime(true).methods;
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  const bindDownloadView = manifest?.bindings?.commands.find(item => item.command === '浏览器管理器_绑定下载视图');
+  assert.equal(bindDownloadView?.parameters[0]?.type, 'controlRef');
+  assert.deepEqual(bindDownloadView?.parameters[0]?.controlTypes, ['TextBox', 'Label']);
+  assert.equal(bindDownloadView?.parameters[1]?.type, 'controlRef');
+  assert.deepEqual(bindDownloadView?.parameters[1]?.controlTypes, ['ProgressBar']);
+  assert.match(bridgeHeader, /LB_FBRO_EVENT_DOWNLOAD_START = 16/u);
+  assert.match(bridgeHeader, /LB_FBRO_EVENT_DOWNLOAD_UPDATED = 17/u);
+  assert.match(bridgeSource, /DispatchPassiveLegacyEvent\(handle_, LB_FBRO_EVENT_DOWNLOAD_START, fields\)/u);
+  assert.match(bridgeSource, /FBroHsBeforeDownloadCallback_Continue\(callback, CefString\(\), false\)/u);
+  assert.match(bridgeSource, /DispatchPassiveLegacyEvent\(handle_, LB_FBRO_EVENT_DOWNLOAD_UPDATED, fields\)/u);
+  for (const field of ['isInProgress', 'isComplete', 'isCanceled', 'currentSpeed', 'suggestedName', 'fullPath']) {
+    assert.match(bridgeSource, new RegExp(`L"${field}"`, 'u'), `下载事件缺少真实字段 ${field}`);
+  }
+  assert.match(processRuntime, /eventCode == LB_FBRO_EVENT_DOWNLOAD_START \? L"OnBeforeDownload"/u);
+  assert.match(processRuntime, /eventCode == LB_FBRO_EVENT_DOWNLOAD_UPDATED \? L"OnDownloadUpdated"/u);
+  assert.match(runtime, /if \(packet\.eventName == L"OnBeforeDownload"\)/u);
+  assert.match(runtime, /if \(packet\.eventName == L"OnDownloadUpdated"\)/u);
+  assert.match(runtime, /instance\.downloadStatus = L"下载完成"/u);
+  assert.match(runtime, /std::filesystem::is_directory\(directory, error\)/u);
+  assert.match(projectSource, /浏览器管理器_绑定下载视图\(实例详情, 下载进度\)/u);
+  assert.match(projectSource, /浏览器管理器_打开当前下载目录\(\)/u);
+  const designer = JSON.parse(designerText) as LingWindowProject;
+  const detail = designer.windows[0]?.controls.find(control => control.id === 'instance-detail');
+  const progress = designer.windows[0]?.controls.find(control => control.id === 'download-progress');
+  const openDownload = designer.windows[0]?.controls.find(control => control.id === 'open-download');
+  assert.equal(detail?.type, 'TextBox');
+  assert.equal(detail?.properties?.readOnly, true);
+  assert.equal(detail?.properties?.multiline, true);
+  assert.equal(progress?.type, 'ProgressBar');
+  assert.equal(progress?.properties?.maximum, 100);
+  assert.equal(openDownload?.type, 'Button');
 });
 
 test('FBro v3 continuation JSON keeps escaped quotes inside one UTF-16 module argument', () => {
@@ -3156,8 +3800,12 @@ test('FBro bridge reports invalid VIP authorization without exposing the supplie
   const bridgeSource = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
   assert.match(bridgeSource, /FBroHsOnlineLicenseControl_GetError/u);
   assert.match(bridgeSource, /FBro VIP 授权码校验失败/u);
+  assert.match(bridgeSource, /RedactLicenseCredential\(/u);
+  assert.match(bridgeSource, /error\.replace\(position, supplied\.size\(\), L"\[已隐藏\]"\)/u);
   assert.match(bridgeSource, /SecureZeroMemory\(vip_key/u);
-  assert.match(bridgeSource, /g_license_error\.replace/u);
+  assert.match(bridgeSource, /SecureZeroMemory\(authorization_code/u);
+  assert.match(bridgeSource, /SecureZeroMemory\(credential\.data\(\), credential\.size\(\) \* sizeof\(wchar_t\)\)/u);
+  assert.match(bridgeSource, /SecureClearPendingLicenseCredential\(\)/u);
   assert.match(bridgeSource, /StopContinuationTimerThread\(\)/u);
   assert.match(bridgeSource, /if \(!had_live_browsers\) FBroQuitMessageLoop\(\)/u);
   assert.match(bridgeSource, /FBroShutdown\(FALSE\)/u);
@@ -3198,9 +3846,14 @@ test('FBro native dependency materializer preserves directories and only repairs
     'void LB_FBro_SetEventCallbackV3();',
     'void LB_FBro_SetEventSubscription();',
     'void LB_FBro_CompleteEventContinuation();',
-    'void LB_FBro_CancelEventContinuation();'
+    'void LB_FBro_CancelEventContinuation();',
+    'void LB_FBro_CreateEx2();',
+    'void LB_FBro_CookieSetJsonAsync();'
   ].join('\n');
   await writeFixture(path.join(sdk, 'include', 'LingBuilderFbroBridge.h'), `${fbroV3Header}\n`);
+  await writeFixture(path.join(sdk, 'include', 'LingBuilderFbroProcessRuntime.hpp'), '#pragma once\n');
+  await writeFixture(path.join(sdk, 'include', 'nlohmann', 'json.hpp'), '#pragma once\n');
+  await writeFixture(path.join(sdk, 'include', 'nlohmann', 'LICENSE.MIT'), 'MIT License\n');
   await writeFixture(path.join(sdk, 'lib', 'x64', 'LingBuilderFbroBridge.lib'), 'bridge-lib');
   await writeFixture(path.join(sdk, 'bridge', 'x64', 'LingBuilderFbroBridge.dll'), 'bridge-dll');
   const files = [];
@@ -3211,7 +3864,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.1.0', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.2.0', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -3250,23 +3903,110 @@ test('FBro native dependency materializer preserves directories and only repairs
   }
 });
 
-test('FBro and CEF3 are blocked before native dependencies are materialized', async () => {
+test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套 CEF 运行时', async () => {
   const ids = ['lingbuilder.fbro.browser', 'lingbuilder.cef3.browser'];
   const modules = ids.map(id => {
     const manifest = BUILTIN_MODULES.find(item => item.id === id);
     assert.ok(manifest);
     return { manifest, installPath: `builtin://${id}`, isBuiltin: true, isInstalled: true, diagnostics: [] } as InstalledModule;
   });
+  const projectWithMode = (processMode: 'in-process' | 'independent-embedded' | 'independent-window'): LingWindowProject => ({
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: `fbro-${processMode}`,
+        type: 'FBroBrowser',
+        name: 'FBro浏览器1',
+        content: '',
+        x: 10,
+        y: 10,
+        width: 320,
+        height: 200,
+        background: '#ffffff',
+        foreground: '#000000',
+        fontSize: 14,
+        isEnabled: true,
+        visibility: 'Visible',
+        properties: { processMode, url: 'about:blank' }
+      }]
+    }]
+  });
+  const inProcess = generateLingCppNativeWin32Project(projectWithMode('in-process'), { enabledModules: modules });
+  assert.match(inProcess.blockingDiagnostics.join('\n'), /进程内模式.*CEF 135\/150/u);
+  for (const mode of ['independent-embedded', 'independent-window'] as const) {
+    const isolated = generateLingCppNativeWin32Project(projectWithMode(mode), { enabledModules: modules });
+    assert.doesNotMatch(isolated.blockingDiagnostics.join('\n'), /CEF 135\/150/u);
+  }
+
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-conflict-'));
+  const fbroSdk = path.join(root, 'fbro-sdk');
+  const cef3Sdk = path.join(root, 'cef3-sdk');
+  const fbroHeader = [
+    '#pragma once',
+    '#define LB_FBRO_ABI_VERSION_V3 0x00030000u',
+    'typedef unsigned long long LB_FBRO_CONTINUATION_HANDLE;',
+    'typedef struct LB_FBRO_EVENT_PACKET_V3 {} LB_FBRO_EVENT_PACKET_V3;',
+    'typedef struct LB_FBRO_EVENT_RESPONSE_V3 {} LB_FBRO_EVENT_RESPONSE_V3;',
+    'void LB_FBro_SetEventCallbackV3();',
+    'void LB_FBro_SetEventSubscription();',
+    'void LB_FBro_CompleteEventContinuation();',
+    'void LB_FBro_CancelEventContinuation();',
+    'void LB_FBro_CreateEx2();',
+    'void LB_FBro_CookieSetJsonAsync();'
+  ].join('\n');
+  const fbroCef = Buffer.from('fbro-cef-135');
+  const fbroFiles = [{
+    path: 'libcef.dll',
+    size: fbroCef.length,
+    sha256: crypto.createHash('sha256').update(fbroCef).digest('hex')
+  }];
+  await Promise.all([
+    writeFixture(path.join(fbroSdk, 'include', 'LingBuilderFbroBridge.h'), `${fbroHeader}\n`),
+    writeFixture(path.join(fbroSdk, 'include', 'LingBuilderFbroProcessRuntime.hpp'), '#pragma once\n'),
+    writeFixture(path.join(fbroSdk, 'include', 'nlohmann', 'json.hpp'), '#pragma once\n'),
+    writeFixture(path.join(fbroSdk, 'include', 'nlohmann', 'LICENSE.MIT'), 'MIT License\n'),
+    writeFixture(path.join(fbroSdk, 'lib', 'x64', 'LingBuilderFbroBridge.lib'), 'fbro-bridge-lib'),
+    writeFixture(path.join(fbroSdk, 'bridge', 'x64', 'LingBuilderFbroBridge.dll'), 'fbro-bridge-dll'),
+    writeFixture(path.join(fbroSdk, 'runtime', 'x64', 'libcef.dll'), fbroCef.toString()),
+    writeFixture(path.join(fbroSdk, 'runtime-manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      sdkVersion: '135.0.21',
+      architecture: 'x64',
+      bridgeVersion: '2.2.0',
+      files: fbroFiles
+    })),
+    writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),
+    writeFixture(path.join(cef3Sdk, 'bridge', 'x64', 'LingBuilderCefBridge.h'), '#pragma once\n'),
+    writeFixture(path.join(cef3Sdk, 'bridge', 'x64', 'LingBuilderCefBridge.lib'), 'cef3-bridge-lib'),
+    writeFixture(path.join(cef3Sdk, 'bridge', 'x64', 'LingBuilderCefBridge.dll'), 'cef3-bridge-dll'),
+    writeFixture(path.join(cef3Sdk, 'bin', 'x64', 'libcef.dll'), 'cef3-cef-150'),
+    writeFixture(path.join(cef3Sdk, 'bin', 'x64', 'chrome_elf.dll'), 'cef3-chrome-elf'),
+    writeFixture(path.join(cef3Sdk, 'bin', 'x64', 'v8_context_snapshot.bin'), 'cef3-v8-snapshot')
+  ]);
+  const previousFbroSdk = process.env.FBRO_SDK_ROOT;
+  const previousCef3Sdk = process.env.CEF3_SDK_ROOT;
+  process.env.FBRO_SDK_ROOT = fbroSdk;
+  process.env.CEF3_SDK_ROOT = cef3Sdk;
   try {
+    await fs.mkdir(path.join(root, 'bin'), { recursive: true });
     const plan = await materializeModuleNativeDependencies(modules, {
       buildDir: path.join(root, 'build'), sourceDir: path.join(root, 'source'),
       binDir: path.join(root, 'bin'), exportDir: path.join(root, 'export'), preferredTargetId: 'windows-msvc-x64'
     });
-    assert.match(plan.diagnostics.join('\n'), /CEF 135.*CEF 150/u);
-    assert.match(plan.blockingDiagnostics.join('\n'), /CEF 135.*CEF 150/u);
-    assert.equal(plan.runtimeFiles.length, 0);
-  } finally { await fs.rm(root, { recursive: true, force: true }); }
+    assert.deepEqual(plan.blockingDiagnostics, []);
+    assert.deepEqual(plan.diagnostics, []);
+    assert.equal(await fs.readFile(path.join(root, 'bin', 'libcef.dll'), 'utf8'), 'cef3-cef-150');
+    assert.equal(await fs.readFile(path.join(root, 'bin', 'fbro-host', 'libcef.dll'), 'utf8'), 'fbro-cef-135');
+    assert.equal(await exists(path.join(root, 'bin', 'LingBuilderFbroBridge.dll')), false);
+    assert.equal(await fs.readFile(path.join(root, 'bin', 'fbro-host', 'LingBuilderFbroBridge.dll'), 'utf8'), 'fbro-bridge-dll');
+  } finally {
+    if (previousFbroSdk === undefined) delete process.env.FBRO_SDK_ROOT;
+    else process.env.FBRO_SDK_ROOT = previousFbroSdk;
+    if (previousCef3Sdk === undefined) delete process.env.CEF3_SDK_ROOT;
+    else process.env.CEF3_SDK_ROOT = previousCef3Sdk;
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test('OpenCV SDK materializer validates hashes and materializes x64 Bridge assets', async t => {
@@ -3329,8 +4069,48 @@ test('OpenCV SDK materializer validates hashes and materializes x64 Bridge asset
 test('generated new_emoji bridge completions match binding parameter counts', async () => {
   const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'module-build', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-  assert.equal(manifest.contributes.designerControls.length, 92);
-  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1575);
+  assert.equal(manifest.contributes.designerControls.length, 93);
+  const runtimeControls = manifest.contributes.designerControls.filter((control: any) => control.runtimeControl);
+  assert.equal(runtimeControls.length, 93);
+  assert.equal(new Set(runtimeControls.map((control: any) => control.runtimeControl.lingCppType)).size, 93);
+  assert.equal(runtimeControls.filter((control: any) => control.runtimeControl.createCommand).length, 93);
+  assert.equal(runtimeControls.filter((control: any) => control.runtimeControl.lookupByTagTextCommand).length, 93);
+  assert.equal(runtimeControls.filter((control: any) => control.runtimeControl.lookupByTagIntegerCommand).length, 93);
+  const runtimeEventCount = runtimeControls.reduce((count: number, control: any) => count + (control.runtime?.eventBindings?.length || 0), 0);
+  assert.equal(runtimeEventCount, 918);
+  assert.equal(manifest.contributes.commands.filter((command: any) => /_绑定/u.test(command.name)).length, 918);
+  assert.equal(manifest.contributes.commands.filter((command: any) => /_解绑/u.test(command.name)).length, 918);
+  const handlerBindings = manifest.bindings.commands.filter((binding: any) => binding.parameters?.some((parameter: any) => parameter.type === 'handler'));
+  assert.equal(handlerBindings.filter((binding: any) => /_绑定/u.test(binding.command)).length, 918);
+  assert.equal(handlerBindings.filter((binding: any) => !/_绑定/u.test(binding.command)).length, 88);
+  const buttonCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_SetButtonStateColors');
+  assert.deepEqual(buttonCommand.parameters[1], {
+    name: 'element_id',
+    type: 'controlRef',
+    controlTypes: ['lingbuilder.new_emoji.ui/Button'],
+    controlKinds: ['visual'],
+    scope: 'currentWindow',
+    runtimeRepresentation: 'stableId'
+  });
+  const tourTargetCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_SetTourTargetElement');
+  assert.equal(tourTargetCommand.parameters[1].type, 'controlRef');
+  assert.deepEqual(tourTargetCommand.parameters[1].controlTypes, ['lingbuilder.new_emoji.ui/Tour']);
+  assert.equal(tourTargetCommand.parameters[2].type, 'controlRef');
+  const dialogGetter = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_GetDialogAdvancedOptions');
+  assert.equal(dialogGetter.parameters.find((parameter: any) => parameter.name === 'content_parent_id').type, 'int');
+  assert.equal(dialogGetter.parameters.find((parameter: any) => parameter.name === 'footer_parent_id').type, 'int');
+  const autocompleteGetter = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_GetAutocompleteOptions');
+  assert.equal(autocompleteGetter.parameters.find((parameter: any) => parameter.name === 'request_id').type, 'int');
+  const previewSelection = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_PreviewSetSelection');
+  assert.equal(previewSelection.parameters.find((parameter: any) => parameter.name === 'ids').type, 'int');
+  assert.equal(previewSelection.parameters.find((parameter: any) => parameter.name === 'primary_id').type, 'controlRef');
+  for (const control of runtimeControls) {
+    const contract = control.runtimeControl;
+    assert.ok(manifest.bindings.commands.some((binding: any) => binding.command === contract.createCommand));
+    assert.ok(manifest.bindings.commands.some((binding: any) => binding.command === contract.lookupByTagTextCommand));
+    assert.ok(manifest.bindings.commands.some((binding: any) => binding.command === contract.lookupByTagIntegerCommand));
+  }
+  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1618);
   assert.ok(manifest.contributes.designerControls.every((control: any) => (
     control.namespacedType?.startsWith('lingbuilder.new_emoji.ui/')
     && control.backend === 'new-emoji'
@@ -3348,12 +4128,29 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     isEnabledForProject: true,
     diagnostics: []
   };
+  const wrongTypeSource = [
+    '类 MainWindow',
+    '    事件 创建完毕()',
+    '        局部 NE编辑框 输入框 = 通过标记文本获取NE编辑框("输入")',
+    '        NE_EU_SetButtonStateColors(0, 输入框, 0, 0, 0, 0, 0, 0)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const wrongTypeDiagnostics = getLingCppControlReferenceDiagnostics(
+    wrongTypeSource,
+    sampleProject,
+    { enabledModules: [installedModule], availableModules: [installedModule] },
+    'src/MainWindow.lcpp'
+  );
+  assert.ok(wrongTypeDiagnostics.some(item => item.id.startsWith('lingcpp-control-reference-type-') && item.message.includes('NE编辑框')));
   const buttonContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Button');
   const tableContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Table');
   const listBoxContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'ListBox');
+  const richListContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'RichList');
   const tabsContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Tabs');
   const tableEvent = (name: string) => tableContribution.events.find((event: { name: string }) => event.name === name);
   const listBoxEvent = (name: string) => listBoxContribution.events.find((event: { name: string }) => event.name === name);
+  const richListEvent = (name: string) => richListContribution.events.find((event: { name: string }) => event.name === name);
   assert.deepEqual(tableEvent('CellClicked').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
     ['行号', 'int'], ['列号', 'int']
   ]);
@@ -3401,6 +4198,30 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.deepEqual(tableEvent('MouseDown').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
     ['横坐标', 'int'], ['纵坐标', 'int'], ['鼠标按钮', 'int']
   ]);
+  assert.equal(richListContribution.previewType, 'ListView');
+  assert.equal(richListContribution.namespacedType, 'lingbuilder.new_emoji.ui/RichList');
+  assert.deepEqual(richListEvent('SelectionChanged').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['选中键列表', 'wideString']
+  ]);
+  for (const eventName of ['ItemClicked', 'ItemDoubleClicked', 'ButtonClicked', 'BadgeClicked', 'CountdownEnd', 'ContextMenu']) {
+    assert.deepEqual(richListEvent(eventName).parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+      ['事件数据', 'wideString']
+    ]);
+  }
+  assert.deepEqual(
+    richListContribution.runtime.createParameters
+      .filter((parameter: { name: string }) => ['template_bytes', 'template_len', 'items_bytes', 'items_len'].includes(parameter.name))
+      .map((parameter: { name: string; propertyKey?: string }) => [parameter.name, parameter.propertyKey]),
+    [
+      ['template_bytes', 'templateJson'], ['template_len', 'templateJson'],
+      ['items_bytes', 'itemsJson'], ['items_len', 'itemsJson']
+    ]
+  );
+  const richListSetter = (command: string) => richListContribution.runtime.propertySetters.find((setter: { command: string }) => setter.command === command);
+  assert.deepEqual(richListSetter('EU_SetRichListTemplate').propertyKeys, ['templateJson']);
+  assert.deepEqual(richListSetter('EU_SetRichListItems').propertyKeys, ['itemsJson']);
+  assert.deepEqual(richListSetter('EU_SetRichListSelectedKeys').propertyKeys, ['selectedKeys']);
+  assert.ok(manifest.contributes.docs.some((document: { path: string }) => document.path === 'docs/rich-list.md'));
   const virtualRowDataBinding = manifest.bindings.commands.find((binding: { command: string }) => binding.command === 'NE_设置表格虚拟行数据');
   assert.deepEqual(virtualRowDataBinding.parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [['行数据', 'wideString']]);
   assert.equal(tabsContribution.previewType, 'TabControl');
@@ -3410,7 +4231,17 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     coordinateSpace: 'window',
     adapterId: 'new-emoji.tabs.pages'
   });
-  assert.deepEqual(tabsContribution.defaultProps.items, ['标签页 1']);
+  assert.deepEqual(tabsContribution.defaultProps.items, [{
+    id: 'page1',
+    title: '标签页 1',
+    icon: '',
+    closable: true,
+    disabled: false,
+    pinned: false,
+    loading: false,
+    muted: false,
+    alerting: false
+  }]);
   assert.equal(tabsContribution.defaultProps.headerVisible, true);
   const headerVisibleProperty = tabsContribution.properties.find((property: { key: string }) => property.key === 'headerVisible');
   assert.ok(headerVisibleProperty);
@@ -3473,6 +4304,25 @@ test('generated new_emoji bridge completions match binding parameter counts', as
           name: '设置按钮', content: '设置操作', x: 40, y: 390, width: 140, height: 42,
           fontSize: 14, background: '#FF303133', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
           properties: { ...buttonContribution.defaultProps }, events: {}
+        },
+        {
+          id: 'rich-list', type: richListContribution.previewType, designerType: richListContribution.namespacedType,
+          name: '富列表1', content: '富列表', x: 470, y: 20, width: 420, height: 280,
+          fontSize: 14, background: 'transparent', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
+          properties: {
+            ...richListContribution.defaultProps,
+            title: '任务队列',
+            templateJson: ['{"template":{"rowHeight":72,"nodes":[]}}'],
+            itemsJson: ['{"items":[{"key":"task-1","data":{"title":"构建 IDE"}}]}'],
+            selectedKeys: ['["task-1"]'],
+            selectionMode: '1', rowHeight: 72, scrollY: 8, virtualItemCount: 20
+          },
+          events: {
+            SelectionChanged: '_富列表1_选择变化',
+            ItemClicked: '_富列表1_项目点击',
+            ButtonClicked: '_富列表1_按钮点击',
+            ContextMenu: '_富列表1_项目右键菜单'
+          }
         }
       ]
     }]
@@ -3507,6 +4357,18 @@ test('generated new_emoji bridge completions match binding parameter counts', as
       '  事件 _表格1_鼠标按下(整数型 横坐标, 整数型 纵坐标, 整数型 鼠标按钮)',
       '    调试输出(横坐标, 纵坐标, 鼠标按钮)',
       '  结束',
+      '  事件 _富列表1_选择变化(文本型 选中键列表)',
+      '    调试输出(选中键列表)',
+      '  结束',
+      '  事件 _富列表1_项目点击(文本型 事件数据)',
+      '    调试输出(事件数据)',
+      '  结束',
+      '  事件 _富列表1_按钮点击(文本型 事件数据)',
+      '    调试输出(事件数据)',
+      '  结束',
+      '  事件 _富列表1_项目右键菜单(文本型 事件数据)',
+      '    调试输出(事件数据)',
+      '  结束',
       '结束类'
     ].join('\n')
   });
@@ -3538,6 +4400,47 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.match(cpp, /EU_CreateButton\(g_newEmojiWindow, ne_tab_page_3_1,/u);
   assert.match(cpp, /EU_CreateButton\(g_newEmojiWindow, ne_tab_page_3_2,/u);
   assert.doesNotMatch(cpp, /EU_SetTabsContentVisible\(g_newEmojiWindow, ne_element_3, 0\)/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"任务队列"\)/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"\{\\"template\\":\{\\"rowHeight\\":72,\\"nodes\\":\[\]\}\}"\)/u);
+  assert.match(cpp, /EU_CreateRichList\(g_newEmojiWindow, 0,/u);
+  assert.match(cpp, /EU_SetRichListSelectedKeys\(g_newEmojiWindow, ne_element_6,/u);
+  assert.match(cpp, /EU_SetRichListOptions\(g_newEmojiWindow, ne_element_6, 1, 1, 0, 0, 1, 1\)/u);
+  assert.match(cpp, /EU_SetRichListStyle\(g_newEmojiWindow, ne_element_6, 72, 10, 6, 12, 0,/u);
+  assert.match(cpp, /EU_SetRichListScroll\(g_newEmojiWindow, ne_element_6, 8\)/u);
+  assert.match(cpp, /EU_SetRichListVirtualItemCount\(g_newEmojiWindow, ne_element_6, 20\)/u);
+  assert.match(cpp, /std::wstring 选中键列表 = LB_NE_FromUtf8\(lb_utf8, lb_utf8_length\);/u);
+  assert.match(cpp, /lb_event_json\.find\(L"\\"event\\":\\"item_click\\""\)/u);
+  assert.match(cpp, /lb_event_json\.find\(L"\\"event\\":\\"button_click\\""\)/u);
+  assert.match(cpp, /lb_event_json\.find\(L"\\"event\\":\\"context_menu\\""\)/u);
+  assert.match(cpp, /std::wstring 事件数据 = lb_event_json;/u);
+  assert.match(cpp, /EU_SetRichListChangeCallback\(g_newEmojiWindow, ne_element_6, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetRichListEventCallback\(g_newEmojiWindow, ne_element_6, LB_NE_Event_/u);
+  assert.equal(generated.blockingDiagnostics.length, 0);
+  const nonVirtualRichListGenerated = generateLingCppNativeWin32Project({
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      designerBackend: 'new-emoji',
+      controls: [{
+        id: 'rich-list', type: richListContribution.previewType, designerType: richListContribution.namespacedType,
+        name: '普通富列表', content: '富列表', x: 20, y: 20, width: 420, height: 280,
+        fontSize: 14, background: 'transparent', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
+        properties: {
+          ...richListContribution.defaultProps,
+          itemsJson: ['{"items":[{"key":"task-1","data":{"title":"构建 IDE"}}]}'],
+          virtualItemCount: 0
+        },
+        events: {}
+      }]
+    }]
+  }, {
+    enabledModules: [installedModule],
+    lingCppSourceCode: '类 MainWindow\n结束类'
+  });
+  const nonVirtualRichListCpp = nonVirtualRichListGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(nonVirtualRichListCpp, /EU_SetRichListItems\(/u);
+  assert.doesNotMatch(nonVirtualRichListCpp, /EU_SetRichListVirtualItemCount\([^\n]+, 0\);/u);
+  assert.equal(nonVirtualRichListGenerated.blockingDiagnostics.length, 0);
   assert.equal(manifest.designer.schemaVersion, 1);
   assert.match(manifest.designer.sha256, /^[a-f0-9]{64}$/u);
   const highLevelNames = [
@@ -3584,7 +4487,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.deepEqual(
     uploadOptions.parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]),
     [
-      ['窗口句柄', 'handle'], ['元素ID', 'int'], ['允许多选', 'bool'], ['自动上传', 'bool'],
+      ['窗口句柄', 'handle'], ['元素ID', 'controlRef'], ['允许多选', 'bool'], ['自动上传', 'bool'],
       ['样式', 'int'], ['显示文件列表', 'bool'], ['显示提示', 'bool'], ['显示操作', 'bool'],
       ['允许拖拽', 'bool'], ['文件数量上限', 'int'], ['单文件上限KB', 'int'], ['允许文件类型', 'wideString']
     ]
@@ -3660,6 +4563,11 @@ test('new_emoji Tabs can host one independent FBro HWND browser on each page', a
   assert.match(cpp, /LB_NE_RegisterFbro\(L"FBro浏览器3"[\s\S]*ne_element_1, 2, 1\);/u);
   assert.match(cpp, /EU_SetTabsChangeCallback\(g_newEmojiWindow, ne_element_1, LB_NE_FbroTabs_1\)/u);
   assert.match(cpp, /LB_NE_UpdateFbroTabVisibility\(element_id, value\)/u);
+  assert.match(cpp, /browser\.tabActiveIndex = tabElementId > 0 \? \(std::max\)\(0, EU_GetTabsActive/u);
+  assert.match(cpp, /if \(elementId == browser\.tabElementId && activeIndex >= 0\) browser\.tabActiveIndex = activeIndex/u);
+  assert.match(cpp, /packet->eventName == L"Created"[\s\S]*LB_NE_UpdateFbroTabVisibility\(browser\.tabElementId, browser\.tabActiveIndex\)/u);
+  assert.match(cpp, /config\.visible = browser\.configuredVisible\s*&& \(browser\.tabElementId <= 0 \|\| browser\.tabIndex == browser\.tabActiveIndex\)/u);
+  assert.match(cpp, /LingFbroProcessController::Instance\(\)\.Start\(config, false\)/u);
   assert.match(cpp, /LB_FBro_CreateEx\(browser\.host/u);
   assert.match(cpp, /FBro_导航\(L"FBro浏览器1", L"https:\/\/example\.com"\)/u);
   assert.match(cpp, /ShowWindow\(browser\.host, visible \? SW_SHOW : SW_HIDE\)/u);
@@ -3667,6 +4575,7 @@ test('new_emoji Tabs can host one independent FBro HWND browser on each page', a
   assert.match(cpp, /scale\(y \+ titleBarLogicalHeight\)/u);
   assert.match(cpp, /if \(!dispatched && \*legacy\) LB_NE_DispatchFbroEvent/u);
   assert.match(cpp, /wWinMain[\s\S]*CoInitializeEx\([^;]+\);\s*if \(!LB_NE_InitializeFbro\(\)\)[\s\S]*g_newEmojiWindow = NE_/u);
+  assert.match(cpp, /NE_显示并激活窗口\(g_newEmojiWindow\);\s*LB_NE_UpdateFbroTabVisibility\(0, -1\);/u);
   const browserGroup = createControlToolboxGroups(['FBroBrowser'], true).find(group => group.id === 'browser');
   assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
 });
@@ -3807,6 +4716,15 @@ test('exportVisualStudioProject links built-in module system libraries without m
   assert.doesNotMatch(vcxproj, /modules\\lingbuilder\.http\.server\\ws2_32\.lib/);
   assert.doesNotMatch(vcxproj, /modules\\lingbuilder\.websocket\.server\\advapi32\.lib/);
   assert.doesNotMatch(vcxproj, /modules\\lingbuilder\.websocket\.client\\winhttp\.lib/);
+});
+
+test('F5 and Visual Studio exports share complete Windows system libraries', () => {
+  const libraries = createWindowsMsvcLinkLibraries(['custom.lib', 'WS2_32.LIB']);
+  for (const required of ['shell32.lib', 'ws2_32.lib', 'winhttp.lib', 'crypt32.lib', 'delayimp.lib']) {
+    assert.ok(libraries.some(library => library.toLocaleLowerCase() === required), `缺少 ${required}`);
+  }
+  assert.equal(libraries.filter(library => library.toLocaleLowerCase() === 'ws2_32.lib').length, 1);
+  assert.equal(libraries.at(-1), 'custom.lib');
 });
 
 test('new_emoji bridge template keeps UTF-8 buffers alive for native controls', async () => {

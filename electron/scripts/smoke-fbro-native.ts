@@ -236,6 +236,18 @@ async function main() {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.content, 'utf8');
   }
+  const bundledIconCandidates = [
+    path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v2.ico'),
+    path.join(repoRoot, 'electron', 'assets', 'lingbuilder-window.ico')
+  ];
+  let bundledIcon = '';
+  for (const candidate of bundledIconCandidates) {
+    try { await fs.access(candidate); bundledIcon = candidate; break; } catch { /* Try the next bundled icon path. */ }
+  }
+  if (bundledIcon) {
+    await fs.mkdir(path.join(projectDir, 'resources'), { recursive: true });
+    await fs.copyFile(bundledIcon, path.join(projectDir, 'resources', 'lingbuilder-app.ico'));
+  }
   const dependencyDiagnostics = await exportModuleNativeDependencies(enabledModules, projectDir);
   if (dependencyDiagnostics.length) throw new Error(dependencyDiagnostics.join('\n'));
   const exported = await exportVisualStudioProject({

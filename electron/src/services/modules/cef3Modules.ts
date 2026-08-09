@@ -1,13 +1,14 @@
 import type {
   LingBuilderModuleManifest,
-  ModuleBindingValueType,
+  ModuleCommandValueType,
   ModuleCommandBinding,
   ModuleCommandBindingParameter,
-  ModuleCommandContribution
+  ModuleCommandContribution,
+  ModuleTypeContribution
 } from './types';
 import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter } from './bindingValueType';
 
-const CEF3_ALPHA_VERSION = '3.0.0-alpha.2';
+const CEF3_ALPHA_VERSION = '3.0.0-alpha.3';
 const CORE_DEPENDENCY = [{ moduleId: 'lingbuilder.cef3.browser', minimumVersion: CEF3_ALPHA_VERSION }];
 const OBJECT_DEPENDENCY = [...CORE_DEPENDENCY, { moduleId: 'lingbuilder.cef3.objects', minimumVersion: CEF3_ALPHA_VERSION }];
 const TARGET = [{
@@ -23,7 +24,7 @@ function api(
   name: string,
   officialAlias: string,
   parameters: Parameter[],
-  returnType: ModuleBindingValueType,
+  returnType: ModuleCommandValueType,
   description: string,
   options: { runtimeName?: string; example?: string; visibility?: 'default' | 'advanced' } = {}
 ): { command: ModuleCommandContribution; binding: ModuleCommandBinding } {
@@ -39,7 +40,8 @@ function api(
       insertText: normalizedExample || `${name}(${argumentText})`,
       returnType: returnType === 'void' ? '空' : returnType === 'wideString' ? '文本型'
         : returnType === 'longLong' || returnType === 'handle' ? '长整数型'
-          : returnType === 'double' ? '双精度小数型' : '整数型',
+          : returnType === 'double' ? '双精度小数型'
+            : returnType === 'int' || returnType === 'bool' ? '整数型' : returnType,
       visibility: options.visibility
     },
     binding: {
@@ -59,7 +61,8 @@ function module(
   category: LingBuilderModuleManifest['category'],
   description: string,
   entries: ReturnType<typeof api>[],
-  needsObjects = false
+  needsObjects = false,
+  types: ModuleTypeContribution[] = []
 ): LingBuilderModuleManifest {
   return {
     schemaVersion: 2,
@@ -71,7 +74,7 @@ function module(
     author: 'LingBuilder',
     tags: ['内置', 'CEF3', 'CEF150', 'x64'],
     dependencies: needsObjects ? OBJECT_DEPENDENCY : CORE_DEPENDENCY,
-    contributes: { commands: entries.map(entry => entry.command) },
+    contributes: { commands: entries.map(entry => entry.command), types: types.length ? types : undefined },
     targets: TARGET,
     bindings: { commands: entries.map(entry => entry.binding) }
   };
@@ -306,22 +309,82 @@ const sessionEntries = [
 ];
 
 const networkEntries = [
-  api('CEF3网络_设置代理', 'LB_CEF3_SetProxy', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], 'int', '在浏览器创建前设置实例RequestContext代理；空文本表示直连。', { runtimeName: 'CEF3_设置代理', visibility: 'advanced' })
+  api('CEF3网络_设置代理', 'LB_CEF3_SetProxy', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], 'int', '在浏览器创建前设置实例RequestContext代理；空文本表示直连。', { runtimeName: 'CEF3_设置代理', visibility: 'advanced' }),
+  api('CEF3网络_证书状态是否错误', 'cef_is_cert_status_error', [{ name: '证书状态', type: 'int' }], 'bool', '判断CEF证书状态位掩码是否包含错误；0表示CERT_STATUS_NONE。', { visibility: 'advanced' })
 ];
 
 const transferEntries = [
   api('CEF3传输_开始下载', 'CefBrowserHost::StartDownload', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], 'int', '使用当前实例会话开始下载。'),
-  api('CEF3传输_打印', 'CefBrowserHost::Print', [{ name: '控件名', type: 'controlRef' }], 'int', '打开当前页面的原生打印流程。')
+  api('CEF3传输_打印', 'CefBrowserHost::Print', [{ name: '控件名', type: 'controlRef' }], 'int', '打开当前页面的原生打印流程。'),
+  api('CEF3传输_从缓冲创建读取流', 'CefStreamReader::CreateForData', [{ name: '缓冲句柄', type: 'longLong' }], 'CEF3读取流句柄', '从Bridge受管缓冲创建可跨线程使用的CEF读取流。读取流会保留源缓冲，即使源缓冲句柄已释放也能继续读取。', { runtimeName: 'LB_CEF3_StreamReaderCreateForBuffer', visibility: 'advanced' }),
+  api('CEF3传输_从文件创建读取流', 'CefStreamReader::CreateForFile', [{ name: '路径', type: 'wideString' }], 'CEF3读取流句柄', '在当前项目允许的文件根目录内打开文件并创建受管CEF读取流；越界、空路径或无法打开的文件返回0。', { runtimeName: 'LB_CEF3_StreamReaderCreateForFile', visibility: 'advanced' }),
+  api('CEF3传输_从缓冲创建读取处理器', 'CefReadHandler', [{ name: '缓冲句柄', type: 'longLong' }, { name: '可能阻塞', type: 'bool' }], 'CEF3读取处理器句柄', '从受管缓冲创建可供CEF异步读取的线程安全读取处理器；处理器保留源缓冲，可能阻塞仅作为CEF线程调度提示。', { runtimeName: 'LB_CEF3_ReadHandlerCreateForBuffer', visibility: 'advanced' }),
+  api('CEF3传输_读取处理器读取', 'CefReadHandler::Read', [{ name: '读取处理器句柄', type: 'CEF3读取处理器句柄' }, { name: '最大字节数', type: 'longLong' }], 'longLong', '从读取处理器读取至多64MiB并返回新的受管缓冲句柄；通过CEF3缓冲_释放释放结果。', { runtimeName: 'LB_CEF3_ReadHandlerRead', visibility: 'advanced' }),
+  api('CEF3传输_定位读取处理器', 'CefReadHandler::Seek', [{ name: '读取处理器句柄', type: 'CEF3读取处理器句柄' }, { name: '偏移量', type: 'longLong' }, { name: '基准', type: 'int' }], 'int', '按官方Seek语义定位读取处理器：基准0为开头、1为当前位置、2为结尾；无法定位返回负错误码。', { runtimeName: 'LB_CEF3_ReadHandlerSeek', visibility: 'advanced' }),
+  api('CEF3传输_取读取处理器位置', 'CefReadHandler::Tell', [{ name: '读取处理器句柄', type: 'CEF3读取处理器句柄' }], 'longLong', '返回读取处理器当前字节偏移。', { runtimeName: 'LB_CEF3_ReadHandlerTell', visibility: 'advanced' }),
+  api('CEF3传输_读取处理器是否结束', 'CefReadHandler::Eof', [{ name: '读取处理器句柄', type: 'CEF3读取处理器句柄' }], 'bool', '返回读取处理器是否已到达受管缓冲结尾。', { runtimeName: 'LB_CEF3_ReadHandlerEof', visibility: 'advanced' }),
+  api('CEF3传输_读取处理器是否可能阻塞', 'CefReadHandler::MayBlock', [{ name: '读取处理器句柄', type: 'CEF3读取处理器句柄' }], 'bool', '返回创建读取处理器时声明的可能阻塞提示。', { runtimeName: 'LB_CEF3_ReadHandlerMayBlock', visibility: 'advanced' }),
+  api('CEF3传输_从读取处理器创建流', 'CefStreamReader::CreateForHandler', [{ name: '读取处理器句柄', type: 'CEF3读取处理器句柄' }], 'CEF3读取流句柄', '将受管读取处理器接入真实CefStreamReader；流与处理器共享位置，并在任一端释放后由CEF引用计数保持安全生命周期。', { runtimeName: 'LB_CEF3_StreamReaderCreateForHandler', visibility: 'advanced' }),
+  api('CEF3传输_释放读取处理器', 'CefReadHandler::Release', [{ name: '读取处理器句柄', type: 'CEF3读取处理器句柄' }], 'int', '释放受管读取处理器句柄；已创建的读取流会继续保持CEF对处理器的引用。', { runtimeName: 'LB_CEF3_HandleRelease', visibility: 'advanced' }),
+  api('CEF3传输_从文件创建写入流', 'CefStreamWriter::CreateForFile', [{ name: '路径', type: 'wideString' }], 'CEF3写入流句柄', '在当前项目允许的文件根目录内创建或截断文件并返回受管CEF写入流；越界、空路径或无法创建的文件返回0。', { runtimeName: 'LB_CEF3_StreamWriterCreateForFile', visibility: 'advanced' }),
+  api('CEF3传输_创建写入处理器', 'CefWriteHandler', [{ name: '可能阻塞', type: 'bool' }], 'CEF3写入处理器句柄', '创建线程安全的内存写入处理器；总容量限制为64MiB，可能阻塞仅作为CEF线程调度提示。', { runtimeName: 'LB_CEF3_WriteHandlerCreate', visibility: 'advanced' }),
+  api('CEF3传输_写入处理器写入', 'CefWriteHandler::Write', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }, { name: '缓冲句柄', type: 'longLong' }, { name: '起始偏移', type: 'longLong' }, { name: '写入字节数', type: 'longLong' }], 'longLong', '从受管缓冲的指定范围写入内存处理器；单次和总容量均不超过64MiB，返回实际写入字节数。', { runtimeName: 'LB_CEF3_WriteHandlerWrite', visibility: 'advanced' }),
+  api('CEF3传输_定位写入处理器', 'CefWriteHandler::Seek', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }, { name: '偏移量', type: 'longLong' }, { name: '基准', type: 'int' }], 'int', '按官方Seek语义定位写入处理器：基准0为开头、1为当前位置、2为当前内存结尾；越界返回负错误码。', { runtimeName: 'LB_CEF3_WriteHandlerSeek', visibility: 'advanced' }),
+  api('CEF3传输_取写入处理器位置', 'CefWriteHandler::Tell', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }], 'longLong', '返回写入处理器当前字节偏移。', { runtimeName: 'LB_CEF3_WriteHandlerTell', visibility: 'advanced' }),
+  api('CEF3传输_刷新写入处理器', 'CefWriteHandler::Flush', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }], 'int', '刷新写入处理器；内存处理器不落盘，成功返回0。', { runtimeName: 'LB_CEF3_WriteHandlerFlush', visibility: 'advanced' }),
+  api('CEF3传输_写入处理器是否可能阻塞', 'CefWriteHandler::MayBlock', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }], 'bool', '返回创建写入处理器时声明的可能阻塞提示。', { runtimeName: 'LB_CEF3_WriteHandlerMayBlock', visibility: 'advanced' }),
+  api('CEF3传输_取写入处理器缓冲', 'CefWriteHandler::Snapshot', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }], 'longLong', '复制写入处理器当前内存内容为新的受管缓冲句柄；通过CEF3缓冲_释放释放结果。', { runtimeName: 'LB_CEF3_WriteHandlerGetBuffer', visibility: 'advanced' }),
+  api('CEF3传输_从写入处理器创建流', 'CefStreamWriter::CreateForHandler', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }], 'CEF3写入流句柄', '将受管写入处理器接入真实CefStreamWriter；流与处理器共享位置，适合供CEF回调写入受管内存。', { runtimeName: 'LB_CEF3_StreamWriterCreateForHandler', visibility: 'advanced' }),
+  api('CEF3传输_释放写入处理器', 'CefWriteHandler::Release', [{ name: '写入处理器句柄', type: 'CEF3写入处理器句柄' }], 'int', '释放受管写入处理器句柄；已创建的写入流会继续保持CEF对处理器的引用。', { runtimeName: 'LB_CEF3_HandleRelease', visibility: 'advanced' }),
+  api('CEF3传输_写入流', 'CefStreamWriter::Write', [{ name: '写入流句柄', type: 'CEF3写入流句柄' }, { name: '缓冲句柄', type: 'longLong' }, { name: '起始偏移', type: 'longLong' }, { name: '写入字节数', type: 'longLong' }], 'longLong', '从受管缓冲的指定范围写入至多64MiB，返回实际写入字节数；越界或句柄错误返回负错误码。', { runtimeName: 'LB_CEF3_StreamWriterWrite', visibility: 'advanced' }),
+  api('CEF3传输_定位写入流', 'CefStreamWriter::Seek', [{ name: '写入流句柄', type: 'CEF3写入流句柄' }, { name: '偏移量', type: 'longLong' }, { name: '基准', type: 'int' }], 'int', '按官方Seek语义定位写入流：基准0为开头、1为当前位置、2为结尾；返回0表示成功。', { runtimeName: 'LB_CEF3_StreamWriterSeek', visibility: 'advanced' }),
+  api('CEF3传输_取写入流位置', 'CefStreamWriter::Tell', [{ name: '写入流句柄', type: 'CEF3写入流句柄' }], 'longLong', '返回写入流当前字节偏移。', { runtimeName: 'LB_CEF3_StreamWriterTell', visibility: 'advanced' }),
+  api('CEF3传输_刷新写入流', 'CefStreamWriter::Flush', [{ name: '写入流句柄', type: 'CEF3写入流句柄' }], 'int', '将写入流的待写数据刷新到文件；返回0表示成功。', { runtimeName: 'LB_CEF3_StreamWriterFlush', visibility: 'advanced' }),
+  api('CEF3传输_写入流是否可能阻塞', 'CefStreamWriter::MayBlock', [{ name: '写入流句柄', type: 'CEF3写入流句柄' }], 'bool', '返回CEF对当前写入流可能执行阻塞文件操作的提示；文件写入流通常返回真。', { runtimeName: 'LB_CEF3_StreamWriterMayBlock', visibility: 'advanced' }),
+  api('CEF3传输_释放写入流', 'CefStreamWriter::Release', [{ name: '写入流句柄', type: 'CEF3写入流句柄' }], 'int', '释放受管写入流句柄；释放前应先刷新写入流，重复释放返回稳定错误码。', { runtimeName: 'LB_CEF3_HandleRelease', visibility: 'advanced' }),
+  api('CEF3传输_读取流', 'CefStreamReader::Read', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }, { name: '最大字节数', type: 'longLong' }], 'longLong', '读取至多64MiB数据并返回新的受管缓冲句柄；返回的缓冲需通过CEF3缓冲_释放释放。', { runtimeName: 'LB_CEF3_StreamReaderRead', visibility: 'advanced' }),
+  api('CEF3传输_定位读取流', 'CefStreamReader::Seek', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }, { name: '偏移量', type: 'longLong' }, { name: '基准', type: 'int' }], 'int', '按官方Seek语义定位读取流：基准0为开头、1为当前位置、2为结尾；返回0表示成功。', { runtimeName: 'LB_CEF3_StreamReaderSeek', visibility: 'advanced' }),
+  api('CEF3传输_取读取流位置', 'CefStreamReader::Tell', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }], 'longLong', '返回读取流当前字节偏移。', { runtimeName: 'LB_CEF3_StreamReaderTell', visibility: 'advanced' }),
+  api('CEF3传输_读取流是否结束', 'CefStreamReader::Eof', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }], 'bool', '返回当前读取位置是否已到流末尾。', { runtimeName: 'LB_CEF3_StreamReaderEof', visibility: 'advanced' }),
+  api('CEF3传输_读取流是否可能阻塞', 'CefStreamReader::MayBlock', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }], 'bool', '返回CEF对当前读取流可能执行阻塞文件操作的提示；内存缓冲读取流通常返回假。', { runtimeName: 'LB_CEF3_StreamReaderMayBlock', visibility: 'advanced' }),
+  api('CEF3传输_释放读取流', 'CefStreamReader::Release', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }], 'int', '释放受管读取流句柄和其保留的源缓冲引用；重复释放返回稳定错误码。', { runtimeName: 'LB_CEF3_HandleRelease', visibility: 'advanced' })
+];
+
+const transferTypes: ModuleTypeContribution[] = [
+  { name: 'CEF3读取流句柄', kind: 'opaque', cppType: 'uint64_t', description: '由CEF3传输_从缓冲创建读取流或CEF3传输_从文件创建读取流返回的受管CefStreamReader句柄；不能转换为原生指针。' },
+  { name: 'CEF3写入流句柄', kind: 'opaque', cppType: 'uint64_t', description: '由CEF3传输_从文件创建写入流或CEF3传输_从写入处理器创建流返回的受管CefStreamWriter句柄；只能配合写入流接口使用，不能转换为原生指针。' },
+  { name: 'CEF3读取处理器句柄', kind: 'opaque', cppType: 'uint64_t', description: '由CEF3传输_从缓冲创建读取处理器返回的受管CefReadHandler句柄；只能用于读取处理器和从读取处理器创建流接口。' },
+  { name: 'CEF3写入处理器句柄', kind: 'opaque', cppType: 'uint64_t', description: '由CEF3传输_创建写入处理器返回的受管CefWriteHandler句柄；只能用于写入处理器和从写入处理器创建流接口。' }
 ];
 
 const automationEntries = [
-  api('CEF3自动化_执行JS异步', 'Runtime.evaluate', [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], 'longLong', '通过DevTools Runtime.evaluate异步执行JavaScript，返回受管任务ID。', { visibility: 'advanced' })
+  api('CEF3自动化_执行JS异步', 'Runtime.evaluate', [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], 'longLong', '通过DevTools Runtime.evaluate异步执行JavaScript，返回受管任务ID。', { visibility: 'advanced' }),
+  api('CEF3Hook_注册脚本', 'CefRenderProcessHandler::OnContextCreated', [
+    { name: '控件名', type: 'controlRef' }, { name: '名称', type: 'wideString' },
+    { name: '脚本', type: 'wideString' }, { name: '地址匹配', type: 'wideString' },
+    { name: '全部框架', type: 'bool' }, { name: '立即执行当前上下文', type: 'bool' }
+  ], 'longLong', '注册持久JSHook；它会在匹配Frame的V8上下文创建时执行，并在导航后自动重建。', { visibility: 'advanced' }),
+  api('CEF3Hook_移除脚本', 'LB_CEF3_JsHookRemove', [{ name: 'Hook句柄', type: 'longLong' }], 'int', '移除指定JSHook并释放受管句柄。', { visibility: 'advanced' }),
+  api('CEF3Hook_清空脚本', 'LB_CEF3_JsHookClear', [{ name: '控件名', type: 'controlRef' }], 'int', '清空指定浏览器的全部已注册JSHook。', { visibility: 'advanced' }),
+  api('CEF3Hook_取脚本列表', 'LB_CEF3_JsHookList', [{ name: '控件名', type: 'controlRef' }], 'wideString', '返回JSHook句柄、名称、地址匹配和Frame范围JSON。', { visibility: 'advanced' }),
+  api('CEF3Hook_回复页面消息', 'LB_CEF3_JsHookReply', [
+    { name: '控件名', type: 'controlRef' }, { name: '请求ID', type: 'longLong' },
+    { name: '是否成功', type: 'bool' }, { name: '返回文本', type: 'wideString' }
+  ], 'int', '回复页面 LingBuilder调用宿主(name, payload) 产生的Promise请求。', { visibility: 'advanced' })
 ];
 
 const devtoolsEntries = [
   api('CEF3开发工具_打开', 'CefBrowserHost::ShowDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '打开指定实例的开发者工具；设计器禁止开发者工具时返回0。'),
   api('CEF3开发工具_关闭', 'CefBrowserHost::CloseDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '关闭指定实例的开发者工具。'),
-  api('CEF3开发工具_是否打开', 'CefBrowserHost::HasDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '返回指定实例是否已打开开发者工具。')
+  api('CEF3开发工具_是否打开', 'CefBrowserHost::HasDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '返回指定实例是否已打开开发者工具。'),
+  api('CEF3开发工具_执行协议方法', 'CefBrowserHost::ExecuteDevToolsMethod', [
+    { name: '控件名', type: 'controlRef' }, { name: '方法名', type: 'wideString' },
+    { name: '参数JSON', type: 'wideString' }
+  ], 'longLong', '执行 DevTools Protocol 方法并返回受管任务句柄；参数必须是 JSON 对象，结果使用 CEF3任务_取结果读取。', { runtimeName: 'CEF3开发工具_执行协议方法', visibility: 'advanced', example: 'CEF3开发工具_执行协议方法(浏览器1, "Runtime.enable", "{}")' }),
+  api('CEF3开发工具_订阅代理附加', 'CefDevToolsMessageObserver::OnDevToolsAgentAttached', [{ name: '控件名', type: 'controlRef' }, { name: '启用', type: 'bool' }], 'int', '启用后将 DevTools 代理附加通知投递为“开发工具代理已附加”浏览器事件。', { runtimeName: 'CEF3开发工具_订阅代理附加', visibility: 'advanced' }),
+  api('CEF3开发工具_订阅代理分离', 'CefDevToolsMessageObserver::OnDevToolsAgentDetached', [{ name: '控件名', type: 'controlRef' }, { name: '启用', type: 'bool' }], 'int', '启用后将 DevTools 代理分离通知投递为“开发工具代理已分离”浏览器事件。', { runtimeName: 'CEF3开发工具_订阅代理分离', visibility: 'advanced' }),
+  api('CEF3开发工具_订阅协议事件', 'CefDevToolsMessageObserver::OnDevToolsEvent', [{ name: '控件名', type: 'controlRef' }, { name: '启用', type: 'bool' }], 'int', '启用后将 DevTools Protocol 事件投递为“开发工具协议事件”；参数 JSON 会复制到 paramsJson 字段。', { runtimeName: 'CEF3开发工具_订阅协议事件', visibility: 'advanced' }),
+  api('CEF3开发工具_订阅协议消息', 'CefDevToolsMessageObserver::OnDevToolsMessage', [{ name: '控件名', type: 'controlRef' }, { name: '启用', type: 'bool' }], 'int', '启用后将原始 DevTools Protocol 消息投递为“开发工具协议消息”；观察器始终返回未处理，不会拦截 CEF 后续回调。', { runtimeName: 'CEF3开发工具_订阅协议消息', visibility: 'advanced' })
 ];
 
 const viewsEntries = [
@@ -329,10 +392,115 @@ const viewsEntries = [
 ];
 
 const platformEntries = [
+  api('CEF3平台_执行任务', 'CefTask::Execute', [{ name: '任务句柄', type: 'longLong' }], 'int', '执行受管任务回调并将任务标记为成功；CEF任务运行器内部也通过同一回调完成任务。', { runtimeName: 'LB_CEF3_TaskExecute', visibility: 'advanced' }),
+  api('CEF3平台_任务运行器延迟投递', 'CefTaskRunner::PostDelayedTask', [{ name: '任务运行器句柄', type: 'longLong' }, { name: '任务句柄', type: 'longLong' }, { name: '延迟毫秒数', type: 'longLong' }], 'bool', '向指定CEF任务运行器投递受管任务；任务在目标线程延迟执行，返回值表示是否成功受理。', { runtimeName: 'LB_CEF3_TaskRunnerPostDelayedTask', visibility: 'advanced' }),
+  api('CEF3平台_任务运行器投递', 'CefTaskRunner::PostTask', [{ name: '任务运行器句柄', type: 'longLong' }, { name: '任务句柄', type: 'longLong' }], 'bool', '向指定CEF任务运行器立即异步投递受管任务；任务在目标线程执行，返回值表示是否成功受理。', { runtimeName: 'LB_CEF3_TaskRunnerPostTask', visibility: 'advanced' }),
+  api('CEF3平台_全局任务投递', 'cef_post_task', [{ name: 'CEF线程ID', type: 'int' }, { name: '任务句柄', type: 'longLong' }], 'bool', '向指定公开CEF线程立即异步投递受管任务；任务在目标线程执行，返回值表示是否成功受理。', { runtimeName: 'LB_CEF3_PostTask', visibility: 'advanced' }),
+  api('CEF3平台_全局延迟任务投递', 'cef_post_delayed_task', [{ name: 'CEF线程ID', type: 'int' }, { name: '任务句柄', type: 'longLong' }, { name: '延迟毫秒数', type: 'longLong' }], 'bool', '向指定公开CEF线程投递受管任务；任务在目标线程延迟执行，返回值表示是否成功受理。', { runtimeName: 'LB_CEF3_PostDelayedTask', visibility: 'advanced' }),
   api('CEF3平台_取版本', 'cef_version_info', [], 'wideString', '返回编译时CEF与Chromium版本。'),
+  api('CEF3平台_取退出代码', 'cef_get_exit_code', [], 'int', '返回CEF最近一次子进程或进程入口处理使用的退出代码；正常浏览器进程通常为0。', { visibility: 'advanced' }),
+  api('CEF3平台_是否从右到左', 'cef_is_rtl', [], 'bool', '判断当前CEF应用文本方向是否为从右到左；结果来自CEF当前区域设置。', { visibility: 'advanced' }),
+  api('CEF3平台_取系统跟踪时间', 'cef_now_from_system_trace_time', [], 'longLong', '返回CEF系统跟踪时钟值，用于与Trace事件时间戳进行同步比较。', { visibility: 'advanced' }),
+  api('CEF3平台_开始跟踪', 'cef_begin_tracing', [{ name: '类别', type: 'wideString' }], 'longLong', '在CEF UI线程异步启动指定类别的性能跟踪并返回受管任务句柄；任务成功结果为 {"started":true}。同一时刻只能存在一个跟踪会话。', { runtimeName: 'LB_CEF3_BeginTracing', visibility: 'advanced' }),
+  api('CEF3平台_结束跟踪', 'cef_end_tracing', [{ name: '输出文件', type: 'wideString' }], 'longLong', '在CEF UI线程异步结束当前性能跟踪并返回受管任务句柄；空文本由CEF创建临时跟踪文件，任务成功结果为 {"tracingFile":"..."}，调用方负责删除该文件。', { runtimeName: 'LB_CEF3_EndTracing', visibility: 'advanced' }),
   api('CEF3平台_取MIME扩展名', 'CefGetExtensionsForMimeType', [{ name: 'MIME类型', type: 'wideString' }], 'wideString', '以JSON数组返回指定小写MIME类型关联的扩展名。', { visibility: 'advanced' }),
+  api('CEF3平台_取MIME类型', 'CefGetMimeType', [{ name: '扩展名', type: 'wideString' }], 'wideString', '返回扩展名对应的MIME类型；扩展名前的点号可省略。', { visibility: 'advanced' }),
+  api('CEF3平台_设置可嵌套任务', 'CefSetNestableTasksAllowed', [{ name: '允许', type: 'bool' }], 'int', '在CEF UI线程进入确定可重入的原生消息循环前启用，退出后必须立即关闭；打印等不可重入流程禁止启用。', { visibility: 'advanced' }),
+  api('CEF3平台_取任务管理器', 'cef_task_manager_get', [], 'longLong', '取得CEF全局任务管理器的类型化受管句柄；调用会自动调度到CEF UI线程。', { visibility: 'advanced' }),
+  api('CEF3平台_任务管理器取任务数量', 'CefTaskManager::GetTasksCount', [{ name: '任务管理器句柄', type: 'longLong' }], 'longLong', '取得当前由CEF任务管理器跟踪的任务数量。', { visibility: 'advanced' }),
+  api('CEF3平台_任务管理器取任务ID数组', 'CefTaskManager::GetTaskIdsList', [{ name: '任务管理器句柄', type: 'longLong' }], 'wideString', '返回当前任务ID的JSON整数数组；不暴露CEF原生数组指针。', { visibility: 'advanced' }),
+  api('CEF3平台_任务管理器按浏览器取任务ID', 'CefTaskManager::GetTaskIdForBrowserId', [{ name: '任务管理器句柄', type: 'longLong' }, { name: '浏览器ID', type: 'int' }], 'longLong', '按CEF浏览器ID取得其主任务ID；无效或不存在时返回-1。', { visibility: 'advanced' }),
+  api('CEF3平台_任务管理器终止任务', 'CefTaskManager::KillTask', [{ name: '任务管理器句柄', type: 'longLong' }, { name: '任务ID', type: 'longLong' }], 'bool', '尝试终止指定任务；任务不存在、不可终止或线程不正确时返回假。', { visibility: 'advanced' }),
+  api('CEF3平台_任务管理器取任务信息', 'CefTaskManager::GetTaskInfo', [{ name: '任务管理器句柄', type: 'longLong' }, { name: '任务ID', type: 'longLong' }], 'wideString', '返回任务固定字段JSON：类型、标题、可终止、CPU、内存和GPU占用。', { visibility: 'advanced' }),
+  api('CEF3平台_取当前线程任务运行器', 'CefTaskRunner::GetForCurrentThread', [], 'longLong', '取得当前CEF线程的任务运行器；非CEF线程返回0并设置错误。', { visibility: 'advanced' }),
+  api('CEF3平台_取指定线程任务运行器', 'CefTaskRunner::GetForThread', [{ name: 'CEF线程ID', type: 'int' }], 'longLong', '取得指定CEF线程的任务运行器；线程ID必须是公开的CEF线程枚举值。', { visibility: 'advanced' }),
+  api('CEF3平台_任务运行器是否属于当前线程', 'CefTaskRunner::BelongsToCurrentThread', [{ name: '任务运行器句柄', type: 'longLong' }], 'bool', '判断受管任务运行器是否属于当前调用线程。', { visibility: 'advanced' }),
+  api('CEF3平台_任务运行器是否属于指定线程', 'CefTaskRunner::BelongsToThread', [{ name: '任务运行器句柄', type: 'longLong' }, { name: 'CEF线程ID', type: 'int' }], 'bool', '判断受管任务运行器是否属于指定的公开CEF线程。', { visibility: 'advanced' }),
+  api('CEF3平台_任务运行器是否同一对象', 'CefTaskRunner::IsSame', [{ name: '任务运行器句柄', type: 'longLong' }, { name: '另一任务运行器句柄', type: 'longLong' }], 'bool', '判断两个受管任务运行器句柄是否指向同一CEF任务运行器。', { visibility: 'advanced' }),
+  api('CEF3平台_创建专用线程', 'CefThread::CreateThread', [
+    { name: '显示名称', type: 'wideString' }, { name: '优先级', type: 'int' },
+    { name: '消息循环类型', type: 'int' }, { name: '可停止', type: 'bool' },
+    { name: 'COM初始化模式', type: 'int' }
+  ], 'longLong', '在CEF UI线程创建受管专用线程。优先级为0到3，消息循环为0默认、1 UI、2 IO，COM模式为0无、1 STA、2 MTA；STA必须使用UI消息循环。', { runtimeName: 'LB_CEF3_ThreadCreate', visibility: 'advanced' }),
+  api('CEF3平台_线程取系统ID', 'CefThread::GetPlatformThreadId', [{ name: '线程句柄', type: 'longLong' }], 'longLong', '取得专用线程的Windows线程ID；停止后仍返回同一个ID。', { runtimeName: 'LB_CEF3_ThreadGetPlatformThreadId', visibility: 'advanced' }),
+  api('CEF3平台_线程取任务运行器', 'CefThread::GetTaskRunner', [{ name: '线程句柄', type: 'longLong' }], 'longLong', '取得专用线程的受管任务运行器句柄，可用于立即或延迟投递任务。', { runtimeName: 'LB_CEF3_ThreadGetTaskRunner', visibility: 'advanced' }),
+  api('CEF3平台_线程是否运行', 'CefThread::IsRunning', [{ name: '线程句柄', type: 'longLong' }], 'bool', '在创建该线程的CEF UI线程查询专用线程是否仍在运行。', { runtimeName: 'LB_CEF3_ThreadIsRunning', visibility: 'advanced' }),
+  api('CEF3平台_停止专用线程', 'CefThread::Stop', [{ name: '线程句柄', type: 'longLong' }], 'int', '在创建该线程的CEF UI线程停止并等待专用线程退出；不可停止线程会返回明确的不支持错误。', { runtimeName: 'LB_CEF3_ThreadStop', visibility: 'advanced' }),
+  api('CEF3平台_释放专用线程', 'LB_CEF3_HandleRelease', [{ name: '线程句柄', type: 'longLong' }], 'int', '释放受管线程句柄；可停止线程尚未停止时由Bridge在创建线程上安全停止后释放。', { runtimeName: 'LB_CEF3_HandleRelease', visibility: 'advanced' }),
+  api('CEF3平台_组件取ID', 'CefComponent::GetID', [{ name: '组件句柄', type: 'longLong' }], 'wideString', '读取组件快照的唯一标识；组件对象可由组件更新器查询接口产生。', { visibility: 'advanced' }),
+  api('CEF3平台_组件取名称', 'CefComponent::GetName', [{ name: '组件句柄', type: 'longLong' }], 'wideString', '读取组件快照的人类可读名称；组件尚未安装时返回空文本。', { visibility: 'advanced' }),
+  api('CEF3平台_组件取状态', 'CefComponent::GetState', [{ name: '组件句柄', type: 'longLong' }], 'int', '读取组件快照的CEF状态枚举值；组件状态定义见CEF组件状态说明。', { visibility: 'advanced' }),
+  api('CEF3平台_组件取版本', 'CefComponent::GetVersion', [{ name: '组件句柄', type: 'longLong' }], 'wideString', '读取组件快照的版本文本；组件尚未安装时返回空文本。', { visibility: 'advanced' }),
+  api('CEF3平台_组件更新器按ID取组件', 'CefComponentUpdater::GetComponentByID', [{ name: '组件更新器句柄', type: 'longLong' }, { name: '组件ID', type: 'wideString' }], 'longLong', '按组件ID取得组件快照受管句柄；不存在或服务不可用时返回0并设置错误。', { visibility: 'advanced' }),
+  api('CEF3平台_组件更新器取数量', 'CefComponentUpdater::GetComponentCount', [{ name: '组件更新器句柄', type: 'longLong' }], 'longLong', '取得组件更新器当前注册组件数量；服务不可用时返回0。', { visibility: 'advanced' }),
+  api('CEF3平台_组件更新器取组件数组', 'CefComponentUpdater::GetComponents', [{ name: '组件更新器句柄', type: 'longLong' }], 'CEF3组件数组', '返回组件快照数组JSON；每项包含ID、名称、版本和状态，不暴露CEF原生指针。', { visibility: 'advanced' }),
+  api('CEF3平台_组件更新器更新', 'CefComponentUpdater::Update', [{ name: '组件更新器句柄', type: 'longLong' }, { name: '组件ID', type: 'wideString' }, { name: '优先级', type: 'int' }], 'longLong', '异步触发组件按需更新；优先级0为后台，1为前台，返回受管任务句柄。', { visibility: 'advanced' }),
+  api('CEF3平台_设置启动命令开关', 'CefApp::OnBeforeCommandLineProcessing', [{ name: '进程类型', type: 'wideString' }, { name: '开关名', type: 'wideString' }, { name: '开关值', type: 'wideString' }], 'int', '在CEF初始化前登记启动命令开关；进程类型为空时应用到浏览器及全部子进程，初始化时由OnBeforeCommandLineProcessing安全写入。', { visibility: 'advanced' }),
+  api('CEF3平台_创建可等待事件', 'cef_waitable_event_create', [{ name: '自动重置', type: 'bool' }, { name: '初始已触发', type: 'bool' }], 'longLong', '创建线程同步用的受管等待事件；等待操作不得在CEF UI或IO线程阻塞。', { visibility: 'advanced' }),
+  api('CEF3平台_可等待事件重置', 'CefWaitableEvent::Reset', [{ name: '事件句柄', type: 'longLong' }], 'int', '将受管等待事件置为未触发状态。', { visibility: 'advanced' }),
+  api('CEF3平台_可等待事件触发', 'CefWaitableEvent::Signal', [{ name: '事件句柄', type: 'longLong' }], 'int', '将受管等待事件置为已触发状态，并唤醒等待线程。', { visibility: 'advanced' }),
+  api('CEF3平台_可等待事件是否已触发', 'CefWaitableEvent::IsSignaled', [{ name: '事件句柄', type: 'longLong' }], 'bool', '查询受管等待事件是否已触发；自动重置事件查询后会恢复未触发状态。', { visibility: 'advanced' }),
+  api('CEF3平台_可等待事件限时等待', 'CefWaitableEvent::TimedWait', [{ name: '事件句柄', type: 'longLong' }, { name: '最大毫秒', type: 'longLong' }], 'bool', '等待事件最多指定毫秒；UI和IO线程禁止阻塞调用。', { visibility: 'advanced' }),
+  api('CEF3平台_可等待事件等待', 'CefWaitableEvent::Wait', [{ name: '事件句柄', type: 'longLong' }], 'int', '等待事件直到被触发；UI和IO线程禁止阻塞调用。', { visibility: 'advanced' }),
+  api('CEF3命令行_创建', 'CefCommandLine::CreateCommandLine', [], 'longLong', '创建可写的CEF命令行对象并返回类型化受管句柄；可在CEF初始化前调用。', { visibility: 'advanced' }),
+  api('CEF3命令行_是否有效', 'CefCommandLine::IsValid', [{ name: '命令行句柄', type: 'longLong' }], 'int', '判断类型化命令行句柄及底层CEF对象是否有效。', { visibility: 'advanced' }),
+  api('CEF3命令行_是否只读', 'CefCommandLine::IsReadOnly', [{ name: '命令行句柄', type: 'longLong' }], 'int', '判断CEF命令行对象是否只读；全局命令行对象为只读。', { visibility: 'advanced' }),
+  api('CEF3命令行_复制', 'CefCommandLine::Copy', [{ name: '命令行句柄', type: 'longLong' }], 'longLong', '复制命令行内容并返回新的独立可写受管句柄。', { visibility: 'advanced' }),
+  api('CEF3命令行_从参数数组初始化', 'CefCommandLine::InitFromArgv', [{ name: '命令行句柄', type: 'longLong' }, { name: '参数数组', type: 'CEF3文本数组' }], 'int', '以参数数组初始化可写命令行；首项必须是程序名。Windows Bridge会按系统argv引用规则构造命令行文本，等价适配官方仅在非Windows支持的InitFromArgv。', { visibility: 'advanced' }),
+  api('CEF3命令行_从文本初始化', 'CefCommandLine::InitFromString', [{ name: '命令行句柄', type: 'longLong' }, { name: '命令行文本', type: 'wideString' }], 'int', '在Windows上解析GetCommandLineW格式的UTF-16命令行文本。', { visibility: 'advanced' }),
+  api('CEF3命令行_取完整文本', 'CefCommandLine::GetCommandLineString', [{ name: '命令行句柄', type: 'longLong' }], 'wideString', '返回CEF命令行对象表示的完整命令行文本。', { visibility: 'advanced' }),
+  api('CEF3命令行_取程序', 'CefCommandLine::GetProgram', [{ name: '命令行句柄', type: 'longLong' }], 'wideString', '返回命令行的程序部分。', { visibility: 'advanced' }),
+  api('CEF3命令行_设置程序', 'CefCommandLine::SetProgram', [{ name: '命令行句柄', type: 'longLong' }, { name: '程序', type: 'wideString' }], 'int', '设置可写命令行对象的程序部分。', { visibility: 'advanced' }),
+  api('CEF3命令行_是否有开关', 'CefCommandLine::HasSwitches', [{ name: '命令行句柄', type: 'longLong' }], 'int', '判断命令行是否包含任意开关。', { visibility: 'advanced' }),
+  api('CEF3命令行_是否有指定开关', 'CefCommandLine::HasSwitch', [{ name: '命令行句柄', type: 'longLong' }, { name: '开关名', type: 'wideString' }], 'int', '按不带前缀的ASCII名称判断命令行是否包含指定开关。', { visibility: 'advanced' }),
+  api('CEF3命令行_添加开关', 'CefCommandLine::AppendSwitch', [{ name: '命令行句柄', type: 'longLong' }, { name: '开关名', type: 'wideString' }], 'int', '向可写命令行末尾添加无值开关；名称由CEF规范化为小写。', { visibility: 'advanced' }),
+  api('CEF3命令行_添加带值开关', 'CefCommandLine::AppendSwitchWithValue', [{ name: '命令行句柄', type: 'longLong' }, { name: '开关名', type: 'wideString' }, { name: '开关值', type: 'wideString' }], 'int', '向可写命令行末尾添加带值开关；名称由CEF规范化为小写，开关值允许为空文本。', { visibility: 'advanced' }),
+  api('CEF3命令行_取开关值', 'CefCommandLine::GetSwitchValue', [{ name: '命令行句柄', type: 'longLong' }, { name: '开关名', type: 'wideString' }], 'wideString', '读取指定开关的UTF-16值；开关不存在或没有值时返回空文本。', { visibility: 'advanced' }),
+  api('CEF3命令行_移除开关', 'CefCommandLine::RemoveSwitch', [{ name: '命令行句柄', type: 'longLong' }, { name: '开关名', type: 'wideString' }], 'int', '从可写命令行中移除指定开关；不存在时保持成功。', { visibility: 'advanced' }),
+  api('CEF3命令行_是否有参数', 'CefCommandLine::HasArguments', [{ name: '命令行句柄', type: 'longLong' }], 'int', '判断命令行中是否存在非开关参数。', { visibility: 'advanced' }),
+  api('CEF3命令行_添加参数', 'CefCommandLine::AppendArgument', [{ name: '命令行句柄', type: 'longLong' }, { name: '参数', type: 'wideString' }], 'int', '向可写命令行末尾添加一个UTF-16参数；允许显式添加空参数。', { visibility: 'advanced' }),
+  api('CEF3命令行_重置', 'CefCommandLine::Reset', [{ name: '命令行句柄', type: 'longLong' }], 'int', '清空可写命令行的全部开关和参数，但保留程序部分。', { visibility: 'advanced' }),
+  api('CEF3命令行_取参数向量', 'CefCommandLine::GetArgv', [{ name: '命令行句柄', type: 'longLong' }], 'CEF3文本数组', '返回原始命令行向量，依次包含程序、开关、分隔符和普通参数。', { visibility: 'advanced' }),
+  api('CEF3命令行_取参数列表', 'CefCommandLine::GetArguments', [{ name: '命令行句柄', type: 'longLong' }], 'CEF3文本数组', '返回全部非开关参数，不包含程序和开关。', { visibility: 'advanced' }),
+  api('CEF3命令行_取开关列表', 'CefCommandLine::GetSwitches', [{ name: '命令行句柄', type: 'longLong' }], 'CEF3命令行开关数组', '返回名称已规范化为小写的开关记录数组；无值开关的值为空文本。', { visibility: 'advanced' }),
+  api('CEF3命令行_前置包装器', 'CefCommandLine::PrependWrapper', [{ name: '命令行句柄', type: 'longLong' }, { name: '包装器', type: 'wideString' }], 'int', '在可写命令行前插入调试器等包装命令，例如“gdb --args”。', { visibility: 'advanced' }),
+  api('CEF3命令行_取全局', 'CefCommandLine::GetGlobalCommandLine', [], 'longLong', '取得CEF进程全局命令行的只读受管句柄；修改操作会返回只读错误。', { visibility: 'advanced' }),
+  api('CEF3命令行_释放', 'LB_CEF3_CommandLineRelease', [{ name: '命令行句柄', type: 'longLong' }], 'int', '释放CEF命令行受管句柄；释放后继续使用会返回明确错误。', { visibility: 'advanced' }),
   api('CEF3平台_取Chrome实验开关', 'CefPreferenceManager::GetChromeVariationsAsSwitches', [], 'wideString', '以JSON数组返回当前Chrome Variations命令行开关。', { visibility: 'advanced' }),
   api('CEF3平台_取Chrome实验说明', 'CefPreferenceManager::GetChromeVariationsAsStrings', [], 'wideString', '以JSON数组返回当前Chrome Variations可读说明。', { visibility: 'advanced' })
+];
+
+const platformTypes: ModuleTypeContribution[] = [
+  { name: 'CEF3文本数组', kind: 'array', elementType: '文本型', description: '由Bridge受管列表转换得到的UTF-16文本数组。' },
+  {
+    name: 'CEF3命令行开关',
+    kind: 'record',
+    description: '命令行开关的名称和值。',
+    fields: [
+      { name: '名称', type: '文本型', description: '不含前缀且已规范化为小写的开关名。' },
+      { name: '值', type: '文本型', description: '开关值；无值开关为空文本。' }
+    ]
+  },
+  { name: 'CEF3命令行开关数组', kind: 'array', elementType: 'CEF3命令行开关', description: '命令行开关记录数组。' }
+  , { name: 'CEF3任务ID数组', kind: 'array', elementType: '整数型', description: '由任务管理器返回的稳定任务ID数组。' }
+  , { name: 'CEF3任务信息', kind: 'record', description: 'CEF任务管理器返回的固定任务信息字段。', fields: [
+      { name: 'ID', type: '整数型', description: '任务唯一ID。' },
+      { name: '类型', type: '整数型', description: 'CEF任务类型枚举值。' },
+      { name: '可终止', type: '逻辑型', description: '任务是否允许终止。' },
+      { name: '标题', type: '文本型', description: '任务显示标题。' },
+      { name: 'CPU占用', type: '双精度小数型', description: '任务进程CPU占用。' },
+      { name: '处理器数量', type: '整数型', description: '系统可用处理器数量。' },
+      { name: '内存字节数', type: '整数型', description: '任务内存占用，-1表示不可用。' },
+      { name: 'GPU内存字节数', type: '整数型', description: 'GPU内存占用，-1表示不可用。' },
+      { name: 'GPU内存已合并', type: '逻辑型', description: 'GPU资源是否包含其它进程。' }
+    ] }
+  , { name: 'CEF3组件记录', kind: 'record', description: '组件更新器返回的组件快照字段。', fields: [
+      { name: 'ID', type: '文本型', description: '组件唯一标识。' },
+      { name: '名称', type: '文本型', description: '组件人类可读名称，未安装时可能为空。' },
+      { name: '版本', type: '文本型', description: '组件版本文本，未安装时可能为空。' },
+      { name: '状态', type: '整数型', description: 'CEF组件状态枚举值。' }
+    ] }
+  , { name: 'CEF3组件数组', kind: 'array', elementType: 'CEF3组件记录', description: '组件更新器返回的组件快照数组。' }
 ];
 
 export const CEF3_SUBMODULES: LingBuilderModuleManifest[] = [
@@ -340,9 +508,9 @@ export const CEF3_SUBMODULES: LingBuilderModuleManifest[] = [
   module('lingbuilder.cef3.objects', 'CEF3受管对象模块', '系统', '提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。', objectEntries),
   module('lingbuilder.cef3.session', 'CEF3会话模块', '网络', '提供每实例RequestContext、缓存和Cookie隔离会话能力。', sessionEntries, true),
   module('lingbuilder.cef3.network', 'CEF3网络模块', '网络', '提供实例级代理及后续请求/响应扩展入口。', networkEntries),
-  module('lingbuilder.cef3.transfer', 'CEF3传输模块', '网络', '提供下载和打印能力。', transferEntries),
+  module('lingbuilder.cef3.transfer', 'CEF3传输模块', '网络', '提供下载、打印、受管二进制流和读写处理器能力。', transferEntries, true, transferTypes),
   module('lingbuilder.cef3.automation', 'CEF3自动化模块', '系统', '提供异步JavaScript任务及后续DOM/V8能力。', automationEntries, true),
   module('lingbuilder.cef3.devtools', 'CEF3开发者工具模块', '系统', '提供受设计器策略控制的DevTools入口。', devtoolsEntries),
   module('lingbuilder.cef3.views', 'CEF3视图模块', '界面', '提供Chrome Runtime独立窗口入口。', viewsEntries),
-  module('lingbuilder.cef3.platform', 'CEF3平台工具模块', '系统', '提供CEF版本与平台工具能力。', platformEntries)
+  module('lingbuilder.cef3.platform', 'CEF3平台工具模块', '系统', '提供CEF版本与平台工具能力。', platformEntries, false, platformTypes)
 ];

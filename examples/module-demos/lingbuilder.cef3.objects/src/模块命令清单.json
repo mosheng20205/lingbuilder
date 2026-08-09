@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.789Z",
+  "generatedAt": "2026-08-07T08:51:35.733Z",
   "module": {
     "id": "lingbuilder.cef3.objects",
     "name": "CEF3受管对象模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。"
   },
   "commandCount": 183,

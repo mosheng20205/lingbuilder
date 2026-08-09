@@ -17,7 +17,7 @@ const LEGACY_PACKAGE_SCHEMA_VERSION = 1;
 const MINIMUM_GENERATOR_VERSION = '0.2.5';
 // Keep package compatibility checks inside the desktop package boundary. This
 // must match the desktop generator version and cannot import renderer services.
-const CURRENT_GENERATOR_VERSION = '0.2.9';
+const CURRENT_GENERATOR_VERSION = '0.3.0';
 const LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION = '0.2.7';
@@ -303,7 +303,7 @@ export class LcppSourcePackageService {
         warnings
       };
     } finally {
-      await fs.rm(temporaryRoot, { recursive: true, force: true });
+      await fs.rm(temporaryRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     }
   }
 
@@ -312,7 +312,7 @@ export class LcppSourcePackageService {
     try {
       return extracted.preview;
     } finally {
-      await fs.rm(extracted.temporaryRoot, { recursive: true, force: true });
+      await fs.rm(extracted.temporaryRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     }
   }
 
@@ -340,8 +340,10 @@ export class LcppSourcePackageService {
       });
       return { ...extracted.preview, ok: true, workspacePath, solutionEntryPath };
     } finally {
-      if (temporaryDestination) await fs.rm(temporaryDestination, { recursive: true, force: true });
-      await fs.rm(extracted.temporaryRoot, { recursive: true, force: true });
+      if (temporaryDestination) {
+        await fs.rm(temporaryDestination, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+      }
+      await fs.rm(extracted.temporaryRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     }
   }
 
@@ -501,6 +503,7 @@ async function readInstalledModules(workspaceRoot: string): Promise<Map<string, 
     const manifestPath = path.join(installPath, 'lingbuilder.module.json');
     try {
       const manifest = validatePortableModuleManifest(JSON.parse(await fs.readFile(manifestPath, 'utf8')));
+      if (entry.name !== manifest.id) continue;
       result.set(manifest.id, { manifest, installPath });
     } catch {
       // 未启用或损坏的安装目录不会进入源码包；已启用时会被当作缺失模块处理。
@@ -663,7 +666,7 @@ async function extractAndValidatePackage(packagePath: string): Promise<Extracted
       }
     };
   } catch (error) {
-    await fs.rm(temporaryRoot, { recursive: true, force: true });
+    await fs.rm(temporaryRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     throw error;
   }
 }
@@ -916,7 +919,11 @@ function isWithin(root: string, target: string): boolean {
 }
 
 function shouldSkipDirectory(name: string): boolean {
-  return ['.git', '.svn', '.hg', 'node_modules', '.lingbuilder-build', 'generated', 'dist', 'release'].includes(name.toLowerCase());
+  return [
+    '.git', '.svn', '.hg', 'node_modules', '.lingbuilder-build', 'generated', 'dist', 'release',
+    '.cache', 'cache', 'browser-cache', 'browser-data', 'profiles', 'user-data', 'userdata',
+    'local storage', 'localstorage', 'session storage', 'sessionstorage', 'indexeddb'
+  ].includes(name.toLowerCase());
 }
 
 function isSensitiveFile(relativePath: string): boolean {
@@ -924,7 +931,8 @@ function isSensitiveFile(relativePath: string): boolean {
   return /^\.env(?:\..+)?$/u.test(name)
     || /^(?:id_rsa|id_ed25519)(?:\.pub)?$/u.test(name)
     || /\.(?:pem|pfx|p12|key|kdbx)$/u.test(name)
-    || /^(?:credentials?|secrets?|tokens?)(?:[._-].*)?\.json$/u.test(name);
+    || /^(?:credentials?|secrets?|tokens?)(?:[._-].*)?\.json$/u.test(name)
+    || /^(?:.*[._-])?cookies?(?:[._-].*)?\.json$/u.test(name);
 }
 
 function safeFileName(value: string): string {

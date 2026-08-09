@@ -5,6 +5,13 @@ export interface TabControlPage {
   id: string;
   title: string;
   image: number;
+  icon?: string;
+  closable?: boolean;
+  disabled?: boolean;
+  pinned?: boolean;
+  loading?: boolean;
+  muted?: boolean;
+  alerting?: boolean;
 }
 
 export type TabControlPageMutation =
@@ -45,7 +52,14 @@ export function normalizeTabControlPages(value: Win32ControlPropertyValue | unde
     return {
       id: String(record.id ?? `page${index + 1}`),
       title: String(record.title ?? record.label ?? record.name ?? `标签页 ${index + 1}`),
-      image: finiteImage(record.image)
+      image: finiteImage(record.image),
+      icon: String(record.icon ?? ''),
+      closable: record.closable !== false,
+      disabled: record.disabled === true,
+      pinned: record.pinned === true,
+      loading: record.loading === true,
+      muted: record.muted === true,
+      alerting: record.alerting === true
     };
   });
 }
@@ -61,7 +75,7 @@ function nextPageId(pages: TabControlPage[]): string {
 
 export function appendTabControlPage(pages: TabControlPage[]): TabControlPage[] {
   const index = pages.length + 1;
-  return [...pages, { id: nextPageId(pages), title: `标签页 ${index}`, image: -1 }];
+  return [...pages, { id: nextPageId(pages), title: `标签页 ${index}`, image: -1, icon: '', closable: true, disabled: false, pinned: false, loading: false, muted: false, alerting: false }];
 }
 
 export function duplicateTabControlPage(pages: TabControlPage[], index: number): TabControlPage[] {
@@ -86,11 +100,25 @@ export function removeTabControlPage(pages: TabControlPage[], index: number): Ta
 
 export function getTabControlPages(control: LingControl): TabControlPage[] {
   if (!isTabContainerControl(control)) return [];
+  if (isNewEmojiTabsControl(control)) {
+    const rawItems = control.properties?.items;
+    const itemPages = normalizeTabControlPages(rawItems);
+    const legacyPages = normalizeTabControlPages(control.properties?.tabs);
+    const hasStructuredItems = Array.isArray(rawItems)
+      && rawItems.some(item => item !== null && typeof item === 'object');
+    if (hasStructuredItems && itemPages.length > 0) return itemPages;
+    if (legacyPages.length > 0) {
+      return legacyPages.map((page, index) => itemPages[index]
+        ? { ...page, title: itemPages[index].title }
+        : page);
+    }
+    if (itemPages.length > 0) return itemPages;
+  }
   const stablePages = normalizeTabControlPages(control.properties?.tabs);
   const pages = stablePages.length > 0
     ? stablePages
     : normalizeTabControlPages(control.properties?.items);
-  return pages.length > 0 ? pages : [{ id: 'page1', title: '标签页 1', image: -1 }];
+  return pages.length > 0 ? pages : [{ id: 'page1', title: '标签页 1', image: -1, icon: '', closable: true, disabled: false, pinned: false, loading: false, muted: false, alerting: false }];
 }
 
 export function getSelectedTabPage(control: LingControl): TabControlPage | undefined {

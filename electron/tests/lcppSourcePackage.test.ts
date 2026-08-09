@@ -41,6 +41,9 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   await fs.mkdir(path.join(workspace, 'assets'), { recursive: true });
   await fs.writeFile(path.join(workspace, 'assets', '说明.txt'), '资源内容', 'utf8');
   await fs.writeFile(path.join(workspace, 'src', '.env'), 'API_KEY=secret', 'utf8');
+  await fs.writeFile(path.join(workspace, 'config', 'current-cookies.json'), '{"cookies":[{"value":"secret"}]}', 'utf8');
+  await fs.mkdir(path.join(workspace, 'config', 'profiles', 'browser-private', 'IndexedDB'), { recursive: true });
+  await fs.writeFile(path.join(workspace, 'config', 'profiles', 'browser-private', 'IndexedDB', 'private.data'), 'secret', 'utf8');
   const unrelatedSdkRoot = path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.cef3.sdk');
   await fs.mkdir(unrelatedSdkRoot, { recursive: true });
   await fs.writeFile(path.join(unrelatedSdkRoot, 'lingbuilder.module.json'), JSON.stringify({
@@ -58,6 +61,8 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   assert.equal(exported.ok, true);
   assert.equal(exported.lcppFileCount, 3);
   assert.ok(exported.manifest.excludedSensitiveFiles.includes('src/.env'));
+  assert.ok(exported.manifest.excludedSensitiveFiles.includes('config/current-cookies.json'));
+  assert.ok(!exported.manifest.files.some(file => file.path.includes('/profiles/')));
   assert.ok(!exported.manifest.bundledSupportModuleIds.includes('lingbuilder.cef3.sdk'));
   assert.ok((await fs.stat(packagePath)).isFile());
 
@@ -74,6 +79,8 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   assert.ok(await exists(path.join(imported.workspacePath, 'src', '项目数据类型.lcpp')));
   assert.equal(await fs.readFile(path.join(imported.workspacePath, 'assets', '说明.txt'), 'utf8'), '资源内容');
   await assert.rejects(fs.access(path.join(imported.workspacePath, 'src', '.env')));
+  await assert.rejects(fs.access(path.join(imported.workspacePath, 'config', 'current-cookies.json')));
+  await assert.rejects(fs.access(path.join(imported.workspacePath, 'config', 'profiles')));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'window-designer.json')));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'project-modules.json')));
   assert.deepEqual(JSON.parse(await fs.readFile(path.join(imported.workspacePath, '.lingbuilder', 'build-configuration.json'), 'utf8')), {
@@ -260,6 +267,17 @@ test('LCPP 源码包隔离携带已启用的第三方模块', async t => {
     category: '界面',
     description: '启用 FBro 浏览器时应随源码包携带。'
   }, null, 2), 'utf8');
+  const staleSupportModuleRoot = path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk.staging-999');
+  await fs.mkdir(staleSupportModuleRoot, { recursive: true });
+  await fs.writeFile(path.join(staleSupportModuleRoot, 'lingbuilder.module.json'), JSON.stringify({
+    schemaVersion: 2,
+    id: 'lingbuilder.fbro.sdk',
+    name: 'FBro 过期暂存 SDK',
+    version: '0.9.0',
+    category: '界面',
+    description: '暂存目录不能覆盖正式安装目录。'
+  }, null, 2), 'utf8');
+  await fs.writeFile(path.join(staleSupportModuleRoot, 'stale.marker'), 'stale', 'utf8');
   await fs.writeFile(path.join(workspace, '.lingbuilder', 'project-modules.json'), JSON.stringify({
     schemaVersion: 1,
     enabledModuleIds: ['lingbuilder.win32.basic', 'lingbuilder.fbro.browser', moduleId],
@@ -275,6 +293,9 @@ test('LCPP 源码包隔离携带已启用的第三方模块', async t => {
   const imported = await service.importPackage(packagePath, path.join(root, 'imports'));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'modules', moduleId, 'lingbuilder.module.json')));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'lingbuilder.module.json')));
+  const importedSupportManifest = JSON.parse(await fs.readFile(path.join(imported.workspacePath, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'lingbuilder.module.json'), 'utf8'));
+  assert.equal(importedSupportManifest.version, '1.0.0');
+  assert.ok(!await exists(path.join(imported.workspacePath, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'stale.marker')));
   const refs = JSON.parse(await fs.readFile(path.join(imported.workspacePath, '.lingbuilder', 'project-modules.json'), 'utf8'));
   assert.ok(refs.enabledModuleIds.includes(moduleId));
   assert.equal(refs.pinnedVersions[moduleId], '1.2.3');

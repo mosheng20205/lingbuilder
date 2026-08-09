@@ -3,6 +3,12 @@ import type { LingControl, LingDesignerResource, LingWindowModel, LingWindowProj
 import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
 import { normalizeIdentifier, parseLingCpp } from './parser';
 import type { LingCppDiagnostic } from './types';
+import {
+  getRuntimeControlCommandReturnType,
+  getRuntimeControlVariablesAtLine,
+  isRuntimeControlTypeCompatibleWithParameter,
+  type LingCppRuntimeControlVariable
+} from './runtimeControlTypeService';
 
 export interface LingCppControlSymbol {
   projectId: string;
@@ -37,12 +43,14 @@ export interface LingCppControlReference {
   candidates: LingCppControlSymbol[];
   status:
     | 'resolved'
+    | 'runtime-reference'
     | 'missing'
     | 'ambiguous'
     | 'invalid-expression'
     | 'incompatible-kind'
     | 'incompatible-type'
     | 'scope-mismatch';
+  runtimeType?: string;
 }
 
 export interface LingCppControlReferenceCompletion {
@@ -50,6 +58,8 @@ export interface LingCppControlReferenceCompletion {
   parameterIndex: number;
   parameter: ModuleCommandBindingParameter;
   symbols: LingCppControlSymbol[];
+  runtimeVariables: LingCppRuntimeControlVariable[];
+  acceptsCurrentWindow: boolean;
 }
 
 export interface LingCppControlReferenceSourceFile {
@@ -108,7 +118,7 @@ export function getLingCppControlReferences(
   moduleContext?: LingCppModuleContext,
   filePath?: string
 ): LingCppControlReference[] {
-  if (!project || !moduleContext) return [];
+  if (!moduleContext) return [];
   const bindings = buildBindingIndex(moduleContext);
   const lineStarts = getLineStarts(source);
   return parseInvocations(source).flatMap(invocation => {
@@ -206,7 +216,7 @@ export function getLingCppControlReferenceDiagnostics(
       id: `lingcpp-control-reference-type-${reference.range.startOffset}`,
       ...base,
       level: 'error' as const,
-      message: `控件“${reference.name}”的类型是 ${reference.symbol?.controlType || '未知'}，不能用于参数“${reference.parameter.name}”。`,
+      message: `控件“${reference.name}”的类型是 ${reference.runtimeType || reference.symbol?.controlType || '未知'}，不能用于参数“${reference.parameter.name}”。`,
       suggestion: `此参数允许：${reference.parameter.controlTypes?.join('、') || '兼容控件'}。`
     });
     else if (reference.status === 'invalid-expression') diagnostics.push({
@@ -239,7 +249,7 @@ export function getLingCppControlReferenceCompletion(
   moduleContext?: LingCppModuleContext,
   filePath?: string
 ): LingCppControlReferenceCompletion | undefined {
-  if (!project || !moduleContext) return undefined;
+  if (!moduleContext) return undefined;
   const offset = offsetAt(source, line, column);
   const bindingIndex = buildBindingIndex(moduleContext);
   const invocation = parseInvocations(source).find(item => item.arguments.some(argument => offset >= argument.startOffset && offset <= argument.endOffset + 1));
@@ -252,10 +262,13 @@ export function getLingCppControlReferenceCompletion(
     commandName: resolvedBinding?.canonicalName || invocation.name,
     parameterIndex: argumentIndex,
     parameter,
-    symbols: filterCompatibleSymbols(
+    symbols: project ? filterCompatibleSymbols(
       getLingCppControlSymbols(project, source, filePath, parameter.scope || 'currentWindow', moduleContext),
       parameter
-    )
+    ) : [],
+    runtimeVariables: getRuntimeControlVariablesAtLine(source, line, moduleContext)
+      .filter(variable => isRuntimeControlTypeCompatibleWithParameter(variable.type, parameter, moduleContext)),
+    acceptsCurrentWindow: acceptsCurrentWindowReference(parameter)
   };
 }
 
@@ -295,7 +308,7 @@ export function getLingCppControlReferenceLocations(
 
 export function renameLingCppControlReference(
   sources: readonly LingCppControlReferenceSourceFile[],
-  project: LingWindowProject,
+  project: LingWindowProject | undefined,
   moduleContext: LingCppModuleContext,
   symbol: LingCppControlSymbol,
   newName: string
@@ -367,6 +380,32 @@ function resolveControlReference(
   const quotedMatch = rawText.match(/^["“]([\s\S]*)["”]$/u);
   const identifierMatch = rawText.match(/^[\p{L}_][\p{L}\p{N}_]*$/u);
   const name = (quotedMatch?.[1] || identifierMatch?.[0] || '').trim();
+  const range = rangeFromOffsets(lineStarts, startOffset, endOffset);
+  const runtimeVariable = identifierMatch
+    ? getRuntimeControlVariablesAtLine(source, range.startLine, moduleContext)
+      .find(variable => normalizeIdentifier(variable.name) === normalizeIdentifier(identifierMatch[0]))
+    : undefined;
+  const runtimeCallName = rawText.match(/^([\p{L}_][\p{L}\p{N}_]*)\s*[（(]/u)?.[1];
+  const runtimeType = runtimeVariable?.type
+    || (runtimeCallName ? getRuntimeControlCommandReturnType(runtimeCallName, moduleContext) : undefined)
+    || (rawText === '当前窗口' && acceptsCurrentWindowReference(parameter) ? '控件容器' : undefined);
+  if (runtimeType) {
+    const compatible = runtimeType === '控件容器'
+      || isRuntimeControlTypeCompatibleWithParameter(runtimeType, parameter, moduleContext);
+    return {
+      commandName,
+      canonicalCommandName,
+      parameterIndex,
+      parameter,
+      rawText,
+      name: identifierMatch?.[0] || runtimeCallName || rawText,
+      quoted: false,
+      range,
+      candidates: [],
+      status: compatible ? 'runtime-reference' : 'incompatible-type',
+      runtimeType
+    };
+  }
   const scope = parameter.scope || 'currentWindow';
   const allProjectSymbols = getLingCppControlSymbols(project, source, filePath, 'project', moduleContext);
   const allScopeSymbols = scope === 'project'
@@ -405,11 +444,16 @@ function resolveControlReference(
     rawText,
     name,
     quoted: Boolean(quotedMatch),
-    range: rangeFromOffsets(lineStarts, startOffset, endOffset),
+    range,
     symbol,
     candidates: compatible.length ? compatible : kindCompatible.length ? kindCompatible : scopeCandidates,
     status
   };
+}
+
+function acceptsCurrentWindowReference(parameter: ModuleCommandBindingParameter): boolean {
+  return /^(父级|父元素ID|parent_id)$/u.test(parameter.name)
+    && (parameter.runtimeRepresentation === 'nativeHandle' || parameter.runtimeRepresentation === 'stableId');
 }
 
 function filterCompatibleSymbols(symbols: LingCppControlSymbol[], parameter: ModuleCommandBindingParameter): LingCppControlSymbol[] {

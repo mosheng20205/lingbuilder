@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>FBro 弹窗接管测试</title>
+  </head>
+  <body>
+    <a id="popup-link" href="/fbro-popup-target.html" target="_blank"
+      style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font:24px sans-serif">打开目标页</a>
+    <script>
+      if (new URLSearchParams(location.search).get('auto') === '1') {
+        setTimeout(() => window.open('/fbro-popup-target.html', '_blank'), 750);
+      }
+    </script>
+  </body>
+</html>

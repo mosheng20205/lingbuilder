@@ -2,6 +2,7 @@ import { getControlDescendantIds } from './controlHierarchy';
 import { reconcileRebarBands } from './designerOperations';
 import type { DesignerContainerLayoutRegistry, DesignerLayoutTransferItem, DesignerPasteTarget } from './containerLayoutRegistry';
 import type { LingControl, LingDesignerResource, LingWindowModel, LingWindowProject } from './types';
+import { clearPastedControlTagConflicts } from './controlTagService';
 
 export const DESIGNER_CLIPBOARD_PREFIX = 'LINGBUILDER_DESIGNER_CONTROLS:';
 export const DESIGNER_CLIPBOARD_SCHEMA_VERSION = 1;
@@ -197,7 +198,7 @@ export class DesignerClipboardService {
     });
 
     const targetIsDifferentProject = payload.source.projectId !== project.id;
-    const clones = payload.controls.map(control => {
+    const clonedControls = payload.controls.map(control => {
       const rootId = findClipboardRoot(control.id, payload.rootControlIds, sourceById);
       const delta = rootDeltas.get(rootId) || { x: 0, y: 0 };
       const rootPlacement = plannedBySource.get(control.id);
@@ -221,6 +222,9 @@ export class DesignerClipboardService {
       }
       return clone;
     });
+    const tagResult = clearPastedControlTagConflicts(targetWindow.controls, clonedControls);
+    const clones = tagResult.controls;
+    warnings.push(...tagResult.warnings);
 
     const resourceIdMap = new Map<string, string>();
     const existingResourceIds = new Set((project.resources || []).map(resource => resource.id));

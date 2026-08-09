@@ -1,0 +1,66 @@
+包 ProtocolBuffers模块完整演示
+使用 Win32窗口基础模块
+使用 ProtocolBuffers模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "Protocol Buffers 模块：9 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.data.protobuf")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本(演示状态, "命令 1–9：PB_加载描述集 至 PB_释放描述集；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：PB_加载描述集
+            // [1] PB_加载描述集(路径)
+            // 功能：加载 protoc 生成的 descriptor set，成功返回描述集句柄。
+            // 参数：路径:wideString；返回：handle；可见性：default
+            PB_加载描述集("module-demo-temp.txt")
+            // 命令ID：PB_创建消息
+            // [2] PB_创建消息(描述集, 类型名)
+            // 功能：按完整消息类型名创建反射消息句柄。
+            // 参数：描述集:handle，类型名:wideString；返回：handle；可见性：default
+            PB_创建消息(0, "演示参数2")
+            // 命令ID：PB_从字节集解析
+            // [3] PB_从字节集解析(消息, 数据)
+            // 功能：把字节集解析到消息句柄。
+            // 参数：消息:handle，数据:bytes；返回：bool；可见性：default
+            PB_从字节集解析(0, {})
+            // 命令ID：PB_序列化为字节集
+            // [4] PB_序列化为字节集(消息)
+            // 功能：把消息序列化为正式字节集。
+            // 参数：消息:handle；返回：bytes；可见性：default
+            PB_序列化为字节集(0)
+            // 命令ID：PB_从JSON
+            // [5] PB_从JSON(消息, JSON)
+            // 功能：按 Protobuf JSON 语义填充消息。
+            // 参数：消息:handle，JSON:wideString；返回：bool；可见性：default
+            PB_从JSON(0, "{}")
+            // 命令ID：PB_到JSON
+            // [6] PB_到JSON(消息)
+            // 功能：按 Protobuf JSON 语义导出消息。
+            // 参数：消息:handle；返回：wideString；可见性：default
+            PB_到JSON(0)
+            // 命令ID：PB_取最后错误
+            // [7] PB_取最后错误()
+            // 功能：返回当前线程最近一次 Protobuf 错误。
+            // 参数：无；返回：wideString；可见性：default
+            PB_取最后错误()
+            // 命令ID：PB_释放消息
+            // [8] PB_释放消息(消息)
+            // 功能：释放消息句柄。
+            // 参数：消息:handle；返回：void；可见性：default
+            PB_释放消息(0)
+            // 命令ID：PB_释放描述集
+            // [9] PB_释放描述集(描述集)
+            // 功能：释放描述集句柄。
+            // 参数：描述集:handle；返回：void；可见性：default
+            PB_释放描述集(0)
+        如果结束
+        调试输出("已查看 命令 1–9：PB_加载描述集 至 PB_释放描述集；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

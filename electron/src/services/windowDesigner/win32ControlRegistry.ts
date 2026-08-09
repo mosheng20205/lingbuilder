@@ -19,7 +19,8 @@ export type Win32ControlPropertyType =
   | 'treeNodes'
   | 'tabs'
   | 'date'
-  | 'controlRef';
+  | 'controlRef'
+  | 'recordList';
 
 export type Win32ControlPropertyValue = string | number | boolean | string[] | Array<Record<string, unknown>> | null;
 
@@ -32,6 +33,23 @@ export interface Win32ControlPropertyDefinition {
   min?: number;
   max?: number;
   description?: string;
+  controlTypes?: string[];
+  controlKinds?: Array<'visual' | 'nonVisual' | 'resource'>;
+  scope?: 'currentWindow' | 'project';
+  runtimeRepresentation?: 'wideName' | 'stableId' | 'nativeHandle';
+  recordKey?: string;
+  fields?: Array<{
+    key: string;
+    label: string;
+    type: 'text' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'controlRef';
+    defaultValue?: unknown;
+    options?: Array<{ value: string; label: string }>;
+    required?: boolean;
+    controlTypes?: string[];
+    controlKinds?: Array<'visual' | 'nonVisual' | 'resource'>;
+    scope?: 'currentWindow' | 'project';
+    runtimeRepresentation?: 'wideName' | 'stableId' | 'nativeHandle';
+  }>;
 }
 
 export interface Win32ControlEventDefinition {
@@ -63,6 +81,60 @@ export interface Win32ControlDefinition {
   legacyOnly?: boolean;
   requiredLibraries?: string[];
 }
+
+export interface Win32RuntimeControlContract {
+  designerType: string;
+  lingCppType: string;
+  cppType: 'LingControlRef';
+  createCommand: string;
+  lookupByTagTextCommand: string;
+  lookupByTagIntegerCommand: string;
+  validCommand: '控件_是否有效';
+  parentKinds: Array<'window' | 'container' | 'tabPage'>;
+  tagScope: 'currentWindowAndConcreteType';
+  createParameters: Array<{
+    name: string;
+    type: string;
+    role: 'parent' | 'x' | 'y' | 'width' | 'height' | 'content' | 'tagText' | 'tagInteger';
+    optional?: boolean;
+    defaultValue?: string | number | null;
+  }>;
+}
+
+const LING_CPP_CONTROL_TYPE_NAMES: Readonly<Record<string, string>> = {
+  Button: '按钮',
+  TextBox: '编辑框',
+  Label: '标签',
+  CheckBox: '复选框',
+  RadioButton: '单选框',
+  ListBox: '列表框',
+  ComboBox: '组合框',
+  GroupBox: '分组框',
+  ScrollBar: '滚动条',
+  Image: '图片框',
+  AnimatedImage: '动态图像控件',
+  ProgressBar: '进度条',
+  ListView: '列表视图',
+  DataGrid: '数据表格',
+  TreeView: '树形视图',
+  TabControl: '选项卡',
+  Header: '表头',
+  ComboBoxEx: '增强组合框',
+  SysLink: '超链接',
+  DateTimePicker: '日期时间选择器',
+  MonthCalendar: '月历',
+  ColorPicker: '颜色选择器',
+  TrackBar: '滑块',
+  UpDown: '数值调节器',
+  HotKey: '热键输入框',
+  IPAddress: 'IP地址框',
+  ToolBar: '工具栏',
+  StatusBar: '状态栏',
+  RichEdit: '富文本框',
+  Animation: '动画控件',
+  VideoPlayer: '视频播放器',
+  FlatScrollBar: '平面滚动条'
+};
 
 const option = (value: string, label = value) => ({ value, label });
 const text = (key: string, label: string, defaultValue = ''): Win32ControlPropertyDefinition => ({ key, label, type: 'text', defaultValue });
@@ -213,14 +285,14 @@ export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
   control({ type: 'MonthCalendar', label: '月历', moduleId: 'lingbuilder.win32.common-controls', category: '日期', icon: 'CalendarDays', nativeClass: 'SysMonthCal32', nativeAdapter: 'monthcalendar', defaultProps: { content: '', width: 300, height: 300 }, properties: [{ key: 'value', label: '当前日期', type: 'date', defaultValue: '' }, bool('multiSelect', '允许范围选择')], events: [event('ValueChanged', '日期被改变', '日期被改变', 'notify')] }),
   control({ type: 'ColorPicker', label: '颜色选择器', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'Palette', nativeClass: 'BUTTON', nativeAdapter: 'color-picker', defaultProps: { content: '选择颜色', width: 180, height: 34, background: '#1E293B', foreground: '#E2E8F0' }, properties: [color('currentColor', '当前颜色', '#3B82F6'), text('dialogTitle', '对话框标题', '请选择颜色'), bool('showColorText', '显示颜色值', true)], events: [event('ColorChanged', '颜色被改变', '颜色被改变', 'command'), event('Opened', '选择窗口被打开', '选择窗口被打开', 'command'), event('Confirmed', '选择被确认', '选择被确认', 'command'), event('Cancelled', '选择被取消', '选择被取消', 'command'), event('Closed', '选择窗口被关闭', '选择窗口被关闭', 'command')] }),
   control({ type: 'TrackBar', label: '滑块', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'SlidersHorizontal', nativeClass: 'msctls_trackbar32', nativeAdapter: 'trackbar', defaultProps: { content: '', width: 220, height: 36 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 50), number('tickFrequency', '刻度间隔', 10, 1)], events: [event('ValueChanged', '数值被改变', '数值被改变', 'scroll')] }),
-  control({ type: 'UpDown', label: '数值调节器', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'ChevronsUpDown', nativeClass: 'msctls_updown32', nativeAdapter: 'updown', defaultProps: { content: '', width: 24, height: 32 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 0), { key: 'buddyControl', label: '关联编辑框', type: 'controlRef', defaultValue: '' }], events: [event('ValueChanged', '数值被改变', '数值被改变', 'notify')] }),
+  control({ type: 'UpDown', label: '数值调节器', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'ChevronsUpDown', nativeClass: 'msctls_updown32', nativeAdapter: 'updown', defaultProps: { content: '', width: 24, height: 32 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 0), { key: 'buddyControl', label: '关联编辑框', type: 'controlRef', defaultValue: '', controlTypes: ['lingbuilder.win32.basic/TextBox'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' }], events: [event('ValueChanged', '数值被改变', '数值被改变', 'notify')] }),
   control({ type: 'HotKey', label: '热键输入框', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'Command', nativeClass: 'msctls_hotkey32', nativeAdapter: 'hotkey', defaultProps: { content: '', width: 160, height: 30 }, properties: [hotkey('hotKey', '默认热键')], events: [event('ValueChanged', '热键被改变', '热键被改变', 'command')] }),
   control({ type: 'IPAddress', label: 'IP 地址框', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'Network', nativeClass: 'SysIPAddress32', nativeAdapter: 'ipaddress', defaultProps: { content: '127.0.0.1', width: 180, height: 30 }, properties: [text('address', 'IP 地址', '127.0.0.1'), { key: 'verticalAlign', label: '文字垂直对齐方式', type: 'enum', defaultValue: 'center', options: [option('top', '顶部对齐'), option('center', '居中'), option('bottom', '底部对齐')] }, number('borderWidth', '边框粗细', 1, 0, 8), color('borderColor', '边框颜色', '#64748B')], events: [event('ValueChanged', '地址被改变', '地址被改变', 'notify')] }),
   control({ type: 'ToolBar', label: '工具栏', moduleId: 'lingbuilder.win32.common-controls', category: '外壳', icon: 'PanelTop', nativeClass: 'ToolbarWindow32', nativeAdapter: 'toolbar', defaultProps: { content: '', width: 480, height: 34 }, properties: [{ key: 'buttons', label: '按钮集合', type: 'columns', defaultValue: [] }, text('imageListId', '图像列表 ID')], events: [event('Click', '按钮被单击', '工具栏按钮被单击', 'command')] }),
   control({ type: 'StatusBar', label: '状态栏', moduleId: 'lingbuilder.win32.common-controls', category: '外壳', icon: 'PanelBottom', nativeClass: 'msctls_statusbar32', nativeAdapter: 'statusbar', defaultProps: { content: '就绪', width: 480, height: 24 }, properties: [{ key: 'parts', label: '分区集合', type: 'columns', defaultValue: [] }, STATUS_TEXT_ALIGN], events: [event('DoubleClick', '分区被双击', '状态栏分区被双击', 'notify')] }),
-  nonVisual({ type: 'ToolTip', label: '工具提示', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'MessageSquareText', nativeClass: 'tooltips_class32', nativeAdapter: 'tooltip', defaultProps: { content: '提示文字', width: 120, height: 30 }, properties: [text('text', '提示文字', '提示文字'), { key: 'targetControlId', label: '目标控件', type: 'controlRef', defaultValue: '' }, number('initialDelay', '显示延迟', 500, 0)], events: [] }),
-  nonVisual({ type: 'FileDialog', label: '文件对话框', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'FolderOpen', nativeClass: 'IFileOpenDialog', nativeAdapter: 'file-dialog-resource', defaultProps: { content: '选择文件', width: 0, height: 0 }, properties: [text('ownerWindowId', '所属窗口'), { key: 'triggerControlId', label: '打开控件', type: 'controlRef', defaultValue: '' }, { key: 'dropTargetId', label: '拖放目标', type: 'controlRef', defaultValue: '' }, text('title', '窗口标题', '选择文件'), text('filter', '文件类型', '所有文件|*.*'), bool('multiple', '允许多选'), bool('allowDrop', '允许拖拽')], events: [event('FilesSelected', '文件已选择', '文件已选择', 'notify'), event('FilesDropped', '文件被拖入', '文件被拖入', 'notify'), event('Cancelled', '选择被取消', '选择被取消', 'notify')] }),
-  nonVisual({ type: 'ContextMenu', label: '上下文菜单', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'Menu', nativeClass: 'HMENU', nativeAdapter: 'context-menu-resource', defaultProps: { content: '菜单项', width: 0, height: 0 }, properties: [text('ownerWindowId', '所属窗口'), { key: 'targetControlId', label: '右键目标', type: 'controlRef', defaultValue: '' }, { key: 'items', label: '菜单项', type: 'columns', defaultValue: [] }], events: [event('ItemSelected', '菜单项被选择（逐项绑定）', '菜单项被选择', 'command')] }),
+  nonVisual({ type: 'ToolTip', label: '工具提示', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'MessageSquareText', nativeClass: 'tooltips_class32', nativeAdapter: 'tooltip', defaultProps: { content: '提示文字', width: 120, height: 30 }, properties: [text('text', '提示文字', '提示文字'), { key: 'targetControlId', label: '目标控件', type: 'controlRef', defaultValue: '', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' }, number('initialDelay', '显示延迟', 500, 0)], events: [] }),
+  nonVisual({ type: 'FileDialog', label: '文件对话框', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'FolderOpen', nativeClass: 'IFileOpenDialog', nativeAdapter: 'file-dialog-resource', defaultProps: { content: '选择文件', width: 0, height: 0 }, properties: [text('ownerWindowId', '所属窗口'), { key: 'triggerControlId', label: '打开控件', type: 'controlRef', defaultValue: '', controlTypes: ['lingbuilder.win32.basic/Button', 'lingbuilder.win32.basic/Label', 'lingbuilder.win32.common-controls/SysLink'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' }, { key: 'dropTargetId', label: '拖放目标', type: 'controlRef', defaultValue: '', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' }, text('title', '窗口标题', '选择文件'), text('filter', '文件类型', '所有文件|*.*'), bool('multiple', '允许多选'), bool('allowDrop', '允许拖拽')], events: [event('FilesSelected', '文件已选择', '文件已选择', 'notify'), event('FilesDropped', '文件被拖入', '文件被拖入', 'notify'), event('Cancelled', '选择被取消', '选择被取消', 'notify')] }),
+  nonVisual({ type: 'ContextMenu', label: '上下文菜单', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'Menu', nativeClass: 'HMENU', nativeAdapter: 'context-menu-resource', defaultProps: { content: '菜单项', width: 0, height: 0 }, properties: [text('ownerWindowId', '所属窗口'), { key: 'targetControlId', label: '右键目标', type: 'controlRef', defaultValue: '', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'stableId' }, { key: 'items', label: '菜单项', type: 'columns', defaultValue: [] }], events: [event('ItemSelected', '菜单项被选择（逐项绑定）', '菜单项被选择', 'command')] }),
   nonVisual({ type: 'PopupMenu', label: '弹出菜单', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'PanelTopOpen', nativeClass: 'HMENU', nativeAdapter: 'popup-menu-resource', defaultProps: { content: '菜单项', width: 0, height: 0 }, properties: [text('ownerWindowId', '所属窗口'), { key: 'items', label: '菜单项', type: 'columns', defaultValue: [] }], events: [event('ItemSelected', '菜单项被选择（逐项绑定）', '菜单项被选择', 'command')] }),
   nonVisual({ type: 'ImageList', label: '图像列表资源', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'Images', nativeClass: 'HIMAGELIST', nativeAdapter: 'imagelist', defaultProps: { content: '', width: 0, height: 0 }, properties: [{ key: 'images', label: '图片集合', type: 'stringList', defaultValue: [] }, number('imageWidth', '图片宽度', 16, 1), number('imageHeight', '图片高度', 16, 1)], events: [] }),
   control({ type: 'ReBar', label: 'Rebar 容器（旧项目兼容）', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'Rows3', nativeClass: 'ReBarWindow32', nativeAdapter: 'rebar', defaultProps: { content: '', width: 480, height: 42 }, properties: [{ key: 'bands', label: '带区集合', type: 'columns', defaultValue: [] }, bool('autoBindChildren', '自动绑定子控件', true), bool('locked', '锁定带区'), bool('showGrippers', '显示拖动柄', true), bool('fixedHeight', '固定带区高度'), bool('showBandBorders', '显示带区边框')], events: [event('BandDragStarted', '开始拖动带区', '带区开始拖动', 'notify'), event('BandDragEnded', '结束拖动带区', '带区结束拖动', 'notify'), event('HeightChanged', '高度被改变', '高度被改变', 'notify'), event('LayoutChanged', '布局被改变', '布局被改变', 'notify')], isContainer: true, legacyOnly: true }),
@@ -256,7 +328,7 @@ export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
     events: EDGEVIEW_CONTROL_EVENTS, requiredLibraries: ['ole32.lib']
   }),
   control({ type: 'CefBrowser', label: 'CEF3浏览器', moduleId: 'lingbuilder.cef3.browser', category: '媒体', icon: 'Globe', nativeClass: 'STATIC', nativeAdapter: 'cef3-browser', defaultProps: { content: 'CEF3浏览器', width: 480, height: 320, background: '#FFFFFF' }, properties: [text('url', '打开地址', 'https://www.baidu.com'), text('cacheDir', '缓存目录', '.cef3/cache'), text('userAgent', 'User-Agent 标识'), bool('enableJs', '启用 JavaScript', true), bool('enableDevTools', '允许开发者工具', true), bool('loadImages', '加载图片', true), bool('enableWebGL', '启用 WebGL'), bool('muteAudio', '静音'), enumProp('proxyMode', '代理模式', 'system', ['system', 'none', 'custom'], { system: '跟随系统', none: '不使用代理', custom: '自定义' }), text('proxyServer', '自定义代理地址')], events: CEF3_CONTROL_EVENTS, requiredLibraries: ['libcef.lib', 'libcef_dll_wrapper.lib'] }),
-  control({ type: 'FBroBrowser', label: 'FBro指纹浏览器', moduleId: 'lingbuilder.fbro.browser', category: '媒体', icon: 'Fingerprint', nativeClass: 'STATIC', nativeAdapter: 'fbro-browser', defaultProps: { content: 'FBro指纹浏览器', width: 480, height: 320, background: '#FFFFFF' }, properties: [text('url', '打开地址', 'https://www.baidu.com'), text('cacheDir', '独立缓存目录'), text('userAgent', 'User-Agent 标识'), bool('enableJs', '启用 JavaScript', true), bool('loadImages', '加载图片', true), bool('enableWebGL', '启用 WebGL', true), bool('muteAudio', '静音'), enumProp('proxyMode', '代理模式', 'system', ['system', 'none', 'custom'], { system: '跟随系统', none: '不使用代理', custom: '自定义' }), text('proxyServer', '自定义代理地址'), text('fingerprintProfile', '指纹配置 JSON')], events: FBRO_CONTROL_EVENTS, requiredLibraries: ['LingBuilderFbroBridge.lib'] })
+  control({ type: 'FBroBrowser', label: 'FBro指纹浏览器', moduleId: 'lingbuilder.fbro.browser', category: '媒体', icon: 'Fingerprint', nativeClass: 'STATIC', nativeAdapter: 'fbro-browser', defaultProps: { content: 'FBro指纹浏览器', width: 480, height: 320, background: '#FFFFFF' }, properties: [enumProp('processMode', '进程模式', 'in-process', ['in-process', 'independent-embedded', 'independent-window'], { 'in-process': '进程内', 'independent-embedded': '独立进程嵌入', 'independent-window': '独立进程窗口' }), text('url', '打开地址', 'https://www.baidu.com'), text('cacheDir', '独立缓存目录'), text('userAgent', 'User-Agent 标识'), bool('enableJs', '启用 JavaScript', true), bool('enableDevTools', '启用开发者工具', true), bool('loadImages', '加载图片', true), bool('enableWebGL', '启用 WebGL', true), bool('muteAudio', '静音'), enumProp('proxyMode', '代理模式', 'system', ['system', 'none', 'custom'], { system: '跟随系统', none: '不使用代理', custom: '自定义' }), text('proxyServer', '自定义代理地址'), text('fingerprintProfile', '指纹配置 JSON')], events: FBRO_CONTROL_EVENTS, requiredLibraries: ['LingBuilderFbroBridge.lib'] })
 ];
 
 WIN32_CONTROL_DEFINITIONS.forEach(definition => {
@@ -295,6 +367,40 @@ export function getWin32ControlDefinition(type: string): Win32ControlDefinition 
 
 export function getWin32ControlsForModule(moduleId: Win32ControlModuleId): Win32ControlDefinition[] {
   return WIN32_CONTROL_DEFINITIONS.filter(definition => definition.moduleId === moduleId && !definition.legacyOnly);
+}
+
+export function getWin32RuntimeControlContract(definition: Win32ControlDefinition): Win32RuntimeControlContract | undefined {
+  if (definition.isVisual === false || definition.legacyOnly) return undefined;
+  if (definition.moduleId !== 'lingbuilder.win32.basic' && definition.moduleId !== 'lingbuilder.win32.common-controls') return undefined;
+  const lingCppType = LING_CPP_CONTROL_TYPE_NAMES[definition.type];
+  if (!lingCppType) return undefined;
+  return {
+    designerType: definition.type,
+    lingCppType,
+    cppType: 'LingControlRef',
+    createCommand: `控件_创建${lingCppType}`,
+    lookupByTagTextCommand: `通过标记文本获取${lingCppType}`,
+    lookupByTagIntegerCommand: `通过标记整数获取${lingCppType}`,
+    validCommand: '控件_是否有效',
+    parentKinds: ['window', 'container', 'tabPage'],
+    tagScope: 'currentWindowAndConcreteType',
+    createParameters: [
+      { name: '父级', type: '控件容器', role: 'parent' },
+      { name: '横坐标', type: 'int', role: 'x' },
+      { name: '纵坐标', type: 'int', role: 'y' },
+      { name: '宽度', type: 'int', role: 'width' },
+      { name: '高度', type: 'int', role: 'height' },
+      { name: '文本', type: 'wideString', role: 'content' },
+      { name: '标记文本', type: 'wideString', role: 'tagText', optional: true, defaultValue: '' },
+      { name: '标记整数', type: 'int', role: 'tagInteger', optional: true, defaultValue: null }
+    ]
+  };
+}
+
+export function getWin32RuntimeControlContracts(moduleId: Win32ControlModuleId): Win32RuntimeControlContract[] {
+  return getWin32ControlsForModule(moduleId)
+    .map(getWin32RuntimeControlContract)
+    .filter((contract): contract is Win32RuntimeControlContract => Boolean(contract));
 }
 
 export function getCreatableWin32ControlDefinitions(): Win32ControlDefinition[] {

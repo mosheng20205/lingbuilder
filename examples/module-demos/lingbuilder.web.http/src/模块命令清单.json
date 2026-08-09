@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:26.020Z",
+  "generatedAt": "2026-08-07T08:51:35.998Z",
   "module": {
     "id": "lingbuilder.web.http",
     "name": "网页访问模块",
@@ -270,7 +270,7 @@
         ],
         "example": "网页_访问_对象(\"https://example.com\", 0)"
       },
-      "demoInvocation": "网页_访问_对象(\"https://example.com\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", \"演示参数6\", \"演示参数7\", 1, 真, 0, \"https://example.com\", 1, \"演示参数13\", \"演示参数14\", 1, 0, 真, 真, 真)"
+      "demoInvocation": "网页_访问_对象(\"https://example.com\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", \"演示参数6\", \"演示参数7\", 1, 真, {}, \"https://example.com\", 1, \"演示参数13\", \"演示参数14\", 1, 0, 真, 真, 真)"
     },
     {
       "index": 8,

@@ -309,8 +309,19 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
       '    结束',
       ''
     );
-  } else if ((manifest.bindings?.commands || []).some(binding => binding.parameters?.some(parameter => parameter.type === 'handler'))) {
-    lines.push('    事件 模块演示回调()', '        调试输出("模块演示回调已触发。")', '    结束', '');
+  } else {
+    const handlers = new Map<string, ModuleCommandBindingParameter>();
+    for (const binding of manifest.bindings?.commands || []) {
+      for (const parameter of binding.parameters || []) {
+        if (parameter.type === 'handler') handlers.set(handlerDemoName(parameter), parameter);
+      }
+    }
+    for (const [name, parameter] of handlers) {
+      const parameters = (parameter.handlerSignature?.parameterTypes || [])
+        .map((type, index) => `${type} 参数${index + 1}`)
+        .join(', ');
+      lines.push(`    事件 ${name}(${parameters})`, '        调试输出("模块演示回调已触发。")', '    结束', '');
+    }
   }
   lines.push('结束类', '');
   return lines.join('\n');
@@ -336,7 +347,7 @@ function defaultArgument(
   index: number,
   controlFixtures: readonly ControlReferenceFixture[]
 ): string {
-  if (parameter.type === 'handler') return '&模块演示回调';
+  if (parameter.type === 'handler') return `&${handlerDemoName(parameter)}`;
   if (parameter.type === 'controlRef') return selectControlReferenceFixture(parameter, controlFixtures).name;
   if (parameter.type === 'wideString' || parameter.type === 'utf8String') {
     const name = parameter.name.toLowerCase();
@@ -354,6 +365,15 @@ function defaultArgument(
   if (parameter.type === 'longLong') return '1';
   if (parameter.type === 'int') return '1';
   return '0';
+}
+
+function handlerDemoName(parameter: ModuleCommandBindingParameter): string {
+  const signature = parameter.handlerSignature;
+  if (!signature?.parameterTypes.length) return '模块演示回调';
+  const suffix = [...signature.parameterTypes, signature.returnType]
+    .map(type => safeIdentifier(type) || '值')
+    .join('_');
+  return `模块演示回调_${suffix}`;
 }
 
 function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[], newEmoji: boolean) {
@@ -553,11 +573,12 @@ function selectControlReferenceFixture(
 }
 
 function fixtureName(type: string, kind: ControlReferenceFixture['kind']): string {
-  if (kind === 'resource') return `演示${type}资源`;
+  const safeType = safeIdentifier(type) || '对象';
+  if (kind === 'resource') return `演示${safeType}资源`;
   if (type === 'Label') return '演示状态';
   if (type === 'CheckBox') return '允许实际执行';
   if (type === 'TabControl') return '命令分组选项卡';
-  return `演示${type}控件`;
+  return `演示${safeType}控件`;
 }
 
 function isBuiltinDemoFixture(fixture: ControlReferenceFixture): boolean {

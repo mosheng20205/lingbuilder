@@ -1,16 +1,160 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.794Z",
+  "generatedAt": "2026-08-07T08:51:35.737Z",
   "module": {
     "id": "lingbuilder.cef3.platform",
     "name": "CEF3平台工具模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "提供CEF版本与平台工具能力。"
   },
-  "commandCount": 4,
+  "commandCount": 72,
   "commands": [
     {
       "index": 1,
+      "name": "CEF3平台_执行任务",
+      "aliases": [
+        "CefTask::Execute"
+      ],
+      "signature": "CEF3平台_执行任务(任务句柄)",
+      "description": "执行受管任务回调并将任务标记为成功；CEF任务运行器内部也通过同一回调完成任务。",
+      "insertText": "CEF3平台_执行任务($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_执行任务",
+        "runtimeName": "LB_CEF3_TaskExecute",
+        "parameters": [
+          {
+            "name": "任务句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_执行任务(1)"
+    },
+    {
+      "index": 2,
+      "name": "CEF3平台_任务运行器延迟投递",
+      "aliases": [
+        "CefTaskRunner::PostDelayedTask"
+      ],
+      "signature": "CEF3平台_任务运行器延迟投递(任务运行器句柄, 任务句柄, 延迟毫秒数)",
+      "description": "向指定CEF任务运行器投递受管任务；任务在目标线程延迟执行，返回值表示是否成功受理。",
+      "insertText": "CEF3平台_任务运行器延迟投递($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务运行器延迟投递",
+        "runtimeName": "LB_CEF3_TaskRunnerPostDelayedTask",
+        "parameters": [
+          {
+            "name": "任务运行器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "任务句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "延迟毫秒数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_任务运行器延迟投递(1, 1, 1)"
+    },
+    {
+      "index": 3,
+      "name": "CEF3平台_任务运行器投递",
+      "aliases": [
+        "CefTaskRunner::PostTask"
+      ],
+      "signature": "CEF3平台_任务运行器投递(任务运行器句柄, 任务句柄)",
+      "description": "向指定CEF任务运行器立即异步投递受管任务；任务在目标线程执行，返回值表示是否成功受理。",
+      "insertText": "CEF3平台_任务运行器投递($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务运行器投递",
+        "runtimeName": "LB_CEF3_TaskRunnerPostTask",
+        "parameters": [
+          {
+            "name": "任务运行器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "任务句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_任务运行器投递(1, 1)"
+    },
+    {
+      "index": 4,
+      "name": "CEF3平台_全局任务投递",
+      "aliases": [
+        "cef_post_task"
+      ],
+      "signature": "CEF3平台_全局任务投递(CEF线程ID, 任务句柄)",
+      "description": "向指定公开CEF线程立即异步投递受管任务；任务在目标线程执行，返回值表示是否成功受理。",
+      "insertText": "CEF3平台_全局任务投递($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_全局任务投递",
+        "runtimeName": "LB_CEF3_PostTask",
+        "parameters": [
+          {
+            "name": "CEF线程ID",
+            "type": "int"
+          },
+          {
+            "name": "任务句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_全局任务投递(1, 1)"
+    },
+    {
+      "index": 5,
+      "name": "CEF3平台_全局延迟任务投递",
+      "aliases": [
+        "cef_post_delayed_task"
+      ],
+      "signature": "CEF3平台_全局延迟任务投递(CEF线程ID, 任务句柄, 延迟毫秒数)",
+      "description": "向指定公开CEF线程投递受管任务；任务在目标线程延迟执行，返回值表示是否成功受理。",
+      "insertText": "CEF3平台_全局延迟任务投递($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_全局延迟任务投递",
+        "runtimeName": "LB_CEF3_PostDelayedTask",
+        "parameters": [
+          {
+            "name": "CEF线程ID",
+            "type": "int"
+          },
+          {
+            "name": "任务句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "延迟毫秒数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_全局延迟任务投递(1, 1, 1)"
+    },
+    {
+      "index": 6,
       "name": "CEF3平台_取版本",
       "aliases": [
         "cef_version_info"
@@ -28,7 +172,114 @@
       "demoInvocation": "CEF3平台_取版本()"
     },
     {
-      "index": 2,
+      "index": 7,
+      "name": "CEF3平台_取退出代码",
+      "aliases": [
+        "cef_get_exit_code"
+      ],
+      "signature": "CEF3平台_取退出代码()",
+      "description": "返回CEF最近一次子进程或进程入口处理使用的退出代码；正常浏览器进程通常为0。",
+      "insertText": "CEF3平台_取退出代码()",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取退出代码",
+        "runtimeName": "CEF3平台_取退出代码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_取退出代码()"
+    },
+    {
+      "index": 8,
+      "name": "CEF3平台_是否从右到左",
+      "aliases": [
+        "cef_is_rtl"
+      ],
+      "signature": "CEF3平台_是否从右到左()",
+      "description": "判断当前CEF应用文本方向是否为从右到左；结果来自CEF当前区域设置。",
+      "insertText": "CEF3平台_是否从右到左()",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_是否从右到左",
+        "runtimeName": "CEF3平台_是否从右到左",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_是否从右到左()"
+    },
+    {
+      "index": 9,
+      "name": "CEF3平台_取系统跟踪时间",
+      "aliases": [
+        "cef_now_from_system_trace_time"
+      ],
+      "signature": "CEF3平台_取系统跟踪时间()",
+      "description": "返回CEF系统跟踪时钟值，用于与Trace事件时间戳进行同步比较。",
+      "insertText": "CEF3平台_取系统跟踪时间()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取系统跟踪时间",
+        "runtimeName": "CEF3平台_取系统跟踪时间",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_取系统跟踪时间()"
+    },
+    {
+      "index": 10,
+      "name": "CEF3平台_开始跟踪",
+      "aliases": [
+        "cef_begin_tracing"
+      ],
+      "signature": "CEF3平台_开始跟踪(类别)",
+      "description": "在CEF UI线程异步启动指定类别的性能跟踪并返回受管任务句柄；任务成功结果为 {\"started\":true}。同一时刻只能存在一个跟踪会话。",
+      "insertText": "CEF3平台_开始跟踪(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_开始跟踪",
+        "runtimeName": "LB_CEF3_BeginTracing",
+        "parameters": [
+          {
+            "name": "类别",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_开始跟踪(\"演示参数1\")"
+    },
+    {
+      "index": 11,
+      "name": "CEF3平台_结束跟踪",
+      "aliases": [
+        "cef_end_tracing"
+      ],
+      "signature": "CEF3平台_结束跟踪(输出文件)",
+      "description": "在CEF UI线程异步结束当前性能跟踪并返回受管任务句柄；空文本由CEF创建临时跟踪文件，任务成功结果为 {\"tracingFile\":\"...\"}，调用方负责删除该文件。",
+      "insertText": "CEF3平台_结束跟踪(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_结束跟踪",
+        "runtimeName": "LB_CEF3_EndTracing",
+        "parameters": [
+          {
+            "name": "输出文件",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_结束跟踪(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 12,
       "name": "CEF3平台_取MIME扩展名",
       "aliases": [
         "CefGetExtensionsForMimeType"
@@ -53,7 +304,1501 @@
       "demoInvocation": "CEF3平台_取MIME扩展名(\"演示参数1\")"
     },
     {
-      "index": 3,
+      "index": 13,
+      "name": "CEF3平台_取MIME类型",
+      "aliases": [
+        "CefGetMimeType"
+      ],
+      "signature": "CEF3平台_取MIME类型(扩展名)",
+      "description": "返回扩展名对应的MIME类型；扩展名前的点号可省略。",
+      "insertText": "CEF3平台_取MIME类型(\"$1\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取MIME类型",
+        "runtimeName": "CEF3平台_取MIME类型",
+        "parameters": [
+          {
+            "name": "扩展名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_取MIME类型(\"演示参数1\")"
+    },
+    {
+      "index": 14,
+      "name": "CEF3平台_设置可嵌套任务",
+      "aliases": [
+        "CefSetNestableTasksAllowed"
+      ],
+      "signature": "CEF3平台_设置可嵌套任务(允许)",
+      "description": "在CEF UI线程进入确定可重入的原生消息循环前启用，退出后必须立即关闭；打印等不可重入流程禁止启用。",
+      "insertText": "CEF3平台_设置可嵌套任务(假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_设置可嵌套任务",
+        "runtimeName": "CEF3平台_设置可嵌套任务",
+        "parameters": [
+          {
+            "name": "允许",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_设置可嵌套任务(真)"
+    },
+    {
+      "index": 15,
+      "name": "CEF3平台_取任务管理器",
+      "aliases": [
+        "cef_task_manager_get"
+      ],
+      "signature": "CEF3平台_取任务管理器()",
+      "description": "取得CEF全局任务管理器的类型化受管句柄；调用会自动调度到CEF UI线程。",
+      "insertText": "CEF3平台_取任务管理器()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取任务管理器",
+        "runtimeName": "CEF3平台_取任务管理器",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_取任务管理器()"
+    },
+    {
+      "index": 16,
+      "name": "CEF3平台_任务管理器取任务数量",
+      "aliases": [
+        "CefTaskManager::GetTasksCount"
+      ],
+      "signature": "CEF3平台_任务管理器取任务数量(任务管理器句柄)",
+      "description": "取得当前由CEF任务管理器跟踪的任务数量。",
+      "insertText": "CEF3平台_任务管理器取任务数量($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务管理器取任务数量",
+        "runtimeName": "CEF3平台_任务管理器取任务数量",
+        "parameters": [
+          {
+            "name": "任务管理器句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_任务管理器取任务数量(1)"
+    },
+    {
+      "index": 17,
+      "name": "CEF3平台_任务管理器取任务ID数组",
+      "aliases": [
+        "CefTaskManager::GetTaskIdsList"
+      ],
+      "signature": "CEF3平台_任务管理器取任务ID数组(任务管理器句柄)",
+      "description": "返回当前任务ID的JSON整数数组；不暴露CEF原生数组指针。",
+      "insertText": "CEF3平台_任务管理器取任务ID数组($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务管理器取任务ID数组",
+        "runtimeName": "CEF3平台_任务管理器取任务ID数组",
+        "parameters": [
+          {
+            "name": "任务管理器句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_任务管理器取任务ID数组(1)"
+    },
+    {
+      "index": 18,
+      "name": "CEF3平台_任务管理器按浏览器取任务ID",
+      "aliases": [
+        "CefTaskManager::GetTaskIdForBrowserId"
+      ],
+      "signature": "CEF3平台_任务管理器按浏览器取任务ID(任务管理器句柄, 浏览器ID)",
+      "description": "按CEF浏览器ID取得其主任务ID；无效或不存在时返回-1。",
+      "insertText": "CEF3平台_任务管理器按浏览器取任务ID($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务管理器按浏览器取任务ID",
+        "runtimeName": "CEF3平台_任务管理器按浏览器取任务ID",
+        "parameters": [
+          {
+            "name": "任务管理器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "浏览器ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_任务管理器按浏览器取任务ID(1, 1)"
+    },
+    {
+      "index": 19,
+      "name": "CEF3平台_任务管理器终止任务",
+      "aliases": [
+        "CefTaskManager::KillTask"
+      ],
+      "signature": "CEF3平台_任务管理器终止任务(任务管理器句柄, 任务ID)",
+      "description": "尝试终止指定任务；任务不存在、不可终止或线程不正确时返回假。",
+      "insertText": "CEF3平台_任务管理器终止任务($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务管理器终止任务",
+        "runtimeName": "CEF3平台_任务管理器终止任务",
+        "parameters": [
+          {
+            "name": "任务管理器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_任务管理器终止任务(1, 1)"
+    },
+    {
+      "index": 20,
+      "name": "CEF3平台_任务管理器取任务信息",
+      "aliases": [
+        "CefTaskManager::GetTaskInfo"
+      ],
+      "signature": "CEF3平台_任务管理器取任务信息(任务管理器句柄, 任务ID)",
+      "description": "返回任务固定字段JSON：类型、标题、可终止、CPU、内存和GPU占用。",
+      "insertText": "CEF3平台_任务管理器取任务信息($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务管理器取任务信息",
+        "runtimeName": "CEF3平台_任务管理器取任务信息",
+        "parameters": [
+          {
+            "name": "任务管理器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_任务管理器取任务信息(1, 1)"
+    },
+    {
+      "index": 21,
+      "name": "CEF3平台_取当前线程任务运行器",
+      "aliases": [
+        "CefTaskRunner::GetForCurrentThread"
+      ],
+      "signature": "CEF3平台_取当前线程任务运行器()",
+      "description": "取得当前CEF线程的任务运行器；非CEF线程返回0并设置错误。",
+      "insertText": "CEF3平台_取当前线程任务运行器()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取当前线程任务运行器",
+        "runtimeName": "CEF3平台_取当前线程任务运行器",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_取当前线程任务运行器()"
+    },
+    {
+      "index": 22,
+      "name": "CEF3平台_取指定线程任务运行器",
+      "aliases": [
+        "CefTaskRunner::GetForThread"
+      ],
+      "signature": "CEF3平台_取指定线程任务运行器(CEF线程ID)",
+      "description": "取得指定CEF线程的任务运行器；线程ID必须是公开的CEF线程枚举值。",
+      "insertText": "CEF3平台_取指定线程任务运行器($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取指定线程任务运行器",
+        "runtimeName": "CEF3平台_取指定线程任务运行器",
+        "parameters": [
+          {
+            "name": "CEF线程ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_取指定线程任务运行器(1)"
+    },
+    {
+      "index": 23,
+      "name": "CEF3平台_任务运行器是否属于当前线程",
+      "aliases": [
+        "CefTaskRunner::BelongsToCurrentThread"
+      ],
+      "signature": "CEF3平台_任务运行器是否属于当前线程(任务运行器句柄)",
+      "description": "判断受管任务运行器是否属于当前调用线程。",
+      "insertText": "CEF3平台_任务运行器是否属于当前线程($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务运行器是否属于当前线程",
+        "runtimeName": "CEF3平台_任务运行器是否属于当前线程",
+        "parameters": [
+          {
+            "name": "任务运行器句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_任务运行器是否属于当前线程(1)"
+    },
+    {
+      "index": 24,
+      "name": "CEF3平台_任务运行器是否属于指定线程",
+      "aliases": [
+        "CefTaskRunner::BelongsToThread"
+      ],
+      "signature": "CEF3平台_任务运行器是否属于指定线程(任务运行器句柄, CEF线程ID)",
+      "description": "判断受管任务运行器是否属于指定的公开CEF线程。",
+      "insertText": "CEF3平台_任务运行器是否属于指定线程($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务运行器是否属于指定线程",
+        "runtimeName": "CEF3平台_任务运行器是否属于指定线程",
+        "parameters": [
+          {
+            "name": "任务运行器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "CEF线程ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_任务运行器是否属于指定线程(1, 1)"
+    },
+    {
+      "index": 25,
+      "name": "CEF3平台_任务运行器是否同一对象",
+      "aliases": [
+        "CefTaskRunner::IsSame"
+      ],
+      "signature": "CEF3平台_任务运行器是否同一对象(任务运行器句柄, 另一任务运行器句柄)",
+      "description": "判断两个受管任务运行器句柄是否指向同一CEF任务运行器。",
+      "insertText": "CEF3平台_任务运行器是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_任务运行器是否同一对象",
+        "runtimeName": "CEF3平台_任务运行器是否同一对象",
+        "parameters": [
+          {
+            "name": "任务运行器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一任务运行器句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_任务运行器是否同一对象(1, 1)"
+    },
+    {
+      "index": 26,
+      "name": "CEF3平台_创建专用线程",
+      "aliases": [
+        "CefThread::CreateThread"
+      ],
+      "signature": "CEF3平台_创建专用线程(显示名称, 优先级, 消息循环类型, 可停止, COM初始化模式)",
+      "description": "在CEF UI线程创建受管专用线程。优先级为0到3，消息循环为0默认、1 UI、2 IO，COM模式为0无、1 STA、2 MTA；STA必须使用UI消息循环。",
+      "insertText": "CEF3平台_创建专用线程(\"$1\", $2, $3, 假, $5)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_创建专用线程",
+        "runtimeName": "LB_CEF3_ThreadCreate",
+        "parameters": [
+          {
+            "name": "显示名称",
+            "type": "wideString"
+          },
+          {
+            "name": "优先级",
+            "type": "int"
+          },
+          {
+            "name": "消息循环类型",
+            "type": "int"
+          },
+          {
+            "name": "可停止",
+            "type": "bool"
+          },
+          {
+            "name": "COM初始化模式",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_创建专用线程(\"演示参数1\", 1, 1, 真, 1)"
+    },
+    {
+      "index": 27,
+      "name": "CEF3平台_线程取系统ID",
+      "aliases": [
+        "CefThread::GetPlatformThreadId"
+      ],
+      "signature": "CEF3平台_线程取系统ID(线程句柄)",
+      "description": "取得专用线程的Windows线程ID；停止后仍返回同一个ID。",
+      "insertText": "CEF3平台_线程取系统ID($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_线程取系统ID",
+        "runtimeName": "LB_CEF3_ThreadGetPlatformThreadId",
+        "parameters": [
+          {
+            "name": "线程句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_线程取系统ID(1)"
+    },
+    {
+      "index": 28,
+      "name": "CEF3平台_线程取任务运行器",
+      "aliases": [
+        "CefThread::GetTaskRunner"
+      ],
+      "signature": "CEF3平台_线程取任务运行器(线程句柄)",
+      "description": "取得专用线程的受管任务运行器句柄，可用于立即或延迟投递任务。",
+      "insertText": "CEF3平台_线程取任务运行器($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_线程取任务运行器",
+        "runtimeName": "LB_CEF3_ThreadGetTaskRunner",
+        "parameters": [
+          {
+            "name": "线程句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_线程取任务运行器(1)"
+    },
+    {
+      "index": 29,
+      "name": "CEF3平台_线程是否运行",
+      "aliases": [
+        "CefThread::IsRunning"
+      ],
+      "signature": "CEF3平台_线程是否运行(线程句柄)",
+      "description": "在创建该线程的CEF UI线程查询专用线程是否仍在运行。",
+      "insertText": "CEF3平台_线程是否运行($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_线程是否运行",
+        "runtimeName": "LB_CEF3_ThreadIsRunning",
+        "parameters": [
+          {
+            "name": "线程句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_线程是否运行(1)"
+    },
+    {
+      "index": 30,
+      "name": "CEF3平台_停止专用线程",
+      "aliases": [
+        "CefThread::Stop"
+      ],
+      "signature": "CEF3平台_停止专用线程(线程句柄)",
+      "description": "在创建该线程的CEF UI线程停止并等待专用线程退出；不可停止线程会返回明确的不支持错误。",
+      "insertText": "CEF3平台_停止专用线程($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_停止专用线程",
+        "runtimeName": "LB_CEF3_ThreadStop",
+        "parameters": [
+          {
+            "name": "线程句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_停止专用线程(1)"
+    },
+    {
+      "index": 31,
+      "name": "CEF3平台_释放专用线程",
+      "aliases": [
+        "LB_CEF3_HandleRelease"
+      ],
+      "signature": "CEF3平台_释放专用线程(线程句柄)",
+      "description": "释放受管线程句柄；可停止线程尚未停止时由Bridge在创建线程上安全停止后释放。",
+      "insertText": "CEF3平台_释放专用线程($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_释放专用线程",
+        "runtimeName": "LB_CEF3_HandleRelease",
+        "parameters": [
+          {
+            "name": "线程句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_释放专用线程(1)"
+    },
+    {
+      "index": 32,
+      "name": "CEF3平台_组件取ID",
+      "aliases": [
+        "CefComponent::GetID"
+      ],
+      "signature": "CEF3平台_组件取ID(组件句柄)",
+      "description": "读取组件快照的唯一标识；组件对象可由组件更新器查询接口产生。",
+      "insertText": "CEF3平台_组件取ID($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件取ID",
+        "runtimeName": "CEF3平台_组件取ID",
+        "parameters": [
+          {
+            "name": "组件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_组件取ID(1)"
+    },
+    {
+      "index": 33,
+      "name": "CEF3平台_组件取名称",
+      "aliases": [
+        "CefComponent::GetName"
+      ],
+      "signature": "CEF3平台_组件取名称(组件句柄)",
+      "description": "读取组件快照的人类可读名称；组件尚未安装时返回空文本。",
+      "insertText": "CEF3平台_组件取名称($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件取名称",
+        "runtimeName": "CEF3平台_组件取名称",
+        "parameters": [
+          {
+            "name": "组件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_组件取名称(1)"
+    },
+    {
+      "index": 34,
+      "name": "CEF3平台_组件取状态",
+      "aliases": [
+        "CefComponent::GetState"
+      ],
+      "signature": "CEF3平台_组件取状态(组件句柄)",
+      "description": "读取组件快照的CEF状态枚举值；组件状态定义见CEF组件状态说明。",
+      "insertText": "CEF3平台_组件取状态($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件取状态",
+        "runtimeName": "CEF3平台_组件取状态",
+        "parameters": [
+          {
+            "name": "组件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_组件取状态(1)"
+    },
+    {
+      "index": 35,
+      "name": "CEF3平台_组件取版本",
+      "aliases": [
+        "CefComponent::GetVersion"
+      ],
+      "signature": "CEF3平台_组件取版本(组件句柄)",
+      "description": "读取组件快照的版本文本；组件尚未安装时返回空文本。",
+      "insertText": "CEF3平台_组件取版本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件取版本",
+        "runtimeName": "CEF3平台_组件取版本",
+        "parameters": [
+          {
+            "name": "组件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_组件取版本(1)"
+    },
+    {
+      "index": 36,
+      "name": "CEF3平台_组件更新器按ID取组件",
+      "aliases": [
+        "CefComponentUpdater::GetComponentByID"
+      ],
+      "signature": "CEF3平台_组件更新器按ID取组件(组件更新器句柄, 组件ID)",
+      "description": "按组件ID取得组件快照受管句柄；不存在或服务不可用时返回0并设置错误。",
+      "insertText": "CEF3平台_组件更新器按ID取组件($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件更新器按ID取组件",
+        "runtimeName": "CEF3平台_组件更新器按ID取组件",
+        "parameters": [
+          {
+            "name": "组件更新器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "组件ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_组件更新器按ID取组件(1, \"演示参数2\")"
+    },
+    {
+      "index": 37,
+      "name": "CEF3平台_组件更新器取数量",
+      "aliases": [
+        "CefComponentUpdater::GetComponentCount"
+      ],
+      "signature": "CEF3平台_组件更新器取数量(组件更新器句柄)",
+      "description": "取得组件更新器当前注册组件数量；服务不可用时返回0。",
+      "insertText": "CEF3平台_组件更新器取数量($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件更新器取数量",
+        "runtimeName": "CEF3平台_组件更新器取数量",
+        "parameters": [
+          {
+            "name": "组件更新器句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_组件更新器取数量(1)"
+    },
+    {
+      "index": 38,
+      "name": "CEF3平台_组件更新器取组件数组",
+      "aliases": [
+        "CefComponentUpdater::GetComponents"
+      ],
+      "signature": "CEF3平台_组件更新器取组件数组(组件更新器句柄)",
+      "description": "返回组件快照数组JSON；每项包含ID、名称、版本和状态，不暴露CEF原生指针。",
+      "insertText": "CEF3平台_组件更新器取组件数组($1)",
+      "returnType": "CEF3组件数组",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件更新器取组件数组",
+        "runtimeName": "CEF3平台_组件更新器取组件数组",
+        "parameters": [
+          {
+            "name": "组件更新器句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "CEF3组件数组"
+      },
+      "demoInvocation": "CEF3平台_组件更新器取组件数组(1)"
+    },
+    {
+      "index": 39,
+      "name": "CEF3平台_组件更新器更新",
+      "aliases": [
+        "CefComponentUpdater::Update"
+      ],
+      "signature": "CEF3平台_组件更新器更新(组件更新器句柄, 组件ID, 优先级)",
+      "description": "异步触发组件按需更新；优先级0为后台，1为前台，返回受管任务句柄。",
+      "insertText": "CEF3平台_组件更新器更新($1, \"$2\", $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_组件更新器更新",
+        "runtimeName": "CEF3平台_组件更新器更新",
+        "parameters": [
+          {
+            "name": "组件更新器句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "组件ID",
+            "type": "wideString"
+          },
+          {
+            "name": "优先级",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_组件更新器更新(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 40,
+      "name": "CEF3平台_设置启动命令开关",
+      "aliases": [
+        "CefApp::OnBeforeCommandLineProcessing"
+      ],
+      "signature": "CEF3平台_设置启动命令开关(进程类型, 开关名, 开关值)",
+      "description": "在CEF初始化前登记启动命令开关；进程类型为空时应用到浏览器及全部子进程，初始化时由OnBeforeCommandLineProcessing安全写入。",
+      "insertText": "CEF3平台_设置启动命令开关(\"$1\", \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_设置启动命令开关",
+        "runtimeName": "CEF3平台_设置启动命令开关",
+        "parameters": [
+          {
+            "name": "进程类型",
+            "type": "wideString"
+          },
+          {
+            "name": "开关名",
+            "type": "wideString"
+          },
+          {
+            "name": "开关值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_设置启动命令开关(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 41,
+      "name": "CEF3平台_创建可等待事件",
+      "aliases": [
+        "cef_waitable_event_create"
+      ],
+      "signature": "CEF3平台_创建可等待事件(自动重置, 初始已触发)",
+      "description": "创建线程同步用的受管等待事件；等待操作不得在CEF UI或IO线程阻塞。",
+      "insertText": "CEF3平台_创建可等待事件(假, 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_创建可等待事件",
+        "runtimeName": "CEF3平台_创建可等待事件",
+        "parameters": [
+          {
+            "name": "自动重置",
+            "type": "bool"
+          },
+          {
+            "name": "初始已触发",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3平台_创建可等待事件(真, 真)"
+    },
+    {
+      "index": 42,
+      "name": "CEF3平台_可等待事件重置",
+      "aliases": [
+        "CefWaitableEvent::Reset"
+      ],
+      "signature": "CEF3平台_可等待事件重置(事件句柄)",
+      "description": "将受管等待事件置为未触发状态。",
+      "insertText": "CEF3平台_可等待事件重置($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_可等待事件重置",
+        "runtimeName": "CEF3平台_可等待事件重置",
+        "parameters": [
+          {
+            "name": "事件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_可等待事件重置(1)"
+    },
+    {
+      "index": 43,
+      "name": "CEF3平台_可等待事件触发",
+      "aliases": [
+        "CefWaitableEvent::Signal"
+      ],
+      "signature": "CEF3平台_可等待事件触发(事件句柄)",
+      "description": "将受管等待事件置为已触发状态，并唤醒等待线程。",
+      "insertText": "CEF3平台_可等待事件触发($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_可等待事件触发",
+        "runtimeName": "CEF3平台_可等待事件触发",
+        "parameters": [
+          {
+            "name": "事件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_可等待事件触发(1)"
+    },
+    {
+      "index": 44,
+      "name": "CEF3平台_可等待事件是否已触发",
+      "aliases": [
+        "CefWaitableEvent::IsSignaled"
+      ],
+      "signature": "CEF3平台_可等待事件是否已触发(事件句柄)",
+      "description": "查询受管等待事件是否已触发；自动重置事件查询后会恢复未触发状态。",
+      "insertText": "CEF3平台_可等待事件是否已触发($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_可等待事件是否已触发",
+        "runtimeName": "CEF3平台_可等待事件是否已触发",
+        "parameters": [
+          {
+            "name": "事件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_可等待事件是否已触发(1)"
+    },
+    {
+      "index": 45,
+      "name": "CEF3平台_可等待事件限时等待",
+      "aliases": [
+        "CefWaitableEvent::TimedWait"
+      ],
+      "signature": "CEF3平台_可等待事件限时等待(事件句柄, 最大毫秒)",
+      "description": "等待事件最多指定毫秒；UI和IO线程禁止阻塞调用。",
+      "insertText": "CEF3平台_可等待事件限时等待($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_可等待事件限时等待",
+        "runtimeName": "CEF3平台_可等待事件限时等待",
+        "parameters": [
+          {
+            "name": "事件句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "最大毫秒",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CEF3平台_可等待事件限时等待(1, 1)"
+    },
+    {
+      "index": 46,
+      "name": "CEF3平台_可等待事件等待",
+      "aliases": [
+        "CefWaitableEvent::Wait"
+      ],
+      "signature": "CEF3平台_可等待事件等待(事件句柄)",
+      "description": "等待事件直到被触发；UI和IO线程禁止阻塞调用。",
+      "insertText": "CEF3平台_可等待事件等待($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_可等待事件等待",
+        "runtimeName": "CEF3平台_可等待事件等待",
+        "parameters": [
+          {
+            "name": "事件句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_可等待事件等待(1)"
+    },
+    {
+      "index": 47,
+      "name": "CEF3命令行_创建",
+      "aliases": [
+        "CefCommandLine::CreateCommandLine"
+      ],
+      "signature": "CEF3命令行_创建()",
+      "description": "创建可写的CEF命令行对象并返回类型化受管句柄；可在CEF初始化前调用。",
+      "insertText": "CEF3命令行_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_创建",
+        "runtimeName": "CEF3命令行_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3命令行_创建()"
+    },
+    {
+      "index": 48,
+      "name": "CEF3命令行_是否有效",
+      "aliases": [
+        "CefCommandLine::IsValid"
+      ],
+      "signature": "CEF3命令行_是否有效(命令行句柄)",
+      "description": "判断类型化命令行句柄及底层CEF对象是否有效。",
+      "insertText": "CEF3命令行_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_是否有效",
+        "runtimeName": "CEF3命令行_是否有效",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3命令行_是否有效(1)"
+    },
+    {
+      "index": 49,
+      "name": "CEF3命令行_是否只读",
+      "aliases": [
+        "CefCommandLine::IsReadOnly"
+      ],
+      "signature": "CEF3命令行_是否只读(命令行句柄)",
+      "description": "判断CEF命令行对象是否只读；全局命令行对象为只读。",
+      "insertText": "CEF3命令行_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_是否只读",
+        "runtimeName": "CEF3命令行_是否只读",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3命令行_是否只读(1)"
+    },
+    {
+      "index": 50,
+      "name": "CEF3命令行_复制",
+      "aliases": [
+        "CefCommandLine::Copy"
+      ],
+      "signature": "CEF3命令行_复制(命令行句柄)",
+      "description": "复制命令行内容并返回新的独立可写受管句柄。",
+      "insertText": "CEF3命令行_复制($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_复制",
+        "runtimeName": "CEF3命令行_复制",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3命令行_复制(1)"
+    },
+    {
+      "index": 51,
+      "name": "CEF3命令行_从参数数组初始化",
+      "aliases": [
+        "CefCommandLine::InitFromArgv"
+      ],
+      "signature": "CEF3命令行_从参数数组初始化(命令行句柄, 参数数组)",
+      "description": "以参数数组初始化可写命令行；首项必须是程序名。Windows Bridge会按系统argv引用规则构造命令行文本，等价适配官方仅在非Windows支持的InitFromArgv。",
+      "insertText": "CEF3命令行_从参数数组初始化($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_从参数数组初始化",
+        "runtimeName": "CEF3命令行_从参数数组初始化",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "参数数组",
+            "type": "CEF3文本数组"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3命令行_从参数数组初始化(1, 0)"
+    },
+    {
+      "index": 52,
+      "name": "CEF3命令行_从文本初始化",
+      "aliases": [
+        "CefCommandLine::InitFromString"
+      ],
+      "signature": "CEF3命令行_从文本初始化(命令行句柄, 命令行文本)",
+      "description": "在Windows上解析GetCommandLineW格式的UTF-16命令行文本。",
+      "insertText": "CEF3命令行_从文本初始化($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_从文本初始化",
+        "runtimeName": "CEF3命令行_从文本初始化",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令行文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_从文本初始化(1, \"演示参数2\")"
+    },
+    {
+      "index": 53,
+      "name": "CEF3命令行_取完整文本",
+      "aliases": [
+        "CefCommandLine::GetCommandLineString"
+      ],
+      "signature": "CEF3命令行_取完整文本(命令行句柄)",
+      "description": "返回CEF命令行对象表示的完整命令行文本。",
+      "insertText": "CEF3命令行_取完整文本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_取完整文本",
+        "runtimeName": "CEF3命令行_取完整文本",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3命令行_取完整文本(1)"
+    },
+    {
+      "index": 54,
+      "name": "CEF3命令行_取程序",
+      "aliases": [
+        "CefCommandLine::GetProgram"
+      ],
+      "signature": "CEF3命令行_取程序(命令行句柄)",
+      "description": "返回命令行的程序部分。",
+      "insertText": "CEF3命令行_取程序($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_取程序",
+        "runtimeName": "CEF3命令行_取程序",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3命令行_取程序(1)"
+    },
+    {
+      "index": 55,
+      "name": "CEF3命令行_设置程序",
+      "aliases": [
+        "CefCommandLine::SetProgram"
+      ],
+      "signature": "CEF3命令行_设置程序(命令行句柄, 程序)",
+      "description": "设置可写命令行对象的程序部分。",
+      "insertText": "CEF3命令行_设置程序($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_设置程序",
+        "runtimeName": "CEF3命令行_设置程序",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "程序",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_设置程序(1, \"演示参数2\")"
+    },
+    {
+      "index": 56,
+      "name": "CEF3命令行_是否有开关",
+      "aliases": [
+        "CefCommandLine::HasSwitches"
+      ],
+      "signature": "CEF3命令行_是否有开关(命令行句柄)",
+      "description": "判断命令行是否包含任意开关。",
+      "insertText": "CEF3命令行_是否有开关($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_是否有开关",
+        "runtimeName": "CEF3命令行_是否有开关",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3命令行_是否有开关(1)"
+    },
+    {
+      "index": 57,
+      "name": "CEF3命令行_是否有指定开关",
+      "aliases": [
+        "CefCommandLine::HasSwitch"
+      ],
+      "signature": "CEF3命令行_是否有指定开关(命令行句柄, 开关名)",
+      "description": "按不带前缀的ASCII名称判断命令行是否包含指定开关。",
+      "insertText": "CEF3命令行_是否有指定开关($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_是否有指定开关",
+        "runtimeName": "CEF3命令行_是否有指定开关",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "开关名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_是否有指定开关(1, \"演示参数2\")"
+    },
+    {
+      "index": 58,
+      "name": "CEF3命令行_添加开关",
+      "aliases": [
+        "CefCommandLine::AppendSwitch"
+      ],
+      "signature": "CEF3命令行_添加开关(命令行句柄, 开关名)",
+      "description": "向可写命令行末尾添加无值开关；名称由CEF规范化为小写。",
+      "insertText": "CEF3命令行_添加开关($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_添加开关",
+        "runtimeName": "CEF3命令行_添加开关",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "开关名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_添加开关(1, \"演示参数2\")"
+    },
+    {
+      "index": 59,
+      "name": "CEF3命令行_添加带值开关",
+      "aliases": [
+        "CefCommandLine::AppendSwitchWithValue"
+      ],
+      "signature": "CEF3命令行_添加带值开关(命令行句柄, 开关名, 开关值)",
+      "description": "向可写命令行末尾添加带值开关；名称由CEF规范化为小写，开关值允许为空文本。",
+      "insertText": "CEF3命令行_添加带值开关($1, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_添加带值开关",
+        "runtimeName": "CEF3命令行_添加带值开关",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "开关名",
+            "type": "wideString"
+          },
+          {
+            "name": "开关值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_添加带值开关(1, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 60,
+      "name": "CEF3命令行_取开关值",
+      "aliases": [
+        "CefCommandLine::GetSwitchValue"
+      ],
+      "signature": "CEF3命令行_取开关值(命令行句柄, 开关名)",
+      "description": "读取指定开关的UTF-16值；开关不存在或没有值时返回空文本。",
+      "insertText": "CEF3命令行_取开关值($1, \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_取开关值",
+        "runtimeName": "CEF3命令行_取开关值",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "开关名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_取开关值(1, \"演示参数2\")"
+    },
+    {
+      "index": 61,
+      "name": "CEF3命令行_移除开关",
+      "aliases": [
+        "CefCommandLine::RemoveSwitch"
+      ],
+      "signature": "CEF3命令行_移除开关(命令行句柄, 开关名)",
+      "description": "从可写命令行中移除指定开关；不存在时保持成功。",
+      "insertText": "CEF3命令行_移除开关($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_移除开关",
+        "runtimeName": "CEF3命令行_移除开关",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "开关名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_移除开关(1, \"演示参数2\")"
+    },
+    {
+      "index": 62,
+      "name": "CEF3命令行_是否有参数",
+      "aliases": [
+        "CefCommandLine::HasArguments"
+      ],
+      "signature": "CEF3命令行_是否有参数(命令行句柄)",
+      "description": "判断命令行中是否存在非开关参数。",
+      "insertText": "CEF3命令行_是否有参数($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_是否有参数",
+        "runtimeName": "CEF3命令行_是否有参数",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3命令行_是否有参数(1)"
+    },
+    {
+      "index": 63,
+      "name": "CEF3命令行_添加参数",
+      "aliases": [
+        "CefCommandLine::AppendArgument"
+      ],
+      "signature": "CEF3命令行_添加参数(命令行句柄, 参数)",
+      "description": "向可写命令行末尾添加一个UTF-16参数；允许显式添加空参数。",
+      "insertText": "CEF3命令行_添加参数($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_添加参数",
+        "runtimeName": "CEF3命令行_添加参数",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "参数",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_添加参数(1, \"演示参数2\")"
+    },
+    {
+      "index": 64,
+      "name": "CEF3命令行_重置",
+      "aliases": [
+        "CefCommandLine::Reset"
+      ],
+      "signature": "CEF3命令行_重置(命令行句柄)",
+      "description": "清空可写命令行的全部开关和参数，但保留程序部分。",
+      "insertText": "CEF3命令行_重置($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_重置",
+        "runtimeName": "CEF3命令行_重置",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3命令行_重置(1)"
+    },
+    {
+      "index": 65,
+      "name": "CEF3命令行_取参数向量",
+      "aliases": [
+        "CefCommandLine::GetArgv"
+      ],
+      "signature": "CEF3命令行_取参数向量(命令行句柄)",
+      "description": "返回原始命令行向量，依次包含程序、开关、分隔符和普通参数。",
+      "insertText": "CEF3命令行_取参数向量($1)",
+      "returnType": "CEF3文本数组",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_取参数向量",
+        "runtimeName": "CEF3命令行_取参数向量",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "CEF3文本数组"
+      },
+      "demoInvocation": "CEF3命令行_取参数向量(1)"
+    },
+    {
+      "index": 66,
+      "name": "CEF3命令行_取参数列表",
+      "aliases": [
+        "CefCommandLine::GetArguments"
+      ],
+      "signature": "CEF3命令行_取参数列表(命令行句柄)",
+      "description": "返回全部非开关参数，不包含程序和开关。",
+      "insertText": "CEF3命令行_取参数列表($1)",
+      "returnType": "CEF3文本数组",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_取参数列表",
+        "runtimeName": "CEF3命令行_取参数列表",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "CEF3文本数组"
+      },
+      "demoInvocation": "CEF3命令行_取参数列表(1)"
+    },
+    {
+      "index": 67,
+      "name": "CEF3命令行_取开关列表",
+      "aliases": [
+        "CefCommandLine::GetSwitches"
+      ],
+      "signature": "CEF3命令行_取开关列表(命令行句柄)",
+      "description": "返回名称已规范化为小写的开关记录数组；无值开关的值为空文本。",
+      "insertText": "CEF3命令行_取开关列表($1)",
+      "returnType": "CEF3命令行开关数组",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_取开关列表",
+        "runtimeName": "CEF3命令行_取开关列表",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "CEF3命令行开关数组"
+      },
+      "demoInvocation": "CEF3命令行_取开关列表(1)"
+    },
+    {
+      "index": 68,
+      "name": "CEF3命令行_前置包装器",
+      "aliases": [
+        "CefCommandLine::PrependWrapper"
+      ],
+      "signature": "CEF3命令行_前置包装器(命令行句柄, 包装器)",
+      "description": "在可写命令行前插入调试器等包装命令，例如“gdb --args”。",
+      "insertText": "CEF3命令行_前置包装器($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_前置包装器",
+        "runtimeName": "CEF3命令行_前置包装器",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "包装器",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3命令行_前置包装器(1, \"演示参数2\")"
+    },
+    {
+      "index": 69,
+      "name": "CEF3命令行_取全局",
+      "aliases": [
+        "CefCommandLine::GetGlobalCommandLine"
+      ],
+      "signature": "CEF3命令行_取全局()",
+      "description": "取得CEF进程全局命令行的只读受管句柄；修改操作会返回只读错误。",
+      "insertText": "CEF3命令行_取全局()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_取全局",
+        "runtimeName": "CEF3命令行_取全局",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3命令行_取全局()"
+    },
+    {
+      "index": 70,
+      "name": "CEF3命令行_释放",
+      "aliases": [
+        "LB_CEF3_CommandLineRelease"
+      ],
+      "signature": "CEF3命令行_释放(命令行句柄)",
+      "description": "释放CEF命令行受管句柄；释放后继续使用会返回明确错误。",
+      "insertText": "CEF3命令行_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3命令行_释放",
+        "runtimeName": "CEF3命令行_释放",
+        "parameters": [
+          {
+            "name": "命令行句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3命令行_释放(1)"
+    },
+    {
+      "index": 71,
       "name": "CEF3平台_取Chrome实验开关",
       "aliases": [
         "CefPreferenceManager::GetChromeVariationsAsSwitches"
@@ -72,7 +1817,7 @@
       "demoInvocation": "CEF3平台_取Chrome实验开关()"
     },
     {
-      "index": 4,
+      "index": 72,
       "name": "CEF3平台_取Chrome实验说明",
       "aliases": [
         "CefPreferenceManager::GetChromeVariationsAsStrings"

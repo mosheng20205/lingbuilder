@@ -190,7 +190,7 @@
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.getdefaultclient.e45361d02a19
   void GetDefaultClient(CefRefPtr<CefBrowser> browsewr, const CefString& url, CefRefPtr<FBroUseExtraData> user_settings) override { DispatchGeneratedInitEvent(browsewr, L"fbro.event.fbrohsinitevent.getdefaultclient.e45361d02a19", L"GetDefaultClient", L"初始化取得默认浏览器客户端", BuildSafeFieldsJson({{L"browsewr", browsewr ? L"1" : L"0"}, {L"url", url.ToWString()}, {L"user_settings", user_settings ? L"1" : L"0"}}), 0, 0);  }
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onaddextension.6885464e518a
-  void OnAddExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID) override {  }
+// custom override: OnAddExtension
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onbeforechildprocesslaunch.606c591de69a
   void OnBeforeChildProcessLaunch(CefRefPtr<CefCommandLine> command_line) override {  }
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onbeforecommandlineprocessing.f189d7422f90
@@ -206,9 +206,9 @@
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.oncontextreleased.eb04ecef4244
   void OnContextReleased(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) override { DispatchGeneratedInitEvent(browser, L"fbro.event.fbrohsinitevent.oncontextreleased.eb04ecef4244", L"OnContextReleased", L"初始化渲染上下文已释放", BuildSafeFieldsJson({{L"browser", browser ? L"1" : L"0"}, {L"frame", frame ? frame->GetURL().ToWString() : L""}, {L"context", context ? L"1" : L"0"}}), 0, 0);  }
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.oncreateextension.8fcbe9cd4afd
-  void OnCreateExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID) override {  }
+// custom override: OnCreateExtension
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.oncreateextensionerror.f45089ccdf84
-  void OnCreateExtensionError( CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID, const CefString& path, const CefString& error) override {  }
+// custom override: OnCreateExtensionError
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onfocusednodechanged.0b4eca1e9b07
   void OnFocusedNodeChanged(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefDOMNode> node) override { DispatchGeneratedInitEvent(browser, L"fbro.event.fbrohsinitevent.onfocusednodechanged.0b4eca1e9b07", L"OnFocusedNodeChanged", L"初始化焦点节点改变", BuildSafeFieldsJson({{L"browser", browser ? L"1" : L"0"}, {L"frame", frame ? frame->GetURL().ToWString() : L""}, {L"node", node ? L"1" : L"0"}}), 0, 0);  }
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onloadend.c8c0f60bf036
@@ -224,7 +224,7 @@
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onregistercustomschemes.e9a3feeec600
   void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {  }
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onremoveextension.80e336f44528
-  void OnRemoveExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID) override {  }
+// custom override: OnRemoveExtension
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onrequestcontextinitialized.b5fed86ca6d0
   void OnRequestContextInitialized(CefRefPtr<CefRequestContext> request_context) override {  }
 // LB_FBRO_EVENT_OVERRIDE:fbro.event.fbrohsinitevent.onschedulemessagepumpwork.edeb04f3d1d6

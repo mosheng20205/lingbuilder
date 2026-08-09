@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.767Z",
+  "generatedAt": "2026-08-07T08:51:35.716Z",
   "module": {
     "id": "lingbuilder.cef3.automation",
     "name": "CEF3自动化模块",
-    "version": "3.0.0-alpha.2",
+    "version": "3.0.0-alpha.3",
     "description": "提供异步JavaScript任务及后续DOM/V8能力。"
   },
-  "commandCount": 1,
+  "commandCount": 6,
   "commands": [
     {
       "index": 1,
@@ -45,6 +45,194 @@
         "encoding": "wide"
       },
       "demoInvocation": "CEF3自动化_执行JS异步(演示CefBrowser控件, \"演示参数2\")"
+    },
+    {
+      "index": 2,
+      "name": "CEF3Hook_注册脚本",
+      "aliases": [
+        "CefRenderProcessHandler::OnContextCreated"
+      ],
+      "signature": "CEF3Hook_注册脚本(控件名, 名称, 脚本, 地址匹配, 全部框架, 立即执行当前上下文)",
+      "description": "注册持久JSHook；它会在匹配Frame的V8上下文创建时执行，并在导航后自动重建。",
+      "insertText": "CEF3Hook_注册脚本($1, \"$2\", \"$3\", \"$4\", 假, 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3Hook_注册脚本",
+        "runtimeName": "CEF3Hook_注册脚本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          },
+          {
+            "name": "地址匹配",
+            "type": "wideString"
+          },
+          {
+            "name": "全部框架",
+            "type": "bool"
+          },
+          {
+            "name": "立即执行当前上下文",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3Hook_注册脚本(演示CefBrowser控件, \"演示参数2\", \"演示参数3\", \"https://example.com\", 真, 真)"
+    },
+    {
+      "index": 3,
+      "name": "CEF3Hook_移除脚本",
+      "aliases": [
+        "LB_CEF3_JsHookRemove"
+      ],
+      "signature": "CEF3Hook_移除脚本(Hook句柄)",
+      "description": "移除指定JSHook并释放受管句柄。",
+      "insertText": "CEF3Hook_移除脚本($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3Hook_移除脚本",
+        "runtimeName": "CEF3Hook_移除脚本",
+        "parameters": [
+          {
+            "name": "Hook句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3Hook_移除脚本(1)"
+    },
+    {
+      "index": 4,
+      "name": "CEF3Hook_清空脚本",
+      "aliases": [
+        "LB_CEF3_JsHookClear"
+      ],
+      "signature": "CEF3Hook_清空脚本(控件名)",
+      "description": "清空指定浏览器的全部已注册JSHook。",
+      "insertText": "CEF3Hook_清空脚本($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3Hook_清空脚本",
+        "runtimeName": "CEF3Hook_清空脚本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3Hook_清空脚本(演示CefBrowser控件)"
+    },
+    {
+      "index": 5,
+      "name": "CEF3Hook_取脚本列表",
+      "aliases": [
+        "LB_CEF3_JsHookList"
+      ],
+      "signature": "CEF3Hook_取脚本列表(控件名)",
+      "description": "返回JSHook句柄、名称、地址匹配和Frame范围JSON。",
+      "insertText": "CEF3Hook_取脚本列表($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3Hook_取脚本列表",
+        "runtimeName": "CEF3Hook_取脚本列表",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3Hook_取脚本列表(演示CefBrowser控件)"
+    },
+    {
+      "index": 6,
+      "name": "CEF3Hook_回复页面消息",
+      "aliases": [
+        "LB_CEF3_JsHookReply"
+      ],
+      "signature": "CEF3Hook_回复页面消息(控件名, 请求ID, 是否成功, 返回文本)",
+      "description": "回复页面 LingBuilder调用宿主(name, payload) 产生的Promise请求。",
+      "insertText": "CEF3Hook_回复页面消息($1, $2, 假, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3Hook_回复页面消息",
+        "runtimeName": "CEF3Hook_回复页面消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "请求ID",
+            "type": "longLong"
+          },
+          {
+            "name": "是否成功",
+            "type": "bool"
+          },
+          {
+            "name": "返回文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3Hook_回复页面消息(演示CefBrowser控件, 1, 真, \"演示参数4\")"
     }
   ]
 }

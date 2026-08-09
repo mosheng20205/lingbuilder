@@ -11,7 +11,9 @@ const env = {
   ELECTRON_RENDERER_URL: DEV_URL,
   HOST: '127.0.0.1',
   PORT: new URL(DEV_URL).port || '3001',
-  LINGBUILDER_WORKSPACE_ROOT: WORKSPACE_ROOT,
+  // A developer can point the desktop shell and renderer at an imported
+  // project without changing the repository's default development workspace.
+  LINGBUILDER_WORKSPACE_ROOT: process.env.LINGBUILDER_WORKSPACE_ROOT || WORKSPACE_ROOT,
   LINGBUILDER_RULEBOOK_PATH: path.join(WORKSPACE_ROOT, 'LingBuilder AI 规则手册.md'),
   LINGBUILDER_DEV_NO_AUTH: 'true',
   LINGBUILDER_AI_BRIDGE_ENABLED: 'false',

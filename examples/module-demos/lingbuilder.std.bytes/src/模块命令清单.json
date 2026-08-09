@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.985Z",
+  "generatedAt": "2026-08-07T08:51:35.964Z",
   "module": {
     "id": "lingbuilder.std.bytes",
     "name": "字节与十六进制模块",
     "version": "1.0.0",
     "description": "通过安全文本接口提供 UTF-8 字节长度与十六进制编解码，不暴露裸内存指针。"
   },
-  "commandCount": 4,
+  "commandCount": 13,
   "commands": [
     {
       "index": 1,
@@ -94,6 +94,213 @@
         "encoding": "wide"
       },
       "demoInvocation": "字节_十六进制是否有效(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "字节集_长度",
+      "signature": "字节集_长度(数据)",
+      "description": "返回字节集长度。",
+      "insertText": "字节集_长度($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "字节集_长度",
+        "runtimeName": "字节集_长度",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "字节集_长度({})"
+    },
+    {
+      "index": 6,
+      "name": "字节集_截取",
+      "signature": "字节集_截取(数据, 起始位置, 长度)",
+      "description": "按 0 起始位置安全截取字节集。",
+      "insertText": "字节集_截取($1, 0, 1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_截取",
+        "runtimeName": "字节集_截取",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes"
+          },
+          {
+            "name": "起始位置",
+            "type": "int"
+          },
+          {
+            "name": "长度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_截取({}, 1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "字节集_拼接",
+      "signature": "字节集_拼接(前段, 后段)",
+      "description": "拼接两个字节集，溢出时返回空字节集。",
+      "insertText": "字节集_拼接($1, $2)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_拼接",
+        "runtimeName": "字节集_拼接",
+        "parameters": [
+          {
+            "name": "前段",
+            "type": "bytes"
+          },
+          {
+            "name": "后段",
+            "type": "bytes"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_拼接({}, {})"
+    },
+    {
+      "index": 8,
+      "name": "字节集_取字节",
+      "signature": "字节集_取字节(数据, 位置)",
+      "description": "读取指定位置的 0～255 字节，越界返回 -1。",
+      "insertText": "字节集_取字节($1, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "字节集_取字节",
+        "runtimeName": "字节集_取字节",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes"
+          },
+          {
+            "name": "位置",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "字节集_取字节({}, 1)"
+    },
+    {
+      "index": 9,
+      "name": "字节集_置字节",
+      "signature": "字节集_置字节(数据, 位置, 数值)",
+      "description": "写入一个字节，位置或数值无效时返回假。",
+      "insertText": "字节集_置字节($1, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "字节集_置字节",
+        "runtimeName": "字节集_置字节",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes"
+          },
+          {
+            "name": "位置",
+            "type": "int"
+          },
+          {
+            "name": "数值",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "字节集_置字节({}, 1, 1)"
+    },
+    {
+      "index": 10,
+      "name": "字节集_Base64编码",
+      "signature": "字节集_Base64编码(数据)",
+      "description": "把字节集编码为 Base64 文本。",
+      "insertText": "字节集_Base64编码($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "字节集_Base64编码",
+        "runtimeName": "字节集_Base64编码",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "字节集_Base64编码({})"
+    },
+    {
+      "index": 11,
+      "name": "字节集_Base64解码",
+      "signature": "字节集_Base64解码(Base64文本)",
+      "description": "把 Base64 文本解码为字节集，格式错误返回空字节集。",
+      "insertText": "字节集_Base64解码(\"$1\")",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_Base64解码",
+        "runtimeName": "字节集_Base64解码",
+        "parameters": [
+          {
+            "name": "Base64文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bytes",
+        "encoding": "wide"
+      },
+      "demoInvocation": "字节集_Base64解码(\"演示参数1\")"
+    },
+    {
+      "index": 12,
+      "name": "字节集_十六进制编码",
+      "signature": "字节集_十六进制编码(数据)",
+      "description": "把字节集编码为 ASCII 十六进制字节集。",
+      "insertText": "字节集_十六进制编码($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_十六进制编码",
+        "runtimeName": "字节集_十六进制编码",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_十六进制编码({})"
+    },
+    {
+      "index": 13,
+      "name": "字节集_十六进制解码",
+      "signature": "字节集_十六进制解码(十六进制)",
+      "description": "把十六进制文本解码为字节集。",
+      "insertText": "字节集_十六进制解码(\"$1\")",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_十六进制解码",
+        "runtimeName": "字节集_十六进制解码",
+        "parameters": [
+          {
+            "name": "十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bytes",
+        "encoding": "wide"
+      },
+      "demoInvocation": "字节集_十六进制解码(\"演示参数1\")"
     }
   ]
 }

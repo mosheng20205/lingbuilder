@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-solution",
+  "name": "未命名解决方案",
+  "startupProjectId": "lingbuilder-project",
+  "startupProjectIds": [
+    "lingbuilder-project"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-ui-project",
+      "name": "新建项目",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-project",
+      "name": "高级控件选项卡",
+      "sourceRoot": "src/lingbuilder-project",
+      "configRoot": "config/lingbuilder-project",
+      "designerPath": ".lingbuilder/projects/lingbuilder-project/window-designer.json",
+      "references": []
+    }
+  ]
+}

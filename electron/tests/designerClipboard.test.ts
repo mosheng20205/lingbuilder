@@ -88,3 +88,29 @@ test('clipboard serialization rejects corrupted data', () => {
   const project: LingWindowProject = { schemaVersion: 2, id: 'p', name: 'P', windows: [source] };
   assert.equal(parseDesignerClipboard(serializeDesignerClipboard(service.createPayload(project, source, ['copy']))).controls.length, 1);
 });
+
+test('paste clears only conflicting non-empty tags in the target window', () => {
+  const layouts = createDesignerContainerLayoutRegistry();
+  const service = new DesignerClipboardService(layouts);
+  const existing = control('existing', 'Button');
+  existing.tagText = '确认';
+  existing.tagInteger = 0;
+  const sameType = control('same', 'Button');
+  sameType.tagText = '确认';
+  sameType.tagInteger = 0;
+  const otherType = control('other', 'TextBox');
+  otherType.tagText = '确认';
+  otherType.tagInteger = 0;
+  const source = windowModel('source', [sameType, otherType]);
+  const target = windowModel('target', [existing]);
+  const project: LingWindowProject = { schemaVersion: 2, id: 'p', name: 'P', windows: [source, target] };
+  const payload = service.createPayload(project, source, ['same', 'other']);
+  const plan = service.planPaste(payload, project, target, { target: {}, supportsControl: () => true });
+  assert.equal(plan.ok, true);
+  const pasted = plan.window.controls.filter(item => plan.insertedControlIds.includes(item.id));
+  assert.equal(pasted.find(item => item.type === 'Button')?.tagText, undefined);
+  assert.equal(pasted.find(item => item.type === 'Button')?.tagInteger, undefined);
+  assert.equal(pasted.find(item => item.type === 'TextBox')?.tagText, '确认');
+  assert.equal(pasted.find(item => item.type === 'TextBox')?.tagInteger, 0);
+  assert.equal(plan.warnings.filter(message => message.includes('冲突，已清空')).length, 2);
+});

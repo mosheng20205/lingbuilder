@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createSolutionService, DEFAULT_PROJECT_ID } from '../src/services/solution/solutionService';
+import { createSolutionService, DEFAULT_PROJECT_ID, SOLUTION_PROJECT_TEMPLATES } from '../src/services/solution/solutionService';
 import { getSolutionProjectDirectory } from '../src/services/solution/solutionClient';
 import { normalizeStartupProjects, topologicalProjectOrder } from '../src/services/solution/projectDependencyGraph';
 
@@ -125,6 +125,73 @@ test('solution project templates produce deterministic designer and source files
   const designer = JSON.parse(await fs.readFile(path.join(root, created.project.designerPath), 'utf8'));
   assert.equal(designer.windows[0].controls.length, 2);
   assert.match(await fs.readFile(path.join(root, 'src', 'hello-app', 'MainWindow.lcpp'), 'utf8'), /信息框/u);
+});
+
+test('new_emoji FBro browser shell template previews x64 frame, controls, handlers and shortcuts without writing', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  const preview = await service.previewCreateProject({
+    name: '浏览器外壳',
+    projectId: 'browser-shell',
+    templateId: 'new-emoji-fbro-browser-shell'
+  });
+  const window = preview.designerProject.windows[0];
+  const source = preview.files.find(file => file.relativePath.endsWith('.lcpp'))?.content || '';
+  const template = SOLUTION_PROJECT_TEMPLATES.find(item => item.id === 'new-emoji-fbro-browser-shell');
+
+  assert.equal(preview.project.buildProperties?.architecture, 'x64');
+  assert.equal(window.width, 1180);
+  assert.equal(window.height, 760);
+  assert.equal(window.designerBackend, 'new-emoji');
+  assert.deepEqual(window.windowFrame, {
+    preset: 'browserShell',
+    flags: 0x3f,
+    resizeBorder: { left: 6, top: 6, right: 6, bottom: 6 },
+    cornerRadius: 10
+  });
+  assert.deepEqual(template?.moduleIds, [
+    'lingbuilder.win32.basic',
+    'lingbuilder.new_emoji.ui',
+    'lingbuilder.fbro.browser',
+    'lingbuilder.fbro.sdk',
+    'lingbuilder.new_emoji.fbro-shell'
+  ]);
+  for (const type of ['Container', 'Panel', 'Tabs', 'Omnibox', 'IconButton', 'Menu', 'Popover', 'BrowserViewport']) {
+    assert.ok(window.controls.some(control => control.designerType === `lingbuilder.new_emoji.ui/${type}`), `模板缺少 ${type}`);
+  }
+  assert.equal(window.controls.length, 24);
+  assert.equal(window.controls.filter(control => control.designerType === 'lingbuilder.new_emoji.ui/Menu').length, 6);
+  assert.equal(window.controls.filter(control => control.designerType === 'lingbuilder.new_emoji.ui/Popover').length, 2);
+  assert.equal(window.controls.find(control => control.id === 'browser-root')?.properties?.flowEnabled, false);
+  const tabs = window.controls.find(control => control.id === 'browser-tabs');
+  assert.equal(tabs?.properties?.addable, false);
+  assert.equal(tabs?.properties?.chromeMode, true);
+  assert.equal(tabs?.properties?.chromeMinWidth, 96);
+  assert.equal(tabs?.properties?.chromeMaxWidth, 220);
+  assert.equal(tabs?.width, 220);
+  const omnibox = window.controls.find(control => control.id === 'browser-omnibox');
+  assert.equal(omnibox?.properties?.value, 'https://www.baidu.com');
+  const omniboxMenu = window.controls.find(control => control.id === 'omnibox-menu');
+  const viewportMenu = window.controls.find(control => control.id === 'viewport-menu');
+  assert.equal(omniboxMenu?.properties?.anchorElementId, 'browser-omnibox');
+  assert.equal(omniboxMenu?.properties?.popupTrigger, 'right_click');
+  assert.equal(viewportMenu?.properties?.anchorElementId, 'browser-viewport');
+  assert.equal(viewportMenu?.properties?.popupTrigger, 'right_click');
+  assert.match(source, /浏览器外壳_创建\(浏览器标签页, 浏览器页面占位, &浏览器状态改变\)/u);
+  assert.match(source, /浏览器外壳_新建标签页\("home", "https:\/\/www\.baidu\.com", "新标签页"\)/u);
+  assert.doesNotMatch(source, /https?:\/\/(?:127\.0\.0\.1|localhost)/iu);
+  assert.match(source, /浏览器外壳_取标签页数量\(\)/u);
+  assert.match(source, /局部 整数型 标签控件宽度 = 0/u);
+  assert.match(source, /标签区宽度 = 窗口宽度 - 300/u);
+  assert.match(source, /标签控件宽度 = 标签数量 \* 标签宽度/u);
+  assert.match(source, /控件_设置位置大小\(浏览器标签页, 16, 4, 标签控件宽度, 34\)/u);
+  assert.match(source, /控件_设置位置大小\(新建标签按钮, 新建标签横坐标, 5, 30, 30\)/u);
+  assert.match(source, /事件 _网页菜单_命令\(整数型 项目索引，文本型 菜单路径，文本型 命令\)/u);
+  assert.match(source, /事件 浏览器状态改变\(整数型 标签索引，文本型 地址，文本型 标题，逻辑型 加载中\)/u);
+  assert.match(source, /Ctrl键按下 并且 键码 == 76/u);
+  assert.match(source, /Ctrl键按下 并且 键码 == 84/u);
+  assert.match(source, /Alt键按下 并且 键码 == 37/u);
+  assert.equal(await exists(path.join(root, 'src', 'browser-shell')), false);
 });
 
 test('solution folders persist logical project grouping without moving project files', async () => {

@@ -262,6 +262,11 @@ const HIGH_LEVEL_EXPORTS = new Set([
   'FBroString_Creat', 'FBroString_GetWcharData', 'FBroString_WSize'
 ]);
 
+const NATIVE_CEF_EQUIVALENT_CALLS = new Map([
+  ['FBroHsCookieManager_SetCookie', 'manager->SetCookie('],
+  ['FBroHsCookieManager_FlushStore', 'manager->FlushStore(']
+]);
+
 const INTERNAL_NAME_PATTERNS = [
   /MallocManger_(?:New|Free)$/u,
   /(?:InitEvent|Event)Destroy$/u
@@ -301,7 +306,10 @@ async function main() {
   const bridgeSource = await fs.readFile(path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
   const cefEventSource = await fs.readFile(path.join(repoRoot, 'electron', 'src', 'services', 'modules', 'cef3BrowserEvents.ts'), 'utf8');
   for (const officialName of [...HIGH_LEVEL_EXPORTS, ...IMPLEMENTED_ADVANCED_EXPORTS, ...IMPLEMENTED_VIP_SUPPORT_EXPORTS]) {
-    if (!bridgeSource.includes(officialName)) throw new Error(`已实现封装标记缺少真实 Bridge 调用：${officialName}`);
+    const equivalent = NATIVE_CEF_EQUIVALENT_CALLS.get(officialName);
+    if (!bridgeSource.includes(officialName) && (!equivalent || !bridgeSource.includes(equivalent))) {
+      throw new Error(`已实现封装标记缺少真实 Bridge 调用：${officialName}`);
+    }
   }
 
   const headerNames = (await fs.readdir(includeRoot, { withFileTypes: true }))
@@ -333,7 +341,9 @@ async function main() {
       || left.officialName.localeCompare(right.officialName, 'en')
       || left.officialSignature.localeCompare(right.officialSignature, 'en'));
   for (const item of sorted) {
-    if (isImplementedAdvancedExport(item.officialName) && !bridgeSource.includes(item.officialName)) {
+    const equivalent = NATIVE_CEF_EQUIVALENT_CALLS.get(item.officialName);
+    if (isImplementedAdvancedExport(item.officialName) && !bridgeSource.includes(item.officialName)
+      && (!equivalent || !bridgeSource.includes(equivalent))) {
       throw new Error(`已实现封装标记缺少真实 Bridge 调用：${item.officialName}`);
     }
   }
@@ -747,7 +757,14 @@ function createEventResponseSchema(returnType, parameters, callbackParameter, of
 
 function renderBrowserEventOverrides(events) {
   const customBrowserEvents = new Set([...IMPLEMENTED_EVENT_NAMES.keys(), ...MANAGED_CALLBACK_EVENT_NAMES]);
-  const customInitEvents = new Set(['OnBeforeCommandLineProcessing', 'OnContextInitialized']);
+  const customInitEvents = new Set([
+    'OnBeforeCommandLineProcessing',
+    'OnContextInitialized',
+    'OnCreateExtension',
+    'OnCreateExtensionError',
+    'OnAddExtension',
+    'OnRemoveExtension'
+  ]);
   const sections = [];
   for (const [ownerClass, macro, customEvents] of [
     ['FBroHsBroEvent', 'LB_FBRO_BROWSER_EVENT_OVERRIDES', customBrowserEvents],

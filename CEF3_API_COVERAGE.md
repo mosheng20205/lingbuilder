@@ -12,25 +12,23 @@
 
 | 状态 | 数量 |
 | --- | ---: |
-| implemented | 265 |
+| implemented | 1384 |
 | internal | 8 |
 | notApplicable | 185 |
-| planned | 1119 |
 
 ## 中文复核
 
 | 状态 | 数量 |
 | --- | ---: |
-| needsReview | 1119 |
 | notRequired | 193 |
-| translated | 265 |
+| translated | 1384 |
 
 ## 模块分布
 
 | 模块 | 签名数 |
 | --- | ---: |
-| `lingbuilder.cef3.automation` | 220 |
-| `lingbuilder.cef3.browser` | 93 |
+| `lingbuilder.cef3.automation` | 219 |
+| `lingbuilder.cef3.browser` | 94 |
 | `lingbuilder.cef3.devtools` | 5 |
 | `lingbuilder.cef3.events` | 113 |
 | `lingbuilder.cef3.network` | 199 |

@@ -26,6 +26,31 @@ function listValue(value: unknown, fallback: string[]) {
   return result.length ? result : fallback;
 }
 
+function parseJsonProperty(value: unknown): unknown {
+  const text = Array.isArray(value) ? value.map(item => String(item)).join('\n') : String(value ?? '');
+  if (!text.trim()) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function richListItems(value: unknown): Array<{ key: string; label: string }> {
+  const parsed = parseJsonProperty(value);
+  const items = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { items?: unknown[] }).items)
+      ? (parsed as { items: unknown[] }).items
+      : [];
+  return items.slice(0, 4).map((item, index) => {
+    const record = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    const data = record.data && typeof record.data === 'object' ? record.data as Record<string, unknown> : {};
+    const key = textValue(record.key, `item-${index + 1}`);
+    return { key, label: textValue(data.title ?? data.label ?? data.name ?? record.title, key) };
+  });
+}
+
 /**
  * new_emoji stores colors as #AARRGGBB while CSS expects #RRGGBB or rgba().
  * Keep the conversion here so designer previews use the same values as the
@@ -109,6 +134,12 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
   const items = listValue(p.items, ['选项一', '选项二', '选项三']);
   const tabItems = listValue(p.tabs, items);
   const activeTabIndex = Math.max(0, Math.min(tabItems.length - 1, Math.trunc(numberValue(p.activeIndex, numberValue(p.selectedIndex, 0)))));
+  const menuItems = Array.isArray(p.menuItems)
+    ? p.menuItems.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : [];
+  const actionIcons = Array.isArray(p.actionIcons)
+    ? p.actionIcons.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : [];
   const title = textValue(p.title, content);
   const body = textValue(p.body, textValue(p.description, '这里是组件内容'));
   const value = Math.max(0, Math.min(100, numberValue(p.value, numberValue(control.content, 62))));
@@ -130,8 +161,15 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
   let preview: React.ReactNode;
 
   switch (kind) {
+    case 'Container':
+      preview = <div className="h-full w-full overflow-hidden" style={{ backgroundColor: toNewEmojiCssColor(p.backgroundColor, toNewEmojiCssColor(control.background, 'transparent')), border: `1px solid ${toNewEmojiCssColor(p.borderColor, 'transparent')}`, color: toNewEmojiCssColor(control.foreground, theme.textPrimary) }} />;
+      break;
     case 'Panel':
-      preview = <Shell className="border-dashed p-2"><div className="flex h-full items-start justify-between"><span className="text-[10px] text-slate-300">{content}</span><span className="rounded bg-violet-500/15 px-1 text-[8px] text-violet-300">Panel</span></div></Shell>;
+      preview = <div className="h-full w-full overflow-hidden" style={{
+        backgroundColor: toNewEmojiCssColor(p.backgroundColor, toNewEmojiCssColor(control.background, 'transparent')),
+        border: `${Math.max(0, numberValue(p.borderWidth, 0))}px solid ${toNewEmojiCssColor(p.borderColor, 'transparent')}`,
+        borderRadius: `${Math.max(0, numberValue(p.cornerRadius, 0))}px`
+      }} />;
       break;
     case 'Text':
       preview = <div className="flex h-full w-full items-center overflow-hidden" style={{ justifyContent: p.align === '1' ? 'center' : p.align === '2' ? 'flex-end' : 'flex-start' }}><span className="truncate">{content}</span></div>;
@@ -151,15 +189,42 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'ListBox':
       preview = <Shell className="p-1 text-[10px]">{items.slice(0, 4).map((item, index) => <div key={item} className={`rounded px-2 py-1 ${index === 0 ? 'bg-violet-500/30 text-violet-100' : 'text-slate-400'}`}>{item}</div>)}</Shell>;
       break;
+    case 'RichList': {
+      const rows = richListItems(p.itemsJson);
+      const visibleRows = rows.length ? rows : [{ key: 'item-1', label: '富列表项目' }];
+      preview = <Shell className="flex flex-col text-[9px]"><div className="flex h-8 shrink-0 items-center justify-between border-b border-slate-700 px-2"><b className="truncate">{title}</b><span className="text-[8px] text-slate-500">{visibleRows.length} 项</span></div><div className="min-h-0 flex-1 overflow-hidden p-1">{visibleRows.map((item, index) => <div key={item.key} className={`mb-1 flex items-center gap-2 rounded border px-2 py-1.5 ${index === 0 ? 'border-violet-500/40 bg-violet-500/20' : 'border-transparent text-slate-400'}`}><span className={`h-5 w-5 shrink-0 rounded ${index === 0 ? 'bg-violet-400/40' : 'bg-slate-700'}`} /><span className="min-w-0 flex-1 truncate">{item.label}</span><span className="rounded border border-slate-600 px-1.5 py-0.5 text-[8px] text-slate-300">打开</span></div>)}</div></Shell>;
+      break;
+    }
     case 'Card':
       preview = <Shell className="flex flex-col border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 p-3"><div className="flex items-center justify-between font-semibold"><span>{title}</span><span className="text-violet-300">•••</span></div><div className="mt-2 line-clamp-2 text-[10px] text-slate-400">{body}</div><div className="mt-auto h-1 w-16 rounded bg-violet-500/60" /></Shell>;
       break;
-    case 'Menu':
-      preview = <Shell className="p-1 text-[10px]">{items.slice(0, 4).map((item, index) => <div key={item} className={`flex items-center gap-2 rounded px-2 py-1 ${index === 0 ? 'bg-violet-500/25 text-white' : 'text-slate-400'}`}><span className="text-violet-300">◆</span><span className="truncate">{item}</span>{index === 1 && <span className="ml-auto">›</span>}</div>)}</Shell>;
+    case 'Menu': {
+      const background = toNewEmojiCssColor(p.menuBackgroundColor, '#292A2D');
+      const foreground = toNewEmojiCssColor(p.menuTextColor, '#E8EAED');
+      const hover = toNewEmojiCssColor(p.menuHoverBackgroundColor, '#3C4043');
+      preview = <div className="h-full w-full overflow-hidden border p-1 text-[10px] shadow-lg" style={{ backgroundColor: background, color: foreground, borderColor: toNewEmojiCssColor(p.menuBorderColor, '#3C4043') }}>
+        {(menuItems.length ? menuItems : items.map((title, index) => ({ id: `${index}`, title }))).slice(0, 9).map((item, index) => item.separator === true
+          ? <div key={String(item.id || index)} className="mx-1 my-1 border-t" style={{ borderColor: toNewEmojiCssColor(p.menuBorderColor, '#3C4043') }} />
+          : <div key={String(item.id || index)} className="flex min-h-5 items-center gap-1.5 px-2 py-0.5" style={{ color: item.disabled === true ? toNewEmojiCssColor(p.menuDisabledTextColor, '#9AA0A6') : foreground, backgroundColor: index === 0 && item.disabled !== true ? hover : 'transparent' }}>
+            <span className="w-3 shrink-0 text-center">{textValue(item.icon, '')}</span><span className="min-w-0 flex-1 truncate">{textValue(item.title, '')}</span>{item.shortcut ? <span className="shrink-0 text-[8px] opacity-70">{String(item.shortcut)}</span> : null}
+          </div>)}
+      </div>;
       break;
-    case 'Tabs':
-      preview = <Shell className="flex flex-col"><div className="flex h-8 shrink-0 items-end overflow-hidden border-b border-slate-700 px-2">{tabItems.map((item, index) => <span key={`${item}-${index}`} className={`shrink-0 px-2 py-1 text-[10px] ${index === activeTabIndex ? 'border-b-2 border-violet-400 text-violet-200' : 'text-slate-500'}`}>{item}</span>)}</div><div className="flex flex-1 items-center justify-center text-[10px] text-slate-500">{tabItems[activeTabIndex]} 内容区</div></Shell>;
+    }
+    case 'Tabs': {
+      const chromeMode = p.chromeMode === true;
+      const tabRecords = Array.isArray(p.items)
+        ? p.items.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+        : [];
+      const chromeTabs = tabRecords.length ? tabRecords : tabItems.map((title, index) => ({ id: `${index}`, title }));
+      preview = chromeMode
+        ? <div className="flex h-full w-full items-end overflow-hidden px-1" style={{ backgroundColor: '#202124', color: '#E8EAED' }}>{chromeTabs.map((item, index) => {
+          const active = index === activeTabIndex;
+          return <div key={String(item.id || index)} className="flex h-[calc(100%-2px)] min-w-0 items-center gap-1.5 rounded-t-lg px-2 text-[10px]" style={{ width: `${Math.max(20, 100 / Math.max(1, chromeTabs.length))}%`, backgroundColor: active ? '#292A2D' : 'transparent', color: active ? '#E8EAED' : '#9AA0A6' }}><span className="shrink-0">{textValue(item.icon, '🌐')}</span><span className="min-w-0 flex-1 truncate">{textValue(item.title, '新标签页')}</span>{item.closable !== false ? <span className="shrink-0 opacity-75">×</span> : null}</div>;
+        })}</div>
+        : <Shell className="flex flex-col"><div className="flex h-8 shrink-0 items-end overflow-hidden border-b border-slate-700 px-2">{tabItems.map((item, index) => <span key={`${item}-${index}`} className={`shrink-0 px-2 py-1 text-[10px] ${index === activeTabIndex ? 'border-b-2 border-violet-400 text-violet-200' : 'text-slate-500'}`}>{item}</span>)}</div><div className="flex flex-1 items-center justify-center text-[10px] text-slate-500">{tabItems[activeTabIndex]} 内容区</div></Shell>;
       break;
+    }
     case 'Dialog':
       preview = <div className="flex h-full w-full items-center justify-center rounded bg-black/50 p-2"><div className="w-[88%] rounded-lg border border-slate-600 bg-slate-800 shadow-xl"><div className="flex items-center justify-between border-b border-slate-700 px-3 py-2 font-semibold"><span>{title}</span><span className="text-slate-400">×</span></div><div className="px-3 py-2 text-[10px] text-slate-400">{body}</div><div className="flex justify-end gap-1 px-3 pb-2"><MiniButton>取消</MiniButton><MiniButton primary>确定</MiniButton></div></div></div>;
       break;
@@ -188,9 +253,6 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
       preview = isSelected
         ? <div data-new-emoji-space-helper="visible" className="flex h-full w-full items-center justify-center border border-dashed border-amber-400/70 text-[9px] text-amber-300">间距 · 运行时不可见</div>
         : <div data-new-emoji-space-helper="hidden" className="h-full w-full" aria-hidden="true" />;
-      break;
-    case 'Container':
-      preview = <div className="h-full w-full overflow-hidden" style={{ backgroundColor: toNewEmojiCssColor(p.backgroundColor, toNewEmojiCssColor(control.background, 'transparent')), border: `1px solid ${toNewEmojiCssColor(p.borderColor, 'transparent')}`, color: toNewEmojiCssColor(control.foreground, theme.textPrimary) }} />;
       break;
     case 'Header':
       preview = <div className="flex h-full w-full overflow-hidden px-0" style={nativeRegionStyle(control, theme, p)}><span className="truncate">{title}</span></div>;
@@ -401,14 +463,23 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'Popconfirm':
       preview = <Shell className="flex flex-col justify-between p-2 text-[9px]"><div className="flex gap-2"><span className="text-amber-300">?</span><span>{textValue(p.title, '确定要删除吗？')}</span></div><div className="flex justify-end gap-1"><MiniButton>取消</MiniButton><MiniButton primary>确定</MiniButton></div></Shell>;
       break;
-    case 'IconButton':
-      preview = <div className="flex h-full w-full items-center justify-center"><span className="flex h-[80%] aspect-square items-center justify-center rounded-lg border border-violet-400/60 bg-violet-500/20 text-xl text-violet-200 shadow">{textValue(p.icon, '✦')}</span></div>;
+    case 'IconButton': {
+      const shape = numberValue(p.shape, 1);
+      const radius = shape === 0 ? 0 : Math.max(0, numberValue(p.radius, 17));
+      preview = <div className="relative flex h-full w-full items-center justify-center overflow-hidden" style={{
+        backgroundColor: toNewEmojiCssColor(p.normalBg, 'transparent'),
+        borderRadius: `${radius}px`,
+        color: toNewEmojiCssColor(p.iconColor, '#E8EAED')
+      }}><span style={{ fontSize: `${Math.max(10, numberValue(p.iconSize, 17))}px`, lineHeight: 1 }}>{textValue(p.icon, '✦')}</span>{p.badgeVisible === true && textValue(p.badge, '') ? <span className="absolute right-0.5 top-0.5 flex min-h-3 min-w-3 items-center justify-center rounded-full bg-rose-500 px-0.5 text-[7px] text-white">{textValue(p.badge, '')}</span> : null}</div>;
       break;
-    case 'Omnibox':
-      preview = <Shell className="flex items-center gap-2 rounded-full px-3"><span className="text-slate-500">⌕</span><span className="min-w-0 flex-1 truncate text-[9px] text-slate-300">https://lingbuilder.local/new_emoji</span><span className="text-slate-500">☆ ⋮</span></Shell>;
+    }
+    case 'Omnibox': {
+      const displayValue = textValue(p.value, textValue(p.placeholder, '搜索或输入网址'));
+      preview = <div className="flex h-full w-full items-center gap-2 overflow-hidden rounded-full border px-3 text-[10px]" style={{ backgroundColor: toNewEmojiCssColor(control.background, '#F1F3F4'), color: toNewEmojiCssColor(control.foreground, '#202124'), borderColor: 'transparent' }}><span className="shrink-0 text-slate-500">{numberValue(p.securityState, 0) > 0 ? '◉' : '⌕'}</span>{textValue(p.prefixText, '') ? <span className="shrink-0 rounded px-1" style={{ backgroundColor: toNewEmojiCssColor(p.prefixBg, 'transparent'), color: toNewEmojiCssColor(p.prefixFg, '#202124') }}>{textValue(p.prefixText, '')}</span> : null}<span className="min-w-0 flex-1 truncate">{displayValue}</span>{actionIcons.slice(0, 3).map((item, index) => <span key={String(item.id || index)} className="shrink-0">{textValue(item.icon, '')}</span>)}</div>;
       break;
+    }
     case 'BrowserViewport':
-      preview = <Shell className="flex flex-col bg-white"><div className="flex h-7 shrink-0 items-center gap-1 border-b border-slate-300 bg-slate-100 px-2"><i className="h-2 w-2 rounded-full bg-rose-400"/><i className="h-2 w-2 rounded-full bg-amber-400"/><i className="h-2 w-2 rounded-full bg-emerald-400"/><span className="ml-2 flex-1 rounded bg-white px-2 py-0.5 text-[8px] text-slate-500">https://example.com</span></div><div className="flex flex-1 flex-col items-center justify-center bg-gradient-to-br from-white to-violet-50 text-slate-700"><span className="text-xl text-violet-500">◈</span><b className="text-[10px]">Browser Viewport</b><span className="text-[8px] text-slate-400">网页内容预览</span></div></Shell>;
+      preview = <div className="flex h-full w-full flex-col items-center justify-center overflow-hidden bg-white px-3 text-center text-slate-700"><span className="text-lg">{textValue(p.placeholderIcon, '🌐')}</span><b className="mt-1 text-[10px]">{textValue(p.placeholderTitle, '新标签页')}</b><span className="mt-1 line-clamp-2 text-[8px] text-slate-500">{textValue(p.placeholderDesc, '真实网页由独立浏览器宿主渲染。')}</span></div>;
       break;
     default:
       preview = <Shell className="flex items-center justify-center border-dashed text-[10px] text-violet-300">{content}</Shell>;

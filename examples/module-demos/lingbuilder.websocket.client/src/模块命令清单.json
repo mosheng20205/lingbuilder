@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-03T05:21:49.361Z",
+  "generatedAt": "2026-08-07T08:51:36.001Z",
   "module": {
     "id": "lingbuilder.websocket.client",
     "name": "WebSocket 客户端模块",
@@ -417,7 +417,11 @@
           {
             "name": "处理器",
             "type": "handler",
-            "description": "必须使用 &处理器名；处理器必须无参数。"
+            "description": "必须使用 &处理器名；处理器必须无参数。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
           }
         ],
         "returnType": "bool",
@@ -447,7 +451,11 @@
           {
             "name": "处理器",
             "type": "handler",
-            "description": "必须使用 &处理器名；处理器必须无参数。"
+            "description": "必须使用 &处理器名；处理器必须无参数。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
           }
         ],
         "returnType": "bool",
@@ -477,7 +485,11 @@
           {
             "name": "处理器",
             "type": "handler",
-            "description": "必须使用 &处理器名；处理器必须无参数。"
+            "description": "必须使用 &处理器名；处理器必须无参数。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
           }
         ],
         "returnType": "bool",
@@ -507,7 +519,11 @@
           {
             "name": "处理器",
             "type": "handler",
-            "description": "必须使用 &处理器名；处理器必须无参数。"
+            "description": "必须使用 &处理器名；处理器必须无参数。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
           }
         ],
         "returnType": "bool",
@@ -537,7 +553,11 @@
           {
             "name": "处理器",
             "type": "handler",
-            "description": "必须使用 &处理器名；处理器必须无参数。"
+            "description": "必须使用 &处理器名；处理器必须无参数。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
           }
         ],
         "returnType": "bool",

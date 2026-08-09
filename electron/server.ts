@@ -21,6 +21,7 @@ import {
 import { generateLingCppNativeWin32Project } from "./src/services/windowDesigner/lingCppWin32Project";
 import { writeGeneratedProjectFiles } from "./src/services/windowDesigner/generatedProjectFileService";
 import { exportVisualStudioProject } from "./src/services/windowDesigner/visualStudioProjectExporter";
+import { createWindowsMsvcLinkLibraries } from "./src/services/windowDesigner/windowsSystemLibraries";
 import { LingWindowProject } from "./src/services/windowDesigner/types";
 import {
   applyWorkspaceEdit,
@@ -3817,6 +3818,7 @@ async function compileWin32Preview(
   const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ["/I", includeDir]);
   const moduleSources = modulePlan?.sourceFiles || [];
   const moduleLibs = modulePlan?.libFiles || [];
+  const msvcLinkLibraries = createWindowsMsvcLinkLibraries(moduleLibs);
   if (compiler.kind !== "msvc" && modulePlan?.requiresMsvc) {
     return {
       ok: false,
@@ -3850,7 +3852,7 @@ async function compileWin32Preview(
     msvcBuildFlags.push("/MD");
   }
   if (compiler.kind === "msvc" && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, buildConfiguration, requiredCppStandard, useDynamicCrt, resourceOutputPath, resourceLogs, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, msvcLinkLibraries, buildConfiguration, requiredCppStandard, useDynamicCrt, resourceOutputPath, resourceLogs, signal);
   }
 
   const commandArgs = compiler.kind === "msvc"
@@ -3866,11 +3868,8 @@ async function compileWin32Preview(
         sourcePath,
         "/Fo:" + objectPath,
         "/Fe:" + exePath,
-        "user32.lib",
-        "gdi32.lib",
-        "comctl32.lib",
+        ...msvcLinkLibraries,
         ...(resourceOutputPath ? [resourceOutputPath] : []),
-        ...moduleLibs,
         ...(buildConfiguration.mode === "Debug" ? ["/link", "/DEBUG", "/INCREMENTAL:NO"] : [])
       ]
     : [
@@ -3957,7 +3956,7 @@ async function compileMsvcPreviewWithModules(
   cwd: string,
   includeArgs: string[],
   moduleSources: string[],
-  moduleLibs: string[],
+  linkLibraries: string[],
   buildConfiguration: BuildConfiguration,
   requiredCppStandard: 17 | 20,
   useDynamicCrt: boolean,
@@ -3990,12 +3989,8 @@ async function compileMsvcPreviewWithModules(
     "/nologo",
     ...objectFiles,
     "/Fe:" + exePath,
-    "user32.lib",
-    "gdi32.lib",
-    "comctl32.lib",
-    "ole32.lib",
+    ...linkLibraries,
     ...(resourceOutputPath ? [resourceOutputPath] : []),
-    ...moduleLibs,
     ...(buildConfiguration.mode === "Debug" ? ["/DEBUG", "/INCREMENTAL:NO"] : [])
   ];
 

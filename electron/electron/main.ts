@@ -24,6 +24,7 @@ import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiB
 import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
 import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
+import { restoreModulePermits } from './modulePermitRestoreService';
 import {
   createLcppSourcePackageService,
   LCPP_SOURCE_PACKAGE_EXTENSION,
@@ -1108,9 +1109,18 @@ app.whenReady().then(async () => {
   }
 
   await cloudAccountService.initialize().catch(error => console.warn(`系统 AI 账号恢复失败：${error instanceof Error ? error.message : String(error)}`));
-  for (const authorization of await readModulePermitCache()) {
-    await requestRendererApi('/api/module-access/sync', { method: 'POST', body: JSON.stringify(authorization) }).catch(() => undefined);
-  }
+  const cloudSession = await cloudAccountService.snapshot();
+  await restoreModulePermits({
+    readCache: readModulePermitCache,
+    writeCache: writeModulePermitCache,
+    requestRendererApi,
+    refreshAuthorization: cloudSession.authenticated
+      ? moduleId => cloudAccountService.modulePermit(moduleId)
+      : undefined,
+    log: (level, message) => level === 'warn'
+      ? console.warn(`[module-access] ${message}`)
+      : console.info(`[module-access] ${message}`)
+  });
   registerIpcHandlers();
   await createMainWindow();
   app.on('activate', () => {

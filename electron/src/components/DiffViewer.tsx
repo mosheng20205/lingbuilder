@@ -49,7 +49,7 @@ import {
   DIFF_VIEW_MODE_CHANGE_EVENT,
   type DiffViewMode
 } from '../services/editor/diffViewMode';
-import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
+import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppSourceDefinitionAtPosition, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppProjectGlobalContext, LingCppProjectTypeContext, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { getBeginnerProcedureCallAtCursor, resolveBeginnerProcedureDefinition } from '../services/lingCpp/beginnerDefinitionNavigation';
@@ -5948,6 +5948,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         activeFile?.path
       );
       const call = getProcedureCallFromInput(event.currentTarget, cursor);
+      const sourceDefinition = getLingCppSourceDefinitionAtPosition(
+        normalizedSourceCode,
+        sourcePosition.line,
+        sourcePosition.column
+      );
       const constantName = getProjectConstantNameAtCursor(
         event.currentTarget.value,
         cursor,
@@ -5955,6 +5960,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
       const revealed = controlReference?.symbol
         ? (revealControlReference(controlReference), true)
+        : sourceDefinition && (sourceDefinition.kind === 'local' || sourceDefinition.kind === 'parameter')
+          ? (setCursorPosition({ line: sourceDefinition.range.startLine, column: sourceDefinition.range.startColumn }), setStructuredRevealLine(sourceDefinition.range.startLine), true)
         : call
           ? revealBeginnerProcedureDefinition(target.className, call.name)
         : constantName
@@ -6828,7 +6835,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 captureBeginnerTextareaView(event.currentTarget);
               }}
               onWheel={handleEditorFontWheel}
-              title="Ctrl+单击项目子程序调用或 &处理器名可转到定义"
+              title="Ctrl+单击局部控件变量、项目子程序调用或 &处理器名可转到定义"
               style={editorTextStyle}
               className={`${editorHeightClass} w-full resize-y overflow-x-auto overflow-y-hidden whitespace-pre border-0 bg-transparent px-3 py-2 font-mono outline-none ${
                 isDarkMode
@@ -8679,7 +8686,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 captureBeginnerTextareaView(event.currentTarget);
               }}
               onWheel={handleEditorFontWheel}
-              title="Ctrl+单击项目子程序调用或 &处理器名可转到定义"
+              title="Ctrl+单击局部控件变量、项目子程序调用或 &处理器名可转到定义"
               style={editorTextStyle}
               className={`relative z-10 w-full resize-none overflow-x-auto overflow-y-hidden whitespace-pre border-0 bg-transparent px-3 py-2 font-mono font-normal not-italic tracking-normal text-transparent outline-none selection:bg-cyan-500/30 [&::-webkit-scrollbar]:h-2 ${
                 isDarkMode ? 'caret-cyan-200 placeholder:text-slate-600' : 'caret-cyan-700 placeholder:text-slate-400'

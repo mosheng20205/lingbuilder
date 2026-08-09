@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import lingBuilderIcon from '../../../image/lingbuilder-ide-icon-v1.png';
 import { LINGBUILDER_DISPLAY_VERSION } from '../services/product/productInfo';
+import ProjectTypeDialog from './ProjectTypeDialog';
 
 export interface WelcomePageProps {
   isDarkMode: boolean;
@@ -52,6 +54,7 @@ export default function WelcomePage({
   onOpenHelp,
   onOpenCliGuide
 }: WelcomePageProps) {
+  const [showProjectTypeDialog, setShowProjectTypeDialog] = useState(false);
   const surface = isDarkMode ? 'bg-[#1e1e1e] text-[#d4d4d4]' : 'bg-[#f7f8fa] text-slate-800';
   const titleBar = isDarkMode
     ? 'bg-[#323233] text-slate-200 border-[#2b2b2b]'
@@ -113,7 +116,7 @@ export default function WelcomePage({
               <div className="mt-8 flex flex-wrap gap-3">
                 <button
                   type="button"
-                  onClick={onCreateProject}
+                  onClick={() => setShowProjectTypeDialog(true)}
                   className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-[#007acc] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#168ad4] focus:outline-none focus:ring-2 focus:ring-blue-400/60"
                 >
                   <FolderPlus className="h-4 w-4" />
@@ -201,6 +204,16 @@ export default function WelcomePage({
           </footer>
         </div>
       </main>
+
+      <ProjectTypeDialog
+        open={showProjectTypeDialog}
+        isDarkMode={isDarkMode}
+        onSelectWindowsUi={() => {
+          setShowProjectTypeDialog(false);
+          onCreateProject();
+        }}
+        onClose={() => setShowProjectTypeDialog(false)}
+      />
     </div>
   );
 }

@@ -29,6 +29,12 @@ export const CEF3_BROWSER_EVENTS: readonly Cef3BrowserEventDefinition[] = [
     ['DoClose', '浏览器请求关闭', '浏览器请求关闭，可接管。'],
     ['OnBeforePopup', '新窗口打开前', '网页请求打开新窗口，可允许、拒绝或接管。']
   ]),
+  ...define('开发者工具协议', 'notification', [
+    ['OnDevToolsAgentAttached', '开发工具代理已附加', '启用“CEF3开发工具_订阅代理附加”后，在 DevTools Protocol 代理附加时触发。'],
+    ['OnDevToolsAgentDetached', '开发工具代理已分离', '启用“CEF3开发工具_订阅代理分离”后，在 DevTools Protocol 代理分离时触发。'],
+    ['OnDevToolsEvent', '开发工具协议事件', '启用“CEF3开发工具_订阅协议事件”后触发。字段包括 method、paramsJson、byteCount、truncated 与 utf8Valid。'],
+    ['OnDevToolsMessage', '开发工具协议消息', '启用“CEF3开发工具_订阅协议消息”后触发。字段 message 保存复制后的完整协议 JSON 或其 1MiB 截断前缀。']
+  ]),
   ...define('加载与显示', 'notification', [
     ['OnLoadingStateChange', '加载状态改变', '加载、前进和后退状态改变。'],
     ['OnLoadStart', '开始加载', '主框架或子框架开始加载。', 'LoadStart'],
@@ -72,7 +78,7 @@ export const CEF3_BROWSER_EVENTS: readonly Cef3BrowserEventDefinition[] = [
     ['OnTakeFocus', '焦点即将移出', '焦点即将移出浏览器。'],
     ['OnGotFocus', '浏览器获得焦点', '浏览器获得焦点。'],
     ['OnDraggableRegionsChanged', '网页可拖动区域改变', '网页可拖动区域改变。'],
-    ['OnFindResult', '页内查找结果', '页内查找结果更新。']
+    ['OnFindResult', '页内查找结果', '页内查找结果更新。停止查找、导航或没有匹配项时，终止通知的 count 可以为 0。']
   ]),
   ...define('输入与焦点', 'decision', [
     ['OnSetFocus', '浏览器请求焦点', '浏览器请求获得焦点。'],

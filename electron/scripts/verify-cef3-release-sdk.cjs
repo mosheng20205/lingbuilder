@@ -212,7 +212,10 @@ async function assertPeX64(filePath) {
 
 async function verifyBridgeMetadata(bridgeRoot, cefVersion) {
   const metadata = await readJson(path.join(bridgeRoot, 'VERSION.json'), 'CEF3 Bridge 缺少版本与校验清单');
-  if (metadata.bridgeAbi !== '3.0.0' || metadata.platform !== 'windows-msvc-x64' || metadata.cefVersion !== cefVersion) {
+  const compatibleAbis = Array.isArray(metadata.compatibleBridgeAbis) ? metadata.compatibleBridgeAbis : [];
+  if (metadata.schemaVersion !== 2 || metadata.bridgeAbi !== '4.0.0'
+      || !compatibleAbis.includes('3.0.0') || !compatibleAbis.includes('4.0.0')
+      || metadata.platform !== 'windows-msvc-x64' || metadata.cefVersion !== cefVersion) {
     throw new Error(`CEF3 Bridge 元数据不匹配：ABI=${metadata.bridgeAbi}，CEF=${metadata.cefVersion}，平台=${metadata.platform}。`);
   }
   for (const name of ['LingBuilderCefBridge.h', 'LingBuilderCefBridge.lib', 'LingBuilderCefBridge.dll']) {

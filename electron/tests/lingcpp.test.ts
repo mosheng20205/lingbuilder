@@ -24,6 +24,7 @@ import {
   getLingCppProblems,
   getLingCppReadableBlocks,
   getLingCppSemanticDiagnostics,
+  getLingCppSourceDefinitionAtPosition,
   getLingCppStructuredRows,
   getLingCppStructuredReadingRows,
   getLingCppStructureView,
@@ -68,7 +69,7 @@ import {
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
-import { WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
+import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
 import { InstalledModule } from '../src/services/modules/types';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import {
@@ -431,6 +432,144 @@ test('LingCpp parses scoped local variables and diagnoses undeclared or incompat
     { enabledModules: [byteResponseModule], availableModules: [byteResponseModule] }
   );
   assert.ok(useBeforeDeclarationDiagnostics.some(diagnostic => diagnostic.id.includes('undeclared-variable') && diagnostic.message.includes('ret')));
+});
+
+test('LingCpp supports typed runtime control locals, parameters, returns and current-window completion', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const source = [
+    '类 主窗口 : 公开 窗体',
+    '公开:',
+    '    按钮 获取按钮(按钮 参数按钮)',
+    '        局部 按钮 按钮123 = 通过标记文本获取按钮("确认")',
+    '        局部 编辑框 输入框 = 通过标记整数获取编辑框(1001)',
+    '        局部 按钮 动态按钮 = 控件_创建按钮(当前窗口, 20, 20, 120, 36, "确定", "确认", 1002)',
+    '        控件_设置启用(动态按钮, 真)',
+    '        动态按钮 = 参数按钮',
+    '        返回 动态按钮',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, sampleProject, 'src/MainWindow.lcpp', moduleContext);
+  assert.equal(diagnostics.some(item => item.message.includes('找不到控件“动态按钮”')), false);
+  assert.equal(diagnostics.some(item => item.id.includes('initializer-type') || item.id.includes('assignment-type')), false);
+
+  const operationLine = source.split('\n')[6];
+  const variableColumn = operationLine.indexOf('动态按钮') + 2;
+  const reference = getLingCppControlReferenceAtPosition(source, 7, variableColumn, sampleProject, moduleContext, 'src/MainWindow.lcpp');
+  assert.equal(reference?.status, 'runtime-reference');
+  assert.equal(reference?.runtimeType, '按钮');
+  const definition = getLingCppSourceDefinitionAtPosition(source, 7, variableColumn);
+  assert.equal(definition?.kind, 'local');
+  assert.equal(definition?.range.startLine, 6);
+  assert.match(getLingCppHover({ source, line: 7, column: variableColumn }, buildLingCppLanguageContext(source, sampleProject, moduleContext))?.contents || '', /类型化运行时控件引用[\s\S]*按钮/u);
+
+  const variableCompletionSource = source.replace('控件_设置启用(动态按钮, 真)', '控件_设置启用(动');
+  const variableCompletions = getLingCppCompletionItems(
+    { source: variableCompletionSource, line: 7, column: variableCompletionSource.split('\n')[6].length + 1, triggerText: '动' },
+    buildLingCppLanguageContext(variableCompletionSource, sampleProject, moduleContext, 'src/MainWindow.lcpp')
+  );
+  assert.ok(variableCompletions.some(item => item.label === '动态按钮' && item.detail.includes('局部控件变量')));
+
+  const parentCompletionSource = source.replace('当前窗口, 20', '当');
+  const parentLine = parentCompletionSource.split('\n')[5];
+  const parentCompletions = getLingCppCompletionItems(
+    { source: parentCompletionSource, line: 6, column: parentLine.length + 1, triggerText: '当' },
+    buildLingCppLanguageContext(parentCompletionSource, sampleProject, moduleContext, 'src/MainWindow.lcpp')
+  );
+  assert.ok(parentCompletions.some(item => item.label === '当前窗口' && item.detail.includes('只读控件容器')));
+});
+
+test('Win32 native generation emits shared runtime control references, tags and all 32 typed factories', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!, installPath: 'builtin', isBuiltin: true,
+    isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: sampleProject.windows.map((window, index) => index === 0 ? {
+      ...window,
+      controls: window.controls.map((control, controlIndex) => controlIndex === 0
+        ? { ...control, tagText: '  确认  ', tagInteger: 0 }
+        : control)
+    } : window)
+  };
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '公开:',
+    '    按钮 创建动态按钮()',
+    '        局部 按钮 动态按钮 = 控件_创建按钮(当前窗口, 20, 20, 120, 36, "确定", "动态确认", 0)',
+    '        局部 按钮 查找按钮 = 通过标记文本获取按钮("确认")',
+    '        控件_设置启用(动态按钮, 真)',
+    '        动态按钮.内容 = "运行时按钮"',
+    '        按钮_绑定被单击(动态按钮, &动态按钮被单击)',
+    '        返回 动态按钮',
+    '    结束',
+    '    事件 动态按钮被单击()',
+    '        调试输出("动态按钮事件")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /struct LingControlRef/u);
+  assert.match(cpp, /std::deque<DynamicControlSpec> dynamicControlSpecs_/u);
+  assert.match(cpp, /LingControlRef 动态按钮 = 控件_创建按钮\(hwnd_, 20, 20, 120, 36, L"确定", L"动态确认", 0\)/u);
+  assert.match(cpp, /控件_设置启用\(LingCppControlWideName\(动态按钮\), true\)/u);
+  assert.match(cpp, /控件_设置文本\(LingCppControlWideName\(动态按钮\), L"运行时按钮"\)/u);
+  assert.match(cpp, /按钮_绑定被单击\(LingCppControlWideName\(动态按钮\), L"动态按钮被单击"\)/u);
+  assert.match(cpp, /runtimeControlEventHandlers_\[control->id\]\[eventName\] = handlerName/u);
+  assert.match(cpp, /std::wstring handler = ResolveControlEventHandler\(control, eventName\)/u);
+  assert.match(cpp, /if \(handler == L"动态按钮被单击"\) \{ 动态按钮被单击\(\); return; \}/u);
+  assert.match(cpp, /L"确认", true, 0, L"/u);
+  const contracts = [
+    ...getWin32RuntimeControlContracts('lingbuilder.win32.basic'),
+    ...getWin32RuntimeControlContracts('lingbuilder.win32.common-controls')
+  ];
+  assert.equal(contracts.length, 32);
+  contracts.forEach(contract => {
+    assert.ok(cpp.includes(`LingControlRef ${contract.createCommand}(`), contract.createCommand);
+    assert.ok(cpp.includes(`LingControlRef ${contract.lookupByTagTextCommand}(`), contract.lookupByTagTextCommand);
+    assert.ok(cpp.includes(`LingControlRef ${contract.lookupByTagIntegerCommand}(`), contract.lookupByTagIntegerCommand);
+  });
+});
+
+test('LingCpp blocks runtime control constants, arrays, members, globals and incompatible assignments', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!, installPath: 'builtin', isBuiltin: true,
+    isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }));
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const source = [
+    '全局 按钮 全局按钮',
+    '类 主窗口 : 公开 窗体',
+    '公开:',
+    '    按钮 成员按钮',
+    '    空 测试()',
+    '        局部常量 按钮 常量按钮 = 通过标记文本获取按钮("确认")',
+    '        局部 按钮 按钮数组[]',
+    '        局部 按钮 动态按钮 = 通过标记文本获取按钮("确认")',
+    '        动态按钮 = 通过标记文本获取编辑框("输入")',
+    '        当前窗口 = 动态按钮',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, sampleProject, 'src/MainWindow.lcpp', moduleContext);
+  const messages = diagnostics.map(item => item.message).join('\n');
+  assert.match(messages, /项目全局变量 全局按钮\s+不能使用运行时控件引用类型/u);
+  assert.match(messages, /成员 成员按钮\s+不能使用运行时控件引用类型/u);
+  assert.match(messages, /局部常量 常量按钮\s+不能使用运行时控件引用类型/u);
+  assert.match(messages, /局部数组 按钮数组\s+不能使用运行时控件引用类型/u);
+  assert.match(messages, /不能把 编辑框 赋值给 按钮 变量 动态按钮/u);
+  assert.match(messages, /当前窗口是只读内置容器/u);
 });
 
 test('LingCpp parses runtime local constants in events, methods, constructors and function libraries', () => {
@@ -1597,7 +1736,7 @@ test('controlRef runtime representations are adapted by the registered UI backen
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /调试输出\(LingCppControlStableId\(L"操作结果"\)\);/u);
   assert.match(cpp, /调试输出\(LingCppControlNativeHandle\(L"操作结果"\)\);/u);
-  assert.match(cpp, /protected:\s+int LingCppControlStableId[\s\S]+HWND LingCppControlNativeHandle[\s\S]+private:\s+HTREEITEM FindTreeItemByText/u);
+  assert.match(cpp, /int LingCppControlStableId[\s\S]+HWND LingCppControlNativeHandle[\s\S]+private:\s+HTREEITEM FindTreeItemByText/u);
 
   const newEmojiProject = { ...project, windows: [{ ...project.windows[0], designerBackend: 'new-emoji' }] };
   const blocked = generateLingCppNativeWin32Project(newEmojiProject, { lingCppSourceCode: source, enabledModules: [module] });

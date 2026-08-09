@@ -57,6 +57,46 @@ export interface ModuleDesignerRuntimeMapping {
   eventBindings?: ModuleDesignerEventBindingMapping[];
 }
 
+export type ModuleRuntimeControlParentKind = 'window' | 'container' | 'tabPage';
+export type ModuleRuntimeControlParameterRole =
+  | 'parent'
+  | 'x'
+  | 'y'
+  | 'width'
+  | 'height'
+  | 'content'
+  | 'property'
+  | 'tagText'
+  | 'tagInteger';
+
+export interface ModuleRuntimeControlCreationParameter {
+  name: string;
+  type: ModuleCommandValueType;
+  role: ModuleRuntimeControlParameterRole;
+  propertyKey?: string;
+  optional?: boolean;
+  defaultValue?: string | number | boolean | null;
+}
+
+/**
+ * Host-owned contract for a visual control that can also be created at runtime.
+ * Modules declare capabilities; they do not inject renderer or generator code.
+ */
+export interface ModuleRuntimeControlContribution {
+  /** Explicit LingCpp type name used by locals, parameters and return values. */
+  lingCppType: string;
+  /** Non-owning C++ wrapper. The window remains the lifetime owner. */
+  cppType: 'LingControlRef';
+  createCommand: string;
+  createParameters: ModuleRuntimeControlCreationParameter[];
+  lookupByTagTextCommand: string;
+  lookupByTagIntegerCommand: string;
+  validCommand: '控件_是否有效';
+  parentKinds: ModuleRuntimeControlParentKind[];
+  /** Non-empty tags are unique in current window + concrete type + tag kind. */
+  tagScope: 'currentWindowAndConcreteType';
+}
+
 export interface ModuleDesignerRuntimeParameter {
   name: string;
   type: string;
@@ -82,6 +122,8 @@ export interface ModuleDesignerEventBindingMapping {
   callbackType: string;
   /** 共享鼠标/焦点回调中的原生事件码。 */
   eventCode?: number;
+  /** 共享 JSON 文本回调中的稳定 event 字段值。 */
+  payloadEvent?: string;
 }
 
 export type ModulePublicTypeKind = 'opaque' | 'record' | 'array';
@@ -139,6 +181,41 @@ export interface ModuleDesignerLayoutContribution {
   adapterId?: string;
 }
 
+export type ModuleDesignerRecordFieldType = 'text' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'controlRef';
+
+export interface ModuleDesignerRecordFieldContribution {
+  key: string;
+  label: string;
+  type: ModuleDesignerRecordFieldType;
+  defaultValue?: unknown;
+  options?: Array<{ value: string; label: string }>;
+  required?: boolean;
+  controlTypes?: string[];
+  controlKinds?: ModuleControlReferenceKind[];
+  scope?: ModuleControlReferenceScope;
+  runtimeRepresentation?: ModuleControlRuntimeRepresentation;
+}
+
+export interface ModuleDesignerPropertyContribution {
+  key: string;
+  label: string;
+  type: 'text' | 'hotkey' | 'hotKey' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'stringList' | 'columns' | 'dataGridColumns' | 'dataGridRows' | 'treeNodes' | 'tabs' | 'date' | 'controlRef' | 'recordList';
+  defaultValue: unknown;
+  options?: Array<{ value: string; label: string }>;
+  min?: number;
+  max?: number;
+  description?: string;
+  group?: string;
+  level?: 'basic' | 'advanced';
+  runtimeCommand?: string;
+  controlTypes?: string[];
+  controlKinds?: ModuleControlReferenceKind[];
+  scope?: ModuleControlReferenceScope;
+  runtimeRepresentation?: ModuleControlRuntimeRepresentation;
+  recordKey?: string;
+  fields?: ModuleDesignerRecordFieldContribution[];
+}
+
 export interface ModuleDesignerControlContribution {
   type: string;
   label: string;
@@ -157,20 +234,10 @@ export interface ModuleDesignerControlContribution {
   isVisual?: boolean;
   nativeAdapter?: string;
   requiredLibraries?: string[];
-  properties?: Array<{
-    key: string;
-    label: string;
-    type: 'text' | 'hotkey' | 'hotKey' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'stringList' | 'columns' | 'dataGridColumns' | 'dataGridRows' | 'treeNodes' | 'tabs' | 'date' | 'controlRef';
-    defaultValue: unknown;
-    options?: Array<{ value: string; label: string }>;
-    min?: number;
-    max?: number;
-    description?: string;
-    group?: string;
-    level?: 'basic' | 'advanced';
-    runtimeCommand?: string;
-  }>;
+  properties?: ModuleDesignerPropertyContribution[];
   runtime?: ModuleDesignerRuntimeMapping;
+  /** 可视控件的代码创建、类型化引用和按标记查找契约。 */
+  runtimeControl?: ModuleRuntimeControlContribution;
 }
 
 export interface ModuleDesignerCatalogContribution {
@@ -295,6 +362,10 @@ export interface ModuleCommandBindingParameter {
   variadic?: boolean;
   /** 仅 handler 可用；由语言服务校验 &引用目标的参数和返回类型。 */
   handlerSignature?: ModuleHandlerSignatureContract;
+  /** 可选参数只能出现在参数列表尾部。 */
+  optional?: boolean;
+  /** 可选参数省略时使用的确定性默认值；null 表示“未设置”。 */
+  defaultValue?: string | number | boolean | null;
 }
 
 export interface ModuleManagedTaskInvocation {

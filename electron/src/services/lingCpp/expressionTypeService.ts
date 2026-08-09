@@ -33,6 +33,7 @@ export function inferLingCppExpressionType(
   projectTypes?: LingCppProjectTypeContext
 ): string | undefined {
   const value = expression.trim();
+  if (value === '当前窗口') return '控件容器';
   if (/^(?:L)?["“].*["”]$/su.test(value)) return '文本型';
   if (/^(真|假)$/u.test(value)) return '逻辑型';
   if (/^-?\d+$/u.test(value)) return '整数型';

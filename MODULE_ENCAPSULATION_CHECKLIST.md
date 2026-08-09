@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-08-02
+更新时间：2026-08-08
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **81 个内置模块、1982 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **82 个内置模块、2792 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -86,9 +86,9 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 已封装 | `lingbuilder.crypto.asymmetric` | 非对称加密模块 | 27 |
 | 已封装 | `lingbuilder.crypto.windows` | Windows 数据保护模块 | 4 |
 | 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 | 8 |
-| 已封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库桥接模块 | 7 |
+| 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.0 | 67 |
 
-SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll`，通过 `SQLite_加载运行库` 检查导出函数；缺失时返回中文错误。后续可把官方 SQLite 运行库做成独立 `.lbmod` 包。
+SQLite 模块 2.0 保留原 7 条默认连接兼容入口，并扩展为 67 条生产接口和 `SQLite连接` / `SQLite语句` 两个受管类型。能力覆盖多连接、FULLMUTEX、外键/忙等待、预编译与命名参数、NULL/整数/长整数/小数/UTF-8/BLOB、逐行读取、事务/保存点、WAL/检查点、Online Backup、完整性检查、中断、64 位状态和主/扩展/系统错误码。项目仍需提供与目标架构一致且来源、版本和 SHA-256 可审计的 `sqlite3.dll`；缺失或导出不完整时会返回中文阻断错误，不会静默假装数据库可用。正式说明位于 `electron/docs/modules/sqlite/README.md`，原生验收命令为 `npm run smoke:sqlite-native`。
 
 通用加密模块由内置命令清单、确定性 C++ 运行时和只读 `lingbuilder.crypto.sdk` 原生资产共同组成。SDK 固定使用 Botan 3.12.0 与 BLAKE3 1.8.5，提供 Win32/x64 导入库和运行时 DLL；启用任一通用加密模块时，F5 与 Visual Studio 导出都会自动校验文件摘要、复制头文件与运行时，并要求 MSVC 和 C++20。旧式 RC2、RC4、DES、3DES、Blowfish 与 ElGamal 命令标记为高级兼容用途，新项目应优先采用 AEAD、Argon2id、RSA-OAEP/PSS、ECDSA/ECDH、SM2 或 X25519。
 
@@ -125,27 +125,28 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 39 |
-| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 112 |
+| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 206 |
+| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 546 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 271 |
-| 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 22 |
+| 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
 | 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |
 | 3.0预览 | `lingbuilder.cef3.objects` | CEF3受管对象、Menu、证书与导航历史模块 | 183 |
 | 3.0预览 | `lingbuilder.cef3.session` | CEF3独立RequestContext、Preference与Cookie会话模块 | 19 |
 | 3.0预览 | `lingbuilder.cef3.network` | CEF3实例网络配置模块 | 1 |
-| 3.0预览 | `lingbuilder.cef3.transfer` | CEF3下载与打印模块 | 2 |
-| 3.0预览 | `lingbuilder.cef3.automation` | CEF3异步JavaScript自动化模块 | 1 |
+| 3.0预览 | `lingbuilder.cef3.transfer` | CEF3下载与打印模块 | 34 |
+| 3.0预览 | `lingbuilder.cef3.automation` | CEF3异步JavaScript自动化模块 | 6 |
 | 3.0预览 | `lingbuilder.cef3.devtools` | CEF3开发者工具模块 | 3 |
 | 3.0预览 | `lingbuilder.cef3.views` | CEF3 Chrome Runtime视图模块 | 1 |
-| 3.0预览 | `lingbuilder.cef3.platform` | CEF3版本、MIME与Chrome Variations工具模块 | 4 |
-| 已封装 | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v3，兼容 v1/v2） | 42 |
-| 已封装 | `lingbuilder.fbro.events` | FBro 174 槽位事件目录、同步/延迟决策与受管事件对象模块 | 11 |
+| 3.0预览 | `lingbuilder.cef3.platform` | CEF3版本、MIME、命令行与Chrome Variations工具模块 | 72 |
+| 已封装 | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v3，兼容 v1/v2） | 50 |
+| 已封装 | `lingbuilder.fbro.events` | FBro 174 槽位事件目录、同步/延迟决策与受管事件对象模块 | 12 |
 | 已封装 | `lingbuilder.fbro.session` | FBro会话、Cookie 与代理认证模块 | 10 |
 | 已封装 | `lingbuilder.fbro.transfer` | FBro下载、打印、PDF、文件对话框与截图模块 | 5 |
 | 已封装 | `lingbuilder.fbro.automation` | FBro受管异步及 Frame 自动化模块 | 25 |
 | 已封装 | `lingbuilder.fbro.objects` | FBro任务、缓冲及 Value/Dictionary/List/Stream/Image/Certificate/DragData 受管对象模块 | 132 |
 | 已封装 | `lingbuilder.fbro.network` | FBro高级网络模块 | 2 |
 | 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口） | 198 |
+| 已封装 | `lingbuilder.new_emoji.fbro-shell` | new_emoji FBro x64 多标签浏览器外壳模块 | 50 |
 | 已有 | `lingbuilder.threading` | 多线程模块 | 54 |
 | 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
 | 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.0（受管多连接 HTTP/1.1、路由与完整请求/响应） | 48 |

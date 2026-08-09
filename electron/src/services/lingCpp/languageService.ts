@@ -70,6 +70,7 @@ import {
   getModuleDesignerEvents,
   resolveModuleDesignerEvent
 } from '../modules/moduleDesignerEventService';
+import { getLingCppRuntimeControlTypeNames } from './runtimeControlTypeService';
 
 const KEYWORD = {
   package: '包',
@@ -290,6 +291,12 @@ export function getLingCppSemanticDiagnostics(
     ...parsed.program.classes,
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
   ], moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes));
+  diagnostics.push(...getRuntimeControlDeclarationDiagnostics(
+    parsed.program,
+    moduleContext,
+    [...parsed.program.constants, ...effectiveConstants],
+    [...parsed.program.globals, ...effectiveGlobals]
+  ));
   diagnostics.push(...getUnknownDeclaredTypeDiagnostics(parsed.program, moduleContext, effectiveTypes));
   const functionLibraryDiagnostics = getFunctionLibraryDiagnostics(source, filePath, projectFunctions);
   diagnostics.push(...functionLibraryDiagnostics.filter(diagnostic => !isDesignerControlMethodDiagnostic(diagnostic, source, designerProject, filePath)));
@@ -406,7 +413,7 @@ export function getLingCppCompletionItems(
     languageContext.filePath
   );
   if (controlReferenceCompletion) {
-    return dedupeLingCppCompletionItems(controlReferenceCompletion.symbols.map(symbol => ({
+    const designerSymbols = controlReferenceCompletion.symbols.map(symbol => ({
       label: symbol.name,
       kind: 'type' as const,
       insertText: symbol.name,
@@ -414,7 +421,26 @@ export function getLingCppCompletionItems(
       documentation: `窗口：${symbol.windowName}\n名称：${symbol.name}\n类型：${symbol.controlType}\n参数：${controlReferenceCompletion.parameter.name}`,
       aliases: [symbol.controlType, symbol.windowName, '控件', '组件'],
       category: 'designer' as const
-    })), context.triggerText);
+    }));
+    const runtimeVariables = controlReferenceCompletion.runtimeVariables.map(variable => ({
+      label: variable.name,
+      kind: 'type' as const,
+      insertText: variable.name,
+      detail: `${variable.kind === 'local' ? '局部控件变量' : '控件参数'} · ${variable.type}`,
+      documentation: `类型化运行时控件引用：${variable.name}\n类型：${variable.type}\n无效引用上的操作会安全失败。`,
+      aliases: [variable.type, '控件变量', '运行时控件'],
+      category: 'symbol' as const
+    }));
+    const currentWindow = controlReferenceCompletion.acceptsCurrentWindow ? [{
+      label: '当前窗口',
+      kind: 'type' as const,
+      insertText: '当前窗口',
+      detail: '只读控件容器 · 当前窗口',
+      documentation: '当前正在执行代码的窗口容器，可作为代码创建控件的父级。',
+      aliases: ['窗口', '父级', '容器'],
+      category: 'symbol' as const
+    }] : [];
+    return dedupeLingCppCompletionItems([...runtimeVariables, ...currentWindow, ...designerSymbols], context.triggerText);
   }
   const contextKind = getLingCppCompletionContextKind(context.source, context.line, context.column);
   const projectFieldItems = getProjectFieldCompletionItems(context, languageContext);
@@ -536,6 +562,30 @@ function getLingCppWordAtPosition(
   return { text: line.slice(start, end), startColumn: start + 1, endColumn: end + 1 };
 }
 
+export function getLingCppSourceDefinitionAtPosition(
+  source: string,
+  lineNumber: number,
+  columnNumber: number
+): LingCppAstNode | undefined {
+  const word = getLingCppWordAtPosition(source, lineNumber, columnNumber)?.text;
+  if (!word || word === '当前窗口') return undefined;
+  const parsed = parseLingCpp(source);
+  const normalized = normalizeIdentifier(word);
+  const activeMethod = [...parsed.symbolIndex.methods, ...parsed.symbolIndex.events]
+    .find(node => lineNumber >= node.range.startLine && lineNumber <= node.range.endLine);
+  const candidates = parsed.symbolIndex.byName[normalized] || [];
+  if (activeMethod) {
+    const scoped = candidates
+      .filter(node => (node.kind === 'local' || node.kind === 'parameter') && node.parentId === activeMethod.id && node.range.startLine <= lineNumber)
+      .sort((left, right) => right.range.startLine - left.range.startLine)[0];
+    if (scoped) return scoped;
+  }
+  return candidates.find(node => node.kind === 'member')
+    || candidates.find(node => node.kind === 'method' || node.kind === 'event')
+    || candidates.find(node => node.kind === 'class' || node.kind === 'data-type')
+    || candidates[0];
+}
+
 function formatLingCppCompletionHover(item: LingCppCompletionItem): string {
   const signature = item.signature || (item.kind === 'function' ? item.insertText.replace(/\$\d+/gu, '参数') : item.label);
   return [
@@ -645,7 +695,18 @@ function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext
     source: 'symbol',
     sortRank: 0
   }));
-  return [...projectTypeItems, ...constantItems, ...globalItems, ...currentItems];
+  const currentWindowItem = activeMethodNode ? [createLingCppCatalogItem({
+    label: '当前窗口',
+    kind: 'type',
+    insertText: '当前窗口',
+    detail: '只读控件容器 · 当前窗口',
+    documentation: '当前正在执行代码的窗口容器；可传给控件创建命令，不能赋值。',
+    aliases: ['窗口', '父级', '容器'],
+    category: 'symbol',
+    source: 'symbol',
+    sortRank: 0
+  })] : [];
+  return [...currentWindowItem, ...projectTypeItems, ...constantItems, ...globalItems, ...currentItems];
 }
 
 function completionKindForAstNode(node: LingCppAstNode): LingCppCompletionItem['kind'] {
@@ -2584,6 +2645,18 @@ function getVariableDiagnostics(
         orderedLocals
           .filter(local => local.line < statement.line)
           .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.type));
+        const returnValue = statement.text.trim().match(/^返回(?:\s+|[（(])(.+?)[）)]?\s*;?$/u)?.[1]?.trim();
+        if (returnValue) {
+          const actualReturnType = inferLingCppExpressionType(returnValue, scopeTypes, moduleContext, new Map(), projectTypes);
+          if (actualReturnType && !areLingCppTypesCompatible(method.returnType, actualReturnType)) {
+            diagnostics.push(createDiagnostic(
+              'error', statement.line, statement.text,
+              `子程序 ${method.name} 必须返回 ${method.returnType}，不能返回 ${actualReturnType}。`,
+              `请返回 ${method.returnType} 值，或修改子程序返回类型。`
+            ));
+          }
+          return;
+        }
         const readOnlyTarget = statement.text.trim().match(/^([\p{L}_][\p{L}\p{N}_]*)(?:\s*(?:\.\s*[\p{L}_][\p{L}\p{N}_]*|\[[^\]]+\]))*\s*[=＝](?!=)/u);
         if (readOnlyTarget?.[1]) {
           const localConstant = orderedLocals.find(local => (
@@ -2600,6 +2673,10 @@ function getVariableDiagnostics(
         if (!assignment) return;
         const targetPath = (assignment[1] || '').split(/\s*\.\s*/u);
         const targetName = targetPath[0] || '';
+        if (targetPath.length === 1 && targetName === '当前窗口') {
+          diagnostics.push(createDiagnostic('error', statement.line, statement.text, '当前窗口是只读内置容器，不能重新赋值。', '请把创建或查找结果保存到具体控件类型的局部变量。'));
+          return;
+        }
         if (targetPath.length === 1 && constantNames.has(normalizeIdentifier(targetName))) {
           diagnostics.push(createDiagnostic('error', statement.line, statement.text, `项目常量 ${targetName} 是只读值，不能重新赋值。`, '请改用局部变量或项目全局变量保存运行时变化的值。'));
           return;
@@ -2636,6 +2713,47 @@ function getVariableDiagnostics(
   return diagnostics;
 }
 
+function getRuntimeControlDeclarationDiagnostics(
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  constants: LingCppConstant[],
+  globals: LingCppGlobalVariable[]
+): LingCppDiagnostic[] {
+  const controlTypes = getLingCppRuntimeControlTypeNames(moduleContext);
+  if (!controlTypes.size) return [];
+  const diagnostics: LingCppDiagnostic[] = [];
+  const isControl = (type: string | undefined) => Boolean(type && controlTypes.has(normalizeIdentifier(type.replace(/\[\]$/u, ''))));
+  const reject = (line: number, name: string, position: string, suggestion: string) => diagnostics.push(createDiagnostic(
+    'error', line, name, `${position} ${name} 不能使用运行时控件引用类型。`, suggestion
+  ));
+
+  constants.filter(item => isControl(item.type)).forEach(item => reject(item.line, item.name, '项目常量', '控件引用由窗口在运行时管理；请改为子程序局部变量。'));
+  globals.filter(item => isControl(item.type)).forEach(item => reject(item.line, item.name, '项目全局变量', '控件引用不能跨窗口全局保存；请改为子程序局部变量、参数或返回值。'));
+  program.dataTypes.forEach(dataType => dataType.fields.filter(field => isControl(field.type)).forEach(field => reject(
+    field.line, field.name, `数据类型 ${dataType.name} 的字段`, '控件引用不能保存到记录字段；请在当前窗口子程序内使用。'
+  )));
+  const owners = [
+    ...program.classes.map(cls => ({ name: cls.name, members: cls.members, methods: cls.methods })),
+    ...program.functionLibraries.map(library => ({ name: library.name, members: [], methods: library.methods }))
+  ];
+  owners.forEach(owner => {
+    owner.members.filter(member => isControl(member.type)).forEach(member => reject(
+      member.line, member.name, `程序集 ${owner.name} 的成员`, '控件引用不能作为程序集成员保存；请在子程序中按标记查找或通过参数传递。'
+    ));
+    owner.methods.forEach(method => {
+      if (/\[\]$/u.test(method.returnType) && isControl(method.returnType)) reject(method.line, method.name, '子程序返回值', '控件引用可以直接返回，但不能返回控件数组。');
+      method.parameters.filter(parameter => /\[\]$/u.test(parameter.type) && isControl(parameter.type)).forEach(parameter => reject(
+        method.line, parameter.name, '子程序参数', '控件参数必须是单一类型化引用，不能是数组。'
+      ));
+      (method.locals || []).filter(local => isControl(local.type)).forEach(local => {
+        if (local.isConstant) reject(local.line, local.name, '局部常量', '控件引用可能失效，必须声明为普通局部变量。');
+        if (local.isArray || /\[\]$/u.test(local.type)) reject(local.line, local.name, '局部数组', '控件引用只支持单一局部变量，不支持数组。');
+      });
+    });
+  });
+  return diagnostics;
+}
+
 function getLocalInitializerReferenceDiagnostics(
   method: LingCppMethod,
   local: NonNullable<LingCppMethod['locals']>[number],
@@ -2650,7 +2768,7 @@ function getLocalInitializerReferenceDiagnostics(
   for (const match of withoutStrings.matchAll(/[\p{L}_][\p{L}\p{N}_]*/gu)) {
     const name = match[0];
     const normalized = normalizeIdentifier(name);
-    if (seen.has(normalized) || /^(真|假)$/u.test(name)) continue;
+    if (seen.has(normalized) || /^(真|假|当前窗口)$/u.test(name)) continue;
     const index = match.index || 0;
     const before = withoutStrings.slice(0, index).trimEnd();
     const after = withoutStrings.slice(index + name.length);
