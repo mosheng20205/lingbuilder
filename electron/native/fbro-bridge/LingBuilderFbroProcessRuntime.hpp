@@ -1083,6 +1083,18 @@ private:
         SetEnvironmentVariableW(L"LINGBUILDER_FBRO_DISABLE_AUTO_MULTIPLE", L"1");
         SetEnvironmentVariableW(L"LINGBUILDER_FBRO_STARTUP_EXTENSION",
             extension.empty() ? nullptr : extension.c_str());
+#ifdef LINGBUILDER_FBRO_EMBEDDED_VIP_AUTHORIZATION_CODE
+        // 仅供内部分发构建使用：授权码通过构建命令的 /D 注入，绝不写入仓库文件。
+        // 环境变量优先，编译期内嵌值只作为兜底，便于运维临时换码而无需重新编译。
+        // 注意：内嵌值在 exe 中为明文，可被提取；只能分发给受信任的内部用户。
+        if (lingbuilder_fbro_process_detail::EnvironmentValue(
+                L"LINGBUILDER_FBRO_VIP_AUTHORIZATION_CODE").empty()
+            && lingbuilder_fbro_process_detail::EnvironmentValue(
+                L"LINGBUILDER_FBRO_VIP_KEY").empty()) {
+            SetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_AUTHORIZATION_CODE",
+                LINGBUILDER_FBRO_EMBEDDED_VIP_AUTHORIZATION_CODE);
+        }
+#endif
         SetDllDirectoryW(runtimeDirectory.c_str());
         LB_FBRO_INITIALIZE_OPTIONS_V1 options{};
         options.struct_size = sizeof(options);
