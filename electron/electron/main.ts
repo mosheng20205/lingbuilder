@@ -261,6 +261,7 @@ async function startManagedRendererServer(workspaceRoot: string): Promise<Server
       PORT: '0',
       LINGBUILDER_WORKSPACE_ROOT: workspaceRoot,
       LINGBUILDER_RESOURCE_ROOT: app.isPackaged ? process.resourcesPath : path.join(repoRoot(), 'electron'),
+      LINGBUILDER_SDK_CACHE_ROOT: path.join(app.getPath('userData'), 'sdk-cache'),
       LINGBUILDER_USER_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json'),
       LINGBUILDER_STATIC_ROOT: rendererStaticRoot(),
       LINGBUILDER_RULEBOOK_PATH: rulebookPath(),
@@ -1091,7 +1092,10 @@ app.whenReady().then(async () => {
   aiBridgeManager = new AiBridgeManagerService({
     runtimeExecutable: process.execPath,
     cliEntryPath: cliEntryPath(),
-    environment: process.env
+    environment: {
+      ...process.env,
+      LINGBUILDER_SDK_CACHE_ROOT: path.join(app.getPath('userData'), 'sdk-cache')
+    }
   });
   aiBridgeManager.setFbroVipKey((await resolveFbroVipCredential()).value);
   aiBridgeManager.subscribe(snapshot => {

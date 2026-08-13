@@ -48,25 +48,25 @@ function createProject(): LingWindowProject {
   const controls: LingControl[] = [
     { ...control('Label', 'browser-title', '浏览器列表标题', '浏览器实例', 14, 14, 150, 28), fontSize: 16, fontBold: true },
     button('add-browser', '添加浏览器', '添加', 178, 12, 72, '_添加浏览器_被单击'),
-    control('ListBox', 'browser-list', '浏览器实例列表', '', 12, 50, 244, 274, {
+    control('ListBox', 'browser-list', '浏览器实例列表', '', 12, 50, 244, 236, {
       items: [], selectedIndex: -1, sorted: false, multiple: false, itemHeight: 34, itemSpacing: 2,
       contentPadding: 5, showBorder: true, borderColor: colors.border, borderWidth: 1,
       selectionStartColor: '#164E86', selectionEndColor: '#1769AA', selectionBorderColor: '#3B82F6'
     }, { SelectionChanged: '_浏览器实例列表_选择变化', DoubleClick: '_浏览器实例列表_双击' }),
-    control('Label', 'name-label', '名称标签', '实例名称', 14, 336, 100, 22),
-    control('TextBox', 'name-input', '实例名称输入', '浏览器 2', 12, 360, 160, 32, { multiline: false }),
-    button('rename-browser', '重命名浏览器', '重命名', 180, 360, 76, '_重命名_被单击'),
-    control('Label', 'cookie-label', 'Cookie文件标签', 'Cookie JSON 文件', 14, 404, 160, 22),
-    control('TextBox', 'cookie-input', 'Cookie文件输入', 'cookies.lingbuilder.json', 12, 428, 244, 32, { multiline: false }),
-    button('cookie-import', '导入Cookie', '导入覆盖', 12, 468, 76, '_导入Cookie_被单击'),
-    button('cookie-export-site', '导出当前Cookie', '导出当前', 92, 468, 76, '_导出当前Cookie_被单击'),
-    button('cookie-export-all', '导出全部Cookie', '导出全部', 172, 468, 84, '_导出全部Cookie_被单击'),
-    button('open-cache', '打开缓存目录', '打开缓存', 12, 510, 76, '_打开缓存_被单击'),
-    button('clear-cache', '清理缓存', '清理缓存', 92, 510, 76, '_清理缓存_被单击'),
-    button('delete-retain', '删除保留数据', '移除实例', 12, 552, 116, '_删除保留数据_被单击'),
-    button('delete-clear', '删除并清理数据', '删除并清数据', 136, 552, 120, '_删除并清数据_被单击', true),
-    { ...control('TextBox', 'instance-detail', '实例详情', '等待浏览器管理器初始化', 12, 598, 244, 76, {
-      multiline: true, readOnly: true, scrollBars: 'both', align: 'left', verticalAlign: 'top'
+    control('Label', 'name-label', '名称标签', '实例名称', 14, 298, 100, 22),
+    control('TextBox', 'name-input', '实例名称输入', '浏览器 2', 12, 322, 160, 32, { multiline: false }),
+    button('rename-browser', '重命名浏览器', '重命名', 180, 322, 76, '_重命名_被单击'),
+    control('Label', 'cookie-label', 'Cookie文件标签', 'Cookie JSON 文件', 14, 366, 160, 22),
+    control('TextBox', 'cookie-input', 'Cookie文件输入', 'cookies.lingbuilder.json', 12, 390, 244, 32, { multiline: false }),
+    button('cookie-import', '导入Cookie', '导入覆盖', 12, 430, 76, '_导入Cookie_被单击'),
+    button('cookie-export-site', '导出当前Cookie', '导出当前', 92, 430, 76, '_导出当前Cookie_被单击'),
+    button('cookie-export-all', '导出全部Cookie', '导出全部', 172, 430, 84, '_导出全部Cookie_被单击'),
+    button('open-cache', '打开缓存目录', '打开缓存', 12, 472, 76, '_打开缓存_被单击'),
+    button('clear-cache', '清理缓存', '清理缓存', 92, 472, 76, '_清理缓存_被单击'),
+    button('delete-retain', '删除保留数据', '移除实例', 12, 514, 116, '_删除保留数据_被单击'),
+    button('delete-clear', '删除并清理数据', '删除并清数据', 136, 514, 120, '_删除并清数据_被单击', true),
+    { ...control('TextBox', 'instance-detail', '实例详情', '等待浏览器管理器初始化', 12, 560, 244, 114, {
+      multiline: true, readOnly: true, scrollBars: 'none', align: 'left', verticalAlign: 'top'
     }), fontSize: 12 },
     control('ProgressBar', 'download-progress', '下载进度', '0', 12, 678, 154, 26, {
       minimum: 0, maximum: 100, value: 0, marquee: false
@@ -149,8 +149,8 @@ function buildSource(): string {
         如果 (窗口宽度 < 900 * 当前DPI / 96)
             窗口宽度 = 900 * 当前DPI / 96
         如果结束
-        如果 (窗口高度 < 400 * 当前DPI / 96)
-            窗口高度 = 400 * 当前DPI / 96
+        如果 (窗口高度 < 640 * 当前DPI / 96)
+            窗口高度 = 640 * 当前DPI / 96
         如果结束
 
         控件_设置位置大小(后退, 280 * 当前DPI / 96, 14 * 当前DPI / 96, 40 * 当前DPI / 96, 32 * 当前DPI / 96)
@@ -159,6 +159,22 @@ function buildSource(): string {
         控件_设置位置大小(地址输入, 434 * 当前DPI / 96, 14 * 当前DPI / 96, 窗口宽度 - 596 * 当前DPI / 96, 32 * 当前DPI / 96)
         控件_设置位置大小(打开地址, 窗口宽度 - 154 * 当前DPI / 96, 14 * 当前DPI / 96, 58 * 当前DPI / 96, 32 * 当前DPI / 96)
         控件_设置位置大小(更多操作, 窗口宽度 - 88 * 当前DPI / 96, 14 * 当前DPI / 96, 70 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(浏览器实例列表, 12 * 当前DPI / 96, 50 * 当前DPI / 96, 244 * 当前DPI / 96, 窗口高度 - 496 * 当前DPI / 96)
+        控件_设置位置大小(名称标签, 14 * 当前DPI / 96, 窗口高度 - 434 * 当前DPI / 96, 100 * 当前DPI / 96, 22 * 当前DPI / 96)
+        控件_设置位置大小(实例名称输入, 12 * 当前DPI / 96, 窗口高度 - 410 * 当前DPI / 96, 160 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(重命名浏览器, 180 * 当前DPI / 96, 窗口高度 - 410 * 当前DPI / 96, 76 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(Cookie文件标签, 14 * 当前DPI / 96, 窗口高度 - 366 * 当前DPI / 96, 160 * 当前DPI / 96, 22 * 当前DPI / 96)
+        控件_设置位置大小(Cookie文件输入, 12 * 当前DPI / 96, 窗口高度 - 342 * 当前DPI / 96, 244 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(导入Cookie, 12 * 当前DPI / 96, 窗口高度 - 302 * 当前DPI / 96, 76 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(导出当前Cookie, 92 * 当前DPI / 96, 窗口高度 - 302 * 当前DPI / 96, 76 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(导出全部Cookie, 172 * 当前DPI / 96, 窗口高度 - 302 * 当前DPI / 96, 84 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(打开缓存目录, 12 * 当前DPI / 96, 窗口高度 - 260 * 当前DPI / 96, 76 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(清理缓存, 92 * 当前DPI / 96, 窗口高度 - 260 * 当前DPI / 96, 76 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(删除保留数据, 12 * 当前DPI / 96, 窗口高度 - 218 * 当前DPI / 96, 116 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(删除并清理数据, 136 * 当前DPI / 96, 窗口高度 - 218 * 当前DPI / 96, 120 * 当前DPI / 96, 32 * 当前DPI / 96)
+        控件_设置位置大小(实例详情, 12 * 当前DPI / 96, 窗口高度 - 172 * 当前DPI / 96, 244 * 当前DPI / 96, 114 * 当前DPI / 96)
+        控件_设置位置大小(下载进度, 12 * 当前DPI / 96, 窗口高度 - 54 * 当前DPI / 96, 154 * 当前DPI / 96, 26 * 当前DPI / 96)
+        控件_设置位置大小(打开下载目录, 174 * 当前DPI / 96, 窗口高度 - 54 * 当前DPI / 96, 82 * 当前DPI / 96, 26 * 当前DPI / 96)
         控件_设置位置大小(浏览器页面, 278 * 当前DPI / 96, 54 * 当前DPI / 96, 窗口宽度 - 294 * 当前DPI / 96, 窗口高度 - 92 * 当前DPI / 96)
         控件_设置位置大小(当前状态, 280 * 当前DPI / 96, 窗口高度 - 28 * 当前DPI / 96, 窗口宽度 - 680 * 当前DPI / 96, 28 * 当前DPI / 96)
         控件_设置位置大小(插件状态, 窗口宽度 - 390 * 当前DPI / 96, 窗口高度 - 28 * 当前DPI / 96, 372 * 当前DPI / 96, 28 * 当前DPI / 96)
@@ -339,11 +355,11 @@ async function main(): Promise<void> {
 
 运行时元数据保存在 \`%LocalAppData%/LingBuilder/browser-workspaces/${projectId}/browser-instances.json\`，采用 UTF-8 JSON、临时文件、备份和原子替换。项目内的 \`config/${projectId}/browser-instances.json\` 仅是可迁移默认结构，不含 Cookie、登录状态或本机路径。
 
-每个 Host 仅启用 Chrome Runtime，并在独立 RequestContext 的 \`OnRequestContextInitialized\` 中调用 FBro VIP 的 \`LoadExtension\` 正式加载 EXE 同级 \`doubao-downloader\`。插件需要有效的 FBro VIP 授权；授权或加载失败时普通浏览器仍可运行。部署路径和扩展 ID 仅说明注册结果，当前页面还会执行受控 DOM 检查：只有检测到扩展注入的 \`doubao-downloader\` 元素才显示“插件已生效”；不匹配的页面会明确显示“当前页面不适用”或“未在当前页面生效”。Cookie 导入导出直接使用当前 Host 的 FBro CookieManager；普通日志和运行快照不会记录 Cookie 值。
+每个 Host 仅启用 Chrome Runtime；在已启用 FBro VIP 高级扩展能力后，先创建独立 RequestContext，立即调用其 VIP \`LoadExtension\` 正式加载 EXE 同级 \`doubao-downloader\`，最后才创建浏览器。该顺序与 FBro C# 独立浏览器示例一致。插件需要有效的 FBro VIP 授权；授权或加载失败时普通浏览器仍可运行。部署路径和扩展 ID 仅说明注册结果，当前页面还会执行受控 DOM 检查：只有检测到扩展注入的 \`doubao-downloader\` 元素才显示“插件已生效”；不匹配的页面会明确显示“当前页面不适用”或“未在当前页面生效”。Cookie 导入导出直接使用当前 Host 的 FBro CookieManager；普通日志和运行快照不会记录 Cookie 值。
 
-网页请求打开新窗口时，Bridge 会让当前 Frame 加载目标地址并取消 popup，因此不会额外创建浏览器窗口、Host 或 Profile。扩展正式注册后，若首个豆包页面已经完成导航，管理器最多对该页面刷新一次，再用有限次数 DOM 探针确认 content script 注入。
+网页请求打开新窗口时，Bridge 会让当前 Frame 加载目标地址并取消 popup，因此不会额外创建浏览器窗口、Host 或 Profile。
 
-FBro 下载开始和进度更新事件会按稳定实例 ID 回传。左侧只读详情框实时显示最近下载状态、文件名和完整目录；“打开下载目录”只会打开 FBro 已报告且当前真实存在的目录。下载监听保持 Chromium 默认下载路径，不会因为管理器观察事件而暂停或取消下载。
+FBro 下载开始和进度更新事件会按稳定实例 ID 回传。左侧只读详情框实时显示最近下载状态、文件名和完整目录；详情区固定为可完整显示四行信息的高度、不常驻滚动条，长内容自动换行。窗口高度变化时由上方实例列表伸缩，详情和操作区整体贴近底部。“打开下载目录”只会打开 FBro 已报告且当前真实存在的目录。下载监听保持 Chromium 默认下载路径，不会因为管理器观察事件而暂停或取消下载。
 
 地址栏不会限制为 HTTP(S)。\`about:blank\`、\`file:///...\`、\`view-source:\` 等地址会原样交给当前 FBro/Chromium 实例；仅空地址和包含换行控制字符的输入会在进入 Host 前被拒绝。独立嵌入的 FBro Alloy 模式没有 Chromium 的原生扩展管理页，因此输入 \`chrome://extensions/\` 会在当前实例中打开受管诊断页，同时地址栏仍显示该逻辑地址。诊断页显示扩展清单、VIP 注册、扩展 ID、部署路径和当前页面 DOM 验证结果，不能把“已注册”误认为“已生效”。
 

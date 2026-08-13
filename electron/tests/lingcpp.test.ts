@@ -3484,7 +3484,7 @@ test('generateLingCppNativeWin32Project translates ordinary conditions and round
   assert.match(mainCpp, /static BOOL AdjustWindowRectForDpiValue\(/u);
   assert.match(mainCpp, /const UINT actualDpi = GetDpiForWindow\(hwnd_\);/u);
   assert.match(mainCpp, /SetWindowPos\(hwnd_, nullptr, actualX, actualY, actualWidth, actualHeight, resizeFlags\);/u);
-  assert.ok(mainCpp.indexOf('ShowWindow(hwnd_, showCommand);') < mainCpp.indexOf('const UINT actualDpi = GetDpiForWindow(hwnd_);'));
+  assert.ok(mainCpp.indexOf('const UINT actualDpi = GetDpiForWindow(hwnd_);') < mainCpp.indexOf('ShowWindow(hwnd_, showCommand);'));
   assert.match(mainCpp, /case WM_DPICHANGED:[\s\S]+AdjustWindowRectForDpiValue\(&desired[\s\S]+desired\.right - desired\.left/u);
 });
 

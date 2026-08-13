@@ -104,6 +104,16 @@ import {
   EnvironmentRepairService,
   isEnvironmentRepairTarget
 } from "./src/services/tasks/environmentRepairService";
+import {
+  SdkDependencyBusyError,
+  SdkDependencyRequiredError,
+  SdkDependencyService
+} from "./src/services/sdkDependencies/sdkDependencyService";
+import {
+  SDK_DEPENDENCY_RESOURCES,
+  resolveSdkCacheRoot,
+  type SdkDependencyId
+} from "./src/services/sdkDependencies/sdkDependencyCatalog";
 import { mapCompilerDiagnostics, parseCompilerDiagnostics } from "./src/services/tasks/compilerDiagnosticService";
 import { decodeCompilerOutput } from "./src/services/tasks/compilerOutputEncoding";
 import { dependencyBuildBatches, IncrementalBuildService } from "./src/services/tasks/incrementalBuildService";
@@ -203,6 +213,12 @@ async function cleanupEdgeControlPreviewBuild(processKey: string): Promise<void>
 }
 const taskService = new TaskService();
 const environmentRepairService = new EnvironmentRepairService();
+const sdkDependencyService = new SdkDependencyService({
+  cacheRoot: resolveSdkCacheRoot(process.env),
+  workspaceRoot: () => getRepoWorkspaceRoot(),
+  environment: process.env,
+  resourcesPath: process.env.LINGBUILDER_RESOURCE_ROOT
+});
 let buildConfigurationService = new BuildConfigurationService(serverRuntimeConfig.workspaceRoot);
 let incrementalBuildService = new IncrementalBuildService(serverRuntimeConfig.workspaceRoot);
 let ptyTerminalService = new PtyTerminalService(serverRuntimeConfig.workspaceRoot);
@@ -605,6 +621,16 @@ function assertEnabledModuleAccess(modules: readonly { manifest: { id: string } 
   assertModuleAccess(modules.map(module => module.manifest.id));
 }
 
+async function requireEnabledModuleSdkDependencies(modules: readonly { manifest: { id: string } }[]): Promise<void> {
+  await sdkDependencyService.requireForModules(modules.map(module => module.manifest.id));
+}
+
+function createSdkDependencyErrorPayload(error: unknown): { code?: string; dependencies?: unknown } {
+  return error instanceof SdkDependencyRequiredError
+    ? { code: error.code, dependencies: error.dependencies }
+    : {};
+}
+
 async function requireExistingProject(projectId: string | undefined): Promise<string> {
   const normalizedProjectId = projectId?.trim();
   if (!normalizedProjectId) throw new Error("缺少 projectId，模块操作必须指定当前项目。");
@@ -825,6 +851,31 @@ app.post("/api/environment/repair/start", (req, res) => {
       error: error instanceof Error ? error.message : "启动环境修复失败。"
     });
   }
+});
+
+app.get("/api/sdk-dependencies/status", async (_req, res) => {
+  try {
+    res.json({ ok: true, ...(await sdkDependencyService.overview()) });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "读取 SDK 依赖状态失败。" });
+  }
+});
+
+app.post("/api/sdk-dependencies/install", (req, res) => {
+  const dependencyId = req.body?.dependencyId;
+  if (!SDK_DEPENDENCY_RESOURCES.some(item => item.id === dependencyId)) {
+    return res.status(400).json({ ok: false, error: "SDK 依赖标识无效。" });
+  }
+  try {
+    res.status(202).json({ ok: true, job: sdkDependencyService.start(dependencyId as SdkDependencyId) });
+  } catch (error) {
+    const status = error instanceof SdkDependencyBusyError ? 409 : 400;
+    res.status(status).json({ ok: false, error: error instanceof Error ? error.message : "启动 SDK 下载失败。" });
+  }
+});
+
+app.post("/api/sdk-dependencies/cancel", (_req, res) => {
+  res.json({ ok: true, job: sdkDependencyService.cancel() });
 });
 
 app.post("/api/ai/connect", async (req, res) => {
@@ -1741,6 +1792,7 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
   try {
     const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
     assertEnabledModuleAccess(enabledModules);
+    await requireEnabledModuleSdkDependencies(enabledModules);
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
       lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
@@ -1792,6 +1844,7 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
     res.status(error?.status || 500).json({
       ok: false,
       code: error?.code,
+      ...createSdkDependencyErrorPayload(error),
       error: error?.message || "原生 C++ 预览生成失败"
     });
   }
@@ -1816,6 +1869,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
   try {
     const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
     assertEnabledModuleAccess(enabledModules);
+    await requireEnabledModuleSdkDependencies(enabledModules);
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
       lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
@@ -1885,6 +1939,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
     res.status(error?.status || 500).json({
       ok: false,
       code: error?.code,
+      ...createSdkDependencyErrorPayload(error),
       error: error?.message || "原生 C++ 工程导出失败"
     });
   }
@@ -2216,6 +2271,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         : "";
     const enabledModules = await getModuleService().getEnabledProjectModules(projectId);
     assertEnabledModuleAccess(enabledModules);
+    await requireEnabledModuleSdkDependencies(enabledModules);
     const buildCompatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
     const buildConfiguration = buildCompatibility.configuration;
     preBuildLogs.push(...buildCompatibility.messages);
@@ -2496,6 +2552,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     return res.status(error?.status || (expectedConflict ? 409 : 500)).json({
       ok: false,
       code: error?.code,
+      ...createSdkDependencyErrorPayload(error),
       stage: error instanceof ProjectBuildBusyError
         ? "busy"
         : error instanceof ProjectBuildCancelledBeforeStartError
@@ -2663,6 +2720,7 @@ async function runControlledWindowDesignerBuild(options: {
   const sourceCode = typeof lingCppSourceCode === "string" ? lingCppSourceCode : "";
   const enabledModules = await getModuleService().getEnabledProjectModules(projectId);
   assertEnabledModuleAccess(enabledModules);
+  await requireEnabledModuleSdkDependencies(enabledModules);
   const buildCompatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
   const buildConfiguration = buildCompatibility.configuration;
   preBuildLogs.push(...buildCompatibility.messages);

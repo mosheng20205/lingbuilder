@@ -1,5 +1,11 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-08-14）：Windows 安装包不再内置 `lingbuilder.cef3.sdk/sdk` 与 `lingbuilder.fbro.sdk/sdk`，只保留两个资产模块的 `lingbuilder.module.json` 和 `README.md`。首次使用 `lingbuilder.cef3.browser` 或 `lingbuilder.fbro.browser` 执行 F5、原生预览或原生导出时，工作台会显示版本、下载体积、进度和速度，用户确认后通过 HTTPS/Range 下载，执行精确大小、SHA-256、ZIP 路径与展开清单校验，再原子安装到用户级共享缓存；成功后自动重放原操作一次。AI Bridge 与独立 CLI 只返回 `SDK_DEPENDENCY_REQUIRED` 诊断，不静默联网。发布门禁会拒绝 `win-unpacked` 或 NSIS 中残留的 SDK 目录。后续可增加设置页中的缓存查看、修复和删除入口，以及签名资源清单/备用下载源，但不得降低当前哈希、解压和原子安装门禁。
+
+- 已修复（2026-08-13）：在窗口设计器中按 F5 运行普通 Win32 项目时，生成窗口不再先切换为 `HWND_TOPMOST`、同步抢占前台/焦点，再于 900ms 定时器中撤销置顶并重复抢焦点。该两阶段激活会触发 Electron 工作台与原生窗口的激活、Z 序和非客户区重绘竞争，表现为 IDE/设计器闪动。LingCpp 与旧原生 Win32 生成器现统一使用一次标准 `ShowWindow + UpdateWindow`，LingCpp 窗口在显示前完成 DPI、控件和最终尺寸准备；`new_emoji` 的独立窗口激活契约不受影响。后续如需增强运行窗口前置，应通过宿主/后端专用激活服务处理 Windows 前台限制，不得恢复临时置顶、延迟定时器或重复 `SetForegroundWindow` / `SetFocus`。
+
+- 已完成并实机验证（2026-08-10）：普通 Win32 `win32-fbro-multi-browser-manager` 左侧下载详情区由 `76` 提升并固定为 `114` 逻辑像素；实例列表适度收紧，详情 TextBox 取消固定水平/垂直滚动条，长文件名和目录改为自动换行。窗口高度变化时，实例列表在顶部固定位置伸缩，名称/Cookie/缓存/删除/下载详情与进度操作区整体保持底部锚定，不再把新增高度分配给详情框。普通 Win32 生成器在 `SizeChanged` 批量布局返回后统一执行父背景擦除和全部子控件同步重绘，避免连续拖拽时旧位置留下按钮、标签和输入框残影。隔离 `--layout-only` smoke 连续经过四组窗口尺寸，验证列表与详情 HWND 高度、`WS_HSCROLL` / `WS_VSCROLL` 样式、控件不重叠、缩放锚定及统一重绘门禁。后续若下载详情增加字段，应优先调整信息层级或分组，不得恢复常驻双滚动条挤占内容区。
+
 - 已修复并实机验证（2026-08-09）：普通 Win32 `win32-fbro-multi-browser-manager` 的地址栏、扩展状态和缩放行为已闭环。`AddressChanged` 与实例切换会直接回写地址 TextBox 的原生 HWND；每个实例在启用 FBro VIP 高级扩展能力后，先创建 RequestContext、立即经 FBro VIP `LoadExtension` 注册扩展、再创建浏览器，并用当前页面 DOM 探针区分“已加载（页面不适用）”“正在验证”“已生效”和“未在当前页面生效”。嵌入 Alloy 模式不支持 Chromium 自带扩展管理 UI，输入 `chrome://extensions/` 会在当前实例显示受管诊断页并保留逻辑地址。主窗口的 `SizeChanged`/`DpiChanged` 先执行 LCPP 布局、再调整 FBro 子窗口，地址栏和 TabControl 均以客户区与当前 DPI 重算。隔离 MSVC x64 smoke 已验证弹窗在本窗口导航后地址同步、受管扩展诊断和 1500x940 窗口缩放。后续若加入扩展调试、重载或多个插件，仍必须按 RequestContext 逐实例验证，不能恢复命令行 `load-extension` 或把路径回读当作注入成功。
 - 扩展注册完成后仅允许对首个匹配页面执行一次受控刷新；后续页面以正常导航触发 content script，禁止通过无限刷新掩盖注入失败。
 

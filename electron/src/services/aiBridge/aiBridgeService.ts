@@ -47,6 +47,8 @@ import {
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
+import { SdkDependencyService } from '../sdkDependencies/sdkDependencyService';
+import { resolveSdkCacheRoot } from '../sdkDependencies/sdkDependencyCatalog';
 import { AiBridgePermissionService } from './permissionService';
 import {
   AiBridgeBuildRunRequest,
@@ -143,6 +145,7 @@ export interface AiBridgeServiceDependencies {
   ) => Promise<AiBridgeCompileResult>;
   assertModuleAccess?: (moduleIds: readonly string[]) => void;
   buildPipelineService?: BuildPipelineService;
+  requireSdkDependencies?: (moduleIds: readonly string[]) => Promise<void>;
 }
 
 export class AiBridgeService {
@@ -162,6 +165,7 @@ export class AiBridgeService {
   private readonly assertModuleAccess: NonNullable<AiBridgeServiceDependencies['assertModuleAccess']>;
   private readonly buildPipelineService: BuildPipelineService;
   private readonly incrementalBuildService: IncrementalBuildService;
+  private readonly requireSdkDependencies: NonNullable<AiBridgeServiceDependencies['requireSdkDependencies']>;
   private readonly fbroVipKey: string;
   private runAdmissionClosed = false;
   private shuttingDown = false;
@@ -190,6 +194,14 @@ export class AiBridgeService {
     this.compilerDetector = dependencies.detectCompiler ?? detectCompiler;
     this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
     this.assertModuleAccess = dependencies.assertModuleAccess ?? (() => undefined);
+    const sdkDependencyService = new SdkDependencyService({
+      cacheRoot: resolveSdkCacheRoot(process.env),
+      workspaceRoot: () => this.workspaceRoot,
+      environment: process.env,
+      resourcesPath: process.env.LINGBUILDER_RESOURCE_ROOT
+    });
+    this.requireSdkDependencies = dependencies.requireSdkDependencies
+      ?? (moduleIds => sdkDependencyService.requireForModules(moduleIds));
     this.buildPipelineService = dependencies.buildPipelineService ?? new BuildPipelineService(createBuildStepProviderRegistry([
       createProtobufCodeGeneratorProvider({
         sdkRoot: () => process.env.LINGBUILDER_PROTOBUF_SDK_ROOT || path.join(this.workspaceRoot, '.lingbuilder', 'toolchains', 'protobuf'),
@@ -428,6 +440,7 @@ export class AiBridgeService {
       this.resolveLingCppProjectSources(projectId, request.lingCppSources)
     ]);
     this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
+    await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
       lingCppSourceCode: request.lingCppSourceCode || '',
@@ -662,6 +675,8 @@ export class AiBridgeService {
       this.moduleService.getEnabledProjectModules(sourceProjectId),
       this.resolveLingCppProjectSources(sourceProjectId, request.lingCppSources)
     ]);
+    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
+    await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
       lingCppSourceCode: request.lingCppSourceCode || '',

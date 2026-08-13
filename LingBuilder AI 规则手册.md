@@ -110,7 +110,7 @@
 - 生成程序只能调用 `LingBuilderFbroBridge` C ABI；不得让用户项目直接持有 `CefRefPtr`、FBro C++ 对象、STL ABI 或桥接层分配的裸指针。
 - 指纹配置使用结构化 JSON。每位 IDE 用户在“设置 → 浏览器凭据”中自行保存 VIP Key，主进程必须用 Electron `safeStorage` 加密；renderer 只能读取配置状态，不得回读现有明文。F5、原生运行和新启动的 AI Bridge 仅通过受控子进程环境临时注入，`LINGBUILDER_FBRO_VIP_KEY` 只作为无人值守/导出工程的兼容后备。不得保存到 `.lcpp`、设计器模型、项目文件、模块包、日志、AI 上下文、同步包或安装包。无 Key 时允许基础浏览器运行；错误 Key 必须返回脱敏的中文授权失败诊断，不得回显 Key。
 - FBro 生成程序正常退出时必须先请求关闭各浏览器，调用 C++ SDK 的 `FBroShutdown(FALSE)`，等待 `OnBeforeClose` 后再释放桥接对象；不得用强制结束进程替代关闭协议。
-- FBro 的 SDK/运行时由统一原生依赖服务物化；AI Bridge 构建与导出不得另写复制旁路，也不得压平 `locales/` 等目录。
+- FBro 的 SDK/运行时由统一原生依赖服务物化；桌面 IDE 遇到 `SDK_DEPENDENCY_REQUIRED` 时可由用户确认后按需下载到共享缓存，AI Bridge/CLI 不得静默下载。AI Bridge 构建与导出不得另写复制旁路，也不得压平 `locales/` 等目录。
 - SDK、桥接 DLL、导入库、运行时清单或哈希校验失败时必须在生成/编译前阻断，不能把缺少 `LingBuilderFbroBridge.h` 的 `__has_include` 降级结果当作可运行浏览器。工作区根目录必须从 `.lingbuilder-build` 标记目录定位，不能假定构建配置只有固定层级；可复制 VS 导出必须包含完整 FBro runtime 与增量脚本。
 - FBro 浏览器只能由桥接层在 CEF UI 线程创建，已就绪实例必须通过 `CefPostTask(TID_UI, ...)` 投递，不能从生成窗口的 Win32 主线程直接调用 `FBroHsCreate`。每控件 profile 必须映射为 `.fbro-global-cache` 的直接子目录；不得生成会触发 `cache_path`、`root_cache_path` 或 `Cannot create profile` 的兄弟目录/多层目录后接受内存模式降级。
 - FBro 宿主窗口的 `WM_SIZE` 处理不得阻塞等待 CEF 创建锁；锁被占用时应跳过本次内部调整。调整浏览器尺寸只能移动宿主的直接子 `HWND`，禁止用 `EnumChildWindows` 递归移动 Chromium 内部后代窗口。
@@ -340,11 +340,11 @@ AI 必须遵守：
 - `CEF3_执行JS` 使用 DevTools `Runtime.evaluate` 返回真实 JSON，最长兼容等待 5 秒；应在主框架加载完成（例如加载状态变为非加载）后调用。新代码优先使用 `CEF3自动化_执行JS异步` 并通过 CEF3任务命令读取、取消和释放，不能声称旧命令仍然固定返回空文本。
 - CEF3 的“新窗口打开前”事件返回 `1` 或保持默认时，允许 CEF 创建独立原生 popup 浏览器；返回 `2` 时拒绝，返回 `3` 时表示 LCPP 已自行接管。允许 popup 时，生成运行时必须把主内嵌浏览器与 popup 分开跟踪：popup 的创建、地址变化和关闭不得覆盖主浏览器句柄、地址栏状态或前进后退目标，关闭主窗口/控件时必须同时关闭其全部 popup。需要主动创建带 Chrome 地址栏和完整浏览器界面的顶层窗口时，必须调用 `CEF3_打开原生UI浏览器(控件名, 地址)`；该命令显式使用 `CEF_RUNTIME_STYLE_CHROME`、空父句柄和独立桌面顶层 HWND，不能把 LingBuilder 主窗口 `HWND` 传给 Chrome Runtime，否则原生 UI 会覆盖进内嵌宿主。不能用可能被拦截的脚本 `window.open`，也不得另造不受管理的裸 `CefBrowser`。
 - CEF3 双形态实现不得混用宿主参数：内嵌控件固定使用 `SetAsChild(控件宿主HWND, CefRect)`；谷歌原生 UI 固定使用 `SetAsPopup(nullptr, ...)`、`parent_window=nullptr`、`WS_EX_APPWINDOW`、移除 `WS_CHILD` 和 `CEF_RUNTIME_STYLE_CHROME`。后续修改生成器时必须保留覆盖这些参数以及 popup/主浏览器隔离的回归测试。2026-07-28 已实机确认正确结果是两个可独立移动和缩放的桌面窗口，而不是 Chrome UI 覆盖在 LingBuilder 主窗口客户区。
-- 构建 CEF3 项目提示缺少 SDK 时，AI 应优先建议安装 CEF3 内核 SDK 离线模块包（模块 ID `lingbuilder.cef3.sdk`，含预编译 wrapper，免下载免编译，安装即生效、无需为项目启用）；其次才是手动下载 CEF 官方包到 `.lingbuilder/cef3-sdk` 或 `C:\cef3-sdk`。AI 不得声称只复制 `libcef.dll` 就能升级或修复 CEF3 内核：头文件、`.lib`、DLL 与资源必须同版本整体替换。
+- 构建 CEF3 项目提示 `SDK_DEPENDENCY_REQUIRED` 时，桌面 IDE 应显示 CEF3 环境 SDK 的名称、版本和下载体积，由用户确认后下载、校验并安装到共享缓存，再自动重试原操作一次；AI Bridge 与独立 CLI 不得静默下载，应要求用户先在桌面 IDE 触发安装。显式 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk`、旧 `.lingbuilder/cef3-sdk` 或 `C:\cef3-sdk` 仍可作为受控兼容来源。AI 不得声称只复制 `libcef.dll` 就能升级或修复 CEF3 内核：头文件、`.lib`、DLL 与资源必须同版本整体替换。
 - CEF 150 原生工程必须使用 C++20 和动态 CRT `/MD`；F5、AI Bridge 与导出的 Visual Studio 四组配置必须消费同一原生依赖计划。使用预编译 `/MD` wrapper 的 Debug 项目仍生成调试信息，但必须使用 `NDEBUG`，不能同时定义 `_DEBUG` 造成 Debug/Release CRT 混链。遇到 `<concepts>` STL4038 或 `convertible_to` C2061 时应重新生成工程以刷新 `stdcpp20`，不得修改 CEF SDK 头文件规避。
-- 当前随附 CEF 150 SDK 仅支持 x64。项目启用 CEF3 时 IDE 应自动切换为 x64，构建前必须再次校正，不得用 Win32 尝试链接 x64 CEF；如用户明确需要 32 位，应说明当前需要另行制作并验证完整的 32 位 SDK 包。
+- 当前按需下载的 CEF 150 SDK 仅支持 x64。项目启用 CEF3 时 IDE 应自动切换为 x64，构建前必须再次校正，不得用 Win32 尝试链接 x64 CEF；如用户明确需要 32 位，应说明当前需要另行制作并验证完整的 32 位 SDK 包。
 - IDE 构建目录内 CEF3 生成的 Visual Studio exe 必须输出到对应 `$(Platform)/$(Configuration)/bin/` 运行目录，与 `libcef.dll`、`v8_context_snapshot.bin` 和 Resources 同目录；不得把“MSBuild 成功但运行时资源缺失”报告为可正常运行。对 `generated/cpp` 可移植导出必须单独检查 SDK/资源是否随工程输出。
-- 生成 Windows 正式安装包必须通过 CEF3 SDK 发布门禁：源目录、`win-unpacked` 和最终 NSIS 归档中的模块 ID、版本、x64 架构及全部文件路径/大小/CRC32 必须一致。AI 不得建议跳过 `verify:cef3-release`、Electron Builder 前后钩子或 `verify:cef3-installer`，也不得在最终安装包逐文件校验未通过时声称“安装包自带完整 CEF3 SDK”。
+- 生成 Windows 正式安装包必须通过按需 SDK 发布门禁：源 CEF3/FBro SDK 先完成制作来源校验；`win-unpacked` 与最终 NSIS 归档只能保留两个资产模块的 v2 清单和 README，任何 `lingbuilder.cef3.sdk/sdk` 或 `lingbuilder.fbro.sdk/sdk` 文件都必须让发布失败。AI 不得建议跳过 Electron Builder 前后钩子、`verify:cef3-installer` 或 `verify:fbro-installer`，也不得声称正式安装包自带完整 CEF3/FBro SDK。
 - `new_emoji` 底层 `EU_` API 使用 UTF-8 字节指针和长度，AI 不应把普通中文字符串直接塞给底层 API。
 - 生成 new_emoji 独立演示窗口时，事件块仍必须用独立一行 `结束` 收尾；不要额外写显式退出命令 `结束()`，否则 exe 会创建窗口后马上退出，表现为闪退。
 - 纯 new_emoji 示例应在创建窗口、文本、按钮等控件后进入 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。设计器生成链路会在控件和“创建完毕”处理器执行完成后、消息循环之前调用 `NE_显示并激活窗口`，确保 F5 后台启动的窗口恢复、刷新并出现在 IDE 前方；该桥接只短暂提升窗口层级并立即取消置顶。AI 不得通过修改用户 `.lcpp` 或增加永久置顶逻辑修复启动显示问题。
@@ -470,6 +470,7 @@ LingBuilder 可以通过本地 AI Bridge 让外部 AI 客户端连接工作区�
 - `native.export` 和 `build.run` 生成的原生项目应包含 Visual Studio Win32 工程文件；启用 `new_emoji` 等 `.lib` 模块时，AI 应提示使用 MSVC / Visual Studio Build Tools 编译。
 - `build.run` 启动的 exe 必须交给 LingBuilder `ManagedProcessService` 按项目登记，不得使用 detached/unref 脱离宿主；同项目重跑必须在写入或链接固定 exe 前回收旧进程和日志流。HTTP/MCP 构建必须持有项目租约，IDE 内嵌 Bridge 与 F5 共用租约；停止或 CLI 退出要拒绝新任务、等待在途租约结束并最终回收进程，不能迟到启动。启动失败必须返回 `run-start` 失败。
 - 一次性产品命令 `lingbuilder project run` 必须保持前台附着，等待受管 exe 自然退出和 `run.log` 完成落盘后再返回最终 JSON；收到 Ctrl+C 或 SIGTERM 时先停止已登记进程再退出，不能在报告 `stage=run` 后立刻执行关服而杀掉刚启动的 exe。`project build` 仍应在编译完成后直接返回。
+- AI 修改普通 Win32 运行窗口启动逻辑时，必须保留一次标准 `ShowWindow + UpdateWindow` 语义，并在显示前完成 DPI、控件和最终窗口尺寸准备。不得用 `HWND_TOPMOST/HWND_NOTOPMOST` 往返、延迟定时器、重复 `SetForegroundWindow`、`BringWindowToTop` 或 `SetFocus` 强制把运行窗口压到 IDE 前方；这些操作会与 Electron 工作台争夺激活、Z 序和重绘。需要特殊前置行为时必须使用对应 UI 后端的受控激活契约，不得把 `new_emoji` 专用激活实现复制到普通 Win32 生成器。
 - 所有敏感操作应写入 `.lingbuilder/ai-bridge-log.jsonl`，便于用户审计。
 - AI Bridge / YOLO 生成 new_emoji 可运行 exe 后，必须确认 exe 同目录存在 `new_emoji.dll`，并实际启动 exe 等待至少 3 秒确认进程仍在运行，再向用户报告“可运行 exe 路径”。
 - 普通 Win32 窗口只有在设计器模型实际包含目标 `CefBrowser` 控件时才允许尝试 CEF3 初始化；没有 CEF 控件的项目不得输出“CEF3 不可用”或缺少 SDK 诊断。实际存在 CEF 控件但 SDK/运行时缺失时仍必须保留明确中文错误。

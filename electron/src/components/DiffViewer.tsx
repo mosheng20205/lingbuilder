@@ -95,6 +95,7 @@ import { normalizeIdentifier, parseLingCpp } from '../services/lingCpp/parser';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
 import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
+import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
 import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCppArrayParameterType } from '../services/lingCpp/parameterTypeService';
 import { getProjectConstantNameAtCursor } from '../services/lingCpp/projectConstantReferenceService';
 import {
@@ -2506,7 +2507,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     setIsNativePreviewLoading(true);
     setNativePreviewError(null);
     try {
-      const response = await fetch('/api/window-designer/native-preview', {
+      const response = await fetchWithSdkDependencies(() => fetch('/api/window-designer/native-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
@@ -2517,7 +2518,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           lingCppSourceFilePath: activeFile?.path,
           lingCppSources: lingCppProjectSources
         })
-      });
+      }));
       const result = await response.json();
       if (requestId !== nativePreviewRequestRef.current
         || requestOwnerKey !== activeSourceOwnerKeyRef.current
@@ -2560,7 +2561,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     if (!designerProject || activeFile?.language !== 'lingcpp') return;
     setNativePreviewError(null);
     try {
-      const response = await fetch('/api/window-designer/native-export', {
+      const response = await fetchWithSdkDependencies(() => fetch('/api/window-designer/native-export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2570,7 +2571,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           lingCppSourceFilePath: activeFile?.path,
           lingCppSources: lingCppProjectSources
         })
-      });
+      }));
       const result = await response.json();
       if (!response.ok || !result.ok) {
         throw new Error(result.error || '导出原生 C++ 工程失败');
@@ -2592,7 +2593,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     if (!designerProject || activeFile?.language !== 'lingcpp') return;
     setNativePreviewError(null);
     try {
-      const response = await fetch('/api/window-designer/build-run', {
+      const response = await fetchWithSdkDependencies(() => fetch('/api/window-designer/build-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2603,7 +2604,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           lingCppSources: lingCppProjectSources,
           run: true
         })
-      });
+      }));
       const result = await response.json();
       const logs = Array.isArray(result.logs) ? result.logs : [];
       const compilerDiagnostics = Array.isArray(result.compilerDiagnostics)

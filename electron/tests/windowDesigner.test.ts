@@ -49,6 +49,7 @@ import {
   saveWindowDesignerState
 } from '../src/services/windowDesigner/windowDesignerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { generateNativeWin32Project } from '../src/services/windowDesigner/nativeWin32Project';
 import { writeGeneratedProjectFiles } from '../src/services/windowDesigner/generatedProjectFileService';
 import { LingControl, LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
 import { WIN32_CONTROL_DEFINITIONS, createDefaultControlProperties, getCreatableWin32ControlDefinitions, getWin32ControlsForModule } from '../src/services/windowDesigner/win32ControlRegistry';
@@ -437,6 +438,29 @@ test('普通空窗口不会尝试初始化未使用的 CEF3 运行时', () => {
 
   assert.ok(createFunction.indexOf('if (!hasTarget) return 0;') < createFunction.indexOf('#if LINGBUILDER_CEF3_AVAILABLE'));
   assert.match(createFunction, /IsType\(control, L"CefBrowser"\)/u);
+});
+
+test('普通 Win32 运行窗口只执行一次标准显示且不切换置顶或延迟抢焦点', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'stable-window-activation',
+    name: '窗口启动稳定性测试',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', controls: []
+    }]
+  };
+  const lingCpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口\n结束类\n'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const openWindow = lingCpp.slice(lingCpp.indexOf('HWND Open('), lingCpp.indexOf('void AttachPropertyPage'));
+  const legacyCpp = generateNativeWin32Project(project).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(openWindow, /SetWindowPos\(hwnd_, nullptr,[\s\S]*ShowWindow\(hwnd_, showCommand\);\s*UpdateWindow\(hwnd_\);/u);
+  assert.doesNotMatch(openWindow, /HWND_(?:TOPMOST|NOTOPMOST)|SetForegroundWindow|BringWindowToTop|SetFocus|SetTimer/u);
+  assert.doesNotMatch(lingCpp, /0x4C42/u);
+  assert.match(legacyCpp, /ShowWindow\(hwnd, showCommand\);\s*UpdateWindow\(hwnd\);\s*return hwnd;/u);
+  assert.doesNotMatch(legacyCpp, /HWND_(?:TOPMOST|NOTOPMOST)|SetForegroundWindow\(hwnd\)|BringWindowToTop\(hwnd\)|SetFocus\(hwnd\)/u);
 });
 
 function createControl(id: string, parentId?: string, type: LingControl['type'] = 'Button'): LingControl {
@@ -3697,7 +3721,7 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.match(cpp, /L"13:assets\/ok\.png"/);
   assert.match(cpp, /BS_OWNERDRAW/);
   assert.match(cpp, /PBM_SETBARCOLOR/);
-  assert.match(cpp, /SetTimer\(hwnd_, 0x4C42, 900/);
+  assert.doesNotMatch(cpp, /0x4C42/);
   assert.doesNotMatch(cpp, /关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件/);
   assert.ok(generated.diagnostics.some(diagnostic => diagnostic.includes('lingbuilder.win32.common-controls') && diagnostic.includes('未静默降级')));
 });
@@ -4230,6 +4254,7 @@ test('窗口第一批和第二批事件生成统一 Win32 分发与上下文运�
   assert.match(cpp, /Closing=_主窗口_关闭前/u);
   assert.match(cpp, /DispatchWindowEvent\(L"Closing"\)/u);
   assert.match(cpp, /DispatchWindowEvent\(L"SizeChanged"\)/u);
+  assert.match(cpp, /DispatchWindowEvent\(L"SizeChanged"\);[\s\S]{0,180}RedrawWindow\(hwnd_, nullptr, nullptr,[\s\S]{0,120}RDW_INVALIDATE \| RDW_ERASE \| RDW_ALLCHILDREN \| RDW_UPDATENOW/u);
   assert.match(cpp, /DispatchWindowEvent\(nextState == 1 \? L"Minimized" : nextState == 2 \? L"Maximized" : L"Restored"\)/u);
   assert.match(cpp, /PreTranslateKeyboardMessage/u);
   assert.match(cpp, /messageOwner->PreTranslateKeyboardMessage\(message\)/u);

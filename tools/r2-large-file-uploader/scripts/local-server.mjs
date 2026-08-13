@@ -18,6 +18,11 @@ import { parse as parseJsonc } from 'jsonc-parser';
 const PART_SIZE_BYTES = 32 * 1024 * 1024;
 const MAX_MULTIPART_PARTS = 10_000;
 const MAX_JSON_BYTES = 1024 * 1024;
+const R2_CONNECTION_TIMEOUT_MS = 20_000;
+const R2_SOCKET_TIMEOUT_MS = 120_000;
+const R2_CONTROL_REQUEST_TIMEOUT_MS = 60_000;
+const R2_PART_REQUEST_TIMEOUT_MS = 10 * 60_000;
+const R2_COMPLETE_REQUEST_TIMEOUT_MS = 2 * 60_000;
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const publicRoot = path.join(projectRoot, 'public');
@@ -84,6 +89,11 @@ function createS3Client(config) {
     region: 'auto',
     endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
     forcePathStyle: true,
+    requestHandler: {
+      connectionTimeout: R2_CONNECTION_TIMEOUT_MS,
+      socketTimeout: R2_SOCKET_TIMEOUT_MS,
+      throwOnRequestTimeout: true,
+    },
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
@@ -94,6 +104,43 @@ function createS3Client(config) {
 let activeConfig = await readSavedConfig();
 let s3 = activeConfig ? createS3Client(activeConfig) : null;
 const sessions = new Map();
+
+async function sendR2Command(client, command, {
+  operation,
+  timeoutMs = R2_CONTROL_REQUEST_TIMEOUT_MS,
+  request,
+} = {}) {
+  const controller = new AbortController();
+  let timedOut = false;
+  let requestAborted = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  timer.unref?.();
+
+  const abortUpstream = () => {
+    requestAborted = true;
+    controller.abort();
+  };
+  request?.once('aborted', abortUpstream);
+
+  try {
+    return await client.send(command, {
+      abortSignal: controller.signal,
+      requestTimeout: timeoutMs,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new HttpError(`${operation || 'R2 请求'}超时，请检查网络后重试。`, 504);
+    }
+    if (requestAborted) throw new HttpError(`${operation || 'R2 请求'}已取消。`, 499);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    request?.off('aborted', abortUpstream);
+  }
+}
 
 function requireS3() {
   if (!s3 || !activeConfig) throw new HttpError('请先配置并验证 R2 S3 API 凭据。', 503);
@@ -170,7 +217,11 @@ async function configureR2(request, response) {
   const nextConfig = normalizeConfig(input, activeConfig);
   const candidate = createS3Client(nextConfig);
   try {
-    await candidate.send(new ListObjectsV2Command({ Bucket: nextConfig.bucketName, MaxKeys: 1 }));
+    await sendR2Command(
+      candidate,
+      new ListObjectsV2Command({ Bucket: nextConfig.bucketName, MaxKeys: 1 }),
+      { operation: 'R2 凭据验证' },
+    );
   } catch (error) {
     candidate.destroy();
     const detail = error instanceof Error ? error.message : String(error);
@@ -198,11 +249,15 @@ async function initializeUpload(request, response) {
   const contentType = typeof input.contentType === 'string' && input.contentType
     ? input.contentType.slice(0, 200)
     : 'application/octet-stream';
-  const result = await client.send(new CreateMultipartUploadCommand({
-    Bucket: config.bucketName,
-    Key: key,
-    ContentType: contentType,
-  }));
+  const result = await sendR2Command(
+    client,
+    new CreateMultipartUploadCommand({
+      Bucket: config.bucketName,
+      Key: key,
+      ContentType: contentType,
+    }),
+    { operation: '创建分片上传会话' },
+  );
   if (!result.UploadId) throw new HttpError('R2 没有返回 Multipart Upload ID。', 502);
 
   sessions.set(result.UploadId, {
@@ -219,7 +274,7 @@ async function initializeUpload(request, response) {
     uploadId: result.UploadId,
     partSize: PART_SIZE_BYTES,
     partCount,
-    progressMode: 'transferred',
+    progressMode: 'committed',
   });
 }
 
@@ -239,14 +294,22 @@ async function uploadPart(request, response, url) {
     throw new HttpError(`第 ${partNumber} 个分片大小无效。`);
   }
 
-  const result = await client.send(new UploadPartCommand({
-    Bucket: config.bucketName,
-    Key: session.key,
-    UploadId: session.uploadId,
-    PartNumber: partNumber,
-    ContentLength: expectedSize,
-    Body: request,
-  }));
+  const result = await sendR2Command(
+    client,
+    new UploadPartCommand({
+      Bucket: config.bucketName,
+      Key: session.key,
+      UploadId: session.uploadId,
+      PartNumber: partNumber,
+      ContentLength: expectedSize,
+      Body: request,
+    }),
+    {
+      operation: `第 ${partNumber} 个分片上传`,
+      timeoutMs: R2_PART_REQUEST_TIMEOUT_MS,
+      request,
+    },
+  );
   if (!result.ETag) throw new HttpError(`第 ${partNumber} 个分片没有返回 ETag。`, 502);
   sendJson(response, { ok: true, partNumber, etag: result.ETag });
 }
@@ -277,23 +340,44 @@ async function completeUpload(request, response) {
   const input = await readJson(request);
   const session = getSession(input);
   const parts = validateCompletionParts(session, input.parts);
-  const result = await client.send(new CompleteMultipartUploadCommand({
-    Bucket: config.bucketName,
-    Key: session.key,
-    UploadId: session.uploadId,
-    MultipartUpload: { Parts: parts },
-  }));
-  const metadata = await client.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: session.key }));
-  if (metadata.ContentLength !== session.declaredSize) {
-    throw new HttpError('R2 完整对象大小校验失败。', 502);
+  let result;
+  let recoveredMetadata;
+  try {
+    result = await sendR2Command(
+      client,
+      new CompleteMultipartUploadCommand({
+        Bucket: config.bucketName,
+        Key: session.key,
+        UploadId: session.uploadId,
+        MultipartUpload: { Parts: parts },
+      }),
+      {
+        operation: 'R2 分片合并',
+        timeoutMs: R2_COMPLETE_REQUEST_TIMEOUT_MS,
+        request,
+      },
+    );
+  } catch (completeError) {
+    // CompleteMultipartUpload may succeed in R2 even if its response is lost locally.
+    try {
+      const metadata = await sendR2Command(
+        client,
+        new HeadObjectCommand({ Bucket: config.bucketName, Key: session.key }),
+        { operation: 'R2 完整对象确认' },
+      );
+      if (metadata.ContentLength === session.declaredSize) recoveredMetadata = metadata;
+    } catch {
+      // Preserve the original completion error when no complete object can be confirmed.
+    }
+    if (!recoveredMetadata) throw completeError;
   }
 
   sessions.delete(session.uploadId);
   sendJson(response, {
     ok: true,
     key: session.key,
-    size: metadata.ContentLength,
-    etag: result.ETag || metadata.ETag || '',
+    size: session.declaredSize,
+    etag: result?.ETag || recoveredMetadata?.ETag || '',
     ...buildDownloadUrls(request, session.key, config.publicBaseUrl),
   });
 }
@@ -302,11 +386,15 @@ async function abortUpload(request, response) {
   const { client, config } = requireS3();
   const input = await readJson(request);
   const session = getSession(input);
-  await client.send(new AbortMultipartUploadCommand({
-    Bucket: config.bucketName,
-    Key: session.key,
-    UploadId: session.uploadId,
-  }));
+  await sendR2Command(
+    client,
+    new AbortMultipartUploadCommand({
+      Bucket: config.bucketName,
+      Key: session.key,
+      UploadId: session.uploadId,
+    }),
+    { operation: '取消分片上传' },
+  );
   sessions.delete(session.uploadId);
   sendJson(response, { ok: true });
 }

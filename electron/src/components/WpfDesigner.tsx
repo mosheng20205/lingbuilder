@@ -82,6 +82,7 @@ import {
 } from '../services/windowDesigner/windowDesignerService';
 import { normalizeToolbarButtons } from '../services/windowDesigner/toolbarButtonCollectionModel';
 import { normalizeStatusBarParts } from '../services/windowDesigner/statusBarPartCollectionModel';
+import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
 import { normalizeDataGridModel } from '../services/windowDesigner/dataGridModel';
 import { captureDesignerHotKey } from '../services/windowDesigner/hotKeyProperty';
 import {
@@ -2238,7 +2239,7 @@ export default function WpfDesigner({
         activeWindow?.fileName,
         activeWindow?.className
       );
-      const response = await fetch('/api/window-designer/build-run', {
+      const response = await fetchWithSdkDependencies(() => fetch('/api/window-designer/build-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2249,7 +2250,7 @@ export default function WpfDesigner({
           lingCppSources: lingCppSource.sources,
           run: true
         })
-      });
+      }));
 
       const result = await response.json();
       const logs: string[] = Array.isArray(result.logs) ? result.logs : [];

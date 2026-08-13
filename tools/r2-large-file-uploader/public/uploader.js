@@ -1,5 +1,9 @@
 const DEFAULT_CONCURRENCY = 3;
 const MAX_RETRIES = 3;
+const INIT_REQUEST_TIMEOUT_MS = 60_000;
+const PART_REQUEST_TIMEOUT_MS = 11 * 60_000;
+const COMPLETE_REQUEST_TIMEOUT_MS = 3 * 60_000;
+const ABORT_REQUEST_TIMEOUT_MS = 60_000;
 
 class UploadCancelledError extends Error {
   constructor() {
@@ -12,6 +16,29 @@ async function readJsonResponse(response) {
   const result = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
   if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
   return result;
+}
+
+async function fetchWithTimeout(url, options, timeoutMs, timeoutMessage, parentSignal) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abort = () => controller.abort();
+  if (parentSignal?.aborted) throw new UploadCancelledError();
+  parentSignal?.addEventListener('abort', abort, { once: true });
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new Error(timeoutMessage);
+    if (parentSignal?.aborted || error?.name === 'AbortError') throw new UploadCancelledError();
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+    parentSignal?.removeEventListener('abort', abort);
+  }
 }
 
 function delay(milliseconds, signal) {
@@ -44,7 +71,7 @@ export class R2MultipartUploader {
 
     try {
       this.onPhase('正在创建分片上传会话...');
-      const initResponse = await fetch('/api/uploads/init', {
+      const initResponse = await fetchWithTimeout('/api/uploads/init', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -52,8 +79,7 @@ export class R2MultipartUploader {
           fileSize: file.size,
           contentType: file.type || 'application/octet-stream',
         }),
-        signal,
-      });
+      }, INIT_REQUEST_TIMEOUT_MS, '创建上传会话超时，本机服务或 R2 当前无响应。', signal);
       this.session = await readJsonResponse(initResponse);
       const reportTransferredBytes = this.session.progressMode !== 'committed';
 
@@ -97,7 +123,7 @@ export class R2MultipartUploader {
 
       if (signal.aborted) throw new UploadCancelledError();
       this.onPhase('分片已上传，正在合并文件...');
-      const completeResponse = await fetch('/api/uploads/complete', {
+      const completeResponse = await fetchWithTimeout('/api/uploads/complete', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -105,8 +131,7 @@ export class R2MultipartUploader {
           uploadId: this.session.uploadId,
           parts: uploadedParts.sort((left, right) => left.partNumber - right.partNumber),
         }),
-        signal,
-      });
+      }, COMPLETE_REQUEST_TIMEOUT_MS, 'R2 合并确认超时，请检查网络后重试。', signal);
       const result = await readJsonResponse(completeResponse);
       completed = true;
       this.session = null;
@@ -138,7 +163,10 @@ export class R2MultipartUploader {
       } catch (error) {
         if (signal.aborted || error instanceof UploadCancelledError) throw new UploadCancelledError();
         lastError = error;
-        if (attempt < MAX_RETRIES) await delay(500 * (2 ** (attempt - 1)), signal);
+        if (attempt < MAX_RETRIES) {
+          this.onPhase(`第 ${part.partNumber} 个分片未获 R2 确认，正在重试（${attempt}/${MAX_RETRIES}）...`);
+          await delay(500 * (2 ** (attempt - 1)), signal);
+        }
       }
     }
     throw lastError || new Error(`第 ${part.partNumber} 个分片上传失败。`);
@@ -154,6 +182,7 @@ export class R2MultipartUploader {
       const xhr = new XMLHttpRequest();
       this.activeRequests.add(xhr);
       xhr.open('PUT', url);
+      xhr.timeout = PART_REQUEST_TIMEOUT_MS;
       xhr.setRequestHeader('content-type', 'application/octet-stream');
       xhr.upload.addEventListener('progress', event => {
         if (reportTransferredBytes && event.lengthComputable) onProgress(event.loaded);
@@ -177,6 +206,10 @@ export class R2MultipartUploader {
         this.activeRequests.delete(xhr);
         reject(new Error(`第 ${part.partNumber} 个分片网络错误。`));
       });
+      xhr.addEventListener('timeout', () => {
+        this.activeRequests.delete(xhr);
+        reject(new Error(`第 ${part.partNumber} 个分片等待 R2 确认超时。`));
+      });
       xhr.addEventListener('abort', () => {
         this.activeRequests.delete(xhr);
         reject(new UploadCancelledError());
@@ -191,11 +224,11 @@ export class R2MultipartUploader {
     if (this.abortRequest) return this.abortRequest;
     const session = this.session;
     this.session = null;
-    this.abortRequest = fetch('/api/uploads/abort', {
+    this.abortRequest = fetchWithTimeout('/api/uploads/abort', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ key: session.key, uploadId: session.uploadId }),
-    }).catch(() => undefined);
+    }, ABORT_REQUEST_TIMEOUT_MS, '取消上传超时。').catch(() => undefined);
     await this.abortRequest;
   }
 

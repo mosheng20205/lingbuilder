@@ -9,6 +9,11 @@ import { CRYPTO_SDK_MODULE_IDS } from './dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID, OPENCV_VERSION } from './opencvModules';
 import { PROTOBUF_MODULE_ID } from './protobufModule';
 import { validateProtobufSdk, type ProtobufTargetArchitecture } from './protobufSdk';
+import {
+  getSdkDependencyResource,
+  getSdkRootCandidates,
+  resolveSdkCacheRoot
+} from '../sdkDependencies/sdkDependencyCatalog';
 
 const FBRO_SDK_VERSION = '135.0.21';
 const FBRO_BRIDGE_VERSION = '2.2.0';
@@ -396,7 +401,7 @@ async function materializeFbroSdk(
 
   const sdkRoot = await findFbroSdkRoot(layout);
   if (!sdkRoot) {
-    addBlockingDiagnostic(plan, 'FBro 浏览器缺少内置 SDK。请运行 npm run module:fbro-sdk，或设置 FBRO_SDK_ROOT 指向已生成的 lingbuilder.fbro.sdk/sdk 目录。');
+    addBlockingDiagnostic(plan, 'FBro 浏览器缺少环境 SDK。请在 LingBuilder 的 SDK 下载提示中安装 FBro 环境 SDK，或设置 FBRO_SDK_ROOT 指向有效 SDK 目录。');
     return;
   }
 
@@ -611,18 +616,14 @@ function validateFbroRuntimeManifest(value: FbroRuntimeManifest): string | null 
 
 async function findFbroSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {
   const workspaceRoot = inferWorkspaceRootFromBuildDir(layout.buildDir);
-  const packagedRoot = process.resourcesPath
-    ? path.join(process.resourcesPath, 'default-workspace', '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'sdk')
-    : '';
-  const candidates = unique([
-    process.env.FBRO_SDK_ROOT || '',
-    path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'sdk'),
-    packagedRoot,
-    path.resolve('.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'sdk')
-  ].filter(Boolean));
+  const candidates = getSdkRootCandidates(getSdkDependencyResource('fbro'), {
+    workspaceRoot,
+    cacheRoot: resolveSdkCacheRoot(),
+    resourcesPath: process.resourcesPath
+  });
   for (const candidate of candidates) {
-    if (await pathExists(path.join(candidate, 'runtime-manifest.json')) &&
-        await pathExists(path.join(candidate, 'include', 'LingBuilderFbroBridge.h'))) return candidate;
+    if (await pathExists(path.join(candidate.root, 'runtime-manifest.json')) &&
+        await pathExists(path.join(candidate.root, 'include', 'LingBuilderFbroBridge.h'))) return candidate.root;
   }
   return null;
 }
@@ -948,7 +949,7 @@ async function materializeCef3Sdk(
   plan.requiresDynamicCrt = true;
   plan.requiredCppStandard = 20;
   if (!sdkRoot) {
-    plan.diagnostics.push('CEF3 模块缺少 Chromium Embedded Framework SDK。推荐方式：安装 CEF3 内核 SDK 离线模块包（lingbuilder.cef3.sdk，含预编译 libcef_dll_wrapper，免下载免编译）。手动方式：从 https://cef-builds.spotifycdn.com/index.html 下载最新稳定版 windows64 标准包（如 cef_binary_150.0.14+..._windows64.tar.bz2），解压后把 cef_binary_* 目录内容放到工作区 .lingbuilder/cef3-sdk 或 C:\\cef3-sdk，或设置 CEF3_SDK_ROOT 环境变量指向该目录，然后重新构建。LingBuilder 会自动用 CMake 编译 libcef_dll_wrapper。');
+    addBlockingDiagnostic(plan, 'CEF3 浏览器缺少环境 SDK。请在 LingBuilder 的 SDK 下载提示中安装 CEF3 环境 SDK，或设置 CEF3_SDK_ROOT 指向有效 SDK 目录。');
     return;
   }
   const moduleRoot = path.join('modules', 'lingbuilder.cef3.browser');
@@ -1137,19 +1138,15 @@ async function findCef3SdkRoot(layout?: ModuleNativeDependencyLayout): Promise<s
   // buildDir 固定为 <workspace>/.lingbuilder-build/<项目>，据此反推工作区根目录，
   // 避免相对路径候选受进程 cwd 影响。
   const workspaceRoot = layout ? inferWorkspaceRootFromBuildDir(layout.buildDir) : '';
-  const sdkModuleRelative = path.join('.lingbuilder', 'modules', 'lingbuilder.cef3.sdk', 'sdk');
-  const candidates = unique([
-    process.env.CEF3_SDK_ROOT || '',
-    workspaceRoot ? path.join(workspaceRoot, '.lingbuilder', 'cef3-sdk') : '',
-    workspaceRoot ? path.join(workspaceRoot, sdkModuleRelative) : '',
-    path.join('.lingbuilder', 'cef3-sdk'),
-    sdkModuleRelative,
-    'C:\\cef3-sdk'
-  ].filter(Boolean));
-  for (const root of candidates) {
+  const candidates = getSdkRootCandidates(getSdkDependencyResource('cef3'), {
+    workspaceRoot: workspaceRoot || undefined,
+    cacheRoot: resolveSdkCacheRoot(),
+    resourcesPath: process.resourcesPath
+  });
+  for (const candidate of candidates) {
     try {
-      await fs.access(path.join(root, 'include', 'cef_app.h'));
-      return root;
+      await fs.access(path.join(candidate.root, 'include', 'cef_app.h'));
+      return candidate.root;
     } catch {
       // 尝试下一个候选 SDK 根目录。
     }

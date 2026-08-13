@@ -1,5 +1,7 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-08-14 CEF3/FBro 大型 SDK 已改为安装包外的按需依赖。Electron 发布包只保留 `lingbuilder.cef3.sdk`、`lingbuilder.fbro.sdk` 的 v2 清单和 README，明确排除各自 `sdk/`；首次使用对应浏览器模块执行 F5、原生预览或导出时，由 `sdkDependencyCatalog.ts` / `sdkDependencyService.ts` 统一检测、提示、下载、校验和原子安装到用户共享缓存。模块清单、binding 和语言能力仍由轻量模块元数据提供，SDK 资产不再作为 `lingbuilder.new_emoji.fbro-shell` 的硬模块依赖。AI Bridge 与独立 CLI 不自动下载，只返回结构化 `SDK_DEPENDENCY_REQUIRED`。更新资源必须更换版本化 URL，并同步精确字节数、展开文件数/字节数和 SHA-256；发布校验必须确认轻量元数据存在且没有夹带 `sdk/`。
+
 > 2026-08-09 CEF3 Textfield color compatibility group: seven signatures guarded upstream by `CEF_API_REMOVED(15000)` now have explicit C ABI and official V4 coverage without dereferencing the removed C API slots. Text and selected-text setters execute the supported `CefTextfield::ApplyTextColor` method on the CEF UI thread, while all four legacy color categories are retained in the existing managed View sidecar for deterministic direct/V4 readback. Selection-background and placeholder colors are documented as compatibility state because CEF 150 has no native replacement; the Bridge does not claim a visual mutation that CEF cannot perform. V4 enforces unsigned 32-bit colors, and native tests cover real Textfield objects, getters/setters, range/type errors, and release invalidation. Current public coverage is `1266/1384` (91.47%), `planned=118`, and `needsReview=118`.
 
 > 2026-08-09 CEF3 Custom Scheme / SchemeHandlerFactory group: five adjacent APIs now have real C ABI exports and official V4 signature dispatch: app/registrar custom-scheme registration, global and RequestContext factory registration, and the scheme factory `create` callback. Scheme declarations are validated and frozen before `ExecuteSubProcess` in every process, then copied by `BridgeApp::OnRegisterCustomSchemes` into real `CefSchemeRegistrar::AddCustomScheme` calls. The new `SCHEME_HANDLER_FACTORY` typed handle stores only Bridge-managed ResourceHandler configuration, has explicit registration/GetState/type/release behavior, and never exposes a `CefRefPtr`, CEF pointer, request pointer, or address. CEF owns each registered factory snapshot and invokes `Create` on the IO thread to construct an independent `BridgeResourceHandler`; releasing the public configuration handle does not revoke registrations already retained by CEF. Global and isolated RequestContext registration preserve the official nullable factory removal and boolean result semantics. Native tests cover direct/V4 validation and release behavior plus real `lingbuilder://` and `lingbuilderv4://` navigation with managed Frame source readback. Current public coverage is `1259/1384` (90.97%), `planned=125`, and `needsReview=125`.
@@ -199,7 +201,7 @@
 
 > 2026-07-26 补充：原生依赖计划可以声明最低 C++ 标准和动态 CRT 要求。CEF3 固定要求 C++20 与 `/MD`，该要求必须同时进入 F5、AI Bridge 和 Visual Studio 工程导出；不得再以“需要动态 CRT”间接猜测语言标准，也不得让 `.vcxproj` 回退为 `stdcpp17`。使用预编译 `/MD` wrapper 的 Debug 配置保留优化关闭、PDB 和链接调试信息，但必须用 `NDEBUG` 而非 `_DEBUG`，避免主程序产生 Debug CRT 外部符号。
 
-> 2026-07-26 补充：当前随附 CEF 150 SDK 只提供经验证的 x64 产物。启用/安装并启用 `lingbuilder.cef3.browser` 时，`BuildConfigurationService` 必须把工作区架构切换为 x64；F5 和受控解决方案构建前必须再按项目已启用模块校正。这个构建兼容策略属于服务层，不得只在 React 控件中修改状态栏文字。
+> 2026-07-26 补充（2026-08-14 按需下载后仍适用）：当前受控 CEF 150 SDK 只提供经验证的 x64 产物。启用/安装并启用 `lingbuilder.cef3.browser` 时，`BuildConfigurationService` 必须把工作区架构切换为 x64；F5 和受控解决方案构建前必须再按项目已启用模块校正。这个构建兼容策略属于服务层，不得只在 React 控件中修改状态栏文字。
 
 > 2026-07-26 补充：Visual Studio 工程生成器的 `OutDir` 固定为 `$(ProjectDir)$(Platform)\$(Configuration)\bin\`，与 IDE 构建目录内原生依赖物化的 `binDir` 一致。CEF/WebView2/new_emoji 等需要运行时文件的模块不得把 VS exe 输出到运行时资源目录之外；`generated/cpp` 对外导出还必须另行验证其 SDK/资源复制完整性。
 
@@ -267,6 +269,8 @@
   - 负责扫描、项目启用/禁用、`.lbmod` 预览、安装、卸载、市场索引、导出模块包和操作历史。
 - `electron/src/services/modules/nativeDependencyService.ts`
   - 负责把已启用模块的 C++ 头文件、源码、库文件和运行时 DLL 安全复制到构建/导出目录，并向编译器提供 include/source/lib 路径。
+- `electron/src/services/sdkDependencies/`
+  - 维护 CEF3/FBro 版本化下载清单、用户级共享缓存、断点续传、完整性校验、安全解压和安装状态；原生依赖服务只消费其解析结果，不自行联网。
 - `electron/server.ts`
   - 暴露 `/api/modules/*` 路由，并在窗口设计器构建时把启用模块传给 C++ 生成器。
 - `electron/src/services/lingCpp/languageService.ts`
@@ -381,6 +385,9 @@
 - `POST /api/modules/uninstall`
 - `GET /api/modules/market`
 - `GET /api/modules/history`
+- `GET /api/sdk-dependencies/status`
+- `POST /api/sdk-dependencies/install`
+- `POST /api/sdk-dependencies/cancel`
 
 注意：开发期如果前端热更新了但 Express server 没重启，新增 API 可能暂时返回 Vite HTML。资源管理器已有 fallback，但模块管理页和后端真实安装能力仍需要重启 `npm run dev` 或对应 server。
 
@@ -494,6 +501,7 @@ lingbuilder.module.json
 - 模块控件接入设计器时，应由 `designerControls` 贡献生成工具箱项，并在项目禁用模块时显示“依赖模块未启用”，不要静默删除已有控件。new_emoji 已按此规则接入 7 类基础控件。
 - 外部模块的 C++ 依赖第一阶段只生成报告和明确注释；真正复制 include/src/lib/runtime 文件到构建目录时，必须补测试并保证路径安全。
 - 官方收费模块的远程下载、Ed25519 签名校验、SHA-256 校验和安装/更新回滚已复用 preview/install 流程；第三方公开市场的审核和签名信任链仍可继续扩展。
+- CEF3/FBro SDK 是受控环境依赖，不经普通 `.lbmod` 市场安装。安装包只带轻量元数据，工作台按需安装到 `%APPDATA%/LingBuilder/sdk-cache/modules/<moduleId>/sdk`；显式环境变量、工作区 SDK 和旧兼容目录仍按原生依赖候选顺序解析。
 
 ## 验证命令
 

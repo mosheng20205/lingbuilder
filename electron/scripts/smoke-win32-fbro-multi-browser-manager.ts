@@ -16,6 +16,7 @@ const projectId = 'win32-fbro-multi-browser-manager';
 const releaseBuild = process.argv.includes('--release');
 const singleInstance = process.argv.includes('--single-instance');
 const buildOnly = process.argv.includes('--build-only');
+const layoutOnly = process.argv.includes('--layout-only');
 const downloadSmoke = process.argv.includes('--download');
 const pluginVerificationSmoke = process.argv.includes('--plugin-verification');
 const pluginVerificationUrl = pluginVerificationSmoke ? 'https://www.doubao.com/chat/' : '';
@@ -106,10 +107,16 @@ interface WindowProbe {
   addressText: string;
   addressLeft: number;
   addressWidth: number;
+  listTop: number;
+  listHeight: number;
   listItems: string[];
   browsers: BrowserProbe[];
   downloadDetail?: string;
   downloadProgress?: number;
+  downloadDetailTop?: number;
+  downloadDetailHeight?: number;
+  downloadDetailStyle?: number;
+  downloadProgressTop?: number;
   downloadedFile?: string;
   chromiumStartUrl?: string;
   popupTargetUrl?: string;
@@ -250,11 +257,11 @@ public sealed class LBBrowserProbe {
   public int left, top, width, height, parentLeft, parentTop, parentWidth, parentHeight;
 }
 public sealed class LBWindowProbe {
-  public int clientWidth, clientHeight, tabLeft, tabTop, tabWidth, tabHeight, addressLeft, addressWidth;
+  public int clientWidth, clientHeight, tabLeft, tabTop, tabWidth, tabHeight, addressLeft, addressWidth, listTop, listHeight;
   public string[] listItems;
   public LBBrowserProbe[] browsers;
   public string addressText, downloadDetail;
-  public int downloadProgress;
+  public int downloadProgress, downloadDetailTop, downloadDetailHeight, downloadDetailStyle, downloadProgressTop;
 }
 public static class LBProbe {
   public delegate bool EnumProc(IntPtr hwnd, IntPtr state);
@@ -268,17 +275,21 @@ public static class LBProbe {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder text, int capacity);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr hwnd, uint message, IntPtr wParam, StringBuilder lParam);
   [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll", EntryPoint="GetWindowLongW")] static extern int GetWindowLong(IntPtr hwnd, int index);
   const uint WM_GETTEXT = 0x000D, WM_GETTEXTLENGTH = 0x000E;
   const uint LB_GETCOUNT = 0x018B, LB_GETTEXTLEN = 0x018A, LB_GETTEXT = 0x0189;
   public static LBWindowProbe Inspect(IntPtr main) {
     var browsers = new List<LBBrowserProbe>(); var listItems = new List<string>();
     RECT mainClient = new RECT(); GetClientRect(main, out mainClient);
-    RECT tabRect = new RECT(); string addressText = "", downloadDetail = ""; int addressLeft = 0, addressWidth = 0, downloadProgress = 0;
+    RECT tabRect = new RECT(); string addressText = "", downloadDetail = "";
+    int addressLeft = 0, addressWidth = 0, listTop = 0, listHeight = 0, downloadProgress = 0;
+    int downloadDetailTop = 0, downloadDetailHeight = 0, downloadDetailStyle = 0, downloadProgressTop = 0;
     EnumChildWindows(main, delegate(IntPtr hwnd, IntPtr state) {
       var name = new StringBuilder(256); GetClassName(hwnd, name, name.Capacity);
       string cls = name.ToString();
       if (cls == "SysTabControl32") GetWindowRect(hwnd, out tabRect);
       if (cls == "ListBox") {
+        RECT listRect; GetWindowRect(hwnd, out listRect); listTop = listRect.Top; listHeight = listRect.Bottom - listRect.Top;
         int count = SendMessage(hwnd, LB_GETCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
         for (int index = 0; index < count; index++) {
           int length = SendMessage(hwnd, LB_GETTEXTLEN, new IntPtr(index), IntPtr.Zero).ToInt32();
@@ -290,11 +301,20 @@ public static class LBProbe {
         int length = SendMessage(hwnd, WM_GETTEXTLENGTH, IntPtr.Zero, IntPtr.Zero).ToInt32();
         var text = new StringBuilder(Math.Max(1, length + 1));
         SendMessage(hwnd, WM_GETTEXT, new IntPtr(text.Capacity), text);
-        if (text.ToString().Contains("下载：")) downloadDetail = text.ToString();
+        if (text.ToString().Contains("下载：")) {
+          downloadDetail = text.ToString();
+          RECT detailRect; GetWindowRect(hwnd, out detailRect);
+          downloadDetailTop = detailRect.Top;
+          downloadDetailHeight = detailRect.Bottom - detailRect.Top;
+          downloadDetailStyle = GetWindowLong(hwnd, -16);
+        }
         RECT rect; GetWindowRect(hwnd, out rect); int width = rect.Right - rect.Left;
         if (width > addressWidth) { addressText = text.ToString(); addressLeft = rect.Left; addressWidth = width; }
       }
-      if (cls == "msctls_progress32") downloadProgress = SendMessage(hwnd, 0x0408, IntPtr.Zero, IntPtr.Zero).ToInt32();
+      if (cls == "msctls_progress32") {
+        downloadProgress = SendMessage(hwnd, 0x0408, IntPtr.Zero, IntPtr.Zero).ToInt32();
+        RECT progressRect; GetWindowRect(hwnd, out progressRect); downloadProgressTop = progressRect.Top;
+      }
       if (cls == "LingBuilder.FBro.Host.Browser") {
         RECT rect, parentRect; GetWindowRect(hwnd, out rect); IntPtr parent = GetParent(hwnd); GetWindowRect(parent, out parentRect);
         uint childPid; GetWindowThreadProcessId(hwnd, out childPid);
@@ -310,7 +330,10 @@ public static class LBProbe {
       tabLeft=tabRect.Left, tabTop=tabRect.Top, tabWidth=tabRect.Right-tabRect.Left,
       tabHeight=tabRect.Bottom-tabRect.Top, listItems=listItems.ToArray(), browsers=browsers.ToArray(),
       addressText=addressText, addressLeft=addressLeft, addressWidth=addressWidth,
-      downloadDetail=downloadDetail, downloadProgress=downloadProgress };
+      listTop=listTop, listHeight=listHeight,
+      downloadDetail=downloadDetail, downloadProgress=downloadProgress,
+      downloadDetailTop=downloadDetailTop, downloadDetailHeight=downloadDetailHeight,
+      downloadDetailStyle=downloadDetailStyle, downloadProgressTop=downloadProgressTop };
   }
 }`;
   const script = [
@@ -329,7 +352,21 @@ public static class LBProbe {
   return JSON.parse(stdout.trim()) as WindowProbe;
 }
 
+function verifyLayoutProbe(probe: WindowProbe): void {
+  const scrollStyleMask = 0x00100000 | 0x00200000;
+  if ((probe.downloadDetailHeight || 0) < 100) {
+    throw new Error(`下载详情框高度不足：${probe.downloadDetailHeight || 0}px。`);
+  }
+  if (((probe.downloadDetailStyle || 0) & scrollStyleMask) !== 0) {
+    throw new Error(`下载详情框仍带固定滚动条样式：0x${(probe.downloadDetailStyle || 0).toString(16)}。`);
+  }
+  if ((probe.downloadProgressTop || 0) <= (probe.downloadDetailTop || 0) + (probe.downloadDetailHeight || 0)) {
+    throw new Error('下载详情框与进度条发生重叠。');
+  }
+}
+
 function verifyRuntimeProbe(probe: WindowProbe, expectedCount: number): void {
+  verifyLayoutProbe(probe);
   if (probe.browsers.length !== expectedCount) throw new Error(`预期 ${expectedCount} 个真实 FBro 子窗口，实际 ${probe.browsers.length} 个。`);
   if (new Set(probe.browsers.map(item => item.processId)).size !== expectedCount) throw new Error('多个实例共享了 FBro Host PID。');
   if (new Set(probe.browsers.map(item => item.parent)).size !== expectedCount) throw new Error('多个实例共享了标签页面 HWND。');
@@ -352,9 +389,26 @@ function verifyRuntimeProbe(probe: WindowProbe, expectedCount: number): void {
   }
 }
 
+function verifySidebarResize(before: WindowProbe, after: WindowProbe): void {
+  if (after.clientHeight <= before.clientHeight + 80) {
+    throw new Error(`主窗口高度未扩大：${before.clientHeight} -> ${after.clientHeight}`);
+  }
+  if (after.listHeight <= before.listHeight + 80 || after.listTop !== before.listTop) {
+    throw new Error('浏览器实例列表没有在原位置吸收窗口新增高度。');
+  }
+  if (Math.abs((after.downloadDetailHeight || 0) - (before.downloadDetailHeight || 0)) > 3) {
+    throw new Error('下载详情框在窗口缩放时不应改变高度。');
+  }
+  if ((after.downloadDetailTop || 0) <= (before.downloadDetailTop || 0) + 80
+    || (after.downloadProgressTop || 0) <= (before.downloadProgressTop || 0) + 80) {
+    throw new Error('下载详情和进度操作区没有整体贴近窗口底部移动。');
+  }
+}
+
 function verifyResize(before: WindowProbe, after: WindowProbe): void {
-  if (after.clientWidth <= before.clientWidth + 80 || after.clientHeight <= before.clientHeight + 80) {
-    throw new Error(`主窗口尺寸未扩大：${before.clientWidth}x${before.clientHeight} -> ${after.clientWidth}x${after.clientHeight}`);
+  verifySidebarResize(before, after);
+  if (after.clientWidth <= before.clientWidth + 80) {
+    throw new Error(`主窗口宽度未扩大：${before.clientWidth} -> ${after.clientWidth}`);
   }
   if (after.tabWidth <= before.tabWidth + 80 || after.tabHeight <= before.tabHeight + 80) {
     throw new Error(`浏览器选项卡未随窗口扩大：${before.tabWidth}x${before.tabHeight} -> ${after.tabWidth}x${after.tabHeight}`);
@@ -408,11 +462,25 @@ async function main(): Promise<void> {
   const window = project.windows[0];
   const tab = window?.controls.find(control => control.id === 'browser-pages');
   const list = window?.controls.find(control => control.id === 'browser-list');
+  const detail = window?.controls.find(control => control.id === 'instance-detail');
+  const progress = window?.controls.find(control => control.id === 'download-progress');
   if (window?.designerBackend !== 'win32' || tab?.type !== 'TabControl' || tab.properties?.hideHeader !== true || list?.type !== 'ListBox') {
     throw new Error('目标项目必须使用 win32 后端、隐藏表头 TabControl 和 ListBox。');
   }
   if (window.controls.some(control => control.designerType || control.type === 'FBroBrowser')) {
     throw new Error('目标项目包含其它 UI 后端或固定 FBroBrowser 设计器控件。');
+  }
+  if (detail?.type !== 'TextBox' || detail.height < 114 || detail.properties?.scrollBars !== 'none') {
+    throw new Error('下载详情框必须使用加高、无固定滚动条的只读多行 TextBox。');
+  }
+  if (!progress || detail.y + detail.height >= progress.y || (list?.height || 0) > 236) {
+    throw new Error('左侧详情区、进度条或实例列表的紧凑布局不符合预期。');
+  }
+  if (!source.includes('控件_设置位置大小(浏览器实例列表')
+    || !source.includes('控件_设置位置大小(实例详情')
+    || !source.includes('控件_设置位置大小(下载进度')
+    || !source.includes('控件_设置位置大小(打开下载目录')) {
+    throw new Error('下载详情区没有接入窗口高度自适应布局。');
   }
   const expectedModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls', 'lingbuilder.fbro.browser', 'lingbuilder.browser.doubao-downloader'];
   if (JSON.stringify(moduleConfig.enabledModuleIds) !== JSON.stringify(expectedModules)) throw new Error('项目模块引用不符合最小 Win32 + FBro 集合。');
@@ -430,7 +498,7 @@ async function main(): Promise<void> {
     throw new Error('弹窗 smoke URL 必须是 127.0.0.1 回环 HTTP 地址。');
   }
   const sourceWithPopup = sourceWithWorkspace;
-  const sourceForBuild = releaseBuild || singleInstance ? sourceWithPopup : sourceWithPopup
+  const sourceForBuild = releaseBuild || singleInstance || layoutOnly ? sourceWithPopup : sourceWithPopup
     .replace('        如果 (已恢复数量 <= 0)', [
       '        如果 (已恢复数量 == 1)',
       '            浏览器管理器_新增实例("隔离实例 2", "https://www.doubao.com/")',
@@ -446,6 +514,10 @@ async function main(): Promise<void> {
     enabledModules
   });
   if (generated.blockingDiagnostics.length > 0) throw new Error(generated.blockingDiagnostics.join('\n'));
+  const generatedMain = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  if (!/DispatchWindowEvent\(L"SizeChanged"\);[\s\S]{0,180}RedrawWindow\(hwnd_, nullptr, nullptr,[\s\S]{0,120}RDW_INVALIDATE \| RDW_ERASE \| RDW_ALLCHILDREN \| RDW_UPDATENOW/u.test(generatedMain)) {
+    throw new Error('原生窗口缩放后没有统一擦除背景并重绘子控件。');
+  }
   const overriddenStartUrl = chromiumStartUrl || popupStartUrl || downloadStartUrl || pluginVerificationUrl;
   if (overriddenStartUrl) {
     const startUrlLiteral = `L"${overriddenStartUrl.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
@@ -485,7 +557,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  let expectedInstances = releaseBuild || singleInstance ? 1 : 3;
+  let expectedInstances = releaseBuild || singleInstance || layoutOnly ? 1 : 3;
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) throw new Error('无法解析 LocalAppData。');
   const persistenceRoot = path.join(localAppData, 'LingBuilder', 'browser-workspaces',
@@ -507,8 +579,28 @@ async function main(): Promise<void> {
   const runAndProbe = async (): Promise<WindowProbe> => {
     const pid = await startRuntime(executable);
     try {
-      await waitUntil(async () => (await countHostProcesses()) >= before + expectedInstances, 240000, '独立 FBro Host 数量未就绪');
       await waitUntil(() => isProcessResponding(pid), 30000, '主窗口未恢复消息响应');
+      if (layoutOnly) {
+        let latest: WindowProbe | undefined;
+        await waitUntil(async () => {
+          latest = await inspectRuntime(pid);
+          verifyLayoutProbe(latest);
+          return true;
+        }, 30000, '下载详情控件布局尚未就绪');
+        const initialProbe = latest!;
+        for (const [width, height] of [[1340, 820], [1280, 760], [1420, 880], [1500, 940]]) {
+          await resizeRuntimeWindow(pid, width, height);
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        await waitUntil(async () => {
+          latest = await inspectRuntime(pid);
+          verifyLayoutProbe(latest);
+          verifySidebarResize(initialProbe, latest);
+          return true;
+        }, 30000, '窗口缩放后的列表伸缩、详情固定高度或底部锚定未通过验收');
+        return latest!;
+      }
+      await waitUntil(async () => (await countHostProcesses()) >= before + expectedInstances, 240000, '独立 FBro Host 数量未就绪');
       let latest: WindowProbe | undefined;
       await waitUntil(async () => {
         latest = await inspectRuntime(pid);
@@ -590,6 +682,13 @@ async function main(): Promise<void> {
     }
   };
   const firstProbe = await runAndProbe();
+  if (layoutOnly) {
+    if (useIsolatedSmokeWorkspace) await fs.rm(persistenceRoot, { recursive: true, force: true });
+    console.log(JSON.stringify({
+      ok: true, projectId, buildDirectory, executable, releaseBuild, layoutOnly, firstProbe
+    }, null, 2));
+    return;
+  }
   const document = JSON.parse(await fs.readFile(path.join(persistenceRoot, 'browser-instances.json'), 'utf8')) as {
     instances?: Array<{ id?: string; cacheDirectory?: string; name?: string; lastUrl?: string }>;
   };

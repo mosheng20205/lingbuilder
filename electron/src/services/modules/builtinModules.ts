@@ -1092,8 +1092,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     tags: ['内置', 'new_emoji', 'FBro', '浏览器外壳', 'x64'],
     dependencies: [
       { moduleId: 'lingbuilder.new_emoji.ui', minimumVersion: '2.0.0' },
-      { moduleId: 'lingbuilder.fbro.browser', minimumVersion: '2.2.0' },
-      { moduleId: 'lingbuilder.fbro.sdk', minimumVersion: '2.2.0' }
+      { moduleId: 'lingbuilder.fbro.browser', minimumVersion: '2.2.0' }
     ],
     contributes: {
       commands: [

@@ -182,7 +182,18 @@
       "cornerStyle": "rounded",
       "iconStyle": "lingbuilder",
       "resizable": true,
-      "maximizable": true
+      "maximizable": true,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
     }
   ]
 }

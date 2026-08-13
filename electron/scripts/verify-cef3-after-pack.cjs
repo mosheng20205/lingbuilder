@@ -1,10 +1,9 @@
 const path = require('node:path');
-const { verifyPackagedDirectory } = require('./verify-cef3-release-sdk.cjs');
+const { verifyUnpacked } = require('./verify-on-demand-sdk-release.cjs');
 
 async function verifyCef3AfterPack(context) {
-  const projectRoot = resolveProjectRoot(context);
-  const result = await verifyPackagedDirectory(context.appOutDir, projectRoot);
-  console.log(`[CEF3 发布后校验] ${result.manifest.version} / ${result.inventory.size} 个文件 / CRC32 全部一致`);
+  const result = await verifyUnpacked(context.appOutDir);
+  console.log(`[SDK 按需下载发布后校验] ${result.modules.map(item => item.moduleId).join('、')} 仅保留轻量元数据，未夹带 sdk/。`);
 }
 
 function resolveProjectRoot(context) {

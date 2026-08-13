@@ -83,6 +83,8 @@ async function assertPackagedCli() {
 
 async function launchSmoke(name, documentsRoot, userDataRoot) {
   const resultPath = path.join(path.dirname(documentsRoot), `smoke-result-${name}.json`);
+  const desktopEnvironment = { ...process.env };
+  delete desktopEnvironment.ELECTRON_RUN_AS_NODE;
   const child = spawn(executablePath, [
     `--user-data-dir=${userDataRoot}`,
     `--smoke-documents-dir=${documentsRoot}`,
@@ -90,6 +92,7 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
     `--smoke-result=${resultPath}`
   ], {
     cwd: projectRoot,
+    env: desktopEnvironment,
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -99,8 +102,7 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
   child.stderr.on('data', chunk => { stderr += String(chunk); });
 
   let result;
-  // The packaged workspace carries the full CEF3/FBro SDKs and the managed
-  // Bridge may need to probe several ports on slower disks. Keep the harness
+  // The managed Bridge may need to probe several ports on slower disks. Keep the harness
   // alive long enough for the renderer's own bounded checks to report a
   // useful result instead of terminating the application mid-probe.
   const deadline = Date.now() + 240_000;

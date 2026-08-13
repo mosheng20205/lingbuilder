@@ -69,6 +69,7 @@ import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
+import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';
 import CliGuideDialog from './components/CliGuideDialog';
 import AboutDialog from './components/AboutDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
@@ -186,6 +187,7 @@ import type {
 } from './services/workspace/workspaceSearchTypes';
 import { formatEnvironmentCheckOutput } from './services/tasks/environmentCheckPresentation';
 import { createEnvironmentCheckRequestGate } from './services/tasks/environmentCheckRequestGate';
+import { fetchWithSdkDependencies } from './services/sdkDependencies/sdkDependencyClient';
 import type { TaskSnapshot } from './services/tasks/taskService';
 import type { ClangdStatus } from './services/lsp/clangdService';
 import type { BuildArchitecture, BuildConfiguration, BuildMode } from './services/tasks/buildConfigurationService';
@@ -4411,7 +4413,7 @@ void DisplayStatus() {
         activeWindow?.fileName,
         activeWindow?.className
       );
-      const response = await fetch('/api/window-designer/build-run', {
+      const response = await fetchWithSdkDependencies(() => fetch('/api/window-designer/build-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4422,7 +4424,7 @@ void DisplayStatus() {
           lingCppSources: sourceSnapshot.sources,
           run: true
         })
-      });
+      }));
       const result = await response.json().catch(() => ({}));
       if (buildRequestId !== buildRequestIdRef.current || editorOperationRef.current !== 'build') return true;
 
@@ -6750,6 +6752,8 @@ void DisplayStatus() {
           setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【环境修复】${message}`]);
         }}
       />
+
+      <SdkDependencyInstallerDialog isDarkMode={isDarkMode} />
 
       <CliGuideDialog
         open={showCliGuide}

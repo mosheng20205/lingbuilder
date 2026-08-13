@@ -8475,7 +8475,6 @@ ${webSocketServerShutdown}
 
         if (!hwnd_) return nullptr;
         ApplyWindowAppearance();
-        ShowWindow(hwnd_, showCommand);
         const UINT actualDpi = GetDpiForWindow(hwnd_);
         if (actualDpi && actualDpi != dpi_) {
             dpi_ = actualDpi;
@@ -8494,12 +8493,8 @@ ${webSocketServerShutdown}
         UINT resizeFlags = SWP_NOZORDER | SWP_NOACTIVATE;
         if (actualX == CW_USEDEFAULT || actualY == CW_USEDEFAULT) resizeFlags |= SWP_NOMOVE;
         SetWindowPos(hwnd_, nullptr, actualX, actualY, actualWidth, actualHeight, resizeFlags);
+        ShowWindow(hwnd_, showCommand);
         UpdateWindow(hwnd_);
-        SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        SetForegroundWindow(hwnd_);
-        BringWindowToTop(hwnd_);
-        SetFocus(hwnd_);
-        SetTimer(hwnd_, 0x4C42, 900, nullptr);
         return hwnd_;
     }
 
@@ -20419,7 +20414,11 @@ private:
                 eventWidth_ = nextWidth;
                 eventHeight_ = nextHeight;
                 windowState_ = nextState;
-                if (sizeBaselineReady_ && sizeChanged) DispatchWindowEvent(L"SizeChanged");
+                if (sizeBaselineReady_ && sizeChanged) {
+                    DispatchWindowEvent(L"SizeChanged");
+                    RedrawWindow(hwnd_, nullptr, nullptr,
+                        RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+                }
                 if (windowStateBaselineReady_ && stateChanged) {
                     DispatchWindowEvent(nextState == 1 ? L"Minimized" : nextState == 2 ? L"Maximized" : L"Restored");
                 }
@@ -20515,14 +20514,6 @@ private:
                 return 0;
             }
             if (AdvanceAnimatedImage(static_cast<UINT_PTR>(wParam))) return 0;
-            if (wParam == 0x4C42) {
-                KillTimer(hwnd_, 0x4C42);
-                SetWindowPos(hwnd_, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-                SetForegroundWindow(hwnd_);
-                BringWindowToTop(hwnd_);
-                SetFocus(hwnd_);
-                return 0;
-            }
             break;
         case WM_COMMAND: {
             int controlId = LOWORD(wParam);
