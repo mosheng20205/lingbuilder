@@ -7,6 +7,7 @@ import {
   LingWindowProject
 } from './types';
 import {
+  DEFAULT_WINDOW_BORDER_STYLE,
   deriveLingWindowBorderStyle,
   normalizeLingWindowBorderStyle,
   resolveLingWindowBorder
@@ -35,6 +36,7 @@ export const WINDOW_DESIGNER_PROJECT_UPDATED = 'window-designer:project-updated'
 export const WINDOW_DESIGNER_DIRTY_STATE_CHANGED = 'window-designer:dirty-state-changed';
 
 export const DESIGNER_TITLE_BAR_HEIGHT = 28;
+export const DESIGNER_THIN_TITLE_BAR_HEIGHT = 20;
 export const DESIGNER_MENU_BAR_HEIGHT = 24;
 export const DEFAULT_WINDOW_TITLE_BAR_BACKGROUND = '#2D2D30';
 export const DEFAULT_WINDOW_TITLE_BAR_FOREGROUND = '#CBD5E1';
@@ -186,7 +188,7 @@ export function hasDesignerWindowMenu(window: Pick<LingWindowModel, 'menuItems'>
 
 export function getDesignerWindowContentOffset(window: Pick<LingWindowModel, 'menuItems' | 'borderStyle'>): number {
   const captionKind = resolveLingWindowBorder(window.borderStyle, true).captionKind;
-  const titleBarHeight = captionKind === 'none' ? 0 : captionKind === 'thin' ? 20 : DESIGNER_TITLE_BAR_HEIGHT;
+  const titleBarHeight = captionKind === 'none' ? 0 : captionKind === 'thin' ? DESIGNER_THIN_TITLE_BAR_HEIGHT : DESIGNER_TITLE_BAR_HEIGHT;
   return titleBarHeight + (hasDesignerWindowMenu(window) ? DESIGNER_MENU_BAR_HEIGHT : 0);
 }
 
@@ -334,7 +336,7 @@ export function createBlankWindow(index: number, designerBackend = 'win32'): Lin
     openPlacement: 'default',
     resizable: true,
     maximizable: true,
-    borderStyle: 'normal-resizable',
+    borderStyle: DEFAULT_WINDOW_BORDER_STYLE,
     borderlessDraggable: false,
     windowFrame: normalizeLingWindowFrame(undefined, true, DEFAULT_WINDOW_CORNER_STYLE),
     designerBackend,

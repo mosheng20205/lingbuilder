@@ -43,6 +43,20 @@ export function deriveLingWindowBorderStyle(borderStyle: LingWindowBorderStyle |
   return isResizableBorderStyle(borderStyle);
 }
 
+/** 在同一家族内切换固定/可调边框；无边框与未知值原样返回。 */
+export function toggleBorderFamily(
+  borderStyle: LingWindowBorderStyle | undefined,
+  resizable: boolean
+): LingWindowBorderStyle | undefined {
+  if (borderStyle === 'normal-fixed' || borderStyle === 'thin-title-fixed' || borderStyle === 'frame-fixed') {
+    return resizable ? borderStyle.replace(/-fixed$/, '-resizable') as LingWindowBorderStyle : borderStyle;
+  }
+  if (borderStyle === 'normal-resizable' || borderStyle === 'thin-title-resizable' || borderStyle === 'frame-resizable') {
+    return resizable ? borderStyle : borderStyle.replace(/-resizable$/, '-fixed') as LingWindowBorderStyle;
+  }
+  return borderStyle;
+}
+
 /** C++ 端枚举编号，与易语言边框编号 0–6 一致。 */
 export function toWindowBorderCxxValue(borderStyle: LingWindowBorderStyle | undefined): number {
   const index = LING_WINDOW_BORDER_STYLE_OPTIONS.findIndex(option => option.value === borderStyle);

@@ -80,7 +80,7 @@ import {
   PersistedWindowDesignerState,
   WindowDesignerDirtyStateDetail
 } from '../services/windowDesigner/windowDesignerService';
-import { DEFAULT_WINDOW_BORDER_STYLE, LING_WINDOW_BORDER_STYLE_OPTIONS, deriveLingWindowBorderStyle, resolveLingWindowBorder } from '../services/windowDesigner/windowBorderStyle';
+import { DEFAULT_WINDOW_BORDER_STYLE, LING_WINDOW_BORDER_STYLE_OPTIONS, deriveLingWindowBorderStyle, resolveLingWindowBorder, toggleBorderFamily } from '../services/windowDesigner/windowBorderStyle';
 import { normalizeToolbarButtons } from '../services/windowDesigner/toolbarButtonCollectionModel';
 import { normalizeStatusBarParts } from '../services/windowDesigner/statusBarPartCollectionModel';
 import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
@@ -2685,7 +2685,7 @@ export default function WpfDesigner({
             />
             {canvasBorder.hasCaption && (
             <div
-              className={`${canvasBorder.captionKind === 'thin' ? 'h-5' : 'h-7'} flex items-center justify-between px-3 border-b border-black/25 select-none canvas-title-bar`}
+              className={`${canvasBorder.captionKind === 'thin' ? 'h-5' /* thin=DESIGNER_THIN_TITLE_BAR_HEIGHT(20px) */ : 'h-7'} flex items-center justify-between px-3 border-b border-black/25 select-none canvas-title-bar`}
               style={{
                 backgroundColor: useNewEmojiDesigner
                   ? newEmojiThemePreview.titleBarBackground
@@ -4507,15 +4507,7 @@ function WindowProperties({
       windowFrame: { ...windowFrame, preset: 'custom', flags },
       ...(flag === 0x08 ? {
         resizable: enabled,
-        borderStyle: enabled
-          ? (window.borderStyle === 'normal-fixed' ? 'normal-resizable'
-            : window.borderStyle === 'thin-title-fixed' ? 'thin-title-resizable'
-            : window.borderStyle === 'frame-fixed' ? 'frame-resizable'
-            : window.borderStyle)
-          : (window.borderStyle === 'normal-resizable' ? 'normal-fixed'
-            : window.borderStyle === 'thin-title-resizable' ? 'thin-title-fixed'
-            : window.borderStyle === 'frame-resizable' ? 'frame-fixed'
-            : window.borderStyle)
+        borderStyle: toggleBorderFamily(window.borderStyle, enabled)
       } : {}),
       ...(flag === 0x10 ? { cornerStyle: enabled ? 'rounded' : 'square' } : {})
     });
@@ -4720,7 +4712,7 @@ function WindowProperties({
                 const flags = preset === 'browserShell' ? NEW_EMOJI_BROWSER_SHELL_FRAME_FLAGS : preset === 'system' ? 0 : windowFrame.flags;
                 onChange({
                   windowFrame: { ...windowFrame, preset, flags },
-                  ...(preset === 'browserShell' ? { resizable: true, cornerStyle: 'rounded' as const, borderStyle: 'normal-resizable' as const } : {})
+                  ...(preset === 'browserShell' ? { resizable: true, cornerStyle: 'rounded' as const, borderStyle: DEFAULT_WINDOW_BORDER_STYLE } : {})
                 });
               }}
               className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}

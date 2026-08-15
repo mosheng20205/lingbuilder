@@ -6,7 +6,8 @@ import {
   generateWindowBorderHelperCpp,
   normalizeLingWindowBorderStyle,
   resolveLingWindowBorder,
-  toWindowBorderCxxValue
+  toWindowBorderCxxValue,
+  toggleBorderFamily
 } from '../src/services/windowDesigner/windowBorderStyle';
 
 test('边框枚举选项与易语言 7 值一致', () => {
@@ -43,6 +44,21 @@ test('deriveLingWindowBorderStyle 按枚举派生 resizable', () => {
   assert.equal(deriveLingWindowBorderStyle('frame-resizable'), true);
   assert.equal(deriveLingWindowBorderStyle('frame-fixed'), false);
   assert.equal(deriveLingWindowBorderStyle(undefined), true);
+});
+
+test('toggleBorderFamily 在同族内切换固定/可调边框', () => {
+  assert.equal(toggleBorderFamily('normal-fixed', true), 'normal-resizable');
+  assert.equal(toggleBorderFamily('normal-resizable', false), 'normal-fixed');
+  assert.equal(toggleBorderFamily('thin-title-fixed', true), 'thin-title-resizable');
+  assert.equal(toggleBorderFamily('thin-title-resizable', false), 'thin-title-fixed');
+  assert.equal(toggleBorderFamily('frame-fixed', true), 'frame-resizable');
+  assert.equal(toggleBorderFamily('frame-resizable', false), 'frame-fixed');
+  assert.equal(toggleBorderFamily('none', true), 'none');
+  assert.equal(toggleBorderFamily('none', false), 'none');
+  assert.equal(toggleBorderFamily(undefined, true), undefined);
+  // 同值幂等
+  assert.equal(toggleBorderFamily('normal-fixed', false), 'normal-fixed');
+  assert.equal(toggleBorderFamily('normal-resizable', true), 'normal-resizable');
 });
 
 test('normalizeLingWindowBorderStyle 迁移旧项目', () => {
