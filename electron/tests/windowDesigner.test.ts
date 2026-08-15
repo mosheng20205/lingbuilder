@@ -3316,9 +3316,10 @@ test('窗口大小与最大化限制进入布局 XML 和 Win32 样式', () => {
 
   assert.match(xml, /禁止拖拽调整大小="是"/u);
   assert.match(xml, /禁止窗口最大化="是"/u);
-  assert.match(cpp, /if \(!spec_\.resizable\) windowStyle &= ~WS_THICKFRAME;/u);
-  assert.match(cpp, /if \(!spec_\.maximizable\) windowStyle &= ~WS_MAXIMIZEBOX;/u);
-  assert.match(cpp, /CW_USEDEFAULT, CW_USEDEFAULT, false, false, g_controls_0/u);
+  // resizable=false 无 borderStyle 的旧项目由生成器迁移为 normal-fixed(2)，样式计算统一走边框辅助函数
+  assert.match(cpp, /DWORD windowStyle = LB_WindowBorderStyleToDwStyle\(spec_\.borderStyle, spec_\.maximizable\) \| WS_CLIPCHILDREN \| WS_CLIPSIBLINGS;/u);
+  assert.match(cpp, /if \(borderStyle != 0 && !maximizable\) style &= ~WS_MAXIMIZEBOX;/u);
+  assert.match(cpp, /CW_USEDEFAULT, CW_USEDEFAULT, false, false, 2, false, g_controls_0/u);
 });
 
 test('窗口外观与 ListView 深色配色进入同一份 Win32 生成结果', () => {
@@ -4678,4 +4679,43 @@ test('窗口边框样式：新建窗口默认普通可调边框，无边框时�
   assert.ok(getDesignerWindowContentOffset({ ...blank, menuItems: '' }) >= 28);
   assert.equal(getDesignerWindowContentOffset({ ...blank, borderStyle: 'none', menuItems: '' }), 0);
   assert.ok(getDesignerWindowContentOffset({ ...blank, borderStyle: 'none', menuItems: '文件, 编辑' }) > 0);
+});
+
+test('lingCpp 生成器：边框样式进入 WindowSpec 与 C++ 样式辅助函数', () => {
+  const baseWindow: LingWindowModel = {
+    ...createBlankWindow(0),
+    controls: []
+  };
+  const projectOf = (window: LingWindowModel): LingWindowProject => ({ id: 'bp', name: '边框项目', windows: [window] });
+  const result = generateLingCppNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'none', borderlessDraggable: true }));
+  const mainCpp = result.files.find(file => file.relativePath.endsWith('.cpp'))!;
+  assert.ok(mainCpp.content.includes('LB_WindowBorderStyleToDwStyle'));
+  assert.ok(mainCpp.content.includes('LB_WindowBorderStyleToDwExStyle'));
+  assert.ok(mainCpp.content.includes('WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX'));
+  assert.ok(mainCpp.content.includes('WM_NCLBUTTONDOWN, HTCAPTION'));
+  assert.ok(mainCpp.content.includes('if (spec_.borderStyle != 0)'));
+});
+
+test('lingCpp 生成器：固定/窄标题边框映射与序列化字段', () => {
+  const baseWindow: LingWindowModel = {
+    ...createBlankWindow(0),
+    controls: []
+  };
+  const projectOf = (window: LingWindowModel): LingWindowProject => ({ id: 'bp2', name: '边框项目2', windows: [window] });
+  const fixedResult = generateLingCppNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'normal-fixed' }));
+  const fixedCpp = fixedResult.files.find(file => file.relativePath.endsWith('.cpp'))!;
+  assert.ok(fixedCpp.content.includes('WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME'));
+
+  const thinResult = generateLingCppNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'thin-title-fixed' }));
+  const thinCpp = thinResult.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
+  assert.ok(thinCpp.includes('WS_EX_TOOLWINDOW'));
+  // WindowSpec 序列化包含边框编号（thin-title-fixed = 4）与拖动布尔
+  assert.ok(thinCpp.match(/\{ [0-9]+, L"[^"]*", L"[^"]*", [0-9]+, [0-9]+,/) !== null);
+});
+
+test('normalize 规范化 borderlessDraggable 残留值', () => {
+  const firstPass = normalizeWindowDesignerState({ project: { id: 'pd1', name: 'PD1', windows: [{ ...createBlankWindow(0), borderStyle: 'none' }] }, activeWindowId: '', selectedControlId: null });
+  assert.equal(firstPass.project.windows[0].borderlessDraggable, false);
+  const staleTrue = normalizeWindowDesignerState({ project: { id: 'pd2', name: 'PD2', windows: [{ ...firstPass.project.windows[0], borderStyle: 'normal-fixed', borderlessDraggable: true }] }, activeWindowId: '', selectedControlId: null });
+  assert.equal(staleTrue.project.windows[0].borderlessDraggable, false);
 });

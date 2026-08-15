@@ -51,6 +51,7 @@ import {
 import { generateHttpServerGlobalMethods, generateHttpServerRuntime, generateHttpServerWindowMethods } from './httpServerRuntime';
 import { generateProtobufRuntime } from './protobufRuntime';
 import { generateAria2Runtime } from './aria2Runtime';
+import { generateWindowBorderHelperCpp, normalizeLingWindowBorderStyle, resolveLingWindowBorder, toWindowBorderCxxValue } from './windowBorderStyle';
 import {
   generateWebSocketServerGlobalMethodDeclarations,
   generateWebSocketServerGlobalMethods,
@@ -7236,6 +7237,8 @@ struct WindowSpec {
     int openY;
     bool resizable;
     bool maximizable;
+    int borderStyle;
+    bool borderlessDraggable;
     const ControlSpec* controls;
     int controlCount;
     const wchar_t* menuItems;
@@ -7248,6 +7251,8 @@ struct WindowSpec {
     bool menuFontUnderline;
     const wchar_t* events;
 };
+
+${generateWindowBorderHelperCpp()}
 
 static constexpr UINT WM_LINGBUILDER_VIDEO_EVENT = WM_APP + 0x4B;
 static constexpr UINT WM_LINGBUILDER_LAYOUT_DATE_PICKER = WM_APP + 0x4C;
@@ -8470,9 +8475,8 @@ ${webSocketServerShutdown}
 
     HWND Open(int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
         dpi_ = GetSystemDpiValue();
-        DWORD windowStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
-        if (!spec_.resizable) windowStyle &= ~WS_THICKFRAME;
-        if (!spec_.maximizable) windowStyle &= ~WS_MAXIMIZEBOX;
+        DWORD windowStyle = LB_WindowBorderStyleToDwStyle(spec_.borderStyle, spec_.maximizable) | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+        DWORD windowExStyle = LB_WindowBorderStyleToDwExStyle(spec_.borderStyle);
         RECT rect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
         BOOL hasMenu = spec_.menuItems && spec_.menuItems[0] ? TRUE : FALSE;
         AdjustWindowRectForDpiValue(&rect, windowStyle, hasMenu, 0, dpi_);
@@ -8483,7 +8487,7 @@ ${webSocketServerShutdown}
         ResolveWindowPlacement(spec_, windowWidth, windowHeight, placement, x, y, hasCustomPosition, windowX, windowY);
 
         hwnd_ = CreateWindowExW(
-            0,
+            windowExStyle,
             GENERATED_WINDOW_CLASS,
             spec_.title,
             windowStyle,
@@ -18458,8 +18462,10 @@ private:
             const DWORD captionColor = 35;
             const DWORD textColor = 36;
             setAttribute(hwnd_, useImmersiveDarkMode, &dark, sizeof(dark));
-            setAttribute(hwnd_, captionColor, &spec_.titleBarBackground, sizeof(spec_.titleBarBackground));
-            setAttribute(hwnd_, textColor, &spec_.titleBarForeground, sizeof(spec_.titleBarForeground));
+            if (spec_.borderStyle != 0) {
+                setAttribute(hwnd_, captionColor, &spec_.titleBarBackground, sizeof(spec_.titleBarBackground));
+                setAttribute(hwnd_, textColor, &spec_.titleBarForeground, sizeof(spec_.titleBarForeground));
+            }
             if (spec_.cornerPreference >= 0) {
                 setAttribute(hwnd_, cornerPreference, &spec_.cornerPreference, sizeof(spec_.cornerPreference));
             }
@@ -20219,6 +20225,18 @@ private:
             return 0;
         }
         switch (message) {
+        case WM_LBUTTONDOWN: {
+            if (spec_.borderStyle == 0 && spec_.borderlessDraggable) {
+                POINT cursor = { static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))) };
+                HWND child = ChildWindowFromPoint(hwnd_, cursor);
+                if (child == nullptr || child == hwnd_) {
+                    ReleaseCapture();
+                    SendMessageW(hwnd_, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+                    return 0;
+                }
+            }
+            break;
+        }
 ${aria2Runtime ? `        case LingAria2::ProgressMessage: {
 #ifdef LINGBUILDER_ARIA2_MODULE
             LingAria2::ProgressSnapshot snapshot;
@@ -23221,6 +23239,9 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
   const titleBarBackground = window.titleBarBackground || '#2D2D30';
   const titleBarForeground = window.titleBarForeground || '#CBD5E1';
   const iconStyle = window.iconStyle || 'lingbuilder';
+  const borderStyle = normalizeLingWindowBorderStyle(window.borderStyle, window.resizable);
+  const borderStyleCxx = toWindowBorderCxxValue(borderStyle);
+  const hasCaption = resolveLingWindowBorder(borderStyle, window.maximizable !== false).hasCaption;
   const iconPath = getSafeCustomWindowIconPath(window);
   const menuFont = normalizeControlFont({
     fontFamily: window.menuFontFamily,
@@ -23240,7 +23261,7 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
     .filter(([, handler]) => handler.trim())
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
-  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - TITLE_BAR_HEIGHT))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, ${window.resizable !== false}, ${window.maximizable !== false}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
+  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - (hasCaption ? TITLE_BAR_HEIGHT : 0)))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, ${window.resizable !== false}, ${window.maximizable !== false}, ${borderStyleCxx}, ${window.borderlessDraggable === true}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
 }
 
 function generateControlSpec(
