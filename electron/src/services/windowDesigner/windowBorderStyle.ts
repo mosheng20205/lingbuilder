@@ -21,6 +21,11 @@ export function isLingWindowBorderStyle(value: unknown): value is LingWindowBord
   return typeof value === 'string' && LING_WINDOW_BORDER_STYLE_VALUES.has(value);
 }
 
+/** 可调边框类枚举；固定类与无边框均不含 WS_THICKFRAME。 */
+function isResizableBorderStyle(style: LingWindowBorderStyle): boolean {
+  return style === 'normal-resizable' || style === 'thin-title-resizable' || style === 'frame-resizable';
+}
+
 /** 旧项目迁移：无 borderStyle 时按旧 resizable 布尔值确定，保持现状行为。 */
 export function normalizeLingWindowBorderStyle(
   borderStyle: LingWindowBorderStyle | undefined,
@@ -32,8 +37,8 @@ export function normalizeLingWindowBorderStyle(
 
 /** resizable 布尔值由边框枚举派生：固定类与无边框不可拖拽调整大小。 */
 export function deriveLingWindowBorderStyle(borderStyle: LingWindowBorderStyle | undefined): boolean {
-  if (!borderStyle || borderStyle === 'normal-resizable' || borderStyle === 'thin-title-resizable' || borderStyle === 'frame-resizable') return true;
-  return false;
+  if (!borderStyle) return true;
+  return isResizableBorderStyle(borderStyle);
 }
 
 /** C++ 端枚举编号，与易语言边框编号 0–6 一致。 */
@@ -56,8 +61,8 @@ export function resolveLingWindowBorder(
   borderStyle: LingWindowBorderStyle | undefined,
   maximizable: boolean
 ): ResolvedLingWindowBorder {
-  const style = borderStyle || 'normal-resizable';
-  const resizable = style === 'normal-resizable' || style === 'thin-title-resizable' || style === 'frame-resizable';
+  const style = isLingWindowBorderStyle(borderStyle) ? borderStyle : 'normal-resizable';
+  const resizable = isResizableBorderStyle(style);
   let dwStyle = resizable ? 'WS_OVERLAPPEDWINDOW' : '(WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME)';
   let dwExStyle = '0';
   let captionKind: ResolvedLingWindowBorder['captionKind'] = 'normal';

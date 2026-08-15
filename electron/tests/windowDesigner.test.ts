@@ -36,6 +36,7 @@ import {
   reparentControls
 } from '../src/services/windowDesigner/controlHierarchy';
 import {
+  createBlankWindow,
   getDesignerWindowContentOffset,
   getEventsForType,
   getPrimaryDesignerEventBinding,
@@ -4637,4 +4638,41 @@ test('multiline TextBox text updates keep the latest log line visible', () => {
   assert.equal((cpp.match(/EM_SCROLLCARET/g) || []).length, 1);
   assert.match(cpp, /L"TextBox", L"log-box"[^\n]+4/u);
   assert.match(cpp, /L"TextBox", L"single-line"[^\n]+0/u);
+});
+
+test('窗口边框样式：旧项目按 resizable 迁移并可派生', () => {
+  // createBlankWindow 新建窗口默认携带 borderStyle，旧项目模拟对象需显式清除该字段才能命中迁移路径
+  const legacyFixedWindow: LingWindowModel = {
+    ...createBlankWindow(0),
+    borderStyle: undefined,
+    resizable: false
+  };
+  const legacyResizableWindow: LingWindowModel = {
+    ...createBlankWindow(1),
+    borderStyle: undefined,
+    resizable: true
+  };
+  const migratedFixed = normalizeWindowDesignerState({ project: { id: 'p1', name: 'P1', windows: [legacyFixedWindow] }, activeWindowId: legacyFixedWindow.id, selectedControlId: null });
+  const migratedResizable = normalizeWindowDesignerState({ project: { id: 'p2', name: 'P2', windows: [legacyResizableWindow] }, activeWindowId: legacyResizableWindow.id, selectedControlId: null });
+  assert.equal(migratedFixed.project.windows[0].borderStyle, 'normal-fixed');
+  assert.equal(migratedFixed.project.windows[0].resizable, false);
+  assert.equal(migratedResizable.project.windows[0].borderStyle, 'normal-resizable');
+  assert.equal(migratedResizable.project.windows[0].resizable, true);
+
+  const migratedNone = normalizeWindowDesignerState({ project: { id: 'p3', name: 'P3', windows: [{ ...createBlankWindow(0), borderStyle: 'none', borderlessDraggable: true }] }, activeWindowId: '', selectedControlId: null });
+  assert.equal(migratedNone.project.windows[0].borderStyle, 'none');
+  assert.equal(migratedNone.project.windows[0].borderlessDraggable, true);
+  assert.equal(migratedNone.project.windows[0].resizable, false);
+
+  const migratedThinFixed = normalizeWindowDesignerState({ project: { id: 'p4', name: 'P4', windows: [{ ...createBlankWindow(0), borderStyle: 'thin-title-fixed', resizable: true }] }, activeWindowId: '', selectedControlId: null });
+  assert.equal(migratedThinFixed.project.windows[0].resizable, false);
+});
+
+test('窗口边框样式：新建窗口默认普通可调边框，无边框时画布内容偏移不含标题栏', () => {
+  const blank = createBlankWindow(0);
+  assert.equal(blank.borderStyle, 'normal-resizable');
+  assert.equal(blank.borderlessDraggable, false);
+  assert.ok(getDesignerWindowContentOffset({ ...blank, menuItems: '' }) >= 28);
+  assert.equal(getDesignerWindowContentOffset({ ...blank, borderStyle: 'none', menuItems: '' }), 0);
+  assert.ok(getDesignerWindowContentOffset({ ...blank, borderStyle: 'none', menuItems: '文件, 编辑' }) > 0);
 });

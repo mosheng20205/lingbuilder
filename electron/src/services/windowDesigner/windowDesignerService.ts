@@ -6,6 +6,10 @@ import {
   LingWindowModel,
   LingWindowProject
 } from './types';
+import {
+  deriveLingWindowBorderStyle,
+  normalizeLingWindowBorderStyle
+} from './windowBorderStyle';
 import { normalizeControlHierarchy } from './controlHierarchy';
 import { DEFAULT_CONTROL_FONT_FAMILY, normalizeControlFont } from './controlFont';
 import { normalizeWindowControlTags } from './controlTagService';
@@ -179,8 +183,9 @@ export function hasDesignerWindowMenu(window: Pick<LingWindowModel, 'menuItems'>
   return Boolean(window.menuItems?.split(',').some(item => item.trim()));
 }
 
-export function getDesignerWindowContentOffset(window: Pick<LingWindowModel, 'menuItems'>): number {
-  return DESIGNER_TITLE_BAR_HEIGHT + (hasDesignerWindowMenu(window) ? DESIGNER_MENU_BAR_HEIGHT : 0);
+export function getDesignerWindowContentOffset(window: Pick<LingWindowModel, 'menuItems' | 'borderStyle'>): number {
+  const titleBarHeight = window.borderStyle === 'none' ? 0 : DESIGNER_TITLE_BAR_HEIGHT;
+  return titleBarHeight + (hasDesignerWindowMenu(window) ? DESIGNER_MENU_BAR_HEIGHT : 0);
 }
 
 export function getPrimaryDesignerEventBinding(
@@ -327,6 +332,8 @@ export function createBlankWindow(index: number, designerBackend = 'win32'): Lin
     openPlacement: 'default',
     resizable: true,
     maximizable: true,
+    borderStyle: 'normal-resizable',
+    borderlessDraggable: false,
     windowFrame: normalizeLingWindowFrame(undefined, true, DEFAULT_WINDOW_CORNER_STYLE),
     designerBackend,
     controls: designerBackend !== 'win32' ? [] : [
@@ -757,13 +764,17 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     });
     const inferredDesignerBackend = window.designerBackend
       || (controls.some(control => control.designerType?.startsWith(NEW_EMOJI_DESIGNER_TYPE_PREFIX)) ? 'new-emoji' : undefined);
-    const normalizedWindowFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
+    const normalizedBorderStyle = normalizeLingWindowBorderStyle(window.borderStyle, window.resizable);
+    const derivedResizable = deriveLingWindowBorderStyle(normalizedBorderStyle);
+    const normalizedWindowFrame = normalizeLingWindowFrame(window.windowFrame, derivedResizable, window.cornerStyle);
     const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle || !window.menuBackground || !window.menuForeground
       || typeof window.resizable !== 'boolean' || typeof window.maximizable !== 'boolean'
       || window.menuFontFamily !== menuFont.family || window.menuFontSize !== menuFont.size || window.menuFontBold !== menuFont.bold
       || window.menuFontItalic !== menuFont.italic || window.menuFontUnderline !== menuFont.underline
       || window.designerBackend !== inferredDesignerBackend
-      || JSON.stringify(window.windowFrame) !== JSON.stringify(normalizedWindowFrame);
+      || JSON.stringify(window.windowFrame) !== JSON.stringify(normalizedWindowFrame)
+      || window.borderStyle !== normalizedBorderStyle
+      || (window.borderlessDraggable === true) !== (normalizedBorderStyle === 'none' && window.borderlessDraggable === true);
     if (!controlsChanged && !appearanceChanged) return window;
     projectChanged = true;
     return {
@@ -780,7 +791,9 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       cornerStyle: window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE,
       iconStyle: window.iconStyle || DEFAULT_WINDOW_ICON_STYLE,
       ...(inferredDesignerBackend ? { designerBackend: inferredDesignerBackend } : {}),
-      resizable: window.resizable !== false,
+      borderStyle: normalizedBorderStyle,
+      borderlessDraggable: normalizedBorderStyle === 'none' && window.borderlessDraggable === true,
+      resizable: derivedResizable,
       maximizable: window.maximizable !== false,
       windowFrame: normalizedWindowFrame,
       controls
