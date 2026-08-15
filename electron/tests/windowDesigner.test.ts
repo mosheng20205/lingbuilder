@@ -4694,6 +4694,12 @@ test('lingCpp 生成器：边框样式进入 WindowSpec 与 C++ 样式辅助函�
   assert.ok(mainCpp.content.includes('WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX'));
   assert.ok(mainCpp.content.includes('WM_NCLBUTTONDOWN, HTCAPTION'));
   assert.ok(mainCpp.content.includes('if (spec_.borderStyle != 0)'));
+  // Issue 1：Open() 内两处 AdjustWindowRectForDpiValue 均需传 windowExStyle（与 WM_DPICHANGED 路径一致）
+  assert.equal((mainCpp.content.match(/AdjustWindowRectForDpiValue\(&\w+, windowStyle, hasMenu, windowExStyle, dpi_\);/g) || []).length, 2);
+  // Issue 2：无边框 + 默认位置的级联回落块存在（CW_USEDEFAULT 对 WS_POPUP 无效会坍缩到 (0,0)）
+  assert.ok(mainCpp.content.includes('spec_.borderStyle == 0 && (windowX == CW_USEDEFAULT'));
+  // Minor 2：resizable 由 borderStyle 派生（none → false）
+  assert.ok(mainCpp.content.includes('false, true, 0, true, g_controls_'));
 });
 
 test('lingCpp 生成器：固定/窄标题边框映射与序列化字段', () => {
@@ -4709,8 +4715,8 @@ test('lingCpp 生成器：固定/窄标题边框映射与序列化字段', () =>
   const thinResult = generateLingCppNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'thin-title-fixed' }));
   const thinCpp = thinResult.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
   assert.ok(thinCpp.includes('WS_EX_TOOLWINDOW'));
-  // WindowSpec 序列化包含边框编号（thin-title-fixed = 4）与拖动布尔
-  assert.ok(thinCpp.match(/\{ [0-9]+, L"[^"]*", L"[^"]*", [0-9]+, [0-9]+,/) !== null);
+  // WindowSpec 序列化：resizable 由 thin-title-fixed 派生为 false，边框编号 4，拖动布尔默认 false
+  assert.ok(thinCpp.includes('false, true, 4, false, g_controls_'));
 });
 
 test('normalize 规范化 borderlessDraggable 残留值', () => {

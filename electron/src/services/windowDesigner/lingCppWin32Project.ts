@@ -51,7 +51,7 @@ import {
 import { generateHttpServerGlobalMethods, generateHttpServerRuntime, generateHttpServerWindowMethods } from './httpServerRuntime';
 import { generateProtobufRuntime } from './protobufRuntime';
 import { generateAria2Runtime } from './aria2Runtime';
-import { generateWindowBorderHelperCpp, normalizeLingWindowBorderStyle, resolveLingWindowBorder, toWindowBorderCxxValue } from './windowBorderStyle';
+import { deriveLingWindowBorderStyle, generateWindowBorderHelperCpp, normalizeLingWindowBorderStyle, resolveLingWindowBorder, toWindowBorderCxxValue } from './windowBorderStyle';
 import {
   generateWebSocketServerGlobalMethodDeclarations,
   generateWebSocketServerGlobalMethods,
@@ -8479,12 +8479,29 @@ ${webSocketServerShutdown}
         DWORD windowExStyle = LB_WindowBorderStyleToDwExStyle(spec_.borderStyle);
         RECT rect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
         BOOL hasMenu = spec_.menuItems && spec_.menuItems[0] ? TRUE : FALSE;
-        AdjustWindowRectForDpiValue(&rect, windowStyle, hasMenu, 0, dpi_);
+        // Issue 1：exStyle 必须传入，否则 WS_EX_TOOLWINDOW（窄标题按 SM_CYSMCAPTION）/WS_EX_DLGMODALFRAME（双边框）尺寸算错，
+        // 且与 WM_DPICHANGED 路径（读 GWL_EXSTYLE）不一致导致跨 DPI 跳变
+        AdjustWindowRectForDpiValue(&rect, windowStyle, hasMenu, windowExStyle, dpi_);
         int windowWidth = rect.right - rect.left;
         int windowHeight = rect.bottom - rect.top;
         int windowX = CW_USEDEFAULT;
         int windowY = CW_USEDEFAULT;
         ResolveWindowPlacement(spec_, windowWidth, windowHeight, placement, x, y, hasCustomPosition, windowX, windowY);
+        // Issue 2：CW_USEDEFAULT 只对 overlapped 窗口有效，WS_POPUP（无边框）会被置为 (0,0)：
+        // 默认位置改为主显示器工作区居中，多次打开做简单级联偏移；显式位置/居中等 placement 不受影响
+        if (spec_.borderStyle == 0 && (windowX == CW_USEDEFAULT || windowY == CW_USEDEFAULT)) {
+            HMONITOR monitor = MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY);
+            MONITORINFO monitorInfo = {};
+            monitorInfo.cbSize = sizeof(monitorInfo);
+            RECT workArea = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+            if (monitor && GetMonitorInfoW(monitor, &monitorInfo)) workArea = monitorInfo.rcWork;
+            static unsigned int cascadeSeed = 0;
+            const int cascade = static_cast<int>((cascadeSeed++ % 8) * 24);
+            const int placeX = workArea.left + cascade + ((workArea.right - workArea.left) - windowWidth) / 2;
+            const int placeY = workArea.top + cascade + ((workArea.bottom - workArea.top) - windowHeight) / 2;
+            windowX = placeX > workArea.left ? placeX : workArea.left;
+            windowY = placeY > workArea.top ? placeY : workArea.top;
+        }
 
         hwnd_ = CreateWindowExW(
             windowExStyle,
@@ -8512,12 +8529,18 @@ ${webSocketServerShutdown}
             RebuildControls();
         }
         RECT actualRect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
-        AdjustWindowRectForDpiValue(&actualRect, windowStyle, hasMenu, 0, dpi_);
+        AdjustWindowRectForDpiValue(&actualRect, windowStyle, hasMenu, windowExStyle, dpi_);
         const int actualWidth = actualRect.right - actualRect.left;
         const int actualHeight = actualRect.bottom - actualRect.top;
         int actualX = CW_USEDEFAULT;
         int actualY = CW_USEDEFAULT;
         ResolveWindowPlacement(spec_, actualWidth, actualHeight, placement, x, y, hasCustomPosition, actualX, actualY);
+        // Issue 2：无边框+默认位置时 DPI 校正重算仍会得到 CW_USEDEFAULT，复用第一次的级联回落坐标避免再次坍缩到 (0,0)；
+        // 有边框+默认位置时 windowX 仍为 CW_USEDEFAULT，条件不命中，保持 SWP_NOMOVE 原行为
+        if ((actualX == CW_USEDEFAULT || actualY == CW_USEDEFAULT) && windowX != CW_USEDEFAULT && windowY != CW_USEDEFAULT) {
+            actualX = windowX;
+            actualY = windowY;
+        }
         UINT resizeFlags = SWP_NOZORDER | SWP_NOACTIVATE;
         if (actualX == CW_USEDEFAULT || actualY == CW_USEDEFAULT) resizeFlags |= SWP_NOMOVE;
         SetWindowPos(hwnd_, nullptr, actualX, actualY, actualWidth, actualHeight, resizeFlags);
@@ -23241,7 +23264,9 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
   const iconStyle = window.iconStyle || 'lingbuilder';
   const borderStyle = normalizeLingWindowBorderStyle(window.borderStyle, window.resizable);
   const borderStyleCxx = toWindowBorderCxxValue(borderStyle);
-  const hasCaption = resolveLingWindowBorder(borderStyle, window.maximizable !== false).hasCaption;
+  const border = resolveLingWindowBorder(borderStyle, window.maximizable !== false);
+  // 标题高度按 captionKind 精确扣减：无边框 0，窄标题（WS_EX_TOOLWINDOW 按 SM_CYSMCAPTION 约 20px），普通标题 28px
+  const captionHeight = border.captionKind === 'none' ? 0 : border.captionKind === 'thin' ? 20 : TITLE_BAR_HEIGHT;
   const iconPath = getSafeCustomWindowIconPath(window);
   const menuFont = normalizeControlFont({
     fontFamily: window.menuFontFamily,
@@ -23261,7 +23286,8 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
     .filter(([, handler]) => handler.trim())
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
-  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - (hasCaption ? TITLE_BAR_HEIGHT : 0)))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, ${window.resizable !== false}, ${window.maximizable !== false}, ${borderStyleCxx}, ${window.borderlessDraggable === true}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
+  // resizable 与 borderStyle 派生保持一致（固定类/无边框不可拖拽调宽），供后续运行时消费
+  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - captionHeight))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, ${deriveLingWindowBorderStyle(borderStyle)}, ${window.maximizable !== false}, ${borderStyleCxx}, ${window.borderlessDraggable === true}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
 }
 
 function generateControlSpec(
