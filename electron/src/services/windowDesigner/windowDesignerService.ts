@@ -766,6 +766,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       || (controls.some(control => control.designerType?.startsWith(NEW_EMOJI_DESIGNER_TYPE_PREFIX)) ? 'new-emoji' : undefined);
     const normalizedBorderStyle = normalizeLingWindowBorderStyle(window.borderStyle, window.resizable);
     const derivedResizable = deriveLingWindowBorderStyle(normalizedBorderStyle);
+    const normalizedBorderlessDraggable = normalizedBorderStyle === 'none' && window.borderlessDraggable === true;
     const normalizedWindowFrame = normalizeLingWindowFrame(window.windowFrame, derivedResizable, window.cornerStyle);
     const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle || !window.menuBackground || !window.menuForeground
       || typeof window.resizable !== 'boolean' || typeof window.maximizable !== 'boolean'
@@ -774,7 +775,8 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       || window.designerBackend !== inferredDesignerBackend
       || JSON.stringify(window.windowFrame) !== JSON.stringify(normalizedWindowFrame)
       || window.borderStyle !== normalizedBorderStyle
-      || (window.borderlessDraggable === true) !== (normalizedBorderStyle === 'none' && window.borderlessDraggable === true);
+      || window.resizable !== derivedResizable
+      || window.borderlessDraggable !== normalizedBorderlessDraggable;
     if (!controlsChanged && !appearanceChanged) return window;
     projectChanged = true;
     return {
@@ -792,7 +794,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       iconStyle: window.iconStyle || DEFAULT_WINDOW_ICON_STYLE,
       ...(inferredDesignerBackend ? { designerBackend: inferredDesignerBackend } : {}),
       borderStyle: normalizedBorderStyle,
-      borderlessDraggable: normalizedBorderStyle === 'none' && window.borderlessDraggable === true,
+      borderlessDraggable: normalizedBorderlessDraggable,
       resizable: derivedResizable,
       maximizable: window.maximizable !== false,
       windowFrame: normalizedWindowFrame,

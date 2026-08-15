@@ -4664,7 +4664,10 @@ test('窗口边框样式：旧项目按 resizable 迁移并可派生', () => {
   assert.equal(migratedNone.project.windows[0].borderlessDraggable, true);
   assert.equal(migratedNone.project.windows[0].resizable, false);
 
-  const migratedThinFixed = normalizeWindowDesignerState({ project: { id: 'p4', name: 'P4', windows: [{ ...createBlankWindow(0), borderStyle: 'thin-title-fixed', resizable: true }] }, activeWindowId: '', selectedControlId: null });
+  // p4：先构造已规范化窗口再注入矛盾 resizable，二次 normalize 时唯一能触发回填的就是 resizable 派生检测
+  const normalizedOnce = normalizeWindowDesignerState({ project: { id: 'p4a', name: 'P4A', windows: [{ ...createBlankWindow(0), borderStyle: 'thin-title-fixed' }] }, activeWindowId: '', selectedControlId: null });
+  const normalizedWindow = normalizedOnce.project.windows[0];
+  const migratedThinFixed = normalizeWindowDesignerState({ project: { id: 'p4', name: 'P4', windows: [{ ...normalizedWindow, resizable: true }] }, activeWindowId: '', selectedControlId: null });
   assert.equal(migratedThinFixed.project.windows[0].resizable, false);
 });
 
