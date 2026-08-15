@@ -4725,3 +4725,30 @@ test('normalize 规范化 borderlessDraggable 残留值', () => {
   const staleTrue = normalizeWindowDesignerState({ project: { id: 'pd2', name: 'PD2', windows: [{ ...firstPass.project.windows[0], borderStyle: 'normal-fixed', borderlessDraggable: true }] }, activeWindowId: '', selectedControlId: null });
   assert.equal(staleTrue.project.windows[0].borderlessDraggable, false);
 });
+
+test('native 生成器：边框样式映射到窗口样式、拖动与序列化', () => {
+  const baseWindow: LingWindowModel = { ...createBlankWindow(0), controls: [] };
+  const projectOf = (window: LingWindowModel): LingWindowProject => ({ id: 'np', name: '边框项目', windows: [window] });
+  const result = generateNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'none', borderlessDraggable: true }));
+  const cpp = result.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
+  assert.ok(cpp.includes('LB_WindowBorderStyleToDwStyle'));
+  assert.ok(cpp.includes('LB_WindowBorderStyleToDwExStyle'));
+  assert.ok(cpp.includes('WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX'));
+  assert.ok(cpp.includes('WM_NCLBUTTONDOWN, HTCAPTION'));
+  assert.ok(cpp.includes('AdjustWindowRectEx(&rect, windowStyle, TRUE, windowExStyle)'));
+  assert.ok(cpp.includes('spec.borderStyle == 0'));
+  // 序列化真断言：resizable 派生值(none→false), maximizable 默认 true, 编号 0, 拖动 true
+  assert.ok(cpp.includes('false, true, 0, true }') || cpp.includes('false, true, 0, true,'));
+});
+
+test('native 生成器：固定边框与旧项目迁移', () => {
+  const baseWindow: LingWindowModel = { ...createBlankWindow(0), controls: [] };
+  const projectOf = (window: LingWindowModel): LingWindowProject => ({ id: 'np2', name: '边框项目2', windows: [window] });
+  const fixed = generateNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'normal-fixed' }));
+  const fixedCpp = fixed.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
+  assert.ok(fixedCpp.includes('WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME'));
+  // 旧项目（无 borderStyle + resizable: false）生成器端迁移为 normal-fixed（编号 2）；maximizable 保持默认 true
+  const legacy = generateNativeWin32Project(projectOf({ ...baseWindow, borderStyle: undefined, resizable: false }));
+  const legacyCpp = legacy.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
+  assert.ok(legacyCpp.includes('false, true, 2, false') || legacyCpp.includes('false, true, 2, false }'));
+});

@@ -5,6 +5,7 @@ import {
   parseEplRuntimeEventRules
 } from './eplToCppRules';
 import { normalizeControlFont } from './controlFont';
+import { deriveLingWindowBorderStyle, generateWindowBorderHelperCpp, normalizeLingWindowBorderStyle, toWindowBorderCxxValue } from './windowBorderStyle';
 
 export interface NativeProjectFile {
   relativePath: string;
@@ -183,7 +184,11 @@ struct WindowSpec {
     bool menuFontUnderline;
     bool resizable;
     bool maximizable;
+    int borderStyle;
+    bool borderlessDraggable;
 };
+
+${generateWindowBorderHelperCpp()}
 
 struct RuntimeControl {
     int id;
@@ -284,10 +289,9 @@ static RECT GetWindowRectForSpec(const WindowSpec& spec, UINT dpi) {
         ScaleForDpi(spec.width, dpi),
         ScaleForDpi(spec.height, dpi)
     };
-    DWORD windowStyle = WS_OVERLAPPEDWINDOW;
-    if (!spec.resizable) windowStyle &= ~WS_THICKFRAME;
-    if (!spec.maximizable) windowStyle &= ~WS_MAXIMIZEBOX;
-    AdjustWindowRectEx(&rect, windowStyle, TRUE, 0);
+    DWORD windowStyle = LB_WindowBorderStyleToDwStyle(spec.borderStyle, spec.maximizable);
+    DWORD windowExStyle = LB_WindowBorderStyleToDwExStyle(spec.borderStyle);
+    AdjustWindowRectEx(&rect, windowStyle, TRUE, windowExStyle);
     return rect;
 }
 
@@ -760,6 +764,20 @@ static LRESULT CALLBACK GeneratedWindowProc(HWND hwnd, UINT message, WPARAM wPar
     WindowState* state = GetState(hwnd);
 
     switch (message) {
+    case WM_LBUTTONDOWN: {
+        WindowState* dragState = GetState(hwnd);
+        if (dragState && dragState->spec && dragState->spec->borderStyle == 0 && dragState->spec->borderlessDraggable) {
+            POINT cursor = { static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))) };
+            HWND child = ChildWindowFromPoint(hwnd, cursor);
+            if (child == nullptr || child == hwnd) {
+                ReleaseCapture();
+                SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+                return 0;
+            }
+        }
+        break;
+    }
+
     case WM_NCCREATE: {
         auto createStruct = reinterpret_cast<CREATESTRUCTW*>(lParam);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
@@ -969,9 +987,8 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
     const WindowSpec& spec = g_windows[windowIndex];
     UINT dpi = GetSystemDpiValue();
     RECT rect = GetWindowRectForSpec(spec, dpi);
-    DWORD windowStyle = WS_OVERLAPPEDWINDOW;
-    if (!spec.resizable) windowStyle &= ~WS_THICKFRAME;
-    if (!spec.maximizable) windowStyle &= ~WS_MAXIMIZEBOX;
+    DWORD windowStyle = LB_WindowBorderStyleToDwStyle(spec.borderStyle, spec.maximizable);
+    DWORD windowExStyle = LB_WindowBorderStyleToDwExStyle(spec.borderStyle);
 
     auto state = new WindowState();
     state->spec = &spec;
@@ -983,13 +1000,30 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
     state->ownsIcons = false;
     state->dpi = dpi;
 
+    // 无边框（WS_POPUP）时 CW_USEDEFAULT 会坍缩到 (0,0)：默认位置改为主显示器工作区居中 + 级联偏移
+    int windowX = CW_USEDEFAULT;
+    int windowY = CW_USEDEFAULT;
+    if (spec.borderStyle == 0) {
+        HMONITOR monitor = MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY);
+        MONITORINFO monitorInfo = {};
+        monitorInfo.cbSize = sizeof(monitorInfo);
+        RECT workArea = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+        if (monitor && GetMonitorInfoW(monitor, &monitorInfo)) workArea = monitorInfo.rcWork;
+        static unsigned int cascadeSeed = 0;
+        const int cascade = static_cast<int>((cascadeSeed++ % 8) * 24);
+        windowX = workArea.left + cascade + ((workArea.right - workArea.left) - (rect.right - rect.left)) / 2;
+        windowY = workArea.top + cascade + ((workArea.bottom - workArea.top) - (rect.bottom - rect.top)) / 2;
+        if (windowX < workArea.left) windowX = workArea.left;
+        if (windowY < workArea.top) windowY = workArea.top;
+    }
+
     HWND hwnd = CreateWindowExW(
-        0,
+        windowExStyle,
         GENERATED_WINDOW_CLASS,
         spec.title,
         windowStyle,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
+        windowX,
+        windowY,
         rect.right - rect.left,
         rect.bottom - rect.top,
         nullptr,
@@ -1147,7 +1181,11 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number): strin
     fontItalic: window.menuFontItalic,
     fontUnderline: window.menuFontUnderline
   });
-  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, ${window.resizable !== false}, ${window.maximizable !== false} }`;
+  // resizable 与 borderStyle 派生保持一致（固定类/无边框不可拖拽调宽），旧项目无 borderStyle 时按旧 resizable 迁移
+  const borderStyle = normalizeLingWindowBorderStyle(window.borderStyle, window.resizable);
+  const borderStyleCxx = toWindowBorderCxxValue(borderStyle);
+  const captionHeight = borderStyle === 'none' ? 0 : borderStyle === 'thin-title-resizable' || borderStyle === 'thin-title-fixed' ? 20 : TITLE_BAR_HEIGHT;
+  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - captionHeight)}, ${toColorRef(window.background)}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, ${deriveLingWindowBorderStyle(borderStyle)}, ${window.maximizable !== false}, ${borderStyleCxx}, ${window.borderlessDraggable === true} }`;
 }
 
 function generateControlSpec(control: LingControl, id: number, eventRules: EplRuntimeEventRuleMap): string {
