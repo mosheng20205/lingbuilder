@@ -50,6 +50,7 @@ import {
 } from './httpClientRuntime';
 import { generateHttpServerGlobalMethods, generateHttpServerRuntime, generateHttpServerWindowMethods } from './httpServerRuntime';
 import { generateProtobufRuntime } from './protobufRuntime';
+import { generateAria2Runtime } from './aria2Runtime';
 import {
   generateWebSocketServerGlobalMethodDeclarations,
   generateWebSocketServerGlobalMethods,
@@ -833,6 +834,7 @@ function generateNewEmojiMainCpp(
   const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
   const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
   const protobufRuntime = generateProtobufRuntime(enabledModules);
+  const aria2Runtime = generateAria2Runtime(enabledModules);
   const httpClientRuntime = generateHttpClientRuntime(enabledModules);
   const builtinLibraryFragments = [
     generateStandardLibraryRuntime(enabledModules),
@@ -840,7 +842,8 @@ function generateNewEmojiMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
-    protobufRuntime
+    protobufRuntime,
+    aria2Runtime
   ].filter(Boolean);
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
   const httpClientGlobalMethodDeclarations = generateHttpClientGlobalMethodDeclarations(enabledModules);
@@ -3040,7 +3043,26 @@ static std::filesystem::path LB_NE_BrowserShellProfilePath(const std::wstring& s
 }
 
 static std::filesystem::path LB_NE_BrowserShellExtensionPath() {
-    return (LB_NE_BrowserShellExecutableDirectory() / L"doubao-downloader").lexically_normal();
+    const auto executableDirectory = LB_NE_BrowserShellExecutableDirectory();
+    const auto direct = (executableDirectory / L"doubao-downloader").lexically_normal();
+    std::error_code error;
+    if (std::filesystem::is_directory(direct, error) && !error) return direct;
+    error.clear();
+    const auto assetsRoot = (executableDirectory / L"assets").lexically_normal();
+    const auto sharedAsset = (assetsRoot / L"doubao-downloader").lexically_normal();
+    if (std::filesystem::is_directory(sharedAsset, error) && !error) return sharedAsset;
+    error.clear();
+    for (std::filesystem::directory_iterator iterator(assetsRoot, error), end;
+         !error && iterator != end; iterator.increment(error)) {
+        if (!iterator->is_directory(error) || error) {
+            error.clear();
+            continue;
+        }
+        const auto projectAsset = (iterator->path() / L"doubao-downloader").lexically_normal();
+        if (std::filesystem::is_directory(projectAsset, error) && !error) return projectAsset;
+        error.clear();
+    }
+    return direct;
 }
 
 struct LB_NE_FbroEventPacket {
@@ -6717,6 +6739,7 @@ function generateMainCpp(
   const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
   const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
   const protobufRuntime = generateProtobufRuntime(enabledModules);
+  const aria2Runtime = generateAria2Runtime(enabledModules);
   const httpClientRuntime = generateHttpClientRuntime(enabledModules);
   const builtinLibraryFragments = [
     generateStandardLibraryRuntime(enabledModules),
@@ -6724,7 +6747,8 @@ function generateMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
-    protobufRuntime
+    protobufRuntime,
+    aria2Runtime
   ].filter(Boolean);
   const threadingRuntime = generateThreadingRuntime(enabledModules);
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
@@ -8792,6 +8816,15 @@ ${fbroBrowserManagerRuntime.members}
         std::wstring message = L"HTTP 客户端完成处理器未绑定到中文处理器：";
         message += handler ? handler : L"";
         调试输出(message.c_str());
+    }
+
+    virtual void DispatchAria2ProgressEvent(const wchar_t* handler, long long task, int progress,
+                                            long long downloadedBytes, long long totalBytes,
+                                            long long bytesPerSecond, const wchar_t* state) {
+        std::wstring message = L"Aria2 下载进度处理器未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        调试输出(message.c_str());
+        (void)task; (void)progress; (void)downloadedBytes; (void)totalBytes; (void)bytesPerSecond; (void)state;
     }
 
     virtual void DispatchWebSocketServerEvent(const wchar_t* handler) {
@@ -11011,7 +11044,9 @@ ${generateFbroVipIndividualRuntime(false)}
             } else if (instance.handle) LB_FBro_Resize(instance.handle);
         }
 #endif
+#if LINGBUILDER_FBRO_AVAILABLE
         浏览器管理器_调整页面();
+#endif
     }
     bool FBro_是否全部关闭() const {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -20184,7 +20219,19 @@ private:
             return 0;
         }
         switch (message) {
-        case WM_LINGBUILDER_HTTP_CLIENT_EVENT: {
+${aria2Runtime ? `        case LingAria2::ProgressMessage: {
+#ifdef LINGBUILDER_ARIA2_MODULE
+            LingAria2::ProgressSnapshot snapshot;
+            if (LingAria2::TakeProgressSnapshot(static_cast<long long>(wParam), &snapshot)) {
+                DispatchAria2ProgressEvent(snapshot.handler.c_str(), snapshot.task, snapshot.progress,
+                    snapshot.downloadedBytes, snapshot.totalBytes, snapshot.bytesPerSecond, snapshot.state.c_str());
+            }
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
+` : ''}        case WM_LINGBUILDER_HTTP_CLIENT_EVENT: {
 #ifdef LINGBUILDER_HTTP_CLIENT_MODULE
             httpClientRuntime_.DispatchEvent(static_cast<long long>(wParam), [this](const wchar_t* handler) {
                 DispatchHttpClientEvent(handler);
@@ -20457,11 +20504,15 @@ private:
                 desired.right - desired.left, desired.bottom - desired.top,
                 SWP_NOZORDER | SWP_NOACTIVATE | (suggested ? 0 : SWP_NOMOVE));
             EdgeView_关闭设计器控件();
+#if LINGBUILDER_FBRO_AVAILABLE
             浏览器管理器_控件重建前();
+#endif
             DestroyControls();
             CreateImageLists();
             RebuildControls();
+#if LINGBUILDER_FBRO_AVAILABLE
             浏览器管理器_控件重建后();
+#endif
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_创建控件(nullptr);
 #endif
@@ -21920,6 +21971,15 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const eventMethods = methodHandlers
     .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler), enabledModules, program.dataTypes));
   const userMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
+  const aria2ProgressHandlers = getAria2ProgressHandlerNames(sourceClass);
+  const aria2ProgressDispatchCases = aria2ProgressHandlers
+    .map(handler => {
+      const method = findLingCppMethod(program, handler);
+      if (!method) return '';
+      return `        if (callback == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(task, progress, downloadedBytes, totalBytes, bytesPerSecond, state ? std::wstring(state) : std::wstring()); return; }`;
+    })
+    .filter(Boolean)
+    .join('\n');
   const edgeCallbackMethods = (sourceClass?.methods || []).filter(method => method.parameters.length === 0 && (method.kind === 'event' || method.kind === 'method'));
   const edgeDispatchCases = edgeCallbackMethods
     .map(method => `        if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`)
@@ -21958,6 +22018,13 @@ ${edgeDispatchCases || '        (void)callback;'}
         std::wstring callback = handler ? handler : L"";
 ${edgeDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchHttpClientEvent(handler);
+    }
+    void DispatchAria2ProgressEvent(const wchar_t* handler, long long task, int progress,
+                                    long long downloadedBytes, long long totalBytes,
+                                    long long bytesPerSecond, const wchar_t* state) override {
+        std::wstring callback = handler ? handler : L"";
+${aria2ProgressDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchAria2ProgressEvent(handler, task, progress, downloadedBytes, totalBytes, bytesPerSecond, state);
     }
     void DispatchWebSocketServerEvent(const wchar_t* handler) override {
         std::wstring callback = handler ? handler : L"";
@@ -22001,6 +22068,19 @@ function findLingCppClassForWindow(program: LingCppProgram, window: LingWindowMo
   const direct = program.classes.find(cls => cls.name === window.className);
   if (direct) return direct;
   return program.classes.find(cls => toCppIdentifier(cls.name) === toCppIdentifier(window.className));
+}
+
+function getAria2ProgressHandlerNames(sourceClass: LingCppClass | undefined): string[] {
+  const handlers = new Set<string>();
+  for (const method of sourceClass?.methods || []) {
+    for (const statement of method.statements) {
+      const match = statement.text.match(/Aria2_下载\s*[（(]([\s\S]*)[）)]/u);
+      if (!match) continue;
+      const handler = splitCallArguments(match[1] || '')[5]?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
+      if (handler) handlers.add(handler);
+    }
+  }
+  return [...handlers];
 }
 
 function generateHandlerMethod(handler: string, method: LingCppMethod | undefined, enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
@@ -22480,7 +22560,7 @@ function translateStatement(
   if (nativeCpp !== undefined) return nativeCpp;
 
   const messageBox = parseMessageBox(statement);
-  if (/^如果(?:\s|[（(])/.test(statement) && messageBox && /[=＝]{1,2}\s*6/.test(statement)) {
+  if (/^如果(?:真)?(?:\s|[（(])/.test(statement) && messageBox && /[=＝]{1,2}\s*6/.test(statement)) {
     return `if (信息框(L"${escapeWideString(messageBox.text)}", ${messageBox.flags}, L"${escapeWideString(messageBox.title)}") == IDYES) { 结束(); return; }`;
   }
   if (messageBox) {
@@ -22494,7 +22574,7 @@ function translateStatement(
   if (/^否则\s*$/u.test(statement)) {
     return '} else {';
   }
-  if (/^如果结束\s*$/u.test(statement)) {
+  if (/^如果(?:真)?结束\s*$/u.test(statement)) {
     return '}';
   }
 
@@ -22542,7 +22622,10 @@ function translateStatement(
     const binding = findModuleCommandBinding(callStatement.name, enabledModules);
     if (binding) {
       const managedCall = translateManagedModuleInvocation(callStatement.argumentsText, binding, enabledModules, translationContext);
-      return `${managedCall || `${toCppIdentifier(binding.runtimeName)}(${translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules, translationContext)})`};`;
+      const aria2ProgressCall = binding.command === 'Aria2_下载' && splitCallArguments(callStatement.argumentsText).length >= 6;
+      const runtimeName = aria2ProgressCall ? 'Aria2_下载_窗口' : toCppIdentifier(binding.runtimeName);
+      const argumentsText = translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules, translationContext);
+      return `${managedCall || `${runtimeName}(${aria2ProgressCall ? `hwnd_, ${argumentsText}` : argumentsText})`};`;
     }
     const looksLikeModuleCommand = enabledModules.some(module =>
       (module.manifest.contributes?.commands || []).some(command =>
@@ -22855,10 +22938,12 @@ function translateLingCppExpression(
     const binding = findModuleCommandBinding(call.name, enabledModules);
     const managedCall = binding ? translateManagedModuleInvocation(call.argumentsText, binding, enabledModules, translationContext) : undefined;
     if (managedCall) return managedCall;
+    const aria2ProgressCall = binding?.command === 'Aria2_下载' && splitCallArguments(call.argumentsText).length >= 6;
     const argumentsText = binding
       ? translateModuleCallArguments(call.argumentsText, binding, enabledModules, translationContext)
       : translateCallArguments(call.argumentsText, enabledModules, translationContext);
-    return `${binding ? toCppIdentifier(binding.runtimeName) : translateLingCppCallName(call.name)}(${argumentsText})`;
+    const runtimeName = aria2ProgressCall ? 'Aria2_下载_窗口' : binding ? toCppIdentifier(binding.runtimeName) : translateLingCppCallName(call.name);
+    return `${runtimeName}(${aria2ProgressCall ? `hwnd_, ${argumentsText}` : argumentsText})`;
   }
   if (/^[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*$/u.test(trimmed)) {
     return trimmed.split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
@@ -22936,7 +23021,7 @@ function normalizeLingCppLogicalExpression(expression: string): string {
 }
 
 function parseIfCondition(statement: string): string | undefined {
-  const match = statement.match(/^如果\s*[（(](.*)[）)]\s*;?$/u);
+  const match = statement.match(/^如果(?:真)?\s*[（(](.*)[）)]\s*;?$/u);
   return match?.[1]?.trim() || undefined;
 }
 
