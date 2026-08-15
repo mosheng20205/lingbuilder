@@ -4737,8 +4737,10 @@ test('native 生成器：边框样式映射到窗口样式、拖动与序列化'
   assert.ok(cpp.includes('WM_NCLBUTTONDOWN, HTCAPTION'));
   assert.ok(cpp.includes('AdjustWindowRectEx(&rect, windowStyle, TRUE, windowExStyle)'));
   assert.ok(cpp.includes('spec.borderStyle == 0'));
-  // 序列化真断言：resizable 派生值(none→false), maximizable 默认 true, 编号 0, 拖动 true
-  assert.ok(cpp.includes('false, true, 0, true }') || cpp.includes('false, true, 0, true,'));
+  // 位置回落块存在性锚定（CW_USEDEFAULT 对 WS_POPUP 无效，cascadeSeed 级联防窗体熌缩到 (0,0)）
+  assert.ok(cpp.includes('cascadeSeed'));
+  // 序列化锚定断言（前导 underline 布尔 + 四值 + 行尾）：resizable 派生(none→false), maximizable 默认 true, 编号 0, 拖动 true
+  assert.ok(cpp.includes('false, false, true, 0, true }'));
 });
 
 test('native 生成器：固定边框与旧项目迁移', () => {
@@ -4750,5 +4752,6 @@ test('native 生成器：固定边框与旧项目迁移', () => {
   // 旧项目（无 borderStyle + resizable: false）生成器端迁移为 normal-fixed（编号 2）；maximizable 保持默认 true
   const legacy = generateNativeWin32Project(projectOf({ ...baseWindow, borderStyle: undefined, resizable: false }));
   const legacyCpp = legacy.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
-  assert.ok(legacyCpp.includes('false, true, 2, false') || legacyCpp.includes('false, true, 2, false }'));
+  // 序列化锚定断言（前导 underline 布尔 + 四值 + 行尾）：迁移为 normal-fixed 后 resizable 派生 false，maximizable 默认 true，编号 2，拖动默认 false
+  assert.ok(legacyCpp.includes('false, false, true, 2, false }'));
 });

@@ -5,7 +5,7 @@ import {
   parseEplRuntimeEventRules
 } from './eplToCppRules';
 import { normalizeControlFont } from './controlFont';
-import { deriveLingWindowBorderStyle, generateWindowBorderHelperCpp, normalizeLingWindowBorderStyle, toWindowBorderCxxValue } from './windowBorderStyle';
+import { deriveLingWindowBorderStyle, generateWindowBorderHelperCpp, normalizeLingWindowBorderStyle, resolveLingWindowBorder, toWindowBorderCxxValue } from './windowBorderStyle';
 
 export interface NativeProjectFile {
   relativePath: string;
@@ -765,8 +765,8 @@ static LRESULT CALLBACK GeneratedWindowProc(HWND hwnd, UINT message, WPARAM wPar
 
     switch (message) {
     case WM_LBUTTONDOWN: {
-        WindowState* dragState = GetState(hwnd);
-        if (dragState && dragState->spec && dragState->spec->borderStyle == 0 && dragState->spec->borderlessDraggable) {
+        // 复用函数开头的 state：WM_LBUTTONDOWN 只可能在 WM_NCCREATE 写入 USERDATA 之后到达
+        if (state && state->spec && state->spec->borderStyle == 0 && state->spec->borderlessDraggable) {
             POINT cursor = { static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))) };
             HWND child = ChildWindowFromPoint(hwnd, cursor);
             if (child == nullptr || child == hwnd) {
@@ -1184,7 +1184,9 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number): strin
   // resizable 与 borderStyle 派生保持一致（固定类/无边框不可拖拽调宽），旧项目无 borderStyle 时按旧 resizable 迁移
   const borderStyle = normalizeLingWindowBorderStyle(window.borderStyle, window.resizable);
   const borderStyleCxx = toWindowBorderCxxValue(borderStyle);
-  const captionHeight = borderStyle === 'none' ? 0 : borderStyle === 'thin-title-resizable' || borderStyle === 'thin-title-fixed' ? 20 : TITLE_BAR_HEIGHT;
+  // captionHeight 与 lingCpp 生成器一致，统一消费 resolveLingWindowBorder 的唯一映射
+  const border = resolveLingWindowBorder(borderStyle, window.maximizable !== false);
+  const captionHeight = border.captionKind === 'none' ? 0 : border.captionKind === 'thin' ? 20 : TITLE_BAR_HEIGHT;
   return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - captionHeight)}, ${toColorRef(window.background)}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, ${deriveLingWindowBorderStyle(borderStyle)}, ${window.maximizable !== false}, ${borderStyleCxx}, ${window.borderlessDraggable === true} }`;
 }
 
