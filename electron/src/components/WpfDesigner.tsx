@@ -80,6 +80,7 @@ import {
   PersistedWindowDesignerState,
   WindowDesignerDirtyStateDetail
 } from '../services/windowDesigner/windowDesignerService';
+import { LING_WINDOW_BORDER_STYLE_OPTIONS, deriveLingWindowBorderStyle, resolveLingWindowBorder } from '../services/windowDesigner/windowBorderStyle';
 import { normalizeToolbarButtons } from '../services/windowDesigner/toolbarButtonCollectionModel';
 import { normalizeStatusBarParts } from '../services/windowDesigner/statusBarPartCollectionModel';
 import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
@@ -101,6 +102,7 @@ import {
   LingMenuResourceItem,
   LingPropertySheetResource,
   LingToolTipResource,
+  LingWindowBorderStyle,
   LingWindowModel,
   LingWindowCornerStyle,
   LingWindowIconStyle,
@@ -2304,6 +2306,9 @@ export default function WpfDesigner({
 
   if (!activeWindow) return null;
 
+  const canvasBorder = resolveLingWindowBorder(activeWindow.borderStyle, activeWindow.maximizable !== false);
+  const isFrameBorderStyle = activeWindow.borderStyle === 'frame-resizable' || activeWindow.borderStyle === 'frame-fixed';
+
   return (
     <div className={`flex-1 flex flex-col overflow-hidden font-sans ${isDarkMode ? 'bg-[#141418]' : 'bg-white'}`}>
       <div
@@ -2657,7 +2662,8 @@ export default function WpfDesigner({
                 backgroundPosition: '0 0',
                 borderRadius: activeWindow.cornerStyle === 'square'
                   ? '0'
-                  : activeWindow.cornerStyle === 'small-rounded' ? '4px' : '8px'
+                  : activeWindow.cornerStyle === 'small-rounded' ? '4px' : '8px',
+                ...(isFrameBorderStyle ? { outline: '3px double #9ca3af', outlineOffset: '-1px' } : {})
               }}
               onClick={() => {
                 selectOnlyControl(null);
@@ -2677,8 +2683,9 @@ export default function WpfDesigner({
               onMouseDown={e => startResizeWindow(e, 'se')}
               className="absolute right-[-6px] bottom-[-6px] w-[12px] h-[12px] cursor-se-resize z-51 rounded-full bg-blue-500 border border-white hover:scale-125 transition-transform"
             />
+            {canvasBorder.hasCaption && (
             <div
-              className="h-7 flex items-center justify-between px-3 border-b border-black/25 select-none canvas-title-bar"
+              className={`${canvasBorder.captionKind === 'thin' ? 'h-5' : 'h-7'} flex items-center justify-between px-3 border-b border-black/25 select-none canvas-title-bar`}
               style={{
                 backgroundColor: useNewEmojiDesigner
                   ? newEmojiThemePreview.titleBarBackground
@@ -2704,6 +2711,7 @@ export default function WpfDesigner({
                 <X className="w-3 h-3" />
               </div>
             </div>
+            )}
             {/* Menu Bar (Simulating native Win32 window menu bar) */}
             {hasDesignerWindowMenu(activeWindow) && <div
               onMouseDown={(e) => {
@@ -4595,6 +4603,43 @@ function WindowProperties({
           swatches={['#FFFFFF', '#F8FAFC', '#CBD5E1', '#111827', '#0F172A', '#FDE68A']}
           onChange={value => onChange({ titleBarForeground: value })}
         />
+        <PropertyRow label="边框" isDarkMode={isDarkMode}>
+          <select
+            value={window.borderStyle || 'normal-resizable'}
+            onChange={event => {
+              const borderStyle = event.target.value as LingWindowBorderStyle;
+              const hasSizingBorder = deriveLingWindowBorderStyle(borderStyle);
+              onChange({
+                borderStyle,
+                borderlessDraggable: false,
+                resizable: hasSizingBorder,
+                maximizable: borderStyle === 'none' ? true : window.maximizable !== false,
+                windowFrame: {
+                  ...windowFrame,
+                  ...(windowFrame.preset === 'custom' ? { flags: hasSizingBorder ? windowFrame.flags | 0x08 : windowFrame.flags & ~0x08 } : {}),
+                  resizeBorder: hasSizingBorder ? windowFrame.resizeBorder : { left: 0, top: 0, right: 0, bottom: 0 }
+                }
+              });
+            }}
+            className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+            aria-label="窗口边框"
+          >
+            {LING_WINDOW_BORDER_STYLE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </PropertyRow>
+        {(window.borderStyle || 'normal-resizable') === 'none' && (
+          <PropertyRow label="允许拖动移动窗口" isDarkMode={isDarkMode}>
+            <input
+              type="checkbox"
+              checked={window.borderlessDraggable === true}
+              onChange={event => onChange({ borderlessDraggable: event.target.checked })}
+              aria-label="无边框窗口拖动移动"
+              className="h-4 w-4 accent-amber-500"
+            />
+          </PropertyRow>
+        )}
         <PropertyRow label="窗口圆角" isDarkMode={isDarkMode}>
           <select
             value={window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE}
@@ -4665,7 +4710,7 @@ function WindowProperties({
                 const flags = preset === 'browserShell' ? NEW_EMOJI_BROWSER_SHELL_FRAME_FLAGS : preset === 'system' ? 0 : windowFrame.flags;
                 onChange({
                   windowFrame: { ...windowFrame, preset, flags },
-                  ...(preset === 'browserShell' ? { resizable: true, cornerStyle: 'rounded' as const } : {})
+                  ...(preset === 'browserShell' ? { resizable: true, cornerStyle: 'rounded' as const, borderStyle: 'normal-resizable' as const } : {})
                 });
               }}
               className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}
@@ -4698,32 +4743,14 @@ function WindowProperties({
         </PropertyGroup>
       )}
       <PropertyGroup title="当前窗口 / 状态" isDarkMode={isDarkMode} defaultOpen={false}>
-        <PropertyRow label="禁止拖拽调整大小" isDarkMode={isDarkMode}>
-          <input
-            type="checkbox"
-            checked={window.resizable === false}
-            onChange={event => {
-              const resizable = !event.target.checked;
-              onChange({
-                resizable,
-                windowFrame: {
-                  ...windowFrame,
-                  ...(windowFrame.preset === 'custom' ? { flags: resizable ? windowFrame.flags | 0x08 : windowFrame.flags & ~0x08 } : {}),
-                  resizeBorder: resizable ? windowFrame.resizeBorder : { left: 0, top: 0, right: 0, bottom: 0 }
-                }
-              });
-            }}
-            aria-label="禁止拖拽窗口大小"
-            className="h-4 w-4 accent-amber-500"
-          />
-        </PropertyRow>
         <PropertyRow label="禁止窗口最大化" isDarkMode={isDarkMode}>
           <input
             type="checkbox"
             checked={window.maximizable === false}
+            disabled={(window.borderStyle || 'normal-resizable') === 'none'}
             onChange={event => onChange({ maximizable: !event.target.checked })}
             aria-label="禁止窗口最大化"
-            className="h-4 w-4 accent-amber-500"
+            className="h-4 w-4 accent-amber-500 disabled:opacity-40"
           />
         </PropertyRow>
         <ReadOnlyTextField label="类名" value={window.className} isDarkMode={isDarkMode} />

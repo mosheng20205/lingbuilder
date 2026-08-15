@@ -4737,7 +4737,7 @@ test('native 生成器：边框样式映射到窗口样式、拖动与序列化'
   assert.ok(cpp.includes('WM_NCLBUTTONDOWN, HTCAPTION'));
   assert.ok(cpp.includes('AdjustWindowRectEx(&rect, windowStyle, TRUE, windowExStyle)'));
   assert.ok(cpp.includes('spec.borderStyle == 0'));
-  // 位置回落块存在性锚定（CW_USEDEFAULT 对 WS_POPUP 无效，cascadeSeed 级联防窗体熌缩到 (0,0)）
+  // 位置回落块存在性锚定（CW_USEDEFAULT 对 WS_POPUP 无效，cascadeSeed 级联防窗体坍缩到 (0,0)）
   assert.ok(cpp.includes('cascadeSeed'));
   // 序列化锚定断言（前导 underline 布尔 + 四值 + 行尾）：resizable 派生(none→false), maximizable 默认 true, 编号 0, 拖动 true
   assert.ok(cpp.includes('false, false, true, 0, true }'));
