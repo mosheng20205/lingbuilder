@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "id": "aria2-complete-demo",
+  "name": "Aria2 下载模块完整交互演示",
+  "startupProjectId": "aria2-api-demo",
+  "startupProjectIds": [
+    "aria2-api-demo"
+  ],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "aria2-api-demo",
+      "name": "Aria2 下载模块完整交互演示",
+      "sourceRoot": "src/aria2-api-demo",
+      "configRoot": "config/aria2-api-demo",
+      "designerPath": ".lingbuilder/projects/aria2-api-demo/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}
