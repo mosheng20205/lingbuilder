@@ -40,6 +40,15 @@ export interface LingWindowFrame {
   cornerRadius: number;
 }
 
+export type LingWindowBorderStyle =
+  | 'none'
+  | 'normal-resizable'
+  | 'normal-fixed'
+  | 'thin-title-resizable'
+  | 'thin-title-fixed'
+  | 'frame-resizable'
+  | 'frame-fixed';
+
 export interface LingControl {
   id: string;
   /** 布局树中的父控件。控件坐标仍使用窗口绝对坐标，避免影响现有生成结果。 */
@@ -106,6 +115,10 @@ export interface LingWindowModel {
   resizable?: boolean;
   /** 是否允许用户通过标题栏按钮或系统菜单最大化窗口；旧项目默认允许。 */
   maximizable?: boolean;
+  /** 窗口边框样式；缺失时由迁移规则确定（resizable=false → 普通固定边框，否则普通可调边框）。 */
+  borderStyle?: LingWindowBorderStyle;
+  /** 无边框窗口是否允许按住客户区拖动移动；仅 borderStyle 为 none 时生效，默认 false。 */
+  borderlessDraggable?: boolean;
   /** new_emoji/未来原生 UI 后端共享的精确窗口框架契约。 */
   windowFrame?: LingWindowFrame;
   controls: LingControl[];
