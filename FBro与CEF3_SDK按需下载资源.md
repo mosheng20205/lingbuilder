@@ -41,13 +41,21 @@
 ## 下载与安装约束
 
 - 下载前必须向用户显示 SDK 名称、版本、下载体积和用途，并允许取消。
-- 下载过程必须显示进度，并支持失败重试和基于 Range 的断点续传。
+- 下载器使用随 LingBuilder Windows x64 安装包分发的 `aria2c 1.37.0`，每个 SDK 请求使用 8 路连接、8M 分段、失败重试和断点续传；启动 aria2 前由服务对受控 HTTPS 直链执行不跟随重定向的预检，下载器强制校验证书，服务端仍需支持 HTTPS 与 Range。
+- 下载过程必须显示进度；取消时保留 `.part` 与 aria2 控制文件以便下次继续，成功完成后清理控制文件。
 - 下载文件应先写入临时 `.part` 文件；必须同时校验精确文件大小和 SHA-256。
 - 解压前必须阻止绝对路径、`..` 路径穿越、符号链接及其它逃逸目标目录的 ZIP 条目。
 - 解压完成后必须校验模块清单和关键文件，再通过临时目录原子切换到受管依赖目录。
 - 不得把下载 URL、版本判断、解压和安装逻辑散落在 React 组件或 C++ 生成器中，应由独立的 SDK/依赖服务统一负责。
 - FBro、CEF3 项目在构建、运行、原生预览和导出时必须复用同一套依赖检测结果；缺失或校验失败时应给出明确中文诊断，不能继续生成不完整项目。
 - Cloudflare 上的文件内容一旦变化，必须使用新的版本化文件名和 URL，并同步更新文件大小与 SHA-256，禁止在原 URL 下静默替换内容。
+
+## aria2 再分发说明
+
+- 版本：`aria2 1.37.0 Windows x64`，来源为官方 GitHub release：<https://github.com/aria2/aria2/releases/tag/release-1.37.0>。
+- 上游压缩包 SHA-256：`67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288`。
+- 安装包随 `aria2c.exe` 一并提供 `electron/third_party/aria2/COPYING`（GNU GPLv2）；本项目只调用其命令行下载能力，不修改 aria2 二进制。
+- 发布目录中的 `resources/third_party/aria2/aria2c.exe` 和许可文件由 `verify-on-demand-sdk-release.cjs` 强制检查。
 
 ## LingBuilder 实现位置
 

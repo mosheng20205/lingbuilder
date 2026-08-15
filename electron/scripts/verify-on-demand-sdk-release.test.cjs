@@ -8,6 +8,11 @@ const { SDK_MODULE_IDS, verifyUnpacked } = require('./verify-on-demand-sdk-relea
 test('瘦身发布目录保留 SDK 模块元数据且拒绝夹带 sdk 目录', async t => {
   const appOutDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-slim-sdk-'));
   t.after(() => fsp.rm(appOutDir, { recursive: true, force: true }));
+  const aria2Root = path.join(appOutDir, 'resources', 'third_party', 'aria2');
+  await fsp.mkdir(aria2Root, { recursive: true });
+  await fsp.writeFile(path.join(aria2Root, 'aria2c.exe'), Buffer.alloc(1_000_000));
+  await fsp.writeFile(path.join(aria2Root, 'COPYING'), '# GPLv2\n'.padEnd(1_000, '许可'));
+  await fsp.writeFile(path.join(aria2Root, 'NOTICE.md'), '# aria2\n'.padEnd(200, '来源说明'));
   for (const moduleId of SDK_MODULE_IDS) {
     const root = path.join(appOutDir, 'resources', 'default-workspace', '.lingbuilder', 'modules', moduleId);
     await fsp.mkdir(root, { recursive: true });

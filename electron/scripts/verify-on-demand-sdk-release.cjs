@@ -13,6 +13,11 @@ const FORBIDDEN_SDK_ASSET_NAMES = new Set([
   'lingbuilderfbrobridge.dll',
   'lingbuildercefbridge.dll'
 ]);
+const ARIA2_RESOURCE_PATHS = [
+  'resources/third_party/aria2/aria2c.exe',
+  'resources/third_party/aria2/COPYING',
+  'resources/third_party/aria2/NOTICE.md'
+];
 
 async function verifyUnpacked(appOutDir) {
   const moduleRoot = path.join(appOutDir, ...PACKAGED_MODULE_ROOT.split('/'));
@@ -27,6 +32,7 @@ async function verifyUnpacked(appOutDir) {
     results.push({ moduleId, version: manifest.version });
   }
   await assertNoHiddenSdkAssets(appOutDir);
+  await assertBundledAria2(appOutDir);
   return { mode: 'unpacked', target: appOutDir, modules: results };
 }
 
@@ -50,7 +56,22 @@ async function verifyInstaller(installerPath) {
     }
   }
   assertNoHiddenSdkAssetPaths(normalizedPaths);
+  for (const required of ARIA2_RESOURCE_PATHS) {
+    if (!normalizedPaths.includes(required)) throw new Error(`安装包缺少 aria2 运行时资源：${required}。`);
+  }
   return { mode: 'installer', target: installerPath, modules: SDK_MODULE_IDS.map(moduleId => ({ moduleId })) };
+}
+
+async function assertBundledAria2(appOutDir) {
+  const aria2c = path.join(appOutDir, 'resources', 'third_party', 'aria2', 'aria2c.exe');
+  const copying = path.join(appOutDir, 'resources', 'third_party', 'aria2', 'COPYING');
+  const notice = path.join(appOutDir, 'resources', 'third_party', 'aria2', 'NOTICE.md');
+  const aria2Stat = await fsp.stat(aria2c).catch(() => null);
+  const copyingStat = await fsp.stat(copying).catch(() => null);
+  const noticeStat = await fsp.stat(notice).catch(() => null);
+  if (!aria2Stat?.isFile() || aria2Stat.size < 1_000_000) throw new Error('发布目录缺少有效的 aria2c.exe。');
+  if (!copyingStat?.isFile() || copyingStat.size < 1_000) throw new Error('发布目录缺少 aria2 GPLv2 许可文件。');
+  if (!noticeStat?.isFile() || noticeStat.size < 200) throw new Error('发布目录缺少 aria2 来源与源码说明。');
 }
 
 async function assertNoHiddenSdkAssets(appOutDir) {
@@ -107,4 +128,4 @@ if (require.main === module) main().catch(error => {
   process.exitCode = 1;
 });
 
-module.exports = { FORBIDDEN_SDK_ASSET_NAMES, SDK_MODULE_IDS, PACKAGED_MODULE_ROOT, verifyInstaller, verifyUnpacked };
+module.exports = { ARIA2_RESOURCE_PATHS, FORBIDDEN_SDK_ASSET_NAMES, SDK_MODULE_IDS, PACKAGED_MODULE_ROOT, verifyInstaller, verifyUnpacked };

@@ -78,6 +78,7 @@
     "verify:fbro-release": "node scripts/verify-fbro-release-sdk.cjs source",
     "verify:fbro-installer": "node scripts/verify-on-demand-sdk-release.cjs installer",
     "test:cef3-release": "node --test scripts/verify-cef3-release-sdk.test.cjs scripts/verify-on-demand-sdk-release.test.cjs",
+    "test:installer": "node --test scripts/verify-installer-app-shutdown.test.cjs",
     "test:cef3-coverage": "node --test scripts/generate-cef3-api-coverage.test.cjs",
     "package:dir": "node scripts/prepare-cloud-release-config.cjs && npm run verify:cef3-release && npm run verify:fbro-release && npm run build && electron-builder --dir && node scripts/verify-on-demand-sdk-release.cjs unpacked",
     "prepare:webview2": "node scripts/prepare-webview2-bootstrapper.cjs",
@@ -197,6 +198,18 @@
       }
     ],
     "extraResources": [
+      {
+        "from": "third_party/aria2/aria2c.exe",
+        "to": "third_party/aria2/aria2c.exe"
+      },
+      {
+        "from": "third_party/aria2/COPYING",
+        "to": "third_party/aria2/COPYING"
+      },
+      {
+        "from": "third_party/aria2/NOTICE.md",
+        "to": "third_party/aria2/NOTICE.md"
+      },
       {
         "from": "../image/lingbuilder-ide-icon-v2.ico",
         "to": "assets/lingbuilder-window.ico"

@@ -1,6 +1,47 @@
 !include "LogicLib.nsh"
 !include "nsDialogs.nsh"
+!include "nsProcess.nsh"
 !include "WinMessages.nsh"
+
+; Electron 的主、渲染和 GPU 子进程都使用 LingBuilder.exe。nsProcess 的
+; CloseProcess 会先关闭窗口、等待 3 秒，再结束仍在运行的同名进程。
+!macro StopLingBuilderProcesses
+  nsProcess::_CloseProcess /NOUNLOAD "${APP_EXECUTABLE_FILENAME}"
+  Pop $0
+  Sleep 500
+  nsProcess::_FindProcess /NOUNLOAD "${APP_EXECUTABLE_FILENAME}"
+  Pop $0
+!macroend
+
+; 0.3.0 之前的卸载器会把自身的辅助进程当作应用占用。此安装器已负责
+; 覆盖核心文件、重写卸载注册信息并删除旧 SDK，因此升级时跳过旧卸载器。
+!macro SkipLegacyLingBuilderUninstaller
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+  DeleteRegValue HKLM "Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+!macroend
+
+; 同时编译进安装器和卸载器。先礼貌关闭主窗口，再按安装目录清理全部残留进程。
+!macro customCheckAppRunning
+  DetailPrint "正在关闭已运行的 LingBuilder…"
+  retryLingBuilderShutdown:
+    !insertmacro StopLingBuilderProcesses
+    ${If} $0 == 0
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "LingBuilder 仍在运行，或该进程以管理员权限启动。请在任务管理器的“详细信息”中结束所有 LingBuilder.exe；若仍无法结束，请关闭安装器后以管理员身份重新运行。" /SD IDCANCEL IDRETRY retryLingBuilderShutdown
+      Abort
+    ${EndIf}
+    !ifndef BUILD_UNINSTALLER
+      !insertmacro SkipLegacyLingBuilderUninstaller
+    !endif
+!macroend
+
+; 兼容已安装的旧版卸载器。即使旧卸载器的占用检测错误返回失败，当前
+; 安装器仍可覆盖文件并接管卸载注册信息，不再重复弹出默认“无法关闭”。
+!macro customUnInstallCheck
+  DetailPrint "旧版本卸载器未完全退出，继续执行覆盖安装。"
+  ClearErrors
+  StrCpy $R0 0
+!macroend
 
 !ifndef BUILD_UNINSTALLER
   Var LingBuilderCliPathCheckbox
@@ -51,6 +92,10 @@
 !macroend
 
 !macro customInstall
+  ; 升级过程中旧卸载器若未能删除目录，也不得保留旧版随包 SDK。
+  RMDir /r "$INSTDIR\resources\default-workspace\.lingbuilder\modules\lingbuilder.cef3.sdk\sdk"
+  RMDir /r "$INSTDIR\resources\default-workspace\.lingbuilder\modules\lingbuilder.fbro.sdk\sdk"
+
   ; WebView2 是 EdgeView 原生项目的运行依赖。仅在注册表未检测到时执行随包冻结的微软 Evergreen Bootstrapper。
   ReadRegStr $0 HKLM "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
   ${If} $0 == ""

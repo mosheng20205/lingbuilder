@@ -1,5 +1,7 @@
 # LingBuilder Electron
 
+> 2026-08-15：SDK 按需下载改用安装包内置的 aria2c 1.37.0 Windows x64。每个 CEF3/FBro 压缩包使用 8 路连接、8M 分段和断点续传；下载完成后继续执行精确大小、SHA-256、ZIP 安全清单和原子安装校验。安装包同时提供 `third_party/aria2/COPYING` GPLv2 许可文件。
+
 > 2026-08-14：Windows 安装包已移除 CEF3/FBro 完整 SDK，只保留资产模块清单和 README。桌面工作台首次执行相关 F5、原生预览或导出时，经统一 SDK 依赖服务提示下载到用户共享缓存；独立 AI Bridge/CLI 仅报告 `SDK_DEPENDENCY_REQUIRED`。版本、直链、字节数与 SHA-256 见根目录 `FBro与CEF3_SDK按需下载资源.md`。
 
 > 2026-08-13：修复从窗口设计器按 F5 运行普通 Win32 项目后 IDE/设计器闪动。LingCpp 与旧原生 Win32 生成器已删除启动阶段的临时 `HWND_TOPMOST`、重复前台/焦点抢占和 LingCpp 900ms 撤销置顶定时器，统一在窗口布局准备完成后只执行一次标准 `ShowWindow + UpdateWindow`。专项测试同时阻断两条生成链路重新引入该序列；`new_emoji` 的专用激活实现保持不变。

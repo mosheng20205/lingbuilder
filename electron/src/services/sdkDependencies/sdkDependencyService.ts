@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import {
@@ -60,6 +60,14 @@ export interface SdkDependencyOverview {
   job: SdkDependencyJobSnapshot;
 }
 
+type SdkArchiveDownloader = (
+  url: string,
+  destination: string,
+  expectedBytes: number,
+  signal: AbortSignal,
+  onProgress: (progress: DownloadProgress) => void
+) => Promise<void>;
+
 export class SdkDependencyBusyError extends Error {
   constructor() {
     super('已有 SDK 下载或安装任务正在进行。');
@@ -82,9 +90,10 @@ interface SdkDependencyServiceOptions {
   workspaceRoot: () => string;
   environment?: NodeJS.ProcessEnv;
   resourcesPath?: string;
+  aria2cPath?: string;
   platform?: NodeJS.Platform;
   now?: () => Date;
-  download?: typeof downloadArchive;
+  download?: SdkArchiveDownloader;
   inspectArchive?: typeof inspectZipArchive;
   extractArchive?: typeof extractZipArchive;
   resources?: readonly SdkDependencyResource[];
@@ -110,7 +119,8 @@ export class SdkDependencyService {
   private readonly environment: NodeJS.ProcessEnv;
   private readonly platform: NodeJS.Platform;
   private readonly now: () => Date;
-  private readonly download: typeof downloadArchive;
+  private readonly download: SdkArchiveDownloader;
+  private readonly aria2cPath: string;
   private readonly inspectArchive: typeof inspectZipArchive;
   private readonly extractArchive: typeof extractZipArchive;
   private readonly resources: readonly SdkDependencyResource[];
@@ -123,7 +133,15 @@ export class SdkDependencyService {
     this.environment = options.environment || process.env;
     this.platform = options.platform || process.platform;
     this.now = options.now || (() => new Date());
-    this.download = options.download || downloadArchive;
+    this.aria2cPath = path.resolve(options.aria2cPath || resolveBundledAria2cPath(options.resourcesPath));
+    this.download = options.download || ((url, destination, expectedBytes, signal, onProgress) => downloadArchive(
+      url,
+      destination,
+      expectedBytes,
+      signal,
+      onProgress,
+      this.aria2cPath
+    ));
     this.inspectArchive = options.inspectArchive || inspectZipArchive;
     this.extractArchive = options.extractArchive || extractZipArchive;
     this.resources = options.resources || SDK_DEPENDENCY_RESOURCES;
@@ -227,6 +245,7 @@ export class SdkDependencyService {
         this.update({ state: 'verifying', message: `正在校验 ${resource.name}…`, bytesPerSecond: null });
         if (!await fileMatches(partialPath, resource.archiveBytes, resource.sha256)) {
           await fs.rm(partialPath, { force: true });
+          await fs.rm(`${partialPath}.aria2`, { force: true });
           throw new Error(`${resource.name} 下载文件大小或 SHA-256 不匹配，已拒绝安装。`);
         }
         await fs.rename(partialPath, archivePath);
@@ -415,9 +434,11 @@ async function downloadArchive(
   destination: string,
   expectedBytes: number,
   signal: AbortSignal,
-  onProgress: (progress: DownloadProgress) => void
+  onProgress: (progress: DownloadProgress) => void,
+  aria2cPath: string
 ): Promise<void> {
   if (!url.startsWith('https://')) throw new Error('SDK 下载地址必须使用 HTTPS。');
+  await assertDirectHttpsDownloadUrl(url, expectedBytes, signal);
   await fs.mkdir(path.dirname(destination), { recursive: true });
   let offset = 0;
   try {
@@ -430,47 +451,114 @@ async function downloadArchive(
     onProgress({ downloadedBytes: offset, bytesPerSecond: 0 });
     return;
   }
-  if (offset === 0) await fs.rm(destination, { force: true });
-  const response = await fetch(url, {
-    headers: offset > 0 ? { Range: `bytes=${offset}-` } : undefined,
-    redirect: 'follow',
-    signal
-  });
-  if (!response.ok || !response.body) throw new Error(`SDK 下载失败：HTTP ${response.status}。`);
-  if (!response.url.startsWith('https://')) throw new Error('SDK 下载重定向到了非 HTTPS 地址。');
-  if (offset > 0 && response.status !== 206) {
-    offset = 0;
+  if (offset === 0) {
     await fs.rm(destination, { force: true });
+    await fs.rm(`${destination}.aria2`, { force: true });
   }
-  if (response.status === 206) {
-    const contentRange = response.headers.get('content-range') || '';
-    if (!contentRange.startsWith(`bytes ${offset}-`) || !contentRange.endsWith(`/${expectedBytes}`)) {
-      throw new Error('SDK 服务器返回了无效的断点续传范围。');
-    }
-  } else if (response.status !== 200) {
-    throw new Error(`SDK 下载不支持的响应状态：HTTP ${response.status}。`);
-  }
-  const handle = await fs.open(destination, offset > 0 ? 'a' : 'w');
-  const reader = response.body.getReader();
-  const started = Date.now();
-  let downloaded = offset;
   try {
-    while (true) {
-      throwIfAborted(signal);
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value?.byteLength) continue;
-      await handle.write(value);
-      downloaded += value.byteLength;
-      if (downloaded > expectedBytes) throw new Error('SDK 下载内容超过预期大小。');
-      const elapsedSeconds = Math.max(0.001, (Date.now() - started) / 1000);
-      onProgress({ downloadedBytes: downloaded, bytesPerSecond: Math.round((downloaded - offset) / elapsedSeconds) });
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-    await handle.close();
+    const aria2Stat = await fs.stat(aria2cPath);
+    if (!aria2Stat.isFile()) throw new Error(`LingBuilder 随附的 aria2c.exe 无效：${aria2cPath}`);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('无效')) throw error;
+    throw new Error(`未找到 LingBuilder 随附的 aria2c.exe：${aria2cPath}`);
   }
+  const args = createAria2cArguments(url, destination);
+  let downloaded = offset;
+  let previousBytes = offset;
+  let previousAt = Date.now();
+  const reportProgress = async (): Promise<void> => {
+    try {
+      const stat = await fs.stat(destination);
+      downloaded = Math.min(expectedBytes, stat.size);
+      const now = Date.now();
+      const elapsedSeconds = Math.max(0.001, (now - previousAt) / 1000);
+      const bytesPerSecond = Math.max(0, Math.round((downloaded - previousBytes) / elapsedSeconds));
+      previousBytes = downloaded;
+      previousAt = now;
+      onProgress({ downloadedBytes: downloaded, bytesPerSecond });
+    } catch {
+      onProgress({ downloadedBytes: downloaded, bytesPerSecond: null });
+    }
+  };
+  await reportProgress();
+  const child = spawn(aria2cPath, args, {
+    windowsHide: true,
+    stdio: ['ignore', 'ignore', 'pipe']
+  });
+  let stderr = '';
+  child.stderr?.on('data', chunk => {
+    stderr += String(chunk);
+    if (stderr.length > 8 * 1024) stderr = stderr.slice(-8 * 1024);
+  });
+  const progressTimer = setInterval(() => { void reportProgress(); }, 500);
+  const abort = (): void => { child.kill(); };
+  signal.addEventListener('abort', abort, { once: true });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', code => {
+        if (signal.aborted) {
+          reject(new DOMException('操作已取消。', 'AbortError'));
+        } else if (code === 0) {
+          resolve();
+        } else {
+          const detail = stderr.trim().replace(/\s+/gu, ' ');
+          reject(new Error(`aria2c 下载失败（退出码 ${code ?? '未知'}）${detail ? `：${detail}` : '。'}`));
+        }
+      });
+    });
+  } finally {
+    signal.removeEventListener('abort', abort);
+    clearInterval(progressTimer);
+    await reportProgress();
+  }
+  throwIfAborted(signal);
+  await fs.rm(`${destination}.aria2`, { force: true });
+  downloaded = (await fs.stat(destination)).size;
   if (downloaded !== expectedBytes) throw new Error(`SDK 下载不完整：${downloaded} / ${expectedBytes} 字节。`);
+}
+
+export const ARIA2C_CONNECTIONS = 8;
+export const ARIA2C_MIN_SPLIT_SIZE = '8M';
+
+export function createAria2cArguments(url: string, destination: string): string[] {
+  return [
+    '--continue=true',
+    '--allow-overwrite=true',
+    '--auto-file-renaming=false',
+    '--file-allocation=none',
+    `--max-connection-per-server=${ARIA2C_CONNECTIONS}`,
+    `--split=${ARIA2C_CONNECTIONS}`,
+    `--min-split-size=${ARIA2C_MIN_SPLIT_SIZE}`,
+    '--max-tries=5',
+    '--retry-wait=2',
+    '--timeout=60',
+    '--connect-timeout=30',
+    '--check-certificate=true',
+    '--summary-interval=1',
+    '--console-log-level=warn',
+    '--enable-color=false',
+    '--remote-time=false',
+    `--dir=${path.dirname(destination)}`,
+    `--out=${path.basename(destination)}`,
+    url
+  ];
+}
+
+async function assertDirectHttpsDownloadUrl(url: string, expectedBytes: number, signal: AbortSignal): Promise<void> {
+  const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal });
+  if (response.status >= 300 && response.status < 400) throw new Error('SDK 下载地址不允许重定向，请检查受控 HTTPS 直链。');
+  if (!response.ok) throw new Error(`SDK 下载地址预检失败：HTTP ${response.status}。`);
+  if (!response.url.startsWith('https://')) throw new Error('SDK 下载地址预检返回了非 HTTPS 地址。');
+  const contentLength = Number(response.headers.get('content-length') || '');
+  if (Number.isFinite(contentLength) && contentLength > 0 && contentLength !== expectedBytes) {
+    throw new Error(`SDK 下载地址预检大小不匹配：${contentLength} / ${expectedBytes} 字节。`);
+  }
+}
+
+function resolveBundledAria2cPath(resourcesPath?: string): string {
+  const root = resourcesPath ? path.resolve(resourcesPath) : path.resolve(process.cwd(), 'electron');
+  return path.join(root, 'third_party', 'aria2', 'aria2c.exe');
 }
 
 export interface ZipArchiveInventory {

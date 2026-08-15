@@ -8,6 +8,9 @@ import test from 'node:test';
 import {
   SdkDependencyRequiredError,
   SdkDependencyService,
+  ARIA2C_CONNECTIONS,
+  ARIA2C_MIN_SPLIT_SIZE,
+  createAria2cArguments,
   inspectZipArchive,
   type SdkDependencyJobSnapshot
 } from '../src/services/sdkDependencies/sdkDependencyService';
@@ -28,6 +31,20 @@ test('SDK 资源清单固定使用 HTTPS、精确大小和 SHA-256', () => {
   assert.deepEqual(getRequiredSdkDependencyIds(['lingbuilder.win32.basic']), []);
   assert.deepEqual(getRequiredSdkDependencyIds(['lingbuilder.cef3.browser']), ['cef3']);
   assert.deepEqual(getRequiredSdkDependencyIds(['lingbuilder.fbro.browser']), ['fbro']);
+});
+
+test('SDK 下载使用 aria2c 多连接、分段和断点续传参数', () => {
+  const url = 'https://example.invalid/sdk.zip';
+  const destination = path.join('C:\\sdk-cache', 'sdk.zip.part');
+  const args = createAria2cArguments(url, destination);
+  assert.ok(args.includes('--continue=true'));
+  assert.ok(args.includes(`--max-connection-per-server=${ARIA2C_CONNECTIONS}`));
+  assert.ok(args.includes(`--split=${ARIA2C_CONNECTIONS}`));
+  assert.ok(args.includes(`--min-split-size=${ARIA2C_MIN_SPLIT_SIZE}`));
+  assert.ok(args.includes('--file-allocation=none'));
+  assert.ok(args.includes(`--dir=${path.dirname(destination)}`));
+  assert.ok(args.includes(`--out=${path.basename(destination)}`));
+  assert.equal(args.at(-1), url);
 });
 
 test('实际上传 ZIP 的中央目录与受控资源清单一致', async () => {
