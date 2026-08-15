@@ -8,7 +8,8 @@ import {
 } from './types';
 import {
   deriveLingWindowBorderStyle,
-  normalizeLingWindowBorderStyle
+  normalizeLingWindowBorderStyle,
+  resolveLingWindowBorder
 } from './windowBorderStyle';
 import { normalizeControlHierarchy } from './controlHierarchy';
 import { DEFAULT_CONTROL_FONT_FAMILY, normalizeControlFont } from './controlFont';
@@ -184,7 +185,8 @@ export function hasDesignerWindowMenu(window: Pick<LingWindowModel, 'menuItems'>
 }
 
 export function getDesignerWindowContentOffset(window: Pick<LingWindowModel, 'menuItems' | 'borderStyle'>): number {
-  const titleBarHeight = window.borderStyle === 'none' ? 0 : DESIGNER_TITLE_BAR_HEIGHT;
+  const captionKind = resolveLingWindowBorder(window.borderStyle, true).captionKind;
+  const titleBarHeight = captionKind === 'none' ? 0 : captionKind === 'thin' ? 20 : DESIGNER_TITLE_BAR_HEIGHT;
   return titleBarHeight + (hasDesignerWindowMenu(window) ? DESIGNER_MENU_BAR_HEIGHT : 0);
 }
 

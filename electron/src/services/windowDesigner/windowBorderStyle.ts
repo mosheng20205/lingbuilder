@@ -15,6 +15,8 @@ export const LING_WINDOW_BORDER_STYLE_OPTIONS: LingWindowBorderOption[] = [
   { value: 'frame-fixed', label: '镜框式固定边框' }
 ];
 
+export const DEFAULT_WINDOW_BORDER_STYLE: LingWindowBorderStyle = 'normal-resizable';
+
 const LING_WINDOW_BORDER_STYLE_VALUES = new Set<string>(LING_WINDOW_BORDER_STYLE_OPTIONS.map(option => option.value));
 
 export function isLingWindowBorderStyle(value: unknown): value is LingWindowBorderStyle {
@@ -32,7 +34,7 @@ export function normalizeLingWindowBorderStyle(
   legacyResizable: boolean | undefined
 ): LingWindowBorderStyle {
   if (isLingWindowBorderStyle(borderStyle)) return borderStyle;
-  return legacyResizable === false ? 'normal-fixed' : 'normal-resizable';
+  return legacyResizable === false ? 'normal-fixed' : DEFAULT_WINDOW_BORDER_STYLE;
 }
 
 /** resizable 布尔值由边框枚举派生：固定类与无边框不可拖拽调整大小。 */
@@ -61,7 +63,7 @@ export function resolveLingWindowBorder(
   borderStyle: LingWindowBorderStyle | undefined,
   maximizable: boolean
 ): ResolvedLingWindowBorder {
-  const style = isLingWindowBorderStyle(borderStyle) ? borderStyle : 'normal-resizable';
+  const style = isLingWindowBorderStyle(borderStyle) ? borderStyle : DEFAULT_WINDOW_BORDER_STYLE;
   const resizable = isResizableBorderStyle(style);
   let dwStyle = resizable ? 'WS_OVERLAPPEDWINDOW' : '(WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME)';
   let dwExStyle = '0';

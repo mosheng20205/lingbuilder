@@ -1132,7 +1132,7 @@ function generateNewEmojiMainCpp(
   const initialFocusLine = initialFocusVariable
     ? `    if (${initialFocusVariable} > 0) NE_设置元素焦点(g_newEmojiWindow, ${initialFocusVariable});`
     : '';
-  const windowFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
+  const windowFrame = normalizeLingWindowFrame(window.windowFrame, deriveLingWindowBorderStyle(window.borderStyle), window.cornerStyle);
   const createWindowCall = windowFrame.preset === 'system'
     ? `${darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口'}(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))})`
     : `NE_创建自定义框架窗口(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))}, ${windowFrame.flags})`;
@@ -2367,7 +2367,7 @@ ${body}
   const hasFileDroppedHandler = WINDOW_EVENT_DEFINITIONS.some(definition => definition.name === 'FileDropped' && (
     Boolean(window.events?.FileDropped?.trim()) || Boolean(findLingCppMethod(program, getWindowEventHandlerName(window.className, definition.name)))
   ));
-  const browserShellFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
+  const browserShellFrame = normalizeLingWindowFrame(window.windowFrame, deriveLingWindowBorderStyle(window.borderStyle), window.cornerStyle);
   const passiveBrowserShellTypes = ['/Container', '/Panel', '/Menu', '/Popover', '/BrowserViewport'];
   const browserShellCaptionControls = window.controls.filter(control => {
     const command = Number(control.properties?.windowCommand);

@@ -80,7 +80,7 @@ import {
   PersistedWindowDesignerState,
   WindowDesignerDirtyStateDetail
 } from '../services/windowDesigner/windowDesignerService';
-import { LING_WINDOW_BORDER_STYLE_OPTIONS, deriveLingWindowBorderStyle, resolveLingWindowBorder } from '../services/windowDesigner/windowBorderStyle';
+import { DEFAULT_WINDOW_BORDER_STYLE, LING_WINDOW_BORDER_STYLE_OPTIONS, deriveLingWindowBorderStyle, resolveLingWindowBorder } from '../services/windowDesigner/windowBorderStyle';
 import { normalizeToolbarButtons } from '../services/windowDesigner/toolbarButtonCollectionModel';
 import { normalizeStatusBarParts } from '../services/windowDesigner/statusBarPartCollectionModel';
 import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
@@ -4500,12 +4500,23 @@ function WindowProperties({
   const [isSelectingIcon, setIsSelectingIcon] = useState(false);
   const [iconStatus, setIconStatus] = useState('');
   const openPlacement = window.openPlacement || 'default';
-  const windowFrame = normalizeLingWindowFrame(window.windowFrame, window.resizable !== false, window.cornerStyle);
+  const windowFrame = normalizeLingWindowFrame(window.windowFrame, deriveLingWindowBorderStyle(window.borderStyle), window.cornerStyle);
   const updateWindowFrameFlag = (flag: number, enabled: boolean) => {
     const flags = enabled ? windowFrame.flags | flag : windowFrame.flags & ~flag;
     onChange({
       windowFrame: { ...windowFrame, preset: 'custom', flags },
-      ...(flag === 0x08 ? { resizable: enabled } : {}),
+      ...(flag === 0x08 ? {
+        resizable: enabled,
+        borderStyle: enabled
+          ? (window.borderStyle === 'normal-fixed' ? 'normal-resizable'
+            : window.borderStyle === 'thin-title-fixed' ? 'thin-title-resizable'
+            : window.borderStyle === 'frame-fixed' ? 'frame-resizable'
+            : window.borderStyle)
+          : (window.borderStyle === 'normal-resizable' ? 'normal-fixed'
+            : window.borderStyle === 'thin-title-resizable' ? 'thin-title-fixed'
+            : window.borderStyle === 'frame-resizable' ? 'frame-fixed'
+            : window.borderStyle)
+      } : {}),
       ...(flag === 0x10 ? { cornerStyle: enabled ? 'rounded' : 'square' } : {})
     });
   };
@@ -4605,7 +4616,7 @@ function WindowProperties({
         />
         <PropertyRow label="边框" isDarkMode={isDarkMode}>
           <select
-            value={window.borderStyle || 'normal-resizable'}
+            value={window.borderStyle || DEFAULT_WINDOW_BORDER_STYLE}
             onChange={event => {
               const borderStyle = event.target.value as LingWindowBorderStyle;
               const hasSizingBorder = deriveLingWindowBorderStyle(borderStyle);
@@ -4613,7 +4624,6 @@ function WindowProperties({
                 borderStyle,
                 borderlessDraggable: false,
                 resizable: hasSizingBorder,
-                maximizable: borderStyle === 'none' ? true : window.maximizable !== false,
                 windowFrame: {
                   ...windowFrame,
                   ...(windowFrame.preset === 'custom' ? { flags: hasSizingBorder ? windowFrame.flags | 0x08 : windowFrame.flags & ~0x08 } : {}),
@@ -4629,7 +4639,7 @@ function WindowProperties({
             ))}
           </select>
         </PropertyRow>
-        {(window.borderStyle || 'normal-resizable') === 'none' && (
+        {(window.borderStyle || DEFAULT_WINDOW_BORDER_STYLE) === 'none' && (
           <PropertyRow label="允许拖动移动窗口" isDarkMode={isDarkMode}>
             <input
               type="checkbox"
@@ -4729,7 +4739,8 @@ function WindowProperties({
                   type="checkbox"
                   checked={(windowFrame.flags & option.flag) !== 0}
                   onChange={event => updateWindowFrameFlag(option.flag, event.target.checked)}
-                  className="h-3.5 w-3.5 accent-fuchsia-500"
+                  disabled={option.flag === 0x08 && (window.borderStyle || DEFAULT_WINDOW_BORDER_STYLE) === 'none'}
+                  className="h-3.5 w-3.5 accent-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-40"
                 />
                 <span className="truncate">{option.label}</span>
               </label>
@@ -4747,7 +4758,7 @@ function WindowProperties({
           <input
             type="checkbox"
             checked={window.maximizable === false}
-            disabled={(window.borderStyle || 'normal-resizable') === 'none'}
+            disabled={(window.borderStyle || DEFAULT_WINDOW_BORDER_STYLE) === 'none'}
             onChange={event => onChange({ maximizable: !event.target.checked })}
             aria-label="禁止窗口最大化"
             className="h-4 w-4 accent-amber-500 disabled:opacity-40"

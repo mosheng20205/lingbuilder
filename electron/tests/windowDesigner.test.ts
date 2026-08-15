@@ -4681,6 +4681,12 @@ test('窗口边框样式：新建窗口默认普通可调边框，无边框时�
   assert.ok(getDesignerWindowContentOffset({ ...blank, borderStyle: 'none', menuItems: '文件, 编辑' }) > 0);
 });
 
+test('画布内容偏移：窄标题边框按窄标题栏高度计算', () => {
+  const blank = createBlankWindow(0);
+  assert.equal(getDesignerWindowContentOffset({ ...blank, borderStyle: 'thin-title-fixed', menuItems: '' }), 20);
+  assert.equal(getDesignerWindowContentOffset({ ...blank, borderStyle: 'thin-title-resizable', menuItems: '' }), 20);
+});
+
 test('lingCpp 生成器：边框样式进入 WindowSpec 与 C++ 样式辅助函数', () => {
   const baseWindow: LingWindowModel = {
     ...createBlankWindow(0),
