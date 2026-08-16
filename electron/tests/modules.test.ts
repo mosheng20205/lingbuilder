@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { ARIA2_COMMAND_SPECS, ARIA2_MODULE, ARIA2_MODULE_ID } from '../src/services/modules/aria2Module';
 import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
 import { CEF3_SAFE_API_CATALOG } from '../src/services/modules/cef3SafeApiCatalog.generated';
 import { EDGEVIEW_BROWSER_EVENTS, EDGEVIEW_COMPOSITION_ONLY_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
@@ -55,7 +56,7 @@ import {
   getBeginnerModuleCommandHints
 } from '../src/services/modules/moduleContextAdapters';
 import { InstalledModule } from '../src/services/modules/types';
-import { inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
+import { exportModuleNativeDependencies, inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { createControlToolboxGroups } from '../src/services/windowDesigner/controlToolboxModel';
@@ -72,6 +73,7 @@ import { normalizeControlReferenceSourceLiterals } from '../scripts/lib/control-
 import { getWin32RuntimeControlContracts } from '../src/services/windowDesigner/win32ControlRegistry';
 import { getLingCppControlReferenceDiagnostics } from '../src/services/lingCpp/controlReferenceService';
 import { generateFbroBrowserManagerRuntime } from '../src/services/windowDesigner/fbroBrowserManagerRuntime';
+import { generateAria2Runtime } from '../src/services/windowDesigner/aria2Runtime';
 
 const sampleProject: LingWindowProject = {
   id: 'module-test-project',
@@ -92,6 +94,76 @@ const sampleProject: LingWindowProject = {
 };
 
 const execFileAsync = promisify(execFile);
+
+test('Aria2 内置模块的清单、文档、生成运行时和原生资产保持一致', async t => {
+  if (process.platform !== 'win32') {
+    t.skip('Aria2 首版只支持 Windows x64。');
+    return;
+  }
+  assert.equal(validateModuleManifest(ARIA2_MODULE).diagnostics.length, 0);
+  assert.equal(ARIA2_MODULE.targets?.map(target => target.id).join(','), 'windows-msvc-x64');
+  assert.deepEqual(
+    ARIA2_MODULE.bindings?.commands?.map(binding => binding.command),
+    ARIA2_MODULE.contributes?.commands?.map(command => command.name)
+  );
+  assert.deepEqual(ARIA2_COMMAND_SPECS.map(command => command.name), [
+    'Aria2_下载', 'Aria2_等待', 'Aria2_取状态', 'Aria2_取进度',
+    'Aria2_取已下载字节', 'Aria2_取总字节', 'Aria2_取错误', 'Aria2_取下载速度',
+    'Aria2_取保存目录', 'Aria2_打开目录', 'Aria2_停止', 'Aria2_释放'
+  ]);
+  const downloadBinding = ARIA2_MODULE.bindings?.commands?.find(binding => binding.command === 'Aria2_下载');
+  const progressHandler = downloadBinding?.parameters?.[5];
+  assert.equal(progressHandler?.type, 'handler');
+  assert.equal(progressHandler?.optional, true);
+  assert.deepEqual(progressHandler?.handlerSignature, {
+    parameterTypes: ['Aria2任务', '整数型', '长整数型', '长整数型', '长整数型', '文本型'],
+    returnType: '空'
+  });
+  const module: InstalledModule = {
+    manifest: ARIA2_MODULE,
+    installPath: `builtin://${ARIA2_MODULE_ID}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const manual = await readModuleDocumentation(module, 'docs/modules/aria2/README.md', {
+    workspaceRoot: process.cwd(),
+    resourceRoot: process.cwd()
+  });
+  assert.match(manual.content, /GPLv2|GNU GPL/u);
+  assert.match(manual.content, /Aria2_取下载速度/u);
+  assert.match(manual.content, /Aria2_取保存目录/u);
+  assert.match(manual.content, /Aria2_打开目录/u);
+  assert.match(manual.content, /下载进度处理器/u);
+  const example = await fs.readFile(path.join(process.cwd(), 'docs/modules/aria2/examples/basic.lcpp'), 'utf8');
+  assert.match(example, /Aria2_下载/u);
+  assert.match(example, /&下载进度/u);
+  const runtime = generateAria2Runtime([module]);
+  assert.match(runtime, /CreateProcessW/u);
+  assert.match(runtime, /JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE/u);
+  assert.match(runtime, /ShellExecuteW/u);
+  assert.match(runtime, /ParseOutputDownloadSpeed/u);
+  assert.match(runtime, /ProgressMessage/u);
+
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-aria2-module-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const layout = {
+    buildDir: path.join(root, 'build'),
+    sourceDir: path.join(root, 'source'),
+    binDir: path.join(root, 'bin'),
+    exportDir: path.join(root, 'export'),
+    preferredTargetId: 'windows-msvc-x64'
+  };
+  const plan = await materializeModuleNativeDependencies([module], layout);
+  assert.deepEqual(plan.blockingDiagnostics, []);
+  for (const file of ['aria2c.exe', 'COPYING', 'NOTICE.md']) {
+    assert.ok(await fs.stat(path.join(layout.binDir, file)));
+    assert.ok(await fs.stat(path.join(layout.exportDir, 'modules', ARIA2_MODULE_ID, 'runtime', file)));
+  }
+  assert.deepEqual(await exportModuleNativeDependencies([module], path.join(root, 'portable')), []);
+  assert.ok(await fs.stat(path.join(root, 'portable', 'aria2c.exe')));
+});
 
 async function collectModuleSourceFilesForControlRefAudit(root: string): Promise<string[]> {
   const result: string[] = [];
@@ -143,12 +215,12 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       parameterDigest: audit.parameterDigest
     },
     {
-      modules: 82,
-      commands: 2792,
-      parameters: 4758,
+      modules: 83,
+      commands: 2804,
+      parameters: 4776,
       controlReferences: 1262,
-      commandDigest: '53d101ab',
-      parameterDigest: 'cd991680'
+      commandDigest: 'b8260acb',
+      parameterDigest: '3828787d'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -248,7 +320,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 43, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 44, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -464,11 +536,11 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     parameterDigest: audit.parameterDigest
   }, {
       modules: 90,
-      commands: 6595,
-      parameters: 16301,
+      commands: 6607,
+      parameters: 16319,
       controlReferences: 4806,
-      commandDigest: '051416ad',
-      parameterDigest: 'a0140610'
+      commandDigest: '98662ecd',
+      parameterDigest: '9d4bcd15'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -2283,7 +2355,7 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(mainCpp.includes('L"--proxy-server=" + raw->proxyServer'));
   assert.ok(mainCpp.includes('environmentOptions->put_AdditionalBrowserArguments'));
   assert.ok(mainCpp.includes('EdgeView_调整全部大小();'));
-  assert.ok(mainCpp.includes('WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS'));
+  assert.ok(mainCpp.includes('LB_WindowBorderStyleToDwStyle(spec_.borderStyle, spec_.maximizable) | WS_CLIPCHILDREN | WS_CLIPSIBLINGS'));
   assert.ok(mainCpp.includes('controller->put_IsVisible(TRUE);'));
   assert.ok(mainCpp.includes('instance.controller->NotifyParentWindowPositionChanged();'));
   assert.ok(mainCpp.includes('SetWindowPos(instance->host, HWND_TOP'));
@@ -3647,6 +3719,8 @@ test('FBro browser manager synchronizes addresses, verifies extension injection,
   assert.match(runtime, /packet\.eventName == L"AddressChanged"/u);
   assert.match(runtime, /document\.getElementById\('doubao-downloader'\) \? 'root'/u);
   assert.match(runtime, /data-lingbuilder-doubao-downloader/u);
+  assert.match(runtime, /assetsRoot = \(executableDirectory \/ L"assets"\)/u);
+  assert.match(runtime, /projectAsset = \(iterator->path\(\) \/ L"doubao-downloader"\)/u);
   assert.match(generatedRuntime.members, /bool pluginReloadedAfterRegistration = false;/u);
   assert.match(runtime, /浏览器管理器_逻辑\(instance, L"reload"\)/u);
   assert.match(runtime, /instance\.pluginStatus = L"插件已生效"/u);
@@ -3688,6 +3762,7 @@ test('FBro browser manager synchronizes addresses, verifies extension injection,
   );
   assert.ok(sizeBlock.indexOf('DispatchWindowEvent(L"SizeChanged")') < sizeBlock.indexOf('FBro_调整全部大小()'));
   assert.match(win32GeneratorSource, /浏览器管理器_处理插件检查定时器\(static_cast<UINT_PTR>\(wParam\)\)/u);
+  assert.match(win32GeneratorSource, /LB_NE_BrowserShellExtensionPath\(\)[\s\S]{0,800}assetsRoot/u);
 });
 
 test('FBro browser manager observes downloads without canceling the default transfer', async () => {
