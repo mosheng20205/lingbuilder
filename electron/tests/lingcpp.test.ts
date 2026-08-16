@@ -53,7 +53,7 @@ import {
   getBeginnerProcedureCallAtCursor,
   resolveBeginnerProcedureDefinition
 } from '../src/services/lingCpp/beginnerDefinitionNavigation';
-import { getBeginnerIfFlowGuideRows } from '../src/services/lingCpp/beginnerFlowGuide';
+import { formatBeginnerFlowIndentation, getBeginnerIfFlowGuideRows, getBeginnerNextLineIndentation, parseBeginnerIfBlocks } from '../src/services/lingCpp/beginnerFlowGuide';
 import { getBeginnerTextOffsetAtPoint } from '../src/services/lingCpp/beginnerTextPosition';
 import {
   applyPendingBeginnerCodeDrafts,
@@ -1115,6 +1115,30 @@ test('LingCpp 新手控件补全覆盖注册表中的全部控件事件和可用
   assert.ok(labels.has(`${colorPickerName}.打开选择窗口`));
   assert.ok(labels.has(`${colorPickerName}.设置颜色`));
   assert.ok(labels.has(`${colorPickerName}.取颜色`));
+});
+
+test('新手编辑器为设计器组件名生成全拼和首字母补全别名', () => {
+  const designerProject = {
+    schemaVersion: 2 as const,
+    id: 'designer-pinyin-completion',
+    name: '设计器拼音补全',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 800, height: 600, background: '#ffffff', description: '', controls: [{
+        id: 'confirm-button', type: 'Button', name: '确认按钮', content: '确定',
+        width: 120, height: 32, x: 20, y: 20, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible' as const
+      }]
+    }]
+  } as LingWindowProject;
+  const source = '类 MainWindow : 公开 窗体\n    事件 _主窗口_创建完毕()\n    结束\n结束类';
+  const completions = getLingCppDesignerControlCompletions(source, designerProject);
+  const control = completions.find(item => item.label === '确认按钮');
+  const command = completions.find(item => item.label === '确认按钮.设置内容');
+
+  assert.ok(control?.pinyin?.includes('querenanniu'));
+  assert.ok(control?.pinyin?.includes('qran'));
+  assert.ok(command?.pinyin?.includes('qran.sznr'));
 });
 
 test('模块设计器事件补全和诊断复用强类型参数契约', () => {
@@ -2577,6 +2601,136 @@ test('LingCpp AST edit service preserves local constant kind and source order th
   assert.equal(removed.sourceCode.includes('只读标题'), false);
 });
 
+test('LingCpp AST edit service inserts a copied local declaration immediately after its table row', () => {
+  const source = [
+    '类 测试窗口 : 公开 窗体',
+    '公开:',
+    '    空 运行()',
+    '        局部 整数型 次数 = 1',
+    '        局部常量 文本型 标题 = "默认标题"',
+    '        调试输出(标题)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const method = findLingCppMethod(parseLingCpp(source).program, '运行');
+  assert.ok(method);
+  const count = method.locals.find(local => local.name === '次数');
+  const title = method.locals.find(local => local.name === '标题');
+  assert.ok(count);
+  assert.ok(title);
+
+  const addedVariable = applyLingCppAstEdit(source, {
+    kind: 'add-local',
+    className: '测试窗口',
+    methodName: '运行',
+    insertBeforeLine: count.line + 1,
+    local: { name: '局部变量', type: count.type, isArray: Boolean(count.isArray) }
+  });
+  assert.equal(addedVariable.success, true);
+  assert.match(addedVariable.sourceCode, /局部 整数型 次数 = 1\n\s*局部 整数型 局部变量\n\s*局部常量/u);
+
+  const reparsed = findLingCppMethod(parseLingCpp(addedVariable.sourceCode).program, '运行');
+  const reparsedTitle = reparsed?.locals.find(local => local.name === '标题');
+  assert.ok(reparsedTitle);
+  const addedConstant = applyLingCppAstEdit(addedVariable.sourceCode, {
+    kind: 'add-local',
+    className: '测试窗口',
+    methodName: '运行',
+    insertBeforeLine: reparsedTitle.line + 1,
+    local: { name: '局部常量', type: reparsedTitle.type, initialValue: '"默认标题"', isConstant: true }
+  });
+  assert.equal(addedConstant.success, true);
+  assert.match(addedConstant.sourceCode, /局部常量 文本型 标题 = "默认标题"\n\s*局部常量 文本型 局部常量 = "默认标题"\n\s*调试输出/u);
+});
+
+test('LingCpp local declaration notes parse, update, clear and delete with their declarations', () => {
+  const source = [
+    '类 测试窗口 : 公开 窗体',
+    '    空 运行()',
+    '        // 旧变量备注',
+    '        局部 文本型 名称 = ""',
+    '        // 常量备注',
+    '        局部常量 整数型 最大次数 = 10',
+    '结束类'
+  ].join('\n');
+
+  const initialLocals = findLingCppMethod(parseLingCpp(source).program, '运行')?.locals || [];
+  assert.equal(initialLocals.find(local => local.name === '名称')?.note, '旧变量备注');
+  assert.equal(initialLocals.find(local => local.name === '最大次数')?.note, '常量备注');
+
+  const updated = applyLingCppAstEdit(source, {
+    kind: 'update-local',
+    className: '测试窗口',
+    methodName: '运行',
+    localName: '名称',
+    note: '新变量备注'
+  });
+  assert.equal(updated.success, true);
+  assert.match(updated.sourceCode, /\/\/ 新变量备注\n\s*局部 文本型 名称/u);
+  assert.equal(findLingCppMethod(parseLingCpp(updated.sourceCode).program, '运行')?.locals?.find(local => local.name === '名称')?.note, '新变量备注');
+
+  const cleared = applyLingCppAstEdit(updated.sourceCode, {
+    kind: 'update-local',
+    className: '测试窗口',
+    methodName: '运行',
+    localName: '名称',
+    note: ''
+  });
+  assert.equal(cleared.success, true);
+  assert.equal(cleared.sourceCode.includes('新变量备注'), false);
+
+  const removed = applyLingCppAstEdit(cleared.sourceCode, {
+    kind: 'delete-local',
+    className: '测试窗口',
+    methodName: '运行',
+    localName: '最大次数'
+  });
+  assert.equal(removed.success, true);
+  assert.equal(removed.sourceCode.includes('常量备注'), false);
+  assert.equal(removed.sourceCode.includes('最大次数'), false);
+});
+
+test('LingCpp parameter notes parse and round-trip through method signature edits', () => {
+  const source = [
+    '类 测试窗口 : 公开 窗体',
+    '    // 子程序备注',
+    '    // 参数备注 输入：输入文本',
+    '    // 参数备注 次数：最多重试次数',
+    '    空 运行(文本型 输入, 整数型 次数)',
+    '        调试输出(输入)',
+    '结束类'
+  ].join('\n');
+  const method = findLingCppMethod(parseLingCpp(source).program, '运行');
+  assert.equal(method?.note, '子程序备注');
+  assert.equal(method?.parameters[0]?.note, '输入文本');
+  assert.equal(method?.parameters[1]?.note, '最多重试次数');
+
+  const updated = applyLingCppAstEdit(source, {
+    kind: 'update-method-signature',
+    className: '测试窗口',
+    methodName: '运行',
+    parameters: [
+      { type: '文本型', name: '输入', note: '新的输入说明' },
+      { type: '整数型', name: '次数' }
+    ]
+  });
+  assert.equal(updated.success, true);
+  assert.match(updated.sourceCode, /\/\/ 子程序备注\n\s*\/\/ 参数备注 输入：新的输入说明\n\s*空 运行/u);
+  assert.equal(parseLingCpp(updated.sourceCode).program.classes[0]?.methods[0]?.parameters[1]?.note, undefined);
+
+  const cleared = applyLingCppAstEdit(updated.sourceCode, {
+    kind: 'update-method-signature',
+    className: '测试窗口',
+    methodName: '运行',
+    parameters: [
+      { type: '文本型', name: '输入' },
+      { type: '整数型', name: '次数' }
+    ]
+  });
+  assert.equal(cleared.success, true);
+  assert.equal(cleared.sourceCode.includes('参数备注'), false);
+});
+
 test('beginner definition navigation resolves project procedure calls at the cursor', () => {
   const source = `类 网页窗口 : 公开 窗体
 公开:
@@ -2784,7 +2938,7 @@ test('multiple local-variable groups remain freely insertable across one method 
   insertBeforeStatement('中间变量', '乙');
   insertBeforeStatement('尾部变量');
 
-  assert.match(source, /局部 整数型 前置变量\n\s+调试输出\("甲"\)\n\s+局部 整数型 中间变量\n\s+调试输出\("乙"\)\n\s+调试输出\("丙"\)\n\s+局部 整数型 尾部变量/u);
+  assert.match(source, /局部 整数型 前置变量\s+调试输出\("甲"\)\s+局部 整数型 中间变量\s+调试输出\("乙"\)\s+调试输出\("丙"\)\s+局部 整数型 尾部变量/u);
   const method = findLingCppMethod(parseLingCpp(source).program, '运行');
   assert.ok(method);
   assert.deepEqual(
@@ -3385,7 +3539,7 @@ test('generateLingCppNativeWin32Project translates beginner open-window commands
   assert.ok(mainCpp.includes('窗口_打开(L"关于太空冒险客户端", L"custom", 100, 200, true);'));
   assert.ok(mainCpp.includes('窗口_打开(L"关于窗体", L"bottom-right");'));
   assert.ok(mainCpp.includes('ResolveWindowPlacement(spec_, windowWidth, windowHeight, placement, x, y, hasCustomPosition, windowX, windowY)'));
-  assert.ok(mainCpp.includes('L"center", CW_USEDEFAULT, CW_USEDEFAULT, true, true, g_controls_1'));
+  assert.ok(mainCpp.includes('L"center", CW_USEDEFAULT, CW_USEDEFAULT, true, true, 1, false, g_controls_1'));
   assert.ok(mainCpp.includes('WindowSpecMatchesName(g_windows[index], windowName)'));
   assert.ok(mainCpp.includes('void 关于菜单_被选择()'));
   assert.ok(mainCpp.includes('class 关于窗体 : public LingWindowBase'));
@@ -3684,6 +3838,72 @@ test('LingCpp control flow diagnostics reject misplaced and incomplete commands'
   assert.ok(messages.some(message => message.includes('至少需要一个捕获或最终分支')));
   assert.ok(messages.some(message => message.includes('判断循环首 缺少条件表达式')));
   assert.ok(messages.some(message => message.includes('判断循环首 结构缺少结束语句')));
+});
+
+test('beginner flow formatting indents nested loops below conditions', () => {
+  const formatted = formatBeginnerFlowIndentation([
+    '如果真 (条件)',
+    '计次循环首 (次数, 计次变量)',
+    '',
+    '计次循环尾 ()',
+    '如果真结束'
+  ]);
+
+  assert.deepEqual(formatted, [
+    '如果真 (条件)',
+    '    计次循环首 (次数, 计次变量)',
+    '        ',
+    '    计次循环尾 ()',
+    '如果真结束'
+  ]);
+});
+
+test('beginner Enter indentation follows the current nested control-flow depth', () => {
+  const nestedStart = [
+    '如果真 (条件)',
+    '    计次循环首 (次数, 计次变量)'
+  ].join('\n');
+  assert.equal(getBeginnerNextLineIndentation(nestedStart, nestedStart.length), '        ');
+
+  const nestedEnd = `${nestedStart}\n        调试输出(计次变量)\n    计次循环尾 ()`;
+  assert.equal(getBeginnerNextLineIndentation(nestedEnd, nestedEnd.length), '    ');
+
+  const outerEnd = `${nestedEnd}\n如果真结束`;
+  assert.equal(getBeginnerNextLineIndentation(outerEnd, outerEnd.length), '');
+});
+
+test('beginner flow guides keep outer rails while indenting nested rails', () => {
+  const guide = getBeginnerIfFlowGuideRows([
+    '如果真 (条件)',
+    '    计次循环首 (次数, 计次变量)',
+    '        调试输出(计次变量)',
+    '    计次循环尾 ()',
+    '如果真结束'
+  ]);
+
+  assert.deepEqual(guide.map(row => row.tracks), [
+    [{ depth: 0, mark: '┌' }],
+    [{ depth: 0, mark: '│' }, { depth: 1, mark: '┌' }],
+    [{ depth: 0, mark: '│' }, { depth: 1, mark: '│' }],
+    [{ depth: 0, mark: '│' }, { depth: 1, mark: '└' }],
+    [{ depth: 0, mark: '└' }]
+  ]);
+});
+
+test('beginner flow parser marks 如果真 and 计次循环首 as independently foldable blocks', () => {
+  const blocks = parseBeginnerIfBlocks([
+    '如果真 (条件)',
+    '    计次循环首 (3, 次数)',
+    '        调试输出(次数)',
+    '    计次循环尾 ()',
+    '如果真结束'
+  ]);
+
+  assert.deepEqual(blocks.map(block => [block.family, block.startLine, block.endLine]), [
+    ['if', 1, 5],
+    ['loop', 2, 4]
+  ]);
+  assert.equal(blocks[1]?.parent, blocks[0]);
 });
 
 test('generateLingCppNativeWin32Project emits source map and native manifest', () => {
