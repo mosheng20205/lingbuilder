@@ -19,6 +19,7 @@ import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog
 import NewEmojiDesignerControlPreview, { toNewEmojiCssColor } from '../src/components/NewEmojiDesignerControlPreview';
 import {
   CREATABLE_DESIGNER_CONTROL_TYPES,
+  calculateDesignerFitScale,
   StatusBarDesignerPreview,
   TrackBarDesignerPreview,
   hasDedicatedControlPreview,
@@ -98,6 +99,7 @@ import {
   WINDOWS_EXECUTABLE_RESOURCE_FILE
 } from '../src/services/windowDesigner/windowsExecutableIconService';
 import { fetchDesignerImagePreviewBlob, getDesignerImagePreviewSource } from '../src/services/windowDesigner/designerAssetClient';
+
 import {
   appendListViewColumn,
   applyListViewCellMatrix,
@@ -153,6 +155,28 @@ import {
   serializeMenuBarItems,
   validateMenuBarItems
 } from '../src/services/windowDesigner/menuBarItemsModel';
+
+test('designer fit scale remains bounded and repeatable at fractional DPI dimensions', () => {
+  const first = calculateDesignerFitScale(1024.375, 768.625, 1200, 700);
+  const second = calculateDesignerFitScale(1024.375, 768.625, 1200, 700);
+  assert.equal(first, second);
+  assert.ok(first >= 0.25 && first <= 1);
+  assert.equal(calculateDesignerFitScale(200, 150, 4000, 3000), 0.25);
+});
+
+test('designer fit viewport reserves scrollbar gutter and observes content-box measurements', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const styles = await fs.readFile(path.resolve(import.meta.dirname, '../src/index.css'), 'utf8');
+  assert.match(source, /wpf-designer-canvas-viewport/u);
+  assert.match(source, /new ResizeObserver\(entries =>/u);
+  assert.match(source, /contentRect\.width/u);
+  assert.match(source, /lastViewportBox/u);
+  assert.match(source, /getBoundingClientRect\(\)/u);
+  assert.match(source, /updateFitScaleForViewport/u);
+  assert.match(source, /boxSizing: 'border-box'/u);
+  assert.match(styles, /\.wpf-designer-canvas-viewport[\s\S]*scrollbar-gutter:\s*stable both-edges/u);
+  assert.match(styles, /\.wpf-designer-canvas-viewport[\s\S]*overflow-anchor:\s*none/u);
+});
 
 test('窗口源码路径跟随当前解决方案项目源码根目录', () => {
   assert.equal(

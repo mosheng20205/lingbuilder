@@ -66,6 +66,13 @@ textarea {
   color-scheme: light;
 }
 
+/* Keep fit-zoom measurements stable when classic scrollbars appear at high DPI. */
+.wpf-designer-canvas-viewport {
+  box-sizing: border-box;
+  overflow-anchor: none;
+  scrollbar-gutter: stable both-edges;
+}
+
 /* 主要工作台区域不再使用 8–10px 的正文。Windows 100% 缩放下，这些字号的
  * 中文笔画容易在不同 fallback 字体间呈现一清一糊。徽标保持紧凑，正文至少 11px。 */
 :is(#ide-top-toolbar, #vs-dockable-sidebar, #vs-bottom-tabs, #ai-assistant-panel, #diff-window-host)

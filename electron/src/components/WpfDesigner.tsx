@@ -199,6 +199,26 @@ interface DesignerControlInteractionPreview {
 type DesignerZoomMode = 'fit' | 'manual';
 const WINDOW_ROOT_DROP_TARGET = '__layout_window_root__';
 const LINGBUILDER_WINDOW_ICON_PREVIEW = new URL('../../../image/lingbuilder-ide-icon-v2.png', import.meta.url).href;
+const DESIGNER_CANVAS_PADDING = 48;
+const DESIGNER_CANVAS_HORIZONTAL_INSET = DESIGNER_CANVAS_PADDING;
+const DESIGNER_CANVAS_VERTICAL_INSET = 82;
+
+/** Keep fit zoom deterministic when the viewport is measured at fractional DPI sizes. */
+export function calculateDesignerFitScale(
+  viewportWidth: number,
+  viewportHeight: number,
+  canvasWidth: number,
+  canvasHeight: number
+): number {
+  const availableWidth = Math.max(240, viewportWidth - DESIGNER_CANVAS_HORIZONTAL_INSET);
+  const availableHeight = Math.max(180, viewportHeight - DESIGNER_CANVAS_VERTICAL_INSET);
+  const safeCanvasWidth = Math.max(1, canvasWidth);
+  const safeCanvasHeight = Math.max(1, canvasHeight);
+  return Math.max(
+    0.25,
+    Math.min(1, availableWidth / safeCanvasWidth, availableHeight / safeCanvasHeight)
+  );
+}
 
 export function parseStringListPropertyText(text: string): string[] {
   return text.split(/\r?\n/).filter(item => item.length > 0);
@@ -809,24 +829,63 @@ export default function WpfDesigner({
   useEffect(() => {
     const viewport = canvasViewportRef.current;
     if (!viewport || !activeWindow) return;
+    let lastViewportBox: { width: number; height: number } | null = null;
 
-    const updateFitScale = () => {
-      const availableWidth = Math.max(240, viewport.clientWidth - 48);
-      const availableHeight = Math.max(180, viewport.clientHeight - 82);
-      const nextScale = Math.max(
-        0.25,
-        Math.min(1, availableWidth / activeWindow.width, availableHeight / activeWindow.height)
+    const updateFitScale = (measurement?: { width: number; height: number }) => {
+      // ResizeObserver contentRect is fractional and excludes padding/scrollbars. Add the
+      // viewport padding back so the helper receives the same border-box dimensions used
+      // by the initial synchronous measurement.
+      const viewportWidth = measurement?.width ?? viewport.clientWidth;
+      const viewportHeight = measurement?.height ?? viewport.clientHeight;
+      const nextScale = calculateDesignerFitScale(
+        viewportWidth,
+        viewportHeight,
+        activeWindow.width,
+        activeWindow.height
       );
       setFitScale(previous => Math.abs(previous - nextScale) < 0.005 ? previous : nextScale);
     };
 
-    updateFitScale();
-    const observer = new ResizeObserver(updateFitScale);
+    const updateFitScaleForViewport = () => {
+      // A scrollbar changes the content box but not the viewport's outer box.
+      // Ignore that observer pass so fit zoom cannot oscillate at the edge.
+      const rect = viewport.getBoundingClientRect();
+      const nextBox = { width: rect.width, height: rect.height };
+      if (lastViewportBox
+        && Math.abs(lastViewportBox.width - nextBox.width) < 0.5
+        && Math.abs(lastViewportBox.height - nextBox.height) < 0.5) {
+        return;
+      }
+      lastViewportBox = nextBox;
+      updateFitScale();
+    };
+
+    updateFitScaleForViewport();
+    const observer = new ResizeObserver(entries => {
+      const contentRect = entries[0]?.contentRect;
+      if (!contentRect) {
+        updateFitScaleForViewport();
+        return;
+      }
+      const rect = viewport.getBoundingClientRect();
+      const nextBox = { width: rect.width, height: rect.height };
+      if (lastViewportBox
+        && Math.abs(lastViewportBox.width - nextBox.width) < 0.5
+        && Math.abs(lastViewportBox.height - nextBox.height) < 0.5) {
+        return;
+      }
+      lastViewportBox = nextBox;
+      updateFitScale({
+        width: contentRect.width + DESIGNER_CANVAS_HORIZONTAL_INSET,
+        height: contentRect.height + DESIGNER_CANVAS_PADDING
+      });
+    });
+    const handleWindowResize = () => updateFitScaleForViewport();
     observer.observe(viewport);
-    window.addEventListener('resize', updateFitScale);
+    window.addEventListener('resize', handleWindowResize);
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', updateFitScale);
+      window.removeEventListener('resize', handleWindowResize);
     };
   }, [activeWindow?.height, activeWindow?.width]);
 
@@ -2603,7 +2662,7 @@ export default function WpfDesigner({
           </div>
         </div>
 
-        <div ref={canvasViewportRef} className={`flex-1 p-6 flex flex-col overflow-auto items-center justify-start relative select-none ${
+        <div ref={canvasViewportRef} className={`wpf-designer-canvas-viewport flex-1 p-6 flex flex-col overflow-auto items-center justify-start relative select-none ${
           isDarkMode ? 'bg-[#101014]' : 'bg-slate-100/50'
         }`}>
           <div className="mb-2 flex w-full shrink-0 items-center justify-between gap-3 text-[10px] text-slate-500 select-none">
@@ -2666,6 +2725,7 @@ export default function WpfDesigner({
               style={{
                 width: `${activeWindow.width}px`,
                 height: `${activeWindow.height}px`,
+                boxSizing: 'border-box',
                 transform: `scale(${canvasScale})`,
                 transformOrigin: 'top left',
                 backgroundColor: useNewEmojiDesigner ? newEmojiThemePreview.panelBackground : activeWindow.background,
