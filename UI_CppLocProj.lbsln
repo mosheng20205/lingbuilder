@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-3",
+  "startupProjectId": "345342",
   "startupProjectIds": [
-    "lingbuilder-3"
+    "345342"
   ],
   "folders": [
     {
@@ -1042,6 +1042,13 @@
       "name": "独立浏览器管理器",
       "type": "visual-cpp",
       "sourceRoot": "src/win32-fbro-multi-browser-manager",
+      "references": []
+    },
+    {
+      "id": "345342",
+      "name": "345342",
+      "type": "visual-cpp",
+      "sourceRoot": "src/345342",
       "references": []
     }
   ]

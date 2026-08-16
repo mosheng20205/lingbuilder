@@ -4,7 +4,24 @@ export interface FbroBrowserManagerRuntime {
 }
 
 export function generateFbroBrowserManagerRuntime(enabled: boolean): FbroBrowserManagerRuntime {
-  if (!enabled) return { members: '', methods: '' };
+  if (!enabled) {
+    // Keep the generated window base class link-safe when a packaged SDK makes
+    // LINGBUILDER_FBRO_AVAILABLE visible despite this project not enabling FBro.
+    // The full manager below replaces these overloads when FBro is enabled.
+    return {
+      members: '',
+      methods: String.raw`
+    void 浏览器管理器_调整页面() {}
+    bool 浏览器管理器_是否全部关闭() const { return true; }
+    void 浏览器管理器_关闭全部() {}
+    void 浏览器管理器_控件重建前() {}
+    void 浏览器管理器_控件重建后() {}
+    bool 浏览器管理器_处理插件检查定时器(UINT_PTR) { return false; }
+    template<typename TPacket>
+    bool 浏览器管理器_处理进程事件(TPacket&) { return false; }
+`
+    };
+  }
   return {
     members: String.raw`
     struct BrowserManagerInstance {
@@ -153,7 +170,26 @@ export function generateFbroBrowserManagerRuntime(enabled: boolean): FbroBrowser
     }
 
     std::filesystem::path 浏览器管理器_插件路径() const {
-        return (浏览器管理器_程序目录() / L"doubao-downloader").lexically_normal();
+        const auto executableDirectory = 浏览器管理器_程序目录();
+        const auto direct = (executableDirectory / L"doubao-downloader").lexically_normal();
+        std::error_code error;
+        if (std::filesystem::is_directory(direct, error) && !error) return direct;
+        error.clear();
+        const auto assetsRoot = (executableDirectory / L"assets").lexically_normal();
+        const auto sharedAsset = (assetsRoot / L"doubao-downloader").lexically_normal();
+        if (std::filesystem::is_directory(sharedAsset, error) && !error) return sharedAsset;
+        error.clear();
+        for (std::filesystem::directory_iterator iterator(assetsRoot, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (!iterator->is_directory(error) || error) {
+                error.clear();
+                continue;
+            }
+            const auto projectAsset = (iterator->path() / L"doubao-downloader").lexically_normal();
+            if (std::filesystem::is_directory(projectAsset, error) && !error) return projectAsset;
+            error.clear();
+        }
+        return direct;
     }
 
     std::wstring 浏览器管理器_插件检查页地址(const BrowserManagerInstance& instance) const {

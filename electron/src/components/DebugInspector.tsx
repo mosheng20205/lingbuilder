@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { requestWorkbenchPrompt } from '../services/workbench/workbenchConfirmService';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 
 interface Variable { name: string; value: string; type?: string; variablesReference: number }
@@ -53,10 +54,11 @@ export default function DebugInspector({ isDarkMode }: { isDarkMode: boolean }) 
   };
   const addWatch = () => { const expression = watchInput.trim(); if (!expression || watches.some(item => item.expression === expression)) return; const next = [...watches, { expression }]; setWatches(next); setWatchInput(''); if (inspection) void evaluateWatches(inspection.frameId, next); };
   const runAdvanced = async (kind: 'attach' | 'dump' | 'remote') => {
-    const program = window.prompt('输入工作区内可执行文件路径（按 PID 附加可留空）', '') ?? ''; let body: Record<string, unknown>;
-    if (kind === 'attach') body = { pid: Number(window.prompt('输入进程 PID', '')) , ...(program ? { program } : {}) };
-    else if (kind === 'dump') body = { program, coreFile: window.prompt('输入工作区内 .dmp/core 路径', '') || '' };
-    else body = { program, host: window.prompt('远程主机', 'localhost') || 'localhost', port: Number(window.prompt('gdb-remote 端口', '1234')) };
+    const program = await requestWorkbenchPrompt({ title: '可执行文件路径', description: '输入工作区内可执行文件路径（按 PID 附加可留空）', inputLabel: '可执行文件路径' }) ?? '';
+    let body: Record<string, unknown>;
+    if (kind === 'attach') body = { pid: Number(await requestWorkbenchPrompt({ title: '进程 PID', description: '输入要附加的进程 PID', inputLabel: 'PID' })) , ...(program ? { program } : {}) };
+    else if (kind === 'dump') body = { program, coreFile: await requestWorkbenchPrompt({ title: '转储文件路径', description: '输入工作区内 .dmp/core 路径', inputLabel: '转储文件路径' }) || '' };
+    else body = { program, host: await requestWorkbenchPrompt({ title: '远程主机', description: 'gdb-remote 远程主机', inputLabel: '主机', inputValue: 'localhost' }) || 'localhost', port: Number(await requestWorkbenchPrompt({ title: 'gdb-remote 端口', description: 'gdb-remote 端口号', inputLabel: '端口', inputValue: '1234' })) };
     setError(''); try { const result = await request(`/api/debug/${kind}`, { method: 'POST', body: JSON.stringify(body) }); setState(result.session.state); }
     catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   };

@@ -3,7 +3,7 @@ const { verifyUnpacked } = require('./verify-on-demand-sdk-release.cjs');
 
 async function verifyCef3AfterPack(context) {
   const result = await verifyUnpacked(context.appOutDir);
-  console.log(`[SDK 按需下载发布后校验] ${result.modules.map(item => item.moduleId).join('、')} 仅保留轻量元数据，未夹带 sdk/。`);
+  console.log(`[严格精简发布后校验] ${result.modules.map(item => item.moduleId).join('、')} 模块目录和 SDK 资源均未随安装包输出。`);
 }
 
 function resolveProjectRoot(context) {

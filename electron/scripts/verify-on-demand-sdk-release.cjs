@@ -5,7 +5,7 @@ const { promisify } = require('node:util');
 const { findSevenZip, parseSevenZipListing } = require('./verify-cef3-release-sdk.cjs');
 
 const execFileAsync = promisify(execFile);
-const SDK_MODULE_IDS = ['lingbuilder.cef3.sdk', 'lingbuilder.fbro.sdk'];
+const EXCLUDED_MODULE_IDS = ['lingbuilder.cef3.sdk', 'lingbuilder.fbro.sdk'];
 const PACKAGED_MODULE_ROOT = 'resources/default-workspace/.lingbuilder/modules';
 const FORBIDDEN_SDK_ASSET_NAMES = new Set([
   'libcef.dll',
@@ -22,14 +22,10 @@ const ARIA2_RESOURCE_PATHS = [
 async function verifyUnpacked(appOutDir) {
   const moduleRoot = path.join(appOutDir, ...PACKAGED_MODULE_ROOT.split('/'));
   const results = [];
-  for (const moduleId of SDK_MODULE_IDS) {
+  for (const moduleId of EXCLUDED_MODULE_IDS) {
     const root = path.join(moduleRoot, moduleId);
-    const manifest = JSON.parse(await fsp.readFile(path.join(root, 'lingbuilder.module.json'), 'utf8'));
-    const readme = await fsp.readFile(path.join(root, 'README.md'), 'utf8');
-    if (manifest.schemaVersion !== 2 || manifest.id !== moduleId) throw new Error(`${moduleId} 轻量模块清单无效。`);
-    if (readme.trim().length < 100) throw new Error(`${moduleId} README 缺失或内容过短。`);
-    if (await pathExists(path.join(root, 'sdk'))) throw new Error(`发布目录仍包含 ${moduleId}/sdk，按需下载瘦身失败。`);
-    results.push({ moduleId, version: manifest.version });
+    if (await pathExists(root)) throw new Error(`发布目录仍包含 ${moduleId}，严格精简发布失败。`);
+    results.push({ moduleId, excluded: true });
   }
   await assertNoHiddenSdkAssets(appOutDir);
   await assertBundledAria2(appOutDir);
@@ -46,20 +42,15 @@ async function verifyInstaller(installerPath) {
   });
   const entries = parseSevenZipListing(stdout);
   const normalizedPaths = [...entries.keys()].map(normalizeRelative);
-  for (const moduleId of SDK_MODULE_IDS) {
+  for (const moduleId of EXCLUDED_MODULE_IDS) {
     const prefix = `${PACKAGED_MODULE_ROOT}/${moduleId}/`;
-    for (const required of ['lingbuilder.module.json', 'README.md']) {
-      if (!normalizedPaths.includes(`${prefix}${required}`)) throw new Error(`安装包缺少 ${prefix}${required}。`);
-    }
-    if (normalizedPaths.some(item => item.startsWith(`${prefix}sdk/`))) {
-      throw new Error(`安装包仍包含 ${moduleId}/sdk，按需下载瘦身失败。`);
-    }
+    if (normalizedPaths.some(item => item.startsWith(prefix))) throw new Error(`安装包仍包含 ${moduleId}，严格精简发布失败。`);
   }
   assertNoHiddenSdkAssetPaths(normalizedPaths);
   for (const required of ARIA2_RESOURCE_PATHS) {
     if (!normalizedPaths.includes(required)) throw new Error(`安装包缺少 aria2 运行时资源：${required}。`);
   }
-  return { mode: 'installer', target: installerPath, modules: SDK_MODULE_IDS.map(moduleId => ({ moduleId })) };
+  return { mode: 'installer', target: installerPath, modules: EXCLUDED_MODULE_IDS.map(moduleId => ({ moduleId, excluded: true })) };
 }
 
 async function assertBundledAria2(appOutDir) {
@@ -128,4 +119,4 @@ if (require.main === module) main().catch(error => {
   process.exitCode = 1;
 });
 
-module.exports = { ARIA2_RESOURCE_PATHS, FORBIDDEN_SDK_ASSET_NAMES, SDK_MODULE_IDS, PACKAGED_MODULE_ROOT, verifyInstaller, verifyUnpacked };
+module.exports = { ARIA2_RESOURCE_PATHS, EXCLUDED_MODULE_IDS, FORBIDDEN_SDK_ASSET_NAMES, PACKAGED_MODULE_ROOT, verifyInstaller, verifyUnpacked };

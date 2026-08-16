@@ -3,6 +3,7 @@ import { normalizeControlReferenceCallSnippet, normalizeControlReferenceParamete
 import { getWin32ControlsForModule, getWin32RuntimeControlContract, getWin32RuntimeControlContracts, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
 import { STANDARD_LIBRARY_MODULES } from './standardLibraryModules';
 import { PROTOBUF_MODULE } from './protobufModule';
+import { ARIA2_MODULE } from './aria2Module';
 import { SYSTEM_LIBRARY_MODULES } from './systemLibraryModules';
 import { NETWORK_LIBRARY_MODULES } from './networkLibraryModules';
 import { DATA_MEDIA_MODULES } from './dataMediaModules';
@@ -273,6 +274,7 @@ function normalizeBuiltinSnippetCalls(value: string, bindings: readonly ModuleCo
 
 export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   ...STANDARD_LIBRARY_MODULES,
+  ARIA2_MODULE,
   PROTOBUF_MODULE,
   ...SYSTEM_LIBRARY_MODULES,
   ...NETWORK_LIBRARY_MODULES,

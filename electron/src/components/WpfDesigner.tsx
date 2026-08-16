@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import {
   Check,
   CheckSquare,
@@ -1337,8 +1338,13 @@ export default function WpfDesigner({
     }
   };
 
-  const handleAddWindow = () => {
-    const backend = newEmojiModuleEnabled && globalThis.window.confirm('新窗口是否使用 new_emoji 后端？\n选择“取消”将创建 Win32 窗口。')
+  const handleAddWindow = async () => {
+    const backend = newEmojiModuleEnabled && await requestWorkbenchConfirm({
+      title: '选择新窗口 UI 后端',
+      description: '新窗口是否使用 new_emoji 后端？\n选择“取消”将创建 Win32 窗口。',
+      confirmLabel: '使用 new_emoji',
+      cancelLabel: '使用 Win32'
+    })
       ? 'new-emoji'
       : 'win32';
     const nextWindow = createBlankWindow(project.windows.length + 1, backend);
@@ -1665,7 +1671,12 @@ export default function WpfDesigner({
       supportsControl: supportsWithEffectiveModules
     });
     if (plan.missingModules.length) {
-      const accepted = window.confirm(`粘贴需要启用模块：\n${plan.missingModules.join('\n')}\n\n是否现在启用？`);
+      const accepted = await requestWorkbenchConfirm({
+        title: '粘贴需要启用模块',
+        description: `${plan.missingModules.join('\n')}\n\n是否现在启用？`,
+        confirmLabel: '启用并继续',
+        cancelLabel: '取消粘贴'
+      });
       if (!accepted) throw new Error(`已取消粘贴；未启用模块：${plan.missingModules.join('、')}。`);
       for (const moduleId of plan.missingModules) {
         const response = await fetch('/api/modules/project/enable', {
@@ -1687,7 +1698,12 @@ export default function WpfDesigner({
     }
     if (!plan.ok) throw new Error(plan.errors.join('；'));
     if (plan.warnings.length) {
-      const accepted = window.confirm(`粘贴预览：\n${plan.warnings.join('\n')}\n\n是否接受转换并粘贴？`);
+      const accepted = await requestWorkbenchConfirm({
+        title: '粘贴预览',
+        description: `${plan.warnings.join('\n')}\n\n是否接受转换并粘贴？`,
+        confirmLabel: '接受并粘贴',
+        cancelLabel: '取消粘贴'
+      });
       if (!accepted) throw new Error('已取消粘贴。');
     }
     setProject(plan.project);
@@ -2357,7 +2373,7 @@ export default function WpfDesigner({
 
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={handleAddWindow}
+            onClick={() => { void handleAddWindow(); }}
             className={`p-1.5 rounded border cursor-pointer transition-colors ${
               isDarkMode
                 ? 'bg-[#25252b] border-slate-700/40 text-emerald-400 hover:bg-[#30303a]'

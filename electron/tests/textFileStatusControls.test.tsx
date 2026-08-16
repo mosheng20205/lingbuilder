@@ -25,6 +25,8 @@ test('text file status controls expose the selected encoding and EOL as accessib
   assert.match(markup, /<option value="utf8bom" selected="">UTF-8（带 BOM）<\/option>/u);
   assert.match(markup, /<option value="crlf" selected="">CRLF<\/option>/u);
   assert.match(markup, /focus-visible:ring-2/u);
+  assert.match(markup, /\[&amp;&gt;option\]:bg-\[#252526\]/u);
+  assert.match(markup, /\[&amp;&gt;option\]:text-slate-200/u);
   assert.match(markup, /flex-wrap/u);
   assert.match(markup, /role="status"/u);
   assert.match(markup, /格式待保存/u);
@@ -46,6 +48,8 @@ test('text file status controls render light-theme and disabled semantics', () =
   assert.match(markup, /<option value="utf16le" selected="">UTF-16 LE<\/option>/u);
   assert.match(markup, /<option value="lf" selected="">LF<\/option>/u);
   assert.match(markup, /border-slate-300/u);
+  assert.match(markup, /\[&amp;&gt;option\]:bg-white/u);
+  assert.match(markup, /\[&amp;&gt;option\]:text-slate-800/u);
   assert.match(markup, /disabled:cursor-not-allowed/u);
 });
 

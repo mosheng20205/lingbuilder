@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, KeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { Check, Plus, Trash2 } from 'lucide-react';
+import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import {
   tokenizeEplStatement,
   EPL_TOKEN_COLORS_DARK,
@@ -9,7 +10,9 @@ import {
   type EplTokenColorTheme
 } from '../services/eplTokenizer';
 import {
+  buildEplFoldableBlocks,
   EPL_FLOW_GUIDE_COLORS,
+  EplMethodSignature,
   EplHeaderEntry,
   EplHeaderLine,
   EplStatementEntry,
@@ -21,12 +24,16 @@ import {
   buildEplStatementGuides,
   cloneEplStructuredDocument,
   createBlankEplStatement,
+  createBlankEplConstantBlock,
   createBlankEplVariable,
   createBlankEplVariableBlock,
+  getEplMethodCall,
   getEplSubprogramStatements,
   getEplSubprogramVariables,
+  getEplStructuredEditorTheme,
   getEplTypeSuggestions,
   parseEplStructuredDocument,
+  replaceEplMethodArgument,
   serializeEplStructuredDocument
 } from '../services/eplStructuredEditor';
 
@@ -39,9 +46,11 @@ interface EplStructuredEditorProps {
   onFocusHandled?: () => void;
   editorFontSize?: number;
   onFontSizeChange?: (size: number) => void;
+  /** Module bindings are projected here by the LingCpp editor host. */
+  methodSignatures?: EplMethodSignature[];
 }
 
-type VariableField = 'name' | 'type' | 'isStatic' | 'isArray' | 'remark';
+type VariableField = 'name' | 'type' | 'isStatic' | 'isArray' | 'initialValue' | 'remark';
 type SubprogramField = 'name' | 'returnType' | 'isPublic' | 'isEasyPackage' | 'remark' | 'returnRemark';
 
 interface EplContextMenuState {
@@ -65,7 +74,8 @@ export default function EplStructuredEditor({
   focusHandlerName,
   onFocusHandled,
   editorFontSize,
-  onFontSizeChange
+  onFontSizeChange,
+  methodSignatures = []
 }: EplStructuredEditorProps) {
   const documentModel = useMemo(() => parseEplStructuredDocument(sourceCode), [sourceCode]);
   useEffect(() => {
@@ -94,11 +104,12 @@ export default function EplStructuredEditor({
       const customEvent = event as CustomEvent<{ text: string }>;
       const text = customEvent.detail.text;
       
-      const focusedEl = document.activeElement as HTMLInputElement;
+      const focusedEl = document.activeElement as HTMLElement | null;
       if (focusedEl && focusedEl.getAttribute('data-epl-focus')?.startsWith('stmt-')) {
-        const start = focusedEl.selectionStart ?? focusedEl.value.length;
-        const end = focusedEl.selectionEnd ?? focusedEl.value.length;
-        const val = focusedEl.value;
+        const input = focusedEl instanceof HTMLInputElement ? focusedEl : null;
+        const val = input ? input.value : (focusedEl.textContent || '');
+        const start = input?.selectionStart ?? val.length;
+        const end = input?.selectionEnd ?? val.length;
         const newVal = val.slice(0, start) + text + val.slice(end);
         
         const match = focusedEl.getAttribute('data-epl-focus')?.match(/^stmt-(\d+)-(\d+)$/);
@@ -142,7 +153,11 @@ export default function EplStructuredEditor({
             window.requestAnimationFrame(() => {
               focusedEl.focus();
               const newPos = start + text.length;
-              focusedEl.setSelectionRange(newPos, newPos);
+              if (focusedEl instanceof HTMLInputElement) {
+                focusedEl.setSelectionRange(newPos, newPos);
+              } else {
+                placeCaretAtEnd(focusedEl);
+              }
             });
           }
         }
@@ -159,8 +174,20 @@ export default function EplStructuredEditor({
   const [pendingFocusTarget, setPendingFocusTarget] = useState<string | null>(null);
   const [collapsedSubprogramIds, setCollapsedSubprogramIds] = useState<Set<string>>(() => new Set());
   const [collapsedVariableBlockIds, setCollapsedVariableBlockIds] = useState<Set<string>>(() => new Set());
+  const [collapsedStatementBlockIds, setCollapsedStatementBlockIds] = useState<Set<string>>(() => new Set());
+  const [expandedMethodStatementIds, setExpandedMethodStatementIds] = useState<Set<string>>(() => new Set());
   const [contextMenu, setContextMenu] = useState<EplContextMenuState | null>(null);
   const [activePosition, setActivePosition] = useState<ActiveEditorPosition | null>(null);
+  const [selectedSubprogramId, setSelectedSubprogramId] = useState<string | null>(null);
+  const [selectedDeclarationIds, setSelectedDeclarationIds] = useState<Set<string>>(() => new Set());
+  const [recentlyInsertedBlockId, setRecentlyInsertedBlockId] = useState<string | null>(null);
+  const [rejectedDeletionId, setRejectedDeletionId] = useState<string | null>(null);
+  const [deletingSubprogramId, setDeletingSubprogramId] = useState<string | null>(null);
+  const declarationDragAnchorRef = useRef<string | null>(null);
+  const declarationDragActiveRef = useRef(false);
+  const deleteTimerRef = useRef<number | null>(null);
+  const statementDraftsRef = useRef<Record<string, string>>({});
+  const editorTheme = getEplStructuredEditorTheme(isDarkMode);
 
   // Undo/Redo stack
   const undoStackRef = useRef<string[]>([]);
@@ -180,6 +207,13 @@ export default function EplStructuredEditor({
     // Clear redo stack on new edit
     redoStackRef.current = [];
     const draft = cloneEplStructuredDocument(documentModel);
+    Object.entries(statementDraftsRef.current).forEach(([id, text]) => {
+      draft.subprograms.forEach(subprogram => {
+        const statement = subprogram.body.find(entry => entry.kind === 'statement' && entry.id === id);
+        if (statement?.kind === 'statement') statement.text = text;
+      });
+    });
+    statementDraftsRef.current = {};
     mutator(draft);
     onChange(serializeEplStructuredDocument(draft));
   };
@@ -237,6 +271,41 @@ export default function EplStructuredEditor({
     setCollapsedVariableBlockIds(previous => new Set([...previous].filter(id => validIds.has(id))));
   }, [documentModel.subprograms]);
 
+  useEffect(() => {
+    const validIds = new Set(
+      documentModel.subprograms.flatMap(subprogram => buildEplFoldableBlocks(subprogram.body).map(block => block.id))
+    );
+    setCollapsedStatementBlockIds(previous => new Set([...previous].filter(id => validIds.has(id))));
+    setExpandedMethodStatementIds(previous => new Set([...previous].filter(id => (
+      documentModel.subprograms.some(subprogram => subprogram.body.some(entry => entry.id === id))
+    ))));
+  }, [documentModel.subprograms]);
+
+  useEffect(() => {
+    const endDeclarationDrag = () => {
+      declarationDragActiveRef.current = false;
+      declarationDragAnchorRef.current = null;
+    };
+    window.addEventListener('pointerup', endDeclarationDrag);
+    return () => window.removeEventListener('pointerup', endDeclarationDrag);
+  }, []);
+
+  useEffect(() => () => {
+    if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!recentlyInsertedBlockId) return;
+    const timer = window.setTimeout(() => setRecentlyInsertedBlockId(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [recentlyInsertedBlockId]);
+
+  useEffect(() => {
+    if (!rejectedDeletionId) return;
+    const timer = window.setTimeout(() => setRejectedDeletionId(null), 420);
+    return () => window.clearTimeout(timer);
+  }, [rejectedDeletionId]);
+
   const rememberPosition = (position: ActiveEditorPosition) => {
     setActivePosition(position);
   };
@@ -291,6 +360,48 @@ export default function EplStructuredEditor({
   const setAllSubprogramsCollapsed = (collapsed: boolean) => {
     setCollapsedSubprogramIds(collapsed ? new Set(documentModel.subprograms.map(subprogram => subprogram.id)) : new Set());
     closeContextMenu();
+  };
+
+  const declarationRows = useMemo(() => buildDeclarationRows(documentModel), [documentModel]);
+
+  const selectDeclaration = (id: string, additive: boolean) => {
+    setSelectedDeclarationIds(previous => additive ? new Set([...previous, id]) : new Set([id]));
+  };
+
+  const beginDeclarationSelection = (event: ReactPointerEvent, id: string) => {
+    if (isEditableElement(event.target)) return;
+    declarationDragAnchorRef.current = id;
+    declarationDragActiveRef.current = true;
+    selectDeclaration(id, event.ctrlKey || event.metaKey);
+  };
+
+  const extendDeclarationSelection = (id: string) => {
+    const anchor = declarationDragAnchorRef.current;
+    if (!declarationDragActiveRef.current || !anchor) return;
+    setSelectedDeclarationIds(new Set(getDeclarationRange(declarationRows, anchor, id)));
+  };
+
+  const deleteSelectedDeclarations = () => {
+    if (readOnly || selectedDeclarationIds.size === 0) return;
+    const selectedRows = declarationRows.filter(row => selectedDeclarationIds.has(row.id));
+    const protectedRow = selectedRows.find(row => row.protected);
+    if (protectedRow) {
+      setRejectedDeletionId(protectedRow.id);
+      return;
+    }
+    const selectedIds = new Set(selectedRows.map(row => row.id));
+    commitDocument(draft => {
+      draft.header = draft.header.filter(entry => !(entry.kind === 'programVariable' && selectedIds.has(entry.variable.id)));
+      draft.subprograms.forEach(subprogram => {
+        subprogram.body.forEach(entry => {
+          if (entry.kind === 'variables') {
+            entry.variables = entry.variables.filter(variable => !selectedIds.has(variable.id));
+          }
+        });
+        subprogram.body = subprogram.body.filter(entry => entry.kind !== 'variables' || entry.variables.length > 0);
+      });
+    });
+    setSelectedDeclarationIds(new Set());
   };
 
   const getCurrentSubprogramIndex = (preferredIndex?: number) => {
@@ -363,7 +474,9 @@ export default function EplStructuredEditor({
     commitDocument(draft => {
       const entry = draft.subprograms[subprogramIndex]?.body[bodyIndex];
       if (entry?.kind !== 'variables') return;
-      entry.variables.splice(nextIndex, 0, createBlankEplVariable('local', `${entry.id}-var-new-${nextIndex}`));
+      const variable = createBlankEplVariable('local', `${entry.id}-var-new-${nextIndex}`);
+      if (entry.declarationKind === 'constant') variable.initialValue = '""';
+      entry.variables.splice(nextIndex, 0, variable);
     });
   };
 
@@ -377,7 +490,27 @@ export default function EplStructuredEditor({
     commitDocument(draft => {
       const target = draft.subprograms[subprogramIndex]?.body[bodyIndex];
       if (target?.kind !== 'variables') return;
-      target.variables.push(createBlankEplVariable('local', `${target.id}-var-new-${nextIndex}`));
+      const variable = createBlankEplVariable('local', `${target.id}-var-new-${nextIndex}`);
+      if (target.declarationKind === 'constant') variable.initialValue = '""';
+      target.variables.push(variable);
+    });
+  };
+
+  const toggleStatementBlockCollapse = (blockId: string) => {
+    setCollapsedStatementBlockIds(previous => {
+      const next = new Set(previous);
+      if (next.has(blockId)) next.delete(blockId);
+      else next.add(blockId);
+      return next;
+    });
+  };
+
+  const toggleMethodParameters = (statementId: string) => {
+    setExpandedMethodStatementIds(previous => {
+      const next = new Set(previous);
+      if (next.has(statementId)) next.delete(statementId);
+      else next.add(statementId);
+      return next;
     });
   };
 
@@ -415,7 +548,9 @@ export default function EplStructuredEditor({
 
     const insertIndex = getVariableBlockInsertIndex(subprogramIndex, preferredBodyIndex);
     const indent = getIndentNearBodyIndex(subprogram, insertIndex);
+    const blockId = `${subprogram.id}-vars-new-${insertIndex}`;
     setPendingFocusTarget(`local-var-name-${subprogramIndex}-${insertIndex}-0`);
+    setRecentlyInsertedBlockId(blockId);
     rememberPosition({ subprogramIndex, bodyIndex: insertIndex, kind: 'variableBlock' });
     setCollapsedSubprogramIds(previous => {
       const next = new Set(previous);
@@ -426,7 +561,33 @@ export default function EplStructuredEditor({
     commitDocument(draft => {
       const target = draft.subprograms[subprogramIndex];
       if (!target) return;
-      target.body.splice(insertIndex, 0, createBlankEplVariableBlock(`${target.id}-vars-new-${insertIndex}`, indent));
+      target.body.splice(insertIndex, 0, createBlankEplVariableBlock(blockId, indent));
+    });
+  };
+
+  const insertLocalConstantBlockAtCursor = (preferredSubprogramIndex?: number, preferredBodyIndex?: number) => {
+    const subprogramIndex = getCurrentSubprogramIndex(preferredSubprogramIndex);
+    if (subprogramIndex === undefined) return;
+
+    const subprogram = documentModel.subprograms[subprogramIndex];
+    if (!subprogram) return;
+
+    const insertIndex = getVariableBlockInsertIndex(subprogramIndex, preferredBodyIndex);
+    const indent = getIndentNearBodyIndex(subprogram, insertIndex);
+    const blockId = `${subprogram.id}-constants-new-${insertIndex}`;
+    setPendingFocusTarget(`local-var-name-${subprogramIndex}-${insertIndex}-0`);
+    setRecentlyInsertedBlockId(blockId);
+    rememberPosition({ subprogramIndex, bodyIndex: insertIndex, kind: 'variableBlock' });
+    setCollapsedSubprogramIds(previous => {
+      const next = new Set(previous);
+      next.delete(subprogram.id);
+      return next;
+    });
+
+    commitDocument(draft => {
+      const target = draft.subprograms[subprogramIndex];
+      if (!target) return;
+      target.body.splice(insertIndex, 0, createBlankEplConstantBlock(blockId, indent));
     });
   };
 
@@ -456,10 +617,28 @@ export default function EplStructuredEditor({
     });
   };
 
-  const deleteEmptyStatement = (subprogramIndex: number, bodyIndex: number) => {
+  const rememberStatementDraft = (statementId: string, value: string) => {
+    statementDraftsRef.current[statementId] = value;
+  };
+
+  const updateStatementMethodArgument = (
+    subprogramIndex: number,
+    bodyIndex: number,
+    argumentIndex: number,
+    value: string
+  ) => {
+    commitDocument(draft => {
+      const entry = draft.subprograms[subprogramIndex]?.body[bodyIndex];
+      if (entry?.kind === 'statement') {
+        entry.text = replaceEplMethodArgument(entry.text, argumentIndex, value);
+      }
+    });
+  };
+
+  const deleteEmptyStatement = (subprogramIndex: number, bodyIndex: number, statementText?: string) => {
     const subprogram = documentModel.subprograms[subprogramIndex];
     const entry = subprogram?.body[bodyIndex];
-    if (!subprogram || readOnly || entry?.kind !== 'statement' || entry.text.trim()) return;
+    if (!subprogram || readOnly || entry?.kind !== 'statement' || (statementText ?? entry.text).trim()) return;
 
     setPendingFocusTarget(getStatementFocusAfterRemoval(subprogram, subprogramIndex, bodyIndex));
     rememberPosition({ subprogramIndex, bodyIndex: Math.max(0, bodyIndex - 1), kind: 'statement' });
@@ -467,27 +646,30 @@ export default function EplStructuredEditor({
       const target = draft.subprograms[subprogramIndex];
       if (!target) return;
       const targetEntry = target.body[bodyIndex];
-      if (targetEntry?.kind === 'statement' && !targetEntry.text.trim()) {
+      if (targetEntry?.kind === 'statement' && !(statementText ?? targetEntry.text).trim()) {
         target.body.splice(bodyIndex, 1);
       }
     });
   };
 
-  const insertStatement = (subprogramIndex: number, bodyIndex: number, indent: string) => {
+  const insertStatement = (subprogramIndex: number, bodyIndex: number, indent: string, statementText?: string) => {
     const nextIndex = bodyIndex + 1;
     setPendingFocusTarget(`stmt-${subprogramIndex}-${nextIndex}`);
     rememberPosition({ subprogramIndex, bodyIndex: nextIndex, kind: 'statement' });
     commitDocument(draft => {
       const subprogram = draft.subprograms[subprogramIndex];
       if (!subprogram) return;
+      const currentEntry = subprogram.body[bodyIndex];
+      if (currentEntry?.kind === 'statement' && statementText !== undefined) currentEntry.text = statementText;
       subprogram.body.splice(nextIndex, 0, createBlankEplStatement(`${subprogram.id}-stmt-new-${nextIndex}`, indent));
     });
   };
 
-  const changeStatementIndent = (subprogramIndex: number, bodyIndex: number, direction: 1 | -1) => {
+  const changeStatementIndent = (subprogramIndex: number, bodyIndex: number, direction: 1 | -1, statementText?: string) => {
     commitDocument(draft => {
       const entry = draft.subprograms[subprogramIndex]?.body[bodyIndex];
       if (entry?.kind !== 'statement') return;
+      if (statementText !== undefined) entry.text = statementText;
       if (direction > 0) {
         entry.indent += '    ';
         return;
@@ -522,16 +704,20 @@ export default function EplStructuredEditor({
     });
   };
 
-  const deleteSubprogram = (subprogramIndex: number) => {
+  const deleteSubprogram = async (subprogramIndex: number) => {
     const subprogram = documentModel.subprograms[subprogramIndex];
     if (!subprogram || readOnly) return;
 
-    const confirmed = window.confirm(`确定删除子程序 ${subprogram.name || '未命名子程序'} 吗？`);
-    if (!confirmed) return;
+    if (!await requestWorkbenchConfirm({ title: '删除确认', description: `确定删除子程序 ${subprogram.name || '未命名子程序'} 吗？`, confirmLabel: '删除', cancelLabel: '取消' })) return;
 
-    commitDocument(draft => {
-      draft.subprograms.splice(subprogramIndex, 1);
-    });
+    setDeletingSubprogramId(subprogram.id);
+    deleteTimerRef.current = window.setTimeout(() => {
+      commitDocument(draft => {
+        draft.subprograms.splice(subprogramIndex, 1);
+      });
+      setDeletingSubprogramId(null);
+      deleteTimerRef.current = null;
+    }, 160);
     closeContextMenu();
   };
 
@@ -611,6 +797,24 @@ export default function EplStructuredEditor({
   };
 
   const handleEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' && contextMenu) {
+      event.preventDefault();
+      closeContextMenu();
+      return;
+    }
+
+    if (event.key === 'F10' && selectedDeclarationIds.size > 0) {
+      event.preventDefault();
+      deleteSelectedDeclarations();
+      return;
+    }
+
+    if (event.key === 'Delete' && selectedDeclarationIds.size > 0 && !isEditableElement(event.target)) {
+      event.preventDefault();
+      deleteSelectedDeclarations();
+      return;
+    }
+
     // Alt+Arrow: move line
     if (event.altKey && !event.ctrlKey && !event.metaKey) {
       if (event.key === 'ArrowUp') {
@@ -668,6 +872,13 @@ export default function EplStructuredEditor({
       event.preventDefault();
       insertLocalVariableBlockAtCursor();
       closeContextMenu();
+      return;
+    }
+
+    if (key === 'b') {
+      event.preventDefault();
+      insertLocalConstantBlockAtCursor();
+      closeContextMenu();
     }
   };
 
@@ -679,9 +890,17 @@ export default function EplStructuredEditor({
       onContextMenu={event => openContextMenu(event)}
       style={{
         fontSize: `${editorFontSize || 14}px`,
-        '--editor-font-size': `${editorFontSize || 14}px`
+        '--editor-font-size': `${editorFontSize || 14}px`,
+        '--epl-keyword': editorTheme.keyword,
+        '--epl-command': editorTheme.command,
+        '--epl-string': editorTheme.string,
+        '--epl-comment': editorTheme.comment,
+        '--epl-variable': editorTheme.variable,
+        '--epl-number': editorTheme.number,
+        '--epl-declaration-label': editorTheme.declarationLabel,
+        '--epl-constant': editorTheme.constant
       } as CSSProperties}
-      className={`h-full overflow-auto px-4 py-3 text-[0.8em] font-mono tabular-nums outline-none ${
+      className={`relative h-full overflow-auto px-4 py-3 text-[0.8em] font-mono tabular-nums outline-none ${
       isDarkMode ? 'bg-[#1e1e1e] text-[#d4d4d4]' : 'bg-white text-slate-850'
     }`}
     >
@@ -713,14 +932,21 @@ export default function EplStructuredEditor({
                   subprogramRefs.current[subprogram.id] = node;
                 }}
                 onFocusCapture={() => rememberPosition({ subprogramIndex, kind: 'subprogram' })}
-                onMouseDownCapture={() => rememberPosition({ subprogramIndex, kind: 'subprogram' })}
+                onMouseDownCapture={() => {
+                  rememberPosition({ subprogramIndex, kind: 'subprogram' });
+                  setSelectedSubprogramId(subprogram.id);
+                }}
                 onContextMenu={event => {
                   event.stopPropagation();
                   openContextMenu(event, subprogramIndex);
                 }}
-                className={`relative rounded-[3px] border ${
+                className={`group relative rounded-[3px] border transition-opacity duration-150 ${
+                  deletingSubprogramId === subprogram.id ? 'pointer-events-none opacity-0' : 'opacity-100'
+                } ${selectedSubprogramId === subprogram.id ? (
+                  isDarkMode ? 'border-blue-400 ring-1 ring-blue-500/70 bg-[#202024]' : 'border-blue-500 ring-1 ring-blue-500/50 bg-slate-50'
+                ) : (
                   isDarkMode ? 'border-[#34343c] bg-[#202024]' : 'border-slate-300 bg-slate-50'
-                }`}
+                )}`}
               >
                 <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${
                   isDarkMode ? 'bg-[#0bbdff]' : 'bg-blue-600'
@@ -729,11 +955,15 @@ export default function EplStructuredEditor({
                   isCollapsed={isSubprogramCollapsed}
                   isDarkMode={isDarkMode}
                   label={isSubprogramCollapsed ? '展开子程序' : '收缩子程序'}
-                  className="absolute left-4 top-3"
+                  className="absolute left-3"
                   onToggle={() => toggleSubprogramCollapse(subprogram.id)}
                 />
                 <div className="pl-12 pr-3 py-2">
-                  <div className="flex items-start gap-2">
+                  <div
+                    onPointerDown={event => beginDeclarationSelection(event, subprogram.id)}
+                    onPointerEnter={() => extendDeclarationSelection(subprogram.id)}
+                    className={`${selectedDeclarationIds.has(subprogram.id) ? 'rounded-[2px] ring-1 ring-blue-400/70' : ''} ${rejectedDeletionId === subprogram.id ? 'animate-[epl-declaration-reject_0.42s_ease-in-out]' : ''}`}
+                  >
                     <SubprogramHeader
                       subprogram={subprogram}
                       subprogramIndex={subprogramIndex}
@@ -742,21 +972,21 @@ export default function EplStructuredEditor({
                       compact={isSubprogramCollapsed}
                       onUpdate={updateSubprogram}
                     />
-                    <button
-                      type="button"
-                      onClick={() => deleteSubprogram(subprogramIndex)}
-                      disabled={readOnly}
-                      title="删除子程序"
-                      aria-label="删除子程序"
-                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                        isDarkMode
-                          ? 'border-[#4a2f35] bg-[#2a1f22] text-rose-300 hover:bg-[#3a2429]'
-                          : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                      }`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => { void deleteSubprogram(subprogramIndex); }}
+                    disabled={readOnly}
+                    title="删除子程序"
+                    aria-label="删除子程序"
+                    className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-[2px] border opacity-0 transition-all group-hover:opacity-100 focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isDarkMode
+                        ? 'border-[#4a2f35] bg-[#2a1f22] text-rose-300 hover:bg-[#3a2429]'
+                        : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                    }`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
 
                   {!isSubprogramCollapsed && (
                     <SubprogramBody
@@ -765,6 +995,12 @@ export default function EplStructuredEditor({
                       isDarkMode={isDarkMode}
                       readOnly={readOnly}
                       collapsedVariableBlockIds={collapsedVariableBlockIds}
+                      collapsedStatementBlockIds={collapsedStatementBlockIds}
+                      expandedMethodStatementIds={expandedMethodStatementIds}
+                      methodSignatures={methodSignatures}
+                      recentlyInsertedBlockId={recentlyInsertedBlockId}
+                      selectedDeclarationIds={selectedDeclarationIds}
+                      rejectedDeletionId={rejectedDeletionId}
                       programVariables={documentModel.header
                         .filter(entry => entry.kind === 'programVariable')
                         .map(entry => entry.variable.name)
@@ -775,13 +1011,19 @@ export default function EplStructuredEditor({
                       onRememberPosition={rememberPosition}
                       onOpenContextMenu={openContextMenu}
                       onToggleVariableBlock={toggleVariableBlockCollapse}
+                      onToggleStatementBlock={toggleStatementBlockCollapse}
+                      onToggleMethodParameters={toggleMethodParameters}
                       onUpdateLocalVariable={updateLocalVariable}
                       onInsertLocalVariable={insertLocalVariable}
                       onAppendLocalVariable={appendLocalVariable}
                       onUpdateStatement={updateStatement}
+                      onRememberStatementDraft={rememberStatementDraft}
+                      onUpdateStatementMethodArgument={updateStatementMethodArgument}
                       onInsertStatement={insertStatement}
                       onDeleteEmptyStatement={deleteEmptyStatement}
                       onIndentStatement={changeStatementIndent}
+                      onBeginDeclarationSelection={beginDeclarationSelection}
+                      onExtendDeclarationSelection={extendDeclarationSelection}
                     />
                   )}
                 </div>
@@ -832,12 +1074,16 @@ export default function EplStructuredEditor({
             insertLocalVariableBlockAtCursor(contextMenu.subprogramIndex, contextMenu.bodyIndex);
             closeContextMenu();
           }}
+          onAddConstant={() => {
+            insertLocalConstantBlockAtCursor(contextMenu.subprogramIndex, contextMenu.bodyIndex);
+            closeContextMenu();
+          }}
           onAddStatement={() => {
             if (contextMenu.subprogramIndex !== undefined) appendStatement(contextMenu.subprogramIndex, contextMenu.bodyIndex);
             closeContextMenu();
           }}
           onDeleteSubprogram={() => {
-            if (contextMenu.subprogramIndex !== undefined) deleteSubprogram(contextMenu.subprogramIndex);
+            if (contextMenu.subprogramIndex !== undefined) { void deleteSubprogram(contextMenu.subprogramIndex); }
           }}
         />
       )}
@@ -1138,6 +1384,7 @@ function EplContextMenu({
   onExpandAll,
   onToggleSubprogram,
   onAddVariable,
+  onAddConstant,
   onAddStatement,
   onDeleteSubprogram
 }: {
@@ -1152,6 +1399,7 @@ function EplContextMenu({
   onExpandAll: () => void;
   onToggleSubprogram: () => void;
   onAddVariable: () => void;
+  onAddConstant: () => void;
   onAddStatement: () => void;
   onDeleteSubprogram: () => void;
 }) {
@@ -1182,6 +1430,7 @@ function EplContextMenu({
             {isSubprogramCollapsed ? '展开当前子程序' : '收缩当前子程序'}
           </ContextMenuButton>
           <ContextMenuButton disabled={readOnly} shortcut="Ctrl+L" onClick={onAddVariable}>插入局部变量</ContextMenuButton>
+          <ContextMenuButton disabled={readOnly} shortcut="Ctrl+B" onClick={onAddConstant}>插入局部常量</ContextMenuButton>
           <ContextMenuButton disabled={readOnly} onClick={onAddStatement}>添加语句行</ContextMenuButton>
           <ContextMenuButton danger disabled={readOnly} onClick={onDeleteSubprogram}>删除子程序</ContextMenuButton>
         </>
@@ -1490,38 +1739,75 @@ function SubprogramBody({
   isDarkMode,
   readOnly,
   collapsedVariableBlockIds,
+  collapsedStatementBlockIds,
+  expandedMethodStatementIds,
+  methodSignatures,
+  recentlyInsertedBlockId,
+  selectedDeclarationIds,
+  rejectedDeletionId,
   programVariables,
   subprogramNames,
   onRememberPosition,
   onOpenContextMenu,
   onToggleVariableBlock,
+  onToggleStatementBlock,
+  onToggleMethodParameters,
   onUpdateLocalVariable,
   onInsertLocalVariable,
   onAppendLocalVariable,
   onUpdateStatement,
+  onRememberStatementDraft,
+  onUpdateStatementMethodArgument,
   onInsertStatement,
   onDeleteEmptyStatement,
-  onIndentStatement
+  onIndentStatement,
+  onBeginDeclarationSelection,
+  onExtendDeclarationSelection
 }: {
   subprogram: EplSubprogramBlock;
   subprogramIndex: number;
   isDarkMode: boolean;
   readOnly: boolean;
   collapsedVariableBlockIds: Set<string>;
+  collapsedStatementBlockIds: Set<string>;
+  expandedMethodStatementIds: Set<string>;
+  methodSignatures: EplMethodSignature[];
+  recentlyInsertedBlockId: string | null;
+  selectedDeclarationIds: Set<string>;
+  rejectedDeletionId: string | null;
   programVariables: string[];
   subprogramNames: string[];
   onRememberPosition: (position: ActiveEditorPosition) => void;
   onOpenContextMenu: (event: MouseEvent, subprogramIndex?: number, bodyIndex?: number) => void;
   onToggleVariableBlock: (variableBlockId: string) => void;
+  onToggleStatementBlock: (blockId: string) => void;
+  onToggleMethodParameters: (statementId: string) => void;
   onUpdateLocalVariable: (subprogramIndex: number, bodyIndex: number, variableIndex: number, field: VariableField, value: string | boolean) => void;
   onInsertLocalVariable: (subprogramIndex: number, bodyIndex: number, variableIndex: number) => void;
   onAppendLocalVariable: (subprogramIndex: number, bodyIndex: number) => void;
   onUpdateStatement: (subprogramIndex: number, bodyIndex: number, value: string) => void;
-  onInsertStatement: (subprogramIndex: number, bodyIndex: number, indent: string) => void;
-  onDeleteEmptyStatement: (subprogramIndex: number, bodyIndex: number) => void;
-  onIndentStatement: (subprogramIndex: number, bodyIndex: number, direction: 1 | -1) => void;
+  onRememberStatementDraft: (statementId: string, value: string) => void;
+  onUpdateStatementMethodArgument: (subprogramIndex: number, bodyIndex: number, argumentIndex: number, value: string) => void;
+  onInsertStatement: (subprogramIndex: number, bodyIndex: number, indent: string, statementText?: string) => void;
+  onDeleteEmptyStatement: (subprogramIndex: number, bodyIndex: number, statementText?: string) => void;
+  onIndentStatement: (subprogramIndex: number, bodyIndex: number, direction: 1 | -1, statementText?: string) => void;
+  onBeginDeclarationSelection: (event: ReactPointerEvent, id: string) => void;
+  onExtendDeclarationSelection: (id: string) => void;
 }) {
   const guideLookup = useMemo(() => buildStatementGuideLookup(subprogram.body), [subprogram.body]);
+  const foldBlocksByStart = useMemo(() => {
+    const result = new Map<number, ReturnType<typeof buildEplFoldableBlocks>[number]>();
+    buildEplFoldableBlocks(subprogram.body).forEach(block => result.set(block.startIndex, block));
+    return result;
+  }, [subprogram.body]);
+  const hiddenStatementIndexes = useMemo(() => {
+    const hidden = new Set<number>();
+    buildEplFoldableBlocks(subprogram.body).forEach(block => {
+      if (!collapsedStatementBlockIds.has(block.id)) return;
+      for (let index = block.startIndex + 1; index <= block.endIndex; index += 1) hidden.add(index);
+    });
+    return hidden;
+  }, [collapsedStatementBlockIds, subprogram.body]);
 
   const localVars = useMemo(() => {
     return subprogram.body
@@ -1535,6 +1821,7 @@ function SubprogramBody({
       isDarkMode ? 'border-[#2e2e36] bg-[#16161a]' : 'border-slate-300 bg-[#fbfbfb]'
     }`}>
       {subprogram.body.map((entry, bodyIndex) => {
+        if (hiddenStatementIndexes.has(bodyIndex)) return null;
         if (entry.kind === 'variables') {
           return (
             <div
@@ -1548,12 +1835,19 @@ function SubprogramBody({
                 isDarkMode={isDarkMode}
                 readOnly={readOnly}
                 isCollapsed={collapsedVariableBlockIds.has(entry.id)}
+                isNewlyInserted={recentlyInsertedBlockId === entry.id}
+                isSelected={selectedDeclarationIds.has(entry.id)}
+                isRejected={rejectedDeletionId === entry.id}
                 onFocusBlock={() => onRememberPosition({ subprogramIndex, bodyIndex, kind: 'variableBlock' })}
                 onOpenContextMenu={event => onOpenContextMenu(event, subprogramIndex, bodyIndex)}
                 onToggle={() => onToggleVariableBlock(entry.id)}
                 onUpdate={onUpdateLocalVariable}
                 onEnterName={onInsertLocalVariable}
                 onAppend={() => onAppendLocalVariable(subprogramIndex, bodyIndex)}
+                selectedDeclarationIds={selectedDeclarationIds}
+                rejectedDeletionId={rejectedDeletionId}
+                onBeginDeclarationSelection={onBeginDeclarationSelection}
+                onExtendDeclarationSelection={onExtendDeclarationSelection}
               />
             </div>
           );
@@ -1573,6 +1867,10 @@ function SubprogramBody({
               bodyIndex={bodyIndex}
               subprogramIndex={subprogramIndex}
               guides={guideLookup.get(entry.id) || []}
+              foldBlock={foldBlocksByStart.get(bodyIndex)}
+              isBlockCollapsed={Boolean(foldBlocksByStart.get(bodyIndex) && collapsedStatementBlockIds.has(foldBlocksByStart.get(bodyIndex)!.id))}
+              isMethodExpanded={expandedMethodStatementIds.has(entry.id)}
+              methodSignatures={methodSignatures}
               isDarkMode={isDarkMode}
               readOnly={readOnly}
               localVariables={localVars}
@@ -1580,9 +1878,16 @@ function SubprogramBody({
               subprogramNames={subprogramNames}
               onFocus={() => onRememberPosition({ subprogramIndex, bodyIndex, kind: 'statement' })}
               onUpdate={onUpdateStatement}
+              onDraftChange={onRememberStatementDraft}
+              onUpdateMethodArgument={onUpdateStatementMethodArgument}
               onInsert={onInsertStatement}
               onDeleteEmpty={onDeleteEmptyStatement}
               onIndent={onIndentStatement}
+              onToggleBlock={() => {
+                const block = foldBlocksByStart.get(bodyIndex);
+                if (block) onToggleStatementBlock(block.id);
+              }}
+              onToggleMethodParameters={() => onToggleMethodParameters(entry.id)}
             />
           </div>
         );
@@ -1598,12 +1903,19 @@ function VariableTable({
   isDarkMode,
   readOnly,
   isCollapsed,
+  isNewlyInserted,
+  isSelected,
+  isRejected,
   onFocusBlock,
   onOpenContextMenu,
   onToggle,
   onUpdate,
   onEnterName,
-  onAppend
+  onAppend,
+  selectedDeclarationIds,
+  rejectedDeletionId,
+  onBeginDeclarationSelection,
+  onExtendDeclarationSelection
 }: {
   variableBlock: EplVariableBlock;
   subprogramIndex: number;
@@ -1611,12 +1923,19 @@ function VariableTable({
   isDarkMode: boolean;
   readOnly: boolean;
   isCollapsed: boolean;
+  isNewlyInserted: boolean;
+  isSelected: boolean;
+  isRejected: boolean;
   onFocusBlock: () => void;
   onOpenContextMenu: (event: MouseEvent) => void;
   onToggle: () => void;
   onUpdate: (subprogramIndex: number, bodyIndex: number, variableIndex: number, field: VariableField, value: string | boolean) => void;
   onEnterName: (subprogramIndex: number, bodyIndex: number, variableIndex: number) => void;
   onAppend: () => void;
+  selectedDeclarationIds: Set<string>;
+  rejectedDeletionId: string | null;
+  onBeginDeclarationSelection: (event: ReactPointerEvent, id: string) => void;
+  onExtendDeclarationSelection: (id: string) => void;
 }) {
   const borderClass = isDarkMode ? 'border-[#4a4a4a]' : 'border-slate-300';
   const headerClass = isDarkMode ? 'bg-[#242424] text-[#d8d8d8]' : 'bg-slate-100 text-slate-600';
@@ -1629,8 +1948,7 @@ function VariableTable({
       onFocusCapture={onFocusBlock}
       onMouseDownCapture={onFocusBlock}
       onContextMenu={onOpenContextMenu}
-      className="mt-2 flex items-start"
-      style={{ marginLeft: Math.max(0, blockIndentWidth - foldGutterWidth) }}
+      className={`mt-2 flex items-start rounded-[2px] ${isNewlyInserted ? 'outline outline-1 outline-dashed outline-blue-400 outline-offset-2' : ''} ${isSelected ? 'bg-blue-500/10' : ''} ${isRejected ? 'animate-[epl-declaration-reject_0.42s_ease-in-out]' : ''}`}
     >
       <FoldMarker
         isCollapsed={isCollapsed}
@@ -1639,14 +1957,14 @@ function VariableTable({
         className="mt-1"
         onToggle={onToggle}
       />
-      <div>
+      <div style={{ marginLeft: Math.max(0, blockIndentWidth - foldGutterWidth) }}>
         {isCollapsed ? (
           <div
             className={`inline-grid border border-b-0 border-r-0 ${borderClass} ${headerClass}`}
             style={{ gridTemplateColumns: '162px 118px 66px 66px 92px 92px 92px 150px' }}
           >
-            <MethodTableLabel className={`${nameHeaderClass} text-[1.0em]`} marker="variable">局部变量名</MethodTableLabel>
-            <ReadOnlyTableCell className={`${headerClass} text-[11px]`}>{variableBlock.variables.length} 个变量已收缩</ReadOnlyTableCell>
+            <MethodTableLabel className={`${nameHeaderClass} text-[1.0em]`} marker="variable">{variableBlock.declarationKind === 'constant' ? '局部常量名' : '局部变量名'}</MethodTableLabel>
+            <ReadOnlyTableCell className={`${headerClass} text-[11px]`}>{variableBlock.variables.length} 个{variableBlock.declarationKind === 'constant' ? '常量' : '变量'}已收缩</ReadOnlyTableCell>
             <ReadOnlyTableCell className={headerClass} />
             <ReadOnlyTableCell className={headerClass} />
             <ReadOnlyTableCell className={headerClass} />
@@ -1660,11 +1978,11 @@ function VariableTable({
             className={`inline-grid border border-b-0 border-r-0 ${borderClass} ${headerClass}`}
             style={{ gridTemplateColumns: '162px 118px 66px 66px 92px 92px 92px 150px' }}
           >
-            <MethodTableLabel className={`${nameHeaderClass} text-[1.0em]`} marker="variable">局部变量名</MethodTableLabel>
+            <MethodTableLabel className={`${nameHeaderClass} text-[1.0em]`} marker={variableBlock.declarationKind === 'constant' ? 'constant' : 'variable'}>{variableBlock.declarationKind === 'constant' ? '局部常量名' : '局部变量名'}</MethodTableLabel>
             <MethodTableLabel className={`${headerClass} text-[1.0em]`}>类型</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>静态</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>参考</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>初始值</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>{variableBlock.declarationKind === 'constant' ? '常量值' : '静态'}</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>{variableBlock.declarationKind === 'constant' ? '只读' : '数组'}</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>{variableBlock.declarationKind === 'constant' ? ' ' : '初始值'}</MethodTableLabel>
             <MethodTableLabel className={`${headerClass} text-[1.0em]`}>属性名</MethodTableLabel>
             <MethodTableLabel className={`${headerClass} text-[1.0em]`}>属性值</MethodTableLabel>
             <MethodTableLabel className={`${headerClass} text-[1.0em]`}>备注</MethodTableLabel>
@@ -1677,6 +1995,11 @@ function VariableTable({
                   focusName={`local-var-name-${subprogramIndex}-${bodyIndex}-${variableIndex}`}
                   isDarkMode={isDarkMode}
                   readOnly={readOnly}
+                  declarationKind={variableBlock.declarationKind}
+                  isSelected={selectedDeclarationIds.has(variable.id)}
+                  isRejected={rejectedDeletionId === variable.id}
+                  onPointerDown={event => onBeginDeclarationSelection(event, variable.id)}
+                  onPointerEnter={() => onExtendDeclarationSelection(variable.id)}
                   onUpdate={(field, value) => onUpdate(subprogramIndex, bodyIndex, variableIndex, field, value)}
                   onEnterName={() => onEnterName(subprogramIndex, bodyIndex, variableIndex)}
                 />
@@ -1695,17 +2018,27 @@ function VariableRow({
   focusName,
   isDarkMode,
   readOnly,
+  declarationKind = 'variable',
+  isSelected = false,
+  isRejected = false,
   showScope = false,
   onUpdate,
-  onEnterName
+  onEnterName,
+  onPointerDown,
+  onPointerEnter
 }: {
   variable: EplVariableRow;
   focusName: string;
   isDarkMode: boolean;
   readOnly: boolean;
+  declarationKind?: 'variable' | 'constant';
+  isSelected?: boolean;
+  isRejected?: boolean;
   showScope?: boolean;
   onUpdate: (field: VariableField, value: string | boolean) => void;
   onEnterName: () => void;
+  onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerEnter?: () => void;
 }) {
   const borderClass = isDarkMode ? 'border-[#4a4a4a]' : 'border-slate-300';
   const emptyClass = isDarkMode ? 'bg-[#242424] text-slate-500' : 'bg-white text-slate-400';
@@ -1715,7 +2048,11 @@ function VariableRow({
 
   return (
     <div
-      className={`inline-grid border border-r-0 border-t-0 ${borderClass}`}
+      onPointerDown={onPointerDown}
+      onPointerEnter={onPointerEnter}
+      className={`inline-grid border border-r-0 border-t-0 transition-colors ${borderClass} ${
+        isSelected ? (isDarkMode ? 'bg-blue-500/20' : 'bg-blue-100') : ''
+      } ${isRejected ? 'animate-[epl-declaration-reject_0.42s_ease-in-out]' : ''}`}
       style={{ gridTemplateColumns: '162px 118px 66px 66px 92px 92px 92px 150px' }}
     >
       <TextCellInput
@@ -1739,22 +2076,35 @@ function VariableRow({
         className={`${valueClass} min-h-10 text-[1.0em]`}
         focusName={`${rowFocusName}-type`}
       />
-      <CheckCell
-        checked={variable.isStatic}
-        isDarkMode={isDarkMode}
-        readOnly={readOnly}
-        title="静态"
-        focusName={`${rowFocusName}-static`}
-        onToggle={() => onUpdate('isStatic', !variable.isStatic)}
-      />
-      <CheckCell
-        checked={variable.isArray}
-        isDarkMode={isDarkMode}
-        readOnly={readOnly}
-        title="参考"
-        focusName={`${rowFocusName}-array`}
-        onToggle={() => onUpdate('isArray', !variable.isArray)}
-      />
+      {declarationKind === 'constant' ? (
+        <TextCellInput
+          value={variable.initialValue}
+          onChange={value => onUpdate('initialValue', value)}
+          readOnly={readOnly}
+          className={`${valueClass} min-h-10 text-[1.0em] text-[color:var(--epl-constant)]`}
+        />
+      ) : (
+        <CheckCell
+          checked={variable.isStatic}
+          isDarkMode={isDarkMode}
+          readOnly={readOnly}
+          title="静态"
+          focusName={`${rowFocusName}-static`}
+          onToggle={() => onUpdate('isStatic', !variable.isStatic)}
+        />
+      )}
+      {declarationKind === 'constant' ? (
+        <ReadOnlyTableCell className={`${emptyClass} justify-center text-[color:var(--epl-constant)]`}>只读</ReadOnlyTableCell>
+      ) : (
+        <CheckCell
+          checked={variable.isArray}
+          isDarkMode={isDarkMode}
+          readOnly={readOnly}
+          title="数组"
+          focusName={`${rowFocusName}-array`}
+          onToggle={() => onUpdate('isArray', !variable.isArray)}
+        />
+      )}
       <ReadOnlyTableCell className={emptyClass} />
       <ReadOnlyTableCell className={emptyClass} />
       <ReadOnlyTableCell className={emptyClass} />
@@ -1773,6 +2123,10 @@ function StatementRow({
   bodyIndex,
   subprogramIndex,
   guides,
+  foldBlock,
+  isBlockCollapsed,
+  isMethodExpanded,
+  methodSignatures,
   isDarkMode,
   readOnly,
   localVariables,
@@ -1780,14 +2134,22 @@ function StatementRow({
   subprogramNames,
   onFocus,
   onUpdate,
+  onDraftChange,
+  onUpdateMethodArgument,
   onInsert,
   onDeleteEmpty,
-  onIndent
+  onIndent,
+  onToggleBlock,
+  onToggleMethodParameters
 }: {
   statement: EplStatementEntry;
   bodyIndex: number;
   subprogramIndex: number;
   guides: number[];
+  foldBlock?: ReturnType<typeof buildEplFoldableBlocks>[number];
+  isBlockCollapsed: boolean;
+  isMethodExpanded: boolean;
+  methodSignatures: EplMethodSignature[];
   isDarkMode: boolean;
   readOnly: boolean;
   localVariables: string[];
@@ -1795,19 +2157,39 @@ function StatementRow({
   subprogramNames: string[];
   onFocus: () => void;
   onUpdate: (subprogramIndex: number, bodyIndex: number, value: string) => void;
-  onInsert: (subprogramIndex: number, bodyIndex: number, indent: string) => void;
-  onDeleteEmpty: (subprogramIndex: number, bodyIndex: number) => void;
-  onIndent: (subprogramIndex: number, bodyIndex: number, direction: 1 | -1) => void;
+  onDraftChange: (statementId: string, value: string) => void;
+  onUpdateMethodArgument: (subprogramIndex: number, bodyIndex: number, argumentIndex: number, value: string) => void;
+  onInsert: (subprogramIndex: number, bodyIndex: number, indent: string, statementText?: string) => void;
+  onDeleteEmpty: (subprogramIndex: number, bodyIndex: number, statementText?: string) => void;
+  onIndent: (subprogramIndex: number, bodyIndex: number, direction: 1 | -1, statementText?: string) => void;
+  onToggleBlock: () => void;
+  onToggleMethodParameters: () => void;
 }) {
-  const tone = getStatementTone(statement.text, isDarkMode);
-  const indentWidth = getBodyIndentWidth(statement.indent);
+  // Structural flow depth is authoritative for the visual nesting. Source
+  // indentation can be incomplete while a user is building a new block.
+  const sourceIndentWidth = getBodyIndentWidth(statement.indent);
+  const structuralIndentWidth = Math.min(160, guides.length * 22);
+  const indentWidth = Math.max(sourceIndentWidth, structuralIndentWidth);
+  const methodCall = getEplMethodCall(statement.text, methodSignatures);
 
   return (
-    <div className="relative flex h-7 items-center">
+    <div className="relative">
+      <div className="relative flex min-h-7 items-center">
       <div className="relative h-full w-16 shrink-0">
         <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[11px] ${
           isDarkMode ? 'text-slate-600' : 'text-slate-400'
         }`}>{statement.sourceLine || ''}</span>
+      </div>
+      <div className="flex h-7 w-6 shrink-0 items-center justify-center">
+        {foldBlock && (
+          <FoldMarker
+            isCollapsed={isBlockCollapsed}
+            isDarkMode={isDarkMode}
+            label={isBlockCollapsed ? '展开代码块' : '收缩代码块'}
+            className="h-6 w-6"
+            onToggle={onToggleBlock}
+          />
+        )}
       </div>
       <div style={{ width: indentWidth }} className="relative h-full shrink-0">
         {guides.map((colorIndex, depth) => {
@@ -1876,28 +2258,41 @@ function StatementRow({
       <StatementAutocompleteInput
         value={statement.text}
         onChange={value => onUpdate(subprogramIndex, bodyIndex, value)}
-        onKeyDown={event => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            onInsert(subprogramIndex, bodyIndex, statement.indent);
-          }
-          if ((event.key === 'Delete' || event.key === 'Backspace') && !statement.text.trim()) {
-            event.preventDefault();
-            onDeleteEmpty(subprogramIndex, bodyIndex);
-          }
-          if (event.key === 'Tab') {
-            event.preventDefault();
-            onIndent(subprogramIndex, bodyIndex, event.shiftKey ? -1 : 1);
-          }
-        }}
+        onDraftChange={value => onDraftChange(statement.id, value)}
+        onEnter={value => onInsert(subprogramIndex, bodyIndex, statement.indent, value)}
+        onDeleteEmpty={value => onDeleteEmpty(subprogramIndex, bodyIndex, value)}
+        onIndent={value => onIndent(subprogramIndex, bodyIndex, 1, value)}
+        onOutdent={value => onIndent(subprogramIndex, bodyIndex, -1, value)}
         readOnly={readOnly}
         focusName={`stmt-${subprogramIndex}-${bodyIndex}`}
-        className={`h-7 min-w-[640px] flex-1 border-0 bg-transparent px-1 outline-none ${tone}`}
+        className="min-h-7 min-w-[640px] flex-1 border-0 bg-transparent px-1 outline-none"
         localVariables={localVariables}
         programVariables={programVariables}
         subprogramNames={subprogramNames}
         isDarkMode={isDarkMode}
+        methodCall={methodCall}
+        isMethodExpanded={isMethodExpanded}
+        onToggleMethodParameters={onToggleMethodParameters}
+        onFocus={() => {
+          onFocus();
+        }}
       />
+      </div>
+      {isMethodExpanded && methodCall && (
+        <div className="ml-[88px] min-w-[640px] border-l border-blue-500/35 pl-3 py-1.5">
+          {methodCall.signature.parameters.map((parameter, argumentIndex) => (
+            <div key={`${statement.id}-${parameter.name}`} className="flex min-h-7 items-center gap-2">
+              <span className="shrink-0 text-[color:var(--epl-declaration-label)]">※ {parameter.name}{parameter.optional ? '（可选）' : ''}:</span>
+              <TextCellInput
+                value={methodCall.arguments[argumentIndex] || ''}
+                onChange={value => onUpdateMethodArgument(subprogramIndex, bodyIndex, argumentIndex, value)}
+                readOnly={readOnly}
+                className={`h-7 min-w-[300px] ${isDarkMode ? 'bg-[#202024] text-[#d7d7d7]' : 'bg-white text-slate-850'}`}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1932,6 +2327,13 @@ const EPL_AUTOCOMPLETE_KEYWORDS = [
   { label: '取运行目录', category: '系统命令', desc: '获取当前程序运行的目录路径', aliases: ['qyxml', 'quyunxingmulu', 'getapppath'] }
 ];
 
+type EplAutocompleteSuggestion = {
+  label: string;
+  category: string;
+  desc: string;
+  aliases?: string[];
+};
+
 function getAutocompleteQuery(text: string, cursorPosition: number): string {
   const sub = text.slice(0, cursorPosition);
   const match = sub.match(/[\u4e00-\u9fa5\w\d_.]+$/);
@@ -1953,6 +2355,417 @@ function getFlowControlKind(text: string): 'start' | 'end' | 'middle' | 'none' {
 }
 
 function StatementAutocompleteInput({
+  value,
+  onChange,
+  onDraftChange,
+  onEnter,
+  onDeleteEmpty,
+  onIndent,
+  onOutdent,
+  readOnly,
+  focusName,
+  className,
+  localVariables,
+  programVariables,
+  subprogramNames,
+  isDarkMode,
+  methodCall,
+  isMethodExpanded,
+  onToggleMethodParameters,
+  onFocus
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onDraftChange: (value: string) => void;
+  onEnter: (value: string) => void;
+  onDeleteEmpty: (value: string) => void;
+  onIndent: (value: string) => void;
+  onOutdent: (value: string) => void;
+  readOnly: boolean;
+  focusName?: string;
+  className?: string;
+  localVariables: string[];
+  programVariables: string[];
+  subprogramNames: string[];
+  isDarkMode: boolean;
+  methodCall: ReturnType<typeof getEplMethodCall>;
+  isMethodExpanded: boolean;
+  onToggleMethodParameters: () => void;
+  onFocus: () => void;
+}) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const draftRef = useRef(value);
+  const [isEditing, setIsEditing] = useState(false);
+  const [completionOpen, setCompletionOpen] = useState(false);
+  const [completionQuery, setCompletionQuery] = useState('');
+  const [activeCompletionIndex, setActiveCompletionIndex] = useState(0);
+  const clickPointRef = useRef<{ x: number; y: number } | null>(null);
+  const tokenColors = isDarkMode ? EPL_TOKEN_COLORS_DARK : EPL_TOKEN_COLORS_LIGHT;
+  const knownVariables = useMemo(() => new Set([...localVariables, ...programVariables]), [localVariables, programVariables]);
+  const knownFunctions = useMemo(() => new Set(subprogramNames), [subprogramNames]);
+
+  const completionSuggestions = useMemo<EplAutocompleteSuggestion[]>(() => {
+    if (!completionOpen || !completionQuery) return [];
+    const normalizedQuery = completionQuery.toLowerCase();
+    const items: EplAutocompleteSuggestion[] = [
+      ...localVariables.map(label => ({ label, category: '局部变量', desc: '当前子程序局部变量' })),
+      ...programVariables.map(label => ({ label, category: '程序集变量', desc: '当前程序集变量' })),
+      ...subprogramNames.map(label => ({ label, category: '子程序', desc: '当前项目子程序' })),
+      ...EPL_AUTOCOMPLETE_KEYWORDS
+    ];
+    return items
+      .filter(item => {
+        const values = [item.label, ...(item.aliases || [])].map(value => value.toLowerCase());
+        return values.some(value => value.includes(normalizedQuery));
+      })
+      .slice(0, 10);
+  }, [completionOpen, completionQuery, localVariables, programVariables, subprogramNames]);
+
+  const updateCompletion = (text: string, cursorPosition: number) => {
+    const query = getAutocompleteQuery(text, cursorPosition);
+    setCompletionQuery(query);
+    setActiveCompletionIndex(0);
+    setCompletionOpen(Boolean(query) && !readOnly);
+  };
+
+  useEffect(() => {
+    if (!isEditing) draftRef.current = value;
+  }, [isEditing, value]);
+
+  const focusEditableLine = () => {
+    const editor = editorRef.current;
+    if (!editor || readOnly) return;
+    editor.focus();
+    const point = clickPointRef.current;
+    if (point) placeCaretAtPoint(editor, point.x, point.y);
+    else placeCaretAtEnd(editor);
+    clickPointRef.current = null;
+  };
+
+  const beginEditing = (point?: { x: number; y: number }) => {
+    if (readOnly) return;
+    if (point) clickPointRef.current = point;
+    if (isEditing) return;
+    draftRef.current = value;
+    setIsEditing(true);
+    window.requestAnimationFrame(focusEditableLine);
+  };
+
+  const commitDraft = () => {
+    const nextValue = draftRef.current.replace(/\r?\n/g, '');
+    setCompletionOpen(false);
+    setIsEditing(false);
+    if (nextValue !== value) onChange(nextValue);
+  };
+
+  const applyCompletion = (suggestion: EplAutocompleteSuggestion) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const currentValue = draftRef.current;
+    const cursor = getContentEditableCaretOffset(editor);
+    const beforeCursor = currentValue.slice(0, cursor);
+    const match = beforeCursor.match(/[\u4e00-\u9fa5\w\d_.]+$/u);
+    const tokenStart = match ? cursor - match[0].length : cursor;
+    const needsParens = ['信息框', '调试输出', '输出调试文本', '如果', '如果真', '判断', '判断循环首', '循环判断首', '计次循环首', '变量循环首', '读取配置项'].includes(suggestion.label);
+    const insertText = needsParens ? `${suggestion.label} ()` : suggestion.label;
+    const nextValue = `${currentValue.slice(0, tokenStart)}${insertText}${currentValue.slice(cursor)}`;
+    const nextCursor = tokenStart + suggestion.label.length + (needsParens ? 2 : 0);
+
+    draftRef.current = nextValue;
+    editor.textContent = nextValue;
+    onDraftChange(nextValue);
+    onChange(nextValue);
+    setCompletionOpen(false);
+    editor.focus();
+    window.requestAnimationFrame(() => placeCaretAtOffset(editor, nextCursor));
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (completionOpen && completionSuggestions.length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        setActiveCompletionIndex(current =>
+          (current + delta + completionSuggestions.length) % completionSuggestions.length
+        );
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        applyCompletion(completionSuggestions[activeCompletionIndex] || completionSuggestions[0]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setCompletionOpen(false);
+        return;
+      }
+    }
+    if (event.ctrlKey && event.key === '/') {
+      event.preventDefault();
+      const currentText = draftRef.current;
+      const trimmed = currentText.trim();
+      const indentation = currentText.match(/^\s*/u)?.[0] || '';
+      const next = trimmed.startsWith('//')
+        ? currentText.replace(/^\s*\/\/\s*/u, '')
+        : trimmed.startsWith("'")
+          ? currentText.replace(/^\s*'\s*/u, '')
+          : `${indentation}// ${trimmed}`;
+      draftRef.current = next;
+      onDraftChange(next);
+      event.currentTarget.textContent = next;
+      placeCaretAtEnd(event.currentTarget);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const nextValue = draftRef.current.replace(/\r?\n/g, '');
+      draftRef.current = nextValue;
+      onDraftChange(nextValue);
+      setIsEditing(false);
+      onEnter(nextValue);
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const nextValue = draftRef.current.replace(/\r?\n/g, '');
+      draftRef.current = nextValue;
+      onDraftChange(nextValue);
+      setIsEditing(false);
+      if (event.shiftKey) onOutdent(nextValue);
+      else onIndent(nextValue);
+      return;
+    }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && !draftRef.current.trim()) {
+      event.preventDefault();
+      setIsEditing(false);
+      onDraftChange('');
+      onDeleteEmpty('');
+    }
+  };
+
+  const handlePaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const text = event.clipboardData.getData('text/plain').replace(/[\r\n]+/gu, ' ');
+    insertPlainTextAtSelection(text);
+    draftRef.current = event.currentTarget.textContent || '';
+    onDraftChange(draftRef.current);
+    updateCompletion(draftRef.current, getContentEditableCaretOffset(event.currentTarget));
+  };
+
+  return (
+    <div className="relative flex min-w-0 flex-1 items-stretch">
+      {methodCall && (
+        <button
+          type="button"
+          tabIndex={-1}
+          contentEditable={false}
+          onMouseDown={event => event.preventDefault()}
+          onClick={onToggleMethodParameters}
+          title={isMethodExpanded ? '收起参数' : '展开参数'}
+          aria-label={isMethodExpanded ? '收起参数' : '展开参数'}
+          className={`absolute -left-6 top-0 z-10 flex h-7 w-6 items-center justify-center border text-[12px] leading-none transition-opacity ${
+            isDarkMode ? 'border-[#4a4a4a] bg-[#25252b] text-slate-200 hover:bg-[#34343e]' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+          } ${isMethodExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+        >
+          {isMethodExpanded ? '−' : '+'}
+        </button>
+      )}
+      <div
+        ref={editorRef}
+        role="textbox"
+        aria-multiline="false"
+        spellCheck={false}
+        suppressContentEditableWarning
+        contentEditable={isEditing && !readOnly}
+        tabIndex={readOnly ? -1 : 0}
+        data-epl-focus={focusName}
+        onMouseDown={event => {
+          if (isEditing || readOnly) return;
+          event.preventDefault();
+          beginEditing({ x: event.clientX, y: event.clientY });
+        }}
+        onFocus={() => {
+          onFocus();
+          beginEditing();
+        }}
+        onInput={event => {
+          draftRef.current = event.currentTarget.textContent || '';
+          onDraftChange(draftRef.current);
+          updateCompletion(draftRef.current, getContentEditableCaretOffset(event.currentTarget));
+        }}
+        onBlur={() => {
+          setCompletionOpen(false);
+          commitDraft();
+        }}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        style={{ fontSize: 'var(--editor-font-size)' }}
+        className={`${className} relative whitespace-pre outline-none ${
+          isEditing
+            ? (isDarkMode ? 'text-[#d4d4d4] caret-[#d4d4d4]' : 'text-slate-850 caret-slate-850')
+            : 'cursor-text'
+        }`}
+      >
+        {isEditing ? draftRef.current : <TokenizedStatementLine value={value} tokenColors={tokenColors} knownVariables={knownVariables} knownFunctions={knownFunctions} />}
+      </div>
+      {completionOpen && completionSuggestions.length > 0 && (
+        <div
+          role="listbox"
+          aria-label="代码补全"
+          className={`absolute left-0 top-[calc(100%+4px)] z-50 w-72 overflow-hidden rounded border text-[11px] shadow-xl ${
+            isDarkMode
+              ? 'border-[#343746] bg-[#191b22] text-slate-100 shadow-black/40'
+              : 'border-slate-200 bg-white text-slate-900 shadow-slate-300/60'
+          }`}
+        >
+          <div className={`flex items-center justify-between border-b px-2 py-1 text-[10px] ${
+            isDarkMode ? 'border-[#2b2d34] text-slate-500' : 'border-slate-100 text-slate-500'
+          }`}>
+            <span>补全 {completionQuery}</span>
+            <span>↑↓ 选择 · Enter 确认</span>
+          </div>
+          <div className="max-h-56 overflow-auto py-1">
+            {completionSuggestions.map((suggestion, index) => (
+              <button
+                key={`${suggestion.category}:${suggestion.label}`}
+                type="button"
+                role="option"
+                aria-selected={index === activeCompletionIndex}
+                onMouseDown={event => {
+                  event.preventDefault();
+                  applyCompletion(suggestion);
+                }}
+                className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left ${
+                  index === activeCompletionIndex
+                    ? isDarkMode ? 'bg-cyan-500/15 text-cyan-100' : 'bg-cyan-50 text-cyan-900'
+                    : isDarkMode ? 'text-slate-300 hover:bg-[#232631]' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{suggestion.label}</span>
+                  <span className="block truncate text-[10px] text-slate-500">{suggestion.desc}</span>
+                </span>
+                <span className="shrink-0 rounded bg-slate-700/40 px-1.5 py-0.5 text-[9px] text-slate-400">{suggestion.category}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {!isEditing && !readOnly && (
+        <span aria-hidden="true" className="pointer-events-none absolute left-1 top-1 h-5 w-px animate-pulse bg-blue-400" />
+      )}
+    </div>
+  );
+}
+
+function TokenizedStatementLine({
+  value,
+  tokenColors,
+  knownVariables,
+  knownFunctions
+}: {
+  value: string;
+  tokenColors: EplTokenColorTheme;
+  knownVariables: Set<string>;
+  knownFunctions: Set<string>;
+}) {
+  const tokens = tokenizeEplStatement(value, knownVariables, knownFunctions);
+  if (tokens.length === 0) return <span className="text-slate-500">&nbsp;</span>;
+  return (
+    <>
+      {tokens.map((token, index) => (
+        <span key={`${token.start}-${index}`} style={{ color: tokenColors[token.kind] }}>{token.text}</span>
+      ))}
+    </>
+  );
+}
+
+function placeCaretAtEnd(element: HTMLElement): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function getContentEditableCaretOffset(element: HTMLElement): number {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return element.textContent?.length || 0;
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer)) return element.textContent?.length || 0;
+  const prefix = range.cloneRange();
+  prefix.selectNodeContents(element);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  return prefix.toString().length;
+}
+
+function placeCaretAtOffset(element: HTMLElement, offset: number): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let remaining = Math.max(0, offset);
+  let node: Text | null = null;
+  while (walker.nextNode()) {
+    const candidate = walker.currentNode as Text;
+    if (remaining <= candidate.data.length) {
+      node = candidate;
+      break;
+    }
+    remaining -= candidate.data.length;
+  }
+  if (node) {
+    range.setStart(node, remaining);
+  } else {
+    range.selectNodeContents(element);
+    range.collapse(false);
+  }
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function placeCaretAtPoint(element: HTMLElement, x: number, y: number): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+  const documentWithCaret = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  const position = documentWithCaret.caretPositionFromPoint?.(x, y);
+  const range = position
+    ? (() => {
+      const next = document.createRange();
+      next.setStart(position.offsetNode, position.offset);
+      next.collapse(true);
+      return next;
+    })()
+    : documentWithCaret.caretRangeFromPoint?.(x, y);
+  if (!range || !element.contains(range.startContainer)) {
+    placeCaretAtEnd(element);
+    return;
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function insertPlainTextAtSelection(text: string): void {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const textNode = document.createTextNode(text);
+  range.insertNode(textNode);
+  range.setStartAfter(textNode);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function LegacyStatementAutocompleteInput({
   value,
   onChange,
   onKeyDown,
@@ -2295,6 +3108,15 @@ function EplTypeInput({
   }, [value]);
 
   const suggestions = useMemo(() => getEplTypeSuggestions(localValue), [localValue]);
+  const groupedSuggestions = useMemo(() => {
+    const groups = new Map<string, typeof suggestions>();
+    suggestions.forEach(suggestion => {
+      const current = groups.get(suggestion.category) || [];
+      current.push(suggestion);
+      groups.set(suggestion.category, current);
+    });
+    return [...groups.entries()];
+  }, [suggestions]);
 
   const choose = (nextValue: string) => {
     setLocalValue(nextValue);
@@ -2322,20 +3144,21 @@ function EplTypeInput({
           window.setTimeout(() => {
             setOpen(false);
             setLocalValue(value);
-          }, 120);
+          }, 150);
         }}
         onKeyDown={event => {
           if (!open || suggestions.length === 0) return;
           if (event.key === 'ArrowDown') {
             event.preventDefault();
-            setActiveIndex(index => Math.min(index + 1, suggestions.length - 1));
+            setActiveIndex(index => (index + 1) % suggestions.length);
           } else if (event.key === 'ArrowUp') {
             event.preventDefault();
-            setActiveIndex(index => Math.max(index - 1, 0));
+            setActiveIndex(index => (index - 1 + suggestions.length) % suggestions.length);
           } else if (event.key === 'Enter') {
             event.preventDefault();
             choose(suggestions[activeIndex]?.label || localValue);
           } else if (event.key === 'Escape') {
+            event.preventDefault();
             setOpen(false);
           }
         }}
@@ -2348,28 +3171,36 @@ function EplTypeInput({
         <div className={`absolute left-0 top-full z-50 w-64 rounded-[2px] border py-1 shadow-xl ${
           isDarkMode ? 'border-[#3a3a43] bg-[#f8f8f8] text-slate-900' : 'border-slate-300 bg-white text-slate-900'
         }`}>
-          {suggestions.map((suggestion, index) => (
-            <button
-              key={`${suggestion.category}-${suggestion.label}`}
-              type="button"
-              onMouseDown={event => {
-                event.preventDefault();
-                choose(suggestion.label);
-              }}
-              className={`flex h-7 w-full items-center gap-2 px-2 text-left text-[0.8em] ${
-                index === activeIndex ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100'
-              }`}
-            >
-              <span className={`h-4 w-1 rounded-sm ${
-                suggestion.category === '基础类型'
-                  ? 'bg-emerald-500'
-                  : suggestion.category === '窗口组件'
-                    ? 'bg-blue-500'
-                    : 'bg-fuchsia-500'
-              }`} />
-              <span className="font-semibold">{suggestion.label}</span>
-              <span className="ml-auto text-[11px] text-slate-500">{suggestion.category}</span>
-            </button>
+          {groupedSuggestions.map(([category, group]) => (
+            <Fragment key={category}>
+              <div aria-hidden="true" className="pointer-events-none px-2 pt-1.5 text-[10px] font-semibold text-slate-500">{category}</div>
+              {group.map(suggestion => {
+                const index = suggestions.indexOf(suggestion);
+                return (
+                  <button
+                    key={`${suggestion.category}-${suggestion.label}`}
+                    type="button"
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onMouseDown={event => {
+                      event.preventDefault();
+                      choose(suggestion.label);
+                    }}
+                    className={`flex h-7 w-full items-center gap-2 px-2 text-left text-[0.8em] ${
+                      index === activeIndex ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className={`h-4 w-1 rounded-sm ${
+                      suggestion.category === '基础类型'
+                        ? 'bg-emerald-500'
+                        : suggestion.category === '窗口组件'
+                          ? 'bg-blue-500'
+                          : 'bg-fuchsia-500'
+                    }`} />
+                    <span className="font-semibold">{suggestion.label}</span>
+                  </button>
+                );
+              })}
+            </Fragment>
           ))}
         </div>
       )}
@@ -2414,7 +3245,7 @@ function FoldMarker({
           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
       } ${className}`}
     >
-      {isCollapsed ? '+' : '-'}
+      <span aria-hidden="true" className="text-[11px]">{isCollapsed ? '▶' : '▼'}</span>
     </button>
   );
 }
@@ -2426,14 +3257,18 @@ function MethodTableLabel({
 }: {
   children: string;
   className: string;
-  marker?: 'method' | 'variable';
+  marker?: 'method' | 'variable' | 'constant';
 }) {
   return (
     <div className={`flex min-h-9 items-center gap-1 border-b border-r border-inherit px-2 ${className}`}>
       {marker && (
         <span
           className={`h-2 w-2 shrink-0 rotate-45 rounded-[1px] ${
-            marker === 'method' ? 'bg-[#d6a2ff]' : 'bg-[#6db8ff]'
+            marker === 'method'
+              ? 'bg-[color:var(--epl-declaration-label)]'
+              : marker === 'constant'
+                ? 'bg-[color:var(--epl-constant)]'
+                : 'bg-[color:var(--epl-variable)]'
           }`}
         />
       )}
@@ -2546,11 +3381,37 @@ function getHeaderTone(text: string): string {
   return 'text-[#d7d7d7]';
 }
 
-function getStatementTone(text: string, isDarkMode: boolean): string {
-  const body = text.trim();
-  if (!body) return isDarkMode ? 'text-slate-500' : 'text-slate-400';
-  if (body.startsWith("'")) return 'text-[#4aa34a]';
-  if (/^\.?(如果|如果真|如果结束|判断|判断结束|循环判断首|循环判断尾|判断循环首|判断循环尾)/.test(body)) return 'text-[#4ea5ff] font-semibold';
-  if (/^(信息框|调试输出|输出调试文本|载入可视化设计|读取配置项|取运行目录|结束|返回)/.test(body)) return 'text-[#e9dfaa]';
-  return isDarkMode ? 'text-[#d7d7d7]' : 'text-slate-800';
+interface EplDeclarationSelectionRow {
+  id: string;
+  protected: boolean;
+}
+
+function buildDeclarationRows(documentModel: EplStructuredDocument): EplDeclarationSelectionRow[] {
+  const rows: EplDeclarationSelectionRow[] = [];
+  documentModel.header.forEach(entry => {
+    if (entry.kind === 'programVariable') rows.push({ id: entry.variable.id, protected: false });
+  });
+  documentModel.subprograms.forEach(subprogram => {
+    rows.push({ id: subprogram.id, protected: true });
+    subprogram.body.forEach(entry => {
+      if (entry.kind === 'variables') {
+        entry.variables.forEach(variable => rows.push({ id: variable.id, protected: false }));
+      }
+    });
+  });
+  return rows;
+}
+
+function getDeclarationRange(rows: EplDeclarationSelectionRow[], anchorId: string, targetId: string): string[] {
+  const anchorIndex = rows.findIndex(row => row.id === anchorId);
+  const targetIndex = rows.findIndex(row => row.id === targetId);
+  if (anchorIndex < 0 || targetIndex < 0) return [targetId];
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
+  return rows.slice(start, end + 1).map(row => row.id);
+}
+
+function isEditableElement(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest('input, textarea, select, button, [contenteditable="true"]'));
 }

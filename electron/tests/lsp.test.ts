@@ -58,6 +58,26 @@ test('clangd restarts after a crash, reopens documents, and falls back when unav
   await service.stop();
 });
 
+test('clangd reports unavailable instead of crashing when spawn emits an async ENOENT error', async () => {
+  /* 真实 child_process.spawn 失败时异步发出 'error' 事件，且不会有任何 initialize 响应；
+   * 未监听 'error' 会拖垮宿主进程。 */
+  const spawnMissing = (): ClangdProcess => {
+    const fake = new FakeClangdProcess();
+    fake.stdin.removeAllListeners('data'); /* 进程不存在，不回复 initialize。 */
+    queueMicrotask(() => {
+      fake.stdin.destroy(); fake.stdout.destroy();
+      const error: any = Object.assign(new Error('spawn clangd ENOENT'), { code: 'ENOENT' });
+      fake.emit('error', error);
+    });
+    return fake;
+  };
+  const service = new ClangdService({ workspaceRoot: process.cwd(), spawnProcess: spawnMissing });
+  const status = await service.start();
+  assert.equal(status.state, 'unavailable');
+  assert.match(status.message, /未找到 clangd/u);
+  await service.stop();
+});
+
 test('LSP browser adapter maps positions, completions, hover markup, and location links', async t => {
   const originalFetch = globalThis.fetch;
   let requestBody: any;

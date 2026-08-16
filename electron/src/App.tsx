@@ -75,6 +75,17 @@ import AboutDialog from './components/AboutDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
 import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
+import WorkbenchConfirmDialog from './components/WorkbenchConfirmDialog';
+import {
+  cancelWorkbenchDialog,
+  getActiveWorkbenchDialog,
+  requestWorkbenchAlert,
+  requestWorkbenchConfirm,
+  requestWorkbenchPrompt,
+  settleWorkbenchDialog,
+  subscribeWorkbenchDialog,
+  type WorkbenchDialogRequest
+} from './services/workbench/workbenchConfirmService';
 import WelcomePage from './components/WelcomePage';
 import TextFileStatusControls from './components/TextFileStatusControls';
 import EditorPositionStatus from './components/EditorPositionStatus';
@@ -677,7 +688,11 @@ export default function App() {
   }, [captureProjectMutationOwner, isCurrentProjectMutationOwner]);
 
   const showEditorFlushFailure = useCallback((diagnostics: string[]) => {
-    window.alert(diagnostics[0] || '新手代码提交失败，当前操作已取消，源码未被覆盖。');
+    void requestWorkbenchAlert({
+      title: '新手代码提交失败',
+      description: diagnostics[0] || '当前操作已取消，源码未被覆盖。',
+      confirmLabel: '知道了'
+    });
   }, []);
 
   const handleSelectFile = useCallback(async (file: CppFile, forceCodeView: boolean = true): Promise<boolean> => {
@@ -711,7 +726,7 @@ export default function App() {
     const project = solution.projects.find(item => item.id === projectId);
     if (!project || project.type !== 'visual-cpp') return;
     if (projectId !== activeProjectIdRef.current) {
-      window.alert('请先等待该项目切换并载入完成。');
+      await requestWorkbenchAlert({ title: '项目尚未就绪', description: '请先等待该项目切换并载入完成。', confirmLabel: '知道了' });
       return;
     }
     const sourceRoot = project.sourceRoot.replace(/\\/gu, '/').replace(/\/+$/u, '');
@@ -743,7 +758,7 @@ export default function App() {
     const project = solution.projects.find(item => item.id === projectId);
     if (!project || project.type !== 'visual-cpp') return;
     if (projectId !== activeProjectIdRef.current) {
-      window.alert('请先等待该项目切换并载入完成。');
+      await requestWorkbenchAlert({ title: '项目尚未就绪', description: '请先等待该项目切换并载入完成。', confirmLabel: '知道了' });
       return;
     }
     const sourceRoot = project.sourceRoot.replace(/\\/gu, '/').replace(/\/+$/u, '');
@@ -806,10 +821,15 @@ export default function App() {
   }, [handleSelectFile]);
 
   const handleCreateFunctionLibrary = useCallback(async (projectId: string) => {
-    const name = window.prompt('输入功能库名称（将创建“功能/名称.lcpp”）', '通用工具')?.trim();
+    const name = (await requestWorkbenchPrompt({
+      title: '新建功能库',
+      description: '将创建“功能/名称.lcpp”。',
+      inputLabel: '功能库名称',
+      inputValue: '通用工具'
+    }))?.trim();
     if (!name) return;
     if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name)) {
-      window.alert('功能库名称只能包含中文、字母、数字和下划线，且不能以数字开头。');
+      await requestWorkbenchAlert({ title: '名称不合法', description: '功能库名称只能包含中文、字母、数字和下划线，且不能以数字开头。', confirmLabel: '知道了' });
       return;
     }
     const response = await fetch('/api/window-designer/function-libraries/create', {
@@ -817,7 +837,11 @@ export default function App() {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
-      window.alert(result.error || '新建功能库失败。');
+      await requestWorkbenchAlert({
+        title: '新建功能库失败',
+        description: result.error || '新建功能库失败。',
+        confirmLabel: '知道了'
+      });
       return;
     }
     appendEditorTransactionLog(`【功能库】已新建 ${result.filePath}`);
@@ -828,19 +852,23 @@ export default function App() {
     if (targetProjectId === activeProjectIdRef.current) {
       const dirtyDependencyInput = filesRef.current.find(file => file.isModified && file.path.toLocaleLowerCase().endsWith('.lcpp'));
       if (dirtyDependencyInput) {
-        window.alert(`请先保存 ${dirtyDependencyInput.name}，再粘贴功能库；依赖闭包需要以一致的项目源码生成事务。`);
+        await requestWorkbenchAlert({
+          title: '请先保存当前修改',
+          description: `请先保存 ${dirtyDependencyInput.name}，再粘贴功能库；依赖闭包需要以一致的项目源码生成事务。`,
+          confirmLabel: '知道了'
+        });
         return;
       }
     }
     let clipboardText = '';
-    try { clipboardText = await navigator.clipboard.readText(); } catch { window.alert('无法读取剪贴板，请先在项目树中复制功能库。'); return; }
+    try { clipboardText = await navigator.clipboard.readText(); } catch { await requestWorkbenchAlert({ title: '无法读取剪贴板', description: '请先在项目树中复制功能库。', confirmLabel: '知道了' }); return; }
     const prefix = 'LINGBUILDER_FUNCTION_LIBRARY:';
     if (!clipboardText.startsWith(prefix)) {
-      window.alert('剪贴板中没有 LingBuilder 功能库。请右键功能库文件并选择“复制功能库”。');
+      await requestWorkbenchAlert({ title: '剪贴板内容不匹配', description: '剪贴板中没有 LingBuilder 功能库。请右键功能库文件并选择“复制功能库”。', confirmLabel: '知道了' });
       return;
     }
     let payload: { sourceProjectId?: string; sourcePath?: string };
-    try { payload = JSON.parse(clipboardText.slice(prefix.length)); } catch { window.alert('剪贴板中的功能库信息已损坏。'); return; }
+    try { payload = JSON.parse(clipboardText.slice(prefix.length)); } catch { await requestWorkbenchAlert({ title: '剪贴板内容损坏', description: '剪贴板中的功能库信息已损坏。', confirmLabel: '知道了' }); return; }
     let targetName: string | undefined;
     const previewCopy = async () => {
       const response = await fetch('/api/window-designer/function-libraries/copy', {
@@ -854,7 +882,12 @@ export default function App() {
     try {
       let preview = await previewCopy();
       while (preview.targetExists) {
-        targetName = window.prompt('目标项目已有同名功能库，请输入新的独立名称：', `${preview.targetName}副本`)?.trim();
+        targetName = (await requestWorkbenchPrompt({
+          title: '目标已有同名功能库',
+          description: '目标项目已有同名功能库，请输入新的独立名称：',
+          inputLabel: '新名称',
+          inputValue: `${preview.targetName}副本`
+        }))?.trim();
         if (!targetName) return;
         preview = await previewCopy();
       }
@@ -866,13 +899,17 @@ export default function App() {
       ];
       const conflictLines = (preview.conflicts || []).map((item: any) => `${item.name}：${item.reason}`);
       if (missingLines.length > 0 || conflictLines.length > 0) {
-        window.alert([
-          '功能库依赖闭包尚不能安全复制：',
-          ...missingLines,
-          ...conflictLines,
-          '',
-          '请先补齐源依赖，或处理目标项目中的同名定义后重试。'
-        ].join('\n'));
+        await requestWorkbenchAlert({
+          title: '依赖闭包不完整',
+          description: [
+            '功能库依赖闭包尚不能安全复制：',
+            ...missingLines,
+            ...conflictLines,
+            '',
+            '请先补齐源依赖，或处理目标项目中的同名定义后重试。'
+          ].join('\n'),
+          confirmLabel: '知道了'
+        });
         return;
       }
       const copiedLibraries = (preview.libraries || []).filter((item: any) => item.action === 'copy');
@@ -884,21 +921,26 @@ export default function App() {
       const reusedSymbols = preview.resources?.projectSymbols?.reused || [];
       const enabledModules = preview.resources?.modules?.enabled || [];
       const reusedModules = preview.resources?.modules?.reused || [];
-      const confirmed = window.confirm([
-        `复制到：${preview.targetPath}`,
-        `\n将复制功能库：${copiedLibraries.map((item: any) => item.targetName).join('、') || '无'}`,
-        reusedLibraries.length ? `\n复用目标功能库：${reusedLibraries.map((item: any) => item.targetName).join('、')}` : '',
-        renamedLibraries.length ? `\n自动避让重名：${renamedLibraries.map((item: any) => `${item.sourceName} → ${item.targetName}`).join('、')}` : '',
-        copiedTypes.length ? `\n复制项目数据类型：${copiedTypes.join('、')}` : '',
-        reusedTypes.length ? `\n复用相同数据类型：${reusedTypes.join('、')}` : '',
-        copiedSymbols.length ? `\n复制项目常量/全局变量：${copiedSymbols.join('、')}` : '',
-        reusedSymbols.length ? `\n复用相同项目符号：${reusedSymbols.join('、')}` : '',
-        enabledModules.length ? `\n自动启用模块：${enabledModules.join('、')}` : '',
-        reusedModules.length ? `\n复用已启用模块：${reusedModules.join('、')}` : '',
-        '\n依赖闭包检查通过，以上内容会在同一次事务中写入。',
-        '\n复制后是目标项目中的独立源码副本，不与原项目保持隐藏链接。',
-        '\n是否继续？'
-      ].filter(Boolean).join(''));
+      const confirmed = await requestWorkbenchConfirm({
+        title: '复制功能库',
+        description: [
+          `复制到：${preview.targetPath}`,
+          `\n将复制功能库：${copiedLibraries.map((item: any) => item.targetName).join('、') || '无'}`,
+          reusedLibraries.length ? `\n复用目标功能库：${reusedLibraries.map((item: any) => item.targetName).join('、')}` : '',
+          renamedLibraries.length ? `\n自动避让重名：${renamedLibraries.map((item: any) => `${item.sourceName} → ${item.targetName}`).join('、')}` : '',
+          copiedTypes.length ? `\n复制项目数据类型：${copiedTypes.join('、')}` : '',
+          reusedTypes.length ? `\n复用相同数据类型：${reusedTypes.join('、')}` : '',
+          copiedSymbols.length ? `\n复制项目常量/全局变量：${copiedSymbols.join('、')}` : '',
+          reusedSymbols.length ? `\n复用相同项目符号：${reusedSymbols.join('、')}` : '',
+          enabledModules.length ? `\n自动启用模块：${enabledModules.join('、')}` : '',
+          reusedModules.length ? `\n复用已启用模块：${reusedModules.join('、')}` : '',
+          '\n依赖闭包检查通过，以上内容会在同一次事务中写入。',
+          '\n复制后是目标项目中的独立源码副本，不与原项目保持隐藏链接。',
+          '\n是否继续？'
+        ].filter(Boolean).join(''),
+        confirmLabel: '复制',
+        cancelLabel: '取消'
+      });
       if (!confirmed) return;
       const response = await fetch('/api/window-designer/function-libraries/copy', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -912,7 +954,7 @@ export default function App() {
         await addPersistedFunctionLibraryToEditor(result.filePath, result.sourceCode, true);
       }
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : '复制功能库失败。');
+      await requestWorkbenchAlert({ title: '复制功能库失败', description: error instanceof Error ? error.message : '复制功能库失败。', confirmLabel: '知道了' });
     }
   }, [addPersistedFunctionLibraryToEditor]);
 
@@ -1083,6 +1125,9 @@ export default function App() {
   const [solutionNameError, setSolutionNameError] = useState('');
   const [isSubmittingSolutionName, setIsSubmittingSolutionName] = useState(false);
   const [workspaceSearchMode, setWorkspaceSearchMode] = useState<'search' | 'replace' | null>(null);
+  // 工作台内非阻塞确认/提示/输入对话框：替代 window.confirm/alert/prompt，避免原生对话框冻结整个工作台输入。
+  const [workbenchDialog, setWorkbenchDialog] = useState<WorkbenchDialogRequest | null>(() => getActiveWorkbenchDialog());
+  useEffect(() => subscribeWorkbenchDialog(setWorkbenchDialog), []);
   const pendingWorkspaceSearchRevealRef = useRef<WorkspaceSearchMatch | null>(null);
   const pendingAiWorkbenchNavigationRef = useRef<{
     requestId: string;
@@ -1364,16 +1409,18 @@ export default function App() {
     });
   }, []);
 
-  const promptEditorFontSize = () => {
-    const inputValue = window.prompt(
-      `设置编辑器字体大小（${MIN_EDITOR_FONT_SIZE}-${MAX_EDITOR_FONT_SIZE}px）`,
-      String(editorFontSize)
-    );
+  const promptEditorFontSize = async () => {
+    const inputValue = await requestWorkbenchPrompt({
+      title: '设置编辑器字体大小',
+      description: `范围 ${MIN_EDITOR_FONT_SIZE}-${MAX_EDITOR_FONT_SIZE}px。`,
+      inputLabel: '字号（px）',
+      inputValue: String(editorFontSize)
+    });
     if (inputValue === null) return;
 
     const parsedValue = Number.parseInt(inputValue, 10);
     if (!Number.isFinite(parsedValue)) {
-      window.alert('请输入有效的字号数字。');
+      await requestWorkbenchAlert({ title: '输入无效', description: '请输入有效的字号数字。', confirmLabel: '知道了' });
       return;
     }
 
@@ -2124,7 +2171,7 @@ void DisplayStatus() {
 
   const handleDeleteFile = async (file: CppFile): Promise<boolean> => {
     if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path)) {
-      window.alert('该项目结构文件不能在 IDE 中删除；请在对应的新手编辑器中清空内容。');
+      await requestWorkbenchAlert({ title: '无法删除', description: '该项目结构文件不能在 IDE 中删除；请在对应的新手编辑器中清空内容。', confirmLabel: '知道了' });
       return false;
     }
     if (!projectFilesReadyRef.current) {
@@ -2140,12 +2187,16 @@ void DisplayStatus() {
           language: candidate.language
         })), library.name).filter(reference => reference.filePath !== file.path);
         if (references.length > 0) {
-          window.alert(`功能库“${library.name}”仍被 ${references.length} 处代码调用，已阻止删除。\n\n首个引用：${references[0]!.filePath} 第 ${references[0]!.line} 行`);
+          await requestWorkbenchAlert({
+            title: '已阻止删除',
+            description: `功能库“${library.name}”仍被 ${references.length} 处代码调用，已阻止删除。\n\n首个引用：${references[0]!.filePath} 第 ${references[0]!.line} 行`,
+            confirmLabel: '知道了'
+          });
           return false;
         }
       }
     }
-    const confirmed = window.confirm(`确认删除文件 ${file.name} 吗？`);
+    const confirmed = await requestWorkbenchConfirm({ title: '删除文件', description: `确认删除文件 ${file.name} 吗？`, confirmLabel: '删除', cancelLabel: '取消' });
     if (!confirmed) return false;
     if (editorOperationRef.current) {
       appendEditorTransactionLog(`【删除文件】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，请稍后再试。`);
@@ -2203,7 +2254,7 @@ void DisplayStatus() {
     } catch (error) {
       const message = error instanceof Error ? error.message : '磁盘文件删除失败。';
       appendEditorTransactionLog(`【文件删除错误】${message}`);
-      window.alert(message);
+      await requestWorkbenchAlert({ title: '删除文件失败', description: message, confirmLabel: '知道了' });
       return false;
     } finally {
       if (editorOperationRef.current === 'file-mutation') editorOperationRef.current = null;
@@ -2212,7 +2263,7 @@ void DisplayStatus() {
 
   const handleRenameFile = async (file: CppFile, newName: string): Promise<boolean> => {
     if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path)) {
-      window.alert('该项目结构文件使用固定名称，不能在 IDE 中重命名。');
+      await requestWorkbenchAlert({ title: '无法重命名', description: '该项目结构文件使用固定名称，不能在 IDE 中重命名。', confirmLabel: '知道了' });
       return false;
     }
     if (!projectFilesReadyRef.current) {
@@ -2222,7 +2273,7 @@ void DisplayStatus() {
     const normalizedName = newName.trim();
     if (!normalizedName || normalizedName === file.name) return false;
     if (normalizedName === '.' || normalizedName === '..' || /[<>:"/\\|?*\u0000-\u001f]/u.test(normalizedName) || /[. ]$/u.test(normalizedName)) {
-      window.alert('文件名包含 Windows 不允许的字符，或以空格/句点结尾。');
+      await requestWorkbenchAlert({ title: '文件名不合法', description: '文件名包含 Windows 不允许的字符，或以空格/句点结尾。', confirmLabel: '知道了' });
       return false;
     }
     if (editorOperationRef.current) {
@@ -2323,7 +2374,7 @@ void DisplayStatus() {
     } catch (error) {
       const message = error instanceof Error ? error.message : '磁盘文件重命名失败。';
       appendEditorTransactionLog(`【文件重命名错误】${message}`);
-      window.alert(message);
+      await requestWorkbenchAlert({ title: '重命名文件失败', description: message, confirmLabel: '知道了' });
       return false;
     } finally {
       if (editorOperationRef.current === 'file-mutation') editorOperationRef.current = null;
@@ -2788,16 +2839,30 @@ void DisplayStatus() {
           const recoveryResponse = await fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`);
           const recoveryPayload = await recoveryResponse.json().catch(() => ({}));
           const recovery = recoveryPayload?.recovery;
-          if ((recovery?.files || recovery?.designerProject) && window.confirm(`发现 ${new Date(recovery.savedAt).toLocaleString()} 的未保存编辑，是否恢复？\n\n恢复只会进入编辑器内存，不会立即覆盖磁盘。`)) {
-            nextFiles = nextFiles.map(file => typeof recovery.files?.[file.path] === 'string'
-              ? { ...file, translatedContent: recovery.files[file.path], isModified: recovery.files[file.path] !== file.originalContent }
-              : file);
-            if (recovery.designerProject) {
-              saveWindowDesignerState({
-                project: recovery.designerProject,
-                activeWindowId: recovery.designerProject.windows?.[0]?.id || 'main-window',
-                selectedControlId: recovery.designerProject.windows?.[0]?.controls?.[0]?.id || null
-              });
+          if (recovery?.files || recovery?.designerProject) {
+            // 原生 window.confirm 会同步阻塞渲染进程，等待用户期间整个工作台（含其他对话框）无法输入；
+            // 改用应用内非阻塞确认对话框。
+            const shouldRecover = await requestWorkbenchConfirm({
+              title: '发现未保存的编辑',
+              description: `检测到 ${new Date(recovery.savedAt).toLocaleString()} 保存的未保存编辑。\n恢复只会进入编辑器内存，不会立即覆盖磁盘。`,
+              confirmLabel: '恢复',
+              cancelLabel: '不恢复'
+            });
+            // 等待用户答复期间项目可能已切换或重新载入，需重新校验后才能继续写入状态。
+            if (!isCurrentLoad(projectId)) return;
+            if (shouldRecover) {
+              nextFiles = nextFiles.map(file => typeof recovery.files?.[file.path] === 'string'
+                ? { ...file, translatedContent: recovery.files[file.path], isModified: recovery.files[file.path] !== file.originalContent }
+                : file);
+              if (recovery.designerProject) {
+                saveWindowDesignerState({
+                  project: recovery.designerProject,
+                  activeWindowId: recovery.designerProject.windows?.[0]?.id || 'main-window',
+                  selectedControlId: recovery.designerProject.windows?.[0]?.controls?.[0]?.id || null
+                });
+              }
+            } else {
+              void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
             }
           } else if (recovery) {
             void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
@@ -2908,6 +2973,8 @@ void DisplayStatus() {
       cancelled = true;
       controller.abort();
       window.clearTimeout(timeout);
+      // 项目切换/重新载入时，若用户尚未答复恢复确认，按取消结算，避免悬挂对话框与悬挂 Promise。
+      cancelWorkbenchDialog();
     };
   }, [activeProjectId, hasEnteredWorkbench, projectFileReloadToken]);
 
@@ -2951,11 +3018,14 @@ void DisplayStatus() {
       const localFile = filesRef.current.find(file => file.path === changedPath);
       const deletedExternally = typeof diskContent !== 'string';
       if (localFile && isEditorFileDirty(localFile)) {
-        const reload = window.confirm(
-          deletedExternally
+        const reload = await requestWorkbenchConfirm({
+          title: deletedExternally ? '文件已被外部删除' : '文件已被外部修改',
+          description: deletedExternally
             ? `文件“${changedPath}”已被外部删除。\n\n“确定”从工作台移除；“取消”保留本地编辑并在保存时执行冲突保护。`
-            : `文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘版本；“取消”保留本地编辑。`
-        );
+            : `文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘版本；“取消”保留本地编辑。`,
+          confirmLabel: '确定',
+          cancelLabel: '取消'
+        });
         if (!reload) return;
       }
 
@@ -3070,7 +3140,12 @@ void DisplayStatus() {
                 continue;
               }
               if (designerDirtyRef.current) {
-                const reload = window.confirm(`窗口设计器文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘布局；“取消”保留本地布局并在保存时执行版本冲突保护。`);
+                const reload = await requestWorkbenchConfirm({
+                  title: '设计器文件已被外部修改',
+                  description: `窗口设计器文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘布局；“取消”保留本地布局并在保存时执行版本冲突保护。`,
+                  confirmLabel: '重新载入',
+                  cancelLabel: '保留本地'
+                });
                 if (!reload) continue;
               }
               designerSavedSnapshotRef.current = JSON.stringify(payload.designerProject);
@@ -3170,20 +3245,32 @@ void DisplayStatus() {
     const toggle = (event: Event) => {
       const detail = (event as CustomEvent<{ filePath: string; line: number; conditionRequested?: boolean }>).detail;
       if (!detail?.filePath || !Number.isInteger(detail.line)) return;
+      const existing = debugBreakpoints.find(item => item.filePath === detail.filePath && item.line === detail.line);
+      if (detail.conditionRequested) {
+        void (async () => {
+          const condition = await requestWorkbenchPrompt({
+            title: '条件断点',
+            description: '输入条件断点表达式；留空则取消该断点：',
+            inputLabel: '条件表达式',
+            inputValue: existing?.condition || ''
+          });
+          if (condition === null) return;
+          setDebugBreakpoints(current => {
+            const currentExisting = current.find(item => item.filePath === detail.filePath && item.line === detail.line);
+            const without = current.filter(item => item !== currentExisting);
+            return condition.trim() ? [...without, { filePath: detail.filePath, line: detail.line, condition: condition.trim() }] : without;
+          });
+        })();
+        return;
+      }
       setDebugBreakpoints(current => {
-        const existing = current.find(item => item.filePath === detail.filePath && item.line === detail.line);
-        if (detail.conditionRequested) {
-          const condition = window.prompt('输入条件断点表达式；留空则取消该断点：', existing?.condition || '');
-          if (condition === null) return current;
-          const without = current.filter(item => item !== existing);
-          return condition.trim() ? [...without, { filePath: detail.filePath, line: detail.line, condition: condition.trim() }] : without;
-        }
-        return existing ? current.filter(item => item !== existing) : [...current, { filePath: detail.filePath, line: detail.line }];
+        const currentExisting = current.find(item => item.filePath === detail.filePath && item.line === detail.line);
+        return currentExisting ? current.filter(item => item !== currentExisting) : [...current, { filePath: detail.filePath, line: detail.line }];
       });
     };
     window.addEventListener('lingbuilder-debug-breakpoint-toggle', toggle);
     return () => window.removeEventListener('lingbuilder-debug-breakpoint-toggle', toggle);
-  }, []);
+  }, [debugBreakpoints]);
 
   useEffect(() => {
     const publish = () => window.dispatchEvent(new CustomEvent('lingbuilder-debug-breakpoints-changed', { detail: { breakpoints: debugBreakpoints } }));
@@ -3430,9 +3517,12 @@ void DisplayStatus() {
         if (payload.designerProject && savedDesignerSnapshot !== JSON.stringify(payload.designerProject)) {
           conflictingPaths.push(payload.designerPath || activeSolutionProject.designerPath);
         }
-        const reloadDisk = window.confirm(
-          `检测到外部修改：${conflictingPaths.join('、') || '项目文件'}\n\n选择“确定”重新载入磁盘版本；选择“取消”保留本地编辑并继续保留冲突保护。`
-        );
+        const reloadDisk = await requestWorkbenchConfirm({
+          title: '检测到外部修改',
+          description: `${conflictingPaths.join('、') || '项目文件'}\n\n选择“确定”重新载入磁盘版本；选择“取消”保留本地编辑并继续保留冲突保护。`,
+          confirmLabel: '重新载入',
+          cancelLabel: '保留本地'
+        });
         if (reloadDisk) {
           projectFileVersionsRef.current = payload.fileVersions || {};
           void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
@@ -3867,7 +3957,7 @@ void DisplayStatus() {
     }
     if ((flushState.files.some(isEditorFileDirty) || designerDirtyRef.current)
       && !await handleSaveWorkspace('关闭解决方案前保存')) return false;
-    if (!window.confirm(`确定关闭解决方案“${solution.name}”吗？\n\n工作区文件不会被删除，LingBuilder 将打开一个新的空白工作区。`)) {
+    if (!await requestWorkbenchConfirm({ title: '关闭解决方案', description: `确定关闭解决方案“${solution.name}”吗？\n\n工作区文件不会被删除，LingBuilder 将打开一个新的空白工作区。`, confirmLabel: '关闭', cancelLabel: '取消' })) {
       return false;
     }
     const result = await workspaceApi.closeCurrent();
@@ -4236,7 +4326,12 @@ void DisplayStatus() {
   const handleConfigureProjectReferences = useCallback(async (projectId: string) => {
     const project = solution.projects.find(item => item.id === projectId); if (!project) return;
     const available = solution.projects.filter(item => item.id !== projectId).map(item => item.id);
-    const value = window.prompt(`输入“${project.name}”引用的项目 ID，用逗号分隔。\n可选：${available.join('、') || '无'}`, (project.references || []).join(', '));
+    const value = await requestWorkbenchPrompt({
+      title: '配置项目引用',
+      description: `输入“${project.name}”引用的项目 ID，用逗号分隔。\n可选：${available.join('、') || '无'}`,
+      inputLabel: '引用的项目 ID',
+      inputValue: (project.references || []).join(', ')
+    });
     if (value === null) return;
     const references = value.split(/[,，]/u).map(item => item.trim()).filter(Boolean);
     const result = await configureSolutionProject(projectId, { references });
@@ -4245,7 +4340,12 @@ void DisplayStatus() {
   }, [appendSolutionLogs, solution]);
 
   const handleImportExternalProject = useCallback(async () => {
-    const projectFile = window.prompt('输入工作区内的 CMakeLists.txt、.vcxproj 或 .sln 相对路径：');
+    const projectFile = await requestWorkbenchPrompt({
+      title: '导入现有工程',
+      description: '输入工作区内的 CMakeLists.txt、.vcxproj 或 .sln 相对路径：',
+      inputLabel: '工程文件相对路径',
+      inputPlaceholder: '例如 external/hello/CMakeLists.txt'
+    });
     if (!projectFile?.trim()) return;
     const result = await importSolutionProject(projectFile.trim());
     appendSolutionLogs('导入现有工程', result);
@@ -4254,11 +4354,11 @@ void DisplayStatus() {
 
   const handleConfigureExternalProject = useCallback(async (projectId: string) => {
     const project = solution.projects.find(item => item.id === projectId); if (!project?.buildProperties) return;
-    const mode = window.prompt('构建模式：Debug 或 Release', project.buildProperties.configuration);
+    const mode = await requestWorkbenchPrompt({ title: '构建模式', description: 'Debug 或 Release', inputLabel: '构建模式', inputValue: project.buildProperties.configuration });
     if (mode !== 'Debug' && mode !== 'Release') return;
-    const architecture = window.prompt('构建架构：Win32 或 x64', project.buildProperties.architecture);
+    const architecture = await requestWorkbenchPrompt({ title: '构建架构', description: 'Win32 或 x64', inputLabel: '构建架构', inputValue: project.buildProperties.architecture });
     if (architecture !== 'Win32' && architecture !== 'x64') return;
-    const args = window.prompt('附加参数（用空格分隔，可留空）', project.buildProperties.additionalArguments.join(' '));
+    const args = await requestWorkbenchPrompt({ title: '附加参数', description: '用空格分隔，可留空', inputLabel: '附加参数', inputValue: project.buildProperties.additionalArguments.join(' ') });
     if (args === null) return;
     const result = await configureSolutionProject(projectId, { buildProperties: { configuration: mode, architecture, additionalArguments: args.split(/\s+/u).filter(Boolean) } });
     appendSolutionLogs('更新外部工程属性', result); if (result.solution) setSolution(result.solution);
@@ -4267,7 +4367,7 @@ void DisplayStatus() {
   const handleToggleMultiStartupProject = useCallback(async (projectId: string) => {
     const current = solution.startupProjectIds || [solution.startupProjectId];
     const next = current.includes(projectId) ? current.filter(id => id !== projectId) : [...current, projectId];
-    if (!next.length) { window.alert('至少需要保留一个启动项目。'); return; }
+    if (!next.length) { await requestWorkbenchAlert({ title: '无法移除', description: '至少需要保留一个启动项目。', confirmLabel: '知道了' }); return; }
     const result = await configureSolutionProject(projectId, { startupProjectIds: next });
     appendSolutionLogs('配置多启动项目', result);
     if (result.solution) setSolution(result.solution);
@@ -4279,7 +4379,7 @@ void DisplayStatus() {
     const message = deleteFiles
       ? `确定删除项目 ${project.name} 及其项目文件吗？此操作不会删除 generated/cpp 导出结果。`
       : `确定从解决方案中移除项目 ${project.name} 吗？磁盘文件会保留。`;
-    if (!window.confirm(message)) return;
+    if (!await requestWorkbenchConfirm({ title: deleteFiles ? '删除项目' : '移除项目', description: message, confirmLabel: deleteFiles ? '删除' : '移除', cancelLabel: '取消' })) return;
     const result = await deleteSolutionProject(projectId, deleteFiles);
     appendSolutionLogs(deleteFiles ? '删除项目文件' : '移除项目', result);
     if (result.ok) {
@@ -4642,7 +4742,8 @@ void DisplayStatus() {
     || showEnvironmentRepairCenter
     || showCliGuide
     || Boolean(pendingDesignerEventEdit)
-    || Boolean(workspaceSearchMode);
+    || Boolean(workspaceSearchMode)
+    || Boolean(workbenchDialog);
   commandContextRef.current = {
     'workspace.open': true,
     'workbench.commandPaletteOpen': showCommandPalette,
@@ -5576,7 +5677,7 @@ void DisplayStatus() {
   }
 
   return (
-    <div className={`workbench-shell h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
+    <div className={`workbench-shell ${isDarkMode ? 'theme-dark' : 'theme-light'} h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
       {/* Title Bar */}
       <div
         onDoubleClick={handleWindowToggleMaximize}
@@ -5649,7 +5750,7 @@ void DisplayStatus() {
                     <span className="opacity-50 text-[10px]">Ctrl+S</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                  <button onClick={() => { promptEditorFontSize(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void promptEditorFontSize(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>设置编辑器字体...</span>
                     <span className="opacity-50 text-[10px]">{editorFontSize}px</span>
                   </button>
@@ -6699,6 +6800,20 @@ void DisplayStatus() {
         onClose={() => {
           if (!isCreatingSolutionProject) setShowCreateProjectDialog(false);
         }}
+      />
+
+<WorkbenchConfirmDialog
+        open={Boolean(workbenchDialog)}
+        kind={workbenchDialog?.kind}
+        title={workbenchDialog?.title || ''}
+        description={workbenchDialog?.description}
+        confirmLabel={workbenchDialog?.confirmLabel}
+        cancelLabel={workbenchDialog?.cancelLabel}
+        inputLabel={workbenchDialog?.inputLabel}
+        inputValue={workbenchDialog?.inputValue}
+        inputPlaceholder={workbenchDialog?.inputPlaceholder}
+        isDarkMode={isDarkMode}
+        onResult={settleWorkbenchDialog}
       />
 
       <ProjectNameDialog

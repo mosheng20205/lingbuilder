@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import {
   Activity,
   AlertTriangle,
@@ -225,7 +226,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     if (!desktopApi?.configureCodexDesktop) throw new Error('当前版本未提供 ChatGPT/Codex 桌面集成。');
     if (permission === 'yolo' && !approvedYolo) throw new Error('请先在高级设置中确认 yolo 权限。');
     const replaceExisting = codexDesktop?.state === 'conflict';
-    if (replaceExisting && !window.confirm('当前工作区已有同名 MCP 配置。是否备份保留其他配置，并由 LingBuilder 替换这个同名配置？')) return;
+    if (replaceExisting && !await requestWorkbenchConfirm({ title: '替换同名配置', description: '当前工作区已有同名 MCP 配置。是否备份保留其他配置，并由 LingBuilder 替换这个同名配置？', confirmLabel: '替换', cancelLabel: '取消' })) return;
     const result = await desktopApi.configureCodexDesktop({ permission, approvedYolo, replaceExisting, openApp: true }) as CodexDesktopStatus;
     setCodexDesktop(result);
     setNotice(result.restartRequired
@@ -241,7 +242,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
 
   const removeCodexDesktop = async () => { await runAction('codex-desktop:remove', async () => {
     if (!desktopApi?.removeCodexDesktop) throw new Error('当前版本未提供 ChatGPT/Codex 桌面集成。');
-    if (!window.confirm('确定移除当前工作区的 LingBuilder 桌面 MCP 配置吗？其他 Codex 配置不会受到影响。')) return;
+    if (!await requestWorkbenchConfirm({ title: '移除 MCP 配置', description: '确定移除当前工作区的 LingBuilder 桌面 MCP 配置吗？其他 Codex 配置不会受到影响。', confirmLabel: '移除', cancelLabel: '取消' })) return;
     setCodexDesktop(await desktopApi.removeCodexDesktop() as CodexDesktopStatus);
     setNotice('已移除当前工作区的 LingBuilder 桌面 MCP 配置。');
   }); };

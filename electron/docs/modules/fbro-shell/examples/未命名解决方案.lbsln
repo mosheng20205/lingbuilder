@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "未命名解决方案",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-project",
+  "startupProjectId": "lingbuilder-project-2",
   "startupProjectIds": [
-    "lingbuilder-project"
+    "lingbuilder-project-2"
   ],
   "folders": [],
   "projects": [
@@ -22,6 +22,13 @@
       "name": "高级控件选项卡",
       "type": "visual-cpp",
       "sourceRoot": "src/lingbuilder-project",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-project-2",
+      "name": "测试窗口",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-project-2",
       "references": []
     }
   ]

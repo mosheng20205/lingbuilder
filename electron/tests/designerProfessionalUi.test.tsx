@@ -134,7 +134,7 @@ test('beginner editor navigation and variable form remain safe without a duplica
   assert.doesNotMatch(source, /onBlur=\{event => commitNewMemberDraft/u);
   assert.match(source, /onClick=\{commitNewMemberDraft\}/u);
   assert.match(source, /aria-label="取消新增变量"/u);
-  assert.match(source, /onClick=\{\(\) => deleteStructuredRow\(row\)\}/u);
+  assert.match(source, /onClick=\{\(\) => \{ void deleteStructuredRow\(row\); \}\}/u);
   assert.doesNotMatch(source, /新手工作台/u);
   assert.doesNotMatch(source, /renderBeginnerSummaryStrip/u);
   assert.doesNotMatch(source, /renderBeginnerPanel/u);
@@ -142,7 +142,7 @@ test('beginner editor navigation and variable form remain safe without a duplica
   assert.match(source, /onWheel=\{handleEditorFontWheel\}/u);
   assert.match(source, /wrap="off"/u);
   assert.match(source, /data-beginner-code-highlight/u);
-  assert.match(source, /className="whitespace-pre"/u);
+  assert.match(source, /className="relative whitespace-pre"/u);
   assert.match(source, /lineHeight \* Math\.max\(bodyLines\.length, 1\) \+ 24/u);
   assert.ok(source.includes('[&::-webkit-scrollbar]:h-2'));
   assert.match(source, /codeHighlight\.scrollLeft = event\.currentTarget\.scrollLeft/u);

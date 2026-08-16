@@ -94,9 +94,11 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
 export function shouldShowBeginnerCompletion(context: BeginnerCompletionContext, includeAll: boolean): boolean {
   if (context.isWindowTargetContext || context.isWindowPlacementContext) return true;
   if (context.isInsideString || context.isInsideComment) return false;
-  if (context.parenDepth > 0) return includeAll || context.token.length > 0;
-  if (includeAll) return context.isBlankLine || context.isCommandStart || context.isAssignmentValue;
-  return (context.isCommandStart || context.isAssignmentValue) && context.token.length > 0;
+  if (includeAll) return context.isBlankLine || context.token.length > 0;
+
+  // 变量、局部常量和设计器组件都可能出现在返回值、比较、算术表达式等
+  // 非行首位置。只要正在输入一个代码标识符，就允许按拼音检索候选。
+  return context.token.length > 0;
 }
 
 export function getBeginnerCompletionToken(value: string, cursor: number): string {

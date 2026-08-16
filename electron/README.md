@@ -1,8 +1,8 @@
 # LingBuilder Electron
 
-> 2026-08-15：SDK 按需下载改用安装包内置的 aria2c 1.37.0 Windows x64。每个 CEF3/FBro 压缩包使用 8 路连接、8M 分段和断点续传；下载完成后继续执行精确大小、SHA-256、ZIP 安全清单和原子安装校验。安装包同时提供 `third_party/aria2/COPYING` GPLv2 许可文件。
+> 2026-08-16：严格精简 Windows 安装包不包含 CEF3/FBro 的模块目录、SDK、README 或运行时。需要浏览器能力时，先安装独立模块包或开发者提供的完整受控模块目录；安装包不会凭内置元数据自动下载。内置 aria2c 1.37.0 仍供 Aria2 下载模块使用，并随包提供 GPLv2 许可文件。
 
-> 2026-08-14：Windows 安装包已移除 CEF3/FBro 完整 SDK，只保留资产模块清单和 README。桌面工作台首次执行相关 F5、原生预览或导出时，经统一 SDK 依赖服务提示下载到用户共享缓存；独立 AI Bridge/CLI 仅报告 `SDK_DEPENDENCY_REQUIRED`。版本、直链、字节数与 SHA-256 见根目录 `FBro与CEF3_SDK按需下载资源.md`。
+> 0.4.0 发布基线：安装包排除完整的 CEF3/FBro 模块，并内置 aria2c 1.37.0；新增 `lingbuilder.net.aria2@1.37.0` 受控下载模块，新手 LCPP 编辑器完成流程折叠、嵌套缩进和声明编辑升级。浏览器管理器的下载器插件改为随项目 assets 与 `.lcpppkg` 分发，不再作为模块安装。
 
 > 2026-08-13：修复从窗口设计器按 F5 运行普通 Win32 项目后 IDE/设计器闪动。LingCpp 与旧原生 Win32 生成器已删除启动阶段的临时 `HWND_TOPMOST`、重复前台/焦点抢占和 LingCpp 900ms 撤销置顶定时器，统一在窗口布局准备完成后只执行一次标准 `ShowWindow + UpdateWindow`。专项测试同时阻断两条生成链路重新引入该序列；`new_emoji` 的专用激活实现保持不变。
 
@@ -30,11 +30,11 @@
 
 > 2026-08-08：新增最终普通 Win32 项目 `win32-fbro-multi-browser-manager`。目标界面仅启用 `lingbuilder.win32.basic` 和 `lingbuilder.win32.common-controls`，以隐藏表头的 TabControl 页面承载一实例一页面 HWND，并以 ListBox 作为唯一导航；每个稳定 ID 启动独立 `LingBuilderFbroHost.exe`、浏览器 HWND 和 LocalAppData Profile。`src/services/windowDesigner/fbroBrowserManagerRuntime.ts` 提供原子持久化、实例生命周期、真实 CookieManager 和安全删除边界，`native/fbro-bridge/LingBuilderFbroProcessRuntime.hpp` 提供版本化 Host 协议。
 
-> 插件由模块导出链部署到 `<exe所在目录>\doubao-downloader`，Host 在 CEF 命令行阶段加入 `load-extension`。FBro VIP 授权延迟到 `OnContextInitialized`，使用后立即清零；20 秒确认窗口内按部署路径计算扩展 ID，并通过 VIP `GetExtensionPath` 回读真实加载路径，只有路径一致才报告“插件已加载”。`OnBeforePopup` 直接让当前 Frame 加载目标 URL 并返回取消 popup。地址导航不设置 HTTP(S) 白名单，`chrome://extensions/`、`about:`、`file://` 等 Chromium 地址原样传入 Host，只拒绝空值和换行控制字符。`scripts/smoke-win32-fbro-multi-browser-manager.ts` 覆盖单/三实例两轮恢复、不同 PID/HWND/Profile、唯一可见页面、插件真实加载及回环 `window.open` 不新增 Host。
+> 豆包视频下载器插件属于项目资源，不属于模块。构建前由项目 assets 复制链部署到 `<exe所在目录>\assets\<项目ID>\doubao-downloader`，运行时会兼容直接或按项目 ID 分层的 assets 路径；Host 在 CEF 命令行阶段只启用 Chrome Runtime。FBro VIP 授权延迟到 `OnContextInitialized`，使用后立即清零；20 秒确认窗口内按部署路径计算扩展 ID，并通过 VIP `GetExtensionPath` 回读真实加载路径，只有路径一致才报告“插件已加载”。`OnBeforePopup` 直接让当前 Frame 加载目标 URL 并返回取消 popup。地址导航不设置 HTTP(S) 白名单，`chrome://extensions/`、`about:`、`file://` 等 Chromium 地址原样传入 Host，只拒绝空值和换行控制字符。`scripts/smoke-win32-fbro-multi-browser-manager.ts` 覆盖单/三实例两轮恢复、不同 PID/HWND/Profile、唯一可见页面、插件真实加载及回环 `window.open` 不新增 Host。
 
 > `scripts/export-win32-fbro-multi-browser-manager-package.ts` 生成 `exports/独立浏览器管理器.lcpppkg`，复制到新临时目录后再次 inspect/import，并从导入结果二次生成 C++；脚本阻断 `new_emoji`、浏览器用户数据、凭据和开发机绝对路径。`LcppSourcePackageService` 对 Windows 大型 SDK 临时目录清理采用有界 `EBUSY` 重试，避免成功导入被防病毒短暂文件占用覆盖。
 
-> 2026-08-08：`new-emoji-fbro-multi-browser-manager` 已完成多浏览器实例工作台闭环。`src/services/browserWorkbench/` 提供实例、原子持久化、Cookie、扩展、CommandService/MenuService 边界；RichList 右键菜单由同一命令契约生成并调用真实原生链路。每个实例具有随机稳定 ID、独立 Host、RequestContext、Profile、伴随 HWND 和浏览器 HWND；实例配置写入 LocalAppData，分享包只保存相对结构。`doubao-downloader` 在 RequestContext 创建后、浏览器创建前从真实 exe 同级目录加载，VS post-build 保留 `runtime/doubao-downloader/*` 的相对目录。VIP lifecycle 只有 `phase: extension` 才更新插件状态，其它 `contextInitialized/created` 生命周期不再误报插件失败。
+> 2026-08-08（2026-08-15 资源归属修正）：`new-emoji-fbro-multi-browser-manager` 已完成多浏览器实例工作台闭环。`src/services/browserWorkbench/` 提供实例、原子持久化、Cookie、扩展、CommandService/MenuService 边界；RichList 右键菜单由同一命令契约生成并调用真实原生链路。每个实例具有随机稳定 ID、独立 Host、RequestContext、Profile、伴随 HWND 和浏览器 HWND；实例配置写入 LocalAppData，分享包只保存相对结构。`doubao-downloader` 在 RequestContext 创建后、浏览器创建前从项目 `assets/<项目ID>/doubao-downloader` 加载，不再登记为模块或保留 `runtime/` 模块前缀。VIP lifecycle 只有 `phase: extension` 才更新插件状态，其它 `contextInitialized/created` 生命周期不再误报插件失败。
 
 > `.lcpppkg` 分享门禁会排除 profiles、cache、localStorage、IndexedDB、Cookie JSON、凭据和构建缓存。多浏览器导出脚本会校验插件 Manifest V3、模块文档、结构配置、文件哈希及开发机绝对路径，并在临时目录重新导入；IDE 现有“项目：一键导出 LCPP 源码包”是用户入口，浏览器工作台另登记 `browserWorkbench.package.exportShare` 命令语义。
 
@@ -247,7 +247,7 @@ npm run package:win
 
 - `package:dir` 生成 `release/win-unpacked/LingBuilder.exe` 和 `lingbuilder.cmd`；`smoke:packaged:cli` 只验证安装版 CLI 启动器与版本；`smoke:packaged` 先通过安装版自带的 Electron/Node 运行时验证 CLI 版本，再启动桌面程序并验证 renderer、普通 API、模块 API、退出码和服务进程回收；`package:win` 生成 Windows x64 NSIS 安装包。
 - 联网发布必须设置 HTTPS `LINGBUILDER_CLOUD_API_URL`。备案或云端未就绪时，在 PowerShell 中设置 `$env:LINGBUILDER_CLOUD_RELEASE_MODE='offline'` 后执行打包；离线安装版保留本地 IDE 和自定义 API，但不连接系统 AI、账号和收费模块云端。两种模式不得同时设置。
-- 两条打包命令都会先校验开发源 CEF3/FBro SDK，随后把两个资产模块的 `sdk/` 从发布资源排除。Electron Builder `afterPack`、`verify:cef3-installer` 与 `verify:fbro-installer` 要求 `win-unpacked`/NSIS 中保留有效 `lingbuilder.module.json` 和 README，同时不存在任何 SDK 文件；夹带完整 SDK 或漏掉轻量元数据都会直接失败。可运行 `npm run test:cef3-release` 验证发布门禁。
+- 两条打包命令都会先校验开发源 CEF3/FBro SDK，随后把两个资产模块的整个目录从发布资源排除。Electron Builder `afterPack`、`verify:cef3-installer` 与 `verify:fbro-installer` 要求 `win-unpacked`/NSIS 不出现任一模块路径和 CEF3/FBro 桥接或运行时二进制；出现模块元数据、SDK 或二进制都会直接失败。可运行 `npm run test:cef3-release` 验证发布门禁。
 - NSIS 安装向导默认勾选“将 LingBuilder CLI 添加到当前用户 PATH”，也允许用户取消；重复安装去重，卸载时只移除当前 LingBuilder 安装目录。CLI 由根目录 `lingbuilder.cmd` 调用 `resources/app.asar/dist/cli.cjs`，不要要求最终用户另外安装 Node.js。
 - `package:win` 会先校验并复用 `build/vendor/MicrosoftEdgeWebview2Setup.exe`中已有的 Microsoft 签名 WebView2 Evergreen Bootstrapper；文件不存在时才从微软官方地址下载并冻结到 NSIS 资源。安装阶段仅在注册表未检测到 WebView2 Runtime 时补装，失败不会阻止 LingBuilder 本体安装，可稍后从“工具 → 环境修复中心”重试。
 - 安装版主进程先启动不可见的独立本地服务，显式传入工作区、renderer 静态目录、规则手册、`127.0.0.1` 随机端口和随机会话 token，收到 ready 信息后才加载窗口。
@@ -773,3 +773,10 @@ npm run smoke:runtime-controls-native
 > 2026-08-09 CEF3 Render/Accessibility/Frame handler group: implemented all 17 RenderHandler callbacks, both AccessibilityHandler callbacks, all five FrameHandler callbacks, and the Client render/frame getter queries with real CEF overrides, 26 C ABI exports, and official V4 hashes. Geometry, screen, touch, IME, selection, scroll, popup, keyboard, and drag data are copied into structured event fields. OSR BGRA bytes cross the ABI only through an ephemeral retainable managedBuffer capped at 64 MiB; accelerated paint never exposes the shared texture/native handle. Accessibility data uses copied managed Value snapshots. Frame lifecycle events use a managed Browser subject plus structured Frame metadata so attach/detach callbacks do not extend Chromium Frame lifetimes. Native coverage validates every direct/V4 entry and strict parameter handling, plus real OSR view/screen/paint callbacks and managed pixel-buffer typing. Coverage is `1177/1384` (85.04%), with `207` planned.
 >
 > 2026-08-09 CEF3 public API coverage is complete for CEF 150.0.14+g7c1aa68 on Windows MSVC x64: `1384/1384` (`100.00%`), `planned=0`, and `needsReview=0`. `npm run module:cef3-coverage:complete` now gates generated catalog and module documentation, C ABI exports, native test references, official V4 signature IDs, and the managed-handle/no-pointer ABI contract.
+
+## Aria2 下载模块
+
+启用内置 `lingbuilder.net.aria2` 后，`.lcpp` 可使用 `Aria2_下载` 创建异步任务，并可在可选第六参数传入 `&下载进度`，在窗口线程接收任务、百分比、已下载/总字节、字节/秒速度和状态。轮询仍可使用 `Aria2_等待`、`Aria2_取状态`、`Aria2_取进度`、`Aria2_取下载速度`、`Aria2_取错误` 和 `Aria2_释放`；速度优先解析 aria2 `DL:` 输出。当前仅支持 Windows x64 MSVC；F5 与 Visual Studio 导出会由原生依赖服务复制已校验的 `aria2c.exe`、GPLv2 `COPYING` 和 `NOTICE.md`。完整命令和示例见 `docs/modules/aria2/README.md`。
+# 2026-08-16：修复普通 Win32 F5 中文文本条件生成。`.lcpp` 条件中的单个 `=` 现在确定性转换为 `==`，并根据局部文本变量类型生成 `std::wstring`/宽字符串比较，避免 MSVC C2679 窄字符串赋值错误；`tests/lingcpp.test.ts` 已覆盖。
+# 2026-08-16：新手编辑器局部变量引用颜色已与局部变量声明表统一。`variable` 语义 token 在深色主题使用 `#9df59c`、浅色主题使用 `#047857`，条件表达式中的局部变量不再显示为普通蓝色标识符。
+# 2026-08-16：原生 C++ 生成器为未启用 `lingbuilder.fbro.browser` 的项目补充浏览器管理器无操作回退接口。发行包中 SDK 头文件可见性与项目模块上下文异常不一致时，F5/导出不再因未声明的浏览器管理器调用触发 MSVC C3861；启用 FBro 时仍生成完整运行时。

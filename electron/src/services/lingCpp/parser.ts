@@ -95,6 +95,51 @@ export function isLingCppCommentLine(line: string): boolean {
   return trimmed.startsWith('//') || trimmed === '注释' || trimmed.startsWith('注释 ');
 }
 
+/** Read the single declaration note immediately preceding a source line. */
+export function readLingCppDeclarationNote(lines: string[], lineNumber: number): string | undefined {
+  for (let index = lineNumber - 2; index >= 0; index -= 1) {
+    const previous = lines[index];
+    if (previous === undefined) return undefined;
+    const trimmed = previous.trim();
+    if (parseLingCppParameterNoteLine(trimmed)) continue;
+    if (trimmed.startsWith('//')) return trimmed.slice(2).trim();
+    if (trimmed === '注释') return '';
+    if (trimmed.startsWith('注释 ')) return trimmed.slice('注释'.length).trim();
+    break;
+  }
+  return undefined;
+}
+
+function parseLingCppParameterNoteLine(line: string): { name: string; note: string } | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('//')) return undefined;
+  const content = trimmed.slice(2).trim();
+  if (!content.startsWith('参数备注')) return undefined;
+  const rest = content.slice('参数备注'.length).replace(/^\s*[:：]?\s*/u, '').trim();
+  if (!rest) return undefined;
+  const separator = rest.search(/\s*[:：=＝]\s*/u);
+  if (separator < 0) return { name: rest, note: '' };
+  const separatorText = rest.slice(separator).match(/^\s*[:：=＝]\s*/u)?.[0] || ':';
+  return {
+    name: rest.slice(0, separator).trim(),
+    note: rest.slice(separator + separatorText.length).trim()
+  };
+}
+
+function readLingCppParameterNotes(lines: string[], lineNumber: number): Map<string, string> {
+  const notes = new Map<string, string>();
+  for (let index = lineNumber - 2; index >= 0; index -= 1) {
+    const parsed = parseLingCppParameterNoteLine(lines[index] || '');
+    if (parsed) {
+      notes.set(normalizeIdentifier(parsed.name), parsed.note);
+      continue;
+    }
+    if (isLingCppCommentLine(lines[index] || '')) continue;
+    break;
+  }
+  return notes;
+}
+
 export const LING_CPP_TYPES = [
   '窗体',
   '文本型',
@@ -418,10 +463,11 @@ export function parseLingCpp(source: string): LingCppParseResult {
         isStatic: isStatic && methodKind(prefix) === 'method',
         kind: methodKind(prefix),
         line: lineNumber,
-        parameters: parseParameters(methodMatch[4] || ''),
+        parameters: parseParameters(methodMatch[4] || '', readLingCppParameterNotes(lines, lineNumber)),
         locals: [],
         statements: []
       };
+      method.note = readLingCppDeclarationNote(lines, lineNumber);
       if (currentFunctionLibrary && method.kind !== 'method') {
         diagnostics.push(createDiagnostic('error', lineNumber, line, '功能库只允许普通功能，不能声明事件、构造或析构。', '请使用 `空 功能名()` 或带返回类型的普通功能。'));
       }
@@ -450,6 +496,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
         name: localConstantMatch[2],
         line: lineNumber,
         initialValue: localConstantMatch[4]?.trim(),
+        note: readLingCppDeclarationNote(lines, lineNumber),
         isArray: Boolean(localConstantMatch[3]),
         isConstant: true
       };
@@ -486,6 +533,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
         name: localMatch[2],
         line: lineNumber,
         initialValue: localMatch[4]?.trim(),
+        note: readLingCppDeclarationNote(lines, lineNumber),
         isArray: Boolean(localMatch[3])
       };
       (currentMethod.locals ||= []).push(local);
@@ -844,7 +892,7 @@ function appendStatement(method: LingCppMethod | null, line: string, lineNumber:
   return statement;
 }
 
-function parseParameters(raw: string): LingCppParameter[] {
+function parseParameters(raw: string, notes: Map<string, string> = new Map()): LingCppParameter[] {
   return splitParameterParts(raw)
     .map(part => part.trim())
     .filter(Boolean)
@@ -857,6 +905,8 @@ function parseParameters(raw: string): LingCppParameter[] {
         name: name || type
       };
       if (defaultValue) parameter.defaultValue = defaultValue;
+      const note = notes.get(normalizeIdentifier(parameter.name));
+      if (note !== undefined) parameter.note = note;
       return parameter;
     });
 }

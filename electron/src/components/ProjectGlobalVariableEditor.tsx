@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Trash2 } from 'lucide-react';
+import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import { applyWorkspaceEditToFiles } from '../services/lingCpp/aiEditService';
 import { buildBeginnerTypeCompletionCatalog, resolveBeginnerTypeAlias } from '../services/lingCpp/beginnerTypeCompletion';
 import { LING_CPP_TYPES, parseLingCpp } from '../services/lingCpp/parser';
@@ -136,7 +137,7 @@ export default function ProjectGlobalVariableEditor({
     const nextName = (values.name ?? constant.name).trim();
     if (!nextName) { setFeedback('项目常量名不能为空。'); return; }
     if (nextName !== constant.name) {
-      renameConstant(constant, nextName);
+      void renameConstant(constant, nextName);
       return;
     }
     const type = resolveBeginnerTypeAlias(constantTypeCatalog, values.type ?? constant.type);
@@ -173,11 +174,11 @@ export default function ProjectGlobalVariableEditor({
     runEdit({ kind: 'delete-constant', constantName: constant.name });
   };
 
-  const renameConstant = (constant: LingCppConstant, newName: string) => {
+  const renameConstant = async (constant: LingCppConstant, newName: string) => {
     try {
       if (!filePath || !onProjectSourcesChange) throw new Error('当前工作台尚未提供多文件重命名能力。');
       const proposal = createProjectConstantRenameProposal(effectiveWorkspaceFiles, filePath, constant.name, newName);
-      if (!window.confirm(`${proposal.summary}\n\n确认应用这些修改吗？`)) return;
+      if (!await requestWorkbenchConfirm({ title: '重命名项目常量', description: `${proposal.summary}\n\n确认应用这些修改吗？`, confirmLabel: '应用', cancelLabel: '取消' })) return;
       const appliedFiles = applyWorkspaceEditToFiles(effectiveWorkspaceFiles, proposal);
       onProjectSourcesChange(appliedFiles);
       setFeedback(proposal.summary);

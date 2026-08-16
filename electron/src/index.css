@@ -34,6 +34,12 @@ textarea {
   font: inherit;
 }
 
+@keyframes epl-declaration-reject {
+  20% { transform: translateX(-3px); background-color: rgb(127 29 29 / 0.42); }
+  50% { transform: translateX(3px); background-color: rgb(127 29 29 / 0.42); }
+  80% { transform: translateX(-2px); }
+}
+
 /*
  * 中文 UI 使用同一套经过 Windows 小字号优化的字体。过去活动栏文字再经过
  * transform 缩小，会落在半像素上并产生明显模糊；工作台文字不再参与整体缩放。
@@ -47,6 +53,17 @@ textarea {
   isolation: isolate;
   text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
+}
+
+/* 原生控件（select 弹出的 option 列表、滚动条等）跟随工作台主题。
+ * 深色主题下若不声明 color-scheme，Chromium 会用浅色弹层渲染原生下拉，
+ * 叠加继承的浅色文字后选项不可读。 */
+.workbench-shell.theme-dark {
+  color-scheme: dark;
+}
+
+.workbench-shell.theme-light {
+  color-scheme: light;
 }
 
 /* 主要工作台区域不再使用 8–10px 的正文。Windows 100% 缩放下，这些字号的

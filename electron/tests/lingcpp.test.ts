@@ -72,6 +72,8 @@ import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
 import { InstalledModule } from '../src/services/modules/types';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { EPL_TOKEN_COLORS_DARK, EPL_TOKEN_COLORS_LIGHT, tokenizeEplStatement } from '../src/services/eplTokenizer';
+import { EPL_STRUCTURED_EDITOR_THEME_DARK, EPL_STRUCTURED_EDITOR_THEME_LIGHT } from '../src/services/eplStructuredEditor';
 import {
   getLingCppControlReferenceAtPosition,
   getLingCppControlReferenceDiagnostics,
@@ -1566,6 +1568,27 @@ test('beginner presentation assigns a dedicated control-reference token color ki
   assert.equal(tokens.find(token => token.text === '操作结果')?.kind, 'control-reference');
 });
 
+test('beginner presentation colors local variables independently from members and strings', () => {
+  const tokens = classifyLingCppPresentationCode('如果 (localVar = "localVar")', {
+    isNativeCpp: false,
+    moduleCommands: new Set(),
+    knownMembers: new Set(['成员变量']),
+    knownLocals: new Set(['localVar']),
+    knownProcedures: new Set()
+  });
+  assert.equal(tokens.find(token => token.text === 'localVar')?.kind, 'local');
+  assert.equal(tokens.find(token => token.kind === 'string')?.kind, 'string');
+  const chineseLocal = '\u5c40\u90e8\u53d8\u91cf';
+  const chineseTokens = classifyLingCppPresentationCode(`\u5982\u679c (${chineseLocal}=\"123\")`, {
+    isNativeCpp: false,
+    moduleCommands: new Set(),
+    knownMembers: new Set(),
+    knownLocals: new Set([chineseLocal]),
+    knownProcedures: new Set()
+  });
+  assert.equal(chineseTokens.find(token => token.text === chineseLocal)?.kind, 'local');
+});
+
 test('Monaco control references use an independent semantic token and stable theme colors', () => {
   assert.equal(LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, 'controlReference');
   assert.notEqual(LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.dark.toLocaleLowerCase(), '#ce9178');
@@ -2943,8 +2966,27 @@ test('multiple local-variable groups remain freely insertable across one method 
   assert.ok(method);
   assert.deepEqual(
     getBeginnerMethodBodySegments(method).map(segment => segment.kind),
-    ['locals', 'code', 'locals', 'code', 'locals']
+    ['locals', 'code', 'locals', 'code', 'locals', 'code']
   );
+});
+
+test('beginner editor keeps a writable trailing code segment after final local declarations', () => {
+  const source = `类 测试窗口 : 公开 窗体
+公开:
+    事件 _按钮2_被单击()
+        调试输出("事件开始")
+        局部 文本型 局部变量 = "111"
+    结束
+结束类`;
+  const method = findLingCppMethod(parseLingCpp(source).program, '_按钮2_被单击');
+  assert.ok(method);
+
+  const segments = getBeginnerMethodBodySegments(method);
+  assert.deepEqual(segments.map(segment => segment.kind), ['code', 'locals', 'code']);
+  const trailing = segments.at(-1);
+  assert.equal(trailing?.kind, 'code');
+  assert.deepEqual(trailing?.statements, []);
+  assert.equal(trailing?.statementStartIndex, 1);
 });
 
 test('beginner Ctrl+L and Ctrl+B resolve the caret row and shortcut kind precisely', () => {
@@ -3383,6 +3425,40 @@ test('generateLingCppNativeWin32Project emits members, locals and module return 
   assert.ok(mainCpp.includes('std::vector<unsigned char> ret{};'));
   assert.ok(mainCpp.includes('ret = LB_WebRequestObject(LingCppWideArg(url), 1);'));
   assert.equal(mainCpp.includes('暂不支持的中文 C++ 语句：ret ='), false);
+});
+
+test('Win32 generator converts single-equals Chinese text conditions to wide-string equality', () => {
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    事件 _按钮2_被单击()',
+    '        局部 文本型 局部变量 = "12234"',
+    '        如果 (局部变量 = "12234")',
+    '            调试输出("匹配")',
+    '        否则',
+    '            调试输出("不匹配")',
+    '        如果结束',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.match(cpp, /std::wstring 局部变量 = L"12234";/u);
+  assert.ok(cpp.includes('if (std::wstring(LingCppWideArg(局部变量))==LingCppWideArg(L"12234")) {'));
+  assert.equal(cpp.includes('局部变量 = "12234"'), false);
+});
+
+test('新手编辑器局部变量引用使用局部变量声明的绿色语义颜色', () => {
+  const variableName = '\u5c40\u90e8\u53d8\u91cf';
+  const tokens = tokenizeEplStatement(`\u5982\u679c (${variableName}=\"123\")`, new Set([variableName]));
+  assert.equal(tokens.find(token => token.text === variableName)?.kind, 'variable');
+  assert.equal(EPL_TOKEN_COLORS_DARK.variable, '#9df59c');
+  assert.equal(EPL_TOKEN_COLORS_LIGHT.variable, '#047857');
+  assert.equal(EPL_STRUCTURED_EDITOR_THEME_DARK.variable, EPL_TOKEN_COLORS_DARK.variable);
+  assert.equal(EPL_STRUCTURED_EDITOR_THEME_LIGHT.variable, EPL_TOKEN_COLORS_LIGHT.variable);
 });
 
 test('generateLingCppNativeWin32Project emits runtime local constants in source order with local source maps', () => {

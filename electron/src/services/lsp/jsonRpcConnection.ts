@@ -13,6 +13,9 @@ export class JsonRpcConnection extends EventEmitter {
     input.on('data', chunk => this.consume(Buffer.from(chunk)));
     input.on('error', error => this.failPending(error));
     input.on('end', () => this.failPending(new Error('LSP 输出流已关闭。')));
+    /* 子进程启动失败（如 clangd 未安装）后 stdin 写入会异步报错；
+     * 监听 output 的 'error' 可以终结挂起请求，而不是让异常逃逸到进程层。 */
+    output.on('error', error => this.failPending(error));
   }
 
   request<T>(method: string, params?: unknown, signal?: AbortSignal): Promise<T> {
@@ -38,6 +41,7 @@ export class JsonRpcConnection extends EventEmitter {
   dispose(reason = 'LSP 连接已关闭。'): void { this.failPending(new Error(reason)); this.removeAllListeners(); }
 
   private send(message: JsonRpcMessage): void {
+    if (this.output.destroyed) { this.failPending(new Error('LSP 输入流已关闭。')); return; }
     const json = Buffer.from(JSON.stringify(message), 'utf8');
     this.output.write(`Content-Length: ${json.byteLength}\r\n\r\n`);
     this.output.write(json);

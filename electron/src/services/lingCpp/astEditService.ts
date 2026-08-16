@@ -238,6 +238,7 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
       isArray: edit.isArray ?? local.isArray ?? false,
       isConstant: edit.isConstant ?? local.isConstant ?? false
     });
+    if (edit.note !== undefined) replaceOrInsertNote(next, local.line, edit.note);
     return next;
   }
 
@@ -246,7 +247,9 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
     if (!method) throw new Error(`未找到子程序：${edit.methodName}`);
     const local = resolveLocal(method, edit.localName);
     if (!local) throw new Error(`未找到局部变量：${edit.localName}`);
-    next.splice(lineIndex(local.line), 1);
+    const index = lineIndex(local.line);
+    const removeFrom = isNoteLine(next[index - 1] || '') ? index - 1 : index;
+    next.splice(removeFrom, removeFrom === index ? 1 : 2);
     return next;
   }
 
@@ -259,9 +262,11 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
     const method = resolveMethod(cls, edit.handlerName, 'event');
     if (!method) throw new Error(`未找到事件处理器：${edit.handlerName}`);
     const index = lineIndex(method.line);
-    next[index] = formatEventDeclaration(next[index] || '', edit.newHandlerName || method.name, edit.parameters ?? method.parameters);
-    if (edit.note !== undefined) replaceOrInsertNote(next, method.line, edit.note);
-    if (edit.access && edit.access !== method.access) insertAccessModifier(next, method.line, edit.access);
+    const parameters = edit.parameters ?? method.parameters;
+    next[index] = formatEventDeclaration(next[index] || '', edit.newHandlerName || method.name, parameters);
+    const declarationLine = replaceOrInsertParameterNotes(next, method.line, parameters);
+    if (edit.note !== undefined) replaceOrInsertNote(next, declarationLine, edit.note);
+    if (edit.access && edit.access !== method.access) insertAccessModifier(next, declarationLine, edit.access);
     return next;
   }
 
@@ -281,16 +286,18 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
     const method = resolveMethod(cls, edit.methodName);
     if (!method) throw new Error(`未找到方法：${edit.methodName}`);
     const index = lineIndex(method.line);
+    const parameters = edit.parameters ?? method.parameters;
     next[index] = formatMethodDeclaration(
       next[index] || '',
       method,
       edit.newName || method.name,
       edit.returnType || method.returnType,
-      edit.parameters ?? method.parameters,
+      parameters,
       edit.isStatic ?? method.isStatic ?? false
     );
-    if (edit.note !== undefined) replaceOrInsertNote(next, method.line, edit.note);
-    if (edit.access && edit.access !== method.access) insertAccessModifier(next, method.line, edit.access);
+    const declarationLine = replaceOrInsertParameterNotes(next, method.line, parameters);
+    if (edit.note !== undefined) replaceOrInsertNote(next, declarationLine, edit.note);
+    if (edit.access && edit.access !== method.access) insertAccessModifier(next, declarationLine, edit.access);
     return next;
   }
 
@@ -448,6 +455,7 @@ function insertEvent(
     '',
     event.access ? `${indent}${event.access}:` : '',
     event.note ? `${indent}// ${event.note.trim()}` : '',
+    ...formatParameterNoteLines(indent, event.parameters || []),
     `${indent}事件 ${event.handlerName.trim()}(${formatParameters(event.parameters || [])})`,
     `${bodyIndent}调试输出("${event.handlerName.trim()} 已触发")`
   ].filter(line => line !== '');
@@ -457,7 +465,7 @@ function insertEvent(
 function insertLocal(
   lines: string[],
   method: LingCppMethod,
-  local: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean },
+  local: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean; note?: string },
   insertBeforeLine?: number
 ): void {
   const locals = method.locals || [];
@@ -473,7 +481,11 @@ function insertLocal(
   );
   const insertAt = lineIndex(safeInsertBeforeLine);
   const indent = inferMethodBodyIndent(lines, method);
-  lines.splice(insertAt, 0, formatLocalDeclaration(`${indent}${local.isConstant ? '局部常量' : '局部'} ${local.type} ${local.name}`, local));
+  const declaration = formatLocalDeclaration(`${indent}${local.isConstant ? '局部常量' : '局部'} ${local.type} ${local.name}`, local);
+  lines.splice(insertAt, 0, ...[
+    local.note?.trim() ? `${indent}// ${local.note.trim()}` : '',
+    declaration
+  ].filter(Boolean));
 }
 
 function insertMethod(
@@ -490,6 +502,7 @@ function insertMethod(
     '',
     method.access ? `${indent}${method.access}:` : '',
     method.note ? `${indent}// ${method.note.trim()}` : '',
+    ...formatParameterNoteLines(indent, method.parameters || []),
     `${indent}${method.isStatic ? '静态 ' : ''}${method.returnType?.trim() || '空'} ${method.name.trim()}(${formatParameters(method.parameters || [])})`,
     ...bodyLines
   ].filter(line => line !== '');
@@ -521,6 +534,43 @@ function replaceOrInsertNote(lines: string[], lineNumber: number, note: string):
     return;
   }
   lines.splice(index, 0, noteLine);
+}
+
+function parseParameterNoteLine(line: string): { name: string; note: string } | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('//')) return undefined;
+  const content = trimmed.slice(2).trim();
+  if (!content.startsWith('参数备注')) return undefined;
+  const rest = content.slice('参数备注'.length).replace(/^\s*[:：]?\s*/u, '').trim();
+  if (!rest) return undefined;
+  const separator = rest.search(/\s*[:：=＝]\s*/u);
+  if (separator < 0) return { name: rest, note: '' };
+  const separatorText = rest.slice(separator).match(/^\s*[:：=＝]\s*/u)?.[0] || ':';
+  return {
+    name: rest.slice(0, separator).trim(),
+    note: rest.slice(separator + separatorText.length).trim()
+  };
+}
+
+function formatParameterNoteLines(indent: string, parameters: LingCppParameter[]): string[] {
+  return parameters
+    .filter(parameter => parameter.note?.trim())
+    .map(parameter => `${indent}// 参数备注 ${parameter.name.trim()}：${parameter.note?.trim()}`);
+}
+
+/** Replace only parameter metadata comments and return the declaration's new line. */
+function replaceOrInsertParameterNotes(lines: string[], lineNumber: number, parameters: LingCppParameter[]): number {
+  const declarationIndex = lineIndex(lineNumber);
+  const declaration = lines[declarationIndex] || '';
+  const parameterNoteIndexes: number[] = [];
+  for (let index = declarationIndex - 1; index >= 0 && isNoteLine(lines[index] || ''); index -= 1) {
+    if (parseParameterNoteLine(lines[index] || '')) parameterNoteIndexes.push(index);
+  }
+  parameterNoteIndexes.sort((left, right) => right - left).forEach(index => lines.splice(index, 1));
+  const nextDeclarationIndex = declarationIndex - parameterNoteIndexes.filter(index => index < declarationIndex).length;
+  const noteLines = formatParameterNoteLines(indentOf(declaration), parameters);
+  if (noteLines.length > 0) lines.splice(nextDeclarationIndex, 0, ...noteLines);
+  return nextDeclarationIndex + noteLines.length + 1;
 }
 
 function insertAccessModifier(lines: string[], lineNumber: number, access: LingCppAccessModifier): void {

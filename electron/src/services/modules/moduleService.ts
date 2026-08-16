@@ -25,6 +25,9 @@ const MODULE_SOURCES_FILE = 'module-sources.json';
 const MODULE_HISTORY_FILE = 'module-history.json';
 const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 const BASIC_MODULE_ID = 'lingbuilder.win32.basic';
+// These resources belong to a project and must never be exposed as installable
+// modules. Keeping the filter here also migrates older project refs in memory.
+const PROJECT_RESOURCE_MODULE_IDS = new Set(['lingbuilder.browser.doubao-downloader']);
 // CEF3 内核 SDK 等大型二进制资产模块包可达数百 MB，上限放宽到 1GB。
 const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024;
 
@@ -66,6 +69,7 @@ export class ModuleService {
     const entries = await safeReadDir(installRoot);
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (PROJECT_RESOURCE_MODULE_IDS.has(entry.name)) continue;
       const installPath = path.join(installRoot, entry.name);
       const manifestPath = path.join(installPath, MODULE_MANIFEST_FILE);
       try {
@@ -119,6 +123,8 @@ export class ModuleService {
   }
 
   async enableModulesForProject(projectId: string, moduleIds: readonly string[]): Promise<ProjectModuleEnablePlan> {
+    const projectResource = moduleIds.find(moduleId => PROJECT_RESOURCE_MODULE_IDS.has(moduleId));
+    if (projectResource) throw new Error(`“${projectResource}”是项目资源，不是可安装模块；请将资源放入项目 assets 目录。`);
     const plan = await this.planEnableModulesForProject(projectId, moduleIds);
     await this.applyProjectModuleEnablePlan(plan);
     return plan;
@@ -449,8 +455,10 @@ export class ModuleService {
       pinnedVersions: { [BASIC_MODULE_ID]: '1.0.0' }
     };
     if (!Array.isArray(refs.enabledModuleIds)) refs.enabledModuleIds = [];
+    refs.enabledModuleIds = refs.enabledModuleIds.filter(moduleId => !PROJECT_RESOURCE_MODULE_IDS.has(moduleId));
     if (!refs.enabledModuleIds.includes(BASIC_MODULE_ID)) refs.enabledModuleIds.unshift(BASIC_MODULE_ID);
     refs.pinnedVersions ||= {};
+    for (const moduleId of PROJECT_RESOURCE_MODULE_IDS) delete refs.pinnedVersions[moduleId];
     refs.pinnedVersions[BASIC_MODULE_ID] ||= '1.0.0';
     return refs;
   }

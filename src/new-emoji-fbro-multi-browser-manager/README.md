@@ -12,13 +12,13 @@ RichList 右键菜单由统一 BrowserWorkbench 命令/菜单契约生成，包�
 
 实例正式状态保存在 %LocalAppData%/LingBuilder/browser-workspaces/new-emoji-fbro-multi-browser-manager/browser-instances.json。写入使用临时文件、备份和原子替换；主配置损坏时先尝试 .bak，并保留损坏文件。项目内 config/new-emoji-fbro-multi-browser-manager/browser-instances.json 只保存可迁移结构和 profiles/<稳定ID> 相对路径，不包含本机浏览器数据。
 
-每个 RequestContext 都在创建浏览器前加载 exe 同级 doubao-downloader 目录。路径由 GetModuleFileNameW 得到真实 exe 位置，不依赖工作目录或开发机绝对路径。插件缺失、清单损坏、版本不支持或 FBro 拒绝加载只会更新中文状态，不会导致整个工作台退出。
+每个 RequestContext 都在创建浏览器前加载项目 assets 下的 `assets/new-emoji-fbro-multi-browser-manager/doubao-downloader` 目录。路径由 GetModuleFileNameW 得到真实 exe 位置并兼容项目资源分层，不依赖工作目录或开发机绝对路径；插件不是模块，不写入 `.lingbuilder/modules`。插件缺失、清单损坏、版本不支持或 FBro 拒绝加载只会更新中文状态，不会导致整个工作台退出。
 
 ## Cookie 与分享包
 
 Cookie 导入导出操作当前选中 Host 的真实 CookieManager。LingBuilder Cookie JSON 保留 name、value、domain、path、expires、httpOnly、secure、sameSite、priority 和 session；导入前显示有效、无效、过期、冲突和域名统计，默认跳过无效及过期记录，并可覆盖或跳过冲突。普通日志只记录数量和结果，不写 Cookie 明文。
 
-在 LingBuilder 中使用“项目 -> 一键导出当前项目源码包”或命令“浏览器工作台：一键导出多浏览器工作台分享包”生成 .lcpppkg。分享包携带源码、设计器、相对实例结构、模块文档、FBro SDK 支持资产和 doubao-downloader 运行资源；Cookie、Profile、缓存、localStorage、IndexedDB、凭据、构建缓存和本机绝对路径会被排除。导入到新目录后，本机首次运行重新创建独立 LocalAppData Profile。
+在 LingBuilder 中使用“项目 -> 一键导出当前项目源码包”或命令“浏览器工作台：一键导出多浏览器工作台分享包”生成 .lcpppkg。分享包携带源码、设计器、相对实例结构、模块文档、FBro SDK 支持资产和项目 assets 下的 doubao-downloader 运行资源；插件不作为模块封装。Cookie、Profile、缓存、localStorage、IndexedDB、凭据、构建缓存和本机绝对路径会被排除。导入到新目录后，本机首次运行重新创建独立 LocalAppData Profile。
 
 ## 平台限制
 

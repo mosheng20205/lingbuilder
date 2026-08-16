@@ -6,6 +6,7 @@ import CommandPalette from '../src/components/CommandPalette';
 import SettingsDialog from '../src/components/SettingsDialog';
 import ProjectNameDialog from '../src/components/ProjectNameDialog';
 import ProjectTypeDialog from '../src/components/ProjectTypeDialog';
+import WorkbenchConfirmDialog from '../src/components/WorkbenchConfirmDialog';
 import type { CommandPresentation, RegisteredCommand } from '../src/services/commands';
 import {
   WORKBENCH_CONFIGURATION_METADATA,
@@ -112,6 +113,84 @@ test('new solution project uses an in-app input dialog instead of a browser prom
   assert.match(markup, /aria-label="项目名称"/u);
   assert.match(markup, /LingBuilder项目3/u);
   assert.match(markup, /创建项目/u);
+});
+
+test('recovery confirmation uses an in-app dialog instead of blocking window.confirm', () => {
+  const markup = renderToStaticMarkup(
+    <WorkbenchConfirmDialog
+      open
+      title="发现未保存的编辑"
+      description={"检测到 2026/8/16 12:00:00 保存的未保存编辑。\n恢复只会进入编辑器内存，不会立即覆盖磁盘。"}
+      confirmLabel="恢复"
+      cancelLabel="不恢复"
+      isDarkMode
+      onResult={() => undefined}
+    />
+  );
+
+  assert.match(markup, /role="dialog"/u);
+  assert.match(markup, /aria-modal="true"/u);
+  assert.match(markup, /发现未保存的编辑/u);
+  assert.match(markup, /恢复只会进入编辑器内存/u);
+  assert.match(markup, /恢复/u);
+  assert.match(markup, /不恢复/u);
+});
+
+test('closed workbench confirm dialog does not leave a hidden interactive surface', () => {
+  const markup = renderToStaticMarkup(
+    <WorkbenchConfirmDialog
+      open={false}
+      title="发现未保存的编辑"
+      isDarkMode
+      onResult={() => undefined}
+    />
+  );
+
+  assert.equal(markup, '');
+});
+
+test('workbench alert dialog renders a single acknowledge button without cancel', () => {
+  const markup = renderToStaticMarkup(
+    <WorkbenchConfirmDialog
+      open
+      kind="alert"
+      title="操作已被阻止"
+      description="该项目结构文件不能在 IDE 中删除。"
+      confirmLabel="知道了"
+      isDarkMode
+      onResult={() => undefined}
+    />
+  );
+
+  assert.match(markup, /role="dialog"/u);
+  assert.match(markup, /操作已被阻止/u);
+  assert.match(markup, /知道了/u);
+  assert.doesNotMatch(markup, /type="button"[^>]*>\s*<\/button>\s*<button/u, 'alert 模式只应有一个按钮');
+  assert.equal((markup.match(/<button/gu) || []).length, 1, 'alert 模式应只有一个按钮');
+});
+
+test('workbench prompt dialog renders a labelled input and both buttons', () => {
+  const markup = renderToStaticMarkup(
+    <WorkbenchConfirmDialog
+      open
+      kind="prompt"
+      title="重命名文件"
+      description="输入新的文件名。"
+      inputLabel="新名称"
+      inputValue="MainWindow.xml"
+      inputPlaceholder="请输入名称"
+      confirmLabel="重命名"
+      cancelLabel="取消"
+      isDarkMode
+      onResult={() => undefined}
+    />
+  );
+
+  assert.match(markup, /role="dialog"/u);
+  assert.match(markup, /aria-label="新名称"/u);
+  assert.match(markup, /placeholder="请输入名称"/u);
+  assert.match(markup, /value="MainWindow\.xml"/u);
+  assert.equal((markup.match(/<button/gu) || []).length, 2, 'prompt 模式应有取消与确认两个按钮');
 });
 
 test('welcome project type dialog exposes one available Windows UI project and three planned types', () => {

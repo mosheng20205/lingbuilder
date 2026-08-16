@@ -237,14 +237,16 @@ export function tokenizeEplStatement(
 
       // Classify the identifier
       let kind: EplTokenKind = 'identifier';
-      if (EPL_KEYWORDS.has(word)) {
+      // A declared variable takes precedence over keyword spelling. Chinese
+      // identifiers such as "局部变量" are valid user-defined names.
+      if (knownVariables?.has(word)) {
+        kind = 'variable';
+      } else if (EPL_KEYWORDS.has(word)) {
         kind = 'keyword';
       } else if (EPL_COMMANDS.has(word)) {
         kind = 'command';
       } else if (EPL_BOOLEANS.has(word)) {
         kind = 'boolean';
-      } else if (knownVariables?.has(word)) {
-        kind = 'variable';
       } else if (knownFunctions?.has(word)) {
         kind = 'function';
       }
@@ -288,9 +290,9 @@ export const EPL_TOKEN_COLORS_DARK: EplTokenColorTheme = {
   command:    '#dcdcaa',  // VS yellow for functions/commands
   string:     '#ce9178',  // VS orange-brown for strings
   comment:    '#6a9955',  // VS green for comments
-  number:     '#b5cea8',  // VS light green for numbers
+  number:     '#b5cea2',  // VS light green for numbers
   operator:   '#d4d4d4',  // VS light gray for operators
-  variable:   '#9cdcfe',  // VS light blue for variables
+  variable:   '#9df59c',  // 与局部变量声明表的绿色标记保持一致
   function:   '#dcdcaa',  // VS yellow for functions
   boolean:    '#569cd6',  // VS blue for boolean literals
   identifier: '#d4d4d4',  // VS default text color
@@ -310,7 +312,7 @@ export const EPL_TOKEN_COLORS_LIGHT: EplTokenColorTheme = {
   comment:    '#008000',  // VS green for comments
   number:     '#098658',  // VS teal for numbers
   operator:   '#000000',  // Black
-  variable:   '#001080',  // VS dark blue for variables
+  variable:   '#047857',  // 与局部变量声明表的绿色标记保持一致
   function:   '#795e26',  // VS dark yellow
   boolean:    '#0000ff',  // Blue
   identifier: '#000000',  // Black

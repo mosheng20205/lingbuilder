@@ -2,9 +2,9 @@
   "schemaVersion": 2,
   "id": "lingbuilder-solution",
   "name": "未命名解决方案",
-  "startupProjectId": "lingbuilder-project",
+  "startupProjectId": "lingbuilder-project-2",
   "startupProjectIds": [
-    "lingbuilder-project"
+    "lingbuilder-project-2"
   ],
   "folders": [],
   "projects": [
@@ -25,6 +25,15 @@
       "sourceRoot": "src/lingbuilder-project",
       "configRoot": "config/lingbuilder-project",
       "designerPath": ".lingbuilder/projects/lingbuilder-project/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-project-2",
+      "name": "测试窗口",
+      "sourceRoot": "src/lingbuilder-project-2",
+      "configRoot": "config/lingbuilder-project-2",
+      "designerPath": ".lingbuilder/projects/lingbuilder-project-2/window-designer.json",
       "references": []
     }
   ]

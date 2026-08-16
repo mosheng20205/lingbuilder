@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { requestWorkbenchPrompt } from '../services/workbench/workbenchConfirmService';
 import {
   Folder,
   FileCode,
@@ -1013,12 +1014,19 @@ export default function Sidebar({
         <div
           className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors`}
           onClick={() => {
-            const newName = window.prompt(`重命名文件 ${contextMenu.file.name}`, contextMenu.file.name);
-            if (newName && newName.trim() && newName !== contextMenu.file.name) {
-              void Promise.resolve(onRenameFile?.(contextMenu.file, newName.trim()) ?? false).then(success => {
-                if (success) triggerSuccess(`已重命名文件为 ${newName.trim()}`);
+            void (async () => {
+              const newName = await requestWorkbenchPrompt({
+                title: '重命名文件',
+                description: `重命名文件 ${contextMenu.file.name}`,
+                inputLabel: '新文件名',
+                inputValue: contextMenu.file.name
               });
-            }
+              if (newName && newName.trim() && newName !== contextMenu.file.name) {
+                void Promise.resolve(onRenameFile?.(contextMenu.file, newName.trim()) ?? false).then(success => {
+                  if (success) triggerSuccess(`已重命名文件为 ${newName.trim()}`);
+                });
+              }
+            })();
           }}
         >
           <span>重命名 (R)</span>

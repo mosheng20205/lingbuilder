@@ -464,6 +464,40 @@ test('普通 Win32 运行窗口只执行一次标准显示且不切换置顶或�
   assert.doesNotMatch(legacyCpp, /HWND_(?:TOPMOST|NOTOPMOST)|SetForegroundWindow\(hwnd\)|BringWindowToTop\(hwnd\)|SetFocus\(hwnd\)/u);
 });
 
+test('F5 后台启动的普通 Win32 启动窗口在消息循环前执行一次前台激活', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'f5-start-window-foreground',
+    name: '启动窗口前台激活测试',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', controls: []
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口\n结束类\n'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const winMainStart = cpp.indexOf('int WINAPI wWinMain');
+  const createCall = cpp.indexOf('OpenGeneratedWindow(g_startWindowIndex, showCommand)', winMainStart);
+  const activationCall = cpp.indexOf('EnsureStartWindowForeground(startWindow, showCommand);', winMainStart);
+  const messageLoop = cpp.indexOf('while (GetMessageW', winMainStart);
+
+  assert.match(cpp, /static void EnsureStartWindowForeground\(HWND hwnd, int showCommand\)/u);
+  assert.match(cpp, /AttachThreadInput\(currentThreadId, foregroundThreadId, TRUE\)/u);
+  assert.match(cpp, /AttachThreadInput\(currentThreadId, foregroundThreadId, FALSE\)/u);
+  assert.match(cpp, /SetWindowPos\(hwnd, HWND_TOPMOST,[\s\S]*?SetWindowPos\(hwnd, HWND_NOTOPMOST/u);
+  assert.match(cpp, /SetForegroundWindow\(hwnd\);\s*SetActiveWindow\(hwnd\);\s*SetFocus\(hwnd\);/u);
+  assert.ok(winMainStart >= 0 && createCall >= 0 && activationCall > createCall, '激活调用必须在启动窗口创建（含创建完毕处理器）之后');
+  assert.ok(messageLoop > activationCall, '激活调用必须在进入消息循环之前完成');
+  assert.ok(cpp.indexOf('EnsureStartWindowForeground(startWindow, showCommand);', activationCall + 1) < 0, '激活只允许执行一次，不得恢复延时定时器或重复抢焦点');
+  assert.match(cpp, /showCommand == SW_HIDE \|\| showCommand == SW_SHOWMINIMIZED[\s\S]*?showCommand == SW_SHOWNA/u);
+  const helperStart = cpp.indexOf('static void EnsureStartWindowForeground');
+  const helperEnd = cpp.indexOf('int WINAPI wWinMain', helperStart);
+  assert.doesNotMatch(cpp.slice(helperStart, helperEnd), /SetTimer/u);
+  const openWindow = cpp.slice(cpp.indexOf('HWND Open('), cpp.indexOf('void AttachPropertyPage'));
+  assert.doesNotMatch(openWindow, /EnsureStartWindowForeground|SetForegroundWindow|HWND_TOPMOST/u);
+});
+
 function createControl(id: string, parentId?: string, type: LingControl['type'] = 'Button'): LingControl {
   return {
     id,
@@ -4396,6 +4430,35 @@ test('原生生成优先按当前源码文件选择窗口并忽略过期设计�
 
   assert.equal(generated.selectedWindow.id, 'settings');
   assert.ok(generated.diagnostics.some(item => /忽略过期的设计器窗口“主窗口”/u.test(item)));
+});
+
+test('未启用 FBro 模块时生成浏览器管理器安全回退，避免发行 SDK 条件不一致导致未声明调用', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'no-fbro-module',
+    name: '无浏览器模块项目',
+    windows: [{
+      id: 'main',
+      fileName: 'MainWindow.xml',
+      className: '主窗口',
+      title: '主窗口',
+      width: 640,
+      height: 480,
+      background: '#202028',
+      description: '',
+      controls: []
+    }]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类',
+    enabledModules: []
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /void 浏览器管理器_调整页面\(\) \{\}/u);
+  assert.match(cpp, /bool 浏览器管理器_是否全部关闭\(\) const \{ return true; \}/u);
+  assert.match(cpp, /template<typename TPacket>\s+bool 浏览器管理器_处理进程事件\(TPacket&\) \{ return false; \}/u);
+  assert.doesNotMatch(cpp, /struct BrowserManagerState/u);
 });
 
 test('原生生成明确报告当前源码与设计器窗口类不一致', () => {

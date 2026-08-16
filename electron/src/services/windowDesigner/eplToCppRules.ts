@@ -81,7 +81,8 @@ export function splitEplBinaryExpression(expression: string): { left: string; op
   const precedenceGroups = [
     ['||'],
     ['&&'],
-    ['==', '!=', '>=', '<=', '>', '<'],
+    // 中文条件表达式使用单个“=”表示相等判断；保持双等号优先匹配。
+    ['==', '!=', '>=', '<=', '>', '<', '='],
     ['+', '-'],
     ['*', '/', '%']
   ];

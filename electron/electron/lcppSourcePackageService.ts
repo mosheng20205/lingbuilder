@@ -17,7 +17,7 @@ const LEGACY_PACKAGE_SCHEMA_VERSION = 1;
 const MINIMUM_GENERATOR_VERSION = '0.2.5';
 // Keep package compatibility checks inside the desktop package boundary. This
 // must match the desktop generator version and cannot import renderer services.
-const CURRENT_GENERATOR_VERSION = '0.3.0';
+const CURRENT_GENERATOR_VERSION = '0.4.0';
 const LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION = '0.2.7';
@@ -26,6 +26,7 @@ const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
 const MAX_FILE_COUNT = 50_000;
 const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
+const PROJECT_RESOURCE_MODULE_IDS = new Set(['lingbuilder.browser.doubao-downloader']);
 
 export const LCPP_GENERATOR_CAPABILITIES = {
   listViewAdvancedApi: 'win32.listview.advanced-api.v1',
@@ -478,7 +479,9 @@ async function readProjectModules(workspaceRoot: string, projectId: string): Pro
   try {
     const parsed = JSON.parse(await fs.readFile(resolveWithin(workspaceRoot, relativePath), 'utf8')) as Partial<PortableProjectModules>;
     const enabledModuleIds = Array.isArray(parsed.enabledModuleIds)
-      ? [...new Set(parsed.enabledModuleIds.filter((id): id is string => typeof id === 'string' && /^[a-z0-9][a-z0-9._-]{2,80}$/u.test(id)))]
+      ? [...new Set(parsed.enabledModuleIds.filter((id): id is string => typeof id === 'string'
+        && /^[a-z0-9][a-z0-9._-]{2,80}$/u.test(id)
+        && !PROJECT_RESOURCE_MODULE_IDS.has(id)))]
       : [];
     if (!enabledModuleIds.includes('lingbuilder.win32.basic')) enabledModuleIds.unshift('lingbuilder.win32.basic');
     const pins = parsed.pinnedVersions && typeof parsed.pinnedVersions === 'object' ? parsed.pinnedVersions : {};

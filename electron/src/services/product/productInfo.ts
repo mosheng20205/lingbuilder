@@ -18,6 +18,28 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.4.0',
+    date: '2026-08-15',
+    title: '按需 SDK、Aria2 下载与新手编辑器升级',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '新增内置 Aria2 下载模块：提供受控异步下载、进度、状态、等待、停止和释放命令；F5 与 Visual Studio 导出会携带经过校验的 aria2c.exe 及 GPLv2 许可文件。',
+          'CEF3 与 FBro SDK 改为首次实际需要时下载到用户共享缓存，安装包保留模块清单、校验信息和 aria2 下载器，不再携带完整 SDK。',
+          '新手模式结构编辑器补齐流程折叠、嵌套缩进、声明备注、子程序管理及拼音补全交互。'
+        ]
+      },
+      {
+        title: '改进',
+        items: [
+          '浏览器管理器的豆包下载器改为项目资源，F5、原生导出和 .lcpppkg 共享同一资产复制与隔离规则。',
+          'Windows 升级安装会清理旧版安装器遗留进程和 SDK 目录，避免“LingBuilder 无法关闭”阻断更新。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.3.0',
     date: '2026-08-07',
     title: 'new_emoji FBro 浏览器外壳与可分享源码包',

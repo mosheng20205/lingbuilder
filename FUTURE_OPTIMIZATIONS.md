@@ -1,5 +1,11 @@
 # LingBuilder 后期优化事项
 
+- 已修复（2026-08-16）：按 F5 运行普通 Win32 项目时，启动窗口会被创建在 IDE 窗口之后，必须手动点击任务栏图标才能看到。根因是本地 API 服务运行在 Electron `utilityProcess` 中，exe 由该后台进程 spawn，按 Windows 前台激活规则无法继承前台激活权，首窗口因此落在前台 IDE 后面。经典 Win32 生成器新增 `EnsureStartWindowForeground(HWND, int)`，与 new_emoji 桥接的 `NE_显示并激活窗口` 保持同一激活契约：在启动窗口创建（含创建完毕处理器）之后、进入消息循环之前只执行一次同步激活，遇前台锁时临时 `AttachThreadInput` 附加当前线程与前台线程输入队列并在完成后立即分离，只短暂提升到最上层后立即还原普通层级；`showCommand` 为隐藏/最小化/不激活显示时不抢占前台。`LingWindowBase::Open()` 内部仍保持 2026-08-13 要求的单次标准 `ShowWindow + UpdateWindow`，未恢复延时定时器或重复 `SetForegroundWindow`/`SetFocus`，激活逻辑集中在 wWinMain 的后端专用函数中；后续不得把该激活下沉到 `Open()` 或恢复两阶段定时器方案。
+
+- 已完成（2026-08-16）：工作台内全部 33 处同步原生对话框（window.confirm/alert/prompt，15 个文件）已统一迁移到 `workbenchConfirmService` + `WorkbenchConfirmDialog` 非阻塞模式（confirm/alert/prompt 三形态，Promise 化），`src/` 目录原生对话框调用清零；新增交互时禁止在异步流程中引入同步原生对话框，应使用 `requestWorkbenchConfirm`/`requestWorkbenchAlert`/`requestWorkbenchPrompt`。
+
+- 后续优化（2026-08-16）：会话恢复确认已从同步 `window.confirm` 迁移到应用内非阻塞对话框（`WorkbenchConfirmDialog` + `requestWorkbenchConfirm`），修复了新建项目对话框无法输入、工作台整体冻结的问题。但工作台其余流程（外部修改冲突 App.tsx、删除文件确认、设计器粘贴预览、新手模式删除子程序、设置页快捷键放弃确认等约 20 处）仍在直接调用 `window.confirm/window.alert`，同样存在阻塞渲染进程主线程、冻结全部输入的风险；后续应统一迁移到 `requestWorkbenchConfirm`/应用内对话框，并在新增交互评审时禁止在异步流程中引入同步原生对话框。
+
 - 已完成（2026-08-16）：严格精简 Windows 安装包已排除 `lingbuilder.cef3.sdk` 与 `lingbuilder.fbro.sdk` 的整个模块目录，不再保留清单或 README。使用 CEF3/FBro 前必须安装独立模块包或受控开发者提供的完整模块目录；发布门禁同时扫描解包目录和 NSIS，发现任一模块路径或桥接/运行时二进制即失败。
 
 - 已完成（2026-08-15）：豆包视频下载器浏览器插件已明确为项目私有资源，不再作为模块封装。两个浏览器管理器项目的文件位于 `assets/<项目ID>/doubao-downloader/`，旧项目模块引用会在读取时过滤，源码包、预览、F5 和 Visual Studio 导出均通过项目 assets 复制；后续不得把该资源重新登记到 `.lingbuilder/modules` 或 `.lbmod`。
@@ -897,3 +903,13 @@
 - [x] 属性面板新增"边框"下拉与"允许拖动移动窗口"开关；画布标题栏按 hasCaption/captionKind 条件渲染（无边框无标题栏、窄标题 h-5、镜框式双边框描边）；"禁止拖拽调整大小"复选框移除，"禁止窗口最大化"无边框时禁用。
 - [ ] 后续可补 `.lcpp` 运行时命令（如 `窗口_设置边框`）；spec 序列化侧 `TITLE_BAR_HEIGHT` 为近似扣减，运行时由 `AdjustWindowRect` 精确计算，如需画布与原生像素完全一致可精确化。
 - [ ] `generateWindowXml` 导出目前只写双布尔（禁止拖拽/最大化），thin-title/frame/none 七值信息有损退化为 normal 类；后续应补 XML 边框样式输出（XML 无导入解析端，单向导出不自相矛盾）。
+
+## FBro 未启用项目的生成回退（2026-08-16）
+
+- [x] `fbroBrowserManagerRuntime` 在项目未启用 `lingbuilder.fbro.browser` 时生成无操作回退接口。它隔离发行 SDK 可见性与项目模块上下文的异常不一致，防止 `浏览器管理器_调整页面`、控件重建或关闭检查等调用在 MSVC 中报 C3861；完整 FBro 模块仍使用原有运行时实现。
+# 2026-08-16 Bug 修复
+
+- 已修复：普通 Win32 F5 生成器对 `如果 (文本变量 = "值")` 的解析遗漏单等号，导致生成 `std::wstring` 与窄字符串赋值表达式并触发 MSVC C2679。表达式规则现将单等号规范为宽字符串 `==` 比较，并由回归测试锁定。
+# 2026-08-16 编辑器颜色修复
+
+- 已修复：新手编辑器条件表达式中的局部变量引用沿用旧蓝色 token，与局部变量声明表的绿色标记不一致。深色/浅色主题的 `variable` token 现统一使用局部变量绿色。

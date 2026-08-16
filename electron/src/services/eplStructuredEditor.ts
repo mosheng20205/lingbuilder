@@ -27,6 +27,8 @@ export interface EplVariableRow {
   type: string;
   isStatic: boolean;
   isArray: boolean;
+  /** Only meaningful for a local constant declaration. Kept verbatim as an EPL expression. */
+  initialValue: string;
   remark: string;
 }
 
@@ -46,6 +48,7 @@ export interface EplVariableBlock {
   id: string;
   sourceLine: number;
   indent: string;
+  declarationKind: 'variable' | 'constant';
   variables: EplVariableRow[];
 }
 
@@ -66,6 +69,82 @@ export interface EplSubprogramBlock {
 export interface EplStructuredDocument {
   header: EplHeaderEntry[];
   subprograms: EplSubprogramBlock[];
+}
+
+export interface EplFoldableBlock {
+  id: string;
+  kind: 'condition' | 'else' | 'loop';
+  startIndex: number;
+  endIndex: number;
+}
+
+export interface EplMethodParameter {
+  name: string;
+  optional?: boolean;
+}
+
+/**
+ * The beginner editor receives module binding signatures through its optional
+ * `methodSignatures` prop. These built-ins are the offline fallback when a
+ * project has no module binding context.
+ */
+export interface EplMethodSignature {
+  name: string;
+  parameters: EplMethodParameter[];
+}
+
+export interface EplMethodCall {
+  name: string;
+  arguments: string[];
+  signature: EplMethodSignature;
+}
+
+export const EPL_BUILTIN_METHOD_SIGNATURES: EplMethodSignature[] = [
+  { name: '信息框', parameters: [{ name: '提示信息' }, { name: '按钮及图标类型', optional: true }, { name: '窗口标题', optional: true }] },
+  { name: '调试输出', parameters: [{ name: '欲输出值' }] },
+  { name: '输出调试文本', parameters: [{ name: '内容' }] },
+  { name: '读取配置项', parameters: [{ name: '配置文件名' }, { name: '节点名' }, { name: '项名' }] },
+  { name: '载入可视化设计', parameters: [{ name: '设计文件' }] },
+  { name: '取运行目录', parameters: [] },
+  { name: '返回', parameters: [{ name: '返回值', optional: true }] }
+];
+
+export interface EplStructuredEditorTheme {
+  keyword: string;
+  command: string;
+  string: string;
+  comment: string;
+  variable: string;
+  number: string;
+  declarationLabel: string;
+  constant: string;
+}
+
+/** Syntax colors live with the editor model, rather than being scattered through React markup. */
+export const EPL_STRUCTURED_EDITOR_THEME_DARK: EplStructuredEditorTheme = {
+  keyword: '#569cd6',
+  command: '#dcdcaa',
+  string: '#ce9178',
+  comment: '#6a9955',
+  variable: '#9df59c',
+  number: '#b5cea2',
+  declarationLabel: '#c586c0',
+  constant: '#4ec9b0'
+};
+
+export const EPL_STRUCTURED_EDITOR_THEME_LIGHT: EplStructuredEditorTheme = {
+  keyword: '#0000ff',
+  command: '#795e26',
+  string: '#a31515',
+  comment: '#008000',
+  variable: '#047857',
+  number: '#098658',
+  declarationLabel: '#a31575',
+  constant: '#098658'
+};
+
+export function getEplStructuredEditorTheme(isDarkMode: boolean): EplStructuredEditorTheme {
+  return isDarkMode ? EPL_STRUCTURED_EDITOR_THEME_DARK : EPL_STRUCTURED_EDITOR_THEME_LIGHT;
 }
 
 export const EPL_FLOW_GUIDE_COLORS = ['#2ea8ff', '#39d98a', '#ffd166', '#ff6b6b', '#b36bff', '#31d7d1'];
@@ -162,7 +241,7 @@ export function parseEplStructuredDocument(sourceCode: string): EplStructuredDoc
 
     if (body.startsWith('.子程序')) {
       if (currentSubprogram) {
-        trimTrailingBlankStatements(currentSubprogram.body);
+        ensureWritableTrailingStatement(currentSubprogram);
       }
       const subprogram = parseSubprogramLine(body, documentModel.subprograms.length, sourceLine);
       documentModel.subprograms.push(subprogram);
@@ -190,15 +269,27 @@ export function parseEplStructuredDocument(sourceCode: string): EplStructuredDoc
       return;
     }
 
-    if (body.startsWith('.局部变量')) {
+    const declarationKind = body.startsWith('.局部常量')
+      ? 'constant'
+      : body.startsWith('.局部变量')
+        ? 'variable'
+        : null;
+
+    if (declarationKind) {
       const indent = line.match(/^\s*/)?.[0] ?? '';
       const lastBodyEntry = currentSubprogram.body[currentSubprogram.body.length - 1];
 
-      if (!currentVariableBlock || lastBodyEntry !== currentVariableBlock || currentVariableBlock.indent !== indent) {
+      if (
+        !currentVariableBlock
+        || lastBodyEntry !== currentVariableBlock
+        || currentVariableBlock.indent !== indent
+        || currentVariableBlock.declarationKind !== declarationKind
+      ) {
         currentVariableBlock = createBlankEplVariableBlock(
           `${currentSubprogram.id}-vars-${countVariableBlocks(currentSubprogram.body)}`,
           indent,
-          []
+          [],
+          declarationKind
         );
         currentVariableBlock.sourceLine = sourceLine;
         currentSubprogram.body.push(currentVariableBlock);
@@ -206,9 +297,10 @@ export function parseEplStructuredDocument(sourceCode: string): EplStructuredDoc
 
       currentVariableBlock.variables.push(parseVariableLine(
         body,
-        '.局部变量',
+        declarationKind === 'constant' ? '.局部常量' : '.局部变量',
         'local',
-        `${currentVariableBlock.id}-var-${currentVariableBlock.variables.length}`
+        `${currentVariableBlock.id}-var-${currentVariableBlock.variables.length}`,
+        declarationKind
       ));
       return;
     }
@@ -225,7 +317,7 @@ export function parseEplStructuredDocument(sourceCode: string): EplStructuredDoc
   });
 
   if (currentSubprogram) {
-    trimTrailingBlankStatements(currentSubprogram.body);
+    ensureWritableTrailingStatement(currentSubprogram);
   }
 
   return documentModel;
@@ -254,7 +346,7 @@ export function serializeEplStructuredDocument(documentModel: EplStructuredDocum
     subprogram.body.forEach(entry => {
       if (entry.kind === 'variables') {
         entry.variables.forEach(variable => {
-          lines.push(`${entry.indent}${serializeVariableLine(variable)}`);
+          lines.push(`${entry.indent}${serializeVariableLine(variable, entry.declarationKind)}`);
         });
         return;
       }
@@ -292,6 +384,7 @@ export function createBlankEplVariable(scope: 'program' | 'local', id: string): 
     type: '',
     isStatic: false,
     isArray: false,
+    initialValue: '',
     remark: ''
   };
 }
@@ -309,15 +402,28 @@ export function createBlankEplStatement(id: string, indent = '    '): EplStateme
 export function createBlankEplVariableBlock(
   id: string,
   indent = '    ',
-  variables: EplVariableRow[] = [createBlankEplVariable('local', `${id}-var-0`)]
+  variables?: EplVariableRow[],
+  declarationKind: 'variable' | 'constant' = 'variable'
 ): EplVariableBlock {
+  const rows = variables ?? [createBlankEplVariable('local', `${id}-var-0`)];
+  const normalizedRows = rows.map(variable => ({
+    ...variable,
+    isStatic: declarationKind === 'constant' ? false : variable.isStatic,
+    isArray: declarationKind === 'constant' ? false : variable.isArray,
+    initialValue: declarationKind === 'constant' ? (variable.initialValue || '""') : variable.initialValue
+  }));
   return {
     kind: 'variables',
     id,
     sourceLine: 0,
     indent,
-    variables
+    declarationKind,
+    variables: normalizedRows
   };
+}
+
+export function createBlankEplConstantBlock(id: string, indent = '    '): EplVariableBlock {
+  return createBlankEplVariableBlock(id, indent, undefined, 'constant');
 }
 
 export function getEplSubprogramVariables(subprogram: EplSubprogramBlock): EplVariableRow[] {
@@ -342,6 +448,129 @@ export function getEplTypeSuggestions(query: string, limit = 8): EplTypeOption[]
         || option.aliases.some(alias => alias.toLowerCase().includes(normalizedQuery));
     })
     .slice(0, limit);
+}
+
+/**
+ * Returns fold ranges for structural statements without changing the source
+ * model. Both an if block and its else branch get their own stable marker.
+ */
+export function buildEplFoldableBlocks(entries: EplSubprogramEntry[]): EplFoldableBlock[] {
+  const result: EplFoldableBlock[] = [];
+  const stack: Array<{ startIndex: number; kind: 'condition' | 'loop'; elseIndex?: number }> = [];
+
+  entries.forEach((entry, index) => {
+    if (entry.kind !== 'statement') return;
+    const text = entry.text.trim();
+
+    if (isEplFlowEnd(text)) {
+      const open = stack.pop();
+      if (!open) return;
+      result.push({ id: `fold-${entry.id}-${open.startIndex}`, kind: open.kind, startIndex: open.startIndex, endIndex: index });
+      if (open.elseIndex !== undefined) {
+        result.push({ id: `fold-${entry.id}-${open.elseIndex}`, kind: 'else', startIndex: open.elseIndex, endIndex: index });
+      }
+      return;
+    }
+
+    if (isEplElse(text)) {
+      const open = stack.at(-1);
+      if (open?.kind === 'condition') open.elseIndex = index;
+      return;
+    }
+
+    const kind = getEplFlowStartKind(text);
+    if (kind) stack.push({ startIndex: index, kind });
+  });
+
+  return result;
+}
+
+export function getEplMethodCall(
+  text: string,
+  moduleSignatures: EplMethodSignature[] = []
+): EplMethodCall | null {
+  const trimmed = text.trim();
+  const openIndex = trimmed.search(/[（(]/u);
+  const closeIndex = Math.max(trimmed.lastIndexOf(')'), trimmed.lastIndexOf('）'));
+  if (openIndex <= 0 || closeIndex <= openIndex) return null;
+
+  const name = trimmed.slice(0, openIndex).trim();
+  const signature = [...moduleSignatures, ...EPL_BUILTIN_METHOD_SIGNATURES]
+    .find(candidate => candidate.name === name);
+  if (!signature) return null;
+
+  return {
+    name,
+    arguments: splitEplCallArguments(trimmed.slice(openIndex + 1, closeIndex)),
+    signature
+  };
+}
+
+export function replaceEplMethodArgument(text: string, argumentIndex: number, nextValue: string): string {
+  const openIndex = text.search(/[（(]/u);
+  const closeIndex = Math.max(text.lastIndexOf(')'), text.lastIndexOf('）'));
+  if (openIndex <= 0 || closeIndex <= openIndex || argumentIndex < 0) return text;
+
+  const argumentsText = text.slice(openIndex + 1, closeIndex);
+  const argumentsList = splitEplCallArguments(argumentsText);
+  while (argumentsList.length <= argumentIndex) argumentsList.push('');
+  argumentsList[argumentIndex] = nextValue;
+  return `${text.slice(0, openIndex + 1)}${argumentsList.join(', ')}${text.slice(closeIndex)}`;
+}
+
+export function splitEplCallArguments(value: string): string[] {
+  if (!value.trim()) return [];
+  const parts: string[] = [];
+  let current = '';
+  let quote: '"' | '“' | "'" | null = null;
+  let nesting = 0;
+
+  for (const char of value) {
+    if (quote) {
+      current += char;
+      if ((quote === '"' && char === '"') || (quote === '“' && char === '”') || (quote === "'" && char === "'")) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === '“' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === '(' || char === '（') {
+      nesting += 1;
+      current += char;
+      continue;
+    }
+    if (char === ')' || char === '）') {
+      nesting = Math.max(0, nesting - 1);
+      current += char;
+      continue;
+    }
+    if ((char === ',' || char === '，') && nesting === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  parts.push(current.trim());
+  return parts;
+}
+
+function getEplFlowStartKind(text: string): 'condition' | 'loop' | null {
+  if (/^\.?(如果|如果真|判断)(?:\s|$|[（(])/u.test(text)) return 'condition';
+  if (/^\.?(判断循环首|循环判断首|计次循环首|变量循环首|枚举循环首)(?:\s|$|[（(])/u.test(text)) return 'loop';
+  return null;
+}
+
+function isEplElse(text: string): boolean {
+  return /^\.?(否则如果|否则)(?:\s|$|[（(])/u.test(text);
+}
+
+function isEplFlowEnd(text: string): boolean {
+  return /^\.?(如果结束|判断结束|判断循环尾|循环判断尾|计次循环尾|变量循环尾|枚举循环尾|循环尾)(?:\s|$|[（(])/u.test(text);
 }
 
 export function buildEplStatementGuides(statements: EplStatementLine[]): number[][] {
@@ -393,28 +622,38 @@ function countStatements(body: EplSubprogramEntry[]): number {
   return body.filter(entry => entry.kind === 'statement').length;
 }
 
-function trimTrailingBlankStatements(body: EplSubprogramEntry[]): void {
-  // Disable trimming to allow inserting and keeping blank lines at the end of subprograms
-  return;
+function ensureWritableTrailingStatement(subprogram: EplSubprogramBlock): void {
+  const lastEntry = subprogram.body.at(-1);
+  if (lastEntry?.kind !== 'variables') return;
+
+  // A declaration table cannot accept event code itself. Keep a real, empty
+  // statement entry after a trailing local declaration so the structured editor
+  // always exposes an input row below it.
+  subprogram.body.push(createBlankEplStatement(
+    `${subprogram.id}-stmt-after-locals`,
+    lastEntry.indent
+  ));
 }
 
 function parseVariableLine(
   body: string,
-  command: '.局部变量' | '.程序集变量',
+  command: '.局部变量' | '.局部常量' | '.程序集变量',
   scope: 'program' | 'local',
-  id: string
+  id: string,
+  declarationKind: 'variable' | 'constant' = 'variable'
 ): EplVariableRow {
   const args = splitEplArguments(body.slice(command.length).trim());
-  const quotedRemark = args.slice(2).find(part => /^[“"']/.test(part.trim()));
+  const quotedRemark = args.slice(declarationKind === 'constant' ? 3 : 2).find(part => /^[“"']/.test(part.trim()));
 
   return {
     id,
     scope,
     name: stripEplText(args[0]),
     type: stripEplText(args[1]),
-    isStatic: parseEplBoolean(args[2]),
-    isArray: parseEplBoolean(args[3]),
-    remark: stripEplRemark(quotedRemark ?? args[4])
+    isStatic: declarationKind === 'constant' ? false : parseEplBoolean(args[2]),
+    isArray: declarationKind === 'constant' ? false : parseEplBoolean(args[3]),
+    initialValue: declarationKind === 'constant' ? (args[2]?.trim() || '""') : '',
+    remark: stripEplRemark(quotedRemark ?? args[declarationKind === 'constant' ? 3 : 4])
   };
 }
 
@@ -442,9 +681,19 @@ function serializeSubprogramLine(subprogram: EplSubprogramBlock): string {
   return `.子程序 ${fields.join(', ')}`;
 }
 
-function serializeVariableLine(variable: EplVariableRow): string {
-  const command = variable.scope === 'program' ? '.程序集变量' : '.局部变量';
+function serializeVariableLine(variable: EplVariableRow, declarationKind: 'variable' | 'constant' = 'variable'): string {
+  const command = variable.scope === 'program'
+    ? '.程序集变量'
+    : declarationKind === 'constant'
+      ? '.局部常量'
+      : '.局部变量';
   const fields = [variable.name.trim(), variable.type.trim()];
+
+  if (declarationKind === 'constant') {
+    fields.push(variable.initialValue.trim() || '""');
+    if (variable.remark.trim()) fields.push(quoteEplText(variable.remark));
+    return `${command} ${fields.join(', ')}`;
+  }
 
   if (variable.isStatic || variable.isArray || variable.remark.trim()) {
     fields.push(variable.isStatic ? '真' : '');

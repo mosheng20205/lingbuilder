@@ -6,6 +6,7 @@ export type LingCppPresentationTokenKind =
   | 'literal'
   | 'module-command'
   | 'control-reference'
+  | 'local'
   | 'member'
   | 'procedure'
   | 'operator'
@@ -21,6 +22,7 @@ export interface LingCppPresentationTokenContext {
   isNativeCpp: boolean;
   moduleCommands: ReadonlySet<string>;
   knownMembers: ReadonlySet<string>;
+  knownLocals?: ReadonlySet<string>;
   knownProcedures: ReadonlySet<string>;
   controlReferences?: ReadonlySet<string>;
   nativeVariables?: ReadonlySet<string>;
@@ -33,7 +35,10 @@ export interface LingCppPresentationToken {
   kind: LingCppPresentationTokenKind;
 }
 
-const TOKEN_PATTERN = /((?:u8|u|U|L)?"(?:(?:\\.)|[^"\\])*"|“[^”]*”|局部常量|否则如果|如果结束|调试输出|输出调试文本|信息框|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录|如果真|如果|否则|局部|常量|结束|返回|文本型|整数型|逻辑型|小数型|长整数型|双精度小数型|字节集|日期时间型|真|假|@|\d+(?:\.\d+)?|[\w\u4e00-\u9fa5]+|::|[＝=＋+\-*/（）(),，:;.<>\[\]{}])/gu;
+// Lexical grouping stays independent from the keyword catalog. A user
+// identifier such as "局部变量" must remain one token before semantic
+// classification compares it with the current scope.
+const TOKEN_PATTERN = /((?:u8|u|U|L)?"(?:(?:\\.)|[^"\\])*"|“[^”]*”|@|\d+(?:\.\d+)?|[\p{L}\p{N}_]+|::|[＝=＋+\-*/（）(),，:;.<>\[\]{}])/gu;
 
 const BUILTIN_COMMANDS = /^(调试输出|输出调试文本|信息框|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录)$/u;
 const LING_CPP_KEYWORDS = /^(局部常量|局部|常量|如果真|如果真结束|否则如果|否则|如果结束|如果|选择|判断|分支|情况|默认|选择结束|判断结束|循环|循环结束|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|枚举循环尾|跳出循环|到循环尾|继续循环|尝试|捕获|最终|尝试结束|抛出|结束|返回)$/u;
@@ -89,6 +94,9 @@ export function classifyLingCppPresentationToken(
     return 'identifier';
   }
 
+  // A user-declared local can legally share a Chinese keyword's spelling
+  // (for example a variable literally named "局部变量"). Scope wins.
+  if (context.knownLocals?.has(token)) return 'local';
   if (BUILTIN_COMMANDS.test(token)) return 'command';
   if (LING_CPP_KEYWORDS.test(token)) return 'keyword';
   if (LING_CPP_TYPES.test(token)) return 'type';

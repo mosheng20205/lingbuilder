@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { exportModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
-import type { InstalledModule, LingBuilderModuleManifest } from '../src/services/modules/types';
+import type { InstalledModule } from '../src/services/modules/types';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
@@ -36,10 +36,13 @@ function builtin(moduleId: string): InstalledModule {
   return { manifest, installPath: `builtin://${moduleId}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
 }
 
-async function installed(moduleId: string): Promise<InstalledModule> {
-  const installPath = path.join(repositoryRoot, '.lingbuilder', 'modules', moduleId);
-  const manifest = JSON.parse(await fs.readFile(path.join(installPath, 'lingbuilder.module.json'), 'utf8')) as LingBuilderModuleManifest;
-  return { manifest, installPath, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+async function copyPluginAssets(destinationRoot: string): Promise<void> {
+  const sourceRoot = path.join(repositoryRoot, 'assets', projectId, 'doubao-downloader');
+  const targetRoot = path.join(destinationRoot, 'assets', projectId, 'doubao-downloader');
+  await fs.mkdir(targetRoot, { recursive: true });
+  for (const file of ['manifest.json', 'logo.png', 'popup.html', 'doubao-downloader.user.js']) {
+    await fs.copyFile(path.join(sourceRoot, file), path.join(targetRoot, file));
+  }
 }
 
 async function countHostProcesses(): Promise<number> {
@@ -482,12 +485,12 @@ async function main(): Promise<void> {
     || !source.includes('控件_设置位置大小(打开下载目录')) {
     throw new Error('下载详情区没有接入窗口高度自适应布局。');
   }
-  const expectedModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls', 'lingbuilder.fbro.browser', 'lingbuilder.browser.doubao-downloader'];
-  if (JSON.stringify(moduleConfig.enabledModuleIds) !== JSON.stringify(expectedModules)) throw new Error('项目模块引用不符合最小 Win32 + FBro 集合。');
+  const expectedModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls', 'lingbuilder.fbro.browser'];
+  if (JSON.stringify(moduleConfig.enabledModuleIds) !== JSON.stringify(expectedModules)) throw new Error('项目模块引用不符合最小 Win32 + FBro 集合。插件必须作为项目 assets 资源。');
 
   const enabledModules = [
     builtin('lingbuilder.win32.basic'), builtin('lingbuilder.win32.common-controls'),
-    builtin('lingbuilder.fbro.browser'), await installed('lingbuilder.browser.doubao-downloader')
+    builtin('lingbuilder.fbro.browser')
   ];
   const useIsolatedSmokeWorkspace = !releaseBuild || pluginVerificationSmoke;
   const sourceWithWorkspace = useIsolatedSmokeWorkspace ? source
@@ -548,8 +551,9 @@ async function main(): Promise<void> {
   });
   const executable = path.join(buildDirectory, 'x64', 'Release', 'bin', `${exported.projectName}.exe`);
   await fs.access(executable);
+  await copyPluginAssets(path.dirname(executable));
   for (const file of ['manifest.json', 'logo.png', 'popup.html', 'doubao-downloader.user.js']) {
-    await fs.access(path.join(path.dirname(executable), 'doubao-downloader', file));
+    await fs.access(path.join(path.dirname(executable), 'assets', projectId, 'doubao-downloader', file));
   }
   await scanForbidden(buildDirectory);
   if (buildOnly) {

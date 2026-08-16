@@ -132,10 +132,12 @@ interface TranslatedStatementLine {
 
 interface LingCppTranslationContext {
   runtimeControlVariables: ReadonlySet<string>;
+  wideStringVariables: ReadonlySet<string>;
 }
 
 const EMPTY_TRANSLATION_CONTEXT: LingCppTranslationContext = {
-  runtimeControlVariables: new Set<string>()
+  runtimeControlVariables: new Set<string>(),
+  wideStringVariables: new Set<string>()
 };
 
 interface AggregatedLingCppProjectSources {
@@ -21346,6 +21348,44 @@ static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand
     return nullptr;
 }
 
+// F5 由 IDE 本地服务（后台 utilityProcess）启动时，Windows 会拒绝新进程首窗口的前台激活，
+// 启动窗口会被创建在 IDE 窗口之后，只能靠手动点击任务栏才能看到。这里与 new_emoji 桥接的
+// NE_显示并激活窗口 保持同一激活契约：进入消息循环前只执行一次同步激活；遇前台锁时临时
+// 附加当前线程与前台线程的输入队列并在完成后立即分离；只短暂提升到最上层确保可见层级，
+// 随即还原普通层级；不使用延时定时器，也不重复 SetForegroundWindow / SetFocus。
+static void EnsureStartWindowForeground(HWND hwnd, int showCommand) {
+    if (!hwnd || !IsWindow(hwnd)) return;
+    // 尊重启动命令语义：要求隐藏、最小化或不激活显示时不抢占前台。
+    if (showCommand == SW_HIDE || showCommand == SW_SHOWMINIMIZED || showCommand == SW_SHOWNOACTIVATE
+        || showCommand == SW_MINIMIZE || showCommand == SW_SHOWMINNOACTIVE
+        || showCommand == SW_SHOWNA || showCommand == SW_FORCEMINIMIZE) return;
+
+    HWND foregroundWindow = GetForegroundWindow();
+    DWORD currentThreadId = GetCurrentThreadId();
+    DWORD foregroundThreadId = foregroundWindow
+        ? GetWindowThreadProcessId(foregroundWindow, nullptr)
+        : 0;
+    BOOL inputAttached = foregroundThreadId != 0
+        && foregroundThreadId != currentThreadId
+        && AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
+
+    ShowWindow(hwnd, IsIconic(hwnd) ? SW_RESTORE : SW_SHOW);
+    UpdateWindow(hwnd);
+
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    BringWindowToTop(hwnd);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
+
+    if (inputAttached) {
+        AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
+    }
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
     const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
@@ -21404,6 +21444,7 @@ ${fbroInProcessEnabled ? '        LB_FBro_Shutdown();' : ''}
 #endif
         ${uiaCleanupLine} CoUninitialize(); return 0; }
     HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
+    EnsureStartWindowForeground(startWindow, showCommand);
 
     MSG message;
     while (GetMessageW(&message, nullptr, 0, 0)) {
@@ -22319,12 +22360,15 @@ function createMethodTranslationContext(
   dataTypes: LingCppDataType[] = []
 ): LingCppTranslationContext {
   const runtimeControlVariables = new Set<string>();
+  const wideStringVariables = new Set<string>();
   [...method.parameters, ...(method.locals || [])].forEach(variable => {
-    if (toCppType(variable.type, 'variable', enabledModules, dataTypes) === 'LingControlRef') {
+    const cppType = toCppType(variable.type, 'variable', enabledModules, dataTypes);
+    if (cppType === 'LingControlRef') {
       runtimeControlVariables.add(normalizeIdentifier(variable.name));
     }
+    if (cppType === 'std::wstring') wideStringVariables.add(normalizeIdentifier(variable.name));
   });
-  return { runtimeControlVariables };
+  return { runtimeControlVariables, wideStringVariables };
 }
 
 function translateMethodStatementsWithMetadata(
@@ -22960,13 +23004,14 @@ function translateLingCppExpression(
     const left = translateLingCppExpression(binaryExpression.left, enabledModules, translationContext);
     const right = translateLingCppExpression(binaryExpression.right, enabledModules, translationContext);
     if (
-      (binaryExpression.operator === '==' || binaryExpression.operator === '!=')
-      && isDefinitelyWideStringExpression(binaryExpression.left, enabledModules)
-      && isDefinitelyWideStringExpression(binaryExpression.right, enabledModules)
+      (binaryExpression.operator === '==' || binaryExpression.operator === '!=' || binaryExpression.operator === '=')
+      && isDefinitelyWideStringExpression(binaryExpression.left, enabledModules, translationContext)
+      && isDefinitelyWideStringExpression(binaryExpression.right, enabledModules, translationContext)
     ) {
-      return `std::wstring(LingCppWideArg(${left}))${binaryExpression.operator}LingCppWideArg(${right})`;
+      const comparisonOperator = binaryExpression.operator === '=' ? '==' : binaryExpression.operator;
+      return `std::wstring(LingCppWideArg(${left}))${comparisonOperator}LingCppWideArg(${right})`;
     }
-    return `${left}${binaryExpression.operator}${right}`;
+    return `${left}${binaryExpression.operator === '=' ? '==' : binaryExpression.operator}${right}`;
   }
   const controlTextProperty = parseEplControlMemberRule(trimmed);
   if (controlTextProperty) return `${controlTextProperty.getterRuntimeName}(${translateControlReferenceOperand(controlTextProperty.controlName, translationContext)})`;
@@ -23002,12 +23047,19 @@ function translateControlReferenceOperand(
   return `L"${escapeWideString(controlName)}"`;
 }
 
-function isDefinitelyWideStringExpression(expression: string, enabledModules: InstalledModule[]): boolean {
+function isDefinitelyWideStringExpression(
+  expression: string,
+  enabledModules: InstalledModule[],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): boolean {
   const trimmed = expression.trim();
   if (/^(?:L)?["“][\s\S]*["”]$/u.test(trimmed)) return true;
   const parenthesized = unwrapParenthesizedExpression(trimmed);
-  if (parenthesized !== undefined) return isDefinitelyWideStringExpression(parenthesized, enabledModules);
+  if (parenthesized !== undefined) return isDefinitelyWideStringExpression(parenthesized, enabledModules, translationContext);
   if (parseEplControlMemberRule(trimmed)) return true;
+  if (/^[\p{L}_][\p{L}\p{N}_]*$/u.test(trimmed)) {
+    return translationContext.wideStringVariables.has(normalizeIdentifier(trimmed));
+  }
   const call = parseCallStatement(trimmed);
   return Boolean(call && findModuleCommandBinding(call.name, enabledModules)?.returnType === 'wideString');
 }

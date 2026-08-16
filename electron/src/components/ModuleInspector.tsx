@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import QRCode from 'qrcode';
 import {
   Archive,
@@ -301,13 +302,19 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       if (!planResult.ok) throw new Error(planResult.error || '模块依赖计划生成失败');
       const dependencyModuleIds: string[] = planResult.plan?.dependencyModuleIds || [];
       const dependentModuleIds: string[] = planResult.plan?.dependentModuleIds || [];
-      if (!enabled && dependencyModuleIds.length > 0 && !window.confirm(
-        `启用“${module.manifest.name}”还会原子启用以下依赖：\n${dependencyModuleIds.join('\n')}\n\n是否继续？`
-      )) return;
+      if (!enabled && dependencyModuleIds.length > 0 && !await requestWorkbenchConfirm({
+        title: '将启用依赖模块',
+        description: `启用“${module.manifest.name}”还会原子启用以下依赖：\n${dependencyModuleIds.join('\n')}\n\n是否继续？`,
+        confirmLabel: '继续',
+        cancelLabel: '取消'
+      })) return;
       const cascade = enabled && dependentModuleIds.length > 0;
-      if (cascade && !window.confirm(
-        `以下模块依赖“${module.manifest.name}”，必须一并禁用：\n${dependentModuleIds.join('\n')}\n\n是否级联禁用？`
-      )) return;
+      if (cascade && !await requestWorkbenchConfirm({
+        title: '级联禁用确认',
+        description: `以下模块依赖“${module.manifest.name}”，必须一并禁用：\n${dependentModuleIds.join('\n')}\n\n是否级联禁用？`,
+        confirmLabel: '级联禁用',
+        cancelLabel: '取消'
+      })) return;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

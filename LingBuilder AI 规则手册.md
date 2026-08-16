@@ -756,3 +756,13 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - `borderlessDraggable` 仅 `borderStyle` 为 `none` 时有效，默认 `false`；为 `true` 时生成的 C++ 在窗口 WM_LBUTTONDOWN 注入 `SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)` 实现按住客户区拖动移动，命中子控件时不拦截。
 - `resizable` 字段由 `borderStyle` 派生（固定类与无边框为 false，可调类为 true），AI 生成设计器项目 JSON 时不得独立设置与 borderStyle 矛盾的 resizable 值。
 - `borderStyle` 的 Win32 样式映射由 `windowBorderStyle.ts` 的 `resolveLingWindowBorder` 统一维护：none → WS_POPUP|WS_SYSMENU|WS_MINIMIZEBOX；可调类 → WS_OVERLAPPEDWINDOW；固定类 → WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME；窄标题加 WS_EX_TOOLWINDOW；镜框式加 WS_EX_DLGMODALFRAME。C++ 端 `LB_WindowBorderStyleToDwStyle`/`LB_WindowBorderStyleToDwExStyle` 辅助函数运行时按编号 0-6 计算。生成器、画布、测试三端共享同一映射，不得在别处复刻 Win32 样式逻辑。
+# 2026-08-16 生成规则补充
+
+- `.lcpp` 条件中的单个 `=` 表示相等判断（例如 `如果 (文本变量 = "完成")`），C++ 生成器必须确定性转换为 `==`；文本比较双方必须保持宽字符串语义，不能生成窄字符串或 C++ 赋值表达式。
+# 2026-08-16 编辑器颜色规则补充
+
+- `.lcpp` 中局部变量引用（包括 `如果 (局部变量 = "值")` 条件）必须使用独立的 `variable` 语义 token，并与局部变量声明表的绿色主题令牌保持一致；不得退化为普通标识符或关键字颜色。
+
+# 2026-08-16 FBro 生成规则补充
+
+- 未启用 `lingbuilder.fbro.browser` 的项目不得生成 FBro 控件、SDK 依赖或业务调用；窗口基类保留的浏览器管理器回退接口只能安全返回，目的是隔离发行 SDK 头文件可见性与项目模块上下文意外不一致，禁止用这些回退接口模拟浏览器功能。启用模块时必须继续使用完整 FBro 运行时和模块 binding。

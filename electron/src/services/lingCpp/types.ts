@@ -104,6 +104,7 @@ export interface LingCppMethod {
   parameters: LingCppParameter[];
   locals?: LingCppLocalVariable[];
   statements: LingCppStatement[];
+  note?: string;
 }
 
 export interface LingCppLocalVariable {
@@ -111,6 +112,7 @@ export interface LingCppLocalVariable {
   type: string;
   line: number;
   initialValue?: string;
+  note?: string;
   isArray?: boolean;
   /** 运行时初始化一次、之后只读的子程序局部值。 */
   isConstant?: boolean;
@@ -120,6 +122,7 @@ export interface LingCppParameter {
   name: string;
   type: string;
   defaultValue?: string;
+  note?: string;
 }
 
 export interface LingCppStatement {
@@ -596,8 +599,8 @@ export type LingCppAstEdit =
   | { kind: 'add-member'; className?: string; member: { name: string; type: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string } }
   | { kind: 'update-member'; className?: string; memberName: string; newName?: string; type?: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string }
   | { kind: 'delete-member'; className?: string; memberName: string }
-  | { kind: 'add-local'; className?: string; methodName: string; insertBeforeLine?: number; local: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean } }
-  | { kind: 'update-local'; className?: string; methodName: string; localName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean; isConstant?: boolean }
+  | { kind: 'add-local'; className?: string; methodName: string; insertBeforeLine?: number; local: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean; note?: string } }
+  | { kind: 'update-local'; className?: string; methodName: string; localName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean; isConstant?: boolean; note?: string }
   | { kind: 'delete-local'; className?: string; methodName: string; localName: string }
   | { kind: 'add-event'; className?: string; event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string } }
   | { kind: 'update-event'; className?: string; handlerName: string; newHandlerName?: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string }

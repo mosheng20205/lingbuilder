@@ -90,6 +90,10 @@ export class ClangdService extends EventEmitter {
     try {
       const process = (this.options.spawnProcess || defaultSpawn)(command, this.options.args || ['--background-index', '--clang-tidy'], this.options.workspaceRoot);
       this.process = process;
+      /* spawn 失败（如未安装 clangd 的 ENOENT）以异步 'error' 事件到达而不是同步抛出；
+       * 必须先挂监听，否则未处理的 'error' 事件会拖垮整个 IDE server。 */
+      const spawnFailure = new Promise<never>((_, reject) => process.once('error', reject));
+      spawnFailure.catch(() => undefined);
       process.stderr.on('data', chunk => this.emit('log', String(chunk)));
       process.once('exit', (code, signal) => void this.handleExit(code, signal));
       const connection = new JsonRpcConnection(process.stdout, process.stdin);
@@ -98,12 +102,15 @@ export class ClangdService extends EventEmitter {
         if (method === 'textDocument/publishDiagnostics') this.emit('diagnostics', params);
         else this.emit('notification', method, params);
       });
-      await connection.request('initialize', {
+      const initializeRequest = connection.request('initialize', {
         processId: process.pid || null,
         rootUri: pathToFileURL(path.resolve(this.options.workspaceRoot)).href,
         capabilities: { textDocument: { synchronization: { dynamicRegistration: false }, publishDiagnostics: { relatedInformation: true } } },
         workspaceFolders: [{ uri: pathToFileURL(path.resolve(this.options.workspaceRoot)).href, name: path.basename(this.options.workspaceRoot) }]
       }, AbortSignal.timeout(10_000));
+      /* 输家由双方各自的 catch 兑底，避免竞速后产生未处理拒绝。 */
+      void initializeRequest.catch(() => undefined);
+      await Promise.race([initializeRequest, spawnFailure]);
       connection.notify('initialized', {});
       for (const document of this.documents.values()) connection.notify('textDocument/didOpen', { textDocument: document });
       this.setStatus('ready', 'clangd 语言服务已就绪。', process.pid);

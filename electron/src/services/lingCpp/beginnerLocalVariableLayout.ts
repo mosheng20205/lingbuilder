@@ -73,6 +73,21 @@ export function getBeginnerMethodBodySegments(method: LingCppMethod): BeginnerMe
     }
   });
 
+  // A method ending in local declarations still needs a writable body surface.
+  // This empty segment maps to the method end, so AST writeback keeps every
+  // declaration before code entered after the table.
+  const lastSegment = segments.at(-1);
+  if (lastSegment?.kind === 'locals') {
+    const lastLocal = lastSegment.locals.at(-1);
+    segments.push({
+      kind: 'code',
+      id: 'code:trailing',
+      sourceLine: (lastLocal?.line || method.line) + 1,
+      statementStartIndex: statementIndex,
+      statements: []
+    });
+  }
+
   return segments;
 }
 

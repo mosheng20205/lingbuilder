@@ -5,19 +5,17 @@ import { createLcppSourcePackageService } from '../electron/lcppSourcePackageSer
 import { BrowserExtensionService } from '../src/services/browserWorkbench/browserExtensionService';
 import { normalizeBrowserWorkspaceDocument } from '../src/services/browserWorkbench/browserInstanceService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
-import type { InstalledModule, LingBuilderModuleManifest } from '../src/services/modules/types';
+import type { InstalledModule } from '../src/services/modules/types';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
 const projectId = 'win32-fbro-multi-browser-manager';
 const packagePath = path.join(repositoryRoot, 'exports', '独立浏览器管理器.lcpppkg');
-const pluginModuleId = 'lingbuilder.browser.doubao-downloader';
 const requiredModuleIds = [
   'lingbuilder.win32.basic',
   'lingbuilder.win32.common-controls',
-  'lingbuilder.fbro.browser',
-  pluginModuleId
+  'lingbuilder.fbro.browser'
 ] as const;
 const forbiddenUiDependency = /new[_-]?emoji|emoji[._-]?ui/iu;
 const forbiddenDeveloperPath = /(?:[A-Za-z]:[\\/](?:Users[\\/]Administrator[\\/](?:Downloads|AppData)|Csharp|FBro5\.0))/iu;
@@ -36,20 +34,11 @@ function builtin(moduleId: string): InstalledModule {
   };
 }
 
-async function installed(workspaceRoot: string, moduleId: string): Promise<InstalledModule> {
-  const installPath = path.join(workspaceRoot, '.lingbuilder', 'modules', moduleId);
-  const manifest = JSON.parse(
-    await fs.readFile(path.join(installPath, 'lingbuilder.module.json'), 'utf8')
-  ) as LingBuilderModuleManifest;
-  return { manifest, installPath, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
-}
-
-async function loadModules(workspaceRoot: string): Promise<InstalledModule[]> {
+async function loadModules(): Promise<InstalledModule[]> {
   return [
     builtin('lingbuilder.win32.basic'),
     builtin('lingbuilder.win32.common-controls'),
-    builtin('lingbuilder.fbro.browser'),
-    await installed(workspaceRoot, pluginModuleId)
+    builtin('lingbuilder.fbro.browser')
   ];
 }
 
@@ -73,7 +62,7 @@ function verifyProject(project: LingWindowProject, source: string, moduleIds: st
     throw new Error('目标项目不得包含固定 FBroBrowser 控件或其它 UI 后端设计器控件。');
   }
   if (JSON.stringify(moduleIds) !== JSON.stringify(requiredModuleIds)) {
-    throw new Error('项目模块引用不符合最小 Win32 + FBro + 插件资源集合。');
+    throw new Error('项目模块引用不符合最小 Win32 + FBro 集合；插件必须作为项目 assets 资源。');
   }
   const serialized = JSON.stringify(project);
   if (forbiddenUiDependency.test(serialized) || forbiddenUiDependency.test(source)) {
@@ -153,15 +142,16 @@ async function verifyImportedWorkspace(workspaceRoot: string, expectedSource: st
     }
   }
 
-  const pluginRoot = path.join(workspaceRoot, '.lingbuilder', 'modules', pluginModuleId, 'runtime', 'doubao-downloader');
+  const pluginRoot = path.join(workspaceRoot, 'assets', projectId, 'doubao-downloader');
   const pluginValidation = await new BrowserExtensionService().validate(pluginRoot);
   if (!pluginValidation.ok || pluginValidation.manifestVersion !== 3 || pluginValidation.version !== '2.0.4') {
     throw new Error(`导入包中的插件资源无效：${pluginValidation.diagnostic || '未知错误'}`);
   }
-  const pluginDocs = await fs.readFile(path.join(workspaceRoot, '.lingbuilder', 'modules', pluginModuleId, 'docs', 'README.md'), 'utf8');
-  if (!pluginDocs.trim()) throw new Error('导入包中的插件模块文档为空。');
+  if (await fs.access(path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.browser.doubao-downloader')).then(() => true).catch(() => false)) {
+    throw new Error('导入包不应重新包含豆包下载器插件模块目录。');
+  }
 
-  const importedModules = await loadModules(workspaceRoot);
+  const importedModules = await loadModules();
   const generated = generateLingCppNativeWin32Project(project, {
     activeWindowId: 'main-window',
     lingCppSourceFilePath: `src/${projectId}/MainWindow.lcpp`,
@@ -194,7 +184,7 @@ async function main(): Promise<void> {
     fs.readFile(path.join(repositoryRoot, 'src', projectId, 'MainWindow.lcpp'), 'utf8'),
     fs.readFile(path.join(projectDirectory, 'project-modules.json'), 'utf8'),
     fs.readFile(path.join(repositoryRoot, 'config', projectId, 'browser-instances.json'), 'utf8'),
-    loadModules(repositoryRoot)
+    loadModules()
   ]);
   const project = JSON.parse(designerText) as LingWindowProject;
   const moduleConfig = JSON.parse(moduleText) as { enabledModuleIds?: string[] };
@@ -244,9 +234,9 @@ async function main(): Promise<void> {
     || preview.manifest.files.some(file => forbiddenUiDependency.test(file.path))) {
     throw new Error('源码包清单包含 new_emoji 依赖。');
   }
-  const pluginEntries = preview.manifest.files.filter(file => file.path.includes('doubao-downloader/'));
+  const pluginEntries = preview.manifest.files.filter(file => file.path.startsWith(`assets/${projectId}/doubao-downloader/`));
   for (const required of ['manifest.json', 'logo.png', 'popup.html', 'doubao-downloader.user.js']) {
-    if (!pluginEntries.some(file => file.path.endsWith(`doubao-downloader/${required}`))) {
+    if (!pluginEntries.some(file => file.path === `assets/${projectId}/doubao-downloader/${required}`)) {
       throw new Error(`源码包缺少插件资源：${required}`);
     }
   }

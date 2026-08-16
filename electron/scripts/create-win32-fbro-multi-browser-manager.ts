@@ -11,8 +11,7 @@ const projectName = '独立浏览器管理器';
 const moduleIds = [
   'lingbuilder.win32.basic',
   'lingbuilder.win32.common-controls',
-  'lingbuilder.fbro.browser',
-  'lingbuilder.browser.doubao-downloader'
+  'lingbuilder.fbro.browser'
 ] as const;
 
 const colors = {
@@ -338,8 +337,7 @@ async function main(): Promise<void> {
     pinnedVersions: {
       'lingbuilder.win32.basic': '1.0.0',
       'lingbuilder.win32.common-controls': '1.0.0',
-      'lingbuilder.fbro.browser': '2.4.0',
-      'lingbuilder.browser.doubao-downloader': '2.0.4'
+      'lingbuilder.fbro.browser': '2.4.0'
     }
   }, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(repositoryRoot, '.lingbuilder', 'build-configuration.json'), `${JSON.stringify({
@@ -355,7 +353,7 @@ async function main(): Promise<void> {
 
 运行时元数据保存在 \`%LocalAppData%/LingBuilder/browser-workspaces/${projectId}/browser-instances.json\`，采用 UTF-8 JSON、临时文件、备份和原子替换。项目内的 \`config/${projectId}/browser-instances.json\` 仅是可迁移默认结构，不含 Cookie、登录状态或本机路径。
 
-每个 Host 仅启用 Chrome Runtime；在已启用 FBro VIP 高级扩展能力后，先创建独立 RequestContext，立即调用其 VIP \`LoadExtension\` 正式加载 EXE 同级 \`doubao-downloader\`，最后才创建浏览器。该顺序与 FBro C# 独立浏览器示例一致。插件需要有效的 FBro VIP 授权；授权或加载失败时普通浏览器仍可运行。部署路径和扩展 ID 仅说明注册结果，当前页面还会执行受控 DOM 检查：只有检测到扩展注入的 \`doubao-downloader\` 元素才显示“插件已生效”；不匹配的页面会明确显示“当前页面不适用”或“未在当前页面生效”。Cookie 导入导出直接使用当前 Host 的 FBro CookieManager；普通日志和运行快照不会记录 Cookie 值。
+每个 Host 仅启用 Chrome Runtime；项目私有插件资源位于 \`assets/${projectId}/doubao-downloader/\`，不属于模块。启用 FBro VIP 高级扩展能力后，先创建独立 RequestContext，立即调用其 VIP \`LoadExtension\` 正式加载项目 assets 资源，最后才创建浏览器。该顺序与 FBro C# 独立浏览器示例一致。插件需要有效的 FBro VIP 授权；授权或加载失败时普通浏览器仍可运行。部署路径和扩展 ID 仅说明注册结果，当前页面还会执行受控 DOM 检查：只有检测到扩展注入的 \`doubao-downloader\` 元素才显示“插件已生效”；不匹配的页面会明确显示“当前页面不适用”或“未在当前页面生效”。Cookie 导入导出直接使用当前 Host 的 FBro CookieManager；普通日志和运行快照不会记录 Cookie 值。
 
 网页请求打开新窗口时，Bridge 会让当前 Frame 加载目标地址并取消 popup，因此不会额外创建浏览器窗口、Host 或 Profile。
 

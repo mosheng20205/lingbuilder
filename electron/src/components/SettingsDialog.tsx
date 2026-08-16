@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Eye, EyeOff, KeyRound, Keyboard, RotateCcw, Search, Settings, ShieldCheck, Trash2, X } from 'lucide-react';
+import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 
 import type { RegisteredCommand } from '../services/commands';
 import {
@@ -147,25 +148,29 @@ export default function SettingsDialog({
     }
   };
 
-  const confirmDiscardShortcutChanges = (): boolean => {
+  const confirmDiscardShortcutChanges = async (): Promise<boolean> => {
     if (!shortcutsDirty) return true;
-    const confirmed = window.confirm('键盘快捷键还有未保存的修改。确定放弃这些修改吗？');
+    const confirmed = await requestWorkbenchConfirm({ title: '放弃未保存的修改？', description: '键盘快捷键还有未保存的修改。确定放弃这些修改吗？', confirmLabel: '放弃修改', cancelLabel: '继续编辑' });
     if (!confirmed) setLiveMessage('快捷键修改尚未保存。');
     return confirmed;
   };
 
   const requestClose = () => {
-    if (confirmDiscardShortcutChanges()) onClose();
+    void (async () => {
+      if (await confirmDiscardShortcutChanges()) onClose();
+    })();
   };
 
   const changeTarget = (nextTarget: ConfigurationTarget) => {
     if (nextTarget === target) return;
-    if (!confirmDiscardShortcutChanges()) return;
-    setTarget(nextTarget);
+    void (async () => {
+      if (!await confirmDiscardShortcutChanges()) return;
+      setTarget(nextTarget);
+    })();
   };
 
   const resetShortcutSetting = async () => {
-    if (!confirmDiscardShortcutChanges()) return;
+    if (!await confirmDiscardShortcutChanges()) return;
     setShortcutDrafts(shortcutBaseline);
     setShortcutErrors({});
     await resetSetting('keyboard.shortcuts');
@@ -401,7 +406,7 @@ function FbroVipCredentialSetting({ isDarkMode, fieldClass, mutedClass }: { isDa
   };
 
   const remove = async () => {
-    if (!credentials?.deleteFbroVipKey || !window.confirm('确定清除当前用户保存的 FBro VIP Key 吗？项目文件不会受到影响。')) return;
+    if (!credentials?.deleteFbroVipKey || !await requestWorkbenchConfirm({ title: '清除 FBro VIP Key', description: '确定清除当前用户保存的 FBro VIP Key 吗？项目文件不会受到影响。', confirmLabel: '清除', cancelLabel: '取消' })) return;
     setBusy(true);
     try {
       const next = await credentials.deleteFbroVipKey();

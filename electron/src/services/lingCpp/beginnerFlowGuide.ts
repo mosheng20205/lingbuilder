@@ -33,6 +33,16 @@ export interface BeginnerFlowGuideRow {
   kind: BeginnerIfBranchKind | 'end' | 'break' | 'continue' | 'throw' | undefined;
   inBlock: boolean;
   mark: '┌' | '├' | '└' | '│' | '↳' | '';
+  tracks: BeginnerFlowGuideTrack[];
+}
+
+/**
+ * A single visible rail in a beginner flow guide. The first rail stays in the
+ * fixed flow column; nested rails are rendered beside their indented code.
+ */
+export interface BeginnerFlowGuideTrack {
+  depth: number;
+  mark: BeginnerFlowGuideRow['mark'];
 }
 
 function beginnerFlowLineKind(line: string): BeginnerFlowGuideRow['kind'] {
@@ -105,21 +115,97 @@ export function parseBeginnerIfBlocks(lines: string[]): BeginnerIfBlock[] {
 
 export function getBeginnerIfFlowGuideRows(lines: string[]): BeginnerFlowGuideRow[] {
   const blocks = parseBeginnerIfBlocks(lines);
+  const stack: LingCppControlFlowFamily[] = [];
+
   return lines.map((line, index) => {
     const lineNumber = index + 1;
     const kind = beginnerFlowLineKind(line);
+    const control = parseLingCppControlFlowLine(line);
     const inBlock = blocks.some(block => lineNumber >= block.startLine && lineNumber <= block.endLine);
+    const mark =
+      kind === 'if' || kind === 'select' || kind === 'loop' || kind === 'try' ? '┌' :
+      kind === 'elseif' || kind === 'else' || kind === 'case' || kind === 'default' || kind === 'catch' || kind === 'finally' ? '├' :
+      kind === 'end' ? '└' :
+      kind === 'break' || kind === 'continue' || kind === 'throw' ? '↳' :
+      inBlock ? '│' : '';
+    const tracks: BeginnerFlowGuideTrack[] = stack.map((_, depth) => ({ depth, mark: '│' }));
+
+    if (control?.role === 'start' && control.family) {
+      tracks.push({ depth: stack.length, mark: '┌' });
+      stack.push(control.family);
+    } else if (control?.role === 'branch' && control.family && stack.at(-1) === control.family) {
+      tracks[stack.length - 1] = { depth: stack.length - 1, mark: '├' };
+    } else if (control?.role === 'end' && control.family && stack.at(-1) === control.family) {
+      tracks[stack.length - 1] = { depth: stack.length - 1, mark: '└' };
+      stack.pop();
+    } else if (control?.role === 'break' || control?.role === 'continue' || control?.role === 'throw') {
+      tracks.push({ depth: stack.length, mark: '↳' });
+    }
+
     return {
       kind,
       inBlock,
-      mark:
-        kind === 'if' || kind === 'select' || kind === 'loop' || kind === 'try' ? '┌' :
-        kind === 'elseif' || kind === 'else' || kind === 'case' || kind === 'default' || kind === 'catch' || kind === 'finally' ? '├' :
-        kind === 'end' ? '└' :
-        kind === 'break' || kind === 'continue' || kind === 'throw' ? '↳' :
-        inBlock ? '│' : ''
+      mark,
+      tracks
     };
   });
+}
+
+/**
+ * Formats a method body relative to its declaration indentation. Control-flow
+ * markers are sufficient to derive nesting, so a partially typed beginner
+ * block still remains readable before the user manually adjusts every line.
+ */
+export function formatBeginnerFlowIndentation(lines: string[]): string[] {
+  let depth = 0;
+
+  return lines.map(line => {
+    const text = line.trim();
+    const control = parseLingCppControlFlowLine(text);
+    const sourceIndent = line.match(/^\s*/u)?.[0] || '';
+    const lineDepth = control?.role === 'end' || control?.role === 'branch'
+      ? Math.max(0, depth - 1)
+      : depth;
+    const requiredIndent = lineDepth * 4;
+    const indent = sourceIndent.length >= requiredIndent
+      ? sourceIndent
+      : `${sourceIndent}${' '.repeat(requiredIndent - sourceIndent.length)}`;
+
+    // Keep a writable blank row aligned with its surrounding block. Without
+    // this, a multiline completion leaves its body line at column zero until
+    // the user presses Enter again.
+    if (!text) return indent;
+
+    if (control?.role === 'end') depth = Math.max(0, depth - 1);
+    if (control?.role === 'start') depth += 1;
+
+    return `${indent}${text}`;
+  });
+}
+
+/**
+ * Returns the indentation for a line inserted at the current cursor. The
+ * calculation deliberately uses only text before the cursor, so an unfinished
+ * statement to the right never changes the indentation of the newly created
+ * line.
+ */
+export function getBeginnerNextLineIndentation(value: string, cursor: number): string {
+  const beforeCursor = value.slice(0, Math.max(0, Math.min(cursor, value.length)));
+  const lines = beforeCursor.split(/\r?\n/u);
+  const currentLine = lines.at(-1) || '';
+  let depth = 0;
+
+  lines.forEach(line => {
+    const control = parseLingCppControlFlowLine(line);
+    if (control?.role === 'end') depth = Math.max(0, depth - 1);
+    if (control?.role === 'start') depth += 1;
+  });
+
+  const currentIndent = currentLine.match(/^\s*/u)?.[0] || '';
+  const requiredIndentLength = depth * 4;
+  return currentIndent.length >= requiredIndentLength
+    ? currentIndent
+    : `${currentIndent}${' '.repeat(requiredIndentLength - currentIndent.length)}`;
 }
 
 export const findBeginnerIfBlocksAtLine = (blocks: BeginnerIfBlock[], line: number) =>

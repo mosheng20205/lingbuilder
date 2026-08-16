@@ -68,6 +68,15 @@ async function installed(moduleId: string): Promise<InstalledModule> {
   return { manifest, installPath, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
 }
 
+async function copyPluginAssets(destinationRoot: string): Promise<void> {
+  const sourceRoot = path.join(repositoryRoot, 'assets', projectId, 'doubao-downloader');
+  const targetRoot = path.join(destinationRoot, 'assets', projectId, 'doubao-downloader');
+  await fs.mkdir(targetRoot, { recursive: true });
+  for (const file of ['manifest.json', 'logo.png', 'popup.html', 'doubao-downloader.user.js']) {
+    await fs.copyFile(path.join(sourceRoot, file), path.join(targetRoot, file));
+  }
+}
+
 async function countHostProcesses(): Promise<number> {
   const command = "@(Get-CimInstance Win32_Process -Filter \"Name = 'LingBuilderFbroHost.exe'\").Count";
   const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-Command', command], { windowsHide: true });
@@ -381,8 +390,7 @@ async function main(): Promise<void> {
     builtin('lingbuilder.std.text'),
     await installed('lingbuilder.new_emoji.ui'),
     builtin('lingbuilder.fbro.browser'),
-    builtin('lingbuilder.new_emoji.fbro-shell'),
-    await installed('lingbuilder.browser.doubao-downloader')
+    builtin('lingbuilder.new_emoji.fbro-shell')
   ];
   const sourceForBuild = releaseBuild ? source : source
     .replace(
@@ -429,12 +437,13 @@ async function main(): Promise<void> {
   });
   const executable = path.join(buildDirectory, 'x64', 'Release', 'bin', `${exported.projectName}.exe`);
   await fs.access(executable);
+  await copyPluginAssets(path.dirname(executable));
   await Promise.all([
     'manifest.json',
     'logo.png',
     'popup.html',
     'doubao-downloader.user.js'
-  ].map(file => fs.access(path.join(path.dirname(executable), 'doubao-downloader', file))));
+  ].map(file => fs.access(path.join(path.dirname(executable), 'assets', projectId, 'doubao-downloader', file))));
   if (releaseBuild) {
     console.log(JSON.stringify({ ok: true, projectId, buildDirectory, executable, releaseBuild }, null, 2));
     return;

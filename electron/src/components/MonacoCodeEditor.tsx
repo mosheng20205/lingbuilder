@@ -8,6 +8,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { requestWorkbenchAlert, requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import Editor, { loader } from '@monaco-editor/react';
 import * as monacoRuntime from 'monaco-editor/esm/vs/editor/editor.api.js';
 import MonacoEditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
@@ -697,10 +698,10 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       try {
         const preview = await previewLspRefactor({ kind: 'codeAction', edit, filePath: targetPath, sourceText });
         const summary = preview.files.map((file: any) => `${file.filePath}（${file.editCount} 处）`).join('\n');
-        if (!window.confirm(`应用代码操作“${title}”？\n\n${summary}`)) return;
+        if (!await requestWorkbenchConfirm({ title: '应用代码操作', description: `应用代码操作“${title}”？\n\n${summary}`, confirmLabel: '应用', cancelLabel: '取消' })) return;
         await applyLspRefactor(preview.previewId);
         window.dispatchEvent(new CustomEvent('lingbuilder-lsp-files-applied', { detail: { files: preview.files.map((file: any) => file.filePath) } }));
-      } catch (error) { window.alert(error instanceof Error ? error.message : '代码操作失败。'); }
+      } catch (error) { await requestWorkbenchAlert({ title: '代码操作失败', description: error instanceof Error ? error.message : '代码操作失败。', confirmLabel: '知道了' }); }
     });
 
     // Define EPL custom language if not registered
@@ -1172,7 +1173,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           try {
             const preview = await previewLspRefactor({ kind: 'rename', filePath: targetPath, sourceText: model.getValue(), newName, position: { line: position.lineNumber - 1, character: position.column - 1 } });
             const summary = preview.files.map((file: any) => `${file.filePath}（${file.editCount} 处）`).join('\n');
-            if (!window.confirm(`确认把符号重命名为“${newName}”？\n\n${summary}`)) return { edits: [], rejectReason: '用户取消了重命名。' };
+            if (!await requestWorkbenchConfirm({ title: '确认重命名', description: `确认把符号重命名为“${newName}”？\n\n${summary}`, confirmLabel: '重命名', cancelLabel: '取消' })) return { edits: [], rejectReason: '用户取消了重命名。' };
             await applyLspRefactor(preview.previewId);
             window.dispatchEvent(new CustomEvent('lingbuilder-lsp-files-applied', { detail: { files: preview.files.map((file: any) => file.filePath) } }));
             return { edits: [] };

@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-08-08
+更新时间：2026-08-16
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **82 个内置模块、2792 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **83 个内置模块、2804 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -71,6 +71,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 | 已封装 | `lingbuilder.net.cookie` | Cookie 文本模块 | 5 |
 | 已封装 | `lingbuilder.net.ftp` | FTP 客户端模块 | 7 |
 | 已封装（普通 SMTP） | `lingbuilder.net.mail` | SMTP 邮件模块 | 2 |
+| 已完整封装（Windows x64） | `lingbuilder.net.aria2` | Aria2 异步下载模块 | 12 |
 
 SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS。服务端要求 TLS 时会明确失败，不能用于传输真实生产凭据。
 

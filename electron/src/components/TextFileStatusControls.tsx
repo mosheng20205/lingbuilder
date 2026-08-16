@@ -52,9 +52,11 @@ export default function TextFileStatusControls({
   onEncodingChange,
   onEolChange
 }: TextFileStatusControlsProps) {
+  /* 原生 select 弹出的 option 列表不继承按钮配色：显式指定深/浅底色，
+   * 避免深色状态栏下白色弹层叠加白色文字导致选项不可读。 */
   const themeClassName = isDarkMode
-    ? 'border-white/30 bg-white/10 text-white hover:bg-white/20'
-    : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100';
+    ? 'border-white/30 bg-white/10 text-white hover:bg-white/20 [&>option]:bg-[#252526] [&>option]:text-slate-200'
+    : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100 [&>option]:bg-white [&>option]:text-slate-800';
 
   if (!format) {
     return (

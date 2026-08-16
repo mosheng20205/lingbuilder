@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, ChevronDown, ChevronRight, Play, RefreshCw } from 'lucide-react';
+import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 
 interface Extension { id: string; enabled: boolean; state: string; error?: string; activationCount: number; manifest: any }
 interface Host { state: string; pid?: number; restartCount: number; extensions: Extension[]; logs: string[] }
@@ -37,14 +38,21 @@ export default function ExtensionHostPanel({ isDarkMode }: { isDarkMode: boolean
     });
   };
   const toggle = (extension: Extension, enabled: boolean) => {
-    const permissions = extension.manifest.permissions || [];
-    if (enabled && permissions.includes('designer.write')) {
-      const accepted = window.confirm(`扩展“${extension.manifest.displayName || extension.id}”请求设计器写入权限。\n\n它可提交受控、可撤销的控件修改，但不能直接替换项目模型或执行 Shell。\n\n是否启用？`);
-      if (!accepted) return;
-    }
-    void perform(() => request(`/api/extensions/${encodeURIComponent(extension.id)}/enabled`, {
-      method: 'PUT', body: JSON.stringify({ enabled })
-    }), true);
+    void (async () => {
+      const permissions = extension.manifest.permissions || [];
+      if (enabled && permissions.includes('designer.write')) {
+        const accepted = await requestWorkbenchConfirm({
+          title: '扩展请求设计器写入权限',
+          description: `扩展“${extension.manifest.displayName || extension.id}”请求设计器写入权限。\n\n它可提交受控、可撤销的控件修改，但不能直接替换项目模型或执行 Shell。\n\n是否启用？`,
+          confirmLabel: '启用',
+          cancelLabel: '取消'
+        });
+        if (!accepted) return;
+      }
+      await perform(() => request(`/api/extensions/${encodeURIComponent(extension.id)}/enabled`, {
+        method: 'PUT', body: JSON.stringify({ enabled })
+      }), true);
+    })();
   };
   const surface = isDarkMode ? 'border-[#2d2d34] bg-[#1e1e1e]' : 'border-slate-200 bg-white';
   return (

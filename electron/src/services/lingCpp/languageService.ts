@@ -1027,7 +1027,7 @@ export function getLingCppStructuredReadingRows(
           name: local.name,
           type: local.type,
           value: [local.isConstant ? '只读' : '', local.isArray ? '数组' : '', local.initialValue || ''].filter(Boolean).join(' · '),
-          note: `${local.isConstant ? '运行时初始化一次 · ' : ''}仅在 ${method.name} 内有效`,
+          note: local.note || `${local.isConstant ? '运行时初始化一次 · ' : ''}仅在 ${method.name} 内有效`,
           line: local.line,
           blockId: block?.id,
           className: cls.name,
@@ -1163,7 +1163,7 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
         name: local.name,
         type: local.type,
         value: [local.isConstant ? '只读' : '', local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
-        note: `${local.isConstant ? '运行时初始化一次 · ' : ''}仅在 ${library.name}.${method.name} 内有效`,
+        note: local.note || `${local.isConstant ? '运行时初始化一次 · ' : ''}仅在 ${library.name}.${method.name} 内有效`,
         line: local.line,
         editable: true,
         editKind: 'local',
@@ -1248,7 +1248,7 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
           name: local.name,
           type: local.type,
           value: [local.isConstant ? '只读' : '', local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
-          note: `${local.isConstant ? '运行时初始化一次 · ' : ''}局部作用域：${method.name}`,
+          note: local.note || `${local.isConstant ? '运行时初始化一次 · ' : ''}局部作用域：${method.name}`,
           line: local.line,
           blockId: block?.id,
           editable: true,
@@ -2292,10 +2292,13 @@ function memberNote(type: string, name: string): string {
 }
 
 function noteBeforeLine(lines: string[], lineNumber: number): string | undefined {
-  const previousLine = lines[Math.max(0, lineNumber - 2)] || '';
-  const trimmed = previousLine.trim();
-  if (trimmed.startsWith('//')) return trimmed.replace(/^\/\/\s?/u, '').trim() || undefined;
-  if (trimmed.startsWith('注释 ')) return trimmed.slice('注释'.length).trim() || undefined;
+  for (let index = lineNumber - 2; index >= 0; index -= 1) {
+    const trimmed = (lines[index] || '').trim();
+    if (trimmed.startsWith('// 参数备注')) continue;
+    if (trimmed.startsWith('//')) return trimmed.replace(/^\/\/\s?/u, '').trim() || undefined;
+    if (trimmed.startsWith('注释 ')) return trimmed.slice('注释'.length).trim() || undefined;
+    break;
+  }
   return undefined;
 }
 
@@ -3034,6 +3037,7 @@ function getModuleHandlerDiagnostics(source: string, program: LingCppProgram, mo
         extractCommandInvocationArguments(line, commandName).forEach(args => handlerIndexes.forEach(index => {
           const value = args[index]?.trim();
           const parameter = binding.parameters?.[index];
+          if (!value && parameter?.optional) return;
           const signature = parameter?.handlerSignature;
           if (signature) {
             const reference = value?.match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];

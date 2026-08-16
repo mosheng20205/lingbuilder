@@ -9,6 +9,7 @@ import { CRYPTO_SDK_MODULE_IDS } from './dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID, OPENCV_VERSION } from './opencvModules';
 import { PROTOBUF_MODULE_ID } from './protobufModule';
 import { validateProtobufSdk, type ProtobufTargetArchitecture } from './protobufSdk';
+import { ARIA2_MODULE_ID, ARIA2_RUNTIME_FILES } from './aria2Module';
 import {
   getSdkDependencyResource,
   getSdkRootCandidates,
@@ -99,6 +100,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(PROTOBUF_MODULE_ID)) {
     await materializeProtobufSdk(layout, plan);
+  }
+
+  if (enabledIds.has(ARIA2_MODULE_ID)) {
+    await materializeAria2Runtime(layout, plan);
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
@@ -250,6 +255,17 @@ export async function exportModuleNativeDependencies(
     }, plan);
     diagnostics.push(...plan.blockingDiagnostics);
   }
+  if (enabledModules.some(module => module.manifest.id === ARIA2_MODULE_ID)) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
+    await materializeAria2Runtime({
+      buildDir: exportDir,
+      sourceDir: exportDir,
+      binDir: exportDir,
+      exportDir,
+      preferredTargetId: 'windows-msvc-x64'
+    }, plan);
+    diagnostics.push(...plan.blockingDiagnostics);
+  }
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
     const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
     await materializeCryptoSdk({
@@ -333,6 +349,80 @@ async function materializeProtobufSdk(
   } catch (error) {
     addBlockingDiagnostic(plan, `复制 Protobuf 运行时失败：${errorMessage(error)}`);
   }
+}
+
+const ARIA2_EXECUTABLE_SHA256 = 'be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2';
+
+async function materializeAria2Runtime(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  plan.requiresMsvc = true;
+  if (process.platform !== 'win32') {
+    addBlockingDiagnostic(plan, 'Aria2 下载模块首版仅支持 Windows x64 MSVC。');
+    return;
+  }
+  if (layout.preferredTargetId && layout.preferredTargetId !== 'windows-msvc-x64') {
+    addBlockingDiagnostic(plan, `Aria2 下载模块不支持目标 ${layout.preferredTargetId}，请切换为 windows-msvc-x64。`);
+    return;
+  }
+
+  const bundledRoot = await findBundledAria2Root();
+  if (!bundledRoot) {
+    addBlockingDiagnostic(plan, '未找到 LingBuilder 随附的 aria2c.exe、GPLv2 许可证或来源说明，无法生成 Aria2 下载模块。');
+    return;
+  }
+  const executable = path.join(bundledRoot, 'aria2c.exe');
+  try {
+    const digest = await sha256File(executable);
+    if (digest.toLowerCase() !== ARIA2_EXECUTABLE_SHA256) {
+      addBlockingDiagnostic(plan, `LingBuilder 随附的 aria2c.exe SHA-256 不匹配：期望 ${ARIA2_EXECUTABLE_SHA256}，实际 ${digest}。`);
+      return;
+    }
+  } catch (error) {
+    addBlockingDiagnostic(plan, `校验 aria2c.exe 失败：${errorMessage(error)}`);
+    return;
+  }
+
+  const moduleRoots = unique([
+    path.join(layout.buildDir, 'modules', ARIA2_MODULE_ID),
+    path.join(layout.exportDir, 'modules', ARIA2_MODULE_ID)
+  ]);
+  for (const runtimeFile of ARIA2_RUNTIME_FILES) {
+    const source = path.join(bundledRoot, path.basename(runtimeFile));
+    try {
+      for (const root of moduleRoots) {
+        await copyFileAtomicallyIfDifferent(source, path.join(root, runtimeFile));
+      }
+      const output = path.join(layout.binDir, path.basename(runtimeFile));
+      await copyFileAtomicallyIfDifferent(source, output);
+      plan.runtimeFiles.push(output);
+    } catch (error) {
+      addBlockingDiagnostic(plan, `复制 Aria2 运行时文件失败：${path.basename(runtimeFile)}：${errorMessage(error)}`);
+    }
+  }
+}
+
+async function findBundledAria2Root(): Promise<string | null> {
+  const candidates = unique([
+    process.env.LINGBUILDER_ARIA2_ROOT || '',
+    process.resourcesPath ? path.join(process.resourcesPath, 'third_party', 'aria2') : '',
+    path.resolve(process.cwd(), 'third_party', 'aria2'),
+    path.resolve(process.cwd(), 'electron', 'third_party', 'aria2')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    try {
+      await Promise.all([
+        fs.access(path.join(candidate, 'aria2c.exe')),
+        fs.access(path.join(candidate, 'COPYING')),
+        fs.access(path.join(candidate, 'NOTICE.md'))
+      ]);
+      return candidate;
+    } catch {
+      // 尝试下一个由开发环境、打包资源或显式配置提供的位置。
+    }
+  }
+  return null;
 }
 
 async function copyProtobufFiles(

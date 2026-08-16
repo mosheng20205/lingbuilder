@@ -18,10 +18,9 @@ const requiredModuleIds = [
   'lingbuilder.std.text',
   'lingbuilder.new_emoji.ui',
   'lingbuilder.fbro.browser',
-  'lingbuilder.new_emoji.fbro-shell',
-  'lingbuilder.browser.doubao-downloader'
+  'lingbuilder.new_emoji.fbro-shell'
 ] as const;
-const pluginModuleRoot = path.join(repositoryRoot, '.lingbuilder', 'modules', 'lingbuilder.browser.doubao-downloader');
+const pluginAssetRoot = path.join(repositoryRoot, 'assets', projectId, 'doubao-downloader');
 
 function argumentValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -36,7 +35,7 @@ async function syncPluginSource(): Promise<void> {
   if (!validation.ok || validation.manifestVersion !== 3 || validation.version !== '2.0.4') {
     throw new Error('插件源码必须是版本 2.0.4 的有效 Manifest V3 扩展。');
   }
-  const targetRoot = path.join(pluginModuleRoot, 'runtime', 'doubao-downloader');
+  const targetRoot = pluginAssetRoot;
   await fs.mkdir(targetRoot, { recursive: true });
   for (const file of ['manifest.json', 'logo.png', 'popup.html', 'doubao-downloader.user.js']) {
     await fs.copyFile(path.join(sourceRoot, file), path.join(targetRoot, file));
@@ -62,8 +61,7 @@ async function loadModules(): Promise<InstalledModule[]> {
     builtin('lingbuilder.std.text'),
     await installed('lingbuilder.new_emoji.ui'),
     builtin('lingbuilder.fbro.browser'),
-    builtin('lingbuilder.new_emoji.fbro-shell'),
-    await installed('lingbuilder.browser.doubao-downloader')
+    builtin('lingbuilder.new_emoji.fbro-shell')
   ];
 }
 
@@ -215,9 +213,9 @@ async function main(): Promise<void> {
   if (!preview.manifest.bundledSupportModuleIds.includes('lingbuilder.fbro.sdk')) {
     throw new Error('源码包未自动携带 lingbuilder.fbro.sdk 支持资产。');
   }
-  const pluginEntries = preview.manifest.files.filter(file => file.path.includes('doubao-downloader/'));
+  const pluginEntries = preview.manifest.files.filter(file => file.path.startsWith(`assets/${projectId}/doubao-downloader/`));
   for (const required of ['manifest.json', 'logo.png', 'popup.html', 'doubao-downloader.user.js']) {
-    if (!pluginEntries.some(file => file.path.endsWith(`doubao-downloader/${required}`))) {
+    if (!pluginEntries.some(file => file.path === `assets/${projectId}/doubao-downloader/${required}`)) {
       throw new Error(`源码包缺少插件资源：${required}`);
     }
   }
@@ -257,15 +255,15 @@ async function main(): Promise<void> {
         throw new Error(`回读实例“${instance.id}”包含不可迁移缓存路径。`);
       }
     }
-    const importedPluginRoot = path.join(imported.workspacePath, '.lingbuilder', 'modules',
-      'lingbuilder.browser.doubao-downloader', 'runtime', 'doubao-downloader');
+    const importedPluginRoot = path.join(imported.workspacePath, 'assets', projectId, 'doubao-downloader');
     const importedPluginValidation = await new BrowserExtensionService().validate(importedPluginRoot);
     if (!importedPluginValidation.ok || importedPluginValidation.version !== '2.0.4') {
       throw new Error(`回读插件资源无效：${importedPluginValidation.diagnostic || '未知错误'}`);
     }
-    const pluginDocs = await fs.readFile(path.join(imported.workspacePath, '.lingbuilder', 'modules',
-      'lingbuilder.browser.doubao-downloader', 'docs', 'README.md'), 'utf8');
-    if (!pluginDocs.trim()) throw new Error('回读模块文档为空。');
+    if (await fs.access(path.join(imported.workspacePath, '.lingbuilder', 'modules',
+      'lingbuilder.browser.doubao-downloader')).then(() => true).catch(() => false)) {
+      throw new Error('回读源码包不应包含豆包下载器插件模块目录。');
+    }
     const forbiddenDeveloperPaths = [
       'C:\\Users\\Administrator\\Downloads\\doubao-downloader',
       'C:/Users/Administrator/Downloads/doubao-downloader',
@@ -275,8 +273,7 @@ async function main(): Promise<void> {
       `src/${projectId}/MainWindow.lcpp`,
       `.lingbuilder/projects/${projectId}/window-designer.json`,
       `config/${projectId}/browser-instances.json`,
-      '.lingbuilder/modules/lingbuilder.browser.doubao-downloader/lingbuilder.module.json',
-      '.lingbuilder/modules/lingbuilder.browser.doubao-downloader/docs/README.md'
+      `assets/${projectId}/doubao-downloader/manifest.json`
     ]) {
       const content = await fs.readFile(path.join(imported.workspacePath, ...relativePath.split('/')), 'utf8');
       if (forbiddenDeveloperPaths.some(forbidden => content.includes(forbidden))) {
@@ -287,7 +284,7 @@ async function main(): Promise<void> {
       fs.access(path.join(imported.workspacePath, '.lingbuilder', 'build-configuration.json')),
       fs.access(path.join(imported.workspacePath, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json')),
       fs.access(path.join(imported.workspacePath, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'lingbuilder.module.json')),
-      fs.access(path.join(imported.workspacePath, '.lingbuilder', 'modules', 'lingbuilder.browser.doubao-downloader', 'lingbuilder.module.json'))
+      fs.access(path.join(imported.workspacePath, 'assets', projectId, 'doubao-downloader', 'manifest.json'))
     ]);
   } finally {
     await fs.rm(importParent, { recursive: true, force: true });

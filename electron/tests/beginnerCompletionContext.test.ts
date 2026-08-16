@@ -64,6 +64,16 @@ test('新手编辑器允许在赋值右侧使用变量拼音补全', () => {
   assert.equal(comparison.isAssignmentValue, false);
 });
 
+test('新手编辑器在任意代码表达式位置按拼音补全符号', () => {
+  const comparison = getBeginnerCompletionContext('如果真 (本机IP == bj', '如果真 (本机IP == bj'.length);
+  const returnValue = getBeginnerCompletionContext('返回 bj', '返回 bj'.length);
+  const arithmetic = getBeginnerCompletionContext('结果 + bj', '结果 + bj'.length);
+
+  assert.equal(shouldShowBeginnerCompletion(comparison, false), true);
+  assert.equal(shouldShowBeginnerCompletion(returnValue, false), true);
+  assert.equal(shouldShowBeginnerCompletion(arithmetic, false), true);
+});
+
 test('新手编辑器仍禁止在字符串和注释中弹出普通命令补全', () => {
   const stringSource = '调试输出("dzs';
   const commentSource = '选项卡1.设置选择项(0) // dzs';

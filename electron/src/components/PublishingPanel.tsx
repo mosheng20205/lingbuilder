@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2, FileJson, PackageCheck, RefreshCw, ShieldCheck } from 'lucide-react';
+import { requestWorkbenchAlert, requestWorkbenchPrompt } from '../services/workbench/workbenchConfirmService';
 
 export default function PublishingPanel({ isDarkMode }: { isDarkMode: boolean }) {
   const [configuration, setConfiguration] = useState<any>();
@@ -10,7 +11,7 @@ export default function PublishingPanel({ isDarkMode }: { isDarkMode: boolean })
   const request = async (url: string, options?: RequestInit) => { const response = await fetch(url, options); const value = await response.json(); if (!response.ok || !value.ok) throw new Error(value.error || '发布操作失败。'); return value; };
   const load = async () => { setBusy(true); setError(''); try { const value = await request('/api/publishing/configuration'); setConfiguration(value.configuration || undefined); setConfigurationChecked(true); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } };
   const publish = async () => { setBusy(true); setError(''); try { setResult((await request('/api/publishing/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ configuration }) })).result); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } };
-  const verify = async () => { const filePath = window.prompt('输入工作区内需要验证签名的 EXE/DLL 路径'); if (!filePath) return; try { const value = await request('/api/publishing/verify-signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath }) }); window.alert(value.valid ? 'Authenticode 签名有效。' : '签名无效或未签名。'); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } };
+  const verify = async () => { const filePath = await requestWorkbenchPrompt({ title: '验证签名', description: '输入工作区内需要验证签名的 EXE/DLL 路径', inputLabel: '文件路径' }); if (!filePath) return; try { const value = await request('/api/publishing/verify-signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath }) }); await requestWorkbenchAlert({ title: '签名验证结果', description: value.valid ? 'Authenticode 签名有效。' : '签名无效或未签名。', confirmLabel: '知道了' }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } };
   const surface = isDarkMode ? 'border-slate-800 bg-[#1b1b1d] shadow-black/10' : 'border-slate-200 bg-white shadow-slate-200/50';
   const iconButton = `flex h-7 w-7 items-center justify-center rounded-md border transition-colors focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-40 ${isDarkMode ? 'border-slate-700 bg-slate-800/70 text-slate-300 hover:bg-slate-700 hover:text-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`;
   return (
