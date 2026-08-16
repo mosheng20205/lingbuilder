@@ -4,14 +4,14 @@
 
 > 2026-08-08：AI 生成或修改普通 Win32 `win32-fbro-multi-browser-manager` 时，目标程序的窗口和全部可视控件只能使用 `lingbuilder.win32.basic` 与 `lingbuilder.win32.common-controls`。浏览器承载必须是隐藏表头的 Win32 TabControl 页面，每个稳定实例分别拥有页面 HWND、FBro Host PID、浏览器 HWND 和 Profile；左侧 ListBox 是唯一切换入口。不得加入或建议任何 `new_emoji`、Qt、Duilib、wxWidgets、WebView UI、React/HTML renderer 界面依赖，也不得预放固定 `FBroBrowser` 控件或让实例共享页面、Host 或 Profile。
 
-> 插件固定部署到真实 exe 同级 `doubao-downloader`。每个独立 Host 的 CEF 命令行初始化只启用 Chrome Runtime；启用 FBro VIP 高级扩展能力后，必须先创建独立 RequestContext，立即调用 FBro VIP `LoadExtension`，最后创建浏览器，保持与 FBro C# 独立浏览器示例相同的顺序。VIP 授权只能在受控运行时内使用并在使用后清零；授权码不得写入源码、命令行、项目配置、`.lcpppkg`、日志或 AI 上下文。扩展 ID 与 `GetExtensionPath` 回读只能证明注册，当前页面还必须用受控 DOM 探针确认扩展注入；不得把“已注册”或“路径匹配”显示为“插件已生效”。FBro Alloy 嵌入模式没有 Chromium 原生 `chrome://extensions/` 页面：该地址必须在当前实例显示受管插件诊断页，同时保持地址栏的逻辑地址。新窗口请求必须在 `OnBeforePopup` 中用当前 Frame 加载目标 URL 并取消 popup，不能创建新的 Host、窗口或 Profile。地址改变或当前实例切换必须同步原生地址栏 HWND。`浏览器管理器_导航` 不得限制为 HTTP(S)，应把 `chrome://`、`about:`、`file://`、`view-source:` 等非空 Chromium 地址原样传给 Host；仅 `chrome://extensions/` 使用受管诊断映射，其他地址仅拒绝空值和换行控制字符。大小和 DPI 事件必须先运行 LCPP 布局、再调整 FBro 子窗口。
+> 豆包视频下载器浏览器插件是项目私有资源，不是 LingBuilder 模块。必须从 `assets/<项目ID>/doubao-downloader/` 随项目分发，禁止写入 `.lingbuilder/modules`、项目模块引用、`.lbmod` 或 AI 生成的模块清单。每个独立 Host 的 CEF 命令行初始化只启用 Chrome Runtime；启用 FBro VIP 高级扩展能力后，必须先创建独立 RequestContext，立即调用 FBro VIP `LoadExtension`，最后创建浏览器，保持与 FBro C# 独立浏览器示例相同的顺序。VIP 授权只能在受控运行时内使用并在使用后清零；授权码不得写入源码、命令行、项目配置、`.lcppkg`、日志或 AI 上下文。扩展 ID 与 `GetExtensionPath` 回读只能证明注册，当前页面还必须用受控 DOM 探针确认扩展注入；不得把“已注册”或“路径匹配”显示为“插件已生效”。FBro Alloy 嵌入模式没有 Chromium 原生 `chrome://extensions/` 页面：该地址必须在当前实例显示受管插件诊断页，同时保持地址栏的逻辑地址。新窗口请求必须在 `OnBeforePopup` 中用当前 Frame 加载目标 URL 并取消 popup，不能创建新的 Host、窗口或 Profile。地址改变或当前实例切换必须同步原生地址栏 HWND。`浏览器管理器_导航` 不得限制为 HTTP(S)，应把 `chrome://`、`about:`、`file://`、`view-source:` 等非空 Chromium 地址原样传给 Host；仅 `chrome://extensions/` 使用受管诊断映射，其他地址仅拒绝空值和换行控制字符。大小和 DPI 事件必须先运行 LCPP 布局、再调整 FBro 子窗口。
 扩展注册后若当前 URL 匹配豆包页面，最多执行一次受控刷新以覆盖首屏竞态，随后按有限次数 DOM 探针验证；AI 不得生成无限 reload 或把刷新次数当作插件生效证据。
 
-> 最终分享包固定为 `exports/独立浏览器管理器.lcpppkg`，使用现有 `LcppSourcePackageService` 导出、复制后重新检查并导入，再从导入项目二次生成 C++。清单只允许两个 Win32 UI 模块、FBro 非界面运行时和插件资源模块；必须排除 `new_emoji`、Cookie、Profile、缓存、localStorage、IndexedDB、插件私有存储、凭据、授权码、构建缓存和开发机绝对路径。大型 SDK 临时目录在 Windows 清理时可以有界重试 `EBUSY`，但不得因此忽略包校验或导入失败。
+> 最终分享包固定为 `exports/独立浏览器管理器.lcpppkg`，使用现有 `LcppSourcePackageService` 导出、复制后重新检查并导入，再从导入项目二次生成 C++。清单只允许两个 Win32 UI 模块和 FBro 非界面运行时；插件只作为项目 `assets` 文件分发，不得出现在模块清单或模块包中。必须排除 `new_emoji`、Cookie、Profile、缓存、localStorage、IndexedDB、插件私有存储、凭据、授权码、构建缓存和开发机绝对路径。大型 SDK 临时目录在 Windows 清理时可以有界重试 `EBUSY`，但不得因此忽略包校验或导入失败。
 
 > 2026-08-08：AI 生成或修改 `new-emoji-fbro-multi-browser-manager` 时，必须保留 `electron/src/services/browserWorkbench/` 的实例、持久化、Cookie、扩展、命令和菜单边界。新增、删除、重命名、切换、Cookie 导入导出和分享包导出必须注册到 CommandService；实例右键菜单必须由 MenuService 贡献生成。原生 `.lcpp` 入口只能调用同一稳定 ID 语义的 `浏览器外壳_*` 命令，禁止在 React、菜单 JSX、索引分支或临时文件操作中复制业务逻辑。
 
-> 每个实例必须使用独立 Host、RequestContext、伴随 HWND、浏览器 HWND 和 `%LocalAppData%` Profile。持久化只保存稳定 ID、名称、顺序、`profiles/<稳定ID>` 相对结构、最后地址、创建时间、恢复状态和插件状态，使用临时文件、`.bak` 与原子替换；分享包不得包含 Cookie、Profile、缓存、localStorage、IndexedDB、插件私有存储、凭据或开发机绝对路径。插件固定从真实 exe 同级 `doubao-downloader` 加载，必须在创建浏览器前加载到每个 RequestContext；只有 `phase: "extension"` 的 VIP lifecycle 可以改变插件状态。
+> 每个实例必须使用独立 Host、RequestContext、伴随 HWND、浏览器 HWND 和 `%LocalAppData%` Profile。持久化只保存稳定 ID、名称、顺序、`profiles/<稳定ID>` 相对结构、最后地址、创建时间、恢复状态和插件状态，使用临时文件、`.bak` 与原子替换；分享包不得包含 Cookie、Profile、缓存、localStorage、IndexedDB、插件私有存储、凭据或开发机绝对路径。插件从 exe 同级 `assets` 下的项目资源加载，必须在创建浏览器前加载到每个 RequestContext；只有 `phase: "extension"` 的 VIP lifecycle 可以改变插件状态。
 
 > Cookie 导入导出必须访问选中 FBro Host 的真实 CookieManager，结构保留 `name/value/domain/path/expires/httpOnly/secure/sameSite/priority/session`。导入前必须统计有效、无效、过期、冲突和域名，默认跳过无效与过期并明确处理冲突；日志和 AI 上下文禁止包含 Cookie value 或完整导出文件。清除数据和删除 Profile 必须二次确认并验证目标位于当前工作台受管 `profiles` 根目录。
 
@@ -344,7 +344,7 @@ AI 必须遵守：
 - CEF 150 原生工程必须使用 C++20 和动态 CRT `/MD`；F5、AI Bridge 与导出的 Visual Studio 四组配置必须消费同一原生依赖计划。使用预编译 `/MD` wrapper 的 Debug 项目仍生成调试信息，但必须使用 `NDEBUG`，不能同时定义 `_DEBUG` 造成 Debug/Release CRT 混链。遇到 `<concepts>` STL4038 或 `convertible_to` C2061 时应重新生成工程以刷新 `stdcpp20`，不得修改 CEF SDK 头文件规避。
 - 当前按需下载的 CEF 150 SDK 仅支持 x64。项目启用 CEF3 时 IDE 应自动切换为 x64，构建前必须再次校正，不得用 Win32 尝试链接 x64 CEF；如用户明确需要 32 位，应说明当前需要另行制作并验证完整的 32 位 SDK 包。
 - IDE 构建目录内 CEF3 生成的 Visual Studio exe 必须输出到对应 `$(Platform)/$(Configuration)/bin/` 运行目录，与 `libcef.dll`、`v8_context_snapshot.bin` 和 Resources 同目录；不得把“MSBuild 成功但运行时资源缺失”报告为可正常运行。对 `generated/cpp` 可移植导出必须单独检查 SDK/资源是否随工程输出。
-- 生成 Windows 正式安装包必须通过按需 SDK 发布门禁：源 CEF3/FBro SDK 先完成制作来源校验；`win-unpacked` 与最终 NSIS 归档只能保留两个资产模块的 v2 清单和 README，任何 `lingbuilder.cef3.sdk/sdk` 或 `lingbuilder.fbro.sdk/sdk` 文件都必须让发布失败。AI 不得建议跳过 Electron Builder 前后钩子、`verify:cef3-installer` 或 `verify:fbro-installer`，也不得声称正式安装包自带完整 CEF3/FBro SDK。
+- 生成严格精简 Windows 安装包必须通过 CEF3/FBro 发布门禁：源 SDK 先完成制作来源校验；`win-unpacked` 与最终 NSIS 归档不得出现 `lingbuilder.cef3.sdk` 或 `lingbuilder.fbro.sdk` 的任何路径、清单、README、SDK、运行时或桥接二进制。需要浏览器能力时必须先安装独立模块包或受控完整模块目录。AI 不得建议跳过 Electron Builder 前后钩子、`verify:cef3-installer` 或 `verify:fbro-installer`，也不得声称严格精简安装包自带或可自动下载 CEF3/FBro。
 - `new_emoji` 底层 `EU_` API 使用 UTF-8 字节指针和长度，AI 不应把普通中文字符串直接塞给底层 API。
 - 生成 new_emoji 独立演示窗口时，事件块仍必须用独立一行 `结束` 收尾；不要额外写显式退出命令 `结束()`，否则 exe 会创建窗口后马上退出，表现为闪退。
 - 纯 new_emoji 示例应在创建窗口、文本、按钮等控件后进入 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。设计器生成链路会在控件和“创建完毕”处理器执行完成后、消息循环之前调用 `NE_显示并激活窗口`，确保 F5 后台启动的窗口恢复、刷新并出现在 IDE 前方；该桥接只短暂提升窗口层级并立即取消置顶。AI 不得通过修改用户 `.lcpp` 或增加永久置顶逻辑修复启动显示问题。
@@ -741,3 +741,18 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - 查找必须使用具体类型命令，例如 `通过标记文本获取按钮("确认")` 或 `通过标记整数获取编辑框(1001)`，结果保存到相同具体控件类型的局部变量。操作查找结果前优先生成 `控件_是否有效`；找不到、重复标记、错误父级、类型不兼容或窗口已销毁时必须安全失败并保留中文诊断。
 - 控件变量只允许局部变量、方法参数和返回值。禁止控件常量、数组、程序集成员、项目全局变量和工作线程传递。设计器裸控件名、控件变量、创建结果和查找结果可以进入兼容的通用/专属命令与成员语法；动态事件处理器必须使用 `&处理器名`。
 - 代码创建控件只属于当前运行时，不得写回设计器或暗示重启后仍存在。Win32 每实例必须创建独立主 `HWND`；new_emoji 使用窗口级元素记录和稳定 ID。AI 不得手写注册表、元素 ID 或生成后端专属转换，必须交给统一 binding 和 C++ 生成器。
+
+## Aria2 下载模块规则
+
+- `lingbuilder.net.aria2` 是 Windows x64 内置模块；AI 生成下载代码时必须优先使用 `Aria2_下载`、`Aria2_等待`、状态/字节数/速度查询、`Aria2_取保存目录`、`Aria2_停止` 和 `Aria2_释放`，不得拼接任意 `aria2c` 命令行或调用系统 PATH 中的下载器。
+- 地址只能使用模块声明的 HTTP、HTTPS、FTP、FTPS 或 magnet 协议；连接数和最小分段大小必须在 binding 声明的范围内。下载目录和文件名由用户明确提供，不能把不可信文本转成额外参数。
+- 需要实时面板时，优先为 `Aria2_下载` 的可选末尾参数传入 `&下载进度`；处理器必须精确声明为 `空 下载进度(Aria2任务 任务, 整数型 进度, 长整数型 已下载字节, 长整数型 总字节, 长整数型 速度字节每秒, 文本型 状态)`。回调在窗口线程执行，可直接更新控件；不得传字符串处理器名、裸函数地址，也不得从后台线程操作 UI。
+- 轮询场景按固定间隔调用 `Aria2_取状态`、`Aria2_取进度`、`Aria2_取已下载字节`、`Aria2_取下载速度` 与 `Aria2_取保存目录`；速度优先来自 aria2 `DL:` 输出。下载完成后显示任务返回的实际目录。只可用 `Aria2_打开目录(任务)` 打开该任务目录，不能生成接受任意路径、任意命令或 Shell 参数的“打开目录”接口。
+- 首版只生成 Windows MSVC x64 项目。F5、原生预览和 Visual Studio 导出必须同时携带 `aria2c.exe`、`COPYING` 和 `NOTICE.md`；缺少或哈希不一致时应阻断构建，不得静默降级。
+
+## 窗口边框样式规则（2026-08-16）
+
+- 窗口设计器项目支持 `borderStyle` 字段，7 个合法值：`none`（无边框，无标题栏）、`normal-resizable`（普通可调边框，默认）、`normal-fixed`（普通固定边框）、`thin-title-resizable`（窄标题可调边框）、`thin-title-fixed`（窄标题固定边框）、`frame-resizable`（镜框式可调边框）、`frame-fixed`（镜框式固定边框）。缺失时由迁移规则确定（旧项目 resizable=false → normal-fixed，否则 normal-resizable）。
+- `borderlessDraggable` 仅 `borderStyle` 为 `none` 时有效，默认 `false`；为 `true` 时生成的 C++ 在窗口 WM_LBUTTONDOWN 注入 `SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)` 实现按住客户区拖动移动，命中子控件时不拦截。
+- `resizable` 字段由 `borderStyle` 派生（固定类与无边框为 false，可调类为 true），AI 生成设计器项目 JSON 时不得独立设置与 borderStyle 矛盾的 resizable 值。
+- `borderStyle` 的 Win32 样式映射由 `windowBorderStyle.ts` 的 `resolveLingWindowBorder` 统一维护：none → WS_POPUP|WS_SYSMENU|WS_MINIMIZEBOX；可调类 → WS_OVERLAPPEDWINDOW；固定类 → WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME；窄标题加 WS_EX_TOOLWINDOW；镜框式加 WS_EX_DLGMODALFRAME。C++ 端 `LB_WindowBorderStyleToDwStyle`/`LB_WindowBorderStyleToDwExStyle` 辅助函数运行时按编号 0-6 计算。生成器、画布、测试三端共享同一映射，不得在别处复刻 Win32 样式逻辑。

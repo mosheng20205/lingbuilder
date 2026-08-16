@@ -1,5 +1,9 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-08-16）：严格精简 Windows 安装包已排除 `lingbuilder.cef3.sdk` 与 `lingbuilder.fbro.sdk` 的整个模块目录，不再保留清单或 README。使用 CEF3/FBro 前必须安装独立模块包或受控开发者提供的完整模块目录；发布门禁同时扫描解包目录和 NSIS，发现任一模块路径或桥接/运行时二进制即失败。
+
+- 已完成（2026-08-15）：豆包视频下载器浏览器插件已明确为项目私有资源，不再作为模块封装。两个浏览器管理器项目的文件位于 `assets/<项目ID>/doubao-downloader/`，旧项目模块引用会在读取时过滤，源码包、预览、F5 和 Visual Studio 导出均通过项目 assets 复制；后续不得把该资源重新登记到 `.lingbuilder/modules` 或 `.lbmod`。
+
 - 已完成（2026-08-14）：Windows 安装包不再内置 `lingbuilder.cef3.sdk/sdk` 与 `lingbuilder.fbro.sdk/sdk`，只保留两个资产模块的 `lingbuilder.module.json` 和 `README.md`。首次使用 `lingbuilder.cef3.browser` 或 `lingbuilder.fbro.browser` 执行 F5、原生预览或原生导出时，工作台会显示版本、下载体积、进度和速度，用户确认后通过 HTTPS/Range 下载，执行精确大小、SHA-256、ZIP 路径与展开清单校验，再原子安装到用户级共享缓存；成功后自动重放原操作一次。AI Bridge 与独立 CLI 只返回 `SDK_DEPENDENCY_REQUIRED` 诊断，不静默联网。发布门禁会拒绝 `win-unpacked` 或 NSIS 中残留的 SDK 目录。后续可增加设置页中的缓存查看、修复和删除入口，以及签名资源清单/备用下载源，但不得降低当前哈希、解压和原子安装门禁。
 
 - 已修复（2026-08-13）：在窗口设计器中按 F5 运行普通 Win32 项目时，生成窗口不再先切换为 `HWND_TOPMOST`、同步抢占前台/焦点，再于 900ms 定时器中撤销置顶并重复抢焦点。该两阶段激活会触发 Electron 工作台与原生窗口的激活、Z 序和非客户区重绘竞争，表现为 IDE/设计器闪动。LingCpp 与旧原生 Win32 生成器现统一使用一次标准 `ShowWindow + UpdateWindow`，LingCpp 窗口在显示前完成 DPI、控件和最终尺寸准备；`new_emoji` 的独立窗口激活契约不受影响。后续如需增强运行窗口前置，应通过宿主/后端专用激活服务处理 Windows 前台限制，不得恢复临时置顶、延迟定时器或重复 `SetForegroundWindow` / `SetFocus`。
@@ -875,3 +879,21 @@
 - [ ] macOS、ARM64 和其它浏览器后端尚未实现；后续必须新增独立 target、平台桥接与原生验收，当前继续在生成前返回明确不支持诊断。
 - [x] 浏览器外壳已完成稳定 ID、LocalAppData 独立 Profile、原子实例清单与备份恢复；重命名不改变 ID/Profile，恢复保持顺序、地址和开关状态。
 - [ ] 后续可增加下载管理和自动化可访问性测试；这些能力必须继续复用稳定标签 ID、受控命令和 FBro 生命周期，不得把 `BrowserViewport` 升级为第二套网页渲染器。
+
+## Aria2 模块（2026-08-15）
+
+- [x] 新增内置 `lingbuilder.net.aria2` v2 模块，提供中文异步下载任务、状态/进度/字节数/速度/保存目录查询、安全打开任务目录、等待、停止和释放命令。
+- [x] 生成器通过受控 C++ 运行时启动 EXE 同目录的 aria2c 子进程；使用 Job Object 回收子进程，限制协议、连接数、分段大小和文件名，禁止任意命令行注入。
+- [x] F5 与 Visual Studio 导出统一复制并校验 `aria2c.exe`、GPLv2 `COPYING` 和 `NOTICE.md`；当前 target 为 Windows MSVC x64。
+- [x] 完整演示源码包使用 500ms 定时刷新进度条、速度、字节数和可换行的实际保存目录；并发页在 TabControl 可见内容区可设置公共地址/保存目录以及 1/8/16 连接的独立文件名，三条任务各自有进度、完成目录和独立目录打开按钮。完成时仅记录一次目录日志；所有“打开下载目录”按钮只接受相应 `Aria2任务` 句柄，真实 x64 Release 编译、包完整性检查及临时导入回读均已通过。
+- [x] `Aria2_下载` 新增可选 `&下载进度` 处理器，签名固定为 `(Aria2任务, 整数型, 长整数型, 长整数型, 长整数型, 文本型) -> 空`；运行时合并 aria2 输出后经窗口消息回调，速度优先解析 `DL:` 字段，避免预分配或随机写入时文件长度始终不变而显示 0 字节/秒。原生 smoke 使用 3 MiB 限速 Range fixture 验证实际回调、非零速度、进度和最终字节数。
+- [ ] 后续可增加 JSON-RPC 多任务控制和 macOS/Linux 原生实现；新增能力必须先扩展模块 binding、权限边界和跨平台 target，不能让 AI 直接暴露 aria2 原始选项。
+
+## 窗口边框样式属性（2026-08-16）
+
+- [x] 设计器窗口模型新增 `borderStyle`（7 值枚举：无边框/普通可调/普通固定/窄标题可调/窄标题固定/镜框式可调/镜框式固定）与 `borderlessDraggable`（无边框拖动开关）；`resizable` 由枚举派生，不再是独立编辑入口。统一样式映射模块 `windowBorderStyle.ts` 作为"枚举 → Win32 样式"唯一事实来源，生成器、画布、测试全部消费。
+- [x] 旧项目迁移：无 borderStyle 时 resizable=false → 普通固定边框，否则普通可调边框；行为与旧代码等价且幂等。
+- [x] lingCpp 与 native 两个 Win32 生成器接入边框样式：C++ WindowSpec 增 borderStyle/borderlessDraggable 字段、注入 LB_WindowBorderStyleToDwStyle/DwExStyle 辅助函数、Open() 样式计算替换硬编码、CreateWindowExW exStyle 接入、无边框拖动（WM_NCLBUTTONDOWN/HTCAPTION + ChildWindowFromPoint 命中判定）、无边框默认位置工作区居中+级联回落（修复 WS_POPUP 的 CW_USEDEFAULT 坍缩）、captionKind 三档高度扣减、ApplyWindowAppearance 无边框跳过标题栏颜色。
+- [x] 属性面板新增"边框"下拉与"允许拖动移动窗口"开关；画布标题栏按 hasCaption/captionKind 条件渲染（无边框无标题栏、窄标题 h-5、镜框式双边框描边）；"禁止拖拽调整大小"复选框移除，"禁止窗口最大化"无边框时禁用。
+- [ ] 后续可补 `.lcpp` 运行时命令（如 `窗口_设置边框`）；spec 序列化侧 `TITLE_BAR_HEIGHT` 为近似扣减，运行时由 `AdjustWindowRect` 精确计算，如需画布与原生像素完全一致可精确化。
+- [ ] `generateWindowXml` 导出目前只写双布尔（禁止拖拽/最大化），thin-title/frame/none 七值信息有损退化为 normal 类；后续应补 XML 边框样式输出（XML 无导入解析端，单向导出不自相矛盾）。
