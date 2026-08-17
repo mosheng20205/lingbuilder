@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T17:09:24.115Z",
+  "generatedAt": "2026-08-17T14:05:10.804Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -303,12 +303,13 @@
       "moduleId": "lingbuilder.data.json",
       "moduleName": "JSON 数据模块",
       "projectId": "module-demo-lingbuilder.data.json",
-      "commandCount": 5,
+      "commandCount": 55,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.data.json/src",
-      "packageName": "JSON数据模块完整演示.lcpppkg"
+      "packageName": "JSON数据模块完整演示.lcpppkg",
+      "packageBytes": 17275
     },
     {
       "moduleId": "lingbuilder.data.protobuf",

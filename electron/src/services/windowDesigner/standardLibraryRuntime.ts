@@ -1,5 +1,6 @@
 import { InstalledModule } from '../modules/types';
 import { STANDARD_LIBRARY_MODULE_IDS } from '../modules/standardLibraryModules';
+import { JSON_RUNTIME } from './jsonRuntime';
 
 export const BUILTIN_LIBRARY_COMMON_RUNTIME = String.raw`
 static thread_local std::array<std::wstring, 16> g_lbTextResults;
@@ -713,109 +714,6 @@ int 正则_匹配数量(const wchar_t* text, const wchar_t* pattern) {
         const std::wstring value = LB_Wide(text); const std::wregex expression(LB_Wide(pattern));
         return static_cast<int>(std::distance(std::wsregex_iterator(value.begin(), value.end(), expression), std::wsregex_iterator()));
     } catch (const std::regex_error&) { return 0; }
-}
-`;
-
-const JSON_RUNTIME = String.raw`
-class LB_JsonReader {
-public:
-    explicit LB_JsonReader(const std::wstring& source) : begin_(source.data()), current_(source.data()), end_(source.data() + source.size()) {}
-    void SkipWhitespace() { while (current_ < end_ && iswspace(*current_)) ++current_; }
-    bool AtEnd() { SkipWhitespace(); return current_ == end_; }
-    const wchar_t* Position() const { return current_; }
-    bool Consume(wchar_t expected) { SkipWhitespace(); if (current_ >= end_ || *current_ != expected) return false; ++current_; return true; }
-
-    bool ParseString(std::wstring* decoded = nullptr) {
-        SkipWhitespace(); if (current_ >= end_ || *current_++ != L'\"') return false;
-        std::wstring output;
-        while (current_ < end_) {
-            wchar_t ch = *current_++;
-            if (ch == L'\"') { if (decoded) *decoded = std::move(output); return true; }
-            if (ch < 0x20) return false;
-            if (ch != L'\\') { output.push_back(ch); continue; }
-            if (current_ >= end_) return false;
-            wchar_t escaped = *current_++;
-            switch (escaped) {
-                case L'\"': output.push_back(L'\"'); break; case L'\\': output.push_back(L'\\'); break; case L'/': output.push_back(L'/'); break;
-                case L'b': output.push_back(L'\b'); break; case L'f': output.push_back(L'\f'); break; case L'n': output.push_back(L'\n'); break;
-                case L'r': output.push_back(L'\r'); break; case L't': output.push_back(L'\t'); break;
-                case L'u': {
-                    if (end_ - current_ < 4) return false; unsigned int code = 0;
-                    for (int index = 0; index < 4; ++index) { int digit = LB_HexDigit(current_[index]); if (digit < 0) return false; code = (code << 4) | static_cast<unsigned int>(digit); }
-                    current_ += 4; output.push_back(static_cast<wchar_t>(code)); break;
-                }
-                default: return false;
-            }
-        }
-        return false;
-    }
-
-    bool ParseValue() {
-        SkipWhitespace(); if (current_ >= end_) return false;
-        if (*current_ == L'\"') return ParseString();
-        if (*current_ == L'{') return ParseObject();
-        if (*current_ == L'[') return ParseArray();
-        if (*current_ == L't') return ParseLiteral(L"true");
-        if (*current_ == L'f') return ParseLiteral(L"false");
-        if (*current_ == L'n') return ParseLiteral(L"null");
-        return ParseNumber();
-    }
-
-private:
-    bool ParseLiteral(const wchar_t* literal) { const size_t length = wcslen(literal); if (static_cast<size_t>(end_ - current_) < length || wcsncmp(current_, literal, length) != 0) return false; current_ += length; return true; }
-    bool ParseNumber() {
-        const wchar_t* start = current_; if (current_ < end_ && *current_ == L'-') ++current_;
-        if (current_ >= end_) return false;
-        if (*current_ == L'0') ++current_; else { if (!iswdigit(*current_)) return false; while (current_ < end_ && iswdigit(*current_)) ++current_; }
-        if (current_ < end_ && *current_ == L'.') { ++current_; if (current_ >= end_ || !iswdigit(*current_)) return false; while (current_ < end_ && iswdigit(*current_)) ++current_; }
-        if (current_ < end_ && (*current_ == L'e' || *current_ == L'E')) { ++current_; if (current_ < end_ && (*current_ == L'+' || *current_ == L'-')) ++current_; if (current_ >= end_ || !iswdigit(*current_)) return false; while (current_ < end_ && iswdigit(*current_)) ++current_; }
-        return current_ > start;
-    }
-    bool ParseObject() {
-        if (!Consume(L'{')) return false; SkipWhitespace(); if (Consume(L'}')) return true;
-        while (true) { if (!ParseString() || !Consume(L':') || !ParseValue()) return false; SkipWhitespace(); if (Consume(L'}')) return true; if (!Consume(L',')) return false; }
-    }
-    bool ParseArray() {
-        if (!Consume(L'[')) return false; SkipWhitespace(); if (Consume(L']')) return true;
-        while (true) { if (!ParseValue()) return false; SkipWhitespace(); if (Consume(L']')) return true; if (!Consume(L',')) return false; }
-    }
-    const wchar_t* begin_; const wchar_t* current_; const wchar_t* end_;
-};
-
-bool JSON_是否有效(const wchar_t* json) { const std::wstring source = LB_Wide(json); LB_JsonReader reader(source); return reader.ParseValue() && reader.AtEnd(); }
-
-static bool LB_JsonTopField(const wchar_t* json, const wchar_t* field, std::wstring& raw) {
-    const std::wstring source = LB_Wide(json), expected = LB_Wide(field); LB_JsonReader reader(source);
-    if (!reader.Consume(L'{')) return false; if (reader.Consume(L'}')) return false;
-    while (true) {
-        std::wstring key; if (!reader.ParseString(&key) || !reader.Consume(L':')) return false;
-        const wchar_t* start = reader.Position(); if (!reader.ParseValue()) return false; const wchar_t* finish = reader.Position();
-        if (key == expected) { raw.assign(start, finish); return true; }
-        if (reader.Consume(L'}')) return false; if (!reader.Consume(L',')) return false;
-    }
-}
-
-const wchar_t* JSON_转义文本(const wchar_t* text) {
-    std::wstring output; for (wchar_t ch : LB_Wide(text)) {
-        switch (ch) { case L'\"': output += L"\\\""; break; case L'\\': output += L"\\\\"; break; case L'\b': output += L"\\b"; break; case L'\f': output += L"\\f"; break; case L'\n': output += L"\\n"; break; case L'\r': output += L"\\r"; break; case L'\t': output += L"\\t"; break; default: output.push_back(ch); }
-    } return LB_ReturnText(std::move(output));
-}
-
-const wchar_t* JSON_取文本(const wchar_t* json, const wchar_t* field) {
-    std::wstring raw, decoded; if (!LB_JsonTopField(json, field, raw)) return LB_ReturnText(L""); LB_JsonReader reader(raw);
-    return reader.ParseString(&decoded) && reader.AtEnd() ? LB_ReturnText(std::move(decoded)) : LB_ReturnText(L"");
-}
-
-int JSON_取整数(const wchar_t* json, const wchar_t* field, int fallback) {
-    std::wstring raw; if (!LB_JsonTopField(json, field, raw)) return fallback; wchar_t* end = nullptr; long value = wcstol(raw.c_str(), &end, 10);
-    while (end && *end && iswspace(*end)) ++end; return end && *end == 0 ? static_cast<int>(value) : fallback;
-}
-
-bool JSON_取逻辑(const wchar_t* json, const wchar_t* field, bool fallback) {
-    std::wstring raw; if (!LB_JsonTopField(json, field, raw)) return fallback;
-    raw.erase(raw.begin(), std::find_if(raw.begin(), raw.end(), [](wchar_t ch) { return !iswspace(ch); }));
-    while (!raw.empty() && iswspace(raw.back())) raw.pop_back();
-    if (raw == L"true") return true; if (raw == L"false") return false; return fallback;
 }
 `;
 

@@ -1,7 +1,7 @@
 {
   "name": "lingbuilder-electron",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -59,6 +59,7 @@
     "smoke:crypto-native": "node --import tsx scripts/smoke-crypto-native.ts",
     "smoke:opencv-native": "node --import tsx scripts/smoke-opencv-native.ts",
     "smoke:protobuf-native": "node --import tsx scripts/smoke-protobuf-native.ts",
+    "smoke:json-native": "tsx scripts/smoke-json-native.ts",
     "smoke:local-constant-native": "tsx scripts/smoke-local-constant-native.ts",
     "smoke:disk-native": "tsx scripts/smoke-disk-native.ts",
     "smoke:sqlite-native": "tsx scripts/smoke-sqlite-native.ts",

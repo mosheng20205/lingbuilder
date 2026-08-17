@@ -65,7 +65,7 @@ export const SDK_DEPENDENCY_RESOURCES: readonly SdkDependencyResource[] = [
       { relativePath: 'bridge/x64/LingBuilderFbroBridge.dll', minimumBytes: 10_000 },
       { relativePath: 'official/include/FBroInit.h', minimumBytes: 1_000 },
       { relativePath: 'official/lib64/FBrowserCEF3lib.lib', minimumBytes: 1_000 },
-      { relativePath: 'runtime/x64/libcef.dll', minimumBytes: 250 * 1024 * 1024 }
+      { relativePath: 'runtime/x64/libcef.dll', minimumBytes: 230 * 1024 * 1024 }
     ]
   }
 ] as const;

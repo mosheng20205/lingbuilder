@@ -33,7 +33,7 @@
 | `lingbuilder.crypto.symmetric` 对称加密模块 | `module-demo-lingbuilder.crypto.symmetric` | 26 | 0 | 2 | `对称加密模块完整演示.lcpppkg` |
 | `lingbuilder.crypto.windows` Windows数据保护模块 | `module-demo-lingbuilder.crypto.windows` | 4 | 0 | 1 | `Windows数据保护模块完整演示.lcpppkg` |
 | `lingbuilder.data.csv` CSV数据模块 | `module-demo-lingbuilder.data.csv` | 5 | 0 | 1 | `CSV数据模块完整演示.lcpppkg` |
-| `lingbuilder.data.json` JSON 数据模块 | `module-demo-lingbuilder.data.json` | 5 | 0 | 1 | `JSON数据模块完整演示.lcpppkg` |
+| `lingbuilder.data.json` JSON 数据模块 | `module-demo-lingbuilder.data.json` | 55 | 0 | 3 | `JSON数据模块完整演示.lcpppkg` |
 | `lingbuilder.data.protobuf` Protocol Buffers 模块 | `module-demo-lingbuilder.data.protobuf` | 9 | 0 | 1 | `ProtocolBuffers模块完整演示.lcpppkg` |
 | `lingbuilder.data.xml` XML 文本模块 | `module-demo-lingbuilder.data.xml` | 5 | 0 | 1 | `XML文本模块完整演示.lcpppkg` |
 | `lingbuilder.database.odbc` ODBC数据库模块 | `module-demo-lingbuilder.database.odbc` | 8 | 0 | 1 | `ODBC数据库模块完整演示.lcpppkg` |

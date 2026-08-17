@@ -1,21 +1,22 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.779Z",
+  "generatedAt": "2026-08-17T14:05:10.185Z",
   "module": {
     "id": "lingbuilder.data.json",
     "name": "JSON 数据模块",
-    "version": "1.0.0",
-    "description": "提供无第三方依赖的 JSON 合法性检查、字符串转义和顶层对象字段读取。"
+    "version": "2.0.0",
+    "description": "商业项目可用的本地 JSON 数据模块：RFC 8259 DOM 解析与创建、JSON Pointer、JSON Patch、Merge Patch、核心 JSON Schema 校验与确定性 C++ 导出。"
   },
-  "commandCount": 5,
+  "commandCount": 55,
   "commands": [
     {
       "index": 1,
       "name": "JSON_是否有效",
       "signature": "JSON_是否有效(JSON文本)",
-      "description": "严格检查 JSON 文本语法是否完整有效。",
+      "description": "严格验证 RFC 8259 JSON 文本；失败原因可通过 JSON_取最后错误读取。",
       "insertText": "JSON_是否有效(\"$1\")",
       "returnType": "逻辑型",
+      "category": "解析与文本",
       "binding": {
         "command": "JSON_是否有效",
         "runtimeName": "JSON_是否有效",
@@ -35,9 +36,10 @@
       "index": 2,
       "name": "JSON_转义文本",
       "signature": "JSON_转义文本(文本)",
-      "description": "把普通文本转义为可放入 JSON 字符串的内容，不包含外层引号。",
+      "description": "把普通文本转义为 JSON 字符串内容，不包含外层双引号。",
       "insertText": "JSON_转义文本(\"$1\")",
       "returnType": "文本型",
+      "category": "解析与文本",
       "binding": {
         "command": "JSON_转义文本",
         "runtimeName": "JSON_转义文本",
@@ -54,11 +56,1177 @@
     },
     {
       "index": 3,
+      "name": "JSON_反转义文本",
+      "signature": "JSON_反转义文本(转义内容)",
+      "description": "还原 JSON 字符串转义内容；格式错误返回空文本并记录错误。",
+      "insertText": "JSON_反转义文本(\"$1\")",
+      "returnType": "文本型",
+      "category": "解析与文本",
+      "binding": {
+        "command": "JSON_反转义文本",
+        "runtimeName": "JSON_反转义文本",
+        "parameters": [
+          {
+            "name": "转义内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_反转义文本(\"演示参数1\")"
+    },
+    {
+      "index": 4,
+      "name": "JSON_解析",
+      "signature": "JSON_解析(JSON文本)",
+      "description": "解析 JSON 文本并返回受管 JSON值；失败返回 0。最大输入 16 MiB、最大嵌套 256 层。",
+      "insertText": "JSON_解析(\"$1\")",
+      "returnType": "JSON值",
+      "category": "解析与文本",
+      "binding": {
+        "command": "JSON_解析",
+        "runtimeName": "JSON_解析",
+        "parameters": [
+          {
+            "name": "JSON文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "JSON值",
+        "encoding": "wide",
+        "example": "JSON_解析(\"{\\\"name\\\":\\\"LingBuilder\\\",\\\"features\\\":[\\\"解析\\\",\\\"创建\\\"]}\")"
+      },
+      "demoInvocation": "JSON_解析(\"{}\")"
+    },
+    {
+      "index": 5,
+      "name": "JSON_序列化",
+      "signature": "JSON_序列化(JSON值)",
+      "description": "把 JSON值序列化为紧凑、有效的 RFC 8259 JSON 文本。",
+      "insertText": "JSON_序列化($1)",
+      "returnType": "文本型",
+      "category": "解析与文本",
+      "binding": {
+        "command": "JSON_序列化",
+        "runtimeName": "JSON_序列化",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_序列化(0)"
+    },
+    {
+      "index": 6,
+      "name": "JSON_序列化格式化",
+      "signature": "JSON_序列化格式化(JSON值, 缩进空格)",
+      "description": "把 JSON值格式化为多行 JSON。缩进范围为 0 至 16，超出时返回空文本。",
+      "insertText": "JSON_序列化格式化($1, 2)",
+      "returnType": "文本型",
+      "category": "解析与文本",
+      "binding": {
+        "command": "JSON_序列化格式化",
+        "runtimeName": "JSON_序列化格式化",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "缩进空格",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_序列化格式化(0, 1)"
+    },
+    {
+      "index": 7,
+      "name": "JSON_格式化文本",
+      "signature": "JSON_格式化文本(JSON文本, 缩进空格)",
+      "description": "验证并格式化 JSON 文本；解析失败返回空文本。",
+      "insertText": "JSON_格式化文本(\"$1\", 2)",
+      "returnType": "文本型",
+      "category": "解析与文本",
+      "binding": {
+        "command": "JSON_格式化文本",
+        "runtimeName": "JSON_格式化文本",
+        "parameters": [
+          {
+            "name": "JSON文本",
+            "type": "wideString"
+          },
+          {
+            "name": "缩进空格",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_格式化文本(\"{}\", 1)"
+    },
+    {
+      "index": 8,
+      "name": "JSON_压缩文本",
+      "signature": "JSON_压缩文本(JSON文本)",
+      "description": "验证并移除 JSON 文本中的无意义空白；不会修改字符串内容。",
+      "insertText": "JSON_压缩文本(\"$1\")",
+      "returnType": "文本型",
+      "category": "解析与文本",
+      "binding": {
+        "command": "JSON_压缩文本",
+        "runtimeName": "JSON_压缩文本",
+        "parameters": [
+          {
+            "name": "JSON文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_压缩文本(\"{}\")"
+    },
+    {
+      "index": 9,
+      "name": "JSON_取最后错误",
+      "signature": "JSON_取最后错误()",
+      "description": "返回当前线程最近一次 JSON 操作的中文错误说明；成功操作会清空该说明。",
+      "insertText": "JSON_取最后错误()",
+      "returnType": "文本型",
+      "category": "解析与文本",
+      "binding": {
+        "command": "JSON_取最后错误",
+        "runtimeName": "JSON_取最后错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_取最后错误()"
+    },
+    {
+      "index": 10,
+      "name": "JSON_克隆",
+      "signature": "JSON_克隆(JSON值)",
+      "description": "深度复制 JSON值，返回新受管句柄。",
+      "insertText": "JSON_克隆($1)",
+      "returnType": "JSON值",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_克隆",
+        "runtimeName": "JSON_克隆",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_克隆(0)"
+    },
+    {
+      "index": 11,
+      "name": "JSON_释放",
+      "signature": "JSON_释放(JSON值)",
+      "description": "释放已不再使用的 JSON值。重复释放或传入 0 安全返回假。",
+      "insertText": "JSON_释放($1)",
+      "returnType": "逻辑型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_释放",
+        "runtimeName": "JSON_释放",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_释放(0)"
+    },
+    {
+      "index": 12,
+      "name": "JSON_取类型",
+      "signature": "JSON_取类型(JSON值)",
+      "description": "返回 空、对象、数组、文本、整数、数字 或 逻辑。",
+      "insertText": "JSON_取类型($1)",
+      "returnType": "文本型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_取类型",
+        "runtimeName": "JSON_取类型",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_取类型(0)"
+    },
+    {
+      "index": 13,
+      "name": "JSON_是否对象",
+      "signature": "JSON_是否对象(JSON值)",
+      "description": "判断 JSON值是否为对象。",
+      "insertText": "JSON_是否对象($1)",
+      "returnType": "逻辑型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_是否对象",
+        "runtimeName": "JSON_是否对象",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_是否对象(0)"
+    },
+    {
+      "index": 14,
+      "name": "JSON_是否数组",
+      "signature": "JSON_是否数组(JSON值)",
+      "description": "判断 JSON值是否为数组。",
+      "insertText": "JSON_是否数组($1)",
+      "returnType": "逻辑型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_是否数组",
+        "runtimeName": "JSON_是否数组",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_是否数组(0)"
+    },
+    {
+      "index": 15,
+      "name": "JSON_是否文本",
+      "signature": "JSON_是否文本(JSON值)",
+      "description": "判断 JSON值是否为文本。",
+      "insertText": "JSON_是否文本($1)",
+      "returnType": "逻辑型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_是否文本",
+        "runtimeName": "JSON_是否文本",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_是否文本(0)"
+    },
+    {
+      "index": 16,
+      "name": "JSON_是否数字",
+      "signature": "JSON_是否数字(JSON值)",
+      "description": "判断 JSON值是否为 JSON 数字。",
+      "insertText": "JSON_是否数字($1)",
+      "returnType": "逻辑型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_是否数字",
+        "runtimeName": "JSON_是否数字",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_是否数字(0)"
+    },
+    {
+      "index": 17,
+      "name": "JSON_是否逻辑",
+      "signature": "JSON_是否逻辑(JSON值)",
+      "description": "判断 JSON值是否为逻辑值。",
+      "insertText": "JSON_是否逻辑($1)",
+      "returnType": "逻辑型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_是否逻辑",
+        "runtimeName": "JSON_是否逻辑",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_是否逻辑(0)"
+    },
+    {
+      "index": 18,
+      "name": "JSON_是否空",
+      "signature": "JSON_是否空(JSON值)",
+      "description": "判断 JSON值是否为 null。",
+      "insertText": "JSON_是否空($1)",
+      "returnType": "逻辑型",
+      "category": "值与生命周期",
+      "binding": {
+        "command": "JSON_是否空",
+        "runtimeName": "JSON_是否空",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_是否空(0)"
+    },
+    {
+      "index": 19,
+      "name": "JSON_创建对象",
+      "signature": "JSON_创建对象()",
+      "description": "创建空 JSON 对象。",
+      "insertText": "JSON_创建对象()",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建对象",
+        "runtimeName": "JSON_创建对象",
+        "parameters": [],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_创建对象()"
+    },
+    {
+      "index": 20,
+      "name": "JSON_创建数组",
+      "signature": "JSON_创建数组()",
+      "description": "创建空 JSON 数组。",
+      "insertText": "JSON_创建数组()",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建数组",
+        "runtimeName": "JSON_创建数组",
+        "parameters": [],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_创建数组()"
+    },
+    {
+      "index": 21,
+      "name": "JSON_创建空",
+      "signature": "JSON_创建空()",
+      "description": "创建 JSON null 值。",
+      "insertText": "JSON_创建空()",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建空",
+        "runtimeName": "JSON_创建空",
+        "parameters": [],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_创建空()"
+    },
+    {
+      "index": 22,
+      "name": "JSON_创建文本",
+      "signature": "JSON_创建文本(文本)",
+      "description": "创建 JSON 字符串值。",
+      "insertText": "JSON_创建文本(\"$1\")",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建文本",
+        "runtimeName": "JSON_创建文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "JSON值",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_创建文本(\"演示参数1\")"
+    },
+    {
+      "index": 23,
+      "name": "JSON_创建整数",
+      "signature": "JSON_创建整数(数值)",
+      "description": "创建 32 位整数 JSON 数字。",
+      "insertText": "JSON_创建整数($1)",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建整数",
+        "runtimeName": "JSON_创建整数",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "int"
+          }
+        ],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_创建整数(1)"
+    },
+    {
+      "index": 24,
+      "name": "JSON_创建长整数",
+      "signature": "JSON_创建长整数(数值)",
+      "description": "创建 64 位整数 JSON 数字。",
+      "insertText": "JSON_创建长整数($1)",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建长整数",
+        "runtimeName": "JSON_创建长整数",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_创建长整数(1)"
+    },
+    {
+      "index": 25,
+      "name": "JSON_创建小数",
+      "signature": "JSON_创建小数(数值)",
+      "description": "创建有限双精度 JSON 数字；NaN 或无穷大返回 0。",
+      "insertText": "JSON_创建小数($1)",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建小数",
+        "runtimeName": "JSON_创建小数",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "double"
+          }
+        ],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_创建小数(1.0)"
+    },
+    {
+      "index": 26,
+      "name": "JSON_创建逻辑",
+      "signature": "JSON_创建逻辑(数值)",
+      "description": "创建 JSON true 或 false。",
+      "insertText": "JSON_创建逻辑(假)",
+      "returnType": "JSON值",
+      "category": "创建",
+      "binding": {
+        "command": "JSON_创建逻辑",
+        "runtimeName": "JSON_创建逻辑",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_创建逻辑(真)"
+    },
+    {
+      "index": 27,
+      "name": "JSON_取文本值",
+      "signature": "JSON_取文本值(JSON值, 默认值)",
+      "description": "读取 JSON 文本值，类型不符时返回默认值。",
+      "insertText": "JSON_取文本值($1, \"\")",
+      "returnType": "文本型",
+      "category": "标量读取",
+      "binding": {
+        "command": "JSON_取文本值",
+        "runtimeName": "JSON_取文本值",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "默认值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_取文本值(0, \"演示参数2\")"
+    },
+    {
+      "index": 28,
+      "name": "JSON_取整数值",
+      "signature": "JSON_取整数值(JSON值, 默认值)",
+      "description": "读取 32 位整数 JSON 数字，溢出或类型不符时返回默认值。",
+      "insertText": "JSON_取整数值($1, 0)",
+      "returnType": "整数型",
+      "category": "标量读取",
+      "binding": {
+        "command": "JSON_取整数值",
+        "runtimeName": "JSON_取整数值",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "默认值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "JSON_取整数值(0, 1)"
+    },
+    {
+      "index": 29,
+      "name": "JSON_取长整数值",
+      "signature": "JSON_取长整数值(JSON值, 默认值)",
+      "description": "读取 64 位整数 JSON 数字，溢出或类型不符时返回默认值。",
+      "insertText": "JSON_取长整数值($1, 0)",
+      "returnType": "长整数型",
+      "category": "标量读取",
+      "binding": {
+        "command": "JSON_取长整数值",
+        "runtimeName": "JSON_取长整数值",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "默认值",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "JSON_取长整数值(0, 1)"
+    },
+    {
+      "index": 30,
+      "name": "JSON_取小数值",
+      "signature": "JSON_取小数值(JSON值, 默认值)",
+      "description": "读取 JSON 数字；无效、非有限或类型不符时返回默认值。",
+      "insertText": "JSON_取小数值($1, 0)",
+      "returnType": "双精度小数型",
+      "category": "标量读取",
+      "binding": {
+        "command": "JSON_取小数值",
+        "runtimeName": "JSON_取小数值",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "默认值",
+            "type": "double"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "JSON_取小数值(0, 1.0)"
+    },
+    {
+      "index": 31,
+      "name": "JSON_取逻辑值",
+      "signature": "JSON_取逻辑值(JSON值, 默认值)",
+      "description": "读取 JSON 逻辑值，类型不符时返回默认值。",
+      "insertText": "JSON_取逻辑值($1, 假)",
+      "returnType": "逻辑型",
+      "category": "标量读取",
+      "binding": {
+        "command": "JSON_取逻辑值",
+        "runtimeName": "JSON_取逻辑值",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "默认值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_取逻辑值(0, 真)"
+    },
+    {
+      "index": 32,
+      "name": "JSON_对象_数量",
+      "signature": "JSON_对象_数量(对象)",
+      "description": "返回对象成员数量；参数不是对象时返回 -1。",
+      "insertText": "JSON_对象_数量($1)",
+      "returnType": "整数型",
+      "category": "对象",
+      "binding": {
+        "command": "JSON_对象_数量",
+        "runtimeName": "JSON_对象_数量",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "JSON_对象_数量(0)"
+    },
+    {
+      "index": 33,
+      "name": "JSON_对象_是否包含",
+      "signature": "JSON_对象_是否包含(对象, 键)",
+      "description": "判断对象是否含有指定键。",
+      "insertText": "JSON_对象_是否包含($1, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "对象",
+      "binding": {
+        "command": "JSON_对象_是否包含",
+        "runtimeName": "JSON_对象_是否包含",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "JSON值"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_对象_是否包含(0, \"演示参数2\")"
+    },
+    {
+      "index": 34,
+      "name": "JSON_对象_取",
+      "signature": "JSON_对象_取(对象, 键)",
+      "description": "取得对象成员的深度副本；键不存在或参数不是对象时返回 0。",
+      "insertText": "JSON_对象_取($1, \"$2\")",
+      "returnType": "JSON值",
+      "category": "对象",
+      "binding": {
+        "command": "JSON_对象_取",
+        "runtimeName": "JSON_对象_取",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "JSON值"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "JSON值",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_对象_取(0, \"演示参数2\")"
+    },
+    {
+      "index": 35,
+      "name": "JSON_对象_设置",
+      "signature": "JSON_对象_设置(对象, 键, 值)",
+      "description": "设置或替换对象成员；写入时深度复制值，键保留 UTF-16 文本。",
+      "insertText": "JSON_对象_设置($1, \"$2\", $3)",
+      "returnType": "逻辑型",
+      "category": "对象",
+      "binding": {
+        "command": "JSON_对象_设置",
+        "runtimeName": "JSON_对象_设置",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "JSON值"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_对象_设置(0, \"演示参数2\", 0)"
+    },
+    {
+      "index": 36,
+      "name": "JSON_对象_移除",
+      "signature": "JSON_对象_移除(对象, 键)",
+      "description": "删除对象成员，键不存在时返回假。",
+      "insertText": "JSON_对象_移除($1, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "对象",
+      "binding": {
+        "command": "JSON_对象_移除",
+        "runtimeName": "JSON_对象_移除",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "JSON值"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_对象_移除(0, \"演示参数2\")"
+    },
+    {
+      "index": 37,
+      "name": "JSON_对象_清空",
+      "signature": "JSON_对象_清空(对象)",
+      "description": "移除对象中的全部成员。",
+      "insertText": "JSON_对象_清空($1)",
+      "returnType": "逻辑型",
+      "category": "对象",
+      "binding": {
+        "command": "JSON_对象_清空",
+        "runtimeName": "JSON_对象_清空",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_对象_清空(0)"
+    },
+    {
+      "index": 38,
+      "name": "JSON_对象_键列表",
+      "signature": "JSON_对象_键列表(对象)",
+      "description": "返回包含全部键的 JSON 文本数组，顺序为对象插入顺序。",
+      "insertText": "JSON_对象_键列表($1)",
+      "returnType": "文本型",
+      "category": "对象",
+      "binding": {
+        "command": "JSON_对象_键列表",
+        "runtimeName": "JSON_对象_键列表",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_对象_键列表(0)"
+    },
+    {
+      "index": 39,
+      "name": "JSON_数组_数量",
+      "signature": "JSON_数组_数量(数组)",
+      "description": "返回数组元素数量；参数不是数组时返回 -1。",
+      "insertText": "JSON_数组_数量($1)",
+      "returnType": "整数型",
+      "category": "数组",
+      "binding": {
+        "command": "JSON_数组_数量",
+        "runtimeName": "JSON_数组_数量",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "JSON_数组_数量(0)"
+    },
+    {
+      "index": 40,
+      "name": "JSON_数组_取",
+      "signature": "JSON_数组_取(数组, 索引)",
+      "description": "按从 0 开始索引取得数组元素的深度副本，越界返回 0。",
+      "insertText": "JSON_数组_取($1, 0)",
+      "returnType": "JSON值",
+      "category": "数组",
+      "binding": {
+        "command": "JSON_数组_取",
+        "runtimeName": "JSON_数组_取",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "JSON值"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "JSON值"
+      },
+      "demoInvocation": "JSON_数组_取(0, 1)"
+    },
+    {
+      "index": 41,
+      "name": "JSON_数组_添加",
+      "signature": "JSON_数组_添加(数组, 值)",
+      "description": "向数组末尾添加值，写入时深度复制。",
+      "insertText": "JSON_数组_添加($1, $2)",
+      "returnType": "逻辑型",
+      "category": "数组",
+      "binding": {
+        "command": "JSON_数组_添加",
+        "runtimeName": "JSON_数组_添加",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "JSON值"
+          },
+          {
+            "name": "值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_数组_添加(0, 0)"
+    },
+    {
+      "index": 42,
+      "name": "JSON_数组_插入",
+      "signature": "JSON_数组_插入(数组, 索引, 值)",
+      "description": "在从 0 开始索引处插入值；索引可等于数组长度。",
+      "insertText": "JSON_数组_插入($1, 0, $2)",
+      "returnType": "逻辑型",
+      "category": "数组",
+      "binding": {
+        "command": "JSON_数组_插入",
+        "runtimeName": "JSON_数组_插入",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "JSON值"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_数组_插入(0, 1, 0)"
+    },
+    {
+      "index": 43,
+      "name": "JSON_数组_设置",
+      "signature": "JSON_数组_设置(数组, 索引, 值)",
+      "description": "替换已有数组元素，越界不自动扩容。",
+      "insertText": "JSON_数组_设置($1, 0, $2)",
+      "returnType": "逻辑型",
+      "category": "数组",
+      "binding": {
+        "command": "JSON_数组_设置",
+        "runtimeName": "JSON_数组_设置",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "JSON值"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_数组_设置(0, 1, 0)"
+    },
+    {
+      "index": 44,
+      "name": "JSON_数组_移除",
+      "signature": "JSON_数组_移除(数组, 索引)",
+      "description": "移除指定数组元素。",
+      "insertText": "JSON_数组_移除($1, 0)",
+      "returnType": "逻辑型",
+      "category": "数组",
+      "binding": {
+        "command": "JSON_数组_移除",
+        "runtimeName": "JSON_数组_移除",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "JSON值"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_数组_移除(0, 1)"
+    },
+    {
+      "index": 45,
+      "name": "JSON_数组_清空",
+      "signature": "JSON_数组_清空(数组)",
+      "description": "移除数组中的全部元素。",
+      "insertText": "JSON_数组_清空($1)",
+      "returnType": "逻辑型",
+      "category": "数组",
+      "binding": {
+        "command": "JSON_数组_清空",
+        "runtimeName": "JSON_数组_清空",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "JSON_数组_清空(0)"
+    },
+    {
+      "index": 46,
+      "name": "JSON_指针_取",
+      "signature": "JSON_指针_取(JSON值, 指针)",
+      "description": "按 RFC 6901 JSON Pointer 读取子值的深度副本；根指针使用空文本。",
+      "insertText": "JSON_指针_取($1, \"/$2\")",
+      "returnType": "JSON值",
+      "category": "JSON Pointer",
+      "binding": {
+        "command": "JSON_指针_取",
+        "runtimeName": "JSON_指针_取",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "指针",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "JSON值",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_指针_取(0, \"演示参数2\")"
+    },
+    {
+      "index": 47,
+      "name": "JSON_指针_设置",
+      "signature": "JSON_指针_设置(JSON值, 指针, 值, 创建中间对象)",
+      "description": "按 JSON Pointer 写入或替换值。创建中间对象只会安全创建对象成员，不能猜测数组结构。",
+      "insertText": "JSON_指针_设置($1, \"/$2\", $3, 真)",
+      "returnType": "逻辑型",
+      "category": "JSON Pointer",
+      "binding": {
+        "command": "JSON_指针_设置",
+        "runtimeName": "JSON_指针_设置",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "指针",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "JSON值"
+          },
+          {
+            "name": "创建中间对象",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_指针_设置(0, \"演示参数2\", 0, 真)"
+    },
+    {
+      "index": 48,
+      "name": "JSON_指针_移除",
+      "signature": "JSON_指针_移除(JSON值, 指针)",
+      "description": "按 JSON Pointer 删除对象成员或数组元素；根指针删除后变为 null。",
+      "insertText": "JSON_指针_移除($1, \"/$2\")",
+      "returnType": "逻辑型",
+      "category": "JSON Pointer",
+      "binding": {
+        "command": "JSON_指针_移除",
+        "runtimeName": "JSON_指针_移除",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "指针",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_指针_移除(0, \"演示参数2\")"
+    },
+    {
+      "index": 49,
+      "name": "JSON_合并补丁",
+      "signature": "JSON_合并补丁(JSON值, 合并补丁JSON)",
+      "description": "原子应用 RFC 7396 JSON Merge Patch。失败时原 JSON值不改变。",
+      "insertText": "JSON_合并补丁($1, \"{\\\"$2\\\":null}\")",
+      "returnType": "逻辑型",
+      "category": "JSON Patch",
+      "binding": {
+        "command": "JSON_合并补丁",
+        "runtimeName": "JSON_合并补丁",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "合并补丁JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_合并补丁(0, \"{}\")"
+    },
+    {
+      "index": 50,
+      "name": "JSON_应用补丁",
+      "signature": "JSON_应用补丁(JSON值, 补丁JSON)",
+      "description": "原子应用 RFC 6902 add、remove、replace、move、copy、test 操作。失败时原 JSON值不改变。",
+      "insertText": "JSON_应用补丁($1, \"[{\\\"op\\\":\\\"replace\\\",\\\"path\\\":\\\"/$2\\\",\\\"value\\\":$3}]\")",
+      "returnType": "逻辑型",
+      "category": "JSON Patch",
+      "binding": {
+        "command": "JSON_应用补丁",
+        "runtimeName": "JSON_应用补丁",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "补丁JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_应用补丁(0, \"{}\")"
+    },
+    {
+      "index": 51,
+      "name": "JSON_生成补丁",
+      "signature": "JSON_生成补丁(源JSON值, 目标JSON值)",
+      "description": "生成可由 JSON_应用补丁原子应用的 RFC 6902 补丁 JSON 文本。数组差异采用安全的整数组替换。",
+      "insertText": "JSON_生成补丁($1, $2)",
+      "returnType": "文本型",
+      "category": "JSON Patch",
+      "binding": {
+        "command": "JSON_生成补丁",
+        "runtimeName": "JSON_生成补丁",
+        "parameters": [
+          {
+            "name": "源JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "目标JSON值",
+            "type": "JSON值"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_生成补丁(0, 0)"
+    },
+    {
+      "index": 52,
+      "name": "JSON_Schema验证",
+      "signature": "JSON_Schema验证(JSON值, SchemaJSON)",
+      "description": "校验 JSON值。支持 type、const、enum、对象属性/required/additionalProperties、数组 items/长度/uniqueItems、字符串长度/pattern、数值范围/multipleOf 及 allOf/anyOf/oneOf/not。",
+      "insertText": "JSON_Schema验证($1, \"{\\\"type\\\":\\\"object\\\"}\")",
+      "returnType": "逻辑型",
+      "category": "JSON Schema",
+      "binding": {
+        "command": "JSON_Schema验证",
+        "runtimeName": "JSON_Schema验证",
+        "parameters": [
+          {
+            "name": "JSON值",
+            "type": "JSON值"
+          },
+          {
+            "name": "SchemaJSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_Schema验证(0, \"{}\")"
+    },
+    {
+      "index": 53,
       "name": "JSON_取文本",
       "signature": "JSON_取文本(JSON文本, 字段名)",
-      "description": "读取顶层对象中的字符串字段，缺失或类型不符返回空文本。",
+      "description": "兼容旧版：读取顶层对象的文本字段。新代码建议 JSON_解析 后使用对象或 Pointer API。",
       "insertText": "JSON_取文本(\"$1\", \"$2\")",
       "returnType": "文本型",
+      "category": "兼容接口",
       "binding": {
         "command": "JSON_取文本",
         "runtimeName": "JSON_取文本",
@@ -78,12 +1246,13 @@
       "demoInvocation": "JSON_取文本(\"{}\", \"演示参数2\")"
     },
     {
-      "index": 4,
+      "index": 54,
       "name": "JSON_取整数",
       "signature": "JSON_取整数(JSON文本, 字段名, 默认值)",
-      "description": "读取顶层对象中的整数，缺失或类型不符返回默认值。",
+      "description": "兼容旧版：读取顶层对象的 32 位整数。",
       "insertText": "JSON_取整数(\"$1\", \"$2\", 0)",
       "returnType": "整数型",
+      "category": "兼容接口",
       "binding": {
         "command": "JSON_取整数",
         "runtimeName": "JSON_取整数",
@@ -107,12 +1276,13 @@
       "demoInvocation": "JSON_取整数(\"{}\", \"演示参数2\", 1)"
     },
     {
-      "index": 5,
+      "index": 55,
       "name": "JSON_取逻辑",
       "signature": "JSON_取逻辑(JSON文本, 字段名, 默认值)",
-      "description": "读取顶层对象中的逻辑值，缺失或类型不符返回默认值。",
+      "description": "兼容旧版：读取顶层对象的逻辑值。",
       "insertText": "JSON_取逻辑(\"$1\", \"$2\", 假)",
       "returnType": "逻辑型",
+      "category": "兼容接口",
       "binding": {
         "command": "JSON_取逻辑",
         "runtimeName": "JSON_取逻辑",

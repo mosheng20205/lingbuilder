@@ -18,6 +18,20 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.5.0',
+    date: '2026-08-17',
+    title: '当前代码更新与严格精简离线发布',
+    sections: [
+      {
+        title: '发布',
+        items: [
+          '同步当前代码更新，提供 Windows x64 离线安装包。',
+          '安装包严格排除 FBro、CEF3 模块目录、SDK 和关联运行时；浏览器能力需通过独立模块另行安装。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.4.0',
     date: '2026-08-15',
     title: '按需 SDK、Aria2 下载与新手编辑器升级',

@@ -207,6 +207,8 @@
 
 > 2026-07-26 补充：模块管理页每个本地模块的“接口”入口改为视口级“模块公开信息”弹窗，不再把详情插入模块长列表。弹窗直接消费当前 `InstalledModule.manifest`，统一展示类型、命令、设计器控件、代码片段、C++ 目标依赖和随包文档，支持搜索、分类树、单项详情/复制、Esc 与背景关闭，并对超大命令清单限制首屏渲染数量。
 
+> 2026-08-17：`lingbuilder.data.json` 升级到 2.0.0，形成内置 JSON 数据模块参考实现。`jsonModule.ts` 从同一命令目录产生 55 条 contribution 与 binding，公开受管 `JSON值(long long)`；`jsonRuntime.ts` 在项目启用模块时向普通 Win32/new_emoji 导出工程注入纯本地 C++17 运行时。运行时覆盖严格 RFC 8259 解析/创建/序列化、对象数组标量、RFC 6901 Pointer、RFC 6902 原子 Patch、RFC 7396 Merge Patch 和 JSON Schema 核心校验，失败经 `JSON_取最后错误` 返回中文诊断。模块明确不把 JSON5、JSONC、BSON、MessagePack、CBOR 或远程 `$ref` 冒充为已支持 JSON；文档、AI 规则、模块清单和生成回归测试同步维护。
+
 本文记录当前仓库已经落地的模块系统实现，供后续开发者和 Agent 继续扩展时参考。模块系统的目标不是做展示页，而是让“项目引用模块 -> Monaco 中文代码能力 -> 设计器控件 -> C++ 生成/构建”形成同一套数据闭环。
 
 ## 2026-07 v2 模块 SDK 重构状态

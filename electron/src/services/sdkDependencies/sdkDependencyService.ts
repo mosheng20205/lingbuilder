@@ -64,6 +64,7 @@ type SdkArchiveDownloader = (
   url: string,
   destination: string,
   expectedBytes: number,
+  expectedSha256: string,
   signal: AbortSignal,
   onProgress: (progress: DownloadProgress) => void
 ) => Promise<void>;
@@ -134,10 +135,11 @@ export class SdkDependencyService {
     this.platform = options.platform || process.platform;
     this.now = options.now || (() => new Date());
     this.aria2cPath = path.resolve(options.aria2cPath || resolveBundledAria2cPath(options.resourcesPath));
-    this.download = options.download || ((url, destination, expectedBytes, signal, onProgress) => downloadArchive(
+    this.download = options.download || ((url, destination, expectedBytes, expectedSha256, signal, onProgress) => downloadArchive(
       url,
       destination,
       expectedBytes,
+      expectedSha256,
       signal,
       onProgress,
       this.aria2cPath
@@ -231,7 +233,7 @@ export class SdkDependencyService {
       if (!archiveReady) {
         await fs.rm(archivePath, { force: true });
         this.update({ state: 'downloading', message: `正在下载 ${resource.name}…` });
-        await this.download(resource.downloadUrl, partialPath, resource.archiveBytes, signal, progress => {
+        await this.download(resource.downloadUrl, partialPath, resource.archiveBytes, resource.sha256, signal, progress => {
           this.update({
             state: 'downloading',
             message: `正在下载 ${resource.name}…`,
@@ -261,8 +263,10 @@ export class SdkDependencyService {
       await this.extractArchive(archivePath, stagingRoot, signal);
       throwIfAborted(signal);
       const extractedModuleRoot = path.join(stagingRoot, resource.moduleId);
-      if (!await validateSdkRoot(resource, path.join(extractedModuleRoot, 'sdk'))) {
-        throw new Error(`${resource.name} 解压后的模块清单或关键文件不完整。`);
+      const extractedSdkRoot = path.join(extractedModuleRoot, 'sdk');
+      const validationIssue = await getSdkRootValidationIssue(resource, extractedSdkRoot);
+      if (validationIssue) {
+        throw new Error(`${resource.name} 解压后的模块清单或关键文件不完整：${validationIssue}`);
       }
       const extracted = await collectTreeInventory(extractedModuleRoot);
       if (extracted.files !== resource.fileCount || extracted.bytes !== resource.expandedBytes) {
@@ -372,19 +376,39 @@ function createStatus(
 }
 
 async function validateSdkRoot(resource: SdkDependencyResource, sdkRoot: string): Promise<boolean> {
+  return await getSdkRootValidationIssue(resource, sdkRoot) === null;
+}
+
+async function getSdkRootValidationIssue(resource: SdkDependencyResource, sdkRoot: string): Promise<string | null> {
   try {
     for (const critical of resource.criticalFiles) {
-      const stat = await fs.stat(path.join(sdkRoot, ...critical.relativePath.split('/')));
-      if (!stat.isFile() || stat.size < critical.minimumBytes) return false;
+      const target = path.join(sdkRoot, ...critical.relativePath.split('/'));
+      let stat: fsSync.Stats;
+      try {
+        stat = await fs.stat(target);
+      } catch {
+        return `缺少关键文件 ${critical.relativePath}。`;
+      }
+      if (!stat.isFile()) return `关键路径不是普通文件：${critical.relativePath}。`;
+      if (stat.size < critical.minimumBytes) {
+        return `关键文件 ${critical.relativePath} 大小不足（实际 ${stat.size} 字节，需要至少 ${critical.minimumBytes} 字节）。`;
+      }
     }
     const manifestPath = path.join(path.dirname(sdkRoot), 'lingbuilder.module.json');
     if (await pathExists(manifestPath)) {
-      const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as { id?: unknown; version?: unknown; schemaVersion?: unknown };
-      if (manifest.schemaVersion !== 2 || manifest.id !== resource.moduleId || manifest.version !== resource.version) return false;
+      let manifest: { id?: unknown; version?: unknown; schemaVersion?: unknown };
+      try {
+        manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as { id?: unknown; version?: unknown; schemaVersion?: unknown };
+      } catch {
+        return '模块清单无法按 UTF-8 JSON 读取。';
+      }
+      if (manifest.schemaVersion !== 2 || manifest.id !== resource.moduleId || manifest.version !== resource.version) {
+        return '模块清单的 schemaVersion、ID 或版本与受控资源清单不一致。';
+      }
     }
-    return true;
+    return null;
   } catch {
-    return false;
+    return '无法读取 SDK 目录。';
   }
 }
 
@@ -429,10 +453,179 @@ interface DownloadProgress {
   bytesPerSecond: number | null;
 }
 
+export interface Aria2cDownloadProcess {
+  readonly exitCode: number | null;
+  readonly signalCode: NodeJS.Signals | null;
+  kill(signal?: NodeJS.Signals | number): boolean;
+  once(event: 'error', listener: (error: Error) => void): this;
+  once(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): this;
+}
+
+export interface Aria2cDownloadCompletion {
+  archiveVerified: boolean;
+  exitCode: number | null;
+  signalCode: NodeJS.Signals | null;
+}
+
+export interface WaitForAria2cDownloadOptions {
+  verificationIntervalMs?: number;
+  terminationGraceMs?: number;
+  onArchiveVerified?: () => void;
+}
+
+const ARIA2C_COMPLETION_CHECK_INTERVAL_MS = 500;
+const ARIA2C_TERMINATION_GRACE_MS = 2_000;
+
+/**
+ * aria2 can keep an HTTP connection open after it has written the final byte.
+ * A full SHA-256 match is a stronger completion signal than waiting on that connection.
+ */
+export async function waitForAria2cExitOrVerifiedArchive(
+  child: Aria2cDownloadProcess,
+  destination: string,
+  expectedBytes: number,
+  expectedSha256: string,
+  signal: AbortSignal,
+  options: WaitForAria2cDownloadOptions = {}
+): Promise<Aria2cDownloadCompletion> {
+  const verificationIntervalMs = Math.max(50, options.verificationIntervalMs ?? ARIA2C_COMPLETION_CHECK_INTERVAL_MS);
+  const terminationGraceMs = Math.max(100, options.terminationGraceMs ?? ARIA2C_TERMINATION_GRACE_MS);
+  return await new Promise<Aria2cDownloadCompletion>((resolve, reject) => {
+    let settled = false;
+    let archiveVerified = false;
+    let verificationPromise: Promise<boolean> | null = null;
+    let closeResult: Aria2cDownloadCompletion | null = null;
+    let forceKillRequested = false;
+    let terminationReason: 'verified' | 'cancelled' | null = null;
+    let verificationTimer: NodeJS.Timeout | null = null;
+    let terminationTimer: NodeJS.Timeout | null = null;
+
+    const abortError = (): DOMException => new DOMException('操作已取消。', 'AbortError');
+    const clearTerminationTimer = (): void => {
+      if (terminationTimer) clearTimeout(terminationTimer);
+      terminationTimer = null;
+    };
+    const clearTimers = (): void => {
+      if (verificationTimer) clearInterval(verificationTimer);
+      clearTerminationTimer();
+      verificationTimer = null;
+      signal.removeEventListener('abort', abort);
+    };
+    const complete = (completion: Aria2cDownloadCompletion): void => {
+      if (settled) return;
+      settled = true;
+      clearTimers();
+      resolve(completion);
+    };
+    const fail = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearTimers();
+      reject(error);
+    };
+    const terminate = (killSignal?: NodeJS.Signals): void => {
+      try { child.kill(killSignal); } catch { /* The close/error handler determines the final state. */ }
+    };
+    const waitForCloseAfterTermination = (): void => {
+      clearTerminationTimer();
+      terminationTimer = setTimeout(() => {
+        if (settled || closeResult) return;
+        if (!forceKillRequested) {
+          forceKillRequested = true;
+          terminate('SIGKILL');
+          waitForCloseAfterTermination();
+          return;
+        }
+        if (terminationReason === 'cancelled') {
+          fail(abortError());
+        } else {
+          fail(new Error('aria2c 已完成 SDK 归档校验，但未能在终止后退出；请稍后重试。'));
+        }
+      }, terminationGraceMs);
+    };
+    const requestTermination = (reason: 'verified' | 'cancelled'): void => {
+      if (settled || closeResult) return;
+      terminationReason = reason;
+      forceKillRequested = false;
+      terminate();
+      waitForCloseAfterTermination();
+    };
+    const acceptVerifiedArchive = (): void => {
+      if (settled || signal.aborted || archiveVerified) return;
+      archiveVerified = true;
+      try {
+        options.onArchiveVerified?.();
+      } catch {
+        // UI progress reporting must not leave a verified archive or aria2 process in an indeterminate state.
+      }
+      if (closeResult) {
+        complete({ ...closeResult, archiveVerified: true });
+      } else {
+        requestTermination('verified');
+      }
+    };
+    const verifyCompletedArchive = (): Promise<boolean> => {
+      if (settled || signal.aborted || archiveVerified) return Promise.resolve(archiveVerified);
+      if (verificationPromise) return verificationPromise;
+      verificationPromise = (async () => {
+        try {
+          const matches = await fileMatches(destination, expectedBytes, expectedSha256);
+          if (matches && !settled && !signal.aborted) acceptVerifiedArchive();
+          return archiveVerified;
+        } catch {
+          // The final validation remains authoritative; keep aria2 running after a transient read failure.
+          return false;
+        } finally {
+          verificationPromise = null;
+        }
+      })();
+      return verificationPromise;
+    };
+    const abort = (): void => {
+      if (settled) return;
+      if (closeResult) {
+        fail(abortError());
+        return;
+      }
+      requestTermination('cancelled');
+    };
+    const close = (code: number | null, signalCode: NodeJS.Signals | null): void => {
+      closeResult = { archiveVerified, exitCode: code, signalCode };
+      clearTerminationTimer();
+      void (async () => {
+        if (verificationPromise) await verificationPromise;
+        if (settled) return;
+        if (signal.aborted) {
+          fail(abortError());
+          return;
+        }
+        if (!archiveVerified) await verifyCompletedArchive();
+        if (settled) return;
+        if (signal.aborted) {
+          fail(abortError());
+          return;
+        }
+        complete({ ...closeResult!, archiveVerified });
+      })();
+    };
+
+    child.once('error', fail);
+    child.once('close', close);
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) {
+      abort();
+    } else {
+      verificationTimer = setInterval(() => { void verifyCompletedArchive(); }, verificationIntervalMs);
+      void verifyCompletedArchive();
+    }
+  });
+}
+
 async function downloadArchive(
   url: string,
   destination: string,
   expectedBytes: number,
+  expectedSha256: string,
   signal: AbortSignal,
   onProgress: (progress: DownloadProgress) => void,
   aria2cPath: string
@@ -491,31 +684,46 @@ async function downloadArchive(
     if (stderr.length > 8 * 1024) stderr = stderr.slice(-8 * 1024);
   });
   const progressTimer = setInterval(() => { void reportProgress(); }, 500);
-  const abort = (): void => { child.kill(); };
-  signal.addEventListener('abort', abort, { once: true });
   try {
-    await new Promise<void>((resolve, reject) => {
-      child.once('error', reject);
-      child.once('close', code => {
-        if (signal.aborted) {
-          reject(new DOMException('操作已取消。', 'AbortError'));
-        } else if (code === 0) {
-          resolve();
-        } else {
-          const detail = stderr.trim().replace(/\s+/gu, ' ');
-          reject(new Error(`aria2c 下载失败（退出码 ${code ?? '未知'}）${detail ? `：${detail}` : '。'}`));
-        }
-      });
-    });
+    const completion = await waitForAria2cExitOrVerifiedArchive(
+      child,
+      destination,
+      expectedBytes,
+      expectedSha256,
+      signal,
+      { onArchiveVerified: () => onProgress({ downloadedBytes: expectedBytes, bytesPerSecond: 0 }) }
+    );
+    if (signal.aborted) throw new DOMException('操作已取消。', 'AbortError');
+    if (!completion.archiveVerified) {
+      const detail = stderr.trim().replace(/\s+/gu, ' ');
+      await removeFileWithRetry(destination).catch(() => undefined);
+      await removeFileWithRetry(`${destination}.aria2`).catch(() => undefined);
+      throw new Error(`aria2c 下载结束但 SDK 归档未通过完整性校验（退出码 ${completion.exitCode ?? '未知'}）${detail ? `：${detail}` : '。'}`);
+    }
   } finally {
-    signal.removeEventListener('abort', abort);
     clearInterval(progressTimer);
     await reportProgress();
   }
   throwIfAborted(signal);
-  await fs.rm(`${destination}.aria2`, { force: true });
+  await removeFileWithRetry(`${destination}.aria2`).catch(() => undefined);
   downloaded = (await fs.stat(destination)).size;
   if (downloaded !== expectedBytes) throw new Error(`SDK 下载不完整：${downloaded} / ${expectedBytes} 字节。`);
+}
+
+async function removeFileWithRetry(target: string, attempts = 4): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await fs.rm(target, { force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if ((code !== 'EBUSY' && code !== 'EPERM') || attempt === attempts - 1) break;
+      await new Promise<void>(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`无法删除文件：${target}`);
 }
 
 export const ARIA2C_CONNECTIONS = 8;

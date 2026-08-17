@@ -436,6 +436,8 @@
 
 本文档记录当前原型阶段为了快速闭环而采用的临时方案，以及后续必须工程化完善的方向。后续 Agent 开始大改动前应先阅读本文件，避免把原型实现误判为最终架构。
 
+- 已完成（2026-08-17）：内置 `lingbuilder.data.json@2.0.0` 已从 5 条顶层文本辅助接口升级为 55 条受管 JSON API。`JSON值`、严格解析/创建/格式化、对象数组操作、RFC 6901 Pointer、RFC 6902 原子 Patch、RFC 7396 Merge Patch 与 JSON Schema 核心校验均进入同一模块 binding 和 C++ 生成闭环；普通 Win32/new_emoji 共用不依赖 Node 或浏览器的运行时。当前明确边界：不支持 JSON5/JSONC、BSON、MessagePack、CBOR、远程 `$ref`、网络 schema 下载或文件 I/O；这些能力如有需要必须以独立模块和受控文件服务实现，不能扩展 `JSON_解析` 以兼容非标准输入。
+
 ## 1. 窗口设计器持久化
 
 ### 当前状态

@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "未命名解决方案",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-project-2",
+  "startupProjectId": "fbro",
   "startupProjectIds": [
-    "lingbuilder-project-2"
+    "fbro"
   ],
   "folders": [],
   "projects": [
@@ -29,6 +29,13 @@
       "name": "测试窗口",
       "type": "visual-cpp",
       "sourceRoot": "src/lingbuilder-project-2",
+      "references": []
+    },
+    {
+      "id": "fbro",
+      "name": "FBro项目",
+      "type": "visual-cpp",
+      "sourceRoot": "src/fbro",
       "references": []
     }
   ]

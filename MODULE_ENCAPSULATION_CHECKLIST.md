@@ -2,7 +2,7 @@
 
 更新时间：2026-08-16
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **83 个内置模块、2804 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **83 个内置模块、2854 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -20,10 +20,12 @@
 | 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 7 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 5 |
 | 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 5 |
-| 已封装 | `lingbuilder.data.json` | JSON 数据模块 | 5 |
+| 已完整封装 | `lingbuilder.data.json` | JSON 数据模块 2.0 | 55 |
 | 已封装 | `lingbuilder.data.xml` | XML 文本模块 | 5 |
 
 编码转换模块覆盖 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030 的双向转换，以及通用转换、BOM 操作和保守检测。原始字节统一以大写十六进制文本传递，避免任意二进制被误当作 Unicode 文本。
+
+JSON 数据模块 2.0 提供受管 `JSON值`、严格 RFC 8259 解析与创建、对象/数组/标量操作、RFC 6901 Pointer、RFC 6902 Patch、RFC 7396 Merge Patch、核心 JSON Schema 校验与确定性 C++ 导出。模块不把 JSON5、JSONC、BSON、MessagePack 或 CBOR 伪装为 JSON；完整调用说明位于 `electron/docs/modules/json/README.md`。
 
 ## 文件、配置与系统
 

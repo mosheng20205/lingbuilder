@@ -294,6 +294,7 @@ LingBuilder 模块系统用于扩展中文命令、类型、补全、诊断和 C
 
 - 模块公开类型使用 `contributes.types[]`：省略 `kind` 的旧条目是 `opaque`；结构化记录必须声明 `kind: "record"` 和 `fields[]`；命名数组必须声明 `kind: "array"` 和 `elementType`。记录字段的数组维度使用 `isArray: true`，不要把 `[]` 拼进字段 `type`。
 - AI 可以在启用模块后使用其公开记录和数组：记录字段采用公开值语义，支持字段访问、嵌套和字段数组；命名数组等价于对应元素类型数组。AI 不得猜测未公开字段、给结构化类型补写 `cppType`，也不得把记录或数组降级成 JSON、文本或整数句柄来掩盖类型不一致。
+- 已启用 `lingbuilder.data.json@2.0.0` 时，AI 必须使用模块公开的 `JSON值` 和 `JSON_` 命令处理 JSON：`JSON_解析` 或 `JSON_创建*` 创建值，`JSON_对象_设置` / `JSON_数组_添加` 修改，`JSON_指针_取` / `JSON_指针_设置` 处理嵌套路径，完成后对长期持有值调用 `JSON_释放`。不得把 JSON 字符串用手工拼接、正则或 `文本_取中间` 伪解析；解析、Patch 或 Schema 校验失败时必须读取并保留 `JSON_取最后错误()` 的中文诊断。模块支持 RFC 8259、RFC 6901、RFC 6902、RFC 7396 与文档列出的 JSON Schema 核心约束；JSON5、JSONC、BSON、MessagePack、CBOR、远程 `$ref` 和网络 schema 加载不属于该模块，不能声称已经支持或静默降级。
 - `record` 和 `array` 是 LingCpp 语义契约，不是 DLL ABI。生成工程内部可输出 C++ `struct` 和 `std::vector<T>`，但预编译 DLL 边界禁止直接传递 STL 或未固定布局的 C++ 对象。需要原生交换复杂数据时必须使用模块明确提供的 POD、数据指针加数量、调用方缓冲区、任务或受管句柄命令；没有经过 binding 和生成器验证时，AI 不得声称结构化值可直接跨 DLL 传递。
 - 模块命令的 `bindings.commands[].parameters[].type` 和 `returnType` 可以引用本模块公开的 `record/array` 名称，但仅适用于由 LingBuilder 生成在同一工程内的值语义运行时。只要 target 携带原生 DLL，清单校验就会拒绝结构化类型直接跨 ABI；AI 不得通过改成 `raw`、裸指针或伪造 `cppType` 绕过门禁。
 - 使用 `lingbuilder.system.disk@1.1.0` 时，应优先采用 `磁盘_取容量信息`、`磁盘_取卷信息`、`磁盘_枚举逻辑驱动器`、`磁盘_枚举全部卷`、`磁盘_枚举物理磁盘` 和 `磁盘_取分区列表` 返回的公开记录/数组。原 5 条标量命令只用于旧源码兼容；模块是只读信息模块，不得生成格式化、分区修改、写扇区或绕过权限的调用。

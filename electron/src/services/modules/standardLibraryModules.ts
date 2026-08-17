@@ -1,110 +1,9 @@
-import {
-  LingBuilderModuleCategory,
-  LingBuilderModuleManifest,
-  ModuleBindingValueType,
-  ModuleCommandBindingParameter,
-  ModuleDocContribution,
-  ModuleSnippetContribution,
-  ModuleTypeContribution
-} from './types';
-import {
-  isWideStringAbiBindingType,
-  MODULE_BINDING_TYPE_LABELS,
-  normalizeControlReferenceCallSnippet,
-  normalizeControlReferenceParameter
-} from './bindingValueType';
+import type { LingBuilderModuleManifest } from './types';
+import { JSON_MODULE } from './jsonModule';
+import { createStandardModule } from './standardLibraryModuleFactory';
 
-export interface StandardCommandSpec {
-  name: string;
-  signature: string;
-  description: string;
-  insertText: string;
-  parameters?: ModuleCommandBindingParameter[];
-  returnType: string;
-  returnDescription?: string;
-  category?: string;
-  visibility?: 'default' | 'advanced' | 'internal';
-  example?: string;
-}
-
-export interface StandardModuleSpec {
-  id: string;
-  name: string;
-  category: LingBuilderModuleCategory;
-  description: string;
-  tags: string[];
-  version?: string;
-  types?: ModuleTypeContribution[];
-  docs?: ModuleDocContribution[];
-  snippets?: ModuleSnippetContribution[];
-  commands: StandardCommandSpec[];
-}
-
-const RETURN_TYPE_LABELS: Record<ModuleBindingValueType, string> = {
-  ...MODULE_BINDING_TYPE_LABELS,
-  double: '双精度小数型',
-  utf8String: '文本型',
-  handle: '长整数型',
-  raw: '原生类型'
-};
-
-export function createStandardModule(spec: StandardModuleSpec): LingBuilderModuleManifest {
-  const commands = spec.commands.map(command => {
-    const parameters = (command.parameters || []).map(parameter => normalizeControlReferenceParameter(parameter));
-    return {
-      ...command,
-      parameters,
-      insertText: normalizeControlReferenceCallSnippet(command.insertText, parameters) || command.insertText,
-      example: normalizeControlReferenceCallSnippet(command.example, parameters)
-    };
-  });
-  return {
-    schemaVersion: 2,
-    id: spec.id,
-    name: spec.name,
-    version: spec.version || '1.0.0',
-    category: spec.category,
-    description: spec.description,
-    author: 'LingBuilder',
-    license: 'MIT',
-    tags: ['内置', '标准库', ...spec.tags],
-    contributes: {
-      commands: commands.map(command => ({
-        name: command.name,
-        signature: command.signature,
-        description: command.description,
-        insertText: command.insertText,
-        returnType: RETURN_TYPE_LABELS[command.returnType as ModuleBindingValueType] || command.returnType,
-        returnDescription: command.returnDescription,
-        category: command.category,
-        visibility: command.visibility
-      })),
-      types: spec.types,
-      snippets: spec.snippets || [{
-        label: `${spec.name}快速示例`,
-        insertText: commands.slice(0, 2).map(command => command.example || command.insertText.replace(/\$\d+/g, '')).join('\n'),
-        description: `插入${spec.name}的基础调用示例。`
-      }],
-      docs: spec.docs
-    },
-    targets: [
-      { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc' },
-      { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }
-    ],
-    bindings: {
-      commands: commands.map(command => ({
-        command: command.name,
-        runtimeName: command.name,
-        parameters: command.parameters || [],
-        returnType: command.returnType,
-        encoding: command.parameters?.some(parameter => isWideStringAbiBindingType(parameter.type)) || command.returnType === 'wideString'
-          ? 'wide'
-          : undefined,
-        example: command.example
-      }))
-    }
-  };
-}
+export { createStandardModule } from './standardLibraryModuleFactory';
+export type { StandardCommandSpec, StandardModuleSpec } from './standardLibraryModuleFactory';
 
 const textModule = createStandardModule({
   id: 'lingbuilder.std.text',
@@ -259,21 +158,6 @@ const regexModule = createStandardModule({
   ]
 });
 
-const jsonModule = createStandardModule({
-  id: 'lingbuilder.data.json',
-  name: 'JSON 数据模块',
-  category: '其他',
-  description: '提供无第三方依赖的 JSON 合法性检查、字符串转义和顶层对象字段读取。',
-  tags: ['数据', 'JSON'],
-  commands: [
-    { name: 'JSON_是否有效', signature: 'JSON_是否有效(JSON文本)', description: '严格检查 JSON 文本语法是否完整有效。', insertText: 'JSON_是否有效("$1")', parameters: [{ name: 'JSON文本', type: 'wideString' }], returnType: 'bool', example: 'JSON_是否有效("{\\"name\\":\\"LingBuilder\\"}")' },
-    { name: 'JSON_转义文本', signature: 'JSON_转义文本(文本)', description: '把普通文本转义为可放入 JSON 字符串的内容，不包含外层引号。', insertText: 'JSON_转义文本("$1")', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'wideString' },
-    { name: 'JSON_取文本', signature: 'JSON_取文本(JSON文本, 字段名)', description: '读取顶层对象中的字符串字段，缺失或类型不符返回空文本。', insertText: 'JSON_取文本("$1", "$2")', parameters: [{ name: 'JSON文本', type: 'wideString' }, { name: '字段名', type: 'wideString' }], returnType: 'wideString' },
-    { name: 'JSON_取整数', signature: 'JSON_取整数(JSON文本, 字段名, 默认值)', description: '读取顶层对象中的整数，缺失或类型不符返回默认值。', insertText: 'JSON_取整数("$1", "$2", 0)', parameters: [{ name: 'JSON文本', type: 'wideString' }, { name: '字段名', type: 'wideString' }, { name: '默认值', type: 'int' }], returnType: 'int' },
-    { name: 'JSON_取逻辑', signature: 'JSON_取逻辑(JSON文本, 字段名, 默认值)', description: '读取顶层对象中的逻辑值，缺失或类型不符返回默认值。', insertText: 'JSON_取逻辑("$1", "$2", 假)', parameters: [{ name: 'JSON文本', type: 'wideString' }, { name: '字段名', type: 'wideString' }, { name: '默认值', type: 'bool' }], returnType: 'bool' }
-  ]
-});
-
 const xmlModule = createStandardModule({
   id: 'lingbuilder.data.xml',
   name: 'XML 文本模块',
@@ -296,7 +180,7 @@ export const STANDARD_LIBRARY_MODULES: LingBuilderModuleManifest[] = [
   mathModule,
   datetimeModule,
   regexModule,
-  jsonModule,
+  JSON_MODULE,
   xmlModule
 ];
 

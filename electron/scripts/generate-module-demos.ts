@@ -250,6 +250,7 @@ function createGroups(commands: Array<{ contribution: ModuleCommandContribution;
 }
 
 function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]): string {
+  if (manifest.id === 'lingbuilder.data.json') return createJsonDemoSource(manifest);
   const controlFixtures = createControlReferenceFixtures(manifest);
   const lines = [
     `包 ${safeIdentifier(manifest.name)}完整演示`,
@@ -327,6 +328,221 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
   return lines.join('\n');
 }
 
+function createJsonDemoSource(manifest: LingBuilderModuleManifest): string {
+  const lines = [
+    `包 ${safeIdentifier(manifest.name)}完整演示`,
+    '使用 Win32窗口基础模块',
+    '使用 JSON数据模块',
+    '',
+    '// JSON 2.0 三页实战示例：解析/读取、创建各种类型、Pointer/Patch/Schema。',
+    '// 勾选“允许实际执行”后运行当前页；所有 JSON值 都在页尾显式释放。',
+    '类 MainWindow : 公开 窗口',
+    '    事件 _MainWindow_创建完毕()',
+    '        控件_设置选择项(命令分组选项卡, 0)',
+    '        控件_设置文本(演示状态, "JSON 数据模块 2.0：解析、创建、Pointer、Patch 与 Schema 示例。")',
+    '        调试输出("已加载 JSON 数据模块 2.0 演示。")',
+    '    结束',
+    '',
+    '    事件 _运行第01组_被单击()',
+    '        控件_设置文本(演示状态, "解析与类型读取：对象、数组、文本、整数、小数、逻辑和 null。")',
+    '        如果 (控件_取勾选(允许实际执行))',
+    '            // 命令ID：JSON_是否有效',
+    '            JSON_是否有效("{\\"名称\\":\\"LingBuilder\\",\\"版本\\":2}")',
+    '            // 命令ID：JSON_转义文本',
+    '            调试输出(JSON_转义文本("带引号和反斜杠的文本"))',
+    '            // 命令ID：JSON_反转义文本',
+    '            调试输出(JSON_反转义文本(JSON_转义文本("反转义示例")))',
+    '            局部 文本型 JSON文本 = "{\\"名称\\":\\"LingBuilder\\",\\"版本\\":2,\\"比例\\":3.14,\\"启用\\":true,\\"可选\\":null,\\"标签\\":[\\"中文\\",\\"C++\\"]}"',
+    '            // 命令ID：JSON_解析',
+    '            局部 JSON值 根 = JSON_解析(JSON文本)',
+    '            如果 (根 = 0)',
+    '                调试输出(JSON_取最后错误())',
+    '            否则',
+    '                // 命令ID：JSON_序列化',
+    '                调试输出(JSON_序列化(根))',
+    '                // 命令ID：JSON_序列化格式化',
+    '                调试输出(JSON_序列化格式化(根, 2))',
+    '                // 命令ID：JSON_格式化文本',
+    '                调试输出(JSON_格式化文本(JSON文本, 2))',
+    '                // 命令ID：JSON_压缩文本',
+    '                调试输出(JSON_压缩文本(JSON文本))',
+    '                // 命令ID：JSON_取类型',
+    '                调试输出("根类型：", JSON_取类型(根))',
+    '                // 命令ID：JSON_是否对象',
+    '                调试输出("是否对象：", JSON_是否对象(根))',
+    '                // 命令ID：JSON_对象_数量',
+    '                调试输出("对象成员数：", JSON_对象_数量(根))',
+    '                // 命令ID：JSON_对象_是否包含',
+    '                调试输出("包含名称：", JSON_对象_是否包含(根, "名称"))',
+    '                // 命令ID：JSON_指针_取',
+    '                局部 JSON值 名称 = JSON_指针_取(根, "/名称")',
+    '                局部 JSON值 版本 = JSON_指针_取(根, "/版本")',
+    '                局部 JSON值 比例 = JSON_指针_取(根, "/比例")',
+    '                局部 JSON值 启用 = JSON_指针_取(根, "/启用")',
+    '                局部 JSON值 可选 = JSON_指针_取(根, "/可选")',
+    '                局部 JSON值 标签 = JSON_指针_取(根, "/标签")',
+    '                // 命令ID：JSON_取文本值',
+    '                调试输出("名称：", JSON_取文本值(名称, "未知"))',
+    '                // 命令ID：JSON_取整数值',
+    '                调试输出("版本：", JSON_取整数值(版本, -1))',
+    '                // 命令ID：JSON_取小数值',
+    '                调试输出("比例：", JSON_取小数值(比例, 0.0))',
+    '                // 命令ID：JSON_取逻辑值',
+    '                调试输出("启用：", JSON_取逻辑值(启用, 假))',
+    '                // 命令ID：JSON_是否文本',
+    '                调试输出("名称是文本：", JSON_是否文本(名称))',
+    '                // 命令ID：JSON_是否数字',
+    '                调试输出("版本是数字：", JSON_是否数字(版本))',
+    '                // 命令ID：JSON_是否逻辑',
+    '                调试输出("启用是逻辑：", JSON_是否逻辑(启用))',
+    '                // 命令ID：JSON_是否空',
+    '                调试输出("可选是 null：", JSON_是否空(可选))',
+    '                // 命令ID：JSON_是否数组',
+    '                调试输出("标签是数组：", JSON_是否数组(标签))',
+    '                // 命令ID：JSON_数组_数量',
+    '                调试输出("标签数量：", JSON_数组_数量(标签))',
+    '                // 命令ID：JSON_数组_取',
+    '                局部 JSON值 第一个标签 = JSON_数组_取(标签, 0)',
+    '                调试输出("第一个标签：", JSON_取文本值(第一个标签, ""))',
+    '                // 命令ID：JSON_克隆',
+    '                局部 JSON值 副本 = JSON_克隆(根)',
+    '                调试输出("克隆结果：", JSON_序列化(副本))',
+    '                // 命令ID：JSON_取最后错误',
+    '                调试输出("最近错误（成功后应为空）：", JSON_取最后错误())',
+    '                // 命令ID：JSON_取文本',
+    '                调试输出("兼容文本读取：", JSON_取文本(JSON文本, "名称"))',
+    '                // 命令ID：JSON_取整数',
+    '                调试输出("兼容整数读取：", JSON_取整数(JSON文本, "版本", -1))',
+    '                // 命令ID：JSON_取逻辑',
+    '                调试输出("兼容逻辑读取：", JSON_取逻辑(JSON文本, "启用", 假))',
+    '                // 命令ID：JSON_释放',
+    '                JSON_释放(第一个标签)',
+    '                JSON_释放(标签)',
+    '                JSON_释放(可选)',
+    '                JSON_释放(启用)',
+    '                JSON_释放(比例)',
+    '                JSON_释放(版本)',
+    '                JSON_释放(名称)',
+    '                JSON_释放(副本)',
+    '                JSON_释放(根)',
+    '            如果结束',
+    '        如果结束',
+    '        调试输出("第 1 页完成：已读取 JSON 中的各种类型。")',
+    '    结束',
+    '',
+    '    事件 _运行第02组_被单击()',
+    '        控件_设置文本(演示状态, "创建各种 JSON 类型：null、文本、整数、长整数、小数、逻辑、数组和对象。")',
+    '        如果 (控件_取勾选(允许实际执行))',
+    '            // 命令ID：JSON_创建空',
+    '            局部 JSON值 空值 = JSON_创建空()',
+    '            // 命令ID：JSON_创建文本',
+    '            局部 JSON值 文本值 = JSON_创建文本("LingBuilder 中文 IDE")',
+    '            // 命令ID：JSON_创建整数',
+    '            局部 JSON值 整数值 = JSON_创建整数(42)',
+    '            // 命令ID：JSON_创建长整数',
+    '            局部 JSON值 长整数值 = JSON_创建长整数(900719925474099)',
+    '            // 命令ID：JSON_创建小数',
+    '            局部 JSON值 小数值 = JSON_创建小数(3.1415926)',
+    '            // 命令ID：JSON_创建逻辑',
+    '            局部 JSON值 逻辑值 = JSON_创建逻辑(真)',
+    '            // 命令ID：JSON_创建数组',
+    '            局部 JSON值 数组 = JSON_创建数组()',
+    '            // 命令ID：JSON_数组_添加',
+    '            JSON_数组_添加(数组, 文本值)',
+    '            JSON_数组_添加(数组, 整数值)',
+    '            JSON_数组_添加(数组, 逻辑值)',
+    '            // 命令ID：JSON_数组_插入',
+    '            JSON_数组_插入(数组, 1, 小数值)',
+    '            // 命令ID：JSON_数组_设置',
+    '            JSON_数组_设置(数组, 0, 长整数值)',
+    '            // 命令ID：JSON_取长整数值',
+    '            调试输出("长整数读取：", JSON_取长整数值(长整数值, 0))',
+    '            // 命令ID：JSON_对象_设置',
+    '            // 命令ID：JSON_创建对象',
+    '            局部 JSON值 对象 = JSON_创建对象()',
+    '            JSON_对象_设置(对象, "空", 空值)',
+    '            JSON_对象_设置(对象, "文本", 文本值)',
+    '            JSON_对象_设置(对象, "整数", 整数值)',
+    '            JSON_对象_设置(对象, "长整数", 长整数值)',
+    '            JSON_对象_设置(对象, "小数", 小数值)',
+    '            JSON_对象_设置(对象, "逻辑", 逻辑值)',
+    '            JSON_对象_设置(对象, "数组", 数组)',
+    '            // 命令ID：JSON_对象_数量',
+    '            调试输出("对象成员数：", JSON_对象_数量(对象))',
+    '            // 命令ID：JSON_对象_键列表',
+    '            调试输出("对象键列表：", JSON_对象_键列表(对象))',
+    '            // 命令ID：JSON_对象_是否包含',
+    '            调试输出("包含数组：", JSON_对象_是否包含(对象, "数组"))',
+    '            // 命令ID：JSON_对象_取',
+    '            局部 JSON值 读取值 = JSON_对象_取(对象, "文本")',
+    '            调试输出("读取对象成员：", JSON_取文本值(读取值, ""))',
+    '            // 命令ID：JSON_对象_移除',
+    '            JSON_对象_移除(对象, "逻辑")',
+    '            // 命令ID：JSON_数组_数量',
+    '            调试输出("数组成员数：", JSON_数组_数量(数组))',
+    '            // 命令ID：JSON_序列化格式化',
+    '            调试输出(JSON_序列化格式化(对象, 2))',
+    '            // 命令ID：JSON_数组_移除',
+    '            JSON_数组_移除(数组, 1)',
+    '            // 命令ID：JSON_数组_清空',
+    '            JSON_数组_清空(数组)',
+    '            // 命令ID：JSON_对象_清空',
+    '            JSON_对象_清空(对象)',
+    '            // 命令ID：JSON_释放',
+    '            JSON_释放(读取值)',
+    '            JSON_释放(对象)',
+    '            JSON_释放(数组)',
+    '            JSON_释放(逻辑值)',
+    '            JSON_释放(小数值)',
+    '            JSON_释放(长整数值)',
+    '            JSON_释放(整数值)',
+    '            JSON_释放(文本值)',
+    '            JSON_释放(空值)',
+    '        如果结束',
+    '        调试输出("第 2 页完成：所有 JSON 基础类型已创建并序列化。")',
+    '    结束',
+    '',
+    '    事件 _运行第03组_被单击()',
+    '        控件_设置文本(演示状态, "Pointer、Patch 与 Schema：嵌套修改、原子补丁和中文校验错误。")',
+    '        如果 (控件_取勾选(允许实际执行))',
+    '            局部 JSON值 文档 = JSON_解析("{\\"用户\\":{\\"名称\\":\\"小明\\",\\"等级\\":3},\\"标签\\":[\\"中文\\"]}")',
+    '            // 命令ID：JSON_指针_设置',
+    '            局部 JSON值 新名称 = JSON_创建文本("LingBuilder 用户")',
+    '            JSON_指针_设置(文档, "/用户/名称", 新名称, 假)',
+    '            // 命令ID：JSON_指针_取',
+    '            局部 JSON值 当前名称 = JSON_指针_取(文档, "/用户/名称")',
+    '            调试输出("Pointer 读取：", JSON_取文本值(当前名称, ""))',
+    '            // 命令ID：JSON_指针_移除',
+    '            JSON_指针_移除(文档, "/用户/等级")',
+    '            局部 JSON值 目标 = JSON_解析("{\\"用户\\":{\\"名称\\":\\"LingBuilder 用户\\"},\\"标签\\":[\\"中文\\",\\"JSON\\"]}")',
+    '            // 命令ID：JSON_生成补丁',
+    '            局部 文本型 自动补丁 = JSON_生成补丁(文档, 目标)',
+    '            调试输出("生成的 RFC 6902 补丁：", 自动补丁)',
+    '            // 命令ID：JSON_应用补丁',
+    '            JSON_应用补丁(文档, "[{\\"op\\":\\"add\\",\\"path\\":\\"/标签/-\\",\\"value\\":\\"补丁\\"}]")',
+    '            // 命令ID：JSON_合并补丁',
+    '            JSON_合并补丁(文档, "{\\"来源\\":\\"Merge Patch\\"}")',
+    '            局部 文本型 规则 = "{\\"type\\":\\"object\\",\\"required\\":[\\"用户\\"],\\"properties\\":{\\"用户\\":{\\"type\\":\\"object\\",\\"required\\":[\\"名称\\"]}}}"',
+    '            // 命令ID：JSON_Schema验证',
+    '            如果 (JSON_Schema验证(文档, 规则) = 假)',
+    '                调试输出("Schema 错误：", JSON_取最后错误())',
+    '            如果结束',
+    '            调试输出(JSON_序列化格式化(文档, 2))',
+    '            // 命令ID：JSON_释放',
+    '            JSON_释放(当前名称)',
+    '            JSON_释放(新名称)',
+    '            JSON_释放(目标)',
+    '            JSON_释放(文档)',
+    '        如果结束',
+    '        调试输出("第 3 页完成：Pointer、Patch 和 Schema 均为本地确定性操作。")',
+    '    结束',
+    '',
+    '结束类',
+    ''
+  ];
+  return lines.join('\n');
+}
+
 function createInvocation(binding: ModuleCommandBinding, controlFixtures: readonly ControlReferenceFixture[]): string {
   const args = (binding.parameters || []).flatMap((parameter, index) => {
     if (parameter.variadic) return [];
@@ -377,7 +593,12 @@ function handlerDemoName(parameter: ModuleCommandBindingParameter): string {
 }
 
 function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[], newEmoji: boolean) {
-  const tabs = groups.map(group => ({ id: `group-${pad(group.index)}`, title: `第${pad(group.index)}组`, image: -1 }));
+  const jsonTabTitles = ['解析与类型读取', '创建各种 JSON 类型', 'Pointer、Patch 与 Schema'];
+  const tabs = groups.map(group => ({
+    id: `group-${pad(group.index)}`,
+    title: manifest.id === 'lingbuilder.data.json' ? (jsonTabTitles[group.index - 1] || `第${pad(group.index)}组`) : `第${pad(group.index)}组`,
+    image: -1
+  }));
   const controls: Array<Record<string, unknown>> = [];
   controls.push(controlBase({
     id: 'title', type: 'Label', designerType: newEmoji ? 'lingbuilder.new_emoji.ui/Text' : undefined,
@@ -405,21 +626,30 @@ function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[]
   for (const group of groups) {
     const slot = `group-${pad(group.index)}`;
     const range = groupRange(group, groups);
+    const tabTitle = tabs[group.index - 1]?.title || `第${pad(group.index)}组`;
     controls.push(controlBase({
       id: `group-${pad(group.index)}-title`, type: 'Label', designerType: newEmoji ? 'lingbuilder.new_emoji.ui/Text' : undefined,
-      name: `第${pad(group.index)}组说明`, content: range, x: 58, y: 174, width: 980, height: 76,
+      name: `${tabTitle}说明`, content: manifest.id === 'lingbuilder.data.json' ? tabTitle : range, x: 58, y: 174, width: 980, height: 76,
       fontSize: 16, fontBold: true, background: '#0F172A', foreground: '#7DD3FC', parentId: 'tabs', containerSlot: slot
     }));
     controls.push(controlBase({
       id: `group-${pad(group.index)}-detail`, type: 'Label', designerType: newEmoji ? 'lingbuilder.new_emoji.ui/Text' : undefined,
       name: `第${pad(group.index)}组详情`, content: group.commands.length
-        ? `本页覆盖 ${group.commands.length} 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。`
+        ? manifest.id === 'lingbuilder.data.json'
+          ? (group.index === 1
+            ? '解析嵌套对象并读取文本、整数、小数、逻辑、null 和数组元素；同时查看兼容接口。'
+            : group.index === 2
+              ? '创建 null、文本、整数、长整数、小数、逻辑、数组和对象，演示深度复制与生命周期。'
+              : '用 JSON Pointer 定位和修改，用 JSON Patch/Merge Patch 原子更新，最后执行 Schema 核心校验。')
+          : `本页覆盖 ${group.commands.length} 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。`
         : '该模块是只读 SDK/资产载体，没有 LCPP 命令；本项目说明其版本、用途和消费方式。',
       x: 58, y: 274, width: 980, height: 110, background: '#111827', foreground: '#CBD5E1', parentId: 'tabs', containerSlot: slot
     }));
     controls.push(controlBase({
       id: `group-${pad(group.index)}-run`, type: 'Button', designerType: newEmoji ? 'lingbuilder.new_emoji.ui/Button' : undefined,
-      name: `运行第${pad(group.index)}组`, content: group.commands.length ? `查看/运行第 ${pad(group.index)} 组` : '查看资产模块说明',
+      name: `运行第${pad(group.index)}组`, content: group.commands.length
+        ? manifest.id === 'lingbuilder.data.json' ? `运行：${tabTitle}` : `查看/运行第 ${pad(group.index)} 组`
+        : '查看资产模块说明',
       x: 58, y: 420, width: 300, height: 44, background: '#0369A1', foreground: '#FFFFFF', parentId: 'tabs', containerSlot: slot,
       events: { Click: `_运行第${pad(group.index)}组_被单击` }
     }));
@@ -441,7 +671,9 @@ function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[]
   const windows: Array<Record<string, unknown>> = [{
     id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: `${manifest.name}完整演示`,
     width: 1140, height: 760, background: '#0F172A', titleBarBackground: '#111827', titleBarForeground: '#F8FAFC',
-    description: `逐条覆盖 ${manifest.bindings?.commands?.length || 0} 条模块命令。`, designerBackend: newEmoji ? 'new-emoji' : 'win32',
+    description: manifest.id === 'lingbuilder.data.json'
+      ? '通过三个选项卡演示 JSON 解析、各种类型创建、Pointer、Patch、Merge Patch 和 Schema 核心校验。'
+      : `逐条覆盖 ${manifest.bindings?.commands?.length || 0} 条模块命令。`, designerBackend: newEmoji ? 'new-emoji' : 'win32',
     openPlacement: 'center', resizable: true, maximizable: true, events: { Loaded: '_MainWindow_创建完毕' }, controls
   }];
   if (manifest.id === 'lingbuilder.edgeview') windows.push(createEdgeViewMultiControlWindow());
@@ -517,9 +749,20 @@ function createModuleReadme(manifest: LingBuilderModuleManifest, groups: DemoGro
     '## 使用方式', '',
     '打开项目后按标签页查看命令分组。源码默认只展示并记录，不执行有副作用的调用；确认演示参数和运行环境后，勾选“允许实际执行”再点击对应分组按钮。', '',
     '每条命令在 `MainWindow.lcpp` 中包含签名、功能、参数、返回类型和真实调用；结构化清单位于 `模块命令清单.json`。', '',
-    '## 模块说明', '', manifest.description || '无额外说明。', '',
-    '## 命令清单', ''
+    '## 模块说明', '', manifest.description || '无额外说明。', ''
   ];
+  if (manifest.id === 'lingbuilder.data.json') {
+    lines.push(
+      '## 本示例的三个选项卡', '',
+      '| 选项卡 | 内容 |',
+      '|---|---|',
+      '| 解析与类型读取 | 解析嵌套对象，读取文本、整数、长整数、小数、逻辑、null 和数组元素，并展示兼容接口。 |',
+      '| 创建各种 JSON 类型 | 创建 null、文本、整数、长整数、小数、逻辑、数组和对象，演示对象/数组操作、深度复制和释放。 |',
+      '| Pointer、Patch 与 Schema | 使用 RFC 6901 Pointer 定位，RFC 6902/RFC 7396 原子更新，生成补丁并执行 Schema 核心校验。 |', '',
+      '运行时默认处于安全预览状态；勾选“允许实际执行”后，点击当前选项卡按钮才会调用本地 JSON API。', ''
+    );
+  }
+  lines.push('## 命令清单', '');
   if (commands.length === 0) {
     lines.push('该模块不公开 LCPP 命令，是由其它模块自动消费的 SDK/二进制资产载体。', '');
   } else {

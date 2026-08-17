@@ -59,7 +59,7 @@ export interface AiBridgeMcpHttpGateway {
 type ObserveActivity = (activity: Omit<AiBridgeMcpActivity, 'id' | 'timestamp'>) => void;
 
 function createProtocolServer(service: AiBridgeService, observe?: ObserveActivity, clientId = 'stdio'): Server {
-  const server = new Server({ name: 'lingbuilder-ai-bridge', version: '0.4.0' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'lingbuilder-ai-bridge', version: '0.5.0' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async request => {
     const startedAt = Date.now();

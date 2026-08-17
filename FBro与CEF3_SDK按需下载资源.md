@@ -1,6 +1,6 @@
 # FBro 与 CEF3 SDK 按需下载资源
 
-本文档记录 LingBuilder Windows x64 版本使用的 FBro、CEF3 SDK 按需下载资源。Windows 安装包不再内置这两套大型 SDK，只保留对应资产模块的轻量清单和 README；用户首次使用对应模块进行构建、运行、原生预览或工程导出时，由 IDE 提示并下载。
+本文档记录 LingBuilder Windows x64 版本使用的 FBro、CEF3 SDK 按需下载资源。Windows 安装包不再内置这两套大型 SDK，也不包含对应 SDK 资产模块目录；用户首次使用对应模块进行构建、运行、原生预览或工程导出时，由 IDE 提示并下载。
 
 ## 资源清单
 
@@ -41,7 +41,7 @@
 ## 下载与安装约束
 
 - 下载前必须向用户显示 SDK 名称、版本、下载体积和用途，并允许取消。
-- 下载器使用随 LingBuilder Windows x64 安装包分发的 `aria2c 1.37.0`，每个 SDK 请求使用 8 路连接、8M 分段、失败重试和断点续传；启动 aria2 前由服务对受控 HTTPS 直链执行不跟随重定向的预检，下载器强制校验证书，服务端仍需支持 HTTPS 与 Range。
+- 下载器使用随 LingBuilder Windows x64 安装包分发的 `aria2c 1.37.0`，每个 SDK 请求使用 8 路连接、8M 分段、失败重试和断点续传；启动 aria2 前由服务对受控 HTTPS 直链执行不跟随重定向的预检，下载器强制校验证书，服务端仍需支持 HTTPS 与 Range。若 aria2 在写完最后一个分片后仍等待连接关闭，IDE 会先确认临时归档的精确大小和完整 SHA-256，再请求 aria2 退出；只有收到下载进程真实退出事件后才进入解压校验。超时会升级强制终止并报告失败，不能与旧下载进程竞争文件或提前重试；未通过 SHA-256 时绝不提前结束。
 - 下载过程必须显示进度；取消时保留 `.part` 与 aria2 控制文件以便下次继续，成功完成后清理控制文件。
 - 下载文件应先写入临时 `.part` 文件；必须同时校验精确文件大小和 SHA-256。
 - 解压前必须阻止绝对路径、`..` 路径穿越、符号链接及其它逃逸目标目录的 ZIP 条目。
@@ -66,4 +66,4 @@
 - 用户共享缓存：`%APPDATA%/LingBuilder/sdk-cache/modules/<moduleId>/sdk`；桌面主进程以 `app.getPath('userData')/sdk-cache` 为准，并通过 `LINGBUILDER_SDK_CACHE_ROOT` 传给本地服务和受管 AI Bridge。
 - API：`GET /api/sdk-dependencies/status`、`POST /api/sdk-dependencies/install`、`POST /api/sdk-dependencies/cancel`。
 - 缺失错误码：`SDK_DEPENDENCY_REQUIRED`。桌面请求包装器只在安装成功后自动重放一次；AI Bridge/CLI 只返回诊断，不静默下载。
-- 发布门禁：`electron/scripts/verify-on-demand-sdk-release.cjs` 要求 `win-unpacked` 和 NSIS 安装包保留两项轻量元数据，同时拒绝任何 `sdk/` 文件，以及藏在默认工作区或文档示例中的 `libcef.dll`、FBro/CEF3 Bridge 等 SDK 二进制副本。
+- 发布门禁：`electron/scripts/verify-on-demand-sdk-release.cjs` 要求 `win-unpacked` 和 NSIS 安装包完全排除两项 SDK 模块目录，并拒绝任何藏在默认工作区或文档示例中的 `libcef.dll`、FBro/CEF3 Bridge 等 SDK 二进制副本；同时校验安装包保留 `aria2c.exe` 及其许可文件。

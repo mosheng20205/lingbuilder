@@ -216,11 +216,11 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
     },
     {
       modules: 83,
-      commands: 2804,
-      parameters: 4776,
+      commands: 2854,
+      parameters: 4850,
       controlReferences: 1262,
-      commandDigest: 'b8260acb',
-      parameterDigest: '3828787d'
+      commandDigest: 'f98544a5',
+      parameterDigest: 'ef4a2f19'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -320,7 +320,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 44, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 46, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -536,11 +536,11 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     parameterDigest: audit.parameterDigest
   }, {
       modules: 90,
-      commands: 6607,
-      parameters: 16319,
+      commands: 6657,
+      parameters: 16393,
       controlReferences: 4806,
-      commandDigest: '98662ecd',
-      parameterDigest: '9d4bcd15'
+      commandDigest: '17ae371f',
+      parameterDigest: '7c7be831'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -586,6 +586,80 @@ test('编码转换模块公开完整的文本安全字符编码、BOM 与通用�
   requiredCommands.forEach(command => assert.ok(commandNames.has(command), `编码模块缺少命令：${command}`));
   assert.match(manifest.contributes?.commands?.find(command => command.name === '编码_文本转UTF8')?.description || '', /十六进制/u);
   assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+});
+
+test('JSON 数据模块 2.0 提供受管 DOM、Pointer、Patch、Schema 与可导出的确定性运行时', async () => {
+  const manifest = STANDARD_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.data.json')!;
+  const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
+  assert.equal(manifest.version, '2.0.0');
+  assert.deepEqual(manifest.contributes?.types, [{
+    name: 'JSON值',
+    kind: 'opaque',
+    cppType: 'long long',
+    description: '受管 JSON DOM 句柄。对象、数组和标量均可表示；通过 JSON_释放释放长期保留的值。'
+  }]);
+  [
+    'JSON_解析', 'JSON_创建对象', 'JSON_创建数组', 'JSON_创建文本', 'JSON_序列化格式化',
+    'JSON_对象_设置', 'JSON_数组_添加', 'JSON_指针_取', 'JSON_指针_设置', 'JSON_应用补丁',
+    'JSON_合并补丁', 'JSON_生成补丁', 'JSON_Schema验证', 'JSON_取最后错误'
+  ].forEach(command => assert.ok(commandNames.has(command), `JSON 模块缺少命令：${command}`));
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+  assert.deepEqual(manifest.contributes?.docs, [{ title: 'JSON 数据模块 2.0 使用说明', path: 'docs/modules/json/README.md' }]);
+  const document = await fs.readFile(path.join(process.cwd(), 'docs', 'modules', 'json', 'README.md'), 'utf8');
+  assert.match(document, /RFC 8259/u);
+  assert.match(document, /JSON_应用补丁/u);
+
+  const enabledModules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.data.json'].map(moduleId => {
+    const module = BUILTIN_MODULES.find(item => item.id === moduleId)!;
+    return { manifest: module, installPath: `builtin://${moduleId}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  });
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules,
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 JSON值 数据 = JSON_创建对象()',
+      '        局部 JSON值 名称 = JSON_创建文本("LingBuilder")',
+      '        JSON_对象_设置(数据, "name", 名称)',
+      '        JSON_指针_设置(数据, "/edition", JSON_创建整数(2), 真)',
+      '        JSON_应用补丁(数据, "[{\\"op\\":\\"replace\\",\\"path\\":\\"/edition\\",\\"value\\":3}]")',
+      '        JSON_Schema验证(数据, "{\\"type\\":\\"object\\",\\"required\\":[\\"name\\"]}")',
+      '        调试输出(JSON_序列化格式化(数据, 2))',
+      '        JSON_释放(名称)',
+      '        JSON_释放(数据)',
+      '    结束',
+      '结束类'
+    ].join('\n')
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  [
+    'namespace LingBuilderJson', 'long long JSON_解析(const wchar_t* json)', 'bool JSON_对象_设置',
+    'bool JSON_指针_设置', 'bool JSON_应用补丁', 'bool JSON_Schema验证', 'kMaxInputChars'
+  ].forEach(symbol => assert.ok(mainCpp.includes(symbol), `JSON 运行时缺少 ${symbol}`));
+  assert.match(mainCpp, /long long 数据 = JSON_创建对象\(\);/u);
+  assert.match(mainCpp, /JSON_对象_设置\(数据, L"name", 名称\);/u);
+  assert.match(mainCpp, /JSON_指针_设置\(数据, L"\/edition", JSON_创建整数\(2\), true\);/u);
+  assert.match(mainCpp, /JSON_Schema验证\(数据, L"\{\\"type\\":\\"object\\",\\"required\\":\[\\"name\\"\]\}"\);/u);
+
+  const escapedJsonLocals = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules,
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 文本型 JSON文本 = "{\\"name\\":\\"LingBuilder\\"}"',
+      '        局部 文本型 规则 = "{\\"type\\":\\"object\\"}"',
+      '        局部 JSON值 数据 = JSON_解析(JSON文本)',
+      '        JSON_Schema验证(数据, 规则)',
+      '        JSON_释放(数据)',
+      '    结束',
+      '结束类'
+    ].join('\n')
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(escapedJsonLocals, /std::wstring JSON文本 = L"/u);
+  assert.match(escapedJsonLocals, /std::wstring 规则 = L"/u);
+  assert.match(escapedJsonLocals, /JSON_解析\(LingCppWideArg\(JSON文本\)\)/u);
+  assert.match(escapedJsonLocals, /JSON_Schema验证\(数据, LingCppWideArg\(规则\)\)/u);
 });
 
 test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () => {

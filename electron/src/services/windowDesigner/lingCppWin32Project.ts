@@ -1483,6 +1483,7 @@ ${uiaCleanupLine}
 #include <functional>
 #include <fstream>
 #include <initializer_list>
+#include <iomanip>
 #include <iterator>
 #include <map>
 #include <set>
@@ -6936,6 +6937,7 @@ enum LB_FBRO_FALLBACK_EVENT_CODE {
 #include <fstream>
 #include <iterator>
 #include <initializer_list>
+#include <iomanip>
 #include <random>
 #include <regex>
 #include <sstream>
@@ -22988,8 +22990,10 @@ function translateLingCppExpression(
   const trimmed = normalizeLingCppLogicalExpression(expression.trim());
   if (!trimmed) return '';
   if (/^L"/u.test(trimmed)) return trimmed;
-  const quoted = trimmed.match(/^[""]([^""]*)[""]$/u);
+  const quoted = trimmed.match(/^"((?:\\.|[^"\\])*)"$/u);
   if (quoted) return `L"${escapeWideString(interpretLingCppStringEscapes(quoted[1] || ''))}"`;
+  const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
+  if (chineseQuoted) return `L"${escapeWideString(chineseQuoted[1] || '')}"`;
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
   if (trimmed.startsWith('!') && !trimmed.startsWith('!=')) {

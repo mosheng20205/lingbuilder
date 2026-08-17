@@ -2,6 +2,8 @@
 
 > 2026-08-16：严格精简 Windows 安装包不包含 CEF3/FBro 的模块目录、SDK、README 或运行时。需要浏览器能力时，先安装独立模块包或开发者提供的完整受控模块目录；安装包不会凭内置元数据自动下载。内置 aria2c 1.37.0 仍供 Aria2 下载模块使用，并随包提供 GPLv2 许可文件。
 
+> 0.5.0 发布基线：同步当前代码更新并发布 Windows x64 离线精简安装包。安装包严格不包含 FBro、CEF3 及其模块目录、SDK 或运行时；云端 API 保持未配置。
+
 > 0.4.0 发布基线：安装包排除完整的 CEF3/FBro 模块，并内置 aria2c 1.37.0；新增 `lingbuilder.net.aria2@1.37.0` 受控下载模块，新手 LCPP 编辑器完成流程折叠、嵌套缩进和声明编辑升级。浏览器管理器的下载器插件改为随项目 assets 与 `.lcpppkg` 分发，不再作为模块安装。
 
 > 2026-08-13：修复从窗口设计器按 F5 运行普通 Win32 项目后 IDE/设计器闪动。LingCpp 与旧原生 Win32 生成器已删除启动阶段的临时 `HWND_TOPMOST`、重复前台/焦点抢占和 LingCpp 900ms 撤销置顶定时器，统一在窗口布局准备完成后只执行一次标准 `ShowWindow + UpdateWindow`。专项测试同时阻断两条生成链路重新引入该序列；`new_emoji` 的专用激活实现保持不变。
@@ -225,6 +227,10 @@ http://127.0.0.1:3001/
 
 开发脚本显式传入工作区、规则手册、回环 host/port，并显式启用仅限 `development + loopback` 的无会话鉴权模式。生产/安装版不能关闭会话鉴权。
 开发模式从“打开工作区”“打开 LCPP 源码包”“关闭当前解决方案”或新窗口切换工作区时，Electron 会自动为目标工作区启动随机回环端口的受管 Vite 服务并切换窗口；失败会恢复原服务和工作区，不需要手工停止或重新执行 `npm run dev`。
+
+## JSON 数据模块
+
+内置 `lingbuilder.data.json@2.0.0` 提供 55 条可导出 API 和受管 `JSON值`：严格 RFC 8259 解析/创建/格式化、对象数组操作、RFC 6901 Pointer、RFC 6902 Patch、RFC 7396 Merge Patch 与 JSON Schema 核心校验。项目启用后，普通 Win32 与 new_emoji 生成工程均注入相同的本地 C++17 运行时，不依赖 Node.js 或云端服务。完整命令、资源上限和兼容边界见 [JSON 数据模块 2.0 使用说明](docs/modules/json/README.md)。
 
 ## AI Bridge 连接中心
 

@@ -17,7 +17,7 @@ const LEGACY_PACKAGE_SCHEMA_VERSION = 1;
 const MINIMUM_GENERATOR_VERSION = '0.2.5';
 // Keep package compatibility checks inside the desktop package boundary. This
 // must match the desktop generator version and cannot import renderer services.
-const CURRENT_GENERATOR_VERSION = '0.4.0';
+const CURRENT_GENERATOR_VERSION = '0.5.0';
 const LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION = '0.2.7';

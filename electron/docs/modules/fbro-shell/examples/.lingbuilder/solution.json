@@ -2,9 +2,9 @@
   "schemaVersion": 2,
   "id": "lingbuilder-solution",
   "name": "未命名解决方案",
-  "startupProjectId": "lingbuilder-project-2",
+  "startupProjectId": "fbro",
   "startupProjectIds": [
-    "lingbuilder-project-2"
+    "fbro"
   ],
   "folders": [],
   "projects": [
@@ -34,6 +34,15 @@
       "sourceRoot": "src/lingbuilder-project-2",
       "configRoot": "config/lingbuilder-project-2",
       "designerPath": ".lingbuilder/projects/lingbuilder-project-2/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "fbro",
+      "name": "FBro项目",
+      "sourceRoot": "src/fbro",
+      "configRoot": "config/fbro",
+      "designerPath": ".lingbuilder/projects/fbro/window-designer.json",
       "references": []
     }
   ]
