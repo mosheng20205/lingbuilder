@@ -1439,6 +1439,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     window.addEventListener(DIFF_VIEW_MODE_CHANGE_EVENT, handleModeChange);
     return () => window.removeEventListener(DIFF_VIEW_MODE_CHANGE_EVENT, handleModeChange);
   }, []);
+
+  useEffect(() => {
+    if (!designerProject && viewType === 'designer') setViewType('code');
+  }, [designerProject, viewType]);
   const [preset, setPreset] = useState<DiffPreset>(isDarkMode ? 'vs-dark' : 'classic-light');
   const searchQuery: string = '';
   const [editingStringId, setEditingStringId] = useState<string | null>(null);
@@ -1827,6 +1831,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       name: reference.symbol.name
     };
     saveBeginnerViewState();
+    if (!designerProject) return;
     setViewType('designer');
     if (commandService) {
       void commandService.executeCommand(
@@ -1837,7 +1842,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     } else {
       requestDesignerNavigation(request);
     }
-  }, [commandService, getCommandContext, saveBeginnerViewState]);
+  }, [commandService, designerProject, getCommandContext, saveBeginnerViewState]);
   const renameControlReference = useCallback((reference: LingCppControlReference, newName: string) => {
     if (!reference.symbol || !designerProject || !moduleContext || !onUpdateProjectSources) {
       throw new Error('控件重命名需要完整的设计器、模块和项目源码上下文。');
@@ -2752,6 +2757,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
   useEffect(() => {
     const handleShowWindowDesigner = () => {
+      if (!designerProject) return;
       saveBeginnerViewState();
       setViewType('designer');
     };
@@ -2760,7 +2766,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     return () => {
       window.removeEventListener('show-window-designer', handleShowWindowDesigner);
     };
-  }, [saveBeginnerViewState]);
+  }, [designerProject, saveBeginnerViewState]);
 
   useEffect(() => {
     if (!isLingCppNativeMode) return;
@@ -10103,23 +10109,25 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         isDarkMode ? 'bg-[#181820] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
       }`}>
         <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-none">
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => { saveBeginnerViewState(); setViewType('designer'); }}
-            onKeyDown={event => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                saveBeginnerViewState();
-                setViewType('designer');
-              }
-            }}
-            className={getEditorTabClassName(viewType === 'designer', isDarkMode)}
-            title={`打开窗口设计器：${designerTabLabel}`}
-            aria-label={`打开窗口设计器：${designerTabLabel}`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
-            <span className="whitespace-nowrap">{designerTabLabel}</span>
-          </div>
+          {designerProject && (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => { saveBeginnerViewState(); setViewType('designer'); }}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  saveBeginnerViewState();
+                  setViewType('designer');
+                }
+              }}
+              className={getEditorTabClassName(viewType === 'designer', isDarkMode)}
+              title={`打开窗口设计器：${designerTabLabel}`}
+              aria-label={`打开窗口设计器：${designerTabLabel}`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
+              <span className="whitespace-nowrap">{designerTabLabel}</span>
+            </div>
+          )}
 
           {openTabs.map(tabPath => {
             const fileName = tabPath.split('/').pop() || tabPath;
@@ -10157,7 +10165,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
         {/* Top-Right Quick Toggle Button between Code/Designer */}
         <div className="flex shrink-0 items-center gap-2 pr-2">
-          {editorExperienceMode === 'beginner' && viewType === 'code' && activeFile?.language === 'lingcpp' && (
+          {onOpenProjectDataTypes && editorExperienceMode === 'beginner' && viewType === 'code' && activeFile?.language === 'lingcpp' && (
             <button
               type="button"
               onClick={onOpenProjectDataTypes}
@@ -10168,7 +10176,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               <span>数据类型</span>
             </button>
           )}
-          {activeFile?.name?.endsWith('.lcpp') && (
+          {designerProject && activeFile?.name?.endsWith('.lcpp') && (
             viewType === 'designer' ? (
               <button
                 onClick={() => setViewType('code')}
@@ -10200,7 +10208,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         </div>
       </div>
       {/* Main Comparative Frame */}
-      {viewType === 'designer' ? (
+      {viewType === 'designer' && designerProject ? (
         <WpfDesigner
           key={`designer:${textModelProjectId}`}
           projectId={textModelProjectId}
@@ -10391,7 +10399,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   projectTypes={projectTypes}
                   projectSources={lingCppProjectSources}
                   onProjectSourcesChange={onUpdateProjectSources}
-                  onRevealDesignerBinding={() => { saveBeginnerViewState(); setViewType('designer'); }}
+                  onRevealDesignerBinding={() => {
+                    if (!designerProject) return;
+                    saveBeginnerViewState();
+                    setViewType('designer');
+                  }}
                   commandService={commandService}
                   getCommandContext={getCommandContext}
                   onRevealControlReference={revealControlReference}

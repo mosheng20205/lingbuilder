@@ -780,6 +780,16 @@ npm run smoke:runtime-controls-native
 >
 > 2026-08-09 CEF3 public API coverage is complete for CEF 150.0.14+g7c1aa68 on Windows MSVC x64: `1384/1384` (`100.00%`), `planned=0`, and `needsReview=0`. `npm run module:cef3-coverage:complete` now gates generated catalog and module documentation, C ABI exports, native test references, official V4 signature IDs, and the managed-handle/no-pointer ABI contract.
 
+## Windows DLL 项目
+
+欢迎页的“Windows 平台 DLL 开发”入口会创建 `windows-dll` 项目。模板生成最小 `DllMain.cpp`、`include/DllExports.h`、`exports.def`、`lingbuilder.dll.json` 和可复制的 `.sln`/`.vcxproj` 工程；它不依赖窗口设计器，也不会把 `.lcpp` 窗口代码当成 DLL 入口。
+
+构建时由受控 `ExternalProjectService` 调用 MSBuild，输出位于 `src/<项目ID>/<架构>/<配置>/bin`。成功必须同时存在 `<项目ID>.dll` 与 `<项目ID>.lib`。请在 Windows 上安装 Visual Studio 的“使用 C++ 的桌面开发”工作负载，并让 `msbuild` 可从开发环境调用；当前开发环境的默认 PATH 未包含 MSVC 命令，但已从 Visual Studio 2022 Community 安装目录直接调用 MSBuild 完成 Win32/x64 Debug 编译、导出表和 DLL 加载 smoke。
+
+DLL 模板仍可使用新手模式 `.lcpp`。`DllApi.lcpp` 是项目的中文源码入口，默认的 `获取接口版本()` 示例会在构建前确定性生成到导出函数；它不携带窗口设计器模型，因此工作台只显示 `.lcpp` 代码编辑器和语言服务。当前模板只承诺该示例映射，新增真实 DLL API 时必须同步维护 C++ 头文件、DEF、manifest、实现和测试。
+
+DLL 对外接口应保持 C ABI，明确调用约定、编码、缓冲区长度和释放责任。不要跨 DLL 暴露 STL、异常或未约定所有权的裸指针。新增导出时同步维护头文件、`exports.def`、`lingbuilder.dll.json`、文档和测试。
+
 ## Aria2 下载模块
 
 启用内置 `lingbuilder.net.aria2` 后，`.lcpp` 可使用 `Aria2_下载` 创建异步任务，并可在可选第六参数传入 `&下载进度`，在窗口线程接收任务、百分比、已下载/总字节、字节/秒速度和状态。轮询仍可使用 `Aria2_等待`、`Aria2_取状态`、`Aria2_取进度`、`Aria2_取下载速度`、`Aria2_取错误` 和 `Aria2_释放`；速度优先解析 aria2 `DL:` 输出。当前仅支持 Windows x64 MSVC；F5 与 Visual Studio 导出会由原生依赖服务复制已校验的 `aria2c.exe`、GPLv2 `COPYING` 和 `NOTICE.md`。完整命令和示例见 `docs/modules/aria2/README.md`。

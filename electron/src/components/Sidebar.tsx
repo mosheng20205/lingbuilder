@@ -1948,7 +1948,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* Window designer group */}
-                      {isProjectOpen && <div className="pl-6">
+                      {isProjectOpen && project.type === 'visual-cpp' && <div className="pl-6">
                         <div
                           onClick={() => setIsWindowsOpen(!isWindowsOpen)}
                           onContextMenu={(event) => {

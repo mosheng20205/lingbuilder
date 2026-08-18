@@ -205,6 +205,23 @@ test('AI Bridge project creation inherits the workspace module manifest when omi
   await writeService.shutdown();
 });
 
+test('AI Bridge DLL project creation keeps the LCPP source but omits a window designer model', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const preview = await service.createProject({
+    name: 'AI DLL 项目',
+    projectId: 'ai-dll',
+    templateId: 'windows-dll',
+    openInWorkbench: false
+  });
+  assert.equal(preview.applied, false);
+  assert.equal(preview.preview.project.type, 'windows-dll');
+  assert.equal(preview.preview.designerProject, undefined);
+  assert.equal(preview.preview.navigation.filePath, 'src/ai-dll/DllApi.lcpp');
+  assert.ok(preview.preview.files.some(file => file.relativePath === 'src/ai-dll/DllApi.lcpp' && file.kind === 'source'));
+  await service.shutdown();
+});
+
 test('AI Bridge browser shell template previews defaults, creates atomically, and supports undo', async () => {
   const workspaceRoot = await createTempWorkspace();
   await installTestModule(workspaceRoot, {

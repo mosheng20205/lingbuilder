@@ -638,3 +638,12 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 # 2026-08-16 编辑器颜色规则补充
 
 - 模块命令参数和普通表达式中的局部变量引用由统一 EPL tokenizer 标记为 `variable`，主题颜色必须复用局部变量声明的绿色令牌；模块或组件不得在 React 局部样式中覆盖该语义颜色。
+
+## Windows DLL 项目类型（2026-08-18）
+
+- `windows-dll` 是独立的解决方案项目类型和模板，不是窗口设计器项目，也不复用 `.lcpp` 到 Win32 EXE 的生成链。创建项目会生成 `DllMain.cpp`、`include/DllExports.h`、`exports.def`、`lingbuilder.dll.json` 以及可直接用 Visual Studio 打开的 `.sln`、`.vcxproj` 和 `.vcxproj.filters`。
+- DLL 模板仍提供新手模式 `.lcpp` 源码入口 `DllApi.lcpp`；当前只把 `获取接口版本()` 的整数返回值映射到示例导出函数。模块命令若要求 `controlRef` 或窗口事件，DLL 项目没有设计器上下文，必须给出诊断，不得把普通文本猜成控件。
+- DLL 模板默认不启用 UI 模块。模块若需要向 DLL 暴露能力，必须在 manifest v2 中声明稳定的 `windows-msvc-win32` 或 `windows-msvc-x64` target，并通过受控模块依赖服务物化头文件、导入库和运行时文件；不能把 UI 设计器模型当作 DLL 的运行时输入。
+- DLL 的公开边界默认使用 C ABI、POD/标量、调用方拥有的缓冲区和明确的 `cdecl` 调用约定。不得跨 DLL 传递 STL 容器、C++ 异常、未约定所有权的裸指针或编译器私有类布局；需要对象时使用不透明受管句柄或显式创建/释放函数。
+- Visual Studio 工程使用 `DynamicLibrary`、动态 CRT `/MD` 和 `exports.def`。MSBuild 成功后必须同时发现 `<项目ID>.dll` 与 `<项目ID>.lib`；缺少任一产物时，受控构建报告中文失败诊断，不能把进程退出码为 0 当作 DLL 构建成功。
+- F5、Visual Studio 导出、AI Bridge 和后续 CLI 均必须复用同一 DLL 项目清单、模块上下文和受控 MSBuild 路径。禁止在 React、AI prompt 或临时脚本中另写 DLL 文件生成逻辑。

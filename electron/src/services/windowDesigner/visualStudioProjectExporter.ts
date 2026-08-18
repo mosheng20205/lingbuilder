@@ -16,6 +16,16 @@ export interface VisualStudioProjectExportResult {
   files: string[];
 }
 
+export interface VisualStudioProjectExportFile {
+  relativePath: string;
+  content: string;
+}
+
+export interface VisualStudioProjectExportContent {
+  projectName: string;
+  files: VisualStudioProjectExportFile[];
+}
+
 export interface VisualStudioProjectExportOptions {
   projectDir: string;
   projectId: string;
@@ -24,6 +34,9 @@ export interface VisualStudioProjectExportOptions {
   contentFiles?: string[];
   requiredCppStandard?: 17 | 20;
   requiresDynamicCrt?: boolean;
+  /** 默认生成应用程序；DLL 项目使用 DynamicLibrary 和导出定义文件。 */
+  projectKind?: 'application' | 'dynamic-library';
+  definitionFile?: string;
   /** F5 中间工程从已经校验过的 bin 目录物化 FBro；可复制导出工程则使用模块自带 runtime。 */
   fbroRuntimeFromBuildBin?: boolean;
 }
@@ -33,12 +46,27 @@ const WINDOWS_GUID = '8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942';
 export async function exportVisualStudioProject(
   options: VisualStudioProjectExportOptions
 ): Promise<VisualStudioProjectExportResult> {
+  const content = createVisualStudioProjectExportContent(options);
+  const solutionPath = path.join(options.projectDir, `${content.projectName}.sln`);
+  const projectPath = path.join(options.projectDir, `${content.projectName}.vcxproj`);
+  const filtersPath = path.join(options.projectDir, `${content.projectName}.vcxproj.filters`);
+  await fs.mkdir(options.projectDir, { recursive: true });
+  await Promise.all(content.files.map(file => fs.writeFile(path.join(options.projectDir, file.relativePath), file.content, 'utf8')));
+
+  return {
+    projectName: content.projectName,
+    solutionPath,
+    projectPath,
+    filtersPath,
+    files: [solutionPath, projectPath, filtersPath]
+  };
+}
+
+export function createVisualStudioProjectExportContent(
+  options: VisualStudioProjectExportOptions
+): VisualStudioProjectExportContent {
   const projectName = sanitizeVisualStudioName(options.projectId || 'LingBuilderProject');
   const projectGuid = deterministicGuid(`lingbuilder:${projectName}`);
-  const solutionPath = path.join(options.projectDir, `${projectName}.sln`);
-  const projectPath = path.join(options.projectDir, `${projectName}.vcxproj`);
-  const filtersPath = path.join(options.projectDir, `${projectName}.vcxproj.filters`);
-  const sourceFiles = getSourceFiles(options.generatedFiles, options.enabledModules);
   const resourceFiles = getResourceFiles(options.generatedFiles);
   const contentFiles = unique((options.contentFiles || []).map(normalizeSlash));
   const noneFiles = unique([...getNoneFiles(options.generatedFiles), ...contentFiles]);
@@ -59,39 +87,38 @@ export async function exportVisualStudioProject(
     return targets.some(target => target.platform === 'windows' && target.toolchain === 'msvc' && target.arch === 'x64')
       && !targets.some(target => target.platform === 'windows' && target.toolchain === 'msvc' && target.arch === 'win32');
   });
-
-  await fs.mkdir(options.projectDir, { recursive: true });
-  await Promise.all([
-    fs.writeFile(solutionPath, generateSolution(projectName, projectGuid, x64Only), 'utf8'),
-    fs.writeFile(projectPath, generateVcxproj({
-      projectGuid,
-      projectName,
-      sourceFiles,
-      resourceFiles,
-      noneFiles,
-      includeDirs,
-      includeDirsX64,
-      libFiles,
-      libFilesX64,
-      runtimeFiles,
-      runtimeFilesX64,
-      hasFbro,
-      fbroHostOnly,
-      fbroRuntimeFromBuildBin: options.fbroRuntimeFromBuildBin,
-      contentFiles,
-      requiredCppStandard: options.requiredCppStandard ?? (hasCryptoSdk ? 20 : undefined),
-      requiresDynamicCrt: (options.requiresDynamicCrt ?? hasCryptoSdk) || hasOpenCv,
-      x64Only
-    }), 'utf8'),
-    fs.writeFile(filtersPath, generateFilters(sourceFiles, resourceFiles, noneFiles), 'utf8')
-  ]);
-
+  const projectFiles = options.generatedFiles;
   return {
     projectName,
-    solutionPath,
-    projectPath,
-    filtersPath,
-    files: [solutionPath, projectPath, filtersPath]
+    files: [
+      { relativePath: `${projectName}.sln`, content: generateSolution(projectName, projectGuid, x64Only) },
+      {
+        relativePath: `${projectName}.vcxproj`,
+        content: generateVcxproj({
+          projectGuid,
+          projectName,
+          sourceFiles: getSourceFiles(projectFiles, options.enabledModules),
+          resourceFiles,
+          noneFiles,
+          includeDirs,
+          includeDirsX64,
+          libFiles,
+          libFilesX64,
+          runtimeFiles,
+          runtimeFilesX64,
+          hasFbro,
+          fbroHostOnly,
+          fbroRuntimeFromBuildBin: options.fbroRuntimeFromBuildBin,
+          contentFiles,
+          requiredCppStandard: options.requiredCppStandard ?? (hasCryptoSdk ? 20 : undefined),
+          requiresDynamicCrt: (options.requiresDynamicCrt ?? hasCryptoSdk) || hasOpenCv || options.projectKind === 'dynamic-library',
+          projectKind: options.projectKind || 'application',
+          definitionFile: options.definitionFile,
+          x64Only
+        })
+      },
+      { relativePath: `${projectName}.vcxproj.filters`, content: generateFilters(getSourceFiles(projectFiles, options.enabledModules), resourceFiles, noneFiles) }
+    ]
   };
 }
 
@@ -257,6 +284,8 @@ function generateVcxproj(options: {
   contentFiles: string[];
   requiredCppStandard?: 17 | 20;
   requiresDynamicCrt?: boolean;
+  projectKind: 'application' | 'dynamic-library';
+  definitionFile?: string;
   x64Only?: boolean;
 }): string {
   const includeDirectories = options.includeDirs.map(toWindowsPath).join(';');
@@ -287,6 +316,10 @@ function generateVcxproj(options: {
   const debugPreprocessorDefinitionsX64 = options.requiresDynamicCrt
     ? 'NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)'
     : '_DEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)';
+  const configurationType = options.projectKind === 'dynamic-library' ? 'DynamicLibrary' : 'Application';
+  const definitionFile = options.definitionFile
+    ? `\n      <ModuleDefinitionFile>${xmlEscape(toWindowsPath(options.definitionFile))}</ModuleDefinitionFile>`
+    : '';
 
   const project = `<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -307,24 +340,25 @@ function generateVcxproj(options: {
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{${options.projectGuid}}</ProjectGuid>
     <RootNamespace>${xmlEscape(options.projectName)}</RootNamespace>
+    <TargetName>${xmlEscape(options.projectName)}</TargetName>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>${configurationType}</ConfigurationType>
     <UseDebugLibraries>${useDebugLibraries}</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>${configurationType}</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>${useDebugLibraries}</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><CharacterSet>Unicode</CharacterSet></PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>${configurationType}</ConfigurationType><UseDebugLibraries>${useDebugLibraries}</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>${configurationType}</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet></PropertyGroup>
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Label="Shared" />
@@ -356,6 +390,7 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
+      ${definitionFile}
       <AdditionalDependencies>${xmlEscape(additionalDependencies)};%(AdditionalDependencies)</AdditionalDependencies>
     </Link>${postBuild}
   </ItemDefinitionGroup>
@@ -373,13 +408,14 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
+      ${definitionFile}
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>${xmlEscape(additionalDependencies)};%(AdditionalDependencies)</AdditionalDependencies>
     </Link>${postBuild}
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem><EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem>${definitionFile}<AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem>${definitionFile}<EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
 ${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('ResourceCompile', options.resourceFiles)}${generateFileItems('None', options.noneFiles)}
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

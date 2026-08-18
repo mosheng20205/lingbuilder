@@ -31,6 +31,35 @@ test('external CMake and MSBuild properties materially change controlled build c
   assert.throws(() => validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: ['bad\narg'] }), /参数无效/u);
 });
 
+test('Windows DLL builds require both the DLL and import library artifacts', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-dll-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, 'src', 'demo'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'demo', 'demo.vcxproj'), '<Project/>');
+  const project = {
+    id: 'demo', name: 'Demo DLL', type: 'windows-dll' as const,
+    projectFile: 'src/demo/demo.vcxproj', sourceRoot: 'src/demo', configRoot: 'src/demo',
+    designerPath: '', references: [],
+    buildProperties: { configuration: 'Debug' as const, architecture: 'Win32' as const, additionalArguments: [] }
+  };
+  const service = new ExternalProjectService(root, async (_command, args, cwd) => {
+    assert.ok(args.includes('/p:Configuration=Debug'));
+    assert.ok(args.includes('/p:Platform=Win32'));
+    const outputDir = path.join(cwd, 'Win32', 'Debug', 'bin');
+    await fs.writeFile(path.join(outputDir, 'demo.dll'), 'dll');
+    await fs.writeFile(path.join(outputDir, 'demo.lib'), 'lib');
+    return { exitCode: 0, stdout: 'built', stderr: '' };
+  });
+  const result = await service.build(project);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.artifacts?.map(file => path.basename(file)).sort(), ['demo.dll', 'demo.lib']);
+
+  await fs.rm(path.join(root, 'src', 'demo', 'Win32'), { recursive: true, force: true });
+  const missingArtifacts = new ExternalProjectService(root, async () => ({ exitCode: 0, stdout: 'built', stderr: '' }));
+  const failed = await missingArtifacts.build(project);
+  assert.equal(failed.ok, false);
+  assert.match(failed.stderr, /未找到 DLL 或导入库/u);
+});
+
 test('external builds forward cancellation to every controlled child process', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-import-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.mkdir(path.join(root, 'cmake')); await fs.writeFile(path.join(root, 'cmake', 'CMakeLists.txt'), 'project(App)');

@@ -481,6 +481,7 @@ export default function App() {
   const designerDirtyRef = useRef(false);
   const designerSavedSnapshotRef = useRef(JSON.stringify(windowDesignerState.project));
   const activeSolutionProject = solution.projects.find(project => project.id === solution.startupProjectId) || solution.projects[0] || DEFAULT_SOLUTION.projects[0];
+  const activeProjectHasWindowDesigner = activeSolutionProject.type === 'visual-cpp';
   const activeProjectId = activeSolutionProject.id;
   const textModelWorkspaceId = solution.id || DEFAULT_SOLUTION.id;
   const textModelIdentity = (projectId: string, filePath: string): TextModelIdentity => ({
@@ -603,12 +604,14 @@ export default function App() {
           baseVersions: projectFileVersionsRef.current,
           openTabs: openTabsRef.current,
           activeFilePath: activeFileRef.current?.path,
-          designerProject: designerDirtyRef.current ? readWindowDesignerState().project : undefined
+          designerProject: designerDirtyRef.current
+            ? activeProjectHasWindowDesigner ? readWindowDesignerState().project : undefined
+            : undefined
         })
       });
     }, 750);
     return () => window.clearTimeout(timer);
-  }, [activeProjectId, designerDirty, files, loadedProjectId, projectFilesReady]);
+  }, [activeProjectHasWindowDesigner, activeProjectId, designerDirty, files, loadedProjectId, projectFilesReady]);
 
   const focusLingCppHandler = useCallback((handlerName: string, filePath?: string) => {
     [80, 220, 480].forEach(delay => {
@@ -1116,6 +1119,7 @@ export default function App() {
   const [showCliGuide, setShowCliGuide] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [createProjectName, setCreateProjectName] = useState('');
+  const [createProjectTemplateId, setCreateProjectTemplateId] = useState<'blank-window' | 'windows-dll'>('blank-window');
   const [createProjectError, setCreateProjectError] = useState('');
   const [isCreatingSolutionProject, setIsCreatingSolutionProject] = useState(false);
   const [solutionNameOperation, setSolutionNameOperation] = useState<
@@ -1320,6 +1324,7 @@ export default function App() {
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
+      if (!activeProjectHasWindowDesigner) return;
       const customEvent = event as CustomEvent<PersistedWindowDesignerState>;
       const nextState = customEvent.detail || readWindowDesignerState();
       setWindowDesignerState(nextState);
@@ -1354,7 +1359,7 @@ export default function App() {
       window.removeEventListener(WINDOW_DESIGNER_DIRTY_STATE_CHANGED, handleDesignerDirtyStateChanged);
       window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
     };
-  }, [hasEnteredWorkbench, refreshModuleContext]);
+  }, [activeProjectHasWindowDesigner, hasEnteredWorkbench, refreshModuleContext]);
 
   useEffect(() => {
     if (activeFile.language !== 'lingcpp') {
@@ -1363,7 +1368,12 @@ export default function App() {
     }
 
     const sourceCode = activeFile.translatedContent || activeFile.originalContent || '';
-    const nextProblems = getLingCppProblems(sourceCode, windowDesignerState.project, activeFile.path, moduleContext).map(problem => {
+    const nextProblems = getLingCppProblems(
+      sourceCode,
+      activeProjectHasWindowDesigner ? windowDesignerState.project : undefined,
+      activeFile.path,
+      moduleContext
+    ).map(problem => {
       const beginner = adaptProblemForBeginner(problem);
       return {
         id: problem.id,
@@ -1383,7 +1393,7 @@ export default function App() {
       };
     });
     setProblems(nextProblems);
-  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode, moduleContext, windowDesignerState.project]);
+  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, activeProjectHasWindowDesigner, editorExperienceMode, moduleContext, windowDesignerState.project]);
 
   const setEditorExperienceMode = useCallback(async (mode: EditorExperienceMode): Promise<boolean> => {
     const target = getWorkbenchConfigurationMutationTarget(
@@ -2298,11 +2308,13 @@ void DisplayStatus() {
       if (sourceFile.language === 'lingcpp') {
         const parsedSource = parseLingCpp(getCurrentFileContent(sourceFile));
         const sourceClassNames = new Set(parsedSource.program.classes.map(item => item.name));
-        const boundDesignerWindow = windowDesignerState.project.windows.find(window =>
+        const boundDesignerWindow = activeProjectHasWindowDesigner
+          ? windowDesignerState.project.windows.find(window =>
           getLingWindowSourceFileName(window.fileName, window.className).toLocaleLowerCase()
             === sourceFile.name.toLocaleLowerCase()
           || sourceClassNames.has(window.className)
-        );
+          )
+          : undefined;
         if (boundDesignerWindow) {
           throw new Error(
             `“${sourceFile.name}”绑定设计器窗口“${boundDesignerWindow.title}”，不能只重命名源码文件。`
@@ -2812,6 +2824,9 @@ void DisplayStatus() {
             activeWindowId: data.designerProject.windows?.[0]?.id || 'main-window',
             selectedControlId: data.designerProject.windows?.[0]?.controls?.[0]?.id || null
           });
+        } else if (!activeProjectHasWindowDesigner) {
+          designerDirtyRef.current = false;
+          setDesignerDirty(false);
         }
         if (hasUsableProjectFilePayload(data?.files)) {
           projectFileVersionsRef.current = data.fileVersions || {};
@@ -2976,7 +2991,7 @@ void DisplayStatus() {
       // 项目切换/重新载入时，若用户尚未答复恢复确认，按取消结算，避免悬挂对话框与悬挂 Promise。
       cancelWorkbenchDialog();
     };
-  }, [activeProjectId, hasEnteredWorkbench, projectFileReloadToken]);
+  }, [activeProjectHasWindowDesigner, activeProjectId, hasEnteredWorkbench, projectFileReloadToken]);
 
   useEffect(() => {
     if (!projectFilesReady || loadedProjectId !== activeProjectId) return;
@@ -3126,11 +3141,13 @@ void DisplayStatus() {
             return;
           }
 
-          const designerPath = activeSolutionProject.designerPath.replace(/\\/g, '/');
           for (const changedPath of changedPaths) {
             if (disposed) return;
             const nextVersion = payload.fileVersions?.[changedPath] as string | undefined;
-            if (changedPath === designerPath) {
+            const designerPath = activeProjectHasWindowDesigner
+              ? activeSolutionProject.designerPath.replace(/\\/g, '/')
+              : undefined;
+            if (designerPath && changedPath === designerPath) {
               if (!nextVersion
                 || nextVersion === projectFileVersionsRef.current[changedPath]
                 || !payload.designerProject) continue;
@@ -3198,7 +3215,7 @@ void DisplayStatus() {
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       events.close();
     };
-  }, [activeProjectId, activeSolutionProject.designerPath, loadedProjectId, projectFilesReady]);
+  }, [activeProjectHasWindowDesigner, activeProjectId, activeSolutionProject.designerPath, loadedProjectId, projectFilesReady]);
 
   useEffect(() => {
     let intervalId: any;
@@ -3476,9 +3493,9 @@ void DisplayStatus() {
       }
       requireCurrentProjectMutationOwner(requestOwner);
 
-      const designerProject = getCurrentWindowDesignerProject();
-      const savedDesignerSnapshot = JSON.stringify(designerProject);
-      const projectId = requestOwner.projectId || designerProject.id || 'lingbuilder-ui-project';
+      const designerProject = activeProjectHasWindowDesigner ? getCurrentWindowDesignerProject() : undefined;
+      const savedDesignerSnapshot = designerProject ? JSON.stringify(designerProject) : '';
+      const projectId = requestOwner.projectId || designerProject?.id || 'lingbuilder-ui-project';
       const savedStateByPath = new Map<string, { content: string; format: TextFileFormat }>();
       const projectFiles: Record<string, string> = {};
       const projectFileFormats: Record<string, TextFileFormat> = {};
@@ -3505,7 +3522,7 @@ void DisplayStatus() {
           files: projectFiles,
           fileFormats: projectFileFormats,
           baseVersions: projectFileVersionsRef.current,
-          project: designerProject
+          ...(designerProject ? { project: designerProject } : {})
         })
       });
       const payload = await response.json().catch(() => ({}));
@@ -3538,11 +3555,16 @@ void DisplayStatus() {
       }
       requireCurrentProjectMutationOwner(requestOwner);
       projectFileVersionsRef.current = payload.fileVersions || projectFileVersionsRef.current;
-      designerSavedSnapshotRef.current = savedDesignerSnapshot;
-      const currentDesignerSnapshot = JSON.stringify(readWindowDesignerState().project);
-      const nextDesignerDirty = currentDesignerSnapshot !== savedDesignerSnapshot;
-      designerDirtyRef.current = nextDesignerDirty;
-      setDesignerDirty(nextDesignerDirty);
+      if (designerProject) {
+        designerSavedSnapshotRef.current = savedDesignerSnapshot;
+        const currentDesignerSnapshot = JSON.stringify(readWindowDesignerState().project);
+        const nextDesignerDirty = currentDesignerSnapshot !== savedDesignerSnapshot;
+        designerDirtyRef.current = nextDesignerDirty;
+        setDesignerDirty(nextDesignerDirty);
+      } else {
+        designerDirtyRef.current = false;
+        setDesignerDirty(false);
+      }
       void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
 
       // Preserve edits made while the request was in flight. Only content that
@@ -4163,13 +4185,14 @@ void DisplayStatus() {
     window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', { detail: { diagnostics } }));
   }, []);
 
-  const openCreateSolutionProjectDialog = useCallback(() => {
+  const openCreateSolutionProjectDialog = useCallback((projectType: 'windows-ui' | 'windows-dll' = 'windows-ui') => {
     setCreateProjectName(`LingBuilder项目${solution.projects.length + 1}`);
+    setCreateProjectTemplateId(projectType === 'windows-dll' ? 'windows-dll' : 'blank-window');
     setCreateProjectError('');
     setShowCreateProjectDialog(true);
   }, [solution.projects.length]);
 
-  const handleCreateSolutionProject = useCallback(async (name: string): Promise<boolean> => {
+  const handleCreateSolutionProject = useCallback(async (name: string, templateId: 'blank-window' | 'windows-dll' = createProjectTemplateId): Promise<boolean> => {
     if (!name.trim()) return false;
     const flushState = await flushCurrentEditorDrafts();
     if (!flushState.ok) {
@@ -4185,7 +4208,7 @@ void DisplayStatus() {
         return false;
       }
     }
-    const result = await createSolutionProject(name.trim());
+    const result = await createSolutionProject(name.trim(), templateId);
     appendSolutionLogs('新建项目', result);
     if (!result.ok) setCreateProjectError(result.error || '新建项目失败。');
     if (result.solution) setSolution(result.solution);
@@ -4195,21 +4218,21 @@ void DisplayStatus() {
       setSolution(nextSolution);
     }
     return result.ok;
-  }, [appendSolutionLogs, flushCurrentEditorDrafts, refreshSolution]);
+  }, [appendSolutionLogs, createProjectTemplateId, flushCurrentEditorDrafts, refreshSolution]);
 
   const submitCreateSolutionProject = useCallback(async () => {
     if (isCreatingSolutionProject || !createProjectName.trim()) return;
     setIsCreatingSolutionProject(true);
     setCreateProjectError('');
     try {
-      const created = await handleCreateSolutionProject(createProjectName);
+      const created = await handleCreateSolutionProject(createProjectName, createProjectTemplateId);
       if (created) setShowCreateProjectDialog(false);
     } catch (error) {
       setCreateProjectError(error instanceof Error ? error.message : '新建项目失败。');
     } finally {
       setIsCreatingSolutionProject(false);
     }
-  }, [createProjectName, handleCreateSolutionProject, isCreatingSolutionProject]);
+  }, [createProjectName, createProjectTemplateId, handleCreateSolutionProject, isCreatingSolutionProject]);
 
   const handleCreateSolutionFolder = useCallback((): boolean => {
     const suggestedName = `解决方案文件夹${(solution.folders?.length || 0) + 1}`;
@@ -4468,6 +4491,24 @@ void DisplayStatus() {
 
   // Real window designer build task (F5)
   const handleRunBuild = useCallback(async (): Promise<boolean> => {
+    if (activeSolutionProject.type === 'windows-dll') {
+      if (editorOperationRef.current) {
+        appendEditorTransactionLog(`【F5】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，本次运行请求未重复执行。`);
+        return false;
+      }
+      editorOperationRef.current = 'build';
+      setIsBuilding(true);
+      try {
+        if (!await saveWorkspaceCore('DLL 构建前保存', true)) {
+          appendEditorTransactionLog('【F5】DLL 源码保存未完成，已取消构建。');
+          return false;
+        }
+        return await handleSolutionBuildCommand('build', activeProjectId);
+      } finally {
+        if (editorOperationRef.current === 'build') editorOperationRef.current = null;
+        setIsBuilding(false);
+      }
+    }
     if (editorOperationRef.current) {
       appendEditorTransactionLog(`【F5】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，本次运行请求未重复执行。`);
       return false;
@@ -4553,7 +4594,7 @@ void DisplayStatus() {
         setIsBuilding(false);
       }
     }
-  }, [saveWorkspaceCore]);
+  }, [activeProjectId, activeSolutionProject.type, appendEditorTransactionLog, handleSolutionBuildCommand, saveWorkspaceCore]);
 
   const handleStartNativeDebug = useCallback(async (): Promise<boolean> => {
     if (editorOperationRef.current) return false;
@@ -5644,9 +5685,9 @@ void DisplayStatus() {
           onMinimize={handleWindowMinimize}
           onToggleMaximize={handleWindowToggleMaximize}
           onClose={handleWindowCloseConfirmed}
-          onCreateProject={() => {
+          onCreateProject={projectType => {
             enterWorkbench();
-            void executeWorkbenchCommand('workbench.action.project.create');
+            openCreateSolutionProjectDialog(projectType);
           }}
           onOpenWorkspace={async () => {
             if (await executeWorkbenchCommand('workbench.action.files.openWorkspace')) enterWorkbench();
@@ -6486,7 +6527,9 @@ void DisplayStatus() {
               onResetTranslation={handleResetTranslation}
               onUpdateSourceContent={handleUpdateSourceContent}
               onUpdateProjectSources={handleUpdateProjectSources}
-              onOpenProjectDataTypes={() => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', activeProjectIdRef.current); }}
+              onOpenProjectDataTypes={activeProjectHasWindowDesigner
+                ? () => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', activeProjectIdRef.current); }
+                : undefined}
               isDarkMode={isDarkMode}
               activeFile={activeFile}
               editorFontSize={editorFontSize}
@@ -6496,7 +6539,7 @@ void DisplayStatus() {
               onSelectTab={handleSelectFile}
               onCloseTab={handleCloseTab}
               allFiles={files}
-              designerProject={windowDesignerState.project}
+              designerProject={activeProjectHasWindowDesigner ? windowDesignerState.project : undefined}
               moduleContext={moduleContext}
               activeWindowId={windowDesignerState.activeWindowId}
               textModelWorkspaceId={textModelWorkspaceId}
@@ -6587,7 +6630,7 @@ void DisplayStatus() {
                     readOnly={isSaving || isBuilding} onChange={value => updateEditorGroupFile(selected.path, value)}
                     editorFontSize={editorFontSize} onFontSizeChange={setEditorFontSize} filePath={selected.path}
                     modelIdentity={textModelIdentity(loadedProjectId, selected.path)} modelSurface="secondary"
-                    moduleContext={moduleContext} designerProject={windowDesignerState.project}
+                    moduleContext={moduleContext} designerProject={activeProjectHasWindowDesigner ? windowDesignerState.project : undefined}
                     onEditorStateChange={publishSecondaryEditorState}
                   />
                 </div>
@@ -6790,6 +6833,11 @@ void DisplayStatus() {
         open={showCreateProjectDialog}
         value={createProjectName}
         isDarkMode={isDarkMode}
+        title={createProjectTemplateId === 'windows-dll' ? '新建 Windows DLL 项目' : undefined}
+        description={createProjectTemplateId === 'windows-dll'
+          ? '将创建 MSVC DLL 源码、C ABI 导出示例和可复制的 Visual Studio 工程。'
+          : undefined}
+        confirmLabel={createProjectTemplateId === 'windows-dll' ? '创建 DLL 项目' : undefined}
         busy={isCreatingSolutionProject}
         error={createProjectError || undefined}
         onChange={value => {

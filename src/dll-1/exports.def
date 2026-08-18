@@ -1,0 +1,3 @@
+LIBRARY "dll-1"
+EXPORTS
+  LingBuilder_GetApiVersion

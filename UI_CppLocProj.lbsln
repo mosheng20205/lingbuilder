@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "345342",
+  "startupProjectId": "dll-1",
   "startupProjectIds": [
-    "345342"
+    "dll-1"
   ],
   "folders": [
     {
@@ -1049,6 +1049,14 @@
       "name": "345342",
       "type": "visual-cpp",
       "sourceRoot": "src/345342",
+      "references": []
+    },
+    {
+      "id": "dll-1",
+      "name": "DLL项目1",
+      "type": "windows-dll",
+      "sourceRoot": "src/dll-1",
+      "projectFile": "src/dll-1/dll-1.vcxproj",
       "references": []
     }
   ]

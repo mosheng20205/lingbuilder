@@ -10,6 +10,7 @@ import { EMPTY_PROJECT_GLOBALS_SOURCE, PROJECT_GLOBALS_FILE_NAME } from '../ling
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '../lingCpp/projectDataTypeService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
 import type { Win32ControlPropertyValue } from '../windowDesigner/win32ControlRegistry';
+import { createWindowsDllProjectFiles } from './windowsDllProjectService';
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
@@ -19,7 +20,7 @@ const solutionWriteQueues = new Map<string, Promise<void>>();
 export interface LingBuilderSolutionProject {
   id: string;
   name: string;
-  type: 'visual-cpp' | 'external-msbuild' | 'external-cmake';
+  type: 'visual-cpp' | 'windows-dll' | 'external-msbuild' | 'external-cmake';
   sourceRoot: string;
   configRoot: string;
   designerPath: string;
@@ -52,12 +53,13 @@ export interface CreateSolutionProjectRequest {
   windowTitle?: string;
 }
 
-export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'new-emoji-fbro-browser-shell';
+export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'new-emoji-fbro-browser-shell' | 'windows-dll';
 
 export interface SolutionProjectTemplate {
   id: SolutionProjectTemplateId;
   name: string;
   description: string;
+  kind?: 'windows-ui' | 'windows-dll';
   moduleIds?: readonly string[];
   architecture?: 'Win32' | 'x64';
 }
@@ -70,7 +72,7 @@ export interface PlannedSolutionProjectFile {
 
 export interface CreateSolutionProjectPlan {
   project: LingBuilderSolutionProject;
-  designerProject: LingWindowProject;
+  designerProject?: LingWindowProject;
   template: SolutionProjectTemplate;
   files: PlannedSolutionProjectFile[];
 }
@@ -79,17 +81,20 @@ export const SOLUTION_PROJECT_TEMPLATES: readonly SolutionProjectTemplate[] = [
   {
     id: 'blank-window',
     name: '空白 Win32 窗口',
-    description: '创建一个可直接编写中文代码的空白 Win32 窗口项目。'
+    description: '创建一个可直接编写中文代码的空白 Win32 窗口项目。',
+    kind: 'windows-ui'
   },
   {
     id: 'hello-window',
     name: '你好 LingBuilder',
-    description: '创建包含标题、按钮和中文单击事件的最小可运行 Win32 示例。'
+    description: '创建包含标题、按钮和中文单击事件的最小可运行 Win32 示例。',
+    kind: 'windows-ui'
   },
   {
     id: 'new-emoji-fbro-browser-shell',
     name: 'new_emoji FBro 浏览器外壳',
     description: '创建带标签页、地址栏、菜单、弹层、窗口按钮和真实 FBro x64 网页宿主的浏览器外壳。',
+    kind: 'windows-ui',
     architecture: 'x64',
     moduleIds: [
       'lingbuilder.win32.basic',
@@ -98,6 +103,14 @@ export const SOLUTION_PROJECT_TEMPLATES: readonly SolutionProjectTemplate[] = [
       'lingbuilder.fbro.sdk',
       'lingbuilder.new_emoji.fbro-shell'
     ]
+  },
+  {
+    id: 'windows-dll',
+    name: 'Windows 动态链接库',
+    description: '创建可由其他 Windows 程序调用的 MSVC DLL 项目，包含 C ABI 导出示例和 Visual Studio 工程。',
+    kind: 'windows-dll',
+    moduleIds: [],
+    architecture: 'Win32'
   }
 ];
 
@@ -138,7 +151,7 @@ export class SolutionService {
     return migrated;
   }
 
-  async createProject(request: CreateSolutionProjectRequest = {}): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject; designerProject: LingWindowProject }> {
+  async createProject(request: CreateSolutionProjectRequest = {}): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject; designerProject?: LingWindowProject }> {
     const solution = await this.getSolution();
     const plan = this.createProjectPlan(request, solution);
     const { project, designerProject } = plan;
@@ -296,6 +309,17 @@ export class SolutionService {
       await fs.rm(buildDir, { recursive: true, force: true });
       removedDirs.push(buildDir);
       logs.push(`已清理项目 ${project.name} 的临时构建目录：${buildDir}`);
+      if (project.type === 'windows-dll' && project.projectFile) {
+        const projectRoot = this.resolveWorkspacePath(path.posix.dirname(project.projectFile.replace(/\\/gu, '/')));
+        for (const architecture of ['Win32', 'x64'] as const) {
+          for (const configuration of ['Debug', 'Release'] as const) {
+            const dllBuildDir = path.join(projectRoot, architecture, configuration);
+            await fs.rm(dllBuildDir, { recursive: true, force: true });
+            removedDirs.push(dllBuildDir);
+          }
+        }
+        logs.push(`已清理项目 ${project.name} 的 DLL 配置输出目录。`);
+      }
     }
 
     if (validProjects.length === 0) {
@@ -348,25 +372,50 @@ export class SolutionService {
     const project: LingBuilderSolutionProject = {
       id: projectId,
       name: baseName,
-      type: 'visual-cpp',
+      type: template.kind === 'windows-dll' ? 'windows-dll' : 'visual-cpp',
       sourceRoot: `src/${projectId}`,
       configRoot: `config/${projectId}`,
       designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
       references: [],
+      ...(template.kind === 'windows-dll' ? { projectFile: `src/${projectId}/${projectId}.vcxproj` } : {}),
       ...(template.architecture ? {
         buildProperties: { configuration: 'Debug', architecture: template.architecture, additionalArguments: [] }
       } : {})
     };
-    const designerProject = createDesignerProject(project.id, project.name, template.id, request.windowTitle);
+    const designerProject = template.kind === 'windows-dll'
+      ? undefined
+      : createDesignerProject(project.id, project.name, template.id, request.windowTitle);
     return this.createMaterializationPlan(project, designerProject, template);
   }
 
   private createMaterializationPlan(
     project: LingBuilderSolutionProject,
-    designerProject: LingWindowProject,
+    designerProject: LingWindowProject | undefined,
     template: SolutionProjectTemplate
   ): CreateSolutionProjectPlan {
+    if (template.kind === 'windows-dll') {
+      const dllFiles = createWindowsDllProjectFiles(project.id, project.name);
+      return {
+        project,
+        template,
+        files: [
+          ...dllFiles.map(file => ({
+            relativePath: path.posix.join(project.sourceRoot, file.relativePath),
+            content: file.content,
+            kind: file.kind === 'source' || file.kind === 'header' || file.kind === 'definition' ? 'source' as const : 'config' as const
+          })),
+          { relativePath: project.configRoot + '/config.ini', content: `[project]\nname=${project.name}\nid=${project.id}\ntype=windows-dll\n`, kind: 'config' as const },
+          {
+            relativePath: `.lingbuilder/projects/${project.id}/project-modules.json`,
+            content: `${JSON.stringify({ schemaVersion: 1, enabledModuleIds: [], pinnedVersions: {} }, null, 2)}\n`,
+            kind: 'config' as const
+          }
+        ]
+      };
+    }
+    if (!designerProject) throw new Error('窗口项目缺少设计器模型。');
     const mainWindow = designerProject.windows[0];
+    if (!mainWindow) throw new Error('窗口项目至少需要一个窗口。');
     const files: PlannedSolutionProjectFile[] = [
       {
         relativePath: path.posix.join(project.sourceRoot, `${mainWindow.className}.lcpp`),

@@ -12,6 +12,7 @@ interface ProjectTypeDialogProps {
   open: boolean;
   isDarkMode: boolean;
   onSelectWindowsUi: () => void;
+  onSelectWindowsDll: () => void;
   onClose: () => void;
 }
 
@@ -28,8 +29,8 @@ const projectTypes = [
     id: 'windows-dll',
     title: 'Windows 平台 DLL 开发',
     description: '封装可复用的 Windows 原生动态链接库。',
-    status: '规划中',
-    enabled: false,
+    status: '当前可用',
+    enabled: true,
     icon: Box
   },
   {
@@ -54,6 +55,7 @@ export default function ProjectTypeDialog({
   open,
   isDarkMode,
   onSelectWindowsUi,
+  onSelectWindowsDll,
   onClose
 }: ProjectTypeDialogProps) {
   const availableProjectRef = useRef<HTMLButtonElement>(null);
@@ -122,7 +124,9 @@ export default function ProjectTypeDialog({
                   type="button"
                   data-project-type={projectType.id}
                   disabled={!projectType.enabled}
-                  onClick={projectType.enabled ? onSelectWindowsUi : undefined}
+                  onClick={projectType.enabled
+                    ? projectType.id === 'windows-dll' ? onSelectWindowsDll : onSelectWindowsUi
+                    : undefined}
                   className={`group flex min-h-36 w-full items-start gap-4 rounded-lg border p-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/60 ${
                     projectType.enabled ? `cursor-pointer ${enabledClasses}` : disabledClasses
                   }`}
@@ -177,7 +181,7 @@ export default function ProjectTypeDialog({
 
         <div className={`flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 ${isDarkMode ? 'border-[#35353c] bg-[#1b1b20]' : 'border-slate-200 bg-slate-50'}`}>
           <p className={`text-[11px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
-            当前仅开放 Windows 界面设计。
+            当前开放 Windows 界面设计和 Windows 平台 DLL 开发。
           </p>
           <button
             type="button"

@@ -915,3 +915,12 @@
 # 2026-08-16 编辑器颜色修复
 
 - 已修复：新手编辑器条件表达式中的局部变量引用沿用旧蓝色 token，与局部变量声明表的绿色标记不一致。深色/浅色主题的 `variable` token 现统一使用局部变量绿色。
+
+## Windows DLL 项目类型（2026-08-18）
+
+- 首版已完成：新增 `windows-dll` 解决方案项目类型、创建模板、DLL C ABI 示例、DEF 导出定义、manifest 和 Visual Studio 工程；欢迎页已提供可用入口。
+- 首版构建复用受控 `ExternalProjectService`/MSBuild，并在成功后校验 DLL 与 import lib 两个产物。DLL 不依赖窗口设计器或 `.lcpp` Win32 EXE 生成链。
+- `.lcpp` 已接入 DLL 模板的新手编辑器链路：`DllApi.lcpp` 可编辑、保存、诊断并作为首个导航源码；当前仅把 `获取接口版本()` 的整数返回值确定性映射到示例导出函数，尚未把任意中文过程自动展开为 DLL ABI。
+- DLL 项目不返回假的 `designerProject`，AI/CLI 创建预览只提供源码、配置和工程文件；窗口能力后续应通过明确的宿主回调/导出契约实现，禁止在 `DllMain` 中启动消息循环。
+- 当前 PowerShell 默认 PATH 未包含 `cl.exe`、`msbuild.exe` 和 `dumpbin.exe`，但已从 Visual Studio 2022 Community 安装目录直接定位 MSVC 14.44.35207；Win32/x64 Debug 的真实编译、`dumpbin /exports`、`LoadLibrary`、`GetProcAddress`、cdecl 调用和 `FreeLibrary` smoke 已通过。`cmake.exe` 仍未安装；后续需补 Win32/x64 Release 验收和自动化工具链定位。
+- 后续优化：用 `vswhere` 完善 MSVC 自动定位和安装实例选择、增加 DLL 导出符号检查、调用方示例工程、二进制依赖哈希物化和跨平台动态库 target；这些能力必须继续通过平台接口隔离，不得把 Windows 实现扩散到工作台服务。

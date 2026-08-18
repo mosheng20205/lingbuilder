@@ -37,7 +37,7 @@ export interface ProjectCreationPreview {
   operation: 'project.create';
   template: SolutionProjectTemplate;
   project: LingBuilderSolutionProject;
-  designerProject: CreateSolutionProjectPlan['designerProject'];
+  designerProject?: CreateSolutionProjectPlan['designerProject'];
   files: ProjectCreationFilePreview[];
   modules: {
     selection: 'global-default' | 'template-default' | 'explicit';
@@ -206,7 +206,7 @@ export class ProjectCreationService {
     if (!template) throw new Error(`不支持的项目模板：${requestedTemplateId}`);
     const moduleSelection = request.enabledModuleIds !== undefined
       ? 'explicit'
-      : template.moduleIds?.length
+      : template.moduleIds !== undefined
         ? 'template-default'
         : 'global-default';
     const enabledModuleIds = moduleSelection === 'explicit'
@@ -254,7 +254,7 @@ export class ProjectCreationService {
       operation: 'project.create',
       template: plan.template,
       project: plan.project,
-      designerProject: plan.designerProject,
+      ...(plan.designerProject ? { designerProject: plan.designerProject } : {}),
       files,
       modules: {
         selection: moduleSelection,
@@ -268,7 +268,7 @@ export class ProjectCreationService {
         openInWorkbench: request.openInWorkbench !== false,
         projectId: plan.project.id,
         filePath: mainSource?.relativePath || plan.files[0].relativePath,
-        windowId: plan.designerProject.windows[0]?.id || 'main-window'
+        windowId: plan.designerProject?.windows[0]?.id || 'main-window'
       },
       message: `预览：将创建项目“${plan.project.name}”并写入 ${files.length} 个项目文件。`
     };

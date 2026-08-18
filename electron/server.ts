@@ -2634,11 +2634,21 @@ async function buildSolutionProjects(options: {
   for (const [batchIndex, batch] of batches.entries()) {
     logs.push(`开始构建阶段 ${batchIndex + 1}/${batches.length}：${batch.map(project => project.name).join("、")}`);
     const batchResults = await Promise.all(batch.map(async projectRef => {
-    if (projectRef.type === "external-cmake" || projectRef.type === "external-msbuild") {
+    if (projectRef.type === "external-cmake" || projectRef.type === "external-msbuild" || projectRef.type === "windows-dll") {
       const lease = projectBuildCoordinator.begin(projectRef.id, options.admission);
       try {
         const externalResult = await externalProjectService.build(projectRef as any, lease.signal);
-        return { projectId: projectRef.id, projectName: projectRef.name, stage: "external-build", logs: [externalResult.stdout, externalResult.stderr].filter(Boolean), ...externalResult };
+        return {
+          projectId: projectRef.id,
+          projectName: projectRef.name,
+          stage: "external-build",
+          logs: [
+            ...(projectRef.type === "windows-dll" ? [`DLL 输出目录：${externalResult.outputDir}`, ...(externalResult.artifacts || []).map(file => `产物：${file}`)] : []),
+            externalResult.stdout,
+            externalResult.stderr
+          ].filter(Boolean),
+          ...externalResult
+        };
       } finally { lease.finish(); }
     }
     const project = await solutionService.readDesignerProject(projectRef);
@@ -3163,14 +3173,16 @@ app.get("/api/window-designer/files/watch", async (req, res) => {
         res.write(`event: file-change\ndata: ${JSON.stringify({ path: relativePath })}\n\n`);
       });
     });
-    const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
-    const designerDirectory = path.dirname(path.join(getRepoWorkspaceRoot(), projectRef.designerPath));
-    const designerFileName = path.basename(projectRef.designerPath);
-    const designerWatcher = watchFiles(designerDirectory, { recursive: false }, (_eventType, fileName) => {
-      if (!fileName || path.basename(String(fileName)) !== designerFileName) return;
-      res.write(`event: file-change\ndata: ${JSON.stringify({ path: designerRelativePath })}\n\n`);
-    });
-    watchers.push(designerWatcher);
+    if (projectRef.type === "visual-cpp") {
+      const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
+      const designerDirectory = path.dirname(path.join(getRepoWorkspaceRoot(), projectRef.designerPath));
+      const designerFileName = path.basename(projectRef.designerPath);
+      const designerWatcher = watchFiles(designerDirectory, { recursive: false }, (_eventType, fileName) => {
+        if (!fileName || path.basename(String(fileName)) !== designerFileName) return;
+        res.write(`event: file-change\ndata: ${JSON.stringify({ path: designerRelativePath })}\n\n`);
+      });
+      watchers.push(designerWatcher);
+    }
     const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 20_000);
     req.on("close", () => { clearInterval(heartbeat); watchers.forEach(watcher => watcher.close()); });
   } catch (error: any) {
@@ -3200,21 +3212,28 @@ app.get("/api/window-designer/files", async (req, res) => {
       getRepoWorkspaceRoot(),
       Object.keys(snapshots)
     );
-    const designerProject = await solutionService.readDesignerProject(projectRef);
-    const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
-    try {
-      const designerBytes = await fs.readFile(path.join(getRepoWorkspaceRoot(), projectRef.designerPath));
-      fileVersions[designerRelativePath] = createProjectFileVersion(designerBytes);
-    } catch (error: any) {
-      if (error?.code !== "ENOENT") throw error;
+    const isWindowDesignerProject = projectRef.type === "visual-cpp";
+    const designerProject = isWindowDesignerProject
+      ? await solutionService.readDesignerProject(projectRef)
+      : undefined;
+    const designerRelativePath = isWindowDesignerProject
+      ? projectRef.designerPath.replace(/\\/g, "/")
+      : undefined;
+    if (designerRelativePath) {
+      try {
+        const designerBytes = await fs.readFile(path.join(getRepoWorkspaceRoot(), projectRef.designerPath));
+        fileVersions[designerRelativePath] = createProjectFileVersion(designerBytes);
+      } catch (error: any) {
+        if (error?.code !== "ENOENT") throw error;
+      }
     }
     res.json({
       ok: true,
       files,
       fileFormats,
       fileVersions,
-      designerPath: designerRelativePath,
-      designerProject
+      ...(designerRelativePath ? { designerPath: designerRelativePath } : {}),
+      ...(designerProject ? { designerProject } : {})
     });
   } catch (err: any) {
     const status = err instanceof TextFileFormatError ? 400 : 500;
@@ -3240,9 +3259,9 @@ app.post("/api/window-designer/files", async (req, res) => {
     const solution = await solutionService.getSolution();
     const projectRef = solutionService.getProject(solution, projectId);
     const existingSnapshots = await solutionService.readProjectFileSnapshots(projectRef);
-    const designerPath = path.join(repoRoot, projectRef.designerPath);
-    const designerDir = path.dirname(designerPath);
-    await fs.mkdir(designerDir, { recursive: true });
+    const isWindowDesignerProject = projectRef.type === "visual-cpp";
+    const designerPath = isWindowDesignerProject ? path.join(repoRoot, projectRef.designerPath) : undefined;
+    if (designerPath) await fs.mkdir(path.dirname(designerPath), { recursive: true });
 
     const pendingWrites: Array<{ relativePath: string; targetPath: string; bytes: Buffer; expectedVersion?: string }> = [];
     for (const [relativePath, content] of Object.entries(files)) {
@@ -3273,8 +3292,10 @@ app.post("/api/window-designer/files", async (req, res) => {
       });
     }
 
-    const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
-    if (project) pendingWrites.push({
+    const designerRelativePath = isWindowDesignerProject
+      ? projectRef.designerPath.replace(/\\/g, "/")
+      : undefined;
+    if (project && designerPath && designerRelativePath) pendingWrites.push({
       relativePath: designerRelativePath,
       targetPath: designerPath,
       bytes: Buffer.from(JSON.stringify(project, null, 2), "utf8"),
@@ -3290,16 +3311,18 @@ app.post("/api/window-designer/files", async (req, res) => {
       getRepoWorkspaceRoot(),
       Object.keys(savedSnapshots)
     );
-    try {
-      fileVersions[designerRelativePath] = createProjectFileVersion(await fs.readFile(designerPath));
-    } catch (error: any) {
-      if (error?.code !== "ENOENT") throw error;
+    if (designerRelativePath && designerPath) {
+      try {
+        fileVersions[designerRelativePath] = createProjectFileVersion(await fs.readFile(designerPath));
+      } catch (error: any) {
+        if (error?.code !== "ENOENT") throw error;
+      }
     }
     res.json({
       ok: true,
       fileFormats: savedFileFormats,
       fileVersions,
-      designerPath: designerRelativePath
+      ...(designerRelativePath ? { designerPath: designerRelativePath } : {})
     });
   } catch (err: any) {
     if (err instanceof ProjectFileConflictError) {
@@ -3307,18 +3330,25 @@ app.post("/api/window-designer/files", async (req, res) => {
       const solution = await solutionService.getSolution();
       const projectRef = solutionService.getProject(solution, projectId);
       const snapshots = await solutionService.readProjectFileSnapshots(projectRef);
-      const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
-      const designerProject = await solutionService.readDesignerProject(projectRef);
+      const isWindowDesignerProject = projectRef.type === "visual-cpp";
+      const designerRelativePath = isWindowDesignerProject
+        ? projectRef.designerPath.replace(/\\/g, "/")
+        : undefined;
+      const designerProject = isWindowDesignerProject
+        ? await solutionService.readDesignerProject(projectRef)
+        : undefined;
       const conflictFileVersions = await readProjectFileVersionsFromDisk(
         getRepoWorkspaceRoot(),
         Object.keys(snapshots)
       );
-      try {
-        conflictFileVersions[designerRelativePath] = createProjectFileVersion(
-          await fs.readFile(path.join(getRepoWorkspaceRoot(), projectRef.designerPath))
-        );
-      } catch (error: any) {
-        if (error?.code !== "ENOENT") throw error;
+      if (designerRelativePath) {
+        try {
+          conflictFileVersions[designerRelativePath] = createProjectFileVersion(
+            await fs.readFile(path.join(getRepoWorkspaceRoot(), projectRef.designerPath))
+          );
+        } catch (error: any) {
+          if (error?.code !== "ENOENT") throw error;
+        }
       }
       return res.status(409).json({
         ok: false,
@@ -3327,8 +3357,8 @@ app.post("/api/window-designer/files", async (req, res) => {
         files: Object.fromEntries(Object.entries(snapshots).map(([key, value]) => [key, value.content])),
         fileFormats: Object.fromEntries(Object.entries(snapshots).map(([key, value]) => [key, value.format])),
         fileVersions: conflictFileVersions,
-        designerPath: designerRelativePath,
-        designerProject
+        ...(designerRelativePath ? { designerPath: designerRelativePath } : {}),
+        ...(designerProject ? { designerProject } : {})
       });
     }
     const status = err instanceof TextFileFormatError

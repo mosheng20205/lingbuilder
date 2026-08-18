@@ -127,6 +127,42 @@ test('solution project templates produce deterministic designer and source files
   assert.match(await fs.readFile(path.join(root, 'src', 'hello-app', 'MainWindow.lcpp'), 'utf8'), /信息框/u);
 });
 
+test('Windows DLL template creates a C ABI library project and DynamicLibrary Visual Studio files', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  const preview = await service.previewCreateProject({ name: '网络工具库', projectId: 'network-library', templateId: 'windows-dll' });
+
+  assert.equal(preview.project.type, 'windows-dll');
+  assert.equal(preview.project.projectFile, 'src/network-library/network-library.vcxproj');
+  assert.equal(preview.project.buildProperties?.architecture, 'Win32');
+  assert.equal(await exists(path.join(root, 'src', 'network-library')), false);
+  const previewFiles = new Map(preview.files.map(file => [file.relativePath, file.content]));
+  assert.match(previewFiles.get('src/network-library/DllMain.cpp') || '', /LINGBUILDER_DLL_API/u);
+  assert.match(previewFiles.get('src/network-library/include/DllExports.h') || '', /dllimport/u);
+  assert.match(previewFiles.get('src/network-library/exports.def') || '', /LingBuilder_GetApiVersion/u);
+  assert.match(previewFiles.get('src/network-library/network-library.vcxproj') || '', /<ConfigurationType>DynamicLibrary<\/ConfigurationType>/u);
+  assert.match(previewFiles.get('src/network-library/network-library.vcxproj') || '', /<ModuleDefinitionFile>exports\.def<\/ModuleDefinitionFile>/u);
+  assert.match(previewFiles.get('src/network-library/lingbuilder.dll.json') || '', /"kind": "windows-dll"/u);
+  assert.equal(preview.files.some(file => file.relativePath.endsWith('window-designer.json')), false);
+  assert.equal(preview.designerProject, undefined);
+  assert.equal(preview.files.find(file => file.relativePath.endsWith('/DllApi.lcpp'))?.kind, 'source');
+  assert.deepEqual(
+    JSON.parse(previewFiles.get('.lingbuilder/projects/network-library/project-modules.json') || '{}'),
+    { schemaVersion: 1, enabledModuleIds: [], pinnedVersions: {} }
+  );
+
+  const created = await service.createProject({ name: '网络工具库', projectId: 'network-library', templateId: 'windows-dll' });
+  assert.equal(created.project.type, 'windows-dll');
+  assert.ok(await exists(path.join(root, 'src', 'network-library', 'network-library.vcxproj')));
+  assert.ok(await exists(path.join(root, 'src', 'network-library', 'DllMain.cpp')));
+  assert.ok(await exists(path.join(root, 'src', 'network-library', 'include', 'DllExports.h')));
+  assert.equal(await exists(path.join(root, '.lingbuilder', 'projects', 'network-library', 'window-designer.json')), false);
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'projects', 'network-library', 'project-modules.json'), 'utf8')),
+    { schemaVersion: 1, enabledModuleIds: [], pinnedVersions: {} }
+  );
+});
+
 test('new_emoji FBro browser shell template previews x64 frame, controls, handlers and shortcuts without writing', async () => {
   const root = await createTempWorkspace();
   const service = createSolutionService(root);
@@ -274,6 +310,24 @@ test('solution clean removes build outputs and preserves generated exports', asy
   assert.equal(result.ok, true);
   assert.equal(await exists(buildDir), false);
   assert.ok(await exists(path.join(exportDir, 'clean-demo.sln')));
+});
+
+test('solution clean removes Windows DLL configuration outputs', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  const created = await service.createProject({ name: '清理 DLL', projectId: 'clean-dll', templateId: 'windows-dll' });
+  const dllBuildDir = path.join(root, 'src', 'clean-dll', 'Win32', 'Debug');
+  const exportDir = path.join(root, 'generated', 'cpp', 'clean-dll');
+  await fs.mkdir(path.join(dllBuildDir, 'bin'), { recursive: true });
+  await fs.writeFile(path.join(dllBuildDir, 'bin', 'clean-dll.dll'), 'dll', 'utf8');
+  await fs.mkdir(exportDir, { recursive: true });
+  await fs.writeFile(path.join(exportDir, 'clean-dll.sln'), 'sln', 'utf8');
+
+  const result = await service.cleanProjects([created.project.id]);
+
+  assert.equal(result.ok, true);
+  assert.equal(await exists(dllBuildDir), false);
+  assert.ok(await exists(path.join(exportDir, 'clean-dll.sln')));
 });
 
 async function createTempWorkspace(): Promise<string> {

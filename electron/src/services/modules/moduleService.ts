@@ -437,6 +437,8 @@ export class ModuleService {
     const targetPath = this.projectModulesPath(_projectId);
     let refs: LingBuilderProjectModules | undefined;
     let missingFile = false;
+    const projectType = await this.getSolutionProjectType(_projectId);
+    const isWindowsDll = projectType === 'windows-dll';
     try {
       refs = JSON.parse(await fs.readFile(targetPath, 'utf8')) as LingBuilderProjectModules;
     } catch (error: any) {
@@ -446,21 +448,33 @@ export class ModuleService {
     // Projects created before project-level module manifests were introduced
     // can safely inherit the workspace default once they are known solution
     // members. Unknown project IDs retain the basic-module fallback.
-    if (missingFile && _projectId !== DEFAULT_PROJECT_ID && await this.isSolutionProject(_projectId)) {
+    if (missingFile && !isWindowsDll && _projectId !== DEFAULT_PROJECT_ID && await this.isSolutionProject(_projectId)) {
       refs = await this.readProjectModules(DEFAULT_PROJECT_ID);
     }
-    if (!refs) refs = {
-      schemaVersion: 1,
-      enabledModuleIds: [BASIC_MODULE_ID],
-      pinnedVersions: { [BASIC_MODULE_ID]: '1.0.0' }
-    };
+    if (!refs) refs = isWindowsDll
+      ? { schemaVersion: 1, enabledModuleIds: [], pinnedVersions: {} }
+      : {
+          schemaVersion: 1,
+          enabledModuleIds: [BASIC_MODULE_ID],
+          pinnedVersions: { [BASIC_MODULE_ID]: '1.0.0' }
+        };
     if (!Array.isArray(refs.enabledModuleIds)) refs.enabledModuleIds = [];
     refs.enabledModuleIds = refs.enabledModuleIds.filter(moduleId => !PROJECT_RESOURCE_MODULE_IDS.has(moduleId));
-    if (!refs.enabledModuleIds.includes(BASIC_MODULE_ID)) refs.enabledModuleIds.unshift(BASIC_MODULE_ID);
+    if (!isWindowsDll && !refs.enabledModuleIds.includes(BASIC_MODULE_ID)) refs.enabledModuleIds.unshift(BASIC_MODULE_ID);
     refs.pinnedVersions ||= {};
     for (const moduleId of PROJECT_RESOURCE_MODULE_IDS) delete refs.pinnedVersions[moduleId];
-    refs.pinnedVersions[BASIC_MODULE_ID] ||= '1.0.0';
+    if (!isWindowsDll) refs.pinnedVersions[BASIC_MODULE_ID] ||= '1.0.0';
     return refs;
+  }
+
+  private async getSolutionProjectType(projectId: string): Promise<string | undefined> {
+    try {
+      const raw = await fs.readFile(path.join(this.lingBuilderDir(), 'solution.json'), 'utf8');
+      const solution = JSON.parse(raw) as { projects?: Array<{ id?: string; type?: string }> };
+      return solution.projects?.find(project => project?.id === projectId)?.type;
+    } catch {
+      return undefined;
+    }
   }
 
   private async isSolutionProject(projectId: string): Promise<boolean> {

@@ -1,7 +1,7 @@
 export interface SolutionProject {
   id: string;
   name: string;
-  type: 'visual-cpp' | 'external-msbuild' | 'external-cmake';
+  type: 'visual-cpp' | 'windows-dll' | 'external-msbuild' | 'external-cmake';
   sourceRoot: string;
   configRoot: string;
   designerPath: string;
@@ -66,8 +66,8 @@ export async function fetchSolution(): Promise<SolutionModel> {
   return result.solution as SolutionModel;
 }
 
-export async function createSolutionProject(name?: string): Promise<SolutionCommandResult> {
-  return postJson('/api/solution/projects', { name });
+export async function createSolutionProject(name?: string, templateId?: 'blank-window' | 'windows-dll'): Promise<SolutionCommandResult> {
+  return postJson('/api/solution/projects', { name, ...(templateId ? { templateId } : {}) });
 }
 
 export async function importSolutionProject(projectFile: string): Promise<SolutionCommandResult> {
@@ -114,7 +114,7 @@ export async function rebuildSolution(projectId?: string): Promise<SolutionComma
 }
 
 export function getSolutionProjectDirectory(project: SolutionProject): string {
-  if (project.type === 'visual-cpp') return project.sourceRoot || '.';
+  if (project.type === 'visual-cpp' || project.type === 'windows-dll') return project.sourceRoot || '.';
   const projectFile = (project.projectFile || '').replace(/\\/gu, '/');
   const separator = projectFile.lastIndexOf('/');
   return separator > 0 ? projectFile.slice(0, separator) : '.';
