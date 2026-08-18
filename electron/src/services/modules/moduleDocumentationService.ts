@@ -3,7 +3,8 @@ import path from 'node:path';
 import { validateModuleRelativePath } from './manifest';
 import type { InstalledModule } from './types';
 
-const MAX_MODULE_DOCUMENT_BYTES = 1024 * 1024;
+// 文档预览允许比普通配置文件更大的文本，但仍设置上限避免一次性把异常资源载入 renderer。
+export const MAX_MODULE_DOCUMENT_BYTES = 16 * 1024 * 1024;
 const BUILTIN_DOCUMENT_ASSET_MODULES: Readonly<Record<string, string>> = {
   'lingbuilder.cef3.browser': 'lingbuilder.cef3.sdk'
 };

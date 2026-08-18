@@ -257,7 +257,6 @@ export default function Sidebar({
   const [solutionContextMenu, setSolutionContextMenu] = useState<SolutionContextMenu | null>(null);
   const [resourceContextMenu, setResourceContextMenu] = useState<ResourceContextMenu | null>(null);
   const [resourcePreview, setResourcePreview] = useState<ResourcePreview | null>(null);
-  const [moduleInfoDialog, setModuleInfoDialog] = useState<InstalledModule | null>(null);
   const [designerState, setDesignerState] = useState(() => readWindowDesignerState());
 
   useEffect(() => {
@@ -271,7 +270,19 @@ export default function Sidebar({
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
   }, []);
-  useEffect(() => registerSolutionExplorerMenu(getMenuService(commandService)).dispose, [commandService]);
+  useEffect(() => {
+    const menuRegistration = registerSolutionExplorerMenu(getMenuService(commandService));
+    const openModuleInfo = async (_context: unknown, module: unknown) => {
+        if (!module || typeof module !== 'object') throw new Error('模块信息无效。');
+        await window.lingBuilder?.modules?.openInfo(module);
+      };
+    const commandRegistration = commandService.registerCommands([
+      { id: 'lingbuilder.modules.openModuleInfo', title: '查看模块信息', aliases: ['打开模块信息'], category: '模块', description: '在独立窗口查看模块公开 API、文档和示例。', handler: openModuleInfo },
+      { id: 'lingbuilder.modules.focusModuleInfo', title: '激活模块信息窗口', category: '模块', handler: openModuleInfo },
+      { id: 'lingbuilder.modules.refreshModuleInfo', title: '刷新模块信息', category: '模块', handler: openModuleInfo }
+    ]);
+    return () => { menuRegistration.dispose(); commandRegistration.dispose(); };
+  }, [commandService]);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
   const [isFunctionLibraryOpen, setIsFunctionLibraryOpen] = useState(true);
   const [isWindowsOpen, setIsWindowsOpen] = useState(true);
@@ -1405,7 +1416,7 @@ export default function Sidebar({
         <div
           className={menuItemClass}
           onClick={() => {
-            setModuleInfoDialog(module);
+            void commandService.executeCommand('lingbuilder.modules.openModuleInfo', {}, module);
             setModuleContextMenu(null);
           }}
         >
@@ -1430,7 +1441,7 @@ export default function Sidebar({
           }}
         >
           <SlidersHorizontal className="w-3.5 h-3.5 text-violet-400" />
-          <span>打开模块管理器 (O)</span>
+          <span>定位到模块页当前模块 (O)</span>
         </div>
         <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
         <div
@@ -1917,8 +1928,9 @@ export default function Sidebar({
                                       <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                                       <button
                                         type="button"
-                                        onClick={() => openModuleInspector(moduleId)}
+                                        onClick={event => event.stopPropagation()}
                                         className="min-w-0 flex-1 truncate text-left"
+                                        title="单击不切换模块页；右键可定位到模块页当前模块"
                                       >
                                         {module.manifest.name}
                                       </button>
@@ -2467,13 +2479,6 @@ export default function Sidebar({
             if (success) triggerSuccess(`已复制相对路径：${relativePath}`);
             else triggerError('复制图片资源相对路径失败。');
           }}
-        />
-      )}
-      {moduleInfoDialog && (
-        <ModuleInfoDialog
-          module={moduleInfoDialog}
-          isDarkMode={isDarkMode}
-          onClose={() => setModuleInfoDialog(null)}
         />
       )}
     </div>
@@ -3038,13 +3043,15 @@ function getBuiltinCommandParameterDoc(commandName: string, parameterName: strin
   return { type: '参数', example: parameterName, description: '模块未提供该参数的详细说明，请结合命令签名和模块文档使用。' };
 }
 
-function ModuleInfoDialog({
+export function ModuleInfoDialog({
   module,
   isDarkMode,
+  standalone = false,
   onClose
 }: {
   module: InstalledModule;
   isDarkMode: boolean;
+  standalone?: boolean;
   onClose: () => void;
 }) {
   const [searchText, setSearchText] = useState('');
@@ -3213,8 +3220,8 @@ function ModuleInfoDialog({
   })();
 
   return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/45 p-4 font-sans" role="dialog" aria-modal="true">
-      <div className={`flex h-[min(760px,92vh)] w-[min(1120px,96vw)] min-w-0 flex-col overflow-hidden rounded border shadow-2xl ${panelClass} ${borderClass}`}>
+    <div className={standalone ? 'flex h-screen w-screen min-h-0 min-w-0 font-sans' : 'fixed inset-0 z-[9998] flex items-center justify-center bg-black/45 p-4 font-sans'} role="dialog" aria-modal="true">
+      <div className={`flex ${standalone ? 'h-full w-full rounded-none shadow-none' : 'h-[min(760px,92vh)] w-[min(1120px,96vw)] rounded shadow-2xl'} min-w-0 flex-col overflow-hidden border ${panelClass} ${borderClass}`}>
         <div className={`flex min-w-0 items-center gap-3 border-b px-3 py-2 ${borderClass}`}>
           <Package className="h-4 w-4 shrink-0 text-violet-400" />
           <div className="min-w-0 flex-1">

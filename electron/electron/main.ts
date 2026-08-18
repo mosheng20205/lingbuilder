@@ -25,6 +25,7 @@ import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiCli
 import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
 import { restoreModulePermits } from './modulePermitRestoreService';
+import { ModuleInfoWindowService } from './moduleInfoWindowService';
 import {
   createLcppSourcePackageService,
   LCPP_SOURCE_PACKAGE_EXTENSION,
@@ -55,6 +56,7 @@ let isQuitting = false;
 let shutdownPromise: Promise<void> | null = null;
 let workspaceService: DesktopWorkspaceService;
 let aiBridgeManager: AiBridgeManagerService;
+let moduleInfoWindow: ModuleInfoWindowService;
 const rendererConfirmedClose = new WeakSet<BrowserWindow>();
 
 function getFocusedWindow() {
@@ -828,6 +830,10 @@ function registerIpcHandlers(): void {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+  ipcMain.handle('modules:open-info', async (_event, module: unknown) => {
+    if (!module || typeof module !== 'object') throw new Error('模块信息无效。');
+    await moduleInfoWindow.open(module as Record<string, unknown>);
+  });
   ipcMain.handle('source-packages:export-project', async (_event, projectId: string, suggestedName?: string) => {
     try {
       const workspaceRoot = getShellWorkspaceRoot();
@@ -1126,6 +1132,12 @@ app.whenReady().then(async () => {
       : console.info(`[module-access] ${message}`)
   });
   registerIpcHandlers();
+  moduleInfoWindow = new ModuleInfoWindowService({
+    preloadPath: path.join(__dirname, 'preload.cjs'),
+    rendererOrigin: () => rendererOrigin,
+    userDataPath: app.getPath('userData'),
+    iconPath: !app.isPackaged && process.platform === 'win32' ? path.join(repoRoot(), 'image', 'lingbuilder-ide-icon-v1.ico') : undefined
+  });
   await createMainWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void createMainWindow();

@@ -68,6 +68,12 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   },
   modules: {
     importPackage: (sourcePath: string) => ipcRenderer.invoke('modules:import-package', sourcePath),
+    openInfo: (module: unknown) => ipcRenderer.invoke('modules:open-info', module),
+    onInfo: (listener: (module: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, module: unknown) => listener(module);
+      ipcRenderer.on('module-info:set', handler);
+      return () => ipcRenderer.removeListener('module-info:set', handler);
+    },
   },
   sourcePackages: {
     exportProject: (projectId: string, suggestedName?: string) => ipcRenderer.invoke('source-packages:export-project', projectId, suggestedName),

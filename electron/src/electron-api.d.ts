@@ -137,6 +137,8 @@ declare global {
       };
       modules?: {
         importPackage: (sourcePath: string) => Promise<{ ok: boolean; relativePath?: string; error?: string }>;
+        openInfo: (module: unknown) => Promise<void>;
+        onInfo: (listener: (module: unknown) => void) => () => void;
       };
       sourcePackages?: {
         exportProject: (projectId: string, suggestedName?: string) => Promise<{
