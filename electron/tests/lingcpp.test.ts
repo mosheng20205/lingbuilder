@@ -6,7 +6,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { applyWorkspaceEdit, applyWorkspaceEditToFiles, createWorkspaceEditChangeFromRewrite, proposeLingCppEdit } from '../src/services/lingCpp/aiEditService';
+import {
+  applyWorkspaceEdit,
+  applyWorkspaceEditToFiles,
+  areDesignerProjectsEquivalent,
+  createDesignerBeautificationFallback,
+  createWorkspaceEditChangeFromRewrite,
+  isDesignerBeautificationInstruction,
+  isDesignerEditInstruction,
+  proposeLingCppEdit,
+  validateDesignerProjectEdit
+} from '../src/services/lingCpp/aiEditService';
 import { findLingCppMethod, LING_CPP_KEYWORDS, LING_CPP_TYPES, parseLingCpp } from '../src/services/lingCpp/parser';
 import {
   buildLingCppLanguageContext,
@@ -4077,6 +4087,178 @@ test('proposeLingCppEdit supports multi-file workspace proposals and batched app
   assert.equal(appliedFiles.length, 2);
   assert.equal(appliedFiles.find(file => file.filePath === 'src/示例窗体.lcpp')?.sourceCode, mainUpdatedSource);
   assert.equal(appliedFiles.find(file => file.filePath === 'config/config.ini')?.sourceCode, configUpdatedSource);
+});
+
+test('AI 布局请求统一识别“美化界面”并要求完整设计器模型', () => {
+  assert.equal(isDesignerEditInstruction('美化界面'), true);
+  assert.equal(isDesignerBeautificationInstruction('当前的界面太乱了，帮我美化一下'), true);
+  assert.equal(isDesignerEditInstruction('优化错误处理'), false);
+
+  const designerProject: LingWindowProject = {
+    id: 'ai-designer-required', name: '布局契约测试', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: []
+    }]
+  };
+
+  const missingDesignerProposal = proposeLingCppEdit(
+    { filePath: 'src/MainWindow.lcpp', sourceCode: '旧源码', instruction: '美化界面', designerProject },
+    { updatedSource: '新源码' }
+  );
+  assert.notEqual(missingDesignerProposal.designerProject, undefined);
+  assert.equal(areDesignerProjectsEquivalent(missingDesignerProposal.designerProject, designerProject), false);
+
+  const sourceOnlyProposal = proposeLingCppEdit(
+    { filePath: 'src/MainWindow.lcpp', sourceCode: '旧源码', instruction: '优化错误处理', designerProject },
+    { updatedSource: '新源码' }
+  );
+  assert.equal(sourceOnlyProposal.designerProject, undefined);
+});
+
+test('AI 美化界面原样返回时的本地视觉方案保留布局身份与事件', () => {
+  const original: LingWindowProject = {
+    id: 'ai-designer-beautification', name: '视觉美化回退', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#1F2937', description: '', controls: [
+        {
+          id: 'title-label', type: 'Label', name: '标题', content: '原始标题',
+          width: 300, height: 36, x: 24, y: 24, fontSize: 16,
+          background: 'transparent', foreground: '#F8FAFC', isEnabled: true, visibility: 'Visible',
+          events: { Click: '标题_被单击' }
+        },
+        {
+          id: 'save-button', type: 'Button', name: '保存按钮', content: '保存',
+          width: 120, height: 36, x: 24, y: 86, fontSize: 12,
+          background: '#0369A1', foreground: '#FFFFFF', isEnabled: true, visibility: 'Visible',
+          events: { Click: '保存按钮_被单击' }, properties: { cornerRadius: 2 }
+        }
+      ]
+    }]
+  };
+
+  const beautified = createDesignerBeautificationFallback(original);
+  assert.equal(areDesignerProjectsEquivalent(original, beautified), false);
+  assert.equal(beautified.id, original.id);
+  assert.equal(beautified.windows[0].id, original.windows[0].id);
+  assert.equal(beautified.windows[0].controls.length, original.windows[0].controls.length);
+  assert.deepEqual(
+    beautified.windows[0].controls.map(control => ({ id: control.id, name: control.name, content: control.content, x: control.x, y: control.y, width: control.width, height: control.height, events: control.events })),
+    original.windows[0].controls.map(control => ({ id: control.id, name: control.name, content: control.content, x: control.x, y: control.y, width: control.width, height: control.height, events: control.events }))
+  );
+  assert.equal(beautified.windows[0].background, '#172033');
+  assert.equal(beautified.windows[0].controls[0].fontBold, true);
+  assert.equal(beautified.windows[0].controls[1].fontBold, true);
+  assert.equal(beautified.windows[0].controls[1].properties?.cornerRadius, 8);
+});
+
+test('AI 设计器提案保留旧 Upload 控件并允许新增进度条', () => {
+  const original: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'ai-designer-upload-compat',
+    name: 'AI 设计器兼容测试',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '',
+      controls: [{
+        id: 'upload-1', type: 'Upload', name: '普通上传', content: '选择文件',
+        width: 180, height: 36, x: 24, y: 24, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+      }]
+    }]
+  };
+  const candidate: LingWindowProject = {
+    ...original,
+    windows: [{
+      ...original.windows[0],
+      controls: [
+        { ...original.windows[0].controls[0], x: 40 },
+        {
+          id: 'progress-1', type: 'ProgressBar', name: '下载进度', content: '50',
+          width: 280, height: 20, x: 40, y: 82, fontSize: 12,
+          background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+          properties: { minimum: 0, maximum: 100, value: 50 }
+        }
+      ]
+    }]
+  };
+
+  const proposal = proposeLingCppEdit(
+    { filePath: 'src/MainWindow.lcpp', sourceCode: '旧源码', instruction: '在窗口中增加进度条', designerProject: original },
+    { updatedSource: '新源码', designerProject: candidate, summary: '增加下载进度条' }
+  );
+
+  assert.equal(proposal.designerProject?.windows[0].controls[0].type, 'Upload');
+  assert.equal(proposal.designerProject?.windows[0].controls[1].type, 'ProgressBar');
+  assert.equal(proposal.designerProject?.windows[0].controls[1].properties?.value, 50);
+});
+
+test('AI 宽泛美化提案在模型未产生变化时使用本地视觉方案', () => {
+  const designerProject: LingWindowProject = {
+    id: 'ai-designer-unchanged', name: '未变化模型', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: []
+    }]
+  };
+
+  const proposal = proposeLingCppEdit(
+    {
+      projectId: designerProject.id,
+      filePath: 'src/MainWindow.lcpp', sourceCode: '旧源码', instruction: '美化界面', designerProject
+    },
+    { updatedSource: '新源码', designerProject: JSON.parse(JSON.stringify(designerProject)) }
+  );
+  assert.notEqual(proposal.designerProject, undefined);
+  assert.equal(areDesignerProjectsEquivalent(proposal.designerProject, designerProject), false);
+});
+
+test('AI 设计器提案拒绝当前项目与模型 ID 不一致', () => {
+  const designerProject: LingWindowProject = {
+    id: 'designer-project', name: '错配模型', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: []
+    }]
+  };
+  const candidate: LingWindowProject = {
+    ...designerProject,
+    windows: [{ ...designerProject.windows[0], width: 700 }]
+  };
+
+  assert.throws(
+    () => proposeLingCppEdit(
+      {
+        projectId: 'current-project',
+        filePath: 'src/MainWindow.lcpp', sourceCode: '旧源码', instruction: '调整窗口宽度', designerProject
+      },
+      { updatedSource: '新源码', designerProject: candidate }
+    ),
+    /项目与模型不匹配/u
+  );
+});
+
+test('AI 设计器提案仍拒绝新注入的未知控件类型', () => {
+  const original: LingWindowProject = {
+    id: 'ai-designer-unknown-type', name: '未知类型校验',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: []
+    }]
+  };
+  const candidate = {
+    ...original,
+    windows: [{
+      ...original.windows[0],
+      controls: [{
+        id: 'unknown-1', type: 'UnknownInjectedControl', name: '非法控件', content: '',
+        width: 100, height: 30, x: 0, y: 0, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+      }]
+    }]
+  } as unknown as LingWindowProject;
+
+  assert.throws(
+    () => validateDesignerProjectEdit(original, candidate),
+    /不受支持的类型/u
+  );
 });
 
 test('createWorkspaceEditChangeFromRewrite keeps range tightly scoped', () => {

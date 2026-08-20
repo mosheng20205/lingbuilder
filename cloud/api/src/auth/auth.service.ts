@@ -22,7 +22,7 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email } }); if (existing) this.fail('该邮箱已注册。', 'IDEMPOTENCY_CONFLICT', 409);
     const user = await this.prisma.user.create({ data: { email, passwordHash: await argon2.hash(password, { type: argon2.argon2id }), creditAccount: { create: {} } } });
     const token = randomToken(); await this.prisma.emailVerificationToken.create({ data: { userId: user.id, tokenHash: hashOpaqueToken(token), expiresAt: new Date(Date.now() + 30 * 60_000) } });
-    await this.sendMail(email, '验证 LingBuilder 账号', `验证码链接：${process.env.CLOUD_API_ORIGIN || 'http://127.0.0.1:17900'}/verify-email?token=${encodeURIComponent(token)}`);
+    await this.sendMail(email, '验证 LingBuilder 账号', `验证码链接：${process.env.CLOUD_API_ORIGIN || 'http://127.0.0.1:17900'}/v1/auth/verify-email?token=${encodeURIComponent(token)}`);
     return { ok: true, userId: user.id, verificationRequired: true, ...(process.env.NODE_ENV === 'development' ? { developmentVerificationToken: token } : {}) };
   }
 
@@ -50,14 +50,30 @@ export class AuthService {
   async setupMfa(userId: string, email: string) {
     const membership = await this.prisma.adminMembership.findUnique({ where: { userId } });
     if (!membership) this.fail('只有管理员账号可以绑定 MFA。', 'FORBIDDEN', 403);
-    const secret = authenticator.generateSecret();
-    await this.prisma.adminMembership.update({ where: { userId }, data: { mfaSecretEncrypted: this.vault.encrypt(secret), mfaEnabledAt: null } });
+    if (membership.mfaEnabledAt && membership.mfaSecretEncrypted) this.fail('MFA 已绑定；如需更换请先解绑，避免验证器中出现重复令牌。', 'IDEMPOTENCY_CONFLICT', 409);
+    // 幂等：已生成但未启用的密钥直接复用，避免反复进入设置页时生成大量重复令牌。
+    const secret = membership.mfaSecretEncrypted ? this.vault.decrypt(membership.mfaSecretEncrypted) : authenticator.generateSecret();
+    if (!membership.mfaSecretEncrypted) await this.prisma.adminMembership.update({ where: { userId }, data: { mfaSecretEncrypted: this.vault.encrypt(secret) } });
     return { ok: true, otpauthUrl: authenticator.keyuri(email, 'LingBuilder Admin', secret) };
+  }
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !await argon2.verify(user.passwordHash, currentPassword)) this.fail('当前密码不正确。', 'AUTH_INVALID', 401);
+    this.validatePassword(newPassword);
+    await this.prisma.$transaction([this.prisma.user.update({ where: { id: userId }, data: { passwordHash: await argon2.hash(newPassword, { type: argon2.argon2id }), mustChangePassword: false } }), this.prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } })]);
+    return { ok: true, reloginRequired: true };
   }
   async enableMfa(userId: string, code: string) {
     const membership = await this.prisma.adminMembership.findUnique({ where: { userId } });
     if (!membership?.mfaSecretEncrypted || !authenticator.check(code, this.vault.decrypt(membership.mfaSecretEncrypted))) this.fail('MFA 动态验证码无效。', 'MFA_REQUIRED', 403);
     await this.prisma.adminMembership.update({ where: { userId }, data: { mfaEnabledAt: new Date() } });
+    await this.prisma.authSession.updateMany({ where: { userId }, data: { revokedAt: new Date() } });
+    return { ok: true, reloginRequired: true };
+  }
+  async disableMfa(userId: string, code: string) {
+    const membership = await this.prisma.adminMembership.findUnique({ where: { userId } });
+    if (!membership?.mfaSecretEncrypted || !authenticator.check(code, this.vault.decrypt(membership.mfaSecretEncrypted))) this.fail('MFA 动态验证码无效。', 'MFA_REQUIRED', 403);
+    await this.prisma.adminMembership.update({ where: { userId }, data: { mfaEnabledAt: null, mfaSecretEncrypted: null } });
     await this.prisma.authSession.updateMany({ where: { userId }, data: { revokedAt: new Date() } });
     return { ok: true, reloginRequired: true };
   }
@@ -98,5 +114,5 @@ export class AuthService {
   }
   private async issueSession(userId: string, email: string, deviceName: string, ip: string, userAgent: string, mfa: boolean) { const refreshToken = randomToken(); const familyId = crypto.randomUUID(); await this.prisma.authSession.create({ data: { userId, familyId, refreshTokenHash: hashOpaqueToken(refreshToken), deviceName: deviceName.slice(0, 120) || 'LingBuilder', ipAddress: ip, userAgent: userAgent.slice(0, 500), expiresAt: new Date(Date.now() + 30 * 86400_000) } }); return { accessToken: await this.signAccessToken(userId, email, mfa), refreshToken, expiresIn: 900 }; }
   private async signAccessToken(userId: string, email: string, mfa: boolean) { return await this.jwt.signAsync({ sub: userId, email, mfa }, { expiresIn: '15m' }); }
-  private async sendMail(to: string, subject: string, text: string) { const config = getConfig(); const transport = nodemailer.createTransport({ host: config.smtpHost, port: config.smtpPort, secure: false }); await transport.sendMail({ from: config.smtpFrom, to, subject, text }); }
+  private async sendMail(to: string, subject: string, text: string) { const config = getConfig(); const transport = nodemailer.createTransport({ host: config.smtpHost, port: config.smtpPort, secure: config.smtpSecure, ...(config.smtpUser ? { auth: { user: config.smtpUser, pass: config.smtpPassword } } : {}) }); await transport.sendMail({ from: config.smtpFrom, to, subject, text }); }
 }

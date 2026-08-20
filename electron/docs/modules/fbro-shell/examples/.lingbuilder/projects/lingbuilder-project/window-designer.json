@@ -193,7 +193,9 @@
           "bottom": 6
         },
         "cornerRadius": 10
-      }
+      },
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false
     }
   ]
 }

@@ -9,6 +9,17 @@ type JsonRecord = Record<string, unknown>;
 export class WebsiteContentService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
+  /** 供客户端检查更新的轻量公开接口：只返回最新发布版本的版本号等最小信息。 */
+  async latestVersion(input: { platform: string; architecture: string; channel: string }) {
+    const release = await this.prisma.websiteDownloadRelease.findFirst({
+      where: { publicationStatus: 'PUBLISHED', channel: input.channel || 'stable', platform: input.platform || 'Windows', architecture: input.architecture || 'x64' },
+      orderBy: [{ sortOrder: 'desc' }, { publishedAt: 'desc' }],
+      select: { version: true, title: true, summary: true, publishedAt: true }
+    });
+    if (!release) return { ok: true, available: false };
+    return { ok: true, available: true, version: release.version, title: release.title, summary: release.summary, publishedAt: release.publishedAt };
+  }
+
   async publicBootstrap() {
     const [downloads, guides, demos, groups] = await Promise.all([
       this.prisma.websiteDownloadRelease.findMany({

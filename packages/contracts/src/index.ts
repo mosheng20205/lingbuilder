@@ -11,6 +11,10 @@ export interface LogicalAiModel {
   inputPointsPerMillion: string;
   cachedInputPointsPerMillion: string;
   outputPointsPerMillion: string;
+  /** 高峰时段费率（北京时间高峰窗口内生效）；未配置时省略。 */
+  peakInputPointsPerMillion?: string;
+  peakCachedInputPointsPerMillion?: string;
+  peakOutputPointsPerMillion?: string;
   enabled: boolean;
 }
 
@@ -26,6 +30,8 @@ export interface AiEditRequest extends AiChatRequest {
   activeFilePath: string;
   instruction: string;
   files: AiContextFile[];
+  /** 当前完整窗口设计器模型；仅窗口项目编辑请求使用。 */
+  designerProject?: Record<string, unknown>;
 }
 
 export interface UsageReceipt {
@@ -108,7 +114,7 @@ export interface ModuleOrder {
 export type AiStreamEvent =
   | { type: 'accepted'; requestId: string; reservedPoints: string; freePromotionId?: string }
   | { type: 'delta'; requestId: string; text: string }
-  | { type: 'edit_draft'; requestId: string; files: Array<{ filePath: string; updatedSource: string }> }
+  | { type: 'edit_draft'; requestId: string; files: Array<{ filePath: string; updatedSource: string }>; designerProject?: Record<string, unknown>; instruction?: string }
   | { type: 'usage'; requestId: string; receipt: UsageReceipt }
   | { type: 'completed'; requestId: string }
   | { type: 'error'; requestId: string; code: CloudErrorCode; message: string; retryable: boolean };

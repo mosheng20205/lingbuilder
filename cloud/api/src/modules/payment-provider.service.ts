@@ -2,17 +2,19 @@ import crypto from 'node:crypto';
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 
 export type PaymentProviderId = 'WECHAT' | 'ALIPAY';
-export interface PaymentGatewayResponse { providerOrderId: string; paymentUrl: string }
+export interface PaymentGatewayResponse { providerOrderId: string; paymentUrl: string; paymentForm?: string }
 export interface VerifiedPaymentEvent { eventId: string; providerOrderId: string; status: 'paid' | 'refunded'; amountMinor: string; currency: string }
 export type PaymentHeaders = Record<string, string | string[] | undefined>;
 
 @Injectable()
 export class PaymentProviderService implements OnModuleInit {
   onModuleInit() {
-    if (process.env.NODE_ENV !== 'production') return;
+    if (process.env.NODE_ENV !== 'production' || !paymentsEnabled()) return;
     const status = this.configurationStatus();
-    const missing = status.providers.filter(item => !item.ready).map(item => `${item.label}：${item.missing.join('、')}`);
-    if (missing.length) throw new Error(`生产支付配置不完整：${missing.join('；')}`);
+    if (!status.providers.some(item => item.ready)) {
+      const missing = status.providers.map(item => `${item.label}：${item.missing.join('、')}`).join('；');
+      throw new Error(`生产支付已启用但没有任何可用渠道：${missing}`);
+    }
   }
 
   configurationStatus() {
@@ -25,11 +27,13 @@ export class PaymentProviderService implements OnModuleInit {
       return { id: id.toLowerCase(), label, mode: 'official-direct', ready: missing.length === 0, missing: [...new Set(missing)] };
     };
     const providers = [provider('WECHAT', '微信支付 Native', wechatRequired), provider('ALIPAY', '支付宝当面付', alipayRequired)];
-    return { ready: providers.every(item => item.ready), providers };
+    return { ready: providers.some(item => item.ready), providers };
   }
 
   async createOrder(provider: PaymentProviderId, order: { id: string; subject: string; amountMinor: bigint; expiresAt: Date }): Promise<PaymentGatewayResponse> {
-    return provider === 'WECHAT' ? await this.createWechatOrder(order) : await this.createAlipayOrder(order);
+    if (!paymentsEnabled()) throw gatewayFailure('收费模块支付尚未启用。');
+    if (provider === 'WECHAT') return await this.createWechatOrder(order);
+    return alipayMode() === 'page' ? this.createAlipayPageOrder(order) : await this.createAlipayOrder(order);
   }
 
   verifyWebhook(provider: PaymentProviderId, rawBody: string, headers: PaymentHeaders): VerifiedPaymentEvent {
@@ -59,6 +63,37 @@ export class PaymentProviderService implements OnModuleInit {
     const value: any = parseJson(rawResponse);
     if (!response.ok || typeof value.code_url !== 'string') throw gatewayFailure(value.message || value.code || '微信支付创建订单失败。');
     return { providerOrderId: order.id, paymentUrl: value.code_url };
+  }
+
+  /** 电脑网站支付（alipay.trade.page.pay）：返回签名后的表单字段 JSON，由受控支付页渲染并自动提交到支付宝收银台。 */
+  buildAlipayPageForm(order: { id: string; subject: string; amountMinor: bigint; expiresAt: Date }): string {
+    const config = this.alipayConfig();
+    if (!config.returnUrl || (process.env.NODE_ENV === 'production' && !config.returnUrl.startsWith('https://'))) throw gatewayFailure('电脑网站支付需要配置 HTTPS 的 ALIPAY_RETURN_URL。');
+    const params: Record<string, string> = {
+      app_id: config.appId,
+      method: 'alipay.trade.page.pay',
+      format: 'JSON',
+      charset: 'utf-8',
+      sign_type: 'RSA2',
+      timestamp: formatChinaTimestamp(new Date()),
+      version: '1.0',
+      notify_url: config.notifyUrl,
+      return_url: config.returnUrl,
+      biz_content: JSON.stringify({ out_trade_no: order.id, total_amount: minorToDecimal(order.amountMinor), subject: order.subject.slice(0, 256), product_code: 'FAST_INSTANT_TRADE_PAY', timeout_express: '15m' })
+    };
+    params.sign = crypto.sign('RSA-SHA256', Buffer.from(canonicalAlipay(params)), config.merchantPrivateKey).toString('base64');
+    return JSON.stringify(params);
+  }
+
+  private async createAlipayPageOrder(order: { id: string; subject: string; amountMinor: bigint; expiresAt: Date }) {
+    const form = this.buildAlipayPageForm(order);
+    return { providerOrderId: order.id, paymentUrl: `${this.paymentPageOrigin()}/v1/credits/recharge/${order.id}/pay-page`, paymentForm: form };
+  }
+
+  private paymentPageOrigin() {
+    const origin = process.env.CLOUD_API_ORIGIN?.trim();
+    if (origin && origin.startsWith('https://')) return origin;
+    throw gatewayFailure('电脑网站支付需要配置 HTTPS 的 CLOUD_API_ORIGIN。');
   }
 
   private async createAlipayOrder(order: { id: string; subject: string; amountMinor: bigint; expiresAt: Date }) {
@@ -147,10 +182,12 @@ export class PaymentProviderService implements OnModuleInit {
   }
 
   private alipayConfig() {
-    return { appId: required('ALIPAY_APP_ID'), merchantPrivateKey: crypto.createPrivateKey(pem('ALIPAY_PRIVATE_KEY_PEM')), alipayPublicKey: crypto.createPublicKey(pem('ALIPAY_PUBLIC_KEY_PEM')), notifyUrl: requiredHttps('ALIPAY_NOTIFY_URL'), gatewayUrl: process.env.ALIPAY_GATEWAY_URL?.trim() || 'https://openapi.alipay.com/gateway.do', sellerId: process.env.ALIPAY_SELLER_ID?.trim() || '' };
+    return { appId: required('ALIPAY_APP_ID'), merchantPrivateKey: crypto.createPrivateKey(pem('ALIPAY_PRIVATE_KEY_PEM')), alipayPublicKey: crypto.createPublicKey(pem('ALIPAY_PUBLIC_KEY_PEM')), notifyUrl: requiredHttps('ALIPAY_NOTIFY_URL'), returnUrl: process.env.ALIPAY_RETURN_URL?.trim() || '', gatewayUrl: process.env.ALIPAY_GATEWAY_URL?.trim() || 'https://openapi.alipay.com/gateway.do', sellerId: process.env.ALIPAY_SELLER_ID?.trim() || '' };
   }
 }
 
+function paymentsEnabled() { return String(process.env.PAYMENTS_ENABLED || 'true').trim().toLowerCase() !== 'false'; }
+function alipayMode() { const mode = String(process.env.ALIPAY_MODE || 'page').trim().toLowerCase(); return mode === 'qr' ? 'qr' : 'page'; }
 function required(name: string) { const value = process.env[name]?.trim(); if (!value) throw gatewayFailure(`缺少支付配置 ${name}。`); return value; }
 function pem(name: string) { return required(name).replace(/\\n/gu, '\n'); }
 function requiredHttps(name: string) { const value = required(name); if (process.env.NODE_ENV === 'production' && !value.startsWith('https://')) throw gatewayFailure(`${name} 必须使用 HTTPS。`); return value; }

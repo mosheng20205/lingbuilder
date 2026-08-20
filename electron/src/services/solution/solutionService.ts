@@ -8,7 +8,7 @@ import { ExternalProjectService, validateProperties, type ExternalProjectPropert
 import { writeSolutionEntry } from './solutionEntryFile';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, PROJECT_GLOBALS_FILE_NAME } from '../lingCpp/projectGlobalService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '../lingCpp/projectDataTypeService';
-import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
+import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, isProjectBuildArtifactRelativePath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
 import type { Win32ControlPropertyValue } from '../windowDesigner/win32ControlRegistry';
 import { createWindowsDllProjectFiles } from './windowsDllProjectService';
 
@@ -512,7 +512,7 @@ export class SolutionService {
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       const temporaryPath = `${targetPath}.${process.pid}.${++solutionWriteSerial}.tmp`;
       await fs.writeFile(temporaryPath, JSON.stringify(normalized, null, 2), 'utf8');
-      await fs.rename(temporaryPath, targetPath);
+      await replaceFile(temporaryPath, targetPath);
       await writeSolutionEntry(this.workspaceRoot, normalized);
     });
   }
@@ -528,6 +528,16 @@ export class SolutionService {
       throw new Error(`路径越界：${relativePath}`);
     }
     return resolved;
+  }
+}
+
+async function replaceFile(sourcePath: string, targetPath: string): Promise<void> {
+  try {
+    await fs.rename(sourcePath, targetPath);
+  } catch (error: any) {
+    if (!['EEXIST', 'EPERM', 'ENOTEMPTY'].includes(error?.code)) throw error;
+    await fs.rm(targetPath, { force: true });
+    await fs.rename(sourcePath, targetPath);
   }
 }
 
@@ -1127,6 +1137,8 @@ async function collectTextFiles(
   nestedWorkspacePlan?: NestedWorkspaceArtifactPlan
 ): Promise<void> {
   if (nestedWorkspacePlan && isNestedWorkspaceArtifactPath(directory, nestedWorkspacePlan)) return;
+  const relativeDirectory = path.relative(workspaceRoot, directory).replace(/\\/g, '/');
+  if (isProjectBuildArtifactRelativePath(relativeDirectory)) return;
   if (!(await exists(directory))) return;
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
@@ -1136,8 +1148,9 @@ async function collectTextFiles(
       await collectTextFiles(workspaceRoot, targetPath, files, nestedWorkspacePlan);
       continue;
     }
-    if (!/\.(cpp|h|rc|ini|lcpp|e|xml|json)$/i.test(entry.name)) continue;
     const relativePath = path.relative(workspaceRoot, targetPath).replace(/\\/g, '/');
+    if (isProjectBuildArtifactRelativePath(relativePath)) continue;
+    if (!/\.(cpp|h|rc|ini|lcpp|e|xml|json)$/i.test(entry.name)) continue;
     files[relativePath] = decodeTextFile(await fs.readFile(targetPath));
   }
 }

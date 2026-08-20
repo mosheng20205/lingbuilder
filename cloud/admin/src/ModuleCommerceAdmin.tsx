@@ -46,13 +46,14 @@ export function ModuleCommerceAdmin({ data, request, reload }: Props) {
       {products.length > 0 && <>
         <div className="commerce-divider"/>
         <div className="commerce-form"><Field label="当前商品"><select value={productId} onChange={event => setProductId(event.target.value)}>{products.map((item: any) => <option key={item.id} value={item.id}>{item.name} · {item.moduleId}</option>)}</select></Field></div>
-        <form className="commerce-form" onSubmit={event => { event.preventDefault(); const value = Object.fromEntries(new FormData(event.currentTarget).entries()); void act(() => request(`/v1/admin/modules/products/${encodeURIComponent(productId)}/offers`, { method: 'POST', body: JSON.stringify(value) }), '报价已创建。'); }}>
-          <Field label="报价名称"><input name="name" required/></Field>
+        <form className="commerce-form" onSubmit={event => { event.preventDefault(); const value: any = Object.fromEntries(new FormData(event.currentTarget).entries()); const yuan = Number(value.priceYuan); if (!Number.isFinite(yuan) || yuan <= 0) { setMessage('请输入大于 0 的价格。'); return; } delete value.priceYuan; void act(() => request(`/v1/admin/modules/products/${encodeURIComponent(productId)}/offers`, { method: 'POST', body: JSON.stringify({ ...value, priceMinor: Math.round(yuan * 100) }) }), '报价已创建。'); }}>
+          <Field label="报价名称"><input name="name" required placeholder="如：永久授权 / 年度订阅"/></Field>
           <Field label="授权类型"><select name="kind"><option value="perpetual">永久买断</option><option value="fixed_term">固定期限</option></select></Field>
-          <Field label="价格（人民币分）"><input name="priceMinor" type="number" min="1" required/></Field>
-          <Field label="授权天数"><input name="durationDays" type="number" min="1" placeholder="买断可留空"/></Field>
+          <Field label="价格（元）"><input name="priceYuan" type="number" step="0.01" min="0.01" required placeholder="如 99.00"/></Field>
+          <Field label="授权天数"><input name="durationDays" type="number" min="1" placeholder="买断可留空；期限必填，如 365"/></Field>
           <button className="primary" disabled={busy}>新增报价</button>
         </form>
+        {product?.offers?.length > 0 && <div className="offer-chips" aria-label="当前商品报价">{product.offers.map((offer: any) => <span key={offer.id} className={offer.enabled ? 'badge ok' : 'badge off'}>{offer.name} · ¥{(Number(offer.priceMinor) / 100).toFixed(2)}{offer.kind === 'FIXED_TERM' && offer.durationDays ? ` · ${offer.durationDays} 天` : offer.kind === 'PERPETUAL' ? ' · 永久' : ''}</span>)}</div>}
         <form className="commerce-form" onSubmit={event => { event.preventDefault(); const name = String(new FormData(event.currentTarget).get('name') || '模块限时免费'); void act(() => request(`/v1/admin/modules/products/${encodeURIComponent(productId)}/free-windows`, { method: 'POST', body: JSON.stringify({ name, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), timezone: 'Asia/Shanghai', enabled: true }) }), '限免时段已创建。'); }}>
           <Field label="限免活动名称"><input name="name" required defaultValue="模块免费体验日"/></Field>
           <Field label="开始时间"><input type="datetime-local" required value={start} onChange={event => schedule24Hours(event.target.value)}/></Field>
@@ -110,7 +111,8 @@ function Artifacts({ rows, busy, onToggle }: { rows: any[]; busy: boolean; onTog
 }
 function Orders({ rows }: { rows: any[] }) {
   const [query, setQuery] = useState(''); const filtered = useFiltered(rows, query);
-  return <section className="panel"><Heading eyebrow="ORDERS" title="模块订单" detail="查询微信、支付宝订单的支付状态和快照金额。"/><Table title="最近订单" query={query} setQuery={setQuery}><table><thead><tr><th>创建时间</th><th>用户</th><th>模块</th><th>报价</th><th>渠道</th><th>金额</th><th>状态</th><th>订单号</th></tr></thead><tbody>{filtered.map(row => <tr key={row.id}><td>{format(row.createdAt)}</td><td>{row.user?.email}</td><td>{row.product?.moduleId}</td><td>{row.offer?.name}</td><td>{row.provider}</td><td>¥{(Number(row.amountMinor) / 100).toFixed(2)}</td><td>{row.status}</td><td className="hash">{row.id}</td></tr>)}</tbody></table>{!filtered.length && <Empty text="尚无模块订单"/>}</Table></section>;
+  const statusBadge = (status: string) => status === 'PAID' ? <span className="badge ok">已支付</span> : status === 'PENDING' ? <span className="badge warn">待支付</span> : status === 'REFUNDED' ? <span className="badge danger">已退款</span> : <span className="badge off">已取消</span>;
+  return <section className="panel"><Heading eyebrow="ORDERS" title="模块订单" detail="查询微信、支付宝订单的支付状态和快照金额。"/><Table title="最近订单" query={query} setQuery={setQuery}><table><thead><tr><th>创建时间</th><th>用户</th><th>模块</th><th>报价</th><th>渠道</th><th>金额</th><th>状态</th><th>订单号</th></tr></thead><tbody>{filtered.map(row => <tr key={row.id}><td>{format(row.createdAt)}</td><td>{row.user?.email}</td><td>{row.product?.moduleId}</td><td>{row.offer?.name}</td><td>{row.provider === 'ALIPAY' ? '支付宝' : row.provider === 'WECHAT' ? '微信' : row.provider}</td><td className="num">¥{(Number(row.amountMinor) / 100).toFixed(2)}</td><td>{statusBadge(row.status)}</td><td className="hash">{row.id}</td></tr>)}</tbody></table>{!filtered.length && <Empty text="尚无模块订单"/>}</Table></section>;
 }
 function Table({ title, query, setQuery, children }: { title: string; query: string; setQuery: (value: string) => void; children: React.ReactNode }) { return <div className="commerce-table"><div className="commerce-table-head"><h3>{title}</h3><label className="search"><Search size={16}/><span className="sr-only">筛选{title}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="筛选当前列表"/></label></div><div className="table-wrap">{children}</div></div>; }
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div>; }

@@ -71,3 +71,114 @@ test('Git service scopes status and path operations to a nested workspace', asyn
   const staged = await git(root, ['diff', '--cached', '--name-only']); assert.equal(staged.stdout.trim().replace(/\\/gu, '/'), 'sub/inside.txt');
   const outside = await git(root, ['diff', '--name-only']); assert.equal(outside.stdout.trim(), 'outside.txt');
 });
+
+test('Git service manages stashes end to end with validation', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-stash-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Stash']); await git(root, ['config', 'user.email', 'stash@example.com']);
+  await fs.writeFile(path.join(root, 'main.lcpp'), '第一版\n', 'utf8'); await git(root, ['add', 'main.lcpp']); await git(root, ['commit', '-m', '初始']);
+  const service = new GitService(root);
+  await assert.rejects(service.stashSave(''), /没有可贮藏的更改/u);
+  await assert.rejects(service.stashApply(1000), /贮藏索引/u);
+  await assert.rejects(service.stashSave('a'.repeat(501)), /贮藏说明/u);
+
+  await fs.appendFile(path.join(root, 'main.lcpp'), '第二行\n'); await fs.writeFile(path.join(root, 'notes.txt'), '未跟踪\n');
+  let stashes = await service.stashSave('中文贮藏说明', true);
+  assert.equal(stashes.length, 1); assert.equal(stashes[0].index, 0); assert.match(stashes[0].message, /中文贮藏说明/u); assert.ok(stashes[0].createdAt);
+  assert.equal((await fs.readFile(path.join(root, 'main.lcpp'), 'utf8')), '第一版\n');
+  assert.equal((await service.status()).files.length, 0);
+
+  await service.stashApply(0);
+  assert.equal(await fs.readFile(path.join(root, 'main.lcpp'), 'utf8'), '第一版\n第二行\n');
+  assert.match(await fs.readFile(path.join(root, 'notes.txt'), 'utf8'), /未跟踪/u);
+  assert.equal((await service.stashList()).length, 1);
+
+  await service.discard(['main.lcpp']); await service.discard(['notes.txt']);
+  await service.stashApply(0, true);
+  assert.equal((await service.stashList()).length, 0);
+  assert.match(await fs.readFile(path.join(root, 'main.lcpp'), 'utf8'), /第二行/u);
+
+  await fs.appendFile(path.join(root, 'main.lcpp'), '第三行\n');
+  await service.stashSave(undefined, false);
+  const afterDrop = await service.stashDrop(0);
+  assert.equal(afterDrop.length, 0);
+});
+
+test('Git service creates, lists and deletes lightweight and annotated tags', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-tag-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'user.name', 'Tag']); await git(root, ['config', 'user.email', 'tag@example.com']);
+  await fs.writeFile(path.join(root, 'a.txt'), 'a\n', 'utf8'); await git(root, ['add', 'a.txt']); await git(root, ['commit', '-m', '初始']);
+  const service = new GitService(root);
+  let tags = await service.createTag('v1.0.0');
+  assert.equal(tags.length, 1); assert.equal(tags[0].name, 'v1.0.0'); assert.equal(tags[0].commit.length, 40);
+  tags = await service.createTag('v2.0.0', '发布说明');
+  assert.equal(tags.length, 2);
+  assert.equal(tags.find(item => item.name === 'v2.0.0')?.subject, '发布说明');
+  tags = await service.deleteTag('v1.0.0');
+  assert.equal(tags.some(item => item.name === 'v1.0.0'), false);
+  assert.equal(tags.some(item => item.name === 'v2.0.0'), true);
+  await assert.rejects(service.createTag('bad name'), /标签名称/u);
+  await assert.rejects(service.createTag('-bad'), /标签名称/u);
+  await assert.rejects(service.createTag('a..b'), /标签名称/u);
+  await assert.rejects(service.createTag('v1', 'x'.repeat(2001)), /标签说明/u);
+});
+
+test('Git service diff returns original and modified contents for side-by-side rendering', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-diff2-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'user.name', 'Diff']); await git(root, ['config', 'user.email', 'diff@example.com']);
+  await fs.writeFile(path.join(root, 'main.lcpp'), '第一行\n', 'utf8'); await git(root, ['add', 'main.lcpp']); await git(root, ['commit', '-m', '初始']);
+  const service = new GitService(root);
+
+  await fs.appendFile(path.join(root, 'main.lcpp'), '第二行\n');
+  let diff = await service.diff('main.lcpp', false);
+  assert.equal(diff.original, '第一行\n'); assert.equal(diff.modified, '第一行\n第二行\n'); assert.equal(diff.language, 'lingcpp'); assert.equal(diff.binary, false);
+
+  await service.stage(['main.lcpp']);
+  diff = await service.diff('main.lcpp', true);
+  assert.equal(diff.original, '第一行\n'); assert.equal(diff.modified, '第一行\n第二行\n');
+
+  await fs.writeFile(path.join(root, 'new.lcpp'), '全新文件\n', 'utf8');
+  diff = await service.diff('new.lcpp', false);
+  assert.equal(diff.original, ''); assert.equal(diff.modified, '全新文件\n');
+
+  await fs.unlink(path.join(root, 'main.lcpp'));
+  diff = await service.diff('main.lcpp', false);
+  assert.equal(diff.modified, ''); assert.equal(diff.original, '第一行\n第二行\n');
+});
+
+test('Git service stages and unstages everything including unborn repositories via bulk operations', async t => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-bulk-')); t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = path.join(parent, 'workspace'); await fs.mkdir(root);
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Bulk']); await git(root, ['config', 'user.email', 'bulk@example.com']);
+  const service = new GitService(root);
+
+  await fs.writeFile(path.join(root, 'a.txt'), 'a\n', 'utf8'); await fs.writeFile(path.join(root, 'b.txt'), 'b\n', 'utf8');
+  let status = await service.stageAll();
+  assert.equal(status.files.length, 2); assert.equal(status.files.every(item => item.indexStatus === 'A'), true);
+  status = await service.unstageAll();
+  assert.equal(status.files.length, 2); assert.equal(status.files.every(item => item.workingTreeStatus === '?'), true);
+
+  await service.stageAll(); await service.commit('首个提交');
+  await fs.appendFile(path.join(root, 'a.txt'), '修改\n'); await fs.writeFile(path.join(root, 'c.txt'), 'c\n', 'utf8');
+  status = await service.stageAll();
+  assert.equal(status.files.length, 2); assert.equal(status.files.every(item => Boolean(item.indexStatus)), true);
+  status = await service.unstageAll();
+  assert.equal(status.files.filter(item => Boolean(item.indexStatus) && item.indexStatus !== '?').length, 0);
+  assert.equal(status.files.length, 2); assert.equal(status.files.find(item => item.path === 'a.txt')?.workingTreeStatus, 'M');
+});
+
+test('Git service bulk stage and unstage respect a nested workspace scope', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-bulk-nested-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'sub'); await fs.mkdir(workspace);
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Nested']); await git(root, ['config', 'user.email', 'nested@example.com']);
+  await fs.writeFile(path.join(root, 'outside.txt'), 'base\n'); await fs.writeFile(path.join(workspace, 'inside.txt'), 'base\n'); await git(root, ['add', '.']); await git(root, ['commit', '-m', 'base']);
+  await fs.appendFile(path.join(root, 'outside.txt'), 'outside\n'); await fs.appendFile(path.join(workspace, 'inside.txt'), 'inside\n');
+
+  const service = new GitService(workspace);
+  let status = await service.stageAll();
+  assert.deepEqual(status.files.map(item => item.path), ['inside.txt']);
+  assert.equal(status.files.every(item => Boolean(item.indexStatus)), true);
+  const staged = await git(root, ['diff', '--cached', '--name-only']); assert.equal(staged.stdout.trim().replace(/\\/gu, '/'), 'sub/inside.txt');
+  status = await service.unstageAll();
+  assert.equal(status.files.find(item => item.path === 'inside.txt')?.workingTreeStatus, 'M');
+  assert.equal(status.files.find(item => item.path === 'inside.txt')?.indexStatus, '');
+});

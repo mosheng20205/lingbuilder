@@ -1,4 +1,5 @@
 import { LingCppModuleContext } from '../modules/types';
+import type { LingWindowProject } from '../windowDesigner/types';
 
 export type LingCppAccessModifier = '公开' | '私有' | '保护';
 
@@ -238,6 +239,10 @@ export interface WorkspaceEditProposal {
   createdAt: string;
   changes: WorkspaceEditChange[];
   explanation: string;
+  /** AI 对窗口设计器的完整模型替换；缺省表示本次没有设计器改动。 */
+  designerProject?: LingWindowProject;
+  /** 生成提案时的设计器快照，用于应用前检测外部修改。 */
+  designerProjectOriginal?: LingWindowProject;
 }
 
 export interface LingCppWorkspaceFile {
@@ -275,10 +280,13 @@ export interface LingCppEditContext {
   filePath: string;
   sourceCode: string;
   instruction: string;
+  /** 当前活动解决方案项目 ID；用于阻止跨项目设计器模型混用。 */
+  projectId?: string;
   selection?: WorkspaceEditRange;
   workspaceFiles?: LingCppWorkspaceFile[];
   moduleContext?: LingCppModuleContext;
   aiConfig?: AiConnectionConfig;
+  designerProject?: LingWindowProject;
 }
 
 export interface LingCppEditDraftFile {
@@ -291,6 +299,7 @@ export interface LingCppEditDraft {
   explanation?: string;
   updatedSource?: string;
   files?: LingCppEditDraftFile[];
+  designerProject?: LingWindowProject;
 }
 
 export interface AppliedWorkspaceFile {

@@ -96,9 +96,19 @@ export async function writeSolutionEntry(workspaceRoot: string, solution: Soluti
     }
     const temporaryPath = `${targetPath}.${process.pid}.${++solutionEntryWriteSerial}.tmp`;
     await fs.writeFile(temporaryPath, content, 'utf8');
-    await fs.rename(temporaryPath, targetPath);
+    await replaceFile(temporaryPath, targetPath);
   });
   return targetPath;
+}
+
+async function replaceFile(sourcePath: string, targetPath: string): Promise<void> {
+  try {
+    await fs.rename(sourcePath, targetPath);
+  } catch (error: any) {
+    if (!['EEXIST', 'EPERM', 'ENOTEMPTY'].includes(error?.code)) throw error;
+    await fs.rm(targetPath, { force: true });
+    await fs.rename(sourcePath, targetPath);
+  }
 }
 
 export async function resolveSolutionEntryWorkspace(entryPath: string): Promise<string> {

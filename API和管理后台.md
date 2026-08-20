@@ -1,6 +1,22 @@
 # LingBuilder API 和管理后台
 
-本文档固定记录 LingBuilder 云端 API、收费模块商业系统、官网内容系统、管理后台的位置、启动方式和发布边界，避免后续开发时遗忘。最后核对日期：2026-07-31。
+本文档固定记录 LingBuilder 云端 API、收费模块商业系统、官网内容系统、管理后台的位置、启动方式和发布边界，避免后续开发时遗忘。最后核对日期：2026-08-19。
+
+## 生产环境上线门禁（2026-08-19）
+
+- 生产部署使用根目录 `compose.production.yaml`、`.env.production` 和 `.env.production.example`；数据库、Redis 不映射公网端口，API/后台由 HTTPS 反向代理暴露。
+- API 生产启动会拒绝 `CHANGE_ME`、`GENERATE_*`、`example.com` 等占位值、开发密钥和本地 Mailpit；必须配置稳定 JWT、Token Hash、Secret Vault、SMTP 用户名/密码以及 `SMTP_SECURE=true`。
+- `CORS_ORIGINS` 用逗号分隔正式前台和管理后台 HTTPS 来源；Electron 正式安装包通过 `LINGBUILDER_CLOUD_RELEASE_MODE=online` 与 `LINGBUILDER_CLOUD_API_URL=https://...` 写入云端地址，不能依赖本机 API。
+- AI 对话不是仅有模型目录即可用：管理员必须在“系统 AI 供应商”配置真实 HTTPS Base URL 和 API Key，并确认模型路由启用；否则 `/v1/ai/chat/stream` 会按设计返回 503，不得当作已上线。
+- 注册 API、邮箱验证和登录链路已接入正式 SMTP；开发环境才会返回 `developmentVerificationToken`，生产环境不会返回该字段。
+
+生产构建示例：
+
+```powershell
+$env:LINGBUILDER_CLOUD_RELEASE_MODE="online"
+$env:LINGBUILDER_CLOUD_API_URL="https://api.lingbuilder.com"
+npm run package:win -w lingbuilder-electron
+```
 
 ## 1. 工程位置
 
@@ -95,6 +111,16 @@ npm run admin:bootstrap -w @lingbuilder/cloud-api -- admin@example.com StrongPas
 ```
 
 首次管理员登录必须绑定 TOTP MFA。测试用户必须先注册、完成邮箱验证并登录，才能使用收费模块的购买权益或限时免费权益。
+
+本机开发环境管理员已创建，可以使用：
+
+- 邮箱：`admin@lingbuilder.local`
+- 密码：`LingBuilderDev2026`
+- 管理后台：`http://127.0.0.1:17901/admin`
+
+首次登录时，“MFA 动态验证码”先留空。登录成功后会进入 MFA 绑定页，使用 Microsoft Authenticator、Google Authenticator 等应用添加页面显示的 `otpauth://` 地址，再输入应用生成的 6 位验证码完成绑定。之后每次登录都需要填写动态验证码。
+
+我已实际验证该账号可以登录。这个密码只适合当前本机开发环境，部署到服务器前必须改成独立随机密码。
 
 ## 4. new_emoji 收费模块配置流程
 

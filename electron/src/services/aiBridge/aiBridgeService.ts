@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { applyWorkspaceEditToFiles, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit } from '../lingCpp/aiEditService';
+import { applyWorkspaceEditToFiles, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
@@ -44,7 +44,7 @@ import {
   WINDOWS_EXECUTABLE_RESOURCE_FILE,
   WindowsExecutableResourceCompileError
 } from '../windowDesigner/windowsExecutableIconService';
-import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
+import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath, isProjectBuildArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
 import { SdkDependencyService } from '../sdkDependencies/sdkDependencyService';
@@ -327,12 +327,13 @@ export class AiBridgeService {
       selection: request.selection,
       workspaceFiles: await this.resolveEditWorkspaceFiles(request),
       moduleContext: await this.getModuleContext(request.projectId),
-      aiConfig: request.aiConfig
+      aiConfig: request.aiConfig,
+      designerProject: request.designerProject
     };
     if (!planner && !request.files?.length) {
       throw new Error('当前独立 AI Bridge 未配置系统 AI planner；请由外部 AI 提供 files 完整文件草稿后再创建提案。');
     }
-    const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: request.files };
+    const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: request.files, designerProject: request.updatedDesignerProject };
     const proposal = proposeLingCppEdit(context, draft);
     return { ok: true, proposal };
   }
@@ -346,6 +347,35 @@ export class AiBridgeService {
     const appliedFiles = applyWorkspaceEditToFiles(workspaceFiles, proposal);
     const persistedFiles: Array<{ filePath: string; sourceCode: string; absolutePath: string }> = [];
     const staged: Array<{ file: typeof appliedFiles[number]; absolutePath: string; temporaryPath: string; original?: Buffer }> = [];
+    let appliedDesignerProject = proposal.designerProject;
+
+    if (proposal.designerProject) {
+      const projectRef = await this.resolveAssetProject(proposal.designerProject);
+      // Always re-read the persisted model. A caller-provided snapshot is only
+      // an assertion of what it observed, never an authority that can bypass
+      // external edits made after the proposal was created.
+      const currentDesignerProject = await this.solutionService.readDesignerProject(projectRef);
+      if (request.designerProject && JSON.stringify(request.designerProject) !== JSON.stringify(currentDesignerProject)) {
+        throw new Error('提交应用的窗口设计器模型与磁盘版本不一致，请重新读取并生成提案。');
+      }
+      if (proposal.designerProjectOriginal && JSON.stringify(currentDesignerProject) !== JSON.stringify(proposal.designerProjectOriginal)) {
+        throw new Error('窗口设计器模型在 AI 提案生成后已发生变化，请重新生成提案。');
+      }
+      validateDesignerProjectEdit(proposal.designerProjectOriginal, currentDesignerProject);
+      const designerPath = await this.resolveWritablePath(projectRef.designerPath);
+      const format = await this.readExistingTextFileFormat(designerPath);
+      await fs.mkdir(path.dirname(designerPath), { recursive: true });
+      const temporaryPath = `${designerPath}.${process.pid}.${Date.now()}.ai-designer.tmp`;
+      let original: Buffer | undefined;
+      try { original = await fs.readFile(designerPath); } catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
+      await fs.writeFile(temporaryPath, encodeTextFile(JSON.stringify(proposal.designerProject, null, 2) + '\n', format));
+      staged.push({
+        file: { filePath: projectRef.designerPath.replace(/\\/g, '/'), sourceCode: JSON.stringify(proposal.designerProject, null, 2) + '\n' },
+        absolutePath: designerPath,
+        temporaryPath,
+        original
+      });
+    }
 
     try {
       for (const file of appliedFiles) {
@@ -373,7 +403,7 @@ export class AiBridgeService {
     }
 
     rejectWorkspaceEdit(request.proposalId);
-    return { ok: true, proposal, appliedFiles: persistedFiles };
+    return { ok: true, proposal, appliedFiles: persistedFiles, ...(appliedDesignerProject ? { designerProject: appliedDesignerProject } : {}) };
   }
 
   async listModules(projectId = 'lingbuilder-ui-project') {
@@ -644,7 +674,9 @@ export class AiBridgeService {
         const filePath = normalizeFilePath(source.filePath).replace(/^\.\//u, '');
         if (!filePath.toLocaleLowerCase().endsWith('.lcpp') || filePath.split('/').includes('..') || path.isAbsolute(filePath)) throw new Error(`项目源码路径不安全：${source.filePath}`);
         if (!filePath.startsWith(`${sourceRoot}/`)) throw new Error(`项目源码路径不属于当前项目源码目录：${source.filePath}`);
-        if (isNestedWorkspaceArtifactRelativePath(filePath.slice(sourceRoot.length + 1), nestedWorkspacePlan)) continue;
+        const sourceRelativePath = filePath.slice(sourceRoot.length + 1);
+        if (isProjectBuildArtifactRelativePath(sourceRelativePath)) continue;
+        if (isNestedWorkspaceArtifactRelativePath(sourceRelativePath, nestedWorkspacePlan)) continue;
         totalSize += Buffer.byteLength(source.sourceCode, 'utf8');
         if (totalSize > 8 * 1024 * 1024) throw new Error('项目 LCPP 源码集合超过 8 MB 限制。');
         unique.set(filePath.toLocaleLowerCase(), { filePath, sourceCode: source.sourceCode });
@@ -653,7 +685,9 @@ export class AiBridgeService {
     }
     const files = await this.solutionService.readProjectFiles(projectRef);
     return Object.entries(files)
-      .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith('.lcpp') && normalizeFilePath(filePath).startsWith(`${sourceRoot}/`))
+      .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith('.lcpp')
+        && normalizeFilePath(filePath).startsWith(`${sourceRoot}/`)
+        && !isProjectBuildArtifactRelativePath(normalizeFilePath(filePath).slice(sourceRoot.length + 1)))
       .map(([filePath, sourceCode]) => ({ filePath: normalizeFilePath(filePath), sourceCode: String(sourceCode || '') }));
   }
 

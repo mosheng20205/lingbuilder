@@ -171,7 +171,7 @@ export const ARIA2_MODULE: LingBuilderModuleManifest = {
   name: 'Aria2 下载模块',
   displayName: 'Aria2 下载',
   version: ARIA2_VERSION,
-  minLingBuilderVersion: '0.5.0',
+  minLingBuilderVersion: '0.6.0',
   category: '网络',
   description: '基于 aria2 1.37.0 的受控异步下载模块，支持多连接、分段、断点续传、速度/进度/目录查询和安全打开目录。生成项目会携带经过许可声明的 aria2c.exe。',
   author: 'LingBuilder',

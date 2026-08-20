@@ -106,7 +106,16 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     moduleEntitlements: () => ipcRenderer.invoke('cloud-modules:entitlements'),
     authorizeModule: (moduleId: string) => ipcRenderer.invoke('cloud-modules:authorize', moduleId),
     createModuleOrder: (value: { offerId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-modules:create-order', value),
+    rechargePackages: () => ipcRenderer.invoke('cloud-credits:packages'),
+    createRechargeOrder: (value: { packageId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-credits:create-order', value),
+    rechargeOrder: (orderId: string) => ipcRenderer.invoke('cloud-credits:order', orderId),
     downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => ipcRenderer.invoke('cloud-modules:download', value),
+  },
+  updates: {
+    check: () => ipcRenderer.invoke('app:check-update'),
+  },
+  payments: {
+    openPage: (url: string) => ipcRenderer.invoke('payments:open-page', url),
   },
   cloudAi: {
     start: (kind: 'chat' | 'edit', payload: unknown) => ipcRenderer.invoke('cloud-ai:start', kind, payload),

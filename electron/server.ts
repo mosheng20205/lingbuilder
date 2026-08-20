@@ -26,14 +26,19 @@ import { LingWindowProject } from "./src/services/windowDesigner/types";
 import {
   applyWorkspaceEdit,
   applyWorkspaceEditToFiles,
+  areDesignerProjectsEquivalent,
+  createDesignerBeautificationFallback,
+  isDesignerBeautificationInstruction,
   getWorkspaceEditProposal,
+  isDesignerEditInstruction,
   proposeLingCppEdit,
-  rejectWorkspaceEdit
+  rejectWorkspaceEdit,
+  validateDesignerProjectEdit
 } from "./src/services/lingCpp/aiEditService";
 import { getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageService";
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from "./src/services/lingCpp/projectGlobalService";
 import { createProjectTypeContext, isProjectDataTypesFilePath } from "./src/services/lingCpp/projectDataTypeService";
-import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath } from "./src/services/solution/nestedWorkspaceGuard";
+import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath, isProjectBuildArtifactRelativePath } from "./src/services/solution/nestedWorkspaceGuard";
 import {
   analyzeFunctionLibraryDependencyClosure,
   createFunctionLibraryTemplate,
@@ -581,7 +586,9 @@ function isAllowedProjectTextPath(filePath: string): boolean {
   return ALLOWED_PROJECT_EXTS.some(ext => normalized.endsWith(ext));
 }
 
-app.use(express.json({ limit: "2mb" }));
+// Project saves include the complete source/config snapshot and designer model.
+// Keep the request bounded, but allow normal module-heavy workspaces to exceed 2 MB.
+app.use(express.json({ limit: "32mb" }));
 app.use((req, res, next) => {
   const isAiBridgePath = req.path === "/api/ai-bridge" || req.path.startsWith("/api/ai-bridge/");
   if (!req.path.startsWith("/api/") || isAiBridgePath) {
@@ -3078,7 +3085,9 @@ function resolveProjectLingCppSource(
 function collectProjectLingCppSources(projectRef: LingBuilderSolutionProject, files: Record<string, string>): LingCppProjectSourceFile[] {
   const sourceRoot = projectRef.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "");
   return Object.entries(files)
-    .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp") && filePath.startsWith(`${sourceRoot}/`))
+    .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp")
+      && filePath.startsWith(`${sourceRoot}/`)
+      && !isProjectBuildArtifactRelativePath(filePath.slice(sourceRoot.length + 1)))
     .map(([filePath, sourceCode]) => ({ filePath, sourceCode }));
 }
 
@@ -3106,6 +3115,7 @@ async function resolveLingCppProjectSources(
         throw new Error(`项目源码路径不属于当前项目源码目录：${source.filePath}`);
       }
       const sourceRelativePath = filePath === sourceRoot ? '' : filePath.slice(sourceRoot.length + 1);
+      if (isProjectBuildArtifactRelativePath(sourceRelativePath)) continue;
       if (isNestedWorkspaceArtifactRelativePath(sourceRelativePath, nestedWorkspacePlan)) continue;
       totalSize += Buffer.byteLength(source.sourceCode, "utf8");
       if (totalSize > 8 * 1024 * 1024) throw new Error("项目 LCPP 源码集合超过 8 MB 限制。");
@@ -3115,7 +3125,9 @@ async function resolveLingCppProjectSources(
   }
   const files = await solutionService.readProjectFiles(projectRef);
   return Object.entries(files)
-    .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp") && (filePath === sourceRoot || filePath.startsWith(`${sourceRoot}/`)))
+    .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp")
+      && (filePath === sourceRoot || filePath.startsWith(`${sourceRoot}/`))
+      && !isProjectBuildArtifactRelativePath(filePath === sourceRoot ? '' : filePath.slice(sourceRoot.length + 1)))
     .map(([filePath, sourceCode]) => ({ filePath, sourceCode }));
 }
 
@@ -3588,7 +3600,9 @@ app.get("/api/source-control/status", async (_req, res) => {
 });
 app.post("/api/source-control/init", async (req, res) => sourceControlAction(res, () => gitService.init(req.body?.defaultBranch)));
 app.post("/api/source-control/stage", async (req, res) => sourceControlAction(res, () => gitService.stage(req.body?.paths)));
+app.post("/api/source-control/stage-all", async (_req, res) => sourceControlAction(res, () => gitService.stageAll()));
 app.post("/api/source-control/unstage", async (req, res) => sourceControlAction(res, () => gitService.unstage(req.body?.paths)));
+app.post("/api/source-control/unstage-all", async (_req, res) => sourceControlAction(res, () => gitService.unstageAll()));
 app.post("/api/source-control/discard", async (req, res) => sourceControlAction(res, () => gitService.discard(req.body?.paths)));
 app.post("/api/source-control/commit", async (req, res) => sourceControlAction(res, () => gitService.commit(req.body?.message)));
 app.get("/api/source-control/diff", async (req, res) => sourceControlAction(res, () => gitService.diff(String(req.query.path || ""), String(req.query.staged || "") === "true")));
@@ -3613,6 +3627,13 @@ app.post("/api/source-control/conflicts/resolve", async (req, res) => sourceCont
 app.post("/api/source-control/integration/abort", async (req, res) => sourceControlAction(res, () => gitService.abortIntegration(req.body?.kind)));
 app.post("/api/source-control/integration/continue", async (req, res) => sourceControlAction(res, () => gitService.continueIntegration(req.body?.kind)));
 app.post("/api/source-control/pull-requests", async (req, res) => sourceControlAction(res, () => gitService.createPullRequest(req.body || {})));
+app.get("/api/source-control/stashes", async (_req, res) => sourceControlAction(res, () => gitService.stashList()));
+app.post("/api/source-control/stashes", async (req, res) => sourceControlAction(res, () => gitService.stashSave(req.body?.message, Boolean(req.body?.includeUntracked))));
+app.post("/api/source-control/stashes/apply", async (req, res) => sourceControlAction(res, () => gitService.stashApply(Number(req.body?.index ?? 0), Boolean(req.body?.pop))));
+app.delete("/api/source-control/stashes/:index", async (req, res) => sourceControlAction(res, () => gitService.stashDrop(Number(req.params.index))));
+app.get("/api/source-control/tags", async (_req, res) => sourceControlAction(res, () => gitService.tags()));
+app.post("/api/source-control/tags", async (req, res) => sourceControlAction(res, () => gitService.createTag(req.body?.name, req.body?.message)));
+app.delete("/api/source-control/tags/:name", async (req, res) => sourceControlAction(res, () => gitService.deleteTag(req.params.name)));
 
 app.get("/api/tests/discover", async (_req, res) => {
   try { res.json({ ok: true, tests: await testExplorerService.discover() }); }
@@ -3664,7 +3685,8 @@ async function sourceControlAction(res: express.Response, action: () => Promise<
 }
 
 app.post("/api/lingcpp/edit/propose", async (req, res) => {
-  const { filePath, sourceCode, instruction, selection, workspaceFiles, projectId, moduleContext, aiConfig } = req.body as {
+  try {
+    const { filePath, sourceCode, instruction, selection, workspaceFiles, projectId, moduleContext, aiConfig, designerProject } = req.body as {
     filePath?: string;
     sourceCode?: string;
     instruction?: string;
@@ -3673,38 +3695,46 @@ app.post("/api/lingcpp/edit/propose", async (req, res) => {
     aiConfig?: AiConnectionConfig;
     selection?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
     workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
-  };
-
-  if (!filePath || typeof sourceCode !== "string") {
-    return res.status(400).json({ ok: false, error: "缺少 filePath 或 sourceCode" });
-  }
-
-  const context: LingCppEditContext = {
-    filePath,
-    sourceCode,
-    instruction: instruction || "",
-    selection,
-    workspaceFiles: sanitizeWorkspaceFiles(workspaceFiles),
-    moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext),
-    aiConfig
-  };
-
-  let draft: LingCppEditDraft | undefined;
-  try {
-    draft = await planLingCppEditWithGemini(context);
-  } catch (error: any) {
-    draft = {
-      summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
-      explanation: `Gemini 编辑提案生成失败，已降级为本地安全提案：${error?.message || "未知错误"}`
+    designerProject?: LingWindowProject;
     };
-  }
 
-  const proposal = proposeLingCppEdit(context, draft);
-  res.json({ ok: true, proposal });
+    if (!filePath || typeof sourceCode !== "string") {
+      return res.status(400).json({ ok: false, error: "缺少 filePath 或 sourceCode" });
+    }
+
+    const context: LingCppEditContext = {
+      filePath,
+      sourceCode,
+      instruction: instruction || "",
+      projectId,
+      selection,
+      workspaceFiles: sanitizeWorkspaceFiles(workspaceFiles),
+      moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext),
+      aiConfig,
+      designerProject
+    };
+
+    let draft: LingCppEditDraft | undefined;
+    try {
+      draft = await planLingCppEditWithGemini(context);
+    } catch (error: any) {
+      draft = {
+        summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
+        explanation: `Gemini 编辑提案生成失败，已降级为本地安全提案：${error?.message || "未知错误"}`
+      };
+    }
+
+    const proposal = proposeLingCppEdit(context, draft);
+    return res.json({ ok: true, proposal });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "AI 编辑提案校验失败。";
+    return res.status(422).json({ ok: false, error: message });
+  }
 });
 
 app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
-  const { filePath, sourceCode, instruction, workspaceFiles, files, projectId, moduleContext } = req.body as {
+  try {
+    const { filePath, sourceCode, instruction, workspaceFiles, files, projectId, moduleContext, designerProject, currentDesignerProject } = req.body as {
     filePath?: string;
     sourceCode?: string;
     instruction?: string;
@@ -3712,63 +3742,90 @@ app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
     moduleContext?: LingCppModuleContext;
     workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
     files?: Array<{ filePath: string; updatedSource: string }>;
-  };
-  if (!filePath || typeof sourceCode !== "string" || !Array.isArray(files)) {
-    return res.status(400).json({ ok: false, error: "系统 AI 编辑草稿缺少必要字段。" });
-  }
-  const safeWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
-  const allowedPaths = new Set([filePath, ...safeWorkspaceFiles.map(file => file.filePath)].map(normalizeFilePath));
-  const safeDraftFiles = files
-    .filter(file => file && typeof file.filePath === "string" && typeof file.updatedSource === "string")
-    .filter(file => allowedPaths.has(normalizeFilePath(file.filePath)))
-    .slice(0, 5);
-  if (!safeDraftFiles.length) return res.status(400).json({ ok: false, error: "系统 AI 未返回允许范围内的文件修改。" });
-  for (const file of safeDraftFiles) {
-    if (!file.filePath.endsWith(".lcpp")) continue;
-    const original = safeWorkspaceFiles.find(item => normalizeFilePath(item.filePath) === normalizeFilePath(file.filePath));
-    if (original && parseLingCpp(original.sourceCode).program.classes.length > 0 && parseLingCpp(file.updatedSource).program.classes.length === 0) {
-      return res.status(400).json({ ok: false, error: `系统 AI 返回的 ${file.filePath} 未通过 LingCpp 类结构校验。` });
+    designerProject?: LingWindowProject;
+    currentDesignerProject?: LingWindowProject;
+    };
+    if (!filePath || typeof sourceCode !== "string" || !Array.isArray(files)) {
+      return res.status(400).json({ ok: false, error: "系统 AI 编辑草稿缺少必要字段。" });
     }
+    const safeWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
+    const allowedPaths = new Set([filePath, ...safeWorkspaceFiles.map(file => file.filePath)].map(normalizeFilePath));
+    const safeDraftFiles = files
+      .filter(file => file && typeof file.filePath === "string" && typeof file.updatedSource === "string")
+      .filter(file => allowedPaths.has(normalizeFilePath(file.filePath)))
+      .slice(0, 5);
+    if (!safeDraftFiles.length) return res.status(400).json({ ok: false, error: "系统 AI 未返回允许范围内的文件修改。" });
+    for (const file of safeDraftFiles) {
+      if (!file.filePath.endsWith(".lcpp")) continue;
+      const original = safeWorkspaceFiles.find(item => normalizeFilePath(item.filePath) === normalizeFilePath(file.filePath));
+      if (original && parseLingCpp(original.sourceCode).program.classes.length > 0 && parseLingCpp(file.updatedSource).program.classes.length === 0) {
+        return res.status(400).json({ ok: false, error: `系统 AI 返回的 ${file.filePath} 未通过 LingCpp 类结构校验。` });
+      }
+    }
+    const context: LingCppEditContext = {
+      filePath: normalizeFilePath(filePath), sourceCode, instruction: instruction || "系统 AI 编辑", projectId,
+      workspaceFiles: safeWorkspaceFiles,
+      moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext),
+      designerProject: currentDesignerProject
+    };
+    const proposal = proposeLingCppEdit(context, { summary: instruction || "系统 AI 编辑提案", explanation: "系统 AI 已返回完整文件草稿；该草稿经过本地路径与 LingCpp 结构校验，仍需预览确认后才能应用。", files: safeDraftFiles, designerProject });
+    return res.json({ ok: true, proposal });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "系统 AI 编辑草稿校验失败。";
+    return res.status(422).json({ ok: false, error: message });
   }
-  const context: LingCppEditContext = {
-    filePath: normalizeFilePath(filePath), sourceCode, instruction: instruction || "系统 AI 编辑",
-    workspaceFiles: safeWorkspaceFiles,
-    moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext)
-  };
-  const proposal = proposeLingCppEdit(context, { summary: instruction || "系统 AI 编辑提案", explanation: "系统 AI 已返回完整文件草稿；该草稿经过本地路径与 LingCpp 结构校验，仍需预览确认后才能应用。", files: safeDraftFiles });
-  res.json({ ok: true, proposal });
 });
 
 app.post("/api/lingcpp/edit/apply", async (req, res) => {
-  const { proposalId, sourceCode, workspaceFiles } = req.body as {
+  try {
+    const { proposalId, sourceCode, workspaceFiles, designerProject, projectId } = req.body as {
     proposalId?: string;
     sourceCode?: string;
     workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
-  };
-  if (!proposalId) {
-    return res.status(400).json({ ok: false, error: "缺少 proposalId" });
+    designerProject?: LingWindowProject;
+    projectId?: string;
+    };
+    if (!proposalId) {
+      return res.status(400).json({ ok: false, error: "缺少 proposalId" });
+    }
+    const proposal = getWorkspaceEditProposal(proposalId);
+    if (!proposal) {
+      return res.status(404).json({ ok: false, error: "未找到编辑提案" });
+    }
+    if (proposal.designerProject) {
+      if (!designerProject) return res.status(400).json({ ok: false, error: "该提案包含窗口设计器改动，但应用请求缺少当前设计器模型。" });
+      if (projectId && proposal.designerProject.id !== projectId) {
+        return res.status(409).json({ ok: false, error: `提案设计器模型属于项目 ${proposal.designerProject.id}，当前项目是 ${projectId}；已阻止跨项目应用。` });
+      }
+      if (projectId && designerProject.id !== projectId) {
+        return res.status(409).json({ ok: false, error: `当前设计器模型属于项目 ${designerProject.id}，当前项目是 ${projectId}；请重新载入项目后再应用。` });
+      }
+      if (JSON.stringify(designerProject) !== JSON.stringify(proposal.designerProjectOriginal)) {
+        return res.status(409).json({ ok: false, error: "窗口设计器模型在提案生成后已发生变化，请重新生成提案。" });
+      }
+      validateDesignerProjectEdit(proposal.designerProjectOriginal, designerProject);
+    }
+    const sanitizedWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
+    const effectiveWorkspaceFiles = sanitizedWorkspaceFiles.length > 0
+      ? sanitizedWorkspaceFiles
+      : (
+        typeof sourceCode === "string" && proposal.changes[0]
+          ? [{ filePath: proposal.changes[0].filePath, sourceCode }]
+          : []
+      );
+    if (effectiveWorkspaceFiles.length === 0) {
+      return res.status(400).json({ ok: false, error: "缺少可应用的 workspaceFiles 或 sourceCode" });
+    }
+    const appliedFiles = applyWorkspaceEditToFiles(effectiveWorkspaceFiles, proposal);
+    const nextSourceCode = proposal.changes[0]
+      ? (appliedFiles.find(file => normalizeFilePath(file.filePath) === normalizeFilePath(proposal.changes[0].filePath))?.sourceCode || sourceCode || "")
+      : (sourceCode || "");
+    rejectWorkspaceEdit(proposalId);
+    return res.json({ ok: true, proposal, nextSourceCode, appliedFiles, ...(proposal.designerProject ? { designerProject: proposal.designerProject } : {}) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "应用 AI 编辑提案失败。";
+    return res.status(409).json({ ok: false, error: message });
   }
-  const proposal = getWorkspaceEditProposal(proposalId);
-  if (!proposal) {
-    return res.status(404).json({ ok: false, error: "未找到编辑提案" });
-  }
-  const sanitizedWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
-  const effectiveWorkspaceFiles = sanitizedWorkspaceFiles.length > 0
-    ? sanitizedWorkspaceFiles
-    : (
-      typeof sourceCode === "string" && proposal.changes[0]
-        ? [{ filePath: proposal.changes[0].filePath, sourceCode }]
-        : []
-    );
-  if (effectiveWorkspaceFiles.length === 0) {
-    return res.status(400).json({ ok: false, error: "缺少可应用的 workspaceFiles 或 sourceCode" });
-  }
-  const appliedFiles = applyWorkspaceEditToFiles(effectiveWorkspaceFiles, proposal);
-  const nextSourceCode = proposal.changes[0]
-    ? (appliedFiles.find(file => normalizeFilePath(file.filePath) === normalizeFilePath(proposal.changes[0].filePath))?.sourceCode || sourceCode || "")
-    : (sourceCode || "");
-  rejectWorkspaceEdit(proposalId);
-  res.json({ ok: true, proposal, nextSourceCode, appliedFiles });
 });
 
 app.post("/api/lingcpp/edit/reject", async (req, res) => {
@@ -4158,9 +4215,19 @@ function sanitizeFilename(value: string): string {
 async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<LingCppEditDraft> {
   const resolvedAiConfig = resolveAiConnectionConfig(context.aiConfig);
   if (!resolvedAiConfig.apiKey) {
+    const isBeautification = Boolean(
+      context.designerProject
+      && isDesignerBeautificationInstruction(context.instruction)
+    );
     return {
       summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
-      explanation: "未检测到 AI API Key，已回退到本地安全提案。"
+      explanation: isBeautification
+        ? "未检测到 AI API Key，已生成本地视觉美化提案；源码保持不变，仍需预览确认后应用。"
+        : "未检测到 AI API Key，已回退到本地安全提案。",
+      ...(isBeautification ? {
+        files: [{ filePath: context.filePath, updatedSource: normalizeLineEndings(context.sourceCode) }],
+        designerProject: createDesignerBeautificationFallback(context.designerProject!)
+      } : {})
     };
   }
 
@@ -4189,6 +4256,14 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
     .join("\n") || "无";
   const selectedText = context.selection ? getTextForRange(sourceCode, context.selection) : "";
   const moduleContextPrompt = describeLingCppModuleContextForAi(context.moduleContext);
+  const requiresDesignerProject = Boolean(
+    context.designerProject && isDesignerEditInstruction(context.instruction)
+  );
+  const requiresDesignerBeautification = requiresDesignerProject
+    && isDesignerBeautificationInstruction(context.instruction);
+  const designerChangeRequirement = requiresDesignerBeautification
+    ? '本次是宽泛的界面美化请求：designerProject 必须产生至少三项肉眼可见的属性变化，例如窗口/标题栏颜色、控件位置或尺寸、控件颜色、字号、字体粗细、按钮圆角或控件间距。禁止仅复制、复述或重新排序当前模型。保留所有项目/窗口/控件 ID、名称和事件绑定。'
+    : '只要用户需求涉及窗口、控件或布局，就必须在 designerProject 中反映实际可应用的属性变化；禁止仅复制、复述或重新排序当前模型。';
 
   const baseSystemPrompt = `你是 LingBuilder 的中文 C++（.lcpp）重写代理。
 你的任务是根据用户要求修改一个或多个已提供的工作区文件，并返回“仅包含发生变化文件”的完整重写结果。
@@ -4202,7 +4277,12 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
 6. 只返回确实发生变化的文件；如果无需修改某个文件，就不要把它放进 files 数组。
 7. 可以直接使用当前项目“已启用模块”提供的命令、类型和片段；不要静默调用未启用模块的命令。
 8. 如果用户要求使用未启用模块，先在 explanation 中说明需要启用该模块，再给出不破坏当前代码的最小修改。
-9. explanation 用中文简要说明哪些文件被改了、为什么。`;
+9. 如果用户需求涉及窗口、控件或布局，必须同时返回 designerProject 字段，并返回修改后的完整设计器模型；不涉及设计器时省略该字段。当前请求${requiresDesignerProject ? "涉及" : "不涉及"}设计器：${requiresDesignerProject ? "designerProject 是必填字段，必须逐项复制当前模型并只修改用户要求的内容，不能返回 patch、片段或省略未修改窗口/控件。" : "可以省略 designerProject。"}
+10. 设计器模型中的项目 ID、窗口 ID、控件 ID、事件绑定名保持稳定，不得删除未被明确要求删除的窗口或控件。
+11. 进度条的 content 必须是数字文本，并与 properties.value 保持完全一致；控件引用必须使用当前模型中的真实名称。
+12. designerProject 只能是 JSON 对象，不能包含脚本、函数、Markdown 或工作区路径。
+13. explanation 用中文简要说明源码和设计器分别被改了什么、为什么。
+14. ${designerChangeRequirement}`;
   const systemPrompt = attachLingBuilderAiRulebook(baseSystemPrompt, await getLingBuilderAiRulebook());
 
   const prompt = [
@@ -4216,6 +4296,9 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
       : "",
     `当前项目模块上下文：\n${moduleContextPrompt}`,
     `当前本地解析诊断：\n${diagnostics}`,
+    context.designerProject
+      ? `当前完整窗口设计器模型（如需修改界面，必须完整返回修改后的 designerProject）：\n<<<DESIGNER_PROJECT\n${JSON.stringify(context.designerProject)}\nDESIGNER_PROJECT`
+      : "当前请求没有窗口设计器模型。",
     `本次允许编辑的工作区文件如下（只可改这些文件）：
 ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCode}`).join("\n\n")}`
   ].filter(Boolean).join("\n\n");
@@ -4236,11 +4319,24 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
           },
           required: ["filePath", "updatedSource"]
         }
-      }
+      },
+      designerProject: { type: Type.OBJECT, description: requiresDesignerProject
+        ? "必填：当前设计器模型的完整修改后对象。必须保留所有未修改窗口、控件、资源及稳定 ID，不能只返回 patch。"
+        : "涉及窗口或控件布局时返回修改后的完整窗口设计器模型；不涉及时省略。" }
     },
-    required: ["summary", "explanation", "files"]
+    required: ["summary", "explanation", "files", ...(requiresDesignerProject ? ["designerProject"] : [])]
   };
 
+  const designerProjectExample = requiresDesignerProject
+    ? `,
+  "designerProject": {
+    "schemaVersion": 2,
+    "id": "必须保持当前项目 ID",
+    "name": "必须保持当前项目名称",
+    "windows": [],
+    "resources": []
+  }`
+    : "";
   const jsonPrompt = `${prompt}
 
 请只返回 JSON，不要使用 Markdown，不要添加解释文字。JSON 格式如下：
@@ -4252,20 +4348,88 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
       "filePath": "必须来自允许编辑的工作区文件列表",
       "updatedSource": "修改后的完整文件内容"
     }
-  ]
+  ]${designerProjectExample}
 }`;
 
-  const responseText = await generateAiText({
-    config: resolvedAiConfig,
-    systemPrompt,
-    prompt: jsonPrompt,
-    temperature: 0.2,
-    maxTokens: 12000,
-    geminiResponseMimeType: "application/json",
-    geminiResponseSchema: schema
-  });
+  const requestDraft = async (correction?: string): Promise<LingCppEditDraft> => {
+    const responseText = await generateAiText({
+      config: resolvedAiConfig,
+      systemPrompt,
+      prompt: correction ? `${jsonPrompt}\n\n${correction}` : jsonPrompt,
+      temperature: correction ? 0.35 : 0.2,
+      // 大型窗口设计器模型通常远大于普通源码文件；布局请求必须预留完整
+      // JSON 的输出空间，否则模型会在 designerProject 中途截断。
+      maxTokens: requiresDesignerProject ? 32000 : 12000,
+      geminiResponseMimeType: "application/json",
+      geminiResponseSchema: schema
+    });
+    return JSON.parse(extractJsonPayload(responseText, "{}")) as LingCppEditDraft;
+  };
 
-  const draft = JSON.parse(extractJsonPayload(responseText, "{}")) as LingCppEditDraft;
+  let draft: LingCppEditDraft;
+  try {
+    draft = await requestDraft();
+  } catch (error: any) {
+    if (!requiresDesignerBeautification) throw error;
+    draft = {
+      summary: '生成保守界面美化方案',
+      explanation: `AI 美化请求未能返回可解析结果：${error?.message || '未知错误'} 已降级为本地视觉方案，仍需预览确认后才会应用。`,
+      files: [{ filePath: context.filePath, updatedSource: sourceCode }],
+      designerProject: createDesignerBeautificationFallback(context.designerProject!)
+    };
+  }
+  const lacksDesignerChange = (candidate: LingCppEditDraft): boolean => (
+    requiresDesignerProject
+    && (!candidate.designerProject || areDesignerProjectsEquivalent(candidate.designerProject, context.designerProject))
+  );
+  const hasUsableFiles = (candidate: LingCppEditDraft) => candidate.files?.some(file => (
+    typeof file?.filePath === 'string'
+    && typeof file.updatedSource === 'string'
+    && promptWorkspaceFiles.some(promptFile => normalizeFilePath(promptFile.filePath) === normalizeFilePath(file.filePath))
+  )) || false;
+
+  if (lacksDesignerChange(draft)) {
+    const originalDraft = draft;
+    try {
+      draft = await requestDraft(`上一次回答没有给出可应用的设计器变化：${draft.designerProject
+        ? '返回的 designerProject 与当前模型完全相同。'
+        : '缺少 designerProject。'}
+请重新生成完整 JSON。必须保留所有稳定 ID、名称、事件绑定和未修改对象，但要返回真实变化后的完整 designerProject。${requiresDesignerBeautification
+        ? '这是界面美化请求，至少调整三项可见属性（颜色、间距、位置、尺寸、字体或按钮圆角），不能只重排 JSON 字段。'
+        : '请把用户要求落实为真实的窗口、控件或布局属性变化。'}`);
+    } catch (error: any) {
+      if (!requiresDesignerBeautification) throw error;
+      draft = {
+        ...originalDraft,
+        explanation: `${originalDraft.explanation?.trim() || 'AI 未返回实际布局变化。'} 纠正请求失败：${error?.message || '未知错误'}，已降级为保守的本地视觉美化方案。`,
+        designerProject: createDesignerBeautificationFallback(context.designerProject!)
+      };
+    }
+
+    if (requiresDesignerBeautification && lacksDesignerChange(draft)) {
+      const fallbackFiles = hasUsableFiles(draft)
+        ? draft.files
+        : (hasUsableFiles(originalDraft)
+          ? originalDraft.files
+          : [{ filePath: context.filePath, updatedSource: sourceCode }]);
+      draft = {
+        ...draft,
+        summary: draft.summary?.trim() || '生成保守界面美化方案',
+        explanation: `${draft.explanation?.trim() || 'AI 未返回实际布局变化。'} 已生成保守的本地视觉美化方案，保留全部控件、名称与事件绑定，仍需在预览中确认后才会应用。`,
+        files: fallbackFiles,
+        designerProject: createDesignerBeautificationFallback(context.designerProject!)
+      };
+    }
+  }
+
+  if (requiresDesignerBeautification && !hasUsableFiles(draft)) {
+    draft = {
+      ...draft,
+      files: [{ filePath: context.filePath, updatedSource: sourceCode }],
+      explanation: `${draft.explanation?.trim() || 'AI 已生成界面设计变化。'} 源码无需改写，已保留当前完整源码并将设计器变化纳入同一份提案。`
+    };
+  }
+
   const promptFileMap = new Map(promptWorkspaceFiles.map(file => [normalizeFilePath(file.filePath), file]));
   const validDraftFiles = (draft.files || [])
     .filter(file => file?.filePath && typeof file.updatedSource === "string")
@@ -4303,7 +4467,8 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
   return {
     summary: draft.summary?.trim() || context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
     explanation: `${draft.explanation?.trim() || "AI 已生成完整文件级编辑提案。"}${diagnosticsNote}`,
-    files: validDraftFiles
+    files: validDraftFiles,
+    ...(draft.designerProject ? { designerProject: draft.designerProject } : {})
   };
 }
 

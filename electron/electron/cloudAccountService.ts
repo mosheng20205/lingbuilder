@@ -33,6 +33,9 @@ export class CloudAccountService {
     return { permit: permit.permit, key: { keyId: key.keyId, algorithm: key.algorithm, publicKeyPem: key.publicKeyPem }, paidModuleIds: (catalog.products || []).map((product: any) => product.moduleId) };
   }
   async createModuleOrder(offerId: string, provider: 'wechat'|'alipay', idempotencyKey: string) { return await this.request('/v1/module-orders', { method: 'POST', headers: { 'idempotency-key': idempotencyKey }, body: JSON.stringify({ offerId, provider }) }); }
+  async rechargePackages() { return await this.request('/v1/credits/packages'); }
+  async createRechargeOrder(packageId: string, provider: 'wechat'|'alipay', idempotencyKey: string) { return await this.request('/v1/credits/recharge', { method: 'POST', headers: { 'idempotency-key': idempotencyKey }, body: JSON.stringify({ packageId, provider }) }); }
+  async rechargeOrder(orderId: string) { return await this.request(`/v1/credits/recharge/${encodeURIComponent(orderId)}`); }
   async downloadModuleArtifact(moduleId: string, arch: 'win32'|'x64'|'any', workspaceRoot: string) {
     if (!this.accessToken && this.refreshToken) await this.refresh();
     if (!this.accessToken) throw new Error('请先登录 LingBuilder 账号，再下载收费模块。');

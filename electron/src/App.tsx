@@ -3,7 +3,6 @@ import lingBuilderIcon from '../../image/lingbuilder-ide-icon-v1.png';
 import {
   FolderCode,
   Layers,
-  Brain,
   Terminal,
   Sun,
   Moon,
@@ -244,7 +243,7 @@ import {
   TextModelIdentity,
   workbenchTextModelService
 } from './services/textModel';
-import { LINGBUILDER_DISPLAY_VERSION } from './services/product/productInfo';
+import { LINGBUILDER_DISPLAY_VERSION, LINGBUILDER_OFFICIAL_SITE_URL } from './services/product/productInfo';
 
 const LINGBUILDER_QQ_GROUP_URL = 'https://qm.qq.com/q/q2VNHZXLXy';
 
@@ -409,8 +408,8 @@ const hasLingCppEventHandler = (content: string, handlerName: string) => {
   }
 };
 
-const getCurrentWindowDesignerProject = () => readWindowDesignerState().project;
-const getCurrentWindowDesignerProjectId = () => getCurrentWindowDesignerProject().id || 'lingbuilder-ui-project';
+const getCurrentWindowDesignerProject = (projectId?: string) => readWindowDesignerState(projectId).project;
+const getCurrentWindowDesignerProjectId = (projectId?: string) => getCurrentWindowDesignerProject(projectId).id || projectId || 'lingbuilder-ui-project';
 
 const inferFileLanguage = (filePath: string): CppFile['language'] => {
   const normalizedPath = filePath.toLowerCase();
@@ -604,8 +603,8 @@ export default function App() {
           baseVersions: projectFileVersionsRef.current,
           openTabs: openTabsRef.current,
           activeFilePath: activeFileRef.current?.path,
-          designerProject: designerDirtyRef.current
-            ? activeProjectHasWindowDesigner ? readWindowDesignerState().project : undefined
+           designerProject: designerDirtyRef.current
+             ? activeProjectHasWindowDesigner ? readWindowDesignerState(activeProjectId).project : undefined
             : undefined
         })
       });
@@ -614,8 +613,12 @@ export default function App() {
   }, [activeProjectHasWindowDesigner, activeProjectId, designerDirty, files, loadedProjectId, projectFilesReady]);
 
   const focusLingCppHandler = useCallback((handlerName: string, filePath?: string) => {
-    [80, 220, 480].forEach(delay => {
+    // The editor may need one render to activate the selected .lcpp file. Re-send
+    // both the view switch and focus request so a slow configuration/save roundtrip
+    // cannot leave the designer visible after clicking an event handler.
+    [0, 100, 260, 560, 1000].forEach(delay => {
       window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('force-code-view'));
         window.dispatchEvent(new CustomEvent('focus-epl-handler', { detail: { handlerName, filePath } }));
       }, delay);
     });
@@ -1110,6 +1113,17 @@ export default function App() {
   const [isMaximizedApp, setIsMaximizedApp] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [updateCheckState, setUpdateCheckState] = useState<null | { status: 'checking' | 'latest' | 'update' | 'error'; latestVersion?: string; releaseTitle?: string; error?: string; silent?: boolean }>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const check = window.lingBuilder?.updates?.check;
+      if (!check) return;
+      void check().then(result => {
+        if (result?.ok && result.hasUpdate) setUpdateCheckState({ status: 'update', latestVersion: result.latestVersion, releaseTitle: result.releaseTitle, silent: true });
+      }).catch(() => undefined);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
   const [showHelpCenter, setShowHelpCenter] = useState(false);
   const [showSponsorDialog, setShowSponsorDialog] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -1326,7 +1340,8 @@ export default function App() {
     const handleDesignerProjectUpdated = (event: Event) => {
       if (!activeProjectHasWindowDesigner) return;
       const customEvent = event as CustomEvent<PersistedWindowDesignerState>;
-      const nextState = customEvent.detail || readWindowDesignerState();
+      const nextState = customEvent.detail || readWindowDesignerState(activeProjectIdRef.current);
+      if (nextState.project.id !== activeProjectIdRef.current) return;
       setWindowDesignerState(nextState);
       const nextDirty = JSON.stringify(nextState.project) !== designerSavedSnapshotRef.current;
       designerDirtyRef.current = nextDirty;
@@ -1504,6 +1519,8 @@ export default function App() {
   // Workspace layout toggles
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(false);
+  const [isDesignerViewActive, setIsDesignerViewActive] = useState(false);
+  const [designerToolboxHost, setDesignerToolboxHost] = useState<HTMLElement | null>(null);
   const [showBottomPanel, setShowBottomPanel] = useState(false);
   const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('output');
 
@@ -1725,7 +1742,6 @@ export default function App() {
 
   // Resizable sidebars state
   const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
-  const [rightWidth, setRightWidth] = useState(320);
   const [bottomHeight, setBottomHeight] = useState(260);
 
   const startResizeLeft = (e: React.MouseEvent) => {
@@ -1754,22 +1770,6 @@ export default function App() {
   const resetLeftSidebarWidth = () => {
     setLeftWidth(DEFAULT_LEFT_SIDEBAR_WIDTH);
     void configurationMutationRef.current('workbench.sidebar.width', DEFAULT_LEFT_SIDEBAR_WIDTH, 'user');
-  };
-
-  const startResizeRight = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const newWidth = Math.max(180, Math.min(600, window.innerWidth - moveEvent.clientX));
-      setRightWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
   };
 
   const startResizeBottom = (e: React.MouseEvent) => {
@@ -2458,12 +2458,33 @@ void DisplayStatus() {
     setActiveFile(updatedFile);
   }, []);
 
-  const handleApplyWorkspaceEdit = useCallback((
+  const appendEditorTransactionLog = (message: string) => {
+    setShowBottomPanel(true);
+    setActiveTabInBottom('output');
+    setBuildLogs(previous => [
+      ...previous,
+      `> [${new Date().toLocaleTimeString()}] ${message}`
+    ]);
+  };
+
+  const handleApplyWorkspaceEdit = useCallback(async (
     proposal: WorkspaceEditProposal,
     appliedFiles: AppliedWorkspaceFile[],
     requestOwner: ProjectMutationOwner = captureProjectMutationOwner()
-  ): boolean => {
+  ): Promise<boolean> => {
     if (!isCurrentProjectMutationOwner(requestOwner) || !appliedFiles.length) return false;
+
+    if (proposal.designerProject) {
+      if (!activeProjectHasWindowDesigner || proposal.designerProject.id !== activeProjectId) {
+        appendEditorTransactionLog(`【AI 编辑】提案设计器模型属于项目 ${proposal.designerProject.id}，当前项目是 ${activeProjectId}；未应用跨项目布局。`);
+        return false;
+      }
+      const currentDesignerProject = readWindowDesignerState(activeProjectId).project;
+      if (currentDesignerProject.id !== activeProjectId) {
+        appendEditorTransactionLog(`【AI 编辑】当前设计器模型属于项目 ${currentDesignerProject.id}，无法应用到项目 ${activeProjectId}；请重新载入项目。`);
+        return false;
+      }
+    }
 
     const appliedMap = new Map(appliedFiles.map(file => [file.filePath, file.sourceCode]));
     const knownPaths = new Set(filesRef.current.map(file => file.path));
@@ -2507,8 +2528,25 @@ void DisplayStatus() {
       activeFileRef.current = nextActiveFile;
       setActiveFile(nextActiveFile);
     }
+
+    if (proposal.designerProject && activeProjectHasWindowDesigner) {
+      const currentDesignerState = readWindowDesignerState(activeProjectId);
+      const nextDesignerState = saveWindowDesignerState({
+        ...currentDesignerState,
+        project: proposal.designerProject
+      });
+      setWindowDesignerState(nextDesignerState);
+      const nextDesignerDirty = JSON.stringify(nextDesignerState.project) !== designerSavedSnapshotRef.current;
+      designerDirtyRef.current = nextDesignerDirty;
+      setDesignerDirty(nextDesignerDirty);
+    }
+    const saved = await saveWorkspaceCoreRef.current('AI 编辑应用后保存', false);
+    if (!saved) {
+      appendEditorTransactionLog('【AI 编辑】已更新当前窗口内存状态，但磁盘保存失败；请检查输出面板后重试保存。');
+      return false;
+    }
     return true;
-  }, [captureProjectMutationOwner, isCurrentProjectMutationOwner]);
+  }, [activeProjectHasWindowDesigner, activeProjectId, appendEditorTransactionLog, captureProjectMutationOwner, isCurrentProjectMutationOwner]);
 
   const handleConfirmDesignerEventEdit = useCallback(async () => {
     if (!pendingDesignerEventEdit) return;
@@ -2518,7 +2556,7 @@ void DisplayStatus() {
       appendEditorTransactionLog(`【事件代码】${STALE_PROJECT_MUTATION_MESSAGE}`);
       return;
     }
-    if (!handleApplyWorkspaceEdit(
+    if (!await handleApplyWorkspaceEdit(
       pendingDesignerEventEdit.proposal,
       pendingDesignerEventEdit.appliedFiles,
       pendingDesignerEventEdit.owner
@@ -2816,14 +2854,18 @@ void DisplayStatus() {
         }
         if (!isCurrentLoad(projectId)) return;
         if (data?.designerProject) {
-          designerSavedSnapshotRef.current = JSON.stringify(data.designerProject);
-          designerDirtyRef.current = false;
-          setDesignerDirty(false);
-          saveWindowDesignerState({
+          if (data.designerProject.id !== projectId) {
+            throw new Error(`项目 ${projectId} 返回了不匹配的设计器模型 ${data.designerProject.id}。`);
+          }
+          const nextDesignerState = saveWindowDesignerState({
             project: data.designerProject,
             activeWindowId: data.designerProject.windows?.[0]?.id || 'main-window',
             selectedControlId: data.designerProject.windows?.[0]?.controls?.[0]?.id || null
           });
+          designerSavedSnapshotRef.current = JSON.stringify(nextDesignerState.project);
+          designerDirtyRef.current = false;
+          setDesignerDirty(false);
+          setWindowDesignerState(nextDesignerState);
         } else if (!activeProjectHasWindowDesigner) {
           designerDirtyRef.current = false;
           setDesignerDirty(false);
@@ -3169,7 +3211,7 @@ void DisplayStatus() {
               designerDirtyRef.current = false;
               setDesignerDirty(false);
               updateTrackedFileVersion(changedPath, nextVersion);
-              const currentState = readWindowDesignerState();
+              const currentState = readWindowDesignerState(activeProjectId);
               const preferredWindowId = payload.designerProject.windows?.some((win: { id: string }) => win.id === currentState.activeWindowId)
                 ? currentState.activeWindowId
                 : payload.designerProject.windows?.[0]?.id || 'main-window';
@@ -3457,15 +3499,6 @@ void DisplayStatus() {
     }
   };
 
-  const appendEditorTransactionLog = (message: string) => {
-    setShowBottomPanel(true);
-    setActiveTabInBottom('output');
-    setBuildLogs(previous => [
-      ...previous,
-      `> [${new Date().toLocaleTimeString()}] ${message}`
-    ]);
-  };
-
   const saveWorkspaceCore = async (
     reason = '保存',
     ownedByBuild = false
@@ -3493,7 +3526,7 @@ void DisplayStatus() {
       }
       requireCurrentProjectMutationOwner(requestOwner);
 
-      const designerProject = activeProjectHasWindowDesigner ? getCurrentWindowDesignerProject() : undefined;
+      const designerProject = activeProjectHasWindowDesigner ? getCurrentWindowDesignerProject(activeProjectId) : undefined;
       const savedDesignerSnapshot = designerProject ? JSON.stringify(designerProject) : '';
       const projectId = requestOwner.projectId || designerProject?.id || 'lingbuilder-ui-project';
       const savedStateByPath = new Map<string, { content: string; format: TextFileFormat }>();
@@ -3551,13 +3584,13 @@ void DisplayStatus() {
         return false;
       }
       if (!response.ok || payload?.ok === false) {
-        throw new Error(payload?.error || '无法写入文件到项目磁盘。');
+        throw new Error(payload?.error || `保存服务请求失败（HTTP ${response.status}）。请检查开发服务是否正在运行。`);
       }
       requireCurrentProjectMutationOwner(requestOwner);
       projectFileVersionsRef.current = payload.fileVersions || projectFileVersionsRef.current;
       if (designerProject) {
         designerSavedSnapshotRef.current = savedDesignerSnapshot;
-        const currentDesignerSnapshot = JSON.stringify(readWindowDesignerState().project);
+         const currentDesignerSnapshot = JSON.stringify(readWindowDesignerState(activeProjectId).project);
         const nextDesignerDirty = currentDesignerSnapshot !== savedDesignerSnapshot;
         designerDirtyRef.current = nextDesignerDirty;
         setDesignerDirty(nextDesignerDirty);
@@ -4546,7 +4579,7 @@ void DisplayStatus() {
       // Read the same persisted designer snapshot used by saveWorkspaceCore so
       // a just-finished designer edit cannot be replaced by a stale React
       // render when F5 is pressed immediately afterward.
-      const currentDesignerState = readWindowDesignerState();
+       const currentDesignerState = readWindowDesignerState(activeProjectId);
       const activeWindow = currentDesignerState.project.windows.find(window => window.id === currentDesignerState.activeWindowId)
         || currentDesignerState.project.windows[0];
       const sourceSnapshot = requestWindowDesignerLingCppSource(
@@ -4717,6 +4750,19 @@ void DisplayStatus() {
       return !error;
     },
     openAbout: () => { setShowAboutModal(true); return true; },
+    checkForUpdates: async () => {
+      setUpdateCheckState({ status: 'checking' });
+      const check = window.lingBuilder?.updates?.check;
+      if (!check) { setUpdateCheckState({ status: 'error', error: '当前环境不支持在线检查更新。' }); return true; }
+      try {
+        const result = await check();
+        if (!result.ok) { setUpdateCheckState({ status: 'error', error: result.error || '检查更新失败。' }); return true; }
+        setUpdateCheckState(result.hasUpdate ? { status: 'update', latestVersion: result.latestVersion, releaseTitle: result.releaseTitle } : { status: 'latest', latestVersion: result.latestVersion });
+      } catch (error) {
+        setUpdateCheckState({ status: 'error', error: error instanceof Error ? error.message : String(error) });
+      }
+      return true;
+    },
     openGitChanges: () => {
       window.dispatchEvent(new CustomEvent('lingbuilder-open-git-changes'));
       return true;
@@ -4775,6 +4821,7 @@ void DisplayStatus() {
 
   const blockingDialogOpen = showCloseConfirmModal
     || showAboutModal
+    || Boolean(updateCheckState)
     || showHelpCenter
     || showSponsorDialog
     || showCustomModal
@@ -5241,6 +5288,16 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 36,
         handler: () => workbenchCommandHandlersRef.current.openAbout()
+      },
+      {
+        id: 'workbench.action.help.checkForUpdates',
+        title: '帮助：检查更新',
+        aliases: ['Check for Updates', 'Update Check'],
+        category: '帮助',
+        description: '联网检查 LingBuilder 是否有新版本；如有新版本将引导前往官网手动下载。',
+        when: '!workbench.modalOpen',
+        order: 37,
+        handler: () => workbenchCommandHandlersRef.current.checkForUpdates()
       },
       {
         id: 'workbench.action.git.openChanges',
@@ -5717,6 +5774,32 @@ void DisplayStatus() {
     );
   }
 
+  const renderAiAssistant = () => (
+    <AiAssistant
+      strings={activeFile.strings}
+      glossary={glossary}
+      onBatchTranslate={handleBatchTranslate}
+      onSetStatus={handleSetStatus}
+      filePath={activeFile.path}
+      sourceCode={activeFile.translatedContent || activeFile.originalContent}
+      activeLanguage={activeFile.language}
+      projectId={activeProjectId}
+      projectMutationOwner={createProjectMutationOwner(
+        activeProjectId,
+        projectFileLoadGenerationRef.current
+      )}
+      moduleContext={moduleContext}
+      designerProject={activeProjectHasWindowDesigner ? windowDesignerState.project : undefined}
+      workspaceFiles={files.map(file => ({
+        filePath: file.path,
+        sourceCode: file.translatedContent || file.originalContent,
+        language: file.language
+      }))}
+      onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
+      isDarkMode={isDarkMode}
+    />
+  );
+
   return (
     <div className={`workbench-shell ${isDarkMode ? 'theme-dark' : 'theme-light'} h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
       {/* Title Bar */}
@@ -5900,10 +5983,6 @@ void DisplayStatus() {
                   <button onClick={() => { void executeWorkbenchCommand('workbench.action.togglePanel'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>提取字段与终端面板</span>
                     <span className="opacity-50 text-[9px]">{showBottomPanel ? '隐藏' : '显示'}</span>
-                  </button>
-                  <button onClick={() => { void executeWorkbenchCommand('workbench.action.toggleAiPanel'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>AI 智能建议面板</span>
-                    <span className="opacity-50 text-[9px]">{showRightPanel ? '隐藏' : '显示'}</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { void executeWorkbenchCommand('workbench.action.toggleColorTheme'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -6398,17 +6477,6 @@ void DisplayStatus() {
             >
               <Terminal className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => void executeWorkbenchCommand('workbench.action.toggleAiPanel')}
-              className={`p-1 rounded cursor-pointer transition-colors ${
-                showRightPanel 
-                  ? isDarkMode ? 'bg-[#1E1E1E] text-white' : 'bg-slate-100 text-slate-900 font-medium' 
-                  : isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'
-              }`}
-              title="切换 AI / 词典面板"
-            >
-              <Brain className="w-3.5 h-3.5" />
-            </button>
           </div>
 
           <div className={`w-px h-4 ${isDarkMode ? 'bg-[#444]' : 'bg-slate-300'}`}></div>
@@ -6439,6 +6507,10 @@ void DisplayStatus() {
           isDarkMode={isDarkMode}
           showLeftSidebar={showLeftSidebar}
           setShowLeftSidebar={setShowLeftSidebar}
+          showDesignerToolbox={isDesignerViewActive}
+          onDesignerToolboxHostChange={setDesignerToolboxHost}
+          showDesignerAssistant
+          assistantContent={renderAiAssistant()}
           onBatchTranslate={handleBatchTranslate}
           onSetStatus={handleSetStatus}
           glossary={glossary}
@@ -6540,6 +6612,8 @@ void DisplayStatus() {
               onCloseTab={handleCloseTab}
               allFiles={files}
               designerProject={activeProjectHasWindowDesigner ? windowDesignerState.project : undefined}
+              designerToolboxHost={designerToolboxHost}
+              onDesignerViewActiveChange={setIsDesignerViewActive}
               moduleContext={moduleContext}
               activeWindowId={windowDesignerState.activeWindowId}
               textModelWorkspaceId={textModelWorkspaceId}
@@ -6705,101 +6779,6 @@ void DisplayStatus() {
           )}
         </div>
 
-        {/* RIGHT DRAG RESIZER & COLLAPSE TOGGLE */}
-        <div
-          className={`w-[6px] relative flex items-center justify-center select-none transition-all duration-150 z-20 shrink-0 border-l group ${
-            showRightPanel 
-              ? isDarkMode 
-                ? 'bg-[#1c1c22] border-[#2d2d34] cursor-col-resize hover:bg-blue-500/20' 
-                : 'bg-slate-100 border-slate-200 cursor-col-resize hover:bg-blue-500/10'
-              : isDarkMode
-                ? 'bg-[#16161c] border-[#2d2d34] cursor-pointer hover:bg-amber-500/10'
-                : 'bg-slate-50 border-slate-200 cursor-pointer hover:bg-amber-500/10'
-          }`}
-          onMouseDown={showRightPanel ? startResizeRight : undefined}
-          title={showRightPanel ? "拖拽两侧边缘调整宽度 / 双击重置 / 点击按钮折叠" : "点击展开右侧 AI 助手面板"}
-          onDoubleClick={showRightPanel ? () => setRightWidth(320) : undefined}
-          onClick={showRightPanel ? undefined : toggleAiPanelVisibility}
-        >
-          {/* Thin line indicator */}
-          <div className={`w-[1px] rounded-full transition-all ${
-            showRightPanel 
-              ? 'h-8 bg-slate-700/50 group-hover:bg-blue-400 group-hover:h-12' 
-              : 'h-12 bg-amber-500/20 group-hover:bg-amber-500/50'
-          }`}></div>
-
-          {/* Toggle Trigger Pill Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleAiPanelVisibility();
-            }}
-            className={`absolute left-1/2 -translate-x-1/2 w-[16px] h-12 border rounded shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105 z-30 group-hover:opacity-100 opacity-60 ${
-              isDarkMode 
-                ? 'bg-[#2d2d36] hover:bg-[#3a3a45] active:bg-[#4a4a58] border-[#444] hover:border-blue-500/60' 
-                : 'bg-white hover:bg-slate-50 active:bg-slate-100 border-slate-300 hover:border-blue-500/60'
-            }`}
-            title={showRightPanel ? "折叠右侧面板" : "展开右侧面板"}
-          >
-            {showRightPanel ? (
-              <ChevronRight className="w-3 h-3 text-slate-400 group-hover:text-blue-400 transition-transform" />
-            ) : (
-              <ChevronLeft className="w-3 h-3 text-amber-500 group-hover:text-amber-400 transition-transform group-hover:scale-110" />
-            )}
-          </button>
-        </div>
-
-        {/* Right Control Side Panel */}
-        {showRightPanel && (
-          <div 
-            style={{ width: `${rightWidth}px` }}
-            className={`flex flex-col overflow-hidden shrink-0 border-l ${
-              isDarkMode ? 'bg-[#1e1e24] border-[#2d2d34]' : 'bg-white border-slate-200'
-            }`}
-          >
-            {/* Right AI assistant header */}
-            <div className={`flex px-2 pt-1 shrink-0 select-none border-b ${
-              isDarkMode ? 'bg-[#18181c] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
-            }`}>
-              <div className={`flex-1 py-2 text-[11px] font-semibold text-center border-b-2 ${
-                isDarkMode
-                  ? 'text-white border-blue-500 bg-[#1e1e24]'
-                  : 'text-blue-600 border-blue-500 bg-white'
-              }`}>
-                AI 智能编程助手
-              </div>
-            </div>
-
-            {/* AI assistant */}
-            <div
-              key={`${activeProjectId}:${projectFileLoadGenerationRef.current}:${activeFile.path}`}
-              className="flex-1 overflow-hidden"
-            >
-              <AiAssistant
-                strings={activeFile.strings}
-                glossary={glossary}
-                onBatchTranslate={handleBatchTranslate}
-                onSetStatus={handleSetStatus}
-                filePath={activeFile.path}
-                sourceCode={activeFile.translatedContent || activeFile.originalContent}
-                activeLanguage={activeFile.language}
-                projectId={activeProjectId}
-                projectMutationOwner={createProjectMutationOwner(
-                  activeProjectId,
-                  projectFileLoadGenerationRef.current
-                )}
-                moduleContext={moduleContext}
-                workspaceFiles={files.map(file => ({
-                  filePath: file.path,
-                  sourceCode: file.translatedContent || file.originalContent,
-                  language: file.language
-                }))}
-                onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
-                isDarkMode={isDarkMode}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       <CommandPalette
@@ -6938,6 +6917,30 @@ void DisplayStatus() {
         open={showAboutModal}
         onClose={() => setShowAboutModal(false)}
       />
+      {updateCheckState && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="检查更新">
+          <div className="w-[26rem] max-w-full rounded-lg border border-slate-700 bg-[#1c1c22] p-5 text-slate-100 shadow-2xl">
+            <h2 className="text-sm font-semibold">
+              {updateCheckState.status === 'checking' ? '正在检查更新…' : updateCheckState.status === 'update' ? '发现新版本' : updateCheckState.status === 'latest' ? '已是最新版本' : '检查更新失败'}
+            </h2>
+            <p className="mt-3 text-xs leading-5 text-slate-400">
+              {updateCheckState.status === 'checking' ? '正在连接 LingBuilder 云端查询最新版本。'
+                : updateCheckState.status === 'update' ? `最新版本 v${updateCheckState.latestVersion || ''}（当前 ${LINGBUILDER_DISPLAY_VERSION}）。请前往官网下载最新安装包并手动完成更新。`
+                : updateCheckState.status === 'latest' ? `当前 ${LINGBUILDER_DISPLAY_VERSION} 已是最新版本。`
+                : updateCheckState.error || '请稍后重试。'}
+            </p>
+            {updateCheckState.status === 'update' && updateCheckState.releaseTitle && (
+              <p className="mt-2 text-[11px] leading-5 text-slate-500">{updateCheckState.releaseTitle}</p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              {updateCheckState.status === 'update' && (
+                <button type="button" onClick={() => window.open(LINGBUILDER_OFFICIAL_SITE_URL, '_blank', 'noopener,noreferrer')} className="min-h-8 rounded bg-[#4f46e5] px-3 text-xs font-semibold text-white hover:bg-indigo-600">前往官网下载</button>
+              )}
+              <button type="button" onClick={() => setUpdateCheckState(null)} className="min-h-8 rounded border border-slate-600 px-3 text-xs text-slate-300 hover:bg-white/5">{updateCheckState.status === 'update' ? '稍后再说' : '关闭'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <SponsorDialog
         open={showSponsorDialog}

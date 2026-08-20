@@ -91,6 +91,7 @@ import {
   parseEplControlMemberAssignmentRule,
   parseEplControlMemberRule,
   parseEplControlMethodCallRule,
+  resolveEplRuntimeCallName,
   splitEplBinaryExpression
 } from './eplToCppRules';
 import { generateWindowsExecutableResourceFile, getSafeCustomWindowIconPath } from './windowsExecutableIconService';
@@ -23069,9 +23070,10 @@ function isDefinitelyWideStringExpression(
 }
 
 function translateLingCppCallName(name: string): string {
-  const qualified = name.split(/\s*\.\s*/u);
+  const resolvedName = resolveEplRuntimeCallName(name);
+  const qualified = resolvedName.split(/\s*\.\s*/u);
   if (qualified.length === 2) return functionLibraryCppName(qualified[0] || '', qualified[1] || '');
-  return toCppIdentifier(name);
+  return toCppIdentifier(resolvedName);
 }
 
 function normalizeLingCppLogicalExpression(expression: string): string {

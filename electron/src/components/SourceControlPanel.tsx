@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Archive,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cloud,
+  Columns2,
   FileDiff,
+  FileText,
   GitBranch,
   GitMerge,
   History,
@@ -15,8 +18,10 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Tag as TagIcon,
   Trash2
 } from 'lucide-react';
+import { DiffEditor } from '@monaco-editor/react';
 import type { SourceControlStatus } from '../types';
 import { sourceControlService, type SourceControlMutation } from '../services/lingCpp/sourceControlService';
 
@@ -25,7 +30,9 @@ interface Commit { hash: string; shortHash: string; authorName: string; authored
 interface Remote { name: string; fetchUrl: string; pushUrl: string }
 interface ConflictDetail { path: string; base: string; ours: string; theirs: string; working: string }
 interface FileStatus { path: string; indexStatus: string; workingTreeStatus: string; originalPath?: string }
-interface GitDiffResult { path: string; staged: boolean; patch: string; truncated: boolean; binary: boolean }
+interface GitDiffResult { path: string; staged: boolean; patch: string; truncated: boolean; binary: boolean; original: string; modified: string; language: string }
+interface StashEntry { index: number; message: string; createdAt: string }
+interface TagEntry { name: string; commit: string; subject: string }
 interface GitDialogField { name: string; label: string; value: string; required?: boolean; multiline?: boolean; options?: Array<{ value: string; label: string }> }
 interface GitDialogConfig {
   title: string;
@@ -40,16 +47,18 @@ interface GitDialogConfig {
 interface SourceControlPanelProps {
   initialStatus: SourceControlStatus | null;
   isDarkMode: boolean;
+  activeFilePath?: string;
   onChanged?: () => void;
   onExecuteCommand?: (operation: SourceControlMutation, payload?: Record<string, unknown>) => Promise<unknown>;
   variant?: 'compact' | 'full';
 }
 
-type DetailView = 'changes' | 'branches' | 'history' | 'remote' | 'conflicts' | 'diff';
+type DetailView = 'changes' | 'branches' | 'history' | 'remote' | 'conflicts' | 'diff' | 'stashes';
 
 export default function SourceControlPanel({
   initialStatus,
   isDarkMode,
+  activeFilePath,
   onChanged,
   onExecuteCommand,
   variant = 'compact'
@@ -57,12 +66,16 @@ export default function SourceControlPanel({
   const [status, setStatus] = useState(initialStatus);
   const [open, setOpen] = useState(variant === 'full');
   const [message, setMessage] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [history, setHistory] = useState<Commit[]>([]);
   const [remotes, setRemotes] = useState<Remote[]>([]);
+  const [stashes, setStashes] = useState<StashEntry[]>([]);
+  const [tags, setTags] = useState<TagEntry[]>([]);
+  const [historyExhausted, setHistoryExhausted] = useState(false);
+  const [diffMode, setDiffMode] = useState<'side-by-side' | 'patch'>('side-by-side');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [conflicts, setConflicts] = useState<FileStatus[]>([]);
   const [conflictDetails, setConflictDetails] = useState<Record<string, ConflictDetail>>({});
   const [diff, setDiff] = useState<GitDiffResult | null>(null);
@@ -89,7 +102,6 @@ export default function SourceControlPanel({
   const refresh = useCallback(async (notifyParent = true) => {
     const next = await request<SourceControlStatus>('/api/source-control/status');
     setStatus(next);
-    setSelected(current => new Set([...current].filter(item => next.files.some(file => file.path === item))));
     if (notifyParent) onChanged?.();
     return next;
   }, [onChanged, request]);
@@ -143,16 +155,27 @@ export default function SourceControlPanel({
   const files = (status?.files || []) as FileStatus[];
   const stagedPaths = useMemo(() => files.filter(file => Boolean(file.indexStatus) && file.indexStatus !== '?').map(file => file.path), [files]);
   const workingPaths = useMemo(() => files.filter(file => Boolean(file.workingTreeStatus)).map(file => file.path), [files]);
-  const selectedStagedPaths = stagedPaths.filter(filePath => selected.has(filePath));
-  const selectedWorkingPaths = workingPaths.filter(filePath => selected.has(filePath));
 
   const loadBranches = () => void perform(async () => {
-    setBranches(await request<Branch[]>('/api/source-control/branches'));
+    const [branchList, tagList] = await Promise.all([
+      request<Branch[]>('/api/source-control/branches'),
+      request<TagEntry[]>('/api/source-control/tags')
+    ]);
+    setBranches(branchList);
+    setTags(tagList);
     setDetail('branches');
   });
-  const loadHistory = () => void perform(async () => {
-    setHistory(await request<Commit[]>('/api/source-control/history?limit=50'));
+  const loadHistory = (append = false) => void perform(async () => {
+    const limit = 50;
+    const skip = append ? history.length : 0;
+    const next = await request<Commit[]>(`/api/source-control/history?limit=${limit}&skip=${skip}`);
+    setHistory(append ? [...history, ...next] : next);
+    setHistoryExhausted(next.length < limit);
     setDetail('history');
+  });
+  const loadStashes = () => void perform(async () => {
+    setStashes(await request<StashEntry[]>('/api/source-control/stashes'));
+    setDetail('stashes');
   });
   const loadRemote = () => void perform(async () => {
     setRemotes(await request<Remote[]>('/api/source-control/remotes'));
@@ -172,14 +195,6 @@ export default function SourceControlPanel({
     setDiff(await request<GitDiffResult>(`/api/source-control/diff?path=${encodeURIComponent(filePath)}&staged=${staged}`));
     setDetail('diff');
   }, { refresh: false });
-
-  const toggleSelected = (filePath: string, checked: boolean) => {
-    setSelected(current => {
-      const next = new Set(current);
-      checked ? next.add(filePath) : next.delete(filePath);
-      return next;
-    });
-  };
 
   const openDialog = (config: GitDialogConfig) => {
     setDialog(config);
@@ -216,7 +231,7 @@ export default function SourceControlPanel({
     openDialog({ title: '添加远程仓库', submitLabel: '添加', fields: [{ name: 'name', label: '远程名称', value: 'origin', required: true }, { name: 'url', label: '仓库地址', value: '', required: true }], onSubmit: async values => { setRemotes(await mutate('remote.add', { name: values.name.trim(), url: values.url.trim() }) as Remote[]); } });
   };
   const blame = () => {
-    openDialog({ title: '查看文件 Blame', submitLabel: '查看', refresh: false, fields: [{ name: 'filePath', label: '工作区文件路径', value: '', required: true }, { name: 'line', label: '起始行', value: '1', required: true }], onSubmit: async values => {
+    openDialog({ title: '查看文件 Blame', submitLabel: '查看', refresh: false, fields: [{ name: 'filePath', label: '工作区文件路径', value: activeFilePath || '', required: true }, { name: 'line', label: '起始行', value: '1', required: true }], onSubmit: async values => {
       const line = Number(values.line);
       if (!Number.isInteger(line) || line < 1) throw new Error('起始行必须是大于 0 的整数。');
       const lines = await request<Array<{ line: number; author: string; hash: string; text: string }>>(`/api/source-control/blame?path=${encodeURIComponent(values.filePath.trim())}&startLine=${line}&endLine=${line + 19}`);
@@ -279,6 +294,100 @@ export default function SourceControlPanel({
     danger: operation === 'integration.abort',
     fields: [{ name: 'kind', label: '操作类型', value: 'merge', required: true, options: [{ value: 'merge', label: 'merge（合并）' }, { value: 'rebase', label: 'rebase（变基）' }] }],
     onSubmit: async values => { await mutate(operation, { kind: values.kind }); await readConflicts(); }
+  });
+
+  const stashChanges = () => {
+    openDialog({
+      title: '贮藏当前更改',
+      description: '把工作区和已暂存的更改保存到贮藏栈，工作区恢复干净；未跟踪文件默认不包含。',
+      submitLabel: '贮藏',
+      fields: [
+        { name: 'message', label: '贮藏说明（可选）', value: '' },
+        { name: 'includeUntracked', label: '包含未跟踪文件', value: 'no', options: [{ value: 'no', label: '不包含' }, { value: 'yes', label: '包含' }] }
+      ],
+      onSubmit: async values => { setStashes(await mutate('stash.save', { message: values.message.trim(), includeUntracked: values.includeUntracked === 'yes' }) as StashEntry[]); }
+    });
+  };
+  const applyStash = (stash: StashEntry, pop: boolean) => openDialog({
+    title: pop ? '弹出贮藏' : '应用贮藏',
+    description: pop
+      ? `把贮藏 ${stash.index} 的更改应用到工作区并从贮藏栈删除；如产生冲突会保留该贮藏。`
+      : `把贮藏 ${stash.index} 的更改应用到工作区，贮藏栈保留该条目。`,
+    submitLabel: pop ? '弹出' : '应用',
+    fields: [],
+    onSubmit: async () => { await mutate('stash.apply', { index: stash.index, pop }); }
+  });
+  const dropStash = (stash: StashEntry) => openDialog({
+    title: '删除贮藏',
+    description: `“stash@{${stash.index}} ${stash.message}”将被永久删除且无法撤销。`,
+    submitLabel: '删除贮藏',
+    danger: true,
+    fields: [],
+    onSubmit: async () => { setStashes(await mutate('stash.drop', { index: stash.index }) as StashEntry[]); }
+  });
+  const createTagDialog = () => openDialog({
+    title: '新建 Git 标签',
+    description: '在当前提交上创建标签；填写说明会创建附注标签，留空创建轻量标签。',
+    submitLabel: '创建标签',
+    fields: [
+      { name: 'name', label: '标签名称', value: '', required: true },
+      { name: 'message', label: '标签说明（可选）', value: '', multiline: true }
+    ],
+    onSubmit: async values => { setTags(await mutate('tag.create', { name: values.name.trim(), message: values.message }) as TagEntry[]); }
+  });
+  const deleteTagConfirm = (tag: TagEntry) => openDialog({
+    title: '删除标签',
+    description: `本地标签“${tag.name}”将被删除，不会影响远程标签。`,
+    submitLabel: '删除标签',
+    danger: true,
+    fields: [],
+    onSubmit: async () => { setTags(await mutate('tag.delete', { name: tag.name }) as TagEntry[]); }
+  });
+
+  const toggleCollapsedGroup = (key: string) => {
+    setCollapsedGroups(current => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const groupByDirectory = (fileList: FileStatus[]): Array<[string, FileStatus[]]> => {
+    const groups = new Map<string, FileStatus[]>();
+    for (const file of fileList) {
+      const separator = file.path.lastIndexOf('/');
+      const directory = separator === -1 ? '' : file.path.slice(0, separator);
+      const current = groups.get(directory);
+      if (current) current.push(file); else groups.set(directory, [file]);
+    }
+    return [...groups.entries()];
+  };
+  const renderFileRow = (file: FileStatus, rowKind: 'working' | 'staged') => {
+    const isWorking = rowKind === 'working';
+    const statusCode = isWorking ? file.workingTreeStatus : file.indexStatus;
+    const separator = file.path.lastIndexOf('/');
+    const displayName = separator === -1 ? file.path : file.path.slice(separator + 1);
+    const diffTitle = isWorking ? `查看工作区差异：${file.path}` : `查看已暂存差异：${file.path}`;
+    return <div key={`${rowKind}:${file.path}`} className="group flex min-h-7 items-center gap-1 rounded px-1 pl-2 hover:bg-black/10">
+      <span className={`w-4 text-center font-mono font-bold ${isWorking ? 'text-amber-500' : 'text-emerald-500'}`} title={gitStatusLabel(statusCode)}>{statusCode}</span>
+      <button type="button" disabled={busy} onClick={() => loadDiff(file.path, !isWorking)} className="min-w-0 flex-1 truncate text-left" title={diffTitle}>{displayName}</button>
+      {isWorking
+        ? <button type="button" disabled={busy} onClick={() => void perform(async () => { await mutate('stage', { paths: [file.path] }); })} aria-label={`暂存此文件 ${file.path}`} title="暂存此文件" className="rounded p-1 text-emerald-500 opacity-0 hover:bg-black/10 group-hover:opacity-100 focus-visible:opacity-100"><Plus className="h-3 w-3" /></button>
+        : <button type="button" disabled={busy} onClick={() => void perform(async () => { await mutate('unstage', { paths: [file.path] }); })} aria-label={`取消暂存此文件 ${file.path}`} title="取消暂存此文件" className="rounded p-1 opacity-0 hover:bg-black/10 group-hover:opacity-100 focus-visible:opacity-100"><Minus className="h-3 w-3" /></button>}
+      <button type="button" disabled={busy} onClick={() => loadDiff(file.path, !isWorking)} aria-label={`${isWorking ? '查看差异' : '查看已暂存差异'} ${file.path}`} title={isWorking ? '查看差异' : '查看已暂存差异'} className="rounded p-1 opacity-70 hover:bg-black/10 group-hover:opacity-100"><FileDiff className="h-3 w-3" /></button>
+      {isWorking && <button type="button" disabled={busy} onClick={() => confirmDiscard(file)} aria-label={`放弃更改 ${file.path}`} title="放弃未暂存更改" className="rounded p-1 text-rose-500 opacity-70 hover:bg-black/10 group-hover:opacity-100"><RotateCcw className="h-3 w-3" /></button>}
+    </div>;
+  };
+  const renderGroupedRows = (fileList: FileStatus[], rowKind: 'working' | 'staged') => groupByDirectory(fileList).map(([directory, groupFiles]) => {
+    const key = `${rowKind}:${directory}`;
+    const collapsed = collapsedGroups.has(key);
+    return <div key={key}>
+      {directory !== '' && <button type="button" aria-expanded={!collapsed} onClick={() => toggleCollapsedGroup(key)} className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-black/10" title={directory}>
+        {collapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
+        <span className="min-w-0 flex-1 truncate opacity-75">{directory}</span>
+        <span className="rounded-full bg-black/10 px-1 text-center text-[9px] font-semibold opacity-80">{groupFiles.length}</span>
+      </button>}
+      {!collapsed && groupFiles.map(file => renderFileRow(file, rowKind))}
+    </div>;
   });
 
   const surface = isDarkMode ? 'border-[#2d2d34] bg-[#1e1e1e]' : 'border-slate-200 bg-white';
@@ -344,9 +453,10 @@ export default function SourceControlPanel({
       <div className="mb-2 flex gap-1">
         <button type="button" disabled={busy} aria-label="显示 Git 更改" title="改动" onClick={() => setDetail('changes')} className={buttonClass}><Check className="h-3 w-3" /></button>
         <button type="button" disabled={busy} aria-label="显示 Git 分支" title="分支" onClick={loadBranches} className={buttonClass}><GitBranch className="h-3 w-3" /></button>
-        <button type="button" disabled={busy} aria-label="显示远程同步" title="远程同步" onClick={loadRemote} className={buttonClass}><Cloud className="h-3 w-3" /></button>
+        <button type="button" disabled={busy} aria-label="显示远程同步" title="远程仓库（推送/拉取地址设置）" onClick={loadRemote} className={buttonClass}><Cloud className="h-3 w-3" /></button>
         <button type="button" disabled={busy} aria-label="显示 Git 冲突" title="冲突" onClick={loadConflicts} className={buttonClass}><GitMerge className="h-3 w-3" /></button>
-        <button type="button" disabled={busy} aria-label="显示提交历史" title="历史" onClick={loadHistory} className={buttonClass}><History className="h-3 w-3" /></button>
+        <button type="button" disabled={busy} aria-label="显示提交历史" title="历史" onClick={() => loadHistory(false)} className={buttonClass}><History className="h-3 w-3" /></button>
+        <button type="button" disabled={busy} aria-label="显示 Git 贮藏" title="贮藏" onClick={loadStashes} className={buttonClass}><Archive className="h-3 w-3" /></button>
         <button type="button" disabled={busy} aria-label="查看文件 Blame" title="Blame" onClick={blame} className={buttonClass}><Search className="h-3 w-3" /></button>
         <button type="button" disabled={busy} aria-label="刷新 Git 状态" title="刷新" onClick={() => void perform(async () => undefined)} className={`${buttonClass} ml-auto`}><RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} /></button>
       </div>
@@ -354,46 +464,80 @@ export default function SourceControlPanel({
       {error && <div role="alert" className="mb-2 whitespace-pre-wrap rounded bg-rose-500/10 p-2 text-rose-500">{error}</div>}
 
       {detail === 'changes' && <>
+        <div className="mb-2 flex min-h-6 items-center gap-1.5 border-b border-inherit pb-1.5 text-[10px]">
+          <GitBranch className="h-3 w-3 shrink-0 text-[#007ACC]" />
+          <span className="shrink-0 font-semibold" title={status.branch || 'detached'}>{status.branch || 'detached'}</span>
+          {status.upstream ? (<>
+            <span className="min-w-0 flex-1 truncate opacity-70" title={`跟踪远程分支 ${status.upstream}`}>→ {status.upstream}</span>
+            {status.ahead > 0 && <span className="shrink-0 font-semibold text-emerald-500" title={`领先远程 ${status.ahead} 个提交`}>↑{status.ahead}</span>}
+            {status.behind > 0 && <span className="shrink-0 font-semibold text-amber-500" title={`落后远程 ${status.behind} 个提交`}>↓{status.behind}</span>}
+            <button type="button" disabled={busy} onClick={loadRemote} className="ml-auto shrink-0 rounded px-1 py-0.5 text-[#007ACC] hover:bg-black/10" title="打开远程同步视图：获取、拉取、推送、修改远程地址">远程同步</button>
+          </>) : (<>
+            <span className="min-w-0 flex-1 truncate opacity-60">本地分支，未跟踪远程</span>
+            <button type="button" disabled={busy} onClick={loadRemote} className="ml-auto shrink-0 rounded px-1 py-0.5 text-amber-500 underline decoration-dotted underline-offset-2 hover:bg-black/10" title="打开远程同步视图，添加或修改远程仓库推送地址">未设置推送地址，点击配置 →</button>
+          </>)}
+        </div>
         <label htmlFor="git-commit-message" className="mb-1 block font-semibold">提交说明</label>
         <textarea id="git-commit-message" value={message} onChange={event => setMessage(event.target.value)} placeholder="输入提交说明（必填）" rows={3} maxLength={4000} className={`mb-1 w-full resize-y rounded border border-inherit px-2 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007ACC] ${isDarkMode ? 'bg-black/20' : 'bg-white'}`} />
-        <button disabled={busy || !message.trim() || stagedPaths.length === 0} onClick={() => void perform(async () => { await mutate('commit', { message }); setMessage(''); })} className="mb-3 w-full rounded bg-[#007ACC] px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1687cf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40">提交已暂存更改</button>
+        <button disabled={busy || !message.trim() || (stagedPaths.length === 0 && workingPaths.length === 0)} onClick={() => void perform(async () => { if (stagedPaths.length === 0 && workingPaths.length > 0) await mutate('stage.all', {}); await mutate('commit', { message }); setMessage(''); })} title={stagedPaths.length === 0 && workingPaths.length > 0 ? '当前没有已暂存文件，将先把全部修改加入暂存区再提交' : '提交暂存区中的全部更改'} className="mb-3 w-full rounded bg-[#007ACC] px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1687cf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40">{stagedPaths.length === 0 && workingPaths.length > 0 ? '暂存全部并提交' : '提交已暂存更改'}</button>
 
         <section aria-labelledby="git-working-changes-title" className="mb-3">
-          <div className="mb-1 flex min-h-7 items-center border-b border-inherit">
+          <div className="mb-1 flex min-h-7 items-center gap-1 border-b border-inherit">
             <h3 id="git-working-changes-title" className="min-w-0 flex-1 truncate text-[11px] font-semibold">更改 <span className="opacity-60">({workingPaths.length})</span></h3>
-            <button type="button" disabled={busy || workingPaths.length === 0} title="暂存选中更改；未选中时暂存全部" aria-label="暂存更改" onClick={() => void perform(async () => { await mutate('stage', { paths: selectedWorkingPaths.length ? selectedWorkingPaths : workingPaths }); setSelected(new Set()); })} className="rounded p-1 hover:bg-black/10 disabled:opacity-35"><Plus className="h-3.5 w-3.5" /></button>
+            <button type="button" disabled={busy || workingPaths.length === 0} title="把全部未暂存修改加入暂存区（悬停单个文件行可只暂存该文件）" aria-label="全部暂存" onClick={() => void perform(async () => { await mutate('stage.all', {}); })} className={buttonClass}>全部暂存</button>
           </div>
-          {workingPaths.length === 0 ? <div className="py-2 text-center opacity-55">没有未暂存的更改</div> : files.filter(file => Boolean(file.workingTreeStatus)).map(file => <div key={`working:${file.path}`} className="group flex min-h-7 items-center gap-1 rounded px-1 hover:bg-black/10">
-            <input aria-label={`选择更改 ${file.path}`} type="checkbox" checked={selected.has(file.path)} onChange={event => toggleSelected(file.path, event.target.checked)} />
-            <span className="w-4 text-center font-mono font-bold text-amber-500" title={gitStatusLabel(file.workingTreeStatus)}>{file.workingTreeStatus}</span>
-            <button type="button" disabled={busy} onClick={() => loadDiff(file.path, false)} className="min-w-0 flex-1 truncate text-left" title={`查看工作区差异：${file.path}`}>{file.path}</button>
-            <button type="button" disabled={busy} onClick={() => loadDiff(file.path, false)} aria-label={`查看差异 ${file.path}`} title="查看差异" className="rounded p-1 opacity-70 hover:bg-black/10 group-hover:opacity-100"><FileDiff className="h-3 w-3" /></button>
-            <button type="button" disabled={busy} onClick={() => confirmDiscard(file)} aria-label={`放弃更改 ${file.path}`} title="放弃未暂存更改" className="rounded p-1 text-rose-500 opacity-70 hover:bg-black/10 group-hover:opacity-100"><RotateCcw className="h-3 w-3" /></button>
-          </div>)}
+          {workingPaths.length === 0 ? <div className="py-2 text-center opacity-55">没有未暂存的更改</div> : renderGroupedRows(files.filter(file => Boolean(file.workingTreeStatus)), 'working')}
         </section>
 
         <section aria-labelledby="git-staged-changes-title">
-          <div className="mb-1 flex min-h-7 items-center border-b border-inherit">
+          <div className="mb-1 flex min-h-7 items-center gap-1 border-b border-inherit">
             <h3 id="git-staged-changes-title" className="min-w-0 flex-1 truncate text-[11px] font-semibold">已暂存的更改 <span className="opacity-60">({stagedPaths.length})</span></h3>
-            <button type="button" disabled={busy || stagedPaths.length === 0} title="取消暂存选中更改；未选中时取消暂存全部" aria-label="取消暂存更改" onClick={() => void perform(async () => { await mutate('unstage', { paths: selectedStagedPaths.length ? selectedStagedPaths : stagedPaths }); setSelected(new Set()); })} className="rounded p-1 hover:bg-black/10 disabled:opacity-35"><Minus className="h-3.5 w-3.5" /></button>
+            <button type="button" disabled={busy || stagedPaths.length === 0} title="取消全部暂存（文件修改仍保留在工作区，不会丢失）" aria-label="全部取消暂存" onClick={() => void perform(async () => { await mutate('unstage.all', {}); })} className={buttonClass}>全部取消暂存</button>
           </div>
-          {stagedPaths.length === 0 ? <div className="py-2 text-center opacity-55">暂存更改后即可提交</div> : files.filter(file => Boolean(file.indexStatus) && file.indexStatus !== '?').map(file => <div key={`staged:${file.path}`} className="group flex min-h-7 items-center gap-1 rounded px-1 hover:bg-black/10">
-            <input aria-label={`选择已暂存更改 ${file.path}`} type="checkbox" checked={selected.has(file.path)} onChange={event => toggleSelected(file.path, event.target.checked)} />
-            <span className="w-4 text-center font-mono font-bold text-emerald-500" title={gitStatusLabel(file.indexStatus)}>{file.indexStatus}</span>
-            <button type="button" disabled={busy} onClick={() => loadDiff(file.path, true)} className="min-w-0 flex-1 truncate text-left" title={`查看已暂存差异：${file.path}`}>{file.path}</button>
-            <button type="button" disabled={busy} onClick={() => loadDiff(file.path, true)} aria-label={`查看已暂存差异 ${file.path}`} title="查看已暂存差异" className="rounded p-1 opacity-70 hover:bg-black/10 group-hover:opacity-100"><FileDiff className="h-3 w-3" /></button>
-          </div>)}
+          {stagedPaths.length === 0 ? <div className="py-2 text-center opacity-55">暂存更改后即可提交</div> : renderGroupedRows(files.filter(file => Boolean(file.indexStatus) && file.indexStatus !== '?'), 'staged')}
         </section>
 
         {files.length === 0 && <div className="mt-6 text-center text-[11px] opacity-65"><Check className="mx-auto mb-1 h-5 w-5 text-emerald-500" /><div>工作树是干净的</div><div className="mt-0.5 text-[9px]">没有需要提交的更改</div></div>}
       </>}
 
       {detail === 'diff' && <div>
-        <button type="button" disabled={busy} onClick={() => setDetail('changes')} className={`${buttonClass} mb-2`}><ChevronLeft className="mr-1 inline h-3 w-3" />返回更改</button>
+        <div className="mb-2 flex items-center gap-1">
+          <button type="button" disabled={busy} onClick={() => setDetail('changes')} className={buttonClass}><ChevronLeft className="mr-1 inline h-3 w-3" />返回更改</button>
+          {diff && !diff.binary && <div className="ml-auto flex gap-1">
+            <button type="button" disabled={busy} aria-pressed={diffMode === 'side-by-side'} title="并排差异视图" onClick={() => setDiffMode('side-by-side')} className={diffMode === 'side-by-side' ? `${buttonClass} border-[#007ACC] text-[#007ACC]` : buttonClass}><Columns2 className="h-3 w-3" /></button>
+            <button type="button" disabled={busy} aria-pressed={diffMode === 'patch'} title="补丁文本视图" onClick={() => setDiffMode('patch')} className={diffMode === 'patch' ? `${buttonClass} border-[#007ACC] text-[#007ACC]` : buttonClass}><FileText className="h-3 w-3" /></button>
+          </div>}
+        </div>
         {diff && <>
           <div className="mb-1 flex items-center gap-1 font-semibold"><FileDiff className="h-3.5 w-3.5 text-[#007ACC]" /><span className="min-w-0 flex-1 truncate" title={diff.path}>{diff.path}</span><span className="opacity-60">{diff.staged ? '已暂存' : '工作区'}</span></div>
           {diff.truncated && <div role="status" className="mb-1 rounded bg-amber-500/10 p-1 text-amber-500">差异超过 2 MB，当前只显示前 2 MB。</div>}
-          <pre className={`max-h-[65vh] overflow-auto whitespace-pre font-mono text-[10px] leading-4 ${isDarkMode ? 'bg-black/20' : 'bg-slate-50'} rounded border border-inherit p-2`}>{diff.patch}</pre>
+          {diff.binary
+            ? <pre className={`max-h-[65vh] overflow-auto whitespace-pre font-mono text-[10px] leading-4 ${isDarkMode ? 'bg-black/20' : 'bg-slate-50'} rounded border border-inherit p-2`}>{diff.patch}</pre>
+            : diffMode === 'side-by-side'
+              ? <div className="h-[60vh] overflow-hidden rounded border border-inherit">
+                <DiffEditor
+                  height="100%"
+                  original={diff.original}
+                  modified={diff.modified}
+                  language={diff.language}
+                  theme={isDarkMode ? 'epl-dark' : 'epl-light'}
+                  options={{
+                    readOnly: true,
+                    renderSideBySide: true,
+                    renderOverviewRuler: false,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    fontSize: 11,
+                    automaticLayout: true,
+                    lineNumbersMinChars: 3,
+                    folding: false,
+                    renderLineHighlight: 'none',
+                    diffWordWrap: 'off'
+                  }}
+                  loading={<div className={`p-3 text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>正在加载差异视图…</div>}
+                />
+              </div>
+              : <pre className={`max-h-[65vh] overflow-auto whitespace-pre font-mono text-[10px] leading-4 ${isDarkMode ? 'bg-black/20' : 'bg-slate-50'} rounded border border-inherit p-2`}>{diff.patch}</pre>}
         </>}
       </div>}
 
@@ -404,11 +548,40 @@ export default function SourceControlPanel({
           <button disabled={busy || branch.current} onClick={() => void perform(async () => { setBranches(await mutate('branch.checkout', { name: branch.name }) as Branch[]); })} className={`min-w-0 flex-1 truncate py-1 text-left disabled:opacity-60 ${branch.current ? 'text-blue-500' : ''}`} title={branch.subject}>{branch.current ? '● ' : ''}{branch.name}</button>
           {!branch.current && <button disabled={busy} title={`删除分支 ${branch.name}`} onClick={() => confirmDeleteBranch(branch)} className="px-1 text-rose-500 disabled:opacity-40"><Trash2 className="h-3 w-3" /></button>}
         </div>)}
+        <div className="mt-3 mb-1 flex items-center border-t border-inherit pt-2">
+          <span className="flex-1 text-[11px] font-semibold">标签 <span className="opacity-60">({tags.length})</span></span>
+          <button type="button" disabled={busy} onClick={createTagDialog} className={buttonClass}><Plus className="mr-1 inline h-3 w-3" />新建标签</button>
+        </div>
+        {tags.length === 0 && <div className="py-2 text-center opacity-60">没有本地标签。</div>}
+        {tags.map(tag => <div key={tag.name} className="flex items-center border-t border-inherit">
+          <div className="min-w-0 flex-1 truncate py-1" title={tag.subject}><TagIcon className="mr-1 inline h-3 w-3 text-[#007ACC]" />{tag.name}<span className="ml-1 opacity-60">{tag.subject}</span></div>
+          <button disabled={busy} title={`删除标签 ${tag.name}`} onClick={() => deleteTagConfirm(tag)} className="px-1 text-rose-500 disabled:opacity-40"><Trash2 className="h-3 w-3" /></button>
+        </div>)}
+      </div>}
+
+      {detail === 'stashes' && <div>
+        <div className="mb-1 flex items-center">
+          <span className="flex-1 font-semibold">贮藏栈 <span className="opacity-60">({stashes.length})</span></span>
+          <button type="button" disabled={busy} onClick={stashChanges} className={buttonClass}><Plus className="mr-1 inline h-3 w-3" />贮藏更改</button>
+        </div>
+        {stashes.length === 0 && <div className="py-2 text-center opacity-60">当前没有贮藏条目。</div>}
+        {stashes.map(stash => <div key={stash.index} className="border-t border-inherit py-1">
+          <div className="truncate font-medium" title={stash.message}>{`stash@{${stash.index}}`} · {stash.message || '（无说明）'}</div>
+          <div className="truncate text-[9px] opacity-60">{stash.createdAt}</div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <button disabled={busy} onClick={() => applyStash(stash, false)} className={buttonClass}>应用</button>
+            <button disabled={busy} onClick={() => applyStash(stash, true)} className={buttonClass}>弹出</button>
+            <button disabled={busy} onClick={() => dropStash(stash)} className={`${buttonClass} text-rose-500`}>删除</button>
+          </div>
+        </div>)}
       </div>}
 
       {detail === 'history' && <div className="max-h-[65vh] overflow-auto">
         {history.length === 0 && <div className="py-2 text-center opacity-60">当前没有提交历史。</div>}
         {history.map(commit => <div key={commit.hash} className="border-t border-inherit py-1"><div className="truncate font-medium">{commit.subject}</div><div className="truncate opacity-60">{commit.shortHash} · {commit.authorName} · {new Date(commit.authoredAt).toLocaleString()}</div></div>)}
+        {history.length > 0 && (historyExhausted
+          ? <div className="py-2 text-center opacity-55">已加载全部提交（{history.length} 条）</div>
+          : <button type="button" disabled={busy} onClick={() => loadHistory(true)} className={`${buttonClass} my-1 w-full`}>加载更多（已显示 {history.length} 条）</button>)}
       </div>}
 
       {detail === 'remote' && <div>

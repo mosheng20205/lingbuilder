@@ -108,6 +108,29 @@ test('atomically writes a complete batch', async t => {
   assert.equal(result.versions[path.resolve(first)], createProjectFileVersion(Buffer.from('a1')));
 });
 
+test('replaces existing files when rename rejects an existing destination', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-replace-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const target = path.join(root, 'Main.lcpp');
+  await fs.writeFile(target, '旧内容', 'utf8');
+  let rejected = false;
+  const fileSystem: ProjectFilePersistenceFileSystem = {
+    readFile: filePath => fs.readFile(filePath),
+    writeFile: (filePath, data) => fs.writeFile(filePath, data),
+    mkdir: (directoryPath, options) => fs.mkdir(directoryPath, options),
+    rm: (filePath, options) => fs.rm(filePath, options),
+    rename: async (sourcePath, targetPath) => {
+      if (!rejected && targetPath === target) {
+        rejected = true;
+        throw Object.assign(new Error('destination exists'), { code: 'EEXIST' });
+      }
+      await fs.rename(sourcePath, targetPath);
+    }
+  };
+  await createProjectFilePersistenceService(fileSystem).writeAll([{ targetPath: target, bytes: Buffer.from('新内容', 'utf8') }]);
+  assert.equal(await fs.readFile(target, 'utf8'), '新内容');
+});
+
 test('initial versions use exact disk bytes when decoded text normalizes mixed line endings', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-version-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

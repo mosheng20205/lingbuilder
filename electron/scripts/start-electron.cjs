@@ -45,6 +45,19 @@ function run(command, args, options = {}) {
   });
 }
 
+function createElectronEnvironment() {
+  const environment = {
+    ...process.env,
+    ELECTRON_RENDERER_URL: DEV_URL,
+  };
+  // Some shells and IDE runners set this flag for Node-based Electron tools.
+  // It must not reach the desktop process, otherwise Electron exposes no app
+  // module and the main window exits before it can load.
+  delete environment.ELECTRON_RUN_AS_NODE;
+  delete environment.ELECTRON_NO_ATTACH_CONSOLE;
+  return environment;
+}
+
 function resolveNpmInvocation() {
   const candidates = [
     process.env.npm_execpath,
@@ -89,6 +102,7 @@ async function main() {
   const electronExe = path.join(projectRoot, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
   await run(electronExe, ['.'], {
     cwd: projectRoot,
+    env: createElectronEnvironment(),
   });
 }
 

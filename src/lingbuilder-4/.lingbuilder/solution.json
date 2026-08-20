@@ -6,6 +6,7 @@
   "startupProjectIds": [
     "web-access-demo"
   ],
+  "folders": [],
   "projects": [
     {
       "type": "visual-cpp",

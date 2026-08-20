@@ -1,291 +1,56 @@
-import {
-  ArrowDown,
-  Blocks,
-  Bot,
-  Boxes,
-  Braces,
-  Check,
-  ChevronRight,
-  Code2,
-  Download,
-  ExternalLink,
-  GitBranch,
-  LayoutTemplate,
-  MessageCircle,
-  MonitorCog,
-  PackageOpen,
-  Play,
-  ShieldCheck,
-  Sparkles,
-  TerminalSquare,
-  WandSparkles,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowRight, BookOpen, Boxes, Braces, CheckCircle2, Code2, Download, Github, Menu, Search, Terminal, X } from 'lucide-react';
+import { useState } from 'react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
-import moduleEcosystemImage from '../../../宣传素材/LingBuilder模块生态宣传组图/01-LingBuilder模块生态-主视觉.png';
-import { fetchWebsiteBootstrap } from './websiteApi';
 import './home.css';
 
-const features = [
-  {
-    icon: Code2,
-    index: '01',
-    title: '全中文 IDE 工作台',
-    description: '中文菜单、命令、诊断和任务输出，配合 Monaco 编辑器、多标签页、工作区搜索与 Diff。',
-    tags: ['Monaco', '多文件', '中文诊断'],
-  },
-  {
-    icon: Braces,
-    index: '02',
-    title: '中文代码生成真实 C++',
-    description: '用 .lcpp 编写中文事件和命令，通过本地确定性规则生成可阅读、可迁移的 C++ 工程。',
-    tags: ['.lcpp', 'C++', 'Visual Studio'],
-  },
-  {
-    icon: LayoutTemplate,
-    index: '03',
-    title: 'Win32 可视化设计器',
-    description: '拖放设计窗口和控件，管理属性与事件，最终生成真正的 Win32 窗口，而不是网页模拟。',
-    tags: ['拖放设计', '事件绑定', '原生窗口'],
-  },
-  {
-    icon: TerminalSquare,
-    index: '04',
-    title: '构建、运行与调试',
-    description: '检测 MSVC、Windows SDK 与 CMake，支持 F5 构建、真实终端、断点、调用栈和变量查看。',
-    tags: ['MSVC', 'F5', '原生调试'],
-  },
-  {
-    icon: Blocks,
-    index: '05',
-    title: '模块与扩展生态',
-    description: '通过 .lbmod 封装 C++ 能力，统一安装、启用和项目引用，并向中文代码贡献命令与补全。',
-    tags: ['.lbmod', '模块 SDK', '扩展宿主'],
-  },
-  {
-    icon: Bot,
-    index: '06',
-    title: '可审查的 AI 辅助',
-    description: '解释错误、生成项目和提出修复，源码修改先形成 Diff 草稿；离线时核心编译能力仍然可用。',
-    tags: ['错误解释', 'Diff 草稿', '本地优先'],
-  },
+const notes = [
+  { type: '开发日志', date: '2026.08.18', title: '把中文 .lcpp 代码稳定地生成 C++', text: '记录解析规则、事件绑定和可复制的 Visual Studio 工程输出。', icon: Code2 },
+  { type: '学习笔记', date: '2026.08.12', title: 'Electron 工作台的多进程边界', text: '从渲染层到主进程，再到文件、终端和 AI 服务的接口设计。', icon: Boxes },
+  { type: '配置记录', date: '2026.08.05', title: 'PostgreSQL 与 Redis 的本地 Docker 环境', text: '开发环境的启动、迁移、健康检查与常见问题排查。', icon: Terminal },
 ];
 
-const fallbackDownloads = [
-  { label: '123 云盘', href: 'https://1855765585.share.123pan.cn/123pan/jgROvd-lPcW', accessCode: '' },
-  { label: '天翼云盘', href: 'https://cloud.189.cn/web/share?code=7rEZniR7r2u2', accessCode: 'xi65' },
-  { label: '百度网盘', href: 'https://pan.baidu.com/s/13ApwWnvg7ypC8RkALtnwqg?pwd=z25w', accessCode: 'z25w' },
-  { label: '迅雷云盘', href: 'https://pan.xunlei.com/s/VOyNJe3jycYK-6GzlUFxXApqA1?pwd=emuk', accessCode: 'emuk' },
-];
-
-function Brand() {
-  return (
-    <a className="home-brand" href="#top" aria-label="返回灵码首页顶部">
-      <img src={brandIcon} alt="" />
-      <span><strong>灵码</strong><small>LINGBUILDER</small></span>
-    </a>
-  );
-}
+const topics = ['中文 IDE', 'C++ / Win32', 'Electron', 'Monaco Editor', 'PostgreSQL', 'Redis', 'Docker'];
 
 export function HomePage() {
-  const [downloads, setDownloads] = useState(fallbackDownloads);
-  const [qqGroup, setQqGroup] = useState('1083244094');
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchWebsiteBootstrap(controller.signal).then(value => {
-      const release = value.downloads[0];
-      if (release?.mirrors.length) setDownloads(release.mirrors.map(item => ({ label: item.label, href: item.url, accessCode: item.accessCode })));
-      if (value.groups[0]?.qqNumber) setQqGroup(value.groups[0].qqNumber);
-    }).catch(() => undefined);
-    return () => controller.abort();
-  }, []);
-  return (
-    <div className="home-page" id="top">
-      <a className="skip-link" href="#home-main">跳到主要内容</a>
-      <header className="home-header">
-        <div className="home-container home-nav">
-          <Brand />
-          <nav aria-label="首页导航">
-            <a href="#capabilities">核心能力</a>
-            <a href="/commands">命令文档</a>
-            <a href="/docs/controls">控件手册</a>
-            <a href="/docs/modules">模块开发</a>
-            <a href="/demos">示例源码</a>
-          </nav>
-          <a className="header-action" href="#download">获取灵码 <ArrowDown size={16} /></a>
+  const [mobileOpen, setMobileOpen] = useState(false);
+  return <div className="blog-home">
+    <a className="skip-link" href="#main-content">跳到主要内容</a>
+    <header className="blog-header">
+      <div className="blog-container blog-nav">
+        <a className="blog-brand" href="#top" aria-label="灵码 LingBuilder 首页"><img src={brandIcon} alt="" /><span><strong>灵码</strong><small>LINGBUILDER 技术文档</small></span></a>
+        <button className="blog-menu-button" aria-label={mobileOpen ? '关闭导航' : '打开导航'} onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X /> : <Menu />}</button>
+        <nav className={mobileOpen ? 'open' : ''} aria-label="主导航">
+          <a href="#notes" onClick={() => setMobileOpen(false)}>开发记录</a><a href="/commands">命令查找</a><a href="/docs/controls">控件手册</a><a href="/docs/modules">模块开发</a><a href="/demos">示例源码</a>
+        </nav>
+        <a className="blog-nav-action" href="/downloads"><Download size={16} /> 下载 IDE</a>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section className="blog-hero" id="top">
+        <div className="blog-container blog-hero-grid">
+          <div className="blog-hero-copy">
+            <p className="blog-eyebrow"><span className="pulse" /> 个人技术博客 · 持续更新</p>
+            <h1>用中文记录，<br /><em>把想法做成 C++ 软件。</em></h1>
+            <p className="blog-lead">这里是灵码 LingBuilder 的开发日志与技术文档。记录中文集成开发环境、Electron 桌面应用、C++ 工具链，以及 PostgreSQL / Redis 的实践过程。</p>
+            <div className="blog-hero-actions"><a className="blog-button primary" href="#notes">阅读开发记录 <ArrowRight size={17} /></a><a className="blog-button quiet" href="/docs">浏览文档</a></div>
+            <div className="blog-proof"><span><CheckCircle2 size={15} /> 内容以中文为主</span><span><CheckCircle2 size={15} /> 本地规则优先</span><span><CheckCircle2 size={15} /> 代码可复制</span></div>
+          </div>
+          <div className="blog-terminal" aria-label="中文代码编辑示例"><div className="terminal-bar"><span className="terminal-dots"><i /><i /><i /></span><span>示例项目 / 主窗口.lcpp</span><span className="terminal-state">已保存</span></div><div className="terminal-code"><p><b>01</b><span><mark>.子程序</mark> 主窗口_创建完毕</span></p><p><b>02</b><span>　调试输出：<q>“窗口已准备好”</q></span></p><p><b>03</b><span><mark>结束</mark></span></p><p><b>04</b><span /></p><p><b>05</b><span><mark>.子程序</mark> 按钮_被单击</span></p><p><b>06</b><span>　信息框（<q>“你好，C++！”</q>）</span></p><p><b>07</b><span><mark>结束</mark></span></p></div><div className="terminal-footer"><span><CheckCircle2 size={13} /> 已生成 main.cpp</span><span>UTF-8 · 中文代码</span></div></div>
         </div>
-      </header>
+      </section>
 
-      <main id="home-main">
-        <section className="hero" aria-labelledby="hero-title">
-          <div className="hero-glow hero-glow-one" />
-          <div className="hero-glow hero-glow-two" />
-          <div className="home-container hero-layout">
-            <div className="hero-copy">
-              <div className="status-pill"><span /> Windows 中文 C++ IDE · 持续开发中</div>
-              <p className="home-kicker">CODE IN CHINESE. BUILD IN C++.</p>
-              <h1 id="hero-title">用中文构建<br /><em>真正的 C++ 软件</em></h1>
-              <p className="hero-lead">灵码是一款面向中文开发者的集成开发环境。用中文源码和可视化设计器表达程序，再由本地确定性规则生成可阅读、可复制、可迁移的真实 C++ 工程。</p>
-              <div className="hero-actions">
-                <a className="home-button primary" href="#download"><Download size={18} /> 下载体验</a>
-                <a className="home-button secondary" href="https://www.bilibili.com/video/BV1g63M6MEMM" target="_blank" rel="noreferrer"><Play size={17} /> 观看演示</a>
-              </div>
-              <div className="hero-facts" aria-label="产品特征">
-                <span><Check size={15} /> 本地确定性生成</span>
-                <span><Check size={15} /> 可导出 VS 工程</span>
-                <span><Check size={15} /> AI 非硬依赖</span>
-              </div>
-            </div>
+      <section className="blog-topics"><div className="blog-container topic-row"><span>正在记录</span>{topics.map(topic => <a href={`/commands?keyword=${encodeURIComponent(topic)}`} key={topic}>{topic}</a>)}</div></section>
 
-            <div className="ide-preview" aria-label="灵码中文代码生成预览">
-              <div className="preview-topbar">
-                <div className="window-dots"><i /><i /><i /></div>
-                <span>示例项目 · 主窗口.lcpp</span>
-                <span className="preview-run"><Play size={12} fill="currentColor" /> F5</span>
-              </div>
-              <div className="preview-body">
-                <aside>
-                  <span className="active"><Boxes size={16} /></span>
-                  <span><GitBranch size={16} /></span>
-                  <span><Blocks size={16} /></span>
-                </aside>
-                <div className="preview-explorer">
-                  <small>解决方案资源管理器</small>
-                  <strong><ChevronRight size={13} /> 中文桌面程序</strong>
-                  <p>⌁ 主窗口.lcpp</p>
-                  <p>▦ 主窗口.设计</p>
-                  <p>◇ 应用图标.ico</p>
-                  <strong><ChevronRight size={13} /> 模块</strong>
-                  <p>▣ Win32 基础控件</p>
-                </div>
-                <div className="preview-editor">
-                  <div className="editor-tab">主窗口.lcpp <span>×</span></div>
-                  <div className="code-lines" aria-hidden="true">
-                    <div><b>1</b><code><mark>.子程序</mark> 主窗口_创建完毕</code></div>
-                    <div><b>2</b><code>　调试输出（<q>“窗口已就绪”</q>）</code></div>
-                    <div><b>3</b><code><mark>结束</mark></code></div>
-                    <div><b>4</b><code /></div>
-                    <div><b>5</b><code><mark>.子程序</mark> 开始按钮_被单击</code></div>
-                    <div><b>6</b><code>　信息框（<q>“你好，C++！”</q>）</code></div>
-                    <div><b>7</b><code><mark>结束</mark></code></div>
-                  </div>
-                  <div className="build-panel">
-                    <div><span className="active">输出</span><span>问题</span><span>终端</span></div>
-                    <p><Check size={13} /> 已生成 main.cpp 与 Visual Studio 工程</p>
-                    <p><Check size={13} /> 构建成功，耗时 1.42 秒</p>
-                  </div>
-                </div>
-              </div>
-              <div className="preview-status"><span>就绪</span><span>Ln 6, Col 18　UTF-8　中文代码</span></div>
-            </div>
-          </div>
-        </section>
+      <section className="blog-section" id="notes"><div className="blog-container"><div className="blog-section-head"><div><p className="blog-eyebrow">LATEST NOTES</p><h2>最近的开发记录</h2></div><a className="text-link" href="/docs">查看全部文档 <ArrowRight size={16} /></a></div><div className="notes-grid">{notes.map(({ icon: Icon, ...note }) => <article className="note-card" key={note.title}><div className="note-meta"><span className="note-icon"><Icon size={18} /></span><span>{note.type}</span><time>{note.date}</time></div><h3>{note.title}</h3><p>{note.text}</p><a href="/docs" aria-label={`阅读：${note.title}`}>继续阅读 <ArrowRight size={15} /></a></article>)}</div></div></section>
 
-        <section className="principle-strip" aria-label="灵码核心路径">
-          <div className="home-container principle-grid">
-            <div><span>01</span><strong>中文表达</strong><small>界面、命令、源码与诊断</small></div>
-            <ChevronRight aria-hidden="true" />
-            <div><span>02</span><strong>确定性转换</strong><small>本地规则可复现、可检查</small></div>
-            <ChevronRight aria-hidden="true" />
-            <div><span>03</span><strong>标准工具链</strong><small>MSVC、Windows SDK、CMake</small></div>
-            <ChevronRight aria-hidden="true" />
-            <div><span>04</span><strong>真实软件</strong><small>原生 EXE 与 Visual Studio 工程</small></div>
-          </div>
-        </section>
+      <section className="blog-section blog-workflow"><div className="blog-container workflow-grid"><div><p className="blog-eyebrow">WHAT I AM BUILDING</p><h2>从中文表达，到真实的桌面程序</h2><p className="section-copy">灵码不是在线演示。中文源码和设计器模型经过本地确定性规则，生成可以阅读、复制和迁移的 C++ 工程；IDE 内运行与导出工程使用同一套生成链路。</p><a className="text-link" href="/docs/guides/deterministic-cpp">了解生成规则 <ArrowRight size={16} /></a></div><div className="workflow-steps"><div><span>01</span><strong>中文源码</strong><small>.lcpp、事件与模块调用</small></div><div><span>02</span><strong>本地规则</strong><small>解析、诊断与代码生成</small></div><div><span>03</span><strong>真实工程</strong><small>C++、SLN 与可执行文件</small></div></div></div></section>
 
-        <section className="home-section capabilities" id="capabilities">
-          <div className="home-container">
-            <div className="section-heading">
-              <div><p className="home-kicker">WHAT YOU CAN BUILD WITH</p><h2>一套中文工作流，覆盖桌面开发全链路</h2></div>
-              <p>从第一行中文代码，到窗口设计、构建调试、模块复用和项目交付，能力都落在可操作的工程链路里。</p>
-            </div>
-            <div className="feature-grid">
-              {features.map(({ icon: Icon, index, title, description, tags }) => (
-                <article className="feature-card" key={title}>
-                  <div className="feature-top"><span><Icon size={23} /></span><small>{index}</small></div>
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                  <div className="feature-tags">{tags.map(tag => <span key={tag}>{tag}</span>)}</div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
+      <section className="blog-section blog-resources"><div className="blog-container resource-grid"><div className="resource-card"><BookOpen size={22} /><div><h3>文档与手册</h3><p>从命令查找、控件使用，到模块封装和 AI 功能，按问题查阅。</p><a href="/docs">打开文档 <ArrowRight size={15} /></a></div></div><div className="resource-card"><Github size={22} /><div><h3>示例源码</h3><p>下载可复制的项目和代码片段，在本地打开、修改、构建。</p><a href="/demos">查看示例 <ArrowRight size={15} /></a></div></div><div className="resource-card"><Search size={22} /><div><h3>命令查找</h3><p>用中文关键词快速定位 IDE 命令、参数和适用模块。</p><a href="/commands">开始查找 <ArrowRight size={15} /></a></div></div></div></section>
 
-        <section className="home-section workflow" id="workflow">
-          <div className="home-container workflow-layout">
-            <div className="workflow-copy">
-              <p className="home-kicker">DETERMINISTIC BY DESIGN</p>
-              <h2>不是解释器，也不是只在 IDE 里生效的演示逻辑</h2>
-              <p>灵码把中文源码与设计器模型转换为真实 C++ 和工程文件。IDE 内运行与导出工程共用同一套规则，让结果可阅读、可检查，也能交给其他开发者继续维护。</p>
-              <ol>
-                <li><span>1</span><div><strong>中文源码与设计模型</strong><small>结构化描述窗口、控件、事件与模块调用。</small></div></li>
-                <li><span>2</span><div><strong>本地规则生成 C++</strong><small>关键语义确定性映射，不依赖云端 AI 猜测。</small></div></li>
-                <li><span>3</span><div><strong>标准工具链编译</strong><small>生成原生 EXE、C++ 源码和 Visual Studio 工程。</small></div></li>
-              </ol>
-            </div>
-            <div className="pipeline-card">
-              <div className="pipeline-node chinese"><WandSparkles size={20} /><span>中文源码</span><small>主窗口.lcpp</small></div>
-              <div className="pipeline-line"><ChevronRight /></div>
-              <div className="pipeline-node rules"><MonitorCog size={20} /><span>确定性规则</span><small>本地生成服务</small></div>
-              <div className="pipeline-line"><ChevronRight /></div>
-              <div className="pipeline-node cpp"><Braces size={20} /><span>真实 C++</span><small>源码 · SLN · EXE</small></div>
-            </div>
-          </div>
-        </section>
+      <section className="blog-download"><div className="blog-container download-inner"><div><p className="blog-eyebrow">WINDOWS · EARLY DEVELOPMENT</p><h2>下载并在本地体验灵码</h2><p>当前版本仍在持续开发与测试中。部分构建和调试能力需要 Visual Studio Build Tools 与 Windows SDK。</p></div><a className="blog-button primary" href="/downloads"><Download size={17} /> 查看下载方式</a></div></section>
+    </main>
 
-        <section className="home-section ecosystem">
-          <div className="home-container ecosystem-layout">
-            <div className="ecosystem-visual"><img src={moduleEcosystemImage} alt="LingBuilder 模块生态能力概览" loading="lazy" /></div>
-            <div className="ecosystem-copy">
-              <p className="home-kicker">OPEN MODULE ECOSYSTEM</p>
-              <h2>把原生 C++ 能力，封装成简单的中文模块</h2>
-              <p>模块以 <code>.lbmod</code> 形式安装、启用和按项目引用。开发者可以封装自己的头文件、源码、静态库与 DLL，并同时提供中文命令、补全和诊断。</p>
-              <ul>
-                <li><PackageOpen size={18} /> 模块包可预览、安装、卸载和迁移</li>
-                <li><Sparkles size={18} /> 中文命令与 C++ 映射使用同一份上下文</li>
-                <li><ShieldCheck size={18} /> 扩展与原生模块保持清晰的安全边界</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section className="home-section audience" id="audience">
-          <div className="home-container">
-            <div className="section-heading compact">
-              <div><p className="home-kicker">BUILT FOR CHINESE CREATORS</p><h2>让不同经验的开发者，都能走到真实交付</h2></div>
-            </div>
-            <div className="audience-grid">
-              <article><span>初学者</span><h3>从中文理解程序结构</h3><p>用熟悉的语言认识事件、控件、模块和构建过程，同时接触真实 C++ 工程。</p></article>
-              <article><span>桌面开发者</span><h3>更快制作 Windows 工具</h3><p>组合可视化设计、Win32 控件、中文代码和 F5 构建，完成小工具与业务软件。</p></article>
-              <article><span>模块作者</span><h3>复用已有 C++ 资产</h3><p>把现有库封装成中文模块，让其他项目通过清晰的命令和依赖模型直接使用。</p></article>
-            </div>
-          </div>
-        </section>
-
-        <section className="download-section" id="download">
-          <div className="home-container download-card">
-            <div>
-              <p className="home-kicker">EARLY ACCESS · WINDOWS</p>
-              <h2>下载灵码，体验中文开发到真实 C++ 的完整路径</h2>
-              <p>当前版本仍在持续开发与测试中。部分高级构建和调试能力需要 Visual Studio Build Tools、Windows SDK 等本机环境。</p>
-              <div className="download-note"><MessageCircle size={17} /> 交流 QQ 群：<strong>{qqGroup}</strong>　<a href="/community">查看加群方式</a></div>
-            </div>
-            <div className="download-links" aria-label="灵码下载地址">
-              {downloads.map(item => <a href={item.href} key={item.label} target="_blank" rel="noreferrer"><Download size={17} /><span>{item.label}{item.accessCode ? <small>提取码：{item.accessCode}</small> : null}</span><ExternalLink size={14} /></a>)}
-              <small><a href="/downloads">查看版本说明、文件校验与全部下载镜像</a></small>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="home-footer">
-        <div className="home-container">
-          <Brand />
-          <p>面向中文开发者的 C++ 集成开发环境</p>
-          <span>Windows · 中文编程 · 原生 C++ · 持续开发中</span>
-        </div>
-      </footer>
-    </div>
-  );
+    <footer className="blog-footer"><div className="blog-container footer-inner"><div><a className="blog-brand" href="#top"><img src={brandIcon} alt="" /><span><strong>灵码</strong><small>LINGBUILDER 技术文档</small></span></a><p>个人技术博客，记录中文集成开发环境的开发过程。</p></div><div className="footer-links"><a href="/community">官方交流群</a><a href="/docs">文档</a><a href="/downloads">下载</a></div><div className="icp"><span>鄂ICP备18003834号-7</span><small>本站仅用于个人技术沉淀与代码片段分享，不涉及论坛、电商及收费服务。</small></div></div></footer>
+  </div>;
 }

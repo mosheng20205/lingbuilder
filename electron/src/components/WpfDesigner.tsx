@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import {
   Check,
   CheckSquare,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleDot,
   Clapperboard,
@@ -14,7 +16,6 @@ import {
   FileUp,
   Fingerprint,
   Globe,
-  HelpCircle,
   Keyboard,
   Layers,
   LayoutGrid,
@@ -170,6 +171,8 @@ import {
   getControlToolboxModuleDisabledMessage,
   readControlToolboxExpansionState,
   saveControlToolboxExpansionState,
+  type ControlToolboxExpansionState,
+  type ControlToolboxGroup,
   type ControlToolboxGroupId
 } from '../services/windowDesigner/controlToolboxModel';
 import { migrateDesignerBackend } from '../services/windowDesigner/designerControlRegistry';
@@ -244,6 +247,7 @@ export interface WpfDesignerProps {
   onDirtyChange?: (detail: WindowDesignerDirtyStateDetail) => void;
   commandService?: CommandService;
   getCommandContext?: () => CommandContext;
+  toolboxHost?: HTMLElement | null;
 }
 
 export const CREATABLE_DESIGNER_CONTROL_TYPES: LingControlType[] = [
@@ -316,7 +320,8 @@ export default function WpfDesigner({
   onProjectChange,
   onDirtyChange,
   commandService,
-  getCommandContext
+  getCommandContext,
+  toolboxHost,
 }: WpfDesignerProps) {
   const fallbackCommandServiceRef = useRef<CommandService | null>(null);
   if (!fallbackCommandServiceRef.current) fallbackCommandServiceRef.current = createCommandService();
@@ -511,13 +516,13 @@ export default function WpfDesigner({
   const pendingControlInteractionPreviewRef = useRef<DesignerControlInteractionPreview | null>(null);
   const controlInteractionFrameRef = useRef<number | null>(null);
   const [inspectorWidth, setInspectorWidth] = useState(300);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [controlToolboxSearch, setControlToolboxSearch] = useState('');
   const [expandedControlToolboxGroups, setExpandedControlToolboxGroups] = useState(
     () => readControlToolboxExpansionState(project.id)
   );
   const controlToolboxProjectIdRef = useRef(project.id);
   const skipNextControlToolboxSaveRef = useRef(false);
-  const controlToolboxId = useId();
   const [zoomMode, setZoomMode] = useState<DesignerZoomMode>('fit');
   const [manualZoom, setManualZoom] = useState(1);
   const [fitScale, setFitScale] = useState(1);
@@ -2381,6 +2386,22 @@ export default function WpfDesigner({
 
   if (!activeWindow) return null;
 
+  const controlToolbox = (
+    <DesignerControlToolbox
+      isDarkMode={isDarkMode}
+      useNewEmojiDesigner={useNewEmojiDesigner}
+      search={controlToolboxSearch}
+      normalizedSearch={normalizedControlToolboxSearch}
+      groups={visibleControlToolboxGroups}
+      expandedGroups={expandedControlToolboxGroups}
+      newEmojiControls={newEmojiDesignerControls}
+      enabledDesignerModules={enabledDesignerModules}
+      onSearchChange={setControlToolboxSearch}
+      onToggleGroup={toggleControlToolboxGroup}
+      onAddControl={handleAddControl}
+    />
+  );
+
   const canvasBorder = resolveLingWindowBorder(activeWindow.borderStyle, activeWindow.maximizable !== false);
   const isFrameBorderStyle = activeWindow.borderStyle === 'frame-resizable' || activeWindow.borderStyle === 'frame-fixed';
 
@@ -2471,196 +2492,7 @@ export default function WpfDesigner({
       </div>
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        <div
-          className={`w-60 flex flex-col shrink-0 select-none border-r ${
-            isDarkMode ? 'bg-[#1a1a20] border-[#2d2d34]' : 'bg-slate-50 border-slate-200'
-          }`}
-        >
-          <div className={`p-2.5 border-b ${isDarkMode ? 'border-[#2d2d34]' : 'border-slate-200'}`}>
-            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <Layers className="w-3.5 h-3.5 text-amber-500" />
-              <span>窗口程序集</span>
-            </div>
-          </div>
-
-          <div className="p-2 space-y-1 border-b border-slate-800/40">
-            {project.windows.map(window => (
-              <button
-                key={window.id}
-                onClick={() => handleSelectWindow(window.id)}
-                className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-left text-[11px] cursor-pointer border ${
-                  window.id === activeWindow.id
-                    ? isDarkMode
-                      ? 'bg-[#37373D] border-[#007ACC]/60 text-white'
-                      : 'bg-blue-50 border-blue-300 text-blue-700'
-                    : isDarkMode
-                      ? 'bg-transparent border-transparent text-slate-400 hover:bg-[#25252b] hover:text-slate-200'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <Monitor className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                  <span className="truncate">{window.fileName}</span>
-                </span>
-                <span className="text-[9px] text-slate-500 shrink-0">{window.controls.length}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className={`p-2.5 border-b ${isDarkMode ? 'border-[#2d2d34]' : 'border-slate-200'}`}>
-            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <Wrench className="w-3.5 h-3.5 text-blue-500" />
-              <span>控件工具箱</span>
-              {useNewEmojiDesigner && <span className="ml-auto rounded border border-fuchsia-400/30 bg-fuchsia-500/10 px-1.5 py-0.5 text-[8px] normal-case tracking-normal text-fuchsia-300">new_emoji 原生</span>}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            <p className={`text-[10px] px-1 leading-relaxed ${isDarkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-              点击控件即可添加到当前窗口，随后可在画布中拖拽、改尺寸、绑定中文事件。
-            </p>
-            <label className={`flex h-7 items-center gap-1.5 rounded border px-2 focus-within:ring-1 focus-within:ring-blue-500/70 ${
-              isDarkMode ? 'border-[#34343c] bg-[#141419] text-slate-400' : 'border-slate-300 bg-white text-slate-500'
-            }`}>
-              <Search className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span className="sr-only">搜索控件</span>
-              <input
-                type="search"
-                value={controlToolboxSearch}
-                onChange={event => setControlToolboxSearch(event.target.value)}
-                placeholder="搜索控件…"
-                aria-label="搜索全部控件分组"
-                className={`min-w-0 flex-1 bg-transparent text-[11px] outline-none ${
-                  isDarkMode ? 'text-slate-200 placeholder:text-slate-600' : 'text-slate-800 placeholder:text-slate-400'
-                }`}
-              />
-            </label>
-            <div className="space-y-1" aria-label="控件分组">
-              {visibleControlToolboxGroups.map(group => {
-                const isNewEmojiGroup = group.id === 'new-emoji';
-                const moduleControls = isNewEmojiGroup && useNewEmojiDesigner
-                  ? newEmojiDesignerControls.filter(control => !normalizedControlToolboxSearch || [control.label, control.type, control.category].filter(Boolean).join(' ').toLocaleLowerCase('zh-CN').includes(normalizedControlToolboxSearch))
-                  : [];
-                const displayedControlCount = moduleControls.length || group.controlTypes.length;
-                const groupAvailable = !isNewEmojiGroup || enabledDesignerModules.has(NEW_EMOJI_MODULE_ID);
-                const expanded = normalizedControlToolboxSearch.length > 0 || expandedControlToolboxGroups[group.id];
-                const groupContentId = `${controlToolboxId}-${group.id}`;
-                const groupIcon = group.id === 'basic'
-                  ? <LayoutGrid className="h-3.5 w-3.5 text-blue-400" />
-                  : group.id === 'advanced'
-                    ? <Zap className="h-3.5 w-3.5 text-violet-400" />
-                    : group.id === 'browser'
-                      ? <Globe className="h-3.5 w-3.5 text-sky-400" />
-                      : <Palette className="h-3.5 w-3.5 text-fuchsia-400" />;
-                return (
-                  <section key={group.id} className={`overflow-hidden rounded border ${
-                    isDarkMode ? 'border-[#303038] bg-[#17171c]' : 'border-slate-200 bg-white'
-                  }`}>
-                    <button
-                      type="button"
-                      onClick={() => toggleControlToolboxGroup(group.id)}
-                      aria-expanded={expanded}
-                      aria-controls={groupContentId}
-                      title={groupAvailable ? group.description : '当前项目未启用 lingbuilder.new_emoji.ui 模块'}
-                      className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px] font-medium outline-none transition-colors focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500 ${
-                        isDarkMode ? 'text-slate-300 hover:bg-[#25252b] hover:text-white' : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      {expanded
-                        ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" aria-hidden="true" />
-                        : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" aria-hidden="true" />}
-                      {groupIcon}
-                      <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                      {!groupAvailable && (
-                        <span className="rounded border border-slate-500/30 px-1 py-0.5 text-[8px] font-normal text-slate-500">未启用</span>
-                      )}
-                      <span className={`min-w-5 rounded px-1 py-0.5 text-center font-mono text-[9px] font-normal ${
-                        isDarkMode ? 'bg-[#2b2b32] text-slate-400' : 'bg-slate-100 text-slate-500'
-                      }`}>{displayedControlCount}</span>
-                    </button>
-                    {expanded && (
-                      <div id={groupContentId} className={`grid grid-cols-1 gap-0.5 border-t p-1 ${
-                        isDarkMode ? 'border-[#2d2d34]' : 'border-slate-200'
-                      }`}>
-                        {moduleControls.length > 0 ? moduleControls.map(control => {
-                          const previewType = (control.previewType || control.type) as LingControlType;
-                          return <button
-                            key={control.namespacedType || control.type}
-                            onClick={() => handleAddControl(previewType, control)}
-                            title={`添加 ${control.label}`}
-                            aria-label={`添加 ${control.label}`}
-                            className={`flex items-center gap-2 rounded border border-transparent px-2 py-1.5 text-left text-[11px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-fuchsia-500 ${isDarkMode ? 'text-slate-300 hover:border-[#3c3c44] hover:bg-[#25252b]/80 hover:text-white' : 'text-slate-700 hover:border-slate-200 hover:bg-slate-100'}`}
-                          >
-                            {getControlIcon(previewType)}
-                            <span className="min-w-0 flex-1 truncate">{control.label}</span>
-                            <span className="text-[8px] text-fuchsia-400">NE</span>
-                          </button>;
-                        }) : group.controlTypes.length === 0 ? (
-                          <div className="px-2 py-2 text-[10px] leading-relaxed text-slate-500">
-                            {isNewEmojiGroup && !groupAvailable
-                              ? '请先在当前项目中启用 New_Emoji 模块。'
-                              : '此分组暂无可用控件。'}
-                          </div>
-                        ) : group.controlTypes.map(type => {
-                          const definition = getWin32ControlDefinition(type);
-                          const moduleEnabled = !definition || enabledDesignerModules.has(definition.moduleId);
-                          const backendSupported = !useNewEmojiDesigner || isNewEmojiDesignerControlSupported(type);
-                          const enabled = moduleEnabled && backendSupported;
-                          const disabledReason = !moduleEnabled
-                            ? getControlToolboxModuleDisabledMessage(definition?.moduleId)
-                            : `new_emoji 设计后端暂不支持 ${CONTROL_LABELS[type]}`;
-                          return (
-                            <button
-                              key={type}
-                              onClick={() => handleAddControl(type)}
-                              disabled={!enabled}
-                              title={enabled ? `添加${isNewEmojiGroup ? 'New_Emoji ' : ''}${CONTROL_LABELS[type]}` : disabledReason}
-                              aria-label={enabled ? `添加${CONTROL_LABELS[type]}` : disabledReason}
-                              className={`flex items-center gap-2 rounded border px-2 py-1.5 text-left text-[11px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-blue-500 ${
-                                !enabled ? 'cursor-not-allowed opacity-45 ' : 'cursor-pointer '
-                              }${
-                                isDarkMode
-                                  ? 'border-transparent text-slate-300 hover:border-[#3c3c44] hover:bg-[#25252b]/80 hover:text-white'
-                                  : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-900'
-                              }`}
-                            >
-                              {getControlIcon(type)}
-                              <span className="min-w-0 flex-1 truncate">{CONTROL_LABELS[type]} ({type})</span>
-                              {isNewEmojiGroup && <span className="text-[8px] text-fuchsia-300">NE</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
-              {visibleControlToolboxGroups.length === 0 && (
-                <div role="status" className={`rounded border px-2 py-3 text-center text-[10px] ${
-                  isDarkMode ? 'border-[#303038] bg-[#17171c] text-slate-500' : 'border-slate-200 bg-white text-slate-500'
-                }`}>
-                  没有找到“{controlToolboxSearch.trim()}”相关控件
-                </div>
-              )}
-            </div>
-
-            <div className={`mt-4 p-2 rounded text-[10px] leading-relaxed border ${
-              isDarkMode ? 'bg-slate-900/40 border-slate-800 text-slate-400' : 'bg-amber-50 border-amber-200 text-slate-700'
-            }`}>
-              <span className="font-semibold text-amber-600 flex items-center gap-1 mb-1">
-                <HelpCircle className="w-3 h-3" />
-                中文窗口设计
-              </span>
-              每个窗口都会生成独立的中文 XML 布局和中文 C++ 类，事件处理器可直接用中文命名。
-            </div>
-            {useNewEmojiDesigner && (
-              <div role="status" className="rounded border border-fuchsia-400/25 bg-fuchsia-500/10 p-2 text-[10px] leading-relaxed text-fuchsia-200">
-                <span className="mb-1 flex items-center gap-1 font-semibold"><Check className="h-3 w-3" />new_emoji 设计后端已启用</span>
-                画布与 F5 将使用 Direct2D/DirectWrite 原生控件；未适配控件会保持禁用并说明原因。
-              </div>
-            )}
-          </div>
-        </div>
+        {toolboxHost ? createPortal(controlToolbox, toolboxHost) : null}
 
         <div ref={canvasViewportRef} className={`wpf-designer-canvas-viewport flex-1 p-6 flex flex-col overflow-auto items-center justify-start relative select-none ${
           isDarkMode ? 'bg-[#101014]' : 'bg-slate-100/50'
@@ -3033,26 +2865,41 @@ export default function WpfDesigner({
           </div>
         </div>
 
+        <div className="relative z-20 flex w-[4px] shrink-0 items-center justify-center">
+          <div
+            onMouseDown={startResizeInspector}
+            className={`h-full w-full cursor-col-resize transition-colors hover:bg-blue-500/50 ${
+              isDarkMode ? 'bg-[#2d2d34]' : 'bg-slate-200'
+            }`}
+            style={{ cursor: 'col-resize' }}
+          />
+          <button
+            type="button"
+            onClick={() => setIsInspectorCollapsed(previous => !previous)}
+            onMouseDown={event => event.stopPropagation()}
+            className="group absolute left-1/2 top-1/2 flex h-12 w-[16px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded border border-[#444] bg-[#2d2d36] opacity-60 shadow-lg transition-all hover:scale-105 hover:border-blue-500/60 hover:bg-[#3a3a45] active:bg-[#4a4a58]"
+            title={isInspectorCollapsed ? '展开右侧属性面板' : '折叠右侧属性面板'}
+            aria-label={isInspectorCollapsed ? '展开右侧属性面板' : '折叠右侧属性面板'}
+            aria-expanded={!isInspectorCollapsed}
+          >
+            {isInspectorCollapsed ? (
+              <ChevronLeft className="h-3 w-3 text-amber-500 transition-transform group-hover:scale-110 group-hover:text-amber-400" />
+            ) : (
+              <ChevronRight className="h-3 w-3 text-slate-400 transition-transform group-hover:text-blue-400" />
+            )}
+          </button>
+        </div>
         <div
-          onMouseDown={startResizeInspector}
-          className={`w-[4px] cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 z-10 ${
-            isDarkMode ? 'bg-[#2d2d34]' : 'bg-slate-200'
-          }`}
-          style={{ cursor: 'col-resize' }}
-        />
-        <div
-          style={{ width: `${inspectorWidth}px` }}
-          className={`flex flex-col shrink-0 select-none border-l ${
+          style={{ width: isInspectorCollapsed ? 0 : `${inspectorWidth}px` }}
+          aria-hidden={isInspectorCollapsed}
+          className={`flex shrink-0 select-none flex-col overflow-hidden border-l transition-[width] duration-150 ${
             isDarkMode ? 'bg-[#1a1a20] border-[#2d2d34]' : 'bg-slate-50 border-slate-200'
           }`}
         >
           <div className={`p-2.5 border-b flex items-center justify-between ${
             isDarkMode ? 'border-[#2d2d34] bg-[#22222a]/30' : 'border-slate-200 bg-slate-100/60'
           }`}>
-            <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 text-slate-500">
-              <Layers className="w-3.5 h-3.5 text-amber-500" />
-              <span>属性、事件与布局</span>
-            </span>
+            <Layers className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
             <div className={`flex p-0.5 rounded border ${isDarkMode ? 'bg-[#2a2a34] border-[#3e3e4a]' : 'bg-slate-200 border-slate-300'}`}>
               <IconTabButton active={activeInspectorTab === 'properties'} isDarkMode={isDarkMode} onClick={() => setActiveInspectorTab('properties')} title="属性">
                 <Wrench className="w-3.5 h-3.5" />
@@ -3240,6 +3087,166 @@ export default function WpfDesigner({
           onClose={() => setControlContextMenu(null)}
         />
       )}
+    </div>
+  );
+}
+
+interface DesignerControlToolboxProps {
+  isDarkMode: boolean;
+  useNewEmojiDesigner: boolean;
+  search: string;
+  normalizedSearch: string;
+  groups: ControlToolboxGroup[];
+  expandedGroups: ControlToolboxExpansionState;
+  newEmojiControls: ModuleDesignerControlContribution[];
+  enabledDesignerModules: Set<string>;
+  onSearchChange: (value: string) => void;
+  onToggleGroup: (groupId: ControlToolboxGroupId) => void;
+  onAddControl: (type: LingControlType, moduleControl?: ModuleDesignerControlContribution) => void | Promise<void>;
+}
+
+function DesignerControlToolbox({
+  isDarkMode,
+  useNewEmojiDesigner,
+  search,
+  normalizedSearch,
+  groups,
+  expandedGroups,
+  newEmojiControls,
+  enabledDesignerModules,
+  onSearchChange,
+  onToggleGroup,
+  onAddControl
+}: DesignerControlToolboxProps) {
+  const toolboxId = useId();
+
+  return (
+    <div className="space-y-2 p-2" data-designer-control-toolbox>
+      <p className={`px-1 text-[10px] leading-relaxed ${isDarkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+        点击控件即可添加到当前窗口，随后可在画布中拖拽、改尺寸、绑定中文事件。
+      </p>
+      <label className={`flex h-7 items-center gap-1.5 rounded border px-2 focus-within:ring-1 focus-within:ring-blue-500/70 ${
+        isDarkMode ? 'border-[#34343c] bg-[#141419] text-slate-400' : 'border-slate-300 bg-white text-slate-500'
+      }`}>
+        <Search className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="sr-only">搜索控件</span>
+        <input
+          type="search"
+          value={search}
+          onChange={event => onSearchChange(event.target.value)}
+          placeholder="搜索控件…"
+          aria-label="搜索全部控件分组"
+          className={`min-w-0 flex-1 bg-transparent text-[11px] outline-none ${
+            isDarkMode ? 'text-slate-200 placeholder:text-slate-600' : 'text-slate-800 placeholder:text-slate-400'
+          }`}
+        />
+      </label>
+
+      <div className="space-y-1" aria-label="控件分组">
+        {groups.map(group => {
+          const isNewEmojiGroup = group.id === 'new-emoji';
+          const moduleControls = isNewEmojiGroup && useNewEmojiDesigner
+            ? newEmojiControls.filter(control => !normalizedSearch || [control.label, control.type, control.category].filter(Boolean).join(' ').toLocaleLowerCase('zh-CN').includes(normalizedSearch))
+            : [];
+          const displayedControlCount = moduleControls.length || group.controlTypes.length;
+          const groupAvailable = !isNewEmojiGroup || enabledDesignerModules.has(NEW_EMOJI_MODULE_ID);
+          const expanded = normalizedSearch.length > 0 || expandedGroups[group.id];
+          const groupContentId = `${toolboxId}-${group.id}`;
+          const groupIcon = group.id === 'basic'
+            ? <LayoutGrid className="h-3.5 w-3.5 text-blue-400" />
+            : group.id === 'advanced'
+              ? <Zap className="h-3.5 w-3.5 text-violet-400" />
+              : group.id === 'browser'
+                ? <Globe className="h-3.5 w-3.5 text-sky-400" />
+                : <Palette className="h-3.5 w-3.5 text-fuchsia-400" />;
+
+          return (
+            <section key={group.id} className={`overflow-hidden rounded border ${
+              isDarkMode ? 'border-[#303038] bg-[#17171c]' : 'border-slate-200 bg-white'
+            }`}>
+              <button
+                type="button"
+                onClick={() => onToggleGroup(group.id)}
+                aria-expanded={expanded}
+                aria-controls={groupContentId}
+                title={groupAvailable ? group.description : '当前项目未启用 lingbuilder.new_emoji.ui 模块'}
+                className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px] font-medium outline-none transition-colors focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500 ${
+                  isDarkMode ? 'text-slate-300 hover:bg-[#25252b] hover:text-white' : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {expanded
+                  ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" aria-hidden="true" />
+                  : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" aria-hidden="true" />}
+                {groupIcon}
+                <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                {!groupAvailable && <span className="rounded border border-slate-500/30 px-1 py-0.5 text-[8px] font-normal text-slate-500">未启用</span>}
+                <span className={`min-w-5 rounded px-1 py-0.5 text-center font-mono text-[9px] font-normal ${
+                  isDarkMode ? 'bg-[#2b2b32] text-slate-400' : 'bg-slate-100 text-slate-500'
+                }`}>{displayedControlCount}</span>
+              </button>
+              {expanded && (
+                <div id={groupContentId} className={`grid grid-cols-1 gap-0.5 border-t p-1 ${
+                  isDarkMode ? 'border-[#2d2d34]' : 'border-slate-200'
+                }`}>
+                  {moduleControls.length > 0 ? moduleControls.map(control => {
+                    const previewType = (control.previewType || control.type) as LingControlType;
+                    return <button
+                      key={control.namespacedType || control.type}
+                      type="button"
+                      onClick={() => { void onAddControl(previewType, control); }}
+                      title={`添加 ${control.label}`}
+                      aria-label={`添加 ${control.label}`}
+                      className={`flex items-center gap-2 rounded border border-transparent px-2 py-1.5 text-left text-[11px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-fuchsia-500 ${isDarkMode ? 'text-slate-300 hover:border-[#3c3c44] hover:bg-[#25252b]/80 hover:text-white' : 'text-slate-700 hover:border-slate-200 hover:bg-slate-100'}`}
+                    >
+                      {getControlIcon(previewType)}
+                      <span className="min-w-0 flex-1 truncate">{control.label}</span>
+                      <span className="text-[8px] text-fuchsia-400">NE</span>
+                    </button>;
+                  }) : group.controlTypes.length === 0 ? (
+                    <div className="px-2 py-2 text-[10px] leading-relaxed text-slate-500">
+                      {isNewEmojiGroup && !groupAvailable ? '请先在当前项目中启用 New_Emoji 模块。' : '此分组暂无可用控件。'}
+                    </div>
+                  ) : group.controlTypes.map(type => {
+                    const definition = getWin32ControlDefinition(type);
+                    const moduleEnabled = !definition || enabledDesignerModules.has(definition.moduleId);
+                    const backendSupported = !useNewEmojiDesigner || isNewEmojiDesignerControlSupported(type);
+                    const enabled = moduleEnabled && backendSupported;
+                    const disabledReason = !moduleEnabled
+                      ? getControlToolboxModuleDisabledMessage(definition?.moduleId)
+                      : `new_emoji 设计后端暂不支持 ${CONTROL_LABELS[type]}`;
+                    return <button
+                      key={type}
+                      type="button"
+                      onClick={() => { void onAddControl(type); }}
+                      disabled={!enabled}
+                      title={enabled ? `添加${isNewEmojiGroup ? 'New_Emoji ' : ''}${CONTROL_LABELS[type]}` : disabledReason}
+                      aria-label={enabled ? `添加${CONTROL_LABELS[type]}` : disabledReason}
+                      className={`flex items-center gap-2 rounded border px-2 py-1.5 text-left text-[11px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-blue-500 ${
+                        !enabled ? 'cursor-not-allowed opacity-45 ' : 'cursor-pointer '
+                      }${
+                        isDarkMode
+                          ? 'border-transparent text-slate-300 hover:border-[#3c3c44] hover:bg-[#25252b]/80 hover:text-white'
+                          : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {getControlIcon(type)}
+                      <span className="min-w-0 flex-1 truncate">{CONTROL_LABELS[type]} ({type})</span>
+                      {isNewEmojiGroup && <span className="text-[8px] text-fuchsia-300">NE</span>}
+                    </button>;
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })}
+        {groups.length === 0 && (
+          <div role="status" className={`rounded border px-2 py-3 text-center text-[10px] ${
+            isDarkMode ? 'border-[#303038] bg-[#17171c] text-slate-500' : 'border-slate-200 bg-white text-slate-500'
+          }`}>
+            没有找到“{search.trim()}”相关控件
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -7040,7 +7047,7 @@ function IconTabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1 p-1.5 rounded cursor-pointer text-[10px] transition-all ${
+      className={`flex items-center gap-1 p-1.5 rounded cursor-pointer text-[12px] transition-all ${
         active
           ? isDarkMode ? 'bg-[#3b3b45] text-amber-400 font-bold' : 'bg-white text-amber-600 font-bold shadow-sm'
           : isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'

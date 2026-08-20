@@ -3,6 +3,8 @@ import packageMetadata from '../../../package.json';
 export const LINGBUILDER_PRODUCT_NAME = 'LingBuilder 中文集成开发环境';
 export const LINGBUILDER_VERSION = packageMetadata.version;
 export const LINGBUILDER_DISPLAY_VERSION = `v${LINGBUILDER_VERSION}`;
+/** 官网地址：发现新版本时引导用户前往手动下载更新。 */
+export const LINGBUILDER_OFFICIAL_SITE_URL = 'https://lingbuilder.com';
 
 export interface LingBuilderReleaseNoteSection {
   title: string;
@@ -17,6 +19,20 @@ export interface LingBuilderReleaseNote {
 }
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
+  {
+    version: '0.6.0',
+    date: '2026-08-20',
+    title: '工作台、AI 助手与设计器体验更新',
+    sections: [
+      {
+        title: '发布',
+        items: [
+          '同步当前工作台、AI 助手、窗口设计器和更新检查功能改进。',
+          '发布 Windows x64 离线精简安装包，严格排除 FBro、CEF3 及其关联运行时。'
+        ]
+      }
+    ]
+  },
   {
     version: '0.5.0',
     date: '2026-08-17',

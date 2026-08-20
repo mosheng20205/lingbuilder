@@ -161,6 +161,10 @@ interface SidebarProps {
   isDarkMode?: boolean;
   showLeftSidebar?: boolean;
   setShowLeftSidebar?: (val: boolean) => void;
+  showDesignerToolbox?: boolean;
+  onDesignerToolboxHostChange?: (host: HTMLElement | null) => void;
+  showDesignerAssistant?: boolean;
+  assistantContent?: React.ReactNode;
   onBatchTranslate?: (translations: { id: string; translated: string }[]) => void;
   onSetStatus?: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
   glossary?: GlossaryTerm[];
@@ -208,6 +212,10 @@ export default function Sidebar({
   isDarkMode = true,
   showLeftSidebar = true,
   setShowLeftSidebar,
+  showDesignerToolbox = false,
+  onDesignerToolboxHostChange,
+  showDesignerAssistant = false,
+  assistantContent,
   onBatchTranslate,
   onSetStatus,
   glossary = [],
@@ -245,7 +253,7 @@ export default function Sidebar({
   onShowModuleHint
 }: SidebarProps) {
   // Activity views: solution explorer, tools, modules and Git changes.
-  const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline' | 'git'>('explorer');
+  const [activeTab, setActiveTab] = useState<'explorer' | 'properties' | 'assistant' | 'actions' | 'outline' | 'git'>('explorer');
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Record<string, boolean>>({});
   const [expandedSolutionFolderIds, setExpandedSolutionFolderIds] = useState<Record<string, boolean>>({});
@@ -597,7 +605,7 @@ export default function Sidebar({
   };
 
   // Switch tab, and handle collapse/expand in VS style
-  const handleTabClick = (tab: 'explorer' | 'actions' | 'outline' | 'git') => {
+  const handleTabClick = (tab: 'explorer' | 'properties' | 'assistant' | 'actions' | 'outline' | 'git') => {
     if (showLeftSidebar && activeTab === tab) {
       // Collapse if clicking the already active tab
       if (setShowLeftSidebar) setShowLeftSidebar(false);
@@ -1490,6 +1498,50 @@ export default function Sidebar({
             )}
           </button>
 
+          {/* Designer Properties / Toolbox Tab Icon */}
+          {showDesignerToolbox && (
+            <button
+              type="button"
+              onClick={() => handleTabClick('properties')}
+              aria-label="打开控件工具箱"
+              aria-pressed={showLeftSidebar && activeTab === 'properties'}
+              className={`w-10 h-10 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#007ACC] ${
+                showLeftSidebar && activeTab === 'properties'
+                  ? isDarkMode ? 'bg-[#37373D] text-[#007ACC]' : 'bg-[#CCCCCC] text-[#007ACC]'
+                  : isDarkMode ? 'text-[#888888] hover:text-white hover:bg-[#2D2D2D]' : 'text-slate-600 hover:text-black hover:bg-slate-300'
+              }`}
+              title="控件工具箱"
+            >
+              <Wrench className="w-5 h-5" aria-hidden="true" />
+              <span className="text-[10px] font-semibold leading-none font-sans">控件</span>
+              {showLeftSidebar && activeTab === 'properties' && (
+                <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#007ACC] rounded-r" />
+              )}
+            </button>
+          )}
+
+          {/* AI Assistant Tab */}
+          {showDesignerAssistant && (
+            <button
+              type="button"
+              onClick={() => handleTabClick('assistant')}
+              aria-label="打开 AI 智能编程助手"
+              aria-pressed={showLeftSidebar && activeTab === 'assistant'}
+              className={`w-10 h-10 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#007ACC] ${
+                showLeftSidebar && activeTab === 'assistant'
+                  ? isDarkMode ? 'bg-[#37373D] text-[#007ACC]' : 'bg-[#CCCCCC] text-[#007ACC]'
+                  : isDarkMode ? 'text-[#888888] hover:text-white hover:bg-[#2D2D2D]' : 'text-slate-600 hover:text-black hover:bg-slate-300'
+              }`}
+              title="AI 智能编程助手"
+            >
+              <Sparkles className="w-5 h-5" aria-hidden="true" />
+              <span className="text-[10px] font-semibold leading-none font-sans">AI</span>
+              {showLeftSidebar && activeTab === 'assistant' && (
+                <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#007ACC] rounded-r" />
+              )}
+            </button>
+          )}
+
           {/* Quick Action Tools Tab Icon */}
           <button
             onClick={() => handleTabClick('actions')}
@@ -1568,10 +1620,10 @@ export default function Sidebar({
       </div>
 
       {/* 2. Main Expanded Content Drawer (Only visible when expanded) */}
-      {showLeftSidebar && (
+      {(
         <div 
           style={{ width: `${drawerWidth}px` }} 
-          className={`h-full flex flex-col overflow-hidden border-r ${
+          className={`${showLeftSidebar ? 'flex' : 'hidden'} h-full flex-col overflow-hidden border-r ${
             isDarkMode ? 'border-[#2d2d34]' : 'border-slate-200'
           }`}
         >
@@ -2148,50 +2200,40 @@ export default function Sidebar({
                 </div>
               </div>
 
-              {/* Compact outline as a secondary collapsible module inside file explorer */}
-              <div 
-                className={`h-40 border-t p-2.5 flex flex-col overflow-hidden shrink-0 ${
-                  isDarkMode ? 'bg-[#1E1E1E]/20' : 'bg-slate-50'
-                }`} 
-                style={{ borderColor: isDarkMode ? '#181818' : '#e2e8f0' }}
-              >
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 font-sans">当前文件模块 (快速跳转)</span>
-                <div className="flex-1 overflow-y-auto text-[11px] space-y-1.5 font-mono">
-                  {activeFile.strings.slice(0, 4).map(s => (
-                    <div
-                      key={s.id}
-                      className={`flex items-center gap-1.5 cursor-pointer truncate font-sans py-0.5 px-1 rounded transition-colors ${
-                        isDarkMode 
-                          ? 'text-slate-400 hover:text-white hover:bg-[#2A2D2E]/40' 
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                      }`}
-                      onClick={() => {
-                        const el = document.getElementById(`diff-line-${s.line - 1}`);
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }}
-                    >
-                      <span className={`font-bold text-[9px] px-1 rounded uppercase font-mono ${
-                        isDarkMode ? 'bg-[#1E1E1E] text-[#007ACC]' : 'bg-slate-200 text-blue-600'
-                      }`}>L{s.line}</span>
-                      <span className="truncate italic">"{s.original}"</span>
-                    </div>
-                  ))}
-                  {activeFile.strings.length > 4 && (
-                    <div
-                      className={`text-[10px] font-bold hover:underline cursor-pointer pt-1 font-sans pl-1 ${
-                        isDarkMode ? 'text-[#007ACC]' : 'text-blue-600'
-                      }`}
-                      onClick={() => setActiveTab('outline')}
-                    >
-                      查看全部模块项 ({activeFile.strings.length})...
-                    </div>
-                  )}
-                </div>
+            </div>
+          )}
+
+          {/* ================= TAB 2: DESIGNER PROPERTIES / TOOLBOX ================= */}
+          {activeTab === 'properties' && (
+            <div className="flex h-full flex-col overflow-hidden font-sans">
+              <div className={`flex shrink-0 items-center gap-2 border-b p-2.5 ${
+                isDarkMode ? 'border-[#181818] bg-[#2D2D2D]/20' : 'border-slate-200 bg-slate-100/60'
+              }`}>
+                <Wrench className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">属性</span>
+              </div>
+              <div ref={onDesignerToolboxHostChange} className="min-h-0 flex-1 overflow-y-auto" />
+            </div>
+          )}
+
+          {/* ================= TAB 3: AI ASSISTANT ================= */}
+          {showDesignerAssistant && (
+            <div className={`${activeTab === 'assistant' ? 'flex' : 'hidden'} h-full flex-col overflow-hidden font-sans`} aria-hidden={activeTab !== 'assistant'}>
+              <div className={`flex shrink-0 items-center gap-2 border-b p-2.5 ${
+                isDarkMode ? 'border-[#181818] bg-[#2D2D2D]/20' : 'border-slate-200 bg-slate-100/60'
+              }`}>
+                <Sparkles className="h-3.5 w-3.5 text-fuchsia-400" aria-hidden="true" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">AI 智能编程助手</span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                {assistantContent || (
+                  <div className="flex h-full items-center justify-center p-4 text-xs text-slate-500">AI 助手暂未挂载</div>
+                )}
               </div>
             </div>
           )}
 
-          {/* ================= TAB 2: QUICK ACTIONS TOOLBOX ================= */}
+          {/* ================= TAB 4: QUICK ACTIONS TOOLBOX ================= */}
           {activeTab === 'actions' && (
             <div className="flex-1 flex flex-col h-full overflow-hidden p-3 font-sans">
               <div className="border-b pb-2 mb-3 shrink-0" style={{ borderColor: isDarkMode ? '#2d2d34' : '#e2e8f0' }}>
@@ -2456,6 +2498,7 @@ export default function Sidebar({
                 initialStatus={sourceControlStatus}
                 isDarkMode={isDarkMode}
                 variant="full"
+                activeFilePath={activeFile?.path || activeFile?.name || ''}
                 onChanged={onSourceControlChanged}
                 onExecuteCommand={onExecuteSourceControlCommand}
               />

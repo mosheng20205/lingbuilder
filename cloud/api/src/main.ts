@@ -10,7 +10,10 @@ import { getConfig } from './config.js';
 async function bootstrap() {
   const config = getConfig(); const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: true, rawBody: true });
   app.useBodyParser('json', { limit: '5mb' });
-  app.enableCors({ origin: config.adminOrigin, credentials: true, allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-request-id', 'x-module-arch', 'x-module-file-name', 'x-minimum-ide-version'] });
+  app.enableCors({ origin: (requestOrigin, callback) => {
+    if (!requestOrigin || config.corsOrigins.includes(requestOrigin)) return callback(null, true);
+    return callback(new Error('请求来源未被允许。'), false);
+  }, credentials: true, allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-request-id', 'x-module-arch', 'x-module-file-name', 'x-minimum-ide-version'] });
   app.use((req: any, res: any, next: any) => { const requestId = String(req.headers['x-request-id'] || crypto.randomUUID()); req.headers['x-request-id'] = requestId; res.setHeader('x-request-id', requestId); res.setHeader('x-content-type-options', 'nosniff'); res.setHeader('referrer-policy', 'no-referrer'); next(); });
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   const document = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle('LingBuilder Cloud API').setVersion('1').addBearerAuth().build()); SwaggerModule.setup('docs', app, document);

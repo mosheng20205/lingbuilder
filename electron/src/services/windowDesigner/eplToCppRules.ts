@@ -16,6 +16,18 @@ export interface EplRuntimeEventRule {
 
 export type EplRuntimeEventRuleMap = Record<string, EplRuntimeEventRule>;
 
+/**
+ * Legacy LingCpp command spellings that are still accepted for old projects.
+ * The generated C++ name must always point at a runtime symbol that exists.
+ */
+export const EPL_RUNTIME_CALL_ALIASES: Readonly<Record<string, string>> = {
+  上传_打开: '上传_打开文件选择'
+};
+
+export function resolveEplRuntimeCallName(name: string): string {
+  return EPL_RUNTIME_CALL_ALIASES[name.trim()] || name.trim();
+}
+
 export interface EplControlMemberRule {
   controlName: string;
   memberName: '内容';

@@ -24,6 +24,7 @@ enum AdminRole {
 enum LedgerKind {
   SIGNUP_GIFT
   ADMIN_ADJUSTMENT
+  RECHARGE
   RESERVE
   RELEASE
   CHARGE
@@ -95,6 +96,7 @@ model User {
   moduleOrders       ModuleOrder[]
   moduleEntitlements ModuleEntitlement[]
   moduleAccessAudits ModuleAccessAudit[]
+  rechargeOrders     CreditRechargeOrder[]
 }
 
 model ModuleProduct {
@@ -226,6 +228,38 @@ model PaymentWebhookEvent {
   processedAt DateTime             @default(now())
 
   @@unique([provider, eventId])
+}
+
+enum RechargeStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+model CreditRechargeOrder {
+  id              String                @id @default(uuid())
+  userId          String
+  idempotencyKey  String
+  provider        ModulePaymentProvider
+  providerOrderId String?
+  status          RechargeStatus        @default(PENDING)
+  amountMinor     BigInt
+  currency        String                @default("CNY")
+  points          BigInt
+  packageName     String
+  paymentUrl      String?
+  paymentForm     String?
+  paidAt          DateTime?
+  expiresAt       DateTime
+  refundedAt      DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
 }
 
 model ModuleAccessAudit {
@@ -384,6 +418,10 @@ model LogicalModel {
   inputPointsPerMillion       BigInt
   cachedInputPointsPerMillion BigInt
   outputPointsPerMillion      BigInt
+  peakInputPointsPerMillion       BigInt?
+  peakCachedInputPointsPerMillion BigInt?
+  peakOutputPointsPerMillion      BigInt?
+  peakWindowsJson             Json?
   enabled                     Boolean      @default(true)
   etagVersion                 Int          @default(1)
   routes                      ModelRoute[]

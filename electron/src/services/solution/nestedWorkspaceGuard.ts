@@ -58,3 +58,21 @@ export function isNestedWorkspaceArtifactRelativePath(
   const firstPart = String(relativePath || '').replace(/\\/gu, '/').replace(/^\.\//u, '').split('/')[0]?.toLocaleLowerCase();
   return Boolean(firstPart && plan.excludedTopLevelNames.has(firstPart));
 }
+
+/**
+ * 构建输出和开发工具缓存不能作为项目源码参与 LCPP 聚合。
+ * 这里使用相对路径的目录段判断，既能覆盖源码根目录本身就是工程目录的项目，
+ * 也不会因为工作区绝对路径中恰好包含同名目录而误排除整个工作区。
+ */
+export function isProjectBuildArtifactRelativePath(relativePath: string): boolean {
+  const parts = String(relativePath || '')
+    .replace(/\\/gu, '/')
+    .replace(/^\.\//u, '')
+    .split('/')
+    .filter(Boolean)
+    .map(part => part.toLocaleLowerCase());
+  if (parts.some(part => ['.lingbuilder-build', '.git', 'node_modules', 'dist', 'dist-electron', 'coverage'].includes(part))) {
+    return true;
+  }
+  return parts.some((part, index) => part === 'generated' && parts[index + 1] === 'cpp');
+}

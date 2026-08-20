@@ -210,6 +210,8 @@ interface DiffViewerProps {
   onCloseTab: (tabPath: string, event: React.MouseEvent) => void;
   allFiles: any[];
   designerProject?: LingWindowProject;
+  designerToolboxHost?: HTMLElement | null;
+  onDesignerViewActiveChange?: (active: boolean) => void;
   moduleContext?: LingCppModuleContext;
   activeWindowId?: string;
   editorExperienceMode?: EditorExperienceMode;
@@ -1392,6 +1394,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   onCloseTab,
   allFiles,
   designerProject,
+  designerToolboxHost,
+  onDesignerViewActiveChange,
   moduleContext,
   activeWindowId,
   editorExperienceMode = 'beginner',
@@ -1443,6 +1447,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   useEffect(() => {
     if (!designerProject && viewType === 'designer') setViewType('code');
   }, [designerProject, viewType]);
+
+  useEffect(() => {
+    const isDesignerActive = viewType === 'designer' && Boolean(designerProject);
+    onDesignerViewActiveChange?.(isDesignerActive);
+    return () => onDesignerViewActiveChange?.(false);
+  }, [designerProject, onDesignerViewActiveChange, viewType]);
   const [preset, setPreset] = useState<DiffPreset>(isDarkMode ? 'vs-dark' : 'classic-light');
   const searchQuery: string = '';
   const [editingStringId, setEditingStringId] = useState<string | null>(null);
@@ -10218,6 +10228,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           activeFile={activeFile}
           commandService={commandService}
           getCommandContext={getCommandContext}
+          toolboxHost={designerToolboxHost}
         />
       ) : (
         <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>

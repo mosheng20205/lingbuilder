@@ -19,6 +19,7 @@ import {
 } from '../src/services/server/serverRuntime';
 import { WorkspacePathPolicy } from '../src/services/workspace/workspacePathPolicy';
 import { decodeTextFile, encodeTextFile } from '../src/services/files/textFileService';
+import type { LingWindowProject } from '../src/services/windowDesigner/types';
 
 test('AI Bridge HTTP rejects missing or invalid token', async () => {
   const workspaceRoot = await createTempWorkspace();
@@ -1047,6 +1048,107 @@ test('AI Bridge accepts synchronized multi-file drafts for source and designer f
   assert.equal(applied.appliedFiles.length, 2);
   assert.match(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), /已同步/u);
   assert.match(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'), /main-window/u);
+});
+
+test('AI Bridge applies source and validated designer model atomically', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/demo/Main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '演示项目',
+    resources: [],
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '演示', width: 420, height: 280,
+      background: '#ffffff', description: '', controls: [{
+        id: 'progress', type: 'ProgressBar', name: '加载进度', content: '25', width: 260, height: 20,
+        x: 20, y: 30, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { minimum: 0, maximum: 100, value: 25, marquee: false }
+      }]
+    }]
+  };
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(designerProject, null, 2) + '\n', 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const nextDesignerProject = JSON.parse(JSON.stringify(designerProject));
+  nextDesignerProject.windows[0].controls[0].content = '75';
+  nextDesignerProject.windows[0].controls[0].properties.value = 75;
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '把加载进度改为 75%，同时更新窗口布局模型',
+    designerProject,
+    updatedDesignerProject: nextDesignerProject,
+    workspaceFiles: [{ filePath: sourcePath, sourceCode }],
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` }]
+  });
+  const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+  assert.equal(applied.appliedFiles.length, 2);
+  assert.match(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), /已同步/u);
+  const persisted = JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'));
+  assert.equal(persisted.windows[0].controls[0].properties.value, 75);
+  assert.equal(persisted.windows[0].controls[0].content, '75');
+  await service.shutdown();
+});
+
+test('AI Bridge rejects a designer model changed after proposal creation', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/demo/Main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '竞态测试项目',
+    resources: [],
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 420, height: 280,
+      background: '#ffffff', description: '', controls: [{
+        id: 'progress', type: 'ProgressBar', name: '加载进度', content: '25', width: 260, height: 20,
+        x: 20, y: 30, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { minimum: 0, maximum: 100, value: 25, marquee: false }
+      }]
+    }]
+  };
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(designerProject, null, 2) + '\n', 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const nextDesignerProject = JSON.parse(JSON.stringify(designerProject)) as LingWindowProject;
+  nextDesignerProject.windows[0].controls[0].content = '75';
+  nextDesignerProject.windows[0].controls[0].properties.value = 75;
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '把加载进度改为 75%，同时更新窗口布局模型',
+    designerProject,
+    updatedDesignerProject: nextDesignerProject,
+    workspaceFiles: [{ filePath: sourcePath, sourceCode }],
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` }]
+  });
+
+  const externallyChanged = JSON.parse(JSON.stringify(designerProject)) as LingWindowProject;
+  externallyChanged.windows[0].controls[0].x = 88;
+  await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(externallyChanged, null, 2) + '\n', 'utf8');
+  await assert.rejects(
+    () => service.applyEdit({ proposalId: proposal.proposal.id, approved: true }),
+    /窗口设计器模型在 AI 提案生成后已发生变化/u
+  );
+  assert.equal(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), sourceCode);
+
+  await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(designerProject, null, 2) + '\n', 'utf8');
+  const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+  assert.equal(applied.ok, true);
+  assert.equal(JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8')).windows[0].controls[0].properties.value, 75);
+  assert.match(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), /已同步/u);
+  await service.shutdown();
 });
 
 test('AI Bridge reads and applies edits without corrupting UTF-16 or CRLF files', async () => {

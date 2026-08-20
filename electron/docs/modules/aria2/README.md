@@ -1,6 +1,6 @@
 # Aria2 下载模块
 
-`lingbuilder.net.aria2` 是 LingBuilder 0.5.0 或更高版本提供的内置 Windows x64 下载模块。它调用随生成项目一同复制的原始 `aria2c.exe 1.37.0`，不读取系统 `PATH`，也不提供任意命令行参数入口。
+`lingbuilder.net.aria2` 是 LingBuilder 0.6.0 或更高版本提供的内置 Windows x64 下载模块。它调用随生成项目一同复制的原始 `aria2c.exe 1.37.0`，不读取系统 `PATH`，也不提供任意命令行参数入口。
 
 ## 适用范围
 

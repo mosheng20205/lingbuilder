@@ -312,6 +312,47 @@ test('solution clean removes build outputs and preserves generated exports', asy
   assert.ok(await exists(path.join(exportDir, 'clean-demo.sln')));
 });
 
+test('project file snapshots exclude generated LCPP copies under the source root', async () => {
+  const root = await createTempWorkspace();
+  const sourceRoot = path.join(root, 'src', 'app');
+  await fs.mkdir(path.join(root, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(root, '.lingbuilder', 'solution.json'), JSON.stringify({
+    schemaVersion: 2,
+    id: 'artifact-filter-solution',
+    name: '构建产物过滤测试',
+    startupProjectId: 'artifact-filter',
+    startupProjectIds: ['artifact-filter'],
+    folders: [],
+    projects: [{
+      type: 'visual-cpp',
+      id: 'artifact-filter',
+      name: '构建产物过滤',
+      sourceRoot: 'src/app',
+      configRoot: 'config/app',
+      designerPath: '.lingbuilder/projects/artifact-filter/window-designer.json',
+      references: []
+    }]
+  }, null, 2), 'utf8');
+  await fs.mkdir(sourceRoot, { recursive: true });
+  await fs.mkdir(path.join(root, 'config', 'app'), { recursive: true });
+  await fs.writeFile(path.join(sourceRoot, 'MainWindow.lcpp'), '类 MainWindow\n结束类\n', 'utf8');
+  await fs.mkdir(path.join(sourceRoot, '.lingbuilder-build', 'web-access-demo', 'src'), { recursive: true });
+  await fs.mkdir(path.join(sourceRoot, '.lingbuilder-build', 'web-access-demo', 'Win32', 'Debug', 'src'), { recursive: true });
+  await fs.writeFile(path.join(sourceRoot, '.lingbuilder-build', 'web-access-demo', 'src', 'MainWindow.lcpp'), '类 MainWindow\n结束类\n', 'utf8');
+  await fs.writeFile(path.join(sourceRoot, '.lingbuilder-build', 'web-access-demo', 'Win32', 'Debug', 'src', 'MainWindow.lcpp'), '类 MainWindow\n结束类\n', 'utf8');
+  await fs.mkdir(path.join(sourceRoot, 'generated', 'cpp', 'web-access-demo'), { recursive: true });
+  await fs.writeFile(path.join(sourceRoot, 'generated', 'cpp', 'web-access-demo', 'MainWindow.lcpp'), '类 MainWindow\n结束类\n', 'utf8');
+
+  const service = createSolutionService(root);
+  const solution = await service.getSolution();
+  const project = service.getProject(solution, 'artifact-filter');
+  const files = await service.readProjectFiles(project);
+
+  assert.equal(files['src/app/MainWindow.lcpp'], '类 MainWindow\n结束类\n');
+  assert.equal(Object.keys(files).some(filePath => filePath.includes('.lingbuilder-build')), false);
+  assert.equal(Object.keys(files).some(filePath => filePath.includes('generated/cpp')), false);
+});
+
 test('solution clean removes Windows DLL configuration outputs', async () => {
   const root = await createTempWorkspace();
   const service = createSolutionService(root);

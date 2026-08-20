@@ -70,6 +70,8 @@ export interface AiBridgeEditProposeRequest {
   workspaceFiles?: LingCppWorkspaceFile[];
   aiConfig?: AiConnectionConfig;
   files?: Array<{ filePath: string; updatedSource: string }>;
+  designerProject?: LingWindowProject;
+  updatedDesignerProject?: LingWindowProject;
 }
 
 export interface AiBridgeEditApplyRequest {
@@ -77,6 +79,7 @@ export interface AiBridgeEditApplyRequest {
   workspaceFiles?: LingCppWorkspaceFile[];
   sourceCode?: string;
   approved?: boolean;
+  designerProject?: LingWindowProject;
 }
 
 export interface AiBridgeBuildRunRequest {
@@ -122,4 +125,5 @@ export interface AiBridgeProjectTemplatesResponse {
 export interface AiBridgeEditApplyResult {
   proposal: WorkspaceEditProposal;
   appliedFiles: Array<{ filePath: string; sourceCode: string; absolutePath?: string }>;
+  designerProject?: LingWindowProject;
 }

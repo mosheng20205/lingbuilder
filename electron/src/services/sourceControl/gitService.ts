@@ -12,7 +12,9 @@ export interface GitBlameLine { line: number; hash: string; author: string; auth
 export interface GitRemote { name: string; fetchUrl: string; pushUrl: string }
 export interface GitPullRequest { number?: number; url: string; title: string; state: string }
 export interface GitConflictDetail { path: string; base: string; ours: string; theirs: string; working: string }
-export interface GitDiff { path: string; staged: boolean; patch: string; truncated: boolean; binary: boolean }
+export interface GitDiff { path: string; staged: boolean; patch: string; truncated: boolean; binary: boolean; original: string; modified: string; language: string }
+export interface GitStash { index: number; message: string; createdAt: string }
+export interface GitTag { name: string; commit: string; subject: string }
 export interface PullRequestProvider { create(input: { repository: string; head: string; base: string; title: string; body: string }): Promise<GitPullRequest> }
 type Runner = (args: string[], options?: { timeout?: number }) => Promise<{ stdout: string; stderr: string }>;
 
@@ -61,6 +63,24 @@ export class GitService {
   }
 
   async stage(paths: string[]): Promise<GitStatus> { await this.runPathCommand(['add', '--'], paths); return await this.status(); }
+  async stageAll(): Promise<GitStatus> {
+    const scope = await this.repositoryScope();
+    const args = ['add', '--all'];
+    if (scope.repoRelativeWorkspace) args.push('--', scope.repoRelativeWorkspace);
+    await this.run(args, undefined, 300_000);
+    return await this.status();
+  }
+  async unstageAll(): Promise<GitStatus> {
+    const scope = await this.repositoryScope();
+    const pathArgs = scope.repoRelativeWorkspace ? ['--', scope.repoRelativeWorkspace] : [];
+    try { await this.run(['reset', '--quiet', 'HEAD', ...pathArgs], undefined, 300_000); }
+    catch (error) {
+      // unborn 仓库（还没有首个提交）没有 HEAD，改用从索引移除的方式取消全部暂存。
+      if (message(error, '').includes('HEAD')) await this.run(['rm', '--cached', '-r', '--quiet', '--', scope.repoRelativeWorkspace || '.'], undefined, 300_000);
+      else throw error;
+    }
+    return await this.status();
+  }
   async unstage(paths: string[]): Promise<GitStatus> {
     const repo = await this.repositoryRoot();
     try { await this.run(['restore', '--staged', '--'], await this.validatePaths(paths)); }
@@ -81,17 +101,31 @@ export class GitService {
     const status = await this.status();
     const file = status.files.find(item => item.path === workspacePath);
     if (!file) throw new Error('该文件当前没有 Git 更改。');
+    const language = languageForPath(workspacePath);
 
     if (!staged && file.workingTreeStatus === '?') {
       const absolute = await this.workspaceFilePath(workspacePath, true);
       const bytes = await fs.readFile(absolute);
       const binary = bytes.includes(0);
-      if (binary) return { path: workspacePath, staged, patch: '二进制文件，无法显示文本差异。', truncated: false, binary: true };
+      if (binary) return { path: workspacePath, staged, patch: '二进制文件，无法显示文本差异。', truncated: false, binary: true, original: '', modified: '', language };
       const body = bytes.toString('utf8').split(/\r?\n/u).map(line => `+${line}`).join('\n');
       const patch = `diff --git a/${workspacePath} b/${workspacePath}\nnew file mode 100644\n--- /dev/null\n+++ b/${workspacePath}\n@@ -0,0 +1 @@\n${body}`;
       const limited = limitUtf8(patch, MAX_DIFF_BYTES);
-      return { path: workspacePath, staged, patch: limited.value, truncated: limited.truncated, binary: false };
+      const modified = limitUtf8(bytes.toString('utf8'), MAX_DIFF_BYTES);
+      return { path: workspacePath, staged, patch: limited.value, truncated: limited.truncated || modified.truncated, binary: false, original: '', modified: modified.value, language };
     }
+
+    const readBlob = async (spec: string): Promise<string> => { try { return (await this.run(['show', spec], undefined, 30_000)).stdout; } catch { return ''; } };
+    let original = '';
+    let modified = '';
+    if (staged) { original = await readBlob(`HEAD:${relative}`); modified = await readBlob(`:${relative}`); }
+    else {
+      original = await readBlob(`:${relative}`);
+      const workingPath = await this.workspaceFilePath(workspacePath, true).catch(() => '');
+      modified = workingPath ? await fs.readFile(workingPath, 'utf8').catch(() => '') : '';
+    }
+    const originalLimited = limitUtf8(original, MAX_DIFF_BYTES);
+    const modifiedLimited = limitUtf8(modified, MAX_DIFF_BYTES);
 
     const args = ['diff', '--no-ext-diff', '--no-color', '--unified=3'];
     if (staged) args.push('--cached');
@@ -99,7 +133,11 @@ export class GitService {
     const output = await this.run(args, undefined, 30_000);
     const binary = /(?:Binary files .* differ|GIT binary patch)/u.test(output.stdout);
     const limited = limitUtf8(output.stdout || '该区域没有可显示的文本差异。', MAX_DIFF_BYTES);
-    return { path: workspacePath, staged, patch: limited.value, truncated: limited.truncated, binary };
+    return {
+      path: workspacePath, staged, patch: limited.value,
+      truncated: limited.truncated || originalLimited.truncated || modifiedLimited.truncated, binary,
+      original: binary ? '' : originalLimited.value, modified: binary ? '' : modifiedLimited.value, language
+    };
   }
 
   async discard(paths: string[]): Promise<GitStatus> {
@@ -154,6 +192,46 @@ export class GitService {
   async conflicts(): Promise<GitFileStatus[]> { const status = await this.status(); return status.files.filter(item => isConflictStatus(`${item.indexStatus}${item.workingTreeStatus}`)); }
   async conflictDetail(filePath: string): Promise<GitConflictDetail> { const workspacePath = normalizeWorkspaceRelativePath(filePath); const [relative] = await this.validatePaths([workspacePath]); const readStage = async (stage: number) => { try { return (await this.run(['show', `:${stage}:${relative}`])).stdout; } catch { return ''; } }; const workingPath = await this.workspaceFilePath(workspacePath, true).catch(() => ''); return { path: workspacePath, base: await readStage(1), ours: await readStage(2), theirs: await readStage(3), working: workingPath ? await fs.readFile(workingPath, 'utf8').catch(() => '') : '' }; }
   async resolveConflict(filePath: string, resolution: 'ours' | 'theirs' | 'manual', content?: string): Promise<GitStatus> { if (!['ours', 'theirs', 'manual'].includes(resolution)) throw new Error('冲突解决方式无效。'); const workspacePath = normalizeWorkspaceRelativePath(filePath); const [relative] = await this.validatePaths([workspacePath]); if (resolution !== 'manual') await this.run(['checkout', `--${resolution}`, '--', relative]); else { if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024) throw new Error('手工合并内容无效或超过 5 MB。'); if (/^(?:<<<<<<<|=======|>>>>>>>)/mu.test(content)) throw new Error('手工合并内容仍包含 Git 冲突标记，请处理完毕后再保存。'); await fs.writeFile(await this.workspaceWritePath(workspacePath), content, 'utf8'); } await this.run(['add', '--', relative]); return await this.status(); }
+
+  async stashList(): Promise<GitStash[]> {
+    const output = await this.run(['stash', 'list', '--format=%gd%x00%gs%x00%ci']);
+    return output.stdout.split(/\r?\n/u).filter(Boolean).map(line => {
+      const [reference, message, createdAt] = line.split('\0');
+      const index = Number(reference.match(/stash@\{(\d+)\}/u)?.[1]);
+      return { index: Number.isInteger(index) && index >= 0 ? index : 0, message: message || '', createdAt: createdAt || '' };
+    });
+  }
+  async stashSave(message?: string, includeUntracked = false): Promise<GitStash[]> {
+    const text = message?.trim() || '';
+    if (text.length > 500 || /\0/u.test(text)) throw new Error('贮藏说明不能超过 500 个字符。');
+    const args = ['stash', 'push'];
+    if (includeUntracked) args.push('--include-untracked');
+    if (text) args.push('--message', text);
+    const output = await this.run(args, undefined, 60_000);
+    if (/No local changes to save/iu.test(output.stdout) || /No local changes to save/iu.test(output.stderr)) throw new Error('当前没有可贮藏的更改。');
+    return await this.stashList();
+  }
+  async stashApply(index: number, pop = false): Promise<GitStatus> {
+    const reference = `stash@{${validateStashIndex(index)}}`;
+    try { await this.run(['stash', pop ? 'pop' : 'apply', reference], undefined, 120_000); }
+    catch (error) { const conflicts = await this.conflicts(); if (conflicts.length) throw new Error(`应用贮藏产生 ${conflicts.length} 个冲突，请在冲突面板解决后继续。`); throw error; }
+    return await this.status();
+  }
+  async stashDrop(index: number): Promise<GitStash[]> { await this.run(['stash', 'drop', `stash@{${validateStashIndex(index)}}`], undefined, 30_000); return await this.stashList(); }
+
+  async tags(): Promise<GitTag[]> {
+    const output = await this.run(['for-each-ref', '--format=%(refname:short)%00%(objectname)%00%(contents:subject)', 'refs/tags/']);
+    return output.stdout.split(/\r?\n/u).filter(Boolean).map(line => { const [name, commit, ...subject] = line.split('\0'); return { name, commit, subject: subject.join('\0') }; });
+  }
+  async createTag(name: string, message?: string): Promise<GitTag[]> {
+    const valid = validateTagName(name);
+    const text = message?.trim() || '';
+    if (text.length > 2000 || /\0/u.test(text)) throw new Error('标签说明不能超过 2000 个字符。');
+    if (text) await this.run(['tag', '--annotate', '--message', text, valid], undefined, 30_000);
+    else await this.run(['tag', valid], undefined, 30_000);
+    return await this.tags();
+  }
+  async deleteTag(name: string): Promise<GitTag[]> { await this.run(['tag', '--delete', validateTagName(name)], undefined, 30_000); return await this.tags(); }
 
   async createPullRequest(options: { remote?: string; base: string; head?: string; title: string; body?: string }): Promise<GitPullRequest> {
     const remoteName = validateRemoteName(options.remote || 'origin'); const remote = (await this.remotes()).find(item => item.name === remoteName); if (!remote) throw new Error(`找不到远程仓库 ${remoteName}。`);
@@ -235,6 +313,18 @@ function normalizeGitPath(value: string): string { return value.replace(/\\/gu, 
 function normalizeWorkspaceRelativePath(value: string): string { const result = normalizeGitPath(value?.trim() || '').replace(/^\.\//u, ''); if (!result || result.startsWith('/') || result.split('/').includes('..') || result.includes('\0')) throw new Error('Git 文件路径无效。'); return result; }
 function toWorkspaceRelativeGitPath(repoPath: string, repoRelativeWorkspace: string): string | undefined { if (!repoRelativeWorkspace) return repoPath; const prefix = `${repoRelativeWorkspace}/`; return repoPath === repoRelativeWorkspace ? '' : repoPath.startsWith(prefix) ? repoPath.slice(prefix.length) : undefined; }
 function validateBranchName(value: string): string { const result = value?.trim(); const forbidden = /[\s~^:?*\[\\\0]/u.test(result || ''); if (!result || result.length > 200 || result.startsWith('-') || forbidden || result.includes('..') || result.includes('@{') || result.includes('/.') || result.includes('.lock/') || result.endsWith('.lock') || result.endsWith('/') || result.endsWith('.')) throw new Error('分支名称无效。'); return result; }
+function validateTagName(value: string): string { const result = value?.trim(); const forbidden = /[\s~^:?*\[\\\0]/u.test(result || ''); if (!result || result.length > 200 || result.startsWith('-') || result.startsWith('.') || forbidden || result.includes('..') || result.includes('@{') || result.includes('/.') || result.includes('.lock/') || result.includes('//') || result.endsWith('.lock') || result.endsWith('/') || result.endsWith('.')) throw new Error('标签名称无效。'); return result; }
+function validateStashIndex(value: number): number { if (!Number.isInteger(value) || value < 0 || value > 999) throw new Error('贮藏索引无效。'); return value; }
+function languageForPath(value: string): string {
+  const extension = value.toLowerCase().match(/\.([a-z0-9]+)$/u)?.[1] || '';
+  const map: Record<string, string> = {
+    ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript', json: 'json', jsonc: 'json',
+    cpp: 'cpp', cc: 'cpp', cxx: 'cpp', c: 'cpp', h: 'cpp', hpp: 'cpp', hh: 'cpp', rc: 'ini', ini: 'ini', cfg: 'ini', conf: 'ini', env: 'ini', toml: 'ini',
+    md: 'markdown', markdown: 'markdown', txt: 'plaintext', html: 'html', htm: 'html', css: 'css', scss: 'scss', less: 'less', xml: 'xml', yaml: 'yaml', yml: 'yaml',
+    py: 'python', rs: 'rust', go: 'go', java: 'java', sh: 'shell', bat: 'bat', cmd: 'bat', ps1: 'powershell', sql: 'sql', lcpp: 'lingcpp', e: 'lingcpp'
+  };
+  return map[extension] || 'plaintext';
+}
 function integer(value: number, min: number, max: number, label: string): number { if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${label}无效。`); return value; }
 function message(error: unknown, fallback: string): string { return error instanceof Error && error.message ? error.message : fallback; }
 function parseBlame(output: string): GitBlameLine[] { const lines = output.split(/\r?\n/u); const result: GitBlameLine[] = []; let meta: any = {}; for (const line of lines) { const header = line.match(/^([0-9a-f^]{40}) \d+ (\d+)(?: \d+)?$/u); if (header) { meta = { hash: header[1].replace(/^\^/u, ''), line: Number(header[2]) }; continue; } const pair = line.match(/^(author|author-mail|author-time|summary) (.*)$/u); if (pair) { meta[pair[1]] = pair[2]; continue; } if (line.startsWith('\t')) result.push({ line: meta.line, hash: meta.hash, author: meta.author || '', authorEmail: String(meta['author-mail'] || '').replace(/^<|>$/gu, ''), authoredAt: new Date(Number(meta['author-time'] || 0) * 1000).toISOString(), summary: meta.summary || '', text: line.slice(1) }); } return result; }

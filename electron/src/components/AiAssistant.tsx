@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Brain, Sparkles, Send, RefreshCw, Cpu, Check, AlertTriangle, ShieldCheck, Cloud, KeyRound, Coins, LogOut } from 'lucide-react';
+import { Brain, Sparkles, Send, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X } from 'lucide-react';
+import QRCode from 'qrcode';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
+import type { LingWindowProject } from '../services/windowDesigner/types';
 import type { ProjectMutationOwner } from '../services/workspace/projectMutationOwner';
+import {
+  aiConnectionSession,
+  type AiConnectionMode
+} from '../services/ai/aiConnectionSessionService';
 
 const AI_CONFIG_STORAGE_KEY = 'lingbuilder.aiConnectionConfig.v1';
 
@@ -62,6 +68,58 @@ function loadAiConfig(): AiConnectionConfig {
   }
 }
 
+function loadAiMode(): AiConnectionMode {
+  try {
+    const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
+    if (!raw) return 'system';
+    const value = JSON.parse(raw)?.aiMode;
+    return value === 'byok' ? 'byok' : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+/**
+ * Layout edits must not depend on the active editor language. A project can
+ * have an `.ini`, `.cpp`, or other file open while the request still targets
+ * the current window designer model.
+ */
+export function isLikelyDesignerEditInstruction(instruction: string): boolean {
+  const normalized = instruction.trim();
+  if (!normalized) return false;
+  const hasDesignerTarget = /窗口|窗体|控件|布局|界面|按钮|文本框|输入框|标签|进度条|设计器|标题栏|面板|列表|菜单/u.test(normalized);
+  const hasDesignerMutation = /增加|新增|添加|删除|移除|去掉|移动|调整|修改|设置|美化|美观|好看|太乱|整洁|优化|显示|隐藏|颜色|字体|圆角|间距|宽度|高度|尺寸|位置|对齐|重排/u.test(normalized);
+  return hasDesignerTarget && hasDesignerMutation;
+}
+
+/** Keep the active source and at least one design-relevant `.lcpp` file in
+ * the bounded system-AI context, even when the active editor is `config.ini`.
+ */
+export function getAiWorkspaceFilesForEdit(
+  workspaceFiles: WorkspaceFileSnapshot[],
+  activeFilePath: string,
+  activeSourceCode: string
+): WorkspaceFileSnapshot[] {
+  const normalizePath = (value: string) => value.replaceAll('\\', '/').toLowerCase();
+  const activePath = normalizePath(activeFilePath);
+  const activeSnapshot = workspaceFiles.find(file => normalizePath(file.filePath) === activePath);
+  const currentActiveFile: WorkspaceFileSnapshot = activeSnapshot
+    ? { ...activeSnapshot, sourceCode: activeSourceCode }
+    : { filePath: activeFilePath, sourceCode: activeSourceCode };
+  const prioritized = [
+    currentActiveFile,
+    ...workspaceFiles.filter(file => normalizePath(file.filePath) !== activePath && /\.lcpp$/iu.test(file.filePath)),
+    ...workspaceFiles
+  ];
+  const seen = new Set<string>();
+  return prioritized.filter(file => {
+    const key = normalizePath(file.filePath);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 5);
+}
+
 interface AiAssistantProps {
   strings: ExtractedString[];
   glossary: GlossaryTerm[];
@@ -73,12 +131,13 @@ interface AiAssistantProps {
   projectId?: string;
   projectMutationOwner: ProjectMutationOwner;
   moduleContext?: LingCppModuleContext;
+  designerProject?: LingWindowProject;
   workspaceFiles: WorkspaceFileSnapshot[];
   onApplyWorkspaceEdit?: (
     proposal: WorkspaceEditProposal,
     appliedFiles: AppliedWorkspaceFile[],
     owner?: ProjectMutationOwner
-  ) => void;
+  ) => boolean | void | Promise<boolean | void>;
   isDarkMode?: boolean;
 }
 
@@ -101,24 +160,83 @@ export default function AiAssistant({
   projectId,
   projectMutationOwner,
   moduleContext,
+  designerProject,
   workspaceFiles,
   onApplyWorkspaceEdit,
   isDarkMode = true
 }: AiAssistantProps) {
-  const [aiMode, setAiMode] = useState<'system' | 'byok'>('system');
+  const [aiMode, setAiMode] = useState<AiConnectionMode>(
+    () => aiConnectionSession.getMode() || loadAiMode()
+  );
   const [cloudSession, setCloudSession] = useState<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>({ authenticated: false });
   const [cloudModels, setCloudModels] = useState<Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }>>([]);
   const [cloudModelAlias, setCloudModelAlias] = useState('');
+  const [rechargePanelOpen, setRechargePanelOpen] = useState(false);
+  const [rechargePackages, setRechargePackages] = useState<Array<{ id: string; name: string; points: string; amountMinor: string; currency: string }>>([]);
+  const [rechargeBusy, setRechargeBusy] = useState(false);
+  const [rechargeMessage, setRechargeMessage] = useState('');
+  const [rechargeQr, setRechargeQr] = useState<{ orderId: string; points: string; packageName: string; dataUrl: string; expiresAt: string; status: string; mode: 'qr' | 'browser' } | null>(null);
+  useEffect(() => {
+    if (!rechargeQr || rechargeQr.status !== 'pending') return;
+    const orderId = rechargeQr.orderId;
+    let active = true;
+    const timer = setInterval(async () => {
+      try {
+        const result = await window.lingBuilder?.cloudAccount?.rechargeOrder(orderId);
+        if (!active || !result?.order) return;
+        if (result.order.status === 'paid') {
+          setRechargeQr(current => (current && current.orderId === orderId ? { ...current, status: 'paid' } : current));
+          const balance = await window.lingBuilder?.cloudAccount?.balance();
+          if (balance?.balance) setCloudSession(current => ({ ...current, balance: balance.balance }));
+        } else if (['expired', 'cancelled', 'refunded'].includes(result.order.status)) {
+          setRechargeQr(current => (current && current.orderId === orderId ? { ...current, status: result.order.status } : current));
+        }
+      } catch { /* 轮询期间的瞬时错误忽略，等待下一轮 */ }
+    }, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [rechargeQr]);
+  const toggleRechargePanel = async () => {
+    const next = !rechargePanelOpen;
+    setRechargePanelOpen(next);
+    setRechargeMessage('');
+    if (next && !rechargePackages.length) {
+      try {
+        const result = await window.lingBuilder?.cloudAccount?.rechargePackages();
+        if (result?.packages) setRechargePackages(result.packages);
+      } catch (error) { setRechargeMessage(error instanceof Error ? error.message : String(error)); }
+    }
+  };
+  const startRecharge = async (packageId: string) => {
+    if (!window.lingBuilder?.cloudAccount?.createRechargeOrder) { setRechargeMessage('当前客户端版本不支持在线充值。'); return; }
+    setRechargeBusy(true); setRechargeMessage('');
+    try {
+      const result = await window.lingBuilder.cloudAccount.createRechargeOrder({ packageId, provider: 'alipay', idempotencyKey: crypto.randomUUID() });
+      if (!result?.order?.paymentUrl) throw new Error('支付渠道未返回付款地址。');
+      if (result.order.paymentForm) {
+        const openError = await window.lingBuilder?.payments?.openPage(result.order.paymentUrl);
+        if (openError) throw new Error(openError);
+        setRechargeQr({ orderId: result.order.id, points: result.order.points, packageName: result.order.packageName, dataUrl: '', expiresAt: result.order.expiresAt, status: 'pending', mode: 'browser' });
+      } else {
+        const dataUrl = await QRCode.toDataURL(result.order.paymentUrl, { width: 320, margin: 2, errorCorrectionLevel: 'M' });
+        setRechargeQr({ orderId: result.order.id, points: result.order.points, packageName: result.order.packageName, dataUrl, expiresAt: result.order.expiresAt, status: 'pending', mode: 'qr' });
+      }
+    } catch (error) { setRechargeMessage(error instanceof Error ? error.message : String(error)); } finally { setRechargeBusy(false); }
+  };
   const [accountEmail, setAccountEmail] = useState('');
   const [accountPassword, setAccountPassword] = useState('');
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountMessage, setAccountMessage] = useState('');
   const [aiConfig, setAiConfig] = useState<AiConnectionConfig>(loadAiConfig);
+  const [isAiCredentialReady, setIsAiCredentialReady] = useState(
+    () => !window.lingBuilder?.credentials
+  );
   const [isTranslating, setIsTranslating] = useState(false);
   const [translationProgress, setTranslationProgress] = useState(0);
   const [isAiConfigExpanded, setIsAiConfigExpanded] = useState(true);
   const [isConnectingAi, setIsConnectingAi] = useState(false);
-  const [aiConnectedSignature, setAiConnectedSignature] = useState<string | null>(null);
+  const [aiConnectedSignature, setAiConnectedSignature] = useState<string | null>(
+    () => aiConnectionSession.getConnectedSignature()
+  );
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<Message[]>([
     {
@@ -135,6 +253,11 @@ export default function AiAssistant({
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatAbortRef = useRef<AbortController | null>(null);
   const cloudRequestRef = useRef<string | null>(null);
+  // Older cloud API versions did not include `instruction` in edit_draft.
+  // Keep the user prompt locally so the renderer can still apply the same
+  // designer fallback and validation rules while those servers are rolling out.
+  const cloudInstructionRef = useRef<Map<string, string>>(new Map());
+  const pendingCloudInstructionRef = useRef<string | null>(null);
   const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
   const aiConnectionSignature = [
     aiConfig.provider || DEFAULT_AI_CONFIG.provider,
@@ -142,14 +265,21 @@ export default function AiAssistant({
     aiConfig.apiKey.trim(),
     effectiveModelName
   ].join('|');
-  const isAiConnected = aiConnectedSignature === aiConnectionSignature;
+  const isAiConnected = aiConnectionSession.isConnected(aiConnectionSignature)
+    && aiConnectedSignature === aiConnectionSignature;
 
   const updateAiConfig = (patch: Partial<AiConnectionConfig>) => {
+    aiConnectionSession.clear();
     setAiConnectedSignature(null);
     setAiConfig(current => ({
       ...current,
       ...patch
     }));
+  };
+
+  const handleAiModeChange = (mode: AiConnectionMode) => {
+    aiConnectionSession.setMode(mode);
+    setAiMode(mode);
   };
 
   const handlePresetChange = (presetId: string) => {
@@ -180,6 +310,7 @@ export default function AiAssistant({
       if (!response.ok || data.ok === false) {
         throw new Error(data.details || data.error || 'AI 连接失败');
       }
+      aiConnectionSession.markConnected(aiConnectionSignature);
       setAiConnectedSignature(aiConnectionSignature);
       setChatHistory(prev => [
         ...prev,
@@ -191,6 +322,7 @@ export default function AiAssistant({
         }
       ]);
     } catch (error: any) {
+      aiConnectionSession.clear();
       setAiConnectedSignature(null);
       setChatHistory(prev => [
         ...prev,
@@ -217,14 +349,47 @@ export default function AiAssistant({
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({ ...aiConfig, apiKey: undefined, modelName: effectiveModelName }));
-      void window.lingBuilder?.credentials?.setAiApiKey(aiConfig.apiKey);
+      window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
+        ...aiConfig,
+        aiMode,
+        apiKey: undefined,
+        modelName: effectiveModelName
+      }));
+      if (isAiCredentialReady) {
+        void window.lingBuilder?.credentials?.setAiApiKey(aiConfig.apiKey);
+      }
     } catch {
       // AI settings remain usable for the current session even if storage fails.
     }
-  }, [aiConfig, effectiveModelName]);
+  }, [aiConfig, aiMode, effectiveModelName, isAiCredentialReady]);
 
-  useEffect(() => { try { const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY); if (raw) { const parsed = JSON.parse(raw); if (parsed.apiKey) { delete parsed.apiKey; window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(parsed)); } } } catch { /* ignore legacy cleanup failure */ } void window.lingBuilder?.credentials?.getAiApiKey().then(apiKey => { if (apiKey) setAiConfig(current => ({ ...current, apiKey })); }); }, []);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.apiKey) {
+          delete parsed.apiKey;
+          window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(parsed));
+        }
+      }
+    } catch {
+      // Ignore legacy cleanup failures.
+    }
+
+    const credentials = window.lingBuilder?.credentials;
+    if (!credentials) {
+      setIsAiCredentialReady(true);
+      return;
+    }
+
+    void credentials.getAiApiKey()
+      .then(apiKey => {
+        if (apiKey) setAiConfig(current => ({ ...current, apiKey }));
+      })
+      .catch(() => undefined)
+      .finally(() => setIsAiCredentialReady(true));
+  }, []);
 
   useEffect(() => {
     setEditProposal(null);
@@ -232,7 +397,7 @@ export default function AiAssistant({
 
   useEffect(() => {
     if (!window.lingBuilder?.cloudAccount) {
-      setAiMode('byok');
+      handleAiModeChange('byok');
       return;
     }
     void window.lingBuilder.cloudAccount.session().then(async session => {
@@ -253,7 +418,12 @@ export default function AiAssistant({
         });
       }
       if (event.type === 'edit_draft' && Array.isArray(event.files)) {
-        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, sourceCode, instruction: '系统 AI 工作区编辑', projectId, moduleContext, workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); });
+        const instruction = typeof event.instruction === 'string' && event.instruction.trim()
+          ? event.instruction
+          : cloudInstructionRef.current.get(requestKey)
+            || pendingCloudInstructionRef.current
+            || '系统 AI 工作区编辑';
+        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, sourceCode, instruction, projectId, moduleContext, currentDesignerProject: designerProject, designerProject: event.designerProject, workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); }).catch(error => setChatHistory(previous => [...previous, { id: Math.random().toString(), sender: 'ai', text: error instanceof Error ? error.message : String(error), timestamp: new Date().toLocaleTimeString() }]));
       }
       if (event.type === 'usage') {
         setChatHistory(previous => [...previous, { id: `usage-${requestKey}`, sender: 'ai', text: `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, timestamp: new Date().toLocaleTimeString() }]);
@@ -261,10 +431,12 @@ export default function AiAssistant({
       }
       if (event.type === 'completed' || event.type === 'error') {
         if (event.type === 'error') setChatHistory(previous => [...previous, { id: `error-${requestKey}`, sender: 'ai', text: event.message || '系统 AI 请求失败。', timestamp: new Date().toLocaleTimeString() }]);
+        cloudInstructionRef.current.delete(requestKey);
+        if (cloudRequestRef.current === requestKey) pendingCloudInstructionRef.current = null;
         cloudRequestRef.current = null; setIsAiResponding(false);
       }
     });
-  }, [filePath, sourceCode, projectId, moduleContext, workspaceFiles]);
+  }, [filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles]);
 
   const handleCloudAccount = async (action: 'login' | 'register') => {
     if (!window.lingBuilder?.cloudAccount) return;
@@ -378,17 +550,26 @@ export default function AiAssistant({
     try {
       if (aiMode === 'system') {
         if (!cloudSession.authenticated || !window.lingBuilder?.cloudAi || !cloudModelAlias) throw new Error('请先登录系统 AI 并选择可用模型。');
+        pendingCloudInstructionRef.current = userMsg.text;
         const messages = [...chatHistory.filter(message => message.id !== 'welcome').slice(-18).map(message => ({ role: message.sender === 'ai' ? 'assistant' as const : 'user' as const, content: message.text })), { role: 'user' as const, content: userMsg.text }];
         const rulebookVersion = 'lingbuilder-rulebook-v1';
-        const payload = isLingCppFile ? {
+        const shouldUseEditFlow = isLingCppFile || Boolean(
+          designerProject && isLikelyDesignerEditInstruction(userMsg.text)
+        );
+        const payload = shouldUseEditFlow ? {
           modelAlias: cloudModelAlias, messages, rulebookVersion, activeFilePath: filePath, instruction: userMsg.text,
-          files: await Promise.all(workspaceFiles.slice(0, 5).map(async file => ({ filePath: file.filePath, content: file.sourceCode.slice(0, 24_000), language: file.language, sha256: await sha256(file.sourceCode) })))
+          files: await Promise.all(getAiWorkspaceFilesForEdit(workspaceFiles, filePath, sourceCode).map(async file => ({ filePath: file.filePath, content: file.sourceCode.slice(0, 24_000), language: file.language, sha256: await sha256(file.sourceCode) }))),
+          ...(designerProject ? { designerProject } : {})
         } : { modelAlias: cloudModelAlias, messages, rulebookVersion };
-        const requestKey = await window.lingBuilder.cloudAi.start(isLingCppFile ? 'edit' : 'chat', payload);
+        const requestKey = await window.lingBuilder.cloudAi.start(shouldUseEditFlow ? 'edit' : 'chat', payload);
+        cloudInstructionRef.current.set(requestKey, userMsg.text);
         cloudRequestRef.current = requestKey;
         return;
       }
-      if (isLingCppFile) {
+      const shouldUseEditFlow = isLingCppFile || Boolean(
+        designerProject && isLikelyDesignerEditInstruction(userMsg.text)
+      );
+      if (shouldUseEditFlow) {
         const response = await fetch('/api/lingcpp/edit/propose', {
           signal: controller.signal,
           method: 'POST',
@@ -400,15 +581,16 @@ export default function AiAssistant({
             projectId,
             moduleContext,
             aiConfig: { ...aiConfig, modelName: effectiveModelName },
-            workspaceFiles
+            workspaceFiles,
+            designerProject
           })
         });
 
-        if (!response.ok) {
-          throw new Error('中文 C++ 编辑提案生成失败');
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+          throw new Error(data.error || `中文 C++ 编辑提案生成失败（HTTP ${response.status}）。`);
         }
 
-        const data = await response.json();
         const proposal = data.proposal as WorkspaceEditProposal;
         setEditProposal(proposal);
         setChatHistory(prev => [
@@ -416,7 +598,7 @@ export default function AiAssistant({
           {
             id: Math.random().toString(),
             sender: 'ai',
-            text: `已生成一份可预览的工作区编辑提案：${proposal.summary}\n\n本次涉及 ${proposal.changes.length} 个文件，请在下方预览差异后选择“应用提案”或“拒绝提案”。`,
+            text: `已生成一份可预览的工作区编辑提案：${proposal.summary}\n\n本次涉及 ${proposal.changes.length} 个文件${proposal.designerProject ? '，并同步修改窗口设计器模型' : ''}，请在下方预览差异后选择“应用提案”或“拒绝提案”。`,
             timestamp: new Date().toLocaleTimeString()
           }
         ]);
@@ -472,30 +654,48 @@ export default function AiAssistant({
 
   const handleApplyProposal = async () => {
     if (!editProposal || !onApplyWorkspaceEdit) return;
-    const response = await fetch('/api/lingcpp/edit/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        proposalId: editProposal.id,
-        sourceCode,
-        workspaceFiles
-      })
-    });
-    if (!response.ok) return;
-    const data = await response.json();
-    const appliedFiles = (data.appliedFiles || []) as AppliedWorkspaceFile[];
-    onApplyWorkspaceEdit(editProposal, appliedFiles, projectMutationOwner);
-    const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
-    setChatHistory(prev => [
-      ...prev,
-      {
-        id: Math.random().toString(),
-        sender: 'ai',
-        text: `已应用该工作区编辑提案，改动已写回：${changedFileList}。`,
-        timestamp: new Date().toLocaleTimeString()
+    try {
+      const response = await fetch('/api/lingcpp/edit/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId: editProposal.id,
+          sourceCode,
+          workspaceFiles,
+          designerProject,
+          projectId
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error || `应用提案失败（HTTP ${response.status}）。`);
       }
-    ]);
-    setEditProposal(null);
+      const appliedFiles = (data.appliedFiles || []) as AppliedWorkspaceFile[];
+      if (await onApplyWorkspaceEdit(editProposal, appliedFiles, projectMutationOwner) === false) {
+        throw new Error('项目上下文已变化，未应用该提案；请重新读取当前文件和设计器模型后再试。');
+      }
+      const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
+      setChatHistory(prev => [
+        ...prev,
+        {
+          id: Math.random().toString(),
+          sender: 'ai',
+          text: `已应用该工作区编辑提案，源码和窗口设计器改动已写回：${changedFileList}。`,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+      setEditProposal(null);
+    } catch (error) {
+      setChatHistory(prev => [
+        ...prev,
+        {
+          id: Math.random().toString(),
+          sender: 'ai',
+          text: `应用编辑提案失败：${error instanceof Error ? error.message : String(error)}`,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    }
   };
 
   const handleRejectProposal = async () => {
@@ -517,9 +717,6 @@ export default function AiAssistant({
     setEditProposal(null);
   };
 
-  const getPendingCount = () => strings.filter(s => s.status === 'pending').length;
-  const getTranslatedCount = () => strings.filter(s => s.status === 'translated').length;
-
   return (
     <div 
       id="ai-assistant-panel" 
@@ -539,10 +736,6 @@ export default function AiAssistant({
           <Brain className="w-4 h-4 text-purple-500" />
           <span className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>AI 智能中文代码引擎</span>
         </div>
-        <div className="flex items-center gap-1 bg-purple-500/10 text-purple-600 px-2 py-0.5 rounded border border-purple-500/20 text-[10px] font-mono">
-          <Cpu className="w-3 h-3" />
-          <span>{effectiveModelName}</span>
-        </div>
       </div>
 
       {/* Batch Translation Controller */}
@@ -551,16 +744,6 @@ export default function AiAssistant({
           isDarkMode ? 'border-[#2d2d34] bg-[#1a1a20]/30' : 'border-slate-200 bg-slate-50'
         }`}
       >
-        <div className="flex items-center justify-between text-xs mb-3">
-          <div className="flex flex-col">
-            <span className={`font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>一键批量生成中文代码</span>
-            <span className="text-[10px] text-slate-500">
-              当前文件待配置: <strong className="text-amber-500">{getPendingCount()}</strong> 串，
-              已映射: <strong className="text-emerald-500">{getTranslatedCount()}</strong> 串
-            </span>
-          </div>
-        </div>
-
         {/* AI connection config */}
         <div className="mb-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
@@ -575,15 +758,33 @@ export default function AiAssistant({
               {isAiConfigExpanded ? '收起' : '展开'}
             </button>
           </div>
-          <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${isDarkMode ? 'border-[#343442] bg-[#18181c]' : 'border-slate-200 bg-slate-100'}`} role="tablist" aria-label="AI 使用模式">
-            <button type="button" role="tab" aria-selected={aiMode === 'system'} onClick={() => setAiMode('system')} className={`flex min-h-8 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'system' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}><Cloud className="h-3 w-3"/>系统 AI</button>
-            <button type="button" role="tab" aria-selected={aiMode === 'byok'} onClick={() => setAiMode('byok')} className={`flex min-h-8 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'byok' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><KeyRound className="h-3 w-3"/>自定义 API</button>
-          </div>
+          {isAiConfigExpanded && (
+            <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${isDarkMode ? 'border-[#343442] bg-[#18181c]' : 'border-slate-200 bg-slate-100'}`} role="tablist" aria-label="AI 使用模式">
+              <button type="button" role="tab" aria-selected={aiMode === 'system'} onClick={() => handleAiModeChange('system')} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'system' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}><Cloud className="h-3 w-3"/>系统 AI</button>
+              <button type="button" role="tab" aria-selected={aiMode === 'byok'} onClick={() => handleAiModeChange('byok')} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'byok' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><KeyRound className="h-3 w-3"/>自定义 API</button>
+            </div>
+          )}
           {aiMode === 'system' && isAiConfigExpanded && (
             <div className={`space-y-2 rounded border p-2.5 ${isDarkMode ? 'border-violet-500/20 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>
               {cloudSession.authenticated ? <>
                 <div className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate text-slate-400">{cloudSession.email}</span><button type="button" aria-label="退出系统 AI 账号" className="flex min-h-7 items-center gap-1 text-rose-400" onClick={() => void window.lingBuilder?.cloudAccount?.logout().then(() => setCloudSession({ authenticated: false }))}><LogOut className="h-3 w-3"/>退出</button></div>
-                <div className="flex items-center gap-2 rounded bg-black/10 px-2 py-1.5 text-[10px]"><Coins className="h-3.5 w-3.5 text-amber-400"/><span>可用点数</span><strong className="ml-auto tabular-nums">{cloudSession.balance?.available || '0'}</strong></div>
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-2 rounded bg-black/10 px-2 py-1.5 text-[10px]"><Coins className="h-3.5 w-3.5 text-amber-400"/><span>可用点数</span><strong className="ml-auto tabular-nums">{cloudSession.balance?.available || '0'}</strong></div>
+                  <button type="button" aria-label="打开点数充值" onClick={() => void toggleRechargePanel()} className="min-h-7 rounded bg-amber-500/90 px-2 text-[10px] font-semibold text-white hover:bg-amber-500">充值</button>
+                </div>
+                {rechargePanelOpen && (
+                  <div className="space-y-1.5 rounded border border-amber-500/20 bg-amber-500/5 p-2">
+                    {rechargePackages.length === 0 && !rechargeMessage && <div className="text-[10px] text-slate-400">正在加载充值套餐…</div>}
+                    {rechargePackages.map(pack => (
+                      <div key={pack.id} className="flex items-center gap-2 rounded bg-black/10 px-2 py-1.5 text-[10px]">
+                        <span className="flex-1">{pack.name} · {Number(pack.points).toLocaleString('zh-CN')} 点数</span>
+                        <span className="font-semibold text-amber-400">¥{(Number(pack.amountMinor) / 100).toFixed(0)}</span>
+                        <button type="button" disabled={rechargeBusy} onClick={() => void startRecharge(pack.id)} className="min-h-6 rounded bg-blue-600 px-2 font-semibold text-white disabled:opacity-50">支付宝</button>
+                      </div>
+                    ))}
+                    {rechargeMessage && <div role="status" className="text-[10px] text-rose-400">{rechargeMessage}</div>}
+                  </div>
+                )}
                 <label className="block text-[10px] text-slate-500" htmlFor="system-ai-model">系统模型</label>
                 <select id="system-ai-model" value={cloudModelAlias} onChange={event => setCloudModelAlias(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}>{cloudModels.map(model => <option key={model.alias} value={model.alias}>{model.displayName}</option>)}</select>
               </> : <>
@@ -637,7 +838,7 @@ export default function AiAssistant({
               <button
                 type="button"
                 onClick={handleConnectAi}
-                disabled={isConnectingAi || !effectiveModelName || isAiConnected}
+                disabled={isConnectingAi || !isAiCredentialReady || !effectiveModelName || isAiConnected}
                 className={`w-full flex items-center justify-center gap-2 text-white font-bold py-2 rounded text-xs transition-all select-none shadow-md ${
                   isAiConnected
                     ? 'bg-emerald-600/80 cursor-default'
@@ -670,23 +871,6 @@ export default function AiAssistant({
             <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${translationProgress}%` }}></div>
           </div>
         )}
-        {isLingCppFile && (
-          <div className={`mt-2 rounded border px-2.5 py-2 text-[10px] leading-relaxed ${
-            isDarkMode ? 'border-[#343442] bg-[#202028] text-slate-400' : 'border-slate-200 bg-white text-slate-600'
-          }`}>
-            当前为 `.lcpp` 中文 C++ 源码，AI 在本面板中默认生成“可预览工作区提案”，不会直接静默改写文件。
-          </div>
-        )}
-      </div>
-
-      {/* Security Credentials info indicator (In compliance with standard instructions) */}
-      <div 
-        className={`px-3 py-1.5 border-b text-[10px] flex items-center gap-2 shrink-0 select-none ${
-          isDarkMode ? 'bg-[#171e24] border-[#2d2d34] text-slate-400' : 'bg-emerald-50/50 border-emerald-100 text-slate-600'
-        }`}
-      >
-        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-        <span>{aiMode === 'system' ? '系统 AI 源码默认零保留，所有文件修改仍需本地预览确认' : '自定义 API Key 使用系统安全凭据存储，不进入工作区或同步包'}</span>
       </div>
 
       {editProposal && (
@@ -741,14 +925,6 @@ export default function AiAssistant({
 
       {/* Conversation Area */}
       <div className="flex-1 flex flex-col min-h-0">
-        <div 
-          className={`p-2 border-b shrink-0 select-none ${
-            isDarkMode ? 'border-[#2d2d34] bg-[#1a1a20]/15' : 'border-slate-200 bg-slate-50/50'
-          }`}
-        >
-             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">{isLingCppFile ? 'AI 中文 C++ 编辑助手' : 'AI 编程与代码生成助手'}</span>
-        </div>
-
         {/* Chat History scroll panel */}
         <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
           {chatHistory.map((msg, idx) => (
@@ -798,7 +974,7 @@ export default function AiAssistant({
             onChange={e => setChatInput(e.target.value)}
             disabled={isAiResponding}
             aria-label="向 AI 助手提问"
-            className={`flex-1 border rounded px-3 py-1.5 text-xs focus:outline-none focus:border-purple-500 disabled:opacity-50 ${
+            className={`flex-1 border rounded px-3 py-2 text-xs focus:outline-none focus:border-purple-500 disabled:opacity-50 ${
               isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
             }`}
           />
@@ -806,13 +982,31 @@ export default function AiAssistant({
             type="submit"
             disabled={isAiResponding || !chatInput.trim()}
             aria-label="发送 AI 请求"
-            className="p-1.5 rounded bg-[#4f46e5] text-white hover:bg-indigo-600 transition-colors cursor-pointer disabled:opacity-50"
+            className="p-2 rounded bg-[#4f46e5] text-white hover:bg-indigo-600 transition-colors cursor-pointer disabled:opacity-50"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
           {isAiResponding && <button type="button" aria-label="取消 AI 请求" onClick={() => { if (aiMode === 'system' && cloudRequestRef.current) void window.lingBuilder?.cloudAi?.cancel(cloudRequestRef.current); else chatAbortRef.current?.abort(); }} className="rounded border border-slate-500 px-2">取消</button>}
         </form>
       </div>
+      {rechargeQr && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="充值支付二维码">
+          <div className={`w-[22rem] max-w-full rounded-lg border p-4 ${isDarkMode ? 'border-slate-700 bg-[#1c1c22] text-slate-100' : 'border-slate-200 bg-white text-slate-800'}`}>
+            <div className="flex items-center justify-between"><div className="text-sm font-semibold">支付宝充值 · {rechargeQr.packageName}</div><button type="button" aria-label="关闭充值二维码" onClick={() => setRechargeQr(null)} className="rounded p-1 hover:bg-white/10"><X size={17}/></button></div>
+            {rechargeQr.status === 'paid' ? (
+              <div className="py-8 text-center text-sm text-emerald-400">充值成功！{Number(rechargeQr.points).toLocaleString('zh-CN')} 点数已到账。</div>
+            ) : rechargeQr.status === 'pending' ? rechargeQr.mode === 'browser' ? (<>
+              <p className={`mt-3 text-xs leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>已在系统浏览器中打开支付宝收银台，请在浏览器内完成付款；支付成功后此窗口会自动刷新余额。订单有效至 {new Date(rechargeQr.expiresAt).toLocaleTimeString()}。</p>
+              <p className={`mt-2 text-[11px] leading-5 ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>若浏览器未自动打开，请关闭此窗口后重新点击套餐旁的“支付宝”按钮。</p>
+            </>) : (<>
+              <img src={rechargeQr.dataUrl} alt="支付宝充值二维码" className="mx-auto mt-4 w-72 max-w-full rounded bg-white p-2"/>
+              <p className={`mt-3 text-xs leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>请使用支付宝扫描二维码完成充值，支付成功后此页面会自动刷新余额。订单有效至 {new Date(rechargeQr.expiresAt).toLocaleTimeString()}。</p>
+            </>) : (
+              <div className="py-8 text-center text-sm text-amber-400">订单已结束（{rechargeQr.status}），请关闭后重新发起充值。</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

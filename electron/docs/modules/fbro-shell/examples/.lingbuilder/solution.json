@@ -2,9 +2,9 @@
   "schemaVersion": 2,
   "id": "lingbuilder-solution",
   "name": "未命名解决方案",
-  "startupProjectId": "fbro",
+  "startupProjectId": "lingbuilder-project-2",
   "startupProjectIds": [
-    "fbro"
+    "lingbuilder-project-2"
   ],
   "folders": [],
   "projects": [

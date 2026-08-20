@@ -62,7 +62,8 @@ import { getFunctionLibraryCompletionItems, getFunctionLibraryDiagnostics } from
 import {
   getLingCppControlReferenceAtPosition,
   getLingCppControlReferenceCompletion,
-  getLingCppControlReferenceDiagnostics
+  getLingCppControlReferenceDiagnostics,
+  getLingCppControlSymbols
 } from './controlReferenceService';
 import {
   formatModuleDesignerEventParameters,
@@ -290,7 +291,9 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getVariableDiagnostics([
     ...parsed.program.classes,
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
-  ], moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes));
+  ], moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes,
+    new Set(getLingCppControlSymbols(designerProject, source, filePath, 'currentWindow', moduleContext)
+      .map(symbol => normalizeIdentifier(symbol.name)))));
   diagnostics.push(...getRuntimeControlDeclarationDiagnostics(
     parsed.program,
     moduleContext,
@@ -2586,7 +2589,8 @@ function getVariableDiagnostics(
   moduleContext?: LingCppModuleContext,
   constants: LingCppConstant[] = [],
   globals: LingCppGlobalVariable[] = [],
-  projectTypes?: LingCppProjectTypeContext
+  projectTypes?: LingCppProjectTypeContext,
+  designerControlNames: ReadonlySet<string> = new Set()
 ): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
   const globalTypes = projectSymbolTypes(constants, globals);
@@ -2626,7 +2630,8 @@ function getVariableDiagnostics(
             local,
             initializerScopeTypes,
             allLocalPositions,
-            methodNames
+            methodNames,
+            designerControlNames
           ));
           const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext, new Map(), projectTypes);
           if (actualType && !areLingCppTypesCompatible(local.type, actualType)) {
@@ -2684,7 +2689,11 @@ function getVariableDiagnostics(
           diagnostics.push(createDiagnostic('error', statement.line, statement.text, `项目常量 ${targetName} 是只读值，不能重新赋值。`, '请改用局部变量或项目全局变量保存运行时变化的值。'));
           return;
         }
-        const rootType = scopeTypes.get(normalizeIdentifier(targetName));
+        const normalizedTargetName = normalizeIdentifier(targetName);
+        // A designer control can expose property assignment syntax such as
+        // `编辑框1.内容 = ...` without being a declared LingCpp variable.
+        if (targetPath.length > 1 && designerControlNames.has(normalizedTargetName)) return;
+        const rootType = scopeTypes.get(normalizedTargetName);
         const rootIsProjectType = projectTypes?.dataTypes.some(dataType => normalizeIdentifier(dataType.name) === normalizeIdentifier(rootType || ''));
         if (targetPath.length > 1 && rootType && !rootIsProjectType) return;
         const targetType = targetPath.length === 1 ? rootType : resolveProjectFieldPathType(rootType, targetPath.slice(1), projectTypes);
@@ -2762,7 +2771,8 @@ function getLocalInitializerReferenceDiagnostics(
   local: NonNullable<LingCppMethod['locals']>[number],
   scopeTypes: ReadonlyMap<string, string>,
   allLocalPositions: ReadonlyMap<string, number>,
-  methodNames: ReadonlySet<string>
+  methodNames: ReadonlySet<string>,
+  designerControlNames: ReadonlySet<string>
 ): LingCppDiagnostic[] {
   const expression = local.initialValue || '';
   const withoutStrings = expression.replace(/(?:L)?"(?:\\.|[^"\\])*"|“[^”]*”/gu, match => ' '.repeat(match.length));
@@ -2779,6 +2789,7 @@ function getLocalInitializerReferenceDiagnostics(
     if (before.endsWith('&') && methodNames.has(normalized)) continue;
     if (/^\s*[（(]/u.test(after)) continue;
     if (/^\s*\.\s*[\p{L}_][\p{L}\p{N}_]*\s*[（(]/u.test(after)) continue;
+    if (designerControlNames.has(normalized)) continue;
     if (scopeTypes.has(normalized)) continue;
     seen.add(normalized);
     const declarationLine = allLocalPositions.get(normalized);

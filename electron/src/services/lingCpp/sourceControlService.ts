@@ -3,7 +3,9 @@ import { SourceControlStatus } from './types';
 export type SourceControlMutation =
   | 'init'
   | 'stage'
+  | 'stage.all'
   | 'unstage'
+  | 'unstage.all'
   | 'discard'
   | 'commit'
   | 'branch.create'
@@ -20,7 +22,12 @@ export type SourceControlMutation =
   | 'conflict.resolve'
   | 'integration.continue'
   | 'integration.abort'
-  | 'pull-request.create';
+  | 'pull-request.create'
+  | 'stash.save'
+  | 'stash.apply'
+  | 'stash.drop'
+  | 'tag.create'
+  | 'tag.delete';
 
 export class SourceControlService {
   async getStatus(): Promise<SourceControlStatus> {
@@ -60,7 +67,9 @@ function mutationRoute(operation: SourceControlMutation, payload: Record<string,
   switch (operation) {
     case 'init': return post('/api/source-control/init');
     case 'stage': return post('/api/source-control/stage');
+    case 'stage.all': return post('/api/source-control/stage-all');
     case 'unstage': return post('/api/source-control/unstage');
+    case 'unstage.all': return post('/api/source-control/unstage-all');
     case 'discard': return post('/api/source-control/discard');
     case 'commit': return post('/api/source-control/commit');
     case 'branch.create': return post('/api/source-control/branches');
@@ -78,6 +87,11 @@ function mutationRoute(operation: SourceControlMutation, payload: Record<string,
     case 'integration.continue': return post('/api/source-control/integration/continue');
     case 'integration.abort': return post('/api/source-control/integration/abort');
     case 'pull-request.create': return post('/api/source-control/pull-requests');
+    case 'stash.save': return post('/api/source-control/stashes');
+    case 'stash.apply': return post('/api/source-control/stashes/apply');
+    case 'stash.drop': return { method: 'DELETE', url: `/api/source-control/stashes/${encodeURIComponent(String(requiredNumber(payload.index, '贮藏索引')))}` };
+    case 'tag.create': return post('/api/source-control/tags');
+    case 'tag.delete': return { method: 'DELETE', url: `/api/source-control/tags/${encodeURIComponent(requiredString(payload.name, '标签名称'))}` };
     default: throw new Error(`不支持的 Git 操作：${String(operation)}`);
   }
 }
@@ -85,6 +99,11 @@ function mutationRoute(operation: SourceControlMutation, payload: Record<string,
 function requiredString(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${label}不能为空。`);
   return value.trim();
+}
+
+function requiredNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 999) throw new Error(`${label}无效。`);
+  return value;
 }
 
 export const sourceControlService = new SourceControlService();

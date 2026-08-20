@@ -21,6 +21,7 @@ coverage/
 *.log
 .env*
 !.env.example
+!.env.production.example
 **/node_modules/
 **/build/
 !electron/src/services/build/
@@ -68,3 +69,9 @@ generated/cpp/*/Visual Studio*.zip
 *.pdb
 main.obj
 vc140.pdb
+
+# 部署脚本（含服务器/支付密钥，禁止入库）
+.deploy/
+
+# 在线版打包 staging 快照（体积巨大，不入库）
+electron-online-staging*/

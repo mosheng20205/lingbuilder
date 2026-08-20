@@ -110,7 +110,7 @@ export class ProjectFilePersistenceService {
         }
       }
       for (const write of normalizedWrites) {
-        await this.fileSystem.rename(temporaryPaths.get(write.targetPath)!, write.targetPath);
+        await replaceFile(this.fileSystem, temporaryPaths.get(write.targetPath)!, write.targetPath);
         replacedPaths.push(write.targetPath);
       }
     } catch (error) {
@@ -159,6 +159,21 @@ export class ProjectFilePersistenceService {
   private async restoreAtomically(targetPath: string, bytes: Buffer, transactionId: string): Promise<void> {
     const rollbackPath = `${targetPath}.lingbuilder-${transactionId}.rollback`;
     await this.fileSystem.writeFile(rollbackPath, bytes);
-    await this.fileSystem.rename(rollbackPath, targetPath);
+    await replaceFile(this.fileSystem, rollbackPath, targetPath);
+  }
+}
+
+/** Windows rename cannot replace an existing destination consistently. */
+async function replaceFile(
+  fileSystem: ProjectFilePersistenceFileSystem,
+  sourcePath: string,
+  targetPath: string
+): Promise<void> {
+  try {
+    await fileSystem.rename(sourcePath, targetPath);
+  } catch (error: any) {
+    if (!['EEXIST', 'EPERM', 'ENOTEMPTY'].includes(error?.code)) throw error;
+    await fileSystem.rm(targetPath, { force: true });
+    await fileSystem.rename(sourcePath, targetPath);
   }
 }

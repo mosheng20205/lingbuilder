@@ -19,6 +19,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
+import { checkLatestVersion } from './versionCheckService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
 import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
@@ -669,6 +670,17 @@ function registerIpcHandlers(): void {
     window.close();
   });
   ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
+  ipcMain.handle('app:check-update', () => checkLatestVersion(cloudApiOrigin(), app.getVersion()));
+  ipcMain.handle('payments:open-page', async (_event, url: string) => {
+    try {
+      const target = new URL(String(url || ''));
+      if (target.protocol !== 'https:' || !['api.lingbuilder.com', 'lingbuilder.com'].includes(target.hostname)) return '支付链接无效。';
+      await shell.openExternal(target.toString());
+      return '';
+    } catch (error) {
+      return `无法打开支付页面：${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
   ipcMain.handle('community:open-qq-group', async () => {
     try {
       await shell.openExternal('https://qm.qq.com/q/q2VNHZXLXy');
@@ -974,6 +986,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cloud-modules:catalog', () => cloudAccountService.moduleCatalog());
   ipcMain.handle('cloud-modules:entitlements', () => cloudAccountService.moduleEntitlements());
   ipcMain.handle('cloud-modules:create-order', (_event, value: any) => cloudAccountService.createModuleOrder(String(value?.offerId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
+  ipcMain.handle('cloud-credits:packages', () => cloudAccountService.rechargePackages());
+  ipcMain.handle('cloud-credits:create-order', (_event, value: any) => cloudAccountService.createRechargeOrder(String(value?.packageId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
+  ipcMain.handle('cloud-credits:order', (_event, orderId: string) => cloudAccountService.rechargeOrder(String(orderId || '')));
   ipcMain.handle('cloud-modules:download', (_event, value: any) => cloudAccountService.downloadModuleArtifact(String(value?.moduleId || ''), ['win32', 'x64'].includes(value?.arch) ? value.arch : 'any', activeWorkspace));
   ipcMain.handle('cloud-modules:authorize', async (_event, moduleId: string) => {
     try {

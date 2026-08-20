@@ -2726,6 +2726,7 @@ test('原生 Win32 上传控件生成文件选择、格式过滤、文件列表�
   const source = `类 主窗口 : 公开 窗体
     事件 附件上传_文件已选择()
         调试输出(上传_取文件("附件上传", 0))
+        上传_打开("附件上传")
     结束
     事件 附件上传_上传操作()
         调试输出("开始上传")
@@ -2737,6 +2738,8 @@ test('原生 Win32 上传控件生成文件选择、格式过滤、文件列表�
   assert.match(cpp, /WM_DROPFILES/);
   assert.match(cpp, /IsUploadControl/);
   assert.match(cpp, /上传_取文件\(L"附件上传", 0\)/u);
+  assert.match(cpp, /上传_打开文件选择\(L"附件上传"\)/u);
+  assert.doesNotMatch(cpp, /上传_打开\(L"附件上传"\)/u);
   assert.match(cpp, /L"\.pdf,\.doc,\.xls,\.zip,\.png,\.jpg,\.jgp"/u);
   assert.doesNotMatch(cpp, /new_emoji_bridge|NE_创建上传|new_emoji\.dll/u);
 });

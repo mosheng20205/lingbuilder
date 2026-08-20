@@ -119,6 +119,8 @@ export interface WorkspaceEditProposal {
   createdAt: string;
   explanation: string;
   changes: WorkspaceEditChange[];
+  designerProject?: import('./services/windowDesigner/types').LingWindowProject;
+  designerProjectOriginal?: import('./services/windowDesigner/types').LingWindowProject;
 }
 
 export interface WorkspaceFileSnapshot {

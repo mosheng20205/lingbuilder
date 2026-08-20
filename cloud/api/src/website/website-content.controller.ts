@@ -19,6 +19,10 @@ export class WebsiteContentController {
   ) { return this.website.publicCommands({ query, kind, category, moduleId, lifecycle, limit: Number(limit) }); }
 
   @Get('guides/:slug') guide(@Param('slug') slug: string) { return this.website.publicGuide(slug); }
+
+  @Get('latest-version') latestVersion(@Query('platform') platform = 'Windows', @Query('architecture') architecture = 'x64', @Query('channel') channel = 'stable') {
+    return this.website.latestVersion({ platform, architecture, channel });
+  }
 }
 
 @Controller('v1/admin/site')

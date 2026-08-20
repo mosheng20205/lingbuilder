@@ -11,7 +11,7 @@ test('system AI account tokens stay in Electron safeStorage and streaming is can
   assert.doesNotMatch(assistant, /localStorage.*refresh/iu);
   assert.match(cloud, /AbortController/u);
   assert.match(assistant, /系统 AI/u);
-  assert.match(assistant, /零保留/u);
+  assert.match(assistant, /可用点数/u);
 });
 
 test('收费模块授权失败只向界面返回可操作的中文错误', () => {
