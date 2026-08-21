@@ -14,7 +14,7 @@ export class ProviderService {
   constructor(@Inject(SecretVaultService) private readonly vault: SecretVaultService) {}
   async *stream(provider: ProviderChannel, route: ModelRoute, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal): AsyncGenerator<ProviderStreamChunk> {
     const base = await validateProviderUrl(provider.baseUrl); const secret = this.vault.decrypt(provider.encryptedSecret);
-    const timeout = AbortSignal.timeout(Math.max(1_000, Math.min(provider.timeoutMs, 120_000))); const combined = AbortSignal.any([signal, timeout]);
+    const timeout = AbortSignal.timeout(Math.max(1_000, Math.min(provider.timeoutMs, 600_000))); const combined = AbortSignal.any([signal, timeout]);
     if (provider.kind === 'ANTHROPIC') return yield* this.streamAnthropic(base, secret, route.upstreamModel, messages, maxOutputTokens, combined);
     if (provider.kind === 'GEMINI') return yield* this.streamGemini(base, secret, route.upstreamModel, messages, maxOutputTokens, combined);
     return yield* this.streamOpenAi(base, secret, route.upstreamModel, messages, maxOutputTokens, combined);

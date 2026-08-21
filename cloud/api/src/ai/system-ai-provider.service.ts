@@ -51,7 +51,7 @@ export function normalizeSystemAiProviderInput(input: SystemAiProviderConfigInpu
     baseUrl,
     apiKey,
     enabled: input.enabled !== false,
-    timeoutMs: clampNumber(input.timeoutMs, 30_000, 1_000, 120_000),
+    timeoutMs: clampNumber(input.timeoutMs, 300_000, 1_000, 600_000),
     maxConcurrency: clampNumber(input.maxConcurrency, 20, 1, 1_000),
     models,
   };

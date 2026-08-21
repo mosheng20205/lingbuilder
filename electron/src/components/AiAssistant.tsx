@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Brain, Sparkles, Send, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X } from 'lucide-react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
@@ -27,6 +27,8 @@ const DEFAULT_AI_CONFIG: AiConnectionConfig = {
   presetId: 'gemini-2.5-flash',
   provider: 'gemini'
 };
+
+const COLLAPSED_MESSAGE_HEIGHT = 224;
 
 const AI_MODEL_PRESETS = [
   { id: 'custom', label: '自定义模型', baseUrl: '', modelName: '', provider: 'openai' },
@@ -247,16 +249,21 @@ export default function AiAssistant({
     }
   ]);
   const [isAiResponding, setIsAiResponding] = useState(false);
+  const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(() => new Set());
+  const [collapsibleMessageIds, setCollapsibleMessageIds] = useState<Set<string>>(() => new Set());
   const [editProposal, setEditProposal] = useState<WorkspaceEditProposal | null>(null);
   const isLingCppFile = activeLanguage === 'lingcpp' || filePath.endsWith('.lcpp');
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const messageContentRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const chatAbortRef = useRef<AbortController | null>(null);
+  const stopRequestedRef = useRef(false);
   const cloudRequestRef = useRef<string | null>(null);
   // Older cloud API versions did not include `instruction` in edit_draft.
   // Keep the user prompt locally so the renderer can still apply the same
   // designer fallback and validation rules while those servers are rolling out.
   const cloudInstructionRef = useRef<Map<string, string>>(new Map());
+  const cloudKindRef = useRef<Map<string, 'chat' | 'edit'>>(new Map());
   const pendingCloudInstructionRef = useRef<string | null>(null);
   const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
   const aiConnectionSignature = [
@@ -347,6 +354,36 @@ export default function AiAssistant({
     });
   }, [chatHistory, isAiResponding]);
 
+  useLayoutEffect(() => {
+    const nextCollapsibleIds = new Set<string>();
+    chatHistory.forEach(message => {
+      if (message.sender !== 'ai') return;
+      const element = messageContentRefs.current[message.id];
+      if (element && element.scrollHeight > COLLAPSED_MESSAGE_HEIGHT) nextCollapsibleIds.add(message.id);
+    });
+    setCollapsibleMessageIds(previous => {
+      if (previous.size === nextCollapsibleIds.size && [...previous].every(id => nextCollapsibleIds.has(id))) return previous;
+      return nextCollapsibleIds;
+    });
+  }, [chatHistory]);
+
+  useEffect(() => {
+    const updateMessageOverflow = () => {
+      const nextCollapsibleIds = new Set<string>();
+      chatHistory.forEach(message => {
+        if (message.sender !== 'ai') return;
+        const element = messageContentRefs.current[message.id];
+        if (element && element.scrollHeight > COLLAPSED_MESSAGE_HEIGHT) nextCollapsibleIds.add(message.id);
+      });
+      setCollapsibleMessageIds(previous => {
+        if (previous.size === nextCollapsibleIds.size && [...previous].every(id => nextCollapsibleIds.has(id))) return previous;
+        return nextCollapsibleIds;
+      });
+    };
+    window.addEventListener('resize', updateMessageOverflow);
+    return () => window.removeEventListener('resize', updateMessageOverflow);
+  }, [chatHistory]);
+
   useEffect(() => {
     try {
       window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
@@ -410,6 +447,16 @@ export default function AiAssistant({
     return window.lingBuilder.cloudAi?.onEvent((requestKey, event) => {
       if (requestKey !== cloudRequestRef.current) return;
       if (event.type === 'delta' && event.text) {
+        if (cloudKindRef.current.get(requestKey) === 'edit') {
+          setChatHistory(previous => {
+            const id = `cloud-${requestKey}`;
+            const status = 'AI 正在生成可确认的修改方案（含源码与设计器），请稍候…';
+            const existing = previous.find(message => message.id === id);
+            if (existing) return previous.map(message => message.id === id ? { ...message, text: status } : message);
+            return [...previous, { id, sender: 'ai', text: status, timestamp: new Date().toLocaleTimeString() }];
+          });
+          return;
+        }
         setChatHistory(previous => {
           const id = `cloud-${requestKey}`;
           const existing = previous.find(message => message.id === id);
@@ -545,7 +592,9 @@ export default function AiAssistant({
     setChatHistory(prev => [...prev, userMsg]);
     setChatInput('');
     setIsAiResponding(true);
+    stopRequestedRef.current = false;
     const controller = new AbortController(); chatAbortRef.current?.abort(); chatAbortRef.current = controller;
+    let isManagedByCloudStream = false;
 
     try {
       if (aiMode === 'system') {
@@ -562,8 +611,19 @@ export default function AiAssistant({
           ...(designerProject ? { designerProject } : {})
         } : { modelAlias: cloudModelAlias, messages, rulebookVersion };
         const requestKey = await window.lingBuilder.cloudAi.start(shouldUseEditFlow ? 'edit' : 'chat', payload);
+        cloudKindRef.current.set(requestKey, shouldUseEditFlow ? 'edit' : 'chat');
         cloudInstructionRef.current.set(requestKey, userMsg.text);
         cloudRequestRef.current = requestKey;
+        isManagedByCloudStream = true;
+        if (chatAbortRef.current === controller) chatAbortRef.current = null;
+        if (stopRequestedRef.current) {
+          await window.lingBuilder.cloudAi.cancel(requestKey);
+          cloudKindRef.current.delete(requestKey);
+          cloudInstructionRef.current.delete(requestKey);
+          cloudRequestRef.current = null;
+          pendingCloudInstructionRef.current = null;
+          setIsAiResponding(false);
+        }
         return;
       }
       const shouldUseEditFlow = isLingCppFile || Boolean(
@@ -637,6 +697,7 @@ export default function AiAssistant({
         }
       ]);
     } catch (err: any) {
+      if (controller.signal.aborted || stopRequestedRef.current) return;
       setChatHistory(prev => [
         ...prev,
         {
@@ -648,8 +709,31 @@ export default function AiAssistant({
       ]);
     } finally {
       if (chatAbortRef.current === controller) chatAbortRef.current = null;
-      setIsAiResponding(false);
+      if (!isManagedByCloudStream) setIsAiResponding(false);
     }
+  };
+
+  const stopAiResponse = () => {
+    if (!isAiResponding) return;
+    stopRequestedRef.current = true;
+    const requestKey = cloudRequestRef.current;
+    if (aiMode === 'system' && requestKey) {
+      cloudRequestRef.current = null;
+      pendingCloudInstructionRef.current = null;
+      cloudKindRef.current.delete(requestKey);
+      cloudInstructionRef.current.delete(requestKey);
+      void window.lingBuilder?.cloudAi?.cancel(requestKey);
+    } else {
+      chatAbortRef.current?.abort();
+      chatAbortRef.current = null;
+    }
+    setIsAiResponding(false);
+    setChatHistory(previous => [...previous, {
+      id: `stopped-${Date.now()}`,
+      sender: 'ai',
+      text: '已停止本次 AI 回复。',
+      timestamp: new Date().toLocaleTimeString()
+    }]);
   };
 
   const handleApplyProposal = async () => {
@@ -927,7 +1011,10 @@ export default function AiAssistant({
       <div className="flex-1 flex flex-col min-h-0">
         {/* Chat History scroll panel */}
         <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
-          {chatHistory.map((msg, idx) => (
+          {chatHistory.map((msg, idx) => {
+            const isAiMessageCollapsible = msg.sender === 'ai' && collapsibleMessageIds.has(msg.id);
+            const isAiMessageCollapsed = isAiMessageCollapsible && !expandedMessageIds.has(msg.id);
+            return (
             <div
               key={msg.id || idx}
               className={`flex flex-col max-w-[85%] rounded-lg p-2.5 text-xs line-clamp-none ${
@@ -943,9 +1030,45 @@ export default function AiAssistant({
                 <span>•</span>
                 <span>{msg.timestamp}</span>
               </div>
-              <div className="whitespace-pre-line leading-relaxed font-sans">{msg.text}</div>
+              <div
+                ref={element => { messageContentRefs.current[msg.id] = element; }}
+                className={`relative whitespace-pre-line leading-relaxed font-sans ${
+                  isAiMessageCollapsed ? 'max-h-56 overflow-hidden' : ''
+                }`}
+              >
+                {msg.text}
+                {isAiMessageCollapsed && (
+                  <div
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t to-transparent ${
+                      isDarkMode ? 'from-[#25252b]' : 'from-slate-100'
+                    }`}
+                  />
+                )}
+              </div>
+              {isAiMessageCollapsible && (
+                <button
+                  type="button"
+                  aria-expanded={expandedMessageIds.has(msg.id)}
+                  aria-label={expandedMessageIds.has(msg.id) ? '收起 AI 消息' : '展开 AI 消息'}
+                  onClick={() => setExpandedMessageIds(previous => {
+                    const next = new Set(previous);
+                    if (next.has(msg.id)) next.delete(msg.id); else next.add(msg.id);
+                    return next;
+                  })}
+                  className={`mt-2 inline-flex min-h-7 items-center gap-1 self-start rounded border px-2 text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${
+                    isDarkMode
+                      ? 'border-purple-500/40 text-purple-300 hover:bg-purple-500/10'
+                      : 'border-purple-300 text-purple-700 hover:bg-purple-50'
+                  }`}
+                >
+                  {expandedMessageIds.has(msg.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  <span>{expandedMessageIds.has(msg.id) ? '收起' : '展开全部'}</span>
+                </button>
+              )}
             </div>
-          ))}
+            );
+          })}
           {isAiResponding && (
             <div 
               className={`flex flex-col max-w-[85%] rounded-lg p-2.5 text-xs self-start mr-auto ${
@@ -979,14 +1102,15 @@ export default function AiAssistant({
             }`}
           />
           <button
-            type="submit"
-            disabled={isAiResponding || !chatInput.trim()}
-            aria-label="发送 AI 请求"
-            className="p-2 rounded bg-[#4f46e5] text-white hover:bg-indigo-600 transition-colors cursor-pointer disabled:opacity-50"
+            type={isAiResponding ? 'button' : 'submit'}
+            disabled={!isAiResponding && !chatInput.trim()}
+            onClick={isAiResponding ? stopAiResponse : undefined}
+            aria-label={isAiResponding ? '停止 AI 请求' : '发送 AI 请求'}
+            title={isAiResponding ? '停止本次 AI 回复' : '发送 AI 请求'}
+            className="flex min-h-9 min-w-9 items-center justify-center rounded bg-[#4f46e5] p-2 text-white transition-colors hover:bg-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Send className="w-3.5 h-3.5" />
+            {isAiResponding ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-3.5 w-3.5" />}
           </button>
-          {isAiResponding && <button type="button" aria-label="取消 AI 请求" onClick={() => { if (aiMode === 'system' && cloudRequestRef.current) void window.lingBuilder?.cloudAi?.cancel(cloudRequestRef.current); else chatAbortRef.current?.abort(); }} className="rounded border border-slate-500 px-2">取消</button>}
         </form>
       </div>
       {rechargeQr && (

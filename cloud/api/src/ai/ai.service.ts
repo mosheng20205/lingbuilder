@@ -24,7 +24,7 @@ export class AiService {
     const existing = await this.prisma.aiRequest.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey } } }); if (existing) throw Object.assign(new Error('该幂等请求已存在。'), { status: 409, code: 'IDEMPOTENCY_CONFLICT' });
     const rulebook = await this.rulebook.get();
     const messages = [{ role: 'system' as const, content: `以下是 LingBuilder 固定 AI 规则手册，必须优先遵守（版本 ${rulebook.version}）：\n${rulebook.content}` }, ...(operation === 'edit' ? buildEditMessages(request as AiEditRequest) : request.messages)];
-    const maxOutput = Math.max(1, Math.min(request.maxOutputTokens || model.maxOutputTokens, model.maxOutputTokens)); const inputEstimate = estimateMessageTokens(messages); const rates = resolveRates(model, new Date()); const estimatedListPoints = this.billing.calculatePoints(inputEstimate, 0, maxOutput, rates);
+    const editBudget = operation === 'edit' ? Math.max(model.maxOutputTokens, 24_576) : model.maxOutputTokens; const maxOutput = Math.max(1, Math.min(request.maxOutputTokens || editBudget, editBudget)); const inputEstimate = estimateMessageTokens(messages); const rates = resolveRates(model, new Date()); const estimatedListPoints = this.billing.calculatePoints(inputEstimate, 0, maxOutput, rates);
     const free = await this.promotions.activeFreeWindow(userId, model.alias, estimatedListPoints); const requestId = crypto.randomUUID(); const reservePoints = free ? 0n : estimatedListPoints;
     await this.prisma.aiRequest.create({ data: { id: requestId, userId, idempotencyKey, operation, modelAlias: model.alias, routeVersion: model.routes[0].version, reservedPoints: reservePoints, freePromotionId: free?.policy.id } });
     try { await this.billing.reserve(userId, requestId, reservePoints); } catch (error) { await this.prisma.aiRequest.update({ where: { id: requestId }, data: { status: 'FAILED', errorCode: (error as any)?.code || 'INSUFFICIENT_CREDITS', finishedAt: new Date() } }); throw error; }
@@ -72,15 +72,21 @@ export class AiService {
       if (!final) throw new Error('供应商未返回最终用量。');
       if (operation === 'chat' && !final.text && final.reasoningText) final.text = final.reasoningText;
       const editRequest = request as AiEditRequest;
-      const editDraft = operation === 'edit'
-        ? parseEditDraft(
-          final.text,
-          editRequest.files.map(file => file.filePath),
-          Boolean(editRequest.designerProject && isDesignerEditInstruction(editRequest.instruction)),
-          editRequest.instruction,
-          editRequest.designerProject
-        )
-        : undefined;
+      let editDraft: ReturnType<typeof parseEditDraft> | undefined;
+      if (operation === 'edit') {
+        try {
+          editDraft = parseEditDraft(
+            final.text,
+            editRequest.files.map(file => file.filePath),
+            Boolean(editRequest.designerProject && isDesignerEditInstruction(editRequest.instruction)),
+            editRequest.instruction,
+            editRequest.designerProject
+          );
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) throw Object.assign(new Error('AI 返回的修改方案超出长度上限被截断（JSON 不完整）。请缩小修改范围或拆分成更小的步骤后重试。'), { status: 400, code: 'EDIT_DRAFT_TRUNCATED' });
+          throw parseError;
+        }
+      }
       const listPrice = this.billing.calculatePoints(final.usage.inputTokens, final.usage.cachedInputTokens, final.usage.outputTokens, prepared.rates); const charge = free ? 0n : listPrice;
       const providerCostMicros = this.billing.calculatePoints(final.usage.inputTokens + final.usage.cachedInputTokens, 0, final.usage.outputTokens, { input: usedRoute.costInputMicrosPerMillion, cached: 0n, output: usedRoute.costOutputMicrosPerMillion });
       if (free) await this.promotions.consumeFreeWindow(free.policy.id, userId, free.usageDate, listPrice);
@@ -92,6 +98,7 @@ export class AiService {
       yield { type: 'usage', requestId, receipt }; yield { type: 'completed', requestId };
     } catch (error: any) {
       const cancelled = controller.signal.aborted;
+      const friendly = error?.code === 'EDIT_DRAFT_TRUNCATED' || error?.code === 'MODEL_UNAVAILABLE' || error?.code === 'INSUFFICIENT_CREDITS';
       if (!billingFinalized && cancelled && streamedText.length > 0) {
         const { inputTokens, outputTokens } = estimateCancellationUsage(messages, streamedText);
         const listPrice = this.billing.calculatePoints(inputTokens, 0, outputTokens, prepared.rates);
@@ -102,10 +109,10 @@ export class AiService {
         billingFinalized = true;
         await this.prisma.aiRequest.update({ where: { id: requestId }, data: { status: 'CANCELLED', errorCode: 'REQUEST_CANCELLED', listPricePoints: listPrice, chargedPoints, inputTokens, outputTokens, usageEstimated: true, providerCostMicros, finishedAt: new Date() } });
       } else {
-        if (!billingFinalized) await this.billing.release(userId, requestId, reservePoints, cancelled ? 'AI 请求已取消' : '供应商调用失败');
-        await this.prisma.aiRequest.update({ where: { id: requestId }, data: { status: cancelled ? 'CANCELLED' : 'FAILED', errorCode: cancelled ? 'REQUEST_CANCELLED' : 'PROVIDER_FAILED', finishedAt: new Date() } });
+        if (!billingFinalized) await this.billing.release(userId, requestId, reservePoints, cancelled ? 'AI 请求已取消' : friendly ? String(error.message) : '供应商调用失败');
+        await this.prisma.aiRequest.update({ where: { id: requestId }, data: { status: cancelled ? 'CANCELLED' : 'FAILED', errorCode: cancelled ? 'REQUEST_CANCELLED' : error?.code === 'EDIT_DRAFT_TRUNCATED' ? 'EDIT_DRAFT_TRUNCATED' : 'PROVIDER_FAILED', finishedAt: new Date() } });
       }
-      yield { type: 'error', requestId, code: cancelled ? 'REQUEST_CANCELLED' : 'PROVIDER_FAILED', message: cancelled ? 'AI 请求已取消。' : '模型服务暂时不可用。', retryable: !cancelled };
+      yield { type: 'error', requestId, code: cancelled ? 'REQUEST_CANCELLED' : error?.code === 'EDIT_DRAFT_TRUNCATED' ? 'EDIT_DRAFT_TRUNCATED' : 'PROVIDER_FAILED', message: cancelled ? 'AI 请求已取消。' : friendly ? String(error.message) : '模型服务暂时不可用。', retryable: !cancelled };
     } finally { this.active.delete(requestId); }
   }
   cancel(userId: string, requestId: string) { const controller = this.active.get(requestId); if (controller) controller.abort(); return this.prisma.aiRequest.findFirst({ where: { id: requestId, userId } }).then(record => ({ ok: Boolean(record && controller) })); }

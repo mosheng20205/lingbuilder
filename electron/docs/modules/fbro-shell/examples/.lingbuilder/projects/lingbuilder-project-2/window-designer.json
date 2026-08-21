@@ -72,6 +72,180 @@
           "events": {
             "Click": "_按钮2_被单击"
           }
+        },
+        {
+          "id": "button_3001",
+          "type": "Button",
+          "name": "按钮3",
+          "content": "大圆角按钮",
+          "width": 140,
+          "height": 40,
+          "x": 250,
+          "y": 140,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#2E7D32",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 20,
+            "checked": false,
+            "toolTip": "大圆角按钮",
+            "toolTipDelay": 500
+          },
+          "events": {
+            "Click": "_按钮3_被单击"
+          }
+        },
+        {
+          "id": "button_3002",
+          "type": "Button",
+          "name": "按钮4",
+          "content": "复选框样式",
+          "width": 130,
+          "height": 35,
+          "x": 450,
+          "y": 140,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#37474F",
+          "foreground": "#ECEFF1",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "check",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "复选框样式按钮",
+            "toolTipDelay": 500
+          },
+          "events": {
+            "Click": "_按钮4_被单击"
+          }
+        },
+        {
+          "id": "button_3003",
+          "type": "Button",
+          "name": "按钮5",
+          "content": "单选框样式",
+          "width": 130,
+          "height": 35,
+          "x": 450,
+          "y": 200,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#37474F",
+          "foreground": "#ECEFF1",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "radio",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "单选框样式按钮",
+            "toolTipDelay": 500
+          },
+          "events": {
+            "Click": "_按钮5_被单击"
+          }
+        },
+        {
+          "id": "button_3004",
+          "type": "Button",
+          "name": "按钮6",
+          "content": "分割按钮",
+          "width": 130,
+          "height": 35,
+          "x": 450,
+          "y": 260,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#1565C0",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "split",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "分割按钮",
+            "toolTipDelay": 500
+          },
+          "events": {
+            "Click": "_按钮6_被单击"
+          }
+        },
+        {
+          "id": "button_3005",
+          "type": "Button",
+          "name": "按钮7",
+          "content": "命令链接按钮",
+          "width": 180,
+          "height": 40,
+          "x": 250,
+          "y": 220,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#455A64",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "command-link",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "命令链接按钮",
+            "toolTipDelay": 500
+          },
+          "events": {
+            "Click": "_按钮7_被单击"
+          }
+        },
+        {
+          "id": "button_3006",
+          "type": "Button",
+          "name": "按钮8",
+          "content": "警示按钮",
+          "width": 140,
+          "height": 35,
+          "x": 60,
+          "y": 400,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#C62828",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "警示按钮",
+            "toolTipDelay": 500
+          },
+          "events": {
+            "Click": "_按钮8_被单击"
+          }
         }
       ],
       "titleBarBackground": "#2D2D30",
