@@ -258,6 +258,10 @@
         "to": "docs/模块开发手册.md"
       },
       {
+        "from": "../AI模块开发规范.md",
+        "to": "docs/AI模块开发规范.md"
+      },
+      {
         "from": "docs/modules",
         "to": "docs/modules",
         "filter": [

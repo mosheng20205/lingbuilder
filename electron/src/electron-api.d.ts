@@ -90,6 +90,8 @@ declare global {
       docs?: {
         openModuleManual: () => Promise<string>;
         openCliManual: () => Promise<string>;
+        openAiModuleGuide: () => Promise<string>;
+        readAiModuleGuide: () => Promise<string>;
       };
       cli?: {
         inspect: () => Promise<{

@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   docs: {
     openModuleManual: () => ipcRenderer.invoke('docs:open-module-manual'),
     openCliManual: () => ipcRenderer.invoke('docs:open-cli-manual'),
+    openAiModuleGuide: () => ipcRenderer.invoke('docs:open-ai-module-guide'),
+    readAiModuleGuide: () => ipcRenderer.invoke('docs:read-ai-module-guide'),
   },
   cli: {
     inspect: () => ipcRenderer.invoke('cli:inspect'),

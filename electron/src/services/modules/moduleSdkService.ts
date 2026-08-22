@@ -53,6 +53,95 @@ export interface ModuleValidationResult {
   manifestPath: string;
 }
 
+export interface AiModuleImportFileInput {
+  path: string;
+  content: string;
+}
+
+export interface AiModuleImportResult {
+  manifest: LingBuilderModuleManifest;
+  outDir: string;
+  writtenFiles: string[];
+  diagnostics: string[];
+  overwrittenExisting: boolean;
+}
+
+const AI_MODULE_IMPORT_MAX_FILES = 200;
+const AI_MODULE_IMPORT_MAX_FILE_BYTES = 1024 * 1024;
+const AI_MODULE_IMPORT_MAX_TOTAL_BYTES = 10 * 1024 * 1024;
+const AI_MODULE_IMPORT_EXTENSIONS = new Set([
+  '.json', '.md', '.markdown', '.txt', '.h', '.hh', '.hpp', '.hxx', '.inl',
+  '.c', '.cc', '.cpp', '.cxx', '.lcpp', '.def', '.rc', '.rh',
+  '.ini', '.cfg', '.yaml', '.yml', '.toml', '.xml', '.csv'
+]);
+
+function toSafeAiImportRelativePath(value: string): string | undefined {
+  const normalized = value.trim().replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/{2,}/gu, '/').replace(/^\uFEFF/u, '');
+  if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:/u.test(normalized)) return undefined;
+  const parts = normalized.split('/');
+  if (parts.some(part => !part || part === '.' || part === '..')) return undefined;
+  const extension = normalized.slice(normalized.lastIndexOf('.')).toLowerCase();
+  if (!AI_MODULE_IMPORT_EXTENSIONS.has(extension)) return undefined;
+  return normalized;
+}
+
+export async function importAiModuleFiles(files: AiModuleImportFileInput[], outDir: string): Promise<AiModuleImportResult> {
+  if (!Array.isArray(files) || files.length === 0) throw new Error('没有可导入的文件。');
+  if (files.length > AI_MODULE_IMPORT_MAX_FILES) throw new Error(`单次导入最多 ${AI_MODULE_IMPORT_MAX_FILES} 个文件，当前 ${files.length} 个。`);
+
+  const seenPaths = new Set<string>();
+  const safeFiles: Array<{ path: string; content: string }> = [];
+  let totalBytes = 0;
+  for (const file of files) {
+    if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') {
+      throw new Error('文件列表格式不正确：每个文件需要 path 和 content 文本字段。');
+    }
+    const safePath = toSafeAiImportRelativePath(file.path);
+    if (!safePath) throw new Error(`文件路径不安全或类型不支持：${file.path}`);
+    if (seenPaths.has(safePath)) throw new Error(`文件路径重复：${safePath}`);
+    seenPaths.add(safePath);
+    const content = file.content.replace(/^\uFEFF/u, '');
+    const byteLength = Buffer.byteLength(content, 'utf8');
+    if (byteLength > AI_MODULE_IMPORT_MAX_FILE_BYTES) throw new Error(`文件 ${safePath} 超过 1 MB，请让 AI 拆分或精简。`);
+    totalBytes += byteLength;
+    if (totalBytes > AI_MODULE_IMPORT_MAX_TOTAL_BYTES) throw new Error('导入内容总量超过 10 MB，请让 AI 拆分后分批导入。');
+    safeFiles.push({ path: safePath, content });
+  }
+
+  const manifestInput = safeFiles.find(file => file.path === MODULE_MANIFEST_FILE);
+  if (!manifestInput) throw new Error(`缺少根目录 ${MODULE_MANIFEST_FILE}，无法确定模块 ID。`);
+
+  let rawManifest: unknown;
+  try {
+    rawManifest = JSON.parse(manifestInput.content);
+  } catch {
+    throw new Error(`${MODULE_MANIFEST_FILE} 不是合法 JSON，请让 AI 重新输出。`);
+  }
+  const manifestValidation = validateModuleManifest(rawManifest);
+  if (!manifestValidation.manifest) {
+    throw new Error(`模块清单校验未通过：\n${manifestValidation.diagnostics.join('\n')}`);
+  }
+  const manifest = manifestValidation.manifest;
+  if (!/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(manifest.id)) {
+    throw new Error(`模块 ID 不合法：${manifest.id}`);
+  }
+
+  const overwrittenExisting = await fs.stat(outDir).then(() => true, () => false);
+  const writtenFiles: string[] = [];
+  for (const file of safeFiles) {
+    const target = path.join(outDir, file.path);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, file.content, 'utf8');
+    writtenFiles.push(file.path);
+  }
+
+  const directoryValidation = await validateModuleDirectory(outDir);
+  const diagnostics = [...directoryValidation.diagnostics];
+  if (overwrittenExisting) diagnostics.push('目标目录已存在，本次导入覆盖了同名文件；旧目录中的多余文件不会被删除。');
+
+  return { manifest, outDir, writtenFiles, diagnostics, overwrittenExisting };
+}
+
 export async function createModuleTemplate(options: ModuleInitOptions): Promise<LingBuilderModuleManifest> {
   const manifest = buildTemplateManifest(options);
   await fs.mkdir(options.outDir, { recursive: true });

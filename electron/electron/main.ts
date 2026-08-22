@@ -106,6 +106,12 @@ function cliManualPath(): string {
     : path.join(repoRoot(), 'AI_BRIDGE_CLI_USAGE.md');
 }
 
+function aiModuleGuidePath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'docs', 'AI模块开发规范.md')
+    : path.join(repoRoot(), 'AI模块开发规范.md');
+}
+
 async function findCurrentSolutionEntryPath(workspaceRoot: string, solutionName: string): Promise<string> {
   const entries = await fs.readdir(workspaceRoot, { withFileTypes: true });
   let firstValidEntry = '';
@@ -761,6 +767,14 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('docs:open-module-manual', async () => shell.openPath(moduleManualPath()));
   ipcMain.handle('docs:open-cli-manual', async () => shell.openPath(cliManualPath()));
+  ipcMain.handle('docs:open-ai-module-guide', async () => shell.openPath(aiModuleGuidePath()));
+  ipcMain.handle('docs:read-ai-module-guide', async () => {
+    try {
+      return await fs.readFile(aiModuleGuidePath(), 'utf8');
+    } catch {
+      return '';
+    }
+  });
   ipcMain.handle('cli:inspect', async () => inspectInstalledCli());
   ipcMain.handle('ai-bridge:status', async () => await aiBridgeManager.refreshRuntime());
   ipcMain.handle('ai-bridge:start', async (_event, request: unknown) => {

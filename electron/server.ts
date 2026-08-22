@@ -62,6 +62,7 @@ import {
 import {
   createMarketIndex,
   createModuleTemplate,
+  importAiModuleFiles,
   migrateCppModule,
   validateModuleDirectory
 } from "./src/services/modules/moduleSdkService";
@@ -1645,6 +1646,47 @@ app.post("/api/modules/developer/template", async (req, res) => {
     res.json({ ok: true, manifest });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块模板创建失败" });
+  }
+});
+
+app.post("/api/modules/developer/import-ai-files", async (req, res) => {
+  try {
+    const { files, outDir } = req.body as { files?: Array<{ path?: unknown; content?: unknown }>; outDir?: string };
+    if (!Array.isArray(files) || files.length === 0 || files.some(file => !file || typeof file !== 'object'
+      || typeof (file as { path?: unknown }).path !== 'string'
+      || typeof (file as { content?: unknown }).content !== 'string')) {
+      return res.status(400).json({ ok: false, error: "缺少有效的 files 文件列表。" });
+    }
+    const typedFiles = files as Array<{ path: string; content: string }>;
+    const manifestEntry = typedFiles.find(file => file.path.trim().replace(/\\/gu, '/').replace(/^\.\//u, '') === 'lingbuilder.module.json');
+    let moduleId = '';
+    if (manifestEntry) {
+      try {
+        moduleId = String(JSON.parse(manifestEntry.content.replace(/^\uFEFF/u, ''))?.id || '').trim();
+      } catch {
+        return res.status(400).json({ ok: false, error: "lingbuilder.module.json 不是合法 JSON，无法确定模块 ID。" });
+      }
+    }
+    if (!moduleId || !/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(moduleId)) {
+      return res.status(400).json({ ok: false, error: "缺少 lingbuilder.module.json 或模块 ID 不合法，无法确定导入目录。" });
+    }
+    const targetRelativeDir = outDir && outDir.trim()
+      ? outDir.trim()
+      : `.lingbuilder/module-build/${moduleId}`;
+    const resolvedOutDir = await resolveModuleWriteDirectory(targetRelativeDir, ".lingbuilder/module-build");
+    const result = await importAiModuleFiles(typedFiles, resolvedOutDir);
+    res.json({
+      ok: true,
+      result: {
+        moduleId: result.manifest.id,
+        moduleName: result.manifest.name,
+        outDir: targetRelativeDir.replace(/\\/gu, '/'),
+        fileCount: result.writtenFiles.length,
+        diagnostics: result.diagnostics
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "AI 模块导入失败" });
   }
 });
 

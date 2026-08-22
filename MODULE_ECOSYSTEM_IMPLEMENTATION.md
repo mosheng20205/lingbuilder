@@ -237,6 +237,8 @@
 - `module validate` / `module inspect` 可直接检查模块目录、manifest 或 `.lbmod`；包检查使用临时工作区预览并在结束后清理，不改变项目启用状态。
 - 模块页新增“模块开发者中心”，支持创建模板、校验模块、C++ 迁移和本地市场索引生成；这些入口复用服务层，不把模块逻辑写入 React 组件。
 - 根目录 `模块开发手册.md` 是对外模块作者手册；修改 v2 manifest、binding、target、迁移流程或发布流程时必须同步更新。
+- 根目录 `AI模块开发规范.md` 是面向外部 AI 消费的模块开发规范，随安装包分发到 `resources/docs/`；模块页“AI 生成模块”入口通过 `docs:read-ai-module-guide` / `docs:open-ai-module-guide` IPC 读取与打开。它面向不会 C++ 的用户：复制规范给任意 AI 生成模块文件，保存到 `.lingbuilder/module-build/<模块ID>/` 后走同一套校验、导出、安装闭环。修改 manifest/binding/target/校验规则时必须同步更新该文档。
+- “AI 生成模块”还提供粘贴导入：`electron/src/services/modules/aiModuleImportParser.ts` 把 AI 回复原文（“### 文件：相对路径”标题 + 围栏代码块）解析为结构化文件列表，`POST /api/modules/developer/import-ai-files` 由 `moduleSdkService.importAiModuleFiles` 做服务端安全校验（路径白名单、扩展名白名单、1MB/10MB/200 文件上限、manifest 预校验）后写入 `.lingbuilder/module-build/<模块ID>/` 并自动执行目录校验；导入成功后前端自动填充校验/导出路径。解析器与 API 的行为由 `tests/aiModuleImportParser.test.ts` 回归。
 - `new_emoji` 模块需要用 `electron/scripts/generate-new-emoji-module.cjs` 重新生成 v2 包，输出仍为 `.lingbuilder/module-packages/new_emoji.lbmod`，安装目录仍为 `.lingbuilder/modules/lingbuilder.new_emoji.ui`。
 - 新建普通 Win32 项目默认只引用 `lingbuilder.win32.basic`。`new_emoji`、网页访问、HTTP 服务端、WebSocket 客户端/服务端等模块即使已安装或属于内置网络模块，也必须由模板、用户或明确的一键启用动作加入项目引用。
 - 模块管理 UI 的 `projectId` 为必填，始终跟随解决方案中的活动项目；切换项目会清空旧请求状态并重新读取，安装后启用、启用/禁用、刷新和变更事件均携带项目 ID，服务端拒绝不存在的项目。
