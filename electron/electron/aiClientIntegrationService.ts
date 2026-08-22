@@ -87,7 +87,7 @@ export async function createExternalAiLaunchPlan(options: CreateExternalAiLaunch
     const tokenOverride = 'mcp_servers.lingbuilder.bearer_token_env_var="LINGBUILDER_AI_BRIDGE_TOKEN"';
     return {
       clientId: 'codex', title: 'Codex CLI + LingBuilder', profile: 'powershell', cwd: workspaceRoot, env,
-      command: `& ${executable} -C ${psQuote(workspaceRoot)} -c ${psQuote(urlOverride)} -c ${psQuote(tokenOverride)}`,
+      command: `Write-Host 'Codex CLI 正在通过 LingBuilder 共享 MCP 连接当前工作区…' -ForegroundColor Cyan; & ${executable} -C ${psQuote(workspaceRoot)} -c ${psQuote(urlOverride)} -c ${psQuote(tokenOverride)}`,
       detail: '通过本次会话配置连接共享 MCP，不修改用户的 Codex 全局配置。'
     };
   }
@@ -106,7 +106,7 @@ export async function createExternalAiLaunchPlan(options: CreateExternalAiLaunch
     });
     return {
       clientId: 'claude', title: 'Claude Code + LingBuilder', profile: 'powershell', cwd: workspaceRoot, env,
-      command: `& ${executable} --mcp-config ${psQuote(configPath)} --strict-mcp-config`,
+      command: `Write-Host 'Claude Code 正在使用 LingBuilder 管理的临时 MCP 配置启动…' -ForegroundColor Cyan; & ${executable} --mcp-config ${psQuote(configPath)} --strict-mcp-config`,
       detail: '使用 LingBuilder 管理的临时 MCP 配置启动，不修改 Claude Code 用户配置。'
     };
   }
@@ -125,7 +125,7 @@ export async function createExternalAiLaunchPlan(options: CreateExternalAiLaunch
   return {
     clientId: 'gemini', title: 'Gemini CLI + LingBuilder', profile: 'powershell', cwd: workspaceRoot,
     env: { ...env, GEMINI_CLI_SYSTEM_SETTINGS_PATH: configPath },
-    command: `& ${executable}`,
+    command: `Write-Host 'Gemini CLI 正在使用本次终端专属设置连接 LingBuilder Bridge…' -ForegroundColor Cyan; & ${executable}`,
     detail: '使用本次终端专属的系统设置覆盖连接 Bridge，不改写用户或项目的 Gemini 配置。'
   };
 }

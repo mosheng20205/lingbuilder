@@ -6995,10 +6995,13 @@ void DisplayStatus() {
         open={showCliGuide}
         isDarkMode={isDarkMode}
         onClose={() => setShowCliGuide(false)}
-        onOpenTerminal={() => {
+        onOpenTerminal={message => {
           setShowCliGuide(false);
           setShowBottomPanel(true);
           setActiveTabInBottom('terminal');
+          if (message) {
+            setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【AI Bridge】${message}`]);
+          }
         }}
       />
 

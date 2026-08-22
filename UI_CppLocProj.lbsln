@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "datagrid-api-demo",
+  "startupProjectId": "lingbuilder-project-2",
   "startupProjectIds": [
-    "datagrid-api-demo"
+    "lingbuilder-project-2"
   ],
   "folders": [
     {

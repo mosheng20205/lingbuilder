@@ -82,6 +82,7 @@ import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
 import { InstalledModule } from '../src/services/modules/types';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { adaptProblemForBeginner } from '../src/services/lingCpp/beginnerService';
 import { EPL_TOKEN_COLORS_DARK, EPL_TOKEN_COLORS_LIGHT, tokenizeEplStatement } from '../src/services/eplTokenizer';
 import { EPL_STRUCTURED_EDITOR_THEME_DARK, EPL_STRUCTURED_EDITOR_THEME_LIGHT } from '../src/services/eplStructuredEditor';
 import {
@@ -941,6 +942,42 @@ test('parseLingCpp reports diagnostics but continues after invalid outer stateme
   assert.ok(result.diagnostics.some(diagnostic => diagnostic.message.includes('未声明构造函数')));
 });
 
+test('已有创建完毕事件的类不再提示未声明构造函数', () => {
+  const withLoadedEvent = parseLingCpp([
+    '类 主窗口 : 公开 窗体',
+    '    事件 创建完毕()',
+    '        调试输出("初始化")',
+    '    结束',
+    '结束类'
+  ].join('\n'));
+  assert.equal(
+    withLoadedEvent.diagnostics.some(diagnostic => diagnostic.message.includes('未声明构造函数')),
+    false
+  );
+
+  const withWindowLoadedEvent = parseLingCpp([
+    '类 主窗口 : 公开 窗体',
+    '    事件 _主窗口_创建完毕()',
+    '    结束',
+    '结束类'
+  ].join('\n'));
+  assert.equal(
+    withWindowLoadedEvent.diagnostics.some(diagnostic => diagnostic.message.includes('未声明构造函数')),
+    false
+  );
+
+  const withConstructor = parseLingCpp([
+    '类 主窗口 : 公开 窗体',
+    '    构造()',
+    '    结束',
+    '结束类'
+  ].join('\n'));
+  assert.equal(
+    withConstructor.diagnostics.some(diagnostic => diagnostic.message.includes('未声明构造函数')),
+    false
+  );
+});
+
 /*
 test('LingCpp language service emits outline symbols and folding ranges', () => {
   const symbols = getLingCppSymbols(sampleSource);
@@ -1151,6 +1188,58 @@ test('新手编辑器为设计器组件名生成全拼和首字母补全别名',
   assert.ok(control?.pinyin?.includes('querenanniu'));
   assert.ok(control?.pinyin?.includes('qran'));
   assert.ok(command?.pinyin?.includes('qran.sznr'));
+});
+
+test('未启用模块的同名命令不应产生模块未引用误报', () => {
+  const enabledModule: InstalledModule = {
+    isInstalled: true,
+    isEnabledForProject: true,
+    installPath: 'builtin',
+    isBuiltin: true,
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 2,
+      id: 'demo.enabled',
+      name: '已启用模块',
+      version: '1.0.0',
+      description: '测试模块',
+      contributes: {
+        commands: [{ name: '控件_取数值', signature: '控件_取数值(控件名)', description: '取数值', insertText: '控件_取数值($1)', returnType: '整数型' }]
+      }
+    } as InstalledModule['manifest']
+  };
+  const disabledModule: InstalledModule = {
+    ...enabledModule,
+    isEnabledForProject: false,
+    manifest: { ...enabledModule.manifest, id: 'demo.disabled', name: '未启用模块' }
+  };
+  const source = '类 MainWindow : 公开 窗体\n    事件 _按钮1_被单击()\n        控件_取数值(进度条1)\n    结束\n结束类';
+
+  const moduleWarnings = (enabled: InstalledModule[], available: InstalledModule[]) =>
+    getLingCppProblems(source, undefined, 'src/MainWindow.lcpp', { enabledModules: enabled, availableModules: available })
+      .filter(problem => problem.id.startsWith('lingcpp-module-disabled'));
+
+  assert.equal(moduleWarnings([enabledModule], [enabledModule, disabledModule]).length, 0);
+  assert.equal(moduleWarnings([], [disabledModule]).length, 1);
+  assert.match(moduleWarnings([], [disabledModule])[0]?.message || '', /尚未引用该模块/u);
+});
+
+test('新手模式问题文案保留真实诊断消息', () => {
+  const problem = {
+    id: 'lingcpp-module-disabled-demo-控件_取数值-3',
+    filePath: 'src/MainWindow.lcpp',
+    line: 3,
+    level: 'warning' as const,
+    source: 'parser' as const,
+    message: '命令 控件_取数值 来自 new_emoji 原生界面库，当前项目尚未引用该模块。',
+    codeSnippet: '控件_取数值(进度条1)',
+    suggestion: '请在模块页启用 new_emoji 原生界面库，或移除该命令调用。',
+    actionKind: 'none' as const
+  };
+
+  const adapted = adaptProblemForBeginner(problem);
+  assert.match(adapted.audienceText, /控件_取数值/u);
+  assert.match(adapted.audienceText, /尚未引用该模块/u);
 });
 
 test('模块设计器事件补全和诊断复用强类型参数契约', () => {

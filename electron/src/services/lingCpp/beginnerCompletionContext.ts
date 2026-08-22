@@ -3,6 +3,7 @@ export interface BeginnerCompletionContext {
   isBlankLine: boolean;
   isCommandStart: boolean;
   isAssignmentValue: boolean;
+  isNumericLiteral: boolean;
   isInsideString: boolean;
   isInsideComment: boolean;
   parenDepth: number;
@@ -85,6 +86,7 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
     isBlankLine: linePrefix.trim().length === 0,
     isCommandStart: beforeToken.trim().length === 0,
     isAssignmentValue,
+    isNumericLiteral: /^[0-9]/u.test(token),
     isWindowTargetContext,
     isWindowPlacementContext,
     ...syntax
@@ -95,6 +97,10 @@ export function shouldShowBeginnerCompletion(context: BeginnerCompletionContext,
   if (context.isWindowTargetContext || context.isWindowPlacementContext) return true;
   if (context.isInsideString || context.isInsideComment) return false;
   if (includeAll) return context.isBlankLine || context.token.length > 0;
+
+  // 正在输入数字字面量（如 数值=0 的 0）时不需要补全：
+  // 标识符不以数字开头，数字后面不会接出任何可补全的符号。
+  if (context.isNumericLiteral) return false;
 
   // 变量、局部常量和设计器组件都可能出现在返回值、比较、算术表达式等
   // 非行首位置。只要正在输入一个代码标识符，就允许按拼音检索候选。

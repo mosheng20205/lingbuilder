@@ -637,7 +637,11 @@ export function parseLingCpp(source: string): LingCppParseResult {
   });
 
   program.classes.forEach(cls => {
-    if (!cls.methods.some(method => method.kind === 'constructor')) {
+    // “创建完毕”事件（含“_窗口名_创建完毕”窗口 Loaded 钩子）是易语言风格的初始化入口，
+    // 与 构造() 二选一即可；已有初始化入口的类不需要再提示补构造函数。
+    const hasCreationCompletedEvent = cls.methods.some(method =>
+      method.kind === 'event' && (method.name === '创建完毕' || method.name.endsWith('_创建完毕')));
+    if (!cls.methods.some(method => method.kind === 'constructor') && !hasCreationCompletedEvent) {
       diagnostics.push(createDiagnostic('info', cls.line, `类 ${cls.name}`, `类 ${cls.name} 未声明构造函数。`, '可添加 `公开: 构造()` 初始化窗口状态。'));
     }
     cls.methods.forEach(method => {

@@ -2815,7 +2815,16 @@ function getLocalInitializerReferenceDiagnostics(
 
 function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
   if (!moduleContext?.availableModules?.length) return [];
-  const enabledIds = new Set(getEnabledLingCppModuleContributions(moduleContext).map(module => module.manifest.id));
+  const enabledModules = getEnabledLingCppModuleContributions(moduleContext);
+  const enabledIds = new Set(enabledModules.map(module => module.manifest.id));
+  // 已启用模块提供的命令名（含别名）。未启用模块的同名命令能从启用模块解析，
+  // 源码是合法的，不应误报“尚未引用该模块”。
+  const enabledCommandNames = new Set<string>(
+    enabledModules.flatMap(module => module.manifest.contributes?.commands || [])
+      .flatMap(command => [command.name, ...(command.aliases || [])])
+      .map(name => normalizeIdentifier(name))
+      .filter(Boolean)
+  );
   const diagnostics: LingCppDiagnostic[] = [];
   const lines = splitLines(source);
 
@@ -2827,6 +2836,7 @@ function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModule
           .find(name => lines.some(line => containsCommandInvocation(line, name)));
         const lineIndex = invokedName ? lines.findIndex(line => containsCommandInvocation(line, invokedName)) : -1;
         if (lineIndex < 0) return;
+        if (invokedName && enabledCommandNames.has(normalizeIdentifier(invokedName))) return;
         diagnostics.push({
           id: `lingcpp-module-disabled-${module.manifest.id}-${command.name}-${lineIndex + 1}`,
           line: lineIndex + 1,

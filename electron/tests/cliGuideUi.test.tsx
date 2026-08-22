@@ -54,3 +54,43 @@ test('workbench and packaged desktop expose the managed Bridge center through di
   assert.match(preloadSource, /onStatusChanged/u);
   assert.match(packageSource, /AI_BRIDGE_CLI_USAGE\.md/u);
 });
+
+test('AI Bridge center degrades honestly outside desktop and never loses connect feedback', async () => {
+  const [componentSource, appSource, integrationSource] = await Promise.all([
+    fs.readFile(path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '../electron/aiClientIntegrationService.ts'), 'utf8')
+  ]);
+  assert.match(componentSource, /MonitorSmartphone/u);
+  assert.match(componentSource, /if \(!desktopApi\) \{\s*return \(/u);
+  assert.match(componentSource, /withProbeTimeout/u);
+  assert.match(componentSource, /重试获取状态/u);
+  assert.match(componentSource, /未检测到外部 AI CLI/u);
+  assert.match(componentSource, /onOpenTerminal\(result\.detail \|\|/u);
+  assert.match(appSource, /onOpenTerminal=\{message =>/u);
+  assert.match(appSource, /【AI Bridge】/u);
+  assert.match(integrationSource, /正在通过 LingBuilder 共享 MCP 连接当前工作区/u);
+  assert.match(integrationSource, /正在使用 LingBuilder 管理的临时 MCP 配置启动/u);
+  assert.match(integrationSource, /正在使用本次终端专属设置连接 LingBuilder Bridge/u);
+});
+
+test('AI Bridge center permissions are Chinese-labeled, destructive actions confirm, and dark-mode text stays readable', async () => {
+  const source = await fs.readFile(
+    path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'),
+    'utf8'
+  );
+  assert.match(source, /PERMISSION_LABELS/u);
+  assert.match(source, /只读/u);
+  assert.match(source, /预览确认/u);
+  assert.match(source, /全自动/u);
+  assert.match(source, /调整启动设置（权限、端口、Token）/u);
+  assert.match(source, /当前配置：\$\{PERMISSION_LABELS\[permission\]\}/u);
+  assert.match(source, /停止 AI Bridge/u);
+  assert.match(source, /断开全部连接并中断进行中的 AI 操作/u);
+  assert.match(source, /重新生成 Token/u);
+  assert.match(source, /旧 Token 立即失效/u);
+  assert.match(source, /已复制\$\{label\}/u);
+  assert.doesNotMatch(source, /text-\[9px\]/u);
+  assert.doesNotMatch(source, /text-\[10px\] font-semibold/u);
+  assert.doesNotMatch(source, /text-\[1[01\]]px[^"`]*text-slate-500/u);
+});

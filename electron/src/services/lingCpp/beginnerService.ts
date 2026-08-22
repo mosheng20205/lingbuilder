@@ -191,8 +191,11 @@ export function adaptProblemForBeginner(problem: LingCppProblem): {
       canIgnore: false
     };
   }
+  // 兜底文案必须携带真实诊断消息：模块未引用、类型不匹配等提示本身已经是
+  // 新手可读的中文；替换成“这里有一条建议”会让用户看不到问题到底是什么。
   return {
-    audienceText: problem.level === 'error' ? '这里的代码结构不完整，运行前需要修好。' : '这里有一条建议，可以稍后处理。',
+    audienceText: problem.message
+      || (problem.level === 'error' ? '这里的代码结构不完整，运行前需要修好。' : '这里有一条建议，可以稍后处理。'),
     beginnerActionLabel: problem.actionLabel || '查看位置',
     severityForBeginner: problem.level === 'error' ? 'must-fix' : 'learning',
     canIgnore: problem.level !== 'error'

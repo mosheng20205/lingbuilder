@@ -74,6 +74,31 @@ test('新手编辑器在任意代码表达式位置按拼音补全符号', () =>
   assert.equal(shouldShowBeginnerCompletion(arithmetic, false), true);
 });
 
+test('新手编辑器输入数字字面量时不弹出命令补全', () => {
+  const assignment = getBeginnerCompletionContext('数值=0', '数值=0'.length);
+  assert.equal(assignment.token, '0');
+  assert.equal(assignment.isAssignmentValue, true);
+  assert.equal(shouldShowBeginnerCompletion(assignment, false), false);
+
+  const multiDigit = getBeginnerCompletionContext('数值=123', '数值=123'.length);
+  assert.equal(shouldShowBeginnerCompletion(multiDigit, false), false);
+
+  const decimal = getBeginnerCompletionContext('结果=3.1', '结果=3.1'.length);
+  assert.equal(shouldShowBeginnerCompletion(decimal, false), false);
+
+  const lineStart = getBeginnerCompletionContext('0', 1);
+  assert.equal(shouldShowBeginnerCompletion(lineStart, false), false);
+});
+
+test('新手编辑器在赋值右侧输入拼音时仍保留变量补全', () => {
+  const pinyin = getBeginnerCompletionContext('数值=bj', '数值=bj'.length);
+  assert.equal(pinyin.isAssignmentValue, true);
+  assert.equal(shouldShowBeginnerCompletion(pinyin, false), true);
+
+  const manual = getBeginnerCompletionContext('数值=0', '数值=0'.length);
+  assert.equal(shouldShowBeginnerCompletion(manual, true), true);
+});
+
 test('新手编辑器仍禁止在字符串和注释中弹出普通命令补全', () => {
   const stringSource = '调试输出("dzs';
   const commentSource = '选项卡1.设置选择项(0) // dzs';

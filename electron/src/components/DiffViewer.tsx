@@ -68,6 +68,7 @@ import {
 } from '../services/lingCpp/beginnerFlowGuide';
 import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
 import { toggleBeginnerLineComment } from '../services/lingCpp/beginnerLineComment';
+import { formatBeginnerAssignmentAtCursor } from '../services/lingCpp/beginnerStatementFormat';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import {
   BeginnerMethodBodySegment,
@@ -314,7 +315,7 @@ type BeginnerFlowLineTarget = {
   line: number;
 };
 
-type StructureInputTone = 'plain' | 'type' | 'name' | 'value' | 'procedure' | 'variable' | 'parameter';
+type StructureInputTone = 'plain' | 'type' | 'name' | 'value' | 'procedure' | 'variable' | 'parameter' | 'note';
 type StructureTextTone = StructureInputTone | 'muted';
 
 interface BeginnerCodeCompletion {
@@ -3795,7 +3796,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 ? isDarkMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-900'
                 : tone === 'value'
                   ? isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
-                  : isDarkMode ? 'text-slate-300' : 'text-slate-700';
+                  : tone === 'note'
+                    ? isDarkMode ? 'text-[#6A9955]' : 'text-green-700'
+                    : isDarkMode ? 'text-slate-300' : 'text-slate-700';
     return `${sizeClass} box-border w-full max-w-full min-w-0 rounded border px-1.5 leading-5 outline-none transition-colors placeholder:text-slate-500 ${
       isDarkMode
         ? 'border-transparent bg-transparent hover:border-[#343442] hover:bg-[#111118] focus:border-cyan-500/70 focus:bg-[#111118]'
@@ -5446,10 +5449,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         }
 
         event.preventDefault();
-        const start = input.selectionStart;
-        const end = input.selectionEnd;
-        const indent = getBeginnerNextLineIndentation(input.value, start);
-        const nextValue = `${input.value.slice(0, start)}\n${indent}${input.value.slice(end)}`;
+        // 行尾提交语句时先规范化赋值等号两侧的空格（数值=0 → 数值 = 0）；
+        // 有选区或光标在行中时是拆行操作，不做改写。
+        const hasSelection = input.selectionStart !== input.selectionEnd;
+        const formatted = hasSelection
+          ? { value: input.value, cursor: input.selectionStart, changed: false }
+          : formatBeginnerAssignmentAtCursor(input.value, input.selectionStart);
+        const start = formatted.cursor;
+        const end = hasSelection ? input.selectionEnd : start;
+        const indent = getBeginnerNextLineIndentation(formatted.value, start);
+        const nextValue = `${formatted.value.slice(0, start)}\n${indent}${formatted.value.slice(end)}`;
         input.value = nextValue;
         if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue);
         else updateBeginnerCodeDraft(target, nextValue);
@@ -6232,6 +6241,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if (tone === 'type') return isDarkMode ? 'font-semibold text-blue-300' : 'font-semibold text-blue-700';
       if (tone === 'name') return isDarkMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-900';
       if (tone === 'value') return isDarkMode ? 'text-emerald-300' : 'text-emerald-700';
+      if (tone === 'note') return isDarkMode ? 'text-[#6A9955]' : 'text-green-700';
       if (tone === 'muted') return isDarkMode ? 'text-slate-500' : 'text-slate-500';
       return isDarkMode ? 'text-slate-300' : 'text-slate-700';
     };
@@ -6535,7 +6545,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               event.currentTarget.blur();
             }
           }}
-          className={directInputClasses('plain')}
+          className={directInputClasses('note')}
           title={value ? `${value}\n\n${editHint}` : editHint}
         />
       );
