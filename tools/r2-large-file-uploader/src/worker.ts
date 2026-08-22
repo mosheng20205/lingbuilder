@@ -26,6 +26,48 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+const UPLOAD_API_ALLOW_METHODS = 'POST, PUT, OPTIONS';
+const UPLOAD_API_ALLOW_HEADERS = 'content-type, authorization';
+
+/** 允许跨域直传的来源白名单，来自 wrangler.jsonc 的 UPLOAD_ALLOWED_ORIGINS（逗号分隔）。 */
+function allowedUploadOrigins(env: Env): string[] {
+  return (env.UPLOAD_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+/** 只为白名单内的 Origin 返回 CORS 响应头；同源请求和未知来源不携带。 */
+function uploadCorsHeaders(request: Request, env: Env): Record<string, string> {
+  const origin = request.headers.get('origin')?.trim() || '';
+  if (!origin || !allowedUploadOrigins(env).includes(origin)) return {};
+  return {
+    'access-control-allow-origin': origin,
+    'access-control-allow-methods': UPLOAD_API_ALLOW_METHODS,
+    'access-control-allow-headers': UPLOAD_API_ALLOW_HEADERS,
+    'access-control-max-age': '86400',
+    vary: 'origin',
+  };
+}
+
+function tokensMatch(provided: string, expected: string): boolean {
+  if (provided.length !== expected.length) return false;
+  let difference = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    difference |= provided.charCodeAt(index) ^ expected.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
+/** R2_UPLOAD_TOKEN 未配置时保持原有开放行为；配置后所有 /api/uploads/* 请求都必须携带 Bearer 令牌。 */
+function isUploadAuthorized(request: Request, env: Env): boolean {
+  const expected = env.R2_UPLOAD_TOKEN?.trim() || '';
+  if (!expected) return true;
+  const header = request.headers.get('authorization')?.trim() || '';
+  const scheme = header.slice(0, 7).toLowerCase();
+  return scheme === 'bearer ' && tokensMatch(header.slice(7).trim(), expected);
+}
+
 async function readJson<T>(request: Request): Promise<T> {
   try {
     return await request.json() as T;
@@ -224,7 +266,18 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url);
-      if (url.pathname.startsWith('/api/')) return await routeApi(request, env);
+      if (url.pathname.startsWith('/api/')) {
+        if (request.method === 'OPTIONS') {
+          return new Response(null, { status: 204, headers: uploadCorsHeaders(request, env) });
+        }
+        const unauthorized = url.pathname.startsWith('/api/uploads/') && !isUploadAuthorized(request, env);
+        const response = unauthorized
+          ? json({ ok: false, error: '上传令牌无效或缺失：管理后台入口请刷新页面重试，独立上传页请在“上传令牌”栏填写。' }, 401)
+          : await routeApi(request, env);
+        const cors = uploadCorsHeaders(request, env);
+        for (const [key, value] of Object.entries(cors)) response.headers.set(key, value);
+        return response;
+      }
       if (url.pathname.startsWith('/files/') && (request.method === 'GET' || request.method === 'HEAD')) {
         return await serveFile(request, env);
       }

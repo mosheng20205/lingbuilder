@@ -94,15 +94,30 @@ npx wrangler deploy --dry-run
 npm run deploy
 ```
 
-部署后的页面通过 Worker 的 `FILES` R2 binding 直接执行原生 Multipart Upload，不需要在网页填写 S3 凭据。当前 Worker 地址：
+部署后的页面通过 Worker 的 `FILES` R2 binding 直接执行原生 Multipart Upload，不需要在网页填写 S3 凭据。当前 Worker 地址（自定义域名，大陆网络可达）：
 
-[https://lingbuilder-r2-large-file-uploader.zhukaikai901025.workers.dev](https://lingbuilder-r2-large-file-uploader.zhukaikai901025.workers.dev)
+[https://upload.msimgimg.xyz](https://upload.msimgimg.xyz)
+
+原 `*.workers.dev` 地址在大陆网络无法直连，当前部署已停用 workers.dev 路由，统一走 `msimgimg.xyz` 同一 Cloudflare 区域的 Worker 自定义域名（在 `wrangler.jsonc` 的 `routes` 里配置）。
 
 只在本机模拟 R2、不写入真实存储桶时运行：
 
 ```powershell
 npm run dev:local
 ```
+
+## 上传鉴权与跨域（管理后台直连）
+
+部署后的 `/api/uploads/*` 支持 Bearer 令牌校验和跨域白名单：
+
+1. 生成一个随机令牌（例如 `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`）。
+2. 保存到 Worker secret：`npx wrangler secret put R2_UPLOAD_TOKEN`。
+3. 重新部署：`npm run deploy`。设置 secret 后，所有 `/api/uploads/*` 请求必须携带 `Authorization: Bearer <令牌>`，否则返回 401；未设置 secret 时保持原有开放行为。
+4. 跨域白名单在 `wrangler.jsonc` 的 `UPLOAD_ALLOWED_ORIGINS`（逗号分隔），当前允许 `https://lingbuilder.com`（生产管理后台）和 `http://127.0.0.1:17901`（本机开发）。不在白名单内的来源不会拿到 CORS 响应头。
+
+Worker 自带页面在检测到 Worker 模式（无本机 `/api/config`）时会显示“上传令牌”栏，填入后保存在本机浏览器 `localStorage`，上传请求自动携带。
+
+管理后台（官网内容 → 版本与下载）已内置“直链上传”入口：云端 API 通过 `GET /v1/admin/site/r2-upload/config` 把 Worker 地址和令牌下发给已登录管理员（需 `super_admin` / `operator` 角色），浏览器分片直传 Worker，文件字节不经过官网服务器；上传完成后自动填写文件大小、SHA-256、版本号，并写入“直链”镜像。云端 API 侧需设置环境变量 `R2_UPLOAD_WORKER_URL` 和 `R2_UPLOAD_TOKEN`（后者与 Worker secret 一致），两者都配置后功能才开启。
 
 ## 完成回调
 
@@ -160,4 +175,6 @@ R2/S3 Multipart 的临时分片由 R2 管理，`CompleteMultipartUpload` 成功�
 
 ## 安全边界
 
-按个人使用需求，本机凭据没有加密；配置文件已被 Git 忽略。部署后的 Worker 当前也没有登录校验，任何知道 Worker 地址的人都可以调用上传接口。需要长期公开时，应增加 Cloudflare Access 或自有鉴权。
+按个人使用需求，本机凭据没有加密；配置文件已被 Git 忽略。
+
+部署后的 Worker：`/api/uploads/*` 在设置了 `R2_UPLOAD_TOKEN` secret 后必须携带 Bearer 令牌，跨域只开放 `UPLOAD_ALLOWED_ORIGINS` 白名单内的来源；`/files/*` 公开下载接口保持无需登录。未设置 secret 时上传接口保持开放，任何知道 Worker 地址的人都可以调用，长期公开部署应务必设置。管理后台下发的令牌等同于 R2 存储桶的上传权限，应妥善保管，泄露后重新执行 `npx wrangler secret put R2_UPLOAD_TOKEN` 并同步更新云端 API 环境变量即可轮换。

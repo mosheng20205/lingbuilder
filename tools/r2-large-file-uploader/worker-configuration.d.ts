@@ -6,6 +6,9 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	R2_ACCOUNT_ID: "f5ae4747daef58a439015054049ed986";
 	PUBLIC_DOWNLOAD_BASE_URL: "https://msimgimg.xyz";
+	UPLOAD_ALLOWED_ORIGINS: "https://lingbuilder.com,http://127.0.0.1:17901";
+	/** 通过 `npx wrangler secret put R2_UPLOAD_TOKEN` 配置；未配置时上传接口保持开放。 */
+	R2_UPLOAD_TOKEN?: string;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {

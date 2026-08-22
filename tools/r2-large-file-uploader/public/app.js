@@ -5,6 +5,11 @@ const configSection = document.querySelector('#config-section');
 const configForm = document.querySelector('#config-form');
 const configFields = document.querySelector('#config-fields');
 const configStatus = document.querySelector('#config-status');
+const tokenSection = document.querySelector('#token-section');
+const tokenForm = document.querySelector('#token-form');
+const tokenFields = document.querySelector('#token-fields');
+const tokenInput = document.querySelector('#token-input');
+const tokenStatus = document.querySelector('#token-status');
 const accountIdInput = document.querySelector('#account-id');
 const bucketNameInput = document.querySelector('#bucket-name');
 const accessKeyIdInput = document.querySelector('#access-key-id');
@@ -100,6 +105,9 @@ async function loadConfiguration() {
     const response = await fetch('/api/config', { cache: 'no-store' });
     if (response.status === 404) {
       configSection.hidden = true;
+      tokenSection.hidden = false;
+      tokenInput.value = localStorage.getItem('r2-upload-token') || '';
+      renderTokenStatus(Boolean(localStorage.getItem('r2-upload-token')));
       setServiceState('Worker 直连 R2', 'ready');
       setStorageReady(true);
       return;
@@ -113,6 +121,19 @@ async function loadConfiguration() {
     setStorageReady(false);
   }
 }
+
+function renderTokenStatus(saved) {
+  tokenStatus.textContent = saved ? '已保存令牌，上传时会自动携带。' : '未填写令牌；仅当服务器启用校验时需要。';
+  tokenStatus.dataset.kind = saved ? 'success' : 'info';
+}
+
+tokenForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const value = tokenInput.value.trim();
+  if (value) localStorage.setItem('r2-upload-token', value);
+  else localStorage.removeItem('r2-upload-token');
+  renderTokenStatus(Boolean(value));
+});
 
 function renderProgress(loaded, total) {
   const percent = total > 0 ? Math.min(100, (loaded / total) * 100) : 0;
@@ -139,6 +160,7 @@ function scheduleProgress(loaded, total) {
 
 const uploader = new R2MultipartUploader({
   concurrency: 3,
+  token: () => localStorage.getItem('r2-upload-token') || '',
   onProgress: scheduleProgress,
   onPhase: text => { phaseText.textContent = text; },
 });
@@ -214,6 +236,7 @@ startButton.addEventListener('click', async () => {
   startButton.disabled = true;
   cancelButton.hidden = false;
   configFields.disabled = true;
+  tokenFields.disabled = true;
   setStorageReady(true);
   progressPanel.hidden = false;
   resultPanel.hidden = true;
@@ -247,6 +270,7 @@ startButton.addEventListener('click', async () => {
   } finally {
     uploading = false;
     configFields.disabled = false;
+    tokenFields.disabled = false;
     cancelButton.hidden = true;
     setStorageReady(storageReady);
   }

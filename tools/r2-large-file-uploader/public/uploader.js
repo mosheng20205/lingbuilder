@@ -52,14 +52,21 @@ function delay(milliseconds, signal) {
 }
 
 export class R2MultipartUploader {
-  constructor({ concurrency = DEFAULT_CONCURRENCY, onProgress, onPhase } = {}) {
+  constructor({ concurrency = DEFAULT_CONCURRENCY, token = '', onProgress, onPhase } = {}) {
     this.concurrency = Math.max(1, Math.min(6, concurrency));
+    this.token = token;
     this.onProgress = onProgress || (() => {});
     this.onPhase = onPhase || (() => {});
     this.activeRequests = new Set();
     this.abortController = null;
     this.session = null;
     this.abortRequest = null;
+  }
+
+  /** 令牌可以是字符串或每次请求时求值的函数（例如从 localStorage 读取）。 */
+  authorizationHeader() {
+    const value = typeof this.token === 'function' ? this.token() : this.token;
+    return value ? { authorization: `Bearer ${value}` } : {};
   }
 
   async upload(file) {
@@ -73,7 +80,7 @@ export class R2MultipartUploader {
       this.onPhase('正在创建分片上传会话...');
       const initResponse = await fetchWithTimeout('/api/uploads/init', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...this.authorizationHeader() },
         body: JSON.stringify({
           fileName: file.name,
           fileSize: file.size,
@@ -125,7 +132,7 @@ export class R2MultipartUploader {
       this.onPhase('分片已上传，正在合并文件...');
       const completeResponse = await fetchWithTimeout('/api/uploads/complete', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...this.authorizationHeader() },
         body: JSON.stringify({
           key: this.session.key,
           uploadId: this.session.uploadId,
@@ -184,6 +191,9 @@ export class R2MultipartUploader {
       xhr.open('PUT', url);
       xhr.timeout = PART_REQUEST_TIMEOUT_MS;
       xhr.setRequestHeader('content-type', 'application/octet-stream');
+      for (const [header, value] of Object.entries(this.authorizationHeader())) {
+        xhr.setRequestHeader(header, value);
+      }
       xhr.upload.addEventListener('progress', event => {
         if (reportTransferredBytes && event.lengthComputable) onProgress(event.loaded);
       });
@@ -226,7 +236,7 @@ export class R2MultipartUploader {
     this.session = null;
     this.abortRequest = fetchWithTimeout('/api/uploads/abort', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...this.authorizationHeader() },
       body: JSON.stringify({ key: session.key, uploadId: session.uploadId }),
     }, ABORT_REQUEST_TIMEOUT_MS, '取消上传超时。').catch(() => undefined);
     await this.abortRequest;

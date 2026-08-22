@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
-import { BookOpen, Download, FileCode2, Globe2, MessageCircle, PackagePlus, Search, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, CloudUpload, Download, FileArchive, FileCode2, Globe2, MessageCircle, PackagePlus, Search, Upload } from 'lucide-react';
+import { R2MultipartUploader, UploadCancelledError, computeFileSha256Hex, formatFileSize, versionFromFileName } from './r2UploadClient';
 import './website-admin.css';
 
 type Request = (path: string, init?: RequestInit) => Promise<any>;
 type Section = 'downloads' | 'commands' | 'guides' | 'demos' | 'groups';
+type DirectNotice = { text: string; error?: boolean } | null;
 
 const SECTIONS: Array<{id: Section; label: string; icon: typeof Globe2}> = [
   { id: 'downloads', label: '版本与下载', icon: Download },
@@ -32,15 +34,45 @@ function DownloadsAdmin({ data, request, reload }: AdminProps) {
   const [editingId, setEditingId] = useState('');
   const [expandedReleaseId, setExpandedReleaseId] = useState('');
   const [mirrorDraft, setMirrorDraft] = useState<any | null>(null);
-  const startNewRelease = () => { setRelease(emptyRelease()); setEditingId(''); };
+  const [pendingDirectUrl, setPendingDirectUrl] = useState('');
+  const [directNotice, setDirectNotice] = useState<DirectNotice>(null);
+  const [uploadEpoch, setUploadEpoch] = useState(0);
+  const startNewRelease = () => { setRelease(emptyRelease()); setEditingId(''); setPendingDirectUrl(''); setDirectNotice(null); setUploadEpoch(value => value + 1); };
   const openMirror = (releaseId: string, entry?: any) => { setExpandedReleaseId(releaseId); setMirrorDraft(entry ? { ...entry, releaseId } : { releaseId, provider: '', label: '', url: '', accessCode: '', enabled: true, sortOrder: 0 }); };
   const closeMirror = () => { setMirrorDraft(null); setExpandedReleaseId(''); };
+  const writeDirectMirror = async (releaseId: string, url: string, mirrors: any[]) => {
+    const existing = (mirrors || []).find((entry: any) => entry.label === '直链' || entry.provider === 'direct');
+    await post(request, '/v1/admin/site/download-mirrors', {
+      releaseId,
+      provider: existing?.provider || 'direct',
+      label: '直链',
+      url,
+      accessCode: '',
+      enabled: true,
+      sortOrder: existing?.sortOrder ?? -100
+    });
+  };
+  const handleDirectUploaded = async (result: { url: string; size: number; sha256: string; version: string }) => {
+    setRelease((previous: any) => ({ ...previous, fileSize: formatFileSize(result.size), sha256: result.sha256, version: previous.version || result.version }));
+    if (editingId) {
+      try {
+        await writeDirectMirror(editingId, result.url, release.mirrors);
+        setDirectNotice({ text: '直链镜像已更新到当前编辑的版本。' });
+        await reload();
+      } catch (reason) {
+        setDirectNotice({ text: `直链镜像写入失败：${reason instanceof Error ? reason.message : String(reason)}`, error: true });
+      }
+    } else {
+      setPendingDirectUrl(result.url);
+      setDirectNotice({ text: '文件已上传；保存版本后将自动写入“直链”镜像。' });
+    }
+  };
   return <div className="downloads-layout">
     <RecordPanel title="下载版本列表" empty="尚未创建下载版本，请先在右侧填写版本信息。">{releases.map((item: any) => { const mirrors = item.mirrors || []; return (
       <article className="site-record download-record" key={item.id}>
         <div><strong>{item.title}</strong><span>v{item.version} · {statusLabel(item.channel)} · {item.platform} {item.architecture}</span><small>{mirrors.length} 个镜像</small></div>
         <span className={`badge badge-${String(item.publicationStatus || 'DRAFT').toLowerCase()}`}>{statusLabel(item.publicationStatus)}</span>
-        <button className={editingId === item.id ? 'active' : ''} onClick={() => { setRelease({ ...item }); setEditingId(item.id); }}>编辑版本</button>
+        <button className={editingId === item.id ? 'active' : ''} onClick={() => { setRelease({ ...item }); setEditingId(item.id); setPendingDirectUrl(''); setDirectNotice(null); }}>编辑版本</button>
         <div className="download-mirrors">
           <div className="download-mirrors-head"><span>网盘镜像</span><button onClick={() => openMirror(item.id)}>＋ 添加镜像</button></div>
           {mirrors.length > 0 && <div className="download-mirrors-list">{mirrors.map((entry: any) => <button key={entry.id} className={`${entry.enabled ? '' : 'off '}${expandedReleaseId === item.id && mirrorDraft?.provider === entry.provider ? 'active' : ''}`} onClick={() => openMirror(item.id, entry)}>{entry.label}{entry.enabled ? '' : '（已停用）'}</button>)}</div>}
@@ -48,12 +80,184 @@ function DownloadsAdmin({ data, request, reload }: AdminProps) {
         </div>
       </article>); })}</RecordPanel>
     <EditorPanel title={editingId ? `编辑下载版本 v${release.version}` : '新建下载版本'} description="相同版本、渠道、平台和架构会更新原记录；网盘镜像直接在左侧版本卡片内管理，无需再单独选择所属版本。">
+      <DirectUploadPanel key={`${editingId || 'new'}-${uploadEpoch}`} request={request} notice={directNotice} onNotice={setDirectNotice} onUploaded={handleDirectUploaded}/>
       <ManagedForm value={release} setValue={setRelease} fields={[
         field('version','版本号'),field('title','下载标题'),field('channel','渠道','select',['preview','stable']),field('platform','平台'),field('architecture','架构'),field('summary','简要说明','textarea'),field('releaseNotes','更新说明','textarea'),field('minimumRequirements','环境要求','textarea'),field('fileSize','文件大小'),field('sha256','SHA-256'),field('publicationStatus','发布状态','select',statuses),field('sortOrder','排序','number')
-      ]} onSubmit={async value => { await post(request, '/v1/admin/site/downloads', value); await reload(); startNewRelease(); }}/>
+      ]} onSubmit={async value => {
+        const saved = await post(request, '/v1/admin/site/downloads', value);
+        let mirrorNote = '';
+        if (pendingDirectUrl && saved.release?.id) {
+          const known = releases.find((item: any) => item.id === saved.release.id);
+          try {
+            await writeDirectMirror(saved.release.id, pendingDirectUrl, known?.mirrors);
+            mirrorNote = '版本已保存，直链镜像已写入。';
+          } catch (reason) {
+            throw new Error(`版本已保存，但直链镜像写入失败：${reason instanceof Error ? reason.message : String(reason)}`);
+          }
+        }
+        await reload(); startNewRelease();
+        if (mirrorNote) setDirectNotice({ text: mirrorNote });
+      }}/>
       {editingId && <div className="editor-reset"><button onClick={startNewRelease}>放弃当前编辑，返回新建版本</button></div>}
     </EditorPanel>
   </div>;
+}
+
+function DirectUploadPanel({ request, notice, onNotice, onUploaded }: { request: Request; notice: DirectNotice; onNotice: (value: DirectNotice) => void; onUploaded: (result: { url: string; size: number; sha256: string; version: string }) => void | Promise<void> }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [sha256, setSha256] = useState('');
+  const [hashing, setHashing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [phase, setPhase] = useState('');
+  const [progress, setProgress] = useState({ loaded: 0, total: 1 });
+  const [error, setError] = useState('');
+  const [doneUrl, setDoneUrl] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [uploadConfig, setUploadConfig] = useState<{ endpoint: string; token: string } | null>(null);
+  const uploaderRef = useRef<R2MultipartUploader | null>(null);
+  const startedAtRef = useRef(0);
+  const progressFrame = useRef(0);
+  const pendingProgress = useRef<{ loaded: number; total: number } | null>(null);
+
+  useEffect(() => () => { if (progressFrame.current) cancelAnimationFrame(progressFrame.current); }, []);
+  useEffect(() => {
+    if (!uploading) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    globalThis.addEventListener('beforeunload', guard);
+    return () => globalThis.removeEventListener('beforeunload', guard);
+  }, [uploading]);
+
+  const scheduleProgress = (loaded: number, total: number) => {
+    pendingProgress.current = { loaded, total };
+    if (progressFrame.current) return;
+    progressFrame.current = requestAnimationFrame(() => {
+      progressFrame.current = 0;
+      if (pendingProgress.current) setProgress(pendingProgress.current);
+    });
+  };
+
+  const clearFile = () => { setFile(null); setSha256(''); setDoneUrl(''); setError(''); setPhase(''); setCopied(false); };
+
+  const selectFile = (next?: File | null) => {
+    if (!next || uploading || hashing) return;
+    setFile(next);
+    setSha256('');
+    setDoneUrl('');
+    setError('');
+    setPhase('');
+    setCopied(false);
+    setProgress({ loaded: 0, total: next.size });
+    onNotice(null);
+    setHashing(true);
+    computeFileSha256Hex(next).then(setSha256, reason => setError(`SHA-256 计算失败：${reason instanceof Error ? reason.message : String(reason)}`)).finally(() => setHashing(false));
+  };
+
+  const ensureConfig = async () => {
+    if (uploadConfig) return uploadConfig;
+    const config = await request('/v1/admin/site/r2-upload/config');
+    setUploadConfig(config);
+    return config;
+  };
+
+  const startUpload = async () => {
+    if (!file || uploading || hashing || !sha256) return;
+    setError('');
+    setDoneUrl('');
+    try {
+      const config = await ensureConfig();
+      const uploader = new R2MultipartUploader({ baseUrl: config.endpoint, token: config.token, concurrency: 3, onProgress: scheduleProgress, onPhase: setPhase });
+      uploaderRef.current = uploader;
+      startedAtRef.current = performance.now();
+      setUploading(true);
+      setProgress({ loaded: 0, total: file.size });
+      const result = await uploader.upload(file);
+      const url = result.publicDownloadUrl || result.downloadUrl;
+      setDoneUrl(url);
+      setPhase('上传完成');
+      await onUploaded({ url, size: file.size, sha256, version: versionFromFileName(file.name) });
+    } catch (reason) {
+      if (reason instanceof UploadCancelledError) setPhase('上传已取消');
+      else { setError(reason instanceof Error ? reason.message : String(reason)); setPhase('上传失败'); }
+    } finally {
+      setUploading(false);
+      uploaderRef.current = null;
+    }
+  };
+
+  const cancelUpload = async () => {
+    if (!uploaderRef.current) return;
+    setPhase('正在取消...');
+    await uploaderRef.current.cancel();
+  };
+
+  const copyUrl = async () => {
+    if (!doneUrl) return;
+    try { await navigator.clipboard.writeText(doneUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setError('复制失败，请手动选中地址复制。'); }
+  };
+
+  const percent = progress.total > 0 ? Math.min(100, Math.round((progress.loaded / progress.total) * 1000) / 10) : 0;
+  const elapsedSeconds = Math.max((performance.now() - startedAtRef.current) / 1000, 0.001);
+  const speed = startedAtRef.current > 0 && progress.loaded > 0 ? progress.loaded / elapsedSeconds : 0;
+  const remainingSeconds = speed > 0 && percent < 100 ? (progress.total - progress.loaded) / speed : Number.NaN;
+
+  return <section className="direct-upload" aria-labelledby="direct-upload-heading">
+    <div className="direct-upload-head">
+      <h3 id="direct-upload-heading"><CloudUpload size={15}/>直链上传</h3>
+      <p>浏览器分片直传 Cloudflare R2，不占用官网服务器带宽；完成后自动填写文件大小、SHA-256 和版本号，并写入“直链”镜像。</p>
+    </div>
+    {notice && <p className={`direct-upload-notice${notice.error ? ' error' : ''}`} role="status">{notice.text}</p>}
+    {!file && <label className={`direct-upload-drop${dragging ? ' dragging' : ''}`}
+      onDragOver={event => { event.preventDefault(); if (!uploading) setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={event => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files?.[0]); }}>
+      <input type="file" onChange={event => { selectFile(event.target.files?.[0]); event.target.value = ''; }}/>
+      <CloudUpload size={24}/>
+      <strong>拖拽安装包到此处，或点击选择文件</strong>
+      <span>32 MiB 分片 · 3 路并发 · 失败自动重试</span>
+    </label>}
+    {file && <div className="direct-upload-body">
+      <div className="direct-upload-file">
+        <FileArchive size={18}/>
+        <div>
+          <strong title={file.name}>{file.name}</strong>
+          <span>{formatFileSize(file.size)} · {hashing ? '正在计算 SHA-256…' : sha256 ? `SHA-256 ${sha256.slice(0, 12)}…` : 'SHA-256 未计算'}</span>
+        </div>
+        {!uploading && !doneUrl && <button type="button" onClick={clearFile}>移除</button>}
+      </div>
+      {(uploading || phase) && <div className="direct-upload-progress">
+        <div className="direct-upload-progress-row">
+          <p className="direct-upload-phase" aria-live="polite">{phase || '准备上传...'}</p>
+          <strong className="direct-upload-percent">{percent}%</strong>
+        </div>
+        <div className="direct-upload-bar" role="progressbar" aria-label="文件上传进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><span style={{ width: `${percent}%` }}/></div>
+        <div className="direct-upload-stats">
+          <span>{formatFileSize(progress.loaded)} / {formatFileSize(progress.total)}</span>
+          {uploading && speed > 0 && <span>{formatFileSize(speed)}/s</span>}
+          {uploading && Number.isFinite(remainingSeconds) && <span>剩余 {formatUploadDuration(remainingSeconds)}</span>}
+        </div>
+      </div>}
+      {error && <p className="direct-upload-error" role="alert">{error}{!uploading && <button type="button" onClick={() => void startUpload()}>重试</button>}</p>}
+      {doneUrl && <div className="direct-upload-done">
+        <span>上传完成，直链下载地址：</span>
+        <a href={doneUrl} target="_blank" rel="noreferrer">{doneUrl}</a>
+      </div>}
+      <div className="direct-upload-actions">
+        {!doneUrl && <button type="button" className="primary" disabled={uploading || hashing || !sha256} onClick={() => void startUpload()}>{uploading ? '正在上传…' : hashing ? '正在计算 SHA-256…' : '开始上传'}</button>}
+        {uploading && <button type="button" onClick={() => void cancelUpload()}>取消上传</button>}
+        {!uploading && doneUrl && <button type="button" onClick={() => void copyUrl()}>{copied ? '已复制' : '复制地址'}</button>}
+        {!uploading && doneUrl && <button type="button" onClick={clearFile}>上传新文件</button>}
+      </div>
+    </div>}
+  </section>;
+}
+
+function formatUploadDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '--';
+  if (seconds < 60) return `${Math.ceil(seconds)} 秒`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟`;
+  return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
 }
 
 function MirrorEditor({ value, setValue, onCancel, onSubmit }: { value:any; setValue:(value:any)=>void; onCancel:()=>void; onSubmit:(value:any)=>Promise<void> }) {

@@ -3,6 +3,9 @@
   "name": "lingbuilder-r2-large-file-uploader",
   "main": "src/worker.ts",
   "compatibility_date": "2026-08-03",
+  "routes": [
+    { "pattern": "upload.msimgimg.xyz", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
@@ -16,7 +19,8 @@
   ],
   "vars": {
     "R2_ACCOUNT_ID": "f5ae4747daef58a439015054049ed986",
-    "PUBLIC_DOWNLOAD_BASE_URL": "https://msimgimg.xyz"
+    "PUBLIC_DOWNLOAD_BASE_URL": "https://msimgimg.xyz",
+    "UPLOAD_ALLOWED_ORIGINS": "https://lingbuilder.com,http://127.0.0.1:17901"
   },
   "observability": {
     "enabled": true

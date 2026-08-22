@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, type WebsiteCommandReference } from '@prisma/client';
 import type { AuthenticatedUser } from '../common/current-user.js';
+import { readR2UploadConfig } from '../config.js';
 import { PrismaService } from '../prisma.service.js';
 
 type JsonRecord = Record<string, unknown>;
@@ -87,6 +88,21 @@ export class WebsiteContentService {
       this.prisma.websiteCommunityGroup.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] })
     ]);
     return { ok: true, downloads, commands, guides, demos, groups };
+  }
+
+  /**
+   * 管理后台直链上传入口配置：返回 R2 上传 Worker 地址与共享 Bearer 令牌。
+   * 令牌只下发给 super_admin / operator，前端拿到后浏览器直传 Cloudflare，文件字节不经过本服务。
+   */
+  r2UploadConfig() {
+    const { endpoint, token } = readR2UploadConfig();
+    if (!endpoint || !token) {
+      throw Object.assign(
+        new Error('直链上传未配置：请在云端 API 设置 R2_UPLOAD_WORKER_URL 和 R2_UPLOAD_TOKEN（后者需与 Worker 的 R2_UPLOAD_TOKEN secret 一致）。'),
+        { status: 400, code: 'R2_UPLOAD_NOT_CONFIGURED' },
+      );
+    }
+    return { ok: true, endpoint, token };
   }
 
   async upsertDownload(body: JsonRecord, actor: AuthenticatedUser) {

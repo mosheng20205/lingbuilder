@@ -31,6 +31,7 @@ export class WebsiteContentAdminController {
   constructor(@Inject(WebsiteContentService) private readonly website: WebsiteContentService) {}
 
   @Get() snapshot() { return this.website.adminSnapshot(); }
+  @Get('r2-upload/config') @Roles('super_admin', 'operator') r2UploadConfig() { return this.website.r2UploadConfig(); }
   @Post('downloads') @Roles('super_admin', 'operator') download(@Body() body: Record<string, unknown>, @CurrentUser() actor: AuthenticatedUser) { return this.website.upsertDownload(body, actor); }
   @Post('download-mirrors') @Roles('super_admin', 'operator') mirror(@Body() body: Record<string, unknown>, @CurrentUser() actor: AuthenticatedUser) { return this.website.upsertMirror(body, actor); }
   @Post('community-groups') @Roles('super_admin', 'operator') group(@Body() body: Record<string, unknown>, @CurrentUser() actor: AuthenticatedUser) { return this.website.upsertGroup(body, actor); }

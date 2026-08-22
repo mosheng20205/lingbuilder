@@ -50,3 +50,15 @@ export function hashOpaqueToken(token: string): string {
   return crypto.createHmac('sha256', getConfig().tokenHashSecret).update(token).digest('hex');
 }
 export function randomToken(bytes = 32): string { return crypto.randomBytes(bytes).toString('base64url'); }
+
+/**
+ * 管理后台直链上传集成配置（R2 上传 Worker）。
+ * 可选集成，不接入 getConfig() 缓存：两个变量都配置后功能才开启，便于测试与运行时行为一致。
+ * R2_UPLOAD_TOKEN 必须与 Worker 侧 `wrangler secret put R2_UPLOAD_TOKEN` 的值保持一致。
+ */
+export function readR2UploadConfig(): { endpoint: string; token: string } {
+  return {
+    endpoint: (process.env.R2_UPLOAD_WORKER_URL || '').trim().replace(/\/+$/, ''),
+    token: (process.env.R2_UPLOAD_TOKEN || '').trim(),
+  };
+}

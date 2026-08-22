@@ -60,6 +60,30 @@
         </form>
       </section>
 
+      <section id="token-section" aria-labelledby="token-heading" hidden>
+        <div class="section-heading">
+          <div>
+            <h2 id="token-heading">上传令牌</h2>
+            <p>服务器启用令牌校验时填写，仅保存在本机浏览器</p>
+          </div>
+        </div>
+
+        <form id="token-form" class="config-form">
+          <fieldset id="token-fields" class="config-fields">
+            <div class="config-grid">
+              <label class="field field--wide">
+                <span>Bearer 令牌</span>
+                <input id="token-input" name="uploadToken" type="password" autocomplete="off" placeholder="留空表示不携带令牌">
+              </label>
+            </div>
+            <div class="config-actions">
+              <p id="token-status" class="config-status" role="status" aria-live="polite"></p>
+              <button id="save-token" class="button button--primary" type="submit">保存令牌</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+
       <section aria-labelledby="upload-heading">
         <div class="section-heading">
           <div>

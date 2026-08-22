@@ -56,6 +56,35 @@ test('cloud API allows bounded manifest payloads larger than the Express default
   assert.match(source, /useBodyParser\('json', \{ limit: '5mb' \}\)/u);
 });
 
+test('r2 upload config is only served when both worker url and shared token are set', () => {
+  const previous = { ...process.env };
+  const service = new WebsiteContentService({} as any);
+  try {
+    delete process.env.R2_UPLOAD_WORKER_URL;
+    delete process.env.R2_UPLOAD_TOKEN;
+    assert.throws(() => service.r2UploadConfig(), /直链上传未配置/u);
+
+    process.env.R2_UPLOAD_WORKER_URL = 'https://lingbuilder-r2-large-file-uploader.example.workers.dev/';
+    process.env.R2_UPLOAD_TOKEN = '';
+    assert.throws(() => service.r2UploadConfig(), /直链上传未配置/u);
+
+    process.env.R2_UPLOAD_TOKEN = 'shared-upload-secret';
+    assert.deepEqual(service.r2UploadConfig(), {
+      ok: true,
+      endpoint: 'https://lingbuilder-r2-large-file-uploader.example.workers.dev',
+      token: 'shared-upload-secret',
+    });
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
+    Object.assign(process.env, previous);
+  }
+});
+
+test('admin site controller exposes r2 upload config only to writing roles', () => {
+  const source = requireSource('../src/website/website-content.controller.ts');
+  assert.match(source, /@Get\('r2-upload\/config'\) @Roles\('super_admin', 'operator'\)/u);
+});
+
 function requireSource(relativePath: string) {
   return fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 }
