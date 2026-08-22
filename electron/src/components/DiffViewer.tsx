@@ -272,14 +272,6 @@ interface StructureEditDraft {
   note: string;
 }
 
-type ParameterDraft = {
-  type: string;
-  name: string;
-  defaultValue: string;
-  note: string;
-  isArray: boolean;
-};
-
 type LocalVariableDraft = {
   type: string;
   name: string;
@@ -1488,7 +1480,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [newMemberDraft, setNewMemberDraft] = useState({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
   const [newEventDraft, setNewEventDraft] = useState({ handlerName: '', parameters: '' });
   const [newFunctionDraft, setNewFunctionDraft] = useState({ returnType: '空', name: '', parameters: '' });
-  const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, ParameterDraft>>({});
+  const [beginnerParameterFocus, setBeginnerParameterFocus] = useState<{ targetKey: string; parameterName: string } | null>(null);
   const [sourceScroll, setSourceScroll] = useState({ top: 0, left: 0 });
   const [pendingHandlerFocus, setPendingHandlerFocus] = useState<{ handlerName: string; filePath?: string } | null>(null);
   const [expandedBeginnerEventTargetKey, setExpandedBeginnerEventTargetKey] = useState<string | null>(null);
@@ -5702,28 +5694,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
       applyCodeTargetSignature(target, { parameters: nextParameters });
     };
-    const commitNewCodeTargetParameter = (
-      target: BeginnerCodeTarget,
-      patch: Partial<ParameterDraft> = {}
-    ) => {
-      const key = codeTargetKey(target);
-      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', note: '', isArray: false, ...(newParameterDrafts[key] || {}), ...patch };
-      setNewParameterDrafts(current => ({ ...current, [key]: draft }));
-      const name = draft.name.trim();
-      if (!name) return;
-      const type = setLingCppArrayParameterType(draft.type, draft.isArray || isLingCppArrayParameterType(draft.type));
-      const defaultValue = draft.defaultValue.trim();
-      const applied = applyCodeTargetSignature(target, {
-        parameters: [...target.method.parameters, { type, name, defaultValue: defaultValue || undefined, note: draft.note.trim() || undefined }]
-      });
-      if (applied) {
-        setNewParameterDrafts(current => {
-          const next = { ...current };
-          delete next[key];
-          return next;
-        });
-      }
-    };
     const removeCodeTargetParameter = (target: BeginnerCodeTarget, index: number) => {
       const currentParameter = target.method.parameters[index];
       if (!currentParameter) return;
@@ -5749,6 +5719,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         index += 1;
       }
       return candidate;
+    };
+    const insertCodeTargetParameter = (target: BeginnerCodeTarget, insertIndex = target.method.parameters.length) => {
+      const name = uniqueBeginnerName('参数', target.method.parameters.map(parameter => parameter.name));
+      const nextParameters = [
+        ...target.method.parameters.slice(0, insertIndex),
+        { type: '文本型', name },
+        ...target.method.parameters.slice(insertIndex)
+      ];
+      const applied = applyCodeTargetSignature(target, { parameters: nextParameters });
+      if (applied) setBeginnerParameterFocus({ targetKey: codeTargetKey(target), parameterName: name });
     };
     const createBeginnerFunction = () => {
       if (!primaryMethodOwnerName) {
@@ -6617,6 +6597,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         <div className="relative min-w-0" data-beginner-type-wrap={field === 'type' ? inputKey : undefined}>
           <input
             key={`${codeTargetKey(target)}:parameter:${index}:${field}:${value}`}
+            ref={field === 'name' ? (node: HTMLInputElement | null) => {
+              if (
+                node &&
+                beginnerParameterFocus &&
+                beginnerParameterFocus.targetKey === codeTargetKey(target) &&
+                beginnerParameterFocus.parameterName === value
+              ) {
+                setBeginnerParameterFocus(null);
+                node.focus();
+                node.select();
+              }
+            } : undefined}
             data-beginner-parameter-type={field === 'type' ? index : undefined}
             defaultValue={value}
             placeholder={placeholder}
@@ -6655,7 +6647,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   }
                 }
               }
-              if (event.key === 'Enter') event.currentTarget.blur();
+              if (event.key === 'Enter') {
+                const rawValue = event.currentTarget.value;
+                const nextValue = field === 'type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
+                event.currentTarget.value = nextValue;
+                const currentName = (field === 'name' ? nextValue : target.method.parameters[index]?.name || '').trim();
+                commitCodeTargetParameter(target, index, field, nextValue);
+                event.currentTarget.blur();
+                if (currentName) insertCodeTargetParameter(target, index + 1);
+                return;
+              }
               if (event.key === 'Escape') {
                 setBeginnerTypeCompletionState(null);
                 event.currentTarget.value = value;
@@ -6696,142 +6697,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           }`}>
             <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full bg-white transition-transform ${
               checked ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
-            }`} />
-          </span>
-        </label>
-      );
-    };
-
-    const renderNewParameterInput = (
-      target: BeginnerCodeTarget,
-      field: keyof LingCppParameter,
-      placeholder: string,
-      tone: StructureInputTone = 'plain',
-      autoCommit = true
-    ) => {
-      const key = codeTargetKey(target);
-      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', note: '', isArray: false, ...(newParameterDrafts[key] || {}) };
-      const inputKey = `${key}:new-parameter:${field}`;
-      const typeCompletion = field === 'type' && beginnerTypeCompletionState?.inputKey === inputKey
-        ? beginnerTypeCompletionState
-        : null;
-      const updateDraftValue = (nextValue: string) => {
-        setNewParameterDrafts(current => ({
-          ...current,
-          [key]: { ...draft, [field]: nextValue }
-        }));
-      };
-      const applyTypeCompletion = (item: BeginnerTypeCompletionItem, input: HTMLInputElement | null) => {
-        if (input) input.value = item.label;
-        setBeginnerTypeCompletionState(null);
-        updateDraftValue(item.label);
-      };
-      return (
-        <div className="relative min-w-0" data-beginner-type-wrap={field === 'type' ? inputKey : undefined}>
-          <input
-            data-beginner-new-parameter-type={field === 'type' ? true : undefined}
-            value={draft[field] || ''}
-            placeholder={placeholder}
-            list={field === 'name' ? 'beginner-member-name-suggestions' : undefined}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={!onUpdateSourceContent}
-            onChange={event => {
-              updateDraftValue(event.currentTarget.value);
-              if (field === 'type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
-            }}
-            onBlur={event => {
-              if (field === 'type') closeBeginnerTypeCompletionLater(inputKey);
-              const rawValue = event.currentTarget.value;
-              const nextValue = field === 'type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
-              if (event.currentTarget.dataset.beginnerParameterSkipBlur === 'true') {
-                delete event.currentTarget.dataset.beginnerParameterSkipBlur;
-                return;
-              }
-              updateDraftValue(nextValue);
-              if (autoCommit) commitNewCodeTargetParameter(target, { [field]: nextValue });
-            }}
-            onKeyDown={event => {
-              if (field === 'type' && typeCompletion) {
-                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  moveBeginnerTypeCompletion(inputKey, event.key === 'ArrowDown' ? 1 : -1);
-                  return;
-                }
-                if (event.key === 'Enter' || event.key === 'Tab') {
-                  const item = typeCompletion.items[typeCompletion.selectedIndex];
-                  if (item) {
-                    event.preventDefault();
-                    event.currentTarget.value = item.label;
-                    applyTypeCompletion(item, event.currentTarget);
-                    if (autoCommit || event.key === 'Enter') {
-                      commitNewCodeTargetParameter(target, { [field]: item.label });
-                    }
-                    event.currentTarget.dataset.beginnerParameterSkipBlur = 'true';
-                    event.currentTarget.blur();
-                    return;
-                  }
-                }
-              }
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                const rawValue = event.currentTarget.value;
-                const nextValue = field === 'type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
-                updateDraftValue(nextValue);
-                if (autoCommit) {
-                  event.currentTarget.blur();
-                } else {
-                  event.currentTarget.dataset.beginnerParameterSkipBlur = 'true';
-                  commitNewCodeTargetParameter(target, { [field]: nextValue });
-                  event.currentTarget.blur();
-                }
-              }
-              if (event.key === 'Escape') {
-                setBeginnerTypeCompletionState(null);
-                if (!autoCommit) event.currentTarget.dataset.beginnerParameterSkipBlur = 'true';
-                setNewParameterDrafts(current => {
-                  const next = { ...current };
-                  delete next[key];
-                  return next;
-                });
-                event.currentTarget.blur();
-              }
-            }}
-            className={`${directInputClasses(tone)} disabled:cursor-not-allowed disabled:opacity-40`}
-            title={field === 'type' ? '支持中文、英文和拼音简写，例如 wb、zs、string、int' : undefined}
-          />
-          {field === 'type' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
-        </div>
-      );
-    };
-
-    const renderNewParameterArraySwitch = (target: BeginnerCodeTarget) => {
-      const key = codeTargetKey(target);
-      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', note: '', isArray: false, ...(newParameterDrafts[key] || {}) };
-      const disabled = !onUpdateSourceContent;
-      return (
-        <label
-          className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
-          title={draft.isArray ? '关闭新参数数组' : '将新参数设为数组'}
-        >
-          <input
-            type="checkbox"
-            className="sr-only"
-            checked={draft.isArray}
-            disabled={disabled}
-            aria-label="切换新参数数组状态"
-            onChange={event => {
-              const isArray = event.currentTarget.checked;
-              setNewParameterDrafts(current => ({ ...current, [key]: { ...draft, isArray } }));
-            }}
-          />
-          <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
-            draft.isArray
-              ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
-              : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
-          }`}>
-            <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full bg-white transition-transform ${
-              draft.isArray ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
             }`} />
           </span>
         </label>
@@ -6920,12 +6785,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 </tr>
               ))}
               <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
-                <td className={cellClass}>{renderNewParameterInput(target, 'name', '输入参数名', 'parameter')}</td>
-                <td className={cellClass}>{renderNewParameterInput(target, 'type', '文本型', 'type')}</td>
-                <td className={cellClass}>{renderNewParameterArraySwitch(target)}</td>
-                <td className={cellClass}>{renderNewParameterInput(target, 'defaultValue', '"文本"', 'value')}</td>
-                <td className={cellClass}>{renderNewParameterInput(target, 'note', '备注', 'plain')}</td>
-                <td className={cellClass}>{renderTextCell('新参数', 'muted')}</td>
+                <td className={cellClass} colSpan={6}>
+                  <button
+                    type="button"
+                    onClick={() => insertCodeTargetParameter(target)}
+                    disabled={!onUpdateSourceContent}
+                    className={`inline-flex h-[var(--beginner-input-height)] items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                      isDarkMode
+                        ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
+                        : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                    title="在参数表末尾插入新参数；在参数行按 Enter 可在当前行下方插入"
+                  >
+                    <Plus className="h-3 w-3" />
+                    插入参数
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -8230,7 +8105,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
     const renderParameterCanvas = (target: BeginnerCodeTarget, visualLine: number) => {
       const targetKey = codeTargetKey(target);
-      const newParameterDraft = newParameterDrafts[targetKey];
       return renderSourceShell(
         `${target.method.kind}-${target.method.name}-params`,
         visualLine,
@@ -8272,49 +8146,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   </td>
                 </tr>
               )),
-              <tr key={`${targetKey}:new-parameter`} className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
-                <td className={compactCellClass}>{renderNewParameterInput(target, 'name', '输入参数名', 'parameter', false)}</td>
-                <td className={compactCellClass}>{renderNewParameterInput(target, 'type', '文本型', 'type', false)}</td>
-                <td className={compactCellClass}>{renderNewParameterArraySwitch(target)}</td>
-                <td className={compactCellClass}>{renderNewParameterInput(target, 'defaultValue', '可选', 'value', false)}</td>
-                <td className={compactCellClass}>
-                  <div title="填写名称和类型后新增">{renderNewParameterInput(target, 'note', '备注', 'plain', false)}</div>
-                </td>
-                <td className={compactCellClass}>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => commitNewCodeTargetParameter(target)}
-                      disabled={!onUpdateSourceContent || !newParameterDraft?.name?.trim()}
-                      className={`inline-flex h-[var(--beginner-input-height)] min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded border px-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-                        isDarkMode
-                          ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
-                          : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                      }`}
-                      title="新增参数并写回子程序签名"
-                    >
-                      <Check className="h-3 w-3 shrink-0" />
-                      新增
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNewParameterDrafts(current => {
-                        const next = { ...current };
-                        delete next[targetKey];
-                        return next;
-                      })}
-                      disabled={!newParameterDraft}
-                      aria-label="清空新增参数"
-                      className={`inline-flex h-[var(--beginner-input-height)] w-6 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-                        isDarkMode
-                          ? 'border-slate-600 text-slate-400 hover:bg-slate-700/50'
-                          : 'border-slate-200 text-slate-500 hover:bg-slate-100'
-                      }`}
-                      title="清空新增参数"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
+              <tr key={`${targetKey}:insert-parameter`} className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
+                <td className={compactCellClass} colSpan={6}>
+                  <button
+                    type="button"
+                    onClick={() => insertCodeTargetParameter(target)}
+                    disabled={!onUpdateSourceContent}
+                    className={`inline-flex h-[var(--beginner-input-height)] items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                      isDarkMode
+                        ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
+                        : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                    title="在参数表末尾插入新参数；在参数行按 Enter 可在当前行下方插入"
+                  >
+                    <Plus className="h-3 w-3" />
+                    插入参数
+                  </button>
                 </td>
               </tr>
             ],

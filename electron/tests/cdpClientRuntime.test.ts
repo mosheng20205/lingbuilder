@@ -114,8 +114,8 @@ function generate(enabledModules: InstalledModule[], designerBackend?: 'new-emoj
 
 test('CDP 客户端模块清单、文档与命令完整性', async () => {
   assert.equal(validateModuleManifest(CDP_CLIENT_MODULE).diagnostics.length, 0);
-  assert.equal(CDP_CLIENT_COMMAND_SPECS.length, 97);
-  assert.equal(CDP_CLIENT_MODULE.version, '2.0.0');
+  assert.equal(CDP_CLIENT_COMMAND_SPECS.length, 144);
+  assert.equal(CDP_CLIENT_MODULE.version, '3.0.0');
   assert.deepEqual(
     CDP_CLIENT_MODULE.bindings?.commands?.map(item => item.command),
     CDP_CLIENT_MODULE.contributes?.commands?.map(item => item.name)
@@ -128,7 +128,12 @@ test('CDP 客户端模块清单、文档与命令完整性', async () => {
     // 阶段 2：仿真
     'CDP_设置视口', 'CDP_设置UserAgent', 'CDP_设置触摸', 'CDP_设置地理位置', 'CDP_设置时区', 'CDP_设置语言', 'CDP_设置暗色模式', 'CDP_设置CPU节流', 'CDP_重置仿真', 'CDP_设置离线', 'CDP_设置限速', 'CDP_禁用缓存',
     // 阶段 2：截图元素、窗口、弹窗、拖拽
-    'CDP_截图元素', 'CDP_取窗口边界', 'CDP_设置窗口边界', 'CDP_绑定新页面事件', 'CDP_鼠标拖拽', 'CDP_调用函数']) {
+    'CDP_截图元素', 'CDP_取窗口边界', 'CDP_设置窗口边界', 'CDP_绑定新页面事件', 'CDP_鼠标拖拽', 'CDP_调用函数',
+    // 阶段 3：Target/session/binding/Debugger/Storage/录制
+    'CDP_设置自动附加', 'CDP_绑定目标事件', 'CDP_枚举目标JSON', 'CDP_附加目标', 'CDP_分离会话', 'CDP_会话执行脚本', 'CDP_取目标JSON', 'CDP_取会话JSON', 'CDP_枚举帧JSON',
+    'CDP_添加页面绑定', 'CDP_移除页面绑定', 'CDP_高亮元素', 'CDP_隐藏高亮', 'CDP_派发触摸',
+    'CDP_启用调试器', 'CDP_禁用调试器', 'CDP_绑定调试事件', 'CDP_设置断点', 'CDP_移除断点', 'CDP_暂停调试', 'CDP_恢复调试', 'CDP_调试单步', 'CDP_取当前调用帧数量', 'CDP_取当前调用帧', 'CDP_取调用帧JSON', 'CDP_调用帧执行脚本', 'CDP_取作用域变量',
+    'CDP_取性能指标', 'CDP_取存储用量', 'CDP_清理来源数据', 'CDP_开启证书错误接管', 'CDP_裁决证书错误', 'CDP_关闭证书错误接管', 'CDP_绑定安全状态事件', 'CDP_开始录制', 'CDP_记录步骤', 'CDP_停止录制', 'CDP_加载回放', 'CDP_取录制状态', 'CDP_取回放状态']) {
     assert.ok(CDP_CLIENT_COMMAND_SPECS.some(item => item.name === name), `缺少命令 ${name}`);
   }
   const documentationPath = path.resolve(process.cwd(), 'docs/modules/cdp-client/README.md');
@@ -164,7 +169,8 @@ test('Win32 CDP 客户端生成多连接 runtime、会话路由与处理器引�
   assert.ok(mainCpp.includes('Runtime.evaluate'));
   assert.ok(mainCpp.includes('Input.dispatchMouseEvent'));
   assert.ok(mainCpp.includes('Input.dispatchKeyEvent'));
-  assert.ok(mainCpp.includes('Input.insertTextInput'));
+  assert.ok(mainCpp.includes('Input.insertText'));
+  assert.equal(mainCpp.includes('Input.insertTextInput'), false);
   assert.ok(mainCpp.includes('Network.getResponseBody'));
   assert.ok(mainCpp.includes('Page.captureScreenshot'));
   assert.ok(mainCpp.includes('Page.printToPDF'));
@@ -207,6 +213,25 @@ test('Win32 CDP 客户端生成多连接 runtime、会话路由与处理器引�
   assert.ok(mainCpp.includes('Network.emulateNetworkConditions'));
   assert.ok(mainCpp.includes('Browser.setWindowBounds'));
   assert.ok(mainCpp.includes('Target.setDiscoverTargets'));
+  // 阶段 3：Target/session、binding、Debugger、Storage 与录制地基。
+  assert.ok(mainCpp.includes('Target.setAutoAttach'));
+  assert.ok(mainCpp.includes('Target.attachedToTarget'));
+  assert.ok(mainCpp.includes('Runtime.bindingCalled'));
+  assert.ok(mainCpp.includes('Overlay.highlightRect'));
+  assert.ok(mainCpp.includes('Input.dispatchTouchEvent'));
+  assert.ok(mainCpp.includes('Debugger.setBreakpointByUrl'));
+  assert.ok(mainCpp.includes('Debugger.evaluateOnCallFrame'));
+  assert.ok(mainCpp.includes('Runtime.getProperties'));
+  assert.ok(mainCpp.includes('Performance.getMetrics'));
+  assert.ok(mainCpp.includes('Storage.getUsageAndQuota'));
+  assert.ok(mainCpp.includes('Storage.clearDataForOrigin'));
+  assert.ok(mainCpp.includes('Security.setOverrideCertificateErrors'));
+  assert.ok(mainCpp.includes('Security.handleCertificateError'));
+  assert.ok(mainCpp.includes('certificateOverrideDeadline'));
+  assert.ok(mainCpp.includes('lingbuilder.cdp.recording'));
+  assert.ok(mainCpp.includes('long long CDP_附加目标(long long target, const wchar_t* handler)'));
+  assert.ok(mainCpp.includes('long long CDP_设置断点(long long page'));
+  assert.ok(mainCpp.includes('bool CDP_清理来源数据(long long connection'));
   // 阶段 2 命令调用生成。
   assert.ok(mainCpp.includes('CDP_拦截继续(CDP_取当前拦截())'));
   assert.ok(mainCpp.includes('CDP_应答对话框(CDP_取当前页面(), true, L"")'));

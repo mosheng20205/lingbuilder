@@ -114,6 +114,7 @@ export interface ModuleOrder {
 export type AiStreamEvent =
   | { type: 'accepted'; requestId: string; reservedPoints: string; freePromotionId?: string }
   | { type: 'delta'; requestId: string; text: string }
+  | { type: 'reasoning'; requestId: string; text: string }
   | { type: 'edit_draft'; requestId: string; files: Array<{ filePath: string; updatedSource: string }>; designerProject?: Record<string, unknown>; instruction?: string }
   | { type: 'usage'; requestId: string; receipt: UsageReceipt }
   | { type: 'completed'; requestId: string }

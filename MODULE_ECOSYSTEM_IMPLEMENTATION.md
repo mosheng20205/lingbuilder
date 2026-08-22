@@ -452,7 +452,7 @@ lingbuilder.module.json
 
 ## CDP 客户端模块（2026-08）
 
-- `lingbuilder.cdp.client@2.0.0` 是内置 v2 网络模块（`electron/src/services/modules/cdpClientModule.ts`），公开 `CDP连接`、`CDP页面`、`CDP元素`、`CDP拦截` 四个受管句柄类型和 97 条 `CDP_` 前缀命令。阶段 1 覆盖连接、页面、导航、脚本、元素、键鼠、网络/Cookie、控制台/异常、截图/PDF；阶段 2 覆盖命令超时、Fetch 拦截/改写/mock/终止/认证、对话框、下载、上传、生命周期等待、设备/网络仿真、元素截图、窗口边界、新页面通知、拖拽与元素函数调用。阶段范围与后续路线见 `doc/CDP模块开发.md`，跨会话细节见 `doc/CDP模块开发进度.md`。
+- `lingbuilder.cdp.client@3.0.0` 当前处于阶段 3 实施中，是内置 v2 网络模块（`electron/src/services/modules/cdpClientModule.ts`），公开 14 个受管句柄类型和 144 条 `CDP_` 命令。阶段 1/2 能力保持；阶段 3 已接入 Target/Session/Frame/ExecutionContext、OOPIF/Worker 自动附加与会话求值、Runtime binding、Overlay、触摸、Debugger、Performance、Storage、严格证书错误裁决和录制 schema 地基。Screencast、Tracing/CPU/Coverage/Heap 完整任务输出及确定性回放仍未完成，不能标记为商业阶段 3 完成。阶段范围与门禁见 `doc/CDP模块开发.md`，跨会话细节见 `doc/CDP模块开发进度.md`。
 - CDP 运行时位于 `electron/src/services/windowDesigner/cdpClientRuntime.ts`，以内嵌 C++ 文本注入生成工程：WinHTTP HTTP `/json/version`+`/json/list` 端点发现、WinHTTP WebSocket 协议升级、自研 `LingCdpJson` 内核（零依赖）、每连接独立消息编号与 pending 回调表、flatten 模式 `sessionId` 路由、`Target.attachToTarget` 会话管理、断线时释放全部未完成回调。新建页面先创建 `about:blank` 再附加并启用域，导航等待 `loadEventFired` 后才发出"页面就绪"，避免中间导航阶段被误判为就绪。
 - 多开是第一设计约束：`CDP_连接` 可创建任意数量并存连接（同一或不同调试端口），每个连接独立 WebSocket、独立 id 计数与回调表；`CDP_取连接数量()` 查询规模。普通 Win32 通过 `WM_LINGBUILDER_CDP_CLIENT_EVENT`（`WM_APP+0x58`）、new_emoji 通过 `LingBuilder.NewEmoji.CdpClientEventWindow` 隐藏消息窗口投递事件；处理器统一 `&处理器名` 无参回调 + `CDP_取当前事件*` 快照。
 - 阶段 2 看门狗每 500ms 扫描非 Internal pending 与页面 ready/load/lifecycle deadline；每连接默认 30s，导航/就绪双倍。Fetch 拦截用一次性 `CDP拦截` 句柄，Take 后不可复用；页面销毁自动终止未裁决拦截。`Page.javascriptDialogOpening` 未绑定处理器时自动拒绝，防止页面脚本永久阻塞。文件上传通过 selector evaluate 的 objectId 调用 `DOM.setFileInputFiles`。

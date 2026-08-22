@@ -216,11 +216,11 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
     },
     {
       modules: 84,
-      commands: 2951,
-      parameters: 5050,
+      commands: 2998,
+      parameters: 5137,
       controlReferences: 1262,
-      commandDigest: '7b4696d8',
-      parameterDigest: 'fd5ddcb2'
+      commandDigest: 'ab3819f6',
+      parameterDigest: '04a24cc7'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -536,11 +536,11 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     parameterDigest: audit.parameterDigest
   }, {
       modules: 91,
-      commands: 6754,
-      parameters: 16593,
+      commands: 6801,
+      parameters: 16680,
       controlReferences: 4806,
-      commandDigest: '1801de74',
-      parameterDigest: '58459be2'
+      commandDigest: '2e5b6f72',
+      parameterDigest: 'a4d7ce3f'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 

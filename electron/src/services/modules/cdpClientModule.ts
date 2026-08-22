@@ -9,7 +9,8 @@ import {
 
 export const CDP_CLIENT_MODULE_ID = 'lingbuilder.cdp.client';
 
-type CdpClientCategory = '连接' | '页面' | '导航' | '脚本' | '元素' | '输入' | '网络' | '事件' | '截图' | '快照';
+type CdpClientCategory = '连接' | '页面' | '导航' | '脚本' | '元素' | '输入' | '网络' | '事件' | '截图' | '快照'
+  | '目标' | '会话' | '绑定' | '调试' | '性能' | '存储' | '录制';
 
 interface CdpClientCommandSpec {
   name: string;
@@ -467,6 +468,157 @@ const specs: CdpClientCommandSpec[] = [
     returnType: 'bool', returnLabel: '逻辑型', category: '元素',
     insertText: 'CDP_调用函数($1, "function(x){return x.value}", &${2:调用完成})'
   },
+  // 阶段 3：Target / Session / Frame
+  {
+    name: 'CDP_设置自动附加', signature: 'CDP_设置自动附加(连接, 启用, 启动时等待调试器, 完成处理器)', description: '开启或关闭 flatten Target 自动附加，用于 OOPIF、Dedicated/Shared/Service Worker；完成结果通过处理器通知。',
+    parameters: [parameter('连接', 'CDP连接'), parameter('启用', 'bool'), parameter('启动时等待调试器', 'bool'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '目标'
+  },
+  {
+    name: 'CDP_绑定目标事件', signature: 'CDP_绑定目标事件(连接, 处理器)', description: '订阅目标附加、分离、创建、更新、销毁和崩溃事件。',
+    parameters: [parameter('连接', 'CDP连接'), handlerParameter('处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '目标'
+  },
+  {
+    name: 'CDP_枚举目标JSON', signature: 'CDP_枚举目标JSON(连接, 类型)', description: '返回当前连接已发现目标的 UTF-16 JSON 快照；类型为空时返回全部目标。',
+    parameters: [parameter('连接', 'CDP连接'), parameter('类型', 'wideString')], returnType: 'wideString', returnLabel: '文本型', category: '目标'
+  },
+  {
+    name: 'CDP_附加目标', signature: 'CDP_附加目标(目标, 完成处理器)', description: '异步附加通用 Target，立即返回受管会话句柄；最终结果通过处理器通知。',
+    parameters: [parameter('目标', 'CDP目标'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'CDP会话', returnLabel: 'CDP会话', category: '目标'
+  },
+  {
+    name: 'CDP_分离会话', signature: 'CDP_分离会话(会话)', description: '分离 OOPIF 或 Worker flatten 会话，并使该会话的待处理命令与调用帧失效。',
+    parameters: [parameter('会话', 'CDP会话')], returnType: 'bool', returnLabel: '逻辑型', category: '会话'
+  },
+  {
+    name: 'CDP_会话执行脚本', signature: 'CDP_会话执行脚本(会话, 脚本代码, 完成处理器)', description: '在指定 OOPIF/Worker 会话执行脚本，完成后从当前事件文本读取结果。',
+    parameters: [parameter('会话', 'CDP会话'), parameter('脚本代码', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '会话'
+  },
+  {
+    name: 'CDP_取目标JSON', signature: 'CDP_取目标JSON(目标)', description: '返回目标 ID、类型、URL 和关联会话等不可变 JSON 快照。',
+    parameters: [parameter('目标', 'CDP目标')], returnType: 'wideString', returnLabel: '文本型', category: '目标'
+  },
+  {
+    name: 'CDP_取会话JSON', signature: 'CDP_取会话JSON(会话)', description: '返回会话所属连接、Target、页面和 attached 状态 JSON 快照。',
+    parameters: [parameter('会话', 'CDP会话')], returnType: 'wideString', returnLabel: '文本型', category: '会话'
+  },
+  {
+    name: 'CDP_枚举帧JSON', signature: 'CDP_枚举帧JSON(页面)', description: '返回页面及 OOPIF 已知 Frame 的 JSON 数组。',
+    parameters: [parameter('页面', 'CDP页面')], returnType: 'wideString', returnLabel: '文本型', category: '会话'
+  },
+  // 阶段 3：Runtime binding、Overlay、Touch
+  {
+    name: 'CDP_添加页面绑定', signature: 'CDP_添加页面绑定(页面, 名称, 处理器)', description: '安装 Runtime.addBinding 双向绑定，新附加的 OOPIF/Worker 会话会自动重放绑定。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('名称', 'wideString'), handlerParameter('处理器', '必须使用 &处理器名；调用载荷通过当前事件文本读取。')], returnType: 'CDP绑定', returnLabel: 'CDP绑定', category: '绑定'
+  },
+  {
+    name: 'CDP_移除页面绑定', signature: 'CDP_移除页面绑定(绑定)', description: '移除受管 Runtime binding。',
+    parameters: [parameter('绑定', 'CDP绑定')], returnType: 'bool', returnLabel: '逻辑型', category: '绑定'
+  },
+  {
+    name: 'CDP_高亮元素', signature: 'CDP_高亮元素(元素, 填充颜色)', description: '通过 Overlay.highlightRect 高亮元素；当前颜色参数保留用于后续主题化。',
+    parameters: [parameter('元素', 'CDP元素'), parameter('填充颜色', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '元素'
+  },
+  {
+    name: 'CDP_隐藏高亮', signature: 'CDP_隐藏高亮(页面)', description: '隐藏页面当前 Overlay 高亮。',
+    parameters: [parameter('页面', 'CDP页面')], returnType: 'bool', returnLabel: '逻辑型', category: '元素'
+  },
+  {
+    name: 'CDP_派发触摸', signature: 'CDP_派发触摸(页面, 类型, 触点JSON)', description: '派发严格 JSON 多点触控事件，类型为 touchStart、touchMove、touchEnd 或 touchCancel，最多 16 个触点。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('类型', 'wideString'), parameter('触点JSON', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '输入', visibility: 'advanced'
+  },
+  // 阶段 3：Debugger
+  ...([
+    ['CDP_启用调试器', 'Debugger.enable'], ['CDP_禁用调试器', 'Debugger.disable'], ['CDP_暂停调试', 'Debugger.pause'], ['CDP_恢复调试', 'Debugger.resume']
+  ] as const).map(([name, method]) => ({
+    name, signature: `${name}(页面, 完成处理器)`, description: `发送 ${method}；请求接受与最终暂停/恢复事件分开通知。`,
+    parameters: [parameter('页面', 'CDP页面'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool' as const, returnLabel: '逻辑型', category: '调试' as const
+  })),
+  {
+    name: 'CDP_绑定调试事件', signature: 'CDP_绑定调试事件(页面, 处理器)', description: '订阅调试暂停、恢复和断点解析事件。',
+    parameters: [parameter('页面', 'CDP页面'), handlerParameter('处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '调试'
+  },
+  {
+    name: 'CDP_设置断点', signature: 'CDP_设置断点(页面, 网址, 行, 列, 条件, 完成处理器)', description: '按 URL 设置断点；行列从 1 开始，返回受管断点句柄。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('网址', 'wideString'), parameter('行', 'int'), parameter('列', 'int'), parameter('条件', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'CDP断点', returnLabel: 'CDP断点', category: '调试'
+  },
+  {
+    name: 'CDP_移除断点', signature: 'CDP_移除断点(断点, 完成处理器)', description: '移除已解析断点。',
+    parameters: [parameter('断点', 'CDP断点'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '调试'
+  },
+  {
+    name: 'CDP_调试单步', signature: 'CDP_调试单步(页面, 类型, 完成处理器)', description: '调试单步：0 越过、1 进入、2 跳出。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('类型', 'int'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '调试'
+  },
+  {
+    name: 'CDP_取当前调用帧数量', signature: 'CDP_取当前调用帧数量()', description: '返回当前调试暂停事件中的调用帧数量。', parameters: [], returnType: 'int', returnLabel: '整数型', category: '调试'
+  },
+  {
+    name: 'CDP_取当前调用帧', signature: 'CDP_取当前调用帧(索引)', description: '按零基索引返回当前暂停 generation 内有效的调用帧句柄。', parameters: [parameter('索引', 'int')], returnType: 'CDP调用帧', returnLabel: 'CDP调用帧', category: '调试'
+  },
+  {
+    name: 'CDP_取调用帧JSON', signature: 'CDP_取调用帧JSON(调用帧)', description: '返回调用帧不可变 JSON 快照。', parameters: [parameter('调用帧', 'CDP调用帧')], returnType: 'wideString', returnLabel: '文本型', category: '调试'
+  },
+  {
+    name: 'CDP_调用帧执行脚本', signature: 'CDP_调用帧执行脚本(调用帧, 脚本代码, 完成处理器)', description: '在暂停调用帧求值；恢复后旧调用帧立即失效。', parameters: [parameter('调用帧', 'CDP调用帧'), parameter('脚本代码', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '调试'
+  },
+  {
+    name: 'CDP_取作用域变量', signature: 'CDP_取作用域变量(调用帧, 作用域索引, 最大数量, 完成处理器)', description: '读取调用帧作用域属性，最大数量限制为 5000。', parameters: [parameter('调用帧', 'CDP调用帧'), parameter('作用域索引', 'int'), parameter('最大数量', 'int'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '调试'
+  },
+  // 阶段 3：Performance / Storage / 录制
+  {
+    name: 'CDP_取性能指标', signature: 'CDP_取性能指标(页面, 完成处理器)', description: '启用 Performance 域并异步返回稳定 JSON 指标。', parameters: [parameter('页面', 'CDP页面'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '性能'
+  },
+  {
+    name: 'CDP_取存储用量', signature: 'CDP_取存储用量(连接, 来源, 完成处理器)', description: '查询 exact http/https origin 的 usage/quota。', parameters: [parameter('连接', 'CDP连接'), parameter('来源', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '存储'
+  },
+  {
+    name: 'CDP_清理来源数据', signature: 'CDP_清理来源数据(连接, 来源, 存储类型, 已确认, 完成处理器)', description: '清理 exact origin 的 allowlist 存储类型；必须显式确认破坏性操作。', parameters: [parameter('连接', 'CDP连接'), parameter('来源', 'wideString'), parameter('存储类型', 'wideString'), parameter('已确认', 'bool'), handlerParameter('完成处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '存储', visibility: 'advanced'
+  },
+  {
+    name: 'CDP_开启证书错误接管', signature: 'CDP_开启证书错误接管(连接, 来源白名单, 有效秒数, 处理器)', description: '高级安全命令：仅对逗号分隔的 exact http/https origin 白名单，在 1–600 秒内接管证书错误；每次错误仍需单独裁决。',
+    parameters: [parameter('连接', 'CDP连接'), parameter('来源白名单', 'wideString'), parameter('有效秒数', 'int'), handlerParameter('处理器', '必须使用 &处理器名；未应答或超时自动取消。')], returnType: 'bool', returnLabel: '逻辑型', category: '网络', visibility: 'advanced'
+  },
+  {
+    name: 'CDP_裁决证书错误', signature: 'CDP_裁决证书错误(证书错误, 允许)', description: '对一次证书错误显式继续或取消；句柄只能使用一次。',
+    parameters: [parameter('证书错误', 'CDP证书错误'), parameter('允许', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '网络', visibility: 'advanced'
+  },
+  {
+    name: 'CDP_关闭证书错误接管', signature: 'CDP_关闭证书错误接管(连接)', description: '恢复浏览器默认证书校验并自动取消该连接所有未决证书错误。',
+    parameters: [parameter('连接', 'CDP连接')], returnType: 'bool', returnLabel: '逻辑型', category: '网络', visibility: 'advanced'
+  },
+  {
+    name: 'CDP_绑定安全状态事件', signature: 'CDP_绑定安全状态事件(连接, 处理器)', description: '订阅只读安全状态事件；不启用任何证书绕过。',
+    parameters: [parameter('连接', 'CDP连接'), handlerParameter('处理器', '必须使用 &处理器名。')], returnType: 'bool', returnLabel: '逻辑型', category: '事件'
+  },
+  {
+    name: 'CDP_开始录制', signature: 'CDP_开始录制(页面, 文件路径, 处理器)', description: '开始 schemaVersion 1 自动化录制并返回受管句柄。', parameters: [parameter('页面', 'CDP页面'), parameter('文件路径', 'wideString'), handlerParameter('处理器', '必须使用 &处理器名。')], returnType: 'CDP录制', returnLabel: 'CDP录制', category: '录制'
+  },
+  {
+    name: 'CDP_记录步骤', signature: 'CDP_记录步骤(录制, 类型, 数据JSON)', description: '向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。', parameters: [parameter('录制', 'CDP录制'), parameter('类型', 'wideString'), parameter('数据JSON', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '录制'
+  },
+  {
+    name: 'CDP_停止录制', signature: 'CDP_停止录制(录制)', description: '停止录制并原子写入版本化 JSON 文件。', parameters: [parameter('录制', 'CDP录制')], returnType: 'bool', returnLabel: '逻辑型', category: '录制'
+  },
+  {
+    name: 'CDP_加载回放', signature: 'CDP_加载回放(连接, 文件路径)', description: '加载录制文件并返回回放句柄；执行器将在后续阶段 3 增量中启用。', parameters: [parameter('连接', 'CDP连接'), parameter('文件路径', 'wideString')], returnType: 'CDP回放', returnLabel: 'CDP回放', category: '录制'
+  },
+  {
+    name: 'CDP_取录制状态', signature: 'CDP_取录制状态(录制)', description: '返回录制状态。', parameters: [parameter('录制', 'CDP录制')], returnType: 'wideString', returnLabel: '文本型', category: '录制'
+  },
+  {
+    name: 'CDP_取回放状态', signature: 'CDP_取回放状态(回放)', description: '返回回放状态。', parameters: [parameter('回放', 'CDP回放')], returnType: 'wideString', returnLabel: '文本型', category: '录制'
+  },
+  ...([
+    ['CDP_取当前目标', 'CDP目标', 'CDP目标', '返回当前 Target 事件对应的受管目标句柄。'],
+    ['CDP_取当前会话', 'CDP会话', 'CDP会话', '返回当前 Target、Debugger 或 binding 事件对应的会话句柄。'],
+    ['CDP_取当前帧', 'CDP帧', 'CDP帧', '返回当前 Frame 事件对应的帧句柄。'],
+    ['CDP_取当前绑定', 'CDP绑定', 'CDP绑定', '返回当前 Runtime binding 事件对应的绑定句柄。'],
+    ['CDP_取当前任务', 'CDP任务', 'CDP任务', '返回当前长任务事件对应的任务句柄。'],
+    ['CDP_取当前断点', 'CDP断点', 'CDP断点', '返回当前断点事件对应的断点句柄。'],
+    ['CDP_取当前证书错误', 'CDP证书错误', 'CDP证书错误', '返回当前证书错误事件的一次性裁决句柄。']
+  ] as const).map(([name, returnType, returnLabel, description]) => ({
+    name, signature: `${name}()`, description, parameters: [], returnType, returnLabel, category: '快照' as const
+  })),
   ...([
     ['CDP_取当前事件类型', 'wideString', '文本型', '返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台或页面异常。'],
     ['CDP_取当前事件文本', 'wideString', '文本型', '返回当前事件的结果文本、错误说明或 JSON 数据快照；拦截事件返回请求头 JSON。'],
@@ -535,10 +687,10 @@ export const CDP_CLIENT_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: CDP_CLIENT_MODULE_ID,
   name: 'CDP 客户端模块',
-  version: '2.0.0',
+  version: '3.0.0',
   minLingBuilderVersion: '0.6.0',
   category: '网络',
-  description: '提供 Chrome DevTools Protocol 受管客户端：多连接多调试端口并存、页面会话 flatten 路由、导航与生命周期等待、脚本执行、元素操作、坐标级键鼠输入、请求拦截与 mock、对话框应答、下载管理、文件上传、设备与网络仿真、Cookie 与网络监听、截图和 PDF；全部异步命令带超时并通过 &处理器名 在 UI 线程回调。',
+  description: '提供 Chrome DevTools Protocol 受管客户端：多连接多调试端口并存、页面与 Target/Session flatten 路由、OOPIF/Worker、Runtime binding、Debugger、Performance、Storage 和严格证书裁决地基；阶段 3 的 screencast、完整性能任务与确定性回放仍在实施。',
   author: 'LingBuilder',
   license: 'LingBuilder Built-in Module License',
   tags: ['内置', '网络', 'CDP', 'Chrome DevTools Protocol', '浏览器自动化', '多连接', '请求拦截', 'WebSocket', '截图', '仿真'],
@@ -548,7 +700,17 @@ export const CDP_CLIENT_MODULE: LingBuilderModuleManifest = {
       { name: 'CDP连接', description: '进程内不复用的受管 CDP 浏览器连接 ID；支持多个连接并存，不暴露原生 WinHTTP 句柄。', cppType: 'long long' },
       { name: 'CDP页面', description: '从属于某个 CDP 连接的受管页面会话 ID，对应一个 flatten 模式 sessionId。', cppType: 'long long' },
       { name: 'CDP元素', description: '从属于某个页面会话的受管元素引用 ID，保存 CSS 选择器，操作时校验有效性。', cppType: 'long long' },
-      { name: 'CDP拦截', description: '一次被暂停请求的受管拦截句柄；只能被继续、改写、模拟响应、终止或应答认证裁决一次。', cppType: 'long long' }
+      { name: 'CDP拦截', description: '一次被暂停请求的受管拦截句柄；只能被继续、改写、模拟响应、终止或应答认证裁决一次。', cppType: 'long long' },
+      { name: 'CDP目标', description: '浏览器 Target 的受管句柄，可表示 page、iframe、worker、shared_worker 或 service_worker。', cppType: 'long long' },
+      { name: 'CDP会话', description: 'flatten 模式下 Target 会话的受管句柄，用于 OOPIF/Worker 独立命令路由。', cppType: 'long long' },
+      { name: 'CDP帧', description: '页面 Frame 的受管句柄，包含所属会话、父 Frame 和 generation。', cppType: 'long long' },
+      { name: 'CDP绑定', description: 'Runtime.addBinding 双向通信的受管句柄。', cppType: 'long long' },
+      { name: 'CDP断点', description: 'Debugger 断点的受管句柄。', cppType: 'long long' },
+      { name: 'CDP调用帧', description: '仅在当前暂停 generation 有效的 Debugger 调用帧句柄。', cppType: 'long long' },
+      { name: 'CDP任务', description: 'Trace、CPU、覆盖率、Heap 等长任务的受管句柄。', cppType: 'long long' },
+      { name: 'CDP证书错误', description: '一次证书错误裁决的受管句柄，仅允许继续或拒绝一次。', cppType: 'long long' },
+      { name: 'CDP录制', description: '浏览器自动化录制的受管句柄。', cppType: 'long long' },
+      { name: 'CDP回放', description: '版本化录制文件回放的受管句柄。', cppType: 'long long' }
     ],
     snippets: [
       {
@@ -562,7 +724,7 @@ export const CDP_CLIENT_MODULE: LingBuilderModuleManifest = {
         description: '新建页面后等待加载、查询元素并点击的典型异步链。'
       }
     ],
-    docs: [{ title: 'CDP 客户端模块 1.0 使用说明', path: 'docs/modules/cdp-client/README.md' }]
+    docs: [{ title: 'CDP 客户端模块 3.0 使用说明', path: 'docs/modules/cdp-client/README.md' }]
   },
   targets: [
     {

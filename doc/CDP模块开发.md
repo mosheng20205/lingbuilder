@@ -14,7 +14,7 @@ CDP 模块应当是一个 `.lbmod` v2 原生模块，而不是只在 IDE 中演�
   -> Chrome / Edge 的 CDP 调试端口
 ```
 
-**当前状态（2026-08-22）**：阶段 1（会话内核 + 基础自动化）与阶段 2（商业增量）均已实现并通过真实 Edge headless 端到端验证。模块为内置 v2 网络模块 `lingbuilder.cdp.client@2.0.0`（清单 `electron/src/services/modules/cdpClientModule.ts`，97 条命令、4 个受管类型），运行时 `electron/src/services/windowDesigner/cdpClientRuntime.ts` 内嵌 C++ 注入生成工程，多开连接（多调试端口并存）是第一设计约束。阶段 2 新增命令超时看门狗、Fetch 请求拦截/改写/mock/认证、对话框应答、下载管理、文件上传、生命周期等待、设备与网络仿真、元素截图、浏览器窗口边界、新页面通知、鼠标拖拽和元素函数调用。验证入口：`npm run smoke:cdp-native`（真实 Edge/Chrome headless，Win32/x64）与 `tests/cdpClientRuntime.test.ts`。阶段 3 未开始；未达阶段 3 门禁前不得宣称调试器、性能/OOPIF/录制回放能力已支持。
+**当前状态（2026-08-22）**：阶段 1 与阶段 2 已完成；阶段 3 正在实施。内置 v2 网络模块已暂升 `lingbuilder.cdp.client@3.0.0`（144 条命令、14 个受管类型），多连接/多调试端口仍是第一设计约束。阶段 3 第一批已落地 Target/Session/Frame/ExecutionContext、OOPIF/Worker 自动附加与会话求值、Runtime binding、Overlay、触摸、Debugger、Performance 指标、Storage、严格证书错误逐次裁决和版本化录制地基，并通过专项生成测试、TypeScript 检查及 MSVC Win32/x64 编译；阶段 1/2 真实 Edge headless smoke 继续通过。Screencast、Tracing/CPU/Coverage/Heap 完整任务输出、录制自动采集与确定性回放、阶段 3 分场景真实 smoke 仍未完成，因此不得宣称阶段 3 商业交付完成。
 
 **跨会话进度交接**：各阶段的完成明细、关键文件地图、实现决策、已知坑与剩余工作清单见同目录 `CDP模块开发进度.md`；续作实现前必须先读该文档。
 

@@ -2,7 +2,7 @@
 
 > 本文档是 CDP 客户端模块（`lingbuilder.cdp.client`）的跨会话交接记录，用于防止后续会话失忆。能力全景与逐阶段验收门禁见 `doc/CDP模块开发.md`；本文只记录"做到哪了、怎么做的、还剩什么、有哪些坑"。
 >
-> 最后更新：2026-08-22（阶段 2 完成当日）
+> 最后更新：2026-08-22（阶段 3 第一批地基已落地，尚未完成）
 
 ## 一、当前状态总览
 
@@ -11,7 +11,7 @@
 | 阶段 0 规划文档 | ✅ 完成 | `doc/CDP模块开发.md` 已升级为商业全场景能力全景 + 三阶段计划 |
 | 阶段 1 会话内核 + 基础自动化 | ✅ 完成 | 58 条命令基线，真实 Edge headless 端到端验证通过（2026-08-22） |
 | 阶段 2 商业增量 | ✅ 完成 | 模块升级 `2.0.0` / 97 条命令 / 4 个受管类型；真实 Edge headless Win32+x64 smoke 通过（2026-08-22） |
-| 阶段 3 高阶 | ❌ 未开始 | 调试器/性能/OOPIF/录制回放 |
+| 阶段 3 高阶 | 🚧 实施中 | 模块清单暂升 `3.0.0` / 144 条命令 / 14 个受管类型；Target/Session、binding、Debugger、Storage、证书安全与录制地基已生成并通过双架构编译，screencast、完整性能任务和确定性回放仍未完成 |
 
 模块形态：**内置 v2 网络模块**（不是外置 `.lbmod`），与 http-client/websocket-client 同族，注册在 `networkLibraryModules.ts`，自动获得 Win32 与 new_emoji 双后端支持（`uiBackendCommandContract.ts` 的 `BACKEND_NEUTRAL_BUILTIN_MODULE_IDS`）。
 
@@ -137,21 +137,31 @@ smoke 自动：找浏览器（`LINGBUILDER_CDP_SMOKE_BROWSER` 环境变量或常
 9. **窗口过程 case 的文本无条件存在于生成 main.cpp**（`#ifdef` 只是 C++ 编译期门控）——"未启用"断言要用 `#define LINGBUILDER_CDP_CLIENT_MODULE` 或 runtime 类文本，不能断言 case 文本不存在。
 10. **smoke 的调试输出**：fwprintf 中文到文件会变 `?`（宽模式问题），但 ASCII/错误文本可读；现有 smoke 在各失败步骤写 `cdp-debug.txt`。
 
-## 五、剩余工作
+## 五、阶段 3 当前进度与剩余工作
 
-### 5.1 阶段 3 范围（高阶）
+### 5.1 已落地（尚未宣告阶段完成）
 
-- `Target.setAutoAttach`（iframe/OOPIF/Worker 自动附加）+ 多 frame 会话管理
-- `Runtime.addBinding`/`bindingCalled`（页面 JS 主动回调宿主）
-- `Overlay.highlightNode`（IDE 调试联动）
-- `Input.dispatchTouchEvent`（触摸）
-- `Page.startScreencast/stopScreencast`（帧流）
-- **Debugger 全量**：`Debugger.enable`/`setBreakpointByUrl`/`pause`/`resume`/`stepOver/Into/Out`/`paused` 事件（调用栈/作用域快照）/`evaluateOnCallFrame`
-- **性能**：`Performance.enable/getMetrics`、`Tracing.start/stop`（落盘 trace JSON）、`Profiler.start/stop`、`startPreciseCoverage/takePreciseCoverage`、`HeapProfiler.takeHeapSnapshot`
-- **存储/安全**：`Storage.clearDataForOrigin`、ServiceWorker/SharedWorker 目标枚举附加、`Security.certificateError` override
-- **录制/回放**：基于事件流的确定性任务回放（独立设计，先出方案再实现）
+- 模块清单已扩展到 `3.0.0`、144 条命令、14 个受管类型，并补齐 contributes、bindings 与 Win32/new_emoji 共用包装方法。
+- 修正非标准 `Input.insertTextInput` 为标准 `Input.insertText`；Internal pending 也进入超时清理并记录协议错误；当前事件改为可重入事件栈。
+- 新增 Target/Session/Frame/ExecutionContext O(1) 注册表，页面 flatten session 同步注册，支持 setAutoAttach、attached/detached、Worker/OOPIF 通用会话求值和绑定重放。
+- 新增 Runtime binding、Overlay 矩形高亮、严格 JSON 多点触摸。
+- 新增 Debugger 地基：enable/disable、URL 断点、暂停/恢复/单步、调用帧 generation、作用域属性和调用帧求值。
+- 新增 Performance 指标、Storage usage 与显式确认的 exact-origin 清理。
+- 新增证书错误严格门禁：exact origin 白名单、1–600 秒期限、逐次一次性裁决、30 秒未应答自动 cancel、关闭/断线恢复 override=false；无全局忽略开关。
+- 新增 `lingbuilder.cdp.recording` schemaVersion 1 原子落盘与敏感字段占位符地基。
+- 修复原子文件 writer 的重复定义/递归错误、PendingKind 与公开方法重名导致的 C++ 编译错误、连接主动断开未清理阶段 3 状态等问题。
+- 当前专项生成测试 4/4；真实 Edge headless smoke 继续通过，MSVC Win32/x64 均编译成功。现有 smoke 仍主要覆盖阶段 2 链路，不能作为阶段 3 完成证据。
 
-### 5.2 阶段 3 验收门禁
+### 5.2 仍需完成
+
+- Screencast 帧句柄、latest-only 有界队列、ack 与异步写盘。
+- Tracing ReturnAsStream、CPU Profile、精确覆盖率、Heap Snapshot 的完整 `CDP任务` 生命周期、取消、进度、上限与原子提交。
+- Worker/OOPIF、Debugger、Storage/Security 的协议注入状态机测试和真实浏览器分场景 smoke。
+- 录制自动采集、locator resolver、schema validator、条件等待、重试/失败产物和真正的确定性回放执行器；当前 `CDP_加载回放` 只创建状态，不执行步骤。
+- 事件队列按控制/进度/latest-only 分类，AttachWorker 裸 `detach()` 生命周期，以及剩余 `Pending.aux` 显式字段迁移。
+- 完成全部文档同步、模块审计基线、`npm run lint`、`npm run test:lingcpp`、`npm run build` 与最终阶段 3 smoke 后，才能把阶段 3 标记完成。
+
+### 5.3 阶段 3 验收门禁
 
 1. `cdpClientModule.ts` 新命令四端一致（contributes + binding + 运行时包装方法 + 文档）；handler 参数必须带 `handlerSignature: { parameterTypes: [], returnType: '空' }`。
 2. `tests/cdpClientRuntime.test.ts` 断言新命令生成；`modules.test.ts` 基线数字更新。

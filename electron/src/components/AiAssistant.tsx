@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2 } from 'lucide-react';
+import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2, Copy } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import QRCode from 'qrcode';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
@@ -158,16 +160,35 @@ interface Message {
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
+  /** ISO 创建时间；持久化与展示都以它为准，避免保存时被整体改写。 */
+  createdAt: string;
+  /** 推理型模型的思考过程；仅折叠展示，不作为正文持久化。 */
+  reasoningText?: string;
+  /** 连接状态、用量报表等系统通知；保留展示但不回传给模型当上下文。 */
+  contextExcluded?: boolean;
   codeBlock?: string;
   status?: 'complete' | 'streaming' | 'cancelled' | 'error';
   model?: { mode: 'system' | 'byok'; provider?: string; modelName?: string };
+}
+
+function createChatMessage(sender: 'user' | 'ai', text: string, options: { id?: string; contextExcluded?: boolean } = {}): Message {
+  const now = new Date();
+  return {
+    id: options.id ?? Math.random().toString(),
+    sender,
+    text,
+    timestamp: now.toLocaleTimeString(),
+    createdAt: now.toISOString(),
+    ...(options.contextExcluded ? { contextExcluded: true } : {})
+  };
 }
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   sender: 'ai',
   text: '你好！我是 LingBuilder 的 AI 智能编程助手。\n\n我会结合当前文件、工作区文件和已启用模块上下文，帮你生成可预览、可确认的代码修改方案。\n\n请在下方直接描述你想改什么；需要切换模型时，可在上方 AI 对接设置里选择。',
-  timestamp: ''
+  timestamp: '',
+  createdAt: ''
 };
 
 export default function AiAssistant({
@@ -187,9 +208,11 @@ export default function AiAssistant({
   commandService,
   isDarkMode = true
 }: AiAssistantProps) {
-  const [aiMode, setAiMode] = useState<AiConnectionMode>(
-    () => aiConnectionSession.getMode() || loadAiMode()
-  );
+  const [aiMode, setAiMode] = useState<AiConnectionMode>(() => {
+    // Web 预览没有云端账号 IPC；初始即落回自定义 API，避免渲染出不可用的登录表单。
+    const stored = aiConnectionSession.getMode() || loadAiMode();
+    return stored === 'system' && !window.lingBuilder?.cloudAccount ? 'byok' : stored;
+  });
   const [cloudSession, setCloudSession] = useState<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>({ authenticated: false });
   const [cloudModels, setCloudModels] = useState<Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }>>([]);
   const [cloudModelAlias, setCloudModelAlias] = useState('');
@@ -263,20 +286,32 @@ export default function AiAssistant({
   const [conversationStore, setConversationStore] = useState<AiConversationStore | null>(null);
   const [conversationError, setConversationError] = useState('');
   const activeConversation = conversationStore?.conversations.find(item => item.id === conversationStore.activeConversationId);
-  const chatHistory: Message[] = activeConversation?.messages.map(message => ({
+  const storedChatMessages = activeConversation?.messages.map(message => ({
     id: message.id,
-    sender: message.role === 'assistant' ? 'ai' : 'user',
+    sender: message.role === 'assistant' ? 'ai' as const : 'user' as const,
     text: message.content,
     timestamp: new Date(message.createdAt).toLocaleTimeString(),
+    createdAt: message.createdAt,
     status: message.status,
-    model: message.model
-  })) || [{ ...WELCOME_MESSAGE, timestamp: new Date().toLocaleTimeString() }];
+    model: message.model,
+    ...(message.contextExcluded ? { contextExcluded: true as const } : {})
+  }));
+  // 会话为空数组时同样要回落到欢迎消息：[].map() 是 truthy，旧写法会在清空后渲染出空白聊天区。
+  const chatHistory: Message[] = storedChatMessages && storedChatMessages.length > 0
+    ? storedChatMessages
+    : [{ ...WELCOME_MESSAGE, timestamp: new Date().toLocaleTimeString(), createdAt: new Date().toISOString() }];
   const [isAiResponding, setIsAiResponding] = useState(false);
   const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(() => new Set());
   const [collapsibleMessageIds, setCollapsibleMessageIds] = useState<Set<string>>(() => new Set());
+  const [reasoningExpandedMessageIds, setReasoningExpandedMessageIds] = useState<Set<string>>(() => new Set());
+  const [confirmAction, setConfirmAction] = useState<{ kind: 'remove' | 'clear'; conversationId?: string } | null>(null);
+  const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
   const [editProposal, setEditProposal] = useState<WorkspaceEditProposal | null>(null);
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; text: string } | null>(null);
   const isLingCppFile = activeLanguage === 'lingcpp' || filePath.endsWith('.lcpp');
+  // Web 预览没有 window.lingBuilder.cloudAccount：系统 AI 标签禁用，避免出现点击无反应的登录表单。
+  const isCloudAccountAvailable = Boolean(window.lingBuilder?.cloudAccount);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const messageContentRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -292,6 +327,16 @@ export default function AiAssistant({
   const conversationSaveTimerRef = useRef<number | undefined>(undefined);
   const chatHistoryRef = useRef<Message[]>(chatHistory);
   chatHistoryRef.current = chatHistory;
+  // 挂载一次的云端事件监听通过 ref 读取最新值，避免每次按键都重新订阅并重复请求会话。
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const activeConversationRef = useRef(activeConversation);
+  activeConversationRef.current = activeConversation;
+  const aiEditContextRef = useRef({ filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles });
+  aiEditContextRef.current = { filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles };
+  const chatAutoScrollRef = useRef(true);
+  const confirmActionRef = useRef<{ kind: 'remove' | 'clear'; conversationId?: string; expiresAt: number } | null>(null);
+  const confirmActionTimerRef = useRef<number | undefined>(undefined);
   const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
   const aiConnectionSignature = [
     aiConfig.provider || DEFAULT_AI_CONFIG.provider,
@@ -308,14 +353,17 @@ export default function AiAssistant({
   };
 
   const persistMessages = (messages: Message[], immediately = false) => {
-    if (!projectId || !activeConversation) return;
+    const conversation = activeConversationRef.current;
+    const projectId = projectIdRef.current;
+    if (!projectId || !conversation) return;
     const save = async () => {
       try {
-        const response = await fetch(`/api/ai/conversations/${encodeURIComponent(activeConversation.id)}/messages`, {
+        const response = await fetch(`/api/ai/conversations/${encodeURIComponent(conversation.id)}/messages`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectId, messages: messages.filter(message => message.id !== 'welcome').map(message => ({
             id: message.id, role: message.sender === 'ai' ? 'assistant' : 'user', content: message.text,
-            createdAt: new Date().toISOString(), status: message.status || 'complete', model: message.model
+            createdAt: message.createdAt || new Date().toISOString(), status: message.status || 'complete', model: message.model,
+            ...(message.contextExcluded ? { contextExcluded: true } : {})
           })) })
         });
         const result = await response.json().catch(() => ({}));
@@ -331,17 +379,19 @@ export default function AiAssistant({
   const updateChatHistory = (updater: (previous: Message[]) => Message[], immediately = false) => {
     const next = updater(chatHistoryRef.current);
     chatHistoryRef.current = next;
-    if (activeConversation) {
+    const conversation = activeConversationRef.current;
+    if (conversation) {
       setConversationStore(previous => previous ? {
         ...previous,
-        conversations: previous.conversations.map(conversation => conversation.id === activeConversation.id ? {
-          ...conversation,
+        conversations: previous.conversations.map(item => item.id === conversation.id ? {
+          ...item,
           updatedAt: new Date().toISOString(),
           messages: next.filter(message => message.id !== 'welcome').map(message => ({
             id: message.id, role: message.sender === 'ai' ? 'assistant' as const : 'user' as const,
-            content: message.text, createdAt: new Date().toISOString(), status: message.status || 'complete', model: message.model
+            content: message.text, createdAt: message.createdAt || new Date().toISOString(), status: message.status || 'complete', model: message.model,
+            ...(message.contextExcluded ? { contextExcluded: true } : {})
           }))
-        } : conversation)
+        } : item)
       } : previous);
     }
     persistMessages(next, immediately);
@@ -415,6 +465,57 @@ export default function AiAssistant({
     } catch (error) { setConversationError(error instanceof Error ? error.message : String(error)); }
   };
 
+  // 删除会话/清除上下文都是不可撤销操作：第一次点击只亮起确认态，3 秒内再点一次才执行。
+  const armOrRunConfirm = (kind: 'remove' | 'clear', conversationId: string | undefined, run: () => void) => {
+    const current = confirmActionRef.current;
+    if (current && current.kind === kind && current.conversationId === conversationId && current.expiresAt > Date.now()) {
+      confirmActionRef.current = null;
+      setConfirmAction(null);
+      if (confirmActionTimerRef.current) window.clearTimeout(confirmActionTimerRef.current);
+      run();
+      return;
+    }
+    confirmActionRef.current = { kind, conversationId, expiresAt: Date.now() + 3000 };
+    setConfirmAction({ kind, conversationId });
+    if (confirmActionTimerRef.current) window.clearTimeout(confirmActionTimerRef.current);
+    confirmActionTimerRef.current = window.setTimeout(() => {
+      confirmActionRef.current = null;
+      setConfirmAction(null);
+    }, 3000);
+  };
+
+  const requestRemoveConversation = (conversationId: string) => {
+    armOrRunConfirm('remove', conversationId, () => void removeConversation(conversationId));
+  };
+
+  const requestClearCurrentConversation = () => {
+    armOrRunConfirm('clear', undefined, () => void clearCurrentConversation());
+  };
+
+  const beginRenameConversation = (conversation: { id: string; title: string }) => {
+    setRenamingConversationId(conversation.id);
+    setRenameDraft(conversation.title);
+  };
+
+  const commitRenameConversation = async () => {
+    const conversationId = renamingConversationId;
+    if (!conversationId) return;
+    const title = renameDraft.trim();
+    setRenamingConversationId(null);
+    const currentProjectId = projectIdRef.current;
+    if (!currentProjectId || !title) return;
+    try {
+      const response = await fetch(`/api/ai/conversations/${encodeURIComponent(conversationId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: currentProjectId, title })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '重命名 AI 会话失败。');
+      applyConversationStore(result.store as AiConversationStore);
+    } catch (error) { setConversationError(error instanceof Error ? error.message : String(error)); }
+  };
+
   useEffect(() => {
     if (!commandService) return;
     const registration = commandService.registerCommands([
@@ -434,7 +535,7 @@ export default function AiAssistant({
         category: 'AI 助手',
         description: '清空当前会话消息，但保留会话记录。',
         enabled: () => Boolean(projectId && activeConversation),
-        handler: () => clearCurrentConversation()
+        handler: () => requestClearCurrentConversation()
       }
     ]);
     return () => registration.dispose();
@@ -505,24 +606,14 @@ export default function AiAssistant({
       setAiConnectedSignature(aiConnectionSignature);
       updateChatHistory(prev => [
         ...prev,
-        {
-          id: Math.random().toString(),
-          sender: 'ai',
-          text: `AI 已连接：${effectiveModelName}`,
-          timestamp: new Date().toLocaleTimeString()
-        }
+        createChatMessage('ai', `AI 已连接：${effectiveModelName}`, { contextExcluded: true })
       ]);
     } catch (error: any) {
       aiConnectionSession.clear();
       setAiConnectedSignature(null);
       updateChatHistory(prev => [
         ...prev,
-        {
-          id: Math.random().toString(),
-          sender: 'ai',
-          text: `AI 连接失败：${error?.message || '请检查 Base URL、API Key 和 Model Name。'}`,
-          timestamp: new Date().toLocaleTimeString()
-        }
+        createChatMessage('ai', `AI 连接失败：${error?.message || '请检查 Base URL、API Key 和 Model Name。'}`, { contextExcluded: true })
       ]);
     } finally {
       setIsConnectingAi(false);
@@ -531,12 +622,19 @@ export default function AiAssistant({
 
   useEffect(() => {
     const scrollPanel = chatScrollRef.current;
-    if (!scrollPanel) return;
+    if (!scrollPanel || !chatAutoScrollRef.current) return;
+    // 只有用户本来就停在底部时才跟随新内容滚动；上翻阅读时不被流式输出拽回底部。
     scrollPanel.scrollTo({
       top: scrollPanel.scrollHeight,
       behavior: 'smooth'
     });
   }, [chatHistory, isAiResponding]);
+
+  const handleChatScroll = () => {
+    const scrollPanel = chatScrollRef.current;
+    if (!scrollPanel) return;
+    chatAutoScrollRef.current = scrollPanel.scrollHeight - scrollPanel.scrollTop - scrollPanel.clientHeight < 80;
+  };
 
   useLayoutEffect(() => {
     const nextCollapsibleIds = new Set<string>();
@@ -616,19 +714,27 @@ export default function AiAssistant({
     setEditProposal(null);
   }, [filePath, projectMutationOwner.loadGeneration, projectMutationOwner.projectId]);
 
+  // Web 预览没有云端账号 IPC：仅在挂载时同步一次回退模式，不再随编辑器输入反复切换。
   useEffect(() => {
-    if (!window.lingBuilder?.cloudAccount) {
-      handleAiModeChange('byok');
-      return;
-    }
-    void window.lingBuilder.cloudAccount.session().then(async session => {
+    if (!window.lingBuilder?.cloudAccount) handleAiModeChange('byok');
+  }, []);
+
+  // 云端会话与流式事件只订阅一次：旧的依赖 sourceCode/workspaceFiles 会导致每次按键都
+  // 重新请求 /v1/me 与余额接口，并在流式期间反复重挂监听器。
+  useEffect(() => {
+    const cloudAccount = window.lingBuilder?.cloudAccount;
+    if (!cloudAccount) return;
+    let active = true;
+    void cloudAccount.session().then(async session => {
+      if (!active) return;
       setCloudSession(session);
       if (!session.authenticated) return;
       const result = await window.lingBuilder!.cloudAccount!.models();
+      if (!active) return;
       setCloudModels(result.models || []);
       setCloudModelAlias(current => current || result.models?.[0]?.alias || '');
-    }).catch(error => setCloudSession({ authenticated: false, error: error instanceof Error ? error.message : String(error) }));
-    return window.lingBuilder.cloudAi?.onEvent((requestKey, event) => {
+    }).catch(error => { if (active) setCloudSession({ authenticated: false, error: error instanceof Error ? error.message : String(error) }); });
+    const unsubscribe = window.lingBuilder?.cloudAi?.onEvent((requestKey, event) => {
       if (requestKey !== cloudRequestRef.current) return;
       if (event.type === 'delta' && event.text) {
         if (cloudKindRef.current.get(requestKey) === 'edit') {
@@ -637,7 +743,7 @@ export default function AiAssistant({
             const status = 'AI 正在生成可确认的修改方案（含源码与设计器），请稍候…';
             const existing = previous.find(message => message.id === id);
             if (existing) return previous.map(message => message.id === id ? { ...message, text: status } : message);
-            return [...previous, { id, sender: 'ai', text: status, timestamp: new Date().toLocaleTimeString() }];
+            return [...previous, { ...createChatMessage('ai', status, { id }), contextExcluded: true }];
           });
           return;
         }
@@ -645,7 +751,16 @@ export default function AiAssistant({
           const id = `cloud-${requestKey}`;
           const existing = previous.find(message => message.id === id);
           if (existing) return previous.map(message => message.id === id ? { ...message, text: message.text + event.text } : message);
-          return [...previous, { id, sender: 'ai', text: event.text, timestamp: new Date().toLocaleTimeString() }];
+          return [...previous, createChatMessage('ai', event.text, { id })];
+        });
+      }
+      if (event.type === 'reasoning' && event.text) {
+        // 推理型模型的思考过程与正文分离，只在折叠块里展示，不再混入回复正文。
+        updateChatHistory(previous => {
+          const id = `cloud-${requestKey}`;
+          const existing = previous.find(message => message.id === id);
+          if (existing) return previous.map(message => message.id === id ? { ...message, reasoningText: (message.reasoningText || '') + event.text } : message);
+          return [...previous, { ...createChatMessage('ai', '', { id }), reasoningText: event.text }];
         });
       }
       if (event.type === 'edit_draft' && Array.isArray(event.files)) {
@@ -654,23 +769,38 @@ export default function AiAssistant({
           : cloudInstructionRef.current.get(requestKey)
             || pendingCloudInstructionRef.current
             || '系统 AI 工作区编辑';
-        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, sourceCode, instruction, projectId, moduleContext, currentDesignerProject: designerProject, designerProject: event.designerProject, workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); }).catch(error => updateChatHistory(previous => [...previous, { id: Math.random().toString(), sender: 'ai', text: error instanceof Error ? error.message : String(error), timestamp: new Date().toLocaleTimeString() }]));
+        const editContext = aiEditContextRef.current;
+        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath: editContext.filePath, sourceCode: editContext.sourceCode, instruction, projectId: editContext.projectId, moduleContext: editContext.moduleContext, currentDesignerProject: editContext.designerProject, designerProject: event.designerProject, workspaceFiles: editContext.workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); }).catch(error => updateChatHistory(previous => [...previous, createChatMessage('ai', error instanceof Error ? error.message : String(error), { contextExcluded: true })]));
       }
       if (event.type === 'usage') {
-        updateChatHistory(previous => [...previous, { id: `usage-${requestKey}`, sender: 'ai', text: `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, timestamp: new Date().toLocaleTimeString() }]);
+        updateChatHistory(previous => [...previous, createChatMessage('ai', `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, { contextExcluded: true })]);
         void window.lingBuilder?.cloudAccount?.balance().then(value => setCloudSession(current => ({ ...current, balance: value.balance })));
       }
       if (event.type === 'completed' || event.type === 'error') {
-        if (event.type === 'error') updateChatHistory(previous => [...previous, { id: `error-${requestKey}`, sender: 'ai', text: event.message || '系统 AI 请求失败。', timestamp: new Date().toLocaleTimeString() }], true);
+        if (event.type === 'completed') {
+          // 模型只输出思考过程时，把思考内容提升为正文，避免用户看到空白回复。
+          updateChatHistory(previous => previous.map(message => message.id === `cloud-${requestKey}` && !message.text.trim() && message.reasoningText
+            ? { ...message, text: message.reasoningText, reasoningText: undefined }
+            : message), true);
+        }
+        if (event.type === 'error') updateChatHistory(previous => [...previous, createChatMessage('ai', event.message || '系统 AI 请求失败。', { contextExcluded: true })], true);
         cloudInstructionRef.current.delete(requestKey);
         if (cloudRequestRef.current === requestKey) pendingCloudInstructionRef.current = null;
         cloudRequestRef.current = null; setIsAiResponding(false);
       }
     });
-  }, [filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles]);
+    return () => {
+      active = false;
+      if (confirmActionTimerRef.current) window.clearTimeout(confirmActionTimerRef.current);
+      unsubscribe?.();
+    };
+  }, []);
 
   const handleCloudAccount = async (action: 'login' | 'register') => {
-    if (!window.lingBuilder?.cloudAccount) return;
+    if (!window.lingBuilder?.cloudAccount) {
+      setAccountMessage('当前运行环境不支持系统 AI 账号，请使用自定义 API 模式。');
+      return;
+    }
     setAccountBusy(true); setAccountMessage('');
     try {
       if (action === 'register') {
@@ -734,24 +864,9 @@ export default function AiAssistant({
       }
     } catch (error: any) {
       console.error(error);
-      // Fallback: translate locally using matching dict values if Gemini fails or is unconfigured
-      const fallbackTranslations = strings.map(s => {
-        // Simple search in templates.ts localTranslations is handled by parent,
-        // we'll append a failure alert in chat
-        return {
-          id: s.id,
-          translated: `[AI] 代码生成时出错: ${error.message || '未知错误'}`
-        };
-      });
-      
       updateChatHistory(prev => [
         ...prev,
-        {
-          id: Math.random().toString(),
-          sender: 'ai',
-          text: `⚠️ 批量代码生成失败：${error.message || '请确认 API Key、Base URL 和模型名称可以正常连接。'}\n\n已自动切换到本地词典匹配机制进行处理。`,
-          timestamp: new Date().toLocaleTimeString()
-        }
+        createChatMessage('ai', `⚠️ 批量代码生成失败：${error.message || '请确认 API Key、Base URL 和模型名称可以正常连接。'}`, { contextExcluded: true })
       ]);
     } finally {
       setTimeout(() => {
@@ -762,16 +877,11 @@ export default function AiAssistant({
   };
 
   // Conversational translation query
-  const handleSendChat = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitChatMessage = async () => {
+    if (isAiResponding) return;
     if (!chatInput.trim()) return;
 
-    const userMsg: Message = {
-      id: Math.random().toString(),
-      sender: 'user',
-      text: chatInput,
-      timestamp: new Date().toLocaleTimeString()
-    };
+    const userMsg: Message = createChatMessage('user', chatInput);
 
     updateChatHistory(prev => [...prev, userMsg]);
     setChatInput('');
@@ -784,7 +894,7 @@ export default function AiAssistant({
       if (aiMode === 'system') {
         if (!cloudSession.authenticated || !window.lingBuilder?.cloudAi || !cloudModelAlias) throw new Error('请先登录系统 AI 并选择可用模型。');
         pendingCloudInstructionRef.current = userMsg.text;
-        const messages = [...chatHistory.filter(message => message.id !== 'welcome').slice(-18).map(message => ({ role: message.sender === 'ai' ? 'assistant' as const : 'user' as const, content: message.text })), { role: 'user' as const, content: userMsg.text }];
+        const messages = [...chatHistoryRef.current.filter(message => message.id !== 'welcome' && !message.contextExcluded && message.id !== userMsg.id).slice(-18).map(message => ({ role: message.sender === 'ai' ? 'assistant' as const : 'user' as const, content: message.text })), { role: 'user' as const, content: userMsg.text }];
         const rulebookVersion = 'lingbuilder-rulebook-v1';
         const shouldUseEditFlow = (isLingCppFile && isLikelyCodeEditInstruction(userMsg.text)) || Boolean(
           designerProject && isLikelyDesignerEditInstruction(userMsg.text)
@@ -839,19 +949,21 @@ export default function AiAssistant({
         setEditProposal(proposal);
         updateChatHistory(prev => [
           ...prev,
-          {
-            id: Math.random().toString(),
-            sender: 'ai',
-            text: `已生成一份可预览的工作区编辑提案：${proposal.summary}\n\n本次涉及 ${proposal.changes.length} 个文件${proposal.designerProject ? '，并同步修改窗口设计器模型' : ''}，请在下方预览差异后选择“应用提案”或“拒绝提案”。`,
-            timestamp: new Date().toLocaleTimeString()
-          }
+          createChatMessage('ai', `已生成一份可预览的工作区编辑提案：${proposal.summary}\n\n本次涉及 ${proposal.changes.length} 个文件${proposal.designerProject ? '，并同步修改窗口设计器模型' : ''}，请在下方预览差异后选择“应用提案”或“拒绝提案”。`)
         ]);
         return;
       }
 
       // Build a contextual prompt about the current file's strings
       const fileContext = strings.slice(0, 10).map(s => `- ID: ${s.id}, 原文: "${s.original}"`).join('\n');
-      const prompt = `您是 C++ 编程与代码映射专家。以下是当前文件 ${filePath} 中提取的部分字符串（仅供参考）：\n${fileContext}\n\n用户提问：${userMsg.text}\n\n请针对用户的中文代码映射或 C++ 语法问题，进行专业解答。如果涉及代码，请用 Markdown 代码块返回，以便用户拷贝。`;
+      // 自定义 API 模式同样携带最近对话：追问（如“再详细一点”）才能命中上文。
+      const historyMessages = chatHistoryRef.current
+        .filter(message => message.id !== 'welcome' && message.id !== userMsg.id && !message.contextExcluded)
+        .slice(-8);
+      const historyBlock = historyMessages.length > 0
+        ? `以下是此前的对话记录（最近 ${historyMessages.length} 条，供上下文参考，回答需与最新问题连贯）：\n${historyMessages.map(message => `${message.sender === 'user' ? '用户' : '助手'}：${message.text.length > 2000 ? `${message.text.slice(0, 2000)}…` : message.text}`).join('\n')}\n\n`
+        : '';
+      const prompt = `您是 C++ 编程与代码映射专家。以下是当前文件 ${filePath} 中提取的部分字符串（仅供参考）：\n${fileContext}\n\n${historyBlock}用户提问：${userMsg.text}\n\n请针对用户的中文代码映射或 C++ 语法问题，结合此前对话进行连贯的专业解答。如果涉及代码，请用 Markdown 代码块返回，以便用户拷贝。`;
 
       const response = await fetch('/api/translate', {
         signal: controller.signal,
@@ -865,7 +977,9 @@ export default function AiAssistant({
       });
 
       if (!response.ok) {
-        throw new Error('AI 助手响应失败');
+        // 透传服务端 error/details（如 fetch failed / 缺少 API Key），不再只报通用失败。
+        const failure = await response.json().catch(() => ({} as { error?: string; details?: string }));
+        throw new Error([failure.error, failure.details].filter(Boolean).join('：') || `AI 助手响应失败（HTTP ${response.status}）`);
       }
 
       const data = await response.json();
@@ -873,28 +987,30 @@ export default function AiAssistant({
 
       updateChatHistory(prev => [
         ...prev,
-        {
-          id: Math.random().toString(),
-          sender: 'ai',
-          text: aiReplyText,
-          timestamp: new Date().toLocaleTimeString()
-        }
+        createChatMessage('ai', aiReplyText)
       ]);
     } catch (err: any) {
       if (controller.signal.aborted || stopRequestedRef.current) return;
       updateChatHistory(prev => [
         ...prev,
-        {
-          id: Math.random().toString(),
-          sender: 'ai',
-          text: `抱歉，在尝试回应您时发生错误：${err.message || '请检查 API 连接状况。'}`,
-          timestamp: new Date().toLocaleTimeString()
-        }
+        createChatMessage('ai', `抱歉，在尝试回应您时发生错误：${err.message || '请检查 API 连接状况。'}`, { contextExcluded: true })
       ]);
     } finally {
       if (chatAbortRef.current === controller) chatAbortRef.current = null;
       if (!isManagedByCloudStream) setIsAiResponding(false);
     }
+  };
+
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitChatMessage();
+  };
+
+  const handleChatInputKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter 发送、Shift+Enter 换行；输入法组合期间不触发发送。
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    void submitChatMessage();
   };
 
   const stopAiResponse = () => {
@@ -912,12 +1028,7 @@ export default function AiAssistant({
       chatAbortRef.current = null;
     }
     setIsAiResponding(false);
-    updateChatHistory(previous => [...previous, {
-      id: `stopped-${Date.now()}`,
-      sender: 'ai',
-      text: '已停止本次 AI 回复。',
-      timestamp: new Date().toLocaleTimeString()
-    }]);
+    updateChatHistory(previous => [...previous, createChatMessage('ai', '已停止本次 AI 回复。', { contextExcluded: true })]);
   };
 
   const handleApplyProposal = async () => {
@@ -945,23 +1056,13 @@ export default function AiAssistant({
       const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
       updateChatHistory(prev => [
         ...prev,
-        {
-          id: Math.random().toString(),
-          sender: 'ai',
-          text: `已应用该工作区编辑提案，源码和窗口设计器改动已写回：${changedFileList}。`,
-          timestamp: new Date().toLocaleTimeString()
-        }
+        createChatMessage('ai', `已应用该工作区编辑提案，源码和窗口设计器改动已写回：${changedFileList}。`)
       ]);
       setEditProposal(null);
     } catch (error) {
       updateChatHistory(prev => [
         ...prev,
-        {
-          id: Math.random().toString(),
-          sender: 'ai',
-          text: `应用编辑提案失败：${error instanceof Error ? error.message : String(error)}`,
-          timestamp: new Date().toLocaleTimeString()
-        }
+        createChatMessage('ai', `应用编辑提案失败：${error instanceof Error ? error.message : String(error)}`, { contextExcluded: true })
       ]);
     }
   };
@@ -975,12 +1076,7 @@ export default function AiAssistant({
     });
     updateChatHistory(prev => [
       ...prev,
-      {
-        id: Math.random().toString(),
-        sender: 'ai',
-        text: '已拒绝当前中文 C++ 编辑提案，源文件未发生变化。',
-        timestamp: new Date().toLocaleTimeString()
-      }
+      createChatMessage('ai', '已拒绝当前中文 C++ 编辑提案，源文件未发生变化。')
     ]);
     setEditProposal(null);
   };
@@ -1010,19 +1106,34 @@ export default function AiAssistant({
         <div className="mb-1 flex items-center justify-between gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">当前项目会话</span>
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => void clearCurrentConversation()} className="flex h-6 w-6 items-center justify-center rounded border border-amber-500/40 text-amber-400 hover:bg-amber-500/10" title="清除当前上下文" aria-label="清除当前上下文"><X className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={requestClearCurrentConversation} className={`flex h-6 w-6 items-center justify-center rounded border ${confirmAction?.kind === 'clear' ? 'border-rose-500/60 bg-rose-500/20 text-rose-400' : 'border-amber-500/40 text-amber-400 hover:bg-amber-500/10'}`} title={confirmAction?.kind === 'clear' ? '再次点击确认清除当前上下文' : '清除当前上下文'} aria-label={confirmAction?.kind === 'clear' ? '确认清除当前上下文' : '清除当前上下文'}><X className="h-3.5 w-3.5" /></button>
             <button type="button" onClick={() => void createConversation()} className="flex h-6 w-6 items-center justify-center rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10" title="新建 AI 会话" aria-label="新建 AI 会话"><Plus className="h-3.5 w-3.5" /></button>
           </div>
         </div>
         <div className="flex gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label="AI 会话列表">
           {conversationStore?.conversations.map(conversation => (
             <div key={conversation.id} className={`flex max-w-[170px] shrink-0 items-center rounded border ${conversation.id === activeConversation?.id ? 'border-blue-500/60 bg-blue-500/10' : isDarkMode ? 'border-[#3a3a44] bg-[#202028]' : 'border-slate-200 bg-white'}`}>
-              <button type="button" role="tab" aria-selected={conversation.id === activeConversation?.id} onClick={() => void activateConversation(conversation.id)} className="min-w-0 truncate px-2 py-1 text-[10px] text-slate-300" title={conversation.title}>{conversation.title}</button>
-              <button type="button" onClick={() => void removeConversation(conversation.id)} className="mr-1 rounded p-0.5 text-slate-500 hover:text-rose-400" title="删除会话" aria-label={`删除会话：${conversation.title}`}><Trash2 className="h-3 w-3" /></button>
+              {renamingConversationId === conversation.id ? (
+                <input
+                  autoFocus
+                  value={renameDraft}
+                  onChange={event => setRenameDraft(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') { event.preventDefault(); void commitRenameConversation(); }
+                    else if (event.key === 'Escape') { event.preventDefault(); setRenamingConversationId(null); }
+                  }}
+                  onBlur={() => void commitRenameConversation()}
+                  aria-label="重命名 AI 会话"
+                  className="w-24 rounded border border-blue-500/50 bg-transparent px-1.5 py-1 text-[10px] text-slate-200 focus:outline-none"
+                />
+              ) : (
+                <button type="button" role="tab" aria-selected={conversation.id === activeConversation?.id} onClick={() => void activateConversation(conversation.id)} onDoubleClick={() => beginRenameConversation(conversation)} className="min-w-0 truncate px-2 py-1 text-[10px] text-slate-300" title={`${conversation.title}（双击重命名）`}>{conversation.title}</button>
+              )}
+              <button type="button" onClick={() => requestRemoveConversation(conversation.id)} className={`mr-1 rounded p-0.5 ${confirmAction?.kind === 'remove' && confirmAction.conversationId === conversation.id ? 'bg-rose-500/20 text-rose-400' : 'text-slate-500 hover:text-rose-400'}`} title={confirmAction?.kind === 'remove' && confirmAction.conversationId === conversation.id ? '再次点击确认删除' : '删除会话'} aria-label={confirmAction?.kind === 'remove' && confirmAction.conversationId === conversation.id ? `确认删除会话：${conversation.title}` : `删除会话：${conversation.title}`}><Trash2 className="h-3 w-3" /></button>
             </div>
           ))}
         </div>
-        {conversationError && <div role="status" className="mt-1 text-[10px] text-rose-400">{conversationError}</div>}
+        {conversationError && <div role="alert" className="mt-1 text-[11px] leading-relaxed text-rose-400">{conversationError}</div>}
       </div>
 
       {/* Batch Translation Controller */}
@@ -1047,7 +1158,7 @@ export default function AiAssistant({
           </div>
           {isAiConfigExpanded && (
             <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${isDarkMode ? 'border-[#343442] bg-[#18181c]' : 'border-slate-200 bg-slate-100'}`} role="tablist" aria-label="AI 使用模式">
-              <button type="button" role="tab" aria-selected={aiMode === 'system'} onClick={() => handleAiModeChange('system')} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'system' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}><Cloud className="h-3 w-3"/>系统 AI</button>
+              <button type="button" role="tab" aria-selected={aiMode === 'system'} onClick={() => handleAiModeChange('system')} disabled={!isCloudAccountAvailable} title={isCloudAccountAvailable ? '使用 LingBuilder 云端系统 AI' : '系统 AI 需要在 LingBuilder 桌面版中使用'} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${aiMode === 'system' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}><Cloud className="h-3 w-3"/>系统 AI</button>
               <button type="button" role="tab" aria-selected={aiMode === 'byok'} onClick={() => handleAiModeChange('byok')} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'byok' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><KeyRound className="h-3 w-3"/>自定义 API</button>
             </div>
           )}
@@ -1213,7 +1324,7 @@ export default function AiAssistant({
       {/* Conversation Area */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Chat History scroll panel */}
-        <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
+        <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
           {chatHistory.map((msg, idx) => {
             const isAiMessageCollapsible = msg.sender === 'ai' && collapsibleMessageIds.has(msg.id);
             const isAiMessageCollapsed = isAiMessageCollapsible && !expandedMessageIds.has(msg.id);
@@ -1237,11 +1348,38 @@ export default function AiAssistant({
               <div
                 ref={element => { messageContentRefs.current[msg.id] = element; }}
                 onContextMenu={event => { event.preventDefault(); setMessageContextMenu({ x: event.clientX, y: event.clientY, text: msg.text }); }}
-                className={`relative select-text whitespace-pre-line leading-relaxed font-sans ${msg.sender === 'user' ? '!text-[#EAF2FF]' : ''} ${
+                className={`relative select-text leading-relaxed font-sans ${msg.sender === 'user' ? '!text-[#EAF2FF]' : ''} ${
                   isAiMessageCollapsed ? 'max-h-56 overflow-hidden' : ''
                 }`}
               >
-                {msg.text}
+                {msg.reasoningText && (
+                  <div className="mb-1.5">
+                    <button
+                      type="button"
+                      aria-expanded={reasoningExpandedMessageIds.has(msg.id)}
+                      aria-label={reasoningExpandedMessageIds.has(msg.id) ? '收起 AI 思考过程' : '展开 AI 思考过程'}
+                      onClick={() => setReasoningExpandedMessageIds(previous => {
+                        const next = new Set(previous);
+                        if (next.has(msg.id)) next.delete(msg.id); else next.add(msg.id);
+                        return next;
+                      })}
+                      className={`inline-flex min-h-6 items-center gap-1 rounded border px-1.5 text-[9px] transition-colors ${
+                        isDarkMode ? 'border-purple-500/30 text-purple-300/80 hover:bg-purple-500/10' : 'border-purple-300 text-purple-700 hover:bg-purple-50'
+                      }`}
+                    >
+                      {reasoningExpandedMessageIds.has(msg.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      <span>AI 思考过程</span>
+                    </button>
+                    {reasoningExpandedMessageIds.has(msg.id) && (
+                      <div className={`mt-1 max-h-40 overflow-y-auto whitespace-pre-line rounded border p-1.5 text-[10px] italic leading-relaxed ${
+                        isDarkMode ? 'border-[#343442] bg-[#1a1a22] text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-500'
+                      }`}>{msg.reasoningText}</div>
+                    )}
+                  </div>
+                )}
+                {msg.sender === 'ai'
+                  ? <ChatMarkdown text={msg.text} isDarkMode={isDarkMode} />
+                  : <span className="whitespace-pre-line">{msg.text}</span>}
                 {isAiMessageCollapsed && (
                   <div
                     aria-hidden="true"
@@ -1302,18 +1440,18 @@ export default function AiAssistant({
         {/* Chat Send Form */}
         <form 
           onSubmit={handleSendChat} 
-          className={`p-3 border-t flex gap-1.5 shrink-0 ${
+          className={`p-3 border-t flex gap-1.5 shrink-0 items-end ${
             isDarkMode ? 'bg-[#1e1e24] border-[#2d2d34]' : 'bg-white border-slate-200'
           }`}
         >
-          <input
-            type="text"
-            placeholder={isLingCppFile ? '提问或明确描述要修改当前 .lcpp 文件的内容...' : '问 AI 关于 C++ 中文编程的问题...'}
+          <textarea
+            rows={1}
+            placeholder={isLingCppFile ? '提问或明确描述要修改当前 .lcpp 文件的内容...（Enter 发送，Shift+Enter 换行）' : '问 AI 关于 C++ 中文编程的问题...（Enter 发送，Shift+Enter 换行）'}
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
-            disabled={isAiResponding}
+            onKeyDown={handleChatInputKeyDown}
             aria-label="向 AI 助手提问"
-            className={`flex-1 border rounded px-3 py-2 text-xs focus:outline-none focus:border-purple-500 disabled:opacity-50 ${
+            className={`max-h-32 min-h-9 flex-1 resize-none overflow-y-auto border rounded px-3 py-2 text-xs leading-relaxed focus:outline-none focus:border-purple-500 ${
               isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
             }`}
           />
@@ -1348,6 +1486,66 @@ export default function AiAssistant({
         </div>
       )}
     </div>
+  );
+}
+
+/** 从 ReactMarkdown 渲染结果里提取代码纯文本，供“复制”按钮使用。 */
+function extractNodeText(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(extractNodeText).join('');
+  if (typeof node === 'object' && 'props' in (node as { props?: unknown })) {
+    return extractNodeText((node as { props?: { children?: React.ReactNode } }).props?.children);
+  }
+  return '';
+}
+
+/** AI 回复中的代码块：带语言头部与一键复制，与模块文档预览的排版风格一致。 */
+function ChatCodeBlock({ children, isDarkMode }: { children?: React.ReactNode; isDarkMode: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const code = extractNodeText(children);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // 剪贴板不可用时保持沉默；用户仍可手动选中文本复制。
+    }
+  };
+  return (
+    <div className={`my-1.5 select-text overflow-hidden rounded border ${isDarkMode ? 'border-[#343442] bg-[#11131a]' : 'border-slate-200 bg-slate-50'}`}>
+      <div className={`flex items-center justify-between border-b px-2 py-1 text-[9px] ${isDarkMode ? 'border-[#2a2a34] text-slate-500' : 'border-slate-200 text-slate-500'}`}>
+        <span>代码</span>
+        <button type="button" onClick={() => void copy()} className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-blue-500/20" aria-label="复制代码">{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}{copied ? '已复制' : '复制'}</button>
+      </div>
+      <pre className="overflow-x-auto p-2 text-[10px] leading-relaxed font-mono">{children}</pre>
+    </div>
+  );
+}
+
+/** AI 回复正文：渲染 Markdown（代码块/列表/链接），用户消息仍保持纯文本。 */
+function ChatMarkdown({ text, isDarkMode }: { text: string; isDarkMode: boolean }) {
+  if (!text) return null;
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      skipHtml
+      components={{
+        p: props => <p className="my-1 break-words whitespace-pre-line" {...props} />,
+        ul: props => <ul className="my-1 list-disc space-y-0.5 pl-4" {...props} />,
+        ol: props => <ol className="my-1 list-decimal space-y-0.5 pl-4" {...props} />,
+        a: props => <a className="text-sky-400 underline hover:text-sky-300" target="_blank" rel="noreferrer" {...props} />,
+        pre: ({ children }) => <ChatCodeBlock isDarkMode={isDarkMode}>{children}</ChatCodeBlock>,
+        code: ({ className, ...props }) => (
+          <code
+            className={className?.includes('language-') ? 'font-mono' : `rounded bg-black/20 px-1 py-0.5 font-mono text-[0.9em] ${isDarkMode ? '' : 'bg-slate-200/60'}`}
+            {...props}
+          />
+        ),
+        table: props => <div className="my-1.5 overflow-x-auto"><table className="w-full border-collapse text-left text-[10px]" {...props} /></div>
+      }}
+    >{text}</ReactMarkdown>
   );
 }
 

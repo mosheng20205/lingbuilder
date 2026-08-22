@@ -371,8 +371,11 @@ public:
     bool Disconnect(long long connectionId) {
         std::shared_ptr<Connection> connection = FindConnection(connectionId);
         if (!connection) return Fail(L"CDP 连接 ID 无效。");
+        CancelCertificateErrors(connectionId);
+        DisableCertificateOverride(connectionId);
         CloseConnection(connection, true);
         ReleaseConnectionPages(connectionId, false);
+        ReleaseConnectionStage3State(connectionId);
         { std::lock_guard<std::mutex> lock(connectionsMutex_); connections_.erase(connectionId); }
         return true;
     }
@@ -1195,7 +1198,7 @@ public:
             target->sessionHandle = sessionHandle;
         }
         if (!SendCommand(connection, L"Target.attachToTarget", L"{\"targetId\":" + LingCdpJson::Escape(target->targetId) + L",\"flatten\":true}",
-                         PendingKind::AttachGenericTarget, handler ? handler : L"", std::to_wstring(sessionHandle), L"")) {
+                         PendingKind::AttachGenericTargetResult, handler ? handler : L"", std::to_wstring(sessionHandle), L"")) {
             std::lock_guard<std::mutex> lock(stage3Mutex_); sessions_.erase(sessionHandle); target->sessionHandle = 0; return 0;
         }
         return sessionHandle;
@@ -1241,7 +1244,7 @@ public:
         auto binding = std::make_shared<BindingState>(); binding->id = nextBindingId_.fetch_add(1); binding->connectionId = page->connectionId;
         binding->ownerPageId = pageId; binding->name = bindingName; binding->handler = handler ? handler : L"";
         { std::lock_guard<std::mutex> lock(stage3Mutex_); bindings_[binding->id] = binding; }
-        SendCommand(connection, L"Runtime.addBinding", L"{\"name\":" + LingCdpJson::Escape(bindingName) + L"}", PendingKind::AddBinding,
+        SendCommand(connection, L"Runtime.addBinding", L"{\"name\":" + LingCdpJson::Escape(bindingName) + L"}", PendingKind::AddBindingResult,
                     binding->handler, std::to_wstring(binding->id), page->sessionId);
         ReplayBindingsForConnection(page->connectionId);
         return binding->id;
@@ -1285,7 +1288,7 @@ public:
         auto bp=std::make_shared<BreakpointState>();bp->id=nextBreakpointId_.fetch_add(1);bp->connectionId=session->connectionId;bp->sessionHandle=session->id;bp->sessionGeneration=session->generation;bp->url=url?url:L"";bp->condition=condition?condition:L"";
         {std::lock_guard<std::mutex> lock(stage3Mutex_);breakpoints_[bp->id]=bp;}
         std::wstring params=L"{\"url\":"+LingCdpJson::Escape(bp->url)+L",\"lineNumber\":"+std::to_wstring(std::max(0,line-1))+L",\"columnNumber\":"+std::to_wstring(std::max(0,column-1))+L",\"condition\":"+LingCdpJson::Escape(bp->condition)+L"}";
-        SendCommand(connection,L"Debugger.setBreakpointByUrl",params,PendingKind::SetBreakpoint,handler?handler:L"",std::to_wstring(bp->id),session->sessionId);return bp->id;
+        SendCommand(connection,L"Debugger.setBreakpointByUrl",params,PendingKind::SetBreakpointResult,handler?handler:L"",std::to_wstring(bp->id),session->sessionId);return bp->id;
     }
     bool RemoveBreakpoint(long long breakpointId,const wchar_t* handler){auto bp=FindBreakpoint(breakpointId);if(!bp||bp->cdpId.empty())return Fail(L"CDP 断点无效或尚未解析。");auto session=FindSession(bp->sessionHandle);auto connection=FindConnection(bp->connectionId);if(!session||!connection)return false;return SendCommand(connection,L"Debugger.removeBreakpoint",L"{\"breakpointId\":"+LingCdpJson::Escape(bp->cdpId)+L"}",PendingKind::SuccessOnly,handler?handler:L"",std::to_wstring(bp->id),session->sessionId);}
     bool DebugPause(long long pageId,const wchar_t* handler){return DebuggerCommand(pageId,L"Debugger.pause",L"{}",handler);}
@@ -1301,6 +1304,68 @@ public:
     bool GetPerformanceMetrics(long long pageId,const wchar_t* handler){const auto page=FindPage(pageId);if(!page)return false;const auto connection=FindConnection(page->connectionId);SendCommand(connection,L"Performance.enable",L"{}",PendingKind::Internal,L"",L"",page->sessionId);return SendCommand(connection,L"Performance.getMetrics",L"{}",PendingKind::PerformanceMetrics,handler?handler:L"",std::to_wstring(pageId),page->sessionId);}
     bool GetStorageUsage(long long connectionId,const wchar_t* origin,const wchar_t* handler){auto connection=FindConnection(connectionId);std::wstring normalized;if(!connection||!NormalizeOrigin(origin?origin:L"",normalized))return Fail(L"CDP 来源必须是 exact http/https origin。");return SendCommand(connection,L"Storage.getUsageAndQuota",L"{\"origin\":"+LingCdpJson::Escape(normalized)+L"}",PendingKind::StorageUsage,handler?handler:L"",L"",L"");}
     bool ClearStorage(long long connectionId,const wchar_t* origin,const wchar_t* types,bool confirmed,const wchar_t* handler){if(!confirmed)return Fail(L"CDP 清理来源数据必须显式确认破坏性操作。");auto connection=FindConnection(connectionId);std::wstring normalized,storage;if(!connection||!NormalizeOrigin(origin?origin:L"",normalized)||!NormalizeStorageTypes(types?types:L"",storage))return Fail(L"CDP 来源或存储类型无效。");return SendCommand(connection,L"Storage.clearDataForOrigin",L"{\"origin\":"+LingCdpJson::Escape(normalized)+L",\"storageTypes\":"+LingCdpJson::Escape(storage)+L"}",PendingKind::SuccessOnly,handler?handler:L"",L"",L"");}
+
+    // ===== 阶段 3：Security 证书错误严格裁决 =====
+    bool EnableCertificateOverride(long long connectionId, const wchar_t* origins, int lifetimeSeconds,
+                                   const wchar_t* handler) {
+        const auto connection = FindConnection(connectionId);
+        if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
+        if (lifetimeSeconds < 1 || lifetimeSeconds > 600) return Fail(L"CDP 证书接管期限必须在 1 到 600 秒之间。");
+        std::set<std::wstring> normalized;
+        if (!ParseOriginAllowlist(origins ? origins : L"", normalized))
+            return Fail(L"CDP 证书白名单必须由 exact http/https origin 组成，不能使用通配符。");
+        const std::wstring callback = handler ? handler : L"";
+        if (callback.empty()) return Fail(L"CDP 证书错误处理器不能为空。");
+        {
+            std::lock_guard<std::mutex> lock(connection->mutex);
+            connection->certificateOrigins = std::move(normalized);
+            connection->certificateHandler = callback;
+            connection->certificateOverrideEnabled = true;
+            connection->certificateOverrideDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(lifetimeSeconds);
+        }
+        return SendCommand(connection, L"Security.setOverrideCertificateErrors", L"{\"override\":true}",
+                           PendingKind::SuccessOnly, L"", L"", L"");
+    }
+
+    bool DecideCertificateError(long long certificateErrorId, bool allow) {
+        std::shared_ptr<CertificateErrorState> state;
+        {
+            std::lock_guard<std::mutex> lock(stage3Mutex_);
+            const auto found = certificateErrors_.find(certificateErrorId);
+            if (found == certificateErrors_.end() || found->second->decided) return Fail(L"CDP 证书错误句柄无效或已裁决。");
+            state = found->second;
+            state->decided = true;
+            certificateErrors_.erase(found);
+        }
+        const auto connection = FindConnection(state->connectionId);
+        if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
+        return SendCommand(connection, L"Security.handleCertificateError",
+            L"{\"eventId\":" + std::to_wstring(state->eventId) + L",\"action\":\"" + (allow ? L"continue" : L"cancel") + L"\"}",
+            PendingKind::Internal, L"", L"", L"");
+    }
+
+    bool DisableCertificateOverride(long long connectionId) {
+        const auto connection = FindConnection(connectionId);
+        if (!connection) return Fail(L"CDP 连接 ID 无效。");
+        CancelCertificateErrors(connectionId);
+        {
+            std::lock_guard<std::mutex> lock(connection->mutex);
+            connection->certificateOverrideEnabled = false;
+            connection->certificateOrigins.clear();
+            connection->certificateHandler.clear();
+        }
+        if (!connection->connected.load()) return true;
+        return SendCommand(connection, L"Security.setOverrideCertificateErrors", L"{\"override\":false}",
+                           PendingKind::Internal, L"", L"", L"");
+    }
+
+    bool BindSecurityHandler(long long connectionId, const wchar_t* handler) {
+        const auto connection = FindConnection(connectionId);
+        if (!connection) return Fail(L"CDP 连接 ID 无效。");
+        std::lock_guard<std::mutex> lock(connection->mutex);
+        connection->securityHandler = handler ? handler : L"";
+        return !connection->securityHandler.empty();
+    }
 
     // ===== 阶段 3：录制/回放最小确定性模型 =====
     long long StartRecording(long long pageId,const wchar_t* path,const wchar_t* handler){auto page=FindPage(pageId);if(!page)return 0;auto rec=std::make_shared<RecordingState>();rec->id=nextRecordingId_.fetch_add(1);rec->connectionId=page->connectionId;rec->pageId=pageId;rec->path=path?path:L"";rec->handler=handler?handler:L"";rec->state=L"录制中";rec->active=true;{std::lock_guard<std::mutex> lock(recordingsMutex_);recordings_[rec->id]=rec;}return rec->id;}
@@ -1394,9 +1459,9 @@ private:
         SetFiles = 13,         // evaluate 得 objectId -> DOM.setFileInputFiles（aux=页面ID\t文件路径）
         GetWindowId = 14,      // 取 windowId 后继续设置窗口边界（aux=页面ID\t左\t上\t宽\t高）
         ElementShotRect = 15,  // evaluate 得 [x,y,w,h] -> captureScreenshot clip -> 写盘（aux=页面ID\t文件路径）
-        AttachGenericTarget = 16,
-        AddBinding = 17,
-        SetBreakpoint = 18,
+        AttachGenericTargetResult = 16,
+        AddBindingResult = 17,
+        SetBreakpointResult = 18,
         DebugEvaluate = 19,
         DebugProperties = 20,
         PerformanceMetrics = 21,
@@ -1642,14 +1707,128 @@ private:
 
     static bool NormalizeOrigin(const std::wstring& input,std::wstring& output){URL_COMPONENTSW parts={};parts.dwStructSize=sizeof(parts);parts.dwSchemeLength=static_cast<DWORD>(-1);parts.dwHostNameLength=static_cast<DWORD>(-1);parts.dwUrlPathLength=static_cast<DWORD>(-1);if(!WinHttpCrackUrl(input.c_str(),0,0,&parts)||parts.dwHostNameLength==0)return false;std::wstring scheme(parts.lpszScheme,parts.dwSchemeLength);if(scheme!=L"http"&&scheme!=L"https")return false;output=scheme+L"://"+std::wstring(parts.lpszHostName,parts.dwHostNameLength);const INTERNET_PORT defaultPort=scheme==L"https"?443:80;if(parts.nPort&&parts.nPort!=defaultPort)output+=L":"+std::to_wstring(parts.nPort);return true;}
     static bool NormalizeStorageTypes(const std::wstring& input,std::wstring& output){static const std::set<std::wstring> allowed={L"all",L"cookies",L"file_systems",L"indexeddb",L"local_storage",L"shader_cache",L"websql",L"service_workers",L"cache_storage",L"interest_groups",L"shared_storage"};output.clear();size_t start=0;while(start<=input.size()){size_t end=input.find(L',',start);if(end==std::wstring::npos)end=input.size();std::wstring item=input.substr(start,end-start);while(!item.empty()&&iswspace(item.front()))item.erase(item.begin());while(!item.empty()&&iswspace(item.back()))item.pop_back();if(!allowed.count(item))return false;if(!output.empty())output+=L",";output+=item;if(end==input.size())break;start=end+1;}return !output.empty();}
+    static bool ParseOriginAllowlist(const std::wstring& input, std::set<std::wstring>& output) {
+        output.clear();
+        size_t start = 0;
+        while (start <= input.size()) {
+            size_t end = input.find(L',', start);
+            if (end == std::wstring::npos) end = input.size();
+            std::wstring item = input.substr(start, end - start);
+            while (!item.empty() && iswspace(item.front())) item.erase(item.begin());
+            while (!item.empty() && iswspace(item.back())) item.pop_back();
+            std::wstring normalized;
+            if (item.find(L'*') != std::wstring::npos || !NormalizeOrigin(item, normalized)) return false;
+            output.insert(normalized);
+            if (end == input.size()) break;
+            start = end + 1;
+        }
+        return !output.empty();
+    }
 
-    static std::wstring RedactRecordingStep(const std::wstring& type,const std::wstring& json){std::wstring lower=json;std::transform(lower.begin(),lower.end(),lower.begin(),::towlower);const bool sensitive=lower.find(L"password")!=std::wstring::npos||lower.find(L"token")!=std::wstring::npos||lower.find(L"secret")!=std::wstring::npos||lower.find(L"authorization")!=std::wstring::npos;return L"{\"type\":"+LingCdpJson::Escape(type)+L",\"data\":"+(sensitive?L"{\"value\":\"${SECRET:REDACTED}\",\"sensitive\":true}":json)+L"}";}
-    bool WriteRecording(const std::shared_ptr<RecordingState>& rec){std::wstring body=L"{\"schema\":\"lingbuilder.cdp.recording\",\"schemaVersion\":1,\"steps\":[";for(size_t i=0;i<rec->stepsJson.size();++i){if(i)body+=L",";body+=rec->stepsJson[i];}body+=L"]}";std::string utf8;if(!LingCdpJson::WideToUtf8(body,utf8))return false;std::vector<unsigned char> bytes(utf8.begin(),utf8.end());return WriteFileBytesAtomic(rec->path,bytes);}
+    void CancelCertificateErrors(long long connectionId) {
+        std::vector<std::shared_ptr<CertificateErrorState>> values;
+        {
+            std::lock_guard<std::mutex> lock(stage3Mutex_);
+            for (auto it = certificateErrors_.begin(); it != certificateErrors_.end();) {
+                if (it->second->connectionId == connectionId) {
+                    values.push_back(it->second);
+                    it = certificateErrors_.erase(it);
+                } else ++it;
+            }
+        }
+        const auto connection = FindConnection(connectionId);
+        if (!connection || !connection->connected.load()) return;
+        for (const auto& state : values) {
+            SendCommand(connection, L"Security.handleCertificateError",
+                L"{\"eventId\":" + std::to_wstring(state->eventId) + L",\"action\":\"cancel\"}",
+                PendingKind::Internal, L"", L"", L"");
+        }
+    }
+
+    static std::wstring RedactRecordingStep(const std::wstring& type,const std::wstring& json){std::wstring lower=json;std::transform(lower.begin(),lower.end(),lower.begin(),::towlower);const bool sensitive=lower.find(L"password")!=std::wstring::npos||lower.find(L"token")!=std::wstring::npos||lower.find(L"secret")!=std::wstring::npos||lower.find(L"authorization")!=std::wstring::npos;return L"{\"type\":"+LingCdpJson::Escape(type)+L",\"data\":"+(sensitive?L"{\"value\":\"$" L"{SECRET:REDACTED}\",\"sensitive\":true}":json)+L"}";}
+    bool WriteRecording(const std::shared_ptr<RecordingState>& rec){std::wstring body=L"{\"schema\":\"lingbuilder.cdp.recording\",\"schemaVersion\":1,\"steps\":[";for(size_t i=0;i<rec->stepsJson.size();++i){if(i)body+=L",";body+=rec->stepsJson[i];}body+=L"]}";std::string utf8;if(!LingCdpJson::WideToUtf8(body,utf8))return false;std::vector<unsigned char> bytes(utf8.begin(),utf8.end());return WriteFileBytes(rec->path,bytes);}
 
     void ReplayBindingsForConnection(long long connectionId){std::vector<std::shared_ptr<BindingState>> bindings;std::vector<std::shared_ptr<SessionState>> sessions;{std::lock_guard<std::mutex> lock(stage3Mutex_);for(auto&p:bindings_)if(p.second->connectionId==connectionId&&p.second->active)bindings.push_back(p.second);for(auto&p:sessions_)if(p.second->connectionId==connectionId&&p.second->attached)sessions.push_back(p.second);}auto connection=FindConnection(connectionId);if(!connection)return;for(auto&s:sessions)for(auto&b:bindings)SendCommand(connection,L"Runtime.addBinding",L"{\"name\":"+LingCdpJson::Escape(b->name)+L"}",PendingKind::Internal,L"",L"",s->sessionId);}
 
-    void ReleaseConnectionStage3State(long long connectionId) { std::lock_guard<std::mutex> lock(stage3Mutex_); for(auto it=targets_.begin();it!=targets_.end();)if(it->second->connectionId==connectionId){targetByProtocolId_.erase(it->second->targetId);it=targets_.erase(it);}else++it;for(auto it=sessions_.begin();it!=sessions_.end();)if(it->second->connectionId==connectionId){sessionByProtocolId_.erase(it->second->sessionId);it=sessions_.erase(it);}else++it;for(auto it=frames_.begin();it!=frames_.end();)if(it->second->connectionId==connectionId){frameByProtocolId_.erase(it->second->frameId);it=frames_.erase(it);}else++it; }
-    void ReleaseAllStage3State(){std::lock_guard<std::mutex> lock(stage3Mutex_);targets_.clear();sessions_.clear();frames_.clear();contexts_.clear();bindings_.clear();breakpoints_.clear();callFrames_.clear();certificateErrors_.clear();targetByProtocolId_.clear();sessionByProtocolId_.clear();frameByProtocolId_.clear();std::lock_guard<std::mutex> taskLock(tasksMutex_);for(auto&p:tasks_)CloseTaskFile(p.second,false);tasks_.clear();}
+    void ReleaseConnectionStage3State(long long connectionId) {
+        std::vector<std::shared_ptr<TaskState>> tasks;
+        {
+            std::lock_guard<std::mutex> lock(stage3Mutex_);
+            for (auto it = targets_.begin(); it != targets_.end();) {
+                if (it->second->connectionId == connectionId) {
+                    targetByProtocolId_.erase(it->second->targetId);
+                    it = targets_.erase(it);
+                } else ++it;
+            }
+            for (auto it = sessions_.begin(); it != sessions_.end();) {
+                if (it->second->connectionId == connectionId) {
+                    sessionByProtocolId_.erase(it->second->sessionId);
+                    it = sessions_.erase(it);
+                } else ++it;
+            }
+            for (auto it = frames_.begin(); it != frames_.end();) {
+                if (it->second->connectionId == connectionId) {
+                    frameByProtocolId_.erase(it->second->frameId);
+                    it = frames_.erase(it);
+                } else ++it;
+            }
+            for (auto it = contexts_.begin(); it != contexts_.end();) {
+                if (it->second->connectionId == connectionId) it = contexts_.erase(it); else ++it;
+            }
+            for (auto it = bindings_.begin(); it != bindings_.end();) {
+                if (it->second->connectionId == connectionId) it = bindings_.erase(it); else ++it;
+            }
+            for (auto it = breakpoints_.begin(); it != breakpoints_.end();) {
+                if (it->second->connectionId == connectionId) it = breakpoints_.erase(it); else ++it;
+            }
+            for (auto it = callFrames_.begin(); it != callFrames_.end();) {
+                if (it->second->connectionId == connectionId) it = callFrames_.erase(it); else ++it;
+            }
+            for (auto it = certificateErrors_.begin(); it != certificateErrors_.end();) {
+                if (it->second->connectionId == connectionId) it = certificateErrors_.erase(it); else ++it;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(tasksMutex_);
+            for (auto it = tasks_.begin(); it != tasks_.end();) {
+                if (it->second->connectionId == connectionId) {
+                    tasks.push_back(it->second);
+                    it = tasks_.erase(it);
+                } else ++it;
+            }
+        }
+        for (const auto& task : tasks) CloseTaskFile(task, false);
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            for (auto it = recordings_.begin(); it != recordings_.end();) {
+                if (it->second->connectionId == connectionId) it = recordings_.erase(it); else ++it;
+            }
+            for (auto it = replays_.begin(); it != replays_.end();) {
+                if (it->second->connectionId == connectionId) it = replays_.erase(it); else ++it;
+            }
+        }
+    }
+
+    void ReleaseAllStage3State() {
+        std::vector<std::shared_ptr<TaskState>> tasks;
+        {
+            std::lock_guard<std::mutex> lock(stage3Mutex_);
+            targets_.clear(); sessions_.clear(); frames_.clear(); contexts_.clear(); bindings_.clear();
+            breakpoints_.clear(); callFrames_.clear(); certificateErrors_.clear();
+            targetByProtocolId_.clear(); sessionByProtocolId_.clear(); frameByProtocolId_.clear();
+        }
+        {
+            std::lock_guard<std::mutex> lock(tasksMutex_);
+            for (const auto& pair : tasks_) tasks.push_back(pair.second);
+            tasks_.clear();
+        }
+        for (const auto& task : tasks) CloseTaskFile(task, false);
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            recordings_.clear();
+            replays_.clear();
+        }
+    }
 
 
     struct PageSession {
@@ -1880,6 +2059,31 @@ private:
                     std::lock_guard<std::mutex> lock(connection->mutex);
                     connection->lastError = L"CDP 内部命令超时（" + std::to_wstring(timeoutMs) + L" 毫秒）：" + pending.method;
                 }
+            }
+            bool certificateExpired = false;
+            {
+                std::lock_guard<std::mutex> lock(connection->mutex);
+                certificateExpired = connection->certificateOverrideEnabled
+                    && now >= connection->certificateOverrideDeadline;
+            }
+            if (certificateExpired) DisableCertificateOverride(connection->id);
+        }
+        std::vector<std::shared_ptr<CertificateErrorState>> expiredCertificates;
+        {
+            std::lock_guard<std::mutex> lock(stage3Mutex_);
+            for (auto it = certificateErrors_.begin(); it != certificateErrors_.end();) {
+                if (!it->second->decided && now >= it->second->deadline) {
+                    expiredCertificates.push_back(it->second);
+                    it = certificateErrors_.erase(it);
+                } else ++it;
+            }
+        }
+        for (const auto& state : expiredCertificates) {
+            const auto connection = FindConnection(state->connectionId);
+            if (connection && connection->connected.load()) {
+                SendCommand(connection, L"Security.handleCertificateError",
+                    L"{\"eventId\":" + std::to_wstring(state->eventId) + L",\"action\":\"cancel\"}",
+                    PendingKind::Internal, L"", L"", L"");
             }
         }
         std::vector<std::shared_ptr<PageSession>> pages;
@@ -2279,6 +2483,7 @@ private:
                 SendCommand(connection, L"Runtime.enable", L"{}", PendingKind::Internal, L"", L"", sessionField->text);
                 SendCommand(connection, L"Network.enable", L"{}", PendingKind::Internal, L"", L"", sessionField->text);
                 SendCommand(connection, L"Log.enable", L"{}", PendingKind::Internal, L"", L"", sessionField->text);
+                RegisterPageSessionState(connection, page, sessionField->text);
                 EmitEvent(connection, page, pending.handler, L"页面就绪", page->url, L"");
                 return;
             }
@@ -2309,6 +2514,7 @@ private:
                 SendCommand(connection, L"Runtime.enable", L"{}", PendingKind::Internal, L"", L"", sessionField->text);
                 SendCommand(connection, L"Network.enable", L"{}", PendingKind::Internal, L"", L"", sessionField->text);
                 SendCommand(connection, L"Log.enable", L"{}", PendingKind::Internal, L"", L"", sessionField->text);
+                RegisterPageSessionState(connection, page, sessionField->text);
                 SendCommand(connection, L"Page.navigate", L"{\"url\":" + LingCdpJson::Escape(targetUrl) + L"}",
                             PendingKind::NavigateWait, pending.handler, std::to_wstring(page->id), sessionField->text);
                 return;
@@ -2406,11 +2612,11 @@ private:
                 // CDP RGBA 对象无法直接消费 CSS 字符串，当前固定使用可靠的蓝色半透明高亮。
                 SendCommand(connection,L"Overlay.highlightRect",L"{\"x\":"+LingCdpJson::NumberText(rect[0])+L",\"y\":"+LingCdpJson::NumberText(rect[1])+L",\"width\":"+LingCdpJson::NumberText(rect[2])+L",\"height\":"+LingCdpJson::NumberText(rect[3])+L",\"color\":{\"r\":111,\"g\":168,\"b\":220,\"a\":0.35}}",PendingKind::Internal,L"",color,pending.expectedSessionId);return;
             }
-            case PendingKind::AttachGenericTarget: {
+            case PendingKind::AttachGenericTargetResult: {
                 const long long sessionHandle=_wtoi64(pending.aux.c_str());auto session=FindSession(sessionHandle);auto sid=result->Find(L"sessionId");if(!session||!sid||sid->kind!=LingCdpJson::Value::Kind::String){EmitCommand(connection,pending,false,L"CDP 附加目标失败。",0);return;}{std::lock_guard<std::mutex> lock(stage3Mutex_);session->sessionId=sid->text;session->attached=true;sessionByProtocolId_[sid->text]=session->id;auto target=targets_.find(session->targetHandle);if(target!=targets_.end()){target->second->sessionHandle=session->id;target->second->attached=true;}}SendCommand(connection,L"Runtime.enable",L"{}",PendingKind::Internal,L"",L"",sid->text);EmitCommand(connection,pending,true,std::to_wstring(sessionHandle),0);return;
             }
-            case PendingKind::AddBinding: EmitCommand(connection,pending,true,pending.aux,0); return;
-            case PendingKind::SetBreakpoint: {
+            case PendingKind::AddBindingResult: EmitCommand(connection,pending,true,pending.aux,0); return;
+            case PendingKind::SetBreakpointResult: {
                 const long long id=_wtoi64(pending.aux.c_str());auto bp=FindBreakpoint(id);auto protocol=result->Find(L"breakpointId");if(!bp||!protocol||protocol->kind!=LingCdpJson::Value::Kind::String){EmitCommand(connection,pending,false,L"CDP 设置断点失败。",0);return;}bp->cdpId=protocol->text;bp->active=true;bp->snapshotJson=LingCdpJson::Serialize(result);EmitCommand(connection,pending,true,bp->snapshotJson,0);return;
             }
             case PendingKind::DebugEvaluate:
@@ -2419,7 +2625,7 @@ private:
             case PendingKind::StorageUsage: EmitCommand(connection,pending,true,LingCdpJson::Serialize(result),0); return;
             case PendingKind::WriteJsonFile:
             case PendingKind::CreateTaskFromResponse: {
-                std::string utf8;const std::wstring json=LingCdpJson::Serialize(result);if(!LingCdpJson::WideToUtf8(json,utf8)||!WriteFileBytesAtomic(pending.outputPath.empty()?pending.aux:pending.outputPath,std::vector<unsigned char>(utf8.begin(),utf8.end()))){EmitCommand(connection,pending,false,L"CDP 无法原子写入任务输出。",0);return;}EmitCommand(connection,pending,true,pending.outputPath.empty()?pending.aux:pending.outputPath,0);return;
+                std::string utf8;const std::wstring json=LingCdpJson::Serialize(result);if(!LingCdpJson::WideToUtf8(json,utf8)||!WriteFileBytes(pending.outputPath.empty()?pending.aux:pending.outputPath,std::vector<unsigned char>(utf8.begin(),utf8.end()))){EmitCommand(connection,pending,false,L"CDP 无法原子写入任务输出。",0);return;}EmitCommand(connection,pending,true,pending.outputPath.empty()?pending.aux:pending.outputPath,0);return;
             }
             case PendingKind::IoRead: {
                 auto task=FindTask(pending.taskId);if(!task)return;auto data=result->Find(L"data");auto eof=result->Find(L"eof");if(data&&data->kind==LingCdpJson::Value::Kind::String)WriteTaskChunk(task,data->text);if(eof&&eof->kind==LingCdpJson::Value::Kind::Bool&&eof->boolean){CloseTaskFile(task,true);task->terminal=true;task->state=L"已完成";SendCommand(connection,L"IO.close",L"{\"handle\":"+LingCdpJson::Escape(task->ioHandle)+L"}",PendingKind::Internal,L"",L"",L"");}else ReadIoStream(connection,task);return;
@@ -3004,6 +3210,47 @@ private:
         return SendCommand(connection, method, L"{}", PendingKind::SuccessOnly, handler ? handler : L"", L"", L"");
     }
 
+    void RegisterPageSessionState(const std::shared_ptr<Connection>& connection,
+                                  const std::shared_ptr<PageSession>& page,
+                                  const std::wstring& protocolSessionId) {
+        if (!connection || !page || protocolSessionId.empty()) return;
+        std::lock_guard<std::mutex> lock(stage3Mutex_);
+        long long targetHandle = 0;
+        const auto indexedTarget = targetByProtocolId_.find(page->targetId);
+        if (indexedTarget != targetByProtocolId_.end()) {
+            targetHandle = indexedTarget->second;
+        } else {
+            targetHandle = nextTargetHandle_.fetch_add(1);
+            auto target = std::make_shared<TargetState>();
+            target->id = targetHandle;
+            target->connectionId = connection->id;
+            target->ownerPageId = page->id;
+            target->targetId = page->targetId;
+            target->type = L"page";
+            target->url = page->url;
+            target->attached = true;
+            targets_[targetHandle] = target;
+            targetByProtocolId_[page->targetId] = targetHandle;
+        }
+        auto target = targets_[targetHandle];
+        target->ownerPageId = page->id;
+        target->url = page->url;
+        target->attached = true;
+        long long sessionHandle = target->sessionHandle;
+        if (sessionHandle == 0) sessionHandle = nextSessionHandle_.fetch_add(1);
+        auto session = sessions_.count(sessionHandle) ? sessions_[sessionHandle] : std::make_shared<SessionState>();
+        session->id = sessionHandle;
+        session->connectionId = connection->id;
+        session->targetHandle = targetHandle;
+        session->ownerPageId = page->id;
+        session->sessionId = protocolSessionId;
+        session->targetType = L"page";
+        session->attached = true;
+        sessions_[sessionHandle] = session;
+        sessionByProtocolId_[protocolSessionId] = sessionHandle;
+        target->sessionHandle = sessionHandle;
+    }
+
     void HandleAttachedTarget(const std::shared_ptr<Connection>& connection,const LingCdpJson::ValuePtr& params,const std::wstring& parentProtocolSession){if(!params)return;auto sid=params->Find(L"sessionId");auto info=params->Find(L"targetInfo");if(!sid||sid->kind!=LingCdpJson::Value::Kind::String||!info)return;auto targetId=info->Find(L"targetId");auto type=info->Find(L"type");if(!targetId||targetId->kind!=LingCdpJson::Value::Kind::String)return;std::shared_ptr<TargetState> target;std::shared_ptr<SessionState> session;{std::lock_guard<std::mutex> lock(stage3Mutex_);long long targetHandle=0;auto indexed=targetByProtocolId_.find(targetId->text);if(indexed!=targetByProtocolId_.end())targetHandle=indexed->second;else{targetHandle=nextTargetHandle_.fetch_add(1);target=std::make_shared<TargetState>();target->id=targetHandle;target->connectionId=connection->id;target->targetId=targetId->text;targets_[targetHandle]=target;targetByProtocolId_[targetId->text]=targetHandle;}if(!target)target=targets_[targetHandle];target->type=type&&type->kind==LingCdpJson::Value::Kind::String?type->text:L"unknown";auto url=info->Find(L"url");auto title=info->Find(L"title");if(url&&url->kind==LingCdpJson::Value::Kind::String)target->url=url->text;if(title&&title->kind==LingCdpJson::Value::Kind::String)target->title=title->text;target->attached=true;long long sessionHandle=target->sessionHandle?target->sessionHandle:nextSessionHandle_.fetch_add(1);session=target->sessionHandle?sessions_[sessionHandle]:std::make_shared<SessionState>();session->id=sessionHandle;session->connectionId=connection->id;session->targetHandle=target->id;session->sessionId=sid->text;session->targetType=target->type;session->attached=true;auto parent=sessionByProtocolId_.find(parentProtocolSession);session->parentSessionHandle=parent==sessionByProtocolId_.end()?0:parent->second;sessions_[sessionHandle]=session;sessionByProtocolId_[sid->text]=sessionHandle;target->sessionHandle=sessionHandle;}SendCommand(connection,L"Runtime.enable",L"{}",PendingKind::Internal,L"",L"",sid->text);if(target->type==L"page"||target->type==L"iframe")SendCommand(connection,L"Page.enable",L"{}",PendingKind::Internal,L"",L"",sid->text);ReplayBindingsForConnection(connection->id);auto waiting=params->Find(L"waitingForDebugger");if(waiting&&waiting->kind==LingCdpJson::Value::Kind::Bool&&waiting->boolean)SendCommand(connection,L"Runtime.runIfWaitingForDebugger",L"{}",PendingKind::Internal,L"",L"",sid->text);std::wstring handler;{std::lock_guard<std::mutex> lock(connection->mutex);handler=connection->targetHandler;}auto event=std::make_shared<Event>();event->id=nextEventId_.fetch_add(1);event->connectionId=connection->id;event->handler=handler;event->type=L"目标已附加";event->targetHandle=target->id;event->sessionHandle=session->id;event->text=target->url;event->detail=target->type;PublishEvent(event);}
 
     void HandleDetachedTarget(const std::shared_ptr<Connection>& connection,const LingCdpJson::ValuePtr& params){if(!params)return;auto sid=params->Find(L"sessionId");if(!sid||sid->kind!=LingCdpJson::Value::Kind::String)return;std::shared_ptr<SessionState> session;{std::lock_guard<std::mutex> lock(stage3Mutex_);auto indexed=sessionByProtocolId_.find(sid->text);if(indexed==sessionByProtocolId_.end())return;session=sessions_[indexed->second];session->attached=false;++session->generation;sessionByProtocolId_.erase(indexed);for(long long frame:session->debugger.currentFrameHandles)callFrames_.erase(frame);session->debugger.currentFrameHandles.clear();session->debugger.paused=false;}FailPendingForSession(connection,sid->text,L"CDP 目标会话已分离。");std::wstring handler;{std::lock_guard<std::mutex> lock(connection->mutex);handler=connection->targetHandler;}auto event=std::make_shared<Event>();event->id=nextEventId_.fetch_add(1);event->connectionId=connection->id;event->handler=handler;event->type=L"目标已分离";event->sessionHandle=session->id;event->targetHandle=session->targetHandle;PublishEvent(event);}
@@ -3024,8 +3271,7 @@ private:
     void FailPendingForSession(const std::shared_ptr<Connection>& connection,const std::wstring& sid,const std::wstring& reason){std::vector<Pending> values;{std::lock_guard<std::mutex> lock(connection->pendingMutex);for(auto it=connection->pending.begin();it!=connection->pending.end();)if(it->second.expectedSessionId==sid){values.push_back(it->second);it=connection->pending.erase(it);}else++it;}for(auto&p:values)EmitCommand(connection,p,false,reason,0);}
     void WriteTaskChunk(const std::shared_ptr<TaskState>& task,const std::wstring& text){if(!task||task->file==INVALID_HANDLE_VALUE)return;std::string utf8;if(!LingCdpJson::WideToUtf8(text,utf8))return;if(task->maximumBytes>0&&task->writtenBytes+static_cast<long long>(utf8.size())>task->maximumBytes){task->state=L"失败";task->error=L"输出超过文件上限";CloseTaskFile(task,false);task->terminal=true;return;}DWORD written=0;if(WriteFile(task->file,utf8.data(),static_cast<DWORD>(utf8.size()),&written,nullptr)&&written==utf8.size())task->writtenBytes+=written;}
     void ReadIoStream(const std::shared_ptr<Connection>& connection,const std::shared_ptr<TaskState>& task){if(!task||task->ioHandle.empty()||task->terminal)return;SendCommand(connection,L"IO.read",L"{\"handle\":"+LingCdpJson::Escape(task->ioHandle)+L",\"size\":262144}",PendingKind::IoRead,task->handler,std::to_wstring(task->id),L"");}
-    bool WriteFileBytesAtomic(const std::wstring& path,const std::vector<unsigned char>& bytes){return WriteFileBytes(path,bytes);}
-    bool WriteTaskOutput(const std::shared_ptr<TaskState>& task){if(!task)return false;std::vector<unsigned char> bytes;return WriteFileBytesAtomic(task->finalPath,bytes);}
+    bool WriteTaskOutput(const std::shared_ptr<TaskState>& task){if(!task)return false;std::vector<unsigned char> bytes;return WriteFileBytes(task->finalPath,bytes);}
     void HandleTargetInfo(const std::shared_ptr<Connection>& connection,const LingCdpJson::ValuePtr& info){if(!info)return;auto id=info->Find(L"targetId");if(!id||id->kind!=LingCdpJson::Value::Kind::String)return;std::lock_guard<std::mutex> lock(stage3Mutex_);long long handle=targetByProtocolId_.count(id->text)?targetByProtocolId_[id->text]:nextTargetHandle_.fetch_add(1);auto target=targets_.count(handle)?targets_[handle]:std::make_shared<TargetState>();target->id=handle;target->connectionId=connection->id;target->targetId=id->text;auto type=info->Find(L"type");auto url=info->Find(L"url");if(type&&type->kind==LingCdpJson::Value::Kind::String)target->type=type->text;if(url&&url->kind==LingCdpJson::Value::Kind::String)target->url=url->text;targets_[handle]=target;targetByProtocolId_[id->text]=handle;}
 
     void EmitEvent(const std::shared_ptr<Connection>& connection, const std::shared_ptr<PageSession>& page,
@@ -3233,15 +3479,46 @@ private:
         return true;
     }
 
-    static bool WriteFileBytes(const std::wstring& path, const std::vector<unsigned char>& data) { return WriteFileBytesAtomic(path,data); }
-    static bool WriteFileBytesAtomic(const std::wstring& path, const std::vector<unsigned char>& data) {
-        if(path.empty()||data.size()>static_cast<size_t>(2ULL*1024*1024*1024))return false;
-        const std::wstring temporary=path+L".lingbuilder-cdp-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64())+L".tmp";
-        HANDLE file=CreateFileW(temporary.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);if(file==INVALID_HANDLE_VALUE)return false;
-        bool ok=true;size_t offset=0;while(ok&&offset<data.size()){DWORD chunk=static_cast<DWORD>(std::min<size_t>(data.size()-offset,1u<<20));DWORD written=0;ok=WriteFile(file,data.data()+offset,chunk,&written,nullptr)!=FALSE&&written==chunk;offset+=written;if(written==0&&chunk)ok=false;}
-        if(ok)ok=FlushFileBuffers(file)!=FALSE;CloseHandle(file);if(ok)ok=MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=FALSE;if(!ok)DeleteFileW(temporary.c_str());return ok;
+    static bool WriteFileBytes(const std::wstring& path, const std::vector<unsigned char>& data) {
+        if (path.empty() || data.size() > static_cast<size_t>(2ULL * 1024 * 1024 * 1024)) return false;
+        const std::wstring temporary = path + L".lingbuilder-cdp-" + std::to_wstring(GetCurrentProcessId())
+            + L"-" + std::to_wstring(GetTickCount64()) + L".tmp";
+        HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                  FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE) return false;
+        bool ok = true;
+        size_t offset = 0;
+        while (ok && offset < data.size()) {
+            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(data.size() - offset, 1u << 20));
+            DWORD written = 0;
+            ok = WriteFile(file, data.data() + offset, chunk, &written, nullptr) != FALSE && written == chunk;
+            offset += written;
+            if (written == 0 && chunk != 0) ok = false;
+        }
+        if (ok) ok = FlushFileBuffers(file) != FALSE;
+        CloseHandle(file);
+        if (ok) {
+            ok = MoveFileExW(temporary.c_str(), path.c_str(),
+                             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+        }
+        if (!ok) DeleteFileW(temporary.c_str());
+        return ok;
     }
-    static void CloseTaskFile(const std::shared_ptr<TaskState>& task,bool commit){if(!task)return;if(task->file!=INVALID_HANDLE_VALUE){if(commit)FlushFileBuffers(task->file);CloseHandle(task->file);task->file=INVALID_HANDLE_VALUE;}if(commit)MoveFileExW(task->temporaryPath.c_str(),task->finalPath.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);else if(!task->temporaryPath.empty())DeleteFileW(task->temporaryPath.c_str());}
+
+    static void CloseTaskFile(const std::shared_ptr<TaskState>& task, bool commit) {
+        if (!task) return;
+        if (task->file != INVALID_HANDLE_VALUE) {
+            if (commit) FlushFileBuffers(task->file);
+            CloseHandle(task->file);
+            task->file = INVALID_HANDLE_VALUE;
+        }
+        if (commit) {
+            MoveFileExW(task->temporaryPath.c_str(), task->finalPath.c_str(),
+                        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+        } else if (!task->temporaryPath.empty()) {
+            DeleteFileW(task->temporaryPath.c_str());
+        }
+    }
 
     static bool ParsePoint(const std::wstring& text, LingCdpJson::ValuePtr& out) {
         if (text.empty() || text == L"null") return false;
@@ -3503,4 +3780,51 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     bool CDP_绑定新页面事件(long long connection, const wchar_t* handler) { return cdpClientRuntime_.BindNewPageHandler(connection, handler); }
     bool CDP_鼠标拖拽(long long page, int fromX, int fromY, int toX, int toY, int steps) { return cdpClientRuntime_.MouseDrag(page, fromX, fromY, toX, toY, steps); }
     bool CDP_调用函数(long long element, const wchar_t* functionCode, const wchar_t* handler) { return cdpClientRuntime_.CallFunction(element, functionCode, handler); }
+    bool CDP_设置自动附加(long long connection, bool enabled, bool waitForDebugger, const wchar_t* handler) { return cdpClientRuntime_.SetAutoAttach(connection, enabled, waitForDebugger, handler); }
+    bool CDP_绑定目标事件(long long connection, const wchar_t* handler) { return cdpClientRuntime_.BindTargetHandler(connection, handler); }
+    const wchar_t* CDP_枚举目标JSON(long long connection, const wchar_t* type) { cdpClientReturnText_ = cdpClientRuntime_.ListTargetsJson(connection, type ? type : L""); return cdpClientReturnText_.c_str(); }
+    long long CDP_附加目标(long long target, const wchar_t* handler) { return cdpClientRuntime_.AttachGenericTarget(target, handler); }
+    bool CDP_分离会话(long long session) { return cdpClientRuntime_.DetachSession(session); }
+    bool CDP_会话执行脚本(long long session, const wchar_t* code, const wchar_t* handler) { return cdpClientRuntime_.EvaluateSession(session, code, handler); }
+    const wchar_t* CDP_取目标JSON(long long target) { cdpClientReturnText_ = cdpClientRuntime_.TargetSnapshot(target); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取会话JSON(long long session) { cdpClientReturnText_ = cdpClientRuntime_.SessionSnapshot(session); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_枚举帧JSON(long long page) { cdpClientReturnText_ = cdpClientRuntime_.FramesJson(page); return cdpClientReturnText_.c_str(); }
+    long long CDP_添加页面绑定(long long page, const wchar_t* name, const wchar_t* handler) { return cdpClientRuntime_.AddBinding(page, name, handler); }
+    bool CDP_移除页面绑定(long long binding) { return cdpClientRuntime_.RemoveBinding(binding); }
+    bool CDP_高亮元素(long long element, const wchar_t* color) { return cdpClientRuntime_.HighlightElement(element, color); }
+    bool CDP_隐藏高亮(long long page) { return cdpClientRuntime_.HideHighlight(page); }
+    bool CDP_派发触摸(long long page, const wchar_t* type, const wchar_t* pointsJson) { return cdpClientRuntime_.DispatchTouch(page, type, pointsJson); }
+    bool CDP_启用调试器(long long page, const wchar_t* handler) { return cdpClientRuntime_.EnableDebugger(page, handler); }
+    bool CDP_禁用调试器(long long page, const wchar_t* handler) { return cdpClientRuntime_.DisableDebugger(page, handler); }
+    bool CDP_绑定调试事件(long long page, const wchar_t* handler) { return cdpClientRuntime_.BindDebugger(page, handler); }
+    long long CDP_设置断点(long long page, const wchar_t* url, int line, int column, const wchar_t* condition, const wchar_t* handler) { return cdpClientRuntime_.SetBreakpoint(page, url, line, column, condition, handler); }
+    bool CDP_移除断点(long long breakpoint, const wchar_t* handler) { return cdpClientRuntime_.RemoveBreakpoint(breakpoint, handler); }
+    bool CDP_暂停调试(long long page, const wchar_t* handler) { return cdpClientRuntime_.DebugPause(page, handler); }
+    bool CDP_恢复调试(long long page, const wchar_t* handler) { return cdpClientRuntime_.DebugResume(page, handler); }
+    bool CDP_调试单步(long long page, int kind, const wchar_t* handler) { return cdpClientRuntime_.DebugStep(page, kind, handler); }
+    int CDP_取当前调用帧数量() { return cdpClientRuntime_.CurrentFrameCount(); }
+    long long CDP_取当前调用帧(int index) { return cdpClientRuntime_.CurrentFrameAt(index); }
+    const wchar_t* CDP_取调用帧JSON(long long frame) { cdpClientReturnText_ = cdpClientRuntime_.CallFrameSnapshot(frame); return cdpClientReturnText_.c_str(); }
+    bool CDP_调用帧执行脚本(long long frame, const wchar_t* code, const wchar_t* handler) { return cdpClientRuntime_.EvaluateFrame(frame, code, handler); }
+    bool CDP_取作用域变量(long long frame, int scopeIndex, int maximum, const wchar_t* handler) { return cdpClientRuntime_.GetScopeVariables(frame, scopeIndex, maximum, handler); }
+    bool CDP_取性能指标(long long page, const wchar_t* handler) { return cdpClientRuntime_.GetPerformanceMetrics(page, handler); }
+    bool CDP_取存储用量(long long connection, const wchar_t* origin, const wchar_t* handler) { return cdpClientRuntime_.GetStorageUsage(connection, origin, handler); }
+    bool CDP_清理来源数据(long long connection, const wchar_t* origin, const wchar_t* types, bool confirmed, const wchar_t* handler) { return cdpClientRuntime_.ClearStorage(connection, origin, types, confirmed, handler); }
+    bool CDP_开启证书错误接管(long long connection, const wchar_t* origins, int lifetimeSeconds, const wchar_t* handler) { return cdpClientRuntime_.EnableCertificateOverride(connection, origins, lifetimeSeconds, handler); }
+    bool CDP_裁决证书错误(long long certificateError, bool allow) { return cdpClientRuntime_.DecideCertificateError(certificateError, allow); }
+    bool CDP_关闭证书错误接管(long long connection) { return cdpClientRuntime_.DisableCertificateOverride(connection); }
+    bool CDP_绑定安全状态事件(long long connection, const wchar_t* handler) { return cdpClientRuntime_.BindSecurityHandler(connection, handler); }
+    long long CDP_开始录制(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartRecording(page, path, handler); }
+    bool CDP_记录步骤(long long recording, const wchar_t* type, const wchar_t* json) { return cdpClientRuntime_.RecordStep(recording, type, json); }
+    bool CDP_停止录制(long long recording) { return cdpClientRuntime_.StopRecording(recording); }
+    long long CDP_加载回放(long long connection, const wchar_t* path) { return cdpClientRuntime_.LoadReplay(connection, path); }
+    const wchar_t* CDP_取录制状态(long long recording) { cdpClientReturnText_ = cdpClientRuntime_.RecordingStateText(recording); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取回放状态(long long replay) { cdpClientReturnText_ = cdpClientRuntime_.ReplayStateText(replay); return cdpClientReturnText_.c_str(); }
+    long long CDP_取当前目标() { return cdpClientRuntime_.CurrentTarget(); }
+    long long CDP_取当前会话() { return cdpClientRuntime_.CurrentSession(); }
+    long long CDP_取当前帧() { return cdpClientRuntime_.CurrentFrame(); }
+    long long CDP_取当前绑定() { return cdpClientRuntime_.CurrentBinding(); }
+    long long CDP_取当前任务() { return cdpClientRuntime_.CurrentTask(); }
+    long long CDP_取当前断点() { return cdpClientRuntime_.CurrentBreakpoint(); }
+    long long CDP_取当前证书错误() { return cdpClientRuntime_.CurrentCertificateError(); }
 `;

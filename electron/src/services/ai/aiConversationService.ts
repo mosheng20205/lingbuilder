@@ -12,6 +12,8 @@ export interface AiConversationMessage {
   createdAt: string;
   status?: AiConversationMessageStatus;
   model?: { mode: 'system' | 'byok'; provider?: string; modelName?: string };
+  /** 系统通知类消息（连接状态、用量报表等）：保留展示但不作为模型上下文回传。 */
+  contextExcluded?: boolean;
 }
 
 export interface AiConversation {
@@ -150,7 +152,8 @@ function normalizeMessage(value: unknown, index: number): AiConversationMessage 
   if (item.content.length > MAX_MESSAGE_CHARS) throw new AiConversationStoreError('INVALID_INPUT', `第 ${index + 1} 条会话消息超过 ${MAX_MESSAGE_CHARS} 个字符。`);
   const status = item.status === 'streaming' || item.status === 'cancelled' || item.status === 'error' || item.status === 'complete' ? item.status : undefined;
   const model = item.model && typeof item.model === 'object' && !Array.isArray(item.model) ? normalizeModel(item.model) : undefined;
-  return { id: item.id, role: item.role, content: item.content, createdAt: normalizeTime(item.createdAt), ...(status ? { status } : {}), ...(model ? { model } : {}) };
+  const contextExcluded = item.contextExcluded === true ? true : undefined;
+  return { id: item.id, role: item.role, content: item.content, createdAt: normalizeTime(item.createdAt), ...(status ? { status } : {}), ...(model ? { model } : {}), ...(contextExcluded ? { contextExcluded: true } : {}) };
 }
 
 function normalizeModel(value: object): AiConversationMessage['model'] | undefined {

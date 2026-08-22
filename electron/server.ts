@@ -2106,9 +2106,12 @@ app.post("/api/translate", async (req, res) => {
     const resolvedAiConfig = resolveAiConnectionConfig(aiConfig);
     // Construct glossary context string
     let glossaryContext = "";
+    let glossaryRules = "";
     if (glossary && Array.isArray(glossary) && glossary.length > 0) {
       glossaryContext = "请在翻译中遵守以下专业术语表对应关系以确保一致性：\n" +
         glossary.map((g: any) => `- "${g.english}" 翻译为 "${g.chinese}" (${g.description || ''})`).join('\n');
+      // system prompt 里的规则 5 只引用映射行本身；直接插值 glossary 数组会得到 "[object Object]"。
+      glossaryRules = glossary.map((g: any) => `- "${g.english}" 翻译为 "${g.chinese}"`).join('\n');
     }
 
     // Prepare structure request payload
@@ -2119,7 +2122,7 @@ app.post("/api/translate", async (req, res) => {
 2. 保持 C++ 字符串中的转义字符不变，例如 \\t, \\n, \\" 必须正确保留。
 3. 翻译要符合中文程序员的使用习惯（如 "socket" -> "套接字/连接", "buffer" -> "缓冲区", "render" -> "渲染"）。
 4. 保持代码上下文意图。如果是注释，翻译成优雅的中文注释。如果是UI文本或弹窗提示，翻译成自然友好的中文提示。
-${glossary ? `5. 严格遵守以下特定专业词汇映射：\n${glossary}` : ""}`;
+${glossaryRules ? `5. 严格遵守以下特定专业词汇映射：\n${glossaryRules}` : ""}`;
 
     const itemsToTranslate = strings.map((s: any) => ({
       id: s.id,
@@ -3785,17 +3788,28 @@ app.post("/api/lingcpp/edit/propose", async (req, res) => {
     };
 
     let draft: LingCppEditDraft | undefined;
+    let aiFailureReason: string | undefined;
     try {
       draft = await planLingCppEditWithGemini(context);
     } catch (error: any) {
+      aiFailureReason = error?.message || String(error);
       draft = {
         summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
-        explanation: `Gemini 编辑提案生成失败，已降级为本地安全提案：${error?.message || "未知错误"}`
+        explanation: `Gemini 编辑提案生成失败，已降级为本地安全提案：${aiFailureReason}`
       };
     }
 
-    const proposal = proposeLingCppEdit(context, draft);
-    return res.json({ ok: true, proposal });
+    try {
+      const proposal = proposeLingCppEdit(context, draft);
+      return res.json({ ok: true, proposal });
+    } catch (error: any) {
+      // AI 请求本身失败（如未配置 API Key、网络不通）时，不能让“未返回完整设计器模型”
+      // 这类下游校验文案掩盖真实根因。
+      if (aiFailureReason) {
+        return res.status(502).json({ ok: false, error: `AI 编辑请求失败：${aiFailureReason}`, details: `请先在右侧 AI 对接设置中确认 Base URL、API Key 与模型可用。本地降级提案也未能生成：${error?.message || "未知错误"}` });
+      }
+      throw error;
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "AI 编辑提案校验失败。";
     return res.status(422).json({ ok: false, error: message });

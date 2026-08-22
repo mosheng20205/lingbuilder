@@ -84,7 +84,30 @@ export class CloudAccountService {
   }
   async startAi(kind: 'chat'|'edit', payload: unknown, listener: StreamListener): Promise<string> { if (!this.accessToken) await this.refresh(); const requestKey = crypto.randomUUID(); const controller = new AbortController(); this.requests.set(requestKey, controller); void this.consumeStream(requestKey, kind, payload, controller, listener); return requestKey; }
   cancel(requestKey: string) { const controller = this.requests.get(requestKey); controller?.abort(); return Boolean(controller); }
-  private async consumeStream(requestKey: string, kind: 'chat'|'edit', payload: unknown, controller: AbortController, listener: StreamListener) { try { const response = await fetch(`${this.origin}/v1/ai/${kind}/stream`, { method: 'POST', signal: controller.signal, headers: { authorization: `Bearer ${this.accessToken}`, 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify(payload) }); if (response.status === 401 && this.refreshToken) { await this.refresh(); throw new Error('登录令牌已刷新，请重新发送请求。'); } if (!response.ok || !response.body) { const failure: any = await response.json().catch(() => ({})); throw new Error(failure.message || '系统 AI 请求失败。'); } for await (const event of parseSse(response.body)) listener(requestKey, event); } catch (error) { listener(requestKey, { type: 'error', requestId: requestKey, code: controller.signal.aborted ? 'REQUEST_CANCELLED' : 'PROVIDER_FAILED', message: controller.signal.aborted ? 'AI 请求已取消。' : error instanceof Error ? error.message : String(error), retryable: !controller.signal.aborted }); } finally { this.requests.delete(requestKey); } }
+  private async consumeStream(requestKey: string, kind: 'chat'|'edit', payload: unknown, controller: AbortController, listener: StreamListener) {
+    // 访问令牌过期时刷新后自动重试一次，而不是要求用户手动重发。
+    let refreshedOnce = false;
+    let terminalEventSeen = false;
+    try {
+      for (;;) {
+        const response = await fetch(`${this.origin}/v1/ai/${kind}/stream`, { method: 'POST', signal: controller.signal, headers: { authorization: `Bearer ${this.accessToken}`, 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify(payload) });
+        if (response.status === 401 && this.refreshToken && !refreshedOnce) { refreshedOnce = true; await this.refresh(); continue; }
+        if (!response.ok || !response.body) { const failure: any = await response.json().catch(() => ({})); throw new Error(failure.message || '系统 AI 请求失败。'); }
+        for await (const event of parseSse(response.body)) {
+          if (event && (event.type === 'completed' || event.type === 'error')) terminalEventSeen = true;
+          listener(requestKey, event);
+        }
+        return;
+      }
+    } catch (error) {
+      terminalEventSeen = true;
+      listener(requestKey, { type: 'error', requestId: requestKey, code: controller.signal.aborted ? 'REQUEST_CANCELLED' : 'PROVIDER_FAILED', message: controller.signal.aborted ? 'AI 请求已取消。' : error instanceof Error ? error.message : String(error), retryable: !controller.signal.aborted });
+    } finally {
+      this.requests.delete(requestKey);
+      // SSE 流意外中断（未收到 completed/error）时补发终态事件，避免渲染端输入框永久禁用。
+      if (!terminalEventSeen) listener(requestKey, { type: 'error', requestId: requestKey, code: 'PROVIDER_FAILED', message: '系统 AI 连接已中断，请重试。', retryable: true });
+    }
+  }
   private async refresh() { if (!this.refreshToken) throw new Error('尚未登录系统 AI。'); const value = await this.publicRequest('/v1/auth/refresh', { refreshToken: this.refreshToken }); await this.acceptTokens(value, this.email); }
   private async acceptTokens(value: any, email: string) { if (!value?.accessToken || !value?.refreshToken) throw new Error('云端未返回有效登录令牌。'); this.accessToken = value.accessToken; this.refreshToken = value.refreshToken; this.email = email; await this.writeRefresh(this.refreshToken); }
   private async clear() { this.accessToken = ''; this.refreshToken = ''; this.email = ''; await this.writeRefresh(''); }

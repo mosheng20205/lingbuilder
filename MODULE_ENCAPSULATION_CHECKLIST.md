@@ -2,7 +2,7 @@
 
 更新时间：2026-08-22
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **84 个内置模块、2951 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **84 个内置模块、2998 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -66,7 +66,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
 | 已完整封装 | `lingbuilder.net.http-client` | HTTP 客户端模块 2.0（受管 WinHTTP、异步回调与双 UI 后端） | 74 |
-| 已完整封装 | `lingbuilder.cdp.client` | CDP 客户端模块 2.0（Chrome DevTools Protocol 多连接、拦截、仿真与异步处理器） | 97 |
+| 阶段 3 实施中 | `lingbuilder.cdp.client` | CDP 客户端模块 3.0（多连接、Target/Session、binding、Debugger、Storage 与严格证书裁决地基） | 144 |
 | 已封装 | `lingbuilder.net.tcp` | TCP 通信模块 | 6 |
 | 已封装 | `lingbuilder.net.udp` | UDP 通信模块 | 7 |
 | 已封装 | `lingbuilder.net.dns` | DNS 与 IP 模块 | 5 |

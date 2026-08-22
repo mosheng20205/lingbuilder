@@ -82,13 +82,18 @@ export default function DataGridEditorDialog({ control, isDarkMode, onSave, onCl
   const [selectedRowKey, setSelectedRowKey] = useState(model.rows[0]?.key || '');
   const [selectedColumnId, setSelectedColumnId] = useState(model.columns[0]?.id || '');
   const dialogRef = useRef<HTMLDivElement>(null);
+  // onClose 是父组件每次渲染都会重建的内联箭头函数；若作为 effect 依赖，
+  // 上层任意重渲染都会重跑 effect 并把焦点抢回对话框容器，导致列宽 input 失焦、
+  // 列对齐 select 原生下拉立即关闭。因此用 ref 读取最新回调，初始聚焦只在挂载时执行一次。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     dialogRef.current?.focus();
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onCloseRef.current(); };
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
-  }, [onClose]);
+  }, []);
 
   const previewControl = useMemo<LingControl>(() => ({ ...control, properties: {
     ...(control.properties || {}), dataGridSchemaVersion: DATA_GRID_SCHEMA_VERSION,

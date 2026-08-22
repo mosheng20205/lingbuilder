@@ -1,12 +1,12 @@
-# CDP 客户端模块 2.0 使用说明
+# CDP 客户端模块 3.0 使用说明
 
-`lingbuilder.cdp.client` 是 LingBuilder 内置的 Chrome DevTools Protocol（CDP）受管客户端模块。它让 LingBuilder 生成的程序通过 WebSocket 连接 Chrome/Edge 的调试端口，完成浏览器自动化、页面监听与数据采集。所有命令异步执行，完成后通过 `&处理器名` 在 UI 线程回调。
+`lingbuilder.cdp.client` 是 LingBuilder 内置的 Chrome DevTools Protocol（CDP）受管客户端模块。它让 LingBuilder 生成的程序通过 WebSocket 连接 Chrome/Edge 的调试端口，完成浏览器自动化、页面监听与数据采集。异步命令通过 `&处理器名` 在 UI 线程回调。
 
-## 支持范围（阶段 1 + 阶段 2）
+## 支持范围（阶段 3 实施中）
 
-已支持：连接管理（多开）、页面会话、导航与生命周期等待、脚本执行与元素函数调用、元素操作与文件上传、坐标级键鼠输入与拖拽、请求拦截/改写/mock/认证、对话框应答、下载管理、Cookie 管理、缓存清理、网络监听、设备与网络仿真、控制台与页面异常监听、截图（视口/全页/元素）、打印 PDF、浏览器窗口边界、新标签页通知、命令超时。
+已支持阶段 1/2 的多连接、页面自动化、Fetch、对话框、下载、上传、仿真与输出；阶段 3 已新增 Target/Session/Frame/ExecutionContext 注册表与自动附加、OOPIF/Worker 会话执行、Runtime binding、Overlay 高亮、多点触控、Debugger 断点/暂停/单步/调用帧/作用域、Performance 指标、Storage usage/清理、严格证书错误逐次裁决，以及版本化录制文件地基。当前清单共 144 条命令、14 个受管类型。
 
-暂不支持（阶段 3）：断点调试器、性能追踪/覆盖率/内存快照、OOPIF/Worker 自动附加、screencast、录制回放。完整路线见仓库 `doc/CDP模块开发.md`。
+仍在实施和真实 smoke 验收：screencast、Tracing/CPU Profile/精确覆盖率/Heap 完整任务输出、录制自动采集与确定性回放执行器。阶段 3 尚未标记完成，完整路线见仓库 `doc/CDP模块开发.md`。
 
 ## 多开与连接
 
@@ -67,6 +67,15 @@ headless 模式：追加 `--headless=new --disable-gpu`。
 ## 设备与网络仿真
 
 `CDP_设置视口(页面, 宽, 高)`、`CDP_设置UserAgent`、`CDP_设置触摸`、`CDP_设置地理位置(页面, 纬度, 经度)`、`CDP_设置时区`、`CDP_设置语言`、`CDP_设置暗色模式`、`CDP_设置CPU节流(页面, 倍率)`、`CDP_重置仿真(页面)`；网络：`CDP_设置离线`、`CDP_设置限速(页面, 延迟毫秒, 下行, 上行)`（字节每秒，-1 不限）、`CDP_禁用缓存`。
+
+## 阶段 3 Target、调试与安全
+
+- `CDP_设置自动附加` + `CDP_绑定目标事件` 管理 OOPIF 和 Worker；用 `CDP_枚举目标JSON`、`CDP_附加目标`、`CDP_会话执行脚本` 操作独立会话，不能把 Worker 伪装成页面。
+- `CDP_添加页面绑定` 接收页面 `Runtime.bindingCalled`；事件载荷从 `CDP_取当前事件文本` 读取。`CDP_高亮元素` 使用 Overlay，`CDP_派发触摸` 接收最多 16 个触点的严格 JSON。
+- Debugger 使用 `CDP_启用调试器`、`CDP_设置断点`、暂停/恢复/单步；暂停事件中用 `CDP_取当前调用帧数量` 和 `CDP_取当前调用帧` 获取 generation 受限句柄，恢复后旧句柄失效。
+- Storage 清理必须调用 `CDP_清理来源数据` 并传 exact origin、allowlist storageTypes 和显式确认。
+- 证书错误接管只能使用 advanced 命令 `CDP_开启证书错误接管`：白名单必须是 exact origin、期限 1–600 秒，每个错误必须用 `CDP_裁决证书错误` 单独决定；未应答、超时、关闭或断线一律取消，不提供通配符或全局忽略开关。
+- `CDP_开始录制` / `CDP_记录步骤` / `CDP_停止录制` 写入 `lingbuilder.cdp.recording`、`schemaVersion:1` JSON；敏感字段会替换为 `${SECRET:REDACTED}`。当前 `CDP_加载回放` 只建立受管回放状态，确定性执行器仍在实施。
 
 ## 完整示例
 

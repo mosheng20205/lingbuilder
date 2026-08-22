@@ -1,6 +1,6 @@
 # LingBuilder Electron
 
-> 2026-08-22：CDP 客户端模块升级为 `lingbuilder.cdp.client@2.0.0`（97 条 `CDP_` 命令、`CDP连接`/`CDP页面`/`CDP元素`/`CDP拦截` 受管类型）。在阶段 1 多连接/页面/导航/脚本/元素/键鼠/网络/Cookie/截图/PDF 基础上，阶段 2 新增命令超时看门狗、Fetch 拦截/改写/mock/认证、对话框应答、下载、上传、生命周期等待、设备与网络仿真、元素截图、窗口边界、新页面通知、拖拽和函数调用。正式说明见 `docs/modules/cdp-client/README.md`，交接记录见 `../doc/CDP模块开发进度.md`；`npm run smoke:cdp-native` 已自动启动 Edge headless、MSVC 编译 Win32+x64 并验证双连接、Fetch mock、对话框、下载事件、上传、暗色仿真、生命周期等待、截图和清理，退出码 0。
+> 2026-08-22：CDP 客户端模块进入阶段 3 实施，清单暂升 `lingbuilder.cdp.client@3.0.0`（144 条命令、14 个受管类型）。已新增 Target/Session/Frame、OOPIF/Worker 自动附加与会话求值、Runtime binding、Overlay、触摸、Debugger、Performance、Storage、严格证书逐次裁决和录制 schema 地基；MSVC Win32/x64 编译与阶段 1/2 Edge headless smoke 继续通过。Screencast、Tracing/CPU/Coverage/Heap 完整任务、录制自动采集与确定性回放仍在实施，不能宣称阶段 3 完成。正式说明见 `docs/modules/cdp-client/README.md`，交接记录见 `../doc/CDP模块开发进度.md`。
 
 > 2026-08-20：修复旧上传项目 F5 的 C++ C3861。历史 `.lcpp` 调用 `上传_打开("控件名")` 现在由统一规则映射到已存在的 `上传_打开文件选择` 运行时函数；普通新项目仍使用非可视 `FileDialog` 和 `文件对话框_*` 命令，AI 不得新建旧 `Upload`/`DragUpload` 控件。
 
