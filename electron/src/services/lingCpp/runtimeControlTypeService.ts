@@ -4,6 +4,7 @@ import type {
   ModuleRuntimeControlContribution
 } from '../modules/types';
 import { normalizeIdentifier, parseLingCpp } from './parser';
+import type { LingCppMethod, LingCppParseResult } from './types';
 
 export interface LingCppRuntimeControlType {
   moduleId: string;
@@ -17,6 +18,9 @@ export interface LingCppRuntimeControlVariable {
   line: number;
   kind: 'parameter' | 'local';
 }
+
+/** 运行时控件变量查找所需的最小方法形状，便于复用一次解析结果。 */
+export type RuntimeControlMethodCandidate = Pick<LingCppMethod, 'line' | 'endLine' | 'parameters' | 'locals'>;
 
 export function getLingCppRuntimeControlTypes(moduleContext?: LingCppModuleContext): LingCppRuntimeControlType[] {
   const result: LingCppRuntimeControlType[] = [];
@@ -59,10 +63,29 @@ export function getRuntimeControlVariablesAtLine(
   moduleContext?: LingCppModuleContext
 ): LingCppRuntimeControlVariable[] {
   const parsed = parseLingCpp(source);
-  const methods = [
+  return getRuntimeControlVariablesFromMethods(collectRuntimeControlMethodCandidates(parsed), line, moduleContext);
+}
+
+/**
+ * 收集所有可能包含运行时控件变量的方法（类方法 + 功能库方法）。
+ * 调用方持有一次解析结果后应复用该列表，禁止在每个引用处重新全文解析。
+ */
+export function collectRuntimeControlMethodCandidates(parsed: LingCppParseResult): RuntimeControlMethodCandidate[] {
+  return [
     ...parsed.program.classes.flatMap(cls => cls.methods),
     ...parsed.program.functionLibraries.flatMap(library => library.methods)
   ];
+}
+
+/**
+ * 在已解析的方法集合中查找指定行可见的运行时控件变量。
+ * 与 getRuntimeControlVariablesAtLine 语义一致，但复用调用方的解析结果。
+ */
+export function getRuntimeControlVariablesFromMethods(
+  methods: readonly RuntimeControlMethodCandidate[],
+  line: number,
+  moduleContext?: LingCppModuleContext
+): LingCppRuntimeControlVariable[] {
   const method = methods.find(item => line >= item.line && line <= (item.endLine || Number.MAX_SAFE_INTEGER));
   if (!method) return [];
   return [

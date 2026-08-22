@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X } from 'lucide-react';
+import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
@@ -9,6 +9,8 @@ import {
   aiConnectionSession,
   type AiConnectionMode
 } from '../services/ai/aiConnectionSessionService';
+import type { AiConversationStore } from '../services/ai/aiConversationService';
+import type { CommandService } from '../services/commands/commandService';
 
 const AI_CONFIG_STORAGE_KEY = 'lingbuilder.aiConnectionConfig.v1';
 
@@ -94,6 +96,13 @@ export function isLikelyDesignerEditInstruction(instruction: string): boolean {
   return hasDesignerTarget && hasDesignerMutation;
 }
 
+/** Only enter the edit-preview flow when the user explicitly asks for a change. */
+export function isLikelyCodeEditInstruction(instruction: string): boolean {
+  const normalized = instruction.trim();
+  if (!normalized) return false;
+  return /修改|改写|重写|重构|修复|纠正|补全|新增|删除|移除|替换|调整|优化|生成代码|写代码|实现|添加功能|rename|refactor|rewrite|fix|change|update|remove|delete|add|implement/iu.test(normalized);
+}
+
 /** Keep the active source and at least one design-relevant `.lcpp` file in
  * the bounded system-AI context, even when the active editor is `config.ini`.
  */
@@ -140,6 +149,7 @@ interface AiAssistantProps {
     appliedFiles: AppliedWorkspaceFile[],
     owner?: ProjectMutationOwner
   ) => boolean | void | Promise<boolean | void>;
+  commandService?: CommandService;
   isDarkMode?: boolean;
 }
 
@@ -149,7 +159,16 @@ interface Message {
   text: string;
   timestamp: string;
   codeBlock?: string;
+  status?: 'complete' | 'streaming' | 'cancelled' | 'error';
+  model?: { mode: 'system' | 'byok'; provider?: string; modelName?: string };
 }
+
+const WELCOME_MESSAGE: Message = {
+  id: 'welcome',
+  sender: 'ai',
+  text: '你好！我是 LingBuilder 的 AI 智能编程助手。\n\n我会结合当前文件、工作区文件和已启用模块上下文，帮你生成可预览、可确认的代码修改方案。\n\n请在下方直接描述你想改什么；需要切换模型时，可在上方 AI 对接设置里选择。',
+  timestamp: ''
+};
 
 export default function AiAssistant({
   strings,
@@ -165,6 +184,7 @@ export default function AiAssistant({
   designerProject,
   workspaceFiles,
   onApplyWorkspaceEdit,
+  commandService,
   isDarkMode = true
 }: AiAssistantProps) {
   const [aiMode, setAiMode] = useState<AiConnectionMode>(
@@ -240,18 +260,22 @@ export default function AiAssistant({
     () => aiConnectionSession.getConnectedSignature()
   );
   const [chatInput, setChatInput] = useState('');
-  const [chatHistory, setChatHistory] = useState<Message[]>([
-    {
-      id: 'welcome',
-      sender: 'ai',
-      text: '你好！我是 LingBuilder 的 AI 智能编程助手。\n\n我会结合当前文件、工作区文件和已启用模块上下文，帮你生成可预览、可确认的代码修改方案。\n\n我可以帮你做这些：\n1. 根据需求编写或调整中文 C++ / .lcpp 代码。\n2. 解释报错、定位问题，并给出修复建议。\n3. 补全事件处理、窗口逻辑、模块调用和命名结构。\n\n请在下方直接描述你想改什么；需要切换模型时，可在上方 AI 对接设置里选择。',
-      timestamp: new Date().toLocaleTimeString()
-    }
-  ]);
+  const [conversationStore, setConversationStore] = useState<AiConversationStore | null>(null);
+  const [conversationError, setConversationError] = useState('');
+  const activeConversation = conversationStore?.conversations.find(item => item.id === conversationStore.activeConversationId);
+  const chatHistory: Message[] = activeConversation?.messages.map(message => ({
+    id: message.id,
+    sender: message.role === 'assistant' ? 'ai' : 'user',
+    text: message.content,
+    timestamp: new Date(message.createdAt).toLocaleTimeString(),
+    status: message.status,
+    model: message.model
+  })) || [{ ...WELCOME_MESSAGE, timestamp: new Date().toLocaleTimeString() }];
   const [isAiResponding, setIsAiResponding] = useState(false);
   const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(() => new Set());
   const [collapsibleMessageIds, setCollapsibleMessageIds] = useState<Set<string>>(() => new Set());
   const [editProposal, setEditProposal] = useState<WorkspaceEditProposal | null>(null);
+  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; text: string } | null>(null);
   const isLingCppFile = activeLanguage === 'lingcpp' || filePath.endsWith('.lcpp');
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -265,6 +289,9 @@ export default function AiAssistant({
   const cloudInstructionRef = useRef<Map<string, string>>(new Map());
   const cloudKindRef = useRef<Map<string, 'chat' | 'edit'>>(new Map());
   const pendingCloudInstructionRef = useRef<string | null>(null);
+  const conversationSaveTimerRef = useRef<number | undefined>(undefined);
+  const chatHistoryRef = useRef<Message[]>(chatHistory);
+  chatHistoryRef.current = chatHistory;
   const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
   const aiConnectionSignature = [
     aiConfig.provider || DEFAULT_AI_CONFIG.provider,
@@ -274,6 +301,163 @@ export default function AiAssistant({
   ].join('|');
   const isAiConnected = aiConnectionSession.isConnected(aiConnectionSignature)
     && aiConnectedSignature === aiConnectionSignature;
+
+  const applyConversationStore = (store: AiConversationStore) => {
+    setConversationStore(store);
+    setConversationError('');
+  };
+
+  const persistMessages = (messages: Message[], immediately = false) => {
+    if (!projectId || !activeConversation) return;
+    const save = async () => {
+      try {
+        const response = await fetch(`/api/ai/conversations/${encodeURIComponent(activeConversation.id)}/messages`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId, messages: messages.filter(message => message.id !== 'welcome').map(message => ({
+            id: message.id, role: message.sender === 'ai' ? 'assistant' : 'user', content: message.text,
+            createdAt: new Date().toISOString(), status: message.status || 'complete', model: message.model
+          })) })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.ok === false) throw new Error(result.error || '保存 AI 会话失败。');
+        applyConversationStore(result.store as AiConversationStore);
+      } catch (error) { setConversationError(error instanceof Error ? error.message : String(error)); }
+    };
+    if (conversationSaveTimerRef.current) window.clearTimeout(conversationSaveTimerRef.current);
+    if (immediately) void save();
+    else conversationSaveTimerRef.current = window.setTimeout(() => { void save(); }, 400);
+  };
+
+  const updateChatHistory = (updater: (previous: Message[]) => Message[], immediately = false) => {
+    const next = updater(chatHistoryRef.current);
+    chatHistoryRef.current = next;
+    if (activeConversation) {
+      setConversationStore(previous => previous ? {
+        ...previous,
+        conversations: previous.conversations.map(conversation => conversation.id === activeConversation.id ? {
+          ...conversation,
+          updatedAt: new Date().toISOString(),
+          messages: next.filter(message => message.id !== 'welcome').map(message => ({
+            id: message.id, role: message.sender === 'ai' ? 'assistant' as const : 'user' as const,
+            content: message.text, createdAt: new Date().toISOString(), status: message.status || 'complete', model: message.model
+          }))
+        } : conversation)
+      } : previous);
+    }
+    persistMessages(next, immediately);
+  };
+
+  useEffect(() => {
+    if (!projectId) { setConversationStore(null); return; }
+    let active = true;
+    void fetch(`/api/ai/conversations?projectId=${encodeURIComponent(projectId)}`).then(async response => {
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '读取 AI 会话失败。');
+      if (!active) return;
+      const store = result.store as AiConversationStore;
+      if (store.conversations.length === 0) {
+        const created = await fetch('/api/ai/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId }) });
+        const createdResult = await created.json().catch(() => ({}));
+        if (!created.ok || createdResult.ok === false) throw new Error(createdResult.error || '创建默认 AI 会话失败。');
+        if (active) applyConversationStore(createdResult.store as AiConversationStore);
+      } else applyConversationStore(store);
+    }).catch(error => { if (active) setConversationError(error instanceof Error ? error.message : String(error)); });
+    return () => { active = false; if (conversationSaveTimerRef.current) window.clearTimeout(conversationSaveTimerRef.current); };
+  }, [projectId]);
+
+  const createConversation = async () => {
+    if (!projectId) return;
+    try {
+      const response = await fetch('/api/ai/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '新建 AI 会话失败。');
+      applyConversationStore(result.store as AiConversationStore);
+      setEditProposal(null);
+    } catch (error) { setConversationError(error instanceof Error ? error.message : String(error)); }
+  };
+
+  const activateConversation = async (conversationId: string) => {
+    if (!projectId || conversationId === activeConversation?.id) return;
+    try {
+      const response = await fetch(`/api/ai/conversations/${encodeURIComponent(conversationId)}/activate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '切换 AI 会话失败。');
+      applyConversationStore(result.store as AiConversationStore);
+      setEditProposal(null);
+    } catch (error) { setConversationError(error instanceof Error ? error.message : String(error)); }
+  };
+
+  const removeConversation = async (conversationId: string) => {
+    if (!projectId) return;
+    try {
+      const response = await fetch(`/api/ai/conversations/${encodeURIComponent(conversationId)}?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '删除 AI 会话失败。');
+      if ((result.store as AiConversationStore).conversations.length === 0) { await createConversation(); return; }
+      applyConversationStore(result.store as AiConversationStore);
+    } catch (error) { setConversationError(error instanceof Error ? error.message : String(error)); }
+  };
+
+  const clearCurrentConversation = async () => {
+    if (!projectId || !activeConversation) return;
+    stopAiResponse();
+    try {
+      const response = await fetch(`/api/ai/conversations/${encodeURIComponent(activeConversation.id)}/messages`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, messages: [] })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '清除当前上下文失败。');
+      applyConversationStore(result.store as AiConversationStore);
+      setEditProposal(null);
+      setExpandedMessageIds(new Set());
+      setCollapsibleMessageIds(new Set());
+    } catch (error) { setConversationError(error instanceof Error ? error.message : String(error)); }
+  };
+
+  useEffect(() => {
+    if (!commandService) return;
+    const registration = commandService.registerCommands([
+      {
+        id: 'workbench.action.ai.newConversation',
+        title: 'AI：新建会话',
+        aliases: ['新建 AI 会话', 'new ai conversation'],
+        category: 'AI 助手',
+        description: '创建一个新的项目级 AI 会话。',
+        enabled: () => Boolean(projectId),
+        handler: () => createConversation()
+      },
+      {
+        id: 'workbench.action.ai.clearContext',
+        title: 'AI：清除当前上下文',
+        aliases: ['清除 AI 上下文', 'clear ai context'],
+        category: 'AI 助手',
+        description: '清空当前会话消息，但保留会话记录。',
+        enabled: () => Boolean(projectId && activeConversation),
+        handler: () => clearCurrentConversation()
+      }
+    ]);
+    return () => registration.dispose();
+  }, [commandService, projectId, activeConversation?.id]);
+
+  useEffect(() => {
+    if (!messageContextMenu) return;
+    const close = () => setMessageContextMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); };
+  }, [messageContextMenu]);
+
+  const copyMessage = async () => {
+    if (!messageContextMenu) return;
+    try { await navigator.clipboard.writeText(messageContextMenu.text); }
+    catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = messageContextMenu.text; textarea.style.position = 'fixed'; textarea.style.opacity = '0';
+      document.body.appendChild(textarea); textarea.select(); document.execCommand('copy'); textarea.remove();
+    }
+    setMessageContextMenu(null);
+  };
 
   const updateAiConfig = (patch: Partial<AiConnectionConfig>) => {
     aiConnectionSession.clear();
@@ -319,7 +503,7 @@ export default function AiAssistant({
       }
       aiConnectionSession.markConnected(aiConnectionSignature);
       setAiConnectedSignature(aiConnectionSignature);
-      setChatHistory(prev => [
+      updateChatHistory(prev => [
         ...prev,
         {
           id: Math.random().toString(),
@@ -331,7 +515,7 @@ export default function AiAssistant({
     } catch (error: any) {
       aiConnectionSession.clear();
       setAiConnectedSignature(null);
-      setChatHistory(prev => [
+      updateChatHistory(prev => [
         ...prev,
         {
           id: Math.random().toString(),
@@ -448,7 +632,7 @@ export default function AiAssistant({
       if (requestKey !== cloudRequestRef.current) return;
       if (event.type === 'delta' && event.text) {
         if (cloudKindRef.current.get(requestKey) === 'edit') {
-          setChatHistory(previous => {
+          updateChatHistory(previous => {
             const id = `cloud-${requestKey}`;
             const status = 'AI 正在生成可确认的修改方案（含源码与设计器），请稍候…';
             const existing = previous.find(message => message.id === id);
@@ -457,7 +641,7 @@ export default function AiAssistant({
           });
           return;
         }
-        setChatHistory(previous => {
+        updateChatHistory(previous => {
           const id = `cloud-${requestKey}`;
           const existing = previous.find(message => message.id === id);
           if (existing) return previous.map(message => message.id === id ? { ...message, text: message.text + event.text } : message);
@@ -470,14 +654,14 @@ export default function AiAssistant({
           : cloudInstructionRef.current.get(requestKey)
             || pendingCloudInstructionRef.current
             || '系统 AI 工作区编辑';
-        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, sourceCode, instruction, projectId, moduleContext, currentDesignerProject: designerProject, designerProject: event.designerProject, workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); }).catch(error => setChatHistory(previous => [...previous, { id: Math.random().toString(), sender: 'ai', text: error instanceof Error ? error.message : String(error), timestamp: new Date().toLocaleTimeString() }]));
+        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, sourceCode, instruction, projectId, moduleContext, currentDesignerProject: designerProject, designerProject: event.designerProject, workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); }).catch(error => updateChatHistory(previous => [...previous, { id: Math.random().toString(), sender: 'ai', text: error instanceof Error ? error.message : String(error), timestamp: new Date().toLocaleTimeString() }]));
       }
       if (event.type === 'usage') {
-        setChatHistory(previous => [...previous, { id: `usage-${requestKey}`, sender: 'ai', text: `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, timestamp: new Date().toLocaleTimeString() }]);
+        updateChatHistory(previous => [...previous, { id: `usage-${requestKey}`, sender: 'ai', text: `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, timestamp: new Date().toLocaleTimeString() }]);
         void window.lingBuilder?.cloudAccount?.balance().then(value => setCloudSession(current => ({ ...current, balance: value.balance })));
       }
       if (event.type === 'completed' || event.type === 'error') {
-        if (event.type === 'error') setChatHistory(previous => [...previous, { id: `error-${requestKey}`, sender: 'ai', text: event.message || '系统 AI 请求失败。', timestamp: new Date().toLocaleTimeString() }]);
+        if (event.type === 'error') updateChatHistory(previous => [...previous, { id: `error-${requestKey}`, sender: 'ai', text: event.message || '系统 AI 请求失败。', timestamp: new Date().toLocaleTimeString() }], true);
         cloudInstructionRef.current.delete(requestKey);
         if (cloudRequestRef.current === requestKey) pendingCloudInstructionRef.current = null;
         cloudRequestRef.current = null; setIsAiResponding(false);
@@ -560,7 +744,7 @@ export default function AiAssistant({
         };
       });
       
-      setChatHistory(prev => [
+      updateChatHistory(prev => [
         ...prev,
         {
           id: Math.random().toString(),
@@ -589,7 +773,7 @@ export default function AiAssistant({
       timestamp: new Date().toLocaleTimeString()
     };
 
-    setChatHistory(prev => [...prev, userMsg]);
+    updateChatHistory(prev => [...prev, userMsg]);
     setChatInput('');
     setIsAiResponding(true);
     stopRequestedRef.current = false;
@@ -602,7 +786,7 @@ export default function AiAssistant({
         pendingCloudInstructionRef.current = userMsg.text;
         const messages = [...chatHistory.filter(message => message.id !== 'welcome').slice(-18).map(message => ({ role: message.sender === 'ai' ? 'assistant' as const : 'user' as const, content: message.text })), { role: 'user' as const, content: userMsg.text }];
         const rulebookVersion = 'lingbuilder-rulebook-v1';
-        const shouldUseEditFlow = isLingCppFile || Boolean(
+        const shouldUseEditFlow = (isLingCppFile && isLikelyCodeEditInstruction(userMsg.text)) || Boolean(
           designerProject && isLikelyDesignerEditInstruction(userMsg.text)
         );
         const payload = shouldUseEditFlow ? {
@@ -626,7 +810,7 @@ export default function AiAssistant({
         }
         return;
       }
-      const shouldUseEditFlow = isLingCppFile || Boolean(
+      const shouldUseEditFlow = (isLingCppFile && isLikelyCodeEditInstruction(userMsg.text)) || Boolean(
         designerProject && isLikelyDesignerEditInstruction(userMsg.text)
       );
       if (shouldUseEditFlow) {
@@ -653,7 +837,7 @@ export default function AiAssistant({
 
         const proposal = data.proposal as WorkspaceEditProposal;
         setEditProposal(proposal);
-        setChatHistory(prev => [
+        updateChatHistory(prev => [
           ...prev,
           {
             id: Math.random().toString(),
@@ -687,7 +871,7 @@ export default function AiAssistant({
       const data = await response.json();
       const aiReplyText = data.translations?.[0]?.translated || 'AI 助手当前不可用，请检查 API 密钥设置。';
 
-      setChatHistory(prev => [
+      updateChatHistory(prev => [
         ...prev,
         {
           id: Math.random().toString(),
@@ -698,7 +882,7 @@ export default function AiAssistant({
       ]);
     } catch (err: any) {
       if (controller.signal.aborted || stopRequestedRef.current) return;
-      setChatHistory(prev => [
+      updateChatHistory(prev => [
         ...prev,
         {
           id: Math.random().toString(),
@@ -728,7 +912,7 @@ export default function AiAssistant({
       chatAbortRef.current = null;
     }
     setIsAiResponding(false);
-    setChatHistory(previous => [...previous, {
+    updateChatHistory(previous => [...previous, {
       id: `stopped-${Date.now()}`,
       sender: 'ai',
       text: '已停止本次 AI 回复。',
@@ -759,7 +943,7 @@ export default function AiAssistant({
         throw new Error('项目上下文已变化，未应用该提案；请重新读取当前文件和设计器模型后再试。');
       }
       const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
-      setChatHistory(prev => [
+      updateChatHistory(prev => [
         ...prev,
         {
           id: Math.random().toString(),
@@ -770,7 +954,7 @@ export default function AiAssistant({
       ]);
       setEditProposal(null);
     } catch (error) {
-      setChatHistory(prev => [
+      updateChatHistory(prev => [
         ...prev,
         {
           id: Math.random().toString(),
@@ -789,7 +973,7 @@ export default function AiAssistant({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ proposalId: editProposal.id })
     });
-    setChatHistory(prev => [
+    updateChatHistory(prev => [
       ...prev,
       {
         id: Math.random().toString(),
@@ -820,6 +1004,25 @@ export default function AiAssistant({
           <Brain className="w-4 h-4 text-purple-500" />
           <span className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>AI 智能中文代码引擎</span>
         </div>
+      </div>
+
+      <div className={`shrink-0 border-b px-3 py-2 ${isDarkMode ? 'border-[#2d2d34] bg-[#1a1a20]/30' : 'border-slate-200 bg-slate-50'}`}>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">当前项目会话</span>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => void clearCurrentConversation()} className="flex h-6 w-6 items-center justify-center rounded border border-amber-500/40 text-amber-400 hover:bg-amber-500/10" title="清除当前上下文" aria-label="清除当前上下文"><X className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => void createConversation()} className="flex h-6 w-6 items-center justify-center rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10" title="新建 AI 会话" aria-label="新建 AI 会话"><Plus className="h-3.5 w-3.5" /></button>
+          </div>
+        </div>
+        <div className="flex gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label="AI 会话列表">
+          {conversationStore?.conversations.map(conversation => (
+            <div key={conversation.id} className={`flex max-w-[170px] shrink-0 items-center rounded border ${conversation.id === activeConversation?.id ? 'border-blue-500/60 bg-blue-500/10' : isDarkMode ? 'border-[#3a3a44] bg-[#202028]' : 'border-slate-200 bg-white'}`}>
+              <button type="button" role="tab" aria-selected={conversation.id === activeConversation?.id} onClick={() => void activateConversation(conversation.id)} className="min-w-0 truncate px-2 py-1 text-[10px] text-slate-300" title={conversation.title}>{conversation.title}</button>
+              <button type="button" onClick={() => void removeConversation(conversation.id)} className="mr-1 rounded p-0.5 text-slate-500 hover:text-rose-400" title="删除会话" aria-label={`删除会话：${conversation.title}`}><Trash2 className="h-3 w-3" /></button>
+            </div>
+          ))}
+        </div>
+        {conversationError && <div role="status" className="mt-1 text-[10px] text-rose-400">{conversationError}</div>}
       </div>
 
       {/* Batch Translation Controller */}
@@ -1017,22 +1220,24 @@ export default function AiAssistant({
             return (
             <div
               key={msg.id || idx}
+              onContextMenu={event => { event.preventDefault(); setMessageContextMenu({ x: event.clientX, y: event.clientY, text: msg.text }); }}
               className={`flex flex-col max-w-[85%] rounded-lg p-2.5 text-xs line-clamp-none ${
                 msg.sender === 'user'
-                  ? 'bg-blue-600/20 border border-blue-500/20 text-blue-800 dark:text-blue-200 self-end ml-auto'
+                  ? 'bg-[#223A73] border border-[#5B8DEF] !text-[#EAF2FF] self-end ml-auto'
                   : isDarkMode 
                   ? 'bg-[#25252b] border border-[#2d2d34] text-slate-300 self-start mr-auto'
                   : 'bg-slate-100 border border-slate-200 text-slate-800 self-start mr-auto'
               }`}
             >
-              <div className="flex items-center gap-1.5 mb-1.5 opacity-60 text-[9px] font-mono select-none">
-                {msg.sender === 'user' ? <span>开发者</span> : <span className="text-purple-500 font-bold">AI 助手</span>}
+              <div className={`flex items-center gap-1.5 mb-1.5 text-[9px] font-mono select-none ${msg.sender === 'user' ? '!text-[#BFD7FF]' : 'text-slate-400'}`}>
+                {msg.sender === 'user' ? <span className="!text-[#D7E6FF]">开发者</span> : <span className="text-purple-500 font-bold">AI 助手</span>}
                 <span>•</span>
                 <span>{msg.timestamp}</span>
               </div>
               <div
                 ref={element => { messageContentRefs.current[msg.id] = element; }}
-                className={`relative whitespace-pre-line leading-relaxed font-sans ${
+                onContextMenu={event => { event.preventDefault(); setMessageContextMenu({ x: event.clientX, y: event.clientY, text: msg.text }); }}
+                className={`relative select-text whitespace-pre-line leading-relaxed font-sans ${msg.sender === 'user' ? '!text-[#EAF2FF]' : ''} ${
                   isAiMessageCollapsed ? 'max-h-56 overflow-hidden' : ''
                 }`}
               >
@@ -1083,6 +1288,17 @@ export default function AiAssistant({
           )}
         </div>
 
+        {messageContextMenu && (
+          <div
+            role="menu"
+            className={`fixed z-[100] min-w-28 rounded border p-1 text-xs shadow-xl ${isDarkMode ? 'border-slate-600 bg-[#25252b] text-slate-100' : 'border-slate-300 bg-white text-slate-800'}`}
+            style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
+            onClick={event => event.stopPropagation()}
+          >
+            <button type="button" role="menuitem" onClick={() => void copyMessage()} className="w-full rounded px-2 py-1.5 text-left hover:bg-blue-500/20">复制消息</button>
+          </div>
+        )}
+
         {/* Chat Send Form */}
         <form 
           onSubmit={handleSendChat} 
@@ -1092,7 +1308,7 @@ export default function AiAssistant({
         >
           <input
             type="text"
-            placeholder={isLingCppFile ? '描述你想让 AI 如何修改当前 .lcpp 文件或相关工作区文件...' : '问AI关于C++中文编程的问题...'}
+            placeholder={isLingCppFile ? '提问或明确描述要修改当前 .lcpp 文件的内容...' : '问 AI 关于 C++ 中文编程的问题...'}
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
             disabled={isAiResponding}

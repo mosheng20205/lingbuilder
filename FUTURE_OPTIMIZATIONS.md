@@ -1,5 +1,11 @@
 # LingBuilder 后期优化事项
 
+- 已修复（2026-08-22）：窗口设计器在大项目（如 `datagrid-api-demo`，109 控件 + 702 行 `.lcpp`）中选中/拖动/缩放控件时主线程卡顿数秒。根因不在拖拽预览本身（预览已是绕过 React 的 DOM 直写），而是拖拽提交后设计器项目状态发布触发 `buildLingCppLanguageContext` → `getLingCppSemanticDiagnostics` → `getLingCppControlReferences`，其中 `resolveControlReference` 对每个 `controlRef` 参数都重新全文 `parseLingCpp`（经 `getRuntimeControlVariablesAtLine` 与两套 `getLingCppControlSymbols`→`selectDesignerWindows`，共 3 次/参数），形成 O(引用数 × 全文解析)；同时 App 的 `refreshModuleContext` 在每次设计器提交后都换新引用，令语言上下文 useMemo 与问题面板 effect 重复重算。控件引用解析现在一次解析共享：`controlReferenceService` 预构建方法列表、类名集合与两套作用域符号表，`runtimeControlTypeService` 新增 `collectRuntimeControlMethodCandidates`/`getRuntimeControlVariablesFromMethods` 复用入口，`getLingCppControlSymbols`/`selectDesignerWindows`（两个服务各一份）接受预解析类名集合；`refreshModuleContext` 在模块列表内容未变时保持引用稳定。实测（CDP CPU 采样）：单次拖拽提交主线程阻塞由 ~4.7s 降至 ~0.2-0.9s（dev 模式，含 jsxDEV 开销），`getLingCppSemanticDiagnostics` 包含时间 9260ms→0ms、`parseLingCpp` 8624ms→20ms；拖拽帧率中位 17ms。后续语言服务新增“每参数/每行”逻辑时必须复用同一次解析产物，禁止在循环中重复全文 `parseLingCpp`；若大项目仍有可感卡顿，下一步应评估 DiffViewer 语言上下文 useMemo 与 App 问题 effect 的合并或防抖，而非恢复逐参数解析。
+
+- 已完成阶段 1 + 阶段 2（2026-08-22）：CDP 客户端模块（Chrome DevTools Protocol，`lingbuilder.cdp.client@2.0.0`，内置网络模块）已升级为 97 条 `CDP_` 命令和 4 个受管类型（`CDP连接`、`CDP页面`、`CDP元素`、`CDP拦截`）。阶段 1 的多连接多调试端口、flatten session 路由、页面/导航/脚本/元素/键鼠/网络/Cookie/控制台/异常/截图/PDF 保持；阶段 2 新增：每连接命令超时看门狗与 ready/load/lifecycle deadline、Fetch 请求拦截/继续/改写/mock/终止/认证/请求体、对话框应答、下载目录与事件、文件上传、生命周期等待、视口/UA/触摸/地理/时区/语言/暗色/CPU 仿真、离线/限速/禁用缓存、元素截图、浏览器窗口边界、新页面通知、拖拽与元素函数调用。`smoke:cdp-native` 已真实启动 Edge headless，MSVC 编译 Win32+x64 并验证双连接、Fetch mock、对话框应答、下载事件、文件上传、暗色仿真、生命周期等待、截图和断开清理，退出码 0；`tests/cdpClientRuntime.test.ts` 4/4、`modules.test.ts` 102/102、`test:lingcpp` 180+771、lint/build 全过。阶段 3（OOPIF/Worker 自动附加、Runtime.addBinding、Overlay、触摸事件、screencast、Debugger、Performance/Tracing/Profiler/Heap、Storage/Security、录制回放）未开始，继续按 `doc/CDP模块开发.md` 与 `doc/CDP模块开发进度.md` 门禁推进。
+
+- 已完成（2026-08-22）：AI 助手会话由项目级 `AiConversationService` 管理，按 `.lingbuilder/ai/<projectId>.sessions.json` UTF-8 原子写入，支持会话新建、切换、删除、重启恢复和损坏文件中文诊断；右侧停靠栏默认收起并保存宽度。后续应在不改变该权威存储边界的前提下增加历史摘要、关联文件、会话重命名、消息级时间戳稳定化和窄屏覆盖式布局；LangChain.js 如接入，仅作为摘要、检索和 Provider 编排适配层，不能接管跨项目记忆或编辑权限。
+
 - 已修复（2026-08-20）：旧上传项目中的 `.lcpp` 命令 `上传_打开("控件名")` 曾被原样生成到 C++，而 Win32 运行时实际导出的是 `上传_打开文件选择`，导致 F5 出现 MSVC C3861。统一中文规则新增兼容别名解析，旧调用现在确定性生成有效运行时符号；新项目仍应迁移到非可视 `FileDialog` 与 `文件对话框_*` 命令。后续新增旧语法兼容时必须在规则层维护别名并覆盖生成回归，不得只在 C++ 模板中追加包装函数。
 
 - 已修复（2026-08-20）：项目 `lingbuilder-project` 使用 AI 生成 `剪贴板_置文本` 后，项目模块清单补启用 `lingbuilder.system.clipboard@1.1.0`，确保 F5/导出包含剪贴板 C++ 运行时；后续应把未启用模块命令在生成前提升为明确中文阻断诊断，避免仅由 MSVC C3861 暴露。
@@ -632,6 +638,7 @@
 - 已修复：OpenAI-compatible 思考模型现在独立解析 `reasoning_content`，聊天不会再出现消耗 Token 但空白完成；编辑草稿仍只消费最终 `content`。
 - 已修复：AI 幂等检查提前到 SSE 响应头提交之前，重复请求返回结构化 HTTP 409，不再以连接 `terminated` 结束。
 - 已修复：取消结算复用包含规则手册的实际消息集合估算输入 Token，中文/CJK 字符按约一字符一 Token、ASCII 按约四字符一 Token估算，并按最终选中的路由价格记录估算供应商成本。
+- 已修复（2026-08-22）：依据 DeepSeek 官方最新文档，系统预设直接使用 `deepseek-v4-flash`、`deepseek-v4-pro` 上游模型 ID；模型版本更新由官方别名承载，不再映射到已过时的模型名称。
 # 2026-07-11：EdgeView 浏览器模块
 
 - 已完成：`lingbuilder.edgeview` 支持 HWND 嵌入、区域承载、多实例、独立 User Data Folder、导航、前进后退、刷新关闭、分实例 JavaScript JSON 返回值，以及 WebView2 中文事件到 `.lcpp` 无参数处理器的直接回调。
@@ -933,6 +940,14 @@
 - [x] 2026-08-20：修复活动文件分流误判：布局/美化提示不再要求当前文件必须是 `.lcpp`；只要存在完整设计器模型，即使用户打开 `config.ini` 或 `.cpp` 也会走源码与设计器同步编辑提案。系统 AI 的有限上下文优先包含当前文件和项目内 `.lcpp` 文件，并新增回归断言。
 - [ ] 后续为嵌套工作区增加端到端 Electron smoke，覆盖 `src/<workspace>/.lingbuilder/projects/<projectId>/window-designer.json`、设计器画布刷新、重启恢复和多窗口并发版本号。
 - [ ] 后续将 `/api/lingcpp/edit/apply` 的浏览器端状态应用与磁盘版本校验抽到共享 `WorkspaceEditService`，并为源码、设计器、恢复文件增加跨进程版本号，避免多个 IDE 窗口同时编辑时只能依赖 JSON 快照比较。
+
+## 设计器交互性能（2026-08-22）
+
+- [x] 窗口尺寸调整和非可视资源拖动改为 requestAnimationFrame 临时预览，鼠标释放时才提交项目模型，避免每个 mousemove 序列化完整设计器项目、触发跨组件通知和自动保存。
+- [x] 控件移动和缩放预览改为 DOM 合成层更新：移动使用 `translate3d`，缩放使用 `translate3d + scale3d`，拖动帧不再写控件 `width/height`，释放时一次性恢复最终布局属性。
+- [x] 窗口尺寸预览只调整带 `contain: layout paint size` 的外框并裁剪旧画布；画布真实 `width/height`、窗口模型和自动保存均延迟到释放时提交，交互期间使用独立预览边框反馈尺寸。
+- [x] 控件选中状态改用按项目隔离的轻量选择缓存，选择变化不再序列化完整项目、广播 `WINDOW_DESIGNER_PROJECT_UPDATED` 或触发模块上下文刷新；项目保存仍会一次性同步完整状态和选择游标。
+- [ ] 后续继续把画布控件绘制拆分为稳定层与交互层，并对 100+ 控件设计器做浏览器 Performance trace，重点检查阴影、渐变背景、层级重排和属性面板联动。
 # 2026-08-16 Bug 修复
 
 - 已修复：普通 Win32 F5 生成器对 `如果 (文本变量 = "值")` 的解析遗漏单等号，导致生成 `std::wstring` 与窄字符串赋值表达式并触发 MSVC C2679。表达式规则现将单等号规范为宽字符串 `==` 比较，并由回归测试锁定。
@@ -957,3 +972,11 @@
 - [x] 解决方案文件服务、F5 后端和 AI Bridge 统一排除 `.lingbuilder-build`、`generated/cpp` 及其它已知构建/工具产物目录，避免项目源码根目录为完整工程目录时把生成的 `.lcpp` 副本再次聚合。
 - [x] 增加源码根目录内同时存在真实源码、Debug/Release 生成副本和导出副本的回归测试；保留磁盘产物，不做自动删除。
 - [ ] 后续将源码收集守卫扩展为可配置的项目级构建输出清单，并让外部项目/插件贡献的输出目录在注册时声明为不可索引路径。
+# AI 编辑请求点数预扣（2026-08-22）
+
+- [x] 修复编辑请求默认按 24,576 输出 token 预扣导致余额不足的问题；未指定上限时最多按 8,192 token 预扣，并继续按模型上限和实际用量结算。
+## AI 普通问答与编辑意图（2026-08-22）
+- `.lcpp` 当前文件不再自动触发编辑提案；只有用户明确表达修改、修复、重构、生成代码等意图时才进入可审阅编辑流程，普通问题（例如“1+1”）走聊天回答。
+- AI 对话消息的开发者标签与正文必须保持可读对比度，暗色主题使用浅蓝色文字，禁止使用低透明度导致难以阅读的标签。
+- AI 消息正文必须允许文本选择，并提供右键“复制消息”；复制操作不得修改会话内容。
+- AI 会话面板提供“清除当前上下文”和“新建 AI 会话”，两者同时注册为 CommandService 命令；历史会话按项目持久化并可切换查看。

@@ -2,6 +2,7 @@ import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
 import { HTTP_CLIENT_MODULE } from './httpClientModule';
+import { CDP_CLIENT_MODULE } from './cdpClientModule';
 
 type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
 
@@ -90,4 +91,4 @@ const ftp = createStandardModule({
   ]
 });
 
-export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [HTTP_CLIENT_MODULE, tcp, udp, dns, url, cookie, ftp];
+export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [HTTP_CLIENT_MODULE, CDP_CLIENT_MODULE, tcp, udp, dns, url, cookie, ftp];

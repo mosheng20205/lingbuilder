@@ -24,12 +24,12 @@ export class AiService {
     const existing = await this.prisma.aiRequest.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey } } }); if (existing) throw Object.assign(new Error('该幂等请求已存在。'), { status: 409, code: 'IDEMPOTENCY_CONFLICT' });
     const rulebook = await this.rulebook.get();
     const messages = [{ role: 'system' as const, content: `以下是 LingBuilder 固定 AI 规则手册，必须优先遵守（版本 ${rulebook.version}）：\n${rulebook.content}` }, ...(operation === 'edit' ? buildEditMessages(request as AiEditRequest) : request.messages)];
-    const editBudget = operation === 'edit' ? Math.max(model.maxOutputTokens, 24_576) : model.maxOutputTokens; const maxOutput = Math.max(1, Math.min(request.maxOutputTokens || editBudget, editBudget)); const inputEstimate = estimateMessageTokens(messages); const rates = resolveRates(model, new Date()); const estimatedListPoints = this.billing.calculatePoints(inputEstimate, 0, maxOutput, rates);
+    const outputBudget = resolveOutputBudget(operation, model.maxOutputTokens, request.maxOutputTokens); const inputEstimate = estimateMessageTokens(messages); const rates = resolveRates(model, new Date()); const estimatedListPoints = this.billing.calculatePoints(inputEstimate, 0, outputBudget, rates);
     const free = await this.promotions.activeFreeWindow(userId, model.alias, estimatedListPoints); const requestId = crypto.randomUUID(); const reservePoints = free ? 0n : estimatedListPoints;
     await this.prisma.aiRequest.create({ data: { id: requestId, userId, idempotencyKey, operation, modelAlias: model.alias, routeVersion: model.routes[0].version, reservedPoints: reservePoints, freePromotionId: free?.policy.id } });
     try { await this.billing.reserve(userId, requestId, reservePoints); } catch (error) { await this.prisma.aiRequest.update({ where: { id: requestId }, data: { status: 'FAILED', errorCode: (error as any)?.code || 'INSUFFICIENT_CREDITS', finishedAt: new Date() } }); throw error; }
     const controller = new AbortController(); this.active.set(requestId, controller);
-    return { requestId, model, route: model.routes[0], maxOutput, reservePoints, free, controller, messages, rates };
+    return { requestId, model, route: model.routes[0], maxOutput: outputBudget, reservePoints, free, controller, messages, rates };
   }
   async *stream(userId: string, idempotencyKey: string, operation: 'chat' | 'edit', request: AiChatRequest | AiEditRequest): AsyncGenerator<AiStreamEvent> {
     const prepared = await this.prepare(userId, idempotencyKey, operation, request);
@@ -119,6 +119,15 @@ export class AiService {
 }
 
 function validateRequest(request: AiChatRequest | AiEditRequest, operation: string) { if (!request?.modelAlias || !Array.isArray(request.messages) || !request.messages.length || request.messages.length > 50) throw Object.assign(new Error('AI 请求结构无效。'), { status: 400, code: 'VALIDATION_FAILED' }); const total = request.messages.reduce((sum, item) => sum + String(item.content || '').length, 0); if (total > 100_000) throw Object.assign(new Error('对话上下文超过 100,000 字符。'), { status: 413, code: 'VALIDATION_FAILED' }); if (operation === 'edit') { const edit = request as AiEditRequest; const designerSize = edit.designerProject ? JSON.stringify(edit.designerProject).length : 0; if (!edit.instruction || !Array.isArray(edit.files) || edit.files.length > 5 || edit.files.reduce((sum, file) => sum + file.content.length, 0) > 24_000 || designerSize > 200_000) throw Object.assign(new Error('编辑上下文超过受控大小限制。'), { status: 400, code: 'VALIDATION_FAILED' }); } }
+export const DEFAULT_EDIT_OUTPUT_TOKENS = 8_192;
+
+export function resolveOutputBudget(operation: 'chat' | 'edit', modelMaxOutputTokens: number, requested: number | undefined): number {
+  const modelBudget = Math.max(1, Math.floor(modelMaxOutputTokens));
+  const defaultBudget = operation === 'edit' ? Math.min(modelBudget, DEFAULT_EDIT_OUTPUT_TOKENS) : modelBudget;
+  const requestedBudget = requested === undefined ? defaultBudget : Math.floor(requested);
+  return Math.max(1, Math.min(requestedBudget, modelBudget));
+}
+
 function isDesignerEditInstruction(instruction: string): boolean {
   return /窗口|窗体|控件|布局|界面|按钮|文本框|标签|进度条|宽度|高度|坐标|显示|隐藏|移动|调整大小|设计器/u.test(instruction);
 }

@@ -4,10 +4,13 @@ import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistr
 import { normalizeIdentifier, parseLingCpp } from './parser';
 import type { LingCppDiagnostic } from './types';
 import {
+  collectRuntimeControlMethodCandidates,
   getRuntimeControlCommandReturnType,
   getRuntimeControlVariablesAtLine,
+  getRuntimeControlVariablesFromMethods,
   isRuntimeControlTypeCompatibleWithParameter,
-  type LingCppRuntimeControlVariable
+  type LingCppRuntimeControlVariable,
+  type RuntimeControlMethodCandidate
 } from './runtimeControlTypeService';
 
 export interface LingCppControlSymbol {
@@ -94,10 +97,11 @@ export function getLingCppControlSymbols(
   source = '',
   filePath?: string,
   scope: 'currentWindow' | 'project' = 'currentWindow',
-  moduleContext?: LingCppModuleContext
+  moduleContext?: LingCppModuleContext,
+  sourceClassNames?: ReadonlySet<string>
 ): LingCppControlSymbol[] {
   if (!project) return [];
-  const windows = scope === 'project' ? project.windows : selectDesignerWindows(project, source, filePath);
+  const windows = scope === 'project' ? project.windows : selectDesignerWindows(project, source, filePath, sourceClassNames);
   const symbols = windows.flatMap(window => window.controls.map(control => controlToSymbol(project, window, control, moduleContext)));
   const windowIds = new Set(windows.map(window => window.id));
   const resources = (project.resources || [])
@@ -112,6 +116,14 @@ export function getLingCppControlSymbols(
   return [...symbols, ...uniqueResources.values()];
 }
 
+/** 控件引用解析的共享上下文：一次解析结果供所有引用复用，避免逐参数全文重新解析。 */
+interface ControlReferenceResolutionContext {
+  lineStarts: number[];
+  methods: readonly RuntimeControlMethodCandidate[];
+  projectSymbols: LingCppControlSymbol[];
+  currentWindowSymbols: LingCppControlSymbol[];
+}
+
 export function getLingCppControlReferences(
   source: string,
   project?: LingWindowProject,
@@ -121,6 +133,18 @@ export function getLingCppControlReferences(
   if (!moduleContext) return [];
   const bindings = buildBindingIndex(moduleContext);
   const lineStarts = getLineStarts(source);
+  const parsed = parseLingCpp(source);
+  const sourceClassNames = new Set(parsed.program.classes.map(item => normalizeIdentifier(item.name)));
+  const context: ControlReferenceResolutionContext = {
+    lineStarts,
+    methods: collectRuntimeControlMethodCandidates(parsed),
+    projectSymbols: project
+      ? getLingCppControlSymbols(project, source, filePath, 'project', moduleContext, sourceClassNames)
+      : [],
+    currentWindowSymbols: project
+      ? getLingCppControlSymbols(project, source, filePath, 'currentWindow', moduleContext, sourceClassNames)
+      : []
+  };
   return parseInvocations(source).flatMap(invocation => {
     const resolvedBinding = bindings.get(normalizeIdentifier(invocation.name));
     if (!resolvedBinding) return [];
@@ -130,13 +154,12 @@ export function getLingCppControlReferences(
       if (!argument) return [];
       return [resolveControlReference(
         source,
-        lineStarts,
+        context,
         invocation.name,
         resolvedBinding.canonicalName,
         parameterIndex,
         parameter,
         argument,
-        project,
         filePath,
         moduleContext
       )];
@@ -362,13 +385,12 @@ export function renameLingCppControlReference(
 
 function resolveControlReference(
   source: string,
-  lineStarts: number[],
+  context: ControlReferenceResolutionContext,
   commandName: string,
   canonicalCommandName: string,
   parameterIndex: number,
   parameter: ModuleCommandBindingParameter,
   argument: { text: string; startOffset: number; endOffset: number },
-  project: LingWindowProject,
   filePath?: string,
   moduleContext?: LingCppModuleContext
 ): LingCppControlReference {
@@ -380,9 +402,9 @@ function resolveControlReference(
   const quotedMatch = rawText.match(/^["“]([\s\S]*)["”]$/u);
   const identifierMatch = rawText.match(/^[\p{L}_][\p{L}\p{N}_]*$/u);
   const name = (quotedMatch?.[1] || identifierMatch?.[0] || '').trim();
-  const range = rangeFromOffsets(lineStarts, startOffset, endOffset);
+  const range = rangeFromOffsets(context.lineStarts, startOffset, endOffset);
   const runtimeVariable = identifierMatch
-    ? getRuntimeControlVariablesAtLine(source, range.startLine, moduleContext)
+    ? getRuntimeControlVariablesFromMethods(context.methods, range.startLine, moduleContext)
       .find(variable => normalizeIdentifier(variable.name) === normalizeIdentifier(identifierMatch[0]))
     : undefined;
   const runtimeCallName = rawText.match(/^([\p{L}_][\p{L}\p{N}_]*)\s*[（(]/u)?.[1];
@@ -407,10 +429,10 @@ function resolveControlReference(
     };
   }
   const scope = parameter.scope || 'currentWindow';
-  const allProjectSymbols = getLingCppControlSymbols(project, source, filePath, 'project', moduleContext);
+  const allProjectSymbols = context.projectSymbols;
   const allScopeSymbols = scope === 'project'
-    ? allProjectSymbols
-    : getLingCppControlSymbols(project, source, filePath, 'currentWindow', moduleContext);
+    ? context.projectSymbols
+    : context.currentWindowSymbols;
   const projectCandidates = name
     ? allProjectSymbols.filter(symbol => normalizeIdentifier(symbol.name) === normalizeIdentifier(name))
     : [];
@@ -569,13 +591,13 @@ function skipTriviaOrLiteral(source: string, start: number): number {
   return start;
 }
 
-function selectDesignerWindows(project: LingWindowProject, source: string, filePath?: string): LingWindowModel[] {
+function selectDesignerWindows(project: LingWindowProject, source: string, filePath?: string, sourceClassNames?: ReadonlySet<string>): LingWindowModel[] {
   const associatedFile = extractAssociatedDesignerFile(source);
   if (associatedFile) {
     const byDesignerFile = project.windows.filter(window => normalizePathName(window.fileName) === normalizePathName(associatedFile));
     return byDesignerFile;
   }
-  const classNames = new Set(parseLingCpp(source).program.classes.map(item => normalizeIdentifier(item.name)));
+  const classNames = sourceClassNames || new Set(parseLingCpp(source).program.classes.map(item => normalizeIdentifier(item.name)));
   const byClass = project.windows.filter(window => classNames.has(normalizeIdentifier(window.className)));
   if (byClass.length) return byClass;
   const normalizedPath = filePath?.replace(/\\/gu, '/').toLocaleLowerCase();

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "projectId": "fbro",
+  "conversations": [
+    {
+      "id": "850db223-ab5b-4468-b404-4007ee96e4ac",
+      "title": "新建 AI 会话",
+      "createdAt": "2026-08-22T06:50:31.571Z",
+      "updatedAt": "2026-08-22T06:50:31.571Z",
+      "messages": []
+    }
+  ],
+  "activeConversationId": "850db223-ab5b-4468-b404-4007ee96e4ac"
+}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BillingService } from '../src/billing/billing.service.js';
 import { AiController } from '../src/ai/ai.controller.js';
-import { AiService } from '../src/ai/ai.service.js';
+import { AiService, DEFAULT_EDIT_OUTPUT_TOKENS, resolveOutputBudget } from '../src/ai/ai.service.js';
 import { estimateCancellationUsage } from '../src/ai/usage-estimator.js';
 import { extractOpenAiDeltas } from '../src/ai/provider.service.js';
 import { DEEPSEEK_V4_MODELS, normalizeSystemAiProviderInput } from '../src/ai/system-ai-provider.service.js';
@@ -17,6 +17,15 @@ test('billing rounds fractional model points upward using bigint', () => {
   const billing = new BillingService({} as never);
   assert.equal(billing.calculatePoints(1, 0, 0, { input: 1n, cached: 0n, output: 0n }), 1n);
   assert.equal(billing.calculatePoints(1_000_000, 0, 500_000, { input: 2n, cached: 0n, output: 4n }), 4n);
+});
+
+test('edit output reservation uses a bounded default instead of the old 24576-token floor', () => {
+  assert.equal(DEFAULT_EDIT_OUTPUT_TOKENS, 8_192);
+  assert.equal(resolveOutputBudget('edit', 32_768, undefined), 8_192);
+  assert.equal(resolveOutputBudget('edit', 4_096, undefined), 4_096);
+  assert.equal(resolveOutputBudget('edit', 32_768, 2_048), 2_048);
+  assert.equal(resolveOutputBudget('edit', 4_096, 9_999), 4_096);
+  assert.equal(resolveOutputBudget('chat', 8_192, undefined), 8_192);
 });
 
 test('provider policy rejects private and non-HTTPS endpoints', async () => {
@@ -40,6 +49,7 @@ test('OpenAI-compatible reasoning deltas are kept separate from answer content',
 test('system AI provider presets create both requested DeepSeek V4 model routes', () => {
   const value = normalizeSystemAiProviderInput({ name: 'DeepSeek', preset: 'deepseek-v4', protocol: 'openai-compatible', baseUrl: 'https://api.deepseek.com', apiKey: 'secret' });
   assert.deepEqual(value.models.map(model => model.modelName), DEEPSEEK_V4_MODELS.map(model => model.modelName));
+  assert.deepEqual(value.models.map(model => model.modelName), ['deepseek-v4-flash', 'deepseek-v4-pro']);
   assert.equal(value.kind, 'OPENAI_COMPATIBLE');
   assert.throws(() => normalizeSystemAiProviderInput({ name: 'DeepSeek', preset: 'deepseek-v4', protocol: 'anthropic', baseUrl: 'https://api.deepseek.com', apiKey: 'secret' }), /OpenAI/u);
 });

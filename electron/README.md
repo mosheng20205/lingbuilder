@@ -1,5 +1,7 @@
 # LingBuilder Electron
 
+> 2026-08-22：CDP 客户端模块升级为 `lingbuilder.cdp.client@2.0.0`（97 条 `CDP_` 命令、`CDP连接`/`CDP页面`/`CDP元素`/`CDP拦截` 受管类型）。在阶段 1 多连接/页面/导航/脚本/元素/键鼠/网络/Cookie/截图/PDF 基础上，阶段 2 新增命令超时看门狗、Fetch 拦截/改写/mock/认证、对话框应答、下载、上传、生命周期等待、设备与网络仿真、元素截图、窗口边界、新页面通知、拖拽和函数调用。正式说明见 `docs/modules/cdp-client/README.md`，交接记录见 `../doc/CDP模块开发进度.md`；`npm run smoke:cdp-native` 已自动启动 Edge headless、MSVC 编译 Win32+x64 并验证双连接、Fetch mock、对话框、下载事件、上传、暗色仿真、生命周期等待、截图和清理，退出码 0。
+
 > 2026-08-20：修复旧上传项目 F5 的 C++ C3861。历史 `.lcpp` 调用 `上传_打开("控件名")` 现在由统一规则映射到已存在的 `上传_打开文件选择` 运行时函数；普通新项目仍使用非可视 `FileDialog` 和 `文件对话框_*` 命令，AI 不得新建旧 `Upload`/`DragUpload` 控件。
 
 > 2026-08-20：修复 AI “美化界面”提案缺少设计器模型。BYOK 生成端会按布局请求动态要求完整 `designerProject`，并为大型窗口模型预留 32000 Token 输出空间；系统 AI 云端解析层也会在 SSE 草稿发出前对缺失或原样模型生成同一回退。纯源码请求仍可省略该字段。提案校验继续要求源码文件与完整设计器模型一起预览、确认和应用；若模型原样返回、系统草稿缺少模型或未配置 API Key，宽泛美化请求统一使用源码不变的保守本地视觉回退。
@@ -87,6 +89,8 @@
 > Frame 句柄保留所属浏览器并在浏览器关闭时定向失效，空 Frame/View/Delegate 查询保留 `OK + 0`；标识符、名称和所有文本通过受管集合或 UTF-16 两阶段缓冲返回。头映射、页范围和几何结构使用受控表示，拒绝非法元素、范围、类型和已释放句柄；负数 CEF 错误码及合法负枚举不会被误判为 Bridge 失败。Bridge 不暴露 `CefRefPtr`、CEF 指针、原始内存地址或未受控对象。
 
 > 2026-08-07：`lingbuilder.fbro.browser@2.2.0` 已补齐一浏览器一独立 Host 进程能力。设计器 `processMode` 支持进程内、独立进程嵌入和独立进程窗口；独立模式通过随机回环 WebSocket 与一次性 256 位 Token 控制导航、JS、缩放、静音、代理、指纹、显隐、尺寸、截图、关闭、PID/CDP 查询和受限重启。主进程用 Job Object 回收 Host，崩溃按 1/2/4 秒退避且十分钟最多三次。项目全部 FBro 控件独立时可与 CEF3 共存，F5 和 Visual Studio 导出只把 CEF 135 复制到 `fbro-host/`，主目录保留 CEF3 的 CEF 150；进程内 FBro 仍会在生成前阻断该组合。
+
+> AI 助手：系统 AI 继续通过 Electron 云端账号 IPC 和 HTTPS SSE 调用；用户可在 `byok` 模式配置兼容 Provider，密钥仅使用 Electron 安全凭据存储。每个项目的会话历史由本地服务保存到 `.lingbuilder/ai/<projectId>.sessions.json`，不保存密钥或账号令牌。工作台右侧 AI 停靠栏默认收起，`workbench.aiPanel.visible` 与 `workbench.aiPanel.width` 控制其恢复状态。涉及文件或设计器的 AI 修改仍必须预览并确认。
 
 > 0.3.0 发布基线：new_emoji FBro 浏览器外壳模板与一键回读验证的 `.lcpppkg` 导出进入正式版本。该模板固定 Windows/MSVC x64，要求 `lingbuilder.new_emoji.ui@2.0.0`，并以真实 FBro 非分层伴随宿主渲染网页。
 
@@ -604,7 +608,7 @@ npm run smoke:new-emoji-fbro-browser-shell
 
 # 云端系统 AI 供应商
 
-管理后台 `/admin` 的“系统 AI 供应商”用于配置 IDE“AI 智能编程助手 → 系统 AI”的云端模型通道。DeepSeek V4 预设会发布 `deepseek-v4-flash`、`deepseek-v4-pro`；自定义模式支持公开 HTTPS Base URL、Model Name、API Key，以及 OpenAI 兼容或 Anthropic Messages 协议。桌面端仍只读取云端 `/v1/ai/models` 暴露的逻辑模型别名并通过云端 AI 接口调用，不接收供应商 Base URL 或明文密钥。
+管理后台 `/admin` 的“系统 AI 供应商”用于配置 IDE“AI 智能编程助手 → 系统 AI”的云端模型通道。DeepSeek 官方预设会发布并直接调用 `deepseek-v4-flash`、`deepseek-v4-pro`；官方模型版本更新由这两个别名承载。自定义模式支持公开 HTTPS Base URL、Model Name、API Key，以及 OpenAI 兼容或 Anthropic Messages 协议。桌面端仍只读取云端 `/v1/ai/models` 暴露的逻辑模型别名并通过云端 AI 接口调用，不接收供应商 Base URL 或明文密钥。
 
 # Win32 DataGrid
 
@@ -823,3 +827,10 @@ AI 编辑分流按用户提示中的窗口/控件目标与布局变更意图判�
 # 2026-08-19 开发说明
 
 - F5 的 LingCpp 语义检查会把当前窗口设计器控件符号传入局部初始化表达式检查。使用进度条、滑块等 `controlRef` 控件参数时，源码应继续使用裸控件名，例如 `控件_取数值(进度条1)`。
+# AI 点数预扣规则（2026-08-22）
+
+云端 AI 编辑请求未指定输出上限时，服务端最多按 8,192 token 预扣点数；显式 `maxOutputTokens` 会被限制在模型上限内，最终仍按供应商实际用量结算。
+## AI 对话路由（2026-08-22）
+- 打开 `.lcpp` 文件时，普通提问仍使用聊天接口；仅包含明确修改意图的请求才生成源码/设计器编辑草案，并要求用户审阅后应用。
+- 开发者消息在暗色主题中使用高对比度浅蓝色文字，确保标签和内容可辨识。
+- AI 助手消息支持文本选择及右键“复制消息”；“AI：新建会话”和“AI：清除当前上下文”注册到工作台命令面板，历史会话按项目加载并可切换。

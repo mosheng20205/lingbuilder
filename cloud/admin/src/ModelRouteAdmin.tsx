@@ -36,7 +36,8 @@ export function ModelRouteAdmin({ data, request, reload }: Props) {
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true); setMessage(''); setError('');
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const peakFilled = [form.get('peakInputPointsPerMillion'), form.get('peakOutputPointsPerMillion')].every(value => String(value || '').trim() !== '');
     const value: Record<string, unknown> = {
       alias: String(form.get('alias') || ''),
@@ -56,7 +57,7 @@ export function ModelRouteAdmin({ data, request, reload }: Props) {
     try {
       await request('/v1/admin/model-routes', { method: 'POST', body: JSON.stringify(value) });
       setMessage('模型已发布，IDE 的模型列表会立即看到它。');
-      event.currentTarget.reset();
+      formElement.reset();
       setInputPoints(''); setOutputPoints(''); setPeakInputPoints(''); setPeakOutputPoints('');
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }

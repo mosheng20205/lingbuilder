@@ -96,6 +96,10 @@ import {
 import { PerformanceService } from "./src/services/performance/performanceService";
 import { PublishingService } from "./src/services/publishing/publishingService";
 import { WorkspaceIndexService } from "./src/services/ai/workspaceIndexService";
+import {
+  AiConversationService,
+  AiConversationStoreError
+} from "./src/services/ai/aiConversationService";
 import { SettingsSyncService } from "./src/services/configuration/settingsSyncService";
 import { WorkspaceSearchError } from "./src/services/workspace/workspaceSearchTypes";
 import { createManagedProcessService } from "./src/services/tasks/managedProcessService";
@@ -240,6 +244,7 @@ let windowsExecutableIconService = createWindowsExecutableIconService(serverRunt
 let performanceService = new PerformanceService(serverRuntimeConfig.workspaceRoot);
 let publishingService = new PublishingService(serverRuntimeConfig.workspaceRoot);
 let workspaceIndexService = new WorkspaceIndexService(serverRuntimeConfig.workspaceRoot);
+let aiConversationService = new AiConversationService(serverRuntimeConfig.workspaceRoot);
 let settingsSyncService = new SettingsSyncService(serverRuntimeConfig.workspaceRoot, serverRuntimeConfig.userSettingsPath);
 let externalProjectService = new ExternalProjectService(serverRuntimeConfig.workspaceRoot);
 const moduleAccessService = new ModuleAccessService();
@@ -333,6 +338,7 @@ async function switchWorkspaceRuntime(requestedPath: unknown): Promise<{ workspa
     performanceService = new PerformanceService(candidateWorkspace);
     publishingService = new PublishingService(candidateWorkspace);
     workspaceIndexService = new WorkspaceIndexService(candidateWorkspace);
+    aiConversationService = new AiConversationService(candidateWorkspace);
     settingsSyncService = new SettingsSyncService(candidateWorkspace, serverRuntimeConfig.userSettingsPath);
     externalProjectService = new ExternalProjectService(candidateWorkspace);
     clangdService = new ClangdService({
@@ -910,6 +916,70 @@ app.post("/api/ai/connect", async (req, res) => {
       error: "AI 连接失败",
       details: error?.message || String(error)
     });
+  }
+});
+
+function respondWithAiConversationError(res: express.Response, error: unknown): void {
+  if (error instanceof AiConversationStoreError) {
+    const status = error.code === 'NOT_FOUND' ? 404 : error.code === 'CORRUPTED_STORE' ? 409 : 400;
+    res.status(status).json({ ok: false, code: error.code, error: error.message });
+    return;
+  }
+  res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'AI 会话操作失败。' });
+}
+
+app.get('/api/ai/conversations', async (req, res) => {
+  try {
+    const projectId = await requireExistingProject(typeof req.query.projectId === 'string' ? req.query.projectId : undefined);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, store: await aiConversationService.get(projectId) });
+  } catch (error) {
+    respondWithAiConversationError(res, error);
+  }
+});
+
+app.post('/api/ai/conversations', async (req, res) => {
+  try {
+    const projectId = await requireExistingProject(req.body?.projectId);
+    res.status(201).json({ ok: true, store: await aiConversationService.create(projectId, req.body?.title) });
+  } catch (error) {
+    respondWithAiConversationError(res, error);
+  }
+});
+
+app.post('/api/ai/conversations/:conversationId/activate', async (req, res) => {
+  try {
+    const projectId = await requireExistingProject(req.body?.projectId);
+    res.json({ ok: true, store: await aiConversationService.activate(projectId, req.params.conversationId) });
+  } catch (error) {
+    respondWithAiConversationError(res, error);
+  }
+});
+
+app.patch('/api/ai/conversations/:conversationId', async (req, res) => {
+  try {
+    const projectId = await requireExistingProject(req.body?.projectId);
+    res.json({ ok: true, store: await aiConversationService.rename(projectId, req.params.conversationId, req.body?.title) });
+  } catch (error) {
+    respondWithAiConversationError(res, error);
+  }
+});
+
+app.put('/api/ai/conversations/:conversationId/messages', async (req, res) => {
+  try {
+    const projectId = await requireExistingProject(req.body?.projectId);
+    res.json({ ok: true, store: await aiConversationService.replaceMessages(projectId, req.params.conversationId, req.body?.messages) });
+  } catch (error) {
+    respondWithAiConversationError(res, error);
+  }
+});
+
+app.delete('/api/ai/conversations/:conversationId', async (req, res) => {
+  try {
+    const projectId = await requireExistingProject(typeof req.query.projectId === 'string' ? req.query.projectId : undefined);
+    res.json({ ok: true, store: await aiConversationService.remove(projectId, req.params.conversationId) });
+  } catch (error) {
+    respondWithAiConversationError(res, error);
   }
 });
 

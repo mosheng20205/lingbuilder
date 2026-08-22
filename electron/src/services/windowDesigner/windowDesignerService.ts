@@ -31,9 +31,15 @@ import {
 } from './dataGridModel';
 
 export const WINDOW_DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
+const WINDOW_DESIGNER_SELECTION_KEY_SUFFIX = '.selection.v1';
 const NEW_EMOJI_DESIGNER_TYPE_PREFIX = 'lingbuilder.new_emoji.ui/';
 export const WINDOW_DESIGNER_PROJECT_UPDATED = 'window-designer:project-updated';
 export const WINDOW_DESIGNER_DIRTY_STATE_CHANGED = 'window-designer:dirty-state-changed';
+
+// The designer keeps project objects immutable while changing selection. Reuse
+// normalization work for those selection-only saves; WeakMap avoids retaining
+// projects after their editor instance is released.
+const normalizedProjectCache = new WeakMap<LingWindowProject, LingWindowProject>();
 
 export const DESIGNER_TITLE_BAR_HEIGHT = 28;
 export const DESIGNER_THIN_TITLE_BAR_HEIGHT = 20;
@@ -110,6 +116,12 @@ export function normalizeLingWindowFrame(
 
 export interface PersistedWindowDesignerState {
   project: LingWindowProject;
+  activeWindowId: string;
+  selectedControlId: string | null;
+}
+
+interface PersistedWindowDesignerSelection {
+  projectId: string;
   activeWindowId: string;
   selectedControlId: string | null;
 }
@@ -683,11 +695,40 @@ export const createDefaultWindowProject = (): LingWindowProject => ({
   ]
 });
 
+function resolveNormalizedWindowDesignerState(
+  project: LingWindowProject,
+  state?: Partial<PersistedWindowDesignerState> | null
+): PersistedWindowDesignerState {
+  const activeWindowId = project.windows.some(window => window.id === state?.activeWindowId)
+    ? state!.activeWindowId!
+    : project.windows[0].id;
+  const activeWindow = project.windows.find(window => window.id === activeWindowId) || project.windows[0];
+  const hasPersistedSelection = Boolean(state && Object.prototype.hasOwnProperty.call(state, 'selectedControlId'));
+  const persistedSelection = state?.selectedControlId;
+  const isVirtualWindowChild = typeof persistedSelection === 'string' && persistedSelection.startsWith('__window_');
+  const selectedControlId = hasPersistedSelection && (
+    persistedSelection === null
+    || isVirtualWindowChild
+    || activeWindow.controls.some(control => control.id === persistedSelection)
+  )
+    ? persistedSelection ?? null
+    : activeWindow.controls[0]?.id || null;
+
+  return {
+    project,
+    activeWindowId,
+    selectedControlId
+  };
+}
+
 export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesignerState> | null): PersistedWindowDesignerState {
   const fallbackProject = createDefaultWindowProject();
   const sourceProject = state?.project && Array.isArray(state.project.windows) && state.project.windows.length > 0
     ? state.project
     : fallbackProject;
+  const cachedProject = normalizedProjectCache.get(sourceProject);
+  if (cachedProject) return resolveNormalizedWindowDesignerState(cachedProject, state);
+
   let projectChanged = sourceProject.schemaVersion !== 2 || !Array.isArray(sourceProject.resources);
   const normalizedWindows = sourceProject.windows.map(window => {
     const menuFont = normalizeControlFont({
@@ -806,30 +847,71 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     };
   });
   const project = projectChanged ? { ...sourceProject, schemaVersion: 2 as const, resources: sourceProject.resources || [], windows: normalizedWindows } : sourceProject;
-  const activeWindowId = project.windows.some(window => window.id === state?.activeWindowId)
-    ? state!.activeWindowId!
-    : project.windows[0].id;
-  const activeWindow = project.windows.find(window => window.id === activeWindowId) || project.windows[0];
-  const hasPersistedSelection = Boolean(state && Object.prototype.hasOwnProperty.call(state, 'selectedControlId'));
-  const persistedSelection = state?.selectedControlId;
-  const isVirtualWindowChild = typeof persistedSelection === 'string' && persistedSelection.startsWith('__window_');
-  const selectedControlId = hasPersistedSelection && (
-    persistedSelection === null
-    || isVirtualWindowChild
-    || activeWindow.controls.some(control => control.id === persistedSelection)
-  )
-    ? persistedSelection ?? null
-    : activeWindow.controls[0]?.id || null;
-
-  return {
-    project,
-    activeWindowId,
-    selectedControlId
-  };
+  normalizedProjectCache.set(sourceProject, project);
+  if (project !== sourceProject) normalizedProjectCache.set(project, project);
+  return resolveNormalizedWindowDesignerState(project, state);
 }
 
 export function getWindowDesignerAutosaveKey(projectId: string): string {
   return `${WINDOW_DESIGNER_AUTOSAVE_KEY}.${encodeURIComponent(projectId.trim())}`;
+}
+
+export function getWindowDesignerSelectionKey(projectId: string): string {
+  return `${getWindowDesignerAutosaveKey(projectId)}${WINDOW_DESIGNER_SELECTION_KEY_SUFFIX}`;
+}
+
+function readPersistedWindowDesignerSelection(projectId: string): PersistedWindowDesignerSelection | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(getWindowDesignerSelectionKey(projectId));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<PersistedWindowDesignerSelection>;
+    if (value.projectId !== projectId || typeof value.activeWindowId !== 'string') return null;
+    if (value.selectedControlId !== null && typeof value.selectedControlId !== 'string') return null;
+    return {
+      projectId,
+      activeWindowId: value.activeWindowId,
+      selectedControlId: value.selectedControlId ?? null
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mergePersistedWindowDesignerSelection(
+  state: PersistedWindowDesignerState,
+  projectId: string
+): PersistedWindowDesignerState {
+  const selection = readPersistedWindowDesignerSelection(projectId);
+  if (!selection || selection.activeWindowId !== state.activeWindowId) return state;
+  return resolveNormalizedWindowDesignerState(state.project, {
+    activeWindowId: state.activeWindowId,
+    selectedControlId: selection.selectedControlId
+  });
+}
+
+/**
+ * Persist only the lightweight selection cursor. Selection changes are local
+ * UI state and must not serialize or broadcast the complete designer project.
+ */
+export function saveWindowDesignerSelection(
+  projectId: string,
+  activeWindowId: string,
+  selectedControlId: string | null
+): void {
+  if (typeof window === 'undefined') return;
+  const normalizedProjectId = projectId.trim();
+  if (!normalizedProjectId || !activeWindowId) return;
+  try {
+    const selection: PersistedWindowDesignerSelection = {
+      projectId: normalizedProjectId,
+      activeWindowId,
+      selectedControlId
+    };
+    window.localStorage.setItem(getWindowDesignerSelectionKey(normalizedProjectId), JSON.stringify(selection));
+  } catch {
+    // Selection persistence is best-effort; it must never block interaction.
+  }
 }
 
 export function readWindowDesignerState(projectId?: string): PersistedWindowDesignerState {
@@ -850,7 +932,7 @@ export function readWindowDesignerState(projectId?: string): PersistedWindowDesi
       if (normalizedProjectId && key === WINDOW_DESIGNER_AUTOSAVE_KEY) {
         window.localStorage.setItem(getWindowDesignerAutosaveKey(normalizedProjectId), JSON.stringify(state));
       }
-      return state;
+      return mergePersistedWindowDesignerSelection(state, normalizedProjectId || state.project.id);
     } catch {
       // Ignore a damaged cache entry and continue with the legacy/fallback key.
     }
@@ -858,11 +940,15 @@ export function readWindowDesignerState(projectId?: string): PersistedWindowDesi
   return normalizeWindowDesignerState();
 }
 
-export function notifyWindowDesignerProjectUpdated(state: PersistedWindowDesignerState): void {
+function dispatchWindowDesignerProjectUpdated(state: PersistedWindowDesignerState): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent<PersistedWindowDesignerState>(WINDOW_DESIGNER_PROJECT_UPDATED, {
-    detail: normalizeWindowDesignerState(state)
+    detail: state
   }));
+}
+
+export function notifyWindowDesignerProjectUpdated(state: PersistedWindowDesignerState): void {
+  dispatchWindowDesignerProjectUpdated(normalizeWindowDesignerState(state));
 }
 
 export function notifyWindowDesignerDirtyStateChanged(
@@ -883,14 +969,22 @@ export function saveWindowDesignerState(
   const nextState = normalizeWindowDesignerState(state);
   if (typeof window !== 'undefined') {
     try {
-      window.localStorage.setItem(getWindowDesignerAutosaveKey(nextState.project.id), JSON.stringify(nextState));
-      window.localStorage.setItem(WINDOW_DESIGNER_AUTOSAVE_KEY, JSON.stringify(nextState));
+      const serializedState = JSON.stringify(nextState);
+      window.localStorage.setItem(getWindowDesignerAutosaveKey(nextState.project.id), serializedState);
+      window.localStorage.setItem(WINDOW_DESIGNER_AUTOSAVE_KEY, serializedState);
+      const selection: PersistedWindowDesignerSelection = {
+        projectId: nextState.project.id,
+        activeWindowId: nextState.activeWindowId,
+        selectedControlId: nextState.selectedControlId
+      };
+      window.localStorage.setItem(getWindowDesignerSelectionKey(nextState.project.id), JSON.stringify(selection));
     } catch {
       // Autosave is best-effort in the prototype; editing should keep working if storage is unavailable.
     }
 
     if (options.notify !== false) {
-      notifyWindowDesignerProjectUpdated(nextState);
+      // nextState is already normalized above; avoid a second full project walk.
+      dispatchWindowDesignerProjectUpdated(nextState);
     }
   }
   return nextState;

@@ -46,7 +46,8 @@ export function PromotionAdmin({ data, request, reload }: Props) {
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy(true); setMessage(''); setError('');
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const startsAt = new Date(String(form.get('startsAt') || ''));
     const endsAt = new Date(String(form.get('endsAt') || ''));
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) { setError('请选择有效的开始和结束时间。'); setBusy(false); return; }
@@ -66,7 +67,7 @@ export function PromotionAdmin({ data, request, reload }: Props) {
     try {
       await request('/v1/admin/promotions', { method: 'POST', body: JSON.stringify(value) });
       setMessage(kind === 'signup_gift' ? '新用户赠送活动已创建，注册即自动生效。' : '限时免费窗口已创建，时间按北京时间生效。');
-      event.currentTarget.reset();
+      formElement.reset();
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }

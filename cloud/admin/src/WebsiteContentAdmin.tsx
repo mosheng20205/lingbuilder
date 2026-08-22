@@ -29,15 +29,49 @@ export function WebsiteContentAdmin({ data, request, reload }: { data: any; requ
 function DownloadsAdmin({ data, request, reload }: AdminProps) {
   const releases = data?.downloads || [];
   const [release, setRelease] = useState<any>(emptyRelease());
-  const [mirror, setMirror] = useState<any>({ releaseId: releases[0]?.id || '', provider: '', label: '', url: '', accessCode: '', enabled: true, sortOrder: 0 });
-  return <div className="site-admin-grid"><EditorPanel title="编辑下载版本" description="相同版本、渠道、平台和架构会更新原记录。"><ManagedForm value={release} setValue={setRelease} fields={[
-    field('version','版本号'),field('title','下载标题'),field('channel','渠道','select',['preview','stable']),field('platform','平台'),field('architecture','架构'),field('summary','简要说明','textarea'),field('releaseNotes','更新说明','textarea'),field('minimumRequirements','环境要求','textarea'),field('fileSize','文件大小'),field('sha256','SHA-256'),field('publicationStatus','发布状态','select',statuses),field('sortOrder','排序','number')
-  ]} onSubmit={async value => { await post(request, '/v1/admin/site/downloads', value); await reload(); setRelease(emptyRelease()); }}/></EditorPanel>
-    <EditorPanel title="编辑下载镜像" description="网盘地址和提取码可以单独更新，无需重新发布官网。"><ManagedForm value={{...mirror, releaseId: mirror.releaseId || releases[0]?.id || ''}} setValue={setMirror} fields={[
-      field('releaseId','所属版本','select',releases.map((item:any) => ({value:item.id,label:`${item.version} · ${item.channel}`}))),field('provider','镜像标识'),field('label','显示名称'),field('url','下载地址'),field('accessCode','提取码'),field('enabled','启用','checkbox'),field('sortOrder','排序','number')
-    ]} onSubmit={async value => { await post(request, '/v1/admin/site/download-mirrors', value); await reload(); setMirror({...mirror, provider:'',label:'',url:'',accessCode:''}); }}/></EditorPanel>
-    <RecordPanel title="现有下载版本" empty="尚未创建下载版本。">{releases.map((item:any) => <article className="site-record" key={item.id}><div><strong>{item.title}</strong><span>v{item.version} · {item.channel} · {item.platform} {item.architecture}</span><small>{item.mirrors.length} 个镜像 · {statusLabel(item.publicationStatus)}</small></div><button onClick={() => setRelease({...item})}>编辑版本</button>{item.mirrors.map((entry:any) => <button key={entry.id} onClick={() => setMirror({...entry})}>{entry.label}</button>)}</article>)}</RecordPanel>
+  const [editingId, setEditingId] = useState('');
+  const [expandedReleaseId, setExpandedReleaseId] = useState('');
+  const [mirrorDraft, setMirrorDraft] = useState<any | null>(null);
+  const startNewRelease = () => { setRelease(emptyRelease()); setEditingId(''); };
+  const openMirror = (releaseId: string, entry?: any) => { setExpandedReleaseId(releaseId); setMirrorDraft(entry ? { ...entry, releaseId } : { releaseId, provider: '', label: '', url: '', accessCode: '', enabled: true, sortOrder: 0 }); };
+  const closeMirror = () => { setMirrorDraft(null); setExpandedReleaseId(''); };
+  return <div className="downloads-layout">
+    <RecordPanel title="下载版本列表" empty="尚未创建下载版本，请先在右侧填写版本信息。">{releases.map((item: any) => { const mirrors = item.mirrors || []; return (
+      <article className="site-record download-record" key={item.id}>
+        <div><strong>{item.title}</strong><span>v{item.version} · {statusLabel(item.channel)} · {item.platform} {item.architecture}</span><small>{mirrors.length} 个镜像</small></div>
+        <span className={`badge badge-${String(item.publicationStatus || 'DRAFT').toLowerCase()}`}>{statusLabel(item.publicationStatus)}</span>
+        <button className={editingId === item.id ? 'active' : ''} onClick={() => { setRelease({ ...item }); setEditingId(item.id); }}>编辑版本</button>
+        <div className="download-mirrors">
+          <div className="download-mirrors-head"><span>网盘镜像</span><button onClick={() => openMirror(item.id)}>＋ 添加镜像</button></div>
+          {mirrors.length > 0 && <div className="download-mirrors-list">{mirrors.map((entry: any) => <button key={entry.id} className={`${entry.enabled ? '' : 'off '}${expandedReleaseId === item.id && mirrorDraft?.provider === entry.provider ? 'active' : ''}`} onClick={() => openMirror(item.id, entry)}>{entry.label}{entry.enabled ? '' : '（已停用）'}</button>)}</div>}
+          {expandedReleaseId === item.id && mirrorDraft && <MirrorEditor value={mirrorDraft} setValue={setMirrorDraft} onCancel={closeMirror} onSubmit={async value => { await post(request, '/v1/admin/site/download-mirrors', value); await reload(); closeMirror(); }}/>}
+        </div>
+      </article>); })}</RecordPanel>
+    <EditorPanel title={editingId ? `编辑下载版本 v${release.version}` : '新建下载版本'} description="相同版本、渠道、平台和架构会更新原记录；网盘镜像直接在左侧版本卡片内管理，无需再单独选择所属版本。">
+      <ManagedForm value={release} setValue={setRelease} fields={[
+        field('version','版本号'),field('title','下载标题'),field('channel','渠道','select',['preview','stable']),field('platform','平台'),field('architecture','架构'),field('summary','简要说明','textarea'),field('releaseNotes','更新说明','textarea'),field('minimumRequirements','环境要求','textarea'),field('fileSize','文件大小'),field('sha256','SHA-256'),field('publicationStatus','发布状态','select',statuses),field('sortOrder','排序','number')
+      ]} onSubmit={async value => { await post(request, '/v1/admin/site/downloads', value); await reload(); startNewRelease(); }}/>
+      {editingId && <div className="editor-reset"><button onClick={startNewRelease}>放弃当前编辑，返回新建版本</button></div>}
+    </EditorPanel>
   </div>;
+}
+
+function MirrorEditor({ value, setValue, onCancel, onSubmit }: { value:any; setValue:(value:any)=>void; onCancel:()=>void; onSubmit:(value:any)=>Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); setMessage(''); try { await onSubmit(value); } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } };
+  return <form className="mirror-editor" onSubmit={submit}>
+    <p className="mirror-editor-title">网盘镜像设置<span>同一版本内镜像标识相同时更新原镜像；停用后官网不再展示</span></p>
+    <div className="mirror-editor-grid">
+      <label><span>镜像标识</span><input required value={value.provider ?? ''} onChange={event => setValue({ ...value, provider: event.target.value })} placeholder="如 123pan、tianyi、baidu"/></label>
+      <label><span>显示名称</span><input required value={value.label ?? ''} onChange={event => setValue({ ...value, label: event.target.value })} placeholder="如 123 云盘"/></label>
+      <label className="wide"><span>下载地址</span><input required type="url" value={value.url ?? ''} onChange={event => setValue({ ...value, url: event.target.value })} placeholder="https://…"/></label>
+      <label><span>提取码</span><input value={value.accessCode ?? ''} onChange={event => setValue({ ...value, accessCode: event.target.value })}/></label>
+      <label><span>排序</span><input type="number" value={value.sortOrder ?? 0} onChange={event => setValue({ ...value, sortOrder: Number(event.target.value) })}/></label>
+      <label className="check"><input type="checkbox" checked={value.enabled !== false} onChange={event => setValue({ ...value, enabled: event.target.checked })}/><span>在官网展示该镜像</span></label>
+    </div>
+    <div className="mirror-editor-actions"><button type="button" onClick={onCancel}>取消</button><button className="primary" disabled={busy}>{busy ? '正在保存…' : '保存镜像'}</button>{message && <span className="form-message form-message-error" role="status">{message}</span>}</div>
+  </form>;
 }
 
 function CommandsAdmin({ data, request, reload }: AdminProps) {

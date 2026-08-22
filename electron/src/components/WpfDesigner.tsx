@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import {
@@ -77,6 +77,7 @@ import {
   normalizeWindowDesignerState,
   normalizeLingWindowFrame,
   readWindowDesignerState,
+  saveWindowDesignerSelection,
   saveWindowDesignerState,
   WINDOW_DESIGNER_PROJECT_UPDATED,
   PersistedWindowDesignerState,
@@ -125,7 +126,7 @@ import { CONTROL_FONT_FAMILY_OPTIONS, DEFAULT_CONTROL_FONT_FAMILY, getControlFon
 import {
   buildControlHierarchy,
   canReparentControls,
-  getEffectiveControlState,
+  getEffectiveControlStates,
   getControlDescendantIds,
   LingControlHierarchyNode,
   orderControlsForDesignerPainting,
@@ -199,7 +200,36 @@ interface DesignerControlInteractionPreview {
   controlId: string;
   fields: Partial<Pick<LingControl, 'x' | 'y' | 'width' | 'height'>>;
 }
+interface DesignerWindowInteractionPreview {
+  windowId: string;
+  width: number;
+  height: number;
+}
+interface DesignerResourceInteractionPreview {
+  resourceId: string;
+  x: number;
+  y: number;
+}
 type DesignerZoomMode = 'fit' | 'manual';
+
+interface DesignerControlRenderProps {
+  control: LingControl;
+  projectId: string;
+  isSelected: boolean;
+  handleMouseDown: (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => void;
+  setSelectedControlId: (id: string | null) => void;
+  onOpenEventCode: (event: React.MouseEvent, control: LingControl) => void;
+  onOpenContextMenu: (event: React.MouseEvent, controlId: string) => void;
+  contentOffset: number;
+  useNewEmojiDesigner: boolean;
+  newEmojiThemePreview: NewEmojiThemePreview;
+  isEffectivelyVisible: boolean;
+  isEffectivelyEnabled: boolean;
+  ancestorsVisible: boolean;
+  onSelectTabPage?: (pageId: string) => void;
+  onReorderRebarBand?: (fromIndex: number, toIndex: number) => void;
+  navigationRef?: (element: HTMLElement | null) => void;
+}
 const WINDOW_ROOT_DROP_TARGET = '__layout_window_root__';
 const LINGBUILDER_WINDOW_ICON_PREVIEW = new URL('../../../image/lingbuilder-ide-icon-v2.png', import.meta.url).href;
 const DESIGNER_CANVAS_PADDING = 48;
@@ -388,24 +418,33 @@ export default function WpfDesigner({
     }
   }, [activeWindowId]);
   const [selectedControlId, setSelectedControlId] = useState<string | null>(initialDesignerState.selectedControlId);
+  const selectedControlIdRef = useRef(selectedControlId);
+  selectedControlIdRef.current = selectedControlId;
   const [selectedControlIds, setSelectedControlIds] = useState<string[]>(initialDesignerState.selectedControlId ? [initialDesignerState.selectedControlId] : []);
   const selectedControlIdsRef = useRef(selectedControlIds);
   selectedControlIdsRef.current = selectedControlIds;
+  const selectionPersistenceTimerRef = useRef<number | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
   const designerNavigationTargetsRef = useRef(new Map<string, { element: HTMLElement; dispose(): void }>());
-  const registerDesignerNavigationTarget = useCallback((kind: 'control' | 'resource', id: string) => (
-    element: HTMLElement | null
-  ) => {
+  const designerNavigationTargetElementsRef = useRef(new Map<string, HTMLElement>());
+  const registerDesignerNavigationTargetElement = useCallback((kind: 'control' | 'resource', id: string, element: HTMLElement | null) => {
     const key = `${kind}:${id}`;
     const existing = designerNavigationTargetsRef.current.get(key);
     if (existing?.element === element) return;
     existing?.dispose();
     designerNavigationTargetsRef.current.delete(key);
-    if (!element || !activeWindowId) return;
-    const control = project.windows.find(window => window.id === activeWindowId)?.controls.find(item => item.id === id);
+    if (!element) {
+      designerNavigationTargetElementsRef.current.delete(key);
+      return;
+    }
+    designerNavigationTargetElementsRef.current.set(key, element);
+    const currentProject = currentProjectRef.current;
+    const currentWindowId = activeWindowIdRef.current;
+    if (!currentWindowId) return;
+    const control = currentProject.windows.find(window => window.id === currentWindowId)?.controls.find(item => item.id === id);
     const registration = registerDesignerNavigationTargetHandler({
-      projectId: project.id,
-      windowId: activeWindowId,
+      projectId: currentProject.id,
+      windowId: currentWindowId,
       controlId: id,
       kind: kind === 'resource' ? 'resource' : getWin32ControlDefinition(control?.type || '')?.isVisual === false ? 'nonVisual' : 'visual'
     }, request => {
@@ -416,8 +455,40 @@ export default function WpfDesigner({
       return request.controlId === id;
     });
     designerNavigationTargetsRef.current.set(key, { element, dispose: registration.dispose });
-  }, [activeWindowId, project.id, project.windows]);
-  const selectOnlyControl = (id: string | null) => { setSelectedControlId(id); setSelectedControlIds(id && !id.startsWith('__window_') ? [id] : []); setSelectedResourceId(null); };
+  }, []);
+  const designerNavigationRefCallbacksRef = useRef(new Map<string, (element: HTMLElement | null) => void>());
+  const registerDesignerNavigationTarget = useCallback((kind: 'control' | 'resource', id: string) => {
+    const key = `${kind}:${id}`;
+    const existing = designerNavigationRefCallbacksRef.current.get(key);
+    if (existing) return existing;
+    const callback = (element: HTMLElement | null) => registerDesignerNavigationTargetElement(kind, id, element);
+    designerNavigationRefCallbacksRef.current.set(key, callback);
+    return callback;
+  }, [registerDesignerNavigationTargetElement]);
+  useEffect(() => {
+    // Ref callbacks are stable during drag, so refresh registrations only when
+    // the project/window context changes instead of on every render.
+    const elements = [...designerNavigationTargetElementsRef.current.entries()];
+    elements.forEach(([key, element]) => {
+      const [kind, ...idParts] = key.split(':');
+      const id = idParts.join(':');
+      const existing = designerNavigationTargetsRef.current.get(key);
+      existing?.dispose();
+      designerNavigationTargetsRef.current.delete(key);
+      registerDesignerNavigationTargetElement(kind as 'control' | 'resource', id, element);
+    });
+  }, [activeWindowId, project.id, registerDesignerNavigationTargetElement]);
+  useEffect(() => () => {
+    designerNavigationTargetsRef.current.forEach(target => target.dispose());
+    designerNavigationTargetsRef.current.clear();
+    designerNavigationTargetElementsRef.current.clear();
+    designerNavigationRefCallbacksRef.current.clear();
+  }, []);
+  const selectOnlyControl = useCallback((id: string | null) => {
+    setSelectedControlId(id);
+    setSelectedControlIds(id && !id.startsWith('__window_') ? [id] : []);
+    setSelectedResourceId(null);
+  }, []);
   const designerHistoryRef = useRef(new DesignerHistory(initialDesignerState.project));
   const applyingHistoryRef = useRef(false);
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('properties');
@@ -511,10 +582,15 @@ export default function WpfDesigner({
   const [initialSize, setInitialSize] = useState({ width: 0, height: 0 });
   const [initialPos, setInitialPos] = useState({ x: 0, y: 0 });
   const [initialControlPos, setInitialControlPos] = useState({ x: 0, y: 0 });
-  const [controlInteractionPreview, setControlInteractionPreview] = useState<DesignerControlInteractionPreview | null>(null);
   const controlInteractionPreviewRef = useRef<DesignerControlInteractionPreview | null>(null);
   const pendingControlInteractionPreviewRef = useRef<DesignerControlInteractionPreview | null>(null);
   const controlInteractionFrameRef = useRef<number | null>(null);
+  const windowInteractionPreviewRef = useRef<DesignerWindowInteractionPreview | null>(null);
+  const pendingWindowInteractionPreviewRef = useRef<DesignerWindowInteractionPreview | null>(null);
+  const resourceInteractionPreviewRef = useRef<DesignerResourceInteractionPreview | null>(null);
+  const pendingResourceInteractionPreviewRef = useRef<DesignerResourceInteractionPreview | null>(null);
+  const interactionPreviewFrameRef = useRef<number | null>(null);
+  const windowResizeActiveRef = useRef(false);
   const [inspectorWidth, setInspectorWidth] = useState(300);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [controlToolboxSearch, setControlToolboxSearch] = useState('');
@@ -528,6 +604,8 @@ export default function WpfDesigner({
   const [fitScale, setFitScale] = useState(1);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasFrameRef = useRef<HTMLDivElement>(null);
+  const canvasResizePreviewRef = useRef<HTMLDivElement>(null);
   const canvasViewportRef = useRef<HTMLDivElement>(null);
   const projectIdRef = useRef(project.id);
   projectIdRef.current = project.id;
@@ -535,6 +613,56 @@ export default function WpfDesigner({
   const activeWindow = useMemo(() => {
     return project.windows.find(window => window.id === activeWindowId) || project.windows[0];
   }, [activeWindowId, project.windows]);
+  const activeWindowRef = useRef(activeWindow);
+  activeWindowRef.current = activeWindow;
+  const activeControlsById = useMemo(
+    () => new Map(activeWindow.controls.map(control => [control.id, control])),
+    [activeWindow.controls]
+  );
+  const activeControlsByIdRef = useRef(activeControlsById);
+  activeControlsByIdRef.current = activeControlsById;
+  const descendantIdsByControlId = useMemo(() => {
+    const childrenByParent = new Map<string, string[]>();
+    activeWindow.controls.forEach(control => {
+      if (!control.parentId) return;
+      const children = childrenByParent.get(control.parentId) || [];
+      children.push(control.id);
+      childrenByParent.set(control.parentId, children);
+    });
+
+    const result = new Map<string, string[]>();
+    activeWindow.controls.forEach(control => {
+      const descendants: string[] = [];
+      const pending = [...(childrenByParent.get(control.id) || [])];
+      const visited = new Set<string>();
+      while (pending.length > 0) {
+        const childId = pending.shift()!;
+        if (visited.has(childId)) continue;
+        visited.add(childId);
+        descendants.push(childId);
+        pending.push(...(childrenByParent.get(childId) || []));
+      }
+      result.set(control.id, descendants);
+    });
+    return result;
+  }, [activeWindow.controls]);
+  const descendantIdsByControlIdRef = useRef(descendantIdsByControlId);
+  descendantIdsByControlIdRef.current = descendantIdsByControlId;
+  const effectiveControlStates = useMemo(
+    () => getEffectiveControlStates(activeWindow.controls),
+    [activeWindow.controls]
+  );
+  const selectedTabVisibility = useMemo(() => {
+    const visibility = new Map<string, boolean>();
+    activeWindow.controls.forEach(control => {
+      visibility.set(control.id, isControlOnSelectedTab(activeWindow.controls, control.id));
+    });
+    return visibility;
+  }, [activeWindow.controls]);
+  const designerControlNodesRef = useRef(new Map<string, HTMLElement>());
+  const designerResourceNodesRef = useRef(new Map<string, HTMLElement>());
+  const windowContentOffsetRef = useRef(0);
+  const displayedWindowSize = activeWindow;
   const activeFileDialogs = useMemo(
     () => (project.resources || []).filter((resource): resource is LingFileDialogResource => (
       resource.type === 'FileDialog' && resource.ownerWindowId === activeWindow.id
@@ -555,23 +683,339 @@ export default function WpfDesigner({
     () => activeMenuResources.find(resource => resource.id === selectedResourceId) || null,
     [activeMenuResources, selectedResourceId]
   );
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const controlNodes = new Map<string, HTMLElement>();
+    canvas.querySelectorAll<HTMLElement>('[data-designer-control-id]').forEach(node => {
+      const id = node.dataset.designerControlId;
+      if (id) controlNodes.set(id, node);
+    });
+    const resourceNodes = new Map<string, HTMLElement>();
+    canvas.querySelectorAll<HTMLElement>('[data-designer-resource-id]').forEach(node => {
+      const id = node.dataset.designerResourceId;
+      if (id) resourceNodes.set(id, node);
+    });
+    designerControlNodesRef.current = controlNodes;
+    designerResourceNodesRef.current = resourceNodes;
+  }, [activeWindow.id, activeWindow.controls, project.resources]);
   const designerPaintControls = useMemo(
-    () => {
-      const previewControls = controlInteractionPreview?.windowId === activeWindow.id
-        ? reconcileRebarBands(updateControlWithDescendants(
-            activeWindow.controls,
-            controlInteractionPreview.controlId,
-            controlInteractionPreview.fields
-          ))
-        : activeWindow.controls;
-      return orderControlsForDesignerPainting(previewControls);
-    },
-    [activeWindow.controls, activeWindow.id, controlInteractionPreview]
+    () => orderControlsForDesignerPainting(activeWindow.controls),
+    [activeWindow.controls]
   );
   const windowContentOffset = getDesignerWindowContentOffset(activeWindow);
+  windowContentOffsetRef.current = windowContentOffset;
+
+  /**
+   * Interaction previews intentionally bypass React. The designer can contain
+   * hundreds of controls; rendering the whole workbench for every mousemove
+   * makes dragging janky even when persistence is deferred. These helpers only
+   * touch the affected DOM nodes and the canvas frame, then the final pointer
+   * position is committed to the project model on mouseup.
+  */
+  const previewAffectedControlIdsRef = useRef(new Set<string>());
+  const previewAffectedResourceIdsRef = useRef(new Set<string>());
+  const previewControlStylesRef = useRef(new Map<string, {
+    transform: string;
+    transformOrigin: string;
+    width: string;
+    height: string;
+    willChange: string;
+  }>());
+  const previewResourceStylesRef = useRef(new Map<string, {
+    left: string;
+    top: string;
+    transform: string;
+    willChange: string;
+  }>());
+  const previewWindowStylesRef = useRef<{
+    frameWidth: string;
+    frameHeight: string;
+    frameOverflow: string;
+    frameWillChange: string;
+    canvasWillChange: string;
+    resizeHandleVisibility: Array<{ node: HTMLElement; visibility: string }>;
+    overlayDisplay: string;
+    overlayWidth: string;
+    overlayHeight: string;
+  } | null>(null);
+  const applyControlInteractionPreviewToDom = useCallback((preview: DesignerControlInteractionPreview) => {
+    const windowModel = activeWindowRef.current;
+    if (preview.windowId !== windowModel.id) return;
+
+    let nodes = designerControlNodesRef.current;
+    if (nodes.size < windowModel.controls.length) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rebuilt = new Map<string, HTMLElement>();
+      canvas.querySelectorAll<HTMLElement>('[data-designer-control-id]').forEach(node => {
+        const id = node.dataset.designerControlId;
+        if (id) rebuilt.set(id, node);
+      });
+      designerControlNodesRef.current = rebuilt;
+      nodes = rebuilt;
+    }
+
+    const target = activeControlsByIdRef.current.get(preview.controlId);
+    if (!target) return;
+    const fields = preview.fields;
+    const deltaX = typeof fields.x === 'number' ? fields.x - target.x : 0;
+    const deltaY = typeof fields.y === 'number' ? fields.y - target.y : 0;
+    const affectedIds = [preview.controlId, ...(descendantIdsByControlIdRef.current.get(preview.controlId) || [])];
+
+    affectedIds.forEach(controlId => {
+      const persisted = activeControlsByIdRef.current.get(controlId);
+      const node = nodes.get(controlId);
+      if (!persisted || !node) return;
+
+      const isTarget = controlId === preview.controlId;
+      if (!previewControlStylesRef.current.has(controlId)) {
+        previewControlStylesRef.current.set(controlId, {
+          transform: node.style.transform,
+          transformOrigin: node.style.transformOrigin,
+          width: node.style.width,
+          height: node.style.height,
+          willChange: node.style.willChange
+        });
+        node.style.willChange = 'transform';
+      }
+      const hasResizePreview = isTarget
+        && (typeof fields.width === 'number' || typeof fields.height === 'number');
+      const scaleX = hasResizePreview && typeof fields.width === 'number'
+        ? Math.max(0.01, fields.width / Math.max(1, target.width))
+        : 1;
+      const scaleY = hasResizePreview && typeof fields.height === 'number'
+        ? Math.max(0.01, fields.height / Math.max(1, target.height))
+        : 1;
+      const hasTranslation = deltaX !== 0 || deltaY !== 0;
+      node.style.transform = hasTranslation || scaleX !== 1 || scaleY !== 1
+        ? `translate3d(${deltaX}px, ${deltaY}px, 0) scale3d(${scaleX}, ${scaleY}, 1)`
+        : '';
+      if (hasResizePreview) node.style.transformOrigin = 'top left';
+      node.dataset.designerInteractionPreview = 'true';
+      previewAffectedControlIdsRef.current.add(controlId);
+    });
+  }, []);
+
+  const applyWindowInteractionPreviewToDom = useCallback((preview: DesignerWindowInteractionPreview) => {
+    const windowModel = activeWindowRef.current;
+    const frame = canvasFrameRef.current;
+    const canvas = canvasRef.current;
+    if (!frame || !canvas || preview.windowId !== windowModel.id) return;
+    if (!previewWindowStylesRef.current) {
+      const resizeHandleVisibility = Array.from(
+        canvas.querySelectorAll<HTMLElement>('[data-designer-window-resize-handle]')
+      ).map(node => ({ node, visibility: node.style.visibility }));
+      previewWindowStylesRef.current = {
+        frameWidth: frame.style.width,
+        frameHeight: frame.style.height,
+        frameOverflow: frame.style.overflow,
+        frameWillChange: frame.style.willChange,
+        canvasWillChange: canvas.style.willChange,
+        resizeHandleVisibility,
+        overlayDisplay: canvasResizePreviewRef.current?.style.display || '',
+        overlayWidth: canvasResizePreviewRef.current?.style.width || '',
+        overlayHeight: canvasResizePreviewRef.current?.style.height || ''
+      };
+      frame.style.overflow = 'hidden';
+      frame.style.willChange = 'width, height';
+      canvas.style.willChange = 'transform';
+      resizeHandleVisibility.forEach(({ node }) => { node.style.visibility = 'hidden'; });
+    }
+    const previewWidth = preview.width * canvasScaleRef.current;
+    const previewHeight = preview.height * canvasScaleRef.current;
+    frame.style.width = `${previewWidth}px`;
+    frame.style.height = `${previewHeight}px`;
+    const overlay = canvasResizePreviewRef.current;
+    if (overlay) {
+      overlay.style.display = 'block';
+      overlay.style.width = `${previewWidth}px`;
+      overlay.style.height = `${previewHeight}px`;
+    }
+  }, []);
+
+  const applyResourceInteractionPreviewToDom = useCallback((preview: DesignerResourceInteractionPreview) => {
+    const resourceNode = designerResourceNodesRef.current.get(preview.resourceId);
+    if (!resourceNode) return;
+    if (!previewResourceStylesRef.current.has(preview.resourceId)) {
+      previewResourceStylesRef.current.set(preview.resourceId, {
+        left: resourceNode.style.left,
+        top: resourceNode.style.top,
+        transform: resourceNode.style.transform,
+        willChange: resourceNode.style.willChange
+      });
+      resourceNode.style.willChange = 'transform';
+    }
+    const original = previewResourceStylesRef.current.get(preview.resourceId);
+    if (!original) return;
+    const originalX = Number.parseFloat(original.left) || 0;
+    const originalY = Number.parseFloat(original.top) || 0;
+    const deltaX = preview.x - originalX;
+    const deltaY = preview.y + windowContentOffsetRef.current - originalY;
+    resourceNode.style.transform = deltaX !== 0 || deltaY !== 0
+      ? `translate3d(${deltaX}px, ${deltaY}px, 0)`
+      : '';
+    resourceNode.dataset.designerInteractionPreview = 'true';
+    previewAffectedResourceIdsRef.current.add(preview.resourceId);
+  }, []);
+
+  const clearInteractionPreviewDom = useCallback((preservePreviewValues = false) => {
+    previewAffectedControlIdsRef.current.forEach(controlId => {
+      const node = designerControlNodesRef.current.get(controlId);
+      if (!node) return;
+      const original = previewControlStylesRef.current.get(controlId);
+      if (original) {
+        node.style.transform = original.transform;
+        node.style.transformOrigin = original.transformOrigin;
+        if (!preservePreviewValues) {
+          node.style.width = original.width;
+          node.style.height = original.height;
+        }
+        node.style.willChange = original.willChange;
+      } else {
+        node.style.transform = '';
+        node.style.willChange = '';
+      }
+      node.removeAttribute('data-designer-interaction-preview');
+    });
+    previewAffectedControlIdsRef.current.clear();
+    previewControlStylesRef.current.clear();
+    previewAffectedResourceIdsRef.current.forEach(resourceId => {
+      const node = designerResourceNodesRef.current.get(resourceId);
+      const original = previewResourceStylesRef.current.get(resourceId);
+      if (node && original) {
+        if (!preservePreviewValues) {
+          node.style.left = original.left;
+          node.style.top = original.top;
+        }
+        node.style.transform = original.transform;
+        node.style.willChange = original.willChange;
+      }
+      node?.removeAttribute('data-designer-interaction-preview');
+    });
+    previewAffectedResourceIdsRef.current.clear();
+    previewResourceStylesRef.current.clear();
+
+    const originalWindow = previewWindowStylesRef.current;
+    const frame = canvasFrameRef.current;
+    const canvas = canvasRef.current;
+    if (originalWindow && frame && canvas) {
+      if (!preservePreviewValues) {
+        frame.style.width = originalWindow.frameWidth;
+        frame.style.height = originalWindow.frameHeight;
+      }
+      frame.style.overflow = originalWindow.frameOverflow;
+      frame.style.willChange = originalWindow.frameWillChange;
+      canvas.style.willChange = originalWindow.canvasWillChange;
+      originalWindow.resizeHandleVisibility.forEach(({ node, visibility }) => {
+        node.style.visibility = visibility;
+      });
+      const overlay = canvasResizePreviewRef.current;
+      if (overlay) {
+        overlay.style.display = originalWindow.overlayDisplay;
+        overlay.style.width = originalWindow.overlayWidth;
+        overlay.style.height = originalWindow.overlayHeight;
+      }
+    }
+    previewWindowStylesRef.current = null;
+    canvasRef.current?.removeAttribute('data-designer-interaction-preview');
+  }, []);
+
+  const commitInteractionPreviewDom = useCallback((
+    controlPreview: DesignerControlInteractionPreview | null,
+    windowPreview: DesignerWindowInteractionPreview | null,
+    resourcePreview: DesignerResourceInteractionPreview | null
+  ) => {
+    if (controlPreview && controlPreview.windowId === activeWindowRef.current.id) {
+      const target = activeControlsByIdRef.current.get(controlPreview.controlId);
+      if (target) {
+        const fields = controlPreview.fields;
+        const deltaX = typeof fields.x === 'number' ? fields.x - target.x : 0;
+        const deltaY = typeof fields.y === 'number' ? fields.y - target.y : 0;
+        const affectedIds = [controlPreview.controlId, ...(descendantIdsByControlIdRef.current.get(controlPreview.controlId) || [])];
+        affectedIds.forEach(controlId => {
+          const node = designerControlNodesRef.current.get(controlId);
+          const persisted = activeControlsByIdRef.current.get(controlId);
+          if (!node || !persisted) return;
+          const original = previewControlStylesRef.current.get(controlId);
+          node.style.left = `${persisted.x + deltaX}px`;
+          node.style.top = `${persisted.y + deltaY + windowContentOffsetRef.current}px`;
+          if (controlId === controlPreview.controlId && typeof fields.width === 'number') {
+            node.style.width = `${fields.width}px`;
+          }
+          if (controlId === controlPreview.controlId && typeof fields.height === 'number') {
+            node.style.height = `${fields.height}px`;
+          }
+          node.style.transform = original?.transform || '';
+          node.style.transformOrigin = original?.transformOrigin || '';
+          node.style.willChange = original?.willChange || '';
+          node.removeAttribute('data-designer-interaction-preview');
+        });
+      }
+    }
+
+    if (resourcePreview) {
+      const node = designerResourceNodesRef.current.get(resourcePreview.resourceId);
+      const original = previewResourceStylesRef.current.get(resourcePreview.resourceId);
+      if (node) {
+        node.style.left = `${resourcePreview.x}px`;
+        node.style.top = `${resourcePreview.y + windowContentOffsetRef.current}px`;
+        node.style.transform = original?.transform || '';
+        node.style.willChange = original?.willChange || '';
+        node.removeAttribute('data-designer-interaction-preview');
+      }
+    }
+
+    if (windowPreview) {
+      const frame = canvasFrameRef.current;
+      const canvas = canvasRef.current;
+      if (frame && canvas && windowPreview.windowId === activeWindowRef.current.id) {
+        frame.style.width = `${windowPreview.width * canvasScaleRef.current}px`;
+        frame.style.height = `${windowPreview.height * canvasScaleRef.current}px`;
+        canvas.style.width = `${windowPreview.width}px`;
+        canvas.style.height = `${windowPreview.height}px`;
+        const overlay = canvasResizePreviewRef.current;
+        if (overlay) {
+          overlay.style.display = 'none';
+          overlay.style.width = '';
+          overlay.style.height = '';
+        }
+        previewWindowStylesRef.current?.resizeHandleVisibility.forEach(({ node, visibility }) => {
+          node.style.visibility = visibility;
+        });
+        if (previewWindowStylesRef.current) frame.style.overflow = previewWindowStylesRef.current.frameOverflow;
+        frame.style.willChange = previewWindowStylesRef.current?.frameWillChange || '';
+        canvas.style.willChange = previewWindowStylesRef.current?.canvasWillChange || '';
+      }
+    }
+
+    previewAffectedControlIdsRef.current.clear();
+    previewControlStylesRef.current.clear();
+    previewAffectedResourceIdsRef.current.clear();
+    previewResourceStylesRef.current.clear();
+    previewWindowStylesRef.current = null;
+    canvasRef.current?.removeAttribute('data-designer-interaction-preview');
+  }, []);
+
+  // React may still commit unrelated work while the pointer is held down.
+  // Reapply the latest preview after such a commit so model-owned inline styles
+  // cannot temporarily snap the active interaction back to its old position.
+  useLayoutEffect(() => {
+    const controlPreview = controlInteractionPreviewRef.current;
+    if (controlPreview) applyControlInteractionPreviewToDom(controlPreview);
+    const windowPreview = windowInteractionPreviewRef.current;
+    if (windowPreview) applyWindowInteractionPreviewToDom(windowPreview);
+    const resourcePreview = resourceInteractionPreviewRef.current;
+    if (resourcePreview) applyResourceInteractionPreviewToDom(resourcePreview);
+  });
+
   const newEmojiModuleEnabled = isNewEmojiDesignerEnabled(enabledDesignerModules);
   const useNewEmojiDesigner = migrateDesignerBackend(activeWindow.designerBackend, newEmojiModuleEnabled) === 'new-emoji';
-  const newEmojiThemePreview = getNewEmojiThemePreview(activeWindow.background);
+  const newEmojiThemePreview = useMemo(
+    () => getNewEmojiThemePreview(activeWindow.background),
+    [activeWindow.background]
+  );
   const newEmojiDesignerControls = useMemo(() => enabledDesignerModuleRecords
     .find(module => module.manifest.id === NEW_EMOJI_MODULE_ID)
     ?.manifest.contributes?.designerControls || [], [enabledDesignerModuleRecords]);
@@ -830,6 +1274,8 @@ export default function WpfDesigner({
   }, [designerCommandService, designerMenuService, enabledDesignerModuleRecords]);
 
   const canvasScale = zoomMode === 'fit' ? fitScale : manualZoom;
+  const canvasScaleRef = useRef(canvasScale);
+  canvasScaleRef.current = canvasScale;
 
   useEffect(() => {
     const viewport = canvasViewportRef.current;
@@ -1016,12 +1462,29 @@ export default function WpfDesigner({
       saveWindowDesignerState({
         project,
         activeWindowId,
-        selectedControlId
+        selectedControlId: selectedControlIdRef.current
       });
     } finally {
       publishingDesignerStateRef.current = false;
     }
-  }, [activeWindowId, project, projectId, selectedControlId]);
+  }, [activeWindowId, project, projectId]);
+
+  useEffect(() => {
+    if (project.id !== projectId || !activeWindowId) return;
+    if (selectionPersistenceTimerRef.current !== null) {
+      window.clearTimeout(selectionPersistenceTimerRef.current);
+    }
+    selectionPersistenceTimerRef.current = window.setTimeout(() => {
+      selectionPersistenceTimerRef.current = null;
+      saveWindowDesignerSelection(projectId, activeWindowIdRef.current, selectedControlIdRef.current);
+    }, 120);
+    return () => {
+      if (selectionPersistenceTimerRef.current !== null) {
+        window.clearTimeout(selectionPersistenceTimerRef.current);
+        selectionPersistenceTimerRef.current = null;
+      }
+    };
+  }, [activeWindowId, project.id, projectId, selectedControlId]);
 
   useEffect(() => {
     const previousProject = observedProjectRef.current;
@@ -1047,7 +1510,7 @@ export default function WpfDesigner({
     onProjectChange?.(state);
     onDirtyChange?.(detail);
     notifyWindowDesignerDirtyStateChanged(detail);
-  }, [activeWindowId, onDirtyChange, onProjectChange, project, projectId, selectedControlId]);
+  }, [activeWindowId, onDirtyChange, onProjectChange, project, projectId]);
 
   const updateActiveWindow = (updater: (window: LingWindowModel) => LingWindowModel) => {
     setProject(prev => {
@@ -1084,10 +1547,21 @@ export default function WpfDesigner({
   const startResizeWindow = (mouseDownEvent: React.MouseEvent, direction: 'r' | 'b' | 'se') => {
     mouseDownEvent.preventDefault();
     mouseDownEvent.stopPropagation();
+    if (
+      isDragging
+      || isResizing
+      || draggingResourceId
+      || controlInteractionPreviewRef.current
+      || windowInteractionPreviewRef.current
+      || resourceInteractionPreviewRef.current
+    ) {
+      finishPointerInteraction();
+    }
     const startX = mouseDownEvent.clientX;
     const startY = mouseDownEvent.clientY;
     const startWidth = activeWindow.width;
     const startHeight = activeWindow.height;
+    windowResizeActiveRef.current = true;
 
     const doDrag = (mouseMoveEvent: MouseEvent) => {
       const deltaX = (mouseMoveEvent.clientX - startX) / canvasScale;
@@ -1103,16 +1577,22 @@ export default function WpfDesigner({
         nextHeight = Math.max(200, Math.min(1080, startHeight + deltaY));
       }
 
-      updateActiveWindow(window => ({
-        ...window,
-        width: nextWidth,
-        height: nextHeight
-      }));
+      windowInteractionPreviewRef.current = { windowId: activeWindow.id, width: nextWidth, height: nextHeight };
+      pendingWindowInteractionPreviewRef.current = windowInteractionPreviewRef.current;
+      if (interactionPreviewFrameRef.current === null) {
+        interactionPreviewFrameRef.current = window.requestAnimationFrame(() => {
+          interactionPreviewFrameRef.current = null;
+          const pending = pendingWindowInteractionPreviewRef.current;
+          pendingWindowInteractionPreviewRef.current = null;
+          if (pending) applyWindowInteractionPreviewToDom(pending);
+        });
+      }
     };
 
     const stopDrag = () => {
       document.removeEventListener('mousemove', doDrag);
       document.removeEventListener('mouseup', stopDrag);
+      finishPointerInteraction();
     };
 
     document.addEventListener('mousemove', doDrag);
@@ -1210,9 +1690,9 @@ export default function WpfDesigner({
       controlInteractionFrameRef.current = null;
       const pending = pendingControlInteractionPreviewRef.current;
       pendingControlInteractionPreviewRef.current = null;
-      if (pending) setControlInteractionPreview(pending);
+      if (pending) applyControlInteractionPreviewToDom(pending);
     });
-  }, []);
+  }, [applyControlInteractionPreviewToDom]);
 
   const finishPointerInteraction = useCallback(() => {
     const preview = controlInteractionPreviewRef.current;
@@ -1222,30 +1702,59 @@ export default function WpfDesigner({
       window.cancelAnimationFrame(controlInteractionFrameRef.current);
       controlInteractionFrameRef.current = null;
     }
-    setControlInteractionPreview(null);
+    if (interactionPreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(interactionPreviewFrameRef.current);
+      interactionPreviewFrameRef.current = null;
+    }
     setIsDragging(false);
     setIsResizing(false);
+    windowResizeActiveRef.current = false;
     setDraggingResourceId(null);
     setResizeDirection('se');
 
-    if (!preview) return;
+    const windowPreview = windowInteractionPreviewRef.current;
+    const resourcePreview = resourceInteractionPreviewRef.current;
+    windowInteractionPreviewRef.current = null;
+    pendingWindowInteractionPreviewRef.current = null;
+    resourceInteractionPreviewRef.current = null;
+    pendingResourceInteractionPreviewRef.current = null;
+    if (!preview && !windowPreview && !resourcePreview) return;
+    // Transfer the preview into final DOM coordinates before React takes over.
+    // This avoids both a release-time snap-back and a stale transform lingering
+    // after React has committed the new model.
+    commitInteractionPreviewDom(preview, windowPreview, resourcePreview);
     setProject(previous => ({
       ...previous,
-      windows: previous.windows.map(window => window.id === preview.windowId
-        ? {
-            ...window,
-            controls: reconcileRebarBands(updateControlWithDescendants(window.controls, preview.controlId, preview.fields))
-          }
-        : window)
+      windows: preview || windowPreview
+        ? previous.windows.map(window => {
+            if (preview && window.id === preview.windowId) {
+              return { ...window, controls: reconcileRebarBands(updateControlWithDescendants(window.controls, preview.controlId, preview.fields)) };
+            }
+            if (windowPreview && window.id === windowPreview.windowId) {
+              return { ...window, width: windowPreview.width, height: windowPreview.height };
+            }
+            return window;
+          })
+        : previous.windows,
+      resources: resourcePreview
+        ? (previous.resources || []).map(resource => resource.id === resourcePreview.resourceId
+          ? { ...resource, designerX: resourcePreview.x, designerY: resourcePreview.y }
+          : resource)
+        : previous.resources
     }));
-  }, []);
+  }, [clearInteractionPreviewDom, commitInteractionPreviewDom]);
 
   useEffect(() => () => {
     if (controlInteractionFrameRef.current !== null) {
       window.cancelAnimationFrame(controlInteractionFrameRef.current);
       controlInteractionFrameRef.current = null;
     }
-  }, []);
+    if (interactionPreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(interactionPreviewFrameRef.current);
+      interactionPreviewFrameRef.current = null;
+    }
+    clearInteractionPreviewDom();
+  }, [clearInteractionPreviewDom]);
 
   const handleSelectWindow = (windowId: string) => {
     const nextWindow = project.windows.find(window => window.id === windowId);
@@ -1856,6 +2365,16 @@ export default function WpfDesigner({
     if (event.button !== 0) return;
     event.stopPropagation();
     event.preventDefault();
+    if (
+      isDragging
+      || isResizing
+      || draggingResourceId
+      || controlInteractionPreviewRef.current
+      || windowInteractionPreviewRef.current
+      || resourceInteractionPreviewRef.current
+    ) {
+      finishPointerInteraction();
+    }
     setSelectedResourceId(null);
     setActiveInspectorTab('properties');
     if (event.shiftKey || event.ctrlKey || event.metaKey) { setSelectedControlIds(current => current.includes(control.id) ? current.filter(id => id !== control.id) : [...current, control.id]); setSelectedControlId(control.id); return; }
@@ -1873,8 +2392,6 @@ export default function WpfDesigner({
       window.cancelAnimationFrame(controlInteractionFrameRef.current);
       controlInteractionFrameRef.current = null;
     }
-    setControlInteractionPreview(null);
-
     if (action === 'drag') {
       setIsDragging(true);
       setInitialPos({ x: event.clientX, y: event.clientY });
@@ -1899,9 +2416,22 @@ export default function WpfDesigner({
     y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor((activeFileDialogs.length + index) / 4) * 50))
   });
 
+  const getDisplayedResourcePosition = (_resource: LingDesignerResource, fallback: { x: number; y: number }) => fallback;
+
   const handleFileDialogMouseDown = (event: React.MouseEvent, resource: LingFileDialogResource, index: number) => {
+    if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    if (
+      isDragging
+      || isResizing
+      || draggingResourceId
+      || controlInteractionPreviewRef.current
+      || windowInteractionPreviewRef.current
+      || resourceInteractionPreviewRef.current
+    ) {
+      finishPointerInteraction();
+    }
     const position = getFileDialogDesignerPosition(resource, index);
     setSelectedControlId(null);
     setSelectedControlIds([]);
@@ -1915,8 +2445,19 @@ export default function WpfDesigner({
   };
 
   const handleMenuResourceMouseDown = (event: React.MouseEvent, resource: LingMenuResource, index: number) => {
+    if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    if (
+      isDragging
+      || isResizing
+      || draggingResourceId
+      || controlInteractionPreviewRef.current
+      || windowInteractionPreviewRef.current
+      || resourceInteractionPreviewRef.current
+    ) {
+      finishPointerInteraction();
+    }
     const position = getMenuResourceDesignerPosition(resource, index);
     setSelectedControlId(null);
     setSelectedControlIds([]);
@@ -1989,6 +2530,38 @@ export default function WpfDesigner({
     window.dispatchEvent(new CustomEvent<OpenControlEventCodeDetail>('open-control-event-code', { detail }));
     addLog(`> [${new Date().toLocaleTimeString()}] 【事件代码】已定位 ${control.name} 的默认事件：${handlerName}`);
   };
+
+  // Memoized canvas controls keep their event closures stable. The refs below
+  // always point at the latest parent handlers, so a skipped child render never
+  // observes stale selection, window or module state.
+  const handleMouseDownRef = useRef(handleMouseDown);
+  handleMouseDownRef.current = handleMouseDown;
+  const stableHandleMouseDown = useCallback<DesignerControlRenderProps['handleMouseDown']>(
+    (event, control, action) => handleMouseDownRef.current(event, control, action),
+    []
+  );
+  const handleControlDoubleClickRef = useRef(handleControlDoubleClick);
+  handleControlDoubleClickRef.current = handleControlDoubleClick;
+  const stableHandleControlDoubleClick = useCallback<DesignerControlRenderProps['onOpenEventCode']>(
+    (event, control) => { void handleControlDoubleClickRef.current(event, control); },
+    []
+  );
+  const openControlContextMenuRef = useRef(openControlContextMenu);
+  openControlContextMenuRef.current = openControlContextMenu;
+  const stableOpenControlContextMenu = useCallback<DesignerControlRenderProps['onOpenContextMenu']>(
+    (event, controlId) => openControlContextMenuRef.current(event, controlId),
+    []
+  );
+  const handleSelectTabPageRef = useRef(handleSelectTabPage);
+  handleSelectTabPageRef.current = handleSelectTabPage;
+  const stableHandleSelectTabPage = useCallback((tabControlId: string, pageId: string) => {
+    handleSelectTabPageRef.current(tabControlId, pageId);
+  }, []);
+  const handleReorderRebarBandRef = useRef(handleReorderRebarBand);
+  handleReorderRebarBandRef.current = handleReorderRebarBand;
+  const stableHandleReorderRebarBand = useCallback((rebarId: string, fromIndex: number, toIndex: number) => {
+    handleReorderRebarBandRef.current(rebarId, fromIndex, toIndex);
+  }, []);
 
   const persistedSelection = activeWindow.controls.filter(control => selectedControlIds.includes(control.id));
   const contextPrimaryControl = activeWindow.controls.find(control => control.id === (controlContextMenu?.controlId || selectedControlId));
@@ -2288,18 +2861,27 @@ export default function WpfDesigner({
       const placeholderHeight = 42;
       const nextX = Math.max(0, Math.min(activeWindow.width - placeholderWidth, (event.clientX - resourceDragOffset.x) / canvasScale));
       const nextY = Math.max(0, Math.min(activeWindow.height - windowContentOffset - placeholderHeight, (event.clientY - resourceDragOffset.y) / canvasScale));
-      setProject(previous => ({
-        ...previous,
-        resources: (previous.resources || []).map(resource => resource.id === draggingResourceId && (resource.type === 'FileDialog' || resource.type === 'ContextMenu' || resource.type === 'PopupMenu')
-          ? { ...resource, designerX: Math.round(nextX / 5) * 5, designerY: Math.round(nextY / 5) * 5 }
-          : resource)
-      }));
+      const preview = {
+        resourceId: draggingResourceId,
+        x: Math.round(nextX / 5) * 5,
+        y: Math.round(nextY / 5) * 5
+      };
+      resourceInteractionPreviewRef.current = preview;
+      pendingResourceInteractionPreviewRef.current = preview;
+      if (interactionPreviewFrameRef.current === null) {
+        interactionPreviewFrameRef.current = window.requestAnimationFrame(() => {
+          interactionPreviewFrameRef.current = null;
+          const pending = pendingResourceInteractionPreviewRef.current;
+          pendingResourceInteractionPreviewRef.current = null;
+          if (pending) applyResourceInteractionPreviewToDom(pending);
+        });
+      }
     };
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
     };
-  }, [activeWindow.height, activeWindow.width, canvasScale, draggingResourceId, resourceDragOffset, windowContentOffset]);
+  }, [activeWindow.height, activeWindow.width, applyResourceInteractionPreviewToDom, canvasScale, draggingResourceId, resourceDragOffset, windowContentOffset]);
 
   const handleBuildAndRunNative = useCallback(async () => {
     if (isNativeBuilding) {
@@ -2541,10 +3123,12 @@ export default function WpfDesigner({
           </div>
 
           <div
+            ref={canvasFrameRef}
             className="relative shrink-0"
             style={{
-              width: `${activeWindow.width * canvasScale}px`,
-              height: `${activeWindow.height * canvasScale}px`
+              width: `${displayedWindowSize.width * canvasScale}px`,
+              height: `${displayedWindowSize.height * canvasScale}px`,
+              contain: 'layout paint size'
             }}
           >
             <div
@@ -2553,11 +3137,12 @@ export default function WpfDesigner({
               onDoubleClick={handleCanvasDoubleClick}
               onContextMenu={openCanvasContextMenu}
               onPointerDownCapture={() => activeDesignerCommandTargetService.activate(`${projectId}:${designerInstanceId}`)}
-              className="relative shadow-2xl border-2 border-slate-700/60 overflow-hidden shrink-0 select-none"
+              className="absolute left-0 top-0 shadow-2xl border-2 border-slate-700/60 overflow-hidden shrink-0 select-none"
               style={{
-                width: `${activeWindow.width}px`,
-                height: `${activeWindow.height}px`,
+                width: `${displayedWindowSize.width}px`,
+                height: `${displayedWindowSize.height}px`,
                 boxSizing: 'border-box',
+                contain: 'layout paint size',
                 transform: `scale(${canvasScale})`,
                 transformOrigin: 'top left',
                 backgroundColor: useNewEmojiDesigner ? newEmojiThemePreview.panelBackground : activeWindow.background,
@@ -2580,14 +3165,17 @@ export default function WpfDesigner({
             >
             {/* Window Resize Handles */}
             <div
+              data-designer-window-resize-handle="true"
               onMouseDown={e => startResizeWindow(e, 'r')}
               className="absolute right-[-4px] top-0 w-[8px] h-full cursor-col-resize z-50 hover:bg-blue-500/20"
             />
             <div
+              data-designer-window-resize-handle="true"
               onMouseDown={e => startResizeWindow(e, 'b')}
               className="absolute left-0 bottom-[-4px] w-full h-[8px] cursor-row-resize z-50 hover:bg-blue-500/20"
             />
             <div
+              data-designer-window-resize-handle="true"
               onMouseDown={e => startResizeWindow(e, 'se')}
               className="absolute right-[-6px] bottom-[-6px] w-[12px] h-[12px] cursor-se-resize z-51 rounded-full bg-blue-500 border border-white hover:scale-125 transition-transform"
             />
@@ -2739,30 +3327,33 @@ export default function WpfDesigner({
             </div>}
 
             {designerPaintControls.map(control => {
-              const effectiveState = getEffectiveControlState(activeWindow.controls, control.id);
+              const effectiveState = effectiveControlStates.get(control.id) || { visible: true, enabled: true };
               const ancestorsVisible = !control.parentId
-                || getEffectiveControlState(activeWindow.controls, control.parentId).visible;
-              return renderControl(
-                control,
-                projectId,
-                selectedControlIds.includes(control.id),
-                handleMouseDown,
-                setSelectedControlId,
-                handleControlDoubleClick,
-                openControlContextMenu,
-                windowContentOffset,
-                useNewEmojiDesigner,
-                newEmojiThemePreview,
-                effectiveState.visible,
-                effectiveState.enabled,
-                ancestorsVisible && isControlOnSelectedTab(activeWindow.controls, control.id),
-                isTabContainerControl(control) ? pageId => handleSelectTabPage(control.id, pageId) : undefined,
-                control.type === 'ReBar' ? (fromIndex, toIndex) => handleReorderRebarBand(control.id, fromIndex, toIndex) : undefined,
-                registerDesignerNavigationTarget('control', control.id)
+                || (effectiveControlStates.get(control.parentId)?.visible ?? true);
+              return (
+                <MemoizedDesignerControl
+                  key={control.id}
+                  control={control}
+                  projectId={projectId}
+                  isSelected={selectedControlIds.includes(control.id)}
+                  handleMouseDown={stableHandleMouseDown}
+                  setSelectedControlId={setSelectedControlId}
+                  onOpenEventCode={stableHandleControlDoubleClick}
+                  onOpenContextMenu={stableOpenControlContextMenu}
+                  contentOffset={windowContentOffset}
+                  useNewEmojiDesigner={useNewEmojiDesigner}
+                  newEmojiThemePreview={newEmojiThemePreview}
+                  isEffectivelyVisible={effectiveState.visible}
+                  isEffectivelyEnabled={effectiveState.enabled}
+                  ancestorsVisible={ancestorsVisible && (selectedTabVisibility.get(control.id) ?? true)}
+                  onSelectTabPage={isTabContainerControl(control) ? pageId => stableHandleSelectTabPage(control.id, pageId) : undefined}
+                  onReorderRebarBand={control.type === 'ReBar' ? (fromIndex, toIndex) => stableHandleReorderRebarBand(control.id, fromIndex, toIndex) : undefined}
+                  navigationRef={registerDesignerNavigationTarget('control', control.id)}
+                />
               );
             })}
             {activeFileDialogs.map((resource, index) => {
-              const position = getFileDialogDesignerPosition(resource, index);
+              const position = getDisplayedResourcePosition(resource, getFileDialogDesignerPosition(resource, index));
               const selected = selectedResourceId === resource.id;
               return (
                 <div
@@ -2814,7 +3405,7 @@ export default function WpfDesigner({
               );
             })}
             {activeMenuResources.map((resource, index) => {
-              const position = getMenuResourceDesignerPosition(resource, index);
+              const position = getDisplayedResourcePosition(resource, getMenuResourceDesignerPosition(resource, index));
               const selected = selectedResourceId === resource.id;
               const isContext = resource.type === 'ContextMenu';
               return (
@@ -2862,6 +3453,16 @@ export default function WpfDesigner({
               );
             })}
             </div>
+            <div
+              ref={canvasResizePreviewRef}
+              aria-hidden="true"
+              className={`pointer-events-none absolute left-0 top-0 z-[60] border-2 border-dashed ${isDarkMode ? 'border-sky-300/90' : 'border-sky-600/90'}`}
+              style={{
+                display: 'none',
+                boxSizing: 'border-box',
+                backgroundColor: isDarkMode ? 'rgba(56, 189, 248, 0.06)' : 'rgba(14, 165, 233, 0.06)'
+              }}
+            />
           </div>
         </div>
 
@@ -4290,6 +4891,43 @@ function renderControl(
     </div>
   );
 }
+
+// The canvas updates interaction previews at pointer frequency. Keep each
+// control isolated so a selection/preview update only reconciles affected
+// controls instead of rebuilding every preview subtree.
+const MemoizedDesignerControl = React.memo(
+  function MemoizedDesignerControl(props: DesignerControlRenderProps) {
+    return renderControl(
+      props.control,
+      props.projectId,
+      props.isSelected,
+      props.handleMouseDown,
+      props.setSelectedControlId,
+      props.onOpenEventCode,
+      props.onOpenContextMenu,
+      props.contentOffset,
+      props.useNewEmojiDesigner,
+      props.newEmojiThemePreview,
+      props.isEffectivelyVisible,
+      props.isEffectivelyEnabled,
+      props.ancestorsVisible,
+      props.onSelectTabPage,
+      props.onReorderRebarBand,
+      props.navigationRef
+    );
+  },
+  (previous, next) => (
+    previous.control === next.control
+    && previous.projectId === next.projectId
+    && previous.isSelected === next.isSelected
+    && previous.contentOffset === next.contentOffset
+    && previous.useNewEmojiDesigner === next.useNewEmojiDesigner
+    && previous.newEmojiThemePreview === next.newEmojiThemePreview
+    && previous.isEffectivelyVisible === next.isEffectivelyVisible
+    && previous.isEffectivelyEnabled === next.isEffectivelyEnabled
+    && previous.ancestorsVisible === next.ancestorsVisible
+  )
+);
 
 export function TrackBarDesignerPreview({ control, isEnabled }: { control: LingControl; isEnabled: boolean }) {
   const minimum = Number.isFinite(Number(control.properties?.minimum)) ? Number(control.properties?.minimum) : 0;

@@ -64,6 +64,12 @@ import {
   generateWebSocketClientRuntime,
   generateWebSocketClientWindowMethods
 } from './webSocketClientRuntime';
+import {
+  generateCdpClientRuntime,
+  generateCdpClientGlobalMethodDeclarations,
+  generateCdpClientGlobalMethods,
+  generateCdpClientWindowMethods
+} from './cdpClientRuntime';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 import {
   getWin32ControlDefinition,
@@ -858,6 +864,9 @@ function generateNewEmojiMainCpp(
   const webSocketClientRuntime = generateWebSocketClientRuntime(enabledModules);
   const webSocketClientGlobalMethodDeclarations = generateWebSocketClientGlobalMethodDeclarations(enabledModules);
   const webSocketClientGlobalMethods = generateWebSocketClientGlobalMethods(enabledModules);
+  const cdpClientRuntime = generateCdpClientRuntime(enabledModules);
+  const cdpClientGlobalMethodDeclarations = generateCdpClientGlobalMethodDeclarations(enabledModules);
+  const cdpClientGlobalMethods = generateCdpClientGlobalMethods(enabledModules);
   const webSocketServerRuntime = generateWebSocketServerRuntime(enabledModules);
   const webSocketServerGlobalMethodDeclarations = generateWebSocketServerGlobalMethodDeclarations(enabledModules);
   const webSocketServerGlobalMethods = generateWebSocketServerGlobalMethods(enabledModules);
@@ -1207,7 +1216,7 @@ function generateNewEmojiMainCpp(
     const statements = [body, fallback ? `    ${fallback}` : ''].filter(Boolean).join('\n') || '    // 空方法。';
     return `static ${returnType} ${toCppIdentifier(method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${statements}\n}`;
   }).join('\n\n');
-  const webSocketHandlerMethods = (webSocketClientRuntime || webSocketServerRuntime || httpServerRuntime || httpClientRuntime)
+  const webSocketHandlerMethods = (webSocketClientRuntime || webSocketServerRuntime || httpServerRuntime || httpClientRuntime || cdpClientRuntime)
     ? Array.from(new Map((sourceClass?.methods || [])
       .filter(method => method.parameters.length === 0)
       .map(method => [method.name, method])).values())
@@ -1328,6 +1337,55 @@ ${uiaCleanupLine}
     }` : '';
   const webSocketClientCleanup = webSocketClientRuntime
     ? '    g_wsClientRuntime.Shutdown();\n    if (g_wsClientEventWindow) { DestroyWindow(g_wsClientEventWindow); g_wsClientEventWindow = nullptr; }'
+    : '';
+  const cdpClientIntegration = cdpClientRuntime ? `
+static constexpr UINT WM_LINGBUILDER_NE_CDP_CLIENT_EVENT = WM_APP + 0x58;
+static HWND g_cdpClientEventWindow = nullptr;
+static std::wstring g_cdpClientReturnText;
+static void LB_NE_DispatchCdpClientEvent(const wchar_t* handler);
+static LingCdpRuntime g_cdpClientRuntime([](long long eventId) {
+    return g_cdpClientEventWindow && PostMessageW(g_cdpClientEventWindow, WM_LINGBUILDER_NE_CDP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
+});
+
+${cdpClientGlobalMethods}
+
+static void LB_NE_DispatchCdpClientEvent(const wchar_t* handler) {
+    const std::wstring callback = handler ? handler : L"";
+${webSocketDispatchCases || '    (void)callback;'}
+    调试输出(L"CDP 客户端事件未绑定到中文处理器：", callback);
+}
+
+static LRESULT CALLBACK LB_NE_CdpClientEventWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_LINGBUILDER_NE_CDP_CLIENT_EVENT) {
+        g_cdpClientRuntime.DispatchEvent(static_cast<long long>(wParam), [](const wchar_t* handler) { LB_NE_DispatchCdpClientEvent(handler); });
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static HWND LB_NE_CreateCdpClientEventWindow() {
+    const wchar_t* className = L"LingBuilder.NewEmoji.CdpClientEventWindow";
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = LB_NE_CdpClientEventWindowProc;
+    windowClass.lpszClassName = className;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    return CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+}
+` : '';
+  const cdpClientEventWindowSetup = cdpClientRuntime ? `    g_cdpClientEventWindow = LB_NE_CreateCdpClientEventWindow();
+    if (!g_cdpClientEventWindow) {
+        MessageBoxW(g_newEmojiWindow, L"CDP 客户端事件窗口创建失败。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        NE_销毁窗口(g_newEmojiWindow);
+        g_newEmojiWindow = nullptr;
+        LB_NE_ShutdownFbro();
+${uiaCleanupLine}
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 6;
+    }` : '';
+  const cdpClientCleanup = cdpClientRuntime
+    ? '    g_cdpClientRuntime.Shutdown();\n    if (g_cdpClientEventWindow) { DestroyWindow(g_cdpClientEventWindow); g_cdpClientEventWindow = nullptr; }'
     : '';
   const webSocketServerIntegration = webSocketServerRuntime ? `
 static constexpr UINT WM_LINGBUILDER_NE_WSS_EVENT = WM_APP + 0x52;
@@ -1538,6 +1596,8 @@ ${httpClientRuntime}
 ${httpServerRuntime}
 
 ${webSocketClientRuntime}
+
+${cdpClientRuntime}
 
 ${webSocketServerRuntime}
 
@@ -2134,6 +2194,8 @@ ${httpClientGlobalMethodDeclarations}
 
 ${webSocketClientGlobalMethodDeclarations}
 
+${cdpClientGlobalMethodDeclarations}
+
 ${webSocketServerGlobalMethodDeclarations}
 
 ${webSocketHandlerDeclarations}
@@ -2143,6 +2205,8 @@ ${httpClientIntegration}
 ${httpServerIntegration}
 
 ${webSocketClientIntegration}
+
+${cdpClientIntegration}
 
 ${webSocketServerIntegration}
 
@@ -2183,6 +2247,7 @@ ${uiaCleanupLine}
         return 2;
     }
 ${webSocketClientEventWindowSetup}
+${cdpClientEventWindowSetup}
 ${httpClientEventWindowSetup}
 ${webSocketEventWindowSetup}
 ${httpServerEventWindowSetup}
@@ -2204,6 +2269,7 @@ ${browserShellHitRegionSetup}
 ${httpClientCleanup}
 ${httpServerCleanup}
 ${webSocketClientCleanup}
+${cdpClientCleanup}
 ${webSocketCleanup}
         LB_NE_ShutdownFbro();
 ${uiaCleanupLine}
@@ -2217,6 +2283,7 @@ ${uiaCleanupLine}
 ${httpClientCleanup}
 ${httpServerCleanup}
 ${webSocketClientCleanup}
+${cdpClientCleanup}
 ${webSocketCleanup}
     LB_NE_ShutdownFbro();
 ${iconCleanup}
@@ -6778,6 +6845,13 @@ function generateMainCpp(
     : '';
   const webSocketClientWindowField = webSocketClientRuntime ? '    LingWebSocketClientRuntime wsClientRuntime_;\n    std::wstring wsClientReturnText_;' : '';
   const webSocketClientShutdown = webSocketClientRuntime ? '        wsClientRuntime_.Shutdown();' : '';
+  const cdpClientRuntime = generateCdpClientRuntime(enabledModules);
+  const cdpClientWindowMethods = generateCdpClientWindowMethods(enabledModules);
+  const cdpClientConstructorInitializer = cdpClientRuntime
+    ? `,\n          cdpClientRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_CDP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
+    : '';
+  const cdpClientWindowField = cdpClientRuntime ? '    LingCdpRuntime cdpClientRuntime_;\n    std::wstring cdpClientReturnText_;' : '';
+  const cdpClientShutdown = cdpClientRuntime ? '        cdpClientRuntime_.Shutdown();' : '';
   const webSocketServerRuntime = generateWebSocketServerRuntime(enabledModules);
   const fbroProcessRuntime = fbroModuleEnabled
     ? '#include <LingBuilderFbroProcessRuntime.hpp>'
@@ -7269,6 +7343,7 @@ static constexpr UINT WM_LINGBUILDER_WSS_EVENT = WM_APP + 0x52;
 static constexpr UINT WM_LINGBUILDER_HTTP_SERVER_REQUEST = WM_APP + 0x53;
 static constexpr UINT WM_LINGBUILDER_WS_CLIENT_EVENT = WM_APP + 0x54;
 static constexpr UINT WM_LINGBUILDER_HTTP_CLIENT_EVENT = WM_APP + 0x55;
+static constexpr UINT WM_LINGBUILDER_CDP_CLIENT_EVENT = WM_APP + 0x58;
 
 struct LingCefEventPacket {
     int controlId = 0;
@@ -8429,6 +8504,8 @@ ${httpServerRuntime}
 
 ${webSocketClientRuntime}
 
+${cdpClientRuntime}
+
 ${webSocketServerRuntime}
 
 ${fbroProcessRuntime}
@@ -8443,7 +8520,7 @@ public:
           menuFont_(nullptr),
           controlLifetimeState_(std::make_shared<LingControlLifetimeState>()),
           dpi_(96),
-          socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer} {
+          socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${cdpClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer} {
         controlLifetimeState_->owner = this;
     }
 
@@ -8465,6 +8542,7 @@ ${functionLibraryMethods}
 ${httpClientShutdown}
 ${httpServerShutdown}
 ${webSocketClientShutdown}
+${cdpClientShutdown}
 ${webSocketServerShutdown}
         EdgeView_关闭();
         FBro_关闭全部();
@@ -8653,6 +8731,7 @@ protected:
 ${httpClientWindowField}
 ${httpServerWindowField}
 ${webSocketClientWindowField}
+${cdpClientWindowField}
 ${webSocketServerWindowField}
     std::wstring wssReturnText_;
     FINDREPLACEW findReplace_ = {};
@@ -8867,6 +8946,12 @@ ${fbroBrowserManagerRuntime.members}
 
     virtual void DispatchWebSocketClientEvent(const wchar_t* handler) {
         std::wstring message = L"WebSocket 客户端事件未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        调试输出(message.c_str());
+    }
+
+    virtual void DispatchCdpClientEvent(const wchar_t* handler) {
+        std::wstring message = L"CDP 客户端事件未绑定到中文处理器：";
         message += handler ? handler : L"";
         调试输出(message.c_str());
     }
@@ -16149,6 +16234,8 @@ ${httpClientWindowMethods}
 
 ${webSocketClientWindowMethods}
 
+${cdpClientWindowMethods}
+
 ${httpServerWindowMethods}
 
 ${webSocketServerWindowMethods}
@@ -20317,6 +20404,16 @@ ${aria2Runtime ? `        case LingAria2::ProgressMessage: {
 #endif
             return 0;
         }
+        case WM_LINGBUILDER_CDP_CLIENT_EVENT: {
+#ifdef LINGBUILDER_CDP_CLIENT_MODULE
+            cdpClientRuntime_.DispatchEvent(static_cast<long long>(wParam), [this](const wchar_t* handler) {
+                DispatchCdpClientEvent(handler);
+            });
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
         case WM_LINGBUILDER_WEB_ASYNC_COMPLETE: {
 #ifdef LINGBUILDER_WEB_HTTP_MODULE
             const int requestId = static_cast<int>(wParam);
@@ -22120,6 +22217,11 @@ ${edgeDispatchCases || '        (void)callback;'}
         std::wstring callback = handler ? handler : L"";
 ${edgeDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchWebSocketClientEvent(handler);
+    }
+    void DispatchCdpClientEvent(const wchar_t* handler) override {
+        std::wstring callback = handler ? handler : L"";
+${edgeDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchCdpClientEvent(handler);
     }
     void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) override {
         std::wstring handler = ResolveControlEventHandler(control, eventName);

@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "new-emoji-92-validation",
+  "startupProjectId": "datagrid-api-demo",
   "startupProjectIds": [
-    "new-emoji-92-validation"
+    "datagrid-api-demo"
   ],
   "folders": [
     {

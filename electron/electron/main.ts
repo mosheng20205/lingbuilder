@@ -1044,6 +1044,10 @@ function registerIpcHandlers(): void {
         { name: '兼容的工作区入口', extensions: ['lingbuilder', 'lbworkspace', 'sln'] }
       ]
     };
+    options.filters = [
+      { name: 'LingBuilder 工作区文件', extensions: [LCPP_SOURCE_PACKAGE_EXTENSION.slice(1), 'lbsln', 'lingbuilder', 'lbworkspace', 'sln', 'code-workspace', 'lcpp', 'e'] },
+      { name: '所有文件', extensions: ['*'] }
+    ];
     const result = owner
       ? await dialog.showOpenDialog(owner, options)
       : await dialog.showOpenDialog(options);
@@ -1066,6 +1070,10 @@ function registerIpcHandlers(): void {
         { name: '兼容的工作区入口', extensions: ['lingbuilder', 'lbworkspace', 'sln'] }
       ]
     };
+    options.filters = [
+      { name: 'LingBuilder 工作区文件', extensions: [LCPP_SOURCE_PACKAGE_EXTENSION.slice(1), 'lbsln', 'lingbuilder', 'lbworkspace', 'sln', 'code-workspace', 'lcpp', 'e'] },
+      { name: '所有文件', extensions: ['*'] }
+    ];
     const result = owner
       ? await dialog.showOpenDialog(owner, options)
       : await dialog.showOpenDialog(options);

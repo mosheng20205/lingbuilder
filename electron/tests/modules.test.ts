@@ -215,12 +215,12 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       parameterDigest: audit.parameterDigest
     },
     {
-      modules: 83,
-      commands: 2854,
-      parameters: 4850,
+      modules: 84,
+      commands: 2951,
+      parameters: 5050,
       controlReferences: 1262,
-      commandDigest: 'f98544a5',
-      parameterDigest: 'ef4a2f19'
+      commandDigest: '7b4696d8',
+      parameterDigest: 'fd5ddcb2'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -320,7 +320,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 46, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 47, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -535,12 +535,12 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     commandDigest: audit.commandDigest,
     parameterDigest: audit.parameterDigest
   }, {
-      modules: 90,
-      commands: 6657,
-      parameters: 16393,
+      modules: 91,
+      commands: 6754,
+      parameters: 16593,
       controlReferences: 4806,
-      commandDigest: '17ae371f',
-      parameterDigest: '7c7be831'
+      commandDigest: '1801de74',
+      parameterDigest: '58459be2'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -1043,7 +1043,7 @@ test('Win32 基础模块提供可变参数占位符文本格式化命令', () =>
 
 test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
-    'lingbuilder.net.http-client', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
+    'lingbuilder.net.http-client', 'lingbuilder.cdp.client', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
     'lingbuilder.net.dns', 'lingbuilder.net.url', 'lingbuilder.net.cookie', 'lingbuilder.net.ftp'
   ]);
   for (const manifest of NETWORK_LIBRARY_MODULES) {

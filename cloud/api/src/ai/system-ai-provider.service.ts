@@ -7,6 +7,8 @@ import { SecretVaultService } from '../security/secret-vault.service.js';
 import { validateProviderUrl } from '../security/network-policy.js';
 
 export const DEEPSEEK_V4_MODELS = [
+  // DeepSeek's official API uses these stable model IDs directly. Product aliases
+  // intentionally match the upstream IDs so no translation layer can go stale.
   { alias: 'deepseek-v4-flash', modelName: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash' },
   { alias: 'deepseek-v4-pro', modelName: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' },
 ] as const;

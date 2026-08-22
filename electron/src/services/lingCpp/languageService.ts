@@ -275,6 +275,8 @@ export function getLingCppSemanticDiagnostics(
   projectFunctions?: LingCppProjectFunctionContext
 ): LingCppDiagnostic[] {
   const parsed = parseLingCpp(source);
+  // 类名集合与解析结果同源共享：控件符号与设计器窗口选择都不得再次全文解析。
+  const sourceClassNames = new Set(parsed.program.classes.map(cls => normalizeIdentifier(cls.name)));
   const effectiveTypes = createEffectiveLingCppTypeContext(projectTypes, moduleContext);
   const diagnostics = [...parsed.diagnostics, ...getBlockDiagnostics(source)];
   diagnostics.push(...getProjectGlobalDiagnostics(source, filePath, moduleContext, getProjectDataTypeNames(effectiveTypes)));
@@ -292,7 +294,7 @@ export function getLingCppSemanticDiagnostics(
     ...parsed.program.classes,
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
   ], moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes,
-    new Set(getLingCppControlSymbols(designerProject, source, filePath, 'currentWindow', moduleContext)
+    new Set(getLingCppControlSymbols(designerProject, source, filePath, 'currentWindow', moduleContext, sourceClassNames)
       .map(symbol => normalizeIdentifier(symbol.name)))));
   diagnostics.push(...getRuntimeControlDeclarationDiagnostics(
     parsed.program,
@@ -317,7 +319,7 @@ export function getLingCppSemanticDiagnostics(
       });
     });
 
-    const currentWindows = selectDesignerWindows(designerProject, source, filePath);
+    const currentWindows = selectDesignerWindows(designerProject, source, filePath, sourceClassNames);
     diagnostics.push(...getModuleDesignerEventDiagnostics(parsed.program, currentWindows, moduleContext));
     const windowEventByHandler = new Map<string, string>();
     currentWindows.forEach(window => {
@@ -1630,7 +1632,8 @@ export function getLingCppDesignerBindings(
   if (!designerProject) return [];
 
   const parsed = parseLingCpp(source);
-  const currentWindows = selectDesignerWindows(designerProject, source, filePath);
+  const sourceClassNames = new Set(parsed.program.classes.map(cls => normalizeIdentifier(cls.name)));
+  const currentWindows = selectDesignerWindows(designerProject, source, filePath, sourceClassNames);
   if (currentWindows.length === 0) return [];
 
   const sourceEvents = parsed.program.classes.flatMap(cls =>
@@ -3243,7 +3246,7 @@ function parseStringLiteralArgument(value?: string): string | undefined {
   return undefined;
 }
 
-function selectDesignerWindows(project: LingWindowProject, source: string, filePath?: string): LingWindowModel[] {
+function selectDesignerWindows(project: LingWindowProject, source: string, filePath?: string, sourceClassNames?: ReadonlySet<string>): LingWindowModel[] {
   const associatedFile = extractAssociatedDesignerFile(source);
   if (associatedFile) {
     const byDesignerFile = project.windows.filter(win => normalizePathName(win.fileName) === normalizePathName(associatedFile));
@@ -3251,9 +3254,8 @@ function selectDesignerWindows(project: LingWindowProject, source: string, fileP
     return [];
   }
 
-  const parsed = parseLingCpp(source);
-  const sourceClassNames = new Set(parsed.program.classes.map(cls => normalizeIdentifier(cls.name)));
-  const byClass = project.windows.filter(win => sourceClassNames.has(normalizeIdentifier(win.className)));
+  const classNames = sourceClassNames || new Set(parseLingCpp(source).program.classes.map(cls => normalizeIdentifier(cls.name)));
+  const byClass = project.windows.filter(win => classNames.has(normalizeIdentifier(win.className)));
   if (byClass.length > 0) return byClass;
 
   const normalizedPath = filePath?.replace(/\\/g, '/').toLowerCase();

@@ -316,6 +316,9 @@ const MAX_EDITOR_FONT_SIZE = 24;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 264;
 const MIN_LEFT_SIDEBAR_WIDTH = 160;
 const MAX_LEFT_SIDEBAR_WIDTH = 600;
+const DEFAULT_AI_PANEL_WIDTH = 360;
+const MIN_AI_PANEL_WIDTH = 280;
+const MAX_AI_PANEL_WIDTH = 640;
 
 const clampEditorFontSize = (value: number) => {
   return Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, Math.round(value)));
@@ -323,6 +326,10 @@ const clampEditorFontSize = (value: number) => {
 
 const clampLeftSidebarWidth = (value: number) => {
   return Math.max(MIN_LEFT_SIDEBAR_WIDTH, Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.round(value)));
+};
+
+const clampAiPanelWidth = (value: number) => {
+  return Math.max(MIN_AI_PANEL_WIDTH, Math.min(MAX_AI_PANEL_WIDTH, Math.round(value)));
 };
 
 const getInitialEditorFontSize = () => {
@@ -406,6 +413,13 @@ const hasLingCppEventHandler = (content: string, handlerName: string) => {
   } catch {
     return false;
   }
+};
+
+/** 比较两组已安装模块列表是否内容一致（顺序敏感，按 id@version + 安装路径）。 */
+const areInstalledModuleListsEquivalent = (left: InstalledModule[] | undefined, right: InstalledModule[]) => {
+  if (!Array.isArray(left) || left.length !== right.length) return false;
+  const signatureOf = (module: InstalledModule) => `${module.manifest.id}@${module.manifest.version}:${module.installPath}`;
+  return left.every((module, index) => signatureOf(module) === signatureOf(right[index]));
 };
 
 const getCurrentWindowDesignerProject = (projectId?: string) => readWindowDesignerState(projectId).project;
@@ -1232,7 +1246,14 @@ export default function App() {
       || projectFileLoadGenerationRef.current !== loadGeneration) return;
     const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
     const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
-    setModuleContext(previous => ({ availableModules, enabledModules, showAdvancedApi: previous.showAdvancedApi }));
+    // 模块列表内容未变化时保持引用稳定：moduleContext 是语言诊断、补全等重计算
+    // useMemo 的依赖项，设计器每次提交后都换新引用会让这些计算重复执行并卡住主线程。
+    setModuleContext(previous => (
+      areInstalledModuleListsEquivalent(previous.availableModules, availableModules)
+        && areInstalledModuleListsEquivalent(previous.enabledModules, enabledModules)
+        ? previous
+        : { availableModules, enabledModules, showAdvancedApi: previous.showAdvancedApi }
+    ));
   }, [activeProjectId]);
 
   useEffect(() => {
@@ -1537,6 +1558,7 @@ export default function App() {
     const sidebarWidth = readValue('workbench.sidebar.width');
     const panelVisible = readValue('workbench.panel.visible');
     const aiPanelVisible = readValue('workbench.aiPanel.visible');
+    const aiPanelWidth = readValue('workbench.aiPanel.width');
     const shortcuts = readValue('keyboard.shortcuts');
 
     if (typeof fontSize === 'number') setEditorFontSizeState(clampEditorFontSize(fontSize));
@@ -1550,6 +1572,7 @@ export default function App() {
     if (typeof sidebarWidth === 'number') setLeftWidth(clampLeftSidebarWidth(sidebarWidth));
     if (typeof panelVisible === 'boolean') setShowBottomPanel(panelVisible);
     if (typeof aiPanelVisible === 'boolean') setShowRightPanel(aiPanelVisible);
+    if (typeof aiPanelWidth === 'number') setAiPanelWidth(clampAiPanelWidth(aiPanelWidth));
     setShortcutOverrides(isStringRecord(shortcuts) ? shortcuts : {});
   }, []);
 
@@ -1742,6 +1765,7 @@ export default function App() {
 
   // Resizable sidebars state
   const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
+  const [aiPanelWidth, setAiPanelWidth] = useState(DEFAULT_AI_PANEL_WIDTH);
   const [bottomHeight, setBottomHeight] = useState(260);
 
   const startResizeLeft = (e: React.MouseEvent) => {
@@ -1770,6 +1794,29 @@ export default function App() {
   const resetLeftSidebarWidth = () => {
     setLeftWidth(DEFAULT_LEFT_SIDEBAR_WIDTH);
     void configurationMutationRef.current('workbench.sidebar.width', DEFAULT_LEFT_SIDEBAR_WIDTH, 'user');
+  };
+
+  const startResizeAiPanel = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let resizedWidth = aiPanelWidth;
+    let didResize = false;
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      resizedWidth = clampAiPanelWidth(window.innerWidth - moveEvent.clientX);
+      didResize = true;
+      setAiPanelWidth(resizedWidth);
+    };
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      if (didResize) void configurationMutationRef.current('workbench.aiPanel.width', resizedWidth, 'user');
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const resetAiPanelWidth = () => {
+    setAiPanelWidth(DEFAULT_AI_PANEL_WIDTH);
+    void configurationMutationRef.current('workbench.aiPanel.width', DEFAULT_AI_PANEL_WIDTH, 'user');
   };
 
   const startResizeBottom = (e: React.MouseEvent) => {
@@ -5796,6 +5843,7 @@ void DisplayStatus() {
         language: file.language
       }))}
       onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
+      commandService={commandServiceRef.current}
       isDarkMode={isDarkMode}
     />
   );
@@ -6477,6 +6525,20 @@ void DisplayStatus() {
             >
               <Terminal className="w-3.5 h-3.5" />
             </button>
+            <button
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.toggleAiPanel')}
+              aria-label="切换 AI 智能编程助手"
+              aria-pressed={showRightPanel}
+              className={`p-1 rounded cursor-pointer transition-colors ${
+                showRightPanel
+                  ? isDarkMode ? 'bg-[#1E1E1E] text-cyan-300' : 'bg-cyan-100 text-cyan-800 font-medium'
+                  : isDarkMode ? 'text-slate-400 hover:text-cyan-300' : 'text-slate-500 hover:text-cyan-700'
+              }`}
+              title="切换 AI 智能编程助手"
+            >
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
           </div>
 
           <div className={`w-px h-4 ${isDarkMode ? 'bg-[#444]' : 'bg-slate-300'}`}></div>
@@ -6509,8 +6571,6 @@ void DisplayStatus() {
           setShowLeftSidebar={setShowLeftSidebar}
           showDesignerToolbox={isDesignerViewActive}
           onDesignerToolboxHostChange={setDesignerToolboxHost}
-          showDesignerAssistant
-          assistantContent={renderAiAssistant()}
           onBatchTranslate={handleBatchTranslate}
           onSetStatus={handleSetStatus}
           glossary={glossary}
@@ -6778,6 +6838,40 @@ void DisplayStatus() {
             />
           )}
         </div>
+
+        {showRightPanel && (
+          <>
+            <div
+              className={`w-[6px] shrink-0 cursor-col-resize border-l select-none transition-colors hover:bg-blue-500/20 ${
+                isDarkMode ? 'border-[#2d2d34] bg-[#1c1c22]' : 'border-slate-200 bg-slate-100'
+              }`}
+              onMouseDown={startResizeAiPanel}
+              onDoubleClick={resetAiPanelWidth}
+              title="拖拽调整 AI 助手宽度，双击重置"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整 AI 助手宽度"
+            />
+            <aside
+              className={`relative min-w-0 shrink-0 ${isDarkMode ? 'bg-[#1e1e24]' : 'bg-white'}`}
+              style={{ width: aiPanelWidth }}
+              aria-label="AI 智能编程助手"
+            >
+              <button
+                type="button"
+                onClick={() => void executeWorkbenchCommand('workbench.action.toggleAiPanel')}
+                className={`absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded border text-slate-400 hover:text-white ${
+                  isDarkMode ? 'border-[#42424c] bg-[#25252c] hover:bg-[#363642]' : 'border-slate-300 bg-white hover:bg-slate-100 hover:text-slate-700'
+                }`}
+                title="收起 AI 助手"
+                aria-label="收起 AI 助手"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+              {renderAiAssistant()}
+            </aside>
+          </>
+        )}
 
       </div>
 

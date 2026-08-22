@@ -26,6 +26,7 @@ export const WORKBENCH_CONFIGURATION_KEYS = [
   'workbench.sidebar.width',
   'workbench.panel.visible',
   'workbench.aiPanel.visible',
+  'workbench.aiPanel.width',
   'keyboard.shortcuts'
 ] as const;
 
@@ -99,6 +100,13 @@ export const WORKBENCH_CONFIGURATION_SCHEMA: ConfigurationSchema = {
     type: 'boolean',
     default: false,
     description: '是否显示右侧 AI 助手面板。默认按需打开，避免与编辑器形成并列主界面。'
+  },
+  'workbench.aiPanel.width': {
+    type: 'integer',
+    default: 360,
+    minimum: 280,
+    maximum: 640,
+    description: '右侧 AI 助手面板的宽度，单位为像素。'
   },
   'keyboard.shortcuts': {
     type: 'object',
@@ -189,6 +197,15 @@ export const WORKBENCH_CONFIGURATION_METADATA: readonly WorkbenchConfigurationMe
     title: '显示 AI 助手',
     description: '控制右侧 AI 助手面板是否可见；默认收起以突出代码编辑区。',
     targets: USER_AND_WORKSPACE_TARGETS
+  },
+  {
+    key: 'workbench.aiPanel.width',
+    category: '工作台',
+    title: 'AI 助手宽度',
+    description: '设置右侧 AI 助手面板宽度（280-640 像素）。',
+    targets: USER_AND_WORKSPACE_TARGETS,
+    minimum: 280,
+    maximum: 640
   },
   {
     key: 'keyboard.shortcuts',

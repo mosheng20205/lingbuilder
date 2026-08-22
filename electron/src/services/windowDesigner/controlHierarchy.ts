@@ -10,6 +10,43 @@ export interface EffectiveControlState {
   enabled: boolean;
 }
 
+/**
+ * Calculates inherited visibility/enabled state once for a complete control
+ * set. The designer asks for this state for every painted control, so doing
+ * the parent walk inside each render would rebuild the same map repeatedly.
+ */
+export function getEffectiveControlStates(controls: LingControl[]): Map<string, EffectiveControlState> {
+  const controlsById = new Map(controls.map(control => [control.id, control]));
+  const states = new Map<string, EffectiveControlState>();
+  const resolving = new Set<string>();
+
+  const resolve = (controlId: string): EffectiveControlState => {
+    const cached = states.get(controlId);
+    if (cached) return cached;
+    const control = controlsById.get(controlId);
+    if (!control) return { visible: true, enabled: true };
+    // A malformed cycle should not make painting recurse forever. Normalized
+    // projects do not hit this branch, but the fallback keeps the canvas usable
+    // while a damaged project is being repaired.
+    if (resolving.has(controlId)) return { visible: false, enabled: false };
+    resolving.add(controlId);
+    const own = {
+      visible: control.visibility === 'Visible',
+      enabled: control.isEnabled === true
+    };
+    const parent = control.parentId ? resolve(control.parentId) : undefined;
+    const state = parent
+      ? { visible: own.visible && parent.visible, enabled: own.enabled && parent.enabled }
+      : own;
+    resolving.delete(controlId);
+    states.set(controlId, state);
+    return state;
+  };
+
+  controls.forEach(control => resolve(control.id));
+  return states;
+}
+
 function createsParentCycle(controlId: string, parentId: string, controlsById: Map<string, LingControl>): boolean {
   const visited = new Set<string>([controlId]);
   let currentId: string | undefined = parentId;

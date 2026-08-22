@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "projectId": "lingbuilder-ui-project",
+  "conversations": [
+    {
+      "id": "e6a1af4c-cc1b-4ba7-89d1-b3e6002b29aa",
+      "title": "新建 AI 会话",
+      "createdAt": "2026-08-22T06:50:26.656Z",
+      "updatedAt": "2026-08-22T06:50:26.656Z",
+      "messages": []
+    }
+  ],
+  "activeConversationId": "e6a1af4c-cc1b-4ba7-89d1-b3e6002b29aa"
+}

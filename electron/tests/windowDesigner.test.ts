@@ -44,10 +44,12 @@ import {
   getPrimaryEventNameForType,
   getLingWindowSourceFilePath,
   getWindowDesignerAutosaveKey,
+  getWindowDesignerSelectionKey,
   generateWindowXml,
   hasDesignerWindowMenu,
   normalizeWindowDesignerState,
   readWindowDesignerState,
+  saveWindowDesignerSelection,
   saveWindowDesignerState
 } from '../src/services/windowDesigner/windowDesignerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
@@ -3353,6 +3355,61 @@ test('窗口设计器自动保存缓存按 projectId 隔离并兼容旧键迁移
     assert.equal(readWindowDesignerState('project-b').project.windows[0].controls[0].id, 'button-b');
     assert.ok(values.has(getWindowDesignerAutosaveKey('project-a')));
     assert.ok(values.has(getWindowDesignerAutosaveKey('project-b')));
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
+});
+
+test('窗口设计器选择缓存只保存轻量游标，不广播项目更新并按活动窗口隔离', () => {
+  const values = new Map<string, string>();
+  let projectUpdateEvents = 0;
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => { values.set(key, value); }
+      },
+      dispatchEvent: () => {
+        projectUpdateEvents += 1;
+        return true;
+      }
+    }
+  });
+  try {
+    const project: LingWindowProject = {
+      schemaVersion: 2,
+      id: 'selection-cache-project',
+      name: '选择缓存项目',
+      resources: [],
+      windows: [
+        {
+          id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+          background: '#1f2937', description: '', controls: [createControl('button-a', undefined, 'Button')]
+        },
+        {
+          id: 'secondary', fileName: 'SecondaryWindow.xml', className: '辅助窗口', title: '辅助窗口', width: 640, height: 480,
+          background: '#1f2937', description: '', controls: [createControl('button-b', undefined, 'Button')]
+        }
+      ]
+    };
+    saveWindowDesignerState({ project, activeWindowId: 'main', selectedControlId: null });
+    const eventsAfterProjectSave = projectUpdateEvents;
+
+    saveWindowDesignerSelection(project.id, 'main', 'button-a');
+    assert.equal(projectUpdateEvents, eventsAfterProjectSave, '选择变化不应广播完整项目更新');
+    assert.ok(values.has(getWindowDesignerSelectionKey(project.id)));
+    assert.equal(readWindowDesignerState(project.id).selectedControlId, 'button-a');
+
+    // A selection saved for another window must not overwrite the current window cursor.
+    saveWindowDesignerSelection(project.id, 'secondary', 'button-b');
+    assert.equal(readWindowDesignerState(project.id).selectedControlId, null);
+
+    // Selection keys are project-scoped and cannot affect another project.
+    saveWindowDesignerSelection('another-project', 'main', null);
+    assert.equal(readWindowDesignerState(project.id).selectedControlId, null);
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
     else Reflect.deleteProperty(globalThis, 'window');

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 import { AiConnectionSessionService, aiConnectionSession } from '../src/services/ai/aiConnectionSessionService';
-import { getAiWorkspaceFilesForEdit, isLikelyDesignerEditInstruction } from '../src/components/AiAssistant';
+import { getAiWorkspaceFilesForEdit, isLikelyCodeEditInstruction, isLikelyDesignerEditInstruction } from '../src/components/AiAssistant';
 
 test('AI connection verification survives an assistant panel remount within the renderer session', () => {
   const signature = 'deepseek|https://api.deepseek.com|test-key|deepseek-v4-flash';
@@ -54,11 +54,11 @@ test('AI assistant restores only renderer-session verification and waits for saf
   assert.match(assistant, /credentials\.getAiApiKey\(\)[\s\S]*finally\(\(\) => setIsAiCredentialReady\(true\)\)/u);
 });
 
-test('AI assistant routes layout requests through the edit flow even when a non-lcpp file is active', () => {
+test('AI assistant routes explicit edits through the edit flow without forcing every lcpp question into edits', () => {
   const assistant = fs.readFileSync(new URL('../src/components/AiAssistant.tsx', import.meta.url), 'utf8');
 
   assert.match(assistant, /export function isLikelyDesignerEditInstruction/u);
-  assert.match(assistant, /const shouldUseEditFlow = isLingCppFile \|\| Boolean\(/u);
+  assert.match(assistant, /const shouldUseEditFlow = \(isLingCppFile && isLikelyCodeEditInstruction\(userMsg\.text\)\) \|\| Boolean\(/u);
   assert.match(assistant, /cloudAi\.start\(shouldUseEditFlow \? 'edit' : 'chat'/u);
   assert.match(assistant, /if \(shouldUseEditFlow\) \{/u);
   assert.match(assistant, /getAiWorkspaceFilesForEdit\(workspaceFiles, filePath, sourceCode\)/u);
@@ -80,4 +80,6 @@ test('layout intent and bounded AI context remain independent from the active fi
     'src/other.cpp'
   ]);
   assert.equal(files[0].sourceCode, 'current');
+  assert.equal(isLikelyCodeEditInstruction('1+1'), false);
+  assert.equal(isLikelyCodeEditInstruction('请修复这个编译错误'), true);
 });
