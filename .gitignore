@@ -75,3 +75,33 @@ vc140.pdb
 
 # 在线版打包 staging 快照（体积巨大，不入库）
 electron-online-staging*/
+
+# ===== 开源仓库清理（本地状态/构建产物/生产部署信息，不应公开） =====
+# 本地 IDE / 开发工具状态
+.lingbuilder/
+.lingbuilder-smoke/
+.lingbuilder-dev-logs/
+.superpowers/
+.agents/
+.cache/
+.codex/
+.zcode
+config/
+ai-bridge-threading-test/
+
+# 构建与生成产物（含第三方浏览器缓存/二进制）
+generated/
+.e-read-output/
+
+# 生产 / 部署敏感资产
+scripts/deploy-*
+compose.production.yaml
+生产环境部署与调试手册.md
+生产环境Docker部署方案.md
+website/docs-dist/
+cloud/admin/docs/docs-dist.zip
+cloud/admin/docs/.vitepress/cache/
+
+# 第三方二进制与专有字体
+electron/third_party/
+videos/**/*.ttf
