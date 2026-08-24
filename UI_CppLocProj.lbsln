@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-project-2",
+  "startupProjectId": "lingbuilder-project",
   "startupProjectIds": [
-    "lingbuilder-project-2"
+    "lingbuilder-project"
   ],
   "folders": [
     {

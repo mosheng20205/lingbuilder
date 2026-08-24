@@ -1,0 +1,8 @@
+# VitePress 构建产物
+node_modules/
+.vitepress/dist/
+
+# 保留 .vitepress 配置与自定义主题
+!.vitepress/
+!.vitepress/config.mjs
+!.vitepress/theme/

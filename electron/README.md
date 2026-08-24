@@ -1,6 +1,6 @@
 # LingBuilder Electron
 
-> 2026-08-22：CDP 客户端模块进入阶段 3 实施，清单暂升 `lingbuilder.cdp.client@3.0.0`（144 条命令、14 个受管类型）。已新增 Target/Session/Frame、OOPIF/Worker 自动附加与会话求值、Runtime binding、Overlay、触摸、Debugger、Performance、Storage、严格证书逐次裁决和录制 schema 地基；MSVC Win32/x64 编译与阶段 1/2 Edge headless smoke 继续通过。Screencast、Tracing/CPU/Coverage/Heap 完整任务、录制自动采集与确定性回放仍在实施，不能宣称阶段 3 完成。正式说明见 `docs/modules/cdp-client/README.md`，交接记录见 `../doc/CDP模块开发进度.md`。
+> 2026-08-22：CDP 客户端模块进入阶段 3 实施，清单暂升 `lingbuilder.cdp.client@3.0.0`（144 条命令、14 个受管类型）。已新增 Target/Session/Frame、OOPIF/Worker 自动附加与会话求值、Runtime binding、Overlay、触摸、Debugger、Performance、Storage、严格证书逐次裁决和录制 schema 地基；MSVC Win32/x64 编译与阶段 1/2 Edge headless smoke 继续通过。Screencast、Tracing/CPU/Coverage/Heap 完整任务、录制自动采集与确定性回放仍在实施，不能宣称阶段 3 完成。正式说明见 `docs/modules/cdp-client/README.md`（交接记录已归档）。
 
 > 2026-08-20：修复旧上传项目 F5 的 C++ C3861。历史 `.lcpp` 调用 `上传_打开("控件名")` 现在由统一规则映射到已存在的 `上传_打开文件选择` 运行时函数；普通新项目仍使用非可视 `FileDialog` 和 `文件对话框_*` 命令，AI 不得新建旧 `Upload`/`DragUpload` 控件。
 

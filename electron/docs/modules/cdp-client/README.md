@@ -6,7 +6,7 @@
 
 已支持阶段 1/2 的多连接、页面自动化、Fetch、对话框、下载、上传、仿真与输出；阶段 3 已新增 Target/Session/Frame/ExecutionContext 注册表与自动附加、OOPIF/Worker 会话执行、Runtime binding、Overlay 高亮、多点触控、Debugger 断点/暂停/单步/调用帧/作用域、Performance 指标、Storage usage/清理、严格证书错误逐次裁决，以及版本化录制文件地基。当前清单共 144 条命令、14 个受管类型。
 
-仍在实施和真实 smoke 验收：screencast、Tracing/CPU Profile/精确覆盖率/Heap 完整任务输出、录制自动采集与确定性回放执行器。阶段 3 尚未标记完成，完整路线见仓库 `doc/CDP模块开发.md`。
+仍在实施和真实 smoke 验收：screencast、Tracing/CPU Profile/精确覆盖率/Heap 完整任务输出、录制自动采集与确定性回放执行器。阶段 3 尚未标记完成（完整路线已归档）。
 
 ## 多开与连接
 
