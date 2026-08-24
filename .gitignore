@@ -105,3 +105,9 @@ cloud/admin/docs/.vitepress/cache/
 # 第三方二进制与专有字体
 electron/third_party/
 videos/**/*.ttf
+
+# 营销/宣传素材与第三方浏览器扩展（不入库）
+website/
+发布素材/
+宣传素材/
+assets/**/doubao-downloader/
