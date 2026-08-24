@@ -1,6 +1,6 @@
 # CDP 模块开发进度
 
-> 本文档是 CDP 客户端模块（`lingbuilder.cdp.client`）的跨会话交接记录，用于防止后续会话失忆。能力全景与逐阶段验收门禁见 `doc/CDP模块开发.md`；本文只记录"做到哪了、怎么做的、还剩什么、有哪些坑"。
+> 本文档是 CDP 客户端模块（`lingbuilder.cdp.client`）的跨会话交接记录，用于防止后续会话失忆。能力全景与逐阶段验收门禁见 `../advanced/cdp-module-dev.md`；本文只记录"做到哪了、怎么做的、还剩什么、有哪些坑"。
 >
 > 最后更新：2026-08-22（阶段 3 第一批地基已落地，尚未完成）
 
@@ -8,7 +8,7 @@
 
 | 阶段 | 状态 | 说明 |
 |---|---|---|
-| 阶段 0 规划文档 | ✅ 完成 | `doc/CDP模块开发.md` 已升级为商业全场景能力全景 + 三阶段计划 |
+| 阶段 0 规划文档 | ✅ 完成 | `../advanced/cdp-module-dev.md` 已升级为商业全场景能力全景 + 三阶段计划 |
 | 阶段 1 会话内核 + 基础自动化 | ✅ 完成 | 58 条命令基线，真实 Edge headless 端到端验证通过（2026-08-22） |
 | 阶段 2 商业增量 | ✅ 完成 | 模块升级 `2.0.0` / 97 条命令 / 4 个受管类型；真实 Edge headless Win32+x64 smoke 通过（2026-08-22） |
 | 阶段 3 高阶 | 🚧 实施中 | 模块清单暂升 `3.0.0` / 144 条命令 / 14 个受管类型；Target/Session、binding、Debugger、Storage、证书安全与录制地基已生成并通过双架构编译，screencast、完整性能任务和确定性回放仍未完成 |
@@ -91,7 +91,7 @@ smoke 自动：找浏览器（`LINGBUILDER_CDP_SMOKE_BROWSER` 环境变量或常
 
 ### 2.7 文档同步状态（阶段 1 已全部同步）
 
-- [x] `doc/CDP模块开发.md`（能力全景 + 阶段状态 + DSL 示例对齐实际命令）
+- [x] `../advanced/cdp-module-dev.md`（能力全景 + 阶段状态 + DSL 示例对齐实际命令）
 - [x] `FUTURE_OPTIMIZATIONS.md`（阶段 1 完成条目 + 遗留超时定时器）
 - [x] `MODULE_ECOSYSTEM_IMPLEMENTATION.md`（"CDP 客户端模块（2026-08）"章节）
 - [x] `LingBuilder AI 规则手册.md`（CDP 命令生成规范，`electron/server.ts` 会注入 AI prompt）
@@ -166,12 +166,12 @@ smoke 自动：找浏览器（`LINGBUILDER_CDP_SMOKE_BROWSER` 环境变量或常
 1. `cdpClientModule.ts` 新命令四端一致（contributes + binding + 运行时包装方法 + 文档）；handler 参数必须带 `handlerSignature: { parameterTypes: [], returnType: '空' }`。
 2. `tests/cdpClientRuntime.test.ts` 断言新命令生成；`modules.test.ts` 基线数字更新。
 3. `smoke-cdp-native.ts` 扩展真实浏览器断言（OOPIF 自动附加、断点暂停/单步、性能追踪文件、覆盖率与堆快照等每域至少一项）。
-4. 六文档同步：`doc/CDP模块开发.md`（阶段状态）、`FUTURE_OPTIMIZATIONS.md`、`MODULE_ECOSYSTEM_IMPLEMENTATION.md`、`LingBuilder AI 规则手册.md`、`electron/README.md`、`MODULE_ENCAPSULATION_CHECKLIST.md` + 当日 `更新记录/`。
+4. 六文档同步：`../advanced/cdp-module-dev.md`（阶段状态）、`FUTURE_OPTIMIZATIONS.md`、`MODULE_ECOSYSTEM_IMPLEMENTATION.md`、`LingBuilder AI 规则手册.md`、`electron/README.md`、`MODULE_ENCAPSULATION_CHECKLIST.md` + 当日 `更新记录/`。
 5. `npm run lint` / `npm run test:lingcpp` / `npm run build` / `npm run smoke:cdp-native` 全过。
 
 ## 六、新会话快速上手
 
-1. 读 `AGENTS.md`（模块生态/AI Bridge/文档同步规则）+ `doc/CDP模块开发.md`（能力全景与阶段门禁）+ 本文档。
+1. 读 `AGENTS.md`（模块生态/AI Bridge/文档同步规则）+ `../advanced/cdp-module-dev.md`（能力全景与阶段门禁）+ 本文档。
 2. 阶段 3 优先从 `Target.setAutoAttach` + OOPIF/Worker 会话模型开始，再接 Debugger；先设计多 frame/session 的稳定句柄契约，不能直接复用 `CDP页面` 猜 session。
 3. 改运行时 = 改 `cdpClientRuntime.ts` 的 `String.raw` 文本；改完先跑专项测试，再跑 smoke（真实编译会暴露 C++ 语法错误）。
 4. 新消息号用 `WM_APP+0x59` 起；新 PendingKind 枚举值接着 15 往后排。
