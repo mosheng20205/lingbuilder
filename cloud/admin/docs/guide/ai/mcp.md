@@ -6,77 +6,107 @@ title: MCP 工具协议
 
 > [🕒 预计 20 分钟] | 难度：进阶
 
-**MCP（Model Context Protocol，模型上下文协议）** 是连接 AI 模型与外部工具的标准协议。LingBuilder 通过 MCP 让 AI 助手能够调用项目文件、终端命令等工具，实现更深入的自动化。
+**MCP（Model Context Protocol，模型上下文协议）** 是连接 AI 模型与外部工具的标准协议。在 LingBuilder 中，**本地 AI Bridge 就是一个 MCP 服务器**：外部 AI 客户端（如 Claude Code、Codex CLI、Gemini CLI）可以连接它，直接读取你的工作区、提出代码修改提案、创建项目并执行受控构建。
 
 ## 1. MCP 在 LingBuilder 中的角色
 
 | 组件 | 说明 |
 |---|---|
-| **MCP 宿主** | LingBuilder 内嵌的协议客户端，负责启动与通信 |
-| **MCP 服务器** | 提供具体工具能力（文件读写、命令执行等） |
-| **MCP 工具** | AI 可调用的操作单元，如 `读取文件`、`执行构建` |
+| **MCP 服务器（AI Bridge）** | LingBuilder 内置的本地服务，对外暴露工作区工具，仅监听 `127.0.0.1` |
+| **MCP 客户端（外部 AI）** | Claude Code、Codex CLI、Gemini CLI 等支持 MCP 的客户端 |
+| **MCP 工具** | AI 可调用的操作单元，如读取文件、搜索代码、应用编辑提案 |
 
-配置完成后，AI 会在需要时自动调用已启用的 MCP 工具完成更复杂的任务。
+也就是说，LingBuilder 不去连接别人的 MCP 服务器，而是把**自己的工作区能力以 MCP 标准开放出去**，让专业编码客户端在你的项目上干活。
 
-## 2. 启用 MCP 功能
+## 2. 传输方式与端点
 
-1. 打开 **工具** > **AI Bridge** > **MCP 设置**。
-2. 点击 **启用 MCP** 开关。
-3. 选择需要启用的工具集：
-   - **文件操作**：读 / 写项目文件。
-   - **命令执行**：运行构建、测试等命令。
-   - **搜索**：在当前项目内进行语义搜索。
+AI Bridge 支持两种 MCP 传输方式，两者复用同一套工具与权限体系：
 
-## 3. 配置 MCP 服务器
+| 传输方式 | 说明 | 默认状态 |
+|---|---|---|
+| **Streamable HTTP** | 端点 `http://127.0.0.1:<端口>/api/ai-bridge/mcp`（默认端口 `17860`），使用 `initialize` 握手后通过 `Mcp-Session-Id` 头保持会话 | 默认启用 |
+| **STDIO** | 通过标准输入/输出发送 MCP 消息，适合 CLI 客户端直接托管 Bridge 进程 | 启动时加 `--mcp` 参数启用 |
 
-MCP 服务器可以通过标准命令方式启动。在 **MCP 设置** 中点击 **添加服务器**：
+补充说明：
 
-| 字段 | 说明 |
+- 使用 `--no-mcp-http` 参数可关闭 Streamable HTTP，仅保留 STDIO。
+- 所有请求必须携带 `Authorization: Bearer <token>`。Token 由 IDE 或启动命令生成，只保存在内存中，不会写入磁盘。
+
+## 3. 已暴露的 MCP 工具
+
+| 工具名 | 说明 |
 |---|---|
-| **名称** | 服务器标识，如 `项目工具集` |
-| **命令** | 启动程序的命令，如 `npx mcp-server-project` |
-| **参数** | 传递给命令的参数 |
-| **环境变量** | 服务器运行所需的环境配置 |
+| `lingbuilder.workspace.list` | 列出 LingBuilder 工作区文件树 |
+| `lingbuilder.file.read` | 读取工作区内允许类型的文本文件 |
+| `lingbuilder.file.search` | 在工作区内执行受控文本搜索 |
+| `lingbuilder.lingcpp.diagnostics` | 返回 `.lcpp` 解析与语义诊断；传入完整设计器模型时可校验控件引用与事件绑定 |
+| `lingbuilder.edit.propose` | 根据外部 AI 提供的**完整文件草稿**生成可预览修改提案；多文件编辑需传入全部目标文件的当前内容 |
+| `lingbuilder.edit.apply` | 应用已有的 WorkspaceEdit 提案，受权限模式控制 |
+| `lingbuilder.project.templates` | 列出可用于 AI 新建项目的受控中文项目模板 |
+| `lingbuilder.project.create` | 预览或创建项目；不传 `approved=true` 时只返回预览不落盘 |
+| `lingbuilder.project.create.undo` | 撤销尚未被用户修改的 AI 项目创建事务 |
+| `lingbuilder.build.run` | 执行受控构建/运行请求，需传入完整设计器模型 |
+| `lingbuilder.modules.list` | 列出模块与指定项目的模块上下文 |
+| `lingbuilder.native.preview` | 预览生成的 C++ 工程文件（写入受控临时目录） |
+| `lingbuilder.native.export` | 导出 C++ 工程，受权限模式控制 |
 
-点击 **测试连接**，若返回 **服务器已连接**，点击 **保存**。
+> [!NOTE]
+> 编辑类工具接收的是**完整文件草稿**而不是 diff 片段；构建、预览与导出类工具需要传入 `project.create` 返回的完整设计器模型，不能只传项目 ID。
 
 ## 4. 权限控制
 
-MCP 工具调用遵循 AI Bridge 的 **权限模式** 设定：
+MCP 工具调用遵循 AI Bridge 的 **权限模式** 设定（详见 [AI Bridge 连接配置](/guide/ai/bridge-config)）：
 
-| 模式 | 文件工具 | 命令工具 |
+| 模式 | 文件工具 | 编辑/构建/导出 |
 |---|---|---|
-| **只读模式** | 仅可读 | 不可用 |
-| **对话模式** | 可读写当前文件 | 不可用 |
-| **工具模式** | 可读写任意项目文件 | 可执行命令 |
+| **只读模式（readonly）** | 仅可读 | 全部不可用 |
+| **预览模式（preview）** | 可读；写操作仅生成预览提案 | 必须显式传 `approved=true` 并经确认 |
+| **yolo 模式（yolo）** | 可读写项目文件 | 直接执行受控工具，仍不能运行任意命令 |
 
 > [!WARNING]
-> **工具模式** 下，AI 可对项目文件与系统命令执行写操作。请仅在受信任的项目中开启工具模式，并关注 AI 的每次变更请求。
+> yolo 模式下 AI 的写操作会直接作用于项目文件。请仅在受信任的项目中开启，并关注每次变更请求。
 
-## 5. 使用 MCP 工具的示例
+## 5. 连接示例
 
-启用 MCP 后，在 **AI 聊天** 中输入：
+外部客户端连接信息可在 **帮助** > **AI Bridge 连接中心** 中一键查看或生成配置。以 Streamable HTTP 为例，一次最小会话如下：
 
+```bash
+# 1. 握手
+curl -X POST http://127.0.0.1:17860/api/ai-bridge/mcp \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"demo","version":"1.0"}}}'
+# 响应头会返回 Mcp-Session-Id，后续请求需携带
+
+# 2. 列出工具
+curl -X POST http://127.0.0.1:17860/api/ai-bridge/mcp \
+  -H "Authorization: Bearer <token>" \
+  -H "Mcp-Session-Id: <会话ID>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
-请阅读 main.lcpp 的第一段代码，然后帮我添加一个退出按钮
-```
 
-AI 会调用工具模式下的 `读取文件` 工具读取源代码，再通过 `写入文件` 工具应用修改（变更前会弹出确认提示）。
+Claude Code、Codex CLI 与 Gemini CLI 的免手写配置，可直接在 AI Bridge 连接中心生成。
 
 ## 6. 常见问题
 
-### 服务器无法启动
+### 连接被拒绝（401）
 
-- 确认启动命令在当前环境可执行（可在终端中先手动运行一次）。
-- 检查必要的环境变量与运行时依赖。
+- Token 不匹配。请从 AI Bridge 连接中心复制当前会话的最新 Token。
+- Bridge 未启动或端口不一致。
 
-### AI 没有调用工具
+### 返回 406 Not Acceptable
 
-- 确认 **MCP 设置** 已启用对应工具集。
-- 确认当前 **权限模式** 允许所需操作。
-- 将需求描述得更明确（例如“请使用文件工具读取……”）。
+- Streamable HTTP 要求请求头包含 `Accept: application/json, text/event-stream`。
+
+### 工具调用被拒绝
+
+- 当前权限模式不允许该操作（如只读模式下调用写入类工具）。
+- 预览模式下忘记传 `approved=true`。
+- 将需求描述得更明确，例如“请先读取 main.lcpp，再提出修改提案”。
 
 ## 下一步
 
 - 配置连接与权限：[AI Bridge 连接配置](/guide/ai/bridge-config)
-- 使用对话式编程：[AI 对话式改代码](/guide/ai/chat)
+- 让外部 AI 直接改代码：[AI 对话式改代码](/guide/ai/chat)
