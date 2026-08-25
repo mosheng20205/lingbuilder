@@ -151,7 +151,7 @@ function moduleReadme(cefVersion) {
     '```',
     '',
     '升级内核时用新版 CEF 官方包重新运行 `npm run module:cef3-sdk`（需先重新编译 wrapper），',
-    '详见仓库根目录《CEF3浏览器150内核封装.md》。',
+    '详见仓库根目录《docs/CEF3浏览器150内核封装.md》。',
     ''
   ].join('\n');
 }

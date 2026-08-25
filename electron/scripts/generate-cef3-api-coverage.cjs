@@ -2380,7 +2380,7 @@ async function main() {
   const includeRoot = path.join(sdkRoot, 'include');
   const capiRoot = path.join(includeRoot, 'capi');
   const outputPath = path.resolve(args.output || path.join(repoRoot, 'electron', 'src', 'services', 'modules', 'cef3ApiCoverage.generated.json'));
-  const markdownPath = path.resolve(args.markdown || path.join(repoRoot, 'CEF3_API_COVERAGE.md'));
+  const markdownPath = path.resolve(args.markdown || path.join(repoRoot, 'docs', 'CEF3_API_COVERAGE.md'));
   const generatedRuntime = await fs.readFile(path.join(repoRoot, 'electron', 'src', 'services', 'windowDesigner', 'lingCppWin32Project.ts'), 'utf8');
   const bridgeHeader = await fs.readFile(path.join(repoRoot, 'electron', 'native', 'cef3-bridge', 'LingBuilderCefBridge.h'), 'utf8');
   const bridgeSource = await fs.readFile(path.join(repoRoot, 'electron', 'native', 'cef3-bridge', 'LingBuilderCefBridge.cpp'), 'utf8');

@@ -97,19 +97,19 @@ function rulebookPath(): string {
 function moduleManualPath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'docs', '模块开发手册.md')
-    : path.join(repoRoot(), '模块开发手册.md');
+    : path.join(repoRoot(), 'docs', '模块开发手册.md');
 }
 
 function cliManualPath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'docs', 'AI_BRIDGE_CLI_USAGE.md')
-    : path.join(repoRoot(), 'AI_BRIDGE_CLI_USAGE.md');
+    : path.join(repoRoot(), 'docs', 'AI_BRIDGE_CLI_USAGE.md');
 }
 
 function aiModuleGuidePath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'docs', 'AI模块开发规范.md')
-    : path.join(repoRoot(), 'AI模块开发规范.md');
+    : path.join(repoRoot(), 'docs', 'AI模块开发规范.md');
 }
 
 async function findCurrentSolutionEntryPath(workspaceRoot: string, solutionName: string): Promise<string> {

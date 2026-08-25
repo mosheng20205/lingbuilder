@@ -938,14 +938,14 @@ git commit -m "test: 注册窗口边框样式单元测试"
 
 **Files:**
 - Create: `更新记录/2026-08-16.md`（仓库根目录）
-- Modify: `FUTURE_OPTIMIZATIONS.md`（仓库根目录）
+- Modify: `docs/FUTURE_OPTIMIZATIONS.md`（仓库 docs/）
 - Modify: `LingBuilder AI 规则手册.md`（仓库根目录）
 
 - [ ] **Step 1: 更新记录**
 
 创建 `更新记录/2026-08-16.md`（UTF-8）：日期、更新内容（窗口设计器新增 7 值"边框"属性与无边框拖动、全链路生成支持、旧项目迁移规则）、影响范围（`windowBorderStyle.ts`、`windowDesignerService.ts`、`lingCppWin32Project.ts`、`nativeWin32Project.ts`、`WpfDesigner.tsx`）、验证结果（lint/test:lingcpp/build 通过与冒烟结论）。
 
-- [ ] **Step 2: FUTURE_OPTIMIZATIONS.md**
+- [ ] **Step 2: docs/FUTURE_OPTIMIZATIONS.md**
 
 追加一节：设计器窗口模型新增 `borderStyle`/`borderlessDraggable` 字段与迁移规则；记录"spec 序列化侧 `TITLE_BAR_HEIGHT` 为近似扣减，运行时由 `AdjustWindowRect` 精确计算；如后续需要画布与原生完全像素一致，可精确化扣减"为后续优化项。
 
@@ -956,7 +956,7 @@ git commit -m "test: 注册窗口边框样式单元测试"
 - [ ] **Step 4: 提交**
 
 ```
-git add 更新记录/2026-08-16.md FUTURE_OPTIMIZATIONS.md "LingBuilder AI 规则手册.md"
+git add 更新记录/2026-08-16.md docs/FUTURE_OPTIMIZATIONS.md "LingBuilder AI 规则手册.md"
 git commit -m "docs: 同步窗口边框属性文档与更新记录"
 ```
 

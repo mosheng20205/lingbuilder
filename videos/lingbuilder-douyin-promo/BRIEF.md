@@ -22,7 +22,7 @@ style_preset: code-editorial
 ## Assets
 
 - `README.md` — 项目定位、架构与开发说明。
-- `灵码介绍.md` — 面向用户的完整产品介绍、交流群信息与截图链接。
+- `docs/灵码介绍.md` — 面向用户的完整产品介绍、交流群信息与截图链接。
 - `capture/assets/lingbuilder-workbench.png` — LingBuilder 工作台全景。
 - `capture/assets/lingbuilder-designer.png` — Win32 设计器与原生运行效果。
 - `capture/assets/lingbuilder-ai.png` — 中文 `.lcpp` 与 Diff 近景。

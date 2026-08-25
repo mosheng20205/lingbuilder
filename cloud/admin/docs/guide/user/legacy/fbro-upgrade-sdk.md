@@ -95,7 +95,7 @@ SDK 更新后不要只在这些目录中替换文件。应先更新受管的 `li
 - `electron/src/services/sdkDependencies/sdkDependencyService.ts`
 - `electron/src/services/sdkDependencies/sdkDependencyClient.ts`
 - `electron/scripts/verify-fbro-release-sdk.cjs`
-- `FBro与CEF3_SDK按需下载资源.md`
+- `docs/FBro与CEF3_SDK按需下载资源.md`
 
 ## 六、最小检查清单
 

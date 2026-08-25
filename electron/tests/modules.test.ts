@@ -1168,7 +1168,7 @@ test('平台扩展和高风险模块保持独立启用并具有确定性运行�
 });
 
 test('模块封装清单覆盖实际内置模块注册表', async () => {
-  const checklist = await fs.readFile(path.resolve('..', 'MODULE_ENCAPSULATION_CHECKLIST.md'), 'utf8');
+  const checklist = await fs.readFile(path.resolve('..', 'docs', 'MODULE_ENCAPSULATION_CHECKLIST.md'), 'utf8');
   const commandCount = BUILTIN_MODULES.reduce((total, manifest) => total + (manifest.contributes?.commands?.length ?? 0), 0);
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);

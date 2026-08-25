@@ -301,7 +301,7 @@ async function main() {
   const sourceRoot = path.resolve(args.source || process.env.FBRO_OFFICIAL_ROOT || DEFAULT_SOURCE);
   const includeRoot = path.join(sourceRoot, 'src', 'env', 'FBrowserCEF3lib');
   const outputPath = path.resolve(args.output || path.join(repoRoot, 'electron', 'src', 'services', 'modules', 'fbroApiCoverage.generated.json'));
-  const markdownPath = path.resolve(args.markdown || path.join(repoRoot, 'FBRO_API_COVERAGE.md'));
+  const markdownPath = path.resolve(args.markdown || path.join(repoRoot, 'docs', 'FBRO_API_COVERAGE.md'));
   const overridePath = path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'FbroEventOverrides.generated.inc');
   const bridgeSource = await fs.readFile(path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
   const cefEventSource = await fs.readFile(path.join(repoRoot, 'electron', 'src', 'services', 'modules', 'cef3BrowserEvents.ts'), 'utf8');

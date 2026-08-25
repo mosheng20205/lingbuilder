@@ -262,7 +262,7 @@ C++ 运行时需要 WebSocket 和 JSON 支持，并将 CDP 会话对象作为非
 - 提供模块打包脚本（参照 `npm run module:new-emoji` 的模式），支持 `--install` 安装并进入 `.lingbuilder/modules/`。
 - CDP 命令属于后端无关能力，不依赖 `LingWindowBase`、`HWND` 或任何 UI 后端；不得把 CDP 对象注册为可视控件。
 - 新增命令必须同时更新清单、补全、诊断、binding、C++ 运行时、文档与测试（四端一致）。
-- CDP 相关命令、公开类型、示例和运行时行为发生变化时，必须同步更新模块文档、补全、诊断、C++ 生成和测试，并按仓库规则同步 `模块开发手册.md`、`MODULE_ECOSYSTEM_IMPLEMENTATION.md`、`LingBuilder AI 规则手册.md`、`FUTURE_OPTIMIZATIONS.md`、`electron/README.md`。
+- CDP 相关命令、公开类型、示例和运行时行为发生变化时，必须同步更新模块文档、补全、诊断、C++ 生成和测试，并按仓库规则同步 `docs/模块开发手册.md`、`docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md`、`LingBuilder AI 规则手册.md`、`docs/FUTURE_OPTIMIZATIONS.md`、`electron/README.md`。
 
 ## 安全边界
 
@@ -288,7 +288,7 @@ IDE 侧验收：模块详情可打开并读取文档；Monaco 中 `CDP_` 命令�
 - 模块打包脚本产出 `.lbmod` 并通过 `/api/modules/package/preview` 预览确认后安装。
 - 端到端构建测试使用真实 Chrome/Edge（headless 可）验证，不得只测 mock 传输层。
 - 生成工程在 Visual Studio 中可打开、编译、运行，IDE 内行为与导出工程行为一致。
-- 阶段完成情况必须同步回 `FUTURE_OPTIMIZATIONS.md` 与当日更新记录。
+- 阶段完成情况必须同步回 `docs/FUTURE_OPTIMIZATIONS.md` 与当日更新记录。
 
 ## 备注
 

@@ -145,7 +145,7 @@ case WM_LBUTTONDOWN:
 ## 8. 文档同步（按 AGENTS.md）
 
 - `更新记录/2026-08-16.md`：记录更新内容、影响范围、验证结果。
-- `FUTURE_OPTIMIZATIONS.md`：登记设计器持久化模型新增字段与迁移规则；如序列化侧近似扣减（`TITLE_BAR_HEIGHT`）将来要精确化，记为后续优化项。
+- `docs/FUTURE_OPTIMIZATIONS.md`：登记设计器持久化模型新增字段与迁移规则；如序列化侧近似扣减（`TITLE_BAR_HEIGHT`）将来要精确化，记为后续优化项。
 - `LingBuilder AI 规则手册.md`：补充 AI 生成设计器项目时 `borderStyle`/`borderlessDraggable` 字段说明与合法枚举值（该手册由 `electron/server.ts` 注入 AI system prompt，需保持一致）。
 
 ## 9. 测试与验证

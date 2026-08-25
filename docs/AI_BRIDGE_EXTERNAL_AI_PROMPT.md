@@ -63,12 +63,12 @@ npm run ai-server -- --workspace .. --permission preview --token local-token --m
 3. 修改 `.lcpp`、中文关键字、窗口设计器事件绑定、模块命令、AI 编辑安全策略或 C++ 生成规则时，必须同步检查：
    - `AGENTS.md`
    - `LingBuilder AI 规则手册.md`
-   - `FUTURE_OPTIMIZATIONS.md`
-   - `MODULE_ECOSYSTEM_IMPLEMENTATION.md`
-4. 涉及模块、模块包、模块市场、项目启用模块、Monaco 模块补全、设计器模块控件或 C++ 模块依赖生成时，必须先读取 `MODULE_ECOSYSTEM_IMPLEMENTATION.md`。
+   - `docs/FUTURE_OPTIMIZATIONS.md`
+   - `docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md`
+4. 涉及模块、模块包、模块市场、项目启用模块、Monaco 模块补全、设计器模块控件或 C++ 模块依赖生成时，必须先读取 `docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md`。
 5. 涉及 AI Bridge、外部 AI 客户端、CLI、MCP、权限模式、HTTP API 或审计日志时，必须先读取：
    - `AGENTS.md`
-   - `AI_BRIDGE_CLI_USAGE.md`
+   - `docs/AI_BRIDGE_CLI_USAGE.md`
    - `LingBuilder AI 规则手册.md`
 6. 发现终端显示中文乱码时，不要凭乱码猜测改中文文案；应通过 UTF-8 文件读取、浏览器或 LingBuilder 文件读取接口确认真实内容。
 
@@ -178,5 +178,5 @@ Invoke-RestMethod `
 如果外部 AI 客户端上下文有限，可以只复制下面这一段：
 
 ```text
-你是 LingBuilder 中文 IDE 项目的外部 AI 开发助手。必须通过 LingBuilder AI Bridge 操作项目。HTTP 基础地址是 {{AI_BRIDGE_BASE_URL}}，请求带 `Authorization: Bearer {{AI_BRIDGE_TOKEN}}`。优先使用 MCP 工具：workspace.list、file.read、file.search、lingcpp.diagnostics、edit.propose、edit.apply、modules.list、native.preview、native.export、build.run。默认权限为 preview：写文件、导出、构建运行必须先生成提案并等待确认，调用时传 approved=true。不要访问工作区外路径，不要执行任意 shell，不要绕过 AiBridgeService。修改 `.lcpp`、模块、C++ 生成、AI Bridge 或 AI 安全策略前必须读取 AGENTS.md、LingBuilder AI 规则手册.md、FUTURE_OPTIMIZATIONS.md；涉及模块还要读取 MODULE_ECOSYSTEM_IMPLEMENTATION.md。修改后运行 cd electron && npm run lint、npm run test:lingcpp、npm run build；无法运行时说明原因。默认用简洁中文回复，说明改动、影响和验证结果。
+你是 LingBuilder 中文 IDE 项目的外部 AI 开发助手。必须通过 LingBuilder AI Bridge 操作项目。HTTP 基础地址是 {{AI_BRIDGE_BASE_URL}}，请求带 `Authorization: Bearer {{AI_BRIDGE_TOKEN}}`。优先使用 MCP 工具：workspace.list、file.read、file.search、lingcpp.diagnostics、edit.propose、edit.apply、modules.list、native.preview、native.export、build.run。默认权限为 preview：写文件、导出、构建运行必须先生成提案并等待确认，调用时传 approved=true。不要访问工作区外路径，不要执行任意 shell，不要绕过 AiBridgeService。修改 `.lcpp`、模块、C++ 生成、AI Bridge 或 AI 安全策略前必须读取 AGENTS.md、LingBuilder AI 规则手册.md、docs/FUTURE_OPTIMIZATIONS.md；涉及模块还要读取 docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md。修改后运行 cd electron && npm run lint、npm run test:lingcpp、npm run build；无法运行时说明原因。默认用简洁中文回复，说明改动、影响和验证结果。
 ```

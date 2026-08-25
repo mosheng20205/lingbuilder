@@ -250,15 +250,15 @@
         "to": "docs/LingBuilder AI 规则手册.md"
       },
       {
-        "from": "../AI_BRIDGE_CLI_USAGE.md",
+        "from": "../docs/AI_BRIDGE_CLI_USAGE.md",
         "to": "docs/AI_BRIDGE_CLI_USAGE.md"
       },
       {
-        "from": "../模块开发手册.md",
+        "from": "../docs/模块开发手册.md",
         "to": "docs/模块开发手册.md"
       },
       {
-        "from": "../AI模块开发规范.md",
+        "from": "../docs/AI模块开发规范.md",
         "to": "docs/AI模块开发规范.md"
       },
       {

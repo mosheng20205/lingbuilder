@@ -35,7 +35,7 @@ function normalizeModuleFilePath(value: string): string {
 
 /**
  * Parses pasted AI output into module files. The AI is instructed (in
- * AI模块开发规范.md) to emit each file as a "### 文件：<相对路径>" heading
+ * docs/AI模块开发规范.md) to emit each file as a "### 文件：<相对路径>" heading
  * followed by a fenced code block; common heading variants are tolerated.
  */
 export function parseAiModuleOutputText(text: string): AiModuleParseResult {

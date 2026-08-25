@@ -84,7 +84,7 @@ smoke 自动：找浏览器（`LINGBUILDER_CDP_SMOKE_BROWSER` 环境变量或常
 - 内置模块审计（~218 行）：`modules: 84, commands: 2951, parameters: 5050, controlReferences: 1262, commandDigest: '7b4696d8', parameterDigest: 'fd5ddcb2'`
 - 全量审计（~540 行）：`modules: 91, commands: 6754, parameters: 16593, controlReferences: 4806, commandDigest: '1801de74', parameterDigest: '58459be2'`
 - 模块源文件数（~323 行）：`47`
-- `MODULE_ENCAPSULATION_CHECKLIST.md`（仓库根）需含 `84 个内置模块、2951 条中文命令` 与 CDP 行（`lingbuilder.cdp.client` | 97）
+- `docs/MODULE_ENCAPSULATION_CHECKLIST.md`（仓库 docs/）需含 `84 个内置模块、2951 条中文命令` 与 CDP 行（`lingbuilder.cdp.client` | 97）
 - 网络模块列表测试（~1046 行）期望数组含 `lingbuilder.cdp.client`（在 http-client 之后）
 
 新增命令时：跑 `modules.test.ts`，按报错中的 actual 值更新基线；摘要值无法手算，直接抄测试输出。
@@ -92,11 +92,11 @@ smoke 自动：找浏览器（`LINGBUILDER_CDP_SMOKE_BROWSER` 环境变量或常
 ### 2.7 文档同步状态（阶段 1 已全部同步）
 
 - [x] `../advanced/cdp-module-dev.md`（能力全景 + 阶段状态 + DSL 示例对齐实际命令）
-- [x] `FUTURE_OPTIMIZATIONS.md`（阶段 1 完成条目 + 遗留超时定时器）
-- [x] `MODULE_ECOSYSTEM_IMPLEMENTATION.md`（"CDP 客户端模块（2026-08）"章节）
+- [x] `docs/FUTURE_OPTIMIZATIONS.md`（阶段 1 完成条目 + 遗留超时定时器）
+- [x] `docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md`（"CDP 客户端模块（2026-08）"章节）
 - [x] `LingBuilder AI 规则手册.md`（CDP 命令生成规范，`electron/server.ts` 会注入 AI prompt）
 - [x] `electron/README.md`（2026-08-22 条目）
-- [x] `MODULE_ENCAPSULATION_CHECKLIST.md`
+- [x] `docs/MODULE_ENCAPSULATION_CHECKLIST.md`
 - [x] `更新记录/2026-08-22.md`
 - [x] `electron/docs/modules/cdp-client/README.md`（模块正式文档）
 
@@ -166,7 +166,7 @@ smoke 自动：找浏览器（`LINGBUILDER_CDP_SMOKE_BROWSER` 环境变量或常
 1. `cdpClientModule.ts` 新命令四端一致（contributes + binding + 运行时包装方法 + 文档）；handler 参数必须带 `handlerSignature: { parameterTypes: [], returnType: '空' }`。
 2. `tests/cdpClientRuntime.test.ts` 断言新命令生成；`modules.test.ts` 基线数字更新。
 3. `smoke-cdp-native.ts` 扩展真实浏览器断言（OOPIF 自动附加、断点暂停/单步、性能追踪文件、覆盖率与堆快照等每域至少一项）。
-4. 六文档同步：`../advanced/cdp-module-dev.md`（阶段状态）、`FUTURE_OPTIMIZATIONS.md`、`MODULE_ECOSYSTEM_IMPLEMENTATION.md`、`LingBuilder AI 规则手册.md`、`electron/README.md`、`MODULE_ENCAPSULATION_CHECKLIST.md` + 当日 `更新记录/`。
+4. 六文档同步：`../advanced/cdp-module-dev.md`（阶段状态）、`docs/FUTURE_OPTIMIZATIONS.md`、`docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md`、`LingBuilder AI 规则手册.md`、`electron/README.md`、`docs/MODULE_ENCAPSULATION_CHECKLIST.md` + 当日 `更新记录/`。
 5. `npm run lint` / `npm run test:lingcpp` / `npm run build` / `npm run smoke:cdp-native` 全过。
 
 ## 六、新会话快速上手

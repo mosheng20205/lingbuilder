@@ -146,12 +146,12 @@ npm run build
 | 文档 | 内容 |
 |---|---|
 | [AGENTS.md](AGENTS.md) | 架构约定、编码规范与贡献者工作方式（提交 PR 前必读） |
-| [模块开发手册.md](模块开发手册.md) | `.lbmod` v2 模块标准：manifest、binding、发布与迁移 |
-| [KEYBOARD_SHORTCUTS.md](KEYBOARD_SHORTCUTS.md) | 全部快捷键及适用范围 |
-| [AI_BRIDGE_CLI_USAGE.md](AI_BRIDGE_CLI_USAGE.md) | AI Bridge 与 CLI 完整手册 |
-| [MODULE_ECOSYSTEM_IMPLEMENTATION.md](MODULE_ECOSYSTEM_IMPLEMENTATION.md) | 模块生态实现细节与验收基线 |
+| [模块开发手册.md](docs/模块开发手册.md) | `.lbmod` v2 模块标准：manifest、binding、发布与迁移 |
+| [KEYBOARD_SHORTCUTS.md](docs/KEYBOARD_SHORTCUTS.md) | 全部快捷键及适用范围 |
+| [AI_BRIDGE_CLI_USAGE.md](docs/AI_BRIDGE_CLI_USAGE.md) | AI Bridge 与 CLI 完整手册 |
+| [MODULE_ECOSYSTEM_IMPLEMENTATION.md](docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md) | 模块生态实现细节与验收基线 |
 | [electron/README.md](electron/README.md) | Electron 端详细说明与更新记录 |
-| [FUTURE_OPTIMIZATIONS.md](FUTURE_OPTIMIZATIONS.md) | 后期优化事项与技术债记录 |
+| [FUTURE_OPTIMIZATIONS.md](docs/FUTURE_OPTIMIZATIONS.md) | 后期优化事项与技术债记录 |
 | [cloud/admin/docs/](cloud/admin/docs/index.md) | 用户文档站（VitePress）源码 |
 
 ## 🗺️ 路线图
