@@ -145,7 +145,6 @@ npm run build
 
 | 文档 | 内容 |
 |---|---|
-| [AGENTS.md](AGENTS.md) | 架构约定、编码规范与贡献者工作方式（提交 PR 前必读） |
 | [模块开发手册.md](docs/模块开发手册.md) | `.lbmod` v2 模块标准：manifest、binding、发布与迁移 |
 | [KEYBOARD_SHORTCUTS.md](docs/KEYBOARD_SHORTCUTS.md) | 全部快捷键及适用范围 |
 | [AI_BRIDGE_CLI_USAGE.md](docs/AI_BRIDGE_CLI_USAGE.md) | AI Bridge 与 CLI 完整手册 |
@@ -166,7 +165,7 @@ npm run build
 
 欢迎 Issue 与 Pull Request：
 
-1. 提交前阅读 [AGENTS.md](AGENTS.md) 的架构约定与代码组织要求；
+1. 遵循仓库的架构约定与代码组织要求；
 2. 新增功能需满足：有可触发入口、有明确状态反馈、有中文文案；
 3. 确保 `npm run lint`、`npm run test`、`npm run build` 通过；
 4. 涉及 UI 改动请在桌面与窄屏视口下检查布局。
