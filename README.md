@@ -30,7 +30,11 @@ LingBuilder 是面向中文用户的中文 C++ / `.lcpp` 集成开发环境：�
 | 构建生成的 C++ 工程 | MSVC（Visual Studio 2022 或 Build Tools + Windows SDK） |
 | 完整平台开发（云端部分） | Docker（PostgreSQL 17、Redis 7、Mailpit） |
 
-### 方式一：只运行桌面 IDE（最小路径）
+### 方式一：下载安装包（推荐）
+
+从 [https://lingbuilder.com/downloads](https://lingbuilder.com/downloads) 下载最新 Windows 安装包，一键安装后即可使用。
+
+### 方式二：从源码运行（最小路径）
 
 IDE 的编辑、设计器、模块、构建等本地能力不依赖云端服务：
 
@@ -41,7 +45,7 @@ npm install
 npm run dev
 ```
 
-### 方式二：完整平台开发（IDE + 云端 + 管理后台）
+### 方式三：完整平台开发（IDE + 云端 + 管理后台）
 
 LingBuilder 解决方案使用工作区根目录下的 `.lbsln` 文件作为可见入口。双击、拖入或在 IDE 中选择该文件即可打开解决方案；`.lingbuilder/solution.json` 保存内部完整状态，二者由解决方案服务自动同步。导出目录中的 `.sln` 仍是供 Visual Studio 使用的标准 C++ 解决方案，不能与 `.lbsln` 混用。
 
