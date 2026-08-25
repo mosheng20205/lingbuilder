@@ -1,7 +1,7 @@
 {
   "name": "@lingbuilder/cloud-api",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx --watch src/main.ts",
