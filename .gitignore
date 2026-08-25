@@ -111,3 +111,6 @@ website/
 鍙戝竷绱犳潗/
 瀹ｄ紶绱犳潗/
 assets/**/doubao-downloader/
+
+# 本地 agent 说明（不发布）
+AGENTS.md
