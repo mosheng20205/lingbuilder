@@ -20,6 +20,21 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.6.1',
+    date: '2026-08-29',
+    title: '解决方案管理与官网门户更新',
+    sections: [
+      {
+        title: '改进',
+        items: [
+          '解决方案服务与侧边栏交互优化，修复项目打开和扩展服务相关问题。',
+          '差异查看器与项目命名对话框细节修复。',
+          '官网门户、文档中心与部署缓存策略更新，系统 AI 云端服务同步升级。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.6.0',
     date: '2026-08-20',
     title: '工作台、AI 助手与设计器体验更新',
