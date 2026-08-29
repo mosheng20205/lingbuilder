@@ -12,7 +12,16 @@ import {
   ARIA2C_CONNECTIONS,
   ARIA2C_MIN_SPLIT_SIZE,
   createAria2cArguments,
+  createSdkDownloadStallTracker,
+  describeAria2ExitCode,
   inspectZipArchive,
+  normalizeSdkProxyAddress,
+  parseWindowsProxyServerValue,
+  probeDirectHttpsDownloadUrl,
+  resolveSdkDownloadProxy,
+  resolveSdkProxyFromEnvironment,
+  resolveWindowsSystemProxy,
+  translateSdkDownloadErrorText,
   waitForAria2cExitOrVerifiedArchive,
   type Aria2cDownloadProcess,
   type SdkDependencyJobSnapshot
@@ -48,6 +57,145 @@ test('SDK 下载使用 aria2c 多连接、分段和断点续传参数', () => {
   assert.ok(args.includes(`--dir=${path.dirname(destination)}`));
   assert.ok(args.includes(`--out=${path.basename(destination)}`));
   assert.equal(args.at(-1), url);
+});
+
+test('SDK 下载在解析到代理时给 aria2c 附加 --all-proxy', () => {
+  const url = 'https://example.invalid/sdk.zip';
+  const destination = path.join('C:\\sdk-cache', 'sdk.zip.part');
+  const withProxy = createAria2cArguments(url, destination, 'http://127.0.0.1:7890');
+  assert.ok(withProxy.includes('--all-proxy=http://127.0.0.1:7890'));
+  assert.equal(withProxy.at(-1), url);
+  const withoutProxy = createAria2cArguments(url, destination);
+  assert.ok(!withoutProxy.some(arg => arg.startsWith('--all-proxy')));
+});
+
+test('SDK 代理地址规范化并拒绝 aria2c 不支持的方案', () => {
+  assert.equal(normalizeSdkProxyAddress('127.0.0.1:7890'), 'http://127.0.0.1:7890');
+  assert.equal(normalizeSdkProxyAddress('https://proxy.lan:8443'), 'http://proxy.lan:8443');
+  assert.equal(normalizeSdkProxyAddress('socks5://127.0.0.1:7891'), null);
+  assert.equal(normalizeSdkProxyAddress('not a proxy'), null);
+  assert.equal(normalizeSdkProxyAddress(''), null);
+});
+
+test('SDK 环境变量代理解析按 HTTPS_PROXY、ALL_PROXY 顺序生效', () => {
+  assert.equal(resolveSdkProxyFromEnvironment({ HTTPS_PROXY: '10.0.0.2:8080' }), 'http://10.0.0.2:8080');
+  assert.equal(resolveSdkProxyFromEnvironment({ https_proxy: '10.0.0.9:8080', ALL_PROXY: '10.0.0.3:8080' }), 'http://10.0.0.9:8080');
+  assert.equal(resolveSdkProxyFromEnvironment({ all_proxy: '10.0.0.4:8080' }), 'http://10.0.0.4:8080');
+  assert.equal(resolveSdkProxyFromEnvironment({ HTTP_PROXY: '10.0.0.5:8080' }), null, '仅 HTTP_PROXY 不用于 HTTPS 下载');
+  assert.equal(resolveSdkProxyFromEnvironment({}), null);
+});
+
+test('Windows 系统代理 ProxyServer 支持整体与按协议格式', () => {
+  assert.equal(parseWindowsProxyServerValue('127.0.0.1:7890'), 'http://127.0.0.1:7890');
+  assert.equal(parseWindowsProxyServerValue('http=10.0.0.1:8080;https=10.0.0.1:8443;<local>'), 'http://10.0.0.1:8443');
+  assert.equal(parseWindowsProxyServerValue('http=10.0.0.1:8080'), 'http://10.0.0.1:8080');
+  assert.equal(parseWindowsProxyServerValue('socks=127.0.0.1:7891'), null, 'SOCKS 代理 aria2c 不支持');
+  assert.equal(parseWindowsProxyServerValue(''), null);
+});
+
+test('Windows 注册表系统代理仅在启用时解析', async () => {
+  const enabled = createFakeRegQuery({ ProxyEnable: 'REG_DWORD    0x1', ProxyServer: 'REG_SZ    127.0.0.1:7890' });
+  assert.equal(await resolveWindowsSystemProxy(enabled, 'win32'), 'http://127.0.0.1:7890');
+  const disabled = createFakeRegQuery({ ProxyEnable: 'REG_DWORD    0x0', ProxyServer: 'REG_SZ    127.0.0.1:7890' });
+  assert.equal(await resolveWindowsSystemProxy(disabled, 'win32'), null);
+  assert.equal(await resolveWindowsSystemProxy(enabled, 'linux'), null);
+  const missing = createFakeRegQuery({});
+  assert.equal(await resolveWindowsSystemProxy(missing, 'win32'), null);
+});
+
+test('SDK 下载代理优先使用环境变量，其次 Windows 系统代理', async () => {
+  const fakeReg = createFakeRegQuery({ ProxyEnable: 'REG_DWORD    0x1', ProxyServer: 'REG_SZ    10.0.0.1:8080' });
+  assert.equal(await resolveSdkDownloadProxy({ HTTPS_PROXY: '10.0.0.2:8080' }, fakeReg, 'win32'), 'http://10.0.0.2:8080');
+  assert.equal(await resolveSdkDownloadProxy({}, fakeReg, 'win32'), 'http://10.0.0.1:8080');
+});
+
+test('SDK 直链预检对网络失败和预检超时不致命', async () => {
+  const signal = new AbortController().signal;
+  assert.equal(
+    await probeDirectHttpsDownloadUrl('https://example.invalid/a.zip', 10, signal, {
+      fetchImpl: async () => { throw new TypeError('fetch failed'); }
+    }),
+    null
+  );
+  const timeoutImpl: typeof fetch = (_url, init) => new Promise<Response>((_, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new Error('The operation was aborted')));
+  });
+  assert.equal(
+    await probeDirectHttpsDownloadUrl('https://example.invalid/a.zip', 10, signal, {
+      fetchImpl: timeoutImpl,
+      timeoutMs: 1_000
+    }),
+    null
+  );
+});
+
+test('SDK 直链预检阻断重定向和大小不匹配并放行一致直链', async () => {
+  const signal = new AbortController().signal;
+  const respond = (status: number, headers: Record<string, string> = {}): typeof fetch =>
+    async () => new Response(null, { status, headers });
+  assert.match(
+    await probeDirectHttpsDownloadUrl('https://example.invalid/a.zip', 10, signal, { fetchImpl: respond(302) }),
+    /不允许重定向/u
+  );
+  assert.match(
+    await probeDirectHttpsDownloadUrl('https://example.invalid/a.zip', 10, signal, { fetchImpl: respond(404) }),
+    /HTTP 404/u
+  );
+  assert.match(
+    await probeDirectHttpsDownloadUrl('https://example.invalid/a.zip', 10, signal, { fetchImpl: respond(200, { 'content-length': '99' }) }),
+    /大小不匹配/u
+  );
+  assert.equal(
+    await probeDirectHttpsDownloadUrl('https://example.invalid/a.zip', 10, signal, { fetchImpl: respond(200, { 'content-length': '10' }) }),
+    null
+  );
+});
+
+test('SDK 直链预检保留外部取消信号', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    probeDirectHttpsDownloadUrl('https://example.invalid/a.zip', 10, controller.signal, {
+      fetchImpl: async () => { throw new TypeError('fetch failed'); }
+    }),
+    (error: unknown) => error instanceof DOMException && error.name === 'AbortError'
+  );
+});
+
+test('SDK 下载失败文案中文化并保留原始信息', () => {
+  const translated = translateSdkDownloadErrorText('TypeError: fetch failed');
+  assert.match(translated, /^无法连接下载服务器（网络连接不可用）/u);
+  assert.match(translated, /请检查网络连接或代理设置后重试/u);
+  assert.match(translated, /原始信息：TypeError: fetch failed/u);
+  assert.match(translateSdkDownloadErrorText('connect ECONNREFUSED 1.2.3.4:443'), /连接被拒绝/u);
+  assert.match(translateSdkDownloadErrorText('getaddrinfo ENOTFOUND msimgimg.xyz'), /域名无法解析/u);
+  assert.match(translateSdkDownloadErrorText('spawn aria2c.exe ENOENT'), /下载器程序缺失/u);
+  assert.equal(translateSdkDownloadErrorText('SDK ZIP 中央目录损坏。'), 'SDK ZIP 中央目录损坏。');
+  assert.ok(translateSdkDownloadErrorText(`fetch failed ${'x'.repeat(400)}`).length < 320);
+});
+
+test('aria2c 退出码给出中文原因', () => {
+  assert.equal(describeAria2ExitCode(6), '网络连接失败');
+  assert.equal(describeAria2ExitCode(2), '下载超时');
+  assert.equal(describeAria2ExitCode(0), null);
+  assert.equal(describeAria2ExitCode(null), null);
+  assert.equal(describeAria2ExitCode(42), null);
+});
+
+test('SDK 下载卡住时给出网络与代理提示并在恢复后清除', () => {
+  let current = 1_000;
+  const tracker = createSdkDownloadStallTracker({ stallNoticeAfterMs: 30_000, now: () => current });
+  assert.equal(tracker.observe(0), null, '首次观察只建立基线');
+  current = 20_000;
+  assert.equal(tracker.observe(0), null, '未到阈值不提示');
+  current = 31_500;
+  const notice = tracker.observe(0);
+  assert.match(notice!, /31 秒未收到数据/u);
+  assert.match(notice!, /网络或代理/u);
+  current = 33_000;
+  assert.match(tracker.observe(0)!, /32 秒未收到数据/u, '卡住期间持续刷新提示');
+  current = 32_500;
+  assert.equal(tracker.observe(1024), null, '恢复进度后清除提示');
 });
 
 test('完整归档通过 SHA-256 后等待 aria2c 退出再继续', async t => {
@@ -238,6 +386,18 @@ async function waitForCompletion(service: SdkDependencyService): Promise<SdkDepe
     await new Promise<void>(resolve => setTimeout(resolve, 10));
   }
   throw new Error('等待 SDK 测试任务完成超时。');
+}
+
+function createFakeRegQuery(values: Record<string, string>): Parameters<typeof resolveWindowsSystemProxy>[0] {
+  return (async (_file: unknown, args: readonly string[]) => {
+    const name = String(args.at(-1));
+    const value = values[name];
+    if (value === undefined) throw new Error(`缺少注册表值：${name}`);
+    return {
+      stdout: `HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\r\n    ${name}    ${value}\r\n`,
+      stderr: ''
+    };
+  }) as unknown as Parameters<typeof resolveWindowsSystemProxy>[0];
 }
 
 async function pathExists(target: string): Promise<boolean> {

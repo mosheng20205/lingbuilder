@@ -50,6 +50,67 @@
 - FBro、CEF3 项目在构建、运行、原生预览和导出时必须复用同一套依赖检测结果；缺失或校验失败时应给出明确中文诊断，不能继续生成不完整项目。
 - Cloudflare 上的文件内容一旦变化，必须使用新的版本化文件名和 URL，并同步更新文件大小与 SHA-256，禁止在原 URL 下静默替换内容。
 
+## 代理与失败诊断（2026-08-30 起）
+
+- 下载前自动解析代理：优先环境变量 `HTTPS_PROXY`、`https_proxy`、`ALL_PROXY`、`all_proxy`，其次 Windows 系统代理（注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` 的 `ProxyEnable` 与 `ProxyServer`，支持 `host:port` 与 `http=...;https=...;<local>` 分号格式）。仅接受 HTTP/HTTPS 代理并统一规范化为 `http://host:port` 后通过 `--all-proxy` 传给 aria2c；`socks=` 条目因 aria2c 不支持 SOCKS 而被忽略。aria2c 不读 Windows 系统代理，该解析是代理用户唯一生效路径。
+- 直链 HEAD 预检有 15 秒上限（合并任务取消信号）。预检遇到网络层失败（无法连接、超时）不再阻断下载，交由 aria2c 实测连通性；重定向、HTTP 非 2xx、返回非 HTTPS、`Content-Length` 与受控大小不匹配仍会直接阻断。
+- 下载期间若持续收不到新数据，30 秒后进度消息追加「已 N 秒未收到数据，可能在等待重连；若持续无进展，请检查网络或代理设置」，恢复进度后自动清除；已到 100% 等待 aria2c 退出或校验期间不显示该提示。
+- 失败诊断中文化：aria2c 退出码映射为中文原因（1=未知下载错误、2=下载超时、3=服务器上不存在该资源、6=网络连接失败、8=服务器不支持断点续传、9=磁盘空间不足等）；`fetch failed`、`ECONNREFUSED`、`ENOTFOUND`、连接重置、证书/TLS 失败等常见原始错误翻译为「无法连接下载服务器（原因），请检查网络连接或代理设置后重试」，并保留最多 240 字符原始信息；aria2c 无 stderr 输出时失败信息直接提示检查网络连接或代理设置。
+
+## 手动部署（IDE 内下载失败时的离线安装）
+
+共享缓存根目录：`%APPDATA%\LingBuilder\sdk-cache`（即 `C:\Users\<用户名>\AppData\Roaming\LingBuilder\sdk-cache`；设置了 `LINGBUILDER_SDK_CACHE_ROOT` 环境变量时以它为准）。
+
+方式一（推荐）：投放完整 ZIP，由 IDE 校验安装
+
+1. 用浏览器或下载工具从本文「资源清单」中的直链下载对应 ZIP。
+2. 用 `certutil -hashfile "<zip 路径>" SHA256` 核对哈希与本文记录的 SHA-256 一致。
+3. 打开（不存在则逐级新建）`%APPDATA%\LingBuilder\sdk-cache\downloads`，把 ZIP 放入，文件名保持原样，不要解压、不要改名。
+4. 回到 IDE 重新触发刚才被拦截的操作（F5 构建、运行、原生预览或工程导出），在安装对话框点「下载并安装」或「重试安装」；IDE 检测到完整 ZIP 后跳过下载，直接校验、解压并原子安装，成功后自动删除 ZIP。
+5. 注意：ZIP 必须与官方包字节一致；大小或 SHA-256 不匹配时 IDE 会删除该文件并转为联网下载。
+
+方式二：直接解压到共享模块目录（完全离线）
+
+1. 解压 ZIP，得到顶层文件夹 `lingbuilder.cef3.sdk/` 或 `lingbuilder.fbro.sdk/`。
+2. 将该文件夹整个放到 `%APPDATA%\LingBuilder\sdk-cache\modules\` 下。
+3. 在该文件夹内新建文本文件 `.lingbuilder-sdk-install.json`（UTF-8），内容对应填写：
+
+   CEF3：
+
+   ```json
+   {
+     "schemaVersion": 1,
+     "dependencyId": "cef3",
+     "moduleId": "lingbuilder.cef3.sdk",
+     "version": "150.0.14+g7c1aa68+chromium-150.0.7871.129",
+     "archiveSha256": "b984477a30527864f67aab5817b4ee17d23ec1977fc5a6ab191b19a373a6dc55",
+     "installedAt": "2026-08-30T00:00:00.000Z"
+   }
+   ```
+
+   FBro：
+
+   ```json
+   {
+     "schemaVersion": 1,
+     "dependencyId": "fbro",
+     "moduleId": "lingbuilder.fbro.sdk",
+     "version": "135.0.21.2.2.0",
+     "archiveSha256": "99ed17b2d649a91acf7552a5fce9427541a9fef287cbd8ef5a5855ebd449361f",
+     "installedAt": "2026-08-30T00:00:00.000Z"
+   }
+   ```
+
+4. 重新触发构建/运行即可识别，无需重启 IDE。该标记缺少或字段不匹配时，受管缓存目录不生效。
+
+方式三：工作区级安装（只对当前工作区生效）
+
+- 解压 ZIP，把里面的 `lingbuilder.cef3.sdk/`（或 `lingbuilder.fbro.sdk/`）整个文件夹放到 `<工作区>\.lingbuilder\modules\` 下。此方式不需要 `.lingbuilder-sdk-install.json` 标记，但每个工作区需要各自安装。
+
+高级用户也可以通过环境变量 `CEF3_SDK_ROOT` / `FBRO_SDK_ROOT` 直接指向已解压的 `sdk` 目录（例如 `...\lingbuilder.cef3.sdk\sdk`）。
+
+验证是否安装成功：重新执行被拦截的操作能通过 SDK 门禁；或查看 `%APPDATA%\LingBuilder\sdk-cache\modules\<模块 ID>\sdk` 下关键文件是否完整（清单见本文「资源清单」）。
+
 ## aria2 再分发说明
 
 - 版本：`aria2 1.37.0 Windows x64`，来源为官方 GitHub release：<https://github.com/aria2/aria2/releases/tag/release-1.37.0>。

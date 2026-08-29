@@ -142,7 +142,8 @@ export class SdkDependencyService {
       expectedSha256,
       signal,
       onProgress,
-      this.aria2cPath
+      this.aria2cPath,
+      this.environment
     ));
     this.inspectArchive = options.inspectArchive || inspectZipArchive;
     this.extractArchive = options.extractArchive || extractZipArchive;
@@ -234,14 +235,14 @@ export class SdkDependencyService {
         await fs.rm(archivePath, { force: true });
         this.update({ state: 'downloading', message: `正在下载 ${resource.name}…` });
         await this.download(resource.downloadUrl, partialPath, resource.archiveBytes, resource.sha256, signal, progress => {
-          this.update({
-            state: 'downloading',
-            message: `正在下载 ${resource.name}…`,
-            downloadedBytes: progress.downloadedBytes,
-            totalBytes: resource.archiveBytes,
-            progress: Math.min(100, Math.round(progress.downloadedBytes / resource.archiveBytes * 100)),
-            bytesPerSecond: progress.bytesPerSecond
-          });
+        this.update({
+          state: 'downloading',
+          message: `正在下载 ${resource.name}…${progress.notice ? `（${progress.notice}）` : ''}`,
+          downloadedBytes: progress.downloadedBytes,
+          totalBytes: resource.archiveBytes,
+          progress: Math.min(100, Math.round(progress.downloadedBytes / resource.archiveBytes * 100)),
+          bytesPerSecond: progress.bytesPerSecond
+        });
         });
         throwIfAborted(signal);
         this.update({ state: 'verifying', message: `正在校验 ${resource.name}…`, bytesPerSecond: null });
@@ -283,7 +284,8 @@ export class SdkDependencyService {
       if (signal.aborted) {
         this.complete('cancelled', `${resource.name} 下载已取消。`);
       } else {
-        const message = error instanceof Error ? error.message : String(error);
+        const raw = error instanceof Error ? error.message : String(error);
+        const message = translateSdkDownloadErrorText(raw);
         this.complete('failed', `${resource.name} 安装失败：${message}`, message);
       }
     } finally {
@@ -451,6 +453,7 @@ async function sha256File(filePath: string): Promise<string> {
 interface DownloadProgress {
   downloadedBytes: number;
   bytesPerSecond: number | null;
+  notice?: string | null;
 }
 
 export interface Aria2cDownloadProcess {
@@ -628,10 +631,13 @@ async function downloadArchive(
   expectedSha256: string,
   signal: AbortSignal,
   onProgress: (progress: DownloadProgress) => void,
-  aria2cPath: string
+  aria2cPath: string,
+  environment: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
   if (!url.startsWith('https://')) throw new Error('SDK 下载地址必须使用 HTTPS。');
-  await assertDirectHttpsDownloadUrl(url, expectedBytes, signal);
+  const probeIssue = await probeDirectHttpsDownloadUrl(url, expectedBytes, signal);
+  if (probeIssue) throw new Error(probeIssue);
+  const proxy = await resolveSdkDownloadProxy(environment).catch(() => null);
   await fs.mkdir(path.dirname(destination), { recursive: true });
   let offset = 0;
   try {
@@ -655,10 +661,11 @@ async function downloadArchive(
     if (error instanceof Error && error.message.includes('无效')) throw error;
     throw new Error(`未找到 LingBuilder 随附的 aria2c.exe：${aria2cPath}`);
   }
-  const args = createAria2cArguments(url, destination);
+  const args = createAria2cArguments(url, destination, proxy);
   let downloaded = offset;
   let previousBytes = offset;
   let previousAt = Date.now();
+  const stallTracker = createSdkDownloadStallTracker();
   const reportProgress = async (): Promise<void> => {
     try {
       const stat = await fs.stat(destination);
@@ -668,9 +675,11 @@ async function downloadArchive(
       const bytesPerSecond = Math.max(0, Math.round((downloaded - previousBytes) / elapsedSeconds));
       previousBytes = downloaded;
       previousAt = now;
-      onProgress({ downloadedBytes: downloaded, bytesPerSecond });
+      const notice = downloaded < expectedBytes ? stallTracker.observe(downloaded) : null;
+      onProgress({ downloadedBytes: downloaded, bytesPerSecond, notice });
     } catch {
-      onProgress({ downloadedBytes: downloaded, bytesPerSecond: null });
+      const notice = downloaded < expectedBytes ? stallTracker.observe(downloaded) : null;
+      onProgress({ downloadedBytes: downloaded, bytesPerSecond: null, notice });
     }
   };
   await reportProgress();
@@ -696,9 +705,10 @@ async function downloadArchive(
     if (signal.aborted) throw new DOMException('操作已取消。', 'AbortError');
     if (!completion.archiveVerified) {
       const detail = stderr.trim().replace(/\s+/gu, ' ');
+      const reason = describeAria2ExitCode(completion.exitCode);
       await removeFileWithRetry(destination).catch(() => undefined);
       await removeFileWithRetry(`${destination}.aria2`).catch(() => undefined);
-      throw new Error(`aria2c 下载结束但 SDK 归档未通过完整性校验（退出码 ${completion.exitCode ?? '未知'}）${detail ? `：${detail}` : '。'}`);
+      throw new Error(`aria2c 下载未完成${reason ? `：${reason}` : ''}，SDK 归档未通过完整性校验（退出码 ${completion.exitCode ?? '未知'}）${detail ? `。下载器信息：${detail}` : '，请检查网络连接或代理设置。'}`);
     }
   } finally {
     clearInterval(progressTimer);
@@ -729,8 +739,8 @@ async function removeFileWithRetry(target: string, attempts = 4): Promise<void> 
 export const ARIA2C_CONNECTIONS = 8;
 export const ARIA2C_MIN_SPLIT_SIZE = '8M';
 
-export function createAria2cArguments(url: string, destination: string): string[] {
-  return [
+export function createAria2cArguments(url: string, destination: string, proxy?: string | null): string[] {
+  const args = [
     '--continue=true',
     '--allow-overwrite=true',
     '--auto-file-renaming=false',
@@ -746,22 +756,204 @@ export function createAria2cArguments(url: string, destination: string): string[
     '--summary-interval=1',
     '--console-log-level=warn',
     '--enable-color=false',
-    '--remote-time=false',
-    `--dir=${path.dirname(destination)}`,
-    `--out=${path.basename(destination)}`,
-    url
+    '--remote-time=false'
   ];
+  if (proxy) args.push(`--all-proxy=${proxy}`);
+  args.push(`--dir=${path.dirname(destination)}`, `--out=${path.basename(destination)}`, url);
+  return args;
 }
 
-async function assertDirectHttpsDownloadUrl(url: string, expectedBytes: number, signal: AbortSignal): Promise<void> {
-  const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal });
-  if (response.status >= 300 && response.status < 400) throw new Error('SDK 下载地址不允许重定向，请检查受控 HTTPS 直链。');
-  if (!response.ok) throw new Error(`SDK 下载地址预检失败：HTTP ${response.status}。`);
-  if (!response.url.startsWith('https://')) throw new Error('SDK 下载地址预检返回了非 HTTPS 地址。');
+export interface ProbeDirectHttpsDownloadUrlOptions {
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * 对受控直链执行一次不跟随重定向的 HEAD 预检。
+ * 返回 null 表示可以继续下载（预检通过，或预检本身遇到网络层失败——
+ * 连通性交给 aria2c 实测，由它产生可翻译的真实错误）；
+ * 返回非空字符串表示必须阻断的直链问题（重定向、非 HTTPS、大小不匹配等）。
+ */
+export async function probeDirectHttpsDownloadUrl(
+  url: string,
+  expectedBytes: number,
+  signal: AbortSignal,
+  options: ProbeDirectHttpsDownloadUrlOptions = {}
+): Promise<string | null> {
+  const doFetch = options.fetchImpl || fetch;
+  const timeoutMs = Math.max(1_000, options.timeoutMs ?? 15_000);
+  const combined = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]);
+  let response: Response;
+  try {
+    response = await doFetch(url, { method: 'HEAD', redirect: 'manual', signal: combined });
+  } catch {
+    if (signal.aborted) throw new DOMException('操作已取消。', 'AbortError');
+    return null;
+  }
+  if (response.status >= 300 && response.status < 400) return 'SDK 下载地址不允许重定向，请检查受控 HTTPS 直链。';
+  if (!response.ok) return `SDK 下载地址预检失败：HTTP ${response.status}。`;
+  if (!(response.url || url).startsWith('https://')) return 'SDK 下载地址预检返回了非 HTTPS 地址。';
   const contentLength = Number(response.headers.get('content-length') || '');
   if (Number.isFinite(contentLength) && contentLength > 0 && contentLength !== expectedBytes) {
-    throw new Error(`SDK 下载地址预检大小不匹配：${contentLength} / ${expectedBytes} 字节。`);
+    return `SDK 下载地址预检大小不匹配：${contentLength} / ${expectedBytes} 字节。`;
   }
+  return null;
+}
+
+export function normalizeSdkProxyAddress(value: string): string | null {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//iu.test(trimmed) ? trimmed : `http://${trimmed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+  if (!parsed.hostname || !/^\d{1,5}$/u.test(port)) return null;
+  const host = parsed.hostname.includes(':') ? `[${parsed.hostname}]` : parsed.hostname;
+  return `http://${host}:${port}`;
+}
+
+const SDK_DOWNLOAD_PROXY_ENV_KEYS = ['HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy'] as const;
+
+export function resolveSdkProxyFromEnvironment(environment: NodeJS.ProcessEnv = process.env): string | null {
+  for (const key of SDK_DOWNLOAD_PROXY_ENV_KEYS) {
+    const proxy = normalizeSdkProxyAddress(String(environment[key] || ''));
+    if (proxy) return proxy;
+  }
+  return null;
+}
+
+export function parseWindowsProxyServerValue(raw: string): string | null {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  if (!value.includes('=')) return normalizeSdkProxyAddress(value);
+  let httpProxy: string | null = null;
+  let httpsProxy: string | null = null;
+  for (const segment of value.split(';')) {
+    const separator = segment.indexOf('=');
+    if (separator <= 0) continue;
+    const scheme = segment.slice(0, separator).trim().toLowerCase();
+    const address = segment.slice(separator + 1).trim();
+    if (!address || address === '<local>') continue;
+    // aria2c 只支持 HTTP 代理；socks= 条目无法用于下载，直接忽略。
+    if (scheme !== 'http' && scheme !== 'https') continue;
+    const normalized = normalizeSdkProxyAddress(address);
+    if (!normalized) continue;
+    if (scheme === 'https') httpsProxy ??= normalized;
+    else httpProxy ??= normalized;
+  }
+  return httpsProxy ?? httpProxy;
+}
+
+const WININET_SETTINGS_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
+
+async function readWininetRegistryValue(name: string, execFileImpl: typeof execFileAsync): Promise<string | null> {
+  try {
+    const { stdout } = await execFileImpl('reg', ['query', WININET_SETTINGS_KEY, '/v', name], {
+      windowsHide: true,
+      timeout: 5_000
+    });
+    for (const line of String(stdout).split(/\r?\n/)) {
+      const marker = line.indexOf(name);
+      if (marker < 0) continue;
+      return line.slice(marker + name.length).trim();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export async function resolveWindowsSystemProxy(
+  execFileImpl: typeof execFileAsync = execFileAsync,
+  platform: NodeJS.Platform = process.platform
+): Promise<string | null> {
+  if (platform !== 'win32') return null;
+  const enableRaw = await readWininetRegistryValue('ProxyEnable', execFileImpl);
+  if (!/0x1\b/iu.test(enableRaw || '')) return null;
+  const serverRaw = await readWininetRegistryValue('ProxyServer', execFileImpl);
+  if (!serverRaw) return null;
+  return parseWindowsProxyServerValue(serverRaw.replace(/^REG_SZ\b/iu, '').trim());
+}
+
+export async function resolveSdkDownloadProxy(
+  environment: NodeJS.ProcessEnv = process.env,
+  execFileImpl: typeof execFileAsync = execFileAsync,
+  platform: NodeJS.Platform = process.platform
+): Promise<string | null> {
+  return resolveSdkProxyFromEnvironment(environment) ?? await resolveWindowsSystemProxy(execFileImpl, platform);
+}
+
+export function describeAria2ExitCode(exitCode: number | null): string | null {
+  switch (exitCode) {
+    case 1: return '未知下载错误';
+    case 2: return '下载超时';
+    case 3: return '下载服务器上不存在该资源';
+    case 5: return '存在未完成的下载分段';
+    case 6: return '网络连接失败';
+    case 7: return '下载被取消或中断';
+    case 8: return '下载服务器不支持断点续传';
+    case 9: return '磁盘空间不足';
+    default: return null;
+  }
+}
+
+export const SDK_DOWNLOAD_STALL_NOTICE_MS = 30_000;
+
+export interface SdkDownloadStallTracker {
+  observe(downloadedBytes: number): string | null;
+}
+
+export function createSdkDownloadStallTracker(
+  options: { stallNoticeAfterMs?: number; now?: () => number } = {}
+): SdkDownloadStallTracker {
+  const threshold = Math.max(1_000, options.stallNoticeAfterMs ?? SDK_DOWNLOAD_STALL_NOTICE_MS);
+  const now = options.now ?? (() => Date.now());
+  let lastBytes = Number.NaN;
+  let lastProgressAt = now();
+  return {
+    observe(downloadedBytes: number): string | null {
+      const currentAt = now();
+      if (downloadedBytes !== lastBytes) {
+        lastBytes = downloadedBytes;
+        lastProgressAt = currentAt;
+        return null;
+      }
+      const stalledMs = currentAt - lastProgressAt;
+      if (stalledMs < threshold) return null;
+      return `已 ${Math.max(1, Math.round(stalledMs / 1000))} 秒未收到数据，可能在等待重连；若持续无进展，请检查网络或代理设置`;
+    }
+  };
+}
+
+interface SdkNetworkErrorPattern {
+  pattern: RegExp;
+  cause: string;
+}
+
+const SDK_NETWORK_ERROR_PATTERNS: readonly SdkNetworkErrorPattern[] = [
+  { pattern: /spawn\s+\S*\s*(EACCES|EPERM)\b/iu, cause: '下载器启动被拒绝（权限不足或被安全软件拦截）' },
+  { pattern: /\bspawn\b.*\bENOENT\b/iu, cause: '下载器程序缺失，可能被安全软件清理，请重新安装 LingBuilder' },
+  { pattern: /ECONNREFUSED|Connection refused|拒绝连接/iu, cause: '连接被拒绝' },
+  { pattern: /ENOTFOUND|getaddrinfo|Failed to resolve|Unable to resolve|Could not resolve|域名无法解析/iu, cause: '下载服务器域名无法解析' },
+  { pattern: /ETIMEDOUT|timed? ?out|连接超时/iu, cause: '连接超时' },
+  { pattern: /ECONNRESET|Connection reset|连接被重置/iu, cause: '连接被重置' },
+  { pattern: /EHOSTUNREACH|ENETUNREACH|No route to host|unreachable|网络不可达/iu, cause: '网络不可达' },
+  { pattern: /certificate|SSL|TLS|EPROTO|OpenSSL/iu, cause: 'HTTPS 证书或 TLS 握手失败' },
+  { pattern: /fetch failed|network error|Network Error|ENETDOWN|ERR_INTERNET_DISCONNECTED|网络连接不可用/iu, cause: '网络连接不可用' }
+];
+
+export function translateSdkDownloadErrorText(message: string): string {
+  const text = String(message || '');
+  if (!text) return text;
+  const matched = SDK_NETWORK_ERROR_PATTERNS.find(item => item.pattern.test(text));
+  if (!matched) return text;
+  const original = text.length > 240 ? `${text.slice(0, 240)}…` : text;
+  return `无法连接下载服务器（${matched.cause}），请检查网络连接或代理设置后重试。（原始信息：${original}）`;
 }
 
 function resolveBundledAria2cPath(resourcesPath?: string): string {
