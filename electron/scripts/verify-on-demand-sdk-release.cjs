@@ -1,4 +1,5 @@
 const fsp = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
@@ -32,23 +33,73 @@ async function verifyUnpacked(appOutDir) {
   return { mode: 'unpacked', target: appOutDir, modules: results };
 }
 
-async function verifyInstaller(installerPath) {
-  const sevenZip = await findSevenZip();
-  if (!sevenZip) throw new Error('未找到 7za.exe，不能验证安装包 SDK 瘦身结果。');
-  const { stdout } = await execFileAsync(sevenZip, ['l', '-slt', installerPath], {
+async function listArchiveEntries(sevenZip, target) {
+  const { stdout } = await execFileAsync(sevenZip, ['l', '-slt', target], {
     windowsHide: true,
     maxBuffer: 32 * 1024 * 1024,
     timeout: 5 * 60 * 1000
   });
-  const entries = parseSevenZipListing(stdout);
-  const normalizedPaths = [...entries.keys()].map(normalizeRelative);
+  return parseSevenZipListing(stdout);
+}
+
+function listNsisEntryPaths(sevenZip, installerPath) {
+  return execFileAsync(sevenZip, ['l', '-slt', installerPath], {
+    windowsHide: true,
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 5 * 60 * 1000
+  }).then(({ stdout }) => {
+    const paths = [];
+    for (const block of String(stdout).split(/\r?\n\r?\n/u)) {
+      const fields = {};
+      for (const line of block.split(/\r?\n/u)) {
+        const index = line.indexOf(' = ');
+        if (index > 0) fields[line.slice(0, index)] = line.slice(index + 3);
+      }
+      // 归档自身的头信息块没有 Size/Attributes；NSIS 条目可能没有 CRC，仍必须参与检查。
+      if (fields.Path && (fields.Size !== undefined || fields.Attributes !== undefined)) paths.push(fields.Path);
+    }
+    return paths;
+  });
+}
+
+function assertSlimPayloadPaths(normalizedPaths, label) {
   for (const moduleId of EXCLUDED_MODULE_IDS) {
     const prefix = `${PACKAGED_MODULE_ROOT}/${moduleId}/`;
-    if (normalizedPaths.some(item => item.startsWith(prefix))) throw new Error(`安装包仍包含 ${moduleId}，严格精简发布失败。`);
+    if (normalizedPaths.some(item => item.startsWith(prefix))) throw new Error(`${label}仍包含 ${moduleId}，严格精简发布失败。`);
   }
   assertNoHiddenSdkAssetPaths(normalizedPaths);
+}
+
+function assertAria2Resources(normalizedPaths) {
   for (const required of ARIA2_RESOURCE_PATHS) {
     if (!normalizedPaths.includes(required)) throw new Error(`安装包缺少 aria2 运行时资源：${required}。`);
+  }
+}
+
+async function verifyInstaller(installerPath) {
+  const sevenZip = await findSevenZip();
+  if (!sevenZip) throw new Error('未找到 7za.exe，不能验证安装包 SDK 瘦身结果。');
+  const outerPaths = (await listNsisEntryPaths(sevenZip, installerPath)).map(normalizeRelative);
+  assertSlimPayloadPaths(outerPaths, '安装包');
+
+  // electron-builder 通过 nsis7z 把完整应用压缩为单个 app-*.7z 嵌入 NSIS 外壳，
+  // 外层清单看不到应用文件，必须解出内嵌归档检查真实载荷。
+  const embeddedArchives = outerPaths.filter(item => /\/app-[^/]+\.7z$/u.test(item));
+  if (embeddedArchives.length === 0) throw new Error('安装包缺少内嵌应用归档（app-*.7z），无法校验精简结果。');
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-installer-verify-'));
+  try {
+    await execFileAsync(sevenZip, [
+      'e', '-y', `-o${tempDir}`, installerPath,
+      ...embeddedArchives.map(name => name.replace(/\//gu, '\\'))
+    ], { windowsHide: true, maxBuffer: 32 * 1024 * 1024, timeout: 5 * 60 * 1000 });
+    for (const fileName of await fsp.readdir(tempDir)) {
+      const innerEntries = await listArchiveEntries(sevenZip, path.join(tempDir, fileName));
+      const innerPaths = [...innerEntries.keys()].map(normalizeRelative);
+      assertSlimPayloadPaths(innerPaths, '安装包内嵌应用归档');
+      assertAria2Resources(innerPaths);
+    }
+  } finally {
+    await fsp.rm(tempDir, { recursive: true, force: true });
   }
   return { mode: 'installer', target: installerPath, modules: EXCLUDED_MODULE_IDS.map(moduleId => ({ moduleId, excluded: true })) };
 }
