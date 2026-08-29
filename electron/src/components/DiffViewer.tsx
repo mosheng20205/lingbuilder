@@ -2153,9 +2153,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const activeBeginnerHandler = selectedBeginnerHandler
     || lingCppStructure.flatMap(node => node.children || []).find(node => node.kind === 'event')?.name
     || '';
-  const designerTabLabel = designerProject?.windows.find(window => window.id === activeWindowId)?.fileName
-    || designerProject?.windows[0]?.fileName
-    || '界面可视化';
+  const activeDesignerWindow = designerProject?.windows.find(window => window.id === activeWindowId)
+    || designerProject?.windows[0];
+  // 设计器标签页对用户只显示功能名称，真实设计文件名保留在悬停提示中。
+  const designerTabLabel = '界面设计';
+  const designerTabTooltip = activeDesignerWindow
+    ? `打开窗口设计器：界面设计（${activeDesignerWindow.title || activeDesignerWindow.fileName}）`
+    : '打开窗口设计器：界面设计';
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
 
@@ -9988,8 +9992,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 }
               }}
               className={getEditorTabClassName(viewType === 'designer', isDarkMode)}
-              title={`打开窗口设计器：${designerTabLabel}`}
-              aria-label={`打开窗口设计器：${designerTabLabel}`}
+              title={designerTabTooltip}
+              aria-label={designerTabTooltip}
             >
               <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
               <span className="whitespace-nowrap">{designerTabLabel}</span>

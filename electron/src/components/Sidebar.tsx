@@ -977,7 +977,7 @@ export default function Sidebar({
           <span className="min-w-0 flex flex-col leading-tight">
             <span className="truncate">{windowModel.title}</span>
             <span className={`truncate text-[9px] ${isDarkMode ? 'text-slate-500 group-hover:text-slate-400' : 'text-slate-400 group-hover:text-slate-500'}`}>
-              {windowModel.fileName}
+              界面设计
             </span>
           </span>
         </span>

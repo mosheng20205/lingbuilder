@@ -1,5 +1,6 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TSX_IMPORT } from '../testing/testExplorerService';
@@ -11,7 +12,7 @@ export class ExtensionService {
   private snapshot: ExtensionHostSnapshot = { state: 'stopped', restartCount: 0, extensions: [], logs: [] }; private readonly extensionRoot: string; private readonly statePath: string;
   constructor(private readonly workspaceRoot: string, private readonly hostEntry?: string) { this.extensionRoot = path.join(workspaceRoot, '.lingbuilder', 'extensions'); this.statePath = path.join(workspaceRoot, '.lingbuilder', 'extensions-state.json'); }
 
-  async start(): Promise<ExtensionHostSnapshot> { if (this.child?.connected) return this.getSnapshot(); this.intentionalStop = false; this.extensions = await this.scan(); this.snapshot.extensions = this.extensions; this.snapshot.state = 'starting'; await fs.mkdir(this.extensionRoot, { recursive: true }); const entry = await this.resolveHostEntry(); const sourceMode = entry.endsWith('.ts'); const execArgv = ['--permission', `--allow-fs-read=${path.dirname(entry)}`, `--allow-fs-read=${this.extensionRoot}`]; if (sourceMode) execArgv.push(`--allow-fs-read=${process.cwd()}`, '--import', TSX_IMPORT); const child = fork(entry, [], { cwd: process.cwd(), env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', TSX_DISABLE_CACHE: '1' }, execArgv, silent: true }); this.child = child; this.snapshot.pid = child.pid; child.stdout?.on('data', chunk => this.log(`[Host] ${String(chunk).trimEnd()}`)); child.stderr?.on('data', chunk => this.log(`[Host] ${String(chunk).trimEnd()}`)); child.on('message', message => void this.handleMessage(message as any)); child.on('exit', (code, signal) => this.handleExit(child, code, signal));
+  async start(): Promise<ExtensionHostSnapshot> { if (this.child?.connected) return this.getSnapshot(); this.intentionalStop = false; this.extensions = await this.scan(); this.snapshot.extensions = this.extensions; this.snapshot.state = 'starting'; await fs.mkdir(this.extensionRoot, { recursive: true }); const entry = await this.resolveHostEntry(); const sourceMode = entry.endsWith('.ts'); const execArgv = ['--permission', `--allow-fs-read=${path.dirname(entry)}`, `--allow-fs-read=${this.extensionRoot}`]; if (sourceMode) { execArgv.push(`--allow-fs-read=${process.cwd()}`, '--import', TSX_IMPORT, '--allow-child-process'); for (const readPath of resolveSourceModeReadPaths()) execArgv.push(`--allow-fs-read=${readPath}`); } const child = fork(entry, [], { cwd: process.cwd(), env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', TSX_DISABLE_CACHE: '1' }, execArgv, silent: true }); this.child = child; this.snapshot.pid = child.pid; child.stdout?.on('data', chunk => this.log(`[Host] ${String(chunk).trimEnd()}`)); child.stderr?.on('data', chunk => this.log(`[Host] ${String(chunk).trimEnd()}`)); child.on('message', message => void this.handleMessage(message as any)); child.on('exit', (code, signal) => this.handleExit(child, code, signal));
     await this.waitReady(); await this.request('initialize', { extensions: this.extensions.filter(item => item.enabled).map(item => ({ id: item.id, root: item.root, main: item.manifest.main, activationEvents: item.manifest.activationEvents || [], permissions: item.manifest.permissions || [] })) }, 10_000, false); this.snapshot.state = 'ready'; await this.activateWorkspaceEvents(); return this.getSnapshot(); }
   async stop(): Promise<void> { this.intentionalStop = true; if (this.restartTimer) clearTimeout(this.restartTimer); if (this.child?.connected) this.child.send({ type: 'shutdown' }); await new Promise(resolve => setTimeout(resolve, 50)); this.child?.kill(); this.child = undefined; this.snapshot.state = 'stopped'; this.snapshot.pid = undefined; }
   getSnapshot(): ExtensionHostSnapshot { return { ...this.snapshot, extensions: this.extensions.map(item => ({ ...item, manifest: structuredClone(item.manifest) })), logs: [...this.snapshot.logs] }; }
@@ -36,8 +37,19 @@ export class ExtensionService {
   private log(message: string) { if (!message) return; this.snapshot.logs.push(message); if (this.snapshot.logs.length > 500) this.snapshot.logs.splice(0, this.snapshot.logs.length - 500); }
 }
 
-function validateManifest(value: any): ExtensionManifest {
-  if (!value || typeof value !== 'object') throw new Error('扩展 package.json 无效。');
+/** dev 源码模式（TS 入口 + tsx 加载器）下，向上定位包含 node_modules 的仓库根目录，供权限模型补充读取白名单。 */
+function resolveSourceModeReadPaths(): string[] {
+  let current = process.cwd();
+  for (let depth = 0; depth < 6; depth++) {
+    if (existsSync(path.join(current, 'node_modules'))) return [current];
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return [];
+}
+
+function validateManifest(value: any): ExtensionManifest {  if (!value || typeof value !== 'object') throw new Error('扩展 package.json 无效。');
   for (const key of ['name', 'publisher', 'version', 'main']) if (typeof value[key] !== 'string' || !value[key].trim()) throw new Error(`扩展缺少 ${key}。`);
   if (!/^[a-z0-9._-]+$/iu.test(value.name) || !/^[a-z0-9._-]+$/iu.test(value.publisher)) throw new Error('扩展 publisher/name 无效。');
   if (value.activationEvents && (!Array.isArray(value.activationEvents) || value.activationEvents.some((item: any) => typeof item !== 'string' || !/^(?:\*|onCommand:[a-z0-9._-]+|onLanguage:[a-z0-9._-]+|workspaceContains:[^\0]+)$/iu.test(item)))) throw new Error('activationEvents 无效。');
