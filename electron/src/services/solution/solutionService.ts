@@ -51,6 +51,10 @@ export interface CreateSolutionProjectRequest {
   projectId?: string;
   templateId?: SolutionProjectTemplateId;
   windowTitle?: string;
+  /** 新建时一并设置解决方案名称；工作区已有解决方案时表示重命名。 */
+  solutionName?: string;
+  /** 项目源码目录，支持工作区相对路径或工作区内绝对路径；缺省为 src/<projectId>。 */
+  projectDirectory?: string;
 }
 
 export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'new-emoji-fbro-browser-shell' | 'windows-dll';
@@ -151,28 +155,111 @@ export class SolutionService {
     return migrated;
   }
 
-  async createProject(request: CreateSolutionProjectRequest = {}): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject; designerProject?: LingWindowProject }> {
+  async createProject(request: CreateSolutionProjectRequest = {}): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject; designerProject?: LingWindowProject; logs?: string[] }> {
     const solution = await this.getSolution();
     const plan = this.createProjectPlan(request, solution);
     const { project, designerProject } = plan;
 
+    await this.ensureProjectTargetDirectoriesEmpty(project);
     try {
       await this.materializeProject(plan);
     } catch (error) {
       await this.removeMaterializedProjectFiles(project);
       throw error;
     }
-    const nextSolution = {
+    const logs: string[] = [];
+    let nextSolution = {
       ...solution,
       startupProjectId: solution.startupProjectId || project.id,
       projects: [...solution.projects, project]
     };
+    const requestedSolutionName = typeof request.solutionName === 'string' ? request.solutionName.trim() : '';
+    if (requestedSolutionName && requestedSolutionName !== solution.name) {
+      const validatedSolutionName = validateSolutionDisplayName(requestedSolutionName);
+      nextSolution = { ...nextSolution, name: validatedSolutionName };
+      logs.push(solution.name === '未命名解决方案'
+        ? `已命名解决方案：${validatedSolutionName}`
+        : `已重命名解决方案：${solution.name} → ${validatedSolutionName}`);
+    }
     await this.writeSolution(nextSolution);
-    return { solution: nextSolution, project, designerProject };
+    return { solution: nextSolution, project, designerProject, logs };
   }
 
   async previewCreateProject(request: CreateSolutionProjectRequest = {}): Promise<CreateSolutionProjectPlan> {
     return this.createProjectPlan(request, await this.getSolution());
+  }
+
+  /**
+   * 在用户指定的绝对目录（可以是当前工作区之外的其他磁盘）创建一个独立、自包含的项目工作区：
+   * 目录内包含 .lingbuilder/solution.json、src、config 与解决方案入口文件，可整体复制迁移。
+   * 布局与默认工作区一致（src / config / .lingbuilder/window-designer.json），
+   * 之后把这个目录作为工作区打开即可无缝继续开发。创建完成后由调用方负责切换当前工作区。
+   */
+  async createProjectWorkspace(request: CreateSolutionProjectRequest = {}): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject; designerProject?: LingWindowProject; logs?: string[]; workspaceRoot: string }> {
+    const workspaceRoot = await this.resolveStandaloneProjectRoot(request.projectDirectory);
+    const target = createSolutionService(workspaceRoot);
+    const solutionName = typeof request.solutionName === 'string' && request.solutionName.trim()
+      ? validateSolutionDisplayName(request.solutionName)
+      : '未命名解决方案';
+    const projectName = validateProjectDisplayName((request.name || '新建项目').trim() || '新建项目', DEFAULT_PROJECT_ID, []);
+    const template = getSolutionProjectTemplate(request.templateId);
+    const project: LingBuilderSolutionProject = {
+      id: DEFAULT_PROJECT_ID,
+      name: projectName,
+      type: template.kind === 'windows-dll' ? 'windows-dll' : 'visual-cpp',
+      sourceRoot: 'src',
+      configRoot: 'config',
+      designerPath: '.lingbuilder/window-designer.json',
+      references: [],
+      ...(template.kind === 'windows-dll' ? { projectFile: `src/${DEFAULT_PROJECT_ID}.vcxproj` } : {}),
+      ...(template.architecture ? {
+        buildProperties: { configuration: 'Debug', architecture: template.architecture, additionalArguments: [] }
+      } : {})
+    };
+    const designerProject = template.kind === 'windows-dll'
+      ? undefined
+      : createDesignerProject(project.id, project.name, template.id, request.windowTitle);
+    const filesPlan = target.createMaterializationPlan(project, designerProject, template);
+    await target.materializeProject(filesPlan);
+    const solution: LingBuilderSolution = {
+      schemaVersion: 2,
+      id: DEFAULT_SOLUTION_ID,
+      name: solutionName,
+      startupProjectId: DEFAULT_PROJECT_ID,
+      startupProjectIds: [DEFAULT_PROJECT_ID],
+      folders: [],
+      projects: [project]
+    };
+    await target.writeSolution(solution);
+    const logs = [`已创建独立项目工作区：${workspaceRoot}`];
+    if (solutionName !== '未命名解决方案') logs.push(`已命名解决方案：${solutionName}`);
+    return { solution, project, designerProject, logs, workspaceRoot };
+  }
+
+  private async resolveStandaloneProjectRoot(input: unknown): Promise<string> {
+    if (typeof input !== 'string' || !input.trim()) throw new Error('创建独立项目工作区需要绝对路径的创建位置。');
+    const raw = collapseDuplicatedBackslashes(input.trim());
+    if (/[\r\n\t]/u.test(raw)) throw new Error('创建位置不能包含换行符或制表符。');
+    if (raw.length > 260) throw new Error('创建位置过长，请使用不超过 260 个字符的路径。');
+    if (!path.isAbsolute(raw)) {
+      throw new Error('创建独立项目工作区需要绝对路径的创建位置（如 D:\\Projects\\我的游戏）；相对路径请在当前工作区内创建。');
+    }
+    const resolved = path.resolve(raw);
+    if (path.parse(resolved).root === resolved) {
+      throw new Error('不能把磁盘根目录作为创建位置，请在根目录下选择或新建一个空目录。');
+    }
+    const workspaceRoot = path.resolve(this.workspaceRoot);
+    const relative = path.relative(workspaceRoot, resolved);
+    if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+      throw new Error('创建位置位于当前工作区内，请改用相对路径（如 games/我的游戏）在当前工作区内创建项目。');
+    }
+    if (await exists(resolved)) {
+      const entries = await fs.readdir(resolved);
+      if (entries.length > 0) throw new Error(`创建位置已存在且非空：${resolved}。请选择一个空目录或更换位置。`);
+    } else {
+      await fs.mkdir(resolved, { recursive: true });
+    }
+    return resolved;
   }
 
   async importExternalProject(relativePath: string): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject }> {
@@ -365,19 +452,51 @@ export class SolutionService {
     ]);
   }
 
+  /** 解析用户输入的项目创建目录为工作区相对路径；未提供时回落到 src/<projectId>。 */
+  private resolveProjectSourceDirectory(input: unknown, projectId: string): string {
+    if (input === undefined || input === null || (typeof input === 'string' && input.trim() === '')) {
+      return `src/${projectId}`;
+    }
+    if (typeof input !== 'string') throw new Error('创建位置格式无效，请输入目录路径。');
+    const raw = collapseDuplicatedBackslashes(input.trim());
+    if (/[\r\n\t]/u.test(raw)) throw new Error('创建位置不能包含换行符或制表符。');
+    if (raw.length > 260) throw new Error('创建位置过长，请使用不超过 260 个字符的路径。');
+    const resolved = this.resolveWorkspacePath(raw);
+    const relative = path.relative(this.workspaceRoot, resolved).replace(/\\/g, '/');
+    if (!relative || relative === '.') throw new Error('创建位置不能是工作区根目录。');
+    const segments = relative.split('/').filter(Boolean);
+    if (segments.some(segment => segment === '..')) throw new Error(`创建位置越界：${raw}`);
+    if (segments.some(segment => segment.startsWith('.'))) throw new Error(`创建位置不能包含以点开头的目录（如 .lingbuilder、.git）：${raw}`);
+    return segments.join('/');
+  }
+
+  /** 新建项目前确认目标目录可用：目录已存在且非空时拒绝，避免静默覆盖既有文件。 */
+  private async ensureProjectTargetDirectoriesEmpty(project: LingBuilderSolutionProject): Promise<void> {
+    const targets = [project.sourceRoot, project.configRoot, path.posix.dirname(project.designerPath)];
+    for (const relative of targets) {
+      const absolute = this.resolveWorkspacePath(relative);
+      if (!(await exists(absolute))) continue;
+      const entries = await fs.readdir(absolute);
+      if (entries.length > 0) {
+        throw new Error(`创建位置已存在且非空：${relative}。请更换项目名称或创建位置，避免覆盖已有文件。`);
+      }
+    }
+  }
+
   private createProjectPlan(request: CreateSolutionProjectRequest, solution: LingBuilderSolution): CreateSolutionProjectPlan {
     const baseName = validateProjectDisplayName((request.name || '新建项目').trim() || '新建项目', '', solution.projects);
     const projectId = this.createUniqueProjectId(request.projectId || baseName, solution);
+    const sourceRoot = this.resolveProjectSourceDirectory(request.projectDirectory, projectId);
     const template = getSolutionProjectTemplate(request.templateId);
     const project: LingBuilderSolutionProject = {
       id: projectId,
       name: baseName,
       type: template.kind === 'windows-dll' ? 'windows-dll' : 'visual-cpp',
-      sourceRoot: `src/${projectId}`,
+      sourceRoot,
       configRoot: `config/${projectId}`,
       designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
       references: [],
-      ...(template.kind === 'windows-dll' ? { projectFile: `src/${projectId}/${projectId}.vcxproj` } : {}),
+      ...(template.kind === 'windows-dll' ? { projectFile: path.posix.join(sourceRoot, `${projectId}.vcxproj`) } : {}),
       ...(template.architecture ? {
         buildProperties: { configuration: 'Debug', architecture: template.architecture, additionalArguments: [] }
       } : {})
@@ -1195,6 +1314,25 @@ function validateProjectDisplayName(value: string, projectId: string, projects: 
     throw new Error(`解决方案中已存在名为“${name}”的项目。`);
   }
   return name;
+}
+
+function validateSolutionDisplayName(value: string): string {
+  const name = value.trim();
+  if (!name) throw new Error('解决方案名称不能为空。');
+  if (name.length > 100) throw new Error('解决方案名称不能超过 100 个字符。');
+  if (/[\r\n\t]/u.test(name)) throw new Error('解决方案名称不能包含换行符或制表符。');
+  return name;
+}
+
+/**
+ * 折叠用户输入路径中连续出现的反斜杠（例如从日志复制的 D:\\Projects）为单个，
+ * 让用户只需要输入一个反斜杠；开头的 UNC 前缀（\\server\share）保留为两个。
+ */
+function collapseDuplicatedBackslashes(value: string): string {
+  if (!value.includes('\\')) return value;
+  const uncPrefixed = value.startsWith('\\\\');
+  const body = uncPrefixed ? value.slice(2) : value;
+  return (uncPrefixed ? '\\\\' : '') + body.replace(/\\{2,}/gu, '\\');
 }
 
 async function enqueueSolutionWrite(targetPath: string, write: () => Promise<void>): Promise<void> {

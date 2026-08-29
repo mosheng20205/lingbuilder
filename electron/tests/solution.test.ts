@@ -371,6 +371,155 @@ test('solution clean removes Windows DLL configuration outputs', async () => {
   assert.ok(await exists(path.join(exportDir, 'clean-dll.sln')));
 });
 
+test('createProject names a fresh solution via solutionName', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+
+  const created = await service.createProject({ name: '太空冒险', solutionName: '太空冒险解决方案' });
+
+  assert.equal(created.solution.name, '太空冒险解决方案');
+  assert.ok((created.logs ?? []).some(line => line.includes('已命名解决方案：太空冒险解决方案')));
+  const persisted = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8'));
+  assert.equal(persisted.name, '太空冒险解决方案');
+  // 解决方案入口文件被原地复用：文件名不变，内容中的解决方案名称已更新。
+  const entry = JSON.parse(await fs.readFile(path.join(root, '未命名解决方案.lbsln'), 'utf8'));
+  assert.equal(entry.name, '太空冒险解决方案');
+});
+
+test('createProject renames an existing solution via solutionName', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  await service.createProject({ name: '第一个' });
+
+  const created = await service.createProject({ name: '第二个', solutionName: '自定义解决方案名' });
+
+  assert.equal(created.solution.name, '自定义解决方案名');
+  assert.ok((created.logs ?? []).some(line => line.includes('已命名解决方案：自定义解决方案名')));
+  const persisted = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8'));
+  assert.equal(persisted.name, '自定义解决方案名');
+});
+
+test('createProject keeps the current solution name when solutionName is empty', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  await service.createProject({ name: '第一个', solutionName: '已有名称' });
+
+  const created = await service.createProject({ name: '第二个', solutionName: '   ' });
+
+  assert.equal(created.solution.name, '已有名称');
+});
+
+test('createProject honors a custom project directory (relative and absolute)', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+
+  const relative = await service.createProject({ name: '相对目录', projectId: 'rel-demo', projectDirectory: 'games/rel-demo' });
+  assert.equal(relative.project.sourceRoot, 'games/rel-demo');
+  assert.ok(await exists(path.join(root, 'games', 'rel-demo', 'MainWindow.lcpp')));
+  assert.ok(await exists(path.join(root, 'games', 'rel-demo', '项目全局变量.lcpp')));
+
+  const absolute = await service.createProject({ name: '绝对目录', projectId: 'abs-demo', projectDirectory: path.join(root, 'games', 'abs-demo') });
+  assert.equal(absolute.project.sourceRoot, 'games/abs-demo');
+  assert.ok(await exists(path.join(root, 'games', 'abs-demo', 'MainWindow.lcpp')));
+
+  const persisted = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8'));
+  assert.equal(persisted.projects.find((project: { id: string }) => project.id === 'rel-demo').sourceRoot, 'games/rel-demo');
+  assert.equal(persisted.projects.find((project: { id: string }) => project.id === 'abs-demo').sourceRoot, 'games/abs-demo');
+});
+
+test('createProject rejects directories outside the workspace, hidden directories, and the workspace root', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+
+  await assert.rejects(service.createProject({ name: '越界', projectDirectory: '../outside' }), /越界/u);
+  await assert.rejects(service.createProject({ name: '隐藏目录', projectDirectory: '.lingbuilder/projects/evil' }), /以点开头/u);
+  await assert.rejects(service.createProject({ name: '根目录', projectDirectory: '.' }), /工作区根目录/u);
+});
+
+test('createProject refuses non-empty target directories instead of overwriting files', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  await fs.mkdir(path.join(root, 'src', 'occupied'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'occupied', '旧文件.lcpp'), '旧内容', 'utf8');
+
+  await assert.rejects(
+    service.createProject({ name: '占用', projectId: 'occupied' }),
+    /已存在且非空/u
+  );
+  const persisted = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8'));
+  assert.equal(persisted.projects.some((project: { id: string }) => project.id === 'occupied'), false);
+  assert.equal(await fs.readFile(path.join(root, 'src', 'occupied', '旧文件.lcpp'), 'utf8'), '旧内容');
+});
+
+test('createProjectWorkspace creates a self-contained project workspace at an outside directory', async () => {
+  const currentRoot = await createTempWorkspace();
+  const service = createSolutionService(currentRoot);
+  const outsideParent = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-external-'));
+  const target = path.join(outsideParent, '我的游戏');
+
+  const created = await service.createProjectWorkspace({
+    name: '太空射击',
+    solutionName: '独立解决方案',
+    projectDirectory: target
+  });
+
+  assert.equal(created.workspaceRoot, target);
+  assert.equal(created.solution.name, '独立解决方案');
+  assert.equal(created.project.name, '太空射击');
+  assert.equal(created.project.sourceRoot, 'src');
+  assert.ok((created.logs ?? []).some(line => line.includes('已创建独立项目工作区')));
+  assert.ok(await exists(path.join(target, '.lingbuilder', 'solution.json')));
+  assert.ok(await exists(path.join(target, 'src', 'MainWindow.lcpp')));
+  assert.ok(await exists(path.join(target, 'src', '项目全局变量.lcpp')));
+  assert.ok(await exists(path.join(target, 'config', 'config.ini')));
+  assert.ok(await exists(path.join(target, '独立解决方案.lbsln')));
+  const persisted = JSON.parse(await fs.readFile(path.join(target, '.lingbuilder', 'solution.json'), 'utf8'));
+  assert.equal(persisted.name, '独立解决方案');
+  assert.equal(persisted.startupProjectId, created.project.id);
+  const designer = JSON.parse(await fs.readFile(path.join(target, '.lingbuilder', 'window-designer.json'), 'utf8'));
+  assert.equal(designer.name, '太空射击');
+  // 当前工作区不受影响
+  assert.equal(await exists(path.join(currentRoot, '.lingbuilder', 'solution.json')), false);
+});
+
+test('createProjectWorkspace rejects relative, drive-root, inside-workspace, and non-empty targets', async () => {
+  const currentRoot = await createTempWorkspace();
+  const service = createSolutionService(currentRoot);
+
+  await assert.rejects(
+    service.createProjectWorkspace({ name: '相对', projectDirectory: 'games/foo' }),
+    /绝对路径/u
+  );
+  await assert.rejects(
+    service.createProjectWorkspace({ name: '内部', projectDirectory: path.join(currentRoot, 'nested') }),
+    /当前工作区内/u
+  );
+  await assert.rejects(
+    service.createProjectWorkspace({ name: '根目录', projectDirectory: path.parse(currentRoot).root }),
+    /磁盘根目录/u
+  );
+  const occupied = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-occupied-'));
+  await fs.writeFile(path.join(occupied, '占用.txt'), '内容', 'utf8');
+  await assert.rejects(
+    service.createProjectWorkspace({ name: '占用', projectDirectory: occupied }),
+    /已存在且非空/u
+  );
+});
+
+test('createProjectWorkspace collapses duplicated backslashes from user input', async () => {
+  const currentRoot = await createTempWorkspace();
+  const service = createSolutionService(currentRoot);
+  const outsideParent = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-bs-'));
+  const target = path.join(outsideParent, '反斜杠项目');
+  // 模拟用户从日志复制到的双反斜杠路径；应与单反斜杠路径等价。
+  const doubled = target.split(path.sep).join('\\\\');
+
+  const created = await service.createProjectWorkspace({ name: '反斜杠', projectDirectory: doubled });
+
+  assert.equal(created.workspaceRoot, path.resolve(target));
+  assert.ok(await exists(path.join(target, 'src', 'MainWindow.lcpp')));
+});
+
 async function createTempWorkspace(): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-solution-'));
 }

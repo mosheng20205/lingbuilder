@@ -13,6 +13,15 @@ interface ProjectNameDialogProps {
   busyLabel?: string;
   dialogId?: string;
   inputId?: string;
+  /** 可选：解决方案名称字段；提供回调时才显示该输入框。 */
+  solutionName?: string;
+  onSolutionNameChange?: (value: string) => void;
+  solutionNameHint?: string;
+  /** 可选：创建位置（目录）字段；提供回调时才显示该输入框。 */
+  location?: string;
+  onLocationChange?: (value: string) => void;
+  locationPlaceholder?: string;
+  locationHint?: string;
   onChange: (value: string) => void;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
@@ -31,6 +40,13 @@ export default function ProjectNameDialog({
   busyLabel = '正在创建…',
   dialogId = 'create-project-dialog-title',
   inputId = 'create-project-name',
+  solutionName,
+  onSolutionNameChange,
+  solutionNameHint,
+  location,
+  onLocationChange,
+  locationPlaceholder,
+  locationHint,
   onChange,
   onConfirm,
   onClose
@@ -47,6 +63,13 @@ export default function ProjectNameDialog({
   }, [open]);
 
   if (!open) return null;
+
+  const inputClassName = `w-full rounded border px-3 py-2 text-xs outline-none focus:border-blue-500 ${
+    isDarkMode
+      ? 'border-[#414149] bg-[#25252c] text-slate-100'
+      : 'border-slate-300 bg-white text-slate-900'
+  }`;
+  const hintClassName = `mt-1 text-[11px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -88,13 +111,38 @@ export default function ProjectNameDialog({
             value={value}
             disabled={busy}
             onChange={event => onChange(event.target.value)}
-            className={`w-full rounded border px-3 py-2 text-xs outline-none focus:border-blue-500 ${
-              isDarkMode
-                ? 'border-[#414149] bg-[#25252c] text-slate-100'
-                : 'border-slate-300 bg-white text-slate-900'
-            }`}
+            className={inputClassName}
           />
           {error && <div role="alert" className="mt-2 text-xs text-rose-500">{error}</div>}
+          {onSolutionNameChange && (
+            <div className="mt-3">
+              <label htmlFor={`${inputId}-solution`} className="mb-1.5 block text-xs font-medium">解决方案名称</label>
+              <input
+                id={`${inputId}-solution`}
+                aria-label="解决方案名称"
+                value={solutionName ?? ''}
+                disabled={busy}
+                onChange={event => onSolutionNameChange(event.target.value)}
+                className={inputClassName}
+              />
+              {solutionNameHint && <p className={hintClassName}>{solutionNameHint}</p>}
+            </div>
+          )}
+          {onLocationChange && (
+            <div className="mt-3">
+              <label htmlFor={`${inputId}-location`} className="mb-1.5 block text-xs font-medium">创建位置</label>
+              <input
+                id={`${inputId}-location`}
+                aria-label="创建位置"
+                value={location ?? ''}
+                placeholder={locationPlaceholder}
+                disabled={busy}
+                onChange={event => onLocationChange(event.target.value)}
+                className={inputClassName}
+              />
+              {locationHint && <p className={hintClassName}>{locationHint}</p>}
+            </div>
+          )}
         </div>
 
         <div className={`flex justify-end gap-2 border-t px-4 py-3 ${isDarkMode ? 'border-[#35353c]' : 'border-slate-200'}`}>

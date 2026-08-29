@@ -246,6 +246,8 @@ import {
 import { LINGBUILDER_DISPLAY_VERSION, LINGBUILDER_OFFICIAL_SITE_URL } from './services/product/productInfo';
 
 const LINGBUILDER_QQ_GROUP_URL = 'https://qm.qq.com/q/q2VNHZXLXy';
+// Web 模式下创建独立项目工作区并整页刷新后，跳过欢迎页直接进入工作台的一次性标记。
+const AUTO_ENTER_WORKSPACE_FLAG = 'lingbuilder:auto-enter-workspace';
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
@@ -1148,7 +1150,10 @@ export default function App() {
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [createProjectName, setCreateProjectName] = useState('');
   const [createProjectTemplateId, setCreateProjectTemplateId] = useState<'blank-window' | 'windows-dll'>('blank-window');
+  const [createSolutionName, setCreateSolutionName] = useState('');
+  const [createProjectLocation, setCreateProjectLocation] = useState('');
   const [createProjectError, setCreateProjectError] = useState('');
+  const createDialogSolutionNameTouchedRef = useRef(false);
   const [isCreatingSolutionProject, setIsCreatingSolutionProject] = useState(false);
   const [solutionNameOperation, setSolutionNameOperation] = useState<
     { kind: 'create-folder' } | { kind: 'rename-project'; projectId: string } | null
@@ -1201,6 +1206,18 @@ export default function App() {
       disposed = true;
     };
   }, []);
+  useEffect(() => {
+    // Web 模式下跨磁盘创建独立工作区后需整页刷新完成工作区切换；
+    // 一次性标记让刷新后跳过欢迎页，直接进入新项目的工作台。
+    try {
+      if (sessionStorage.getItem(AUTO_ENTER_WORKSPACE_FLAG) === '1') {
+        sessionStorage.removeItem(AUTO_ENTER_WORKSPACE_FLAG);
+        enterWorkbench();
+      }
+    } catch {
+      // 存储不可用（如隐私模式）时按正常流程显示欢迎页。
+    }
+  }, [enterWorkbench]);
   useEffect(() => commandServiceRef.current.onDidChange(() => {
     setCommandRegistryVersion(version => version + 1);
   }).dispose, []);
@@ -4268,51 +4285,106 @@ void DisplayStatus() {
   const openCreateSolutionProjectDialog = useCallback((projectType: 'windows-ui' | 'windows-dll' = 'windows-ui') => {
     setCreateProjectName(`LingBuilder项目${solution.projects.length + 1}`);
     setCreateProjectTemplateId(projectType === 'windows-dll' ? 'windows-dll' : 'blank-window');
+    setCreateSolutionName(solution.name?.trim() || '');
+    createDialogSolutionNameTouchedRef.current = false;
+    setCreateProjectLocation('');
     setCreateProjectError('');
     setShowCreateProjectDialog(true);
-  }, [solution.projects.length]);
+    // 欢迎页打开时客户端 solution 状态可能仍是初始默认值，打开后拉取服务端最新名称用于预填。
+    void fetchSolution().then(latest => {
+      if (!createDialogSolutionNameTouchedRef.current) setCreateSolutionName(latest.name?.trim() || '');
+    }).catch(() => undefined);
+  }, [solution.name, solution.projects.length]);
 
-  const handleCreateSolutionProject = useCallback(async (name: string, templateId: 'blank-window' | 'windows-dll' = createProjectTemplateId): Promise<boolean> => {
-    if (!name.trim()) return false;
+  const handleCreateSolutionProject = useCallback(async (
+    name: string,
+    templateId: 'blank-window' | 'windows-dll' = createProjectTemplateId,
+    options?: { solutionName?: string; projectDirectory?: string }
+  ): Promise<{ ok: boolean; workspacePath?: string }> => {
+    if (!name.trim()) return { ok: false };
     const flushState = await flushCurrentEditorDrafts();
     if (!flushState.ok) {
       const message = flushState.diagnostics[0] || '新手代码提交失败，未切换项目。';
       appendEditorTransactionLog(`【新建项目错误】${message}`);
       setCreateProjectError(message);
-      return false;
+      return { ok: false };
     }
     if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
       const saved = await handleSaveWorkspace('新建项目前保存');
       if (!saved) {
         setCreateProjectError('当前文件保存失败，已取消新建项目。');
-        return false;
+        return { ok: false };
       }
     }
-    const result = await createSolutionProject(name.trim(), templateId);
+    const result = await createSolutionProject(name.trim(), templateId, options);
     appendSolutionLogs('新建项目', result);
-    if (!result.ok) setCreateProjectError(result.error || '新建项目失败。');
+    if (!result.ok) {
+      setCreateProjectError(result.error || '新建项目失败。');
+      return { ok: false };
+    }
+    if (result.workspacePath) {
+      return { ok: true, workspacePath: result.workspacePath };
+    }
     if (result.solution) setSolution(result.solution);
     if (result.project) {
       await setStartupProject(result.project.id);
       const nextSolution = await refreshSolution();
       setSolution(nextSolution);
     }
-    return result.ok;
+    return { ok: true };
   }, [appendSolutionLogs, createProjectTemplateId, flushCurrentEditorDrafts, refreshSolution]);
+
+  const switchToStandaloneProjectWorkspace = async (workspacePath: string): Promise<boolean> => {
+    const workspaceApi = window.lingBuilder?.workspace;
+    if (workspaceApi?.openPath) {
+      return await handleOpenWorkspacePath(workspacePath);
+    }
+    try {
+      const response = await fetch('/api/workspace/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspacePath })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        setCreateProjectError(result.error || '切换到独立项目工作区失败，请通过“打开工作区”手动切换。');
+        return false;
+      }
+      appendEditorTransactionLog(`【新建项目】已切换到独立项目工作区 ${result.workspacePath || workspacePath}，正在重新载入工作台…`);
+      try {
+        sessionStorage.setItem(AUTO_ENTER_WORKSPACE_FLAG, '1');
+      } catch {
+        // 存储不可用时刷新后按正常流程显示欢迎页。
+      }
+      window.setTimeout(() => window.location.reload(), 800);
+      return true;
+    } catch (error) {
+      setCreateProjectError(error instanceof Error ? error.message : '切换到独立项目工作区失败，请通过“打开工作区”手动切换。');
+      return false;
+    }
+  };
 
   const submitCreateSolutionProject = useCallback(async () => {
     if (isCreatingSolutionProject || !createProjectName.trim()) return;
     setIsCreatingSolutionProject(true);
     setCreateProjectError('');
     try {
-      const created = await handleCreateSolutionProject(createProjectName, createProjectTemplateId);
-      if (created) setShowCreateProjectDialog(false);
+      const created = await handleCreateSolutionProject(createProjectName, createProjectTemplateId, {
+        solutionName: createSolutionName,
+        projectDirectory: createProjectLocation
+      });
+      if (!created.ok) return;
+      if (created.workspacePath) {
+        const switched = await switchToStandaloneProjectWorkspace(created.workspacePath);
+        if (!switched) return;
+      }
+      setShowCreateProjectDialog(false);
     } catch (error) {
       setCreateProjectError(error instanceof Error ? error.message : '新建项目失败。');
     } finally {
       setIsCreatingSolutionProject(false);
     }
-  }, [createProjectName, createProjectTemplateId, handleCreateSolutionProject, isCreatingSolutionProject]);
+  }, [createProjectName, createProjectTemplateId, createSolutionName, createProjectLocation, handleCreateSolutionProject, isCreatingSolutionProject]);
 
   const handleCreateSolutionFolder = useCallback((): boolean => {
     const suggestedName = `解决方案文件夹${(solution.folders?.length || 0) + 1}`;
@@ -6913,6 +6985,20 @@ void DisplayStatus() {
         confirmLabel={createProjectTemplateId === 'windows-dll' ? '创建 DLL 项目' : undefined}
         busy={isCreatingSolutionProject}
         error={createProjectError || undefined}
+        solutionName={createSolutionName}
+        onSolutionNameChange={value => {
+          createDialogSolutionNameTouchedRef.current = true;
+          setCreateSolutionName(value);
+          if (createProjectError) setCreateProjectError('');
+        }}
+        solutionNameHint="留空表示沿用当前解决方案名称；修改后将重命名解决方案。"
+        location={createProjectLocation}
+        onLocationChange={value => {
+          setCreateProjectLocation(value);
+          if (createProjectError) setCreateProjectError('');
+        }}
+        locationPlaceholder={"例如：games/我的游戏 或 D:\\Projects\\我的游戏"}
+        locationHint="相对路径在当前工作区内创建项目；其他磁盘的绝对路径（单个反斜杠即可）将创建独立项目工作区并自动切换过去。"
         onChange={value => {
           setCreateProjectName(value);
           if (createProjectError) setCreateProjectError('');

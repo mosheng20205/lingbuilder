@@ -1265,8 +1265,31 @@ app.post("/api/workspace/switch", async (req, res) => {
 
 app.post("/api/solution/projects", async (req, res) => {
   try {
-    const result = await getSolutionService().createProject(req.body || {});
-    res.json({ ok: true, ...result, logs: [`已新建项目：${result.project.name} (${result.project.id})`] });
+    const body = req.body || {};
+    const requestedDirectory = typeof body.projectDirectory === "string" ? body.projectDirectory.trim() : "";
+    if (requestedDirectory && path.isAbsolute(requestedDirectory)) {
+      const resolvedDirectory = path.resolve(requestedDirectory);
+      const relativeToWorkspace = path.relative(path.resolve(serverRuntimeConfig.workspaceRoot), resolvedDirectory);
+      const insideWorkspace = relativeToWorkspace === ""
+        || (!relativeToWorkspace.startsWith("..") && !path.isAbsolute(relativeToWorkspace));
+      if (!insideWorkspace) {
+        // 工作区外的绝对路径（含其他磁盘）：创建独立、自包含的项目工作区。
+        const standalone = await getSolutionService().createProjectWorkspace(body);
+        res.json({
+          ok: true,
+          ...standalone,
+          workspacePath: standalone.workspaceRoot,
+          logs: [`已新建项目：${standalone.project.name} (${standalone.project.id})`, ...(standalone.logs ?? [])]
+        });
+        return;
+      }
+    }
+    const result = await getSolutionService().createProject(body);
+    res.json({
+      ok: true,
+      ...result,
+      logs: [`已新建项目：${result.project.name} (${result.project.id})`, ...(result.logs ?? [])]
+    });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "新建项目失败" });
   }

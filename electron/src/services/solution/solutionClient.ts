@@ -36,6 +36,8 @@ export interface SolutionCommandResult {
   stage?: string;
   compilerDiagnostics?: any[];
   results?: Array<{ compilerDiagnostics?: any[] }>;
+  /** 创建位置为工作区外的绝对路径时返回：新创建的独立项目工作区目录。 */
+  workspacePath?: string;
 }
 
 export const DEFAULT_SOLUTION: SolutionModel = {
@@ -66,8 +68,24 @@ export async function fetchSolution(): Promise<SolutionModel> {
   return result.solution as SolutionModel;
 }
 
-export async function createSolutionProject(name?: string, templateId?: 'blank-window' | 'windows-dll'): Promise<SolutionCommandResult> {
-  return postJson('/api/solution/projects', { name, ...(templateId ? { templateId } : {}) });
+export interface CreateSolutionProjectOptions {
+  /** 新建时一并设置解决方案名称；已有解决方案时表示重命名。留空表示沿用当前名称。 */
+  solutionName?: string;
+  /** 项目源码目录（工作区相对路径或工作区内绝对路径）。留空时自动生成 src/<projectId>。 */
+  projectDirectory?: string;
+}
+
+export async function createSolutionProject(
+  name?: string,
+  templateId?: 'blank-window' | 'windows-dll',
+  options?: CreateSolutionProjectOptions
+): Promise<SolutionCommandResult> {
+  return postJson('/api/solution/projects', {
+    name,
+    ...(templateId ? { templateId } : {}),
+    ...(options?.solutionName !== undefined ? { solutionName: options.solutionName } : {}),
+    ...(options?.projectDirectory !== undefined ? { projectDirectory: options.projectDirectory } : {})
+  });
 }
 
 export async function importSolutionProject(projectFile: string): Promise<SolutionCommandResult> {
