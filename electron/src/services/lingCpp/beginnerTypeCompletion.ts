@@ -74,3 +74,33 @@ export function resolveBeginnerTypeAlias(
   );
   return exactAlias?.label || rawValue.trim();
 }
+
+/** 新手模式常见类型的默认初始值字面量；没有简单字面量的类型（日期时间型、字节集、自定义类型等）不在表中。 */
+export const BEGINNER_TYPE_DEFAULT_INITIAL_VALUES: Record<string, string> = {
+  文本型: '""',
+  整数型: '0',
+  长整数型: '0',
+  字节型: '0',
+  小数型: '0',
+  双精度小数型: '0',
+  逻辑型: '假'
+};
+
+/**
+ * 新手模式修改局部变量/局部常量类型时，计算应写回的初始值：
+ * - 类型未变化 → undefined（保持现有初始值）；
+ * - 新类型有默认初始值字面量 → 返回该字面量，保证类型与初始值一致、可直接编译；
+ * - 新类型没有简单字面量 → 变量清空初始值；局部常量必须有初始值，保留原值交由既有诊断引导。
+ */
+export function adaptBeginnerInitialValueForType(params: {
+  previousType: string;
+  nextType: string;
+  isConstant?: boolean;
+}): string | undefined {
+  const previousType = params.previousType?.trim() || '';
+  const nextType = params.nextType?.trim() || '';
+  if (!nextType || nextType === previousType) return undefined;
+  const defaultValue = BEGINNER_TYPE_DEFAULT_INITIAL_VALUES[nextType];
+  if (defaultValue !== undefined) return defaultValue;
+  return params.isConstant ? undefined : '';
+}

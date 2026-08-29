@@ -87,6 +87,7 @@ import {
 } from '../services/lingCpp/beginnerCommandExpansion';
 import {
   BeginnerTypeCompletionItem,
+  adaptBeginnerInitialValueForType,
   buildBeginnerTypeCompletionCatalog,
   filterBeginnerTypeCompletions,
   resolveBeginnerTypeAlias
@@ -5857,6 +5858,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const nextInitialValue = patch.initialValue !== undefined
         ? patch.initialValue.trim()
         : local.initialValue?.trim() || '';
+      // 类型变化时初始值自动适配新类型（方案A）；用户显式修改初始值时尊重用户输入。
+      const initialValuePatch = patch.initialValue !== undefined
+        ? patch.initialValue
+        : adaptBeginnerInitialValueForType({
+          previousType: local.type,
+          nextType: nextType || local.type,
+          isConstant: nextIsConstant
+        });
       if (patch.newName !== undefined && !nextName) {
         setStructureEditError('局部声明名称不能为空。');
         return false;
@@ -5880,7 +5889,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         localName: local.name,
         newName: nextName,
         type: nextType,
-        initialValue: patch.initialValue,
+        initialValue: initialValuePatch,
         note: patch.note,
         isArray: patch.isArray,
         isConstant: patch.isConstant
