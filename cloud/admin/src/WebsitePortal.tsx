@@ -2,19 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, MessageCircle, PackageOpen, Search } from 'lucide-react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import { CLOUD_API, fetchWebsiteBootstrap, type WebsiteBootstrap, type WebsiteCommand, type WebsiteGuide } from './websiteApi';
+import { isDocsSectionItem, WEBSITE_NAV_ITEMS, type WebsiteNavItem } from './websiteNav';
 import './website.css';
 
-const NAV = [
-  { href: '/', label: '首页' },
-  { href: '/commands', label: '命令文档' },
-  { href: '/downloads', label: '软件下载' },
-  { href: '/docs/controls', label: '控件手册' },
-  { href: '/docs/modules', label: '模块开发' },
-  { href: '/docs/ai', label: 'AI 指南' },
-  { href: '/demos', label: '示例源码' }
-];
+const NAV = [{ href: '/', label: '首页' }, ...WEBSITE_NAV_ITEMS];
 
-export const PUBLIC_WEBSITE_PATHS = ['/commands', '/downloads', '/docs/controls', '/docs/modules', '/docs/ai', '/demos', '/community'];
+export const PUBLIC_WEBSITE_PATHS = ['/commands', '/downloads', '/controls', '/modules', '/demos', '/community'];
 
 export function WebsitePortal() {
   const path = location.pathname.replace(/\/$/u, '') || '/';
@@ -32,9 +25,8 @@ export function WebsitePortal() {
     <main id="website-main">
       {path === '/commands' && <CommandsPage/>}
       {path === '/downloads' && <DownloadsPage content={content} error={error}/>} 
-      {path === '/docs/controls' && <ControlsPage content={content} error={error}/>} 
-      {path === '/docs/modules' && <SingleGuidePage content={content} kind="MODULE" kicker="MODULE SDK" fallbackTitle="如何封装 C++ 模块" error={error}/>} 
-      {path === '/docs/ai' && <SingleGuidePage content={content} kind="AI" kicker="AI WORKFLOW" fallbackTitle="如何使用 IDE 的 AI 功能" error={error}/>} 
+      {path === '/controls' && <ControlsPage content={content} error={error}/>}
+      {path === '/modules' && <SingleGuidePage content={content} kind="MODULE" kicker="MODULE SDK" fallbackTitle="如何封装 C++ 模块" error={error}/>}
       {path === '/demos' && <DemosPage content={content} error={error}/>} 
       {path === '/community' && <CommunityPage content={content} error={error}/>} 
     </main>
@@ -45,7 +37,8 @@ export function WebsitePortal() {
 function WebsiteHeader({ activePath }: { activePath: string }) {
   return <header className="website-header"><div className="website-shell website-nav">
     <a className="website-brand" href="/"><img src={brandIcon} alt=""/><span><strong>灵码</strong><small>LINGBUILDER</small></span></a>
-    <nav aria-label="官网导航">{NAV.map(item => <a key={item.href} className={activePath === item.href ? 'active' : ''} href={item.href}>{item.label}</a>)}</nav>
+    <nav aria-label="官网导航">{NAV.map((item: WebsiteNavItem) => <a key={item.href} className={activePath === item.href ? 'active' : isDocsSectionItem(item) ? 'doc-link' : ''} href={item.href}>{item.label}</a>)}</nav>
+    <a className="website-community-link" href="/downloads"><Download size={16}/>下载 IDE</a>
     <a className="website-community-link" href="/community"><MessageCircle size={16}/>交流群</a>
   </div></header>;
 }

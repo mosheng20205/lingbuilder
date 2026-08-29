@@ -1,0 +1,20 @@
+/* 导航互列主站栏目后条目较多（11 项）：
+   默认主题 960px 以下才收起为汉堡菜单，960-1200px 会溢出裁剪，
+   这里把汉堡菜单断点提高到 1200px。 */
+@media (max-width: 1199px) {
+  .VPNavBarMenu {
+    display: none !important;
+  }
+  .VPNavBarHamburger {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 1200px) {
+  .VPNavBarHamburger {
+    display: none !important;
+  }
+  .VPNavBarMenu {
+    display: flex !important;
+  }
+}

@@ -41,3 +41,11 @@ features:
     title: 优秀案例
     details: 基于 LingBuilder 构建的真实应用案例
     link: /guide/cases/
+  - icon: 🧩
+    title: 控件手册
+    details: 基础与高级控件的设计器用法、事件绑定与中文命令
+    link: https://lingbuilder.com/controls
+  - icon: 📦
+    title: 模块开发
+    details: 如何封装、发布和安装 C++ 原生模块
+    link: https://lingbuilder.com/modules

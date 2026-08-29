@@ -10,11 +10,16 @@ export default defineConfig({
   cleanUrls: true,
   themeConfig: {
     nav: [
-      { text: '首页', link: '/' },
+      { text: '文档首页', link: '/' },
       { text: '用户手册', link: '/guide/user/' },
       { text: 'AI 智能助手', link: '/guide/ai/' },
       { text: '视频教程', link: '/guide/videos/' },
       { text: '优秀案例', link: '/guide/cases/' },
+      { text: '控件手册', link: 'https://lingbuilder.com/controls' },
+      { text: '模块开发', link: 'https://lingbuilder.com/modules' },
+      { text: '命令查找', link: 'https://lingbuilder.com/commands' },
+      { text: '示例源码', link: 'https://lingbuilder.com/demos' },
+      { text: '官网首页', link: 'https://lingbuilder.com/' },
     ],
     sidebar: {
       '/guide/user/': [
@@ -123,7 +128,7 @@ export default defineConfig({
       ],
     },
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/MoSheng2020' },
+      { icon: 'github', link: 'https://github.com/mosheng20205/lingbuilder' },
     ],
   },
 })

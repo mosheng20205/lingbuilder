@@ -1,6 +1,7 @@
 import { ArrowRight, BookOpen, Boxes, Braces, CheckCircle2, Code2, Download, Github, Menu, Search, Terminal, X } from 'lucide-react';
 import { useState } from 'react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
+import { WEBSITE_NAV_ITEMS, isDocsSectionItem } from './websiteNav';
 import './home.css';
 
 const notes = [
@@ -20,7 +21,7 @@ export function HomePage() {
         <a className="blog-brand" href="#top" aria-label="灵码 LingBuilder 首页"><img src={brandIcon} alt="" /><span><strong>灵码</strong><small>LINGBUILDER 技术文档</small></span></a>
         <button className="blog-menu-button" aria-label={mobileOpen ? '关闭导航' : '打开导航'} onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X /> : <Menu />}</button>
         <nav className={mobileOpen ? 'open' : ''} aria-label="主导航">
-          <a href="#notes" onClick={() => setMobileOpen(false)}>开发记录</a><a href="/commands">命令查找</a><a href="/docs/controls">控件手册</a><a href="/docs/modules">模块开发</a><a href="/demos">示例源码</a>
+          <a href="#notes" onClick={() => setMobileOpen(false)}>开发记录</a>{WEBSITE_NAV_ITEMS.map(item => <a key={item.href} className={isDocsSectionItem(item) ? 'doc-link' : ''} href={item.href} onClick={() => setMobileOpen(false)}>{item.label}</a>)}
         </nav>
         <a className="blog-nav-action" href="/downloads"><Download size={16} /> 下载 IDE</a>
       </div>
@@ -44,7 +45,7 @@ export function HomePage() {
 
       <section className="blog-section" id="notes"><div className="blog-container"><div className="blog-section-head"><div><p className="blog-eyebrow">LATEST NOTES</p><h2>最近的开发记录</h2></div><a className="text-link" href="/docs">查看全部文档 <ArrowRight size={16} /></a></div><div className="notes-grid">{notes.map(({ icon: Icon, ...note }) => <article className="note-card" key={note.title}><div className="note-meta"><span className="note-icon"><Icon size={18} /></span><span>{note.type}</span><time>{note.date}</time></div><h3>{note.title}</h3><p>{note.text}</p><a href="/docs" aria-label={`阅读：${note.title}`}>继续阅读 <ArrowRight size={15} /></a></article>)}</div></div></section>
 
-      <section className="blog-section blog-workflow"><div className="blog-container workflow-grid"><div><p className="blog-eyebrow">WHAT I AM BUILDING</p><h2>从中文表达，到真实的桌面程序</h2><p className="section-copy">灵码不是在线演示。中文源码和设计器模型经过本地确定性规则，生成可以阅读、复制和迁移的 C++ 工程；IDE 内运行与导出工程使用同一套生成链路。</p><a className="text-link" href="/docs/guides/deterministic-cpp">了解生成规则 <ArrowRight size={16} /></a></div><div className="workflow-steps"><div><span>01</span><strong>中文源码</strong><small>.lcpp、事件与模块调用</small></div><div><span>02</span><strong>本地规则</strong><small>解析、诊断与代码生成</small></div><div><span>03</span><strong>真实工程</strong><small>C++、SLN 与可执行文件</small></div></div></div></section>
+      <section className="blog-section blog-workflow"><div className="blog-container workflow-grid"><div><p className="blog-eyebrow">WHAT I AM BUILDING</p><h2>从中文表达，到真实的桌面程序</h2><p className="section-copy">灵码不是在线演示。中文源码和设计器模型经过本地确定性规则，生成可以阅读、复制和迁移的 C++ 工程；IDE 内运行与导出工程使用同一套生成链路。</p><a className="text-link" href="/docs/guide/user/">了解生成规则 <ArrowRight size={16} /></a></div><div className="workflow-steps"><div><span>01</span><strong>中文源码</strong><small>.lcpp、事件与模块调用</small></div><div><span>02</span><strong>本地规则</strong><small>解析、诊断与代码生成</small></div><div><span>03</span><strong>真实工程</strong><small>C++、SLN 与可执行文件</small></div></div></div></section>
 
       <section className="blog-section blog-resources"><div className="blog-container resource-grid"><div className="resource-card"><BookOpen size={22} /><div><h3>文档与手册</h3><p>从命令查找、控件使用，到模块封装和 AI 功能，按问题查阅。</p><a href="/docs">打开文档 <ArrowRight size={15} /></a></div></div><div className="resource-card"><Github size={22} /><div><h3>示例源码</h3><p>下载可复制的项目和代码片段，在本地打开、修改、构建。</p><a href="/demos">查看示例 <ArrowRight size={15} /></a></div></div><div className="resource-card"><Search size={22} /><div><h3>命令查找</h3><p>用中文关键词快速定位 IDE 命令、参数和适用模块。</p><a href="/commands">开始查找 <ArrowRight size={15} /></a></div></div></div></section>
 
