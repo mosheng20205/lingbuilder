@@ -104,7 +104,7 @@ Claude Code、Codex CLI 与 Gemini CLI 的免手写配置，可直接在 AI Brid
 
 - 当前权限模式不允许该操作（如只读模式下调用写入类工具）。
 - 预览模式下忘记传 `approved=true`。
-- 将需求描述得更明确，例如“请先读取 main.lcpp，再提出修改提案”。
+- 将需求描述得更明确，例如“请先读取 src/MainWindow.lcpp，再提出修改提案”。
 
 ## 下一步
 

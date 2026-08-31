@@ -4,7 +4,7 @@ title: 安装与启动
 
 # 安装与启动
 
-> [🕒 预计 15 分钟] | 难度：入门 | 适用于：Windows 10/11
+> [🕒 预计 15 分钟；如需安装 C++ 构建环境约 30–60 分钟] | 难度：入门 | 适用于：Windows 10/11
 
 ![安装流程导览](./assets/placeholder-install.png)
 
@@ -17,11 +17,14 @@ title: 安装与启动
 | 操作系统 | Windows 10 1809 (64 位) | Windows 11 22H2 (64 位) |
 | 处理器 | 双核 2.0 GHz | 四核 3.0 GHz 及以上 |
 | 内存 | 4 GB | 8 GB 及以上 |
-| 磁盘空间 | 2 GB 可用空间 | SSD，预留 5 GB |
-| 运行库 | Microsoft Visual C++ Redistributable 2015-2022 | 最新版 |
+| 磁盘空间 | 2 GB 可用空间 | SSD，预留 10 GB（含 C++ 构建环境） |
+| 运行库 | Microsoft Visual C++ Redistributable 2015-2022（运行 LingBuilder 本身） | 最新版 |
+| C++ 构建环境 | Visual Studio Build Tools 2022（含 MSVC 与 Windows SDK），编译运行项目时必需 | 最新版 Build Tools，随附 CMake |
 
 > [!TIP]
 > 如果系统未安装 Microsoft Visual C++ Redistributable，安装向导会自动检测并提示下载，请按照提示完成后再继续安装 LingBuilder。
+>
+> 上表中的「运行库」只保证 LingBuilder 本身能启动；要在 IDE 中把中文项目**编译并运行为本机 exe**，还需要第 5 节的 **C++ 构建环境**（MSVC + Windows SDK）。全新系统默认没有该环境，请在首次点击「运行」前完成安装。
 
 ## 2. 下载安装包
 
@@ -62,7 +65,37 @@ title: 安装与启动
 
 ![首次启动向导](./assets/placeholder-screen.png)
 
-## 5. 验证安装是否成功
+## 5. 安装 C++ 构建环境（编译运行必需）
+
+LingBuilder 采用本地确定性编译：中文源码会被翻译为真实 C++ 代码，并使用微软工具链编译为本机 exe。因此除了安装 LingBuilder 本身，电脑还需要以下构建组件：
+
+| 组件 | 作用 | 是否必需 |
+|---|---|---|
+| MSVC（x86/x64 C++ 工具集） | 编译生成的 C++ 代码 | 必需，默认 Win32 构建链的核心 |
+| Windows SDK | 提供窗口、控件等 Windows 头文件与库（含 rc.exe 资源编译器） | 必需 |
+| CMake | CMake 类型项目的构建支持 | 可选 |
+| WebView2 Runtime | 需要 WebView2 的原生预览功能 | 可选，Win10/11 一般已内置 |
+
+g++ / clang++ 虽然也能被识别，但 LingBuilder 默认 Win32 构建以及依赖 Visual Studio `.lib` 导入库的模块**必须使用 MSVC**。
+
+### 方式一：在 IDE 内一键安装（推荐）
+
+1. 启动 LingBuilder，按 `Ctrl+Shift+P` 打开命令面板。
+2. 执行 **工具：打开环境修复中心**。
+3. 点击 **一键安装核心构建环境**，LingBuilder 会自动从微软官方下载并运行 Visual Studio Build Tools 安装器（已自动勾选 MSVC、Windows SDK 与 CMake）。
+4. 按系统提示授权 UAC，等待安装完成后，环境修复中心会自动重新检测。
+
+### 方式二：手动安装
+
+1. 访问 [Visual Studio 下载页](https://visualstudio.microsoft.com/zh-hans/downloads/)，在「生成工具」区域下载 **Visual Studio Build Tools 2022**。
+2. 运行安装器，勾选 **使用 C++ 的桌面开发** 工作负载（默认已包含 MSVC 与 Windows SDK）。
+3. 点击 **安装**，等待完成（约需 6–8 GB 磁盘空间，耗时视网络而定）。
+4. 重启 LingBuilder，再次执行 **工具：打开环境修复中心** 确认检测通过。
+
+> [!NOTE]
+> 安装完成后无需配置任何环境变量，LingBuilder 会通过 `vswhere` 自动定位 MSVC 与 Windows SDK。
+
+## 6. 验证安装是否成功
 
 安装并完成首次启动后，可以通过以下方式确认 LingBuilder 正常工作：
 
@@ -71,21 +104,32 @@ title: 安装与启动
 3. 在主工具栏点击 **运行**（绿色 ▶ 按钮）。
 4. 如果程序窗口正常弹出且无报错，说明安装成功。
 
-## 6. 常见安装问题
+> [!TIP]
+> 如果点击 **运行** 时提示未检测到 MSVC / C++ 编译环境，说明第 5 节的构建环境尚未装好，按提示打开 **环境修复中心** 完成安装后重试。
 
-### 6.1 运行时提示缺少 DLL
+## 7. 常见安装问题
+
+### 7.1 运行项目时提示未检测到 MSVC / C++ 编译环境
+
+LingBuilder 本身能正常启动，但点击 **运行** 时提示「未检测到 MSVC」「资源文件编译不可用」等，说明本机缺少第 5 节的 C++ 构建环境。
+
+1. 按 `Ctrl+Shift+P` 打开命令面板，执行 **工具：打开环境修复中心**。
+2. 查看检测列表：**MSVC** 与 **Windows SDK** 必须为可用状态。
+3. 点击 **一键安装核心构建环境** 安装 Visual Studio Build Tools，完成后重新检测并再次运行项目。
+
+### 7.2 运行时提示缺少 DLL
 
 如果启动时提示缺少 `VCRUNTIME140.dll` 等文件，说明系统缺少 Visual C++ 运行库。
 
 1. 打开官网 **下载** 页面，在 **运行库** 区域下载并安装 **Microsoft Visual C++ Redistributable 2015-2022**。
 2. 安装完成后重启 LingBuilder。
 
-### 6.2 杀毒软件拦截
+### 7.3 杀毒软件拦截
 
 - LingBuilder 为本地编译型开发工具，部分杀毒软件可能将首次编译产生的临时文件误报为风险程序。
 - 请将 LingBuilder 安装目录加入杀毒软件的白名单，或暂时关闭实时防护后重试。
 
-### 6.3 安装后无法启动
+### 7.4 安装后无法启动
 
 - 检查系统是否满足最低配置要求。
 - 尝试右键 LingBuilder 快捷方式，选择 **以管理员身份运行**。
