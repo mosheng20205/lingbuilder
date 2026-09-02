@@ -6,7 +6,14 @@ export interface VersionCheckResult {
   latestVersion?: string;
   releaseTitle?: string;
   hasUpdate: boolean;
-  downloadUrl: string;
+  /** 官网首页地址：应用内下载不可用时的回退入口。 */
+  websiteUrl: string;
+  /** 安装包直链；null 表示云端未提供可用直链，不支持应用内下载。 */
+  downloadUrl?: string | null;
+  sha256?: string | null;
+  fileSize?: string | null;
+  releaseNotes?: string | null;
+  channel?: string | null;
   error?: string;
 }
 
@@ -22,9 +29,19 @@ export function compareVersions(left: string, right: string): number {
   return 0;
 }
 
+function optionalText(value: unknown): string | null {
+  const result = typeof value === 'string' ? value.trim() : '';
+  return result || null;
+}
+
+function optionalSha256(value: unknown): string | null {
+  const result = optionalText(value);
+  return result && /^[a-f0-9]{64}$/iu.test(result) ? result.toLowerCase() : null;
+}
+
 /** 向云端查询最新已发布版本并与当前版本比较；任何失败都返回 ok=false，不影响 IDE 主流程。 */
 export async function checkLatestVersion(origin: string, currentVersion: string): Promise<VersionCheckResult> {
-  const fallback: VersionCheckResult = { ok: false, currentVersion, hasUpdate: false, downloadUrl: LINGBUILDER_OFFICIAL_SITE_URL };
+  const fallback: VersionCheckResult = { ok: false, currentVersion, hasUpdate: false, websiteUrl: LINGBUILDER_OFFICIAL_SITE_URL, downloadUrl: null };
   if (!origin || /config-missing\.invalid$/u.test(origin)) return { ...fallback, error: '云端地址未配置。' };
   try {
     const controller = new AbortController();
@@ -40,9 +57,14 @@ export async function checkLatestVersion(origin: string, currentVersion: string)
       ok: true,
       currentVersion,
       latestVersion,
-      releaseTitle: value.title ? String(value.title) : undefined,
+      releaseTitle: optionalText(value.title) || undefined,
       hasUpdate: compareVersions(latestVersion, currentVersion) > 0,
-      downloadUrl: LINGBUILDER_OFFICIAL_SITE_URL
+      websiteUrl: LINGBUILDER_OFFICIAL_SITE_URL,
+      downloadUrl: optionalText(value.downloadUrl),
+      sha256: optionalSha256(value.sha256),
+      fileSize: optionalText(value.fileSize),
+      releaseNotes: optionalText(value.releaseNotes),
+      channel: optionalText(value.channel)
     };
   } catch (error) {
     return { ...fallback, error: error instanceof Error ? error.message : String(error) };

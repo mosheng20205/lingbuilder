@@ -8,11 +8,20 @@
     <Filter Include="生成资源">
       <UniqueIdentifier>{C2C40669-102F-F81B-42C4-802FD2EBFE72}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{81F64AC3-CED7-CB2D-41F6-8ED74F2181EE}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="lingbuilder-app.rc">
+      <Filter>资源文件</Filter>
+    </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="layout.json">
@@ -34,6 +43,9 @@
       <Filter>生成资源</Filter>
     </None>
     <None Include="lcpp-sources\src\项目数据类型.lcpp">
+      <Filter>生成资源</Filter>
+    </None>
+    <None Include="resources\lingbuilder-app.ico">
       <Filter>生成资源</Filter>
     </None>
   </ItemGroup>

@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { CurrentUser, Public, type AuthenticatedUser } from '../common/current-user.js';
 import { ModuleCommerceService } from './module-commerce.service.js';
 import { ModuleArtifactService } from './module-artifact.service.js';
+import { moduleSigningAcceptedKeyIds } from './module-signing-key.js';
 
 @Controller('v1')
 export class ModuleCommerceController {
@@ -11,7 +12,7 @@ export class ModuleCommerceController {
   @Get('modules/access') async access(@CurrentUser() user: AuthenticatedUser, @Query('moduleId') moduleId = '') { return { ok: true, access: await this.commerce.resolveAccess(user.id, moduleId) }; }
   @Get('modules/entitlements') async entitlements(@CurrentUser() user: AuthenticatedUser) { return { ok: true, entitlements: await this.commerce.listEntitlements(user.id) }; }
   @Get('module-orders') async orders(@CurrentUser() user: AuthenticatedUser) { return { ok: true, orders: await this.commerce.listOrders(user.id) }; }
-  @Get('modules/permit-key') permitKey() { return { ok: true, ...this.commerce.permitPublicKey() }; }
+  @Get('modules/permit-key') permitKey() { return { ok: true, ...this.commerce.permitPublicKey(), acceptedKeyIds: moduleSigningAcceptedKeyIds() }; }
   @Post('modules/permit') async permit(@CurrentUser() user: AuthenticatedUser, @Body() body: any) { return { ok: true, permit: await this.commerce.issuePermit(user.id, String(body.moduleId || '')) }; }
   @Post('module-orders') async order(@CurrentUser() user: AuthenticatedUser, @Headers('idempotency-key') idempotencyKey = '', @Body() body: any) {
     const provider = String(body.provider || '').toUpperCase();

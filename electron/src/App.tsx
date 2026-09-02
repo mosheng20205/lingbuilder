@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import lingBuilderIcon from '../../image/lingbuilder-ide-icon-v1.png';
 import {
   FolderCode,
@@ -4159,7 +4159,9 @@ void DisplayStatus() {
     const preventDefault = (event: DragEvent) => event.preventDefault();
     const handleDrop = (event: DragEvent) => {
       event.preventDefault();
-      const droppedPath = (event.dataTransfer?.files[0] as (File & { path?: string }) | undefined)?.path;
+      const file = event.dataTransfer?.files[0];
+      const droppedPath = file ? window.lingBuilder?.modules?.getDroppedFilePath(file) : '';
+      if (droppedPath?.toLowerCase().endsWith('.lbmod')) return;
       if (!droppedPath) {
         appendEditorTransactionLog('【拖放打开错误】未能读取本地文件路径。');
         return;
@@ -7414,3 +7416,4 @@ void DisplayStatus() {
     </div>
   );
 }
+

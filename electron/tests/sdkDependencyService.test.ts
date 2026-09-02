@@ -22,10 +22,28 @@ import {
   resolveSdkProxyFromEnvironment,
   resolveWindowsSystemProxy,
   translateSdkDownloadErrorText,
+  renameDirectoryWithRetry,
   waitForAria2cExitOrVerifiedArchive,
   type Aria2cDownloadProcess,
   type SdkDependencyJobSnapshot
 } from '../src/services/sdkDependencies/sdkDependencyService';
+
+test('Windows SDK 目录重命名遇到瞬时 EPERM 会重试后成功', async () => {
+  let attempts = 0;
+  await renameDirectoryWithRetry('source', 'target', {
+    attempts: 4,
+    delayMs: 0,
+    rename: async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        const error = new Error('operation not permitted') as NodeJS.ErrnoException;
+        error.code = 'EPERM';
+        throw error;
+      }
+    }
+  });
+  assert.equal(attempts, 3);
+});
 import {
   getRequiredSdkDependencyIds,
   SDK_DEPENDENCY_RESOURCES,
@@ -198,7 +216,7 @@ test('SDK 下载卡住时给出网络与代理提示并在恢复后清除', () =
   assert.equal(tracker.observe(1024), null, '恢复进度后清除提示');
 });
 
-test('完整归档通过 SHA-256 后等待 aria2c 退出再继续', async t => {
+test('完整归档通过 SHA-256 后立即继续，不被 aria2c 退出阻塞', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-aria2-complete-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const archive = Buffer.from('verified-archive', 'utf8');
@@ -214,29 +232,55 @@ test('完整归档通过 SHA-256 后等待 aria2c 退出再继续', async t => {
     { verificationIntervalMs: 1, terminationGraceMs: 100 }
   );
   assert.equal(result.archiveVerified, true);
-  assert.equal(result.exitCode, 1);
   assert.equal(child.killCalls, 1);
 });
 
-test('aria2c 在已验证归档后不退出时会强制终止并报告失败', async t => {
+test('aria2c 在已验证归档后不退出也不会阻塞 SDK 安装', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-aria2-no-close-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const archive = Buffer.from('verified-archive', 'utf8');
   const destination = path.join(root, 'sdk.zip.part');
   await fs.writeFile(destination, archive);
   const child = new NeverClosingAria2cProcess();
-  await assert.rejects(
-    waitForAria2cExitOrVerifiedArchive(
+  const result = await waitForAria2cExitOrVerifiedArchive(
       child,
       destination,
       archive.length,
       createHash('sha256').update(archive).digest('hex'),
       new AbortController().signal,
       { verificationIntervalMs: 1, terminationGraceMs: 100 }
-    ),
-    /未能在终止后退出/u
-  );
-  assert.equal(child.killCalls, 2);
+    );
+  assert.equal(result.archiveVerified, true);
+  assert.equal(child.killCalls, 1);
+});
+
+test('平铺 SDK ZIP 可安全归一化为模块目录', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-sdk-flat-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const archive = Buffer.from('flat-archive', 'utf8');
+  const manifest = `${JSON.stringify({ schemaVersion: 2, id: 'lingbuilder.fbro.sdk', version: 'flat-1' })}\n`;
+  const header = 'bridge-header';
+  const expandedBytes = Buffer.byteLength(manifest) + Buffer.byteLength(header);
+  const resource: SdkDependencyResource = {
+    id: 'fbro', moduleId: 'lingbuilder.fbro.sdk', name: '测试 FBro SDK', version: 'flat-1',
+    platform: 'windows-x64', archiveName: 'flat.zip', downloadUrl: 'https://example.invalid/flat.zip',
+    archiveBytes: archive.length, expandedBytes, fileCount: 2, sha256: createHash('sha256').update(archive).digest('hex'),
+    requiredModuleIds: ['lingbuilder.fbro.browser'], criticalFiles: [{ relativePath: 'include/LingBuilderFbroBridge.h', minimumBytes: header.length }]
+  };
+  const service = new SdkDependencyService({
+    cacheRoot: root, workspaceRoot: () => root, platform: 'win32', resources: [resource],
+    download: async (_url, destination, _expected, _sha, _signal, onProgress) => { await fs.writeFile(destination, archive); onProgress({ downloadedBytes: archive.length, bytesPerSecond: archive.length }); },
+    inspectArchive: async () => ({ fileCount: 2, expandedBytes, roots: ['sdk', 'lingbuilder.module.json'] }),
+    extractArchive: async (_archive, destination) => {
+      await fs.mkdir(path.join(destination, 'sdk', 'include'), { recursive: true });
+      await fs.writeFile(path.join(destination, 'lingbuilder.module.json'), manifest);
+      await fs.writeFile(path.join(destination, 'sdk', 'include', 'LingBuilderFbroBridge.h'), header);
+    }
+  });
+  service.start('fbro');
+  const completed = await waitForCompletion(service);
+  assert.equal(completed.state, 'succeeded');
+  assert.equal((await service.inspect('fbro')).source, 'managed-cache');
 });
 
 test('已取消的下载信号会立即终止 aria2c 并等待退出', async t => {

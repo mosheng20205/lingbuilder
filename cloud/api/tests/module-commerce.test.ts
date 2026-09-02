@@ -7,7 +7,7 @@ import test from 'node:test';
 import { ModuleArtifactService } from '../src/modules/module-artifact.service.js';
 import { ModuleCommerceService } from '../src/modules/module-commerce.service.js';
 import { PaymentProviderService } from '../src/modules/payment-provider.service.js';
-import { artifactSignaturePayload } from '../src/modules/module-signing-key.js';
+import { artifactSignaturePayload, moduleSigningAcceptedKeyIds, moduleSigningPublicKey } from '../src/modules/module-signing-key.js';
 
 test('支付宝回调必须使用官方 RSA2 公钥验证签名和商户身份', () => {
   const pair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -77,6 +77,32 @@ test('未知商品不能通过非计费回退获得签名 Permit', async () => {
   const prisma = { moduleProduct: { findUnique: async () => null } };
   const commerce = new ModuleCommerceService(prisma as never, new PaymentProviderService());
   await assert.rejects(commerce.issuePermit('user-1', 'lingbuilder.unknown.paid-module'), (error: any) => error?.code === 'MODULE_PAYMENT_REQUIRED');
+});
+
+test('permit 轮换列表缺省只包含当前签发密钥', () => {
+  const previous = snapshotEnv(['MODULE_PERMIT_PRIVATE_KEY_PEM', 'MODULE_PERMIT_PUBLIC_KEY_PEM', 'MODULE_PERMIT_ACCEPTED_KEY_IDS']);
+  delete process.env.MODULE_PERMIT_ACCEPTED_KEY_IDS;
+  try {
+    const key = moduleSigningPublicKey();
+    assert.deepEqual(moduleSigningAcceptedKeyIds(), [key.keyId]);
+  } finally { restoreEnv(previous); }
+});
+
+test('permit 轮换列表解析配置、去重并强制包含当前签发密钥', () => {
+  const key = moduleSigningPublicKey();
+  const previous = snapshotEnv(['MODULE_PERMIT_PRIVATE_KEY_PEM', 'MODULE_PERMIT_PUBLIC_KEY_PEM', 'MODULE_PERMIT_ACCEPTED_KEY_IDS']);
+  Object.assign(process.env, { MODULE_PERMIT_ACCEPTED_KEY_IDS: ` AAAABBBBCCCCDDDD , ${key.keyId} , ${key.keyId} ` });
+  try {
+    assert.deepEqual(moduleSigningAcceptedKeyIds(), ['aaaabbbbccccdddd', key.keyId]);
+    assert.throws(() => {
+      process.env.MODULE_PERMIT_ACCEPTED_KEY_IDS = 'zzzz';
+      moduleSigningAcceptedKeyIds();
+    }, /16 位十六进制/u);
+    assert.throws(() => {
+      process.env.MODULE_PERMIT_ACCEPTED_KEY_IDS = '1111222233334444';
+      moduleSigningAcceptedKeyIds();
+    }, /当前签发密钥/u);
+  } finally { restoreEnv(previous); }
 });
 
 function snapshotEnv(names: string[]) { return new Map(names.map(name => [name, process.env[name]])); }

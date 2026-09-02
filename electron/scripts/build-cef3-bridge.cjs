@@ -18,8 +18,9 @@ async function main() {
     : path.join(repoRoot, '.lingbuilder', 'module-build', 'lingbuilder.cef3.sdk', 'sdk', 'bridge', 'x64')));
   await assertFile(path.join(sdkRoot, 'include', 'cef_version.h'));
   const cmake = await findCmake();
+  const generator = await findVisualStudioGenerator(cmake);
   await execFileAsync(cmake, [
-    '-S', sourceRoot, '-B', buildRoot, '-G', 'Visual Studio 17 2022', '-A', 'x64',
+    '-S', sourceRoot, '-B', buildRoot, '-G', generator, '-A', 'x64',
     `-DCEF_SDK_ROOT=${sdkRoot.replaceAll('\\', '/')}`
   ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
   await execFileAsync(cmake, ['--build', buildRoot, '--config', 'Release', '--target', 'LingBuilderCefBridgeTests'], {
@@ -138,6 +139,8 @@ async function sha256(file) {
 async function findCmake() {
   const candidates = [
     'cmake.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe'
   ];
@@ -149,7 +152,19 @@ async function findCmake() {
       // 尝试下一个 Visual Studio/CMake 安装位置。
     }
   }
-  throw new Error('未找到 CMake/Visual Studio 2022，无法编译 LingBuilderCefBridge.dll。');
+  throw new Error('未找到 CMake/Visual Studio，无法编译 LingBuilderCefBridge.dll。');
+}
+
+async function findVisualStudioGenerator(cmake) {
+  let output = '';
+  try {
+    ({ stdout: output } = await execFileAsync(cmake, ['-G'], { windowsHide: true, maxBuffer: 1024 * 1024 }));
+  } catch (error) {
+    output = `${error.stdout || ''}\n${error.stderr || ''}`;
+  }
+  if (/Visual Studio 18 2026/iu.test(output)) return 'Visual Studio 18 2026';
+  if (/Visual Studio 17 2022/iu.test(output)) return 'Visual Studio 17 2022';
+  throw new Error('未找到可用的 Visual Studio CMake 生成器（需要 Visual Studio 18 2026 或 17 2022）。');
 }
 
 main().catch(error => {

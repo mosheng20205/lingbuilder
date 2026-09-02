@@ -9,6 +9,8 @@ export interface SdkDependencyPromptSnapshot {
   job: SdkDependencyJobSnapshot | null;
   installing: boolean;
   error: string;
+  catalogSource: 'builtin' | 'remote';
+  catalogSequence: number | null;
 }
 
 type Listener = (snapshot: SdkDependencyPromptSnapshot) => void;
@@ -18,7 +20,9 @@ const CLOSED_SNAPSHOT: SdkDependencyPromptSnapshot = {
   dependencies: [],
   job: null,
   installing: false,
-  error: ''
+  error: '',
+  catalogSource: 'builtin',
+  catalogSequence: null
 };
 
 export class SdkDependencyPromptCoordinator {
@@ -61,6 +65,8 @@ export class SdkDependencyPromptCoordinator {
     if (!this.pending || this.snapshot.installing) return;
     this.update({ installing: true, error: '' });
     try {
+      const overview = await fetchSdkOverview();
+      this.update({ catalogSource: overview.catalogSource, catalogSequence: overview.catalogSequence });
       for (let index = 0; index < this.snapshot.dependencies.length; index += 1) {
         const dependency = this.snapshot.dependencies[index];
         if (this.cancelled) throw new Error('已取消 SDK 安装。');
@@ -104,7 +110,7 @@ export class SdkDependencyPromptCoordinator {
   private async waitForCurrentJob(): Promise<void> {
     while (!this.cancelled) {
       const overview = await fetchSdkOverview();
-      this.update({ job: overview.job });
+      this.update({ job: overview.job, catalogSource: overview.catalogSource, catalogSequence: overview.catalogSequence });
       if (!overview.job.active) {
         if (overview.job.state === 'succeeded') return;
         throw new Error(overview.job.error || overview.job.message || 'SDK 安装未完成。');
@@ -149,16 +155,25 @@ export async function fetchWithSdkDependencies(
 async function fetchSdkOverview(): Promise<{
   dependencies: SdkDependencyStatus[];
   job: SdkDependencyJobSnapshot;
+  catalogSource: 'builtin' | 'remote';
+  catalogSequence: number | null;
 }> {
   const response = await fetch('/api/sdk-dependencies/status');
   const result = await response.json().catch(() => ({})) as {
     ok?: boolean;
     dependencies?: SdkDependencyStatus[];
     job?: SdkDependencyJobSnapshot;
+    catalogSource?: 'builtin' | 'remote';
+    catalogSequence?: number | null;
     error?: string;
   };
   if (!response.ok || !result.ok || !result.dependencies || !result.job) {
     throw new Error(result.error || '读取 SDK 下载状态失败。');
   }
-  return { dependencies: result.dependencies, job: result.job };
+  return {
+    dependencies: result.dependencies,
+    job: result.job,
+    catalogSource: result.catalogSource === 'remote' ? 'remote' : 'builtin',
+    catalogSequence: typeof result.catalogSequence === 'number' ? result.catalogSequence : null
+  };
 }

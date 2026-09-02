@@ -66,7 +66,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "tabs",
@@ -111,7 +114,10 @@
             "imageListId": "",
             "toolTip": "在不同页面查看分组框能力",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-left",
@@ -138,7 +144,9 @@
             "borderColor": "#38BDF8",
             "toolTip": "标题居左，边框粗细为 1",
             "toolTipDelay": 500
-          }
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "left-note",
@@ -162,7 +170,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-center",
@@ -189,7 +200,9 @@
             "borderColor": "#A78BFA",
             "toolTip": "标题居中，边框粗细为 3",
             "toolTipDelay": 500
-          }
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "center-note",
@@ -213,7 +226,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-right",
@@ -240,7 +256,9 @@
             "borderColor": "#F59E0B",
             "toolTip": "标题居右，边框粗细为 6",
             "toolTipDelay": 500
-          }
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "right-note",
@@ -264,7 +282,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-no-border",
@@ -290,7 +311,10 @@
             "borderColor": "#22C55E",
             "toolTip": "showBorder 为假时不绘制边框",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "no-border-note",
@@ -314,7 +338,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-thick",
@@ -340,7 +367,10 @@
             "borderColor": "#EC4899",
             "toolTip": "边框粗细使用允许的最大值 8",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "thick-note",
@@ -364,7 +394,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-container",
@@ -391,7 +424,9 @@
             "borderColor": "#14B8A6",
             "toolTip": "容器内的控件拥有独立 HWND",
             "toolTipDelay": 500
-          }
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-note",
@@ -415,7 +450,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-check",
@@ -438,7 +476,10 @@
             "threeState": false,
             "toolTip": "子控件可以独立交互",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-radio",
@@ -461,7 +502,10 @@
             "groupName": "groupbox-demo",
             "toolTip": "子控件可以设置自己的属性",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "child-button",
@@ -488,7 +532,10 @@
             "checked": false,
             "toolTip": "验证分组框不会吞掉子控件事件",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-result",
@@ -512,7 +559,10 @@
             "imageSource": "",
             "toolTip": "显示分组框内子控件事件结果",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-nested",
@@ -539,7 +589,9 @@
             "borderColor": "#8B5CF6",
             "toolTip": "容器可以继续承载子分组框",
             "toolTipDelay": 500
-          }
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-nested-inner",
@@ -564,7 +616,10 @@
             "borderColor": "#F97316",
             "toolTip": "嵌套分组框仍是独立控件",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "nested-note",
@@ -588,7 +643,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-runtime",
@@ -615,7 +673,9 @@
             "borderColor": "#0EA5E9",
             "toolTip": "运行时接口操作目标",
             "toolTipDelay": 500
-          }
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-note",
@@ -639,7 +699,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-child",
@@ -663,7 +726,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-api-label",
@@ -688,7 +754,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "set-title-button",
@@ -716,7 +785,10 @@
             "checked": false,
             "toolTip": "调用 控件_设置文本",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "read-title-button",
@@ -744,7 +816,10 @@
             "checked": false,
             "toolTip": "调用 控件_取文本",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "disable-button",
@@ -772,7 +847,10 @@
             "checked": false,
             "toolTip": "调用 控件_设置启用",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "hide-button",
@@ -800,7 +878,10 @@
             "checked": false,
             "toolTip": "调用 控件_设置可见",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "resize-button",
@@ -828,7 +909,10 @@
             "checked": false,
             "toolTip": "调用 控件_设置位置大小",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "restore-button",
@@ -856,7 +940,10 @@
             "checked": false,
             "toolTip": "恢复演示初始状态",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-result-label",
@@ -881,7 +968,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-zero",
@@ -907,7 +997,10 @@
             "borderColor": "#64748B",
             "toolTip": "showBorder 为真但 borderWidth 为 0",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "zero-note",
@@ -931,7 +1024,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-hidden-border",
@@ -957,7 +1053,10 @@
             "borderColor": "#EF4444",
             "toolTip": "隐藏边框时不会绘制 8px 边框",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "hidden-border-note",
@@ -981,7 +1080,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-disabled",
@@ -1007,7 +1109,10 @@
             "borderColor": "#64748B",
             "toolTip": "isEnabled 为假",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "disabled-note",
@@ -1031,7 +1136,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-hidden",
@@ -1057,7 +1165,10 @@
             "borderColor": "#FBBF24",
             "toolTip": "visibility 为 Collapsed",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "show-hidden-button",
@@ -1085,7 +1196,10 @@
             "checked": false,
             "toolTip": "调用 控件_设置可见(初始隐藏分组框, 真)",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "boundary-result",
@@ -1110,7 +1224,10 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "status-label",
@@ -1133,9 +1250,34 @@
             "imageSource": "",
             "toolTip": "",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         }
-      ]
+      ],
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
     }
   ],
   "resources": []

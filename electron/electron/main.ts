@@ -19,7 +19,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
-import { checkLatestVersion } from './versionCheckService';
+import { checkLatestVersion, type VersionCheckResult } from './versionCheckService';
+import { UpdateDownloadService } from './updateDownloadService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
 import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
@@ -32,6 +33,7 @@ import {
   LCPP_SOURCE_PACKAGE_EXTENSION,
   resolveProjectSourcePackagePath
 } from './lcppSourcePackageService';
+import { findLbmodArgument, isLbmodPath, MODULE_INSTALL_EVENT } from './modulePackageIntakeService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
 const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
@@ -55,6 +57,7 @@ let activeWorkspace = '';
 let showWelcomeOnNextRendererLoad = true;
 let isQuitting = false;
 let shutdownPromise: Promise<void> | null = null;
+let pendingModulePackagePath: string | undefined;
 let workspaceService: DesktopWorkspaceService;
 let aiBridgeManager: AiBridgeManagerService;
 let moduleInfoWindow: ModuleInfoWindowService;
@@ -253,6 +256,19 @@ function cloudApiOrigin(): string {
   }
 }
 const cloudAccountService = new CloudAccountService(cloudApiOrigin(), readCloudRefresh, writeCloudRefresh);
+let lastVersionCheck: VersionCheckResult | null = null;
+/** 应用内更新下载器：安装包落在 userData/updates，进度经 app-update:progress 广播到所有窗口。 */
+const updateDownloadService = new UpdateDownloadService({
+  updatesDir: path.join(app.getPath('userData'), 'updates'),
+  isPackaged: app.isPackaged,
+  resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+  allowInsecureUrl: !app.isPackaged,
+  onProgress: progress => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('app-update:progress', progress);
+    }
+  }
+});
 
 async function startManagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
   await stopRendererServer();
@@ -278,6 +294,12 @@ async function startManagedRendererServer(workspaceRoot: string): Promise<Server
       LINGBUILDER_DEV_NO_AUTH: 'false',
       LINGBUILDER_AI_BRIDGE_ENABLED: 'false',
       LINGBUILDER_SERVER_AUTOSTART: 'true',
+      // 生产安装包必须让本地服务启用已验签的云端 SDK 清单；此前未透传该模式，
+      // 导致 sdkCatalogRemote.resolveSdkCatalogEndpoint() 返回 null，始终回退内置清单。
+      ...(app.isPackaged ? {
+        LINGBUILDER_CLOUD_RELEASE_MODE: 'online',
+        LINGBUILDER_CLOUD_API_URL: cloudApiOrigin()
+      } : {}),
       ...(fbroVipCredential.value ? { LINGBUILDER_FBRO_VIP_KEY: fbroVipCredential.value } : {})
     }
   });
@@ -468,6 +490,11 @@ async function createMainWindow(): Promise<void> {
 
   if (smokeTest) await writePackagedSmokeProgress('load-url:start');
   await mainWindow.loadURL(rendererOrigin);
+  if (pendingModulePackagePath) {
+    const packagePath = pendingModulePackagePath;
+    pendingModulePackagePath = undefined;
+    mainWindow.webContents.send(MODULE_INSTALL_EVENT, { packagePath });
+  }
   if (smokeTest) await writePackagedSmokeProgress('load-url:done');
   if (!app.isPackaged && process.env.LINGBUILDER_OPEN_DEVTOOLS === 'true') {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -652,6 +679,24 @@ async function switchWorkspace(workspacePath: string): Promise<void> {
   });
 }
 
+async function importModulePackage(sourcePath: string) {
+  try {
+    if (!activeWorkspace) throw new Error('当前没有已打开的工作区。');
+    const source = await fs.realpath(String(sourcePath || ''));
+    const stat = await fs.stat(source);
+    if (!stat.isFile()) throw new Error('拖入目标不是文件。');
+    if (!isLbmodPath(source)) throw new Error('只能导入 .lbmod 模块包。');
+    if (stat.size > 100 * 1024 * 1024) throw new Error('模块包超过 100MB 限制。');
+    const packageDir = path.join(path.resolve(activeWorkspace), '.lingbuilder', 'module-packages');
+    await fs.mkdir(packageDir, { recursive: true });
+    const parsed = path.parse(source);
+    let target = path.join(packageDir, `${parsed.name}${parsed.ext}`);
+    try { await fs.access(target); target = path.join(packageDir, `${parsed.name}-${Date.now()}${parsed.ext}`); } catch { /* new file */ }
+    await fs.copyFile(source, target);
+    return { ok: true, canceled: false, relativePath: path.relative(activeWorkspace, target).replace(/\\/gu, '/') };
+  } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle('startup:should-show-welcome', () => showWelcomeOnNextRendererLoad);
   ipcMain.handle('window:minimize', () => getFocusedWindow()?.minimize());
@@ -676,7 +721,21 @@ function registerIpcHandlers(): void {
     window.close();
   });
   ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
-  ipcMain.handle('app:check-update', () => checkLatestVersion(cloudApiOrigin(), app.getVersion()));
+  ipcMain.handle('app:check-update', async () => {
+    lastVersionCheck = await checkLatestVersion(cloudApiOrigin(), app.getVersion());
+    return lastVersionCheck;
+  });
+  ipcMain.handle('app:update:download', () => {
+    if (!lastVersionCheck?.latestVersion || !lastVersionCheck.hasUpdate) return Promise.resolve({ ok: false, error: '请先检查更新，再下载更新包。' });
+    return updateDownloadService.download(lastVersionCheck);
+  });
+  ipcMain.handle('app:update:cancel', () => ({ ok: updateDownloadService.cancel() }));
+  ipcMain.handle('app:update:status', () => updateDownloadService.status());
+  ipcMain.handle('app:update:install', async () => {
+    const result = await updateDownloadService.install();
+    if (result.ok) void shutdownAndExit(0);
+    return result;
+  });
   ipcMain.handle('payments:open-page', async (_event, url: string) => {
     try {
       const target = new URL(String(url || ''));
@@ -855,6 +914,14 @@ function registerIpcHandlers(): void {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
+  });
+  ipcMain.handle('modules:select-package', async () => {
+    const owner = getFocusedWindow();
+    const result = owner
+      ? await dialog.showOpenDialog(owner, { title: '选择 .lbmod 文件', properties: ['openFile'], filters: [{ name: 'LingBuilder 模块包', extensions: ['lbmod'] }] })
+      : await dialog.showOpenDialog({ title: '选择 .lbmod 文件', properties: ['openFile'], filters: [{ name: 'LingBuilder 模块包', extensions: ['lbmod'] }] });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    return await importModulePackage(result.filePaths[0]);
   });
   ipcMain.handle('modules:open-info', async (_event, module: unknown) => {
     if (!module || typeof module !== 'object') throw new Error('模块信息无效。');
@@ -1116,13 +1183,34 @@ function intersects(area: Electron.Rectangle, bounds: { x: number; y: number; wi
 
 if (process.platform === 'win32') app.setAppUserModelId('cn.lingbuilder.ide');
 
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const modulePath = findLbmodArgument(argv);
+    if (modulePath) {
+      void importModulePackage(modulePath).then(result => {
+        if (result.ok && result.relativePath) {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(MODULE_INSTALL_EVENT, { packagePath: result.relativePath });
+          else pendingModulePackagePath = result.relativePath;
+        } else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(MODULE_INSTALL_EVENT, { packagePath: '', error: result.error });
+      });
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
+  });
+}
+
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+  void updateDownloadService.cleanupAbandoned();
   const smokeDocumentsPath = process.argv.includes('--smoke-test')
     ? getArgumentValue(process.argv, '--smoke-documents-dir')
     : undefined;
+  const startupModulePath = findLbmodArgument(process.argv);
+  const workspaceArgv = startupModulePath ? process.argv.filter(argument => argument !== startupModulePath) : process.argv;
   workspaceService = new DesktopWorkspaceService({
-    argv: process.argv,
+    argv: workspaceArgv,
     documentsPath: smokeDocumentsPath || app.getPath('documents'),
     userDataPath: app.getPath('userData'),
     defaultWorkspaceSource: defaultWorkspaceSource(),
@@ -1132,6 +1220,10 @@ app.whenReady().then(async () => {
   activeWorkspace = await workspaceService.resolveInitialWorkspace(
     app.isPackaged ? undefined : (process.env.LINGBUILDER_WORKSPACE_ROOT || repoRoot())
   );
+  if (startupModulePath) {
+    const imported = await importModulePackage(startupModulePath);
+    pendingModulePackagePath = imported.ok ? imported.relativePath : undefined;
+  }
   aiBridgeManager = new AiBridgeManagerService({
     runtimeExecutable: process.execPath,
     cliEntryPath: cliEntryPath(),

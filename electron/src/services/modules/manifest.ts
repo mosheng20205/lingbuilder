@@ -25,7 +25,12 @@ const DESIGNER_PROPERTY_TYPES = ['text', 'hotkey', 'hotKey', 'number', 'boolean'
 const DESIGNER_RECORD_FIELD_TYPES = ['text', 'number', 'boolean', 'enum', 'color', 'file', 'controlRef'];
 const DESIGNER_LAYOUT_MODES = ['absolute', 'flow', 'stack', 'grid', 'dock', 'slots', 'single', 'custom'];
 
-export function validateModuleManifest(value: unknown): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {
+export interface ModuleValidationOptions {
+  /** AI 导入路径使用：要求每条 contributes.commands 都有同名 bindings.commands 映射。 */
+  requireCommandBindings?: boolean;
+}
+
+export function validateModuleManifest(value: unknown, options: ModuleValidationOptions = {}): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {
   const diagnostics: string[] = [];
   if (!value || typeof value !== 'object') {
     return { diagnostics: ['模块清单不是有效对象。'] };
@@ -169,7 +174,7 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
   validateDependencies(raw.dependencies, raw.id, diagnostics);
   validateBuildContribution(raw.build, raw.targets || [], diagnostics);
   validateTargets(raw.targets, diagnostics);
-  validateBindings(raw.bindings, contributes?.commands || [], contributes?.types || [], raw.targets || [], diagnostics);
+  validateBindings(raw.bindings, contributes?.commands || [], contributes?.types || [], raw.targets || [], diagnostics, options);
   validateControlReferenceSnippets(contributes?.snippets, raw.bindings?.commands, diagnostics);
   validateCompatibility(raw.compatibility, raw.id, diagnostics);
 
@@ -515,18 +520,38 @@ function validateTargets(targets: unknown, diagnostics: string[]): void {
   });
 }
 
-function validateBindings(bindings: any, commands: any[], types: any[], targets: any[], diagnostics: string[]): void {
-  if (bindings === undefined) return;
+function reportMissingCommandBindings(commands: any[], boundCommandNames: Set<string>, diagnostics: string[]): void {
+  commands.forEach((command: any) => {
+    const name = typeof command?.name === 'string' ? command.name.trim() : '';
+    if (name && !boundCommandNames.has(name)) {
+      diagnostics.push(`命令 ${name} 缺少 bindings.commands 映射：编辑器能补全，但无法生成 C++ 调用；请让 AI 补上同名 binding。`);
+    }
+  });
+}
+
+function validateBindings(bindings: any, commands: any[], types: any[], targets: any[], diagnostics: string[], options: ModuleValidationOptions = {}): void {
+  const requireCommandBindings = options.requireCommandBindings === true;
+  if (bindings === undefined) {
+    if (requireCommandBindings) reportMissingCommandBindings(commands, new Set<string>(), diagnostics);
+    return;
+  }
   if (!bindings || typeof bindings !== 'object') {
     diagnostics.push('bindings 必须是对象。');
     return;
   }
-  if (bindings.commands === undefined) return;
+  if (bindings.commands === undefined) {
+    if (requireCommandBindings) reportMissingCommandBindings(commands, new Set<string>(), diagnostics);
+    return;
+  }
   if (!Array.isArray(bindings.commands)) {
     diagnostics.push('bindings.commands 必须是数组。');
     return;
   }
   const commandNames = new Set(commands.map(command => command?.name).filter(Boolean));
+  const boundCommandNames = new Set<string>(bindings.commands
+    .map((binding: any): string => typeof binding?.command === 'string' ? binding.command.trim() : '')
+    .filter(Boolean));
+  if (requireCommandBindings) reportMissingCommandBindings(commands, boundCommandNames, diagnostics);
   const publicTypeNames = new Set(types.map(type => type?.name).filter((name): name is string => typeof name === 'string' && Boolean(name.trim())));
   const structuredTypeNames = new Set(types
     .filter(type => type?.kind === 'record' || type?.kind === 'array')

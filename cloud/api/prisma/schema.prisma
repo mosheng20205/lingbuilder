@@ -631,3 +631,14 @@ model WebsiteCommunityGroup {
 
   @@index([enabled, sortOrder])
 }
+
+model SdkCatalogRelease {
+  id        String   @id @default(cuid())
+  sequence  Int      @unique
+  payload   String
+  keyId     String
+  signature String
+  note      String?
+  createdBy String
+  createdAt DateTime @default(now())
+}

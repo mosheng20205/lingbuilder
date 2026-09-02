@@ -85,6 +85,91 @@ test('admin site controller exposes r2 upload config only to writing roles', () 
   assert.match(source, /@Get\('r2-upload\/config'\) @Roles\('super_admin', 'operator'\)/u);
 });
 
+function latestVersionPrisma(release: any) {
+  let captured: any;
+  const prisma = {
+    websiteDownloadRelease: {
+      findFirst: async (args: any) => { captured ||= args; return release; }
+    }
+  };
+  return { prisma, args: () => captured };
+}
+
+test('latest version returns installer direct link, sha256 and release notes', async () => {
+  const { prisma, args } = latestVersionPrisma({
+    version: '0.7.0', title: 'LingBuilder 0.7.0', summary: '新版本', publishedAt: '2026-09-01T00:00:00.000Z',
+    channel: 'stable', fileSize: '85 MB',
+    sha256: 'A'.repeat(32) + 'a'.repeat(32),
+    releaseNotes: '修复若干问题。',
+    mirrors: [
+      { provider: 'direct', enabled: true, url: 'https://dl.lingbuilder.com/LingBuilder-0.7.0-x64.exe', sortOrder: 0 },
+      { provider: '123pan', enabled: true, url: 'https://pan.example.com/s/xyz', sortOrder: 1 }
+    ]
+  });
+  const service = new WebsiteContentService(prisma as any);
+  const result: any = await service.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
+  assert.equal(args().where.publicationStatus, 'PUBLISHED');
+  assert.deepEqual(args().select.mirrors.where, { enabled: true, provider: 'direct' });
+  assert.equal(result.available, true);
+  assert.equal(result.downloadUrl, 'https://dl.lingbuilder.com/LingBuilder-0.7.0-x64.exe');
+  assert.equal(result.sha256, ('A'.repeat(32) + 'a'.repeat(32)).toLowerCase());
+  assert.equal(result.fileSize, '85 MB');
+  assert.equal(result.releaseNotes, '修复若干问题。');
+  assert.equal(result.channel, 'stable');
+  assert.equal(result.version, '0.7.0');
+});
+
+test('latest version ignores disabled, non-direct and http direct mirrors', async () => {
+  const { prisma } = latestVersionPrisma({
+    version: '0.7.0', title: 't', summary: 's', publishedAt: null, channel: 'stable', fileSize: '', sha256: '', releaseNotes: '',
+    mirrors: [
+      { provider: 'direct', enabled: false, url: 'https://dl.lingbuilder.com/a.exe', sortOrder: 0 },
+      { provider: 'baidu', enabled: true, url: 'https://pan.baidu.com/s/1', sortOrder: 1 },
+      { provider: 'direct', enabled: true, url: 'http://dl.lingbuilder.com/b.exe', sortOrder: 2 }
+    ]
+  });
+  const service = new WebsiteContentService(prisma as any);
+  const result: any = await service.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
+  assert.equal(result.downloadUrl, null);
+  assert.equal(result.sha256, null);
+  assert.equal(result.fileSize, null);
+  assert.equal(result.releaseNotes, null);
+  assert.equal(result.version, '0.7.0');
+  assert.equal(result.title, 't');
+});
+
+test('latest version picks the first https direct mirror in query order', async () => {
+  const { prisma } = latestVersionPrisma({
+    version: '0.7.0', title: 't', summary: 's', publishedAt: null, channel: 'stable', fileSize: '', sha256: '', releaseNotes: '',
+    mirrors: [
+      { provider: 'direct', enabled: true, url: 'https://backup.lingbuilder.com/a.exe', sortOrder: 1 },
+      { provider: 'direct', enabled: true, url: 'https://dl.lingbuilder.com/b.exe', sortOrder: 0 }
+    ]
+  });
+  const service = new WebsiteContentService(prisma as any);
+  const result: any = await service.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
+  assert.equal(result.downloadUrl, 'https://backup.lingbuilder.com/a.exe');
+});
+
+test('latest version reports unavailable without leaking fields when no release is published', async () => {
+  const { prisma } = latestVersionPrisma(null);
+  const service = new WebsiteContentService(prisma as any);
+  const result: any = await service.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
+  assert.deepEqual(result, { ok: true, available: false });
+});
+
+test('latest version normalizes uppercase sha256 and rejects malformed values', async () => {
+  const upper = await new WebsiteContentService(latestVersionPrisma({
+    version: '0.7.0', title: 't', summary: 's', publishedAt: null, channel: 'stable', fileSize: '', sha256: 'ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789', releaseNotes: '', mirrors: []
+  }).prisma as any).latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
+  assert.equal((upper as any).sha256, 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789');
+
+  const malformed = await new WebsiteContentService(latestVersionPrisma({
+    version: '0.7.0', title: 't', summary: 's', publishedAt: null, channel: 'stable', fileSize: '', sha256: 'not-a-hash', releaseNotes: '', mirrors: []
+  }).prisma as any).latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
+  assert.equal((malformed as any).sha256, null);
+});
+
 function requireSource(relativePath: string) {
   return fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 }

@@ -37,7 +37,13 @@
           "foreground": "#F8FAFC",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
         },
         {
           "id": "intro-label",
@@ -54,7 +60,16 @@
           "foreground": "#94A3B8",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "tabs",
@@ -73,17 +88,36 @@
           "visibility": "Visible",
           "properties": {
             "tabs": [
-              { "id": "appearance", "title": "属性外观", "image": -1 },
-              { "id": "container", "title": "容器布局", "image": -1 },
-              { "id": "runtime", "title": "运行时接口", "image": -1 },
-              { "id": "boundary", "title": "边界状态", "image": -1 }
+              {
+                "id": "appearance",
+                "title": "属性外观",
+                "image": -1
+              },
+              {
+                "id": "container",
+                "title": "容器布局",
+                "image": -1
+              },
+              {
+                "id": "runtime",
+                "title": "运行时接口",
+                "image": -1
+              },
+              {
+                "id": "boundary",
+                "title": "边界状态",
+                "image": -1
+              }
             ],
             "selectedIndex": 0,
             "hideHeader": false,
             "imageListId": "",
             "toolTip": "在不同页面查看分组框能力",
             "toolTipDelay": 500
-          }
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-left",
@@ -103,7 +137,16 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "left", "showBorder": true, "borderWidth": 1, "borderColor": "#38BDF8", "toolTip": "标题居左，边框粗细为 1", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "left",
+            "showBorder": true,
+            "borderWidth": 1,
+            "borderColor": "#38BDF8",
+            "toolTip": "标题居左，边框粗细为 1",
+            "toolTipDelay": 500
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "left-note",
@@ -121,7 +164,16 @@
           "foreground": "#BAE6FD",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-center",
@@ -141,7 +193,16 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "center", "showBorder": true, "borderWidth": 3, "borderColor": "#A78BFA", "toolTip": "标题居中，边框粗细为 3", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "center",
+            "showBorder": true,
+            "borderWidth": 3,
+            "borderColor": "#A78BFA",
+            "toolTip": "标题居中，边框粗细为 3",
+            "toolTipDelay": 500
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "center-note",
@@ -159,7 +220,16 @@
           "foreground": "#DDD6FE",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-right",
@@ -179,7 +249,16 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "right", "showBorder": true, "borderWidth": 6, "borderColor": "#F59E0B", "toolTip": "标题居右，边框粗细为 6", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "right",
+            "showBorder": true,
+            "borderWidth": 6,
+            "borderColor": "#F59E0B",
+            "toolTip": "标题居右，边框粗细为 6",
+            "toolTipDelay": 500
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "right-note",
@@ -197,7 +276,16 @@
           "foreground": "#FDE68A",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-no-border",
@@ -216,7 +304,17 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "left", "showBorder": false, "borderWidth": 2, "borderColor": "#22C55E", "toolTip": "showBorder 为假时不绘制边框", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "left",
+            "showBorder": false,
+            "borderWidth": 2,
+            "borderColor": "#22C55E",
+            "toolTip": "showBorder 为假时不绘制边框",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "no-border-note",
@@ -234,7 +332,16 @@
           "foreground": "#BBF7D0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-thick",
@@ -253,7 +360,17 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "center", "showBorder": true, "borderWidth": 8, "borderColor": "#EC4899", "toolTip": "边框粗细使用允许的最大值 8", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "center",
+            "showBorder": true,
+            "borderWidth": 8,
+            "borderColor": "#EC4899",
+            "toolTip": "边框粗细使用允许的最大值 8",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "thick-note",
@@ -271,7 +388,16 @@
           "foreground": "#FBCFE8",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-container",
@@ -291,7 +417,16 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "left", "showBorder": true, "borderWidth": 2, "borderColor": "#14B8A6", "toolTip": "容器内的控件拥有独立 HWND", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "left",
+            "showBorder": true,
+            "borderWidth": 2,
+            "borderColor": "#14B8A6",
+            "toolTip": "容器内的控件拥有独立 HWND",
+            "toolTipDelay": 500
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-note",
@@ -309,7 +444,16 @@
           "foreground": "#99F6E4",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-check",
@@ -327,7 +471,15 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "checked": true, "threeState": false, "toolTip": "子控件可以独立交互", "toolTipDelay": 500 }
+          "properties": {
+            "checked": true,
+            "threeState": false,
+            "toolTip": "子控件可以独立交互",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-radio",
@@ -345,7 +497,15 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "checked": false, "groupName": "groupbox-demo", "toolTip": "子控件可以设置自己的属性", "toolTipDelay": 500 }
+          "properties": {
+            "checked": false,
+            "groupName": "groupbox-demo",
+            "toolTip": "子控件可以设置自己的属性",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "child-button",
@@ -363,8 +523,19 @@
           "foreground": "#F0FDFA",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_子按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "验证分组框不会吞掉子控件事件", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_子按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "验证分组框不会吞掉子控件事件",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "container-result",
@@ -382,7 +553,16 @@
           "foreground": "#CCFBF1",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "显示分组框内子控件事件结果", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "显示分组框内子控件事件结果",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-nested",
@@ -402,7 +582,16 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "center", "showBorder": true, "borderWidth": 2, "borderColor": "#8B5CF6", "toolTip": "容器可以继续承载子分组框", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "center",
+            "showBorder": true,
+            "borderWidth": 2,
+            "borderColor": "#8B5CF6",
+            "toolTip": "容器可以继续承载子分组框",
+            "toolTipDelay": 500
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-nested-inner",
@@ -420,7 +609,17 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "right", "showBorder": true, "borderWidth": 1, "borderColor": "#F97316", "toolTip": "嵌套分组框仍是独立控件", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "right",
+            "showBorder": true,
+            "borderWidth": 1,
+            "borderColor": "#F97316",
+            "toolTip": "嵌套分组框仍是独立控件",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "nested-note",
@@ -438,7 +637,16 @@
           "foreground": "#FED7AA",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-runtime",
@@ -458,7 +666,16 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "center", "showBorder": true, "borderWidth": 2, "borderColor": "#0EA5E9", "toolTip": "运行时接口操作目标", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "center",
+            "showBorder": true,
+            "borderWidth": 2,
+            "borderColor": "#0EA5E9",
+            "toolTip": "运行时接口操作目标",
+            "toolTipDelay": 500
+          },
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-note",
@@ -476,7 +693,16 @@
           "foreground": "#BAE6FD",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-child",
@@ -494,7 +720,16 @@
           "foreground": "#CBD5E1",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-api-label",
@@ -513,7 +748,16 @@
           "foreground": "#CBD5E1",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "set-title-button",
@@ -532,8 +776,19 @@
           "foreground": "#F0F9FF",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_设置标题按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "调用 控件_设置文本", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_设置标题按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "调用 控件_设置文本",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "read-title-button",
@@ -552,8 +807,19 @@
           "foreground": "#F8FAFC",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_读取标题按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "调用 控件_取文本", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_读取标题按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "调用 控件_取文本",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "disable-button",
@@ -572,8 +838,19 @@
           "foreground": "#FFF7ED",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_禁用分组框按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "调用 控件_设置启用", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_禁用分组框按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "调用 控件_设置启用",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "hide-button",
@@ -592,8 +869,19 @@
           "foreground": "#FFF1F2",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_隐藏分组框按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "调用 控件_设置可见", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_隐藏分组框按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "调用 控件_设置可见",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "resize-button",
@@ -612,8 +900,19 @@
           "foreground": "#ECFEFF",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_调整大小按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "调用 控件_设置位置大小", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_调整大小按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "调用 控件_设置位置大小",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "restore-button",
@@ -632,8 +931,19 @@
           "foreground": "#F0FDF4",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_恢复状态按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "恢复演示初始状态", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_恢复状态按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "恢复演示初始状态",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "runtime-result-label",
@@ -652,7 +962,16 @@
           "foreground": "#BAE6FD",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-zero",
@@ -671,7 +990,17 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "left", "showBorder": true, "borderWidth": 0, "borderColor": "#64748B", "toolTip": "showBorder 为真但 borderWidth 为 0", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "left",
+            "showBorder": true,
+            "borderWidth": 0,
+            "borderColor": "#64748B",
+            "toolTip": "showBorder 为真但 borderWidth 为 0",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "zero-note",
@@ -689,7 +1018,16 @@
           "foreground": "#CBD5E1",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-hidden-border",
@@ -708,7 +1046,17 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "titleAlign": "center", "showBorder": false, "borderWidth": 8, "borderColor": "#EF4444", "toolTip": "隐藏边框时不会绘制 8px 边框", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "center",
+            "showBorder": false,
+            "borderWidth": 8,
+            "borderColor": "#EF4444",
+            "toolTip": "隐藏边框时不会绘制 8px 边框",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "hidden-border-note",
@@ -726,7 +1074,16 @@
           "foreground": "#FCA5A5",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-disabled",
@@ -745,7 +1102,17 @@
           "foreground": "#94A3B8",
           "isEnabled": false,
           "visibility": "Visible",
-          "properties": { "titleAlign": "right", "showBorder": true, "borderWidth": 2, "borderColor": "#64748B", "toolTip": "isEnabled 为假", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "right",
+            "showBorder": true,
+            "borderWidth": 2,
+            "borderColor": "#64748B",
+            "toolTip": "isEnabled 为假",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "disabled-note",
@@ -763,7 +1130,16 @@
           "foreground": "#94A3B8",
           "isEnabled": false,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "gb-hidden",
@@ -782,7 +1158,17 @@
           "foreground": "#E2E8F0",
           "isEnabled": true,
           "visibility": "Collapsed",
-          "properties": { "titleAlign": "center", "showBorder": true, "borderWidth": 2, "borderColor": "#FBBF24", "toolTip": "visibility 为 Collapsed", "toolTipDelay": 500 }
+          "properties": {
+            "titleAlign": "center",
+            "showBorder": true,
+            "borderWidth": 2,
+            "borderColor": "#FBBF24",
+            "toolTip": "visibility 为 Collapsed",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "show-hidden-button",
@@ -801,8 +1187,19 @@
           "foreground": "#FEFCE8",
           "isEnabled": true,
           "visibility": "Visible",
-          "events": { "Click": "_显示隐藏示例按钮_被单击" },
-          "properties": { "buttonStyle": "push", "cornerRadius": 6, "checked": false, "toolTip": "调用 控件_设置可见(初始隐藏分组框, 真)", "toolTipDelay": 500 }
+          "events": {
+            "Click": "_显示隐藏示例按钮_被单击"
+          },
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "调用 控件_设置可见(初始隐藏分组框, 真)",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "boundary-result",
@@ -821,7 +1218,16 @@
           "foreground": "#FDE68A",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         },
         {
           "id": "status-label",
@@ -838,9 +1244,40 @@
           "foreground": "#64748B",
           "isEnabled": true,
           "visibility": "Visible",
-          "properties": { "staticStyle": "text", "textAlign": "left", "imageSource": "", "toolTip": "", "toolTipDelay": 500 }
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
         }
-      ]
+      ],
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
     }
   ],
   "resources": []

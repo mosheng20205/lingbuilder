@@ -368,6 +368,10 @@ AI 必须遵守：
 - 生成 new_emoji 独立演示窗口时，事件块仍必须用独立一行 `结束` 收尾；不要额外写显式退出命令 `结束()`，否则 exe 会创建窗口后马上退出，表现为闪退。
 - 纯 new_emoji 示例应在创建窗口、文本、按钮等控件后进入 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。设计器生成链路会在控件和“创建完毕”处理器执行完成后、消息循环之前调用 `NE_显示并激活窗口`，确保 F5 后台启动的窗口恢复、刷新并出现在 IDE 前方；该桥接只短暂提升窗口层级并立即取消置顶。AI 不得通过修改用户 `.lcpp` 或增加永久置顶逻辑修复启动显示问题。
 - 如果混用 LingBuilder 默认 Win32 窗口和 new_emoji 自建窗口，必须明确主消息循环和生命周期归属，不能让默认空窗口关闭后触发 `PostQuitMessage(0)`。
+- 「用 AI 生成模块（不需要会 C++）」链路全程本地：`docs/AI模块开发规范.md` 由「复制 AI 开发规范」按钮读入剪贴板，用户粘贴给任意外部 AI；AI 回复粘贴回 IDE 后由 `aiModuleImportParser` 拆文件，走 `/api/modules/developer/import-ai-files` 写入 `.lingbuilder/module-build/<manifest.id>`，再在校验、导出 `.lbmod`、`/api/modules/package/preview` + `/install` 后由项目启用并 F5。该链路不依赖云端账号、BYOK 或 AI Bridge 写入权限，AI 不得声称需要联网授权或额外服务端才能导入模块。
+- AI 生成的模块包必须让每条中文命令同时出现在 `contributes.commands` 和 `bindings.commands`：前者只负责补全、提示和文档，后者才是确定性 C++ 映射。IDE 在「导入到 module-build」和「③ 校验模块」两处强制比对，缺失时给出阻断诊断「命令 X 缺少 bindings.commands 映射：编辑器能补全，但无法生成 C++ 调用；请让 AI 补上同名 binding。」，只补 contributes 而无 binding 的结果不得报告为可用模块。
+- AI 生成模块导入前的 manifest 校验使用 `requireCommandBindings: true` 严格模式，校验失败必须在此之前完成、不得写入任何文件；目标目录已有同名文件时导入结果必须带 `overwrittenExisting` 并在界面给出覆盖提示，且不得删除旧目录中本次未包含的文件。导入上限固定为 200 个文件、单文件 1 MB、合计 10 MB，路径只允许包内相对路径，禁止绝对路径、盘符和 `..`；AI 不得绕过这些限制或把模块写到 `.lingbuilder/module-build/` 之外。
+- AI 生成模块的示例命令、参数与返回值必须与提交到 `bindings.commands` 的签名逐项一致，并至少附带一份真实存在、非空、UTF-8 的中文文档；不得编造模块内不存在的命令、受管类型或平台 target。当前实测闭环只覆盖 `windows-msvc-win32`，AI 不得承诺未验证的 x64/macOS 或第三方 `.lbmod` 兼容性。
 
 ## 6. C++ 生成边界
 
@@ -823,3 +827,19 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - 开发者消息标签和正文必须使用足够的颜色对比度，不能用低透明度文字造成肉眼难以阅读。
 - AI 助手和开发者消息都必须支持文本选择与右键复制；复制不得触发编辑提案或改变源码。
 - “清除当前上下文”只清空当前项目会话的消息并保留会话 ID；“新建会话”创建新的项目会话。两者必须可通过命令面板执行，历史会话必须按项目隔离。
+
+## SDK 直链云端配置规则（2026-09 已落地）
+
+- SDK 按需下载清单支持云端远端替换（B 档）：管理后台「SDK 下载源」页可整条发布清单（Ed25519 整条签名 + sequence 防回滚），IDE 无需发版即可跟随换直链。设计文档 `docs/SDK按需下载直链云端配置设计.md`，发布流程 `docs/SDK下载清单发布流程.md`。
+- 字段分两类：**锚定字段**（`id`/`moduleId`/`name`/`platform`/`requiredModuleIds`/`criticalFiles`）远端必须与 IDE 内置清单逐字一致，IDE 深度比对失败会整条拒绝并回退内置清单（保护 `requireForModules` 门禁与解压校验强度）；**可更新字段**（`version`/`sdkVersion`/`archiveName`/`downloadUrl`/`archiveBytes`/`sha256`/`fileCount`/`expandedBytes`）才允许远端修改。任何 AI 生成或修改清单时不得触碰锚定字段。
+- IDE 侧信任锚硬编码在 `electron/src/services/sdkDependencies/catalogTrustAnchors.ts`（当前为空 = 远端禁用，IDE 用内置清单）；禁止用环境变量、配置文件或云端下发覆盖公钥。清单 URL 允许 `LINGBUILDER_SDK_CATALOG_URL` 覆盖（仅测试/开发）。
+- Ed25519 验签用 Node `crypto.sign/verify(null, data, key, sig)`——第一参数必须是 `null`，传 `'ed25519'` 会抛 `ERR_CRYPTO_INVALID_DIGEST`。清单 `sha256` 只接受 64 位小写十六进制。sequence 单调递增并持久化于用户目录，低于已接受值整条拒绝。
+- 云端签名密钥为配对环境变量 `SDK_CATALOG_PRIVATE_KEY_PEM` + `SDK_CATALOG_PUBLIC_KEY_PEM`（缺一或公钥不匹配即抛错；生产缺钥发布接口 503，绝不下发未签名清单）。
+- 发布门禁：`cd electron && npm run sdk-catalog:check` 拉线上清单与内置清单逐字比对锚定字段，漂移/不可用输出中文诊断退出 1；CI 或换直链后必跑。
+- 修改 SDK 清单校验、admin「SDK 下载源」页、`sdkCatalogRemote.ts` 或门禁脚本时，必须同步 `docs/SDK按需下载直链云端配置设计.md`、`docs/SDK下载清单发布流程.md`、`electron/README.md`、AGENTS.md 与当天更新记录；用户向说明在官网文档中心 `cloud/admin/docs/guide/user/advanced/sdk-download.md`。
+
+## 模块 Permit 信任根规则（2026-09 已落地）
+
+- IDE 对模块 Permit 的验签只信任 `electron/src/services/modules/modulePermitTrustAnchors.ts` 内置锚点（keyId = SHA-256(SPKI DER) 前 16 位小写 hex；当前钉生产签发密钥 `0e2853e87a4250d3`）。禁止任何环境变量、配置或云端下发覆盖锚点，换锚必须走 IDE 发版；服务端 `/v1/modules/permit-key` 返回的 PEM 永不进入信任集，`keyId` 仅作轮换元数据。
+- keyId 不在锚内时同步端点返回 `MODULE_PERMIT_ANCHOR_UNKNOWN` 中文诊断（云端已轮换时提示升级 IDE）；伪造/未锚定 Permit 一律拒绝。
+- 云端 `MODULE_PERMIT_ACCEPTED_KEY_IDS` 维护轮换列表并经 `/v1/modules/permit-key` 的 `acceptedKeyIds` 下发，必须包含当前签发密钥；轮换顺序：云端加新 keyId → 发带新锚的 IDE → 再切签发密钥。

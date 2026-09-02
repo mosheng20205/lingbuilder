@@ -1,5 +1,9 @@
 # LingBuilder 后期优化事项
 
+- 已修复（2026-09-02）：SDK 按需安装在归档已完成并通过 SHA-256 后不再等待 aria2c 进程退出，UI 会立即离开“正在下载”，分别显示下载进度/速度，并进入“正在解压”；同时兼容历史生成的平铺 SDK ZIP（根目录为 `sdk/`、模块清单和 README），解压前安全归一化到受控模块目录，避免误报“ZIP 顶层目录必须是模块 ID”。
+
+- 已修复（2026-09-01）：Windows SDK 依赖安装在解压后将 staging 目录原子重命名到共享缓存时，Defender/索引器等进程可能短暂持有目录句柄，导致 `EPERM: operation not permitted, rename`。SDK 服务现在对下载归档、备份目录、staging 到目标目录及回滚目录使用有界退避重试（仅针对 `EPERM`/`EACCES`/`EBUSY`），并保留最终失败诊断；新增回归测试覆盖瞬时 `EPERM` 后成功。后续 SDK 安装仍必须保持原子替换、校验和路径安全门禁，不得用无限重试或静默覆盖失败。
+
 - 已修复（2026-08-22）：窗口设计器在大项目（如 `datagrid-api-demo`，109 控件 + 702 行 `.lcpp`）中选中/拖动/缩放控件时主线程卡顿数秒。根因不在拖拽预览本身（预览已是绕过 React 的 DOM 直写），而是拖拽提交后设计器项目状态发布触发 `buildLingCppLanguageContext` → `getLingCppSemanticDiagnostics` → `getLingCppControlReferences`，其中 `resolveControlReference` 对每个 `controlRef` 参数都重新全文 `parseLingCpp`（经 `getRuntimeControlVariablesAtLine` 与两套 `getLingCppControlSymbols`→`selectDesignerWindows`，共 3 次/参数），形成 O(引用数 × 全文解析)；同时 App 的 `refreshModuleContext` 在每次设计器提交后都换新引用，令语言上下文 useMemo 与问题面板 effect 重复重算。控件引用解析现在一次解析共享：`controlReferenceService` 预构建方法列表、类名集合与两套作用域符号表，`runtimeControlTypeService` 新增 `collectRuntimeControlMethodCandidates`/`getRuntimeControlVariablesFromMethods` 复用入口，`getLingCppControlSymbols`/`selectDesignerWindows`（两个服务各一份）接受预解析类名集合；`refreshModuleContext` 在模块列表内容未变时保持引用稳定。实测（CDP CPU 采样）：单次拖拽提交主线程阻塞由 ~4.7s 降至 ~0.2-0.9s（dev 模式，含 jsxDEV 开销），`getLingCppSemanticDiagnostics` 包含时间 9260ms→0ms、`parseLingCpp` 8624ms→20ms；拖拽帧率中位 17ms。后续语言服务新增“每参数/每行”逻辑时必须复用同一次解析产物，禁止在循环中重复全文 `parseLingCpp`；若大项目仍有可感卡顿，下一步应评估 DiffViewer 语言上下文 useMemo 与 App 问题 effect 的合并或防抖，而非恢复逐参数解析。
 
 - 阶段 3 实施中（2026-08-22）：CDP 客户端模块暂升 `lingbuilder.cdp.client@3.0.0`，现有 144 条 `CDP_` 命令和 14 个受管类型。已落地并通过生成测试与 MSVC Win32/x64 编译的地基包括：Target/Session/Frame/ExecutionContext 注册与 OOPIF/Worker 自动附加、Runtime binding、Overlay、严格多点触摸、Debugger 断点/暂停/单步/调用帧/作用域、Performance 指标、Storage usage/显式确认清理、exact-origin + 有限期限 + 逐次裁决的证书错误门禁，以及版本化录制原子落盘。阶段 1/2 smoke 继续通过；阶段 3 尚未完成，剩余 screencast、Tracing/CPU/Coverage/Heap 完整任务输出、录制自动采集与确定性回放、分类有界事件队列、AttachWorker 生命周期和分场景真实 smoke。不得在这些门禁通过前宣称阶段 3 完成。
@@ -980,3 +984,18 @@
 - AI 对话消息的开发者标签与正文必须保持可读对比度，暗色主题使用浅蓝色文字，禁止使用低透明度导致难以阅读的标签。
 - AI 消息正文必须允许文本选择，并提供右键“复制消息”；复制操作不得修改会话内容。
 - AI 会话面板提供“清除当前上下文”和“新建 AI 会话”，两者同时注册为 CommandService 命令；历史会话按项目持久化并可切换查看。
+
+## SDK 下载清单云端配置（2026-09-01 已实施 P0–P4）
+
+- [x] 整条清单远端替换（Ed25519 签名 + sequence 防回滚 + 锚定字段逐字回显）：云端 3 端点、admin「SDK 下载源」页、IDE `sdkCatalogRemote.ts` 拉取验签合并、门禁脚本 `npm run sdk-catalog:check`、SDK 面板显示清单来源与 sequence。设计文档 `docs/SDK按需下载直链云端配置设计.md` 已标注各阶段状态与实施偏差（配对密钥变量、Ed25519 sign/verify 第一参必须为 null、criticalFiles 按 relativePath 列表比对）。
+- [ ] 当前 IDE 信任锚为空（远端禁用，行为与旧版一致）；启用需：云端 Prisma db push 建 `SdkCatalogRelease` 表 → 配置 `SDK_CATALOG_PRIVATE_KEY_PEM`/`SDK_CATALOG_PUBLIC_KEY_PEM` → 公钥+keyId 固化进 `catalogTrustAnchors.ts` 发版 → 发布首个清单并跑门禁。步骤见 `docs/SDK下载清单发布流程.md`。
+- [ ] 门禁脚本接入 CI（依赖上条云端建表后线上清单可用）；`SDK_CATALOG_TRUST_ANCHORS` 未来支持多锚点轮换时必须走 IDE 发版，不得引入运行时换根通道。
+
+## 2026-09-01 追记（P6 模块 Permit 信任根）
+
+- 已完成：模块 Permit 信任根从「服务端下发 PEM 即信任」改为 IDE 内置锚点（`electron/src/services/modules/modulePermitTrustAnchors.ts`，钉生产密钥 `0e2853e87a4250d3`）+ 云端轮换列表 `MODULE_PERMIT_ACCEPTED_KEY_IDS`（`/v1/modules/permit-key` 返回 `acceptedKeyIds`，仅元数据）；云端已部署并容器内验证。详见 AGENTS.md「模块 Permit 信任根规则」。
+- 后续待办：后续如新增第二条收费模块或扩展 Permit 载荷（policyVersion 迁移、离线宽限期），应沿用本锚点模式扩展，不要恢复服务端换根路径。
+
+- 2026-09-02��.lbmod ģ�鰲װ�ѽ��� Electron �ٷ��Ϸ�·�����ļ�ѡ�񡢵�ʵ�������������ܿ�Ԥ���¼��������ɼ����������� UI ״̬����ԭ����װ���ع���֤��
+
+- 2026-09-02 ���䣺ģ�鰲װ��������ʾ��ȡ��У�顢Ԥ������װ���ɹ�/ʧ��״̬���ļ��������ü����Զ��ع���ԡ�

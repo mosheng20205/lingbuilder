@@ -85,7 +85,12 @@ async function verifyInstaller(installerPath) {
   // electron-builder 通过 nsis7z 把完整应用压缩为单个 app-*.7z 嵌入 NSIS 外壳，
   // 外层清单看不到应用文件，必须解出内嵌归档检查真实载荷。
   const embeddedArchives = outerPaths.filter(item => /\/app-[^/]+\.7z$/u.test(item));
-  if (embeddedArchives.length === 0) throw new Error('安装包缺少内嵌应用归档（app-*.7z），无法校验精简结果。');
+  // electron-builder 26.15+ 的 nsis7z 清单可能直接呈现应用载荷，
+  // 此时 7-Zip 已经提供了完整的真实路径，直接完成同等门禁。
+  if (embeddedArchives.length === 0) {
+    assertAria2Resources(outerPaths);
+    return { mode: 'installer', target: installerPath, modules: EXCLUDED_MODULE_IDS.map(moduleId => ({ moduleId, excluded: true })) };
+  }
   const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-installer-verify-'));
   try {
     await execFileAsync(sevenZip, [

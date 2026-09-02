@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { LingBuilderModuleManifest, ModuleCommandContribution, ModuleCommandBinding, ModuleBindingValueType, ModuleControlReferenceKind, ModuleControlReferenceScope, ModuleControlRuntimeRepresentation } from './types';
-import { validateModuleManifest, validateModuleManifestContents } from './manifest';
+import { validateModuleManifest, validateModuleManifestContents, type ModuleValidationOptions } from './manifest';
 import { createModuleBindingSnippetArgument, normalizeControlReferenceCallSnippet } from './bindingValueType';
 
 const MODULE_MANIFEST_FILE = 'lingbuilder.module.json';
@@ -117,7 +117,7 @@ export async function importAiModuleFiles(files: AiModuleImportFileInput[], outD
   } catch {
     throw new Error(`${MODULE_MANIFEST_FILE} 不是合法 JSON，请让 AI 重新输出。`);
   }
-  const manifestValidation = validateModuleManifest(rawManifest);
+  const manifestValidation = validateModuleManifest(rawManifest, { requireCommandBindings: true });
   if (!manifestValidation.manifest) {
     throw new Error(`模块清单校验未通过：\n${manifestValidation.diagnostics.join('\n')}`);
   }
@@ -135,11 +135,8 @@ export async function importAiModuleFiles(files: AiModuleImportFileInput[], outD
     writtenFiles.push(file.path);
   }
 
-  const directoryValidation = await validateModuleDirectory(outDir);
-  const diagnostics = [...directoryValidation.diagnostics];
-  if (overwrittenExisting) diagnostics.push('目标目录已存在，本次导入覆盖了同名文件；旧目录中的多余文件不会被删除。');
-
-  return { manifest, outDir, writtenFiles, diagnostics, overwrittenExisting };
+  const directoryValidation = await validateModuleDirectory(outDir, { requireCommandBindings: true });
+  return { manifest, outDir, writtenFiles, diagnostics: [...directoryValidation.diagnostics], overwrittenExisting };
 }
 
 export async function createModuleTemplate(options: ModuleInitOptions): Promise<LingBuilderModuleManifest> {
@@ -160,12 +157,12 @@ export async function createModuleTemplate(options: ModuleInitOptions): Promise<
   return manifest;
 }
 
-export async function validateModuleDirectory(modulePath: string): Promise<ModuleValidationResult> {
+export async function validateModuleDirectory(modulePath: string, options: ModuleValidationOptions = {}): Promise<ModuleValidationResult> {
   const stat = await fs.stat(modulePath);
   const manifestPath = stat.isDirectory() ? path.join(modulePath, MODULE_MANIFEST_FILE) : modulePath;
   const moduleRoot = path.dirname(manifestPath);
   const raw = await fs.readFile(manifestPath, 'utf8');
-  const validation = validateModuleManifest(JSON.parse(raw));
+  const validation = validateModuleManifest(JSON.parse(raw), options);
   const contentDiagnostics = validation.manifest
     ? await validateModuleManifestContents(moduleRoot, validation.manifest)
     : [];

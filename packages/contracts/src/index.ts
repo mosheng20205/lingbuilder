@@ -174,6 +174,41 @@ export interface WebsiteCommandReference { id: string; stableKey: string; name: 
 export interface WebsiteGuideArticle { id: string; slug: string; title: string; summary: string; kind: 'CONTROL' | 'MODULE' | 'AI' | string; category: string; bodyMarkdown: string; tags: string[]; minimumVersion: string; publicationStatus: WebsitePublicationStatus; sortOrder: number }
 export interface WebsiteDemoProject { id: string; slug: string; title: string; summary: string; category: string; difficulty: string; lingBuilderVersion: string; modules: string[]; prerequisites: string; sourceLinks: Array<{ label: string; url: string }>; screenshotUrl: string; videoUrl: string; license: string; publicationStatus: WebsitePublicationStatus; sortOrder: number }
 export interface WebsiteCommunityGroup { id: string; name: string; qqNumber: string; groupType: string; joinUrl: string; qrCodeUrl: string; description: string; statusText: string; enabled: boolean; sortOrder: number }
+/** GET /v1/site/latest-version 响应：缺数据的字段显式为 null（null 表示不支持应用内下载，客户端回退官网）。 */
+export interface SiteLatestVersionResponse {
+  ok: boolean;
+  available: boolean;
+  version?: string;
+  title?: string;
+  summary?: string;
+  publishedAt?: string | null;
+  channel?: string | null;
+  fileSize?: string | null;
+  sha256?: string | null;
+  releaseNotes?: string | null;
+  downloadUrl?: string | null;
+  message?: string;
+}
+
+export interface SdkCatalogResource {
+  id: string;
+  moduleId: string;
+  name: string;
+  platform: string;
+  requiredModuleIds: string[];
+  criticalFiles: string[];
+  version: string;
+  sdkVersion: string;
+  archiveName: string;
+  downloadUrl: string;
+  archiveBytes: number;
+  sha256: string;
+  fileCount: number;
+  expandedBytes: number;
+}
+export interface SdkCatalogPayload { schemaVersion: 1; sequence: number; resources: SdkCatalogResource[] }
+export interface SdkCatalogManifestEnvelope { payload: string; keyId: string; signature: string; publishedAt: string }
+export interface SdkCatalogHistoryEntry { id: string; sequence: number; keyId: string; note?: string | null; createdBy: string; createdAt: string; payloadBytes: number }
 
 export type CloudErrorCode =
   | 'VALIDATION_FAILED' | 'NOT_FOUND' | 'AUTH_REQUIRED' | 'AUTH_INVALID' | 'EMAIL_NOT_VERIFIED'

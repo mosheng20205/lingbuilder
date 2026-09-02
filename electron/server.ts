@@ -124,6 +124,8 @@ import {
   resolveSdkCacheRoot,
   type SdkDependencyId
 } from "./src/services/sdkDependencies/sdkDependencyCatalog";
+import { resolveSdkCatalogEndpoint } from "./src/services/sdkDependencies/sdkCatalogRemote";
+import { SDK_CATALOG_TRUST_ANCHORS } from "./src/services/sdkDependencies/catalogTrustAnchors";
 import { mapCompilerDiagnostics, parseCompilerDiagnostics } from "./src/services/tasks/compilerDiagnosticService";
 import { decodeCompilerOutput } from "./src/services/tasks/compilerOutputEncoding";
 import { dependencyBuildBatches, IncrementalBuildService } from "./src/services/tasks/incrementalBuildService";
@@ -223,11 +225,19 @@ async function cleanupEdgeControlPreviewBuild(processKey: string): Promise<void>
 }
 const taskService = new TaskService();
 const environmentRepairService = new EnvironmentRepairService();
+const sdkCatalogEndpoint = resolveSdkCatalogEndpoint(process.env);
 const sdkDependencyService = new SdkDependencyService({
   cacheRoot: resolveSdkCacheRoot(process.env),
   workspaceRoot: () => getRepoWorkspaceRoot(),
   environment: process.env,
-  resourcesPath: process.env.LINGBUILDER_RESOURCE_ROOT
+  resourcesPath: process.env.LINGBUILDER_RESOURCE_ROOT,
+  ...(sdkCatalogEndpoint ? {
+    remoteCatalog: {
+      url: sdkCatalogEndpoint.url,
+      anchors: SDK_CATALOG_TRUST_ANCHORS,
+      statePath: path.join(path.dirname(serverRuntimeConfig.userSettingsPath), "sdk-catalog-state.json")
+    }
+  } : {})
 });
 let buildConfigurationService = new BuildConfigurationService(serverRuntimeConfig.workspaceRoot);
 let incrementalBuildService = new IncrementalBuildService(serverRuntimeConfig.workspaceRoot);
@@ -1705,6 +1715,7 @@ app.post("/api/modules/developer/import-ai-files", async (req, res) => {
         moduleName: result.manifest.name,
         outDir: targetRelativeDir.replace(/\\/gu, '/'),
         fileCount: result.writtenFiles.length,
+        overwrittenExisting: result.overwrittenExisting === true,
         diagnostics: result.diagnostics
       }
     });
@@ -1721,7 +1732,7 @@ app.post("/api/modules/developer/validate", async (req, res) => {
     if (path.basename(resolvedModulePath).toLowerCase() === "lingbuilder.module.json") {
       resolvedModulePath = path.dirname(resolvedModulePath);
     }
-    const result = await validateModuleDirectory(resolvedModulePath);
+    const result = await validateModuleDirectory(resolvedModulePath, { requireCommandBindings: true });
     res.json({ ok: true, result });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块校验失败" });

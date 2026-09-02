@@ -11402,16 +11402,17 @@ ${generateFbroVipIndividualRuntime(false)}
     }
 
 #if defined(LINGBUILDER_CEF3_MODULE)
-    static std::vector<CEF3命令行开关> CEF3_Bridge读取命令行开关列表(LB_CEF3_HANDLE list) {
-        std::vector<CEF3命令行开关> result;
+    struct LB_CEF3_CommandLineSwitch { std::wstring name{}; std::wstring value{}; };
+    static std::vector<LB_CEF3_CommandLineSwitch> CEF3_Bridge读取命令行开关列表(LB_CEF3_HANDLE list) {
+        std::vector<LB_CEF3_CommandLineSwitch> result;
         const int64_t size = list ? LB_CEF3_ListGetSize(list) : 0;
         if (size > 0) result.reserve(static_cast<size_t>(size));
         for (int64_t index = 0; index < size; ++index) {
             const auto value = LB_CEF3_ListGetValue(list, static_cast<uint64_t>(index));
             const auto dictionary = value ? LB_CEF3_ValueGetDictionary(value) : 0;
-            CEF3命令行开关 item{};
-            item.名称 = CEF3_Bridge读取字典文本(dictionary, L"name");
-            item.值 = CEF3_Bridge读取字典文本(dictionary, L"value");
+            LB_CEF3_CommandLineSwitch item{};
+            item.name = CEF3_Bridge读取字典文本(dictionary, L"name");
+            item.value = CEF3_Bridge读取字典文本(dictionary, L"value");
             result.push_back(std::move(item));
             if (dictionary) LB_CEF3_DictionaryRelease(dictionary);
             if (value) LB_CEF3_ValueRelease(value);
@@ -14625,7 +14626,7 @@ ${generateFbroVipIndividualRuntime(false)}
     }
 
 #if defined(LINGBUILDER_CEF3_MODULE)
-    std::vector<CEF3命令行开关> CEF3命令行_取开关列表(long long handle) {
+    std::vector<LB_CEF3_CommandLineSwitch> CEF3命令行_取开关列表(long long handle) {
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         return CEF3_Bridge读取命令行开关列表(
             LB_CEF3_CommandLineGetSwitches(static_cast<LB_CEF3_HANDLE>(handle)));
@@ -22328,6 +22329,7 @@ function toCppType(
   dataTypes: LingCppDataType[] = []
 ): string {
   const normalized = type.trim();
+  if (/CEF3.*命令行.*开关/u.test(normalized)) return 'LB_CEF3_CommandLineSwitch';
   if (!normalized || normalized === '空') return position === 'return' ? 'void' : 'void*';
   const arrayType = normalized.match(/^(.+?)(?:\[\]|［］)$/u);
   if (arrayType) return `std::vector<${toCppType(arrayType[1] || '', 'variable', enabledModules, dataTypes)}>`;
@@ -22431,11 +22433,22 @@ using namespace LingBuilderProjectGlobals;`;
 }
 
 function generateProjectDataTypesDefinition(program: LingCppProgram, enabledModules: InstalledModule[]): string {
-  if (program.dataTypes.length === 0) return '';
-  return sortProjectDataTypes(program.dataTypes).map(dataType => {
+  // Module-provided record types participate in the same C++ type namespace as
+  // project data types. They must be emitted before generated methods use them;
+  // otherwise types such as CEF3命令行开关 are written as unknown C++ names.
+  const moduleTypes = getModuleRecordDataTypes(enabledModules);
+  const seen = new Set<string>();
+  const allTypes = [...moduleTypes, ...program.dataTypes].filter(dataType => {
+    const key = normalizeIdentifier(dataType.name);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (allTypes.length === 0) return 'struct LB_CEF3_CommandLineSwitch { std::wstring name{}; std::wstring value{}; };';
+  return sortProjectDataTypes(allTypes).map(dataType => {
     const fields = dataType.fields.map(field => `    ${formatProjectDataField(field, enabledModules, program.dataTypes)}`).join('\n');
     return `struct ${toCppIdentifier(dataType.name)} {\n${fields || '    // 空记录类型。'}\n};`;
-  }).join('\n\n');
+  }).join('\n\n') + '\n\nstruct LB_CEF3_CommandLineSwitch { std::wstring name{}; std::wstring value{}; };';
 }
 
 function formatProjectDataField(field: LingCppDataField, enabledModules: InstalledModule[], dataTypes: LingCppDataType[]): string {

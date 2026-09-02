@@ -30,7 +30,7 @@ export class CloudAccountService {
       this.request('/v1/modules/permit-key'),
       this.request('/v1/modules/catalog')
     ]);
-    return { permit: permit.permit, key: { keyId: key.keyId, algorithm: key.algorithm, publicKeyPem: key.publicKeyPem }, paidModuleIds: (catalog.products || []).map((product: any) => product.moduleId) };
+    return { permit: permit.permit, key: { keyId: key.keyId, algorithm: key.algorithm }, paidModuleIds: (catalog.products || []).map((product: any) => product.moduleId) };
   }
   async createModuleOrder(offerId: string, provider: 'wechat'|'alipay', idempotencyKey: string) { return await this.request('/v1/module-orders', { method: 'POST', headers: { 'idempotency-key': idempotencyKey }, body: JSON.stringify({ offerId, provider }) }); }
   async rechargePackages() { return await this.request('/v1/credits/packages'); }

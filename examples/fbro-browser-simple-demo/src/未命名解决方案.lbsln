@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "fbro-browser-simple-demo",
+  "name": "FBro 浏览器简单示例",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "fbro-browser-simple-demo",
+  "startupProjectIds": [
+    "fbro-browser-simple-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "fbro-browser-simple-demo",
+      "name": "FBro 浏览器简单示例",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

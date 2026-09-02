@@ -5,7 +5,7 @@ import './website-admin.css';
 
 type Request = (path: string, init?: RequestInit) => Promise<any>;
 type Section = 'downloads' | 'commands' | 'guides' | 'demos' | 'groups';
-type DirectNotice = { text: string; error?: boolean } | null;
+export type DirectNotice = { text: string; error?: boolean } | null;
 
 const SECTIONS: Array<{id: Section; label: string; icon: typeof Globe2}> = [
   { id: 'downloads', label: '版本与下载', icon: Download },
@@ -103,7 +103,7 @@ function DownloadsAdmin({ data, request, reload }: AdminProps) {
   </div>;
 }
 
-function DirectUploadPanel({ request, notice, onNotice, onUploaded }: { request: Request; notice: DirectNotice; onNotice: (value: DirectNotice) => void; onUploaded: (result: { url: string; size: number; sha256: string; version: string }) => void | Promise<void> }) {
+export function DirectUploadPanel({ request, notice, onNotice, onUploaded, description }: { request: Request; notice: DirectNotice; onNotice: (value: DirectNotice) => void; onUploaded: (result: { url: string; size: number; sha256: string; version: string }) => void | Promise<void>; description?: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [sha256, setSha256] = useState('');
   const [hashing, setHashing] = useState(false);
@@ -204,7 +204,7 @@ function DirectUploadPanel({ request, notice, onNotice, onUploaded }: { request:
   return <section className="direct-upload" aria-labelledby="direct-upload-heading">
     <div className="direct-upload-head">
       <h3 id="direct-upload-heading"><CloudUpload size={15}/>直链上传</h3>
-      <p>浏览器分片直传 Cloudflare R2，不占用官网服务器带宽；完成后自动填写文件大小、SHA-256 和版本号，并写入“直链”镜像。</p>
+      <p>{description ?? '浏览器分片直传 Cloudflare R2，不占用官网服务器带宽；完成后自动填写文件大小、SHA-256 和版本号，并写入“直链”镜像。'}</p>
     </div>
     {notice && <p className={`direct-upload-notice${notice.error ? ' error' : ''}`} role="status">{notice.text}</p>}
     {!file && <label className={`direct-upload-drop${dragging ? ' dragging' : ''}`}

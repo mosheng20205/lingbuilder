@@ -3,7 +3,7 @@ ID: lingbuilder.win32.basic
 版本: 1.0.0
 内置: 是
 目标: windows-msvc-win32 (windows/msvc/win32)
-命令数: 38
+命令数: 206
 控件数: 12
 头文件: 无
 源码: 无
@@ -15,7 +15,7 @@ ID: lingbuilder.win32.common-controls
 版本: 1.0.0
 内置: 是
 目标: windows-msvc-win32 (windows/msvc/win32)
-命令数: 220
+命令数: 546
 控件数: 26
 头文件: 无
 源码: 无

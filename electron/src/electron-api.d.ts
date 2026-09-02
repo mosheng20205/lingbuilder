@@ -5,6 +5,18 @@ type LingBuilderAiBridgeLifecycle = 'workspace' | 'ide';
 type LingBuilderAiBridgeState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
 type LingBuilderExternalAiClientId = 'codex' | 'claude' | 'gemini' | 'generic';
 
+interface AppUpdateProgressSnapshot {
+  state: 'idle' | 'downloading' | 'verifying' | 'ready' | 'launching' | 'error';
+  version?: string;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  bytesPerSecond: number | null;
+  engine: 'aria2c' | 'fetch' | null;
+  message?: string;
+  error?: string;
+  installerPath?: string;
+}
+
 interface LingBuilderCodexDesktopStatus {
   state: 'not-installed' | 'not-configured' | 'configured' | 'restart-required' | 'repair-required' | 'conflict' | 'error';
   installed: boolean;
@@ -139,6 +151,9 @@ declare global {
       };
       modules?: {
         importPackage: (sourcePath: string) => Promise<{ ok: boolean; relativePath?: string; error?: string }>;
+        selectPackage: () => Promise<{ ok: boolean; canceled: boolean; relativePath?: string; error?: string }>;
+        getDroppedFilePath: (file: File) => string;
+        onInstallRequest: (listener: (request: { packagePath: string; error?: string }) => void) => () => void;
         openInfo: (module: unknown) => Promise<void>;
         onInfo: (listener: (module: unknown) => void) => () => void;
       };
@@ -193,7 +208,12 @@ declare global {
         onEvent: (listener: (requestKey: string, event: any) => void) => () => void;
       };
       updates?: {
-        check: () => Promise<{ ok: boolean; currentVersion: string; latestVersion?: string; releaseTitle?: string; hasUpdate: boolean; downloadUrl: string; error?: string }>;
+        check: () => Promise<{ ok: boolean; currentVersion: string; latestVersion?: string; releaseTitle?: string; hasUpdate: boolean; websiteUrl: string; downloadUrl?: string | null; sha256?: string | null; fileSize?: string | null; releaseNotes?: string | null; channel?: string | null; error?: string }>;
+        download: () => Promise<{ ok: boolean; alreadyRunning?: boolean; alreadyDownloaded?: boolean; error?: string }>;
+        cancel: () => Promise<{ ok: boolean }>;
+        status: () => Promise<AppUpdateProgressSnapshot | null>;
+        install: () => Promise<{ ok: boolean; error?: string }>;
+        onProgress: (listener: (progress: AppUpdateProgressSnapshot) => void) => () => void;
       };
       payments?: {
         openPage: (url: string) => Promise<string>;

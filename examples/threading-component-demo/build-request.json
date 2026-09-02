@@ -12,7 +12,7 @@
         "width": 780,
         "height": 560,
         "background": "#1E1E24",
-        "description": "演示多线程模块与 UI 组件协同操作：可配置任务数和线程数，日志实时显示在界面上。",
+        "description": "演示多线程模块 2.0：后台提交不卡界面、完成处理器回界面线程更新控件、批量任务进度与协作取消。",
         "events": {
           "Loaded": "_多线程演示窗口_创建完毕"
         },
@@ -24,8 +24,8 @@
             "content": "就绪",
             "x": 16,
             "y": 12,
-            "width": 740,
-            "height": 24,
+            "width": 748,
+            "height": 26,
             "fontSize": 13,
             "background": "transparent",
             "foreground": "#4FC3F7",
@@ -33,62 +33,17 @@
             "visibility": "Visible"
           },
           {
-            "id": "task-count-label",
+            "id": "progress-label",
             "type": "Label",
-            "name": "任务数标签",
-            "content": "任务数：",
+            "name": "进度标签",
+            "content": "进度：等待启动",
             "x": 16,
             "y": 44,
-            "width": 60,
-            "height": 26,
+            "width": 748,
+            "height": 24,
             "fontSize": 12,
             "background": "transparent",
-            "foreground": "#CBD5E1",
-            "isEnabled": true,
-            "visibility": "Visible"
-          },
-          {
-            "id": "task-count-input",
-            "type": "TextBox",
-            "name": "任务数输入",
-            "content": "20",
-            "x": 76,
-            "y": 42,
-            "width": 60,
-            "height": 28,
-            "fontSize": 12,
-            "background": "#2D2D30",
-            "foreground": "#E2E8F0",
-            "isEnabled": true,
-            "visibility": "Visible"
-          },
-          {
-            "id": "thread-count-label",
-            "type": "Label",
-            "name": "线程数标签",
-            "content": "线程数：",
-            "x": 156,
-            "y": 44,
-            "width": 60,
-            "height": 26,
-            "fontSize": 12,
-            "background": "transparent",
-            "foreground": "#CBD5E1",
-            "isEnabled": true,
-            "visibility": "Visible"
-          },
-          {
-            "id": "thread-count-input",
-            "type": "TextBox",
-            "name": "线程数输入",
-            "content": "4",
-            "x": 216,
-            "y": 42,
-            "width": 60,
-            "height": 28,
-            "fontSize": 12,
-            "background": "#2D2D30",
-            "foreground": "#E2E8F0",
+            "foreground": "#FBBF24",
             "isEnabled": true,
             "visibility": "Visible"
           },
@@ -96,16 +51,45 @@
             "id": "task-list",
             "type": "ListView",
             "name": "任务列表",
-            "content": "任务\t线程\t类型\t状态",
+            "content": "",
             "x": 16,
             "y": 80,
             "width": 440,
-            "height": 340,
+            "height": 320,
             "fontSize": 12,
             "background": "#0F172A",
             "foreground": "#E2E8F0",
             "isEnabled": true,
-            "visibility": "Visible"
+            "visibility": "Visible",
+            "properties": {
+              "columns": [
+                {
+                  "title": "任务",
+                  "width": 170,
+                  "image": -1,
+                  "alignment": "left"
+                },
+                {
+                  "title": "线程",
+                  "width": 88,
+                  "image": -1,
+                  "alignment": "left"
+                },
+                {
+                  "title": "结果",
+                  "width": 92,
+                  "image": -1,
+                  "alignment": "right"
+                },
+                {
+                  "title": "状态",
+                  "width": 80,
+                  "image": -1,
+                  "alignment": "center"
+                }
+              ],
+              "items": []
+            }
           },
           {
             "id": "log-list",
@@ -115,7 +99,7 @@
             "x": 466,
             "y": 80,
             "width": 296,
-            "height": 340,
+            "height": 320,
             "fontSize": 11,
             "background": "#0F172A",
             "foreground": "#A5D6A7",
@@ -123,39 +107,93 @@
             "visibility": "Visible"
           },
           {
-            "id": "start-button",
+            "id": "submit-button",
             "type": "Button",
-            "name": "启动任务按钮",
-            "content": "启动多线程任务",
+            "name": "提交后台按钮",
+            "content": "提交后台任务",
             "x": 16,
-            "y": 436,
-            "width": 160,
-            "height": 38,
+            "y": 412,
+            "width": 170,
+            "height": 36,
             "fontSize": 12,
             "background": "#2D2D30",
             "foreground": "#CBD5E1",
             "isEnabled": true,
             "visibility": "Visible",
             "events": {
-              "Click": "_启动任务按钮_被单击"
+              "Click": "_提交后台按钮_被单击"
+            }
+          },
+          {
+            "id": "complete-button",
+            "type": "Button",
+            "name": "提交完成按钮",
+            "content": "提交并回界面",
+            "x": 194,
+            "y": 412,
+            "width": 170,
+            "height": 36,
+            "fontSize": 12,
+            "background": "#2D2D30",
+            "foreground": "#CBD5E1",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_提交完成按钮_被单击"
+            }
+          },
+          {
+            "id": "batch-button",
+            "type": "Button",
+            "name": "批量任务按钮",
+            "content": "启动批量任务",
+            "x": 372,
+            "y": 412,
+            "width": 170,
+            "height": 36,
+            "fontSize": 12,
+            "background": "#2563EB",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_批量任务按钮_被单击"
+            }
+          },
+          {
+            "id": "cancel-button",
+            "type": "Button",
+            "name": "请求取消按钮",
+            "content": "请求取消任务",
+            "x": 550,
+            "y": 412,
+            "width": 170,
+            "height": 36,
+            "fontSize": 12,
+            "background": "#7F1D1D",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_请求取消按钮_被单击"
             }
           },
           {
             "id": "clear-button",
             "type": "Button",
-            "name": "清空日志按钮",
-            "content": "清空并重置",
-            "x": 196,
-            "y": 436,
-            "width": 130,
-            "height": 38,
+            "name": "清空列表按钮",
+            "content": "清空列表",
+            "x": 16,
+            "y": 456,
+            "width": 120,
+            "height": 32,
             "fontSize": 12,
-            "background": "#2D2D30",
-            "foreground": "#CBD5E1",
+            "background": "#334155",
+            "foreground": "#FFFFFF",
             "isEnabled": true,
             "visibility": "Visible",
             "events": {
-              "Click": "_清空日志按钮_被单击"
+              "Click": "_清空列表按钮_被单击"
             }
           },
           {
@@ -163,10 +201,10 @@
             "type": "Button",
             "name": "退出按钮",
             "content": "退出程序",
-            "x": 346,
-            "y": 436,
-            "width": 110,
-            "height": 38,
+            "x": 144,
+            "y": 456,
+            "width": 120,
+            "height": 32,
             "fontSize": 12,
             "background": "#2D2D30",
             "foreground": "#CBD5E1",
@@ -181,7 +219,7 @@
     ]
   },
   "activeWindowId": "main-window",
-  "lingCppSourceCode": "包 多线程操作组件示例\n使用 Win32窗口基础模块\n使用 多线程模块\n使用 通用控件模块\n\n类 多线程演示窗口 : 窗口\n公开\n  事件 _多线程演示窗口_创建完毕()\n    控件_设置文本(状态标签, \"就绪 - 设置任务数和线程数后点击启动\")\n    控件_设置文本(任务数输入, \"20000\")\n    控件_设置文本(线程数输入, \"40\")\n  结束\n\n  事件 _启动任务按钮_被单击()\n    控件_设置启用(启动任务按钮, 假)\n    控件_清空项目(任务列表)\n    控件_清空项目(日志列表)\n    控件_设置文本(状态标签, \"多线程任务执行中...\")\n    线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)\n  结束\n\n  事件 _清空日志按钮_被单击()\n    控件_清空项目(日志列表)\n    控件_清空项目(任务列表)\n    控件_设置文本(状态标签, \"已清空，可重新启动任务\")\n    控件_设置启用(启动任务按钮, 真)\n  结束\n\n  事件 _退出按钮_被单击()\n    线程_等待全部()\n    结束()\n  结束\n结束类\n",
+  "lingCppSourceCode": "包 多线程操作组件示例\r\n使用 Win32窗口基础模块\r\n使用 多线程模块\r\n使用 通用控件模块\r\n\r\n类 多线程演示窗口 : 窗口\r\n公开\r\n  线程任务 延时任务\r\n  线程任务 求和任务\r\n  线程任务 批量任务\r\n  逻辑型 批量运行中 = 假\r\n  整数型 批量条数 = 20000\r\n\r\n  事件 _多线程演示窗口_创建完毕()\r\n    控件_设置文本(状态标签, \"就绪：依次点四个按钮，看后台任务如何不卡界面\")\r\n    控件_设置文本(进度标签, \"进度：等待启动\")\r\n    控件_添加项目(日志列表, \"多线程模块 2.0 演示已就绪。\")\r\n  结束\r\n\r\n  事件 _提交后台按钮_被单击()\r\n    延时任务 = 线程_提交(&延时工作, 4000)\r\n    控件_设置文本(状态标签, \"已提交后台任务：现在拖动窗口、点其它按钮都不卡\")\r\n    控件_添加项目(日志列表, 格式化文本(\"线程_提交 已返回，任务={}\", 延时任务))\r\n  结束\r\n\r\n  事件 _提交完成按钮_被单击()\r\n    求和任务 = 线程_提交完成(&累加工作, &累加完成, 1000)\r\n    控件_设置文本(状态标签, \"后台累加 1000 项中：结果由完成处理器带回界面\")\r\n  结束\r\n\r\n  事件 _批量任务按钮_被单击()\r\n    批量任务 = 线程_提交进度(&批量工作, &批量进度, &批量完成, 批量条数)\r\n    批量运行中 = 真\r\n    控件_设置文本(状态标签, \"批量任务运行中：进度按 80ms 合并刷新界面\")\r\n  结束\r\n\r\n  事件 _请求取消按钮_被单击()\r\n    如果 (批量运行中)\r\n      线程_请求取消(批量任务)\r\n      控件_设置文本(状态标签, \"已发出取消请求，等待工作处理器协作停下\")\r\n    否则\r\n      控件_设置文本(状态标签, \"当前没有运行中的批量任务\")\r\n    如果结束\r\n  结束\r\n\r\n  事件 _清空列表按钮_被单击()\r\n    控件_清空项目(任务列表)\r\n    控件_清空项目(日志列表)\r\n    控件_设置文本(状态标签, \"已清空，可重新启动任务\")\r\n    控件_设置文本(进度标签, \"进度：等待启动\")\r\n    控件_添加项目(日志列表, 格式化文本(\"已清理完成任务记录：{} 条\", 线程_清理已完成()))\r\n  结束\r\n\r\n  事件 _退出按钮_被单击()\r\n    线程_等待全部超时(3000, 延时任务, 求和任务, 批量任务)\r\n    结束()\r\n  结束\r\n\r\n  空 延时工作(整数型 毫秒)\r\n    线程_协作等待(毫秒)\r\n  结束\r\n\r\n  整数型 累加工作(整数型 项数)\r\n    局部 整数型 合计 = 0\r\n    局部 整数型 索引 = 0\r\n    计次循环首 (项数, 索引)\r\n      合计 = 合计 + 索引\r\n    计次循环尾 ()\r\n    线程_协作等待(1200)\r\n    返回 合计\r\n  结束\r\n\r\n  空 批量工作(整数型 总条数)\r\n    局部 整数型 步数 = 100\r\n    局部 整数型 索引 = 0\r\n    判断循环首 (索引 < 步数)\r\n      索引 = 索引 + 1\r\n      如果 (线程_是否请求取消(0))\r\n        跳出循环\r\n      如果结束\r\n      线程_报告进度(索引, 格式化文本(\"已模拟处理 {} / {} 条\", 总条数 * 索引 / 步数, 总条数))\r\n      如果 (线程_协作等待(56) == 假)\r\n        跳出循环\r\n      如果结束\r\n    判断循环尾 ()\r\n  结束\r\n\r\n  空 批量进度(线程任务 任务, 整数型 百分比, 文本型 说明)\r\n    控件_设置文本(进度标签, 格式化文本(\"进度 {}% - {}\", 百分比, 说明))\r\n  结束\r\n\r\n  空 累加完成(线程任务 任务, 整数型 结果)\r\n    列表视图_添加行(任务列表, 列表视图_创建行(\"后台累加 1000 项\", \"默认池\", 结果, 线程_取状态名称(任务)))\r\n    控件_设置文本(状态标签, 格式化文本(\"完成处理器已在界面线程写入：合计={}\", 结果))\r\n    控件_添加项目(日志列表, 格式化文本(\"任务={}，状态={}\", 任务, 线程_取状态名称(任务)))\r\n  结束\r\n\r\n  空 批量完成(线程任务 任务)\r\n    批量运行中 = 假\r\n    列表视图_添加行(任务列表, 列表视图_创建行(\"批量任务 20000 条\", \"默认池\", 线程_取进度(任务), 线程_取状态名称(任务)))\r\n    控件_设置文本(进度标签, 格式化文本(\"进度 {}% - {}\", 线程_取进度(任务), 线程_取状态名称(任务)))\r\n    控件_设置文本(状态标签, 格式化文本(\"批量任务结束：{}\", 线程_取状态名称(任务)))\r\n  结束\r\n结束类\r\n",
   "lingCppSourceFilePath": "src/多线程操作组件.lcpp",
   "run": true,
   "approved": true

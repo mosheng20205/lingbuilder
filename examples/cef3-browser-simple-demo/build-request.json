@@ -1,0 +1,51 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "cef3-browser-simple-demo",
+    "name": "CEF3 浏览器简单示例",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "CEF3浏览器简单窗体.xml",
+        "className": "CEF3浏览器简单窗体",
+        "title": "LingBuilder CEF3 浏览器示例",
+        "width": 960,
+        "height": 680,
+        "background": "#111827",
+        "description": "一个 CEF3 浏览器控件加载示例网页。",
+        "events": { "Loaded": "_CEF3浏览器简单窗体_创建完毕" },
+        "controls": [
+          {
+            "id": "browser-1",
+            "type": "CefBrowser",
+            "name": "浏览器1",
+            "content": "",
+            "x": 10,
+            "y": 10,
+            "width": 920,
+            "height": 620,
+            "background": "#FFFFFF",
+            "foreground": "#000000",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "properties": {
+              "url": "about:blank",
+              "cacheDir": ".cef3/cache",
+              "enableJs": true,
+              "enableDevTools": true,
+              "loadImages": true,
+              "enableWebGL": true,
+              "muteAudio": true,
+              "proxyMode": "system"
+            }
+          }
+        ],
+        "resources": []
+      }
+    ]
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceFilePath": "src/CEF3浏览器简单窗体.lcpp",
+  "run": false,
+  "approved": true
+}

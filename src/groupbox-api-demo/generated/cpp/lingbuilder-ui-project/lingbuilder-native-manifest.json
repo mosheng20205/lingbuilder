@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-30T11:02:57.005Z",
+  "generatedAt": "2026-08-30T08:44:02.872Z",
   "project": {
     "id": "lingbuilder-ui-project",
     "name": "分组框接口完整演示"
@@ -11,7 +11,7 @@
     "className": "MainWindow",
     "title": "分组框 GroupBox 全能力演示"
   },
-  "sourceFilePath": "MainWindow.lcpp",
+  "sourceFilePath": "src/MainWindow.lcpp",
   "modules": [
     {
       "id": "lingbuilder.win32.basic",
@@ -36,8 +36,8 @@
   "sourceMap": [
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9789,
-      "generatedEndLine": 9919,
+      "generatedStartLine": 18761,
+      "generatedEndLine": 18956,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 5,
       "sourceEndLine": 67,
@@ -47,8 +47,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9807,
-      "generatedEndLine": 9807,
+      "generatedStartLine": 18771,
+      "generatedEndLine": 18771,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 10,
       "sourceEndLine": 14,
@@ -58,8 +58,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9874,
-      "generatedEndLine": 9877,
+      "generatedStartLine": 18911,
+      "generatedEndLine": 18914,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 63,
       "sourceEndLine": 66,
@@ -69,8 +69,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9875,
-      "generatedEndLine": 9875,
+      "generatedStartLine": 18912,
+      "generatedEndLine": 18912,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 64,
       "sourceEndLine": 64,
@@ -80,8 +80,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9876,
-      "generatedEndLine": 9876,
+      "generatedStartLine": 18913,
+      "generatedEndLine": 18913,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 65,
       "sourceEndLine": 65,
@@ -91,8 +91,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9879,
-      "generatedEndLine": 9883,
+      "generatedStartLine": 18916,
+      "generatedEndLine": 18920,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 17,
       "sourceEndLine": 21,
@@ -102,8 +102,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9880,
-      "generatedEndLine": 9880,
+      "generatedStartLine": 18917,
+      "generatedEndLine": 18917,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 18,
       "sourceEndLine": 18,
@@ -113,8 +113,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9881,
-      "generatedEndLine": 9881,
+      "generatedStartLine": 18918,
+      "generatedEndLine": 18918,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 19,
       "sourceEndLine": 19,
@@ -124,8 +124,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9882,
-      "generatedEndLine": 9882,
+      "generatedStartLine": 18919,
+      "generatedEndLine": 18919,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 20,
       "sourceEndLine": 20,
@@ -135,8 +135,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9885,
-      "generatedEndLine": 9890,
+      "generatedStartLine": 18922,
+      "generatedEndLine": 18927,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 24,
       "sourceEndLine": 29,
@@ -146,8 +146,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9887,
-      "generatedEndLine": 9887,
+      "generatedStartLine": 18924,
+      "generatedEndLine": 18924,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 26,
       "sourceEndLine": 26,
@@ -157,8 +157,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9888,
-      "generatedEndLine": 9888,
+      "generatedStartLine": 18925,
+      "generatedEndLine": 18925,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 27,
       "sourceEndLine": 27,
@@ -168,8 +168,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9889,
-      "generatedEndLine": 9889,
+      "generatedStartLine": 18926,
+      "generatedEndLine": 18926,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 28,
       "sourceEndLine": 28,
@@ -179,8 +179,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9892,
-      "generatedEndLine": 9895,
+      "generatedStartLine": 18929,
+      "generatedEndLine": 18932,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 32,
       "sourceEndLine": 35,
@@ -190,8 +190,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9893,
-      "generatedEndLine": 9893,
+      "generatedStartLine": 18930,
+      "generatedEndLine": 18930,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 33,
       "sourceEndLine": 33,
@@ -201,8 +201,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9894,
-      "generatedEndLine": 9894,
+      "generatedStartLine": 18931,
+      "generatedEndLine": 18931,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 34,
       "sourceEndLine": 34,
@@ -212,8 +212,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9897,
-      "generatedEndLine": 9900,
+      "generatedStartLine": 18934,
+      "generatedEndLine": 18937,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 38,
       "sourceEndLine": 41,
@@ -223,8 +223,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9898,
-      "generatedEndLine": 9898,
+      "generatedStartLine": 18935,
+      "generatedEndLine": 18935,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 39,
       "sourceEndLine": 39,
@@ -234,8 +234,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9899,
-      "generatedEndLine": 9899,
+      "generatedStartLine": 18936,
+      "generatedEndLine": 18936,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 40,
       "sourceEndLine": 40,
@@ -245,8 +245,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9902,
-      "generatedEndLine": 9905,
+      "generatedStartLine": 18939,
+      "generatedEndLine": 18942,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 44,
       "sourceEndLine": 47,
@@ -256,8 +256,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9903,
-      "generatedEndLine": 9903,
+      "generatedStartLine": 18940,
+      "generatedEndLine": 18940,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 45,
       "sourceEndLine": 45,
@@ -267,8 +267,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9904,
-      "generatedEndLine": 9904,
+      "generatedStartLine": 18941,
+      "generatedEndLine": 18941,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 46,
       "sourceEndLine": 46,
@@ -278,8 +278,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9907,
-      "generatedEndLine": 9913,
+      "generatedStartLine": 18944,
+      "generatedEndLine": 18950,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 50,
       "sourceEndLine": 56,
@@ -289,8 +289,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9908,
-      "generatedEndLine": 9908,
+      "generatedStartLine": 18945,
+      "generatedEndLine": 18945,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 51,
       "sourceEndLine": 51,
@@ -300,8 +300,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9909,
-      "generatedEndLine": 9909,
+      "generatedStartLine": 18946,
+      "generatedEndLine": 18946,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 52,
       "sourceEndLine": 52,
@@ -311,8 +311,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9910,
-      "generatedEndLine": 9910,
+      "generatedStartLine": 18947,
+      "generatedEndLine": 18947,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 53,
       "sourceEndLine": 53,
@@ -322,8 +322,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9911,
-      "generatedEndLine": 9911,
+      "generatedStartLine": 18948,
+      "generatedEndLine": 18948,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 54,
       "sourceEndLine": 54,
@@ -333,8 +333,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9912,
-      "generatedEndLine": 9912,
+      "generatedStartLine": 18949,
+      "generatedEndLine": 18949,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 55,
       "sourceEndLine": 55,
@@ -344,8 +344,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9915,
-      "generatedEndLine": 9918,
+      "generatedStartLine": 18952,
+      "generatedEndLine": 18955,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 58,
       "sourceEndLine": 61,
@@ -355,8 +355,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9916,
-      "generatedEndLine": 9916,
+      "generatedStartLine": 18953,
+      "generatedEndLine": 18953,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 59,
       "sourceEndLine": 59,
@@ -366,8 +366,8 @@
     },
     {
       "generatedFile": "main.cpp",
-      "generatedStartLine": 9917,
-      "generatedEndLine": 9917,
+      "generatedStartLine": 18954,
+      "generatedEndLine": 18954,
       "sourceFile": "src/MainWindow.lcpp",
       "sourceStartLine": 60,
       "sourceEndLine": 60,

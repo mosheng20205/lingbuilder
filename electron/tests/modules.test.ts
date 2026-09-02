@@ -311,6 +311,39 @@ test('模块清单拒绝缺失运行时创建映射和非尾部可选参数', ()
   assert.ok(validateModuleManifest(optionalOrder).diagnostics.some(diagnostic => diagnostic.includes('必填参数不能位于可选参数之后')));
 });
 
+test('AI 导入口径要求中文命令与 bindings 成对，默认清单口径不受影响', () => {
+  const manifest = {
+    schemaVersion: 2,
+    id: 'ai.pairing.probe',
+    name: '成对校验探针',
+    version: '1.0.0',
+    category: '其他',
+    description: '用于校验中文命令与绑定成对的测试模块。',
+    contributes: {
+      commands: [
+        { name: '探针_有绑定', signature: '探针_有绑定()', description: '有 C++ 绑定。', insertText: '探针_有绑定()', returnType: '空' },
+        { name: '探针_缺绑定', signature: '探针_缺绑定()', description: '只有补全没有绑定。', insertText: '探针_缺绑定()', returnType: '空' }
+      ],
+      docs: [{ title: '说明', path: 'README.md' }],
+      examples: [{ title: '示例', path: 'examples/最小示例.lcpp' }]
+    },
+    bindings: {
+      commands: [{ command: '探针_有绑定', runtimeName: '探针_有绑定', returnType: 'void', encoding: 'wide' }]
+    }
+  };
+  const pairingMessage = (items: string[]) => items.some(item => item.includes('缺少 bindings.commands 映射'));
+
+  assert.ok(!pairingMessage(validateModuleManifest(manifest).diagnostics), '默认口径不得新增配对诊断，避免影响已安装模块');
+  const strict = validateModuleManifest(manifest, { requireCommandBindings: true }).diagnostics;
+  assert.ok(strict.some(item => item.includes('探针_缺绑定') && item.includes('缺少 bindings.commands 映射')), JSON.stringify(strict));
+  assert.ok(!strict.some(item => item.includes('探针_有绑定')), '已成对的命令不得报错');
+
+  const withoutBindings = structuredClone(manifest) as any;
+  delete withoutBindings.bindings;
+  assert.ok(pairingMessage(validateModuleManifest(withoutBindings, { requireCommandBindings: true }).diagnostics),
+    '整体缺少 bindings 的 AI 输出必须被拦下');
+});
+
 test('模块源目录中的 controlRef 补全、示例和代码片段全部保持裸引用', async () => {
   const moduleSourceRoot = path.resolve(process.cwd(), 'src', 'services', 'modules');
   const sourceFiles = await collectModuleSourceFilesForControlRefAudit(moduleSourceRoot);

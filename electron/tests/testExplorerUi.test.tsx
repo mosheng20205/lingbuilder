@@ -17,5 +17,5 @@ test('bottom panel keeps only operational workbench tabs and hides code mapping 
   assert.match(bottomPanel, /showCodeMapping && activeTab === 'extracted'/u);
   assert.match(app, /showCodeMapping=\{activeFile\.language !== 'lingcpp'\}/u);
   assert.match(diffViewer, /designerTabLabel/u);
-  assert.match(diffViewer, /打开窗口设计器：\$\{designerTabLabel\}/u);
+  assert.match(diffViewer, /打开窗口设计器：界面设计/u);
 });

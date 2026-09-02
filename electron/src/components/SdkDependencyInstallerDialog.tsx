@@ -11,7 +11,9 @@ const CLOSED: SdkDependencyPromptSnapshot = {
   dependencies: [],
   job: null,
   installing: false,
-  error: ''
+  error: '',
+  catalogSource: 'builtin',
+  catalogSequence: null
 };
 
 export default function SdkDependencyInstallerDialog({ isDarkMode }: { isDarkMode: boolean }) {
@@ -61,6 +63,10 @@ export default function SdkDependencyInstallerDialog({ isDarkMode }: { isDarkMod
         </header>
 
         <div className="space-y-3 p-4">
+          <div className={`flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-[11px] ${card}`}>
+            <span className={muted}>清单来源：{snapshot.catalogSource === 'remote' ? '云端清单（已验签）' : 'IDE 内置清单'}</span>
+            <span className={`tabular-nums ${muted}`}>sequence：{snapshot.catalogSequence ?? '—'}</span>
+          </div>
           <div className="space-y-2">
             {snapshot.dependencies.map(dependency => {
               const active = dependency.id === snapshot.job?.dependencyId;
@@ -88,14 +94,14 @@ export default function SdkDependencyInstallerDialog({ isDarkMode }: { isDarkMod
             <div className="rounded border border-blue-500/35 bg-blue-500/10 p-3" aria-live="polite">
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="min-w-0 truncate">{snapshot.job.message}</span>
-                <span className="shrink-0 tabular-nums">{snapshot.job.progress ?? 0}%</span>
+                <span className="shrink-0 tabular-nums">进度 {snapshot.job.progress ?? 0}%</span>
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded bg-black/15" role="progressbar" aria-label={`${current?.name || 'SDK'} 下载进度`} aria-valuenow={snapshot.job.progress ?? undefined}>
                 <div className="h-full rounded bg-blue-500 transition-[width] duration-200" style={{ width: `${snapshot.job.progress ?? 0}%` }} />
               </div>
               <div className={`mt-2 flex flex-wrap justify-between gap-2 text-[10px] ${muted}`}>
-                <span>{formatBytes(snapshot.job.downloadedBytes)} / {formatBytes(snapshot.job.totalBytes)}</span>
-                <span>{snapshot.job.bytesPerSecond ? `${formatBytes(snapshot.job.bytesPerSecond)}/秒` : formatJobState(snapshot.job.state)}</span>
+                <span>已下载 {formatBytes(snapshot.job.downloadedBytes)} / {formatBytes(snapshot.job.totalBytes)}</span>
+                <span>{snapshot.job.bytesPerSecond !== null ? `速度 ${formatBytes(snapshot.job.bytesPerSecond)}/秒` : formatJobState(snapshot.job.state)}</span>
               </div>
             </div>
           )}

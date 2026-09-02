@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import lcppGrammar from './lcpp-grammar.mjs'
 
 export default defineConfig({
   lang: 'zh-CN',
@@ -8,6 +9,9 @@ export default defineConfig({
   srcDir: '.',
   outDir: '.vitepress/dist',
   cleanUrls: true,
+  markdown: {
+    languages: [lcppGrammar]
+  },
   themeConfig: {
     nav: [
       { text: '文档首页', link: '/' },
@@ -44,7 +48,11 @@ export default defineConfig({
             { text: '构建与运行', link: '/guide/user/build-and-run' },
             { text: '模块市场', link: '/guide/user/modules/marketplace' },
             { text: '安装与管理模块', link: '/guide/user/modules/install-module' },
+            { text: '用 AI 生成模块', link: '/guide/user/modules/ai-module-dev' },
             { text: '依赖冲突检测', link: '/guide/user/modules/module-conflicts' },
+            { text: 'EdgeView 浏览器模块', link: '/guide/user/modules/edgeview' },
+            { text: 'CEF3 浏览器模块', link: '/guide/user/modules/cef3' },
+            { text: 'FBro 指纹浏览器模块', link: '/guide/user/modules/fbro' },
           ],
         },
         {
@@ -54,6 +62,7 @@ export default defineConfig({
             { text: '调试技巧', link: '/guide/user/debugging' },
             { text: '问题排查', link: '/guide/user/troubleshooting' },
             { text: '外部 API 调用', link: '/guide/user/advanced/external-apis' },
+            { text: 'SDK 按需下载与离线安装', link: '/guide/user/advanced/sdk-download' },
             { text: '性能优化', link: '/guide/user/advanced/performance' },
             { text: '安全指南', link: '/guide/user/advanced/security' },
             { text: '进阶主题索引', link: '/guide/user/advanced/' },

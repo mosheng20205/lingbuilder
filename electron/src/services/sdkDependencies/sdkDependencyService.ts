@@ -14,6 +14,13 @@ import {
   type SdkDependencyId,
   type SdkDependencyResource
 } from './sdkDependencyCatalog';
+import {
+  fetchRemoteCatalog,
+  readSdkCatalogState,
+  verifyAndMergeCatalog,
+  writeSdkCatalogState
+} from './sdkCatalogRemote';
+import type { SdkCatalogTrustAnchor } from './catalogTrustAnchors';
 
 const execFileAsync = promisify(execFile);
 
@@ -58,6 +65,16 @@ export interface SdkDependencyJobSnapshot {
 export interface SdkDependencyOverview {
   dependencies: SdkDependencyStatus[];
   job: SdkDependencyJobSnapshot;
+  catalogSource: 'builtin' | 'remote';
+  catalogSequence: number | null;
+}
+
+export interface SdkDependencyRemoteCatalogOptions {
+  url: string;
+  anchors: readonly SdkCatalogTrustAnchor[];
+  statePath?: string;
+  timeoutMs?: number;
+  cacheTtlMs?: number;
 }
 
 type SdkArchiveDownloader = (
@@ -98,6 +115,7 @@ interface SdkDependencyServiceOptions {
   inspectArchive?: typeof inspectZipArchive;
   extractArchive?: typeof extractZipArchive;
   resources?: readonly SdkDependencyResource[];
+  remoteCatalog?: SdkDependencyRemoteCatalogOptions;
 }
 
 const IDLE_JOB: SdkDependencyJobSnapshot = {
@@ -124,7 +142,11 @@ export class SdkDependencyService {
   private readonly aria2cPath: string;
   private readonly inspectArchive: typeof inspectZipArchive;
   private readonly extractArchive: typeof extractZipArchive;
-  private readonly resources: readonly SdkDependencyResource[];
+  private readonly remoteCatalog: SdkDependencyRemoteCatalogOptions | null;
+  private resources: readonly SdkDependencyResource[];
+  private catalogSource: 'builtin' | 'remote' = 'builtin';
+  private catalogSequence: number | null = null;
+  private remoteCache: { resources: readonly SdkDependencyResource[]; sequence: number; fetchedAt: number } | null = null;
   private job: SdkDependencyJobSnapshot = { ...IDLE_JOB };
   private abortController: AbortController | null = null;
 
@@ -148,6 +170,36 @@ export class SdkDependencyService {
     this.inspectArchive = options.inspectArchive || inspectZipArchive;
     this.extractArchive = options.extractArchive || extractZipArchive;
     this.resources = options.resources || SDK_DEPENDENCY_RESOURCES;
+    this.remoteCatalog = options.remoteCatalog || null;
+  }
+
+  private async refreshRemoteCatalog(): Promise<void> {
+    const config = this.remoteCatalog;
+    if (!config || !config.anchors.length) return;
+    const now = Date.now();
+    const cacheTtl = config.cacheTtlMs ?? 600_000;
+    if (this.remoteCache && now - this.remoteCache.fetchedAt < cacheTtl) {
+      this.resources = this.remoteCache.resources;
+      this.catalogSource = 'remote';
+      this.catalogSequence = this.remoteCache.sequence;
+      return;
+    }
+    try {
+      const manifest = await fetchRemoteCatalog(config.url, config.timeoutMs);
+      const statePath = config.statePath;
+      const accepted = statePath ? await readSdkCatalogState(statePath) : null;
+      const merged = verifyAndMergeCatalog(SDK_DEPENDENCY_RESOURCES, manifest, config.anchors, { acceptedSequence: accepted?.acceptedSequence ?? 0 });
+      if (statePath) await writeSdkCatalogState(statePath, merged.sequence);
+      this.remoteCache = { resources: merged.resources, sequence: merged.sequence, fetchedAt: Date.now() };
+      this.resources = merged.resources;
+      this.catalogSource = 'remote';
+      this.catalogSequence = merged.sequence;
+    } catch {
+      this.resources = SDK_DEPENDENCY_RESOURCES;
+      this.catalogSource = 'builtin';
+      this.catalogSequence = null;
+      this.remoteCache = null;
+    }
   }
 
   status(): SdkDependencyJobSnapshot {
@@ -155,9 +207,12 @@ export class SdkDependencyService {
   }
 
   async overview(): Promise<SdkDependencyOverview> {
+    await this.refreshRemoteCatalog();
     return {
       dependencies: await Promise.all(this.resources.map(resource => this.inspect(resource.id))),
-      job: this.status()
+      job: this.status(),
+      catalogSource: this.catalogSource,
+      catalogSequence: this.catalogSequence
     };
   }
 
@@ -208,7 +263,7 @@ export class SdkDependencyService {
       finishedAt: null,
       error: null
     };
-    void this.run(resource, controller.signal);
+    void this.run(id, controller.signal);
     return this.status();
   }
 
@@ -217,13 +272,17 @@ export class SdkDependencyService {
     return this.status();
   }
 
-  private async run(resource: SdkDependencyResource, signal: AbortSignal): Promise<void> {
+  private async run(id: SdkDependencyId, signal: AbortSignal): Promise<void> {
     const jobId = this.job.id!;
     const downloadDir = path.join(this.cacheRoot, 'downloads');
-    const archivePath = path.join(downloadDir, resource.archiveName);
-    const partialPath = `${archivePath}.part`;
-    const stagingRoot = path.join(this.cacheRoot, '.staging', jobId);
+    let stagingRoot: string | null = null;
+    let resource: SdkDependencyResource | null = null;
     try {
+      await this.refreshRemoteCatalog();
+      resource = this.getResource(id);
+      const archivePath = path.join(downloadDir, resource.archiveName);
+      const partialPath = `${archivePath}.part`;
+      stagingRoot = path.join(this.cacheRoot, '.staging', jobId);
       const existing = await this.inspect(resource.id);
       if (existing.installed) {
         this.complete('succeeded', `${resource.name} 已安装，无需重复下载。`);
@@ -235,13 +294,14 @@ export class SdkDependencyService {
         await fs.rm(archivePath, { force: true });
         this.update({ state: 'downloading', message: `正在下载 ${resource.name}…` });
         await this.download(resource.downloadUrl, partialPath, resource.archiveBytes, resource.sha256, signal, progress => {
+        const complete = progress.downloadedBytes >= resource.archiveBytes;
         this.update({
-          state: 'downloading',
-          message: `正在下载 ${resource.name}…${progress.notice ? `（${progress.notice}）` : ''}`,
-          downloadedBytes: progress.downloadedBytes,
+          state: complete ? 'verifying' : 'downloading',
+          message: complete ? `下载完成，正在校验 ${resource.name}…` : `正在下载 ${resource.name}…${progress.notice ? `（${progress.notice}）` : ''}`,
+          downloadedBytes: Math.min(progress.downloadedBytes, resource.archiveBytes),
           totalBytes: resource.archiveBytes,
           progress: Math.min(100, Math.round(progress.downloadedBytes / resource.archiveBytes * 100)),
-          bytesPerSecond: progress.bytesPerSecond
+          bytesPerSecond: complete ? null : progress.bytesPerSecond
         });
         });
         throwIfAborted(signal);
@@ -251,19 +311,19 @@ export class SdkDependencyService {
           await fs.rm(`${partialPath}.aria2`, { force: true });
           throw new Error(`${resource.name} 下载文件大小或 SHA-256 不匹配，已拒绝安装。`);
         }
-        await fs.rename(partialPath, archivePath);
+        await renameDirectoryWithRetry(partialPath, archivePath, { attempts: 6, delayMs: 250 });
         archiveReady = true;
       }
       if (!archiveReady) throw new Error(`${resource.name} 下载文件没有准备完成。`);
       throwIfAborted(signal);
-      this.update({ state: 'extracting', message: `正在安全解压 ${resource.name}…`, progress: 100 });
+      this.update({ state: 'extracting', message: `下载完成，正在安全解压 ${resource.name}…`, progress: 100 });
       const inventory = await this.inspectArchive(archivePath);
       validateArchiveInventory(resource, inventory);
       await fs.rm(stagingRoot, { recursive: true, force: true });
       await fs.mkdir(stagingRoot, { recursive: true });
       await this.extractArchive(archivePath, stagingRoot, signal);
       throwIfAborted(signal);
-      const extractedModuleRoot = path.join(stagingRoot, resource.moduleId);
+      const extractedModuleRoot = await normalizeExtractedSdkModuleRoot(resource, stagingRoot);
       const extractedSdkRoot = path.join(extractedModuleRoot, 'sdk');
       const validationIssue = await getSdkRootValidationIssue(resource, extractedSdkRoot);
       if (validationIssue) {
@@ -280,13 +340,14 @@ export class SdkDependencyService {
       await fs.rm(stagingRoot, { recursive: true, force: true });
       this.complete('succeeded', `${resource.name} ${resource.version} 安装完成。`);
     } catch (error) {
-      await fs.rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+      if (stagingRoot) await fs.rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+      const name = resource?.name ?? 'SDK 依赖';
       if (signal.aborted) {
-        this.complete('cancelled', `${resource.name} 下载已取消。`);
+        this.complete('cancelled', `${name} 下载已取消。`);
       } else {
         const raw = error instanceof Error ? error.message : String(error);
         const message = translateSdkDownloadErrorText(raw);
-        this.complete('failed', `${resource.name} 安装失败：${message}`, message);
+        this.complete('failed', `${name} 安装失败：${message}`, message);
       }
     } finally {
       if (this.job.id === jobId) this.abortController = null;
@@ -307,10 +368,10 @@ export class SdkDependencyService {
     let movedExisting = false;
     try {
       if (await pathExists(target)) {
-        await fs.rename(target, backup);
+        await renameDirectoryWithRetry(target, backup, { attempts: 8, delayMs: 250 });
         movedExisting = true;
       }
-      await fs.rename(source, target);
+      await renameDirectoryWithRetry(source, target, { attempts: 8, delayMs: 250 });
       await fs.writeFile(path.join(target, '.lingbuilder-sdk-install.json'), `${JSON.stringify({
         schemaVersion: 1,
         dependencyId: resource.id,
@@ -322,7 +383,7 @@ export class SdkDependencyService {
       await fs.rm(backup, { recursive: true, force: true });
     } catch (error) {
       await fs.rm(target, { recursive: true, force: true }).catch(() => undefined);
-      if (movedExisting && await pathExists(backup)) await fs.rename(backup, target).catch(() => undefined);
+      if (movedExisting && await pathExists(backup)) await renameDirectoryWithRetry(backup, target, { attempts: 8, delayMs: 250 }).catch(() => undefined);
       throw error;
     }
   }
@@ -342,6 +403,32 @@ export class SdkDependencyService {
       finishedAt: this.now().toISOString(),
       error
     };
+  }
+}
+
+export async function renameDirectoryWithRetry(
+  source: string,
+  target: string,
+  options: {
+    attempts?: number;
+    delayMs?: number;
+    rename?: (source: string, target: string) => Promise<void>;
+  } = {}
+): Promise<void> {
+  const attempts = Math.max(1, Math.floor(options.attempts ?? 5));
+  const delayMs = Math.max(0, Math.floor(options.delayMs ?? 120));
+  const rename = options.rename ?? ((from, to) => fs.rename(from, to));
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await rename(source, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      const retryable = code === 'EPERM' || code === 'EACCES' || code === 'EBUSY';
+      if (!retryable || attempt >= attempts) throw error;
+      const waitMs = delayMs * attempt;
+      if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
   }
 }
 
@@ -561,11 +648,10 @@ export async function waitForAria2cExitOrVerifiedArchive(
       } catch {
         // UI progress reporting must not leave a verified archive or aria2 process in an indeterminate state.
       }
-      if (closeResult) {
-        complete({ ...closeResult, archiveVerified: true });
-      } else {
-        requestTermination('verified');
-      }
+      requestTermination('verified');
+      // 文件已通过完整大小与 SHA-256 校验，下载阶段应立即结束。
+      // aria2c 的 close 事件只负责后续清理，不能阻塞解压和 UI 状态推进。
+      complete({ ...(closeResult ?? { exitCode: null, signalCode: null }), archiveVerified: true });
     };
     const verifyCompletedArchive = (): Promise<boolean> => {
       if (settled || signal.aborted || archiveVerified) return Promise.resolve(archiveVerified);
@@ -1042,12 +1128,31 @@ function normalizeArchivePath(value: string): string {
 }
 
 function validateArchiveInventory(resource: SdkDependencyResource, inventory: ZipArchiveInventory): void {
-  if (inventory.roots.length !== 1 || inventory.roots[0] !== resource.moduleId) {
+  const roots = new Set(inventory.roots);
+  const isFlatArchive = roots.has('sdk') && roots.has('lingbuilder.module.json')
+    && [...roots].every(root => root === 'sdk' || root === 'lingbuilder.module.json' || root === 'README.md');
+  if (!isFlatArchive && (inventory.roots.length !== 1 || inventory.roots[0] !== resource.moduleId)) {
     throw new Error(`${resource.name} ZIP 顶层目录必须是 ${resource.moduleId}/。`);
   }
   if (inventory.fileCount !== resource.fileCount || inventory.expandedBytes !== resource.expandedBytes) {
     throw new Error(`${resource.name} ZIP 文件清单不匹配：${inventory.fileCount} 个文件 / ${inventory.expandedBytes} 字节。`);
   }
+}
+
+async function normalizeExtractedSdkModuleRoot(resource: SdkDependencyResource, stagingRoot: string): Promise<string> {
+  const moduleRoot = path.join(stagingRoot, resource.moduleId);
+  if (await pathExists(path.join(moduleRoot, 'sdk'))) return moduleRoot;
+  const flatSdkRoot = path.join(stagingRoot, 'sdk');
+  if (!await pathExists(flatSdkRoot) || !await pathExists(path.join(stagingRoot, 'lingbuilder.module.json'))) {
+    return moduleRoot;
+  }
+  await fs.mkdir(moduleRoot, { recursive: true });
+  await renameDirectoryWithRetry(flatSdkRoot, path.join(moduleRoot, 'sdk'));
+  for (const name of ['lingbuilder.module.json', 'README.md']) {
+    const source = path.join(stagingRoot, name);
+    if (await pathExists(source)) await renameDirectoryWithRetry(source, path.join(moduleRoot, name));
+  }
+  return moduleRoot;
 }
 
 async function extractZipArchive(archivePath: string, destination: string, signal: AbortSignal): Promise<void> {

@@ -11,6 +11,7 @@
 > 0.5.0 发布基线：同步当前代码更新并发布 Windows x64 离线精简安装包。安装包严格不包含 FBro、CEF3 及其模块目录、SDK 或运行时；云端 API 保持未配置。
 
 > 0.6.0 发布基线：同步工作台、AI 助手、窗口设计器和更新检查功能改进，发布 Windows x64 离线精简安装包。安装包严格不包含 FBro、CEF3 及其模块目录、SDK 或运行时；云端 API 保持未配置。
+> 2026-09-02：CEF3 Bridge 重新按当前 CEF 150 SDK 构建并通过原生测试，修复 SDK 包内 Bridge 头文件与生成器 API 不一致导致的 CEF3 Demo 编译错误；更新 CEF3 SDK 下载清单字段。生产环境需先上传新版 SDK 包并发布对应线上清单后，用户端才会自动获取该版本。
 
 > 0.4.0 发布基线：安装包排除完整的 CEF3/FBro 模块，并内置 aria2c 1.37.0；新增 `lingbuilder.net.aria2@1.37.0` 受控下载模块，新手 LCPP 编辑器完成流程折叠、嵌套缩进和声明编辑升级。浏览器管理器的下载器插件改为随项目 assets 与 `.lcpppkg` 分发，不再作为模块安装。
 
@@ -834,3 +835,22 @@ AI 编辑分流按用户提示中的窗口/控件目标与布局变更意图判�
 - 打开 `.lcpp` 文件时，普通提问仍使用聊天接口；仅包含明确修改意图的请求才生成源码/设计器编辑草案，并要求用户审阅后应用。
 - 开发者消息在暗色主题中使用高对比度浅蓝色文字，确保标签和内容可辨识。
 - AI 助手消息支持文本选择及右键“复制消息”；“AI：新建会话”和“AI：清除当前上下文”注册到工作台命令面板，历史会话按项目加载并可切换。
+
+## SDK 按需下载清单云端配置（2026-09）
+
+- SDK 下载清单支持云端远端替换：`src/services/sdkDependencies/sdkCatalogRemote.ts` 拉取并验签（Ed25519，`crypto.sign/verify` 第一参必须 `null`）、逐字比对锚定字段、sequence 防回滚；任一校验失败回退内置清单。信任锚在 `src/services/sdkDependencies/catalogTrustAnchors.ts`（2026-09-01 已钉入生产公钥 keyId `450c46062258e2d4`，随含该锚点的 IDE 版本发布后启用远端清单；换锚必须随 IDE 发版）。
+- 端点解析：`LINGBUILDER_SDK_CATALOG_URL`（测试/开发）> `LINGBUILDER_CLOUD_RELEASE_MODE=online` 时默认 `https://api.lingbuilder.com/v1/site/sdk-catalog`。`/api/sdk-dependencies/status` 返回 `catalogSource` 与 `catalogSequence`，SDK 安装对话框会显示。
+- 发布门禁：`npm run sdk-catalog:check`（或 `npx tsx scripts/check-sdk-catalog-anchors.ts --url <清单地址>`）比对线上清单与内置清单锚定字段，漂移/不可用中文诊断退出 1。
+- 启用与发布流程见 `docs/SDK下载清单发布流程.md`；用户向说明在官网文档中心「SDK 按需下载与离线安装」。
+
+## 模块 Permit 信任根（2026-09）
+
+IDE 验签模块 Permit 只使用内置信任锚 `src/services/modules/modulePermitTrustAnchors.ts`（当前钉生产密钥 keyId `0e2853e87a4250d3`）；云端下发的公钥 PEM 不再进入信任集，仅 `keyId` 作为轮换元数据。云端通过 `MODULE_PERMIT_ACCEPTED_KEY_IDS` 维护轮换列表并经 `/v1/modules/permit-key` 下发 `acceptedKeyIds`；密钥轮换必须先发带新锚点的 IDE，再切换云端签发密钥。keyId 不在锚内时同步返回 `MODULE_PERMIT_ANCHOR_UNKNOWN` 中文诊断。
+
+### .lbmod �ļ�����
+Windows ��װ��ע�� .lbmod ��˫����ת���������� LingBuilder ʵ������ģ�鰲װԤ�������������ɰ�װ��ʹע����Ч��
+
+��װ�򵼻�չʾ��ȡ���嵥/·��/ƽ̨У�顢��װ�С��ɹ���ʧ��״̬��
+
+
+> 0.6.2 发布说明（2026-09-02）：发布 Windows x64 stable 安装包，包含 CEF3 Bridge4 生成修复、云端 SDK 清单验签/sequence 展示和 IDE 在线更新链路修复。生产打包使用 LINGBUILDER_CLOUD_RELEASE_MODE=online 与 https://api.lingbuilder.com，安装包不内置 CEF3/FBro SDK。

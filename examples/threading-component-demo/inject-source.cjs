@@ -1,0 +1,11 @@
+const fs = require('fs');
+const path = require('path');
+const root = process.argv[2];
+const reqPath = path.join(root, 'build-request.json');
+const srcPath = path.join(root, 'src', '多线程操作组件.lcpp');
+const req = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+const src = fs.readFileSync(srcPath, 'utf8');
+req.lingCppSourceCode = src;
+fs.writeFileSync(reqPath, JSON.stringify(req, null, 2) + '\n', 'utf8');
+const round = JSON.parse(fs.readFileSync(reqPath, 'utf8')).lingCppSourceCode;
+console.log('chars=' + src.replace(/\s/g, '').length, 'roundtrip=' + (round === src));

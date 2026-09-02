@@ -10,15 +10,30 @@ type JsonRecord = Record<string, unknown>;
 export class WebsiteContentService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  /** 供客户端检查更新的轻量公开接口：只返回最新发布版本的版本号等最小信息。 */
+  /** 供客户端检查更新的公开接口：返回最新发布版本与安装包直链/校验信息；缺数据的字段显式置 null，便于客户端统一判空。 */
   async latestVersion(input: { platform: string; architecture: string; channel: string }) {
     const release = await this.prisma.websiteDownloadRelease.findFirst({
       where: { publicationStatus: 'PUBLISHED', channel: input.channel || 'stable', platform: input.platform || 'Windows', architecture: input.architecture || 'x64' },
       orderBy: [{ sortOrder: 'desc' }, { publishedAt: 'desc' }],
-      select: { version: true, title: true, summary: true, publishedAt: true }
+      select: {
+        version: true, title: true, summary: true, publishedAt: true, channel: true, fileSize: true, sha256: true, releaseNotes: true,
+        mirrors: { where: { enabled: true, provider: 'direct' }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
+      }
     });
     if (!release) return { ok: true, available: false };
-    return { ok: true, available: true, version: release.version, title: release.title, summary: release.summary, publishedAt: release.publishedAt };
+    return {
+      ok: true,
+      available: true,
+      version: release.version,
+      title: release.title,
+      summary: release.summary,
+      publishedAt: release.publishedAt,
+      channel: release.channel || null,
+      fileSize: release.fileSize || null,
+      sha256: normalizeSha256(release.sha256),
+      releaseNotes: release.releaseNotes || null,
+      downloadUrl: pickHttpsDirectMirrorUrl(release.mirrors)
+    };
   }
 
   async publicBootstrap() {
@@ -338,5 +353,19 @@ function linkArray(value: unknown, label: string) {
     return { label: required(item.label || '源码下载', label, 100), url };
   });
 }
+function normalizeSha256(value: unknown) {
+  const result = clean(value, 64).toLowerCase();
+  return /^[a-f0-9]{64}$/u.test(result) ? result : null;
+}
+
+/** 直链镜像只在 HTTPS 时下发给客户端：HTTP 直链视为不可用，客户端侧还有独立的 https 门禁兜底。 */
+function pickHttpsDirectMirrorUrl(mirrors: Array<{ provider: string; enabled: boolean; url: string }>) {
+  for (const mirror of Array.isArray(mirrors) ? mirrors : []) {
+    if (mirror?.provider !== 'direct' || mirror.enabled === false) continue;
+    if (typeof mirror.url === 'string' && mirror.url.startsWith('https://')) return mirror.url;
+  }
+  return null;
+}
+
 function validation(message: string) { return Object.assign(new Error(message), { status: 400, code: 'VALIDATION_FAILED' }); }
 function notFound(message: string) { return Object.assign(new Error(message), { status: 404, code: 'NOT_FOUND' }); }

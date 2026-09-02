@@ -158,6 +158,23 @@ async function runProjectCommand(subcommand: string | undefined, rest: string[])
     if (subcommand === 'templates') { printValue(await service.listProjectTemplates(), args.json === true); return; }
     if (!requestFile) throw new Error('project 命令需要 --request <受控项目请求.json>。');
     const request = JSON.parse(await fs.readFile(path.resolve(requestFile), 'utf8'));
+    // 受控项目请求通常只携带工作区相对的源码路径。CLI 需要像桌面端一样
+    // 读取该文件并传入生成器，否则事件实现会被当作缺失而生成占位函数。
+    if (request && typeof request === 'object' && !request.lingCppSourceCode && typeof request.lingCppSourceFilePath === 'string') {
+      const sourcePath = path.resolve(workspaceRoot, request.lingCppSourceFilePath);
+      if (await pathExists(sourcePath)) {
+        request.lingCppSourceCode = await fs.readFile(sourcePath, 'utf8');
+        // 显式源码必须覆盖项目磁盘中可能存在的旧/重复副本（例如 src/src/）。
+        // 传入源码集合后，生成器会以该集合为权威输入。
+        const sourceRoot = typeof request.project?.sourceRoot === 'string' && request.project.sourceRoot.trim()
+          ? request.project.sourceRoot.replace(/\\/gu, '/').replace(/^\/+|\/+$/gu, '')
+          : 'src';
+        request.lingCppSources = [{
+          filePath: `${sourceRoot}/${path.basename(request.lingCppSourceFilePath)}`,
+          sourceCode: request.lingCppSourceCode
+        }];
+      }
+    }
     if (subcommand === 'create') {
       printValue(await service.createProject({ ...request, approved }), args.json === true);
       return;

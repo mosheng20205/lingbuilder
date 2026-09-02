@@ -21,7 +21,43 @@ test('checkLatestVersion reports update when remote version is newer', async () 
     assert.equal(result.hasUpdate, true);
     assert.equal(result.latestVersion, '9.9.9');
     assert.equal(result.releaseTitle, 'Future');
-    assert.equal(result.downloadUrl, LINGBUILDER_OFFICIAL_SITE_URL);
+    assert.equal(result.websiteUrl, LINGBUILDER_OFFICIAL_SITE_URL);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('checkLatestVersion surfaces installer direct link and checksum when cloud provides them', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    ok: true, available: true, version: '1.2.0', title: '新版本', channel: 'stable',
+    downloadUrl: 'https://dl.lingbuilder.com/LingBuilder-1.2.0-x64.exe',
+    sha256: 'ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789',
+    fileSize: '85 MB', releaseNotes: '修复若干问题。'
+  }), { status: 200 })) as never;
+  try {
+    const result = await checkLatestVersion('https://api.example.com', '1.0.0');
+    assert.equal(result.hasUpdate, true);
+    assert.equal(result.downloadUrl, 'https://dl.lingbuilder.com/LingBuilder-1.2.0-x64.exe');
+    assert.equal(result.sha256, 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789');
+    assert.equal(result.fileSize, '85 MB');
+    assert.equal(result.releaseNotes, '修复若干问题。');
+    assert.equal(result.channel, 'stable');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('checkLatestVersion keeps downloadUrl null for legacy cloud responses and malformed checksums', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ ok: true, available: true, version: '9.9.9', title: 'Legacy', sha256: 'not-a-hash', downloadUrl: '' }), { status: 200 })) as never;
+  try {
+    const result = await checkLatestVersion('https://api.example.com', '0.5.0');
+    assert.equal(result.hasUpdate, true);
+    assert.equal(result.downloadUrl, null);
+    assert.equal(result.sha256, null);
+    assert.equal(result.fileSize, null);
+    assert.equal(result.releaseNotes, null);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import QRCode from 'qrcode';
 import {
@@ -99,6 +99,8 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [paymentQr, setPaymentQr] = useState<{ provider: 'wechat'|'alipay'; url: string; dataUrl: string; expiresAt?: string } | null>(null);
   const [validateResult, setValidateResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isDragOverPackage, setIsDragOverPackage] = useState(false);
+  const [installStage, setInstallStage] = useState<'idle' | 'reading' | 'validating' | 'preview' | 'installing' | 'success' | 'error'>('idle');
+  const [showWorkspaceChoice, setShowWorkspaceChoice] = useState(false);
   const [aiGuideCopyState, setAiGuideCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   const aiGuideCopyTimerRef = useRef<number | null>(null);
   const [aiModulePasteText, setAiModulePasteText] = useState('');
@@ -249,7 +251,11 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       return;
     }
     setIsLoading(true);
+    setInstallStage('reading');
     try {
+      setStatusText('正在读取模块包……');
+      setInstallStage('validating');
+      setStatusText('正在检查模块清单……\n正在检查压缩包路径……\n正在检查平台依赖……');
       const response = await fetch('/api/modules/package/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -258,9 +264,11 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块包预览失败');
       setInstallPreview(result.preview);
+      setInstallStage('preview');
       setStatusText(result.preview.canInstall ? '模块包预览通过，等待确认安装。' : '模块包预览未通过，请查看诊断。');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块包】已完成安装预览：${pathValue}`);
     } catch (error) {
+      setInstallStage('error');
       setStatusText(`模块包预览失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
@@ -270,6 +278,8 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const installPreviewPackage = async () => {
     if (!installPreview) return;
     setIsLoading(true);
+    setInstallStage('installing');
+    setStatusText('正在复制模块文件……\n正在写入模块清单……\n正在刷新模块索引……');
     try {
       const response = await fetch('/api/modules/package/install', {
         method: 'POST',
@@ -286,11 +296,13 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       setPackagePath('');
       const compatibilityMessage = Array.isArray(result.messages) ? result.messages.join('；') : '';
       setStatusText(`模块 ${result.result.moduleName} 已安装。${compatibilityMessage ? ` ${compatibilityMessage}` : ''}`);
+      setInstallStage('success');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已安装 ${result.result.moduleName}。`);
       if (compatibilityMessage) onAddLog(`> [${new Date().toLocaleTimeString()}] 【构建配置】${compatibilityMessage}`);
       dispatchModulesChanged(projectId, result.result.moduleId, 'project');
       await refresh();
     } catch (error) {
+      setInstallStage('error');
       setStatusText(`模块安装失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
@@ -720,16 +732,17 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
 
   const onDropPackage = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const file = event.dataTransfer.files?.[0] as File & { path?: string };
-    const nextPath = file?.path || file?.name || '';
+    event.stopPropagation();
+    const file = event.dataTransfer.files?.[0];
+    const nextPath = file ? window.lingBuilder?.modules?.getDroppedFilePath(file) : '';
     if (nextPath) {
       if (!isAllowedWorkspacePath(nextPath, '.lingbuilder/module-packages')) {
-        if (!file?.path || !window.lingBuilder?.modules?.importPackage) {
+        if (!window.lingBuilder?.modules?.importPackage) {
           setStatusText('网页版只能预览工作区 .lingbuilder/module-packages 下的模块包；桌面版可直接拖入本机 .lbmod。');
           return;
         }
         setStatusText('正在把模块包安全复制到当前工作区…');
-        const imported = await window.lingBuilder.modules.importPackage(file.path);
+        const imported = await window.lingBuilder.modules.importPackage(nextPath);
         if (!imported.ok || !imported.relativePath) {
           setStatusText(`模块包导入失败：${imported.error || '未返回工作区路径'}`);
           return;
@@ -743,11 +756,25 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     }
   };
 
+  const selectPackage = async () => {
+    const result = await window.lingBuilder?.modules?.selectPackage();
+    if (result?.ok && result.relativePath) { setPackagePath(result.relativePath); await previewPackage(result.relativePath); }
+    else if (result && !result.canceled) setStatusText(`模块包导入失败：${result.error || '未知错误'}`);
+  };
+
+  useEffect(() => {
+    const unsubscribe = window.lingBuilder?.modules?.onInstallRequest(request => {
+      if (request.packagePath) { setPackagePath(request.packagePath); void previewPackage(request.packagePath); }
+      else if (request.error) { setStatusText(request.error); if (request.error.includes('工作区')) setShowWorkspaceChoice(true); }
+    });
+    return unsubscribe;
+  }, [projectId]);
+
   return (
     <div
       className={`h-full min-w-0 flex flex-col overflow-hidden ${isDarkMode ? 'bg-[#1e1e1e] text-slate-200' : 'bg-slate-50 text-slate-900'}`}
       onDragOver={event => event.preventDefault()}
-      onDrop={event => { void onDropPackage(event); }}
+      onDrop={event => { event.stopPropagation(); void onDropPackage(event); }}
     >
       <div className={`min-w-0 border-b px-3 py-3 ${isDarkMode ? 'border-white/10 bg-[#252526]' : 'border-slate-200 bg-white'}`}>
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
@@ -1002,6 +1029,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
               <ShieldCheck size={14} />
               预览安装
             </button>
+            <button onClick={selectPackage} className={`h-9 w-full px-3 rounded border text-xs ${actionButtonClass}`}>选择 .lbmod 文件</button>
           </div>
         </CollapsibleSection>
 
@@ -1229,6 +1257,18 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           </div>
         </div>
       )}
+      {showWorkspaceChoice && (
+        <div className="fixed inset-0 z-[55] bg-black/60 flex items-center justify-center p-4">
+          <div className={`w-full max-w-md rounded-md border p-5 shadow-xl ${cardClass}`}>
+            <div className="text-sm font-semibold">请选择模块安装到哪里：</div>
+            <div className="mt-4 grid gap-2 text-xs">
+              <button className={`h-9 rounded border ${actionButtonClass}`} onClick={() => setShowWorkspaceChoice(false)}>当前工作区</button>
+              <button className={`h-9 rounded border ${actionButtonClass}`} onClick={async () => { const result = await window.lingBuilder?.workspace?.open(); if (result?.ok) setShowWorkspaceChoice(false); }}>打开已有工作区</button>
+              <button className={`h-9 rounded border ${actionButtonClass}`} onClick={async () => { const result = await window.lingBuilder?.workspace?.openNewWindow(); if (result?.ok) setShowWorkspaceChoice(false); }}>新建工作区</button>
+            </div>
+          </div>
+        </div>
+      )}
       {paymentQr && (
         <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="模块支付二维码">
           <div className={`w-full max-w-sm rounded-md border p-5 text-center shadow-xl ${cardClass}`}>
@@ -1448,3 +1488,4 @@ function isAllowedWorkspacePath(value: string, allowedRoot?: string): boolean {
   if (!allowedRoot) return true;
   return normalized === allowedRoot || normalized.startsWith(`${allowedRoot}/`);
 }
+

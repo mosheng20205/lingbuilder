@@ -189,6 +189,12 @@ function measureRenderedInputText(input: HTMLInputElement) {
 
 export interface DiffViewerHandle {
   flushPendingEdits: () => Promise<FlushPendingEditsResult>;
+  /**
+   * Replaces the mounted editor content authoritatively. Callers that change the
+   * active file outside the editor (AI edit apply, external reload) must use this
+   * before any save, because a save flush reads the editor draft as the source of truth.
+   */
+  applyExternalSourceCode: (value: string) => void;
   undo: () => Promise<boolean>;
   redo: () => Promise<boolean>;
   focusEditor: () => boolean;
@@ -1954,6 +1960,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }
 
       return flushBeginnerDrafts(false);
+    },
+    applyExternalSourceCode: (value: string) => {
+      if (activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner') {
+        applyBeginnerHistoryValue(value);
+        return;
+      }
+      applyProfessionalHistoryValue(value);
     },
     undo: async () => {
       if (viewType !== 'code' || viewMode !== 'chinese') return false;

@@ -658,3 +658,8 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 - DLL 的公开边界默认使用 C ABI、POD/标量、调用方拥有的缓冲区和明确的 `cdecl` 调用约定。不得跨 DLL 传递 STL 容器、C++ 异常、未约定所有权的裸指针或编译器私有类布局；需要对象时使用不透明受管句柄或显式创建/释放函数。
 - Visual Studio 工程使用 `DynamicLibrary`、动态 CRT `/MD` 和 `exports.def`。MSBuild 成功后必须同时发现 `<项目ID>.dll` 与 `<项目ID>.lib`；缺少任一产物时，受控构建报告中文失败诊断，不能把进程退出码为 0 当作 DLL 构建成功。
 - F5、Visual Studio 导出、AI Bridge 和后续 CLI 均必须复用同一 DLL 项目清单、模块上下文和受控 MSBuild 路径。禁止在 React、AI prompt 或临时脚本中另写 DLL 文件生成逻辑。
+
+## .lbmod ��װ��ڣ�2026-09-02��
+�����ͨ�� webUtils.getPathForFile ��ȡ�Ϸ�·����������ͳһִ�� realpath/stat/��չ��/��СУ�鲢���Ƶ���ǰ������ .lingbuilder/module-packages/����� renderer ���ü���Ԥ����ȷ�ϰ�װ API���ļ�ѡ��ť������������ second-instance ������ lingbuilder:install-module-package ���󣬽�ֹ��Ĭ��װ��
+
+��װ��״̬�ְ�����ȡ�С�У���С�Ԥ������װ�С��ɹ���ʧ�ܣ�electron/package.json �� .lbmod �����ɲ���У�顣

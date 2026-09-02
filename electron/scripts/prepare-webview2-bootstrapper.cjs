@@ -54,16 +54,23 @@ async function verifyMicrosoftSignature(executablePath) {
     "if ($signature.Status -ne 'Valid') { exit 1 }",
     "if ($signature.SignerCertificate.Subject -notmatch 'Microsoft') { exit 1 }"
   ].join('; ');
+  const shell = process.env.LINGBUILDER_POWERSHELL_PATH || (process.env.ComSpec ? 'powershell.exe' : 'pwsh.exe');
   await new Promise((resolve, reject) => {
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    const child = spawn(shell, ['-NoProfile', '-NonInteractive', '-Command', script], {
       windowsHide: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, LINGBUILDER_INSTALLER_PATH: executablePath }
     });
     child.once('error', reject);
-    child.once('exit', code => code === 0
-      ? resolve()
-      : reject(new Error('WebView2 Bootstrapper 的 Microsoft Authenticode 签名验证失败。')));
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+    child.once('exit', code => {
+      if (code === 0) return resolve();
+      const detail = stderr.trim();
+      reject(new Error(detail
+        ? `WebView2 Bootstrapper 的 Microsoft Authenticode 签名验证失败：${detail}`
+        : 'WebView2 Bootstrapper 的 Microsoft Authenticode 签名验证失败。'));
+    });
   });
 }
 

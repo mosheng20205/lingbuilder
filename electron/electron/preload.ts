@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 contextBridge.exposeInMainWorld('lingBuilder', {
   runtime: 'electron',
@@ -70,6 +70,15 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   },
   modules: {
     importPackage: (sourcePath: string) => ipcRenderer.invoke('modules:import-package', sourcePath),
+    selectPackage: () => ipcRenderer.invoke('modules:select-package'),
+    getDroppedFilePath: (file: File) => {
+      try { return webUtils.getPathForFile(file); } catch { return ''; }
+    },
+    onInstallRequest: (listener: (request: { packagePath: string; error?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, request: { packagePath: string; error?: string }) => listener(request);
+      ipcRenderer.on('lingbuilder:install-module-package', handler);
+      return () => ipcRenderer.removeListener('lingbuilder:install-module-package', handler);
+    },
     openInfo: (module: unknown) => ipcRenderer.invoke('modules:open-info', module),
     onInfo: (listener: (module: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, module: unknown) => listener(module);
@@ -115,6 +124,15 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   },
   updates: {
     check: () => ipcRenderer.invoke('app:check-update'),
+    download: () => ipcRenderer.invoke('app:update:download'),
+    cancel: () => ipcRenderer.invoke('app:update:cancel'),
+    status: () => ipcRenderer.invoke('app:update:status'),
+    install: () => ipcRenderer.invoke('app:update:install'),
+    onProgress: (listener: (progress: unknown) => void) => {
+      const handler = (_event: unknown, progress: unknown) => listener(progress);
+      ipcRenderer.on('app-update:progress', handler);
+      return () => ipcRenderer.removeListener('app-update:progress', handler);
+    },
   },
   payments: {
     openPage: (url: string) => ipcRenderer.invoke('payments:open-page', url),

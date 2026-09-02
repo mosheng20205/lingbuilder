@@ -13,6 +13,8 @@ test('SDK 安装对话框提供确认、进度、取消、重试和共享缓存�
   assert.match(source, /安装项目所需 SDK/u);
   assert.match(source, /所有 LingBuilder 工作区共享/u);
   assert.match(source, /role="progressbar"/u);
+  assert.match(source, /进度 \{snapshot\.job\.progress/u);
+  assert.match(source, /bytesPerSecond !== null/u);
   assert.match(source, /取消下载/u);
   assert.match(source, /重试安装/u);
   assert.match(source, /SHA-256/u);
