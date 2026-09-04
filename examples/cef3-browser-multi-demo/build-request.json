@@ -1,0 +1,107 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "cef3-browser-multi-demo",
+    "name": "CEF3 多浏览器示例",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "CEF3多浏览器窗体.xml",
+        "className": "CEF3多浏览器窗体",
+        "title": "LingBuilder CEF3 多浏览器示例",
+        "width": 1180,
+        "height": 760,
+        "background": "#111827",
+        "description": "使用两个分组框承载两个独立 CEF3 浏览器实例。",
+        "events": { "Loaded": "_CEF3多浏览器窗体_创建完毕" },
+        "controls": [
+          {
+            "id": "left-group",
+            "type": "GroupBox",
+            "name": "左侧浏览器组",
+            "content": "左侧浏览器",
+            "x": 20,
+            "y": 20,
+            "width": 550,
+            "height": 680,
+            "background": "#1E293B",
+            "foreground": "#E2E8F0",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "properties": { "showBorder": true, "titleAlign": "left" }
+          },
+          {
+            "id": "right-group",
+            "type": "GroupBox",
+            "name": "右侧浏览器组",
+            "content": "右侧浏览器",
+            "x": 590,
+            "y": 20,
+            "width": 550,
+            "height": 680,
+            "background": "#1E293B",
+            "foreground": "#E2E8F0",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "properties": { "showBorder": true, "titleAlign": "left" }
+          },
+          {
+            "id": "browser-left",
+            "type": "CefBrowser",
+            "name": "浏览器1",
+            "content": "",
+            "x": 35,
+            "y": 55,
+            "width": 520,
+            "height": 630,
+            "background": "#FFFFFF",
+            "foreground": "#000000",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "parentId": "left-group",
+            "properties": {
+              "url": "https://example.com",
+              "cacheDir": ".cef3/multi-left",
+              "enableJs": true,
+              "enableDevTools": true,
+              "loadImages": true,
+              "enableWebGL": true,
+              "muteAudio": true,
+              "proxyMode": "system"
+            }
+          },
+          {
+            "id": "browser-right",
+            "type": "CefBrowser",
+            "name": "浏览器2",
+            "content": "",
+            "x": 605,
+            "y": 55,
+            "width": 520,
+            "height": 630,
+            "background": "#FFFFFF",
+            "foreground": "#000000",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "parentId": "right-group",
+            "properties": {
+              "url": "https://www.baidu.com",
+              "cacheDir": ".cef3/multi-right",
+              "enableJs": true,
+              "enableDevTools": true,
+              "loadImages": true,
+              "enableWebGL": true,
+              "muteAudio": true,
+              "proxyMode": "system"
+            }
+          }
+        ],
+        "resources": []
+      }
+    ]
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceFilePath": "src/CEF3多浏览器窗体.lcpp",
+  "run": false,
+  "approved": true
+}

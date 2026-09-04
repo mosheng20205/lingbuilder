@@ -8,6 +8,13 @@ export interface AiModuleParseResult {
   diagnostics: string[];
 }
 
+export interface AiModuleImportResultForClipboard {
+  ok: boolean;
+  message: string;
+  diagnostics: string[];
+  moduleDir?: string;
+}
+
 export const AI_MODULE_IMPORT_FILE_EXTENSIONS = new Set([
   '.json', '.md', '.markdown', '.txt', '.h', '.hh', '.hpp', '.hxx', '.inl',
   '.c', '.cc', '.cpp', '.cxx', '.lcpp', '.def', '.rc', '.rh',
@@ -15,6 +22,17 @@ export const AI_MODULE_IMPORT_FILE_EXTENSIONS = new Set([
 ]);
 
 export const AI_MODULE_MANIFEST_FILE = 'lingbuilder.module.json';
+
+export function formatAiModuleImportResultForClipboard(result: AiModuleImportResultForClipboard): string {
+  return [
+    result.message,
+    ...result.diagnostics,
+    result.ok && result.moduleDir ? '下一步：在上方“模块包制作”点击导出 .lbmod，然后安装启用。' : ''
+  ]
+    .map(item => typeof item === 'string' ? item.trim() : '')
+    .filter(Boolean)
+    .join('\n');
+}
 
 function stripWrappers(value: string): string {
   return value.trim().replace(/^["'`*]+/u, '').replace(/["'`*]+$/u, '').trim();
@@ -30,7 +48,7 @@ function looksLikeModuleFilePath(value: string): boolean {
 }
 
 function normalizeModuleFilePath(value: string): string {
-  return stripWrappers(value).replace(/\\/gu, '/').replace(/\/{2,}/gu, '/');
+  return stripWrappers(value).replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/{2,}/gu, '/');
 }
 
 /**
@@ -41,6 +59,7 @@ function normalizeModuleFilePath(value: string): string {
 export function parseAiModuleOutputText(text: string): AiModuleParseResult {
   const diagnostics: string[] = [];
   const files = new Map<string, string>();
+  const normalizedPathKeys = new Map<string, string>();
   if (!text || !text.trim()) {
     return { files: [], diagnostics };
   }
@@ -58,9 +77,18 @@ export function parseAiModuleOutputText(text: string): AiModuleParseResult {
       diagnostics.push(`忽略无法识别的文件路径：${filePath}`);
       return;
     }
+    const pathKey = normalized.toLocaleLowerCase('en-US');
+    const existingPath = normalizedPathKeys.get(pathKey);
+    if (existingPath && existingPath !== normalized) {
+      files.delete(existingPath);
+      normalizedPathKeys.delete(pathKey);
+      diagnostics.push(`文件路径大小写冲突：${existingPath} 与 ${normalized} 在 Windows 上会指向同一个文件。`);
+      return;
+    }
     if (files.has(normalized)) {
       diagnostics.push(`文件 ${normalized} 出现多次，已使用最后一次内容。`);
     }
+    normalizedPathKeys.set(pathKey, normalized);
     files.set(normalized, content);
   };
 
@@ -93,13 +121,13 @@ export function parseAiModuleOutputText(text: string): AiModuleParseResult {
     }
 
     const headingMatch = trimmed.match(/^#{1,6}\s+(?:\*\*)?(?:文件|FILE)\s*[：:]\s*([^\s*]+)(?:\*\*)?\s*$/u)
-      ?? trimmed.match(/^#{1,6}\s+(?:\*\*)?([\w./\\-]+\.[A-Za-z0-9]+)(?:\*\*)?\s*$/u);
+      ?? trimmed.match(/^#{1,6}\s+(?:\*\*)?([^\s*]+\.[A-Za-z0-9]+)(?:\*\*)?\s*$/u);
     if (headingMatch) {
       setPendingPath(normalizeModuleFilePath(headingMatch[1]), trimmed);
       continue;
     }
     const boldMatch = trimmed.match(/^\*\*(?:文件|FILE)\s*[：:]\s*(.+?)\*\*\s*$/u)
-      ?? trimmed.match(/^\*\*([\w./\\-]+\.[A-Za-z0-9]+)\*\*\s*$/u);
+      ?? trimmed.match(/^\*\*([^\s*]+\.[A-Za-z0-9]+)\*\*\s*$/u);
     if (boldMatch) {
       setPendingPath(normalizeModuleFilePath(boldMatch[1]), trimmed);
       continue;

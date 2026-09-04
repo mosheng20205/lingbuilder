@@ -48,7 +48,7 @@ import {
   isModuleFamilyStandardEnabled,
   isModuleHiddenByFamily
 } from '../src/services/modules/moduleFamilies';
-import { createMarketIndex, migrateCppModule, validateModuleDirectory } from '../src/services/modules/moduleSdkService';
+import { createMarketIndex, importAiModuleFiles, migrateCppModule, validateModuleDirectory } from '../src/services/modules/moduleSdkService';
 import { getPreferredModuleTarget } from '../src/services/modules/targetResolver';
 import {
   describeLingCppModuleContextForAi,
@@ -94,6 +94,40 @@ const sampleProject: LingWindowProject = {
 };
 
 const execFileAsync = promisify(execFile);
+
+test('FBro 多浏览器示例使用分组框承载三个浏览器控件', async () => {
+  const workspaceRoot = path.resolve(process.cwd(), '..');
+  const exampleRoot = path.join(workspaceRoot, 'examples', 'fbro-multi-browser-demo');
+  const designer = JSON.parse(await fs.readFile(path.join(exampleRoot, 'src', '.lingbuilder', 'window-designer.json'), 'utf8')) as {
+    windows: Array<{ controls: Array<{ type: string; parentId?: string; id: string }> }>;
+  };
+  const controls = designer.windows[0]?.controls || [];
+  const groupBoxes = controls.filter(control => control.type === 'GroupBox');
+  const browsers = controls.filter(control => control.type === 'FBroBrowser');
+  assert.equal(groupBoxes.length, 3);
+  assert.equal(browsers.length, 3);
+  assert.ok(browsers.every(browser => browser.parentId && groupBoxes.some(group => group.id === browser.parentId)));
+  assert.match(await fs.readFile(path.join(exampleRoot, 'src', 'FBro多浏览器示例.lcpp'), 'utf8'), /FBro_导航\(浏览器[123]/u);
+});
+
+test('FBro 模块文档声明安装、控件和示例专题且文件存在', async () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.fbro.browser');
+  const docs = manifest?.contributes?.docs || [];
+  const expected = [
+    'docs/modules/fbro/README.md',
+    'docs/modules/fbro/installation.md',
+    'docs/modules/fbro/control.md',
+    'docs/modules/fbro/examples.md'
+  ];
+  assert.deepEqual(docs.map(doc => doc.path), expected);
+  for (const relativePath of expected) {
+    await fs.access(path.resolve(process.cwd(), relativePath));
+  }
+  const readme = await fs.readFile(path.resolve(process.cwd(), 'docs/modules/fbro/README.md'), 'utf8');
+  assert.match(readme, /SDK 安装与环境检查/u);
+  assert.match(readme, /FBroBrowser 控件与进程模式/u);
+  assert.match(readme, /多浏览器分组框示例/u);
+});
 
 test('Aria2 内置模块的清单、文档、生成运行时和原生资产保持一致', async t => {
   if (process.platform !== 'win32') {
@@ -1871,6 +1905,225 @@ test('module validation, preview and pack reject missing declared files', async 
   assert.ok(preview.diagnostics.some(message => message.includes('文档不存在')));
 });
 
+test('AI 模块导入在校验完整前不写入目标目录，并保留旧目录内容', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-import-transaction-'));
+  const moduleDir = path.join(root, 'module');
+  const manifest = JSON.stringify({
+    schemaVersion: 2,
+    id: 'ai.transaction.module',
+    name: '事务导入模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '验证 AI 模块导入事务。',
+    contributes: {
+      commands: [{ name: '事务命令', signature: '事务命令()', description: '测试命令。', insertText: '事务命令()', returnType: '空' }],
+      docs: [{ title: '说明', path: 'README.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    bindings: { commands: [{ command: '事务命令', runtimeName: '事务命令', returnType: 'void' }] }
+  });
+
+  await assert.rejects(
+    () => importAiModuleFiles([{ path: 'lingbuilder.module.json', content: manifest }], moduleDir),
+    /模块内容校验未通过[\s\S]*文档不存在/u
+  );
+  await assert.rejects(() => fs.stat(moduleDir), { code: 'ENOENT' });
+
+  await fs.mkdir(path.join(moduleDir, 'old'), { recursive: true });
+  await fs.writeFile(path.join(moduleDir, 'old', 'keep.txt'), '保留旧文件', 'utf8');
+  await fs.writeFile(path.join(moduleDir, 'lingbuilder.module.json'), '旧版本', 'utf8');
+  await assert.rejects(
+    () => importAiModuleFiles([{ path: 'lingbuilder.module.json', content: manifest }], moduleDir),
+    /模块内容校验未通过[\s\S]*文档不存在/u
+  );
+  assert.equal(await fs.readFile(path.join(moduleDir, 'lingbuilder.module.json'), 'utf8'), '旧版本');
+  assert.equal(await fs.readFile(path.join(moduleDir, 'old', 'keep.txt'), 'utf8'), '保留旧文件');
+});
+
+test('AI 模块导入成功后原子替换并保留旧目录中未提交的文件', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-import-success-'));
+  const moduleDir = path.join(root, 'module');
+  await fs.mkdir(path.join(moduleDir, 'old'), { recursive: true });
+  await fs.writeFile(path.join(moduleDir, 'old', 'keep.txt'), '保留旧文件', 'utf8');
+  await fs.writeFile(path.join(moduleDir, 'README.md'), '旧说明', 'utf8');
+  const manifest = JSON.stringify({
+    schemaVersion: 2,
+    id: 'ai.atomic.module',
+    name: '原子导入模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '验证成功导入。',
+    contributes: {
+      commands: [{ name: '原子命令', signature: '原子命令()', description: '测试命令。', insertText: '原子命令()', returnType: '空' }],
+      docs: [{ title: '说明', path: 'README.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    bindings: { commands: [{ command: '原子命令', runtimeName: '原子命令', returnType: 'void' }] }
+  });
+  const result = await importAiModuleFiles([
+    { path: 'lingbuilder.module.json', content: manifest },
+    { path: 'README.md', content: '# 原子导入模块' },
+    { path: 'examples/demo.lcpp', content: '原子命令()' }
+  ], moduleDir);
+
+  assert.equal(result.diagnostics.length, 0);
+  assert.equal(result.overwrittenExisting, true);
+  assert.equal(await fs.readFile(path.join(moduleDir, 'lingbuilder.module.json'), 'utf8'), manifest);
+  assert.equal(await fs.readFile(path.join(moduleDir, 'old', 'keep.txt'), 'utf8'), '保留旧文件');
+});
+
+test('AI 模块导入拒绝大小写冲突路径并避免写入目标目录', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-import-case-'));
+  const moduleDir = path.join(root, 'module');
+  const manifest = JSON.stringify({
+    schemaVersion: 2,
+    id: 'ai.case.module',
+    name: '大小写模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '测试路径冲突。',
+    contributes: {
+      commands: [{ name: '命令', signature: '命令()', description: '测试命令。', insertText: '命令()', returnType: '空' }],
+      docs: [{ title: '说明', path: 'README.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    bindings: { commands: [{ command: '命令', runtimeName: '命令', returnType: 'void' }] }
+  });
+
+  await assert.rejects(
+    () => importAiModuleFiles([
+      { path: 'lingbuilder.module.json', content: manifest },
+      { path: 'README.md', content: '大写路径' },
+      { path: 'readme.md', content: '小写路径' },
+      { path: 'examples/demo.lcpp', content: '命令()' }
+    ], moduleDir),
+    /文件路径大小写冲突/u
+  );
+  await assert.rejects(() => fs.stat(moduleDir), { code: 'ENOENT' });
+});
+
+test('AI 模块导入拒绝与旧目录文件发生大小写冲突的路径', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-import-existing-case-'));
+  const moduleDir = path.join(root, 'module');
+  await fs.mkdir(moduleDir, { recursive: true });
+  await fs.writeFile(path.join(moduleDir, 'README.md'), '旧说明', 'utf8');
+  const manifest = JSON.stringify({
+    schemaVersion: 2,
+    id: 'ai.existing-case.module',
+    name: '旧目录大小写模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '测试旧目录路径冲突。',
+    contributes: {
+      commands: [{ name: '命令', signature: '命令()', description: '测试命令。', insertText: '命令()', returnType: '空' }],
+      docs: [{ title: '说明', path: 'readme.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    bindings: { commands: [{ command: '命令', runtimeName: '命令', returnType: 'void' }] }
+  });
+
+  await assert.rejects(
+    () => importAiModuleFiles([
+      { path: 'lingbuilder.module.json', content: manifest },
+      { path: 'readme.md', content: '新说明' },
+      { path: 'examples/demo.lcpp', content: '命令()' }
+    ], moduleDir),
+    /文件路径大小写冲突/u
+  );
+  assert.equal(await fs.readFile(path.join(moduleDir, 'README.md'), 'utf8'), '旧说明');
+});
+
+test('AI 模块严格清单校验对错误字段类型返回中文诊断而不是 TypeError', () => {
+  const base = {
+    schemaVersion: 2,
+    id: 'ai.invalid.shape',
+    name: '错误结构模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '验证错误字段类型。'
+  };
+  const cases: Array<[string, (manifest: any) => void, string]> = [
+    ['contributes.commands', manifest => { manifest.contributes.commands = '错误'; }, 'contributes.commands 必须是数组'],
+    ['contributes.docs', manifest => { manifest.contributes.docs = '错误'; }, 'docs.path 必须是数组'],
+    ['contributes.examples', manifest => { manifest.contributes.examples = '错误'; }, 'examples.path 必须是数组'],
+    ['contributes.snippets', manifest => { manifest.contributes.snippets = '错误'; }, 'contributes.snippets 必须是数组'],
+    ['contributes.types', manifest => { manifest.contributes.types = '错误'; }, 'contributes.types 必须是数组'],
+    ['bindings.commands', manifest => { manifest.bindings.commands = '错误'; }, 'bindings.commands 必须是数组'],
+    ['binding.parameters', manifest => { manifest.bindings.commands = [{ command: '命令', runtimeName: '命令', parameters: '错误' }]; }, 'parameters 必须是数组'],
+    ['targets', manifest => { manifest.targets = '错误'; }, 'targets 必须是数组']
+  ];
+  for (const [name, mutate, expected] of cases) {
+    const manifest: any = structuredClone(base);
+    manifest.contributes = { commands: [], docs: [], examples: [], types: [], snippets: [] };
+    manifest.bindings = { commands: [] };
+    mutate(manifest);
+    const result = validateModuleManifest(manifest, { requireCommandBindings: true });
+    assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes(expected)), `${name}: ${result.diagnostics.join('\n')}`);
+  }
+});
+
+test('AI 严格清单校验拒绝会让补全崩溃的片段和命令字段', () => {
+  const result = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'ai.invalid.completion',
+    name: '错误补全模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '测试补全字段。',
+    contributes: {
+      commands: [{ name: '命令', signature: '命令()', description: '测试。', insertText: 42 }],
+      snippets: [{ label: '', insertText: '', description: '' }],
+      docs: [{ title: '说明', path: 'README.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    bindings: { commands: [{ command: '命令', runtimeName: '命令', returnType: 'void' }] }
+  }, { requireCommandBindings: true });
+
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('insertText 必须是非空文本')));
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('snippets[0].label')));
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('snippets[0].insertText')));
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('snippets[0].description')));
+});
+
+test('AI 严格清单校验要求文档、示例和至少一项可用模块贡献', () => {
+  const result = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'ai.incomplete.module',
+    name: '不完整 AI 模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '只有清单。'
+  }, { requireCommandBindings: true });
+
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('至少声明一份文档')));
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('至少声明一个示例')));
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('至少需要一个可用贡献')));
+});
+
+test('AI 严格清单校验拒绝重复的命令 binding', () => {
+  const result = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'ai.duplicate.binding',
+    name: '重复 binding 模块',
+    version: '1.0.0',
+    category: 'AI',
+    description: '测试重复 binding。',
+    contributes: {
+      commands: [{ name: '重复命令', signature: '重复命令()', description: '测试。' }],
+      docs: [{ title: '说明', path: 'README.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    bindings: {
+      commands: [
+        { command: '重复命令', runtimeName: 'First' },
+        { command: '重复命令', runtimeName: 'Second' }
+      ]
+    }
+  }, { requireCommandBindings: true });
+
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('binding 命令重复：重复命令')));
+});
+
 test('module documentation service reads only declared UTF-8 files inside the installed module', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-docs-'));
   const moduleId = 'com.example.documented';
@@ -2505,11 +2758,21 @@ test('CEF3 user documentation covers the unified event catalog and every public 
   )));
   const expectedCoverageDocuments = [
     'browser', 'events', 'session', 'transfer', 'objects', 'automation',
-    'network', 'devtools', 'views', 'osr', 'platform'
+    'stream-handlers', 'network', 'devtools', 'devtools-observer', 'views', 'osr', 'platform', 'examples'
   ].map(name => `docs/modules/cef3/${name}.md`);
   assert.ok(expectedCoverageDocuments.every(expected => (
     coreManifest.contributes?.docs?.some(document => document.path === expected)
   )));
+  const examplePath = 'docs/modules/cef3/examples/CEF3多浏览器窗体.lcpp';
+  assert.equal(coreManifest.contributes?.examples?.[0]?.path, examplePath);
+  await fs.access(path.resolve(process.cwd(), examplePath));
+  const exampleDocument = await fs.readFile(
+    new URL('../docs/modules/cef3/examples.md', import.meta.url),
+    'utf8'
+  );
+  assert.match(exampleDocument, /GroupBox/u);
+  assert.match(exampleDocument, /cef3-browser-multi-demo/u);
+  assert.match(exampleDocument, /controlRef/u);
 
   const family = BUILTIN_MODULES.filter(item => item.id.startsWith('lingbuilder.cef3'));
   const publicCommands = family.flatMap(module => (

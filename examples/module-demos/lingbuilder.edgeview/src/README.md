@@ -1,5 +1,7 @@
 # EdgeView 浏览器模块完整演示
 
+> 本文件的 271 条命令签名与说明用于可复制示例；权威 API 参考为模块文档 [API.md](../../../../electron/docs/modules/edgeview/API.md)，修改模块目录后请运行 \`npm run module:edgeview-api-docs\` 同步。
+
 - 模块 ID：`lingbuilder.edgeview`
 - 版本：`1.2.0`
 - 类型：LingBuilder 内置模块

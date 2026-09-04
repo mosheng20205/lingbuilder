@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BUILTIN_MODULES } from './builtinModules';
-import { validateModuleManifest, validateModuleManifestContents, validateModuleRelativePath } from './manifest';
+import { validateModuleManifest, validateModuleManifestContents, validateModuleRelativePath, type ModuleValidationOptions } from './manifest';
 import {
   InstalledModule,
   LingBuilderModuleManifest,
@@ -388,13 +388,13 @@ export class ModuleService {
     return modules;
   }
 
-  async exportModulePackage(moduleDir: string, targetPath: string): Promise<void> {
+  async exportModulePackage(moduleDir: string, targetPath: string, options: ModuleValidationOptions = {}): Promise<void> {
     const resolvedModuleDir = path.resolve(moduleDir);
     const resolvedTargetPath = path.resolve(targetPath);
     const manifest = JSON.parse(await fs.readFile(path.join(resolvedModuleDir, MODULE_MANIFEST_FILE), 'utf8'));
-    const validation = validateModuleManifest(manifest);
+    const validation = validateModuleManifest(manifest, options);
     if (!validation.manifest) throw new Error(validation.diagnostics.join('\n'));
-    const contentDiagnostics = await validateModuleManifestContents(resolvedModuleDir, validation.manifest);
+    const contentDiagnostics = await validateModuleManifestContents(resolvedModuleDir, validation.manifest, options);
     if (contentDiagnostics.length > 0) throw new Error(`模块内容不完整：${contentDiagnostics.join('；')}`);
     if (!resolvedTargetPath.toLowerCase().endsWith('.lbmod')) throw new Error('导出目标必须是 .lbmod 文件。');
 

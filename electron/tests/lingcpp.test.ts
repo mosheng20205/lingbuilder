@@ -3776,6 +3776,32 @@ test('generateLingCppNativeWin32Project keeps wide string arguments inside arith
   assert.equal(mainCpp.includes('控件_取数值("进度条1")'), false);
 });
 
+test('generateLingCppNativeWin32Project accepts std::wstring results for 控件_添加项目', () => {
+  const source = `类 游戏主窗体 : 公开 窗体
+    事件 _按钮1_被单击()
+        控件_添加项目(主题列表, 到文本(123))
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [...sampleProject.windows[0].controls, {
+        id: 'theme-combo', type: 'ComboBox', name: '主题列表', content: '',
+        width: 180, height: 28, x: 48, y: 180, fontSize: 13,
+        background: '#FFFFFF', foreground: '#111111', isEnabled: true,
+        visibility: 'Visible'
+      }]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, { activeWindowId: 'window-1', lingCppSourceCode: source });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.ok(mainCpp.includes('int 控件_添加项目(const wchar_t* controlName, const std::wstring& text)'));
+  assert.ok(mainCpp.includes('控件_添加项目('));
+  assert.ok(mainCpp.includes('到文本(123)'));
+});
+
 test('generateLingCppNativeWin32Project translates ordinary conditions and rounds window dimensions', () => {
   const source = `类 游戏主窗体 : 公开 窗体
     事件 _按钮1_被单击()

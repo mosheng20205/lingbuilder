@@ -1628,7 +1628,10 @@ app.post("/api/modules/package/export", async (req, res) => {
       resolveExistingModulePath(moduleDir, ".lingbuilder/module-build"),
       resolveModuleWritePath(targetPath, ".lingbuilder/module-packages")
     ]);
-    await getModuleService().exportModulePackage(resolvedModuleDir, resolvedTargetPath);
+    await getModuleService().exportModulePackage(resolvedModuleDir, resolvedTargetPath, {
+      requireCommandBindings: true,
+      requireNonEmptyDocumentsAndExamples: true
+    });
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块包导出失败" });
@@ -1732,7 +1735,10 @@ app.post("/api/modules/developer/validate", async (req, res) => {
     if (path.basename(resolvedModulePath).toLowerCase() === "lingbuilder.module.json") {
       resolvedModulePath = path.dirname(resolvedModulePath);
     }
-    const result = await validateModuleDirectory(resolvedModulePath, { requireCommandBindings: true });
+    const result = await validateModuleDirectory(resolvedModulePath, {
+      requireCommandBindings: true,
+      requireNonEmptyDocumentsAndExamples: true
+    });
     res.json({ ok: true, result });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块校验失败" });

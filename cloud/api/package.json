@@ -1,7 +1,7 @@
 {
   "name": "@lingbuilder/cloud-api",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.6.3",
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx --watch src/main.ts",
@@ -14,7 +14,7 @@
     "admin:bootstrap": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx src/scripts/bootstrap-admin.ts"
   },
   "dependencies": {
-    "@lingbuilder/contracts": "0.6.1",
+    "@lingbuilder/contracts": "0.6.3",
     "@nestjs/common": "^11.1.5",
     "@nestjs/core": "^11.1.5",
     "@nestjs/jwt": "^11.0.1",

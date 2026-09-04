@@ -115,10 +115,7 @@ export default defineConfig({
           text: '视频教程',
           collapsed: false,
           items: [
-            { text: '视频教程首页', link: '/guide/videos/' },
-            { text: '入门系列（01-03 集）', link: '/guide/videos/beginner' },
-            { text: '进阶系列（04-06 集）', link: '/guide/videos/advanced' },
-            { text: '在线播放列表', link: '/guide/videos/playlist' },
+            { text: '视频教程路线图', link: '/guide/videos/' },
           ],
         },
       ],

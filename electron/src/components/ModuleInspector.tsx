@@ -42,7 +42,12 @@ import {
   MODULE_FAMILIES,
   type ModuleFamilyDefinition
 } from '../services/modules/moduleFamilies';
-import { AI_MODULE_MANIFEST_FILE, parseAiModuleOutputText } from '../services/modules/aiModuleImportParser';
+import {
+  AI_MODULE_MANIFEST_FILE,
+  formatAiModuleImportResultForClipboard,
+  parseAiModuleOutputText,
+  type AiModuleImportResultForClipboard
+} from '../services/modules/aiModuleImportParser';
 import ModulePublicInfoDialog from './ModulePublicInfoDialog';
 
 type ModuleSectionId = 'installed' | 'aiGenerate' | 'packageInstall' | 'packageExport' | 'developer' | 'market' | 'history';
@@ -72,6 +77,28 @@ export function formatModuleOperationError(error: unknown): string {
   }
   if (/timeout|timed out|abort/iu.test(raw)) return '模块服务响应超时，请检查网络后重试。';
   return '模块操作失败，请稍后重试；如果问题持续，请检查云端 API 和登录状态。';
+}
+
+async function copyTextWithFallback(value: string): Promise<void> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+  } catch {
+    // Some Electron/WebView contexts expose navigator.clipboard but reject writes.
+  }
+  if (typeof document === 'undefined') throw new Error('当前环境不支持剪贴板。');
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.setAttribute('readonly', '');
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('剪贴板写入失败。');
 }
 
 export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true, selectedModuleId: externalSelectedModuleId = null }: ModuleInspectorProps) {
@@ -104,7 +131,9 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [aiGuideCopyState, setAiGuideCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   const aiGuideCopyTimerRef = useRef<number | null>(null);
   const [aiModulePasteText, setAiModulePasteText] = useState('');
-  const [aiImportResult, setAiImportResult] = useState<{ ok: boolean; message: string; moduleDir?: string; diagnostics: string[] } | null>(null);
+  const [aiImportResult, setAiImportResult] = useState<AiModuleImportResultForClipboard | null>(null);
+  const [aiImportCopyState, setAiImportCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
+  const aiImportCopyTimerRef = useRef<number | null>(null);
   const [enableAfterInstall, setEnableAfterInstall] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<ModuleSectionId, boolean>>({
     installed: true,
@@ -638,6 +667,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
 
   useEffect(() => () => {
     if (aiGuideCopyTimerRef.current !== null) window.clearTimeout(aiGuideCopyTimerRef.current);
+    if (aiImportCopyTimerRef.current !== null) window.clearTimeout(aiImportCopyTimerRef.current);
   }, []);
 
   const copyAiModuleGuide = async () => {
@@ -651,7 +681,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     try {
       const guideText = await docsApi.readAiModuleGuide();
       if (!guideText) throw new Error('未读取到 AI 模块开发规范内容。');
-      await navigator.clipboard.writeText(guideText);
+      await copyTextWithFallback(guideText);
       setAiGuideCopyState('copied');
       setStatusText('已复制 AI 模块开发规范；粘贴给任意 AI，并用中文描述你想要的模块即可。');
       onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】已复制 AI 模块开发规范到剪贴板。`);
@@ -660,6 +690,41 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     } catch (error) {
       setAiGuideCopyState('failed');
       setStatusText(`复制 AI 模块开发规范失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const copyAiImportResult = async () => {
+    const result = aiImportResult;
+    if (!result) return;
+    setAiImportCopyState('copying');
+    try {
+      await copyTextWithFallback(formatAiModuleImportResultForClipboard(result));
+      setAiImportCopyState('copied');
+      setStatusText('已复制 AI 模块错误详情，可直接粘贴给 AI。');
+      if (aiImportCopyTimerRef.current !== null) window.clearTimeout(aiImportCopyTimerRef.current);
+      aiImportCopyTimerRef.current = window.setTimeout(() => setAiImportCopyState('idle'), 2500);
+    } catch {
+      setAiImportCopyState('failed');
+      setStatusText('复制 AI 模块错误详情失败，请选中错误文本后手动复制。');
+    }
+  };
+
+  const copyAiImportDiagnostics = async () => {
+    if (parsedAiFiles.diagnostics.length === 0) return;
+    setAiImportCopyState('copying');
+    try {
+      await copyTextWithFallback(formatAiModuleImportResultForClipboard({
+        ok: false,
+        message: 'AI 模块解析诊断：',
+        diagnostics: parsedAiFiles.diagnostics
+      }));
+      setAiImportCopyState('copied');
+      setStatusText('已复制 AI 模块解析诊断，可直接粘贴给 AI。');
+      if (aiImportCopyTimerRef.current !== null) window.clearTimeout(aiImportCopyTimerRef.current);
+      aiImportCopyTimerRef.current = window.setTimeout(() => setAiImportCopyState('idle'), 2500);
+    } catch {
+      setAiImportCopyState('failed');
+      setStatusText('复制 AI 模块解析诊断失败，请选中错误文本后手动复制。');
     }
   };
 
@@ -684,7 +749,8 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     [aiModulePasteText]
   );
   const canImportAiFiles = parsedAiFiles.files.length > 0
-    && parsedAiFiles.files.some(file => file.path === AI_MODULE_MANIFEST_FILE);
+    && parsedAiFiles.files.some(file => file.path === AI_MODULE_MANIFEST_FILE)
+    && parsedAiFiles.diagnostics.length === 0;
 
   const importAiFilesFromPaste = async () => {
     if (!canImportAiFiles) {
@@ -696,6 +762,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       return;
     }
     setIsLoading(true);
+    setAiImportCopyState('idle');
     try {
       const response = await fetch('/api/modules/developer/import-ai-files', {
         method: 'POST',
@@ -709,18 +776,34 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           : `服务返回了无效响应（HTTP ${response.status}）。`);
       }
       if (!result.ok) throw new Error(result.error || 'AI 模块导入失败');
+      if (!result.result || typeof result.result !== 'object') throw new Error('服务未返回有效的 AI 模块导入结果。');
+      if (typeof result.result.moduleId !== 'string'
+        || typeof result.result.moduleName !== 'string'
+        || typeof result.result.outDir !== 'string'
+        || !Number.isInteger(result.result.fileCount)
+        || result.result.fileCount < 0) {
+        throw new Error('服务返回的 AI 模块导入结果不完整。');
+      }
       const moduleDir: string = result.result.outDir;
-      const diagnostics: string[] = Array.isArray(result.result.diagnostics) ? result.result.diagnostics : [];
+      const diagnostics: string[] = Array.isArray(result.result.diagnostics)
+        ? result.result.diagnostics.filter((item: unknown): item is string => typeof item === 'string')
+        : [];
+      const overwrittenExisting = result.result.overwrittenExisting === true;
+      const importSucceeded = diagnostics.length === 0;
       setAiImportResult({
-        ok: diagnostics.length === 0,
+        ok: importSucceeded,
         moduleDir,
         diagnostics,
-        message: `已导入 ${result.result.moduleName}（${result.result.moduleId}）到 ${moduleDir}，共 ${result.result.fileCount} 个文件。${diagnostics.length === 0 ? '导入后校验通过。' : '导入后校验未通过，请查看诊断。'}`
+        message: `${importSucceeded ? '已导入' : 'AI 模块导入未通过'} ${result.result.moduleName}（${result.result.moduleId}）到 ${moduleDir}，共 ${result.result.fileCount} 个文件。${importSucceeded ? '导入后校验通过。' : '导入后校验未通过，请查看诊断。'}${overwrittenExisting ? '目标目录原本已存在，本次覆盖了同名文件；旧目录中多余的文件未删除。' : ''}`
       });
-      setDeveloperValidatePath(moduleDir);
-      setExportModuleDir(moduleDir);
-      setStatusText(`AI 模块已导入到 ${moduleDir}；“模块包制作”和“校验模块”路径已自动填好。`);
-      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】已从 AI 输出导入 ${result.result.moduleId} 到 ${moduleDir}（${result.result.fileCount} 个文件）。`);
+      if (importSucceeded) {
+        setDeveloperValidatePath(moduleDir);
+        setExportModuleDir(moduleDir);
+        setStatusText(`${overwrittenExisting ? 'AI 模块已导入并覆盖同名文件' : 'AI 模块已导入'}到 ${moduleDir}；“模块包制作”和“校验模块”路径已自动填好。`);
+        onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】已从 AI 输出导入 ${result.result.moduleId} 到 ${moduleDir}（${result.result.fileCount} 个文件）。`);
+      } else {
+        setStatusText(`AI 模块导入未通过：${diagnostics.join('；')}`);
+      }
     } catch (error) {
       const message = `AI 模块导入失败：${error instanceof Error ? error.message : String(error)}`;
       setAiImportResult({ ok: false, diagnostics: [], message });
@@ -941,7 +1024,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
                 <textarea
                   id={`${fieldIdPrefix}-ai-paste`}
                   value={aiModulePasteText}
-                  onChange={event => { setAiModulePasteText(event.target.value); setAiImportResult(null); }}
+                  onChange={event => { setAiModulePasteText(event.target.value); setAiImportResult(null); setAiImportCopyState('idle'); }}
                   className={`min-h-28 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`}
                   placeholder={`### 文件：lingbuilder.module.json\n\`\`\`json\n…\n\`\`\`\n\n### 文件：include/xxx_bridge.h\n\`\`\`cpp\n…\n\`\`\`}`}
                   aria-label="粘贴 AI 回复内容"
@@ -955,7 +1038,21 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
               )}
               {aiModulePasteText.trim() && parsedAiFiles.diagnostics.length > 0 && (
                 <div className={`mt-1 text-[10px] leading-4 whitespace-pre-wrap ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                  {parsedAiFiles.diagnostics.join('\n')}
+                  <div>{parsedAiFiles.diagnostics.join('\n')}</div>
+                  <button
+                    type="button"
+                    onClick={() => void copyAiImportDiagnostics()}
+                    disabled={aiImportCopyState === 'copying'}
+                    className={`mt-1 inline-flex h-7 items-center gap-1.5 rounded border px-2 text-[10px] ${
+                      aiImportCopyState === 'copied'
+                        ? 'border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10'
+                        : 'border-amber-400/50 text-amber-200 hover:bg-amber-500/10'
+                    } ${actionButtonClass}`}
+                    aria-label="复制 AI 模块解析诊断"
+                  >
+                    {aiImportCopyState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+                    {aiImportCopyState === 'copying' ? '正在复制…' : aiImportCopyState === 'copied' ? '已复制解析诊断' : aiImportCopyState === 'failed' ? '复制失败，请手动复制' : '复制解析诊断'}
+                  </button>
                 </div>
               )}
               <button
@@ -975,9 +1072,25 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
                       : isDarkMode ? 'border-red-500/40 text-red-300' : 'border-red-400 text-red-600'
                   }`}
                 >
-                  {aiImportResult.message}
-                  {aiImportResult.diagnostics.length > 0 && `\n${aiImportResult.diagnostics.join('\n')}`}
-                  {aiImportResult.ok && aiImportResult.moduleDir && '\n下一步：在上方“模块包制作”点击导出 .lbmod，然后安装启用。'}
+                  {formatAiModuleImportResultForClipboard(aiImportResult)}
+                  {!aiImportResult.ok && (
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void copyAiImportResult()}
+                        disabled={aiImportCopyState === 'copying'}
+                        className={`inline-flex h-7 items-center gap-1.5 rounded border px-2 text-[10px] ${
+                          aiImportCopyState === 'copied'
+                            ? 'border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10'
+                            : 'border-red-400/50 text-red-200 hover:bg-red-500/10'
+                        } ${actionButtonClass}`}
+                        aria-label="复制 AI 模块错误详情"
+                      >
+                        {aiImportCopyState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+                        {aiImportCopyState === 'copying' ? '正在复制…' : aiImportCopyState === 'copied' ? '已复制错误详情' : aiImportCopyState === 'failed' ? '复制失败，请手动复制' : '复制错误详情'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

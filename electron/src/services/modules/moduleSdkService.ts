@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { LingBuilderModuleManifest, ModuleCommandContribution, ModuleCommandBinding, ModuleBindingValueType, ModuleControlReferenceKind, ModuleControlReferenceScope, ModuleControlRuntimeRepresentation } from './types';
 import { validateModuleManifest, validateModuleManifestContents, type ModuleValidationOptions } from './manifest';
@@ -90,6 +91,7 @@ export async function importAiModuleFiles(files: AiModuleImportFileInput[], outD
   if (files.length > AI_MODULE_IMPORT_MAX_FILES) throw new Error(`单次导入最多 ${AI_MODULE_IMPORT_MAX_FILES} 个文件，当前 ${files.length} 个。`);
 
   const seenPaths = new Set<string>();
+  const seenPathKeys = new Set<string>();
   const safeFiles: Array<{ path: string; content: string }> = [];
   let totalBytes = 0;
   for (const file of files) {
@@ -99,7 +101,10 @@ export async function importAiModuleFiles(files: AiModuleImportFileInput[], outD
     const safePath = toSafeAiImportRelativePath(file.path);
     if (!safePath) throw new Error(`文件路径不安全或类型不支持：${file.path}`);
     if (seenPaths.has(safePath)) throw new Error(`文件路径重复：${safePath}`);
+    const pathKey = normalizeImportPathKey(safePath);
+    if (seenPathKeys.has(pathKey)) throw new Error(`文件路径大小写冲突：${safePath}`);
     seenPaths.add(safePath);
+    seenPathKeys.add(pathKey);
     const content = file.content.replace(/^\uFEFF/u, '');
     const byteLength = Buffer.byteLength(content, 'utf8');
     if (byteLength > AI_MODULE_IMPORT_MAX_FILE_BYTES) throw new Error(`文件 ${safePath} 超过 1 MB，请让 AI 拆分或精简。`);
@@ -126,17 +131,102 @@ export async function importAiModuleFiles(files: AiModuleImportFileInput[], outD
     throw new Error(`模块 ID 不合法：${manifest.id}`);
   }
 
-  const overwrittenExisting = await fs.stat(outDir).then(() => true, () => false);
-  const writtenFiles: string[] = [];
-  for (const file of safeFiles) {
-    const target = path.join(outDir, file.path);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, file.content, 'utf8');
-    writtenFiles.push(file.path);
-  }
+  const targetStat = await fs.lstat(outDir).catch((error: any) => {
+    if (error?.code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (targetStat && !targetStat.isDirectory()) throw new Error('AI 模块导入目标必须是目录。');
 
-  const directoryValidation = await validateModuleDirectory(outDir, { requireCommandBindings: true });
-  return { manifest, outDir, writtenFiles, diagnostics: [...directoryValidation.diagnostics], overwrittenExisting };
+  const parentDir = path.dirname(outDir);
+  await fs.mkdir(parentDir, { recursive: true });
+  const stagingDir = await fs.mkdtemp(path.join(parentDir, `.${path.basename(outDir)}.ai-import-`));
+  let stagingExists = true;
+  let backupDir: string | undefined;
+  let committed = false;
+  const writtenFiles: string[] = safeFiles.map(file => file.path);
+  const existingFileKeys = new Set<string>();
+  const existingFilePaths = new Map<string, string>();
+  try {
+    if (targetStat) await copyDirectoryContents(outDir, stagingDir, existingFileKeys, existingFilePaths);
+    for (const file of safeFiles) {
+      const existingPath = existingFilePaths.get(normalizeImportPathKey(file.path));
+      if (existingPath && existingPath !== file.path) {
+        throw new Error(`文件路径大小写冲突：${existingPath} 与 ${file.path} 在不同平台上会指向同一个文件。`);
+      }
+      const target = path.join(stagingDir, file.path);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, file.content, 'utf8');
+    }
+
+    const directoryValidation = await validateModuleDirectory(stagingDir, {
+      requireCommandBindings: true,
+      requireNonEmptyDocumentsAndExamples: true
+    });
+    if (directoryValidation.diagnostics.length > 0) {
+      throw new Error(`模块内容校验未通过：\n${directoryValidation.diagnostics.join('\n')}`);
+    }
+
+    const overwrittenExisting = safeFiles.some(file => existingFileKeys.has(normalizeImportPathKey(file.path)));
+    if (targetStat) {
+      backupDir = path.join(parentDir, `.${path.basename(outDir)}.ai-backup-${crypto.randomBytes(8).toString('hex')}`);
+      await fs.rename(outDir, backupDir);
+    }
+    await fs.rename(stagingDir, outDir);
+    stagingExists = false;
+    committed = true;
+    if (backupDir) {
+      await fs.rm(backupDir, { recursive: true, force: true }).catch(() => undefined);
+      backupDir = undefined;
+    }
+    return { manifest, outDir, writtenFiles, diagnostics: [], overwrittenExisting };
+  } catch (error) {
+    if (backupDir && !committed) {
+      await fs.rm(outDir, { recursive: true, force: true }).catch(() => undefined);
+      await fs.rename(backupDir, outDir).catch(() => undefined);
+      backupDir = undefined;
+    }
+    throw error;
+  } finally {
+    if (stagingExists) await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+    if (backupDir) await fs.rm(backupDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+function normalizeImportPathKey(value: string): string {
+  // Reject case-only aliases on every platform so a module remains portable
+  // between Windows' case-insensitive and POSIX case-sensitive file systems.
+  return value.replace(/\\/gu, '/').toLocaleLowerCase('en-US');
+}
+
+async function copyDirectoryContents(
+  sourceDir: string,
+  targetDir: string,
+  existingFileKeys: Set<string>,
+  existingFilePaths: Map<string, string>,
+  relativePrefix = ''
+): Promise<void> {
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const source = path.join(sourceDir, entry.name);
+    const target = path.join(targetDir, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`AI 模块导入目标包含符号链接，已拒绝访问：${entry.name}`);
+    if (entry.isDirectory()) {
+      await fs.mkdir(target, { recursive: true });
+      await copyDirectoryContents(source, target, existingFileKeys, existingFilePaths, path.join(relativePrefix, entry.name));
+      continue;
+    }
+    if (!entry.isFile()) throw new Error(`AI 模块导入目标包含不支持的文件类型：${entry.name}`);
+    const relativePath = path.join(relativePrefix, entry.name).replace(/\\/gu, '/');
+    const pathKey = normalizeImportPathKey(relativePath);
+    const existingPath = existingFilePaths.get(pathKey);
+    if (existingPath && existingPath !== relativePath) {
+      throw new Error(`AI 模块导入目标存在大小写冲突路径：${existingPath} 与 ${relativePath}。`);
+    }
+    existingFileKeys.add(pathKey);
+    existingFilePaths.set(pathKey, relativePath);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.copyFile(source, target);
+  }
 }
 
 export async function createModuleTemplate(options: ModuleInitOptions): Promise<LingBuilderModuleManifest> {
@@ -164,7 +254,7 @@ export async function validateModuleDirectory(modulePath: string, options: Modul
   const raw = await fs.readFile(manifestPath, 'utf8');
   const validation = validateModuleManifest(JSON.parse(raw), options);
   const contentDiagnostics = validation.manifest
-    ? await validateModuleManifestContents(moduleRoot, validation.manifest)
+    ? await validateModuleManifestContents(moduleRoot, validation.manifest, options)
     : [];
   return {
     manifest: validation.manifest,

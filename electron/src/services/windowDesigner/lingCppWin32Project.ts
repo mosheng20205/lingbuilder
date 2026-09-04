@@ -7210,6 +7210,8 @@ struct ControlSpec {
     COLORREF background;
     bool backgroundTransparent;
     COLORREF foreground;
+    COLORREF selectedColor;
+    COLORREF selectedMarkColor;
     bool enabled;
     const wchar_t* data;
     const wchar_t* data2;
@@ -16365,9 +16367,18 @@ ${webSocketServerWindowMethods}
         if (runtime.animatedImage->SelectActiveFrame(&runtime.animatedDimension, runtime.animatedFrame) != Gdiplus::Ok) return false;
         HBITMAP bitmap = RenderGdiPlusImage(runtime.animatedImage, ScaleForDpi(control.width, dpi_), ScaleForDpi(control.height, dpi_), control.option1, control.background);
         if (!bitmap) return false;
-        HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime.hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap)));
-        if (previous && previous != bitmap) DeleteObject(previous);
+        // STATIC controls do not own application-created bitmaps. Detach the
+        // previous image first, then delete the exact handle tracked by the
+        // runtime. Relying only on STM_SETIMAGE's return value can leave old
+        // frame DIBs behind during timer-driven replacement/repaint races.
+        SendMessageW(runtime.hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0);
+        if (runtime.resource && !runtime.iconResource) {
+            DeleteObject(runtime.resource);
+            runtime.resource = nullptr;
+        }
+        SendMessageW(runtime.hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap));
         runtime.resource = bitmap;
+        runtime.iconResource = false;
         InvalidateRect(runtime.hwnd, nullptr, TRUE);
         return true;
     }
@@ -16400,7 +16411,13 @@ ${webSocketServerWindowMethods}
                 for (UINT index = 0; index < delayCount; ++index) runtime.animatedFrameDelays[index] = std::max(20u, delays[index] * 10u);
             }
         }
-        if (!RenderAnimatedImage(runtime, control)) return false;
+        if (!RenderAnimatedImage(runtime, control)) {
+            runtime.animatedImage = nullptr;
+            delete image;
+            runtime.animatedFrameDelays.clear();
+            runtime.animatedFrameCount = 0;
+            return false;
+        }
         if ((control.flags & CF_AUTO_PLAY) && frameCount > 1) {
             runtime.animatedTimer = 0x4C470000u + static_cast<UINT_PTR>(control.id);
             SetTimer(hwnd_, runtime.animatedTimer, runtime.animatedFrameDelays[0], nullptr);
@@ -16591,6 +16608,11 @@ ${webSocketServerWindowMethods}
         if (IsType(*control, L"ComboBox")) return static_cast<int>(SendMessageW(runtime->hwnd, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text)));
         if (IsType(*control, L"ComboBoxEx")) { COMBOBOXEXITEMW item = {}; item.mask = CBEIF_TEXT; item.iItem = -1; item.pszText = const_cast<wchar_t*>(text ? text : L""); return static_cast<int>(SendMessageW(runtime->hwnd, CBEM_INSERTITEMW, 0, reinterpret_cast<LPARAM>(&item))); }
         return -1;
+    }
+    // wideString 参数在表达式求值后可能是 std::wstring；提供同 ABI 的重载，
+    // 让生成器无需依赖调用点隐式转换即可稳定通过 MSVC 编译。
+    int 控件_添加项目(const wchar_t* controlName, const std::wstring& text) {
+        return 控件_添加项目(controlName, text.c_str());
     }
     bool 控件_清空项目(const wchar_t* controlName) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
@@ -17841,7 +17863,12 @@ private:
             int boxSize = ScaleForDpi(14, dpi_);
             int boxTop = item->rcItem.top + (item->rcItem.bottom - item->rcItem.top - boxSize) / 2;
             RECT box = { item->rcItem.left, boxTop, item->rcItem.left + boxSize, boxTop + boxSize };
-            HBRUSH boxBrush = CreateSolidBrush(RGB(17, 24, 39));
+            // 控件本体使用窗口/控件背景，不能与勾选标记共用深色前景。
+            // 否则未选中的单选框会看起来像实心圆，复选框勾选标记也会被底色吞掉。
+            COLORREF selectedColor = enabled ? control->selectedColor : BlendColor(control->selectedColor, surrounding, 55);
+            COLORREF selectedMarkColor = enabled ? control->selectedMarkColor : BlendColor(control->selectedMarkColor, surrounding, 55);
+            int checkState = static_cast<int>(SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0));
+            HBRUSH boxBrush = CreateSolidBrush(checkState != BST_UNCHECKED ? selectedColor : rowBackground);
             COLORREF boxBorder = enabled
                 ? (pressed
                     ? RGB(148, 163, 184)
@@ -17852,12 +17879,11 @@ private:
             HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
             if (IsType(*control, L"RadioButton")) Ellipse(item->hDC, box.left, box.top, box.right, box.bottom);
             else Rectangle(item->hDC, box.left, box.top, box.right, box.bottom);
-            int checkState = static_cast<int>(SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0));
             if (checkState != BST_UNCHECKED) {
-                HPEN markPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(2, dpi_)), foreground);
+                HPEN markPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(2, dpi_)), selectedMarkColor);
                 HGDIOBJ previousMarkPen = SelectObject(item->hDC, markPen);
                 if (IsType(*control, L"RadioButton")) {
-                    HBRUSH dot = CreateSolidBrush(foreground);
+                    HBRUSH dot = CreateSolidBrush(selectedMarkColor);
                     HGDIOBJ previousDotBrush = SelectObject(item->hDC, dot);
                     int inset = ScaleForDpi(4, dpi_); Ellipse(item->hDC, box.left + inset, box.top + inset, box.right - inset, box.bottom - inset);
                     SelectObject(item->hDC, previousDotBrush);
@@ -20308,9 +20334,16 @@ private:
             if (control.mediaCallback) { control.mediaCallback->Release(); control.mediaCallback = nullptr; }
             if (control.font) DeleteObject(control.font);
             if (control.brush) DeleteObject(control.brush);
+            // Detach app-owned images before destroying their GDI handles.
+            // This is especially important for animated controls, which
+            // replace the bitmap on every timer tick.
+            if (control.hwnd && control.resource && !control.iconResource) {
+                SendMessageW(control.hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0);
+            }
             if (control.resource) {
                 if (control.iconResource) DestroyIcon(reinterpret_cast<HICON>(control.resource));
                 else DeleteObject(control.resource);
+                control.resource = nullptr;
             }
             if (control.animatedTimer) KillTimer(hwnd_, control.animatedTimer);
             delete control.animatedImage;
@@ -23546,13 +23579,15 @@ function generateControlSpec(
   const treeBorderColor = controlColorProperty(control, 'borderColor', '#64748B');
   const treeNodeSpacing = treeControl ? clampInteger(control.properties?.nodeSpacing, 2, 0, 24) : 2;
   const treeNodePadding = treeControl ? clampInteger(control.properties?.nodePadding, 3, 0, 24) : 3;
+  const selectedColor = controlColorProperty(control, 'selectedColor', '#0E7490');
+  const selectedMarkColor = controlColorProperty(control, 'selectedMarkColor', '#FFFFFF');
   const font = normalizeControlFont(control);
   const controlText = control.type === 'DataGrid' ? String(control.properties?.emptyText || '暂无数据') : control.content;
   const tagText = typeof control.tagText === 'string' ? control.tagText.trim() : '';
   const hasTagInteger = typeof control.tagInteger === 'number' && Number.isInteger(control.tagInteger)
     && control.tagInteger >= -2147483648 && control.tagInteger <= 2147483647;
   const tagInteger = hasTagInteger ? control.tagInteger! : 0;
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(tagText)}", ${hasTagInteger ? 'true' : 'false'}, ${tagInteger}, L"${escapeWideString(events)}" }`;
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${toColorRef(selectedColor)}, ${toColorRef(selectedMarkColor)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(tagText)}", ${hasTagInteger ? 'true' : 'false'}, ${tagInteger}, L"${escapeWideString(events)}" }`;
 }
 
 function controlColorProperty(control: LingControl, key: string, fallback: string): string {

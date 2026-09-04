@@ -370,7 +370,8 @@ AI 必须遵守：
 - 如果混用 LingBuilder 默认 Win32 窗口和 new_emoji 自建窗口，必须明确主消息循环和生命周期归属，不能让默认空窗口关闭后触发 `PostQuitMessage(0)`。
 - 「用 AI 生成模块（不需要会 C++）」链路全程本地：`docs/AI模块开发规范.md` 由「复制 AI 开发规范」按钮读入剪贴板，用户粘贴给任意外部 AI；AI 回复粘贴回 IDE 后由 `aiModuleImportParser` 拆文件，走 `/api/modules/developer/import-ai-files` 写入 `.lingbuilder/module-build/<manifest.id>`，再在校验、导出 `.lbmod`、`/api/modules/package/preview` + `/install` 后由项目启用并 F5。该链路不依赖云端账号、BYOK 或 AI Bridge 写入权限，AI 不得声称需要联网授权或额外服务端才能导入模块。
 - AI 生成的模块包必须让每条中文命令同时出现在 `contributes.commands` 和 `bindings.commands`：前者只负责补全、提示和文档，后者才是确定性 C++ 映射。IDE 在「导入到 module-build」和「③ 校验模块」两处强制比对，缺失时给出阻断诊断「命令 X 缺少 bindings.commands 映射：编辑器能补全，但无法生成 C++ 调用；请让 AI 补上同名 binding。」，只补 contributes 而无 binding 的结果不得报告为可用模块。
-- AI 生成模块导入前的 manifest 校验使用 `requireCommandBindings: true` 严格模式，校验失败必须在此之前完成、不得写入任何文件；目标目录已有同名文件时导入结果必须带 `overwrittenExisting` 并在界面给出覆盖提示，且不得删除旧目录中本次未包含的文件。导入上限固定为 200 个文件、单文件 1 MB、合计 10 MB，路径只允许包内相对路径，禁止绝对路径、盘符和 `..`；AI 不得绕过这些限制或把模块写到 `.lingbuilder/module-build/` 之外。
+- AI 生成模块导入前的 manifest 和模块内容校验使用 `requireCommandBindings: true` 严格模式；清单结构、命令 binding、非空文档、非空示例和声明文件必须全部通过后，才允许把同盘临时目录原子替换到目标目录，失败不得留下部分写入。目标目录已有同名文件时导入结果必须带 `overwrittenExisting` 并在界面给出覆盖提示，且不得删除旧目录中本次未包含的文件。导入上限固定为 200 个文件、单文件 1 MB、合计 10 MB，路径只允许包内相对路径，禁止绝对路径、盘符、`..` 和大小写冲突别名；AI 不得绕过这些限制或把模块写到 `.lingbuilder/module-build/` 之外。
+- AI 生成模块导入或校验失败时，必须保留 IDE 展示的完整中文错误标题和逐行诊断；用户可使用“复制错误详情”把完整文本粘贴回 AI。AI 收到这段诊断后应逐条修正原始模块清单或源码，不能删掉诊断行、用普通文本型伪装 `controlRef`，也不能把校验失败描述成模块已可用。
 - AI 生成模块的示例命令、参数与返回值必须与提交到 `bindings.commands` 的签名逐项一致，并至少附带一份真实存在、非空、UTF-8 的中文文档；不得编造模块内不存在的命令、受管类型或平台 target。当前实测闭环只覆盖 `windows-msvc-win32`，AI 不得承诺未验证的 x64/macOS 或第三方 `.lbmod` 兼容性。
 
 ## 6. C++ 生成边界

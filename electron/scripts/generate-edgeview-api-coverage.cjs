@@ -94,7 +94,16 @@ function resolveSdkRoot(args, version) {
 
 function loadCatalogEntries(source, fileName) {
   const compiled = ts.transpileModule(source, { fileName, compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const module = { exports: {} }; const localRequire = specifier => { throw new Error(`覆盖生成器不允许目录运行时依赖：${specifier}`); };
+  const module = { exports: {} };
+  const localRequire = specifier => {
+    if (specifier !== './bindingValueType') throw new Error(`覆盖生成器不允许目录运行时依赖：${specifier}`);
+    const dependencyPath = path.join(path.dirname(fileName), 'bindingValueType.ts');
+    const dependencySource = require('node:fs').readFileSync(dependencyPath, 'utf8');
+    const dependencyCompiled = ts.transpileModule(dependencySource, { fileName: dependencyPath, compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+    const dependencyModule = { exports: {} };
+    new Function('exports', 'require', 'module', '__filename', '__dirname', dependencyCompiled)(dependencyModule.exports, () => ({}), dependencyModule, dependencyPath, path.dirname(dependencyPath));
+    return dependencyModule.exports;
+  };
   new Function('exports', 'require', 'module', '__filename', '__dirname', compiled)(module.exports, localRequire, module, fileName, path.dirname(fileName));
   const entries = module.exports.EDGEVIEW_SAFE_API_CATALOG;
   if (!Array.isArray(entries)) throw new Error('无法加载 EdgeView 集中式 API 目录。');

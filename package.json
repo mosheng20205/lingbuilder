@@ -1,7 +1,7 @@
 {
   "name": "lingbuilder-platform",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.6.3",
   "workspaces": [
     "electron",
     "cloud/api",

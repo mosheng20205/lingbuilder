@@ -1,9 +1,9 @@
 {
   "name": "@lingbuilder/admin",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.6.3",
   "type": "module",
   "scripts": { "dev": "vite --host 127.0.0.1 --port 17901", "build": "tsc -b && vite build", "lint": "tsc -b --pretty false", "test": "node --import tsx --test tests/*.test.ts" },
-  "dependencies": { "@lingbuilder/contracts": "0.6.1", "@vitejs/plugin-react": "^5.0.4", "vite": "^6.2.3", "typescript": "~5.8.2", "react": "^19.0.1", "react-dom": "^19.0.1", "lucide-react": "^0.546.0" },
+  "dependencies": { "@lingbuilder/contracts": "0.6.3", "@vitejs/plugin-react": "^5.0.4", "vite": "^6.2.3", "typescript": "~5.8.2", "react": "^19.0.1", "react-dom": "^19.0.1", "lucide-react": "^0.546.0" },
   "devDependencies": { "@types/node": "22.14.0", "@types/react": "19.0.10", "@types/react-dom": "19.0.4", "tsx": "^4.21.0" }
 }

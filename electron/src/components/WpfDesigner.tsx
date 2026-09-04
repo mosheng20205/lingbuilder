@@ -4403,8 +4403,8 @@ function renderControl(
             className="w-full h-full flex items-center gap-2 text-xs select-none"
             style={{ color: control.foreground, fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? 'transparent' : control.background }}
           >
-            <div className={`w-3.5 h-3.5 border rounded flex items-center justify-center shrink-0 ${useNewEmojiDesigner ? 'border-fuchsia-300/70 bg-fuchsia-950/60' : 'border-slate-500 bg-slate-900'}`}>
-              {control.properties?.checked === true && <Check className="w-2.5 h-2.5" style={{ color: control.foreground }} />}
+            <div className="w-3.5 h-3.5 border rounded flex items-center justify-center shrink-0" style={{ borderColor: control.properties?.checked === true ? String(control.properties?.selectedColor ?? '#0E7490') : '#64748B', backgroundColor: control.properties?.checked === true ? String(control.properties?.selectedColor ?? '#0E7490') : (control.background === 'transparent' ? 'transparent' : control.background) }}>
+              {control.properties?.checked === true && <Check className="w-2.5 h-2.5" style={{ color: String(control.properties?.selectedMarkColor ?? '#FFFFFF') }} />}
             </div>
             <span className="truncate">{control.content}</span>
           </div>
@@ -4415,8 +4415,8 @@ function renderControl(
             className="w-full h-full flex items-center gap-2 text-xs select-none"
             style={{ color: control.foreground, fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? 'transparent' : control.background }}
           >
-            <div className={`w-3.5 h-3.5 border rounded-full flex items-center justify-center shrink-0 ${useNewEmojiDesigner ? 'border-cyan-300/80 bg-cyan-950/60 shadow-[0_0_10px_rgba(34,211,238,0.28)]' : 'border-slate-500 bg-slate-900'}`}>
-              {control.properties?.checked === true && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: control.foreground }} />}
+            <div className="w-3.5 h-3.5 border rounded-full flex items-center justify-center shrink-0" style={{ borderColor: control.properties?.checked === true ? String(control.properties?.selectedColor ?? '#0E7490') : '#64748B', backgroundColor: control.background === 'transparent' ? 'transparent' : control.background }}>
+              {control.properties?.checked === true && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: String(control.properties?.selectedMarkColor ?? '#FFFFFF') }} />}
             </div>
             <span className="truncate">{control.content}</span>
           </div>

@@ -1181,6 +1181,8 @@ test('动态图像控件使用项目 GIF 资源并按帧延时生成 Win32 播�
   assert.match(cpp, /runtime\.animatedFrameDelays\[index\] = std::max\(20u, delays\[index\] \* 10u\)/u);
   assert.match(cpp, /AdvanceAnimatedImage\(static_cast<UINT_PTR>\(wParam\)\)/u);
   assert.match(cpp, /DispatchLingEvent\(\*control, L"Finished"\)/u);
+  assert.match(cpp, /SendMessageW\(runtime\.hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0\)/u);
+  assert.match(cpp, /if \(runtime\.resource && !runtime\.iconResource\) \{\s*DeleteObject\(runtime\.resource\)/u);
 });
 
 test('项目集合编辑器允许用回车继续输入下一项', () => {
@@ -3732,6 +3734,27 @@ test('透明复选框和单选框的 Win32 自绘背景继承实际父容器', (
   assert.match(cpp, /if \(!control->backgroundTransparent\) rowBackground = background;/u);
   assert.match(cpp, /return ResolveControlSurroundingColor\(\*parent, parentRuntime \? parentRuntime->hwnd : nullptr\);/u);
   assert.match(cpp, /return ResolveControlSurroundingBrush\(\*parentSpec, parent \? parent->hwnd : nullptr\);/u);
+});
+
+test('复选框和单选框生成独立的选中颜色与标记颜色', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'selection-colors',
+    name: '选中颜色',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '选中颜色', width: 420, height: 320,
+      background: '#FFFFFF', description: '', controls: [
+        { ...createControl('check', undefined, 'CheckBox'), properties: { checked: true, selectedColor: '#2563EB', selectedMarkColor: '#FFFFFF' } },
+        { ...createControl('radio', undefined, 'RadioButton'), properties: { checked: false, selectedColor: '#16A34A', selectedMarkColor: '#FFFFFF' } }
+      ]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /COLORREF selectedColor;/u);
+  assert.match(cpp, /COLORREF selectedMarkColor;/u);
+  assert.match(cpp, /RGB\(37, 99, 235\), RGB\(255, 255, 255\)/u);
+  assert.match(cpp, /RGB\(22, 163, 74\), RGB\(255, 255, 255\)/u);
+  assert.match(cpp, /checkState != BST_UNCHECKED \? selectedColor : rowBackground/u);
 });
 
 test('窗口本身的空选择和虚拟菜单选择在规范化后保持不变', () => {

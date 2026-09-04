@@ -154,6 +154,8 @@ struct ControlSpec {
     int cornerRadius;
     COLORREF background;
     COLORREF foreground;
+    COLORREF selectedColor;
+    COLORREF selectedMarkColor;
     bool enabled;
     int progress;
     const wchar_t* handler;
@@ -676,31 +678,40 @@ static void PaintOwnerButton(const DRAWITEMSTRUCT* item, WindowState& state) {
         FillRect(item->hDC, &item->rcItem, backgroundBrush);
         DeleteObject(backgroundBrush);
 
+        const int checkState = item->hwndItem
+            ? static_cast<int>(SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0))
+            : BST_UNCHECKED;
+
         int boxSize = ScaleForDpi(14, state.dpi);
         int boxLeft = item->rcItem.left;
         int boxTop = item->rcItem.top + ((item->rcItem.bottom - item->rcItem.top - boxSize) / 2);
         RECT boxRect = { boxLeft, boxTop, boxLeft + boxSize, boxTop + boxSize };
 
-        HBRUSH boxBrush = CreateSolidBrush(RGB(17, 24, 39));
+        // 控件本体使用背景色，勾选标记使用前景色，确保选中/未选中状态可见。
+        HBRUSH boxBrush = CreateSolidBrush(checkState != BST_UNCHECKED ? control->selectedColor : control->background);
         HPEN borderPen = CreatePen(PS_SOLID, 1, control->enabled ? RGB(100, 116, 139) : RGB(70, 70, 78));
         HGDIOBJ oldBrush = SelectObject(item->hDC, boxBrush);
         HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
 
         if (IsType(*control, L"RadioButton")) {
             Ellipse(item->hDC, boxRect.left, boxRect.top, boxRect.right, boxRect.bottom);
-            int inset = ScaleForDpi(4, state.dpi);
-            HBRUSH dotBrush = CreateSolidBrush(control->enabled ? control->foreground : RGB(170, 170, 176));
-            SelectObject(item->hDC, dotBrush);
-            Ellipse(item->hDC, boxRect.left + inset, boxRect.top + inset, boxRect.right - inset, boxRect.bottom - inset);
-            DeleteObject(dotBrush);
+            if (checkState != BST_UNCHECKED) {
+                int inset = ScaleForDpi(4, state.dpi);
+                HBRUSH dotBrush = CreateSolidBrush(control->enabled ? control->selectedMarkColor : RGB(170, 170, 176));
+                SelectObject(item->hDC, dotBrush);
+                Ellipse(item->hDC, boxRect.left + inset, boxRect.top + inset, boxRect.right - inset, boxRect.bottom - inset);
+                DeleteObject(dotBrush);
+            }
         } else {
             Rectangle(item->hDC, boxRect.left, boxRect.top, boxRect.right, boxRect.bottom);
-            HPEN checkPen = CreatePen(PS_SOLID, ScaleForDpi(2, state.dpi), control->enabled ? control->foreground : RGB(170, 170, 176));
-            SelectObject(item->hDC, checkPen);
-            MoveToEx(item->hDC, boxRect.left + ScaleForDpi(3, state.dpi), boxRect.top + ScaleForDpi(7, state.dpi), nullptr);
-            LineTo(item->hDC, boxRect.left + ScaleForDpi(6, state.dpi), boxRect.top + ScaleForDpi(10, state.dpi));
-            LineTo(item->hDC, boxRect.right - ScaleForDpi(3, state.dpi), boxRect.top + ScaleForDpi(4, state.dpi));
-            DeleteObject(checkPen);
+            if (checkState != BST_UNCHECKED) {
+                HPEN checkPen = CreatePen(PS_SOLID, ScaleForDpi(2, state.dpi), control->enabled ? control->selectedMarkColor : RGB(170, 170, 176));
+                SelectObject(item->hDC, checkPen);
+                MoveToEx(item->hDC, boxRect.left + ScaleForDpi(3, state.dpi), boxRect.top + ScaleForDpi(7, state.dpi), nullptr);
+                LineTo(item->hDC, boxRect.left + ScaleForDpi(6, state.dpi), boxRect.top + ScaleForDpi(10, state.dpi));
+                LineTo(item->hDC, boxRect.right - ScaleForDpi(3, state.dpi), boxRect.top + ScaleForDpi(4, state.dpi));
+                DeleteObject(checkPen);
+            }
         }
 
         SelectObject(item->hDC, oldBrush);
@@ -1199,13 +1210,20 @@ function generateControlSpec(control: LingControl, id: number, eventRules: EplRu
 
   const cornerRadius = control.type === 'Button' ? clampInteger(control.properties?.cornerRadius, 6, 0, 100) : 0;
   const font = normalizeControlFont(control);
-  return `    { ${id}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, ${parseProgress(control)}, L"${escapeWideString(handler)}", L"${escapeWideString(messageBox?.text || '')}", L"${escapeWideString(messageBox?.title || '')}", ${messageBox?.cppFlagsExpression || 'MB_OK'}, L"${escapeWideString(debugText)}", ${eventRule?.closesWindowOnConfirm ? 'true' : 'false'} }`;
+  const selectedColor = controlColorProperty(control, 'selectedColor', '#0E7490');
+  const selectedMarkColor = controlColorProperty(control, 'selectedMarkColor', '#FFFFFF');
+  return `    { ${id}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${toColorRef(selectedColor)}, ${toColorRef(selectedMarkColor)}, ${control.isEnabled ? 'true' : 'false'}, ${parseProgress(control)}, L"${escapeWideString(handler)}", L"${escapeWideString(messageBox?.text || '')}", L"${escapeWideString(messageBox?.title || '')}", ${messageBox?.cppFlagsExpression || 'MB_OK'}, L"${escapeWideString(debugText)}", ${eventRule?.closesWindowOnConfirm ? 'true' : 'false'} }`;
 }
 
 function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(maximum, Math.max(minimum, Math.round(parsed)));
+}
+
+function controlColorProperty(control: LingControl, key: string, fallback: string): string {
+  const value = control.properties?.[key];
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value) ? value : fallback;
 }
 
 function getVisibleControls(window: LingWindowModel): LingControl[] {

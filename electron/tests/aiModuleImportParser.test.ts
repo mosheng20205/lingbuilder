@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AI_MODULE_MANIFEST_FILE, parseAiModuleOutputText } from '../src/services/modules/aiModuleImportParser';
+import {
+  AI_MODULE_MANIFEST_FILE,
+  formatAiModuleImportResultForClipboard,
+  parseAiModuleOutputText
+} from '../src/services/modules/aiModuleImportParser';
 
 const sampleManifest = JSON.stringify({
   schemaVersion: 2,
@@ -9,6 +13,25 @@ const sampleManifest = JSON.stringify({
   version: '1.0.0',
   category: '系统',
   description: '示例模块。'
+});
+
+test('AI 模块导入错误复制包含完整错误消息和全部诊断', () => {
+  const result = formatAiModuleImportResultForClipboard({
+    ok: false,
+    message: 'AI 模块导入失败：模块清单校验未通过：',
+    diagnostics: [
+      'bindings.commands[0].parameters[0].controlKinds 必须显式声明 visual、nonVisual 或 resource。',
+      'bindings.commands[0].parameters[0].scope 必须显式声明 currentWindow 或 project。',
+      'bindings.commands[0].parameters[0].runtimeRepresentation 必须显式声明 wideName、stableId 或 nativeHandle。'
+    ]
+  });
+
+  assert.equal(result, [
+    'AI 模块导入失败：模块清单校验未通过：',
+    'bindings.commands[0].parameters[0].controlKinds 必须显式声明 visual、nonVisual 或 resource。',
+    'bindings.commands[0].parameters[0].scope 必须显式声明 currentWindow 或 project。',
+    'bindings.commands[0].parameters[0].runtimeRepresentation 必须显式声明 wideName、stableId 或 nativeHandle。'
+  ].join('\n'));
 });
 
 test('解析标准“### 文件：路径”标题加代码块格式', () => {
@@ -42,6 +65,39 @@ test('解析标准“### 文件：路径”标题加代码块格式', () => {
   ]);
   assert.equal(result.files[1].content, '#pragma once\nint 文本_统计字符数(const std::wstring& 文本);');
   assert.equal(result.diagnostics.length, 0);
+});
+
+test('解析带 ./ 前缀的模块相对路径', () => {
+  const fence = '`'.repeat(3);
+  const text = [
+    '### 文件：./lingbuilder.module.json',
+    `${fence}json`,
+    '{}',
+    fence
+  ].join('\n');
+
+  const result = parseAiModuleOutputText(text);
+  assert.equal(result.files.length, 1);
+  assert.equal(result.files[0].path, 'lingbuilder.module.json');
+  assert.deepEqual(result.diagnostics, []);
+});
+
+test('拒绝在 Windows 上会互相覆盖的大小写冲突文件路径', () => {
+  const fence = '`'.repeat(3);
+  const text = [
+    '### 文件：README.md',
+    `${fence}markdown`,
+    '大写路径',
+    fence,
+    '### 文件：readme.md',
+    `${fence}markdown`,
+    '小写路径',
+    fence
+  ].join('\n');
+
+  const result = parseAiModuleOutputText(text);
+  assert.equal(result.files.length, 0);
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.includes('大小写冲突')));
 });
 
 test('解析常见标题变体：#### 路径、**文件：路径**、纯“文件：路径”行', () => {

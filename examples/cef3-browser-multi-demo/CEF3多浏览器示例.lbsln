@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "cef3-browser-multi-demo",
+  "name": "CEF3 多浏览器示例",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "cef3-browser-multi-demo",
+  "startupProjectIds": [
+    "cef3-browser-multi-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "cef3-browser-multi-demo",
+      "name": "CEF3 多浏览器示例",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

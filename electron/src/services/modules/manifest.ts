@@ -28,6 +28,8 @@ const DESIGNER_LAYOUT_MODES = ['absolute', 'flow', 'stack', 'grid', 'dock', 'slo
 export interface ModuleValidationOptions {
   /** AI 导入路径使用：要求每条 contributes.commands 都有同名 bindings.commands 映射。 */
   requireCommandBindings?: boolean;
+  /** AI 导入路径使用：要求声明的文档和示例文件非空。 */
+  requireNonEmptyDocumentsAndExamples?: boolean;
 }
 
 export function validateModuleManifest(value: unknown, options: ModuleValidationOptions = {}): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {
@@ -44,12 +46,15 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
   if (!CATEGORIES.includes(raw.category)) diagnostics.push('模块分类不在允许范围内。');
   if (typeof raw.description !== 'string' || !raw.description.trim()) diagnostics.push('模块说明不能为空。');
 
-  const contributes = raw.contributes;
-  if (contributes !== undefined && (!contributes || typeof contributes !== 'object')) {
+  const contributesValue = raw.contributes;
+  const contributes = contributesValue && typeof contributesValue === 'object' && !Array.isArray(contributesValue)
+    ? contributesValue
+    : undefined;
+  if (contributesValue !== undefined && (!contributesValue || typeof contributesValue !== 'object' || Array.isArray(contributesValue))) {
     diagnostics.push('contributes 必须是对象。');
   }
 
-  if (contributes?.commands) {
+  if (contributes?.commands !== undefined) {
     if (!Array.isArray(contributes.commands)) diagnostics.push('contributes.commands 必须是数组。');
     else {
       const seen = new Set<string>();
@@ -71,6 +76,7 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
         }
         if (typeof command?.signature !== 'string' || !command.signature.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 signature。`);
         if (typeof command?.description !== 'string' || !command.description.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 description。`);
+        if (command?.insertText !== undefined && (typeof command.insertText !== 'string' || !command.insertText.trim())) diagnostics.push(`命令 ${command?.name || index + 1} 的 insertText 必须是非空文本。`);
         if (command?.visibility !== undefined && !['default', 'advanced', 'internal'].includes(command.visibility)) diagnostics.push(`命令 ${command?.name || index + 1} 的 visibility 无效。`);
         if (command?.category !== undefined && (typeof command.category !== 'string' || !command.category.trim())) {
           diagnostics.push(`命令 ${command?.name || index + 1} 的 category 必须是非空文本。`);
@@ -91,7 +97,7 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
   validateMenuContributions(contributes?.menus, contributes?.submenus, diagnostics);
   validateModuleTypeContributions(contributes?.types, diagnostics);
 
-  if (contributes?.designerControls) {
+  if (contributes?.designerControls !== undefined) {
     if (!Array.isArray(contributes.designerControls)) diagnostics.push('contributes.designerControls 必须是数组。');
     else {
       const seenControls = new Set<string>();
@@ -160,7 +166,7 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
   }
 
   if (raw.designer !== undefined) {
-    if (!raw.designer || typeof raw.designer !== 'object') diagnostics.push('designer 必须是对象。');
+    if (!raw.designer || typeof raw.designer !== 'object' || Array.isArray(raw.designer)) diagnostics.push('designer 必须是对象。');
     else {
       if (typeof raw.designer.backend !== 'string' || !raw.designer.backend.trim()) diagnostics.push('designer.backend 不能为空。');
       if (!Number.isInteger(raw.designer.schemaVersion) || raw.designer.schemaVersion < 1) diagnostics.push('designer.schemaVersion 必须是正整数。');
@@ -169,14 +175,37 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
     }
   }
 
-  validatePathArray(contributes?.docs?.map((doc: any) => doc?.path), 'docs.path', diagnostics);
-  validatePathArray(contributes?.examples?.map((example: any) => example?.path), 'examples.path', diagnostics);
+  validatePathArray(
+    Array.isArray(contributes?.docs) ? contributes.docs.map((doc: any) => doc?.path) : contributes?.docs,
+    'docs.path',
+    diagnostics
+  );
+  validatePathArray(
+    Array.isArray(contributes?.examples) ? contributes.examples.map((example: any) => example?.path) : contributes?.examples,
+    'examples.path',
+    diagnostics
+  );
   validateDependencies(raw.dependencies, raw.id, diagnostics);
-  validateBuildContribution(raw.build, raw.targets || [], diagnostics);
+  const commands = Array.isArray(contributes?.commands) ? contributes.commands : [];
+  const types = Array.isArray(contributes?.types) ? contributes.types : [];
+  const targets = Array.isArray(raw.targets) ? raw.targets : [];
+  validateBuildContribution(raw.build, targets, diagnostics);
   validateTargets(raw.targets, diagnostics);
-  validateBindings(raw.bindings, contributes?.commands || [], contributes?.types || [], raw.targets || [], diagnostics, options);
-  validateControlReferenceSnippets(contributes?.snippets, raw.bindings?.commands, diagnostics);
+  validateBindings(raw.bindings, commands, types, targets, diagnostics, options);
+  if (contributes?.snippets !== undefined && !Array.isArray(contributes.snippets)) {
+    diagnostics.push('contributes.snippets 必须是数组。');
+  } else if (Array.isArray(contributes?.snippets)) {
+    contributes.snippets.forEach((snippet: any, index: number) => {
+      if (typeof snippet?.label !== 'string' || !snippet.label.trim()) diagnostics.push(`contributes.snippets[${index}].label 必须是非空文本。`);
+      if (typeof snippet?.insertText !== 'string' || !snippet.insertText.trim()) diagnostics.push(`contributes.snippets[${index}].insertText 必须是非空文本。`);
+      if (typeof snippet?.description !== 'string' || !snippet.description.trim()) diagnostics.push(`contributes.snippets[${index}].description 必须是非空文本。`);
+    });
+  }
+  validateModuleFileContributions(contributes?.docs, 'contributes.docs', '文档', diagnostics);
+  validateModuleFileContributions(contributes?.examples, 'contributes.examples', '示例', diagnostics);
+  validateControlReferenceSnippets(contributes?.snippets, Array.isArray(raw.bindings?.commands) ? raw.bindings.commands : undefined, diagnostics);
   validateCompatibility(raw.compatibility, raw.id, diagnostics);
+  if (options.requireCommandBindings) validateStrictAiModuleRequirements(contributes, raw, diagnostics);
 
   if (diagnostics.length > 0) return { diagnostics };
   return { manifest: raw as LingBuilderModuleManifest, diagnostics };
@@ -241,13 +270,13 @@ function validateRuntimeControlContribution(control: any, controlIndex: number, 
   });
   if (contract.validCommand !== '控件_是否有效') diagnostics.push(`${prefix}.validCommand 必须为 控件_是否有效。`);
 
-  const publicTypes = new Map((contributes?.types || []).map((type: any) => [type?.name, type]));
+  const publicTypes = new Map((Array.isArray(contributes?.types) ? contributes.types : []).map((type: any) => [type?.name, type]));
   const publicType = publicTypes.get(contract.lingCppType) as any;
   if (!publicType) diagnostics.push(`${prefix}.lingCppType 未在 contributes.types 中公开。`);
   else if (publicType.cppType !== 'LingControlRef') diagnostics.push(`类型 ${contract.lingCppType} 的 cppType 必须为 LingControlRef。`);
 
-  const commandNames = new Set((contributes?.commands || []).map((command: any) => command?.name));
-  const bindingByCommand = new Map((bindings?.commands || []).map((binding: any) => [binding?.command, binding]));
+  const commandNames = new Set((Array.isArray(contributes?.commands) ? contributes.commands : []).map((command: any) => command?.name));
+  const bindingByCommand = new Map((Array.isArray(bindings?.commands) ? bindings.commands : []).map((binding: any) => [binding?.command, binding]));
   for (const field of ['createCommand', 'lookupByTagTextCommand', 'lookupByTagIntegerCommand'] as const) {
     const commandName = contract[field];
     if (typeof commandName !== 'string') continue;
@@ -307,7 +336,7 @@ function validateDependencies(dependencies: unknown, moduleId: string, diagnosti
 
 function validateCompatibility(compatibility: unknown, moduleId: string, diagnostics: string[]): void {
   if (compatibility === undefined) return;
-  if (!compatibility || typeof compatibility !== 'object') {
+  if (!compatibility || typeof compatibility !== 'object' || Array.isArray(compatibility)) {
     diagnostics.push('compatibility 必须是对象。');
     return;
   }
@@ -370,9 +399,22 @@ export function validateModuleRelativePath(value: string): boolean {
   return !normalized.some(part => part === '..' || part === '');
 }
 
+function validateModuleFileContributions(value: unknown, label: string, kind: '文档' | '示例', diagnostics: string[]): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    diagnostics.push(`${label} 必须是数组。`);
+    return;
+  }
+  value.forEach((entry: any, index: number) => {
+    if (typeof entry?.title !== 'string' || !entry.title.trim()) diagnostics.push(`${label}[${index}].title 必须是非空${kind}标题。`);
+    if (typeof entry?.path !== 'string' || !entry.path.trim()) diagnostics.push(`${label}[${index}].path 必须是非空模块相对路径。`);
+  });
+}
+
 export async function validateModuleManifestContents(
   moduleRoot: string,
-  manifest: LingBuilderModuleManifest
+  manifest: LingBuilderModuleManifest,
+  options: Pick<ModuleValidationOptions, 'requireNonEmptyDocumentsAndExamples'> = {}
 ): Promise<string[]> {
   const diagnostics: string[] = [];
   const fileReferences = uniqueReferences([
@@ -394,7 +436,13 @@ export async function validateModuleManifestContents(
   );
 
   for (const reference of fileReferences) {
-    await validateReferencedEntry(moduleRoot, reference, 'file', diagnostics);
+    await validateReferencedEntry(
+      moduleRoot,
+      reference,
+      'file',
+      diagnostics,
+      options.requireNonEmptyDocumentsAndExamples === true && (reference.label === '文档' || reference.label === '示例')
+    );
   }
   for (const reference of directoryReferences) {
     await validateReferencedEntry(moduleRoot, reference, 'directory', diagnostics);
@@ -406,7 +454,8 @@ async function validateReferencedEntry(
   moduleRoot: string,
   reference: { path: string; label: string },
   expectedType: 'file' | 'directory',
-  diagnostics: string[]
+  diagnostics: string[],
+  requireNonEmpty = false
 ): Promise<void> {
   if (!validateModuleRelativePath(reference.path)) return;
   const targetPath = path.join(moduleRoot, reference.path);
@@ -418,6 +467,8 @@ async function validateReferencedEntry(
     }
     if (expectedType === 'file' ? !stat.isFile() : !stat.isDirectory()) {
       diagnostics.push(`${reference.label}类型不正确：${reference.path}`);
+    } else if (requireNonEmpty && stat.size === 0) {
+      diagnostics.push(`${reference.label}不能为空：${reference.path}`);
     }
   } catch {
     diagnostics.push(`${reference.label}不存在：${reference.path}`);
@@ -529,13 +580,28 @@ function reportMissingCommandBindings(commands: any[], boundCommandNames: Set<st
   });
 }
 
+function validateStrictAiModuleRequirements(contributes: any, raw: Record<string, any>, diagnostics: string[]): void {
+  const docs = Array.isArray(contributes?.docs) ? contributes.docs : [];
+  const examples = Array.isArray(contributes?.examples) ? contributes.examples : [];
+  const commands = Array.isArray(contributes?.commands) ? contributes.commands : [];
+  const types = Array.isArray(contributes?.types) ? contributes.types : [];
+  const designerControls = Array.isArray(contributes?.designerControls) ? contributes.designerControls : [];
+  const codeGenerators = Array.isArray(raw.build?.codeGenerators) ? raw.build.codeGenerators : [];
+
+  if (docs.length === 0) diagnostics.push('AI 模块至少声明一份文档，并在导入内容中提供非空文件。');
+  if (examples.length === 0) diagnostics.push('AI 模块至少声明一个示例，并在导入内容中提供非空 .lcpp 文件。');
+  if (commands.length + types.length + designerControls.length + codeGenerators.length === 0) {
+    diagnostics.push('AI 模块至少需要一个可用贡献：contributes.commands、types、designerControls 或 build.codeGenerators。');
+  }
+}
+
 function validateBindings(bindings: any, commands: any[], types: any[], targets: any[], diagnostics: string[], options: ModuleValidationOptions = {}): void {
   const requireCommandBindings = options.requireCommandBindings === true;
   if (bindings === undefined) {
     if (requireCommandBindings) reportMissingCommandBindings(commands, new Set<string>(), diagnostics);
     return;
   }
-  if (!bindings || typeof bindings !== 'object') {
+  if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) {
     diagnostics.push('bindings 必须是对象。');
     return;
   }
@@ -562,17 +628,22 @@ function validateBindings(bindings: any, commands: any[], types: any[], targets:
     && target.runtimeFiles.some((file: unknown) => typeof file === 'string' && file.toLowerCase().endsWith('.dll')));
   const isSupportedBindingType = (value: unknown) => typeof value === 'string'
     && (BINDING_VALUE_TYPES.includes(value as ModuleBindingValueType) || publicTypeNames.has(value));
+  const seenBindingCommands = new Set<string>();
   bindings.commands.forEach((binding: any, index: number) => {
+    const bindingCommand = typeof binding?.command === 'string' ? binding.command.trim() : '';
+    if (bindingCommand && seenBindingCommands.has(bindingCommand)) diagnostics.push(`binding 命令重复：${bindingCommand}。`);
+    if (bindingCommand) seenBindingCommands.add(bindingCommand);
     if (typeof binding?.command !== 'string' || !binding.command.trim()) diagnostics.push(`bindings.commands[${index}] 缺少 command。`);
-    if (binding?.command && commandNames.size > 0 && !commandNames.has(binding.command)) diagnostics.push(`binding 引用了未贡献的命令：${binding.command}`);
+    if (bindingCommand && (requireCommandBindings || commandNames.size > 0) && !commandNames.has(bindingCommand)) diagnostics.push(`binding 引用了未贡献的命令：${bindingCommand}`);
     if (typeof binding?.runtimeName !== 'string' || !binding.runtimeName.trim()) diagnostics.push(`bindings.commands[${index}] 缺少 runtimeName。`);
     if (binding?.returnType && !isSupportedBindingType(binding.returnType)) diagnostics.push(`bindings.commands[${index}].returnType 不受支持；只能使用基础类型或本模块公开类型。`);
     if (hasNativeDllTarget && structuredTypeNames.has(binding?.returnType)) {
       diagnostics.push(`命令 ${binding?.command || index + 1} 不能通过原生 DLL ABI 直接返回结构化类型 ${binding.returnType}；请改用 POD 缓冲区或受管句柄。`);
     }
+    const bindingParameters = Array.isArray(binding?.parameters) ? binding.parameters : [];
     if (binding?.parameters !== undefined) {
       if (!Array.isArray(binding.parameters)) diagnostics.push(`bindings.commands[${index}].parameters 必须是数组。`);
-      else binding.parameters.forEach((parameter: any, parameterIndex: number) => {
+      else bindingParameters.forEach((parameter: any, parameterIndex: number) => {
         if (typeof parameter?.name !== 'string' || !parameter.name.trim()) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}] 缺少 name。`);
         if (!isSupportedBindingType(parameter?.type)) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].type 不受支持；只能使用基础类型或本模块公开类型。`);
         if (hasNativeDllTarget && structuredTypeNames.has(parameter?.type)) {
@@ -643,15 +714,15 @@ function validateBindings(bindings: any, commands: any[], types: any[], targets:
       });
     }
     let optionalSeen = false;
-    (binding.parameters || []).forEach((parameter: any) => {
+    bindingParameters.forEach((parameter: any) => {
       if (parameter?.optional === true) optionalSeen = true;
       else if (optionalSeen && parameter?.variadic !== true) diagnostics.push(`命令 ${binding.command} 的必填参数不能位于可选参数之后。`);
     });
-    const variadicIndexes = (binding.parameters || [])
+    const variadicIndexes = bindingParameters
       .map((parameter: any, parameterIndex: number) => parameter?.variadic === true ? parameterIndex : -1)
       .filter((parameterIndex: number) => parameterIndex >= 0);
     if (variadicIndexes.length > 1) diagnostics.push(`命令 ${binding.command} 只能声明一个可变参数。`);
-    if (variadicIndexes.length === 1 && variadicIndexes[0] !== (binding.parameters || []).length - 1) {
+    if (variadicIndexes.length === 1 && variadicIndexes[0] !== bindingParameters.length - 1) {
       diagnostics.push(`命令 ${binding.command} 的可变参数必须位于参数列表末尾。`);
     }
     validateManagedInvocation(binding, index, diagnostics);

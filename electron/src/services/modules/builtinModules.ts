@@ -654,7 +654,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
       snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }],
-      docs: [{ title: 'EdgeView 事件与接口参考', path: 'docs/modules/edgeview/README.md' }]
+      docs: [
+        { title: 'EdgeView 事件参考', path: 'docs/modules/edgeview/README.md' },
+        { title: 'EdgeView 完整 API 参考（271 条）', path: 'docs/modules/edgeview/API.md' }
+      ]
     },
     targets: [
       { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/WebView2.h', 'include/WebView2EnvironmentOptions.h'], libs: ['ole32.lib'], runtimeFiles: ['bin/x86/WebView2Loader.dll'], defines: ['LINGBUILDER_EDGEVIEW_MODULE'] },
@@ -794,9 +797,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { title: 'CEF3 DevTools Observer 用户指南', path: 'docs/modules/cef3/devtools-observer.md' },
         { title: 'CEF3 Views 官方接口参考', path: 'docs/modules/cef3/views.md' },
         { title: 'CEF3 OSR 官方接口参考', path: 'docs/modules/cef3/osr.md' },
-        { title: 'CEF3 平台与工具官方接口参考', path: 'docs/modules/cef3/platform.md' }
+        { title: 'CEF3 平台与工具官方接口参考', path: 'docs/modules/cef3/platform.md' },
+        { title: 'CEF3 多浏览器示例与故障排查', path: 'docs/modules/cef3/examples.md' }
       ],
-      examples: [{ title: '双浏览器示例', path: 'examples/双浏览器示例.lcpp', description: '在同一窗口创建两个独立缓存目录的 CEF3 浏览器控件。' }]
+      examples: [{ title: '双浏览器示例', path: 'docs/modules/cef3/examples/CEF3多浏览器窗体.lcpp', description: '在同一窗口用两个 GroupBox 分组承载独立 CEF3 浏览器控件，并分别绑定加载事件。' }]
     },
     targets: [
       { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/LingBuilderCefBridge.h'], libs: ['modules/lingbuilder.cef3.browser/lib/x64/LingBuilderCefBridge.lib'], runtimeFiles: ['bin/x64/libcef.dll', 'bin/x64/chrome_elf.dll', 'bin/x64/LingBuilderCefBridge.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] }
@@ -975,7 +979,12 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ],
       types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
       snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }],
-      docs: [{ title: 'FBro 事件与接口参考', path: 'docs/modules/fbro/README.md' }]
+      docs: [
+        { title: 'FBro 事件与接口参考', path: 'docs/modules/fbro/README.md' },
+        { title: 'FBro SDK 安装与环境检查', path: 'docs/modules/fbro/installation.md' },
+        { title: 'FBroBrowser 控件与进程模式', path: 'docs/modules/fbro/control.md' },
+        { title: 'FBro 示例与故障排查', path: 'docs/modules/fbro/examples.md' }
+      ]
     },
     targets: [{
       id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',

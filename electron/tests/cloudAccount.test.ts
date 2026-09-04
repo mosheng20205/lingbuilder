@@ -28,6 +28,29 @@ test('收费模块授权失败只向界面返回可操作的中文错误', () =>
   assert.doesNotMatch(inspector, /项目模块状态更新失败：\$\{error instanceof Error/u);
 });
 
+test('AI 模块导入失败结果提供复制完整错误详情的入口', () => {
+  const inspector = fs.readFileSync(new URL('../src/components/ModuleInspector.tsx', import.meta.url), 'utf8');
+  assert.match(inspector, /aria-label="复制 AI 模块错误详情"/u);
+  assert.match(inspector, /formatAiModuleImportResultForClipboard\(result\)/u);
+  assert.match(inspector, /复制 AI 模块错误详情失败，请选中错误文本后手动复制/u);
+  assert.match(inspector, /document\.execCommand\('copy'\)/u);
+  assert.match(inspector, /overwrittenExisting/u);
+  assert.match(inspector, /复制 AI 模块解析诊断/u);
+  assert.match(inspector, /const canImportAiFiles = parsedAiFiles\.files\.length > 0[\s\S]+?parsedAiFiles\.diagnostics\.length === 0/u);
+  assert.match(inspector, /const importSucceeded = diagnostics.length === 0/u);
+  assert.match(inspector, /AI 模块导入未通过：/u);
+  assert.match(inspector, /typeof result\.result\.moduleId !== 'string'/u);
+  assert.match(inspector, /typeof item === 'string'/u);
+});
+
+test('AI 模块手动校验和导出入口继续使用严格完整性门禁', () => {
+  const server = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const moduleService = fs.readFileSync(new URL('../src/services/modules/moduleService.ts', import.meta.url), 'utf8');
+  assert.match(server, /validateModuleDirectory\(resolvedModulePath, \{\s*requireCommandBindings: true,\s*requireNonEmptyDocumentsAndExamples: true\s*\}\)/u);
+  assert.match(server, /exportModulePackage\(resolvedModuleDir, resolvedTargetPath, \{\s*requireCommandBindings: true,\s*requireNonEmptyDocumentsAndExamples: true\s*\}\)/u);
+  assert.match(moduleService, /exportModulePackage\(moduleDir: string, targetPath: string, options: ModuleValidationOptions = \{\}\)/u);
+});
+
 test('收费模块只经登录后的受保护接口下载并完成签名与摘要校验', () => {
   const cloud = fs.readFileSync(new URL('../electron/cloudAccountService.ts', import.meta.url), 'utf8');
   const controller = fs.readFileSync(new URL('../../cloud/api/src/modules/module-commerce.controller.ts', import.meta.url), 'utf8');
