@@ -13,6 +13,7 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 系列 | 集数 | 状态 |
 | --- | --- | --- |
 | 主系列：从安装到发布 | 13 集 | 已发布 |
+| 基础篇加餐：项目数据与功能复用 | 3 集 | 计划中 |
 | 窗口设计器与控件实战 | 8 集 | 计划中 |
 | 合集 A：EdgeView 浏览器模块 | 11 集 | 计划中 |
 | 合集 B：CEF3 浏览器模块 | 10 集 | 计划中 |
@@ -28,7 +29,7 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 2 | 界面导航 | 认识工作台布局、活动栏、编辑器和底部面板，附高频快捷键 | [界面导航](/guide/user/interface) · [快捷键](/guide/user/shortcuts) |
 | 3 | 第一个项目：从新建到运行 | 新建项目 → 拖一个按钮 → 写一行中文代码 → F5 编译运行 | [新建窗口项目](/guide/user/quickstart-project) · [构建与运行](/guide/user/build-and-run) |
 | 4 | 窗口设计器概览 | 工具箱、画布、属性面板和事件绑定入口，拖出第一个可运行窗口 | [窗口设计器](/guide/user/window-designer) |
-| 5 | 中文代码入门 | 新手/专业双模式、`.子程序` 结构、代码补全、变量与常量 | [.lcpp 快速上手](/guide/user/lingcpp-quickstart) · [编写代码](/guide/user/writing-code) · [数据类型](/guide/user/data-types) |
+| 5 | 中文代码入门 | 新手/专业双模式、类/事件结构、代码补全、变量与常量速览 | [.lcpp 快速上手](/guide/user/lingcpp-quickstart) · [编写代码](/guide/user/writing-code) · [数据类型](/guide/user/data-types) |
 | 6 | 构建排错与中文诊断 | 故意写错代码，用错误列表和中文诊断定位修复；调试日志与输出窗口 | [调试](/guide/user/debugging) · [常见问题](/guide/user/troubleshooting) |
 | 7 | 模块市场：给 IDE 装能力 | 浏览模块市场、安装 .lbmod 模块包、项目启用模块、模块控件进工具箱 | [安装模块](/guide/user/modules/install-module) · [模块市场](/guide/user/modules/marketplace) |
 | 8 | 多线程：后台任务不卡界面 | 后台线程执行耗时任务，完成后安全回到界面更新控件，支持进度与取消 | [性能与多线程](/guide/user/advanced/performance) |
@@ -37,6 +38,18 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 11 | 打包发布你的软件 | 切 Release 构建、发布面板生成产物与 SHA-256 清单、签名与运行库交付 | [打包发布](/guide/user/packaging/) |
 | 12 | 开发你自己的模块 | 用模块 SDK 写中文命令绑定、校验、打包 .lbmod，装回 IDE 进补全 | [模块生态](/guide/user/modules/) |
 | 13 | AI 帮你造模块（不用会 C++） | 把需求描述给 AI → 粘贴导入 → 自动校验打包 → 中文命令进补全、F5 编译真实 C++ | [AI 模块开发](/guide/user/modules/ai-module-dev) |
+
+## 基础篇加餐（3 集，计划中）
+
+接在主系列第 5 集之后，补齐项目树中的项目数据和功能复用能力；不改变主系列 1～13 集编号。
+
+| 编号 | 标题 | 简介 | 配套文档 |
+| --- | --- | --- | --- |
+| 加餐 1 | 项目变量与常量：管理全局数据 | 打开「项目全局变量.lcpp」，区分项目常量与项目全局变量、作用域和只读规则，并在窗口代码中引用后 F5 验证 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) · [数据类型](/guide/user/data-types) |
+| 加餐 2 | 自定义数据类型：定义自己的结构 | 在「项目数据类型.lcpp」中新建类型和字段，演示嵌套/数组约束、补全诊断，并观察生成的 C++ `struct` | [数据类型](/guide/user/data-types)（项目类型章节待补） |
+| 加餐 3 | 功能代码：用功能库复用中文代码 | 从项目树「功能代码」新建功能库，使用 `功能库名.功能名(...)` 限定调用，演示跨文件复用、复制依赖和运行结果 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) · [编写代码](/guide/user/writing-code)（功能库章节待补） |
+
+> 说明：现有用户文档可作为基础阅读；项目自定义数据类型和功能库的专门章节需在对应视频开拍前补齐。
 
 ## 窗口设计器与控件实战（8 集，计划中）
 
