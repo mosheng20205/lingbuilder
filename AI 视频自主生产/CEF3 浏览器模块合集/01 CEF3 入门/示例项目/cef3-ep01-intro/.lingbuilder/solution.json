@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "id": "cef3-ep01-intro",
+  "name": "CEF3 入门",
+  "startupProjectId": "cef3-ep01-intro",
+  "startupProjectIds": ["cef3-ep01-intro"],
+  "folders": [],
+  "projects": [{"type":"visual-cpp","id":"cef3-ep01-intro","name":"CEF3 入门","sourceRoot":"src","configRoot":"config","designerPath":".lingbuilder/window-designer.json","isDefault":true,"references":[]}]
+}
