@@ -1,17 +1,21 @@
 {
   "schemaVersion": 1,
   "kind": "lingbuilder-solution",
-  "id": "fbro-multi-browser-demo",
-  "name": "FBro 多浏览器分组框示例",
+  "id": "lingbuilder-solution",
+  "name": "未命名解决方案",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "fbro-multi-browser-demo",
-  "startupProjectIds": ["fbro-multi-browser-demo"],
+  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectIds": [
+    "lingbuilder-ui-project"
+  ],
   "folders": [],
-  "projects": [{
-    "id": "fbro-multi-browser-demo",
-    "name": "FBro 多浏览器分组框示例",
-    "type": "visual-cpp",
-    "sourceRoot": "src",
-    "references": []
-  }]
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "新建项目",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
 }

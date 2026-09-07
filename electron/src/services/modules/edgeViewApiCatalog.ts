@@ -187,7 +187,7 @@ export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [
   api('会话', 'EdgeView会话_取自动填充', [control], 'int', '取得 Profile 通用自动填充状态。', ['ICoreWebView2Profile6.IsGeneralAutofillEnabled']),
   api('会话', 'EdgeView会话_删除Profile', [control], 'int', '删除当前 Profile；删除完成事件通过事件目录通知。', ['ICoreWebView2Profile8.Delete']),
 
-  api('下载', 'EdgeView下载_取状态JSON', [control, { name: '下载ID', type: 'longLong' }], 'wideString', '取得受管下载状态、地址、MIME、进度、可恢复性和中断原因 JSON。', [
+  api('下载', 'EdgeView下载_取状态JSON', [control, { name: '下载ID', type: 'longLong' }], 'wideString', '取得受管下载状态、地址、MIME、进度、可恢复性、中断原因、本次请求的 pendingResultFilePath 与 put_ResultFilePath 的 resultFilePathError JSON。在「下载开始」处理器内读到的 path 是决策前的默认落点快照，要确认改路径是否生效必须在事件结束后再读。', [
     'ICoreWebView2DownloadOperation.State', 'ICoreWebView2DownloadOperation.BytesReceived', 'ICoreWebView2DownloadOperation.TotalBytesToReceive',
     'ICoreWebView2DownloadOperation.ResultFilePath', 'ICoreWebView2DownloadOperation.CanResume', 'ICoreWebView2DownloadOperation.ContentDisposition',
     'ICoreWebView2DownloadOperation.EstimatedEndTime', 'ICoreWebView2DownloadOperation.InterruptReason', 'ICoreWebView2DownloadOperation.MimeType',
@@ -240,12 +240,12 @@ export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [
     api('打印', `EdgeView打印_取${label}`, [control], 'wideString', `取得打印${label}。`, [`${owner}.${member}`])
   ]),
   api('打印', 'EdgeView打印_显示界面', [control, { name: '界面类型', type: 'int' }], 'int', '显示系统或浏览器打印界面。', ['ICoreWebView2_16.ShowPrintUI']),
-  api('打印', 'EdgeView打印_PDF异步', [control, { name: '文件路径', type: 'wideString' }, { name: '设置JSON', type: 'wideString' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把当前页面打印到明确 PDF 文件路径。', ['ICoreWebView2_7.PrintToPdf']),
+  api('打印', 'EdgeView打印_PDF异步', [control, { name: '文件路径', type: 'wideString' }, { name: '设置JSON', type: 'wideString' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把当前页面导出为 PDF 文件；相对路径先按当前工作目录解析成绝对路径再交给 WebView2，设置JSON 用 WebView2 驼峰键名覆盖本控件的打印设置，空对象表示不改设置。', ['ICoreWebView2_7.PrintToPdf']),
   api('打印', 'EdgeView打印_PDF流到文件异步', [control, { name: '文件路径', type: 'wideString' }, { name: '完成处理器', type: 'handler' }], 'longLong', '使用 PrintToPdfStream 后把二进制结果写入明确文件路径。', ['ICoreWebView2_16.PrintToPdfStream'], { capability: EDGEVIEW_SAFE_API_V2_CAPABILITY, minimumRuntimeMajor: EDGEVIEW_FULL_RUNTIME_MAJOR }),
-  api('打印', 'EdgeView打印_打印异步', [control, { name: '设置JSON', type: 'wideString' }, { name: '完成处理器', type: 'handler' }], 'longLong', '使用类型化 JSON 打印设置异步打印。', ['ICoreWebView2_16.Print']),
+  api('打印', 'EdgeView打印_打印异步', [control, { name: '设置JSON', type: 'wideString' }, { name: '完成处理器', type: 'handler' }], 'longLong', '异步打印当前页面；设置JSON 用 WebView2 驼峰键名覆盖本控件的打印设置，空对象表示不改设置。', ['ICoreWebView2_16.Print']),
 
-  api('媒体', 'EdgeView媒体_截图异步', [control, { name: '文件路径', type: 'wideString' }, { name: '格式', type: 'int' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把截图写入明确文件路径，不暴露 IStream。', ['ICoreWebView2.CapturePreview']),
-  api('媒体', 'EdgeView媒体_取Favicon异步', [control, { name: '文件路径', type: 'wideString' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把 Favicon 写入明确文件路径。', ['ICoreWebView2_15.GetFavicon']),
+  api('媒体', 'EdgeView媒体_截图异步', [control, { name: '文件路径', type: 'wideString' }, { name: '格式', type: 'int' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把页面截图写入文件路径（相对路径按当前工作目录解析），任务结果返回落盘后的绝对路径，不暴露 IStream。', ['ICoreWebView2.CapturePreview']),
+  api('媒体', 'EdgeView媒体_取Favicon异步', [control, { name: '文件路径', type: 'wideString' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把页面 Favicon 写入文件路径（相对路径按当前工作目录解析），任务结果返回落盘后的绝对路径。', ['ICoreWebView2_15.GetFavicon']),
   api('媒体', 'EdgeView媒体_取全屏状态', [control], 'int', '取得页面是否含全屏元素。', ['ICoreWebView2.ContainsFullScreenElement']),
   api('媒体', 'EdgeView媒体_取音频状态', [control], 'int', '取得页面是否正在播放音频。', ['ICoreWebView2_8.IsDocumentPlayingAudio']),
 
@@ -258,7 +258,7 @@ export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [
   api('资源', 'EdgeView资源_移除过滤器', [control, { name: 'URI模式', type: 'wideString' }, { name: '上下文', type: 'int' }], 'int', '移除资源过滤器。', ['ICoreWebView2.RemoveWebResourceRequestedFilter']),
   api('资源', 'EdgeView资源_移除来源过滤器', [control, { name: 'URI模式', type: 'wideString' }, { name: '上下文', type: 'int' }, { name: '来源类型', type: 'int' }], 'int', '移除带请求来源类型的资源过滤器。', ['ICoreWebView2_22.RemoveWebResourceRequestedFilterWithRequestSourceKinds'], { capability: EDGEVIEW_SAFE_API_V2_CAPABILITY, minimumRuntimeMajor: EDGEVIEW_FULL_RUNTIME_MAJOR }),
   api('资源', 'EdgeView资源_设置事件响应文本', [control, { name: '状态码', type: 'int' }, { name: '原因', type: 'wideString' }, { name: '响应头', type: 'wideString' }, { name: '正文', type: 'wideString' }], 'int', '在 Web资源请求同步事件中以限长 UTF-8 正文替换响应。', ['ICoreWebView2Environment.CreateWebResourceResponse', 'ICoreWebView2WebResourceRequestedEventArgs.Response'], { visibility: 'advanced' }),
-  api('资源', 'EdgeView资源_读响应正文异步', [control, { name: '响应句柄', type: 'handle' }, { name: '最大字节数', type: 'longLong' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把响应流限长读取为十六进制 JSON，不暴露 IStream。', ['ICoreWebView2WebResourceResponseView.GetContent'], { capability: EDGEVIEW_SAFE_API_V2_CAPABILITY, minimumRuntimeMajor: EDGEVIEW_FULL_RUNTIME_MAJOR, visibility: 'advanced' }),
+  api('资源', 'EdgeView资源_读响应正文异步', [control, { name: '响应句柄', type: 'handle' }, { name: '最大字节数', type: 'longLong' }, { name: '完成处理器', type: 'handler' }], 'longLong', '把响应流限长读取为十六进制 JSON，不暴露 IStream；必须在 Web资源响应收到 处理器执行期间交给本命令，处理器返回后 WebView2 会释放该响应的正文，稍后读取一律失败。', ['ICoreWebView2WebResourceResponseView.GetContent'], { capability: EDGEVIEW_SAFE_API_V2_CAPABILITY, minimumRuntimeMajor: EDGEVIEW_FULL_RUNTIME_MAJOR, visibility: 'advanced' }),
 
   api('事件', 'EdgeView事件_取字段', [control, { name: '字段名', type: 'wideString' }], 'wideString', '取得当前同步事件字段；右键菜单目标等复合参数会预先转换为字段。', [
     'ICoreWebView2ContextMenuTarget.Kind', 'ICoreWebView2ContextMenuTarget.PageUri', 'ICoreWebView2ContextMenuTarget.FrameUri',
@@ -278,7 +278,7 @@ export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [
   api('事件', 'EdgeView事件_设置动作', [control, { name: '动作', type: 'int' }], 'int', '设置当前同步事件动作；未设置时保持 WebView2 默认行为。', [], { visibility: 'advanced' }),
   api('事件', 'EdgeView事件_设置返回文本', [control, { name: '文本', type: 'wideString' }], 'int', '设置脚本对话框、认证或下载等事件返回文本。', [], { visibility: 'advanced' }),
   api('事件', 'EdgeView事件_设置认证', [control, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置当前基本身份验证请求凭据。', [], { visibility: 'advanced' }),
-  api('事件', 'EdgeView事件_设置下载路径', [control, { name: '文件路径', type: 'wideString' }], 'int', '设置当前下载开始事件的目标文件路径。', [], { visibility: 'advanced' }),
+  api('事件', 'EdgeView事件_设置下载路径', [control, { name: '文件路径', type: 'wideString' }], 'int', '设置当前下载开始事件的目标文件路径。只能在「下载开始」同步处理器执行期间调用；相对路径会按当前工作目录补全成绝对路径并自动创建父目录；实际落点必须在事件结束后用下载状态查询接口再读一次确认。', ['ICoreWebView2DownloadStartingEventArgs.put_ResultFilePath'], { visibility: 'advanced' }),
   api('事件', 'EdgeView事件_取菜单项JSON', [control, { name: '菜单项句柄', type: 'handle' }], 'wideString', '取得受管 WebView2 菜单项名称、标签、命令 ID、类型、状态、快捷键、图标存在性和子项句柄。', [
     'ICoreWebView2ContextMenuItem.Children', 'ICoreWebView2ContextMenuItem.CommandId', 'ICoreWebView2ContextMenuItem.Icon',
     'ICoreWebView2ContextMenuItem.IsChecked', 'ICoreWebView2ContextMenuItem.IsEnabled', 'ICoreWebView2ContextMenuItem.Kind',

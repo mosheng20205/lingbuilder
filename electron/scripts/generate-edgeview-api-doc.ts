@@ -14,7 +14,7 @@ if (!manifest) throw new Error('找不到 lingbuilder.edgeview 模块清单。')
 const commands = manifest.contributes?.commands ?? [];
 const bindings = new Map((manifest.bindings?.commands ?? []).map((item) => [item.command, item]));
 const catalog = new Map(EDGEVIEW_SAFE_API_CATALOG.map((item) => [item.command.name, item]));
-if (commands.length !== 271) throw new Error(`EdgeView 命令数异常：${commands.length}，预期 271。`);
+if (commands.length !== 272) throw new Error(`EdgeView 命令数异常：${commands.length}，预期 272。`);
 
 const familyOf = (name: string) => {
   const match = name.match(/^EdgeView([^_]+)_/u);
@@ -47,7 +47,7 @@ const commandRows = commands.map((command: ModuleCommandContribution, index) => 
 const content = `<!-- 此文件由 electron/scripts/generate-edgeview-api-doc.ts 生成，请修改 edgeViewApiCatalog.ts 或 builtinModules.ts 后运行 npm run module:edgeview-api-docs。 -->
 # EdgeView 浏览器模块完整 API 参考
 
-EdgeView 模块版本 **1.2.0**，当前公开 **271 条中文命令**：235 条安全 API、36 条兼容命令。本文由模块清单和 binding 自动生成，命令签名、参数类型、返回类型和说明不得在本文件中手工维护。
+EdgeView 模块版本 **1.2.0**，当前公开 **272 条中文命令**：235 条安全 API、37 条兼容命令。本文由模块清单和 binding 自动生成，命令签名、参数类型、返回类型和说明不得在本文件中手工维护。
 
 ## 使用约定
 
@@ -84,7 +84,7 @@ ${commandRows.join('\n')}
 
 - [事件参考](./README.md)：71 项普通 HWND 事件、关键字段和不适用的 CompositionController 事件。
 - [用户指南](/guide/user/modules/edgeview)：安装、设计器控件、平台依赖和常用操作。
-- [完整演示清单](../../../../examples/module-demos/lingbuilder.edgeview/src/README.md)：可复制的 271 条命令示例签名。
+- [完整演示清单](../../../../examples/module-demos/lingbuilder.edgeview/src/README.md)：可复制的 272 条命令示例签名。
 `;
 
 if (check) {

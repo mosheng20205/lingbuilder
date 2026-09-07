@@ -52,7 +52,9 @@ const CEF3_COVERAGE_DOMAINS = [
 
 const CEF3_COVERAGE_NOTES: Readonly<Record<string, readonly string[]>> = {
   'lingbuilder.cef3.browser': [
-    '`cef_frame_t.send_process_message` 的 Bridge 入口接收受管浏览器句柄，固定解析当前主 Frame，并通过 CEF UI 线程调度发送；不会向调用方暴露 `CefFrame`、`CefRefPtr` 或 Frame 指针。'
+    '`cef_frame_t.send_process_message` 的 Bridge 入口接收受管浏览器句柄，固定解析当前主 Frame，并通过 CEF UI 线程调度发送；不会向调用方暴露 `CefFrame`、`CefRefPtr` 或 Frame 指针。',
+    '`CEF3_绑定事件` 在登记中文处理器的同时点亮该事件所属处理器族的桥接订阅位。Bridge 按订阅位决定是否向 CEF 安装 `CefResourceRequestHandler`、`CefFrameHandler`、`CefPrintHandler` 等处理器以及回调体是否投递事件，订阅位为 0 时 CEF 根本不会调用回调，因此绑定前不存在“还要另外调用一次订阅命令”的步骤。已有 legacy 数字事件通道的事件（如「导航请求前」「下载开始」）不再点亮订阅位，否则同一事件会经两条通道各投递一次、处理器被调用两遍；映射表见 `services/modules/cef3BrowserEvents.ts` 的 `CEF3_EVENT_BRIDGE_SUBSCRIPTIONS`，由 `tests/cef3BridgeEventNames.test.ts` 与桥接源码逐条比对。离屏渲染（OSR）与 CEF Views 族事件不属于浏览器事件目录，仍需使用各自模块的订阅入口显式启用。',
+    '`CEF3_创建` 是异步的：Bridge 只把 `CefBrowserHost::CreateBrowser` 投递到 CEF UI 线程，句柄立即返回，此时 CEF 浏览器对象尚未创建。`CEF3_导航` 会把地址排队，并在 Bridge 发出「浏览器创建完成」（该事件发出前浏览器对象已写入）时无条件补发，所以创建完毕事件里发起导航可以生效。其余依赖活动浏览器对象的命令（执行 JavaScript、页内查找、截图、缩放、静音、DevTools、Cookie 与请求上下文操作等）没有这套排队，在创建完成前调用会返回「CEF3浏览器尚未创建完成或已经关闭」，应当放在用户动作之后或「加载完成」事件里，不得用休眠或轮询绕过时序。'
   ],
   'lingbuilder.cef3.automation': [
     '`CefProcessMessage` 的名称、参数列表、复制、有效性、只读状态和发送均通过受管句柄访问；发送成功排队后消息句柄立即进入失效状态，符合 CEF 的内容所有权转移语义。',

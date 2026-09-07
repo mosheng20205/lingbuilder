@@ -128,12 +128,14 @@ async function findCmake() {
   const candidates = [
     'cmake.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe',
-    'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe'
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe'
   ];
   for (const candidate of candidates) {
     try { await execFileAsync(candidate, ['--version'], { windowsHide: true }); return candidate; } catch { /* next */ }
   }
-  throw new Error('未找到 CMake/Visual Studio 2022，无法编译 LingBuilderFbroBridge.dll。');
+  throw new Error('未找到 CMake/Visual Studio，无法编译 LingBuilderFbroBridge.dll。');
 }
 
 function buildModuleManifest() {
