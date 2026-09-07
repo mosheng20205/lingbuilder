@@ -86,10 +86,14 @@ test('admin site controller exposes r2 upload config only to writing roles', () 
 });
 
 function latestVersionPrisma(release: any) {
+  return latestVersionPrismaMany(release ? [release] : []);
+}
+
+function latestVersionPrismaMany(releases: any[]) {
   let captured: any;
   const prisma = {
     websiteDownloadRelease: {
-      findFirst: async (args: any) => { captured ||= args; return release; }
+      findMany: async (args: any) => { captured ||= args; return releases; }
     }
   };
   return { prisma, args: () => captured };
@@ -156,6 +160,22 @@ test('latest version reports unavailable without leaking fields when no release 
   const service = new WebsiteContentService(prisma as any);
   const result: any = await service.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
   assert.deepEqual(result, { ok: true, available: false });
+});
+
+test('latest version picks the highest version number even when an older release has a larger sortOrder', async () => {
+  const older = {
+    version: '0.6.9', title: 'old', summary: '', publishedAt: '2026-09-10T00:00:00.000Z', channel: 'stable', fileSize: '', sha256: '', releaseNotes: '',
+    mirrors: [{ provider: 'direct', enabled: true, url: 'https://dl.lingbuilder.com/old.exe', sortOrder: 0 }]
+  };
+  const newer = {
+    version: '0.10.0', title: 'new', summary: '', publishedAt: '2026-09-01T00:00:00.000Z', channel: 'stable', fileSize: '', sha256: '', releaseNotes: '',
+    mirrors: [{ provider: 'direct', enabled: true, url: 'https://dl.lingbuilder.com/new.exe', sortOrder: 0 }]
+  };
+  // Prisma 按 sortOrder desc / publishedAt desc 排序，旧版本排在前面；服务端必须改按版本号取最大。
+  const { prisma } = latestVersionPrismaMany([older, newer]);
+  const result: any = await new WebsiteContentService(prisma as any).latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
+  assert.equal(result.version, '0.10.0');
+  assert.equal(result.downloadUrl, 'https://dl.lingbuilder.com/new.exe');
 });
 
 test('latest version normalizes uppercase sha256 and rejects malformed values', async () => {

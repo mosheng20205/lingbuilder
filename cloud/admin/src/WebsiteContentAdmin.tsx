@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, CloudUpload, Download, FileArchive, FileCode2, Globe2, MessageCircle, PackagePlus, Search, Upload } from 'lucide-react';
+import { BookOpen, CloudUpload, Download, FileArchive, FileCode2, Globe2, Image as ImageIcon, Link2, MessageCircle, PackagePlus, Search, Upload } from 'lucide-react';
 import { R2MultipartUploader, UploadCancelledError, computeFileSha256Hex, formatFileSize, versionFromFileName } from './r2UploadClient';
 import './website-admin.css';
 
@@ -311,12 +311,116 @@ function GuidesAdmin({ data, request, reload }: AdminProps) {
   ]} onSubmit={async value => { await post(request, '/v1/admin/site/guides', {...value,tags:csv(value.tagsText)}); await reload(); setGuide(emptyGuide()); }}/></EditorPanel><RecordPanel title="现有文档" empty="尚无官网文档。">{guides.map((item:any) => <article className="site-record" key={item.id}><div><strong>{item.title}</strong><span>{item.kind} · {item.category}</span><small>/{item.slug} · {statusLabel(item.publicationStatus)}</small></div><button onClick={() => setGuide({...item,tagsText:(item.tags||[]).join(', ')})}>编辑</button></article>)}</RecordPanel></div>;
 }
 
+const DEMO_PACKAGE_LABEL = '下载源码包';
+
 function DemosAdmin({ data, request, reload }: AdminProps) {
   const demos = data?.demos || [];
   const [demo, setDemo] = useState<any>(emptyDemo());
-  return <div className="site-admin-grid"><EditorPanel title="编辑示例 Demo" description="每个示例至少提供一个源码链接；站内路径和 HTTP/HTTPS 地址均可。"><ManagedForm value={demo} setValue={setDemo} fields={[
-    field('slug','Slug'),field('title','标题'),field('category','分类'),field('difficulty','难度','select',['入门','进阶','高级']),field('summary','说明','textarea'),field('lingBuilderVersion','IDE 版本'),field('modulesText','所需模块（逗号分隔）'),field('prerequisites','运行要求','textarea'),field('sourceLinksJson','源码链接 JSON','textarea'),field('screenshotUrl','截图地址'),field('videoUrl','视频地址'),field('license','许可证'),field('publicationStatus','发布状态','select',statuses),field('sortOrder','排序','number')
-  ]} onSubmit={async value => { await post(request, '/v1/admin/site/demos', {...value,modules:csv(value.modulesText),sourceLinks:parseJsonArray(value.sourceLinksJson,'源码链接 JSON')}); await reload(); setDemo(emptyDemo()); }}/></EditorPanel><RecordPanel title="示例项目" empty="尚无示例项目。">{demos.map((item:any) => <article className="site-record" key={item.id}><div><strong>{item.title}</strong><span>{item.category} · {item.difficulty}</span><small>{item.modules.length} 个模块 · {statusLabel(item.publicationStatus)}</small></div><button onClick={() => setDemo({...item,modulesText:(item.modules||[]).join(', '),sourceLinksJson:JSON.stringify(item.sourceLinks,null,2)})}>编辑</button></article>)}</RecordPanel></div>;
+  const [editingId, setEditingId] = useState('');
+  const slug = String(demo.slug || '').trim().toLowerCase();
+  const slugReady = /^[a-z0-9][a-z0-9-]{1,99}$/u.test(slug);
+  const blockedReason = slugReady ? '' : '请先填写 Slug（小写字母、数字和连字符），上传的文件会用它命名。';
+  const links: any[] = Array.isArray(demo.sourceLinks) ? demo.sourceLinks : [];
+  const packageLink = links.find(item => String(item?.label || '').startsWith(DEMO_PACKAGE_LABEL));
+  const startNewDemo = () => { setDemo(emptyDemo()); setEditingId(''); };
+  const applyPackage = ({ url, file }: { url: string; file: File }) => setDemo((previous: any) => ({
+    ...previous,
+    sourceLinks: [{ label: `${DEMO_PACKAGE_LABEL}（${formatFileSize(file.size)}）`, url }, ...(previous.sourceLinks || []).filter((item: any) => !String(item?.label || '').startsWith(DEMO_PACKAGE_LABEL))]
+  }));
+  return <div className="site-admin-grid">
+    <EditorPanel title={editingId ? `编辑示例：${demo.title || slug}` : '新建示例 Demo'} description="填好 Slug 之后直接把源码包和截图拖进来上传，不需要手写链接；说明和运行要求在下方表单里填写。">
+      <div className="asset-uploads">
+        <AssetUpload key={`${editingId || 'new'}-package`} request={request} icon={FileArchive} title="上传源码包" hint="ZIP / 7Z / RAR 均可；浏览器分片直传，完成后自动生成“下载源码包”地址。" accept=".zip,.7z,.rar,application/zip,application/x-7z-compressed" fileNamePrefix={`demo-${slug || 'draft'}`} blockedReason={blockedReason} onUploaded={applyPackage}>
+          {packageLink && <p className="asset-upload-done">已关联源码包：<a href={packageLink.url} target="_blank" rel="noreferrer">{packageLink.label}</a></p>}
+        </AssetUpload>
+        <AssetUpload key={`${editingId || 'new'}-shot`} request={request} icon={ImageIcon} title="上传运行截图" hint="PNG / JPG / WebP；上传后自动填写截图地址，并展示在官网示例卡片上。" accept="image/*" fileNamePrefix={`demo-${slug || 'draft'}-shot`} blockedReason={blockedReason} onUploaded={({ url }) => setDemo((previous: any) => ({ ...previous, screenshotUrl: url }))}>
+          {demo.screenshotUrl && <div className="asset-upload-preview"><img src={demo.screenshotUrl} alt="示例运行截图预览"/><button type="button" onClick={() => setDemo((previous: any) => ({ ...previous, screenshotUrl: '' }))}>移除截图</button></div>}
+        </AssetUpload>
+      </div>
+      <SourceLinkEditor links={links} onChange={value => setDemo((previous: any) => ({ ...previous, sourceLinks: value }))}/>
+      <ManagedForm value={demo} setValue={setDemo} fields={[
+        field('slug','Slug'),field('title','标题'),field('category','分类'),field('difficulty','难度','select',['入门','进阶','高级']),field('summary','说明','textarea'),field('lingBuilderVersion','IDE 版本'),field('modulesText','所需模块（逗号分隔）'),field('prerequisites','运行要求','textarea'),field('videoUrl','视频地址'),field('license','许可证'),field('publicationStatus','发布状态','select',statuses),field('sortOrder','排序','number')
+      ]} onSubmit={async value => {
+        const sourceLinks = (value.sourceLinks || []).map((item: any) => ({ label: String(item?.label || '').trim() || DEMO_PACKAGE_LABEL, url: String(item?.url || '').trim() })).filter((item: any) => item.url);
+        if (!sourceLinks.length) throw new Error('请先上传源码包，或在“源码下载地址”里手工填写至少一个地址。');
+        await post(request, '/v1/admin/site/demos', { ...value, modules: csv(value.modulesText), sourceLinks });
+        await reload(); startNewDemo();
+      }}/>
+      {editingId && <div className="editor-reset"><button onClick={startNewDemo}>放弃当前编辑，返回新建示例</button></div>}
+    </EditorPanel>
+    <RecordPanel title="示例项目" empty="尚无示例项目。">{demos.map((item:any) => <article className="site-record" key={item.id}>{item.screenshotUrl && <img className="demo-record-shot" src={item.screenshotUrl} alt=""/>}<div><strong>{item.title}</strong><span>{item.category} · {item.difficulty}</span><small>{item.modules.length} 个模块 · {(item.sourceLinks || []).length} 个下载地址 · {statusLabel(item.publicationStatus)}</small></div><button className={editingId === item.id ? 'active' : ''} onClick={() => { setDemo({ ...item, modulesText: (item.modules || []).join(', '), sourceLinks: Array.isArray(item.sourceLinks) ? item.sourceLinks : [] }); setEditingId(item.id); }}>编辑</button></article>)}</RecordPanel>
+  </div>;
+}
+
+/** 示例源码包与截图的单文件直传：选中即上传，完成后把公开地址回填到示例记录。 */
+function AssetUpload({ request, icon: Icon, title, hint, accept, fileNamePrefix, blockedReason, onUploaded, children }: { request: Request; icon: typeof CloudUpload; title: string; hint: string; accept: string; fileNamePrefix: string; blockedReason: string; onUploaded: (result: { url: string; file: File }) => void; children?: React.ReactNode }) {
+  const [fileName, setFileName] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [phase, setPhase] = useState('');
+  const [progress, setProgress] = useState({ loaded: 0, total: 1 });
+  const [error, setError] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const uploaderRef = useRef<R2MultipartUploader | null>(null);
+  useEffect(() => {
+    if (!uploading) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    globalThis.addEventListener('beforeunload', guard);
+    return () => globalThis.removeEventListener('beforeunload', guard);
+  }, [uploading]);
+  const start = async (file?: File | null) => {
+    if (!file || uploading) return;
+    setError(''); setPhase(''); setFileName(file.name);
+    if (blockedReason) { setError(blockedReason); return; }
+    setProgress({ loaded: 0, total: file.size });
+    try {
+      const config = await request('/v1/admin/site/r2-upload/config');
+      const named = new File([file], `${fileNamePrefix}-${file.name}`, { type: file.type || 'application/octet-stream' });
+      const uploader = new R2MultipartUploader({ baseUrl: config.endpoint, token: config.token, concurrency: 3, onProgress: (loaded, total) => setProgress({ loaded, total }), onPhase: setPhase });
+      uploaderRef.current = uploader;
+      setUploading(true);
+      const result = await uploader.upload(named);
+      const base = result.publicDownloadUrl || result.downloadUrl;
+      setPhase('上传完成');
+      onUploaded({ url: `${base}${base.includes('?') ? '&' : '?'}v=${Date.now().toString(36)}`, file });
+    } catch (reason) {
+      if (reason instanceof UploadCancelledError) setPhase('上传已取消');
+      else { setError(reason instanceof Error ? reason.message : String(reason)); setPhase(''); }
+    } finally { setUploading(false); uploaderRef.current = null; }
+  };
+  const percent = progress.total > 0 ? Math.min(100, Math.round((progress.loaded / progress.total) * 1000) / 10) : 0;
+  return <section className="asset-upload">
+    <div className="asset-upload-head"><h3><Icon size={15}/>{title}</h3><p>{hint}</p></div>
+    <label className={`asset-upload-drop${dragging ? ' dragging' : ''}${uploading ? ' busy' : ''}`}
+      onDragOver={event => { event.preventDefault(); if (!uploading) setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={event => { event.preventDefault(); setDragging(false); void start(event.dataTransfer.files?.[0]); }}>
+      <input type="file" accept={accept} disabled={uploading} onChange={event => { const picked = event.target.files?.[0]; event.target.value = ''; void start(picked); }}/>
+      <CloudUpload size={20}/>
+      <strong>{uploading ? fileName : '拖拽文件到此处，或点击选择'}</strong>
+      <span>{uploading ? '正在上传，请勿关闭页面' : '选中后立即上传'}</span>
+    </label>
+    {(uploading || phase) && <div className="direct-upload-progress">
+      <div className="direct-upload-progress-row"><p className="direct-upload-phase" aria-live="polite">{phase || '准备上传…'}</p><strong className="direct-upload-percent">{percent}%</strong></div>
+      <div className="direct-upload-bar" role="progressbar" aria-label={`${title}进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><span style={{ width: `${percent}%` }}/></div>
+      {uploading && <div className="direct-upload-actions"><button type="button" onClick={() => void uploaderRef.current?.cancel()}>取消上传</button></div>}
+    </div>}
+    {error && <p className="direct-upload-error" role="alert">{error}</p>}
+    {children}
+  </section>;
+}
+
+function SourceLinkEditor({ links, onChange }: { links: any[]; onChange: (value: any[]) => void }) {
+  const update = (index: number, patch: any) => onChange(links.map((item, current) => current === index ? { ...item, ...patch } : item));
+  return <section className="link-editor">
+    <div className="link-editor-head"><h3><Link2 size={15}/>源码下载地址</h3><button type="button" onClick={() => onChange([...links, { label: '', url: '' }])}>＋ 手工添加地址</button></div>
+    {links.length === 0
+      ? <p className="link-editor-empty">还没有下载地址：上传源码包后会自动生成，也可以手工添加站内路径或 HTTP/HTTPS 地址（例如网盘链接）。</p>
+      : <div className="link-editor-rows">{links.map((item, index) => <div className="link-editor-row" key={index}>
+        <input aria-label={`第 ${index + 1} 个地址的显示名称`} value={item?.label ?? ''} onChange={event => update(index, { label: event.target.value })} placeholder="显示名称，如 网盘备用下载"/>
+        <input aria-label={`第 ${index + 1} 个下载地址`} value={item?.url ?? ''} onChange={event => update(index, { url: event.target.value })} placeholder="https://… 或 /examples/…"/>
+        <button type="button" onClick={() => onChange(links.filter((_, current) => current !== index))}>删除</button>
+      </div>)}</div>}
+  </section>;
 }
 
 function GroupsAdmin({ data, request, reload }: AdminProps) {
@@ -336,7 +440,7 @@ function ManagedForm({ value, setValue, fields, onSubmit }: { value:any; setValu
 function renderInput(item:Field,value:any,onChange:(value:any)=>void) {
   if(item.type==='select') return <select required value={value ?? ''} onChange={event=>onChange(event.target.value)}>{optionValues(item.options).map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>;
   if(item.type==='checkbox') return <input type="checkbox" checked={value !== false} onChange={event=>onChange(event.target.checked)}/>;
-  if(item.type==='textarea'||item.type==='textarea-large') return <textarea required={['summary','bodyMarkdown','sourceLinksJson'].includes(item.name)} rows={item.type==='textarea-large'?18:5} value={value ?? ''} onChange={event=>onChange(event.target.value)}/>;
+  if(item.type==='textarea'||item.type==='textarea-large') return <textarea required={['summary','bodyMarkdown'].includes(item.name)} rows={item.type==='textarea-large'?18:5} value={value ?? ''} onChange={event=>onChange(event.target.value)}/>;
   return <input required={['version','title','name','slug','qqNumber','signature'].includes(item.name)} type={item.type==='number'?'number':'text'} value={value ?? ''} onChange={event=>onChange(item.type==='number'?Number(event.target.value):event.target.value)}/>;
 }
 
@@ -353,7 +457,7 @@ function countFor(section:Section,data:any){return section==='downloads'?(data?.
 function emptyRelease(){return {version:'',channel:'preview',platform:'Windows',architecture:'x64',title:'LingBuilder 中文集成开发环境',summary:'',releaseNotes:'',minimumRequirements:'Windows 10/11',fileSize:'',sha256:'',publicationStatus:'DRAFT',sortOrder:0}}
 function emptyCommand(){return {name:'',stableKey:'',kind:'COMMAND',category:'其他',moduleId:'',moduleName:'',signature:'',returnType:'void',summary:'',parametersJson:'[]',examplesText:'',supportedBackendsText:'',minimumVersion:'',lifecycle:'AVAILABLE',publicationStatus:'DRAFT'}}
 function emptyGuide(){return {slug:'',title:'',kind:'CONTROL',category:'',summary:'',bodyMarkdown:'# 标题\n\n开始编写正文。',tagsText:'',minimumVersion:'',coverImageUrl:'',publicationStatus:'DRAFT',sortOrder:0}}
-function emptyDemo(){return {slug:'',title:'',category:'入门',difficulty:'入门',summary:'',lingBuilderVersion:'',modulesText:'',prerequisites:'',sourceLinksJson:'[\n  {"label":"下载源码","url":"/examples/"}\n]',screenshotUrl:'',videoUrl:'',license:'示例许可',publicationStatus:'DRAFT',sortOrder:0}}
+function emptyDemo(){return {slug:'',title:'',category:'入门',difficulty:'入门',summary:'',lingBuilderVersion:'',modulesText:'',prerequisites:'',sourceLinks:[],screenshotUrl:'',videoUrl:'',license:'示例许可',publicationStatus:'DRAFT',sortOrder:0}}
 function emptyGroup(){return {name:'LingBuilder 官方 QQ 交流群',qqNumber:'',groupType:'官方交流群',statusText:'开放加入',description:'',joinUrl:'',qrCodeUrl:'',enabled:true,sortOrder:0}}
 interface AdminProps { data:any; request:Request; reload:()=>Promise<void> }
 interface Field { name:string; label:string; type:'text'|'number'|'select'|'checkbox'|'textarea'|'textarea-large'; options?:Array<string|{value:string;label:string}> }

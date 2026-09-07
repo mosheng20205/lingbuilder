@@ -12,7 +12,7 @@ export class WebsiteContentService {
 
   /** 供客户端检查更新的公开接口：返回最新发布版本与安装包直链/校验信息；缺数据的字段显式置 null，便于客户端统一判空。 */
   async latestVersion(input: { platform: string; architecture: string; channel: string }) {
-    const release = await this.prisma.websiteDownloadRelease.findFirst({
+    const releases = await this.prisma.websiteDownloadRelease.findMany({
       where: { publicationStatus: 'PUBLISHED', channel: input.channel || 'stable', platform: input.platform || 'Windows', architecture: input.architecture || 'x64' },
       orderBy: [{ sortOrder: 'desc' }, { publishedAt: 'desc' }],
       select: {
@@ -20,6 +20,7 @@ export class WebsiteContentService {
         mirrors: { where: { enabled: true, provider: 'direct' }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
       }
     });
+    const release = pickHighestVersionRelease(releases);
     if (!release) return { ok: true, available: false };
     return {
       ok: true,
@@ -356,6 +357,31 @@ function linkArray(value: unknown, label: string) {
 function normalizeSha256(value: unknown) {
   const result = clean(value, 64).toLowerCase();
   return /^[a-f0-9]{64}$/u.test(result) ? result : null;
+}
+
+/** 语义化版本号比较：left > right 返回正数。容忍 v 前缀与预发布后缀，与客户端 compareVersions 保持一致。 */
+function compareReleaseVersions(left: unknown, right: unknown) {
+  const parse = (value: unknown) => String(value ?? '').trim().replace(/^v/iu, '').split('-')[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const leftParts = parse(left);
+  const rightParts = parse(right);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const diff = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * 客户端更新只认版本号高低：sortOrder/publishedAt 只作为同版本号的次级顺序，
+ * 避免后台给旧版本设了更大的 sortOrder 之后把新版本压住、导致所有用户收不到更新。
+ */
+function pickHighestVersionRelease<T extends { version: unknown }>(releases: T[]): T | null {
+  let best: T | null = null;
+  for (const release of Array.isArray(releases) ? releases : []) {
+    if (!release) continue;
+    if (!best || compareReleaseVersions(release.version, best.version) > 0) best = release;
+  }
+  return best;
 }
 
 /** 直链镜像只在 HTTPS 时下发给客户端：HTTP 直链视为不可用，客户端侧还有独立的 https 门禁兜底。 */

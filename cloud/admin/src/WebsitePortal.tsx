@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, MessageCircle, PackageOpen, Search } from 'lucide-react';
+import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import { CLOUD_API, fetchWebsiteBootstrap, type WebsiteBootstrap, type WebsiteCommand, type WebsiteGuide } from './websiteApi';
 import { isDocsSectionItem, WEBSITE_NAV_ITEMS, type WebsiteNavItem } from './websiteNav';
@@ -122,9 +122,26 @@ function GuideArticle({ guide }: { guide: WebsiteGuide }) { return <article clas
 
 function DemosPage({ content, error }: PageProps) {
   const [category, setCategory] = useState('');
+  const [preview, setPreview] = useState<{src: string; alt: string} | null>(null);
   const categories = useMemo(() => Array.from(new Set(content?.demos.map(item => item.category) || [])), [content]);
   const demos = content?.demos.filter(item => !category || item.category === category) || [];
-  return <><PageHero kicker="SOURCE EXAMPLES" title="示例 Demo 源码中心" description="下载可以打开、学习、构建和继续修改的 LingBuilder 项目。" icon={FileCode2}/><section className="website-section"><div className="website-shell"><div className="filter-row"><button className={!category ? 'active' : ''} onClick={() => setCategory('')}>全部</button>{categories.map(item => <button className={category === item ? 'active' : ''} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div>{error && <LoadNotice text={error}/>}<div className="demo-grid">{demos.map(demo => <article key={demo.id}><div className="demo-top"><span>{demo.category}</span><em>{demo.difficulty}</em></div><h2>{demo.title}</h2><p>{demo.summary}</p><dl><div><dt>IDE 版本</dt><dd>{demo.lingBuilderVersion || '当前版'}</dd></div><div><dt>所需模块</dt><dd>{demo.modules.join('、') || '无额外模块'}</dd></div><div><dt>运行环境</dt><dd>{demo.prerequisites || '请查看项目说明'}</dd></div></dl><div className="demo-links">{demo.sourceLinks.map(link => <a href={link.url} key={link.url}><Download size={16}/>{link.label}</a>)}{demo.videoUrl && <a href={demo.videoUrl} target="_blank" rel="noreferrer"><ExternalLink size={16}/>演示视频</a>}</div></article>)}</div>{!content && !error && <LoadNotice text="正在加载示例源码…"/>}</div></section></>;
+  return <><PageHero kicker="SOURCE EXAMPLES" title="示例 Demo 源码中心" description="下载可以打开、学习、构建和继续修改的 LingBuilder 项目。" icon={FileCode2}/><section className="website-section"><div className="website-shell"><div className="filter-row"><button className={!category ? 'active' : ''} onClick={() => setCategory('')}>全部</button>{categories.map(item => <button className={category === item ? 'active' : ''} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div>{error && <LoadNotice text={error}/>}<div className="demo-grid">{demos.map(demo => <article key={demo.id}>{demo.screenshotUrl && <button className="demo-shot" onClick={() => setPreview({ src: demo.screenshotUrl, alt: `${demo.title}运行截图` })} aria-label={`放大查看${demo.title}的运行截图`}><img src={demo.screenshotUrl} alt={`${demo.title}运行截图`} loading="lazy"/><span><Maximize2 size={13}/>点击查看大图</span></button>}<div className="demo-top"><span>{demo.category}</span><em>{demo.difficulty}</em></div><h2>{demo.title}</h2><p>{demo.summary}</p><dl><div><dt>IDE 版本</dt><dd>{demo.lingBuilderVersion || '当前版'}</dd></div><div><dt>所需模块</dt><dd>{demo.modules.join('、') || '无额外模块'}</dd></div><div><dt>运行环境</dt><dd>{demo.prerequisites || '请查看项目说明'}</dd></div></dl><div className="demo-links">{demo.sourceLinks.map(link => <a href={link.url} key={link.url}><Download size={16}/>{link.label}</a>)}{demo.videoUrl && <a href={demo.videoUrl} target="_blank" rel="noreferrer"><ExternalLink size={16}/>演示视频</a>}</div></article>)}</div>{!content && !error && <LoadNotice text="正在加载示例源码…"/>}</div></section>{preview && <ImageLightbox src={preview.src} alt={preview.alt} onClose={() => setPreview(null)}/>}</>;
+}
+
+/** 截图大图预览：Esc、点击遮罩或关闭按钮都能退出，打开期间锁定页面滚动。 */
+function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = previousOverflow; };
+  }, [onClose]);
+  return <div className="image-lightbox" role="dialog" aria-modal="true" aria-label={alt} onClick={onClose}>
+    <button className="image-lightbox-close" aria-label="关闭大图" onClick={onClose}><X size={18}/></button>
+    <img src={src} alt={alt} onClick={event => event.stopPropagation()}/>
+    <a href={src} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>在新标签打开原图</a>
+  </div>;
 }
 
 function CommunityPage({ content, error }: PageProps) {

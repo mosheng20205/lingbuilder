@@ -13,11 +13,11 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 系列 | 集数 | 状态 |
 | --- | --- | --- |
 | 主系列：从安装到发布 | 13 集 | 已发布 |
-| 基础篇加餐：项目数据与功能复用 | 3 集 | 计划中 |
+| 基础篇加餐：项目数据与功能复用 | 4 集 | 计划中 |
 | 窗口设计器与控件实战 | 8 集 | 计划中 |
-| 合集 A：EdgeView 浏览器模块 | 11 集 | 计划中 |
+| 合集 A：EdgeView 浏览器模块 | 12 集 | 计划中 |
 | 合集 B：CEF3 浏览器模块 | 10 集 | 计划中 |
-| 合集 C：FBro 指纹浏览器模块 | 10 集 | 制作中 |
+| 合集 C：FBro 指纹浏览器模块 | 11 集 | 制作中 |
 
 ## 主系列（13 集，已发布）
 
@@ -39,15 +39,16 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 12 | 开发你自己的模块 | 用模块 SDK 写中文命令绑定、校验、打包 .lbmod，装回 IDE 进补全 | [模块生态](/guide/user/modules/) |
 | 13 | AI 帮你造模块（不用会 C++） | 把需求描述给 AI → 粘贴导入 → 自动校验打包 → 中文命令进补全、F5 编译真实 C++ | [AI 模块开发](/guide/user/modules/ai-module-dev) |
 
-## 基础篇加餐（3 集，计划中）
+## 基础篇加餐（4 集，计划中）
 
-接在主系列第 5 集之后，补齐项目树中的项目数据和功能复用能力；不改变主系列 1～13 集编号。
+加餐 1～3 接在主系列第 5 集之后，补齐项目树中的项目数据和功能复用能力；加餐 4 是控件速查，记为总第 17 集。
 
 | 编号 | 标题 | 简介 | 配套文档 |
 | --- | --- | --- | --- |
 | 加餐 1 | 项目变量与常量：管理全局数据 | 打开「项目全局变量.lcpp」，区分项目常量与项目全局变量、作用域和只读规则，并在窗口代码中引用后 F5 验证 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) · [数据类型](/guide/user/data-types) |
 | 加餐 2 | 自定义数据类型：定义自己的结构 | 在「项目数据类型.lcpp」中新建类型和字段，演示嵌套/数组约束、补全诊断，并观察生成的 C++ `struct` | [数据类型](/guide/user/data-types)（项目类型章节待补） |
 | 加餐 3 | 功能代码：用功能库复用中文代码 | 从项目树「功能代码」新建功能库，使用 `功能库名.功能名(...)` 限定调用，演示跨文件复用、复制依赖和运行结果 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) · [编写代码](/guide/user/writing-code)（功能库章节待补） |
+| 加餐 4（第 17 集） | 全部控件速查 | 一个窗口放下 38 个控件——12 个基础、20 个高级可视、6 个非可视组件／资源，分 6 页对照着看，F5 出来就是原生 Win32 外观 | [窗口设计器](/guide/user/window-designer) |
 
 > 说明：现有用户文档可作为基础阅读；项目自定义数据类型和功能库的专门章节需在对应视频开拍前补齐。
 
@@ -72,7 +73,7 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 
 建议前置：主系列第 3～7 集和「窗口设计器与控件实战」合集。
 
-### 合集 A：EdgeView（11 集，计划中）
+### 合集 A：EdgeView（12 集，计划中）
 
 | 集数 | 标题 | 简介 | 配套文档 |
 | --- | --- | --- | --- |
@@ -82,11 +83,12 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 04 | 代理：全局与实例级 | 全局、实例和区域代理，覆盖 HTTP/HTTPS/SOCKS5 及代理生命周期 | [EdgeView 模块](/guide/user/modules/edgeview) |
 | 05 | 事件驱动：让代码响应网页 | 设计器控件与纯代码实例的事件绑定、字段读取和等待事件 | [EdgeView 模块](/guide/user/modules/edgeview) |
 | 06 | JavaScript 与网页消息 | 同步/异步执行 JS、任务状态和网页消息回传 | [EdgeView 模块](/guide/user/modules/edgeview) |
-| 07 | 获取资源响应：拦截、替换与读取正文 | 资源过滤器、同步响应替换、响应句柄和正文异步读取 | [EdgeView 模块](/guide/user/modules/edgeview) |
-| 08 | 下载与页内查找 | 下载路径与状态管理、暂停恢复取消、页内查找 | [EdgeView 模块](/guide/user/modules/edgeview) |
-| 09 | 打印、截图与开发者工具 | PDF、截图、Favicon 和 DevTools 协议事件能力 | [EdgeView 模块](/guide/user/modules/edgeview) |
-| 10 | 会话、权限与安全边界 | Cookie/浏览数据清理、权限状态、证书信息和脱敏演示 | [EdgeView 模块](/guide/user/modules/edgeview) |
-| 11 | EdgeView 综合项目：加载、拦截、下载与 F5 | 综合网页工作台，串起事件、资源响应、下载和真实构建运行 | [EdgeView 模块](/guide/user/modules/edgeview) |
+| 07 | 网页表单填充与验证 | 在本地测试页填入测试数据、触发校验、提交并读取结果；不绕过验证码或访问控制 | [EdgeView 模块](/guide/user/modules/edgeview) |
+| 08 | 获取资源响应：拦截、替换与读取正文 | 资源过滤器、同步响应替换、响应句柄和正文异步读取 | [EdgeView 模块](/guide/user/modules/edgeview) |
+| 09 | 下载与页内查找 | 下载路径与状态管理、暂停恢复取消、页内查找 | [EdgeView 模块](/guide/user/modules/edgeview) |
+| 10 | 打印、截图与开发者工具 | PDF、截图、Favicon 和 DevTools 协议事件能力 | [EdgeView 模块](/guide/user/modules/edgeview) |
+| 11 | 会话、权限与安全边界 | Cookie/浏览数据清理、权限状态、证书信息和脱敏演示 | [EdgeView 模块](/guide/user/modules/edgeview) |
+| 12 | EdgeView 综合项目：加载、拦截、填表、下载与 F5 | 综合网页工作台，串起表单、事件、资源响应、下载和真实构建运行 | [EdgeView 模块](/guide/user/modules/edgeview) |
 
 ### 合集 B：CEF3（10 集，计划中）
 
@@ -105,7 +107,7 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 
 本合集覆盖 CEF3 浏览器核心及事件、会话、网络资源、传输和自动化的常用入门路径，不是 395 条接口的逐条课程。第 06 集“获取网页资源响应”以当前公开 binding 可读取的 URL、HTTP 状态码和 MIME 等响应元数据为准；响应正文或过滤器能力以模块详情和实际版本支持为准。
 
-### 合集 C：FBro 指纹浏览器（10 集，制作中）
+### 合集 C：FBro 指纹浏览器（11 集，制作中）
 
 | 集数 | 标题 | 简介 | 配套文档 |
 | --- | --- | --- | --- |
@@ -117,10 +119,11 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 06 | 事件驱动：导航、弹窗与处理器 | 绑定事件、读取事件字段、同步/延迟决策和 `&处理器名` | [FBro 模块](/guide/user/modules/fbro) |
 | 07 | 获取网页资源响应：URL、状态码与 MIME | 观察资源响应与加载完成事件，读取公开响应元数据；正文/过滤器能力以当前版本为准 | [FBro 模块](/guide/user/modules/fbro) |
 | 08 | 接上自动化：CDP 驱动内嵌浏览器 | 配置独立进程和开发者工具，取得调试端口后用 CDP 完成取标题、查询元素和点击 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
-| 09 | 下载、截图与打印：把网页结果落盘 | 下载进度、截图、打印/PDF 和文件对话框，说明输出路径与敏感数据边界 | [FBro 模块](/guide/user/modules/fbro) |
-| 10 | FBro 综合项目：多工作区浏览器工具 | 串起工作区隔离、事件日志、资源响应摘要、CDP 自动化、下载视图和真实 F5 构建 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
+| 09 | 网页填表：输入、选择与提交 | 使用 CDP 完成文本框、下拉框、复选框、单选框与提交结果校验，只操作自有测试表单 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
+| 10 | 下载、截图与打印：把网页结果落盘 | 下载进度、截图、打印/PDF 和文件对话框，说明输出路径与敏感数据边界 | [FBro 模块](/guide/user/modules/fbro) |
+| 11 | FBro 综合项目：多工作区浏览器工具 | 串起工作区隔离、事件日志、资源响应摘要、CDP 填表与点击自动化、下载视图和真实 F5 构建 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
 
-本合集定位为“从入门到资源响应与自动化实战”，不是 462 条用户接口的逐条课程。第 07 集只承诺当前公开 binding 可读取的资源 URL、状态码、MIME 等元数据；资源正文、响应过滤器和替换规则必须以当前模块版本的公开能力和安全示例为准。所有演示使用已授权测试环境，不展示 Permit、Key、真实账号、Cookie、代理密码或敏感响应内容。第 08 集需额外启用 CDP 模块，并将 FBro 控件设为“独立进程嵌入”且开启开发者工具。
+本合集定位为“从入门到资源响应、填表与自动化实战”，不是 462 条用户接口的逐条课程。第 07 集只承诺当前公开 binding 可读取的资源 URL、状态码、MIME 等元数据；第 09 集只操作自有测试表单，不涉及真实账号、验证码、支付或绕过风控。所有演示使用已授权测试环境，不展示 Permit、Key、真实账号、Cookie、代理密码或敏感响应内容。第 08～09 集需额外启用 CDP 模块，并将 FBro 控件设为“独立进程嵌入”且开启开发者工具。
 
 ## 相关阅读
 
