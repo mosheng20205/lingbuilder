@@ -71,6 +71,7 @@ import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';
 import CliGuideDialog from './components/CliGuideDialog';
 import AboutDialog from './components/AboutDialog';
+import UpdateDialog, { type UpdateDialogInfo } from './components/UpdateDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
 import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
@@ -248,6 +249,35 @@ import { LINGBUILDER_DISPLAY_VERSION, LINGBUILDER_OFFICIAL_SITE_URL } from './se
 const LINGBUILDER_QQ_GROUP_URL = 'https://qm.qq.com/q/q2VNHZXLXy';
 // Web 模式下创建独立项目工作区并整页刷新后，跳过欢迎页直接进入工作台的一次性标记。
 const AUTO_ENTER_WORKSPACE_FLAG = 'lingbuilder:auto-enter-workspace';
+
+/** 主进程 app:check-update 的返回结构；直链/校验值等字段在旧云端上可能缺失。 */
+interface UpdateCheckPayload {
+  ok: boolean;
+  hasUpdate: boolean;
+  latestVersion?: string;
+  releaseTitle?: string;
+  websiteUrl?: string;
+  downloadUrl?: string | null;
+  sha256?: string | null;
+  fileSize?: string | null;
+  releaseNotes?: string | null;
+  channel?: string | null;
+  error?: string;
+}
+
+/** 把检查结果整理成更新对话框所需信息：直链或校验值缺失时对话框会自动只保留「前往官网下载」。 */
+const createUpdateDialogInfo = (result: UpdateCheckPayload, silent = false): UpdateDialogInfo => ({
+  status: 'update',
+  latestVersion: result.latestVersion,
+  releaseTitle: result.releaseTitle,
+  websiteUrl: result.websiteUrl || LINGBUILDER_OFFICIAL_SITE_URL,
+  downloadUrl: result.downloadUrl ?? null,
+  sha256: result.sha256 ?? null,
+  fileSize: result.fileSize ?? null,
+  releaseNotes: result.releaseNotes ?? null,
+  channel: result.channel ?? null,
+  ...(silent ? { silent: true } : {})
+});
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
@@ -1129,13 +1159,13 @@ export default function App() {
   const [isMaximizedApp, setIsMaximizedApp] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
-  const [updateCheckState, setUpdateCheckState] = useState<null | { status: 'checking' | 'latest' | 'update' | 'error'; latestVersion?: string; releaseTitle?: string; error?: string; silent?: boolean }>(null);
+  const [updateCheckState, setUpdateCheckState] = useState<UpdateDialogInfo | null>(null);
   useEffect(() => {
     const timer = setTimeout(() => {
       const check = window.lingBuilder?.updates?.check;
       if (!check) return;
       void check().then(result => {
-        if (result?.ok && result.hasUpdate) setUpdateCheckState({ status: 'update', latestVersion: result.latestVersion, releaseTitle: result.releaseTitle, silent: true });
+        if (result?.ok && result.hasUpdate) setUpdateCheckState(createUpdateDialogInfo(result, true));
       }).catch(() => undefined);
     }, 5000);
     return () => clearTimeout(timer);
@@ -4878,7 +4908,9 @@ void DisplayStatus() {
       try {
         const result = await check();
         if (!result.ok) { setUpdateCheckState({ status: 'error', error: result.error || '检查更新失败。' }); return true; }
-        setUpdateCheckState(result.hasUpdate ? { status: 'update', latestVersion: result.latestVersion, releaseTitle: result.releaseTitle } : { status: 'latest', latestVersion: result.latestVersion });
+        setUpdateCheckState(result.hasUpdate
+          ? createUpdateDialogInfo(result)
+          : { status: 'latest', latestVersion: result.latestVersion });
       } catch (error) {
         setUpdateCheckState({ status: 'error', error: error instanceof Error ? error.message : String(error) });
       }
@@ -5415,7 +5447,7 @@ void DisplayStatus() {
         title: '帮助：检查更新',
         aliases: ['Check for Updates', 'Update Check'],
         category: '帮助',
-        description: '联网检查 LingBuilder 是否有新版本；如有新版本将引导前往官网手动下载。',
+        description: '联网检查 LingBuilder 是否有新版本；发现新版本后可直接在 IDE 内下载并安装更新，也可前往官网手动下载。',
         when: '!workbench.modalOpen',
         order: 37,
         handler: () => workbenchCommandHandlersRef.current.checkForUpdates()
@@ -5882,6 +5914,13 @@ void DisplayStatus() {
             enterWorkbench();
             void executeWorkbenchCommand('workbench.action.help.openCliGuide');
           }}
+        />
+        <UpdateDialog
+          open={Boolean(updateCheckState)}
+          info={updateCheckState}
+          currentVersionLabel={LINGBUILDER_DISPLAY_VERSION}
+          isDarkMode={isDarkMode}
+          onClose={() => setUpdateCheckState(null)}
         />
         {isWorkspaceSwitching && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#111116]/75 backdrop-blur-[2px]" role="status" aria-live="polite">
@@ -7102,30 +7141,13 @@ void DisplayStatus() {
         open={showAboutModal}
         onClose={() => setShowAboutModal(false)}
       />
-      {updateCheckState && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="检查更新">
-          <div className="w-[26rem] max-w-full rounded-lg border border-slate-700 bg-[#1c1c22] p-5 text-slate-100 shadow-2xl">
-            <h2 className="text-sm font-semibold">
-              {updateCheckState.status === 'checking' ? '正在检查更新…' : updateCheckState.status === 'update' ? '发现新版本' : updateCheckState.status === 'latest' ? '已是最新版本' : '检查更新失败'}
-            </h2>
-            <p className="mt-3 text-xs leading-5 text-slate-400">
-              {updateCheckState.status === 'checking' ? '正在连接 LingBuilder 云端查询最新版本。'
-                : updateCheckState.status === 'update' ? `最新版本 v${updateCheckState.latestVersion || ''}（当前 ${LINGBUILDER_DISPLAY_VERSION}）。请前往官网下载最新安装包并手动完成更新。`
-                : updateCheckState.status === 'latest' ? `当前 ${LINGBUILDER_DISPLAY_VERSION} 已是最新版本。`
-                : updateCheckState.error || '请稍后重试。'}
-            </p>
-            {updateCheckState.status === 'update' && updateCheckState.releaseTitle && (
-              <p className="mt-2 text-[11px] leading-5 text-slate-500">{updateCheckState.releaseTitle}</p>
-            )}
-            <div className="mt-4 flex justify-end gap-2">
-              {updateCheckState.status === 'update' && (
-                <button type="button" onClick={() => window.open(LINGBUILDER_OFFICIAL_SITE_URL, '_blank', 'noopener,noreferrer')} className="min-h-8 rounded bg-[#4f46e5] px-3 text-xs font-semibold text-white hover:bg-indigo-600">前往官网下载</button>
-              )}
-              <button type="button" onClick={() => setUpdateCheckState(null)} className="min-h-8 rounded border border-slate-600 px-3 text-xs text-slate-300 hover:bg-white/5">{updateCheckState.status === 'update' ? '稍后再说' : '关闭'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <UpdateDialog
+        open={Boolean(updateCheckState)}
+        info={updateCheckState}
+        currentVersionLabel={LINGBUILDER_DISPLAY_VERSION}
+        isDarkMode={isDarkMode}
+        onClose={() => setUpdateCheckState(null)}
+      />
 
       <SponsorDialog
         open={showSponsorDialog}

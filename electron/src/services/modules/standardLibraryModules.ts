@@ -71,6 +71,35 @@ const bytesModuleWithBinary: LingBuilderModuleManifest = {
   }
 };
 
+const arrayModule = createStandardModule({
+  id: 'lingbuilder.std.array',
+  name: '数组操作模块',
+  category: '其他',
+  description: '为 LingCpp 数组提供成员数、增删改查、排序和重定义能力。命令对元素类型透明，索引统一从 0 开始，越界一律安全返回而不崩溃。',
+  tags: ['数组', '集合'],
+  commands: [
+    { name: '数组_取成员数', signature: '数组_取成员数(数组)', description: '返回数组当前成员数量。', insertText: '数组_取成员数($1)', parameters: [{ name: '数组', type: 'array' }], returnType: 'int', example: '数组_取成员数(名单)' },
+    { name: '数组_是否为空', signature: '数组_是否为空(数组)', description: '判断数组是否没有任何成员。', insertText: '数组_是否为空($1)', parameters: [{ name: '数组', type: 'array' }], returnType: 'bool' },
+    { name: '数组_取成员', signature: '数组_取成员(数组, 索引)', description: '按从 0 开始的索引读取成员；索引越界时返回元素类型的默认值。', insertText: '数组_取成员($1, 0)', parameters: [{ name: '数组', type: 'array' }, { name: '索引', type: 'int' }], returnType: 'arrayElement', returnDescription: '与数组元素类型一致的值。', example: '数组_取成员(名单, 0)' },
+    { name: '数组_置成员', signature: '数组_置成员(数组, 索引, 值)', description: '覆盖指定索引的成员；索引越界时返回假且不修改数组。', insertText: '数组_置成员($1, 0, $2)', parameters: [{ name: '数组', type: 'array' }, { name: '索引', type: 'int' }, { name: '值', type: 'arrayElement' }], returnType: 'bool' },
+    { name: '数组_加入成员', signature: '数组_加入成员(数组, 值)', description: '在数组末尾追加一个成员，返回追加后的成员数。', insertText: '数组_加入成员($1, $2)', parameters: [{ name: '数组', type: 'array' }, { name: '值', type: 'arrayElement' }], returnType: 'int', returnDescription: '追加后的成员数量。', example: '数组_加入成员(名单, "张三")' },
+    { name: '数组_插入成员', signature: '数组_插入成员(数组, 索引, 值)', description: '在指定索引前插入成员；索引等于成员数时等价于追加，越界时返回假。', insertText: '数组_插入成员($1, 0, $2)', parameters: [{ name: '数组', type: 'array' }, { name: '索引', type: 'int' }, { name: '值', type: 'arrayElement' }], returnType: 'bool' },
+    { name: '数组_删除成员', signature: '数组_删除成员(数组, 索引)', description: '删除指定索引的成员，后续成员依次前移；索引越界时返回假。', insertText: '数组_删除成员($1, 0)', parameters: [{ name: '数组', type: 'array' }, { name: '索引', type: 'int' }], returnType: 'bool' },
+    { name: '数组_清空', signature: '数组_清空(数组)', description: '删除数组全部成员。', insertText: '数组_清空($1)', parameters: [{ name: '数组', type: 'array' }], returnType: 'bool' },
+    { name: '数组_查找', signature: '数组_查找(数组, 值)', description: '返回首个相等成员的从 0 开始索引；未找到或元素类型不支持相等比较时返回 -1。', insertText: '数组_查找($1, $2)', parameters: [{ name: '数组', type: 'array' }, { name: '值', type: 'arrayElement' }], returnType: 'int', example: '数组_查找(名单, "张三")' },
+    { name: '数组_是否包含', signature: '数组_是否包含(数组, 值)', description: '判断数组是否包含相等成员；元素类型不支持相等比较时返回假。', insertText: '数组_是否包含($1, $2)', parameters: [{ name: '数组', type: 'array' }, { name: '值', type: 'arrayElement' }], returnType: 'bool' },
+    { name: '数组_排序', signature: '数组_排序(数组, 升序)', description: '按元素自身顺序稳定排序；元素类型不支持大小比较时返回假且不改动数组。', insertText: '数组_排序($1, 真)', parameters: [{ name: '数组', type: 'array' }, { name: '升序', type: 'bool' }], returnType: 'bool', example: '数组_排序(名单, 真)' },
+    { name: '数组_倒序', signature: '数组_倒序(数组)', description: '把数组成员按当前顺序整体反转。', insertText: '数组_倒序($1)', parameters: [{ name: '数组', type: 'array' }], returnType: 'bool' },
+    { name: '数组_重定义', signature: '数组_重定义(数组, 新成员数)', description: '调整数组成员数：变小时截断，变大时用元素类型默认值补齐；新成员数为负时返回假。', insertText: '数组_重定义($1, 0)', parameters: [{ name: '数组', type: 'array' }, { name: '新成员数', type: 'int' }], returnType: 'bool' }
+  ],
+  snippets: [{
+    label: '数组增删遍历',
+    insertText: '数组_加入成员(名单, "张三")\n数组_加入成员(名单, "李四")\n枚举循环首 (名单, 当前项)\n    调试输出(当前项)\n枚举循环尾 ()\n调试输出("成员数", 数组_取成员数(名单))',
+    description: '追加成员、遍历数组并输出成员数；名单需要先声明为文本型数组。'
+  }],
+  docs: [{ title: '数组操作模块', path: 'docs/modules/array/README.md' }]
+});
+
 const encodingModule = createStandardModule({
   id: 'lingbuilder.std.encoding',
   name: '编码转换模块',
@@ -175,6 +204,7 @@ const xmlModule = createStandardModule({
 
 export const STANDARD_LIBRARY_MODULES: LingBuilderModuleManifest[] = [
   textModule,
+  arrayModule,
   bytesModuleWithBinary,
   encodingModule,
   mathModule,

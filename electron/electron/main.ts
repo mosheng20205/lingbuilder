@@ -30,6 +30,7 @@ import { restoreModulePermits } from './modulePermitRestoreService';
 import { ModuleInfoWindowService } from './moduleInfoWindowService';
 import {
   createLcppSourcePackageService,
+  isLcppSourcePackagePath,
   LCPP_SOURCE_PACKAGE_EXTENSION,
   resolveProjectSourcePackagePath
 } from './lcppSourcePackageService';
@@ -55,6 +56,15 @@ let rendererOrigin = DEV_SERVER_URL;
 let rendererSessionToken = process.env.LINGBUILDER_SESSION_TOKEN || '';
 let activeWorkspace = '';
 let showWelcomeOnNextRendererLoad = true;
+/**
+ * 本次进程是由「双击 .lcpppkg / 把工作区拖到 exe 上」这类文件关联启动的。
+ * 用户已经明确指定了要打开什么，冷启动不应该再拦一层欢迎页。
+ */
+let startupOpenedAssociatedWorkspace = false;
+
+/** 从命令行参数里找出被双击的 `.lcpppkg`，与 `findLbmodArgument` 同一口径。 */
+const findLcppSourcePackageArgument = (argv: readonly string[]): string | undefined =>
+  argv.slice(1).find(value => value && !value.startsWith('-') && isLcppSourcePackagePath(value));
 let isQuitting = false;
 let shutdownPromise: Promise<void> | null = null;
 let pendingModulePackagePath: string | undefined;
@@ -445,7 +455,7 @@ async function requestRendererApi(apiPath: string, init: RequestInit): Promise<u
 }
 
 async function createMainWindow(): Promise<void> {
-  showWelcomeOnNextRendererLoad = true;
+  showWelcomeOnNextRendererLoad = !startupOpenedAssociatedWorkspace;
   const smokeTest = process.argv.includes('--smoke-test');
   const savedWindowState = await workspaceService.getWindowState();
   const usableBounds = savedWindowState && screen.getAllDisplays().some(display => intersects(display.workArea, savedWindowState))
@@ -1197,6 +1207,17 @@ if (!singleInstanceLock) {
         } else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(MODULE_INSTALL_EVENT, { packagePath: '', error: result.error });
       });
     }
+    // IDE 已经开着时再双击 .lcpppkg：导入并切到新工作区，而不是只把窗口拉到前面。
+    const packagePath = findLcppSourcePackageArgument(argv);
+    if (packagePath && workspaceService) {
+      void workspaceService.resolveWorkspaceTarget(packagePath)
+        .then(workspacePath => switchWorkspace(workspacePath))
+        .catch(error => {
+          // 渲染端没有这条通道的监听器，失败必须用系统对话框告诉用户，不能静默吞掉。
+          const reason = error instanceof Error ? error.message : String(error);
+          dialog.showErrorBox('打开 LCPP 源码包失败', [packagePath, '', reason].join('\n'));
+        });
+    }
     if (mainWindow && !mainWindow.isDestroyed()) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
   });
 }
@@ -1220,6 +1241,9 @@ app.whenReady().then(async () => {
   activeWorkspace = await workspaceService.resolveInitialWorkspace(
     app.isPackaged ? undefined : (process.env.LINGBUILDER_WORKSPACE_ROOT || repoRoot())
   );
+  // 双击 .lcpppkg 会在这里完成导入并把新工作区设为当前工作区；这条路径不经过
+  // switchWorkspace，所以要在这里记下来，否则渲染端仍会停在欢迎页。
+  startupOpenedAssociatedWorkspace = workspaceService.lastInitialWorkspaceSource === 'associated-file';
   if (startupModulePath) {
     const imported = await importModulePackage(startupModulePath);
     pendingModulePackagePath = imported.ok ? imported.relativePath : undefined;

@@ -14,6 +14,7 @@ import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
 import { CEF3_SAFE_API_CATALOG } from '../src/services/modules/cef3SafeApiCatalog.generated';
 import { EDGEVIEW_BROWSER_EVENTS, EDGEVIEW_COMPOSITION_ONLY_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import { EDGEVIEW_SAFE_API_CATALOG, validateEdgeViewApiCatalog } from '../src/services/modules/edgeViewApiCatalog';
+import { EDGEVIEW_SAFE_API_NATIVE_MEMBERS } from '../src/services/windowDesigner/edgeViewRuntime';
 import { FBRO_EVENT_CATALOG, FBRO_PUBLIC_BROWSER_EVENTS } from '../src/services/modules/fbroEventCatalog';
 import { FBRO_VIP_API_CATALOG, generateFbroVipIndividualRuntime } from '../src/services/modules/fbroVipApiCatalog';
 import { STANDARD_LIBRARY_MODULES } from '../src/services/modules/standardLibraryModules';
@@ -216,6 +217,7 @@ async function collectModuleSourceFilesForControlRefAudit(root: string): Promise
 test('标准库模块命令、binding、Win32/x64 target 保持完整对应', () => {
   const expectedIds = [
     'lingbuilder.std.text',
+    'lingbuilder.std.array',
     'lingbuilder.std.bytes',
     'lingbuilder.std.encoding',
     'lingbuilder.std.math',
@@ -249,12 +251,16 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       parameterDigest: audit.parameterDigest
     },
     {
-      modules: 84,
-      commands: 2998,
-      parameters: 5137,
-      controlReferences: 1262,
-      commandDigest: 'ab3819f6',
-      parameterDigest: '04a24cc7'
+      // 基线 2026-09-06 写回：+1 命令 / +1 参数 = CEF3_取资源地址(相对路径)，
+      // 由 CEF3 合集工作加入且未在此登记；同批新增的 EdgeView_等待事件控件
+      // （3 参数含 1 个 controlRef）此前已入账，故 controlReferences 仍为 1263。
+      // 再增删内置命令或其参数时必须同步这两个摘要，否则覆盖面会无声缩小。
+      modules: 85,
+      commands: 3013,
+      parameters: 5165,
+      controlReferences: 1263,
+      commandDigest: '653f9624',
+      parameterDigest: 'f9518491'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -434,6 +440,72 @@ test('第三方模块清单拒绝文本型控件参数和带引号的 controlRef
   assert.ok(quoted.diagnostics.some(message => message.includes('insertText 不得')));
   assert.ok(quoted.diagnostics.some(message => message.includes('example 不得')));
   assert.ok(quoted.diagnostics.some(message => message.includes('包括嵌套命令')));
+});
+
+test('模块清单接受泛型数组参数，但拒绝无法定型或跨 DLL 的用法', () => {
+  const valid = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'third.party.generic-array',
+    name: '泛型数组模块',
+    version: '1.0.0',
+    category: '其他',
+    description: '对元素类型透明的数组命令。',
+    contributes: {
+      commands: [{ name: '集合_取首个', signature: '集合_取首个(数组)', description: '读取首个成员。', returnType: '数组成员' }]
+    },
+    targets: [{ id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }],
+    bindings: {
+      commands: [{
+        command: '集合_取首个',
+        runtimeName: '集合_取首个',
+        parameters: [{ name: '数组', type: 'array' }],
+        returnType: 'arrayElement'
+      }]
+    }
+  });
+  assert.deepEqual(valid.diagnostics, []);
+
+  const undeterminedElement = validateModuleManifest({
+    ...valid.manifest,
+    id: 'third.party.generic-array-undetermined',
+    bindings: {
+      commands: [{
+        command: '集合_取首个',
+        runtimeName: '集合_取首个',
+        parameters: [{ name: '值', type: 'arrayElement' }],
+        returnType: 'arrayElement'
+      }]
+    }
+  });
+  assert.equal(
+    undeterminedElement.diagnostics.filter(message => message.includes('必须同时声明一个 array 参数')).length,
+    2,
+    'arrayElement 参数和返回值都必须要求同命令存在 array 参数'
+  );
+
+  const arrayReturnType = validateModuleManifest({
+    ...valid.manifest,
+    id: 'third.party.generic-array-return',
+    bindings: {
+      commands: [{
+        command: '集合_取首个',
+        runtimeName: '集合_取首个',
+        parameters: [{ name: '数组', type: 'array' }],
+        returnType: 'array'
+      }]
+    }
+  });
+  assert.ok(arrayReturnType.diagnostics.some(message => message.includes('不能把 array 作为 returnType')));
+
+  const dllTarget = validateModuleManifest({
+    ...valid.manifest,
+    id: 'third.party.generic-array-dll',
+    targets: [{
+      id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
+      libs: ['lib/array.lib'], runtimeFiles: ['bin/array.dll']
+    }]
+  });
+  assert.ok(dllTarget.diagnostics.some(message => message.includes('不能通过原生 DLL ABI 直接传递泛型数组参数')));
 });
 
 test('模块清单公开记录和数组类型，并拒绝不安全结构契约', () => {
@@ -653,6 +725,99 @@ test('编码转换模块公开完整的文本安全字符编码、BOM 与通用�
   requiredCommands.forEach(command => assert.ok(commandNames.has(command), `编码模块缺少命令：${command}`));
   assert.match(manifest.contributes?.commands?.find(command => command.name === '编码_文本转UTF8')?.description || '', /十六进制/u);
   assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+});
+
+test('数组操作模块对元素类型透明地提供成员数、增删改查、排序和重定义', async () => {
+  const manifest = STANDARD_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.std.array')!;
+  const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
+  assert.deepEqual(commandNames, [
+    '数组_取成员数', '数组_是否为空', '数组_取成员', '数组_置成员', '数组_加入成员', '数组_插入成员',
+    '数组_删除成员', '数组_清空', '数组_查找', '数组_是否包含', '数组_排序', '数组_倒序', '数组_重定义'
+  ]);
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), commandNames);
+  // 模块不引入新的公开类型：命令直接作用于语言原有的数组声明。
+  assert.equal(manifest.contributes?.types, undefined);
+  const bindings = new Map((manifest.bindings?.commands || []).map(binding => [binding.command, binding]));
+  bindings.forEach((binding, command) => assert.ok(
+    (binding.parameters || []).some(parameter => parameter.type === 'array'),
+    `${command} 必须声明 array 参数`
+  ));
+  assert.equal(bindings.get('数组_取成员')?.returnType, 'arrayElement');
+  assert.deepEqual(bindings.get('数组_加入成员')?.parameters?.map(parameter => parameter.type), ['array', 'arrayElement']);
+  // 数组按 std::vector 原样传递，不能被误判成需要宽字符 ABI 转换的命令。
+  assert.equal(bindings.get('数组_加入成员')?.encoding, undefined);
+  assert.deepEqual(manifest.contributes?.docs, [{ title: '数组操作模块', path: 'docs/modules/array/README.md' }]);
+  const document = await fs.readFile(path.join(process.cwd(), 'docs', 'modules', 'array', 'README.md'), 'utf8');
+  assert.match(document, /std::vector<T>/u);
+  assert.match(document, /数组_取成员数/u);
+
+  const enabledModules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.std.array'].map(moduleId => {
+    const module = BUILTIN_MODULES.find(item => item.id === moduleId)!;
+    return { manifest: module, installPath: `builtin://${moduleId}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  });
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules,
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 文本型 名单[]',
+      '        局部 整数型 编号[]',
+      '        数组_加入成员(名单, "张三")',
+      '        数组_插入成员(名单, 0, "李四")',
+      '        数组_置成员(名单, 1, "王五")',
+      '        数组_排序(名单, 真)',
+      '        数组_倒序(名单)',
+      '        数组_重定义(编号, 4)',
+      '        调试输出(数组_取成员数(名单), 数组_取成员(名单, 0), 数组_查找(名单, "王五"))',
+      '        数组_删除成员(名单, 0)',
+      '        数组_清空(名单)',
+      '    结束',
+      '结束类'
+    ].join('\n')
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  [
+    'template <typename T> int 数组_取成员数(const std::vector<T>& items)',
+    'template <typename T, typename V> int 数组_加入成员(std::vector<T>& items, V&& value)',
+    'struct LB_ArrayEquatable',
+    'struct LB_ArrayOrderable'
+  ].forEach(symbol => assert.ok(mainCpp.includes(symbol), `数组运行时缺少 ${symbol}`));
+  assert.match(mainCpp, /std::vector<std::wstring> 名单\{\};/u);
+  assert.match(mainCpp, /std::vector<int> 编号\{\};/u);
+  assert.match(mainCpp, /数组_加入成员\(名单, L"张三"\);/u);
+  assert.match(mainCpp, /数组_排序\(名单, true\);/u);
+  assert.match(mainCpp, /数组_取成员\(名单, 0\)/u);
+
+  // 文本数组成员与字面量比较必须生成值比较；按指针比较会静默恒假。
+  const textComparison = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules,
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 文本型 名单[]',
+      '        局部 整数型 编号[]',
+      '        数组_加入成员(名单, "张三")',
+      '        如果真 (数组_取成员(名单, 0) == "张三")',
+      '            调试输出("命中")',
+      '        如果真结束',
+      '        如果真 (数组_取成员(编号, 0) == 0)',
+      '            调试输出("整数成员按数值比较")',
+      '        如果真结束',
+      '    结束',
+      '结束类'
+    ].join('\n')
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(textComparison, /std::wstring\(LingCppWideArg\(数组_取成员\(名单, 0\)\)\)==LingCppWideArg\(L"张三"\)/u);
+  // 整数数组不能被误判成文本，否则会把 int 塞进 LingCppWideArg。
+  assert.match(textComparison, /if \(数组_取成员\(编号, 0\)==0\)/u);
+
+  // 未启用模块时不得注入数组运行时。
+  const withoutArrayModule = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: enabledModules.filter(module => module.manifest.id !== 'lingbuilder.std.array'),
+    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出("无数组模块")\n    结束\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.doesNotMatch(withoutArrayModule, /数组_取成员数/u);
 });
 
 test('JSON 数据模块 2.0 提供受管 DOM、Pointer、Patch、Schema 与可导出的确定性运行时', async () => {
@@ -2784,7 +2949,7 @@ test('CEF3 user documentation covers the unified event catalog and every public 
   );
 
   assert.equal(CEF3_BROWSER_EVENTS.length, 96);
-  assert.equal(publicCommands.length, 395);
+  assert.equal(publicCommands.length, 396);
   const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
   assert.equal(threadEntries.length, 5);
   assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
@@ -2981,6 +3146,75 @@ test('EdgeView 安全 API 目录、binding、处理器补全和运行时符号�
   assert.ok(!modern.some(item => item.id.includes('handler-reference-migration')));
   const legacy = getLingCppSemanticDiagnostics('EdgeView_绑定控件事件("浏览器1", "导航完成", "浏览器1_导航完成")', undefined, undefined, { enabledModules: [module], availableModules: [module] });
   assert.ok(legacy.some(item => item.id.includes('handler-reference-migration') && item.suggestion?.includes('&浏览器1_导航完成')));
+});
+
+test('EdgeView 导出路径、响应正文时效、回调内同步等待与控件级等待事件保持统一契约', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+  assert.ok(manifest);
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, []);
+
+  // 控件级等待事件必须和 _导航控件/_执行JS控件 一样走 controlRef + 裸引用补全。
+  const waitControl = manifest.contributes?.commands?.find(command => command.name === 'EdgeView_等待事件控件');
+  assert.ok(waitControl, '缺少 EdgeView_等待事件控件 补全贡献');
+  assert.equal(waitControl.returnType, '整数型');
+  assert.doesNotMatch(waitControl.insertText || '', /["'\u201c]\$1/u);
+  const waitBinding = manifest.bindings?.commands?.find(binding => binding.command === 'EdgeView_等待事件控件');
+  assert.ok(waitBinding, '缺少 EdgeView_等待事件控件 binding');
+  assert.equal(waitBinding.parameters?.[0]?.type, 'controlRef');
+  assert.deepEqual((waitBinding.parameters || []).slice(1).map(parameter => parameter.type), ['wideString', 'int']);
+
+  const runtime = EDGEVIEW_SAFE_API_NATIVE_MEMBERS;
+  // WebView2 的 PrintToPdf 只接受绝对路径；导出类命令统一先解析路径，任务结果回报绝对落盘位置。
+  assert.match(runtime, /const std::wstring target = EdgeView_取绝对路径\(filePath\);/u);
+  assert.match(runtime, /PrintToPdf\(target\.c_str\(\)/u);
+  assert.doesNotMatch(runtime, /PrintToPdf\(filePath/u);
+  assert.equal((runtime.match(/EdgeView_取绝对路径\(filePath\)/gu) || []).length, 5, 'PDF、PDF 流、截图、图标与下载路径都要统一解析绝对路径');
+  // 清单声明的 设置JSON 必须有真实实现，不能继续作为被丢掉的哑参数。
+  assert.match(runtime, /EdgeView打印_应用设置JSON\(controlName, settingsJson\)/u);
+  assert.match(runtime, /shouldPrintBackgrounds/u);
+  assert.match(runtime, /EdgeView_打印设置JSON可用\(settingsJson\)/u);
+  // 响应正文只在 Web资源响应收到 处理器执行期间可读，失败必须给中文约束说明。
+  assert.match(runtime, /EdgeView_说明响应正文时效/u);
+  assert.match(runtime, /必须在 Web资源响应收到 处理器执行期间/u);
+
+  const module: InstalledModule = {
+    manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'edge-1', type: 'EdgeBrowser', name: '浏览器1', content: '',
+        x: 20, y: 35, width: 285, height: 170, background: '#ffffff', foreground: '#000000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'https://example.com' }, events: {}
+      }]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [module],
+    lingCppSourceCode: ['类 MainWindow', '  事件 _MainWindow_创建完毕()', '    EdgeView_等待事件控件(浏览器1, "导航完成", 8000)', '  结束', '结束类'].join('\n')
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.equal(generated.blockingDiagnostics.join('\n'), '');
+  assert.match(mainCpp, /int EdgeView_等待事件控件\(const wchar_t\* controlName, const wchar_t\* eventName, int timeoutMilliseconds\)/u);
+  assert.match(mainCpp, /EdgeView_等待事件控件\(L"浏览器1", L"导航完成", 8000\)/u);
+  // 同步执行接口在 WebView2 回调里只会等满 15 秒，必须立刻返回并给出中文诊断。
+  assert.match(mainCpp, /if \(instance->eventDecisionActive\) \{ EdgeView_报告回调内同步等待\(L"EdgeView_执行JS"\); return L""; \}/u);
+  assert.match(mainCpp, /void EdgeView_报告回调内同步等待\(const wchar_t\* command\)/u);
+  // 下载路径决策：WebView2 的 put_ResultFilePath 只收绝对路径且要求父目录已存在，
+  // 模块必须自己补全绝对路径、建父目录，并把 HRESULT 变成可见的中文诊断，不能静默失败。
+  assert.match(runtime, /instance->eventDownloadPath = target;/u);
+  assert.match(runtime, /EdgeView_确保父目录\(target\);/u);
+  assert.doesNotMatch(runtime, /EdgeView事件_设置下载路径\(const wchar_t\* controlName, const wchar_t\* filePath\) \{ return EdgeView事件_设置返回文本/u);
+  assert.match(runtime, /EdgeView下载_取路径错误/u);
+  assert.match(runtime, /resultFilePathError/u);
+  assert.match(mainCpp, /const HRESULT pathResult = args->put_ResultFilePath\(raw->eventDownloadPath\.c_str\(\)\);/u);
+  assert.match(mainCpp, /EdgeView事件_设置下载路径 未生效/u);
+  assert.match(mainCpp, /instance\.eventDownloadPath\.clear\(\);/u);
+  // 事件内读到的 path 是决策前快照，必须同时回传本次请求的落点，调用方才能自证。
+  assert.match(runtime, /\{L"pendingResultFilePath", EdgeView下载_取请求路径\(controlName, downloadId\)\}/u);
+  assert.match(mainCpp, /raw->eventDownloadPaths\[downloadId\] = raw->eventDownloadPath;/u);
 });
 
 test('EdgeView designer controls create multiple WebView2 children and bind to generated parent HWNDs', () => {
@@ -3602,6 +3836,7 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.equal(designer?.events?.length, CEF3_BROWSER_EVENTS.length);
   assert.ok(CEF3_BROWSER_EVENTS.length >= 90);
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取事件字段'));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_读资源响应正文'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_设置事件结果'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_打开原生UI浏览器'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_是否静音'
@@ -3713,6 +3948,8 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.deepEqual(manifest.targets?.[0]?.headers, ['include/LingBuilderCefBridge.h']);
   assert.ok(manifest.targets?.[0]?.runtimeFiles?.some(item => item.endsWith('LingBuilderCefBridge.dll')));
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_绑定事件')?.parameters?.[2]?.type, 'handler');
+  assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_读资源响应正文')?.parameters?.map(parameter => parameter.type),
+    ['controlRef', 'longLong', 'handler']);
   for (const id of ['lingbuilder.cef3.events', 'lingbuilder.cef3.objects', 'lingbuilder.cef3.session',
     'lingbuilder.cef3.network', 'lingbuilder.cef3.transfer', 'lingbuilder.cef3.automation',
     'lingbuilder.cef3.devtools', 'lingbuilder.cef3.views', 'lingbuilder.cef3.platform']) {
@@ -3945,6 +4182,134 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.match(cpp, /std::vector<unsigned long long> bridgePopupHandles;/);
   assert.match(cpp, /LB_CEF3_BrowserCreateChrome/);
   assert.match(cpp, /LB_CEF3_BrowserClose/);
+});
+
+test('CEF3_取资源地址 同时登记清单与 binding，并在生成的 C++ 里有真实运行时实现', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(manifest);
+
+  const contributed = manifest.contributes?.commands?.find(item => item.name === 'CEF3_取资源地址');
+  assert.ok(contributed, 'CEF3_取资源地址 必须登记到 contributes.commands');
+  assert.equal(contributed.returnType, '文本型');
+  assert.notEqual(contributed.visibility, 'internal', '该命令面向示例与终端用户，必须公开');
+
+  const binding = manifest.bindings?.commands?.find(item => item.command === 'CEF3_取资源地址');
+  assert.ok(binding, 'CEF3_取资源地址 必须有确定性 binding，否则后端命令契约会阻断生成');
+  assert.deepEqual(binding.parameters.map(parameter => parameter.type), ['wideString']);
+  assert.equal(binding.returnType, 'wideString');
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    局部 文本型 地址 = CEF3_取资源地址("pages/index.html")\n    CEF3_导航(浏览器1, 地址)\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // 契约声称支持就必须有真实、可编译、可链接的运行时符号，不能只有补全和 binding。
+  assert.match(cpp, /std::wstring CEF3_取资源地址\(const wchar_t\* relativePath\)/);
+  assert.match(cpp, /static std::wstring Cef3PercentEncodeUrlPath\(const std::wstring& value\)/);
+  assert.match(cpp, /static bool Cef3LooksLikeUrl\(const std::wstring& value\)/);
+  assert.match(cpp, /static std::wstring Cef3BuildFileUrl\(std::wstring path\)/);
+  // 相对路径必须拼到 exe 同级 assets 下，而不是原样交给导航；形参是 const wchar_t* 所以取 c_str()。
+  assert.match(cpp, /ResolveRuntimeAssetPath\(\(L"assets\/" \+ value\)\.c_str\(\)\)/);
+  // 结果先落文本型局部变量，再经 LingCppWideArg 桥接到 CEF3_导航 的 const wchar_t* 地址形参；
+  // 控件名仍按裸 controlRef 生成宽字符。
+  assert.match(cpp, /std::wstring 地址 = CEF3_取资源地址\(L"pages\/index\.html"\);/);
+  assert.match(cpp, /CEF3_导航\(L"浏览器1", LingCppWideArg\(地址\)\);/);
+});
+
+test('CEF3_读资源响应正文 生成事件上下文约束和 Bridge 调用', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(manifest);
+  const binding = manifest.bindings?.commands?.find(item => item.command === 'CEF3_读资源响应正文');
+  assert.ok(binding);
+  assert.deepEqual(binding.parameters.map(parameter => parameter.type), ['controlRef', 'longLong', 'handler']);
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 资源响应到达()\n    CEF3_读资源响应正文(浏览器1, 65536, &资源响应正文到达)\n  结束\n  事件 资源响应正文到达()\n    调试输出(CEF3_取事件字段(浏览器1, "bodyText"))\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /int CEF3_读资源响应正文\(const wchar_t\* controlName, long long maxBytes, const wchar_t\* handler\)/);
+  assert.match(cpp, /LB_CEF3_ResourceResponseBodyBegin/);
+  assert.match(cpp, /只能在“资源响应到达”处理器中调用/);
+  assert.match(cpp, /资源响应正文到达/);
+});
+
+test('CEF3_导航 在桥接句柄就绪前排队，并在浏览器创建完成事件里补发', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_导航(浏览器1, "https://example.com")\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // LB_CEF3_BrowserCreate 只把 CefBrowserHost::CreateBrowser 投递到 CEF UI 线程，句柄立刻返回，
+  // 此刻 LB_CEF3_BrowserLoadUrl 会以「CEF3浏览器尚未创建完成」失败。创建完毕里发起的导航必须先排队，
+  // 等桥接层发出「浏览器创建完成」（该事件发出前 state->browser 已写入）再补发。
+  assert.match(cpp, /bool bridgeReady = false;/);
+  assert.match(cpp, /std::wstring pendingNavigation;/);
+  assert.match(cpp, /if \(!instance->bridgeReady\) \{\s*\n\s*instance->pendingNavigation = address;\s*\n\s*return 1;\s*\n\s*\}/);
+  assert.match(cpp, /if \(TextEquals\(eventName, L"浏览器创建完成"\) && !instance\.bridgeReady\) \{/);
+  assert.match(cpp, /LB_CEF3_BrowserLoadUrl\(instance\.bridgeHandle, target\.c_str\(\)\) == LB_CEF3_OK/);
+  // 补发必须排在事件派发之前：用户没有绑定「浏览器创建完成」时也要能补发导航。
+  const flush = cpp.indexOf('TextEquals(eventName, L"浏览器创建完成")');
+  const dispatch = cpp.indexOf('void CEF3_投递事件(');
+  assert.ok(flush >= 0 && dispatch > flush, '补发导航必须无条件先于事件派发，否则未绑定该事件时不会执行');
 });
 
 test('FBro module contributes a toolbox designer control and C ABI generated runtime', () => {
@@ -4422,7 +4787,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
       files: fbroFiles
     })),
     writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),
-    writeFixture(path.join(cef3Sdk, 'bridge', 'x64', 'LingBuilderCefBridge.h'), '#pragma once\n'),
+    writeFixture(path.join(cef3Sdk, 'bridge', 'x64', 'LingBuilderCefBridge.h'), '#pragma once\nint LB_CEF3_ResourceResponseBodyBegin();\n'),
     writeFixture(path.join(cef3Sdk, 'bridge', 'x64', 'LingBuilderCefBridge.lib'), 'cef3-bridge-lib'),
     writeFixture(path.join(cef3Sdk, 'bridge', 'x64', 'LingBuilderCefBridge.dll'), 'cef3-bridge-dll'),
     writeFixture(path.join(cef3Sdk, 'bin', 'x64', 'libcef.dll'), 'cef3-cef-150'),

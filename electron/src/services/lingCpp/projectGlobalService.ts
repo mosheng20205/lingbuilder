@@ -265,6 +265,6 @@ function renameIdentifierOutsideStringsAndComments(sourceCode: string, oldName: 
 export function projectSymbolTypes(constants: LingCppConstant[], globals: LingCppGlobalVariable[]): Map<string, string> {
   return new Map([
     ...constants.map(constant => [normalizeIdentifier(constant.name), constant.type] as const),
-    ...globals.map(global => [normalizeIdentifier(global.name), global.type] as const)
+    ...globals.map(global => [normalizeIdentifier(global.name), global.isArray ? `${global.type}[]` : global.type] as const)
   ]);
 }

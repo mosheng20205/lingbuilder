@@ -3,6 +3,8 @@ import { createModuleBindingSnippetArgument } from './bindingValueType';
 
 type UiReturnType = '整数型' | '长整数型' | '小数型' | '逻辑型' | '文本型' | '字节集';
 type Parameter = ModuleCommandBindingParameter;
+/** DataGrid 的原生 ABI 只承载标量与文本，不承载 LingCpp 数组值。 */
+type DataGridBindingReturnType = Exclude<ModuleBindingValueType, 'array' | 'arrayElement'>;
 
 export interface DataGridApiDefinition {
   name: string;
@@ -11,7 +13,7 @@ export interface DataGridApiDefinition {
   insertText: string;
   returnType: UiReturnType;
   parameters: Parameter[];
-  bindingReturnType: ModuleBindingValueType;
+  bindingReturnType: DataGridBindingReturnType;
   memberName: string;
   memberArgs: string;
 }
@@ -28,7 +30,7 @@ const integer = (name: string) => p(name, 'int');
 const decimal = (name: string) => p(name, 'double');
 const string = (name: string) => p(name, 'wideString');
 
-const returnTypeMap: Record<ModuleBindingValueType, UiReturnType> = {
+const returnTypeMap: Record<DataGridBindingReturnType, UiReturnType> = {
   int: '整数型', longLong: '长整数型', double: '小数型', bool: '逻辑型', wideString: '文本型',
   void: '逻辑型', utf8String: '文本型', controlRef: '长整数型', handler: '长整数型', lingValue: '长整数型', handle: '长整数型', bytes: '字节集', raw: '长整数型'
 };
@@ -40,7 +42,7 @@ const sample = (parameter: Parameter, placeholder: number) => {
 };
 const api = (
   suffix: string,
-  bindingReturnType: ModuleBindingValueType,
+  bindingReturnType: DataGridBindingReturnType,
   parameters: Parameter[],
   description: string
 ): DataGridApiDefinition => {

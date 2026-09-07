@@ -184,3 +184,49 @@ async function exists(filePath: string): Promise<boolean> {
     return false;
   }
 }
+
+test('双击 .lcpppkg 冷启动会记为文件关联来源，目录参数不会', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-initial-source-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const documents = path.join(root, 'Documents');
+
+  // 双击工作区里的一个源文件：属于文件关联启动，桌面宿主据此跳过欢迎页。
+  const project = path.join(root, 'project');
+  await fs.mkdir(project, { recursive: true });
+  const sourceFile = path.join(project, 'Main.lcpp');
+  await fs.writeFile(sourceFile, '类 Main\n结束类\n', 'utf8');
+  const opened = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', sourceFile],
+    documentsPath: documents,
+    userDataPath: path.join(root, 'UserDataFile')
+  });
+  assert.equal(await opened.resolveInitialWorkspace(), project);
+  assert.equal(opened.lastInitialWorkspaceSource, 'associated-file');
+
+  // 开发态 `electron .` 传的是目录，欢迎页行为必须保持不变。
+  const fromDirectory = new DesktopWorkspaceService({
+    argv: ['electron.exe', project],
+    documentsPath: documents,
+    userDataPath: path.join(root, 'UserDataDir')
+  });
+  assert.equal(await fromDirectory.resolveInitialWorkspace(), project);
+  assert.equal(fromDirectory.lastInitialWorkspaceSource, 'associated-directory');
+
+  // 普通启动（无参数）走历史记录或种子工作区，同样不跳过欢迎页。
+  const plain = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe'],
+    documentsPath: documents,
+    userDataPath: path.join(root, 'UserDataPlain')
+  });
+  await plain.resolveInitialWorkspace();
+  assert.equal(plain.lastInitialWorkspaceSource, 'seed');
+
+  // --workspace 是自动化/开发参数，不算文件关联。
+  const explicit = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', project],
+    documentsPath: documents,
+    userDataPath: path.join(root, 'UserDataArg')
+  });
+  await explicit.resolveInitialWorkspace();
+  assert.equal(explicit.lastInitialWorkspaceSource, 'argument');
+});

@@ -19,6 +19,8 @@ export const MODULE_BINDING_TYPE_LABELS: Record<ModuleBindingValueType, string> 
   lingValue: 'LingCpp 任意值',
   handle: '句柄',
   bytes: '字节集',
+  array: '数组',
+  arrayElement: '数组成员',
   raw: '原始值'
 };
 

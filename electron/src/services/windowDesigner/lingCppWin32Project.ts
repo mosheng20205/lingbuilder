@@ -29,11 +29,12 @@ import {
   getModuleRecordDataTypes
 } from '../modules/modulePublicTypeService';
 import { parseLingCppControlFlowLine } from '../lingCpp/controlFlow';
+import { getLingCppParameterElementType, isLingCppArrayParameterType } from '../lingCpp/parameterTypeService';
 import { createProjectGlobalContext, getProjectGlobalDiagnostics, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, getProjectDataTypeDiagnostics, isProjectDataTypesFilePath, sortProjectDataTypes } from '../lingCpp/projectDataTypeService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { createProjectFunctionContext } from '../lingCpp/functionLibraryService';
-import { CEF3_BROWSER_EVENTS } from '../modules/cef3BrowserEvents';
+import { CEF3_BROWSER_EVENTS, CEF3_EVENT_ASYNC_DEFAULTS, CEF3_EVENT_BRIDGE_SUBSCRIPTIONS, CEF3_RESOURCE_RESPONSE_BODY_EVENT_NAME } from '../modules/cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENTS } from '../modules/edgeViewBrowserEvents';
 import { EDGEVIEW_FULL_RUNTIME_MAJOR, EDGEVIEW_MINIMUM_RUNTIME_MAJOR, EDGEVIEW_SAFE_API_CATALOG, EDGEVIEW_SDK_VERSION } from '../modules/edgeViewApiCatalog';
 import { BUILTIN_LIBRARY_COMMON_RUNTIME, generateStandardLibraryRuntime } from './standardLibraryRuntime';
@@ -140,11 +141,14 @@ interface TranslatedStatementLine {
 interface LingCppTranslationContext {
   runtimeControlVariables: ReadonlySet<string>;
   wideStringVariables: ReadonlySet<string>;
+  /** 元素类型是文本型的数组：数组成员型命令的文本性由它们决定。 */
+  wideStringArrayVariables: ReadonlySet<string>;
 }
 
 const EMPTY_TRANSLATION_CONTEXT: LingCppTranslationContext = {
   runtimeControlVariables: new Set<string>(),
-  wideStringVariables: new Set<string>()
+  wideStringVariables: new Set<string>(),
+  wideStringArrayVariables: new Set<string>()
 };
 
 interface AggregatedLingCppProjectSources {
@@ -6880,6 +6884,12 @@ function generateMainCpp(
   const cef3EventIdCases = CEF3_BROWSER_EVENTS.map(event =>
     `    if (eventName && std::wcscmp(eventName, L"${escapeWideString(event.name)}") == 0) return L"${escapeWideString(event.legacyDesignerId || event.id)}";`
   ).join('\n');
+  const cef3EventSubscriptionCases = Object.entries(CEF3_EVENT_BRIDGE_SUBSCRIPTIONS).map(([eventName, exporter]) =>
+    `    if (std::wcscmp(eventName, L"${escapeWideString(eventName)}") == 0) return ${exporter}(instance->bridgeHandle, enabled ? 1 : 0) == LB_CEF3_OK;`
+  ).join('\n');
+  const cef3EventAsyncDefaultCases = Object.entries(CEF3_EVENT_ASYNC_DEFAULTS).map(([eventName, action]) =>
+    `    if (std::wcscmp(eventName, L"${escapeWideString(eventName)}") == 0) return ${action};`
+  ).join('\n');
   const edgeViewEventIdCases = EDGEVIEW_BROWSER_EVENTS.map(event =>
     `        if (TextEquals(eventName, L"${escapeWideString(event.name)}")) return L"${escapeWideString(event.designerId || event.id)}";`
   ).join('\n');
@@ -7460,6 +7470,18 @@ struct RuntimeControl {
     std::vector<UINT> animatedFrameDelays;
     UINT_PTR animatedTimer = 0;
     bool animatedLoop = false;
+    std::vector<HBITMAP> animatedFrames;
+    int animatedFramesWidth = 0;
+    int animatedFramesHeight = 0;
+    // AnimatedImage frames are rendered into one persistent DIB buffer. The
+    // buffer is blitted during WM_PAINT instead of replacing a STATIC image
+    // handle for every frame, which avoids GDI handle churn and paint flash.
+    HDC animatedBufferDc = nullptr;
+    HDC animatedFrameDc = nullptr;
+    HBITMAP animatedBufferBitmap = nullptr;
+    HGDIOBJ animatedBufferPrevious = nullptr;
+    int animatedBufferWidth = 0;
+    int animatedBufferHeight = 0;
     COLORREF colorValue = RGB(59, 130, 246);
     bool colorDialogOpen = false;
     std::vector<std::vector<std::wstring>> listViewRows;
@@ -8308,6 +8330,69 @@ static std::wstring ResolveRuntimeAssetPath(const wchar_t* path) {
     return directory + value;
 }
 
+// 按 UTF-8 百分号转义路径；保留未保留字符集与路径分隔符、盘符冒号。
+static std::wstring Cef3PercentEncodeUrlPath(const std::wstring& value) {
+    static const wchar_t* digits = L"0123456789ABCDEF";
+    std::wstring out;
+    size_t index = 0;
+    while (index < value.size()) {
+        unsigned int codePoint = value[index++];
+        if (codePoint >= 0xD800 && codePoint <= 0xDBFF && index < value.size()
+            && value[index] >= 0xDC00 && value[index] <= 0xDFFF) {
+            codePoint = 0x10000u + ((codePoint - 0xD800u) << 10) + (value[index++] - 0xDC00u);
+        }
+        const bool keep = codePoint == L'/' || codePoint == L':'
+            || (codePoint >= L'A' && codePoint <= L'Z') || (codePoint >= L'a' && codePoint <= L'z')
+            || (codePoint >= L'0' && codePoint <= L'9')
+            || codePoint == L'-' || codePoint == L'.' || codePoint == L'_' || codePoint == L'~';
+        if (keep) { out.push_back(static_cast<wchar_t>(codePoint)); continue; }
+        unsigned char bytes[4] = {};
+        int count = 0;
+        if (codePoint < 0x80u) { bytes[count++] = static_cast<unsigned char>(codePoint); }
+        else if (codePoint < 0x800u) {
+            bytes[count++] = static_cast<unsigned char>(0xC0u | (codePoint >> 6));
+            bytes[count++] = static_cast<unsigned char>(0x80u | (codePoint & 0x3Fu));
+        } else if (codePoint < 0x10000u) {
+            bytes[count++] = static_cast<unsigned char>(0xE0u | (codePoint >> 12));
+            bytes[count++] = static_cast<unsigned char>(0x80u | ((codePoint >> 6) & 0x3Fu));
+            bytes[count++] = static_cast<unsigned char>(0x80u | (codePoint & 0x3Fu));
+        } else {
+            bytes[count++] = static_cast<unsigned char>(0xF0u | (codePoint >> 18));
+            bytes[count++] = static_cast<unsigned char>(0x80u | ((codePoint >> 12) & 0x3Fu));
+            bytes[count++] = static_cast<unsigned char>(0x80u | ((codePoint >> 6) & 0x3Fu));
+            bytes[count++] = static_cast<unsigned char>(0x80u | (codePoint & 0x3Fu));
+        }
+        for (int i = 0; i < count; ++i) {
+            out.push_back(L'%');
+            out.push_back(digits[bytes[i] >> 4]);
+            out.push_back(digits[bytes[i] & 0x0Fu]);
+        }
+    }
+    return out;
+}
+
+// 是否已带 URL 协议名。协议名要求至少两个字母，避免把 "C:/x" 的盘符当成协议。
+static bool Cef3LooksLikeUrl(const std::wstring& value) {
+    const size_t colon = value.find(L':');
+    if (colon == std::wstring::npos || colon < 2) return false;
+    for (size_t i = 0; i < colon; ++i) {
+        const wchar_t ch = value[i];
+        const bool ok = (ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z')
+            || (i > 0 && ((ch >= L'0' && ch <= L'9') || ch == L'+' || ch == L'-' || ch == L'.'));
+        if (!ok) return false;
+    }
+    return true;
+}
+
+// 把绝对路径拼成 file URL；入参不得是带协议的完整地址。
+// 必须先统一分隔符：ResolveRuntimeAssetPath 拼出的 exe 目录带的是 Windows 反斜杠，
+// 直接转义会得到 file:///C:%5C...%5Cassets/... 这种 CEF 无法加载的地址。
+static std::wstring Cef3BuildFileUrl(std::wstring path) {
+    for (wchar_t& ch : path) if (ch == L'\\\\') ch = L'/';
+    if (path.rfind(L"//", 0) == 0) return L"file:" + Cef3PercentEncodeUrlPath(path);
+    return L"file:///" + Cef3PercentEncodeUrlPath(path);
+}
+
 static HBITMAP LoadWicBitmap(const wchar_t* path, int requestedWidth, int requestedHeight, const wchar_t* stretchMode) {
     if (!path || !path[0]) return nullptr;
     const std::wstring resolvedPath = ResolveRuntimeAssetPath(path);
@@ -8786,6 +8871,9 @@ ${webSocketServerWindowField}
         std::map<std::wstring, std::wstring> eventFields;
         int eventAction = 0;
         std::wstring eventResultText;
+        std::wstring eventDownloadPath;
+        std::map<long long, HRESULT> eventDownloadPathErrors;
+        std::map<long long, std::wstring> eventDownloadPaths;
         std::wstring eventResponseJson;
         long long eventObjectSelection = 0;
         bool eventDecisionActive = false;
@@ -8844,12 +8932,16 @@ ${webSocketServerWindowField}
         std::map<std::wstring, std::wstring> eventFields;
         int eventAction = 0;
         std::wstring eventResultText;
+        unsigned long long activeEventSubject = 0;
+        bool activeEventContext = false;
         bool enableJs = true;
         bool enableDevTools = true;
         bool loadImages = true;
         bool enableWebGL = false;
         bool muteAudio = false;
         bool created = false;
+        bool bridgeReady = false;
+        std::wstring pendingNavigation;
         bool canGoBack = false;
         bool canGoForward = false;
         bool isLoading = false;
@@ -9555,6 +9647,11 @@ ${edgeViewEventIdCases}
         return instance->eventCounts[eventName] > initialCount ? 1 : 0;
     }
 
+    int EdgeView_等待事件控件(const wchar_t* controlName, const wchar_t* eventName, int timeoutMilliseconds) {
+        EdgeViewInstance* instance = EdgeView_查找控件(controlName);
+        return instance ? EdgeView_等待事件(instance->id, eventName, timeoutMilliseconds) : 0;
+    }
+
     int EdgeView_导航实例(int instanceId, const wchar_t* address) {
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
         EdgeViewInstance* instance = EdgeView_查找(instanceId);
@@ -9576,6 +9673,7 @@ ${edgeViewEventIdCases}
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
         EdgeViewInstance* instance = EdgeView_查找(instanceId);
         if (!instance || !instance->webView || !script) return L"";
+        if (instance->eventDecisionActive) { EdgeView_报告回调内同步等待(L"EdgeView_执行JS"); return L""; }
         auto task = EdgeView任务_新建(instance, L"");
         if (!task) return L"";
         HRESULT result = instance->webView->ExecuteScript(script, Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
@@ -9821,7 +9919,7 @@ ${edgeViewEventIdCases}
         if (instance.closed) return;
         instance.lastEvent = name ? name : L""; instance.lastEventData = data ? data : L"";
         instance.eventFields.clear(); instance.eventFields[L"json"] = instance.lastEventData;
-        instance.eventAction = 0; instance.eventResultText.clear(); instance.eventObjectSelection = 0; instance.eventDecisionActive = true;
+        instance.eventAction = 0; instance.eventResultText.clear(); instance.eventDownloadPath.clear(); instance.eventObjectSelection = 0; instance.eventDecisionActive = true;
         ++instance.eventCounts[instance.lastEvent];
         auto handler = instance.handlers.find(instance.lastEvent);
         std::wstring callback = handler == instance.handlers.end() ? L"" : handler->second;
@@ -9903,8 +10001,17 @@ ${edgeViewEventIdCases}
                 EdgeView_附加下载事件(*raw, operation.Get()); LPWSTR uri = nullptr, path = nullptr; if (operation) operation->get_Uri(&uri); args->get_ResultFilePath(&path);
                 std::wstring data = EdgeView_事件数据({{L"downloadId", EdgeView_数值(downloadId)}, {L"uri", EdgeView_接管字符串(uri)}, {L"resultFilePath", EdgeView_接管字符串(path)}});
                 EdgeView_记录事件(*raw, L"下载开始", data.c_str());
-                if (raw->eventAction == 1) args->put_Cancel(TRUE);
-                else if (!raw->eventResultText.empty()) args->put_ResultFilePath(raw->eventResultText.c_str());
+                if (raw->eventAction == 1) { args->put_Cancel(TRUE); }
+                else if (!raw->eventDownloadPath.empty()) {
+                    const HRESULT pathResult = args->put_ResultFilePath(raw->eventDownloadPath.c_str());
+                    raw->eventDownloadPathErrors[downloadId] = pathResult;
+                    raw->eventDownloadPaths[downloadId] = raw->eventDownloadPath;
+                    if (FAILED(pathResult)) {
+                        wchar_t reason[256] = {};
+                        swprintf(reason, 256, L"EdgeView事件_设置下载路径 未生效：%s HRESULT=0x%08X。请确认目录已存在且文件未被占用。", raw->eventDownloadPath.c_str(), static_cast<unsigned>(pathResult));
+                        调试输出(reason);
+                    }
+                }
                 return S_OK;
             }).Get(), &token);
         }
@@ -10280,7 +10387,9 @@ ${fbroBrowserManagerRuntime.methods}
                 config.mode = instance->processMode;
                 config.width = (std::max)(1L, bounds.right - bounds.left);
                 config.height = (std::max)(1L, bounds.bottom - bounds.top);
-                config.visible = IsWindowVisible(instance->host) != FALSE;
+                // FBro_创建 运行在 WM_CREATE 的 OnWindowCreated 里，此时主窗口尚未 ShowWindow，
+                // IsWindowVisible 和控件实时样式都不能代表设计器意图；独立顶层窗口的宿主因此永不显示。
+                config.visible = (control.flags & CF_HIDDEN) == 0;
                 config.url = instance->url;
                 config.profileDirectory = instance->profileDirectory;
                 config.userAgent = instance->userAgent;
@@ -11353,6 +11462,68 @@ ${generateFbroVipIndividualRuntime(false)}
         owner->CEF3_处理Bridge事件(*packet, response);
     }
 
+    // 资源/框架/打印/Cookie 等处理器族只走桥接层的受管 V4 通道，没有 legacy 数字事件兜底。
+    // V4 载荷在派发用到的字段上与 V3 同构，这里降形后复用同一个中文事件入口。
+    static void LB_CEF3_CALL CEF3_Bridge事件回调V4(const LB_CEF3_EVENT_PACKET_V4* packet,
+                                                   LB_CEF3_EVENT_RESPONSE_V4* response,
+                                                   void* userData) {
+        auto* owner = static_cast<LingWindowBase*>(userData);
+        if (!owner || !packet || packet->abi_version != LB_CEF3_ABI_VERSION_V4) return;
+        CefBrowserInstance* activeInstance = nullptr;
+        for (auto& item : owner->cefBrowsers_) {
+            if (item.second && item.second->bridgeHandle == packet->browser) {
+                activeInstance = item.second.get();
+                break;
+            }
+        }
+        const unsigned long long previousSubject = activeInstance ? activeInstance->activeEventSubject : 0;
+        const bool previousContext = activeInstance ? activeInstance->activeEventContext : false;
+        if (activeInstance) {
+            activeInstance->activeEventSubject = packet->subject;
+            activeInstance->activeEventContext = packet->event_name
+                && std::wcscmp(packet->event_name, L"资源响应已接收") == 0;
+        }
+        LB_CEF3_EVENT_PACKET_V3 adapted = {};
+        adapted.struct_size = sizeof(adapted);
+        adapted.abi_version = LB_CEF3_ABI_VERSION_V3;
+        adapted.sequence = packet->sequence;
+        adapted.timestamp_milliseconds = packet->timestamp_milliseconds;
+        adapted.browser = packet->browser;
+        adapted.user_token = packet->user_token;
+        adapted.flags = packet->flags;
+        adapted.event_name = packet->event_name;
+        adapted.fields_json = packet->fields_json;
+        LB_CEF3_EVENT_RESPONSE_V3 legacyResponse = {};
+        legacyResponse.struct_size = sizeof(legacyResponse);
+        legacyResponse.abi_version = LB_CEF3_ABI_VERSION_V3;
+        owner->CEF3_处理Bridge事件(adapted, &legacyResponse);
+        if (activeInstance) {
+            activeInstance->activeEventSubject = previousSubject;
+            activeInstance->activeEventContext = previousContext;
+        }
+        if (!response) return;
+        // EmitAsyncEvent 家族（「资源加载前」等可取消事件）把决策权交给 packet->continuation：
+        // 桥接层只在宿主给出非零动作时才结束续跑。宿主没表态时若什么都不做，CEF 会挂到
+        // 30 秒超时才继续，期间页面一片空白，所以这里立即按该事件自身声明的默认动作续跑，
+        // 并且不再通过 response.action 让桥接层重复结束同一个续跑。
+        // 不能统一按放行处理：文件对话框 / 权限 / 认证 / 证书错误的默认是拒绝或自定义。
+        if (packet->continuation != 0 && legacyResponse.action == 0) {
+            const int fallback = owner->CEF3_桥接默认动作(adapted.event_name);
+            if (fallback != 0) LB_CEF3_ContinuationCompleteV4(packet->continuation, fallback, nullptr);
+            return;
+        }
+        response->action = legacyResponse.action;
+        response->flags = legacyResponse.flags;
+        response->response_json = legacyResponse.response_json;
+    }
+
+    int CEF3_桥接默认动作(const wchar_t* rawEventName) {
+        if (!rawEventName || !rawEventName[0]) return 0;
+        const wchar_t* eventName = CEF3_归一化Bridge事件名(rawEventName);
+        ${cef3EventAsyncDefaultCases}
+        return 0;
+    }
+
     using CEF3_Bridge文本读取器 = int(LB_CEF3_CALL*)(LB_CEF3_HANDLE, wchar_t*, size_t, size_t*);
     static std::wstring CEF3_Bridge读取文本(LB_CEF3_HANDLE handle, CEF3_Bridge文本读取器 getter) {
         if (!handle || !getter) return L"";
@@ -11466,14 +11637,63 @@ ${generateFbroVipIndividualRuntime(false)}
         return fields;
     }
 
+    // 桥接层发出的事件名与模块事件目录（services/modules/cef3BrowserEvents.ts）里的中文名
+    // 不总是同一个词：桥接发「浏览前请求」，目录与 CEF3_绑定事件 用的是「导航请求前」。
+    // 名字对不上时 handlers 查不到处理器，同步事件的 response->action 恒为 0，
+    // 「导航请求前 / 资源加载前」这类可取消事件就静默失效（取消动作根本没机会执行）。
+    // 下表由 electron/native/cef3-bridge/LingBuilderCefBridge.cpp 里的
+    // EmitEvent / EmitNotificationEventV4 调用点与其所属 CEF 回调，
+    // 同目录里的 delegate→中文名机械比对得出，改动桥接事件名时必须同步复核。
+    const wchar_t* CEF3_归一化Bridge事件名(const wchar_t* name) {
+        if (!name) return L"";
+        struct Cef3EventAlias { const wchar_t* from; const wchar_t* to; };
+        static const Cef3EventAlias aliases[] = {
+            { L"浏览前请求", L"导航请求前" },
+            { L"资源加载前请求", L"资源加载前" },
+            { L"资源响应已接收", L"资源响应到达" },
+            { L"标签打开地址请求", L"标签页打开地址请求" },
+            { L"主框架文档可用", L"主文档可用" },
+            { L"主Frame改变", L"主框架改变" },
+            { L"渲染进程意外终止", L"渲染进程终止" },
+            { L"客户端证书选择请求", L"客户端证书选择" },
+            { L"受管资源处理器请求", L"自定义资源处理器查询" },
+            { L"响应过滤器请求", L"资源响应过滤器查询" },
+            { L"Cookie访问过滤器请求", L"Cookie过滤器查询" },
+            { L"Cookie发送许可请求", L"发送Cookie查询" },
+            { L"Cookie保存许可请求", L"保存Cookie查询" },
+            { L"下载许可请求", L"下载许可查询" },
+            { L"下载开始前", L"下载开始" },
+            { L"下载状态更新", L"下载进度更新" },
+            { L"提交打印任务", L"打印任务提交" },
+            { L"同步打印设置", L"打印设置请求" },
+            { L"重置打印状态", L"打印状态重置" },
+            { L"PDF纸张尺寸请求", L"PDF纸张大小查询" },
+        };
+        for (const Cef3EventAlias& alias : aliases) {
+            if (TextEquals(name, alias.from)) return alias.to;
+        }
+        return name;
+    }
+
     void CEF3_处理Bridge事件(const LB_CEF3_EVENT_PACKET_V3& packet, LB_CEF3_EVENT_RESPONSE_V3* response) {
         const int controlId = static_cast<int>(packet.user_token);
         auto found = cefBrowsers_.find(controlId);
         if (found == cefBrowsers_.end() || found->second->bridgeHandle != packet.browser) return;
         CefBrowserInstance& instance = *found->second;
-        const wchar_t* eventName = packet.event_name ? packet.event_name : L"";
+        const wchar_t* eventName = CEF3_归一化Bridge事件名(packet.event_name ? packet.event_name : L"");
         const wchar_t* fieldsJson = packet.fields_json ? packet.fields_json : L"{}";
         if (TextEquals(eventName, L"加载状态改变")) instance.isLoading = std::wcsstr(fieldsJson, L"\\\"loading\\\":true") != nullptr;
+        // 桥接层把 CefBrowserHost::CreateBrowser 投递到 CEF UI 线程执行，LB_CEF3_BrowserCreate 立刻返回句柄，
+        // 但此刻 state->browser 仍为空，LB_CEF3_BrowserLoadUrl 会以「CEF3浏览器尚未创建完成」失败。
+        // 桥接层在发出本事件前已写入 state_->browser，所以这里是补发排队导航的最早安全时机。
+        if (TextEquals(eventName, L"浏览器创建完成") && !instance.bridgeReady) {
+            instance.bridgeReady = true;
+            if (!instance.pendingNavigation.empty()) {
+                const std::wstring target = instance.pendingNavigation;
+                instance.pendingNavigation.clear();
+                if (LB_CEF3_BrowserLoadUrl(instance.bridgeHandle, target.c_str()) == LB_CEF3_OK) instance.currentUrl = target;
+            }
+        }
         auto fields = CEF3_解析Bridge事件字段(fieldsJson);
         if ((packet.flags & 1u) != 0) {
             LingCefEventPacket eventPacket;
@@ -11665,6 +11885,10 @@ ${generateFbroVipIndividualRuntime(false)}
         bridgeConfig.event_user_data = this;
         instance->bridgeHandle = LB_CEF3_BrowserCreate(&bridgeConfig);
         instance->created = instance->bridgeHandle != 0;
+        if (instance->created) {
+            LB_CEF3_SetEventCallbackV4(instance->bridgeHandle, &LingWindowBase::CEF3_Bridge事件回调V4, this);
+            CEF3_补齐Bridge订阅(*instance);
+        }
         instance->currentUrl = initialUrl;
         if (instance->created && instance->muteAudio) LB_CEF3_BrowserSetAudioMuted(instance->bridgeHandle, 1);
         if (!instance->created) 调试输出(L"CEF3 Bridge创建浏览器请求失败。");
@@ -11708,6 +11932,10 @@ ${generateFbroVipIndividualRuntime(false)}
             const ControlSpec* control = FindControl(instance->controlId);
             if (control) { instance->url = address; return CEF3_创建单个(*control); }
             return 0;
+        }
+        if (!instance->bridgeReady) {
+            instance->pendingNavigation = address;
+            return 1;
         }
         const int result = LB_CEF3_BrowserLoadUrl(instance->bridgeHandle, address);
         if (result == LB_CEF3_OK) instance->currentUrl = address;
@@ -12055,6 +12283,20 @@ ${generateFbroVipIndividualRuntime(false)}
 #else
         return instance ? instance->currentUrl : L"";
 #endif
+    }
+
+    std::wstring CEF3_取资源地址(const wchar_t* relativePath) {
+        std::wstring value = relativePath ? relativePath : L"";
+        while (!value.empty() && (value.front() == L' ' || value.front() == L'\\t')) value.erase(value.begin());
+        while (!value.empty() && (value.back() == L' ' || value.back() == L'\\t')) value.pop_back();
+        if (value.empty()) return L"";
+        for (wchar_t& ch : value) if (ch == L'\\\\') ch = L'/';
+        // 已是带协议的完整地址时原样返回，保证本命令可重复套用在同一结果上。
+        if (Cef3LooksLikeUrl(value)) return value;
+        // 盘符绝对路径、UNC 与根路径都按给定位置转地址，只有相对路径才拼到 exe 同级 assets 下。
+        const bool driveAbsolute = value.size() > 1 && value[1] == L':';
+        if (driveAbsolute || value[0] == L'/') return Cef3BuildFileUrl(value);
+        return Cef3BuildFileUrl(ResolveRuntimeAssetPath((L"assets/" + value).c_str()));
     }
 
     int CEF3_设置缓存目录(const wchar_t* controlName, const wchar_t* directory) {
@@ -14737,6 +14979,26 @@ ${generateFbroVipIndividualRuntime(false)}
         return found == instance->eventFields.end() ? L"" : found->second;
     }
 
+    int CEF3_读资源响应正文(const wchar_t* controlName, long long maxBytes, const wchar_t* handler) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !handler || !handler[0]) return 0;
+        if (!instance->activeEventContext || instance->activeEventSubject == 0) {
+            调试输出(L"CEF3_读资源响应正文只能在“资源响应到达”处理器中调用。");
+            return 0;
+        }
+        if (maxBytes <= 0) return 0;
+        instance->handlers[L"${CEF3_RESOURCE_RESPONSE_BODY_EVENT_NAME}"] = handler;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ResourceResponseBodyBegin(
+            instance->bridgeHandle,
+            static_cast<LB_CEF3_HANDLE>(instance->activeEventSubject),
+            static_cast<int64_t>(maxBytes)) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)maxBytes;
+        return 0;
+#endif
+    }
+
     int CEF3_设置事件结果(const wchar_t* controlName, int action) {
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
         if (!instance || action < 0 || action > 3) return 0;
@@ -14755,7 +15017,26 @@ ${generateFbroVipIndividualRuntime(false)}
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
         if (!instance || !eventName || !handler) return 0;
         instance->handlers[eventName] = handler;
+        return CEF3_应用Bridge订阅(instance, eventName, true);
+    }
+
+    // 桥接层按处理器族订阅位决定是否安装 CefResourceRequestHandler / CefFrameHandler /
+    // CefPrintHandler 等处理器，以及回调体是否向宿主投递事件；订阅位为 0 时 CEF 根本不会
+    // 调用对应回调。只登记处理器名不点亮订阅位，「资源响应到达 / 资源重定向 / 下载进度更新」
+    // 这类事件就会静默失效。已有 legacy 数字事件通道的事件不在表内，返回 1 保持原行为。
+    int CEF3_应用Bridge订阅(CefBrowserInstance* instance, const wchar_t* eventName, bool enabled) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!instance || !eventName || !eventName[0]) return 1;
+        if (!instance->created || !instance->bridgeHandle) return 1;
+        ${cef3EventSubscriptionCases}
         return 1;
+#else
+        (void)instance; (void)eventName; (void)enabled; return 1;
+#endif
+    }
+
+    void CEF3_补齐Bridge订阅(CefBrowserInstance& instance) {
+        for (const auto& item : instance.handlers) CEF3_应用Bridge订阅(&instance, item.first.c_str(), true);
     }
 
     int CEF3_是否可后退(const wchar_t* controlName) {
@@ -16362,24 +16643,136 @@ ${webSocketServerWindowMethods}
         return GetCursorPos(&point) ? point.y : 0;
     }
 
-    bool RenderAnimatedImage(RuntimeControl& runtime, const ControlSpec& control) {
-        if (!runtime.animatedImage || runtime.animatedFrame >= runtime.animatedFrameCount) return false;
-        if (runtime.animatedImage->SelectActiveFrame(&runtime.animatedDimension, runtime.animatedFrame) != Gdiplus::Ok) return false;
-        HBITMAP bitmap = RenderGdiPlusImage(runtime.animatedImage, ScaleForDpi(control.width, dpi_), ScaleForDpi(control.height, dpi_), control.option1, control.background);
-        if (!bitmap) return false;
-        // STATIC controls do not own application-created bitmaps. Detach the
-        // previous image first, then delete the exact handle tracked by the
-        // runtime. Relying only on STM_SETIMAGE's return value can leave old
-        // frame DIBs behind during timer-driven replacement/repaint races.
-        SendMessageW(runtime.hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0);
-        if (runtime.resource && !runtime.iconResource) {
-            DeleteObject(runtime.resource);
-            runtime.resource = nullptr;
+    void ReleaseAnimatedBuffer(RuntimeControl& runtime) {
+        if (runtime.animatedBufferDc) {
+            if (runtime.animatedBufferPrevious) {
+                SelectObject(runtime.animatedBufferDc, runtime.animatedBufferPrevious);
+            }
+            if (runtime.animatedBufferBitmap) DeleteObject(runtime.animatedBufferBitmap);
+            DeleteDC(runtime.animatedBufferDc);
         }
-        SendMessageW(runtime.hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap));
-        runtime.resource = bitmap;
-        runtime.iconResource = false;
-        InvalidateRect(runtime.hwnd, nullptr, TRUE);
+        if (runtime.animatedFrameDc) DeleteDC(runtime.animatedFrameDc);
+        runtime.animatedBufferDc = nullptr;
+        runtime.animatedFrameDc = nullptr;
+        runtime.animatedBufferBitmap = nullptr;
+        runtime.animatedBufferPrevious = nullptr;
+        runtime.animatedBufferWidth = 0;
+        runtime.animatedBufferHeight = 0;
+    }
+
+    void ReleaseAnimatedFrames(RuntimeControl& runtime) {
+        for (HBITMAP frame : runtime.animatedFrames) if (frame) DeleteObject(frame);
+        runtime.animatedFrames.clear();
+        runtime.animatedFramesWidth = 0;
+        runtime.animatedFramesHeight = 0;
+    }
+
+    bool BuildAnimatedFrames(RuntimeControl& runtime, const ControlSpec& control) {
+        if (!runtime.animatedImage || runtime.animatedFrameCount == 0) return false;
+        const int width = ScaleForDpi(control.width, dpi_);
+        const int height = ScaleForDpi(control.height, dpi_);
+        if (width <= 0 || height <= 0) return false;
+        if (runtime.animatedFrames.size() == runtime.animatedFrameCount
+            && runtime.animatedFramesWidth == width && runtime.animatedFramesHeight == height) return true;
+        std::vector<HBITMAP> frames;
+        frames.reserve(runtime.animatedFrameCount);
+        for (UINT frameIndex = 0; frameIndex < runtime.animatedFrameCount; ++frameIndex) {
+            if (runtime.animatedImage->SelectActiveFrame(&runtime.animatedDimension, frameIndex) != Gdiplus::Ok) {
+                for (HBITMAP frame : frames) if (frame) DeleteObject(frame);
+                return false;
+            }
+            HBITMAP frame = RenderGdiPlusImage(runtime.animatedImage, width, height, control.option1, control.background);
+            if (!frame) {
+                for (HBITMAP item : frames) if (item) DeleteObject(item);
+                return false;
+            }
+            frames.push_back(frame);
+        }
+        ReleaseAnimatedFrames(runtime);
+        runtime.animatedFrames = std::move(frames);
+        runtime.animatedFramesWidth = width;
+        runtime.animatedFramesHeight = height;
+        runtime.animatedFrame = std::min(runtime.animatedFrame, runtime.animatedFrameCount - 1);
+        return true;
+    }
+
+    bool EnsureAnimatedBuffer(HWND hwnd, RuntimeControl& runtime, int width, int height) {
+        if (width <= 0 || height <= 0) return false;
+        if (runtime.animatedBufferDc && runtime.animatedBufferBitmap
+            && runtime.animatedBufferWidth == width && runtime.animatedBufferHeight == height) return true;
+        ReleaseAnimatedBuffer(runtime);
+        HDC windowDc = GetDC(hwnd);
+        if (!windowDc) return false;
+        HDC bufferDc = CreateCompatibleDC(windowDc);
+        ReleaseDC(hwnd, windowDc);
+        if (!bufferDc) return false;
+        HDC frameDc = CreateCompatibleDC(bufferDc);
+        if (!frameDc) {
+            DeleteDC(bufferDc);
+            return false;
+        }
+        BITMAPINFO bitmapInfo = {};
+        bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bitmapInfo.bmiHeader.biWidth = width;
+        bitmapInfo.bmiHeader.biHeight = -height;
+        bitmapInfo.bmiHeader.biPlanes = 1;
+        bitmapInfo.bmiHeader.biBitCount = 32;
+        bitmapInfo.bmiHeader.biCompression = BI_RGB;
+        void* pixels = nullptr;
+        HBITMAP bitmap = CreateDIBSection(bufferDc, &bitmapInfo, DIB_RGB_COLORS, &pixels, nullptr, 0);
+        if (!bitmap || !pixels) {
+            if (bitmap) DeleteObject(bitmap);
+            DeleteDC(frameDc);
+            DeleteDC(bufferDc);
+            return false;
+        }
+        HGDIOBJ previous = SelectObject(bufferDc, bitmap);
+        if (!previous || previous == HGDI_ERROR) {
+            DeleteObject(bitmap);
+            DeleteDC(frameDc);
+            DeleteDC(bufferDc);
+            return false;
+        }
+        runtime.animatedBufferDc = bufferDc;
+        runtime.animatedFrameDc = frameDc;
+        runtime.animatedBufferBitmap = bitmap;
+        runtime.animatedBufferPrevious = previous;
+        runtime.animatedBufferWidth = width;
+        runtime.animatedBufferHeight = height;
+        return true;
+    }
+
+    void PaintAnimatedImage(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
+        if (!hdc) return;
+        RECT client = {};
+        GetClientRect(hwnd, &client);
+        const int width = std::max(1L, client.right - client.left);
+        const int height = std::max(1L, client.bottom - client.top);
+        if (!EnsureAnimatedBuffer(hwnd, runtime, width, height)) {
+            FillRect(hdc, &client, runtime.brush ? runtime.brush : windowBrush_);
+            return;
+        }
+
+        if (runtime.animatedImage && !BuildAnimatedFrames(runtime, control)) {
+            FillRect(hdc, &client, runtime.brush ? runtime.brush : windowBrush_);
+        }
+        HBRUSH backgroundBrush = runtime.brush ? runtime.brush : windowBrush_;
+        FillRect(runtime.animatedBufferDc, &client, backgroundBrush);
+        if (runtime.animatedFrame < runtime.animatedFrames.size() && runtime.animatedFrames[runtime.animatedFrame]) {
+            if (runtime.animatedFrameDc) {
+                HGDIOBJ previous = SelectObject(runtime.animatedFrameDc, runtime.animatedFrames[runtime.animatedFrame]);
+                if (previous && previous != HGDI_ERROR) {
+                    BitBlt(runtime.animatedBufferDc, 0, 0, width, height, runtime.animatedFrameDc, 0, 0, SRCCOPY);
+                    SelectObject(runtime.animatedFrameDc, previous);
+                }
+            }
+        }
+        BitBlt(hdc, 0, 0, width, height, runtime.animatedBufferDc, 0, 0, SRCCOPY);
+    }
+
+    bool RenderAnimatedImage(RuntimeControl& runtime, const ControlSpec&) {
+        if (!runtime.animatedImage || runtime.animatedFrame >= runtime.animatedFrameCount) return false;
+        InvalidateRect(runtime.hwnd, nullptr, FALSE);
         return true;
     }
 
@@ -16411,7 +16804,15 @@ ${webSocketServerWindowMethods}
                 for (UINT index = 0; index < delayCount; ++index) runtime.animatedFrameDelays[index] = std::max(20u, delays[index] * 10u);
             }
         }
+        if (!BuildAnimatedFrames(runtime, control)) {
+            runtime.animatedImage = nullptr;
+            delete image;
+            runtime.animatedFrameDelays.clear();
+            runtime.animatedFrameCount = 0;
+            return false;
+        }
         if (!RenderAnimatedImage(runtime, control)) {
+            ReleaseAnimatedFrames(runtime);
             runtime.animatedImage = nullptr;
             delete image;
             runtime.animatedFrameDelays.clear();
@@ -17535,16 +17936,21 @@ private:
 
     void AttachTooltip(HWND child, const ControlSpec& control) {
         if (!control.tooltip || !control.tooltip[0]) return;
+        // TTF_IDISHWND 的 uId 是工具控件句柄，hwnd 必须是它真正的父窗口。
+        // 选项卡页面和容器里的控件父窗口不是主窗口，写死 hwnd_ 会让 comctl32
+        // 在计算工具矩形时访问不匹配的窗口并崩溃。
+        HWND owner = GetParent(child);
+        if (!owner) owner = hwnd_;
         HWND tooltip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
             WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-            hwnd_, nullptr, g_instance, nullptr);
+            owner, nullptr, g_instance, nullptr);
         if (!tooltip) return;
         SetWindowPos(tooltip, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         SendMessageW(tooltip, TTM_SETDELAYTIME, TTDT_INITIAL, MAKELPARAM(std::max(0, control.tooltipDelay), 0));
         TOOLINFOW info = {};
         info.cbSize = sizeof(info); info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-        info.hwnd = hwnd_; info.uId = reinterpret_cast<UINT_PTR>(child);
+        info.hwnd = owner; info.uId = reinterpret_cast<UINT_PTR>(child);
         info.lpszText = const_cast<wchar_t*>(control.tooltip);
         SendMessageW(tooltip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&info));
         tooltipWindows_.push_back(tooltip);
@@ -19312,6 +19718,25 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (IsType(*control, L"AnimatedImage")) {
+                if (message == WM_ERASEBKGND) return 1;
+                if (message == WM_PAINT) {
+                    PAINTSTRUCT paint = {};
+                    HDC hdc = BeginPaint(hwnd, &paint);
+                    self->PaintAnimatedImage(hwnd, hdc, *control, *runtime);
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if (message == WM_PRINTCLIENT) {
+                    self->PaintAnimatedImage(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
+                    return 0;
+                }
+                if (message == WM_SIZE || message == WM_ENABLE || message == WM_SETFONT) {
+                    LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return result;
+                }
+            }
             if (IsType(*control, L"DataGrid") && runtime->dataGrid) {
                 if (message == WM_MOUSEMOVE || message == WM_MOUSELEAVE) self->UpdateDataGridHover(*runtime, *control, message, lParam);
                 if (message == WM_MOUSEMOVE) { TRACKMOUSEEVENT tracking = { sizeof(tracking), TME_LEAVE, hwnd, 0 }; TrackMouseEvent(&tracking); }
@@ -19761,11 +20186,12 @@ private:
             style |= WS_BORDER | ((control.flags & CF_HORIZONTAL) ? WS_HSCROLL : WS_VSCROLL);
         } else if (IsType(control, L"Image") || IsType(control, L"AnimatedImage")) {
             className = L"STATIC";
-            // Runtime image assignment uses STM_SETIMAGE with IMAGE_BITMAP, so
-            // even an initially empty image control must keep the SS_BITMAP
-            // type. Otherwise the path can load successfully while the STATIC
-            // control still paints as a text placeholder.
-            style |= SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY;
+            // AnimatedImage paints its current GIF frame in WM_PAINT into a
+            // persistent double buffer. It must not use STATIC's SS_BITMAP
+            // image ownership path, which causes handle churn and flashing
+            // when STM_SETIMAGE is called for every frame.
+            if (IsType(control, L"Image")) style |= SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY;
+            else style |= SS_NOTIFY;
             if (!control.data || !control.data[0]) style |= WS_BORDER;
         } else if (IsType(control, L"Grid")) {
             className = L"STATIC";
@@ -20321,6 +20747,15 @@ private:
     }
 
     void DestroyControls() {
+        // Detach app-owned images while their child HWNDs are still alive.
+        // The controls are destroyed immediately afterwards, so doing this
+        // first keeps ownership explicit and avoids sending messages to stale
+        // window handles during teardown.
+        for (auto& control : runtimeControls_) {
+            if (control.hwnd && control.resource && !control.iconResource) {
+                SendMessageW(control.hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0);
+            }
+        }
         HWND child = GetWindow(hwnd_, GW_CHILD);
         while (child) {
             HWND next = GetWindow(child, GW_HWNDNEXT);
@@ -20334,18 +20769,14 @@ private:
             if (control.mediaCallback) { control.mediaCallback->Release(); control.mediaCallback = nullptr; }
             if (control.font) DeleteObject(control.font);
             if (control.brush) DeleteObject(control.brush);
-            // Detach app-owned images before destroying their GDI handles.
-            // This is especially important for animated controls, which
-            // replace the bitmap on every timer tick.
-            if (control.hwnd && control.resource && !control.iconResource) {
-                SendMessageW(control.hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0);
-            }
             if (control.resource) {
                 if (control.iconResource) DestroyIcon(reinterpret_cast<HICON>(control.resource));
                 else DeleteObject(control.resource);
                 control.resource = nullptr;
             }
             if (control.animatedTimer) KillTimer(hwnd_, control.animatedTimer);
+            ReleaseAnimatedFrames(control);
+            ReleaseAnimatedBuffer(control);
             delete control.animatedImage;
             control.animatedImage = nullptr;
         }
@@ -22512,14 +22943,18 @@ function createMethodTranslationContext(
 ): LingCppTranslationContext {
   const runtimeControlVariables = new Set<string>();
   const wideStringVariables = new Set<string>();
+  const wideStringArrayVariables = new Set<string>();
   [...method.parameters, ...(method.locals || [])].forEach(variable => {
-    const cppType = toCppType(variable.type, 'variable', enabledModules, dataTypes);
-    if (cppType === 'LingControlRef') {
-      runtimeControlVariables.add(normalizeIdentifier(variable.name));
-    }
-    if (cppType === 'std::wstring') wideStringVariables.add(normalizeIdentifier(variable.name));
+    // 参数把数组维度写进 type，局部变量用 isArray 标记；两种写法都不是标量文本。
+    const isArray = (variable as { isArray?: boolean }).isArray === true || isLingCppArrayParameterType(variable.type);
+    const cppType = toCppType(isArray ? getLingCppParameterElementType(variable.type) : variable.type, 'variable', enabledModules, dataTypes);
+    const name = normalizeIdentifier(variable.name);
+    if (cppType === 'LingControlRef' && !isArray) runtimeControlVariables.add(name);
+    if (cppType !== 'std::wstring') return;
+    if (isArray) wideStringArrayVariables.add(name);
+    else wideStringVariables.add(name);
   });
-  return { runtimeControlVariables, wideStringVariables };
+  return { runtimeControlVariables, wideStringVariables, wideStringArrayVariables };
 }
 
 function translateMethodStatementsWithMetadata(
@@ -23214,7 +23649,15 @@ function isDefinitelyWideStringExpression(
     return translationContext.wideStringVariables.has(normalizeIdentifier(trimmed));
   }
   const call = parseCallStatement(trimmed);
-  return Boolean(call && findModuleCommandBinding(call.name, enabledModules)?.returnType === 'wideString');
+  if (!call) return false;
+  const binding = findModuleCommandBinding(call.name, enabledModules);
+  if (binding?.returnType === 'wideString') return true;
+  // 数组成员型命令没有固定返回类型，文本性由本次调用的数组实参决定。
+  if (binding?.returnType !== 'arrayElement') return false;
+  const arrayParameterIndex = (binding.parameters || []).findIndex(parameter => parameter.type === 'array');
+  if (arrayParameterIndex < 0) return false;
+  const arrayArgument = splitCallArguments(call.argumentsText)[arrayParameterIndex]?.trim();
+  return Boolean(arrayArgument && translationContext.wideStringArrayVariables.has(normalizeIdentifier(arrayArgument)));
 }
 
 function translateLingCppCallName(name: string): string {

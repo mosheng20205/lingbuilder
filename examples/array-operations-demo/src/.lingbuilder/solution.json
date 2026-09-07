@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-solution",
+  "name": "LingBuilder 数组操作全命令演示",
+  "startupProjectId": "array-operations-demo",
+  "startupProjectIds": [
+    "array-operations-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "array-operations-demo",
+      "name": "数组操作全命令演示",
+      "sourceRoot": "src/array-demo",
+      "configRoot": "config/array-demo",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

@@ -43,7 +43,7 @@ import {
   LingCppStructureNode
 } from './types';
 import { applyLingCppAstEdit } from './astEditService';
-import { LingDesignerResource, LingFileDialogResource, LingMenuResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
+import { LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { LingCppModuleContext, ModuleCommandBinding } from '../modules/types';
 import { THREADING_LEGACY_COMMANDS } from '../modules/threadingModule';
 import {
@@ -54,6 +54,7 @@ import {
 } from '../windowDesigner/windowEventRegistry';
 import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
 import { areLingCppTypesCompatible, inferLingCppExpressionType } from './expressionTypeService';
+import { getLingCppParameterElementType, isLingCppArrayParameterType } from './parameterTypeService';
 import { parseLingCppControlFlowLine } from './controlFlow';
 import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
 import { getProjectDataTypeDiagnostics, getProjectDataTypeNames, resolveProjectFieldPathType } from './projectDataTypeService';
@@ -290,6 +291,7 @@ export function getLingCppSemanticDiagnostics(
   const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
   diagnostics.push(...getThreadingDiagnostics(source, parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
+  diagnostics.push(...getArrayCommandDiagnostics(parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getVariableDiagnostics([
     ...parsed.program.classes,
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
@@ -2599,7 +2601,10 @@ function getVariableDiagnostics(
   const globalTypes = projectSymbolTypes(constants, globals);
   const constantNames = new Set(constants.map(constant => normalizeIdentifier(constant.name)));
   classes.forEach(cls => {
-    const memberTypes = new Map(cls.members.map(member => [normalizeIdentifier(member.name), member.type]));
+    const memberTypes = new Map(cls.members.map(member => [
+      normalizeIdentifier(member.name),
+      member.isArray ? `${member.type}[]` : member.type
+    ]));
     const methodNames = new Set(cls.methods.map(method => normalizeIdentifier(method.name)));
     cls.members.forEach(member => {
       if (constantNames.has(normalizeIdentifier(member.name))) {
@@ -2636,26 +2641,27 @@ function getVariableDiagnostics(
             methodNames,
             designerControlNames
           ));
+          const declaredType = local.isArray ? `${local.type}[]` : local.type;
           const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext, new Map(), projectTypes);
-          if (actualType && !areLingCppTypesCompatible(local.type, actualType)) {
+          if (actualType && !areLingCppTypesCompatible(declaredType, actualType)) {
             diagnostics.push({
               id: `lingcpp-local-initializer-type-${method.name}-${local.name}-${local.line}`,
               line: local.line,
               level: 'error',
-              message: `${localLabel} ${local.name} 的类型是 ${local.type}，不能使用 ${actualType} 初始化。`,
+              message: `${localLabel} ${local.name} 的类型是 ${declaredType}，不能使用 ${actualType} 初始化。`,
               codeSnippet: local.initialValue,
-              suggestion: `请改用 ${local.type} 值，或修改局部变量类型。`
+              suggestion: `请改用 ${declaredType} 值，或修改局部变量类型。`
             });
           }
         }
-        initializerScopeTypes.set(normalizeIdentifier(local.name), local.type);
+        initializerScopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type);
       });
 
       method.statements.forEach(statement => {
         const scopeTypes = new Map(baseScopeTypes);
         orderedLocals
           .filter(local => local.line < statement.line)
-          .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.type));
+          .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type));
         const returnValue = statement.text.trim().match(/^返回(?:\s+|[（(])(.+?)[）)]?\s*;?$/u)?.[1]?.trim();
         if (returnValue) {
           const actualReturnType = inferLingCppExpressionType(returnValue, scopeTypes, moduleContext, new Map(), projectTypes);
@@ -3160,6 +3166,120 @@ function isModuleCallbackParameter(name: string, description?: string): boolean 
   return /(?:事件)?(?:处理器|回调)(?:名|名称)?|handler|callback/iu.test(`${name} ${description || ''}`);
 }
 
+/** 数组命令直接操作调用方的数组值，因此实参必须是真实数组左值，成员值也必须与元素类型一致。 */
+function getArrayCommandDiagnostics(
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  globals: LingCppGlobalVariable[],
+  projectTypes?: LingCppProjectTypeContext
+): LingCppDiagnostic[] {
+  const arrayCommands = getEnabledLingCppModuleContributions(moduleContext).flatMap(module => {
+    const aliases = new Map((module.manifest.contributes?.commands || []).map(command => [command.name, command.aliases || []]));
+    return (module.manifest.bindings?.commands || [])
+      .filter(binding => (binding.parameters || []).some(parameter => parameter.type === 'array'))
+      .flatMap(binding => [binding.command, ...(aliases.get(binding.command) || [])].map(name => ({ name, binding })));
+  });
+  if (arrayCommands.length === 0) return [];
+
+  const diagnostics: LingCppDiagnostic[] = [];
+  const globalTypes = new Map(globals.map(global => [
+    normalizeIdentifier(global.name),
+    global.isArray ? `${global.type}[]` : global.type
+  ]));
+  const owners = [
+    ...program.classes.map(cls => ({ members: cls.members, methods: cls.methods })),
+    ...program.functionLibraries.map(library => ({ members: [] as LingCppClass['members'], methods: library.methods }))
+  ];
+
+  owners.forEach(owner => {
+    owner.methods.forEach(method => {
+      const scopeTypes = new Map<string, string>(globalTypes);
+      owner.members.forEach(member => scopeTypes.set(
+        normalizeIdentifier(member.name),
+        member.isArray ? `${member.type}[]` : member.type
+      ));
+      method.parameters.forEach(parameter => scopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
+      (method.locals || []).forEach(local => scopeTypes.set(
+        normalizeIdentifier(local.name),
+        local.isArray ? `${local.type}[]` : local.type
+      ));
+      const expressions = [
+        ...method.statements.filter(statement => !isLingCppCommentLine(statement.text)),
+        ...(method.locals || [])
+          .filter(local => local.initialValue)
+          .map(local => ({ line: local.line, text: local.initialValue || '' }))
+      ];
+      expressions.forEach(expression => arrayCommands.forEach(({ name, binding }) => {
+        extractCommandInvocationArguments(expression.text, name).forEach(args => diagnostics.push(
+          ...validateArrayCommandInvocation(name, binding, args, expression, scopeTypes, moduleContext, projectTypes)
+        ));
+      }));
+    });
+  });
+  return diagnostics;
+}
+
+function validateArrayCommandInvocation(
+  commandName: string,
+  binding: ModuleCommandBinding,
+  args: string[],
+  expression: { line: number; text: string },
+  scopeTypes: Map<string, string>,
+  moduleContext: LingCppModuleContext | undefined,
+  projectTypes?: LingCppProjectTypeContext
+): LingCppDiagnostic[] {
+  const parameters = binding.parameters || [];
+  const signature = `${commandName}(${parameters.map(parameter => parameter.name).join(', ')})`;
+  if (args.length !== parameters.length) {
+    return [createDiagnostic(
+      'error', expression.line, expression.text,
+      `命令 ${commandName} 需要 ${parameters.length} 个参数，实际传入 ${args.length} 个。`,
+      `请按 ${signature} 的签名调用。`
+    )];
+  }
+
+  const arrayIndex = parameters.findIndex(parameter => parameter.type === 'array');
+  const arrayParameterName = parameters[arrayIndex]?.name || '数组';
+  const arrayArgument = (args[arrayIndex] || '').trim();
+  if (!/^[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*$/u.test(arrayArgument)) {
+    return [createDiagnostic(
+      'error', expression.line, expression.text,
+      `命令 ${commandName} 的参数 ${arrayParameterName} 必须是数组变量本身。`,
+      '数组命令会就地读写传入的数组，只能传变量名或记录字段，不能传命令结果、下标或其它表达式。'
+    )];
+  }
+
+  const arrayType = inferLingCppExpressionType(arrayArgument, scopeTypes, moduleContext, new Map(), projectTypes);
+  if (!arrayType) {
+    return [createDiagnostic(
+      'error', expression.line, expression.text,
+      `命令 ${commandName} 的参数 ${arrayParameterName} 引用了未声明的 ${arrayArgument}。`,
+      '请先在局部变量表、程序集变量表或项目全局变量表中声明该数组。'
+    )];
+  }
+  if (!isLingCppArrayParameterType(arrayType)) {
+    return [createDiagnostic(
+      'error', expression.line, expression.text,
+      `${arrayArgument} 的类型是 ${arrayType}，不是数组，不能传给 ${commandName}。`,
+      '请在声明时打开“数组”开关（类型后写 []），或改用对应的标量命令。'
+    )];
+  }
+
+  const elementType = getLingCppParameterElementType(arrayType);
+  const diagnostics: LingCppDiagnostic[] = [];
+  parameters.forEach((parameter, index) => {
+    if (parameter.type !== 'arrayElement') return;
+    const actualType = inferLingCppExpressionType(args[index] || '', scopeTypes, moduleContext, new Map(), projectTypes);
+    if (!actualType || areLingCppTypesCompatible(elementType, actualType)) return;
+    diagnostics.push(createDiagnostic(
+      'error', expression.line, expression.text,
+      `${arrayArgument} 的成员类型是 ${elementType}，参数 ${parameter.name} 不能使用 ${actualType}。`,
+      `请传入 ${elementType} 值，或修改 ${arrayArgument} 的元素类型。`
+    ));
+  });
+  return diagnostics;
+}
+
 function extractCommandInvocationArguments(source: string, commandName: string): string[][] {
   if (!commandName) return [];
   const escaped = commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -3334,6 +3454,25 @@ function collectDesignerEventBindings(windows: LingWindowModel[], resources: Lin
         windowId: ownerWindow.id
       }] : []);
     });
+  // 属性页是项目级资源，没有 ownerWindowId；生成器把「属性被应用」派发进每个窗口，
+  // 这里按首个页面模板窗口（缺省为第一个窗口）报告一次，避免多窗口重复提示。
+  const propertySheetBindings = resources
+    .filter((resource): resource is LingPropertySheetResource => resource.type === 'PropertySheet')
+    .flatMap(resource => {
+      const handlerName = resource.appliedHandler?.trim();
+      if (!handlerName) return [];
+      const templateWindowId = resource.pages.find(page => page.sourceWindowId && windowIds.has(page.sourceWindowId))?.sourceWindowId;
+      const ownerWindow = windows.find(window => window.id === templateWindowId) || windows[0];
+      if (!ownerWindow) return [];
+      return [{
+        handlerName,
+        className: ownerWindow.className,
+        controlName: resource.name,
+        controlId: resource.id,
+        eventName: 'Applied',
+        windowId: ownerWindow.id
+      }];
+    });
   const windowBindings = windows
     .flatMap(win => {
       const controlBindings = win.controls.flatMap(control =>
@@ -3366,7 +3505,7 @@ function collectDesignerEventBindings(windows: LingWindowModel[], resources: Lin
         }));
       return [...controlBindings, ...menuBindings, ...windowBindings];
     });
-  return [...windowBindings, ...resourceBindings, ...menuResourceBindings];
+  return [...windowBindings, ...resourceBindings, ...menuResourceBindings, ...propertySheetBindings];
 }
 
 function extractAssociatedDesignerFile(source: string): string | undefined {

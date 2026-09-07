@@ -1,0 +1,398 @@
+{
+  "schemaVersion": 2,
+  "id": "array-operations-demo",
+  "name": "数组操作全命令演示",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "LingBuilder 数组操作全命令演示",
+      "width": 900,
+      "height": 660,
+      "background": "#0F172A",
+      "description": "按 7 组按钮依次演示 lingbuilder.std.array 的全部 13 条数组命令，以及数组下标和枚举循环。",
+      "designerBackend": "win32",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "titleBarBackground": "#1E293B",
+      "titleBarForeground": "#E2E8F0",
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "resizable": true,
+      "maximizable": true,
+      "controls": [
+        {
+          "id": "title-label",
+          "type": "Label",
+          "name": "标题标签",
+          "content": "LingBuilder · 数组操作全命令演示",
+          "x": 24,
+          "y": 16,
+          "width": 620,
+          "height": 34,
+          "fontSize": 21,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": true,
+          "background": "transparent",
+          "foreground": "#F8FAFC",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          },
+          "fontItalic": false,
+          "fontUnderline": false
+        },
+        {
+          "id": "status-label",
+          "type": "Label",
+          "name": "状态标签",
+          "content": "准备中...",
+          "x": 24,
+          "y": 56,
+          "width": 852,
+          "height": 24,
+          "fontSize": 13,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "transparent",
+          "foreground": "#4FC3F7",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          },
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
+        },
+        {
+          "id": "log-list",
+          "type": "ListBox",
+          "name": "演示日志",
+          "content": "",
+          "x": 24,
+          "y": 90,
+          "width": 852,
+          "height": 414,
+          "fontSize": 12,
+          "fontFamily": "Consolas",
+          "background": "#0B1120",
+          "foreground": "#E2E8F0",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "items": [],
+            "selectedIndex": 0,
+            "sorted": false,
+            "multiple": false,
+            "itemHeight": 28,
+            "itemSpacing": 0,
+            "contentPadding": 4,
+            "scrollBarVisibility": "auto",
+            "scrollBarWidth": 8,
+            "scrollBarTrackColor": "#172033",
+            "scrollBarThumbColor": "#0E7490",
+            "showBorder": true,
+            "borderWidth": 1,
+            "borderColor": "#334155",
+            "selectionStartColor": "#7C3AED",
+            "selectionEndColor": "#0891B2",
+            "selectionBorderColor": "#38BDF8",
+            "selectionCornerRadius": 4,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "add-button",
+          "type": "Button",
+          "name": "新增成员按钮",
+          "content": "1 新增成员",
+          "x": 24,
+          "y": 518,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#2563EB",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_新增成员按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "read-button",
+          "type": "Button",
+          "name": "读取遍历按钮",
+          "content": "2 读取与遍历",
+          "x": 196,
+          "y": 518,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#2563EB",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_读取遍历按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "modify-button",
+          "type": "Button",
+          "name": "修改成员按钮",
+          "content": "3 修改与重定义",
+          "x": 368,
+          "y": 518,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#2563EB",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_修改成员按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "remove-button",
+          "type": "Button",
+          "name": "删除成员按钮",
+          "content": "4 删除与清空",
+          "x": 540,
+          "y": 518,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#2563EB",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_删除成员按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "search-button",
+          "type": "Button",
+          "name": "查找排序按钮",
+          "content": "5 查找与排序",
+          "x": 712,
+          "y": 518,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#2563EB",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_查找排序按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "record-button",
+          "type": "Button",
+          "name": "记录数组按钮",
+          "content": "6 记录型数组",
+          "x": 24,
+          "y": 570,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#0F766E",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_记录数组按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "global-button",
+          "type": "Button",
+          "name": "全局数组按钮",
+          "content": "7 项目全局数组",
+          "x": 196,
+          "y": 570,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#0F766E",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_全局数组按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "clear-button",
+          "type": "Button",
+          "name": "清空日志按钮",
+          "content": "清空日志",
+          "x": 368,
+          "y": 570,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#334155",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_清空日志按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "exit-button",
+          "type": "Button",
+          "name": "退出按钮",
+          "content": "退出",
+          "x": 712,
+          "y": 570,
+          "width": 164,
+          "height": 40,
+          "fontSize": 13,
+          "background": "#7F1D1D",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_退出按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        }
+      ],
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
+    }
+  ]
+}

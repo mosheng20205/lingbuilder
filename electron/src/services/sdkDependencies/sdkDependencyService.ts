@@ -483,6 +483,13 @@ async function getSdkRootValidationIssue(resource: SdkDependencyResource, sdkRoo
         return `关键文件 ${critical.relativePath} 大小不足（实际 ${stat.size} 字节，需要至少 ${critical.minimumBytes} 字节）。`;
       }
     }
+    if (resource.id === 'cef3') {
+      const bridgeHeader = path.join(sdkRoot, 'bridge', 'x64', 'LingBuilderCefBridge.h');
+      const bridgeText = await fs.readFile(bridgeHeader, 'utf8').catch(() => '');
+      if (!/\bLB_CEF3_ResourceResponseBodyBegin\b/u.test(bridgeText)) {
+        return 'CEF3 Bridge ABI outdated: missing LB_CEF3_ResourceResponseBodyBegin.';
+      }
+    }
     const manifestPath = path.join(path.dirname(sdkRoot), 'lingbuilder.module.json');
     if (await pathExists(manifestPath)) {
       let manifest: { id?: unknown; version?: unknown; schemaVersion?: unknown };

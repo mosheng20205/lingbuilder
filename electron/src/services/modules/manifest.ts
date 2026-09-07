@@ -17,7 +17,7 @@ const MODULE_ID_RE = /^[a-z0-9][a-z0-9._-]{2,80}$/;
 const TARGET_PLATFORMS: ModuleTargetPlatform[] = ['windows', 'linux', 'macos'];
 const TARGET_ARCHES: ModuleTargetArch[] = ['win32', 'x64', 'arm64', 'any'];
 const TARGET_TOOLCHAINS: ModuleTargetToolchain[] = ['msvc', 'gcc', 'clang', 'cmake', 'any'];
-const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'controlRef', 'handler', 'lingValue', 'handle', 'bytes', 'raw'];
+const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'controlRef', 'handler', 'lingValue', 'handle', 'bytes', 'array', 'arrayElement', 'raw'];
 const CONTROL_REFERENCE_SCOPES = ['currentWindow', 'project'];
 const CONTROL_REFERENCE_KINDS = ['visual', 'nonVisual', 'resource'];
 const CONTROL_RUNTIME_REPRESENTATIONS = ['wideName', 'stableId', 'nativeHandle'];
@@ -571,6 +571,10 @@ function validateTargets(targets: unknown, diagnostics: string[]): void {
   });
 }
 
+function bindingHasArrayParameter(binding: any): boolean {
+  return Array.isArray(binding?.parameters) && binding.parameters.some((parameter: any) => parameter?.type === 'array');
+}
+
 function reportMissingCommandBindings(commands: any[], boundCommandNames: Set<string>, diagnostics: string[]): void {
   commands.forEach((command: any) => {
     const name = typeof command?.name === 'string' ? command.name.trim() : '';
@@ -640,6 +644,13 @@ function validateBindings(bindings: any, commands: any[], types: any[], targets:
     if (hasNativeDllTarget && structuredTypeNames.has(binding?.returnType)) {
       diagnostics.push(`命令 ${binding?.command || index + 1} 不能通过原生 DLL ABI 直接返回结构化类型 ${binding.returnType}；请改用 POD 缓冲区或受管句柄。`);
     }
+    // array 是泛型数组左值，没有可解析的固定返回类型；arrayElement 必须由同一命令的 array 参数定型。
+    if (binding?.returnType === 'array') {
+      diagnostics.push(`命令 ${binding?.command || index + 1} 不能把 array 作为 returnType；泛型数组只能作为参数原样传递。`);
+    }
+    if (binding?.returnType === 'arrayElement' && !bindingHasArrayParameter(binding)) {
+      diagnostics.push(`命令 ${binding?.command || index + 1} 的 returnType 是 arrayElement，必须同时声明一个 array 参数来确定元素类型。`);
+    }
     const bindingParameters = Array.isArray(binding?.parameters) ? binding.parameters : [];
     if (binding?.parameters !== undefined) {
       if (!Array.isArray(binding.parameters)) diagnostics.push(`bindings.commands[${index}].parameters 必须是数组。`);
@@ -648,6 +659,12 @@ function validateBindings(bindings: any, commands: any[], types: any[], targets:
         if (!isSupportedBindingType(parameter?.type)) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].type 不受支持；只能使用基础类型或本模块公开类型。`);
         if (hasNativeDllTarget && structuredTypeNames.has(parameter?.type)) {
           diagnostics.push(`命令 ${binding?.command || index + 1} 不能通过原生 DLL ABI 直接传递结构化参数 ${parameter.type}；请改用 POD 缓冲区或受管句柄。`);
+        }
+        if (hasNativeDllTarget && (parameter?.type === 'array' || parameter?.type === 'arrayElement')) {
+          diagnostics.push(`命令 ${binding?.command || index + 1} 不能通过原生 DLL ABI 直接传递泛型数组参数 ${parameter.name || parameterIndex + 1}；泛型数组只服务于同工程值语义运行时。`);
+        }
+        if (parameter?.type === 'arrayElement' && !bindingHasArrayParameter(binding)) {
+          diagnostics.push(`命令 ${binding?.command || index + 1} 的参数 ${parameter.name || parameterIndex + 1} 是 arrayElement，必须同时声明一个 array 参数来确定元素类型。`);
         }
         if (parameter?.type === 'controlRef') {
           if (!Array.isArray(parameter.controlKinds) || parameter.controlKinds.length === 0) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].controlKinds 必须显式声明 visual、nonVisual 或 resource。`);

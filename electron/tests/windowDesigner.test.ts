@@ -1181,8 +1181,11 @@ test('动态图像控件使用项目 GIF 资源并按帧延时生成 Win32 播�
   assert.match(cpp, /runtime\.animatedFrameDelays\[index\] = std::max\(20u, delays\[index\] \* 10u\)/u);
   assert.match(cpp, /AdvanceAnimatedImage\(static_cast<UINT_PTR>\(wParam\)\)/u);
   assert.match(cpp, /DispatchLingEvent\(\*control, L"Finished"\)/u);
-  assert.match(cpp, /SendMessageW\(runtime\.hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0\)/u);
-  assert.match(cpp, /if \(runtime\.resource && !runtime\.iconResource\) \{\s*DeleteObject\(runtime\.resource\)/u);
+  assert.match(cpp, /PaintAnimatedImage\(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime\)/u);
+  assert.match(cpp, /BuildAnimatedFrames\(RuntimeControl& runtime, const ControlSpec& control\)/u);
+  assert.match(cpp, /std::vector<HBITMAP> animatedFrames/u);
+  assert.match(cpp, /animatedBufferBitmap = nullptr/u);
+  assert.match(cpp, /FillRect\(runtime\.animatedBufferDc, &client, backgroundBrush\)/u);
 });
 
 test('项目集合编辑器允许用回车继续输入下一项', () => {

@@ -4445,3 +4445,90 @@ test('generateLingCppNativeWin32Project emits project constants before mutable g
   assert.ok(cpp.indexOf('inline constexpr int 最大次数') < cpp.indexOf('int 当前次数'));
   assert.ok(generated.sourceMap.some(entry => entry.kind === 'constant' && entry.symbolName === '产品名称' && entry.sourceFile === globalsPath));
 });
+
+test('数组下标和数组命令参与类型推断，并对非数组实参给出中文诊断', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.std.array'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const validSource = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 创建完毕()',
+    '        局部 文本型 名单[]',
+    '        局部 文本型 首位',
+    '        局部 整数型 人数',
+    '        数组_加入成员(名单, "张三")',
+    '        首位 = 名单[0]',
+    '        首位 = 数组_取成员(名单, 0)',
+    '        人数 = 数组_取成员数(名单)',
+    '        数组_排序(名单, 真)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const validDiagnostics = getLingCppSemanticDiagnostics(validSource, undefined, undefined, moduleContext);
+  assert.deepEqual(validDiagnostics.filter(diagnostic => diagnostic.level === 'error'), []);
+
+  // 数组成员型返回值必须回到实参上求解，不能退化成固定标签。
+  const wrongMemberTarget = getLingCppSemanticDiagnostics(
+    validSource.replace('首位 = 数组_取成员(名单, 0)', '人数 = 数组_取成员(名单, 0)'),
+    undefined,
+    undefined,
+    moduleContext
+  );
+  assert.ok(wrongMemberTarget.some(diagnostic => (
+    diagnostic.id.includes('assignment-type') && diagnostic.message.includes('文本型') && diagnostic.message.includes('整数型')
+  )));
+
+  // 下标结果是元素类型，不是数组本身。
+  const wrongIndexTarget = getLingCppSemanticDiagnostics(
+    validSource.replace('首位 = 名单[0]', '人数 = 名单[0]'),
+    undefined,
+    undefined,
+    moduleContext
+  );
+  assert.ok(wrongIndexTarget.some(diagnostic => diagnostic.id.includes('assignment-type') && diagnostic.message.includes('文本型')));
+
+  const scalarArgument = getLingCppSemanticDiagnostics(
+    validSource.replace('数组_加入成员(名单, "张三")', '数组_加入成员(首位, "张三")'),
+    undefined,
+    undefined,
+    moduleContext
+  );
+  assert.ok(scalarArgument.some(diagnostic => diagnostic.message.includes('不是数组')));
+
+  const elementTypeMismatch = getLingCppSemanticDiagnostics(
+    validSource.replace('数组_加入成员(名单, "张三")', '数组_加入成员(名单, 42)'),
+    undefined,
+    undefined,
+    moduleContext
+  );
+  assert.ok(elementTypeMismatch.some(diagnostic => diagnostic.message.includes('成员类型是 文本型')));
+
+  const expressionArgument = getLingCppSemanticDiagnostics(
+    validSource.replace('数组_加入成员(名单, "张三")', '数组_加入成员(名单[0], "张三")'),
+    undefined,
+    undefined,
+    moduleContext
+  );
+  assert.ok(expressionArgument.some(diagnostic => diagnostic.message.includes('必须是数组变量本身')));
+
+  const wrongArity = getLingCppSemanticDiagnostics(
+    validSource.replace('数组_加入成员(名单, "张三")', '数组_加入成员(名单)'),
+    undefined,
+    undefined,
+    moduleContext
+  );
+  assert.ok(wrongArity.some(diagnostic => diagnostic.message.includes('需要 2 个参数')));
+
+  // 未启用数组模块时不产生数组命令诊断，避免对旧项目造成噪音。
+  assert.deepEqual(
+    getLingCppSemanticDiagnostics(validSource.replace('数组_加入成员(名单, "张三")', '数组_加入成员(首位, "张三")'))
+      .filter(diagnostic => diagnostic.message.includes('不是数组')),
+    []
+  );
+});

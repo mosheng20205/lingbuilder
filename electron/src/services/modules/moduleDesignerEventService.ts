@@ -19,6 +19,8 @@ const EVENT_PARAMETER_TYPE_LABELS: Record<ModuleBindingValueType, string> = {
   lingValue: '对象',
   handle: '长整数型',
   bytes: '字节集',
+  array: '数组',
+  arrayElement: '数组成员',
   raw: '对象'
 };
 

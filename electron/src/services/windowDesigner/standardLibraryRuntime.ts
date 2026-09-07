@@ -106,6 +106,98 @@ const wchar_t* 文本_转小写(const wchar_t* text) {
 }
 `;
 
+const ARRAY_RUNTIME = String.raw`
+template <typename T, typename = void> struct LB_ArrayEquatable : std::false_type {};
+template <typename T> struct LB_ArrayEquatable<T, std::void_t<decltype(std::declval<const T&>() == std::declval<const T&>())>> : std::true_type {};
+
+template <typename T, typename = void> struct LB_ArrayOrderable : std::false_type {};
+template <typename T> struct LB_ArrayOrderable<T, std::void_t<decltype(std::declval<const T&>() < std::declval<const T&>())>> : std::true_type {};
+
+// 文本成员沿用标准库统一的 const wchar_t* 返回约定，其余元素类型按值返回。
+template <typename T> struct LB_ArrayMemberResult { using type = T; };
+template <> struct LB_ArrayMemberResult<std::wstring> { using type = const wchar_t*; };
+
+static bool LB_ArrayIndexValid(size_t count, int index) {
+    return index >= 0 && static_cast<size_t>(index) < count;
+}
+
+template <typename T> int 数组_取成员数(const std::vector<T>& items) { return static_cast<int>(items.size()); }
+
+template <typename T> bool 数组_是否为空(const std::vector<T>& items) { return items.empty(); }
+
+template <typename T> typename LB_ArrayMemberResult<T>::type 数组_取成员(const std::vector<T>& items, int index) {
+    const bool valid = LB_ArrayIndexValid(items.size(), index);
+    if constexpr (std::is_same_v<T, std::wstring>) {
+        return LB_ReturnText(valid ? items[static_cast<size_t>(index)] : std::wstring());
+    } else {
+        return valid ? items[static_cast<size_t>(index)] : T{};
+    }
+}
+
+template <typename T, typename V> bool 数组_置成员(std::vector<T>& items, int index, V&& value) {
+    if (!LB_ArrayIndexValid(items.size(), index)) return false;
+    items[static_cast<size_t>(index)] = T(std::forward<V>(value));
+    return true;
+}
+
+template <typename T, typename V> int 数组_加入成员(std::vector<T>& items, V&& value) {
+    items.push_back(T(std::forward<V>(value)));
+    return static_cast<int>(items.size());
+}
+
+template <typename T, typename V> bool 数组_插入成员(std::vector<T>& items, int index, V&& value) {
+    if (index < 0 || static_cast<size_t>(index) > items.size()) return false;
+    items.insert(items.begin() + static_cast<typename std::vector<T>::difference_type>(index), T(std::forward<V>(value)));
+    return true;
+}
+
+template <typename T> bool 数组_删除成员(std::vector<T>& items, int index) {
+    if (!LB_ArrayIndexValid(items.size(), index)) return false;
+    items.erase(items.begin() + static_cast<typename std::vector<T>::difference_type>(index));
+    return true;
+}
+
+template <typename T> bool 数组_清空(std::vector<T>& items) { items.clear(); return true; }
+
+template <typename T, typename V> int 数组_查找(const std::vector<T>& items, V&& value) {
+    if constexpr (LB_ArrayEquatable<T>::value) {
+        const T target(std::forward<V>(value));
+        for (size_t index = 0; index < items.size(); ++index) {
+            if (items[index] == target) return static_cast<int>(index);
+        }
+        return -1;
+    } else {
+        return -1;
+    }
+}
+
+template <typename T, typename V> bool 数组_是否包含(const std::vector<T>& items, V&& value) {
+    return 数组_查找(items, std::forward<V>(value)) >= 0;
+}
+
+template <typename T> bool 数组_排序(std::vector<T>& items, bool ascending) {
+    if constexpr (LB_ArrayOrderable<T>::value) {
+        std::stable_sort(items.begin(), items.end(), [ascending](const T& left, const T& right) {
+            return ascending ? left < right : right < left;
+        });
+        return true;
+    } else {
+        return false;
+    }
+}
+
+template <typename T> bool 数组_倒序(std::vector<T>& items) {
+    std::reverse(items.begin(), items.end());
+    return true;
+}
+
+template <typename T> bool 数组_重定义(std::vector<T>& items, int count) {
+    if (count < 0) return false;
+    items.resize(static_cast<size_t>(count));
+    return true;
+}
+`;
+
 const BYTES_RUNTIME = String.raw`
 bool 字节_十六进制是否有效(const wchar_t* hex) {
     const std::wstring value = LB_Wide(hex);
@@ -753,6 +845,7 @@ const wchar_t* XML_取节点文本(const wchar_t* xml, const wchar_t* name) {
 
 const RUNTIMES: Record<string, string> = {
   'lingbuilder.std.text': TEXT_RUNTIME,
+  'lingbuilder.std.array': ARRAY_RUNTIME,
   'lingbuilder.std.bytes': BYTES_RUNTIME,
   'lingbuilder.std.encoding': ENCODING_RUNTIME,
   'lingbuilder.std.math': MATH_RUNTIME,

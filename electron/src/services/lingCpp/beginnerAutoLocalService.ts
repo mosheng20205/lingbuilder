@@ -58,11 +58,12 @@ export function analyzeBeginnerAutoLocalAssignment(
     return { kind: 'none', reason: 'already-declared' };
   }
 
+  // 数组维度参与推断：名单[0] 和 数组_取成员(名单, 0) 都要能定型到元素类型。
   const scopeTypes = new Map<string, string>();
-  (options.globals || []).forEach(global => scopeTypes.set(normalizeIdentifier(global.name), global.type));
-  (options.ownerClass?.members || []).forEach(member => scopeTypes.set(normalizeIdentifier(member.name), member.type));
+  (options.globals || []).forEach(global => scopeTypes.set(normalizeIdentifier(global.name), global.isArray ? `${global.type}[]` : global.type));
+  (options.ownerClass?.members || []).forEach(member => scopeTypes.set(normalizeIdentifier(member.name), member.isArray ? `${member.type}[]` : member.type));
   options.method.parameters.forEach(parameter => scopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
-  (options.method.locals || []).forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.type));
+  (options.method.locals || []).forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type));
 
   return {
     kind: 'declare',

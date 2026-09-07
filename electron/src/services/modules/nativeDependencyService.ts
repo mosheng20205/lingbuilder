@@ -1065,14 +1065,16 @@ async function materializeCef3Sdk(
       plan.diagnostics.push('CEF3 Bridge 仅支持 windows-msvc-x64，当前架构不受支持。');
     } else if (!await pathExists(bridgeHeader) || !await pathExists(bridgeLib) || !await pathExists(bridgeDll)) {
       plan.diagnostics.push('CEF3 SDK 缺少 LingBuilderCefBridge x64 资产。请运行 npm run module:cef3-bridge -- --install 重新生成 Bridge。');
+    } else if (!await cef3BridgeHeaderSupportsResourceBody(bridgeHeader)) {
+      addBlockingDiagnostic(plan, 'CEF3 SDK Bridge header is outdated: missing LB_CEF3_ResourceResponseBodyBegin. Please update the CEF3 SDK automatically.');
     } else {
       for (const root of roots) {
         await fs.mkdir(path.join(root, 'include'), { recursive: true });
-        await fs.copyFile(bridgeHeader, path.join(root, 'include', 'LingBuilderCefBridge.h'));
+        await copyFileAtomicallyIfDifferent(bridgeHeader, path.join(root, 'include', 'LingBuilderCefBridge.h'));
       }
-      await fs.copyFile(bridgeLib, path.join(libTargetDir, 'LingBuilderCefBridge.lib'));
+      await copyFileAtomicallyIfDifferent(bridgeLib, path.join(libTargetDir, 'LingBuilderCefBridge.lib'));
       const bridgeRuntime = path.join(layout.binDir, 'LingBuilderCefBridge.dll');
-      await fs.copyFile(bridgeDll, bridgeRuntime);
+      await copyFileAtomicallyIfDifferent(bridgeDll, bridgeRuntime);
       plan.libFiles.push(path.join(libTargetDir, 'LingBuilderCefBridge.lib'));
       plan.runtimeFiles.push(bridgeRuntime);
     }
@@ -1228,20 +1230,57 @@ async function findCef3SdkRoot(layout?: ModuleNativeDependencyLayout): Promise<s
   // buildDir 固定为 <workspace>/.lingbuilder-build/<项目>，据此反推工作区根目录，
   // 避免相对路径候选受进程 cwd 影响。
   const workspaceRoot = layout ? inferWorkspaceRootFromBuildDir(layout.buildDir) : '';
-  const candidates = getSdkRootCandidates(getSdkDependencyResource('cef3'), {
-    workspaceRoot: workspaceRoot || undefined,
+  // 示例项目通常位于仓库根目录的多层子目录中，而 SDK 安装在仓库根目录
+  // 的 .lingbuilder/modules/... 下。仅检查项目目录会把 F5 导向旧缓存/旧安装。
+  // 因此按 buildDir 向上遍历所有祖先目录，并优先选择包含新版 Bridge 符号的 SDK。
+  const workspaceRoots = workspaceRoot ? ancestorDirectories(workspaceRoot) : [];
+  const resource = getSdkDependencyResource('cef3');
+  const fallbackCandidates = getSdkRootCandidates(resource, {
     cacheRoot: resolveSdkCacheRoot(),
     resourcesPath: process.resourcesPath
   });
+  const candidates = [
+    ...fallbackCandidates.filter(candidate => candidate.source === 'environment'),
+    ...workspaceRoots.flatMap(root => getSdkRootCandidates(resource, {
+      workspaceRoot: root,
+      cacheRoot: resolveSdkCacheRoot(),
+      resourcesPath: process.resourcesPath
+    }).filter(candidate => candidate.source === 'workspace')),
+    ...fallbackCandidates.filter(candidate => candidate.source !== 'environment')
+  ];
+  let staleCandidate: string | null = null;
   for (const candidate of candidates) {
     try {
       await fs.access(path.join(candidate.root, 'include', 'cef_app.h'));
-      return candidate.root;
+      const bridgeHeader = path.join(candidate.root, 'bridge', 'x64', 'LingBuilderCefBridge.h');
+      if (await cef3BridgeHeaderSupportsResourceBody(bridgeHeader)) return candidate.root;
+      staleCandidate ||= candidate.root;
     } catch {
       // 尝试下一个候选 SDK 根目录。
     }
   }
-  return null;
+  return staleCandidate;
+}
+
+function ancestorDirectories(start: string): string[] {
+  const result: string[] = [];
+  let current = path.resolve(start);
+  while (true) {
+    result.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return result;
+}
+
+async function cef3BridgeHeaderSupportsResourceBody(headerPath: string): Promise<boolean> {
+  try {
+    const header = await fs.readFile(headerPath, 'utf8');
+    return /\bLB_CEF3_ResourceResponseBodyBegin\b/u.test(header);
+  } catch {
+    return false;
+  }
 }
 
 async function copyDirectoryRecursive(source: string, target: string): Promise<void> {

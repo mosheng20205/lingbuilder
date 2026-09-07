@@ -32,6 +32,8 @@ const RETURN_LABELS: Record<ModuleBindingValueType, string> = {
   lingValue: 'LingCpp 任意值',
   handle: '长整数型',
   bytes: '字节集',
+  array: '数组',
+  arrayElement: '数组成员',
   raw: '原生类型'
 };
 

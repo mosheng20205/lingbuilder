@@ -19,9 +19,16 @@ export interface DesktopWorkspaceServiceOptions {
   profile?: WorkspaceState['profile'];
 }
 
+/**
+ * 记录初始工作区是怎么定下来的。双击 `.lcpppkg` 或把工作区文件夹拖到 exe 上时是
+ * `associated-file`；桌面宿主据此跳过欢迎页，直接进工作台。
+ */
+export type InitialWorkspaceSource = 'argument' | 'associated-file' | 'associated-directory' | 'state' | 'fallback' | 'seed';
+
 export class DesktopWorkspaceService {
   private readonly statePath: string;
   private readonly profile: WorkspaceState['profile'];
+  private initialWorkspaceSource: InitialWorkspaceSource = 'seed';
 
   constructor(private readonly options: DesktopWorkspaceServiceOptions) {
     this.profile = options.profile || 'development';
@@ -31,26 +38,44 @@ export class DesktopWorkspaceService {
     );
   }
 
+  /** 最近一次 `resolveInitialWorkspace` 的来源；未解析过时为 `seed`。 */
+  get lastInitialWorkspaceSource(): InitialWorkspaceSource {
+    return this.initialWorkspaceSource;
+  }
+
   async resolveInitialWorkspace(fallbackWorkspace?: string): Promise<string> {
     const requested = getArgumentValue(this.options.argv, '--workspace');
     if (requested) {
       const target = await pathExists(requested) ? await this.resolveWorkspaceTarget(requested) : requested;
+      this.initialWorkspaceSource = 'argument';
       return await this.rememberWorkspace(target);
     }
     const associatedFile = this.options.argv.slice(1).find(value => value && !value.startsWith('-'));
     if (associatedFile) {
-      try { return await this.rememberWorkspace(await this.resolveWorkspaceTarget(associatedFile)); }
-      catch { /* Ignore executable/bootstrap arguments that are not workspace targets. */ }
+      try {
+        const target = await this.resolveWorkspaceTarget(associatedFile);
+        // 只有「双击一个文件」才算文件关联启动。开发态 `electron .` 传的是目录，
+        // 仍按普通启动处理，欢迎页行为不变。
+        this.initialWorkspaceSource = await isDirectory(path.resolve(associatedFile))
+          ? 'associated-directory'
+          : 'associated-file';
+        return await this.rememberWorkspace(target);
+      } catch { /* Ignore executable/bootstrap arguments that are not workspace targets. */ }
     }
 
     const state = await this.readState();
     if (state?.lastWorkspace && await isDirectory(state.lastWorkspace)) {
+      this.initialWorkspaceSource = 'state';
       return path.resolve(state.lastWorkspace);
     }
 
-    if (fallbackWorkspace) return await this.rememberWorkspace(fallbackWorkspace);
+    if (fallbackWorkspace) {
+      this.initialWorkspaceSource = 'fallback';
+      return await this.rememberWorkspace(fallbackWorkspace);
+    }
 
     const seededWorkspace = await this.seedDefaultWorkspace();
+    this.initialWorkspaceSource = 'seed';
     return await this.rememberWorkspace(seededWorkspace);
   }
 

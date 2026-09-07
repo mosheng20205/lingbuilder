@@ -330,6 +330,10 @@ export type ModuleBindingValueType =
   | 'lingValue'
   | 'handle'
   | 'bytes'
+  /** 任意元素类型的 LingCpp 数组左值；生成器按 std::vector<T>& 原样传递，不做 ABI 转换。 */
+  | 'array'
+  /** 与同一命令中 array 参数元素类型一致的值；作为返回值表示返回该元素类型。 */
+  | 'arrayElement'
   | 'raw';
 
 /** 基础 ABI 类型或当前模块通过 contributes.types 公开的结构化 LingCpp 类型名。 */

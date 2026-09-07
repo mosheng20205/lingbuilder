@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "LingBuilder 数组操作全命令演示",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "array-operations-demo",
+  "startupProjectIds": [
+    "array-operations-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "array-operations-demo",
+      "name": "数组操作全命令演示",
+      "type": "visual-cpp",
+      "sourceRoot": "src/array-demo",
+      "references": []
+    }
+  ]
+}

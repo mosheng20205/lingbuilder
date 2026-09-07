@@ -295,7 +295,10 @@ npm run package:win
 - 内置 `lingbuilder.edgeview` 当前版本 `1.2.0`、最低生成器 `0.2.7`。窗口、分组框或选项卡内每个控件都有独立 HWND、Environment、Controller、WebView、Profile 和默认 `.edgeview/<controlId>` UDF；属性面板包含稳定运行期属性和 v2 创建期选项，并明确提示修改创建期属性后重建。`designer.edgeview.previewControl` 继续使用独立原生窗口，不向 React 画布嵌入 HWND。
 - EdgeView 的 71 项普通 HWND 事件和 2 项 CompositionController 排除事件由 `src/services/modules/edgeViewBrowserEvents.ts` 统一维护；面向用户的完整目录、字段说明和 `.lcpp` 示例在模块详情文档 `docs/modules/edgeview/README.md`。更新事件目录后执行 `npm run module:edgeview-docs`，可用 `npm run module:edgeview-docs:check` 检查文档是否同步。
 - FBro 面向用户的完整事件与接口参考位于模块详情文档 `docs/modules/fbro/README.md`：包含 89 项公开可绑定事件的字段、响应 schema、默认动作、超时和线程信息，另列出 85 项 Bridge 托管/内部分类以及模块族 461 条用户接口。核心模块 2.4 提供进程内、独立进程嵌入和独立进程窗口三种宿主模式；独立模式的 FBro CEF 135 固定放在 `fbro-host/`，只有进程内模式与 CEF3 冲突。更新 FBro 事件目录或 manifest 后执行 `npm run module:fbro-docs`，并用 `npm run module:fbro-docs:check` 检查文档漂移。
-- EdgeView 共提供 271 条中文命令：36 条兼容命令和 235 条目录化安全 API。v2 新增受管 Frame/Worker/Extension/Notification/Certificate/SharedBuffer/FileSystemHandle、完整 Options、资源响应正文、PDF 流、另存为和证书决策等。新处理器统一写 `&处理器名`；任务使用五态、`shared_ptr + generation` 和迟到回调拒绝，Loader 保持到进程退出。
+- EdgeView 共提供 272 条中文命令：37 条兼容命令和 235 条目录化安全 API。v2 新增受管 Frame/Worker/Extension/Notification/Certificate/SharedBuffer/FileSystemHandle、完整 Options、资源响应正文、PDF 流、另存为和证书决策等。新处理器统一写 `&处理器名`；任务使用五态、`shared_ptr + generation` 和迟到回调拒绝，Loader 保持到进程退出。
+- EdgeView 导出类命令（`EdgeView打印_PDF异步`、`EdgeView打印_PDF流到文件异步`、`EdgeView媒体_截图异步`、`EdgeView媒体_取Favicon异步`）统一先把文件路径按当前工作目录解析成绝对路径，任务结果回报绝对落盘路径；`设置JSON` 使用 WebView2 驼峰键名白名单覆盖本控件打印设置，非 JSON 对象文本给中文诊断。同一个控件的导出必须逐个发起，并发 `PrintToPdf` 会被 WebView2 判为失败。
+- EdgeView 同步执行接口（`EdgeView_执行JS` / `EdgeView_执行JS实例` / `EdgeView_执行JS控件`）在浏览器事件处理器内调用时立即返回空文本并输出中文诊断，不再等满 15 秒；需要返回值时改用 `EdgeView脚本_执行详情异步` + 完成处理器。`EdgeView_等待事件控件(控件名, 事件名, 超时毫秒)` 用于在「创建完毕」等非回调上下文里等页面就绪后再调用同步接口。
+- `EdgeView资源_读响应正文异步` 必须在 `Web资源响应收到` 处理器执行期间把句柄交给任务；处理器返回后 WebView2 释放该响应正文，稍后读取一律失败，与响应来自真实网络还是程序合成无关。
 - `edgeViewApiCoverage.generated.json` 固定 SDK `1.0.3537.50` / Runtime 141 与 SDK `1.0.4078.44` / Runtime 150。新基线 995 个方法的结果为 public 330、internal 565、excluded 100、pending 0。运行 `npm run module:edgeview-coverage:complete` 检查双 SDK 哈希、目录、符号、测试和漂移；`npm run smoke:edgeview-native` 执行 Win32/x64 MSVC 原生冒烟。CompositionController、PointerInfo、AutomationProvider、实验 API、Host Object、裸 COM/指针继续排除。
 - 内置 `lingbuilder.cef3.browser` 模块按 v2 `contributes.designerControls` 贡献 `CEF3浏览器 (CefBrowser)` 设计器控件：项目启用后工具箱自动新增该控件，可在任意窗口添加多个实例，属性面板可设置打开地址、缓存目录、User-Agent、JavaScript/图片/WebGL 开关与代理；60 条 `CEF3_*` 中文命令和 92 项用户事件名称（对应 113 / 113 个官方事件签名）同时进入补全、binding、设计器事件面板和确定性 C++ 运行时，其中 `CEF3_是否有效`、`CEF3_是否弹出窗口`、`CEF3_是否同一实例`、`CEF3_是否有文档`、`CEF3_是否使用浏览器视图`、`CEF3_取打开者浏览器ID`、`CEF3_取运行时样式`、`CEF3_取缩放级别`、`CEF3_取默认缩放级别`、`CEF3_设置缩放级别`、`CEF3_是否可缩放`、`CEF3_执行缩放`、`CEF3_尝试关闭`、`CEF3_通知窗口移动或调整大小`、`CEF3_通知屏幕信息已改变`、`CEF3_发送捕获丢失事件`、`CEF3_取消输入法组合文本`、`CEF3_完成输入法组合文本`、`CEF3_添加单词到词典`、`CEF3_替换拼写错误`、`CEF3_通知系统拖放结束`、`CEF3_通知拖放目标离开`、`CEF3_通知隐藏状态`、`CEF3_退出网页全屏` 和 `CEF3_强制刷新` 分别对应 `CefBrowser` / `CefBrowserHost` 的安全状态、生命周期、CefBrowserView 承载查询、弹窗来源 ID 查询、网页全屏查询与退出、宿主窗口/屏幕通知、OSR 输入与 IME 状态、拼写词典与当前错误替换、系统拖放两端清理、OSR 宿主隐藏绘制状态、运行时/缩放状态、缩放动作和刷新接口，`CEF3_页内查找` / `CEF3_停止页内查找` 对应 FindHandler 闭环，`CEF3_是否静音` 对应 UI 线程安全的 `CefBrowserHost::IsAudioMuted` 查询。事件通过 `WM_LINGBUILDER_CEF_EVENT` 回到所属窗口线程，同步决策支持默认/允许/拒绝/已处理，高频音频和进度回调限流。原生构建按显式环境变量、工作区 SDK、用户级共享缓存及旧兼容目录的顺序发现 CEF3 SDK；正式安装版首次使用时由工作台按需下载 CEF 150.0.14 x64 完整环境。CEF3 原生依赖计划固定要求 C++20 与 `/MD`，F5、AI Bridge 和生成的 Visual Studio 四组配置会共同应用，普通项目仍使用 C++17。每个 CEF3 控件使用独立 `CefRequestContext` 和缓存子目录进行会话隔离。
 - CEF3 面向用户的完整事件与接口参考位于模块详情文档 `docs/modules/cef3/README.md`，统一列出 92 项事件名称、113 条官方事件签名和模块族中文接口，并明确提示目录中的 `planned` 能力不可视为已实现。传输模块另登记 `docs/modules/cef3/stream-handlers.md`，说明受管读写处理器、流句柄的生命周期和 64 MiB 内存边界。更新 CEF3 事件目录或 manifest 后执行 `npm run module:cef3-docs`，并用 `npm run module:cef3-docs:check` 检查文档漂移。
@@ -854,3 +857,14 @@ Windows ��װ��ע�� .lbmod ��˫����ת���������� LingBuilder ʵ������ģ�鰲װ�
 
 
 > 0.6.2 发布说明（2026-09-02）：发布 Windows x64 stable 安装包，包含 CEF3 Bridge4 生成修复、云端 SDK 清单验签/sequence 展示和 IDE 在线更新链路修复。生产打包使用 LINGBUILDER_CLOUD_RELEASE_MODE=online 与 https://api.lingbuilder.com，安装包不内置 CEF3/FBro SDK。
+
+## 动态图像控件 GIF 播放
+
+Win32 原生生成器使用持久双缓冲 DIB 在 WM_PAINT 绘制 GIF 帧，帧切换不会通过 STM_SETIMAGE 反复替换位图，以避免 GDI 资源增长和画面闪烁。
+
+- **EdgeView 下载路径（2026-09-06）**：`EdgeView事件_设置下载路径` 改走独立决策槽
+  `eventDownloadPath`，自动补全绝对路径并创建父目录，`put_ResultFilePath` 的 HRESULT
+  按 `downloadId` 记录并由 `EdgeView下载_取状态JSON` 的 `resultFilePathError` 字段回传；
+  失败输出中文诊断，不再静默。`EdgeView下载_取状态JSON` 在「下载开始」处理器内读到的是
+  决策前快照，确认落点必须在事件结束后再读。契约回归见 `tests/modules.test.ts`
+  「EdgeView 导出路径、响应正文时效、回调内同步等待与控件级等待事件保持统一契约」。

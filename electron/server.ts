@@ -2511,6 +2511,11 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const exportContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
       .map(file => normalizeFilePath(path.relative(exportDir, file)));
+    // 原生模块文件必须在每次 F5 前重新物化；不能让旧 x64/Debug 目录里的 Bridge 头文件继续参与编译。
+    await Promise.all([
+      fs.rm(path.join(buildDir, "modules"), { recursive: true, force: true }),
+      fs.rm(path.join(sourceDir, "modules"), { recursive: true, force: true })
+    ]);
     const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
       buildDir,
       sourceDir,

@@ -20,6 +20,29 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.6.5',
+    date: '2026-09-05',
+    title: '数组操作模块、应用内更新与教程示例工程',
+    sections: [
+      {
+        title: '新增与改进',
+        items: [
+          '新增「数组操作模块」标准库：成员数、增删改查、查找、排序、倒序、重定义共 13 条中文命令，对元素类型透明，索引统一从 0 开始，越界安全返回不崩溃。',
+          '代码补全与类型推导支持数组：数组下标取值、数组成员型命令的返回类型会按调用处的数组实参求解，签名提示和悬停说明同步给出元素类型。',
+          '检查更新改为应用内更新对话框：可直接在 IDE 内下载、校验并安装新版本，直链或校验值缺失时自动回退为「前往官网下载」。',
+          '新增 CEF3、FBro、EdgeView 教程示例工程的生成与校验脚本，配套 array-operations-demo 示例解决方案随仓库一起发布。'
+        ]
+      },
+      {
+        title: '修复',
+        items: [
+          '修复云端检查更新只按 sortOrder/publishedAt 取首条发布记录的问题：改为按语义化版本号取最高版本，避免后台给旧版本设置更大排序值后所有用户收不到更新。',
+          '修复 DataGrid 命令目录可以声明数组类型返回值的类型漏洞，其原生 ABI 只承载标量与文本，现已在类型层面排除。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.6.3',
     date: '2026-09-04',
     title: '模块生态、浏览器 API 与原生控件体验更新',
