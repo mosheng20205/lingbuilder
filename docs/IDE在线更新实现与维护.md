@@ -36,7 +36,7 @@ spawn 安装包 detached → shutdownAndExit(0) 退出 IDE
 | 层 | 文件 | 职责 |
 |---|---|---|
 | 云端接口 | `cloud/api/src/website/website-content.controller.ts`（`@Controller('v1/site')` + `@Public()`，参数 platform/architecture/channel 默认 Windows/x64/stable） | 挂载 `GET latest-version` |
-| 云端实现 | `cloud/api/src/website/website-content.service.ts` → `latestVersion()` | 查询 PUBLISHED 版本 + enabled 且 HTTPS 的 direct 镜像，组装响应 |
+| 云端实现 | `cloud/api/src/website/website-content.service.ts` → `latestVersion()` | 查询 PUBLISHED 版本 + enabled 且 HTTPS 的 direct 镜像，组装响应；用 `pickHighestVersionRelease()` 按**版本号最大**取记录 |
 | 共享类型 | `packages/contracts/src/index.ts` → `SiteLatestVersionResponse` | 响应类型（全部字段可空） |
 | 版本检查 | `electron/electron/versionCheckService.ts` | `checkLatestVersion(origin, currentVersion)`、`compareVersions`、`VersionCheckResult` |
 | 下载服务 | `electron/electron/updateDownloadService.ts` | 分片下载 + 校验 + 安装 + 取消 + 清理（主进程，自包含可注入测试） |
@@ -44,7 +44,7 @@ spawn 安装包 detached → shutdownAndExit(0) 退出 IDE
 | 桥接 | `electron/electron/preload.ts` `updates` 段 | `check/download/cancel/status/install/onProgress` |
 | 类型声明 | `electron/src/electron-api.d.ts` | `AppUpdateProgressSnapshot` + `window.lingBuilder.updates` 签名 |
 | 更新对话框 | `electron/src/components/UpdateDialog.tsx` | 全状态机 UI（发现/下载/校验/就绪/启动/失败重试） |
-| 接线 | `electron/src/App.tsx` | `updateCheckState`（`UpdateDialogInfo` 类型）、启动静默检查 effect、`checkForUpdates` 命令 handler、**两处** `<UpdateDialog>` 挂载（工作台 + `showWelcomePage` 早退分支） |
+| 接线 | `electron/src/App.tsx` | `updateCheckState`（`UpdateDialogInfo` 类型）、模块级 `createUpdateDialogInfo(result, silent)` 工厂、启动静默检查 effect、`checkForUpdates` 命令 handler、**两处** `<UpdateDialog>` 挂载（工作台 + `showWelcomePage` 早退分支） |
 
 ### 云端响应结构（关键契约）
 
@@ -67,6 +67,10 @@ spawn 安装包 detached → shutdownAndExit(0) 退出 IDE
 **双向兼容约定**：旧版 IDE 只读 version/title，多余字段无害；新版 IDE 对旧云端响应 `?? null` 容错（downloadUrl=null → 对话框只显示「前往官网下载」）。改任何一侧都不需要先发另一侧。
 
 数据库模型：`WebsiteDownloadRelease`（含 sha256/fileSize/releaseNotes/channel，唯一键 `[version,channel,platform,architecture]`）+ `WebsiteDownloadMirror`（provider='direct' 为 R2 直链）。**无 Prisma schema 变更、无迁移**。
+
+**渠道是精确匹配，不是包含关系**：客户端不传 `channel`，服务端默认 `stable`，`latestVersion()` 的 where 条件按 `channel` 精确过滤。发布到 `preview`/`beta` 的记录对 IDE 完全不可见（接口返回 `{"ok":true,"available":false}`），这不是故障而是设计。正式推送给全量用户的版本必须发到 `stable`。
+
+**取哪条记录**：Prisma 侧仍按 `sortOrder desc, publishedAt desc` 排序，但结果交给 `pickHighestVersionRelease()` 按语义化版本号取最大（`compareReleaseVersions()` 与客户端 `compareVersions` 同规则）。这样后台给某条旧版本设了更大的 `sortOrder` 时，不会把新版本压住导致全量用户收不到更新。
 
 ## 3. 主进程下载服务（updateDownloadService.ts）
 
@@ -103,13 +107,13 @@ spawn 安装包 detached → shutdownAndExit(0) 退出 IDE
 
 渲染层状态机：`checking → latest | update → downloading → verifying → ready → launching`，失败 → `error`（检查失败独立为 `error`）。按钮矩阵与全部中文文案见 `UpdateDialog.tsx`。**自动安装规则**：对话框打开期间经历 downloading/verifying → ready 时自动 install（`sawActiveDownloadRef`）；后台下载完成则 ready 态显示「立即安装并重启」。直链或校验值缺失时「前往官网下载」为主按钮（`info.websiteUrl` 回退官网首页）。
 
-**注意**：`App.tsx` 的欢迎页是早退分支（`if (showWelcomePage) return <WelcomePage/>`），更新对话框在**两个分支都挂载**——新增早退分支时记得同步挂载，否则静默检查查到更新不显示（本次修复过的坑）。
+**注意**：`App.tsx` 的欢迎页是早退分支（`if (showWelcomePage) return <WelcomePage/>`），更新对话框在**两个分支都挂载**——新增早退分支时记得同步挂载，否则静默检查查到更新不显示。这个坑复发过一次：`showWelcomePage` 初值为 `true`，启动 5 秒静默检查触发时用户正在欢迎页，早退分支没挂对话框就等于把提示静默吞掉。`tests/updateUi.test.tsx` 只断言 `App.tsx` 里存在 `<UpdateDialog`，**挡不住"只挂了一处"**，改早退分支时要人工确认。
 
 ## 5. 测试与验证
 
 | 测试 | 命令 | 覆盖 |
 |---|---|---|
-| `cloud/api/tests/website-content.test.ts` | `cd cloud/api && npm test` | latest-version 6 用例：https 直链选取、忽略禁用/非直链/http 镜像、旧数据置 null、旧字段兼容、多直链取最小 sortOrder、sha256 规范化 |
+| `cloud/api/tests/website-content.test.ts` | `cd cloud/api && npm test` | latest-version 7 用例：https 直链选取、忽略禁用/非直链/http 镜像、旧数据置 null、旧字段兼容、多直链取最小 sortOrder、sha256 规范化、**旧版本 sortOrder 更大时仍取版本号最大的记录**。测试桩打的是 `findMany`（服务端已从 `findFirst` 改过来） |
 | `electron/tests/versionCheck.test.ts` | `npm run test:version-check` | 直链/校验值透传、旧云端容错 |
 | `electron/tests/updateDownload.test.ts` | `node --import tsx --test --test-force-exit tests/updateDownload.test.ts` | 14 用例：aria2c 参数/路径解析/门禁/2GiB/sha256 失配删除/非零退出码中文诊断/取消清理/fetch 回退/install spawn 成败/防重/清理 |
 | `electron/tests/updateUi.test.tsx` | 已加入 `pretest:lingcpp` | 读源码断言：对话框状态机按钮矩阵、4 IPC + 广播、preload 5 方法、App 命令描述 |
@@ -125,16 +129,30 @@ spawn 安装包 detached → shutdownAndExit(0) 退出 IDE
 ## 6. 发布与部署
 
 - **生产已部署**（2026-09-01）：`/opt/lingbuilder/app` 上传 `website-content.service.ts` + `contracts/src/index.ts`（原文件备份 `.bak-20260901`，md5 核对一致）→ `docker compose --env-file .env.production -f compose.production.yaml build api && up -d api` → curl 验证。部署前基准：`latest-version` 返回 `{"ok":true,"available":false}`（当前云端无已发布 stable/Windows/x64 记录，属正常）。
-- **后台发布版本时的要求**（否则自动回退官网下载）：直链镜像 provider=`direct` 且 URL 必须 HTTPS；SHA-256 由后台上传流程自动回填，必须保存；fileSize 会展示在对话框。
+- **后台发布版本时的要求**（否则自动回退官网下载）：渠道必须是 `stable`；直链镜像 provider=`direct` 且 URL 必须 HTTPS；SHA-256 由后台上传流程自动回填，必须保存；fileSize 会展示在对话框。**改渠道等字段后要复查镜像还在**——2026-09-05 把 0.6.3 从 `preview` 改到 `stable` 时直链镜像一并丢了，接口 `downloadUrl` 变成 `null`，应用内下载退化成只能「前往官网下载」。发布后务必 curl 一次 `latest-version` 核对 `downloadUrl` 非空。
 - **0.6.2 发布记录（2026-09-02）**：使用 `electron/npm run package:win` 构建 Windows x64 stable 安装包；发布后台“官网内容/下载版本列表”中的 `0.6.2` 后，通过 `/v1/site/latest-version?platform=Windows&architecture=x64&channel=stable` 验证客户端更新元数据。
 - 本机到服务器 SSH 22 偶发超时（443 正常），重试即可；辅助脚本 `.deploy/ssh_run.py`、`ssh_put.py`（密码走 `LB_DEPLOY_PW`，`/opt/...` 路径参数必须 `MSYS_NO_PATHCONV=1`）。
 
-## 7. 待办
+## 7. 维护记录
 
-- [ ] 下次正式打包发版后，用真实 NSIS 安装包人工走一遍「自动打开安装向导 → 覆盖安装 → 重启」确认（本次端到端验证到 spawn 成功为止，未做真机覆盖安装）。
+### 2026-09-05：修复「在线更新整条链路不可用」
+
+排查起因是核对在线更新是否正常，实测发现三处问题，前两处任一都会让功能完全不可用：
+
+1. **渠道不匹配（生产）**：线上唯一 PUBLISHED 记录是 0.6.3 但发在 `preview` 渠道，客户端查 `stable` → `available:false` → IDE 提示「云端尚未发布任何版本」。已在后台改发 `stable`（改完直链镜像丢失，见 §6）。
+2. **渲染层从未接线**：`UpdateDialog.tsx` 在仓库里存在但**全仓库无人 import**（`git log -S UpdateDialog -- electron/src/App.tsx` 无任何命中，说明接线从未提交过）；`App.tsx` 一直是旧的简易弹窗，文案写死「请前往官网下载最新安装包并手动完成更新」。主进程那套 4 IPC + aria2c + SHA-256 + spawn 安装全是死代码。`tests/updateUi.test.tsx` 因此长期 1/3 失败，而它在 `pretest:lingcpp` 列表里 → electron 测试套件是红的。**已按 §2 表格接线，含欢迎页早退分支。**
+3. **服务端取记录按 sortOrder 而非版本号**：见 §2「取哪条记录」，已改。
+
+验证：`electron` 侧 `updateUi + updateDownload + versionCheck` 共 23 用例全绿，`npx tsc --noEmit` 通过；`cloud/api` `npm test` 58 用例全绿。
+
+## 8. 待办
+
+- [ ] 后台把 0.6.3 的 direct 直链镜像补回来（当前 `latest-version` 的 `downloadUrl` 为 `null`，应用内下载不可用）。
+- [ ] 下次正式打包发版后，用真实 NSIS 安装包人工走一遍「自动打开安装向导 → 覆盖安装 → 重启」确认（此前端到端验证到 spawn 成功为止，未做真机覆盖安装）。
 - [ ] 可选增强：渠道跟随（IDE 目前固定查 stable）；下载失败后的自动重试次数策略。
+- [ ] 可选增强：给 `updateUi.test.tsx` 加「`<UpdateDialog` 出现两次」的断言，防止早退分支挂载再次丢失。
 
-## 8. 相关文档
+## 9. 相关文档
 
 - `更新记录/2026-09-01.md` — 本次落地的当日记录（含部署步骤与验证数据）
 - `docs/SDK按需下载直链云端配置设计.md` — 同类「云端清单 + 客户端下载」模式的 SDK 版参考
