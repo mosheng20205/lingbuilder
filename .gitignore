@@ -117,3 +117,36 @@ AGENTS.md
 
 # AI 视频自主生产素材（不入库）
 AI 视频自主生产/
+
+# CEF3 教程示例项目的 ASCII 暂存构建目录（npm run tutorial:cef3:build 生成）
+.tmp-cef3-verify/
+
+# FBro 教程示例项目的构建与验证输出（npm run tutorial:fbro:build / verify 生成）
+.tmp-fbro-verify/
+
+# 数组操作示例项目：解决方案、模块清单、设计器和项目配置必须入库，
+# 否则克隆后示例打不开。上面的 .lingbuilder/ 与 config/ 是针对工作区
+# 本地状态的清理规则，这里按路径精确豁免，不影响其它目录。
+!examples/array-operations-demo/src/.lingbuilder/
+!examples/array-operations-demo/src/.lingbuilder/**
+!examples/array-operations-demo/src/config/
+!examples/array-operations-demo/src/config/**
+# 运行 CLI 构建后产生的本地日志/历史不入库。
+examples/array-operations-demo/src/.lingbuilder/*.jsonl
+examples/array-operations-demo/src/.lingbuilder/*.log
+examples/array-operations-demo/src/.lingbuilder/module-history.json
+examples/array-operations-demo/src/.lingbuilder/modules/
+examples/array-operations-demo/src/.lingbuilder/module-snapshots/
+examples/array-operations-demo/src/.lingbuilder/projects/
+
+# 本地调试截图与视频制作临时产物（不入库）
+/*.png
+/_inspect_*/
+/.tmp-*
+/.video-work/
+/.work/
+/.ting-renderer-env.cmd
+/cover_generator.ps1
+/make_cover.ps1
+/make_original_cover.py
+.tmp-installer-check-*/

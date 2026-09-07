@@ -74,6 +74,10 @@
 - `CEF3_取打开者浏览器ID(浏览器控件)` 只接收裸 `controlRef`，非弹出浏览器返回 0，弹出浏览器返回创建者浏览器唯一 ID；不得把该整数当作 CEF 指针或跨进程地址。
 - `CEF3_是否可缩放(浏览器控件, 缩放命令)` 与 `CEF3_执行缩放(浏览器控件, 缩放命令)` 的首参必须是裸 `controlRef`，第二参数只能是 `0=缩小`、`1=重置` 或 `2=放大`；前者返回 1 才允许调用后者，不能用当前缩放级别推测可用性。执行命令不会返回新的缩放数值，需要时再调用 `CEF3_取缩放级别`。
 - 事件目录当前提供 92 项用户事件名称，对应 113 / 113 个官方事件签名已由 Bridge 接通；全目录仍有 879 项 planned。音频数据包、文件对话框、权限、认证、证书错误、进程无响应和跟踪完成回调使用受管 continuation 与明确默认动作。AI 不得把 `planned`、自动中文名或模块 contribution 描述成已经可运行，也不得在 `planned/needsReview` 清零前宣称全覆盖或 3.0.0 已发布。
+- `CEF3_取资源地址(相对路径)` 是 `.lcpp` 加载本地测试页与本地资源的**唯一可移植入口**：把相对路径解析为随程序一起部署在 exe 同级 `assets/` 目录下的文件，返回已按 UTF-8 百分号转义的 `file:///` 地址；传入盘符绝对路径、UNC 路径或已带协议的完整地址时原样返回，因此可对同一结果重复套用；它不依赖浏览器控件实例，可在控件创建前调用。**用法必须先把结果赋给文本型局部变量，再传给 `CEF3_导航`**：`局部 文本型 地址 = CEF3_取资源地址("index.html")` 然后 `CEF3_导航(浏览器1, 地址)`。地址形参在 C++ 侧是 `const wchar_t*`，写成 `CEF3_导航(浏览器1, CEF3_取资源地址("index.html"))` 这种内联嵌套会生成 `std::wstring` 传 `const wchar_t*` 而编译失败（MSVC C2664），AI 不得生成该形态。**AI 生成示例、项目模板、教程代码或修复建议时同样禁止写死 `file:///` 绝对路径、工作区路径或任何机器特定目录**——那会把本机路径烧进随仓库分发的示例，违反「源码可复制给别人使用」；需要加载本地页面时一律改用本命令，且只引用确实随 `assets/` 一起部署的文件。
+- **事件名一致性（2026-09-06 补）**：`cef3BrowserEvents.ts` 里的中文名就是运行时 `CEF3_绑定事件` 存处理器的键，所以桥接层 `Emit*` 发出的名字必须与它**完全一致**，否则处理器查不到；`kind === 'decision'` 的同步可取消事件尤其危险——处理器不执行时 `response->action` 恒为 0，取消静默失效且没有任何报错。桥接存在 `EmitEvent` / `EmitNotificationEventV4` / `EmitAsyncEvent` / `EmitDownloadHandlerNotification` 多种发射点，逐个肉眼核对不可靠。约束由生成器 `lingCppWin32Project.ts` 的 `CEF3_归一化Bridge事件名()` 别名表 + 回归测试 `electron/tests/cef3BridgeEventNames.test.ts` 共同保证：新增或改名 CEF3 事件时必须同步复核该表，并跑该测试。不得把「113/113 签名已接通」读成事件名层也已核对一致——2026-09-06 之前正是这个空白让 `导航请求前`（桥接发「浏览前请求」）等 18 处名字不一致长期存在，并导致 CEF3 教程第 05 集误判为「运行态乱码」而丢掉实机演示镜头。
+- **订阅位一致性（2026-09-06 补，与上一条同族缺陷的另一半）**：事件名对上不代表订阅位对上。Bridge 用「处理器族订阅位掩码」决定两件事——是否向 CEF 安装 `CefResourceRequestHandler` / `CefFrameHandler` / `CefPrintHandler` / `CefDownloadHandler` 等处理器（订阅位为 0 时 `GetResourceRequestHandler` 直接返回 `nullptr`，CEF 根本不会调用回调），以及回调体是否向宿主投递事件。`CEF3_绑定事件` 现在在登记处理器的同时点亮该事件所属订阅位，并在浏览器创建完成后回放一次，因此**绑定即订阅，不存在也不需要「先调用某条订阅命令」的前置步骤**：`CEF3网络_订阅*` / `CEF3传输_订阅*` / `CEF3离屏_订阅*` 这类名字只存在于生成的接口清单与模块文档表格中，**不是可调用命令**，AI 不得把它们写进 `.lcpp`，也不得在示例或修复建议里要求用户先调用它们。映射表是 `cef3BrowserEvents.ts` 的 `CEF3_EVENT_BRIDGE_SUBSCRIPTIONS`，由 `electron/tests/cef3BridgeEventNames.test.ts` 与桥接源码逐条比对；新增受订阅门控的 CEF3 事件必须同时补表，否则测试会报「绑定后仍不会触发」。反向约束：**已有 legacy 数字事件通道的事件（如「导航请求前」「下载开始」「主文档可用」等 63 个）不得进订阅表**，否则点亮订阅位后同一事件会经 legacy 与受管两条通道各投递一次、处理器被调用两遍。受管通道的事件只走 V4 事件包，生成的运行时在创建浏览器时注册 `CEF3_Bridge事件回调V4` 并降形复用同一个中文事件入口；删除该注册会让资源/框架/打印/Cookie 族整族静默失效。
+- **浏览器创建时序（2026-09-06 补）**：`CEF3_创建` 底层 `LB_CEF3_BrowserCreate` 只把 `CefBrowserHost::CreateBrowser` 投递到 CEF UI 线程，句柄**立刻**返回，但此刻 CEF 浏览器对象还不存在（桥接层要等 `OnAfterCreated` 才写入 `state->browser`）。因此 `CEF3_导航` 在「创建完毕」事件里调用现在**自动可用**：运行时把地址排队，等桥接层发出「浏览器创建完成」（该事件发出前 `state->browser` 已写入）时无条件补发，返回 1 表示请求已接受。**但只有导航有这套排队**：其余依赖活动浏览器对象的 CEF3 命令（异步/同步执行 JS、页内查找、截图、缩放、静音、DevTools、Cookie 与请求上下文操作等，桥接侧约 44 个入口）在创建完成前调用仍会以「CEF3浏览器尚未创建完成或已经关闭」失败。AI 生成代码时必须把这些调用放在用户动作（按钮单击等）或「加载完成」之后，**不得用 `线程_休眠`、轮询或重试循环绕过时序**，也不得宣称「创建完毕里可以调用任意浏览器命令」。
 - CEF3 生成工程只能包含 `LingBuilderCefBridge.h` 并链接 `LingBuilderCefBridge.lib`；不得生成 CEF 头、`CefRefPtr`、`CefClient`、Handler override，也不得让应用直接链接 `libcef.lib` 或 `libcef_dll_wrapper.lib`。CEF C++20 API、wrapper、UI/IO 线程投递与对象生命周期只允许存在于 Bridge DLL 内。
 - `.lcpp` 边界只允许 UTF-16、POD、版本化事件包、带类型和代际的 64 位句柄、任务 ID 与受管缓冲。事件处理器必须使用 `&处理器名`；不得生成裸指针、STL、任意地址或字符串处理器。
 - 每个浏览器实例使用独立 RequestContext 和全局 root cache 的直接子目录。核心已支持初始化/关闭、多实例、Chrome Runtime、导航、异步 JavaScript、下载、打印与 DevTools 基础操作；objects 已支持 Value/Dictionary/List/Binary 深复制受管句柄，session 已支持 RequestContext、HTTP 缓存清理和 Cookie 遍历/设置/删除/落盘异步任务。AI 必须保存并释放对象、上下文和任务句柄，Cookie 结果只作为 UTF-16 JSON 使用，不得生成 CEF 指针。当前 113 个官方事件签名均有真实 Bridge override/受管回调入口；其余 Preference/扩展、Scheme/Filter、PDF、DOM/V8、DevTools 订阅、OSR、Views 等尚未实现的能力不得伪造命令或用 JavaScript 模拟。
@@ -102,7 +106,7 @@
 
 - FBro 模块 ID 固定为 `lingbuilder.fbro.browser`，设计器控件类型为 `FBroBrowser`。AI 可以把它放入可视化窗口，但必须让每个实例保留独立宿主 `HWND`、控件 ID 和 profile/cache 目录。
 - 固定数量的 new_emoji ListBox 多浏览器界面必须用 `listBoxItemsEx` 的稳定 key 建立显式映射，并在 `SelectionChanged(文本型 选中键列表)` 中调用 `FBro_隐藏` / `FBro_显示` 切换裸 `controlRef`；每次选择后只能有一个浏览器宿主可见，切换不得销毁实例或共享缓存目录。三个固定实例的完整示例位于 `src/new-emoji-fbro-listbox`。需要动态增删或数量不固定时，必须改用 `lingbuilder.new_emoji.fbro-shell` 的稳定 ID 集合，不得无限堆叠固定 `FBroBrowser` 控件。
-- `FBroBrowser.properties.processMode` 只允许 `in-process`、`independent-embedded`、`independent-window`。缺省值为 `in-process`；独立嵌入模式由每个控件自己的 Host 进程创建浏览器并把顶层内容窗口嵌入设计器宿主，独立窗口模式由 Host 创建可移动的桌面顶层窗口。AI 不得用这三个值以外的字符串，也不得把“谷歌原生 UI”命令与独立进程窗口属性混为同一个生命周期。
+- `FBroBrowser.properties.processMode` 只允许 `in-process`、`independent-embedded`、`independent-window`。缺省值为 `in-process`；独立嵌入模式由每个控件自己的 Host 进程创建浏览器并把顶层内容窗口嵌入设计器宿主，独立窗口模式由 Host 创建可移动的桌面顶层窗口。AI 不得用这三个值以外的字符串，也不得把“谷歌原生 UI”命令与独立进程窗口属性混为同一个生命周期。`independent-window` 宿主顶层窗口是否显示只跟随该控件在设计器里的可见性，控件隐藏时绝不弹出桌面窗口；独立进程握手在 `WM_CREATE` 内同步等待 `就绪`，每个实例最多阻塞界面线程 15 秒，因此生成的演示代码必须在控件的「创建完毕」事件里再读状态或导航，不得假设窗口一启动就在屏上。
 - FBro 只支持 Windows、MSVC、x64；启用它时应切换并锁定 x64。`in-process` 会把 CEF 135 加载到应用进程，因此与 `lingbuilder.cef3.browser` 的 CEF 150 互斥；只有项目中全部 FBro 控件均为两种独立进程模式时才允许二者共存。共存时主程序目录保留 CEF3 运行时，FBro CEF 135、Bridge 和资源只能物化到 `fbro-host/`，不得复制或重命名到主 exe 目录。
 - FBro 独立进程控制面只能监听随机本机回环端口，使用一次性 256 位 Token 鉴权；Token 只通过 Host 子进程环境传递，不得进入命令行、设计器模型、日志、AI 上下文或固定配置。控制器必须维护浏览器实例 ID、Host PID、WebSocket 连接和进程代次映射，拒绝旧代次连接/事件；不得固定端口或开放外部监听。
 - 独立模式当前覆盖创建、导航、前进后退、刷新、执行 JS、缩放、静音、代理、指纹、显隐、调整大小、截图、关闭和进程状态。高级 Frame、Cookie、受管对象、任务及 VIP 单项 API 仍以进程内 Bridge 为主，AI 不得在独立模式下宣称它们已经全部远程化；需要这些接口时应改用进程内模式，或明确说明尚需扩展 WebSocket 协议。
@@ -230,7 +234,7 @@ AI 不能因为自己熟悉英文 C++ 就强行替换中文 DSL。需要原生 C
 - 条件支持 `并且`、`或者`、`非`，例如 `如果真 (已登录 并且 非已过期)`；每个条件结构必须用对应的 `如果结束` 或 `如果真结束` 闭合。
 - `选择 (整数表达式)` 内使用一个或多个 `分支 (值1, 值2)`，可选一个 `默认`，最后写 `选择结束`。每个分支由生成器自动隔离，不需要额外写跳出命令。
 - `循环` 是无限循环；`循环 (条件)` 与 `判断循环首 (条件)` 是前置条件循环；`循环判断首 () ... 循环判断尾 (条件)` 是后置条件循环。
-- `计次循环首 (次数, 计次变量)` 从 1 计数，计次变量可省略；`变量循环首 (起始值, 目标值, 递增值, 循环变量)` 支持正向或反向步进；`枚举循环首 (集合, 当前项)` 遍历数组。显式填写的计次变量、循环变量和当前项必须先用 `局部` 或程序集变量声明。
+- `计次循环首 (次数, 计次变量)` 从 1 计数，计次变量可省略；`变量循环首 (起始值, 目标值, 递增值, 循环变量)` 支持正向或反向步进；`枚举循环首 (集合, 当前项)` 遍历数组。显式填写的计次变量、循环变量和当前项必须先用 `局部` 或程序集变量声明。数组的成员数、增删改查、排序和重定义由 `lingbuilder.std.array` 提供，语言本身只负责声明、传参、下标访问和遍历。
 - `跳出循环` 只允许写在循环内；`到循环尾` 与 `继续循环` 等价，只允许写在循环内。
 - `尝试` 至少包含一个 `捕获 (错误信息)` 或 `最终`，并以 `尝试结束` 闭合；`抛出("错误信息")` 抛出文本异常。`最终` 在正常完成、`返回` 或抛出异常时都会执行。
 - 普通条件会确定性翻译比较、算术、嵌套命令和宽字符串文本，例如 `如果 (文件对话框_取文件(文件对话框1, 0)!="")`。
@@ -311,6 +315,7 @@ LingBuilder 模块系统用于扩展中文命令、类型、补全、诊断和 C
 
 - 模块公开类型使用 `contributes.types[]`：省略 `kind` 的旧条目是 `opaque`；结构化记录必须声明 `kind: "record"` 和 `fields[]`；命名数组必须声明 `kind: "array"` 和 `elementType`。记录字段的数组维度使用 `isArray: true`，不要把 `[]` 拼进字段 `type`。
 - AI 可以在启用模块后使用其公开记录和数组：记录字段采用公开值语义，支持字段访问、嵌套和字段数组；命名数组等价于对应元素类型数组。AI 不得猜测未公开字段、给结构化类型补写 `cppType`，也不得把记录或数组降级成 JSON、文本或整数句柄来掩盖类型不一致。
+- 已启用 `lingbuilder.std.array@1.0.0` 时，AI 必须使用 `数组_取成员数`、`数组_取成员`、`数组_置成员`、`数组_加入成员`、`数组_插入成员`、`数组_删除成员`、`数组_清空`、`数组_查找`、`数组_是否包含`、`数组_排序`、`数组_倒序`、`数组_重定义` 操作语言原生数组，不得再用分隔符文本、控件列表或 `JSON值` 模拟动态数组。命令对元素类型透明，索引从 0 开始，越界一律安全返回失败值。数组参数只接受数组变量名或记录字段路径，不能传命令结果、下标或其它表达式；成员参数必须与元素类型一致。`数组_查找`、`数组_是否包含` 需要元素类型支持相等比较，`数组_排序` 需要支持大小比较，记录型数组调用这三条命令会稳定返回 -1 或假，AI 不得声称它们能按字段查找或排序。未启用该模块时数组仍然只能声明、传参、下标访问和用 `枚举循环首` 遍历。
 - 已启用 `lingbuilder.data.json@2.0.0` 时，AI 必须使用模块公开的 `JSON值` 和 `JSON_` 命令处理 JSON：`JSON_解析` 或 `JSON_创建*` 创建值，`JSON_对象_设置` / `JSON_数组_添加` 修改，`JSON_指针_取` / `JSON_指针_设置` 处理嵌套路径，完成后对长期持有值调用 `JSON_释放`。不得把 JSON 字符串用手工拼接、正则或 `文本_取中间` 伪解析；解析、Patch 或 Schema 校验失败时必须读取并保留 `JSON_取最后错误()` 的中文诊断。模块支持 RFC 8259、RFC 6901、RFC 6902、RFC 7396 与文档列出的 JSON Schema 核心约束；JSON5、JSONC、BSON、MessagePack、CBOR、远程 `$ref` 和网络 schema 加载不属于该模块，不能声称已经支持或静默降级。
 - `record` 和 `array` 是 LingCpp 语义契约，不是 DLL ABI。生成工程内部可输出 C++ `struct` 和 `std::vector<T>`，但预编译 DLL 边界禁止直接传递 STL 或未固定布局的 C++ 对象。需要原生交换复杂数据时必须使用模块明确提供的 POD、数据指针加数量、调用方缓冲区、任务或受管句柄命令；没有经过 binding 和生成器验证时，AI 不得声称结构化值可直接跨 DLL 传递。
 - 模块命令的 `bindings.commands[].parameters[].type` 和 `returnType` 可以引用本模块公开的 `record/array` 名称，但仅适用于由 LingBuilder 生成在同一工程内的值语义运行时。只要 target 携带原生 DLL，清单校验就会拒绝结构化类型直接跨 ABI；AI 不得通过改成 `raw`、裸指针或伪造 `cppType` 绕过门禁。
@@ -347,6 +352,9 @@ AI 必须遵守：
 - `lingbuilder.advanced.memory`、`lingbuilder.advanced.hook`、`lingbuilder.advanced.process-memory`、`lingbuilder.advanced.com`、`lingbuilder.advanced.assembly`、`lingbuilder.advanced.driver` 均为高风险模块。AI 必须说明风险并取得用户明确意图后才能建议启用；不得将其加入普通项目模板或用它们绕过 AI Bridge 的执行权限。
 - 已启用 `EdgeView 浏览器模块`（模块 ID：`lingbuilder.edgeview`，模块 `1.2.0`，安全能力 `edgeview.safe-api.v1/v2`）时，设计器工具箱会新增 `Edge浏览器 (EdgeBrowser)`；同窗多个实例、分组框和选项卡中的实例均拥有独立 HWND、Environment、Controller、WebView、Profile 和默认 UDF。地址、缓存、代理、User-Agent、脚本/消息/DevTools、缩放、静音、背景、Profile、隐私、语言、跟踪保护、自动填充及 v2 创建期选项由属性面板配置。AI 应优先使用中文控件名和目录化命令；旧数字实例 API只用于兼容纯代码布局。
 - EdgeView 新异步命令返回受管任务 ID，完成处理器必须写 `&处理器名`，处理器内用 `EdgeView任务_取当前任务ID/取状态/取结果/取错误` 读取结果并在不需要时释放。旧的 `"处理器名"` 仅为迁移兼容，会产生警告；AI 不得继续生成字符串处理器。二进制结果必须写入明确文件路径，AI 不得请求或编造裸 COM、IStream、IUnknown、内存地址、任意 Host Object 注入、CompositionController、PointerInfo 或 AutomationProvider API。
+- EdgeView 导出类命令（`EdgeView打印_PDF异步`、`EdgeView打印_PDF流到文件异步`、`EdgeView媒体_截图异步`、`EdgeView媒体_取Favicon异步`）的文件路径可以先写裸文件名或相对路径，运行期会按当前工作目录解析成绝对路径再交给 WebView2，任务结果回报的是解析后的绝对落盘路径；`设置JSON` 只接受 JSON 对象文本，键名使用 WebView2 驼峰写法（`orientation`、`scaleFactor`、`pageWidth`、`marginTop`、`shouldPrintBackgrounds`、`headerTitle`、`pageRanges`、`printerName` 等），未出现的键保持原设置，`{}` 表示不改设置。AI 生成导出代码时不得把 `设置JSON` 写成任意自由文本，也不得在同一个按钮里并发发起多个 `PrintToPdf`——WebView2 会把后发的判为失败；需要多个产物时一个按钮一个导出。
+- EdgeView 同步执行接口 `EdgeView_执行JS` / `EdgeView_执行JS实例` / `EdgeView_执行JS控件` **不能写在 WebView2 事件处理器里**（`导航完成`、`标题改变`、`Web资源响应收到` 等）。这类调用现在会立即返回空文本并输出中文诊断，而不是等满 15 秒；需要浏览器事件之后的返回值时，改用 `EdgeView脚本_执行详情异步(控件, 脚本, &完成处理器)` 在完成处理器里 `EdgeView任务_取结果`。要在「创建完毕」里等页面就绪后再用同步接口，使用 `EdgeView_等待事件控件(控件名, "导航完成", 超时毫秒)`，控件名同样是裸 `controlRef`；该命令本身也不得写在其它浏览器事件处理器内。
+- `EdgeView资源_读响应正文异步` 必须在 `Web资源响应收到` 处理器执行期间把 `responseHandle` 直接交给任务。把句柄存进成员变量、按钮点击或其它事件里再读会失败（`0x80004005`），这与响应来自真实网络还是 `EdgeView资源_设置事件响应文本` 的合成应答无关。AI 不得再生成「保存 responseHandle 稍后读取」的写法。
 - EdgeView 最低兼容基线是 SDK `1.0.3537.50` / Runtime 141，完整编译基线固定为 SDK `1.0.4078.44` / Runtime 150；不得按本机“最新目录”漂移。普通 HWND 提供 71 项事件。同步决策未设置时必须保持 WebView2 默认行为；创建期属性变更后必须重建。设计画布只显示占位，AI 可建议执行“运行此 Edge 控件预览”，不得声称网页实时嵌入 React 画布。
 - `edgeview.safe-api.v2` 覆盖受管对象、Frame/Worker、扩展、权限、通知、共享缓冲、附加文件对象、资源响应、证书、PDF 流和创建期 Options。AI 不得生成 CompositionController、PointerInfo、AutomationProvider、实验 API、裸 COM/指针、任意 Host Object 或未经用户明确选择的路径访问。
 - EdgeView 全局代理使用 `EdgeView_设置全局代理`，只影响之后创建的实例；单实例代理使用 `EdgeView_创建实例代理` 或 `EdgeView_创建区域代理` 并覆盖全局设置。代理切换必须重建实例，AI 不得声称能在不重建 WebView2 Environment 的情况下热切换代理。
@@ -844,3 +852,22 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - IDE 对模块 Permit 的验签只信任 `electron/src/services/modules/modulePermitTrustAnchors.ts` 内置锚点（keyId = SHA-256(SPKI DER) 前 16 位小写 hex；当前钉生产签发密钥 `0e2853e87a4250d3`）。禁止任何环境变量、配置或云端下发覆盖锚点，换锚必须走 IDE 发版；服务端 `/v1/modules/permit-key` 返回的 PEM 永不进入信任集，`keyId` 仅作轮换元数据。
 - keyId 不在锚内时同步端点返回 `MODULE_PERMIT_ANCHOR_UNKNOWN` 中文诊断（云端已轮换时提示升级 IDE）；伪造/未锚定 Permit 一律拒绝。
 - 云端 `MODULE_PERMIT_ACCEPTED_KEY_IDS` 维护轮换列表并经 `/v1/modules/permit-key` 的 `acceptedKeyIds` 下发，必须包含当前签发密钥；轮换顺序：云端加新 keyId → 发带新锚的 IDE → 再切签发密钥。
+
+## 动态图像控件运行时规则（2026-09-04）
+
+- Win32 动态图像控件使用持久化双缓冲 DIB 在控件自身 WM_PAINT 中绘制 GIF 当前帧；不得在定时器中逐帧调用 STM_SETIMAGE 或创建未回收的位图句柄。
+- 动画定时器只推进帧索引并触发无擦除重绘；控件销毁、DPI 重建必须释放双缓冲 DC、DIB 与 GDI+ Image。
+
+### EdgeView 下载路径与下载状态读取时序（2026-09-06）
+
+- `EdgeView事件_设置下载路径(控件, 文件路径)` 只能在「下载开始」**同步处理器执行期间**调用，
+  与 `EdgeView资源_设置事件响应文本` 同属事件决策窗口接口；离开该窗口调用返回 0。
+- 模块会把相对路径按当前工作目录补全成绝对路径，并逐级创建父目录
+  （WebView2 的 `put_ResultFilePath` 只收绝对路径且要求目录已存在）。
+  生成 C++ 时该值走独立槽 `eventDownloadPath`，不再与 `eventResultText` 共用。
+- **`EdgeView下载_取状态JSON` 的 `path` 在「下载开始」处理器内是决策前的默认落点快照。**
+  要确认改路径是否生效，必须在事件结束后再读一次（推荐单独一个按钮）。
+  返回 JSON 含 `resultFilePathError`（非零即 `put_ResultFilePath` 失败，同时输出中文诊断）
+  与 `pendingResultFilePath`（本次请求的落点）。事件内读到的 `path` 是决策前快照，对比 `pendingResultFilePath` 即可自证。
+- 示例：`下载开始` 里记下 `downloadId` 并改路径 → 另一个事件处理器里用
+  `EdgeView下载_取状态JSON(控件, 最近下载ID)` 展示最终落点。控件参数一律裸引用。

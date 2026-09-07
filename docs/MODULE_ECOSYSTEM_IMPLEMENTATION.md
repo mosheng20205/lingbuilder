@@ -55,6 +55,8 @@
 
 > 2026-08-08 补充：`lingbuilder.database.sqlite@2.0.0` 已从 7 条单连接动态桥接升级为 67 条商用级接口，并保留全部旧命令。模块通过 `sqliteModule.ts` 单一目录生成 contribution/binding，通过 `sqliteRuntime.ts` 提供多连接和预编译语句受管 ID、FULLMUTEX、强类型参数/列、事务/保存点、WAL、Online Backup、完整性检查、中断及线程本地完整错误状态；连接关闭会兜底释放所属语句，活动资源存在时禁止切换或卸载 DLL。项目必须提供与 Win32/x64 目标一致、固定来源/版本/SHA-256 的官方 `sqlite3.dll`，不得自动下载或把单架构 DLL 复制到全部输出。`smoke:sqlite-native` 已完成双架构 MSVC Release 编译和 x64 真实数据库闭环。
 
+> 2026-09-06 补充：修复 CEF3 **事件名层**不一致。此前「113 / 113 官方事件签名已接通」在签名层成立，但没有任何检查保证桥接层 `Emit*` 发出的中文名与 `cef3BrowserEvents.ts` 的目录名一致，而目录名正是运行时 `CEF3_绑定事件` 存处理器的键；机械比对得 **18 处**不一致（桥接发「浏览前请求」而目录用 `导航请求前`、发「资源加载前请求」而目录用 `资源加载前`、发「资源响应已接收」而目录用 `资源响应到达`、发「下载开始前 / 下载状态更新」而目录用 `下载开始 / 下载进度更新` 等）。后果是 `kind === 'decision'` 的同步可取消事件处理器永不执行，`LB_CEF3_EVENT_RESPONSE_V3::action` 恒为 0，取消静默失效且没有任何诊断。修复落在生成器 `lingCppWin32Project.ts`：新增 `CEF3_归一化Bridge事件名()` 别名表，在 `CEF3_处理Bridge事件` 读取 `packet.event_name` 处归一化，同步与异步两条派发路径统一使用目录名；该不变量由 `electron/tests/cef3BridgeEventNames.test.ts` 锁住（校验每个会被桥接发出的 decision 事件都能按目录名派发，且别名表不含过期条目）。桥接存在 `EmitEvent` / `EmitNotificationEventV4` / `EmitAsyncEvent` / `EmitDownloadHandlerNotification` 等多种发射点，测试按「含中文的宽字符字面量 + 前方出现 `Emit…(`」识别，不枚举函数名。改动生成器后必须 `npm run build:cli` 并重新生成示例工程——旧的 `generated/cpp` 不会自动继承修复。该缺陷曾让 CEF3 教程第 05 集把「导航未被取消」误判为「运行态中文乱码」而放弃实机演示镜头。
+>
 > 2026-08-08 补充：CEF3 面向用户的统一事件与接口参考由实际事件目录、安全覆盖目录和模块 manifest 生成 92 项事件名称、113 条官方事件签名与中文用户接口。当前覆盖为 979 implemented、8 internal、185 notApplicable、405 planned，即公开接口完成 979 / 1384（70.74%）。进程消息、PostData、Request/Response、RequestContext 身份/共享/站点设置/内容设置/Chrome 配色、PrintSettings、Browser/Frame、BrowserHost 新增 21 个安全入口及图片下载/PDF 打印的 4 个主方法与回调接口、BrowserView 全部 6 个接口、基础 View、Panel/Layout/BoxLayout、ScrollView、LabelButton/Button 全部 18 个当前安全入口、Window 42 项安全入口、OverlayController 全部 19 个接口、CEF API 15000 当前存在的 25 个 Textfield 接口、Display 全部 16 个接口、DragData 全部 28 个接口、XmlReader 全部 30 个接口、ZipReader 全部 13 个接口以及 ResourceBundle 全部 4 个接口，均已进入 C ABI、固定 V4 operation ID、原生测试和自动生成文档闭环；MenuButton 和 `show_as_browser_modal_dialog` 在真实受管委托链路落地前继续保持 planned，Textfield 的 7 个 `removed=15000` 旧颜色接口也不能以缓存或近似替代伪装为 implemented。
 >
 > CEF Views 统一使用受管 `View`、`Window`、`ViewDelegate`、`Layout`、`Display` 和 `DisplayCollection` typed handle，并调度到 CEF UI 线程。BrowserView 使用受管 View 句柄并内部持有对应 Bridge Browser；Browser、反查 View 与 Chrome 工具栏都以可空受管别名返回，释放时按引用计数归还 Browser owner，不暴露 Client、Delegate、CEF 指针或原生地址。V4 创建保持官方 6 个参数位置，当前 Client/Delegate 仅允许空句柄，BrowserSettings 必须是只含 `javascript`、`images`、`webgl` 逻辑字段的受管 Dictionary。Display 全量枚举由独立集合句柄持有 `CefRefPtr<CefDisplay>`，通过计数和按索引取项访问，禁止把 64 位句柄写入 JSON 或 Double；点、矩形、DPI、ID 与旋转使用带版本结构或独立输出值，V4 只接受严格范围参数并由 Bridge 生成 JSON。Layout 保留所属 Panel，ScrollView 校验内容父级，Textfield 校验委托子类型、命令、样式、范围和逻辑值；`read_only` 保留 CEF 用户输入策略而非误判为对象不可变。
@@ -468,6 +470,8 @@ lingbuilder.module.json
 - 控件内部实例编号使用稳定生成 control ID，用户代码优先通过中文控件名调用 EdgeView 控件命令；旧数字实例和区域 API 保持兼容。空缓存目录必须确定性生成独立 `.edgeview/<controlId>`，避免多控件默认共享会话目录。
 - WebView2 SDK/Loader 仍由 `nativeDependencyService` 受控发现和复制；设计器只保存模型，不直接读取 NuGet 或启动原生浏览器。
 - EdgeView 事件目录集中维护在 `electron/src/services/modules/edgeViewBrowserEvents.ts`，按 `1.0.3537.50` 与 `1.0.4078.44` 双基线审计。普通 HWND 控件接入 71 项可达事件；`CompositionController` 独占的 2 项事件明确排除。注册表、模块补全、设计器事件面板、中文事件映射和生成器覆盖测试必须消费同一目录，新增 SDK 版本时不得只补 UI 或只补 C++。
+- EdgeView 导出类命令的文件路径语义统一：`EdgeView打印_PDF异步`、`EdgeView打印_PDF流到文件异步`、`EdgeView媒体_截图异步`、`EdgeView媒体_取Favicon异步` 都先把调用方给出的相对路径按当前工作目录解析成绝对路径，再把绝对路径交给 WebView2 或 `CreateFileW`，任务结果回报绝对落盘路径。`EdgeView打印_PDF异步` 与 `EdgeView打印_打印异步` 的 `设置JSON` 参数必须有真实运行期实现（`EdgeView打印_应用设置JSON` 按 WebView2 驼峰键名白名单写回本控件的打印设置），不得继续作为被丢掉的哑参数存在；非 JSON 对象文本必须给中文诊断而不是静默成功。
+- EdgeView 的同步等待类命令必须区分调用上下文：`EdgeView_执行JS` 系列在 `EdgeView_记录事件` 派发栈内（`eventDecisionActive`）立即返回空值并输出中文诊断，禁止再用自建消息泵等满超时；`EdgeView_等待事件控件(控件名, 事件名, 超时毫秒)` 以 `controlRef` 解析设计器控件后转调 `EdgeView_等待事件`，使「创建完毕 → 等导航完成 → 同步取值」这条教程主路径成立。
 - EdgeView 面向用户的事件参考文档登记在 manifest 的 `contributes.docs[]`，路径为 `electron/docs/modules/edgeview/README.md`，由 `electron/scripts/generate-edgeview-event-doc.ts` 从上述目录生成。文档必须列出全部中文事件名、WebView2 标识、设计器 ID、来源、说明、关键字段、调用示例和 CompositionController 排除项；修改事件目录后运行 `npm run module:edgeview-docs`，发布/测试前运行 `npm run module:edgeview-docs:check`。
 - 事件运行时通过 `QueryInterface` 逐级启用 WebView2 版本接口，并级联保存 Download、Frame、Notification、Find、Profile、DevTools receiver 等事件源。事件数据统一为 UTF-16 JSON；等待事件按事件名计数，避免高频资源/下载事件覆盖最近值后造成漏判。
 - 2026-07-31 起模块升级到 `1.2.0` / 最低 LingBuilder `0.2.7`：`edgeViewApiCatalog.ts` 集中生成 235 条安全 API contribution 与 binding，连同 36 条兼容命令共 271 条。覆盖清单固定审计 SDK `1.0.3537.50`（Runtime 141）和 `1.0.4078.44`（Runtime 150）：新基线 995 个稳定方法已归为 330 个公开实现、565 个内部适配和 100 个批准排除，`pending=0`。`module:edgeview-coverage:complete` 同时验证双头文件哈希、中文名、binding、运行时符号和测试 ID。
@@ -659,7 +663,21 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 - Visual Studio 工程使用 `DynamicLibrary`、动态 CRT `/MD` 和 `exports.def`。MSBuild 成功后必须同时发现 `<项目ID>.dll` 与 `<项目ID>.lib`；缺少任一产物时，受控构建报告中文失败诊断，不能把进程退出码为 0 当作 DLL 构建成功。
 - F5、Visual Studio 导出、AI Bridge 和后续 CLI 均必须复用同一 DLL 项目清单、模块上下文和受控 MSBuild 路径。禁止在 React、AI prompt 或临时脚本中另写 DLL 文件生成逻辑。
 
-## .lbmod ��װ��ڣ�2026-09-02��
-�����ͨ�� webUtils.getPathForFile ��ȡ�Ϸ�·����������ͳһִ�� realpath/stat/��չ��/��СУ�鲢���Ƶ���ǰ������ .lingbuilder/module-packages/����� renderer ���ü���Ԥ����ȷ�ϰ�װ API���ļ�ѡ��ť������������ second-instance ������ lingbuilder:install-module-package ���󣬽�ֹ��Ĭ��װ��
+## .lbmod ��װ��ڣ�2026-09-02��
+�����ͨ�� webUtils.getPathForFile ��ȡ�Ϸ�·����������ͳһִ�� realpath/stat/��չ��/��СУ�鲢���Ƶ���ǰ������ .lingbuilder/module-packages/����� renderer ���ü���Ԥ����ȷ�ϰ�װ API���ļ�ѡ��ť������������ second-instance ������ lingbuilder:install-module-package ���󣬽�ֹ��Ĭ��װ��
 
-��װ��״̬�ְ�����ȡ�С�У���С�Ԥ������װ�С��ɹ���ʧ�ܣ�electron/package.json �� .lbmod �����ɲ���У�顣
+��װ��״̬�ְ�����ȡ�С�У���С�Ԥ������װ�С��ɹ���ʧ�ܣ�electron/package.json �� .lbmod �����ɲ���У�顣
+
+## 动态图像控件 GIF 资源生命周期（2026-09-04）
+
+Win32 AnimatedImage 使用控件自绘双缓冲呈现 GIF，运行时不再通过 STM_SETIMAGE 逐帧替换 HBITMAP；模块实现必须保证动画帧资源和缓冲区在窗口重建、DPI 变化与销毁时释放。
+
+### EdgeView 事件决策窗口的路径语义（2026-09-06）
+
+同一模块内三类路径接口此前行为不一致，现已统一为「模块侧补全绝对路径 + 必要时建父目录 +
+失败给中文诊断」：`EdgeView打印_PDF异步`、`EdgeView打印_PDF流到文件异步`、
+`EdgeView媒体_截图异步`、`EdgeView媒体_取Favicon异步` 与 `EdgeView事件_设置下载路径`
+共 5 处都走 `EdgeView_取绝对路径`，清单回归断言的计数基线相应从 4 提到 5。
+
+新增的 `EdgeView_确保父目录` 逐级 `CreateDirectoryW`，避免目标目录不存在导致的静默失败；
+`EdgeView_报告事件决策窗口缺失` 负责在离开同步事件窗口调用决策接口时输出中文说明。

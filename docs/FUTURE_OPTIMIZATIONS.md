@@ -1,5 +1,7 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-09-05）：补齐 LingCpp 数组运行时。此前数组只能声明、传参、下标访问和用 `枚举循环首` 遍历，没有任何命令能读取成员数或增删成员。新增内置 `lingbuilder.std.array@1.0.0`，提供 `数组_取成员数/是否为空/取成员/置成员/加入成员/插入成员/删除成员/清空/查找/是否包含/排序/倒序/重定义` 共 13 条命令，直接作用于语言原有数组声明并映射到 `std::vector<T>`，索引从 0 开始、越界安全返回失败值。binding 新增泛型 `array`（数组左值，按 `std::vector<T>&` 原样传递）和 `arrayElement`（与数组元素类型一致的值，作为返回值时由实参定型）两个类型；清单校验拒绝 `array` 作返回值、缺少 `array` 参数的 `arrayElement`，以及泛型数组跨原生 DLL ABI。语言服务同步补上 `名单[0]` 的元素类型推断、数组变量的数组维度（项目全局、程序集、局部、记录字段），`areLingCppTypesCompatible` 不再把数组和标量视为兼容，并对数组命令校验实参个数、数组左值和成员类型。`数组_查找/是否包含/排序` 用 `std::void_t` 探测元素类型是否支持比较，记录型数组稳定返回失败值而不是编译失败。`smoke:array-native` 覆盖真实 MSVC x64 编译与运行时行为断言（`--runtime-only` 可在缺少 v143 平台工具集的机器上单独验证运行时）。后续若开放数组字面量初始化、多维数组或按字段排序，必须继续复用同一 binding 类型与诊断链路，不得回退到分隔符文本或 JSON 句柄模拟数组。
+
 - 已修复（2026-09-02）：SDK 按需安装在归档已完成并通过 SHA-256 后不再等待 aria2c 进程退出，UI 会立即离开“正在下载”，分别显示下载进度/速度，并进入“正在解压”；同时兼容历史生成的平铺 SDK ZIP（根目录为 `sdk/`、模块清单和 README），解压前安全归一化到受控模块目录，避免误报“ZIP 顶层目录必须是模块 ID”。
 
 - 已修复（2026-09-01）：Windows SDK 依赖安装在解压后将 staging 目录原子重命名到共享缓存时，Defender/索引器等进程可能短暂持有目录句柄，导致 `EPERM: operation not permitted, rename`。SDK 服务现在对下载归档、备份目录、staging 到目标目录及回滚目录使用有界退避重试（仅针对 `EPERM`/`EACCES`/`EBUSY`），并保留最终失败诊断；新增回归测试覆盖瞬时 `EPERM` 后成功。后续 SDK 安装仍必须保持原子替换、校验和路径安全门禁，不得用无限重试或静默覆盖失败。
@@ -996,9 +998,9 @@
 - 已完成：模块 Permit 信任根从「服务端下发 PEM 即信任」改为 IDE 内置锚点（`electron/src/services/modules/modulePermitTrustAnchors.ts`，钉生产密钥 `0e2853e87a4250d3`）+ 云端轮换列表 `MODULE_PERMIT_ACCEPTED_KEY_IDS`（`/v1/modules/permit-key` 返回 `acceptedKeyIds`，仅元数据）；云端已部署并容器内验证。详见 AGENTS.md「模块 Permit 信任根规则」。
 - 后续待办：后续如新增第二条收费模块或扩展 Permit 载荷（policyVersion 迁移、离线宽限期），应沿用本锚点模式扩展，不要恢复服务端换根路径。
 
-- 2026-09-02��.lbmod ģ�鰲װ�ѽ��� Electron �ٷ��Ϸ�·�����ļ�ѡ�񡢵�ʵ�������������ܿ�Ԥ���¼��������ɼ����������� UI ״̬����ԭ����װ���ع���֤��
+- 2026-09-02��.lbmod ģ�鰲װ�ѽ��� Electron �ٷ��Ϸ�·�����ļ�ѡ�񡢵�ʵ�������������ܿ�Ԥ���¼��������ɼ����������� UI ״̬����ԭ����װ���ع���֤��
 
-- 2026-09-02 ���䣺ģ�鰲װ��������ʾ��ȡ��У�顢Ԥ������װ���ɹ�/ʧ��״̬���ļ��������ü����Զ��ع���ԡ�
+- 2026-09-02 ���䣺ģ�鰲װ��������ʾ��ȡ��У�顢Ԥ������װ���ɹ�/ʧ��״̬���ļ��������ü����Զ��ع���ԡ�
 
 # 2026-09-02 动态图像控件 GIF 内存回收
 
@@ -1011,3 +1013,367 @@
 - 已修复：普通 Win32 生成器的 控件_添加项目 运行时此前只接受 const wchar_t*，而 .lcpp 宽字符串表达式可能确定性生成 std::wstring，导致 MSVC C2664 编译失败。运行时现提供 std::wstring 兼容重载并转发到原始实现，保持后端调用 ABI 一致。
 - 影响范围：lectron/src/services/windowDesigner/lingCppWin32Project.ts 生成的普通 Win32 C++ 运行时；覆盖组合框/列表框项目追加及由变量、函数返回值产生的文本参数。
 - 后续新增 wideString 运行时命令时，必须同时检查生成器表达式结果与所有后端声明，优先在运行时层提供明确重载。
+
+- 2026-09-04 补充：动态图像控件改为持久双缓冲 DIB 自绘；定时器仅推进帧索引并触发无擦除重绘，避免逐帧 STM_SETIMAGE 导致 GDI 句柄增长和闪烁。
+
+# 2026-09-05 FBro 教程示例项目实测暴露的问题
+
+制作《FBro 指纹浏览器合集》11 集示例项目时实测到以下问题，均已在示例侧绕开并记录，尚未修复源头。
+
+## 1. 未授权环境下 `FBroVIP_取授权信息JSON()` 导致进程直接退出
+
+- 现象：没有有效 VIP 授权时调用该命令，生成的 exe 立即退出，没有中文诊断、没有 stderr。注入
+  `LINGBUILDER_FBRO_VIP_AUTHORIZATION_CODE` 后同一二进制一切正常。
+- 影响：任何面向普通用户的示例都不能调用它——未授权用户一点按钮程序就没了。
+- 现状：第 04 集示例改用 `FBro指纹_取调用次数` + `FBroVIP_取已应用配置JSON` 两个不会崩溃的脱敏入口。
+- 建议：无授权时应返回空文本或错误码，并通过 `FBro_取最近错误` 给出中文诊断，绝不能让宿主进程退出。
+
+## 2. `FBro指纹_应用配置` 的返回码语义与直觉相反，且无效 JSON 不给诊断
+
+- 实测：已授权 + 合法脱敏夹具返回 `1`；残缺 JSON（如 `{"device":`）返回 `0`，且 `FBro_取最近错误` 可能为空。
+- 影响：按「0 即成功」写的代码会把失败当成功；文档与口播里的「失败会留下中文诊断」目前不成立。
+- 建议：统一返回码语义并补齐解析失败的中文诊断。
+
+## 3. 同机并存的 FBro 实例会让新启动的程序主窗口长时间不显示
+
+- 现象：只要机器上还有别的 `LingBuilderPreview` / `LingBuilderFbroHost` / `FBroSubprocess`（尤其是上次强杀残留的），
+  新启动的 FBro 程序进程存活但主窗口 150 秒内都不出现；清空这些进程后同一 exe 立刻正常。
+- 影响：批量验证、CI 并行、用户同时开两个 FBro 程序都会踩到；本次调查里它一度伪装成
+  「about:blank 不能用」「多个进程内控件不能共存」等假象（这两条经清场后复测均已证伪）。
+- 建议：排查 FBro SDK 的多实例判定（`enable_auto_multiple`）与全局缓存加锁路径，至少要有超时与中文诊断。
+
+## 4. 强制结束主程序不回收 Host 与渲染子进程
+
+- 现象：`Stop-Process` 掉主 exe 后，`LingBuilderFbroHost` 与 `FBroSubprocess` 仍在运行，占住
+  `bin/.fbro/**`，下一次构建清理产物目录时报 `EBUSY: resource busy or locked`。
+- 建议：Host 应监听父进程句柄，父进程消失时自行退出。
+
+## 5. 语言服务把字符串字面量里的 `a.b(` 当成功能库调用
+
+- 现象：`.lcpp` 里写 `文件_写入文本(路径, "document.getElementById('x')…")` 会报「找不到功能库“document”」并阻断构建。
+- 原因：`functionLibraryService.ts` 的 `scanQualifiedCalls` 只 `stripLineComment`，没有像同文件的
+  `analyzeFunctionLibraryDependencies` 那样先 `stripCommentsAndStrings`。
+- 现状：示例里的内嵌 JS 全部改成 `document['getElementById'](…)` 括号取属性来绕开。
+- 建议：`scanQualifiedCalls` 与 `scanUnqualifiedCalls` 统一先剥离字符串。
+
+## 6. `到文本(...)` 参与拼接时容易生成有歧义的 C++
+
+- 现象：一个表达式里出现两次 `到文本(...)`，或 `到文本(...)` 与 `std::wstring` 相加，MSVC 报
+  `C2666: 重载函数具有类似的转换`；用户只看到原始 C++ 报错，没有 LingBuilder 级诊断。
+- 原因：`LingCppTextValue` 同时有 `operator const wchar_t*()`、两个成员 `operator+` 和两个友元 `operator+`，
+  再叠加 `std::wstring` 的标准 `operator+`，候选集互相「转换相似」。
+- 相关：CDP 与部分标准库命令返回 `const wchar_t*`，`"字面量" + 命令()` 会直接变成指针相加（`C2110`）。
+- 建议：收敛 `LingCppTextValue` 的转换与运算符重载（例如去掉隐式 `operator const wchar_t*`，
+  或让所有 wideString 命令统一返回 `LingCppTextValue`），并在语言服务层对这两种写法给出中文诊断。
+
+# 2026-09-06 EdgeView 教程示例项目实测暴露的问题
+
+## 1. 同步版 `EdgeView_执行JS控件` 在 WebView2 事件回调里必然超时返回空文本
+
+- 现象：`事件 _浏览器控件_导航完成()` 里调用 `EdgeView_执行JS控件(浏览器控件, "document.title")`，
+  处理器确实执行了（`控件_设置文本` 把状态条清空），但返回值恒为空串；同一个调用搬到
+  `_运行按钮_被单击` 里立即返回 `"LingBuilder EdgeView 测试页"`。原生 exe 的调试输出在 15 秒后打出
+  「EdgeView 执行 JavaScript 失败或等待返回值超时。」
+- 原因：`EdgeView_执行JS实例` 用 `PeekMessageW` + `MsgWaitForMultipleObjects` 自建嵌套消息泵等
+  `ExecuteScript` 完成回调；而 WebView2 的 `add_NavigationCompleted` 回调本身就在 UI 线程的
+  WebView2 分发栈上，泵不出自己的后续回调，只能等满 15000ms 超时。
+- 现状提示：教程侧已绕开——第 01 集把标题读取放在按钮点击事件里；需要同步返回值的脚本调用一律不要写进
+  浏览器事件处理器。
+- 建议：`EdgeView_执行JS实例` 检测到当前处于 `EdgeView_记录事件` 派发栈内（`eventDecisionActive`
+  或新增的派发深度标记）时，直接给出中文阻断诊断并提示改用 `EdgeView脚本_执行详情异步` + 完成处理器，
+  而不是静默等 15 秒返回空串。语言服务侧也应能对「事件处理器内调用同步等待类命令」给出非阻断提示。
+
+## 2. `.lcpp` 里 `事件 _控件名_事件名()` 命名约定不会自动绑定 EdgeView 控件事件
+
+- 现象：第 01 集源码原本写着 `事件 _浏览器控件_导航完成()`，设计器模型里 EdgeBrowser 控件的
+  `events` 为空，生成的 C++ 只有处理器函数和分派表，没有任何地方注册它 —— 这是一段永不执行的死代码，
+  且诊断面板不报错、错误列表为 0。
+- 原因：普通 Win32 控件走 `GetEventHandler(*control, eventId)` 的设计器事件槽；EdgeView 控件的中文事件
+  必须显式调用 `EdgeView_绑定控件事件(控件名, "导航完成", &处理器)`（第 05、12 集就是这么写的）。
+  两套绑定机制同名不同路，靠命名约定猜不到。
+- 建议：要么让生成器在设计器模型缺少事件槽时给出中文诊断「处理器 `_<控件>_<事件>` 未绑定，
+  请在设计器事件页登记或改用 `EdgeView_绑定控件事件`」，要么统一由生成器把符合
+  `_<控件名>_<事件中文名>` 约定的处理器自动写入控件 `events`。两种都行，但不能继续静默。
+
+## 3. 教程示例项目仍残留公网/伪域名地址
+
+- 现状：`generate-edgeview-tutorial-projects.ts` 第 12 集导航 `https://demo.lingbuilder.local/capstone`，
+  该虚拟主机从未注册，F5 后必然导航失败；第 02 集的 Cookie 域同样写死 `demo.lingbuilder.local`
+  （只作 Cookie 作用域、不导航，暂不影响画面）。`builtinModules.ts` 的 EdgeView 补全片段与
+  `EdgeView_创建` 示例仍默认 `https://example.com`。
+- 建议：综合项目改成与第 01 集一致的 `EdgeView导航_设置虚拟主机` + 本地 `assets/capstone.html`；
+  产品级默认补全片段是否去掉公网地址属独立决策，需产品确认后再改。
+
+
+## 4. EdgeView 第 07 集样板复核结论（2026-09-06 实测）
+
+以下每条都在本机 Electron + MSVC + WebView2 Runtime 141 上实测复现，不是推断。
+
+### 已修复
+
+- **第 12 集公网/伪域名（对应 §3）**：生成器已改为 `EdgeView导航_设置虚拟主机(浏览器控件, "capstone.local", 路径_转绝对路径("assets"), 1)`
+  + `https://capstone.local/capstone.html`，资源过滤器同步改成 `https://capstone.local/*`，并启用 `lingbuilder.fs.path`。
+  同时把 `导航完成` 回调里的同步 `EdgeView_执行JS控件` 移到 `_运行按钮_被单击`，回调只读 `EdgeView事件_取字段`。
+- **生成器整目录删除会吃掉用户文件**：`writeEpisode` 原先 `fs.rm(示例项目, {recursive:true})`，实测重跑会删掉 IDE 生成的
+  `*.lbsln`；CEF3 示例还证明 `.lingbuilder/build-configuration.json` 同样是 IDE 写的。已改为 `clearGeneratedFiles`，
+  只删生成器自己写出的 6 个文件加过期 project 目录，重跑后 `.lbsln` 哈希不变。
+- **`NN/验证记录.md` 硬编码 `生成时间：2026-09-04`**：任何人工验证证据都会在下次重跑时被静默覆盖。
+  已改为 `verificationEvidence[集号]` 数据驱动，未验证的集输出明确的「待验证」条目而不是假日期。
+
+### 平台硬约束（写教程代码前必须知道）
+
+- **WebView2 事件回调里不能同步执行 JS（2026-09-06 已改为快速失败）**：`EdgeView_执行JS控件` 在 `导航完成` 一类回调内调用会死锁，
+  卡满 15000 ms 后返回空文本；同样的调用放在按钮 `BM_CLICK` 里立即返回。
+  现在 `EdgeView_执行JS实例` 检测到 `instance->eventDecisionActive` 时立刻返回空文本，并用
+  `EdgeView_报告回调内同步等待` 输出中文诊断，提示改用 `EdgeView脚本_执行详情异步` + 完成处理器。
+  实测：回调内调用从 15000 ms 降到同一毫秒内返回（诊断工程记录 `sync-callback-begin` 与 `sync-callback-end|` 同为 539 ms），
+  按钮内调用照常返回 `"诊断页 /sync"`。这条仍是**平台约束**，不是可以修好的缺陷：
+  WebView2 的完成回调要等界面线程回到消息循环才会派发，在回调里自建消息泵泵不出自己的后续回调。
+- **`EdgeView_等待事件控件(控件名, 事件名, 超时毫秒)`（2026-09-06 新增）**：原先 `EdgeView_等待事件` 只按设计器
+  `control.id` 查 `edgeViews_` 注册表，`.lcpp` 侧既没有 `_控件` 变体也拿不到实例 id，导致「创建完毕 → 等导航 → 填表」
+  这条最自然的教程写法不成立。新命令用 `EdgeView_查找控件(控件名)` 解析 controlRef 后转调原命令，
+  binding 参数声明为 `controlRef`，补全为裸控件名。
+  实测在 `创建完毕` 里 `EdgeView_等待事件控件(浏览器控件, "导航完成", 8000)` 返回 1，随后同步
+  `EdgeView_执行JS控件(浏览器控件, "document.title")` 立即返回标题，因此第 07 集旁白已经可以按原话实现。
+  注意：它只能在**非** WebView2 回调上下文里调用（例如 `创建完毕`、按钮事件），在浏览器事件处理器内调用同样会等满超时。
+- **语言服务把字符串字面量里的 `identifier.identifier(` 误判为功能库调用**：`"document.getElementById('name')"` 会报未知功能库。
+  教程代码目前用方括号访问 `document['getElementById']('name')` 规避。属误报，应修词法作用域而不是教用户绕。
+- **生成器少 `.c_str()`**：把拼接出的 `std::wstring` 传给 `const wchar_t*` 参数会生成 C2664。
+  当前只有字符串字面量能安全传给 `EdgeView_执行JS控件`。
+- **巨型内联 HTML 字面量会打乱翻译器**：`.lcpp` 里放整页 HTML 字符串后，**下一条**字符串字面量会丢掉 `L` 前缀。
+  第 09、10 集仍走 `EdgeView导航_HTML(控件, "<整页 HTML>")`，属未爆的同类风险；建议与 01/07 统一改成本地虚拟主机。
+
+### 剪辑与渲染侧
+
+- **Remotion 预览合成不会自动缩放 px 坐标**：1920 设计空间写死的布局在 1280×720 预览合成里直接溢出裁切。
+  已用 `transform: scale(width / 1920)` 的设计空间容器包住全部内容，一套数据同时喂 1080p 母版与 720p 预览。
+- **本机系统 Edge headless 已不可用**：`msedge --headless=new --screenshot` 报 `Failed to launch the browser process! Error: Closed with 0 signal: null`
+  且不产出文件；同参数的 Chrome 正常。Remotion 渲染必须 `--browser-executable` 指向
+  `C:\Program Files\Google\Chrome\Application\chrome.exe`。这与 AGENTS.md「用系统 Edge 避免 Chrome Headless Shell 下载被墙」的记录相反，以本机实测为准。
+- **`ffmpeg -vsync` 在本机 build 已不存在**：抽帧改用 `-fps_mode passthrough`；`tile` 过滤器只接受一个输入，
+  多图联络表要先落成 `g%02d.png` 编号序列。
+
+### 仍待处理
+
+- 第 07 集旁白第 3 条「在创建完毕事件里」与实现不符（填值在 `_运行按钮_被单击`）。是否只重合成该 11.6 s cue
+  由用户裁决，详见 `AI 视频自主生产/EdgeView 浏览器模块合集/字幕修正记录.md`。
+- 第 12 集 `assets/capstone.html` 复用表单页，没有可触发 `下载开始` 的元素，下载镜头需要补一个本地下载链接。
+- 第 08 集仍是两个子项目（替换响应 / 读取响应），最长旁白 91.68 s，尚未纳入统一 `Episode` 数据结构。
+
+
+## 5. EdgeView 批量录制（01–12）踩到的工程坑（2026-09-06 实测）
+
+这一批是「一集一集跑同一条采集流水线」时暴露出来的，跟第 4 节的单集样板结论不重叠。
+
+### LingBuilder 自身的行为
+
+- **Electron 主窗口关不掉**：`electron/main.ts:495` 的 `mainWindow.on('close')` 会 `event.preventDefault()`
+  并向 renderer 发 `window:close-requested`，只有 renderer 调过 `confirmClose` 把窗口登记进
+  `rendererConfirmedClose` 才真关。实测跨进程 `PostMessage(WM_CLOSE)`、`WM_SYSCOMMAND/SC_CLOSE`
+  和真实 `Alt+F4`（`keybd_event`）全部无效，进程一直 `Responding=True`。
+  唯一可靠路径是 CDP 调 `window.lingBuilder.windowControls.confirmClose()`，已封装成 `close_ide.mjs`，
+  并由 `launch_record.ps1` 在拉起下一个实例前自动调用。
+  建议：给 IDE 加一个「无 renderer 应答时超时后强制关闭」的兜底，否则 renderer 一旦停在
+  `chrome-error://chromewebdata/` 就永远关不掉，只能 taskkill。
+- **重跑生成器时 IDE 必须完全退出**：实测在 IDE 打开 01 集的情况下重跑
+  `npm run tutorial:edgeview:generate`，`src/MainWindow.lcpp` 被串写成开头多出一段
+  `类 MainWindow / 事件 创建完毕()` 桩、原文件头被吃掉字节的损坏内容；renderer 重载后 IDE 还会把
+  `未命名解决方案 / lingbuilder-ui-project` 回写进 `01/示例项目/.lingbuilder/solution.json`，
+  并在 `.lingbuilder/` 根落下 `window-designer.json` 与 `recovery/`。
+  已封装 `regen_tutorials.sh`，先断言批量端口上没有 IDE 再生成。
+  建议：IDE 保存解决方案前先比对磁盘修订号，发现外部改动时给中文提示而不是直接覆盖。
+- **`错误列表 (0)` 与构建被阻断同时成立**：输出面板写着
+  `【F5错误】LCPP 项目源码存在阻止构建的错误：src/MainWindow.lcpp 第 19 行：找不到功能库"localStorage"。`
+  而状态栏的 `错误列表` 计数仍是 0。阻断性中文诊断没有进错误列表，靠看计数会误判为构建健康。
+  建议：把 F5 阻断诊断同步进错误列表，或在计数旁显示「构建被 N 条诊断阻止」。
+- **纯 `std::wstring` 变量传参没问题**：`局部 文本型 X = EdgeView_执行JS控件(...)` 再生成出
+  `控件_设置文本(L"运行状态", LingCppWideArg(X))`，可编译。第 4 节记的「少 `.c_str()`」只发生在
+  **拼接表达式**上，不是所有非字面量实参，描述范围要收窄。
+
+### 采集与脚本
+
+- **含中文的 `.ps1` 必须带 UTF-8 BOM**：Windows PowerShell 5.1 对无 BOM 文件按 ANSI codepage 解析，
+  中文注释会让脚本在 `param()` 处直接 `UnexpectedToken` 崩掉，而且报错位置指不到真因。
+  本目录所有 `.ps1` 已统一补 BOM；新写脚本时编辑器必须存成 UTF-8 with BOM。
+- **`click_native_button.ps1` 的 `-Index` 枚举不可靠**：同一窗口三个按钮，`BUTTONS=` 一度只报 1。
+  现在改为把每个按钮的 `GetWindowText` 落到 UTF-8 的 `native_captions.txt`，采集侧按标题记账
+  （`NN/素材/shots/native_states.txt`），截图与按钮动作才能对上。
+  注意 PowerShell 的 `$caps += $x` 会把多个标题拼成一个字符串，必须用 `List[string].Add()`。
+- **Remotion 高亮标注的标签画在框上方 46px**（`EpisodeView.tsx` 的 `top: box.y - 46`）。
+  代码镜头行距很紧时标签会盖住上一行代码，比不标更糟。01/02 集已撤掉高亮，命令名改由卡片承载；
+  只有像 07 集那样上方确实有空白带时才用高亮。
+- **示例项目以前不带 `build-configuration.json`**，F5 默认落在 Debug，导致各集构建口径不一致。
+  生成器现在为每集写出 `{ mode: "Release", architecture: "Win32" }`。
+
+### 教程示例项目与口播稿的落差（已改）
+
+- 第 02 集原示例只 `置Cookie` 两次、页面从不导航，运行窗口是两块空白，而口播第 4 条要求
+  「A 写 LocalStorage、B 读不到」这一核心证据。已改成两个会话都走 `iso.local` 虚拟主机加载
+  `assets/isolation.html`，三个按钮分别「写入会话A / 读取会话B / 读取 Cookie」，
+  实测运行窗口同时出现 A 蓝底「读到：只在A出现」与 B 橙底「本地存储为空」，
+  Cookie 按钮回显 `[{"name":"演示键","value":"脱敏值","domain":"iso.local","path":"/"}]`。
+- 第 01 集口播第 5 条说标题「打印到调试输出」，原代码只写状态标签。已改成
+  `局部 文本型 页面标题 = EdgeView_执行JS控件(...)` 后同时 `调试输出(页面标题)` 和
+  `控件_设置文本(运行状态, 页面标题)`，实测编译通过。
+- 第 12 集口播第 3 条要求在 `导航完成` 处理器里同步取 `document.title`（不可实现），
+  已按用户确认改用 `EdgeView脚本_执行详情异步(..., &标题就绪)`；
+  同时 `assets/capstone.html` 补了 `data:` 下载链接，否则 `下载开始` 永不触发。
+
+### 仍待处理
+
+- 第 03/04/05/06/09/10/11 集的示例项目还没逐集对照口播稿核过落差，按 02 集的经验，
+  大概率还有「口播承诺了可验证证据、示例项目没做」的情况，采集前应先读该集 `.srt`。
+- 第 05 集 `.lcpp` 里的 `事件 纯代码实例对照()` 块引用了不存在的 `实例导航完成` 处理器，
+  且 `EdgeView_等待事件` 对设计器控件不可用（见第 4 节），该块是永不执行的死代码，
+  不能当运行证据，需要重写或删除。
+- 第 06 集 `assets/message.html` 实际复用 intro 页，没有网页侧 `postMessage` 接收方，
+  `EdgeView脚本_发送字符串消息` 发出去没有可见效果。
+- 第 09/10 集仍用 `EdgeView导航_HTML` 内联整页 HTML，有「巨型字面量让下一条字符串丢 `L` 前缀」的风险。
+
+### 补充：重建控件会丢弃虚拟主机映射与全部运行期设置（03 集实测）
+
+- `EdgeView创建选项_重建控件(控件)` 之后，同一个控件上此前生效的
+  `EdgeView导航_设置虚拟主机` 映射与 `EdgeView设置_置用户代理 / 置缩放 / 置静音` **全部失效**：
+  实测再导航 `https://settings.local/settings.html` 直接落到
+  「嗯… 无法访问此页面 / 找不到 settings.local 的服务器 IP 地址」，
+  重新挂上映射后页面里的 `navigator.userAgent` 与 `window.innerWidth` 也回到默认值。
+- 这正是第 03 集口播第 5 条「事件和页面状态要按项目需要重新初始化」的机制，
+  但模块侧没有任何诊断提示，用户只能靠撞见错误页发现。
+  建议：重建完成后输出一条中文提示，列出本次被丢弃的映射与运行期设置，
+  或让 `EdgeView创建选项_重建控件` 返回一个「需要重新初始化」的明确结果。
+
+
+
+## 6. EdgeView 01–12 批量采集暴露的模块行为（2026-09-06 实测）
+
+第 4、5 节是单集样板与流水线；这一节是把 12 个示例项目全部改成「能真的拍出旁白所讲的证据」时，
+从 EdgeView 模块本身撞出来的行为。全部有运行窗口截图或落盘文件为证。
+
+- **虚拟主机映射的请求不会走 `WebResourceRequested`。**
+  第 12 集最初把样式表放在已映射的 `capstone.local/capstone.css` 上并加过滤器替换，
+  页面样式毫无变化（映射由 WebView2 内部直接应答，根本不产生资源请求事件）。
+  改成引用一个**未映射**主机 `https://skin.capstone.local/skin.css` 后，
+  替换的 CSS 立刻生效（页面变成青绿色），这才拿到「响应被程序替换」的可见证据。
+  文档应明确：想演示资源拦截，目标 URL 不能落在 `SetVirtualHostNameToFolderMapping` 的目录里。
+- **`EdgeView权限_设置异步` 会把页面刷白且完成处理器不回。**
+  第 11 集「设置测试权限」按钮调用它之后，运行窗口变成空白，标签停在上一条 Cookie 结果，
+  `&权限完成` 从未触发。已把该按钮改走 `EdgeView权限_枚举异步`（能稳定回 JSON），
+  设置接口只在卡片里讲契约。这条要么修，要么在文档里写清前置条件。
+- **`EdgeView事件_设置下载路径` 不生效（2026-09-06 已修模块）。**
+  真实根因不是「示例项目传了相对路径」——实测三种写法（相对路径、裸文件名、`路径_转绝对路径` 得到的绝对路径）
+  全部失败，而 setter 返回 1，说明决策窗口正常、值已写入，失败发生在 `put_ResultFilePath` 且完全静默。
+  两点叠加：
+  1. `EdgeView事件_设置下载路径` 原先只是 `EdgeView事件_设置返回文本` 的转发，写进共享槽 `eventResultText`；
+  2. `ICoreWebView2DownloadStartingEventArgs::put_ResultFilePath` 与 `PrintToPdf` 一样只收绝对路径，
+     且要求目标目录已存在，而模块既没补全也没建目录，更没检查 HRESULT。
+  现在：setter 走独立槽 `eventDownloadPath`，先 `EdgeView_取绝对路径` 补全，再 `EdgeView_确保父目录`
+  逐级 `CreateDirectoryW`；`DownloadStarting` 捕获 `put_ResultFilePath` 的 HRESULT，失败输出中文诊断，
+  并按 downloadId 记进 `eventDownloadPathErrors`，由 `EdgeView下载_取状态JSON` 以 `resultFilePathError` 字段回传。
+  回归断言见 `tests/modules.test.ts`「EdgeView 导出路径、响应正文时效、回调内同步等待与控件级等待事件保持统一契约」，
+  绝对路径解析计数基线已从 4 提到 5（PDF、PDF 流、截图、图标、下载路径）。
+- **`EdgeView下载_取状态JSON` 的 `path` 在 `下载开始` 处理器内是「决策前快照」。**
+  WebView2 的 `ICoreWebView2DownloadOperation::get_ResultFilePath` 在 DownloadStarting 期间仍返回默认落点，
+  所以「在改路径的同一条处理器里立刻取状态」必然看到系统默认下载目录，看起来像没生效。
+  正确用法：改路径放在同步事件处理器内，读状态放到事件结束之后（例如另一个按钮）。
+  第 09、12 集示例项目已按这个节奏改成「触发下载」+ 独立「查看下载状态」两个按钮，
+  实测状态 JSON 回 `...bin\.edgeview\epNN\downloads\...`、`state:2`、received=total。
+  已补：`取状态JSON` 现在同时回传 `pendingResultFilePath`（本次请求的落点）与既有 `path`（WebView2 实时值），事件内也能区分「已生效」与「本次请求」，不必再靠时序去猜。
+- **`EdgeView打印_PDF异步` 不产出文件的真因是相对路径（2026-09-06 已修模块）。**
+  与 `"{}"` 无关：运行期把 `设置JSON` 声明成**未命名参数**，压根没读它，所以传什么都会被丢弃；
+  真正的失败是 `ICoreWebView2_7::PrintToPdf` 只接受绝对路径，相对名会以 `0x80070057` 结束，
+  而 `EdgeView媒体_截图异步` / `EdgeView媒体_取Favicon异步` 是模块自己用 `CreateFileW` 落盘，相对路径按当前工作目录能写出去——
+  同一族命令两套路径语义，才造成「只有 PDF 没产物」。
+  现在四条导出命令统一先 `EdgeView_取绝对路径`，任务结果一律回报绝对落盘路径；
+  `设置JSON` 补上真实实现（WebView2 驼峰键名白名单，见 `EdgeView打印_应用设置JSON`），非 `{` 开头的文本判为无效并给中文诊断。
+  实测第 10 集示例项目裸文件名 `edgeview-ep10-page.pdf` 产出 64,204 B，`%PDF-1.4`、2 页、带 `%%EOF`，
+  完成处理器 `EdgeView任务_取状态 == 1`。
+- **同一个控件上并发调用 `PrintToPdf` 会被 WebView2 判为 `0x80004005`。**
+  第 10 集最初把三个导出在一次按钮点击里连发，只有第一个成功；改成「一个按钮一个导出」后三个都成功。
+  异步导出接口必须逐个发起、逐个观察，既不能串链也不能并发。
+- **导出文件名与真实编码不一致（未修，属独立决策）**：`EdgeView媒体_截图异步` 传格式 `1` 时 WebView2 输出 JPEG，
+  第 09/10 集示例却写成 `.png`；`EdgeView媒体_取Favicon异步` 固定用 `COREWEBVIEW2_FAVICON_IMAGE_FORMAT_PNG`，
+  示例写成 `.ico`。文件能正常打开，只是扩展名和内容不符，改哪一边需要先确认教程口播是否提到格式。
+- **导出路径的相对目录不会被自动创建。**
+  第 10 集最初写 `.edgeview/ep10/output/page.pdf`，父目录不存在时静默无产物；
+  改成 exe 同目录裸文件名后截图与 Favicon 立即落盘。
+- **多个完成处理器共用一个状态标签时，只有最后一个可见。**
+  这是剪辑侧的取证问题，不是模块缺陷：`shoot_episode.sh` 现在按按钮逐个点击、逐个截图，
+  并把「截图 ↔ 按钮标题」写进 `NN/素材/shots/native_states.txt`，
+  否则成片里出现的永远是最后一步的结果。
+- **`EdgeView资源_读响应正文异步` 的约束是「事件上下文」，不是「真实网络 vs 合成应答」（2026-09-06 实测更正）。**
+  同一份诊断工程里跑矩阵：在 `Web资源响应收到` 处理器执行期间立即发起读取，
+  主文档、普通 CSS 子资源、以及被 `EdgeView资源_设置事件响应文本` 替换掉的合成应答**都能成功**
+  （分别回 545 / 24 字节正文）；把 `responseHandle` 存进成员变量、事后再交给读正文异步，
+  三种**全部失败**（约 5.6 s、9.5 s、17.4 s 后都是 `0x80004005`）。
+  所以第 12 集的 `0x80004005` 是用法错，不是平台读不到合成应答；第 08 集一直用的是对的写法。
+  第 12 集示例项目已改成「按钮重新导航 → 在响应处理器内立即读正文」，实测绿色「响应正文」标签回
+  `被替换样式表 62 字节：main{background:#f0fdfa;border-color:#0f766e}h1{color:#0f766e}`。
+  模块侧同时补了中文说明：句柄解析不到、或 `GetContent` 失败时，错误文本会追加
+  「响应正文必须在 Web资源响应收到 处理器执行期间交给本命令……」而不是只给裸 HRESULT。
+- **`EdgeView导航_HTML` 内联整页 HTML 已从 09、10 集移除**，统一改成本地虚拟主机，
+  第 4 节记的「巨型字面量让下一条字符串丢 `L` 前缀」风险随之消失；
+  产品补全片段里 `EdgeView导航_HTML` 仍在，是否保留待产品决定。
+
+### 教程示例项目与口播稿的系统性落差
+
+12 集里有 **7 集**（02、04、05、06、09、10、11）的示例项目根本没做到该集口播承诺的可验证证据，
+其中 05、09、10、11 还引用了**未定义的完成处理器**（`&查找完成`、`&PDF完成`、`&Cookie完成` 等），
+F5 直接被中文诊断阻断，但状态栏的 `错误列表` 仍显示 `(0)`。
+已新增 `check_handlers.py` 做静态扫描：列出 `&处理器` 引用但没有 `事件 处理器()` 定义的文件，
+以及从未被绑定的死定义块。采集任何一集之前先跑它。
+
+## 7. FBro 独立顶层窗口的可见性与启动阻塞（2026-09-06 实测）
+
+- **已修：`independent-window` 宿主顶层窗口永远不带 `WS_VISIBLE`。**
+  `electron/src/services/windowDesigner/lingCppWin32Project.ts` 的 `FBro_创建` 组装 `LingFbroProcessConfig` 时
+  用 `IsWindowVisible(instance->host)` 判可见，而 `FBro_创建(nullptr)` 是在 `WM_CREATE` 的
+  `OnWindowCreated()` 里跑的，主窗口要到 `WM_CREATE` 返回之后才 `ShowWindow`，
+  于是每个子控件在那一瞬间都被判成不可见；宿主进程 `Configure()` 的
+  `if (visible || mode == EMBEDDED) SetWindowPos(..., SWP_SHOWWINDOW)` 因此永远不执行。
+  改为按设计器可见性（`control.flags & CF_HIDDEN`）决定，实测宿主顶层窗口样式从
+  `0x06CF0000` 变为 `0x16CF0000`，`LingBuilder.FBro.Host.Browser` 真实出现在桌面上。
+- **未修：独立进程握手在 `WM_CREATE` 内串行阻塞界面线程，每实例最多 15 秒。**
+  `LingFbroProcessController::Start(config, waitUntilReady = true)` 会
+  `stateChanged.wait_for(..., 15s)` 等 `就绪`，而调用点在 `WM_CREATE` 里，所以两个独立进程实例的
+  示例项目启动后 **30~35 秒内主窗口和宿主窗口都不出现**，期间整个窗口无响应。
+  教程录屏必须按这个时长预留停顿；根治方案要么 `Start(config, false)` + 由事件回填状态，
+  要么把独立进程实例的创建推迟到 `ShowWindow` 之后（后者会改变「创建完毕」事件的时序，需连带回归）。
+- **未修：`CF_HIDDEN` 是一个从未被赋值的死标志位。**
+  `lingCppWin32Project.ts` 只在 7305 定义它、在 19878/20094 读它，控件规格表里没有任何地方设置它，
+  生成器里也搜不到 `visibility === 'Hidden'` 之类的分支。结论：设计器里把 Win32 控件设为「隐藏」
+  在生成的运行时里仍然是 `WS_VISIBLE`。上面那条 FBro 可见性修复用的是与控件自身样式完全相同的表达式，
+  所以与现状一致；但真正修 Hidden 语义时必须连带复核这一行，否则隐藏浏览器会忽然弹出顶层窗口。
+- **冒烟门禁 `npm run smoke:fbro-process-native` 修了三处腐烂**（此前只数进程数，无法发现窗口级缺陷）：
+  MSBuild 路径硬编码 VS2022 → 改用 `vswhere` 探测并按已安装的平台工具集传 `/p:PlatformToolset=`
+  （本机只有 v145，而 `visualStudioProjectExporter.ts` 仍写死 v143——导出器工具集参数化是另一条待办）；
+  PowerShell here-string 语法导致 `TerminatorExpectedAtEndOfString`；
+  `spawn(..., { windowsHide: true })` 让子进程以 `SW_HIDE` 启动，而宿主顶层窗口是主窗口的 owned 窗口，
+  此时 `IsWindowVisible` 恒为假，可见性断言不可能通过。可见性轮询预算给到 90 秒，理由见上第二条。
+
+### 采集脚本与运行环境侧实测结论（2026-09-06 追加）
+
+- **`.NET Process.MainWindowHandle` 会跳过「有 owner 的顶层窗口」**，而 ③ `independent-window` 宿主窗口正是示例主窗口的
+  owned 窗口。用 `MainWindowHandle -ne 0` 枚举进程时永远看不到 `LingBuilderFbroHost.exe`，造成「窗口没出现」的假失败。
+  `录制/ep05/take-exe.mjs` 的 `windowedProcs()` 已改为把 `LingBuilderFbroHost` / `FBroSubprocess` 无条件并入候选集。
+- **take 脚本必须先 `ensureWorkbench` 打开本集示例**。F5 构建并运行的是 IDE 当前打开的项目，不显式 `openPath` 就会把上一集的
+  演示窗口录进来（ep04 第一版 exe take 录到 ep05 窗口的直接原因）。仅靠进程路径前缀过滤不足以发现这类错误，因此脚本在拿到
+  pid 后追加了归属门禁：`(Get-Process -Id <pid>).Path` 必须包含本集项目目录名，否则直接抛错终止录制。
+- **非默认渲染端口下 `ensureWorkbench` 只能用 `reload: false`**。`录制/ep01/lib.mjs` 的 reload 分支会 `Page.navigate`
+  到硬编码 `http://127.0.0.1:3021/`，本会话受管 Electron 的渲染端口不是 3021，reload 会跳到死地址。
+  `openPath` 内部 POST `/api/workspace/switch` 会切换 workspaceRoot，所以换集不需要重启 server。
+- **强制结束示例进程会留下 `bin/.fbro` profile 锁**（`Stop-Process -Force` / `taskkill /F` 同样）。锁未清理时，后续实例在
+  导航阶段**干净退出**：exit code 0、无 WER 记录、无残留进程，看起来完全像产品崩溃。清掉 `bin/.fbro` 后同一节拍全部通过。
+  录制收尾只用 `CloseMainWindow`；已经留下锁时删目录，不要把它当运行时缺陷去改产品代码。
+- **`录制/probe-windows.ps1` 输出的 x,y 是 DIP**（物理像素的 2/3，150% 缩放），不能直接当物理坐标摆位。
+- **`FBro_打开谷歌原生UI浏览器`（`LB_FBro_CreateChromeUi`，`CEF_RUNTIME_STYLE_CHROME`）不需要 VIP**，
+  实测 `Chrome_WidgetWin_1` 标题「FBro 资源测试页 - Chromium」在完整节拍下存活 25 秒以上。
+  与此相对，第 04 集五条指纹/VIP 命令全部要求授权，未配置 Key 时只能录到「VIP Key 未配置或 FBro VIP 控件不可用」这一真实状态，
+  该集 exe take 必须在用户于 IDE「设置 → FBro VIP Key」保存后重录（保存后下一次 F5 即生效，无需重启 IDE）。
+- **关不掉 Electron 是关闭否决，不是卡死**：`electron/electron/main.ts` 在 `mainWindow.on('close')` 里未收到 renderer
+  确认时 `preventDefault()` 并弹页内「取消 / 直接退出 / 保存并退出」。清理环境时选「直接退出」；
+  不要选「保存并退出」，否则可能把脏设计器模型写回已交付的示例项目。
+### CEF3 SDK 自动升级与 Bridge 物化一致性（2026-09-07）
+
+- CEF3 SDK 校验现在额外检查 `LingBuilderCefBridge.h` 是否包含 `LB_CEF3_ResourceResponseBodyBegin`，旧版 SDK 不再被误判为可用。
+- 构建前原生依赖物化按内容差异刷新 CEF3 Bridge 的头文件、LIB 和 DLL，避免增量构建目录残留旧 ABI。
+- 后续官网 SDK 清单变更仍必须同步更新版本、SHA-256、压缩大小、解压大小和文件数；用户侧由 IDE 自动下载、校验和原子替换。
