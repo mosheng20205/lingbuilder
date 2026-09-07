@@ -1024,6 +1024,10 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ResourceRequestHandlerSubscribeResourceRedi
     LB_CEF3_HANDLE browser, int enabled);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ResourceRequestHandlerSubscribeResourceResponse(
     LB_CEF3_HANDLE browser, int enabled);
+/* 在当前“资源响应到达”事件上下文中标记 request，随后由响应过滤器有界捕获正文。
+   正文完成后通过同一浏览器事件回调发出“资源响应正文到达”。 */
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ResourceResponseBodyBegin(
+    LB_CEF3_HANDLE browser, LB_CEF3_HANDLE request, int64_t max_bytes);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ResourceRequestHandlerSubscribeCookieAccessFilter(
     LB_CEF3_HANDLE browser, int enabled);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_CookieAccessFilterSubscribeCanSendCookie(

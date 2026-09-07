@@ -1,1 +1,22 @@
-{"schemaVersion":2,"id":"cef3-ep03-events","name":"CEF3 事件驱动","startupProjectId":"cef3-ep03-events","startupProjectIds":["cef3-ep03-events"],"folders":[],"projects":[{"type":"visual-cpp","id":"cef3-ep03-events","name":"CEF3 事件驱动","sourceRoot":"src","configRoot":"config","designerPath":".lingbuilder/window-designer.json","isDefault":true,"references":[]}]}
+{
+  "schemaVersion": 2,
+  "id": "cef3-ep03-events-solution",
+  "name": "CEF3 事件驱动示例",
+  "startupProjectId": "cef3-ep03-events",
+  "startupProjectIds": [
+    "cef3-ep03-events"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "cef3-ep03-events",
+      "name": "CEF3 事件驱动示例",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

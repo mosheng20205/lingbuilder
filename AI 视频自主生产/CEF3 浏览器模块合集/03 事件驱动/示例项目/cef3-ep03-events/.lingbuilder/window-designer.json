@@ -1,1 +1,76 @@
-{"schemaVersion":2,"id":"cef3-ep03-events","name":"CEF3 事件驱动","resources":[],"windows":[{"id":"main-window","fileName":"CEF3事件驱动窗体.xml","className":"CEF3事件驱动窗体","title":"CEF3 事件驱动","width":1000,"height":700,"background":"#111827","description":"CEF3 加载生命周期事件示例。","designerBackend":"win32","controls":[{"id":"browser-1","type":"CefBrowser","name":"浏览器1","content":"","x":10,"y":10,"width":960,"height":640,"background":"#FFFFFF","foreground":"#000000","isEnabled":true,"visibility":"Visible","properties":{"url":"about:blank","cacheDir":".cef3/cache","enableJs":true,"enableDevTools":true,"loadImages":true,"enableWebGL":true,"muteAudio":true,"proxyMode":"system"}}],"events":{"Loaded":"_CEF3事件驱动窗体_创建完毕"}}]}
+{
+  "schemaVersion": 2,
+  "id": "cef3-ep03-events",
+  "name": "CEF3 事件驱动示例",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "CEF3事件驱动窗体.xml",
+      "className": "CEF3事件驱动窗体",
+      "title": "CEF3 事件驱动 · 加载完成与事件数据",
+      "width": 1100,
+      "height": 760,
+      "background": "#111827",
+      "description": "CEF3 事件驱动示例（CEF3 合集第 03 集）。",
+      "designerBackend": "win32",
+      "openPlacement": "center",
+      "titleBarBackground": "#1E293B",
+      "titleBarForeground": "#E2E8F0",
+      "borderStyle": "normal-resizable",
+      "resizable": true,
+      "maximizable": true,
+      "events": {
+        "Loaded": "_CEF3事件驱动窗体_创建完毕"
+      },
+      "controls": [
+        {
+          "id": "status",
+          "type": "Label",
+          "name": "事件状态",
+          "content": "等待事件……",
+          "x": 10,
+          "y": 10,
+          "width": 1070,
+          "height": 32,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#1E293B",
+          "foreground": "#E2E8F0",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "browser-1",
+          "type": "CefBrowser",
+          "name": "浏览器1",
+          "content": "",
+          "x": 10,
+          "y": 52,
+          "width": 1070,
+          "height": 660,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#FFFFFF",
+          "foreground": "#000000",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "url": "https://example.com",
+            "cacheDir": ".cef3/ep03",
+            "enableJs": true,
+            "enableDevTools": true,
+            "loadImages": true,
+            "enableWebGL": false,
+            "muteAudio": true,
+            "proxyMode": "system"
+          }
+        }
+      ]
+    }
+  ]
+}

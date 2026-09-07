@@ -125,6 +125,7 @@ struct FrameState;
 bool RunOnCefUiSync(std::function<void()> callback);
 bool ValidateV4Argument(const LB_CEF3_CALL_V4* call, size_t index, uint32_t kind);
 std::wstring JsonEscape(const std::wstring& value);
+std::wstring Utf8ToWideLossy(const std::vector<unsigned char>& bytes);
 bool FinishContinuation(const std::shared_ptr<ContinuationState>& state, int action,
                         const std::wstring& response_json);
 void ReleaseCefObjectsForFinalBrowserClose();
@@ -212,6 +213,7 @@ struct BufferState {
 };
 
 constexpr uint64_t kMaximumManagedStreamBytes = 64ULL * 1024ULL * 1024ULL;
+constexpr uint64_t kMaximumResourceBodyCaptureBytes = 16ULL * 1024ULL * 1024ULL;
 constexpr size_t kMaximumManagedFrameCount = 65536;
 
 bool ResolveManagedStreamPosition(int64_t offset, int whence, uint64_t current,
@@ -772,6 +774,16 @@ struct ResponseFilterState {
   bool configured = false;
 };
 
+struct ResourceBodyCaptureState {
+  std::mutex mutex;
+  uint64_t max_bytes = 0;
+  uint64_t received_bytes = 0;
+  std::vector<unsigned char> bytes;
+  bool filter_attached = false;
+  bool failed = false;
+  std::wstring url;
+};
+
 struct ResourceHandlerState {
   std::mutex mutex;
   std::wstring url_prefix;
@@ -979,6 +991,7 @@ struct BrowserState {
   uint32_t print_handler_subscriptions = 0;
   std::shared_ptr<ResponseFilterState> response_filter;
   std::shared_ptr<ResourceHandlerState> resource_handler;
+  std::unordered_map<uint64_t, std::shared_ptr<ResourceBodyCaptureState>> resource_body_captures;
   CefRefPtr<CefRegistration> devtools_observer_registration;
   std::atomic<bool> devtools_agent_attached{false};
   std::atomic<bool> devtools_agent_detached_notified{false};
@@ -6634,13 +6647,15 @@ class BridgeResponseFilter final : public CefResponseFilter {
   BridgeResponseFilter(
       std::shared_ptr<BrowserState> browser,
       std::vector<unsigned char> find_bytes,
-      std::vector<unsigned char> replacement_bytes)
+      std::vector<unsigned char> replacement_bytes,
+      std::shared_ptr<ResourceBodyCaptureState> capture = nullptr)
       : browser_(std::move(browser)),
         find_bytes_(std::move(find_bytes)),
-        replacement_bytes_(std::move(replacement_bytes)) {}
+        replacement_bytes_(std::move(replacement_bytes)),
+        capture_(std::move(capture)) {}
 
   bool InitFilter() override {
-    const bool valid = !find_bytes_.empty()
+    const bool valid = (capture_ || !find_bytes_.empty())
         && find_bytes_.size() <= kMaximumManagedStreamBytes
         && replacement_bytes_.size() <= kMaximumManagedStreamBytes;
     EmitNotificationEventV4(
@@ -6662,7 +6677,34 @@ class BridgeResponseFilter final : public CefResponseFilter {
     if (failed_ || (data_in_size > 0 && !data_in)
         || (data_out_size > 0 && !data_out)) {
       failed_ = true;
+      if (capture_) {
+        std::lock_guard<std::mutex> lock(capture_->mutex);
+        capture_->failed = true;
+      }
       return RESPONSE_FILTER_ERROR;
+    }
+
+    if (find_bytes_.empty() && capture_) {
+      if (data_in_size > 0) {
+        const size_t readable = std::min(data_in_size, data_out_size);
+        if (readable > 0) {
+          const auto* bytes = static_cast<const unsigned char*>(data_in);
+          {
+            std::lock_guard<std::mutex> lock(capture_->mutex);
+            capture_->received_bytes += readable;
+            const size_t remaining = capture_->bytes.size() < capture_->max_bytes
+                ? static_cast<size_t>(capture_->max_bytes - capture_->bytes.size()) : 0;
+            const size_t copy_count = std::min(readable, remaining);
+            capture_->bytes.insert(capture_->bytes.end(), bytes, bytes + copy_count);
+          }
+          std::memcpy(data_out, data_in, readable);
+          data_in_read = readable;
+          data_out_written = readable;
+        }
+        if (readable < data_in_size) return RESPONSE_FILTER_NEED_MORE_DATA;
+        return RESPONSE_FILTER_NEED_MORE_DATA;
+      }
+      return RESPONSE_FILTER_DONE;
     }
 
     if (output_bytes_.empty()) {
@@ -6674,6 +6716,14 @@ class BridgeResponseFilter final : public CefResponseFilter {
         const auto* bytes = static_cast<const unsigned char*>(data_in);
         pending_bytes_.insert(
             pending_bytes_.end(), bytes, bytes + data_in_size);
+        if (capture_) {
+          std::lock_guard<std::mutex> lock(capture_->mutex);
+          capture_->received_bytes += data_in_size;
+          const size_t remaining = capture_->bytes.size() < capture_->max_bytes
+              ? static_cast<size_t>(capture_->max_bytes - capture_->bytes.size()) : 0;
+          const size_t copy_count = std::min(data_in_size, remaining);
+          capture_->bytes.insert(capture_->bytes.end(), bytes, bytes + copy_count);
+        }
         data_in_read = data_in_size;
         ProcessPending(false);
       } else {
@@ -6771,6 +6821,7 @@ class BridgeResponseFilter final : public CefResponseFilter {
   std::shared_ptr<BrowserState> browser_;
   const std::vector<unsigned char> find_bytes_;
   const std::vector<unsigned char> replacement_bytes_;
+  const std::shared_ptr<ResourceBodyCaptureState> capture_;
   std::vector<unsigned char> pending_bytes_;
   std::deque<unsigned char> output_bytes_;
   bool end_of_stream_ = false;
@@ -8117,16 +8168,32 @@ class BridgeClient final : public CefClient,
       CefRefPtr<CefRequest> request,
       CefRefPtr<CefResponse> response) override {
     std::shared_ptr<ResponseFilterState> configuration;
+    std::shared_ptr<ResourceBodyCaptureState> capture;
     {
       std::lock_guard<std::mutex> lock(state_->mutex);
       configuration = state_->response_filter;
+      if (request) {
+        const auto found = state_->resource_body_captures.find(request->GetIdentifier());
+        if (found != state_->resource_body_captures.end()) capture = found->second;
+      }
     }
-    if (!configuration) return nullptr;
+    if (capture) {
+      std::lock_guard<std::mutex> lock(capture->mutex);
+      capture->filter_attached = true;
+    }
+    if (!configuration) {
+      return capture ? new BridgeResponseFilter(
+          state_, {}, {}, std::move(capture)) : nullptr;
+    }
     std::vector<unsigned char> find_bytes;
     std::vector<unsigned char> replacement_bytes;
     {
       std::lock_guard<std::mutex> lock(configuration->mutex);
       if (!configuration->configured || configuration->find_bytes.empty()) {
+        if (capture) {
+          return new BridgeResponseFilter(
+              state_, {}, {}, std::move(capture));
+        }
         return nullptr;
       }
       find_bytes = configuration->find_bytes;
@@ -8154,7 +8221,8 @@ class BridgeClient final : public CefClient,
         request_handle);
     if (request_handle != 0) LB_CEF3_HandleRelease(request_handle);
     return new BridgeResponseFilter(
-        state_, std::move(find_bytes), std::move(replacement_bytes));
+        state_, std::move(find_bytes), std::move(replacement_bytes),
+        std::move(capture));
   }
 
   CefRefPtr<CefResourceHandler> GetResourceHandler(
@@ -8408,8 +8476,8 @@ class BridgeClient final : public CefClient,
       CefRefPtr<CefRequest> request, CefRefPtr<CefResponse> response,
       CefResourceRequestHandler::URLRequestStatus status,
       int64_t received_content_length) override {
-    if (!IsResourceRequestHandlerSubscriptionEnabled(
-            state_, kResourceRequestLoadComplete)) return;
+    const bool emit_load_complete = IsResourceRequestHandlerSubscriptionEnabled(
+        state_, kResourceRequestLoadComplete);
     const auto fields = L"{\"browserId\":"
         + std::to_wstring(browser ? browser->GetIdentifier() : 0)
         + L",\"frameIdentifier\":\""
@@ -8423,12 +8491,65 @@ class BridgeClient final : public CefClient,
         + std::to_wstring(response ? response->GetStatus() : 0)
         + L",\"receivedContentLength\":"
         + std::to_wstring(received_content_length) + L"}";
-    const auto request_handle = request ? RegisterRequest(request) : 0;
-    EmitNotificationEventV4(
+    if (emit_load_complete) {
+      const auto request_handle = request ? RegisterRequest(request) : 0;
+      EmitNotificationEventV4(
         state_, L"cef_resource_request_handler_t",
         L"on_resource_load_complete", L"资源加载完成", fields,
         request_handle);
-    if (request_handle != 0) LB_CEF3_HandleRelease(request_handle);
+      if (request_handle != 0) LB_CEF3_HandleRelease(request_handle);
+    }
+
+    if (request) {
+      std::shared_ptr<ResourceBodyCaptureState> capture;
+      {
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        const auto found = state_->resource_body_captures.find(request->GetIdentifier());
+        if (found != state_->resource_body_captures.end()) {
+          capture = found->second;
+          state_->resource_body_captures.erase(found);
+        }
+      }
+      if (capture) {
+        std::vector<unsigned char> bytes;
+        uint64_t received = 0;
+        bool attached = false;
+        bool failed = false;
+        std::wstring url;
+        {
+          std::lock_guard<std::mutex> lock(capture->mutex);
+          bytes = capture->bytes;
+          received = capture->received_bytes;
+          attached = capture->filter_attached;
+          failed = capture->failed;
+          url = capture->url;
+        }
+        const bool success = status == UR_SUCCESS && attached && !failed;
+        const std::wstring body_text = Utf8ToWideLossy(bytes);
+        const std::wstring body_base64 = CefBase64Encode(
+            bytes.empty() ? nullptr : bytes.data(), bytes.size()).ToWString();
+        const bool truncated = received > bytes.size();
+        const std::wstring error = success ? L""
+            : (!attached ? L"响应正文过滤器未能安装。"
+                : (failed ? L"响应正文过滤器读取失败。"
+                    : L"资源加载未成功，无法读取响应正文。"));
+        const auto body_fields = L"{\"url\":\"" + JsonEscape(url.empty()
+                ? (request ? request->GetURL().ToWString() : L"") : url)
+            + L"\",\"statusCode\":"
+            + std::to_wstring(response ? response->GetStatus() : 0)
+            + L",\"mimeType\":\""
+            + JsonEscape(response ? response->GetMimeType().ToWString() : L"")
+            + L"\",\"bodyText\":\"" + JsonEscape(body_text)
+            + L"\",\"bodyBase64\":\"" + JsonEscape(body_base64)
+            + L"\",\"receivedBytes\":" + std::to_wstring(received)
+            + L",\"truncated\":" + (truncated ? L"true" : L"false")
+            + L",\"error\":\"" + JsonEscape(error) + L"\"}";
+        EmitNotificationEventV4(
+            state_, L"cef_resource_request_handler_t",
+            L"on_resource_response_body", L"资源响应正文到达", body_fields,
+            0);
+      }
+    }
   }
 
   void OnProtocolExecution(
@@ -11200,6 +11321,21 @@ std::wstring Utf8ToWide(const void* data, size_t size) {
   std::wstring result(static_cast<size_t>(count), L'\0');
   MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, static_cast<const char*>(data),
                       static_cast<int>(size), result.data(), count);
+  return result;
+}
+
+std::wstring Utf8ToWideLossy(const std::vector<unsigned char>& bytes) {
+  if (bytes.empty()) return L"";
+  if (const auto strict = Utf8ToWide(bytes.data(), bytes.size()); !strict.empty()) return strict;
+  if (bytes.size() > static_cast<size_t>(INT_MAX)) return L"";
+  const int count = MultiByteToWideChar(CP_UTF8, 0,
+      reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()),
+      nullptr, 0);
+  if (count <= 0) return L"";
+  std::wstring result(static_cast<size_t>(count), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0,
+      reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()),
+      result.data(), count);
   return result;
 }
 
@@ -23561,6 +23697,45 @@ int LB_CEF3_CALL LB_CEF3_ResourceRequestHandlerSubscribeResourceResponse(
     LB_CEF3_HANDLE browser, int enabled) {
   return SetResourceRequestHandlerSubscription(
       browser, kResourceRequestResponse, enabled);
+}
+
+int LB_CEF3_CALL LB_CEF3_ResourceResponseBodyBegin(
+    LB_CEF3_HANDLE browser, LB_CEF3_HANDLE request, int64_t max_bytes) {
+  if (max_bytes <= 0) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT,
+                L"响应正文最大字节数必须大于0");
+  }
+  const uint64_t bounded = static_cast<uint64_t>(max_bytes);
+  if (bounded > kMaximumResourceBodyCaptureBytes) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT,
+                L"响应正文最大字节数不能超过16MiB");
+  }
+  int status = LB_CEF3_OK;
+  auto browser_state = GetBrowserState(browser, status);
+  if (!browser_state) return status;
+  auto request_state = GetRequestState(request, status);
+  if (!request_state) return status;
+  CefRefPtr<CefRequest> request_ref;
+  {
+    std::lock_guard<std::mutex> lock(request_state->mutex);
+    request_ref = request_state->request;
+  }
+  if (!request_ref) {
+    return Fail(LB_CEF3_ERROR_RELEASED_HANDLE,
+                L"资源响应请求句柄已经失效");
+  }
+  auto capture = std::make_shared<ResourceBodyCaptureState>();
+  capture->max_bytes = bounded;
+  capture->url = request_ref->GetURL().ToWString();
+  {
+    std::lock_guard<std::mutex> lock(browser_state->mutex);
+    if (browser_state->closed) {
+      return Fail(LB_CEF3_ERROR_OPERATION_FAILED,
+                  L"浏览器已经关闭，无法读取响应正文");
+    }
+    browser_state->resource_body_captures[request_ref->GetIdentifier()] = capture;
+  }
+  return LB_CEF3_OK;
 }
 
 int LB_CEF3_CALL LB_CEF3_ResourceRequestHandlerSubscribeCookieAccessFilter(

@@ -161,4 +161,64 @@ export const CEF3_BROWSER_EVENTS: readonly Cef3BrowserEventDefinition[] = [
   ])
 ] as const;
 
-export const CEF3_BROWSER_EVENT_NAMES = CEF3_BROWSER_EVENTS.map(event => event.name);
+/** 由 CEF3_读资源响应正文 注册的异步完成事件，不是 CEF 原生回调目录项。 */
+export const CEF3_RESOURCE_RESPONSE_BODY_EVENT_NAME = '资源响应正文到达';
+
+export const CEF3_BROWSER_EVENT_NAMES = [
+  ...CEF3_BROWSER_EVENTS.map(event => event.name),
+  CEF3_RESOURCE_RESPONSE_BODY_EVENT_NAME
+];
+
+/**
+ * 桥接层按「处理器族订阅位掩码」决定是否安装对应 CEF 处理器、以及回调体是否向宿主投递事件。
+ * 下表只收录**没有 legacy 数字事件通道**、必须点亮订阅位才会到达宿主的事件：
+ * 键是 CEF3_绑定事件 使用的中文事件名，值是 LingBuilderCefBridge.h 里的订阅导出名。
+ * 已有 legacy 通道的事件（导航请求前、下载开始等 63 个）不得进表，否则点亮订阅位后
+ * 同一事件会经 legacy 与受管两条通道各投递一次，处理器被调用两次。
+ */
+export const CEF3_EVENT_BRIDGE_SUBSCRIPTIONS: Readonly<Record<string, string>> = {
+  资源加载前: 'LB_CEF3_ResourceRequestHandlerSubscribeBeforeResourceLoad',
+  资源响应到达: 'LB_CEF3_ResourceRequestHandlerSubscribeResourceResponse',
+  资源重定向: 'LB_CEF3_ResourceRequestHandlerSubscribeResourceRedirect',
+  资源加载完成: 'LB_CEF3_ResourceRequestHandlerSubscribeResourceLoadComplete',
+  外部协议执行请求: 'LB_CEF3_ResourceRequestHandlerSubscribeProtocolExecution',
+  Cookie过滤器查询: 'LB_CEF3_ResourceRequestHandlerSubscribeCookieAccessFilter',
+  发送Cookie查询: 'LB_CEF3_CookieAccessFilterSubscribeCanSendCookie',
+  保存Cookie查询: 'LB_CEF3_CookieAccessFilterSubscribeCanSaveCookie',
+  下载进度更新: 'LB_CEF3_DownloadSubscribeUpdated',
+  框架创建: 'LB_CEF3_FrameHandlerSubscribeCreated',
+  框架销毁: 'LB_CEF3_FrameHandlerSubscribeDestroyed',
+  框架附加: 'LB_CEF3_FrameHandlerSubscribeAttached',
+  框架分离: 'LB_CEF3_FrameHandlerSubscribeDetached',
+  主框架改变: 'LB_CEF3_FrameHandlerSubscribeMainFrameChanged',
+  打印开始: 'LB_CEF3_PrintHandlerSubscribeStart',
+  打印设置请求: 'LB_CEF3_PrintHandlerSubscribeSettings',
+  打印对话框请求: 'LB_CEF3_PrintHandlerSubscribeDialog',
+  打印任务提交: 'LB_CEF3_PrintHandlerSubscribeJob',
+  打印状态重置: 'LB_CEF3_PrintHandlerSubscribeReset',
+  PDF纸张大小查询: 'LB_CEF3_PrintHandlerSubscribePdfPaperSize'
+};
+
+/**
+ * 桥接层 `EmitAsyncEvent` 家族的「宿主未表态时应采用的动作」，取值必须与
+ * `LingBuilderCefBridge.cpp` 里每个调用点传入的 `default_action` 一致。
+ *
+ * 宿主一旦注册 V4 事件回调，这一族就不再走 `EmitEvent` legacy 回退：桥接层会创建 continuation
+ * 并只在宿主给出非零动作时结束它。宿主未表态又不续跑，请求会一直挂到 `timeout_ms` 才按默认动作
+ * 续跑（「资源加载前」是 30 秒，期间页面空白）。所以生成器在宿主未表态时要**立即**按这里的动作
+ * 续跑，结果与超时一致但不再等待。
+ *
+ * 不能统一按「放行 1」处理：文件对话框 / 媒体权限 / 身份验证 / 证书错误默认为 2（拒绝），
+ * 网站权限默认为 3（自定义），写死 1 会改掉这些事件的语义。
+ */
+export const CEF3_EVENT_ASYNC_DEFAULTS: Readonly<Record<string, number>> = {
+  资源加载前: 1,
+  下载开始: 1,
+  客户端证书选择: 2,
+  文件对话框请求: 2,
+  媒体权限请求: 2,
+  网站权限请求: 3,
+  身份验证请求: 2,
+  证书错误: 2,
+  渲染进程无响应: 1
+};
