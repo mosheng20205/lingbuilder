@@ -2,12 +2,13 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const DEFAULT_SOURCE = 'T:\\编程工具\\win_android\\plugins\\vprj_win\\classlib\\sys\\FBrowser';
-const EXPECTED_HEADER_COUNT = 77;
-const EXPECTED_SIGNATURE_COUNT = 1079;
+// 官方 5.39.53 源树（junction 指向已安装 SDK 模块的 official/runtime，重建步骤见更新记录 2026-09-09）。
+const DEFAULT_SOURCE = path.resolve(__dirname, '..', '..', '.lingbuilder-build', 'fbro-official-5.39.53', 'FBrowser');
+const EXPECTED_HEADER_COUNT = 73;
+const EXPECTED_SIGNATURE_COUNT = 1071;
 const EXPECTED_EVENT_SLOT_COUNT = 174;
 const EXPECTED_UNIQUE_EVENT_SIGNATURE_COUNT = 158;
-const EXPECTED_BRIDGE_VERSION = '2.1.0';
+const EXPECTED_BRIDGE_VERSION = '2.6.0';
 const REQUIRED_EVENT_V3_EXPORTS = Object.freeze([
   'LB_FBro_SetEventCallbackV3',
   'LB_FBro_SetEventSubscription',
@@ -37,6 +38,7 @@ const EXPECTED_EVENT_CLASS_COUNTS = Object.freeze({
 });
 const IMPLEMENTED_EVENT_NAMES = new Map([
   ['OnAfterCreated', 'Created'],
+  ['OnBeforeContextMenu', 'BeforeContextMenu'],
   ['OnLoadEnd', 'LoadEnd'],
   ['OnAddressChange', 'AddressChanged'],
   ['OnBeforePopup', 'BeforePopup'],
@@ -51,7 +53,9 @@ const MANAGED_CALLBACK_EVENT_NAMES = new Set([
   'GetAuthCredentials', 'OnBeforeDownload', 'OnBeforeResourceLoad', 'OnBeforeUnloadDialog',
   'OnDownloadUpdated', 'OnFileDialog', 'OnJSDialog', 'OnQuotaRequest',
   'OnRequestMediaAccessPermission', 'OnSelectClientCertificate', 'OnShowPermissionPrompt',
-  'RunContextMenu', 'RunQuickMenu'
+  'RunContextMenu', 'RunQuickMenu',
+  // 手写在 BridgeBrowserEvent 中：直接读 CefRequest/CefResponse 输出完整字段并支持正文捕获过滤。
+  'OnResourceResponse', 'OnResourceLoadComplete', 'GetResourceResponseFilter'
 ]);
 
 const MANAGED_BROWSER_EVENT_BOUNDARIES = new Set([
@@ -185,7 +189,47 @@ const IMPLEMENTED_ADVANCED_EXPORTS = new Set([
   'FBroHsBrowserFrame_ViewSource', 'FBroHsBrowserFrame_IsMain',
   'FBroHsBrowserFrame_IsFocused', 'FBroHsBrowserFrame_GetName',
   'FBroHsBrowserFrame_GetIdentifier', 'FBroHsBrowserFrame_ExecuteJavaScript',
-  'FBroHsBrowserFrame_GetParent', 'FBroHsBrowserFrame_GetBrowser'
+  'FBroHsBrowserFrame_GetParent', 'FBroHsBrowserFrame_GetBrowser',
+  'FBroHsBrowserHost_GetWindowHandle', 'FBroHsBrowserHost_GetOpenerWindowHandle',
+  'FBroHsBrowserHost_GetParent', 'FBroHsBrowserHost_GetRuntimeStyle',
+  'FBroHsBrowserHost_MoveWindow', 'FBroHsBrowserHost_ShowDevTools',
+  'FBroHsVersion_GetMain', 'FBroHsVersion_GetEdit', 'FBroHsVersion_GetDedug',
+  'FBroHsRequestContext_IsGlobal', 'FBroHsRequestContext_GetCachePath',
+  'FBroHsRequestContext_GetGlobalContext',
+  'FBroHsBrowser_GetFlag', 'FBroHsBrowser_GetExtrainfo',
+  'FBroHsGetDataURI',
+  'FBroHsBrowserListControl_IsLife', 'FBroHsBrowserListControl_GetBrowserFromID',
+  'FBroHsBrowserListControl_GetBrowserFromFlag', 'FBroHsBrowserListControl_GetBrowserIDList',
+  'FBroHsBrowserListControl_GetBrowserFlagList',
+  'FBroHsRequest_Create', 'FBroHsRequest_GetURL', 'FBroHsRequest_SetURL',
+  'FBroHsRequest_SetMethod', 'FBroHsRequest_SetReferrer',
+  'FBroHsRequest_SetHeaderMap_Array', 'FBroHsRequest_SetPostData',
+  'FBroHsPostData_Create', 'FBroHsPostData_AddElement', 'FBroHsPostData_GetElementCount',
+  'FBroHsPostDataElement_Create', 'FBroHsPostDataElement_SetToData',
+  'FBroHsPostDataElement_GetBytesCount', 'FBroHsPostDataElement_GetBytes',
+  'FBroHsProcessMessage_Create', 'FBroHsProcessMessage_GetArgumentList',
+  'FBroHsBrowserFrame_LoadRequest', 'FBroHsBrowserFrame_SendProcessMessage',
+  'FBroHsBrowserFrame_CreateURLRequest',
+  'FBroHsURLRequest_Create', 'FBroHsURLRequest_GetRequest',
+  'FBroHsURLRequest_GetRequestStatus', 'FBroHsURLRequest_GetRequestError',
+  'FBroHsURLRequest_ResponseWasCached',
+  'FBroHsBrowserFrameTianBiao_SetClick', 'FBroHsBrowserFrameTianBiao_SetScrollIntoView',
+  'FBroHsBrowserFrameTianBiao_SetFocus', 'FBroHsBrowserFrameTianBiao_SetValue',
+  'FBroHsBrowserFrameTianBiao_GetValue', 'FBroHsBrowserFrameTianBiao_GetPoint',
+  'FBroHsBrowserFrame_GetSource', 'FBroHsBrowserFrame_GetText',
+  'FBroHsCreateBackground',
+  'FBroHsCommandLine_DisableGpu', 'FBroHsCommandLine_DisableGpuCache',
+  'FBroHsCommandLine_DisableGpuBlockList', 'FBroHsCommandLine_EnableMediaStream',
+  'FBroHsCommandLine_EnableSpeechInput', 'FBroHsCommandLine_EnableAutoplayPoliey',
+  'FBroHsCommandLine_GetString',
+  'FBroHsMenuModel_AddItem', 'FBroHsMenuModel_AddSubMenu',
+  'FBroHsMenuModel_SetAccelerator', 'FBroHsMenuModel_GetColor',
+  'FBroHsContextMenuParams_pGetXCoord', 'FBroHsContextMenuParams_pGetYCoord',
+  'FBroHsQueryFunctions', 'FBroJSFunctionCallback_Success',
+  'FBroJSFunctionCallback_Failure',
+  'FBroHsServer_CreateServer', 'FBroHsServer_SendWebSocketMessage',
+  'FBroHsServer_GetAddress', 'FBroHsServer_HasConnection',
+  'FBroHsServer_Shutdown'
 ]);
 
 const IMPLEMENTED_VIP_EXPORT_PATTERNS = [
@@ -233,7 +277,18 @@ function isImplementedAdvancedExport(officialName) {
 }
 
 const NOT_APPLICABLE_EXPORTS = new Map([
-  ['FBroHsBrowserHost_RunFileDialog', 'FBro 5.38.49 的辅助导出在 CEF UI 线程实测会阻塞且不创建对话框；Windows x64 高层命令改用独立 STA IFileDialog 和受管任务回调。']
+  ['FBroHsBrowserHost_RunFileDialog', 'FBro 5.38.49 的辅助导出在 CEF UI 线程实测会阻塞且不创建对话框；Windows x64 高层命令改用独立 STA IFileDialog 和受管任务回调。'],
+  ['FBroHsCreateSync', '同步创建会阻塞调用线程且与桥内多线程消息循环冲突；能力由现有创建命令与创建完成事件等价覆盖。'],
+  ['FBroHsCreateBackgroundSync', '同步版后台创建同样会阻塞；能力由 FBro_后台创建 异步命令覆盖。'],
+  ['FBroHsUseExtraData_SetEvent', '创建期事件附加数据由桥内字典直传等价实现（FBro_后台创建 的附加信息 JSON）。'],
+  ['FBroHsUseExtraData_SetEventDisableControlData', '创建期事件附加数据由桥内字典直传等价实现。'],
+  ['FBroHsUseExtraData_SetExtraInfoData', '创建期附加信息由桥内字典直传等价实现（FBro_后台创建 的附加信息 JSON）。'],
+  ['FBroHsUseExtraData_SetUserFlagData', '创建标记由官方 flag 参数直传（实例句柄字符串），读取用 FBro_取创建标记。'],
+  ['FBroHsUseExtraData_GetEvent', '事件附加数据由事件 JSON 包直接下发，无需独立读取对象。'],
+  ['FBroHsUseExtraData_GetEventDisableControlData', '事件附加数据由事件 JSON 包直接下发，无需独立读取对象。'],
+  ['FBroHsUseExtraData_GetExtraInfoData', '附加信息读取由 FBro_取附加信息JSON 覆盖。'],
+  ['FBroHsUseExtraData_GetUserFlagData', '创建标记读取由 FBro_取创建标记 覆盖。'],
+  ['FBroHsRequest_Set', '该导出需要火山平台专有的 PTELIB 字符串映射结构，无法在安全 C ABI 中构造；能力由设置地址、方法、头映射与提交数据的组合命令等价覆盖。']
 ]);
 
 const HIGH_LEVEL_EXPORTS = new Set([
@@ -264,7 +319,16 @@ const HIGH_LEVEL_EXPORTS = new Set([
 
 const NATIVE_CEF_EQUIVALENT_CALLS = new Map([
   ['FBroHsCookieManager_SetCookie', 'manager->SetCookie('],
-  ['FBroHsCookieManager_FlushStore', 'manager->FlushStore(']
+  ['FBroHsCookieManager_FlushStore', 'manager->FlushStore('],
+  // 实例列表族由桥自有 BrowserState 注册表等价实现；缓冲有效性由受管缓冲注册表等价实现。
+  ['FBroHsBrowserListControl_IsLife', 'LB_FBro_IsInstanceAlive'],
+  ['FBroHsBrowserListControl_GetBrowserFromID', 'LB_FBro_IsInstanceAlive'],
+  ['FBroHsBrowserListControl_GetBrowserFromFlag', 'LB_FBro_IsInstanceAlive'],
+  ['FBroHsBrowserListControl_GetBrowserIDList', 'LB_FBro_GetInstanceHandlesJson'],
+  ['FBroHsBrowserListControl_GetBrowserFlagList', 'LB_FBro_GetInstanceFlagsJson'],
+  ['FBroHsBinaryValue_IsValid', 'LB_FBro_IsBufferValid'],
+  ['FBroHsPostData_GetElements', '->GetElements('],
+  ['FBroHsPostDataElement_SetToBytes', 'SetToData(']
 ]);
 
 const INTERNAL_NAME_PATTERNS = [

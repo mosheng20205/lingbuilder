@@ -100,7 +100,8 @@ const eventEntries = [
   api('FBro事件_完成延续', 'LB_FBro_CompleteEventContinuation', [{ name: '延续句柄', type: 'longLong' }, { name: '响应JSON', type: 'wideString' }], 'int', '完成认证、权限、查询或下载等延迟决策；重复完成返回稳定错误码。', { visibility: 'advanced' }),
   api('FBro事件_取消延续', 'LB_FBro_CancelEventContinuation', [{ name: '延续句柄', type: 'longLong' }], 'int', '取消尚未完成的受管事件延续。', { visibility: 'advanced' }),
   api('FBro_设置事件采样率', 'LB_FBro_SetEventSamplingRate', [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '每秒次数', type: 'int' }], 'int', '按浏览器和事件设置高频事件采样率；零表示暂停投递。'),
-  api('FBro_绑定事件', 'LB_FBro_BindEvent', [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], 'int', '动态绑定 FBro 事件处理器。', { example: 'FBro_绑定事件(FBro浏览器1, "BeforePopup", &$1)' })
+  api('FBro_绑定事件', 'LB_FBro_BindEvent', [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], 'int', '动态绑定 FBro 事件处理器。', { example: 'FBro_绑定事件(FBro浏览器1, "BeforePopup", &$1)' }),
+  api('FBro_读资源响应正文', 'LB_FBro_ResourceBodyBegin', [{ name: '控件名', type: 'controlRef' }, { name: '最大字节数', type: 'longLong' }, { name: '完成处理器', type: 'handler', description: '必须使用 &处理器名；只能在“资源响应到达”处理器中调用。' }], 'int', '在“资源响应到达”处理器执行期间，为当前资源安装有界正文捕获；完成后触发“资源响应正文到达”，通过 FBro_取事件字段读取 url、status_code、mime_type、received_bytes、truncated、error、body_text 和 body_base64。不会重新发起请求。', { example: 'FBro_读资源响应正文($1, 1048576, &$2)' })
 ];
 
 const sessionEntries = [
@@ -113,7 +114,9 @@ const sessionEntries = [
   api('FBro会话_异步删除Cookie', 'LB_FBro_CookieDeleteAsync', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }, { name: '名称', type: 'wideString' }], 'longLong', '异步删除指定 Cookie；名称留空时删除该地址全部 Cookie。'),
   api('FBro会话_异步刷新Cookie存储', 'LB_FBro_CookieFlushAsync', [{ name: '控件名', type: 'controlRef' }], 'longLong', '异步请求 FBro 将 Cookie 写入持久化存储。'),
   api('FBro会话_异步清理缓存', 'LB_FBro_ClearCacheAsync', [{ name: '控件名', type: 'controlRef' }, { name: '来源', type: 'wideString' }, { name: '移除标志', type: 'int' }, { name: '配额标志', type: 'int' }], 'longLong', '异步清理当前浏览器实例指定来源的缓存数据。', { visibility: 'advanced' }),
-  api('FBro会话_异步清理全局缓存', 'LB_FBro_ClearGlobalCacheAsync', [{ name: '来源', type: 'wideString' }, { name: '移除标志', type: 'int' }, { name: '配额标志', type: 'int' }], 'longLong', '异步清理所有 FBro 实例共享的全局缓存数据。', { visibility: 'advanced' })
+  api('FBro会话_异步清理全局缓存', 'LB_FBro_ClearGlobalCacheAsync', [{ name: '来源', type: 'wideString' }, { name: '移除标志', type: 'int' }, { name: '配额标志', type: 'int' }], 'longLong', '异步清理所有 FBro 实例共享的全局缓存数据。', { visibility: 'advanced' }),
+  api('FBro会话_是否全局上下文', 'LB_FBro_IsGlobalRequestContext', [{ name: '控件名', type: 'controlRef' }], 'int', '判断指定浏览器使用的 RequestContext 是否为全局上下文；独立 Profile 返回 0。', { visibility: 'advanced' }),
+  api('FBro会话_取上下文缓存路径', 'LB_FBro_GetRequestContextCachePath', [{ name: '控件名', type: 'controlRef' }], 'wideString', '返回 RequestContext 缓存路径 JSON（global 与 cachePath 字段）；全局上下文同样返回其真实路径。', { visibility: 'advanced' })
 ];
 
 const transferEntries = [
@@ -149,7 +152,21 @@ const automationEntries = [
   api('FBro框架_全选', 'FBroHsBrowserFrame_SelectAll', [{ name: '框架句柄', type: 'longLong' }], 'int', '全选框架内容。', { visibility: 'advanced' }),
   api('FBro框架_查看源代码', 'FBroHsBrowserFrame_ViewSource', [{ name: '框架句柄', type: 'longLong' }], 'int', '打开框架源代码查看器。', { visibility: 'advanced' }),
   api('FBro框架_载入地址', 'FBroHsBrowserFrame_LoadURL', [{ name: '框架句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }], 'int', '让指定框架载入地址。', { visibility: 'advanced' }),
-  api('FBro框架_执行JS', 'FBroHsBrowserFrame_ExecuteJavaScript', [{ name: '框架句柄', type: 'longLong' }, { name: '脚本', type: 'wideString' }, { name: '脚本地址', type: 'wideString' }, { name: '起始行', type: 'int' }], 'int', '在指定框架执行 JavaScript，不等待返回值。', { visibility: 'advanced' })
+  api('FBro框架_执行JS', 'FBroHsBrowserFrame_ExecuteJavaScript', [{ name: '框架句柄', type: 'longLong' }, { name: '脚本', type: 'wideString' }, { name: '脚本地址', type: 'wideString' }, { name: '起始行', type: 'int' }], 'int', '在指定框架执行 JavaScript，不等待返回值。', { visibility: 'advanced' }),
+  api('FBro框架_载入请求', 'LB_FBro_FrameLoadRequest', [{ name: '框架句柄', type: 'longLong' }, { name: '请求句柄', type: 'longLong' }], 'int', '让指定框架按受管请求对象载入（URL、方法、头与提交体）。', { visibility: 'advanced' }),
+  api('FBro框架_发送进程消息', 'LB_FBro_FrameSendProcessMessage', [{ name: '框架句柄', type: 'longLong' }, { name: '目标进程', type: 'int' }, { name: '消息句柄', type: 'longLong' }], 'int', '向目标进程发送进程消息；目标进程 0=浏览器进程、1=渲染进程。', { visibility: 'advanced' }),
+  api('FBro框架_创建URL请求', 'LB_FBro_FrameCreateUrlRequestAsync', [{ name: '框架句柄', type: 'longLong' }, { name: '请求句柄', type: 'longLong' }], 'longLong', '在框架所属上下文中异步发起 URL 请求；任务结果包含 urlRequest 句柄与 status/error/cached 字段。', { visibility: 'advanced' }),
+  api('FBro异步请求_发起', 'LB_FBro_UrlRequestStartAsync', [{ name: '控件名', type: 'controlRef' }, { name: '请求句柄', type: 'longLong' }], 'longLong', '使用指定浏览器会话上下文异步发起受管 URL 请求；任务结果包含 urlRequest 句柄、status、error 与 cached。', { visibility: 'advanced' }),
+  api('FBro异步请求_取状态', 'LB_FBro_UrlRequestGetStatus', [{ name: 'URL请求句柄', type: 'longLong' }], 'int', '读取 URL 请求官方状态（1=未知 2=进行中 3=成功 4=失败）。', { visibility: 'advanced' }),
+  api('FBro异步请求_取原请求', 'LB_FBro_UrlRequestGetRequestObject', [{ name: 'URL请求句柄', type: 'longLong' }], 'longLong', '取得 URL 请求对应的受管请求对象句柄。', { visibility: 'advanced' }),
+  api('FBro填表_点击元素', 'LB_FBro_FrameTianBiaoClick', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }], 'int', '按 CSS 选择器点击第 index 个匹配元素（从 0 起）。', { visibility: 'advanced' }),
+  api('FBro填表_滚动到元素', 'LB_FBro_FrameTianBiaoScrollIntoView', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '滚到顶部', type: 'bool' }], 'int', '把匹配元素滚动到可视区域；滚到顶部为真时贴顶，否则尽量贴底。', { visibility: 'advanced' }),
+  api('FBro填表_聚焦元素', 'LB_FBro_FrameTianBiaoSetFocus', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '是否聚焦', type: 'bool' }], 'int', '设置匹配元素的输入焦点。', { visibility: 'advanced' }),
+  api('FBro填表_赋值', 'LB_FBro_FrameTianBiaoSetValue', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '值', type: 'wideString' }], 'int', '设置匹配元素的值（等效表单赋值）。', { visibility: 'advanced' }),
+  api('FBro填表_取值', 'LB_FBro_FrameTianBiaoGetValueAsync', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }], 'wideString', '读取匹配元素的值；内部等待任务完成后返回 JSON 结果。', { visibility: 'advanced' }),
+  api('FBro填表_取坐标', 'LB_FBro_FrameTianBiaoGetPointAsync', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }], 'wideString', '读取匹配元素页面坐标；内部等待任务完成后返回 JSON 结果。', { visibility: 'advanced' }),
+  api('FBro框架_取源码', 'LB_FBro_FrameGetSourceAsync', [{ name: '框架句柄', type: 'longLong' }], 'longLong', '异步取框架完整 HTML 源码；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_保存文件 或 FBro缓冲_转文本。', { visibility: 'advanced' }),
+  api('FBro框架_取文本', 'LB_FBro_FrameGetTextAsync', [{ name: '框架句柄', type: 'longLong' }], 'longLong', '异步取框架可见文本；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_转文本。', { visibility: 'advanced' })
 ];
 
 const objectEntries = [
@@ -166,6 +183,32 @@ const objectEntries = [
   api('FBro缓冲_转十六进制', 'LB_FBro_BufferToHex', [{ name: '缓冲句柄', type: 'longLong' }], 'wideString', '把受管缓冲转换为十六进制文本。', { visibility: 'advanced' }),
   api('FBro缓冲_保存文件', 'LB_FBro_BufferSaveFile', [{ name: '缓冲句柄', type: 'longLong' }, { name: '路径', type: 'wideString' }], 'int', '保存受管缓冲到文件。', { visibility: 'advanced' }),
   api('FBro缓冲_释放', 'LB_FBro_BufferRelease', [{ name: '缓冲句柄', type: 'longLong' }], 'int', '释放受管缓冲句柄。', { visibility: 'advanced' }),
+  api('FBro缓冲_转文本', 'LB_FBro_BufferToText', [{ name: '缓冲句柄', type: 'longLong' }], 'wideString', '按 UTF-8 解码受管缓冲并返回文本（单次上限约 16K 字符；大内容请用 FBro缓冲_保存文件）。', { visibility: 'advanced' }),
+  api('FBro缓冲_是否有效', 'LB_FBro_IsBufferValid', [{ name: '缓冲句柄', type: 'longLong' }], 'int', '检查受管缓冲句柄是否仍然有效。', { visibility: 'advanced' }),
+  api('FBro工具_创建数据URI', 'LB_FBro_CreateDataUri', [{ name: 'MIME类型', type: 'wideString' }, { name: '数据', type: 'wideString' }], 'wideString', '把文本数据编码为 data: URI；MIME 类型如 image/png、text/html。', { visibility: 'advanced' }),
+  api('FBro请求_创建', 'LB_FBro_RequestCreate', [], 'longLong', '创建受管 HTTP 请求对象并返回句柄；可用 FBro框架_载入请求 或 FBro异步请求_发起 使用。', { visibility: 'advanced' }),
+  api('FBro请求_取地址', 'LB_FBro_RequestGetUrl', [{ name: '请求句柄', type: 'longLong' }], 'wideString', '读取请求对象当前地址。', { visibility: 'advanced' }),
+  api('FBro请求_设置地址', 'LB_FBro_RequestSetUrl', [{ name: '请求句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }], 'int', '设置请求对象地址。', { visibility: 'advanced' }),
+  api('FBro请求_设置方法', 'LB_FBro_RequestSetMethod', [{ name: '请求句柄', type: 'longLong' }, { name: '方法', type: 'wideString' }], 'int', '设置请求方法，如 GET、POST。', { visibility: 'advanced' }),
+  api('FBro请求_设置引用页', 'LB_FBro_RequestSetReferrer', [{ name: '请求句柄', type: 'longLong' }, { name: '引用页', type: 'wideString' }, { name: '策略', type: 'int' }], 'int', '设置请求引用页与策略（0=清除 1=省略 2=降级 3=始终 4=源）。', { visibility: 'advanced' }),
+  api('FBro请求_设置头映射JSON', 'LB_FBro_RequestSetHeaderMapJson', [{ name: '请求句柄', type: 'longLong' }, { name: '头列表JSON', type: 'wideString' }], 'int', '按 [{"name":"...","value":"..."}] 数组设置请求头；不覆盖未列出的已有头。', { visibility: 'advanced' }),
+  api('FBro请求_组合设置', 'LB_FBro_RequestComposeSet', [{ name: '请求句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }, { name: '方法', type: 'wideString' }, { name: '提交数据句柄', type: 'longLong' }, { name: '头列表JSON', type: 'wideString' }], 'int', '一次性设置地址、方法、提交体与头；提交数据句柄传 0 跳过，头 JSON 传空跳过。', { visibility: 'advanced' }),
+  api('FBro提交数据_创建', 'LB_FBro_PostDataCreate', [], 'longLong', '创建受管提交数据对象（POST 请求体）。', { visibility: 'advanced' }),
+  api('FBro提交数据_添加元素', 'LB_FBro_PostDataAddElement', [{ name: '提交数据句柄', type: 'longLong' }, { name: '元素句柄', type: 'longLong' }], 'int', '向提交数据对象追加一个提交元素。', { visibility: 'advanced' }),
+  api('FBro提交数据_取元素数量', 'LB_FBro_PostDataGetElementCount', [{ name: '提交数据句柄', type: 'longLong' }], 'int', '取得提交数据对象中的元素数量。', { visibility: 'advanced' }),
+  api('FBro提交数据_取元素句柄列表JSON', 'LB_FBro_PostDataGetElementHandlesJson', [{ name: '提交数据句柄', type: 'longLong' }], 'wideString', '取得全部提交元素并注册为受管句柄，返回 JSON 数组。', { visibility: 'advanced' }),
+  api('FBro提交数据_创建元素', 'LB_FBro_PostDataElementCreate', [], 'longLong', '创建受管提交元素。', { visibility: 'advanced' }),
+  api('FBro提交数据_元素设字节', 'LB_FBro_PostDataElementSetBytes', [{ name: '元素句柄', type: 'longLong' }, { name: '文本', type: 'wideString' }], 'int', '把元素内容设为 UTF-8 字节（按文本传入）。', { visibility: 'advanced' }),
+  api('FBro提交数据_元素取字节大小', 'LB_FBro_PostDataElementGetBytesCount', [{ name: '元素句柄', type: 'longLong' }], 'int', '取得元素字节大小。', { visibility: 'advanced' }),
+  api('FBro提交数据_元素取文本', 'LB_FBro_PostDataElementGetText', [{ name: '元素句柄', type: 'longLong' }], 'wideString', '按 UTF-8 读取元素字节并返回文本。', { visibility: 'advanced' }),
+  api('FBro消息_创建', 'LB_FBro_ProcessMessageCreate', [{ name: '消息名', type: 'wideString' }], 'longLong', '创建受管进程消息对象。', { visibility: 'advanced' }),
+  api('FBro消息_取参数列表', 'LB_FBro_ProcessMessageGetArgumentList', [{ name: '消息句柄', type: 'longLong' }], 'longLong', '取得消息参数列表的受管 List 句柄；可用 FBro列表_* 读写。', { visibility: 'advanced' }),
+  api('FBro菜单_添加项', 'LB_FBro_MenuModelAddItem', [{ name: '菜单句柄', type: 'longLong' }, { name: '命令ID', type: 'int' }, { name: '标题', type: 'wideString' }], 'int', '向右键菜单模型添加菜单项；仅可在“上下文菜单显示前”事件处理期内使用。', { visibility: 'advanced' }),
+  api('FBro菜单_添加子菜单', 'LB_FBro_MenuModelAddSubMenu', [{ name: '菜单句柄', type: 'longLong' }, { name: '命令ID', type: 'int' }, { name: '标题', type: 'wideString' }], 'longLong', '向右键菜单模型添加子菜单并返回其受管句柄；仅可在事件处理期内使用。', { visibility: 'advanced' }),
+  api('FBro菜单_设置加速键', 'LB_FBro_MenuModelSetAccelerator', [{ name: '菜单句柄', type: 'longLong' }, { name: '命令ID', type: 'int' }, { name: '键码', type: 'int' }, { name: 'Shift', type: 'bool' }, { name: 'Ctrl', type: 'bool' }, { name: 'Alt', type: 'bool' }], 'int', '为菜单项设置加速键组合。', { visibility: 'advanced' }),
+  api('FBro菜单_取颜色', 'LB_FBro_MenuModelGetColor', [{ name: '菜单句柄', type: 'longLong' }, { name: '命令ID', type: 'int' }, { name: '颜色类型', type: 'int' }], 'wideString', '读取菜单项颜色，返回 red/green/blue/alpha JSON。', { visibility: 'advanced' }),
+  api('FBro右键参数_取X', 'LB_FBro_ContextMenuParamsGetX', [{ name: '参数句柄', type: 'longLong' }], 'int', '读取右键菜单弹出坐标 X；仅可在事件处理期内使用。', { visibility: 'advanced' }),
+  api('FBro右键参数_取Y', 'LB_FBro_ContextMenuParamsGetY', [{ name: '参数句柄', type: 'longLong' }], 'int', '读取右键菜单弹出坐标 Y；仅可在事件处理期内使用。', { visibility: 'advanced' }),
   api('FBro对象_取类型', 'LB_FBro_ObjectGetType', [{ name: '对象句柄', type: 'longLong' }], 'int', '取得受管对象注册表类型。', { visibility: 'advanced' }),
   api('FBro对象_释放', 'LB_FBro_ObjectRelease', [{ name: '对象句柄', type: 'longLong' }], 'int', '释放受管对象；重复释放返回稳定错误码。', { visibility: 'advanced' }),
 
@@ -295,7 +338,13 @@ const objectEntries = [
 
 const networkEntries = [
   api('FBro网络_设置代理', 'LB_FBro_SetProxy', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], 'int', '设置当前 FBro RequestContext 的代理。', { runtimeName: 'FBro_设置代理', visibility: 'advanced' }),
-  api('FBro网络_设置代理认证', 'LB_FBro_SetProxyAuthentication', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置代理与认证信息。', { runtimeName: 'FBro会话_设置代理认证', visibility: 'advanced' })
+  api('FBro网络_设置代理认证', 'LB_FBro_SetProxyAuthentication', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置代理与认证信息。', { runtimeName: 'FBro会话_设置代理认证', visibility: 'advanced' }),
+  api('FBro服务器_创建', 'LB_FBro_ServerCreateAsync', [{ name: '监听地址', type: 'wideString' }, { name: '端口', type: 'int' }, { name: '最大连接数', type: 'int' }], 'longLong', '创建内嵌 HTTP/WebSocket 服务器；任务结果包含 server 句柄与 address。', { visibility: 'advanced' }),
+  api('FBro服务器_发送WebSocket文本', 'LB_FBro_ServerSendWebSocketMessage', [{ name: '服务器句柄', type: 'longLong' }, { name: '连接ID', type: 'int' }, { name: '文本', type: 'wideString' }], 'int', '向指定连接发送 WebSocket 文本帧（UTF-8）；自动投递到服务器 IO 线程。', { visibility: 'advanced' }),
+  api('FBro服务器_发送WebSocket缓冲', 'LB_FBro_ServerSendWebSocketBuffer', [{ name: '服务器句柄', type: 'longLong' }, { name: '连接ID', type: 'int' }, { name: '缓冲句柄', type: 'longLong' }], 'int', '向指定连接发送 WebSocket 二进制帧（受管缓冲）。', { visibility: 'advanced' }),
+  api('FBro服务器_取地址', 'LB_FBro_ServerGetAddress', [{ name: '服务器句柄', type: 'longLong' }], 'wideString', '返回服务器监听地址。', { visibility: 'advanced' }),
+  api('FBro服务器_是否存在连接', 'LB_FBro_ServerHasConnection', [{ name: '服务器句柄', type: 'longLong' }, { name: '连接ID', type: 'int' }], 'int', '判断指定连接是否仍然有效。', { visibility: 'advanced' }),
+  api('FBro服务器_关闭', 'LB_FBro_ServerShutdown', [{ name: '服务器句柄', type: 'longLong' }], 'int', '关闭内嵌服务器并释放监听。', { visibility: 'advanced' })
 ];
 
 const vipAggregateOptions = {

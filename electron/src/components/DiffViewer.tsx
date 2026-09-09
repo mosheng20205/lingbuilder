@@ -8349,12 +8349,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const sourceLine = locals[0]?.line || target.method.line + 1;
       const localGroupKey = `${codeTargetKey(target)}:${groupId}`;
       const collapsed = collapsedBeginnerLocalGroupKeys.includes(localGroupKey);
+      // Code body text starts one flow-guide column (--beginner-flow-width)
+      // further right than table shells; shift locals by the same amount so
+      // the block's left edge aligns with the outermost body statements.
       return renderSourceShell(
         `${target.method.kind}-${target.method.name}-locals`,
         visualLine,
         sourceLine,
         'plain',
-        <div className="min-w-0">
+        <div className="min-w-0" style={{ marginLeft: 'var(--beginner-flow-width)' }}>
           <button
             type="button"
             aria-expanded={!collapsed}
@@ -9007,13 +9010,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 </div>
               ))}
             </div>
-            <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden px-3 py-2">
+            <div className="pointer-events-none absolute inset-0 z-20 py-2">
               {bodyLines.map((line, index) => {
                 const block = flowBlockAtStartLine(index + 1);
                 return (
                   <div
                     key={`${targetKey}:flow-fold-control:${index}`}
-                    className="relative"
+                    className="relative px-3"
                     style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
                   >
                     {block && renderBeginnerFlowFoldButton(block, line, false)}

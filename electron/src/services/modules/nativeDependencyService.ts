@@ -17,7 +17,7 @@ import {
 } from '../sdkDependencies/sdkDependencyCatalog';
 
 const FBRO_SDK_VERSION = '135.0.21';
-const FBRO_BRIDGE_VERSION = '2.2.0';
+const FBRO_BRIDGE_VERSION = '2.6.0';
 const FBRO_V3_HEADER_MARKERS = [
   'LB_FBRO_ABI_VERSION_V3',
   'LB_FBRO_EVENT_PACKET_V3',
@@ -458,6 +458,62 @@ async function resolveProtobufSdkRoot(layout: ModuleNativeDependencyLayout): Pro
   return path.resolve(layout.buildDir, '..', '..', '..', '..', '.lingbuilder', 'toolchains', 'protobuf');
 }
 
+/**
+ * 读取 PE 导出表，判断 DLL 是否导出指定符号。
+ * 返回 'has' / 'missing'（成功解析但缺符号）/ 'notPe'（无法按 PE 解析，探测不适用）。
+ * 用于检测手工覆盖模块目录后 DLL 与清单不同步的陈旧桥接（避免 F5 以 LNK2019 收场）。
+ */
+export function peExportProbe(buffer: Buffer, exportName: string): 'has' | 'missing' | 'notPe' {
+  try {
+    if (buffer.length < 0x40 + 24 || buffer.readUInt16LE(0) !== 0x5a4d) return 'notPe';
+    const peOffset = buffer.readUInt32LE(0x3c);
+    if (peOffset <= 0 || peOffset + 24 > buffer.length || buffer.readUInt32LE(peOffset) !== 0x00004550) return 'notPe';
+    const numberOfSections = buffer.readUInt16LE(peOffset + 6);
+    const optionalHeaderSize = buffer.readUInt16LE(peOffset + 20);
+    const optionalHeaderOffset = peOffset + 24;
+    if (optionalHeaderSize <= 0 || optionalHeaderOffset + optionalHeaderSize > buffer.length) return 'notPe';
+    const magic = buffer.readUInt16LE(optionalHeaderOffset);
+    const dataDirectoryOffset = optionalHeaderOffset + (magic === 0x20b ? 112 : 96);
+    if (dataDirectoryOffset + 8 > buffer.length) return 'notPe';
+    const exportRva = buffer.readUInt32LE(dataDirectoryOffset);
+    if (exportRva === 0) return 'notPe';
+    const sectionsOffset = optionalHeaderOffset + optionalHeaderSize;
+    const sections: Array<{ rva: number; size: number; raw: number }> = [];
+    for (let index = 0; index < numberOfSections; index += 1) {
+      const entry = sectionsOffset + index * 40;
+      if (entry + 40 > buffer.length) return 'notPe';
+      const virtualSize = buffer.readUInt32LE(entry + 8);
+      const virtualAddress = buffer.readUInt32LE(entry + 12);
+      const sizeOfRawData = buffer.readUInt32LE(entry + 16);
+      const pointerToRawData = buffer.readUInt32LE(entry + 20);
+      sections.push({ rva: virtualAddress, size: Math.max(virtualSize, sizeOfRawData), raw: pointerToRawData });
+    }
+    const rvaToOffset = (rva: number): number => {
+      for (const section of sections) {
+        if (rva >= section.rva && rva < section.rva + section.size) return rva - section.rva + section.raw;
+      }
+      return 0;
+    };
+    const exportOffset = rvaToOffset(exportRva);
+    if (exportOffset <= 0 || exportOffset + 40 > buffer.length) return 'notPe';
+    const numberOfNames = buffer.readUInt32LE(exportOffset + 24);
+    const addressOfNames = rvaToOffset(buffer.readUInt32LE(exportOffset + 32));
+    if (addressOfNames <= 0 || addressOfNames + 4 > buffer.length) return 'notPe';
+    for (let index = 0; index < numberOfNames; index += 1) {
+      const namePointerEntry = addressOfNames + index * 4;
+      if (namePointerEntry + 4 > buffer.length) return 'notPe';
+      const nameOffset = rvaToOffset(buffer.readUInt32LE(namePointerEntry));
+      if (nameOffset <= 0 || nameOffset >= buffer.length) continue;
+      const end = buffer.indexOf(0, nameOffset);
+      if (end <= nameOffset || end - nameOffset > 256) continue;
+      if (buffer.toString('latin1', nameOffset, end) === exportName) return 'has';
+    }
+    return 'missing';
+  } catch {
+    return 'notPe';
+  }
+}
+
 interface FbroRuntimeManifestFile {
   path: string;
   size: number;
@@ -561,7 +617,7 @@ async function materializeFbroSdkUnlocked(
     return;
   }
   if (manifest.sdkVersion !== FBRO_SDK_VERSION || manifest.bridgeVersion !== FBRO_BRIDGE_VERSION || manifest.architecture !== 'x64') {
-    addBlockingDiagnostic(plan, `FBro SDK、Bridge 或架构不匹配：需要 ${FBRO_SDK_VERSION}/Bridge ${FBRO_BRIDGE_VERSION}/x64，实际为 ${manifest.sdkVersion}/Bridge ${manifest.bridgeVersion}/${manifest.architecture}。请运行“cd electron && npm run module:fbro-sdk -- --install”重新生成。`);
+    addBlockingDiagnostic(plan, `FBro SDK、Bridge 或架构不匹配：需要 ${FBRO_SDK_VERSION}/Bridge ${FBRO_BRIDGE_VERSION}/x64，实际为 ${manifest.sdkVersion}/Bridge ${manifest.bridgeVersion}/${manifest.architecture}。请在 LingBuilder 的 SDK 下载面板重装 FBro 环境 SDK。`);
     return;
   }
 
@@ -577,6 +633,23 @@ async function materializeFbroSdkUnlocked(
       addBlockingDiagnostic(plan, `FBro SDK 文件缺失：${path.relative(sdkRoot, required).replace(/\\/g, '/')}`);
       return;
     }
+  }
+  // 陈旧桥接 DLL 探测：手工覆盖模块目录时清单可能被同步改过，但 DLL 仍是旧版，
+  // 缺少资源正文捕获导出会让 F5 以 LNK2019 收场。这里提前给出可操作的中文诊断。
+  // 无法按 PE 解析的文件（异常损坏/占位）不在此判定，交由后续链接阶段暴露。
+  try {
+    const bridgeDllBuffer = await fs.readFile(bridgeDll);
+    if (peExportProbe(bridgeDllBuffer, 'LB_FBro_ResourceBodyBegin') === 'missing') {
+      addBlockingDiagnostic(plan, '已安装的 FBro SDK 桥接 DLL 缺少导出 LB_FBro_ResourceBodyBegin（资源响应正文捕获）。请在 LingBuilder 的 SDK 下载面板重装 FBro 环境 SDK。');
+      return;
+    }
+    if (peExportProbe(bridgeDllBuffer, 'LB_FBro_ResourceReplaceSet') === 'missing') {
+      addBlockingDiagnostic(plan, '已安装的 FBro SDK 桥接 DLL 缺少导出 LB_FBro_ResourceReplaceSet（非 VIP 响应正文查找替换）。请在 LingBuilder 的 SDK 下载面板重装 FBro 环境 SDK。');
+      return;
+    }
+  } catch (error) {
+    addBlockingDiagnostic(plan, `读取 FBro 桥接 DLL 失败：${errorMessage(error)}`);
+    return;
   }
   const bridgeHeaderSource = await fs.readFile(bridgeHeader, 'utf8').catch(() => '');
   const missingV3Markers = FBRO_V3_HEADER_MARKERS.filter(marker => !bridgeHeaderSource.includes(marker));

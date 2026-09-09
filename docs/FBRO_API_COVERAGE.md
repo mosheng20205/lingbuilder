@@ -1,11 +1,11 @@
 # FBro API 覆盖清单
 
-确定性基线：FBro 5.38.49、CEF 135.0.21、windows-msvc-x64。火山 `.v` 二进制工程只用于火山 IDE 抽样核对，不参与本清单生成。
+确定性基线：FBro 5.39.53、CEF 135.0.21、windows-msvc-x64。火山 `.v` 二进制工程只用于火山 IDE 抽样核对，不参与本清单生成。
 
-- 公共头文件：77
-- 导出签名：1079
+- 公共头文件：73
+- 导出签名：1071
 - 高层封装：56
-- 高级安全封装：1020（已实现 341，待实现 678）
+- 高级安全封装：1012（已实现 415，待实现 585）
 - 内部/生命周期项：3
 
 - 官方事件槽位：174
@@ -20,7 +20,7 @@
 | `lingbuilder.fbro.network` | 网络 | 145 |
 | `lingbuilder.fbro.objects` | 高级对象 | 268 |
 | `lingbuilder.fbro.osr` | 离屏渲染 | 46 |
-| `lingbuilder.fbro.session` | 会话 | 24 |
+| `lingbuilder.fbro.session` | 会话 | 16 |
 | `lingbuilder.fbro.transfer` | 传输 | 32 |
 | `lingbuilder.fbro.vip` | 指纹 | 188 |
 

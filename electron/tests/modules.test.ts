@@ -57,7 +57,7 @@ import {
   getBeginnerModuleCommandHints
 } from '../src/services/modules/moduleContextAdapters';
 import { InstalledModule } from '../src/services/modules/types';
-import { exportModuleNativeDependencies, inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
+import { exportModuleNativeDependencies, inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies, peExportProbe } from '../src/services/modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { createControlToolboxGroups } from '../src/services/windowDesigner/controlToolboxModel';
@@ -251,16 +251,17 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       parameterDigest: audit.parameterDigest
     },
     {
-      // 基线 2026-09-06 写回：+1 命令 / +1 参数 = CEF3_取资源地址(相对路径)，
-      // 由 CEF3 合集工作加入且未在此登记；同批新增的 EdgeView_等待事件控件
-      // （3 参数含 1 个 controlRef）此前已入账，故 controlReferences 仍为 1263。
-      // 再增删内置命令或其参数时必须同步这两个摘要，否则覆盖面会无声缩小。
+      // 基线 2026-09-08 写回：CEF3_读资源响应正文 / CEF3_替换资源响应内容 /
+      // CEF3_清除资源响应替换（CEF3 合集）、FBro_替换资源响应内容 / FBro_替换资源响应文件
+      // （FBro 合集，VIP 资源整体替换）入账；FBro_取调试端口描述改写
+      // （进程内模式按 enableDevTools 决定是否预留回环端口）更新两个摘要。
+      // 再增删内置命令或其参数、改写命令描述时必须同步这两个摘要，否则覆盖面会无声缩小。
       modules: 85,
-      commands: 3013,
-      parameters: 5165,
-      controlReferences: 1263,
-      commandDigest: '653f9624',
-      parameterDigest: 'f9518491'
+      commands: 3087,
+      parameters: 5306,
+      controlReferences: 1285,
+      commandDigest: 'bda69424',
+      parameterDigest: '268f94d5'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -354,7 +355,6 @@ test('模块清单拒绝缺失运行时创建映射和非尾部可选参数', ()
 test('AI 导入口径要求中文命令与 bindings 成对，默认清单口径不受影响', () => {
   const manifest = {
     schemaVersion: 2,
-    id: 'ai.pairing.probe',
     name: '成对校验探针',
     version: '1.0.0',
     category: '其他',
@@ -393,7 +393,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 47, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 50, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1550,7 +1550,7 @@ test('FBro submodules recursively enable the 2.1.0 v3 event core and require con
   assert.ok(!enabled.some(item => item.manifest.id.startsWith('lingbuilder.fbro.')));
 });
 
-test('FBro browser 2.4 keeps 2.1 submodules compatible with the v3 event core', () => {
+test('FBro browser 2.5 keeps 2.1 submodules compatible with the v3 event core', () => {
   const callable = BUILTIN_MODULES.filter(module => module.id.startsWith('lingbuilder.fbro.')
     && module.id !== 'lingbuilder.fbro.sdk');
   assert.deepEqual(new Set(callable.map(module => module.id)), new Set([
@@ -1563,7 +1563,7 @@ test('FBro browser 2.4 keeps 2.1 submodules compatible with the v3 event core', 
     'lingbuilder.fbro.network',
     'lingbuilder.fbro.vip'
   ]));
-  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.4.0');
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.6.0');
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module => module.version === '2.1.0'));
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module =>
     module.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.fbro.browser'
@@ -1578,7 +1578,7 @@ test('FBro module family exposes one manager entry and atomically enables the st
   const family = getFbroFamilyModules(installed);
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
-  assert.equal(countModuleCommands(family), 471);
+  assert.equal(countModuleCommands(family), 542);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -1697,16 +1697,18 @@ test('FBro official SDK coverage catalog remains complete and classified', async
       classificationReason: string;
     }>;
   };
-  assert.equal(catalog.headerCount, 77);
-  assert.equal(catalog.signatureCount, 1079);
-  assert.equal(catalog.rawDeclarationCount, 1091);
-  assert.equal(catalog.signatures.length, 1079);
+        // 基线 2026-09-09 写回：FBro 官方 SDK 升级到火山版 5.39.53（chromium 135.0.7049.115），
+      // 头 77→73、签名族 1079→1071（删除 FBroClientBase/FBroExtension/FBroExtensionHandler/FBroRenderHandler 四头）。
+      assert.equal(catalog.headerCount, 73);
+  assert.equal(catalog.signatureCount, 1071);
+  assert.equal(catalog.rawDeclarationCount, 1083);
+  assert.equal(catalog.signatures.length, 1071);
   assert.ok(catalog.signatures.every(item => ['highLevel', 'advancedSafe', 'internal'].includes(item.classification)
     && ['implemented', 'planned', 'notApplicable'].includes(item.implementationStatus)
     && item.classificationReason.length > 0));
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 341);
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 678);
-  assert.equal(catalog.signatures.filter(item => item.implementationStatus === 'notApplicable').length, 4);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 415);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 585);
+  assert.equal(catalog.signatures.filter(item => item.implementationStatus === 'notApplicable').length, 15);
   assert.match(catalog.signatures.find(item => item.officialName === 'FBroHsBrowserHost_RunFileDialog')?.classificationReason || '', /阻塞/u);
   assert.ok(catalog.signatures.filter(item => item.classification === 'highLevel').every(item => item.implementationStatus === 'implemented'));
   assert.ok(catalog.signatures.every(item => /^LB_FBroV2_[0-9a-f]{16}$/u.test(item.wrapperSymbol)
@@ -1824,7 +1826,7 @@ test('模块公开信息搜索忽略命令标识符分隔符', () => {
 test('FBro Frame 使用类型化句柄并由普通 Win32 与 New_Emoji 共用官方调用', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.automation');
   assert.ok(manifest);
-  assert.equal(manifest.contributes?.commands?.length, 25);
+  assert.equal(manifest.contributes?.commands?.length, 39);
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro框架_取主框架'
     && command.aliases?.includes('FBroHsBrowser_GetMainFrame')));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro框架_取标识'
@@ -1843,7 +1845,7 @@ test('FBro Frame 使用类型化句柄并由普通 Win32 与 New_Emoji 共用官
 test('FBro Session CookieManager 与缓存清理使用受管异步任务和官方 Bridge 调用', async () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.session');
   assert.ok(manifest);
-  assert.equal(manifest.contributes?.commands?.length, 10);
+  assert.equal(manifest.contributes?.commands?.length, 12);
   for (const [command, alias] of [
     ['FBro会话_异步取全部Cookie', 'LB_FBro_CookieVisitAllAsync'],
     ['FBro会话_异步取地址Cookie', 'LB_FBro_CookieVisitUrlAsync'],
@@ -1876,6 +1878,69 @@ test('FBro Session CookieManager 与缓存清理使用受管异步任务和官�
   assert.match(bridge, /LB_FBro_TaskRelease[\s\S]*?status = LB_FBRO_TASK_CANCELLED;[\s\S]*?callback = nullptr;/u);
 });
 
+test('FBro 宿主信息、实例注册表与等价能力命令使用真实 Bridge 查询调用', async () => {
+  const browser = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  const session = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.session');
+  const objects = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
+  assert.ok(browser);
+  assert.ok(session);
+  assert.ok(objects);
+  const manifestFor = (moduleId: string) => (
+    moduleId === 'lingbuilder.fbro.browser' ? browser : moduleId === 'lingbuilder.fbro.session' ? session : objects);
+  for (const [moduleId, command, alias] of [
+    ['lingbuilder.fbro.browser', 'FBro_取窗口句柄', 'LB_FBro_GetWindowHandle'],
+    ['lingbuilder.fbro.browser', 'FBro_取打开者窗口句柄', 'LB_FBro_GetOpenerWindowHandle'],
+    ['lingbuilder.fbro.browser', 'FBro_取父窗口句柄', 'LB_FBro_GetParentWindowHandle'],
+    ['lingbuilder.fbro.browser', 'FBro_取运行时样式', 'LB_FBro_GetRuntimeStyle'],
+    ['lingbuilder.fbro.browser', 'FBro_取SDK版本JSON', 'LB_FBro_GetSdkVersionJson'],
+    ['lingbuilder.fbro.browser', 'FBro_取实例数量', 'LB_FBro_GetInstanceCount'],
+    ['lingbuilder.fbro.browser', 'FBro_取实例句柄列表JSON', 'LB_FBro_GetInstanceHandlesJson'],
+    ['lingbuilder.fbro.browser', 'FBro_取实例标记列表JSON', 'LB_FBro_GetInstanceFlagsJson'],
+    ['lingbuilder.fbro.browser', 'FBro_是否存活', 'LB_FBro_IsInstanceAlive'],
+    ['lingbuilder.fbro.browser', 'FBro_显示开发者工具窗口', 'LB_FBro_ShowDevToolsWindowAsync'],
+    ['lingbuilder.fbro.browser', 'FBro_移动浏览器窗口', 'LB_FBro_MoveBrowserWindowAsync'],
+    ['lingbuilder.fbro.browser', 'FBro_取创建标记', 'LB_FBro_GetBrowserFlag'],
+    ['lingbuilder.fbro.browser', 'FBro_取附加信息JSON', 'LB_FBro_GetBrowserExtraInfoJson'],
+    ['lingbuilder.fbro.session', 'FBro会话_是否全局上下文', 'LB_FBro_IsGlobalRequestContext'],
+    ['lingbuilder.fbro.session', 'FBro会话_取上下文缓存路径', 'LB_FBro_GetRequestContextCachePath'],
+    ['lingbuilder.fbro.objects', 'FBro缓冲_是否有效', 'LB_FBro_IsBufferValid'],
+    ['lingbuilder.fbro.objects', 'FBro工具_创建数据URI', 'LB_FBro_CreateDataUri']
+  ] as const) {
+    const manifest = manifestFor(moduleId);
+    assert.ok(manifest?.contributes?.commands?.some(item => item.name === command && item.aliases?.includes(alias)),
+      `${command} 缺少命令或官方别名`);
+    assert.ok(manifest?.bindings?.commands?.some(item => item.command === command && item.runtimeName === command),
+      `${command} 缺少确定性 binding`);
+  }
+  const [bridge, bridgeHeader, generatorSource] = await Promise.all([
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '..', 'src', 'services', 'windowDesigner', 'lingCppWin32Project.ts'), 'utf8')
+  ]);
+  for (const symbol of [
+    'FBroHsBrowserHost_GetWindowHandle', 'FBroHsBrowserHost_GetOpenerWindowHandle',
+    'FBroHsBrowserHost_GetParent', 'FBroHsBrowserHost_GetRuntimeStyle',
+    'FBroHsBrowserHost_MoveWindow', 'FBroHsBrowserHost_ShowDevTools',
+    'FBroHsVersion_GetMain', 'FBroHsVersion_GetEdit', 'FBroHsVersion_GetDedug',
+    'FBroHsRequestContext_IsGlobal', 'FBroHsRequestContext_GetCachePath',
+    'FBroHsRequestContext_GetGlobalContext',
+    'FBroHsBrowser_GetFlag', 'FBroHsBrowser_GetExtrainfo', 'FBroHsGetDataURI'
+  ]) assert.match(bridge, new RegExp(`\\b${symbol}\\b`, 'u'));
+  for (const runtime of [
+    'LB_FBro_GetWindowHandle', 'LB_FBro_GetOpenerWindowHandle', 'LB_FBro_GetParentWindowHandle',
+    'LB_FBro_GetRuntimeStyle', 'LB_FBro_GetSdkVersionJson', 'LB_FBro_GetInstanceCount',
+    'LB_FBro_GetInstanceHandlesJson', 'LB_FBro_GetInstanceFlagsJson', 'LB_FBro_IsInstanceAlive',
+    'LB_FBro_ShowDevToolsWindowAsync', 'LB_FBro_MoveBrowserWindowAsync',
+    'LB_FBro_GetBrowserFlag', 'LB_FBro_GetBrowserExtraInfoJson',
+    'LB_FBro_IsGlobalRequestContext', 'LB_FBro_GetRequestContextCachePath',
+    'LB_FBro_IsBufferValid', 'LB_FBro_CreateDataUri'
+  ]) {
+    assert.match(bridgeHeader, new RegExp(`LB_FBRO_API .*\\b${runtime}\\b`, 'u'), `${runtime} 缺少桥导出声明`);
+    const occurrences = generatorSource.split(runtime).length - 1;
+    assert.ok(occurrences >= 2, `${runtime} 缺少双模板 wrapper（实际 ${occurrences}）`);
+  }
+});
+
 test('FBro Transfer PDF、文件对话框与 VIP 截图使用任务和受管缓冲', async () => {
   const transfer = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.transfer');
   const objects = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
@@ -1905,7 +1970,7 @@ test('FBro Transfer PDF、文件对话框与 VIP 截图使用任务和受管缓�
 test('FBro Value、Dictionary、List、Stream、Image、Certificate 使用类型化受管句柄并生成真实 Bridge 调用', async () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
   assert.ok(manifest);
-  assert.equal(manifest.contributes?.commands?.length, 132);
+  assert.equal(manifest.contributes?.commands?.length, 158);
   assert.deepEqual(
     manifest.bindings?.commands?.map(binding => binding.command),
     manifest.contributes?.commands?.map(command => command.name)
@@ -2949,7 +3014,7 @@ test('CEF3 user documentation covers the unified event catalog and every public 
   );
 
   assert.equal(CEF3_BROWSER_EVENTS.length, 96);
-  assert.equal(publicCommands.length, 396);
+  assert.equal(publicCommands.length, 399);
   const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
   assert.equal(threadEntries.length, 5);
   assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
@@ -3107,7 +3172,7 @@ test('FBro user documentation covers public events, classified slots and public 
   assert.equal(FBRO_EVENT_CATALOG.length, 174);
   assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
   assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 89);
-  assert.equal(publicCommands.length, 462);
+  assert.equal(publicCommands.length, 533);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(
@@ -4271,6 +4336,82 @@ test('CEF3_读资源响应正文 生成事件上下文约束和 Bridge 调用', 
   assert.match(cpp, /资源响应正文到达/);
 });
 
+test('CEF3_替换资源响应内容 在创建前排队并在桥接句柄就绪时附加替换过滤器', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(manifest);
+  const replaceBinding = manifest.bindings?.commands?.find(item => item.command === 'CEF3_替换资源响应内容');
+  assert.ok(replaceBinding);
+  assert.deepEqual(replaceBinding.parameters.map(parameter => parameter.type), ['controlRef', 'wideString', 'wideString']);
+  const clearBinding = manifest.bindings?.commands?.find(item => item.command === 'CEF3_清除资源响应替换');
+  assert.ok(clearBinding);
+  assert.deepEqual(clearBinding.parameters.map(parameter => parameter.type), ['controlRef']);
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  // 创建完毕里先配置替换再导航：桥接句柄尚未就绪，替换必须排队并在创建单个的同步点附加，
+  // 这样初始导航的首个资源请求已经走替换过滤器。
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_替换资源响应内容(浏览器1, "原始价格", "会员价格")\n    CEF3_导航(浏览器1, "https://example.com/demo")\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /int CEF3_替换资源响应内容\(const wchar_t\* controlName, const wchar_t\* findText, const wchar_t\* replacementText\)/);
+  assert.match(cpp, /int CEF3_应用资源响应替换\(CefBrowserInstance\* instance, const wchar_t\* findText, const wchar_t\* replacementText\)/);
+  assert.match(cpp, /int CEF3_清除资源响应替换\(const wchar_t\* controlName\)/);
+  assert.match(cpp, /LB_CEF3_ResponseFilterCreate/);
+  assert.match(cpp, /LB_CEF3_ResponseFilterSetReplacement/);
+  assert.match(cpp, /LB_CEF3_ResourceRequestHandlerSetResponseFilter\(instance->bridgeHandle, filter\)/);
+  // 排队配置必须在 CEF3_创建单个 内、桥接订阅补齐之后立即应用，赶在初始导航请求之前。
+  assert.match(cpp, /CEF3_补齐Bridge订阅\(\*instance\);[\s\S]{0,600}?if \(instance->hasPendingReplace\) \{[\s\S]{0,600}?CEF3_应用资源响应替换\(instance, queuedFind\.c_str\(\), queuedReplace\.c_str\(\)\);/);
+  assert.match(cpp, /查找内容不能为空/);
+});
+
+test('CEF3_清除资源响应替换 移除排队配置并向桥接传递空过滤器', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_替换资源响应内容(浏览器1, "原始价格", "会员价格")\n  结束\n  事件 _停止按钮_被单击()\n    CEF3_清除资源响应替换(浏览器1)\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /LB_CEF3_ResourceRequestHandlerSetResponseFilter\(instance->bridgeHandle, 0\)/);
+  assert.match(cpp, /instance->hasPendingReplace = false;/);
+});
+
 test('CEF3_导航 在桥接句柄就绪前排队，并在浏览器创建完成事件里补发', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
   assert.ok(manifest);
@@ -4392,6 +4533,61 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   assert.match(cpp, /SetTimer\(hwnd_, 0x4C46, 5000/u);
   assert.match(cpp, /\.fbro-global-cache\/profile-fbro-1/u);
   assert.doesNotMatch(cpp, /CefRefPtr<FBro/u);
+  // 进程内 FBro 初始化必须走 InitializeEx 并自动预留回环 CDP 调试端口。
+  assert.match(cpp, /static bool LB_FBroInitializeInProcess\(const std::wstring& runtimeDirectory\)/u);
+  assert.match(cpp, /options\.remote_debugging_port = port;/u);
+  assert.match(cpp, /if \(!LB_FBroInitializeInProcess\(fbroRuntimeDirectory\)\)/u);
+  assert.match(cpp, /fbroInitialized_ = LB_FBroInitializeInProcess\(runtimeDirectory\) \? 1 : 0;/u);
+  assert.match(cpp, /: \(fbroInitialized_ \? g_lingFbroInProcessDebuggingPort : 0\);/u);
+  assert.doesNotMatch(cpp, /LB_FBro_Initialize\(/u);
+});
+
+test('进程内 FBro 调试端口随 enableDevTools 开关并支持全关', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = {
+    manifest, installPath: 'builtin://lingbuilder.fbro.browser', isBuiltin: true,
+    isInstalled: true, isEnabledForProject: true, diagnostics: []
+  };
+  const projectWithDevTools = (enableDevTools: boolean | undefined, processMode = 'in-process'): LingWindowProject => ({
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'fbro-1', type: 'FBroBrowser', name: 'FBro浏览器1', content: '', x: 10, y: 10,
+        width: 480, height: 320, background: '#ffffff', foreground: '#000000', fontSize: 14,
+        isEnabled: true, visibility: 'Visible',
+        properties: {
+          processMode, url: 'about:blank',
+          ...(enableDevTools === undefined ? {} : { enableDevTools })
+        },
+        events: {}
+      }]
+    }]
+  });
+  // 默认（设计器属性缺省为 true）与显式 true：进程内初始化预留回环调试端口。
+  for (const enableDevTools of [undefined, true] as const) {
+    const generated = generateLingCppNativeWin32Project(projectWithDevTools(enableDevTools), {
+      enabledModules: [module], lingCppSourceCode: ''
+    });
+    const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+    assert.match(cpp, /WSAStartup\(MAKEWORD\(2, 2\), &wsaData\)/u, `enableDevTools=${enableDevTools} 应预留调试端口`);
+    assert.ok(!cpp.includes('不预留 CDP 调试端口'));
+  }
+  // 显式 false：不预留端口（remote_debugging_port 保持 0），初始化仍走 InitializeEx。
+  const disabled = generateLingCppNativeWin32Project(projectWithDevTools(false), {
+    enabledModules: [module], lingCppSourceCode: ''
+  });
+  const cpp = disabled.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(!cpp.includes('WSAStartup(MAKEWORD(2, 2), &wsaData)'), 'enableDevTools=false 不得预留调试端口');
+  assert.match(cpp, /不预留 CDP 调试端口/u);
+  assert.match(cpp, /options\.remote_debugging_port = port;/u);
+  // 独立进程模式：进程内端口烘焙不参与，仍由 Host 按 enableDevTools 决定。
+  const independent = generateLingCppNativeWin32Project(projectWithDevTools(undefined, 'independent-embedded'), {
+    enabledModules: [module], lingCppSourceCode: ''
+  });
+  const independentCpp = independent.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(!independentCpp.includes('if (!LB_FBroInitializeInProcess(fbroRuntimeDirectory))'));
 });
 
 test('FBro bridge serializes browser creation onto the CEF UI thread and contains profiles under root cache', async () => {
@@ -4543,8 +4739,238 @@ test('FBro browser manager observes downloads without canceling the default tran
   assert.equal(openDownload?.type, 'Button');
 });
 
-test('FBro v3 continuation JSON keeps escaped quotes inside one UTF-16 module argument', () => {
+test('FBro 桥接 DLL 导出探测识别陈旧 SDK 与非 PE 文件', () => {
+  /** 构造只含解析所需字段的最小 PE32+ 文件：一个节、导出表含给定名称。 */
+  const buildMinimalPe = (exportNames: string[]): Buffer => {
+    const headerSize = 0x200;
+    const sectionRva = 0x1000;
+    const sectionRaw = 0x200;
+    const sectionSize = 0x2000;
+    const buffer = Buffer.alloc(headerSize + sectionSize);
+    buffer.writeUInt16LE(0x5a4d, 0); // MZ
+    buffer.writeUInt32LE(0x40, 0x3c); // e_lfanew
+    buffer.writeUInt32LE(0x00004550, 0x40); // PE  
+    buffer.writeUInt16LE(0x8664, 0x44); // machine
+    buffer.writeUInt16LE(1, 0x46); // numberOfSections
+    buffer.writeUInt16LE(240, 0x54); // sizeOfOptionalHeader
+    const optional = 0x58;
+    buffer.writeUInt16LE(0x20b, optional); // PE32+
+    buffer.writeUInt32LE(sectionRva, optional + 112); // export dir RVA
+    buffer.writeUInt32LE(64 + exportNames.length * 4 + 4 * exportNames.length + 256, optional + 116);
+    const section = optional + 240;
+    buffer.writeUInt32LE(sectionSize, section + 8); // virtualSize
+    buffer.writeUInt32LE(sectionRva, section + 12); // virtualAddress
+    buffer.writeUInt32LE(sectionSize, section + 16); // sizeOfRawData
+    buffer.writeUInt32LE(sectionRaw, section + 20); // pointerToRawData
+    // 导出目录在节首，随后函数地址表/名称表/序号表/字符串
+    const dir = sectionRaw;
+    const functionsRva = sectionRva + 64;
+    const namesRva = functionsRva + 4 * exportNames.length;
+    const ordinalsRva = namesRva + 4 * exportNames.length;
+    const stringsRva = ordinalsRva + 2 * exportNames.length;
+    buffer.writeUInt32LE(exportNames.length, dir + 20); // numberOfFunctions
+    buffer.writeUInt32LE(exportNames.length, dir + 24); // numberOfNames
+    buffer.writeUInt32LE(functionsRva, dir + 28);
+    buffer.writeUInt32LE(namesRva, dir + 32);
+    buffer.writeUInt32LE(ordinalsRva, dir + 36);
+    let stringCursor = stringsRva;
+    exportNames.forEach((name, index) => {
+      buffer.writeUInt32LE(functionsRva + index * 4, functionsRva - sectionRva + sectionRaw + index * 4);
+      buffer.writeUInt32LE(stringCursor, namesRva - sectionRva + sectionRaw + index * 4);
+      const nameOffset = stringCursor - sectionRva + sectionRaw;
+      buffer.write(name, nameOffset, 'latin1');
+      buffer.writeUInt8(0, nameOffset + Buffer.byteLength(name, 'latin1'));
+      stringCursor += Buffer.byteLength(name, 'latin1') + 1;
+    });
+    return buffer;
+  };
+
+  const good = buildMinimalPe(['LB_FBro_ResourceBodyBegin', 'LB_FBro_Navigate']);
+  assert.equal(peExportProbe(good, 'LB_FBro_ResourceBodyBegin'), 'has');
+  assert.equal(peExportProbe(good, 'LB_FBro_ResourceBodyBeginOld'), 'missing');
+  assert.equal(peExportProbe(Buffer.from('not a pe file'), 'LB_FBro_ResourceBodyBegin'), 'notPe');
+});
+
+test('FBro_替换资源响应内容族 生成 VIP 资源规则调用与同步包装', async () => {
   const browserManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(browserManifest);
+  for (const [name, types] of [
+    ['FBro_替换资源响应内容', ['controlRef', 'wideString', 'wideString']],
+    ['FBro_替换资源响应文件', ['controlRef', 'wideString', 'wideString']],
+    ['FBro_清除资源响应替换', ['controlRef', 'wideString']],
+    ['FBro_清空资源响应替换', ['controlRef']]
+  ] as const) {
+    const binding = browserManifest.bindings?.commands?.find(item => item.command === name);
+    assert.ok(binding, name);
+    assert.deepEqual(binding.parameters.map(parameter => parameter.type), [...types]);
+  }
+
+  const modules: InstalledModule[] = [browserManifest].map(manifest => ({
+    manifest,
+    installPath: `builtin://${manifest.id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'fbro-replace', type: 'FBroBrowser', name: 'FBro浏览器1', content: '', x: 0, y: 0,
+        width: 320, height: 200, background: '#fff', foreground: '#000', fontSize: 12,
+        isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试
+类 MainWindow : 窗口
+公开
+  事件 测试()
+    FBro_替换资源响应内容(FBro浏览器1, "https://www.example.com/target", "<h1>已替换</h1>")
+    FBro_替换资源响应文件(FBro浏览器1, "https://www.example.com/page", "替换页.html")
+    FBro_清除资源响应替换(FBro浏览器1, "https://www.example.com/target")
+    FBro_清空资源响应替换(FBro浏览器1)
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /int FBro_替换资源响应内容\(const wchar_t\* controlName, const wchar_t\* url, const wchar_t\* content\)/);
+  assert.match(cpp, /LB_FBro_VipResourceCommandAsync\(instance->handle, command, args\.c_str\(\), nullptr, nullptr\)/);
+  assert.match(cpp, /LB_FBro_BufferCreate\(utf8\.data\(\), utf8\.size\(\)\)/);
+  assert.match(cpp, /LB_FBro_BufferRelease\(buffer\)/);
+  assert.match(cpp, /FBroHsVIPControl_AddResourceHandlerChangeData/);
+  assert.match(cpp, /FBroHsVIPControl_AddResourceHandlerChangeFile/);
+  assert.match(cpp, /FBroHsVIPControl_DeleteResourceHandlerChangeData/);
+  assert.match(cpp, /FBroHsVIPControl_DeleteResourceHandlerAllData/);
+  assert.ok(cpp.includes('mimeType' + String.fromCharCode(92) + '"' + ':' + String.fromCharCode(92) + '"' + 'text/html'), '生成的 args 应含转义的 mimeType 键值');
+  assert.match(cpp, /FBro_替换资源响应内容\(L"FBro浏览器1", L"https:\/\/www\.example\.com\/target", L"<h1>已替换<\/h1>"\)/);
+  assert.match(cpp, /FBro_清空资源响应替换\(L"FBro浏览器1"\)/);
+});
+
+test('FBro_替换资源响应文本族 生成非 VIP 查找替换桥接调用', async () => {
+  const browserManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(browserManifest);
+  for (const [name, types] of [
+    ['FBro_替换资源响应文本', ['controlRef', 'wideString', 'wideString']],
+    ['FBro_清除资源响应文本替换', ['controlRef']]
+  ] as const) {
+    const binding = browserManifest.bindings?.commands?.find(item => item.command === name);
+    assert.ok(binding, name);
+    assert.deepEqual(binding.parameters.map(parameter => parameter.type), [...types]);
+  }
+  assert.ok(browserManifest.contributes?.commands?.find(item => item.name === 'FBro_替换资源响应文本')?.aliases?.includes('LB_FBro_ResourceReplaceSet'));
+  assert.ok(browserManifest.contributes?.commands?.find(item => item.name === 'FBro_清除资源响应文本替换')?.aliases?.includes('LB_FBro_ResourceReplaceClear'));
+
+  const modules: InstalledModule[] = [browserManifest].map(manifest => ({
+    manifest,
+    installPath: `builtin://${manifest.id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'fbro-replace-text', type: 'FBroBrowser', name: 'FBro浏览器1', content: '', x: 0, y: 0,
+        width: 320, height: 200, background: '#fff', foreground: '#000', fontSize: 12,
+        isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试
+类 MainWindow : 窗口
+公开
+  事件 测试()
+    FBro_替换资源响应文本(FBro浏览器1, "原始价格", "会员价格")
+    FBro_清除资源响应文本替换(FBro浏览器1)
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /int FBro_替换资源响应文本\(const wchar_t\* controlName, const wchar_t\* findText, const wchar_t\* replacementText\)/);
+  assert.match(cpp, /int FBro_清除资源响应文本替换\(const wchar_t\* controlName\)/);
+  // 非 VIP 路径：同步导出 + 受管缓冲，不经过 VIP 资源规则任务
+  assert.match(cpp, /LB_FBro_ResourceReplaceSet\(instance->handle, findBuffer, replacementBuffer\)/);
+  assert.match(cpp, /LB_FBro_ResourceReplaceClear\(instance->handle\)/);
+  assert.match(cpp, /FBro_替换资源响应文本\(L"FBro浏览器1", L"原始价格", L"会员价格"\)/);
+  assert.match(cpp, /FBro_清除资源响应文本替换\(L"FBro浏览器1"\)/);
+  const textHelperBody = cpp.slice(
+    cpp.indexOf('int FBro_替换资源响应文本('),
+    cpp.indexOf('int FBro_清除资源响应文本替换('));
+  assert.ok(!textHelperBody.includes('VipResourceCommandAsync'), '非 VIP 替换命令不得依赖 VIP 资源规则任务');
+  assert.ok(textHelperBody.includes('LB_FBro_BufferRelease(findBuffer)'), '替换配置设置完成后必须释放受管缓冲');
+});
+
+test('FBro_读资源响应正文 生成事件上下文约束、桥接调用与合成事件', async () => {
+  const browserManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  const eventsManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.events');
+  assert.ok(browserManifest && eventsManifest);
+  const binding = eventsManifest.bindings?.commands?.find(item => item.command === 'FBro_读资源响应正文');
+  assert.ok(binding);
+  assert.deepEqual(binding.parameters.map(parameter => parameter.type), ['controlRef', 'longLong', 'handler']);
+  const handlerParameter = binding.parameters[2];
+  assert.match(handlerParameter.description ?? '', /&处理器名/);
+
+  const modules: InstalledModule[] = [browserManifest, eventsManifest].map(manifest => ({
+    manifest,
+    installPath: `builtin://${manifest.id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'fbro-body', type: 'FBroBrowser', name: 'FBro浏览器1', content: '', x: 0, y: 0,
+        width: 320, height: 200, background: '#fff', foreground: '#000', fontSize: 12,
+        isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n类 MainWindow : 窗口\n公开\n  事件 处理资源响应()\n    FBro_读资源响应正文(FBro浏览器1, 65536, &资源正文到达)\n  结束\n  事件 资源正文到达()\n    调试输出(FBro_取事件字段(FBro浏览器1, "body_text"))\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /int FBro_读资源响应正文\(const wchar_t\* controlName, long long maxBytes, const wchar_t\* handler\)/);
+  assert.match(cpp, /LB_FBro_ResourceBodyBegin/);
+  assert.match(cpp, /只能在“资源响应到达”处理器中调用/);
+  assert.match(cpp, /资源响应正文到达/);
+  assert.match(cpp, /FBro_读资源响应正文\(L"FBro浏览器1", 65536, L"资源正文到达"\)/);
+
+  // 桥接契约：三个资源事件为手写覆盖（生成文件只留标记），稳定事件 ID 不变，
+  // 且导出、字段构建、正文过滤器和捕获入口都真实存在。
+  const bridge = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  const overrides = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'FbroEventOverrides.generated.inc'), 'utf8');
+  assert.match(overrides, /\/\/ custom override: OnResourceResponse/);
+  assert.match(overrides, /\/\/ custom override: OnResourceLoadComplete/);
+  assert.match(overrides, /\/\/ custom override: GetResourceResponseFilter/);
+  assert.match(bridge, /bool OnResourceResponse\(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,\s+CefRefPtr<CefRequest> request, CefRefPtr<CefResponse> response\) override/);
+  assert.match(bridge, /fbro\.event\.fbrohsbroevent\.onresourceresponse\.8841d0c12824/);
+  assert.match(bridge, /fbro\.event\.fbrohsbroevent\.onresourceloadcomplete\.b58a5747af0a/);
+  assert.match(bridge, /fbro\.bridge\.resource_response_body/);
+  assert.match(bridge, /std::wstring BuildResourceFieldsJson\(/);
+  assert.match(bridge, /class LingFbroResourceBodyFilter final : public FBroHsResponseFilter/);
+  assert.match(bridge, /FBroHsResponseFilter_Create\(hs_filter\)/);
+  assert.match(bridge, /void End\(int64_t\) override \{ DispatchResourceBodyEvent\(handle_, capture_, L""\); \}/);
+  assert.match(bridge, /int __stdcall LB_FBro_ResourceBodyBegin\(LB_FBRO_HANDLE browser, uint64_t request_id,\s+int64_t max_bytes\)/);
+  const bridgeHeader = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8');
+  assert.match(bridgeHeader, /LB_FBro_ResourceBodyBegin/);
+});
+
+test('FBro v3 continuation JSON keeps escaped quotes inside one UTF-16 module argument', () => {  const browserManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   const eventsManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.events');
   assert.ok(browserManifest && eventsManifest);
   const modules: InstalledModule[] = [browserManifest, eventsManifest].map(manifest => ({
@@ -4674,7 +5100,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.2.0', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.6.0', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -4783,7 +5209,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.2.0',
+      bridgeVersion: '2.6.0',
       files: fbroFiles
     })),
     writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),
@@ -5737,3 +6163,40 @@ async function exists(filePath: string): Promise<boolean> {
     return false;
   }
 }
+
+test('按钮常规命名事件未绑定时生成启动警告', async () => {
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      events: {},
+      controls: [{
+        id: 'clear-btn', type: 'Button', name: '清除按钮', content: '清除替换并重载', x: 0, y: 0,
+        width: 220, height: 30, background: '#333', foreground: '#fff', fontSize: 12,
+        isEnabled: true, visibility: 'Visible', properties: {}, events: {}
+      }]
+    }]
+  };
+  const source = `包 测试
+类 MainWindow : 窗口
+公开
+  事件 _MainWindow_创建完毕()
+  结束
+  事件 _清除按钮_被单击()
+    调试输出("cleared")
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /WarnUnboundControlEvents\(\) override/);
+  assert.match(cpp, /未绑定 Click 事件/);
+  assert.match(cpp, /WarnUnboundControlEvents\(\);/);
+
+  // 已在设计器绑定 Click 时不产生警告
+  const wired = JSON.parse(JSON.stringify(project));
+  wired.windows[0].controls[0].events = { Click: '_清除按钮_被单击' };
+  const generatedWired = generateLingCppNativeWin32Project(wired, { lingCppSourceCode: source, enabledModules: [] });
+  const cppWired = generatedWired.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.doesNotMatch(cppWired, /WarnUnboundControlEvents\(\) override/);
+});

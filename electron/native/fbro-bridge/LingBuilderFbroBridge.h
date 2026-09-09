@@ -49,7 +49,16 @@ enum LB_FBRO_OBJECT_TYPE {
   LB_FBRO_OBJECT_FRAME = 16,
   LB_FBRO_OBJECT_V8_VALUE = 17,
   LB_FBRO_OBJECT_CERT_PRINCIPAL = 18,
-  LB_FBRO_OBJECT_DRAG_DATA = 19
+  LB_FBRO_OBJECT_DRAG_DATA = 19,
+  LB_FBRO_OBJECT_MENU_MODEL = 20,
+  LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS = 21,
+  LB_FBRO_OBJECT_REQUEST = 22,
+  LB_FBRO_OBJECT_POST_DATA = 23,
+  LB_FBRO_OBJECT_POST_DATA_ELEMENT = 24,
+  LB_FBRO_OBJECT_PROCESS_MESSAGE = 25,
+  LB_FBRO_OBJECT_URL_REQUEST = 26,
+  LB_FBRO_OBJECT_REQUEST_CONTEXT = 27,
+  LB_FBRO_OBJECT_SERVER = 28
 };
 
 enum LB_FBRO_TASK_STATUS {
@@ -310,6 +319,27 @@ LB_FBRO_API int __stdcall LB_FBro_SetEventSubscription(LB_FBRO_HANDLE browser,
 LB_FBRO_API int __stdcall LB_FBro_SetEventSamplingRate(LB_FBRO_HANDLE browser,
                                                        const wchar_t* event_id,
                                                        uint32_t max_hz);
+/* 仅允许在“资源响应到达”（OnResourceResponse）处理器执行期间调用：
+   request_id 取当前事件包的 request_id 字段（FBro 资源事件在多个 IO 线程上交错，
+   必须按请求标识与 GetResourceResponseFilter 精确配对）。
+   为该请求安装有界响应正文捕获（流式透传，不重新发起请求），
+   正文收集完成后通过合成事件“资源响应正文到达”（fbro.bridge.resource_response_body）投递，
+   字段：url、status_code、mime_type、received_bytes、truncated、error、body_text、body_base64。 */
+LB_FBRO_API int __stdcall LB_FBro_ResourceBodyBegin(LB_FBRO_HANDLE browser,
+                                                    uint64_t request_id,
+                                                    int64_t max_bytes);
+/* 设置浏览器级响应正文查找替换（非 VIP 能力，基于官方 FBroHsResponseFilter 包装）：
+   之后开始加载的全部资源正文按 UTF-8 字节流式查找 find_buffer 内容并改写为
+   replacement_buffer 内容；replacement_buffer 传 0 表示删除查找内容。
+   find_buffer 不能为空且查找/替换字节均不得超过 64 MiB。
+   重复调用覆盖上一次配置；正在传输中的资源继续沿用其安装时复制到的配置。
+   只修改响应正文，不改变响应头和状态码。 */
+LB_FBRO_API int __stdcall LB_FBro_ResourceReplaceSet(LB_FBRO_HANDLE browser,
+                                                     LB_FBRO_BUFFER_HANDLE find_buffer,
+                                                     LB_FBRO_BUFFER_HANDLE replacement_buffer);
+/* 清除浏览器级响应正文查找替换配置，之后加载的资源恢复原始正文；
+   已加载页面与正在传输中的资源不受影响。 */
+LB_FBRO_API int __stdcall LB_FBro_ResourceReplaceClear(LB_FBRO_HANDLE browser);
 LB_FBRO_API int __stdcall LB_FBro_CompleteEventContinuation(
     LB_FBRO_CONTINUATION_HANDLE continuation, const wchar_t* response_json);
 LB_FBRO_API int __stdcall LB_FBro_CancelEventContinuation(
@@ -354,6 +384,141 @@ LB_FBRO_API int __stdcall LB_FBro_FrameLoadUrl(
     LB_FBRO_OBJECT_HANDLE frame, const wchar_t* url);
 LB_FBRO_API int __stdcall LB_FBro_FrameExecuteJavaScript(
     LB_FBRO_OBJECT_HANDLE frame, const wchar_t* code, const wchar_t* script_url, int start_line);
+/** 宿主窗口、实例注册表与运行时信息查询（同步，任意线程）。 */
+LB_FBRO_API int __stdcall LB_FBro_GetWindowHandle(LB_FBRO_HANDLE browser, int64_t* window);
+LB_FBRO_API int __stdcall LB_FBro_GetOpenerWindowHandle(LB_FBRO_HANDLE browser, int64_t* window);
+LB_FBRO_API int __stdcall LB_FBro_GetParentWindowHandle(LB_FBRO_HANDLE browser, int64_t* window);
+LB_FBRO_API int __stdcall LB_FBro_GetRuntimeStyle(LB_FBRO_HANDLE browser);
+LB_FBRO_API int __stdcall LB_FBro_GetSdkVersionJson(wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_GetInstanceCount(void);
+LB_FBRO_API int __stdcall LB_FBro_GetInstanceHandlesJson(wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_GetInstanceFlagsJson(wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_IsInstanceAlive(LB_FBRO_HANDLE browser);
+LB_FBRO_API int __stdcall LB_FBro_IsGlobalRequestContext(LB_FBRO_HANDLE browser);
+LB_FBRO_API int __stdcall LB_FBro_GetRequestContextCachePath(LB_FBRO_HANDLE browser,
+                                                             wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_GetBrowserFlag(LB_FBRO_HANDLE browser, wchar_t* result,
+                                                 size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_GetBrowserExtraInfoJson(LB_FBRO_HANDLE browser, wchar_t* result,
+                                                          size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_CreateDataUri(const wchar_t* mime_type, const wchar_t* data,
+                                                wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_IsBufferValid(LB_FBRO_BUFFER_HANDLE buffer);
+/** 显示官方 DevTools 顶层窗口 / 移动浏览器子窗口：UI 线程任务内执行。 */
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_ShowDevToolsWindowAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* title, int x, int y, int width, int height,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_MoveBrowserWindowAsync(LB_FBRO_HANDLE browser,
+                                                                         int x, int y, int width,
+                                                                         int height,
+                                                                         LB_FBRO_TASK_CALLBACK callback,
+                                                                         void* user_data);
+/** CEF 内嵌服务器（HTTP/WebSocket）。 */
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_ServerCreateAsync(
+    const wchar_t* url, int port, int max_connections, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API int __stdcall LB_FBro_ServerSendWebSocketMessage(LB_FBRO_OBJECT_HANDLE object,
+                                                             int connection_id,
+                                                             const wchar_t* text);
+LB_FBRO_API int __stdcall LB_FBro_ServerSendWebSocketBuffer(LB_FBRO_OBJECT_HANDLE object,
+                                                             int connection_id,
+                                                             LB_FBRO_BUFFER_HANDLE buffer);
+LB_FBRO_API int __stdcall LB_FBro_ServerGetAddress(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ServerHasConnection(LB_FBRO_OBJECT_HANDLE object,
+                                                      int connection_id);
+LB_FBRO_API int __stdcall LB_FBro_ServerShutdown(LB_FBRO_OBJECT_HANDLE object);
+/** 右键菜单句柄命令（事件期内使用，回调结束后句柄失效）。 */
+LB_FBRO_API int __stdcall LB_FBro_MenuModelAddItem(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                                   const wchar_t* label);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelAddSubMenu(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                                      const wchar_t* label);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetAccelerator(LB_FBRO_OBJECT_HANDLE object,
+                                                          int command_id, int key_code, int shift,
+                                                          int ctrl, int alt);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetColor(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                                    int color_type, wchar_t* result,
+                                                    size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetX(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetY(LB_FBRO_OBJECT_HANDLE object);
+/** 启用页面调原生 JS 扩展（必须在首个浏览器创建前调用）。 */
+LB_FBRO_API int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function,
+                                                const wchar_t* cancel_function);
+/** 启动命令行开关：必须在 LB_FBro_Initialize* 之前调用。 */
+LB_FBRO_API int __stdcall LB_FBro_SetStartupSwitches(const wchar_t* switches_json);
+LB_FBRO_API int __stdcall LB_FBro_GetStartupCommandLine(wchar_t* result, size_t capacity);
+/** 后台创建：无窗口承载，事件仍正常分发。 */
+LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_CreateBackground(
+    const wchar_t* url, const wchar_t* profile_directory, const wchar_t* extra_info_json,
+    LB_FBRO_EVENT_CALLBACK callback, void* user_data);
+/** 受管请求构造与数据族（句柄对象，任意线程注册、按各对象线程约定使用）。 */
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_RequestCreate(void);
+LB_FBRO_API int __stdcall LB_FBro_RequestGetUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_RequestSetUrl(LB_FBRO_OBJECT_HANDLE object, const wchar_t* url);
+LB_FBRO_API int __stdcall LB_FBro_RequestSetMethod(LB_FBRO_OBJECT_HANDLE object,
+                                                   const wchar_t* method);
+LB_FBRO_API int __stdcall LB_FBro_RequestSetReferrer(LB_FBRO_OBJECT_HANDLE object,
+                                                     const wchar_t* referrer, int policy);
+LB_FBRO_API int __stdcall LB_FBro_RequestSetHeaderMapJson(LB_FBRO_OBJECT_HANDLE object,
+                                                          const wchar_t* headers_json);
+LB_FBRO_API int __stdcall LB_FBro_RequestComposeSet(LB_FBRO_OBJECT_HANDLE object,
+                                                    const wchar_t* url, const wchar_t* method,
+                                                    LB_FBRO_OBJECT_HANDLE post_data,
+                                                    const wchar_t* headers_json);
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_PostDataCreate(void);
+LB_FBRO_API int __stdcall LB_FBro_PostDataAddElement(LB_FBRO_OBJECT_HANDLE object,
+                                                     LB_FBRO_OBJECT_HANDLE element);
+LB_FBRO_API int __stdcall LB_FBro_PostDataGetElementCount(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_PostDataGetElementHandlesJson(LB_FBRO_OBJECT_HANDLE object,
+                                                                wchar_t* result, size_t capacity);
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_PostDataElementCreate(void);
+LB_FBRO_API int __stdcall LB_FBro_PostDataElementSetBytes(LB_FBRO_OBJECT_HANDLE object,
+                                                          const wchar_t* text);
+LB_FBRO_API int __stdcall LB_FBro_PostDataElementGetBytesCount(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_PostDataElementGetText(LB_FBRO_OBJECT_HANDLE object,
+                                                         wchar_t* result, size_t capacity);
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_ProcessMessageCreate(const wchar_t* name);
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_ProcessMessageGetArgumentList(
+    LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_FrameLoadRequest(LB_FBRO_OBJECT_HANDLE frame,
+                                                   LB_FBRO_OBJECT_HANDLE request);
+LB_FBRO_API int __stdcall LB_FBro_FrameSendProcessMessage(LB_FBRO_OBJECT_HANDLE frame,
+                                                          int target_process,
+                                                          LB_FBRO_OBJECT_HANDLE message);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_UrlRequestStartAsync(
+    LB_FBRO_HANDLE browser, LB_FBRO_OBJECT_HANDLE request, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API int __stdcall LB_FBro_UrlRequestGetStatus(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_UrlRequestGetRequestObject(
+    LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameCreateUrlRequestAsync(
+    LB_FBRO_OBJECT_HANDLE frame, LB_FBRO_OBJECT_HANDLE request, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+/** 填表自动化与页面源码/文本提取。 */
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoClick(LB_FBRO_OBJECT_HANDLE frame,
+                                                     const wchar_t* selector, int index);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoScrollIntoView(LB_FBRO_OBJECT_HANDLE frame,
+                                                              const wchar_t* selector, int index,
+                                                              int to_top);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetFocus(LB_FBRO_OBJECT_HANDLE frame,
+                                                        const wchar_t* selector, int index,
+                                                        int focus);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetValue(LB_FBRO_OBJECT_HANDLE frame,
+                                                        const wchar_t* selector, int index,
+                                                        const wchar_t* value);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetValueAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetPointAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameGetSourceAsync(
+    LB_FBRO_OBJECT_HANDLE frame, LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameGetTextAsync(
+    LB_FBRO_OBJECT_HANDLE frame, LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API int __stdcall LB_FBro_BufferToText(LB_FBRO_BUFFER_HANDLE buffer, wchar_t* result,
+                                               size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_TaskGetStatus(LB_FBRO_TASK_HANDLE task);
 LB_FBRO_API int __stdcall LB_FBro_TaskGetResult(LB_FBRO_TASK_HANDLE task, wchar_t* result, size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_TaskGetError(LB_FBRO_TASK_HANDLE task, wchar_t* result, size_t capacity);

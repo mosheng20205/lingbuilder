@@ -1,4 +1,8 @@
 # LingBuilder Electron
+> 2026-09-09：FBro 环境 SDK 升级到火山版正式版 5.39.53（chromium 135.0.7049.115，CEF 135.0.21 不变，SDK_VERSION 仍为 135.0.21）：官方头文件 77→73（删 FBroClientBase/FBroExtension/FBroExtensionHandler/FBroRenderHandler），覆盖目录签名族 1079→1071（已实现 397 不变），运行时 FBrowserCEF3lib/FBrowserVIP/libcef 全部更新；bridgeVersion 2.4.0→2.5.0（桥在新头/库下重编译），归档 `lingbuilder-fbro-sdk-135.0.21.2.5.0-windows-x64.zip`（473 文件）。覆盖/出包脚本 DEFAULT_SOURCE 切换到工作区 junction 源树 `.lingbuilder-build/fbro-official-5.39.53/FBrowser`。
+> 2026-09-09：FBro 指纹浏览器模块新增非 VIP 响应正文查找替换命令 `FBro_替换资源响应文本(控件名, 查找内容, 替换内容)` / `FBro_清除资源响应文本替换(控件名)`（无需 FBro VIP 授权，基于官方 FBroHsResponseFilter；查找按 UTF-8 字节匹配、二进制安全，替换内容为空表示删除；重复调用以最后一次为准，对之后加载的全部资源流式生效；只改响应正文，不改响应头和状态码。bridgeVersion 2.4.0，SDK 归档与内置清单已同步，发布前需上传归档并在管理后台发布新清单）。同时修复生成程序浏览器启动死锁：桥接启动任务不再持锁执行浏览器创建，`OnWindowCreated` 延迟到消息循环派发；`创建完毕` 内 `FBro_导航` 无效（浏览器未就绪）为已知边界，导航请放 `浏览器创建完成` 处理器。
+> 2026-09-08：进程内 FBro 浏览器开放 CDP 调试端口，并受控件 `enableDevTools` 属性控制（缺省启用，任一进程内控件启用即开启、全部关闭则不预留）。生成程序初始化 FBro 运行时时按该属性预留本机回环端口并经 `LB_FBro_InitializeEx` 启用；`FBro_取调试端口` 对进程内与独立进程都返回真实端口，返回 0 表示尚未初始化、未启用开发者工具或端口预留失败。CEF 调试端口只在初始化时生效，因此没有运行时设置/关闭端口的命令。详见 `docs/modules/fbro/control.md`「CDP 调试端口」。
+> 2026-09-08：CEF3 资源响应正文修改开放为中文命令：`CEF3_替换资源响应内容(控件名, 查找内容, 替换内容)` 与 `CEF3_清除资源响应替换(控件名)`。查找按 UTF-8 字节匹配、二进制安全，替换内容为空表示删除；浏览器未创建时自动排队，首个导航的响应已被替换；只改响应正文，不改响应头和状态码。桥接 DLL 无改动。配套示例：`AI 视频自主生产/CEF3 浏览器模块合集/12 修改资源响应数据/`。
 
 > 2026-08-22：CDP 客户端模块进入阶段 3 实施，清单暂升 `lingbuilder.cdp.client@3.0.0`（144 条命令、14 个受管类型）。已新增 Target/Session/Frame、OOPIF/Worker 自动附加与会话求值、Runtime binding、Overlay、触摸、Debugger、Performance、Storage、严格证书逐次裁决和录制 schema 地基；MSVC Win32/x64 编译与阶段 1/2 Edge headless smoke 继续通过。Screencast、Tracing/CPU/Coverage/Heap 完整任务、录制自动采集与确定性回放仍在实施，不能宣称阶段 3 完成。正式说明见 `docs/modules/cdp-client/README.md`（交接记录已归档）。
 
@@ -850,10 +854,10 @@ AI 编辑分流按用户提示中的窗口/控件目标与布局变更意图判�
 
 IDE 验签模块 Permit 只使用内置信任锚 `src/services/modules/modulePermitTrustAnchors.ts`（当前钉生产密钥 keyId `0e2853e87a4250d3`）；云端下发的公钥 PEM 不再进入信任集，仅 `keyId` 作为轮换元数据。云端通过 `MODULE_PERMIT_ACCEPTED_KEY_IDS` 维护轮换列表并经 `/v1/modules/permit-key` 下发 `acceptedKeyIds`；密钥轮换必须先发带新锚点的 IDE，再切换云端签发密钥。keyId 不在锚内时同步返回 `MODULE_PERMIT_ANCHOR_UNKNOWN` 中文诊断。
 
-### .lbmod �ļ�����
-Windows ��װ��ע�� .lbmod ��˫����ת���������� LingBuilder ʵ������ģ�鰲װԤ�������������ɰ�װ��ʹע����Ч��
+### .lbmod 文件关联
+Windows 安装包注册 .lbmod 后，双击会转发到已运行 LingBuilder 实例并打开模块安装预览；需重新生成安装包使注册生效。
 
-��װ�򵼻�չʾ��ȡ���嵥/·��/ƽ̨У�顢��װ�С��ɹ���ʧ��״̬��
+安装向导会展示读取、清单/路径/平台校验、安装中、成功和失败状态。
 
 
 > 0.6.2 发布说明（2026-09-02）：发布 Windows x64 stable 安装包，包含 CEF3 Bridge4 生成修复、云端 SDK 清单验签/sequence 展示和 IDE 在线更新链路修复。生产打包使用 LINGBUILDER_CLOUD_RELEASE_MODE=online 与 https://api.lingbuilder.com，安装包不内置 CEF3/FBro SDK。

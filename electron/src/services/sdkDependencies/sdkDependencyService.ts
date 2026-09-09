@@ -468,7 +468,7 @@ async function validateSdkRoot(resource: SdkDependencyResource, sdkRoot: string)
   return await getSdkRootValidationIssue(resource, sdkRoot) === null;
 }
 
-async function getSdkRootValidationIssue(resource: SdkDependencyResource, sdkRoot: string): Promise<string | null> {
+export async function getSdkRootValidationIssue(resource: SdkDependencyResource, sdkRoot: string): Promise<string | null> {
   try {
     for (const critical of resource.criticalFiles) {
       const target = path.join(sdkRoot, ...critical.relativePath.split('/'));

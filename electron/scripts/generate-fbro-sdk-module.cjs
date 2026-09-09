@@ -7,8 +7,9 @@ const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 const MODULE_ID = 'lingbuilder.fbro.sdk';
 const SDK_VERSION = '135.0.21';
-const BRIDGE_VERSION = '2.2.0';
-const DEFAULT_SOURCE = 'T:\\编程工具\\win_android\\plugins\\vprj_win\\classlib\\sys\\FBrowser';
+const BRIDGE_VERSION = '2.6.0';
+// 官方 5.39.53 源树（junction 指向已安装 SDK 模块的 official/runtime，重建步骤见更新记录 2026-09-09）。
+const DEFAULT_SOURCE = path.resolve(__dirname, '..', '..', '.lingbuilder-build', 'fbro-official-5.39.53', 'FBrowser');
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));

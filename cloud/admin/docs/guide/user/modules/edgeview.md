@@ -73,7 +73,7 @@ EdgeView 基于 Microsoft Edge WebView2，把完整的 Edge 浏览器嵌入你�
 
 完整命令清单在 IDE「模块详情 → 接口 → 模块公开信息」中查看。
 
-模块详情中的接口清单是当前版本的完整命令来源；仓库内还提供一份可复制的完整演示清单：[EdgeView 浏览器模块完整演示](../../../../../../examples/module-demos/lingbuilder.edgeview/src/README.md)。
+模块详情中的接口清单是当前版本的完整命令来源；仓库内还提供一份可复制的完整演示清单：`examples/module-demos/lingbuilder.edgeview/src/README.md`。
 
 ## 事件
 
@@ -86,7 +86,7 @@ EdgeView 通过统一事件目录公开 **71 项**普通 HWND 可达事件（如
 
 ## 完整 API 与异步任务
 
-完整的 271 条命令按任务、导航、脚本、设置、创建选项、会话、下载、查找、打印、媒体、开发者工具、资源、事件、对象、框架、工作线程、扩展、权限、通知、缓冲和安全分组列在[EdgeView 完整 API 参考](../../../../../../electron/docs/modules/edgeview/API.md)中。每条命令均包含签名、参数类型、返回类型、Runtime 要求和说明。
+完整的 271 条命令按任务、导航、脚本、设置、创建选项、会话、下载、查找、打印、媒体、开发者工具、资源、事件、对象、框架、工作线程、扩展、权限、通知、缓冲和安全分组列在 EdgeView 完整 API 参考（`electron/docs/modules/edgeview/API.md`）中。每条命令均包含签名、参数类型、返回类型、Runtime 要求和说明。
 
 异步命令返回任务 ID，并通过完成处理器交付结果：
 

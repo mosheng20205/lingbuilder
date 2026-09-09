@@ -63,3 +63,6 @@ export const FBRO_EVENT_BINDING_NAMES: readonly string[] = FBRO_PUBLIC_BROWSER_E
   event.officialName,
   ...event.legacyAliases
 ]);
+
+/** 由 FBro_读资源响应正文 注册的异步完成事件，不是 CEF 原生回调目录项。 */
+export const FBRO_RESOURCE_RESPONSE_BODY_EVENT_NAME = '资源响应正文到达';

@@ -5,10 +5,12 @@
 #include "FBroBrowser.h"
 #include "FBroBrowserHost.h"
 #include "FBroCallback.h"
+#include "FBroCommand.h"
 #include "FBroControl.h"
 #include "FBroCookieManager.h"
 #include "FBroDragData.h"
 #include "FBroFrame.h"
+#include "FBroFrameTianBiao.h"
 #include "FBroHsBaseEvent.h"
 #include "FBroHsEvent.h"
 #include "FBroInit.h"
@@ -18,12 +20,18 @@
 #include "FBroImage.h"
 #include "FBroMenuModel.h"
 #include "FBroMiddleData.h"
+#include "FBroPostData.h"
+#include "FBroProcessMessage.h"
 #include "FBroRequest.h"
+#include "FBroResponseFilter.h"
 #include "FBroRequestContext.h"
+#include "FBroServer.h"
+#include "FBroURLRequest.h"
 #include "FBroStream.h"
 #include "FBroSSLInfo.h"
 #include "FBroString.h"
 #include "FBroValue.h"
+#include "FBroVersion.h"
 #include "FBroX509Certificate.h"
 #include "FBroX509CertPrincipal.h"
 #include "FBroVIPStruct.h"
@@ -44,9 +52,11 @@
 #include <condition_variable>
 #include <chrono>
 #include <climits>
+#include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <cwctype>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -64,12 +74,20 @@ namespace {
 
 struct BrowserState;
 class BridgeBrowserEvent;
+struct ResourceBodyCaptureState;
 BrowserState* Find(LB_FBRO_HANDLE handle);
 void NotifyVipBrowser(CefRefPtr<CefBrowser> browser, int code, const std::wstring& data);
+bool ApplyMenuModelOperations(CefRefPtr<CefMenuModel> model, const std::wstring& ops_json);
 
 struct VipResourcePayload {
   std::vector<unsigned char> bytes;
   CefRefPtr<FBroDoubleString> headers;
+};
+
+// 响应正文查找替换配置（非 VIP 能力）：字节在 Set 时整体复制，之后只读。
+struct ResourceReplaceConfig {
+  std::vector<unsigned char> find_bytes;
+  std::vector<unsigned char> replacement_bytes;
 };
 
 std::recursive_mutex g_mutex;
@@ -100,6 +118,8 @@ std::wstring g_startup_extension_status;
 std::wstring g_startup_extension_id;
 std::wstring g_startup_extension_event_path;
 std::wstring g_startup_extension_error;
+std::wstring g_startup_switches_json;
+std::wstring g_startup_command_line;
 std::wstring g_vip_proxy_url;
 std::wstring g_vip_proxy_user;
 std::wstring g_vip_proxy_password;
@@ -135,6 +155,15 @@ struct ObjectState {
   CefRefPtr<CefX509CertPrincipal> principal;
   CefRefPtr<CefDragData> drag_data;
   CefRefPtr<CefFrame> frame;
+  CefRefPtr<CefMenuModel> menu_model;
+  CefRefPtr<CefContextMenuParams> context_menu_params;
+  CefRefPtr<CefRequest> request;
+  CefRefPtr<CefPostData> post_data;
+  CefRefPtr<CefPostDataElement> post_data_element;
+  CefRefPtr<CefProcessMessage> process_message;
+  CefRefPtr<CefURLRequest> url_request;
+  CefRefPtr<CefRequestContext> request_context;
+  CefRefPtr<CefServer> server;
   std::vector<unsigned char> owned_bytes;
 };
 
@@ -181,9 +210,21 @@ struct BrowserState {
   CefRefPtr<BridgeBrowserEvent> event;
   CefRefPtr<FBroHsDevToolsMessageObserver> devtools_observer;
   std::unordered_map<std::wstring, std::shared_ptr<VipResourcePayload>> vip_resource_payloads;
+  // 资源响应正文捕获：FBro 的资源事件可能来自多个 IO 线程，事件到达与
+  // GetResourceResponseFilter 会交错，因此必须按请求标识精确配对：
+  // resource_urls 记录每个请求的网址（LB_FBro_ResourceBodyBegin 取用），
+  // resource_body_captures 按请求标识登记待安装的有界捕获。
+  std::unordered_map<uint64_t, std::wstring> resource_urls;
+  std::unordered_map<uint64_t, std::shared_ptr<ResourceBodyCaptureState>> resource_body_captures;
+  // 响应正文查找替换配置（非 VIP）：g_mutex 保护下整体替换 shared_ptr；
+  // GetResourceResponseFilter 按当前配置构造过滤器实例，传输中的资源继续
+  // 沿用其安装时复制到的配置，新配置只对之后开始加载的资源生效。
+  std::shared_ptr<const ResourceReplaceConfig> resource_replace;
   bool create_started = false;
   bool extension_load_started = false;
   bool chrome_ui = false;
+  bool background = false;
+  std::wstring extra_info_json;
   unsigned int flags = 7;
 };
 
@@ -357,6 +398,27 @@ LB_FBRO_OBJECT_HANDLE RegisterFrame(CefRefPtr<CefFrame> frame,
   state->owner_thread = 0;
   state->parent = parent;
   state->frame = std::move(frame);
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  g_objects.emplace(state->handle, state);
+  return state->handle;
+}
+
+// 新型受管对象注册。事件期临时对象（右键菜单、参数、资源事件里的请求）由
+// 调用方传 owner_thread=GetCurrentThreadId() 限定在本回调周期消费；用户自建
+// 对象（请求、PostData、进程消息、RequestContext 等）保持 owner_thread=0，
+// 允许生成运行时线程注册、UI 线程任务消费。
+template <typename T>
+LB_FBRO_OBJECT_HANDLE RegisterCefObject(int type, CefRefPtr<T> object,
+                                        CefRefPtr<T> ObjectState::*slot,
+                                        LB_FBRO_OBJECT_HANDLE parent = 0,
+                                        DWORD owner_thread = 0) {
+  if (!object) return 0;
+  auto state = std::make_shared<ObjectState>();
+  state->handle = g_next_object_handle.fetch_add(1);
+  state->type = type;
+  state->owner_thread = owner_thread;
+  state->parent = parent;
+  (*state).*slot = std::move(object);
   std::lock_guard<std::recursive_mutex> lock(g_mutex);
   g_objects.emplace(state->handle, state);
   return state->handle;
@@ -592,6 +654,106 @@ std::wstring BuildSafeFieldsJson(
     first = false;
     json += L"\"" + JsonEscape(field.first ? field.first : L"value") + L"\":\""
         + JsonEscape(field.second) + L"\"";
+  }
+  json += L"}";
+  return json;
+}
+
+struct ResourceBodyCaptureState;
+void DispatchResourceBodyEvent(LB_FBRO_HANDLE handle,
+                               const std::shared_ptr<ResourceBodyCaptureState>& capture,
+                               const wchar_t* error);
+void DebugTraceOrder(const wchar_t* label, uint64_t id) {
+  FILE* f = nullptr;
+  _wfopen_s(&f, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-event-order.log", L"a");
+  if (!f) return;
+  fwprintf(f, L"%s %llu\n", label, id);
+  fclose(f);
+}
+
+// ---------------------------------------------------------------------------
+// 资源响应元数据与正文捕获
+//
+// “资源响应到达”/“资源加载完成”事件由 Bridge 直接读 CefRequest/CefResponse
+// 生成字段：既保留旧的 0/1 标记（request/response），也新增 request_url、
+// method、status_code、mime_type、charset 与 headers 对象——官方 SDK 的
+// FBroHsResponse_* 能力由此进入 .lcpp 事件字段，不需要额外的取头命令。
+// ---------------------------------------------------------------------------
+
+constexpr uint64_t kMaxResourceBodyCaptureBytes = 16ULL * 1024ULL * 1024ULL;
+// 与 CEF3 桥 BridgeResponseFilter 相同的流上限：查找/替换字节与流式缓冲的硬上限。
+constexpr uint64_t kMaxResourceReplaceBytes = 64ULL * 1024ULL * 1024ULL;
+
+struct ResourceBodyCaptureState {
+  std::mutex mutex;
+  std::vector<unsigned char> bytes;
+  uint64_t max_bytes = 0;
+  uint64_t received_bytes = 0;
+  std::wstring url;
+  std::wstring mime_type;
+  int status_code = 0;
+  bool truncated = false;
+  bool failed = false;
+};
+
+std::wstring Base64EncodeBytes(const unsigned char* data, size_t size) {
+  static const wchar_t* alphabet = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::wstring output;
+  output.reserve(((size + 2) / 3) * 4);
+  size_t index = 0;
+  while (index + 2 < size) {
+    const uint32_t triple = (static_cast<uint32_t>(data[index]) << 16)
+        | (static_cast<uint32_t>(data[index + 1]) << 8) | data[index + 2];
+    output += alphabet[(triple >> 18) & 0x3F];
+    output += alphabet[(triple >> 12) & 0x3F];
+    output += alphabet[(triple >> 6) & 0x3F];
+    output += alphabet[triple & 0x3F];
+    index += 3;
+  }
+  if (index + 1 == size) {
+    const uint32_t triple = static_cast<uint32_t>(data[index]) << 16;
+    output += alphabet[(triple >> 18) & 0x3F];
+    output += alphabet[(triple >> 12) & 0x3F];
+    output += L"==";
+  } else if (index + 2 == size) {
+    const uint32_t triple = (static_cast<uint32_t>(data[index]) << 16)
+        | (static_cast<uint32_t>(data[index + 1]) << 8);
+    output += alphabet[(triple >> 18) & 0x3F];
+    output += alphabet[(triple >> 12) & 0x3F];
+    output += alphabet[(triple >> 6) & 0x3F];
+    output += L"=";
+  }
+  return output;
+}
+
+std::wstring BuildResourceFieldsJson(CefRefPtr<CefFrame> frame,
+                                     CefRefPtr<CefRequest> request,
+                                     CefRefPtr<CefResponse> response) {
+  std::wstring json = L"{\"browser\":\"1\"";
+  json += L",\"frame\":\"" + JsonEscape(frame ? frame->GetURL().ToWString() : L"") + L"\"";
+  json += L",\"request\":\"" + std::to_wstring(request ? 1 : 0) + L"\"";
+  json += L",\"response\":\"" + std::to_wstring(response ? 1 : 0) + L"\"";
+  if (request) {
+    json += L",\"request_id\":" + std::to_wstring(request->GetIdentifier());
+    json += L",\"request_url\":\"" + JsonEscape(request->GetURL().ToWString()) + L"\"";
+    json += L",\"method\":\"" + JsonEscape(request->GetMethod().ToWString()) + L"\"";
+  }
+  if (response) {
+    json += L",\"status_code\":" + std::to_wstring(response->GetStatus());
+    json += L",\"mime_type\":\"" + JsonEscape(response->GetMimeType().ToWString()) + L"\"";
+    json += L",\"charset\":\"" + JsonEscape(response->GetCharset().ToWString()) + L"\"";
+    CefResponse::HeaderMap header_map;
+    response->GetHeaderMap(header_map);
+    std::wstring headers = L"{";
+    bool first = true;
+    for (const auto& header : header_map) {
+      if (!first) headers += L",";
+      first = false;
+      headers += L"\"" + JsonEscape(header.first.ToWString()) + L"\":\""
+          + JsonEscape(header.second.ToWString()) + L"\"";
+    }
+    headers += L"}";
+    json += L",\"headers\":" + headers;
   }
   json += L"}";
   return json;
@@ -965,6 +1127,292 @@ int DispatchGeneratedBrowserEvent(LB_FBRO_HANDLE handle, const wchar_t* event_id
                          response_json);
 }
 
+// 有界响应正文捕获过滤器：继承官方 FBroHsResponseFilter 并用
+// FBroHsResponseFilter_Create 包装安装（与火山示例一致的唯一受支持路径）。
+// 流式透传不改响应内容，只按捕获上限缓存字节；官方 End 回调在输入流结束后
+// 触发，此时投递合成事件“资源响应正文到达”。
+
+class LingFbroResourceBodyFilter final : public FBroHsResponseFilter {
+ public:
+  LingFbroResourceBodyFilter(LB_FBRO_HANDLE handle,
+                             std::shared_ptr<ResourceBodyCaptureState> capture)
+      : handle_(handle), capture_(std::move(capture)) {}
+
+  void Start(int64_t) override {}
+  bool InitFilter(int64_t) override { return capture_ != nullptr; }
+
+  CefResponseFilter::FilterStatus Filter(int64_t, void* data_in, size_t data_in_size,
+                                         size_t& data_in_read, void* data_out,
+                                         size_t data_out_size,
+                                         size_t& data_out_written) override {
+    data_in_read = 0;
+    data_out_written = 0;
+    if ((data_in_size > 0 && !data_in) || (data_out_size > 0 && !data_out)) {
+      std::lock_guard<std::mutex> lock(capture_->mutex);
+      capture_->failed = true;
+      return RESPONSE_FILTER_ERROR;
+    }
+    if (data_in_size > 0) {
+      const size_t readable = std::min(data_in_size, data_out_size);
+      if (readable > 0) {
+        const auto* bytes = static_cast<const unsigned char*>(data_in);
+        {
+          std::lock_guard<std::mutex> lock(capture_->mutex);
+          capture_->received_bytes += readable;
+          const size_t remaining = capture_->bytes.size() < capture_->max_bytes
+              ? static_cast<size_t>(capture_->max_bytes - capture_->bytes.size()) : 0;
+          const size_t copy_count = std::min(readable, remaining);
+          capture_->bytes.insert(capture_->bytes.end(), bytes, bytes + copy_count);
+          if (copy_count < readable) capture_->truncated = true;
+        }
+        std::memcpy(data_out, data_in, readable);
+        data_in_read = readable;
+        data_out_written = readable;
+      }
+      return RESPONSE_FILTER_NEED_MORE_DATA;
+    }
+    return RESPONSE_FILTER_DONE;
+  }
+
+  void End(int64_t) override { DispatchResourceBodyEvent(handle_, capture_, L""); }
+
+ private:
+  LB_FBRO_HANDLE handle_;
+  std::shared_ptr<ResourceBodyCaptureState> capture_;
+  IMPLEMENT_REFCOUNTING(LingFbroResourceBodyFilter);
+};
+
+// 响应正文查找替换过滤器（非 VIP 能力）：继承官方 FBroHsResponseFilter 并用
+// FBroHsResponseFilter_Create 包装安装（与正文捕获同一条唯一受支持路径）。
+// 流式 UTF-8 字节查找替换算法与 CEF3 桥 BridgeResponseFilter 一致：输入先进入
+// pending 缓冲，按查找字节 std::search 命中后改写，保留 find_bytes_.size()-1
+// 字节处理跨块匹配；二进制安全，只改正文不改响应头和状态码。
+// capture_ 非空时（与“读资源响应正文”同一请求并存）按原始输入字节捕获，
+// 语义与 CEF3 桥一致：正文捕获得到的是服务器原始正文。
+class LingFbroResourceReplaceFilter final : public FBroHsResponseFilter {
+ public:
+  LingFbroResourceReplaceFilter(
+      LB_FBRO_HANDLE handle,
+      std::shared_ptr<const ResourceReplaceConfig> config,
+      std::shared_ptr<ResourceBodyCaptureState> capture = nullptr)
+      : handle_(handle), config_(std::move(config)), capture_(std::move(capture)),
+        find_bytes_(config_ ? config_->find_bytes : std::vector<unsigned char>()),
+        replacement_bytes_(config_ ? config_->replacement_bytes : std::vector<unsigned char>()) {}
+
+  void Start(int64_t) override {}
+  bool InitFilter(int64_t) override {
+    return !find_bytes_.empty()
+        && find_bytes_.size() <= kMaxResourceReplaceBytes
+        && replacement_bytes_.size() <= kMaxResourceReplaceBytes;
+  }
+
+  CefResponseFilter::FilterStatus Filter(int64_t, void* data_in, size_t data_in_size,
+                                         size_t& data_in_read, void* data_out,
+                                         size_t data_out_size,
+                                         size_t& data_out_written) override {
+    data_in_read = 0;
+    data_out_written = 0;
+    if (failed_ || (data_in_size > 0 && !data_in) || (data_out_size > 0 && !data_out)) {
+      failed_ = true;
+      if (capture_) {
+        std::lock_guard<std::mutex> lock(capture_->mutex);
+        capture_->failed = true;
+      }
+      return RESPONSE_FILTER_ERROR;
+    }
+
+    // 流控：只在输出队列排空后继续消费输入，避免输出缓冲不足时 pending 无界增长
+    //（与 CEF3 桥 BridgeResponseFilter 相同的策略）。
+    if (output_bytes_.empty()) {
+      if (data_in_size > kMaxResourceReplaceBytes
+          || pending_bytes_.size() > kMaxResourceReplaceBytes - data_in_size) {
+        failed_ = true;
+      } else if (data_in_size > 0) {
+        const auto* bytes = static_cast<const unsigned char*>(data_in);
+        pending_bytes_.insert(pending_bytes_.end(), bytes, bytes + data_in_size);
+        if (capture_) AddCaptureBytes(bytes, data_in_size);
+        data_in_read = data_in_size;
+        ProcessPending(false);
+      } else {
+        end_of_stream_ = true;
+        ProcessPending(true);
+      }
+    }
+
+    if (!failed_ && data_out_size > 0 && !output_bytes_.empty()) {
+      data_out_written = std::min(data_out_size, output_bytes_.size());
+      auto* output = static_cast<unsigned char*>(data_out);
+      for (size_t index = 0; index < data_out_written; ++index) {
+        output[index] = output_bytes_.front();
+        output_bytes_.pop_front();
+      }
+    }
+
+    if (failed_) return RESPONSE_FILTER_ERROR;
+    if (end_of_stream_ && pending_bytes_.empty() && output_bytes_.empty()) {
+      return RESPONSE_FILTER_DONE;
+    }
+    return RESPONSE_FILTER_NEED_MORE_DATA;
+  }
+
+  void End(int64_t) override {
+    if (capture_) DispatchResourceBodyEvent(handle_, capture_, L"");
+  }
+
+ private:
+  bool AppendOutput(const unsigned char* source, size_t count) {
+    if (count > kMaxResourceReplaceBytes - output_bytes_.size()) {
+      failed_ = true;
+      return false;
+    }
+    output_bytes_.insert(output_bytes_.end(), source, source + count);
+    return true;
+  }
+
+  bool AppendReplacement() {
+    if (replacement_bytes_.size() > kMaxResourceReplaceBytes - output_bytes_.size()) {
+      failed_ = true;
+      return false;
+    }
+    output_bytes_.insert(output_bytes_.end(), replacement_bytes_.begin(), replacement_bytes_.end());
+    return true;
+  }
+
+  void AddCaptureBytes(const unsigned char* bytes, size_t count) {
+    std::lock_guard<std::mutex> lock(capture_->mutex);
+    capture_->received_bytes += count;
+    const size_t remaining = capture_->bytes.size() < capture_->max_bytes
+        ? static_cast<size_t>(capture_->max_bytes - capture_->bytes.size()) : 0;
+    const size_t copy_count = std::min(count, remaining);
+    capture_->bytes.insert(capture_->bytes.end(), bytes, bytes + copy_count);
+    if (copy_count < count) capture_->truncated = true;
+  }
+
+  void ProcessPending(bool flush_all) {
+    while (!failed_ && !pending_bytes_.empty()) {
+      const auto match = std::search(
+          pending_bytes_.begin(), pending_bytes_.end(),
+          find_bytes_.begin(), find_bytes_.end());
+      if (match != pending_bytes_.end()) {
+        const size_t prefix = static_cast<size_t>(
+            std::distance(pending_bytes_.begin(), match));
+        if (!AppendOutput(pending_bytes_.data(), prefix) || !AppendReplacement()) return;
+        pending_bytes_.erase(pending_bytes_.begin(), match + static_cast<long>(find_bytes_.size()));
+        continue;
+      }
+      // 未命中：除尾部 find_bytes_.size()-1 字节（可能是跨块匹配前缀）外全部输出；
+      // 流结束时全部输出。
+      const size_t emit_count = flush_all
+          ? pending_bytes_.size()
+          : (pending_bytes_.size() >= find_bytes_.size()
+                 ? pending_bytes_.size() - find_bytes_.size() + 1
+                 : 0);
+      if (emit_count > 0) {
+        if (!AppendOutput(pending_bytes_.data(), emit_count)) return;
+        pending_bytes_.erase(pending_bytes_.begin(), pending_bytes_.begin() + static_cast<long>(emit_count));
+      }
+      return;
+    }
+  }
+
+  LB_FBRO_HANDLE handle_;
+  std::shared_ptr<const ResourceReplaceConfig> config_;
+  std::shared_ptr<ResourceBodyCaptureState> capture_;
+  const std::vector<unsigned char> find_bytes_;
+  const std::vector<unsigned char> replacement_bytes_;
+  std::vector<unsigned char> pending_bytes_;
+  std::deque<unsigned char> output_bytes_;
+  bool end_of_stream_ = false;
+  bool failed_ = false;
+  IMPLEMENT_REFCOUNTING(LingFbroResourceReplaceFilter);
+};
+
+// 独立函数：把捕获结果组装为合成事件字段并派发（End 回调与错误路径共用）。
+void DispatchResourceBodyEvent(LB_FBRO_HANDLE handle,
+                               const std::shared_ptr<ResourceBodyCaptureState>& capture,
+                               const wchar_t* error);
+
+CefRefPtr<CefResponseFilter> TakeResourceBodyFilter(LB_FBRO_HANDLE handle,
+                                                    CefRefPtr<CefRequest> request,
+                                                    CefRefPtr<CefResponse> response) {
+  if (!request) return nullptr;
+  DebugTraceOrder(L"GetFilter", request->GetIdentifier());
+  std::shared_ptr<ResourceBodyCaptureState> capture;
+  std::shared_ptr<const ResourceReplaceConfig> replace;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    auto* state = Find(handle);
+    if (!state) return nullptr;
+    replace = state->resource_replace;
+    const auto found = state->resource_body_captures.find(request->GetIdentifier());
+    if (found != state->resource_body_captures.end()) {
+      capture = found->second;
+      state->resource_body_captures.erase(found);
+      state->resource_urls.erase(request->GetIdentifier());
+    } else if (!replace) {
+      return nullptr;
+    }
+  }
+  if (capture) {
+    std::lock_guard<std::mutex> lock(capture->mutex);
+    capture->status_code = response ? response->GetStatus() : 0;
+    capture->mime_type = response ? response->GetMimeType().ToWString() : L"";
+  }
+  // 官方唯一受支持的安装路径：FBroHsResponseFilter_Create 包装后交给 CEF。
+  // 查找替换配置存在时优先走替换过滤器；同一请求同时登记了正文捕获时，
+  // 替换过滤器按原始输入字节顺带捕获并在 End 回调派发正文事件。
+  if (replace) {
+    CefRefPtr<FBroHsResponseFilter> hs_replace =
+        new LingFbroResourceReplaceFilter(handle, std::move(replace), std::move(capture));
+    return FBroHsResponseFilter_Create(hs_replace);
+  }
+  CefRefPtr<FBroHsResponseFilter> hs_filter = new LingFbroResourceBodyFilter(handle, std::move(capture));
+  return FBroHsResponseFilter_Create(hs_filter);
+}
+
+void DispatchResourceBodyEvent(LB_FBRO_HANDLE handle,
+                               const std::shared_ptr<ResourceBodyCaptureState>& capture,
+                               const wchar_t* error) {
+  std::vector<unsigned char> bytes;
+  uint64_t received_bytes = 0;
+  uint64_t max_bytes = 0;
+  std::wstring url;
+  std::wstring mime_type;
+  int status_code = 0;
+  bool truncated = false;
+  bool failed = false;
+  {
+    std::lock_guard<std::mutex> lock(capture->mutex);
+    bytes = capture->bytes;
+    received_bytes = capture->received_bytes;
+    max_bytes = capture->max_bytes;
+    url = capture->url;
+    mime_type = capture->mime_type;
+    status_code = capture->status_code;
+    truncated = capture->truncated;
+    failed = capture->failed;
+  }
+  if (bytes.size() > max_bytes) {
+    bytes.resize(static_cast<size_t>(max_bytes));
+    truncated = true;
+  }
+  const std::wstring body_text = failed ? std::wstring() : FromUtf8Bytes(
+      bytes.empty() ? nullptr : bytes.data(), bytes.size());
+  const std::wstring body_base64 = failed ? std::wstring() : Base64EncodeBytes(
+      bytes.empty() ? nullptr : bytes.data(), bytes.size());
+  std::wstring fields = L"{\"url\":\"" + JsonEscape(url) + L"\"";
+  fields += L",\"status_code\":" + std::to_wstring(status_code);
+  fields += L",\"mime_type\":\"" + JsonEscape(mime_type) + L"\"";
+  fields += L",\"received_bytes\":" + std::to_wstring(received_bytes);
+  fields += std::wstring(L",\"truncated\":") + (truncated ? L"true" : L"false");
+  fields += std::wstring(L",\"error\":\"" ) + JsonEscape(error) + L"\"";
+  fields += L",\"body_text\":\"" + JsonEscape(body_text) + L"\"";
+  fields += L",\"body_base64\":\"" + body_base64 + L"\"";
+  fields += L"}";
+  DispatchGeneratedBrowserEvent(handle, L"fbro.bridge.resource_response_body",
+                                L"ResourceResponseBody", L"资源响应正文到达", fields, 0, 0);
+}
+
 template <typename T>
 void ApplyEventResponse(const std::wstring&, const char*, T&) {}
 
@@ -1060,7 +1508,7 @@ bool DispatchManagedBrowserEvent(
     uint32_t timeout_milliseconds,
     std::function<void(int, const std::wstring&)> completion,
     LB_FBRO_OBJECT_HANDLE object = 0, int legacy_code = 0,
-    bool require_subscription = true) {
+    bool require_subscription = true, int timeout_action = LB_FBRO_EVENT_ACTION_CANCEL) {
   const wchar_t* stable_id_value = StableEventId(official_name);
   const wchar_t* chinese_name = ChineseEventName(official_name);
   const std::wstring event_id = stable_id_value ? stable_id_value : L"fbro.event.unknown";
@@ -1074,7 +1522,7 @@ bool DispatchManagedBrowserEvent(
                                          legacy_code)) return false;
   }
   const auto continuation = CreateContinuation(browser, event_id, timeout_milliseconds,
-      LB_FBRO_EVENT_ACTION_CANCEL, std::move(completion));
+      timeout_action, std::move(completion));
   std::wstring response_json;
   const int action = DispatchEventV3(*state, event_id, official_name, chinese_name,
       fields_json, legacy_code, LB_FBRO_EVENT_FLAG_DEFERRED, 0, object,
@@ -1515,6 +1963,32 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
         });
   }
 
+  void OnBeforeContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                           CefRefPtr<CefContextMenuParams> params,
+                           CefRefPtr<CefMenuModel> model) override {
+    if (!model || !params) return;
+    // 菜单与参数只在本回调期有效：注册为当前线程限定句柄，派发完成后立即回收。
+    const LB_FBRO_OBJECT_HANDLE menu_handle = RegisterCefObject(
+        LB_FBRO_OBJECT_MENU_MODEL, model, &ObjectState::menu_model, 0, GetCurrentThreadId());
+    const LB_FBRO_OBJECT_HANDLE params_handle = RegisterCefObject(
+        LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, params, &ObjectState::context_menu_params, 0,
+        GetCurrentThreadId());
+    std::wstring response;
+    DispatchGeneratedBrowserEvent(handle_,
+        L"fbro.event.fbrohsbroevent.onbeforecontextmenu.32288e654974",
+        L"OnBeforeContextMenu", L"上下文菜单显示前",
+        BuildSafeFieldsJson({
+            {L"frameUrl", frame ? frame->GetURL().ToWString() : L""},
+            {L"menuHandle", std::to_wstring(menu_handle)},
+            {L"paramsHandle", std::to_wstring(params_handle)},
+            {L"x", std::to_wstring(FBroHsContextMenuParams_pGetXCoord(params))},
+            {L"y", std::to_wstring(FBroHsContextMenuParams_pGetYCoord(params))}}),
+        0, 0, &response);
+    if (!response.empty()) ApplyMenuModelOperations(model, response);
+    EraseObjectTree(menu_handle);
+    EraseObjectTree(params_handle);
+  }
+
   bool RunContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                       CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model,
                       CefRefPtr<CefRunContextMenuCallback> callback) override {
@@ -1561,6 +2035,55 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
         });
   }
 
+  // 手写覆盖：资源响应事件直接读 CefRequest/CefResponse 输出完整字段
+  // （请求网址、方法、状态码、MIME、响应头对象）；生成器把这三个事件列在
+  // MANAGED_CALLBACK_EVENT_NAMES 中跳过生成，稳定事件 ID 必须与官方签名哈希一致。
+  bool OnResourceResponse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                          CefRefPtr<CefRequest> request, CefRefPtr<CefResponse> response) override {
+    if (request) {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (auto* state = Find(handle_)) {
+        state->resource_urls[request->GetIdentifier()] = request->GetURL().ToWString();
+        if (state->resource_urls.size() > 32) state->resource_urls.erase(state->resource_urls.begin());
+      }
+      DebugTraceOrder(L"ResponseArrive", request->GetIdentifier());
+    }
+    const int action = DispatchGeneratedBrowserEvent(handle_,
+        L"fbro.event.fbrohsbroevent.onresourceresponse.8841d0c12824",
+        L"OnResourceResponse", L"资源响应到达",
+        BuildResourceFieldsJson(frame, request, response),
+        LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0);
+    return action == LB_FBRO_EVENT_ACTION_CANCEL || action == LB_FBRO_EVENT_ACTION_HANDLED;
+  }
+  void OnResourceLoadComplete(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                              CefRefPtr<CefRequest> request, CefRefPtr<CefResponse> response,
+                              CefResourceRequestHandler::URLRequestStatus status,
+                              int64_t received_content_length) override {
+    std::wstring fields = BuildResourceFieldsJson(frame, request, response);
+    fields.pop_back();
+    fields += L",\"status\":" + std::to_wstring(static_cast<long long>(status));
+    fields += L",\"received_content_length\":"
+        + std::to_wstring(static_cast<long long>(received_content_length));
+    fields += L"}";
+    DispatchGeneratedBrowserEvent(handle_,
+        L"fbro.event.fbrohsbroevent.onresourceloadcomplete.b58a5747af0a",
+        L"OnResourceLoadComplete", L"资源加载完成", fields, 0, 0);
+  }
+  CefRefPtr<CefResponseFilter> GetResourceResponseFilter(CefRefPtr<CefBrowser> browser,
+                                                         CefRefPtr<CefFrame> frame,
+                                                         CefRefPtr<CefRequest> request,
+                                                         CefRefPtr<CefResponse> response) override {
+    DispatchGeneratedBrowserEvent(handle_,
+        L"fbro.event.fbrohsbroevent.getresourceresponsefilter.1f59120c72bd",
+        L"GetResourceResponseFilter", L"资源响应过滤器查询",
+        BuildSafeFieldsJson({{L"browser", browser ? L"1" : L"0"},
+                             {L"frame", frame ? frame->GetURL().ToWString() : L""},
+                             {L"request", request ? L"1" : L"0"},
+                             {L"response", response ? L"1" : L"0"}}),
+        LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0);
+    return TakeResourceBodyFilter(handle_, request, response);
+  }
+
 #define LB_FBRO_BROWSER_EVENT_OVERRIDES
 #include "FbroEventOverrides.generated.inc"
 #undef LB_FBRO_BROWSER_EVENT_OVERRIDES
@@ -1571,7 +2094,8 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
 };
 
 bool StartBrowser(BrowserState& state) {
-  if (!g_ready || state.create_started || (!state.chrome_ui && !IsWindow(state.host))) return false;
+  if (!g_ready || state.create_started
+      || (!state.chrome_ui && !state.background && !IsWindow(state.host))) return false;
   state.create_started = true;
   E_WINDOWS_INFO window{};
   window.is_null = FALSE;
@@ -1636,6 +2160,30 @@ bool StartBrowser(BrowserState& state) {
   }
   auto extra = CefDictionaryValue::Create();
   extra->SetString("flag", "LingBuilderFbroBridge");
+  if (!state.extra_info_json.empty()) {
+    auto parsed = CefParseJSON(CefString(state.extra_info_json), JSON_PARSER_RFC);
+    if (parsed && parsed->GetType() == VTYPE_DICTIONARY) {
+      auto incoming = parsed->GetDictionary();
+      CefDictionaryValue::KeyList keys;
+      incoming->GetKeys(keys);
+      for (const auto& key : keys) {
+        if (!extra->HasKey(key)) extra->SetValue(key, incoming->GetValue(key));
+      }
+    } else {
+      state.last_error = L"附加信息 JSON 需为对象";
+    }
+  }
+  if (state.background) {
+    // 后台创建：无窗口信息，事件仍通过 state.event 正常分发。
+    if (!FBroHsCreateBackground(CefString(state.url.empty() ? L"about:blank" : state.url),
+                                &settings, state.request_context, extra, state.event,
+                                nullptr, CefString(std::to_wstring(state.handle)))) {
+      state.create_started = false;
+      Notify(state, LB_FBRO_EVENT_ERROR, L"FBroHsCreateBackground 创建浏览器失败");
+      return false;
+    }
+    return true;
+  }
   if (!FBroHsCreate(CefString(state.url.empty() ? L"about:blank" : state.url), &window,
                     &settings, state.request_context, extra, state.event, nullptr,
                     CefString(std::to_wstring(state.handle)))) {
@@ -1650,9 +2198,18 @@ class BridgeBrowserStartTask final : public CefTask {
  public:
   explicit BridgeBrowserStartTask(LB_FBRO_HANDLE handle) : handle_(handle) {}
   void Execute() override {
-    std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    if (g_shutdown_started) return;
-    if (auto* state = Find(handle_)) StartBrowser(*state);
+    BrowserState* state = nullptr;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (g_shutdown_started) return;
+      state = Find(handle_);
+    }
+    // 绝不能在 g_mutex 下执行 StartBrowser：浏览器创建会对主窗口宿主 HWND 做
+    // 跨线程窗口操作（SetWindowLong 等），必须等主线程消息泵应答；若主线程此刻
+    // 正在桥接调用里等这把锁（创建完毕处理器里的任何 FBro_ 命令都会），就会形成
+    // “CEF 线程持锁等主窗口应答 / 主线程等锁”的互等死锁。浏览器启动只发生在
+    // CEF UI 线程，StartBrowser 内的状态写入因此无需这把锁保护。
+    if (state) StartBrowser(*state);
   }
 
  private:
@@ -1663,8 +2220,13 @@ class BridgeBrowserStartTask final : public CefTask {
 void ScheduleBrowserStart(LB_FBRO_HANDLE handle) {
   if (!g_ready || g_shutdown_started) return;
   if (CefCurrentlyOn(TID_UI)) {
-    std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    if (auto* state = Find(handle)) StartBrowser(*state);
+    BrowserState* state = nullptr;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      state = Find(handle);
+    }
+    // 同 BridgeBrowserStartTask：锁外执行 StartBrowser，避免跨线程窗口操作死锁。
+    if (state) StartBrowser(*state);
     return;
   }
   if (!CefPostTask(TID_UI, new BridgeBrowserStartTask(handle))) {
@@ -1674,8 +2236,14 @@ void ScheduleBrowserStart(LB_FBRO_HANDLE handle) {
 }
 
 void StartPendingBrowsers() {
-  std::lock_guard<std::recursive_mutex> lock(g_mutex);
-  for (auto& item : g_browsers) StartBrowser(*item.second);
+  std::vector<BrowserState*> pending;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    pending.reserve(g_browsers.size());
+    for (auto& item : g_browsers) pending.push_back(item.second.get());
+  }
+  // 同 BridgeBrowserStartTask：锁外执行 StartBrowser，避免跨线程窗口操作死锁。
+  for (auto* state : pending) StartBrowser(*state);
 }
 
 void SecureClearPendingLicenseCredential() {
@@ -2500,6 +3068,22 @@ CefRefPtr<FBroDoubleString> CreateDoubleStringFromJson(CefRefPtr<CefDictionaryVa
                                                         const char* key) {
   auto entries = ReadJsonList(value, key);
   if (!entries) return nullptr;
+  auto result = FBroDoubleString_Creat();
+  if (!result) return nullptr;
+  for (size_t index = 0; index < entries->GetSize(); ++index) {
+    if (entries->GetType(index) != VTYPE_DICTIONARY) continue;
+    auto entry = entries->GetDictionary(index);
+    if (!entry || entry->GetType("name") != VTYPE_STRING || entry->GetType("value") != VTYPE_STRING) continue;
+    FBroDoubleString_Add(result, entry->GetString("name"), entry->GetString("value"));
+  }
+  return result;
+}
+
+/** 从根级 JSON 数组构造受管键值映射，形状：[{"name":"...","value":"..."}]。 */
+CefRefPtr<FBroDoubleString> CreateDoubleStringFromEntriesJson(const wchar_t* json) {
+  auto parsed = CefParseJSON(CefString(json && *json ? json : L"[]"), JSON_PARSER_RFC);
+  if (!parsed || parsed->GetType() != VTYPE_LIST) return nullptr;
+  auto entries = parsed->GetList();
   auto result = FBroDoubleString_Creat();
   if (!result) return nullptr;
   for (size_t index = 0; index < entries->GetSize(); ++index) {
@@ -3516,6 +4100,39 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   return LB_FBro_InitializeEx(&options);
 }
 
+namespace {
+
+/** 把生成器烘焙的启动开关 JSON 追加到官方全局命令行；只能在 CEF 初始化前调用一次。 */
+void ApplyStartupCommandLineSwitches() {
+  if (g_startup_switches_json.empty()) return;
+  auto parsed = CefParseJSON(CefString(g_startup_switches_json), JSON_PARSER_RFC);
+  if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) {
+    g_startup_command_line = L"";
+    return;
+  }
+  auto dict = parsed->GetDictionary();
+  auto command_line = FBroHsCommandLine_GetGlobalCommandLine();
+  if (!command_line) return;
+  if (dict->GetBool("disableGpu") == true) FBroHsCommandLine_DisableGpu(command_line);
+  if (dict->GetBool("disableGpuCache") == true) FBroHsCommandLine_DisableGpuCache(command_line);
+  if (dict->GetBool("disableGpuBlockList") == true) FBroHsCommandLine_DisableGpuBlockList(command_line);
+  if (dict->GetBool("enableMediaStream") == true) FBroHsCommandLine_EnableMediaStream(command_line);
+  if (dict->GetBool("enableSpeechInput") == true) FBroHsCommandLine_EnableSpeechInput(command_line);
+  if (dict->GetBool("enableAutoplay") == true) FBroHsCommandLine_EnableAutoplayPoliey(command_line);
+  g_startup_command_line = FromFbroString(FBroHsCommandLine_GetString(command_line));
+}
+
+}  // namespace
+
+int __stdcall LB_FBro_SetStartupSwitches(const wchar_t* switches_json) {
+  g_startup_switches_json = switches_json ? switches_json : L"";
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_GetStartupCommandLine(wchar_t* result, size_t capacity) {
+  return CopyResult(g_startup_command_line, result, capacity);
+}
+
 int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options) {
   if (g_initialized) return 1;
   if (!options || options->struct_size < sizeof(LB_FBRO_INITIALIZE_OPTIONS_V1)
@@ -3632,6 +4249,8 @@ int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options)
   g_init_event = new BridgeInitEvent();
   g_vip_event = new BridgeVipEvent();
   FBroSetVipEvent(g_vip_event);
+  // 启动开关必须在 CEF 初始化前追加到全局命令行。
+  ApplyStartupCommandLineSwitches();
   if (!FBroHsInitPro(&settings, g_init_event, 1024)) {
     SecureClearPendingLicenseCredential();
     g_init_event = nullptr;
@@ -3744,6 +4363,34 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx2(HWND host, const wchar_t* url,
           + JsonEscape(g_startup_extension_error) + L"\"}";
       Notify(*inserted, LB_FBRO_EVENT_VIP_LIFECYCLE, payload);
     }
+    should_start = g_ready && !g_shutdown_started;
+  }
+  if (should_start) ScheduleBrowserStart(handle);
+  return handle;
+}
+
+LB_FBRO_HANDLE __stdcall LB_FBro_CreateBackground(const wchar_t* url,
+                                                  const wchar_t* profile_directory,
+                                                  const wchar_t* extra_info_json,
+                                                  LB_FBRO_EVENT_CALLBACK callback,
+                                                  void* user_data) {
+  if (!g_initialized) return 0;
+  auto state = std::make_unique<BrowserState>();
+  state->handle = g_next_handle.fetch_add(1);
+  state->background = true;
+  state->url = url ? url : L"about:blank";
+  std::wstring profile_warning;
+  state->profile = ResolveProfileDirectory(profile_directory ? profile_directory : L"", state->handle,
+                                           profile_warning).wstring();
+  state->last_error = profile_warning;
+  state->extra_info_json = extra_info_json ? extra_info_json : L"";
+  state->callback = callback;
+  state->user_data = user_data;
+  const LB_FBRO_HANDLE handle = state->handle;
+  bool should_start = false;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    g_browsers.emplace(handle, std::move(state));
     should_start = g_ready && !g_shutdown_started;
   }
   if (should_start) ScheduleBrowserStart(handle);
@@ -3897,6 +4544,989 @@ int __stdcall LB_FBro_SetAutoResizeEnabled(LB_FBRO_HANDLE browser, int enabled,
     FBroHsBrowserHost_SetAutoResizeEnabled(value, enabled != 0, min_height, min_width, max_height, max_width);
   });
 }
+namespace {
+/** 在 UI 线程执行一次浏览器动作并完成的通用任务（窗口类操作专用）。 */
+class BridgeUiActionTask final : public CefTask {
+ public:
+  BridgeUiActionTask(LB_FBRO_HANDLE browser, std::function<void(CefRefPtr<CefBrowser>)> action,
+                     std::shared_ptr<TaskState> task, std::wstring error)
+      : browser_(browser), action_(std::move(action)), task_(std::move(task)),
+        missing_error_(std::move(error)) {}
+  void Execute() override {
+    CefRefPtr<CefBrowser> browser;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (auto* state = Find(browser_)) browser = state->browser;
+    }
+    if (!browser) {
+      CompleteTextTask(task_, L"", missing_error_);
+      return;
+    }
+    action_(browser);
+    CompleteTextTask(task_, L"{\"success\":true}");
+  }
+
+ private:
+  LB_FBRO_HANDLE browser_;
+  std::function<void(CefRefPtr<CefBrowser>)> action_;
+  std::shared_ptr<TaskState> task_;
+  std::wstring missing_error_;
+  IMPLEMENT_REFCOUNTING(BridgeUiActionTask);
+};
+}  // namespace
+
+int __stdcall LB_FBro_GetWindowHandle(LB_FBRO_HANDLE browser, int64_t* window) {
+  if (!window) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  int64_t value = 0;
+  const int status = WithBrowser(browser, [&value](auto item) {
+    value = reinterpret_cast<int64_t>(FBroHsBrowserHost_GetWindowHandle(item));
+  });
+  if (status > 0) *window = value;
+  return status;
+}
+int __stdcall LB_FBro_GetOpenerWindowHandle(LB_FBRO_HANDLE browser, int64_t* window) {
+  if (!window) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  int64_t value = 0;
+  const int status = WithBrowser(browser, [&value](auto item) {
+    value = reinterpret_cast<int64_t>(FBroHsBrowserHost_GetOpenerWindowHandle(item));
+  });
+  if (status > 0) *window = value;
+  return status;
+}
+int __stdcall LB_FBro_GetParentWindowHandle(LB_FBRO_HANDLE browser, int64_t* window) {
+  if (!window) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  int64_t value = 0;
+  const int status = WithBrowser(browser, [&value](auto item) {
+    value = reinterpret_cast<int64_t>(FBroHsBrowserHost_GetParent(item));
+  });
+  if (status > 0) *window = value;
+  return status;
+}
+int __stdcall LB_FBro_GetRuntimeStyle(LB_FBRO_HANDLE browser) {
+  int result = 0;
+  const int status = WithBrowser(browser, [&result](auto item) { result = FBroHsBrowserHost_GetRuntimeStyle(item); });
+  return status > 0 ? result : status;
+}
+int __stdcall LB_FBro_GetSdkVersionJson(wchar_t* result, size_t capacity) {
+  std::wstring json = L"{\"main\":" + std::to_wstring(FBroHsVersion_GetMain())
+      + L",\"edit\":" + std::to_wstring(FBroHsVersion_GetEdit())
+      + L",\"debug\":" + std::to_wstring(FBroHsVersion_GetDedug()) + L"}";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_GetInstanceCount(void) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  size_t count = 0;
+  for (const auto& entry : g_browsers) {
+    if (entry.second->browser) ++count;
+  }
+  return static_cast<int>(count);
+}
+int __stdcall LB_FBro_GetInstanceHandlesJson(wchar_t* result, size_t capacity) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  std::wstring json = L"[";
+  bool first = true;
+  for (const auto& entry : g_browsers) {
+    if (!entry.second->browser) continue;
+    if (!first) json += L",";
+    first = false;
+    json += std::to_wstring(entry.first);
+  }
+  json += L"]";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_GetInstanceFlagsJson(wchar_t* result, size_t capacity) {
+  // 创建标记即 StartBrowser 传入的实例句柄字符串；仅统计仍存活的实例。
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  std::wstring json = L"[";
+  bool first = true;
+  for (const auto& entry : g_browsers) {
+    if (!entry.second->browser) continue;
+    if (!first) json += L",";
+    first = false;
+    json += L"\"" + std::to_wstring(entry.first) + L"\"";
+  }
+  json += L"]";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_IsInstanceAlive(LB_FBRO_HANDLE browser) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  return state && state->browser ? 1 : 0;
+}
+int __stdcall LB_FBro_IsGlobalRequestContext(LB_FBRO_HANDLE browser) {
+  CefRefPtr<CefRequestContext> context;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (auto* state = Find(browser)) context = state->request_context;
+  }
+  if (!context) {
+    context = FBroHsRequestContext_GetGlobalContext();
+    if (!context) return LB_FBRO_ERROR_OPERATION_FAILED;
+  }
+  return FBroHsRequestContext_IsGlobal(context) ? 1 : 0;
+}
+int __stdcall LB_FBro_GetRequestContextCachePath(LB_FBRO_HANDLE browser, wchar_t* result,
+                                                 size_t capacity) {
+  CefRefPtr<CefRequestContext> context;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (auto* state = Find(browser)) context = state->request_context;
+  }
+  const bool global = !context;
+  if (!context) {
+    context = FBroHsRequestContext_GetGlobalContext();
+    if (!context) return LB_FBRO_ERROR_OPERATION_FAILED;
+  }
+  const std::wstring path = FromFbroString(FBroHsRequestContext_GetCachePath(context));
+  std::wstring json = L"{\"global\":" + std::wstring(global ? L"true" : L"false")
+      + L",\"cachePath\":\"" + JsonEscape(path) + L"\"}";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_GetBrowserFlag(LB_FBRO_HANDLE browser, wchar_t* result, size_t capacity) {
+  std::wstring flag;
+  const int status = WithBrowser(browser, [&flag](auto item) {
+    flag = FromFbroString(FBroHsBrowser_GetFlag(item));
+  });
+  if (status > 0) return CopyResult(flag, result, capacity);
+  return status;
+}
+int __stdcall LB_FBro_GetBrowserExtraInfoJson(LB_FBRO_HANDLE browser, wchar_t* result,
+                                              size_t capacity) {
+  std::wstring json = L"{}";
+  const int status = WithBrowser(browser, [&json](auto item) {
+    if (auto extra = FBroHsBrowser_GetExtrainfo(item)) {
+      auto value = CefValue::Create();
+      value->SetDictionary(extra);
+      const auto serialized = CefWriteJSON(value, JSON_WRITER_DEFAULT).ToWString();
+      if (!serialized.empty()) json = serialized;
+    }
+  });
+  if (status > 0) return CopyResult(json, result, capacity);
+  return status;
+}
+int __stdcall LB_FBro_CreateDataUri(const wchar_t* mime_type, const wchar_t* data,
+                                    wchar_t* result, size_t capacity) {
+  if (!data) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  auto uri = FBroHsGetDataURI(CefString(mime_type ? mime_type : L""),
+                              CefString(data));
+  if (!uri) return LB_FBRO_ERROR_OPERATION_FAILED;
+  return CopyResult(FromFbroString(uri), result, capacity);
+}
+int __stdcall LB_FBro_IsBufferValid(LB_FBRO_BUFFER_HANDLE buffer) {
+  int status = LB_FBRO_OK;
+  const auto state = GetBuffer(buffer, status);
+  return status == LB_FBRO_OK ? 1 : 0;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_ShowDevToolsWindowAsync(LB_FBRO_HANDLE browser,
+                                                              const wchar_t* title, int x, int y,
+                                                              int width, int height,
+                                                              LB_FBRO_TASK_CALLBACK callback,
+                                                              void* user_data) {
+  if (!browser) return 0;
+  CefRefPtr<FBroHsBroEvent> browser_event;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (auto* state = Find(browser)) browser_event = state->event;
+  }
+  auto task = CreateTask(callback, user_data);
+  const std::wstring title_value = title && *title ? title : L"DevTools";
+  CefRefPtr<BridgeUiActionTask> start = new BridgeUiActionTask(
+      browser,
+      [title_value, x, y, width, height, browser_event](CefRefPtr<CefBrowser> value) {
+        FBroBrowserSetting setting{};
+        setting.is_null = TRUE;
+        E_ELEMENT_AT element_at{};
+        Event_Disable_Control event_control{};
+        FBroHsBrowserHost_ShowDevTools(value, CefString(title_value), nullptr, x, y, width,
+                                       height, &setting, &element_at, browser_event,
+                                       &event_control);
+      },
+      task, L"浏览器尚未创建");
+  ScheduleManagedTask(start, task, L"无法投递开发者工具窗口任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_MoveBrowserWindowAsync(LB_FBRO_HANDLE browser, int x, int y,
+                                                             int width, int height,
+                                                             LB_FBRO_TASK_CALLBACK callback,
+                                                             void* user_data) {
+  if (!browser || width <= 0 || height <= 0) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeUiActionTask> start = new BridgeUiActionTask(
+      browser,
+      [x, y, width, height](CefRefPtr<CefBrowser> value) {
+        FBroHsBrowserHost_MoveWindow(value, x, y, width, height, TRUE);
+      },
+      task, L"浏览器尚未创建");
+  ScheduleManagedTask(start, task, L"无法投递浏览器窗口移动任务");
+  return task->handle;
+}
+namespace {
+/** URL 请求客户端：完成时把 CefURLRequest 注册为受管对象并回传状态 JSON。 */
+class BridgeUrlRequestClient final : public FBroHsURLRequestClient {
+ public:
+  explicit BridgeUrlRequestClient(std::shared_ptr<TaskState> task) : task_(std::move(task)) {
+    type_ = URLRequestClientType;
+  }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void OnRequestComplete(int64_t flag, CefRefPtr<CefURLRequest> request) override {
+    (void)flag;
+    LB_FBRO_OBJECT_HANDLE handle = 0;
+    int status_code = 0;
+    int error_code = 0;
+    bool cached = false;
+    if (request) {
+      auto state = std::make_shared<ObjectState>();
+      state->handle = g_next_object_handle.fetch_add(1);
+      state->type = LB_FBRO_OBJECT_URL_REQUEST;
+      state->owner_thread = 0;
+      state->url_request = request;
+      {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        g_objects.emplace(state->handle, state);
+      }
+      handle = state->handle;
+      status_code = FBroHsURLRequest_GetRequestStatus(request);
+      error_code = FBroHsURLRequest_GetRequestError(request);
+      cached = FBroHsURLRequest_ResponseWasCached(request) ? true : false;
+    }
+    std::wstring json = L"{\"urlRequest\":" + std::to_wstring(handle)
+        + L",\"status\":" + std::to_wstring(status_code)
+        + L",\"error\":" + std::to_wstring(error_code)
+        + L",\"cached\":" + std::wstring(cached ? L"true" : L"false") + L"}";
+    CompleteTextTask(task_, json);
+  }
+
+ private:
+  std::shared_ptr<TaskState> task_;
+};
+
+/** URL 请求发起任务：UI 线程内创建，失败立即完成，成功由客户端回调完成。 */
+class BridgeUrlRequestStartTask final : public CefTask {
+ public:
+  BridgeUrlRequestStartTask(CefRefPtr<CefRequest> request, CefRefPtr<CefRequestContext> context,
+                            CefRefPtr<BridgeUrlRequestClient> client,
+                            CefRefPtr<CefFrame> frame, std::shared_ptr<TaskState> task)
+      : request_(std::move(request)), context_(std::move(context)), client_(std::move(client)),
+        frame_(std::move(frame)), task_(std::move(task)) {}
+  void Execute() override {
+    if (frame_) {
+      FBroHsBrowserFrame_CreateURLRequest(frame_, request_, client_, 0);
+      return;
+    }
+    // FBro 的 client 不直接继承 CEF 客户端接口，必须经官方包装创建；失败时无同步返回，由任务等待超时兜底。
+    FBroHsURLRequest_Create(request_, context_, client_, 0);
+  }
+
+ private:
+  CefRefPtr<CefRequest> request_;
+  CefRefPtr<CefRequestContext> context_;
+  CefRefPtr<BridgeUrlRequestClient> client_;
+  CefRefPtr<CefFrame> frame_;
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeUrlRequestStartTask);
+};
+}  // namespace
+
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_RequestCreate(void) {
+  auto request = FBroHsRequest_Create();
+  return RegisterCefObject(LB_FBRO_OBJECT_REQUEST, request, &ObjectState::request);
+}
+
+int __stdcall LB_FBro_RequestGetUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsRequest_GetURL(state->request)), result, capacity);
+}
+
+int __stdcall LB_FBro_RequestSetUrl(LB_FBRO_OBJECT_HANDLE object, const wchar_t* url) {
+  if (!url) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!state) return status;
+  FBroHsRequest_SetURL(state->request, CefString(url));
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_RequestSetMethod(LB_FBRO_OBJECT_HANDLE object, const wchar_t* method) {
+  if (!method || !*method) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!state) return status;
+  FBroHsRequest_SetMethod(state->request, CefString(method));
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_RequestSetReferrer(LB_FBRO_OBJECT_HANDLE object, const wchar_t* referrer,
+                                         int policy) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!state) return status;
+  FBroHsRequest_SetReferrer(state->request, CefString(referrer ? referrer : L""), policy);
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_RequestSetHeaderMapJson(LB_FBRO_OBJECT_HANDLE object,
+                                              const wchar_t* headers_json) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!state) return status;
+  auto headers = CreateDoubleStringFromEntriesJson(headers_json);
+  if (!headers) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  FBroHsRequest_SetHeaderMap_Array(state->request, headers, false);
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_RequestComposeSet(LB_FBRO_OBJECT_HANDLE object, const wchar_t* url,
+                                        const wchar_t* method, LB_FBRO_OBJECT_HANDLE post_data,
+                                        const wchar_t* headers_json) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!state) return status;
+  FBroHsRequest_SetURL(state->request, CefString(url ? url : L""));
+  FBroHsRequest_SetMethod(state->request, CefString(method && *method ? method : L"GET"));
+  if (headers_json && *headers_json) {
+    auto headers = CreateDoubleStringFromEntriesJson(headers_json);
+    if (!headers) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+    FBroHsRequest_SetHeaderMap_Array(state->request, headers, false);
+  }
+  if (post_data) {
+    auto post_state = GetObject(post_data, LB_FBRO_OBJECT_POST_DATA, status);
+    if (!post_state) return status;
+    FBroHsRequest_SetPostData(state->request, post_state->post_data);
+  }
+  return LB_FBRO_OK;
+}
+
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_PostDataCreate(void) {
+  auto post_data = FBroHsPostData_Create();
+  return RegisterCefObject(LB_FBRO_OBJECT_POST_DATA, post_data, &ObjectState::post_data);
+}
+
+int __stdcall LB_FBro_PostDataAddElement(LB_FBRO_OBJECT_HANDLE object,
+                                         LB_FBRO_OBJECT_HANDLE element) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_POST_DATA, status);
+  if (!state) return status;
+  auto element_state = GetObject(element, LB_FBRO_OBJECT_POST_DATA_ELEMENT, status);
+  if (!element_state) return status;
+  FBroHsPostData_AddElement(state->post_data, element_state->post_data_element);
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_PostDataGetElementCount(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_POST_DATA, status);
+  if (!state) return status;
+  return FBroHsPostData_GetElementCount(state->post_data);
+}
+
+int __stdcall LB_FBro_PostDataGetElementHandlesJson(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                    size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_POST_DATA, status);
+  if (!state) return status;
+  std::vector<CefRefPtr<CefPostDataElement>> elements;
+  state->post_data->GetElements(elements);
+  std::wstring json = L"[";
+  for (size_t index = 0; index < elements.size(); ++index) {
+    if (index) json += L",";
+    json += std::to_wstring(RegisterCefObject(LB_FBRO_OBJECT_POST_DATA_ELEMENT, elements[index],
+                                              &ObjectState::post_data_element, object));
+  }
+  json += L"]";
+  return CopyResult(json, result, capacity);
+}
+
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_PostDataElementCreate(void) {
+  auto element = FBroHsPostDataElement_Create();
+  return RegisterCefObject(LB_FBRO_OBJECT_POST_DATA_ELEMENT, element,
+                                            &ObjectState::post_data_element);
+}
+
+int __stdcall LB_FBro_PostDataElementSetBytes(LB_FBRO_OBJECT_HANDLE object, const wchar_t* text) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_POST_DATA_ELEMENT, status);
+  if (!state) return status;
+  std::string bytes = ToUtf8(text ? text : L"");
+  FBroHsPostDataElement_SetToData(state->post_data_element,
+                                  bytes.empty() ? nullptr : bytes.data(), bytes.size());
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_PostDataElementGetBytesCount(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_POST_DATA_ELEMENT, status);
+  if (!state) return status;
+  return FBroHsPostDataElement_GetBytesCount(state->post_data_element);
+}
+
+int __stdcall LB_FBro_PostDataElementGetText(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                             size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_POST_DATA_ELEMENT, status);
+  if (!state) return status;
+  const int size = FBroHsPostDataElement_GetBytesCount(state->post_data_element);
+  if (size <= 0) return CopyResult(L"", result, capacity);
+  std::vector<char> bytes(static_cast<size_t>(size));
+  FBroHsPostDataElement_GetBytes(state->post_data_element, bytes.size(), bytes.data());
+  return CopyResult(FromUtf8Bytes(bytes.data(), bytes.size()), result, capacity);
+}
+
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_ProcessMessageCreate(const wchar_t* name) {
+  auto message = FBroHsProcessMessage_Create(CefString(name ? name : L""));
+  return RegisterCefObject(LB_FBRO_OBJECT_PROCESS_MESSAGE, message,
+                                            &ObjectState::process_message);
+}
+
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_ProcessMessageGetArgumentList(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_PROCESS_MESSAGE, status);
+  if (!state) return 0;
+  auto list = FBroHsProcessMessage_GetArgumentList(state->process_message);
+  return RegisterObject(LB_FBRO_OBJECT_LIST, nullptr, nullptr, list, object);
+}
+
+int __stdcall LB_FBro_FrameLoadRequest(LB_FBRO_OBJECT_HANDLE frame, LB_FBRO_OBJECT_HANDLE request) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return status;
+  auto request_state = GetObject(request, LB_FBRO_OBJECT_REQUEST, status);
+  if (!request_state) return status;
+  FBroHsBrowserFrame_LoadRequest(frame_state->frame, request_state->request);
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_FrameSendProcessMessage(LB_FBRO_OBJECT_HANDLE frame, int target_process,
+                                              LB_FBRO_OBJECT_HANDLE message) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return status;
+  auto message_state = GetObject(message, LB_FBRO_OBJECT_PROCESS_MESSAGE, status);
+  if (!message_state) return status;
+  FBroHsBrowserFrame_SendProcessMessage(frame_state->frame,
+                                        static_cast<CefProcessId>(target_process),
+                                        message_state->process_message);
+  return LB_FBRO_OK;
+}
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_UrlRequestStartAsync(LB_FBRO_HANDLE browser,
+                                                           LB_FBRO_OBJECT_HANDLE request_object,
+                                                           LB_FBRO_TASK_CALLBACK callback,
+                                                           void* user_data) {
+  int status = LB_FBRO_OK;
+  auto request_state = GetObject(request_object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!request_state) return 0;
+  CefRefPtr<CefRequestContext> context;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (auto* state = Find(browser)) context = state->request_context;
+  }
+  if (!context) context = FBroHsRequestContext_GetGlobalContext();
+  if (!context) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeUrlRequestClient> client = new BridgeUrlRequestClient(task);
+  CefRefPtr<BridgeUrlRequestStartTask> start = new BridgeUrlRequestStartTask(
+      request_state->request, context, client, nullptr, task);
+  ScheduleManagedTask(start, task, L"无法投递 URL 请求任务");
+  return task->handle;
+}
+
+int __stdcall LB_FBro_UrlRequestGetStatus(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_URL_REQUEST, status);
+  if (!state) return status;
+  return FBroHsURLRequest_GetRequestStatus(state->url_request);
+}
+
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_UrlRequestGetRequestObject(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_URL_REQUEST, status);
+  if (!state) return 0;
+  auto request = FBroHsURLRequest_GetRequest(state->url_request);
+  return RegisterCefObject(LB_FBRO_OBJECT_REQUEST, request, &ObjectState::request,
+                                            object);
+}
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameCreateUrlRequestAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                                 LB_FBRO_OBJECT_HANDLE request,
+                                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto request_state = GetObject(request, LB_FBRO_OBJECT_REQUEST, status);
+  if (!request_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeUrlRequestClient> client = new BridgeUrlRequestClient(task);
+  CefRefPtr<BridgeUrlRequestStartTask> start = new BridgeUrlRequestStartTask(
+      request_state->request, nullptr, client, frame_state->frame, task);
+  ScheduleManagedTask(start, task, L"无法投递框架 URL 请求任务");
+  return task->handle;
+}
+
+namespace {
+/** 填表取值回调：把 FBroHsJsCallback 的 ListValue 以 JSON 完成任务。 */
+class BridgeTianBiaoValueCallback final : public FBroHsJsCallback {
+ public:
+  explicit BridgeTianBiaoValueCallback(std::shared_ptr<TaskState> task) : task_(std::move(task)) {
+    type_ = JsCallbackType;
+  }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void Callback(CefRefPtr<CefListValue> values) override {
+    CompleteTextTask(task_, JsonFromList(values));
+  }
+
+ private:
+  std::shared_ptr<TaskState> task_;
+};
+
+/** 取源码/取文本访客：按 UTF-8 字节进受管缓冲，避免大页面截断。 */
+class BridgeFrameStringVisitor final : public FBroHsStringVisitor {
+ public:
+  explicit BridgeFrameStringVisitor(std::shared_ptr<TaskState> task) : task_(std::move(task)) {
+    type_ = StringVisitorType;
+  }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void Visit(const CefString& string) override {
+    const std::string utf8 = ToUtf8(string.ToWString());
+    CompleteBufferTask(task_, RegisterBuffer(std::vector<unsigned char>(utf8.begin(), utf8.end())), L"");
+  }
+
+ private:
+  std::shared_ptr<TaskState> task_;
+};
+
+/** 框架异步动作起始任务：UI 线程内发起，完成由回调驱动。 */
+class BridgeFrameActionTask final : public CefTask {
+ public:
+  BridgeFrameActionTask(std::function<void()> action, std::shared_ptr<TaskState> task,
+                        std::wstring error)
+      : action_(std::move(action)), task_(std::move(task)), missing_error_(std::move(error)) {}
+  void Execute() override {
+    if (!action_) {
+      CompleteTextTask(task_, L"", missing_error_);
+      return;
+    }
+    action_();
+  }
+
+ private:
+  std::function<void()> action_;
+  std::shared_ptr<TaskState> task_;
+  std::wstring missing_error_;
+  IMPLEMENT_REFCOUNTING(BridgeFrameActionTask);
+};
+}  // namespace
+
+int __stdcall LB_FBro_FrameTianBiaoClick(LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector,
+                                         int index) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetClick(state->frame, CefString(selector ? selector : L""), index);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoScrollIntoView(LB_FBRO_OBJECT_HANDLE frame,
+                                                  const wchar_t* selector, int index,
+                                                  int to_top) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetScrollIntoView(state->frame, CefString(selector ? selector : L""),
+                                               index, to_top ? TRUE : FALSE);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetFocus(LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector,
+                                            int index, int focus) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetFocus(state->frame, CefString(selector ? selector : L""), index,
+                                      focus ? TRUE : FALSE);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetValue(LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector,
+                                            int index, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetValue(state->frame, CefString(selector ? selector : L""), index,
+                                      CefString(value ? value : L""));
+  return LB_FBRO_OK;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetValueAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                                 const wchar_t* selector,
+                                                                 int index,
+                                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetValue(frame_state->frame, CefString(selector_value), index,
+                                            value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取值任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetPointAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                                 const wchar_t* selector,
+                                                                 int index,
+                                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetPoint(frame_state->frame, CefString(selector_value), index,
+                                            value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取坐标任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameGetSourceAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                          LB_FBRO_TASK_CALLBACK callback,
+                                                          void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeFrameStringVisitor> visitor = new BridgeFrameStringVisitor(task);
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, visitor]() { FBroHsBrowserFrame_GetSource(frame_state->frame, visitor); },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递取源码任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameGetTextAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                        LB_FBRO_TASK_CALLBACK callback,
+                                                        void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeFrameStringVisitor> visitor = new BridgeFrameStringVisitor(task);
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, visitor]() { FBroHsBrowserFrame_GetText(frame_state->frame, visitor); },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递取文本任务");
+  return task->handle;
+}
+int __stdcall LB_FBro_BufferToText(LB_FBRO_BUFFER_HANDLE buffer, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetBuffer(buffer, status);
+  if (!state) return status;
+  return CopyResult(FromUtf8Bytes(state->bytes.data(), state->bytes.size()), result, capacity);
+}
+namespace {
+// JS 扩展调用超时的自定义动作值：completion 收到该值时按 Failure 应答页面。
+constexpr int kJsQueryTimeoutAction = 99;
+
+/** 把 .lcpp 应答的菜单操作 JSON 应用到官方菜单模型（同步，回调期内完成）。 */
+bool ApplyMenuModelOperations(CefRefPtr<CefMenuModel> model, const std::wstring& ops_json) {
+  auto parsed = CefParseJSON(CefString(ops_json), JSON_PARSER_RFC);
+  if (!parsed || parsed->GetType() != VTYPE_LIST) return false;
+  auto ops = parsed->GetList();
+  for (size_t index = 0; index < ops->GetSize(); ++index) {
+    if (ops->GetType(index) != VTYPE_DICTIONARY) continue;
+    auto op = ops->GetDictionary(index);
+    if (!op) continue;
+    const std::wstring type = op->GetString("op").ToWString();
+    const int id = op->GetType("id") == VTYPE_INT ? static_cast<int>(op->GetInt("id")) : 0;
+    const CefString label = CefString(op->GetType("label") == VTYPE_STRING ? op->GetString("label").ToWString() : std::wstring());
+    if (type == L"addItem") {
+      FBroHsMenuModel_AddItem(model, id, label);
+    } else if (type == L"addCheckItem") {
+      FBroHsMenuModel_AddCheckItem(model, id, label);
+    } else if (type == L"addSeparator") {
+      FBroHsMenuModel_AddSeparator(model);
+    } else if (type == L"addSubMenu") {
+      FBroHsMenuModel_AddSubMenu(model, id, label);
+    } else if (type == L"remove") {
+      FBroHsMenuModel_Remove(model, id);
+    } else if (type == L"clear") {
+      FBroHsMenuModel_Clear(model);
+    } else if (type == L"setChecked") {
+      FBroHsMenuModel_SetCheck(model, id, op->GetType("value") == VTYPE_BOOL ? op->GetBool("value") : false);
+    } else if (type == L"setEnabled") {
+      FBroHsMenuModel_SetEnable(model, id, op->GetType("value") != VTYPE_BOOL || op->GetBool("value"));
+    } else if (type == L"setLabel") {
+      FBroHsMenuModel_SetLable(model, id, label);
+    } else if (type == L"setAccelerator") {
+      FBroHsMenuModel_SetAccelerator(model, id, static_cast<int>(op->GetType("keyCode") == VTYPE_INT ? static_cast<int>(op->GetInt("keyCode")) : 0),
+          op->GetType("shift") == VTYPE_BOOL && op->GetBool("shift"),
+          op->GetType("ctrl") == VTYPE_BOOL && op->GetBool("ctrl"),
+          op->GetType("alt") == VTYPE_BOOL && op->GetBool("alt"));
+    }
+  }
+  return true;
+}
+
+/** 页面调用原生函数（JS 扩展）处理器：事件应答经 continuation 链回传 Success/Failure。 */
+class BridgeQueryHandler final : public FBroHsQueryHandler {
+ public:
+  BridgeQueryHandler() { type_ = QueryHandlerType; }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  bool OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int64_t query_id,
+               const CefString& request, bool persistent,
+               CefRefPtr<CefMessageRouterBrowserSide::Handler::Callback> callback) override {
+    (void)frame;
+    if (!callback) return false;
+    LB_FBRO_HANDLE handle = 0;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      for (auto& item : g_browsers) {
+        if (browser && item.second->browser && item.second->browser->IsSame(browser)) {
+          handle = item.first;
+          break;
+        }
+      }
+    }
+    if (!handle) return false;
+    const std::wstring fields = BuildSafeFieldsJson({
+        {L"queryId", std::to_wstring(query_id)},
+        {L"request", request.ToWString()},
+        {L"persistent", persistent ? L"true" : L"false"}});
+    CefRefPtr<CefMessageRouterBrowserSide::Handler::Callback> captured = callback;
+    auto completion = [captured](int action, const std::wstring& response_json) {
+      if (action == LB_FBRO_EVENT_ACTION_CONTINUE) {
+        auto response = ParseEventResponse(response_json);
+        if (EventResponseBool(response, "success", true)) {
+          FBroJSFunctionCallback_Success(captured,
+              CefString(EventResponseString(response, "result")));
+        } else {
+          FBroJSFunctionCallback_Failure(captured,
+              EventResponseInt(response, "errorCode", -1),
+              CefString(EventResponseString(response, "error")));
+        }
+      } else if (action == kJsQueryTimeoutAction) {
+        FBroJSFunctionCallback_Failure(captured, -4,
+            CefString(L"JS 扩展调用超时"));
+      }
+    };
+    if (!DispatchManagedBrowserEvent(handle, L"OnQuery", fields, 120000, std::move(completion),
+                                     0, 0, true, kJsQueryTimeoutAction)) return false;
+    return true;
+  }
+};
+
+CefRefPtr<BridgeQueryHandler> g_query_handler;
+std::atomic<bool> g_js_query_enabled{false};
+}  // namespace
+
+int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function, const wchar_t* cancel_function) {
+  if (g_ready.load()) return LB_FBRO_ERROR_OPERATION_FAILED;
+  bool expected = false;
+  if (!g_js_query_enabled.compare_exchange_strong(expected, true)) return LB_FBRO_OK;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (!g_browsers.empty()) {
+      g_js_query_enabled.store(false);
+      return LB_FBRO_ERROR_OPERATION_FAILED;
+    }
+    g_query_handler = new BridgeQueryHandler();
+  }
+  FBroHsQueryFunctions(
+      CefString(query_function && *query_function ? query_function : L"lingQuery"),
+      CefString(cancel_function && *cancel_function ? cancel_function : L"lingQueryCancel"),
+      g_query_handler);
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_MenuModelAddItem(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                       const wchar_t* label) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_AddItem(state->menu_model, command_id,
+                                            CefString(label ? label : L"")));
+}
+int __stdcall LB_FBro_MenuModelAddSubMenu(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                          const wchar_t* label) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  auto sub = FBroHsMenuModel_AddSubMenu(state->menu_model, command_id,
+                                        CefString(label ? label : L""));
+  return static_cast<int>(RegisterCefObject(LB_FBRO_OBJECT_MENU_MODEL, sub,
+                                            &ObjectState::menu_model, object,
+                                            GetCurrentThreadId()));
+}
+int __stdcall LB_FBro_MenuModelSetAccelerator(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                              int key_code, int shift, int ctrl, int alt) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetAccelerator(state->menu_model, command_id, key_code,
+                                                   shift != 0, ctrl != 0, alt != 0));
+}
+int __stdcall LB_FBro_MenuModelGetColor(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                        int color_type, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  int red = 0;
+  int green = 0;
+  int blue = 0;
+  int alpha = 0;
+  const BOOL ok = FBroHsMenuModel_GetColor(state->menu_model, command_id, color_type, red, green,
+                                           blue, alpha);
+  if (!ok) return LB_FBRO_ERROR_OPERATION_FAILED;
+  std::wstring json = L"{\"red\":" + std::to_wstring(red) + L",\"green\":" + std::to_wstring(green)
+      + L",\"blue\":" + std::to_wstring(blue) + L",\"alpha\":" + std::to_wstring(alpha) + L"}";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetX(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return FBroHsContextMenuParams_pGetXCoord(state->context_menu_params);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetY(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return FBroHsContextMenuParams_pGetYCoord(state->context_menu_params);
+}
+
+namespace {
+/** CEF 服务器句柄：创建完成注册受管对象并把连接事件缓存到最近事件。 */
+class BridgeServerHandle final : public FBroHsServerHandle {
+ public:
+  explicit BridgeServerHandle(std::shared_ptr<TaskState> task) : task_(std::move(task)) {
+    type_ = ServerHandleType;
+  }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void OnServerCreated(CefRefPtr<CefServer> server) override {
+    LB_FBRO_OBJECT_HANDLE handle = 0;
+    std::wstring address;
+    if (server) {
+      auto state = std::make_shared<ObjectState>();
+      state->handle = g_next_object_handle.fetch_add(1);
+      state->type = LB_FBRO_OBJECT_SERVER;
+      state->owner_thread = 0;
+      state->server = server;
+      {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        g_objects.emplace(state->handle, state);
+      }
+      handle = state->handle;
+      address = FromFbroString(FBroHsServer_GetAddress(server));
+    }
+    CompleteTextTask(task_, L"{\"server\":" + std::to_wstring(handle)
+        + L",\"address\":\"" + JsonEscape(address) + L"\"}");
+  }
+  void OnServerDestroyed(CefRefPtr<CefServer>) override {}
+
+ private:
+  std::shared_ptr<TaskState> task_;
+};
+
+/** 服务器 IO 任务：在 server 自身 task runner 上执行发送动作。 */
+class BridgeServerSendTask final : public CefTask {
+ public:
+  BridgeServerSendTask(CefRefPtr<CefServer> server, int connection_id,
+                       std::vector<unsigned char> bytes)
+      : server_(std::move(server)), connection_id_(connection_id), bytes_(std::move(bytes)) {}
+  void Execute() override {
+    FBroHsServer_SendWebSocketMessage(server_, connection_id_,
+                                      bytes_.empty() ? nullptr : bytes_.data(),
+                                      static_cast<int>(bytes_.size()));
+  }
+
+ private:
+  CefRefPtr<CefServer> server_;
+  int connection_id_;
+  std::vector<unsigned char> bytes_;
+  IMPLEMENT_REFCOUNTING(BridgeServerSendTask);
+};
+}  // namespace
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_ServerCreateAsync(const wchar_t* url, int port,
+                                                        int max_connections,
+                                                        LB_FBRO_TASK_CALLBACK callback,
+                                                        void* user_data) {
+  if (!url || !*url || port <= 0 || max_connections <= 0) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeServerHandle> server_handle = new BridgeServerHandle(task);
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [url = std::wstring(url), port, max_connections, server_handle]() {
+        FBroHsServer_CreateServer(CefString(url), port, max_connections, server_handle);
+      },
+      task, L"");
+  ScheduleManagedTask(start, task, L"无法投递服务器创建任务");
+  return task->handle;
+}
+
+int __stdcall LB_FBro_ServerSendWebSocketMessage(LB_FBRO_OBJECT_HANDLE object, int connection_id,
+                                                 const wchar_t* text) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_SERVER, status);
+  if (!state) return status;
+  if (!text) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  const std::string bytes = ToUtf8(text);
+  auto runner = FBroHsServer_GetTaskRunner(state->server);
+  if (!runner) return LB_FBRO_ERROR_OPERATION_FAILED;
+  auto owned_server = state->server;
+  runner->PostTask(new BridgeServerSendTask(owned_server, connection_id,
+                                            std::vector<unsigned char>(bytes.begin(), bytes.end())));
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_ServerSendWebSocketBuffer(LB_FBRO_OBJECT_HANDLE object, int connection_id,
+                                                LB_FBRO_BUFFER_HANDLE buffer) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_SERVER, status);
+  if (!state) return status;
+  auto buffer_state = GetBuffer(buffer, status);
+  if (!buffer_state) return status;
+  auto runner = FBroHsServer_GetTaskRunner(state->server);
+  if (!runner) return LB_FBRO_ERROR_OPERATION_FAILED;
+  auto owned_server = state->server;
+  auto bytes = buffer_state->bytes;
+  runner->PostTask(new BridgeServerSendTask(owned_server, connection_id, std::move(bytes)));
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_ServerGetAddress(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                       size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_SERVER, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsServer_GetAddress(state->server)), result, capacity);
+}
+
+int __stdcall LB_FBro_ServerHasConnection(LB_FBRO_OBJECT_HANDLE object, int connection_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_SERVER, status);
+  if (!state) return status;
+  return FBroHsServer_HasConnection(state->server) ? 1 : 0;
+}
+
+int __stdcall LB_FBro_ServerShutdown(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_SERVER, status);
+  if (!state) return status;
+  FBroHsServer_Shutdown(state->server);
+  return LB_FBRO_OK;
+}
+
 int __stdcall LB_FBro_ExecuteJs(LB_FBRO_HANDLE browser, const wchar_t* script, wchar_t* result, size_t capacity) {
   if (!script) return -2;
   auto state = std::make_shared<JsExecutionState>();
@@ -4175,6 +5805,61 @@ int __stdcall LB_FBro_SetEventSamplingRate(LB_FBRO_HANDLE browser,
   auto* state = Find(browser);
   if (!state) return LB_FBRO_ERROR_NOT_FOUND;
   state->event_sampling_rates[event_id] = max_hz;
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_ResourceBodyBegin(LB_FBRO_HANDLE browser, uint64_t request_id,
+                                        int64_t max_bytes) {
+  if (max_bytes <= 0) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  if (request_id == 0) return LB_FBRO_ERROR_OPERATION_FAILED;
+  const uint64_t bounded = static_cast<uint64_t>(max_bytes);
+  if (bounded > kMaxResourceBodyCaptureBytes) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  if (!state) return LB_FBRO_ERROR_NOT_FOUND;
+  // request_id 来自当前“资源响应到达”事件包字段；事件与过滤器按请求标识精确配对，
+  // 不依赖可能被并发资源事件覆盖的单一“当前请求”槽位。
+  auto capture = std::make_shared<ResourceBodyCaptureState>();
+  capture->max_bytes = bounded;
+  const auto url = state->resource_urls.find(request_id);
+  capture->url = url != state->resource_urls.end() ? url->second : std::wstring();
+  state->resource_body_captures[request_id] = capture;
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_ResourceReplaceSet(LB_FBRO_HANDLE browser,
+                                         LB_FBRO_BUFFER_HANDLE find_buffer,
+                                         LB_FBRO_BUFFER_HANDLE replacement_buffer) {
+  int status = LB_FBRO_OK;
+  std::shared_ptr<BufferState> find_state = GetBuffer(find_buffer, status);
+  if (find_buffer && !find_state) return status;
+  std::shared_ptr<BufferState> replacement_state;
+  if (replacement_buffer) {
+    replacement_state = GetBuffer(replacement_buffer, status);
+    if (!replacement_state) return status;
+  }
+  if (!find_state || find_state->bytes.empty()
+      || find_state->bytes.size() > kMaxResourceReplaceBytes
+      || (replacement_state && replacement_state->bytes.size() > kMaxResourceReplaceBytes)) {
+    return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  }
+  auto config = std::make_shared<ResourceReplaceConfig>();
+  config->find_bytes = find_state->bytes;
+  if (replacement_state) config->replacement_bytes = replacement_state->bytes;
+  // 只在互斥锁下复制并整体替换 shared_ptr，不触碰 CEF 对象：任意线程同步安全，
+  // 生成代码创建受管缓冲 → 调用本导出 → 立即释放缓冲的顺序是安全的。
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  if (!state) return LB_FBRO_ERROR_NOT_FOUND;
+  state->resource_replace = std::move(config);
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_ResourceReplaceClear(LB_FBRO_HANDLE browser) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  if (!state) return LB_FBRO_ERROR_NOT_FOUND;
+  state->resource_replace.reset();
   return LB_FBRO_OK;
 }
 

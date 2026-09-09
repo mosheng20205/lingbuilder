@@ -1,5 +1,12 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-09-08）：进程内 FBro 浏览器开放 CDP 调试端口。此前只有独立进程 Host 会预留 CDP 端口，进程内模式生成代码走 `LB_FBro_Initialize`（内部硬编码 `remote_debugging_port = 0`），`FBro_取调试端口` 对进程内固定返回 0，第 08 集《CDP 自动化》口播「进程内模式没有可供 CDP 连接的独立端口」即源于该产品限制。现在标准 Win32 与 new_emoji 两套生成模板的进程内初始化统一改走 `LB_FBro_InitializeEx`，初始化时按项目内进程内控件的 `enableDevTools` 属性（缺省启用）决定是否自动预留一个本机回环端口（同独立 Host 的 `ReserveLoopbackPort` 算法）并写入 CEF `remote_debugging_port`——任一进程内控件启用即开启、全部关闭则不预留（与独立 Host 的 flag 16 语义一致）；`FBro_取调试端口` 对进程内返回该真实端口，返回 0 表示尚未初始化、未启用开发者工具或预留失败。关键约束：CEF 的调试端口只在初始化时生效、事后无法补设，且初始化发生在 `wWinMain`（早于任何 `.lcpp` 事件代码），因此**没有也不提供**运行时设置端口的命令；初始化辅助函数带进程级一次性守卫，`wWinMain` 与每窗口 `FBro_初始化` 重复调用不会二次预留。同批更新 `FBro_取调试端口` manifest 描述、`docs/modules/fbro/control.md` 新增「CDP 调试端口」小节、规则手册与测试断言（modules.test 新增 6 条断言：snippet 注入、InitializeEx 端口写入、wWinMain 守卫、初始化调用、端口读取、旧 `LB_FBro_Initialize` 清除；另新增 enableDevTools 开关测试：缺省/显式 true 预留端口、显式 false 不预留且初始化仍走 InitializeEx、独立进程模式不受进程内烘焙影响）。门禁同批写回：audit 基线 3021/5184/1271（摘要 8f45195e/1972ba6c，含 FBro 合集 `FBro_替换资源响应内容/文件` 两命令入账）、FBro family 476、用户文档公开命令 467、封装清单 3021。已知边界：端口在进程内模式是**全局单例**——同一生成程序如有多个进程内 FBro 控件，它们共享同一个 CEF 实例和调试端口（与 CEF 架构一致）；`FBro 5.39.55` 覆盖清单随生成脚本重新出数。
+
+- 已完成（2026-09-08）：FBro 资源响应事件字段升级与正文捕获开放为中文命令。`lingbuilder.fbro.events` 新增 `FBro_读资源响应正文(控件名, 最大字节数, 完成处理器)`；资源响应事件（`OnResourceResponse` / `OnResourceLoadComplete` / `GetResourceResponseFilter`）改为手写覆盖，Bridge 直接读 `CefRequest` / `CefResponse` 投递 `request_id`、`request_url`、`method`、`status_code`、`mime_type`、`charset`、`headers`（响应头对象）+ 原 `status`、`received_content_length`。正文捕获在「资源响应到达」处理器内安装有界过滤，完成后触发合成事件「资源响应正文到达」，字段 `url`、`status_code`、`mime_type`、`received_bytes`、`truncated`、`error`、`body_text`、`body_base64`。关键实现约束：FBro 资源事件在多个 IO 线程交错、`GetResourceResponseFilter` 与 `OnResourceResponse` 可能乱序，必须按 `request_id` 精确配对，不能用单一“当前请求”槽位；且必须走官方唯一受支持路径（`FBroHsResponseFilter` 子类 + `FBroHsResponseFilter_Create` 包装 + 官方 `End` 回调派发），自定义 `CefResponseFilter` 直接安装会静默失效并造成堆损坏（弃用方案，勿再尝试）。端到端验证见 `AI 视频自主生产/FBro 指纹浏览器合集/07 获取资源响应/验证报告.md`（四个文本资源正文全部捕获，进程正常退出 0 残留）。已知边界（后续优化方向）：正文捕获是请求级、不修改响应内容、不重新发起请求；`file://` 同样走过滤器路径；二进制资源按最大字节数截断、完整正文走 `body_base64`。
+- 已完成（2026-09-09）：FBro 资源响应替换开放为高层中文命令。`lingbuilder.fbro.browser` 新增 `FBro_替换资源响应内容(控件名, 地址, 内容)`、`FBro_替换资源响应文件(控件名, 地址, 文件路径)`、`FBro_清除资源响应替换(控件名, 地址)` 与 `FBro_清空资源响应替换(控件名)`，宿主侧经 `LB_FBro_VipResourceCommandAsync`（官方 VIP 资源规则，find_type 0 精确匹配，火山 VIP高级功能测试 同款用法）同步等待后释放任务。语义与 CEF3 的查找替换不同：FBro 是按 URL 规则的整响应替换（缓冲/文件两种载荷），且走 FBro VIP 授权门禁（无 Key 返回 0 并中文提示，fail-closed，不得放行）。另确认两条产品行为：窗口 `创建完毕` 内不得调用 `FBro_导航`（浏览器未就绪，需先绑定 `浏览器创建完成` 再导航）；旧版 ep07 成片「公开接口不提供响应正文/响应头」表述已随本次能力重制订正。
+
+- 已完成（2026-09-08）：CEF3 资源响应正文修改开放为中文命令。桥接层 `BridgeResponseFilter` 的字节查找替换实现（`LB_CEF3_ResponseFilterCreate` / `LB_CEF3_ResponseFilterSetReplacement` / `LB_CEF3_ResourceRequestHandlerSetResponseFilter`）此前只是 C ABI 能力、未暴露给 `.lcpp`；现在 `lingbuilder.cef3.browser` 新增 `CEF3_替换资源响应内容(控件名, 查找内容, 替换内容)` 与 `CEF3_清除资源响应替换(控件名)` 两条高层命令，生成器在宿主侧包装：宽字符参数边界做确定性 UTF-8 转换，浏览器未创建时排队并在 `CEF3_创建单个` 桥接句柄就绪的同步点附加（赶在初始导航请求之前）。端到端验证见 `AI 视频自主生产/CEF3 浏览器模块合集/12 修改资源响应数据/验证记录.md`（替换与清除均以页面标题字节被真实改写为准）。已知边界（后续优化方向）：替换配置是浏览器级全局，不支持按 URL/资源类型精确限定，按需限定需在桥接层为每个请求暴露裁决点；参数是宽字符串按 UTF-8 编码，任意二进制查找/替换仍只能走底层 `LB_CEF3_*` C ABI + 受管缓冲；只能改响应正文，改响应头/状态码需要自定义 `CefResourceHandler`（已有 Scheme 处理工厂一族），不要把两者混为一谈。同批补齐第 11 集 `CEF3_读资源响应正文` 欠下的文档与审计登记（README 接口表、controlRef 审计基线、模块封装清单计数）。
+
 - 已完成（2026-09-05）：补齐 LingCpp 数组运行时。此前数组只能声明、传参、下标访问和用 `枚举循环首` 遍历，没有任何命令能读取成员数或增删成员。新增内置 `lingbuilder.std.array@1.0.0`，提供 `数组_取成员数/是否为空/取成员/置成员/加入成员/插入成员/删除成员/清空/查找/是否包含/排序/倒序/重定义` 共 13 条命令，直接作用于语言原有数组声明并映射到 `std::vector<T>`，索引从 0 开始、越界安全返回失败值。binding 新增泛型 `array`（数组左值，按 `std::vector<T>&` 原样传递）和 `arrayElement`（与数组元素类型一致的值，作为返回值时由实参定型）两个类型；清单校验拒绝 `array` 作返回值、缺少 `array` 参数的 `arrayElement`，以及泛型数组跨原生 DLL ABI。语言服务同步补上 `名单[0]` 的元素类型推断、数组变量的数组维度（项目全局、程序集、局部、记录字段），`areLingCppTypesCompatible` 不再把数组和标量视为兼容，并对数组命令校验实参个数、数组左值和成员类型。`数组_查找/是否包含/排序` 用 `std::void_t` 探测元素类型是否支持比较，记录型数组稳定返回失败值而不是编译失败。`smoke:array-native` 覆盖真实 MSVC x64 编译与运行时行为断言（`--runtime-only` 可在缺少 v143 平台工具集的机器上单独验证运行时）。后续若开放数组字面量初始化、多维数组或按字段排序，必须继续复用同一 binding 类型与诊断链路，不得回退到分隔符文本或 JSON 句柄模拟数组。
 
 - 已修复（2026-09-02）：SDK 按需安装在归档已完成并通过 SHA-256 后不再等待 aria2c 进程退出，UI 会立即离开“正在下载”，分别显示下载进度/速度，并进入“正在解压”；同时兼容历史生成的平铺 SDK ZIP（根目录为 `sdk/`、模块清单和 README），解压前安全归一化到受控模块目录，避免误报“ZIP 顶层目录必须是模块 ID”。
@@ -1377,3 +1384,51 @@ F5 直接被中文诊断阻断，但状态栏的 `错误列表` 仍显示 `(0)`�
 - CEF3 SDK 校验现在额外检查 `LingBuilderCefBridge.h` 是否包含 `LB_CEF3_ResourceResponseBodyBegin`，旧版 SDK 不再被误判为可用。
 - 构建前原生依赖物化按内容差异刷新 CEF3 Bridge 的头文件、LIB 和 DLL，避免增量构建目录残留旧 ABI。
 - 后续官网 SDK 清单变更仍必须同步更新版本、SHA-256、压缩大小、解压大小和文件数；用户侧由 IDE 自动下载、校验和原子替换。
+
+### FBro 非 VIP 响应正文查找替换与浏览器启动死锁修复（2026-09-09）
+
+- `lingbuilder.fbro.browser` 2.5.0 新增非 VIP 查找替换族：`FBro_替换资源响应文本(控件名, 查找内容, 替换内容)` 与
+  `FBro_清除资源响应文本替换(控件名)`。桥接侧新增导出 `LB_FBro_ResourceReplaceSet/Clear`（bridgeVersion 2.3.0 → 2.4.0，
+  物化门禁 peExportProbe 已加新导出探测），过滤器 `LingFbroResourceReplaceFilter` 继承官方 `FBroHsResponseFilter`
+  并经 `FBroHsResponseFilter_Create` 安装；流式 UTF-8 字节查找替换算法与 CEF3 桥 `BridgeResponseFilter` 同源
+  （pending + `std::search` + 输出队列排空后才继续消费输入），二进制安全、跨块匹配、上限 64MiB。
+  与 `FBro_读资源响应正文` 同请求并存时由替换过滤器顺带按原始输入字节捕获，`End` 回调派发正文事件（与 CEF3 语义一致）。
+- **浏览器启动死锁（根因与修复）**：`BridgeBrowserStartTask::Execute` 原先在 `g_mutex` 全程持锁下执行 `StartBrowser`，
+  后者会创建以主窗口宿主 HWND 为父的浏览器窗口，触发对主线程窗口的跨线程 `SetWindowLong`——必须等主线程消息泵应答；
+  而主线程「创建完毕」处理器内的任何 `FBro_` 命令都要取同一把锁，形成互等死锁。cdb 抓栈确认双线程栈：
+  主线程 `CreateWindowExW → WM_CREATE → FBro_导航 → RtlAcquireSRWLockExclusive`，CEF `CrBrowserMain → 桥 → NtUserSetWindowLong`。
+  旧模板二进制只是碰巧赢得「CEF 初始化 vs WM_CREATE」时序竞争，新模板二进制必输。修复：`BridgeBrowserStartTask`、
+  `ScheduleBrowserStart` 的 TID_UI 分支与 `StartPendingBrowsers` 一律锁外执行 `StartBrowser`（启动只发生在 CEF UI 线程，
+  状态写入无需全局锁）；同时生成模板把 `OnWindowCreated`（含 `FBro_创建` 与 `Loaded` 派发）从 `WM_CREATE` 内同步调用
+  改为 `WM_LINGBUILDER_WINDOW_CREATED`（WM_APP+0x59）延迟到消息循环开始后派发，对齐火山示例「消息循环运转后再建浏览器」的范式。
+- **遗留优化**：`FBro_导航` 在浏览器就绪前调用会静默返回 0（CEF3 模块已有 `pendingNavigation` 排队机制），
+  后续可给 FBro 生成运行时补同样的排队语义，消除「创建完毕内导航无效」这一新手陷阱；当前以
+  `浏览器创建完成` 事件处理器内导航为文档化正确用法。
+### FBro 环境 SDK 升级到火山版正式版 5.39.53（bridge 2.5.0，2026-09-09）
+## FBro 环境 SDK 升级到火山版正式版 5.39.53（bridge 2.5.0，2026-09-09）
+
+### 更新内容
+
+- 用户提供火山最新安装包 `FBrowserCEF3Lib火山版正式版5.39.53_chromium135.0.7049.115.7z`（外层为安装器，内含 `FBrowser火山模块包.7z`，py7zr 不支持其 BCJ2 压缩，用 7zr.exe 解出）。以该包为权威源整体升级 FBro 环境 SDK；此前 `T:\编程工具\...\FBrowser` 为赞助会员工具升级的另一构建（与 5.39.53 亦不同），两个脚本 `DEFAULT_SOURCE` 已从该易漂移路径切换到工作区稳定源树 `.lingbuilder-build/fbro-official-5.39.53/FBrowser`（junction 指向已安装模块的 official/include、official/lib64、runtime/x64）。
+- 版本判定：新旧 CEF 版本头完全一致（`135.0.21+gd008a99+chromium-135.0.7049.115`，`chrome_elf.dll` 同哈希），`SDK_VERSION` 保持 `135.0.21`；桥接在新头/库下重编译且二进制变化，`BRIDGE_VERSION` 2.4.0 → 2.5.0（2.4.0 归档未发布过，直接跳版）。模块版本 `135.0.21.2.5.0`。
+- 官方头文件 77 → 73（删除 `FBroClientBase.h`、`FBroExtension.h`、`FBroExtensionHandler.h`、`FBroRenderHandler.h`；内容仅 `include/cef_config.h` 变化）；覆盖目录签名族 1079 → 1071（原始声明 1091 → 1083），**已实现 397 不变**——桥使用的全部官方 API 在 5.39.53 中健在（此前记忆中「SetVirGPU* 被删」只发生在漂移目录，5.39.53 官方 DLL 仍导出 7 个 SetVirGPU* 且声明可解析）。事件目录完全不变（174 槽位/158 唯一签名/90+31 分类/89 implemented/76 managed）。
+- 运行时更新：`FBrowserCEF3lib.dll`、`FBrowserVIP.dll`、`libcef.dll` 全部更换（`FBroSubprocess.exe`、`chrome_elf.dll` 等不变）；新 `libcef.dll` 235.3MB，仍满足目录 `criticalFiles` 的 230MB 下限。
+- `EXPECTED_HEADER_COUNT` 77→73、`EXPECTED_SIGNATURE_COUNT` 1079→1071 写入覆盖门禁；测试基线写回（headerCount/signatureCount/rawDeclarationCount 1083/advancedSafe planned 670）并注明原因。
+
+### 影响范围与流程沉淀
+
+- 已安装模块 `​.lingbuilder/modules/lingbuilder.fbro.sdk` 经 `npm run module:fbro-sdk -- --source <5.39.53 包> --install` 原子替换（桥 2.5.0 + 新 official + 新 runtime + 重算 SHA-256 的 runtime-manifest）；`FBro_替换资源响应文本` 等全部桥导出复核存在。
+- 稳定源树 `.lingbuilder-build/fbro-official-5.39.53/FBrowser`（junction）供 `module:fbro-sdk` / `module:fbro-coverage[:check]` 的 `DEFAULT_SOURCE` 使用；两个脚本的旧绝对路径默认值已移除。
+- 新归档 `​.lingbuilder-build/lingbuilder-fbro-sdk-135.0.21.2.5.0-windows-x64.zip`：473 文件（-5：4 头 + 运行时差 1），225,396,199 字节，解压 673,673,633 字节，SHA-256 `98c3e430fd4c480b7d7829b517984c0a83083f8a3fc6067225a079740454777d`，zip 清单与解压树双向对账一致；`sdkDependencyCatalog.ts` 可更新字段已同步（version/archiveName/downloadUrl/archiveBytes/expandedBytes/fileCount/sha256）。
+- **未决（需维护者）**：R2 上传 2.5.0 归档 + 管理后台「SDK 下载源」发布 fbro 资源（sequence+1，按 `docs/SDK下载清单发布流程.md`「日常换直链」四步）。旧 2.4.0/2.3.0 归档未发布过，无需处理。
+
+### 验证结果
+
+- 覆盖门禁 `module:fbro-coverage:check`（经 junction 源树）绿：73 头 / 1071 签名 / 397 implemented / 670 planned / 3 internal；在线 `sdk-catalog:check` 绿（sequence 8，锚定字段逐字一致）。
+- `npm run lint`、`npm run build` 绿；`modules.test.ts` 126 用例（覆盖目录基线已更新）仅剩 6 个既有本机环境基线失败；`test:lingcpp` 212 用例仅剩 1 个既有环境失败。
+- 端到端：CLI 以新 SDK 物化重建 `fbro-novip-replace-demo` 并运行，非 VIP 查找替换 + 清除全流程 ALL_PASS（page1 标题被替换为「会员专享价格页面」，page2「清除后原始价格页面」保持原文），进程存活可响应。
+
+
+## FBro 全量封装后续事项（2026-09-09）
+
+- 批次 0-7 已落地 57 条命令（详见更新记录 2026-09-09）。遗留：① 各命令端到端 exe 冒烟（填表/取源码/启动开关/服务器/JS扩展各一例），当前仅有 DLL 导出探针与门禁绿；② CEF 服务器连接级事件（OnClientConnected/OnWebSocketMessage 等）未接事件目录（目录无 ServerHandle 槽位，接入需扩 EXPECTED_EVENT_SLOT_COUNT 并全量门禁重校）；③ 2.6.0 归档待 R2 上传与管理后台发布（线上 sequence+1）；④ TianBiao 全族尚有 SetChecked/GetChecked/SetSelected/GetSelected/SetInnerText 等 15 个同模式函数未封装（本次仅覆盖火山工程实际使用的 6 个）。

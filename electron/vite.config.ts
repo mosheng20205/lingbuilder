@@ -15,7 +15,11 @@ export default defineConfig(() => {
       port: 3001,
       strictPort: true,
       hmr: process.env.DISABLE_HMR !== 'true' ? { port: 24679 } : false,
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // release/ 是 electron-builder 打包产物；Windows 杀软对其瞬时加锁会让
+      // chokidar 的 fs.watch 抛 EBUSY 直接杀死 dev server，且无需 HMR 监视。
+      watch: process.env.DISABLE_HMR === 'true'
+        ? null
+        : { ignored: [path.resolve(__dirname, 'release') + '/**'] },
     },
   };
 });
