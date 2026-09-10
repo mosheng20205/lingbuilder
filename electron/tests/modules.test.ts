@@ -251,17 +251,18 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       parameterDigest: audit.parameterDigest
     },
     {
-      // 基线 2026-09-08 写回：CEF3_读资源响应正文 / CEF3_替换资源响应内容 /
-      // CEF3_清除资源响应替换（CEF3 合集）、FBro_替换资源响应内容 / FBro_替换资源响应文件
-      // （FBro 合集，VIP 资源整体替换）入账；FBro_取调试端口描述改写
-      // （进程内模式按 enableDevTools 决定是否预留回环端口）更新两个摘要。
+      // 基线 2026-09-09 写回：COM 自动化模块 2.0 句柄制升级，6 条命令扩展为
+      // 24 条（免注册创建、OCX 宿主、事件挂接映射、类型化属性与带参方法、
+      // 接口信息），新增 父窗口 controlRef 参数与文本参数白名单三项
+      // （组件DLL路径、注册/注销组件路径），并补充 COM_注册组件/COM_注销组件/
+      // COM_取组件路径 三条命令（对齐易语言动态注册/卸载例程）。
       // 再增删内置命令或其参数、改写命令描述时必须同步这两个摘要，否则覆盖面会无声缩小。
       modules: 85,
-      commands: 3087,
-      parameters: 5306,
-      controlReferences: 1285,
-      commandDigest: 'bda69424',
-      parameterDigest: '268f94d5'
+      commands: 3143,
+      parameters: 5421,
+      controlReferences: 1293,
+      commandDigest: '960ac708',
+      parameterDigest: '580239ff'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -393,7 +394,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 50, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 51, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1330,31 +1331,36 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   assert.match(mainCpp, /bool 音频_播放WAV/u);
 });
 
-test('SQLite 2.0 提供多连接、参数化查询、事务、WAL、备份和完整错误闭环', () => {
+test('SQLite 2.1 提供多连接、参数化查询、事务、WAL、备份、加密和完整错误闭环', () => {
   const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.database.sqlite')!;
   const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
   const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
-  assert.equal(manifest.version, '2.0.0');
-  assert.equal(commandNames.length, 67);
+  assert.equal(manifest.version, '2.1.0');
+  assert.equal(commandNames.length, 70);
   assert.deepEqual(bindingNames, commandNames);
   assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [
     ['SQLite连接', 'long long'],
     ['SQLite语句', 'long long']
   ]);
   for (const required of [
-    'SQLite_打开连接', 'SQLite_准备', 'SQLite_绑定空值', 'SQLite_绑定长整数', 'SQLite_绑定文本', 'SQLite_绑定字节集',
+    'SQLite_打开连接', 'SQLite_打开加密库', 'SQLite_打开加密连接', 'SQLite_运行库是否支持加密', 'SQLite_准备', 'SQLite_绑定空值', 'SQLite_绑定长整数', 'SQLite_绑定文本', 'SQLite_绑定字节集',
     'SQLite_语句步进', 'SQLite_取列类型', 'SQLite_取列字节集', 'SQLite_开始事务', 'SQLite_创建保存点',
     'SQLite_启用WAL', 'SQLite_WAL检查点', 'SQLite_备份到文件', 'SQLite_完整性检查', 'SQLite_中断',
     'SQLite_取扩展错误码', 'SQLite_取系统错误码'
   ]) {
-    assert.ok(commandNames.includes(required), `SQLite 2.0 缺少 ${required}`);
+    assert.ok(commandNames.includes(required), `SQLite 2.1 缺少 ${required}`);
   }
   assert.deepEqual(
     manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_绑定字节集')?.parameters?.map(parameter => parameter.type),
     ['SQLite语句', 'int', 'bytes']
   );
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开加密连接')?.parameters?.map(parameter => parameter.type),
+    ['wideString', 'wideString', 'int', 'int']
+  );
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_取列字节集')?.returnType, 'bytes');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开连接')?.returnType, 'SQLite连接');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开加密连接')?.returnType, 'SQLite连接');
   assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/sqlite/README.md');
 
   const enabledModules: InstalledModule[] = [{
@@ -1385,6 +1391,35 @@ test('SQLite 2.0 提供多连接、参数化查询、事务、WAL、备份和完
   }
   assert.match(mainCpp, /SQLite_打开连接\(L"data\/app\.db", 0, 5000\)/u);
   assert.match(mainCpp, /SQLite_绑定文本\(查询, 1, L"中文"\)/u);
+
+  const encryptedGenerated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 SQLite连接 安全库 = SQLite_打开加密连接("data/app.db", "我的密码", 0, 5000)',
+      '        如果 (SQLite_运行库是否支持加密())',
+      '            SQLite_打开加密库("data/cache.db", "另一个密码")',
+      '        如果结束',
+      '        SQLite_关闭连接(安全库)',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  assert.deepEqual(encryptedGenerated.blockingDiagnostics, []);
+  const encryptedMainCpp = encryptedGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  for (const runtimeSymbol of [
+    'using FnKey = int(*)(sqlite3*, const char*, int);',
+    'long long SQLite_打开加密连接(const wchar_t* path, const wchar_t* password, int mode, int waitMilliseconds)',
+    'bool SQLite_打开加密库(const wchar_t* path, const wchar_t* password)',
+    'bool SQLite_运行库是否支持加密()',
+    'PRAGMA cipher=sqlcipher',
+    'SELECT count(*) FROM sqlite_master'
+  ]) {
+    assert.ok(encryptedMainCpp.includes(runtimeSymbol), `SQLite 加密运行时缺少 ${runtimeSymbol}`);
+  }
+  assert.match(encryptedMainCpp, /SQLite_打开加密连接\(L"data\/app\.db", L"我的密码", 0, 5000\)/u);
+  assert.match(encryptedMainCpp, /SQLite_打开加密库\(L"data\/cache\.db", L"另一个密码"\)/u);
 });
 
 test('平台扩展和高风险模块保持独立启用并具有确定性运行时', () => {
@@ -1394,9 +1429,62 @@ test('平台扩展和高风险模块保持独立启用并具有确定性运行�
     assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
   }
   const enabledModules: InstalledModule[] = PLATFORM_ADVANCED_MODULES.map(manifest => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
-  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        IPC_关闭()', '        键盘钩子_停止()', '        COM_关闭()', '    结束', '结束类'].join('\n'), enabledModules });
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        IPC_关闭()', '        键盘钩子_停止()', '        COM_关闭(0)', '    结束', '结束类'].join('\n'), enabledModules });
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
   ['压缩_ZIP创建', 'SMTP_发送普通邮件', 'IPC_创建管道服务端', '菜单_创建', '托盘_添加', '辅助_取名称', '内存_申请', '键盘钩子_启动', '进程内存_打开', 'COM_创建对象', 'CPU_取厂商', '设备_打开'].forEach(name => assert.ok(mainCpp.includes(name), `缺少 ${name} C++ 运行时`));
+});
+
+test('COM 自动化模块 2.0 提供句柄制创建、免注册、OCX 宿主、事件挂接与接口信息', () => {
+  const manifest = PLATFORM_ADVANCED_MODULES.find(item => item.id === 'lingbuilder.advanced.com');
+  assert.ok(manifest);
+  assert.equal(manifest.version, '2.0.0');
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, 'COM manifest 应通过校验');
+  const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
+  ['COM_创建对象', 'COM_创建对象免注册', 'COM_创建OCX组件', 'COM_取OCX对象', 'COM_取文本属性', 'COM_取数值属性', 'COM_取逻辑属性', 'COM_取对象属性', 'COM_置文本属性', 'COM_调用方法', 'COM_调用文本方法', 'COM_调用数值方法', 'COM_调用逻辑方法', 'COM_调用对象方法', 'COM_挂接事件', 'COM_映射事件', 'COM_取消挂接事件', 'COM_取事件对象参数', 'COM_启用OCX消息转发', 'COM_移除OCX消息转发', 'COM_取接口信息', 'COM_关闭', 'COM_关闭全部', 'COM_取错误'].forEach(name => {
+    assert.ok(commandNames.has(name), `缺少命令 ${name}`);
+  });
+  const mapping = manifest.bindings?.commands?.find(binding => binding.command === 'COM_映射事件');
+  assert.ok(mapping, 'COM_映射事件 必须有 binding');
+  const handlerParameter = mapping?.parameters?.find(parameter => parameter.type === 'handler');
+  assert.deepEqual(handlerParameter?.handlerSignature, { parameterTypes: ['整数型', '文本型'], returnType: '空' });
+  const ocx = manifest.bindings?.commands?.find(binding => binding.command === 'COM_创建OCX组件');
+  const parentParameter = ocx?.parameters?.find(parameter => parameter.type === 'controlRef');
+  assert.equal(parentParameter?.runtimeRepresentation, 'nativeHandle');
+  assert.equal(parentParameter?.scope, 'currentWindow');
+
+  const comModule: InstalledModule = { manifest: manifest!, installPath: 'builtin://lingbuilder.advanced.com', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const source = [
+    '类 MainWindow',
+    '    长整数型 浏览器',
+    '    事件 _MainWindow_创建完毕()',
+    '        浏览器 = COM_创建OCX组件(当前窗口, "{8856F961-340A-11D0-A96B-00C04FD705A2}", 12, 64, 620, 380, 1)',
+    '        COM_挂接事件(浏览器)',
+    '        COM_映射事件(浏览器, 102, &网页_状态文本改变, 7)',
+    '        COM_启用OCX消息转发()',
+    '        COM_调用方法(浏览器, "Navigate2", "https://www.lingbuilder.com")',
+    '        COM_取接口信息(浏览器)',
+    '    结束',
+    '    事件 网页_状态文本改变(整数型 用户数据, 文本型 参数文本)',
+    '        调试输出(参数文本)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const completions = getLingCppCompletions({ source: 'COM_', line: 1, column: 5 }, { enabledModules: [comModule], availableModules: [comModule] });
+  assert.ok(completions.some(item => item.label === 'COM_创建对象免注册'));
+  const languageContext = { availableModules: [comModule], enabledModules: [comModule] };
+  const validDiagnostics = getLingCppSemanticDiagnostics(source, undefined, 'src/MainWindow.lcpp', languageContext)
+    .filter(item => item.id.startsWith('lingcpp-handler-'));
+  assert.deepEqual(validDiagnostics, [], `事件处理器签名应通过校验：${JSON.stringify(validDiagnostics)}`);
+  const badHandlerDiagnostics = getLingCppSemanticDiagnostics(source.replace('&网页_状态文本改变', '网页_状态文本改变'), undefined, 'src/MainWindow.lcpp', languageContext)
+    .filter(item => item.id.includes('lingcpp-handler-reference'));
+  assert.ok(badHandlerDiagnostics.some(item => item.level === 'error'), '处理器必须使用 &引用语法');
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [comModule] });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  ['LingComEventSink', 'LB_ComCreateRegistryFree', 'LB_ComCreateOcx', 'LB_ComDescribeObject', 'WM_LINGBUILDER_COM_EVENT', 'LB_ComDrainQueuedEvents', 'COM_关闭全部()'].forEach(name => assert.ok(mainCpp.includes(name), `缺少 COM v2 运行时 ${name}`));
+  assert.ok(mainCpp.includes('LingDispatchComEventByName(const wchar_t* handler, long long userData, const wchar_t* paramsText) override'), '窗口类必须生成 COM 事件派发分支');
+  assert.ok(mainCpp.includes('网页_状态文本改变(lbUserData, lbParams)'), '派发分支必须调用映射的中文处理器');
+  assert.ok(mainCpp.includes('LingCppControlNativeHandle(L"当前窗口")') || mainCpp.includes('hwnd_'), 'controlRef 父窗口必须解析为原生窗口句柄');
 });
 
 test('模块封装清单覆盖实际内置模块注册表', async () => {
@@ -1563,7 +1651,7 @@ test('FBro browser 2.5 keeps 2.1 submodules compatible with the v3 event core', 
     'lingbuilder.fbro.network',
     'lingbuilder.fbro.vip'
   ]));
-  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.6.0');
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.7.0');
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module => module.version === '2.1.0'));
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module =>
     module.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.fbro.browser'
@@ -1578,7 +1666,7 @@ test('FBro module family exposes one manager entry and atomically enables the st
   const family = getFbroFamilyModules(installed);
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
-  assert.equal(countModuleCommands(family), 542);
+  assert.equal(countModuleCommands(family), 574);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -1706,8 +1794,8 @@ test('FBro official SDK coverage catalog remains complete and classified', async
   assert.ok(catalog.signatures.every(item => ['highLevel', 'advancedSafe', 'internal'].includes(item.classification)
     && ['implemented', 'planned', 'notApplicable'].includes(item.implementationStatus)
     && item.classificationReason.length > 0));
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 415);
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 585);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 447);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 553);
   assert.equal(catalog.signatures.filter(item => item.implementationStatus === 'notApplicable').length, 15);
   assert.match(catalog.signatures.find(item => item.officialName === 'FBroHsBrowserHost_RunFileDialog')?.classificationReason || '', /阻塞/u);
   assert.ok(catalog.signatures.filter(item => item.classification === 'highLevel').every(item => item.implementationStatus === 'implemented'));
@@ -1721,8 +1809,8 @@ test('FBro official SDK coverage catalog remains complete and classified', async
   assert.equal(catalog.eventCatalog.length, 174);
   assert.equal(catalog.eventClassCounts.FBroHsBroEvent, 90);
   assert.equal(catalog.eventClassCounts.FBroHsInitEvent, 31);
-  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'implemented').length, 89);
-  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'managed').length, 76);
+  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'implemented').length, 102);
+  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'managed').length, 63);
   const browserAuthBoundary = catalog.eventCatalog.find(item => item.ownerClass === 'FBroHsBroEvent'
     && item.officialName === 'GetAuthCredentials');
   assert.equal(browserAuthBoundary?.bridgeStatus, 'managed');
@@ -1826,7 +1914,7 @@ test('模块公开信息搜索忽略命令标识符分隔符', () => {
 test('FBro Frame 使用类型化句柄并由普通 Win32 与 New_Emoji 共用官方调用', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.automation');
   assert.ok(manifest);
-  assert.equal(manifest.contributes?.commands?.length, 39);
+  assert.equal(manifest.contributes?.commands?.length, 56);
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro框架_取主框架'
     && command.aliases?.includes('FBroHsBrowser_GetMainFrame')));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro框架_取标识'
@@ -1845,7 +1933,7 @@ test('FBro Frame 使用类型化句柄并由普通 Win32 与 New_Emoji 共用官
 test('FBro Session CookieManager 与缓存清理使用受管异步任务和官方 Bridge 调用', async () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.session');
   assert.ok(manifest);
-  assert.equal(manifest.contributes?.commands?.length, 12);
+  assert.equal(manifest.contributes?.commands?.length, 14);
   for (const [command, alias] of [
     ['FBro会话_异步取全部Cookie', 'LB_FBro_CookieVisitAllAsync'],
     ['FBro会话_异步取地址Cookie', 'LB_FBro_CookieVisitUrlAsync'],
@@ -1970,7 +2058,7 @@ test('FBro Transfer PDF、文件对话框与 VIP 截图使用任务和受管缓�
 test('FBro Value、Dictionary、List、Stream、Image、Certificate 使用类型化受管句柄并生成真实 Bridge 调用', async () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
   assert.ok(manifest);
-  assert.equal(manifest.contributes?.commands?.length, 158);
+  assert.equal(manifest.contributes?.commands?.length, 160);
   assert.deepEqual(
     manifest.bindings?.commands?.map(binding => binding.command),
     manifest.contributes?.commands?.map(command => command.name)
@@ -3171,8 +3259,8 @@ test('FBro user documentation covers public events, classified slots and public 
 
   assert.equal(FBRO_EVENT_CATALOG.length, 174);
   assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
-  assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 89);
-  assert.equal(publicCommands.length, 533);
+  assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 102);
+  assert.equal(publicCommands.length, 565);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(
@@ -4473,8 +4561,8 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   const designer = manifest.contributes?.designerControls?.find(control => control.type === 'FBroBrowser');
   assert.equal(designer?.label, 'FBro指纹浏览器');
   assert.equal(designer?.nativeAdapter, 'fbro-browser');
-  assert.equal(designer?.events?.length, 89);
-  assert.ok(designer?.events?.every(event => event.name.startsWith('fbro.event.fbrohsbroevent.')));
+  assert.equal(designer?.events?.length, 94);
+  assert.ok(designer?.events?.every(event => /^fbro\.event\.fbrohs(?:broevent|initevent)\./u.test(event.name)));
   assert.ok(!designer?.events?.some(event => /getauthcredentials/u.test(event.name)));
   const browserGroup = createControlToolboxGroups(['Button', 'FBroBrowser'], false).find(group => group.id === 'browser');
   assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
@@ -4749,7 +4837,7 @@ test('FBro 桥接 DLL 导出探测识别陈旧 SDK 与非 PE 文件', () => {
     const buffer = Buffer.alloc(headerSize + sectionSize);
     buffer.writeUInt16LE(0x5a4d, 0); // MZ
     buffer.writeUInt32LE(0x40, 0x3c); // e_lfanew
-    buffer.writeUInt32LE(0x00004550, 0x40); // PE  
+    buffer.writeUInt32LE(0x00004550, 0x40); // PE 头
     buffer.writeUInt16LE(0x8664, 0x44); // machine
     buffer.writeUInt16LE(1, 0x46); // numberOfSections
     buffer.writeUInt16LE(240, 0x54); // sizeOfOptionalHeader
@@ -5100,7 +5188,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.6.0', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.7.0', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -5209,7 +5297,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.6.0',
+      bridgeVersion: '2.7.0',
       files: fbroFiles
     })),
     writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),

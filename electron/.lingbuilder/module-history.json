@@ -1,5 +1,16 @@
 [
   {
+    "id": "module-history-1788942216537-bd681e",
+    "time": "2026-09-09T08:23:36.537Z",
+    "action": "export",
+    "moduleId": "com.accept.demo",
+    "moduleName": "验收演示模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 验收演示模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\lb-acceptance\\验收演示模块.lbmod\nSHA256：19f217970d1b551677f3c5f7ba1f1775e1f9a63ab46b13c66a17457830821173"
+  },
+  {
     "id": "module-history-1785838278863-ce2d28",
     "time": "2026-08-04T10:11:18.864Z",
     "action": "export",

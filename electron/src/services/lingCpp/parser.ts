@@ -988,6 +988,9 @@ function splitParameterDefault(part: string): { definition: string; defaultValue
 
 function isMethodDeclaration(trimmed: string, prefix: string, declaredName?: string): boolean {
   if (prefix === '构造' || prefix === '析构') return true;
+  // 如果、循环、返回等关键字可能后接"名称(...)"形态的条件或调用（如 `如果 支持加密()`），
+  // 它们不能成为子程序返回类型；只有 事件/空/静态 既是关键字又是合法声明前缀。
+  if (LING_CPP_KEYWORDS.includes(prefix) && prefix !== '事件' && prefix !== '空' && prefix !== '静态') return false;
   if (!declaredName?.trim()) return false;
   const withoutStatic = trimmed.replace(/^静态\s+/u, '');
   return new RegExp(`^${escapeRegexLiteral(prefix)}\\s+`, 'u').test(withoutStatic);

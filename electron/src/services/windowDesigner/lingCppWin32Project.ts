@@ -42,7 +42,7 @@ import { BUILTIN_LIBRARY_COMMON_RUNTIME, generateStandardLibraryRuntime } from '
 import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
-import { generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
+import { generateComWindowMethods, generateComWndProcCase, generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { generateThreadingRuntime } from './threadingRuntime';
 import {
   generateHttpClientGlobalMethodDeclarations,
@@ -151,7 +151,7 @@ const FBRO_RESOURCE_REPLACE_HELPERS = String.raw`
         auto* instance = FBro_查找实例(controlName);
         if (!instance || !instance->handle) { 调试输出(L"FBro 资源替换失败：浏览器尚未创建。"); return 0; }
         const LB_FBRO_TASK_HANDLE task = LB_FBro_VipResourceCommandAsync(instance->handle, command, args.c_str(), nullptr, nullptr);
-        const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_TASK_COMPLETED;
+        const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_OK;
         wchar_t error[4096] = {};
         if (task) LB_FBro_TaskGetError(task, error, 4096);
         if (task) LB_FBro_TaskRelease(task);
@@ -3117,6 +3117,30 @@ function generateFbroObjectRuntime(availabilityMacro: string, staticFunctions: b
   addInt('FBro服务器_发送WebSocket文本', 'LB_FBro_ServerSendWebSocketMessage', 'long long object, int connectionId, const std::wstring& text', `${handle}, connectionId, text.c_str()`);
   addInt('FBro服务器_发送WebSocket缓冲', 'LB_FBro_ServerSendWebSocketBuffer', 'long long object, int connectionId, long long buffer', `${handle}, connectionId, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer)`);
   addInt('FBro服务器_关闭', 'LB_FBro_ServerShutdown', 'long long object', handle);
+  // VIP WebSocket 客户端拦截：wssClient 句柄来自拦截事件字段 websocket。
+  addInt('FBroWS客户端_是否空', 'LB_FBro_WssIsNull', 'long long object', handle);
+  addStringOut('FBroWS客户端_取地址', 'LB_FBro_WssGetAddress', 'long long object', handle);
+  addStringOut('FBroWS客户端_取协议', 'LB_FBro_WssGetProtocol', 'long long object', handle);
+  addStringOut('FBroWS客户端_取扩展', 'LB_FBro_WssGetExtensions', 'long long object', handle);
+  addInt('FBroWS客户端_发送文本', 'LB_FBro_WssSend', 'long long object, const std::wstring& text', `${handle}, text.c_str()`);
+  addInt('FBroWS客户端_发送缓冲', 'LB_FBro_WssSendBuffer', 'long long object, long long buffer', `${handle}, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer)`);
+  addStringOut('FBro请求_取方法', 'LB_FBro_RequestGetMethod', 'long long object', handle);
+  // DOM 遍历快照访问族（快照句柄来自 FBro框架_遍历DOM，节点按序号访问）。
+  addStringOut('FBro遍历_取标题', 'LB_FBro_DomGetTitle', 'long long object', handle);
+  addStringOut('FBro遍历_取基础地址', 'LB_FBro_DomGetBaseUrl', 'long long object', handle);
+  addInt('FBro遍历_取节点数', 'LB_FBro_DomGetNodeCount', 'long long object', handle);
+  addInt('FBro遍历_取节点类型', 'LB_FBro_DomGetNodeType', 'long long object, int nodeIndex', `${handle}, nodeIndex`);
+  addStringOut('FBro遍历_取节点路径', 'LB_FBro_DomGetNodePath', 'long long object, int nodeIndex', `${handle}, nodeIndex`);
+  addStringOut('FBro遍历_取节点名称', 'LB_FBro_DomGetNodeName', 'long long object, int nodeIndex', `${handle}, nodeIndex`);
+  addStringOut('FBro遍历_取节点值', 'LB_FBro_DomGetNodeValue', 'long long object, int nodeIndex', `${handle}, nodeIndex`);
+  addStringOut('FBro遍历_取节点内部文本', 'LB_FBro_DomGetNodeInnerText', 'long long object, int nodeIndex', `${handle}, nodeIndex`);
+  addInt('FBro遍历_取节点属性数', 'LB_FBro_DomGetNodeAttributeCount', 'long long object, int nodeIndex', `${handle}, nodeIndex`);
+  addStringOut('FBro遍历_取节点属性名', 'LB_FBro_DomGetNodeAttributeName', 'long long object, int nodeIndex, int attributeIndex', `${handle}, nodeIndex, attributeIndex`);
+  addStringOut('FBro遍历_取节点属性值', 'LB_FBro_DomGetNodeAttributeValue', 'long long object, int nodeIndex, int attributeIndex', `${handle}, nodeIndex, attributeIndex`);
+  addStringOut('FBro遍历_取节点属性', 'LB_FBro_DomGetNodeAttributeByName', 'long long object, int nodeIndex, const std::wstring& name', `${handle}, nodeIndex, name.c_str()`);
+  addStringOut('FBro遍历_取焦点节点路径', 'LB_FBro_DomGetFocusedPath', 'long long object', handle);
+  addInt('FBro遍历_按路径取序号', 'LB_FBro_DomFindNodeByPath', 'long long object, const std::wstring& pathJson', `${handle}, pathJson.c_str()`);
+  addInt('FBro右键参数_取类型标志', 'LB_FBro_ContextMenuParamsGetTypeFlags', 'long long object', handle);
 
   addHandleResult('FBro值_创建', 'LB_FBro_ValueCreate');
   for (const [name, apiName] of [
@@ -4397,7 +4421,7 @@ static int FBro_截图到文件(const wchar_t* name, const wchar_t* path, const 
     if (!browser->handle) return 0;
     const LB_FBRO_TASK_HANDLE task = LB_FBro_CaptureScreenshotAsync(browser->handle,
         format && *format ? format : L"png", quality, 0, 0, 0, 0, 1, 1, 1, nullptr, nullptr);
-    const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_TASK_COMPLETED;
+    const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_OK;
     const LB_FBRO_BUFFER_HANDLE buffer = completed ? LB_FBro_TaskGetBuffer(task) : 0;
     const int result = buffer ? LB_FBro_BufferSaveFile(buffer, path) : 0;
     if (buffer) LB_FBro_BufferRelease(buffer);
@@ -4623,15 +4647,137 @@ static long long FBro框架_取文本(long long frame) {
     (void)frame; return 0;
 #endif
 }
-static long long FBro服务器_创建(const wchar_t* address, int port, int maxConnections) {
+static long long FBro服务器_创建(const wchar_t* name, const wchar_t* address, int port, int maxConnections) {
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle) return 0;
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     wchar_t value[4096] = {};
-    auto task = LB_FBro_ServerCreateAsync(address, port, maxConnections, nullptr, nullptr);
+    auto task = LB_FBro_ServerCreateAsync(browser->handle, address, port, maxConnections, nullptr, nullptr);
     if (!task) return 0;
     LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 4096); LB_FBro_TaskRelease(task);
     return static_cast<long long>(wcstoll(wcsstr(value, L"\"server\":") ? wcsstr(value, L"\"server\":") + 9 : L"0", nullptr, 10));
 #else
     (void)address; (void)port; (void)maxConnections; return 0;
+#endif
+}
+static int FBro页面_发送文本(const wchar_t* name, const wchar_t* channel, const wchar_t* text) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle || !channel || !*channel) return 0;
+    return LB_FBro_SocketServerSendByBrowser(browser->handle, channel, text ? text : L"");
+#else
+    (void)name; (void)channel; (void)text; return 0;
+#endif
+}
+static int FBro页面_发送缓冲(const wchar_t* name, const wchar_t* channel, long long buffer) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle || !channel || !*channel) return 0;
+    return LB_FBro_SocketServerSendByBrowserBuffer(browser->handle, channel, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer));
+#else
+    (void)name; (void)channel; (void)buffer; return 0;
+#endif
+}
+static int FBro页面_客户端发送文本(const wchar_t* name, const wchar_t* channel, const wchar_t* text) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle || !channel || !*channel) return 0;
+    return LB_FBro_SocketClientSendByBrowser(browser->handle, channel, text ? text : L"");
+#else
+    (void)name; (void)channel; (void)text; return 0;
+#endif
+}
+static int FBro页面_客户端发送缓冲(const wchar_t* name, const wchar_t* channel, long long buffer) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle || !channel || !*channel) return 0;
+    return LB_FBro_SocketClientSendByBrowserBuffer(browser->handle, channel, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer));
+#else
+    (void)name; (void)channel; (void)buffer; return 0;
+#endif
+}
+static long long FBro框架_遍历DOM(long long frame, int maxDepth, int maxNodes) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[4096] = {};
+    auto task = LB_FBro_FrameVisitDomAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), maxDepth, maxNodes, nullptr, nullptr);
+    if (!task) return 0;
+    const bool completed = LB_FBro_TaskWait(task, 150000) == LB_FBRO_OK;
+    if (task) LB_FBro_TaskGetResult(task, value, 4096);
+    wchar_t error[1024] = {};
+    if (task) LB_FBro_TaskGetError(task, error, 1024);
+    LB_FBro_TaskRelease(task);
+    if (!completed || error[0]) { 调试输出(std::wstring(L"FBro框架_遍历DOM失败：") + (error[0] ? error : L"任务未在时限内完成").c_str()); return 0; }
+    const wchar_t* marker = wcsstr(value, L"\"snapshot\":");
+    if (!marker) { 调试输出(std::wstring(L"FBro框架_遍历DOM返回异常：") + value).c_str(); return 0; }
+    return static_cast<long long>(wcstoll(marker + 11, nullptr, 10));
+#else
+    (void)frame; (void)maxDepth; (void)maxNodes; return 0;
+#endif
+}
+static int FBro遍历_按路径设属性(long long frame, const wchar_t* pathJson, const wchar_t* name, const wchar_t* value) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto task = LB_FBro_DomSetAttributeByPathAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), pathJson, name, value, nullptr, nullptr);
+    if (!task) return 0;
+    const bool completed = LB_FBro_TaskWait(task, 150000) == LB_FBRO_OK;
+    wchar_t result[64] = {};
+    if (task) LB_FBro_TaskGetResult(task, result, 64);
+    wchar_t error[1024] = {};
+    if (task) LB_FBro_TaskGetError(task, error, 1024);
+    LB_FBro_TaskRelease(task);
+    if (!completed || error[0]) { 调试输出(std::wstring(L"FBro遍历_按路径设属性失败：") + (error[0] ? error : L"任务未在时限内完成").c_str()); return 0; }
+    return result[0] == L'1' ? 1 : 0;
+#else
+    (void)frame; (void)pathJson; (void)name; (void)value; return 0;
+#endif
+}
+static int FBro遍历_按路径赋值(long long frame, const wchar_t* pathJson, const wchar_t* value) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto task = LB_FBro_DomSetValueByPathAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), pathJson, value, nullptr, nullptr);
+    if (!task) return 0;
+    const bool completed = LB_FBro_TaskWait(task, 150000) == LB_FBRO_OK;
+    wchar_t result[64] = {};
+    if (task) LB_FBro_TaskGetResult(task, result, 64);
+    wchar_t error[1024] = {};
+    if (task) LB_FBro_TaskGetError(task, error, 1024);
+    LB_FBro_TaskRelease(task);
+    if (!completed || error[0]) { 调试输出(std::wstring(L"FBro遍历_按路径赋值失败：") + (error[0] ? error : L"任务未在时限内完成").c_str()); return 0; }
+    return result[0] == L'1' ? 1 : 0;
+#else
+    (void)frame; (void)pathJson; (void)value; return 0;
+#endif
+}
+static long long FBro会话_创建上下文(const wchar_t* settingsJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[4096] = {};
+    auto task = LB_FBro_RequestContextCreateAsync(settingsJson ? settingsJson : L"", nullptr, nullptr);
+    if (!task) return 0;
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 4096);
+    wchar_t contextError[1024] = {};
+    if (task) LB_FBro_TaskGetError(task, contextError, 1024);
+    LB_FBro_TaskRelease(task);
+    if (contextError[0]) { 调试输出(std::wstring(L"FBro会话_创建上下文失败：") + contextError).c_str(); return 0; }
+    const wchar_t* marker = wcsstr(value, L"\"context\":");
+    if (!marker) { 调试输出(std::wstring(L"FBro会话_创建上下文返回异常：") + value).c_str(); return 0; }
+    return static_cast<long long>(wcstoll(marker + 10, nullptr, 10));
+#else
+    (void)settingsJson; return 0;
+#endif
+}
+static int FBro会话_使用上下文重建(const wchar_t* name, long long context) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle) return 0;
+    return LB_FBro_RecreateBrowserWithContext(browser->handle, static_cast<LB_FBRO_OBJECT_HANDLE>(context));
+#else
+    (void)name; (void)context; return 0;
+#endif
+}
+static long long FBro_取主浏览器(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    return browser && browser->handle ? static_cast<long long>(LB_FBro_BrowserHostGetMainBrowser(browser->handle)) : 0;
+#else
+    (void)name; return 0;
 #endif
 }
 static int FBro传输_打印(const wchar_t* name) {
@@ -7305,6 +7451,9 @@ function generateMainCpp(
     aria2Runtime
   ].filter(Boolean);
   const threadingRuntime = generateThreadingRuntime(enabledModules);
+  const comWindowMethods = generateComWindowMethods(enabledModules);
+  const comWndProcCase = generateComWndProcCase(enabledModules);
+  const comCleanupLine = comWindowMethods ? '        COM_关闭全部();' : '';
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
   const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
   const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
@@ -9116,6 +9265,7 @@ ${httpServerShutdown}
 ${webSocketClientShutdown}
 ${cdpClientShutdown}
 ${webSocketServerShutdown}
+${comCleanupLine}
         EdgeView_关闭();
         FBro_关闭全部();
         if (menuFont_) {
@@ -11490,7 +11640,7 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         if (!instance->handle) return 0;
         const LB_FBRO_TASK_HANDLE task = LB_FBro_CaptureScreenshotAsync(instance->handle,
             format && *format ? format : L"png", quality, 0, 0, 0, 0, 1, 1, 1, nullptr, nullptr);
-        const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_TASK_COMPLETED;
+        const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_OK;
         const LB_FBRO_BUFFER_HANDLE buffer = completed ? LB_FBro_TaskGetBuffer(task) : 0;
         const int result = buffer ? LB_FBro_BufferSaveFile(buffer, path) : 0;
         if (buffer) LB_FBro_BufferRelease(buffer);
@@ -11815,15 +11965,138 @@ ${FBRO_RESOURCE_REPLACE_HELPERS}
         (void)frame; return 0;
 #endif
     }
-    long long FBro服务器_创建(const wchar_t* address, int port, int maxConnections) {
+    long long FBro服务器_创建(const wchar_t* controlName, const wchar_t* address, int port, int maxConnections) {
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle) return 0;
 #if LINGBUILDER_FBRO_AVAILABLE
         wchar_t value[4096] = {};
-        auto task = LB_FBro_ServerCreateAsync(address, port, maxConnections, nullptr, nullptr);
+        auto task = LB_FBro_ServerCreateAsync(instance->handle, address, port, maxConnections, nullptr, nullptr);
         if (!task) return 0;
         LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 4096); LB_FBro_TaskRelease(task);
         return static_cast<long long>(wcstoll(wcsstr(value, L"\\\"server\\\":") ? wcsstr(value, L"\\\"server\\\":") + 9 : L"0", nullptr, 10));
 #else
         (void)address; (void)port; (void)maxConnections; return 0;
+#endif
+    }
+    int FBro页面_发送文本(const wchar_t* controlName, const wchar_t* channel, const wchar_t* text) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle || !channel || !*channel) return 0;
+        return LB_FBro_SocketServerSendByBrowser(instance->handle, channel, text ? text : L"");
+#else
+        (void)controlName; (void)channel; (void)text; return 0;
+#endif
+    }
+    int FBro页面_发送缓冲(const wchar_t* controlName, const wchar_t* channel, long long buffer) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle || !channel || !*channel) return 0;
+        return LB_FBro_SocketServerSendByBrowserBuffer(instance->handle, channel, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer));
+#else
+        (void)controlName; (void)channel; (void)buffer; return 0;
+#endif
+    }
+    int FBro页面_客户端发送文本(const wchar_t* controlName, const wchar_t* channel, const wchar_t* text) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle || !channel || !*channel) return 0;
+        return LB_FBro_SocketClientSendByBrowser(instance->handle, channel, text ? text : L"");
+#else
+        (void)controlName; (void)channel; (void)text; return 0;
+#endif
+    }
+    int FBro页面_客户端发送缓冲(const wchar_t* controlName, const wchar_t* channel, long long buffer) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle || !channel || !*channel) return 0;
+        return LB_FBro_SocketClientSendByBrowserBuffer(instance->handle, channel, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer));
+#else
+        (void)controlName; (void)channel; (void)buffer; return 0;
+#endif
+    }
+    long long FBro框架_遍历DOM(long long frame, int maxDepth, int maxNodes) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[4096] = {};
+        auto task = LB_FBro_FrameVisitDomAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), maxDepth, maxNodes, nullptr, nullptr);
+        if (!task) return 0;
+        const int waitStatus = LB_FBro_TaskWait(task, 150000);
+        const bool completed = waitStatus == LB_FBRO_OK;
+        if (task) LB_FBro_TaskGetResult(task, value, 4096);
+        wchar_t error[1024] = {};
+        if (task) LB_FBro_TaskGetError(task, error, 1024);
+        LB_FBro_TaskRelease(task);
+        if (!completed || error[0]) { 写入调试输出((std::wstring(L"FBro框架_遍历DOM失败：waitStatus=") + std::to_wstring(waitStatus) + L" " + (error[0] ? error : L"任务未在时限内完成")).c_str()); return 0; }
+        const wchar_t* marker = wcsstr(value, L"\\\"snapshot\\\":");
+        if (!marker) { 写入调试输出((std::wstring(L"FBro框架_遍历DOM返回异常：") + value).c_str()); return 0; }
+        return static_cast<long long>(wcstoll(marker + 11, nullptr, 10));
+#else
+        (void)frame; (void)maxDepth; (void)maxNodes; return 0;
+#endif
+    }
+    int FBro遍历_按路径设属性(long long frame, const wchar_t* pathJson, const wchar_t* name, const wchar_t* value) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto task = LB_FBro_DomSetAttributeByPathAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), pathJson, name, value, nullptr, nullptr);
+        if (!task) return 0;
+        const bool completed = LB_FBro_TaskWait(task, 150000) == LB_FBRO_OK;
+        wchar_t result[64] = {};
+        if (task) LB_FBro_TaskGetResult(task, result, 64);
+        wchar_t error[1024] = {};
+        if (task) LB_FBro_TaskGetError(task, error, 1024);
+        LB_FBro_TaskRelease(task);
+        if (!completed || error[0]) { 写入调试输出((std::wstring(L"FBro遍历_按路径设属性失败：") + (error[0] ? error : L"任务未在时限内完成")).c_str()); return 0; }
+        return result[0] == L'1' ? 1 : 0;
+#else
+        (void)frame; (void)pathJson; (void)name; (void)value; return 0;
+#endif
+    }
+    int FBro遍历_按路径赋值(long long frame, const wchar_t* pathJson, const wchar_t* value) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto task = LB_FBro_DomSetValueByPathAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), pathJson, value, nullptr, nullptr);
+        if (!task) return 0;
+        const bool completed = LB_FBro_TaskWait(task, 150000) == LB_FBRO_OK;
+        wchar_t result[64] = {};
+        if (task) LB_FBro_TaskGetResult(task, result, 64);
+        wchar_t error[1024] = {};
+        if (task) LB_FBro_TaskGetError(task, error, 1024);
+        LB_FBro_TaskRelease(task);
+        if (!completed || error[0]) { 写入调试输出((std::wstring(L"FBro遍历_按路径赋值失败：") + (error[0] ? error : L"任务未在时限内完成")).c_str()); return 0; }
+        return result[0] == L'1' ? 1 : 0;
+#else
+        (void)frame; (void)pathJson; (void)value; return 0;
+#endif
+    }
+    long long FBro会话_创建上下文(const wchar_t* settingsJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[4096] = {};
+        auto task = LB_FBro_RequestContextCreateAsync(settingsJson ? settingsJson : L"", nullptr, nullptr);
+        if (!task) return 0;
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 4096);
+        wchar_t contextError[1024] = {};
+        if (task) LB_FBro_TaskGetError(task, contextError, 1024);
+        LB_FBro_TaskRelease(task);
+        if (contextError[0]) { 写入调试输出((std::wstring(L"FBro会话_创建上下文失败：") + contextError).c_str()); return 0; }
+        const wchar_t* marker = wcsstr(value, L"\\\"context\\\":");
+        if (!marker) { 写入调试输出((std::wstring(L"FBro会话_创建上下文返回异常：") + value).c_str()); return 0; }
+        return static_cast<long long>(wcstoll(marker + 10, nullptr, 10));
+#else
+        (void)settingsJson; return 0;
+#endif
+    }
+    int FBro会话_使用上下文重建(const wchar_t* controlName, long long context) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle) return 0;
+        return LB_FBro_RecreateBrowserWithContext(instance->handle, static_cast<LB_FBRO_OBJECT_HANDLE>(context));
+#else
+        (void)controlName; (void)context; return 0;
+#endif
+    }
+    long long FBro_取主浏览器(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return instance && instance->handle ? static_cast<long long>(LB_FBro_BrowserHostGetMainBrowser(instance->handle)) : 0;
+#else
+        (void)controlName; return 0;
 #endif
     }
     int FBro传输_打印(const wchar_t* controlName) {
@@ -17367,6 +17640,8 @@ ${httpServerWindowMethods}
 
 ${webSocketServerWindowMethods}
 
+${comWindowMethods}
+
     HWND 窗口_打开(const wchar_t* windowName, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
         HWND opened = OpenGeneratedWindowByName(windowName, SW_SHOWNORMAL, placement, x, y, hasCustomPosition);
         if (!opened) {
@@ -21753,6 +22028,7 @@ ${aria2Runtime ? `        case LingAria2::ProgressMessage: {
 #endif
             return 0;
         }
+${comWndProcCase}
         case WM_LINGBUILDER_CEF_EVENT: {
             auto* packet = reinterpret_cast<LingCefEventPacket*>(lParam);
             if (!packet) return 0;
@@ -23487,6 +23763,15 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
     })
     .filter(Boolean)
     .join('\n');
+  const comEventHandlers = getComEventHandlerNames(sourceClass);
+  const comDispatchOverride = generateComWindowMethods(enabledModules) && comEventHandlers.length > 0
+    ? `    void LingDispatchComEventByName(const wchar_t* handler, long long userData, const wchar_t* paramsText) override {
+        std::wstring callback = handler ? handler : L"";
+        int lbUserData = static_cast<int>(userData);
+        std::wstring lbParams = paramsText ? paramsText : L"";
+${comEventHandlers.map(handler => `        if (callback == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(lbUserData, lbParams); return; }`).join('\n')}
+    }`
+    : '';
   const edgeCallbackMethods = (sourceClass?.methods || []).filter(method => method.parameters.length === 0 && (method.kind === 'event' || method.kind === 'method'));
   const edgeDispatchCases = edgeCallbackMethods
     .map(method => `        if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`)
@@ -23533,6 +23818,7 @@ ${edgeDispatchCases || '        (void)callback;'}
 ${aria2ProgressDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchAria2ProgressEvent(handler, task, progress, downloadedBytes, totalBytes, bytesPerSecond, state);
     }
+${comDispatchOverride}
     void DispatchWebSocketServerEvent(const wchar_t* handler) override {
         std::wstring callback = handler ? handler : L"";
 ${edgeDispatchCases || '        (void)callback;'}
@@ -23589,6 +23875,19 @@ function getAria2ProgressHandlerNames(sourceClass: LingCppClass | undefined): st
       const match = statement.text.match(/Aria2_下载\s*[（(]([\s\S]*)[）)]/u);
       if (!match) continue;
       const handler = splitCallArguments(match[1] || '')[5]?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
+      if (handler) handlers.add(handler);
+    }
+  }
+  return [...handlers];
+}
+
+function getComEventHandlerNames(sourceClass: LingCppClass | undefined): string[] {
+  const handlers = new Set<string>();
+  for (const method of sourceClass?.methods || []) {
+    for (const statement of method.statements) {
+      const match = statement.text.match(/COM_映射事件\s*[（(]([\s\S]*)[）)]/u);
+      if (!match) continue;
+      const handler = splitCallArguments(match[1] || '')[2]?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
       if (handler) handlers.add(handler);
     }
   }
@@ -24138,7 +24437,8 @@ function translateStatement(
     return `return ${translateLingCppExpression(returnValue, enabledModules, translationContext)};`;
   }
 
-  if (/^返回\b/.test(statement)) {
+  // \b 是 ASCII 词边界，对纯中文语句永远不成立；裸「返回」必须按整句匹配。
+  if (/^返回\s*[（(]?\s*[）)]?\s*;?\s*$/u.test(statement)) {
     return 'return;';
   }
 

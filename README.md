@@ -9,7 +9,7 @@ LingBuilder 是面向中文用户的中文 C++ / `.lcpp` 集成开发环境：�
 - **中文编程体验**：`.lcpp` 中文语法、中文命令 / 补全 / 诊断；新手模式与专业 Monaco 编辑器双形态。
 - **确定性生成真实 C++**：窗口设计器模型 + `.lcpp` 源码确定性翻译为可编译的 C++/Win32 与 Visual Studio 工程；IDE 内运行结果与导出工程行为一致。
 - **窗口设计器**：拖拽布局、属性/事件面板、`Ctrl+点击` 控件跳转、类型化 `controlRef` 控件引用语义。
-- **模块生态**：`.lbmod` v2 模块标准（清单 / binding / 文档 / 市场索引），内置 Win32 控件、网络（HTTP/WebSocket/CDP）、多线程等官方模块。
+- **模块生态**：`.lbmod` v2 模块标准（清单 / binding / 文档 / 市场索引），内置 Win32 控件、网络（HTTP/WebSocket/CDP）、多线程等官方模块；**AI 一键生成模块**（系统 AI / 自定义 API 双通道，多阶段生成 + 自动校验导入），或通过 AI Bridge MCP 工具（scaffold / writeFiles / validate / pack / installPreview / install）让外部 AI 端到端封装模块。
 - **AI 辅助**：系统 AI（账号 + 点数计费）或自带 API Key（BYOK）双通道；代码生成、错误解释与修复建议；本地 AI Bridge 通过 MCP 接入 Codex CLI、Claude Code、Gemini CLI。
 - **专业工作台**：活动栏 / 多编辑器组 / 面板 / 状态栏、命令面板、快捷键体系、Git 源代码管理、调试适配器（DAP）、PTY 终端。
 - **云端能力（可选自建）**：账号体系、AI 点数计费、模型路由、系统 AI Gateway 与运营管理后台。
@@ -115,6 +115,8 @@ IDE 的 AI 面板提供两种互相隔离的模式：
 
 OpenAI-compatible 思考模型会分别解析推理增量和最终回答；聊天可流式显示推理内容，编辑草稿只解析最终回答。重复幂等键在 SSE 建连前返回 HTTP 409；取消请求按包含规则手册的完整上下文估算 Token、点数和供应商成本，中文/CJK 与 ASCII 使用不同的保守估算比例。
 
+模块一键生成等结构化输出场景可在请求中携带 `thinking: 'disabled'`：网关会对上游供应商显式关闭思考过程，避免推理文本挤占输出预算；配合按模型配置的输出预算（如 deepseek-v4-flash 16384 tokens）保证完整模块不被截断。
+
 ## ⌨️ CLI
 
 Windows 安装向导默认将 LingBuilder 安装目录加入当前用户 PATH；安装后重新打开终端即可使用，无需另外安装 Node.js。安装时可取消该选项，卸载时会清理 LingBuilder 的 PATH 项。
@@ -150,6 +152,7 @@ npm run build
 | 文档 | 内容 |
 |---|---|
 | [模块开发手册.md](docs/模块开发手册.md) | `.lbmod` v2 模块标准：manifest、binding、发布与迁移 |
+| [AI模块开发规范.md](docs/AI模块开发规范.md) | 面向 AI 的模块输出契约（一键生成与手动流程共用） |
 | [KEYBOARD_SHORTCUTS.md](docs/KEYBOARD_SHORTCUTS.md) | 全部快捷键及适用范围 |
 | [AI_BRIDGE_CLI_USAGE.md](docs/AI_BRIDGE_CLI_USAGE.md) | AI Bridge 与 CLI 完整手册 |
 | [MODULE_ECOSYSTEM_IMPLEMENTATION.md](docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md) | 模块生态实现细节与验收基线 |

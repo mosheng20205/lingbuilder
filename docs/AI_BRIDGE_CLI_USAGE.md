@@ -218,6 +218,14 @@ stdio 形式（客户端自动拉起，无需 Token）：
 | `lingbuilder.modules.list` | 查看模块上下文。 |
 | `lingbuilder.native.preview` | 预览 C++ 工程。 |
 | `lingbuilder.native.export` | 导出 C++ 工程。 |
+| `lingbuilder.module.scaffold` | 在 `.lingbuilder/module-build` 下创建模块骨架（manifest v2 + C++ 模板），受权限模式控制。 |
+| `lingbuilder.module.writeFiles` | 把完整模块文件写入 `.lingbuilder/module-build`（必须含根目录 `lingbuilder.module.json`），复用导入校验与限额。 |
+| `lingbuilder.module.validate` | 校验模块目录（清单、binding、文档与示例），返回中文诊断。 |
+| `lingbuilder.module.pack` | 把校验通过的模块目录打包为 `.lingbuilder/module-packages/*.lbmod`，受权限模式控制。 |
+| `lingbuilder.module.installPreview` | 预览模块包（解压校验，不安装），返回 `previewId` 与诊断。 |
+| `lingbuilder.module.install` | 安装已预览的模块包并可启用到项目；必须传 `previewId`，受权限模式控制。 |
+
+模块端到端推荐链路：`module.scaffold`（可选，骨架参考）→ `module.writeFiles`（完整文件）→ `module.validate` → `module.pack` → `module.installPreview` → `module.install`（`preview` 权限下写操作需 `approved=true`；安装必须先预览）。
 
 ## 9. HTTP API 参考（进阶）
 

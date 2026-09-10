@@ -48,13 +48,21 @@ const statement = (description = '由 SQLite_准备 返回的受管预编译语�
 const parameterIndex: SqliteParameter = { name: '参数索引', type: 'int', description: '从 1 开始的参数索引。' };
 const columnIndex: SqliteParameter = { name: '列索引', type: 'int', description: '从 0 开始的结果列索引。' };
 
-export const SQLITE_MODULE: LingBuilderModuleManifest = createStandardModule({
-  id: 'lingbuilder.database.sqlite',
+export const SQLITE_MODULE_ID = 'lingbuilder.database.sqlite';
+
+/** 随附运行库（third_party/sqlite，SQLite3MultipleCiphers 2.5.1）的 SHA-256 基线；详见 third_party/sqlite/NOTICE.md。 */
+export const SQLITE_BUNDLED_RUNTIME_SHA256 = {
+  x86: '8f1a7d3e6e27597ba328bab1799da8717506b8574611f4b02051e8460aedce22',
+  x64: '5030decc6d914539e3b9b7e28aa4f6de1e7161dac6fd4b21eb02e6754d9b175e'
+} as const;
+
+const sqliteStandardModule = createStandardModule({
+  id: SQLITE_MODULE_ID,
   name: 'SQLite 数据库模块',
-  version: '2.0.0',
+  version: '2.1.0',
   category: '数据库',
-  description: '面向生产项目的 SQLite 动态桥接：多连接、参数化预编译语句、强类型字段、事务、WAL、备份和完整错误诊断。',
-  tags: ['数据库', 'SQLite', '事务', '预编译语句', 'WAL', '备份'],
+  description: '面向生产项目的 SQLite 动态桥接：多连接、参数化预编译语句、强类型字段、事务、WAL、备份、SQLCipher 兼容加密和完整错误诊断。',
+  tags: ['数据库', 'SQLite', '事务', '预编译语句', 'WAL', '备份', 'SQLCipher', '加密'],
   types: [
     { name: 'SQLite连接', description: '进程内不复用的受管 SQLite 连接 ID；不暴露 sqlite3 指针。', cppType: 'long long' },
     { name: 'SQLite语句', description: '归属于单个连接的受管预编译语句 ID；不暴露 sqlite3_stmt 指针。', cppType: 'long long' }
@@ -83,6 +91,19 @@ export const SQLITE_MODULE: LingBuilderModuleManifest = createStandardModule({
         '    SQLite_关闭连接(数据库)',
         '结束'
       ].join('\n')
+    },
+    {
+      label: 'SQLite 加密数据库',
+      description: '以 SQLCipher 兼容方案打开加密库；需运行库提供 sqlite3_key（随附运行库已内置）。',
+      insertText: [
+        '局部 SQLite连接 安全库 = SQLite_打开加密连接("data/app.db", "$1", 0, 5000)',
+        '如果 安全库 != 0',
+        '    调试输出("加密库已打开")',
+        '    SQLite_关闭连接(安全库)',
+        '否则',
+        '    调试输出(SQLite_取错误())',
+        '结束'
+      ].join('\n')
     }
   ],
   commands: [
@@ -94,6 +115,7 @@ export const SQLITE_MODULE: LingBuilderModuleManifest = createStandardModule({
     sqliteCommand('SQLite_卸载运行库', [], 'bool', '在没有活动连接和语句时卸载 sqlite3.dll。', { category: '运行库' }),
     sqliteCommand('SQLite_取运行库版本', [], 'wideString', '返回当前已加载 SQLite 运行库的版本号。', { category: '运行库' }),
     sqliteCommand('SQLite_运行库线程安全', [], 'bool', '返回运行库编译时是否启用了 SQLite 线程安全支持。', { category: '运行库' }),
+    sqliteCommand('SQLite_运行库是否支持加密', [], 'bool', '检查当前运行库是否提供 sqlite3_key 加密导出（LingBuilder 随附运行库或 SQLCipher 兼容运行库）；不支持时加密打开命令会直接失败。', { category: '运行库' }),
 
     sqliteCommand('SQLite_打开', [{ name: '数据库路径', type: 'wideString', description: '数据库文件路径。' }], 'bool', '兼容接口：打开默认读写连接，自动创建文件、启用外键并设置 5 秒忙等待。', {
       category: '兼容接口', example: 'SQLite_打开("data/app.db")'
@@ -107,6 +129,20 @@ export const SQLITE_MODULE: LingBuilderModuleManifest = createStandardModule({
     }),
     sqliteCommand('SQLite_打开内存库', [{ name: '名称', type: 'wideString', description: '用于诊断的内存库名称；每次调用创建独立数据库。' }], 'SQLite连接', '创建独立的内存数据库连接。', {
       category: '连接', example: 'SQLite_打开内存库("测试库")'
+    }),
+    sqliteCommand('SQLite_打开加密库', [
+      { name: '数据库路径', type: 'wideString', description: '加密数据库文件路径。' },
+      { name: '密码', type: 'wideString', description: 'SQLCipher 兼容密钥，不能为空。' }
+    ], 'bool', '兼容接口：以 SQLCipher 方案打开默认读写加密连接，自动创建文件、启用外键并设置 5 秒忙等待；需运行库支持加密，密码错误会返回假并记录中文错误。', {
+      category: '连接', example: 'SQLite_打开加密库("data/app.db", "我的密码")', returnDescription: '成功返回真；运行库不支持加密、密码错误或不是加密数据库返回假。'
+    }),
+    sqliteCommand('SQLite_打开加密连接', [
+      { name: '数据库路径', type: 'wideString', description: '加密数据库文件路径。' },
+      { name: '密码', type: 'wideString', description: 'SQLCipher 兼容密钥，不能为空。' },
+      { name: '打开模式', type: 'int', description: '0=读写并创建，1=只读，2=读写但不创建，3=独立内存库。' },
+      { name: '忙等待毫秒', type: 'int', description: '遇到锁竞争时等待的毫秒数，范围 0～600000。' }
+    ], 'SQLite连接', '以 SQLCipher 方案打开独立 FULLMUTEX 加密连接；打开后立即校验密码，需运行库提供 sqlite3_key 导出。', {
+      category: '连接', example: 'SQLite_打开加密连接("data/app.db", "我的密码", 0, 5000)', returnDescription: '成功返回非 0 的 SQLite连接，失败返回 0。'
     }),
     sqliteCommand('SQLite_关闭', [], 'void', '兼容接口：关闭默认连接；没有其它连接时同时卸载运行库。', { category: '兼容接口' }),
     sqliteCommand('SQLite_关闭连接', [connection()], 'bool', '释放连接所属全部语句后关闭连接。失效句柄会返回假。', { category: '连接' }),
@@ -180,3 +216,12 @@ export const SQLITE_MODULE: LingBuilderModuleManifest = createStandardModule({
     sqliteCommand('SQLite_错误码到文本', [{ name: '错误码', type: 'int' }], 'wideString', '把 SQLite 错误码转换为运行库提供的英文稳定说明，便于日志和支持。', { category: '错误诊断' })
   ]
 });
+
+/** 随附 sqlite3.dll 按架构登记进 targets：路径不带 runtime/ 前缀，VS 工程各平台配置会平铺复制到 exe 同目录。 */
+export const SQLITE_MODULE: LingBuilderModuleManifest = {
+  ...sqliteStandardModule,
+  targets: [
+    { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', runtimeFiles: ['x86/sqlite3.dll'] },
+    { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', runtimeFiles: ['x64/sqlite3.dll'] }
+  ]
+};

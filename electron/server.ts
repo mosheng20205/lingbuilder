@@ -66,6 +66,8 @@ import {
   migrateCppModule,
   validateModuleDirectory
 } from "./src/services/modules/moduleSdkService";
+import { buildModuleGenerationMessages, sanitizeModuleRequirement } from "./src/services/modules/aiModuleGeneration";
+import { parseAiModuleOutputText } from "./src/services/modules/aiModuleImportParser";
 import { AiBridgeService } from "./src/services/aiBridge/aiBridgeService";
 import { createAiBridgeRouter } from "./src/services/aiBridge/httpRoutes";
 import { AiBridgePermissionMode, AiBridgeServerOptions } from "./src/services/aiBridge/types";
@@ -1724,6 +1726,84 @@ app.post("/api/modules/developer/import-ai-files", async (req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "AI 模块导入失败" });
+  }
+});
+
+app.post("/api/modules/ai-generate", async (req, res) => {
+  try {
+    const body = (req.body || {}) as { requirement?: unknown; outDir?: string; aiConfig?: AiConnectionConfig };
+    const requirement = sanitizeModuleRequirement(body.requirement);
+    if (!requirement.ok) {
+      return res.status(400).json({ ok: false, error: requirement.error || "模块需求描述无效。" });
+    }
+    const config = resolveAiConnectionConfig(body.aiConfig);
+    if (!config.apiKey) {
+      return res.status(400).json({ ok: false, error: "尚未配置自定义 API Key；请先在 AI 面板完成连接，或登录系统 AI 使用一键生成。" });
+    }
+    let moduleSpec = "";
+    try {
+      moduleSpec = await fs.readFile(serverRuntimeConfig.aiModuleSpecPath, "utf8");
+    } catch {
+      return res.status(500).json({ ok: false, error: `无法读取 AI 模块开发规范文档（${serverRuntimeConfig.aiModuleSpecPath}），请检查安装完整性。` });
+    }
+    if (moduleSpec.trim().length < 1000) {
+      return res.status(500).json({ ok: false, error: "AI 模块开发规范文档内容异常，请检查安装完整性。" });
+    }
+    const rulebook = await getLingBuilderAiRulebook();
+    const messages = buildModuleGenerationMessages(requirement.text, moduleSpec);
+    const rawOutput = await generateAiText({
+      config,
+      systemPrompt: attachLingBuilderAiRulebook(messages.systemPrompt, rulebook),
+      prompt: messages.userPrompt,
+      temperature: 0.2,
+      // DeepSeek 官方 API 的 max_tokens 上限为 8192，超出会被上游直接拒绝。
+      maxTokens: 8192
+    });
+    const parsed = parseAiModuleOutputText(rawOutput);
+    if (parsed.files.length === 0) {
+      return res.status(502).json({
+        ok: false,
+        error: "AI 没有输出可导入的模块文件；请重试，或在手动模式中粘贴 AI 原始回复后导入。",
+        diagnostics: parsed.diagnostics,
+        rawOutput: rawOutput.slice(0, 120000)
+      });
+    }
+    const manifestEntry = parsed.files.find(file => file.path.replace(/\\/gu, "/").replace(/^\.\//u, "") === "lingbuilder.module.json");
+    let moduleId = "";
+    if (manifestEntry) {
+      try {
+        moduleId = String(JSON.parse(manifestEntry.content.replace(/^\uFEFF/u, ""))?.id || "").trim();
+      } catch {
+        return res.status(502).json({ ok: false, error: "AI 输出的 lingbuilder.module.json 不是合法 JSON，无法确定模块 ID；请重试。", rawOutput: rawOutput.slice(0, 120000) });
+      }
+    }
+    if (!moduleId || !/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(moduleId)) {
+      return res.status(502).json({ ok: false, error: "AI 输出缺少 lingbuilder.module.json 或模块 ID 不合法；请重试。", rawOutput: rawOutput.slice(0, 120000) });
+    }
+    const targetRelativeDir = body.outDir && body.outDir.trim()
+      ? body.outDir.trim()
+      : `.lingbuilder/module-build/${moduleId}`;
+    const resolvedOutDir = await resolveModuleWriteDirectory(targetRelativeDir, ".lingbuilder/module-build");
+    const result = await importAiModuleFiles(parsed.files, resolvedOutDir);
+    res.json({
+      ok: true,
+      result: {
+        moduleId: result.manifest.id,
+        moduleName: result.manifest.name,
+        outDir: targetRelativeDir.replace(/\\/gu, "/"),
+        fileCount: result.writtenFiles.length,
+        overwrittenExisting: result.overwrittenExisting === true,
+        diagnostics: result.diagnostics
+      },
+      rawOutput: rawOutput.slice(0, 120000)
+    });
+  } catch (error: any) {
+    const message = error?.message || String(error);
+    res.status(error?.status || 502).json({
+      ok: false,
+      error: `AI 模块生成失败：${message}`,
+      details: "请先在 AI 面板确认 Base URL、API Key 与模型可用；也可以改用手动复制粘贴流程。"
+    });
   }
 });
 

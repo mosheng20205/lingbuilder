@@ -74,6 +74,7 @@ using FnWalCheckpointV2 = int(*)(sqlite3*, const char*, int, int*, int*);
 using FnDbReadonly = int(*)(sqlite3*, const char*);
 using FnLibversion = const char*(*)();
 using FnThreadsafe = int(*)();
+using FnKey = int(*)(sqlite3*, const char*, int);
 
 static HMODULE module = nullptr;
 static std::mutex moduleMutex;
@@ -113,6 +114,7 @@ static FnTotalChanges64 total_changes64 = nullptr;
 static FnBindBlob64 bind_blob64 = nullptr;
 static FnSystemErrno system_errno = nullptr;
 static FnErrstr errstr = nullptr;
+static FnKey key = nullptr;
 
 struct Connection {
     long long id = 0;
@@ -167,6 +169,7 @@ static void ResetFunctions() {
     bind_blob64 = nullptr;
     system_errno = nullptr;
     errstr = nullptr;
+    key = nullptr;
 }
 
 static bool HasActiveResources() {
@@ -192,6 +195,7 @@ static bool LoadLibraryUnlocked(const wchar_t* path) {
     bind_blob64 = reinterpret_cast<FnBindBlob64>(GetProcAddress(module, "sqlite3_bind_blob64"));
     system_errno = reinterpret_cast<FnSystemErrno>(GetProcAddress(module, "sqlite3_system_errno"));
     errstr = reinterpret_cast<FnErrstr>(GetProcAddress(module, "sqlite3_errstr"));
+    key = reinterpret_cast<FnKey>(GetProcAddress(module, "sqlite3_key"));
     if (!valid) {
         UnloadLibraryUnlocked();
         return Fail(L"加载 SQLite 运行库", L"运行库缺少模块 2.0 所需的标准 SQLite 导出，请升级官方 sqlite3.dll");
@@ -264,12 +268,12 @@ static std::wstring QuoteIdentifier(const wchar_t* value) {
     return output;
 }
 
-static long long OpenConnection(const wchar_t* path, int mode, int waitMilliseconds) {
+static long long OpenConnection(const wchar_t* path, int mode, int waitMilliseconds, const wchar_t* password = nullptr, const wchar_t* operation = L"打开 SQLite 连接") {
     std::unique_lock<std::mutex> registryLock(registryMutex);
     std::lock_guard<std::mutex> moduleLock(moduleMutex);
     if (!LoadLibraryUnlocked(L"")) return 0;
     if (waitMilliseconds < 0 || waitMilliseconds > 600000) {
-        Fail(L"打开 SQLite 连接", L"忙等待毫秒必须在 0 到 600000 之间", Misuse);
+        Fail(operation, L"忙等待毫秒必须在 0 到 600000 之间", Misuse);
         return 0;
     }
     int flags = OpenFullMutex;
@@ -279,21 +283,55 @@ static long long OpenConnection(const wchar_t* path, int mode, int waitMilliseco
         case 1: flags |= OpenReadOnly; break;
         case 2: flags |= OpenReadWrite; break;
         case 3: flags |= OpenReadWrite | OpenCreate | OpenMemory; normalizedPath = L":memory:"; break;
-        default: Fail(L"打开 SQLite 连接", L"打开模式必须为 0、1、2 或 3", Misuse); return 0;
+        default: Fail(operation, L"打开模式必须为 0、1、2 或 3", Misuse); return 0;
     }
     if (normalizedPath.empty()) {
-        Fail(L"打开 SQLite 连接", L"数据库路径不能为空", Misuse);
+        Fail(operation, L"数据库路径不能为空", Misuse);
         return 0;
     }
     sqlite3* database = nullptr;
     const std::string utf8Path = LB_WideToUtf8(normalizedPath.c_str());
     const int result = open_v2(utf8Path.c_str(), &database, flags, nullptr);
     if (result != Ok || !database) {
-        FailDatabase(L"打开 SQLite 连接", database, result);
+        FailDatabase(operation, database, result);
         if (database) close_v2(database);
         return 0;
     }
     extended_result_codes(database, 1);
+    if (password) {
+        if (!password[0]) {
+            Fail(operation, L"密码不能为空，打开明文数据库请使用 SQLite_打开连接", Misuse);
+            close_v2(database);
+            return 0;
+        }
+        if (!key) {
+            Fail(operation, L"当前运行库缺少 sqlite3_key 导出，不支持加密数据库；请使用 LingBuilder 随附运行库或通过 SQLite_加载运行库 指定 SQLCipher 兼容运行库", Misuse);
+            close_v2(database);
+            return 0;
+        }
+        // 统一按 SQLCipher 方案开库：SQLCipher 兼容运行库按 SQLCipher 4 参数解密/建库，
+        // 标准 SQLite 运行库会忽略未知 PRAGMA（此路径已在上方因缺 sqlite3_key 被拒绝）。
+        exec(database, "PRAGMA cipher=sqlcipher", nullptr, nullptr, nullptr);
+        const std::string utf8Key = LB_WideToUtf8(password);
+        const int keyResult = key(database, utf8Key.c_str(), static_cast<int>(utf8Key.size()));
+        if (keyResult != Ok) {
+            FailDatabase(operation, database, keyResult);
+            close_v2(database);
+            return 0;
+        }
+        char* probeError = nullptr;
+        const int probeResult = exec(database, "SELECT count(*) FROM sqlite_master", nullptr, nullptr, &probeError);
+        if (probeError) free(probeError);
+        if (probeResult != Ok) {
+            const char* message = errmsg ? errmsg(database) : nullptr;
+            Fail(operation, (message ? LB_Utf8ToWide(message) : std::wstring(L"SQLite 未提供错误详情")) + L"；密码错误或数据库不是 SQLCipher 兼容加密格式",
+                errcode ? errcode(database) : probeResult,
+                extended_errcode ? extended_errcode(database) : probeResult,
+                system_errno ? system_errno(database) : 0);
+            close_v2(database);
+            return 0;
+        }
+    }
     if (busy_timeout(database, waitMilliseconds) != Ok) {
         FailDatabase(L"设置 SQLite 忙等待", database, Error);
         close_v2(database);
@@ -405,6 +443,33 @@ bool SQLite_打开(const wchar_t* path) {
         defaultConnectionId = opened;
     }
     return true;
+}
+
+long long SQLite_打开加密连接(const wchar_t* path, const wchar_t* password, int mode, int waitMilliseconds) {
+    return LingBuilderSqlite::OpenConnection(path, mode, waitMilliseconds, password, L"打开 SQLite 加密连接");
+}
+
+bool SQLite_打开加密库(const wchar_t* path, const wchar_t* password) {
+    using namespace LingBuilderSqlite;
+    long long previous = 0;
+    {
+        std::lock_guard<std::mutex> lock(registryMutex);
+        previous = defaultConnectionId;
+    }
+    if (previous && !CloseConnection(previous)) return false;
+    const long long opened = OpenConnection(path, 0, 5000, password, L"打开 SQLite 加密库");
+    if (!opened) return false;
+    {
+        std::lock_guard<std::mutex> lock(registryMutex);
+        defaultConnectionId = opened;
+    }
+    return true;
+}
+
+bool SQLite_运行库是否支持加密() {
+    using namespace LingBuilderSqlite;
+    std::lock_guard<std::mutex> lock(moduleMutex);
+    return LoadLibraryUnlocked(L"") && key != nullptr;
 }
 
 bool SQLite_关闭连接(long long connectionId) {

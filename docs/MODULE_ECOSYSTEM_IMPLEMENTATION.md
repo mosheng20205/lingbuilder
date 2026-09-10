@@ -129,6 +129,7 @@
 
 > 2026-08-01 补充：`LingBuilderFbroBridge` 主事件协议升级到兼容 C ABI v3，同时保留全部 v1/v2 导出。v3 增加 `LB_FBRO_EVENT_PACKET_V3`、`LB_FBRO_EVENT_RESPONSE_V3`、`LB_FBro_SetEventCallbackV3`、按浏览器与事件订阅、受管延续完成/取消和不限于 v2 固定返回缓冲的 UTF-16 JSON 响应。普通通知异步投递，即时决策默认 2 秒；安全/认证/权限、查询/消息路由、文件/对话框/下载延续默认分别为 5、30、120 秒。延续超时由 Bridge 单一受管计时线程执行，浏览器关闭和 Shutdown 会取消未完成句柄。
 
+> 2026-09-09 补充：VIP WebSocket 客户端拦截五事件（`FBroHsInitEvent`）与本地服务器全部 8 个回调（`FBroHsServerHandle`）转为 public/implemented——WS 客户端五事件挂 FBroBrowser 设计器控件事件，服务器 8 回调经 `FBro_绑定事件` 派发给创建者浏览器实例；公开事件 102 项（见 `fbroEventCatalog.ts` 的 `FBRO_BROWSER_DESIGNER_EVENTS` 与 `FBRO_PUBLIC_BROWSER_EVENTS` 区分）。同批封装 WS 拦截闭环、DOM 遍历快照族与运行时 RequestContext（32 条命令，bridge 2.7.0），并修复任务等待 wrapper 的 `LB_FBro_TaskWait` 返回值比较错误。
 > 2026-08-01 补充：事件目录按“所属类 + 方法名 + 完整签名”登记 174 个类方法槽位、158 个唯一签名，覆盖 `FBroHsBroEvent` 90 项、`FBroHsInitEvent` 31 项和其余适配器 53 项；当前事件目录 `planned=0`、`needsReview=0`。每个槽位都有真实 override 或明确的 `managed/internal/notApplicable` 分类、字段/响应 schema、线程/所有权和测试。普通 Win32 与 New_Emoji 共用同一目录与 v3 协议，高频事件按订阅和采样率限流。`module:fbro-events:complete` 同时检查目录、override/schema/测试以及已安装 SDK 的头、导入库和 Bridge DLL，防止源码与安装模块 ABI 漂移。
 
 > 2026-08-05 补充：CEF3 与 FBro 已新增面向用户的统一“事件与接口参考”，分别位于 `electron/docs/modules/cef3/README.md` 和 `electron/docs/modules/fbro/README.md`，并登记到核心模块详情。`electron/scripts/generate-cef3-fbro-event-docs.ts` 直接消费事件目录、安全覆盖目录和 `BUILTIN_MODULES`：CEF3 当前生成 92 项事件名称、113 条官方事件签名与 346 条用户接口；FBro 生成 89 项公开事件、85 项托管/内部分类和 417 条用户接口，并排除 9 条内部命令。修改对应事件源或 manifest 后必须运行 `npm run module:cef3-docs` / `module:fbro-docs`，提交前再运行各自 `:check` 命令；禁止手工维护第二份名称或接口清单。
@@ -273,6 +274,10 @@
   - 校验模块清单、模块 ID、贡献项和 C++ 相对路径安全。
 - `electron/src/services/modules/moduleService.ts`
   - 负责扫描、项目启用/禁用、`.lbmod` 预览、安装、卸载、市场索引、导出模块包和操作历史。
+- `electron/src/services/modules/aiModuleGeneration.ts`
+  - 一键生成模块的提示词组装与需求描述校验（系统 AI 与 BYOK 双通道共用）。
+- `electron/src/services/modules/aiModuleImportParser.ts`
+  - 解析 AI 回复中的「### 文件：相对路径」多文件输出，供手动导入与一键生成共用。
 - `electron/src/services/modules/nativeDependencyService.ts`
   - 负责把已启用模块的 C++ 头文件、源码、库文件和运行时 DLL 安全复制到构建/导出目录，并向编译器提供 include/source/lib 路径。
 - `electron/src/services/sdkDependencies/`
@@ -391,9 +396,17 @@
 - `POST /api/modules/uninstall`
 - `GET /api/modules/market`
 - `GET /api/modules/history`
+- `POST /api/modules/developer/template`
+- `POST /api/modules/developer/validate`
+- `POST /api/modules/developer/import-ai-files`
+- `POST /api/modules/ai-generate`（BYOK 一键生成模块：规范注入 → `generateAiText` → `aiModuleImportParser` 解析 → `importAiModuleFiles` 导入；系统 AI 通道由 renderer 经 `cloudAi` IPC 编排后复用 import-ai-files）
+- `POST /api/modules/developer/migrate-cpp`
+- `POST /api/modules/developer/market-index`
 - `GET /api/sdk-dependencies/status`
 - `POST /api/sdk-dependencies/install`
 - `POST /api/sdk-dependencies/cancel`
+
+AI Bridge 另暴露 6 个模块 MCP 工具（stdio 与 Streamable HTTP 共用同一 `AiBridgeService`，无 REST 镜像）：`lingbuilder.module.scaffold`、`lingbuilder.module.writeFiles`、`lingbuilder.module.validate`、`lingbuilder.module.pack`、`lingbuilder.module.installPreview`、`lingbuilder.module.install`；路径白名单分别为 `.lingbuilder/module-build`（前三者）与 `.lingbuilder/module-packages`（后三者），写操作受 readonly/preview/yolo 权限与审计日志约束。
 
 注意：开发期如果前端热更新了但 Express server 没重启，新增 API 可能暂时返回 Vite HTML。资源管理器已有 fallback，但模块管理页和后端真实安装能力仍需要重启 `npm run dev` 或对应 server。
 
@@ -401,7 +414,8 @@
 
 - 左侧活动栏“模块”页：进入完整模块管理器。
 - 解决方案资源管理器项目节点下“模块”组：显示当前项目启用模块，并提供“配置项目所使用模块”按钮。
-- `.lbmod` 可拖入模块页，也可手动填写工作区相对路径后点击“预览安装”。桌面版拖入工作区外模块包时，主进程会校验 `.lbmod`、普通文件和 100MB 上限，复制到 `.lingbuilder/module-packages` 后再走同一预览确认流程；网页版仍只接受工作区内路径。
+- `.lbmod` 可拖入模块页，也可手动填写工作区相对路径或本机绝对路径后点击“预览安装”。桌面版对绝对路径（手输、拖入、文件选择）统一走主进程导入：校验 `.lbmod`、普通文件和 100MB 上限后复制到 `.lingbuilder/module-packages` 再走同一预览确认流程；网页版仍只接受工作区内相对路径。
+- 「AI 生成模块」页提供三个入口：一键生成（系统 AI / 自定义 API 双通道）、AI Bridge MCP 模块工具（供外部 AI 端到端生成-校验-打包-安装）、手动复制粘贴（降级）。见 `electron/src/components/ModuleInspector.tsx`、`electron/src/services/modules/aiModuleGeneration.ts`、`electron/src/services/aiBridge/aiBridgeService.ts`。
 - 安装预览必须显示模块名、版本、SHA256、文件数量、升级状态和安全检查结果；用户确认后才安装。
 
 ## 与 Monaco 和生成器的关系

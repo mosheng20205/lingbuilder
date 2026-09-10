@@ -17,7 +17,7 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 窗口设计器与控件实战 | 8 集 | 已发布 |
 | 合集 A：EdgeView 浏览器模块 | 12 集 | 已发布 |
 | 合集 B：CEF3 浏览器模块 | 12 集 | 已发布 |
-| 合集 C：FBro 指纹浏览器模块 | 7 集已发布（规划 11 集） | 第 08～11 集制作中 |
+| 合集 C：FBro 指纹浏览器模块 | 12 集 | 已发布 |
 
 ## 主系列（13 集，已发布）
 
@@ -34,7 +34,7 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 7 | [模块市场：给 IDE 装能力](https://www.bilibili.com/video/BV1Tktu6CEa1/) | 浏览模块市场、安装 .lbmod 模块包、项目启用模块、模块控件进工具箱 | [安装模块](/guide/user/modules/install-module) · [模块市场](/guide/user/modules/marketplace) |
 | 8 | [多线程：后台任务不卡界面](https://www.bilibili.com/video/BV11mtu6uEFj/) | 后台线程执行耗时任务，完成后安全回到界面更新控件，支持进度与取消 | [性能与多线程](/guide/user/advanced/performance) |
 | 9 | [AI 助手：让 AI 帮你写代码](https://www.bilibili.com/video/BV1YLtG6ZEcf/) | AI 面板生成代码、修复报错，AI Bridge 连接中心与权限模式 | [AI 服务集成](/guide/user/advanced/ai-service-integration) |
-| 10 | [导出 C++ / Visual Studio 工程](https://www.bilibili.com/video/BV1DntG6sExN/) | 中文源码生成真实 C++，用 Visual Studio 打开继续开发 | — |
+| 10 | [导出 C++ / Visual Studio 工程](https://www.bilibili.com/video/BV1DntG6sExN/) | 中文源码生成真实 C++，用 Visual Studio 打开继续开发 | [构建与运行 · 导出 VS 工程](/guide/user/build-and-run) |
 | 11 | [打包发布你的软件](https://www.bilibili.com/video/BV1eVtG6FEkg/) | 切 Release 构建、发布面板生成产物与 SHA-256 清单、签名与运行库交付 | [打包发布](/guide/user/packaging/) |
 | 12 | [开发你自己的模块](https://www.bilibili.com/video/BV11Ut36jEo5/) | 用模块 SDK 写中文命令绑定、校验、打包 .lbmod，装回 IDE 进补全 | [模块生态](/guide/user/modules/) |
 | 13 | [AI 帮你造模块（不用会 C++）](https://www.bilibili.com/video/BV1nXtE6oEGw/) | 把需求描述给 AI → 粘贴导入 → 自动校验打包 → 中文命令进补全、F5 编译真实 C++ | [AI 模块开发](/guide/user/modules/ai-module-dev) |
@@ -46,12 +46,10 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 编号 | 标题 | 简介 | 配套文档 |
 | --- | --- | --- | --- |
 | 加餐 1（第 14 集） | [项目变量与常量：管理全局数据](https://www.bilibili.com/video/BV13mt666EZe/) | 打开「项目全局变量.lcpp」，区分项目常量与项目全局变量、作用域和只读规则，并在窗口代码中引用后 F5 验证 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) · [数据类型](/guide/user/data-types) |
-| 加餐 2（第 15 集） | [自定义数据类型：定义自己的结构](https://www.bilibili.com/video/BV1kQbL6REVo/) | 在「项目数据类型.lcpp」中新建类型和字段，演示嵌套/数组约束、补全诊断，并观察生成的 C++ `struct` | [数据类型](/guide/user/data-types)（项目类型章节待补） |
-| 加餐 3（第 16 集） | [功能代码：用功能库复用中文代码](https://www.bilibili.com/video/BV1xybL68EpA/) | 从项目树「功能代码」新建功能库，使用 `功能库名.功能名(...)` 限定调用，演示跨文件复用、复制依赖和运行结果 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) · [编写代码](/guide/user/writing-code)（功能库章节待补） |
+| 加餐 2（第 15 集） | [自定义数据类型：定义自己的结构](https://www.bilibili.com/video/BV1kQbL6REVo/) | 在「项目数据类型.lcpp」中新建类型和字段，演示嵌套/数组约束、补全诊断，并观察生成的 C++ `struct` | [数据类型 · 项目自定义数据类型](/guide/user/data-types) |
+| 加餐 3（第 16 集） | [功能代码：用功能库复用中文代码](https://www.bilibili.com/video/BV1xybL68EpA/) | 从项目树「功能代码」新建功能库，使用 `功能库名.功能名(...)` 限定调用，演示跨文件复用、复制依赖和运行结果 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) · [编写代码 · 功能代码](/guide/user/writing-code) |
 | 加餐 4（第 17 集） | [全部控件速查](https://www.bilibili.com/video/BV1ymbL64E6B/) | 一个窗口放下 38 个控件——12 个基础、20 个高级可视、6 个非可视组件／资源，分 6 页对照着看，F5 出来就是原生 Win32 外观 | [窗口设计器](/guide/user/window-designer) |
-| 加餐 5（第 18 集） | [数组操作](https://www.bilibili.com/video/BV1ymbL64EMT/) | 用内置数组操作模块演示中文数组的创建、读写、遍历与常用增删改查，F5 验证运行结果 | — |
-
-> 说明：项目自定义数据类型和功能库的专门文档章节仍在补齐中，可先阅读 LingCpp 快速上手与数据类型文档作为基础。
+| 加餐 5（第 18 集） | [数组操作](https://www.bilibili.com/video/BV1ymbL64EMT/) | 用内置数组操作模块演示中文数组的创建、读写、遍历与常用增删改查，F5 验证运行结果 | [数据类型 · 数组操作模块](/guide/user/data-types) |
 
 ## 窗口设计器与控件实战（8 集，已发布）
 
@@ -110,7 +108,7 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 
 本合集覆盖 CEF3 浏览器核心及事件、会话、网络资源、传输和自动化的常用入门路径，不是 395 条接口的逐条课程。第 06 集读取公开响应元数据；第 11～12 集的响应正文读取与替换能力以模块详情和实际版本支持为准。
 
-### 合集 C：FBro 指纹浏览器（7 集已发布，08～11 制作中）
+### 合集 C：FBro 指纹浏览器（12 集，已发布）
 
 | 集数 | 标题 | 简介 | 配套文档 |
 | --- | --- | --- | --- |
@@ -121,12 +119,11 @@ LingBuilder 官方视频教程在 B 站发布，每集 1 分钟上下，独立�
 | 05 | [三种宿主模式怎么选](https://www.bilibili.com/video/BV1r4bG65ECd/) | 进程内嵌入、独立进程嵌入、独立顶层窗口的适用场景与取舍，并区分 Chrome 原生 UI | [FBro 模块](/guide/user/modules/fbro) |
 | 06 | [事件驱动：导航、弹窗与处理器](https://www.bilibili.com/video/BV1EhbG6rE6B/) | 绑定事件、读取事件字段、同步/延迟决策和 `&处理器名` | [FBro 模块](/guide/user/modules/fbro) |
 | 07 | [获取资源响应](https://www.bilibili.com/video/BV1Wxb56XELr/) | 观察资源响应与加载完成事件，读取公开响应元数据 | [FBro 模块](/guide/user/modules/fbro) |
-| 08 | 接上自动化：CDP 驱动内嵌浏览器 | 配置独立进程和开发者工具，取得调试端口后用 CDP 完成取标题、查询元素和点击 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
-| 09 | 网页填表：输入、选择与提交 | 使用 CDP 完成文本框、下拉框、复选框、单选框与提交结果校验，只操作自有测试表单 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
-| 10 | 下载、截图与打印：把网页结果落盘 | 下载进度、截图、打印/PDF 和文件对话框，说明输出路径与敏感数据边界 | [FBro 模块](/guide/user/modules/fbro) |
-| 11 | FBro 综合项目：多工作区浏览器工具 | 串起工作区隔离、事件日志、资源响应摘要、CDP 填表与点击自动化、下载视图和真实 F5 构建 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
-
-第 08～11 集尚未出现在 B 站合集内，发布后在本页补充链接。
+| 08 | [接上自动化：CDP 驱动内嵌浏览器](https://www.bilibili.com/video/BV13kYW6BEzK/) | 配置独立进程和开发者工具，取得调试端口后用 CDP 完成取标题、查询元素和点击 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
+| 09 | [网页填表：输入、选择与提交](https://www.bilibili.com/video/BV1arYW6uEmn/) | 使用 CDP 完成文本框、下拉框、复选框、单选框与提交结果校验，只操作自有测试表单 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
+| 10 | [下载、截图与打印：把网页结果落盘](https://www.bilibili.com/video/BV1b1YW6vE2d/) | 下载进度、截图、打印/PDF 和文件对话框，说明输出路径与敏感数据边界 | [FBro 模块](/guide/user/modules/fbro) |
+| 11 | [FBro 综合项目：多工作区浏览器工具](https://www.bilibili.com/video/BV18yYW6KE21/) | 串起工作区隔离、事件日志、资源响应摘要、CDP 填表与点击自动化、下载视图和真实 F5 构建 | [FBro 模块](/guide/user/modules/fbro) · [CDP 模块开发](/guide/user/advanced/cdp-module-dev) |
+| 12 | [修改资源响应：文本替换与还原](https://www.bilibili.com/video/BV18yYW6KELj/) | 用 `FBro_替换资源响应文本` 与 `FBro_清除资源响应文本替换` 两条非 VIP 命令，把测试页文本整体替换为一键还原 | [FBro 模块](/guide/user/modules/fbro) |
 
 本合集定位为“从入门到资源响应、填表与自动化实战”，不是 462 条用户接口的逐条课程。第 07 集只承诺当前公开 binding 可读取的资源 URL、状态码、MIME 等元数据；第 09 集只操作自有测试表单，不涉及真实账号、验证码、支付或绕过风控。所有演示使用已授权测试环境，不展示 Permit、Key、真实账号、Cookie、代理密码或敏感响应内容。第 08～09 集需额外启用 CDP 模块，并将 FBro 控件设为“独立进程嵌入”且开启开发者工具。
 

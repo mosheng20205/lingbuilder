@@ -8,6 +8,7 @@ export interface ServerRuntimeConfig {
   userSettingsPath: string;
   staticRoot?: string;
   rulebookPath: string;
+  aiModuleSpecPath: string;
   host: '127.0.0.1' | '::1';
   port: number;
   sessionToken: string;
@@ -33,6 +34,10 @@ export function resolveServerRuntimeConfig(environment: NodeJS.ProcessEnv): Serv
     environment.LINGBUILDER_RULEBOOK_PATH || environment.RULEBOOK_PATH,
     'RULEBOOK_PATH'
   );
+  const aiModuleSpecPath = optionalAbsolutePath(
+    environment.LINGBUILDER_AI_MODULE_SPEC_PATH,
+    'LINGBUILDER_AI_MODULE_SPEC_PATH'
+  ) ?? path.join(path.dirname(rulebookPath), 'docs', 'AI模块开发规范.md');
   const staticRoot = optionalAbsolutePath(
     environment.LINGBUILDER_STATIC_ROOT || environment.STATIC_ROOT,
     'STATIC_ROOT'
@@ -71,6 +76,7 @@ export function resolveServerRuntimeConfig(environment: NodeJS.ProcessEnv): Serv
     userSettingsPath,
     staticRoot,
     rulebookPath,
+    aiModuleSpecPath,
     host,
     port,
     sessionToken,

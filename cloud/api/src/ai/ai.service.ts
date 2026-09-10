@@ -50,7 +50,7 @@ export class AiService {
         for (let attempt = 0; attempt <= Math.max(0, candidate.retryCount); attempt += 1) {
           try {
             final = undefined;
-            for await (const chunk of this.providers.stream(candidate.provider, candidate, messages, prepared.maxOutput, controller.signal)) {
+            for await (const chunk of this.providers.stream(candidate.provider, candidate, messages, prepared.maxOutput, controller.signal, { thinkingDisabled: request.thinking === 'disabled' })) {
               // 推理型模型的思考过程使用独立事件下发，客户端可折叠展示或忽略；不再混入正文 delta。
               if (chunk.reasoningDelta && operation === 'chat') { emitted = true; streamedText += chunk.reasoningDelta; yield { type: 'reasoning', requestId, text: chunk.reasoningDelta }; }
               if (chunk.delta) { emitted = true; streamedText += chunk.delta; yield { type: 'delta', requestId, text: chunk.delta }; }

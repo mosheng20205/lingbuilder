@@ -39,8 +39,22 @@ const events = coverage.eventCatalog as FbroEventDefinition[];
 /** FBro 事件唯一事实源；设计器、补全、生成器和模块详情都消费此目录。 */
 export const FBRO_EVENT_CATALOG: readonly FbroEventDefinition[] = events;
 
+/** 全部公开事件：浏览器事件 + VIP WebSocket 客户端拦截 + 本地服务器回调。 */
 export const FBRO_PUBLIC_BROWSER_EVENTS: readonly FbroEventDefinition[] = events.filter(
-  event => event.ownerClass === 'FBroHsBroEvent' && event.exposure === 'public'
+  event => event.exposure === 'public'
+);
+
+/** 设计器 FBroBrowser 控件事件：浏览器事件 + WebSocket 客户端拦截五事件；
+ * 本地服务器回调不在控件上，用 FBro_绑定事件(浏览器控件, 事件名, &处理器) 绑定。 */
+const FBRO_DESIGNER_INIT_EVENTS = new Set([
+  'OnWebSocketClientCreate', 'OnWebSocketClientConnect', 'OnWebSocketClientClose',
+  'OnWebSocketClientMessage', 'OnWebSocketClientSend'
+]);
+
+export const FBRO_BROWSER_DESIGNER_EVENTS: readonly FbroEventDefinition[] = events.filter(
+  event => (event.ownerClass === 'FBroHsBroEvent' && event.exposure === 'public')
+    || (event.ownerClass === 'FBroHsInitEvent' && event.exposure === 'public'
+      && FBRO_DESIGNER_INIT_EVENTS.has(event.officialName))
 );
 
 const eventAliases = new Map<string, FbroEventDefinition>();

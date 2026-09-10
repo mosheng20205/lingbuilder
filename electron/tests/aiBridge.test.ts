@@ -87,9 +87,17 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     });
     await client.connect(transport);
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 13);
+    assert.equal(tools.tools.length, 19);
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.project.create'));
+    for (const moduleName of ['lingbuilder.module.scaffold', 'lingbuilder.module.writeFiles', 'lingbuilder.module.validate', 'lingbuilder.module.pack', 'lingbuilder.module.installPreview', 'lingbuilder.module.install']) {
+      assert.ok(tools.tools.some(tool => tool.name === moduleName), `缺少 MCP 模块工具：${moduleName}`);
+    }
+    const scaffoldTool = tools.tools.find(tool => tool.name === 'lingbuilder.module.scaffold');
+    assert.ok((scaffoldTool?.inputSchema as any)?.properties?.id, 'module.scaffold 必须要求模块 ID');
+    const moduleInstallTool = tools.tools.find(tool => tool.name === 'lingbuilder.module.install');
+    const moduleInstallRequired = (moduleInstallTool?.inputSchema as any)?.required || [];
+    assert.ok(moduleInstallRequired.includes('previewId') && moduleInstallRequired.includes('projectId'), 'module.install 必须要求 previewId 与 projectId');
     const projectCreateTool = tools.tools.find(tool => tool.name === 'lingbuilder.project.create');
     assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('new-emoji-fbro-browser-shell'));
     const editTool = tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose');
@@ -111,6 +119,165 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
   } finally {
     await gateway.close();
     await server.close();
+    await service.shutdown();
+  }
+});
+
+function createModuleToolManifest(id: string): Record<string, unknown> {
+  return {
+    schemaVersion: 2,
+    id,
+    name: '桥接测试模块',
+    version: '1.0.0',
+    category: '其他',
+    description: 'AI Bridge 模块工具端到端验证。',
+    contributes: {
+      commands: [{ name: '桥接命令', signature: '桥接命令()', description: '测试命令。', insertText: '桥接命令()', returnType: '空' }],
+      docs: [{ title: '使用说明', path: 'docs/usage.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    targets: [{
+      id: 'windows-msvc-win32',
+      platform: 'windows',
+      arch: 'win32',
+      toolchain: 'msvc',
+      includeDirs: ['include'],
+      headers: ['include/bridge.h'],
+      libs: [],
+      runtimeFiles: []
+    }],
+    bindings: { commands: [{ command: '桥接命令', runtimeName: '桥接命令', returnType: 'void' }] }
+  };
+}
+
+async function writeSolutionFixture(root: string, projectIds: string[]): Promise<void> {
+  await fs.mkdir(path.join(root, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(root, '.lingbuilder', 'solution.json'), JSON.stringify({
+    schemaVersion: 1,
+    id: 'test-solution',
+    name: '桥接测试解决方案',
+    startupProjectId: projectIds[0],
+    projects: projectIds.map(projectId => ({
+      id: projectId,
+      name: projectId,
+      type: 'visual-cpp',
+      sourceRoot: `src/${projectId}`,
+      configRoot: `config/${projectId}`,
+      designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`
+    }))
+  }, null, 2), 'utf8');
+}
+
+test('AI Bridge 模块工具在只读/预览未批准模式下拒绝写入', async () => {
+  const readonlyRoot = await createTempWorkspace();
+  const readonlyService = new AiBridgeService(createOptions(readonlyRoot, 'readonly', 'readonly-token'));
+  const previewRoot = await createTempWorkspace();
+  const previewService = new AiBridgeService(createOptions(previewRoot, 'preview', 'preview-token'));
+  try {
+    await assert.rejects(() => readonlyService.scaffoldModule({ id: 'bridge.perm.module' }), /只读模式/u);
+    await assert.rejects(() => previewService.scaffoldModule({ id: 'bridge.perm.module' }), /预览确认模式/u);
+    await assert.rejects(
+      () => previewService.writeModuleFiles({ files: [{ path: 'lingbuilder.module.json', content: '{}' }] }),
+      /预览确认模式/u
+    );
+    await assert.rejects(
+      () => previewService.packModule({ moduleDir: '.lingbuilder/module-build/bridge.perm.module' }),
+      /预览确认模式/u
+    );
+    await assert.rejects(
+      () => previewService.installModule({ previewId: 'missing-preview-id', projectId: 'demo-project', approved: true }),
+      /未找到项目|安装预览不存在或已经失效/u
+    );
+    await assert.rejects(() => fs.stat(path.join(readonlyRoot, '.lingbuilder', 'module-build')), { code: 'ENOENT' });
+    await assert.rejects(() => fs.stat(path.join(previewRoot, '.lingbuilder', 'module-build')), { code: 'ENOENT' });
+  } finally {
+    await readonlyService.shutdown();
+    await previewService.shutdown();
+  }
+});
+
+test('AI Bridge 模块工具拒绝越界路径', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'yolo-token'));
+  try {
+    await assert.rejects(
+      () => service.writeModuleFiles({
+        files: [{ path: 'lingbuilder.module.json', content: JSON.stringify({ id: 'bridge.escape.module' }) }],
+        outDir: '../outside',
+        approved: true
+      }),
+      /越界|module-build/u
+    );
+    await assert.rejects(
+      () => service.writeModuleFiles({
+        files: [{ path: 'lingbuilder.module.json', content: JSON.stringify({ id: 'bridge.escape.module' }) }],
+        outDir: 'generated/cpp/escape',
+        approved: true
+      }),
+      /module-build/u
+    );
+    await assert.rejects(
+      () => service.validateModule({ modulePath: '.lingbuilder/modules/lingbuilder.threading' }),
+      /module-build/u
+    );
+    await assert.rejects(
+      () => service.previewModuleInstall({ packagePath: 'generated/cpp/demo.lbmod' }),
+      /module-packages/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge 模块工具支持生成→写入→校验→打包→预览→安装全链', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview', 'chain-token'));
+  try {
+    const scaffold = await service.scaffoldModule({ id: 'bridge.e2e.module', name: '桥接测试模块', approved: true });
+    assert.equal(scaffold.ok, true);
+    assert.equal(scaffold.manifest.id, 'bridge.e2e.module');
+
+    const written = await service.writeModuleFiles({
+      files: [
+        { path: 'lingbuilder.module.json', content: JSON.stringify(createModuleToolManifest('bridge.e2e.module'), null, 2) },
+        { path: 'docs/usage.md', content: '# 桥接测试模块\n\n## 使用说明\n\n调用 桥接命令() 完成验证。' },
+        { path: 'examples/demo.lcpp', content: '桥接命令()' },
+        { path: 'include/bridge.h', content: '#pragma once\n\nvoid 桥接命令();\n' }
+      ],
+      approved: true
+    });
+    assert.equal(written.moduleId, 'bridge.e2e.module');
+    assert.equal(written.diagnostics.length, 0);
+    assert.equal(written.overwrittenExisting, true);
+
+    const validated = await service.validateModule({ modulePath: '.lingbuilder/module-build/bridge.e2e.module' });
+    assert.equal(validated.ok, true);
+    assert.equal(validated.diagnostics.length, 0);
+
+    const packed = await service.packModule({ moduleDir: '.lingbuilder/module-build/bridge.e2e.module', approved: true });
+    assert.equal(packed.targetPath, '.lingbuilder/module-packages/bridge.e2e.module.lbmod');
+    assert.equal(await exists(path.join(workspaceRoot, '.lingbuilder', 'module-packages', 'bridge.e2e.module.lbmod')), true);
+
+    const preview = await service.previewModuleInstall({ packagePath: '.lingbuilder/module-packages/bridge.e2e.module.lbmod' });
+    assert.equal(preview.preview.canInstall, true);
+    assert.ok(preview.preview.previewId);
+
+    await writeSolutionFixture(workspaceRoot, ['demo-project']);
+    const installed = await service.installModule({
+      previewId: preview.preview.previewId,
+      projectId: 'demo-project',
+      approved: true
+    });
+    assert.equal(installed.ok, true);
+    assert.equal(installed.enableForProject, true);
+    assert.equal(await exists(path.join(workspaceRoot, '.lingbuilder', 'modules', 'bridge.e2e.module', 'lingbuilder.module.json')), true);
+
+    const auditLog = await fs.readFile(path.join(workspaceRoot, '.lingbuilder', 'ai-bridge-log.jsonl'), 'utf8');
+    assert.match(auditLog, /"action":"module\.scaffold"/u);
+    assert.match(auditLog, /"action":"module\.writeFiles"/u);
+    assert.match(auditLog, /"action":"module\.pack"/u);
+    assert.match(auditLog, /"action":"module\.install"/u);
+  } finally {
     await service.shutdown();
   }
 });

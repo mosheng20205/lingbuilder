@@ -10,6 +10,9 @@ import { createProjectFunctionContext } from '../lingCpp/functionLibraryService'
 import { LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
+import { AI_MODULE_MANIFEST_FILE } from '../modules/aiModuleImportParser';
+import { createModuleTemplate, importAiModuleFiles, validateModuleDirectory } from '../modules/moduleSdkService';
+import { BuildConfigurationService } from '../tasks/buildConfigurationService';
 import { exportModuleNativeDependencies, materializeModuleNativeDependencies, ModuleNativeDependencyPlan } from '../modules/nativeDependencyService';
 import { createManagedProcessService } from '../tasks/managedProcessService';
 import { decodeCompilerOutput } from '../tasks/compilerOutputEncoding';
@@ -57,6 +60,12 @@ import {
   AiBridgeEditProposeRequest,
   AiBridgeHealth,
   AiBridgeLingCppDiagnosticsRequest,
+  AiBridgeModuleInstallPreviewRequest,
+  AiBridgeModuleInstallRequest,
+  AiBridgeModulePackRequest,
+  AiBridgeModuleScaffoldRequest,
+  AiBridgeModuleValidateRequest,
+  AiBridgeModuleWriteFilesRequest,
   AiBridgeNativeRequest,
   AiBridgeSearchMatch,
   AiBridgeSearchRequest,
@@ -165,6 +174,7 @@ export class AiBridgeService {
   private readonly assertModuleAccess: NonNullable<AiBridgeServiceDependencies['assertModuleAccess']>;
   private readonly buildPipelineService: BuildPipelineService;
   private readonly incrementalBuildService: IncrementalBuildService;
+  private readonly buildConfigurationService: BuildConfigurationService;
   private readonly requireSdkDependencies: NonNullable<AiBridgeServiceDependencies['requireSdkDependencies']>;
   private readonly fbroVipKey: string;
   private runAdmissionClosed = false;
@@ -191,7 +201,19 @@ export class AiBridgeService {
       this.projectBuildCoordinator,
       this.managedProcessService
     );
-    this.compilerDetector = dependencies.detectCompiler ?? detectCompiler;
+    // 显式 arch 只用于「本机探测为 x64、但目标必须是 32 位」的场景（例如 32 位 OCX 示例）。
+    // PATH 里的 cl 无法区分位数，此时必须改用对应的 vcvars 批处理重新进入编译环境。
+    const requestedArch = options.arch;
+    const baseDetector = dependencies.detectCompiler ?? detectCompiler;
+    this.compilerDetector = requestedArch
+      ? async () => {
+          const detected = await baseDetector();
+          if (!detected || detected.kind !== 'msvc' || detected.arch === requestedArch) return detected;
+          const setupBatch = await findMsvcSetupBatch(requestedArch);
+          if (!setupBatch) return detected;
+          return { kind: 'msvc', command: 'cl', setupBatch, arch: requestedArch };
+        }
+      : baseDetector;
     this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
     this.assertModuleAccess = dependencies.assertModuleAccess ?? (() => undefined);
     const sdkDependencyService = new SdkDependencyService({
@@ -210,6 +232,7 @@ export class AiBridgeService {
       })
     ]));
     this.incrementalBuildService = new IncrementalBuildService(this.workspaceRoot);
+    this.buildConfigurationService = new BuildConfigurationService(this.workspaceRoot);
     this.fbroVipKey = String(process.env.LINGBUILDER_FBRO_VIP_KEY || '').trim().slice(0, 4096);
     delete process.env.LINGBUILDER_FBRO_VIP_KEY;
   }
@@ -420,6 +443,165 @@ export class AiBridgeService {
       history,
       summary: describeLingCppModuleContextForAi({ availableModules, enabledModules })
     };
+  }
+
+  private async assertWithinModuleArea(absolutePath: string, area: 'module-build' | 'module-packages', allowAreaRoot = false): Promise<string> {
+    const realRoot = await this.pathPolicy.getRealWorkspaceRoot();
+    const areaRoot = path.join(realRoot, '.lingbuilder', area);
+    const resolved = path.resolve(absolutePath);
+    const relative = path.relative(areaRoot, resolved);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || (!allowAreaRoot && !relative)) {
+      throw new Error(`路径必须位于工作区 .lingbuilder/${area} 目录内。`);
+    }
+    return resolved;
+  }
+
+  private assertModuleAreaRelativePath(value: string, area: 'module-build' | 'module-packages'): string {
+    const normalized = value.trim().replace(/\\/gu, '/');
+    const areaError = new Error(`路径必须位于工作区 .lingbuilder/${area} 目录内。`);
+    if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:/u.test(normalized)) throw areaError;
+    const parts = normalized.split('/');
+    if (parts.some(part => !part || part === '.' || part === '..')) throw areaError;
+    if (parts[0] !== '.lingbuilder' || parts[1] !== area) throw areaError;
+    return normalized;
+  }
+
+  private async resolveModuleAreaWriteDirectory(value: string, area: 'module-build' | 'module-packages', allowAreaRoot = false): Promise<string> {
+    const normalized = this.assertModuleAreaRelativePath(value, area);
+    const resolved = await this.pathPolicy.resolveDirectoryForWrite(normalized);
+    return await this.assertWithinModuleArea(resolved, area, allowAreaRoot);
+  }
+
+  private async resolveModuleAreaExistingPath(value: string, area: 'module-build' | 'module-packages'): Promise<string> {
+    const normalized = this.assertModuleAreaRelativePath(value, area);
+    const resolved = await this.pathPolicy.resolveExisting(normalized, { rejectSymlinks: true });
+    return await this.assertWithinModuleArea(resolved, area);
+  }
+
+  async scaffoldModule(request: AiBridgeModuleScaffoldRequest) {
+    const moduleId = typeof request.id === 'string' ? request.id.trim() : '';
+    if (!moduleId) throw new Error('缺少模块 ID（id）。');
+    if (!/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(moduleId)) throw new Error('模块 ID 只能使用小写字母、数字、点、下划线和中划线（3~81 位，字母或数字开头）。');
+    await this.requireWriteWithAudit('module.scaffold', `.lingbuilder/module-build/${moduleId}`, request.approved);
+    const outDirRelative = request.outDir?.trim() || `.lingbuilder/module-build/${moduleId}`;
+    const outDir = await this.resolveModuleAreaWriteDirectory(outDirRelative, 'module-build');
+    const manifest = await createModuleTemplate({
+      template: request.template?.trim() || 'cpp-source',
+      outDir,
+      id: moduleId,
+      name: request.name?.trim() || undefined
+    });
+    await this.permissions.audit({ operation: 'write', action: 'module.scaffold', ok: true, target: outDirRelative });
+    return { ok: true as const, manifest, outDir: outDirRelative.replace(/\\/gu, '/') };
+  }
+
+  async writeModuleFiles(request: AiBridgeModuleWriteFilesRequest) {
+    const files = Array.isArray(request.files) ? request.files : [];
+    if (files.length === 0) throw new Error('缺少 files 文件列表；每个条目必须包含完整的 path 与 content。');
+    await this.requireWriteWithAudit('module.writeFiles', request.outDir?.trim() || '.lingbuilder/module-build', request.approved);
+    const normalizedFiles = files.map(file => ({
+      path: typeof file?.path === 'string' ? file.path : '',
+      content: typeof file?.content === 'string' ? file.content : ''
+    }));
+    let moduleId = '';
+    const manifestEntry = normalizedFiles.find(file => file.path.replace(/\\/gu, '/').split('/').pop() === AI_MODULE_MANIFEST_FILE);
+    if (manifestEntry) {
+      try {
+        const parsed = JSON.parse(manifestEntry.content.replace(/^\uFEFF/u, '')) as { id?: unknown };
+        if (typeof parsed.id === 'string' && /^[a-z0-9][a-z0-9._-]{2,80}$/u.test(parsed.id.trim())) moduleId = parsed.id.trim();
+      } catch {
+        // manifest 内容非法时交给 importAiModuleFiles 的校验诊断报告。
+      }
+    }
+    const outDirRelative = request.outDir?.trim() || (moduleId ? `.lingbuilder/module-build/${moduleId}` : '');
+    if (!outDirRelative) throw new Error('无法从文件列表解析模块 ID，请显式传入 outDir（必须位于 .lingbuilder/module-build 下）。');
+    const outDir = await this.resolveModuleAreaWriteDirectory(outDirRelative, 'module-build');
+    const result = await importAiModuleFiles(normalizedFiles, outDir);
+    await this.permissions.audit({ operation: 'write', action: 'module.writeFiles', ok: true, target: outDirRelative });
+    return {
+      ok: true as const,
+      moduleId: result.manifest.id,
+      moduleName: result.manifest.name,
+      outDir: outDirRelative.replace(/\\/gu, '/'),
+      fileCount: result.writtenFiles.length,
+      overwrittenExisting: result.overwrittenExisting,
+      diagnostics: result.diagnostics
+    };
+  }
+
+  async validateModule(request: AiBridgeModuleValidateRequest) {
+    const modulePath = typeof request.modulePath === 'string' ? request.modulePath.trim() : '';
+    if (!modulePath) throw new Error('缺少 modulePath（.lingbuilder/module-build 下的模块目录）。');
+    const resolvedModulePath = await this.resolveModuleAreaExistingPath(modulePath, 'module-build');
+    const stat = await fs.stat(resolvedModulePath);
+    const result = await validateModuleDirectory(
+      stat.isFile() ? path.dirname(resolvedModulePath) : resolvedModulePath,
+      {
+        requireCommandBindings: true,
+        requireNonEmptyDocumentsAndExamples: true
+      }
+    );
+    return {
+      ok: result.diagnostics.length === 0,
+      modulePath: modulePath.replace(/\\/gu, '/'),
+      manifest: result.manifest,
+      diagnostics: result.diagnostics
+    };
+  }
+
+  async packModule(request: AiBridgeModulePackRequest) {
+    const moduleDirValue = typeof request.moduleDir === 'string' ? request.moduleDir.trim() : '';
+    if (!moduleDirValue) throw new Error('缺少 moduleDir（.lingbuilder/module-build 下包含 lingbuilder.module.json 的目录）。');
+    const requestedTarget = request.targetPath?.trim() || '';
+    if (requestedTarget && !requestedTarget.toLowerCase().endsWith('.lbmod')) throw new Error('导出目标必须是 .lbmod 文件。');
+    await this.requireWriteWithAudit('module.pack', requestedTarget || '.lingbuilder/module-packages', request.approved);
+    const moduleDir = await this.resolveModuleAreaExistingPath(moduleDirValue, 'module-build');
+    const targetRelative = requestedTarget || `.lingbuilder/module-packages/${path.basename(moduleDir)}.lbmod`;
+    const targetDir = await this.resolveModuleAreaWriteDirectory(path.dirname(targetRelative), 'module-packages', true);
+    const targetPath = path.join(targetDir, path.basename(targetRelative));
+    await this.moduleService.exportModulePackage(moduleDir, targetPath, {
+      requireCommandBindings: true,
+      requireNonEmptyDocumentsAndExamples: true
+    });
+    await this.permissions.audit({ operation: 'write', action: 'module.pack', ok: true, target: targetRelative });
+    return { ok: true as const, moduleDir: moduleDirValue.replace(/\\/gu, '/'), targetPath: targetRelative.replace(/\\/gu, '/') };
+  }
+
+  async previewModuleInstall(request: AiBridgeModuleInstallPreviewRequest) {
+    const packagePath = typeof request.packagePath === 'string' ? request.packagePath.trim() : '';
+    if (!packagePath) throw new Error('缺少 packagePath（.lingbuilder/module-packages 下的 .lbmod 路径）。');
+    const resolvedPackagePath = await this.resolveModuleAreaExistingPath(packagePath, 'module-packages');
+    const preview = await this.moduleService.previewPackageInstall(resolvedPackagePath);
+    return { ok: true as const, preview };
+  }
+
+  async installModule(request: AiBridgeModuleInstallRequest) {
+    const previewId = typeof request.previewId === 'string' ? request.previewId.trim() : '';
+    if (!previewId) throw new Error('缺少 previewId；必须先调用 lingbuilder.module.installPreview 获取预览。');
+    const projectId = typeof request.projectId === 'string' ? request.projectId.trim() : '';
+    if (!projectId) throw new Error('缺少 projectId，模块安装必须指定当前项目。');
+    const solution = await this.solutionService.getSolution();
+    this.solutionService.getProject(solution, projectId);
+    const preview = this.moduleService.getPackageInstallPreview(previewId);
+    if (!preview?.manifest) throw new Error('安装预览不存在或已经失效，请重新调用 lingbuilder.module.installPreview。');
+    this.assertModuleAccess([preview.manifest.id]);
+    await this.requireWriteWithAudit('module.install', `${preview.manifest.id}@${preview.manifest.version}`, request.approved);
+    const result = await this.moduleService.installPackage(previewId);
+    const enableForProject = request.enableForProject !== false;
+    let buildConfiguration;
+    let buildConfigurationChanged = false;
+    const messages: string[] = [];
+    if (enableForProject) {
+      await this.moduleService.enableModuleForProject(projectId, result.moduleId);
+      const compatibility = await this.buildConfigurationService.ensureCompatibleWithModules(
+        (await this.moduleService.getEnabledProjectModules(projectId)).map(module => module.manifest.id)
+      );
+      buildConfiguration = compatibility.configuration;
+      buildConfigurationChanged = compatibility.changed;
+      messages.push(...(compatibility.messages || []));
+    }
+    await this.permissions.audit({ operation: 'write', action: 'module.install', ok: true, target: `${result.moduleId}@${result.version}` });
+    return { ok: true as const, result, enableForProject, buildConfiguration, buildConfigurationChanged, messages };
   }
 
   async listProjectTemplates() {
@@ -1256,7 +1438,7 @@ async function detectCompiler(): Promise<AiBridgeCompilerInfo | null> {
   return null;
 }
 
-async function findMsvcSetupBatch(): Promise<string | null> {
+async function findMsvcSetupBatch(arch?: 'win32' | 'x64'): Promise<string | null> {
   const installPaths = new Set<string>();
   const vswherePath = process.env['ProgramFiles(x86)']
     ? path.join(process.env['ProgramFiles(x86)'] as string, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
@@ -1286,11 +1468,12 @@ async function findMsvcSetupBatch(): Promise<string | null> {
   }
 
   for (const installPath of installPaths) {
-    const candidates = [
-      path.join(installPath, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat'),
-      path.join(installPath, 'VC', 'Auxiliary', 'Build', 'vcvars32.bat'),
-      path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')
-    ];
+    const vcvars = (name: string) => path.join(installPath, 'VC', 'Auxiliary', 'Build', name);
+    const candidates = arch === 'win32'
+      ? [vcvars('vcvars32.bat'), vcvars('vcvars64.bat'), path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')]
+      : arch === 'x64'
+        ? [vcvars('vcvars64.bat'), path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')]
+        : [vcvars('vcvars64.bat'), vcvars('vcvars32.bat'), path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')];
 
     for (const candidate of candidates) {
       if (await pathExists(candidate)) return candidate;

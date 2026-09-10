@@ -12,16 +12,17 @@ export interface ProviderStreamChunk { delta?: string; reasoningDelta?: string; 
 @Injectable()
 export class ProviderService {
   constructor(@Inject(SecretVaultService) private readonly vault: SecretVaultService) {}
-  async *stream(provider: ProviderChannel, route: ModelRoute, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal): AsyncGenerator<ProviderStreamChunk> {
+  async *stream(provider: ProviderChannel, route: ModelRoute, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal, options?: { thinkingDisabled?: boolean }): AsyncGenerator<ProviderStreamChunk> {
     const base = await validateProviderUrl(provider.baseUrl); const secret = this.vault.decrypt(provider.encryptedSecret);
     const timeout = AbortSignal.timeout(Math.max(1_000, Math.min(provider.timeoutMs, 600_000))); const combined = AbortSignal.any([signal, timeout]);
     if (provider.kind === 'ANTHROPIC') return yield* this.streamAnthropic(base, secret, route.upstreamModel, messages, maxOutputTokens, combined);
+    if (options?.thinkingDisabled && provider.kind !== 'GEMINI') return yield* this.streamOpenAi(base, secret, route.upstreamModel, messages, maxOutputTokens, combined, { thinkingDisabled: true });
     if (provider.kind === 'GEMINI') return yield* this.streamGemini(base, secret, route.upstreamModel, messages, maxOutputTokens, combined);
     return yield* this.streamOpenAi(base, secret, route.upstreamModel, messages, maxOutputTokens, combined);
   }
 
-  private async *streamOpenAi(base: URL, secret: string, model: string, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal): AsyncGenerator<any> {
-    const response = await fetch(new URL('chat/completions', ensureSlash(base)), { method: 'POST', signal, headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify({ model, messages, max_tokens: maxOutputTokens, stream: true, stream_options: { include_usage: true } }) });
+  private async *streamOpenAi(base: URL, secret: string, model: string, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal, options?: { thinkingDisabled?: boolean }): AsyncGenerator<any> {
+    const response = await fetch(new URL('chat/completions', ensureSlash(base)), { method: 'POST', signal, headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify({ model, messages, max_tokens: maxOutputTokens, stream: true, stream_options: { include_usage: true }, ...(options?.thinkingDisabled ? { thinking: { type: 'disabled' } } : {}) }) });
     if (!response.ok || !response.body) throw new Error(`OpenAI-compatible provider failed (${response.status})`);
     let text = ''; let reasoningText = ''; let usage: ProviderUsage | undefined;
     for await (const data of parseSse(response.body)) {

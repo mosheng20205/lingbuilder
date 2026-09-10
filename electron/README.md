@@ -1,4 +1,6 @@
 # LingBuilder Electron
+> 2026-09-09：`lingbuilder.advanced.com` COM自动化模块升级 2.0.0（句柄制，6 条命令扩展为 27 条）：新增 `COM_创建对象免注册`（LoadLibrary+DllGetClassObject，不写注册表）、`COM_创建OCX组件`+`COM_取OCX对象`（系统 atl.dll AtlAxWin 宿主，边框六档）、`COM_取数值/逻辑/对象属性`、`COM_调用方法/调用文本方法/调用数值方法/调用逻辑方法/调用对象方法`（lingValue 可变参数）、`COM_挂接事件`/`COM_映射事件`/`COM_取消挂接事件`/`COM_取事件对象参数`（C++ 真 IDispatch sink，Advise 全部连接点，事件经 `WM_LINGBUILDER_COM_EVENT` 队列窗口线程回调，处理器签名 `空 处理器(整数型 用户数据, 文本型 参数文本)`，languageService 按 handlerSignature 校验）、`COM_启用/移除OCX消息转发`（WH_GETMESSAGE 转发 WM_FORWARDMSG，沿祖先链到第一个处理窗口即停）、`COM_取接口信息`（ITypeInfo 摘要，含属性/方法/事件 DISPID）、`COM_关闭(对象)`/`COM_关闭全部`（窗口析构自动调用）、`COM_注册组件`/`COM_注销组件`/`COM_取组件路径`（随程序携带 OCX 的动态注册与绿色免安装，复刻易语言 FoxitReader 例程）。同时修复 AtlAxWin 未注册控件的静默回退陷阱（回退创建 WebBrowser 把类标识当 URL，表现为「无法访问此页」——现用 `IPersist::GetClassID` 核对实际控件并给中文诊断），并为 CLI 增加 `--arch win32|x64` 以构建 32 位 OCX 示例；修复事件接收器对 VB6/Thunder 系控件按事件接口 DIID 校验时的 Advise 失败（接收器现登记连接点 DIID 并在 QueryInterface 中接受，CCRP FolderTreeview 的 SelectionChange 等事件实测可回调）。四个易语言例程全部复刻：`AI 视频自主生产/基础篇加餐/19 COM自动化模块/` 下主示例（互联网浏览框）+ 例程2 目录树控件 + 例程3 Foxit阅读器 + 例程4 对象查看器（均已 CLI 端到端构建验证）。旧 1.0「全局单对象 + 文本属性 + 无参方法」签名不兼容删除；`COM_创建对象` 现返回句柄。纯 C++ 运行时（`src/services/windowDesigner/comRuntime.ts`）随 windows-msvc-win32/x64 双 target 同源编译；进程内组件位数必须与程序位数一致并给中文诊断。详见 `docs/modules/advanced/com.md`，示例见 `AI 视频自主生产/基础篇加餐/19 COM自动化模块`。
+> 2026-09-09：FBro 四火山工程缺口全量封装（bridgeVersion 2.6.0→2.7.0，SDK 模块 `135.0.21.2.7.0`，内置目录同步）。新增 32 条命令：WS 拦截闭环（`FBro页面_发送文本/缓冲`、`FBro页面_客户端发送文本/缓冲`、`FBroWS客户端_是否空/取地址/取协议/取扩展/发送文本/发送缓冲`、`FBro请求_取方法`）、DOM 遍历快照族（`FBro框架_遍历DOM` + `FBro遍历_*` 15 条 + `FBro右键参数_取类型标志`）、运行时上下文（`FBro会话_创建上下文`、`FBro会话_使用上下文重建`）、`FBro_取主浏览器`；13 个事件转公开可绑定（初始化WebSocket客户端五事件进设计器控件事件列表，本地服务器 8 回调经 `FBro_绑定事件` 绑定，握手请求默认放行、处理器取消动作改 Cancel）。同时修复任务等待 wrapper 的运行时比较错误（`LB_FBro_TaskWait` 成功返回 `LB_FBRO_OK` 而非 `LB_FBRO_TASK_COMPLETED`，8 处）。已知限制：`ExecuteJavaScriptToHasReturn` 结果投递在复杂页面有约 60 秒量级延迟且偶发超时，DOM 遍历等待上限 150 秒；官方 `VisitDOM` 回调在浏览器进程宿主不派发（CEF 语义），已用页面内 JS 序列化实现。新示例：`examples/fbro-intercept-dom-demo`。
 > 2026-09-09：FBro 环境 SDK 升级到火山版正式版 5.39.53（chromium 135.0.7049.115，CEF 135.0.21 不变，SDK_VERSION 仍为 135.0.21）：官方头文件 77→73（删 FBroClientBase/FBroExtension/FBroExtensionHandler/FBroRenderHandler），覆盖目录签名族 1079→1071（已实现 397 不变），运行时 FBrowserCEF3lib/FBrowserVIP/libcef 全部更新；bridgeVersion 2.4.0→2.5.0（桥在新头/库下重编译），归档 `lingbuilder-fbro-sdk-135.0.21.2.5.0-windows-x64.zip`（473 文件）。覆盖/出包脚本 DEFAULT_SOURCE 切换到工作区 junction 源树 `.lingbuilder-build/fbro-official-5.39.53/FBrowser`。
 > 2026-09-09：FBro 指纹浏览器模块新增非 VIP 响应正文查找替换命令 `FBro_替换资源响应文本(控件名, 查找内容, 替换内容)` / `FBro_清除资源响应文本替换(控件名)`（无需 FBro VIP 授权，基于官方 FBroHsResponseFilter；查找按 UTF-8 字节匹配、二进制安全，替换内容为空表示删除；重复调用以最后一次为准，对之后加载的全部资源流式生效；只改响应正文，不改响应头和状态码。bridgeVersion 2.4.0，SDK 归档与内置清单已同步，发布前需上传归档并在管理后台发布新清单）。同时修复生成程序浏览器启动死锁：桥接启动任务不再持锁执行浏览器创建，`OnWindowCreated` 延迟到消息循环派发；`创建完毕` 内 `FBro_导航` 无效（浏览器未就绪）为已知边界，导航请放 `浏览器创建完成` 处理器。
 > 2026-09-08：进程内 FBro 浏览器开放 CDP 调试端口，并受控件 `enableDevTools` 属性控制（缺省启用，任一进程内控件启用即开启、全部关闭则不预留）。生成程序初始化 FBro 运行时时按该属性预留本机回环端口并经 `LB_FBro_InitializeEx` 启用；`FBro_取调试端口` 对进程内与独立进程都返回真实端口，返回 0 表示尚未初始化、未启用开发者工具或端口预留失败。CEF 调试端口只在初始化时生效，因此没有运行时设置/关闭端口的命令。详见 `docs/modules/fbro/control.md`「CDP 调试端口」。
@@ -392,6 +394,14 @@ MCP 模式使用 stdio JSON-RPC，暴露工具包括：
 - `lingbuilder.modules.list`
 - `lingbuilder.native.preview`
 - `lingbuilder.native.export`
+- `lingbuilder.module.scaffold`
+- `lingbuilder.module.writeFiles`
+- `lingbuilder.module.validate`
+- `lingbuilder.module.pack`
+- `lingbuilder.module.installPreview`
+- `lingbuilder.module.install`
+
+模块 MCP 工具让外部 AI 可以端到端生成模块：`scaffold`（骨架）/`writeFiles`（完整文件，含 manifest v2）/`validate`（校验）/`pack`（打包 .lbmod）作用于 `.lingbuilder/module-build`，`installPreview`/`install`（预览后安装）作用于 `.lingbuilder/module-packages`；写操作受 readonly/preview/yolo 权限模式控制（preview 需 `approved=true`）并写入审计日志，安装必须先取得 `installPreview` 返回的 `previewId`，收费模块仍受权益门禁。
 
 `lingbuilder.build.run` 启动的 exe 同样由 `ManagedProcessService` 管理，不使用 detached/unref；同项目重跑会在编译前回收旧进程和日志流。AI Bridge HTTP/MCP 构建使用项目租约，CLI 收到 `SIGINT` / `SIGTERM` 时会拒绝新构建、等待在途租约结束，再停止全部受控运行进程；启动失败会以 `run-start` 阶段返回失败，不能报告假成功。
 
@@ -446,6 +456,8 @@ node dist/cli.cjs module market index --packages ../.lingbuilder/module-packages
 ```
 
 开发期可用 `tsx src/cli.ts module ...` 直接调试。模块页中的“模块开发者中心”复用同一套服务能力。
+
+模块页「AI 生成模块」提供三条入口：一键生成（系统 AI 通道经 `cloudAi` IPC 流式生成后本地解析导入；自定义 API 通道走 `POST /api/modules/ai-generate`，规范文档路径由 `LINGBUILDER_AI_MODULE_SPEC_PATH` 注入、缺省从规则手册目录推导）、AI Bridge MCP 模块工具（见上文工具清单）、手动复制粘贴（「复制 AI 开发规范」降级入口）。「安装 .lbmod」在桌面版接受 `.lingbuilder/module-packages` 相对路径与本机绝对路径（绝对路径经主进程校验后自动复制进工作区再预览）；网页版仅支持相对路径。
 
 `new_emoji` v2 模块仍使用：
 

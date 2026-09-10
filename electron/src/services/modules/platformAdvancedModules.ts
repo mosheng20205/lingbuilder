@@ -1,4 +1,4 @@
-import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
+import { LingBuilderModuleManifest, ModuleBindingValueType, ModuleCommandBindingParameter } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
 
@@ -79,13 +79,52 @@ const processMemory = createStandardModule({ id: 'lingbuilder.advanced.process-m
   command('进程内存_关闭', [{ name: '进程句柄', type: 'handle' }], 'bool', '关闭目标进程句柄。')
 ] });
 
-const com = createStandardModule({ id: 'lingbuilder.advanced.com', name: 'COM自动化模块', category: '系统', description: '通过 ProgID 创建 IDispatch 自动化对象，支持文本属性和无参方法。', tags: ['高级', 'COM'], commands: [
-  command('COM_创建对象', [{ name: 'ProgID', type: 'wideString' }], 'bool', '创建一个 COM 自动化对象。'),
-  command('COM_取文本属性', [{ name: '属性名', type: 'wideString' }], 'wideString', '读取文本或可转文本属性。'),
-  command('COM_置文本属性', [{ name: '属性名', type: 'wideString' }, { name: '值', type: 'wideString' }], 'bool', '设置 BSTR 文本属性。'),
-  command('COM_调用无参方法', [{ name: '方法名', type: 'wideString' }], 'bool', '调用无参数方法。'),
-  command('COM_取错误', [], 'wideString', '返回最近 COM 错误。'), command('COM_关闭', [], 'void', '释放当前自动化对象。')
-] });
+const comHandlerParameter: ModuleCommandBindingParameter = {
+  name: '处理器',
+  type: 'handler',
+  description: '必须使用 &处理器名；事件到达窗口线程时回调，签名：空 处理器(整数型 用户数据, 文本型 参数文本)。',
+  handlerSignature: { parameterTypes: ['整数型', '文本型'], returnType: '空' }
+};
+const comVariadicParameter: ModuleCommandBindingParameter = { name: '参数', type: 'lingValue', variadic: true, description: '按值传入 COM 方法；支持整数、长整数、小数、逻辑值和文本。' };
+
+const com = createStandardModule({
+  id: 'lingbuilder.advanced.com',
+  name: 'COM自动化模块',
+  version: '2.0.0',
+  category: '系统',
+  description: '句柄制 COM 自动化：注册或免注册创建 IDispatch 对象、OCX 控件窗口宿主、事件挂接与映射、类型化属性和带参方法调用、接口信息查看。纯 C++ 运行时，同时支持 32 位和 64 位目标。',
+  tags: ['高级', 'COM'],
+  docs: [{ title: 'COM自动化模块使用说明', path: 'docs/modules/advanced/com.md' }],
+  commands: [
+    { name: 'COM_创建对象', signature: 'COM_创建对象(ProgID)', description: '通过 ProgID 创建 COM 自动化对象，返回 COM 对象句柄，0 表示失败。', insertText: 'COM_创建对象("$1")', parameters: [{ name: 'ProgID', type: 'wideString', description: '如 "WScript.Shell" 或 "Shell.Application"。' }], returnType: 'longLong', example: 'COM_创建对象("Shell.Application")' },
+    { name: 'COM_创建对象免注册', signature: 'COM_创建对象免注册(CLSID, 组件DLL路径)', description: '加载组件 DLL 并通过 DllGetClassObject 免注册创建 COM 对象；组件位数必须与程序位数一致。', insertText: 'COM_创建对象免注册("$1", "$2")', parameters: [{ name: 'CLSID', type: 'wideString', description: '"{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}" 形式。' }, { name: '组件DLL路径', type: 'wideString', description: '组件 DLL 完整路径。' }], returnType: 'longLong', example: 'COM_创建对象免注册("{0D43FE01-F093-11CF-8940-00A0C9054228}", "C:\\Windows\\System32\\scrrun.dll")' },
+    { name: 'COM_注册组件', signature: 'COM_注册组件(组件DLL路径)', description: '加载组件 DLL 并调用 DllRegisterServer 把 OCX/DLL 注册到系统（需要管理员权限时由系统返回失败）。', insertText: 'COM_注册组件("$1")', parameters: [{ name: '组件DLL路径', type: 'wideString', description: '组件完整路径。' }], returnType: 'bool', example: 'COM_注册组件(COM_取组件路径("FoxitReader_AX_Pro.ocx"))' },
+    { name: 'COM_注销组件', signature: 'COM_注销组件(组件DLL路径)', description: '加载组件 DLL 并调用 DllUnregisterServer 从系统注销；程序退出前注销随程序携带的组件即可实现绿色免安装。', insertText: 'COM_注销组件("$1")', parameters: [{ name: '组件DLL路径', type: 'wideString', description: '组件完整路径。' }], returnType: 'bool', example: 'COM_注销组件(COM_取组件路径("FoxitReader_AX_Pro.ocx"))' },
+    { name: 'COM_取组件路径', signature: 'COM_取组件路径(文件名)', description: '返回当前 exe 所在目录与文件名拼接的完整路径，用于随程序携带的组件定位。', insertText: 'COM_取组件路径("$1")', parameters: [{ name: '文件名', type: 'wideString', description: '如 "FoxitReader_AX_Pro.ocx"。' }], returnType: 'wideString', example: '文本型 组件 = COM_取组件路径("FoxitReader_AX_Pro.ocx")' },
+    { name: 'COM_创建OCX组件', signature: 'COM_创建OCX组件(父窗口, 类标识, 左边, 顶边, 宽度, 高度, [边框])', description: '在父窗口内以 AtlAxWin 宿主一个 ActiveX/OCX 控件，返回 OCX 宿主窗口句柄；对象用 COM_取OCX对象 取回。边框：0 无边框，1 凹入式，2 凸出式，3 浅凹入式，4 镜框式，5 单线边框。', insertText: 'COM_创建OCX组件($1, "$2", 12, 64, 620, 380, 1)', parameters: [{ name: '父窗口', type: 'controlRef', description: '裸控件名或 当前窗口。', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'nativeHandle' }, { name: '类标识', type: 'wideString', description: '控件 CLSID（带花括号）或 ProgID。' }, { name: '左边', type: 'int' }, { name: '顶边', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }, { name: '边框', type: 'int', optional: true, defaultValue: 0, description: '缺省 0 表示无边框。' }], returnType: 'longLong', example: 'COM_创建OCX组件(当前窗口, "{8856F961-340A-11D0-A96B-00C04FD705A2}", 12, 64, 620, 380, 1)' },
+    { name: 'COM_取OCX对象', signature: 'COM_取OCX对象(OCX窗口句柄)', description: '取 OCX 宿主窗口内的 COM 对象句柄。', insertText: 'COM_取OCX对象($1)', parameters: [{ name: 'OCX窗口句柄', type: 'longLong' }], returnType: 'longLong', example: '浏览器 = COM_取OCX对象(浏览器窗口)' },
+    { name: 'COM_取文本属性', signature: 'COM_取文本属性(对象, 属性名)', description: '读取文本或可转文本属性。', insertText: 'COM_取文本属性($1, "$2")', parameters: [{ name: '对象', type: 'longLong' }, { name: '属性名', type: 'wideString' }], returnType: 'wideString', example: 'COM_取文本属性(浏览器, "LocationName")' },
+    { name: 'COM_取数值属性', signature: 'COM_取数值属性(对象, 属性名)', description: '读取数值属性，返回双精度小数。', insertText: 'COM_取数值属性($1, "$2")', parameters: [{ name: '对象', type: 'longLong' }, { name: '属性名', type: 'wideString' }], returnType: 'double', example: 'COM_取数值属性(浏览器, "Top")' },
+    { name: 'COM_取逻辑属性', signature: 'COM_取逻辑属性(对象, 属性名)', description: '读取逻辑属性。', insertText: 'COM_取逻辑属性($1, "$2")', parameters: [{ name: '对象', type: 'longLong' }, { name: '属性名', type: 'wideString' }], returnType: 'bool', example: 'COM_取逻辑属性(浏览器, "Busy")' },
+    { name: 'COM_取对象属性', signature: 'COM_取对象属性(对象, 属性名)', description: '读取对象类型属性并返回新的 COM 对象句柄，用 COM_关闭 释放。', insertText: 'COM_取对象属性($1, "$2")', parameters: [{ name: '对象', type: 'longLong' }, { name: '属性名', type: 'wideString' }], returnType: 'longLong', example: '文档 = COM_取对象属性(浏览器, "Document")' },
+    { name: 'COM_置文本属性', signature: 'COM_置文本属性(对象, 属性名, 值)', description: '写入文本属性；数值型属性由组件自动转换类型。', insertText: 'COM_置文本属性($1, "$2", "$3")', parameters: [{ name: '对象', type: 'longLong' }, { name: '属性名', type: 'wideString' }, { name: '值', type: 'wideString' }], returnType: 'bool', example: 'COM_置文本属性(对象, "Language", "VBScript")' },
+    { name: 'COM_调用方法', signature: 'COM_调用方法(对象, 方法名, 参数...)', description: '调用 COM 方法，参数按值传入；成功返回真。', insertText: 'COM_调用方法($1, "$2", $0)', parameters: [{ name: '对象', type: 'longLong' }, { name: '方法名', type: 'wideString' }, comVariadicParameter], returnType: 'bool', example: 'COM_调用方法(浏览器, "Navigate2", "https://www.lingbuilder.com")' },
+    { name: 'COM_调用文本方法', signature: 'COM_调用文本方法(对象, 方法名, 参数...)', description: '调用 COM 方法并把返回值转为文本。', insertText: 'COM_调用文本方法($1, "$2", $0)', parameters: [{ name: '对象', type: 'longLong' }, { name: '方法名', type: 'wideString' }, comVariadicParameter], returnType: 'wideString', example: 'COM_调用文本方法(对象, "BuildPath", "C:", "a.txt")' },
+    { name: 'COM_调用数值方法', signature: 'COM_调用数值方法(对象, 方法名, 参数...)', description: '调用 COM 方法并把返回值转为双精度小数。', insertText: 'COM_调用数值方法($1, "$2", $0)', parameters: [{ name: '对象', type: 'longLong' }, { name: '方法名', type: 'wideString' }, comVariadicParameter], returnType: 'double', example: 'COM_调用数值方法(对象, "GetSpecialFolderSize", 0)' },
+    { name: 'COM_调用逻辑方法', signature: 'COM_调用逻辑方法(对象, 方法名, 参数...)', description: '调用 COM 方法并把返回值转为逻辑值。', insertText: 'COM_调用逻辑方法($1, "$2", $0)', parameters: [{ name: '对象', type: 'longLong' }, { name: '方法名', type: 'wideString' }, comVariadicParameter], returnType: 'bool', example: 'COM_调用逻辑方法(对象, "FolderExists", "C:\\Windows")' },
+    { name: 'COM_调用对象方法', signature: 'COM_调用对象方法(对象, 方法名, 参数...)', description: '调用返回对象的 COM 方法，返回新的 COM 对象句柄。', insertText: 'COM_调用对象方法($1, "$2", $0)', parameters: [{ name: '对象', type: 'longLong' }, { name: '方法名', type: 'wideString' }, comVariadicParameter], returnType: 'longLong', example: '文件夹 = COM_调用对象方法(文件系统, "GetFolder", "C:\\Windows")' },
+    { name: 'COM_挂接事件', signature: 'COM_挂接事件(对象)', description: '挂接对象的全部事件连接点，返回事件句柄（非 0）；失败返回 0 并可用 COM_取错误 查看原因。', insertText: 'COM_挂接事件($1)', parameters: [{ name: '对象', type: 'longLong' }], returnType: 'int', example: '事件句柄 = COM_挂接事件(浏览器)' },
+    { name: 'COM_映射事件', signature: 'COM_映射事件(对象, 事件ID, &处理器, [用户数据])', description: '把 COM 事件 ID 映射到当前类的处理器；处理器签名：空 处理器(整数型 用户数据, 文本型 参数文本)，事件参数按制表符拼接，对象参数为 [COM对象] 占位。', insertText: 'COM_映射事件($1, 102, &$3, 0)', parameters: [{ name: '对象', type: 'longLong' }, { name: '事件ID', type: 'int', description: 'DISPID，可用 COM_取接口信息 查看。' }, comHandlerParameter, { name: '用户数据', type: 'int', optional: true, defaultValue: 0 }], returnType: 'bool', example: 'COM_映射事件(浏览器, 102, &网页_状态文本改变, 0)' },
+    { name: 'COM_取消挂接事件', signature: 'COM_取消挂接事件(对象, 事件句柄)', description: '取消事件挂接并清除该对象的全部事件映射。', insertText: 'COM_取消挂接事件($1, $2)', parameters: [{ name: '对象', type: 'longLong' }, { name: '事件句柄', type: 'int' }], returnType: 'bool', example: 'COM_取消挂接事件(浏览器, 事件句柄)' },
+    { name: 'COM_取事件对象参数', signature: 'COM_取事件对象参数(序号)', description: '仅在事件处理器内有效：把第 N 个（从 0 开始）对象类型事件参数包装为新的 COM 对象句柄。', insertText: 'COM_取事件对象参数($1)', parameters: [{ name: '序号', type: 'int' }], returnType: 'longLong', example: '发件对象 = COM_取事件对象参数(0)' },
+    { name: 'COM_启用OCX消息转发', signature: 'COM_启用OCX消息转发()', description: '安装当前线程消息钩子，把键盘和鼠标消息转发给 OCX 宿主窗口（WM_FORWARDMSG）。', insertText: 'COM_启用OCX消息转发()', parameters: [], returnType: 'bool', example: 'COM_启用OCX消息转发()' },
+    { name: 'COM_移除OCX消息转发', signature: 'COM_移除OCX消息转发()', description: '移除 OCX 消息转发钩子。', insertText: 'COM_移除OCX消息转发()', parameters: [], returnType: 'bool', example: 'COM_移除OCX消息转发()' },
+    { name: 'COM_取接口信息', signature: 'COM_取接口信息(对象)', description: '通过 ITypeInfo 返回接口摘要文本：类型名、GUID 和属性、方法（含 DISPID）、事件清单，用于确定映射事件的事件 ID。', insertText: 'COM_取接口信息($1)', parameters: [{ name: '对象', type: 'longLong' }], returnType: 'wideString', example: '调试输出(COM_取接口信息(浏览器))' },
+    { name: 'COM_关闭', signature: 'COM_关闭(对象)', description: '释放一个 COM 对象（含其 OCX 宿主窗口与事件挂接）。', insertText: 'COM_关闭($1)', parameters: [{ name: '对象', type: 'longLong' }], returnType: 'bool', example: 'COM_关闭(浏览器)' },
+    { name: 'COM_关闭全部', signature: 'COM_关闭全部()', description: '释放当前程序创建的全部 COM 对象；窗口销毁时自动调用。', insertText: 'COM_关闭全部()', parameters: [], returnType: 'bool', example: 'COM_关闭全部()' },
+    { name: 'COM_取错误', signature: 'COM_取错误()', description: '返回最近一次 COM 操作的中文错误文本。', insertText: 'COM_取错误()', parameters: [], returnType: 'wideString', example: '调试输出(COM_取错误())' }
+  ]
+});
 
 const assembly = createStandardModule({ id: 'lingbuilder.advanced.assembly', name: 'CPU指令能力模块', category: '系统', description: '提供 CPUID 和位运算封装，不执行用户提供的机器码。', tags: ['高级', 'CPU', '汇编'], commands: [
   command('CPU_取厂商', [], 'wideString', '返回 CPUID 厂商标识。'), command('CPU_是否支持SSE2', [], 'bool', '检查 SSE2。'),

@@ -10,6 +10,7 @@ import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID, OPENCV_VERSION } from './opencv
 import { PROTOBUF_MODULE_ID } from './protobufModule';
 import { validateProtobufSdk, type ProtobufTargetArchitecture } from './protobufSdk';
 import { ARIA2_MODULE_ID, ARIA2_RUNTIME_FILES } from './aria2Module';
+import { SQLITE_MODULE_ID, SQLITE_BUNDLED_RUNTIME_SHA256 } from './sqliteModule';
 import {
   getSdkDependencyResource,
   getSdkRootCandidates,
@@ -17,7 +18,7 @@ import {
 } from '../sdkDependencies/sdkDependencyCatalog';
 
 const FBRO_SDK_VERSION = '135.0.21';
-const FBRO_BRIDGE_VERSION = '2.6.0';
+const FBRO_BRIDGE_VERSION = '2.7.0';
 const FBRO_V3_HEADER_MARKERS = [
   'LB_FBRO_ABI_VERSION_V3',
   'LB_FBRO_EVENT_PACKET_V3',
@@ -104,6 +105,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(ARIA2_MODULE_ID)) {
     await materializeAria2Runtime(layout, plan);
+  }
+
+  if (enabledIds.has(SQLITE_MODULE_ID)) {
+    await materializeSqliteRuntime(layout, plan);
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
@@ -266,6 +271,11 @@ export async function exportModuleNativeDependencies(
     }, plan);
     diagnostics.push(...plan.blockingDiagnostics);
   }
+  if (enabledModules.some(module => module.manifest.id === SQLITE_MODULE_ID)) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: false };
+    await materializeSqliteRuntimeForExport(exportDir, plan);
+    diagnostics.push(...plan.blockingDiagnostics);
+  }
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
     const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
     await materializeCryptoSdk({
@@ -423,6 +433,103 @@ async function findBundledAria2Root(): Promise<string | null> {
     }
   }
   return null;
+}
+
+async function findBundledSqliteRoot(): Promise<string | null> {
+  const candidates = unique([
+    process.env.LINGBUILDER_SQLITE_RUNTIME_ROOT || '',
+    process.resourcesPath ? path.join(process.resourcesPath, 'third_party', 'sqlite') : '',
+    path.resolve(process.cwd(), 'third_party', 'sqlite'),
+    path.resolve(process.cwd(), 'electron', 'third_party', 'sqlite')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    try {
+      await Promise.all([
+        fs.access(path.join(candidate, 'x64', 'sqlite3.dll')),
+        fs.access(path.join(candidate, 'x86', 'sqlite3.dll')),
+        fs.access(path.join(candidate, 'NOTICE.md'))
+      ]);
+      return candidate;
+    } catch {
+      // 尝试下一个由开发环境、打包资源或显式配置提供的位置。
+    }
+  }
+  return null;
+}
+
+async function verifyBundledSqliteRuntime(
+  source: string,
+  architecture: 'x86' | 'x64',
+  plan: ModuleNativeDependencyPlan
+): Promise<boolean> {
+  try {
+    const digest = await sha256File(source);
+    const expected = SQLITE_BUNDLED_RUNTIME_SHA256[architecture];
+    if (digest.toLowerCase() !== expected) {
+      addBlockingDiagnostic(plan, `LingBuilder 随附的 sqlite3.dll（${architecture}）SHA-256 不匹配：期望 ${expected}，实际 ${digest}。`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `校验随附 sqlite3.dll 失败：${errorMessage(error)}`);
+    return false;
+  }
+}
+
+/** F5 构建 / AI Bridge build.run：按当前目标架构把随附 sqlite3.dll 复制到模块镜像与 exe 同目录。 */
+async function materializeSqliteRuntime(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  if (process.platform !== 'win32') {
+    plan.diagnostics.push('SQLite 随附运行库当前仅提供 Windows 版本；可使用 SQLite_加载运行库 指定自备的 SQLCipher 兼容 sqlite3.dll。');
+    return;
+  }
+  const bundledRoot = await findBundledSqliteRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 sqlite3.dll（SQLite3MultipleCiphers）；加密打开命令需要随附运行库、自备 SQLCipher 兼容运行库或通过 SQLite_加载运行库 指定路径。');
+    return;
+  }
+  const architecture = layout.preferredTargetId === 'windows-msvc-win32' ? 'x86' : 'x64';
+  const source = path.join(bundledRoot, architecture, 'sqlite3.dll');
+  if (!await verifyBundledSqliteRuntime(source, architecture, plan)) return;
+  const moduleRoots = unique([
+    path.join(layout.buildDir, 'modules', SQLITE_MODULE_ID),
+    path.join(layout.exportDir, 'modules', SQLITE_MODULE_ID)
+  ]);
+  try {
+    const runtimeLayout = path.join(architecture, 'sqlite3.dll');
+    for (const root of moduleRoots) {
+      await copyFileAtomicallyIfDifferent(source, path.join(root, runtimeLayout));
+    }
+    const output = path.join(layout.binDir, 'sqlite3.dll');
+    await copyFileAtomicallyIfDifferent(source, output);
+    plan.runtimeFiles.push(output);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `复制 SQLite 随附运行库失败：${errorMessage(error)}`);
+  }
+}
+
+/** Visual Studio 工程导出：同时物化两个架构到模块镜像，供 vcxproj 的 Win32/x64 配置按 targets[].runtimeFiles 平铺复制到 exe 同目录。 */
+async function materializeSqliteRuntimeForExport(exportDir: string, plan: ModuleNativeDependencyPlan): Promise<void> {
+  if (process.platform !== 'win32') return;
+  const bundledRoot = await findBundledSqliteRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 sqlite3.dll（SQLite3MultipleCiphers）；导出工程将缺少随附 SQLite 加密运行库。');
+    return;
+  }
+  for (const architecture of ['x86', 'x64'] as const) {
+    const source = path.join(bundledRoot, architecture, 'sqlite3.dll');
+    if (!await verifyBundledSqliteRuntime(source, architecture, plan)) continue;
+    try {
+      await copyFileAtomicallyIfDifferent(
+        source,
+        path.join(exportDir, 'modules', SQLITE_MODULE_ID, architecture, 'sqlite3.dll')
+      );
+    } catch (error) {
+      addBlockingDiagnostic(plan, `复制 SQLite 随附运行库（${architecture}）失败：${errorMessage(error)}`);
+    }
+  }
 }
 
 async function copyProtobufFiles(

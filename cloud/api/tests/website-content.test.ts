@@ -162,6 +162,19 @@ test('latest version reports unavailable without leaking fields when no release 
   assert.deepEqual(result, { ok: true, available: false });
 });
 
+test('latest version without an explicit channel crosses stable/preview so legacy clients still get notified', async () => {
+  const preview = {
+    version: '0.6.5', title: 't', summary: 's', publishedAt: '2026-09-09T00:00:00.000Z', channel: 'preview', fileSize: '', sha256: '', releaseNotes: '',
+    mirrors: [{ provider: 'direct', enabled: true, url: 'https://dl.lingbuilder.com/LingBuilder-0.6.5-x64.exe', sortOrder: 0 }]
+  };
+  const { prisma, args } = latestVersionPrismaMany([preview]);
+  const result: any = await new WebsiteContentService(prisma as any).latestVersion({ platform: 'Windows', architecture: 'x64', channel: '' });
+  assert.equal(args().where.channel, undefined);
+  assert.equal(result.available, true);
+  assert.equal(result.version, '0.6.5');
+  assert.equal(result.channel, 'preview');
+});
+
 test('latest version picks the highest version number even when an older release has a larger sortOrder', async () => {
   const older = {
     version: '0.6.9', title: 'old', summary: '', publishedAt: '2026-09-10T00:00:00.000Z', channel: 'stable', fileSize: '', sha256: '', releaseNotes: '',

@@ -2,7 +2,7 @@
 
 更新时间：2026-09-08
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **85 个内置模块、3087 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **85 个内置模块、3143 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -120,7 +120,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已封装 | `lingbuilder.advanced.memory` | 受控内存模块 | 6 | 只能访问模块登记的本进程内存块 |
 | 已封装 | `lingbuilder.advanced.hook` | 键盘 Hook 模块 | 4 | 只读取低级键盘状态，不注入代码 |
 | 已封装 | `lingbuilder.advanced.process-memory` | 进程内存模块 | 4 | 显式启用、显式 PID 和句柄 |
-| 已封装 | `lingbuilder.advanced.com` | COM 自动化模块 | 6 | 单 IDispatch 对象、文本属性、无参方法 |
+| 已封装（2.0.0 句柄制） | `lingbuilder.advanced.com` | COM 自动化模块 | 27 | 注册/免注册创建 IDispatch、OCX 窗口宿主、事件挂接映射、类型化属性与带参方法、接口信息；纯 C++ 双架构 |
 | 已封装 | `lingbuilder.advanced.assembly` | CPU 指令能力模块 | 5 | 只提供 CPUID 和受控位运算，不执行机器码 |
 | 已封装 | `lingbuilder.advanced.driver` | 设备驱动通信模块 | 4 | 不安装驱动、不提权，只打开显式设备路径 |
 

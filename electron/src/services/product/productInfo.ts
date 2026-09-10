@@ -20,6 +20,26 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.6.6',
+    date: '2026-09-09',
+    title: '标题栏升级徽标与更新通知修复',
+    sections: [
+      {
+        title: '新增与改进',
+        items: [
+          '标题栏版本号旁新增「升级」徽标：检测到新版本时显示，鼠标悬停可直接查看该版本更新说明，点击立即进入应用内更新，无需再翻菜单。',
+          'IDE 启动后会定期复查云端新版本，升级徽标保持最新状态。'
+        ]
+      },
+      {
+        title: '修复',
+        items: [
+          '修复新版本发布到非默认渠道（如抢先体验渠道）后，旧版 IDE 收不到更新提示的问题：现在无论 stable 还是 preview 渠道发布的版本都会正常通知。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.6.5',
     date: '2026-09-05',
     title: '数组操作模块、应用内更新与教程示例工程',

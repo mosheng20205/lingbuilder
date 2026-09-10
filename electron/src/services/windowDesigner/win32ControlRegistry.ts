@@ -1,6 +1,6 @@
 import { CEF3_BROWSER_EVENTS } from '../modules/cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENTS } from '../modules/edgeViewBrowserEvents';
-import { FBRO_PUBLIC_BROWSER_EVENTS } from '../modules/fbroEventCatalog';
+import { FBRO_BROWSER_DESIGNER_EVENTS } from '../modules/fbroEventCatalog';
 
 export type Win32ControlModuleId = 'lingbuilder.win32.basic' | 'lingbuilder.win32.common-controls' | 'lingbuilder.new_emoji.ui' | 'lingbuilder.edgeview' | 'lingbuilder.cef3.browser' | 'lingbuilder.fbro.browser';
 
@@ -169,7 +169,7 @@ const EDGEVIEW_CONTROL_EVENTS = EDGEVIEW_BROWSER_EVENTS.map(definition => event(
   definition.name,
   'notify'
 ));
-const FBRO_CONTROL_EVENTS = FBRO_PUBLIC_BROWSER_EVENTS.map(definition => event(
+const FBRO_CONTROL_EVENTS = FBRO_BROWSER_DESIGNER_EVENTS.map(definition => event(
   definition.eventId,
   `${definition.lingBuilderName} (${definition.officialName})`,
   definition.lingBuilderName,

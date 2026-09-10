@@ -1,9 +1,9 @@
-# SQLite 数据库模块 2.0
+# SQLite 数据库模块 2.1
 
 模块 ID：`lingbuilder.database.sqlite`  
-模块版本：`2.0.0`  
+模块版本：`2.1.0`  
 目标：Windows / MSVC / Win32 与 x64  
-运行库：SQLite 官方 `sqlite3.dll`，DLL 架构必须与生成程序一致
+运行库：LingBuilder 随附 SQLite3MultipleCiphers 运行库（SQLCipher 兼容），或用户自备的官方 `sqlite3.dll`；DLL 架构必须与生成程序一致
 
 ## 定位与商用边界
 
@@ -20,15 +20,15 @@ SQLite 本身属于 public domain，但生产发布仍应固定 SQLite 版本和
 - 所有失效句柄、索引越界、错误模式和底层错误都有可读取的诊断。
 - Win32/x64 均完成 MSVC Release 编译；x64 使用真实 SQLite 运行库完成原生 smoke。
 
-它不替代业务层的数据迁移、访问控制、备份保留、密钥管理和恢复演练。SQLite 官方构建默认不提供数据库文件加密；需要静态加密时应选用经过授权和审计的 SQLite 加密发行版，不能把密码写入 SQL、日志或源码。
+它不替代业务层的数据迁移、访问控制、备份保留、密钥管理和恢复演练。数据库文件加密通过随附运行库的 `sqlite3_key` 导出提供（详见下文「加密数据库（SQLCipher 兼容）」）；密码本身不能写入 SQL、日志或源码。
 
 ## 部署
 
-1. 从 SQLite 官方发布渠道取得对应架构的 DLL，或使用组织内部已审计的兼容构建。
-2. 固定版本、下载地址、文件大小和 SHA-256，不要在每次构建时抓取“最新版”。
-3. 将 Win32 DLL 放到 Win32 EXE 同目录，将 x64 DLL 放到 x64 EXE 同目录。
-4. 启动时调用 `SQLite_加载运行库("sqlite3.dll")`，失败时显示 `SQLite_取错误()`，不要继续假装数据库可用。
-5. 发布前分别验证 Win32/x64 包，确认没有把单一架构 DLL 同时复制到两个输出目录。
+1. F5 构建、AI Bridge 构建和 Visual Studio 工程导出会自动把 LingBuilder 随附的 `sqlite3.dll`（SQLite3MultipleCiphers 2.5.1，SQLCipher 兼容，静态 CRT，仅依赖系统 KERNEL32）复制到生成 exe 同目录，Win32 项目使用 x86 版本，x64 项目使用 x64 版本；来源与 SHA-256 见 `electron/third_party/sqlite/NOTICE.md`。
+2. 也可以从 SQLite 官方发布渠道或组织内部已审计的构建自备 DLL（此时加密命令需要运行库提供 `sqlite3_key` 导出，例如 SQLCipher 或 SQLite3MultipleCiphers）。
+3. 固定版本、下载地址、文件大小和 SHA-256，不要在每次构建时抓取“最新版”。
+4. 启动时调用 `SQLite_加载运行库("sqlite3.dll")` 显式加载自备 DLL，失败时显示 `SQLite_取错误()`，不要继续假装数据库可用；不调用时运行库按系统 DLL 搜索规则查找 exe 同目录的 `sqlite3.dll`。
+5. 发布前分别验证 Win32/x64 包，确认输出目录中的 DLL 架构与 exe 一致。
 
 模块要求运行库至少导出常用的 SQLite 3 C API，包括 `sqlite3_open_v2`、`sqlite3_close_v2`、预编译/绑定/列读取、Online Backup 和 WAL checkpoint。较新的 `sqlite3_changes64`、`sqlite3_total_changes64`、`sqlite3_bind_blob64`、`sqlite3_system_errno` 与 `sqlite3_errstr` 为可选增强；缺少时模块在安全范围内回退。
 
@@ -44,6 +44,30 @@ SQLite 本身属于 public domain，但生产发布仍应固定 SQLite 版本和
 | 3 | 独立内存库 | 每次调用创建独立 `:memory:` 数据库 |
 
 `SQLite_语句步进` 返回 `1` 表示得到一行，`0` 表示执行完成，`-1` 表示失败。只有最近一次步进返回 1 时才允许读取列，语句重置、完成或失败后读取会给出明确错误。列索引从 0 开始，参数索引从 1 开始。`SQLite_取列类型` 返回 `1=整数`、`2=小数`、`3=文本`、`4=字节集`、`5=NULL`，失败返回 0。
+
+## 加密数据库（SQLCipher 兼容）
+
+2.1 起提供基于 `sqlite3_key` 的数据库加密。加密打开命令统一按 **SQLCipher 方案** 开库（先执行 `PRAGMA cipher=sqlcipher` 再注入密钥），因此：
+
+- 本模块创建的加密库可以被官方 SQLCipher 工具读取（DB Browser for SQLite 的 SQLCipher 模式、sqlcipher 命令行等，SQLCipher 4 默认参数）。
+- 由 SQLCipher 4 默认参数加密的存量数据库可以直接打开。
+- SQLCipher 3 或更旧参数加密的存量库不保证直接兼容，请先用 SQLCipher 工具转换后再打开。
+- 明文数据库请继续使用 `SQLite_打开连接` / `SQLite_打开`；对明文库执行加密打开会报“文件不是数据库”。
+
+命令与语义：
+
+| 命令 | 说明 |
+|---|---|
+| `SQLite_运行库是否支持加密()` | 检查当前运行库是否提供 `sqlite3_key` 导出；随附运行库返回真 |
+| `SQLite_打开加密库(路径, 密码)` | 兼容接口：以 SQLCipher 方案打开默认读写加密连接（不存在则创建），自动启用外键并设置 5 秒忙等待 |
+| `SQLite_打开加密连接(路径, 密码, 模式, 忙等待毫秒)` | 打开独立 FULLMUTEX 加密连接，模式含义与 `SQLite_打开连接` 相同 |
+
+行为细节：
+
+- 密码不能为空；运行库缺少 `sqlite3_key` 导出（例如普通官方 `sqlite3.dll`）时，加密打开命令直接失败并给出中文诊断。
+- 打开现有加密库时会立即执行一次真实读取来校验密码；密码错误或文件不是 SQLCipher 兼容格式时返回失败，`SQLite_取错误()` 会包含 SQLite 原始说明（通常为“文件不是数据库”）与错误码。
+- 密钥以 UTF-8 编码传给运行库；SQLCipher 会用密钥派生页密钥，密码本身不落盘。忘记密码即无法恢复数据，请自行做好密钥托管。
+- WAL、事务、预编译语句、完整性检查等其余命令对加密连接与明文连接行为一致。注意：`SQLite_备份到文件` 的备份目标由运行库以无密钥方式打开，与加密源不兼容（SQLCipher 会拒绝），因此**不能**对加密库使用在线备份；如需迁移加密库，请使用 SQLCipher 工具（如 `sqlcipher_export`）或同密钥打开的两个连接间复制。
 
 ## 推荐完整示例
 
@@ -111,8 +135,11 @@ SQLite 本身属于 public domain，但生产发布仍应固定 SQLite 版本和
 | `SQLite_卸载运行库()` | 逻辑型 | 仅在无活动资源时卸载 |
 | `SQLite_取运行库版本()` | 文本型 | 返回实际 DLL 版本 |
 | `SQLite_运行库线程安全()` | 逻辑型 | 检查 SQLite 编译时线程安全开关 |
+| `SQLite_运行库是否支持加密()` | 逻辑型 | 检查运行库是否提供 `sqlite3_key` 加密导出 |
 | `SQLite_打开连接(路径, 模式, 忙等待毫秒)` | SQLite连接 | 打开独立 FULLMUTEX 连接 |
 | `SQLite_打开内存库(名称)` | SQLite连接 | 创建独立内存数据库 |
+| `SQLite_打开加密库(路径, 密码)` | 逻辑型 | 以 SQLCipher 方案打开默认加密连接 |
+| `SQLite_打开加密连接(路径, 密码, 模式, 忙等待毫秒)` | SQLite连接 | 打开独立 FULLMUTEX 加密连接并校验密码 |
 | `SQLite_关闭连接(连接)` | 逻辑型 | 释放所属语句并关闭连接 |
 | `SQLite_关闭全部()` | 空 | 关闭全部资源并卸载 DLL |
 | `SQLite_连接是否有效(连接)` | 逻辑型 | 检查受管 ID 生命周期 |
@@ -171,4 +198,4 @@ cd electron
 npm run smoke:sqlite-native
 ```
 
-脚本编译 Win32/x64 Release 工程，并在 x64 上验证动态加载、WAL、外键、事务/保存点、参数绑定、UTF-8、NULL/BLOB、逐行读取、在线备份、完整性检查、错误码和资源释放。可用 `LINGBUILDER_SQLITE3_DLL` 指向要验收的 x64 官方 DLL。
+脚本编译 Win32/x64 Release 工程，并在 x64 上验证动态加载、SQLCipher 兼容加密打开与错误密码拒绝、WAL、外键、事务/保存点、参数绑定、UTF-8、NULL/BLOB、逐行读取、在线备份、完整性检查、错误码和资源释放。默认使用 LingBuilder 随附运行库（`electron/third_party/sqlite/x64/sqlite3.dll`），也可用 `LINGBUILDER_SQLITE3_DLL` 指向要验收的 x64 SQLCipher 兼容 DLL。

@@ -3901,6 +3901,7 @@ test('generateLingCppNativeWin32Project keeps richer control types and unsupport
   assert.ok(mainCpp.includes('while (true) {'));
   assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环'), false);
   assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环结束'), false);
+  assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：返回'), false);
   assert.ok(mainCpp.includes('return;'));
 });
 

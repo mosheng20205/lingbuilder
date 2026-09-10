@@ -58,7 +58,9 @@ enum LB_FBRO_OBJECT_TYPE {
   LB_FBRO_OBJECT_PROCESS_MESSAGE = 25,
   LB_FBRO_OBJECT_URL_REQUEST = 26,
   LB_FBRO_OBJECT_REQUEST_CONTEXT = 27,
-  LB_FBRO_OBJECT_SERVER = 28
+  LB_FBRO_OBJECT_SERVER = 28,
+  LB_FBRO_OBJECT_WSS_CLIENT = 29,
+  LB_FBRO_OBJECT_DOM_SNAPSHOT = 30
 };
 
 enum LB_FBRO_TASK_STATUS {
@@ -413,10 +415,10 @@ LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_MoveBrowserWindowAsync(LB_FBRO
                                                                          int height,
                                                                          LB_FBRO_TASK_CALLBACK callback,
                                                                          void* user_data);
-/** CEF 内嵌服务器（HTTP/WebSocket）。 */
+/** CEF 内嵌服务器（HTTP/WebSocket）。browser 为创建者浏览器句柄，服务器事件将派发给该实例。 */
 LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_ServerCreateAsync(
-    const wchar_t* url, int port, int max_connections, LB_FBRO_TASK_CALLBACK callback,
-    void* user_data);
+    LB_FBRO_HANDLE browser, const wchar_t* url, int port, int max_connections,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
 LB_FBRO_API int __stdcall LB_FBro_ServerSendWebSocketMessage(LB_FBRO_OBJECT_HANDLE object,
                                                              int connection_id,
                                                              const wchar_t* text);
@@ -428,6 +430,87 @@ LB_FBRO_API int __stdcall LB_FBro_ServerGetAddress(LB_FBRO_OBJECT_HANDLE object,
 LB_FBRO_API int __stdcall LB_FBro_ServerHasConnection(LB_FBRO_OBJECT_HANDLE object,
                                                       int connection_id);
 LB_FBRO_API int __stdcall LB_FBro_ServerShutdown(LB_FBRO_OBJECT_HANDLE object);
+/** VIP WebSocket 客户端拦截（wssClient 句柄来自拦截事件，LB_FBro_ObjectRelease 释放）。 */
+LB_FBRO_API int __stdcall LB_FBro_WssIsNull(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_WssGetAddress(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_WssGetProtocol(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                 size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_WssGetExtensions(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                   size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_WssSend(LB_FBRO_OBJECT_HANDLE object, const wchar_t* text);
+LB_FBRO_API int __stdcall LB_FBro_WssSendBuffer(LB_FBRO_OBJECT_HANDLE object,
+                                                LB_FBRO_BUFFER_HANDLE buffer);
+/** 拦截回传通道：把数据按通道名推送给页面内挂钩脚本（UTF-8 传输）。 */
+LB_FBRO_API int __stdcall LB_FBro_SocketServerSendByBrowser(LB_FBRO_HANDLE browser,
+                                                            const wchar_t* name,
+                                                            const wchar_t* text);
+LB_FBRO_API int __stdcall LB_FBro_SocketServerSendByBrowserBuffer(LB_FBRO_HANDLE browser,
+                                                                  const wchar_t* name,
+                                                                  LB_FBRO_BUFFER_HANDLE buffer);
+LB_FBRO_API int __stdcall LB_FBro_SocketClientSendByBrowser(LB_FBRO_HANDLE browser,
+                                                            const wchar_t* name,
+                                                            const wchar_t* text);
+LB_FBRO_API int __stdcall LB_FBro_SocketClientSendByBrowserBuffer(LB_FBRO_HANDLE browser,
+                                                                  const wchar_t* name,
+                                                                  LB_FBRO_BUFFER_HANDLE buffer);
+LB_FBRO_API int __stdcall LB_FBro_RequestGetMethod(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                   size_t capacity);
+/** DOM 遍历快照：官方 VisitDOM 序列化为受管快照（遍历句柄），节点按序号访问。
+ * 路径为 JSON 数组（如 [0,2,1]），按路径写回会重新 VisitDOM 定位官方节点。 */
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameVisitDomAsync(
+    LB_FBRO_OBJECT_HANDLE frame, int max_depth, int max_nodes, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API int __stdcall LB_FBro_DomGetTitle(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                              size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetBaseUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeType(LB_FBRO_OBJECT_HANDLE object, int node_index);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeCount(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodePath(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                                 wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeName(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                                 wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeValue(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                                  wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeInnerText(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                                      wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeAttributeCount(LB_FBRO_OBJECT_HANDLE object,
+                                                           int node_index);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeAttributeName(LB_FBRO_OBJECT_HANDLE object,
+                                                          int node_index, int attribute_index,
+                                                          wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeAttributeValue(LB_FBRO_OBJECT_HANDLE object,
+                                                           int node_index, int attribute_index,
+                                                           wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetNodeAttributeByName(LB_FBRO_OBJECT_HANDLE object,
+                                                            int node_index, const wchar_t* name,
+                                                            wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomGetFocusedPath(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                                    size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DomFindNodeByPath(LB_FBRO_OBJECT_HANDLE object,
+                                                    const wchar_t* path_json);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_DomSetAttributeByPathAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                             const wchar_t* path_json,
+                                                             const wchar_t* name,
+                                                             const wchar_t* value,
+                                                             LB_FBRO_TASK_CALLBACK callback,
+                                                             void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_DomSetValueByPathAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                         const wchar_t* path_json,
+                                                         const wchar_t* value,
+                                                         LB_FBRO_TASK_CALLBACK callback,
+                                                         void* user_data);
+/** 运行时创建独立 RequestContext；设置 JSON：cachePath/persistSessionCookies/
+ * acceptLanguageList/cookieableSchemesList/cookieableSchemesExcludeDefaults。
+ * 任务结果 JSON 含 context 句柄。 */
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_RequestContextCreateAsync(
+    const wchar_t* settings_json, LB_FBRO_TASK_CALLBACK callback, void* user_data);
+/** 用指定 RequestContext 原地重建浏览器实例：先关闭旧浏览器，关闭完成后自动重启。 */
+LB_FBRO_API int __stdcall LB_FBro_RecreateBrowserWithContext(LB_FBRO_HANDLE browser,
+                                                             LB_FBRO_OBJECT_HANDLE context);
+/** 取弹出窗口所属主浏览器的已登记实例句柄；未知浏览器返回 0。 */
+LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_BrowserHostGetMainBrowser(LB_FBRO_HANDLE browser);
 /** 右键菜单句柄命令（事件期内使用，回调结束后句柄失效）。 */
 LB_FBRO_API int __stdcall LB_FBro_MenuModelAddItem(LB_FBRO_OBJECT_HANDLE object, int command_id,
                                                    const wchar_t* label);
@@ -441,6 +524,7 @@ LB_FBRO_API int __stdcall LB_FBro_MenuModelGetColor(LB_FBRO_OBJECT_HANDLE object
                                                     size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetX(LB_FBRO_OBJECT_HANDLE object);
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetY(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetTypeFlags(LB_FBRO_OBJECT_HANDLE object);
 /** 启用页面调原生 JS 扩展（必须在首个浏览器创建前调用）。 */
 LB_FBRO_API int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function,
                                                 const wchar_t* cancel_function);

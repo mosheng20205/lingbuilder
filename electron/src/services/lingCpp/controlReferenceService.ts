@@ -474,7 +474,8 @@ function resolveControlReference(
 }
 
 function acceptsCurrentWindowReference(parameter: ModuleCommandBindingParameter): boolean {
-  return /^(父级|父元素ID|parent_id)$/u.test(parameter.name)
+  // 父窗口：OCX 宿主类命令（如 COM_创建OCX组件）的宿主父窗口参数。
+  return /^(父级|父元素ID|父窗口|parent_id)$/u.test(parameter.name)
     && (parameter.runtimeRepresentation === 'nativeHandle' || parameter.runtimeRepresentation === 'stableId');
 }
 

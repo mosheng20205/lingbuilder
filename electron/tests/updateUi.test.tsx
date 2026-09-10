@@ -67,3 +67,19 @@ test('检查更新结果携带官网回退与安装包直链，App 命令描述�
   const dialogSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/UpdateDialog.tsx'), 'utf8');
   assert.match(dialogSource, /info\.websiteUrl \|\| OFFICIAL_SITE_URL/u);
 });
+
+test('标题栏升级徽标：静默检查驱动徽标与悬浮更新说明，点击接入应用内更新', async () => {
+  const appSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
+  // 徽标状态与点击动作：保存检查载荷，点击复用现有更新对话框。
+  assert.match(appSource, /const \[updateBadgePayload, setUpdateBadgePayload\]/u);
+  assert.match(appSource, /setUpdateCheckState\(createUpdateDialogInfo\(updateBadgePayload\)\)/u);
+  // 徽标与悬浮面板渲染在标题栏：排除窗口拖拽区，悬浮面板展示版本号与更新说明。
+  assert.match(appSource, /window-no-drag relative flex shrink-0 items-center/u);
+  assert.match(appSource, /发现新版本 v\{updateBadgePayload\.latestVersion/u);
+  assert.match(appSource, /\{updateBadgePayload\.releaseNotes \|\|/u);
+  // 启动静默检查保留首启弹窗，并增加周期复查只刷新徽标。
+  assert.match(appSource, /runSilentUpdateCheck\(true\), 5000\)/u);
+  assert.match(appSource, /runSilentUpdateCheck\(false\), 30 \* 60 \* 1000\)/u);
+  // 手动「检查更新」命令与徽标状态同步：已是最新时清除徽标。
+  assert.match(appSource, /setUpdateBadgePayload\(result\.hasUpdate \? result : null\);/u);
+});

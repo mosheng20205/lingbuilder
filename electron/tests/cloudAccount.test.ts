@@ -39,7 +39,7 @@ test('AI 模块导入失败结果提供复制完整错误详情的入口', () =>
   assert.match(inspector, /const canImportAiFiles = parsedAiFiles\.files\.length > 0[\s\S]+?parsedAiFiles\.diagnostics\.length === 0/u);
   assert.match(inspector, /const importSucceeded = diagnostics.length === 0/u);
   assert.match(inspector, /AI 模块导入未通过：/u);
-  assert.match(inspector, /typeof result\.result\.moduleId !== 'string'/u);
+  assert.match(inspector, /typeof payload\.moduleId !== 'string'/u);
   assert.match(inspector, /typeof item === 'string'/u);
 });
 

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
-import { CLOUD_API, fetchWebsiteBootstrap, type WebsiteBootstrap, type WebsiteCommand, type WebsiteGuide } from './websiteApi';
+import { CLOUD_API, fetchWebsiteBootstrap, type WebsiteBootstrap, type WebsiteCommand, type WebsiteDemo, type WebsiteGuide } from './websiteApi';
+import { readDemoArchive } from './demoSourceArchive';
 import { isDocsSectionItem, WEBSITE_NAV_ITEMS, type WebsiteNavItem } from './websiteNav';
 import './website.css';
 
@@ -120,12 +121,181 @@ function SingleGuidePage({ content, kind, kicker, fallbackTitle, error }: PagePr
 
 function GuideArticle({ guide }: { guide: WebsiteGuide }) { return <article className="markdown-card"><header><span>{guide.category}</span><h2>{guide.title}</h2><p>{guide.summary}</p><div>{guide.tags.map(tag => <small key={tag}>{tag}</small>)}</div></header><MarkdownText source={guide.bodyMarkdown}/><footer>最后更新：{new Date(guide.updatedAt).toLocaleDateString('zh-CN')}{guide.minimumVersion ? ` · 最低版本 ${guide.minimumVersion}` : ''}</footer></article>; }
 
+/** 系列筛选项的固定展示顺序；数据里出现的新类别会排在后面。 */
+const DEMO_SERIES_ORDER = ['CEF3 教程', 'EdgeView 教程', 'FBro 教程', '基础示例', '模块开发'];
+
+function demoEpisode(title: string): string | undefined {
+  return /教程(\d{2})/u.exec(title)?.[1];
+}
+
 function DemosPage({ content, error }: PageProps) {
-  const [category, setCategory] = useState('');
+  const [urlParams, setUrlParams] = useState(() => new URLSearchParams(location.search));
   const [preview, setPreview] = useState<{src: string; alt: string} | null>(null);
-  const categories = useMemo(() => Array.from(new Set(content?.demos.map(item => item.category) || [])), [content]);
-  const demos = content?.demos.filter(item => !category || item.category === category) || [];
-  return <><PageHero kicker="SOURCE EXAMPLES" title="示例 Demo 源码中心" description="下载可以打开、学习、构建和继续修改的 LingBuilder 项目。" icon={FileCode2}/><section className="website-section"><div className="website-shell"><div className="filter-row"><button className={!category ? 'active' : ''} onClick={() => setCategory('')}>全部</button>{categories.map(item => <button className={category === item ? 'active' : ''} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div>{error && <LoadNotice text={error}/>}<div className="demo-grid">{demos.map(demo => <article key={demo.id}>{demo.screenshotUrl && <button className="demo-shot" onClick={() => setPreview({ src: demo.screenshotUrl, alt: `${demo.title}运行截图` })} aria-label={`放大查看${demo.title}的运行截图`}><img src={demo.screenshotUrl} alt={`${demo.title}运行截图`} loading="lazy"/><span><Maximize2 size={13}/>点击查看大图</span></button>}<div className="demo-top"><span>{demo.category}</span><em>{demo.difficulty}</em></div><h2>{demo.title}</h2><p>{demo.summary}</p><dl><div><dt>IDE 版本</dt><dd>{demo.lingBuilderVersion || '当前版'}</dd></div><div><dt>所需模块</dt><dd>{demo.modules.join('、') || '无额外模块'}</dd></div><div><dt>运行环境</dt><dd>{demo.prerequisites || '请查看项目说明'}</dd></div></dl><div className="demo-links">{demo.sourceLinks.map(link => <a href={link.url} key={link.url}><Download size={16}/>{link.label}</a>)}{demo.videoUrl && <a href={demo.videoUrl} target="_blank" rel="noreferrer"><ExternalLink size={16}/>演示视频</a>}</div></article>)}</div>{!content && !error && <LoadNotice text="正在加载示例源码…"/>}</div></section>{preview && <ImageLightbox src={preview.src} alt={preview.alt} onClose={() => setPreview(null)}/>}</>;
+  useEffect(() => {
+    const onPopState = () => setUrlParams(new URLSearchParams(location.search));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  const patchParams = (patch: Record<string, string | null>, mode: 'replace' | 'push' = 'replace') => {
+    const next = new URLSearchParams(location.search);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value); else next.delete(key);
+    }
+    const queryString = next.toString();
+    history[mode === 'push' ? 'pushState' : 'replaceState'](null, '', `/demos${queryString ? `?${queryString}` : ''}`);
+    setUrlParams(next);
+  };
+  const series = urlParams.get('series') || '';
+  const rawQuery = (urlParams.get('q') || '').trim();
+  const keyword = rawQuery.toLowerCase();
+  const selectedSlug = urlParams.get('demo') || '';
+  const demos = content?.demos || [];
+  const categories = useMemo(() => {
+    const present = Array.from(new Set(demos.map(item => item.category)));
+    const preferred = DEMO_SERIES_ORDER.filter(item => present.includes(item));
+    return [...preferred, ...present.filter(item => !preferred.includes(item))];
+  }, [demos]);
+  const filtered = demos.filter(demo => (!series || demo.category === series)
+    && (!keyword || `${demo.title} ${demo.summary} ${demo.category}`.toLowerCase().includes(keyword)));
+  const selected = selectedSlug ? demos.find(demo => demo.slug === selectedSlug) : undefined;
+  const openDemo = (slug: string) => {
+    patchParams({ demo: slug }, 'push');
+    window.scrollTo({ top: 0 });
+  };
+  return <><PageHero kicker="SOURCE EXAMPLES" title="示例 Demo 源码中心" description="下载可以打开、学习、构建和继续修改的 LingBuilder 项目。" icon={FileCode2}/><section className="website-section"><div className="website-shell">
+    {selected
+      ? <DemoDetail demo={selected} onBack={() => patchParams({ demo: null })} onPreview={setPreview}/>
+      : <>
+        <div className="demos-toolbar">
+          <label className="demo-search">
+            <Search size={15}/>
+            <input value={urlParams.get('q') || ''} placeholder="搜索示例：会话隔离、CDP、下载、填表…" onChange={event => patchParams({ q: event.target.value || null })}/>
+            {rawQuery && <button type="button" aria-label="清空搜索" onClick={() => patchParams({ q: null })}><X size={13}/></button>}
+          </label>
+          <div className="filter-row demos-series-row">
+            <button className={!series ? 'active' : ''} onClick={() => patchParams({ series: null })}>全部</button>
+            {categories.map(item => <button className={series === item ? 'active' : ''} key={item} onClick={() => patchParams({ series: item })}>{item}</button>)}
+          </div>
+        </div>
+        {error && <LoadNotice text={error}/>}
+        {!error && <p className="demo-count">{filtered.length} 个示例{series ? ` · ${series}` : ''}{rawQuery ? ` · 关键词“${rawQuery}”` : ''}</p>}
+        <div className="demo-grid">{filtered.map(demo => <DemoCard key={demo.id} demo={demo} onOpen={() => openDemo(demo.slug)} onPreview={setPreview}/>)}</div>
+        {content && !filtered.length && <div className="website-empty">没有匹配的示例。换个关键词，或清除系列/搜索条件再试。</div>}
+        {!content && !error && <LoadNotice text="正在加载示例源码…"/>}
+      </>}
+  </div></section>{preview && <ImageLightbox src={preview.src} alt={preview.alt} onClose={() => setPreview(null)}/>}</>;
+}
+
+function DemoCard({ demo, onOpen, onPreview }: { demo: WebsiteDemo; onOpen: () => void; onPreview: (preview: { src: string; alt: string }) => void }) {
+  const episode = demoEpisode(demo.title);
+  return <article>
+    {demo.screenshotUrl && <button className="demo-shot" onClick={() => onPreview({ src: demo.screenshotUrl, alt: `${demo.title}运行截图` })} aria-label={`放大查看${demo.title}的运行截图`}><img src={demo.screenshotUrl} alt={`${demo.title}运行截图`} loading="lazy"/><span><Maximize2 size={13}/>点击查看大图</span></button>}
+    <div className="demo-top"><span>{demo.category}</span><em>{demo.difficulty}</em></div>
+    <h2 className="demo-card-title"><button onClick={onOpen}>{episode && <span className="demo-ep" aria-hidden="true">{episode}</span>}{demo.title}</button></h2>
+    <p>{demo.summary}</p>
+    {(demo.lingBuilderVersion || demo.modules.length > 0 || demo.prerequisites) && <dl>
+      {demo.lingBuilderVersion && <div><dt>IDE 版本</dt><dd>{demo.lingBuilderVersion}</dd></div>}
+      {demo.modules.length > 0 && <div><dt>所需模块</dt><dd>{demo.modules.join('、')}</dd></div>}
+      {demo.prerequisites && <div><dt>运行环境</dt><dd>{demo.prerequisites}</dd></div>}
+    </dl>}
+    <div className="demo-links">{demo.sourceLinks.map(link => <a href={link.url} key={link.url}><Download size={16}/>{link.label}</a>)}{demo.videoUrl && <a href={demo.videoUrl} target="_blank" rel="noreferrer"><ExternalLink size={16}/>演示视频</a>}</div>
+  </article>;
+}
+
+function DemoDetail({ demo, onBack, onPreview }: { demo: WebsiteDemo; onBack: () => void; onPreview: (preview: { src: string; alt: string }) => void }) {
+  const episode = demoEpisode(demo.title);
+  return <article className="demo-detail">
+    <button className="demo-detail-back" onClick={onBack}><ArrowLeft size={15}/>返回示例列表</button>
+    <header className="demo-detail-head">
+      <div className="demo-detail-media">
+        {demo.screenshotUrl && <button className="demo-shot" onClick={() => onPreview({ src: demo.screenshotUrl, alt: `${demo.title}运行截图` })} aria-label={`放大查看${demo.title}的运行截图`}><img src={demo.screenshotUrl} alt={`${demo.title}运行截图`}/><span><Maximize2 size={13}/>点击查看大图</span></button>}
+      </div>
+      <div className="demo-detail-info">
+        <p className="demo-detail-kicker">{demo.category} · {demo.difficulty}{episode ? ` · 第 ${Number(episode)} 集` : ''}</p>
+        <h2>{demo.title}</h2>
+        <p>{demo.summary}</p>
+        <dl>
+          {demo.lingBuilderVersion && <div><dt>IDE 版本</dt><dd>{demo.lingBuilderVersion}</dd></div>}
+          <div><dt>所需模块</dt><dd>{demo.modules.join('、') || '无额外模块'}</dd></div>
+          {demo.prerequisites && <div><dt>运行环境</dt><dd>{demo.prerequisites}</dd></div>}
+          <div><dt>许可</dt><dd>{demo.license || '示例许可'}</dd></div>
+        </dl>
+        <div className="demo-links">
+          {demo.sourceLinks.map(link => <a className="demo-download-primary" href={link.url} key={link.url}><Download size={16}/>{link.label}</a>)}
+          {demo.videoUrl && <a href={demo.videoUrl} target="_blank" rel="noreferrer"><ExternalLink size={16}/>演示视频</a>}
+        </div>
+      </div>
+    </header>
+    <DemoSourcePreview demo={demo}/>
+  </article>;
+}
+
+type DemoSourceState =
+  | { phase: 'idle' | 'loading' }
+  | { phase: 'error'; message: string }
+  | { phase: 'ready'; manifest: Record<string, unknown>; files: Array<{ name: string; text: string }> };
+
+function DemoSourcePreview({ demo }: { demo: WebsiteDemo }) {
+  const [state, setState] = useState<DemoSourceState>({ phase: 'idle' });
+  const [activeFile, setActiveFile] = useState(0);
+  const [copied, setCopied] = useState('');
+  const link = demo.sourceLinks[0];
+  const load = async () => {
+    if (!link) return;
+    setState({ phase: 'loading' });
+    try {
+      const target = new URL(link.url, location.href);
+      // 下载域不返回 CORS 头：跨域时走 admin nginx 的同源反代（/uploads/ → msimgimg.xyz）。
+      // 包地址的 pathname 天然以 /uploads/ 开头，不要重复拼接前缀。
+      const fetchUrl = target.origin === location.origin ? target.toString()
+        : target.pathname.startsWith('/uploads/') ? `${target.pathname}${target.search}`
+        : `/uploads${target.pathname}${target.search}`;
+      const response = await fetch(fetchUrl);
+      if (!response.ok) throw new Error(`源码包下载失败（HTTP ${response.status}）。`);
+      const entries = await readDemoArchive(await response.arrayBuffer());
+      const manifestEntry = entries.find(entry => entry.name === 'lingbuilder-source-package.json');
+      const manifest = manifestEntry ? JSON.parse(new TextDecoder().decode(manifestEntry.data)) as Record<string, unknown> : {};
+      const files = entries.filter(entry => entry.name.toLowerCase().endsWith('.lcpp'))
+        .map(entry => ({ name: entry.name.replace(/^workspace\//u, ''), text: new TextDecoder().decode(entry.data) }))
+        .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'));
+      if (!files.length) throw new Error('源码包里没有可预览的 .lcpp 源文件，请下载后用 LingBuilder 查看。');
+      setActiveFile(0);
+      setState({ phase: 'ready', manifest, files });
+    } catch (reason) {
+      setState({ phase: 'error', message: reason instanceof Error ? reason.message : '源码预览加载失败，请稍后重试或直接下载源码包。' });
+    }
+  };
+  const copyActive = async () => {
+    if (state.phase !== 'ready') return;
+    const file = state.files[activeFile];
+    if (!file) return;
+    await navigator.clipboard.writeText(file.text);
+    setCopied(file.name);
+    window.setTimeout(() => setCopied(''), 2000);
+  };
+  const createdBy = state.phase === 'ready' ? state.manifest.createdBy as { version?: string } | undefined : undefined;
+  const capabilities = state.phase === 'ready' && Array.isArray(state.manifest.requiredCapabilities)
+    ? state.manifest.requiredCapabilities as string[] : [];
+  return <section className="demo-source">
+    <h3><FileCode2 size={15}/>源码预览</h3>
+    {state.phase === 'idle' && <div className="demo-source-empty">
+      <p>在线查看这个示例的中文源码（.lcpp），无需下载导入。完整工程（窗口设计器模型、配置、示例资源）请用上方按钮下载源码包后在 LingBuilder 里打开。</p>
+      <div className="demo-source-actions"><button type="button" onClick={() => void load()} disabled={!link}>{link ? '加载源码预览' : '源码包缺少下载地址'}</button></div>
+    </div>}
+    {state.phase === 'loading' && <div className="demo-source-empty">正在下载并解析源码包…</div>}
+    {state.phase === 'error' && <div className="demo-source-empty"><p>{state.message}</p><div className="demo-source-actions"><button type="button" onClick={() => void load()}>重试</button></div></div>}
+    {state.phase === 'ready' && <>
+      <div className="demo-source-manifest">
+        {createdBy?.version && <span>打包 IDE v{createdBy.version}</span>}
+        <span>需要 IDE ≥ {String(state.manifest.minimumGeneratorVersion || '0.2.5')}</span>
+        {capabilities.length > 0 && <span>生成器能力：{capabilities.join('、')}</span>}
+        <span>{state.files.length} 个 .lcpp 源文件</span>
+      </div>
+      <div className="demo-files">{state.files.map((file, index) => <button type="button" className={index === activeFile ? 'active' : ''} key={file.name} onClick={() => setActiveFile(index)}>{file.name}</button>)}</div>
+      {state.files[activeFile] && <div className="code-copy demo-source-code"><code>{state.files[activeFile].text}</code><button aria-label="复制当前源码" onClick={() => void copyActive()}>{copied === state.files[activeFile]?.name ? <CheckCircle2/> : <Copy/>}</button></div>}
+      <p className="demo-source-note">预览只含源码文本；在 LingBuilder 里打开源码包可以获得结构化编辑、补全、F5 构建运行的完整体验。</p>
+    </>}
+  </section>;
 }
 
 /** 截图大图预览：Esc、点击遮罩或关闭按钮都能退出，打开期间锁定页面滚动。 */

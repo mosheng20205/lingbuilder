@@ -24,6 +24,8 @@ export interface AiChatRequest {
   modelAlias: string;
   messages: AiMessage[];
   maxOutputTokens?: number;
+  /** 结构化输出场景（如模块生成）请求上游关闭思考过程，避免推理文本挤占输出预算或混入正文。 */
+  thinking?: 'disabled';
   rulebookVersion: string;
 }
 export interface AiEditRequest extends AiChatRequest {

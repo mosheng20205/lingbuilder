@@ -12,8 +12,10 @@ export class WebsiteContentService {
 
   /** 供客户端检查更新的公开接口：返回最新发布版本与安装包直链/校验信息；缺数据的字段显式置 null，便于客户端统一判空。 */
   async latestVersion(input: { platform: string; architecture: string; channel: string }) {
+    // channel 为空表示客户端未指定渠道（现有 IDE 客户端不带该参数）：跨 stable/preview 渠道取最高版本，
+    // 避免发布记录登记到非默认渠道后全部存量客户端收不到更新通知。
     const releases = await this.prisma.websiteDownloadRelease.findMany({
-      where: { publicationStatus: 'PUBLISHED', channel: input.channel || 'stable', platform: input.platform || 'Windows', architecture: input.architecture || 'x64' },
+      where: { publicationStatus: 'PUBLISHED', ...(input.channel ? { channel: input.channel } : {}), platform: input.platform || 'Windows', architecture: input.architecture || 'x64' },
       orderBy: [{ sortOrder: 'desc' }, { publishedAt: 'desc' }],
       select: {
         version: true, title: true, summary: true, publishedAt: true, channel: true, fileSize: true, sha256: true, releaseNotes: true,

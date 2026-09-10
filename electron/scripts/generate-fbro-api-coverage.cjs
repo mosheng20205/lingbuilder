@@ -8,7 +8,7 @@ const EXPECTED_HEADER_COUNT = 73;
 const EXPECTED_SIGNATURE_COUNT = 1071;
 const EXPECTED_EVENT_SLOT_COUNT = 174;
 const EXPECTED_UNIQUE_EVENT_SIGNATURE_COUNT = 158;
-const EXPECTED_BRIDGE_VERSION = '2.6.0';
+const EXPECTED_BRIDGE_VERSION = '2.7.0';
 const REQUIRED_EVENT_V3_EXPORTS = Object.freeze([
   'LB_FBro_SetEventCallbackV3',
   'LB_FBro_SetEventSubscription',
@@ -80,6 +80,17 @@ const INTERNAL_INIT_EVENTS = new Set([
   'OnBeforeCommandLineProcessing', 'OnRegisterCustomSchemes', 'OnContextInitialized',
   'OnBeforeChildProcessLaunch', 'OnScheduleMessagePumpWork', 'OnWebKitInitialized',
   'ClearData', 'FinishShutdown'
+]);
+// VIP WebSocket 客户端拦截五事件：手写在 BridgeInitEvent，作为公开事件下发受管
+// wssClient 句柄与缓冲，并支持同步篡改写回（与火山 VIPWebsocket拦截测试 对齐）。
+const PUBLIC_INIT_EVENTS = new Set([
+  'OnWebSocketClientCreate', 'OnWebSocketClientConnect', 'OnWebSocketClientClose',
+  'OnWebSocketClientMessage', 'OnWebSocketClientSend'
+]);
+// 本地内嵌服务器全部 8 个回调：手写在 BridgeServerHandle，派发给创建者浏览器实例。
+const PUBLIC_SERVER_EVENTS = new Set([
+  'OnServerCreated', 'OnServerDestroyed', 'OnClientConnected', 'OnClientDisconnected',
+  'OnWebSocketConnected', 'OnWebSocketMessage', 'OnWebSocketRequest', 'OnHttpRequest'
 ]);
 const NORMALIZED_INIT_EVENTS = new Set([
   'OnProcessMessageReceived', 'OnLoadingStateChange', 'OnLoadStart', 'OnLoadEnd', 'OnLoadError'
@@ -204,6 +215,7 @@ const IMPLEMENTED_ADVANCED_EXPORTS = new Set([
   'FBroHsRequest_Create', 'FBroHsRequest_GetURL', 'FBroHsRequest_SetURL',
   'FBroHsRequest_SetMethod', 'FBroHsRequest_SetReferrer',
   'FBroHsRequest_SetHeaderMap_Array', 'FBroHsRequest_SetPostData',
+  'FBroHsRequest_GetMethod',
   'FBroHsPostData_Create', 'FBroHsPostData_AddElement', 'FBroHsPostData_GetElementCount',
   'FBroHsPostDataElement_Create', 'FBroHsPostDataElement_SetToData',
   'FBroHsPostDataElement_GetBytesCount', 'FBroHsPostDataElement_GetBytes',
@@ -229,7 +241,24 @@ const IMPLEMENTED_ADVANCED_EXPORTS = new Set([
   'FBroJSFunctionCallback_Failure',
   'FBroHsServer_CreateServer', 'FBroHsServer_SendWebSocketMessage',
   'FBroHsServer_GetAddress', 'FBroHsServer_HasConnection',
-  'FBroHsServer_Shutdown'
+  'FBroHsServer_Shutdown',
+  // VIP WebSocket 客户端拦截闭环（2026-09-09 四火山工程缺口封装）。
+  'FBroHsSocketServer_SendByBrowser', 'FBroHsSocketClient_SendByBrowser',
+  'FBroHsWSSClient_IsNull', 'FBroHsWSSClient_GetAddress', 'FBroHsWSSClient_GetProtocol',
+  'FBroHsWSSClient_GetExtensions', 'FBroHsWSSClient_Send', 'FBroHsWSSClient_SendData',
+  // 原生 DOM 遍历快照族（VisitDOM 序列化为受管快照，路径写回重走官方节点）。
+  'FBroHsBrowserFrame_VisitDOM',
+  'FBroHsDOMDocument_GetType', 'FBroHsDOMDocument_GetDocument', 'FBroHsDOMDocument_GetBody',
+  'FBroHsDOMDocument_GetHead', 'FBroHsDOMDocument_GetTitle', 'FBroHsDOMDocument_GetBaseURL',
+  'FBroHsDOMDocument_GetFocusedNode',
+  'FBroHsDOMNode_GetType', 'FBroHsDOMNode_IsElement', 'FBroHsDOMNode_IsSame',
+  'FBroHsDOMNode_GetName', 'FBroHsDOMNode_GetValue', 'FBroHsDOMNode_GetElementInnerText',
+  'FBroHsDOMNode_GetElementAttributes', 'FBroHsDOMNode_HasChildren',
+  'FBroHsDOMNode_GetFirstChild', 'FBroHsDOMNode_GetNextSibling',
+  'FBroHsDOMNode_SetElementAttribute', 'FBroHsDOMNode_SetValue',
+  'FBroHsContextMenuParams_pGetTypeFlags',
+  // 运行时独立 RequestContext 与主浏览器解析。
+  'FBroHsRequestContext_CreateContext', 'FBroHsBrowserHost_GetMainBrowser'
 ]);
 
 const IMPLEMENTED_VIP_EXPORT_PATTERNS = [
@@ -328,7 +357,9 @@ const NATIVE_CEF_EQUIVALENT_CALLS = new Map([
   ['FBroHsBrowserListControl_GetBrowserFlagList', 'LB_FBro_GetInstanceFlagsJson'],
   ['FBroHsBinaryValue_IsValid', 'LB_FBro_IsBufferValid'],
   ['FBroHsPostData_GetElements', '->GetElements('],
-  ['FBroHsPostDataElement_SetToBytes', 'SetToData(']
+  ['FBroHsPostDataElement_SetToBytes', 'SetToData('],
+  // DOM 快照模型：按名取属性由受管快照查找等价实现（无存活官方节点）。
+  ['FBroHsDOMNode_GetElementAttribute', 'LB_FBro_DomGetNodeAttributeByName']
 ]);
 
 const INTERNAL_NAME_PATTERNS = [
@@ -655,7 +686,9 @@ function createEventCatalog(source, cefEventNames) {
       : notApplicable ? 'notApplicable'
       : managedBrowserBoundary ? 'managed'
       : item.ownerClass === 'FBroHsBroEvent' ? 'public'
-      : item.ownerClass === 'FBroHsInitEvent' ? 'managed'
+      : (item.ownerClass === 'FBroHsInitEvent' && PUBLIC_INIT_EVENTS.has(item.officialName))
+        || (item.ownerClass === 'FBroHsServerHandle' && PUBLIC_SERVER_EVENTS.has(item.officialName))
+        ? 'public'
       : 'managed';
     const definition = cefEventNames.get(item.officialName);
     const translated = translateOperation(item.officialName.replace(/^On/u, ''));
@@ -671,7 +704,11 @@ function createEventCatalog(source, cefEventNames) {
       : item.returnType !== 'void' ? 2000 : 0;
     const bridgeStatus = internal ? 'internal' : notApplicable ? 'notApplicable'
       : managedBrowserBoundary ? 'managed'
-      : item.ownerClass === 'FBroHsBroEvent' ? 'implemented' : 'managed';
+      : item.ownerClass === 'FBroHsBroEvent' ? 'implemented'
+      : (item.ownerClass === 'FBroHsInitEvent' && PUBLIC_INIT_EVENTS.has(item.officialName))
+        || (item.ownerClass === 'FBroHsServerHandle' && PUBLIC_SERVER_EVENTS.has(item.officialName))
+        ? 'implemented'
+      : 'managed';
     return {
       eventId: `fbro.event.${item.ownerClass.toLowerCase()}.${item.officialName.toLowerCase()}.${signatureHash.slice(0, 12)}`,
       eventToken: `0x${signatureHash.slice(0, 16)}`,
@@ -827,7 +864,13 @@ function renderBrowserEventOverrides(events) {
     'OnCreateExtension',
     'OnCreateExtensionError',
     'OnAddExtension',
-    'OnRemoveExtension'
+    'OnRemoveExtension',
+    // VIP WebSocket 客户端拦截五事件：手写覆盖，注册受管 wssClient 句柄与缓冲并支持篡改写回。
+    'OnWebSocketClientCreate',
+    'OnWebSocketClientConnect',
+    'OnWebSocketClientClose',
+    'OnWebSocketClientMessage',
+    'OnWebSocketClientSend'
   ]);
   const sections = [];
   for (const [ownerClass, macro, customEvents] of [

@@ -64,7 +64,10 @@ const TEXT_PARAMETER_ALLOWLIST = new Map<string, string>([
   ['lingbuilder.win32.common-controls/表格_设置按钮文字/3/按钮ID', 'DataGrid 单元格内部按钮 ID，不是设计器控件。'],
   ['lingbuilder.win32.common-controls/表格_设置按钮样式/3/按钮ID', 'DataGrid 单元格内部按钮 ID，不是设计器控件。'],
   ['lingbuilder.cef3.platform/CEF3平台_组件更新器按ID取组件/1/组件ID', 'Chromium 组件更新服务的字符串组件 ID，不是设计器组件。'],
-  ['lingbuilder.cef3.platform/CEF3平台_组件更新器更新/1/组件ID', 'Chromium 组件更新服务的字符串组件 ID，不是设计器组件。']
+  ['lingbuilder.cef3.platform/CEF3平台_组件更新器更新/1/组件ID', 'Chromium 组件更新服务的字符串组件 ID，不是设计器组件。'],
+  ['lingbuilder.advanced.com/COM_创建对象免注册/1/组件DLL路径', '免注册 COM 组件的 DLL 文件路径，不是设计器组件。'],
+  ['lingbuilder.advanced.com/COM_注册组件/0/组件DLL路径', '待注册组件的 DLL 文件路径，不是设计器组件。'],
+  ['lingbuilder.advanced.com/COM_注销组件/0/组件DLL路径', '待注销组件的 DLL 文件路径，不是设计器组件。']
 ]);
 
 const SUPPORTED_RUNTIME_REPRESENTATIONS = new Set<ModuleControlRuntimeRepresentation>([

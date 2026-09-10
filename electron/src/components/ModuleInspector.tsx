@@ -14,6 +14,7 @@ import {
   Inbox,
   Info,
   Layers,
+  Loader2,
   LockKeyhole,
   Package,
   RefreshCw,
@@ -48,6 +49,31 @@ import {
   parseAiModuleOutputText,
   type AiModuleImportResultForClipboard
 } from '../services/modules/aiModuleImportParser';
+import { isLocalModulePackagePath } from '../services/modules/modulePackageIntakeService';
+import { buildModuleManifestPhaseMessages, buildModuleFilesPhaseMessages, buildModuleMissingFilesPhaseMessages } from '../services/modules/aiModuleGeneration';
+
+function collectRegisteredRelativePaths(manifestContent: string): string[] {
+  try {
+    const manifest = JSON.parse(manifestContent) as {
+      targets?: Array<{ includeDirs?: unknown; headers?: unknown; sources?: unknown; libs?: unknown; runtimeFiles?: unknown }>;
+      contributes?: { docs?: Array<{ path?: unknown }>; examples?: Array<{ path?: unknown }> };
+    };
+    const paths: string[] = [];
+    const pushAll = (value: unknown) => { if (Array.isArray(value)) for (const item of value) if (typeof item === 'string') paths.push(item); };
+    for (const target of manifest.targets || []) {
+      pushAll(target.headers);
+      pushAll(target.sources);
+      pushAll(target.libs);
+      pushAll(target.runtimeFiles);
+    }
+    for (const doc of manifest.contributes?.docs || []) if (typeof doc.path === 'string') paths.push(doc.path);
+    for (const example of manifest.contributes?.examples || []) if (typeof example.path === 'string') paths.push(example.path);
+    return [...new Set(paths.map(p => p.replace(/\\/gu, '/').replace(/^\.\//u, '')))];
+  } catch {
+    return [];
+  }
+}
+import { readPreferredCloudModelAlias } from '../services/ai/cloudModelPreference';
 import ModulePublicInfoDialog from './ModulePublicInfoDialog';
 
 type ModuleSectionId = 'installed' | 'aiGenerate' | 'packageInstall' | 'packageExport' | 'developer' | 'market' | 'history';
@@ -134,6 +160,12 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [aiImportResult, setAiImportResult] = useState<AiModuleImportResultForClipboard | null>(null);
   const [aiImportCopyState, setAiImportCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   const aiImportCopyTimerRef = useRef<number | null>(null);
+  const [aiRequirement, setAiRequirement] = useState('');
+  const [aiGenerateChannel, setAiGenerateChannel] = useState<'system' | 'byok'>('system');
+  const [aiGenerateStage, setAiGenerateStage] = useState<'idle' | 'generating' | 'importing'>('idle');
+  const [aiGenerateDiagnostics, setAiGenerateDiagnostics] = useState<string[]>([]);
+  const aiGenerateRequestRef = useRef<string | null>(null);
+  const [cloudAuthenticated, setCloudAuthenticated] = useState(false);
   const [enableAfterInstall, setEnableAfterInstall] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<ModuleSectionId, boolean>>({
     installed: true,
@@ -270,15 +302,35 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     setExpandedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
   }, []);
 
-  const previewPackage = async (pathValue: string) => {
-    if (!pathValue.trim()) {
+  const resolvePackageInputPath = async (rawValue: string): Promise<string | null> => {
+    const pathValue = rawValue.trim();
+    if (!pathValue) {
       setStatusText('请先填写或拖入 .lbmod 模块包路径。');
-      return;
+      return null;
     }
-    if (!isAllowedWorkspacePath(pathValue, '.lingbuilder/module-packages')) {
-      setStatusText('模块包必须使用 .lingbuilder/module-packages 下的工作区相对路径。');
-      return;
+    if (isAllowedWorkspacePath(pathValue, '.lingbuilder/module-packages')) return pathValue;
+    if (isLocalModulePackagePath(pathValue)) {
+      const importApi = window.lingBuilder?.modules?.importPackage;
+      if (!importApi) {
+        setStatusText('网页版只能预览 .lingbuilder/module-packages 下的工作区相对路径；桌面版可直接填写本机绝对路径（自动复制到工作区）。');
+        return null;
+      }
+      setStatusText('检测到本机绝对路径，正在把模块包安全复制到当前工作区…');
+      const imported = await importApi(pathValue);
+      if (!imported.ok || !imported.relativePath) {
+        setStatusText(`模块包导入失败：${imported.error || '未返回工作区路径'}`);
+        return null;
+      }
+      setPackagePath(imported.relativePath);
+      return imported.relativePath;
     }
+    setStatusText('模块包路径必须是 .lingbuilder/module-packages 下的工作区相对路径，或本机 .lbmod 绝对路径。');
+    return null;
+  };
+
+  const previewPackage = async (pathValue: string) => {
+    const resolvedPath = await resolvePackageInputPath(pathValue);
+    if (!resolvedPath) return;
     setIsLoading(true);
     setInstallStage('reading');
     try {
@@ -288,14 +340,14 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       const response = await fetch('/api/modules/package/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, packagePath: pathValue.trim() })
+        body: JSON.stringify({ projectId, packagePath: resolvedPath })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块包预览失败');
       setInstallPreview(result.preview);
       setInstallStage('preview');
       setStatusText(result.preview.canInstall ? '模块包预览通过，等待确认安装。' : '模块包预览未通过，请查看诊断。');
-      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块包】已完成安装预览：${pathValue}`);
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块包】已完成安装预览：${resolvedPath}`);
     } catch (error) {
       setInstallStage('error');
       setStatusText(`模块包预览失败：${error instanceof Error ? error.message : String(error)}`);
@@ -752,6 +804,228 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     && parsedAiFiles.files.some(file => file.path === AI_MODULE_MANIFEST_FILE)
     && parsedAiFiles.diagnostics.length === 0;
 
+  useEffect(() => {
+    const cloudAccount = window.lingBuilder?.cloudAccount;
+    if (!cloudAccount) return;
+    let active = true;
+    void cloudAccount.session().then(session => {
+      if (!active) return;
+      setCloudAuthenticated(session?.authenticated === true);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  const applyAiModuleImportResult = (result: { result?: unknown }): string[] => {
+    if (!result.result || typeof result.result !== 'object') throw new Error('服务未返回有效的 AI 模块导入结果。');
+    const payload = result.result as { moduleId?: unknown; moduleName?: unknown; outDir?: unknown; fileCount?: unknown; overwrittenExisting?: unknown; diagnostics?: unknown };
+    if (typeof payload.moduleId !== 'string'
+      || typeof payload.moduleName !== 'string'
+      || typeof payload.outDir !== 'string'
+      || !Number.isInteger(payload.fileCount)
+      || (payload.fileCount as number) < 0) {
+      throw new Error('服务返回的 AI 模块导入结果不完整。');
+    }
+    const moduleDir: string = payload.outDir;
+    const diagnostics: string[] = Array.isArray(payload.diagnostics)
+      ? payload.diagnostics.filter((item: unknown): item is string => typeof item === 'string')
+      : [];
+    const overwrittenExisting = payload.overwrittenExisting === true;
+    const importSucceeded = diagnostics.length === 0;
+    setAiImportResult({
+      ok: importSucceeded,
+      moduleDir,
+      diagnostics,
+      message: `${importSucceeded ? '已导入' : 'AI 模块导入未通过'} ${payload.moduleName}（${payload.moduleId}）到 ${moduleDir}，共 ${payload.fileCount} 个文件。${importSucceeded ? '导入后校验通过。' : '导入后校验未通过，请查看诊断。'}${overwrittenExisting ? '目标目录原本已存在，本次覆盖了同名文件；旧目录中多余的文件未删除。' : ''}`
+    });
+    if (importSucceeded) {
+      setDeveloperValidatePath(moduleDir);
+      setExportModuleDir(moduleDir);
+      setStatusText(`${overwrittenExisting ? 'AI 模块已导入并覆盖同名文件' : 'AI 模块已导入'}到 ${moduleDir}；“模块包制作”和“校验模块”路径已自动填好。`);
+      onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】已从 AI 输出导入 ${payload.moduleId} 到 ${moduleDir}（${payload.fileCount} 个文件）。`);
+    } else {
+      setStatusText(`AI 模块导入未通过：${diagnostics.join('；')}`);
+    }
+    return diagnostics;
+  };
+
+  const collectSystemAiOutput = async (messages: { systemPrompt: string; userPrompt: string }): Promise<string> => {
+    const cloudAi = window.lingBuilder?.cloudAi;
+    if (!cloudAi) throw new Error('当前运行环境不支持系统 AI；请安装 LingBuilder 桌面版，或切换到自定义 API 通道。');
+    const cloudAccount = window.lingBuilder?.cloudAccount;
+    if (!cloudAccount) throw new Error('当前运行环境不支持系统 AI 账号；请安装 LingBuilder 桌面版，或切换到自定义 API 通道。');
+    // 登录态在点击时实时解析；模型直接使用 AI 面板保存的偏好——
+    // models() 等普通请求不会自动刷新过期 access token，不能作为是否可用的判据（流式请求会自行刷新）。
+    const session = await cloudAccount.session().catch(() => null);
+    if (!session?.authenticated) throw new Error('请先在 AI 助手面板登录系统 AI，或切换到自定义 API 通道。');
+    const modelAlias = readPreferredCloudModelAlias();
+    if (!modelAlias) throw new Error('系统 AI 尚未选择可用模型，请在 AI 助手面板选择模型后重试。');
+    const chunks: string[] = [];
+    return await new Promise<string>((resolve, reject) => {
+      let requestKey = '';
+      let settled = false;
+      let unsubscribe: () => void = () => undefined;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        if (error) reject(error);
+        else resolve(chunks.join(''));
+      };
+      unsubscribe = cloudAi.onEvent((key, event) => {
+        if (key !== requestKey) return;
+        if (event.type === 'delta' && typeof event.text === 'string') chunks.push(event.text);
+        else if (event.type === 'completed') finish();
+        else if (event.type === 'error') finish(new Error(event.message || '系统 AI 请求失败。'));
+      });
+      void cloudAi.start('chat', {
+        modelAlias,
+        maxOutputTokens: 16384,
+        thinking: 'disabled',
+        rulebookVersion: 'lingbuilder-rulebook-v1',
+        messages: [{ role: 'user' as const, content: `${messages.systemPrompt}\n\n${messages.userPrompt}` }]
+      }).then(key => {
+        requestKey = key;
+        aiGenerateRequestRef.current = key;
+      }).catch(error => finish(error instanceof Error ? error : new Error(String(error))));
+    });
+  };
+
+  // 系统 AI 模型输出上限较小（如 4096 tokens），单轮装不下完整模块，因此拆成
+  // 「清单 → 其余文件」两个阶段，每阶段输出都控制在预算内。
+  const collectSystemAiPhaseFiles = async (
+    buildMessages: () => { systemPrompt: string; userPrompt: string },
+    phaseLabel: string
+  ): Promise<Array<{ path: string; content: string }>> => {
+    let raw = await collectSystemAiOutput(buildMessages());
+    let parsed = parseAiModuleOutputText(raw);
+    if (parsed.files.length === 0) {
+      const retryMessages = buildMessages();
+      retryMessages.userPrompt += `\n\n【重试要求】上一轮回复未通过输出契约解析（${parsed.diagnostics[0] || '未识别到「### 文件：」标题'}）。请重新生成本轮内容：除「### 文件：<相对路径>」标题与围栏代码块外不得输出任何文字，所有代码块必须完整闭合。`;
+      raw = await collectSystemAiOutput(retryMessages);
+      parsed = parseAiModuleOutputText(raw);
+      if (parsed.files.length === 0) {
+        setAiModulePasteText(raw);
+        throw new Error(`${phaseLabel}解析失败：${parsed.diagnostics.join('；') || '未识别到「### 文件：」标题'}。AI 原始回复已填入下方手动模式文本框。`);
+      }
+    }
+    return parsed.files;
+  };
+
+  const generateSystemAiModuleFiles = async (requirementText: string, guideText: string): Promise<Array<{ path: string; content: string }>> => {
+    const manifestFiles = await collectSystemAiPhaseFiles(
+      () => buildModuleManifestPhaseMessages(requirementText, guideText),
+      '清单阶段'
+    );
+    const manifestFile = manifestFiles.find(file => file.path.replace(/\\/gu, '/').replace(/^\.\//u, '') === AI_MODULE_MANIFEST_FILE);
+    if (!manifestFile) {
+      throw new Error('清单阶段没有输出 lingbuilder.module.json，无法继续生成其余文件；请重试。');
+    }
+    let restFiles = await collectSystemAiPhaseFiles(
+      () => buildModuleFilesPhaseMessages(requirementText, manifestFile.content, guideText),
+      '文件阶段'
+    );
+    // 兜底：文件阶段若把清单也输出了，以清单阶段结果为准。
+    const normalizePath = (p: string) => p.replace(/\\/gu, '/').replace(/^\.\//u, '');
+    restFiles = restFiles.filter(file => normalizePath(file.path) !== AI_MODULE_MANIFEST_FILE);
+    // 收敛补全：比对清单登记的文件与实际产出，缺什么定向补什么（一轮）。
+    const missing = collectRegisteredRelativePaths(manifestFile.content).filter(p => !restFiles.some(file => normalizePath(file.path) === p));
+    if (missing.length > 0) {
+      const patchFiles = await collectSystemAiPhaseFiles(
+        () => buildModuleMissingFilesPhaseMessages(requirementText, manifestFile.content, missing, guideText),
+        '补全阶段'
+      );
+      const delivered = new Set(restFiles.map(file => normalizePath(file.path)));
+      for (const file of patchFiles) {
+        const key = normalizePath(file.path);
+        if (!delivered.has(key)) {
+          restFiles.push(file);
+          delivered.add(key);
+        }
+      }
+    }
+    return [manifestFile, ...restFiles];
+  };
+
+  const importGeneratedModuleFiles = async (files: Array<{ path: string; content: string }>): Promise<string[]> => {
+    setAiGenerateStage('importing');
+    const response = await fetch('/api/modules/developer/import-ai-files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, files })
+    });
+    const result = await response.json().catch(() => null);
+    if (!result || typeof result.ok !== 'boolean') {
+      throw new Error(response.status === 404
+        ? '当前开发服务未包含导入接口，请重启 LingBuilder 开发服务或使用最新安装包后重试。'
+        : `服务返回了无效响应（HTTP ${response.status}）。`);
+    }
+    if (!result.ok) throw new Error(result.error || 'AI 模块导入失败');
+    return applyAiModuleImportResult(result);
+  };
+
+  const runAiModuleGeneration = async (requirementOverride?: string) => {
+    const requirementText = (requirementOverride ?? aiRequirement).trim();
+    if (!requirementText) {
+      setStatusText('请先用中文描述你想生成的模块需求。');
+      return;
+    }
+    if (aiGenerateStage !== 'idle') return;
+    setIsLoading(true);
+    setAiGenerateStage('generating');
+    setAiGenerateDiagnostics([]);
+    try {
+      if (aiGenerateChannel === 'byok') {
+        const response = await fetch('/api/modules/ai-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirement: requirementText })
+        });
+        const result = await response.json().catch(() => null);
+        if (!result || typeof result.ok !== 'boolean') {
+          throw new Error(`服务返回了无效响应（HTTP ${response.status}）。`);
+        }
+        if (!result.ok) {
+          if (typeof result.rawOutput === 'string' && result.rawOutput.trim()) setAiModulePasteText(result.rawOutput);
+          throw new Error(`${result.error || 'AI 模块生成失败'}${result.details ? `（${result.details}）` : ''}`);
+        }
+        const diagnostics = applyAiModuleImportResult(result);
+        if (diagnostics.length > 0) setAiGenerateDiagnostics(diagnostics);
+        return;
+      }
+      const docsApi = window.lingBuilder?.docs;
+      if (!docsApi?.readAiModuleGuide) throw new Error('网页版暂不支持读取模块开发规范；请使用桌面版或改用自定义 API 通道。');
+      const guideText = await docsApi.readAiModuleGuide();
+      if (!guideText) throw new Error('未读取到 AI 模块开发规范内容。');
+      const generatedFiles = await generateSystemAiModuleFiles(requirementText, guideText);
+      const diagnostics = await importGeneratedModuleFiles(generatedFiles);
+      if (diagnostics.length > 0) setAiGenerateDiagnostics(diagnostics);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText(`AI 模块生成失败：${message}`);
+      onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】AI 生成模块失败：${message}`);
+    } finally {
+      setAiGenerateStage('idle');
+      setIsLoading(false);
+      aiGenerateRequestRef.current = null;
+    }
+  };
+
+  const cancelAiModuleGeneration = async () => {
+    const requestKey = aiGenerateRequestRef.current;
+    if (!requestKey) return;
+    try {
+      await window.lingBuilder?.cloudAi?.cancel(requestKey);
+    } catch {
+      // 取消失败时忽略，流结束后状态会自动复位。
+    }
+  };
+
+  const retryAiModuleGenerationWithDiagnostics = () => {
+    if (aiGenerateDiagnostics.length === 0) return;
+    const requirementWithDiagnostics = `${aiRequirement.trim()}\n\n上一轮生成的模块存在以下校验问题，请修正后重新输出完整模块文件（仍须严格遵守输出契约）：\n${aiGenerateDiagnostics.map(item => `- ${item}`).join('\n')}`;
+    void runAiModuleGeneration(requirementWithDiagnostics);
+  };
+
   const importAiFilesFromPaste = async () => {
     if (!canImportAiFiles) {
       setAiImportResult({
@@ -776,34 +1050,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           : `服务返回了无效响应（HTTP ${response.status}）。`);
       }
       if (!result.ok) throw new Error(result.error || 'AI 模块导入失败');
-      if (!result.result || typeof result.result !== 'object') throw new Error('服务未返回有效的 AI 模块导入结果。');
-      if (typeof result.result.moduleId !== 'string'
-        || typeof result.result.moduleName !== 'string'
-        || typeof result.result.outDir !== 'string'
-        || !Number.isInteger(result.result.fileCount)
-        || result.result.fileCount < 0) {
-        throw new Error('服务返回的 AI 模块导入结果不完整。');
-      }
-      const moduleDir: string = result.result.outDir;
-      const diagnostics: string[] = Array.isArray(result.result.diagnostics)
-        ? result.result.diagnostics.filter((item: unknown): item is string => typeof item === 'string')
-        : [];
-      const overwrittenExisting = result.result.overwrittenExisting === true;
-      const importSucceeded = diagnostics.length === 0;
-      setAiImportResult({
-        ok: importSucceeded,
-        moduleDir,
-        diagnostics,
-        message: `${importSucceeded ? '已导入' : 'AI 模块导入未通过'} ${result.result.moduleName}（${result.result.moduleId}）到 ${moduleDir}，共 ${result.result.fileCount} 个文件。${importSucceeded ? '导入后校验通过。' : '导入后校验未通过，请查看诊断。'}${overwrittenExisting ? '目标目录原本已存在，本次覆盖了同名文件；旧目录中多余的文件未删除。' : ''}`
-      });
-      if (importSucceeded) {
-        setDeveloperValidatePath(moduleDir);
-        setExportModuleDir(moduleDir);
-        setStatusText(`${overwrittenExisting ? 'AI 模块已导入并覆盖同名文件' : 'AI 模块已导入'}到 ${moduleDir}；“模块包制作”和“校验模块”路径已自动填好。`);
-        onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】已从 AI 输出导入 ${result.result.moduleId} 到 ${moduleDir}（${result.result.fileCount} 个文件）。`);
-      } else {
-        setStatusText(`AI 模块导入未通过：${diagnostics.join('；')}`);
-      }
+      applyAiModuleImportResult(result);
     } catch (error) {
       const message = `AI 模块导入失败：${error instanceof Error ? error.message : String(error)}`;
       setAiImportResult({ ok: false, diagnostics: [], message });
@@ -819,23 +1066,10 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     const file = event.dataTransfer.files?.[0];
     const nextPath = file ? window.lingBuilder?.modules?.getDroppedFilePath(file) : '';
     if (nextPath) {
-      if (!isAllowedWorkspacePath(nextPath, '.lingbuilder/module-packages')) {
-        if (!window.lingBuilder?.modules?.importPackage) {
-          setStatusText('网页版只能预览工作区 .lingbuilder/module-packages 下的模块包；桌面版可直接拖入本机 .lbmod。');
-          return;
-        }
-        setStatusText('正在把模块包安全复制到当前工作区…');
-        const imported = await window.lingBuilder.modules.importPackage(nextPath);
-        if (!imported.ok || !imported.relativePath) {
-          setStatusText(`模块包导入失败：${imported.error || '未返回工作区路径'}`);
-          return;
-        }
-        setPackagePath(imported.relativePath);
-        await previewPackage(imported.relativePath);
-        return;
-      }
-      setPackagePath(nextPath);
-      await previewPackage(nextPath);
+      const resolvedPath = await resolvePackageInputPath(nextPath);
+      if (!resolvedPath) return;
+      setPackagePath(resolvedPath);
+      await previewPackage(resolvedPath);
     }
   };
 
@@ -970,7 +1204,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           className={cardClass}
           icon={<Bot size={16} />}
           title="AI 生成模块"
-          desc="把开发规范和需求交给任意 AI，生成模块文件后导入 IDE 使用。"
+          desc="内置 AI 一键生成并导入；也支持复制规范给任意外部 AI 的手动流程。"
           isOpen={expandedSections.aiGenerate}
           onToggle={() => toggleSection('aiGenerate')}
           isDarkMode={isDarkMode}
@@ -978,16 +1212,82 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           <div className="p-3 grid gap-2.5">
             <div
               role="group"
+              aria-label="AI 一键生成模块"
+              className={`rounded border p-2.5 ${isDarkMode ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-emerald-500/30 bg-emerald-500/5'}`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Bot size={14} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                <span className="text-xs font-semibold">一键生成（内置 AI 直接生成并导入）</span>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700'}`}>推荐</span>
+              </div>
+              <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
+                用中文描述需求，IDE 会把《AI 模块开发规范》连同需求一起发给 AI，生成后自动解析、导入到 module-build 并校验。
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="选择 AI 通道">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={aiGenerateChannel === 'system'}
+                  onClick={() => setAiGenerateChannel('system')}
+                  className={`rounded px-2 py-1 text-[10px] border ${aiGenerateChannel === 'system' ? 'border-emerald-500 bg-emerald-500/15 text-emerald-500' : isDarkMode ? 'border-white/15 text-slate-300' : 'border-slate-300 text-slate-600'}`}
+                >
+                  系统 AI
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={aiGenerateChannel === 'byok'}
+                  onClick={() => setAiGenerateChannel('byok')}
+                  className={`rounded px-2 py-1 text-[10px] border ${aiGenerateChannel === 'byok' ? 'border-emerald-500 bg-emerald-500/15 text-emerald-500' : isDarkMode ? 'border-white/15 text-slate-300' : 'border-slate-300 text-slate-600'}`}
+                >
+                  自定义 API
+                </button>
+              </div>
+              <textarea
+                id={`${fieldIdPrefix}-ai-requirement`}
+                value={aiRequirement}
+                onChange={event => setAiRequirement(event.target.value)}
+                placeholder="例如：做一个字符串工具模块，提供“取文本长度”“替换文本”“分割文本到列表”三个中文命令……"
+                className={`mt-2 min-h-20 w-full rounded border px-3 py-2 text-xs outline-none ${inputClass}`}
+                aria-label="模块需求描述"
+              />
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void runAiModuleGeneration()}
+                  disabled={aiGenerateStage !== 'idle' || isLoading || !aiRequirement.trim()}
+                  className={`h-9 w-full rounded bg-emerald-600 px-3 text-xs text-white inline-flex items-center justify-center gap-2 hover:bg-emerald-500 disabled:opacity-50 ${actionButtonClass}`}
+                >
+                  {aiGenerateStage === 'idle' ? <Bot size={14} /> : <Loader2 size={14} className="animate-spin" />}
+                  {aiGenerateStage === 'generating' ? '正在生成模块……' : aiGenerateStage === 'importing' ? '正在解析并导入……' : '生成并导入到 module-build'}
+                </button>
+                {aiGenerateStage === 'generating' && aiGenerateChannel === 'system' && (
+                  <button type="button" onClick={() => void cancelAiModuleGeneration()} className={`h-8 w-full rounded border text-xs ${actionButtonClass}`}>
+                    取消生成
+                  </button>
+                )}
+                {aiGenerateStage === 'idle' && aiGenerateDiagnostics.length > 0 && (
+                  <button type="button" onClick={retryAiModuleGenerationWithDiagnostics} className={`h-8 w-full rounded border text-xs text-emerald-500 ${actionButtonClass}`}>
+                    把校验问题发回 AI 修正并重试
+                  </button>
+                )}
+              </div>
+              {aiGenerateChannel === 'system' && !cloudAuthenticated && (
+                <p className={`mt-1.5 text-[10px] leading-4 ${subtleClass}`}>系统 AI 需要先登录；未登录时可切换到“自定义 API”通道（需在 AI 助手面板配置）。</p>
+              )}
+            </div>
+            <div
+              role="group"
               aria-label="AI 生成模块入口"
               className={`rounded border p-2.5 ${isDarkMode ? 'border-sky-500/25 bg-sky-500/5' : 'border-sky-500/30 bg-sky-500/5'}`}
             >
               <div className="flex flex-wrap items-center gap-2">
                 <Bot size={14} className="shrink-0 text-sky-400" aria-hidden="true" />
-                <span className="text-xs font-semibold">让 AI 帮你写模块（不需要会 C++）</span>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-500/10 text-sky-700'}`}>任意 AI 均可</span>
+                <span className="text-xs font-semibold">手动模式：复制规范给任意外部 AI</span>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-500/10 text-sky-700'}`}>复制粘贴降级</span>
               </div>
               <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
-                复制规范粘贴给 ChatGPT、Claude、Cursor 等任意 AI，再用中文描述需求，AI 会输出完整模块文件。
+                一键生成不可用时的备选方案：复制规范粘贴给 ChatGPT、Claude、Cursor 等任意 AI，再用中文描述需求，最后把 AI 回复粘贴回下方导入。
               </p>
               <div className="mt-2 grid grid-cols-1 gap-2">
                 <button
@@ -1097,9 +1397,9 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
             <div className="grid gap-1">
               <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>使用步骤</span>
               <ol className={`grid gap-1 text-[10px] leading-4 ${subtleClass}`}>
-                <li>1. 点击“复制 AI 开发规范”，粘贴给任意 AI，并用中文描述你想要的模块。</li>
-                <li>2. 把 AI 回复完整粘贴到上方“导入 AI 生成的文件”，点击导入；也可以手动保存到 .lingbuilder/module-build/&lt;模块ID&gt;/。</li>
-                <li>3. 校验通过后在“模块包制作”导出并安装（导入成功后路径会自动填好）。</li>
+                <li>1.（推荐）在“一键生成”里用中文描述需求，选择系统 AI 或自定义 API，点击生成——IDE 会自动完成规范注入、解析、导入和校验。</li>
+                <li>2.（手动）点击“复制 AI 开发规范”，粘贴给任意 AI 并用中文描述模块；把 AI 回复完整粘贴到“导入 AI 生成的文件”后点击导入，也可以手动保存到 .lingbuilder/module-build/&lt;模块ID&gt;/。</li>
+                <li>3. 校验通过后在“模块包制作”导出并安装（导入成功后路径会自动填好）；也可以通过 AI Bridge MCP 工具让 Claude Code / Codex 等直接生成、打包并安装。</li>
               </ol>
             </div>
           </div>
@@ -1109,7 +1409,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           className={cardClass}
           icon={<FileArchive size={16} />}
           title="安装 .lbmod"
-          desc="拖入 .lbmod 文件，或填写工作区相对路径预览安装。"
+          desc="拖入 .lbmod 文件，或填写本机绝对路径 / 工作区相对路径预览安装（桌面版自动把外部包复制进工作区）。"
           isOpen={expandedSections.packageInstall}
           onToggle={() => toggleSection('packageInstall')}
           isDarkMode={isDarkMode}
@@ -1129,7 +1429,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
               <Download size={12} className="mt-0.5 shrink-0 text-sky-400" aria-hidden="true" />
               <span>把 .lbmod 文件拖到这里，桌面版会自动复制进工作区；也可以直接填写下方路径。</span>
             </div>
-            <Field id={`${fieldIdPrefix}-package-path`} label="模块包路径" hint="必须是 .lingbuilder/module-packages 下的工作区相对路径。" isDarkMode={isDarkMode}>
+            <Field id={`${fieldIdPrefix}-package-path`} label="模块包路径" hint="支持 .lingbuilder/module-packages 下的工作区相对路径；桌面版也可填写本机绝对路径，预览时自动复制到该目录。" isDarkMode={isDarkMode}>
               <input
                 id={`${fieldIdPrefix}-package-path`}
                 value={packagePath}

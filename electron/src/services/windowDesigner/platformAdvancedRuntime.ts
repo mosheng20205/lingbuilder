@@ -1,4 +1,7 @@
 import { InstalledModule } from '../modules/types';
+import { COM_RUNTIME, generateComWindowMethods, generateComWndProcCase } from './comRuntime';
+
+export { generateComWindowMethods, generateComWndProcCase };
 
 const ARCHIVE_RUNTIME = String.raw`
 static std::wstring g_lbArchiveError;
@@ -81,17 +84,6 @@ long long 进程内存_打开(int processId, bool writable) { DWORD access = PRO
 int 进程内存_读整数(long long process, long long address, int fallback) { int value = fallback; SIZE_T read = 0; return ReadProcessMemory(reinterpret_cast<HANDLE>(process), reinterpret_cast<const void*>(address), &value, sizeof(value), &read) && read == sizeof(value) ? value : fallback; }
 bool 进程内存_写整数(long long process, long long address, int value) { SIZE_T written = 0; return WriteProcessMemory(reinterpret_cast<HANDLE>(process), reinterpret_cast<void*>(address), &value, sizeof(value), &written) && written == sizeof(value); }
 bool 进程内存_关闭(long long process) { return process && CloseHandle(reinterpret_cast<HANDLE>(process)) == TRUE; }
-`;
-
-const COM_RUNTIME = String.raw`
-static IDispatch* g_lbDispatch = nullptr; static std::wstring g_lbComError;
-void COM_关闭() { if (g_lbDispatch) g_lbDispatch->Release(); g_lbDispatch = nullptr; }
-const wchar_t* COM_取错误() { return LB_ReturnText(g_lbComError); }
-static bool LB_ComId(const wchar_t* name, DISPID& id) { if (!g_lbDispatch) return false; LPOLESTR value = const_cast<LPOLESTR>(name); return SUCCEEDED(g_lbDispatch->GetIDsOfNames(IID_NULL, &value, 1, LOCALE_USER_DEFAULT, &id)); }
-bool COM_创建对象(const wchar_t* progId) { COM_关闭(); g_lbComError.clear(); HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); if (FAILED(init) && init != RPC_E_CHANGED_MODE) return false; CLSID clsid = {}; if (FAILED(CLSIDFromProgID(progId, &clsid)) || FAILED(CoCreateInstance(clsid, nullptr, CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER, IID_IDispatch, reinterpret_cast<void**>(&g_lbDispatch)))) { g_lbComError = L"COM 对象创建失败。"; return false; } return true; }
-const wchar_t* COM_取文本属性(const wchar_t* name) { DISPID id = 0; if (!LB_ComId(name, id)) return LB_ReturnText(L""); DISPPARAMS params = {}; VARIANT result; VariantInit(&result); HRESULT status = g_lbDispatch->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &params, &result, nullptr, nullptr); std::wstring output; if (SUCCEEDED(status)) { VARIANT text; VariantInit(&text); if (SUCCEEDED(VariantChangeType(&text, &result, 0, VT_BSTR)) && text.bstrVal) output = text.bstrVal; VariantClear(&text); } VariantClear(&result); return LB_ReturnText(std::move(output)); }
-bool COM_置文本属性(const wchar_t* name, const wchar_t* value) { DISPID id = 0; if (!LB_ComId(name, id)) return false; VARIANT argument; VariantInit(&argument); argument.vt = VT_BSTR; argument.bstrVal = SysAllocString(value); DISPID named = DISPID_PROPERTYPUT; DISPPARAMS params = { &argument, &named, 1, 1 }; HRESULT result = g_lbDispatch->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYPUT, &params, nullptr, nullptr, nullptr); VariantClear(&argument); return SUCCEEDED(result); }
-bool COM_调用无参方法(const wchar_t* name) { DISPID id = 0; if (!LB_ComId(name, id)) return false; DISPPARAMS params = {}; return SUCCEEDED(g_lbDispatch->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &params, nullptr, nullptr, nullptr)); }
 `;
 
 const ASSEMBLY_RUNTIME = String.raw`

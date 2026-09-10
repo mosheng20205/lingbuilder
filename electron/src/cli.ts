@@ -153,7 +153,11 @@ async function runWorkspaceInspect(rest: string[]) {
 async function runProjectCommand(subcommand: string | undefined, rest: string[]) {
   const args = parseArgs(rest); const workspaceRoot = path.resolve(getStringArg(args.workspace) || process.cwd()); const requestFile = getStringArg(args.request);
   const approved = args.yes === true;
-  const service = new AiBridgeService({ workspaceRoot, host: '127.0.0.1', port: 0, token: 'local-project-cli', permission: approved ? 'yolo' : 'preview', allowRemote: false, enableMcp: false });
+  // --arch 用于 32 位 OCX/DLL 示例：进程内组件位数必须与 exe 一致。
+  const requestedArch = getStringArg(args.arch);
+  const arch = requestedArch === 'win32' || requestedArch === 'x64' ? requestedArch : undefined;
+  if (requestedArch && !arch) throw new Error('--arch 只支持 win32 或 x64。');
+  const service = new AiBridgeService({ workspaceRoot, host: '127.0.0.1', port: 0, token: 'local-project-cli', permission: approved ? 'yolo' : 'preview', allowRemote: false, enableMcp: false, arch });
   try {
     if (subcommand === 'templates') { printValue(await service.listProjectTemplates(), args.json === true); return; }
     if (!requestFile) throw new Error('project 命令需要 --request <受控项目请求.json>。');
@@ -450,7 +454,7 @@ function printUsage(): void {
   lingbuilder ai chat --model <alias> --prompt <text> [--json]
   lingbuilder workspace inspect [--workspace <path>] [--json]
   lingbuilder project templates [--workspace <path>] [--json]
-  lingbuilder project create|diagnose|export|build|run|stop --request <file.json> [--workspace <path>] [--yes] [--json]
+  lingbuilder project create|diagnose|export|build|run|stop --request <file.json> [--workspace <path>] [--arch win32|x64] [--yes] [--json]
   lingbuilder project undo-create --request <receipt.json> --workspace <path> --yes [--json]
   lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp] [--no-mcp-http] [--stdio-only]
   lingbuilder module init --template cpp-source --out <dir> [--id <id>] [--name <name>]

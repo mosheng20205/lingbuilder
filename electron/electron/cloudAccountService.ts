@@ -13,7 +13,30 @@ export class CloudAccountService {
   async verifyEmail(token: string) { return await this.publicRequest('/v1/auth/verify-email', { token }); }
   async login(email: string, password: string) { const value = await this.publicRequest('/v1/auth/login', { email, password, deviceName: 'LingBuilder IDE' }); await this.acceptTokens(value, email); return await this.snapshot(); }
   async logout() { if (this.refreshToken) await this.publicRequest('/v1/auth/logout', { refreshToken: this.refreshToken }).catch(() => undefined); await this.clear(); return { ok: true }; }
-  async snapshot(): Promise<CloudSessionSnapshot> { if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => this.clear()); if (!this.accessToken) return { authenticated: false }; try { const me = await this.request('/v1/me'); this.email = me.user.email; const balance = await this.request('/v1/usage/balance'); return { authenticated: true, email: this.email, balance: balance.balance }; } catch (error) { return { authenticated: false, error: error instanceof Error ? error.message : String(error) }; } }
+  async snapshot(): Promise<CloudSessionSnapshot> {
+    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => undefined);
+    if (!this.accessToken) return { authenticated: false };
+    try {
+      const me = await this.request('/v1/me');
+      this.email = me.user.email;
+      const balance = await this.request('/v1/usage/balance');
+      return { authenticated: true, email: this.email, balance: balance.balance };
+    } catch (error) {
+      // access token 过期时只有流式请求会自动刷新，其余调用会在这里误报“未登录”；
+      // 因此这里用 refresh token 刷新一次后重试，刷新失败也不再清空令牌（网络抖动不应清除登录态）。
+      if (!this.refreshToken) return { authenticated: false, error: error instanceof Error ? error.message : String(error) };
+      const refreshed = await this.refresh().then(() => true).catch(() => false);
+      if (!refreshed) return { authenticated: false, error: error instanceof Error ? error.message : String(error) };
+      try {
+        const me = await this.request('/v1/me');
+        this.email = me.user.email;
+        const balance = await this.request('/v1/usage/balance');
+        return { authenticated: true, email: this.email, balance: balance.balance };
+      } catch (retryError) {
+        return { authenticated: false, error: retryError instanceof Error ? retryError.message : String(retryError) };
+      }
+    }
+  }
   async models() { return await this.request('/v1/ai/models'); }
   async balance() { return await this.request('/v1/usage/balance'); }
   async moduleCatalog() {

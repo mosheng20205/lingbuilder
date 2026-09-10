@@ -18,6 +18,9 @@ export interface AiBridgeServerOptions {
   permission: AiBridgePermissionMode;
   allowRemote: boolean;
   enableMcp: boolean;
+  /** 显式指定 MSVC 目标架构；省略时按本机探测结果（通常是 x64）。
+   *  32 位 OCX / DLL 只能被 32 位程序加载，构建这类示例时必须显式传 win32。 */
+  arch?: 'win32' | 'x64';
 }
 
 export interface AiBridgeHealth {
@@ -127,3 +130,39 @@ export interface AiBridgeEditApplyResult {
   appliedFiles: Array<{ filePath: string; sourceCode: string; absolutePath?: string }>;
   designerProject?: LingWindowProject;
 }
+
+export interface AiBridgeModuleScaffoldRequest {
+  id?: string;
+  name?: string;
+  template?: string;
+  outDir?: string;
+  approved?: boolean;
+}
+
+export interface AiBridgeModuleWriteFilesRequest {
+  files?: Array<{ path: string; content: string }>;
+  outDir?: string;
+  approved?: boolean;
+}
+
+export interface AiBridgeModuleValidateRequest {
+  modulePath?: string;
+}
+
+export interface AiBridgeModulePackRequest {
+  moduleDir?: string;
+  targetPath?: string;
+  approved?: boolean;
+}
+
+export interface AiBridgeModuleInstallPreviewRequest {
+  packagePath?: string;
+}
+
+export interface AiBridgeModuleInstallRequest {
+  previewId?: string;
+  projectId?: string;
+  enableForProject?: boolean;
+  approved?: boolean;
+}
+

@@ -8,6 +8,7 @@
 #include "FBroCommand.h"
 #include "FBroControl.h"
 #include "FBroCookieManager.h"
+#include "FBroDom.h"
 #include "FBroDragData.h"
 #include "FBroFrame.h"
 #include "FBroFrameTianBiao.h"
@@ -26,7 +27,9 @@
 #include "FBroResponseFilter.h"
 #include "FBroRequestContext.h"
 #include "FBroServer.h"
+#include "FBroSocket.h"
 #include "FBroURLRequest.h"
+#include "FBroWSSClient.h"
 #include "FBroStream.h"
 #include "FBroSSLInfo.h"
 #include "FBroString.h"
@@ -164,6 +167,8 @@ struct ObjectState {
   CefRefPtr<CefURLRequest> url_request;
   CefRefPtr<CefRequestContext> request_context;
   CefRefPtr<CefServer> server;
+  CefRefPtr<FBroDOMWssClient> wss_client;
+  std::shared_ptr<struct DomSnapshot> dom_snapshot;
   std::vector<unsigned char> owned_bytes;
 };
 
@@ -220,6 +225,9 @@ struct BrowserState {
   // GetResourceResponseFilter 按当前配置构造过滤器实例，传输中的资源继续
   // 沿用其安装时复制到的配置，新配置只对之后开始加载的资源生效。
   std::shared_ptr<const ResourceReplaceConfig> resource_replace;
+  // 运行时上下文重建：先关闭旧浏览器，OnBeforeClose 后换上用户 RequestContext 重启。
+  CefRefPtr<CefRequestContext> recreate_request_context;
+  bool recreate_pending = false;
   bool create_started = false;
   bool extension_load_started = false;
   bool chrome_ui = false;
@@ -663,6 +671,7 @@ struct ResourceBodyCaptureState;
 void DispatchResourceBodyEvent(LB_FBRO_HANDLE handle,
                                const std::shared_ptr<ResourceBodyCaptureState>& capture,
                                const wchar_t* error);
+void ScheduleBrowserStart(LB_FBRO_HANDLE handle);
 void DebugTraceOrder(const wchar_t* label, uint64_t id) {
   FILE* f = nullptr;
   _wfopen_s(&f, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-event-order.log", L"a");
@@ -1473,7 +1482,7 @@ void ApplyEventResponse(const std::wstring& response_json, const char* key,
 int DispatchGeneratedInitEvent(CefRefPtr<CefBrowser> browser, const wchar_t* event_id,
                                const wchar_t* official_name, const wchar_t* event_name,
                                const std::wstring& fields_json, uint32_t flags,
-                               uint32_t max_hz) {
+                               uint32_t max_hz, std::wstring* response_json = nullptr) {
   BrowserState* state = nullptr;
   {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
@@ -1486,8 +1495,50 @@ int DispatchGeneratedInitEvent(CefRefPtr<CefBrowser> browser, const wchar_t* eve
   }
   if (!state) return LB_FBRO_EVENT_ACTION_DEFAULT;
   return DispatchEventV3(*state, event_id ? event_id : L"", official_name ? official_name : L"",
-                         event_name ? event_name : L"", fields_json, 0, flags, max_hz, 0, 0);
+                         event_name ? event_name : L"", fields_json, 0, flags, max_hz, 0, 0,
+                         response_json);
 }
+
+namespace {
+
+// VIP WebSocket 拦截事件的写回辅助：官方层用 new[] 分配的 char* 接管篡改结果，
+// 未写回（响应缺省）表示原样放行，与火山示例语义一致。
+std::vector<unsigned char> CopyPayloadBytes(const void* data, int size) {
+  if (!data || size <= 0 || size > (64 << 20)) return {};
+  const auto* begin = static_cast<const unsigned char*>(data);
+  return std::vector<unsigned char>(begin, begin + size);
+}
+
+char* DuplicateAnsiBytes(const std::string& bytes) {
+  char* copy = new char[bytes.size() + 1];
+  memcpy(copy, bytes.data(), bytes.size());
+  copy[bytes.size()] = '\0';
+  return copy;
+}
+
+std::string DecodeBase64Value(CefRefPtr<CefDictionaryValue> response, const char* key) {
+  if (!response || response->GetType(key) != VTYPE_STRING) return {};
+  const CefString encoded = response->GetString(key);
+  if (encoded.empty()) return {};
+  auto binary = CefBase64Decode(encoded);
+  if (!binary) return {};
+  const size_t size = static_cast<size_t>(binary->GetSize());
+  std::string bytes(size, '\0');
+  if (size > 0) binary->GetData(bytes.data(), size, 0);
+  return bytes;
+}
+
+void ApplyWssDataReplacement(const std::wstring& response_json, HANDLE& data, int& size) {
+  const auto response = ParseEventResponse(response_json);
+  if (!response) return;
+  const std::string replacement = DecodeBase64Value(response, "data");
+  if (replacement.empty()) return;
+  data = reinterpret_cast<HANDLE>(DuplicateAnsiBytes(replacement));
+  size = static_cast<int>(replacement.size());
+}
+
+}  // namespace
+
 
 bool HasExplicitEventSubscription(const BrowserState& state, const std::wstring& event_id,
                                   const wchar_t* official_name, const wchar_t* event_name,
@@ -1653,16 +1704,27 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
   void OnBeforeClose(CefRefPtr<CefBrowser>) override {
     CancelContinuationsForBrowser(handle_);
     bool all_browsers_closed = false;
+    LB_FBRO_HANDLE recreate_handle = 0;
     {
       std::lock_guard<std::recursive_mutex> lock(g_mutex);
       if (auto* state = Find(handle_)) {
         state->browser = nullptr;
         Notify(*state, LB_FBRO_EVENT_CLOSED, L"浏览器关闭完成");
+        if (state->recreate_pending && state->recreate_request_context) {
+          // 上下文重建：换上用户上下文后原地重启（递归锁允许锁内调度）。
+          state->recreate_pending = false;
+          state->request_context = state->recreate_request_context;
+          state->recreate_request_context = nullptr;
+          state->create_started = false;
+          state->extension_load_started = false;
+          recreate_handle = state->handle;
+        }
       }
       all_browsers_closed = std::all_of(g_browsers.begin(), g_browsers.end(), [](const auto& item) {
         return !item.second->browser;
       });
     }
+    if (recreate_handle) ScheduleBrowserStart(recreate_handle);
     if (all_browsers_closed && g_shutdown_started) FBroQuitMessageLoop();
   }
   void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString& url) override {
@@ -2130,7 +2192,9 @@ bool StartBrowser(BrowserState& state) {
   settings.image_loading = (state.flags & 2U) != 0 ? 1 : -1;
   settings.webgl = (state.flags & 4U) != 0 ? 1 : -1;
   state.event = new BridgeBrowserEvent(state.handle);
-  if (!state.profile.empty()) {
+  // 用户经 FBro会话_创建上下文+使用上下文重建 注入的 RequestContext 优先；
+  // 仅在没有任何现成上下文时才按 profile 目录创建隔离上下文。
+  if (!state.request_context && !state.profile.empty()) {
     CefRequestContextSettings context_settings{};
     CefString(&context_settings.cache_path).FromWString(state.profile);
     context_settings.persist_session_cookies = true;
@@ -2439,10 +2503,99 @@ class BridgeInitEvent final : public FBroHsInitEvent {
                          const CefString& extension_id) override {
     NotifyExtensionContext(request_context, L"removed", extension_id);
   }
+  // ---- VIP WebSocket 客户端拦截五事件（手写覆盖）----
+  // wss 客户端注册为持久受管句柄（LB_FBro_ObjectRelease 释放），数据载荷复制进
+  // 受管缓冲；同步事件支持经响应 JSON 篡改写回：连接改 url/protocols（UTF-8），
+  // 消息/发送改 data（Base64）+size，缺省不写回即原样放行。
+  void OnWebSocketClientCreate(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                               CefRefPtr<FBroDOMWssClient> websocket) override {
+    DispatchWssLifecycleEvent(browser, frame, websocket,
+        L"fbro.event.fbrohsinitevent.onwebsocketclientcreate.d39fa3514858",
+        L"OnWebSocketClientCreate", L"初始化WebSocket客户端创建");
+  }
+  void OnWebSocketClientClose(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                              CefRefPtr<FBroDOMWssClient> websocket) override {
+    DispatchWssLifecycleEvent(browser, frame, websocket,
+        L"fbro.event.fbrohsinitevent.onwebsocketclientclose.c31f8ced04b4",
+        L"OnWebSocketClientClose", L"初始化WebSocket客户端关闭");
+  }
+  void OnWebSocketClientConnect(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                                CefRefPtr<FBroDOMWssClient> websocket, HANDLE& returl,
+                                HANDLE& protocols) override {
+    const LB_FBRO_OBJECT_HANDLE wss = RegisterCefObject(
+        LB_FBRO_OBJECT_WSS_CLIENT, websocket, &ObjectState::wss_client);
+    const std::wstring current_url =
+        returl ? FromUtf8(static_cast<const char*>(returl)) : std::wstring();
+    const std::wstring current_protocols =
+        protocols ? FromUtf8(static_cast<const char*>(protocols)) : std::wstring();
+    std::wstring response_json;
+    DispatchGeneratedInitEvent(browser,
+        L"fbro.event.fbrohsinitevent.onwebsocketclientconnect.14c3d07078ae",
+        L"OnWebSocketClientConnect", L"初始化WebSocket客户端连接",
+        BuildSafeFieldsJson({
+            {L"websocket", std::to_wstring(wss)},
+            {L"url", current_url},
+            {L"protocols", current_protocols}}),
+        LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0, &response_json);
+    const auto response = ParseEventResponse(response_json);
+    if (response) {
+      const std::string new_url = DecodeBase64Value(response, "url");
+      if (!new_url.empty()) returl = reinterpret_cast<HANDLE>(DuplicateAnsiBytes(new_url));
+      const std::string new_protocols = DecodeBase64Value(response, "protocols");
+      if (!new_protocols.empty()) {
+        protocols = reinterpret_cast<HANDLE>(DuplicateAnsiBytes(new_protocols));
+      }
+    }
+  }
+  bool OnWebSocketClientMessage(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                                CefRefPtr<FBroDOMWssClient> websocket, int type,
+                                HANDLE& data, int& size) override {
+    return DispatchWssDataEvent(browser, frame, websocket, type, data, size,
+        L"fbro.event.fbrohsinitevent.onwebsocketclientmessage.394aa56d3766",
+        L"OnWebSocketClientMessage", L"初始化WebSocket客户端消息");
+  }
+  bool OnWebSocketClientSend(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                             CefRefPtr<FBroDOMWssClient> websocket, int type,
+                             HANDLE& retdata, int offsize, int& size) override {
+    (void)offsize;
+    return DispatchWssDataEvent(browser, frame, websocket, type, retdata, size,
+        L"fbro.event.fbrohsinitevent.onwebsocketclientsend.1e4294bbc5cf",
+        L"OnWebSocketClientSend", L"初始化WebSocket客户端发送");
+  }
+
 #define LB_FBRO_INIT_EVENT_OVERRIDES
 #include "FbroEventOverrides.generated.inc"
 #undef LB_FBRO_INIT_EVENT_OVERRIDES
  private:
+  void DispatchWssLifecycleEvent(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                                 CefRefPtr<FBroDOMWssClient> websocket, const wchar_t* event_id,
+                                 const wchar_t* official_name, const wchar_t* event_name) {
+    const LB_FBRO_OBJECT_HANDLE wss = RegisterCefObject(
+        LB_FBRO_OBJECT_WSS_CLIENT, websocket, &ObjectState::wss_client);
+    DispatchGeneratedInitEvent(browser, event_id, official_name, event_name,
+        BuildSafeFieldsJson({
+            {L"websocket", std::to_wstring(wss)},
+            {L"frame", frame ? frame->GetURL().ToWString() : L""}}), 0, 0);
+  }
+  bool DispatchWssDataEvent(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                            CefRefPtr<FBroDOMWssClient> websocket, int type, HANDLE& data,
+                            int& size, const wchar_t* event_id, const wchar_t* official_name,
+                            const wchar_t* event_name) {
+    const LB_FBRO_OBJECT_HANDLE wss = RegisterCefObject(
+        LB_FBRO_OBJECT_WSS_CLIENT, websocket, &ObjectState::wss_client);
+    const LB_FBRO_BUFFER_HANDLE payload =
+        RegisterBuffer(CopyPayloadBytes(data, size));
+    std::wstring response_json;
+    const int action = DispatchGeneratedInitEvent(browser, event_id, official_name, event_name,
+        BuildSafeFieldsJson({
+            {L"websocket", std::to_wstring(wss)},
+            {L"type", std::to_wstring(static_cast<long long>(type))},
+            {L"data", std::to_wstring(payload)},
+            {L"size", std::to_wstring(static_cast<long long>(size))}}),
+        LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0, &response_json);
+    ApplyWssDataReplacement(response_json, data, size);
+    return action == LB_FBRO_EVENT_ACTION_CANCEL || action == LB_FBRO_EVENT_ACTION_HANDLED;
+  }
   IMPLEMENT_REFCOUNTING(BridgeInitEvent);
 };
 
@@ -5404,11 +5557,22 @@ int __stdcall LB_FBro_ContextMenuParamsGetY(LB_FBRO_OBJECT_HANDLE object) {
   return FBroHsContextMenuParams_pGetYCoord(state->context_menu_params);
 }
 
+int __stdcall LB_FBro_ContextMenuParamsGetTypeFlags(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return FBroHsContextMenuParams_pGetTypeFlags(state->context_menu_params);
+}
+
 namespace {
-/** CEF 服务器句柄：创建完成注册受管对象并把连接事件缓存到最近事件。 */
+/** CEF 服务器句柄：创建完成注册受管对象并把连接事件缓存到最近事件。
+ * 全部 8 个官方回调都派发给创建者浏览器实例；握手请求默认放行（Continue），
+ * 用户处理器返回取消动作时改调 Cancel。事件里下发的 server/请求句柄为持久
+ * 受管句柄，用 LB_FBro_ObjectRelease 释放，消息数据用 LB_FBro_BufferRelease 释放。 */
 class BridgeServerHandle final : public FBroHsServerHandle {
  public:
-  explicit BridgeServerHandle(std::shared_ptr<TaskState> task) : task_(std::move(task)) {
+  BridgeServerHandle(std::shared_ptr<TaskState> task, LB_FBRO_HANDLE browser)
+      : task_(std::move(task)), browser_(browser) {
     type_ = ServerHandleType;
   }
   static void* operator new(size_t size) { return FBroMallocManger_New(size); }
@@ -5431,11 +5595,83 @@ class BridgeServerHandle final : public FBroHsServerHandle {
     }
     CompleteTextTask(task_, L"{\"server\":" + std::to_wstring(handle)
         + L",\"address\":\"" + JsonEscape(address) + L"\"}");
+    DispatchServerEvent(L"fbro.event.fbrohsserverhandle.onservercreated.9f8423783d4d",
+        L"OnServerCreated", L"本地服务器服务器已创建",
+        {{L"server", std::to_wstring(handle)}, {L"address", address}});
   }
-  void OnServerDestroyed(CefRefPtr<CefServer>) override {}
+  void OnServerDestroyed(CefRefPtr<CefServer>) override {
+    DispatchServerEvent(L"fbro.event.fbrohsserverhandle.onserverdestroyed.74d2ad62e7bf",
+        L"OnServerDestroyed", L"本地服务器服务器已销毁", {});
+  }
+  void OnClientConnected(CefRefPtr<CefServer>, int connection_id) override {
+    DispatchServerEvent(L"fbro.event.fbrohsserverhandle.onclientconnected.73f6ab2955f9",
+        L"OnClientConnected", L"本地服务器客户端已连接",
+        {{L"connectionId", std::to_wstring(static_cast<long long>(connection_id))}});
+  }
+  void OnClientDisconnected(CefRefPtr<CefServer>, int connection_id) override {
+    DispatchServerEvent(L"fbro.event.fbrohsserverhandle.onclientdisconnected.679265737354",
+        L"OnClientDisconnected", L"本地服务器客户端已断开",
+        {{L"connectionId", std::to_wstring(static_cast<long long>(connection_id))}});
+  }
+  void OnWebSocketConnected(CefRefPtr<CefServer>, int connection_id) override {
+    DispatchServerEvent(L"fbro.event.fbrohsserverhandle.onwebsocketconnected.6eb0eda88679",
+        L"OnWebSocketConnected", L"本地服务器WebSocket已连接",
+        {{L"connectionId", std::to_wstring(static_cast<long long>(connection_id))}});
+  }
+  void OnWebSocketMessage(CefRefPtr<CefServer>, int connection_id, const void* data,
+                          size_t data_size) override {
+    const LB_FBRO_BUFFER_HANDLE payload = RegisterBuffer(
+        CopyPayloadBytes(data, static_cast<int>(data_size)));
+    DispatchServerEvent(L"fbro.event.fbrohsserverhandle.onwebsocketmessage.d0f74963dbf2",
+        L"OnWebSocketMessage", L"本地服务器WebSocket消息到达",
+        {{L"connectionId", std::to_wstring(static_cast<long long>(connection_id))},
+         {L"data", std::to_wstring(payload)},
+         {L"text", FromUtf8Bytes(data, data_size)},
+         {L"size", std::to_wstring(static_cast<long long>(data_size))}});
+  }
+  void OnWebSocketRequest(CefRefPtr<CefServer>, int connection_id,
+                          const CefString& client_address, CefRefPtr<CefRequest> request,
+                          CefRefPtr<CefCallback> callback) override {
+    const int action = DispatchRequestEvent(
+        L"fbro.event.fbrohsserverhandle.onwebsocketrequest.e0c62091ea5e",
+        L"OnWebSocketRequest", L"本地服务器WebSocket握手请求", connection_id,
+        client_address, request, true);
+    if (callback) {
+      if (action == LB_FBRO_EVENT_ACTION_CANCEL) callback->Cancel();
+      else callback->Continue();
+    }
+  }
+  void OnHttpRequest(CefRefPtr<CefServer>, int connection_id, const CefString& client_address,
+                     CefRefPtr<CefRequest> request) override {
+    DispatchRequestEvent(L"fbro.event.fbrohsserverhandle.onhttprequest.806dd090ad0b",
+        L"OnHttpRequest", L"本地服务器HTTP请求到达", connection_id, client_address, request,
+        false);
+  }
 
  private:
+  void DispatchServerEvent(const wchar_t* event_id, const wchar_t* official_name,
+                           const wchar_t* event_name,
+                           std::initializer_list<std::pair<const wchar_t*, std::wstring>> fields) {
+    DispatchGeneratedBrowserEvent(browser_, event_id, official_name, event_name,
+                                  BuildSafeFieldsJson(fields), 0, 0);
+  }
+  int DispatchRequestEvent(const wchar_t* event_id, const wchar_t* official_name,
+                           const wchar_t* event_name, int connection_id,
+                           const CefString& client_address, CefRefPtr<CefRequest> request,
+                           bool synchronous) {
+    const LB_FBRO_OBJECT_HANDLE request_handle = RegisterCefObject(
+        LB_FBRO_OBJECT_REQUEST, request, &ObjectState::request);
+    return DispatchGeneratedBrowserEvent(browser_, event_id, official_name, event_name,
+        BuildSafeFieldsJson({
+            {L"connectionId", std::to_wstring(static_cast<long long>(connection_id))},
+            {L"clientAddress", client_address.ToWString()},
+            {L"request", std::to_wstring(request_handle)},
+            {L"method", request ? FromFbroString(FBroHsRequest_GetMethod(request)) : L""},
+            {L"url", request ? FromFbroString(FBroHsRequest_GetURL(request)) : L""}}),
+        synchronous ? LB_FBRO_EVENT_FLAG_SYNCHRONOUS : 0, 0);
+  }
   std::shared_ptr<TaskState> task_;
+  LB_FBRO_HANDLE browser_;
 };
 
 /** 服务器 IO 任务：在 server 自身 task runner 上执行发送动作。 */
@@ -5458,13 +5694,13 @@ class BridgeServerSendTask final : public CefTask {
 };
 }  // namespace
 
-LB_FBRO_TASK_HANDLE __stdcall LB_FBro_ServerCreateAsync(const wchar_t* url, int port,
-                                                        int max_connections,
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_ServerCreateAsync(LB_FBRO_HANDLE browser, const wchar_t* url,
+                                                        int port, int max_connections,
                                                         LB_FBRO_TASK_CALLBACK callback,
                                                         void* user_data) {
   if (!url || !*url || port <= 0 || max_connections <= 0) return 0;
   auto task = CreateTask(callback, user_data);
-  CefRefPtr<BridgeServerHandle> server_handle = new BridgeServerHandle(task);
+  CefRefPtr<BridgeServerHandle> server_handle = new BridgeServerHandle(task, browser);
   CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
       [url = std::wstring(url), port, max_connections, server_handle]() {
         FBroHsServer_CreateServer(CefString(url), port, max_connections, server_handle);
@@ -5525,6 +5761,850 @@ int __stdcall LB_FBro_ServerShutdown(LB_FBRO_OBJECT_HANDLE object) {
   if (!state) return status;
   FBroHsServer_Shutdown(state->server);
   return LB_FBRO_OK;
+}
+
+// ---- VIP WebSocket 客户端拦截：受管 wssClient 句柄命令 ----
+// 与事件字段配套：拦截事件下发 websocket 句柄，用户用它读取连接信息或回发数据。
+// FBro 的 WSS 客户端接口要求在界面线程调用，生成的 wrapper 在 .lcpp 事件/方法
+// 中调用时天然满足该约定，桥内不做二次投递。
+
+int __stdcall LB_FBro_WssIsNull(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
+  if (!state) return 1;
+  return FBroHsWSSClient_IsNull(state->wss_client) ? 1 : 0;
+}
+
+int __stdcall LB_FBro_WssGetAddress(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                    size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsWSSClient_GetAddress(state->wss_client)), result,
+                    capacity);
+}
+
+int __stdcall LB_FBro_WssGetProtocol(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                     size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsWSSClient_GetProtocol(state->wss_client)), result,
+                    capacity);
+}
+
+int __stdcall LB_FBro_WssGetExtensions(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                       size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsWSSClient_GetExtensions(state->wss_client)), result,
+                    capacity);
+}
+
+int __stdcall LB_FBro_WssSend(LB_FBRO_OBJECT_HANDLE object, const wchar_t* text) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
+  if (!state) return status;
+  if (!text) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  FBroHsWSSClient_Send(state->wss_client, CefString(text));
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_WssSendBuffer(LB_FBRO_OBJECT_HANDLE object, LB_FBRO_BUFFER_HANDLE buffer) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
+  if (!state) return status;
+  auto buffer_state = GetBuffer(buffer, status);
+  if (!buffer_state) return status;
+  const size_t size = buffer_state->bytes.size();
+  FBroHsWSSClient_SendData(state->wss_client,
+                           size ? buffer_state->bytes.data() : nullptr, size);
+  return LB_FBRO_OK;
+}
+
+// ---- 拦截回传通道：按通道名向页面内挂钩脚本推送数据（UTF-8 传输） ----
+
+namespace {
+int SendByBrowserWithBrowser(LB_FBRO_HANDLE browser, const wchar_t* name,
+                             const std::vector<unsigned char>& bytes, bool use_client_channel) {
+  if (!name || !*name) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  const std::string channel = ToUtf8(name);
+  int send_status = LB_FBRO_ERROR_OPERATION_FAILED;
+  const int status = WithBrowser(browser, [&](CefRefPtr<CefBrowser> target) {
+    if (use_client_channel) {
+      send_status = FBroHsSocketClient_SendByBrowser(target, channel.c_str(),
+          bytes.empty() ? nullptr : reinterpret_cast<const char*>(bytes.data()),
+          static_cast<int>(bytes.size())) ? LB_FBRO_OK : LB_FBRO_ERROR_OPERATION_FAILED;
+    } else {
+      send_status = FBroHsSocketServer_SendByBrowser(target, channel.c_str(),
+          bytes.empty() ? nullptr : reinterpret_cast<const char*>(bytes.data()),
+          static_cast<int>(bytes.size())) ? LB_FBRO_OK : LB_FBRO_ERROR_OPERATION_FAILED;
+    }
+  });
+  return status <= 0 ? status : send_status;
+}
+}  // namespace
+
+int __stdcall LB_FBro_SocketServerSendByBrowser(LB_FBRO_HANDLE browser, const wchar_t* name,
+                                                const wchar_t* text) {
+  if (!text) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  const std::string bytes = ToUtf8(text);
+  return SendByBrowserWithBrowser(browser, name,
+                                  std::vector<unsigned char>(bytes.begin(), bytes.end()), false);
+}
+
+int __stdcall LB_FBro_SocketServerSendByBrowserBuffer(LB_FBRO_HANDLE browser, const wchar_t* name,
+                                                      LB_FBRO_BUFFER_HANDLE buffer) {
+  int status = LB_FBRO_OK;
+  auto buffer_state = GetBuffer(buffer, status);
+  if (!buffer_state) return status;
+  return SendByBrowserWithBrowser(browser, name, buffer_state->bytes, false);
+}
+
+int __stdcall LB_FBro_SocketClientSendByBrowser(LB_FBRO_HANDLE browser, const wchar_t* name,
+                                                const wchar_t* text) {
+  if (!text) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  const std::string bytes = ToUtf8(text);
+  return SendByBrowserWithBrowser(browser, name,
+                                  std::vector<unsigned char>(bytes.begin(), bytes.end()), true);
+}
+
+int __stdcall LB_FBro_SocketClientSendByBrowserBuffer(LB_FBRO_HANDLE browser, const wchar_t* name,
+                                                      LB_FBRO_BUFFER_HANDLE buffer) {
+  int status = LB_FBRO_OK;
+  auto buffer_state = GetBuffer(buffer, status);
+  if (!buffer_state) return status;
+  return SendByBrowserWithBrowser(browser, name, buffer_state->bytes, true);
+}
+
+int __stdcall LB_FBro_RequestGetMethod(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                       size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_REQUEST, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsRequest_GetMethod(state->request)), result, capacity);
+}
+
+// ---- DOM 遍历快照 ----
+// 官方 FBroHsBrowserFrame_VisitDOM 的 Visit 回调按 CEF 语义可能在渲染进程执行，
+// 因此不保留官方 DOM 对象：Visit 里把 CefDOMDocument 确定性序列化成有界快照
+// （纯数据），通过任务句柄把快照交回调用方。路径为 JSON 数组字符串（如 [0,2]），
+// 按路径写回会重新 VisitDOM 定位官方节点后调用 SetElementAttribute/SetValue。
+
+namespace {
+
+constexpr int kDomDefaultMaxDepth = 16;
+constexpr int kDomDefaultMaxNodes = 4000;
+constexpr size_t kDomMaxTextLength = 4096;
+constexpr int kDomMaxAttributesPerNode = 256;
+
+struct DomSnapshotNode {
+  std::wstring path;
+  int type = 0;
+  bool is_element = false;
+  std::wstring name;
+  std::wstring value;
+  std::wstring inner_text;
+  std::vector<std::pair<std::wstring, std::wstring>> attributes;
+};
+
+struct DomSnapshot {
+  int document_type = 0;
+  std::wstring title;
+  std::wstring base_url;
+  std::wstring head_inner_text;
+  std::wstring focused_path;
+  std::vector<DomSnapshotNode> nodes;
+};
+
+std::wstring TruncateDomText(std::wstring value) {
+  if (value.size() > kDomMaxTextLength) value.resize(kDomMaxTextLength);
+  return value;
+}
+
+void WalkDomSnapshot(DomSnapshot& snapshot, CefRefPtr<CefDOMNode> node,
+                     const std::wstring& path, int depth, int max_depth, size_t max_nodes,
+                     CefRefPtr<CefDOMNode> focused) {
+  if (!node || depth > max_depth || snapshot.nodes.size() >= max_nodes) return;
+  DomSnapshotNode record;
+  record.path = path;
+  record.type = FBroHsDOMNode_GetType(node);
+  record.is_element = FBroHsDOMNode_IsElement(node) != 0;
+  record.name = TruncateDomText(FromFbroString(FBroHsDOMNode_GetName(node)));
+  record.value = TruncateDomText(FromFbroString(FBroHsDOMNode_GetValue(node)));
+  if (record.is_element) {
+    record.inner_text =
+        TruncateDomText(FromFbroString(FBroHsDOMNode_GetElementInnerText(node)));
+    auto attributes = FBroHsDOMNode_GetElementAttributes(node);
+    if (attributes) {
+      const int size = FBroDoubleString_Size(attributes);
+      FBroDoubleString_ToBegin(attributes);
+      for (int index = 0; index < size && index < kDomMaxAttributesPerNode; ++index) {
+        record.attributes.emplace_back(
+            TruncateDomText(FromFbroString(FBroDoubleString_GetCurrentData_Key(attributes))),
+            TruncateDomText(FromFbroString(FBroDoubleString_GetCurrentData_Value(attributes))));
+        if (!FBroDoubleString_ToNext(attributes)) break;
+      }
+    }
+  }
+  if (focused && snapshot.focused_path.empty() && FBroHsDOMNode_IsSame(node, focused)) {
+    snapshot.focused_path = path;
+  }
+  snapshot.nodes.push_back(std::move(record));
+  if (!record.is_element || !FBroHsDOMNode_HasChildren(node)) return;
+  CefRefPtr<CefDOMNode> child = FBroHsDOMNode_GetFirstChild(node);
+  int child_index = 0;
+  while (child && snapshot.nodes.size() < max_nodes) {
+    WalkDomSnapshot(snapshot, child, path + L"[" + std::to_wstring(child_index) + L"]",
+                    depth + 1, max_depth, max_nodes, focused);
+    child = FBroHsDOMNode_GetNextSibling(child);
+    ++child_index;
+  }
+}
+
+// 解析路径 JSON（如 "[0,2]"，"[]" 表示 Body 本身）。返回是否解析成功。
+bool ParseDomPath(const wchar_t* path_json, std::vector<int>& path) {
+  path.clear();
+  if (!path_json || !*path_json) return false;
+  const auto parsed = CefParseJSON(CefString(path_json), JSON_PARSER_RFC);
+  if (!parsed || parsed->GetType() != VTYPE_LIST) return false;
+  auto list = parsed->GetList();
+  const size_t size = list ? list->GetSize() : 0;
+  for (size_t index = 0; index < size; ++index) {
+    path.push_back(list->GetInt(index));
+  }
+  return true;
+}
+
+}  // namespace
+
+// DOM 任务共享完成标记：官方 VisitDOM 与页面内 JS 序列化兜底竞争同一任务，
+// 先完成者生效，另一方静默退出，避免重复完成任务。
+struct DomTaskShared {
+  std::shared_ptr<TaskState> task;
+  std::atomic<bool> finished{false};
+  bool TryFinish() { return !finished.exchange(true); }
+};
+
+LB_FBRO_OBJECT_HANDLE RegisterDomSnapshot(const std::shared_ptr<DomSnapshot>& snapshot) {
+  auto state = std::make_shared<ObjectState>();
+  state->handle = g_next_object_handle.fetch_add(1);
+  state->type = LB_FBRO_OBJECT_DOM_SNAPSHOT;
+  state->owner_thread = 0;
+  state->dom_snapshot = snapshot;
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  g_objects.emplace(state->handle, state);
+  return state->handle;
+}
+
+class BridgeDomVisitor final : public FBroHsDOMVisitor {
+ public:
+  explicit BridgeDomVisitor(std::shared_ptr<DomTaskShared> shared, int max_depth, int max_nodes)
+      : shared_(std::move(shared)), max_depth_(max_depth), max_nodes_(max_nodes) {}
+  void Visit(CefRefPtr<CefDOMDocument> document) override {
+    if (!shared_->TryFinish()) return;
+    auto snapshot = std::make_shared<DomSnapshot>();
+    if (document) {
+      snapshot->document_type = FBroHsDOMDocument_GetType(document);
+      snapshot->title = TruncateDomText(FromFbroString(FBroHsDOMDocument_GetTitle(document)));
+      snapshot->base_url =
+          TruncateDomText(FromFbroString(FBroHsDOMDocument_GetBaseURL(document)));
+      if (auto head = FBroHsDOMDocument_GetHead(document)) {
+        snapshot->head_inner_text =
+            TruncateDomText(FromFbroString(FBroHsDOMNode_GetElementInnerText(head)));
+      }
+      CefRefPtr<CefDOMNode> focused = FBroHsDOMDocument_GetFocusedNode(document);
+      CefRefPtr<CefDOMNode> root = FBroHsDOMDocument_GetBody(document);
+      if (!root) root = FBroHsDOMDocument_GetDocument(document);
+      WalkDomSnapshot(*snapshot, root, L"[]", 0, max_depth_, max_nodes_, focused);
+    }
+    const LB_FBRO_OBJECT_HANDLE snapshot_handle = RegisterDomSnapshot(snapshot);
+    CompleteTextTask(shared_->task, L"{\"snapshot\":" + std::to_wstring(snapshot_handle)
+        + L",\"nodes\":" + std::to_wstring(snapshot->nodes.size()) + L"}");
+  }
+
+ private:
+  std::shared_ptr<DomTaskShared> shared_;
+  int max_depth_;
+  int max_nodes_;
+  IMPLEMENT_REFCOUNTING(BridgeDomVisitor);
+};
+
+class BridgeDomApplyVisitor final : public FBroHsDOMVisitor {
+ public:
+  BridgeDomApplyVisitor(std::shared_ptr<DomTaskShared> shared, std::vector<int> path,
+                        std::wstring name, std::wstring value)
+      : shared_(std::move(shared)), path_(std::move(path)), name_(std::move(name)),
+        value_(std::move(value)) {}
+  void Visit(CefRefPtr<CefDOMDocument> document) override {
+    if (!shared_->TryFinish()) return;
+    CefRefPtr<CefDOMNode> node = document ? FBroHsDOMDocument_GetBody(document) : nullptr;
+    if (!node) node = document ? FBroHsDOMDocument_GetDocument(document) : nullptr;
+    CefRefPtr<CefDOMNode> target = FindByPath(node, 0);
+    if (!target) {
+      CompleteTextTask(shared_->task, L"", L"DOM 写回失败：路径不存在或文档已变化，请重新遍历。");
+      return;
+    }
+    const bool ok = name_.empty()
+        ? FBroHsDOMNode_SetValue(target, CefString(value_)) != 0
+        : FBroHsDOMNode_SetElementAttribute(target, CefString(name_), CefString(value_)) != 0;
+    if (!ok) {
+      CompleteTextTask(shared_->task, L"", L"DOM 写回失败：官方节点拒绝写入该属性或值。");
+      return;
+    }
+    CompleteTextTask(shared_->task, L"1");
+  }
+
+ private:
+  CefRefPtr<CefDOMNode> FindByPath(CefRefPtr<CefDOMNode> node, int depth) {
+    if (!node) return nullptr;
+    if (depth >= static_cast<int>(path_.size())) return node;
+    if (!FBroHsDOMNode_HasChildren(node)) return nullptr;
+    CefRefPtr<CefDOMNode> child = FBroHsDOMNode_GetFirstChild(node);
+    int index = 0;
+    while (child) {
+      if (index == path_[depth]) return FindByPath(child, depth + 1);
+      child = FBroHsDOMNode_GetNextSibling(child);
+      ++index;
+    }
+    return nullptr;
+  }
+  std::shared_ptr<DomTaskShared> shared_;
+  std::vector<int> path_;
+  std::wstring name_;
+  std::wstring value_;
+  IMPLEMENT_REFCOUNTING(BridgeDomApplyVisitor);
+};
+
+// 解析页面内序列化出的快照 JSON 到受管 DomSnapshot。
+CefRefPtr<CefDictionaryValue> ParseDomSnapshotRoot(const std::wstring& json_text) {
+  if (json_text.empty()) return nullptr;
+  auto parsed = CefParseJSON(CefString(json_text), JSON_PARSER_RFC);
+  int guard = 0;
+  while (parsed && guard++ < 4) {
+    if (parsed->GetType() == VTYPE_DICTIONARY) return parsed->GetDictionary();
+    if (parsed->GetType() != VTYPE_LIST) return nullptr;
+    auto list = parsed->GetList();
+    if (!list || list->GetSize() < 1) return nullptr;
+    if (list->GetType(0) == VTYPE_STRING) {
+      parsed = CefParseJSON(list->GetString(0), JSON_PARSER_RFC);
+    } else if (list->GetType(0) == VTYPE_DICTIONARY) {
+      return list->GetDictionary(0);
+    } else {
+      return nullptr;
+    }
+  }
+  return nullptr;
+}
+
+bool ParseDomSnapshotJson(const std::wstring& json_text, DomSnapshot& snapshot) {
+  auto dict = ParseDomSnapshotRoot(json_text);
+  if (!dict) return false;
+  snapshot.document_type = dict->GetType("documentType") == VTYPE_INT ? dict->GetInt("documentType") : 0;
+  if (dict->GetType("title") == VTYPE_STRING) snapshot.title = dict->GetString("title").ToWString();
+  if (dict->GetType("baseUrl") == VTYPE_STRING) snapshot.base_url = dict->GetString("baseUrl").ToWString();
+  if (dict->GetType("headInnerText") == VTYPE_STRING) {
+    snapshot.head_inner_text = dict->GetString("headInnerText").ToWString();
+  }
+  if (dict->GetType("focusedPath") == VTYPE_STRING) {
+    snapshot.focused_path = dict->GetString("focusedPath").ToWString();
+  }
+  if (dict->GetType("nodes") != VTYPE_LIST) return snapshot.nodes.empty();
+  auto nodes = dict->GetList("nodes");
+  const size_t count = nodes ? nodes->GetSize() : 0;
+  for (size_t index = 0; index < count; ++index) {
+    if (nodes->GetType(index) != VTYPE_DICTIONARY) continue;
+    auto item = nodes->GetDictionary(index);
+    if (!item) continue;
+    DomSnapshotNode record;
+    if (item->GetType("path") == VTYPE_STRING) record.path = item->GetString("path").ToWString();
+    record.type = item->GetType("type") == VTYPE_INT ? item->GetInt("type") : 0;
+    record.is_element = item->GetType("element") == VTYPE_BOOL ? item->GetBool("element") : false;
+    if (item->GetType("name") == VTYPE_STRING) record.name = item->GetString("name").ToWString();
+    if (item->GetType("value") == VTYPE_STRING) record.value = item->GetString("value").ToWString();
+    if (item->GetType("innerText") == VTYPE_STRING) {
+      record.inner_text = item->GetString("innerText").ToWString();
+    }
+    if (item->GetType("attributes") == VTYPE_LIST) {
+      auto attributes = item->GetList("attributes");
+      const size_t attribute_count = attributes ? attributes->GetSize() : 0;
+      for (size_t attribute_index = 0; attribute_index < attribute_count; ++attribute_index) {
+        if (attributes->GetType(attribute_index) != VTYPE_LIST) continue;
+        auto pair = attributes->GetList(attribute_index);
+        if (!pair || pair->GetSize() < 2) continue;
+        record.attributes.emplace_back(pair->GetString(0).ToWString(), pair->GetString(1).ToWString());
+      }
+    }
+    snapshot.nodes.push_back(std::move(record));
+  }
+  return true;
+}
+
+// 页面内 DOM 序列化兜底：与官方 VisitDOM 语义同构的 JS 片段，在页面主世界
+// 按 childNodes 路径遍历，输出与受管快照一致的 JSON。深度与节点数上限由调用方传入。
+std::wstring BuildDomSnapshotJsSource(int max_depth, int max_nodes) {
+  std::wstring js = L"(function(){var maxDepth=";
+  js += std::to_wstring(max_depth);
+  js += L";var maxNodes=";
+  js += std::to_wstring(max_nodes);
+  js += LR"JS(;var nodes=[];var focused=document.activeElement;function text(v){try{return v==null?'':String(v).slice(0,4096);}catch(e){return '';}}
+function attrs(n){var out=[];try{var m=n.attributes;for(var i=0;i<m.length&&i<256;i++){out.push([m[i].name,m[i].value]);}}catch(e){}
+return out;}
+function walk(n,path,depth){if(!n||depth>maxDepth||nodes.length>=maxNodes)return;var rec={path:path,type:n.nodeType,element:n.nodeType===1,name:n.nodeName||'',value:text(n.nodeValue),innerText:'',attributes:[]};
+if(rec.element){try{rec.innerText=text(n.innerText);}catch(e){}rec.attributes=attrs(n);}
+if(focused&&n===focused)rec.focused=true;
+nodes.push(rec);
+if(rec.element){var kids=n.childNodes;for(var i=0;i<kids.length&&nodes.length<maxNodes;i++){walk(kids[i],path+'['+i+']',depth+1);}}}
+var root=document.body||document.documentElement;
+walk(root,'[]',0);
+var fp='';
+if(focused){var chain=[];var node=focused;var parent=node.parentNode;
+while(parent&&parent!==document.body&&parent!==document.documentElement&&chain.length<64){chain.unshift(Array.prototype.indexOf.call(parent.childNodes,node));node=parent;parent=node.parentNode;}
+fp='['+chain.join(',')+']';}
+var head=document.head;
+return JSON.stringify({documentType:document.compatMode==='CSS1Compat'?1:0,title:document.title||'',baseUrl:document.baseURI||'',headInnerText:head?text(head.innerText):'',focusedPath:fp,nodes:nodes});})())JS";
+  return js;
+}
+
+// 页面内按路径写回兜底：childNodes 逐层定位后 setAttribute/value。
+std::wstring BuildDomApplyJsSource(const std::vector<int>& path, const std::wstring& name,
+                                   const std::wstring& value) {
+  CefRefPtr<CefValue> name_value = CefValue::Create();
+  name_value->SetString(name);
+  CefRefPtr<CefValue> value_value = CefValue::Create();
+  value_value->SetString(value);
+  const std::wstring name_json = CefWriteJSON(name_value, JSON_WRITER_DEFAULT).ToWString();
+  const std::wstring value_json = CefWriteJSON(value_value, JSON_WRITER_DEFAULT).ToWString();
+  std::wstring js = L"(function(){var node=document.body;if(!node)return '0';var path=";
+  js += L"[";
+  for (size_t index = 0; index < path.size(); ++index) {
+    if (index) js += L",";
+    js += std::to_wstring(path[index]);
+  }
+  js += L"];";
+  js += LR"JS(for(var i=0;i<path.length;i++){node=node.childNodes[path[i]];if(!node)return '0';}
+try{
+)JS";
+  if (name.empty()) {
+    js += L"node.value=" + value_json + L";";
+  } else {
+    js += L"node.setAttribute(" + name_json + L"," + value_json + L");";
+  }
+  js += LR"JS(return '1';}catch(e){return '0';}})())JS";
+  return js;
+}
+
+/** DOM 快照 JS 兜底回调：解析页面内序列化 JSON 并注册受管快照。 */
+class BridgeDomSnapshotJsCallback final : public FBroHsJsCallback {
+ public:
+  BridgeDomSnapshotJsCallback(std::shared_ptr<DomTaskShared> shared, int max_depth, int max_nodes)
+      : shared_(std::move(shared)), max_depth_(max_depth), max_nodes_(max_nodes) {
+    type_ = JsCallbackType;
+  }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void Callback(CefRefPtr<CefListValue> values) override {
+    (void)max_depth_;
+    (void)max_nodes_;
+    if (!shared_->TryFinish()) return;
+    // FBro ExecuteJavaScriptToHasReturn 的回调载荷形如 [状态, 类型, 返回值, 错误]：
+    // 返回值在索引 2（字符串）；这里扫描全部元素取第一个可解析出 nodes 键的 JSON。
+    std::wstring json;
+    if (values) {
+      for (size_t index = 0; index < values->GetSize(); ++index) {
+        if (values->GetType(index) != VTYPE_STRING) continue;
+        const std::wstring candidate = values->GetString(index).ToWString();
+        if (candidate.find(L"nodes") == std::wstring::npos) continue;
+        json = candidate;
+        break;
+      }
+      if (json.empty()) json = JsonFromList(values);
+    }
+    auto snapshot = std::make_shared<DomSnapshot>();
+    if (!ParseDomSnapshotJson(json, *snapshot)) {
+      CompleteTextTask(shared_->task, L"", L"DOM 遍历失败：页面内序列化返回无效数据。");
+      return;
+    }
+    const LB_FBRO_OBJECT_HANDLE snapshot_handle = RegisterDomSnapshot(snapshot);
+    CompleteTextTask(shared_->task, L"{\"snapshot\":" + std::to_wstring(snapshot_handle)
+        + L",\"nodes\":" + std::to_wstring(snapshot->nodes.size()) + L"}");
+  }
+
+ private:
+  std::shared_ptr<DomTaskShared> shared_;
+  int max_depth_;
+  int max_nodes_;
+  IMPLEMENT_REFCOUNTING(BridgeDomSnapshotJsCallback);
+};
+
+/** DOM 写回 JS 兜底回调：页面内 setAttribute/value 写回结果。 */
+class BridgeDomApplyJsCallback final : public FBroHsJsCallback {
+ public:
+  explicit BridgeDomApplyJsCallback(std::shared_ptr<DomTaskShared> shared)
+      : shared_(std::move(shared)) {
+    type_ = JsCallbackType;
+  }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void Callback(CefRefPtr<CefListValue> values) override {
+    if (!shared_->TryFinish()) return;
+    // 载荷形如 [状态, 类型, 返回值, 错误]，扫描字符串元素找 '1' 成功标记。
+    if (values) {
+      for (size_t index = 0; index < values->GetSize(); ++index) {
+        if (values->GetType(index) == VTYPE_STRING && values->GetString(index) == "1") {
+          CompleteTextTask(shared_->task, L"1");
+          return;
+        }
+      }
+    }
+    CompleteTextTask(shared_->task, L"", L"DOM 写回失败：路径节点未找到或页面拒绝写入。");
+  }
+
+ private:
+  std::shared_ptr<DomTaskShared> shared_;
+  IMPLEMENT_REFCOUNTING(BridgeDomApplyJsCallback);
+};
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameVisitDomAsync(LB_FBRO_OBJECT_HANDLE frame_handle,
+                                                         int max_depth, int max_nodes,
+                                                         LB_FBRO_TASK_CALLBACK callback,
+                                                         void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame_handle, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state || !frame_state->frame) return 0;
+  if (max_depth <= 0) max_depth = kDomDefaultMaxDepth;
+  if (max_nodes <= 0) max_nodes = kDomDefaultMaxNodes;
+  auto task = CreateTask(callback, user_data);
+  auto shared = std::make_shared<DomTaskShared>();
+  shared->task = task;
+  auto owned_frame = frame_state->frame;
+  // 主路径：页面内 JS 序列化。实测（2026-09-09 冒烟）：官方 VisitDOM 在浏览器进程
+  // 调用会卡死/拖垮 CEF UI 线程（CEF 语义 VisitDOM 只允许渲染进程调用），因此
+  // BridgeDomVisitor 官方路径仅保留在桥源中作为参考实现，不参与默认调度。
+  CefRefPtr<BridgeDomSnapshotJsCallback> js_callback =
+      new BridgeDomSnapshotJsCallback(shared, max_depth, max_nodes);
+  const std::wstring snapshot_js = BuildDomSnapshotJsSource(max_depth, max_nodes);
+  // ExecuteJavaScriptToHasReturn 的结果投递实测（2026-09-09 冒烟）：在 CEF UI
+  // 线程提交约 60 秒后回调到达；在普通工作线程提交则回调不派发。因此保持
+  // CEF UI 线程提交，wrapper 侧等待上限覆盖该延迟。
+  CefRefPtr<BridgeFrameActionTask> js_start = new BridgeFrameActionTask(
+      [owned_frame, snapshot_js, js_callback]() {
+        FBroHsBrowserFrame_ExecuteJavaScriptToHasReturn(
+            owned_frame, CefString(snapshot_js), CefString(L"lingbuilder://dom-snapshot"), 1,
+            js_callback);
+      },
+      task, L"");
+  ScheduleManagedTask(js_start, task, L"无法投递 DOM 遍历任务");
+  return task->handle;
+}
+
+namespace {
+
+std::shared_ptr<DomSnapshot> GetDomSnapshot(LB_FBRO_OBJECT_HANDLE object, int& status) {
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOM_SNAPSHOT, status);
+  if (!state) return nullptr;
+  return state->dom_snapshot;
+}
+
+const DomSnapshotNode* GetDomSnapshotNode(const std::shared_ptr<DomSnapshot>& snapshot,
+                                          int node_index) {
+  if (!snapshot || node_index < 0
+      || node_index >= static_cast<int>(snapshot->nodes.size())) {
+    return nullptr;
+  }
+  return &snapshot->nodes[static_cast<size_t>(node_index)];
+}
+
+LB_FBRO_TASK_HANDLE ScheduleDomApply(LB_FBRO_OBJECT_HANDLE frame_handle,
+                                     const wchar_t* path_json, const wchar_t* name,
+                                     const wchar_t* value, LB_FBRO_TASK_CALLBACK callback,
+                                     void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame_handle, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state || !frame_state->frame) return 0;
+  std::vector<int> path;
+  const bool path_ok = ParseDomPath(path_json, path);
+  { FILE* df = nullptr; _wfopen_s(&df, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-cb-debug.log", L"a");
+    if (df) { fwprintf(df, L"tick=%u Apply.Submit path_ok=%d path=%d frame=%llu\n", static_cast<unsigned>(GetTickCount()), path_ok ? 1 : 0, static_cast<int>(path.size())); fclose(df); } }
+  if (!path_ok) return 0;
+  auto task = CreateTask(callback, user_data);
+  { FILE* df = nullptr; _wfopen_s(&df, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-cb-debug.log", L"a");
+    if (df) { fwprintf(df, L"pid=%u tick=%u Apply.TaskCreated handle=%llu\n", static_cast<unsigned>(_getpid()), static_cast<unsigned>(GetTickCount()), static_cast<unsigned long long>(task->handle)); fclose(df); } }
+  auto shared = std::make_shared<DomTaskShared>();
+  shared->task = task;
+  auto owned_frame = frame_state->frame;
+  auto apply_name = name ? std::wstring(name) : std::wstring();
+  auto apply_value = value ? std::wstring(value) : std::wstring();
+  // 主路径：页面内 JS 按路径写回（官方 VisitDOM 写回路径同上，仅保留参考实现）。
+  CefRefPtr<BridgeDomApplyJsCallback> js_callback = new BridgeDomApplyJsCallback(shared);
+  const std::wstring apply_js = BuildDomApplyJsSource(path, apply_name, apply_value);
+  CefRefPtr<BridgeFrameActionTask> js_start = new BridgeFrameActionTask(
+      [owned_frame, apply_js, js_callback]() {
+        FBroHsBrowserFrame_ExecuteJavaScriptToHasReturn(
+            owned_frame, CefString(apply_js), CefString(L"lingbuilder://dom-apply"), 1, js_callback);
+      },
+      task, L"");
+  ScheduleManagedTask(js_start, task, L"无法投递 DOM 写回任务");
+  return task->handle;
+}
+
+}  // namespace
+
+int __stdcall LB_FBro_DomGetTitle(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                  size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  if (!snapshot) return status;
+  return CopyResult(snapshot->title, result, capacity);
+}
+
+int __stdcall LB_FBro_DomGetBaseUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                    size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  if (!snapshot) return status;
+  return CopyResult(snapshot->base_url, result, capacity);
+}
+
+int __stdcall LB_FBro_DomGetNodeCount(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  if (!snapshot) return status;
+  return static_cast<int>(snapshot->nodes.size());
+}
+
+int __stdcall LB_FBro_DomGetNodeType(LB_FBRO_OBJECT_HANDLE object, int node_index) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node) return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  return node->type;
+}
+
+int __stdcall LB_FBro_DomGetNodePath(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                     wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node) return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  return CopyResult(node->path, result, capacity);
+}
+
+int __stdcall LB_FBro_DomGetNodeName(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                     wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node) return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  return CopyResult(node->name, result, capacity);
+}
+
+int __stdcall LB_FBro_DomGetNodeValue(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                      wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node) return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  return CopyResult(node->value, result, capacity);
+}
+
+int __stdcall LB_FBro_DomGetNodeInnerText(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                          wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node) return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  return CopyResult(node->inner_text, result, capacity);
+}
+
+int __stdcall LB_FBro_DomGetNodeAttributeCount(LB_FBRO_OBJECT_HANDLE object, int node_index) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node) return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  return static_cast<int>(node->attributes.size());
+}
+
+int __stdcall LB_FBro_DomGetNodeAttributeName(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                              int attribute_index, wchar_t* result,
+                                              size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node || attribute_index < 0
+      || attribute_index >= static_cast<int>(node->attributes.size())) {
+    return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  }
+  return CopyResult(node->attributes[static_cast<size_t>(attribute_index)].first, result,
+                    capacity);
+}
+
+int __stdcall LB_FBro_DomGetNodeAttributeValue(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                               int attribute_index, wchar_t* result,
+                                               size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node || attribute_index < 0
+      || attribute_index >= static_cast<int>(node->attributes.size())) {
+    return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  }
+  return CopyResult(node->attributes[static_cast<size_t>(attribute_index)].second, result,
+                    capacity);
+}
+
+int __stdcall LB_FBro_DomGetNodeAttributeByName(LB_FBRO_OBJECT_HANDLE object, int node_index,
+                                                const wchar_t* name, wchar_t* result,
+                                                size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  const auto* node = GetDomSnapshotNode(snapshot, node_index);
+  if (!node || !name) return status == LB_FBRO_OK ? LB_FBRO_ERROR_INVALID_ARGUMENT : status;
+  for (const auto& attribute : node->attributes) {
+    if (attribute.first == name) return CopyResult(attribute.second, result, capacity);
+  }
+  return CopyResult(std::wstring(), result, capacity);
+}
+
+int __stdcall LB_FBro_DomGetFocusedPath(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
+                                        size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  if (!snapshot) return status;
+  return CopyResult(snapshot->focused_path, result, capacity);
+}
+
+int __stdcall LB_FBro_DomFindNodeByPath(LB_FBRO_OBJECT_HANDLE object, const wchar_t* path_json) {
+  int status = LB_FBRO_OK;
+  auto snapshot = GetDomSnapshot(object, status);
+  if (!snapshot) return status;
+  const std::wstring wanted = path_json ? path_json : L"";
+  for (size_t index = 0; index < snapshot->nodes.size(); ++index) {
+    if (snapshot->nodes[index].path == wanted) return static_cast<int>(index);
+  }
+  return -1;
+}
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_DomSetAttributeByPathAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* path_json, const wchar_t* name,
+                                                 const wchar_t* value,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  { FILE* df = nullptr; _wfopen_s(&df, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-cb-debug.log", L"a");
+    if (df) { int st = 0; auto fs = GetObject(frame, LB_FBRO_OBJECT_FRAME, st);
+      fwprintf(df, L"tick=%u DomSetAttr frame=%llu state=%d status=%d\n", static_cast<unsigned>(GetTickCount()), static_cast<unsigned long long>(frame), fs ? 1 : 0, st); fclose(df); } }
+  return ScheduleDomApply(frame, path_json, name, value, callback, user_data);
+}
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_DomSetValueByPathAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                             const wchar_t* path_json, const wchar_t* value,
+                                             LB_FBRO_TASK_CALLBACK callback, void* user_data) {
+  return ScheduleDomApply(frame, path_json, nullptr, value, callback, user_data);
+}
+
+// ---- 运行时独立 RequestContext（指纹双窗口隔离场景） ----
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_RequestContextCreateAsync(const wchar_t* settings_json,
+                                                                LB_FBRO_TASK_CALLBACK callback,
+                                                                void* user_data) {
+  auto task = CreateTask(callback, user_data);
+  const std::wstring settings = settings_json ? settings_json : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask([settings, task]() {
+    std::string cache_path;
+    std::string accept_language;
+    std::string cookieable_schemes;
+    BOOL persist_session_cookies = TRUE;
+    int exclude_defaults = 0;
+    if (!settings.empty()) {
+      auto parsed = CefParseJSON(CefString(settings), JSON_PARSER_RFC);
+      if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) {
+        CompleteTextTask(task, L"", L"创建 RequestContext 失败：设置 JSON 需为对象。");
+        return;
+      }
+      auto dict = parsed->GetDictionary();
+      if (dict->GetType("cachePath") == VTYPE_STRING) {
+        cache_path = ToUtf8(dict->GetString("cachePath").ToWString());
+      }
+      if (dict->GetType("acceptLanguageList") == VTYPE_STRING) {
+        accept_language = ToUtf8(dict->GetString("acceptLanguageList").ToWString());
+      }
+      if (dict->GetType("cookieableSchemesList") == VTYPE_STRING) {
+        cookieable_schemes = ToUtf8(dict->GetString("cookieableSchemesList").ToWString());
+      }
+      if (dict->GetType("persistSessionCookies") == VTYPE_BOOL) {
+        persist_session_cookies = dict->GetBool("persistSessionCookies") ? 1 : 0;
+      }
+      if (dict->GetType("cookieableSchemesExcludeDefaults") == VTYPE_BOOL) {
+        exclude_defaults = dict->GetBool("cookieableSchemesExcludeDefaults") ? 1 : 0;
+      }
+    }
+    // 官方结构体只保存 char* 指针，CreateContext 调用期间必须保持存活，
+    // 因此字符串挂在本次任务的局部作用域内。
+    E_REQUSETCONTEXT_SET context_set{};
+    context_set.cache_path = cache_path.empty() ? nullptr : cache_path.data();
+    context_set.persist_session_cookies = persist_session_cookies;
+    context_set.accept_language_list =
+        accept_language.empty() ? nullptr : accept_language.data();
+    context_set.cookieable_schemes_list =
+        cookieable_schemes.empty() ? nullptr : cookieable_schemes.data();
+    context_set.cookieable_schemes_exclude_defaults = exclude_defaults;
+    auto context = FBroHsRequestContext_CreateContext(&context_set);
+    if (!context) {
+      CompleteTextTask(task, L"", L"创建 RequestContext 失败：官方接口返回空。");
+      return;
+    }
+    const LB_FBRO_OBJECT_HANDLE handle = RegisterCefObject(
+        LB_FBRO_OBJECT_REQUEST_CONTEXT, context, &ObjectState::request_context);
+    CompleteTextTask(task, L"{\"context\":" + std::to_wstring(handle) + L"}");
+  }, task, L"");
+  ScheduleManagedTask(start, task, L"无法投递 RequestContext 创建任务");
+  return task->handle;
+}
+
+int __stdcall LB_FBro_RecreateBrowserWithContext(LB_FBRO_HANDLE browser,
+                                                 LB_FBRO_OBJECT_HANDLE context) {
+  int status = LB_FBRO_OK;
+  auto context_state = GetObject(context, LB_FBRO_OBJECT_REQUEST_CONTEXT, status);
+  if (!context_state || !context_state->request_context) {
+    return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  }
+  CefRefPtr<CefRequestContext> user_context = context_state->request_context;
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  BrowserState* state = Find(browser);
+  if (!state) return LB_FBRO_ERROR_RELEASED_HANDLE;
+  if (state->browser) {
+    // 旧浏览器异步关闭，OnBeforeClose 后换上用户上下文自动重启。
+    state->recreate_request_context = user_context;
+    state->recreate_pending = true;
+    FBroHsBrowserHost_TryCloseBrowser(state->browser);
+    return 1;
+  }
+  state->request_context = user_context;
+  state->recreate_request_context = nullptr;
+  state->recreate_pending = false;
+  state->create_started = false;
+  state->extension_load_started = false;
+  ScheduleBrowserStart(browser);
+  return 1;
+}
+
+LB_FBRO_HANDLE __stdcall LB_FBro_BrowserHostGetMainBrowser(LB_FBRO_HANDLE browser) {
+  CefRefPtr<CefBrowser> main_browser;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    BrowserState* state = Find(browser);
+    if (!state || !state->browser) return 0;
+    main_browser = FBroHsBrowserHost_GetMainBrowser(state->browser);
+    if (!main_browser) return 0;
+    if (main_browser->IsSame(state->browser)) return browser;
+    for (auto& item : g_browsers) {
+      if (item.second->browser && item.second->browser->IsSame(main_browser)) {
+        return item.first;
+      }
+    }
+  }
+  return 0;
 }
 
 int __stdcall LB_FBro_ExecuteJs(LB_FBRO_HANDLE browser, const wchar_t* script, wchar_t* result, size_t capacity) {

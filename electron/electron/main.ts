@@ -300,6 +300,7 @@ async function startManagedRendererServer(workspaceRoot: string): Promise<Server
       LINGBUILDER_USER_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json'),
       LINGBUILDER_STATIC_ROOT: rendererStaticRoot(),
       LINGBUILDER_RULEBOOK_PATH: rulebookPath(),
+      LINGBUILDER_AI_MODULE_SPEC_PATH: aiModuleGuidePath(),
       LINGBUILDER_SESSION_TOKEN: rendererSessionToken,
       LINGBUILDER_DEV_NO_AUTH: 'false',
       LINGBUILDER_AI_BRIDGE_ENABLED: 'false',

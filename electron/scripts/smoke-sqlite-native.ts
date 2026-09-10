@@ -8,6 +8,7 @@ import type { InstalledModule } from '../src/services/modules/types';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
+import { exportModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
@@ -43,6 +44,9 @@ async function main(): Promise<void> {
   for (const required of [
     'namespace LingBuilderSqlite',
     'long long SQLite_打开连接',
+    'long long SQLite_打开加密连接',
+    'bool SQLite_打开加密库',
+    'bool SQLite_运行库是否支持加密',
     'bool SQLite_绑定字节集',
     'bool SQLite_备份到文件',
     'const wchar_t* SQLite_完整性检查'
@@ -50,7 +54,8 @@ async function main(): Promise<void> {
     if (!mainCpp.includes(required)) throw new Error(`生成的 SQLite C++ 缺少：${required}`);
   }
 
-  await fs.rm(projectDir, { recursive: true, force: true });
+  // Windows 安全软件可能短暂锁定刚编译过的产物目录，删除失败时退避重试。
+  await removeDirectoryWithRetry(projectDir);
   await fs.mkdir(projectDir, { recursive: true });
   for (const file of generated.files) {
     const target = path.resolve(projectDir, file.relativePath);
@@ -61,18 +66,26 @@ async function main(): Promise<void> {
   await fs.mkdir(path.join(projectDir, 'resources'), { recursive: true });
   await fs.copyFile(path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v1.ico'), path.join(projectDir, 'resources', 'lingbuilder-app.ico'));
   const exported = await exportVisualStudioProject({ projectDir, projectId: project.id, generatedFiles: generated.files, enabledModules });
+  await exportModuleNativeDependencies(enabledModules, projectDir);
+  for (const architecture of ['x86', 'x64']) {
+    await fs.access(path.join(projectDir, 'modules', 'lingbuilder.database.sqlite', architecture, 'sqlite3.dll'));
+  }
   const msbuild = await findMsBuild();
+  const toolset = await installedToolset(msbuild);
   for (const platform of ['Win32', 'x64']) {
     await execFileAsync(msbuild, [
-      exported.solutionPath, '/m', '/t:Build', '/p:Configuration=Release', `/p:Platform=${platform}`, '/v:minimal'
+      exported.solutionPath, '/m', '/t:Build', '/p:Configuration=Release', `/p:Platform=${platform}`,
+      ...(toolset ? [`/p:PlatformToolset=${toolset}`] : []), '/v:minimal'
     ], { cwd: projectDir, windowsHide: true, timeout: 10 * 60 * 1000, maxBuffer: 32 * 1024 * 1024 });
   }
 
   const executableDir = path.join(projectDir, 'x64', 'Release', 'bin');
   const executable = path.join(executableDir, `${exported.projectName}.exe`);
-  await fs.copyFile(sqliteDll, path.join(executableDir, 'sqlite3.dll'));
+  await fs.access(path.join(executableDir, 'sqlite3.dll'));
   await fs.rm(path.join(executableDir, 'sqlite-smoke.db'), { force: true });
   await fs.rm(path.join(executableDir, 'sqlite-smoke-backup.db'), { force: true });
+  await fs.rm(path.join(executableDir, 'sqlite-smoke-encrypted.db'), { force: true });
+  await fs.rm(path.join(executableDir, 'sqlite-smoke-encrypted2.db'), { force: true });
   await execFileAsync(executable, [], { cwd: executableDir, windowsHide: true, timeout: 2 * 60 * 1000, maxBuffer: 1024 * 1024 });
   await fs.access(path.join(executableDir, 'sqlite-smoke-backup.db'));
   console.log(JSON.stringify({
@@ -81,7 +94,7 @@ async function main(): Promise<void> {
     sqliteDll,
     compiledPlatforms: ['Win32', 'x64'],
     runtimePlatform: 'x64',
-    checks: ['动态加载', 'WAL', '外键', '事务与保存点', '参数绑定', 'NULL/BLOB/UTF-8', '逐行读取', '在线备份', '完整性检查', '错误码', '资源释放']
+    checks: ['动态加载', '加密打开与密码校验', 'WAL', '外键', '事务与保存点', '参数绑定', 'NULL/BLOB/UTF-8', '逐行读取', '在线备份', '完整性检查', '错误码', '资源释放']
   }, null, 2));
 }
 
@@ -113,7 +126,17 @@ function createSource(): string {
     '        @ ok = ok && std::wstring(SQLite_查询首值于(database, L"SELECT count(*) FROM records")) == L"2";',
     '        @ ok = ok && SQLite_备份到文件(database, L"sqlite-smoke-backup.db", 10000) && std::wstring(SQLite_完整性检查(database, false)) == L"ok";',
     '        @ bool expectedFailure = !SQLite_执行于(database, L"SELECT * FROM missing_table") && SQLite_取错误码() != 0 && !std::wstring(SQLite_取错误()).empty();',
-    '        @ ok = ok && expectedFailure && SQLite_关闭连接(database) && !SQLite_连接是否有效(database) && SQLite_卸载运行库();',
+    '        @ ok = ok && expectedFailure && SQLite_运行库是否支持加密();',
+    '        @ ok = ok && SQLite_打开加密库(L"sqlite-smoke-encrypted.db", L"冒烟密码123");',
+    '        @ ok = ok && std::wstring(SQLite_查询首值(L"SELECT count(*) FROM sqlite_master")) == L"0";',
+    '        @ ok = ok && SQLite_执行(L"CREATE TABLE secret(id INTEGER PRIMARY KEY, note TEXT)") && SQLite_执行(L"INSERT INTO secret(note) VALUES(\'加密内容\')");',
+    '        @ SQLite_关闭();',
+    '        @ long long secure = SQLite_打开加密连接(L"sqlite-smoke-encrypted.db", L"冒烟密码123", 0, 5000);',
+    '        @ ok = ok && secure != 0 && std::wstring(SQLite_查询首值于(secure, L"SELECT note FROM secret WHERE id=1")) == L"加密内容";',
+    '        @ ok = ok && SQLite_关闭连接(secure);',
+    '        @ ok = ok && !SQLite_打开加密连接(L"sqlite-smoke-encrypted.db", L"错误密码", 0, 5000) && SQLite_取错误码() != 0 && !std::wstring(SQLite_取错误()).empty();',
+    '        @ ok = ok && !SQLite_打开加密库(L"sqlite-smoke-encrypted2.db", L"");',
+    '        @ ok = ok && SQLite_关闭连接(database) && !SQLite_连接是否有效(database) && SQLite_卸载运行库();',
     '        @ std::ofstream report("sqlite-smoke-result.txt", std::ios::binary | std::ios::trunc); report << (ok ? "OK" : "FAIL") << "\\n" << LB_WideToUtf8(SQLite_取错误()) << "\\n" << SQLite_取错误码() << "\\n";',
     '        @ ExitProcess(ok ? 0 : 2);',
     '    结束',
@@ -121,9 +144,24 @@ function createSource(): string {
   ].join('\n');
 }
 
+async function removeDirectoryWithRetry(target: string, attempts = 8, delayMilliseconds = 10_000): Promise<void> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await fs.rm(target, { recursive: true, force: true });
+      await fs.access(target);
+      // 目录仍存在说明删除被跳过，继续重试。
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    }
+    if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, delayMilliseconds));
+  }
+  throw new Error(`无法删除被占用的冒烟目录：${target}。请关闭占用该目录的程序后重试。`);
+}
+
 async function resolveSqliteDll(): Promise<string> {
   const candidates = [
     process.env.LINGBUILDER_SQLITE3_DLL,
+    path.join(repoRoot, 'electron', 'third_party', 'sqlite', 'x64', 'sqlite3.dll'),
     path.join(repoRoot, 'modules', 'lingbuilder.wxhook.manager', 'runtime', 'e_sqlite3.dll')
   ].filter((candidate): candidate is string => Boolean(candidate));
   for (const candidate of candidates) {
@@ -135,7 +173,7 @@ async function resolveSqliteDll(): Promise<string> {
       // Continue to the next explicit, workspace-owned fixture.
     }
   }
-  throw new Error('未找到 x64 SQLite 运行库。请设置 LINGBUILDER_SQLITE3_DLL 指向官方 sqlite3.dll。');
+  throw new Error('未找到支持加密的 x64 SQLite 运行库。LingBuilder 随附运行库位于 electron/third_party/sqlite/x64/sqlite3.dll，也可用 LINGBUILDER_SQLITE3_DLL 指向 SQLCipher 兼容 DLL。');
 }
 
 async function findMsBuild(): Promise<string> {
@@ -145,6 +183,18 @@ async function findMsBuild(): Promise<string> {
   ], { windowsHide: true })).stdout.trim();
   if (!installation) throw new Error('未找到包含 MSVC C++ 工具链的 Visual Studio。');
   return path.join(installation, 'MSBuild', 'Current', 'Bin', 'MSBuild.exe');
+}
+
+/** 导出工程写死 v143；本机可能只装了更新的工具集（MSB8020），按实际安装情况覆盖。 */
+async function installedToolset(msbuild: string): Promise<string | undefined> {
+  const vcRoot = path.join(path.dirname(msbuild), '..', '..', 'Microsoft', 'VC');
+  const versions = (await fs.readdir(vcRoot).catch(() => [])).filter(name => /^v\d+$/.test(name)).sort().reverse();
+  for (const version of versions) {
+    const toolsets = (await fs.readdir(path.join(vcRoot, version, 'Platforms', 'x64', 'PlatformToolsets')).catch(() => []))
+      .filter(name => /^v\d+$/.test(name)).sort();
+    if (toolsets.length) return toolsets[toolsets.length - 1];
+  }
+  return undefined;
 }
 
 main().catch(error => {

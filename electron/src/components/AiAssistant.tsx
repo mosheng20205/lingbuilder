@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import QRCode from 'qrcode';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
+import { readPreferredCloudModelAlias, writePreferredCloudModelAlias } from '../services/ai/cloudModelPreference';
 import type { LingWindowProject } from '../services/windowDesigner/types';
 import type { ProjectMutationOwner } from '../services/workspace/projectMutationOwner';
 import {
@@ -33,6 +34,11 @@ const DEFAULT_AI_CONFIG: AiConnectionConfig = {
 };
 
 const COLLAPSED_MESSAGE_HEIGHT = 224;
+
+// 聊天输入框高度：自动模式跟随内容（含两行占位提示）完整显示，拖拽模式允许用户拉大。
+const AI_CHAT_INPUT_AUTO_MAX_HEIGHT = 128;
+const AI_CHAT_INPUT_MANUAL_MAX_HEIGHT = 320;
+const AI_CHAT_INPUT_MIN_HEIGHT = 36;
 
 const AI_MODEL_PRESETS = [
   { id: 'custom', label: '自定义模型', baseUrl: '', modelName: '', provider: 'openai' },
@@ -215,7 +221,7 @@ export default function AiAssistant({
   });
   const [cloudSession, setCloudSession] = useState<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>({ authenticated: false });
   const [cloudModels, setCloudModels] = useState<Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }>>([]);
-  const [cloudModelAlias, setCloudModelAlias] = useState('');
+  const [cloudModelAlias, setCloudModelAlias] = useState(() => readPreferredCloudModelAlias());
   const [rechargePanelOpen, setRechargePanelOpen] = useState(false);
   const [rechargePackages, setRechargePackages] = useState<Array<{ id: string; name: string; points: string; amountMinor: string; currency: string }>>([]);
   const [rechargeBusy, setRechargeBusy] = useState(false);
@@ -283,6 +289,8 @@ export default function AiAssistant({
     () => aiConnectionSession.getConnectedSignature()
   );
   const [chatInput, setChatInput] = useState('');
+  // null 表示高度自动跟随内容；用户拖拽顶部分隔条后为固定像素高度，双击分隔条恢复自动。
+  const [chatInputHeight, setChatInputHeight] = useState<number | null>(null);
   const [conversationStore, setConversationStore] = useState<AiConversationStore | null>(null);
   const [conversationError, setConversationError] = useState('');
   const activeConversation = conversationStore?.conversations.find(item => item.id === conversationStore.activeConversationId);
@@ -334,6 +342,10 @@ export default function AiAssistant({
   activeConversationRef.current = activeConversation;
   const aiEditContextRef = useRef({ filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles });
   aiEditContextRef.current = { filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles };
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  // 空输入时的自适应高度，即完整显示占位提示所需的最小高度，作为拖拽下限防止文字再次被裁。
+  const chatInputAutoHeightRef = useRef(AI_CHAT_INPUT_MIN_HEIGHT);
+  const chatInputResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
   const chatAutoScrollRef = useRef(true);
   const confirmActionRef = useRef<{ kind: 'remove' | 'clear'; conversationId?: string; expiresAt: number } | null>(null);
   const confirmActionTimerRef = useRef<number | undefined>(undefined);
@@ -732,7 +744,13 @@ export default function AiAssistant({
       const result = await window.lingBuilder!.cloudAccount!.models();
       if (!active) return;
       setCloudModels(result.models || []);
-      setCloudModelAlias(current => current || result.models?.[0]?.alias || '');
+      setCloudModelAlias(current => {
+            const aliases = (result.models || []).map(model => model.alias);
+            if (current && aliases.includes(current)) return current;
+            const preferred = readPreferredCloudModelAlias();
+            if (preferred && aliases.includes(preferred)) return preferred;
+            return aliases[0] || '';
+          });
     }).catch(error => { if (active) setCloudSession({ authenticated: false, error: error instanceof Error ? error.message : String(error) }); });
     const unsubscribe = window.lingBuilder?.cloudAi?.onEvent((requestKey, event) => {
       if (requestKey !== cloudRequestRef.current) return;
@@ -808,7 +826,7 @@ export default function AiAssistant({
         setAccountMessage('注册成功，请在邮箱中完成验证后登录。');
       } else {
         const session = await window.lingBuilder.cloudAccount.login({ email: accountEmail, password: accountPassword });
-        setCloudSession(session); const result = await window.lingBuilder.cloudAccount.models(); setCloudModels(result.models || []); setCloudModelAlias(result.models?.[0]?.alias || ''); setAccountPassword('');
+        setCloudSession(session); const result = await window.lingBuilder.cloudAccount.models(); setCloudModels(result.models || []); setCloudModelAlias(() => { const aliases = (result.models || []).map(model => model.alias); const preferred = readPreferredCloudModelAlias(); return preferred && aliases.includes(preferred) ? preferred : aliases[0] || ''; }); setAccountPassword('');
       }
     } catch (error) { setAccountMessage(error instanceof Error ? error.message : String(error)); }
     finally { setAccountBusy(false); }
@@ -1006,6 +1024,64 @@ export default function AiAssistant({
     void submitChatMessage();
   };
 
+  // 未手动拖拽时，输入框高度自适应内容（含占位提示），保证文字完整显示；超过上限后内部滚动。
+  const chatInputManualHeightRef = useRef<number | null>(chatInputHeight);
+  chatInputManualHeightRef.current = chatInputHeight;
+  const fitChatInputHeight = () => {
+    const textarea = chatInputRef.current;
+    if (!textarea || chatInputManualHeightRef.current !== null) return;
+    textarea.style.height = 'auto';
+    const borderBox = textarea.offsetHeight - textarea.clientHeight;
+    const contentHeight = Math.ceil(textarea.scrollHeight) + borderBox;
+    chatInputAutoHeightRef.current = Math.max(contentHeight, AI_CHAT_INPUT_MIN_HEIGHT);
+    textarea.style.height = `${Math.min(contentHeight, AI_CHAT_INPUT_AUTO_MAX_HEIGHT)}px`;
+  };
+  const fitChatInputHeightRef = useRef(fitChatInputHeight);
+  fitChatInputHeightRef.current = fitChatInputHeight;
+
+  useLayoutEffect(() => {
+    fitChatInputHeight();
+  }, [chatInput, chatInputHeight, isLingCppFile]);
+
+  // 面板宽度变化导致占位提示重新换行时，重新自适应高度，避免文字再次被裁。
+  useEffect(() => {
+    const textarea = chatInputRef.current;
+    if (!textarea || typeof ResizeObserver === 'undefined') return;
+    let lastWidth = textarea.getBoundingClientRect().width;
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        if (Math.abs(entry.contentRect.width - lastWidth) < 1) continue;
+        lastWidth = entry.contentRect.width;
+        fitChatInputHeightRef.current();
+      }
+    });
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleChatInputResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    const textarea = chatInputRef.current;
+    if (!textarea || event.button !== 0) return;
+    event.preventDefault();
+    chatInputResizeRef.current = { pointerId: event.pointerId, startY: event.clientY, startHeight: textarea.offsetHeight };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleChatInputResizeMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = chatInputResizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // 拖拽下限取空输入自适应高度，保证占位提示始终完整可见。
+    const minHeight = Math.max(chatInputAutoHeightRef.current, AI_CHAT_INPUT_MIN_HEIGHT);
+    const nextHeight = Math.min(Math.max(drag.startHeight - (event.clientY - drag.startY), minHeight), AI_CHAT_INPUT_MANUAL_MAX_HEIGHT);
+    setChatInputHeight(nextHeight);
+  };
+
+  const handleChatInputResizeEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (chatInputResizeRef.current?.pointerId !== event.pointerId) return;
+    chatInputResizeRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   const handleChatInputKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送、Shift+Enter 换行；输入法组合期间不触发发送。
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
@@ -1184,7 +1260,7 @@ export default function AiAssistant({
                   </div>
                 )}
                 <label className="block text-[10px] text-slate-500" htmlFor="system-ai-model">系统模型</label>
-                <select id="system-ai-model" value={cloudModelAlias} onChange={event => setCloudModelAlias(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}>{cloudModels.map(model => <option key={model.alias} value={model.alias}>{model.displayName}</option>)}</select>
+                <select id="system-ai-model" value={cloudModelAlias} onChange={event => { setCloudModelAlias(event.target.value); writePreferredCloudModelAlias(event.target.value); }} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}>{cloudModels.map(model => <option key={model.alias} value={model.alias}>{model.displayName}</option>)}</select>
               </> : <>
                 <label className="block text-[10px] text-slate-500" htmlFor="system-ai-email">账号邮箱</label><input id="system-ai-email" type="email" autoComplete="username" value={accountEmail} onChange={event => setAccountEmail(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'}`}/>
                 <label className="block text-[10px] text-slate-500" htmlFor="system-ai-password">密码</label><input id="system-ai-password" type="password" autoComplete="current-password" value={accountPassword} onChange={event => setAccountPassword(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'}`}/>
@@ -1438,20 +1514,38 @@ export default function AiAssistant({
         )}
 
         {/* Chat Send Form */}
-        <form 
-          onSubmit={handleSendChat} 
-          className={`p-3 border-t flex gap-1.5 shrink-0 items-end ${
+        <form
+          onSubmit={handleSendChat}
+          className={`relative p-3 border-t flex gap-1.5 shrink-0 items-end ${
             isDarkMode ? 'bg-[#1e1e24] border-[#2d2d34]' : 'bg-white border-slate-200'
           }`}
         >
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="调整输入框高度"
+            title="上下拖拽调整输入框高度；双击恢复自动高度"
+            onPointerDown={handleChatInputResizeStart}
+            onPointerMove={handleChatInputResizeMove}
+            onPointerUp={handleChatInputResizeEnd}
+            onPointerCancel={handleChatInputResizeEnd}
+            onDoubleClick={() => setChatInputHeight(null)}
+            className="group absolute inset-x-0 top-0 z-10 flex h-2 cursor-row-resize touch-none items-center justify-center"
+          >
+            <span className={`h-0.5 w-10 rounded-full transition-colors ${
+              isDarkMode ? 'bg-[#2d2d34] group-hover:bg-purple-400/70' : 'bg-slate-300 group-hover:bg-purple-400'
+            }`} />
+          </div>
           <textarea
+            ref={chatInputRef}
             rows={1}
             placeholder={isLingCppFile ? '提问或明确描述要修改当前 .lcpp 文件的内容...（Enter 发送，Shift+Enter 换行）' : '问 AI 关于 C++ 中文编程的问题...（Enter 发送，Shift+Enter 换行）'}
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
             onKeyDown={handleChatInputKeyDown}
             aria-label="向 AI 助手提问"
-            className={`max-h-32 min-h-9 flex-1 resize-none overflow-y-auto border rounded px-3 py-2 text-xs leading-relaxed focus:outline-none focus:border-purple-500 ${
+            style={chatInputHeight !== null ? { height: chatInputHeight, maxHeight: AI_CHAT_INPUT_MANUAL_MAX_HEIGHT } : undefined}
+            className={`min-h-9 flex-1 resize-none overflow-y-auto border rounded px-3 py-2 text-xs leading-relaxed focus:outline-none focus:border-purple-500 ${
               isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
             }`}
           />

@@ -22,7 +22,13 @@ const TOOLS = [
   { name: 'lingbuilder.build.run', description: '执行受控构建/运行请求，受权限模式控制。project 必须是 project.create 返回的完整 designerProject；不要只传 projectId，也不要传 result.project 解决方案元数据。', inputSchema: objectSchema({ project: { type: 'object', description: 'project.create 返回的完整 designerProject，至少包含 id、windows 和控件布局。' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema, run: { type: 'boolean' }, approved: { type: 'boolean' } }, ['project']) },
   { name: 'lingbuilder.modules.list', description: '列出模块与指定项目启用模块上下文；新建项目必须传 project.create 返回的 project.id。', inputSchema: objectSchema({ projectId: { type: 'string', maxLength: 128 } }) },
   { name: 'lingbuilder.native.preview', description: '预览生成 C++ 工程文件并写入受控临时目录，不写入 generated/cpp 导出目录。project 必须是 project.create 返回的完整 designerProject，不接收单独的 projectId。', inputSchema: objectSchema({ project: { type: 'object', description: 'project.create 返回的完整 designerProject。' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema }, ['project']) },
-  { name: 'lingbuilder.native.export', description: '导出 C++ 工程，受权限模式控制。project 必须是 project.create 返回的完整 designerProject，不接收单独的 projectId。', inputSchema: objectSchema({ project: { type: 'object', description: 'project.create 返回的完整 designerProject。' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema, approved: { type: 'boolean' } }, ['project']) }
+  { name: 'lingbuilder.native.export', description: '导出 C++ 工程，受权限模式控制。project 必须是 project.create 返回的完整 designerProject，不接收单独的 projectId。', inputSchema: objectSchema({ project: { type: 'object', description: 'project.create 返回的完整 designerProject。' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema, approved: { type: 'boolean' } }, ['project']) },
+  { name: 'lingbuilder.module.scaffold', description: '在 .lingbuilder/module-build 下创建 .lbmod 模块项目骨架（manifest v2 + C++ 源码模板），受权限模式控制（preview 模式需 approved=true）。', inputSchema: objectSchema({ id: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]{2,80}$', maxLength: 81, description: '模块 ID，小写字母/数字开头，可含点、下划线、中划线。' }, name: { type: 'string', maxLength: 100 }, template: { type: 'string', enum: ['cpp-source'] }, outDir: { type: 'string', maxLength: 512, description: '可选，默认 .lingbuilder/module-build/<id>。' }, approved: { type: 'boolean' } }, ['id']) },
+  { name: 'lingbuilder.module.writeFiles', description: '把模块完整文件写入 .lingbuilder/module-build；files 必须包含根目录 lingbuilder.module.json（manifest v2），每项是完整新内容而非片段；与模块导入端点共用扩展名白名单、200 文件/单文件 1MB/总量 10MB 限额和导入校验，受权限模式控制。', inputSchema: objectSchema({ files: { type: 'array', minItems: 1, maxItems: 200, items: objectSchema({ path: { type: 'string', minLength: 1, maxLength: 512 }, content: { type: 'string', minLength: 1, maxLength: 1048576 } }, ['path', 'content']) }, outDir: { type: 'string', maxLength: 512, description: '可选，默认 .lingbuilder/module-build/<manifest.id>。' }, approved: { type: 'boolean' } }, ['files']) },
+  { name: 'lingbuilder.module.validate', description: '校验 .lingbuilder/module-build 下的模块目录（manifest v2、binding、模块文档与示例完整性），返回中文诊断；只读操作。', inputSchema: objectSchema({ modulePath: { type: 'string', minLength: 1, maxLength: 512, description: '模块目录，或直接指向 lingbuilder.module.json 文件。' } }, ['modulePath']) },
+  { name: 'lingbuilder.module.pack', description: '把校验通过的模块目录打包为 .lingbuilder/module-packages/<目录名>.lbmod，打包前强制完整校验，受权限模式控制。', inputSchema: objectSchema({ moduleDir: { type: 'string', minLength: 1, maxLength: 512 }, targetPath: { type: 'string', maxLength: 512, description: '可选，默认 .lingbuilder/module-packages/<目录名>.lbmod。' }, approved: { type: 'boolean' } }, ['moduleDir']) },
+  { name: 'lingbuilder.module.installPreview', description: '预览 .lingbuilder/module-packages 下的 .lbmod 模块包：解压并校验清单/路径/平台依赖，不安装；返回 previewId、canInstall 与中文诊断。', inputSchema: objectSchema({ packagePath: { type: 'string', minLength: 1, maxLength: 512 } }, ['packagePath']) },
+  { name: 'lingbuilder.module.install', description: '安装已通过 installPreview 的模块包并可启用到指定项目；必须传 installPreview 返回的 previewId，受权限模式控制（preview 模式需 approved=true），收费模块受权益门禁。', inputSchema: objectSchema({ previewId: { type: 'string', minLength: 8, maxLength: 128 }, projectId: { type: 'string', maxLength: 128, description: '当前项目 ID。' }, enableForProject: { type: 'boolean', description: '默认 true，安装后启用到项目并同步构建配置。' }, approved: { type: 'boolean' } }, ['previewId', 'projectId']) }
 ];
 
 export interface AiBridgeMcpActivity {
@@ -59,7 +65,7 @@ export interface AiBridgeMcpHttpGateway {
 type ObserveActivity = (activity: Omit<AiBridgeMcpActivity, 'id' | 'timestamp'>) => void;
 
 function createProtocolServer(service: AiBridgeService, observe?: ObserveActivity, clientId = 'stdio'): Server {
-  const server = new Server({ name: 'lingbuilder-ai-bridge', version: '0.6.5' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'lingbuilder-ai-bridge', version: '0.6.6' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async request => {
     const startedAt = Date.now();
@@ -222,6 +228,12 @@ async function callTool(service: AiBridgeService, name: string, args: any): Prom
     case 'lingbuilder.modules.list': return await service.listModules(args.projectId);
     case 'lingbuilder.native.preview': return await service.nativePreview(args);
     case 'lingbuilder.native.export': return await service.nativeExport(args);
+    case 'lingbuilder.module.scaffold': return await service.scaffoldModule(args);
+    case 'lingbuilder.module.writeFiles': return await service.writeModuleFiles(args);
+    case 'lingbuilder.module.validate': return await service.validateModule(args);
+    case 'lingbuilder.module.pack': return await service.packModule(args);
+    case 'lingbuilder.module.installPreview': return await service.previewModuleInstall(args);
+    case 'lingbuilder.module.install': return await service.installModule(args);
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }

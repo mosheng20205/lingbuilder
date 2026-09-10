@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "FBro 拦截与 DOM 遍历示例",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "fbro-intercept-dom-demo",
+  "startupProjectIds": [
+    "fbro-intercept-dom-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "fbro-intercept-dom-demo",
+      "name": "FBro 拦截与 DOM 遍历示例",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

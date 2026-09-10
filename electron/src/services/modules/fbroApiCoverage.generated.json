@@ -54,8 +54,8 @@
     "highLevel": 56,
     "advancedSafe": 1012,
     "internal": 3,
-    "implemented": 471,
-    "planned": 585,
+    "implemented": 503,
+    "planned": 553,
     "notApplicable": 15,
     "modules": {
       "lingbuilder.fbro.events": 56,
@@ -9442,7 +9442,7 @@
       "lingBuilderName": "初始化WebSocket客户端关闭",
       "category": "初始化与渲染进程",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "c31f8ced04b46dacfd2c2611a78bcb5872301f7c28ad1931399f52f44b841eb0",
       "officialSignature": "virtual void OnWebSocketClientClose(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<FBroDOMWssClient> websocket)",
@@ -9495,11 +9495,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "BridgeInitEvent override or normalized browser event",
       "testId": "fbro-event-fbrohsinitevent-onwebsocketclientclose-c31f8ced",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsinitevent.onwebsocketclientconnect.14c3d07078ae",
@@ -9513,7 +9513,7 @@
       "lingBuilderName": "初始化WebSocket客户端连接",
       "category": "初始化与渲染进程",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "14c3d07078ae1dacf45b9e5761177738c58ada8c1df40a4014c3d4b57898076c",
       "officialSignature": "virtual void OnWebSocketClientConnect(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<FBroDOMWssClient> websocket, HANDLE& returl, HANDLE& protocols)",
@@ -9588,11 +9588,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "BridgeInitEvent override or normalized browser event",
       "testId": "fbro-event-fbrohsinitevent-onwebsocketclientconnect-14c3d070",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsinitevent.onwebsocketclientcreate.d39fa3514858",
@@ -9606,7 +9606,7 @@
       "lingBuilderName": "初始化WebSocket客户端创建",
       "category": "初始化与渲染进程",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "d39fa3514858b0db1e5fa29c3086e869c0164b148a80c4c96ab50d80ad32a4d9",
       "officialSignature": "virtual void OnWebSocketClientCreate(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<FBroDOMWssClient> websocket)",
@@ -9659,11 +9659,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "BridgeInitEvent override or normalized browser event",
       "testId": "fbro-event-fbrohsinitevent-onwebsocketclientcreate-d39fa351",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsinitevent.onwebsocketclientmessage.394aa56d3766",
@@ -9677,7 +9677,7 @@
       "lingBuilderName": "初始化WebSocket客户端消息",
       "category": "初始化与渲染进程",
       "kind": "decision",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "394aa56d37662c315576df042e3219bb5eff2d11753e902097cf804040712d91",
       "officialSignature": "virtual bool OnWebSocketClientMessage(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<FBroDOMWssClient> websocket, int type, HANDLE& data, int& size)",
@@ -9763,11 +9763,11 @@
       "timeoutMilliseconds": 2000,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "BridgeInitEvent override or normalized browser event",
       "testId": "fbro-event-fbrohsinitevent-onwebsocketclientmessage-394aa56d",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsinitevent.onwebsocketclientsend.1e4294bbc5cf",
@@ -9781,7 +9781,7 @@
       "lingBuilderName": "初始化WebSocket客户端发送",
       "category": "初始化与渲染进程",
       "kind": "decision",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "1e4294bbc5cf0ca8edd85115b9e1a57da9ed0079a4df19e8026fdabdaeb4b982",
       "officialSignature": "virtual bool OnWebSocketClientSend(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<FBroDOMWssClient> websocket, int type, HANDLE& retdata, int offsize, int& size)",
@@ -9875,11 +9875,11 @@
       "timeoutMilliseconds": 2000,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "BridgeInitEvent override or normalized browser event",
       "testId": "fbro-event-fbrohsinitevent-onwebsocketclientsend-1e4294bb",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsinitevent.receivemainprocessmessage.87cb6940fb6f",
@@ -11138,7 +11138,7 @@
       "lingBuilderName": "本地服务器客户端已连接",
       "category": "网络与资源",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "any",
       "signatureHash": "73f6ab2955f93508ae94a6e3aa6dc5a87a66aea34af23c260d17d58c60b7ea58",
       "officialSignature": "virtual void OnClientConnected(CefRefPtr<CefServer> server, int connection_id)",
@@ -11183,11 +11183,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onclientconnected-73f6ab29",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsserverhandle.onclientdisconnected.679265737354",
@@ -11201,7 +11201,7 @@
       "lingBuilderName": "本地服务器客户端已断开",
       "category": "网络与资源",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "any",
       "signatureHash": "679265737354f8d26c6f473b78d21e46dc97d1c4d5d1ae191f7477be574a804c",
       "officialSignature": "virtual void OnClientDisconnected(CefRefPtr<CefServer> server, int connection_id)",
@@ -11246,11 +11246,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onclientdisconnected-67926573",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsserverhandle.onhttprequest.806dd090ad0b",
@@ -11264,7 +11264,7 @@
       "lingBuilderName": "本地服务器HTTP请求到达",
       "category": "网络与资源",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "806dd090ad0bee26d5326475eb8a532c49f1b1fdbe396b33a25ce8bbdc4fa8b1",
       "officialSignature": "virtual void OnHttpRequest(CefRefPtr<CefServer> server, int connection_id, const CefString& client_address, CefRefPtr<CefRequest> request)",
@@ -11325,11 +11325,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onhttprequest-806dd090",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsserverhandle.onservercreated.9f8423783d4d",
@@ -11343,7 +11343,7 @@
       "lingBuilderName": "本地服务器服务器已创建",
       "category": "网络与资源",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "9f8423783d4d5e80adff875c413775a1ec881eaac24309c81d4593bc2895f32c",
       "officialSignature": "virtual void OnServerCreated(CefRefPtr<CefServer> server)",
@@ -11380,11 +11380,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onservercreated-9f842378",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsserverhandle.onserverdestroyed.74d2ad62e7bf",
@@ -11398,7 +11398,7 @@
       "lingBuilderName": "本地服务器服务器已销毁",
       "category": "网络与资源",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "74d2ad62e7bfb7f2c3a502155241e789ded6d8f7b3a6f010536d01fd3a35e7b8",
       "officialSignature": "virtual void OnServerDestroyed(CefRefPtr<CefServer> server)",
@@ -11435,11 +11435,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onserverdestroyed-74d2ad62",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsserverhandle.onwebsocketconnected.6eb0eda88679",
@@ -11453,7 +11453,7 @@
       "lingBuilderName": "本地服务器WebSocket已连接",
       "category": "网络与资源",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "6eb0eda8867989c9c2dd6caf4c832ff7c549ff8080fdec93c407bbadbfae2fbc",
       "officialSignature": "virtual void OnWebSocketConnected(CefRefPtr<CefServer> server, int connection_id)",
@@ -11498,11 +11498,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onwebsocketconnected-6eb0eda8",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsserverhandle.onwebsocketmessage.d0f74963dbf2",
@@ -11516,7 +11516,7 @@
       "lingBuilderName": "本地服务器WebSocket消息到达",
       "category": "网络与资源",
       "kind": "notification",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "d0f74963dbf21aa6828c217c9b02d3d5a5702ae81a71664b1c01c08b49155739",
       "officialSignature": "virtual void OnWebSocketMessage(CefRefPtr<CefServer> server, int connection_id, const void* data, size_t data_size)",
@@ -11577,11 +11577,11 @@
       "timeoutMilliseconds": 0,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onwebsocketmessage-d0f74963",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsserverhandle.onwebsocketrequest.e0c62091ea5e",
@@ -11595,7 +11595,7 @@
       "lingBuilderName": "本地服务器WebSocket握手请求",
       "category": "网络与资源",
       "kind": "deferredDecision",
-      "exposure": "managed",
+      "exposure": "public",
       "thread": "io",
       "signatureHash": "e0c62091ea5ec29f9c55ca43d5ed300419488cf7619da77c0079a8e36eac7958",
       "officialSignature": "virtual void OnWebSocketRequest(CefRefPtr<CefServer> server, int connection_id, const CefString& client_address, CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback)",
@@ -11667,11 +11667,11 @@
       "timeoutMilliseconds": 30000,
       "maxHz": 0,
       "ownership": "copiedJsonAndManagedHandles",
-      "bridgeStatus": "managed",
-      "implementationStatus": "managed",
+      "bridgeStatus": "implemented",
+      "implementationStatus": "implemented",
       "implementation": "managed adapter: FBroHsServerHandle",
       "testId": "fbro-event-fbrohsserverhandle-onwebsocketrequest-e0c62091",
-      "classificationReason": "通过受管任务、对象句柄或原生流式适配器完成，不向 .lcpp 暴露裸指针。"
+      "classificationReason": "通过 C ABI v3 UTF-16 JSON 事件包公开，原始 SDK 对象不会跨边界。"
     },
     {
       "eventId": "fbro.event.fbrohsstringvisitor.visit.eafba0f48eb6",
@@ -15164,8 +15164,8 @@
         "FBroHsBrowserHost_GetMainBrowser"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -23390,8 +23390,8 @@
         "FBroHsDOMDocument_GetBaseURL"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -23439,8 +23439,8 @@
         "FBroHsDOMDocument_GetBody"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -23540,8 +23540,8 @@
         "FBroHsDOMDocument_GetDocument"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -23644,8 +23644,8 @@
         "FBroHsDOMDocument_GetFocusedNode"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -23693,8 +23693,8 @@
         "FBroHsDOMDocument_GetHead"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -23939,8 +23939,8 @@
         "FBroHsDOMDocument_GetTitle"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -23985,8 +23985,8 @@
         "FBroHsDOMDocument_GetType"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24234,8 +24234,8 @@
         "FBroHsDOMNode_GetElementAttributes"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24340,8 +24340,8 @@
         "FBroHsDOMNode_GetElementInnerText"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24440,8 +24440,8 @@
         "FBroHsDOMNode_GetFirstChild"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24586,8 +24586,8 @@
         "FBroHsDOMNode_GetName"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24636,8 +24636,8 @@
         "FBroHsDOMNode_GetNextSibling"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24781,8 +24781,8 @@
         "FBroHsDOMNode_GetType"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24828,8 +24828,8 @@
         "FBroHsDOMNode_GetValue"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -24876,8 +24876,8 @@
         "FBroHsDOMNode_HasChildren"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -25072,8 +25072,8 @@
         "FBroHsDOMNode_IsElement"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -25174,8 +25174,8 @@
         "FBroHsDOMNode_IsSame"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -25281,8 +25281,8 @@
         "FBroHsDOMNode_SetElementAttribute"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -25332,8 +25332,8 @@
         "FBroHsDOMNode_SetValue"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -29870,8 +29870,8 @@
         "FBroHsBrowserFrame_VisitDOM"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -35076,8 +35076,8 @@
         "FBroHsContextMenuParams_pGetTypeFlags"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -43367,8 +43367,8 @@
         "FBroHsRequest_GetMethod"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -44419,8 +44419,8 @@
         "FBroHsRequestContext_CreateContext"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47177,8 +47177,8 @@
         "FBroHsSocketClient_SendByBrowser"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47341,8 +47341,8 @@
         "FBroHsSocketServer_SendByBrowser"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -68577,8 +68577,8 @@
         "FBroHsWSSClient_GetAddress"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -68675,8 +68675,8 @@
         "FBroHsWSSClient_GetExtensions"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -68724,8 +68724,8 @@
         "FBroHsWSSClient_GetProtocol"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -68772,8 +68772,8 @@
         "FBroHsWSSClient_IsNull"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -68875,8 +68875,8 @@
         "FBroHsWSSClient_Send"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -68932,8 +68932,8 @@
         "FBroHsWSSClient_SendData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {

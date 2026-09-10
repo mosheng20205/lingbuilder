@@ -20,7 +20,8 @@ export class WebsiteContentController {
 
   @Get('guides/:slug') guide(@Param('slug') slug: string) { return this.website.publicGuide(slug); }
 
-  @Get('latest-version') latestVersion(@Query('platform') platform = 'Windows', @Query('architecture') architecture = 'x64', @Query('channel') channel = 'stable') {
+  // channel 缺省为空：客户端未指定渠道时跨渠道取最高版本，显式传入时才按渠道过滤。
+  @Get('latest-version') latestVersion(@Query('platform') platform = 'Windows', @Query('architecture') architecture = 'x64', @Query('channel') channel = '') {
     return this.website.latestVersion({ platform, architecture, channel });
   }
 }

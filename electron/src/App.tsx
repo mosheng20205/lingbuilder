@@ -1160,15 +1160,30 @@ export default function App() {
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [updateCheckState, setUpdateCheckState] = useState<UpdateDialogInfo | null>(null);
+  /** 标题栏升级徽标数据源：最近一次检查确认存在新版本时保存其载荷，供悬浮说明与点击更新使用。 */
+  const [updateBadgePayload, setUpdateBadgePayload] = useState<UpdateCheckPayload | null>(null);
+  const [showUpdateBadgePanel, setShowUpdateBadgePanel] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => {
+    let disposed = false;
+    const runSilentUpdateCheck = (announceOnDiscover: boolean) => {
       const check = window.lingBuilder?.updates?.check;
       if (!check) return;
       void check().then(result => {
-        if (result?.ok && result.hasUpdate) setUpdateCheckState(createUpdateDialogInfo(result, true));
+        if (disposed || !result?.ok) return;
+        setUpdateBadgePayload(result.hasUpdate ? result : null);
+        if (result.hasUpdate && announceOnDiscover) {
+          // 首次发现仍自动弹窗提醒一次；后续周期复查只刷新徽标，不反复打断用户。
+          setUpdateCheckState(prev => prev ?? createUpdateDialogInfo(result, true));
+        }
       }).catch(() => undefined);
-    }, 5000);
-    return () => clearTimeout(timer);
+    };
+    const startupTimer = setTimeout(() => runSilentUpdateCheck(true), 5000);
+    const recheckTimer = setInterval(() => runSilentUpdateCheck(false), 30 * 60 * 1000);
+    return () => {
+      disposed = true;
+      clearTimeout(startupTimer);
+      clearInterval(recheckTimer);
+    };
   }, []);
   const [showHelpCenter, setShowHelpCenter] = useState(false);
   const [showSponsorDialog, setShowSponsorDialog] = useState(false);
@@ -4908,6 +4923,8 @@ void DisplayStatus() {
       try {
         const result = await check();
         if (!result.ok) { setUpdateCheckState({ status: 'error', error: result.error || '检查更新失败。' }); return true; }
+        setUpdateBadgePayload(result.hasUpdate ? result : null);
+        setShowUpdateBadgePanel(false);
         setUpdateCheckState(result.hasUpdate
           ? createUpdateDialogInfo(result)
           : { status: 'latest', latestVersion: result.latestVersion });
@@ -5983,6 +6000,48 @@ void DisplayStatus() {
             <div className="truncate text-[#007ACC] font-bold tracking-wide">
               C++ LocMaster (LingBuilder) <span className="text-cyan-400/80">{LINGBUILDER_DISPLAY_VERSION}</span>
             </div>
+            {updateBadgePayload && (
+              <div
+                className="window-no-drag relative flex shrink-0 items-center"
+                onMouseEnter={() => setShowUpdateBadgePanel(true)}
+                onMouseLeave={() => setShowUpdateBadgePanel(false)}
+                onDoubleClick={event => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  aria-label={`发现新版本 v${updateBadgePayload.latestVersion ?? ''}，悬浮查看更新说明，点击立即更新`}
+                  onClick={event => {
+                    event.stopPropagation();
+                    setShowUpdateBadgePanel(false);
+                    setUpdateCheckState(createUpdateDialogInfo(updateBadgePayload));
+                  }}
+                  className="rounded-full bg-emerald-500/15 px-1.5 py-px text-[10px] font-semibold leading-4 text-emerald-500 ring-1 ring-emerald-500/40 transition-colors hover:bg-emerald-500/30"
+                >
+                  升级
+                </button>
+                {showUpdateBadgePanel && (
+                  <div
+                    role="note"
+                    aria-label={`新版本 v${updateBadgePayload.latestVersion ?? ''} 更新说明`}
+                    className={`absolute right-0 top-full z-[90] mt-2 w-80 max-w-[min(20rem,90vw)] rounded-md border p-3 text-left shadow-2xl ${
+                      isDarkMode ? 'border-[#3b3b43] bg-[#1e1e24] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-semibold">发现新版本 v{updateBadgePayload.latestVersion ?? ''}</span>
+                      <span className={isDarkMode ? 'text-[10px] text-slate-400' : 'text-[10px] text-slate-500'}>当前 {LINGBUILDER_DISPLAY_VERSION}</span>
+                    </div>
+                    {updateBadgePayload.fileSize && (
+                      <div className={`mt-1 text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>安装包大小：{updateBadgePayload.fileSize}</div>
+                    )}
+                    <div className={`mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap text-[11px] leading-5 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                      {updateBadgePayload.releaseNotes || (updateBadgePayload.releaseTitle ? `${updateBadgePayload.releaseTitle}。` : '暂无更新说明，点击「升级」查看详情。')}
+                    </div>
+                    <div className={`mt-2 text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>点击「升级」按钮可直接在 IDE 内下载并安装。</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div
             onDoubleClick={e => e.stopPropagation()}
