@@ -112,11 +112,15 @@ website/
 宣传素材/
 assets/**/doubao-downloader/
 
-# ���� agent ˵������������
+# 本地 agent 说明（不发布）
 AGENTS.md
 
 # AI 视频自主生产素材（不入库）
 AI 视频自主生产/
+
+# 模块作者工作副本（根级 modules/，与源码目录 electron/src/services/modules/ 无关）
+# 必须锚定根目录并保留尾部斜杠，否则会误伤 src/services/modules/ 等源码目录。
+/modules/
 
 # CEF3 教程示例项目的 ASCII 暂存构建目录（npm run tutorial:cef3:build 生成）
 .tmp-cef3-verify/
