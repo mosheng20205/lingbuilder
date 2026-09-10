@@ -2,7 +2,7 @@
 
 更新时间：2026-09-08
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **85 个内置模块、3213 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **85 个内置模块、3229 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。

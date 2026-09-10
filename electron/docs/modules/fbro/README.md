@@ -1,7 +1,7 @@
 <!-- 此文件由 electron/scripts/generate-cef3-fbro-event-docs.ts 生成。请修改 FBro 事件目录或模块 manifest 后运行 npm run module:fbro-docs。 -->
 # FBro 模块事件与接口参考
 
-本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 635 条面向用户的中文接口。
+本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 651 条面向用户的中文接口。
 
 ## 快速使用
 
@@ -232,13 +232,13 @@
 | FBro指纹浏览器模块 | `lingbuilder.fbro.browser` | 115 |
 | FBro事件模块 | `lingbuilder.fbro.events` | 13 |
 | FBro会话模块 | `lingbuilder.fbro.session` | 14 |
-| FBro传输模块 | `lingbuilder.fbro.transfer` | 6 |
+| FBro传输模块 | `lingbuilder.fbro.transfer` | 22 |
 | FBro自动化模块 | `lingbuilder.fbro.automation` | 72 |
 | FBro受管对象模块 | `lingbuilder.fbro.objects` | 208 |
 | FBro高级网络模块 | `lingbuilder.fbro.network` | 18 |
 | FBro VIP 指纹模块 | `lingbuilder.fbro.vip` | 189 |
 
-以下 635 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
+以下 651 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
 
 
 ### 1. FBro指纹浏览器模块
@@ -406,16 +406,32 @@
 
 ### 4. FBro传输模块
 
-提供下载与原生打印高层能力。 模块 ID：`lingbuilder.fbro.transfer`；本节共 6 条用户接口。
+提供下载与原生打印高层能力。 模块 ID：`lingbuilder.fbro.transfer`；本节共 22 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
 | 1 | `FBro传输_开始下载` | `FBro传输_开始下载(控件名, 地址)` | 整数型 | 常用 | `LB_FBro_StartDownload` | 使用当前浏览器会话开始下载。 |
-| 2 | `FBro传输_打印` | `FBro传输_打印(控件名)` | 整数型 | 常用 | `LB_FBro_Print` | 打开当前浏览器页面的原生打印流程。 |
-| 3 | `FBro传输_异步生成PDF` | `FBro传输_异步生成PDF(控件名, 输出路径, 设置JSON)` | 长整数型 | 常用 | `LB_FBro_PrintToPdfAsync` | 异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。 |
-| 4 | `FBro传输_生成PDF` | `FBro传输_生成PDF(控件名, 输出路径, 设置JSON)` | 整数型 | 高级 | `LB_FBro_PrintToPdfSync` | 同步生成 PDF 并等待完成（60 秒超时）；设置 JSON 传空文本使用默认，返回 1 表示文件已生成。 |
-| 5 | `FBro传输_异步打开文件对话框` | `FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)` | 长整数型 | 常用 | `LB_FBro_RunFileDialogAsync` | 调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。 |
-| 6 | `FBro传输_异步截图` | `FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)` | 长整数型 | 常用 | `LB_FBro_CaptureScreenshotAsync` | 通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。 |
+| 2 | `FBro下载_是否进行中` | `FBro下载_是否进行中(下载句柄)` | 整数型 | 高级 | `LB_FBro_DownloadItemIsInProgress` | 判断下载是否仍在进行。 |
+| 3 | `FBro下载_是否完成` | `FBro下载_是否完成(下载句柄)` | 整数型 | 高级 | `LB_FBro_DownloadItemIsComplete` | 判断下载是否已完成。 |
+| 4 | `FBro下载_是否已取消` | `FBro下载_是否已取消(下载句柄)` | 整数型 | 高级 | `LB_FBro_DownloadItemIsCanceled` | 判断下载是否已取消。 |
+| 5 | `FBro下载_取百分比` | `FBro下载_取百分比(下载句柄)` | 整数型 | 高级 | `LB_FBro_DownloadItemGetPercentComplete` | 取下载进度百分比（0~100）。 |
+| 6 | `FBro下载_取下载ID` | `FBro下载_取下载ID(下载句柄)` | 整数型 | 高级 | `LB_FBro_DownloadItemGetDownloadId` | 取下载项标识。 |
+| 7 | `FBro下载_取速度` | `FBro下载_取速度(下载句柄)` | 长整数型 | 高级 | `LB_FBro_DownloadItemGetCurrentSpeedBytes` | 取当前下载速度（字节/秒）。 |
+| 8 | `FBro下载_取总长度` | `FBro下载_取总长度(下载句柄)` | 长整数型 | 高级 | `LB_FBro_DownloadItemGetTotalBytes` | 取下载总字节数（未知为 0 或 -1）。 |
+| 9 | `FBro下载_取已接收字节` | `FBro下载_取已接收字节(下载句柄)` | 长整数型 | 高级 | `LB_FBro_DownloadItemGetReceivedBytes` | 取已接收字节数。 |
+| 10 | `FBro下载_取开始时间` | `FBro下载_取开始时间(下载句柄)` | 长整数型 | 高级 | `LB_FBro_DownloadItemGetStartTime` | 取开始时间（Unix 时间戳秒）。 |
+| 11 | `FBro下载_取结束时间` | `FBro下载_取结束时间(下载句柄)` | 长整数型 | 高级 | `LB_FBro_DownloadItemGetEndTime` | 取结束时间（Unix 时间戳秒，未结束为 0）。 |
+| 12 | `FBro下载_取完整路径` | `FBro下载_取完整路径(下载句柄)` | 文本型 | 高级 | `LB_FBro_DownloadItemGetFullPath` | 取下载文件的完整保存路径。 |
+| 13 | `FBro下载_取地址` | `FBro下载_取地址(下载句柄)` | 文本型 | 高级 | `LB_FBro_DownloadItemGetDownloadURL` | 取下载地址。 |
+| 14 | `FBro下载_取原始地址` | `FBro下载_取原始地址(下载句柄)` | 文本型 | 高级 | `LB_FBro_DownloadItemGetDownloadOriginalUrl` | 取重定向前的原始下载地址。 |
+| 15 | `FBro下载_取建议文件名` | `FBro下载_取建议文件名(下载句柄)` | 文本型 | 高级 | `LB_FBro_DownloadItemGetSuggestedFileName` | 取服务器建议的文件名。 |
+| 16 | `FBro下载_取MIME类型` | `FBro下载_取MIME类型(下载句柄)` | 文本型 | 高级 | `LB_FBro_DownloadItemGetDownloadMimeType` | 取下载内容的 MIME 类型。 |
+| 17 | `FBro下载_取内容处置` | `FBro下载_取内容处置(下载句柄)` | 文本型 | 高级 | `LB_FBro_DownloadItemGetContentDisposition` | 取 Content-Disposition 响应头值。 |
+| 18 | `FBro传输_打印` | `FBro传输_打印(控件名)` | 整数型 | 常用 | `LB_FBro_Print` | 打开当前浏览器页面的原生打印流程。 |
+| 19 | `FBro传输_异步生成PDF` | `FBro传输_异步生成PDF(控件名, 输出路径, 设置JSON)` | 长整数型 | 常用 | `LB_FBro_PrintToPdfAsync` | 异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。 |
+| 20 | `FBro传输_生成PDF` | `FBro传输_生成PDF(控件名, 输出路径, 设置JSON)` | 整数型 | 高级 | `LB_FBro_PrintToPdfSync` | 同步生成 PDF 并等待完成（60 秒超时）；设置 JSON 传空文本使用默认，返回 1 表示文件已生成。 |
+| 21 | `FBro传输_异步打开文件对话框` | `FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)` | 长整数型 | 常用 | `LB_FBro_RunFileDialogAsync` | 调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。 |
+| 22 | `FBro传输_异步截图` | `FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)` | 长整数型 | 常用 | `LB_FBro_CaptureScreenshotAsync` | 通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。 |
 
 ### 5. FBro自动化模块
 
@@ -947,5 +963,5 @@
 - 模块清单：`electron/src/services/modules/builtinModules.ts`、`electron/src/services/modules/fbroModules.ts`、`electron/src/services/modules/fbroVipApiCatalog.ts`
 - 原生 Bridge：`electron/native/fbro-bridge/`
 
-类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：635。
+类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：651。
 

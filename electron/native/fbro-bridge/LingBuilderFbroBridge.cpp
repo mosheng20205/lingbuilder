@@ -167,6 +167,7 @@ struct ObjectState {
   CefRefPtr<CefURLRequest> url_request;
   CefRefPtr<CefRequestContext> request_context;
   CefRefPtr<CefServer> server;
+  CefRefPtr<CefDownloadItem> download_item;
   CefRefPtr<FBroDOMWssClient> wss_client;
   std::shared_ptr<struct DomSnapshot> dom_snapshot;
   std::vector<unsigned char> owned_bytes;
@@ -389,6 +390,20 @@ LB_FBRO_OBJECT_HANDLE RegisterDragData(CefRefPtr<CefDragData> drag_data) {
   state->type = LB_FBRO_OBJECT_DRAG_DATA;
   state->owner_thread = 0;
   state->drag_data = std::move(drag_data);
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  g_objects.emplace(state->handle, state);
+  return state->handle;
+}
+
+LB_FBRO_OBJECT_HANDLE RegisterDownloadItem(CefRefPtr<CefDownloadItem> item,
+                                           LB_FBRO_OBJECT_HANDLE parent = 0) {
+  if (!item) return 0;
+  auto state = std::make_shared<ObjectState>();
+  state->handle = g_next_object_handle.fetch_add(1);
+  state->type = LB_FBRO_OBJECT_DOWNLOAD_ITEM;
+  state->owner_thread = 0;
+  state->parent = parent;
+  state->download_item = std::move(item);
   std::lock_guard<std::recursive_mutex> lock(g_mutex);
   g_objects.emplace(state->handle, state);
   return state->handle;
@@ -1829,8 +1844,10 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
                         const CefString& suggested_name,
                         CefRefPtr<CefBeforeDownloadCallback> callback) override {
     if (!callback) return false;
+    const LB_FBRO_OBJECT_HANDLE item_object = RegisterDownloadItem(item, handle_);
     const std::wstring fields = BuildSafeFieldsJson({
             {L"downloadId", item ? std::to_wstring(FBroHsDownloadItem_GetDownloadId(item)) : L"0"},
+            {L"downloadItem", std::to_wstring(item_object)},
             {L"url", item ? FromFbroString(FBroHsDownloadItem_GetDownloadURL(item)) : L""},
             {L"suggestedName", suggested_name.ToWString()},
             {L"totalBytes", item ? std::to_wstring(FBroHsDownloadItem_GetTotalBytes(item)) : L"0"}});
@@ -1884,6 +1901,7 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
     if (!callback) return;
     const std::wstring fields = BuildSafeFieldsJson({
             {L"downloadId", item ? std::to_wstring(FBroHsDownloadItem_GetDownloadId(item)) : L"0"},
+            {L"downloadItem", std::to_wstring(RegisterDownloadItem(item, handle_))},
             {L"percent", item ? std::to_wstring(FBroHsDownloadItem_GetPercentComplete(item)) : L"-1"},
             {L"receivedBytes", item ? std::to_wstring(FBroHsDownloadItem_GetReceivedBytes(item)) : L"0"},
             {L"totalBytes", item ? std::to_wstring(FBroHsDownloadItem_GetTotalBytes(item)) : L"0"},
@@ -6151,6 +6169,108 @@ int __stdcall LB_FBro_ContextMenuParamsIsCustomMenu(LB_FBRO_OBJECT_HANDLE object
   auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
   if (!state) return status;
   return BoolStatus(FBroHsContextMenuParams_IsCustomMenu(state->context_menu_params));
+}
+int __stdcall LB_FBro_DownloadItemIsInProgress(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return FBroHsDownloadItem_IsInProgress(state->download_item) != 0 ? 1 : 0;
+}
+int __stdcall LB_FBro_DownloadItemIsComplete(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return FBroHsDownloadItem_IsComplete(state->download_item) != 0 ? 1 : 0;
+}
+int __stdcall LB_FBro_DownloadItemIsCanceled(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return FBroHsDownloadItem_IsCanceled(state->download_item) != 0 ? 1 : 0;
+}
+int __stdcall LB_FBro_DownloadItemGetPercentComplete(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return FBroHsDownloadItem_GetPercentComplete(state->download_item);
+}
+int __stdcall LB_FBro_DownloadItemGetDownloadId(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return static_cast<int>(FBroHsDownloadItem_GetDownloadId(state->download_item));
+}
+long long __stdcall LB_FBro_DownloadItemGetCurrentSpeedBytes(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return 0;
+  return static_cast<long long>(FBroHsDownloadItem_GetCurrentSpeed(state->download_item));
+}
+long long __stdcall LB_FBro_DownloadItemGetTotalBytes(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return 0;
+  return static_cast<long long>(FBroHsDownloadItem_GetTotalBytes(state->download_item));
+}
+long long __stdcall LB_FBro_DownloadItemGetReceivedBytes(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return 0;
+  return static_cast<long long>(FBroHsDownloadItem_GetReceivedBytes(state->download_item));
+}
+long long __stdcall LB_FBro_DownloadItemGetStartTime(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return 0;
+  return static_cast<long long>(FBroHsDownloadItem_GetStartTime(state->download_item));
+}
+long long __stdcall LB_FBro_DownloadItemGetEndTime(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return 0;
+  return static_cast<long long>(FBroHsDownloadItem_GetEndTime(state->download_item));
+}
+int __stdcall LB_FBro_DownloadItemGetFullPath(LB_FBRO_OBJECT_HANDLE object,
+                                                  wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsDownloadItem_GetFullPath(state->download_item)), result, capacity);
+}
+int __stdcall LB_FBro_DownloadItemGetDownloadURL(LB_FBRO_OBJECT_HANDLE object,
+                                                  wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsDownloadItem_GetDownloadURL(state->download_item)), result, capacity);
+}
+int __stdcall LB_FBro_DownloadItemGetDownloadOriginalUrl(LB_FBRO_OBJECT_HANDLE object,
+                                                  wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsDownloadItem_GetDownloadOriginalUrl(state->download_item)), result, capacity);
+}
+int __stdcall LB_FBro_DownloadItemGetSuggestedFileName(LB_FBRO_OBJECT_HANDLE object,
+                                                  wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsDownloadItem_GetSuggestedFileName(state->download_item)), result, capacity);
+}
+int __stdcall LB_FBro_DownloadItemGetDownloadMimeType(LB_FBRO_OBJECT_HANDLE object,
+                                                  wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsDownloadItem_GetDownloadMimeType(state->download_item)), result, capacity);
+}
+int __stdcall LB_FBro_DownloadItemGetContentDisposition(LB_FBRO_OBJECT_HANDLE object,
+                                                  wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsDownloadItem_GetContentDisposition(state->download_item)), result, capacity);
 }
 int __stdcall LB_FBro_ContextMenuParamsGetMediaType(LB_FBRO_OBJECT_HANDLE object) {
   int status = LB_FBRO_OK;

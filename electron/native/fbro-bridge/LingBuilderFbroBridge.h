@@ -60,7 +60,8 @@ enum LB_FBRO_OBJECT_TYPE {
   LB_FBRO_OBJECT_REQUEST_CONTEXT = 27,
   LB_FBRO_OBJECT_SERVER = 28,
   LB_FBRO_OBJECT_WSS_CLIENT = 29,
-  LB_FBRO_OBJECT_DOM_SNAPSHOT = 30
+  LB_FBRO_OBJECT_DOM_SNAPSHOT = 30,
+  LB_FBRO_OBJECT_DOWNLOAD_ITEM = 31,
 };
 
 enum LB_FBRO_TASK_STATUS {
@@ -590,6 +591,23 @@ LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsIsEditable(LB_FBRO_OBJECT_HAN
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsIsSpellCheckEnabled(LB_FBRO_OBJECT_HANDLE object);
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetEditStateFlags(LB_FBRO_OBJECT_HANDLE object);
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsIsCustomMenu(LB_FBRO_OBJECT_HANDLE object);
+/** 下载项快照读取族：句柄来自「下载开始/下载进度更新」事件字段 downloadItem。 */
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemIsInProgress(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemIsComplete(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemIsCanceled(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetPercentComplete(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetDownloadId(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API long long __stdcall LB_FBro_DownloadItemGetCurrentSpeedBytes(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API long long __stdcall LB_FBro_DownloadItemGetTotalBytes(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API long long __stdcall LB_FBro_DownloadItemGetReceivedBytes(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API long long __stdcall LB_FBro_DownloadItemGetStartTime(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API long long __stdcall LB_FBro_DownloadItemGetEndTime(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetFullPath(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetDownloadURL(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetDownloadOriginalUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetSuggestedFileName(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetDownloadMimeType(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetContentDisposition(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
 
 /** 启用页面调原生 JS 扩展（必须在首个浏览器创建前调用）。 */
 LB_FBRO_API int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function,
