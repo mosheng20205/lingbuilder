@@ -5822,6 +5822,354 @@ int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function, const wchar_t
   return LB_FBRO_OK;
 }
 
+int __stdcall LB_FBro_MenuModelClear(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_Clear(state->menu_model));
+}
+int __stdcall LB_FBro_MenuModelGetCount(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return FBroHsMenuModel_GetCount(state->menu_model);
+}
+int __stdcall LB_FBro_MenuModelAddSeparator(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_AddSeparator(state->menu_model));
+}
+int __stdcall LB_FBro_MenuModelAddCheckItem(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                             const wchar_t* label) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_AddCheckItem(state->menu_model, command_id,
+                                                 CefString(label ? label : L"")));
+}
+int __stdcall LB_FBro_MenuModelAddRadioItem(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                             const wchar_t* label, int group_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_AddRadioItem(state->menu_model, command_id,
+                                                 CefString(label ? label : L""), group_id));
+}
+int __stdcall LB_FBro_MenuModelRemove(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_Remove(state->menu_model, command_id));
+}
+int __stdcall LB_FBro_MenuModelGetLabel(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                         wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsMenuModel_GetLable(state->menu_model, command_id)), result, capacity);
+}
+int __stdcall LB_FBro_MenuModelSetLabel(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                         const wchar_t* label) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetLable(state->menu_model, command_id,
+                                             CefString(label ? label : L"")));
+}
+int __stdcall LB_FBro_MenuModelGetType(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return FBroHsMenuModel_GetType(state->menu_model, command_id);
+}
+int __stdcall LB_FBro_MenuModelGetGroup(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return FBroHsMenuModel_GetGroup(state->menu_model, command_id);
+}
+int __stdcall LB_FBro_MenuModelSetGroup(LB_FBRO_OBJECT_HANDLE object, int command_id, int group_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetGroup(state->menu_model, command_id, group_id));
+}
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_MenuModelGetSubMenu(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return 0;
+  auto sub = FBroHsMenuModel_GetSubMenu(state->menu_model, command_id);
+  if (!sub) return 0;
+  return RegisterCefObject(LB_FBRO_OBJECT_MENU_MODEL, sub, &ObjectState::menu_model,
+                           object, GetCurrentThreadId());
+}
+int __stdcall LB_FBro_MenuModelIsVisible(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_IsVisable(state->menu_model, command_id));
+}
+int __stdcall LB_FBro_MenuModelSetVisible(LB_FBRO_OBJECT_HANDLE object, int command_id, int visible) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetVisable(state->menu_model, command_id, visible != 0));
+}
+int __stdcall LB_FBro_MenuModelIsEnabled(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_IsEnable(state->menu_model, command_id));
+}
+int __stdcall LB_FBro_MenuModelSetEnabled(LB_FBRO_OBJECT_HANDLE object, int command_id, int enable) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetEnable(state->menu_model, command_id, enable != 0));
+}
+int __stdcall LB_FBro_MenuModelIsChecked(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_IsChecked(state->menu_model, command_id));
+}
+int __stdcall LB_FBro_MenuModelSetChecked(LB_FBRO_OBJECT_HANDLE object, int command_id, int check) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetCheck(state->menu_model, command_id, check != 0));
+}
+int __stdcall LB_FBro_MenuModelSetCheckedAt(LB_FBRO_OBJECT_HANDLE object, int index, int check) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetCheckedAt(state->menu_model, index, check ? TRUE : FALSE));
+}
+int __stdcall LB_FBro_MenuModelHasAccelerator(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_HasAccelerator(state->menu_model, command_id));
+}
+int __stdcall LB_FBro_MenuModelHasAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_HasAcceleratorAt(state->menu_model, index));
+}
+int __stdcall LB_FBro_MenuModelSetAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index, int key_code,
+                                                 int shift, int ctrl, int alt) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetAcceleratorAt(state->menu_model, index, key_code,
+                                                     shift ? TRUE : FALSE, ctrl ? TRUE : FALSE,
+                                                     alt ? TRUE : FALSE));
+}
+int __stdcall LB_FBro_MenuModelRemoveAccelerator(LB_FBRO_OBJECT_HANDLE object, int command_id) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_RemoveAccelerator(state->menu_model, command_id));
+}
+int __stdcall LB_FBro_MenuModelRemoveAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_RemoveAcceleratorAt(state->menu_model, index));
+}
+int __stdcall LB_FBro_MenuModelGetAccelerator(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                               wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  int key_code = 0;
+  BOOL shift_pressed = FALSE;
+  BOOL ctrl_pressed = FALSE;
+  BOOL alt_pressed = FALSE;
+  if (!FBroHsMenuModel_GetAccelerator(state->menu_model, command_id, key_code, shift_pressed,
+                                      ctrl_pressed, alt_pressed)) {
+    return LB_FBRO_ERROR_OPERATION_FAILED;
+  }
+  std::wstring json = L"{\"key\":" + std::to_wstring(key_code)
+      + L",\"shift\":" + std::to_wstring(shift_pressed ? 1 : 0)
+      + L",\"ctrl\":" + std::to_wstring(ctrl_pressed ? 1 : 0)
+      + L",\"alt\":" + std::to_wstring(alt_pressed ? 1 : 0) + L"}";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_MenuModelGetAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index,
+                                                wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  int key_code = 0;
+  BOOL shift_pressed = FALSE;
+  BOOL ctrl_pressed = FALSE;
+  BOOL alt_pressed = FALSE;
+  if (!FBroHsMenuModel_GetAcceleratorAt(state->menu_model, index, key_code, shift_pressed,
+                                        ctrl_pressed, alt_pressed)) {
+    return LB_FBRO_ERROR_OPERATION_FAILED;
+  }
+  std::wstring json = L"{\"key\":" + std::to_wstring(key_code)
+      + L",\"shift\":" + std::to_wstring(shift_pressed ? 1 : 0)
+      + L",\"ctrl\":" + std::to_wstring(ctrl_pressed ? 1 : 0)
+      + L",\"alt\":" + std::to_wstring(alt_pressed ? 1 : 0) + L"}";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_MenuModelSetColor(LB_FBRO_OBJECT_HANDLE object, int command_id, int color_type,
+                                        int alpha, int red, int green, int blue) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetColor(state->menu_model, command_id, color_type, alpha,
+                                             red, green, blue));
+}
+int __stdcall LB_FBro_MenuModelSetColorAt(LB_FBRO_OBJECT_HANDLE object, int index, int color_type,
+                                          int alpha, int red, int green, int blue) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetColorAt(state->menu_model, index, color_type, alpha,
+                                               red, green, blue));
+}
+int __stdcall LB_FBro_MenuModelGetColorAt(LB_FBRO_OBJECT_HANDLE object, int index, int color_type,
+                                          wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  int red = 0;
+  int green = 0;
+  int blue = 0;
+  int alpha = 0;
+  const BOOL ok = FBroHsMenuModel_GetColorAt(state->menu_model, index, color_type, red, green,
+                                             blue, alpha);
+  if (!ok) return LB_FBRO_ERROR_OPERATION_FAILED;
+  std::wstring json = L"{\"red\":" + std::to_wstring(red) + L",\"green\":" + std::to_wstring(green)
+      + L",\"blue\":" + std::to_wstring(blue) + L",\"alpha\":" + std::to_wstring(alpha) + L"}";
+  return CopyResult(json, result, capacity);
+}
+int __stdcall LB_FBro_MenuModelSetFontList(LB_FBRO_OBJECT_HANDLE object, int command_id,
+                                           const wchar_t* font_list) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetFontList(state->menu_model, command_id,
+                                                CefString(font_list ? font_list : L"")));
+}
+int __stdcall LB_FBro_MenuModelSetFontListAt(LB_FBRO_OBJECT_HANDLE object, int index,
+                                             const wchar_t* font_list) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_MENU_MODEL, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsMenuModel_SetFontListAt(state->menu_model, index,
+                                                  CefString(font_list ? font_list : L"")));
+}
+int __stdcall LB_FBro_ContextMenuParamsGetLinkUrl(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_pGetLinkUrl(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetUnfilteredLinkUrl(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_pGetUnfilteredLinkUrl(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetSourceUrl(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_pGetSourceUrl(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetPageUrl(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_pGetPageUrl(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetFrameCharset(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_pGetFrameCharset(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetFrameUrl(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_pGetFrameUrl(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetSelectionText(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_GetSelectionText(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetMisspelledWord(LB_FBRO_OBJECT_HANDLE object,
+                                                   wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsContextMenuParams_GetMisspelledWord(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetDictionarySuggestions(LB_FBRO_OBJECT_HANDLE object,
+                                                                 wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return CopyResult(StringListJson(FBroHsContextMenuParams_GetDictionarySuggestions(state->context_menu_params)), result, capacity);
+}
+int __stdcall LB_FBro_ContextMenuParamsHasImageContents(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsContextMenuParams_HasImageContents(state->context_menu_params));
+}
+int __stdcall LB_FBro_ContextMenuParamsIsEditable(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsContextMenuParams_IsEditable(state->context_menu_params));
+}
+int __stdcall LB_FBro_ContextMenuParamsIsSpellCheckEnabled(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsContextMenuParams_IsSpellCheckEnabled(state->context_menu_params));
+}
+int __stdcall LB_FBro_ContextMenuParamsIsCustomMenu(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return BoolStatus(FBroHsContextMenuParams_IsCustomMenu(state->context_menu_params));
+}
+int __stdcall LB_FBro_ContextMenuParamsGetMediaType(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return FBroHsContextMenuParams_GetMediaType(state->context_menu_params);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetMediaStateFlags(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return FBroHsContextMenuParams_GetMediaStateFlags(state->context_menu_params);
+}
+int __stdcall LB_FBro_ContextMenuParamsGetEditStateFlags(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, status);
+  if (!state) return status;
+  return FBroHsContextMenuParams_GetEditStateFlags(state->context_menu_params);
+}
 int __stdcall LB_FBro_MenuModelAddItem(LB_FBRO_OBJECT_HANDLE object, int command_id,
                                        const wchar_t* label) {
   int status = LB_FBRO_OK;

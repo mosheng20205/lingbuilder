@@ -1,7 +1,7 @@
 <!-- 此文件由 electron/scripts/generate-cef3-fbro-event-docs.ts 生成。请修改 FBro 事件目录或模块 manifest 后运行 npm run module:fbro-docs。 -->
 # FBro 模块事件与接口参考
 
-本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 588 条面向用户的中文接口。
+本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 635 条面向用户的中文接口。
 
 ## 快速使用
 
@@ -234,11 +234,11 @@
 | FBro会话模块 | `lingbuilder.fbro.session` | 14 |
 | FBro传输模块 | `lingbuilder.fbro.transfer` | 6 |
 | FBro自动化模块 | `lingbuilder.fbro.automation` | 72 |
-| FBro受管对象模块 | `lingbuilder.fbro.objects` | 161 |
+| FBro受管对象模块 | `lingbuilder.fbro.objects` | 208 |
 | FBro高级网络模块 | `lingbuilder.fbro.network` | 18 |
 | FBro VIP 指纹模块 | `lingbuilder.fbro.vip` | 189 |
 
-以下 588 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
+以下 635 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
 
 
 ### 1. FBro指纹浏览器模块
@@ -498,7 +498,7 @@
 
 ### 6. FBro受管对象模块
 
-提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。 模块 ID：`lingbuilder.fbro.objects`；本节共 161 条用户接口。
+提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。 模块 ID：`lingbuilder.fbro.objects`；本节共 208 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
@@ -543,126 +543,173 @@
 | 39 | `FBro右键参数_取X` | `FBro右键参数_取X(参数句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetX` | 读取右键菜单弹出坐标 X；仅可在事件处理期内使用。 |
 | 40 | `FBro右键参数_取Y` | `FBro右键参数_取Y(参数句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetY` | 读取右键菜单弹出坐标 Y；仅可在事件处理期内使用。 |
 | 41 | `FBro右键参数_取类型标志` | `FBro右键参数_取类型标志(参数句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetTypeFlags` | 读取右键菜单上下文类型标志位（TypeFlags 位掩码）；仅可在事件处理期内使用。 |
-| 42 | `FBro对象_取类型` | `FBro对象_取类型(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectGetType` | 取得受管对象注册表类型。 |
-| 43 | `FBro对象_释放` | `FBro对象_释放(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectRelease` | 释放受管对象；重复释放返回稳定错误码。 |
-| 44 | `FBro值_创建` | `FBro值_创建()` | 长整数型 | 高级 | `FBroHsValue_Create` | 创建受管 Value 对象并返回不透明句柄。 |
-| 45 | `FBro值_是否有效` | `FBro值_是否有效(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsValid` | 检查 Value 对象是否有效。 |
-| 46 | `FBro值_是否被拥有` | `FBro值_是否被拥有(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsOwned` | 检查 Value 对象是否已归属于其它容器。 |
-| 47 | `FBro值_是否只读` | `FBro值_是否只读(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsReadOnly` | 检查 Value 对象是否只读。 |
-| 48 | `FBro值_是否同一对象` | `FBro值_是否同一对象(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsSame` | 检查两个 Value 句柄是否引用同一官方对象。 |
-| 49 | `FBro值_是否相等` | `FBro值_是否相等(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsEqual` | 比较两个 Value 的内容。 |
-| 50 | `FBro值_复制` | `FBro值_复制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_Copy` | 复制 Value 并返回独立受管句柄。 |
-| 51 | `FBro值_取类型` | `FBro值_取类型(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetType` | 取得 Value 的官方值类型。 |
-| 52 | `FBro值_取逻辑` | `FBro值_取逻辑(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetBool` | 读取逻辑值。 |
-| 53 | `FBro值_取整数` | `FBro值_取整数(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetInt` | 读取整数值。 |
-| 54 | `FBro值_取小数` | `FBro值_取小数(值句柄)` | 小数型 | 高级 | `FBroHsValue_GetDouble` | 读取小数值。 |
-| 55 | `FBro值_取文本` | `FBro值_取文本(值句柄)` | 文本型 | 高级 | `FBroHsValue_GetString` | 读取 UTF-16 文本值。 |
-| 56 | `FBro值_设为空` | `FBro值_设为空(值句柄)` | 整数型 | 高级 | `FBroHsValue_SetNull` | 把 Value 设置为空值。 |
-| 57 | `FBro值_设置逻辑` | `FBro值_设置逻辑(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetBool` | 写入逻辑值。 |
-| 58 | `FBro值_设置整数` | `FBro值_设置整数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetInt` | 写入整数值。 |
-| 59 | `FBro值_设置小数` | `FBro值_设置小数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetDouble` | 写入小数值。 |
-| 60 | `FBro值_设置文本` | `FBro值_设置文本(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetString` | 写入 UTF-16 文本值。 |
-| 61 | `FBro值_取二进制` | `FBro值_取二进制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetBinary` | 复制二进制值到受管缓冲并返回句柄。 |
-| 62 | `FBro值_设置二进制` | `FBro值_设置二进制(值句柄, 缓冲句柄)` | 整数型 | 高级 | `FBroHsValue_SetBinary` | 从受管缓冲写入二进制值。 |
-| 63 | `FBro值_取字典` | `FBro值_取字典(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetDictionary` | 取得受父对象管理的 Dictionary 句柄。 |
-| 64 | `FBro值_取列表` | `FBro值_取列表(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetList` | 取得受父对象管理的 List 句柄。 |
-| 65 | `FBro值_设置字典` | `FBro值_设置字典(值句柄, 字典句柄)` | 整数型 | 高级 | `FBroHsValue_SetDictionary` | 把 Dictionary 交由 Value 管理。 |
-| 66 | `FBro值_设置列表` | `FBro值_设置列表(值句柄, 列表句柄)` | 整数型 | 高级 | `FBroHsValue_SetList` | 把 List 交由 Value 管理。 |
-| 67 | `FBro字典_创建` | `FBro字典_创建()` | 长整数型 | 高级 | `FBroHsDictionaryValue_Create` | 创建受管 Dictionary 对象。 |
-| 68 | `FBro字典_是否有效` | `FBro字典_是否有效(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsValid` | 检查 Dictionary 是否有效。 |
-| 69 | `FBro字典_是否被拥有` | `FBro字典_是否被拥有(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsOwned` | 检查 Dictionary 是否已被拥有。 |
-| 70 | `FBro字典_是否只读` | `FBro字典_是否只读(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsReadOnly` | 检查 Dictionary 是否只读。 |
-| 71 | `FBro字典_是否同一对象` | `FBro字典_是否同一对象(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsSame` | 检查两个 Dictionary 句柄是否引用同一官方对象。 |
-| 72 | `FBro字典_是否相等` | `FBro字典_是否相等(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsEqual` | 比较两个 Dictionary 的内容。 |
-| 73 | `FBro字典_复制` | `FBro字典_复制(字典句柄, 排除空子项)` | 长整数型 | 高级 | `FBroHsDictionaryValue_Copy` | 复制 Dictionary 并返回独立受管句柄。 |
-| 74 | `FBro字典_取数量` | `FBro字典_取数量(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetSize` | 取得键数量。 |
-| 75 | `FBro字典_清空` | `FBro字典_清空(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_Clear` | 删除全部键。 |
-| 76 | `FBro字典_是否存在键` | `FBro字典_是否存在键(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_HasKey` | 检查键是否存在。 |
-| 77 | `FBro字典_删除` | `FBro字典_删除(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_Remove` | 删除指定键。 |
-| 78 | `FBro字典_取类型` | `FBro字典_取类型(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetType` | 取得指定键的官方值类型。 |
-| 79 | `FBro字典_取逻辑` | `FBro字典_取逻辑(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetBool` | 读取逻辑值。 |
-| 80 | `FBro字典_取整数` | `FBro字典_取整数(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetInt` | 读取整数值。 |
-| 81 | `FBro字典_取小数` | `FBro字典_取小数(字典句柄, 键)` | 小数型 | 高级 | `FBroHsDictionaryValue_GetDouble` | 读取小数值。 |
-| 82 | `FBro字典_取文本` | `FBro字典_取文本(字典句柄, 键)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetString` | 读取 UTF-16 文本值。 |
-| 83 | `FBro字典_取键列表JSON` | `FBro字典_取键列表JSON(字典句柄)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetKeys` | 取得 UTF-16 JSON 键数组，不向源码暴露 StringList 或 STL。 |
-| 84 | `FBro字典_取值对象` | `FBro字典_取值对象(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetValue` | 取得受字典管理的 Value 句柄。 |
-| 85 | `FBro字典_取二进制` | `FBro字典_取二进制(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetBinary` | 复制指定键的二进制值到受管缓冲。 |
-| 86 | `FBro字典_取字典` | `FBro字典_取字典(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetDictionary` | 取得受父字典管理的 Dictionary 句柄。 |
-| 87 | `FBro字典_取列表` | `FBro字典_取列表(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetList` | 取得受父字典管理的 List 句柄。 |
-| 88 | `FBro字典_设为空` | `FBro字典_设为空(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetNull` | 把指定键设置为空值。 |
-| 89 | `FBro字典_设置逻辑` | `FBro字典_设置逻辑(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBool` | 写入逻辑值。 |
-| 90 | `FBro字典_设置整数` | `FBro字典_设置整数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetInt` | 写入整数值。 |
-| 91 | `FBro字典_设置小数` | `FBro字典_设置小数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDouble` | 写入小数值。 |
-| 92 | `FBro字典_设置文本` | `FBro字典_设置文本(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetString` | 写入 UTF-16 文本值。 |
-| 93 | `FBro字典_设置值对象` | `FBro字典_设置值对象(字典句柄, 键, 值句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetValue` | 把 Value 交由指定键管理。 |
-| 94 | `FBro字典_设置二进制` | `FBro字典_设置二进制(字典句柄, 键, 缓冲句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBinary` | 从受管缓冲写入指定键。 |
-| 95 | `FBro字典_设置字典` | `FBro字典_设置字典(字典句柄, 键, 子字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDictionary` | 把子 Dictionary 交由指定键管理。 |
-| 96 | `FBro字典_设置列表` | `FBro字典_设置列表(字典句柄, 键, 列表句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetList` | 把 List 交由指定键管理。 |
-| 97 | `FBro列表_创建` | `FBro列表_创建()` | 长整数型 | 高级 | `FBroHsListValue_Create` | 创建受管 List 对象。 |
-| 98 | `FBro列表_是否有效` | `FBro列表_是否有效(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsValid` | 检查 List 是否有效。 |
-| 99 | `FBro列表_是否被拥有` | `FBro列表_是否被拥有(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsOwned` | 检查 List 是否已被拥有。 |
-| 100 | `FBro列表_是否只读` | `FBro列表_是否只读(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsReadOnly` | 检查 List 是否只读。 |
-| 101 | `FBro列表_是否同一对象` | `FBro列表_是否同一对象(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsSame` | 检查两个 List 句柄是否引用同一官方对象。 |
-| 102 | `FBro列表_是否相等` | `FBro列表_是否相等(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsEqual` | 比较两个 List 的内容。 |
-| 103 | `FBro列表_复制` | `FBro列表_复制(列表句柄)` | 长整数型 | 高级 | `FBroHsListValue_Copy` | 复制 List 并返回独立受管句柄。 |
-| 104 | `FBro列表_设置数量` | `FBro列表_设置数量(列表句柄, 数量)` | 整数型 | 高级 | `FBroHsListValue_SetSize` | 设置列表长度。 |
-| 105 | `FBro列表_取数量` | `FBro列表_取数量(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_GetSize` | 取得列表长度。 |
-| 106 | `FBro列表_清空` | `FBro列表_清空(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_Clear` | 清空列表。 |
-| 107 | `FBro列表_删除` | `FBro列表_删除(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_Remove` | 删除指定索引。 |
-| 108 | `FBro列表_取类型` | `FBro列表_取类型(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetType` | 取得指定索引的官方值类型。 |
-| 109 | `FBro列表_取逻辑` | `FBro列表_取逻辑(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetBool` | 读取逻辑值。 |
-| 110 | `FBro列表_取整数` | `FBro列表_取整数(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetInt` | 读取整数值。 |
-| 111 | `FBro列表_取小数` | `FBro列表_取小数(列表句柄, 索引)` | 小数型 | 高级 | `FBroHsListValue_GetDouble` | 读取小数值。 |
-| 112 | `FBro列表_取文本` | `FBro列表_取文本(列表句柄, 索引)` | 文本型 | 高级 | `FBroHsListValue_GetString` | 读取 UTF-16 文本值。 |
-| 113 | `FBro列表_取值对象` | `FBro列表_取值对象(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetValue` | 取得受列表管理的 Value 句柄。 |
-| 114 | `FBro列表_取二进制` | `FBro列表_取二进制(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetBinary` | 复制指定项的二进制值到受管缓冲。 |
-| 115 | `FBro列表_取字典` | `FBro列表_取字典(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetDictionary` | 取得受父列表管理的 Dictionary 句柄。 |
-| 116 | `FBro列表_取列表` | `FBro列表_取列表(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetList` | 取得受父列表管理的 List 句柄。 |
-| 117 | `FBro列表_设为空` | `FBro列表_设为空(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_SetNull` | 把指定索引设置为空值。 |
-| 118 | `FBro列表_设置逻辑` | `FBro列表_设置逻辑(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetBool` | 写入逻辑值。 |
-| 119 | `FBro列表_设置整数` | `FBro列表_设置整数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetInt` | 写入整数值。 |
-| 120 | `FBro列表_设置小数` | `FBro列表_设置小数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetDouble` | 写入小数值。 |
-| 121 | `FBro列表_设置文本` | `FBro列表_设置文本(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetString` | 写入 UTF-16 文本值。 |
-| 122 | `FBro列表_设置值对象` | `FBro列表_设置值对象(列表句柄, 索引, 值句柄)` | 整数型 | 高级 | `FBroHsListValue_SetValue` | 把 Value 交由指定索引管理。 |
-| 123 | `FBro列表_设置二进制` | `FBro列表_设置二进制(列表句柄, 索引, 缓冲句柄)` | 整数型 | 高级 | `FBroHsListValue_SetBinary` | 从受管缓冲写入指定索引。 |
-| 124 | `FBro列表_设置字典` | `FBro列表_设置字典(列表句柄, 索引, 字典句柄)` | 整数型 | 高级 | `FBroHsListValue_SetDictionary` | 把 Dictionary 交由指定索引管理。 |
-| 125 | `FBro列表_设置列表` | `FBro列表_设置列表(列表句柄, 索引, 子列表句柄)` | 整数型 | 高级 | `FBroHsListValue_SetList` | 把子 List 交由指定索引管理。 |
-| 126 | `FBro流_从文件创建` | `FBro流_从文件创建(路径)` | 长整数型 | 高级 | `FBroStream_CreateForFile` | 从文件创建受管只读 Stream 句柄。 |
-| 127 | `FBro流_从缓冲创建` | `FBro流_从缓冲创建(缓冲句柄)` | 长整数型 | 高级 | `FBroStream_CreateForData` | 复制受管缓冲并创建内存 Stream，保证底层数据生命周期。 |
-| 128 | `FBro流_读取` | `FBro流_读取(流句柄, 元素大小, 元素数量)` | 长整数型 | 高级 | `FBroStream_Read` | 读取数据并返回新的受管缓冲句柄，单次最多 256 MiB。 |
-| 129 | `FBro流_定位` | `FBro流_定位(流句柄, 偏移, 基准)` | 整数型 | 高级 | `FBroStream_Seek` | 按 0=开头、1=当前位置、2=结尾定位 Stream。 |
-| 130 | `FBro流_取位置` | `FBro流_取位置(流句柄)` | 长整数型 | 高级 | `FBroStream_Tell` | 取得当前字节位置。 |
-| 131 | `FBro流_是否结束` | `FBro流_是否结束(流句柄)` | 整数型 | 高级 | `FBroStream_Eof` | 检查 Stream 是否到达结尾。 |
-| 132 | `FBro流_是否可能阻塞` | `FBro流_是否可能阻塞(流句柄)` | 整数型 | 高级 | `FBroStream_MayBlock` | 查询该 Stream 操作是否可能阻塞。 |
-| 133 | `FBro图像_异步下载` | `FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `FBroHsBrowserHost_DownloadImage` | 通过当前浏览器会话异步下载图像并返回任务 ID。 |
-| 134 | `FBro图像_下载` | `FBro图像_下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `LB_FBro_DownloadImageSync` | 同步下载图像并直接返回图像句柄（60 秒超时，失败返回 0）；用完调用 FBro对象_释放。 |
-| 135 | `FBro图像_是否为空` | `FBro图像_是否为空(图像句柄)` | 整数型 | 高级 | `FBroHsImage_IsEmpty` | 检查受管 Image 是否为空。 |
-| 136 | `FBro图像_取宽度` | `FBro图像_取宽度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetWidth` | 取得图像 DIP 宽度。 |
-| 137 | `FBro图像_取高度` | `FBro图像_取高度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetHeight` | 取得图像 DIP 高度。 |
-| 138 | `FBro图像_取表示信息JSON` | `FBro图像_取表示信息JSON(图像句柄, 缩放因子)` | 文本型 | 高级 | `FBroHsImage_GetRepresentationInfo` | 返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。 |
-| 139 | `FBro图像_转位图缓冲` | `FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)` | 长整数型 | 高级 | `FBroHsImage_GetAsBitmap` | 把最接近的位图表示复制到受管缓冲。 |
-| 140 | `FBro图像_转JPEG缓冲` | `FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)` | 长整数型 | 高级 | `FBroHsImage_GetAsJPEG` | 把图像编码为 JPEG 受管缓冲。 |
-| 141 | `FBro图像_转PNG缓冲` | `FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)` | 长整数型 | 高级 | `FBroHsImage_GetAsPNG` | 把图像编码为 PNG 受管缓冲。 |
-| 142 | `FBro证书_异步取当前` | `FBro证书_异步取当前(控件名)` | 长整数型 | 高级 | `LB_FBro_GetCurrentCertificateAsync` | 从当前可见导航项异步取得 TLS 证书任务。 |
-| 143 | `FBro证书_取主体` | `FBro证书_取主体(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSubject` | 取得受证书管理的主体 Principal 句柄。 |
-| 144 | `FBro证书_取颁发者` | `FBro证书_取颁发者(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetIssuer` | 取得受证书管理的颁发者 Principal 句柄。 |
-| 145 | `FBro证书_取序列号缓冲` | `FBro证书_取序列号缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSerialNumber` | 取得证书序列号受管缓冲。 |
-| 146 | `FBro证书_取DER缓冲` | `FBro证书_取DER缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncoded` | 取得 DER 编码证书受管缓冲。 |
-| 147 | `FBro证书_取PEM缓冲` | `FBro证书_取PEM缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncoded` | 取得 PEM 编码证书受管缓冲。 |
-| 148 | `FBro证书_取生效时间` | `FBro证书_取生效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidStart` | 取得证书生效 Unix 时间。 |
-| 149 | `FBro证书_取失效时间` | `FBro证书_取失效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidExpiry` | 取得证书失效 Unix 时间。 |
-| 150 | `FBro证书_取颁发链数量` | `FBro证书_取颁发链数量(证书句柄)` | 整数型 | 高级 | `FBroHsX509Certificate_GetIssuerChainSize` | 取得颁发链数量。 |
-| 151 | `FBro证书_取DER颁发链项` | `FBro证书_取DER颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncodedIssuerChain` | 取得指定颁发链项的 DER 受管缓冲。 |
-| 152 | `FBro证书_取PEM颁发链项` | `FBro证书_取PEM颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncodedIssuerChain` | 取得指定颁发链项的 PEM 受管缓冲。 |
-| 153 | `FBro证书主体_取显示名` | `FBro证书主体_取显示名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetDisplayName` | 取得证书主体显示名。 |
-| 154 | `FBro证书主体_取通用名` | `FBro证书主体_取通用名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCommonName` | 取得证书主体通用名。 |
-| 155 | `FBro证书主体_取地区名` | `FBro证书主体_取地区名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetLocalityName` | 取得证书主体地区名。 |
-| 156 | `FBro证书主体_取省州名` | `FBro证书主体_取省州名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetStateOrProvinceName` | 取得证书主体省或州名。 |
-| 157 | `FBro证书主体_取国家名` | `FBro证书主体_取国家名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCountryName` | 取得证书主体国家名。 |
-| 158 | `FBro证书主体_取组织JSON` | `FBro证书主体_取组织JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationNames` | 取得组织名 UTF-16 JSON 数组。 |
-| 159 | `FBro证书主体_取组织单位JSON` | `FBro证书主体_取组织单位JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationUnitNames` | 取得组织单位名 UTF-16 JSON 数组。 |
-| 160 | `FBro拖放数据_是否有图像` | `FBro拖放数据_是否有图像(拖放数据句柄)` | 整数型 | 高级 | `FBroHsDragData_HasImage` | 检查 DragEnter 事件对象是否携带图像。 |
-| 161 | `FBro拖放数据_取图像` | `FBro拖放数据_取图像(拖放数据句柄)` | 长整数型 | 高级 | `FBroHsDragData_GetImage` | 从 DragEnter 事件对象取得受管 Image 句柄。 |
+| 42 | `FBro菜单_清空` | `FBro菜单_清空(句柄)` | 整数型 | 高级 | `LB_FBro_MenuModelClear` | 清空菜单全部项。 |
+| 43 | `FBro菜单_取数量` | `FBro菜单_取数量(句柄)` | 整数型 | 高级 | `LB_FBro_MenuModelGetCount` | 取菜单项数量。 |
+| 44 | `FBro菜单_添加分隔栏` | `FBro菜单_添加分隔栏(句柄)` | 整数型 | 高级 | `LB_FBro_MenuModelAddSeparator` | 在菜单末尾添加分隔栏。 |
+| 45 | `FBro菜单_添加复选项` | `FBro菜单_添加复选项(句柄, 命令ID, 标签)` | 整数型 | 高级 | `LB_FBro_MenuModelAddCheckItem` | 添加带勾选状态的菜单项。 |
+| 46 | `FBro菜单_添加单选项` | `FBro菜单_添加单选项(句柄, 命令ID, 标签, 分组ID)` | 整数型 | 高级 | `LB_FBro_MenuModelAddRadioItem` | 添加单选菜单项；同分组ID互斥。 |
+| 47 | `FBro菜单_删除项` | `FBro菜单_删除项(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelRemove` | 按命令ID删除菜单项。 |
+| 48 | `FBro菜单_取标签` | `FBro菜单_取标签(句柄, 命令ID)` | 文本型 | 高级 | `LB_FBro_MenuModelGetLabel` | 取菜单项标签文本。 |
+| 49 | `FBro菜单_置标签` | `FBro菜单_置标签(句柄, 命令ID, 标签)` | 整数型 | 高级 | `LB_FBro_MenuModelSetLabel` | 设置菜单项标签文本。 |
+| 50 | `FBro菜单_取类型` | `FBro菜单_取类型(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelGetType` | 取菜单项类型（命令/复选/单选/分隔栏/子菜单）。 |
+| 51 | `FBro菜单_取分组` | `FBro菜单_取分组(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelGetGroup` | 取单选项分组ID。 |
+| 52 | `FBro菜单_置分组` | `FBro菜单_置分组(句柄, 命令ID, 分组ID)` | 整数型 | 高级 | `LB_FBro_MenuModelSetGroup` | 设置单选项分组ID。 |
+| 53 | `FBro菜单_取子菜单` | `FBro菜单_取子菜单(句柄, 命令ID)` | 长整数型 | 高级 | `LB_FBro_MenuModelGetSubMenu` | 取命令ID对应的子菜单句柄，可继续用 FBro菜单_* 操作。 |
+| 54 | `FBro菜单_是否可见` | `FBro菜单_是否可见(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelIsVisible` | 判断菜单项是否可见。 |
+| 55 | `FBro菜单_置可见` | `FBro菜单_置可见(句柄, 命令ID, 是否可见)` | 整数型 | 高级 | `LB_FBro_MenuModelSetVisible` | 设置菜单项可见性。 |
+| 56 | `FBro菜单_是否启用` | `FBro菜单_是否启用(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelIsEnabled` | 判断菜单项是否可用（非置灰）。 |
+| 57 | `FBro菜单_置启用` | `FBro菜单_置启用(句柄, 命令ID, 是否启用)` | 整数型 | 高级 | `LB_FBro_MenuModelSetEnabled` | 设置菜单项可用/置灰。 |
+| 58 | `FBro菜单_是否选中` | `FBro菜单_是否选中(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelIsChecked` | 判断复选/单选项勾选状态。 |
+| 59 | `FBro菜单_置选中` | `FBro菜单_置选中(句柄, 命令ID, 是否选中)` | 整数型 | 高级 | `LB_FBro_MenuModelSetChecked` | 设置复选/单选项勾选状态。 |
+| 60 | `FBro菜单_按序置选中` | `FBro菜单_按序置选中(句柄, 序号, 是否选中)` | 整数型 | 高级 | `LB_FBro_MenuModelSetCheckedAt` | 按序号设置勾选状态。 |
+| 61 | `FBro菜单_是否有加速键` | `FBro菜单_是否有加速键(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelHasAccelerator` | 判断菜单项是否设置了加速键。 |
+| 62 | `FBro菜单_按序是否有加速键` | `FBro菜单_按序是否有加速键(句柄, 序号)` | 整数型 | 高级 | `LB_FBro_MenuModelHasAcceleratorAt` | 按序号判断是否设置了加速键。 |
+| 63 | `FBro菜单_按序设置加速键` | `FBro菜单_按序设置加速键(句柄, 序号, 键码, 是否Shift, 是否Ctrl, 是否Alt)` | 整数型 | 高级 | `LB_FBro_MenuModelSetAcceleratorAt` | 按序号设置加速键组合。 |
+| 64 | `FBro菜单_移除加速键` | `FBro菜单_移除加速键(句柄, 命令ID)` | 整数型 | 高级 | `LB_FBro_MenuModelRemoveAccelerator` | 移除菜单项加速键。 |
+| 65 | `FBro菜单_按序移除加速键` | `FBro菜单_按序移除加速键(句柄, 序号)` | 整数型 | 高级 | `LB_FBro_MenuModelRemoveAcceleratorAt` | 按序号移除加速键。 |
+| 66 | `FBro菜单_取加速键` | `FBro菜单_取加速键(句柄, 命令ID)` | 文本型 | 高级 | `LB_FBro_MenuModelGetAccelerator` | 取菜单项加速键，返回 {"key","shift","ctrl","alt"} JSON。 |
+| 67 | `FBro菜单_按序取加速键` | `FBro菜单_按序取加速键(句柄, 序号)` | 文本型 | 高级 | `LB_FBro_MenuModelGetAcceleratorAt` | 按序号取加速键，返回 JSON。 |
+| 68 | `FBro菜单_置颜色` | `FBro菜单_置颜色(句柄, 命令ID, 颜色类型, Alpha, Red, Green, Blue)` | 整数型 | 高级 | `LB_FBro_MenuModelSetColor` | 设置菜单项文字/悬停等颜色（颜色类型参考菜单颜色类型常量）。 |
+| 69 | `FBro菜单_按序置颜色` | `FBro菜单_按序置颜色(句柄, 序号, 颜色类型, Alpha, Red, Green, Blue)` | 整数型 | 高级 | `LB_FBro_MenuModelSetColorAt` | 按序号设置颜色。 |
+| 70 | `FBro菜单_按序取颜色` | `FBro菜单_按序取颜色(句柄, 序号, 颜色类型)` | 文本型 | 高级 | `LB_FBro_MenuModelGetColorAt` | 按序号取颜色，返回 {"red","green","blue","alpha"} JSON。 |
+| 71 | `FBro菜单_置字体` | `FBro菜单_置字体(句柄, 命令ID, 字体列表)` | 整数型 | 高级 | `LB_FBro_MenuModelSetFontList` | 设置菜单项字体（CSS 字体列表格式）。 |
+| 72 | `FBro菜单_按序置字体` | `FBro菜单_按序置字体(句柄, 序号, 字体列表)` | 整数型 | 高级 | `LB_FBro_MenuModelSetFontListAt` | 按序号设置字体。 |
+| 73 | `FBro右键参数_取链接地址` | `FBro右键参数_取链接地址(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetLinkUrl` | 取右键目标链接地址。 |
+| 74 | `FBro右键参数_取完整链接地址` | `FBro右键参数_取完整链接地址(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetUnfilteredLinkUrl` | 取未过滤的完整链接地址。 |
+| 75 | `FBro右键参数_取源地址` | `FBro右键参数_取源地址(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetSourceUrl` | 取媒体/图片等元素源地址。 |
+| 76 | `FBro右键参数_取页面地址` | `FBro右键参数_取页面地址(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetPageUrl` | 取右键所在页面地址。 |
+| 77 | `FBro右键参数_取框架编码` | `FBro右键参数_取框架编码(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetFrameCharset` | 取右键所在框架的网页编码。 |
+| 78 | `FBro右键参数_取框架地址` | `FBro右键参数_取框架地址(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetFrameUrl` | 取右键所在框架地址。 |
+| 79 | `FBro右键参数_是否有图片` | `FBro右键参数_是否有图片(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsHasImageContents` | 判断右键目标是否含图片内容。 |
+| 80 | `FBro右键参数_取媒体类型` | `FBro右键参数_取媒体类型(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetMediaType` | 取右键目标媒体类型。 |
+| 81 | `FBro右键参数_取媒体状态标志` | `FBro右键参数_取媒体状态标志(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetMediaStateFlags` | 取媒体状态标志（可播放/可暂停/可静音等）。 |
+| 82 | `FBro右键参数_取选择文本` | `FBro右键参数_取选择文本(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetSelectionText` | 取当前选中的文本。 |
+| 83 | `FBro右键参数_取错误单词` | `FBro右键参数_取错误单词(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetMisspelledWord` | 取拼写检查命中的错误单词。 |
+| 84 | `FBro右键参数_取字典建议` | `FBro右键参数_取字典建议(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetDictionarySuggestions` | 取拼写建议，返回字符串数组 JSON。 |
+| 85 | `FBro右键参数_是否可编辑` | `FBro右键参数_是否可编辑(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsEditable` | 判断右键目标是否为可编辑元素。 |
+| 86 | `FBro右键参数_是否启用拼写检查` | `FBro右键参数_是否启用拼写检查(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsSpellCheckEnabled` | 判断拼写检查是否启用。 |
+| 87 | `FBro右键参数_取编辑状态标志` | `FBro右键参数_取编辑状态标志(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetEditStateFlags` | 取编辑状态标志（可撤销/可重做/可剪切/可粘贴等）。 |
+| 88 | `FBro右键参数_是否自定义菜单` | `FBro右键参数_是否自定义菜单(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsCustomMenu` | 判断是否为自定义菜单请求。 |
+| 89 | `FBro对象_取类型` | `FBro对象_取类型(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectGetType` | 取得受管对象注册表类型。 |
+| 90 | `FBro对象_释放` | `FBro对象_释放(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectRelease` | 释放受管对象；重复释放返回稳定错误码。 |
+| 91 | `FBro值_创建` | `FBro值_创建()` | 长整数型 | 高级 | `FBroHsValue_Create` | 创建受管 Value 对象并返回不透明句柄。 |
+| 92 | `FBro值_是否有效` | `FBro值_是否有效(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsValid` | 检查 Value 对象是否有效。 |
+| 93 | `FBro值_是否被拥有` | `FBro值_是否被拥有(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsOwned` | 检查 Value 对象是否已归属于其它容器。 |
+| 94 | `FBro值_是否只读` | `FBro值_是否只读(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsReadOnly` | 检查 Value 对象是否只读。 |
+| 95 | `FBro值_是否同一对象` | `FBro值_是否同一对象(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsSame` | 检查两个 Value 句柄是否引用同一官方对象。 |
+| 96 | `FBro值_是否相等` | `FBro值_是否相等(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsEqual` | 比较两个 Value 的内容。 |
+| 97 | `FBro值_复制` | `FBro值_复制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_Copy` | 复制 Value 并返回独立受管句柄。 |
+| 98 | `FBro值_取类型` | `FBro值_取类型(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetType` | 取得 Value 的官方值类型。 |
+| 99 | `FBro值_取逻辑` | `FBro值_取逻辑(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetBool` | 读取逻辑值。 |
+| 100 | `FBro值_取整数` | `FBro值_取整数(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetInt` | 读取整数值。 |
+| 101 | `FBro值_取小数` | `FBro值_取小数(值句柄)` | 小数型 | 高级 | `FBroHsValue_GetDouble` | 读取小数值。 |
+| 102 | `FBro值_取文本` | `FBro值_取文本(值句柄)` | 文本型 | 高级 | `FBroHsValue_GetString` | 读取 UTF-16 文本值。 |
+| 103 | `FBro值_设为空` | `FBro值_设为空(值句柄)` | 整数型 | 高级 | `FBroHsValue_SetNull` | 把 Value 设置为空值。 |
+| 104 | `FBro值_设置逻辑` | `FBro值_设置逻辑(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetBool` | 写入逻辑值。 |
+| 105 | `FBro值_设置整数` | `FBro值_设置整数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetInt` | 写入整数值。 |
+| 106 | `FBro值_设置小数` | `FBro值_设置小数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetDouble` | 写入小数值。 |
+| 107 | `FBro值_设置文本` | `FBro值_设置文本(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetString` | 写入 UTF-16 文本值。 |
+| 108 | `FBro值_取二进制` | `FBro值_取二进制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetBinary` | 复制二进制值到受管缓冲并返回句柄。 |
+| 109 | `FBro值_设置二进制` | `FBro值_设置二进制(值句柄, 缓冲句柄)` | 整数型 | 高级 | `FBroHsValue_SetBinary` | 从受管缓冲写入二进制值。 |
+| 110 | `FBro值_取字典` | `FBro值_取字典(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetDictionary` | 取得受父对象管理的 Dictionary 句柄。 |
+| 111 | `FBro值_取列表` | `FBro值_取列表(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetList` | 取得受父对象管理的 List 句柄。 |
+| 112 | `FBro值_设置字典` | `FBro值_设置字典(值句柄, 字典句柄)` | 整数型 | 高级 | `FBroHsValue_SetDictionary` | 把 Dictionary 交由 Value 管理。 |
+| 113 | `FBro值_设置列表` | `FBro值_设置列表(值句柄, 列表句柄)` | 整数型 | 高级 | `FBroHsValue_SetList` | 把 List 交由 Value 管理。 |
+| 114 | `FBro字典_创建` | `FBro字典_创建()` | 长整数型 | 高级 | `FBroHsDictionaryValue_Create` | 创建受管 Dictionary 对象。 |
+| 115 | `FBro字典_是否有效` | `FBro字典_是否有效(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsValid` | 检查 Dictionary 是否有效。 |
+| 116 | `FBro字典_是否被拥有` | `FBro字典_是否被拥有(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsOwned` | 检查 Dictionary 是否已被拥有。 |
+| 117 | `FBro字典_是否只读` | `FBro字典_是否只读(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsReadOnly` | 检查 Dictionary 是否只读。 |
+| 118 | `FBro字典_是否同一对象` | `FBro字典_是否同一对象(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsSame` | 检查两个 Dictionary 句柄是否引用同一官方对象。 |
+| 119 | `FBro字典_是否相等` | `FBro字典_是否相等(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsEqual` | 比较两个 Dictionary 的内容。 |
+| 120 | `FBro字典_复制` | `FBro字典_复制(字典句柄, 排除空子项)` | 长整数型 | 高级 | `FBroHsDictionaryValue_Copy` | 复制 Dictionary 并返回独立受管句柄。 |
+| 121 | `FBro字典_取数量` | `FBro字典_取数量(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetSize` | 取得键数量。 |
+| 122 | `FBro字典_清空` | `FBro字典_清空(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_Clear` | 删除全部键。 |
+| 123 | `FBro字典_是否存在键` | `FBro字典_是否存在键(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_HasKey` | 检查键是否存在。 |
+| 124 | `FBro字典_删除` | `FBro字典_删除(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_Remove` | 删除指定键。 |
+| 125 | `FBro字典_取类型` | `FBro字典_取类型(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetType` | 取得指定键的官方值类型。 |
+| 126 | `FBro字典_取逻辑` | `FBro字典_取逻辑(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetBool` | 读取逻辑值。 |
+| 127 | `FBro字典_取整数` | `FBro字典_取整数(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetInt` | 读取整数值。 |
+| 128 | `FBro字典_取小数` | `FBro字典_取小数(字典句柄, 键)` | 小数型 | 高级 | `FBroHsDictionaryValue_GetDouble` | 读取小数值。 |
+| 129 | `FBro字典_取文本` | `FBro字典_取文本(字典句柄, 键)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetString` | 读取 UTF-16 文本值。 |
+| 130 | `FBro字典_取键列表JSON` | `FBro字典_取键列表JSON(字典句柄)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetKeys` | 取得 UTF-16 JSON 键数组，不向源码暴露 StringList 或 STL。 |
+| 131 | `FBro字典_取值对象` | `FBro字典_取值对象(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetValue` | 取得受字典管理的 Value 句柄。 |
+| 132 | `FBro字典_取二进制` | `FBro字典_取二进制(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetBinary` | 复制指定键的二进制值到受管缓冲。 |
+| 133 | `FBro字典_取字典` | `FBro字典_取字典(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetDictionary` | 取得受父字典管理的 Dictionary 句柄。 |
+| 134 | `FBro字典_取列表` | `FBro字典_取列表(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetList` | 取得受父字典管理的 List 句柄。 |
+| 135 | `FBro字典_设为空` | `FBro字典_设为空(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetNull` | 把指定键设置为空值。 |
+| 136 | `FBro字典_设置逻辑` | `FBro字典_设置逻辑(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBool` | 写入逻辑值。 |
+| 137 | `FBro字典_设置整数` | `FBro字典_设置整数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetInt` | 写入整数值。 |
+| 138 | `FBro字典_设置小数` | `FBro字典_设置小数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDouble` | 写入小数值。 |
+| 139 | `FBro字典_设置文本` | `FBro字典_设置文本(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetString` | 写入 UTF-16 文本值。 |
+| 140 | `FBro字典_设置值对象` | `FBro字典_设置值对象(字典句柄, 键, 值句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetValue` | 把 Value 交由指定键管理。 |
+| 141 | `FBro字典_设置二进制` | `FBro字典_设置二进制(字典句柄, 键, 缓冲句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBinary` | 从受管缓冲写入指定键。 |
+| 142 | `FBro字典_设置字典` | `FBro字典_设置字典(字典句柄, 键, 子字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDictionary` | 把子 Dictionary 交由指定键管理。 |
+| 143 | `FBro字典_设置列表` | `FBro字典_设置列表(字典句柄, 键, 列表句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetList` | 把 List 交由指定键管理。 |
+| 144 | `FBro列表_创建` | `FBro列表_创建()` | 长整数型 | 高级 | `FBroHsListValue_Create` | 创建受管 List 对象。 |
+| 145 | `FBro列表_是否有效` | `FBro列表_是否有效(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsValid` | 检查 List 是否有效。 |
+| 146 | `FBro列表_是否被拥有` | `FBro列表_是否被拥有(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsOwned` | 检查 List 是否已被拥有。 |
+| 147 | `FBro列表_是否只读` | `FBro列表_是否只读(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsReadOnly` | 检查 List 是否只读。 |
+| 148 | `FBro列表_是否同一对象` | `FBro列表_是否同一对象(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsSame` | 检查两个 List 句柄是否引用同一官方对象。 |
+| 149 | `FBro列表_是否相等` | `FBro列表_是否相等(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsEqual` | 比较两个 List 的内容。 |
+| 150 | `FBro列表_复制` | `FBro列表_复制(列表句柄)` | 长整数型 | 高级 | `FBroHsListValue_Copy` | 复制 List 并返回独立受管句柄。 |
+| 151 | `FBro列表_设置数量` | `FBro列表_设置数量(列表句柄, 数量)` | 整数型 | 高级 | `FBroHsListValue_SetSize` | 设置列表长度。 |
+| 152 | `FBro列表_取数量` | `FBro列表_取数量(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_GetSize` | 取得列表长度。 |
+| 153 | `FBro列表_清空` | `FBro列表_清空(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_Clear` | 清空列表。 |
+| 154 | `FBro列表_删除` | `FBro列表_删除(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_Remove` | 删除指定索引。 |
+| 155 | `FBro列表_取类型` | `FBro列表_取类型(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetType` | 取得指定索引的官方值类型。 |
+| 156 | `FBro列表_取逻辑` | `FBro列表_取逻辑(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetBool` | 读取逻辑值。 |
+| 157 | `FBro列表_取整数` | `FBro列表_取整数(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetInt` | 读取整数值。 |
+| 158 | `FBro列表_取小数` | `FBro列表_取小数(列表句柄, 索引)` | 小数型 | 高级 | `FBroHsListValue_GetDouble` | 读取小数值。 |
+| 159 | `FBro列表_取文本` | `FBro列表_取文本(列表句柄, 索引)` | 文本型 | 高级 | `FBroHsListValue_GetString` | 读取 UTF-16 文本值。 |
+| 160 | `FBro列表_取值对象` | `FBro列表_取值对象(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetValue` | 取得受列表管理的 Value 句柄。 |
+| 161 | `FBro列表_取二进制` | `FBro列表_取二进制(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetBinary` | 复制指定项的二进制值到受管缓冲。 |
+| 162 | `FBro列表_取字典` | `FBro列表_取字典(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetDictionary` | 取得受父列表管理的 Dictionary 句柄。 |
+| 163 | `FBro列表_取列表` | `FBro列表_取列表(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetList` | 取得受父列表管理的 List 句柄。 |
+| 164 | `FBro列表_设为空` | `FBro列表_设为空(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_SetNull` | 把指定索引设置为空值。 |
+| 165 | `FBro列表_设置逻辑` | `FBro列表_设置逻辑(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetBool` | 写入逻辑值。 |
+| 166 | `FBro列表_设置整数` | `FBro列表_设置整数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetInt` | 写入整数值。 |
+| 167 | `FBro列表_设置小数` | `FBro列表_设置小数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetDouble` | 写入小数值。 |
+| 168 | `FBro列表_设置文本` | `FBro列表_设置文本(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetString` | 写入 UTF-16 文本值。 |
+| 169 | `FBro列表_设置值对象` | `FBro列表_设置值对象(列表句柄, 索引, 值句柄)` | 整数型 | 高级 | `FBroHsListValue_SetValue` | 把 Value 交由指定索引管理。 |
+| 170 | `FBro列表_设置二进制` | `FBro列表_设置二进制(列表句柄, 索引, 缓冲句柄)` | 整数型 | 高级 | `FBroHsListValue_SetBinary` | 从受管缓冲写入指定索引。 |
+| 171 | `FBro列表_设置字典` | `FBro列表_设置字典(列表句柄, 索引, 字典句柄)` | 整数型 | 高级 | `FBroHsListValue_SetDictionary` | 把 Dictionary 交由指定索引管理。 |
+| 172 | `FBro列表_设置列表` | `FBro列表_设置列表(列表句柄, 索引, 子列表句柄)` | 整数型 | 高级 | `FBroHsListValue_SetList` | 把子 List 交由指定索引管理。 |
+| 173 | `FBro流_从文件创建` | `FBro流_从文件创建(路径)` | 长整数型 | 高级 | `FBroStream_CreateForFile` | 从文件创建受管只读 Stream 句柄。 |
+| 174 | `FBro流_从缓冲创建` | `FBro流_从缓冲创建(缓冲句柄)` | 长整数型 | 高级 | `FBroStream_CreateForData` | 复制受管缓冲并创建内存 Stream，保证底层数据生命周期。 |
+| 175 | `FBro流_读取` | `FBro流_读取(流句柄, 元素大小, 元素数量)` | 长整数型 | 高级 | `FBroStream_Read` | 读取数据并返回新的受管缓冲句柄，单次最多 256 MiB。 |
+| 176 | `FBro流_定位` | `FBro流_定位(流句柄, 偏移, 基准)` | 整数型 | 高级 | `FBroStream_Seek` | 按 0=开头、1=当前位置、2=结尾定位 Stream。 |
+| 177 | `FBro流_取位置` | `FBro流_取位置(流句柄)` | 长整数型 | 高级 | `FBroStream_Tell` | 取得当前字节位置。 |
+| 178 | `FBro流_是否结束` | `FBro流_是否结束(流句柄)` | 整数型 | 高级 | `FBroStream_Eof` | 检查 Stream 是否到达结尾。 |
+| 179 | `FBro流_是否可能阻塞` | `FBro流_是否可能阻塞(流句柄)` | 整数型 | 高级 | `FBroStream_MayBlock` | 查询该 Stream 操作是否可能阻塞。 |
+| 180 | `FBro图像_异步下载` | `FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `FBroHsBrowserHost_DownloadImage` | 通过当前浏览器会话异步下载图像并返回任务 ID。 |
+| 181 | `FBro图像_下载` | `FBro图像_下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `LB_FBro_DownloadImageSync` | 同步下载图像并直接返回图像句柄（60 秒超时，失败返回 0）；用完调用 FBro对象_释放。 |
+| 182 | `FBro图像_是否为空` | `FBro图像_是否为空(图像句柄)` | 整数型 | 高级 | `FBroHsImage_IsEmpty` | 检查受管 Image 是否为空。 |
+| 183 | `FBro图像_取宽度` | `FBro图像_取宽度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetWidth` | 取得图像 DIP 宽度。 |
+| 184 | `FBro图像_取高度` | `FBro图像_取高度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetHeight` | 取得图像 DIP 高度。 |
+| 185 | `FBro图像_取表示信息JSON` | `FBro图像_取表示信息JSON(图像句柄, 缩放因子)` | 文本型 | 高级 | `FBroHsImage_GetRepresentationInfo` | 返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。 |
+| 186 | `FBro图像_转位图缓冲` | `FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)` | 长整数型 | 高级 | `FBroHsImage_GetAsBitmap` | 把最接近的位图表示复制到受管缓冲。 |
+| 187 | `FBro图像_转JPEG缓冲` | `FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)` | 长整数型 | 高级 | `FBroHsImage_GetAsJPEG` | 把图像编码为 JPEG 受管缓冲。 |
+| 188 | `FBro图像_转PNG缓冲` | `FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)` | 长整数型 | 高级 | `FBroHsImage_GetAsPNG` | 把图像编码为 PNG 受管缓冲。 |
+| 189 | `FBro证书_异步取当前` | `FBro证书_异步取当前(控件名)` | 长整数型 | 高级 | `LB_FBro_GetCurrentCertificateAsync` | 从当前可见导航项异步取得 TLS 证书任务。 |
+| 190 | `FBro证书_取主体` | `FBro证书_取主体(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSubject` | 取得受证书管理的主体 Principal 句柄。 |
+| 191 | `FBro证书_取颁发者` | `FBro证书_取颁发者(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetIssuer` | 取得受证书管理的颁发者 Principal 句柄。 |
+| 192 | `FBro证书_取序列号缓冲` | `FBro证书_取序列号缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSerialNumber` | 取得证书序列号受管缓冲。 |
+| 193 | `FBro证书_取DER缓冲` | `FBro证书_取DER缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncoded` | 取得 DER 编码证书受管缓冲。 |
+| 194 | `FBro证书_取PEM缓冲` | `FBro证书_取PEM缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncoded` | 取得 PEM 编码证书受管缓冲。 |
+| 195 | `FBro证书_取生效时间` | `FBro证书_取生效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidStart` | 取得证书生效 Unix 时间。 |
+| 196 | `FBro证书_取失效时间` | `FBro证书_取失效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidExpiry` | 取得证书失效 Unix 时间。 |
+| 197 | `FBro证书_取颁发链数量` | `FBro证书_取颁发链数量(证书句柄)` | 整数型 | 高级 | `FBroHsX509Certificate_GetIssuerChainSize` | 取得颁发链数量。 |
+| 198 | `FBro证书_取DER颁发链项` | `FBro证书_取DER颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncodedIssuerChain` | 取得指定颁发链项的 DER 受管缓冲。 |
+| 199 | `FBro证书_取PEM颁发链项` | `FBro证书_取PEM颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncodedIssuerChain` | 取得指定颁发链项的 PEM 受管缓冲。 |
+| 200 | `FBro证书主体_取显示名` | `FBro证书主体_取显示名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetDisplayName` | 取得证书主体显示名。 |
+| 201 | `FBro证书主体_取通用名` | `FBro证书主体_取通用名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCommonName` | 取得证书主体通用名。 |
+| 202 | `FBro证书主体_取地区名` | `FBro证书主体_取地区名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetLocalityName` | 取得证书主体地区名。 |
+| 203 | `FBro证书主体_取省州名` | `FBro证书主体_取省州名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetStateOrProvinceName` | 取得证书主体省或州名。 |
+| 204 | `FBro证书主体_取国家名` | `FBro证书主体_取国家名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCountryName` | 取得证书主体国家名。 |
+| 205 | `FBro证书主体_取组织JSON` | `FBro证书主体_取组织JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationNames` | 取得组织名 UTF-16 JSON 数组。 |
+| 206 | `FBro证书主体_取组织单位JSON` | `FBro证书主体_取组织单位JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationUnitNames` | 取得组织单位名 UTF-16 JSON 数组。 |
+| 207 | `FBro拖放数据_是否有图像` | `FBro拖放数据_是否有图像(拖放数据句柄)` | 整数型 | 高级 | `FBroHsDragData_HasImage` | 检查 DragEnter 事件对象是否携带图像。 |
+| 208 | `FBro拖放数据_取图像` | `FBro拖放数据_取图像(拖放数据句柄)` | 长整数型 | 高级 | `FBroHsDragData_GetImage` | 从 DragEnter 事件对象取得受管 Image 句柄。 |
 
 ### 7. FBro高级网络模块
 
@@ -900,5 +947,5 @@
 - 模块清单：`electron/src/services/modules/builtinModules.ts`、`electron/src/services/modules/fbroModules.ts`、`electron/src/services/modules/fbroVipApiCatalog.ts`
 - 原生 Bridge：`electron/native/fbro-bridge/`
 
-类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：588。
+类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：635。
 

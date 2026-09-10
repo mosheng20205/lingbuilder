@@ -542,6 +542,55 @@ LB_FBRO_API int __stdcall LB_FBro_MenuModelGetColor(LB_FBRO_OBJECT_HANDLE object
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetX(LB_FBRO_OBJECT_HANDLE object);
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetY(LB_FBRO_OBJECT_HANDLE object);
 LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetTypeFlags(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelClear(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetCount(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelAddSeparator(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelAddCheckItem(LB_FBRO_OBJECT_HANDLE object, int command_id, const wchar_t* label);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelAddRadioItem(LB_FBRO_OBJECT_HANDLE object, int command_id, const wchar_t* label, int group_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelRemove(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetLabel(LB_FBRO_OBJECT_HANDLE object, int command_id, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetLabel(LB_FBRO_OBJECT_HANDLE object, int command_id, const wchar_t* label);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetType(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetGroup(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetGroup(LB_FBRO_OBJECT_HANDLE object, int command_id, int group_id);
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_MenuModelGetSubMenu(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelIsVisible(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetVisible(LB_FBRO_OBJECT_HANDLE object, int command_id, int visible);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelIsEnabled(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetEnabled(LB_FBRO_OBJECT_HANDLE object, int command_id, int enable);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelIsChecked(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetChecked(LB_FBRO_OBJECT_HANDLE object, int command_id, int check);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetCheckedAt(LB_FBRO_OBJECT_HANDLE object, int index, int check);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelHasAccelerator(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelHasAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index, int key_code, int shift, int ctrl, int alt);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelRemoveAccelerator(LB_FBRO_OBJECT_HANDLE object, int command_id);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelRemoveAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetAccelerator(LB_FBRO_OBJECT_HANDLE object, int command_id, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetAcceleratorAt(LB_FBRO_OBJECT_HANDLE object, int index, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetColor(LB_FBRO_OBJECT_HANDLE object, int command_id, int color_type, int alpha, int red, int green, int blue);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetColorAt(LB_FBRO_OBJECT_HANDLE object, int index, int color_type, int alpha, int red, int green, int blue);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelGetColorAt(LB_FBRO_OBJECT_HANDLE object, int index, int color_type, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetFontList(LB_FBRO_OBJECT_HANDLE object, int command_id, const wchar_t* font_list);
+LB_FBRO_API int __stdcall LB_FBro_MenuModelSetFontListAt(LB_FBRO_OBJECT_HANDLE object, int index, const wchar_t* font_list);
+
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetLinkUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetUnfilteredLinkUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetSourceUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetPageUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetFrameCharset(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetFrameUrl(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsHasImageContents(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetMediaType(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetMediaStateFlags(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetSelectionText(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetMisspelledWord(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetDictionarySuggestions(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsIsEditable(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsIsSpellCheckEnabled(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsGetEditStateFlags(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ContextMenuParamsIsCustomMenu(LB_FBRO_OBJECT_HANDLE object);
+
 /** 启用页面调原生 JS 扩展（必须在首个浏览器创建前调用）。 */
 LB_FBRO_API int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function,
                                                 const wchar_t* cancel_function);
