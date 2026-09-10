@@ -3856,6 +3856,51 @@ static int FBro_导航(const wchar_t* name, const std::wstring& address) {
     (void)name; (void)address; return 0;
 #endif
 }
+static int FBro_发送鼠标单击事件(const wchar_t* name, int buttonType, int x, int y, long long modifiers, bool mouseUp, int clickCount) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"sendMouseClick", {{"button", buttonType}, {"x", x}, {"y", y}, {"modifiers", modifiers}, {"up", mouseUp}, {"count", clickCount}});
+    return browser && browser->handle ? LB_FBro_SendMouseClickEvent(browser->handle, buttonType, x, y, modifiers, mouseUp ? 1 : 0, clickCount) : 0;
+#else
+    (void)name; (void)buttonType; (void)x; (void)y; (void)modifiers; (void)mouseUp; (void)clickCount; return 0;
+#endif
+}
+static int FBro_发送鼠标移动事件(const wchar_t* name, int x, int y, long long modifiers, bool mouseLeave) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"sendMouseMove", {{"x", x}, {"y", y}, {"modifiers", modifiers}, {"leave", mouseLeave}});
+    return browser && browser->handle ? LB_FBro_SendMouseMoveEvent(browser->handle, x, y, modifiers, mouseLeave ? 1 : 0) : 0;
+#else
+    (void)name; (void)x; (void)y; (void)modifiers; (void)mouseLeave; return 0;
+#endif
+}
+static int FBro_发送鼠标滚轮事件(const wchar_t* name, int x, int y, long long modifiers, int deltaX, int deltaY) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"sendMouseWheel", {{"x", x}, {"y", y}, {"modifiers", modifiers}, {"deltaX", deltaX}, {"deltaY", deltaY}});
+    return browser && browser->handle ? LB_FBro_SendMouseWheelEvent(browser->handle, x, y, modifiers, deltaX, deltaY) : 0;
+#else
+    (void)name; (void)x; (void)y; (void)modifiers; (void)deltaX; (void)deltaY; return 0;
+#endif
+}
+static int FBro_发送按键事件(const wchar_t* name, int type, long long modifiers, int windowsKeyCode, int nativeKeyCode, bool systemKey, int character, int unmodifiedCharacter, bool focusEditable) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"sendKey", {{"type", type}, {"modifiers", modifiers}, {"keyCode", windowsKeyCode}, {"nativeKeyCode", nativeKeyCode}, {"systemKey", systemKey}, {"character", character}, {"unmodifiedCharacter", unmodifiedCharacter}, {"focusEditable", focusEditable}});
+    return browser && browser->handle ? LB_FBro_SendKeyEvent(browser->handle, type, modifiers, windowsKeyCode, nativeKeyCode, systemKey ? 1 : 0, character, unmodifiedCharacter, focusEditable ? 1 : 0) : 0;
+#else
+    (void)name; (void)type; (void)modifiers; (void)windowsKeyCode; (void)nativeKeyCode; (void)systemKey; (void)character; (void)unmodifiedCharacter; (void)focusEditable; return 0;
+#endif
+}
+static int FBro_发送触摸事件(const wchar_t* name, int type, long long modifiers, int pointerType, int touchId, double x, double y, double radiusX, double radiusY, double rotation, double pressure) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (LB_NE_IsFbroProcess(browser)) return LB_NE_FbroProcessBool(browser, L"sendTouch", {{"type", type}, {"modifiers", modifiers}, {"pointerType", pointerType}, {"id", touchId}, {"x", x}, {"y", y}, {"radiusX", radiusX}, {"radiusY", radiusY}, {"rotation", rotation}, {"pressure", pressure}});
+    return browser && browser->handle ? LB_FBro_SendTouchEvent(browser->handle, type, modifiers, pointerType, touchId, x, y, radiusX, radiusY, rotation, pressure) : 0;
+#else
+    (void)name; (void)type; (void)modifiers; (void)pointerType; (void)touchId; (void)x; (void)y; (void)radiusX; (void)radiusY; (void)rotation; (void)pressure; return 0;
+#endif
+}
 static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const wchar_t* address) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     auto* browser = LB_NE_FindFbro(name); if (!browser || !browser->handle) return 0;
@@ -11065,6 +11110,51 @@ ${fbroBrowserManagerRuntime.methods}
         return instance && instance->handle ? LB_FBro_Navigate(instance->handle, address.c_str()) : 0;
 #else
         (void)controlName; (void)address; return 0;
+#endif
+    }
+    int FBro_发送鼠标单击事件(const wchar_t* controlName, int buttonType, int x, int y, long long modifiers, bool mouseUp, int clickCount) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"sendMouseClick", {{"button", buttonType}, {"x", x}, {"y", y}, {"modifiers", modifiers}, {"up", mouseUp}, {"count", clickCount}});
+        return instance && instance->handle ? LB_FBro_SendMouseClickEvent(instance->handle, buttonType, x, y, modifiers, mouseUp ? 1 : 0, clickCount) : 0;
+#else
+        (void)controlName; (void)buttonType; (void)x; (void)y; (void)modifiers; (void)mouseUp; (void)clickCount; return 0;
+#endif
+    }
+    int FBro_发送鼠标移动事件(const wchar_t* controlName, int x, int y, long long modifiers, bool mouseLeave) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"sendMouseMove", {{"x", x}, {"y", y}, {"modifiers", modifiers}, {"leave", mouseLeave}});
+        return instance && instance->handle ? LB_FBro_SendMouseMoveEvent(instance->handle, x, y, modifiers, mouseLeave ? 1 : 0) : 0;
+#else
+        (void)controlName; (void)x; (void)y; (void)modifiers; (void)mouseLeave; return 0;
+#endif
+    }
+    int FBro_发送鼠标滚轮事件(const wchar_t* controlName, int x, int y, long long modifiers, int deltaX, int deltaY) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"sendMouseWheel", {{"x", x}, {"y", y}, {"modifiers", modifiers}, {"deltaX", deltaX}, {"deltaY", deltaY}});
+        return instance && instance->handle ? LB_FBro_SendMouseWheelEvent(instance->handle, x, y, modifiers, deltaX, deltaY) : 0;
+#else
+        (void)controlName; (void)x; (void)y; (void)modifiers; (void)deltaX; (void)deltaY; return 0;
+#endif
+    }
+    int FBro_发送按键事件(const wchar_t* controlName, int type, long long modifiers, int windowsKeyCode, int nativeKeyCode, bool systemKey, int character, int unmodifiedCharacter, bool focusEditable) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"sendKey", {{"type", type}, {"modifiers", modifiers}, {"keyCode", windowsKeyCode}, {"nativeKeyCode", nativeKeyCode}, {"systemKey", systemKey}, {"character", character}, {"unmodifiedCharacter", unmodifiedCharacter}, {"focusEditable", focusEditable}});
+        return instance && instance->handle ? LB_FBro_SendKeyEvent(instance->handle, type, modifiers, windowsKeyCode, nativeKeyCode, systemKey ? 1 : 0, character, unmodifiedCharacter, focusEditable ? 1 : 0) : 0;
+#else
+        (void)controlName; (void)type; (void)modifiers; (void)windowsKeyCode; (void)nativeKeyCode; (void)systemKey; (void)character; (void)unmodifiedCharacter; (void)focusEditable; return 0;
+#endif
+    }
+    int FBro_发送触摸事件(const wchar_t* controlName, int type, long long modifiers, int pointerType, int touchId, double x, double y, double radiusX, double radiusY, double rotation, double pressure) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"sendTouch", {{"type", type}, {"modifiers", modifiers}, {"pointerType", pointerType}, {"id", touchId}, {"x", x}, {"y", y}, {"radiusX", radiusX}, {"radiusY", radiusY}, {"rotation", rotation}, {"pressure", pressure}});
+        return instance && instance->handle ? LB_FBro_SendTouchEvent(instance->handle, type, modifiers, pointerType, touchId, x, y, radiusX, radiusY, rotation, pressure) : 0;
+#else
+        (void)controlName; (void)type; (void)modifiers; (void)pointerType; (void)touchId; (void)x; (void)y; (void)radiusX; (void)radiusY; (void)rotation; (void)pressure; return 0;
 #endif
     }
     long long FBro_打开谷歌原生UI浏览器Ex(const wchar_t* controlName, const wchar_t* address) {

@@ -4625,6 +4625,75 @@ int __stdcall LB_FBro_SetAudioMuted(LB_FBRO_HANDLE browser, int muted) {
 int __stdcall LB_FBro_SendFocusEvent(LB_FBRO_HANDLE browser, int focused) {
   return WithBrowser(browser, [focused](auto value) { FBroHsBrowserHost_SendFocusEvent(value, focused != 0); });
 }
+int __stdcall LB_FBro_SendKeyEvent(LB_FBRO_HANDLE browser, int type, long long modifiers,
+                                   int windows_key_code, int native_key_code, int is_system_key,
+                                   int character, int unmodified_character,
+                                   int focus_on_editable_field) {
+  E_KEYEVENT event = {};
+  event.type = type;
+  event.modifiers = static_cast<int>(modifiers);
+  event.windows_key_code = windows_key_code;
+  event.native_key_code = native_key_code;
+  event.is_system_key = is_system_key;
+  event.h_character = static_cast<char>((character >> 8) & 0xFF);
+  event.character = static_cast<char>(character & 0xFF);
+  event.h_unmodified_character = static_cast<char>((unmodified_character >> 8) & 0xFF);
+  event.unmodified_character = static_cast<char>(unmodified_character & 0xFF);
+  event.focus_on_editable_field = focus_on_editable_field;
+  return WithBrowser(browser, [&event](auto value) {
+    FBroHsBrowserHost_SendKeyEvent(value, &event);
+  });
+}
+int __stdcall LB_FBro_SendMouseClickEvent(LB_FBRO_HANDLE browser, int button_type, int x, int y,
+                                          long long modifiers, int mouse_up, int click_count) {
+  E_MOUSEEVENT event = {};
+  event.x = x;
+  event.y = y;
+  event.modifiers = static_cast<int>(modifiers);
+  return WithBrowser(browser, [&event, button_type, mouse_up, click_count](auto value) {
+    FBroHsBrowserHost_SendMouseClickEvent(value, static_cast<CefBrowserHost::MouseButtonType>(button_type),
+                                          &event, mouse_up != 0, click_count);
+  });
+}
+int __stdcall LB_FBro_SendMouseMoveEvent(LB_FBRO_HANDLE browser, int x, int y, long long modifiers,
+                                         int mouse_leave) {
+  E_MOUSEEVENT event = {};
+  event.x = x;
+  event.y = y;
+  event.modifiers = static_cast<int>(modifiers);
+  return WithBrowser(browser, [&event, mouse_leave](auto value) {
+    FBroHsBrowserHost_SendMouseMoveEvent(value, &event, mouse_leave != 0);
+  });
+}
+int __stdcall LB_FBro_SendMouseWheelEvent(LB_FBRO_HANDLE browser, int x, int y, long long modifiers,
+                                          int delta_x, int delta_y) {
+  E_MOUSEEVENT event = {};
+  event.x = x;
+  event.y = y;
+  event.modifiers = static_cast<int>(modifiers);
+  return WithBrowser(browser, [&event, delta_x, delta_y](auto value) {
+    FBroHsBrowserHost_SendMouseWheelEvent(value, &event, delta_x, delta_y);
+  });
+}
+int __stdcall LB_FBro_SendTouchEvent(LB_FBRO_HANDLE browser, int type, long long modifiers,
+                                     int pointer_type, int touch_id, double x, double y,
+                                     double radius_x, double radius_y, double rotation_angle,
+                                     double pressure) {
+  E_TOUCH_EVENT event = {};
+  event.type = type;
+  event.modifiers = static_cast<int>(modifiers);
+  event.pointer_type = pointer_type;
+  event.id = touch_id;
+  event.x = static_cast<float>(x);
+  event.y = static_cast<float>(y);
+  event.radius_x = static_cast<float>(radius_x);
+  event.radius_y = static_cast<float>(radius_y);
+  event.rotation_angle = static_cast<float>(rotation_angle);
+  event.pressure = static_cast<float>(pressure);
+  return WithBrowser(browser, [&event](auto value) {
+    FBroHsBrowserHost_SendTouchEvent(value, &event);
+  });
+}
 int __stdcall LB_FBro_Find(LB_FBRO_HANDLE browser, const wchar_t* text,
                             int forward, int match_case, int find_next) {
   if (!text) return LB_FBRO_ERROR_INVALID_ARGUMENT;

@@ -246,6 +246,23 @@ LB_FBRO_API int __stdcall LB_FBro_SetZoomLevel(LB_FBRO_HANDLE browser, double zo
 LB_FBRO_API int __stdcall LB_FBro_IsAudioMuted(LB_FBRO_HANDLE browser);
 LB_FBRO_API int __stdcall LB_FBro_SetAudioMuted(LB_FBRO_HANDLE browser, int muted);
 LB_FBRO_API int __stdcall LB_FBro_SendFocusEvent(LB_FBRO_HANDLE browser, int focused);
+// 输入注入族：把合成鼠标/键盘/触摸事件派发给浏览器宿主，等价官方 FBroHsBrowserHost_Send*。
+// character/unmodified_character 为宽字符编码：低 8 位为低字节，高 8 位为高字节。
+LB_FBRO_API int __stdcall LB_FBro_SendKeyEvent(LB_FBRO_HANDLE browser, int type, long long modifiers,
+                                               int windows_key_code, int native_key_code, int is_system_key,
+                                               int character, int unmodified_character,
+                                               int focus_on_editable_field);
+LB_FBRO_API int __stdcall LB_FBro_SendMouseClickEvent(LB_FBRO_HANDLE browser, int button_type,
+                                                      int x, int y, long long modifiers,
+                                                      int mouse_up, int click_count);
+LB_FBRO_API int __stdcall LB_FBro_SendMouseMoveEvent(LB_FBRO_HANDLE browser, int x, int y,
+                                                     long long modifiers, int mouse_leave);
+LB_FBRO_API int __stdcall LB_FBro_SendMouseWheelEvent(LB_FBRO_HANDLE browser, int x, int y,
+                                                      long long modifiers, int delta_x, int delta_y);
+LB_FBRO_API int __stdcall LB_FBro_SendTouchEvent(LB_FBRO_HANDLE browser, int type, long long modifiers,
+                                                 int pointer_type, int touch_id, double x, double y,
+                                                 double radius_x, double radius_y,
+                                                 double rotation_angle, double pressure);
 LB_FBRO_API int __stdcall LB_FBro_Find(LB_FBRO_HANDLE browser, const wchar_t* text,
                                        int forward, int match_case, int find_next);
 LB_FBRO_API int __stdcall LB_FBro_StopFinding(LB_FBRO_HANDLE browser, int clear_selection);

@@ -1233,7 +1233,34 @@ private:
         else if (method == L"reload") ok = LB_FBro_Reload(browser_) > 0;
         else if (method == L"reloadIgnoreCache") ok = LB_FBro_ReloadIgnoreCache(browser_) > 0;
         else if (method == L"stop") ok = LB_FBro_Stop(browser_) > 0;
-        else if (method == L"canGoBack") result["value"] = LB_FBro_CanGoBack(browser_) > 0;
+        else if (method == L"sendMouseClick") {
+            ok = LB_FBro_SendMouseClickEvent(browser_, payload.value("button", 0),
+                payload.value("x", 0), payload.value("y", 0),
+                payload.value("modifiers", static_cast<long long>(0)),
+                payload.value("up", false) ? 1 : 0, payload.value("count", 1)) > 0;
+        } else if (method == L"sendMouseMove") {
+            ok = LB_FBro_SendMouseMoveEvent(browser_, payload.value("x", 0), payload.value("y", 0),
+                payload.value("modifiers", static_cast<long long>(0)),
+                payload.value("leave", false) ? 1 : 0) > 0;
+        } else if (method == L"sendMouseWheel") {
+            ok = LB_FBro_SendMouseWheelEvent(browser_, payload.value("x", 0), payload.value("y", 0),
+                payload.value("modifiers", static_cast<long long>(0)),
+                payload.value("deltaX", 0), payload.value("deltaY", 0)) > 0;
+        } else if (method == L"sendKey") {
+            ok = LB_FBro_SendKeyEvent(browser_, payload.value("type", 0),
+                payload.value("modifiers", static_cast<long long>(0)),
+                payload.value("keyCode", 0), payload.value("nativeKeyCode", 0),
+                payload.value("systemKey", false) ? 1 : 0,
+                payload.value("character", 0), payload.value("unmodifiedCharacter", 0),
+                payload.value("focusEditable", false) ? 1 : 0) > 0;
+        } else if (method == L"sendTouch") {
+            ok = LB_FBro_SendTouchEvent(browser_, payload.value("type", 0),
+                payload.value("modifiers", static_cast<long long>(0)),
+                payload.value("pointerType", 0), payload.value("id", 0),
+                payload.value("x", 0.0), payload.value("y", 0.0),
+                payload.value("radiusX", 0.0), payload.value("radiusY", 0.0),
+                payload.value("rotation", 0.0), payload.value("pressure", 0.0)) > 0;
+        } else if (method == L"canGoBack") result["value"] = LB_FBro_CanGoBack(browser_) > 0;
         else if (method == L"canGoForward") result["value"] = LB_FBro_CanGoForward(browser_) > 0;
         else if (method == L"isLoading") result["value"] = LB_FBro_IsLoading(browser_) > 0;
         else if (method == L"getTitle" || method == L"getUrl") {

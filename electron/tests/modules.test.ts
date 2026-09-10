@@ -257,12 +257,14 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // （组件DLL路径、注册/注销组件路径），并补充 COM_注册组件/COM_注销组件/
       // COM_取组件路径 三条命令（对齐易语言动态注册/卸载例程）。
       // 再增删内置命令或其参数、改写命令描述时必须同步这两个摘要，否则覆盖面会无声缩小。
+      // 基线 2026-09-10 写回：FBro 浏览器模块新增输入注入 5 命令（发送鼠标单击/移动/滚轮、
+      // 发送按键、发送触摸事件），命令 +5、参数 +38、控件参数 +5。
       modules: 85,
-      commands: 3143,
-      parameters: 5421,
-      controlReferences: 1293,
-      commandDigest: '960ac708',
-      parameterDigest: '580239ff'
+      commands: 3148,
+      parameters: 5459,
+      controlReferences: 1298,
+      commandDigest: '79f9b273',
+      parameterDigest: '6f6e2bb1'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -1666,7 +1668,7 @@ test('FBro module family exposes one manager entry and atomically enables the st
   const family = getFbroFamilyModules(installed);
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
-  assert.equal(countModuleCommands(family), 574);
+  assert.equal(countModuleCommands(family), 579);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -1794,8 +1796,8 @@ test('FBro official SDK coverage catalog remains complete and classified', async
   assert.ok(catalog.signatures.every(item => ['highLevel', 'advancedSafe', 'internal'].includes(item.classification)
     && ['implemented', 'planned', 'notApplicable'].includes(item.implementationStatus)
     && item.classificationReason.length > 0));
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 447);
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 553);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 452);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 548);
   assert.equal(catalog.signatures.filter(item => item.implementationStatus === 'notApplicable').length, 15);
   assert.match(catalog.signatures.find(item => item.officialName === 'FBroHsBrowserHost_RunFileDialog')?.classificationReason || '', /阻塞/u);
   assert.ok(catalog.signatures.filter(item => item.classification === 'highLevel').every(item => item.implementationStatus === 'implemented'));
@@ -3260,7 +3262,7 @@ test('FBro user documentation covers public events, classified slots and public 
   assert.equal(FBRO_EVENT_CATALOG.length, 174);
   assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
   assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 102);
-  assert.equal(publicCommands.length, 565);
+  assert.equal(publicCommands.length, 570);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(

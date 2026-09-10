@@ -887,6 +887,7 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 
 - 火山三工程对比发现的 75 条功能缺口已全部封装：新增 57 条中文命令分布在 browser/session/objects/automation/network 子模块（宿主信息与实例注册表、受管请求/提交数据/进程消息构造、URL 请求、填表 TianBiao、取源码/取文本、后台创建、启动命令行开关、右键菜单句柄、页面调原生 JS 扩展、CEF 内嵌服务器）。桥 bridgeVersion 2.6.0，`lingbuilder.fbro.browser` 2.6.0。
 - 命令族要点：请求/提交数据/进程消息为受管句柄对象（`FBro请求_*`/`FBro提交数据_*`/`FBro消息_*`）；填表 Set 族同步发后即忘，取值/取坐标内联等待并返回 JSON；`FBro框架_取源码/取文本` 返回 UTF-8 受管缓冲（配合 `FBro缓冲_转文本/保存文件`），避免大页面截断；启动开关（禁GPU/媒体流/语音输入/自动播放等 6 项设计器属性）由生成器烘焙 `LB_FBro_SetStartupSwitches` 在 CEF 初始化前应用，`FBro_取启动命令行` 查询生效结果。
+- 输入注入（2026-09-10 批次 1 落地）：`FBro_发送鼠标单击事件/发送鼠标移动事件/发送鼠标滚轮事件/发送按键事件/发送触摸事件(控件名, …)` 走内核输入管线，页面收到的事件带 `isTrusted`，与 `FBro_执行JS` 内 `dispatchEvent` 的合成事件有本质区别；反自动化页面和主流前端框架只信任前者，模拟点击/键盘必须用这组命令而不是 JS 模拟。按钮类型 0=左键 1=中键 2=右键（双击传单击次数 2）；按键事件类型 0=原始按下 1=按下 2=释放 3=字符输入，`字符编码`/`未修改字符编码` 低 8 位为低字节、高 8 位为高字节（ASCII 同值）；触摸压力 0~1、旋转角度为弧度。三种进程模式都可用，独立进程模式经受管通道转发 Host 内执行。
 - 右键菜单定制：`OnBeforeContextMenu` 事件升级为同步应答——事件包携带 menuHandle/paramsHandle/x/y（仅事件处理期内有效，回调结束即回收），宿主以 JSON 操作数组应答（addItem/addCheckItem/addSeparator/addSubMenu/remove/clear/setChecked/setEnabled/setLabel/setAccelerator）。
 - 页面调原生：`FBro_启用JS扩展(查询函数名, 取消函数名)` 必须在首个浏览器创建前调用；页面执行 `lingQuery("...")` 触发“JS扩展调用”事件（OnQuery），处理器用 `FBro事件_继续` 回传 `{"success":true,"result":"..."}` 或 `{"success":false,"error":"...","errorCode":n}`，120 秒超时自动按 Failure 应答。
 - 后台创建：`FBro_后台创建(地址, 缓存目录, 附加信息JSON)` 创建无窗口实例（FBroHsCreateBackground），事件照常分发；附加信息 JSON 键不覆盖内置 flag。
