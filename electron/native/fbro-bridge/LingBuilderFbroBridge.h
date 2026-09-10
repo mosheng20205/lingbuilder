@@ -62,6 +62,7 @@ enum LB_FBRO_OBJECT_TYPE {
   LB_FBRO_OBJECT_WSS_CLIENT = 29,
   LB_FBRO_OBJECT_DOM_SNAPSHOT = 30,
   LB_FBRO_OBJECT_DOWNLOAD_ITEM = 31,
+  LB_FBRO_OBJECT_RESPONSE = 32,
 };
 
 enum LB_FBRO_TASK_STATUS {
@@ -608,6 +609,27 @@ LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetDownloadOriginalUrl(LB_FBRO_OBJ
 LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetSuggestedFileName(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetDownloadMimeType(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetContentDisposition(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+/** 响应对象读取/改写族：句柄来自「资源响应到达/资源加载完成」事件字段 response，
+ *  或用 FBro响应_创建 生成自定义响应（自定义资源处理器）。 */
+LB_FBRO_API long long __stdcall LB_FBro_ResponseCreate(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ResponseIsReadOnly(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetError(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetError(LB_FBRO_OBJECT_HANDLE object, int error);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetStatus(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetStatus(LB_FBRO_OBJECT_HANDLE object, int status);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetStatusText(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetStatusText(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetMimeType(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetMimeType(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetCharset(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetCharset(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetURL(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetURL(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetHeaderByName(LB_FBRO_OBJECT_HANDLE object, const wchar_t* name, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetHeaderByName(LB_FBRO_OBJECT_HANDLE object, const wchar_t* name, const wchar_t* value, int overwrite);
+LB_FBRO_API int __stdcall LB_FBro_ResponseGetHeaderMap(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_ResponseSetHeaderMapJson(LB_FBRO_OBJECT_HANDLE object, const wchar_t* headers_json, int delete_other);
+LB_FBRO_API int __stdcall LB_FBro_ResponseDeleteHeaderMap(LB_FBRO_OBJECT_HANDLE object, const wchar_t* key);
 
 /** 启用页面调原生 JS 扩展（必须在首个浏览器创建前调用）。 */
 LB_FBRO_API int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function,

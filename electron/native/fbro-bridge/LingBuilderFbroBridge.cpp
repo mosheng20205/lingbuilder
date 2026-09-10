@@ -25,6 +25,7 @@
 #include "FBroProcessMessage.h"
 #include "FBroRequest.h"
 #include "FBroResponseFilter.h"
+#include "FBroResponse.h"
 #include "FBroRequestContext.h"
 #include "FBroServer.h"
 #include "FBroSocket.h"
@@ -168,6 +169,7 @@ struct ObjectState {
   CefRefPtr<CefRequestContext> request_context;
   CefRefPtr<CefServer> server;
   CefRefPtr<CefDownloadItem> download_item;
+  CefRefPtr<CefResponse> response;
   CefRefPtr<FBroDOMWssClient> wss_client;
   std::shared_ptr<struct DomSnapshot> dom_snapshot;
   std::vector<unsigned char> owned_bytes;
@@ -409,6 +411,20 @@ LB_FBRO_OBJECT_HANDLE RegisterDownloadItem(CefRefPtr<CefDownloadItem> item,
   return state->handle;
 }
 
+LB_FBRO_OBJECT_HANDLE RegisterResponse(CefRefPtr<CefResponse> response,
+                                       LB_FBRO_OBJECT_HANDLE parent = 0) {
+  if (!response) return 0;
+  auto state = std::make_shared<ObjectState>();
+  state->handle = g_next_object_handle.fetch_add(1);
+  state->type = LB_FBRO_OBJECT_RESPONSE;
+  state->owner_thread = 0;
+  state->parent = parent;
+  state->response = std::move(response);
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  g_objects.emplace(state->handle, state);
+  return state->handle;
+}
+
 LB_FBRO_OBJECT_HANDLE RegisterFrame(CefRefPtr<CefFrame> frame,
                                     LB_FBRO_OBJECT_HANDLE parent = 0) {
   if (!frame) return 0;
@@ -626,6 +642,16 @@ std::wstring JsonEscape(const std::wstring& value) {
   return result;
 }
 
+std::wstring AppendResponseHandleField(std::wstring fields_json,
+                                       const CefRefPtr<CefResponse>& response) {
+  if (fields_json.size() > 1 && fields_json.back() == L'}') {
+    fields_json.pop_back();
+    fields_json += L",\"response\":";
+    fields_json += std::to_wstring(static_cast<long long>(RegisterResponse(response)));
+    fields_json += L"}";
+  }
+  return fields_json;
+}
 std::wstring StringListJson(CefRefPtr<FBroCefStringList> values) {
   std::wstring json = L"[";
   const int count = values ? FBroCefStringList_Size(values) : 0;
@@ -2131,7 +2157,7 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
     const int action = DispatchGeneratedBrowserEvent(handle_,
         L"fbro.event.fbrohsbroevent.onresourceresponse.8841d0c12824",
         L"OnResourceResponse", L"资源响应到达",
-        BuildResourceFieldsJson(frame, request, response),
+        AppendResponseHandleField(BuildResourceFieldsJson(frame, request, response), response),
         LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0);
     return action == LB_FBRO_EVENT_ACTION_CANCEL || action == LB_FBRO_EVENT_ACTION_HANDLED;
   }
@@ -2141,6 +2167,7 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
                               int64_t received_content_length) override {
     std::wstring fields = BuildResourceFieldsJson(frame, request, response);
     fields.pop_back();
+    fields += L",\"response\":" + std::to_wstring(static_cast<long long>(RegisterResponse(response)));
     fields += L",\"status\":" + std::to_wstring(static_cast<long long>(status));
     fields += L",\"received_content_length\":"
         + std::to_wstring(static_cast<long long>(received_content_length));
@@ -6271,6 +6298,132 @@ int __stdcall LB_FBro_DownloadItemGetContentDisposition(LB_FBRO_OBJECT_HANDLE ob
   auto state = GetObject(object, LB_FBRO_OBJECT_DOWNLOAD_ITEM, status);
   if (!state) return status;
   return CopyResult(FromFbroString(FBroHsDownloadItem_GetContentDisposition(state->download_item)), result, capacity);
+}
+long long __stdcall LB_FBro_ResponseCreate() {
+  return RegisterResponse(FBroHsResponse_Create());
+}
+int __stdcall LB_FBro_ResponseIsReadOnly(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return FBroHsResponse_IsReadOnly(state->response) != 0 ? 1 : 0;
+}
+int __stdcall LB_FBro_ResponseGetError(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return FBroHsResponse_GetError(state->response);
+}
+int __stdcall LB_FBro_ResponseSetError(LB_FBRO_OBJECT_HANDLE object, int error) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  FBroHsResponse_SetError(state->response, error);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseGetStatus(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return FBroHsResponse_GetStatus(state->response);
+}
+int __stdcall LB_FBro_ResponseSetStatus(LB_FBRO_OBJECT_HANDLE object, int status) {
+  int get_status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, get_status);
+  if (!state) return get_status;
+  FBroHsResponse_SetStatus(state->response, status);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseGetStatusText(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsResponse_GetStatusText(state->response)), result, capacity);
+}
+int __stdcall LB_FBro_ResponseSetStatusText(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  FBroHsResponse_SetStatusText(state->response, CefString(value ? value : L""));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseGetMimeType(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsResponse_GetMimeType(state->response)), result, capacity);
+}
+int __stdcall LB_FBro_ResponseSetMimeType(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  FBroHsResponse_SetMimeType(state->response, CefString(value ? value : L""));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseGetCharset(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsResponse_GetCharset(state->response)), result, capacity);
+}
+int __stdcall LB_FBro_ResponseSetCharset(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  FBroHsResponse_SetCharset(state->response, CefString(value ? value : L""));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseGetURL(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsResponse_GetURL(state->response)), result, capacity);
+}
+int __stdcall LB_FBro_ResponseSetURL(LB_FBRO_OBJECT_HANDLE object, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  FBroHsResponse_SetURL(state->response, CefString(value ? value : L""));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseGetHeaderByName(LB_FBRO_OBJECT_HANDLE object, const wchar_t* name, wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return CopyResult(FromFbroString(FBroHsResponse_GetHeaderByName(state->response, CefString(name ? name : L""))), result, capacity);
+}
+int __stdcall LB_FBro_ResponseSetHeaderByName(LB_FBRO_OBJECT_HANDLE object, const wchar_t* name, const wchar_t* value, int overwrite) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  FBroHsResponse_SetHeaderByName(state->response, CefString(name ? name : L""), CefString(value ? value : L""), overwrite ? TRUE : FALSE);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseGetHeaderMap(LB_FBRO_OBJECT_HANDLE object,
+                                             wchar_t* result, size_t capacity) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  return CopyResult(DoubleStringJson(FBroHsResponse_GetHeaderMap(state->response)), result, capacity);
+}
+int __stdcall LB_FBro_ResponseSetHeaderMapJson(LB_FBRO_OBJECT_HANDLE object,
+                                                const wchar_t* headers_json,
+                                                int delete_other) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  auto headers = CreateDoubleStringFromEntriesJson(headers_json);
+  if (!headers) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  FBroHsResponse_SetHeaderMap_Array(state->response, headers, delete_other != 0);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_ResponseDeleteHeaderMap(LB_FBRO_OBJECT_HANDLE object,
+                                               const wchar_t* key) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_RESPONSE, status);
+  if (!state) return status;
+  FBroHsResponse_DeleteHeaderMap(state->response, CefString(key ? key : L""));
+  return LB_FBRO_OK;
 }
 int __stdcall LB_FBro_ContextMenuParamsGetMediaType(LB_FBRO_OBJECT_HANDLE object) {
   int status = LB_FBRO_OK;
