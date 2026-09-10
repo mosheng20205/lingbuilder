@@ -51,6 +51,52 @@ export function tokenizeLingCppPresentationCode(code: string): string[] {
   return code.split(TOKEN_PATTERN).filter(token => token !== '');
 }
 
+export interface LingCppCommentSplit {
+  code: string;
+  comment: string;
+}
+
+/**
+ * Split one `.lcpp` line into its executable code and its trailing comment.
+ *
+ * Two comment styles exist and both must be honored: a `//` marker anywhere
+ * outside a string, and an E-language style `'` that must be the first
+ * non-blank character. Treating a leading `'` as code made commented-out lines
+ * render in the plain-text color and look executable.
+ */
+export function splitLingCppLineComment(line: string): LingCppCommentSplit {
+  const leadingWhitespace = line.match(/^\s*/u)?.[0] ?? '';
+  const body = line.slice(leadingWhitespace.length);
+  if (body.startsWith("'")) return { code: leadingWhitespace, comment: body };
+
+  let inDoubleQuote = false;
+  let inChineseQuote = false;
+  for (let index = 0; index < line.length - 1; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '\\') {
+      index += 1;
+      continue;
+    }
+    if (!inChineseQuote && char === '"') {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (!inDoubleQuote && char === '“') {
+      inChineseQuote = true;
+      continue;
+    }
+    if (inChineseQuote && char === '”') {
+      inChineseQuote = false;
+      continue;
+    }
+    if (!inDoubleQuote && !inChineseQuote && char === '/' && next === '/') {
+      return { code: line.slice(0, index), comment: line.slice(index) };
+    }
+  }
+  return { code: line, comment: '' };
+}
+
 export function extractLingCppNativeVariableNames(source: string): Set<string> {
   const variables = new Set<string>();
   const declaration = /^\s*@\s*(?:(?:const|constexpr|static|volatile)\s+)*(?:(?:std\s*::\s*)?[A-Za-z_]\w*(?:\s*[*&]\s*)?)\s+([A-Za-z_]\w*)\s*(?==|;|,|\()/u;

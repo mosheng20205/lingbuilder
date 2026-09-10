@@ -3377,7 +3377,7 @@ function getHeaderTone(text: string): string {
   if (body.startsWith('.程序集')) return 'text-[#ff4fda] font-semibold';
   if (body.startsWith('.支持库')) return 'text-[#d7d7d7]';
   if (body.startsWith('.版本')) return 'text-[#8f8f8f]';
-  if (body.startsWith("'")) return 'text-[#4aa34a]';
+  if (body.startsWith("'")) return 'text-[color:var(--epl-comment)]';
   return 'text-[#d7d7d7]';
 }
 

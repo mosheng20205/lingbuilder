@@ -6325,12 +6325,8 @@ LB_FBRO_TASK_HANDLE ScheduleDomApply(LB_FBRO_OBJECT_HANDLE frame_handle,
   if (!frame_state || !frame_state->frame) return 0;
   std::vector<int> path;
   const bool path_ok = ParseDomPath(path_json, path);
-  { FILE* df = nullptr; _wfopen_s(&df, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-cb-debug.log", L"a");
-    if (df) { fwprintf(df, L"tick=%u Apply.Submit path_ok=%d path=%d frame=%llu\n", static_cast<unsigned>(GetTickCount()), path_ok ? 1 : 0, static_cast<int>(path.size())); fclose(df); } }
   if (!path_ok) return 0;
   auto task = CreateTask(callback, user_data);
-  { FILE* df = nullptr; _wfopen_s(&df, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-cb-debug.log", L"a");
-    if (df) { fwprintf(df, L"pid=%u tick=%u Apply.TaskCreated handle=%llu\n", static_cast<unsigned>(_getpid()), static_cast<unsigned>(GetTickCount()), static_cast<unsigned long long>(task->handle)); fclose(df); } }
   auto shared = std::make_shared<DomTaskShared>();
   shared->task = task;
   auto owned_frame = frame_state->frame;
@@ -6491,9 +6487,6 @@ LB_FBRO_TASK_HANDLE __stdcall LB_FBro_DomSetAttributeByPathAsync(LB_FBRO_OBJECT_
                                                  const wchar_t* value,
                                                  LB_FBRO_TASK_CALLBACK callback,
                                                  void* user_data) {
-  { FILE* df = nullptr; _wfopen_s(&df, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-cb-debug.log", L"a");
-    if (df) { int st = 0; auto fs = GetObject(frame, LB_FBRO_OBJECT_FRAME, st);
-      fwprintf(df, L"tick=%u DomSetAttr frame=%llu state=%d status=%d\n", static_cast<unsigned>(GetTickCount()), static_cast<unsigned long long>(frame), fs ? 1 : 0, st); fclose(df); } }
   return ScheduleDomApply(frame, path_json, name, value, callback, user_data);
 }
 

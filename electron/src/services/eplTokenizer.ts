@@ -5,6 +5,8 @@
  * This enables token-level syntax highlighting similar to Visual Studio.
  */
 
+import { LINGCPP_COMMENT_TOKEN_COLORS } from './lingCpp/semanticTheme';
+
 // ── Token Types ──────────────────────────────────────────────────────────────
 
 export type EplTokenKind =
@@ -289,7 +291,7 @@ export const EPL_TOKEN_COLORS_DARK: EplTokenColorTheme = {
   keyword:    '#569cd6',  // VS blue for keywords
   command:    '#dcdcaa',  // VS yellow for functions/commands
   string:     '#ce9178',  // VS orange-brown for strings
-  comment:    '#6a9955',  // VS green for comments
+  comment:    LINGCPP_COMMENT_TOKEN_COLORS.dark,  // 与新手结构编辑器/专业编辑器共用同一注释色
   number:     '#b5cea2',  // VS light green for numbers
   operator:   '#d4d4d4',  // VS light gray for operators
   variable:   '#9df59c',  // 与局部变量声明表的绿色标记保持一致
@@ -309,7 +311,7 @@ export const EPL_TOKEN_COLORS_LIGHT: EplTokenColorTheme = {
   keyword:    '#0000ff',  // VS classic blue
   command:    '#795e26',  // VS dark yellow for functions
   string:     '#a31515',  // VS dark red for strings
-  comment:    '#008000',  // VS green for comments
+  comment:    LINGCPP_COMMENT_TOKEN_COLORS.light,  // 与新手结构编辑器/专业编辑器共用同一注释色
   number:     '#098658',  // VS teal for numbers
   operator:   '#000000',  // Black
   variable:   '#047857',  // 与局部变量声明表的绿色标记保持一致

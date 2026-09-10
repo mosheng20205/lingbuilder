@@ -9,6 +9,7 @@ import {
   classifyLingCppPresentationCode,
   classifyLingCppPresentationToken,
   extractLingCppNativeVariableNames,
+  splitLingCppLineComment,
   tokenizeLingCppPresentationCode
 } from '../src/services/lingCpp/beginnerSyntaxPresentation';
 
@@ -119,6 +120,30 @@ test('beginner LingCpp presentation distinguishes module calls and native C++ to
   assert.equal(classifyLingCppPresentationToken('std', { ...context, isNativeCpp: true }), 'native-namespace');
   assert.equal(classifyLingCppPresentationToken('wstring', { ...context, isNativeCpp: true }), 'native-type');
   assert.equal(classifyLingCppPresentationToken('EdgeView_创建区域', { ...context, isNativeCpp: true }), 'identifier');
+});
+
+test('beginner LingCpp presentation treats single-quote and slash lines as comments', () => {
+  const leadingQuote = splitLingCppLineComment("    ' OCX 放在项目 assets 下，构建时随资源复制到 exe 旁");
+  assert.equal(leadingQuote.code, '    ');
+  assert.equal(leadingQuote.comment, "' OCX 放在项目 assets 下，构建时随资源复制到 exe 旁");
+
+  const slashLine = splitLingCppLineComment('// 整行斜杠注释');
+  assert.equal(slashLine.code, '');
+  assert.equal(slashLine.comment, '// 整行斜杠注释');
+
+  const trailing = splitLingCppLineComment('    调试输出("ok") // 尾随注释');
+  assert.equal(trailing.code, '    调试输出("ok") ');
+  assert.equal(trailing.comment, '// 尾随注释');
+
+  // `//` inside a string literal and a mid-line `'` are code, not comments.
+  const stringWithSlashes = splitLingCppLineComment('    控件_设置文本(状态标签, "把 ocx 放到 // 这里")');
+  assert.equal(stringWithSlashes.comment, '');
+  const stringWithQuote = splitLingCppLineComment("    文本 = \"带 ' 引号的字符串\"");
+  assert.equal(stringWithQuote.comment, '');
+
+  const plain = splitLingCppLineComment('    调试输出("ok")');
+  assert.equal(plain.code, '    调试输出("ok")');
+  assert.equal(plain.comment, '');
 });
 
 test('beginner native C++ presentation colors functions, variables and wide strings semantically', () => {

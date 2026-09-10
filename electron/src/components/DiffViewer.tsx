@@ -107,7 +107,8 @@ import { getProjectConstantNameAtCursor } from '../services/lingCpp/projectConst
 import {
   classifyLingCppPresentationCode,
   extractLingCppNativeVariableNames,
-  LingCppPresentationTokenKind
+  LingCppPresentationTokenKind,
+  splitLingCppLineComment
 } from '../services/lingCpp/beginnerSyntaxPresentation';
 import { getLingCppModuleCommandNames } from '../services/lingCpp/monacoTokens';
 import { LingCppModuleContext } from '../services/modules/types';
@@ -117,7 +118,10 @@ import {
   renameLingCppControlReference,
   type LingCppControlReference
 } from '../services/lingCpp/controlReferenceService';
-import { getLingCppControlReferenceTokenColor } from '../services/lingCpp/semanticTheme';
+import {
+  getLingCppCommentTokenColor,
+  getLingCppControlReferenceTokenColor
+} from '../services/lingCpp/semanticTheme';
 import {
   acquireLingCppControlReferenceCommands,
   REVEAL_LINGCPP_CONTROL_COMMAND
@@ -2979,7 +2983,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     if (token === '') return null;
 
     if (token.startsWith("'")) {
-      return <span key={index} className="text-[#4aa34a]">{token}</span>;
+      return <span key={index} style={{ color: getLingCppCommentTokenColor(isDarkMode) }}>{token}</span>;
     }
     if (token.startsWith('"') || token.startsWith('“')) {
       return <span key={index} className="text-[#d7c5a1]">{token}</span>;
@@ -3122,7 +3126,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       return (
         <>
           <span>{leadingSpace}</span>
-          <span className="text-[#4aa34a]">{body}</span>
+          <span style={{ color: getLingCppCommentTokenColor(isDarkMode) }}>{body}</span>
         </>
       );
     }
@@ -3152,7 +3156,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           {parts.map((part, index) => {
             if (part === undefined || part === '') return null;
             if (part.startsWith("'")) {
-              return <span key={index} className="text-[#6A9955] font-mono italic">{part}</span>;
+              return <span key={index} className="text-[color:var(--lingcpp-comment-color)] font-mono italic">{part}</span>;
             }
             if (part.startsWith('"')) {
               return <span key={index} className="text-[#CE9178] font-mono font-semibold">{part}</span>;
@@ -3177,7 +3181,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         {parts.map((part, index) => {
           if (part === undefined || part === '') return null;
           if (part.startsWith('//')) {
-            return <span key={index} className="text-[#6A9955] font-mono">{part}</span>;
+            return <span key={index} className="text-[color:var(--lingcpp-comment-color)] font-mono">{part}</span>;
           }
           if (part.startsWith('"') || part.startsWith('L"')) {
             return <span key={index} className="text-[#CE9178] font-mono font-semibold">{part}</span>;
@@ -3815,7 +3819,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 : tone === 'value'
                   ? isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
                   : tone === 'note'
-                    ? isDarkMode ? 'text-[#6A9955]' : 'text-green-700'
+                    ? 'text-[color:var(--lingcpp-comment-color)]'
                     : isDarkMode ? 'text-slate-300' : 'text-slate-700';
     return `${sizeClass} box-border w-full max-w-full min-w-0 rounded border px-1.5 leading-5 outline-none transition-colors placeholder:text-slate-500 ${
       isDarkMode
@@ -6267,7 +6271,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if (tone === 'type') return isDarkMode ? 'font-semibold text-blue-300' : 'font-semibold text-blue-700';
       if (tone === 'name') return isDarkMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-900';
       if (tone === 'value') return isDarkMode ? 'text-emerald-300' : 'text-emerald-700';
-      if (tone === 'note') return isDarkMode ? 'text-[#6A9955]' : 'text-green-700';
+      if (tone === 'note') return 'text-[color:var(--lingcpp-comment-color)]';
       if (tone === 'muted') return isDarkMode ? 'text-slate-500' : 'text-slate-500';
       return isDarkMode ? 'text-slate-300' : 'text-slate-700';
     };
@@ -7674,33 +7678,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       ...codeTargets.flatMap(item => (item.method.locals || []).map(local => local.name))
     ].filter(Boolean));
 
-    const findBeginnerLineCommentStart = (line: string) => {
-      let inDoubleQuote = false;
-      let inChineseQuote = false;
-      for (let index = 0; index < line.length - 1; index += 1) {
-        const char = line[index];
-        const next = line[index + 1];
-        if (char === '\\') {
-          index += 1;
-          continue;
-        }
-        if (!inChineseQuote && char === '"') {
-          inDoubleQuote = !inDoubleQuote;
-          continue;
-        }
-        if (!inDoubleQuote && char === '“') {
-          inChineseQuote = true;
-          continue;
-        }
-        if (inChineseQuote && char === '”') {
-          inChineseQuote = false;
-          continue;
-        }
-        if (!inDoubleQuote && !inChineseQuote && char === '/' && next === '/') return index;
-      }
-      return -1;
-    };
-
     const renderBeginnerCodeToken = (token: string, kind: LingCppPresentationTokenKind, index: number) => {
       if (!token) return null;
       const className = {
@@ -7740,13 +7717,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
     const renderBeginnerCodeLine = (line: string, target?: BeginnerCodeTarget) => {
       if (!line) return <span>&nbsp;</span>;
-      const leadingSpace = line.match(/^\s*/u)?.[0] || '';
-      const body = line.slice(leadingSpace.length);
-      const commentStart = findBeginnerLineCommentStart(body);
-      const codePart = commentStart >= 0 ? body.slice(0, commentStart) : body;
-      const commentPart = commentStart >= 0 ? body.slice(commentStart) : '';
-      const isNativeCpp = codePart.trimStart().startsWith('@');
-      const tokens = classifyLingCppPresentationCode(codePart, {
+      const { code, comment } = splitLingCppLineComment(line);
+      // A whole-line comment (`//` or a leading `'`) is never tokenized: keeping
+      // it out of the code path is what makes it read as a comment rather than
+      // as executable identifiers in the plain-text color.
+      if (!code.trim()) {
+        if (!comment) return <span>&nbsp;</span>;
+        return (
+          <>
+            <span>{code}</span>
+            <span style={{ color: getLingCppCommentTokenColor(isDarkMode) }}>{comment}</span>
+          </>
+        );
+      }
+      const leadingSpace = code.match(/^\s*/u)?.[0] || '';
+      const body = code.slice(leadingSpace.length);
+      const isNativeCpp = body.trimStart().startsWith('@');
+      const tokens = classifyLingCppPresentationCode(body, {
         isNativeCpp,
         moduleCommands: beginnerModuleCommands,
         knownMembers: beginnerKnownMembers,
@@ -7763,8 +7750,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         <>
           <span>{leadingSpace}</span>
           {tokens.map((token, index) => renderBeginnerCodeToken(token.text, token.kind, index))}
-          {commentPart && (
-            <span className={isDarkMode ? 'text-[#6A9955]' : 'text-green-700'}>{commentPart}</span>
+          {comment && (
+            <span style={{ color: getLingCppCommentTokenColor(isDarkMode) }}>{comment}</span>
           )}
         </>
       );
@@ -9997,7 +9984,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   } as React.CSSProperties;
 
   return (
-    <div id="diff-window-host" style={beginnerScaleStyle} className={`flex-1 flex flex-col overflow-hidden ${
+    <div id="diff-window-host" style={{ ...beginnerScaleStyle, '--lingcpp-comment-color': getLingCppCommentTokenColor(isDarkMode) } as React.CSSProperties} className={`flex-1 flex flex-col overflow-hidden ${
       isDarkMode ? 'bg-[#141418]' : 'bg-white'
     }`}>
       {/* File Tabs Bar */}

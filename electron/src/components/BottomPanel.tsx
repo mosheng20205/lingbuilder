@@ -550,7 +550,7 @@ export default function BottomPanel({
 
         {activeTab === 'module_hint' && commandHint && (
           <section className="h-full overflow-auto p-4 font-sans select-text" aria-live="polite" aria-label="命令提示信息">
-            <div className={`mx-auto max-w-5xl overflow-hidden rounded border ${
+            <div className={`w-full overflow-hidden rounded border ${
               isDarkMode ? 'border-slate-700/70 bg-[#18181c]' : 'border-slate-200 bg-slate-50'
             }`}>
               <div className={`flex min-w-0 items-start gap-3 border-b px-4 py-3 ${
@@ -623,7 +623,7 @@ export default function BottomPanel({
             aria-live="polite"
             aria-label={`${moduleHint.kind}提示信息`}
           >
-            <div className={`mx-auto max-w-5xl overflow-hidden rounded border ${
+            <div className={`w-full overflow-hidden rounded border ${
               isDarkMode ? 'border-slate-700/70 bg-[#18181c]' : 'border-slate-200 bg-slate-50'
             }`}>
               <div className={`flex min-w-0 items-start gap-3 border-b px-4 py-3 ${

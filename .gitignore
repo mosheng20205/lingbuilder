@@ -147,6 +147,10 @@ examples/array-operations-demo/src/.lingbuilder/projects/
 /*.png
 /_inspect_*/
 /.tmp-*
+# 论坛/文档配图的原始采集现场（CDP 脚本写死本机绝对路径且含大量重复帧）：
+# 只保留 docs/images/ 下人工挑选命名的成品，采集现场不入库。
+/.forum-post-shots/
+
 /.video-work/
 /.work/
 /.ting-renderer-env.cmd

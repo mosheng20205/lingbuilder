@@ -70,6 +70,7 @@ import {
 import {
   buildLingCppControlReferenceSemanticTokenData,
   createLingCppControlReferenceEditorCss,
+  LINGCPP_COMMENT_TOKEN_COLORS,
   LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN,
   LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS
 } from '../services/lingCpp/semanticTheme';
@@ -1242,7 +1243,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         { token: 'native.marker', foreground: 'c586c0', fontStyle: 'bold' },
         { token: 'type', foreground: '4fc1ff' },
         { token: 'tag', foreground: 'c586c0', fontStyle: 'bold' },
-        { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
+        { token: 'comment', foreground: LINGCPP_COMMENT_TOKEN_COLORS.dark.slice(1), fontStyle: 'italic' },
         { token: 'string', foreground: 'ce9178' },
         { token: 'number', foreground: 'b5cea8' }
         ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.dark.slice(1), fontStyle: 'bold' }
@@ -1267,7 +1268,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         { token: 'native.marker', foreground: '7a1fa2', fontStyle: 'bold' },
         { token: 'type', foreground: '0000ff' },
         { token: 'tag', foreground: '800080', fontStyle: 'bold' },
-        { token: 'comment', foreground: '008000', fontStyle: 'italic' },
+        { token: 'comment', foreground: LINGCPP_COMMENT_TOKEN_COLORS.light.slice(1), fontStyle: 'italic' },
         { token: 'string', foreground: 'a31515' },
         { token: 'number', foreground: '098658' }
         ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.light.slice(1), fontStyle: 'bold' }

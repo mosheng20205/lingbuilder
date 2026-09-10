@@ -23,6 +23,24 @@ export function getLingCppControlReferenceTokenColor(isDarkMode: boolean): strin
     : LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.light;
 }
 
+/**
+ * Comment color for `//` and leading `'` comment lines.
+ *
+ * The beginner structured editor, the professional Monaco editor and the diff
+ * views must agree on this token, otherwise the same commented line would
+ * change color when the user switches editor mode.
+ */
+export const LINGCPP_COMMENT_TOKEN_COLORS: LingCppSemanticTokenColors = {
+  dark: '#3f8f3f',
+  light: '#166534'
+};
+
+export function getLingCppCommentTokenColor(isDarkMode: boolean): string {
+  return isDarkMode
+    ? LINGCPP_COMMENT_TOKEN_COLORS.dark
+    : LINGCPP_COMMENT_TOKEN_COLORS.light;
+}
+
 export function createLingCppControlReferenceEditorCss(): string[] {
   const colors = LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS;
   return [

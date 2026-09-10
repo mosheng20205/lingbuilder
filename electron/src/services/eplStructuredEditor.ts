@@ -1,3 +1,5 @@
+import { LINGCPP_COMMENT_TOKEN_COLORS } from './lingCpp/semanticTheme';
+
 export interface EplTypeOption {
   label: string;
   category: string;
@@ -125,7 +127,7 @@ export const EPL_STRUCTURED_EDITOR_THEME_DARK: EplStructuredEditorTheme = {
   keyword: '#569cd6',
   command: '#dcdcaa',
   string: '#ce9178',
-  comment: '#6a9955',
+  comment: LINGCPP_COMMENT_TOKEN_COLORS.dark,
   variable: '#9df59c',
   number: '#b5cea2',
   declarationLabel: '#c586c0',
@@ -136,7 +138,7 @@ export const EPL_STRUCTURED_EDITOR_THEME_LIGHT: EplStructuredEditorTheme = {
   keyword: '#0000ff',
   command: '#795e26',
   string: '#a31515',
-  comment: '#008000',
+  comment: LINGCPP_COMMENT_TOKEN_COLORS.light,
   variable: '#047857',
   number: '#098658',
   declarationLabel: '#a31575',
