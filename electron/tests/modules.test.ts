@@ -261,12 +261,14 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 发送按键、发送触摸事件），命令 +5、参数 +38、控件参数 +5。
       // 追加 2026-09-10 批次 2：FBro 填表补齐 16 命令（选择框/选择项/内外文本/内外代码/
       // 属性读写、元素是否存在、触发事件），命令 +16、参数 +59；填表族与易语言 22 条公开命令对齐。
+      // 追加 2026-09-10 批次 3：FBro传输_生成PDF 与 FBro图像_下载阻塞变体，
+      // 命令 +2、参数 +8、控件参数 +2（异步取数一句话写完）。
       modules: 85,
-      commands: 3164,
-      parameters: 5518,
-      controlReferences: 1298,
-      commandDigest: '62175aa2',
-      parameterDigest: '36010864'
+      commands: 3166,
+      parameters: 5526,
+      controlReferences: 1300,
+      commandDigest: '402403c7',
+      parameterDigest: '07974d2f'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -1670,7 +1672,7 @@ test('FBro module family exposes one manager entry and atomically enables the st
   const family = getFbroFamilyModules(installed);
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
-  assert.equal(countModuleCommands(family), 595);
+  assert.equal(countModuleCommands(family), 597);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -2038,7 +2040,7 @@ test('FBro Transfer PDF、文件对话框与 VIP 截图使用任务和受管缓�
   const objects = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
   assert.ok(transfer);
   assert.ok(objects);
-  assert.equal(transfer.contributes?.commands?.length, 5);
+  assert.equal(transfer.contributes?.commands?.length, 6);
   assert.ok(objects.contributes?.commands?.some(item => item.name === 'FBro任务_取缓冲' && item.aliases?.includes('LB_FBro_TaskGetBuffer')));
   for (const [command, alias] of [
     ['FBro传输_异步生成PDF', 'LB_FBro_PrintToPdfAsync'],
@@ -2062,7 +2064,7 @@ test('FBro Transfer PDF、文件对话框与 VIP 截图使用任务和受管缓�
 test('FBro Value、Dictionary、List、Stream、Image、Certificate 使用类型化受管句柄并生成真实 Bridge 调用', async () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
   assert.ok(manifest);
-  assert.equal(manifest.contributes?.commands?.length, 160);
+  assert.equal(manifest.contributes?.commands?.length, 161);
   assert.deepEqual(
     manifest.bindings?.commands?.map(binding => binding.command),
     manifest.contributes?.commands?.map(command => command.name)
@@ -3264,7 +3266,7 @@ test('FBro user documentation covers public events, classified slots and public 
   assert.equal(FBRO_EVENT_CATALOG.length, 174);
   assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
   assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 102);
-  assert.equal(publicCommands.length, 586);
+  assert.equal(publicCommands.length, 588);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(

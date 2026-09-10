@@ -4764,6 +4764,33 @@ static std::wstring FBro填表_元素是否存在(long long frame, const wchar_t
     (void)frame; (void)selector; (void)index; return L"";
 #endif
 }
+static int FBro传输_生成PDF(const wchar_t* name, const wchar_t* path, const wchar_t* settingsJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle || !path || !*path) return 0;
+    auto task = LB_FBro_PrintToPdfAsync(browser->handle, path, settingsJson, nullptr, nullptr);
+    if (!task) return 0;
+    wchar_t value[2048] = {};
+    LB_FBro_TaskWait(task, 60000); LB_FBro_TaskGetResult(task, value, 2048); LB_FBro_TaskRelease(task);
+    return GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES ? 1 : 0;
+#else
+    (void)name; (void)path; (void)settingsJson; return 0;
+#endif
+}
+static long long FBro图像_下载(const wchar_t* name, const wchar_t* url, bool asFavicon, int maxSize, bool bypassCache) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !browser->handle || !url || !*url) return 0;
+    auto task = LB_FBro_DownloadImageAsync(browser->handle, url, asFavicon ? 1 : 0, static_cast<uint32_t>(maxSize), bypassCache ? 1 : 0, nullptr, nullptr);
+    if (!task) return 0;
+    LB_FBro_TaskWait(task, 60000);
+    auto image = static_cast<long long>(LB_FBro_TaskGetObject(task));
+    LB_FBro_TaskRelease(task);
+    return image;
+#else
+    (void)name; (void)url; (void)asFavicon; (void)maxSize; (void)bypassCache; return 0;
+#endif
+}
 static long long FBro框架_取源码(long long frame) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     auto task = LB_FBro_FrameGetSourceAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), nullptr, nullptr);
@@ -12213,6 +12240,33 @@ ${FBRO_RESOURCE_REPLACE_HELPERS}
         return value;
 #else
         (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    int FBro传输_生成PDF(const wchar_t* controlName, const wchar_t* path, const wchar_t* settingsJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle || !path || !*path) return 0;
+        auto task = LB_FBro_PrintToPdfAsync(instance->handle, path, settingsJson, nullptr, nullptr);
+        if (!task) return 0;
+        wchar_t value[2048] = {};
+        LB_FBro_TaskWait(task, 60000); LB_FBro_TaskGetResult(task, value, 2048); LB_FBro_TaskRelease(task);
+        return GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES ? 1 : 0;
+#else
+        (void)controlName; (void)path; (void)settingsJson; return 0;
+#endif
+    }
+    long long FBro图像_下载(const wchar_t* controlName, const wchar_t* url, bool asFavicon, int maxSize, bool bypassCache) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle || !url || !*url) return 0;
+        auto task = LB_FBro_DownloadImageAsync(instance->handle, url, asFavicon ? 1 : 0, static_cast<uint32_t>(maxSize), bypassCache ? 1 : 0, nullptr, nullptr);
+        if (!task) return 0;
+        LB_FBro_TaskWait(task, 60000);
+        auto image = static_cast<long long>(LB_FBro_TaskGetObject(task));
+        LB_FBro_TaskRelease(task);
+        return image;
+#else
+        (void)controlName; (void)url; (void)asFavicon; (void)maxSize; (void)bypassCache; return 0;
 #endif
     }
     long long FBro框架_取源码(long long frame) {

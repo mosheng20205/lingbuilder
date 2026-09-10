@@ -125,6 +125,7 @@ const transferEntries = [
   api('FBro传输_开始下载', 'LB_FBro_StartDownload', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], 'int', '使用当前浏览器会话开始下载。'),
   api('FBro传输_打印', 'LB_FBro_Print', [{ name: '控件名', type: 'controlRef' }], 'int', '打开当前浏览器页面的原生打印流程。'),
   api('FBro传输_异步生成PDF', 'LB_FBro_PrintToPdfAsync', [{ name: '控件名', type: 'controlRef' }, { name: '输出路径', type: 'wideString' }, { name: '设置JSON', type: 'wideString' }], 'longLong', '异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。'),
+  api('FBro传输_生成PDF', 'LB_FBro_PrintToPdfSync', [{ name: '控件名', type: 'controlRef' }, { name: '输出路径', type: 'wideString' }, { name: '设置JSON', type: 'wideString' }], 'int', '同步生成 PDF 并等待完成（60 秒超时）；设置 JSON 传空文本使用默认，返回 1 表示文件已生成。', { visibility: 'advanced' }),
   api('FBro传输_异步打开文件对话框', 'LB_FBro_RunFileDialogAsync', [{ name: '控件名', type: 'controlRef' }, { name: '模式', type: 'int' }, { name: '标题', type: 'wideString' }, { name: '默认路径', type: 'wideString' }, { name: '筛选器JSON', type: 'wideString' }], 'longLong', '调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。'),
   api('FBro传输_异步截图', 'LB_FBro_CaptureScreenshotAsync', [{ name: '控件名', type: 'controlRef' }, { name: '格式', type: 'wideString' }, { name: '质量', type: 'int' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }, { name: '缩放', type: 'int' }, { name: '来自表面', type: 'bool' }, { name: '超出视口', type: 'bool' }], 'longLong', '通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。')
 ];
@@ -343,6 +344,7 @@ const objectEntries = [
   api('FBro流_是否可能阻塞', 'FBroStream_MayBlock', [{ name: '流句柄', type: 'longLong' }], 'int', '查询该 Stream 操作是否可能阻塞。', { visibility: 'advanced' }),
 
   api('FBro图像_异步下载', 'FBroHsBrowserHost_DownloadImage', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }, { name: '作为图标', type: 'bool' }, { name: '最大尺寸', type: 'int' }, { name: '绕过缓存', type: 'bool' }], 'longLong', '通过当前浏览器会话异步下载图像并返回任务 ID。', { visibility: 'advanced' }),
+  api('FBro图像_下载', 'LB_FBro_DownloadImageSync', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }, { name: '作为图标', type: 'bool' }, { name: '最大尺寸', type: 'int' }, { name: '绕过缓存', type: 'bool' }], 'longLong', '同步下载图像并直接返回图像句柄（60 秒超时，失败返回 0）；用完调用 FBro对象_释放。', { visibility: 'advanced' }),
   api('FBro图像_是否为空', 'FBroHsImage_IsEmpty', [{ name: '图像句柄', type: 'longLong' }], 'int', '检查受管 Image 是否为空。', { visibility: 'advanced' }),
   api('FBro图像_取宽度', 'FBroHsImage_GetWidth', [{ name: '图像句柄', type: 'longLong' }], 'int', '取得图像 DIP 宽度。', { visibility: 'advanced' }),
   api('FBro图像_取高度', 'FBroHsImage_GetHeight', [{ name: '图像句柄', type: 'longLong' }], 'int', '取得图像 DIP 高度。', { visibility: 'advanced' }),

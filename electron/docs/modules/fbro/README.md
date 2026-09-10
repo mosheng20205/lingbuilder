@@ -1,7 +1,7 @@
 <!-- 此文件由 electron/scripts/generate-cef3-fbro-event-docs.ts 生成。请修改 FBro 事件目录或模块 manifest 后运行 npm run module:fbro-docs。 -->
 # FBro 模块事件与接口参考
 
-本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 586 条面向用户的中文接口。
+本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 588 条面向用户的中文接口。
 
 ## 快速使用
 
@@ -232,13 +232,13 @@
 | FBro指纹浏览器模块 | `lingbuilder.fbro.browser` | 115 |
 | FBro事件模块 | `lingbuilder.fbro.events` | 13 |
 | FBro会话模块 | `lingbuilder.fbro.session` | 14 |
-| FBro传输模块 | `lingbuilder.fbro.transfer` | 5 |
+| FBro传输模块 | `lingbuilder.fbro.transfer` | 6 |
 | FBro自动化模块 | `lingbuilder.fbro.automation` | 72 |
-| FBro受管对象模块 | `lingbuilder.fbro.objects` | 160 |
+| FBro受管对象模块 | `lingbuilder.fbro.objects` | 161 |
 | FBro高级网络模块 | `lingbuilder.fbro.network` | 18 |
 | FBro VIP 指纹模块 | `lingbuilder.fbro.vip` | 189 |
 
-以下 586 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
+以下 588 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
 
 
 ### 1. FBro指纹浏览器模块
@@ -406,15 +406,16 @@
 
 ### 4. FBro传输模块
 
-提供下载与原生打印高层能力。 模块 ID：`lingbuilder.fbro.transfer`；本节共 5 条用户接口。
+提供下载与原生打印高层能力。 模块 ID：`lingbuilder.fbro.transfer`；本节共 6 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
 | 1 | `FBro传输_开始下载` | `FBro传输_开始下载(控件名, 地址)` | 整数型 | 常用 | `LB_FBro_StartDownload` | 使用当前浏览器会话开始下载。 |
 | 2 | `FBro传输_打印` | `FBro传输_打印(控件名)` | 整数型 | 常用 | `LB_FBro_Print` | 打开当前浏览器页面的原生打印流程。 |
 | 3 | `FBro传输_异步生成PDF` | `FBro传输_异步生成PDF(控件名, 输出路径, 设置JSON)` | 长整数型 | 常用 | `LB_FBro_PrintToPdfAsync` | 异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。 |
-| 4 | `FBro传输_异步打开文件对话框` | `FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)` | 长整数型 | 常用 | `LB_FBro_RunFileDialogAsync` | 调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。 |
-| 5 | `FBro传输_异步截图` | `FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)` | 长整数型 | 常用 | `LB_FBro_CaptureScreenshotAsync` | 通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。 |
+| 4 | `FBro传输_生成PDF` | `FBro传输_生成PDF(控件名, 输出路径, 设置JSON)` | 整数型 | 高级 | `LB_FBro_PrintToPdfSync` | 同步生成 PDF 并等待完成（60 秒超时）；设置 JSON 传空文本使用默认，返回 1 表示文件已生成。 |
+| 5 | `FBro传输_异步打开文件对话框` | `FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)` | 长整数型 | 常用 | `LB_FBro_RunFileDialogAsync` | 调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。 |
+| 6 | `FBro传输_异步截图` | `FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)` | 长整数型 | 常用 | `LB_FBro_CaptureScreenshotAsync` | 通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。 |
 
 ### 5. FBro自动化模块
 
@@ -497,7 +498,7 @@
 
 ### 6. FBro受管对象模块
 
-提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。 模块 ID：`lingbuilder.fbro.objects`；本节共 160 条用户接口。
+提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。 模块 ID：`lingbuilder.fbro.objects`；本节共 161 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
@@ -634,33 +635,34 @@
 | 131 | `FBro流_是否结束` | `FBro流_是否结束(流句柄)` | 整数型 | 高级 | `FBroStream_Eof` | 检查 Stream 是否到达结尾。 |
 | 132 | `FBro流_是否可能阻塞` | `FBro流_是否可能阻塞(流句柄)` | 整数型 | 高级 | `FBroStream_MayBlock` | 查询该 Stream 操作是否可能阻塞。 |
 | 133 | `FBro图像_异步下载` | `FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `FBroHsBrowserHost_DownloadImage` | 通过当前浏览器会话异步下载图像并返回任务 ID。 |
-| 134 | `FBro图像_是否为空` | `FBro图像_是否为空(图像句柄)` | 整数型 | 高级 | `FBroHsImage_IsEmpty` | 检查受管 Image 是否为空。 |
-| 135 | `FBro图像_取宽度` | `FBro图像_取宽度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetWidth` | 取得图像 DIP 宽度。 |
-| 136 | `FBro图像_取高度` | `FBro图像_取高度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetHeight` | 取得图像 DIP 高度。 |
-| 137 | `FBro图像_取表示信息JSON` | `FBro图像_取表示信息JSON(图像句柄, 缩放因子)` | 文本型 | 高级 | `FBroHsImage_GetRepresentationInfo` | 返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。 |
-| 138 | `FBro图像_转位图缓冲` | `FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)` | 长整数型 | 高级 | `FBroHsImage_GetAsBitmap` | 把最接近的位图表示复制到受管缓冲。 |
-| 139 | `FBro图像_转JPEG缓冲` | `FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)` | 长整数型 | 高级 | `FBroHsImage_GetAsJPEG` | 把图像编码为 JPEG 受管缓冲。 |
-| 140 | `FBro图像_转PNG缓冲` | `FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)` | 长整数型 | 高级 | `FBroHsImage_GetAsPNG` | 把图像编码为 PNG 受管缓冲。 |
-| 141 | `FBro证书_异步取当前` | `FBro证书_异步取当前(控件名)` | 长整数型 | 高级 | `LB_FBro_GetCurrentCertificateAsync` | 从当前可见导航项异步取得 TLS 证书任务。 |
-| 142 | `FBro证书_取主体` | `FBro证书_取主体(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSubject` | 取得受证书管理的主体 Principal 句柄。 |
-| 143 | `FBro证书_取颁发者` | `FBro证书_取颁发者(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetIssuer` | 取得受证书管理的颁发者 Principal 句柄。 |
-| 144 | `FBro证书_取序列号缓冲` | `FBro证书_取序列号缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSerialNumber` | 取得证书序列号受管缓冲。 |
-| 145 | `FBro证书_取DER缓冲` | `FBro证书_取DER缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncoded` | 取得 DER 编码证书受管缓冲。 |
-| 146 | `FBro证书_取PEM缓冲` | `FBro证书_取PEM缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncoded` | 取得 PEM 编码证书受管缓冲。 |
-| 147 | `FBro证书_取生效时间` | `FBro证书_取生效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidStart` | 取得证书生效 Unix 时间。 |
-| 148 | `FBro证书_取失效时间` | `FBro证书_取失效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidExpiry` | 取得证书失效 Unix 时间。 |
-| 149 | `FBro证书_取颁发链数量` | `FBro证书_取颁发链数量(证书句柄)` | 整数型 | 高级 | `FBroHsX509Certificate_GetIssuerChainSize` | 取得颁发链数量。 |
-| 150 | `FBro证书_取DER颁发链项` | `FBro证书_取DER颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncodedIssuerChain` | 取得指定颁发链项的 DER 受管缓冲。 |
-| 151 | `FBro证书_取PEM颁发链项` | `FBro证书_取PEM颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncodedIssuerChain` | 取得指定颁发链项的 PEM 受管缓冲。 |
-| 152 | `FBro证书主体_取显示名` | `FBro证书主体_取显示名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetDisplayName` | 取得证书主体显示名。 |
-| 153 | `FBro证书主体_取通用名` | `FBro证书主体_取通用名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCommonName` | 取得证书主体通用名。 |
-| 154 | `FBro证书主体_取地区名` | `FBro证书主体_取地区名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetLocalityName` | 取得证书主体地区名。 |
-| 155 | `FBro证书主体_取省州名` | `FBro证书主体_取省州名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetStateOrProvinceName` | 取得证书主体省或州名。 |
-| 156 | `FBro证书主体_取国家名` | `FBro证书主体_取国家名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCountryName` | 取得证书主体国家名。 |
-| 157 | `FBro证书主体_取组织JSON` | `FBro证书主体_取组织JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationNames` | 取得组织名 UTF-16 JSON 数组。 |
-| 158 | `FBro证书主体_取组织单位JSON` | `FBro证书主体_取组织单位JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationUnitNames` | 取得组织单位名 UTF-16 JSON 数组。 |
-| 159 | `FBro拖放数据_是否有图像` | `FBro拖放数据_是否有图像(拖放数据句柄)` | 整数型 | 高级 | `FBroHsDragData_HasImage` | 检查 DragEnter 事件对象是否携带图像。 |
-| 160 | `FBro拖放数据_取图像` | `FBro拖放数据_取图像(拖放数据句柄)` | 长整数型 | 高级 | `FBroHsDragData_GetImage` | 从 DragEnter 事件对象取得受管 Image 句柄。 |
+| 134 | `FBro图像_下载` | `FBro图像_下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `LB_FBro_DownloadImageSync` | 同步下载图像并直接返回图像句柄（60 秒超时，失败返回 0）；用完调用 FBro对象_释放。 |
+| 135 | `FBro图像_是否为空` | `FBro图像_是否为空(图像句柄)` | 整数型 | 高级 | `FBroHsImage_IsEmpty` | 检查受管 Image 是否为空。 |
+| 136 | `FBro图像_取宽度` | `FBro图像_取宽度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetWidth` | 取得图像 DIP 宽度。 |
+| 137 | `FBro图像_取高度` | `FBro图像_取高度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetHeight` | 取得图像 DIP 高度。 |
+| 138 | `FBro图像_取表示信息JSON` | `FBro图像_取表示信息JSON(图像句柄, 缩放因子)` | 文本型 | 高级 | `FBroHsImage_GetRepresentationInfo` | 返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。 |
+| 139 | `FBro图像_转位图缓冲` | `FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)` | 长整数型 | 高级 | `FBroHsImage_GetAsBitmap` | 把最接近的位图表示复制到受管缓冲。 |
+| 140 | `FBro图像_转JPEG缓冲` | `FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)` | 长整数型 | 高级 | `FBroHsImage_GetAsJPEG` | 把图像编码为 JPEG 受管缓冲。 |
+| 141 | `FBro图像_转PNG缓冲` | `FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)` | 长整数型 | 高级 | `FBroHsImage_GetAsPNG` | 把图像编码为 PNG 受管缓冲。 |
+| 142 | `FBro证书_异步取当前` | `FBro证书_异步取当前(控件名)` | 长整数型 | 高级 | `LB_FBro_GetCurrentCertificateAsync` | 从当前可见导航项异步取得 TLS 证书任务。 |
+| 143 | `FBro证书_取主体` | `FBro证书_取主体(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSubject` | 取得受证书管理的主体 Principal 句柄。 |
+| 144 | `FBro证书_取颁发者` | `FBro证书_取颁发者(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetIssuer` | 取得受证书管理的颁发者 Principal 句柄。 |
+| 145 | `FBro证书_取序列号缓冲` | `FBro证书_取序列号缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSerialNumber` | 取得证书序列号受管缓冲。 |
+| 146 | `FBro证书_取DER缓冲` | `FBro证书_取DER缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncoded` | 取得 DER 编码证书受管缓冲。 |
+| 147 | `FBro证书_取PEM缓冲` | `FBro证书_取PEM缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncoded` | 取得 PEM 编码证书受管缓冲。 |
+| 148 | `FBro证书_取生效时间` | `FBro证书_取生效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidStart` | 取得证书生效 Unix 时间。 |
+| 149 | `FBro证书_取失效时间` | `FBro证书_取失效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidExpiry` | 取得证书失效 Unix 时间。 |
+| 150 | `FBro证书_取颁发链数量` | `FBro证书_取颁发链数量(证书句柄)` | 整数型 | 高级 | `FBroHsX509Certificate_GetIssuerChainSize` | 取得颁发链数量。 |
+| 151 | `FBro证书_取DER颁发链项` | `FBro证书_取DER颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncodedIssuerChain` | 取得指定颁发链项的 DER 受管缓冲。 |
+| 152 | `FBro证书_取PEM颁发链项` | `FBro证书_取PEM颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncodedIssuerChain` | 取得指定颁发链项的 PEM 受管缓冲。 |
+| 153 | `FBro证书主体_取显示名` | `FBro证书主体_取显示名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetDisplayName` | 取得证书主体显示名。 |
+| 154 | `FBro证书主体_取通用名` | `FBro证书主体_取通用名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCommonName` | 取得证书主体通用名。 |
+| 155 | `FBro证书主体_取地区名` | `FBro证书主体_取地区名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetLocalityName` | 取得证书主体地区名。 |
+| 156 | `FBro证书主体_取省州名` | `FBro证书主体_取省州名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetStateOrProvinceName` | 取得证书主体省或州名。 |
+| 157 | `FBro证书主体_取国家名` | `FBro证书主体_取国家名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCountryName` | 取得证书主体国家名。 |
+| 158 | `FBro证书主体_取组织JSON` | `FBro证书主体_取组织JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationNames` | 取得组织名 UTF-16 JSON 数组。 |
+| 159 | `FBro证书主体_取组织单位JSON` | `FBro证书主体_取组织单位JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationUnitNames` | 取得组织单位名 UTF-16 JSON 数组。 |
+| 160 | `FBro拖放数据_是否有图像` | `FBro拖放数据_是否有图像(拖放数据句柄)` | 整数型 | 高级 | `FBroHsDragData_HasImage` | 检查 DragEnter 事件对象是否携带图像。 |
+| 161 | `FBro拖放数据_取图像` | `FBro拖放数据_取图像(拖放数据句柄)` | 长整数型 | 高级 | `FBroHsDragData_GetImage` | 从 DragEnter 事件对象取得受管 Image 句柄。 |
 
 ### 7. FBro高级网络模块
 
@@ -898,5 +900,5 @@
 - 模块清单：`electron/src/services/modules/builtinModules.ts`、`electron/src/services/modules/fbroModules.ts`、`electron/src/services/modules/fbroVipApiCatalog.ts`
 - 原生 Bridge：`electron/native/fbro-bridge/`
 
-类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：586。
+类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：588。
 
