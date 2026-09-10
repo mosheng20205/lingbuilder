@@ -614,6 +614,48 @@ LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetValueAsync(
 LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetPointAsync(
     LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
     void* user_data);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetChecked(LB_FBRO_OBJECT_HANDLE frame,
+                                                           const wchar_t* selector, int index, int check);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetSelected(LB_FBRO_OBJECT_HANDLE frame,
+                                                            const wchar_t* selector, int index, int select_index);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetInnerText(LB_FBRO_OBJECT_HANDLE frame,
+                                                             const wchar_t* selector, int index, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetOuterText(LB_FBRO_OBJECT_HANDLE frame,
+                                                             const wchar_t* selector, int index, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetInnerHTML(LB_FBRO_OBJECT_HANDLE frame,
+                                                             const wchar_t* selector, int index, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetOuterHTML(LB_FBRO_OBJECT_HANDLE frame,
+                                                             const wchar_t* selector, int index, const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoSetAttribute(LB_FBRO_OBJECT_HANDLE frame,
+                                                             const wchar_t* selector, int index, const wchar_t* name,
+                                                             const wchar_t* value);
+LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoDispatchEvent(LB_FBRO_OBJECT_HANDLE frame,
+                                                              const wchar_t* selector, int index,
+                                                              const wchar_t* event_flag, int key_code);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetCheckedAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetSelectedAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetInnerTextAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetOuterTextAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetInnerHTMLAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetOuterHTMLAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetAttributeAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, const wchar_t* name,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoHasAttributeAsync(
+    LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector, int index, LB_FBRO_TASK_CALLBACK callback,
+    void* user_data);
 LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameGetSourceAsync(
     LB_FBRO_OBJECT_HANDLE frame, LB_FBRO_TASK_CALLBACK callback, void* user_data);
 LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameGetTextAsync(

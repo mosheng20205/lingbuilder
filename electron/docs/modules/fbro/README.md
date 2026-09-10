@@ -1,7 +1,7 @@
 <!-- 此文件由 electron/scripts/generate-cef3-fbro-event-docs.ts 生成。请修改 FBro 事件目录或模块 manifest 后运行 npm run module:fbro-docs。 -->
 # FBro 模块事件与接口参考
 
-本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 570 条面向用户的中文接口。
+本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 586 条面向用户的中文接口。
 
 ## 快速使用
 
@@ -233,12 +233,12 @@
 | FBro事件模块 | `lingbuilder.fbro.events` | 13 |
 | FBro会话模块 | `lingbuilder.fbro.session` | 14 |
 | FBro传输模块 | `lingbuilder.fbro.transfer` | 5 |
-| FBro自动化模块 | `lingbuilder.fbro.automation` | 56 |
+| FBro自动化模块 | `lingbuilder.fbro.automation` | 72 |
 | FBro受管对象模块 | `lingbuilder.fbro.objects` | 160 |
 | FBro高级网络模块 | `lingbuilder.fbro.network` | 18 |
 | FBro VIP 指纹模块 | `lingbuilder.fbro.vip` | 189 |
 
-以下 570 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
+以下 586 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
 
 
 ### 1. FBro指纹浏览器模块
@@ -418,7 +418,7 @@
 
 ### 5. FBro自动化模块
 
-提供受管异步 JavaScript 任务与类型化 Frame 操作。 模块 ID：`lingbuilder.fbro.automation`；本节共 56 条用户接口。
+提供受管异步 JavaScript 任务与类型化 Frame 操作。 模块 ID：`lingbuilder.fbro.automation`；本节共 72 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
@@ -459,25 +459,41 @@
 | 35 | `FBro填表_赋值` | `FBro填表_赋值(框架句柄, 选择器, 序号, 值)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetValue` | 设置匹配元素的值（等效表单赋值）。 |
 | 36 | `FBro填表_取值` | `FBro填表_取值(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetValueAsync` | 读取匹配元素的值；内部等待任务完成后返回 JSON 结果。 |
 | 37 | `FBro填表_取坐标` | `FBro填表_取坐标(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetPointAsync` | 读取匹配元素页面坐标；内部等待任务完成后返回 JSON 结果。 |
-| 38 | `FBro框架_取源码` | `FBro框架_取源码(框架句柄)` | 长整数型 | 高级 | `LB_FBro_FrameGetSourceAsync` | 异步取框架完整 HTML 源码；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_保存文件 或 FBro缓冲_转文本。 |
-| 39 | `FBro框架_取文本` | `FBro框架_取文本(框架句柄)` | 长整数型 | 高级 | `LB_FBro_FrameGetTextAsync` | 异步取框架可见文本；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_转文本。 |
-| 40 | `FBro框架_遍历DOM` | `FBro框架_遍历DOM(框架句柄, 最大深度, 最大节点数)` | 长整数型 | 高级 | `LB_FBro_FrameVisitDomAsync` | 按官方 VisitDOM 遍历框架 DOM 并序列化为受管快照；内部等待任务完成，返回快照句柄（0=失败），节点用 FBro遍历_* 按序号访问；深度/节点数传 0 使用默认值（16/4000）。 |
-| 41 | `FBro遍历_取标题` | `FBro遍历_取标题(快照句柄)` | 文本型 | 高级 | `LB_FBro_DomGetTitle` | 读取 DOM 快照对应的页面标题。 |
-| 42 | `FBro遍历_取基础地址` | `FBro遍历_取基础地址(快照句柄)` | 文本型 | 高级 | `LB_FBro_DomGetBaseUrl` | 读取 DOM 快照对应文档的基础地址。 |
-| 43 | `FBro遍历_取节点数` | `FBro遍历_取节点数(快照句柄)` | 整数型 | 高级 | `LB_FBro_DomGetNodeCount` | 返回 DOM 快照捕获的节点总数。 |
-| 44 | `FBro遍历_取节点类型` | `FBro遍历_取节点类型(快照句柄, 节点序号)` | 整数型 | 高级 | `LB_FBro_DomGetNodeType` | 读取节点官方类型（0 未定义、1 元素、2 文本、3 注释等）。 |
-| 45 | `FBro遍历_取节点路径` | `FBro遍历_取节点路径(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodePath` | 读取节点路径 JSON（如 [0,2,1]，从 Body 起逐层子序号）；可传给按路径写回命令。 |
-| 46 | `FBro遍历_取节点名称` | `FBro遍历_取节点名称(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeName` | 读取节点名称（元素标签名小写或特殊节点名）。 |
-| 47 | `FBro遍历_取节点值` | `FBro遍历_取节点值(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeValue` | 读取节点值（文本/注释节点内容）。 |
-| 48 | `FBro遍历_取节点内部文本` | `FBro遍历_取节点内部文本(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeInnerText` | 读取元素的 innerText（超长截断到 4096 字符）。 |
-| 49 | `FBro遍历_取节点属性数` | `FBro遍历_取节点属性数(快照句柄, 节点序号)` | 整数型 | 高级 | `LB_FBro_DomGetNodeAttributeCount` | 返回元素节点捕获的属性个数。 |
-| 50 | `FBro遍历_取节点属性名` | `FBro遍历_取节点属性名(快照句柄, 节点序号, 属性序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeAttributeName` | 按序号读取元素属性名。 |
-| 51 | `FBro遍历_取节点属性值` | `FBro遍历_取节点属性值(快照句柄, 节点序号, 属性序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeAttributeValue` | 按序号读取元素属性值。 |
-| 52 | `FBro遍历_取节点属性` | `FBro遍历_取节点属性(快照句柄, 节点序号, 属性名)` | 文本型 | 高级 | `LB_FBro_DomGetNodeAttributeByName` | 按名称读取元素属性值；不存在返回空文本。 |
-| 53 | `FBro遍历_取焦点节点路径` | `FBro遍历_取焦点节点路径(快照句柄)` | 文本型 | 高级 | `LB_FBro_DomGetFocusedPath` | 读取遍历当时的焦点节点路径 JSON；无焦点节点返回空。 |
-| 54 | `FBro遍历_按路径取序号` | `FBro遍历_按路径取序号(快照句柄, 路径JSON)` | 整数型 | 高级 | `LB_FBro_DomFindNodeByPath` | 把节点路径 JSON 换算成节点序号；未找到返回 -1。 |
-| 55 | `FBro遍历_按路径设属性` | `FBro遍历_按路径设属性(框架句柄, 路径JSON, 属性名, 属性值)` | 整数型 | 高级 | `LB_FBro_DomSetAttributeByPathAsync` | 重新遍历定位路径节点并设置元素属性；内部等待任务完成，返回 1=成功。 |
-| 56 | `FBro遍历_按路径赋值` | `FBro遍历_按路径赋值(框架句柄, 路径JSON, 值)` | 整数型 | 高级 | `LB_FBro_DomSetValueByPathAsync` | 重新遍历定位路径节点并写入节点值（表单赋值语义）；内部等待任务完成，返回 1=成功。 |
+| 38 | `FBro填表_置选择框` | `FBro填表_置选择框(框架句柄, 选择器, 序号, 是否选中)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetChecked` | 设置匹配复选框/单选框的勾选状态（同步，发后即忘）。 |
+| 39 | `FBro填表_取选择框` | `FBro填表_取选择框(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetCheckedAsync` | 读取匹配元素勾选状态；内部等待任务完成后返回 JSON 结果。 |
+| 40 | `FBro填表_置选择项` | `FBro填表_置选择项(框架句柄, 选择器, 序号, 选项序号)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetSelected` | 把匹配下拉框选中第选项序号个 option（从 0 起）。 |
+| 41 | `FBro填表_取选择项` | `FBro填表_取选择项(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetSelectedAsync` | 读取匹配下拉框当前选中项序号；内部等待任务完成后返回 JSON 结果。 |
+| 42 | `FBro填表_置内文本` | `FBro填表_置内文本(框架句柄, 选择器, 序号, 文本)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetInnerText` | 设置匹配元素 innerText。 |
+| 43 | `FBro填表_取内文本` | `FBro填表_取内文本(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetInnerTextAsync` | 读取匹配元素 innerText；内部等待任务完成后返回 JSON 结果。 |
+| 44 | `FBro填表_置外文本` | `FBro填表_置外文本(框架句柄, 选择器, 序号, 文本)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetOuterText` | 设置匹配元素 outerText。 |
+| 45 | `FBro填表_取外文本` | `FBro填表_取外文本(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetOuterTextAsync` | 读取匹配元素 outerText；内部等待任务完成后返回 JSON 结果。 |
+| 46 | `FBro填表_置内代码` | `FBro填表_置内代码(框架句柄, 选择器, 序号, 代码文本)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetInnerHTML` | 设置匹配元素 innerHTML（富文本/标签结构）。 |
+| 47 | `FBro填表_取内代码` | `FBro填表_取内代码(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetInnerHTMLAsync` | 读取匹配元素 innerHTML；内部等待任务完成后返回 JSON 结果。 |
+| 48 | `FBro填表_置外代码` | `FBro填表_置外代码(框架句柄, 选择器, 序号, 代码文本)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetOuterHTML` | 设置匹配元素 outerHTML（含元素自身标签）。 |
+| 49 | `FBro填表_取外代码` | `FBro填表_取外代码(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetOuterHTMLAsync` | 读取匹配元素 outerHTML；内部等待任务完成后返回 JSON 结果。 |
+| 50 | `FBro填表_置属性` | `FBro填表_置属性(框架句柄, 选择器, 序号, 属性名, 值)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoSetAttribute` | 设置匹配元素的指定属性。 |
+| 51 | `FBro填表_取属性` | `FBro填表_取属性(框架句柄, 选择器, 序号, 属性名)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoGetAttributeAsync` | 读取匹配元素的指定属性；内部等待任务完成后返回 JSON 结果。 |
+| 52 | `FBro填表_元素是否存在` | `FBro填表_元素是否存在(框架句柄, 选择器, 序号)` | 文本型 | 高级 | `LB_FBro_FrameTianBiaoHasAttributeAsync` | 判断匹配元素是否存在；内部等待任务完成后返回 JSON 结果。 |
+| 53 | `FBro填表_触发事件` | `FBro填表_触发事件(框架句柄, 选择器, 序号, 事件名, 按键代码)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoDispatchEvent` | 在匹配元素上合成 DOM 事件；事件名如 onclick、ondblclick、keydown、change、input，按键代码回车传 13。 |
+| 54 | `FBro框架_取源码` | `FBro框架_取源码(框架句柄)` | 长整数型 | 高级 | `LB_FBro_FrameGetSourceAsync` | 异步取框架完整 HTML 源码；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_保存文件 或 FBro缓冲_转文本。 |
+| 55 | `FBro框架_取文本` | `FBro框架_取文本(框架句柄)` | 长整数型 | 高级 | `LB_FBro_FrameGetTextAsync` | 异步取框架可见文本；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_转文本。 |
+| 56 | `FBro框架_遍历DOM` | `FBro框架_遍历DOM(框架句柄, 最大深度, 最大节点数)` | 长整数型 | 高级 | `LB_FBro_FrameVisitDomAsync` | 按官方 VisitDOM 遍历框架 DOM 并序列化为受管快照；内部等待任务完成，返回快照句柄（0=失败），节点用 FBro遍历_* 按序号访问；深度/节点数传 0 使用默认值（16/4000）。 |
+| 57 | `FBro遍历_取标题` | `FBro遍历_取标题(快照句柄)` | 文本型 | 高级 | `LB_FBro_DomGetTitle` | 读取 DOM 快照对应的页面标题。 |
+| 58 | `FBro遍历_取基础地址` | `FBro遍历_取基础地址(快照句柄)` | 文本型 | 高级 | `LB_FBro_DomGetBaseUrl` | 读取 DOM 快照对应文档的基础地址。 |
+| 59 | `FBro遍历_取节点数` | `FBro遍历_取节点数(快照句柄)` | 整数型 | 高级 | `LB_FBro_DomGetNodeCount` | 返回 DOM 快照捕获的节点总数。 |
+| 60 | `FBro遍历_取节点类型` | `FBro遍历_取节点类型(快照句柄, 节点序号)` | 整数型 | 高级 | `LB_FBro_DomGetNodeType` | 读取节点官方类型（0 未定义、1 元素、2 文本、3 注释等）。 |
+| 61 | `FBro遍历_取节点路径` | `FBro遍历_取节点路径(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodePath` | 读取节点路径 JSON（如 [0,2,1]，从 Body 起逐层子序号）；可传给按路径写回命令。 |
+| 62 | `FBro遍历_取节点名称` | `FBro遍历_取节点名称(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeName` | 读取节点名称（元素标签名小写或特殊节点名）。 |
+| 63 | `FBro遍历_取节点值` | `FBro遍历_取节点值(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeValue` | 读取节点值（文本/注释节点内容）。 |
+| 64 | `FBro遍历_取节点内部文本` | `FBro遍历_取节点内部文本(快照句柄, 节点序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeInnerText` | 读取元素的 innerText（超长截断到 4096 字符）。 |
+| 65 | `FBro遍历_取节点属性数` | `FBro遍历_取节点属性数(快照句柄, 节点序号)` | 整数型 | 高级 | `LB_FBro_DomGetNodeAttributeCount` | 返回元素节点捕获的属性个数。 |
+| 66 | `FBro遍历_取节点属性名` | `FBro遍历_取节点属性名(快照句柄, 节点序号, 属性序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeAttributeName` | 按序号读取元素属性名。 |
+| 67 | `FBro遍历_取节点属性值` | `FBro遍历_取节点属性值(快照句柄, 节点序号, 属性序号)` | 文本型 | 高级 | `LB_FBro_DomGetNodeAttributeValue` | 按序号读取元素属性值。 |
+| 68 | `FBro遍历_取节点属性` | `FBro遍历_取节点属性(快照句柄, 节点序号, 属性名)` | 文本型 | 高级 | `LB_FBro_DomGetNodeAttributeByName` | 按名称读取元素属性值；不存在返回空文本。 |
+| 69 | `FBro遍历_取焦点节点路径` | `FBro遍历_取焦点节点路径(快照句柄)` | 文本型 | 高级 | `LB_FBro_DomGetFocusedPath` | 读取遍历当时的焦点节点路径 JSON；无焦点节点返回空。 |
+| 70 | `FBro遍历_按路径取序号` | `FBro遍历_按路径取序号(快照句柄, 路径JSON)` | 整数型 | 高级 | `LB_FBro_DomFindNodeByPath` | 把节点路径 JSON 换算成节点序号；未找到返回 -1。 |
+| 71 | `FBro遍历_按路径设属性` | `FBro遍历_按路径设属性(框架句柄, 路径JSON, 属性名, 属性值)` | 整数型 | 高级 | `LB_FBro_DomSetAttributeByPathAsync` | 重新遍历定位路径节点并设置元素属性；内部等待任务完成，返回 1=成功。 |
+| 72 | `FBro遍历_按路径赋值` | `FBro遍历_按路径赋值(框架句柄, 路径JSON, 值)` | 整数型 | 高级 | `LB_FBro_DomSetValueByPathAsync` | 重新遍历定位路径节点并写入节点值（表单赋值语义）；内部等待任务完成，返回 1=成功。 |
 
 ### 6. FBro受管对象模块
 
@@ -882,5 +898,5 @@
 - 模块清单：`electron/src/services/modules/builtinModules.ts`、`electron/src/services/modules/fbroModules.ts`、`electron/src/services/modules/fbroVipApiCatalog.ts`
 - 原生 Bridge：`electron/native/fbro-bridge/`
 
-类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：570。
+类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：586。
 

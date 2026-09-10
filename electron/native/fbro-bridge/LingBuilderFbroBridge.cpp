@@ -5344,12 +5344,27 @@ class BridgeFrameActionTask final : public CefTask {
 };
 }  // namespace
 
+// 填表参数引号转义：官方 TianBiao 函数把选择器/文本拼进双引号 JS 字符串，
+// 与易语言封装层的「内置引号处理」同款语义（只转义双引号，反斜杠保持原样）。
+namespace {
+std::wstring EscapeTianBiaoText(const wchar_t* text) {
+  if (!text) return L"";
+  std::wstring value(text);
+  std::size_t position = 0;
+  while ((position = value.find(L'"', position)) != std::wstring::npos) {
+    value.insert(position, L"\\");
+    position += 2;
+  }
+  return value;
+}
+}  // namespace
+
 int __stdcall LB_FBro_FrameTianBiaoClick(LB_FBRO_OBJECT_HANDLE frame, const wchar_t* selector,
                                          int index) {
   int status = LB_FBRO_OK;
   auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
   if (!state) return status;
-  FBroHsBrowserFrameTianBiao_SetClick(state->frame, CefString(selector ? selector : L""), index);
+  FBroHsBrowserFrameTianBiao_SetClick(state->frame, CefString(EscapeTianBiaoText(selector)), index);
   return LB_FBRO_OK;
 }
 int __stdcall LB_FBro_FrameTianBiaoScrollIntoView(LB_FBRO_OBJECT_HANDLE frame,
@@ -5358,7 +5373,7 @@ int __stdcall LB_FBro_FrameTianBiaoScrollIntoView(LB_FBRO_OBJECT_HANDLE frame,
   int status = LB_FBRO_OK;
   auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
   if (!state) return status;
-  FBroHsBrowserFrameTianBiao_SetScrollIntoView(state->frame, CefString(selector ? selector : L""),
+  FBroHsBrowserFrameTianBiao_SetScrollIntoView(state->frame, CefString(EscapeTianBiaoText(selector)),
                                                index, to_top ? TRUE : FALSE);
   return LB_FBRO_OK;
 }
@@ -5367,7 +5382,7 @@ int __stdcall LB_FBro_FrameTianBiaoSetFocus(LB_FBRO_OBJECT_HANDLE frame, const w
   int status = LB_FBRO_OK;
   auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
   if (!state) return status;
-  FBroHsBrowserFrameTianBiao_SetFocus(state->frame, CefString(selector ? selector : L""), index,
+  FBroHsBrowserFrameTianBiao_SetFocus(state->frame, CefString(EscapeTianBiaoText(selector)), index,
                                       focus ? TRUE : FALSE);
   return LB_FBRO_OK;
 }
@@ -5376,8 +5391,8 @@ int __stdcall LB_FBro_FrameTianBiaoSetValue(LB_FBRO_OBJECT_HANDLE frame, const w
   int status = LB_FBRO_OK;
   auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
   if (!state) return status;
-  FBroHsBrowserFrameTianBiao_SetValue(state->frame, CefString(selector ? selector : L""), index,
-                                      CefString(value ? value : L""));
+  FBroHsBrowserFrameTianBiao_SetValue(state->frame, CefString(EscapeTianBiaoText(selector)), index,
+                                      CefString(EscapeTianBiaoText(value)));
   return LB_FBRO_OK;
 }
 LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetValueAsync(LB_FBRO_OBJECT_HANDLE frame,
@@ -5393,7 +5408,8 @@ LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetValueAsync(LB_FBRO_OBJECT_
   const std::wstring selector_value = selector ? selector : L"";
   CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
       [frame_state, selector_value, index, value_callback]() {
-        FBroHsBrowserFrameTianBiao_GetValue(frame_state->frame, CefString(selector_value), index,
+        FBroHsBrowserFrameTianBiao_GetValue(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
                                             value_callback);
       },
       task, L"框架已释放");
@@ -5413,11 +5429,247 @@ LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetPointAsync(LB_FBRO_OBJECT_
   const std::wstring selector_value = selector ? selector : L"";
   CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
       [frame_state, selector_value, index, value_callback]() {
-        FBroHsBrowserFrameTianBiao_GetPoint(frame_state->frame, CefString(selector_value), index,
+        FBroHsBrowserFrameTianBiao_GetPoint(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
                                             value_callback);
       },
       task, L"框架已释放");
   ScheduleManagedTask(start, task, L"无法投递填表取坐标任务");
+  return task->handle;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetChecked(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, int check) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetChecked(state->frame, CefString(EscapeTianBiaoText(selector)), index, check ? TRUE : FALSE);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetSelected(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, int select_index) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetSelected(state->frame, CefString(EscapeTianBiaoText(selector)), index, select_index);
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetInnerText(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetInnerText(state->frame, CefString(EscapeTianBiaoText(selector)), index, CefString(EscapeTianBiaoText(value)));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetOuterText(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetOuterText(state->frame, CefString(EscapeTianBiaoText(selector)), index, CefString(EscapeTianBiaoText(value)));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetInnerHTML(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetInnerHTML(state->frame, CefString(EscapeTianBiaoText(selector)), index, CefString(EscapeTianBiaoText(value)));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetOuterHTML(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetOuterHTML(state->frame, CefString(EscapeTianBiaoText(selector)), index, CefString(EscapeTianBiaoText(value)));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoSetAttribute(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, const wchar_t* name, const wchar_t* value) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_SetAttribute(state->frame, CefString(EscapeTianBiaoText(selector)), index, CefString(EscapeTianBiaoText(name)), CefString(EscapeTianBiaoText(value)));
+  return LB_FBRO_OK;
+}
+int __stdcall LB_FBro_FrameTianBiaoDispatchEvent(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector, int index, const wchar_t* event_flag, int key_code) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!state) return status;
+  FBroHsBrowserFrameTianBiao_DispatchEvent(state->frame, CefString(EscapeTianBiaoText(selector)), index, CefString(EscapeTianBiaoText(event_flag)), key_code);
+  return LB_FBRO_OK;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetCheckedAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetChecked(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                      value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取选择框任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetSelectedAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetSelected(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                      value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取选择项任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetInnerTextAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetInnerText(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                      value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取内文本任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetOuterTextAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetOuterText(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                      value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取外文本任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetInnerHTMLAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetInnerHTML(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                      value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取内代码任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetOuterHTMLAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetOuterHTML(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                      value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取外代码任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoGetAttributeAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 const wchar_t* name,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  const std::wstring name_value = name ? name : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, name_value, value_callback]() {
+        FBroHsBrowserFrameTianBiao_GetAttribute(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                            CefString(EscapeTianBiaoText(name_value.c_str())),
+                                            value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表取属性任务");
+  return task->handle;
+}
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameTianBiaoHasAttributeAsync(LB_FBRO_OBJECT_HANDLE frame,
+                                                 const wchar_t* selector,
+                                                 int index,
+                                                 LB_FBRO_TASK_CALLBACK callback,
+                                                 void* user_data) {
+  int status = LB_FBRO_OK;
+  auto frame_state = GetObject(frame, LB_FBRO_OBJECT_FRAME, status);
+  if (!frame_state) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeTianBiaoValueCallback> value_callback = new BridgeTianBiaoValueCallback(task);
+  const std::wstring selector_value = selector ? selector : L"";
+  CefRefPtr<BridgeFrameActionTask> start = new BridgeFrameActionTask(
+      [frame_state, selector_value, index, value_callback]() {
+        FBroHsBrowserFrameTianBiao_HasAttribute(frame_state->frame,
+                                      CefString(EscapeTianBiaoText(selector_value.c_str())), index,
+                                      value_callback);
+      },
+      task, L"框架已释放");
+  ScheduleManagedTask(start, task, L"无法投递填表元素是否存在任务");
   return task->handle;
 }
 LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameGetSourceAsync(LB_FBRO_OBJECT_HANDLE frame,

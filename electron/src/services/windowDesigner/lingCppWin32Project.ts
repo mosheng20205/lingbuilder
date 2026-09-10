@@ -3103,6 +3103,14 @@ function generateFbroObjectRuntime(availabilityMacro: string, staticFunctions: b
   addInt('FBro填表_滚动到元素', 'LB_FBro_FrameTianBiaoScrollIntoView', 'long long object, const std::wstring& selector, int index, bool toTop', `${handle}, selector.c_str(), index, toTop ? 1 : 0`);
   addInt('FBro填表_聚焦元素', 'LB_FBro_FrameTianBiaoSetFocus', 'long long object, const std::wstring& selector, int index, bool focus', `${handle}, selector.c_str(), index, focus ? 1 : 0`);
   addInt('FBro填表_赋值', 'LB_FBro_FrameTianBiaoSetValue', 'long long object, const std::wstring& selector, int index, const std::wstring& value', `${handle}, selector.c_str(), index, value.c_str()`);
+  addInt('FBro填表_置选择框', 'LB_FBro_FrameTianBiaoSetChecked', 'long long object, const std::wstring& selector, int index, bool check', `${handle}, selector.c_str(), index, check ? 1 : 0`);
+  addInt('FBro填表_置选择项', 'LB_FBro_FrameTianBiaoSetSelected', 'long long object, const std::wstring& selector, int index, int selectIndex', `${handle}, selector.c_str(), index, selectIndex`);
+  addInt('FBro填表_置内文本', 'LB_FBro_FrameTianBiaoSetInnerText', 'long long object, const std::wstring& selector, int index, const std::wstring& text', `${handle}, selector.c_str(), index, text.c_str()`);
+  addInt('FBro填表_置外文本', 'LB_FBro_FrameTianBiaoSetOuterText', 'long long object, const std::wstring& selector, int index, const std::wstring& text', `${handle}, selector.c_str(), index, text.c_str()`);
+  addInt('FBro填表_置内代码', 'LB_FBro_FrameTianBiaoSetInnerHTML', 'long long object, const std::wstring& selector, int index, const std::wstring& html', `${handle}, selector.c_str(), index, html.c_str()`);
+  addInt('FBro填表_置外代码', 'LB_FBro_FrameTianBiaoSetOuterHTML', 'long long object, const std::wstring& selector, int index, const std::wstring& html', `${handle}, selector.c_str(), index, html.c_str()`);
+  addInt('FBro填表_置属性', 'LB_FBro_FrameTianBiaoSetAttribute', 'long long object, const std::wstring& selector, int index, const std::wstring& name, const std::wstring& value', `${handle}, selector.c_str(), index, name.c_str(), value.c_str()`);
+  addInt('FBro填表_触发事件', 'LB_FBro_FrameTianBiaoDispatchEvent', 'long long object, const std::wstring& selector, int index, const std::wstring& eventName, int keyCode', `${handle}, selector.c_str(), index, eventName.c_str(), keyCode`);
   addStringOut('FBro缓冲_转文本', 'LB_FBro_BufferToText', 'long long object', `static_cast<LB_FBRO_BUFFER_HANDLE>(object)`);
   add('std::wstring', 'FBro_取启动命令行', '', 'wchar_t value[16384] = {}; LB_FBro_GetStartupCommandLine(value, 16384); return value;', 'return L"";');
   addInt('FBro菜单_添加项', 'LB_FBro_MenuModelAddItem', 'long long object, int commandId, const std::wstring& label', `${handle}, commandId, label.c_str()`);
@@ -4663,6 +4671,94 @@ static std::wstring FBro填表_取坐标(long long frame, const wchar_t* selecto
     auto task = LB_FBro_FrameTianBiaoGetPointAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
     if (!task) return L"";
     LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 4096); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; return L"";
+#endif
+}
+static std::wstring FBro填表_取选择框(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoGetCheckedAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; return L"";
+#endif
+}
+static std::wstring FBro填表_取选择项(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoGetSelectedAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; return L"";
+#endif
+}
+static std::wstring FBro填表_取内文本(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoGetInnerTextAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; return L"";
+#endif
+}
+static std::wstring FBro填表_取外文本(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoGetOuterTextAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; return L"";
+#endif
+}
+static std::wstring FBro填表_取内代码(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoGetInnerHTMLAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; return L"";
+#endif
+}
+static std::wstring FBro填表_取外代码(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoGetOuterHTMLAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; return L"";
+#endif
+}
+static std::wstring FBro填表_取属性(long long frame, const wchar_t* selector, int index, const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoGetAttributeAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, name, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+    return value;
+#else
+    (void)frame; (void)selector; (void)index; (void)name; return L"";
+#endif
+}
+static std::wstring FBro填表_元素是否存在(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    wchar_t value[16384] = {};
+    auto task = LB_FBro_FrameTianBiaoHasAttributeAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+    if (!task) return L"";
+    LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
     return value;
 #else
     (void)frame; (void)selector; (void)index; return L"";
@@ -12026,6 +12122,94 @@ ${FBRO_RESOURCE_REPLACE_HELPERS}
         auto task = LB_FBro_FrameTianBiaoGetPointAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
         if (!task) return L"";
         LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 4096); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    std::wstring FBro填表_取选择框(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoGetCheckedAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    std::wstring FBro填表_取选择项(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoGetSelectedAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    std::wstring FBro填表_取内文本(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoGetInnerTextAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    std::wstring FBro填表_取外文本(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoGetOuterTextAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    std::wstring FBro填表_取内代码(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoGetInnerHTMLAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    std::wstring FBro填表_取外代码(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoGetOuterHTMLAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; return L"";
+#endif
+    }
+    std::wstring FBro填表_取属性(long long frame, const wchar_t* selector, int index, const wchar_t* name) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoGetAttributeAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, name, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
+        return value;
+#else
+        (void)frame; (void)selector; (void)index; (void)name; return L"";
+#endif
+    }
+    std::wstring FBro填表_元素是否存在(long long frame, const wchar_t* selector, int index) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        wchar_t value[16384] = {};
+        auto task = LB_FBro_FrameTianBiaoHasAttributeAsync(static_cast<LB_FBRO_OBJECT_HANDLE>(frame), selector, index, nullptr, nullptr);
+        if (!task) return L"";
+        LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 16384); LB_FBro_TaskRelease(task);
         return value;
 #else
         (void)frame; (void)selector; (void)index; return L"";
