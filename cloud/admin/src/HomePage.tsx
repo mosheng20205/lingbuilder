@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Boxes, Braces, CheckCircle2, Code2, Download, Github, Menu, Search, Terminal, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Boxes, Braces, CheckCircle2, Code2, Download, Github, Menu, MessageCircle, Search, Terminal, X } from 'lucide-react';
 import { useState } from 'react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import { WEBSITE_NAV_ITEMS, isDocsSectionItem } from './websiteNav';
@@ -24,6 +24,7 @@ export function HomePage() {
           <a href="#notes" onClick={() => setMobileOpen(false)}>开发记录</a>{WEBSITE_NAV_ITEMS.map(item => <a key={item.href} className={isDocsSectionItem(item) ? 'doc-link' : ''} href={item.href} onClick={() => setMobileOpen(false)}>{item.label}</a>)}
         </nav>
         <a className="blog-nav-action" href="/downloads"><Download size={16} /> 下载 IDE</a>
+        <a className="blog-nav-action" href="/community"><MessageCircle size={16} /> QQ交流群</a>
       </div>
     </header>
 

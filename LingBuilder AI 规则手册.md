@@ -104,6 +104,7 @@
 - FBro 2.4 核心现有 86 条高层命令。浏览器状态、缩放、静音、焦点、页内查找和 DevTools 状态/关闭必须使用对应 `FBro_` 命令；忽略缓存刷新、浏览器标识、实例比较、popup/文档/视图状态、关闭协商和自动尺寸也已有 `FBro_强制刷新`、`FBro_取浏览器标识`、`FBro_是否同一实例`、`FBro_是否弹出窗口/是否有文档/是否有视图`、`FBro_尝试关闭` 与 `FBro_设置自动调整大小`。独立进程状态、PID、CDP 调试端口、重启、显隐、大小、截图和下载视图使用对应 `FBro_` / `浏览器管理器_` 命令；不要用 JavaScript 模拟这些已存在的宿主 API。尚为 `planned` 的覆盖目录项不得生成伪命令或宣称可运行。
 - CDP 调试端口两种宿主模式都可用且都受 `enableDevTools` 控制：独立进程由 Host 按 `enableDevTools` 预留；进程内模式在生成程序初始化 FBro 运行时时，按项目内进程内控件的 `enableDevTools` 属性（缺省启用）决定是否预留回环端口并经 `LB_FBro_InitializeEx` 的 `remote_debugging_port` 启用——任一进程内控件启用即开启，全部关闭则不预留。CEF 调试端口只在初始化时生效、无法事后补设或关闭，因此没有也不允许出现运行时设置/关闭端口的命令。`FBro_取调试端口` 对两种模式都返回真实端口，返回 0 表示尚未初始化、未启用开发者工具或端口预留失败；新代码不得再假设「进程内模式没有可连接的调试端口」。端口只在本机回环使用。
 - `lingbuilder.fbro.objects` 已提供 132 条高级命令，覆盖任务、缓冲、Value、Dictionary、List、Binary、StringList、Stream、Image、X509Certificate、X509CertPrincipal 与 DragData。AI 只能保存返回的长整数句柄；线程绑定对象必须在所属线程使用，Image/Certificate/Principal/DragData 是 Bridge 持有的不可变跨线程安全句柄。嵌套对象由父句柄管理，父对象释放后其借用/交付的子句柄会返回 `-7`，不得继续访问。二进制、PNG/JPEG、DER/PEM 通过 `FBro缓冲_*` 传递，JSON 结果保持 UTF-16；不得猜测句柄、转换成地址或生成裸指针/STL/CefRefPtr。错误类型句柄返回 `-8`，重复释放返回 `-7`。图像使用 `FBro图像_异步下载` → `FBro任务_等待` → `FBro任务_取对象` 生产，当前页面证书使用 `FBro证书_异步取当前` 生产；事件中的 Certificate/DragData 使用 `FBro_取事件对象` 读取。任务、对象和缓冲均须在用完后调用对应释放命令。
+- FBro WS 拦截五事件（初始化WebSocket客户端创建/连接/关闭/消息/发送，2026-09-11 已落地）：官方在渲染进程触发这五钩子，因此生成 exe 兼任 CEF 子进程（火山同款架构）——`browser_subprocess_path` 指向生成 exe 自身（`LB_FBro_InitializeEx` 的 `use_self_subprocess` 选项），wWinMain 最先调用 `LB_FBro_RunCefSubprocessIfRequested`，`--type=` 子进程由桥进入 FBroHsInitPro 子进程流程并注册 BridgeInitEvent；渲染侧五钩子事件经命名管道中继回浏览器进程派发 .lcpp 处理器，篡改响应原路带回渲染进程写回。AI 编写示例/口播时须知：事件 fields 附带 `text`（消息载荷可 UTF-8 解码时）与 `websocket`（渲染侧句柄，位 30 偏见标记，只能传回给 `FBroWS客户端_取地址/取协议/取扩展/是否空` 做远程查询，句柄文本超 32 位必须用字段原文，禁止 `到整数` 截断）；连接事件的地址直接读 `url` 字段；篡改写回用 `FBro_设置事件响应JSON(控件名, "{\"text\":\"新内容\"}")`（服务端换算 data+size），消息/发送返回真=拦截、连接改写 `url`/`protocols` 后原地址不再访问。不得在钩子事件处理器里调用 `FBroWS客户端_发送文本/发送缓冲`（远程句柄不支持且可能死循环）。事件通道是每请求短连接严格锁步；诊断冻结/不触发时看 `.lingbuilder-build/fbro-cb-debug.log`（HookProbe pid+role+stage 时间线），实验开关 `LINGBUILDER_FBRO_RELAY_DISABLE`（直通）、`LINGBUILDER_FBRO_HOOK_DISABLE`（不启用钩子）、`LINGBUILDER_FBRO_PLAIN_RENDERER`（渲染裸事件类）。独立进程（Host）模式五事件转发未接通，勿在口播/示例中演示。**官方 SDK 升级核对清单**：只依赖 FBroHsInitPro/五虚函数/EnableWebsocketClientHook/FBroHsWSSClient_* 公开契约与三条行为假设（五钩子渲染进程触发、FBroHsInitPro 子进程自循环、缺省不写回放行），升级后重跑 ep15 冒烟甄别；禁止 proxy DLL/patch 官方二进制。
 - `lingbuilder.fbro.automation` 已提供 25 条命令。Frame 必须先通过 `FBro框架_取主框架/取焦点框架/按标识取框架/按名称取框架` 取得类型 16 的受管句柄，再读取属性或执行编辑、载入、脚本操作；标识和名称列表是 UTF-16 JSON。不得把框架句柄当地址，不得生成 `CefFrame`/`CefRefPtr`，使用结束后调用 `FBro对象_释放`。`取源代码/取文本/VisitDOM/V8` 尚未接通时不得伪造命令。
 - `lingbuilder.fbro.session` 已提供官方 CookieManager 的异步遍历、设置、删除、持久化刷新和实例/全局缓存清理。AI 必须保存任务 ID，先调用 `FBro任务_等待`，再单独调用 `FBro任务_取结果` 或 `FBro任务_取错误`，最后释放任务；不要在同一个函数实参列表中同时等待并取结果，因为 C++ 实参求值次序不保证符合源码书写顺序。Cookie 遍历结果为 UTF-16 JSON 数组，不得生成 RequestContext、CookieManager、Cookie 指针或直接调用 CEF API。全局缓存清理只在用户明确要求且启用专业模式时使用。
 
@@ -274,6 +275,7 @@ AI 不能因为自己熟悉英文 C++ 就强行替换中文 DSL。需要原生 C
 - AI 编辑分流不能只看当前活动文件是否为 `.lcpp`：当工作区存在完整 `designerProject` 且用户提示同时表达窗口/控件/界面目标与布局变更意图时，即使当前打开的是 `config.ini`、`.cpp` 或其它文件，也必须进入源码与设计器同步编辑提案；系统 AI 的有限源码上下文必须优先携带当前活动文件和项目内 `.lcpp` 文件。
 - 设计器校验必须允许已启用模块贡献的控件类型，以及当前模型中原样保留的旧控件类型；旧项目的 `Upload` / `DragUpload` 只能被保留或修改布局，不能借兼容放行新增未知控件。提案校验失败必须返回中文错误响应，不能让 Electron 本地服务进程退出。
 - F5、AI Bridge 和源码包读取只聚合当前项目源码根目录中的真实 `.lcpp` 文件；`.lingbuilder-build`、`generated/cpp`、`dist`、`node_modules` 等生成或工具目录中的源码副本不是项目输入，不能因其中重复的 `MainWindow` 等类名阻断构建，也不能要求用户手工删除这些产物。
+- 构建输出目录允许用户自定义（2026-09-11 起）：项目级 `buildProperties.buildDirectory/generatedSourceDirectory` 覆盖工作区默认（`.lingbuilder/build-configuration.json`），缺省为 `.lingbuilder-build/$(ProjectId)/$(Platform)/$(Configuration)` 与 `generated/cpp/$(ProjectId)`，支持宏 `$(ProjectId)/$(ProjectName)/$(Platform)/$(Configuration)`，只接受工作区相对路径。AI 不得假定构建产物固定在 `.lingbuilder-build` 下；生成代码、构建或清理建议中的路径应来自用户当前配置，且不得把自定义输出目录中的生成源码当项目输入。
 
 AI 修改窗口相关逻辑时必须：
 
@@ -421,6 +423,11 @@ AI 必须遵守：
 - 基础/高级普通 Win32 可视控件统一提供 `MouseDown`、`MouseEnter`、`MouseLeave`；只有当前原生样式可可靠取得焦点的控件才提供 `GotFocus`、`LostFocus`。标签、图片框、动态图像另有 `Click`；标签、图片框、动态图像、分组框、进度条、状态栏、动画控件和平面滚动条不提供焦点事件。颜色选择器和视频播放器使用各自专用事件，AI 不得为任何控件编造注册表中不存在或运行时不可达的通用回调。
 - 非可视资源属性必须使用设计器真实字段：ToolTip 为 `text/targetControlId/initialDelay`，FileDialog 为 `ownerWindowId/triggerControlId/dropTargetId/title/filter/multiple/allowDrop`，ContextMenu 为 `ownerWindowId/targetControlId/items`，PopupMenu 为 `ownerWindowId/items`，PropertySheet 为 `title/pages`。菜单项选择逐项绑定；属性页应用使用 `Applied` 事件卡片，AI 修改时必须同时维护资源绑定和 `.lcpp` 处理器。
 - 系统通用对话框使用高级控件模块已绑定的 `打开文件`、`保存文件`、`选择文件夹`、`选择颜色`、`选择字体`、`查找文本`、`替换文本`、`打印`、`页面设置`、`任务对话框`；上传控件使用同模块的 `上传_*` 命令，不得让 AI 拼接任意 shell 或隐藏宿主调用。
+
+## Visual Studio 工程导出工具集与生成事件规则（2026-09-11）
+
+- 生成的 `.vcxproj` 平台工具集不得写死 `v143`。导出、F5 中间工程和 windows-dll 模板统一消费 `electron/src/services/windowDesigner/msvcPlatformToolset.ts` 的探测结果：`vswhere` 找最新 C++ 安装 → 枚举 `MSBuild\Microsoft\VC\<版本>\Platforms\{Win32,x64}\PlatformToolsets` 中两平台共有的最新 `v<数字>` 工具集；非 Windows、无 vswhere 或无工具集目录时回退 `v143`。`exportVisualStudioProject` 未显式传 `platformToolset` 时自动探测；新增任何生成 vcxproj 的链路必须复用同一探测器，禁止再硬编码工具集（否则用户在本机拿到 MSB8020 无法编译的工程）。
+- 生成的 `<PostBuildEvent><Command>` 里多条命令必须以真实 CRLF 分隔，且写入 XML 时 CR 必须转成字符引用 `&#xD;`（`xmlEscapeMultilineText`）。原因：XML 解析会把文本节点中的 CRLF 规范化为 LF，而 cmd 执行 LF-only 多行批处理会按字节偏移错位解析后续行，表现为 MSB3073 退出码 3 +「文件名、目录名或卷标语法不正确」「系统找不到指定的路径」，且只有第一条命令能成功。首行保留 `if not exist "$(OutDir)" mkdir "$(OutDir)"` 兜底。手工改 vcxproj 模板时不得把换行改回裸 CRLF/LF 文本。
 
 ## 7. AI 编辑安全规则
 

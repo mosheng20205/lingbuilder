@@ -1194,6 +1194,12 @@ function intersects(area: Electron.Rectangle, bounds: { x: number; y: number; wi
 
 if (process.platform === 'win32') app.setAppUserModelId('cn.lingbuilder.ide');
 
+// 录制/多实例隔离：设置 LINGBUILDER_REC_USER_DATA 后使用独立 userData，
+// 与安装版互不抢占单实例锁，也不共享设置与最近工作区（见 录制/env.mjs）。
+if (process.env.LINGBUILDER_REC_USER_DATA) {
+  app.setPath('userData', process.env.LINGBUILDER_REC_USER_DATA);
+}
+
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
   app.quit();

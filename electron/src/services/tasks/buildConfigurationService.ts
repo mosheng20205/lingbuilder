@@ -1,9 +1,18 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { DEFAULT_BUILD_DIRECTORY_TEMPLATE, DEFAULT_GENERATED_SOURCE_DIRECTORY_TEMPLATE, validateBuildPathTemplate } from './buildPathService';
 
 export type BuildMode = 'Debug' | 'Release';
 export type BuildArchitecture = 'Win32' | 'x64';
-export interface BuildConfiguration { schemaVersion: 1; mode: BuildMode; architecture: BuildArchitecture }
+export interface BuildConfiguration {
+  schemaVersion: 1;
+  mode: BuildMode;
+  architecture: BuildArchitecture;
+  /** 工作区默认构建目录模板（工作区相对，支持 $(ProjectId) 等宏）；未设置时使用内置缺省。 */
+  buildDirectory?: string;
+  /** 工作区默认可复制生成源码目录模板；未设置时使用内置缺省。 */
+  generatedSourceDirectory?: string;
+}
 export const DEFAULT_BUILD_CONFIGURATION: BuildConfiguration = { schemaVersion: 1, mode: 'Debug', architecture: 'Win32' };
 export interface ModuleCompatibleBuildConfiguration {
   configuration: BuildConfiguration;
@@ -71,7 +80,14 @@ export function validateBuildConfiguration(value: any): BuildConfiguration {
   if (!value || (value.mode !== 'Debug' && value.mode !== 'Release') || (value.architecture !== 'Win32' && value.architecture !== 'x64')) {
     throw new Error('构建配置必须为 Debug/Release 和 Win32/x64 的有效组合。');
   }
-  return { schemaVersion: 1, mode: value.mode, architecture: value.architecture };
+  const result: BuildConfiguration = { schemaVersion: 1, mode: value.mode, architecture: value.architecture };
+  const buildDirectory = typeof value.buildDirectory === 'string' ? validateBuildPathTemplate(value.buildDirectory, '构建目录', DEFAULT_BUILD_DIRECTORY_TEMPLATE) : '';
+  const generatedSourceDirectory = typeof value.generatedSourceDirectory === 'string'
+    ? validateBuildPathTemplate(value.generatedSourceDirectory, '生成源码目录', DEFAULT_GENERATED_SOURCE_DIRECTORY_TEMPLATE)
+    : '';
+  if (typeof value.buildDirectory === 'string' && value.buildDirectory.trim()) result.buildDirectory = buildDirectory;
+  if (typeof value.generatedSourceDirectory === 'string' && value.generatedSourceDirectory.trim()) result.generatedSourceDirectory = generatedSourceDirectory;
+  return result;
 }
 
 export function getBuildCompilerFlags(configuration: BuildConfiguration, compiler: 'msvc' | 'g++' | 'clang++'): string[] {

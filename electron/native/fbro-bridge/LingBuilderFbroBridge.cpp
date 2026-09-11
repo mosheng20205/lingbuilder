@@ -114,6 +114,13 @@ CefRefPtr<FBroHsInitEvent> g_init_event;
 CefRefPtr<FBroVIPEvent> g_vip_event;
 std::filesystem::path g_runtime_directory;
 std::filesystem::path g_root_cache_directory;
+// 当前进程角色：Browser=生成 exe 的主进程（LB_FBro_InitializeEx）；
+// CefSubprocess=被官方 CEF 以 --type= 拉起的子进程
+// （LB_FBro_RunCefSubprocessIfRequested）。CefSubprocess 角色下五钩子 override
+// 在渲染进程内被触发，派发改为经命名管道中继回浏览器进程（见
+// 「WS 拦截五事件跨进程中继」一节）。
+enum class BridgeProcessRole { Browser, CefSubprocess };
+BridgeProcessRole g_process_role = BridgeProcessRole::Browser;
 std::wstring g_license_error;
 std::vector<wchar_t> g_pending_license_credential;
 bool g_pending_credential_sets_browser_license = false;
@@ -1520,10 +1527,643 @@ void ApplyEventResponse(const std::wstring& response_json, const char* key,
   value.frames_per_buffer = EventResponseInt(audio, "framesPerBuffer", value.frames_per_buffer);
 }
 
+// ============================================================================
+// WS 拦截五事件跨进程中继（火山同款「生成 exe 兼任 CEF 子进程」架构）。
+//
+// 官方 FBroHsEvent.h 将 VIP WSS 拦截五事件归入 CefRenderProcessHandler 组，
+// 在渲染进程触发；火山应用（vipkg_main.cpp）把 browser_subprocess_path 指向
+// 自身 exe，FBroHsInitPro 在子进程内注册同一份事件类，五钩子因此直接打到
+// 应用代码。本桥同构：LB_FBro_RunCefSubprocessIfRequested 在 CEF 子进程角色
+// 里注册 BridgeInitEvent，渲染侧五钩子经本节命名管道中继回浏览器进程派发，
+// 篡改响应原路带回渲染进程写回（HANDLE& 出参指针只在渲染进程内有效）。
+//
+// 依赖的官方公开契约（SDK 升级核对清单，签名漂移即编译失败、行为漂移即冒烟
+// 失败；不使用任何官方内部符号、DLL 代理或二进制补丁）：
+//   FBroHsInitPro(FBroInitSettings*, CefRefPtr<FBroHsInitEvent>, int)
+//   FBroHsInitEvent::OnWebSocketClient{Create,Close,Connect,Message,Send}
+//   FBroHsVIPControl_EnableWebsocketClientHook
+//   FBroHsWSSClient_{IsNull,GetAddress,GetProtocol,GetExtensions}
+//
+// 线路协议（事件通道为「每请求一条短连接」的严格锁步问答，杜绝共享长连接的
+// 交叉阻塞；查询通道为单条长连接）：
+//   渲染 → 浏览器：op=wss-event（五钩子转发；payloadBase64 携带消息载荷）。
+//   浏览器 → 渲染：op=wss-query（读取渲染侧 WSS 对象属性，供访问器命令路由）。
+// 便捷语义（中继层扩展，不进入官方 API 面）：事件 fields 追加 "text"（载荷
+// 可无损 UTF-8 解码时）；响应 JSON 支持 {"text":"..."} 简写，服务端换算为
+// data(base64)+size 后交还渲染侧写回。
+
+namespace {
+
+constexpr uint32_t kRelayMaxMessageBytes = 64u << 20;
+constexpr DWORD kRelayEventTimeoutMs = 6000;
+constexpr DWORD kRelayQueryTimeoutMs = 3000;
+// 渲染侧受管句柄加位 30 后再随事件下发，避免与浏览器进程本地句柄（自 2^32
+// 起计数，位 30 恒为 0）混淆；加位后数值仍 < 2^33，可安全过 JSON 文本中转。
+constexpr LB_FBRO_OBJECT_HANDLE kRemoteWssHandleBias = 0x40000000ULL;
+
+void HookProbe(const wchar_t* stage) {
+  FILE* f = nullptr;
+  if (_wfopen_s(&f, L"T:/electron/lingbuilder/.lingbuilder-build/fbro-cb-debug.log", L"a") != 0 || !f) return;
+  fwprintf(f, L"pid=%lu role=%s %s tick=%lu\n",
+           static_cast<unsigned long>(GetCurrentProcessId()),
+           g_process_role == BridgeProcessRole::CefSubprocess ? L"sub" : L"browser",
+           stage, static_cast<unsigned long>(GetTickCount()));
+  fclose(f);
+}
+
+bool RelayReadExact(HANDLE pipe, void* buffer, size_t size) {
+  auto* cursor = static_cast<unsigned char*>(buffer);
+  size_t remaining = size;
+  while (remaining > 0) {
+    DWORD read_bytes = 0;
+    const DWORD chunk = static_cast<DWORD>((std::min)(remaining, static_cast<size_t>(1) << 20));
+    if (!ReadFile(pipe, cursor, chunk, &read_bytes, nullptr) || read_bytes == 0) return false;
+    cursor += read_bytes;
+    remaining -= read_bytes;
+  }
+  return true;
+}
+
+bool RelayWriteAll(HANDLE pipe, const void* buffer, size_t size) {
+  const auto* cursor = static_cast<const unsigned char*>(buffer);
+  size_t remaining = size;
+  while (remaining > 0) {
+    DWORD written = 0;
+    const DWORD chunk = static_cast<DWORD>((std::min)(remaining, static_cast<size_t>(1) << 20));
+    if (!WriteFile(pipe, cursor, chunk, &written, nullptr) || written == 0) return false;
+    cursor += written;
+    remaining -= written;
+  }
+  return true;
+}
+
+bool RelayReadMessage(HANDLE pipe, std::string& message) {
+  uint32_t size = 0;
+  if (!RelayReadExact(pipe, &size, sizeof(size))) return false;
+  if (size == 0 || size > kRelayMaxMessageBytes) return false;
+  message.resize(size);
+  return RelayReadExact(pipe, message.data(), size);
+}
+
+bool RelayWriteMessage(HANDLE pipe, const std::string& message) {
+  if (message.empty() || message.size() > kRelayMaxMessageBytes) return false;
+  const uint32_t size = static_cast<uint32_t>(message.size());
+  if (!RelayWriteAll(pipe, &size, sizeof(size))) return false;
+  return RelayWriteAll(pipe, message.data(), size);
+}
+
+CefRefPtr<CefDictionaryValue> RelayParseJson(const std::string& utf8) {
+  if (utf8.empty()) return {};
+  CefString text;
+  if (!text.FromString(utf8)) return {};
+  const auto value = CefParseJSON(text, JSON_PARSER_RFC);
+  if (!value || value->GetType() != VTYPE_DICTIONARY) return {};
+  return value->GetDictionary();
+}
+
+// 扁平 JSON 字段操作（BuildSafeFieldsJson 形态：键为简单标识符、值为带引号
+// 字符串；数字/句柄一律以十进制字符串承载）。
+bool RelayReplaceStringField(std::wstring& json, const std::wstring& key,
+                             const std::wstring& value) {
+  const std::wstring needle = L"\"" + key + L"\":\"";
+  const size_t at = json.find(needle);
+  if (at == std::wstring::npos) return false;
+  size_t end = at + needle.size();
+  while (end < json.size()) {
+    if (json[end] == L'"' && json[end - 1] != L'\\') break;
+    ++end;
+  }
+  if (end >= json.size()) return false;
+  json.replace(at + needle.size(), end - (at + needle.size()), value);
+  return true;
+}
+
+void RelayAppendStringField(std::wstring& json, const std::wstring& key,
+                            const std::wstring& value) {
+  if (json.size() < 2) return;
+  const std::wstring field =
+      L",\"" + JsonEscape(key) + L"\":\"" + JsonEscape(value) + L"\"";
+  json.insert(json.size() - 1, field);
+}
+
+bool RelayReadHandleField(const std::wstring& json, const std::wstring& key,
+                          LB_FBRO_OBJECT_HANDLE& value) {
+  const std::wstring needle = L"\"" + key + L"\":\"";
+  const size_t at = json.find(needle);
+  if (at == std::wstring::npos) return false;
+  size_t cursor = at + needle.size();
+  unsigned long long parsed = 0;
+  bool any = false;
+  while (cursor < json.size() && json[cursor] >= L'0' && json[cursor] <= L'9') {
+    parsed = parsed * 10 + static_cast<unsigned long long>(json[cursor] - L'0');
+    ++cursor;
+    any = true;
+  }
+  if (!any) return false;
+  value = static_cast<LB_FBRO_OBJECT_HANDLE>(parsed);
+  return true;
+}
+
+bool RelayDecodeStrictUtf8(const std::vector<unsigned char>& bytes, std::wstring& text) {
+  if (bytes.empty()) return false;
+  const int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+      reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), nullptr, 0);
+  if (needed <= 0) return false;
+  text.resize(static_cast<size_t>(needed));
+  return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+      reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()),
+      text.data(), needed) > 0;
+}
+
+class RelayConnection : public std::enable_shared_from_this<RelayConnection> {
+ public:
+  using RequestHandler = std::function<std::string(const std::string&)>;
+  RelayConnection(HANDLE pipe, RequestHandler handler)
+      : pipe_(pipe), handler_(std::move(handler)) {}
+  ~RelayConnection() { broken_.store(true); }
+  std::mutex write_mutex;
+
+  void SetHandler(RequestHandler handler) { handler_ = std::move(handler); }
+
+  void Start() {
+    auto self = shared_from_this();
+    std::thread([self] { RelayConnection::ReaderLoop(self); }).detach();
+  }
+
+  bool Request(const std::string& body, std::string& response, DWORD timeout_ms) {
+    if (broken_.load()) return false;
+    const uint64_t seq = next_seq_.fetch_add(1);
+    std::string wire = body;
+    wire.insert(1, "\"seq\":" + std::to_string(seq) + ",");
+    {
+      std::lock_guard<std::mutex> lock(write_mutex);
+      if (!RelayWriteMessage(pipe_, wire)) {
+        broken_.store(true);
+        return false;
+      }
+    }
+    std::unique_lock<std::mutex> lock(pending_mutex_);
+    const bool done = pending_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+        [&] { return responses_.count(seq) > 0 || broken_.load(); });
+    const auto found = responses_.find(seq);
+    if (!done || found == responses_.end()) {
+      responses_.erase(seq);
+      return false;
+    }
+    response = std::move(found->second);
+    responses_.erase(found);
+    return true;
+  }
+
+  bool IsBroken() const { return broken_.load(); }
+
+ private:
+  static void ReaderLoop(std::shared_ptr<RelayConnection> self) {
+    for (;;) {
+      std::string message;
+      if (!RelayReadMessage(self->pipe_, message)) break;
+      if (message.find("\"op\":") == std::string::npos) {
+        const auto dict = RelayParseJson(message);
+        const uint64_t seq = dict ? static_cast<uint64_t>(dict->GetInt("resp")) : 0;
+        {
+          std::lock_guard<std::mutex> lock(self->pending_mutex_);
+          self->responses_.emplace(seq, std::move(message));
+        }
+        self->pending_cv_.notify_all();
+        continue;
+      }
+      std::string answer;
+      if (self->handler_) answer = self->handler_(message);
+      if (answer.empty()) answer = "{\"resp\":0,\"action\":0}";
+      std::lock_guard<std::mutex> lock(self->write_mutex);
+      if (!RelayWriteMessage(self->pipe_, answer)) break;
+    }
+    self->broken_.store(true);
+    self->pending_cv_.notify_all();
+  }
+
+  HANDLE pipe_;
+  RequestHandler handler_;
+  std::mutex pending_mutex_;
+  std::condition_variable pending_cv_;
+  std::map<uint64_t, std::string> responses_;
+  std::atomic<uint64_t> next_seq_{1};
+  std::atomic<bool> broken_{false};
+};
+
+BrowserState* FindBrowserStateByCefIdentifier(int identifier) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  for (auto& item : g_browsers) {
+    if (item.second->browser && item.second->browser->GetIdentifier() == identifier) {
+      return item.second.get();
+    }
+  }
+  return nullptr;
+}
+
+std::wstring RelayExpandTextTamper(const std::wstring& response_json) {
+  if (response_json.empty() || response_json == L"{}") return response_json;
+  const auto dict = RelayParseJson(ToUtf8(response_json));
+  if (!dict || dict->GetType("text") != VTYPE_STRING) return response_json;
+  const std::string utf8 = ToUtf8(dict->GetString("text").ToWString());
+  const std::wstring encoded = CefBase64Encode(utf8.c_str(), utf8.size()).ToWString();
+  std::wstring rebuilt = L"{\"data\":\"" + encoded + L"\",\"size\":"
+      + std::to_wstring(utf8.size()) + L"}";
+  std::vector<CefString> keys;
+  if (dict->GetKeys(keys)) {
+    for (const auto& key : keys) {
+      const std::wstring name = key.ToWString();
+      if (name == L"text" || name == L"data" || name == L"size") continue;
+      if (dict->GetType(key) == VTYPE_STRING) {
+        rebuilt.insert(rebuilt.size() - 1,
+            L",\"" + JsonEscape(name) + L"\":\""
+                + JsonEscape(dict->GetString(key).ToWString()) + L"\"");
+      }
+    }
+  }
+  return rebuilt;
+}
+
+// 渲染侧读线程：应答浏览器进程的 WSS 对象属性查询。
+std::string RelayAnswerWssQuery(const std::string& request_utf8) {
+  const auto request = RelayParseJson(request_utf8);
+  if (!request || request->GetType("op") != VTYPE_STRING
+      || request->GetString("op").ToString() != "wss-query") {
+    return "{\"resp\":0,\"ok\":false}";
+  }
+  const int seq = request->GetInt("seq");
+  const auto fail = [seq] {
+    return ToUtf8(L"{\"resp\":" + std::to_wstring(seq) + L",\"ok\":false}");
+  };
+  LB_FBRO_OBJECT_HANDLE handle = 0;
+  if (request->GetType("handle") == VTYPE_STRING) {
+    handle = static_cast<LB_FBRO_OBJECT_HANDLE>(
+        wcstoull(request->GetString("handle").ToWString().c_str(), nullptr, 10));
+  } else if (request->GetType("handle") == VTYPE_INT) {
+    handle = static_cast<LB_FBRO_OBJECT_HANDLE>(request->GetInt("handle"));
+  }
+  handle &= ~kRemoteWssHandleBias;
+  const std::wstring method = request->GetType("method") == VTYPE_STRING
+      ? request->GetString("method").ToWString() : std::wstring();
+  int status = LB_FBRO_OK;
+  auto state = GetObject(handle, LB_FBRO_OBJECT_WSS_CLIENT, status);
+  if (!state) return fail();
+  if (method == L"isNull") {
+    return ToUtf8(L"{\"resp\":" + std::to_wstring(seq) + L",\"ok\":true,\"flag\":"
+        + std::to_wstring(FBroHsWSSClient_IsNull(state->wss_client) ? 1 : 0) + L"}");
+  }
+  CefRefPtr<FBroString> value;
+  if (method == L"address") value = FBroHsWSSClient_GetAddress(state->wss_client);
+  else if (method == L"protocol") value = FBroHsWSSClient_GetProtocol(state->wss_client);
+  else if (method == L"extensions") value = FBroHsWSSClient_GetExtensions(state->wss_client);
+  else return fail();
+  return ToUtf8(L"{\"resp\":" + std::to_wstring(seq) + L",\"ok\":true,\"value\":\""
+      + JsonEscape(FromFbroString(value)) + L"\"}");
+}
+
+void RelayRegisterRemoteWss(LB_FBRO_OBJECT_HANDLE handle, unsigned long renderer_pid);
+
+// 浏览器进程侧：处理渲染进程转发的五钩子事件，按 CEF 浏览器 ID 找到本地
+// BrowserState 同步派发（.lcpp 处理器 + 篡改响应），返回应答报文。
+std::string RelayHandleEventRequest(const std::string& request_utf8) {
+  const auto request = RelayParseJson(request_utf8);
+  const auto respond = [](int seq, int action, const std::wstring& response_json) {
+    return ToUtf8(L"{\"resp\":" + std::to_wstring(seq) + L",\"action\":"
+        + std::to_wstring(action) + L",\"responseJson\":\""
+        + JsonEscape(response_json) + L"\"}");
+  };
+  if (!request) return respond(0, LB_FBRO_EVENT_ACTION_DEFAULT, L"");
+  const int seq = request->GetInt("seq");
+  const int browser_id = request->GetInt("browserId");
+  const uint32_t flags = static_cast<uint32_t>(request->GetInt("flags"));
+  const std::wstring event_id = request->GetType("eventId") == VTYPE_STRING
+      ? request->GetString("eventId").ToWString() : std::wstring();
+  const std::wstring official_name = request->GetType("officialName") == VTYPE_STRING
+      ? request->GetString("officialName").ToWString() : std::wstring();
+  const std::wstring event_name = request->GetType("eventName") == VTYPE_STRING
+      ? request->GetString("eventName").ToWString() : std::wstring();
+  std::wstring fields = request->GetType("fields") == VTYPE_STRING
+      ? request->GetString("fields").ToWString() : L"{}";
+
+  LB_FBRO_OBJECT_HANDLE remote_handle = 0;
+  RelayReadHandleField(fields, L"websocket", remote_handle);
+  if (remote_handle) {
+    RelayReplaceStringField(fields, L"websocket",
+        std::to_wstring(remote_handle | kRemoteWssHandleBias));
+  }
+
+  std::vector<unsigned char> payload;
+  if (request->GetType("payloadBase64") == VTYPE_STRING) {
+    const std::string encoded = request->GetString("payloadBase64");
+    if (!encoded.empty()) {
+      if (auto binary = CefBase64Decode(encoded)) {
+        const size_t size = static_cast<size_t>(binary->GetSize());
+        payload.resize(size);
+        if (size > 0) binary->GetData(payload.data(), size, 0);
+      }
+    }
+  }
+  if (!payload.empty()) {
+    const LB_FBRO_BUFFER_HANDLE local = RegisterBuffer(payload);
+    RelayReplaceStringField(fields, L"data", std::to_wstring(local));
+  } else {
+    RelayReplaceStringField(fields, L"data", L"0");
+  }
+  std::wstring text;
+  if (!payload.empty() && RelayDecodeStrictUtf8(payload, text)) {
+    RelayAppendStringField(fields, L"text", text);
+  }
+  if (remote_handle) {
+    RelayRegisterRemoteWss(remote_handle | kRemoteWssHandleBias,
+                           GetCurrentProcessId());
+  }
+
+  std::wstring response_json;
+  int action = LB_FBRO_EVENT_ACTION_DEFAULT;
+  if (BrowserState* state = FindBrowserStateByCefIdentifier(browser_id)) {
+    action = DispatchEventV3(*state, event_id, official_name, event_name, fields, 0,
+                             flags, 0, 0, 0, &response_json);
+  }
+  return respond(seq, action, RelayExpandTextTamper(response_json));
+}
+
+class HookRelayServer {
+ public:
+  static HookRelayServer& Instance() {
+    static HookRelayServer server;
+    return server;
+  }
+
+  bool Start() {
+    std::lock_guard<std::mutex> lock(start_mutex_);
+    if (running_.load()) return true;
+    wchar_t name[MAX_PATH]{};
+    swprintf_s(name, L"\\\\.\\pipe\\LingBuilderFbroHook-%lu",
+               static_cast<unsigned long>(GetCurrentProcessId()));
+    pipe_name_ = name;
+    if (!SetEnvironmentVariableW(L"LINGBUILDER_FBRO_HOOK_PIPE", pipe_name_.c_str())) {
+      return false;
+    }
+    running_.store(true);
+    std::thread([this] { AcceptLoop(); }).detach();
+    return true;
+  }
+
+  // 登记渲染进程的查询通道（pid → 查询连接），并记录远程 WSS 句柄归属。
+  void BindQueryChannel(unsigned long renderer_pid,
+                        std::shared_ptr<RelayConnection> connection) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    query_channels_[renderer_pid] = std::move(connection);
+  }
+
+  void RegisterRemoteWss(LB_FBRO_OBJECT_HANDLE handle, unsigned long renderer_pid) {
+    if (!handle) return;
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    remote_wss_[handle] = renderer_pid;
+  }
+
+  bool QueryRemoteWss(LB_FBRO_OBJECT_HANDLE handle, const char* method,
+                      std::wstring& value, int& flag) {
+    std::shared_ptr<RelayConnection> channel;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      const auto found = remote_wss_.find(handle);
+      if (found == remote_wss_.end()) return false;
+      const auto channel_found = query_channels_.find(found->second);
+      if (channel_found == query_channels_.end()) return false;
+      channel = channel_found->second;
+    }
+    if (!channel || channel->IsBroken()) return false;
+    std::wstring request = L"{\"op\":\"wss-query\",\"handle\":\""
+        + std::to_wstring(handle) + L"\",\"method\":\""
+        + JsonEscape(FromUtf8(method)) + L"\"}";
+    std::string response;
+    if (!channel->Request(ToUtf8(request), response, kRelayQueryTimeoutMs)) return false;
+    const auto dict = RelayParseJson(response);
+    if (!dict || dict->GetType("ok") != VTYPE_BOOL || !dict->GetBool("ok")) return false;
+    if (dict->GetType("flag") == VTYPE_INT) flag = dict->GetInt("flag");
+    if (dict->GetType("value") == VTYPE_STRING) value = dict->GetString("value").ToWString();
+    return true;
+  }
+
+ private:
+  HookRelayServer() = default;
+
+  void AcceptLoop() {
+    while (running_.load()) {
+      HANDLE pipe = CreateNamedPipeW(pipe_name_.c_str(), PIPE_ACCESS_DUPLEX,
+          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES,
+          1 << 20, 1 << 20, 0, nullptr);
+      if (pipe == INVALID_HANDLE_VALUE) {
+        if (!running_.load()) break;
+        Sleep(200);
+        continue;
+      }
+      BOOL connected = ConnectNamedPipe(pipe, nullptr);
+      if (!connected && GetLastError() == ERROR_PIPE_CONNECTED) connected = TRUE;
+      if (!connected) {
+        CloseHandle(pipe);
+        continue;
+      }
+      HookProbe(L"server-accepted");
+      std::thread([pipe] { HookRelayServer::ServeConnection(pipe); }).detach();
+    }
+  }
+
+  // 每条连接一个服务线程：首条消息 hello → 查询通道长连接（应答 wss-query）；
+  // 否则视为一次五钩子事件转发：处理、应答、断开（严格锁步，无共享状态）。
+  static void ServeConnection(HANDLE pipe) {
+    std::string message;
+    if (!RelayReadMessage(pipe, message)) {
+      CloseHandle(pipe);
+      return;
+    }
+    const auto first = RelayParseJson(message);
+    if (first && first->GetType("op") == VTYPE_STRING
+        && first->GetString("op").ToString() == "hello") {
+      const unsigned long renderer_pid =
+          static_cast<unsigned long>(first->GetInt("pid"));
+      auto connection = std::make_shared<RelayConnection>(
+          pipe, [](const std::string& request) { return RelayAnswerWssQuery(request); });
+      HookRelayServer::Instance().BindQueryChannel(renderer_pid, connection);
+      connection->Start();
+      return;
+    }
+    const std::string answer = RelayHandleEventRequest(message);
+    RelayWriteMessage(pipe, answer);
+    FlushFileBuffers(pipe);
+    DisconnectNamedPipe(pipe);
+    CloseHandle(pipe);
+  }
+
+  std::mutex start_mutex_;
+  std::wstring pipe_name_;
+  std::atomic<bool> running_{false};
+  std::mutex state_mutex_;
+  std::map<unsigned long, std::shared_ptr<RelayConnection>> query_channels_;
+  std::map<LB_FBRO_OBJECT_HANDLE, unsigned long> remote_wss_;
+};
+
+void RelayRegisterRemoteWss(LB_FBRO_OBJECT_HANDLE handle, unsigned long renderer_pid) {
+  HookRelayServer::Instance().RegisterRemoteWss(handle, renderer_pid);
+}
+
+class HookRelayClient {
+ public:
+  static HookRelayClient& Instance() {
+    static HookRelayClient client;
+    return client;
+  }
+
+  // 查询通道：连接成功后先发 hello，浏览器据此把 wss-query 路由到本渲染进程。
+  bool EnsureConnected() {
+    std::lock_guard<std::mutex> lock(connect_mutex_);
+    if (connection_ && !connection_->IsBroken()) return true;
+    if (pipe_name_.empty()) {
+      wchar_t name[MAX_PATH]{};
+      if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_HOOK_PIPE", name, MAX_PATH) == 0) {
+        return false;
+      }
+      pipe_name_ = name;
+    }
+    for (int attempt = 0; attempt < 20 && !connection_; ++attempt) {
+      HANDLE pipe = CreateFileW(pipe_name_.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
+                                nullptr, OPEN_EXISTING, 0, nullptr);
+      if (pipe != INVALID_HANDLE_VALUE) {
+        connection_ = std::make_shared<RelayConnection>(
+            pipe, [](const std::string& request) { return RelayAnswerWssQuery(request); });
+        connection_->Start();
+        const std::wstring hello = L"{\"op\":\"hello\",\"pid\":"
+            + std::to_wstring(static_cast<unsigned long>(GetCurrentProcessId())) + L"}";
+        {
+          std::lock_guard<std::mutex> write_lock(connection_->write_mutex);
+          RelayWriteMessage(pipe, ToUtf8(hello));
+        }
+        break;
+      }
+      if (GetLastError() != ERROR_PIPE_BUSY) return false;
+      WaitNamedPipeW(pipe_name_.c_str(), 200);
+    }
+    return connection_ && !connection_->IsBroken();
+  }
+
+  int DispatchWssEvent(unsigned long renderer_pid, int browser_id,
+                       const wchar_t* event_id, const wchar_t* official_name,
+                       const wchar_t* event_name, const std::wstring& fields_json,
+                       uint32_t flags, std::wstring* response_json) {
+    std::wstring fields = fields_json.empty() ? L"{}" : fields_json;
+    // 载荷缓冲注册在渲染进程：把字节随事件带给浏览器进程重新注册为本地受管
+    // 缓冲，.lcpp 侧 FBro缓冲_* 命令才可读；本地句柄字段清零占位。
+    std::string payload_base64;
+    LB_FBRO_OBJECT_HANDLE payload_handle = 0;
+    if (RelayReadHandleField(fields, L"data", payload_handle) && payload_handle) {
+      int status = LB_FBRO_OK;
+      auto buffer = GetBuffer(static_cast<LB_FBRO_BUFFER_HANDLE>(payload_handle), status);
+      if (buffer && !buffer->bytes.empty()) {
+        payload_base64 =
+            CefBase64Encode(buffer->bytes.data(), buffer->bytes.size()).ToString();
+      }
+      RelayReplaceStringField(fields, L"data", L"0");
+    }
+    LB_FBRO_OBJECT_HANDLE wss_handle = 0;
+    if (RelayReadHandleField(fields, L"websocket", wss_handle) && wss_handle) {
+      RelayReplaceStringField(fields, L"websocket",
+          std::to_wstring(wss_handle | kRemoteWssHandleBias));
+    }
+    std::wstring request = L"{\"op\":\"wss-event\",\"pid\":"
+        + std::to_wstring(static_cast<unsigned long>(renderer_pid))
+        + L",\"browserId\":" + std::to_wstring(browser_id) + L",\"eventId\":\""
+        + JsonEscape(event_id ? event_id : L"") + L"\",\"officialName\":\""
+        + JsonEscape(official_name ? official_name : L"") + L"\",\"eventName\":\""
+        + JsonEscape(event_name ? event_name : L"") + L"\",\"flags\":"
+        + std::to_wstring(static_cast<unsigned long long>(flags)) + L",\"fields\":\""
+        + JsonEscape(fields) + L"\"";
+    if (!payload_base64.empty()) {
+      request += L",\"payloadBase64\":\"" + FromUtf8(payload_base64.c_str()) + L"\"";
+    }
+    request += L"}";
+
+    // 每次事件一条短连接：连接 → 写请求 → 读应答 → 关闭，严格锁步。
+    for (int attempt = 0; attempt < 20; ++attempt) {
+      HANDLE pipe = CreateFileW(pipe_name_.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
+                                nullptr, OPEN_EXISTING, 0, nullptr);
+      if (pipe == INVALID_HANDLE_VALUE) {
+        if (GetLastError() != ERROR_PIPE_BUSY) return LB_FBRO_EVENT_ACTION_DEFAULT;
+        WaitNamedPipeW(pipe_name_.c_str(), 200);
+        continue;
+      }
+      if (!RelayWriteMessage(pipe, ToUtf8(request))) {
+        CloseHandle(pipe);
+        return LB_FBRO_EVENT_ACTION_DEFAULT;
+      }
+      std::string response;
+      const bool ok = RelayReadMessage(pipe, response);
+      CloseHandle(pipe);
+      if (!ok) return LB_FBRO_EVENT_ACTION_DEFAULT;
+      const auto dict = RelayParseJson(response);
+      if (!dict) return LB_FBRO_EVENT_ACTION_DEFAULT;
+      if (response_json) {
+        *response_json = dict->GetType("responseJson") == VTYPE_STRING
+            ? dict->GetString("responseJson").ToWString() : std::wstring();
+      }
+      return dict->GetInt("action");
+    }
+    return LB_FBRO_EVENT_ACTION_DEFAULT;
+  }
+
+ private:
+  HookRelayClient() = default;
+
+  std::mutex connect_mutex_;
+  std::shared_ptr<RelayConnection> connection_;
+  std::wstring pipe_name_;
+};
+
+int RelayDispatchWssEventToBrowser(CefRefPtr<CefBrowser> browser, const wchar_t* event_id,
+                                   const wchar_t* official_name, const wchar_t* event_name,
+                                   const std::wstring& fields_json, uint32_t flags,
+                                   std::wstring* response_json) {
+  HookProbe(L"relay-dispatch-enter");
+  // 实验开关：置 1 时五钩子直通（不中继），用于隔离渲染侧行为。
+  if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_RELAY_DISABLE", nullptr, 0) != 0) {
+    return LB_FBRO_EVENT_ACTION_DEFAULT;
+  }
+  if (!HookRelayClient::Instance().EnsureConnected()) return LB_FBRO_EVENT_ACTION_DEFAULT;
+  const int browser_id = browser ? browser->GetIdentifier() : -1;
+  return HookRelayClient::Instance().DispatchWssEvent(
+      static_cast<unsigned long>(GetCurrentProcessId()), browser_id, event_id,
+      official_name, event_name, fields_json, flags, response_json);
+}
+
+bool QueryRemoteWssText(LB_FBRO_OBJECT_HANDLE object, const char* method,
+                        std::wstring& value, int& flag) {
+  return HookRelayServer::Instance().QueryRemoteWss(object, method, value, flag);
+}
+
+}  // namespace
+
+// 五钩子稳定事件 ID 的公共前缀（fbro.event.fbrohsinitevent.onwebsocketclient*）。
+bool IsRelayedWssEventId(const std::wstring& event_id) {
+  return event_id.rfind(L"fbro.event.fbrohsinitevent.onwebsocketclient", 0) == 0;
+}
+
 int DispatchGeneratedInitEvent(CefRefPtr<CefBrowser> browser, const wchar_t* event_id,
                                const wchar_t* official_name, const wchar_t* event_name,
                                const std::wstring& fields_json, uint32_t flags,
                                uint32_t max_hz, std::wstring* response_json = nullptr) {
+  // 渲染进程角色：五钩子事件经命名管道中继回浏览器进程派发；其余渲染侧回调
+  // （生成的 InitEvent override）与官方 FBroSubprocess.exe 薄壳一样缺省放行。
+  if (g_process_role == BridgeProcessRole::CefSubprocess) {
+    if (event_id && IsRelayedWssEventId(event_id)) {
+      HookProbe(L"renderer-hook-entry");
+      const int action = RelayDispatchWssEventToBrowser(browser, event_id, official_name,
+          event_name, fields_json, flags, response_json);
+      HookProbe(L"renderer-hook-exit");
+      return action;
+    }
+    return LB_FBRO_EVENT_ACTION_DEFAULT;
+  }
+  if (event_id && IsRelayedWssEventId(event_id)) HookProbe(L"browser-hook-entry");
   BrowserState* state = nullptr;
   {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
@@ -1534,7 +2174,11 @@ int DispatchGeneratedInitEvent(CefRefPtr<CefBrowser> browser, const wchar_t* eve
       }
     }
   }
-  if (!state) return LB_FBRO_EVENT_ACTION_DEFAULT;
+  if (!state) {
+    if (event_id && IsRelayedWssEventId(event_id)) HookProbe(L"browser-hook-exit-no-state");
+    return LB_FBRO_EVENT_ACTION_DEFAULT;
+  }
+  if (event_id && IsRelayedWssEventId(event_id)) HookProbe(L"browser-hook-exit-dispatch");
   return DispatchEventV3(*state, event_id ? event_id : L"", official_name ? official_name : L"",
                          event_name ? event_name : L"", fields_json, 0, flags, max_hz, 0, 0,
                          response_json);
@@ -1569,13 +2213,14 @@ std::string DecodeBase64Value(CefRefPtr<CefDictionaryValue> response, const char
   return bytes;
 }
 
-void ApplyWssDataReplacement(const std::wstring& response_json, HANDLE& data, int& size) {
+bool ApplyWssDataReplacement(const std::wstring& response_json, HANDLE& data, int& size) {
   const auto response = ParseEventResponse(response_json);
-  if (!response) return;
+  if (!response) return false;
   const std::string replacement = DecodeBase64Value(response, "data");
-  if (replacement.empty()) return;
+  if (replacement.empty()) return false;
   data = reinterpret_cast<HANDLE>(DuplicateAnsiBytes(replacement));
   size = static_cast<int>(replacement.size());
+  return true;
 }
 
 }  // namespace
@@ -2583,14 +3228,15 @@ class BridgeInitEvent final : public FBroHsInitEvent {
             {L"protocols", current_protocols}}),
         LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0, &response_json);
     const auto response = ParseEventResponse(response_json);
-    if (response) {
-      const std::string new_url = DecodeBase64Value(response, "url");
-      if (!new_url.empty()) returl = reinterpret_cast<HANDLE>(DuplicateAnsiBytes(new_url));
-      const std::string new_protocols = DecodeBase64Value(response, "protocols");
-      if (!new_protocols.empty()) {
-        protocols = reinterpret_cast<HANDLE>(DuplicateAnsiBytes(new_protocols));
-      }
-    }
+    // 与火山示例一致：未写回（响应缺省）时置 NULL 表示放行原值，避免官方层
+    // 把保留的原指针当作替换缓冲接管释放。
+    const std::string new_url = response ? DecodeBase64Value(response, "url") : std::string();
+    const std::string new_protocols =
+        response ? DecodeBase64Value(response, "protocols") : std::string();
+    returl = new_url.empty() ? nullptr : reinterpret_cast<HANDLE>(DuplicateAnsiBytes(new_url));
+    protocols = new_protocols.empty()
+        ? nullptr
+        : reinterpret_cast<HANDLE>(DuplicateAnsiBytes(new_protocols));
   }
   bool OnWebSocketClientMessage(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                                 CefRefPtr<FBroDOMWssClient> websocket, int type,
@@ -2638,7 +3284,10 @@ class BridgeInitEvent final : public FBroHsInitEvent {
             {L"data", std::to_wstring(payload)},
             {L"size", std::to_wstring(static_cast<long long>(size))}}),
         LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0, &response_json);
-    ApplyWssDataReplacement(response_json, data, size);
+    if (!ApplyWssDataReplacement(response_json, data, size)) {
+      // 与火山示例一致：未篡改置 NULL 表示放行原值，防止官方层接管释放原指针。
+      data = nullptr;
+    }
     return action == LB_FBRO_EVENT_ACTION_CANCEL || action == LB_FBRO_EVENT_ACTION_HANDLED;
   }
   IMPLEMENT_REFCOUNTING(BridgeInitEvent);
@@ -4366,7 +5015,22 @@ int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options)
   WSADATA winsock{};
   if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0) return -3;
   g_winsock_started = true;
-  const auto subprocess = g_runtime_directory / L"FBroSubprocess.exe";
+  // 火山同款架构（可选）：browser_subprocess_path 指向生成 exe 自身，由
+  // wWinMain 最先调用的 LB_FBro_RunCefSubprocessIfRequested 承接子进程角色。
+  // 旧生成工程未设 use_self_subprocess 时保持官方 FBroSubprocess.exe 薄壳。
+  const bool use_self_subprocess =
+      options->struct_size
+          >= offsetof(LB_FBRO_INITIALIZE_OPTIONS_V1, use_self_subprocess)
+              + sizeof(int32_t)
+      && options->use_self_subprocess != 0;
+  wchar_t self_executable[MAX_PATH]{};
+  if (use_self_subprocess) GetModuleFileNameW(nullptr, self_executable, MAX_PATH);
+  const auto subprocess = use_self_subprocess && self_executable[0]
+      ? std::filesystem::path(self_executable)
+      : g_runtime_directory / L"FBroSubprocess.exe";
+  // 命名管道中继服务端必须在 FBroHsInitPro（即 CEF 首个子进程派生）之前就绪，
+  // 管道名经环境变量继承给子进程；启动失败仅降级（五钩子事件缺省放行）。
+  HookRelayServer::Instance().Start();
   const auto cache = g_root_cache_directory;
   const auto log = g_root_cache_directory / L"fbro.log";
   const auto locales = g_runtime_directory / L"locales";
@@ -4477,6 +5141,77 @@ int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options)
 }
 
 int __stdcall LB_FBro_IsReady(void) { return g_ready ? 1 : 0; }
+
+// CEF 子进程角色入口（火山同款：生成的 exe 兼任 browser_subprocess_path）。
+// 由生成的 wWinMain 在任何初始化之前调用：命令行含 --type=（renderer/gpu/
+// utility 等）时，与官方 FBroSubprocess.exe 薄壳一样以 FBroHsInitPro 进入
+// 子进程流程（内部阻塞至子进程退出），并因注册了 BridgeInitEvent 而让 WS
+// 拦截五钩子在渲染进程可达（事件经命名管道中继回浏览器进程）。非子进程
+// 角色立即返回 LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED，调用方继续正常启动。
+int __stdcall LB_FBro_RunCefSubprocessIfRequested(void) {
+  int argument_count = 0;
+  wchar_t** arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
+  if (!arguments) return LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED;
+  bool subprocess_role = false;
+  for (int index = 1; index < argument_count; ++index) {
+    if (wcsncmp(arguments[index], L"--type=", 7) == 0) {
+      subprocess_role = true;
+      break;
+    }
+  }
+  LocalFree(arguments);
+  if (!subprocess_role) return LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED;
+
+  static std::atomic<bool> entered{false};
+  if (entered.exchange(true)) return 0;
+  g_process_role = BridgeProcessRole::CefSubprocess;
+
+  wchar_t self_executable[MAX_PATH]{};
+  GetModuleFileNameW(nullptr, self_executable, MAX_PATH);
+  std::filesystem::path runtime_directory = std::filesystem::path(self_executable);
+  g_runtime_directory = runtime_directory.parent_path();
+  g_root_cache_directory =
+      AbsoluteNormalizedPath(g_runtime_directory / L".fbro-global-cache");
+  std::error_code cache_error;
+  std::filesystem::create_directories(g_root_cache_directory, cache_error);
+  const std::string runtime_ansi = ToAnsi(g_runtime_directory.wstring());
+  const std::string subprocess_ansi = ToAnsi(std::wstring(self_executable));
+  const std::string cache_ansi = ToAnsi(g_root_cache_directory.wstring());
+  const std::string log_ansi = ToAnsi((g_root_cache_directory / L"fbro.log").wstring());
+  const std::string locales_ansi = ToAnsi((g_runtime_directory / L"locales").wstring());
+  FBroSetV8DefaultsHeapSize(4, 2048);
+  FBroInitSettings settings{};
+  settings.no_sandbox = TRUE;
+  settings.browser_subprocess_path = const_cast<char*>(subprocess_ansi.c_str());
+  settings.multi_threaded_message_loop = TRUE;
+  settings.external_message_pump = FALSE;
+  settings.windowless_rendering_enabled = FALSE;
+  settings.command_line_args_disabled = FALSE;
+  settings.cache_path = const_cast<char*>(cache_ansi.c_str());
+  settings.locale = const_cast<char*>("zh-CN");
+  settings.accept_language_list = const_cast<char*>("zh-CN,zh,en");
+  settings.log_file = const_cast<char*>(log_ansi.c_str());
+  settings.log_severity = LOGSEVERITY_DEFAULT;
+  settings.resources_dir_path = const_cast<char*>(runtime_ansi.c_str());
+  settings.locales_dir_path = const_cast<char*>(locales_ansi.c_str());
+  // 渲染进程不得重复预留 CDP 调试端口；浏览器进程已消费 VIP 环境变量，此处
+  // 亦不做授权/扩展钩子（火山在非浏览器进程直接跳过这些步骤）。
+  settings.remote_debugging_port = 0;
+  // 实验开关：LINGBUILDER_FBRO_PLAIN_RENDERER=1 时渲染分支注册裸事件类
+  // （与官方 FBroSubprocess.exe 薄壳一致），用于对照排查。
+  wchar_t plain_renderer[8]{};
+  const bool use_plain_renderer =
+      GetEnvironmentVariableW(L"LINGBUILDER_FBRO_PLAIN_RENDERER", plain_renderer,
+                              _countof(plain_renderer)) > 0
+      && wcscmp(plain_renderer, L"1") == 0;
+  g_init_event = use_plain_renderer ? new FBroHsInitEvent() : new BridgeInitEvent();
+  if (!FBroHsInitPro(&settings, g_init_event, 1024)) {
+    g_init_event = nullptr;
+    return 1;
+  }
+  g_init_event = nullptr;
+  return 0;
+}
 
 int __stdcall LB_FBro_GetVipLicenseInfoJson(wchar_t* result, size_t capacity) {
   const auto text = [](CefRefPtr<FBroString> value) { return JsonEscape(FromFbroString(value)); };
@@ -6711,6 +7446,13 @@ int __stdcall LB_FBro_ServerShutdown(LB_FBRO_OBJECT_HANDLE object) {
 // 中调用时天然满足该约定，桥内不做二次投递。
 
 int __stdcall LB_FBro_WssIsNull(LB_FBRO_OBJECT_HANDLE object) {
+  // 渲染进程受管的远程 WSS 句柄（位 30 偏见）：路由回渲染进程查询。
+  if (object & kRemoteWssHandleBias) {
+    std::wstring value;
+    int flag = 1;
+    if (!QueryRemoteWssText(object, "isNull", value, flag)) return 1;
+    return flag ? 1 : 0;
+  }
   int status = LB_FBRO_OK;
   auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
   if (!state) return 1;
@@ -6719,6 +7461,14 @@ int __stdcall LB_FBro_WssIsNull(LB_FBRO_OBJECT_HANDLE object) {
 
 int __stdcall LB_FBro_WssGetAddress(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
                                     size_t capacity) {
+  if (object & kRemoteWssHandleBias) {
+    std::wstring value;
+    int flag = 0;
+    if (!QueryRemoteWssText(object, "address", value, flag)) {
+      return LB_FBRO_ERROR_RELEASED_HANDLE;
+    }
+    return CopyResult(value, result, capacity);
+  }
   int status = LB_FBRO_OK;
   auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
   if (!state) return status;
@@ -6728,6 +7478,14 @@ int __stdcall LB_FBro_WssGetAddress(LB_FBRO_OBJECT_HANDLE object, wchar_t* resul
 
 int __stdcall LB_FBro_WssGetProtocol(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
                                      size_t capacity) {
+  if (object & kRemoteWssHandleBias) {
+    std::wstring value;
+    int flag = 0;
+    if (!QueryRemoteWssText(object, "protocol", value, flag)) {
+      return LB_FBRO_ERROR_RELEASED_HANDLE;
+    }
+    return CopyResult(value, result, capacity);
+  }
   int status = LB_FBRO_OK;
   auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
   if (!state) return status;
@@ -6737,6 +7495,14 @@ int __stdcall LB_FBro_WssGetProtocol(LB_FBRO_OBJECT_HANDLE object, wchar_t* resu
 
 int __stdcall LB_FBro_WssGetExtensions(LB_FBRO_OBJECT_HANDLE object, wchar_t* result,
                                        size_t capacity) {
+  if (object & kRemoteWssHandleBias) {
+    std::wstring value;
+    int flag = 0;
+    if (!QueryRemoteWssText(object, "extensions", value, flag)) {
+      return LB_FBRO_ERROR_RELEASED_HANDLE;
+    }
+    return CopyResult(value, result, capacity);
+  }
   int status = LB_FBRO_OK;
   auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
   if (!state) return status;
@@ -6745,6 +7511,7 @@ int __stdcall LB_FBro_WssGetExtensions(LB_FBRO_OBJECT_HANDLE object, wchar_t* re
 }
 
 int __stdcall LB_FBro_WssSend(LB_FBRO_OBJECT_HANDLE object, const wchar_t* text) {
+  if (object & kRemoteWssHandleBias) return LB_FBRO_ERROR_NOT_SUPPORTED;
   int status = LB_FBRO_OK;
   auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
   if (!state) return status;
@@ -6754,6 +7521,7 @@ int __stdcall LB_FBro_WssSend(LB_FBRO_OBJECT_HANDLE object, const wchar_t* text)
 }
 
 int __stdcall LB_FBro_WssSendBuffer(LB_FBRO_OBJECT_HANDLE object, LB_FBRO_BUFFER_HANDLE buffer) {
+  if (object & kRemoteWssHandleBias) return LB_FBRO_ERROR_NOT_SUPPORTED;
   int status = LB_FBRO_OK;
   auto state = GetObject(object, LB_FBRO_OBJECT_WSS_CLIENT, status);
   if (!state) return status;
@@ -9023,7 +9791,14 @@ int __stdcall LB_FBro_ApplyFingerprintJson(LB_FBRO_HANDLE browser, const wchar_t
   LB_FBRO_APPLY_BOOL("disableConsoleCount", FBroHsVIPControl_SetDisableConsoleCount);
   LB_FBRO_APPLY_BOOL("disableConsoleTrace", FBroHsVIPControl_SetDisableConsoleTrace);
   LB_FBRO_APPLY_BOOL("disableConsoleClear", FBroHsVIPControl_SetDisableConsoleClear);
-  if (ReadJsonBool(dict, "enableWebsocketClientHook", 0)) FBroHsVIPControl_EnableWebsocketClientHook(vip);
+  // 实验开关：LINGBUILDER_FBRO_HOOK_DISABLE=1 时跳过启用 WS 客户端钩子，
+  // 用于对照排查钩子启用后的行为。
+  wchar_t hook_disable[8]{};
+  const bool hook_disabled =
+      GetEnvironmentVariableW(L"LINGBUILDER_FBRO_HOOK_DISABLE", hook_disable,
+                              _countof(hook_disable)) > 0
+      && wcscmp(hook_disable, L"1") == 0;
+  if (!hook_disabled && ReadJsonBool(dict, "enableWebsocketClientHook", 0)) FBroHsVIPControl_EnableWebsocketClientHook(vip);
   if (ReadJsonBool(dict, "clearAllData", 0)) FBroHsVIPControl_ClearAllData(vip);
   if (ReadJsonBool(dict, "clearS5Auth", 0)) FBroHsVIPControl_ClearS5Auth(vip);
 

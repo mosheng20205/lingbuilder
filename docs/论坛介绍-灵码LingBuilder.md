@@ -1,0 +1,162 @@
+# 灵码 LingBuilder：用中文写代码，确定性生成真实 C++ 工程（开源）
+
+大家好，向大家介绍一款我持续开发中的中文编程 IDE——**灵码 LingBuilder**。
+
+一句话概括：**它是一个中文 C++ 集成开发环境，你用中文（`.lcpp` 语法）写界面和逻辑，它通过本地确定性规则把中文源码翻译成真实可编译的 C++/Win32 工程，再用 MSVC 编译成原生 exe。**
+
+先说清楚它**不是**什么：
+
+- 不是解释执行——中文源码最终落地为 C++ 源文件，走真实编译器；
+- 不是 AI 猜出来的代码——中文到 C++ 的翻译是本地确定性规则，核心链路不依赖 AI、可离线使用；
+- 不是网页套壳——生成的程序是原生 Win32 窗口和控件，每个控件实例都有独立的主窗口句柄。
+
+项目以 **MIT 协议开源**，源码在 GitHub：
+
+> **https://github.com/mosheng20205/lingbuilder**
+
+---
+
+## 界面先看为敬
+
+**新手模式**是打开 IDE 后的默认编辑形态，也是本作的主打入口：变量、参数、子程序、事件都用中文表格结构化呈现，像填表一样写代码，不用记任何英文语法；`Ctrl+空格` 呼出中文命令补全，方向键选择、回车上屏：
+
+![新手结构化中文编辑](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/03-novice-editor.png)
+
+**专业模式**随时一键切换：基于 Monaco 的中文代码编辑器，带中文关键字高亮、中文命令补全、诊断标记和格式化：
+
+![中文代码编辑器](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/02-chinese-code.png)
+
+**全中文工作台**：解决方案资源管理器、多标签编辑器、可视化设计器、底部面板、状态栏，外加右侧的 AI 编程助手。
+
+![工作台总览](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/01-workbench.png)
+
+**可视化窗口设计器**：拖控件、改属性、绑事件，单击事件自动生成对应的中文事件处理器；`Ctrl+点击` 代码里的控件名可以直接跳回设计器定位控件：
+
+![窗口设计器](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/04-designer.png)
+
+---
+
+## `.lcpp` 长什么样
+
+一段真实项目源码（节选自仓库里的 SQLite 模块示例）：
+
+```e
+包 SQLite数据库模块示例
+使用 Win32窗口基础模块
+使用 SQLite数据库模块
+
+类 SQLite演示窗口 : 窗口
+公开
+  整数型 通过数
+  整数型 总步数
+
+  事件 _自检按钮_被单击()
+    通过数 = 0
+    总步数 = 0
+    控件_清空项目(日志列表)
+    控件_添加项目(日志列表, "开始全功能自检（70 条命令全部覆盖，含带密码数据库）")
+    运行库自检()
+    加密库自检()
+    SQLite_关闭全部()
+    文本型 结果
+    结果 = 格式化文本("SQLite 全功能自检完成：{}/{} 项通过", 通过数, 总步数)
+    控件_设置文本(状态标签, 结果)
+  结束
+结束类
+```
+
+设计器里拖好的控件（比如 `状态标签`、`日志列表`）在代码里是**不带引号的裸控件引用**，语言服务会做类型检查：控件不存在、类型不匹配都会在编辑阶段报中文诊断，而不是等到编译才炸。
+
+## 编译出来的东西是真实的
+
+F5 一键「生成 → 编译 → 运行」，产物是标准 Win32 程序：
+
+![原生 EXE 运行效果](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/05-native-exe.png)
+
+也可以把整个工程导出为 C++ 源码 + Visual Studio 解决方案（`.sln` / `.vcxproj`），拿到 VS 里继续手工开发：
+
+![导出 C++ 工程](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/06-cpp-export.png)
+
+IDE 内 F5 运行和导出工程走的是**同一套生成规则**，两边行为一致，不存在「IDE 里能跑、导出就废」的情况。
+
+## 不装灵码，导出的工程照样能编译运行
+
+导出不是「笼子里的代码」：拿到别的机器上，只要装了 Visual Studio（MSVC），就能独立打开、编译、运行，完全不需要灵码在场。
+
+用 Visual Studio 打开导出的 `.sln`，就是一个普通的 C++ 工程——`main.cpp`、资源文件、模块依赖（比如 SQLite 的 `sqlite3.dll`）都规规矩矩摆在解决方案里：
+
+![Visual Studio 打开导出工程](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/09-visual-studio.png)
+
+编译出来的 exe 拿出来就能双击运行。下面这个窗口就是导出工程用 MSVC 编译后直接跑起来的样子（不是灵码的预览，是独立的原生程序）：
+
+![导出工程编译产物直接运行](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/10-sqlite-exe.png)
+
+两个小提示：
+
+- 导出工程默认钉的是 VS2022 的 `v143` 平台工具集；如果你装了更新的 Visual Studio，打开时会提示「重定解决方案目标」，一键确认即可；
+- `.sln` 里 Win32 / x64 双平台配置齐全，按需切换。
+
+---
+
+## 模块生态
+
+中文命令通过模块提供，格式是 `.lbmod`（v2 清单：中文命令 + C++ binding + 文档 + 平台 target）。当前内置 **85 个模块、3143 条中文命令**，由测试门禁保证清单与代码一致，包括：
+
+- **界面**：Win32 窗口基础（206 条）、Win32 高级控件、数据表格、动画图片等；
+- **浏览器**：CEF3 浏览器（Chromium 150 内核）、EdgeView（WebView2）、FBro 指纹浏览器，均可作为设计器控件拖入窗口，支持请求拦截、资源响应替换、CDP 调试端口等能力；
+- **数据库**：SQLite 2.1（70 条命令，支持 SQLCipher 加密库）；
+- **并发**：多线程 2.0（54 条命令，线程池 + 协作取消 + 线程安全 UI 更新）；
+- **系统与网络**：HTTP 客户端/服务端、WebSocket、编码转换、磁盘信息、键盘鼠标输入、COM 自动化等。
+
+第三方作者可以把现成的 C++ 库封装成模块贡献中文命令，模块开发者中心提供创建、校验、打包、安装的全流程：
+
+![模块生态](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/08-modules.png)
+
+## AI 是增强层，不是黑箱
+
+- AI 修改代码**先生成可审查的 Diff 草案**，经路径、语法和模块上下文检查后由你确认应用，不会静默改文件：
+
+![AI 助手与 Diff 审查](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/07-ai-assistant.png)
+
+- 支持平台模型（系统 AI）和自带 API Key（BYOK）两条独立通道；
+- 本地 **AI Bridge** 通过 MCP 协议把工作区、诊断、受控编辑和构建能力暴露给外部 AI（Codex CLI / Claude Code / Gemini CLI 都能接），带只读 / 预览确认 / 受控自动三档权限；
+- 没有网络、不用 AI，编辑、设计、诊断、生成、编译全部照常工作。
+
+## 其他值得一说的
+
+- **Git 源代码管理**：暂存/提交/分支/历史/Blame/冲突三路合并都在 IDE 里，不依赖外部客户端；
+- **中文诊断**：编译错误、警告带中文解释，保留原始编译器输出，部分场景给出一键修复建议；
+- **真实终端**（PTY）、**DAP 调试**（断点、局部变量、监视、调用栈）；
+- 多种编码（UTF-8 / UTF-8 BOM / UTF-16 / ANSI）与 LF/CRLF 处理，中文源码不容易乱码。
+
+---
+
+## 技术实现
+
+- **前端**：Electron + TypeScript + React + Monaco Editor，工作台/命令系统/服务分层参考现代 IDE 的架构组织；
+- **生成器**：中文 DSL → C++ 的翻译是独立的规则模块，生成结果为可读、可迁移的标准 C++/Win32 源码；
+- **编译**：MSVC（Visual Studio 2022 或 Build Tools + Windows SDK），生成的模块原生依赖会自动物化到工程目录；
+- **32 位 / 64 位双架构**：F5 生成运行与 Visual Studio 工程导出都同时支持 **Win32（x86/32 位）和 x64（64 位）**，状态栏下拉一键切换，导出的 `.sln` / `.vcxproj` 会带上对应的平台配置；内置模块的原生依赖（`.lib` / DLL）按所选架构自动物化到工程目录；
+- **质量门禁**：清单一致性、binding 与补全一致、生成模板符号存在性等都有自动化测试把守。
+
+## 当前状态与边界
+
+如实说明：
+
+- 目前**只支持 Windows**（Windows 10/11 x64），macOS 适配在路线图中但尚未开始；
+- **32/64 位说明**：IDE 和工程构建本身 Win32 / x64 双架构都支持；个别自带大型原生产物的模块有架构限制——CEF3（Chromium 150）与 FBro 指纹浏览器模块目前只提供 64 位（x64）运行库，在 32 位工程里启用会被中文诊断拦下，其余内置模块（含 SQLite 双架构运行库）两种架构齐备；第三方模块需按实际架构产物声明 target；
+- 编译生成的工程需要本机安装 MSVC 工具链，安装器会做环境检测并给中文修复提示；
+- 项目仍在快速迭代中，部分高级能力（clangd 语义补全等）还在完善；
+- 从源码运行需要 Node.js 20+，仓库 README 里有完整步骤，安装包获取方式也写在仓库说明里。
+
+## 文档与视频教程
+
+- **视频教程**（从安装建项到设计器、模块市场、AI 助手、导出 C++ 工程的系列实操）：<https://lingbuilder.com/docs/guide/videos/>
+- **文档中心**（使用手册、模块开发手册）：<https://lingbuilder.com/docs/>
+- **命令查找**（全部内置模块的中文命令、签名、参数与返回值在线查询）：<https://lingbuilder.com/commands>
+
+如果你对中文编程、Win32 开发、DSL 翻译或者 AI 辅助编程感兴趣，欢迎到仓库提 Issue、提 PR，或者把它当玩具拆一拆——生成出来的 C++ 是完全可读的，欢迎围观：
+
+> **GitHub：https://github.com/mosheng20205/lingbuilder**（MIT License）
+
+有问题和建议都可以在帖子下面回复，或者在仓库提 Issue。

@@ -40,7 +40,7 @@ function WebsiteHeader({ activePath }: { activePath: string }) {
     <a className="website-brand" href="/"><img src={brandIcon} alt=""/><span><strong>灵码</strong><small>LINGBUILDER</small></span></a>
     <nav aria-label="官网导航">{NAV.map((item: WebsiteNavItem) => <a key={item.href} className={activePath === item.href ? 'active' : isDocsSectionItem(item) ? 'doc-link' : ''} href={item.href}>{item.label}</a>)}</nav>
     <a className="website-community-link" href="/downloads"><Download size={16}/>下载 IDE</a>
-    <a className="website-community-link" href="/community"><MessageCircle size={16}/>交流群</a>
+    <a className="website-community-link" href="/community"><MessageCircle size={16}/>QQ交流群</a>
   </div></header>;
 }
 

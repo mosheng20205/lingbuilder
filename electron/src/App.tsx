@@ -66,6 +66,7 @@ import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
 import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
+import ProjectBuildPathsDialog, { type ProjectBuildPathsDialogValue } from './components/ProjectBuildPathsDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';
@@ -1190,6 +1191,9 @@ export default function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [projectBuildPathsState, setProjectBuildPathsState] = useState<{ projectId: string; projectName: string; initialValue: ProjectBuildPathsDialogValue } | null>(null);
+  const [projectBuildPathsBusy, setProjectBuildPathsBusy] = useState(false);
+  const [projectBuildPathsError, setProjectBuildPathsError] = useState<string>('');
   const [showEnvironmentRepairCenter, setShowEnvironmentRepairCenter] = useState(false);
   const [showCliGuide, setShowCliGuide] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
@@ -4574,6 +4578,65 @@ void DisplayStatus() {
     if (result.solution) setSolution(result.solution);
   }, [appendSolutionLogs]);
 
+  const openProjectBuildPathsDialog = useCallback((projectId?: string) => {
+    const targetId = projectId || solution.startupProjectIds?.[0] || solution.startupProjectId || solution.projects[0]?.id;
+    const project = solution.projects.find(item => item.id === targetId);
+    if (!project) return;
+    setProjectBuildPathsError('');
+    setProjectBuildPathsState({
+      projectId: project.id,
+      projectName: project.name,
+      initialValue: {
+        projectBuildDirectory: project.buildProperties?.buildDirectory || '',
+        projectGeneratedSourceDirectory: project.buildProperties?.generatedSourceDirectory || '',
+        workspaceBuildDirectory: buildConfiguration.buildDirectory || '',
+        workspaceGeneratedSourceDirectory: buildConfiguration.generatedSourceDirectory || ''
+      }
+    });
+  }, [buildConfiguration, solution]);
+
+  const handleSaveProjectBuildPaths = useCallback(async (value: ProjectBuildPathsDialogValue) => {
+    if (!projectBuildPathsState) return;
+    setProjectBuildPathsBusy(true);
+    setProjectBuildPathsError('');
+    try {
+      const workspaceChanged = (value.workspaceBuildDirectory || '') !== (buildConfiguration.buildDirectory || '')
+        || (value.workspaceGeneratedSourceDirectory || '') !== (buildConfiguration.generatedSourceDirectory || '');
+      if (workspaceChanged) {
+        const response = await fetch('/api/build-configuration', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...buildConfiguration,
+            buildDirectory: value.workspaceBuildDirectory || undefined,
+            generatedSourceDirectory: value.workspaceGeneratedSourceDirectory || undefined
+          })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok === false) throw new Error(payload.error || '保存工作区构建目录失败。');
+        setBuildConfiguration(payload.configuration);
+      }
+      const project = solution.projects.find(item => item.id === projectBuildPathsState.projectId);
+      const existingProperties = project?.buildProperties;
+      const nextProperties = {
+        configuration: existingProperties?.configuration || buildConfiguration.mode,
+        architecture: existingProperties?.architecture || buildConfiguration.architecture,
+        additionalArguments: existingProperties?.additionalArguments || [],
+        ...(value.projectBuildDirectory.trim() ? { buildDirectory: value.projectBuildDirectory.trim() } : {}),
+        ...(value.projectGeneratedSourceDirectory.trim() ? { generatedSourceDirectory: value.projectGeneratedSourceDirectory.trim() } : {})
+      };
+      const result = await configureSolutionProject(projectBuildPathsState.projectId, { buildProperties: nextProperties });
+      if (!result.ok) throw new Error(result.error || '保存项目构建目录失败。');
+      if (result.solution) setSolution(result.solution);
+      appendSolutionLogs('更新项目构建目录', result);
+      setProjectBuildPathsState(null);
+    } catch (error) {
+      setProjectBuildPathsError(error instanceof Error ? error.message : '保存项目构建目录失败。');
+    } finally {
+      setProjectBuildPathsBusy(false);
+    }
+  }, [appendSolutionLogs, buildConfiguration, projectBuildPathsState, solution]);
+
   const handleConfigureExternalProject = useCallback(async (projectId: string) => {
     const project = solution.projects.find(item => item.id === projectId); if (!project?.buildProperties) return;
     const mode = await requestWorkbenchPrompt({ title: '构建模式', description: 'Debug 或 Release', inputLabel: '构建模式', inputValue: project.buildProperties.configuration });
@@ -4582,7 +4645,16 @@ void DisplayStatus() {
     if (architecture !== 'Win32' && architecture !== 'x64') return;
     const args = await requestWorkbenchPrompt({ title: '附加参数', description: '用空格分隔，可留空', inputLabel: '附加参数', inputValue: project.buildProperties.additionalArguments.join(' ') });
     if (args === null) return;
-    const result = await configureSolutionProject(projectId, { buildProperties: { configuration: mode, architecture, additionalArguments: args.split(/\s+/u).filter(Boolean) } });
+    const result = await configureSolutionProject(projectId, {
+      buildProperties: {
+        configuration: mode,
+        architecture,
+        additionalArguments: args.split(/\s+/u).filter(Boolean),
+        // 保留在「构建目录…」对话框里设置的目录覆盖，避免旧入口保存时把它们清掉。
+        buildDirectory: project.buildProperties.buildDirectory,
+        generatedSourceDirectory: project.buildProperties.generatedSourceDirectory
+      }
+    });
     appendSolutionLogs('更新外部工程属性', result); if (result.solution) setSolution(result.solution);
   }, [appendSolutionLogs, solution]);
 
@@ -4874,6 +4946,7 @@ void DisplayStatus() {
   workbenchCommandHandlersRef.current = {
     showCommands: openCommandPalette,
     openSettings: openSettingsDialog,
+    configureProjectBuildPaths: (projectId?: unknown) => openProjectBuildPathsDialog(typeof projectId === 'string' ? projectId : undefined),
     findInFiles: () => openWorkspaceSearch('search'),
     replaceInFiles: () => openWorkspaceSearch('replace'),
     openWorkspace: handleOpenWorkspace,
@@ -5012,7 +5085,7 @@ void DisplayStatus() {
     'workbench.workspaceSearchOpen': Boolean(workspaceSearchMode),
     'editor.multipleGroups': editorGroupLayout.groups.length > 1,
     'workbench.blockingDialogOpen': blockingDialogOpen,
-    'workbench.modalOpen': showCommandPalette || showSettingsDialog || blockingDialogOpen,
+    'workbench.modalOpen': showCommandPalette || showSettingsDialog || Boolean(projectBuildPathsState) || blockingDialogOpen,
     'operation.saving': isSaving,
     'operation.building': isBuilding,
     'operation.busy': Boolean(editorOperationRef.current) || projectFilesLoading,
@@ -5053,6 +5126,16 @@ void DisplayStatus() {
         when: '!workbench.commandPaletteOpen && !workbench.settingsOpen && !workbench.blockingDialogOpen',
         order: 2,
         handler: () => workbenchCommandHandlersRef.current.openSettings()
+      },
+      {
+        id: 'workbench.action.configureProjectBuildPaths',
+        title: '项目构建目录',
+        aliases: ['Build Output Directories', 'output directory', '构建输出目录', '生成源码目录'],
+        category: '项目',
+        description: '自定义构建目录与生成源码目录，支持 $(ProjectId)、$(Platform) 等宏。',
+        when: '!workbench.modalOpen',
+        order: 3,
+        handler: () => workbenchCommandHandlersRef.current.configureProjectBuildPaths()
       },
       {
         id: 'workbench.action.files.openWorkspace',
@@ -6762,6 +6845,7 @@ void DisplayStatus() {
           onConfigureProjectReferences={handleConfigureProjectReferences}
           onToggleMultiStartupProject={handleToggleMultiStartupProject}
           onConfigureExternalProject={handleConfigureExternalProject}
+          onConfigureBuildPaths={projectId => openProjectBuildPathsDialog(projectId)}
           onDeleteProject={handleDeleteSolutionProject}
           onSolutionCommand={async (command, projectId) => { await handleSolutionBuildCommand(command, projectId); }}
           onCloseSolution={() => { void executeWorkbenchCommand('workbench.action.files.closeSolution'); }}
@@ -7162,6 +7246,19 @@ void DisplayStatus() {
         onReset={resetWorkbenchConfiguration}
         onReload={loadWorkbenchConfiguration}
         onClose={() => setShowSettingsDialog(false)}
+      />
+
+      <ProjectBuildPathsDialog
+        open={Boolean(projectBuildPathsState)}
+        isDarkMode={isDarkMode}
+        busy={projectBuildPathsBusy}
+        error={projectBuildPathsError || undefined}
+        projectName={projectBuildPathsState?.projectName || ''}
+        initialValue={projectBuildPathsState?.initialValue || { projectBuildDirectory: '', projectGeneratedSourceDirectory: '', workspaceBuildDirectory: '', workspaceGeneratedSourceDirectory: '' }}
+        platform={buildConfiguration.architecture}
+        configuration={buildConfiguration.mode}
+        onConfirm={handleSaveProjectBuildPaths}
+        onClose={() => setProjectBuildPathsState(null)}
       />
 
       <EnvironmentRepairCenter

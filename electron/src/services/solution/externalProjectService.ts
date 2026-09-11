@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { WorkspacePathPolicy } from '../workspace/workspacePathPolicy';
+import { DEFAULT_BUILD_DIRECTORY_TEMPLATE, DEFAULT_GENERATED_SOURCE_DIRECTORY_TEMPLATE, resolveProjectBuildDirectories, validateBuildPathTemplate } from '../tasks/buildPathService';
 import {
   generateWindowsDllSourceFromLingCpp,
   isWindowsDllProjectManifest,
@@ -11,7 +12,15 @@ import {
 } from './windowsDllProjectService';
 
 export type ExternalProjectKind = 'windows-dll' | 'external-msbuild' | 'external-cmake';
-export interface ExternalProjectProperties { configuration: 'Debug' | 'Release'; architecture: 'Win32' | 'x64'; additionalArguments: string[] }
+export interface ExternalProjectProperties {
+  configuration: 'Debug' | 'Release';
+  architecture: 'Win32' | 'x64';
+  additionalArguments: string[];
+  /** 可选：本项目构建目录模板覆盖（工作区相对，支持宏）；未设置时跟随工作区构建配置。 */
+  buildDirectory?: string;
+  /** 可选：本项目可复制生成源码目录模板覆盖；未设置时跟随工作区构建配置。 */
+  generatedSourceDirectory?: string;
+}
 export interface ImportedExternalProject {
   id: string; name: string; type: ExternalProjectKind; projectFile: string; sourceRoot: string; configRoot: string;
   designerPath: string; references: string[]; buildProperties: ExternalProjectProperties;
@@ -63,7 +72,17 @@ export class ExternalProjectService {
     if (project.type === 'windows-dll') await this.materializeLingCppDllSource(cwd, project.id);
     const outputDir = project.type === 'windows-dll'
       ? path.join(cwd, project.buildProperties.architecture, project.buildProperties.configuration, 'bin')
-      : path.join(this.workspaceRoot, '.lingbuilder-build', safeId(project.id), project.buildProperties.architecture, project.buildProperties.configuration);
+      : resolveProjectBuildDirectories({
+        workspaceRoot: this.workspaceRoot,
+        projectDirName: safeId(project.id),
+        projectName: project.name,
+        platform: project.buildProperties.architecture,
+        configuration: project.buildProperties.configuration,
+        templates: {
+          buildDirectory: project.buildProperties.buildDirectory,
+          generatedSourceDirectory: project.buildProperties.generatedSourceDirectory
+        }
+      }).buildDir;
     await fs.mkdir(outputDir, { recursive: true });
     let command: string; let args: string[];
     if (project.type === 'external-cmake') {
@@ -126,6 +145,14 @@ export class ExternalProjectService {
 export function validateProperties(value: ExternalProjectProperties): void {
   if (!value || !['Debug', 'Release'].includes(value.configuration) || !['Win32', 'x64'].includes(value.architecture)) throw new Error('外部工程配置无效。');
   if (!Array.isArray(value.additionalArguments) || value.additionalArguments.some(argument => typeof argument !== 'string' || argument.length > 200 || /[\r\n\0]/u.test(argument))) throw new Error('外部工程附加参数无效。');
+  if (value.buildDirectory !== undefined) {
+    if (typeof value.buildDirectory !== 'string') throw new Error('项目构建目录模板无效。');
+    validateBuildPathTemplate(value.buildDirectory, '项目构建目录', DEFAULT_BUILD_DIRECTORY_TEMPLATE);
+  }
+  if (value.generatedSourceDirectory !== undefined) {
+    if (typeof value.generatedSourceDirectory !== 'string') throw new Error('项目生成源码目录模板无效。');
+    validateBuildPathTemplate(value.generatedSourceDirectory, '项目生成源码目录', DEFAULT_GENERATED_SOURCE_DIRECTORY_TEMPLATE);
+  }
 }
 const execFileAsync = promisify(execFile);
 function fileExistsSync(filePath: string): boolean {

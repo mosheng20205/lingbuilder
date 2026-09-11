@@ -214,7 +214,7 @@ stdio 形式（客户端自动拉起，无需 Token）：
 | `lingbuilder.project.templates` | 列出项目模板。 |
 | `lingbuilder.project.create` | 预览或创建项目，并初始化设计器模型和项目级模块引用。 |
 | `lingbuilder.project.create.undo` | 撤销尚未被修改的 AI 创建项目。 |
-| `lingbuilder.build.run` | 执行受控构建/运行。 |
+| `lingbuilder.build.run` | 执行受控构建/运行。构建目录与生成源码目录跟随项目/工作区自定义模板（见 `buildPathService.ts`），缺省 `.lingbuilder-build/<项目>/<平台>/<配置>` 与 `generated/cpp/<项目>`。 |
 | `lingbuilder.modules.list` | 查看模块上下文。 |
 | `lingbuilder.native.preview` | 预览 C++ 工程。 |
 | `lingbuilder.native.export` | 导出 C++ 工程。 |

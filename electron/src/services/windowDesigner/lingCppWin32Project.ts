@@ -833,6 +833,10 @@ static bool LB_FBroInitializeInProcess(const std::wstring& runtimeDirectory) {
     LB_FBRO_INITIALIZE_OPTIONS_V1 options{};
     options.struct_size = sizeof(options);
     options.abi_version = LB_FBRO_INITIALIZE_OPTIONS_VERSION_V1;
+    // 火山同款架构：browser_subprocess_path 指向生成 exe 自身，CEF 子进程
+    // （renderer 等）由 wWinMain 最先调用的 LB_FBro_RunCefSubprocessIfRequested
+    // 承接，WS 拦截五钩子因此在渲染进程可达并经桥内命名管道中继回浏览器进程。
+    options.use_self_subprocess = 1;
     options.runtime_directory = runtimeDirectory.c_str();
     int port = 0;
 ${reserveDebuggingPort ? `    WSADATA wsaData{};
@@ -2448,7 +2452,9 @@ ${newEmojiRuntimeEventCpp.definitions}
 ${uploadCallbackBlocks.join('\n\n')}
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
-${fbroModuleEnabled ? `    const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
+${fbroModuleEnabled ? `    const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
+    if (fbroSubprocessExitCode != LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED) return fbroSubprocessExitCode;
+    const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
     if (fbroHostExitCode != LINGBUILDER_FBRO_HOST_NOT_REQUESTED) return fbroHostExitCode;` : ''}
     EnableNewEmojiDpiAwareness();
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -23487,6 +23493,8 @@ static void EnsureStartWindowForeground(HWND hwnd, int showCommand) {
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
+    const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
+    if (fbroSubprocessExitCode != LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED) return fbroSubprocessExitCode;
     const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
     if (fbroHostExitCode != LINGBUILDER_FBRO_HOST_NOT_REQUESTED) return fbroHostExitCode;
 #endif

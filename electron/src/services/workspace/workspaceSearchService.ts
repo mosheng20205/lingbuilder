@@ -10,6 +10,7 @@ import {
   createSolutionService
 } from '../solution/solutionService';
 import { WorkspacePathPolicy, WorkspacePathPolicyError } from './workspacePathPolicy';
+import { isPathExcludedAsBuildOutput } from '../tasks/buildPathService';
 import {
   WorkspaceReplaceApplyRequest,
   WorkspaceReplaceApplyResponse,
@@ -909,7 +910,8 @@ async function collectTreeFiles(
 
     entries.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
     for (const entry of entries) {
-      if (ignoreDirectories && entry.isDirectory() && IGNORED_DIRECTORY_NAMES.has(entry.name.toLocaleLowerCase('en-US'))) {
+      const entryRelativePath = toRelativePath(workspaceRoot, path.join(directory, entry.name));
+      if (ignoreDirectories && entry.isDirectory() && (IGNORED_DIRECTORY_NAMES.has(entry.name.toLocaleLowerCase('en-US')) || isPathExcludedAsBuildOutput(entryRelativePath))) {
         continue;
       }
       const target = path.join(directory, entry.name);
@@ -930,7 +932,7 @@ async function collectTreeFiles(
         continue;
       }
       if (stat.isDirectory()) {
-        if (ignoreDirectories && IGNORED_DIRECTORY_NAMES.has(entry.name.toLocaleLowerCase('en-US'))) continue;
+        if (ignoreDirectories && (IGNORED_DIRECTORY_NAMES.has(entry.name.toLocaleLowerCase('en-US')) || isPathExcludedAsBuildOutput(entryRelativePath))) continue;
         await visit(target);
         continue;
       }

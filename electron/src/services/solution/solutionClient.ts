@@ -8,7 +8,15 @@ export interface SolutionProject {
   isDefault?: boolean;
   references?: string[];
   projectFile?: string;
-  buildProperties?: { configuration: 'Debug' | 'Release'; architecture: 'Win32' | 'x64'; additionalArguments: string[] };
+  buildProperties?: {
+    configuration: 'Debug' | 'Release';
+    architecture: 'Win32' | 'x64';
+    additionalArguments: string[];
+    /** 项目构建目录模板覆盖（工作区相对，支持宏）；与服务端 ExternalProjectProperties 一致。 */
+    buildDirectory?: string;
+    /** 项目生成源码目录模板覆盖。 */
+    generatedSourceDirectory?: string;
+  };
   solutionFolderId?: string;
 }
 

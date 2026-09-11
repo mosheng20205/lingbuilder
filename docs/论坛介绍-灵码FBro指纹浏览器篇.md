@@ -1,0 +1,111 @@
+# 灵码 LingBuilder × FBro 指纹浏览器：用中文写 C++，把 FBro SDK 装进 IDE（开源）
+
+大家好。关注 FBro 指纹浏览器的朋友应该知道，FBro 官方目前提供的接入方式是**易语言、火山、C#** 三种。今天向大家介绍第四条路，也是目前唯一的 **C++ 中文路线**：我们的开源中文 C++ IDE **灵码 LingBuilder** 把整个 FBro SDK 封装成了 IDE 内置模块——**可视化设计器里有 FBro 浏览器控件，代码里是全中文命令，一键生成标准 C++ 工程直接编译**。
+
+项目 MIT 协议开源：**https://github.com/mosheng20205/lingbuilder**
+
+先交代基线（都是确定性数据，仓库里有生成脚本和清单门禁）：封装基于 **FBro 5.39.53 / Chromium 135 内核，windows-msvc-x64**，共 **9 大能力域、1071 个导出签名**全部登记造册，高级安全封装已实现 531 个，官方 174 个事件槽位全部确定处理状态。
+
+---
+
+## 一、设计器里拖一个「FBro 指纹浏览器」控件
+
+FBro 在灵码里不只是命令库：它是一个**可视化控件**。拖进窗口后，属性面板直接配置打开网址、独立程序目录、User-Agent、JavaScript / 图片 / WebGL 开关、代理模式、启动参数 JSON 等：
+
+![设计器中的 FBro 指纹浏览器控件](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/fbro-01-designer.png)
+
+单击事件栏自动生成中文事件处理器；代码里的控件名是带类型检查的引用——控件不存在、类型不匹配，编辑阶段就报中文诊断，不用等编译。
+
+## 二、中文代码长什么样
+
+新手模式（结构化中文编辑）下的 FBro 网页填表示例，变量、参数、子程序都是中文表格，右侧是结构大纲：
+
+![新手模式结构化中文编辑](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/fbro-02-code.png)
+
+一段真实代码（节选自 CDP 自动化示例，仓库里就有完整工程）：
+
+```e
+包 FBro教程第08集
+使用 Win32窗口基础模块
+使用 FBro指纹浏览器模块
+使用 FBro事件模块
+使用 CDP 客户端模块
+
+类 FBroCDP自动化窗体 : 窗口
+私有
+  CDP连接 连接句柄 = 0
+  CDP页面 页面句柄 = 0
+
+  事件 _取端口按钮_被单击()
+      局部 整数型 端口 = 0
+      端口 = FBro_取调试端口(浏览器1)
+      如果 (端口 == 0)
+          控件_设置文本(状态标签, "尚未取得调试端口：请确认独立进程 Host 已启动且已启用开发者工具。")
+      否则
+          控件_设置文本(状态标签, "调试端口：http://127.0.0.1:" + 到文本(端口))
+      如果结束
+  结束
+结束类
+```
+
+`CDP连接`、`CDP页面` 这些是模块提供的**受管类型**，句柄生命周期由生成的 C++ 运行时统一管理，不用自己操心释放。
+
+## 三、跑起来是什么样
+
+这是教程第 11 集的综合项目（同样是中文源码生成 C++ 编译的）：三个工作区实例演示**会话隔离**，两个浏览器面板独立浏览，底下一排按钮对应 CDP 点击、下载测试文件、连接 CDP 取标题等能力，日志区只记事件名与处理结果：
+
+![综合项目运行效果](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/fbro-03-running.png)
+
+---
+
+## 封装规模与能力域
+
+| 能力域（模块） | 中文主题 | 导出签名数 |
+|---|---|---:|
+| `lingbuilder.fbro.automation` | 自动化 | 247 |
+| `lingbuilder.fbro.objects` | 高级对象 | 268 |
+| `lingbuilder.fbro.vip` | 指纹 | 188 |
+| `lingbuilder.fbro.network` | 网络 | 145 |
+| `lingbuilder.fbro.osr` | 离屏渲染 | 46 |
+| `lingbuilder.fbro.browser` | 浏览器 | 73 |
+| `lingbuilder.fbro.events` | 事件 | 56 |
+| `lingbuilder.fbro.transfer` | 传输 | 32 |
+| `lingbuilder.fbro.session` | 会话 | 16 |
+| **合计** | | **1071** |
+
+事件侧：官方 174 个事件槽位全部确定处理状态（公开实现 102、受管适配 63、其余为内部生命周期或不适用）。
+
+已覆盖的典型场景（每个场景都有完整中文示例工程和视频教程）：三种宿主模式（进程内 / 独立进程 / 离屏）、浏览器管理器与会话隔离、指纹配置、事件驱动、资源响应获取与修改、CDP 自动化（点击 / 填表 / 取标题）、网页填表、下载 / 截图 / 打印、WebSocket 拦截与内嵌服务器、DOM 遍历快照、运行时独立上下文。
+
+## 和易语言 / 火山横向对比
+
+FBro 官方支持易语言、火山、C# 三种接入。灵码的定位是**给 FBro 生态补上 C++ 这条路，而且全程中文**：
+
+| 对比维度 | 灵码 LingBuilder（中文 C++ IDE） | 易语言 | 火山 |
+|---|---|---|---|
+| 语言与产物 | 中文 `.lcpp` → 确定性生成**标准 C++** 源码 + VS 工程 | 中文自有语言，自有工具链 | 中文 → 生成 C++ |
+| 程序位数 | **Win32 / x64 双架构** | **仅 32 位** | 64 位可用（FBro 接入即 x64） |
+| Visual Studio 原生调试 | **✓** 导出 `.sln`/`.vcxproj`，断点、监视、调用栈原生调试 | ✗（自有环境） | **✗** 生成的 C++ 无法在 VS 中原生调试 |
+| 生成代码可迁移性 | 标准 C++，任意 C++ 工具链可用 | 自有格式 | 绑定火山工程 |
+| 工具链维护状态 | 高频迭代中 | **多年未维护更新** | 由火山官方维护 |
+| 内置 AI 编程助手 | ✓ 生成 / 修复 / Diff 审查 + MCP | ✗ | ✗ |
+| 可视化窗口设计器 | ✓ 拖控件绑事件 | ✓ | ✓ |
+| 内置 Git / 终端 / 中文诊断 | ✓ 全套 | 需第三方 | 部分 |
+
+一句话总结：**易语言胜在简单但停在 32 位、多年未更新；火山能生成 C++ 但没法进 VS 原生调试；灵码生成的是标准 C++ 工程，Visual Studio 直接打开编译调试，x64 原生支持，且 IDE 本身还在快速迭代。**
+
+## 如实说明边界
+
+- FBro 内核与授权体系归 **FBro 官方**所有，灵码做的是 SDK 封装与 IDE 集成；指纹等 VIP 能力需要 FBro 官方 VIP 授权，未授权时相关命令会被明确拦下（fail-closed），不会静默给错误结果；
+- 当前 FBro 模块仅提供 **x64** 原生产物（FBro 官方内核即 x64），32 位项目请用 FBro 官方的易语言通道；
+- 导出工程钉 VS2022 的 v143 工具集，更新版 Visual Studio 打开时按提示一键重定向即可；
+- 灵码仍处快速迭代期，欢迎提 Issue 和建议。
+
+## 视频教程与文档
+
+- **FBro 指纹浏览器合集（16 集中文视频教程）**，从入门、会话隔离、指纹配置到 WS 拦截、DOM 快照：见 [视频教程页](https://lingbuilder.com/docs/guide/videos/)
+- **文档中心**（模块手册、使用指南）：[lingbuilder.com/docs](https://lingbuilder.com/docs/)
+- **命令查找**（全部中文命令、签名、参数与返回值在线查询）：[lingbuilder.com/commands](https://lingbuilder.com/commands/)
+- **开源仓库（MIT）**：[github.com/mosheng20205/lingbuilder](https://github.com/mosheng20205/lingbuilder)
+
+用 C++ 做指纹浏览器自动化的朋友，欢迎试试这条中文路线；问题可以直接在帖子下回复，或到仓库提 Issue。

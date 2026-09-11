@@ -5,11 +5,14 @@ import type { TextFileSnapshot } from '../files/types';
 import { LingWindowProject, type LingControl } from '../windowDesigner/types';
 import { normalizeStartupProjects, topologicalProjectOrder, validateProjectDependencies } from './projectDependencyGraph';
 import { ExternalProjectService, validateProperties, type ExternalProjectProperties } from './externalProjectService';
+import { BuildConfigurationService } from '../tasks/buildConfigurationService';
+import { getEffectiveBuildPathTemplates, resolveProjectBuildDirectories } from '../tasks/buildPathService';
 import { writeSolutionEntry } from './solutionEntryFile';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, PROJECT_GLOBALS_FILE_NAME } from '../lingCpp/projectGlobalService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '../lingCpp/projectDataTypeService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, isProjectBuildArtifactRelativePath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
 import type { Win32ControlPropertyValue } from '../windowDesigner/win32ControlRegistry';
+import { detectLatestMsvcPlatformToolset } from '../windowDesigner/msvcPlatformToolset';
 import { createWindowsDllProjectFiles } from './windowsDllProjectService';
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
@@ -150,14 +153,14 @@ export class SolutionService {
     const migrated = this.createDefaultSolution();
     const template = getSolutionProjectTemplate('blank-window');
     const designerProject = createDesignerProject(DEFAULT_PROJECT_ID, '新建项目', template.id);
-    await this.materializeProject(this.createMaterializationPlan(migrated.projects[0], designerProject, template));
+    await this.materializeProject(await this.createMaterializationPlan(migrated.projects[0], designerProject, template));
     await this.writeSolution(migrated);
     return migrated;
   }
 
   async createProject(request: CreateSolutionProjectRequest = {}): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject; designerProject?: LingWindowProject; logs?: string[] }> {
     const solution = await this.getSolution();
-    const plan = this.createProjectPlan(request, solution);
+    const plan = await this.createProjectPlan(request, solution);
     const { project, designerProject } = plan;
 
     await this.ensureProjectTargetDirectoriesEmpty(project);
@@ -219,7 +222,7 @@ export class SolutionService {
     const designerProject = template.kind === 'windows-dll'
       ? undefined
       : createDesignerProject(project.id, project.name, template.id, request.windowTitle);
-    const filesPlan = target.createMaterializationPlan(project, designerProject, template);
+    const filesPlan = await target.createMaterializationPlan(project, designerProject, template);
     await target.materializeProject(filesPlan);
     const solution: LingBuilderSolution = {
       schemaVersion: 2,
@@ -294,6 +297,7 @@ export class SolutionService {
     const target = solution.projects.find(project => project.id === projectId);
     if (!target) throw new Error(`未找到项目：${projectId}`);
     if (patch.buildProperties) validateProperties(patch.buildProperties);
+    if (patch.buildProperties) await this.assertProjectBuildPathsCompatible(solution, projectId, patch.buildProperties);
     if (patch.solutionFolderId && !solution.folders.some(folder => folder.id === patch.solutionFolderId)) {
       throw new Error(`未找到解决方案文件夹：${patch.solutionFolderId}`);
     }
@@ -322,6 +326,63 @@ export class SolutionService {
     };
     await this.writeSolution(nextSolution);
     return nextSolution;
+  }
+
+  /**
+   * 项目构建目录/生成源码目录的保存期冲突校验：当前项目的解析结果不得与其他项目的
+   * 构建目录、生成源码目录或源码根目录重合、嵌套，避免 F5/清理/导出互相破坏。
+   * 目录名按保守规范化比较；规范同名即视为冲突（宁误报不静默放行）。
+   */
+  private async assertProjectBuildPathsCompatible(
+    solution: LingBuilderSolution,
+    projectId: string,
+    buildProperties: ExternalProjectProperties
+  ): Promise<void> {
+    const configuration = await new BuildConfigurationService(this.workspaceRoot).read();
+    const currentProject = solution.projects.find(project => project.id === projectId);
+    const resolveDirs = (project: Pick<LingBuilderSolutionProject, 'id' | 'name' | 'type' | 'buildProperties' | 'sourceRoot'>, effectiveBuildProperties: ExternalProjectProperties) => {
+      const templates = {
+        buildDirectory: effectiveBuildProperties.buildDirectory?.trim() || configuration.buildDirectory,
+        generatedSourceDirectory: effectiveBuildProperties.generatedSourceDirectory?.trim() || configuration.generatedSourceDirectory
+      };
+      // 与构建链路保持同一规则：窗口设计器项目目录跟随工作区构建配置，外部/DLL 项目按自身属性。
+      const platform = project.type === 'visual-cpp' ? configuration.architecture : (effectiveBuildProperties.architecture || configuration.architecture);
+      const configurationMode = project.type === 'visual-cpp' ? configuration.mode : (effectiveBuildProperties.configuration || configuration.mode);
+      const dirs = resolveProjectBuildDirectories({
+        workspaceRoot: this.workspaceRoot,
+        projectDirName: canonicalProjectDirName(project.id),
+        projectName: project.name,
+        platform,
+        configuration: configurationMode,
+        templates
+      });
+      return { dirs, sourceRoot: path.resolve(this.workspaceRoot, project.sourceRoot || '.') };
+    };
+    const current = resolveDirs({
+      id: projectId,
+      name: currentProject?.name || projectId,
+      type: currentProject?.type || 'visual-cpp',
+      buildProperties,
+      sourceRoot: currentProject?.sourceRoot || '.'
+    }, buildProperties);
+    for (const other of solution.projects) {
+      if (other.id === projectId) continue;
+      const otherProperties = other.buildProperties || buildProperties;
+      const candidate = resolveDirs(other, otherProperties);
+      const pairs: ReadonlyArray<readonly [string, string, string, string]> = [
+        [current.dirs.buildDir, '构建目录', candidate.dirs.buildDir, `项目 ${other.name} 的构建目录`],
+        [current.dirs.buildDir, '构建目录', candidate.dirs.exportDir, `项目 ${other.name} 的生成源码目录`],
+        [current.dirs.exportDir, '生成源码目录', candidate.dirs.buildDir, `项目 ${other.name} 的构建目录`],
+        [current.dirs.exportDir, '生成源码目录', candidate.dirs.exportDir, `项目 ${other.name} 的生成源码目录`],
+        [current.dirs.buildDir, '构建目录', candidate.sourceRoot, `项目 ${other.name} 的源码目录`],
+        [current.dirs.exportDir, '生成源码目录', candidate.sourceRoot, `项目 ${other.name} 的源码目录`]
+      ];
+      for (const [own, ownLabel, theirs, theirsLabel] of pairs) {
+        if (directoriesOverlap(own, theirs)) {
+          throw new Error(`当前项目的${ownLabel}与${theirsLabel}重合或嵌套，请调整构建目录设置：${own}`);
+        }
+      }
+    }
   }
 
   async deleteProject(projectId: string, options: DeleteSolutionProjectOptions = {}): Promise<{ solution: LingBuilderSolution; removedPaths: string[] }> {
@@ -390,12 +451,33 @@ export class SolutionService {
     const removedDirs: string[] = [];
     const preservedDirs = validProjects.map(project => this.resolveWorkspacePath(`generated/cpp/${safeSegment(project.id)}`));
     const logs: string[] = [];
+    const buildConfiguration = await new BuildConfigurationService(this.workspaceRoot).read();
 
     for (const project of validProjects) {
-      const buildDir = this.resolveWorkspacePath(`.lingbuilder-build/${safeSegment(project.id)}`);
-      await fs.rm(buildDir, { recursive: true, force: true });
-      removedDirs.push(buildDir);
-      logs.push(`已清理项目 ${project.name} 的临时构建目录：${buildDir}`);
+      const templates = {
+        buildDirectory: project.buildProperties?.buildDirectory?.trim() || buildConfiguration.buildDirectory,
+        generatedSourceDirectory: project.buildProperties?.generatedSourceDirectory?.trim() || buildConfiguration.generatedSourceDirectory
+      };
+      // 目录里的平台/配置段必须与实际构建链路一致：窗口设计器项目跟随工作区构建配置，
+      // 外部/DLL 项目按自身 buildProperties 构建。
+      const platform = project.type === 'visual-cpp' ? buildConfiguration.architecture : (project.buildProperties?.architecture || buildConfiguration.architecture);
+      const configuration = project.type === 'visual-cpp' ? buildConfiguration.mode : (project.buildProperties?.configuration || buildConfiguration.mode);
+      const resolved = resolveProjectBuildDirectories({
+        workspaceRoot: this.workspaceRoot,
+        projectDirName: safeSegment(project.id),
+        projectName: project.name,
+        platform,
+        configuration,
+        templates
+      });
+      // 配置变更后旧缺省目录里的残留也要一并清理，避免占用磁盘并干扰增量缓存。
+      const legacyBuildDir = this.resolveWorkspacePath(`.lingbuilder-build/${safeSegment(project.id)}`);
+      for (const buildDir of new Set([resolved.buildDir, legacyBuildDir])) {
+        await fs.rm(buildDir, { recursive: true, force: true });
+        removedDirs.push(buildDir);
+        logs.push(`已清理项目 ${project.name} 的临时构建目录：${buildDir}`);
+      }
+      preservedDirs.push(resolved.exportDir);
       if (project.type === 'windows-dll' && project.projectFile) {
         const projectRoot = this.resolveWorkspacePath(path.posix.dirname(project.projectFile.replace(/\\/gu, '/')));
         for (const architecture of ['Win32', 'x64'] as const) {
@@ -483,7 +565,7 @@ export class SolutionService {
     }
   }
 
-  private createProjectPlan(request: CreateSolutionProjectRequest, solution: LingBuilderSolution): CreateSolutionProjectPlan {
+  private async createProjectPlan(request: CreateSolutionProjectRequest, solution: LingBuilderSolution): Promise<CreateSolutionProjectPlan> {
     const baseName = validateProjectDisplayName((request.name || '新建项目').trim() || '新建项目', '', solution.projects);
     const projectId = this.createUniqueProjectId(request.projectId || baseName, solution);
     const sourceRoot = this.resolveProjectSourceDirectory(request.projectDirectory, projectId);
@@ -504,16 +586,17 @@ export class SolutionService {
     const designerProject = template.kind === 'windows-dll'
       ? undefined
       : createDesignerProject(project.id, project.name, template.id, request.windowTitle);
-    return this.createMaterializationPlan(project, designerProject, template);
+    return await this.createMaterializationPlan(project, designerProject, template);
   }
 
-  private createMaterializationPlan(
+  private async createMaterializationPlan(
     project: LingBuilderSolutionProject,
     designerProject: LingWindowProject | undefined,
     template: SolutionProjectTemplate
-  ): CreateSolutionProjectPlan {
+  ): Promise<CreateSolutionProjectPlan> {
     if (template.kind === 'windows-dll') {
-      const dllFiles = createWindowsDllProjectFiles(project.id, project.name);
+      const platformToolset = (await detectLatestMsvcPlatformToolset()).toolset;
+      const dllFiles = createWindowsDllProjectFiles(project.id, project.name, { platformToolset });
       return {
         project,
         template,
@@ -1344,4 +1427,18 @@ async function enqueueSolutionWrite(targetPath: string, write: () => Promise<voi
   } finally {
     if (solutionWriteQueues.get(targetPath) === pending) solutionWriteQueues.delete(targetPath);
   }
+}
+
+/** 冲突校验用的保守目录名规范化：不同项目规范化后同名即视为冲突（宁误报不静默放行）。 */
+function canonicalProjectDirName(value: string): string {
+  return safeSegment(value).toLowerCase();
+}
+
+/** 判断两个目录是否重合或存在嵌套关系。 */
+function directoriesOverlap(first: string, second: string): boolean {
+  const relative = path.relative(path.resolve(first), path.resolve(second));
+  if (!relative) return true;
+  if (!relative.startsWith('..') && !path.isAbsolute(relative)) return true;
+  const inverse = path.relative(path.resolve(second), path.resolve(first));
+  return !inverse.startsWith('..') && !path.isAbsolute(inverse);
 }

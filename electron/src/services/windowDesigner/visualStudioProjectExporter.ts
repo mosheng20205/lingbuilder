@@ -7,6 +7,10 @@ import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../modules/opencvModules
 import { PROTOBUF_MODULE_ID } from '../modules/protobufModule';
 import { LingCppNativeProjectFile } from './lingCppWin32Project';
 import { createWindowsMsvcLinkLibraries } from './windowsSystemLibraries';
+import {
+  detectLatestMsvcPlatformToolset,
+  FALLBACK_MSVC_PLATFORM_TOOLSET
+} from './msvcPlatformToolset';
 
 export interface VisualStudioProjectExportResult {
   projectName: string;
@@ -39,6 +43,11 @@ export interface VisualStudioProjectExportOptions {
   definitionFile?: string;
   /** F5 中间工程从已经校验过的 bin 目录物化 FBro；可复制导出工程则使用模块自带 runtime。 */
   fbroRuntimeFromBuildBin?: boolean;
+  /**
+   * 显式钉入 vcxproj 的 MSVC 平台工具集（v145、v143 等）。
+   * 缺省时 exportVisualStudioProject 会探测本机最新安装的工具集；探测失败回退 v143。
+   */
+  platformToolset?: string;
 }
 
 const WINDOWS_GUID = '8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942';
@@ -46,7 +55,9 @@ const WINDOWS_GUID = '8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942';
 export async function exportVisualStudioProject(
   options: VisualStudioProjectExportOptions
 ): Promise<VisualStudioProjectExportResult> {
-  const content = createVisualStudioProjectExportContent(options);
+  const platformToolset = options.platformToolset
+    ?? (await detectLatestMsvcPlatformToolset()).toolset;
+  const content = createVisualStudioProjectExportContent({ ...options, platformToolset });
   const solutionPath = path.join(options.projectDir, `${content.projectName}.sln`);
   const projectPath = path.join(options.projectDir, `${content.projectName}.vcxproj`);
   const filtersPath = path.join(options.projectDir, `${content.projectName}.vcxproj.filters`);
@@ -66,6 +77,7 @@ export function createVisualStudioProjectExportContent(
   options: VisualStudioProjectExportOptions
 ): VisualStudioProjectExportContent {
   const projectName = sanitizeVisualStudioName(options.projectId || 'LingBuilderProject');
+  const platformToolset = options.platformToolset || FALLBACK_MSVC_PLATFORM_TOOLSET;
   const projectGuid = deterministicGuid(`lingbuilder:${projectName}`);
   const resourceFiles = getResourceFiles(options.generatedFiles);
   const contentFiles = unique((options.contentFiles || []).map(normalizeSlash));
@@ -97,6 +109,7 @@ export function createVisualStudioProjectExportContent(
         content: generateVcxproj({
           projectGuid,
           projectName,
+          platformToolset,
           sourceFiles: getSourceFiles(projectFiles, options.enabledModules),
           resourceFiles,
           noneFiles,
@@ -269,6 +282,7 @@ function generateSolution(projectName: string, projectGuid: string, x64Only = fa
 function generateVcxproj(options: {
   projectGuid: string;
   projectName: string;
+  platformToolset: string;
   sourceFiles: string[];
   resourceFiles: string[];
   noneFiles: string[];
@@ -347,18 +361,18 @@ function generateVcxproj(options: {
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>${configurationType}</ConfigurationType>
     <UseDebugLibraries>${useDebugLibraries}</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>${options.platformToolset}</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>${configurationType}</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>${options.platformToolset}</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>${configurationType}</ConfigurationType><UseDebugLibraries>${useDebugLibraries}</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><CharacterSet>Unicode</CharacterSet></PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>${configurationType}</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>${configurationType}</ConfigurationType><UseDebugLibraries>${useDebugLibraries}</UseDebugLibraries><PlatformToolset>${options.platformToolset}</PlatformToolset><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>${configurationType}</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>${options.platformToolset}</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet></PropertyGroup>
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Label="Shared" />
@@ -497,12 +511,24 @@ function generatePostBuildCommand(
   const fbroCommands = materializeFbro
     ? [`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)modules\\lingbuilder.fbro.browser\\materialize-fbro-runtime.ps1" -Destination "$(TargetDir)."${fbroRuntimeFromBuildBin ? ' -RuntimeRoot "$(ProjectDir)bin"' : ''}${fbroHostOnly ? ' -HostOnly' : ''}`]
     : [];
-  const commands = [...runtimeCommands, ...contentCommands, ...fbroCommands].join('\r\n');
-  if (!commands) return '';
+  // 防御性兜底：个别环境（.user 文件重定向等）下 OutDir 可能尚未创建，先建目录再复制。
+  const commandLines = [...runtimeCommands, ...contentCommands, ...fbroCommands];
+  if (commandLines.length === 0) return '';
+  const commands = ['if not exist "$(OutDir)" mkdir "$(OutDir)"', ...commandLines].join('\r\n');
   return `
     <PostBuildEvent>
-      <Command>${xmlEscape(commands)}</Command>
+      <Command>${xmlEscapeMultilineText(commands)}</Command>
     </PostBuildEvent>`;
+}
+
+/**
+ * XML 解析会把文本节点里的 CRLF 规范化为 LF，而 cmd 执行 LF-only 多行批处理时会按字节偏移
+ * 错位读取后续行（表现为 MSB3073 退出码 3、「文件名、目录名或卷标语法不正确」）。
+ * 因此 CR 必须写成字符引用 &#xD;，保证 MSBuild 读回的命令串仍是 CRLF——这也是 Visual Studio
+ * 自己保存 vcxproj 时对多行生成事件的做法。
+ */
+function xmlEscapeMultilineText(value: string): string {
+  return xmlEscape(value).replace(/\r/gu, '&#xD;');
 }
 
 function getRuntimeOutputPath(value: string): string {

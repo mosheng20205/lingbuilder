@@ -24,7 +24,11 @@ export interface WindowsDllProjectFile extends VisualStudioProjectExportFile {
   kind: 'source' | 'header' | 'definition' | 'project' | 'config';
 }
 
-export function createWindowsDllProjectFiles(projectId: string, projectName: string): WindowsDllProjectFile[] {
+export function createWindowsDllProjectFiles(
+  projectId: string,
+  projectName: string,
+  options: { platformToolset?: string } = {}
+): WindowsDllProjectFile[] {
   const outputName = sanitizeOutputName(projectId);
   const lingCppSource = createDllApiLingCppSource();
   const generatedFiles: LingCppNativeProjectFile[] = [
@@ -63,7 +67,8 @@ export function createWindowsDllProjectFiles(projectId: string, projectName: str
     generatedFiles,
     enabledModules: [],
     projectKind: 'dynamic-library',
-    definitionFile: 'exports.def'
+    definitionFile: 'exports.def',
+    platformToolset: options.platformToolset
   });
   return [
     ...generatedFiles.map(file => ({

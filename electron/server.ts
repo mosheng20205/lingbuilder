@@ -107,7 +107,8 @@ import { SettingsSyncService } from "./src/services/configuration/settingsSyncSe
 import { WorkspaceSearchError } from "./src/services/workspace/workspaceSearchTypes";
 import { createManagedProcessService } from "./src/services/tasks/managedProcessService";
 import { TaskService } from "./src/services/tasks/taskService";
-import { BuildConfigurationService, getBuildCompilerFlags, getBuildOutputSegment, getModuleTargetId, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
+import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
+import { resolveProjectBuildDirectories, setActiveWorkspaceBuildExcludeDirs } from "./src/services/tasks/buildPathService";
 import { ClangdService } from "./src/services/lsp/clangdService";
 import { LspWorkspaceEditService } from "./src/services/lsp/lspWorkspaceEditService";
 import { checkDevelopmentEnvironment } from "./src/services/tasks/environmentCheckService";
@@ -367,6 +368,7 @@ async function switchWorkspaceRuntime(requestedPath: unknown): Promise<{ workspa
     solutionServiceCache = null;
     workspaceRuntimeVersion += 1;
     await workbenchConfigurationInitialization;
+    void refreshWorkspaceBuildExcludeDirs();
     return { workspacePath: candidateWorkspace, version: workspaceRuntimeVersion, changed: true };
   });
   workspaceSwitchQueue = operation.then(() => undefined, () => undefined);
@@ -664,6 +666,59 @@ async function requireExistingProject(projectId: string | undefined): Promise<st
   const solution = await solutionService.getSolution();
   solutionService.getProject(solution, normalizedProjectId);
   return normalizedProjectId;
+}
+
+/**
+ * 统一的项目构建输出目录解析：项目级 buildProperties 模板覆盖工作区默认，
+ * 再回退内置缺省。所有 F5 构建、导出、运行日志链路都必须经此解析，
+ * 禁止重新拼装 `.lingbuilder-build` / `generated/cpp` 字面量。
+ */
+async function resolveServerProjectBuildPaths(projectId: string, buildConfiguration: BuildConfiguration) {
+  const solution = await getSolutionService().getSolution();
+  const project = solution.projects.find(item => item.id === projectId);
+  return resolveProjectBuildDirectories({
+    workspaceRoot: getRepoWorkspaceRoot(),
+    projectDirName: sanitizeFilename(projectId),
+    projectName: project?.name,
+    platform: buildConfiguration.architecture,
+    configuration: buildConfiguration.mode,
+    templates: {
+      buildDirectory: project?.buildProperties?.buildDirectory?.trim() || buildConfiguration.buildDirectory,
+      generatedSourceDirectory: project?.buildProperties?.generatedSourceDirectory?.trim() || buildConfiguration.generatedSourceDirectory
+    }
+  });
+}
+
+/** 刷新搜索/AI 索引的构建输出排除集：登记全部项目当前解析出的构建目录与生成源码目录。 */
+async function refreshWorkspaceBuildExcludeDirs(): Promise<void> {
+  const dirs = new Set<string>();
+  try {
+    const configuration = await buildConfigurationService.read();
+    const workspaceRoot = getRepoWorkspaceRoot();
+    const solution = await getSolutionService().getSolution();
+    for (const project of solution.projects) {
+      try {
+        const resolved = resolveProjectBuildDirectories({
+          workspaceRoot,
+          projectDirName: sanitizeFilename(project.id),
+          projectName: project.name,
+          platform: project.type === "visual-cpp" ? configuration.architecture : (project.buildProperties?.architecture || configuration.architecture),
+          configuration: project.type === "visual-cpp" ? configuration.mode : (project.buildProperties?.configuration || configuration.mode),
+          templates: {
+            buildDirectory: project.buildProperties?.buildDirectory?.trim() || configuration.buildDirectory,
+            generatedSourceDirectory: project.buildProperties?.generatedSourceDirectory?.trim() || configuration.generatedSourceDirectory
+          }
+        });
+        dirs.add(normalizeFilePath(path.relative(workspaceRoot, resolved.buildDir)));
+        dirs.add(normalizeFilePath(path.relative(workspaceRoot, resolved.exportDir)));
+      } catch {
+        // 单个项目的目录配置冲突不阻断其他目录登记。
+      }
+    }
+  } catch {
+    // 解决方案尚未就绪时保留现有排除集。
+  }
+  setActiveWorkspaceBuildExcludeDirs([...dirs]);
 }
 
 function normalizeWorkspaceRelativePath(value: string, allowedRoot?: string): string {
@@ -1325,9 +1380,10 @@ app.post("/api/solution/import", async (req, res) => {
 app.patch("/api/solution/projects/:projectId", async (req, res) => {
   try {
     const solution = await getSolutionService().updateProject(req.params.projectId, req.body || {});
+    void refreshWorkspaceBuildExcludeDirs();
     res.json({ ok: true, solution });
   } catch (error: any) {
-    res.status(/循环|不存在|不能引用|名称|已存在|不能为空|超过/iu.test(error?.message || "") ? 400 : 500).json({ ok: false, error: error?.message || "更新项目失败" });
+    res.status(/循环|不存在|不能引用|名称|已存在|不能为空|超过|重合|路径|宏|非法|保留目录/iu.test(error?.message || "") ? 400 : 500).json({ ok: false, error: error?.message || "更新项目失败" });
   }
 });
 
@@ -1407,7 +1463,7 @@ app.post("/api/solution/rebuild", async (req, res) => {
 app.get("/api/tasks", (_req, res) => res.json({ ok: true, tasks: taskService.list() }));
 app.get("/api/build-configuration", async (_req, res) => res.json({ ok: true, configuration: await buildConfigurationService.read() }));
 app.put("/api/build-configuration", async (req, res) => {
-  try { res.json({ ok: true, configuration: await buildConfigurationService.write(req.body) }); }
+  try { const configuration = await buildConfigurationService.write(req.body); void refreshWorkspaceBuildExcludeDirs(); res.json({ ok: true, configuration }); }
   catch (error: any) { res.status(400).json({ ok: false, error: error.message }); }
 });
 app.get("/api/tasks/events", (req, res) => {
@@ -2117,12 +2173,13 @@ app.post("/api/window-designer/native-export", async (req, res) => {
       enabledModules
     });
     assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
-    const exportDir = path.join(getRepoWorkspaceRoot(), "generated", "cpp", sanitizeFilename(project.id || "window-preview"));
+    const exportConfiguration = await buildConfigurationService.read();
+    const exportProjectId = project.id || "window-preview";
+    const exportDir = (await resolveServerProjectBuildPaths(exportProjectId, exportConfiguration)).exportDir;
     await fs.mkdir(exportDir, { recursive: true });
     await writeGeneratedProjectFiles(exportDir, generatedProject.files);
     const solutionService = getSolutionService();
     const projectRef = solutionService.getProject(await solutionService.getSolution(), project.id || "lingbuilder-ui-project");
-    const exportConfiguration = await buildConfigurationService.read();
     const codeGeneratorResult = await runProjectCodeGenerators({
       service: buildPipelineService,
       workspaceRoot: getRepoWorkspaceRoot(),
@@ -2526,12 +2583,12 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     });
     assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
     const repoRoot = getRepoWorkspaceRoot();
-    const buildRoot = path.join(repoRoot, ".lingbuilder-build");
-    const buildDir = path.join(buildRoot, sanitizeFilename(projectId), getBuildOutputSegment(buildConfiguration));
-    const sourceDir = path.join(buildDir, "src");
-    const binDir = path.join(buildDir, "bin");
-    const objDir = path.join(buildDir, "obj");
-    const exportDir = path.join(repoRoot, "generated", "cpp", sanitizeFilename(projectId));
+    const buildPaths = await resolveServerProjectBuildPaths(projectId, buildConfiguration);
+    const buildDir = buildPaths.buildDir;
+    const sourceDir = buildPaths.sourceDir;
+    const binDir = buildPaths.binDir;
+    const objDir = buildPaths.objDir;
+    const exportDir = buildPaths.exportDir;
 
     await Promise.all([
       fs.mkdir(sourceDir, { recursive: true }),
@@ -2990,12 +3047,12 @@ async function runControlledWindowDesignerBuild(options: {
   });
   assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
   const repoRoot = getRepoWorkspaceRoot();
-  const buildRoot = path.join(repoRoot, ".lingbuilder-build");
-  const buildDir = path.join(buildRoot, sanitizeFilename(projectId), getBuildOutputSegment(buildConfiguration));
-  const sourceDir = path.join(buildDir, "src");
-  const binDir = path.join(buildDir, "bin");
-  const objDir = path.join(buildDir, "obj");
-  const exportDir = path.join(repoRoot, "generated", "cpp", sanitizeFilename(projectId));
+  const buildPaths = await resolveServerProjectBuildPaths(projectId, buildConfiguration);
+  const buildDir = buildPaths.buildDir;
+  const sourceDir = buildPaths.sourceDir;
+  const binDir = buildPaths.binDir;
+  const objDir = buildPaths.objDir;
+  const exportDir = buildPaths.exportDir;
   const exePath = path.join(binDir, "LingBuilderPreview.exe");
 
   await Promise.all([
@@ -4090,7 +4147,18 @@ app.post("/api/lingcpp/edit/reject", async (req, res) => {
 app.get("/api/window-designer/debug-logs", async (req, res) => {
   const projectId = req.query.projectId as string || "window-preview";
   const clear = req.query.clear === "true";
-  const buildDir = path.join(getRepoWorkspaceRoot(), ".lingbuilder-build", projectId, getBuildOutputSegment(await buildConfigurationService.read()));
+  let buildDir: string;
+  try {
+    buildDir = (await resolveServerProjectBuildPaths(projectId, await buildConfigurationService.read())).buildDir;
+  } catch {
+    // 配置损坏时退回内置缺省目录读日志，不能让日志接口整体 500。
+    buildDir = resolveProjectBuildDirectories({
+      workspaceRoot: getRepoWorkspaceRoot(),
+      projectDirName: sanitizeFilename(projectId),
+      platform: "Win32",
+      configuration: "Debug"
+    }).buildDir;
+  }
   const logFile = path.join(buildDir, "run.log");
 
   if (clear) {
@@ -4977,6 +5045,7 @@ export async function startServer(): Promise<ServerReadyInfo> {
   }
 
   const server = app.listen(serverRuntimeConfig.port, serverRuntimeConfig.host);
+  void refreshWorkspaceBuildExcludeDirs();
   await new Promise<void>((resolve, reject) => {
     server.once("listening", resolve);
     server.once("error", reject);

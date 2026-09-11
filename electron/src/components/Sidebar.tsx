@@ -35,7 +35,8 @@ import {
   Package,
   GitBranch,
   Link,
-  Image as ImageIcon
+  Image as ImageIcon,
+  FolderOutput
 } from 'lucide-react';
 import { CppFile, ExtractedString, GlossaryTerm, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
@@ -184,6 +185,7 @@ interface SidebarProps {
   onConfigureProjectReferences?: (projectId: string) => void | Promise<void>;
   onToggleMultiStartupProject?: (projectId: string) => void | Promise<void>;
   onConfigureExternalProject?: (projectId: string) => void | Promise<void>;
+  onConfigureBuildPaths?: (projectId: string) => void | Promise<void>;
   onDeleteProject?: (projectId: string, deleteFiles: boolean) => void | Promise<void>;
   onSolutionCommand?: (command: 'build' | 'clean' | 'rebuild', projectId?: string) => void | Promise<void>;
   onCloseSolution?: () => void | Promise<void>;
@@ -235,6 +237,7 @@ export default function Sidebar({
   onConfigureProjectReferences,
   onToggleMultiStartupProject,
   onConfigureExternalProject,
+  onConfigureBuildPaths,
   onDeleteProject,
   onSolutionCommand,
   onCloseSolution,
@@ -1283,6 +1286,10 @@ export default function Sidebar({
               <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
               <span>构建属性…</span>
             </div>}
+            <div className={menuItemClass} onClick={() => void onConfigureBuildPaths?.(project.id)}>
+              <FolderOutput className="w-3.5 h-3.5 text-emerald-400" />
+              <span>构建目录…</span>
+            </div>
             <div className={menuItemClass} onClick={() => void onCreateProject?.()}>
               <Plus className="w-3.5 h-3.5 text-emerald-500" />
               <span>新建项目</span>

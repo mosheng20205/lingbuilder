@@ -201,9 +201,24 @@ typedef struct LB_FBRO_INITIALIZE_OPTIONS_V1 {
   uint32_t abi_version;
   const wchar_t* runtime_directory;
   int32_t remote_debugging_port;
+  /* 非零时 browser_subprocess_path 指向当前 exe 自身（火山同款架构）：
+     生成的 exe 在 wWinMain 最先调用 LB_FBro_RunCefSubprocessIfRequested，
+     被官方 CEF 以 --type=renderer 等再次拉起时由桥进入子进程分支。
+     仅当 options->struct_size 覆盖该字段时读取。 */
+  int32_t use_self_subprocess;
 } LB_FBRO_INITIALIZE_OPTIONS_V1;
 
 #define LB_FBRO_INITIALIZE_OPTIONS_VERSION_V1 0x00010000u
+
+/* LB_FBro_RunCefSubprocessIfRequested 的返回值：当前进程不是 CEF 子进程
+   （命令行无 --type=），调用方应继续正常启动流程。 */
+#define LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED ((int)0x7FFFFFFF)
+
+/* CEF 子进程角色入口：命令行含 --type=（renderer/gpu/utility 等）时，
+   以子进程模式初始化 FBro 运行时（与官方 FBroSubprocess.exe 薄壳行为一致，
+   并注册 WS 拦截五钩子的渲染侧转发器），阻塞至子进程退出。
+   仅 LINGBUILDER_FBRO_AVAILABLE 的生成工程（wWinMain 最先调用）需要关心返回值。 */
+LB_FBRO_API int __stdcall LB_FBro_RunCefSubprocessIfRequested(void);
 
 LB_FBRO_API int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory);
 LB_FBRO_API int __stdcall LB_FBro_InitializeEx(
@@ -611,7 +626,7 @@ LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetDownloadMimeType(LB_FBRO_OBJECT
 LB_FBRO_API int __stdcall LB_FBro_DownloadItemGetContentDisposition(LB_FBRO_OBJECT_HANDLE object, wchar_t* result, size_t capacity);
 /** 响应对象读取/改写族：句柄来自「资源响应到达/资源加载完成」事件字段 response，
  *  或用 FBro响应_创建 生成自定义响应（自定义资源处理器）。 */
-LB_FBRO_API long long __stdcall LB_FBro_ResponseCreate(LB_FBRO_OBJECT_HANDLE object);
+LB_FBRO_API long long __stdcall LB_FBro_ResponseCreate(void);
 LB_FBRO_API int __stdcall LB_FBro_ResponseIsReadOnly(LB_FBRO_OBJECT_HANDLE object);
 LB_FBRO_API int __stdcall LB_FBro_ResponseGetError(LB_FBRO_OBJECT_HANDLE object);
 LB_FBRO_API int __stdcall LB_FBro_ResponseSetError(LB_FBRO_OBJECT_HANDLE object, int error);

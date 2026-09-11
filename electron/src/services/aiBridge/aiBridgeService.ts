@@ -49,6 +49,7 @@ import {
 } from '../windowDesigner/windowsExecutableIconService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath, isProjectBuildArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
+import { resolveProjectBuildDirectories } from '../tasks/buildPathService';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
 import { SdkDependencyService } from '../sdkDependencies/sdkDependencyService';
 import { resolveSdkCacheRoot } from '../sdkDependencies/sdkDependencyCatalog';
@@ -905,9 +906,36 @@ export class AiBridgeService {
     }
     const managedProjectId = buildLease.projectId;
     const projectId = sanitizeFilename(managedProjectId);
+    // 与 IDE F5 相同的目录解析规则：项目模板覆盖工作区默认，再回退内置缺省。
+    const buildConfiguration = await this.buildConfigurationService.read();
+    let pathTemplateOverrides: { projectName?: string; buildDirectory?: string; generatedSourceDirectory?: string } = {};
+    try {
+      const solution = await this.solutionService.getSolution();
+      const projectRecord = solution.projects.find(item => item.id === managedProjectId);
+      if (projectRecord) {
+        pathTemplateOverrides = {
+          projectName: projectRecord.name,
+          buildDirectory: projectRecord.buildProperties?.buildDirectory?.trim() || buildConfiguration.buildDirectory,
+          generatedSourceDirectory: projectRecord.buildProperties?.generatedSourceDirectory?.trim() || buildConfiguration.generatedSourceDirectory
+        };
+      }
+    } catch {
+      // 解决方案尚未建立时按工作区默认目录构建。
+    }
+    const resolvedBuildPaths = resolveProjectBuildDirectories({
+      workspaceRoot: this.workspaceRoot,
+      projectDirName: projectId,
+      projectName: pathTemplateOverrides.projectName,
+      platform: buildConfiguration.architecture,
+      configuration: buildConfiguration.mode,
+      templates: {
+        buildDirectory: pathTemplateOverrides.buildDirectory,
+        generatedSourceDirectory: pathTemplateOverrides.generatedSourceDirectory
+      }
+    });
     const [buildDir, exportDir] = await Promise.all([
-      this.pathPolicy.resolveDirectoryForWrite(normalizeFilePath(path.join('.lingbuilder-build', projectId))),
-      this.pathPolicy.resolveDirectoryForWrite(normalizeFilePath(path.join('generated', 'cpp', projectId)))
+      this.pathPolicy.resolveDirectoryForWrite(resolvedBuildPaths.relativeBuildDir),
+      this.pathPolicy.resolveDirectoryForWrite(resolvedBuildPaths.relativeExportDir)
     ]);
     const sourceDir = path.join(buildDir, 'src');
     const binDir = path.join(buildDir, 'bin');
