@@ -2,7 +2,7 @@
 
 更新时间：2026-09-08
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **85 个内置模块、3248 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **87 个内置模块、3339 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -92,8 +92,12 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 已封装 | `lingbuilder.crypto.windows` | Windows 数据保护模块 | 4 |
 | 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 | 8 |
 | 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.0 | 67 |
+| 已完整封装（动态运行库） | `lingbuilder.database.mysql` | MySQL 数据库模块 1.0 | 43 |
+| 已完整封装（动态运行库） | `lingbuilder.data.excel` | Excel 表格模块 1.0 | 45 |
 
 SQLite 模块 2.0 保留原 7 条默认连接兼容入口，并扩展为 67 条生产接口和 `SQLite连接` / `SQLite语句` 两个受管类型。能力覆盖多连接、FULLMUTEX、外键/忙等待、预编译与命名参数、NULL/整数/长整数/小数/UTF-8/BLOB、逐行读取、事务/保存点、WAL/检查点、Online Backup、完整性检查、中断、64 位状态和主/扩展/系统错误码。项目仍需提供与目标架构一致且来源、版本和 SHA-256 可审计的 `sqlite3.dll`；缺失或导出不完整时会返回中文阻断错误，不会静默假装数据库可用。正式说明位于 `electron/docs/modules/sqlite/README.md`，原生验收命令为 `npm run smoke:sqlite-native`。
+
+MySQL 数据库模块 1.0 通过原生客户端/服务器协议直连 MySQL/MariaDB 服务器，提供 43 条命令和 `MySQL连接` / `MySQL语句` 两个受管类型：密码连接与 TLS 开关、utf8mb4 中文、参数化预编译语句（`?` 占位）、逐行强类型结果读取、事务与自动提交、线程级中文错误缓存。随附运行库为 MariaDB Connector/C 3.4.10（Schannel 构建，Win32/x64），F5 与导出按架构复制到 exe 同目录并强校验 SHA-256；正式说明位于 `electron/docs/modules/mysql/README.md`。
 
 通用加密模块由内置命令清单、确定性 C++ 运行时和只读 `lingbuilder.crypto.sdk` 原生资产共同组成。SDK 固定使用 Botan 3.12.0 与 BLAKE3 1.8.5，提供 Win32/x64 导入库和运行时 DLL；启用任一通用加密模块时，F5 与 Visual Studio 导出都会自动校验文件摘要、复制头文件与运行时，并要求 MSVC 和 C++20。旧式 RC2、RC4、DES、3DES、Blowfish 与 ElGamal 命令标记为高级兼容用途，新项目应优先采用 AEAD、Argon2id、RSA-OAEP/PSS、ECDSA/ECDH、SM2 或 X25519。
 

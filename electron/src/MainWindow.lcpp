@@ -1,0 +1,14 @@
+包 LingBuilder
+使用 Win32窗口
+使用 标准控件
+
+类 MainWindow : 公开 窗体
+公开:
+    文本型 关联设计文件 = "MainWindow.xml"
+
+    构造()
+        调试输出("GameClient主窗口初始化完毕，Win32 渲染正常。")
+
+    事件 _MainWindow_创建完毕()
+        调试输出("已载入 MainWindow.xml 关联布局。")
+结束类

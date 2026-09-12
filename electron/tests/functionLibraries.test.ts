@@ -59,6 +59,27 @@ test('项目上下文提供限定补全并诊断私有、缺失功能库调用',
   assert.equal(completions.some(item => item.label === '内部记录'), false);
 });
 
+test('行首 @ 的内嵌 C++ 行不触发功能库调用误判', () => {
+  const windowPath = 'src/主窗口.lcpp';
+  const nativeSource = [
+    '类 主窗口',
+    '  事件 创建完毕()',
+    '    @ int 原生答案 = 40 + 2;',
+    '    @ std::wstring 提示 = L"这是 @ 行写出的原生字符串";',
+    '    @ MessageBoxW(GetActiveWindow(), 提示.c_str(), L"内嵌 C++", MB_OK);',
+    '    @ 提示 += L"继续写原生代码";',
+    '  结束',
+    '结束类',
+    ''
+  ].join('\n');
+  const projectFunctions = createProjectFunctionContext([
+    { filePath: libraryPath, sourceCode: librarySource, language: 'lingcpp' }
+  ]);
+  const diagnostics = getFunctionLibraryDiagnostics(nativeSource, windowPath, projectFunctions);
+  const libraryErrors = diagnostics.filter(item => /功能库/u.test(item.message));
+  assert.deepEqual(libraryErrors, [], JSON.stringify(libraryErrors));
+});
+
 test('Win32 生成器输出隐藏功能库方法并翻译限定调用', () => {
   const project: LingWindowProject = {
     id: 'library-demo', name: '功能库演示', windows: [

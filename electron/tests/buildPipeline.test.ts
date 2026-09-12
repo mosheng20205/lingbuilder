@@ -9,7 +9,7 @@ import { createBuildStepProviderRegistry, DuplicateBuildProviderError, UnknownBu
 import { createProtobufCodeGeneratorProvider } from '../src/services/build/protobufProvider';
 import type { BuildStep, BuildStepProvider } from '../src/services/build/types';
 import type { ModuleCodeGeneratorContribution } from '../src/services/modules/types';
-import { PROTOBUF_SDK_VERSION, PROTOBUF_SDK_REQUIRED_FILES, createProtobufSdkManifest } from '../src/services/modules/protobufSdk';
+import { PROTOBUF_SDK_VERSION, protobufSdkRequiredFiles, createProtobufSdkManifest } from '../src/services/modules/protobufSdk';
 import { validateModuleManifest } from '../src/services/modules/manifest';
 import { MODULE_BINDING_TYPE_LABELS } from '../src/services/modules/bindingValueType';
 import { generateProtobufRuntime } from '../src/services/windowDesigner/protobufRuntime';
@@ -153,16 +153,30 @@ test('protobuf provider blocks a missing fixed SDK before planning', async t => 
   }), /runtime-manifest|SDK/u);
 });
 
+test('protobuf provider stays inert when the project has no proto inputs', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-protobuf-inert-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const service = new BuildPipelineService(createBuildStepProviderRegistry([createProtobufCodeGeneratorProvider({
+    sdkRoot: path.join(root, 'missing-sdk'), protocPath: path.join(root, 'missing-sdk', 'bin', 'protoc.exe')
+  })]));
+  const steps = await service.planCodeGenerators({
+    workspaceRoot: root, projectRoot: root, outputRoot: path.join(root, 'out'), projectId: 'protobuf-inert',
+    target: { platform: 'windows', arch: 'x64', toolchain: 'msvc', id: 'windows-msvc-x64' },
+    modules: [{ manifest: { id: 'lingbuilder.data.protobuf', build: { codeGenerators: [PROTOBUF_MODULE.build!.codeGenerators![0]] } } }]
+  });
+  assert.deepEqual(steps, []);
+});
+
 test('protobuf provider fingerprints local imports as build inputs', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-protobuf-imports-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  for (const relative of PROTOBUF_SDK_REQUIRED_FILES) {
+  for (const relative of protobufSdkRequiredFiles('x64')) {
     const target = path.join(root, 'sdk', ...relative.split('/'));
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, Buffer.from(relative), 'utf8');
   }
   const sdkRoot = path.join(root, 'sdk');
-  await fs.writeFile(path.join(sdkRoot, 'runtime-manifest.json'), JSON.stringify(await createProtobufSdkManifest(sdkRoot, PROTOBUF_SDK_REQUIRED_FILES)), 'utf8');
+  await fs.writeFile(path.join(sdkRoot, 'runtime-manifest.json'), JSON.stringify(await createProtobufSdkManifest(sdkRoot, protobufSdkRequiredFiles('x64'))), 'utf8');
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
   await fs.writeFile(path.join(root, 'src', 'main.proto'), 'syntax = "proto3"; import "common.proto"; message Main { Common value = 1; }', 'utf8');
   await fs.writeFile(path.join(root, 'src', 'common.proto'), 'syntax = "proto3"; message Common { bytes data = 1; }', 'utf8');
@@ -204,12 +218,12 @@ test('project code generator export includes proto inputs in build and portable 
 test('protobuf SDK manifest pins required files, version, size and digest', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-protobuf-sdk-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  for (const relative of PROTOBUF_SDK_REQUIRED_FILES) {
+  for (const relative of protobufSdkRequiredFiles('x64')) {
     const target = path.join(root, ...relative.split('/'));
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, Buffer.from(relative), 'utf8');
   }
-  const manifest = await createProtobufSdkManifest(root, PROTOBUF_SDK_REQUIRED_FILES);
+  const manifest = await createProtobufSdkManifest(root, protobufSdkRequiredFiles('x64'));
   await fs.writeFile(path.join(root, 'runtime-manifest.json'), JSON.stringify(manifest), 'utf8');
   const providerInstance = createProtobufCodeGeneratorProvider({ sdkRoot: root, protocPath: path.join(root, 'bin', 'protoc.exe') });
   const service = new BuildPipelineService(createBuildStepProviderRegistry([providerInstance]));
@@ -230,12 +244,13 @@ test('protobuf SDK manifest pins required files, version, size and digest', asyn
 test('native materialization copies verified protobuf runtime and protoc into build and export trees', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-protobuf-materialize-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  for (const relative of PROTOBUF_SDK_REQUIRED_FILES) {
+  const sdkFiles = [...new Set([...protobufSdkRequiredFiles('x64'), ...protobufSdkRequiredFiles('win32')])];
+  for (const relative of sdkFiles) {
     const target = path.join(root, ...relative.split('/'));
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, Buffer.from(relative), 'utf8');
   }
-  await fs.writeFile(path.join(root, 'runtime-manifest.json'), JSON.stringify(await createProtobufSdkManifest(root, PROTOBUF_SDK_REQUIRED_FILES)), 'utf8');
+  await fs.writeFile(path.join(root, 'runtime-manifest.json'), JSON.stringify(await createProtobufSdkManifest(root, sdkFiles)), 'utf8');
   const previous = process.env.LINGBUILDER_PROTOBUF_SDK_ROOT;
   process.env.LINGBUILDER_PROTOBUF_SDK_ROOT = root;
   try {
@@ -246,10 +261,17 @@ test('native materialization copies verified protobuf runtime and protoc into bu
     };
     const first = await materializeModuleNativeDependencies([module], layout);
     assert.deepEqual(first.blockingDiagnostics, []);
+    assert.deepEqual(first.extraCompileDefines, ['PROTOBUF_USE_DLLS', 'ABSL_CONSUME_DLL']);
+    assert.equal(first.requiresDynamicCrt, true);
     for (const location of [
       path.join(layout.buildDir, 'modules', PROTOBUF_MODULE.id, 'sdk', 'bin', 'protoc.exe'),
       path.join(layout.exportDir, 'modules', PROTOBUF_MODULE.id, 'sdk', 'bin', 'protoc.exe'),
-      path.join(layout.exportDir, 'modules', PROTOBUF_MODULE.id, 'sdk', 'runtime-manifest.json')
+      path.join(layout.exportDir, 'modules', PROTOBUF_MODULE.id, 'sdk', 'runtime-manifest.json'),
+      path.join(layout.exportDir, 'modules', PROTOBUF_MODULE.id, 'sdk', 'bin', 'x64', 'libprotobuf.dll'),
+      path.join(layout.exportDir, 'modules', PROTOBUF_MODULE.id, 'sdk', 'bin', 'x64', 'abseil_dll.dll'),
+      path.join(layout.exportDir, 'modules', PROTOBUF_MODULE.id, 'sdk', 'lib', 'win32', 'libprotobuf.lib'),
+      path.join(layout.binDir, 'libprotobuf.dll'),
+      path.join(layout.binDir, 'abseil_dll.dll')
     ]) assert.ok(await fs.stat(location));
     await fs.writeFile(path.join(root, 'bin', 'protoc.exe'), 'tampered', 'utf8');
     const damaged = await materializeModuleNativeDependencies([module], layout);

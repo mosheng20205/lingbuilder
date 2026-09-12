@@ -1,4 +1,8 @@
 # LingBuilder Electron
+> 2026-09-12：CEF3Browser 设计器属性面板「JS交互查询函数」由裸文本输入升级为**固定单通道**结构化弹窗（`FbroJsQueryEditorDialog` mode=cef3）：仅一行通道、不可增删/排序，JavaScript 标识符合法性校验，实时预览烘焙 `LB_CEF3_EnableJsQuery`（CEF3_初始化 前置自动执行）与页面 `window.cefQuery({...})` 调用写法，取消函数名留空预览按桥默认 `cefQueryCancel` 展示；保存回写控件属性 `jsQueryFunctions`，项目保存时才落盘 `window-designer.json`。CEF3 保持严格单通道（桥语义不变），至此两种浏览器都有了「配置函数」结构化入口。真机验证：选中 CEF3 控件 → 单行弹窗形态断言 8/8 → 编辑保存 → 项目保存落盘 → 还原 cefQuery,cefQueryCancel，全链路通过。
+> 2026-09-12：FBroBrowser 设计器属性面板新增「JS 交互函数」结构化弹窗（`FbroJsQueryEditorDialog`）：多通道增删改、上下移、JavaScript 标识符合法性与唯一性校验、生成期注册（`LB_FBro_EnableJsQuery(...)`）与页面 `window.cefQuery({...})` 调用双预览，保存回写控件属性 `jsQueryFunctions`（字符串 `查询名,取消名` 分号分隔多条），项目保存时落盘 `window-designer.json`——注意属性编辑只更新内存+localStorage，必须执行「保存项目」才写磁盘。属性面板入口：选中浏览器控件 → 专属属性「JS 交互函数」→ 显示「N 条通道」，点「配置函数」打开弹窗。
+> 2026-09-12：CEF3 浏览器模块开放 JS 交互（cefQuery）通道——页面通过 window.cefQuery({request, onSuccess, onFailure}) 调用原生，原生经「查询请求」事件接收并用 CEF3_查询应答 / CEF3_查询应答失败 应答；通道必须在 CEF 初始化之前配置（CEF3 浏览器控件属性 jsQueryFunctions，格式“查询函数名,取消函数名”，留空不启用；CEF3_启用JS扩展 命令仅在初始化前有效），CEF3 每个程序只支持一条查询通道。桥新增 LB_CEF3_EnableJsQuery / LB_CEF3_JsQueryRespond（native/cef3-bridge/，渲染侧 CefMessageRouterRendererSide 注入查询函数、配置经命令行开关传子进程），CEF3 事件目录新增「查询请求（OnQuery）/ 查询已取消（OnQueryCanceled）」，未应答查询 120 秒自动对页面回 -4，取消通知会派发给 .lcpp（CEF 150 中页面主动取消不回调页面自身 onCanceled）。桥 DLL 已同步 SDK 模块目录（SHA-256 484da6c1…）；测试含 LingBuilderCefBridgeTests 端到端回环与 modules.test.ts 生成器/桥符号断言。
+> 2026-09-12：FBro JS 交互（cefQuery）多通道落地 + data: URI 本地建页实测。桥 `LB_FBro_EnableJsQuery` 守卫改为只拦截已真正启动的浏览器（FBroBrowser 控件在 `OnWindowCreated` 先登记 pending 条目，「创建完毕」时 `.lcpp` 注册曾被误拒）；按查询函数名去重支持多通道注册（火山 `FBrowser_JS交互_注册` 同款语义，全部通道共用同一处理器，CEF OnQuery 不带函数名、处理器无法区分来源通道）。生成器新增 FBroBrowser 控件属性 `jsQueryFunctions`（格式 `查询名,取消名`，分号分隔多条如 `cefQuery,cefQueryCancel;cefQuerytest,cefQueryCanceltest`），在 `LB_FBro_InitializeEx` 之前逐条注册——CEF 多线程消息循环下 `OnContextInitialized` 远早于「创建完毕」，`.lcpp` 运行期调 `FBro_启用JS扩展` 必然返回 -5，不得再在事件里调用。`.lcpp` 侧 `FBro_绑定事件(控件名, "OnQuery", &处理器)` 绑定（命令描述中旧称「JS扩展调用」事件名有误，已修正），处理器内 `FBro_取事件字段(request)` + `FBro_取事件延续` + `FBro事件_完成延续` 应答；`OnQueryCanceled` 取消通知当前不派发。本地 HTML 免服务器建页用 `FBro工具_创建数据URI("text/html", 页面文本)`（64K 宽字符结果缓冲上限）。另修复语言服务功能库扫描不剥离字符串字面量的误报（字符串里的 `document.getElementById(...)` 曾被报「找不到功能库」）。实测示例：`AI 视频自主生产/FBro 指纹浏览器合集/17 JS交互与本地页面/示例项目/fbro-ep17-jsquery/`（双通道回环 + 原生反向推送截图验收）。
 > 2026-09-11：构建输出目录开放自定义（对齐 Visual Studio 输出目录设置）：F5 构建、解决方案构建、原生导出、AI Bridge `build.run`、清理与运行日志统一走 `src/services/tasks/buildPathService.ts` 解析。项目右键「构建目录…」或命令面板「项目构建目录」可按项目覆盖（存解决方案 `buildProperties.buildDirectory/generatedSourceDirectory`）或改工作区默认（`.lingbuilder/build-configuration.json` 新增同名字段），支持 `$(ProjectId)/$(ProjectName)/$(Platform)/$(Configuration)` 宏；缺省模板与历史 `.lingbuilder-build/<项目>/<平台>/<配置>`、`generated/cpp/<项目>` 完全一致。只接受工作区相对路径（拒绝绝对路径、`..`、`.lingbuilder/.git/node_modules` 保留段）；保存时做项目间目录冲突校验；工作区搜索与 AI 索引自动排除自定义输出目录；「清理」同时删除旧缺省目录残留。详见 `docs/FUTURE_OPTIMIZATIONS.md` 2026-09-11 条目。
 > 2026-09-09：`lingbuilder.advanced.com` COM自动化模块升级 2.0.0（句柄制，6 条命令扩展为 27 条）：新增 `COM_创建对象免注册`（LoadLibrary+DllGetClassObject，不写注册表）、`COM_创建OCX组件`+`COM_取OCX对象`（系统 atl.dll AtlAxWin 宿主，边框六档）、`COM_取数值/逻辑/对象属性`、`COM_调用方法/调用文本方法/调用数值方法/调用逻辑方法/调用对象方法`（lingValue 可变参数）、`COM_挂接事件`/`COM_映射事件`/`COM_取消挂接事件`/`COM_取事件对象参数`（C++ 真 IDispatch sink，Advise 全部连接点，事件经 `WM_LINGBUILDER_COM_EVENT` 队列窗口线程回调，处理器签名 `空 处理器(整数型 用户数据, 文本型 参数文本)`，languageService 按 handlerSignature 校验）、`COM_启用/移除OCX消息转发`（WH_GETMESSAGE 转发 WM_FORWARDMSG，沿祖先链到第一个处理窗口即停）、`COM_取接口信息`（ITypeInfo 摘要，含属性/方法/事件 DISPID）、`COM_关闭(对象)`/`COM_关闭全部`（窗口析构自动调用）、`COM_注册组件`/`COM_注销组件`/`COM_取组件路径`（随程序携带 OCX 的动态注册与绿色免安装，复刻易语言 FoxitReader 例程）。同时修复 AtlAxWin 未注册控件的静默回退陷阱（回退创建 WebBrowser 把类标识当 URL，表现为「无法访问此页」——现用 `IPersist::GetClassID` 核对实际控件并给中文诊断），并为 CLI 增加 `--arch win32|x64` 以构建 32 位 OCX 示例；修复事件接收器对 VB6/Thunder 系控件按事件接口 DIID 校验时的 Advise 失败（接收器现登记连接点 DIID 并在 QueryInterface 中接受，CCRP FolderTreeview 的 SelectionChange 等事件实测可回调）。四个易语言例程全部复刻：`AI 视频自主生产/基础篇加餐/19 COM自动化模块/` 下主示例（互联网浏览框）+ 例程2 目录树控件 + 例程3 Foxit阅读器 + 例程4 对象查看器（均已 CLI 端到端构建验证）。旧 1.0「全局单对象 + 文本属性 + 无参方法」签名不兼容删除；`COM_创建对象` 现返回句柄。纯 C++ 运行时（`src/services/windowDesigner/comRuntime.ts`）随 windows-msvc-win32/x64 双 target 同源编译；进程内组件位数必须与程序位数一致并给中文诊断。详见 `docs/modules/advanced/com.md`，示例见 `AI 视频自主生产/基础篇加餐/19 COM自动化模块`。
 > 2026-09-09：FBro 四火山工程缺口全量封装（bridgeVersion 2.6.0→2.7.0，SDK 模块 `135.0.21.2.7.0`，内置目录同步）。新增 32 条命令：WS 拦截闭环（`FBro页面_发送文本/缓冲`、`FBro页面_客户端发送文本/缓冲`、`FBroWS客户端_是否空/取地址/取协议/取扩展/发送文本/发送缓冲`、`FBro请求_取方法`）、DOM 遍历快照族（`FBro框架_遍历DOM` + `FBro遍历_*` 15 条 + `FBro右键参数_取类型标志`）、运行时上下文（`FBro会话_创建上下文`、`FBro会话_使用上下文重建`）、`FBro_取主浏览器`；13 个事件转公开可绑定（初始化WebSocket客户端五事件进设计器控件事件列表，本地服务器 8 回调经 `FBro_绑定事件` 绑定，握手请求默认放行、处理器取消动作改 Cancel）。同时修复任务等待 wrapper 的运行时比较错误（`LB_FBro_TaskWait` 成功返回 `LB_FBRO_OK` 而非 `LB_FBRO_TASK_COMPLETED`，8 处）。已知限制：`ExecuteJavaScriptToHasReturn` 结果投递在复杂页面有约 60 秒量级延迟且偶发超时，DOM 遍历等待上限 150 秒；官方 `VisitDOM` 回调在浏览器进程宿主不派发（CEF 语义），已用页面内 JS 序列化实现。新示例：`examples/fbro-intercept-dom-demo`。
@@ -58,6 +62,9 @@
 > `.lcpppkg` 分享门禁会排除 profiles、cache、localStorage、IndexedDB、Cookie JSON、凭据和构建缓存。多浏览器导出脚本会校验插件 Manifest V3、模块文档、结构配置、文件哈希及开发机绝对路径，并在临时目录重新导入；IDE 现有“项目：一键导出 LCPP 源码包”是用户入口，浏览器工作台另登记 `browserWorkbench.package.exportShare` 命令语义。
 
 > 2026-08-08 CEF3 navigation/SSL group: `cef_navigation_entry_t.get_sslstatus`, `cef_sslinfo_t.get_cert_status`, and `cef_sslinfo_t.get_x509_certificate` now have typed C ABI handles, official V4 dispatch, native tests, and generated references. Existing `cef_sslstatus_t` methods now use `managedSslStatusHandle`/`managedCertificateHandle`. Coverage is `982/1384` (70.95%), with `402` planned; complete coverage remains intentionally blocked until all public APIs are implemented.
+
+> 2026-09-12：新增 `lingbuilder.data.excel@1.0.0`（Excel 表格模块），随附 `LingBuilderExcel.dll`（libxlsxwriter 1.2.3 + OpenXLSX 0.5.1 等静态链接，MSVC /MT，Win32/x64 双架构），45 条中文命令与 `Excel工作簿` 受管句柄：创建模式为内存文档模型（保存后可继续修改再保存），支持单元格坐标读写、公式、日期、整行分隔符批量读写、区域读取、列宽行高/合并/冻结/数字格式/字体背景色/插入删除行列等全部格式能力；打开模式经 OpenXLSX 保真修改既有 .xlsx（格式与结构命令给出中文阻断诊断）。无需安装 Microsoft Excel，仅支持 .xlsx。F5 构建、AI Bridge 构建和 VS 工程导出按目标架构自动复制运行桥到 exe 同目录并强校验 SHA-256（来源与构建口径见 `third_party/excel/NOTICE.md`）。`npm run smoke:excel-native` 已完成双架构 MSVC 编译与 x64 端到端验证（创建/保存/另存为/重开读回/公式/追加行/打开模式中文诊断）。正式说明位于 `docs/modules/excel/README.md`。
+> 2026-09-11：新增 `lingbuilder.database.mysql@1.0.0`（MySQL 数据库模块），通过 MariaDB Connector/C 3.4.10（`libmariadb.dll`，Schannel TLS 构建，Win32/x64 双架构）原生协议直连 MySQL/MariaDB，提供 43 条中文命令与 `MySQL连接` / `MySQL语句` 受管类型：密码连接、utf8mb4 中文、`?` 参数化预编译语句、逐行强类型结果读取、事务/自动提交、线程级中文错误缓存。F5 构建、AI Bridge 构建和 VS 工程导出按目标架构自动复制运行库到 exe 同目录并强校验 SHA-256（来源与构建口径见 `third_party/mariadb/NOTICE.md`）；官方不再发布 Connector/C Windows 二进制，随附 DLL 由 v3.4.10 源码以 MSVC+Schannel 本地构建，导出表覆盖官方 3.4.10。安装包经 `extraResources` 携带运行库与 LGPL 许可文本。`npm run smoke:mysql-native` 已完成双架构 MSVC 编译与 x64 真库端到端验证（参数化绑定、NULL/BLOB/中文往返、事务回滚、错误密码拒绝、卸载重连）。正式说明位于 `docs/modules/mysql/README.md`。
 
 > 2026-08-08：新增独立项目 `new-emoji-fbro-richlist`（显示名“new_emoji RichList 动态多浏览器”）。项目以 `lingbuilder.new_emoji.fbro-shell@1.2.0` 为每个 RichList 稳定 ID 动态创建独立 FBro Host、伴随 HWND、Profile、Cookie 和生命周期；关闭可重开，删除默认保留缓存，重排不改变会话绑定。`smoke:new-emoji-fbro-richlist` 覆盖 4 个不同 PID/HWND/Profile、切换显隐、关闭/重开、删除、四种排序、Cookie 目标读回与跨会话隔离，并确认测试结束后无 Host 残留。
 
@@ -277,7 +284,7 @@ npm run package:win
 - `package:win` 会先校验并复用 `build/vendor/MicrosoftEdgeWebview2Setup.exe`中已有的 Microsoft 签名 WebView2 Evergreen Bootstrapper；文件不存在时才从微软官方地址下载并冻结到 NSIS 资源。安装阶段仅在注册表未检测到 WebView2 Runtime 时补装，失败不会阻止 LingBuilder 本体安装，可稍后从“工具 → 环境修复中心”重试。
 - 安装版主进程先启动不可见的独立本地服务，显式传入工作区、renderer 静态目录、规则手册、`127.0.0.1` 随机端口和随机会话 token，收到 ready 信息后才加载窗口。
 - renderer 仍使用相对 `/api/*`，Electron 会自动注入本地会话 token；普通 IDE 服务拒绝 `0.0.0.0`，默认不挂载 `/api/ai-bridge/*`。
-- 首次运行会在“文档/LingBuilder/起始工作区”创建干净的“未命名解决方案 / 新建项目”，只复制安装包内置模块等必要资源，不会携带开发仓库项目；以后从安装版专用的 `userData/workspace-state.packaged.json` 恢复最近工作区，开发版继续使用独立的 `workspace-state.json`。文件菜单、命令面板、解决方案根节点右键菜单和载入失败页均可“关闭当前解决方案”，该操作保留原磁盘文件并切换到新的空白工作区。工具栏“打开”使用原生选择器并由主进程自动切换受管本地服务，开发版与安装版行为一致。
+- 首次运行会在“文档/LingBuilder/起始工作区”创建干净的“未命名解决方案 / 新建项目”，只复制安装包内置模块等必要资源，不会携带开发仓库项目；以后从安装版专用的 `userData/workspace-state.packaged.json` 恢复最近工作区，开发版继续使用独立的 `workspace-state.json`（保留最近 200 条，`RECENT_WORKSPACES_LIMIT`）。欢迎页最近工作区支持按名称/路径实时搜索，「查看全部」打开全量选择器（方向键选择、Enter 打开、悬停可从列表移除），文件菜单在 5 条之外提供「更多最近工作区…」打开同一选择器。文件菜单、命令面板、解决方案根节点右键菜单和载入失败页均可“关闭当前解决方案”，该操作保留原磁盘文件并切换到新的空白工作区。工具栏“打开”使用原生选择器并由主进程自动切换受管本地服务，开发版与安装版行为一致。
 - 规则手册、模块手册、renderer、server 和默认工作区模板均作为打包资源携带，不依赖安装目录或启动时的 `cwd`。
 
 ## 设计约定
@@ -707,7 +714,9 @@ npm run module:control-ref-source-audit
 
 ## Protobuf 与字节集
 
-`lingbuilder.data.protobuf` 使用受控 `lingbuilder.protobuf.protoc`，固定 SDK 版本 27.3.0。开发机或安装包必须离线提供 `.lingbuilder/toolchains/protobuf/runtime-manifest.json`、头文件、导入库、`libprotobuf.dll` 和 `bin/protoc.exe`；物化服务逐文件校验清单中的大小和 SHA-256，并在缺失、篡改、版本、架构或 CRT 不符时阻断 F5、AI Bridge、CLI 和 VS 导出。不会联网下载，也不会调用 PATH 中的系统 protoc。完整 `.pb.h`、`.pb.cc`、descriptor set、`.proto` 输入和运行时依赖会进入可复制导出目录。
+`lingbuilder.data.protobuf` 使用受控 `lingbuilder.protobuf.protoc`，固定 SDK 版本 27.3.0。桌面版安装包随附该 SDK（`resources/default-workspace/.lingbuilder/toolchains/protobuf`），IDE 打开工作区时自动铺设到 `<工作区>/.lingbuilder/toolchains/protobuf`（只补缺失文件，不覆盖已有内容；新建工作区随模板自带）。SDK 布局按架构拆分：`bin/protoc.exe`、`bin/<arch>/libprotobuf.dll` + `abseil_dll.dll`、`lib/<arch>/libprotobuf.lib` + `abseil_dll.lib`、`include/**`；`runtime-manifest.json` 逐文件校验大小和 SHA-256，并在缺失、篡改、版本、架构不符时阻断 F5、AI Bridge、CLI 和 VS 导出。IDE 自身不联网下载，也不会调用 PATH 中的系统 protoc；SDK 二进制不入库，打包机/开发机用 `npm run protobuf:prepare` 重建、`npm run protobuf:manifest` 重新生成清单。完整 `.pb.h`、`.pb.cc`、descriptor set、`.proto` 输入和运行时依赖会进入可复制导出目录。
+
+启用该模块的工程由构建管线自动注入消费条件：全部编译单元（含生成的 `.pb.cc`）定义 `PROTOBUF_USE_DLLS` + `ABSL_CONSUME_DLL`，链接 `libprotobuf.lib` + `abseil_dll.lib`，最低 `/std:c++17` 并全配置使用 `/MD`（与 SDK 二进制一致；缺这些定义会分别导致运行期虚表 AV 或 LNK2019）。项目里没有任何 `.proto` 文件时模块保持惰性，不要求 SDK 就绪。
 
 Provider 会递归解析 `.proto` 的本地 import 并将其纳入构建指纹；代码生成在临时 staging 目录完成，成功后才原子提交，失败或取消会恢复旧产物并清理 staging。
 
@@ -849,11 +858,12 @@ AI 编辑分流按用户提示中的窗口/控件目标与布局变更意图判�
 # 2026-08-19 开发说明
 
 - F5 的 LingCpp 语义检查会把当前窗口设计器控件符号传入局部初始化表达式检查。使用进度条、滑块等 `controlRef` 控件参数时，源码应继续使用裸控件名，例如 `控件_取数值(进度条1)`。
-# AI 点数预扣规则（2026-08-22）
+# AI 点数预扣规则（2026-08-22，2026-09-11 更新）
 
-云端 AI 编辑请求未指定输出上限时，服务端最多按 8,192 token 预扣点数；显式 `maxOutputTokens` 会被限制在模型上限内，最终仍按供应商实际用量结算。
+云端 AI 请求的点数预冻结按有界输出估算（16,384 token）计算，不再随模型输出上限全额放大；显式 `maxOutputTokens` 会被限制在模型上限内（生产库模型输出上限已开至 DeepSeek 的 393,216 token），最终仍按供应商实际用量结算、多退少补。编辑流未指定输出上限时默认预算 32,768 token。
 ## AI 对话路由（2026-08-22）
 - 打开 `.lcpp` 文件时，普通提问仍使用聊天接口；仅包含明确修改意图的请求才生成源码/设计器编辑草案，并要求用户审阅后应用。
+- 聊天回复因输出长度上限被截断时，AI 助手会追加「回复达到输出长度上限」提示；模型只输出思考、未产出正文时，会看到中文错误提示且思考内容自动提升为回复正文，「AI 思考过程」折叠块随会话历史保存。
 - 开发者消息在暗色主题中使用高对比度浅蓝色文字，确保标签和内容可辨识。
 - AI 助手消息支持文本选择及右键“复制消息”；“AI：新建会话”和“AI：清除当前上下文”注册到工作台命令面板，历史会话按项目加载并可切换。
 

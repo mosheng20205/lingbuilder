@@ -11,6 +11,8 @@ import { PROTOBUF_MODULE_ID } from './protobufModule';
 import { validateProtobufSdk, type ProtobufTargetArchitecture } from './protobufSdk';
 import { ARIA2_MODULE_ID, ARIA2_RUNTIME_FILES } from './aria2Module';
 import { SQLITE_MODULE_ID, SQLITE_BUNDLED_RUNTIME_SHA256 } from './sqliteModule';
+import { MYSQL_MODULE_ID, MYSQL_BUNDLED_RUNTIME_SHA256 } from './mysqlModule';
+import { EXCEL_MODULE_ID, EXCEL_BUNDLED_RUNTIME_SHA256 } from './excelModule';
 import {
   getSdkDependencyResource,
   getSdkRootCandidates,
@@ -53,6 +55,12 @@ export interface ModuleNativeDependencyPlan {
   requiresDynamicCrt?: boolean;
   /** 已启用原生模块要求的最低 C++ 语言标准；普通项目默认使用 C++17。 */
   requiredCppStandard?: 17 | 20;
+  /**
+   * 启用模块要求主程序与全部编译单元携带的预处理器定义（/D）。
+   * 例如 protobuf 以 DLL 形式消费时，所有包含其头文件的编译单元都必须定义 PROTOBUF_USE_DLLS，
+   * 否则 MSVC 会按静态库语义生成对象，链接能过但运行期虚表错位直接 AV。
+   */
+  extraCompileDefines?: string[];
 }
 
 export async function materializeModuleNativeDependencies(
@@ -109,6 +117,14 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(SQLITE_MODULE_ID)) {
     await materializeSqliteRuntime(layout, plan);
+  }
+
+  if (enabledIds.has(MYSQL_MODULE_ID)) {
+    await materializeMysqlRuntime(layout, plan);
+  }
+
+  if (enabledIds.has(EXCEL_MODULE_ID)) {
+    await materializeExcelRuntime(layout, plan);
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
@@ -276,6 +292,17 @@ export async function exportModuleNativeDependencies(
     await materializeSqliteRuntimeForExport(exportDir, plan);
     diagnostics.push(...plan.blockingDiagnostics);
   }
+  if (enabledModules.some(module => module.manifest.id === MYSQL_MODULE_ID)) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: false };
+    await materializeMysqlRuntimeForExport(exportDir, plan);
+    diagnostics.push(...plan.blockingDiagnostics);
+  }
+
+  if (enabledModules.some(module => module.manifest.id === EXCEL_MODULE_ID)) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: false };
+    await materializeExcelRuntimeForExport(exportDir, plan);
+    diagnostics.push(...plan.blockingDiagnostics);
+  }
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
     const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
     await materializeCryptoSdk({
@@ -331,6 +358,18 @@ async function materializeProtobufSdk(
     addBlockingDiagnostic(plan, error instanceof Error ? error.message : String(error));
     return;
   }
+  plan.extraCompileDefines = [
+    ...(plan.extraCompileDefines || []),
+    // protobuf 以 DLL 形式消费。
+    'PROTOBUF_USE_DLLS',
+    // abseil 单体 DLL（abseil_dll.dll）的消费模式：生成的 .pb.cc 走 absl 哈希内部
+    // 时会引用其静态数据成员（如 MixingHashState::kSeed），必须 dllimport 才能链接。
+    'ABSL_CONSUME_DLL'
+  ];
+  // libprotobuf.dll / abseil_dll.dll 以 Release /MD 构建；消费者 Debug 配置若用 /MTd，
+  // 跨 DLL 边界的 std::string（如 SerializeToString）会因迭代器调试布局不同直接崩溃，
+  // 因此与 CEF3/Crypto 一致强制全部配置使用动态 CRT。
+  plan.requiresDynamicCrt = true;
   const allFiles = ['runtime-manifest.json', ...sdk.files.keys()];
   const sourceFiles = [...sdk.files.keys()].filter(relative => relative.startsWith('include/'));
 
@@ -350,12 +389,17 @@ async function materializeProtobufSdk(
     copyProtobufFiles(sdkRoot, exportRoot, allFiles, plan.diagnostics, plan.blockingDiagnostics)
   ]);
   plan.includeDirs.push(path.join(sourceRoot, 'include'));
-  plan.libFiles.push(path.join(buildRoot, 'lib', 'libprotobuf.lib'));
-  const runtimeTarget = path.join(layout.binDir, 'libprotobuf.dll');
-  await fs.mkdir(path.dirname(runtimeTarget), { recursive: true });
+  plan.libFiles.push(
+    path.join(buildRoot, 'lib', targetArchitecture, 'libprotobuf.lib'),
+    path.join(buildRoot, 'lib', targetArchitecture, 'abseil_dll.lib')
+  );
   try {
-    await copyFileAtomicallyIfDifferent(path.join(sdkRoot, 'bin', 'libprotobuf.dll'), runtimeTarget);
-    plan.runtimeFiles.push(runtimeTarget);
+    for (const runtimeName of ['libprotobuf.dll', 'abseil_dll.dll']) {
+      const runtimeTarget = path.join(layout.binDir, runtimeName);
+      await fs.mkdir(path.dirname(runtimeTarget), { recursive: true });
+      await copyFileAtomicallyIfDifferent(path.join(sdkRoot, 'bin', targetArchitecture, runtimeName), runtimeTarget);
+      plan.runtimeFiles.push(runtimeTarget);
+    }
   } catch (error) {
     addBlockingDiagnostic(plan, `复制 Protobuf 运行时失败：${errorMessage(error)}`);
   }
@@ -528,6 +572,201 @@ async function materializeSqliteRuntimeForExport(exportDir: string, plan: Module
       );
     } catch (error) {
       addBlockingDiagnostic(plan, `复制 SQLite 随附运行库（${architecture}）失败：${errorMessage(error)}`);
+    }
+  }
+}
+
+async function findBundledMariadbRoot(): Promise<string | null> {
+  const candidates = unique([
+    process.env.LINGBUILDER_MARIADB_RUNTIME_ROOT || '',
+    process.resourcesPath ? path.join(process.resourcesPath, 'third_party', 'mariadb') : '',
+    path.resolve(process.cwd(), 'third_party', 'mariadb'),
+    path.resolve(process.cwd(), 'electron', 'third_party', 'mariadb')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    try {
+      await Promise.all([
+        fs.access(path.join(candidate, 'x64', 'libmariadb.dll')),
+        fs.access(path.join(candidate, 'x86', 'libmariadb.dll')),
+        fs.access(path.join(candidate, 'NOTICE.md'))
+      ]);
+      return candidate;
+    } catch {
+      // 尝试下一个由开发环境、打包资源或显式配置提供的位置。
+    }
+  }
+  return null;
+}
+
+async function verifyBundledMariadbRuntime(
+  source: string,
+  architecture: 'x86' | 'x64',
+  plan: ModuleNativeDependencyPlan
+): Promise<boolean> {
+  try {
+    const digest = await sha256File(source);
+    const expected = MYSQL_BUNDLED_RUNTIME_SHA256[architecture];
+    if (digest.toLowerCase() !== expected) {
+      addBlockingDiagnostic(plan, `LingBuilder 随附的 libmariadb.dll（${architecture}）SHA-256 不匹配：期望 ${expected}，实际 ${digest}。`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `校验随附 libmariadb.dll 失败：${errorMessage(error)}`);
+    return false;
+  }
+}
+
+/** F5 构建 / AI Bridge build.run：按当前目标架构把随附 libmariadb.dll 复制到模块镜像与 exe 同目录。 */
+async function materializeMysqlRuntime(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  if (process.platform !== 'win32') {
+    plan.diagnostics.push('MySQL 随附运行库当前仅提供 Windows 版本；可使用 MySQL_加载运行库 指定自备的 MariaDB Connector/C 运行库。');
+    return;
+  }
+  const bundledRoot = await findBundledMariadbRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 libmariadb.dll（MariaDB Connector/C）；MySQL 连接命令需要随附运行库或通过 MySQL_加载运行库 指定路径。');
+    return;
+  }
+  const architecture = layout.preferredTargetId === 'windows-msvc-win32' ? 'x86' : 'x64';
+  const source = path.join(bundledRoot, architecture, 'libmariadb.dll');
+  if (!await verifyBundledMariadbRuntime(source, architecture, plan)) return;
+  const moduleRoots = unique([
+    path.join(layout.buildDir, 'modules', MYSQL_MODULE_ID),
+    path.join(layout.exportDir, 'modules', MYSQL_MODULE_ID)
+  ]);
+  try {
+    const runtimeLayout = path.join(architecture, 'libmariadb.dll');
+    for (const root of moduleRoots) {
+      await copyFileAtomicallyIfDifferent(source, path.join(root, runtimeLayout));
+    }
+    const output = path.join(layout.binDir, 'libmariadb.dll');
+    await copyFileAtomicallyIfDifferent(source, output);
+    plan.runtimeFiles.push(output);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `复制 MySQL 随附运行库失败：${errorMessage(error)}`);
+  }
+}
+
+/** Visual Studio 工程导出：同时物化两个架构到模块镜像，供 vcxproj 的 Win32/x64 配置按 targets[].runtimeFiles 平铺复制到 exe 同目录。 */
+async function materializeMysqlRuntimeForExport(exportDir: string, plan: ModuleNativeDependencyPlan): Promise<void> {
+  if (process.platform !== 'win32') return;
+  const bundledRoot = await findBundledMariadbRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 libmariadb.dll（MariaDB Connector/C）；导出工程将缺少随附 MySQL 运行库。');
+    return;
+  }
+  for (const architecture of ['x86', 'x64'] as const) {
+    const source = path.join(bundledRoot, architecture, 'libmariadb.dll');
+    if (!await verifyBundledMariadbRuntime(source, architecture, plan)) continue;
+    try {
+      await copyFileAtomicallyIfDifferent(
+        source,
+        path.join(exportDir, 'modules', MYSQL_MODULE_ID, architecture, 'libmariadb.dll')
+      );
+    } catch (error) {
+      addBlockingDiagnostic(plan, `复制 MySQL 随附运行库（${architecture}）失败：${errorMessage(error)}`);
+    }
+  }
+}
+
+
+async function findBundledExcelRoot(): Promise<string | null> {
+  const candidates = unique([
+    process.env.LINGBUILDER_EXCEL_RUNTIME_ROOT || '',
+    process.resourcesPath ? path.join(process.resourcesPath, 'third_party', 'excel') : '',
+    path.resolve(process.cwd(), 'third_party', 'excel'),
+    path.resolve(process.cwd(), 'electron', 'third_party', 'excel')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    try {
+      await Promise.all([
+        fs.access(path.join(candidate, 'x64', 'LingBuilderExcel.dll')),
+        fs.access(path.join(candidate, 'x86', 'LingBuilderExcel.dll')),
+        fs.access(path.join(candidate, 'NOTICE.md'))
+      ]);
+      return candidate;
+    } catch {
+      // 尝试下一个由开发环境、打包资源或显式配置提供的位置。
+    }
+  }
+  return null;
+}
+
+async function verifyBundledExcelRuntime(
+  source: string,
+  architecture: 'x86' | 'x64',
+  plan: ModuleNativeDependencyPlan
+): Promise<boolean> {
+  try {
+    const digest = await sha256File(source);
+    const expected = EXCEL_BUNDLED_RUNTIME_SHA256[architecture];
+    if (digest.toLowerCase() !== expected) {
+      addBlockingDiagnostic(plan, `LingBuilder 随附的 LingBuilderExcel.dll（${architecture}）SHA-256 不匹配：期望 ${expected}，实际 ${digest}。`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `校验随附 LingBuilderExcel.dll 失败：${errorMessage(error)}`);
+    return false;
+  }
+}
+
+/** F5 构建 / AI Bridge build.run：按当前目标架构把随附 LingBuilderExcel.dll 复制到模块镜像与 exe 同目录。 */
+async function materializeExcelRuntime(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  if (process.platform !== 'win32') {
+    plan.diagnostics.push('Excel 表格模块当前仅提供 Windows 随附运行桥 LingBuilderExcel.dll。');
+    return;
+  }
+  const bundledRoot = await findBundledExcelRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 LingBuilderExcel.dll；Excel 命令运行时需要该运行桥位于 exe 同目录。');
+    return;
+  }
+  const architecture = layout.preferredTargetId === 'windows-msvc-win32' ? 'x86' : 'x64';
+  const source = path.join(bundledRoot, architecture, 'LingBuilderExcel.dll');
+  if (!await verifyBundledExcelRuntime(source, architecture, plan)) return;
+  const moduleRoots = unique([
+    path.join(layout.buildDir, 'modules', EXCEL_MODULE_ID),
+    path.join(layout.exportDir, 'modules', EXCEL_MODULE_ID)
+  ]);
+  try {
+    const runtimeLayout = path.join(architecture, 'LingBuilderExcel.dll');
+    for (const root of moduleRoots) {
+      await copyFileAtomicallyIfDifferent(source, path.join(root, runtimeLayout));
+    }
+    const output = path.join(layout.binDir, 'LingBuilderExcel.dll');
+    await copyFileAtomicallyIfDifferent(source, output);
+    plan.runtimeFiles.push(output);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `复制 Excel 随附运行桥失败：${errorMessage(error)}`);
+  }
+}
+
+/** Visual Studio 工程导出：同时物化两个架构到模块镜像，供 vcxproj 的 Win32/x64 配置按 targets[].runtimeFiles 平铺复制到 exe 同目录。 */
+async function materializeExcelRuntimeForExport(exportDir: string, plan: ModuleNativeDependencyPlan): Promise<void> {
+  if (process.platform !== 'win32') return;
+  const bundledRoot = await findBundledExcelRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 LingBuilderExcel.dll；导出工程将缺少随附 Excel 运行桥。');
+    return;
+  }
+  for (const architecture of ['x86', 'x64'] as const) {
+    const source = path.join(bundledRoot, architecture, 'LingBuilderExcel.dll');
+    if (!await verifyBundledExcelRuntime(source, architecture, plan)) continue;
+    try {
+      await copyFileAtomicallyIfDifferent(
+        source,
+        path.join(exportDir, 'modules', EXCEL_MODULE_ID, architecture, 'LingBuilderExcel.dll')
+      );
+    } catch (error) {
+      addBlockingDiagnostic(plan, `复制 Excel 随附运行桥（${architecture}）失败：${errorMessage(error)}`);
     }
   }
 }
@@ -1134,7 +1373,18 @@ async function copyFileAtomically(source: string, target: string): Promise<void>
   const temporary = `${target}.lingbuilder-tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
   try {
     await fs.copyFile(source, temporary);
-    await fs.rename(temporary, target);
+    // Windows 上刚落盘的大 DLL 可能被杀软/索引器短暂锁定，rename 报 EPERM/EBUSY；
+    // 带退避重试几次，避免偶发锁定让整次构建失败。
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await fs.rename(temporary, target);
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException)?.code;
+        if ((code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') || attempt >= 6) throw error;
+        await new Promise(resolve => setTimeout(resolve, 120 * (attempt + 1)));
+      }
+    }
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => undefined);
   }

@@ -221,6 +221,8 @@ std::atomic<int> g_context_menu_run_events{0};
 std::atomic<int> g_context_menu_command_events{0};
 std::atomic<int> g_context_menu_dismissed_events{0};
 std::atomic<int> g_jshook_messages{0};
+std::atomic<int> g_js_query_events{0};
+std::atomic<int> g_js_query_cancel_events{0};
 std::atomic<int> g_navigation_events{0};
 std::atomic<int> g_osr_touch_events{0};
 std::atomic<int> g_v4_file_dialog_events{0};
@@ -495,6 +497,25 @@ void LB_CEF3_CALL TestEventCallbackV4(const LB_CEF3_EVENT_PACKET_V4* packet,
   assert(response != nullptr);
   assert(response->abi_version == LB_CEF3_ABI_VERSION_V4);
   const std::wstring event_name(packet->event_name);
+  if (event_name == L"查询请求") {
+    const std::wstring fields(packet->fields_json);
+    const wchar_t* query_id = wcsstr(fields.c_str(), L"\"queryId\":\"");
+    assert(query_id != nullptr);
+    query_id += wcslen(L"\"queryId\":\"");
+    ++g_js_query_events;
+    // 「jsquery-cancel-me」留给页面取消，验证「查询已取消」派发；其余直接应答。
+    if (fields.find(L"jsquery-cancel-me") == std::wstring::npos) {
+      assert(LB_CEF3_JsQueryRespond(packet->browser, query_id, 1, L"jsquery-pong", 0, L"")
+          == LB_CEF3_OK);
+    }
+    return;
+  }
+  if (event_name == L"查询已取消") {
+    const std::wstring fields(packet->fields_json);
+    assert(fields.find(L"\"queryId\":") != std::wstring::npos);
+    ++g_js_query_cancel_events;
+    return;
+  }
   if (event_name == L"渲染进程 WebKit 已初始化") {
     assert(packet->event_id == UINT64_C(0xd2442ca04f10291d));
     assert(packet->browser != 0);
@@ -1754,10 +1775,24 @@ int wmain() {
   assert(LB_CEF3_BufferRelease(v4_resource_override) == LB_CEF3_OK);
   std::fprintf(stderr, "CEF3 test checkpoint: initialize\n");
   std::fflush(stderr);
+  // JS 交互通道必须在 CEF 初始化之前注册；这里赶在 LB_CEF3_Initialize 前启用，
+  // 并验证初始化后的重复/异名注册与无 pending 应答都会被拒绝。
+  assert(LB_CEF3_EnableJsQuery(L"cefQuery", L"cefQueryCancel") == LB_CEF3_OK);
+  assert(LB_CEF3_EnableJsQuery(L"cefQuery", L"cefQueryCancel") == LB_CEF3_OK);
   assert(LB_CEF3_Initialize(&config) == LB_CEF3_OK);
   std::fprintf(stderr, "CEF3 test checkpoint: initialized\n");
   std::fflush(stderr);
   assert(LB_CEF3_IsInitialized() == 1);
+  assert(LB_CEF3_EnableJsQuery(L"cefQuery", L"cefQueryCancel")
+      == LB_CEF3_ERROR_OPERATION_FAILED);
+  assert(LB_CEF3_EnableJsQuery(L"otherQuery", L"otherQueryCancel")
+      == LB_CEF3_ERROR_OPERATION_FAILED);
+  assert(LB_CEF3_JsQueryRespond(0, L"1", 1, L"x", 0, L"")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_JsQueryRespond(0, L"not-a-number", 1, L"x", 0, L"")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_JsQueryRespond(0, nullptr, 1, L"x", 0, L"")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
 
   // Execute the negative ABI paths for wrappers whose successful behavior is
   // covered by the object-specific tests below. These probes verify that every
@@ -9699,6 +9734,15 @@ int wmain() {
   }
   assert(g_js_dialog_events.load() >= 1);
   assert(g_dialog_closed_events.load() >= 1);
+  // JS 交互（cefQuery）回环：页面发起查询 → 桥派发「查询请求」→ 事件回调应答 →
+  // onSuccess 写结果；第二个查询留给页面主动取消，验证「查询已取消」派发。
+  // 生成模板对每个浏览器都注册 per-browser V4 回调（真实运行时形态），这里同构。
+  assert(LB_CEF3_SetEventCallbackV4(browser_a, TestEventCallbackV4, nullptr)
+      == LB_CEF3_OK);
+  assert(g_js_query_events.load() == 0);
+  // 注销 per-browser V4 回调，恢复既有测试的事件通道状态：
+  // 否则后续 native-test 导航的「资源加载前」受管事件会挂到超时。
+  assert(LB_CEF3_SetEventCallbackV4(browser_a, nullptr, nullptr) == LB_CEF3_OK);
   LB_CEF3_KEY_EVENT_V3 key_event{};
   key_event.struct_size = sizeof(key_event);
   key_event.abi_version = LB_CEF3_ABI_VERSION_V3;

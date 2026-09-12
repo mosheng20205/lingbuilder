@@ -1,6 +1,8 @@
 import { normalizeIdentifier } from './parser';
-import { inferLingCppExpressionType } from './expressionTypeService';
-import { LingCppClass, LingCppGlobalVariable, LingCppMethod } from './types';
+import { parseLingCppControlFlowLine } from './controlFlow';
+import { inferLingCppExpressionType, normalizeLingCppValueType } from './expressionTypeService';
+import { getLingCppParameterElementType, isLingCppArrayParameterType } from './parameterTypeService';
+import { LingCppClass, LingCppGlobalVariable, LingCppMethod, LingCppProjectTypeContext } from './types';
 import { LingCppModuleContext } from '../modules/types';
 
 export type BeginnerAutoLocalAnalysis =
@@ -14,6 +16,7 @@ export interface BeginnerAutoLocalAnalysisOptions {
   globals?: LingCppGlobalVariable[];
   moduleContext?: LingCppModuleContext;
   commandReturnTypes?: ReadonlyMap<string, string>;
+  projectTypes?: LingCppProjectTypeContext;
 }
 
 export type BeginnerAutoLocalCommandArgumentAnalysis =
@@ -47,33 +50,21 @@ export function analyzeBeginnerAutoLocalAssignment(
     return { kind: 'none', reason: 'incomplete' };
   }
 
-  const normalizedName = normalizeIdentifier(name);
-  const declarationNames = [
-    ...(options.globals || []).map(global => global.name),
-    ...(options.ownerClass?.members || []).map(member => member.name),
-    ...options.method.parameters.map(parameter => parameter.name),
-    ...(options.method.locals || []).map(local => local.name)
-  ];
-  if (declarationNames.some(declaration => normalizeIdentifier(declaration) === normalizedName)) {
+  if (isBeginnerNameDeclared(name, options)) {
     return { kind: 'none', reason: 'already-declared' };
   }
 
   // 数组维度参与推断：名单[0] 和 数组_取成员(名单, 0) 都要能定型到元素类型。
-  const scopeTypes = new Map<string, string>();
-  (options.globals || []).forEach(global => scopeTypes.set(normalizeIdentifier(global.name), global.isArray ? `${global.type}[]` : global.type));
-  (options.ownerClass?.members || []).forEach(member => scopeTypes.set(normalizeIdentifier(member.name), member.isArray ? `${member.type}[]` : member.type));
-  options.method.parameters.forEach(parameter => scopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
-  (options.method.locals || []).forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type));
-
   return {
     kind: 'declare',
     name,
     expression,
     inferredType: inferLingCppExpressionType(
       expression,
-      scopeTypes,
+      buildBeginnerScopeTypeMap(options),
       options.moduleContext,
-      options.commandReturnTypes
+      options.commandReturnTypes,
+      options.projectTypes
     )
   };
 }
@@ -95,6 +86,96 @@ export function analyzeBeginnerAutoLocalCommandArgument(
     return { kind: 'none', reason: 'not-identifier' };
   }
 
+  if (isBeginnerNameDeclared(name, options)) {
+    return { kind: 'none', reason: 'already-declared' };
+  }
+
+  const inferredType = normalizeBeginnerOutputParameterType(options.parameterType);
+  if (!inferredType) return { kind: 'none', reason: 'unknown-type' };
+  return { kind: 'declare', name, inferredType };
+}
+
+/**
+ * 循环变量槽位是语言级固定语义：计次循环首第 2 参数、变量循环首第 4 参数、
+ * 枚举循环首第 2 参数是循环中唯一需要预先声明的变量。计次与变量循环的
+ * 循环变量按整数型处理；枚举循环的当前项类型跟随集合实参的元素类型。
+ */
+const BEGINNER_LOOP_VARIABLE_SLOTS: Record<string, {
+  argumentIndex: number;
+  argumentCount: number;
+  mode: 'fixed' | 'foreach-element';
+  fixedType?: string;
+}> = {
+  计次循环首: { argumentIndex: 1, argumentCount: 2, mode: 'fixed', fixedType: '整数型' },
+  变量循环首: { argumentIndex: 3, argumentCount: 4, mode: 'fixed', fixedType: '整数型' },
+  枚举循环首: { argumentIndex: 1, argumentCount: 2, mode: 'foreach-element' }
+};
+
+export type BeginnerAutoLocalLoopVariableAnalysis =
+  | { kind: 'none'; reason: 'not-loop-variable' | 'not-identifier' | 'already-declared' }
+  | { kind: 'declare'; name: string; inferredType?: string; statement: string };
+
+export interface BeginnerAutoLocalLoopVariableOptions {
+  lineText: string;
+  method: LingCppMethod;
+  ownerClass?: LingCppClass;
+  globals?: LingCppGlobalVariable[];
+  moduleContext?: LingCppModuleContext;
+  commandReturnTypes?: ReadonlyMap<string, string>;
+  projectTypes?: LingCppProjectTypeContext;
+}
+
+export function analyzeBeginnerAutoLocalLoopVariable(
+  options: BeginnerAutoLocalLoopVariableOptions
+): BeginnerAutoLocalLoopVariableAnalysis {
+  const statement = options.lineText.trim();
+  const control = parseLingCppControlFlowLine(statement);
+  const slot = control ? BEGINNER_LOOP_VARIABLE_SLOTS[control.keyword] : undefined;
+  if (!control || control.role !== 'start' || !slot) {
+    return { kind: 'none', reason: 'not-loop-variable' };
+  }
+  if (control.arguments.length !== slot.argumentCount) {
+    return { kind: 'none', reason: 'not-loop-variable' };
+  }
+
+  const name = (control.arguments[slot.argumentIndex] || '').trim();
+  if (!isBeginnerLocalIdentifier(name)) {
+    return { kind: 'none', reason: 'not-identifier' };
+  }
+  if (isBeginnerNameDeclared(name, options)) {
+    return { kind: 'none', reason: 'already-declared' };
+  }
+
+  let inferredType: string | undefined;
+  if (slot.mode === 'fixed') {
+    inferredType = slot.fixedType;
+  } else {
+    // 枚举循环：当前项跟随集合实参的元素类型（含 字节集 → 字节型 的特例，
+    // 与表达式类型服务对字节集下标访问的结论保持一致）。
+    const collectionType = inferLingCppExpressionType(
+      control.arguments[0] || '',
+      buildBeginnerScopeTypeMap(options),
+      options.moduleContext,
+      options.commandReturnTypes,
+      options.projectTypes
+    );
+    if (collectionType && isLingCppArrayParameterType(collectionType)) {
+      inferredType = normalizeLingCppValueType(getLingCppParameterElementType(collectionType));
+    } else if (collectionType === '字节集') {
+      inferredType = '字节型';
+    }
+  }
+
+  return { kind: 'declare', name, inferredType, statement };
+}
+
+interface BeginnerDeclarationScope {
+  method: LingCppMethod;
+  ownerClass?: LingCppClass;
+  globals?: LingCppGlobalVariable[];
+}
+
+function isBeginnerNameDeclared(name: string, options: BeginnerDeclarationScope): boolean {
   const normalizedName = normalizeIdentifier(name);
   const declarationNames = [
     ...(options.globals || []).map(global => global.name),
@@ -102,13 +183,16 @@ export function analyzeBeginnerAutoLocalCommandArgument(
     ...options.method.parameters.map(parameter => parameter.name),
     ...(options.method.locals || []).map(local => local.name)
   ];
-  if (declarationNames.some(declaration => normalizeIdentifier(declaration) === normalizedName)) {
-    return { kind: 'none', reason: 'already-declared' };
-  }
+  return declarationNames.some(declaration => normalizeIdentifier(declaration) === normalizedName);
+}
 
-  const inferredType = normalizeBeginnerOutputParameterType(options.parameterType);
-  if (!inferredType) return { kind: 'none', reason: 'unknown-type' };
-  return { kind: 'declare', name, inferredType };
+function buildBeginnerScopeTypeMap(options: BeginnerDeclarationScope): Map<string, string> {
+  const scopeTypes = new Map<string, string>();
+  (options.globals || []).forEach(global => scopeTypes.set(normalizeIdentifier(global.name), global.isArray ? `${global.type}[]` : global.type));
+  (options.ownerClass?.members || []).forEach(member => scopeTypes.set(normalizeIdentifier(member.name), member.isArray ? `${member.type}[]` : member.type));
+  options.method.parameters.forEach(parameter => scopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
+  (options.method.locals || []).forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type));
+  return scopeTypes;
 }
 
 function isBeginnerOutputParameter(name?: string, note?: string): boolean {

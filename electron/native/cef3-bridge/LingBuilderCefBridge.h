@@ -560,6 +560,19 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ContinuationCompleteV4(
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ContinuationCancelV4(LB_CEF3_CONTINUATION_HANDLE continuation);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ContinuationReleaseV4(LB_CEF3_CONTINUATION_HANDLE continuation);
 
+/* JS 交互（cefQuery）通道。注册必须在 LB_CEF3_Initialize 之前完成：查询函数名
+   随 CefMessageRouterConfig 在渲染进程 OnWebKitInitialized 时注入 window，
+   CEF 初始化后注册的通道对新创建的浏览器不生效。CEF3 每进程只支持一条查询
+   通道；同名重复注册按幂等成功处理，异名注册返回失败。 */
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_EnableJsQuery(
+    const wchar_t* query_function, const wchar_t* cancel_function);
+/* 按查询 ID 应答页面查询：success 非 0 时以 result_text 调用 onSuccess，
+   否则以 error_code 与 error_text 调用 onFailure。查询 ID 从「查询请求」
+   事件的 queryId 字段读出。查询已被应答、取消或不存在时返回失败。 */
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_JsQueryRespond(
+    LB_CEF3_HANDLE browser, const wchar_t* query_id, int success,
+    const wchar_t* result_text, int error_code, const wchar_t* error_text);
+
 /* V8 objects never leave the renderer process. These entry points route the
    official operation ID to the renderer and return a managed Task. Any
    resulting object is represented by a typed proxy handle whose renderer

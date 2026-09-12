@@ -20,19 +20,19 @@
 
 **新手模式**是打开 IDE 后的默认编辑形态，也是本作的主打入口：变量、参数、子程序、事件都用中文表格结构化呈现，像填表一样写代码，不用记任何英文语法；`Ctrl+空格` 呼出中文命令补全，方向键选择、回车上屏：
 
-![新手结构化中文编辑](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/03-novice-editor.png)
+![新手结构化中文编辑](https://img.msblog.cc/img/03-novice-editor.png)
 
 **专业模式**随时一键切换：基于 Monaco 的中文代码编辑器，带中文关键字高亮、中文命令补全、诊断标记和格式化：
 
-![中文代码编辑器](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/02-chinese-code.png)
+![中文代码编辑器](https://img.msblog.cc/img/02-chinese-code.png)
 
 **全中文工作台**：解决方案资源管理器、多标签编辑器、可视化设计器、底部面板、状态栏，外加右侧的 AI 编程助手。
 
-![工作台总览](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/01-workbench.png)
+![工作台总览](https://img.msblog.cc/img/01-workbench.png)
 
 **可视化窗口设计器**：拖控件、改属性、绑事件，单击事件自动生成对应的中文事件处理器；`Ctrl+点击` 代码里的控件名可以直接跳回设计器定位控件：
 
-![窗口设计器](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/04-designer.png)
+![窗口设计器](https://img.msblog.cc/img/04-designer.png)
 
 ---
 
@@ -71,11 +71,11 @@
 
 F5 一键「生成 → 编译 → 运行」，产物是标准 Win32 程序：
 
-![原生 EXE 运行效果](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/05-native-exe.png)
+![原生 EXE 运行效果](https://img.msblog.cc/img/05-native-exe.png)
 
 也可以把整个工程导出为 C++ 源码 + Visual Studio 解决方案（`.sln` / `.vcxproj`），拿到 VS 里继续手工开发：
 
-![导出 C++ 工程](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/06-cpp-export.png)
+![导出 C++ 工程](https://img.msblog.cc/img/06-cpp-export.png)
 
 IDE 内 F5 运行和导出工程走的是**同一套生成规则**，两边行为一致，不存在「IDE 里能跑、导出就废」的情况。
 
@@ -85,11 +85,11 @@ IDE 内 F5 运行和导出工程走的是**同一套生成规则**，两边行�
 
 用 Visual Studio 打开导出的 `.sln`，就是一个普通的 C++ 工程——`main.cpp`、资源文件、模块依赖（比如 SQLite 的 `sqlite3.dll`）都规规矩矩摆在解决方案里：
 
-![Visual Studio 打开导出工程](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/09-visual-studio.png)
+![Visual Studio 打开导出工程](https://img.msblog.cc/img/09-visual-studio.png)
 
 编译出来的 exe 拿出来就能双击运行。下面这个窗口就是导出工程用 MSVC 编译后直接跑起来的样子（不是灵码的预览，是独立的原生程序）：
 
-![导出工程编译产物直接运行](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/10-sqlite-exe.png)
+![导出工程编译产物直接运行](https://img.msblog.cc/img/10-sqlite-exe.png)
 
 两个小提示：
 
@@ -110,13 +110,13 @@ IDE 内 F5 运行和导出工程走的是**同一套生成规则**，两边行�
 
 第三方作者可以把现成的 C++ 库封装成模块贡献中文命令，模块开发者中心提供创建、校验、打包、安装的全流程：
 
-![模块生态](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/08-modules.png)
+![模块生态](https://img.msblog.cc/img/08-modules.png)
 
 ## AI 是增强层，不是黑箱
 
 - AI 修改代码**先生成可审查的 Diff 草案**，经路径、语法和模块上下文检查后由你确认应用，不会静默改文件：
 
-![AI 助手与 Diff 审查](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/07-ai-assistant.png)
+![AI 助手与 Diff 审查](https://img.msblog.cc/img/07-ai-assistant.png)
 
 - 支持平台模型（系统 AI）和自带 API Key（BYOK）两条独立通道；
 - 本地 **AI Bridge** 通过 MCP 协议把工作区、诊断、受控编辑和构建能力暴露给外部 AI（Codex CLI / Claude Code / Gemini CLI 都能接），带只读 / 预览确认 / 受控自动三档权限；

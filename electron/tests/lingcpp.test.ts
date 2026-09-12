@@ -51,7 +51,7 @@ import {
   getBeginnerMethodBodySegments,
   isBeginnerLocalInsertShortcut
 } from '../src/services/lingCpp/beginnerLocalVariableLayout';
-import { analyzeBeginnerAutoLocalAssignment, isCompleteBeginnerExpression } from '../src/services/lingCpp/beginnerAutoLocalService';
+import { analyzeBeginnerAutoLocalAssignment, analyzeBeginnerAutoLocalLoopVariable, isCompleteBeginnerExpression } from '../src/services/lingCpp/beginnerAutoLocalService';
 import {
   buildBeginnerTypeCompletionCatalog,
   filterBeginnerTypeCompletions,
@@ -3212,6 +3212,69 @@ test('beginner Enter auto-declaration infers literals and module command return 
   assert.equal(analyzeBeginnerAutoLocalAssignment({ lineText: '按钮1.标题 = "x"', method, ownerClass }).kind, 'none');
   assert.equal(isCompleteBeginnerExpression('网页_访问_对象(url, 1'), false);
   assert.equal(isCompleteBeginnerExpression('网页_访问_对象(url, 1)'), true);
+});
+
+test('beginner Enter auto-declaration prompts loop variables for count/range/foreach loops', () => {
+  const source = `类 测试窗口 : 公开 窗体
+公开:
+    空 _按钮1_被单击()
+        文本型 名称列表[]
+        整数型 已有计数
+        字节集 数据
+        计次循环首 (10, 计次变量)
+            已有计数 = 已有计数 + 1
+        计次循环尾 ()
+    结束
+结束类`;
+  const parsed = parseLingCpp(source);
+  const ownerClass = parsed.program.classes[0];
+  const method = ownerClass.methods[0];
+  const loopOptions = { lineText: '', method, ownerClass };
+
+  const count = analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '计次循环首 (10, 计次变量)' });
+  assert.deepEqual(count, { kind: 'declare', name: '计次变量', inferredType: '整数型', statement: '计次循环首 (10, 计次变量)' });
+
+  const fullWidth = analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '计次循环首（10，计次变量）' });
+  assert.equal(fullWidth.kind, 'declare');
+  assert.equal(fullWidth.kind === 'declare' ? fullWidth.inferredType : 'unexpected', '整数型');
+
+  const indented = analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '    计次循环首 (10, 计次变量)' });
+  assert.equal(indented.kind, 'declare');
+
+  const range = analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '变量循环首 (1, 10, 2, 索引)' });
+  assert.equal(range.kind, 'declare');
+  assert.equal(range.kind === 'declare' ? range.inferredType : 'unexpected', '整数型');
+
+  const foreach = analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '枚举循环首 (名称列表, 当前项)' });
+  assert.equal(foreach.kind, 'declare');
+  assert.equal(foreach.kind === 'declare' ? foreach.inferredType : 'unexpected', '文本型');
+
+  const foreachBytes = analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '枚举循环首 (数据, 字节)' });
+  assert.equal(foreachBytes.kind, 'declare');
+  assert.equal(foreachBytes.kind === 'declare' ? foreachBytes.inferredType : 'unexpected', '字节型');
+
+  const foreachUnknown = analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '枚举循环首 (未知集合, 当前项)' });
+  assert.equal(foreachUnknown.kind, 'declare');
+  assert.equal(foreachUnknown.kind === 'declare' ? foreachUnknown.inferredType : 'unexpected', undefined);
+
+  assert.equal(analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '计次循环首 (10)' }).kind, 'none');
+  assert.equal(
+    (analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '计次循环首 (10, 已有计数)' }) as { reason?: string }).reason,
+    'already-declared'
+  );
+  assert.equal(
+    (analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '计次循环首 (10, "次数")' }) as { reason?: string }).reason,
+    'not-identifier'
+  );
+  assert.equal(
+    (analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '计次循环首 (10, 按钮1.标题)' }) as { reason?: string }).reason,
+    'not-identifier'
+  );
+  assert.equal(analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '变量循环首 (1, 10, 2)' }).kind, 'none');
+  assert.equal(analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '判断循环首 (条件)' }).kind, 'none');
+  assert.equal(analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '计次循环尾 ()' }).kind, 'none');
+  assert.equal(analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '信息框 ("提示", 0, "标题")' }).kind, 'none');
+  assert.equal(analyzeBeginnerAutoLocalLoopVariable({ ...loopOptions, lineText: '// 计次循环首 (10, 计次变量)' }).kind, 'none');
 });
 
 test('beginner local variable type completion resolves Chinese pinyin abbreviations', () => {

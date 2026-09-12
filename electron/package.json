@@ -1,7 +1,7 @@
 {
   "name": "lingbuilder-electron",
   "private": true,
-  "version": "0.6.6",
+  "version": "0.6.7",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -66,11 +66,15 @@
     "smoke:crypto-native": "node --import tsx scripts/smoke-crypto-native.ts",
     "smoke:opencv-native": "node --import tsx scripts/smoke-opencv-native.ts",
     "smoke:protobuf-native": "node --import tsx scripts/smoke-protobuf-native.ts",
+    "protobuf:manifest": "node --import tsx scripts/generate-protobuf-sdk-manifest.ts",
+    "protobuf:prepare": "node scripts/prepare-protobuf-sdk.mjs",
     "smoke:array-native": "tsx scripts/smoke-array-native.ts",
     "smoke:json-native": "tsx scripts/smoke-json-native.ts",
     "smoke:local-constant-native": "tsx scripts/smoke-local-constant-native.ts",
     "smoke:disk-native": "tsx scripts/smoke-disk-native.ts",
     "smoke:sqlite-native": "tsx scripts/smoke-sqlite-native.ts",
+    "smoke:mysql-native": "tsx scripts/smoke-mysql-native.ts",
+    "smoke:excel-native": "tsx scripts/smoke-excel-native.ts",
     "smoke:websocket-server-native": "tsx scripts/smoke-websocket-server-native.ts",
     "smoke:websocket-client-native": "tsx scripts/smoke-websocket-client-native.ts",
     "smoke:http-server-native": "tsx scripts/smoke-http-server-native.ts",
@@ -248,6 +252,22 @@
         "to": "third_party/sqlite/NOTICE.md"
       },
       {
+        "from": "third_party/mariadb/x64/libmariadb.dll",
+        "to": "third_party/mariadb/x64/libmariadb.dll"
+      },
+      {
+        "from": "third_party/mariadb/x86/libmariadb.dll",
+        "to": "third_party/mariadb/x86/libmariadb.dll"
+      },
+      {
+        "from": "third_party/mariadb/NOTICE.md",
+        "to": "third_party/mariadb/NOTICE.md"
+      },
+      {
+        "from": "third_party/mariadb/COPYING.LIB",
+        "to": "third_party/mariadb/COPYING.LIB"
+      },
+      {
         "from": "../image/lingbuilder-ide-icon-v2.ico",
         "to": "assets/lingbuilder-window.ico"
       },
@@ -271,6 +291,10 @@
           "!lingbuilder.fbro.sdk/sdk",
           "!lingbuilder.fbro.sdk/sdk/**/*"
         ]
+      },
+      {
+        "from": "third_party/protobuf",
+        "to": "default-workspace/.lingbuilder/toolchains/protobuf"
       },
       {
         "from": "installer/cloud-release.json",

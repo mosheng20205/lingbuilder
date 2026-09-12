@@ -5,6 +5,12 @@ export const LINGBUILDER_VERSION = packageMetadata.version;
 export const LINGBUILDER_DISPLAY_VERSION = `v${LINGBUILDER_VERSION}`;
 /** 官网地址：发现新版本时引导用户前往手动下载更新。 */
 export const LINGBUILDER_OFFICIAL_SITE_URL = 'https://lingbuilder.com';
+/** 官网栏目入口：欢迎页底部导航与帮助类入口使用，路径与官网导航（websiteNav.ts）保持一致。 */
+export const LINGBUILDER_DOCS_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/docs`;
+export const LINGBUILDER_VIDEO_TUTORIALS_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/docs/guide/videos/`;
+export const LINGBUILDER_COMMANDS_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/commands`;
+export const LINGBUILDER_AI_GUIDE_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/docs/guide/ai/`;
+export const LINGBUILDER_GITHUB_URL = 'https://github.com/mosheng20205/lingbuilder';
 
 export interface LingBuilderReleaseNoteSection {
   title: string;

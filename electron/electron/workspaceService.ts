@@ -10,11 +10,16 @@ export interface WorkspaceState {
   window?: { x: number; y: number; width: number; height: number; maximized: boolean };
 }
 
+/** 最近工作区最多保留的条数；超出后最旧的记录被丢弃。 */
+export const RECENT_WORKSPACES_LIMIT = 200;
+
 export interface DesktopWorkspaceServiceOptions {
   argv: string[];
   documentsPath: string;
   userDataPath: string;
   defaultWorkspaceSource?: string;
+  /** 安装包随附的固定版本 Protobuf SDK 根目录；工作区缺失时自动铺设。 */
+  bundledProtobufSdkSource?: string;
   seedVersion?: string;
   profile?: WorkspaceState['profile'];
 }
@@ -66,7 +71,11 @@ export class DesktopWorkspaceService {
     const state = await this.readState();
     if (state?.lastWorkspace && await isDirectory(state.lastWorkspace)) {
       this.initialWorkspaceSource = 'state';
-      return path.resolve(state.lastWorkspace);
+      const remembered = path.resolve(state.lastWorkspace);
+      // 这条路径不经过 rememberWorkspace，也要补齐随附工具链，否则老工作区第一次
+      // 用到 Protobuf 模块仍会因缺 SDK 阻断构建。
+      await this.ensureBundledToolchains(remembered);
+      return remembered;
     }
 
     if (fallbackWorkspace) {
@@ -83,13 +92,14 @@ export class DesktopWorkspaceService {
     const resolved = path.resolve(workspacePath);
     await fs.mkdir(resolved, { recursive: true });
     await this.assertWorkspaceDirectory(resolved);
+    await this.ensureBundledToolchains(resolved);
     await fs.mkdir(path.dirname(this.statePath), { recursive: true });
     const previous = await this.readState();
     await this.writeState({
       schemaVersion: 3,
       profile: this.profile,
       lastWorkspace: resolved,
-      recentWorkspaces: [resolved, ...(previous?.recentWorkspaces || []).filter(item => !samePath(item, resolved))].slice(0, 10),
+      recentWorkspaces: [resolved, ...(previous?.recentWorkspaces || []).filter(item => !samePath(item, resolved))].slice(0, RECENT_WORKSPACES_LIMIT),
       window: previous?.window
     });
     return resolved;
@@ -176,8 +186,24 @@ export class DesktopWorkspaceService {
     return target;
   }
 
-  private async readState(): Promise<WorkspaceState | undefined> {
+  /**
+   * 把安装包随附的固定版本工具链（当前只有 Protobuf SDK）铺进工作区。
+   * 只补缺失文件、绝不覆盖用户已有内容（包括用户自备的同版本 SDK）；
+   * 每次打开工作区都补一次，可以自愈上次中断留下的半份拷贝。失败不阻断
+   * 打开工作区——真正用到时构建链路会给出明确的中文 SDK 校验诊断。
+   */
+  async ensureBundledToolchains(workspacePath: string): Promise<void> {
+    const source = this.options.bundledProtobufSdkSource;
+    if (!source || !await isDirectory(source)) return;
+    const target = path.join(workspacePath, '.lingbuilder', 'toolchains', 'protobuf');
     try {
+      await copyMissingFiles(source, target);
+    } catch (error) {
+      console.warn(`铺设 Protobuf 工具链失败（构建时会给出明确诊断）：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async readState(): Promise<WorkspaceState | undefined> {    try {
       const parsed = JSON.parse(await fs.readFile(this.statePath, 'utf8')) as {
         schemaVersion?: number;
         profile?: unknown;

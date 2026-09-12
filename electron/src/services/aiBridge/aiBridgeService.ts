@@ -1051,6 +1051,13 @@ export class AiBridgeService {
     moduleNativePlan.includeDirs.push(...new Set(generatedNativeSources.map(file => path.dirname(file))));
     moduleNativePlan.sourceFiles = [...new Set(moduleNativePlan.sourceFiles)];
     moduleNativePlan.includeDirs = [...new Set(moduleNativePlan.includeDirs)];
+    // descriptor / runtime 产物（如 protobuf descriptor.pb）是 exe 运行期输入，
+    // F5 直接编译路径不经过 msbuild 的 contentFiles 复制，这里显式落进 exe 目录。
+    for (const artifact of codeGeneratorResult.artifacts.filter(item => item.kind === 'descriptor' || item.kind === 'runtime')) {
+      const target = path.join(binDir, artifact.relativePath);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.copyFile(artifact.absolutePath, target);
+    }
     const buildVisualStudioProject = await exportVisualStudioProject({
       projectDir: buildDir,
       projectId,
@@ -1563,8 +1570,9 @@ async function compileWin32Preview(
   const objectPath = path.join(objDir, 'main.obj');
   const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
   const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
+  const extraDefineArgs = (modulePlan?.extraCompileDefines || []).map(define => `/D${define}`);
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, resourceOutputPath, resourceLogs, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, signal);
   }
 
   const commandArgs = compiler.kind === 'msvc'
@@ -1573,6 +1581,7 @@ async function compileWin32Preview(
         '/EHsc',
         `/std:c++${requiredCppStandard}`,
         '/utf-8',
+        ...extraDefineArgs,
         ...(useDynamicCrt ? ['/MD'] : []),
         '/DUNICODE',
         '/D_UNICODE',
@@ -1671,6 +1680,7 @@ async function compileMsvcPreviewWithModules(
   moduleLibs: string[],
   requiredCppStandard: 17 | 20,
   useDynamicCrt: boolean,
+  extraDefineArgs: string[],
   resourceOutputPath: string | undefined,
   resourceLogs: string[],
   signal?: AbortSignal
@@ -1682,6 +1692,7 @@ async function compileMsvcPreviewWithModules(
     '/EHsc',
     `/std:c++${requiredCppStandard}`,
     '/utf-8',
+    ...extraDefineArgs,
     ...(useDynamicCrt ? ['/MD'] : []),
     '/DUNICODE',
     '/D_UNICODE',

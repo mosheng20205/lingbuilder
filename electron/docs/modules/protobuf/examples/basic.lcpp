@@ -2,7 +2,9 @@
 使用 Win32窗口基础模块
 使用 Protocol Buffers 模块
 
-// descriptor.pb 由受控 protoc Provider 在构建阶段生成。
+' 演示：JSON 填充消息 → 字节集序列化 → 字节集解析还原 → JSON 读回校验。
+' 构建时受控 protoc 会扫描项目中的 demo.proto 并生成 generated/protobuf/descriptor.pb。
+
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         局部 句柄 描述集 = PB_加载描述集("generated/protobuf/descriptor.pb")
@@ -11,15 +13,34 @@
             返回
         结束
 
-        局部 句柄 消息 = PB_创建消息(描述集, "demo.Message")
+        局部 句柄 消息 = PB_创建消息(描述集, "demo.Player")
         如果 (消息 == 0)
             调试输出("创建 Protobuf 消息失败：", PB_取最后错误())
             PB_释放描述集(描述集)
             返回
         结束
 
+        ' 用 JSON 填充字段（bytes 字段在 JSON 里写 Base64）。
+        如果 (PB_从JSON(消息, "{\"name\":\"张三\",\"level\":9,\"items\":[\"木剑\",\"面包\"]}") == 假)
+            调试输出("填充 JSON 失败：", PB_取最后错误())
+            PB_释放消息(消息)
+            PB_释放描述集(描述集)
+            返回
+        结束
+
+        ' 序列化为字节集，可直接交给网络命令或写文件。
         局部 字节集 编码 = PB_序列化为字节集(消息)
-        调试输出("空消息字节数：", 字节集_长度(编码))
+        调试输出("编码字节数：", 字节集_长度(编码))
+
+        ' 字节集解析还原，再转 JSON 校验内容。
+        局部 句柄 还原 = PB_创建消息(描述集, "demo.Player")
+        如果 (PB_从字节集解析(还原, 编码))
+            调试输出("还原 JSON：", PB_到JSON(还原))
+        否则
+            调试输出("解析字节集失败：", PB_取最后错误())
+        结束
+
+        PB_释放消息(还原)
         PB_释放消息(消息)
         PB_释放描述集(描述集)
     结束

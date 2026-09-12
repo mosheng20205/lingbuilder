@@ -12,7 +12,7 @@
 
 FBro 在灵码里不只是命令库：它是一个**可视化控件**。拖进窗口后，属性面板直接配置打开网址、独立程序目录、User-Agent、JavaScript / 图片 / WebGL 开关、代理模式、启动参数 JSON 等：
 
-![设计器中的 FBro 指纹浏览器控件](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/fbro-01-designer.png)
+![设计器中的 FBro 指纹浏览器控件](https://img.msblog.cc/img/fbro-01-designer.png)
 
 单击事件栏自动生成中文事件处理器；代码里的控件名是带类型检查的引用——控件不存在、类型不匹配，编辑阶段就报中文诊断，不用等编译。
 
@@ -20,7 +20,7 @@ FBro 在灵码里不只是命令库：它是一个**可视化控件**。拖进�
 
 新手模式（结构化中文编辑）下的 FBro 网页填表示例，变量、参数、子程序都是中文表格，右侧是结构大纲：
 
-![新手模式结构化中文编辑](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/fbro-02-code.png)
+![新手模式结构化中文编辑](https://img.msblog.cc/img/fbro-02-code.png)
 
 一段真实代码（节选自 CDP 自动化示例，仓库里就有完整工程）：
 
@@ -54,7 +54,7 @@ FBro 在灵码里不只是命令库：它是一个**可视化控件**。拖进�
 
 这是教程第 11 集的综合项目（同样是中文源码生成 C++ 编译的）：三个工作区实例演示**会话隔离**，两个浏览器面板独立浏览，底下一排按钮对应 CDP 点击、下载测试文件、连接 CDP 取标题等能力，日志区只记事件名与处理结果：
 
-![综合项目运行效果](https://raw.githubusercontent.com/mosheng20205/lingbuilder/main/docs/images/forum/fbro-03-running.png)
+![综合项目运行效果](https://img.msblog.cc/img/fbro-03-running.png)
 
 ---
 

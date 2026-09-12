@@ -15,6 +15,7 @@ LingBuilder 内置 AI 智能编程助手，支持**中文对话**、代码补全
 | [AI 对话式改代码](/guide/ai/chat) | 用中文描述需求，AI 生成或修改代码 |
 | [AI Bridge 连接配置](/guide/ai/bridge-config) | 添加模型供应商、设定权限模式 |
 | [MCP 工具协议](/guide/ai/mcp) | 通过 MCP 协议扩展 AI 工具能力 |
+| [AI 构建与运行](/guide/ai/build-run) | AI 创建项目后真实编译成 exe 并运行，与 F5 行为一致 |
 | [代码补全](/guide/ai/completion) | AI 实时补全代码片段 |
 | [代码审查](/guide/ai/review) | AI 审查代码质量与潜在问题 |
 | [用 AI 生成模块](/guide/user/modules/ai-module-dev) | 复制开发规范给任意 AI，导入后编译成真实 C++ 模块 |

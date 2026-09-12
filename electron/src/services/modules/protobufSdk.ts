@@ -9,15 +9,28 @@ import { validateModuleRelativePath } from './manifest';
  */
 export const PROTOBUF_SDK_VERSION = '27.3.0';
 export const PROTOBUF_SDK_MANIFEST_SCHEMA_VERSION = 1;
-export const PROTOBUF_SDK_REQUIRED_FILES = [
+/** 所有架构共用的必需文件：头文件与宿主 protoc。 */
+export const PROTOBUF_SDK_COMMON_REQUIRED_FILES = [
   'include/google/protobuf/descriptor.h',
   'include/google/protobuf/dynamic_message.h',
   'include/google/protobuf/descriptor.pb.h',
   'include/google/protobuf/util/json_util.h',
-  'lib/libprotobuf.lib',
-  'bin/libprotobuf.dll',
   'bin/protoc.exe'
 ] as const;
+
+/** libprotobuf 按目标架构分目录提供，Win32 与 x64 的 DLL/导入库不能混用；abseil 以单体 DLL（文件名固定为 abseil_dll.dll）随附，消费者必须同时链接其导入库。 */
+export function protobufSdkArchRequiredFiles(architecture: ProtobufTargetArchitecture): string[] {
+  return [
+    `bin/${architecture}/libprotobuf.dll`,
+    `bin/${architecture}/abseil_dll.dll`,
+    `lib/${architecture}/libprotobuf.lib`,
+    `lib/${architecture}/abseil_dll.lib`
+  ];
+}
+
+export function protobufSdkRequiredFiles(architecture: ProtobufTargetArchitecture): string[] {
+  return [...PROTOBUF_SDK_COMMON_REQUIRED_FILES, ...protobufSdkArchRequiredFiles(architecture)];
+}
 
 export type ProtobufTargetArchitecture = 'win32' | 'x64';
 
@@ -108,7 +121,9 @@ export async function validateProtobufSdk(
     files.set(relative, { path: relative, size: entry.size, sha256: entry.sha256.toLowerCase() });
   }
 
-  for (const required of PROTOBUF_SDK_REQUIRED_FILES) {
+  for (const required of targetArchitecture
+    ? protobufSdkRequiredFiles(targetArchitecture)
+    : PROTOBUF_SDK_COMMON_REQUIRED_FILES) {
     const entry = files.get(required);
     if (!entry) throw new ProtobufSdkValidationError(`Protobuf SDK 缺少清单记录：${required}`);
     const target = path.join(root, ...required.split('/'));

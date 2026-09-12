@@ -139,7 +139,7 @@ bool PB_从JSON(UINT_PTR messageHandle, const wchar_t* json) {
     LB_ProtoMessageHandle* handle = LB_ProtoGetMessage(messageHandle);
     if (!handle || !handle->message) { LB_ProtoSetError(L"消息句柄无效。"); return false; }
     const auto status = google::protobuf::util::JsonStringToMessage(LingCppWideToUtf8(json ? json : L""), handle->message.get());
-    if (!status.ok()) { LB_ProtoSetError(status.message().as_string()); return false; }
+    if (!status.ok()) { LB_ProtoSetError(std::string(status.message())); return false; }
     return true;
 }
 
@@ -149,7 +149,7 @@ const wchar_t* PB_到JSON(UINT_PTR messageHandle) {
     if (!handle || !handle->message) { LB_ProtoSetError(L"消息句柄无效。"); return LB_ReturnText(L""); }
     std::string json;
     const auto status = google::protobuf::util::MessageToJsonString(*handle->message, &json);
-    if (!status.ok()) { LB_ProtoSetError(status.message().as_string()); return LB_ReturnText(L""); }
+    if (!status.ok()) { LB_ProtoSetError(std::string(status.message())); return LB_ReturnText(L""); }
     return LB_ReturnText(LB_Utf8ToWide(json));
 }
 

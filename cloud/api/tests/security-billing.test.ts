@@ -19,13 +19,13 @@ test('billing rounds fractional model points upward using bigint', () => {
   assert.equal(billing.calculatePoints(1_000_000, 0, 500_000, { input: 2n, cached: 0n, output: 4n }), 4n);
 });
 
-test('edit output reservation uses a bounded default instead of the old 24576-token floor', () => {
-  assert.equal(DEFAULT_EDIT_OUTPUT_TOKENS, 8_192);
-  assert.equal(resolveOutputBudget('edit', 32_768, undefined), 8_192);
+test('edit output reservation keeps a bounded default while thinking models get the full model budget', () => {
+  assert.equal(DEFAULT_EDIT_OUTPUT_TOKENS, 32_768);
+  assert.equal(resolveOutputBudget('edit', 65_536, undefined), 32_768);
   assert.equal(resolveOutputBudget('edit', 4_096, undefined), 4_096);
-  assert.equal(resolveOutputBudget('edit', 32_768, 2_048), 2_048);
+  assert.equal(resolveOutputBudget('edit', 65_536, 2_048), 2_048);
   assert.equal(resolveOutputBudget('edit', 4_096, 9_999), 4_096);
-  assert.equal(resolveOutputBudget('chat', 8_192, undefined), 8_192);
+  assert.equal(resolveOutputBudget('chat', 65_536, undefined), 65_536);
 });
 
 test('provider policy rejects private and non-HTTPS endpoints', async () => {

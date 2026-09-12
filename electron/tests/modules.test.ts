@@ -269,12 +269,19 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 下载开始/进度更新事件新增 downloadItem 受管句柄字段。
       // 追加 2026-09-10 批次 6：FBro响应_* 响应对象 19 条（objects 208→227），
       // 资源响应到达/资源加载完成事件新增 response 受管句柄字段。
-      modules: 85,
-      commands: 3248,
-      parameters: 5674,
-      controlReferences: 1300,
-      commandDigest: '59a3328b',
-      parameterDigest: '4d9d6b30'
+      // 基线 2026-09-11 写回：新增 MySQL 数据库模块（lingbuilder.database.mysql 1.0.0），
+      // 43 条命令、71 参数，全部为受管句柄/文本/数值参数，无控件参数。
+      // 基线 2026-09-12 写回：新增 Excel 表格模块（lingbuilder.data.excel 1.0.0），
+      // 45 条命令、97 参数，全部为受管句柄/文本/数值/布尔参数，无控件参数。
+      // 基线 2026-09-12 写回：CEF3 浏览器模块新增 JS 交互三条命令
+      //（CEF3_启用JS扩展 3 参数、CEF3_查询应答 3 参数、CEF3_查询应答失败 4 参数），
+      // 每条的控件名为 controlRef，控件参数 +3。
+      modules: 87,
+      commands: 3339,
+      parameters: 5852,
+      controlReferences: 1303,
+      commandDigest: 'e5bf21d1',
+      parameterDigest: 'ce6312e5'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -406,7 +413,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 51, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 53, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1315,14 +1322,14 @@ test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
 });
 
 test('数据、数据库、加密、图像和媒体模块提供可生成实现', () => {
-  assert.equal(DATA_MEDIA_MODULES.length, 14);
+  assert.equal(DATA_MEDIA_MODULES.length, 16);
   for (const manifest of DATA_MEDIA_MODULES) {
     assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
     assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
   }
   const enabledModules: InstalledModule[] = DATA_MEDIA_MODULES.map(manifest => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const generated = generateLingCppNativeWin32Project(sampleProject, {
-    lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        哈希_SHA256文本("LingBuilder")', '        ODBC_关闭()', '        SQLite_关闭()', '        图像_取宽度("图片.png")', '        音频_停止()', '    结束', '结束类'].join('\n'),
+    lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        哈希_SHA256文本("LingBuilder")', '        ODBC_关闭()', '        SQLite_关闭()', '        MySQL_关闭全部()', '        图像_取宽度("图片.png")', '        音频_停止()', '    结束', '结束类'].join('\n'),
     enabledModules
   });
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
@@ -1335,6 +1342,9 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   assert.match(mainCpp, /const wchar_t\* 数据保护_加密文本/u);
   assert.match(mainCpp, /bool ODBC_连接/u);
   assert.match(mainCpp, /bool SQLite_加载运行库/u);
+  assert.match(mainCpp, /long long MySQL_连接/u);
+  assert.match(mainCpp, /void MySQL_关闭全部/u);
+  assert.match(mainCpp, /LoadLibraryW\(path && path\[0\] \? path : L"libmariadb\.dll"\)/u);
   assert.match(mainCpp, /bool 图像_缩放/u);
   assert.match(mainCpp, /bool 截图_主屏到PNG/u);
   assert.match(mainCpp, /long long 位图_取像素ARGB/u);
@@ -1434,6 +1444,165 @@ test('SQLite 2.1 提供多连接、参数化查询、事务、WAL、备份、加
   assert.match(encryptedMainCpp, /SQLite_打开加密库\(L"data\/cache\.db", L"另一个密码"\)/u);
 });
 
+test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭环', () => {
+  const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.database.mysql')!;
+  const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
+  const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
+  assert.equal(manifest.version, '1.0.0');
+  assert.equal(commandNames.length, 43);
+  assert.deepEqual(bindingNames, commandNames);
+  assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [
+    ['MySQL连接', 'long long'],
+    ['MySQL语句', 'long long']
+  ]);
+  for (const required of [
+    'MySQL_加载运行库', 'MySQL_连接', 'MySQL_连接扩展', 'MySQL_关闭连接', 'MySQL_取错误',
+    'MySQL_准备', 'MySQL_绑定空值', 'MySQL_绑定长整数', 'MySQL_绑定文本', 'MySQL_绑定字节集',
+    'MySQL_语句执行', 'MySQL_语句步进', 'MySQL_语句重置', 'MySQL_语句释放', 'MySQL_取列是否为空',
+    'MySQL_取列长整数', 'MySQL_取列字节集', 'MySQL_开始事务', 'MySQL_提交', 'MySQL_回滚',
+    'MySQL_设置自动提交', 'MySQL_取最后插入ID', 'MySQL_取连接错误'
+  ]) {
+    assert.ok(commandNames.includes(required), `MySQL 1.0 缺少 ${required}`);
+  }
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_绑定字节集')?.parameters?.map(parameter => parameter.type),
+    ['MySQL语句', 'int', 'bytes']
+  );
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_连接')?.parameters?.map(parameter => parameter.type),
+    ['wideString', 'int', 'wideString', 'wideString', 'wideString']
+  );
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_连接扩展')?.parameters?.map(parameter => parameter.type),
+    ['wideString', 'int', 'wideString', 'wideString', 'wideString', 'int', 'bool']
+  );
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_连接')?.returnType, 'MySQL连接');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_准备')?.returnType, 'MySQL语句');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_取列字节集')?.returnType, 'bytes');
+  assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/mysql/README.md');
+  assert.deepEqual(
+    manifest.targets?.map(target => [target.id, target.runtimeFiles]),
+    [
+      ['windows-msvc-win32', ['x86/libmariadb.dll']],
+      ['windows-msvc-x64', ['x64/libmariadb.dll']]
+    ]
+  );
+
+  const enabledModules: InstalledModule[] = [{
+    manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 MySQL连接 数据库 = MySQL_连接("127.0.0.1", 3306, "root", "机密密码", "test")',
+      '        局部 MySQL语句 写入 = MySQL_准备(数据库, "INSERT INTO users(name, score) VALUES(?, ?)")',
+      '        MySQL_绑定文本(写入, 1, "中文张三")',
+      '        MySQL_绑定整数(写入, 2, 95)',
+      '        MySQL_语句执行(写入)',
+      '        MySQL_语句释放(写入)',
+      '        MySQL_开始事务(数据库)',
+      '        MySQL_提交(数据库)',
+      '        MySQL_关闭连接(数据库)',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  for (const runtimeSymbol of [
+    'namespace LingBuilderMysql',
+    'long long MySQL_连接(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database)',
+    'long long MySQL_连接扩展(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database, int timeoutSeconds, bool enableSsl)',
+    'long long MySQL_准备(long long connectionId, const wchar_t* sql)',
+    'int MySQL_语句步进(long long statementId)',
+    'const wchar_t* MySQL_取列文本(long long statementId, int columnIndex)',
+    'std::vector<unsigned char> MySQL_取列字节集(long long statementId, int columnIndex)',
+    'bool MySQL_开始事务(long long connectionId)',
+    'LoadLibraryW(path && path[0] ? path : L"libmariadb.dll")',
+    'OptSslEnforce = 38',
+    'std::string charset = "utf8mb4"'
+  ]) {
+    assert.ok(mainCpp.includes(runtimeSymbol), `MySQL 生成运行时缺少 ${runtimeSymbol}`);
+  }
+  assert.match(mainCpp, /MySQL_连接\(L"127\.0\.0\.1", 3306, L"root", L"机密密码", L"test"\)/u);
+  assert.match(mainCpp, /MySQL_绑定文本\(写入, 1, L"中文张三"\)/u);
+});
+
+test('Excel 表格模块 1.0 提供创建/打开双模式、单元格级读写与格式能力', async () => {
+  const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.data.excel')!;
+  const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
+  const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
+  assert.equal(manifest.version, '1.0.0');
+  assert.equal(commandNames.length, 45);
+  assert.deepEqual(bindingNames, commandNames);
+  assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [['Excel工作簿', 'long long']]);
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+  for (const required of [
+    'Excel_创建工作簿', 'Excel_打开工作簿', 'Excel_保存', 'Excel_另存为', 'Excel_关闭',
+    'Excel_取工作表数量', 'Excel_取工作表名', 'Excel_取当前工作表', 'Excel_置当前工作表', 'Excel_添加工作表', 'Excel_删除工作表',
+    'Excel_写文本', 'Excel_写数值', 'Excel_写布尔', 'Excel_写公式', 'Excel_写日期', 'Excel_清除单元格',
+    'Excel_读单元格文本', 'Excel_读单元格数值', 'Excel_读单元格公式', 'Excel_取单元格类型', 'Excel_是否为空单元格',
+    'Excel_写一行', 'Excel_追加行', 'Excel_读区域', 'Excel_取已用范围',
+    'Excel_置列宽', 'Excel_置行高', 'Excel_合并单元格', 'Excel_冻结窗格', 'Excel_置数字格式', 'Excel_置加粗', 'Excel_置字号', 'Excel_置字体颜色', 'Excel_置背景色', 'Excel_置水平对齐',
+    'Excel_插入行', 'Excel_删除行', 'Excel_插入列', 'Excel_删除列',
+    'Excel_日期转序列', 'Excel_序列转日期', 'Excel_取错误', 'Excel_取版本', 'Excel_是否可用'
+  ]) {
+    assert.ok(commandNames.includes(required), `Excel 1.0 缺少 ${required}`);
+  }
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'Excel_创建工作簿')?.returnType, 'Excel工作簿');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'Excel_打开工作簿')?.returnType, 'Excel工作簿');
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'Excel_写一行')?.parameters?.map(parameter => parameter.type),
+    ['Excel工作簿', 'wideString', 'wideString', 'wideString']
+  );
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'Excel_追加行')?.returnType, 'int');
+  assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/excel/README.md');
+  await fs.access(path.resolve('docs', 'modules', 'excel', 'README.md')).then(() => null, () => { throw new Error('Excel 模块随包文档必须存在'); });
+  assert.deepEqual(
+    manifest.targets?.map(target => [target.id, target.runtimeFiles]),
+    [
+      ['windows-msvc-win32', ['x86/LingBuilderExcel.dll']],
+      ['windows-msvc-x64', ['x64/LingBuilderExcel.dll']]
+    ]
+  );
+  const enabledModules: InstalledModule[] = [{
+    manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 Excel工作簿 报表 = Excel_创建工作簿("报表/月度.xlsx")',
+      '        Excel_写一行(报表, "A1", "姓名\t销量", "\t")',
+      '        Excel_追加行(报表, "张三\t12", "\t")',
+      '        Excel_置加粗(报表, "A1", 真)',
+      '        如果 Excel_保存(报表)',
+      '            调试输出("已保存")',
+      '        结束',
+      '        Excel_关闭(报表)',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  for (const runtimeSymbol of [
+    'namespace LingBuilderExcelBridge',
+    'long long Excel_创建工作簿(const wchar_t* 文件路径)',
+    'bool Excel_写一行(long long 工作簿, const wchar_t* 起始单元格, const wchar_t* 行内容, const wchar_t* 分隔符)',
+    'int Excel_追加行(long long 工作簿, const wchar_t* 行内容, const wchar_t* 分隔符)',
+    'bool Excel_置加粗(long long 工作簿, const wchar_t* 单元格, bool 启用)',
+    'LoadLibraryW(L"LingBuilderExcel.dll")',
+    'fCreate && fOpen && fSave'
+  ]) {
+    assert.ok(mainCpp.includes(runtimeSymbol), `Excel 生成运行时缺少 ${runtimeSymbol}`);
+  }
+  assert.match(mainCpp, /Excel_创建工作簿\(L"报表\/月度\.xlsx"\)/u);
+  assert.match(mainCpp, /Excel_写一行\(报表, L"A1", L"姓名\t销量", L"\t"\)/u);
+});
 test('平台扩展和高风险模块保持独立启用并具有确定性运行时', () => {
   assert.equal(PLATFORM_ADVANCED_MODULES.length, 12);
   for (const manifest of PLATFORM_ADVANCED_MODULES) {
@@ -3113,8 +3282,10 @@ test('CEF3 user documentation covers the unified event catalog and every public 
     'utf8'
   );
 
-  assert.equal(CEF3_BROWSER_EVENTS.length, 96);
-  assert.equal(publicCommands.length, 399);
+  // 2026-09-12 写回：CEF3 JS 交互新增「查询请求（OnQuery）/ 查询已取消（OnQueryCanceled）」
+  // 两个事件条目与 CEF3_启用JS扩展 / CEF3_查询应答 / CEF3_查询应答失败 三条公开命令。
+  assert.equal(CEF3_BROWSER_EVENTS.length, 98);
+  assert.equal(publicCommands.length, 402);
   const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
   assert.equal(threadEntries.length, 5);
   assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
@@ -4434,6 +4605,75 @@ test('CEF3_读资源响应正文 生成事件上下文约束和 Bridge 调用', 
   assert.match(cpp, /LB_CEF3_ResourceResponseBodyBegin/);
   assert.match(cpp, /只能在“资源响应到达”处理器中调用/);
   assert.match(cpp, /资源响应正文到达/);
+});
+
+test('CEF3 JS 交互：cefQuery 通道初始化前注册、查询事件派发与应答命令有真实运行时', async () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(manifest);
+  const enableBinding = manifest.bindings?.commands?.find(item => item.command === 'CEF3_启用JS扩展');
+  const respondBinding = manifest.bindings?.commands?.find(item => item.command === 'CEF3_查询应答');
+  const failBinding = manifest.bindings?.commands?.find(item => item.command === 'CEF3_查询应答失败');
+  assert.ok(enableBinding && respondBinding && failBinding);
+  assert.deepEqual(enableBinding.parameters.map(parameter => parameter.type), ['controlRef', 'wideString', 'wideString']);
+  assert.deepEqual(respondBinding.parameters.map(parameter => parameter.type), ['controlRef', 'wideString', 'wideString']);
+  assert.deepEqual(failBinding.parameters.map(parameter => parameter.type), ['controlRef', 'wideString', 'int', 'wideString']);
+
+  // 事件目录：OnQuery / OnQueryCanceled 与桥接中文名一致。
+  assert.ok(CEF3_BROWSER_EVENTS.some(event => event.id === 'OnQuery' && event.name === '查询请求'));
+  assert.ok(CEF3_BROWSER_EVENTS.some(event => event.id === 'OnQueryCanceled' && event.name === '查询已取消'));
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible',
+        properties: { url: 'about:blank', jsQueryFunctions: 'cefQuery,cefQueryCancel' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 查询请求到达()\n    CEF3_查询应答(浏览器1, CEF3_取事件字段(浏览器1, "queryId"), "本地数据")\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // 生成期把控件属性 jsQueryFunctions 烘焙到 CEF3_初始化，且注册必须发生在 LB_CEF3_Initialize 之前。
+  assert.match(cpp, /LB_CEF3_EnableJsQuery\(queryName\.c_str\(\), cancelName\.c_str\(\)\)/);
+  assert.ok(
+    cpp.indexOf('LB_CEF3_EnableJsQuery(queryName.c_str(), cancelName.c_str())')
+      < cpp.indexOf('LB_CEF3_Initialize(&bridgeConfig)'),
+    'JS 交互通道注册必须出现在 LB_CEF3_Initialize 之前');
+  // 应答命令生成成员函数并调用真实桥导出。
+  assert.match(cpp, /int CEF3_查询应答\(const wchar_t\* controlName, const wchar_t\* queryId, const wchar_t\* resultText\)/);
+  assert.match(cpp, /int CEF3_查询应答失败\(const wchar_t\* controlName, const wchar_t\* queryId, int errorCode, const wchar_t\* errorText\)/);
+  assert.match(cpp, /LB_CEF3_JsQueryRespond/);
+  // 查询请求处理器通过 CEF3_绑定事件 绑定并派发。
+  assert.match(cpp, /查询请求到达/);
+
+  // 桥源码：EnableJsQuery 的注册校验在 LB_CEF3_Initialize 置位之前才有意义——
+  // 断言桥导出真实存在且渲染侧经 MessageRouter 注入查询函数。
+  const bridgeSource = await fs.readFile(new URL('../native/cef3-bridge/LingBuilderCefBridge.cpp', import.meta.url), 'utf8');
+  assert.match(bridgeSource, /int LB_CEF3_CALL LB_CEF3_EnableJsQuery/);
+  assert.match(bridgeSource, /int LB_CEF3_CALL LB_CEF3_JsQueryRespond/);
+  assert.match(bridgeSource, /CefMessageRouterRendererSide::Create/);
+  assert.match(bridgeSource, /CefMessageRouterBrowserSide::Handler/);
+  // 查询事件经受管通道派发，且取消通知派发「查询已取消」。
+  assert.match(bridgeSource, /L"查询请求"/);
+  assert.match(bridgeSource, /OnQueryCanceled/);
+  assert.match(bridgeSource, /L"查询已取消"/);
+  const bridgeHeader = await fs.readFile(new URL('../native/cef3-bridge/LingBuilderCefBridge.h', import.meta.url), 'utf8');
+  assert.match(bridgeHeader, /LB_CEF3_EnableJsQuery/);
+  assert.match(bridgeHeader, /LB_CEF3_JsQueryRespond/);
 });
 
 test('CEF3_替换资源响应内容 在创建前排队并在桥接句柄就绪时附加替换过滤器', () => {

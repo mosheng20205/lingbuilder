@@ -849,6 +849,27 @@ std::mutex g_custom_scheme_mutex;
 std::vector<CustomSchemeRegistration> g_custom_schemes;
 std::mutex g_v8_extension_mutex;
 std::vector<V8ExtensionRegistration> g_v8_extensions;
+// JS 交互（cefQuery）通道。浏览器进程由 LB_CEF3_EnableJsQuery 在 CEF 初始化前写入；
+// 渲染子进程的配置由 OnBeforeChildProcessLaunch 注入命令行开关、渲染进程在
+// OnWebKitInitialized 里读取，查询函数因此能在每个 V8 context 创建前挂到 window。
+struct JsQueryChannelConfig {
+  std::wstring query_function = L"cefQuery";
+  std::wstring cancel_function = L"cefQueryCancel";
+  bool enabled = false;
+};
+std::mutex g_js_query_mutex;
+JsQueryChannelConfig g_js_query_config;
+constexpr wchar_t kJsQuerySwitchName[] = L"lingbuilder-js-query";
+// 查询应答表：OnQuery 接管后由 CEF3_查询应答 按句柄+查询ID 取回回调。
+// CEF 3 的 MessageRouter 每浏览器一个 router，query_id 空间按 router 独立，
+// 因此以 (browser handle, query_id) 为键不会冲突。
+struct PendingJsQuery {
+  CefRefPtr<CefMessageRouterBrowserSide::Handler::Callback> callback;
+};
+std::mutex g_pending_js_query_mutex;
+std::map<std::pair<LB_CEF3_HANDLE, int64_t>, PendingJsQuery> g_pending_js_queries;
+// 渲染进程的 renderer 侧路由器；仅在渲染进程渲染线程访问，无需加锁。
+CefRefPtr<CefMessageRouterRendererSide> g_renderer_js_query_router;
 std::unordered_map<int32_t, std::wstring> g_localized_string_overrides;
 std::unordered_map<int32_t, std::vector<unsigned char>> g_data_resource_overrides;
 std::map<std::pair<int32_t, int32_t>, std::vector<unsigned char>>
@@ -6102,6 +6123,13 @@ class BridgeApp final : public CefApp,
   }
 
   void OnBeforeChildProcessLaunch(CefRefPtr<CefCommandLine> command_line) override {
+    {
+      std::lock_guard<std::mutex> lock(g_js_query_mutex);
+      if (g_js_query_config.enabled && command_line) {
+        command_line->AppendSwitchWithValue(kJsQuerySwitchName,
+            g_js_query_config.query_function + L"," + g_js_query_config.cancel_function);
+      }
+    }
     const auto command_line_text = command_line
         ? command_line->GetCommandLineString().ToWString() : L"";
     auto response = EmitGlobalEvent(101, L"CEF子进程启动前", L"{\"commandLine\":\""
@@ -6145,6 +6173,29 @@ class BridgeApp final : public CefApp,
 
   void OnWebKitInitialized() override {
     webkit_initialized_ = true;
+    // 渲染子进程：从命令行开关恢复查询通道配置，并在任何 V8 context 创建
+    // 之前创建 renderer 侧路由器，window.<查询函数> 才会注入到页面。
+    {
+      std::lock_guard<std::mutex> lock(g_js_query_mutex);
+      if (!g_js_query_config.enabled) {
+        const auto command_line = CefCommandLine::GetGlobalCommandLine();
+        if (command_line && command_line->HasSwitch(kJsQuerySwitchName)) {
+          const auto value = command_line->GetSwitchValue(kJsQuerySwitchName).ToWString();
+          const size_t separator = value.find(L',');
+          if (separator != std::wstring::npos) {
+            g_js_query_config.query_function = value.substr(0, separator);
+            g_js_query_config.cancel_function = value.substr(separator + 1);
+            g_js_query_config.enabled = true;
+          }
+        }
+      }
+      if (g_js_query_config.enabled && !g_renderer_js_query_router) {
+        CefMessageRouterConfig config;
+        config.js_query_function = g_js_query_config.query_function;
+        config.js_cancel_function = g_js_query_config.cancel_function;
+        g_renderer_js_query_router = CefMessageRouterRendererSide::Create(config);
+      }
+    }
     std::vector<V8ExtensionRegistration> extensions;
     {
       std::lock_guard<std::mutex> lock(g_v8_extension_mutex);
@@ -6184,6 +6235,9 @@ class BridgeApp final : public CefApp,
 
   void OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                         CefRefPtr<CefV8Context> context) override {
+    if (g_renderer_js_query_router && context) {
+      g_renderer_js_query_router->OnContextCreated(browser, frame, context);
+    }
     InstallRendererHostBridge(context);
     if (!browser) return;
     const auto found = g_renderer_hooks.find(browser->GetIdentifier());
@@ -6193,6 +6247,9 @@ class BridgeApp final : public CefApp,
 
   void OnContextReleased(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                          CefRefPtr<CefV8Context> context) override {
+    if (g_renderer_js_query_router && context) {
+      g_renderer_js_query_router->OnContextReleased(nullptr, frame, context);
+    }
     for (auto iterator = g_renderer_pending_calls.begin(); iterator != g_renderer_pending_calls.end();) {
       if (iterator->second.context && iterator->second.context->IsSame(context)) iterator = g_renderer_pending_calls.erase(iterator);
       else ++iterator;
@@ -6310,6 +6367,11 @@ class BridgeApp final : public CefApp,
 
   bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                                 CefProcessId source_process, CefRefPtr<CefProcessMessage> message) override {
+    if (g_renderer_js_query_router
+        && g_renderer_js_query_router->OnProcessMessageReceived(
+            browser, frame, source_process, message)) {
+      return true;
+    }
     if (source_process != PID_BROWSER || !browser || !message) return false;
     const auto name = message->GetName().ToWString();
     auto arguments = message->GetArgumentList();
@@ -8012,6 +8074,92 @@ void InvalidateRendererV8Proxies(
   }
 }
 
+/** JS 交互（cefQuery）浏览器侧处理器：页面通过 window.<查询函数> 发起查询后，
+ * 在 CEF UI 线程把「查询请求」事件派发给宿主，应答经 CEF3_查询应答/
+ * CEF3_查询应答失败 取回 pending 表完成。宿主未应答时由受管续跑超时兜底，
+ * 对页面回错误码 -4。查询取消（页面显式取消、导航、渲染进程终止）派发
+ * 「查询已取消」通知，宿主无需再应答。 */
+class BridgeJsQueryHandler final : public CefMessageRouterBrowserSide::Handler {
+ public:
+  explicit BridgeJsQueryHandler(std::shared_ptr<BrowserState> state)
+      : state_(std::move(state)) {}
+
+  bool OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+               int64_t query_id, const CefString& request, bool persistent,
+               CefRefPtr<Callback> callback) override {
+    (void)browser;
+    (void)frame;
+    if (!callback || !state_) return false;
+    const std::wstring fields =
+        L"{\"queryId\":\"" + std::to_wstring(query_id)
+        + L"\",\"request\":\"" + JsonEscape(request.ToWString())
+        + L"\",\"persistent\":" + (persistent ? L"true" : L"false") + L"}";
+    {
+      std::lock_guard<std::mutex> lock(g_pending_js_query_mutex);
+      g_pending_js_queries[{state_->handle, query_id}] = {callback};
+    }
+    const std::weak_ptr<BrowserState> state = state_;
+    auto complete = [state, query_id](int action, const std::wstring& response_json) {
+      (void)response_json;
+      // 宿主已经通过 CEF3_查询应答/查询应答失败 弹出条目时无事可做；
+      // 续跑被结束（超时或宿主误用同步表态）而查询仍挂着时对页面回失败。
+      CefRefPtr<Callback> captured;
+      {
+        std::lock_guard<std::mutex> lock(g_pending_js_query_mutex);
+        const auto found = g_pending_js_queries.find({state.lock() ? state.lock()->handle : 0, query_id});
+        if (found == g_pending_js_queries.end()) return;
+        captured = found->second.callback;
+        g_pending_js_queries.erase(found);
+      }
+      if (!captured) return;
+      CompleteQueryFailure(captured, action == 0 ? -4 : -1,
+                           action == 0 ? L"JS 交互查询超时未应答"
+                                       : L"JS 交互查询被宿主结束且未应答");
+    };
+    const auto dispatch = EmitAsyncEvent(
+        state_, 0, L"cef_message_router_t", L"on_query", L"查询请求", fields,
+        120000, 0, std::move(complete));
+    if (!dispatch.delivered) {
+      std::lock_guard<std::mutex> lock(g_pending_js_query_mutex);
+      g_pending_js_queries.erase({state_->handle, query_id});
+      return false;
+    }
+    return true;
+  }
+
+  void OnQueryCanceled(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int64_t query_id) override {
+    CefRefPtr<Callback> abandoned;
+    {
+      std::lock_guard<std::mutex> lock(g_pending_js_query_mutex);
+      const auto found = g_pending_js_queries.find({state_->handle, query_id});
+      if (found != g_pending_js_queries.end()) {
+        abandoned = found->second.callback;
+        g_pending_js_queries.erase(found);
+      }
+    }
+    (void)abandoned;
+    if (!state_) return;
+    const std::wstring fields =
+        L"{\"queryId\":\"" + std::to_wstring(query_id) + L"\"}";
+    EmitNotificationEventV4(state_, L"cef_message_router_t", L"on_query_canceled",
+                            L"查询已取消", fields);
+  }
+
+  static void CompleteQueryFailure(const CefRefPtr<Callback>& callback,
+                                   int error_code, const wchar_t* error_text) {
+    if (CefCurrentlyOn(TID_UI)) {
+      callback->Failure(error_code, CefString(error_text));
+      return;
+    }
+    CefPostTask(TID_UI, new BridgeFunctionTask([callback, error_code, message = std::wstring(error_text)]() {
+      callback->Failure(error_code, CefString(message));
+    }));
+  }
+
+ private:
+  std::shared_ptr<BrowserState> state_;
+};
+
 class BridgeClient final : public CefClient,
                            public CefAccessibilityHandler,
                            public CefAudioHandler,
@@ -8036,6 +8184,19 @@ class BridgeClient final : public CefClient,
                            public CefCookieAccessFilter {
  public:
   explicit BridgeClient(std::shared_ptr<BrowserState> state) : state_(std::move(state)) {}
+
+  // 每浏览器一个 router。AddHandler 要求在浏览器进程 UI 线程调用，因此由
+  // PostToCefUi 的浏览器创建任务在 UI 线程首步调用本方法（见 LB_CEF3_BrowserCreate）。
+  void SetupJsQueryRouter() {
+    std::lock_guard<std::mutex> lock(g_js_query_mutex);
+    if (!g_js_query_config.enabled || js_query_router_) return;
+    CefMessageRouterConfig config;
+    config.js_query_function = g_js_query_config.query_function;
+    config.js_cancel_function = g_js_query_config.cancel_function;
+    js_query_router_ = CefMessageRouterBrowserSide::Create(config);
+    js_query_handler_ = std::make_unique<BridgeJsQueryHandler>(state_);
+    js_query_router_->AddHandler(js_query_handler_.get(), false);
+  }
   CefRefPtr<CefAudioHandler> GetAudioHandler() override { return this; }
   CefRefPtr<CefCommandHandler> GetCommandHandler() override { return this; }
   CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; }
@@ -8254,6 +8415,8 @@ class BridgeClient final : public CefClient,
       CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request, bool user_gesture,
       bool is_redirect) override {
+    // 导航离开时结束该页未决查询；router 会以错误码 -1 对页面回 onFailure。
+    if (js_query_router_) js_query_router_->OnBeforeBrowse(browser, frame);
     const auto fields = L"{\"browserId\":"
         + std::to_wstring(browser ? browser->GetIdentifier() : 0)
         + L",\"frameIdentifier\":\""
@@ -8591,6 +8754,7 @@ class BridgeClient final : public CefClient,
   void OnRenderProcessTerminated(
       CefRefPtr<CefBrowser> browser, TerminationStatus status,
       int error_code, const CefString& error_string) override {
+    if (js_query_router_) js_query_router_->OnRenderProcessTerminated(browser);
     const auto fields = L"{\"browserId\":"
         + std::to_wstring(browser ? browser->GetIdentifier() : 0)
         + L",\"status\":" + std::to_wstring(static_cast<int>(status))
@@ -9627,6 +9791,7 @@ class BridgeClient final : public CefClient,
     EmitEvent(state_, 28, L"开发者工具窗口打开前", L"{}");
   }
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+    if (js_query_router_) js_query_router_->OnBeforeClose(browser);
     EmitEvent(state_, 2, L"浏览器即将关闭", L"{}");
     NotifyDevToolsAgentDetached(state_, browser ? browser->GetIdentifier() : 0);
     CefRefPtr<CefRegistration> devtools_observer_registration;
@@ -9946,6 +10111,18 @@ class BridgeClient final : public CefClient,
   }
   bool OnProcessMessageReceived(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                                 CefProcessId source_process, CefRefPtr<CefProcessMessage> message) override {
+    // 只在启用 JS 交互时才锁 state->mutex 取 browser，未启用时保持零额外开销。
+    if (js_query_router_) {
+      CefRefPtr<CefBrowser> router_browser;
+      {
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        router_browser = state_->browser;
+      }
+      if (js_query_router_->OnProcessMessageReceived(router_browser, frame,
+                                                     source_process, message)) {
+        return true;
+      }
+    }
     if (source_process != PID_RENDERER || !message) return false;
     const auto name = message->GetName().ToWString();
     auto arguments = message->GetArgumentList();
@@ -10272,6 +10449,10 @@ class BridgeClient final : public CefClient,
   }
 
   std::shared_ptr<BrowserState> state_;
+  // 成员按声明逆序析构：handler 声明在前（后析构）、router 声明在后（先析构），
+  // 满足 AddHandler「handler 必须比 router 活得久」的约束。
+  std::unique_ptr<BridgeJsQueryHandler> js_query_handler_;
+  CefRefPtr<CefMessageRouterBrowserSide> js_query_router_;
   int audio_channels_ = 2;
   IMPLEMENT_REFCOUNTING(BridgeClient);
 };
@@ -11523,6 +11704,7 @@ LB_CEF3_HANDLE CreateBrowserHandle(const LB_CEF3_BROWSER_CONFIG_V3* config, bool
 
   const std::wstring initial_url = state->url;
   const bool posted = PostToCefUi([state, client, initial_url, chrome_runtime, windowless]() {
+    client->SetupJsQueryRouter();
     CefWindowInfo window_info{};
     if (chrome_runtime) {
       window_info.SetAsPopup(nullptr, L"谷歌原生UI浏览器");
@@ -32050,6 +32232,66 @@ int LB_CEF3_CALL LB_CEF3_LaunchProcess(LB_CEF3_HANDLE command_line) {
   return completion->launched;
 }
 
+int LB_CEF3_CALL LB_CEF3_EnableJsQuery(const wchar_t* query_function, const wchar_t* cancel_function) {
+  std::lock_guard<std::mutex> lock(g_js_query_mutex);
+  if (g_cef_initialized.load()) {
+    return Fail(LB_CEF3_ERROR_OPERATION_FAILED,
+                L"JS 交互通道必须在 CEF 初始化之前注册；请在项目里通过控件属性配置，初始化后再调用不会生效");
+  }
+  if (g_js_query_config.enabled) {
+    if (g_js_query_config.query_function
+            == (query_function && *query_function ? std::wstring(query_function)
+                                                  : g_js_query_config.query_function)) {
+      return LB_CEF3_OK;  // 同名重复注册按幂等成功处理
+    }
+    return Fail(LB_CEF3_ERROR_OPERATION_FAILED,
+                L"JS 交互通道已注册，CEF3 每个程序只支持一条查询通道，页面要区分来源请在请求数据里自带标记");
+  }
+  if (query_function && *query_function) g_js_query_config.query_function = query_function;
+  if (cancel_function && *cancel_function) g_js_query_config.cancel_function = cancel_function;
+  g_js_query_config.enabled = true;
+  return LB_CEF3_OK;
+}
+
+int LB_CEF3_CALL LB_CEF3_JsQueryRespond(LB_CEF3_HANDLE browser, const wchar_t* query_id,
+                                        int success, const wchar_t* result_text,
+                                        int error_code, const wchar_t* error_text) {
+  if (!browser || !query_id || !*query_id) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"查询应答需要浏览器句柄和查询ID");
+  }
+  wchar_t* end = nullptr;
+  const long long parsed = std::wcstoll(query_id, &end, 10);
+  if (end == query_id) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"查询ID必须是「查询请求」事件 queryId 字段的数字文本");
+  }
+  CefRefPtr<CefMessageRouterBrowserSide::Handler::Callback> callback;
+  {
+    std::lock_guard<std::mutex> lock(g_pending_js_query_mutex);
+    const auto found = g_pending_js_queries.find({browser, parsed});
+    if (found == g_pending_js_queries.end()) {
+      return Fail(LB_CEF3_ERROR_OPERATION_FAILED,
+                  L"查询已应答、已取消或不存在：每条「查询请求」事件只能应答一次");
+    }
+    callback = found->second.callback;
+    g_pending_js_queries.erase(found);
+  }
+  if (!callback) return Fail(LB_CEF3_ERROR_OPERATION_FAILED, L"查询回调已失效");
+  const auto complete = [callback, success, text = std::wstring(success ? (result_text ? result_text : L"") : (error_text ? error_text : L"")),
+                         code = error_code]() {
+    if (success) {
+      callback->Success(CefString(text));
+    } else {
+      callback->Failure(code == 0 ? -1 : code, CefString(text));
+    }
+  };
+  if (CefCurrentlyOn(TID_UI)) {
+    complete();
+  } else {
+    CefPostTask(TID_UI, new BridgeFunctionTask(complete));
+  }
+  return LB_CEF3_OK;
+}
+
 int LB_CEF3_CALL LB_CEF3_MessageRouterCreate(LB_CEF3_HANDLE* result) {
   if (!result) return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"消息路由输出句柄不能为空");
   *result = RegisterMessageRouter(CefMessageRouterBrowserSide::Create(CefMessageRouterConfig()));
@@ -32428,6 +32670,7 @@ int CreateBrowserViewWithDelegateImpl(
     browser_settings.webgl = STATE_DISABLED;
   CefRefPtr<CefBrowserView> browser_view;
   if (!RunOnCefUiSync([&]() {
+        client->SetupJsQueryRouter();
         browser_view = CefBrowserView::CreateBrowserView(
             client, config->initial_url, browser_settings, extra_info,
             request_context, browser_view_delegate);

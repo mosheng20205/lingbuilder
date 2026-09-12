@@ -1,5 +1,16 @@
 [
   {
+    "id": "module-history-1789201303175-c152e5",
+    "time": "2026-09-12T08:21:43.175Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.win32.common-controls",
+    "moduleName": "Win32高级控件模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 Win32高级控件模块",
+    "details": "项目 lingbuilder-ui-project 已引用 lingbuilder.win32.common-controls@1.0.0。"
+  },
+  {
     "id": "module-history-1788942216537-bd681e",
     "time": "2026-09-09T08:23:36.537Z",
     "action": "export",

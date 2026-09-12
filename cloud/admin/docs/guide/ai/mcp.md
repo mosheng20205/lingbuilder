@@ -49,9 +49,27 @@ AI Bridge 支持两种 MCP 传输方式，两者复用同一套工具与权限�
 | `lingbuilder.modules.list` | 列出模块与指定项目的模块上下文 |
 | `lingbuilder.native.preview` | 预览生成的 C++ 工程文件（写入受控临时目录） |
 | `lingbuilder.native.export` | 导出 C++ 工程，受权限模式控制 |
+| `lingbuilder.module.scaffold` | 在 `.lingbuilder/module-build` 下创建 `.lbmod` 模块项目骨架（manifest v2 + C++ 源码模板） |
+| `lingbuilder.module.writeFiles` | 把模块完整文件（含 manifest v2 清单）写入 `.lingbuilder/module-build`；每项是完整新内容而非片段 |
+| `lingbuilder.module.validate` | 校验模块目录（manifest v2、binding、模块文档与示例完整性），返回中文诊断；只读操作 |
+| `lingbuilder.module.pack` | 把校验通过的模块目录打包为 `.lingbuilder/module-packages/<目录名>.lbmod`，打包前强制完整校验 |
+| `lingbuilder.module.installPreview` | 解压并校验 `.lbmod` 模块包（清单/路径/平台依赖），返回 `previewId` 与中文诊断，不安装 |
+| `lingbuilder.module.install` | 按 `previewId` 安装模块包并可启用到指定项目；收费模块仍受权益门禁 |
 
 > [!NOTE]
 > 编辑类工具接收的是**完整文件草稿**而不是 diff 片段；构建、预览与导出类工具需要传入 `project.create` 返回的完整设计器模型，不能只传项目 ID。
+
+### 模块生成工具链
+
+上表最后 6 个模块工具让外部 AI 端到端生成并安装 `.lbmod` 模块，按固定顺序调用：
+
+```text
+scaffold → writeFiles → validate → pack → installPreview → install
+```
+
+- `scaffold` / `writeFiles` / `validate` 作用于工作区 `.lingbuilder/module-build` 目录；`pack` 的输出与 `installPreview` / `install` 的输入位于 `.lingbuilder/module-packages` 目录，路径越界会被拒绝。
+- 写操作与编辑工具同一权限语义：readonly 模式全部拒绝，preview 模式必须显式传 `approved=true`，所有调用都会写入审计日志。
+- `module.install` 必须传入 `installPreview` 返回的 `previewId`，不能跳过预览直接安装；安装后默认启用到指定项目并同步构建配置。
 
 ## 4. 权限控制
 
@@ -108,5 +126,6 @@ Claude Code、Codex CLI 与 Gemini CLI 的免手写配置，可直接在 AI Brid
 
 ## 下一步
 
+- 编译并运行项目详解：[AI 构建与运行](/guide/ai/build-run)
 - 配置连接与权限：[AI Bridge 连接配置](/guide/ai/bridge-config)
 - 让外部 AI 直接改代码：[AI 对话式改代码](/guide/ai/chat)

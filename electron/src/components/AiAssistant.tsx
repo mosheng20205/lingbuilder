@@ -13,6 +13,7 @@ import {
   type AiConnectionMode
 } from '../services/ai/aiConnectionSessionService';
 import type { AiConversationStore } from '../services/ai/aiConversationService';
+import { MAX_REASONING_CHARS } from '../services/ai/aiConversationService';
 import type { CommandService } from '../services/commands/commandService';
 
 const AI_CONFIG_STORAGE_KEY = 'lingbuilder.aiConnectionConfig.v1';
@@ -189,6 +190,30 @@ function createChatMessage(sender: 'user' | 'ai', text: string, options: { id?: 
   };
 }
 
+/** 思考内容提升为正文时的上限；须低于会话存储的 MAX_MESSAGE_CHARS，保证提升后的消息仍可持久化。 */
+const PROMOTED_REASONING_LIMIT = 70_000;
+
+function promoteReasoningText(reasoningText: string): string {
+  return reasoningText.length > PROMOTED_REASONING_LIMIT
+    ? `${reasoningText.slice(0, PROMOTED_REASONING_LIMIT)}\n\n（思考内容过长，已截断展示）`
+    : reasoningText;
+}
+
+/** Message → 会话存储结构。reasoningText 必须随行：chatHistory 从会话 store 派生，
+ * 丢掉该字段会让「AI 思考过程」折叠块无法渲染，且 completed 时的空回复提升静默失效。 */
+function toConversationMessage(message: Message) {
+  return {
+    id: message.id,
+    role: message.sender === 'ai' ? 'assistant' as const : 'user' as const,
+    content: message.text,
+    createdAt: message.createdAt || new Date().toISOString(),
+    status: message.status || 'complete' as const,
+    model: message.model,
+    ...(message.reasoningText ? { reasoningText: message.reasoningText.slice(0, MAX_REASONING_CHARS) } : {}),
+    ...(message.contextExcluded ? { contextExcluded: true } : {})
+  };
+}
+
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   sender: 'ai',
@@ -302,6 +327,7 @@ export default function AiAssistant({
     createdAt: message.createdAt,
     status: message.status,
     model: message.model,
+    ...(message.reasoningText ? { reasoningText: message.reasoningText } : {}),
     ...(message.contextExcluded ? { contextExcluded: true as const } : {})
   }));
   // 会话为空数组时同样要回落到欢迎消息：[].map() 是 truthy，旧写法会在清空后渲染出空白聊天区。
@@ -372,11 +398,7 @@ export default function AiAssistant({
       try {
         const response = await fetch(`/api/ai/conversations/${encodeURIComponent(conversation.id)}/messages`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId, messages: messages.filter(message => message.id !== 'welcome').map(message => ({
-            id: message.id, role: message.sender === 'ai' ? 'assistant' : 'user', content: message.text,
-            createdAt: message.createdAt || new Date().toISOString(), status: message.status || 'complete', model: message.model,
-            ...(message.contextExcluded ? { contextExcluded: true } : {})
-          })) })
+          body: JSON.stringify({ projectId, messages: messages.filter(message => message.id !== 'welcome').map(toConversationMessage) })
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || result.ok === false) throw new Error(result.error || '保存 AI 会话失败。');
@@ -398,11 +420,7 @@ export default function AiAssistant({
         conversations: previous.conversations.map(item => item.id === conversation.id ? {
           ...item,
           updatedAt: new Date().toISOString(),
-          messages: next.filter(message => message.id !== 'welcome').map(message => ({
-            id: message.id, role: message.sender === 'ai' ? 'assistant' as const : 'user' as const,
-            content: message.text, createdAt: message.createdAt || new Date().toISOString(), status: message.status || 'complete', model: message.model,
-            ...(message.contextExcluded ? { contextExcluded: true } : {})
-          }))
+          messages: next.filter(message => message.id !== 'welcome').map(toConversationMessage)
         } : item)
       } : previous);
     }
@@ -798,7 +816,7 @@ export default function AiAssistant({
         if (event.type === 'completed') {
           // 模型只输出思考过程时，把思考内容提升为正文，避免用户看到空白回复。
           updateChatHistory(previous => previous.map(message => message.id === `cloud-${requestKey}` && !message.text.trim() && message.reasoningText
-            ? { ...message, text: message.reasoningText, reasoningText: undefined }
+            ? { ...message, text: promoteReasoningText(message.reasoningText), reasoningText: undefined }
             : message), true);
         }
         if (event.type === 'error') updateChatHistory(previous => [...previous, createChatMessage('ai', event.message || '系统 AI 请求失败。', { contextExcluded: true })], true);

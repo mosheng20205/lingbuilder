@@ -12,6 +12,8 @@ export interface AiConversationMessage {
   createdAt: string;
   status?: AiConversationMessageStatus;
   model?: { mode: 'system' | 'byok'; provider?: string; modelName?: string };
+  /** 推理型模型的思考过程；仅折叠展示，不作为模型上下文回传。 */
+  reasoningText?: string;
   /** 系统通知类消息（连接状态、用量报表等）：保留展示但不作为模型上下文回传。 */
   contextExcluded?: boolean;
 }
@@ -34,6 +36,8 @@ export interface AiConversationStore {
 const MAX_CONVERSATIONS = 60;
 const MAX_MESSAGES = 500;
 const MAX_MESSAGE_CHARS = 80_000;
+/** 思考过程只作折叠展示用途，持久化时截断，防止会话文件被单条消息撑爆。 */
+export const MAX_REASONING_CHARS = 40_000;
 
 export class AiConversationStoreError extends Error {
   constructor(public readonly code: 'INVALID_PROJECT' | 'CORRUPTED_STORE' | 'NOT_FOUND' | 'INVALID_INPUT', message: string) {
@@ -153,7 +157,8 @@ function normalizeMessage(value: unknown, index: number): AiConversationMessage 
   const status = item.status === 'streaming' || item.status === 'cancelled' || item.status === 'error' || item.status === 'complete' ? item.status : undefined;
   const model = item.model && typeof item.model === 'object' && !Array.isArray(item.model) ? normalizeModel(item.model) : undefined;
   const contextExcluded = item.contextExcluded === true ? true : undefined;
-  return { id: item.id, role: item.role, content: item.content, createdAt: normalizeTime(item.createdAt), ...(status ? { status } : {}), ...(model ? { model } : {}), ...(contextExcluded ? { contextExcluded: true } : {}) };
+  const reasoningText = typeof item.reasoningText === 'string' && item.reasoningText.trim() ? item.reasoningText.slice(0, MAX_REASONING_CHARS) : undefined;
+  return { id: item.id, role: item.role, content: item.content, createdAt: normalizeTime(item.createdAt), ...(status ? { status } : {}), ...(model ? { model } : {}), ...(reasoningText ? { reasoningText } : {}), ...(contextExcluded ? { contextExcluded: true } : {}) };
 }
 
 function normalizeModel(value: object): AiConversationMessage['model'] | undefined {

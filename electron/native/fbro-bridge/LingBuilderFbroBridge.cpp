@@ -67,6 +67,7 @@
 #include <iomanip>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -6530,7 +6531,9 @@ bool ApplyMenuModelOperations(CefRefPtr<CefMenuModel> model, const std::wstring&
   return true;
 }
 
-/** 页面调用原生函数（JS 扩展）处理器：事件应答经 continuation 链回传 Success/Failure。 */
+/** 页面调用原生函数（JS 扩展）处理器：事件应答经 continuation 链回传 Success/Failure。
+ * 与火山一致，多条通道共享同一个处理器实例；CEF 的 OnQuery 不携带查询函数名，
+ * FBro 又把先注册的处理器放在分发链首，因此处理器无法也不需要区分来源通道。 */
 class BridgeQueryHandler final : public FBroHsQueryHandler {
  public:
   BridgeQueryHandler() { type_ = QueryHandlerType; }
@@ -6579,26 +6582,33 @@ class BridgeQueryHandler final : public FBroHsQueryHandler {
   }
 };
 
+// 单处理器实例被全部通道共享；g_js_query_names 按 JS 查询函数名去重。
 CefRefPtr<BridgeQueryHandler> g_query_handler;
-std::atomic<bool> g_js_query_enabled{false};
+std::set<std::wstring> g_js_query_names;
 }  // namespace
 
 int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function, const wchar_t* cancel_function) {
   if (g_ready.load()) return LB_FBRO_ERROR_OPERATION_FAILED;
-  bool expected = false;
-  if (!g_js_query_enabled.compare_exchange_strong(expected, true)) return LB_FBRO_OK;
+  const std::wstring query_name = query_function && *query_function ? query_function : L"lingQuery";
+  const std::wstring cancel_name = cancel_function && *cancel_function ? cancel_function : L"lingQueryCancel";
   {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    if (!g_browsers.empty()) {
-      g_js_query_enabled.store(false);
-      return LB_FBRO_ERROR_OPERATION_FAILED;
+    // 窗口模板在 OnWindowCreated 里先创建 FBroBrowser 控件（此时 CEF 尚未
+    // 就绪，CreateEx2 只登记 pending 状态、真正的浏览器要等 g_ready 后的
+    // StartPendingBrowsers），随后才派发“创建完毕”。因此只要没有任何浏览器
+    // 真正启动，就仍处于注册窗口内，不能拿 pending 条目当已建浏览器拒绝。
+    for (const auto& item : g_browsers) {
+      if (item.second->create_started || item.second->browser) {
+        return LB_FBRO_ERROR_OPERATION_FAILED;
+      }
     }
-    g_query_handler = new BridgeQueryHandler();
+    // 火山同款语义：允许注册多条通道（如 cefQuery 与 cefQuerytest），
+    // 同名重复注册按幂等成功处理；所有通道共用同一个处理器实例。
+    if (g_js_query_names.count(query_name)) return LB_FBRO_OK;
+    if (!g_query_handler) g_query_handler = new BridgeQueryHandler();
+    g_js_query_names.insert(query_name);
   }
-  FBroHsQueryFunctions(
-      CefString(query_function && *query_function ? query_function : L"lingQuery"),
-      CefString(cancel_function && *cancel_function ? cancel_function : L"lingQueryCancel"),
-      g_query_handler);
+  FBroHsQueryFunctions(CefString(query_name), CefString(cancel_name), g_query_handler);
   return LB_FBRO_OK;
 }
 

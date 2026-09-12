@@ -82,7 +82,7 @@ AI Bridge 支持为 AI 工具调用设定 **权限模式**，控制 AI 可以执
 在 AI Bridge 连接中心底部的 **权限模式** 下拉框中选择所需模式，点击 **保存** 生效。
 
 > [!WARNING]
-> **yolo 模式** 下 AI 操作会直接作用于项目文件与系统命令。请仅在可信项目中开启 yolo 模式，并关注 AI 的每次文件修改提示。
+> **yolo 模式** 下 AI 的写操作会直接作用于项目文件，并可直接执行受控构建/运行工具（仍不能执行任意系统命令）。请仅在可信项目中开启 yolo 模式，并关注 AI 的每次文件修改提示。
 
 ## 6. MCP 协议配置
 
@@ -120,26 +120,22 @@ lingbuilder ai-server --workspace . --port 17860 --mcp
 
 STDIO 模式下，MCP 服务通过标准输入输出与 AI 客户端通信。
 
-### 6.3 已暴露的 MCP 工具
+### 6.3 MCP 工具概览
 
-| 工具名称 | 说明 |
-|---|---|
-| `lingbuilder.workspace.list` | 列出工作区文件结构 |
-| `lingbuilder.file.read` | 读取项目文件内容 |
-| `lingbuilder.file.search` | 在工作区中搜索文件内容 |
-| `lingbuilder.lingcpp.diagnostics` | 获取 LingCpp 代码诊断信息 |
-| `lingbuilder.edit.propose` | 提出文件编辑建议 |
-| `lingbuilder.edit.apply` | 应用确认的编辑建议 |
-| `lingbuilder.project.templates` | 列出项目模板 |
-| `lingbuilder.project.create` | 创建新项目 |
-| `lingbuilder.project.create.undo` | 撤销尚未被用户修改的 AI 项目创建事务 |
-| `lingbuilder.build.run` | 构建并运行项目 |
-| `lingbuilder.modules.list` | 列出已安装的模块 |
-| `lingbuilder.native.preview` | 原生预览窗口 |
-| `lingbuilder.native.export` | 导出 Visual Studio 工程 |
+AI Bridge 当前对外暴露 **19 个 MCP 工具**，按用途分为五类：
+
+| 类别 | 工具 | 用途 |
+|---|---|---|
+| 工作区读取 | `workspace.list` / `file.read` / `file.search` | 列出文件树、读取文本文件、受控搜索 |
+| 编辑提案 | `edit.propose` / `edit.apply` / `lingcpp.diagnostics` | 提交完整文件草稿、应用提案、构建前中文诊断 |
+| 项目创建 | `project.templates` / `project.create` / `project.create.undo` | 列出模板、预览或落盘创建项目、撤销创建事务 |
+| 构建与导出 | `build.run` / `native.preview` / `native.export` | **编译并运行项目**、预览生成的 C++、导出 Visual Studio 工程 |
+| 模块生成 | `module.scaffold` / `module.writeFiles` / `module.validate` / `module.pack` / `module.installPreview` / `module.install` | 端到端生成并安装 `.lbmod` 模块 |
+
+每个工具的参数约束、权限要求与调用顺序见 [MCP 工具协议](/guide/ai/mcp)；AI 编译与运行项目的完整流程见 [AI 构建与运行](/guide/ai/build-run)。
 
 > [!NOTE]
-> MCP 工具的具体可用范围受当前 **权限模式** 限制。例如，只读模式下写入和执行类工具不可用。
+> MCP 工具的具体可用范围受当前 **权限模式** 限制。例如，只读模式下写入、构建和运行类工具不可用。
 
 ## 7. 外部 AI 客户端接入
 
@@ -211,5 +207,6 @@ LingBuilder 会自动检测已安装的 AI 客户端，并为每个客户端生�
 ## 下一步
 
 - 使用 AI Bridge 进行对话编程：[AI 对话式改代码](/guide/ai/chat)
+- 让 AI 编译并运行项目：[AI 构建与运行](/guide/ai/build-run)
 - 了解 MCP 工具协议的详细用法：[MCP 工具协议](/guide/ai/mcp)
 - 浏览 DeepSeek 模型接入说明：[DeepSeek 集成参考](/guide/ai/deepseek-integration)

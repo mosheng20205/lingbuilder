@@ -6,7 +6,7 @@ import { validateProviderUrl } from '../security/network-policy.js';
 import { estimateMessageTokens, estimateTextTokens } from './usage-estimator.js';
 
 export interface ProviderUsage { inputTokens: number; cachedInputTokens: number; outputTokens: number; estimated: boolean }
-export interface ProviderStreamResult { text: string; reasoningText?: string; usage: ProviderUsage }
+export interface ProviderStreamResult { text: string; reasoningText?: string; finishReason?: string; usage: ProviderUsage }
 export interface ProviderStreamChunk { delta?: string; reasoningDelta?: string; final?: ProviderStreamResult }
 
 @Injectable()
@@ -24,32 +24,33 @@ export class ProviderService {
   private async *streamOpenAi(base: URL, secret: string, model: string, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal, options?: { thinkingDisabled?: boolean }): AsyncGenerator<any> {
     const response = await fetch(new URL('chat/completions', ensureSlash(base)), { method: 'POST', signal, headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify({ model, messages, max_tokens: maxOutputTokens, stream: true, stream_options: { include_usage: true }, ...(options?.thinkingDisabled ? { thinking: { type: 'disabled' } } : {}) }) });
     if (!response.ok || !response.body) throw new Error(`OpenAI-compatible provider failed (${response.status})`);
-    let text = ''; let reasoningText = ''; let usage: ProviderUsage | undefined;
+    let text = ''; let reasoningText = ''; let finishReason: string | undefined; let usage: ProviderUsage | undefined;
     for await (const data of parseSse(response.body)) {
       if (data === '[DONE]') continue;
       const json = JSON.parse(data); const deltas = extractOpenAiDeltas(json);
       if (deltas.reasoning) { reasoningText += deltas.reasoning; yield { reasoningDelta: deltas.reasoning }; }
       if (deltas.content) { text += deltas.content; yield { delta: deltas.content }; }
+      if (typeof json.choices?.[0]?.finish_reason === 'string') finishReason = json.choices[0].finish_reason;
       if (json.usage) usage = { inputTokens: Number(json.usage.prompt_tokens || 0), cachedInputTokens: Number(json.usage.prompt_tokens_details?.cached_tokens || 0), outputTokens: Number(json.usage.completion_tokens || 0), estimated: false };
     }
-    yield { final: { text, reasoningText, usage: usage || estimateUsage(messages, text || reasoningText) } };
+    yield { final: { text, reasoningText, finishReason, usage: usage || estimateUsage(messages, text || reasoningText) } };
   }
   private async *streamAnthropic(base: URL, secret: string, model: string, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal): AsyncGenerator<any> {
     const system = messages.filter(item => item.role === 'system').map(item => item.content).join('\n\n'); const conversation = messages.filter(item => item.role !== 'system');
     const response = await fetch(new URL('messages', ensureSlash(base)), { method: 'POST', signal, headers: { 'x-api-key': secret, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify({ model, system, messages: conversation, max_tokens: maxOutputTokens, stream: true }) });
     if (!response.ok || !response.body) throw new Error(`Anthropic provider failed (${response.status})`);
-    let text = ''; let inputTokens = 0; let outputTokens = 0;
-    for await (const data of parseSse(response.body)) { const json = JSON.parse(data); if (json.type === 'message_start') inputTokens = Number(json.message?.usage?.input_tokens || 0); if (json.type === 'content_block_delta') { const delta = json.delta?.text || ''; if (delta) { text += delta; yield { delta }; } } if (json.type === 'message_delta') outputTokens = Number(json.usage?.output_tokens || 0); }
-    yield { final: { text, usage: inputTokens || outputTokens ? { inputTokens, cachedInputTokens: 0, outputTokens, estimated: false } : estimateUsage(messages, text) } };
+    let text = ''; let inputTokens = 0; let outputTokens = 0; let finishReason: string | undefined;
+    for await (const data of parseSse(response.body)) { const json = JSON.parse(data); if (json.type === 'message_start') inputTokens = Number(json.message?.usage?.input_tokens || 0); if (json.type === 'content_block_delta') { const delta = json.delta?.text || ''; if (delta) { text += delta; yield { delta }; } } if (json.type === 'message_delta') { outputTokens = Number(json.usage?.output_tokens || 0); if (json.delta?.stop_reason === 'max_tokens') finishReason = 'length'; } }
+    yield { final: { text, finishReason, usage: inputTokens || outputTokens ? { inputTokens, cachedInputTokens: 0, outputTokens, estimated: false } : estimateUsage(messages, text) } };
   }
   private async *streamGemini(base: URL, secret: string, model: string, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal): AsyncGenerator<any> {
     const system = messages.filter(item => item.role === 'system').map(item => item.content).join('\n\n'); const contents = messages.filter(item => item.role !== 'system').map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: item.content }] }));
     const endpoint = new URL(`v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, ensureSlash(base));
     const response = await fetch(endpoint, { method: 'POST', signal, headers: { 'x-goog-api-key': secret, 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify({ systemInstruction: system ? { parts: [{ text: system }] } : undefined, contents, generationConfig: { maxOutputTokens } }) });
     if (!response.ok || !response.body) throw new Error(`Gemini provider failed (${response.status})`);
-    let text = ''; let usage: ProviderUsage | undefined;
-    for await (const data of parseSse(response.body)) { const json = JSON.parse(data); const delta = json.candidates?.[0]?.content?.parts?.map((part: any) => part.text || '').join('') || ''; if (delta) { text += delta; yield { delta }; } if (json.usageMetadata) usage = { inputTokens: Number(json.usageMetadata.promptTokenCount || 0), cachedInputTokens: Number(json.usageMetadata.cachedContentTokenCount || 0), outputTokens: Number(json.usageMetadata.candidatesTokenCount || 0), estimated: false }; }
-    yield { final: { text, usage: usage || estimateUsage(messages, text) } };
+    let text = ''; let finishReason: string | undefined; let usage: ProviderUsage | undefined;
+    for await (const data of parseSse(response.body)) { const json = JSON.parse(data); const candidate = json.candidates?.[0]; const delta = candidate?.content?.parts?.map((part: any) => part.text || '').join('') || ''; if (delta) { text += delta; yield { delta }; } if (candidate?.finishReason === 'MAX_TOKENS') finishReason = 'length'; if (json.usageMetadata) usage = { inputTokens: Number(json.usageMetadata.promptTokenCount || 0), cachedInputTokens: Number(json.usageMetadata.cachedContentTokenCount || 0), outputTokens: Number(json.usageMetadata.candidatesTokenCount || 0), estimated: false }; }
+    yield { final: { text, finishReason, usage: usage || estimateUsage(messages, text) } };
   }
 }
 

@@ -32,7 +32,6 @@ async function planProtobufStep(
   context: BuildProviderPlanContext,
   options: ProtobufProviderOptions
 ): Promise<readonly BuildStep[]> {
-  await validateProviderSdk(options, context.target.arch);
   const requestedRuntimeVersion = declaration.options?.runtimeVersion;
   if (requestedRuntimeVersion !== undefined
       && requestedRuntimeVersion !== 'pinned'
@@ -42,9 +41,11 @@ async function planProtobufStep(
   const inputRoot = path.resolve(context.projectRoot, declaration.inputs.root || '.');
   const entryFiles = await collectProtoFiles(inputRoot, declaration.inputs.include, declaration.inputs.exclude || []);
   if (entryFiles.length === 0) {
-    context.log(`Protobuf 代码生成器未找到输入，跳过：${declaration.id}`);
+    // 项目里没有任何 .proto 输入时模块保持惰性：不要求 SDK 就绪，也不阻断构建。
+    context.log?.(`Protobuf 代码生成器未找到输入，跳过：${declaration.id}`);
     return [];
   }
+  await validateProviderSdk(options, context.target.arch);
   const files = await collectProtoDependencies(inputRoot, entryFiles);
   const outputDirectory = typeof declaration.options?.outputDirectory === 'string'
     ? declaration.options.outputDirectory
@@ -104,9 +105,13 @@ async function runProtobufStep(step: BuildStep, context: BuildStepContext, optio
   await fs.mkdir(outputDirectory, { recursive: true });
   await fs.mkdir(path.dirname(descriptorPath), { recursive: true });
   const args = [
-    `--proto_path=${inputRoot}`,
-    `--cpp_out=${outputDirectory}`,
-    `--descriptor_set_out=${descriptorPath}`,
+    // protoc 在 Windows 按 ANSI 码页解析 argv，绝对路径一含中文就
+    // 「directory does not exist」。cwd 固定在输入根目录，全部参数改用
+    // 相对路径（输入根相对自身是 `.`，输出经 path.relative 生成），实测
+    // 中文工作区下可靠；文件名本身仍要求 ASCII（.proto 命名约定如此）。
+    '--proto_path=.',
+    `--cpp_out=${path.relative(inputRoot, outputDirectory).replace(/\\/gu, '/')}`,
+    `--descriptor_set_out=${path.relative(inputRoot, descriptorPath).replace(/\\/gu, '/')}`,
     '--include_imports',
     ...protoFiles
   ];

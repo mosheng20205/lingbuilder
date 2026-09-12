@@ -2,6 +2,8 @@ import { InstalledModule } from '../modules/types';
 import { generateCryptoRuntime } from './cryptoRuntime';
 import { OPENCV_RUNTIME } from './opencvRuntime';
 import { SQLITE_RUNTIME } from './sqliteRuntime';
+import { MYSQL_RUNTIME } from './mysqlRuntime';
+import { EXCEL_RUNTIME } from './excelRuntime';
 
 const CSV_RUNTIME = String.raw`
 static std::wstring LB_CsvEscape(const std::wstring& field) { if (field.find_first_of(L",\"\r\n") == std::wstring::npos) return field; std::wstring escaped = field; LB_ReplaceAll(escaped, L"\"", L"\"\""); return L"\"" + escaped + L"\""; }
@@ -99,6 +101,8 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.crypto.windows': CRYPTO_RUNTIME,
   'lingbuilder.database.odbc': ODBC_RUNTIME,
   'lingbuilder.database.sqlite': SQLITE_RUNTIME,
+  'lingbuilder.database.mysql': MYSQL_RUNTIME,
+  'lingbuilder.data.excel': EXCEL_RUNTIME,
   'lingbuilder.image.core': IMAGE_CORE_RUNTIME,
   'lingbuilder.image.capture': CAPTURE_RUNTIME,
   'lingbuilder.image.bitmap': BITMAP_RUNTIME,

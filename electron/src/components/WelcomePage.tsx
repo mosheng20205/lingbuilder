@@ -12,11 +12,20 @@ import {
   Minimize2,
   Minus,
   RotateCcw,
+  Search,
   X
 } from 'lucide-react';
 import lingBuilderIcon from '../../../image/lingbuilder-ide-icon-v1.png';
-import { LINGBUILDER_DISPLAY_VERSION } from '../services/product/productInfo';
+import {
+  LINGBUILDER_AI_GUIDE_URL,
+  LINGBUILDER_COMMANDS_URL,
+  LINGBUILDER_DISPLAY_VERSION,
+  LINGBUILDER_DOCS_URL,
+  LINGBUILDER_GITHUB_URL,
+  LINGBUILDER_VIDEO_TUTORIALS_URL
+} from '../services/product/productInfo';
 import ProjectTypeDialog from './ProjectTypeDialog';
+import RecentWorkspacesDialog, { workspaceLabel } from './RecentWorkspacesDialog';
 
 export interface WelcomePageProps {
   isDarkMode: boolean;
@@ -29,15 +38,20 @@ export interface WelcomePageProps {
   onCreateProject: (projectType: 'windows-ui' | 'windows-dll') => void;
   onOpenWorkspace: () => void | Promise<void>;
   onOpenRecentWorkspace: (workspacePath: string) => void | Promise<void>;
+  onForgetWorkspace: (workspacePath: string) => void | Promise<void>;
   onContinue: () => void;
   onOpenHelp: () => void;
   onOpenCliGuide: () => void;
 }
 
-function workspaceLabel(workspacePath: string): string {
-  const normalized = workspacePath.replace(/[\\/]+$/u, '');
-  return normalized.split(/[\\/]/u).pop() || normalized;
-}
+/** 欢迎页底部官网导航：文案与路径对齐官网导航（cloud/admin/src/websiteNav.ts）。 */
+const WELCOME_SITE_LINKS: ReadonlyArray<{ label: string; url: string }> = [
+  { label: '使用手册', url: LINGBUILDER_DOCS_URL },
+  { label: '视频教程', url: LINGBUILDER_VIDEO_TUTORIALS_URL },
+  { label: '命令查找', url: LINGBUILDER_COMMANDS_URL },
+  { label: 'AI 教程', url: LINGBUILDER_AI_GUIDE_URL },
+  { label: 'GitHub 开源地址', url: LINGBUILDER_GITHUB_URL }
+];
 
 export default function WelcomePage({
   isDarkMode,
@@ -50,11 +64,14 @@ export default function WelcomePage({
   onCreateProject,
   onOpenWorkspace,
   onOpenRecentWorkspace,
+  onForgetWorkspace,
   onContinue,
   onOpenHelp,
   onOpenCliGuide
 }: WelcomePageProps) {
   const [showProjectTypeDialog, setShowProjectTypeDialog] = useState(false);
+  const [workspaceQuery, setWorkspaceQuery] = useState('');
+  const [showAllWorkspacesDialog, setShowAllWorkspacesDialog] = useState(false);
   const surface = isDarkMode ? 'bg-[#1e1e1e] text-[#d4d4d4]' : 'bg-[#f7f8fa] text-slate-800';
   const titleBar = isDarkMode
     ? 'bg-[#323233] text-slate-200 border-[#2b2b2b]'
@@ -63,6 +80,11 @@ export default function WelcomePage({
   const muted = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const subtle = isDarkMode ? 'text-slate-500' : 'text-slate-400';
   const lastWorkspace = currentWorkspacePath || recentWorkspaces[0];
+  const workspaceKeyword = workspaceQuery.trim().toLowerCase();
+  const filteredWorkspaces = workspaceKeyword
+    ? recentWorkspaces.filter(workspacePath => workspacePath.toLowerCase().includes(workspaceKeyword))
+    : recentWorkspaces;
+  const visibleWorkspaces = workspaceKeyword ? filteredWorkspaces : filteredWorkspaces.slice(0, 6);
 
   return (
     <div className={`flex h-screen w-screen flex-col overflow-hidden font-sans select-none ${surface}`}>
@@ -157,26 +179,78 @@ export default function WelcomePage({
                 <div className={`mt-1 text-xs ${muted}`}>选择一个项目继续编辑。</div>
               </div>
 
-              <div className="space-y-2">
-                {recentWorkspaces.length > 0 ? recentWorkspaces.slice(0, 6).map(workspacePath => (
-                  <button
-                    type="button"
-                    key={workspacePath}
-                    title={workspacePath}
-                    onClick={() => { void onOpenRecentWorkspace(workspacePath); }}
-                    className={`group flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border px-3 py-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/60 ${panel} ${isDarkMode ? 'hover:border-blue-400/60 hover:bg-[#2b2b34]' : 'hover:border-blue-400 hover:bg-blue-50/60'}`}
-                  >
-                    <FolderOpen className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-blue-400" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{workspaceLabel(workspacePath)}</span>
-                      <span className={`mt-0.5 block truncate text-[11px] ${subtle}`}>{workspacePath}</span>
-                    </span>
-                    <ChevronRight className={`h-4 w-4 shrink-0 ${subtle} group-hover:text-blue-400`} />
-                  </button>
-                )) : (
+              <div className="space-y-3">
+                {recentWorkspaces.length > 0 && (
+                  <div className="relative">
+                    <Search className={`pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <input
+                      type="text"
+                      value={workspaceQuery}
+                      onChange={event => setWorkspaceQuery(event.target.value)}
+                      placeholder="搜索工作区名称或路径…"
+                      aria-label="搜索最近工作区"
+                      data-welcome-workspace-search
+                      className={`h-9 w-full rounded-md border pl-9 pr-8 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400/60 ${
+                        isDarkMode
+                          ? 'border-[#3d3d44] bg-[#1b1b21] text-slate-200 placeholder:text-slate-500'
+                          : 'border-slate-300 bg-white text-slate-800 placeholder:text-slate-400'
+                      }`}
+                    />
+                    {workspaceQuery && (
+                      <button
+                        type="button"
+                        title="清空搜索"
+                        aria-label="清空工作区搜索"
+                        onClick={() => setWorkspaceQuery('')}
+                        className={`absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded transition-colors ${isDarkMode ? 'text-slate-500 hover:bg-[#303038] hover:text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-900'}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {recentWorkspaces.length > 0 ? (
+                  visibleWorkspaces.length > 0 ? visibleWorkspaces.map(workspacePath => (
+                    <button
+                      type="button"
+                      key={workspacePath}
+                      title={workspacePath}
+                      data-welcome-recent-workspace={workspacePath}
+                      onClick={() => { void onOpenRecentWorkspace(workspacePath); }}
+                      className={`group flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border px-3 py-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/60 ${panel} ${isDarkMode ? 'hover:border-blue-400/60 hover:bg-[#2b2b34]' : 'hover:border-blue-400 hover:bg-blue-50/60'}`}
+                    >
+                      <FolderOpen className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-blue-400" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{workspaceLabel(workspacePath)}</span>
+                        <span className={`mt-0.5 block truncate text-[11px] ${subtle}`}>{workspacePath}</span>
+                      </span>
+                      <ChevronRight className={`h-4 w-4 shrink-0 ${subtle} group-hover:text-blue-400`} />
+                    </button>
+                  )) : (
+                    <div className={`rounded-md border border-dashed px-4 py-8 text-center text-xs ${isDarkMode ? 'border-[#45454e] text-slate-500' : 'border-slate-300 text-slate-400'}`}>
+                      没有匹配「{workspaceQuery.trim()}」的工作区
+                    </div>
+                  )
+                ) : (
                   <div className={`rounded-md border border-dashed px-4 py-8 text-center text-xs ${isDarkMode ? 'border-[#45454e] text-slate-500' : 'border-slate-300 text-slate-400'}`}>
                     暂无最近工作区
                   </div>
+                )}
+
+                {recentWorkspaces.length > 6 && (
+                  <button
+                    type="button"
+                    data-welcome-show-all-workspaces
+                    onClick={() => setShowAllWorkspacesDialog(true)}
+                    className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/60 ${
+                      isDarkMode
+                        ? 'border-[#45454e] text-slate-400 hover:border-blue-400/60 hover:bg-[#2b2b34] hover:text-blue-300'
+                        : 'border-slate-300 text-slate-500 hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700'
+                    }`}
+                  >
+                    查看全部（共 {recentWorkspaces.length} 个）…
+                  </button>
                 )}
               </div>
 
@@ -199,11 +273,36 @@ export default function WelcomePage({
           </div>
 
           <footer className={`mt-10 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-[11px] ${isDarkMode ? 'border-[#35353d] text-slate-500' : 'border-slate-200 text-slate-400'}`}>
-            <span>欢迎页 · 每次启动显示</span>
+            <nav aria-label="官网导航" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              {WELCOME_SITE_LINKS.map(link => (
+                <button
+                  type="button"
+                  key={link.url}
+                  title={link.url}
+                  onClick={() => window.open(link.url, '_blank', 'noopener,noreferrer')}
+                  className="cursor-pointer transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
+                >
+                  {link.label}
+                </button>
+              ))}
+            </nav>
             <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />本地模式</span>
           </footer>
         </div>
       </main>
+
+      <RecentWorkspacesDialog
+        open={showAllWorkspacesDialog}
+        isDarkMode={isDarkMode}
+        recentWorkspaces={recentWorkspaces}
+        initialQuery={workspaceQuery}
+        onOpenWorkspace={workspacePath => {
+          setShowAllWorkspacesDialog(false);
+          void onOpenRecentWorkspace(workspacePath);
+        }}
+        onForgetWorkspace={workspacePath => { void onForgetWorkspace(workspacePath); }}
+        onClose={() => setShowAllWorkspacesDialog(false)}
+      />
 
       <ProjectTypeDialog
         open={showProjectTypeDialog}

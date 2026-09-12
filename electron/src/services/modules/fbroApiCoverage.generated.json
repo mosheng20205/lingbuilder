@@ -10087,8 +10087,8 @@
         "OnQuery"
       ],
       "legacyAliases": [],
-      "lingBuilderName": "查询查询请求",
-      "category": "脚本与自动化",
+      "lingBuilderName": "查询请求",
+      "category": "JS交互",
       "kind": "deferredDecision",
       "exposure": "managed",
       "thread": "any",
@@ -10188,8 +10188,8 @@
         "OnQueryCanceled"
       ],
       "legacyAliases": [],
-      "lingBuilderName": "查询查询已取消",
-      "category": "脚本与自动化",
+      "lingBuilderName": "查询已取消",
+      "category": "JS交互",
       "kind": "notification",
       "exposure": "managed",
       "thread": "any",

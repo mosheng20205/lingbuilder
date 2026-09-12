@@ -115,6 +115,13 @@ assets/**/doubao-downloader/
 # 本地 agent 说明（不发布）
 AGENTS.md
 
+# 本地 AI 工具状态（不入库）
+.workbuddy-ai/
+
+# 本地构建验证产物（不入库）
+/.b2.json
+/.b3.json
+
 # AI 视频自主生产素材（不入库）
 AI 视频自主生产/
 

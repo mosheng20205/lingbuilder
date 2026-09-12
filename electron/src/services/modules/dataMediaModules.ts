@@ -2,6 +2,8 @@ import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
 import { SQLITE_MODULE } from './sqliteModule';
+import { MYSQL_MODULE } from './mysqlModule';
+import { EXCEL_MODULE } from './excelModule';
 
 export const CRYPTO_SDK_MODULE_IDS = [
   'lingbuilder.crypto.hash',
@@ -229,4 +231,4 @@ const audio = createStandardModule({
   ]
 });
 
-export const DATA_MEDIA_MODULES: LingBuilderModuleManifest[] = [csv, hash, password, symmetric, asymmetric, crypto, odbc, SQLITE_MODULE, imageCore, imageCapture, bitmap, icon, recognition, audio];
+export const DATA_MEDIA_MODULES: LingBuilderModuleManifest[] = [csv, hash, password, symmetric, asymmetric, crypto, odbc, SQLITE_MODULE, MYSQL_MODULE, EXCEL_MODULE, imageCore, imageCapture, bitmap, icon, recognition, audio];

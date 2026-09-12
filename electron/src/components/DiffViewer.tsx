@@ -34,6 +34,7 @@ function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
 }
 import { CommandHintContent, DiffLine, DiffResult, ExtractedString, ProblemItem } from '../types';
 import WpfDesigner from './WpfDesigner';
+import DesignerErrorBoundary from './DesignerErrorBoundary';
 import type { CommandService } from '../services/commands/commandService';
 import { keyboardEventToKeybinding } from '../services/commands/keybindingService';
 import { describeModuleBindingParameterType } from '../services/modules/bindingValueType';
@@ -78,7 +79,8 @@ import {
 } from '../services/lingCpp/beginnerLocalVariableLayout';
 import {
   analyzeBeginnerAutoLocalAssignment,
-  analyzeBeginnerAutoLocalCommandArgument
+  analyzeBeginnerAutoLocalCommandArgument,
+  analyzeBeginnerAutoLocalLoopVariable
 } from '../services/lingCpp/beginnerAutoLocalService';
 import {
   BeginnerCommandParameterCatalog,
@@ -360,6 +362,7 @@ interface BeginnerAutoLocalTypeState {
   segmentId: string;
   variableName: string;
   expression: string;
+  subtitle: string;
   items: string[];
   selectedIndex: number;
   position: BeginnerCompletionPosition;
@@ -5290,6 +5293,33 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }));
       return true;
     };
+    const openBeginnerAutoLocalTypePanel = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      segmentContext: BeginnerCodeSegmentContext,
+      variableName: string,
+      expression: string,
+      subtitle: string,
+      preferredType?: string
+    ) => {
+      const knownTypes = typeSuggestions.filter(type => !/^(空|无)$/u.test(type));
+      if (knownTypes.length === 0) return false;
+      const items = preferredType && !knownTypes.includes(preferredType)
+        ? [preferredType, ...knownTypes]
+        : knownTypes;
+      closeBeginnerCompletion(target);
+      setBeginnerAutoLocalTypeState({
+        targetKey: codeTargetKey(target),
+        segmentId: segmentContext.segment.id,
+        variableName,
+        expression,
+        subtitle,
+        items,
+        selectedIndex: preferredType ? Math.max(0, items.indexOf(preferredType)) : 0,
+        position: getBeginnerCompletionPanelPosition(input, variableName, items.length)
+      });
+      return true;
+    };
     const tryBeginnerAutoLocalOnEnter = (
       target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
@@ -5305,39 +5335,50 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if (cursor < meaningfulLineEnd || input.value.slice(cursor, lineEnd).trim()) return false;
 
       const ownerClass = lingCppLanguageContext?.program.classes.find(cls => cls.name === target.className);
-      const analysis = analyzeBeginnerAutoLocalAssignment({
+      const autoLocalOptions = {
         lineText,
         method: target.method,
         ownerClass,
         globals: projectGlobals?.globals,
         moduleContext,
         commandReturnTypes: beginnerAutoLocalReturnTypes
-      });
-      if (analysis.kind !== 'declare') return false;
-
-      if (analysis.inferredType) {
-        return commitBeginnerAutoLocal(
+      };
+      const assignment = analyzeBeginnerAutoLocalAssignment(autoLocalOptions);
+      if (assignment.kind === 'declare') {
+        if (assignment.inferredType) {
+          return commitBeginnerAutoLocal(
+            target,
+            input,
+            segmentContext,
+            assignment.name,
+            assignment.inferredType
+          );
+        }
+        return openBeginnerAutoLocalTypePanel(
           target,
           input,
           segmentContext,
-          analysis.name,
-          analysis.inferredType
+          assignment.name,
+          assignment.expression,
+          '无法确定右侧表达式类型 · ↑↓ 选择 · Enter 确认'
         );
       }
 
-      const items = typeSuggestions.filter(type => !/^(空|无)$/u.test(type));
-      if (items.length === 0) return false;
-      closeBeginnerCompletion(target);
-      setBeginnerAutoLocalTypeState({
-        targetKey: codeTargetKey(target),
-        segmentId: segmentContext.segment.id,
-        variableName: analysis.name,
-        expression: analysis.expression,
-        items,
-        selectedIndex: 0,
-        position: getBeginnerCompletionPanelPosition(input, analysis.name, items.length)
-      });
-      return true;
+      // 计次/变量/枚举循环首的行尾回车：像易语言一样提示创建未声明的循环变量，
+      // 类型可推断时在面板中预选，推断不出时由用户自行选择。
+      const loop = analyzeBeginnerAutoLocalLoopVariable(autoLocalOptions);
+      if (loop.kind !== 'declare') return false;
+      return openBeginnerAutoLocalTypePanel(
+        target,
+        input,
+        segmentContext,
+        loop.name,
+        loop.statement,
+        loop.inferredType
+          ? `循环变量 · 推荐 ${loop.inferredType} · Enter 确认，↑↓ 可更改`
+          : '无法推断元素类型 · ↑↓ 选择 · Enter 确认',
+        loop.inferredType
+      );
     };
     const handleBeginnerCodeKeyDown = (
       target: BeginnerCodeTarget,
@@ -5590,7 +5631,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           }`}>
             <div className="font-semibold">为 {state.variableName} 选择类型</div>
             <div className={`truncate ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`} title={state.expression}>
-              无法确定右侧表达式类型 · ↑↓ 选择 · Enter 确认
+              {state.subtitle}
             </div>
           </div>
           <div className="overflow-auto py-1" style={{ maxHeight: state.position.maxListHeight }}>
@@ -10092,17 +10133,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       </div>
       {/* Main Comparative Frame */}
       {viewType === 'designer' && designerProject ? (
-        <WpfDesigner
-          key={`designer:${textModelProjectId}`}
-          projectId={textModelProjectId}
-          authoritativeProject={designerProject}
-          authoritativeActiveWindowId={activeWindowId}
-          isDarkMode={isDarkMode}
-          activeFile={activeFile}
-          commandService={commandService}
-          getCommandContext={getCommandContext}
-          toolboxHost={designerToolboxHost}
-        />
+        <DesignerErrorBoundary resetKey={`designer:${textModelProjectId}`} isDarkMode={isDarkMode}>
+          <WpfDesigner
+            key={`designer:${textModelProjectId}`}
+            projectId={textModelProjectId}
+            authoritativeProject={designerProject}
+            authoritativeActiveWindowId={activeWindowId}
+            isDarkMode={isDarkMode}
+            activeFile={activeFile}
+            commandService={commandService}
+            getCommandContext={getCommandContext}
+            toolboxHost={designerToolboxHost}
+          />
+        </DesignerErrorBoundary>
       ) : (
         <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>
           {viewMode === 'chinese' ? (

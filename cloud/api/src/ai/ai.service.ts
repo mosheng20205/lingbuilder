@@ -24,7 +24,11 @@ export class AiService {
     const existing = await this.prisma.aiRequest.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey } } }); if (existing) throw Object.assign(new Error('该幂等请求已存在。'), { status: 409, code: 'IDEMPOTENCY_CONFLICT' });
     const rulebook = await this.rulebook.get();
     const messages = [{ role: 'system' as const, content: `以下是 LingBuilder 固定 AI 规则手册，必须优先遵守（版本 ${rulebook.version}）：\n${rulebook.content}` }, ...(operation === 'edit' ? buildEditMessages(request as AiEditRequest) : request.messages)];
-    const outputBudget = resolveOutputBudget(operation, model.maxOutputTokens, request.maxOutputTokens); const inputEstimate = estimateMessageTokens(messages); const rates = resolveRates(model, new Date()); const estimatedListPoints = this.billing.calculatePoints(inputEstimate, 0, outputBudget, rates);
+    const outputBudget = resolveOutputBudget(operation, model.maxOutputTokens, request.maxOutputTokens); const inputEstimate = estimateMessageTokens(messages); const rates = resolveRates(model, new Date());
+    // 预冻结使用有界的输出估算：模型级 maxOutputTokens 已开到供应商上限（393216），
+    // 全额预冻结会把低余额用户全部挡在 402。实际用量仍按真实 usage 结算，settle 支持补收超出冻结的部分。
+    const reserveOutput = Math.min(outputBudget, RESERVE_OUTPUT_TOKEN_ESTIMATE);
+    const estimatedListPoints = this.billing.calculatePoints(inputEstimate, 0, reserveOutput, rates);
     const free = await this.promotions.activeFreeWindow(userId, model.alias, estimatedListPoints); const requestId = crypto.randomUUID(); const reservePoints = free ? 0n : estimatedListPoints;
     await this.prisma.aiRequest.create({ data: { id: requestId, userId, idempotencyKey, operation, modelAlias: model.alias, routeVersion: model.routes[0].version, reservedPoints: reservePoints, freePromotionId: free?.policy.id } });
     try { await this.billing.reserve(userId, requestId, reservePoints); } catch (error) { await this.prisma.aiRequest.update({ where: { id: requestId }, data: { status: 'FAILED', errorCode: (error as any)?.code || 'INSUFFICIENT_CREDITS', finishedAt: new Date() } }); throw error; }
@@ -40,6 +44,8 @@ export class AiService {
     yield { type: 'accepted', requestId, reservedPoints: reservePoints.toString(), freePromotionId: free?.policy.id };
     let final: ProviderStreamResult | undefined;
     let streamedText = '';
+    // 仅统计正文 delta 字符数：思考内容不算正文，用于判定「模型只思考、未输出回复」的空回复场景。
+    let streamedContentChars = 0;
     let billingFinalized = false;
     let usedRoute = prepared.route;
     try {
@@ -53,7 +59,7 @@ export class AiService {
             for await (const chunk of this.providers.stream(candidate.provider, candidate, messages, prepared.maxOutput, controller.signal, { thinkingDisabled: request.thinking === 'disabled' })) {
               // 推理型模型的思考过程使用独立事件下发，客户端可折叠展示或忽略；不再混入正文 delta。
               if (chunk.reasoningDelta && operation === 'chat') { emitted = true; streamedText += chunk.reasoningDelta; yield { type: 'reasoning', requestId, text: chunk.reasoningDelta }; }
-              if (chunk.delta) { emitted = true; streamedText += chunk.delta; yield { type: 'delta', requestId, text: chunk.delta }; }
+              if (chunk.delta) { emitted = true; streamedText += chunk.delta; streamedContentChars += chunk.delta.length; yield { type: 'delta', requestId, text: chunk.delta }; }
               if (chunk.final) final = chunk.final;
             }
             if (!final) throw new Error('供应商未返回最终用量。');
@@ -63,6 +69,8 @@ export class AiService {
             break routeLoop;
           } catch (error) {
             lastError = error;
+            // 供应商失败必须留痕：stdout 会进容器日志，便于把 PROVIDER_FAILED 关联到真实原因。
+            console.error(`[ai] provider attempt failed: route=${candidate.alias}@v${candidate.version} provider=${candidate.providerId} attempt=${attempt} emitted=${emitted} error=${error instanceof Error ? error.message : String(error)}`);
             if (controller.signal.aborted || emitted) throw error;
             const nextFailures = candidate.provider.failureCount + attempt + 1;
             await this.prisma.providerChannel.update({ where: { id: candidate.providerId }, data: { failureCount: { increment: 1 }, ...(nextFailures >= 5 ? { circuitOpenUntil: new Date(Date.now() + 60_000) } : {}) } });
@@ -95,11 +103,23 @@ export class AiService {
       billingFinalized = true;
       const receipt = { requestId, modelAlias: model.alias, inputTokens: final.usage.inputTokens, cachedInputTokens: final.usage.cachedInputTokens, outputTokens: final.usage.outputTokens, listPricePoints: listPrice.toString(), chargedPoints: charge.toString(), estimated: final.usage.estimated, ...(free ? { freePromotionId: free.policy.id } : {}) };
       await this.prisma.aiRequest.update({ where: { id: requestId }, data: { status: 'COMPLETED', listPricePoints: listPrice, chargedPoints: charge, inputTokens: receipt.inputTokens, cachedInputTokens: receipt.cachedInputTokens, outputTokens: receipt.outputTokens, usageEstimated: receipt.estimated, providerCostMicros, finishedAt: new Date() } });
+      // 思考模型可能把输出预算全部耗在推理上（finish_reason=length 且正文为空）。此时按实际用量结算后，
+      // 必须给客户端可见的中文结果，不能再静默发送 completed 让用户看到空气泡。
+      const truncatedChatReply = operation === 'chat' && final.finishReason === 'length' && streamedContentChars > 0;
+      const emptyChatReply = operation === 'chat' && streamedContentChars === 0 && !final.text.trim() && !final.reasoningText?.trim();
       if (editDraft) yield { type: 'edit_draft', requestId, files: editDraft.files, instruction: (request as AiEditRequest).instruction, ...(editDraft.designerProject ? { designerProject: editDraft.designerProject } : {}) };
-      yield { type: 'usage', requestId, receipt }; yield { type: 'completed', requestId };
+      if (truncatedChatReply) yield { type: 'delta', requestId, text: '\n\n（回复达到输出长度上限，内容可能不完整。）' };
+      yield { type: 'usage', requestId, receipt };
+      if (emptyChatReply) {
+        yield { type: 'error', requestId, code: 'PROVIDER_FAILED', message: final.finishReason === 'length' ? '模型的思考过程耗尽了输出长度上限，未能生成可见回复；本次用量已按实际结算，请缩小问题范围或分步提问后重试。' : '模型未返回可见回复，本次用量已按实际结算，请重试。', retryable: true };
+        return;
+      }
+      yield { type: 'completed', requestId };
     } catch (error: any) {
       const cancelled = controller.signal.aborted;
-      const friendly = error?.code === 'EDIT_DRAFT_TRUNCATED' || error?.code === 'MODEL_UNAVAILABLE' || error?.code === 'INSUFFICIENT_CREDITS';
+      // 顶层失败必须留痕：把真实错误与堆栈写进容器日志，否则 PROVIDER_FAILED 无法定位。
+      console.error(`[ai] stream failed: op=${operation} request=${requestId} code=${error?.code || 'N/A'} msg=${error instanceof Error ? error.message : String(error)} stack=${error instanceof Error ? error.stack : ''}`);
+      const friendly = error?.code === 'EDIT_DRAFT_TRUNCATED' || error?.code === 'EDIT_DRAFT_INVALID' || error?.code === 'MODEL_UNAVAILABLE' || error?.code === 'INSUFFICIENT_CREDITS';
       if (!billingFinalized && cancelled && streamedText.length > 0) {
         const { inputTokens, outputTokens } = estimateCancellationUsage(messages, streamedText);
         const listPrice = this.billing.calculatePoints(inputTokens, 0, outputTokens, prepared.rates);
@@ -120,7 +140,11 @@ export class AiService {
 }
 
 function validateRequest(request: AiChatRequest | AiEditRequest, operation: string) { if (!request?.modelAlias || !Array.isArray(request.messages) || !request.messages.length || request.messages.length > 50) throw Object.assign(new Error('AI 请求结构无效。'), { status: 400, code: 'VALIDATION_FAILED' }); const total = request.messages.reduce((sum, item) => sum + String(item.content || '').length, 0); if (total > 100_000) throw Object.assign(new Error('对话上下文超过 100,000 字符。'), { status: 413, code: 'VALIDATION_FAILED' }); if (operation === 'edit') { const edit = request as AiEditRequest; const designerSize = edit.designerProject ? JSON.stringify(edit.designerProject).length : 0; if (!edit.instruction || !Array.isArray(edit.files) || edit.files.length > 5 || edit.files.reduce((sum, file) => sum + file.content.length, 0) > 24_000 || designerSize > 200_000) throw Object.assign(new Error('编辑上下文超过受控大小限制。'), { status: 400, code: 'VALIDATION_FAILED' }); } }
-export const DEFAULT_EDIT_OUTPUT_TOKENS = 8_192;
+// 编辑草稿必须完整返回 JSON。8K 会让中等规模设计器模型的完整回显截断成 EDIT_DRAFT_TRUNCATED；
+// 32K 与历史 24576 上限同量级；模型级 maxOutputTokens 已开到供应商上限（393216），编辑预算不受其钳制。
+export const DEFAULT_EDIT_OUTPUT_TOKENS = 32_768;
+// 预冻结的输出估算上限：仅影响请求期间的点数冻结额度，不影响实际发送给供应商的 max_tokens。
+export const RESERVE_OUTPUT_TOKEN_ESTIMATE = 16_384;
 
 export function resolveOutputBudget(operation: 'chat' | 'edit', modelMaxOutputTokens: number, requested: number | undefined): number {
   const modelBudget = Math.max(1, Math.floor(modelMaxOutputTokens));
@@ -156,7 +180,7 @@ export function parseEditDraft(
   const parsed = JSON.parse(cleaned);
   const allowed = new Set(allowedPaths.map(path => path.replace(/\\/gu, '/')));
   const files = Array.isArray(parsed.files) ? parsed.files.filter((file: any) => allowed.has(String(file.filePath).replace(/\\/gu, '/')) && typeof file.updatedSource === 'string').map((file: any) => ({ filePath: String(file.filePath), updatedSource: file.updatedSource })) : [];
-  if (!files.length) throw new Error('AI 未返回有效的完整文件修改结果。');
+  if (!files.length) throw Object.assign(new Error('AI 未返回有效的完整文件修改结果（可能只描述了方案而遗漏文件草稿）；请重试。'), { code: 'EDIT_DRAFT_INVALID' });
   let designerProject = parsed.designerProject && typeof parsed.designerProject === 'object' && !Array.isArray(parsed.designerProject) ? parsed.designerProject as Record<string, unknown> : undefined;
   if (requiresDesignerProject && (!designerProject || areDesignerProjectsEquivalent(designerProject, currentDesignerProject))) {
     if (!isDesignerBeautificationInstruction(instruction) || !currentDesignerProject) {

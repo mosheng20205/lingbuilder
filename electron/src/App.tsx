@@ -76,6 +76,7 @@ import UpdateDialog, { type UpdateDialogInfo } from './components/UpdateDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
 import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
+import RecentWorkspacesDialog from './components/RecentWorkspacesDialog';
 import WorkbenchConfirmDialog from './components/WorkbenchConfirmDialog';
 import {
   cancelWorkbenchDialog,
@@ -1138,6 +1139,7 @@ export default function App() {
   );
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [activeDropdown, setActiveDropdown] = useState<'file' | 'edit' | 'view' | 'project' | 'tools' | 'help' | null>(null);
+  const [showRecentWorkspacesDialog, setShowRecentWorkspacesDialog] = useState(false);
   const [isMinimizedApp, setIsMinimizedApp] = useState(false);
   const [showWelcomePage, setShowWelcomePage] = useState(true);
   const [hasEnteredWorkbench, setHasEnteredWorkbench] = useState(false);
@@ -2642,6 +2644,13 @@ void DisplayStatus() {
       setActiveFile(nextActiveFile);
     }
 
+    // 提案命中当前打开的文件时，必须把新源码同步进编辑器实例；否则保存前的
+    // flushCurrentEditorDrafts 会用编辑器内的旧草稿覆盖提案内容，AI 修改被静默回滚。
+    const activeNextSource = nextActiveFile ? appliedMap.get(nextActiveFile.path) : undefined;
+    if (nextActiveFile && typeof activeNextSource === 'string') {
+      diffViewerRef.current?.applyExternalSourceCode(activeNextSource);
+    }
+
     if (proposal.designerProject && activeProjectHasWindowDesigner) {
       const currentDesignerState = readWindowDesignerState(activeProjectId);
       const nextDesignerState = saveWindowDesignerState({
@@ -4105,6 +4114,18 @@ void DisplayStatus() {
       }
       appendEditorTransactionLog(`【打开工作区错误】${error instanceof Error ? error.message : '无法打开目标。'}`);
       return false;
+    }
+  };
+
+  const handleForgetRecentWorkspace = async (workspacePath: string): Promise<void> => {
+    const workspaceApi = window.lingBuilder?.workspace;
+    if (!workspaceApi?.forgetRecent) return;
+    try {
+      await workspaceApi.forgetRecent(workspacePath);
+      setRecentWorkspaces(await workspaceApi.listRecent());
+      appendEditorTransactionLog(`【最近工作区】已从列表移除 ${workspacePath}。`);
+    } catch (error) {
+      appendEditorTransactionLog(`【最近工作区错误】${error instanceof Error ? error.message : '无法从最近列表移除。'}`);
     }
   };
 
@@ -6005,6 +6026,7 @@ void DisplayStatus() {
           onOpenRecentWorkspace={async workspacePath => {
             if (await handleOpenWorkspacePath(workspacePath)) enterWorkbench();
           }}
+          onForgetWorkspace={handleForgetRecentWorkspace}
           onContinue={enterWorkbench}
           onOpenHelp={() => {
             enterWorkbench();
@@ -6171,6 +6193,10 @@ void DisplayStatus() {
                       onClick={() => { void handleOpenWorkspacePath(workspacePath); setActiveDropdown(null); }}
                       className={`px-3 py-1.5 text-left text-[11px] truncate ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}
                     >{workspacePath.split(/[\\/]/u).pop() || workspacePath}</button>)}
+                    {recentWorkspaces.length > 5 && <button
+                      onClick={() => { setShowRecentWorkspacesDialog(true); setActiveDropdown(null); }}
+                      className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}
+                    >更多最近工作区…</button>}
                   </>}
                   <button disabled={isSaving || isBuilding} onClick={() => { void handleToolbarAction('save'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>保存项目</span>
@@ -7308,6 +7334,18 @@ void DisplayStatus() {
       <SponsorDialog
         open={showSponsorDialog}
         onClose={() => setShowSponsorDialog(false)}
+      />
+
+      <RecentWorkspacesDialog
+        open={showRecentWorkspacesDialog}
+        isDarkMode={isDarkMode}
+        recentWorkspaces={recentWorkspaces}
+        onOpenWorkspace={workspacePath => {
+          setShowRecentWorkspacesDialog(false);
+          void handleOpenWorkspacePath(workspacePath);
+        }}
+        onForgetWorkspace={handleForgetRecentWorkspace}
+        onClose={() => setShowRecentWorkspacesDialog(false)}
       />
 
       {/* Load Custom Code Modal */}

@@ -485,7 +485,8 @@ export function findFunctionLibraryReferences(files: LingCppWorkspaceFile[], lib
 function scanQualifiedCalls(sourceCode: string): Array<{ libraryName: string; functionName: string; line: number; text: string }> {
   const calls: Array<{ libraryName: string; functionName: string; line: number; text: string }> = [];
   sourceCode.split(/\r?\n/u).forEach((rawLine, index) => {
-    const line = stripLineComment(rawLine);
+    const line = maskStringLiterals(stripLineComment(rawLine));
+    if (isLingCppNativeLine(line)) return;
     for (const match of line.matchAll(QUALIFIED_CALL_RE)) {
       calls.push({ libraryName: match[1] || '', functionName: match[2] || '', line: index + 1, text: match[0] || '' });
     }
@@ -497,10 +498,41 @@ function scanUnqualifiedCalls(sourceCode: string): Array<{ name: string; line: n
   const calls: Array<{ name: string; line: number }> = [];
   const callPattern = new RegExp(`(^|[^.\\p{L}\\p{N}_])(${IDENTIFIER})\\s*[（(]`, 'gu');
   sourceCode.split(/\r?\n/u).forEach((rawLine, index) => {
-    const line = stripLineComment(rawLine);
+    const line = maskStringLiterals(stripLineComment(rawLine));
+    if (isLingCppNativeLine(line)) return;
     for (const match of line.matchAll(callPattern)) calls.push({ name: match[2] || '', line: index + 1 });
   });
   return calls;
+}
+
+/** 把两种字符串字面量（"..." 含反斜杠转义、中文引号“...”）替换成等长空格，
+ * 让成员调用/功能库扫描不再把字符串内容里的 document.getElementById(...) 之类当成功能库调用。 */
+function maskStringLiterals(line: string): string {
+  const characters = Array.from(line);
+  let quote: '"' | '“' | undefined;
+  for (let index = 0; index < characters.length; index += 1) {
+    const char = characters[index]!;
+    if (quote) {
+      if (quote === '"' && char === '\\') {
+        characters[index] = ' ';
+        if (index + 1 < characters.length) characters[index + 1] = ' ';
+        index += 1;
+        continue;
+      }
+      characters[index] = ' ';
+      if ((quote === '"' && char === '"') || (quote === '“' && char === '”')) quote = undefined;
+      continue;
+    }
+    if (char === '"' || char === '“') {
+      quote = char;
+      characters[index] = ' ';
+    }
+  }
+  return characters.join('');
+}
+
+function isLingCppNativeLine(line: string): boolean {
+  return /^\s*@/.test(line);
 }
 
 function sourceOwnsLibrary(sourceCode: string, library: LingCppProjectFunctionLibrary): boolean {

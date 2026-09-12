@@ -158,6 +158,10 @@ export const CEF3_BROWSER_EVENTS: readonly Cef3BrowserEventDefinition[] = [
   ]),
   ...define('框架与进程', 'decision', [
     ['OnRenderProcessUnresponsive', '渲染进程无响应', '渲染进程无响应，可等待或终止。']
+  ]),
+  ...define('JS交互', 'notification', [
+    ['OnQuery', '查询请求', '页面通过查询函数（window.cefQuery）发起的查询。字段：queryId（数字文本，应答时原样传回）、request（页面请求数据）、persistent。处理器内用 CEF3_查询应答 或 CEF3_查询应答失败 应答，每条查询只能应答一次；未应答的查询 120 秒后自动对页面回错误码 -4。'],
+    ['OnQueryCanceled', '查询已取消', '查询被取消（页面取消、导航离开、浏览器关闭或渲染进程终止）。字段：queryId。收到后无需再应答。']
   ])
 ] as const;
 

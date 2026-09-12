@@ -824,7 +824,32 @@ function collectFbroStartupSwitchesJson(windows: FbroStartupSwitchWindow[]): str
   return Object.keys(switches).length ? JSON.stringify(switches) : '';
 }
 
-function generateFbroInProcessInitSnippet(reserveDebuggingPort: boolean, startupSwitchesJson = ''): string {
+/** 收集项目内进程内 FBroBrowser 控件声明的 JS 交互（cefQuery）通道，格式
+ * “查询函数名,取消函数名”，多条通道用分号分隔（如 cefQuery,cefQueryCancel;cefQuerytest,cefQueryCanceltest）；
+ * 返回空串表示未启用。cefQuery 处理器必须在 LB_FBro_InitializeEx 之前注册，
+ * OnContextInitialized 后再注册的通道对已创建流程不再生效。 */
+function collectFbroJsQueryFunctions(windows: FbroStartupSwitchWindow[]): string {
+  for (const window of windows) {
+    for (const control of window.controls) {
+      if (control.type !== 'FBroBrowser') continue;
+      if (control.properties?.processMode && control.properties.processMode !== 'in-process') continue;
+      const raw = typeof control.properties?.jsQueryFunctions === 'string' ? control.properties.jsQueryFunctions.trim() : '';
+      if (raw) return raw;
+    }
+  }
+  return '';
+}
+
+function generateFbroInProcessInitSnippet(reserveDebuggingPort: boolean, startupSwitchesJson = '', jsQueryFunctions = ''): string {
+    // 与火山 FBrowser_JS交互_注册 一致：支持注册多条通道，每条一次 LB_FBro_EnableJsQuery。
+    const jsQueryRegistration = jsQueryFunctions.split(';').map(pair => pair.trim()).filter(Boolean).map(pair => {
+        const [queryName = '', cancelName = ''] = pair.split(',').map(name => name.trim());
+        return `    LB_FBro_EnableJsQuery(L"${escapeWideString(queryName)}", L"${escapeWideString(cancelName)}");`;
+    }).join('\n');
+    const jsQueryComment = jsQueryRegistration
+        ? `    // JS 交互通道（cefQuery）注册必须在 LB_FBro_InitializeEx 之前：初始化完成后\n` +
+          `    // FBroHsQueryFunctions 注册的通道不再生效，.lcpp 里再调用也来不及。\n`
+        : '';
     return `static int g_lingFbroInProcessDebuggingPort = 0;
 static bool g_lingFbroInProcessInitialized = false;
 static bool LB_FBroInitializeInProcess(const std::wstring& runtimeDirectory) {
@@ -859,7 +884,7 @@ ${reserveDebuggingPort ? `    WSADATA wsaData{};
         WSACleanup();
     }` : '    // 项目内进程内 FBro 控件均未启用开发者工具，不预留 CDP 调试端口。'}
     options.remote_debugging_port = port;
-${startupSwitchesJson ? `    LB_FBro_SetStartupSwitches(L"${startupSwitchesJson.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}");` : ''}
+${jsQueryComment}${jsQueryRegistration}${startupSwitchesJson ? `    LB_FBro_SetStartupSwitches(L"${startupSwitchesJson.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}");` : ''}
     if (LB_FBro_InitializeEx(&options) > 0) {
         g_lingFbroInProcessDebuggingPort = port;
         g_lingFbroInProcessInitialized = true;
@@ -2138,7 +2163,7 @@ ${newEmojiRuntimeControlCpp}
 
 ${newEmojiRuntimeEventCpp.declarations}
 
-${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson([window])) : ''}
+${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson([window]), collectFbroJsQueryFunctions([window])) : ''}
 
 struct LingCppTextValue : std::wstring {
     using std::wstring::wstring;
@@ -9485,7 +9510,7 @@ ${webSocketServerRuntime}
 
 ${fbroProcessRuntime}
 
-${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson(project.windows)) : ''}
+${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson(project.windows), collectFbroJsQueryFunctions(project.windows)) : ''}
 
 class LingWindowBase {
 public:
@@ -13171,13 +13196,30 @@ ${generateFbroVipIndividualRuntime(false)}
         if (GetFullPathNameW(cefRootCachePath_.c_str(), MAX_PATH, absoluteCache, nullptr) > 0) cefRootCachePath_ = absoluteCache;
         CreateDirectoryW(cefRootCachePath_.c_str(), nullptr);
         std::wstring globalUserAgent;
-        for (int i = 0; i < spec_.controlCount && globalUserAgent.empty(); ++i) {
+        std::wstring jsQueryFunctions;
+        for (int i = 0; i < spec_.controlCount && (globalUserAgent.empty() || jsQueryFunctions.empty()); ++i) {
             const ControlSpec& control = spec_.controls[i];
             if (!IsType(control, L"CefBrowser") || !control.data2 || !control.data2[0]) continue;
-            auto records = DecodeControlRecords(control.data2, 4);
-            if (!records.empty() && records[0].size() > 1 && !records[0][1].empty()) globalUserAgent = records[0][1];
+            auto records = DecodeControlRecords(control.data2, 5);
+            if (records.empty()) records = DecodeControlRecords(control.data2, 4);
+            if (records.empty()) continue;
+            if (globalUserAgent.empty() && records[0].size() > 1 && !records[0][1].empty()) globalUserAgent = records[0][1];
+            if (jsQueryFunctions.empty() && records[0].size() > 4 && !records[0][4].empty()) jsQueryFunctions = records[0][4];
         }
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!jsQueryFunctions.empty()) {
+            // JS 交互（cefQuery）通道必须在 LB_CEF3_Initialize 之前注册：查询函数名
+            // 经 CefMessageRouterConfig 在渲染进程 OnWebKitInitialized 时注入 window，
+            // 初始化完成后再注册的通道不会生效，运行期调用 CEF3_启用JS扩展 也会失败。
+            const size_t separator = jsQueryFunctions.find(L',');
+            std::wstring queryName = separator == std::wstring::npos ? jsQueryFunctions : jsQueryFunctions.substr(0, separator);
+            std::wstring cancelName = separator == std::wstring::npos ? L"" : jsQueryFunctions.substr(separator + 1);
+            const size_t cancelEnd = cancelName.find(L';');
+            if (cancelEnd != std::wstring::npos) cancelName = cancelName.substr(0, cancelEnd);
+            if (LB_CEF3_EnableJsQuery(queryName.c_str(), cancelName.c_str()) != LB_CEF3_OK) {
+                调试输出(L"CEF3 JS交互通道注册失败：每个程序只支持一条查询通道，且必须在初始化前配置。");
+            }
+        }
         LB_CEF3_INITIALIZE_CONFIG_V3 bridgeConfig = {};
         bridgeConfig.struct_size = sizeof(bridgeConfig);
         bridgeConfig.abi_version = LB_CEF3_ABI_VERSION_V3;
@@ -16552,6 +16594,43 @@ ${generateFbroVipIndividualRuntime(false)}
         return CEF3_应用Bridge订阅(instance, eventName, true);
     }
 
+    // JS 交互（cefQuery）：页面通过 window.<查询函数>({request, onSuccess, onFailure})
+    // 调用原生。通道必须在 CEF 初始化之前配置（控件属性 jsQueryFunctions），初始化
+    // 完成后再注册的通道不会生效——CEF 在渲染进程 OnWebKitInitialized 时把查询函数
+    // 注入 window，时机在本命令可执行的「创建完毕」事件之前，因此运行期调用只会
+    // 失败，这里保留命令用于显式失败提示与桥能力探测。
+    int CEF3_启用JS扩展(const wchar_t* controlName, const wchar_t* queryFunction, const wchar_t* cancelFunction) {
+        (void)controlName;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_EnableJsQuery(queryFunction, cancelFunction) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)queryFunction; (void)cancelFunction; return 0;
+#endif
+    }
+
+    // 应答「查询请求」事件：查询ID 从事件字段 queryId 读取（数字文本）。
+    // 成功应答调用页面的 onSuccess(结果文本)；失败应答调用 onFailure(错误码, 错误文本)。
+    // 每条查询只能应答一次；未应答的查询 120 秒后自动对页面回错误码 -4。
+    int CEF3_查询应答(const wchar_t* controlName, const wchar_t* queryId, const wchar_t* resultText) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->bridgeHandle || !queryId || !queryId[0]) return 0;
+        return LB_CEF3_JsQueryRespond(instance->bridgeHandle, queryId, 1, resultText, 0, L"") == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)controlName; (void)queryId; (void)resultText; return 0;
+#endif
+    }
+
+    int CEF3_查询应答失败(const wchar_t* controlName, const wchar_t* queryId, int errorCode, const wchar_t* errorText) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->bridgeHandle || !queryId || !queryId[0]) return 0;
+        return LB_CEF3_JsQueryRespond(instance->bridgeHandle, queryId, 0, L"", errorCode, errorText) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)controlName; (void)queryId; (void)errorCode; (void)errorText; return 0;
+#endif
+    }
+
     // 桥接层按处理器族订阅位决定是否安装 CefResourceRequestHandler / CefFrameHandler /
     // CefPrintHandler 等处理器，以及回调体是否向宿主投递事件；订阅位为 0 时 CEF 根本不会
     // 调用对应回调。只登记处理器名不点亮订阅位，「资源响应到达 / 资源重定向 / 下载进度更新」
@@ -18488,8 +18567,13 @@ ${comWindowMethods}
     bool 控件_设置位置大小(const wchar_t* controlName, int x, int y, int width, int height) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName);
         if (!runtime || !runtime->hwnd) return false;
-        width = std::max(1, width);
-        height = std::max(1, height);
+        // 逻辑坐标（与设计器一致）→ 当前窗口物理像素；exe 为 PerMonitorV2 DPI-aware，
+        // 不缩放会让 >100% DPI 机器上的布局整体缩水错位。
+        const double lbDpiScale = static_cast<double>(dpi_) / 96.0;
+        x = static_cast<int>(x * lbDpiScale);
+        y = static_cast<int>(y * lbDpiScale);
+        width = std::max(1, static_cast<int>(width * lbDpiScale));
+        height = std::max(1, static_cast<int>(height * lbDpiScale));
         HWND target = runtime->frameHwnd ? runtime->frameHwnd : runtime->hwnd;
         const BOOL moved = MoveWindow(target, x, y, width, height, TRUE);
         const ControlSpec* control = FindControl(runtime->id);
@@ -22218,7 +22302,8 @@ private:
             instance->host = child;
             if (control.data && control.data[0]) instance->url = control.data;
             if (control.data2 && control.data2[0]) {
-                auto records = DecodeControlRecords(control.data2, 4);
+                auto records = DecodeControlRecords(control.data2, 5);
+                if (records.empty()) records = DecodeControlRecords(control.data2, 4);
                 if (!records.empty()) {
                     const auto& fields = records[0];
                     if (fields.size() > 0 && !fields[0].empty()) instance->cacheDirectory = fields[0];
@@ -25777,7 +25862,12 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const userAgent = typeof properties.userAgent === 'string' ? properties.userAgent : '';
     const proxyMode = typeof properties.proxyMode === 'string' ? properties.proxyMode : 'system';
     const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
-    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer])];
+    // JS 交互（cefQuery）通道，格式“查询函数名,取消函数名”。CEF3 每个程序只支持
+    // 一条查询通道（全局共享），多控件各自声明时取第一个非空配置；留空表示不启用。
+    const jsQueryFunctions = typeof properties.jsQueryFunctions === 'string'
+      ? properties.jsQueryFunctions.trim()
+      : '';
+    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, jsQueryFunctions])];
   }
   if (control.type === 'DataGrid') {
     const model = normalizeDataGridModel({

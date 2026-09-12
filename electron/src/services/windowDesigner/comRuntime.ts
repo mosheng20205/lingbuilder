@@ -34,6 +34,13 @@ export const COM_RUNTIME = String.raw`
 #include <oaidl.h>
 #include <ocidl.h>
 
+using LB_GetDpiForWindowProc = UINT(WINAPI*)(HWND);
+static LB_GetDpiForWindowProc LB_ComGetDpiForWindow() {
+    static LB_GetDpiForWindowProc proc = reinterpret_cast<LB_GetDpiForWindowProc>(
+        reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow")));
+    return proc; // 可能返回空：老系统上按 96 处理
+}
+
 #ifndef WM_FORWARDMSG
 #define WM_FORWARDMSG 0x037F
 #endif
@@ -507,6 +514,83 @@ static std::wstring LB_ComGuidToText(const GUID& guid) {
     return text;
 }
 
+// VT 类型 → 中文类型名；解析 PTR 链与 USERDEFINED 接口名。
+static std::wstring LB_ComTypeText(ITypeInfo* owner, const TYPEDESC& raw) {
+    TYPEDESC td;
+    std::memcpy(&td, &raw, sizeof(td));
+    std::wstring suffix;
+    if (td.vt & VT_BYREF) { td.vt = static_cast<VARTYPE>(td.vt & ~VT_BYREF); suffix += L" 参考"; }
+    int guard = 0;
+    while (td.vt == VT_PTR && guard++ < 8) {
+        if (!td.lptdesc) break;
+        td = *td.lptdesc;
+    }
+    std::wstring name;
+    if (td.vt == VT_USERDEFINED) {
+        ITypeInfo* refType = nullptr;
+        if (SUCCEEDED(owner->GetRefTypeInfo(td.hreftype, &refType)) && refType) {
+            BSTR typeName = nullptr;
+            if (SUCCEEDED(refType->GetDocumentation(MEMBERID_NIL, &typeName, nullptr, nullptr, nullptr)) && typeName) {
+                name = typeName;
+                SysFreeString(typeName);
+            }
+            refType->Release();
+        }
+        if (name.empty()) name = L"对象";
+    } else {
+        switch (td.vt) {
+            case VT_I2: name = L"短整数"; break;
+            case VT_I4: case VT_INT: case VT_UI4: case VT_UINT: case VT_ERROR: case VT_HRESULT: name = L"整数"; break;
+            case VT_I8: case VT_UI8: name = L"长整数"; break;
+            case VT_R4: name = L"单精度小数"; break;
+            case VT_R8: name = L"双精度小数"; break;
+            case VT_CY: case VT_DECIMAL: name = L"数值"; break;
+            case VT_BOOL: name = L"逻辑"; break;
+            case VT_BSTR: name = L"文本"; break;
+            case VT_DATE: name = L"日期"; break;
+            case VT_DISPATCH: case VT_UNKNOWN: name = L"对象"; break;
+            case VT_VARIANT: name = L"变体"; break;
+            case VT_UI1: case VT_I1: name = L"字节"; break;
+            case VT_VOID: name = L"空"; break;
+            case VT_EMPTY: case VT_NULL: name = L"无"; break;
+            default: name = L"整数"; break;
+        }
+    }
+    return name + suffix;
+}
+
+// 单个成员的完整签名：返回类型 + (参数名:类型 [标志], ...)。
+static std::wstring LB_ComFuncSignature(ITypeInfo* owner, FUNCDESC* descriptor) {
+    BSTR names[33] = {};
+    UINT got = 0;
+    const UINT wanted = descriptor->cParams + 1 > 32 ? 32 : descriptor->cParams + 1;
+    owner->GetNames(descriptor->memid, names, wanted, &got);
+    std::wstring params;
+    for (UINT i = 0; i < descriptor->cParams && i + 1 < got; ++i) {
+        const ELEMDESC& ed = descriptor->lprgelemdescParam[i];
+        std::wstring paramName = names[i + 1] ? std::wstring(names[i + 1]) : (L"参数" + std::to_wstring(i + 1));
+        std::wstring item = paramName + L":" + LB_ComTypeText(owner, ed.tdesc);
+        // ELEMDESC 的 union 成员名随 SDK 宏定义变化，按稳定 ABI 布局读取：
+        // PARAMDESC = { USHORT wParamFlags; (填充) LPPARAMDESCEX pparamdescex; }
+        const char* base = reinterpret_cast<const char*>(&ed) + sizeof(TYPEDESC);
+        // 只读低 16 位标志（wParamFlags）；默认值分支曾因 x86 布局偏移计算错误
+        // 在 VariantChangeType 崩溃，已移除——参数标志与类型信息已满足查看需求。
+        const WORD flags = *reinterpret_cast<const WORD*>(base);
+        if (flags & PARAMFLAG_FOUT) item += L" 出参";
+        if (flags & PARAMFLAG_FOPT) item += L" 可省略";
+        if (!params.empty()) params += L", ";
+        params += item;
+    }
+    for (UINT i = 0; i < 33 && i < got; ++i) if (names[i]) SysFreeString(names[i]);
+    std::wstring returns = LB_ComTypeText(owner, descriptor->elemdescFunc.tdesc);
+    if (returns == L"空" || returns.empty()) returns = L"无返回";
+    return L" : " + returns + L" (" + params + L")";
+}
+
+static std::wstring LB_ComMemberLine(const wchar_t* kind, BSTR memberName, int memid, ITypeInfo* owner, FUNCDESC* descriptor) {
+    return std::wstring(L"  ") + kind + memberName + L"(" + std::to_wstring(memid) + L")" + LB_ComFuncSignature(owner, descriptor) + L"\n";
+}
+
 static std::wstring LB_ComDescribeObject(long long handle) {
     LingComRecord* record = LB_ComFind(handle);
     if (!record || !record->dispatch) return std::wstring(L"COM 对象句柄无效。");
@@ -528,7 +612,7 @@ static std::wstring LB_ComDescribeObject(long long handle) {
         SysFreeString(name);
     }
     output += L"GUID：" + LB_ComGuidToText(attributes->guid) + L"\n";
-    std::wstring properties, methods, events;
+    std::wstring properties, methods;
     const UINT functionCount = attributes->cFuncs;
     for (UINT i = 0; i < functionCount; ++i) {
         FUNCDESC* descriptor = nullptr;
@@ -537,20 +621,19 @@ static std::wstring LB_ComDescribeObject(long long handle) {
         if (!hidden) {
             BSTR memberName = nullptr;
             if (SUCCEEDED(typeInfo->GetDocumentation(descriptor->memid, &memberName, nullptr, nullptr, nullptr)) && memberName) {
-                std::wstring line = std::wstring(memberName) + L"(" + std::to_wstring(descriptor->memid) + L")";
+                std::wstring line;
+                if (descriptor->invkind == INVOKE_PROPERTYGET) line = LB_ComMemberLine(L"属性读 ", memberName, descriptor->memid, typeInfo, descriptor);
+                else if (descriptor->invkind == INVOKE_PROPERTYPUT || descriptor->invkind == INVOKE_PROPERTYPUTREF) line = LB_ComMemberLine(L"属性写 ", memberName, descriptor->memid, typeInfo, descriptor);
+                else line = LB_ComMemberLine(L"方法 ", memberName, descriptor->memid, typeInfo, descriptor);
+                if (descriptor->invkind == INVOKE_PROPERTYGET || descriptor->invkind == INVOKE_PROPERTYPUT || descriptor->invkind == INVOKE_PROPERTYPUTREF) properties += line;
+                else methods += line;
                 SysFreeString(memberName);
-                if (descriptor->invkind == INVOKE_PROPERTYGET || descriptor->invkind == INVOKE_PROPERTYPUT || descriptor->invkind == INVOKE_PROPERTYPUTREF) {
-                    if (!properties.empty()) properties += L", ";
-                    properties += line;
-                } else {
-                    if (!methods.empty()) methods += L", ";
-                    methods += line;
-                }
             }
         }
         typeInfo->ReleaseFuncDesc(descriptor);
     }
     // 事件接口：取第一个连接点的源接口并在类型库中定位。
+    std::wstring events;
     {
         IConnectionPointContainer* container = nullptr;
         if (SUCCEEDED(record->dispatch->QueryInterface(IID_IConnectionPointContainer, reinterpret_cast<void**>(&container)))) {
@@ -574,8 +657,7 @@ static std::wstring LB_ComDescribeObject(long long handle) {
                                         if (descriptor->invkind == INVOKE_FUNC && !(descriptor->wFuncFlags & FUNCFLAG_FRESTRICTED) && !(descriptor->wFuncFlags & FUNCFLAG_FHIDDEN)) {
                                             BSTR memberName = nullptr;
                                             if (SUCCEEDED(eventInfo->GetDocumentation(descriptor->memid, &memberName, nullptr, nullptr, nullptr)) && memberName) {
-                                                if (!events.empty()) events += L", ";
-                                                events += std::wstring(memberName) + L"(" + std::to_wstring(descriptor->memid) + L")";
+                                                events += LB_ComMemberLine(L"事件 ", memberName, descriptor->memid, eventInfo, descriptor);
                                                 SysFreeString(memberName);
                                             }
                                         }
@@ -597,11 +679,12 @@ static std::wstring LB_ComDescribeObject(long long handle) {
     }
     typeInfo->ReleaseTypeAttr(attributes);
     typeInfo->Release();
-    output += L"属性：" + (properties.empty() ? std::wstring(L"无") : properties) + L"\n";
-    output += L"方法：" + (methods.empty() ? std::wstring(L"无") : methods) + L"\n";
-    output += L"事件：" + (events.empty() ? std::wstring(L"无") : events);
+    output += L"属性：\n" + (properties.empty() ? std::wstring(L"  无") : properties);
+    output += L"方法：\n" + (methods.empty() ? std::wstring(L"  无") : methods);
+    output += L"事件：\n" + (events.empty() ? std::wstring(L"  无") : events);
     return output;
 }
+
 `;
 
 /**
@@ -621,7 +704,12 @@ const COM_WINDOW_METHODS = String.raw`
         return LB_ReturnText((std::filesystem::path(modulePath).parent_path() / (fileName ? std::wstring(fileName) : std::wstring())).lexically_normal().wstring());
     }
     long long COM_创建OCX组件(HWND parentWindow, const wchar_t* classId, int x, int y, int width, int height, int border) {
-        return LB_ComCreateOcx(parentWindow, classId, x, y, width, height, border, g_lbComError);
+        // 与控件_设置位置大小一致：lcpp 传逻辑坐标，这里按父窗口 DPI 换算物理像素。
+        const LB_GetDpiForWindowProc getDpi = LB_ComGetDpiForWindow();
+        const UINT parentDpi = (parentWindow && getDpi) ? getDpi(parentWindow) : 96;
+        const double scale = parentDpi > 0 ? static_cast<double>(parentDpi) / 96.0 : 1.0;
+        return LB_ComCreateOcx(parentWindow, classId, static_cast<int>(x * scale), static_cast<int>(y * scale),
+                               static_cast<int>(width * scale), static_cast<int>(height * scale), border, g_lbComError);
     }
     long long COM_取OCX对象(long long ocxWindowHandle) {
         std::lock_guard<std::mutex> lock(g_lbComMutex);

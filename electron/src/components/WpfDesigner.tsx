@@ -52,6 +52,7 @@ import UpDownDesignerPreview from './UpDownDesignerPreview';
 import NewEmojiDesignerControlPreview, { getNewEmojiPreviewKind } from './NewEmojiDesignerControlPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
 import DataGridEditorDialog from './DataGridEditorDialog';
+import FbroJsQueryEditorDialog, { parseFbroJsQueryChannels } from './FbroJsQueryEditorDialog';
 import NewEmojiTableEditorDialog, { getNewEmojiTableEditorData, isNewEmojiTableDataProperty } from './NewEmojiTableEditorDialog';
 import ToolbarButtonsDialog from './ToolbarButtonsDialog';
 import StatusBarPartsDialog from './StatusBarPartsDialog';
@@ -1958,14 +1959,34 @@ export default function WpfDesigner({
   const applyHistoryValue = (value: LingWindowProject | null) => { if (!value) return; applyingHistoryRef.current = true; setProject(value); };
   const undoDesigner = () => { designerHistoryRef.current.commit(project); applyHistoryValue(designerHistoryRef.current.undo()); };
   const redoDesigner = () => applyHistoryValue(designerHistoryRef.current.redo());
-  const applyLayoutOperation = (operation: DesignerLayoutOperation) => { try { setProject(previous => ({ ...previous, windows: previous.windows.map(item => item.id === activeWindowId ? applyDesignerLayout(item, selectedControlIds, operation) : item) })); } catch (error) { addLog(`> 【布局】${error instanceof Error ? error.message : String(error)}`); } };
+  // 布局与微移的校验计算必须在 setState updater 外执行：React 19 会吞掉 updater
+  // 在 eager 计算中抛出的异常并照常入队，渲染阶段重新抛出会卸载整棵组件树（黑屏）。
+  const applyLayoutOperation = (operation: DesignerLayoutOperation) => {
+    const source = currentProjectRef.current;
+    let nextWindows: LingWindowModel[];
+    try {
+      nextWindows = source.windows.map(item => item.id === activeWindowId ? applyDesignerLayout(item, selectedControlIds, operation) : item);
+    } catch (error) {
+      addLog(`> 【布局】${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    setProject(previous => ({ ...previous, windows: previous === source ? nextWindows : previous.windows }));
+  };
   const nudgeSelection = (dx: number, dy: number) => {
     if (!selectedControlIds.length) return;
     if (activeWindow.controls.some(control => selectedControlIds.includes(control.id) && control.designerLocked)) {
       addLog('> 【布局】选区中包含已锁定控件，未执行移动。');
       return;
     }
-    setProject(previous => ({ ...previous, windows: previous.windows.map(item => item.id === activeWindowId ? nudgeControls(item, selectedControlIds, dx, dy) : item) }));
+    const source = currentProjectRef.current;
+    let nextWindows: LingWindowModel[];
+    try {
+      nextWindows = source.windows.map(item => item.id === activeWindowId ? nudgeControls(item, selectedControlIds, dx, dy) : item);
+    } catch (error) {
+      addLog(`> 【布局】${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    setProject(previous => ({ ...previous, windows: previous === source ? nextWindows : previous.windows }));
   };
 
   const handleDuplicateWindow = () => {
@@ -3088,7 +3109,7 @@ export default function WpfDesigner({
               isDarkMode ? 'border-slate-700 bg-[#25252b]' : 'border-slate-300 bg-white'
             }`}>
               <button type="button" onClick={undoDesigner} title="撤销设计操作 Ctrl+Z" className="rounded px-1 py-0.5 hover:bg-slate-500/15">撤销</button><button type="button" onClick={redoDesigner} title="重做设计操作 Ctrl+Y" className="rounded px-1 py-0.5 hover:bg-slate-500/15">重做</button>
-              {([['align-left','左齐'],['align-top','顶齐'],['align-right','右齐'],['align-bottom','底齐'],['align-hcenter','水平居中'],['align-vcenter','垂直居中'],['distribute-horizontal','横向分布'],['distribute-vertical','纵向分布'],['same-width','等宽'],['same-height','等高']] as Array<[DesignerLayoutOperation,string]>).map(([operation,label]) => <button key={operation} type="button" disabled={selectedControlIds.length < 2} onClick={() => applyLayoutOperation(operation)} title={label} className="rounded px-1 py-0.5 hover:bg-slate-500/15 disabled:opacity-30">{label}</button>)}
+              {([['align-left','左齐'],['align-top','顶齐'],['align-right','右齐'],['align-bottom','底齐'],['align-hcenter','水平居中'],['align-vcenter','垂直居中'],['distribute-horizontal','横向分布'],['distribute-vertical','纵向分布'],['same-width','等宽'],['same-height','等高']] as Array<[DesignerLayoutOperation,string]>).map(([operation,label]) => <button key={operation} type="button" disabled={(operation === 'distribute-horizontal' || operation === 'distribute-vertical' ? selectedControlIds.length < 3 : selectedControlIds.length < 2)} title={(operation === 'distribute-horizontal' || operation === 'distribute-vertical') && selectedControlIds.length < 3 ? `${label}至少需要三个控件` : label} onClick={() => applyLayoutOperation(operation)} className="rounded px-1 py-0.5 hover:bg-slate-500/15 disabled:opacity-30">{label}</button>)}
               <button
                 type="button"
                 onClick={() => setCanvasZoom(canvasScale - 0.1)}
@@ -5896,6 +5917,8 @@ function ControlProperties({
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
   const [dataGridEditorOpen, setDataGridEditorOpen] = useState(false);
+  const [fbroJsQueryEditorOpen, setFbroJsQueryEditorOpen] = useState(false);
+  const [cef3JsQueryEditorOpen, setCef3JsQueryEditorOpen] = useState(false);
   const [newEmojiTableEditorOpen, setNewEmojiTableEditorOpen] = useState(false);
   const [headerColumnsEditorOpen, setHeaderColumnsEditorOpen] = useState(false);
   const [toolbarButtonsEditorOpen, setToolbarButtonsEditorOpen] = useState(false);
@@ -6255,6 +6278,40 @@ function ControlProperties({
                 </PropertyRow>
               );
             }
+            if (control.type === 'FBroBrowser' && property.key === 'jsQueryFunctions') {
+              const channelCount = parseFbroJsQueryChannels(control.properties?.jsQueryFunctions).length;
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setFbroJsQueryEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{channelCount ? `${channelCount} 条通道` : '未配置'}</span>
+                    <span className="font-semibold text-cyan-500">配置函数</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
+            if (control.type === 'CefBrowser' && property.key === 'jsQueryFunctions') {
+              const channelCount = parseFbroJsQueryChannels(control.properties?.jsQueryFunctions).length;
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setCef3JsQueryEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{channelCount ? `${channelCount} 条通道` : '未配置'}</span>
+                    <span className="font-semibold text-cyan-500">配置函数</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
             if (control.type === 'DataGrid' && (property.type === 'dataGridColumns' || property.type === 'dataGridRows')) {
               const count = property.type === 'dataGridColumns' ? dataGridModel?.columns.length || 0 : dataGridModel?.rows.length || 0;
               return (
@@ -6438,6 +6495,29 @@ function ControlProperties({
             setDataGridEditorOpen(false);
           }}
           onClose={() => setDataGridEditorOpen(false)}
+        />
+      )}
+      {control.type === 'FBroBrowser' && fbroJsQueryEditorOpen && (
+        <FbroJsQueryEditorDialog
+          control={control}
+          isDarkMode={isDarkMode}
+          onSave={properties => {
+            onChange({ properties: { ...(control.properties || {}), ...properties } });
+            setFbroJsQueryEditorOpen(false);
+          }}
+          onClose={() => setFbroJsQueryEditorOpen(false)}
+        />
+      )}
+      {control.type === 'CefBrowser' && cef3JsQueryEditorOpen && (
+        <FbroJsQueryEditorDialog
+          control={control}
+          isDarkMode={isDarkMode}
+          mode="cef3"
+          onSave={properties => {
+            onChange({ properties: { ...(control.properties || {}), ...properties } });
+            setCef3JsQueryEditorOpen(false);
+          }}
+          onClose={() => setCef3JsQueryEditorOpen(false)}
         />
       )}
       {control.designerType?.endsWith('/Table') && newEmojiTableEditorOpen && (

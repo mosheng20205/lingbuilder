@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, resolveWorkspaceDropTarget } from '../electron/workspaceService';
+import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, RECENT_WORKSPACES_LIMIT, resolveWorkspaceDropTarget } from '../electron/workspaceService';
 
 test('workspace service prefers --workspace and remembers it', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-arg-'));
@@ -113,12 +113,29 @@ test('workspace service migrates recents, deduplicates, bounds history, and forg
   assert.deepEqual(await service.listRecentWorkspaces(), [first]);
   for (let index = 0; index < 12; index += 1) await service.rememberWorkspace(path.join(root, `workspace-${index}`));
   const recent = await service.listRecentWorkspaces();
-  assert.equal(recent.length, 10);
+  assert.equal(recent.length, 13);
   assert.equal(recent[0], path.join(root, 'workspace-11'));
   await service.rememberWorkspace(recent[1]);
   assert.equal((await service.listRecentWorkspaces())[0], recent[1]);
   await service.forgetWorkspace(recent[1]);
   assert.equal((await service.listRecentWorkspaces()).includes(recent[1]), false);
+});
+
+test(`recent workspace history keeps at most ${RECENT_WORKSPACES_LIMIT} entries for the welcome page full list`, async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-limit-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const service = new DesktopWorkspaceService({
+    argv: ['app'],
+    documentsPath: root,
+    userDataPath: path.join(root, 'UserData')
+  });
+  for (let index = 0; index < RECENT_WORKSPACES_LIMIT + 5; index += 1) {
+    await service.rememberWorkspace(path.join(root, `workspace-${String(index).padStart(4, '0')}`));
+  }
+  const recent = await service.listRecentWorkspaces();
+  assert.equal(recent.length, RECENT_WORKSPACES_LIMIT);
+  assert.equal(recent[0], path.resolve(path.join(root, `workspace-${String(RECENT_WORKSPACES_LIMIT + 4).padStart(4, '0')}`)));
+  assert.equal(recent[recent.length - 1], path.resolve(path.join(root, 'workspace-0005')));
 });
 
 test('workspace service persists window state and validates dropped files', async t => {
@@ -229,4 +246,44 @@ test('双击 .lcpppkg 冷启动会记为文件关联来源，目录参数不会'
   });
   await explicit.resolveInitialWorkspace();
   assert.equal(explicit.lastInitialWorkspaceSource, 'argument');
+});
+
+test('bundled protobuf SDK is provisioned into the workspace without clobbering user files', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-protobuf-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const bundledSource = path.join(root, 'resources', 'default-workspace', '.lingbuilder', 'toolchains', 'protobuf');
+  await fs.mkdir(path.join(bundledSource, 'bin', 'x64'), { recursive: true });
+  await fs.mkdir(path.join(bundledSource, 'include', 'google', 'protobuf'), { recursive: true });
+  await fs.writeFile(path.join(bundledSource, 'runtime-manifest.json'), '{"sdkVersion":"27.3.0"}', 'utf8');
+  await fs.writeFile(path.join(bundledSource, 'bin', 'protoc.exe'), 'protoc', 'utf8');
+  await fs.writeFile(path.join(bundledSource, 'bin', 'x64', 'libprotobuf.dll'), 'dll', 'utf8');
+  await fs.writeFile(path.join(bundledSource, 'include', 'google', 'protobuf', 'descriptor.h'), 'header', 'utf8');
+
+  const workspace = path.join(root, '现有工作区');
+  await fs.mkdir(workspace, { recursive: true });
+  const service = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', workspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData'),
+    bundledProtobufSdkSource: bundledSource
+  });
+  await service.resolveInitialWorkspace();
+  const toolchain = path.join(workspace, '.lingbuilder', 'toolchains', 'protobuf');
+  assert.equal(await fs.readFile(path.join(toolchain, 'runtime-manifest.json'), 'utf8'), '{"sdkVersion":"27.3.0"}');
+  assert.equal(await fs.readFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'utf8'), 'dll');
+  assert.equal(await fs.readFile(path.join(toolchain, 'include', 'google', 'protobuf', 'descriptor.h'), 'utf8'), 'header');
+
+  // 用户自备文件不得被覆盖；bundled 源缺失时也不抛错。
+  await fs.writeFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'user-sdk', 'utf8');
+  await fs.writeFile(path.join(bundledSource, 'bin', 'x64', 'libprotobuf.dll'), 'newer', 'utf8');
+  const withoutBundled = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', workspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData')
+  });
+  await withoutBundled.resolveInitialWorkspace();
+  assert.equal(await fs.readFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'utf8'), 'user-sdk');
+
+  await service.rememberWorkspace(workspace);
+  assert.equal(await fs.readFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'utf8'), 'user-sdk');
 });
