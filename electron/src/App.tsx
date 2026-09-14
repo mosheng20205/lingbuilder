@@ -344,6 +344,14 @@ const getEditorOperationLabel = (operation: EditorOperation | null) => {
   return '保存';
 };
 
+/** 工作台保存请求的显式超时：本地服务正常毫秒级返回，超时说明服务僵死或被挂起。 */
+const WORKBENCH_SAVE_TIMEOUT_MS = 30_000;
+/** 判断异常是否为请求超时/中止（AbortSignal.timeout 抛出 TimeoutError，外部 abort 抛出 AbortError）。 */
+const isAbortLikeTimeoutError = (error: unknown) => {
+  const name = error instanceof Error ? error.name : '';
+  return name === 'TimeoutError' || name === 'AbortError';
+};
+
 const DEFAULT_EDITOR_FONT_SIZE = 13;
 const MIN_EDITOR_FONT_SIZE = 10;
 const MAX_EDITOR_FONT_SIZE = 24;
@@ -1166,15 +1174,25 @@ export default function App() {
   /** 标题栏升级徽标数据源：最近一次检查确认存在新版本时保存其载荷，供悬浮说明与点击更新使用。 */
   const [updateBadgePayload, setUpdateBadgePayload] = useState<UpdateCheckPayload | null>(null);
   const [showUpdateBadgePanel, setShowUpdateBadgePanel] = useState(false);
+  const [updatesAutoCheck, setUpdatesAutoCheck] = useState(true);
+  const [updatesExperienceChannel, setUpdatesExperienceChannel] = useState(false);
+  const [updatesSkippedVersion, setUpdatesSkippedVersion] = useState('');
+  // 更新检查定时器只注册一次：偏好值经 ref 读取，避免定时器随设置变化反复重建。
+  const updatesPreferenceRef = useRef({ autoCheck: true, experienceChannel: false, skippedVersion: '' });
+  updatesPreferenceRef.current = { autoCheck: updatesAutoCheck, experienceChannel: updatesExperienceChannel, skippedVersion: updatesSkippedVersion };
   useEffect(() => {
     let disposed = false;
     const runSilentUpdateCheck = (announceOnDiscover: boolean) => {
       const check = window.lingBuilder?.updates?.check;
       if (!check) return;
-      void check().then(result => {
+      const preference = updatesPreferenceRef.current;
+      if (!preference.autoCheck) return;
+      void check({ channel: preference.experienceChannel ? 'preview' : 'stable' }).then(result => {
         if (disposed || !result?.ok) return;
         setUpdateBadgePayload(result.hasUpdate ? result : null);
-        if (result.hasUpdate && announceOnDiscover) {
+        // 用户跳过的稳定版只保留徽标提示，不再自动弹窗；预览版不适用跳过。
+        const skipped = result.hasUpdate && result.channel !== 'preview' && Boolean(result.latestVersion) && result.latestVersion === preference.skippedVersion;
+        if (result.hasUpdate && announceOnDiscover && !skipped) {
           // 首次发现仍自动弹窗提醒一次；后续周期复查只刷新徽标，不反复打断用户。
           setUpdateCheckState(prev => prev ?? createUpdateDialogInfo(result, true));
         }
@@ -1206,6 +1224,7 @@ export default function App() {
   const [createProjectError, setCreateProjectError] = useState('');
   const createDialogSolutionNameTouchedRef = useRef(false);
   const [isCreatingSolutionProject, setIsCreatingSolutionProject] = useState(false);
+  const createProjectAbortRef = useRef<AbortController | null>(null);
   const [solutionNameOperation, setSolutionNameOperation] = useState<
     { kind: 'create-folder' } | { kind: 'rename-project'; projectId: string } | null
   >(null);
@@ -1628,6 +1647,9 @@ export default function App() {
     const aiPanelVisible = readValue('workbench.aiPanel.visible');
     const aiPanelWidth = readValue('workbench.aiPanel.width');
     const shortcuts = readValue('keyboard.shortcuts');
+    const autoCheck = readValue('updates.autoCheck');
+    const experienceChannel = readValue('updates.experienceChannel');
+    const skippedVersion = readValue('updates.skippedVersion');
 
     if (typeof fontSize === 'number') setEditorFontSizeState(clampEditorFontSize(fontSize));
     if (experienceMode === 'beginner' || experienceMode === 'professional' || experienceMode === 'native') {
@@ -1642,6 +1664,9 @@ export default function App() {
     if (typeof aiPanelVisible === 'boolean') setShowRightPanel(aiPanelVisible);
     if (typeof aiPanelWidth === 'number') setAiPanelWidth(clampAiPanelWidth(aiPanelWidth));
     setShortcutOverrides(isStringRecord(shortcuts) ? shortcuts : {});
+    if (typeof autoCheck === 'boolean') setUpdatesAutoCheck(autoCheck);
+    if (typeof experienceChannel === 'boolean') setUpdatesExperienceChannel(experienceChannel);
+    if (typeof skippedVersion === 'string') setUpdatesSkippedVersion(skippedVersion);
   }, []);
 
   const loadWorkbenchConfiguration = useCallback(async (): Promise<void> => {
@@ -1768,6 +1793,13 @@ export default function App() {
   useEffect(() => {
     void loadWorkbenchConfiguration();
   }, [loadWorkbenchConfiguration]);
+
+  /** 稳定版更新「跳过此版本」：记录版本号并关闭弹窗；之后该版本只保留标题栏徽标提示，不再自动弹窗。 */
+  const handleSkipUpdateVersion = useCallback((version: string) => {
+    setUpdatesSkippedVersion(version);
+    void configurationMutationRef.current('updates.skippedVersion', version, 'user');
+    setUpdateCheckState(null);
+  }, []);
 
   const openCommandPalette = useCallback(() => {
     setActiveDropdown(null);
@@ -2756,11 +2788,71 @@ void DisplayStatus() {
 
       if (!handlerName) return;
 
+      // 项目文件仍在异步载入时，处理器搜索会拿到空内容而误建桩：等待载入完成（有界 20 秒）。
+      for (let i = 0; i < 40 && !projectFilesReadyRef.current; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
       const currentFiles = filesRef.current;
       const targetSourceName = getLingWindowSourceFileName(detail.windowFileName, detail.windowClassName);
-      let targetFile = currentFiles.find(file => file.name === targetSourceName)
-        || currentFiles.find(file => file.language === 'lingcpp')
-        || currentFiles.find(file => file.path.endsWith('.lcpp'));
+      // 优先找"已声明该处理器"的中文源码文件：窗口类名与源码文件名不对应时（如外部导入工程），
+      // 不能回退到第一个 .lcpp（可能是无关功能库），否则会跳错文件甚至把事件桩写进功能库。
+      const lingCppFiles = currentFiles.filter(file => file.language === 'lingcpp' || file.path.endsWith('.lcpp'));
+      const handlerOwnerFile = lingCppFiles.find(file => hasLingCppEventHandler(getCurrentFileContent(file), handlerName));
+      // 桩尚未生成时，优先落进"声明了该窗口类"的文件，其次才是惯例文件名。
+      const windowClassPattern = detail.windowClassName
+        ? new RegExp(`^\\s*类\\s*${detail.windowClassName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?:\\s|[:：]|$)`, 'm')
+        : undefined;
+      const windowClassFile = windowClassPattern
+        ? lingCppFiles.find(file => windowClassPattern.test(getCurrentFileContent(file)))
+        : undefined;
+
+      const findFileByPath = (candidatePath: string) => {
+        const normalized = candidatePath.replace(/\\/gu, '/').toLowerCase();
+        return lingCppFiles.find(file => file.path.replace(/\\/gu, '/').toLowerCase() === normalized)
+          || lingCppFiles.find(file => file.path.replace(/\\/gu, '/').toLowerCase().endsWith(normalized));
+      };
+
+      let targetFile = handlerOwnerFile || windowClassFile;
+      if (!targetFile) {
+        // 懒加载工作区里未打开的文件在内存中可能还没有内容：从磁盘读全部项目源码后再找一次。
+        const projectId = activeSolutionProject?.id || '';
+        if (projectId) {
+          try {
+            const response = await fetch(`/api/window-designer/files?projectId=${encodeURIComponent(projectId)}`);
+            const data = await response.json();
+            const diskFiles: Record<string, string> = data?.ok && data.files ? data.files : {};
+            const entries = Object.entries(diskFiles).filter(([filePath]) => filePath.toLowerCase().endsWith('.lcpp'));
+            const diskHandlerFile = entries.find(([, content]) => hasLingCppEventHandler(String(content), handlerName));
+            const diskWindowClassFile = windowClassPattern
+              ? entries.find(([, content]) => windowClassPattern.test(String(content)))
+              : undefined;
+            const diskOwner = diskHandlerFile || diskWindowClassFile;
+            if (diskOwner) {
+              const ownerPath = String(diskOwner[0]);
+              targetFile = findFileByPath(ownerPath) || {
+                path: ownerPath,
+                name: ownerPath.split('/').pop() || ownerPath,
+                language: 'lingcpp',
+                encoding: 'utf8',
+                eol: 'lf',
+                savedEncoding: 'utf8',
+                savedEol: 'lf',
+                formatModified: false,
+                originalContent: String(diskOwner[1]),
+                translatedContent: '',
+                strings: [],
+                isModified: false
+              };
+            }
+          } catch {
+            // 磁盘读取失败时维持既有回退行为。
+          }
+        }
+      }
+      if (!targetFile) {
+        targetFile = lingCppFiles.find(file => file.name === targetSourceName) || lingCppFiles[0];
+      }
 
       if (!targetFile) {
         setBuildLogs(prev => [
@@ -3678,7 +3770,9 @@ void DisplayStatus() {
           fileFormats: projectFileFormats,
           baseVersions: projectFileVersionsRef.current,
           ...(designerProject ? { project: designerProject } : {})
-        })
+        }),
+        // 本地服务正常毫秒级返回；显式超时避免服务僵死时保存请求无限悬挂。
+        signal: AbortSignal.timeout(WORKBENCH_SAVE_TIMEOUT_MS)
       });
       const payload = await response.json().catch(() => ({}));
       if (response.status === 409 && payload?.code === 'PROJECT_FILE_CONFLICT') {
@@ -3770,7 +3864,9 @@ void DisplayStatus() {
       appendEditorTransactionLog(`【${reason}】当前中文代码及 UI 界面结构已写入项目磁盘。`);
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
+      const message = isAbortLikeTimeoutError(error)
+        ? '本地服务长时间未响应，保存请求已中止。请检查 LingBuilder Local Service 进程。'
+        : error instanceof Error ? error.message : '未知错误';
       appendEditorTransactionLog(`【${reason}错误】${message}`);
       return false;
     } finally {
@@ -4371,7 +4467,8 @@ void DisplayStatus() {
   const handleCreateSolutionProject = useCallback(async (
     name: string,
     templateId: 'blank-window' | 'windows-dll' = createProjectTemplateId,
-    options?: { solutionName?: string; projectDirectory?: string }
+    options?: { solutionName?: string; projectDirectory?: string },
+    signal?: AbortSignal
   ): Promise<{ ok: boolean; workspacePath?: string }> => {
     if (!name.trim()) return { ok: false };
     const flushState = await flushCurrentEditorDrafts();
@@ -4388,7 +4485,7 @@ void DisplayStatus() {
         return { ok: false };
       }
     }
-    const result = await createSolutionProject(name.trim(), templateId, options);
+    const result = await createSolutionProject(name.trim(), templateId, options, signal);
     appendSolutionLogs('新建项目', result);
     if (!result.ok) {
       setCreateProjectError(result.error || '新建项目失败。');
@@ -4415,7 +4512,8 @@ void DisplayStatus() {
       const response = await fetch('/api/workspace/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspacePath })
+        body: JSON.stringify({ workspacePath }),
+        signal: AbortSignal.timeout(WORKBENCH_SAVE_TIMEOUT_MS)
       });
       const result = await response.json();
       if (!response.ok || !result.ok) {
@@ -4431,20 +4529,24 @@ void DisplayStatus() {
       window.setTimeout(() => window.location.reload(), 800);
       return true;
     } catch (error) {
-      setCreateProjectError(error instanceof Error ? error.message : '切换到独立项目工作区失败，请通过“打开工作区”手动切换。');
+      setCreateProjectError(isAbortLikeTimeoutError(error)
+        ? '本地服务长时间未响应，切换工作区请求已中止。请检查 LingBuilder Local Service 进程。'
+        : error instanceof Error ? error.message : '切换到独立项目工作区失败，请通过“打开工作区”手动切换。');
       return false;
     }
   };
 
   const submitCreateSolutionProject = useCallback(async () => {
     if (isCreatingSolutionProject || !createProjectName.trim()) return;
+    const abortController = new AbortController();
+    createProjectAbortRef.current = abortController;
     setIsCreatingSolutionProject(true);
     setCreateProjectError('');
     try {
       const created = await handleCreateSolutionProject(createProjectName, createProjectTemplateId, {
         solutionName: createSolutionName,
         projectDirectory: createProjectLocation
-      });
+      }, abortController.signal);
       if (!created.ok) return;
       if (created.workspacePath) {
         const switched = await switchToStandaloneProjectWorkspace(created.workspacePath);
@@ -4454,9 +4556,22 @@ void DisplayStatus() {
     } catch (error) {
       setCreateProjectError(error instanceof Error ? error.message : '新建项目失败。');
     } finally {
+      if (createProjectAbortRef.current === abortController) createProjectAbortRef.current = null;
       setIsCreatingSolutionProject(false);
     }
   }, [createProjectName, createProjectTemplateId, createSolutionName, createProjectLocation, handleCreateSolutionProject, isCreatingSolutionProject]);
+
+  /** busy 期间用户点击「取消等待」：中止在途创建请求并关闭对话框；项目是否已落盘由解决方案资源管理器确认。 */
+  const cancelCreateSolutionProject = useCallback(() => {
+    createProjectAbortRef.current?.abort();
+    setShowCreateProjectDialog(false);
+    appendEditorTransactionLog('【新建项目】已取消等待创建请求；若项目已部分创建，请在解决方案资源管理器中确认。');
+    void requestWorkbenchAlert({
+      title: '已取消新建项目',
+      description: '创建请求已取消；若项目已部分创建，请在解决方案资源管理器中确认。',
+      confirmLabel: '知道了'
+    });
+  }, [appendEditorTransactionLog]);
 
   const handleCreateSolutionFolder = useCallback((): boolean => {
     const suggestedName = `解决方案文件夹${(solution.folders?.length || 0) + 1}`;
@@ -4610,6 +4725,7 @@ void DisplayStatus() {
       initialValue: {
         projectBuildDirectory: project.buildProperties?.buildDirectory || '',
         projectGeneratedSourceDirectory: project.buildProperties?.generatedSourceDirectory || '',
+        projectExecutableName: project.buildProperties?.executableName || '',
         workspaceBuildDirectory: buildConfiguration.buildDirectory || '',
         workspaceGeneratedSourceDirectory: buildConfiguration.generatedSourceDirectory || ''
       }
@@ -4644,7 +4760,8 @@ void DisplayStatus() {
         architecture: existingProperties?.architecture || buildConfiguration.architecture,
         additionalArguments: existingProperties?.additionalArguments || [],
         ...(value.projectBuildDirectory.trim() ? { buildDirectory: value.projectBuildDirectory.trim() } : {}),
-        ...(value.projectGeneratedSourceDirectory.trim() ? { generatedSourceDirectory: value.projectGeneratedSourceDirectory.trim() } : {})
+        ...(value.projectGeneratedSourceDirectory.trim() ? { generatedSourceDirectory: value.projectGeneratedSourceDirectory.trim() } : {}),
+        ...(value.projectExecutableName.trim() ? { executableName: value.projectExecutableName.trim() } : {})
       };
       const result = await configureSolutionProject(projectBuildPathsState.projectId, { buildProperties: nextProperties });
       if (!result.ok) throw new Error(result.error || '保存项目构建目录失败。');
@@ -5015,7 +5132,8 @@ void DisplayStatus() {
       const check = window.lingBuilder?.updates?.check;
       if (!check) { setUpdateCheckState({ status: 'error', error: '当前环境不支持在线检查更新。' }); return true; }
       try {
-        const result = await check();
+        // 手动检查不受「跳过此版本」与自动检查开关限制：用户主动发起就给出明确结果。
+        const result = await check({ channel: updatesPreferenceRef.current.experienceChannel ? 'preview' : 'stable' });
         if (!result.ok) { setUpdateCheckState({ status: 'error', error: result.error || '检查更新失败。' }); return true; }
         setUpdateBadgePayload(result.hasUpdate ? result : null);
         setShowUpdateBadgePanel(false);
@@ -6042,6 +6160,8 @@ void DisplayStatus() {
           info={updateCheckState}
           currentVersionLabel={LINGBUILDER_DISPLAY_VERSION}
           isDarkMode={isDarkMode}
+          onSkipVersion={handleSkipUpdateVersion}
+          feedbackUrl={LINGBUILDER_QQ_GROUP_URL}
           onClose={() => setUpdateCheckState(null)}
         />
         {isWorkspaceSwitching && (
@@ -6114,7 +6234,7 @@ void DisplayStatus() {
               >
                 <button
                   type="button"
-                  aria-label={`发现新版本 v${updateBadgePayload.latestVersion ?? ''}，悬浮查看更新说明，点击立即更新`}
+                  aria-label={`发现${updateBadgePayload.channel === 'preview' ? '预览版' : '新版本'} v${updateBadgePayload.latestVersion ?? ''}，悬浮查看更新说明，点击立即更新`}
                   onClick={event => {
                     event.stopPropagation();
                     setShowUpdateBadgePanel(false);
@@ -6122,18 +6242,18 @@ void DisplayStatus() {
                   }}
                   className="rounded-full bg-emerald-500/15 px-1.5 py-px text-[10px] font-semibold leading-4 text-emerald-500 ring-1 ring-emerald-500/40 transition-colors hover:bg-emerald-500/30"
                 >
-                  升级
+                  {updateBadgePayload.channel === 'preview' ? '体验' : '升级'}
                 </button>
                 {showUpdateBadgePanel && (
                   <div
                     role="note"
-                    aria-label={`新版本 v${updateBadgePayload.latestVersion ?? ''} 更新说明`}
+                    aria-label={`${updateBadgePayload.channel === 'preview' ? '预览版' : '新版本'} v${updateBadgePayload.latestVersion ?? ''} 更新说明`}
                     className={`absolute right-0 top-full z-[90] mt-2 w-80 max-w-[min(20rem,90vw)] rounded-md border p-3 text-left shadow-2xl ${
                       isDarkMode ? 'border-[#3b3b43] bg-[#1e1e24] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
                     }`}
                   >
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-xs font-semibold">发现新版本 v{updateBadgePayload.latestVersion ?? ''}</span>
+                      <span className="text-xs font-semibold">{updateBadgePayload.channel === 'preview' ? '抢先体验 v' : '发现新版本 v'}{updateBadgePayload.latestVersion ?? ''}{updateBadgePayload.channel === 'preview' ? '（预览版）' : ''}</span>
                       <span className={isDarkMode ? 'text-[10px] text-slate-400' : 'text-[10px] text-slate-500'}>当前 {LINGBUILDER_DISPLAY_VERSION}</span>
                     </div>
                     {updateBadgePayload.fileSize && (
@@ -7214,6 +7334,7 @@ void DisplayStatus() {
           if (createProjectError) setCreateProjectError('');
         }}
         onConfirm={submitCreateSolutionProject}
+        onCancelBusy={cancelCreateSolutionProject}
         onClose={() => {
           if (!isCreatingSolutionProject) setShowCreateProjectDialog(false);
         }}
@@ -7280,7 +7401,7 @@ void DisplayStatus() {
         busy={projectBuildPathsBusy}
         error={projectBuildPathsError || undefined}
         projectName={projectBuildPathsState?.projectName || ''}
-        initialValue={projectBuildPathsState?.initialValue || { projectBuildDirectory: '', projectGeneratedSourceDirectory: '', workspaceBuildDirectory: '', workspaceGeneratedSourceDirectory: '' }}
+        initialValue={projectBuildPathsState?.initialValue || { projectBuildDirectory: '', projectGeneratedSourceDirectory: '', projectExecutableName: '', workspaceBuildDirectory: '', workspaceGeneratedSourceDirectory: '' }}
         platform={buildConfiguration.architecture}
         configuration={buildConfiguration.mode}
         onConfirm={handleSaveProjectBuildPaths}
@@ -7328,6 +7449,8 @@ void DisplayStatus() {
         info={updateCheckState}
         currentVersionLabel={LINGBUILDER_DISPLAY_VERSION}
         isDarkMode={isDarkMode}
+        onSkipVersion={handleSkipUpdateVersion}
+        feedbackUrl={LINGBUILDER_QQ_GROUP_URL}
         onClose={() => setUpdateCheckState(null)}
       />
 

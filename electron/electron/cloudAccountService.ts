@@ -39,6 +39,29 @@ export class CloudAccountService {
   }
   async models() { return await this.request('/v1/ai/models'); }
   async balance() { return await this.request('/v1/usage/balance'); }
+  /** 取一个尽量可用的 access token 供更新检查等弱依赖场景：缺失时用 refresh token 刷新一次，失败返回空串，绝不抛错。 */
+  async currentAccessToken(): Promise<string> {
+    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => undefined);
+    return this.accessToken;
+  }
+  /** 体验计划资格查询：未登录时返回 authenticated=false，由设置页引导登录。 */
+  async betaEntitlement() {
+    const token = await this.currentAccessToken();
+    if (!token) return { ok: true, authenticated: false, enrolled: false, status: null, validUntil: null, previewSuspended: false, application: null };
+    return await this.request('/v1/beta-program/entitlement');
+  }
+  async betaApply(message: string) {
+    await this.requireAccessTokenForBetaProgram();
+    return await this.request('/v1/beta-program/applications', { method: 'POST', body: JSON.stringify({ message }) });
+  }
+  async betaCancelApplication() {
+    await this.requireAccessTokenForBetaProgram();
+    return await this.request('/v1/beta-program/applications/active', { method: 'DELETE' });
+  }
+  private async requireAccessTokenForBetaProgram() {
+    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => this.clear());
+    if (!this.accessToken) throw new Error('请先登录 LingBuilder 账号，再使用体验计划。');
+  }
   async moduleCatalog() {
     if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => this.clear());
     if (!this.accessToken) return { ok: true, products: [], requiresLogin: true };

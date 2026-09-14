@@ -90,6 +90,13 @@ export interface LingControl {
   events?: LingEventBinding;
 }
 
+export interface LingWindowEmbeddedFileSpec {
+  /** 工作区内相对路径；不得使用绝对路径或越过工作区。 */
+  file: string;
+  /** 释放到临时目录后的文件名；缺省取 file 的基名，仅允许字母、数字、点、下划线、连字符。 */
+  extractName?: string;
+}
+
 export interface LingWindowModel {
   id: string;
   fileName: string;
@@ -105,6 +112,8 @@ export interface LingWindowModel {
   iconStyle?: LingWindowIconStyle;
   /** 自定义窗口图标的工作区相对路径；仅在 iconStyle 为 custom 时使用。 */
   iconPath?: string;
+  /** 随 EXE 编译为 RCDATA 资源、启动时自动释放到「%TEMP%\lingbuilder-embedded\<工程ID>\」的文件（工作区相对路径）。 */
+  embeddedFiles?: LingWindowEmbeddedFileSpec[];
   description: string;
   /** 每个窗口独立选择原生设计后端；值由后端注册表提供，同一窗口不混用后端。 */
   designerBackend?: string;

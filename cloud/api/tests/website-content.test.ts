@@ -85,6 +85,80 @@ test('admin site controller exposes r2 upload config only to writing roles', () 
   assert.match(source, /@Get\('r2-upload\/config'\) @Roles\('super_admin', 'operator'\)/u);
 });
 
+const sponsorActor = { id: 'admin-1', email: 'admin@example.com', role: 'operator', mfa: true };
+
+function sponsorPrisma(calls: any[], audits: any[]) {
+  return {
+    websiteSponsor: {
+      create: async (args: any) => { calls.push(['create', args]); return { id: 'sponsor-1', ...args.data }; },
+      update: async (args: any) => { calls.push(['update', args]); return { id: args.where.id, ...args.data }; },
+      delete: async (args: any) => ({ id: args.where.id, qqNumber: '123456', amountCents: 5000 })
+    },
+    adminAuditLog: { create: async (args: any) => { audits.push(args); return args.data; } }
+  };
+}
+
+test('sponsor upsert stores cents, creates without id, updates with id and audits', async () => {
+  const calls: any[] = [];
+  const audits: any[] = [];
+  const service = new WebsiteContentService(sponsorPrisma(calls, audits) as any);
+
+  const created: any = await service.upsertSponsor({ qqNumber: '123456', amountYuan: '20.5', sponsoredAt: '2026-09-14T02:00:00.000Z' }, sponsorActor);
+  assert.deepEqual(calls[0][0], 'create');
+  assert.equal(created.sponsor.amountCents, 2050);
+  assert.equal(created.sponsor.enabled, true);
+  assert.equal((created.sponsor.sponsoredAt as Date).toISOString(), '2026-09-14T02:00:00.000Z');
+
+  const updated: any = await service.upsertSponsor({ id: 'sponsor-1', qqNumber: '123456', amountYuan: 50, enabled: false }, sponsorActor);
+  assert.deepEqual(calls[1][0], 'update');
+  assert.equal(calls[1][1].where.id, 'sponsor-1');
+  assert.equal(updated.sponsor.amountCents, 5000);
+  assert.ok(updated.sponsor.sponsoredAt instanceof Date);
+  assert.equal(updated.sponsor.enabled, false);
+
+  assert.equal(audits[0].data.action, 'website.sponsor.upsert');
+  assert.equal((audits[0].data.details as any).amountCents, 2050);
+});
+
+test('sponsor upsert rejects malformed QQ numbers and non-positive amounts', async () => {
+  const calls: any[] = [];
+  const audits: any[] = [];
+  const service = new WebsiteContentService(sponsorPrisma(calls, audits) as any);
+  await assert.rejects(() => service.upsertSponsor({ qqNumber: 'abc123', amountYuan: 20 }, sponsorActor), /QQ号格式无效/u);
+  await assert.rejects(() => service.upsertSponsor({ qqNumber: '123456', amountYuan: 0 }, sponsorActor), /赞助金额/u);
+  await assert.rejects(() => service.upsertSponsor({ qqNumber: '123456', amountYuan: -5 }, sponsorActor), /赞助金额/u);
+  await assert.rejects(() => service.upsertSponsor({ qqNumber: '123456' }, sponsorActor), /赞助金额/u);
+  assert.equal(calls.length, 0);
+});
+
+test('sponsor delete removes the record and writes an audit entry', async () => {
+  const calls: any[] = [];
+  const audits: any[] = [];
+  const service = new WebsiteContentService(sponsorPrisma(calls, audits) as any);
+  const result: any = await service.deleteSponsor('sponsor-1', sponsorActor);
+  assert.deepEqual(result, { ok: true });
+  assert.equal(audits[0].data.action, 'website.sponsor.delete');
+  await assert.rejects(() => service.deleteSponsor('', sponsorActor), /缺少要删除的赞助记录/u);
+});
+
+test('public bootstrap publishes only enabled sponsors ordered by sponsorship time', async () => {
+  const captured: any = {};
+  const prisma: any = {};
+  for (const key of ['websiteDownloadRelease', 'websiteGuideArticle', 'websiteDemoProject', 'websiteCommunityGroup', 'websiteSponsor']) {
+    prisma[key] = { findMany: async (args: any) => { captured[key] ||= args; return []; } };
+  }
+  const result: any = await new WebsiteContentService(prisma).publicBootstrap();
+  assert.equal(captured.websiteSponsor.where.enabled, true);
+  assert.deepEqual(captured.websiteSponsor.orderBy, [{ sponsoredAt: 'asc' }, { createdAt: 'asc' }]);
+  assert.deepEqual(result.sponsors, []);
+});
+
+test('admin sponsor endpoints are limited to writing roles', () => {
+  const source = requireSource('../src/website/website-content.controller.ts');
+  assert.match(source, /@Post\('sponsors'\) @Roles\('super_admin', 'operator'\)/u);
+  assert.match(source, /@Delete\('sponsors\/:id'\) @Roles\('super_admin', 'operator'\)/u);
+});
+
 function latestVersionPrisma(release: any) {
   return latestVersionPrismaMany(release ? [release] : []);
 }

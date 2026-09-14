@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Keyboard, RotateCcw, Search, Settings, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Keyboard, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Trash2, X } from 'lucide-react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 
 import type { RegisteredCommand } from '../services/commands';
@@ -29,7 +29,7 @@ interface SettingsDialogProps {
   onReload: () => Promise<void>;
 }
 
-const CATEGORIES = ['编辑器', '工作台', '浏览器凭据', '键盘快捷键'] as const;
+const CATEGORIES = ['编辑器', '工作台', '更新', '浏览器凭据', '键盘快捷键'] as const;
 type SettingsCategory = typeof CATEGORIES[number];
 
 export default function SettingsDialog({
@@ -210,6 +210,8 @@ export default function SettingsDialog({
           </div>
           {category === '浏览器凭据' ? (
             <span className={`inline-flex h-8 items-center gap-1.5 rounded border px-2 text-[11px] ${field}`}><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />当前 Windows 用户</span>
+          ) : category === '更新' ? (
+            <span className={`inline-flex h-8 items-center gap-1.5 rounded border px-2 text-[11px] ${field}`}>本机用户设置</span>
           ) : (
             <>
               <label htmlFor="settings-target" className={`text-[11px] ${muted}`}>保存到</label>
@@ -261,7 +263,7 @@ export default function SettingsDialog({
                 aria-current={category === item ? 'page' : undefined}
                 className={`mb-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${category === item ? isDarkMode ? 'bg-[#094771] text-white' : 'bg-sky-100 text-sky-950' : isDarkMode ? 'hover:bg-[#303030]' : 'hover:bg-slate-200'}`}
               >
-                {item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : item === '浏览器凭据' ? <KeyRound className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
+                {item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : item === '浏览器凭据' ? <KeyRound className="h-4 w-4" aria-hidden="true" /> : item === '更新' ? <RefreshCw className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
                 {item}
               </button>
             ))}
@@ -281,7 +283,7 @@ export default function SettingsDialog({
               </div>
             ))}
 
-            {!loading && category !== '键盘快捷键' && category !== '浏览器凭据' && (
+            {!loading && category !== '键盘快捷键' && category !== '浏览器凭据' && category !== '更新' && (
               <div className="space-y-3">
                 {visibleSettings.length === 0 ? (
                   <div className={`py-12 text-center text-xs ${muted}`}>没有匹配的设置。</div>
@@ -304,6 +306,17 @@ export default function SettingsDialog({
 
             {!loading && category === '浏览器凭据' && (
               <FbroVipCredentialSetting isDarkMode={isDarkMode} fieldClass={field} mutedClass={muted} />
+            )}
+
+            {!loading && category === '更新' && (
+              <UpdatesSetting
+                snapshot={snapshot}
+                isDarkMode={isDarkMode}
+                fieldClass={field}
+                mutedClass={muted}
+                onUpdate={onUpdate}
+                onReset={onReset}
+              />
             )}
 
             {!loading && category === '键盘快捷键' && (
@@ -357,6 +370,161 @@ export default function SettingsDialog({
           <button type="button" onClick={requestClose} className="rounded bg-sky-700 px-4 py-1.5 font-medium text-white hover:bg-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">关闭</button>
         </footer>
       </div>
+    </div>
+  );
+}
+
+interface UpdatesEntitlement {
+  ok: boolean;
+  authenticated?: boolean;
+  enrolled: boolean;
+  status?: string | null;
+  validUntil?: string | null;
+  previewSuspended: boolean;
+  application: { status: string; rejectReason: string; updatedAt?: string } | null;
+}
+
+/** 「更新」设置分区：自动检查开关、体验计划资格卡片与预览渠道开关。 */
+function UpdatesSetting({
+  snapshot,
+  isDarkMode,
+  fieldClass,
+  mutedClass,
+  onUpdate,
+  onReset
+}: {
+  snapshot: WorkbenchConfigurationSnapshot | null;
+  isDarkMode: boolean;
+  fieldClass: string;
+  mutedClass: string;
+  onUpdate: (key: WorkbenchConfigurationKey, value: ConfigurationValue, target: ConfigurationTarget) => Promise<boolean>;
+  onReset: (key: WorkbenchConfigurationKey, target: ConfigurationTarget) => Promise<boolean>;
+}) {
+  const readValue = (key: WorkbenchConfigurationKey): ConfigurationValue | undefined =>
+    snapshot?.settings.find(item => item.metadata.key === key)?.inspection.value;
+  const autoCheck = typeof readValue('updates.autoCheck') === 'boolean' ? Boolean(readValue('updates.autoCheck')) : true;
+  const experienceChannel = Boolean(readValue('updates.experienceChannel'));
+  const skippedVersion = typeof readValue('updates.skippedVersion') === 'string' ? String(readValue('updates.skippedVersion')) : '';
+  const betaApi = window.lingBuilder?.betaProgram;
+  const [entitlement, setEntitlement] = useState<UpdatesEntitlement | null>(null);
+  const [betaMessage, setBetaMessage] = useState('正在读取体验计划状态…');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async () => {
+    if (!betaApi?.status) { setBetaMessage('当前运行方式不支持体验计划状态查询；请在 Electron 桌面版中使用。'); return; }
+    try {
+      const value = await betaApi.status();
+      setEntitlement(value);
+      setBetaMessage(value.authenticated === false ? '尚未登录 LingBuilder 账号；登录后可申请加入体验计划。' : '');
+    } catch (error) {
+      setBetaMessage(`读取体验计划状态失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  useEffect(() => { void refresh(); }, []);
+
+  const applyForBetaProgram = async () => {
+    setBusy(true);
+    try {
+      await betaApi?.apply?.('');
+      setBetaMessage('报名申请已提交，等待管理员审核。');
+      await refresh();
+    } catch (error) {
+      setBetaMessage(`提交申请失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally { setBusy(false); }
+  };
+
+  const cancelBetaApplication = async () => {
+    if (!await requestWorkbenchConfirm({ title: '撤回报名申请？', description: '确定撤回体验计划的报名申请吗？撤回后可重新申请。', confirmLabel: '撤回申请', cancelLabel: '继续等待' })) return;
+    setBusy(true);
+    try {
+      await betaApi?.cancelApplication?.();
+      setBetaMessage('已撤回报名申请。');
+      await refresh();
+    } catch (error) {
+      setBetaMessage(`撤回申请失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally { setBusy(false); }
+  };
+
+  const applicationStatus = entitlement?.application?.status;
+  const applicationLabel = applicationStatus === 'PENDING' ? '审核中'
+    : applicationStatus === 'REJECTED' ? '未通过'
+    : applicationStatus === 'CANCELLED' ? '已撤回'
+    : applicationStatus === 'APPROVED' ? '已通过' : '';
+
+  return (
+    <div className="space-y-3">
+      <section className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold">自动检查更新</p>
+            <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>启动及运行期间自动联网检查稳定版更新；关闭后可在「帮助 → 检查更新」手动检查。</p>
+          </div>
+          <button type="button" onClick={() => void onReset('updates.autoCheck', 'user')} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] ${isDarkMode ? 'hover:bg-[#333]' : 'hover:bg-slate-100'}`}>
+            <RotateCcw className="h-3 w-3" aria-hidden="true" />恢复默认
+          </button>
+        </div>
+        <label className="mt-3 inline-flex min-h-9 cursor-pointer items-center gap-2 text-xs">
+          <input type="checkbox" checked={autoCheck} onChange={event => void onUpdate('updates.autoCheck', event.target.checked, 'user')} className="h-4 w-4 accent-sky-600" />
+          {autoCheck ? '已开启（推荐）' : '已关闭'}
+        </label>
+      </section>
+
+      <section className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
+        <div className="flex items-start gap-3">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isDarkMode ? 'bg-sky-500/10 text-sky-400' : 'bg-sky-100 text-sky-700'}`}><RefreshCw className="h-4.5 w-4.5" aria-hidden="true" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold">体验计划（预览渠道）</p>
+              {entitlement && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${entitlement.enrolled ? (isDarkMode ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : (isDarkMode ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-100 text-amber-800')}`}>{entitlement.enrolled ? '已加入' : applicationStatus === 'PENDING' ? '审核中' : '未加入'}</span>}
+              {entitlement?.previewSuspended && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isDarkMode ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>云端已暂停预览推送</span>}
+            </div>
+            <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>
+              预览版发布频繁、可第一时间体验新功能，但可能不稳定；建议先备份项目数据。
+              {entitlement?.validUntil && <>资格有效期至 {new Date(entitlement.validUntil).toLocaleDateString('zh-CN')}。</>}
+              {applicationStatus === 'REJECTED' && entitlement?.application?.rejectReason && <>（未通过原因：{entitlement.application.rejectReason}）</>}
+            </p>
+            {betaMessage && <p role="status" className={`mt-2 text-[11px] leading-5 ${betaMessage.includes('失败') ? isDarkMode ? 'text-rose-300' : 'text-rose-700' : mutedClass}`}>{betaMessage}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {entitlement && !entitlement.enrolled && entitlement.authenticated !== false && applicationStatus !== 'PENDING' && (
+                <button type="button" disabled={busy} onClick={() => void applyForBetaProgram()} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50">{applicationStatus === 'REJECTED' || applicationStatus === 'CANCELLED' ? '重新申请' : '申请加入体验计划'}</button>
+              )}
+              {applicationStatus === 'PENDING' && (
+                <button type="button" disabled={busy} onClick={() => void cancelBetaApplication()} className={`rounded border px-3 py-1.5 text-xs disabled:opacity-50 ${fieldClass}`}>撤回报名申请</button>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className={`mt-3 border-t pt-3 ${isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200'}`}>
+          <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={experienceChannel}
+              onChange={event => void onUpdate('updates.experienceChannel', event.target.checked, 'user')}
+              disabled={busy}
+              className="h-4 w-4 accent-sky-600"
+            />
+            接收预览版更新（抢先体验）
+          </label>
+          <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>
+            开关只作用于本机：需已加入体验计划并保持登录，云端会校验资格，无资格时自动回落稳定渠道。
+          </p>
+        </div>
+      </section>
+
+      <section className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold">已跳过的稳定版</p>
+            <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>{skippedVersion ? `当前跳过 ${skippedVersion}：该版本不再弹窗，仅保留标题栏徽标；更新到更新版本后自动恢复提示。` : '尚未跳过任何版本。在稳定版更新提示中选择「跳过此版本」时记录。'}</p>
+          </div>
+          {skippedVersion && (
+            <button type="button" onClick={() => void onReset('updates.skippedVersion', 'user')} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] ${isDarkMode ? 'hover:bg-[#333]' : 'hover:bg-slate-100'}`}>
+              <RotateCcw className="h-3 w-3" aria-hidden="true" />取消跳过
+            </button>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

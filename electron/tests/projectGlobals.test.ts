@@ -66,6 +66,31 @@ test('项目全局变量定义跳转和跨文件重命名跳过字符串及注�
   assert.match(renamed[1].sourceCode, /登录用户 = "当前用户" \/\/ 当前用户只是备注/u);
 });
 
+test('功能库可引用项目常量与全局变量，全局命名空间必须生成在 LingWindowBase 之前', () => {
+  const project: LingWindowProject = {
+    id: 'demo', name: '功能库全局演示', windows: [
+      { id: 'main', fileName: '主窗口.xml', className: '主窗口', title: '主窗口', description: '主窗口', width: 640, height: 480, background: '#ffffff', controls: [] }
+    ]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    activeWindowId: 'main',
+    lingCppSources: [
+      { filePath: globalPath, sourceCode: '常量 整数型 最大记录条数 = 1000\n常量 整数型 预警阈值 = 最大记录条数 / 2\n全局 整数型 已处理条数 = 0\n' },
+      { filePath: 'src/demo/文本工具.lcpp', sourceCode: '功能库 文本工具\n公开:\n  文本型 报告()\n    返回(格式化文本("{} / {} / {}", 已处理条数, 预警阈值, 最大记录条数))\n  结束\n结束功能库\n' },
+      { filePath: 'src/demo/主窗口.lcpp', sourceCode: '类 主窗口\n  事件 创建完毕()\n    调试输出(文本工具.报告())\n  结束\n结束类\n' }
+    ]
+  });
+  assert.equal(generated.blockingDiagnostics.length, 0);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const globalsNamespaceIndex = mainCpp.indexOf('namespace LingBuilderProjectGlobals');
+  const windowBaseDefinitionIndex = mainCpp.indexOf('class LingWindowBase {');
+  const libraryFunctionIndex = mainCpp.indexOf('LBFL_文本工具_报告');
+  assert.ok(globalsNamespaceIndex >= 0);
+  assert.ok(windowBaseDefinitionIndex >= 0);
+  assert.ok(libraryFunctionIndex > globalsNamespaceIndex, '功能库函数必须生成在项目全局命名空间之后，才能引用项目常量与全局变量');
+  assert.ok(globalsNamespaceIndex < windowBaseDefinitionIndex, '项目全局命名空间必须先于 LingWindowBase 类定义');
+});
+
 test('多窗口源码共享同一 C++ 全局命名空间并生成逐文件映射', () => {
   const project: LingWindowProject = {
     id: 'demo', name: '全局变量演示', windows: [

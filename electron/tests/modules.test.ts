@@ -223,6 +223,7 @@ test('标准库模块命令、binding、Win32/x64 target 保持完整对应', ()
     'lingbuilder.std.math',
     'lingbuilder.std.datetime',
     'lingbuilder.std.regex',
+    'lingbuilder.std.buffer',
     'lingbuilder.data.json',
     'lingbuilder.data.xml'
   ];
@@ -276,12 +277,25 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-12 写回：CEF3 浏览器模块新增 JS 交互三条命令
       //（CEF3_启用JS扩展 3 参数、CEF3_查询应答 3 参数、CEF3_查询应答失败 4 参数），
       // 每条的控件名为 controlRef，控件参数 +3。
-      modules: 87,
-      commands: 3339,
-      parameters: 5852,
+      // 基线 2026-09-13 写回：网页访问模块（lingbuilder.web.http 1.1.1）转为内置模块入账，
+      // 12 条命令、26 参数（异步族 6 条 + 同步族 6 条，完成处理器为 handler 参数），
+      // 全部为文本/数值/布尔/字节集/handler 参数，无控件参数；写回值按当前工作区实算，
+      // 已含并行会话先行入账的漂移（写回前实算 87/3343/5857，摘要 4e971704/44f3e937）。
+      // 基线 2026-09-13 写回：正则表达式模块补齐 5 命令（取所有匹配/取第N个匹配/
+      // 取分组/取所有分组/取匹配位置，+5 命令 +8 参数）；多线程模块 2.1.0 新增
+      // 队列族 8 命令（+8 命令 +21 参数）；新增缓冲区模块（lingbuilder.std.buffer
+      // 1.0.0，16 命令 +23 参数）。合计 +1 模块 +29 命令 +52 参数，无控件参数。
+      // 基线 2026-09-13 追加写回（第二批）：文本处理模块 +8（分割/倒找/替换子文本/
+      // 删全部空白/到全角/到半角/重复/插入，+8 命令 +18 参数）；多线程模块队列族
+      // 扩多元素类型 +4（入队整数/出队整数/入队字节集/出队字节集，+10 参数）；
+      // 字节集 +5（寻找/倒找/替换/插入/删除，+16 参数）；缓冲区 +1（寻找，+3 参数）。
+      // 合计 +18 命令 +47 参数，无控件参数，模块数不变。
+      modules: 89,
+      commands: 3402,
+      parameters: 5982,
       controlReferences: 1303,
-      commandDigest: 'e5bf21d1',
-      parameterDigest: 'ce6312e5'
+      commandDigest: 'e911d550',
+      parameterDigest: '1a6c15b2'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -413,7 +427,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 53, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 54, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1016,6 +1030,8 @@ test('文件、配置、系统、进程、输入和窗口模块提供完整确�
       '        文件_写入文本("验证.txt", "中文")',
       '        INI_写整数("设置.ini", "窗口", "宽度", 800)',
       '        鼠标_移动(10, 20)',
+      '        窗口_开始拖拽(窗口_按标题查找("无边框演示"))',
+      '        窗口_开始边缘缩放(窗口_按标题查找("无边框演示"), 17)',
       '    结束',
       '结束类'
     ].join('\n'),
@@ -1029,6 +1045,18 @@ test('文件、配置、系统、进程、输入和窗口模块提供完整确�
   assert.match(mainCpp, /bool 鼠标_移动\(int x, int y\)/u);
   assert.match(mainCpp, /bool 窗口_设置标题\(long long handle/u);
   assert.match(mainCpp, /文件_写入文本\(L"验证\.txt", L"中文"\);/u);
+
+  const windowUtilsManifest = SYSTEM_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.win32.window-utils')!;
+  const windowUtilsCommands = windowUtilsManifest.contributes?.commands?.map(command => command.name) ?? [];
+  for (const name of ['窗口_是否最大化', '窗口_取边界JSON', '窗口_开始拖拽', '窗口_开始边缘缩放']) {
+    assert.ok(windowUtilsCommands.includes(name), `${name} 必须登记进 Win32窗口操作模块命令清单`);
+  }
+  assert.match(mainCpp, /bool 窗口_是否最大化\(long long handle\)/u);
+  assert.match(mainCpp, /const wchar_t\* 窗口_取边界JSON\(long long handle\)/u);
+  assert.match(mainCpp, /bool 窗口_开始拖拽\(long long handle\)/u);
+  assert.match(mainCpp, /bool 窗口_开始边缘缩放\(long long handle, int edge\)/u);
+  assert.match(mainCpp, /SendMessageW\(window, WM_NCLBUTTONDOWN, HTCAPTION, 0\)/u);
+  assert.match(mainCpp, /窗口_开始边缘缩放\([^,]+, 17\);/u);
 });
 
 test('剪贴板模块支持图片字节集和保留动画帧的 GIF 剪贴板格式', () => {
@@ -1295,7 +1323,7 @@ test('Win32 基础模块提供可变参数占位符文本格式化命令', () =>
 
 test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
-    'lingbuilder.net.http-client', 'lingbuilder.cdp.client', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
+    'lingbuilder.net.http-client', 'lingbuilder.cdp.client', 'lingbuilder.web.http', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
     'lingbuilder.net.dns', 'lingbuilder.net.url', 'lingbuilder.net.cookie', 'lingbuilder.net.ftp'
   ]);
   for (const manifest of NETWORK_LIBRARY_MODULES) {
@@ -3637,7 +3665,7 @@ test('built-in threading module contributes managed task commands and C++ runtim
   assert.ok(completions.some(item => item.label === '线程池_创建'));
   assert.ok(completions.some(item => item.label === '线程任务多参数与完成回调'));
   THREADING_LEGACY_COMMANDS.forEach(command => assert.ok(!completions.some(item => item.label === command)));
-  assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.version, '2.1.0');
   assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), THREADING_COMMAND_SPECS.map(command => command.name));
   assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), THREADING_COMMAND_SPECS.map(command => command.name));
 
@@ -5653,12 +5681,16 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.equal(runtimeControls.filter((control: any) => control.runtimeControl.lookupByTagTextCommand).length, 93);
   assert.equal(runtimeControls.filter((control: any) => control.runtimeControl.lookupByTagIntegerCommand).length, 93);
   const runtimeEventCount = runtimeControls.reduce((count: number, control: any) => count + (control.runtime?.eventBindings?.length || 0), 0);
-  assert.equal(runtimeEventCount, 918);
-  assert.equal(manifest.contributes.commands.filter((command: any) => /_绑定/u.test(command.name)).length, 918);
-  assert.equal(manifest.contributes.commands.filter((command: any) => /_解绑/u.test(command.name)).length, 918);
+  // 基线 2026-09-13 写回（第二批）：Tabs 新增 ItemClosed（关闭标签页）、Menu 新增 ContextMenu
+  // （右键菜单）事件绑定，事件绑定 919→921；同批再新增 Post 投递族/JSON 读取族/提问框/通知/
+  // 加载遮罩/Excel 导入导出/窗口图标字节集等手工桥接，以及按控件属性表自动生成的宽字符属性
+  // 命令（NE<类型>_设置<属性>），非 _绑定 形态的 handler binding 91→92（提问框）。
+  assert.equal(runtimeEventCount, 921);
+  assert.equal(manifest.contributes.commands.filter((command: any) => /_绑定/u.test(command.name)).length, 921);
+  assert.equal(manifest.contributes.commands.filter((command: any) => /_解绑/u.test(command.name)).length, 921);
   const handlerBindings = manifest.bindings.commands.filter((binding: any) => binding.parameters?.some((parameter: any) => parameter.type === 'handler'));
-  assert.equal(handlerBindings.filter((binding: any) => /_绑定/u.test(binding.command)).length, 918);
-  assert.equal(handlerBindings.filter((binding: any) => !/_绑定/u.test(binding.command)).length, 88);
+  assert.equal(handlerBindings.filter((binding: any) => /_绑定/u.test(binding.command)).length, 921);
+  assert.equal(handlerBindings.filter((binding: any) => !/_绑定/u.test(binding.command)).length, 92);
   const buttonCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_SetButtonStateColors');
   assert.deepEqual(buttonCommand.parameters[1], {
     name: 'element_id',
@@ -6068,6 +6100,153 @@ test('generated new_emoji bridge completions match binding parameter counts', as
       ['允许拖拽', 'bool'], ['文件数量上限', 'int'], ['单文件上限KB', 'int'], ['允许文件类型', 'wideString']
     ]
   );
+});
+
+test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字符 C++ 与按名派发的消息框跳板', async () => {
+  const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'module-build', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const bindings = new Map((manifest.bindings.commands as Array<{ command: string; parameters?: Array<Record<string, unknown>> }>).map(binding => [binding.command, binding]));
+  const expectedDataBridges: Array<[string, Array<[string, string, string?]>]> = [
+    ['NE表格_设置列', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Table'], ['列配置', 'wideString']]],
+    ['NE表格_设置行数据', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Table'], ['行数据', 'wideString']]],
+    ['NE表格_添加行', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Table'], ['行数据', 'wideString']]],
+    ['NE表格_插入行', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Table'], ['行号', 'int'], ['行数据', 'wideString']]],
+    ['NE富列表_设置模板', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/RichList'], ['模板JSON', 'wideString']]],
+    ['NE富列表_设置条目', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/RichList'], ['条目JSON', 'wideString']]],
+    ['NE富列表_添加条目', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/RichList'], ['条目JSON', 'wideString']]],
+    ['NE富列表_设置选中键', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/RichList'], ['选中键JSON', 'wideString']]],
+    ['NE富列表_设置倒计时', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/RichList'], ['键', 'wideString'], ['节点', 'wideString'], ['目标毫秒', 'int'], ['格式', 'wideString'], ['是否暂停', 'bool']]],
+    ['NE富列表_设置倒计时状态', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/RichList'], ['键', 'wideString'], ['节点', 'wideString'], ['是否暂停', 'bool']]],
+    ['NE富列表_设置虚拟行数据', [['行数据', 'wideString']]],
+    ['NE菜单_设置项目', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['项目文本', 'wideString']]],
+    ['NE菜单_设置项目图标', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['项目索引', 'int'], ['图标', 'wideString']]],
+    ['NE菜单_设置项目快捷键', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['项目索引', 'int'], ['快捷键', 'wideString']]],
+    ['NE菜单_设置项目元数据', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['图标列表', 'wideString'], ['分组列表', 'wideString'], ['链接列表', 'wideString'], ['目标列表', 'wideString'], ['命令列表', 'wideString']]],
+    ['NE徽标_设置文本', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Badge'], ['文本', 'wideString']]],
+    ['NE_设置窗口图标', [['窗口句柄', 'handle'], ['图标路径', 'wideString']]],
+    ['NE_设置主题令牌', [['窗口句柄', 'handle'], ['令牌名', 'wideString'], ['颜色值', 'int']]]
+  ];
+  for (const [name, parameters] of expectedDataBridges) {
+    const binding = bindings.get(name);
+    assert.ok(binding, `缺少数据桥接 binding ${name}`);
+    assert.deepEqual(
+      (binding!.parameters || []).map(parameter => [parameter.name, parameter.type]),
+      parameters.map(([parameterName, type]) => [parameterName, type]),
+      `${name} 的参数签名不符`
+    );
+    if (parameters[0]?.[2]) {
+      assert.deepEqual((binding!.parameters || [])[0].controlTypes, [parameters[0]![2]!], `${name} 的控件类型约束不符`);
+    }
+  }
+  assert.deepEqual((bindings.get('NE_显示消息框')!.parameters || []).at(-1)?.handlerSignature, { parameterTypes: ['整数型', '整数型'], returnType: '空' });
+  assert.deepEqual((bindings.get('NE_显示确认框')!.parameters || []).at(-1)?.handlerSignature, { parameterTypes: ['整数型', '整数型'], returnType: '空' });
+  assert.deepEqual((bindings.get('NE_显示扩展消息框')!.parameters || []).at(-1)?.handlerSignature, { parameterTypes: ['整数型', '整数型', '文本型'], returnType: '空' });
+  const richListContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'RichList');
+  const virtualRowEvent = richListContribution.events.find((event: { name: string }) => event.name === 'VirtualRow');
+  assert.ok(virtualRowEvent, 'RichList 缺少 VirtualRow 事件贡献');
+  assert.equal(virtualRowEvent.label, '虚拟数据源');
+  assert.deepEqual(virtualRowEvent.parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [['行号', 'int']]);
+  assert.deepEqual(virtualRowEvent.starterStatements, ['NE富列表_设置虚拟行数据("")']);
+  assert.equal(virtualRowEvent.runtimeCommand, 'EU_SetRichListVirtualItemProvider');
+
+  const installedModule: InstalledModule = {
+    manifest,
+    installPath: path.dirname(manifestPath),
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const tableContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Table');
+  const menuContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Menu');
+  const badgeContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Badge');
+  const buildControl = (contribution: any, id: string, name: string) => ({
+    id, type: contribution.previewType, designerType: contribution.namespacedType,
+    name, content: name, x: 20, y: 20, width: 320, height: 180,
+    fontSize: 14, background: 'transparent', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible' as const,
+    properties: { ...contribution.defaultProps }, events: {}
+  });
+  const generated = generateLingCppNativeWin32Project({
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      designerBackend: 'new-emoji',
+      controls: [
+        buildControl(tableContribution, 'table', '表格1'),
+        buildControl(richListContribution, 'rich-list', '富列表1'),
+        buildControl(menuContribution, 'menu', '菜单1'),
+        buildControl(badgeContribution, 'badge', '徽标1')
+      ]
+    }]
+  }, {
+    enabledModules: [installedModule],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 创建完毕()',
+      '        NE表格_设置列(表格1, "列文本")',
+      '        NE表格_设置行数据(表格1, "行数组文本")',
+      '        NE表格_添加行(表格1, "行文本")',
+      '        NE表格_插入行(表格1, 0, "行文本")',
+      '        NE富列表_设置模板(富列表1, "模板文本")',
+      '        NE富列表_设置条目(富列表1, "条目数组文本")',
+      '        NE富列表_添加条目(富列表1, "条目文本")',
+      '        NE富列表_设置选中键(富列表1, "键数组文本")',
+      '        NE富列表_设置倒计时(富列表1, "item1", ".countdown", 1790000000000, "HH:mm:ss", 假)',
+      '        NE富列表_设置倒计时状态(富列表1, "item1", ".countdown", 假)',
+      '        NE富列表_绑定虚拟数据源(富列表1, &富列表虚拟数据)',
+      '        NE菜单_设置项目(菜单1, "项目文本")',
+      '        NE菜单_设置项目图标(菜单1, 0, "图标")',
+      '        NE菜单_设置项目快捷键(菜单1, 1, "Ctrl+O")',
+      '        NE菜单_设置项目元数据(菜单1, "", "", "", "", "命令文本")',
+      '        NE徽标_设置文本(徽标1, "new")',
+      '        NE_设置窗口图标(当前窗口, "图标路径")',
+      '        NE_设置主题令牌(当前窗口, "panel.bg", 4288621312)',
+      '        NE_显示消息框(当前窗口, "提示", "正文", "确定", &消息框已关闭)',
+      '        NE_显示确认框(当前窗口, "删除", "正文", "删除", "取消", &确认框已关闭)',
+      '        NE_显示扩展消息框(当前窗口, "反馈", "正文", "提交", "取消", 4, 真, 真, 假, 真, &扩展消息框已关闭)',
+      '    结束',
+      '    事件 富列表虚拟数据(整数型 行号)',
+      '        NE富列表_设置虚拟行数据("条目文本")',
+      '    结束',
+      '    事件 消息框已关闭(整数型 结果编号, 整数型 结果值)',
+      '        调试输出(结果值)',
+      '    结束',
+      '    事件 确认框已关闭(整数型 结果编号, 整数型 结果值)',
+      '        调试输出(结果值)',
+      '    结束',
+      '    事件 扩展消息框已关闭(整数型 结果编号, 整数型 动作, 文本型 输入文本)',
+      '        调试输出(动作, 输入文本)',
+      '    结束',
+      '结束类'
+    ].join('\n')
+  });
+  assert.equal(generated.blockingDiagnostics.length, 0);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // 数据桥接：调用点发宽字符，助手内经 LB_NE_ToUtf8 调原生导出。
+  assert.match(cpp, /NE表格_设置行数据\(L"表格1", L"行数组文本"\);/u);
+  assert.match(cpp, /static bool NE表格_设置行数据\(const wchar_t\* controlName, const std::wstring& rowsJson\)[\s\S]{0,240}EU_SetTableRowsEx\(g_newEmojiWindow, element->id,/u);
+  assert.match(cpp, /NE表格_插入行\(L"表格1", 0, L"行文本"\);/u);
+  assert.match(cpp, /NE富列表_设置倒计时\(L"富列表1", L"item1", L"\.countdown", 1790000000000, L"HH:mm:ss", false\);/u);
+  assert.match(cpp, /NE徽标_设置文本\(L"徽标1", L"new"\);/u);
+  assert.match(cpp, /static void NE徽标_设置文本\(const wchar_t\* controlName, const std::wstring& text\)[\s\S]{0,240}EU_SetBadgeValue\(g_newEmojiWindow, element->id,/u);
+  assert.match(cpp, /NE菜单_设置项目\(L"菜单1", L"项目文本"\);/u);
+  assert.match(cpp, /static void NE菜单_设置项目\(const wchar_t\* controlName, const std::wstring& itemsText\)[\s\S]{0,240}EU_SetMenuItems\(g_newEmojiWindow, element->id,/u);
+  assert.match(cpp, /NE_设置窗口图标\(g_newEmojiWindow, L"图标路径"\);/u);
+  assert.match(cpp, /NE_设置主题令牌\(g_newEmojiWindow, L"panel\.bg", 4288621312\);/u);
+  // handle 参数支持 当前窗口 → g_newEmojiWindow。
+  assert.match(cpp, /NE_显示确认框\(g_newEmojiWindow, L"删除", L"正文", L"删除", L"取消", L"确认框已关闭"\);/u);
+  assert.match(cpp, /static int NE_显示确认框\(HWND hwnd, const std::wstring& title,[\s\S]{0,200}const wchar_t\* handlerName\)/u);
+  assert.match(cpp, /EU_ShowConfirmBox\(hwnd,/u);
+  assert.match(cpp, /LB_NE_FindMsgBoxResultHandler\(handlerName\)\);/u);
+  // 消息框回调按 &处理器名 派发：每处理器一个静态跳板 + wcscmp 查找表。
+  assert.match(cpp, /static void __stdcall LB_NE_MsgBoxResultCb_\d+\(int lb_messagebox_id, int lb_result\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 结果值 = lb_result;/u);
+  assert.match(cpp, /std::wcscmp\(handlerName, L"确认框已关闭"\)/u);
+  assert.match(cpp, /std::wcscmp\(handlerName, L"消息框已关闭"\)/u);
+  assert.match(cpp, /static void __stdcall LB_NE_MsgBoxExCb_\d+\(int lb_messagebox_id, int lb_action, const unsigned char\* lb_value_utf8, int lb_value_utf8_length\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 动作 = lb_action;\s+std::wstring 输入文本 = LB_NE_FromUtf8\(lb_value_utf8, lb_value_utf8_length\);/u);
+  // 富列表虚拟数据源：绑定命令注册运行时事件，跳板按两阶段缓冲区协议回填数据槽。
+  assert.match(cpp, /NE富列表_绑定虚拟数据源\(LingCppControlStableId\(L"富列表1"\), L"富列表虚拟数据"\);/u);
+  assert.match(cpp, /EU_SetRichListVirtualItemProvider\(g_newEmojiWindow, elementId, LB_NE_RuntimeEvent_/u);
+  assert.match(cpp, /static int __stdcall LB_NE_RuntimeEvent_\d+\(int lb_element_id, int lb_index, unsigned char\* lb_buffer, int lb_buffer_size\) \{/u);
+  assert.match(cpp, /NE_清空富列表虚拟行数据\(\);[\s\S]{0,600}int 行号 = lb_index;[\s\S]{0,600}NE富列表_设置虚拟行数据\(L"条目文本"\);[\s\S]{0,600}LB_NE_ToUtf8\(NE_取富列表虚拟行数据\(\)\)/u);
 });
 
 test('new_emoji Tabs can host one independent FBro HWND browser on each page', async () => {

@@ -22,7 +22,15 @@ const textModule = createStandardModule({
     { name: '文本_删首尾空白', signature: '文本_删首尾空白(文本)', description: '删除文本首尾的 Unicode 空白字符。', insertText: '文本_删首尾空白("$1")', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'wideString' },
     { name: '文本_转大写', signature: '文本_转大写(文本)', description: '把文本转换为大写。', insertText: '文本_转大写("$1")', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'wideString' },
     { name: '文本_转小写', signature: '文本_转小写(文本)', description: '把文本转换为小写。', insertText: '文本_转小写("$1")', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'wideString' }
-  ]
+,
+    { name: '文本_分割', signature: '文本_分割(文本, 分隔符, 结果数组)', description: '把文本按分隔符拆分写入文本数组，返回分段数量；分隔符为空时整段作为一条返回。', insertText: '文本_分割($1, "$2", $3)', parameters: [{ name: '文本', type: 'wideString' },{ name: '分隔符', type: 'wideString' },{ name: '结果数组', type: 'array' }], returnType: 'int' },
+    { name: '文本_倒找', signature: '文本_倒找(文本, 目标)', description: '从末尾向开头查找目标文本首次出现的位置（从 0 起）；未找到返回 -1。', insertText: '文本_倒找("$1", "$2")', parameters: [{ name: '文本', type: 'wideString' },{ name: '目标', type: 'wideString' }], returnType: 'int' },
+    { name: '文本_替换子文本', signature: '文本_替换子文本(文本, 查找内容, 替换内容, 起始位置, 次数)', description: '从起始位置（从 0 起）开始替换查找内容；次数小于等于 0 表示全部替换；起始位置越界或查找内容为空时原样返回。', insertText: '文本_替换子文本("$1", "$2", "$3", 0, 0)', parameters: [{ name: '文本', type: 'wideString' },{ name: '查找内容', type: 'wideString' },{ name: '替换内容', type: 'wideString' },{ name: '起始位置', type: 'int' },{ name: '次数', type: 'int' }], returnType: 'wideString' },
+    { name: '文本_删全部空白', signature: '文本_删全部空白(文本)', description: '删除文本中全部空白字符（含首尾与中间）。', insertText: '文本_删全部空白("$1")', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'wideString' },
+    { name: '文本_到全角', signature: '文本_到全角(文本)', description: '把半角空格与 ASCII 可见字符转换为对应全角字符。', insertText: '文本_到全角("$1")', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'wideString' },
+    { name: '文本_到半角', signature: '文本_到半角(文本)', description: '把全角空格与全角 ASCII 字符转换为对应半角字符。', insertText: '文本_到半角("$1")', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'wideString' },
+    { name: '文本_重复', signature: '文本_重复(文本, 次数)', description: '把文本重复拼接指定次数；次数小于等于 0 或总长超过 16777216 字符时返回空文本。', insertText: '文本_重复("$1", 3)', parameters: [{ name: '文本', type: 'wideString' },{ name: '次数', type: 'int' }], returnType: 'wideString' },
+    { name: '文本_插入', signature: '文本_插入(文本, 位置, 插入内容)', description: '在指定位置（从 0 起）插入内容；位置为负或超过长度时原样返回。', insertText: '文本_插入("$1", 0, "$2")', parameters: [{ name: '文本', type: 'wideString' },{ name: '位置', type: 'int' },{ name: '插入内容', type: 'wideString' }], returnType: 'wideString' }  ]
 });
 
 const bytesModule = createStandardModule({
@@ -55,7 +63,12 @@ const byteArrayOperationsModule = createStandardModule({
     { name: '字节集_Base64解码', signature: '字节集_Base64解码(Base64文本)', description: '把 Base64 文本解码为字节集，格式错误返回空字节集。', insertText: '字节集_Base64解码("$1")', parameters: [{ name: 'Base64文本', type: 'wideString' }], returnType: 'bytes' },
     { name: '字节集_十六进制编码', signature: '字节集_十六进制编码(数据)', description: '把字节集编码为 ASCII 十六进制字节集。', insertText: '字节集_十六进制编码($1)', parameters: [{ name: '数据', type: 'bytes' }], returnType: 'bytes' },
     { name: '字节集_十六进制解码', signature: '字节集_十六进制解码(十六进制)', description: '把十六进制文本解码为字节集。', insertText: '字节集_十六进制解码("$1")', parameters: [{ name: '十六进制', type: 'wideString' }], returnType: 'bytes' }
-  ]
+,
+    { name: '字节集_寻找', signature: '字节集_寻找(数据, 欲寻找, 起始位置)', description: '从起始位置（从 0 起）向后查找字节集首次出现的位置；未找到、欲寻找为空或起始位置越界返回 -1。', insertText: '字节集_寻找($1, $2, 0)', parameters: [{ name: '数据', type: 'bytes' }, { name: '欲寻找', type: 'bytes' }, { name: '起始位置', type: 'int' }], returnType: 'int' },
+    { name: '字节集_倒找', signature: '字节集_倒找(数据, 欲寻找, 起始位置)', description: '从起始位置（含）向左查找字节集最后一次出现的位置；起始位置小于 0 或越界时按末尾处理；未找到返回 -1。', insertText: '字节集_倒找($1, $2, 0)', parameters: [{ name: '数据', type: 'bytes' }, { name: '欲寻找', type: 'bytes' }, { name: '起始位置', type: 'int' }], returnType: 'int' },
+    { name: '字节集_替换', signature: '字节集_替换(数据, 欲寻找, 替换内容, 次数)', description: '把字节集中的欲替换内容替换为替换内容；次数小于等于 0 表示全部替换；欲替换为空时原样返回。', insertText: '字节集_替换($1, $2, $3, 0)', parameters: [{ name: '数据', type: 'bytes' }, { name: '欲寻找', type: 'bytes' }, { name: '替换内容', type: 'bytes' }, { name: '次数', type: 'int' }], returnType: 'bytes' },
+    { name: '字节集_插入', signature: '字节集_插入(数据, 位置, 插入内容)', description: '在指定位置（从 0 起）插入字节集；位置小于 0 原样返回，超过长度时追加到末尾。', insertText: '字节集_插入($1, 0, $2)', parameters: [{ name: '数据', type: 'bytes' }, { name: '位置', type: 'int' }, { name: '插入内容', type: 'bytes' }], returnType: 'bytes' },
+    { name: '字节集_删除', signature: '字节集_删除(数据, 位置, 长度)', description: '从指定位置（从 0 起）删除指定长度的字节；长度小于 0 表示删除到末尾；位置越界时原样返回。', insertText: '字节集_删除($1, 0, 1)', parameters: [{ name: '数据', type: 'bytes' }, { name: '位置', type: 'int' }, { name: '长度', type: 'int' }], returnType: 'bytes' }  ]
 });
 
 const bytesModuleWithBinary: LingBuilderModuleManifest = {
@@ -183,8 +196,41 @@ const regexModule = createStandardModule({
     { name: '正则_是否包含', signature: '正则_是否包含(文本, 表达式)', description: '判断文本中是否存在匹配内容。', insertText: '正则_是否包含("$1", "$2")', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }], returnType: 'bool' },
     { name: '正则_取首个', signature: '正则_取首个(文本, 表达式)', description: '返回首个匹配文本，没有匹配或表达式非法时返回空文本。', insertText: '正则_取首个("$1", "$2")', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }], returnType: 'wideString' },
     { name: '正则_替换', signature: '正则_替换(文本, 表达式, 替换内容)', description: '替换全部正则匹配。', insertText: '正则_替换("$1", "$2", "$3")', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }, { name: '替换内容', type: 'wideString' }], returnType: 'wideString' },
-    { name: '正则_匹配数量', signature: '正则_匹配数量(文本, 表达式)', description: '返回不重叠匹配数量。', insertText: '正则_匹配数量("$1", "$2")', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }], returnType: 'int' }
+    { name: '正则_匹配数量', signature: '正则_匹配数量(文本, 表达式)', description: '返回不重叠匹配数量。', insertText: '正则_匹配数量("$1", "$2")', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }], returnType: 'int' },
+    { name: '正则_取所有匹配', signature: '正则_取所有匹配(文本, 表达式, 分隔符)', description: '返回全部匹配文本并按分隔符依次拼接；无匹配或表达式非法时返回空文本。', insertText: '正则_取所有匹配("$1", "$2", "$3")', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }, { name: '分隔符', type: 'wideString' }], returnType: 'wideString', example: '正则_取所有匹配("a1b22c333", "[0-9]+", ",")' },
+    { name: '正则_取第N个匹配', signature: '正则_取第N个匹配(文本, 表达式, 序号)', description: '返回第 N 个匹配文本（序号从 0 起）；越界、无匹配或表达式非法时返回空文本。', insertText: '正则_取第N个匹配("$1", "$2", 0)', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }, { name: '序号', type: 'int' }], returnType: 'wideString', example: '正则_取第N个匹配("a1b22c333", "[0-9]+", 1)' },
+    { name: '正则_取分组', signature: '正则_取分组(文本, 表达式, 组序号)', description: '返回首个匹配中第 N 个分组的文本（0 表示整个匹配）；分组未参与匹配、越界或表达式非法时返回空文本。', insertText: '正则_取分组("$1", "$2", 1)', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }, { name: '组序号', type: 'int' }], returnType: 'wideString', example: '正则_取分组("2026-09-13", "([0-9]+)-([0-9]+)-([0-9]+)", 2)' },
+    { name: '正则_取所有分组', signature: '正则_取所有分组(文本, 表达式, 组序号, 分隔符)', description: '把每个匹配中第 N 个分组的文本（0 表示整个匹配）按分隔符依次拼接；无匹配或表达式非法时返回空文本。', insertText: '正则_取所有分组("$1", "$2", 1, "$4")', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }, { name: '组序号', type: 'int' }, { name: '分隔符', type: 'wideString' }], returnType: 'wideString', example: '正则_取所有分组("a1b22c333", "([0-9]+)", 1, ",")' },
+    { name: '正则_取匹配位置', signature: '正则_取匹配位置(文本, 表达式, 序号)', description: '返回第 N 个匹配的起始位置（从 0 起，按字符计）；无匹配、越界或表达式非法时返回 -1。', insertText: '正则_取匹配位置("$1", "$2", 0)', parameters: [{ name: '文本', type: 'wideString' }, { name: '表达式', type: 'wideString' }, { name: '序号', type: 'int' }], returnType: 'int', example: '正则_取匹配位置("a1b22c333", "[0-9]+", 1)' }
   ]
+});
+
+
+const bufferModule = createStandardModule({
+  id: 'lingbuilder.std.buffer',
+  name: '缓冲区模块',
+  category: '其他',
+  description: '提供句柄制可增长二进制缓冲区：顺序读写游标、字节集/文本/整数编解码与文件互转；单缓冲区上限 256 MiB，跨线程传递请先转为字节集。',
+  tags: ['字节集', '缓冲区', '二进制'],
+  commands: [
+    { name: '缓冲区_创建', signature: '缓冲区_创建(初始容量)', description: '创建可增长二进制缓冲区；初始容量 0～268435456，返回缓冲区句柄（0 表示失败）。', insertText: '缓冲区_创建(1024)', parameters: [{ name: '初始容量', type: 'int' }], returnType: 'longLong', example: '缓冲区_创建(1024)' },
+    { name: '缓冲区_销毁', signature: '缓冲区_销毁(缓冲区)', description: '销毁缓冲区并回收句柄；销毁后句柄不可再用。', insertText: '缓冲区_销毁($1)', parameters: [{ name: '缓冲区', type: 'longLong' }], returnType: 'bool' },
+    { name: '缓冲区_取长度', signature: '缓冲区_取长度(缓冲区)', description: '返回缓冲区当前总字节数；句柄无效返回 -1。', insertText: '缓冲区_取长度($1)', parameters: [{ name: '缓冲区', type: 'longLong' }], returnType: 'longLong' },
+    { name: '缓冲区_写字节集', signature: '缓冲区_写字节集(缓冲区, 字节集)', description: '把字节集追加到缓冲区末尾；单个缓冲区上限 268435456 字节。', insertText: '缓冲区_写字节集($1, $2)', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '字节集', type: 'bytes' }], returnType: 'bool' },
+    { name: '缓冲区_写文本', signature: '缓冲区_写文本(缓冲区, 文本)', description: '把文本按 UTF-8 编码追加到缓冲区末尾。', insertText: '缓冲区_写文本($1, "$2")', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '文本', type: 'wideString' }], returnType: 'bool' },
+    { name: '缓冲区_写整数', signature: '缓冲区_写整数(缓冲区, 整数, 字节数, 大端)', description: '把整数按指定字节数（1/2/4/8）写入缓冲区末尾；超出范围的字节数返回假。', insertText: '缓冲区_写整数($1, $2, 4, 假)', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '整数', type: 'longLong' }, { name: '字节数', type: 'int' }, { name: '大端', type: 'bool' }], returnType: 'bool' },
+    { name: '缓冲区_读字节集', signature: '缓冲区_读字节集(缓冲区, 长度)', description: '从读取游标处取出字节集并前进游标；长度小于 0 表示读取全部剩余字节。', insertText: '缓冲区_读字节集($1, 4)', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '长度', type: 'int' }], returnType: 'bytes' },
+    { name: '缓冲区_读文本', signature: '缓冲区_读文本(缓冲区, 长度)', description: '从读取游标处按 UTF-8 解码文本并前进游标；长度小于 0 表示读取全部剩余字节。', insertText: '缓冲区_读文本($1, -1)', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '长度', type: 'int' }], returnType: 'wideString' },
+    { name: '缓冲区_读整数', signature: '缓冲区_读整数(缓冲区, 字节数, 大端)', description: '从读取游标处按指定字节数（1/2/4/8）读取整数并前进游标；数据不足返回 0。', insertText: '缓冲区_读整数($1, 4, 假)', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '字节数', type: 'int' }, { name: '大端', type: 'bool' }], returnType: 'longLong' },
+    { name: '缓冲区_取剩余', signature: '缓冲区_取剩余(缓冲区)', description: '返回读取游标到缓冲区末尾的剩余字节数；句柄无效返回 -1。', insertText: '缓冲区_取剩余($1)', parameters: [{ name: '缓冲区', type: 'longLong' }], returnType: 'longLong' },
+    { name: '缓冲区_重置读取', signature: '缓冲区_重置读取(缓冲区)', description: '把读取游标移回缓冲区开头。', insertText: '缓冲区_重置读取($1)', parameters: [{ name: '缓冲区', type: 'longLong' }], returnType: 'bool' },
+    { name: '缓冲区_到字节集', signature: '缓冲区_到字节集(缓冲区)', description: '把缓冲区全部内容复制为字节集。', insertText: '缓冲区_到字节集($1)', parameters: [{ name: '缓冲区', type: 'longLong' }], returnType: 'bytes' },
+    { name: '缓冲区_从字节集', signature: '缓冲区_从字节集(字节集)', description: '用字节集内容创建新缓冲区并返回句柄。', insertText: '缓冲区_从字节集($1)', parameters: [{ name: '字节集', type: 'bytes' }], returnType: 'longLong' },
+    { name: '缓冲区_清空', signature: '缓冲区_清空(缓冲区)', description: '清空缓冲区内容并把读取游标归零。', insertText: '缓冲区_清空($1)', parameters: [{ name: '缓冲区', type: 'longLong' }], returnType: 'bool' },
+    { name: '缓冲区_保存文件', signature: '缓冲区_保存文件(缓冲区, 路径)', description: '把缓冲区全部内容写入目标文件（覆盖写入）。', insertText: '缓冲区_保存文件($1, "$2")', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '路径', type: 'wideString' }], returnType: 'bool' },
+    { name: '缓冲区_从文件', signature: '缓冲区_从文件(路径)', description: '读取文件内容创建新缓冲区；失败或超过 268435456 字节返回 0。', insertText: '缓冲区_从文件("$1")', parameters: [{ name: '路径', type: 'wideString' }], returnType: 'longLong' }
+,
+    { name: '缓冲区_寻找', signature: '缓冲区_寻找(缓冲区, 欲寻找, 起始位置)', description: '在缓冲区全部内容中从起始位置（从 0 起）查找字节集，返回内容中的位置；读取游标不动；未找到或句柄无效返回 -1。', insertText: '缓冲区_寻找($1, $2, 0)', parameters: [{ name: '缓冲区', type: 'longLong' }, { name: '欲寻找', type: 'bytes' }, { name: '起始位置', type: 'int' }], returnType: 'int' }  ]
 });
 
 const xmlModule = createStandardModule({
@@ -210,6 +256,8 @@ export const STANDARD_LIBRARY_MODULES: LingBuilderModuleManifest[] = [
   mathModule,
   datetimeModule,
   regexModule,
+  bufferModule,
+
   JSON_MODULE,
   xmlModule
 ];

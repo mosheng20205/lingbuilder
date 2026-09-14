@@ -217,6 +217,113 @@ export const findBeginnerIfBlocksAtLine = (blocks: BeginnerIfBlock[], line: numb
       return leftSpan - rightSpan || right.startLine - left.startLine;
     });
 
+export interface BeginnerFlowFoldSegmentSource {
+  segmentId: string;
+  /** Draft lines exactly as rendered for this code segment. */
+  lines: string[];
+  /** Index of this segment's first statement inside the flat method statement list. */
+  statementStart: number;
+}
+
+export interface BeginnerCrossSegmentFlowFold {
+  key: string;
+  anchorSegmentId: string;
+  anchorStartLine: number;
+  /** First source line hidden by the fold (the row right after the anchor). */
+  sourceFrom: number;
+  /** Source line of the matching 结构结束 statement (inclusive). */
+  sourceTo: number;
+  /** Hidden statement index range in the flat method statement list. */
+  statementFrom: number;
+  statementTo: number;
+  /** Total visible rows hidden: statements after the anchor + interleaved locals. */
+  hiddenRows: number;
+}
+
+/**
+ * A local-declaration table between a 流程结构 header and its 结束 line splits the
+ * block across several code segments, so the per-segment fold would collapse
+ * zero lines. This resolves the real extent of a collapsed block across the
+ * whole method statement list so the canvas can hide the segments in between.
+ */
+export function getBeginnerCrossSegmentFlowFolds(
+  segments: BeginnerFlowFoldSegmentSource[],
+  statements: ReadonlyArray<{ line: number; text?: string }>,
+  locals: ReadonlyArray<{ line?: number }>,
+  collapsedKeys: ReadonlyArray<string>,
+  targetKey: string
+): BeginnerCrossSegmentFlowFold[] {
+  if (collapsedKeys.length === 0) return [];
+  const folds: BeginnerCrossSegmentFlowFold[] = [];
+
+  segments.forEach(segment => {
+    if (segment.lines.length === 0) return;
+    const blocks = parseBeginnerIfBlocks(segment.lines);
+    if (blocks.length === 0) return;
+
+    // A block closed inside this segment is fully handled by the segment's own
+    // fold rendering; only blocks still open at the segment end span segments.
+    const closedKeys = new Set<string>();
+    const openStack: Array<{ family: LingCppControlFlowFamily; startLine: number }> = [];
+    segment.lines.forEach((line, index) => {
+      const control = parseLingCppControlFlowLine(line);
+      if (!control?.family) return;
+      if (control.role === 'start') {
+        openStack.push({ family: control.family, startLine: index + 1 });
+      } else if (control.role === 'end' && openStack.at(-1)?.family === control.family) {
+        const opened = openStack.pop();
+        if (opened) closedKeys.add(`${opened.family}:${opened.startLine}`);
+      }
+    });
+
+    blocks.forEach(block => {
+      const key = `${targetKey}:${segment.segmentId}:${block.family}:${block.startLine}`;
+      if (!collapsedKeys.includes(key)) return;
+      if (closedKeys.has(`${block.family}:${block.startLine}`)) return;
+
+      const anchorStatementIndex = Math.min(
+        segment.statementStart + block.startLine - 1,
+        Math.max(0, statements.length - 1)
+      );
+      const familyStack: LingCppControlFlowFamily[] = [block.family];
+      let endIndex = statements.length - 1;
+      for (let index = anchorStatementIndex + 1; index < statements.length; index += 1) {
+        const control = parseLingCppControlFlowLine(statements[index]?.text || '');
+        if (!control?.family) continue;
+        if (control.role === 'start') {
+          familyStack.push(control.family);
+        } else if (control.role === 'end') {
+          const matchIndex = familyStack.lastIndexOf(control.family);
+          if (matchIndex < 0) continue;
+          familyStack.length = matchIndex;
+          if (familyStack.length === 0) {
+            endIndex = index;
+            break;
+          }
+        }
+      }
+
+      const anchorSourceLine = statements[anchorStatementIndex]?.line ?? 1;
+      const endSourceLine = statements[endIndex]?.line ?? anchorSourceLine;
+      const hiddenLocalCount = locals.filter(local =>
+        (local.line ?? 0) > anchorSourceLine && (local.line ?? 0) <= endSourceLine
+      ).length;
+      folds.push({
+        key,
+        anchorSegmentId: segment.segmentId,
+        anchorStartLine: block.startLine,
+        sourceFrom: anchorSourceLine,
+        sourceTo: endSourceLine,
+        statementFrom: anchorStatementIndex + 1,
+        statementTo: endIndex,
+        hiddenRows: (endIndex - anchorStatementIndex) + hiddenLocalCount
+      });
+    });
+  });
+
+  return folds;
+}
+
 export const currentBeginnerBranch = (block: BeginnerIfBlock, line: number) =>
   [...block.branches]
     .sort((left, right) => left.line - right.line)

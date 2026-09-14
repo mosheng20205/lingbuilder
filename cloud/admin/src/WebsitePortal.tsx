@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
+import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Heart, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
-import { CLOUD_API, fetchWebsiteBootstrap, type WebsiteBootstrap, type WebsiteCommand, type WebsiteDemo, type WebsiteGuide } from './websiteApi';
+import sponsorQr from '../../../image/sponsor-qr-alipay-wechat.png';
+import { CLOUD_API, fetchWebsiteBootstrap, type WebsiteBootstrap, type WebsiteCommand, type WebsiteDemo, type WebsiteGuide, type WebsiteSponsor } from './websiteApi';
 import { readDemoArchive } from './demoSourceArchive';
 import { isDocsSectionItem, WEBSITE_NAV_ITEMS, type WebsiteNavItem } from './websiteNav';
 import './website.css';
 
 const NAV = [{ href: '/', label: '首页' }, ...WEBSITE_NAV_ITEMS];
 
-export const PUBLIC_WEBSITE_PATHS = ['/commands', '/downloads', '/controls', '/modules', '/demos', '/community'];
+export const PUBLIC_WEBSITE_PATHS = ['/commands', '/downloads', '/controls', '/modules', '/demos', '/community', '/sponsors'];
 
 export function WebsitePortal() {
   const path = location.pathname.replace(/\/$/u, '') || '/';
@@ -29,7 +30,8 @@ export function WebsitePortal() {
       {path === '/controls' && <ControlsPage content={content} error={error}/>}
       {path === '/modules' && <SingleGuidePage content={content} kind="MODULE" kicker="MODULE SDK" fallbackTitle="如何封装 C++ 模块" error={error}/>}
       {path === '/demos' && <DemosPage content={content} error={error}/>} 
-      {path === '/community' && <CommunityPage content={content} error={error}/>} 
+      {path === '/community' && <CommunityPage content={content} error={error}/>}
+      {path === '/sponsors' && <SponsorsPage content={content} error={error}/>}
     </main>
     <WebsiteFooter/>
   </div>;
@@ -318,6 +320,37 @@ function CommunityPage({ content, error }: PageProps) {
   return <><PageHero kicker="COMMUNITY" title="加入 LingBuilder 官方交流群" description="交流使用经验、模块开发、问题反馈与后续版本计划。" icon={MessageCircle}/><section className="website-section"><div className="website-shell community-grid">{content?.groups.map(group => <article key={group.id}><div><MessageCircle/></div><span>{group.groupType} · {group.statusText}</span><h2>{group.name}</h2><strong>{group.qqNumber}</strong><p>{group.description}</p>{group.qrCodeUrl && <img src={group.qrCodeUrl} alt={`${group.name}二维码`}/>} {group.joinUrl ? <a href={group.joinUrl} target="_blank" rel="noreferrer">立即加入<ChevronRight/></a> : <button onClick={() => void navigator.clipboard.writeText(group.qqNumber)}>复制群号<Copy/></button>}</article>)}{!content && <LoadNotice text={error || '正在加载交流群信息…'}/>}</div></section></>;
 }
 
+/** 赞助列表：按赞助时间先后展示 QQ 号与金额；顶部放收款码说明如何赞助。名单由管理后台维护。 */
+function SponsorsPage({ content, error }: PageProps) {
+  const sponsors = content?.sponsors || [];
+  return <><PageHero kicker="SPONSORS" title="赞助列表" description="感谢每一位赞助 LingBuilder 开发的朋友。名单按赞助时间先后排列，金额公开可查。" icon={Heart}/>
+    <section className="website-section"><div className="website-shell">
+      <div className="sponsor-support">
+        <div>
+          <h2>如何赞助</h2>
+          <p>使用支付宝或微信扫描右侧收款码即可赞助 LingBuilder 的开发。赞助后你的 QQ 号与金额会由管理员登记到下方列表；如果你不希望公开 QQ 号，或需要修改登记信息，请在官方交流群联系管理员。</p>
+        </div>
+        <img src={sponsorQr} alt="支付宝与微信赞助收款码"/>
+      </div>
+      {error && <LoadNotice text={error}/>}
+      {!content && !error && <LoadNotice text="正在加载赞助列表…"/>}
+      {content && <p className="sponsor-count">{sponsors.length ? `共 ${sponsors.length} 笔赞助` : ''}</p>}
+      {content && (sponsors.length
+        ? <div className="sponsor-list">{sponsors.map((sponsor: WebsiteSponsor, index: number) => <article className="sponsor-row" key={sponsor.id}>
+            <span className="sponsor-qq"><Heart/><strong>{sponsor.qqNumber}</strong></span>
+            <strong className="sponsor-amount">{formatSponsorYuan(sponsor.amountCents)}</strong>
+            <span className="sponsor-order" aria-hidden="true">#{index + 1}</span>
+          </article>)}</div>
+        : <div className="website-empty">还没有公开的赞助记录。</div>)}
+    </div></section></>;
+}
+
+/** 金额以分存储、按元展示：整元不带小数，非整元保留两位小数。 */
+function formatSponsorYuan(cents: number): string {
+  const yuan = cents / 100;
+  return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: cents % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
+}
+
 function MarkdownText({ source }: { source: string }) {
   const blocks: Array<{type: string; text: string}> = [];
   let code = false; let codeBuffer: string[] = [];
@@ -345,5 +378,5 @@ function InlineCode({ text }: { text: string }) { return <>{text.split(/(`[^`]+`
 function LoadNotice({ text }: { text: string }) { return <div className="load-notice">{text}</div>; }
 function EmptyState({ text }: { text: string }) { return <div className="website-empty">{text}</div>; }
 function kindLabel(kind: string) { return ({ COMMAND: '命令', EVENT: '事件', CONSTANT: '常量', TYPE: '数据类型' } as Record<string,string>)[kind] || kind; }
-function WebsiteFooter() { return <footer className="website-footer"><div className="website-shell"><a href="/"><ArrowLeft size={15}/>返回灵码首页</a><span>Windows · 中文编程 · 原生 C++</span><a href="/community">官方交流群</a></div></footer>; }
+function WebsiteFooter() { return <footer className="website-footer"><div className="website-shell"><a href="/"><ArrowLeft size={15}/>返回灵码首页</a><span>Windows · 中文编程 · 原生 C++</span><a href="/community">官方交流群</a><a href="/sponsors">赞助列表</a></div></footer>; }
 interface PageProps { content: WebsiteBootstrap | null; error: string }

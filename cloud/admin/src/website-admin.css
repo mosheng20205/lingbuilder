@@ -78,3 +78,6 @@
 .link-editor-row button:hover{border-color:#ff718a;color:#ff9bac}
 .demo-record-shot{width:64px;height:44px;flex:none;border:1px solid #2a3a55;border-radius:7px;object-fit:cover}
 @media(max-width:900px){.asset-uploads{grid-template-columns:1fr}.link-editor-row{grid-template-columns:1fr}}
+
+/* 赞助名单记录：编辑 + 删除两个动作并排。 */
+.site-record-actions{display:flex;flex:none;gap:6px}

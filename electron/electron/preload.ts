@@ -123,7 +123,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => ipcRenderer.invoke('cloud-modules:download', value),
   },
   updates: {
-    check: () => ipcRenderer.invoke('app:check-update'),
+    check: (payload?: { channel?: 'stable' | 'preview' }) => ipcRenderer.invoke('app:check-update', payload),
     download: () => ipcRenderer.invoke('app:update:download'),
     cancel: () => ipcRenderer.invoke('app:update:cancel'),
     status: () => ipcRenderer.invoke('app:update:status'),
@@ -133,6 +133,11 @@ contextBridge.exposeInMainWorld('lingBuilder', {
       ipcRenderer.on('app-update:progress', handler);
       return () => ipcRenderer.removeListener('app-update:progress', handler);
     },
+  },
+  betaProgram: {
+    status: () => ipcRenderer.invoke('beta-program:entitlement'),
+    apply: (message?: string) => ipcRenderer.invoke('beta-program:apply', message),
+    cancelApplication: () => ipcRenderer.invoke('beta-program:cancel-application'),
   },
   payments: {
     openPage: (url: string) => ipcRenderer.invoke('payments:open-page', url),

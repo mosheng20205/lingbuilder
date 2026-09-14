@@ -274,6 +274,39 @@ test('solution folders and project rename reuse the in-app name dialog', () => {
   assert.match(renameMarkup, /确认重命名/u);
 });
 
+test('busy create dialog keeps a cancel escape hatch only when the caller supports cancelling', () => {
+  const cancellableMarkup = renderToStaticMarkup(
+    <ProjectNameDialog
+      open
+      value="LingBuilder项目20"
+      isDarkMode
+      busy
+      onChange={() => undefined}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+      onCancelBusy={() => undefined}
+    />
+  );
+
+  assert.match(cancellableMarkup, /正在创建…/u);
+  assert.match(cancellableMarkup, /<button type="button"[^>]*>取消等待<\/button>/u, 'busy 且支持取消时，取消按钮应保持可点击');
+  assert.match(cancellableMarkup, /<button type="submit" disabled=""/u, 'busy 时确认按钮仍应禁用');
+  assert.doesNotMatch(cancellableMarkup, /仍在等待本地服务响应/u, '10 秒无响应提示在静态渲染中不应立即出现');
+
+  const legacyMarkup = renderToStaticMarkup(
+    <ProjectNameDialog
+      open
+      value="LingBuilder项目20"
+      isDarkMode
+      busy
+      onChange={() => undefined}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+  assert.match(legacyMarkup, /<button type="button" disabled=""[^>]*>取消<\/button>/u, '未提供取消回调时保持旧的禁用行为');
+});
+
 test('settings dialog exposes scope, search, categories, effective values, and reset controls', () => {
   const markup = renderToStaticMarkup(
     <SettingsDialog

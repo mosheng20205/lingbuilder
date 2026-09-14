@@ -89,3 +89,47 @@ test('checkLatestVersion rejects missing cloud origin without network calls', as
   assert.equal(result.ok, false);
   assert.equal(result.error, '云端地址未配置。');
 });
+
+function captureUpdateRequest() {
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = '';
+  let capturedHeaders: Record<string, string> = {};
+  globalThis.fetch = (async (input: unknown, init?: { headers?: Record<string, string> }) => {
+    capturedUrl = String(input);
+    capturedHeaders = init?.headers ?? {};
+    return new Response(JSON.stringify({ ok: true, available: false }), { status: 200 }) as never;
+  }) as never;
+  return {
+    args: () => ({ url: capturedUrl, headers: capturedHeaders }),
+    restore: () => { globalThis.fetch = originalFetch; }
+  };
+}
+
+test('checkLatestVersion always sends an explicit channel parameter', async () => {
+  const stable = captureUpdateRequest();
+  try {
+    await checkLatestVersion('https://api.example.com', '0.5.0');
+    assert.ok(stable.args().url.includes('channel=stable'));
+    assert.deepEqual(stable.args().headers, {});
+  } finally { stable.restore(); }
+
+  const preview = captureUpdateRequest();
+  try {
+    await checkLatestVersion('https://api.example.com', '0.5.0', { channel: 'preview' });
+    assert.ok(preview.args().url.includes('channel=preview'));
+  } finally { preview.restore(); }
+});
+
+test('checkLatestVersion attaches the bearer token only when requesting the preview channel', async () => {
+  const preview = captureUpdateRequest();
+  try {
+    await checkLatestVersion('https://api.example.com', '0.5.0', { channel: 'preview', accessToken: 'token-123' });
+    assert.equal(preview.args().headers.authorization, 'Bearer token-123');
+  } finally { preview.restore(); }
+
+  const stable = captureUpdateRequest();
+  try {
+    await checkLatestVersion('https://api.example.com', '0.5.0', { channel: 'stable', accessToken: 'token-123' });
+    assert.equal(stable.args().headers.authorization, undefined);
+  } finally { stable.restore(); }
+});

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, CloudUpload, Download, FileArchive, FileCode2, Globe2, Image as ImageIcon, Link2, MessageCircle, PackagePlus, Search, Upload } from 'lucide-react';
+import { BookOpen, CloudUpload, Download, FileArchive, FileCode2, Globe2, Heart, Image as ImageIcon, Link2, MessageCircle, PackagePlus, Search, Upload } from 'lucide-react';
 import { R2MultipartUploader, UploadCancelledError, computeFileSha256Hex, formatFileSize, versionFromFileName } from './r2UploadClient';
 import './website-admin.css';
 
 type Request = (path: string, init?: RequestInit) => Promise<any>;
-type Section = 'downloads' | 'commands' | 'guides' | 'demos' | 'groups';
+type Section = 'downloads' | 'commands' | 'guides' | 'demos' | 'groups' | 'sponsors';
 export type DirectNotice = { text: string; error?: boolean } | null;
 
 const SECTIONS: Array<{id: Section; label: string; icon: typeof Globe2}> = [
@@ -12,7 +12,8 @@ const SECTIONS: Array<{id: Section; label: string; icon: typeof Globe2}> = [
   { id: 'commands', label: '命令资料', icon: Search },
   { id: 'guides', label: '控件与教程', icon: BookOpen },
   { id: 'demos', label: '示例源码', icon: FileCode2 },
-  { id: 'groups', label: '交流群', icon: MessageCircle }
+  { id: 'groups', label: '交流群', icon: MessageCircle },
+  { id: 'sponsors', label: '赞助名单', icon: Heart }
 ];
 
 export function WebsiteContentAdmin({ data, request, reload }: { data: any; request: Request; reload: () => Promise<void> }) {
@@ -24,7 +25,8 @@ export function WebsiteContentAdmin({ data, request, reload }: { data: any; requ
     {section === 'commands' && <CommandsAdmin data={data} request={request} reload={reload}/>} 
     {section === 'guides' && <GuidesAdmin data={data} request={request} reload={reload}/>} 
     {section === 'demos' && <DemosAdmin data={data} request={request} reload={reload}/>} 
-    {section === 'groups' && <GroupsAdmin data={data} request={request} reload={reload}/>} 
+    {section === 'groups' && <GroupsAdmin data={data} request={request} reload={reload}/>}
+    {section === 'sponsors' && <SponsorsAdmin data={data} request={request} reload={reload}/>}
   </div>;
 }
 
@@ -431,6 +433,42 @@ function GroupsAdmin({ data, request, reload }: AdminProps) {
   ]} onSubmit={async value => { await post(request, '/v1/admin/site/community-groups', value); await reload(); setGroup(emptyGroup()); }}/></EditorPanel><RecordPanel title="交流群" empty="尚未配置交流群。">{groups.map((item:any) => <article className="site-record" key={item.id}><div><strong>{item.name}</strong><span>{item.qqNumber} · {item.groupType}</span><small>{item.enabled ? item.statusText : '已停用'}</small></div><button onClick={() => setGroup({...item})}>编辑</button></article>)}</RecordPanel></div>;
 }
 
+/** 赞助名单：一笔赞助一条记录（同一 QQ 可多笔），官网 /sponsors 按赞助时间先后展示；金额按元录入、以分存储。 */
+function SponsorsAdmin({ data, request, reload }: AdminProps) {
+  const sponsors = data?.sponsors || [];
+  const [sponsor, setSponsor] = useState<any>(emptySponsor());
+  const [editingId, setEditingId] = useState('');
+  const [message, setMessage] = useState('');
+  const startNew = () => { setSponsor(emptySponsor()); setEditingId(''); setMessage(''); };
+  const submit = async (value: any) => {
+    await post(request, '/v1/admin/site/sponsors', { ...value, id: editingId || undefined });
+    await reload(); startNew();
+  };
+  const edit = (item: any) => { setSponsor({ ...item, amountYuan: item.amountCents / 100, sponsoredAt: toLocalInputValue(item.sponsoredAt) }); setEditingId(item.id); setMessage(''); };
+  const remove = async (item: any) => {
+    if (!window.confirm(`确定删除 ${item.qqNumber} 的这笔赞助记录？删除会写入管理员审计日志。`)) return;
+    setMessage('');
+    try {
+      await request(`/v1/admin/site/sponsors/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+      if (editingId === item.id) startNew();
+      await reload();
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
+  };
+  return <div className="site-admin-grid">
+    <EditorPanel title={editingId ? '编辑赞助记录' : '登记赞助记录'} description="金额按元填写，支持两位小数；赞助时间决定官网列表的排序（时间先后）。关闭启用后官网不再展示该条。">
+      <ManagedForm value={sponsor} setValue={setSponsor} fields={[
+        field('qqNumber','QQ号'),field('amountYuan','赞助金额（元）','number'),field('sponsoredAt','赞助时间','datetime'),field('enabled','在官网展示','checkbox')
+      ]} onSubmit={submit}/>
+      {editingId && <div className="editor-reset"><button onClick={startNew}>放弃当前编辑，返回新建记录</button></div>}
+    </EditorPanel>
+    <RecordPanel title="赞助记录" empty="尚无赞助记录。">{sponsors.map((item: any) => <article className="site-record" key={item.id}>
+      <div><strong>{item.qqNumber}</strong><span>¥{(item.amountCents / 100).toFixed(2)} · {new Date(item.sponsoredAt).toLocaleDateString('zh-CN')}</span><small>{item.enabled ? '展示中' : '已隐藏'}</small></div>
+      <div className="site-record-actions"><button className={editingId === item.id ? 'active' : ''} onClick={() => edit(item)}>编辑</button><button onClick={() => void remove(item)}>删除</button></div>
+    </article>)}</RecordPanel>
+    {message && <p className="form-message form-message-error" role="alert">{message}</p>}
+  </div>;
+}
+
 function ManagedForm({ value, setValue, fields, onSubmit }: { value:any; setValue:(value:any)=>void; fields:Field[]; onSubmit:(value:any)=>Promise<void> }) {
   const [busy,setBusy] = useState(false); const [message,setMessage] = useState('');
   const submit = async (event:React.FormEvent) => { event.preventDefault(); setBusy(true); setMessage(''); try { await onSubmit(value); setMessage('保存成功。'); } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } };
@@ -440,6 +478,7 @@ function ManagedForm({ value, setValue, fields, onSubmit }: { value:any; setValu
 function renderInput(item:Field,value:any,onChange:(value:any)=>void) {
   if(item.type==='select') return <select required value={value ?? ''} onChange={event=>onChange(event.target.value)}>{optionValues(item.options).map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>;
   if(item.type==='checkbox') return <input type="checkbox" checked={value !== false} onChange={event=>onChange(event.target.checked)}/>;
+  if(item.type==='datetime') return <input type="datetime-local" value={value ?? ''} onChange={event=>onChange(event.target.value)}/>;
   if(item.type==='textarea'||item.type==='textarea-large') return <textarea required={['summary','bodyMarkdown'].includes(item.name)} rows={item.type==='textarea-large'?18:5} value={value ?? ''} onChange={event=>onChange(event.target.value)}/>;
   return <input required={['version','title','name','slug','qqNumber','signature'].includes(item.name)} type={item.type==='number'?'number':'text'} value={value ?? ''} onChange={event=>onChange(item.type==='number'?Number(event.target.value):event.target.value)}/>;
 }
@@ -453,12 +492,15 @@ function parseJsonArray(value:string,label:string){try{const parsed=JSON.parse(v
 function csv(value:string){return String(value||'').split(/[,，\n]/u).map(item=>item.trim()).filter(Boolean)}
 function lines(value:string){return String(value||'').split(/\r?\n/u).map(item=>item.trim()).filter(Boolean)}
 function statusLabel(value:string){return ({DRAFT:'草稿',PUBLISHED:'已发布',ARCHIVED:'已归档',stable:'稳定版',preview:'预览版'} as Record<string,string>)[value]||value}
-function countFor(section:Section,data:any){return section==='downloads'?(data?.downloads||[]).length:section==='commands'?(data?.commands||[]).length:section==='guides'?(data?.guides||[]).length:section==='demos'?(data?.demos||[]).length:(data?.groups||[]).length}
+function countFor(section:Section,data:any){return ({downloads:(data?.downloads||[]).length,commands:(data?.commands||[]).length,guides:(data?.guides||[]).length,demos:(data?.demos||[]).length,groups:(data?.groups||[]).length,sponsors:(data?.sponsors||[]).length} as Record<Section,number>)[section]||0}
 function emptyRelease(){return {version:'',channel:'preview',platform:'Windows',architecture:'x64',title:'LingBuilder 中文集成开发环境',summary:'',releaseNotes:'',minimumRequirements:'Windows 10/11',fileSize:'',sha256:'',publicationStatus:'DRAFT',sortOrder:0}}
 function emptyCommand(){return {name:'',stableKey:'',kind:'COMMAND',category:'其他',moduleId:'',moduleName:'',signature:'',returnType:'void',summary:'',parametersJson:'[]',examplesText:'',supportedBackendsText:'',minimumVersion:'',lifecycle:'AVAILABLE',publicationStatus:'DRAFT'}}
 function emptyGuide(){return {slug:'',title:'',kind:'CONTROL',category:'',summary:'',bodyMarkdown:'# 标题\n\n开始编写正文。',tagsText:'',minimumVersion:'',coverImageUrl:'',publicationStatus:'DRAFT',sortOrder:0}}
 function emptyDemo(){return {slug:'',title:'',category:'入门',difficulty:'入门',summary:'',lingBuilderVersion:'',modulesText:'',prerequisites:'',sourceLinks:[],screenshotUrl:'',videoUrl:'',license:'示例许可',publicationStatus:'DRAFT',sortOrder:0}}
 function emptyGroup(){return {name:'LingBuilder 官方 QQ 交流群',qqNumber:'',groupType:'官方交流群',statusText:'开放加入',description:'',joinUrl:'',qrCodeUrl:'',enabled:true,sortOrder:0}}
+function emptySponsor(){return {qqNumber:'',amountYuan:'',sponsoredAt:toLocalInputValue(new Date().toISOString()),enabled:true}}
+/** ISO 时间转 datetime-local 输入值（本地时区 YYYY-MM-DDTHH:mm），编辑赞助时间时使用。 */
+function toLocalInputValue(value:string){const date=new Date(value);if(Number.isNaN(date.getTime()))return '';const pad=(part:number)=>String(part).padStart(2,'0');return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`}
 interface AdminProps { data:any; request:Request; reload:()=>Promise<void> }
-interface Field { name:string; label:string; type:'text'|'number'|'select'|'checkbox'|'textarea'|'textarea-large'; options?:Array<string|{value:string;label:string}> }
+interface Field { name:string; label:string; type:'text'|'number'|'select'|'checkbox'|'textarea'|'textarea-large'|'datetime'; options?:Array<string|{value:string;label:string}> }
 const statuses=['DRAFT','PUBLISHED','ARCHIVED'];

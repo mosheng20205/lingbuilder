@@ -16,7 +16,12 @@ import {
   ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
   ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
   ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
-  ADD_BEGINNER_SUBPROGRAM_COMMAND
+  ADD_BEGINNER_SUBPROGRAM_COMMAND,
+  COPY_BEGINNER_SUBPROGRAM_COMMAND,
+  CUT_BEGINNER_SUBPROGRAM_COMMAND,
+  MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND,
+  MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND,
+  PASTE_BEGINNER_SUBPROGRAM_COMMAND
 } from '../src/services/lingCpp/beginnerCommandTargetService';
 import {
   acquireLingCppControlReferenceCommands,
@@ -186,21 +191,30 @@ test('LingCpp beginner creation commands expose shortcuts, execute through MenuS
   const menus = new MenuService(commands);
   const commandRegistration = acquireLingCppBeginnerCommands(commands, menus);
   const calls: Array<{
-    kind: 'subprogram' | 'assembly-variable' | 'variable' | 'constant';
+    kind: 'subprogram' | 'assembly-variable' | 'variable' | 'constant' | 'move-up' | 'move-down' | 'cut' | 'copy' | 'paste';
     target?: { className: string; methodName: string };
+    direction?: 'up' | 'down';
   }> = [];
   const targetRegistration = activeLingCppBeginnerCommandTargetService.register({
     id: 'beginner-local-test',
-    addSubprogram: () => calls.push({ kind: 'subprogram' }),
+    addSubprogram: target => calls.push({ kind: 'subprogram', target }),
     addAssemblyVariable: () => calls.push({ kind: 'assembly-variable' }),
     addLocalVariable: target => calls.push({ kind: 'variable', target }),
-    addLocalConstant: target => calls.push({ kind: 'constant', target })
+    addLocalConstant: target => calls.push({ kind: 'constant', target }),
+    moveSubprogram: (target, direction) => calls.push({ kind: direction === 'up' ? 'move-up' : 'move-down', target, direction }),
+    cutSubprogram: target => calls.push({ kind: 'cut', target }),
+    copySubprogram: target => calls.push({ kind: 'copy', target }),
+    pasteSubprogram: target => calls.push({ kind: 'paste', target })
   });
   const enabledContext = {
     'lingcpp.beginner.active': true,
     'lingcpp.beginner.hasTarget': true,
     'lingcpp.beginner.canAddSubprogram': true,
     'lingcpp.beginner.canAddAssemblyVariable': true,
+    'lingcpp.beginner.hasSubprogramTarget': true,
+    'lingcpp.beginner.canMoveSubprogramUp': true,
+    'lingcpp.beginner.canMoveSubprogramDown': true,
+    'lingcpp.beginner.canPasteSubprogram': true,
     'lingcpp.beginner.writable': true
   };
   const disabledContext = {
@@ -208,6 +222,10 @@ test('LingCpp beginner creation commands expose shortcuts, execute through MenuS
     'lingcpp.beginner.hasTarget': false,
     'lingcpp.beginner.canAddSubprogram': false,
     'lingcpp.beginner.canAddAssemblyVariable': false,
+    'lingcpp.beginner.hasSubprogramTarget': false,
+    'lingcpp.beginner.canMoveSubprogramUp': false,
+    'lingcpp.beginner.canMoveSubprogramDown': false,
+    'lingcpp.beginner.canPasteSubprogram': false,
     'lingcpp.beginner.writable': false
   };
   const enabledMenu = menus.resolveMenu(LINGCPP_BEGINNER_CONTEXT_MENU, enabledContext, { includeDisabled: true });
@@ -217,9 +235,14 @@ test('LingCpp beginner creation commands expose shortcuts, execute through MenuS
     ADD_BEGINNER_SUBPROGRAM_COMMAND,
     ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
     ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
-    ADD_BEGINNER_LOCAL_CONSTANT_COMMAND
+    ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
+    MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND,
+    MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND,
+    CUT_BEGINNER_SUBPROGRAM_COMMAND,
+    COPY_BEGINNER_SUBPROGRAM_COMMAND,
+    PASTE_BEGINNER_SUBPROGRAM_COMMAND
   ]);
-  assert.deepEqual(enabledMenu.filter(item => item.kind === 'command').map(item => item.kind === 'command' && item.command.keybindings[0]), [
+  assert.deepEqual(enabledMenu.filter(item => item.kind === 'command').map(item => item.kind === 'command' && item.command.keybindings[0]).slice(0, 4), [
     'Ctrl+N',
     'Ctrl+D',
     'Ctrl+L',
@@ -233,11 +256,21 @@ test('LingCpp beginner creation commands expose shortcuts, execute through MenuS
   await commands.executeKeybinding('Ctrl+D', enabledContext);
   await commands.executeKeybinding('Ctrl+L', enabledContext, methodTarget);
   await commands.executeKeybinding('Ctrl+B', enabledContext, methodTarget);
+  await commands.executeCommand(MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND, enabledContext, methodTarget);
+  await commands.executeCommand(MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND, enabledContext, methodTarget);
+  await commands.executeCommand(CUT_BEGINNER_SUBPROGRAM_COMMAND, enabledContext, methodTarget);
+  await commands.executeCommand(COPY_BEGINNER_SUBPROGRAM_COMMAND, enabledContext, methodTarget);
+  await commands.executeCommand(PASTE_BEGINNER_SUBPROGRAM_COMMAND, enabledContext, methodTarget);
   assert.deepEqual(calls, [
-    { kind: 'subprogram' },
+    { kind: 'subprogram', target: undefined },
     { kind: 'assembly-variable' },
     { kind: 'variable', target: methodTarget },
-    { kind: 'constant', target: methodTarget }
+    { kind: 'constant', target: methodTarget },
+    { kind: 'move-up', target: methodTarget, direction: 'up' },
+    { kind: 'move-down', target: methodTarget, direction: 'down' },
+    { kind: 'cut', target: methodTarget },
+    { kind: 'copy', target: methodTarget },
+    { kind: 'paste', target: methodTarget }
   ]);
 
   targetRegistration.dispose();
@@ -247,4 +280,9 @@ test('LingCpp beginner creation commands expose shortcuts, execute through MenuS
   assert.equal(commands.hasCommand(ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND), false);
   assert.equal(commands.hasCommand(ADD_BEGINNER_LOCAL_VARIABLE_COMMAND), false);
   assert.equal(commands.hasCommand(ADD_BEGINNER_LOCAL_CONSTANT_COMMAND), false);
+  assert.equal(commands.hasCommand(MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND), false);
+  assert.equal(commands.hasCommand(MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND), false);
+  assert.equal(commands.hasCommand(CUT_BEGINNER_SUBPROGRAM_COMMAND), false);
+  assert.equal(commands.hasCommand(COPY_BEGINNER_SUBPROGRAM_COMMAND), false);
+  assert.equal(commands.hasCommand(PASTE_BEGINNER_SUBPROGRAM_COMMAND), false);
 });

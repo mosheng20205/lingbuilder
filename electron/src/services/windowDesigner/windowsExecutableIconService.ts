@@ -10,6 +10,8 @@ import type { LingWindowModel } from './types';
 
 export const WINDOWS_EXECUTABLE_RESOURCE_FILE = 'lingbuilder-app.rc';
 export const WINDOWS_EXECUTABLE_ICON_FILE = 'resources/lingbuilder-app.ico';
+export const WINDOWS_EXECUTABLE_EMBEDDED_RESOURCE_ID_BASE = 2001;
+const WINDOWS_EXECUTABLE_EMBEDDED_FILE_LIMIT = 8;
 
 const execFileAsync = promisify(execFile);
 
@@ -46,18 +48,59 @@ export function getSafeCustomWindowIconPath(window: LingWindowModel): string {
   return normalized;
 }
 
+export interface WindowsEmbeddedResourceSpec {
+  /** RC 资源 ID（从 2001 起按声明顺序分配）。 */
+  resourceId: number;
+  /** 工作区内相对源路径（已校验）。 */
+  sourceFile: string;
+  /** 释放到临时目录后的文件名。 */
+  extractName: string;
+  /** 物化到构建/导出目录的资源文件（相对目录根）。 */
+  resourceFileName: string;
+}
+
+export function getWindowEmbeddedResourceSpecs(window: LingWindowModel): WindowsEmbeddedResourceSpec[] {
+  const specs = window.embeddedFiles || [];
+  if (specs.length > WINDOWS_EXECUTABLE_EMBEDDED_FILE_LIMIT) {
+    throw new Error(`内嵌文件数量超过上限（最多 ${WINDOWS_EXECUTABLE_EMBEDDED_FILE_LIMIT} 个）。`);
+  }
+  return specs.map((spec, index) => {
+    const normalized = (spec.file || '').trim().replace(/\\/gu, '/');
+    if (!normalized) throw new Error('内嵌文件路径为空。');
+    if (/^(?:[a-zA-Z]:\/|\/|\\\\)/u.test(normalized) || normalized.split('/').includes('..') || /["\u0000-\u001f]/u.test(normalized)) {
+      throw new Error(`内嵌文件路径不安全：${spec.file}`);
+    }
+    const baseName = normalized.split('/').pop() || '';
+    const extractName = (spec.extractName || baseName).trim();
+    if (!/^[A-Za-z0-9._-]{1,128}$/u.test(extractName) || extractName.startsWith('.')) {
+      throw new Error(`内嵌文件释放名不合法（仅限字母、数字、点、下划线、连字符）：${extractName}`);
+    }
+    return {
+      resourceId: WINDOWS_EXECUTABLE_EMBEDDED_RESOURCE_ID_BASE + index,
+      sourceFile: normalized,
+      extractName,
+      resourceFileName: `resources/lingbuilder-embedded-${index + 1}.bin`
+    };
+  });
+}
+
 export function generateWindowsExecutableResourceFile(window: LingWindowModel): { relativePath: string; content: string } | undefined {
   const iconStyle = window.iconStyle || 'lingbuilder';
   if (iconStyle !== 'lingbuilder' && iconStyle !== 'custom') return undefined;
   if (iconStyle === 'custom' && !getSafeCustomWindowIconPath(window)) return undefined;
+  const lines = [
+    '#pragma code_page(65001)',
+    '#define IDI_LINGBUILDER_APP 101',
+    `IDI_LINGBUILDER_APP ICON "${WINDOWS_EXECUTABLE_ICON_FILE}"`
+  ];
+  for (const embedded of getWindowEmbeddedResourceSpecs(window)) {
+    lines.push(`#define ID_RCDATA_LINGBUILDER_EMBEDDED_${embedded.resourceId} ${embedded.resourceId}`);
+    lines.push(`ID_RCDATA_LINGBUILDER_EMBEDDED_${embedded.resourceId} RCDATA "${embedded.resourceFileName}"`);
+  }
+  lines.push('');
   return {
     relativePath: WINDOWS_EXECUTABLE_RESOURCE_FILE,
-    content: [
-      '#pragma code_page(65001)',
-      '#define IDI_LINGBUILDER_APP 101',
-      `IDI_LINGBUILDER_APP ICON "${WINDOWS_EXECUTABLE_ICON_FILE}"`,
-      ''
-    ].join('\n')
+    content: lines.join('\n')
   };
 }
 
@@ -86,18 +129,44 @@ export class WindowsExecutableIconService {
       : await fs.readFile(await this.resolveBundledIconPath());
     validateIco(bytes, customIconPath || 'LingBuilder 默认窗口图标');
 
+    const embeddedSpecs = getWindowEmbeddedResourceSpecs(window);
+    const embeddedBytes = await Promise.all(embeddedSpecs.map(async spec => {
+      const resolved = this.resolveWorkspacePath(spec.sourceFile);
+      const stat = await fs.stat(resolved).catch(() => null);
+      if (!stat || !stat.isFile()) throw new Error(`内嵌文件不存在：${spec.sourceFile}`);
+      if (stat.size > 32 * 1024 * 1024) throw new Error(`内嵌文件超过 32MB 上限：${spec.sourceFile}`);
+      return fs.readFile(resolved);
+    }));
+
+    const fingerprintInput = Buffer.concat([bytes, ...embeddedBytes]);
     const files: string[] = [];
     for (const destinationRoot of [...new Set(destinationRoots.map(root => path.resolve(root)))]) {
       const target = resolveWithin(destinationRoot, WINDOWS_EXECUTABLE_ICON_FILE);
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.writeFile(target, bytes);
       files.push(target);
+      for (let index = 0; index < embeddedSpecs.length; index += 1) {
+        const embeddedTarget = resolveWithin(destinationRoot, embeddedSpecs[index].resourceFileName);
+        await fs.mkdir(path.dirname(embeddedTarget), { recursive: true });
+        await fs.writeFile(embeddedTarget, embeddedBytes[index]);
+        files.push(embeddedTarget);
+      }
     }
     return {
       files,
-      fingerprint: crypto.createHash('sha256').update(bytes).digest('hex'),
+      fingerprint: crypto.createHash('sha256').update(fingerprintInput).digest('hex'),
       source
     };
+  }
+
+  private resolveWorkspacePath(relativePath: string): string {
+    const root = path.resolve(this.workspaceRoot);
+    const target = path.resolve(root, relativePath);
+    const relative = path.relative(root, target);
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new Error(`内嵌文件路径越出工作区：${relativePath}`);
+    }
+    return target;
   }
 
   private async resolveBundledIconPath(): Promise<string> {
@@ -145,8 +214,13 @@ export async function compileWindowsExecutableResource(options: {
   if (!options.resourcePath) return { logs: [] };
   const resourcePath = path.resolve(options.resourcePath);
   const iconPath = resolveWithin(path.resolve(options.cwd), WINDOWS_EXECUTABLE_ICON_FILE);
+  const rcContent = await fs.readFile(resourcePath, 'utf8').catch(() => '');
+  // RCDATA 引用按 rc 文件所在目录解析（与 rc.exe 编译行为一致），而非构建工作目录。
+  const rcDirectory = path.dirname(resourcePath);
+  const rcReferencedFiles = [...rcContent.matchAll(/RCDATA\s+"([^"]+)"/gu)]
+    .map(match => resolveWithin(rcDirectory, match[1]));
   try {
-    await Promise.all([fs.access(resourcePath), fs.access(iconPath), fs.mkdir(options.objDir, { recursive: true })]);
+    await Promise.all([fs.access(resourcePath), fs.access(iconPath), fs.mkdir(options.objDir, { recursive: true }), ...rcReferencedFiles.map(file => fs.access(file))]);
   } catch (error) {
     const message = `EXE 图标资源不完整：${error instanceof Error ? error.message : String(error)}`;
     throw new WindowsExecutableResourceCompileError(message, ['EXE 图标资源编译失败。', message]);

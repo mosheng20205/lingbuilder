@@ -1,0 +1,13 @@
+const fs = require('fs');
+const path = require('path');
+const root = path.resolve(__dirname);
+const reqPath = path.join(root, 'build-request.json');
+const srcDir = path.join(root, 'src');
+const srcFile = fs.readdirSync(srcDir).find(f => f.endsWith('.lcpp'));
+const req = JSON.parse(fs.readFileSync(reqPath, 'utf8'));
+const src = fs.readFileSync(path.join(srcDir, srcFile), 'utf8');
+req.lingCppSourceCode = src;
+delete req.lingCppSourceFilePath;
+fs.writeFileSync(reqPath, JSON.stringify(req, null, 2) + '\n', 'utf8');
+const round = JSON.parse(fs.readFileSync(reqPath, 'utf8')).lingCppSourceCode;
+console.log('injected chars=' + src.replace(/\s/g, '').length, 'roundtrip=' + (round === src));

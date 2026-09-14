@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, Gauge, Globe2, HardDriveDownload, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, Search, ShieldCheck, ShieldAlert, Users, X } from 'lucide-react';
+import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, FlaskConical, Gauge, Globe2, HardDriveDownload, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, Search, ShieldCheck, ShieldAlert, Users, X } from 'lucide-react';
 import './styles.css';
 import './mfa.css';
 import { HomePage } from './HomePage';
@@ -12,11 +12,12 @@ import { ModuleCommerceAdmin } from './ModuleCommerceAdmin';
 import { PromotionAdmin } from './PromotionAdmin';
 import { ModelRouteAdmin } from './ModelRouteAdmin';
 import { UsersAdmin } from './UsersAdmin';
+import { BetaProgramAdmin } from './BetaProgramAdmin';
 
 const API = import.meta.env.VITE_CLOUD_API_URL || 'http://127.0.0.1:17900';
-type Page = 'overview'|'site'|'sdkcatalog'|'users'|'credits'|'promotions'|'modules'|'providers'|'models'|'usage'|'audit';
+type Page = 'overview'|'site'|'sdkcatalog'|'users'|'beta'|'credits'|'promotions'|'modules'|'providers'|'models'|'usage'|'audit';
 const NAV: Array<{id:Page;label:string;icon:React.ComponentType<{size?:number}>}> = [
-  {id:'overview',label:'运营总览',icon:Gauge},{id:'site',label:'官网内容',icon:Globe2},{id:'sdkcatalog',label:'SDK 下载源',icon:HardDriveDownload},{id:'users',label:'用户账号',icon:Users},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'系统 AI 供应商',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
+  {id:'overview',label:'运营总览',icon:Gauge},{id:'site',label:'官网内容',icon:Globe2},{id:'sdkcatalog',label:'SDK 下载源',icon:HardDriveDownload},{id:'users',label:'用户账号',icon:Users},{id:'beta',label:'体验计划',icon:FlaskConical},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'系统 AI 供应商',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
 ];
 
 type AdminTokens={access:string;refresh:string};
@@ -51,7 +52,7 @@ function App(){
   const applySessionFailure=()=>{clearTokens();setTokens({access:'',refresh:''})};
   const ensureFreshAccessToken=async()=>{const exp=getTokenExpAt(tokenRef.access);if(!tokenRef.access||!exp||exp-Date.now()>=60_000)return;try{await refreshSession()}catch(reason){if((reason as {status?:number}).status===401){applySessionFailure();throw reason}}};
   const request=async(path:string,init:RequestInit={},retried=false)=>{await ensureFreshAccessToken();const binary=typeof Blob!=='undefined'&&init.body instanceof Blob;const response=await fetch(`${API}${path}`,{...init,headers:{...(binary?{}:{'content-type':'application/json'}),authorization:`Bearer ${tokenRef.access}`,...init.headers}});const text=await response.text();const value=text?(()=>{try{return JSON.parse(text)}catch{return {message:text}}})():{};if(!response.ok){const message=value.message||'请求失败';if(!retried&&tokenRef.refresh&&message.includes('令牌无效或已过期')){try{await refreshSession()}catch(reason){if((reason as {status?:number}).status===401)applySessionFailure();throw reason instanceof Error?reason:new Error('令牌续期失败，请重试。')}return request(path,init,true)}throw new Error(message)}return value};
-  const load=async()=>{if(!tokens.access)return;setBusy(true);setError('');try{const route=page==='models'?'model-routes':page==='providers'?'system-ai/providers':page==='sdkcatalog'?'site/sdk-catalog/history':page;setData(await request(`/v1/admin/${route}`))}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}};
+  const load=async()=>{if(!tokens.access)return;setBusy(true);setError('');try{const route=page==='models'?'model-routes':page==='providers'?'system-ai/providers':page==='sdkcatalog'?'site/sdk-catalog/history':page==='beta'?'beta-program':page;setData(await request(`/v1/admin/${route}`))}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}};
   useEffect(()=>{void load()},[page,tokens.access]);
   useEffect(()=>{if(tokens.access)void request('/v1/me').then(value=>{setNeedsMfa(Boolean(value.user?.role&&!value.user?.mfa));setRole(String(value.user?.role||''))}).catch(()=>undefined)},[tokens.access]);
   useEffect(()=>{if(!tokens.refresh)return;const timer=window.setInterval(()=>{const exp=getTokenExpAt(tokenRef.access);if(tokenRef.access&&exp&&exp-Date.now()<90_000){void refreshSession().catch(reason=>{if((reason as {status?:number}).status===401)applySessionFailure()})}},30_000);return()=>window.clearInterval(timer)},[tokens.refresh]);
@@ -80,6 +81,7 @@ function PageContent({page,data,request,reload,role}:{page:Page;data:any;request
  if(page==='site')return <WebsiteContentAdmin data={data} request={request} reload={reload}/>;
  if(page==='sdkcatalog')return <SdkCatalogAdmin data={data} request={request} reload={reload} role={role}/>;
  if(page==='users')return <UsersAdmin data={data} request={request} reload={reload}/>;
+ if(page==='beta')return <BetaProgramAdmin data={data} request={request} reload={reload} role={role}/>;
  if(page==='credits')return <><ActionForm title="人工点数调整" description="每次调整都会写入不可变账本和管理员审计。" fields={[['userId','用户 ID 或邮箱','text'],['points','调整点数（可为负数）','number'],['reason','调整原因','text']]} onSubmit={async value=>{await request('/v1/admin/credits/adjust',{method:'POST',body:JSON.stringify(value)});await reload()}}/><DataTable title="最近点数流水" rows={(data?.ledger||[]).map((row:any)=>({...row,userEmail:row.user?.email??'—',kindLabel:({SIGNUP_GIFT:'注册赠送',ADMIN_ADJUSTMENT:'人工调账',RECHARGE:'充值',RESERVE:'冻结',RELEASE:'释放',CHARGE:'AI 消耗',REFUND:'退款'} as any)[row.kind]??row.kind,at:row.createdAt?new Date(row.createdAt).toLocaleString('zh-CN'):''}))} columns={[['at','时间'],['userEmail','用户'],['kindLabel','类型'],['availableDelta','变动点数'],['balanceAfter','变动后余额'],['reason','原因']]} empty="尚无点数流水"/></>;
  if(page==='promotions')return <PromotionAdmin data={data} request={request} reload={reload}/>;
  if(page==='modules')return <ModuleCommerceAdmin data={data} request={request} reload={reload}/>;

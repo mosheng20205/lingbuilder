@@ -122,6 +122,9 @@ AGENTS.md
 /.b2.json
 /.b3.json
 
+# 视频制作临时脚本（硬编码本机路径，不入库）
+electron/scripts/tmp-*.py
+
 # AI 视频自主生产素材（不入库）
 AI 视频自主生产/
 

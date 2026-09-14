@@ -2032,7 +2032,7 @@ app.post("/api/window-designer/edge-control-preview", async (req, res) => {
     await Promise.all([sourceDir, binDir, objDir, exportDir].map(directory => fs.mkdir(directory, { recursive: true })));
     await writeGeneratedProjectFiles(sourceDir, generated.files);
     const previewProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
-    await windowsExecutableIconService.materialize(previewProjectRef, generated.selectedWindow, [buildDir]);
+    await windowsExecutableIconService.materialize(previewProjectRef, generated.selectedWindow, [buildDir, sourceDir]);
     const modulePlan = await materializeModuleNativeDependencies(enabledModules, {
       buildDir, sourceDir, binDir, exportDir, preferredTargetId: getModuleTargetId(buildConfiguration)
     });
@@ -2640,7 +2640,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     }
     const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
-    const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir]);
+    const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir]);
     const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
     const buildContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -3105,7 +3105,7 @@ async function runControlledWindowDesignerBuild(options: {
   }
   const generatedCodegenFiles = codeGeneratorResult.textFiles;
   const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
-  const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir]);
+  const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir]);
   const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
   const buildContentFiles = copiedBuildContent
     .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -4309,6 +4309,7 @@ async function compileWin32Preview(
   const objectPath = path.join(objDir, "main.obj");
   const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
   const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
+  const extraDefineArgs = (modulePlan?.extraCompileDefines || []).map(define => `/D${define}`);
   const msvcBuildFlags = getBuildCompilerFlags(buildConfiguration, "msvc")
     .filter(flag => !useDynamicCrt || (flag !== "/MD" && flag !== "/MDd" && flag !== "/D_DEBUG"));
   if (useDynamicCrt) {
@@ -4316,7 +4317,7 @@ async function compileWin32Preview(
     msvcBuildFlags.push("/MD");
   }
   if (compiler.kind === "msvc" && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, msvcLinkLibraries, buildConfiguration, requiredCppStandard, useDynamicCrt, resourceOutputPath, resourceLogs, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, msvcLinkLibraries, buildConfiguration, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, signal);
   }
 
   const commandArgs = compiler.kind === "msvc"
@@ -4325,6 +4326,7 @@ async function compileWin32Preview(
         "/EHsc",
         `/std:c++${requiredCppStandard}`,
         "/utf-8",
+        ...extraDefineArgs,
         "/DUNICODE",
         "/D_UNICODE",
         ...msvcBuildFlags,
@@ -4424,6 +4426,7 @@ async function compileMsvcPreviewWithModules(
   buildConfiguration: BuildConfiguration,
   requiredCppStandard: 17 | 20,
   useDynamicCrt: boolean,
+  extraDefineArgs: string[],
   resourceOutputPath: string | undefined,
   resourceLogs: string[],
   signal?: AbortSignal
@@ -4441,6 +4444,7 @@ async function compileMsvcPreviewWithModules(
     "/EHsc",
     `/std:c++${requiredCppStandard}`,
     "/utf-8",
+    ...extraDefineArgs,
     "/DUNICODE",
     "/D_UNICODE",
     ...msvcBuildFlags,
@@ -5029,12 +5033,19 @@ export async function startServer(): Promise<ServerReadyInfo> {
       server: {
         middlewareMode: true,
         watch: {
-          ignored: ["**/.lingbuilder-build/**"]
+          // UI 冒烟/环境探针的临时目录（.tmp-harness、.tmp-ide-userdata 等）会持续改写
+          // 被锁定的 Chromium 缓存/Cookie 文件；vite watcher 对其 watch 会抛 EBUSY。
+          ignored: ["**/.lingbuilder-build/**", "**/.tmp-*/**"]
         }
       },
       appType: "spa",
     });
     app.use(vite.middlewares);
+    // chokidar 的 error 事件没有监听器时会杀死整个 dev 服务；本仓库常有并行会话
+    // 生成的临时/锁定文件，监视失败只应丢失对应文件的 HMR，不应打断服务。
+    vite.watcher.on("error", (error: unknown) => {
+      console.warn(`[vite] 文件监视错误已忽略：${error instanceof Error ? error.message : String(error)}`);
+    });
   } else {
     const distPath = serverRuntimeConfig.staticRoot as string;
     await fs.access(path.join(distPath, "index.html"));

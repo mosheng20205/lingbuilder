@@ -1,5 +1,5 @@
 import { createWorkspaceEditChangeFromRewrite } from './aiEditService';
-import { normalizeIdentifier, parseLingCpp } from './parser';
+import { LING_CPP_KEYWORDS, normalizeIdentifier, parseLingCpp } from './parser';
 import {
   LingCppAstEdit,
   LingCppAstEditResult,
@@ -273,12 +273,25 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
   if (edit.kind === 'delete-event') {
     const method = resolveMethod(cls, edit.handlerName, 'event');
     if (!method) throw new Error(`未找到事件处理器：${edit.handlerName}`);
-    removeMethodBlock(next, method);
+    removeMethodBlock(next, cls, method);
     return next;
   }
 
   if (edit.kind === 'add-method') {
-    insertMethod(next, cls, edit.method);
+    insertMethod(next, cls, edit.method, {
+      insertAfterMethodName: edit.insertAfterMethodName,
+      defaultAccess: functionLibrary ? '公开' : '私有'
+    });
+    return next;
+  }
+
+  if (edit.kind === 'move-method') {
+    moveMethodBlock(next, cls, edit.methodName, edit.direction, functionLibrary ? '公开' : '私有');
+    return next;
+  }
+
+  if (edit.kind === 'insert-method-block') {
+    insertMethodBlockEdit(next, cls, edit.blockLines, edit.access, edit.insertAfterMethodName, functionLibrary ? '公开' : '私有');
     return next;
   }
 
@@ -304,7 +317,7 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
   if (edit.kind === 'delete-method') {
     const method = resolveMethod(cls, edit.methodName, 'method');
     if (!method) throw new Error(`未找到方法：${edit.methodName}`);
-    removeMethodBlock(next, method);
+    removeMethodBlock(next, cls, method);
     return next;
   }
 
@@ -491,22 +504,220 @@ function insertLocal(
 function insertMethod(
   lines: string[],
   cls: LingCppClass,
-  method: { name: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string }
+  method: { name: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string },
+  options?: { insertAfterMethodName?: string; defaultAccess: LingCppAccessModifier }
 ): void {
-  const insertAt = Math.max(lineIndex(cls.line + 1), lineIndex(cls.endLine || lines.length));
   const indent = inferClassBodyIndent(lines, cls);
   const bodyIndent = `${indent}    `;
   const bodyLines = normalizeMethodBodyLines(method.bodyLines || [`调试输出("${method.name.trim()} 已执行")`])
     .map(line => line.trim() ? `${bodyIndent}${line}` : '');
-  const nextLines = [
-    '',
+  const payloadLines = [
     method.access ? `${indent}${method.access}:` : '',
     method.note ? `${indent}// ${method.note.trim()}` : '',
     ...formatParameterNoteLines(indent, method.parameters || []),
     `${indent}${method.isStatic ? '静态 ' : ''}${method.returnType?.trim() || '空'} ${method.name.trim()}(${formatParameters(method.parameters || [])})`,
     ...bodyLines
   ].filter(line => line !== '');
-  lines.splice(insertAt, 0, ...nextLines);
+
+  if (options?.insertAfterMethodName) {
+    const anchor = resolveMethod(cls, options.insertAfterMethodName);
+    if (!anchor) throw new Error(`未找到锚点子程序：${options.insertAfterMethodName}`);
+    const anchorEnd = lineIndex(anchor.endLine || anchor.statements.at(-1)?.line || anchor.line);
+    const fallbackAccess = options.defaultAccess;
+    const blockAccess = method.access ?? accessSectionAt(lines, anchorEnd + 1, fallbackAccess, cls);
+    insertMethodBlockPayload(lines, cls, payloadLines, blockAccess, anchorEnd + 1, fallbackAccess);
+    return;
+  }
+
+  const insertAt = Math.max(lineIndex(cls.line + 1), lineIndex(cls.endLine || lines.length));
+  const previousLine = insertAt > 0 ? lines[insertAt - 1] || '' : '';
+  lines.splice(insertAt, 0, ...(previousLine.trim() !== '' ? [''] : []), ...payloadLines);
+}
+
+/** 与 parser ACCESS_RE 保持一致：访问段行。 */
+const ACCESS_LINE_RE = /^(公开|私有|保护)\s*[:：]?$/;
+
+function isAccessLine(line: string): boolean {
+  return ACCESS_LINE_RE.test(line.trim());
+}
+
+/** 插入位置所属访问段：向上最近一个访问段行；越出类体后取缺省值（类=私有，功能库=公开）。 */
+function accessSectionAt(
+  lines: string[],
+  insertIndex: number,
+  defaultAccess: LingCppAccessModifier,
+  cls: LingCppClass
+): LingCppAccessModifier {
+  const classEndBound = lineIndex(cls.line);
+  for (let index = insertIndex - 1; index > classEndBound; index -= 1) {
+    const match = (lines[index] || '').trim().match(ACCESS_LINE_RE);
+    if (match) return match[1] as LingCppAccessModifier;
+  }
+  return defaultAccess;
+}
+
+/**
+ * 把一个完整方法块（备注行+声明+体）插入到指定行前，并保持访问段归属：
+ * 段不同时补访问段行；若插入点之后类体内仍依赖原访问段的成员，则补一行恢复原段。
+ * 所有位置判断都在拼接前的行坐标上完成。
+ */
+function insertMethodBlockPayload(
+  lines: string[],
+  cls: LingCppClass,
+  blockLines: string[],
+  blockAccess: LingCppAccessModifier,
+  insertAtIndex: number,
+  defaultAccess: LingCppAccessModifier
+): void {
+  const indent = inferClassBodyIndent(lines, cls);
+  const section = accessSectionAt(lines, insertAtIndex, defaultAccess, cls);
+  const classEndIndex = lineIndex(cls.endLine || lines.length + 1);
+  let followingContentIndex = insertAtIndex;
+  while (followingContentIndex < classEndIndex && (lines[followingContentIndex] || '').trim() === '') followingContentIndex += 1;
+  const needsRestore = section !== blockAccess
+    && followingContentIndex < classEndIndex
+    && !isAccessLine(lines[followingContentIndex] || '');
+  const payload: string[] = [];
+  const previousLine = insertAtIndex > 0 ? lines[insertAtIndex - 1] || '' : '';
+  if (previousLine.trim() !== '' && !isNoteLine(previousLine) && !isAccessLine(previousLine)) payload.push('');
+  if (section !== blockAccess) payload.push(`${indent}${blockAccess}:`);
+  payload.push(...blockLines);
+  if (needsRestore) payload.push(`${indent}${section}:`);
+  lines.splice(insertAtIndex, 0, ...payload);
+}
+
+/** 方法声明行（含其上方连续备注行）在类体内的完整行区间；尾随空行不属于方法块。 */
+function methodBlockRange(lines: string[], method: LingCppMethod): { start: number; end: number } {
+  const declarationIndex = lineIndex(method.line);
+  let end = lineIndex(method.endLine || method.statements.at(-1)?.line || method.line);
+  let start = declarationIndex;
+  while (start > 0 && isNoteLine(lines[start - 1] || '')) start -= 1;
+  while (end > start && (lines[end] || '').trim() === '') end -= 1;
+  return { start, end };
+}
+
+/** 删除行区间并收缩相邻空行、清理悬空访问段行，返回删除高度。 */
+function removeMethodRange(lines: string[], cls: LingCppClass, range: { start: number; end: number }): number {
+  const height = range.end - range.start + 1;
+  lines.splice(range.start, height);
+  const previousTrimmed = (lines[range.start - 1] || '').trim();
+  const nextTrimmed = (lines[range.start] || '').trim();
+  if (previousTrimmed === '' && nextTrimmed === '') lines.splice(range.start, 1);
+  removeOrphanAccessLine(lines, cls, range.start);
+  return height;
+}
+
+function removeMethodBlockWithNotes(lines: string[], cls: LingCppClass, method: LingCppMethod): void {
+  removeMethodRange(lines, cls, methodBlockRange(lines, method));
+}
+
+/** 删除后访问段下面已无成员或方法时，清掉悬空的访问段行。 */
+function removeOrphanAccessLine(lines: string[], cls: LingCppClass, startIndex: number): void {
+  const previousIndex = startIndex - 1;
+  if (previousIndex < 0 || !isAccessLine(lines[previousIndex] || '')) return;
+  const classEndIndex = lineIndex(cls.endLine || lines.length + 1);
+  let nextContentIndex = startIndex;
+  while (nextContentIndex < classEndIndex && (lines[nextContentIndex] || '').trim() === '') nextContentIndex += 1;
+  if (nextContentIndex >= classEndIndex || isAccessLine(lines[nextContentIndex] || '')) {
+    lines.splice(previousIndex, 1);
+  }
+}
+
+function moveMethodBlock(
+  lines: string[],
+  cls: LingCppClass,
+  methodName: string,
+  direction: 'up' | 'down',
+  defaultAccess: LingCppAccessModifier
+): void {
+  const method = resolveMethod(cls, methodName);
+  if (!method) throw new Error(`未找到子程序：${methodName}`);
+  if (method.kind === 'event') throw new Error('事件处理器不支持移动，事件顺序由设计器绑定决定。');
+  if (method.kind !== 'method') throw new Error(`${method.kind === 'constructor' ? '构造' : '析构'}子程序不支持移动。`);
+  const ordered = [...cls.methods].sort((left, right) => left.line - right.line);
+  const index = ordered.indexOf(method);
+  const neighborIndex = direction === 'up' ? index - 1 : index + 1;
+  if (neighborIndex < 0 || neighborIndex >= ordered.length) return;
+  const neighbor = ordered[neighborIndex];
+  const range = methodBlockRange(lines, method);
+  const neighborRangeBefore = methodBlockRange(lines, neighbor);
+  const blockLines = lines.slice(range.start, range.end + 1);
+  const linesBeforeRemoval = lines.length;
+  removeMethodRange(lines, cls, range);
+  // 实际删除行数（可能含收缩的空行/悬空访问段行）才是下方内容的平移量
+  const removedCount = linesBeforeRemoval - lines.length;
+  const neighborShifted = neighbor.line > method.line;
+  const neighborRange = neighborShifted
+    ? { start: neighborRangeBefore.start - removedCount, end: neighborRangeBefore.end - removedCount }
+    : neighborRangeBefore;
+  const insertAtIndex = neighborShifted ? neighborRange.end + 1 : neighborRange.start;
+  const insertAccess = method.access ?? accessSectionAt(lines, insertAtIndex, defaultAccess, cls);
+  insertMethodBlockPayload(lines, cls, blockLines, insertAccess, insertAtIndex, defaultAccess);
+}
+
+function insertMethodBlockEdit(
+  lines: string[],
+  cls: LingCppClass,
+  blockLines: string[],
+  access: LingCppAccessModifier,
+  insertAfterMethodName: string | undefined,
+  defaultAccess: LingCppAccessModifier
+): void {
+  const normalizedBlock = blockLines.map(line => line.replace(/\s+$/u, ''));
+  while (normalizedBlock.length > 0 && normalizedBlock[normalizedBlock.length - 1].trim() === '') normalizedBlock.pop();
+  if (normalizedBlock.length === 0) throw new Error('粘贴内容为空，请先剪切或复制一个子程序。');
+  const hasDeclaration = normalizedBlock.some(line => isMethodDeclarationLike(line));
+  if (!hasDeclaration) throw new Error('粘贴内容不是子程序，只能粘贴通过剪切或复制得到的子程序块。');
+  let insertAtIndex: number;
+  if (insertAfterMethodName) {
+    const anchor = resolveMethod(cls, insertAfterMethodName);
+    if (!anchor) throw new Error(`未找到锚点子程序：${insertAfterMethodName}`);
+    insertAtIndex = lineIndex(anchor.endLine || anchor.statements.at(-1)?.line || anchor.line) + 1;
+  } else {
+    insertAtIndex = Math.max(lineIndex(cls.line + 1), lineIndex(cls.endLine || lines.length));
+  }
+  insertMethodBlockPayload(lines, cls, normalizedBlock, access, insertAtIndex, defaultAccess);
+}
+
+// 与 parser.isMethodDeclaration 同口径：类型与名称之间必须有空白，构造/析构无名称，关键字前缀不算声明
+const METHOD_DECLARATION_SCAN_RE = /^(?:静态\s+)?(?:(?:构造|析构)\s*[（(]|(事件|空|[\p{L}_][\p{L}\p{N}_]*(?:\[\]|［］)?)\s+[\p{L}_][\p{L}\p{N}_]*\s*[（(])/u;
+
+function isMethodDeclarationLike(line: string): boolean {
+  const trimmed = line.trim();
+  const match = trimmed.match(METHOD_DECLARATION_SCAN_RE);
+  if (!match) return false;
+  const prefix = match[1] || '';
+  return prefix === '' || prefix === '事件' || prefix === '空' || !LING_CPP_KEYWORDS.includes(prefix);
+}
+
+/** 提取一个子程序的完整源码块（含声明上方备注行），供新手模式剪切/复制使用。 */
+export function getLingCppMethodBlock(
+  source: string,
+  className: string | undefined,
+  methodName: string
+): { name: string; access: LingCppAccessModifier; blockLines: string[] } | undefined {
+  const parsed = parseLingCpp(source);
+  const functionLibrary = className
+    ? parsed.program.functionLibraries.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(className))
+    : undefined;
+  const cls = resolveClass(parsed.program.classes, className)
+    || (functionLibrary ? {
+      name: functionLibrary.name,
+      baseClass: undefined,
+      line: functionLibrary.line,
+      endLine: functionLibrary.endLine,
+      members: [],
+      methods: functionLibrary.methods
+    } : undefined);
+  const method = cls && resolveMethod(cls, methodName);
+  if (!cls || !method) return undefined;
+  const lines = source.split(/\r?\n/);
+  const range = methodBlockRange(lines, method);
+  return {
+    name: method.name,
+    access: method.access,
+    blockLines: lines.slice(range.start, range.end + 1)
+  };
 }
 
 function replaceOrInsertNote(lines: string[], lineNumber: number, note: string): void {
@@ -585,10 +796,8 @@ function isNoteLine(line: string): boolean {
   return trimmed.startsWith('//') || trimmed.startsWith('注释 ');
 }
 
-function removeMethodBlock(lines: string[], method: LingCppMethod): void {
-  const start = lineIndex(method.line);
-  const end = lineIndex(method.endLine || method.statements.at(-1)?.line || method.line);
-  lines.splice(start, Math.max(1, end - start + 1));
+function removeMethodBlock(lines: string[], cls: LingCppClass, method: LingCppMethod): void {
+  removeMethodBlockWithNotes(lines, cls, method);
 }
 
 function replaceMethodBody(

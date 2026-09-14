@@ -12,6 +12,13 @@ export function generateThreadingRuntime(enabledModules: InstalledModule[]): str
 const THREADING_CORE_RUNTIME = String.raw`
 static void LingThreadPlatformReportError(const std::wstring& message);
 
+struct LingQueueItem {
+    int kind = 0; // 0=text, 1=integer, 2=bytes
+    std::wstring text;
+    long long integer = 0;
+    std::vector<unsigned char> bytes;
+};
+
 class LingThreadProjectRuntime {
 public:
     static constexpr int Invalid = -1;
@@ -518,6 +525,98 @@ public:
         std::lock_guard<std::mutex> lock(registryMutex_); return semaphores_.erase(id) > 0;
     }
 
+    long long CreateQueue(int capacity) {
+        if (capacity < 0 || capacity > 100000) return FailId(L"\u961f\u5217\u5bb9\u91cf\u4e0a\u9650\u5fc5\u987b\u4e3a 0\uff08\u65e0\u754c\uff09\u6216 1\uff5e100000 \u4e4b\u95f4\u7684\u6574\u6570\u3002");
+        auto value = std::make_shared<ManagedQueue>();
+        value->capacity = static_cast<size_t>(capacity);
+        return AddResource(queues_, value, 8);
+    }
+
+    bool EnqueueQueue(long long id, const LingQueueItem& item, int timeoutMs) {
+        if (!ValidTimeout(timeoutMs)) return false;
+        auto queue = FindResource(queues_, id);
+        if (!queue) return Fail(L"\u7ebf\u7a0b\u961f\u5217\u4e0d\u5b58\u5728\u6216\u5df2\u9500\u6bc1\u3002");
+        std::unique_lock<std::mutex> lock(queue->mutex);
+        if (queue->capacity == 0) {
+            if (queue->destroyed) return Fail(L"\u7ebf\u7a0b\u961f\u5217\u5df2\u9500\u6bc1\uff0c\u4e0d\u80fd\u5165\u961f\u3002");
+            queue->items.push_back(item);
+            queue->changed.notify_one();
+            return true;
+        }
+        ++queue->waiters;
+        auto notFull = [&]() { return queue->destroyed || queue->items.size() < queue->capacity; };
+        const bool ready = timeoutMs == -1
+            ? (queue->changed.wait(lock, notFull), true)
+            : queue->changed.wait_for(lock, std::chrono::milliseconds(timeoutMs), notFull);
+        --queue->waiters;
+        if (queue->destroyed) return Fail(L"\u7ebf\u7a0b\u961f\u5217\u5df2\u9500\u6bc1\uff0c\u4e0d\u80fd\u5165\u961f\u3002");
+        if (!ready) return false;
+        queue->items.push_back(item);
+        queue->changed.notify_one();
+        return true;
+    }
+
+    LingQueueItem DequeueQueue(long long id, int timeoutMs) {
+        queueLastDequeueOk_ = false;
+        if (!ValidTimeout(timeoutMs)) return LingQueueItem{};
+        auto queue = FindResource(queues_, id);
+        if (!queue) { Fail(L"\u7ebf\u7a0b\u961f\u5217\u4e0d\u5b58\u5728\u6216\u5df2\u9500\u6bc1\u3002"); return LingQueueItem{}; }
+        std::unique_lock<std::mutex> lock(queue->mutex);
+        ++queue->waiters;
+        auto notEmpty = [&]() { return queue->destroyed || !queue->items.empty(); };
+        const bool ready = timeoutMs == -1
+            ? (queue->changed.wait(lock, notEmpty), true)
+            : queue->changed.wait_for(lock, std::chrono::milliseconds(timeoutMs), notEmpty);
+        --queue->waiters;
+        if (queue->destroyed) { Fail(L"\u7ebf\u7a0b\u961f\u5217\u5df2\u9500\u6bc1\uff0c\u4e0d\u80fd\u51fa\u961f\u3002"); return LingQueueItem{}; }
+        if (!ready || queue->items.empty()) return LingQueueItem{};
+        LingQueueItem value = std::move(queue->items.front());
+        queue->items.pop_front();
+        queue->changed.notify_one();
+        queueLastDequeueOk_ = true;
+        return value;
+    }
+
+    bool LastDequeueOk() const { return queueLastDequeueOk_; }
+
+    int QueueSize(long long id) const {
+        auto queue = FindResource(queues_, id);
+        if (!queue) return -1;
+        std::lock_guard<std::mutex> lock(queue->mutex);
+        return queue->items.size() > static_cast<size_t>((std::numeric_limits<int>::max)())
+            ? (std::numeric_limits<int>::max)()
+            : static_cast<int>(queue->items.size());
+    }
+
+    bool QueueEmpty(long long id) const {
+        auto queue = FindResource(queues_, id);
+        if (!queue) return false;
+        std::lock_guard<std::mutex> lock(queue->mutex);
+        return queue->items.empty();
+    }
+
+    bool ClearQueue(long long id) {
+        auto queue = FindResource(queues_, id);
+        if (!queue) return Fail(L"\u7ebf\u7a0b\u961f\u5217\u4e0d\u5b58\u5728\u6216\u5df2\u9500\u6bc1\u3002");
+        std::lock_guard<std::mutex> lock(queue->mutex);
+        queue->items.clear();
+        queue->changed.notify_all();
+        return true;
+    }
+
+    bool DestroyQueue(long long id) {
+        auto queue = FindResource(queues_, id);
+        if (!queue) return false;
+        {
+            std::lock_guard<std::mutex> lock(queue->mutex);
+            queue->destroyed = true;
+            queue->items.clear();
+            queue->changed.notify_all();
+        }
+        std::lock_guard<std::mutex> lock(registryMutex_);
+        return queues_.erase(id) > 0;
+    }
+
 private:
     struct Owner {
         long long id = 0; bool alive = true; int running = 0;
@@ -542,6 +641,7 @@ private:
     struct ManagedMutex { std::timed_mutex mutex; std::mutex stateMutex; std::thread::id owner; int waiters = 0; bool destroyed = false; };
     struct ManagedEvent { std::mutex mutex; std::condition_variable changed; bool manualReset = false; bool signaled = false; bool destroyed = false; int waiters = 0; };
     struct ManagedSemaphore { std::mutex mutex; std::condition_variable changed; int count = 0; int maximum = 1; bool destroyed = false; int waiters = 0; };
+    struct ManagedQueue { std::mutex mutex; std::condition_variable changed; std::deque<LingQueueItem> items; size_t capacity = 0; bool destroyed = false; int waiters = 0; };
 
     LingThreadProjectRuntime() = default;
     ~LingThreadProjectRuntime() {
@@ -703,7 +803,9 @@ private:
     std::unordered_map<long long, std::shared_ptr<std::atomic<long long>>> atomics_;
     std::unordered_map<long long, std::shared_ptr<ManagedEvent>> events_;
     std::unordered_map<long long, std::shared_ptr<ManagedSemaphore>> semaphores_;
+    std::unordered_map<long long, std::shared_ptr<ManagedQueue>> queues_;
     inline static thread_local long long currentTask_ = 0;
+    inline static thread_local bool queueLastDequeueOk_ = false;
 };`;
 
 const THREADING_WIN32_ADAPTER_RUNTIME = String.raw`
@@ -726,4 +828,83 @@ static long long LingThreadRegisterWindowOwner(HWND window) {
 
 static void LingThreadDrainWindowCallbacks(long long ownerId) {
     LingThreadProjectRuntime::Instance().DrainOwnerCallbacks(ownerId);
-}`;
+}
+
+static const wchar_t* LingQueueReturnText(std::wstring value) {
+    static thread_local std::vector<std::wstring> slots(4);
+    static thread_local size_t index = 0;
+    std::wstring& slot = slots[index++ % slots.size()];
+    slot = std::move(value);
+    return slot.c_str();
+}
+
+static long long 队列_创建(int capacity) { return LingThreadProjectRuntime::Instance().CreateQueue(capacity); }
+
+static bool 队列_入队(long long queue, const wchar_t* value, int timeoutMs) {
+    LingQueueItem item;
+    item.text = value ? std::wstring(value) : std::wstring();
+    return LingThreadProjectRuntime::Instance().EnqueueQueue(queue, item, timeoutMs);
+}
+
+static bool 队列_入队整数(long long queue, long long value, int timeoutMs) {
+    LingQueueItem item;
+    item.kind = 1;
+    item.integer = value;
+    return LingThreadProjectRuntime::Instance().EnqueueQueue(queue, item, timeoutMs);
+}
+
+static bool 队列_入队字节集(long long queue, const std::vector<unsigned char>& value, int timeoutMs) {
+    LingQueueItem item;
+    item.kind = 2;
+    item.bytes = value;
+    return LingThreadProjectRuntime::Instance().EnqueueQueue(queue, item, timeoutMs);
+}
+
+static const wchar_t* 队列_出队(long long queue, int timeoutMs) {
+    const LingQueueItem item = LingThreadProjectRuntime::Instance().DequeueQueue(queue, timeoutMs);
+    if (!LingThreadProjectRuntime::Instance().LastDequeueOk()) return LingQueueReturnText(L"");
+    if (item.kind == 1) return LingQueueReturnText(std::to_wstring(item.integer));
+    if (item.kind == 2) return LingQueueReturnText(LingCppUtf8ToWide(std::string(item.bytes.begin(), item.bytes.end()).c_str()));
+    return LingQueueReturnText(item.text);
+}
+
+static long long 队列_出队整数(long long queue, int timeoutMs) {
+    const LingQueueItem item = LingThreadProjectRuntime::Instance().DequeueQueue(queue, timeoutMs);
+    if (!LingThreadProjectRuntime::Instance().LastDequeueOk()) return 0;
+    if (item.kind == 0) {
+        try { size_t consumed = 0; const long long parsed = std::stoll(item.text, &consumed); return consumed == item.text.size() ? parsed : 0; }
+        catch (...) { return 0; }
+    }
+    if (item.kind == 2) {
+        unsigned long long raw = 0;
+        for (size_t index = 0; index < item.bytes.size() && index < 8; ++index) raw |= static_cast<unsigned long long>(item.bytes[index]) << (index * 8);
+        return static_cast<long long>(raw);
+    }
+    return item.integer;
+}
+
+static std::vector<unsigned char> 队列_出队字节集(long long queue, int timeoutMs) {
+    const LingQueueItem item = LingThreadProjectRuntime::Instance().DequeueQueue(queue, timeoutMs);
+    if (!LingThreadProjectRuntime::Instance().LastDequeueOk()) return {};
+    if (item.kind == 0) {
+        const std::string utf8 = LingCppWideToUtf8(item.text);
+        return std::vector<unsigned char>(utf8.begin(), utf8.end());
+    }
+    if (item.kind == 1) {
+        std::vector<unsigned char> bytes(8, 0);
+        const unsigned long long raw = static_cast<unsigned long long>(item.integer);
+        for (int index = 0; index < 8; ++index) bytes[static_cast<size_t>(index)] = static_cast<unsigned char>((raw >> (index * 8)) & 0xff);
+        return bytes;
+    }
+    return item.bytes;
+}
+
+static bool 队列_上次出队是否成功() { return LingThreadProjectRuntime::Instance().LastDequeueOk(); }
+
+static int 队列_取长度(long long queue) { return LingThreadProjectRuntime::Instance().QueueSize(queue); }
+
+static bool 队列_是否为空(long long queue) { return LingThreadProjectRuntime::Instance().QueueEmpty(queue); }
+
+static bool 队列_清空(long long queue) { return LingThreadProjectRuntime::Instance().ClearQueue(queue); }
+
+static bool 队列_销毁(long long queue) { return LingThreadProjectRuntime::Instance().DestroyQueue(queue); }`;

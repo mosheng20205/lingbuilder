@@ -20,6 +20,8 @@ export interface ExternalProjectProperties {
   buildDirectory?: string;
   /** 可选：本项目可复制生成源码目录模板覆盖；未设置时跟随工作区构建配置。 */
   generatedSourceDirectory?: string;
+  /** 可选：本项目构建产物 EXE 文件名（可带 .exe 后缀）；未设置时使用 LingBuilderPreview.exe。 */
+  executableName?: string;
 }
 export interface ImportedExternalProject {
   id: string; name: string; type: ExternalProjectKind; projectFile: string; sourceRoot: string; configRoot: string;
@@ -142,6 +144,24 @@ export class ExternalProjectService {
   }
 }
 
+export const DEFAULT_EXECUTABLE_FILE_NAME = 'LingBuilderPreview.exe';
+const EXECUTABLE_BASE_NAME_MAX_LENGTH = 64;
+
+/**
+ * 解析项目构建产物的 EXE 文件名：接受带或不带 .exe 后缀的名称；
+ * 缺省/空白回退 LingBuilderPreview.exe；含 Windows 非法文件名字符时抛错。
+ */
+export function resolveExecutableNameParts(value: unknown): { baseName: string; fileName: string } {
+  let base = typeof value === 'string' ? value.trim() : '';
+  if (base.toLowerCase().endsWith('.exe')) base = base.slice(0, -4);
+  base = base.replace(/[.\s]+$/u, '');
+  if (!base) return { baseName: DEFAULT_EXECUTABLE_FILE_NAME.slice(0, -4), fileName: DEFAULT_EXECUTABLE_FILE_NAME };
+  if (base.length > EXECUTABLE_BASE_NAME_MAX_LENGTH || /[\\/:*?"<>|\r\n\0]/u.test(base)) {
+    throw new Error(`项目可执行文件名不合法：“${String(value)}”不得包含 \ / : * ? " < > | 字符，长度不超过 ${EXECUTABLE_BASE_NAME_MAX_LENGTH}。`);
+  }
+  return { baseName: base, fileName: `${base}.exe` };
+}
+
 export function validateProperties(value: ExternalProjectProperties): void {
   if (!value || !['Debug', 'Release'].includes(value.configuration) || !['Win32', 'x64'].includes(value.architecture)) throw new Error('外部工程配置无效。');
   if (!Array.isArray(value.additionalArguments) || value.additionalArguments.some(argument => typeof argument !== 'string' || argument.length > 200 || /[\r\n\0]/u.test(argument))) throw new Error('外部工程附加参数无效。');
@@ -152,6 +172,14 @@ export function validateProperties(value: ExternalProjectProperties): void {
   if (value.generatedSourceDirectory !== undefined) {
     if (typeof value.generatedSourceDirectory !== 'string') throw new Error('项目生成源码目录模板无效。');
     validateBuildPathTemplate(value.generatedSourceDirectory, '项目生成源码目录', DEFAULT_GENERATED_SOURCE_DIRECTORY_TEMPLATE);
+  }
+  if (value.executableName !== undefined) {
+    if (typeof value.executableName !== 'string') throw new Error('项目可执行文件名无效。');
+    try {
+      resolveExecutableNameParts(value.executableName);
+    } catch {
+      throw new Error('项目可执行文件名不合法：不得包含 \ / : * ? " < > | 字符，长度不超过 64。');
+    }
   }
 }
 const execFileAsync = promisify(execFile);

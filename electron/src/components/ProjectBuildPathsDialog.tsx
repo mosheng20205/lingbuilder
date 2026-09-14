@@ -13,6 +13,8 @@ export interface ProjectBuildPathsDialogValue {
   projectBuildDirectory: string;
   /** 项目覆盖：生成源码目录模板；空字符串表示跟随工作区默认。 */
   projectGeneratedSourceDirectory: string;
+  /** 项目覆盖：构建产物 EXE 文件名（可带 .exe 后缀）；空字符串表示使用 LingBuilderPreview.exe。 */
+  projectExecutableName: string;
   /** 工作区默认：构建目录模板；空字符串表示使用内置缺省。 */
   workspaceBuildDirectory: string;
   /** 工作区默认：生成源码目录模板；空字符串表示使用内置缺省。 */
@@ -122,6 +124,11 @@ export default function ProjectBuildPathsDialog({
       if (value.projectGeneratedSourceDirectory.trim()) {
         validateBuildPathTemplate(value.projectGeneratedSourceDirectory, '项目生成源码目录', DEFAULT_GENERATED_SOURCE_DIRECTORY_TEMPLATE);
       }
+      const exeName = value.projectExecutableName.trim();
+      if (/[\\/:*?"<>|\r\n\0]/u.test(exeName) || exeName.length > 64) {
+        setError('可执行文件名不合法：不得包含 \\ / : * ? " < > | 字符，长度不超过 64。');
+        return;
+      }
     } catch (validationError) {
       setError(validationError instanceof Error ? validationError.message : '构建目录设置无效。');
       return;
@@ -150,7 +157,7 @@ export default function ProjectBuildPathsDialog({
         <div className={`border-b px-4 py-3 ${isDarkMode ? 'border-[#35353c]' : 'border-slate-200'}`}>
           <h2 id="project-build-paths-dialog-title" className="text-sm font-semibold">项目构建目录</h2>
           <p className={`mt-1 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-            自定义 {projectName} 的 C++ 源码输出目录与构建输出目录；留空表示跟随工作区默认。可用宏：
+            自定义 {projectName} 的 C++ 源码输出目录、构建输出目录与产物 EXE 文件名；留空表示跟随默认。目录可用宏：
             {BUILD_PATH_MACROS.map(macro => `$(${macro})`).join('、')}。
           </p>
         </div>
@@ -181,6 +188,16 @@ export default function ProjectBuildPathsDialog({
               className={inputClassName}
             />
             <p className={previewClassName}>解析：{previews.projectExport}</p>
+            <label htmlFor="project-exe-name" className="mb-1 mt-3 block text-[11px]">可执行文件名（bin 目录下的 exe 名，可带 .exe 后缀）</label>
+            <input
+              id="project-exe-name"
+              aria-label="项目可执行文件名"
+              value={value.projectExecutableName}
+              placeholder="LingBuilderPreview.exe"
+              disabled={busy}
+              onChange={event => update({ projectExecutableName: event.target.value })}
+              className={inputClassName}
+            />
           </div>
 
           <div className={sectionClassName}>

@@ -180,14 +180,28 @@ export function getLingCppControlReferenceAtPosition(
   ));
 }
 
+export interface LingCppControlReferenceDiagnosticOptions {
+  /** 无设计器上下文时跳过依赖设计器符号的控件引用诊断：缺设计器时“无法校验”不应误报成“找不到控件”。
+   *  与设计器无关的形状错误（带引号控件名、复杂表达式、运行时控件类型不匹配）仍然保留。 */
+  skipUnresolvedDesignerReferences?: boolean;
+}
+
 export function getLingCppControlReferenceDiagnostics(
   source: string,
   project?: LingWindowProject,
   moduleContext?: LingCppModuleContext,
-  filePath?: string
+  filePath?: string,
+  options?: LingCppControlReferenceDiagnosticOptions
 ): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
   getLingCppControlReferences(source, project, moduleContext, filePath).forEach(reference => {
+    if (options?.skipUnresolvedDesignerReferences && !reference.runtimeType && (
+      reference.status === 'missing'
+      || reference.status === 'ambiguous'
+      || reference.status === 'scope-mismatch'
+      || reference.status === 'incompatible-kind'
+      || reference.status === 'incompatible-type'
+    )) return;
     const base = {
       line: reference.range.startLine,
       range: {

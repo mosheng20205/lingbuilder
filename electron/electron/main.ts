@@ -742,10 +742,16 @@ function registerIpcHandlers(): void {
     window.close();
   });
   ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
-  ipcMain.handle('app:check-update', async () => {
-    lastVersionCheck = await checkLatestVersion(cloudApiOrigin(), app.getVersion());
+  ipcMain.handle('app:check-update', async (_event, payload?: { channel?: 'stable' | 'preview' }) => {
+    // 渠道显式化：默认 stable；preview 只在用户开启体验渠道时请求，云端校验体验资格，无资格静默降级 stable。
+    const channel = payload?.channel === 'preview' ? 'preview' : 'stable';
+    const accessToken = channel === 'preview' ? await cloudAccountService.currentAccessToken() : '';
+    lastVersionCheck = await checkLatestVersion(cloudApiOrigin(), app.getVersion(), { channel, accessToken });
     return lastVersionCheck;
   });
+  ipcMain.handle('beta-program:entitlement', () => cloudAccountService.betaEntitlement());
+  ipcMain.handle('beta-program:apply', (_event, message?: unknown) => cloudAccountService.betaApply(String(message ?? '').slice(0, 500)));
+  ipcMain.handle('beta-program:cancel-application', () => cloudAccountService.betaCancelApplication());
   ipcMain.handle('app:update:download', () => {
     if (!lastVersionCheck?.latestVersion || !lastVersionCheck.hasUpdate) return Promise.resolve({ ok: false, error: '请先检查更新，再下载更新包。' });
     return updateDownloadService.download(lastVersionCheck);

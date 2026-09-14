@@ -1,21 +1,28 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Prisma, type WebsiteCommandReference } from '@prisma/client';
 import type { AuthenticatedUser } from '../common/current-user.js';
 import { readR2UploadConfig } from '../config.js';
 import { PrismaService } from '../prisma.service.js';
+import { BetaProgramService } from '../beta-program/beta-program.service.js';
 
 type JsonRecord = Record<string, unknown>;
 
 @Injectable()
 export class WebsiteContentService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Optional() @Inject(BetaProgramService) private readonly beta?: BetaProgramService) {}
 
   /** 供客户端检查更新的公开接口：返回最新发布版本与安装包直链/校验信息；缺数据的字段显式置 null，便于客户端统一判空。 */
-  async latestVersion(input: { platform: string; architecture: string; channel: string }) {
+  async latestVersion(input: { platform: string; architecture: string; channel: string; authorization?: unknown }) {
     // channel 为空表示客户端未指定渠道（现有 IDE 客户端不带该参数）：跨 stable/preview 渠道取最高版本，
     // 避免发布记录登记到非默认渠道后全部存量客户端收不到更新通知。
+    let channel = String(input.channel || '').trim().toLowerCase();
+    // preview 渠道走体验计划门禁：无有效资格或渠道被暂停时静默降级为 stable，更新检查永不因此报错。
+    if (channel === 'preview') {
+      const allowed = this.beta ? await this.beta.resolvePreviewAccess(input.authorization) : false;
+      if (!allowed) channel = 'stable';
+    }
     const releases = await this.prisma.websiteDownloadRelease.findMany({
-      where: { publicationStatus: 'PUBLISHED', ...(input.channel ? { channel: input.channel } : {}), platform: input.platform || 'Windows', architecture: input.architecture || 'x64' },
+      where: { publicationStatus: 'PUBLISHED', ...(channel ? { channel } : {}), platform: input.platform || 'Windows', architecture: input.architecture || 'x64' },
       orderBy: [{ sortOrder: 'desc' }, { publishedAt: 'desc' }],
       select: {
         version: true, title: true, summary: true, publishedAt: true, channel: true, fileSize: true, sha256: true, releaseNotes: true,
@@ -40,7 +47,7 @@ export class WebsiteContentService {
   }
 
   async publicBootstrap() {
-    const [downloads, guides, demos, groups] = await Promise.all([
+    const [downloads, guides, demos, groups, sponsors] = await Promise.all([
       this.prisma.websiteDownloadRelease.findMany({
         where: { publicationStatus: 'PUBLISHED' },
         include: { mirrors: { where: { enabled: true }, orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] } },
@@ -48,9 +55,10 @@ export class WebsiteContentService {
       }),
       this.prisma.websiteGuideArticle.findMany({ where: { publicationStatus: 'PUBLISHED' }, orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { title: 'asc' }] }),
       this.prisma.websiteDemoProject.findMany({ where: { publicationStatus: 'PUBLISHED' }, orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }] }),
-      this.prisma.websiteCommunityGroup.findMany({ where: { enabled: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] })
+      this.prisma.websiteCommunityGroup.findMany({ where: { enabled: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+      this.prisma.websiteSponsor.findMany({ where: { enabled: true }, orderBy: [{ sponsoredAt: 'asc' }, { createdAt: 'asc' }] })
     ]);
-    return { ok: true, downloads, guides, demos, groups };
+    return { ok: true, downloads, guides, demos, groups, sponsors };
   }
 
   async publicCommands(input: { query?: string; kind?: string; category?: string; moduleId?: string; lifecycle?: string; limit?: number }) {
@@ -98,14 +106,15 @@ export class WebsiteContentService {
   }
 
   async adminSnapshot() {
-    const [downloads, commands, guides, demos, groups] = await Promise.all([
+    const [downloads, commands, guides, demos, groups, sponsors] = await Promise.all([
       this.prisma.websiteDownloadRelease.findMany({ include: { mirrors: { orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] } }, orderBy: [{ sortOrder: 'desc' }, { updatedAt: 'desc' }] }),
       this.prisma.websiteCommandReference.findMany({ orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }], take: 500 }),
       this.prisma.websiteGuideArticle.findMany({ orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }] }),
       this.prisma.websiteDemoProject.findMany({ orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }] }),
-      this.prisma.websiteCommunityGroup.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] })
+      this.prisma.websiteCommunityGroup.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+      this.prisma.websiteSponsor.findMany({ orderBy: [{ sponsoredAt: 'asc' }, { createdAt: 'asc' }] })
     ]);
-    return { ok: true, downloads, commands, guides, demos, groups };
+    return { ok: true, downloads, commands, guides, demos, groups, sponsors };
   }
 
   /**
@@ -187,6 +196,32 @@ export class WebsiteContentService {
     const group = await this.prisma.websiteCommunityGroup.upsert({ where: { qqNumber }, create: data, update: data });
     await this.audit(actor, 'website.community-group.upsert', 'website-community-group', group.id, { qqNumber, enabled: data.enabled });
     return { ok: true, group };
+  }
+
+  /** 登记或更新一笔赞助：金额按元录入、以分存储；带 id 时更新原记录，否则新建。同一 QQ 可有多笔赞助，不做唯一约束。 */
+  async upsertSponsor(body: JsonRecord, actor: AuthenticatedUser) {
+    const qqNumber = required(body.qqNumber, 'QQ号', 20);
+    if (!/^\d{4,20}$/u.test(qqNumber)) throw validation('QQ号格式无效，应为 4-20 位数字。');
+    const data = {
+      qqNumber,
+      amountCents: amountToCents(body.amountYuan),
+      sponsoredAt: parseDate(body.sponsoredAt) || new Date(),
+      enabled: body.enabled !== false
+    };
+    const id = clean(body.id, 100);
+    const sponsor = id
+      ? await this.prisma.websiteSponsor.update({ where: { id }, data })
+      : await this.prisma.websiteSponsor.create({ data });
+    await this.audit(actor, 'website.sponsor.upsert', 'website-sponsor', sponsor.id, { qqNumber, amountCents: data.amountCents, enabled: data.enabled });
+    return { ok: true, sponsor };
+  }
+
+  async deleteSponsor(id: string, actor: AuthenticatedUser) {
+    const target = clean(id, 100);
+    if (!target) throw validation('缺少要删除的赞助记录 ID。');
+    const sponsor = await this.prisma.websiteSponsor.delete({ where: { id: target } });
+    await this.audit(actor, 'website.sponsor.delete', 'website-sponsor', sponsor.id, { qqNumber: sponsor.qqNumber, amountCents: sponsor.amountCents });
+    return { ok: true };
   }
 
   async upsertGuide(body: JsonRecord, actor: AuthenticatedUser) {
@@ -359,6 +394,15 @@ function linkArray(value: unknown, label: string) {
 function normalizeSha256(value: unknown) {
   const result = clean(value, 64).toLowerCase();
   return /^[a-f0-9]{64}$/u.test(result) ? result : null;
+}
+
+/** 赞助金额以「元」录入、以「分」存储：避免浮点直接入库，两位小数以外四舍五入，上限 100 万元。 */
+function amountToCents(value: unknown) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) throw validation('赞助金额必须是大于 0 的数字。');
+  const cents = Math.round(amount * 100);
+  if (!Number.isSafeInteger(cents) || cents > 100_000_000) throw validation('赞助金额超出可录入范围。');
+  return cents;
 }
 
 /** 语义化版本号比较：left > right 返回正数。容忍 v 前缀与预发布后缀，与客户端 compareVersions 保持一致。 */

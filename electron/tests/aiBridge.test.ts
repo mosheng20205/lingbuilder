@@ -1191,30 +1191,113 @@ test('AI Bridge accepts synchronized multi-file drafts for source and designer f
   const sourcePath = 'src/main.lcpp';
   const designerPath = '.lingbuilder/projects/demo/window-designer.json';
   const sourceCode = '类 Main\n结束类\n';
-  const designerCode = '{"id":"demo","windows":[]}\n';
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '演示项目',
+    resources: [],
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 420, height: 280,
+      background: '#ffffff', description: '', controls: [{
+        id: 'progress', type: 'ProgressBar', name: '加载进度', content: '25', width: 260, height: 20,
+        x: 20, y: 30, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { minimum: 0, maximum: 100, value: 25, marquee: false }
+      }]
+    }]
+  };
   await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
   await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
   await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
-  await fs.writeFile(path.join(workspaceRoot, designerPath), designerCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(designerProject, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '演示项目', sourceRoot: 'src' });
 
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const nextDesignerProject = JSON.parse(JSON.stringify(designerProject)) as LingWindowProject;
+  nextDesignerProject.windows[0].controls[0].content = '75';
+  nextDesignerProject.windows[0].controls[0].properties.value = 75;
   const proposal = await service.proposeEdit({
     filePath: sourcePath,
     projectId: 'demo',
     instruction: '同步更新中文源码和窗口设计器模型',
+    designerProject,
+    updatedDesignerProject: nextDesignerProject,
+    workspaceFiles: [
+      { filePath: sourcePath, sourceCode }
+    ],
+    files: [
+      { filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` }
+    ]
+  });
+  const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+  assert.equal(applied.appliedFiles.length, 2);
+  assert.match(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), /已同步/u);
+  const persisted = JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'));
+  assert.equal(persisted.windows[0].controls[0].properties.value, 75);
+});
+
+test('AI Bridge rejects raw designer file drafts that bypass the validated designer channel', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '演示项目', sourceRoot: 'src' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const designerRawSource = '{"id":"demo","windows":[]}\n';
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), designerRawSource, 'utf8');
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '补充注释',
     workspaceFiles: [
       { filePath: sourcePath, sourceCode },
-      { filePath: designerPath, sourceCode: designerCode }
+      { filePath: designerPath, sourceCode: designerRawSource }
     ],
     files: [
       { filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` },
       { filePath: designerPath, updatedSource: '{"id":"demo","windows":[{"id":"main-window"}]}\n' }
     ]
   });
-  const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
-  assert.equal(applied.appliedFiles.length, 2);
-  assert.match(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), /已同步/u);
-  assert.match(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'), /main-window/u);
+  await assert.rejects(
+    () => service.applyEdit({ proposalId: proposal.proposal.id, approved: true }),
+    /不能通过普通文件草稿写入/u
+  );
+  assert.equal(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), sourceCode);
+});
+
+test('AI Bridge rejects designer edits for projects outside the solution', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/orphan/Main.lcpp';
+  const sourceCode = '类 Main\n结束类\n';
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'orphan',
+    name: '未注册项目',
+    resources: [],
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 420, height: 280,
+      background: '#ffffff', description: '', controls: []
+    }]
+  };
+  await assert.rejects(
+    () => service.proposeEdit({
+      filePath: sourcePath,
+      projectId: 'orphan',
+      instruction: '更新布局',
+      designerProject,
+      updatedDesignerProject: designerProject,
+      workspaceFiles: [{ filePath: sourcePath, sourceCode }],
+      files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` }]
+    }),
+    /未在解决方案（.lingbuilder\/solution.json）中注册/u
+  );
 });
 
 test('AI Bridge applies source and validated designer model atomically', async () => {
@@ -1240,6 +1323,7 @@ test('AI Bridge applies source and validated designer model atomically', async (
   await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
   await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
   await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(designerProject, null, 2) + '\n', 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '演示项目' });
 
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
   const nextDesignerProject = JSON.parse(JSON.stringify(designerProject));
@@ -1286,6 +1370,7 @@ test('AI Bridge rejects a designer model changed after proposal creation', async
   await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
   await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
   await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(designerProject, null, 2) + '\n', 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '竞态测试项目' });
 
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
   const nextDesignerProject = JSON.parse(JSON.stringify(designerProject)) as LingWindowProject;
@@ -1466,6 +1551,104 @@ test('AI Bridge diagnostics load project data types while checking the fixed glo
     false,
     JSON.stringify(result.diagnostics)
   );
+});
+
+function createDesignerFallbackProject(projectId: string, name: string): LingWindowProject {
+  return {
+    schemaVersion: 2 as const,
+    id: projectId,
+    name,
+    resources: [],
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [{
+        id: 'btn-status', type: 'Button', name: '输出结果', content: '待命', width: 120, height: 32,
+        x: 20, y: 30, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: {}
+      }]
+    }]
+  };
+}
+
+const CONTROL_REF_SOURCE = '类 MainWindow\n    事件 创建完毕()\n        控件_设置文本(输出结果, "完成")\n    结束\n结束类\n';
+
+test('AI Bridge diagnostics fall back to the workspace designer model by projectId', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'designer-fallback-project';
+  const sourceRoot = `src/${projectId}`;
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(createDesignerFallbackProject(projectId, '设计器回退项目'), null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '设计器回退项目' });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'main.lcpp'), CONTROL_REF_SOURCE, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/main.lcpp`, sourceCode: CONTROL_REF_SOURCE });
+  assert.equal(result.designerContext.source, 'workspace');
+  assert.equal(result.designerContext.persisted, true);
+  assert.equal(result.designerContext.controlReferencesChecked, true);
+  assert.equal(
+    result.diagnostics.some(diagnostic => diagnostic.id.startsWith('lingcpp-control-reference-')),
+    false,
+    JSON.stringify(result.diagnostics)
+  );
+});
+
+test('AI Bridge diagnostics surface a missing workspace designer model and keep honest control errors', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'designer-missing-project';
+  const sourceRoot = `src/${projectId}`;
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '设计器缺失项目' });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'main.lcpp'), CONTROL_REF_SOURCE, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/main.lcpp`, sourceCode: CONTROL_REF_SOURCE });
+  assert.equal(result.designerContext.source, 'workspace');
+  assert.equal(result.designerContext.persisted, false);
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.id === 'lingcpp-designer-model-missing'), JSON.stringify(result.diagnostics));
+  assert.ok(
+    result.diagnostics.some(diagnostic => diagnostic.id.startsWith('lingcpp-control-reference-missing')),
+    '设计器文件缺失时控件引用仍应如实报错'
+  );
+});
+
+test('AI Bridge diagnostics skip designer control errors for projects outside the solution', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/unknown-project/main.lcpp';
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId: 'unknown-project', filePath: sourcePath, sourceCode: CONTROL_REF_SOURCE });
+  assert.equal(result.designerContext.source, 'none');
+  assert.equal(result.designerContext.controlReferencesChecked, false);
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.id === 'lingcpp-designer-context-missing'), JSON.stringify(result.diagnostics));
+  assert.equal(
+    result.diagnostics.some(diagnostic => diagnostic.id.startsWith('lingcpp-control-reference-')),
+    false,
+    JSON.stringify(result.diagnostics)
+  );
+});
+
+test('AI Bridge native preview warns when the passed designer model diverges from disk', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'designer-drift-project';
+  const designerProject = createDesignerFallbackProject(projectId, '漂移项目');
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(designerProject, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '漂移项目' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const synced = await service.nativePreview({ project: JSON.parse(JSON.stringify(designerProject)) as LingWindowProject });
+  assert.equal(synced.ok, true);
+  assert.equal(synced.logs.some(line => line.includes('不一致')), false, JSON.stringify(synced.logs));
+
+  const drifted = JSON.parse(JSON.stringify(designerProject)) as LingWindowProject;
+  drifted.windows[0].controls[0].x = 66;
+  const result = await service.nativePreview({ project: drifted });
+  assert.equal(result.ok, true);
+  assert.ok(result.logs.some(line => line.includes('不一致')), JSON.stringify(result.logs));
+  assert.ok(result.logs.some(line => line.includes('updatedDesignerProject') || line.includes('重新读取')), JSON.stringify(result.logs));
 });
 
 test('AI Bridge native export writes Visual Studio project files', async () => {
@@ -1867,6 +2050,40 @@ test('AI Bridge CLI handles SIGTERM by shutting down managed runs', { timeout: 1
 
 async function createTempWorkspace(): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-bridge-'));
+}
+
+/** 在测试工作区 solution.json 中注册项目：设计器模型与 .lingbuilder/projects/<id>/ 写入只允许已注册项目。 */
+async function registerSolutionProject(
+  workspaceRoot: string,
+  project: { id: string; name?: string; sourceRoot?: string }
+): Promise<void> {
+  const solutionPath = path.join(workspaceRoot, '.lingbuilder', 'solution.json');
+  let solution: Record<string, unknown> = {
+    schemaVersion: 2,
+    id: 'ai-bridge-test-solution',
+    name: 'AI Bridge 测试解决方案',
+    startupProjectId: project.id,
+    projects: [] as unknown[]
+  };
+  try {
+    solution = JSON.parse(await fs.readFile(solutionPath, 'utf8')) as Record<string, unknown>;
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
+  }
+  const projects = Array.isArray(solution.projects) ? [...solution.projects as Record<string, unknown>[]] : [];
+  const sourceRoot = project.sourceRoot ?? `src/${project.id}`;
+  projects.push({
+    id: project.id,
+    name: project.name ?? project.id,
+    type: 'visual-cpp',
+    sourceRoot,
+    configRoot: `config/${project.id}`,
+    designerPath: `.lingbuilder/projects/${project.id}/window-designer.json`
+  });
+  solution.projects = projects;
+  if (!solution.startupProjectId) solution.startupProjectId = project.id;
+  await fs.mkdir(path.dirname(solutionPath), { recursive: true });
+  await fs.writeFile(solutionPath, `${JSON.stringify(solution, null, 2)}\n`, 'utf8');
 }
 
 async function installTestModule(

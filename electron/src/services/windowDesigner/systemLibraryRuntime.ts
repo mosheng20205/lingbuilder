@@ -1275,6 +1275,32 @@ bool 窗口_设置标题(long long handle, const wchar_t* title) { return SetWin
 bool 窗口_显示(long long handle, int command) { HWND window = reinterpret_cast<HWND>(handle); if (!IsWindow(window)) return false; ShowWindow(window, command); return true; }
 bool 窗口_移动(long long handle, int x, int y, int width, int height) { return MoveWindow(reinterpret_cast<HWND>(handle), x, y, (std::max)(1, width), (std::max)(1, height), TRUE) == TRUE; }
 bool 窗口_置前台(long long handle) { return SetForegroundWindow(reinterpret_cast<HWND>(handle)) == TRUE; }
+bool 窗口_是否最大化(long long handle) { HWND window = reinterpret_cast<HWND>(handle); return IsWindow(window) && IsZoomed(window); }
+const wchar_t* 窗口_取边界JSON(long long handle) {
+    HWND window = reinterpret_cast<HWND>(handle);
+    RECT rect = {};
+    if (!IsWindow(window) || !GetWindowRect(window, &rect)) return LB_ReturnText(L"{}");
+    wchar_t buffer[128] = {};
+    swprintf_s(buffer, L"{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
+        static_cast<int>(rect.left), static_cast<int>(rect.top),
+        static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top));
+    return LB_ReturnText(buffer);
+}
+bool 窗口_开始拖拽(long long handle) {
+    HWND window = reinterpret_cast<HWND>(handle);
+    if (!IsWindow(window)) return false;
+    ReleaseCapture();
+    SendMessageW(window, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+    return true;
+}
+bool 窗口_开始边缘缩放(long long handle, int edge) {
+    HWND window = reinterpret_cast<HWND>(handle);
+    if (!IsWindow(window)) return false;
+    if (edge < HTLEFT || edge > HTBOTTOMRIGHT) return false;
+    ReleaseCapture();
+    SendMessageW(window, WM_NCLBUTTONDOWN, static_cast<WPARAM>(edge), 0);
+    return true;
+}
 `;
 
 const MONITOR_RUNTIME = String.raw`

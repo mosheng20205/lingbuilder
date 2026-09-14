@@ -64,6 +64,18 @@ export interface AiBridgeLingCppDiagnosticsRequest {
   designerProject?: LingWindowProject;
 }
 
+/** 本轮诊断所用设计器上下文的来源与覆盖范围：外部 AI 必须能区分“已校验”与“未校验”。 */
+export interface AiBridgeDesignerContextInfo {
+  /** caller=调用方显式传入；workspace=按 projectId 从解决方案磁盘加载；none=两者都不可用。 */
+  source: 'caller' | 'workspace' | 'none';
+  projectId?: string;
+  /** workspace 来源时标注磁盘设计器文件是否真实存在（false=文件缺失或无效，按空窗口模型校验）。 */
+  persisted?: boolean;
+  /** false 表示本轮跳过了依赖设计器符号的控件引用校验。 */
+  controlReferencesChecked: boolean;
+  summary: string;
+}
+
 export interface AiBridgeEditProposeRequest {
   filePath: string;
   sourceCode?: string;

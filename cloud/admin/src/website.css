@@ -46,3 +46,20 @@
 .demo-source-code code{max-height:520px}
 .demo-source-note{margin:12px 0 0;color:#65758d;font-size:10px}
 @media(max-width:860px){.demo-detail-head{grid-template-columns:1fr}}
+
+/* 赞助列表：顶部收款码说明 + 按赞助时间先后的记录列表。 */
+.sponsor-support{display:grid;grid-template-columns:1fr 320px;gap:34px;align-items:center;margin-bottom:34px;padding:34px;border:1px solid var(--web-line);border-radius:14px;background:linear-gradient(145deg,#111c2e,#0c1422)}
+.sponsor-support h2{margin:0;font-size:26px}
+.sponsor-support p{max-width:660px;margin:12px 0 0;color:var(--web-muted);font-size:13px;line-height:1.85}
+.sponsor-support img{display:block;justify-self:center;width:100%;max-width:320px;border:1px solid var(--web-line);border-radius:10px}
+.sponsor-count{padding:14px 2px 12px;color:#728198;font-size:11px}
+.sponsor-list{border:1px solid var(--web-line);border-radius:13px;background:var(--web-panel);overflow:hidden}
+.sponsor-row{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid #1c2a40}
+.sponsor-row:last-child{border-bottom:0}
+.sponsor-row:hover{background:#101a2b}
+.sponsor-qq{display:flex;flex:1;align-items:center;gap:12px;min-width:0}
+.sponsor-qq svg{flex:none;width:14px;color:#5e7088}
+.sponsor-qq strong{overflow:hidden;color:#e6ecf6;font-size:14px;letter-spacing:.04em;text-overflow:ellipsis;white-space:nowrap}
+.sponsor-amount{flex:none;color:#55d7ad;font-size:15px}
+.sponsor-order{flex:none;color:#4e5f78;font-size:10px}
+@media(max-width:760px){.sponsor-support{grid-template-columns:1fr;padding:22px}.sponsor-support img{max-width:260px}.sponsor-row{padding:13px 16px}}

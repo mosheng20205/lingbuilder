@@ -34,10 +34,14 @@ interface UpdateDialogProps {
   info: UpdateDialogInfo | null;
   currentVersionLabel: string;
   isDarkMode: boolean;
+  /** 稳定版更新专用「跳过此版本」：记录版本号后不再自动弹窗，仅保留标题栏徽标。 */
+  onSkipVersion?: (version: string) => void;
+  /** 体验反馈入口（预览版更新展示）：由宿主传入，通常指向交流群。 */
+  feedbackUrl?: string;
   onClose: () => void;
 }
 
-export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMode, onClose }: UpdateDialogProps) {
+export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMode, onSkipVersion, feedbackUrl, onClose }: UpdateDialogProps) {
   const titleId = useId();
   const [progress, setProgress] = useState<UpdateProgressSnapshot | null>(null);
   const [notice, setNotice] = useState('');
@@ -117,6 +121,8 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
   };
   const versionLabel = info.latestVersion ? `v${info.latestVersion}` : '';
   const percent = progress?.totalBytes ? Math.min(100, Math.round(progress.downloadedBytes / progress.totalBytes * 100)) : null;
+  // 预览渠道文案突出「抢先体验」，并明确预览版的稳定性预期；稳定渠道维持原有提示。
+  const isPreview = info.channel === 'preview';
 
   const title = phase === 'checking' ? '正在检查更新…'
     : phase === 'latest' ? '已是最新版本'
@@ -125,7 +131,7 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
     : phase === 'ready' ? `${versionLabel || '更新包'}已通过完整性校验`
     : phase === 'launching' ? '正在启动安装程序'
     : phase === 'error' ? (progress?.error ? '更新失败' : '检查更新失败')
-    : phase === 'update' ? '发现新版本'
+    : phase === 'update' ? (isPreview ? `抢先体验 ${versionLabel}（预览版）` : '发现新版本')
     : '检查更新失败';
 
   return (
@@ -139,18 +145,22 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
         {phase === 'update' && (
           <>
             <p className="mt-3 text-xs leading-5 text-slate-400">
-              {inAppAvailable
-                ? `最新版本 ${versionLabel || '未知'}（当前 ${currentVersionLabel}）。可直接在 IDE 内下载更新。`
-                : `最新版本 ${versionLabel || '未知'}（当前 ${currentVersionLabel}）。该版本未提供应用内下载渠道，请前往官网手动下载。`}
+              {isPreview
+                ? `预览版 ${versionLabel || '未知'}（当前 ${currentVersionLabel}）。预览版发布频率高、包含未经长期验证的新功能，建议先备份项目数据。`
+                : inAppAvailable
+                  ? `最新版本 ${versionLabel || '未知'}（当前 ${currentVersionLabel}）。可直接在 IDE 内下载更新。`
+                  : `最新版本 ${versionLabel || '未知'}（当前 ${currentVersionLabel}）。该版本未提供应用内下载渠道，请前往官网手动下载。`}
             </p>
             {inAppAvailable && info.fileSize && <p className={`mt-2 text-[11px] ${muted}`}>安装包大小：{info.fileSize}</p>}
             {info.releaseTitle && <p className={`mt-2 text-[11px] leading-5 ${muted}`}>{info.releaseTitle}</p>}
             {info.releaseNotes && <p className={`mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-5 ${muted}`}>{info.releaseNotes}</p>}
             {notice && <p className={`mt-2 text-[11px] ${muted}`} role="status">{notice}</p>}
             {actionError && <p className="mt-2 text-[11px] leading-5 text-rose-500" role="alert">{actionError}</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              {inAppAvailable && <button type="button" onClick={() => void startDownload()} className={primaryButton}>立即更新</button>}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {inAppAvailable && <button type="button" onClick={() => void startDownload()} className={primaryButton}>{isPreview ? '立即体验' : '立即更新'}</button>}
               <button type="button" onClick={openOfficialSite} className={inAppAvailable ? secondaryButton : primaryButton}>前往官网下载</button>
+              {!isPreview && onSkipVersion && info.latestVersion && <button type="button" onClick={() => onSkipVersion(info.latestVersion!)} className={secondaryButton}>跳过此版本</button>}
+              {isPreview && feedbackUrl && <button type="button" onClick={() => window.open(feedbackUrl, '_blank', 'noopener,noreferrer')} className={secondaryButton}>反馈问题</button>}
               <button type="button" onClick={onClose} className={secondaryButton}>稍后再说</button>
             </div>
           </>

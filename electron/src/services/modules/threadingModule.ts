@@ -91,7 +91,19 @@ const specs: ThreadingCommandSpec[] = [
   { name: '信号量_释放', signature: '信号量_释放(信号量, 数量)', description: '释放指定计数；超过最大值时拒绝。', parameters: [parameter('信号量', 'longLong'), parameter('数量', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '同步' },
   { name: '信号量_取可用数量', signature: '信号量_取可用数量(信号量)', description: '返回当前可用计数。', parameters: [parameter('信号量', 'longLong')], returnType: 'int', returnLabel: '整数型', category: '同步' },
   { name: '信号量_销毁', signature: '信号量_销毁(信号量)', description: '销毁信号量并唤醒等待者使其失败返回。', parameters: [parameter('信号量', 'longLong')], returnType: 'bool', returnLabel: '逻辑型', category: '同步' }
-];
+,
+  { name: '队列_创建', signature: '队列_创建(容量上限)', description: '创建项目级线程安全先进先出队列；容量上限 0 表示无界，1～100000 为有界队列。', parameters: [{ name: '容量上限', type: 'int' }], returnType: 'longLong', returnLabel: '线程队列', category: '队列', insertText: '队列_创建(1000)' },
+  { name: '队列_入队', signature: '队列_入队(队列, 文本, 超时毫秒)', description: '把文本放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。', parameters: [{ name: '队列', type: 'longLong' }, { name: '文本', type: 'wideString' }, { name: '超时毫秒', type: 'int' }], returnType: 'bool', returnLabel: '逻辑型', category: '队列', insertText: '队列_入队($1, "$2", -1)' },
+  { name: '队列_出队', signature: '队列_出队(队列, 超时毫秒)', description: '从队首取出并转为文本：文本原样，整数转十进制文本，字节集按 UTF-8 解码（非法返回空文本）；队列为空时在超时内阻塞等待。返回空文本不代表失败，须用上次出队是否成功判断。', parameters: [{ name: '队列', type: 'longLong' }, { name: '超时毫秒', type: 'int' }], returnType: 'wideString', returnLabel: '文本型', category: '队列', insertText: '队列_出队($1, -1)' },
+  { name: '队列_上次出队是否成功', signature: '队列_上次出队是否成功()', description: '返回当前线程最近一次队列出队是否真正取到数据；用于区分空文本元素与超时空返回。', parameters: [], returnType: 'bool', returnLabel: '逻辑型', category: '队列', insertText: '队列_上次出队是否成功()' },
+  { name: '队列_取长度', signature: '队列_取长度(队列)', description: '返回队列中等待取出的元素数量；队列不存在或已销毁时返回 -1。', parameters: [{ name: '队列', type: 'longLong' }], returnType: 'int', returnLabel: '整数型', category: '队列', insertText: '队列_取长度($1)' },
+  { name: '队列_是否为空', signature: '队列_是否为空(队列)', description: '判断队列是否没有元素；队列不存在或已销毁时返回假。', parameters: [{ name: '队列', type: 'longLong' }], returnType: 'bool', returnLabel: '逻辑型', category: '队列', insertText: '队列_是否为空($1)' },
+  { name: '队列_清空', signature: '队列_清空(队列)', description: '丢弃队列中全部未取出的元素并唤醒等待者重新检查状态。', parameters: [{ name: '队列', type: 'longLong' }], returnType: 'bool', returnLabel: '逻辑型', category: '队列', insertText: '队列_清空($1)' },
+  { name: '队列_销毁', signature: '队列_销毁(队列)', description: '销毁队列并唤醒全部等待者（其后续操作返回失败）；未取出的元素被丢弃。队列 ID 不可复用。', parameters: [{ name: '队列', type: 'longLong' }], returnType: 'bool', returnLabel: '逻辑型', category: '队列', insertText: '队列_销毁($1)' },
+  { name: '队列_入队整数', signature: '队列_入队整数(队列, 整数, 超时毫秒)', description: '把整数放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。', parameters: [{ name: '队列', type: 'longLong' }, { name: '整数', type: 'longLong' }, { name: '超时毫秒', type: 'int' }], returnType: 'bool', returnLabel: '逻辑型', category: '队列', insertText: '队列_入队整数($1, $2, -1)' },
+  { name: '队列_出队整数', signature: '队列_出队整数(队列, 超时毫秒)', description: '从队首取出并转为整数：整数原样，文本按完整十进制解析（失败返回 0），字节集取前 8 字节小端（不足补 0）；队列为空时在超时内阻塞等待。有效性用上次出队是否成功判断。', parameters: [{ name: '队列', type: 'longLong' }, { name: '超时毫秒', type: 'int' }], returnType: 'longLong', returnLabel: '长整数型', category: '队列', insertText: '队列_出队整数($1, -1)' },
+  { name: '队列_入队字节集', signature: '队列_入队字节集(队列, 字节集, 超时毫秒)', description: '把字节集放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。', parameters: [{ name: '队列', type: 'longLong' }, { name: '字节集', type: 'bytes' }, { name: '超时毫秒', type: 'int' }], returnType: 'bool', returnLabel: '逻辑型', category: '队列', insertText: '队列_入队字节集($1, $2, -1)' },
+  { name: '队列_出队字节集', signature: '队列_出队字节集(队列, 超时毫秒)', description: '从队首取出并转为字节集：字节集原样，文本按 UTF-8 编码，整数转 8 字节小端；队列为空时在超时内阻塞等待。有效性用上次出队是否成功判断。', parameters: [{ name: '队列', type: 'longLong' }, { name: '超时毫秒', type: 'int' }], returnType: 'bytes', returnLabel: '字节集', category: '队列', insertText: '队列_出队字节集($1, -1)' }];
 
 function contribution(spec: ThreadingCommandSpec): ModuleCommandContribution {
   return {
@@ -129,9 +141,9 @@ export const THREADING_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: 'lingbuilder.threading',
   name: '多线程模块',
-  version: '2.0.0',
+  version: '2.1.0',
   category: '系统',
-  description: '提供项目级受管任务、类型化多参数、进度与完成回调、线程池和同步原语。',
+  description: '提供项目级受管任务、类型化多参数、进度与完成回调、线程池和同步原语，并提供文本/整数/字节集元素的线程安全队列族。',
   author: 'LingBuilder',
   tags: ['内置', '系统', '多线程', '线程池', '同步', 'C++17'],
   contributes: {
@@ -144,13 +156,15 @@ export const THREADING_MODULE: LingBuilderModuleManifest = {
       { name: '线程原子整数', description: '项目级受管 64 位原子整数 ID。', cppType: 'long long' },
       { name: '线程同步事件', description: '项目级受管自动/手动重置事件 ID。', cppType: 'long long' },
       { name: '线程信号量', description: '项目级受管计数信号量 ID。', cppType: 'long long' }
-    ],
+,
+      { name: '线程队列', description: '项目级受管线程安全队列 ID。', cppType: 'long long' }    ],
     snippets: [
       { label: '线程任务多参数与完成回调', insertText: '线程任务 任务 = 线程_提交完成(&计算汇总, &计算完成, 记录参数, 数值数组, "批次A")', description: '按值复制记录、数组和文本，并在 UI 线程接收类型化结果。' },
       { label: '线程任务进度与取消', insertText: '线程任务 任务 = 线程_提交进度(&后台导入, &导入进度, &导入完成, 文件列表)\n线程_请求取消(任务)', description: '报告合并进度并执行协作取消。' },
       { label: '自定义线程池', insertText: '线程池 后台池 = 线程池_创建(4, 1000)\n线程池_提交(后台池, &后台工作, 参数)\n线程池_等待空闲(后台池, 5000)\n线程池_关闭(后台池, 5000)\n线程池_销毁(后台池)', description: '创建、使用并安全销毁有界线程池。' },
       { label: '线程同步原语', insertText: '线程互斥锁 锁 = 互斥锁_创建()\n线程原子整数 计数 = 原子整数_创建(0)\n线程同步事件 就绪 = 线程事件_创建(真, 假)\n线程信号量 限流 = 信号量_创建(2, 2)', description: '创建互斥锁、原子整数、事件和信号量。' }
-    ],
+,
+      { label: '队列生产者与消费者', insertText: '线程队列 结果 = 队列_创建(1000)\n线程_提交(&生产者工作, 结果)\n文本型 一条文本 = 队列_出队(结果, 5000)\n逻辑型 有效 = 队列_上次出队是否成功()', description: '工作线程入队、界面线程出队，并用上次出队是否成功判断取数有效性。' }    ],
     docs: [{ title: '多线程模块使用说明', path: 'docs/modules/threading/README.md' }]
   },
   targets: [{ id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', defines: ['LINGBUILDER_THREADING_MODULE'], compileOptions: ['/std:c++17'] }],

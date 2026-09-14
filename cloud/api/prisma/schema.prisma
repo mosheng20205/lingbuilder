@@ -97,6 +97,8 @@ model User {
   moduleEntitlements ModuleEntitlement[]
   moduleAccessAudits ModuleAccessAudit[]
   rechargeOrders     CreditRechargeOrder[]
+  betaProgramMember  BetaProgramMember?
+  betaProgramApplication BetaProgramApplication?
 }
 
 model ModuleProduct {
@@ -632,6 +634,19 @@ model WebsiteCommunityGroup {
   @@index([enabled, sortOrder])
 }
 
+// 官网赞助列表：一条记录代表一笔赞助，公开展示赞助人 QQ 号与金额，按赞助时间先后排序。
+model WebsiteSponsor {
+  id          String   @id @default(uuid())
+  qqNumber    String
+  amountCents Int
+  sponsoredAt DateTime
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled, sponsoredAt])
+}
+
 model SdkCatalogRelease {
   id        String   @id @default(cuid())
   sequence  Int      @unique
@@ -641,4 +656,44 @@ model SdkCatalogRelease {
   note      String?
   createdBy String
   createdAt DateTime @default(now())
+}
+
+// 体验计划名单：一个账号一条记录，决定该账号登录的客户端能否收到 preview 渠道更新。
+model BetaProgramMember {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  status         String    @default("ACTIVE")
+  groupTag       String    @default("")
+  validUntil     DateTime?
+  note           String    @default("")
+  addedByAdminId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// 体验计划自助报名：通过审核后创建/激活 BetaProgramMember，拒绝理由留痕。
+model BetaProgramApplication {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  message          String    @default("")
+  status           String    @default("PENDING")
+  reviewedByAdminId String?
+  reviewedAt       DateTime?
+  rejectReason     String    @default("")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// 全局开关键值表：体验计划暂停推送等运营开关，值统一存字符串。
+model SystemFlag {
+  key              String   @id
+  value            String
+  updatedByAdminId String?
+  updatedAt        DateTime @updatedAt
 }

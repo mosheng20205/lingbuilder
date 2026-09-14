@@ -208,7 +208,7 @@ stdio 形式（客户端自动拉起，无需 Token）：
 | `lingbuilder.workspace.list` | 列出工作区文件树。 |
 | `lingbuilder.file.read` | 读取工作区文本文件。 |
 | `lingbuilder.file.search` | 搜索工作区文本。 |
-| `lingbuilder.lingcpp.diagnostics` | 获取 `.lcpp` 诊断。 |
+| `lingbuilder.lingcpp.diagnostics` | 获取 `.lcpp` 诊断；传 `projectId` 自动加载工作区设计器模型校验控件引用，响应带 `designerContext` 说明校验覆盖范围。 |
 | `lingbuilder.edit.propose` | 生成编辑提案。 |
 | `lingbuilder.edit.apply` | 应用编辑提案。 |
 | `lingbuilder.project.templates` | 列出项目模板。 |

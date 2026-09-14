@@ -16,6 +16,7 @@ import {
   normalizeUpdaterSha256,
   parseContentLength,
   removeFileWithRetry,
+  renameFileWithRetry,
   resolveBundledUpdaterAria2cPath,
   UpdateDownloadService,
   verifyInstallerSha256,
@@ -401,4 +402,194 @@ test('cleanupAbandoned removes leftover update files', async () => {
   await service.cleanupAbandoned();
   await assert.rejects(fs.access(updatesDir));
   await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('describeAria2cExitMessage explains file-lock exit codes used by the updater', () => {
+  assert.match(describeAria2cExitMessage(15) || '', /无法打开已下载的文件/u);
+  assert.match(describeAria2cExitMessage(16) || '', /无法创建写入文件/u);
+  assert.match(describeAria2cExitMessage(17) || '', /读写文件失败/u);
+});
+
+test('renameFileWithRetry retries transient EBUSY with backoff and gives up on other errors', async () => {
+  const attempts: number[] = [];
+  const delays: number[] = [];
+  const flaky = async (_from: string, _to: string) => {
+    attempts.push(attempts.length + 1);
+    if (attempts.length < 3) {
+      const error = new Error('EBUSY: resource busy or locked, rename') as NodeJS.ErrnoException;
+      error.code = 'EBUSY';
+      throw error;
+    }
+  };
+  await renameFileWithRetry('a.exe.part', 'a.exe', 4, flaky, async ms => { delays.push(ms); });
+  assert.equal(attempts.length, 3);
+  assert.deepEqual(delays, [250, 500]);
+
+  const missing = async () => {
+    const error = new Error('source missing') as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    throw error;
+  };
+  await assert.rejects(renameFileWithRetry('a.exe.part', 'a.exe', 4, missing, async () => undefined), /source missing/u);
+});
+
+test('download fast-path promotes an already complete .part without respawning the downloader', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-update-'));
+  const updatesDir = path.join(dir, 'updates');
+  const payload = crypto.randomBytes(48 * 1024);
+  const digest = crypto.createHash('sha256').update(payload).digest('hex');
+  const resourcesPath = path.join(dir, 'resources');
+  await makeFakeAria2cAvailable(resourcesPath);
+  try {
+    await fs.mkdir(updatesDir, { recursive: true });
+    await fs.writeFile(path.join(updatesDir, 'LingBuilder-9.9.9-x64.exe.part'), payload);
+    let spawnCount = 0;
+    const fetchImpl = (async (_url: any, init: any) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 200, headers: { 'content-length': String(payload.length) } }) as any;
+      throw new Error('downloader must not fetch on the fast path');
+    }) as typeof fetch;
+    const spawnImpl = (() => {
+      spawnCount += 1;
+      throw new Error('downloader must not spawn on the fast path');
+    }) as unknown as typeof spawn;
+    const service = new UpdateDownloadService({
+      updatesDir, isPackaged: true,
+      resourcesPath,
+      fetchImpl, spawnImpl,
+      execFileImpl: async () => { throw new Error('no reg'); }
+    });
+    const start = await service.download(checkResult({ sha256: digest }));
+    assert.equal(start.ok, true);
+    const progress = await pollUntil(service, item => item.state === 'ready' || item.state === 'error');
+    assert.equal(progress.state, 'ready', progress.error);
+    assert.equal(spawnCount, 0);
+    await fs.access(path.join(updatesDir, 'LingBuilder-9.9.9-x64.exe'));
+    await assert.rejects(fs.access(path.join(updatesDir, 'LingBuilder-9.9.9-x64.exe.part')));
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('download auto-retries once when aria2c hits a transient file-lock exit code', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-update-'));
+  const updatesDir = path.join(dir, 'updates');
+  const payload = crypto.randomBytes(32 * 1024);
+  const digest = crypto.createHash('sha256').update(payload).digest('hex');
+  const resourcesPath = path.join(dir, 'resources');
+  await makeFakeAria2cAvailable(resourcesPath);
+  try {
+    const fetchImpl = (async (_url: any, init: any) => new Response(null, { status: 200, headers: { 'content-length': String(payload.length) } })) as typeof fetch;
+    let spawnCount = 0;
+    const spawnImpl = ((_command: string, args: string[]) => {
+      spawnCount += 1;
+      const child = new FakeChild();
+      setTimeout(() => {
+        const out = args.find(item => item.startsWith('--out='))?.slice('--out='.length) || '';
+        const dirArg = args.find(item => item.startsWith('--dir='))?.slice('--dir='.length) || '';
+        const attempt = spawnCount;
+        void fs.writeFile(path.join(dirArg, out), attempt >= 2 ? payload : payload.subarray(0, 1024))
+          .then(() => child.emitClose(attempt >= 2 ? 0 : 15));
+      }, 10);
+      return child as unknown as UpdaterChildProcess;
+    }) as unknown as typeof spawn;
+    const service = new UpdateDownloadService({
+      updatesDir, isPackaged: true,
+      resourcesPath,
+      fetchImpl, spawnImpl,
+      execFileImpl: async () => { throw new Error('no reg'); }
+    });
+    await service.download(checkResult({ sha256: digest }));
+    const progress = await pollUntil(service, item => item.state === 'ready' || item.state === 'error', 15_000);
+    assert.equal(progress.state, 'ready', progress.error);
+    assert.equal(spawnCount, 2);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('download surfaces Chinese diagnostics when the file-lock retry is exhausted', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-update-'));
+  const updatesDir = path.join(dir, 'updates');
+  const payload = crypto.randomBytes(32 * 1024);
+  const digest = crypto.createHash('sha256').update(payload).digest('hex');
+  const resourcesPath = path.join(dir, 'resources');
+  await makeFakeAria2cAvailable(resourcesPath);
+  try {
+    const fetchImpl = (async (_url: any, init: any) => new Response(null, { status: 200, headers: { 'content-length': String(payload.length) } })) as typeof fetch;
+    let spawnCount = 0;
+    const spawnImpl = ((_command: string, args: string[]) => {
+      spawnCount += 1;
+      const child = new FakeChild();
+      setTimeout(() => {
+        const out = args.find(item => item.startsWith('--out='))?.slice('--out='.length) || '';
+        const dirArg = args.find(item => item.startsWith('--dir='))?.slice('--dir='.length) || '';
+        void fs.writeFile(path.join(dirArg, out), payload.subarray(0, 1024)).then(() => child.emitClose(15));
+      }, 10);
+      return child as unknown as UpdaterChildProcess;
+    }) as unknown as typeof spawn;
+    const service = new UpdateDownloadService({
+      updatesDir, isPackaged: true,
+      resourcesPath,
+      fetchImpl, spawnImpl,
+      execFileImpl: async () => { throw new Error('no reg'); }
+    });
+    await service.download(checkResult({ sha256: digest }));
+    const progress = await pollUntil(service, item => item.state === 'ready' || item.state === 'error', 15_000);
+    assert.equal(progress.state, 'error');
+    assert.match(progress.error || '', /无法打开已下载的文件.*退出码 15/u);
+    assert.match(progress.error || '', /已保留下载进度/u);
+    assert.equal(spawnCount, 2);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('download recovers via copy fallback when a real file lock blocks the rename', { timeout: 60_000 }, async () => {
+  if (process.platform !== 'win32') return;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-update-lock-'));
+  const updatesDir = path.join(dir, 'updates');
+  const payload = crypto.randomBytes(64 * 1024);
+  const digest = crypto.createHash('sha256').update(payload).digest('hex');
+  const resourcesPath = path.join(dir, 'resources');
+  await makeFakeAria2cAvailable(resourcesPath);
+  const partPath = path.join(updatesDir, 'LingBuilder-9.9.9-x64.exe.part');
+  await fs.mkdir(updatesDir, { recursive: true });
+  await fs.writeFile(partPath, payload);
+  // 用 PowerShell 以共享读方式持有 .part：内容可读、rename 被拒，等价于杀毒软件扫描占用。
+  const lockMarker = path.join(dir, 'lock-established.flag');
+  const lockChild = spawn('powershell.exe', [
+    '-NoProfile', '-Command',
+    `$f=[IO.File]::Open('${partPath.replace(/'/gu, "''")}','Open','Read','Read'); ` +
+    `New-Item -ItemType File -Path '${lockMarker.replace(/'/gu, "''")}' -Force | Out-Null; Start-Sleep -Seconds 16; $f.Close()`
+  ], { stdio: 'ignore' });
+  try {
+    let locked = false;
+    for (let probe = 0; probe < 80 && !locked; probe += 1) {
+      locked = await fs.access(lockMarker).then(() => true).catch(() => false);
+      if (!locked) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    assert.equal(locked, true, '未能建立 PowerShell 文件锁');
+    const fetchImpl = (async (_url: any, init: any) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 200, headers: { 'content-length': String(payload.length) } }) as any;
+      throw new Error('downloader must not fetch on the fast path');
+    }) as typeof fetch;
+    const spawnImpl = (() => { throw new Error('downloader must not spawn on the fast path'); }) as unknown as typeof spawn;
+    const service = new UpdateDownloadService({
+      updatesDir, isPackaged: true,
+      resourcesPath,
+      fetchImpl, spawnImpl,
+      execFileImpl: async () => { throw new Error('no reg'); }
+    });
+    const start = await service.download(checkResult({ sha256: digest }));
+    assert.equal(start.ok, true);
+    const progress = await pollUntil(service, item => item.state === 'ready' || item.state === 'error', 45_000);
+    assert.equal(progress.state, 'ready', progress.error);
+    assert.equal(await verifyInstallerSha256(path.join(updatesDir, 'LingBuilder-9.9.9-x64.exe'), digest), true);
+  } finally {
+    await Promise.race([
+      new Promise<void>(resolve => lockChild.once('close', () => resolve())),
+      new Promise<void>(resolve => setTimeout(resolve, 25_000))
+    ]);
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });

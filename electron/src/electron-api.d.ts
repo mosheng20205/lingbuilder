@@ -208,12 +208,17 @@ declare global {
         onEvent: (listener: (requestKey: string, event: any) => void) => () => void;
       };
       updates?: {
-        check: () => Promise<{ ok: boolean; currentVersion: string; latestVersion?: string; releaseTitle?: string; hasUpdate: boolean; websiteUrl: string; downloadUrl?: string | null; sha256?: string | null; fileSize?: string | null; releaseNotes?: string | null; channel?: string | null; error?: string }>;
+        check: (payload?: { channel?: 'stable' | 'preview' }) => Promise<{ ok: boolean; currentVersion: string; latestVersion?: string; releaseTitle?: string; hasUpdate: boolean; websiteUrl: string; downloadUrl?: string | null; sha256?: string | null; fileSize?: string | null; releaseNotes?: string | null; channel?: string | null; error?: string }>;
         download: () => Promise<{ ok: boolean; alreadyRunning?: boolean; alreadyDownloaded?: boolean; error?: string }>;
         cancel: () => Promise<{ ok: boolean }>;
         status: () => Promise<AppUpdateProgressSnapshot | null>;
         install: () => Promise<{ ok: boolean; error?: string }>;
         onProgress: (listener: (progress: AppUpdateProgressSnapshot) => void) => () => void;
+      };
+      betaProgram?: {
+        status: () => Promise<{ ok: boolean; authenticated?: boolean; enrolled: boolean; status?: string | null; validUntil?: string | null; previewSuspended: boolean; application: { status: string; rejectReason: string; updatedAt?: string } | null }>;
+        apply: (message?: string) => Promise<{ ok: boolean; application?: { status: string } ; error?: string }>;
+        cancelApplication: () => Promise<{ ok: boolean; error?: string }>;
       };
       payments?: {
         openPage: (url: string) => Promise<string>;

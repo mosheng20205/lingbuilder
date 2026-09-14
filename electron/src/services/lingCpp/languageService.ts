@@ -266,6 +266,11 @@ export function getLingCppFoldingRanges(source: string): LingCppFoldingRange[] {
   return dedupeFoldingRanges(ranges);
 }
 
+export interface LingCppSemanticDiagnosticOptions {
+  /** 无设计器上下文时跳过依赖设计器符号的控件引用诊断（见 controlReferenceService 同名选项）。 */
+  suppressDesignerControlDiagnostics?: boolean;
+}
+
 export function getLingCppSemanticDiagnostics(
   source: string,
   designerProject?: LingWindowProject,
@@ -273,7 +278,8 @@ export function getLingCppSemanticDiagnostics(
   moduleContext?: LingCppModuleContext,
   projectGlobals?: LingCppProjectGlobalContext,
   projectTypes?: LingCppProjectTypeContext,
-  projectFunctions?: LingCppProjectFunctionContext
+  projectFunctions?: LingCppProjectFunctionContext,
+  options?: LingCppSemanticDiagnosticOptions
 ): LingCppDiagnostic[] {
   const parsed = parseLingCpp(source);
   // 类名集合与解析结果同源共享：控件符号与设计器窗口选择都不得再次全文解析。
@@ -287,7 +293,9 @@ export function getLingCppSemanticDiagnostics(
   )));
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
   diagnostics.push(...getModuleHandlerDiagnostics(source, parsed.program, moduleContext));
-  diagnostics.push(...getLingCppControlReferenceDiagnostics(source, designerProject, moduleContext, filePath));
+  diagnostics.push(...getModuleRawParameterDiagnostics(source, moduleContext));
+  diagnostics.push(...getLingCppControlReferenceDiagnostics(source, designerProject, moduleContext, filePath,
+    options?.suppressDesignerControlDiagnostics ? { skipUnresolvedDesignerReferences: true } : undefined));
   const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
   diagnostics.push(...getThreadingDiagnostics(source, parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
@@ -2674,7 +2682,8 @@ function getVariableDiagnostics(
           }
           return;
         }
-        const readOnlyTarget = statement.text.trim().match(/^([\p{L}_][\p{L}\p{N}_]*)(?:\s*(?:\.\s*[\p{L}_][\p{L}\p{N}_]*|\[[^\]]+\]))*\s*[=＝](?!=)/u);
+        const statementTextMasked = statement.text.replace(/"(?:\\.|[^"\\])*"|“[^”]*”/gu, '""');
+        const readOnlyTarget = statementTextMasked.trim().match(/^([\p{L}_][\p{L}\p{N}_]*)(?:\s*(?:\.\s*[\p{L}_][\p{L}\p{N}_]*|\[[^\]]+\]))*\s*[=＝](?!=)/u);
         if (readOnlyTarget?.[1]) {
           const localConstant = orderedLocals.find(local => (
             local.isConstant
@@ -2686,7 +2695,7 @@ function getVariableDiagnostics(
             return;
           }
         }
-        const assignment = statement.text.trim().match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
+        const assignment = statementTextMasked.trim().match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*[=＝](?!=)/u);
         if (!assignment) return;
         const targetPath = (assignment[1] || '').split(/\s*\.\s*/u);
         const targetName = targetPath[0] || '';
@@ -3129,10 +3138,46 @@ function getModuleHandlerDiagnostics(source: string, program: LingCppProgram, mo
   return diagnostics;
 }
 
+/** raw 参数是 UTF-8 字节指针+长度 ABI（new_emoji 底层导出等）；.lcpp 字符串会编译为
+ * 宽字符指针，直接传入必然 MSVC C2664 编译失败。编辑期给出阻断诊断并提示改用高层命令。 */
+function getModuleRawParameterDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const lines = splitLines(source);
+  getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
+    (module.manifest.bindings?.commands || []).forEach(binding => {
+      const rawIndexes = (binding.parameters || [])
+        .map((parameter, index) => parameter.type === 'raw' ? index : -1)
+        .filter(index => index >= 0);
+      if (rawIndexes.length === 0) return;
+      const aliases = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [];
+      [binding.command, ...aliases].forEach(commandName => lines.forEach((line, lineIndex) => {
+        if (isLingCppCommentLine(line.trim())) return;
+        extractCommandInvocationArguments(line, commandName).forEach(args => rawIndexes.forEach(index => {
+          const value = args[index]?.trim();
+          const parameter = binding.parameters?.[index];
+          if (!value && parameter?.optional) return;
+          if (parseStringLiteralArgument(value)) {
+            diagnostics.push({
+              id: `lingcpp-raw-bytes-argument-${binding.command}-${lineIndex + 1}-${index}`,
+              line: lineIndex + 1,
+              level: 'error',
+              message: `命令 ${binding.command} 的参数 ${parameter?.name || `第 ${index + 1} 个`} 是 UTF-8 字节指针，不能直接传字符串（生成 C++ 无法编译）。`,
+              codeSnippet: line,
+              suggestion: '请改用模块提供的宽字符高层命令（如 NE表格_/NE富列表_/NE菜单_/NE徽标_/NE_显示消息框 系列）；底层 NE_EU_* 命令仅用于句柄与数值类高级调用。'
+            });
+          }
+        }));
+      }));
+    });
+  });
+  return diagnostics;
+}
+
 function containsCommandInvocation(line: string, commandName: string): boolean {
   if (!commandName || !line.includes(commandName)) return false;
-  const escaped = commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`${escaped}\\s*[（(]`, 'u').test(line);
+  const escaped = commandName.replace(/[.*?+{}()[\]\\]/g, '\\$&');
+  // 命令名前必须是非标识符字符：否则 NE_显示消息框 会被当作 显示消息框 的调用（子串误匹配）。
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}\\s*[（(]`, 'u').test(line);
 }
 
 function collectModuleCallbackHandlerNames(source: string, moduleContext?: LingCppModuleContext): Set<string> {
@@ -3282,8 +3327,9 @@ function validateArrayCommandInvocation(
 
 function extractCommandInvocationArguments(source: string, commandName: string): string[][] {
   if (!commandName) return [];
-  const escaped = commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`${escaped}\\s*[（(]`, 'gu');
+  const escaped = commandName.replace(/[.*?+{}()[\]\\]/g, '\\$&');
+  // 命令名前必须是非标识符字符：否则 NE_显示消息框 会被当作 显示消息框 的调用（子串误匹配）。
+  const pattern = new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}\\s*[（(]`, 'gu');
   const invocations: string[][] = [];
   let match: RegExpExecArray | null;
 

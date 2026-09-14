@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { ExternalProjectService, validateProperties } from '../src/services/solution/externalProjectService';
+import { ExternalProjectService, resolveExecutableNameParts, validateProperties } from '../src/services/solution/externalProjectService';
 
 test('external project inspection recognizes CMake and MSBuild metadata inside the workspace', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-import-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -71,4 +71,21 @@ test('external builds forward cancellation to every controlled child process', a
   await service.build(project, controller.signal);
   assert.equal(seenSignals.length, 2);
   assert.equal(seenSignals.every(signal => signal === controller.signal), true);
+});
+
+test('resolveExecutableNameParts normalizes, defaults and rejects illegal names', () => {
+  assert.deepEqual(resolveExecutableNameParts(undefined), { baseName: 'LingBuilderPreview', fileName: 'LingBuilderPreview.exe' });
+  assert.deepEqual(resolveExecutableNameParts(''), { baseName: 'LingBuilderPreview', fileName: 'LingBuilderPreview.exe' });
+  assert.deepEqual(resolveExecutableNameParts('  灵集应用市场.exe '), { baseName: '灵集应用市场', fileName: '灵集应用市场.exe' });
+  assert.deepEqual(resolveExecutableNameParts('My.App'), { baseName: 'My.App', fileName: 'My.App.exe' });
+  assert.throws(() => resolveExecutableNameParts('a/b.exe'), /不合法/u);
+  assert.throws(() => resolveExecutableNameParts('a'+String.fromCharCode(92)+'b'), /不合法/u);
+  assert.throws(() => resolveExecutableNameParts(':'.repeat(65)), /不合法/u);
+});
+
+test('validateProperties accepts an optional executableName and rejects illegal values', () => {
+  validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: '灵集应用市场' });
+  validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: '' });
+  assert.throws(() => validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: 'bad<name' }), /可执行文件名不合法/u);
+  assert.throws(() => validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: 42 as unknown as string }), /项目可执行文件名无效/u);
 });

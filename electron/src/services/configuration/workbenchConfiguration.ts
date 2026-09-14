@@ -21,6 +21,9 @@ export const WORKBENCH_CONFIGURATION_KEYS = [
   'editor.experienceMode',
   'files.autoSave',
   'files.autoSaveDelay',
+  'updates.autoCheck',
+  'updates.experienceChannel',
+  'updates.skippedVersion',
   'workbench.colorTheme',
   'workbench.sidebar.visible',
   'workbench.sidebar.width',
@@ -32,7 +35,7 @@ export const WORKBENCH_CONFIGURATION_KEYS = [
 
 export type WorkbenchConfigurationKey = typeof WORKBENCH_CONFIGURATION_KEYS[number];
 
-export type WorkbenchConfigurationCategory = '编辑器' | '工作台' | '键盘快捷键';
+export type WorkbenchConfigurationCategory = '编辑器' | '工作台' | '更新' | '键盘快捷键';
 
 export interface WorkbenchConfigurationEnumOption {
   value: string;
@@ -72,6 +75,18 @@ export const WORKBENCH_CONFIGURATION_SCHEMA: ConfigurationSchema = {
   'files.autoSaveDelay': {
     type: 'integer', default: 1200, minimum: 300, maximum: 10000,
     description: '自动保存延迟，单位为毫秒。'
+  },
+  'updates.autoCheck': {
+    type: 'boolean', default: true,
+    description: '启动及运行期间自动联网检查稳定版更新；关闭后仍可在帮助菜单手动检查。'
+  },
+  'updates.experienceChannel': {
+    type: 'boolean', default: false,
+    description: '接收预览渠道更新（抢先体验）。需要登录并已加入体验计划，云端会校验资格，无资格时自动回落稳定渠道。'
+  },
+  'updates.skippedVersion': {
+    type: 'string', default: '', maxLength: 40,
+    description: '用户选择跳过的稳定版版本号；该版本只保留标题栏徽标提示，不再弹窗打扰。'
   },
   'workbench.colorTheme': {
     type: 'string',
@@ -121,6 +136,7 @@ export const WORKBENCH_CONFIGURATION_SCHEMA: ConfigurationSchema = {
 };
 
 const USER_AND_WORKSPACE_TARGETS = ['user', 'workspace'] as const;
+const USER_ONLY_TARGETS = ['user'] as const;
 
 export const WORKBENCH_CONFIGURATION_METADATA: readonly WorkbenchConfigurationMetadata[] = [
   {
@@ -156,6 +172,21 @@ export const WORKBENCH_CONFIGURATION_METADATA: readonly WorkbenchConfigurationMe
     key: 'files.autoSaveDelay', category: '编辑器', title: '自动保存延迟',
     description: '自动保存前等待的毫秒数（300-10000）。', targets: USER_AND_WORKSPACE_TARGETS,
     minimum: 300, maximum: 10000
+  },
+  {
+    key: 'updates.autoCheck', category: '更新', title: '自动检查更新',
+    description: '启动及运行期间自动联网检查稳定版更新；关闭后可在「帮助 → 检查更新」手动检查。',
+    targets: USER_ONLY_TARGETS
+  },
+  {
+    key: 'updates.experienceChannel', category: '更新', title: '接收预览版更新（抢先体验）',
+    description: '加入体验计划后可开启；预览版发布频繁，可能不稳定，建议先备份项目。云端校验资格，无资格时自动回落稳定渠道。',
+    targets: USER_ONLY_TARGETS
+  },
+  {
+    key: 'updates.skippedVersion', category: '更新', title: '已跳过的稳定版版本号',
+    description: '在更新提示中选择「跳过此版本」时自动记录；该版本不再弹窗，只保留标题栏徽标。',
+    targets: USER_ONLY_TARGETS
   },
   {
     key: 'workbench.colorTheme',

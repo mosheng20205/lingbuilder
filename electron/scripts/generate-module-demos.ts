@@ -26,7 +26,6 @@ const MAX_TABS = 12;
 const PREFERRED_COMMANDS_PER_TAB = 20;
 const EXTERNAL_MODULE_IDS = [
   'lingbuilder.new_emoji.ui',
-  'lingbuilder.web.http',
   'lingbuilder.cef3.sdk',
   'lingbuilder.fbro.sdk',
   'lingbuilder.crypto.sdk'

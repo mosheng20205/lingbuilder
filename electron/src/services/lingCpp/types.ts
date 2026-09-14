@@ -614,9 +614,11 @@ export type LingCppAstEdit =
   | { kind: 'add-event'; className?: string; event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string } }
   | { kind: 'update-event'; className?: string; handlerName: string; newHandlerName?: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string }
   | { kind: 'delete-event'; className?: string; handlerName: string }
-  | { kind: 'add-method'; className?: string; method: { name: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string } }
+  | { kind: 'add-method'; className?: string; insertAfterMethodName?: string; method: { name: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string } }
   | { kind: 'update-method-signature'; className?: string; methodName: string; newName?: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; note?: string }
   | { kind: 'delete-method'; className?: string; methodName: string }
+  | { kind: 'move-method'; className?: string; methodName: string; direction: 'up' | 'down' }
+  | { kind: 'insert-method-block'; className?: string; blockLines: string[]; access: LingCppAccessModifier; insertAfterMethodName?: string }
   | { kind: 'update-method-body'; className?: string; methodName: string; bodyLines: string[]; localStatementAnchors?: Record<string, number> }
   | { kind: 'update-note'; line: number; note: string };
 

@@ -48,6 +48,8 @@ export interface VisualStudioProjectExportOptions {
    * 缺省时 exportVisualStudioProject 会探测本机最新安装的工具集；探测失败回退 v143。
    */
   platformToolset?: string;
+  /** 可选：vcxproj TargetName（决定 VS 构建产物 exe 名，不含 .exe 后缀）；缺省沿用 projectName。 */
+  executableBaseName?: string;
 }
 
 const WINDOWS_GUID = '8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942';
@@ -128,7 +130,8 @@ export function createVisualStudioProjectExportContent(
           extraPreprocessorDefinitions: usesProtobufSdk(options.enabledModules) ? ['PROTOBUF_USE_DLLS', 'ABSL_CONSUME_DLL'] : [],
           projectKind: options.projectKind || 'application',
           definitionFile: options.definitionFile,
-          x64Only
+          x64Only,
+          executableBaseName: options.executableBaseName
         })
       },
       { relativePath: `${projectName}.vcxproj.filters`, content: generateFilters(getSourceFiles(projectFiles, options.enabledModules), resourceFiles, noneFiles) }
@@ -285,6 +288,7 @@ function generateSolution(projectName: string, projectGuid: string, x64Only = fa
 }
 
 function generateVcxproj(options: {
+  executableBaseName?: string;
   projectGuid: string;
   projectName: string;
   platformToolset: string;
@@ -365,7 +369,7 @@ function generateVcxproj(options: {
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{${options.projectGuid}}</ProjectGuid>
     <RootNamespace>${xmlEscape(options.projectName)}</RootNamespace>
-    <TargetName>${xmlEscape(options.projectName)}</TargetName>
+    <TargetName>${xmlEscape(options.executableBaseName || options.projectName)}</TargetName>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props" />

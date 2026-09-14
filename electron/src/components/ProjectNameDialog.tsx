@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useRef } from 'react';
+import React, { FormEvent, useEffect, useRef, useState } from 'react';
 
 interface ProjectNameDialogProps {
   open: boolean;
@@ -25,6 +25,11 @@ interface ProjectNameDialogProps {
   onChange: (value: string) => void;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
+  /**
+   * 可选：busy 期间的「取消等待」回调。提供后，busy 时取消按钮与 Esc 键不再被禁用，
+   * 点击会中止等待并关闭对话框；不提供时保持旧行为（busy 期间禁止关闭）。
+   */
+  onCancelBusy?: () => void;
 }
 
 export default function ProjectNameDialog({
@@ -49,9 +54,11 @@ export default function ProjectNameDialog({
   locationHint,
   onChange,
   onConfirm,
-  onClose
+  onClose,
+  onCancelBusy
 }: ProjectNameDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [showUnresponsiveHint, setShowUnresponsiveHint] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -61,6 +68,24 @@ export default function ProjectNameDialog({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
+
+  useEffect(() => {
+    // busy 超过 10 秒仍未完成时提示本地服务无响应，等待结束后自动复位。
+    if (!open || !busy) {
+      setShowUnresponsiveHint(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowUnresponsiveHint(true), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [busy, open]);
+
+  const cancelDialog = () => {
+    if (busy && onCancelBusy) {
+      onCancelBusy();
+      return;
+    }
+    onClose();
+  };
 
   if (!open) return null;
 
@@ -83,9 +108,11 @@ export default function ProjectNameDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby={dialogId}
-      onKeyDown={event => {
-        if (event.key === 'Escape' && !busy) onClose();
-      }}
+        onKeyDown={event => {
+          if (event.key !== 'Escape') return;
+          if (busy && !onCancelBusy) return;
+          cancelDialog();
+        }}
     >
       <form
         onSubmit={submit}
@@ -145,14 +172,20 @@ export default function ProjectNameDialog({
           )}
         </div>
 
+        {busy && showUnresponsiveHint && (
+          <p role="status" className={`px-4 pb-3 text-[11px] ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}>
+            仍在等待本地服务响应；若持续无响应，请检查 LingBuilder Local Service 进程，或点击「取消等待」放弃。
+          </p>
+        )}
+
         <div className={`flex justify-end gap-2 border-t px-4 py-3 ${isDarkMode ? 'border-[#35353c]' : 'border-slate-200'}`}>
           <button
             type="button"
-            disabled={busy}
-            onClick={onClose}
+            disabled={busy && !onCancelBusy}
+            onClick={cancelDialog}
             className="rounded border border-current/20 px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
           >
-            取消
+            {busy && onCancelBusy ? '取消等待' : '取消'}
           </button>
           <button
             type="submit"

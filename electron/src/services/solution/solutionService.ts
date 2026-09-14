@@ -418,14 +418,19 @@ export class SolutionService {
   }
 
   async readDesignerProject(project: LingBuilderSolutionProject): Promise<LingWindowProject> {
+    return (await this.readDesignerProjectSnapshot(project)).project;
+  }
+
+  /** 读取设计器模型并标注是否真实落盘：persisted=false 表示文件缺失或无效，返回的是兜底空模型。 */
+  async readDesignerProjectSnapshot(project: LingBuilderSolutionProject): Promise<{ project: LingWindowProject; persisted: boolean }> {
     const designerPath = this.resolveWorkspacePath(project.designerPath);
     if (await exists(designerPath)) {
       const parsed = JSON.parse(await fs.readFile(designerPath, 'utf8')) as LingWindowProject;
       if (parsed && Array.isArray(parsed.windows) && parsed.windows.length > 0) {
-        return { ...parsed, id: parsed.id || project.id, name: parsed.name || project.name };
+        return { project: { ...parsed, id: parsed.id || project.id, name: parsed.name || project.name }, persisted: true };
       }
     }
-    return createDesignerProject(project.id, project.name);
+    return { project: createDesignerProject(project.id, project.name), persisted: false };
   }
 
   async readProjectFiles(project: LingBuilderSolutionProject): Promise<Record<string, string>> {

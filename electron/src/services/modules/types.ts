@@ -52,9 +52,17 @@ export interface ModuleDesignerRuntimeMapping {
   createReturnType?: string;
   createParameters?: ModuleDesignerRuntimeParameter[];
   propertyCommands?: Record<string, string>;
+  propertyBridgeCommands?: ModuleDesignerPropertyBridgeCommand[];
   eventCommands?: Record<string, string>;
   propertySetters?: ModuleDesignerPropertySetterMapping[];
   eventBindings?: ModuleDesignerEventBindingMapping[];
+}
+
+export interface ModuleDesignerPropertyBridgeCommand {
+  command: string;
+  type: string;
+  eu: string;
+  args: Array<{ kind: 'hwnd' | 'id' | 'utf8' | 'utf8len' | 'int' | 'float' | 'literal'; param?: number; value?: string | number; scale?: number }>;
 }
 
 export type ModuleRuntimeControlParentKind = 'window' | 'container' | 'tabPage';

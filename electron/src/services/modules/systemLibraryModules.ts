@@ -181,7 +181,8 @@ const mouse = createStandardModule({
 
 const windowUtils = createStandardModule({
   id: 'lingbuilder.win32.window-utils', name: 'Win32窗口操作模块', category: '界面',
-  description: '通过 HWND 安全封装常用窗口查找、标题、显示和位置操作。', tags: ['窗口', 'Win32'],
+  description: '通过 HWND 安全封装常用窗口查找、标题、显示和位置操作，并提供无边框窗口的拖拽与边缘缩放入口。', tags: ['窗口', 'Win32', '无边框'],
+  docs: [{ title: 'Win32窗口操作模块使用说明', path: 'docs/modules/win32-window-utils/README.md' }],
   commands: [
     command('窗口_按标题查找', [{ name: '标题', type: 'wideString' }], 'handle', '按完整窗口标题查找顶层窗口。'),
     command('窗口_句柄是否有效', [{ name: '窗口句柄', type: 'handle' }], 'bool', '判断 HWND 是否仍然有效。'),
@@ -189,7 +190,11 @@ const windowUtils = createStandardModule({
     command('窗口_设置标题', [{ name: '窗口句柄', type: 'handle' }, { name: '标题', type: 'wideString' }], 'bool', '设置窗口标题。'),
     command('窗口_显示', [{ name: '窗口句柄', type: 'handle' }, { name: '显示方式', type: 'int' }], 'bool', '按 Win32 SW_* 编号显示、隐藏、最小化或最大化窗口。'),
     command('窗口_移动', [{ name: '窗口句柄', type: 'handle' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }], 'bool', '移动窗口并设置尺寸。'),
-    command('窗口_置前台', [{ name: '窗口句柄', type: 'handle' }], 'bool', '请求将窗口切换到前台。')
+    command('窗口_置前台', [{ name: '窗口句柄', type: 'handle' }], 'bool', '请求将窗口切换到前台。'),
+    command('窗口_是否最大化', [{ name: '窗口句柄', type: 'handle' }], 'bool', '判断窗口当前是否处于最大化（IsZoomed）状态。', '窗口_是否最大化(窗口句柄)'),
+    command('窗口_取边界JSON', [{ name: '窗口句柄', type: 'handle' }], 'wideString', '以 JSON 返回窗口屏幕边界（物理像素）：{"x":0,"y":0,"width":0,"height":0}；窗口无效时返回 {}。', '窗口_取边界JSON(窗口句柄)'),
+    command('窗口_开始拖拽', [{ name: '窗口句柄', type: 'handle' }], 'bool', '对无边框窗口启动系统标题栏拖拽：向窗口发送 WM_NCLBUTTONDOWN(HTCAPTION)，进入系统移动循环，直到用户松开鼠标。适合在网页自绘标题栏的 mousedown 处理器里经浏览器桥调用；调用量较大的界面建议节流。', '窗口_开始拖拽(窗口句柄)'),
+    command('窗口_开始边缘缩放', [{ name: '窗口句柄', type: 'handle' }, { name: '边缘代码', type: 'int' }], 'bool', '对无边框窗口启动系统边缘缩放：向窗口发送 WM_NCLBUTTONDOWN 并携带 Win32 命中代码。边缘代码：10 左、11 右、12 上、13 左上、14 右上、15 下、16 左下、17 右下；其它值返回假。', '窗口_开始边缘缩放(窗口句柄, 17)')
   ]
 });
 

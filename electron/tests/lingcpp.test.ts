@@ -42,7 +42,7 @@ import {
   getReadableEventName,
   lingCppLanguageService
 } from '../src/services/lingCpp/languageService';
-import { applyLingCppAstEdit } from '../src/services/lingCpp/astEditService';
+import { applyLingCppAstEdit, getLingCppMethodBlock } from '../src/services/lingCpp/astEditService';
 import { createProjectGlobalContext, getProjectGlobalDiagnostics } from '../src/services/lingCpp/projectGlobalService';
 import { createProjectConstantRenameProposal, findProjectConstantReferences, getProjectConstantNameAtCursor } from '../src/services/lingCpp/projectConstantReferenceService';
 import {
@@ -58,12 +58,12 @@ import {
   resolveBeginnerTypeAlias
 } from '../src/services/lingCpp/beginnerTypeCompletion';
 import { createBeginnerVariableCompletion } from '../src/services/lingCpp/beginnerVariableCompletion';
-import { selectCompletionFilterText } from '../src/services/lingCpp/completionSearchAliases';
+import { buildChineseCompletionSearchAliases, selectCompletionFilterText } from '../src/services/lingCpp/completionSearchAliases';
 import {
   getBeginnerProcedureCallAtCursor,
   resolveBeginnerProcedureDefinition
 } from '../src/services/lingCpp/beginnerDefinitionNavigation';
-import { formatBeginnerFlowIndentation, getBeginnerIfFlowGuideRows, getBeginnerNextLineIndentation, parseBeginnerIfBlocks } from '../src/services/lingCpp/beginnerFlowGuide';
+import { formatBeginnerFlowIndentation, getBeginnerCrossSegmentFlowFolds, getBeginnerIfFlowGuideRows, getBeginnerNextLineIndentation, parseBeginnerIfBlocks } from '../src/services/lingCpp/beginnerFlowGuide';
 import { getBeginnerTextOffsetAtPoint } from '../src/services/lingCpp/beginnerTextPosition';
 import {
   applyPendingBeginnerCodeDrafts,
@@ -2630,6 +2630,202 @@ test('LingCpp AST edit service adds and deletes members and events for structure
   assert.equal(removedMethod.sourceCode.includes('临时子程序'), false);
 });
 
+const methodLayoutSource = `包 方法布局
+使用 Win32窗口
+
+类 方法窗体
+公开:
+    空 公开一()
+        调试输出("一")
+
+    空 公开二()
+        调试输出("二")
+
+私有:
+    空 私有一()
+        调试输出("三")
+
+    事件 _按钮_被单击()
+        调试输出("点击")
+结束类`;
+
+test('LingCpp AST edit service inserts methods after an anchor while keeping access sections intact', () => {
+  // 锚点插入：新子程序出现在锚点方法之后，而不是类末尾
+  const anchored = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'add-method',
+    className: '方法窗体',
+    insertAfterMethodName: '公开一',
+    method: {
+      name: '紧跟新增',
+      returnType: '空',
+      bodyLines: ['调试输出("紧跟")'],
+      note: '新手模式在当前子程序下方新增'
+    }
+  });
+  assert.equal(anchored.success, true);
+  const anchoredLines = anchored.sourceCode.split(/\r?\n/);
+  const lineOf = (name: string) => anchoredLines.findIndex(line => line.includes(` ${name}(`));
+  const anchorLine = lineOf('公开一');
+  assert.equal(lineOf('紧跟新增'), anchorLine + 4);
+  assert.ok(anchoredLines[anchorLine + 3].includes('// 新手模式在当前子程序下方新增'));
+  assert.ok(lineOf('公开二') > lineOf('紧跟新增'), '锚点之后的原有方法应保持在新方法后面');
+  const anchoredParsed = parseLingCpp(anchored.sourceCode);
+  assert.equal(anchoredParsed.diagnostics.some(diagnostic => diagnostic.level === 'error'), false);
+  assert.equal(anchoredParsed.program.classes[0].methods.find(method => method.name === '紧跟新增')?.access, '公开', '无显式访问时继承锚点所在访问段');
+
+  // 跨访问段锚点插入：插入私有子程序后，后续公开方法的访问段必须被恢复
+  const crossSection = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'add-method',
+    className: '方法窗体',
+    insertAfterMethodName: '公开二',
+    method: {
+      name: '内部辅助',
+      returnType: '空',
+      access: '私有',
+      bodyLines: ['调试输出("内部")']
+    }
+  });
+  assert.equal(crossSection.success, true);
+  const crossParsed = parseLingCpp(crossSection.sourceCode);
+  assert.equal(crossParsed.diagnostics.some(diagnostic => diagnostic.level === 'error'), false);
+  const crossMethods = crossParsed.program.classes[0].methods;
+  assert.equal(crossMethods.find(method => method.name === '公开二')?.access, '公开');
+  assert.equal(crossMethods.find(method => method.name === '内部辅助')?.access, '私有');
+  assert.equal(crossMethods.find(method => method.name === '私有一')?.access, '私有');
+  assert.equal(crossMethods.find(method => method.name === '_按钮_被单击')?.access, '私有');
+
+  // 未提供锚点时保持原行为：追加到类末尾
+  const appended = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'add-method',
+    className: '方法窗体',
+    method: { name: '末尾新增', returnType: '空', bodyLines: ['调试输出("末尾")'] }
+  });
+  assert.equal(appended.success, true);
+  const appendedLines = appended.sourceCode.split(/\r?\n/);
+  assert.ok(appendedLines.findIndex(line => line.includes(' 末尾新增(')) > appendedLines.findIndex(line => line.includes('结束类') || line.includes('_按钮_被单击(')));
+});
+
+test('LingCpp AST edit service moves subprograms up and down without changing their access', () => {
+  // 同访问段内上移：块整体与上一个方法换位
+  const movedUp = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'move-method',
+    className: '方法窗体',
+    methodName: '公开二',
+    direction: 'up'
+  });
+  assert.equal(movedUp.success, true);
+  const movedUpParsed = parseLingCpp(movedUp.sourceCode);
+  assert.equal(movedUpParsed.diagnostics.some(diagnostic => diagnostic.level === 'error'), false);
+  const movedUpMethods = movedUpParsed.program.classes[0].methods.filter(method => method.kind === 'method');
+  assert.deepEqual(movedUpMethods.map(method => method.name), ['公开二', '公开一', '私有一']);
+  assert.equal(movedUpMethods.find(method => method.name === '公开二')?.access, '公开');
+
+  // 跨访问段上移：私有一移入公开段后，必须带访问段行并恢复后续方法的段归属
+  const crossMoved = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'move-method',
+    className: '方法窗体',
+    methodName: '私有一',
+    direction: 'up'
+  });
+  assert.equal(crossMoved.success, true);
+  const crossMovedParsed = parseLingCpp(crossMoved.sourceCode);
+  assert.equal(crossMovedParsed.diagnostics.some(diagnostic => diagnostic.level === 'error'), false);
+  const crossMovedMethods = crossMovedParsed.program.classes[0].methods;
+  assert.deepEqual(crossMovedMethods.filter(method => method.kind === 'method').map(method => method.name), ['公开一', '私有一', '公开二']);
+  assert.equal(crossMovedMethods.find(method => method.name === '私有一')?.access, '私有');
+  assert.equal(crossMovedMethods.find(method => method.name === '公开二')?.access, '公开');
+  assert.equal(crossMovedMethods.find(method => method.name === '_按钮_被单击')?.access, '私有');
+
+  // 下移 + 事件处理器不允许移动
+  const movedDown = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'move-method',
+    className: '方法窗体',
+    methodName: '公开一',
+    direction: 'down'
+  });
+  assert.equal(movedDown.success, true);
+  assert.deepEqual(
+    parseLingCpp(movedDown.sourceCode).program.classes[0].methods.filter(method => method.kind === 'method').map(method => method.name),
+    ['公开二', '公开一', '私有一']
+  );
+
+  const eventMove = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'move-method',
+    className: '方法窗体',
+    methodName: '_按钮_被单击',
+    direction: 'up'
+  });
+  assert.equal(eventMove.success, false);
+  assert.ok((eventMove.error || '').includes('事件处理器不支持移动'));
+
+  // 已在边缘时保持原样
+  const edgeMove = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'move-method',
+    className: '方法窗体',
+    methodName: '公开一',
+    direction: 'up'
+  });
+  assert.equal(edgeMove.success, true);
+  assert.equal(edgeMove.sourceCode, methodLayoutSource);
+});
+
+test('LingCpp AST edit service cuts and pastes subprogram blocks with notes preserved', () => {
+  const noteSource = methodLayoutSource.replace(
+    '    空 私有一()',
+    '    // 内部辅助说明\n    // 参数备注 次数：重复次数\n    空 私有一(整数型 次数)'
+  );
+  const block = getLingCppMethodBlock(noteSource, '方法窗体', '私有一');
+  assert.ok(block);
+  assert.equal(block!.access, '私有');
+  assert.equal(block!.blockLines.length, 4);
+  assert.equal(block!.blockLines[0], '    // 内部辅助说明');
+  assert.equal(block!.blockLines[1], '    // 参数备注 次数：重复次数');
+  assert.equal(block!.blockLines[3].trim(), '调试输出("三")');
+
+  // 粘贴到锚点之后：备注行随块移动，访问段保持
+  const pasted = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'insert-method-block',
+    className: '方法窗体',
+    blockLines: block!.blockLines,
+    access: block!.access,
+    insertAfterMethodName: '公开一'
+  });
+  assert.equal(pasted.success, true);
+  const pastedParsed = parseLingCpp(pasted.sourceCode);
+  assert.equal(pastedParsed.diagnostics.some(diagnostic => diagnostic.level === 'error'), false);
+  const pastedMethod = pastedParsed.program.classes[0].methods.find(method => method.name === '私有一');
+  assert.ok(pastedMethod);
+  assert.equal(pastedMethod?.access, '私有', '粘贴保留子程序自身访问属性（补访问段行）');
+  assert.equal(pastedParsed.program.classes[0].methods.find(method => method.name === '公开一')?.access, '公开');
+  assert.equal(pastedParsed.program.classes[0].methods.find(method => method.name === '公开二')?.access, '公开', '粘贴后恢复后续方法的访问段');
+  assert.equal(pastedMethod?.parameters[0]?.name, '次数');
+  const pastedLines = pasted.sourceCode.split(/\r?\n/);
+  const pastedDeclIndex = pastedLines.findIndex(line => line.includes(' 私有一('));
+  assert.ok(pastedLines[pastedDeclIndex - 1].includes('// 参数备注 次数：重复次数'));
+  assert.ok(pastedLines[pastedDeclIndex - 2].includes('// 内部辅助说明'));
+
+  // 粘贴与现有方法重名时由调用方拦截，这里验证纯文本粘贴被拒绝
+  const rejected = applyLingCppAstEdit(methodLayoutSource, {
+    kind: 'insert-method-block',
+    className: '方法窗体',
+    blockLines: ['调试输出("不是子程序")'],
+    access: '私有'
+  });
+  assert.equal(rejected.success, false);
+  assert.equal(rejected.sourceCode, methodLayoutSource);
+
+  // 删除方法时应连同声明备注一起删除
+  const notedSource = methodLayoutSource.replace('    空 公开一()', '    // 公开一备注\n    空 公开一()');
+  const removedWithNote = applyLingCppAstEdit(notedSource, {
+    kind: 'delete-method',
+    className: '方法窗体',
+    methodName: '公开一'
+  });
+  assert.equal(removedWithNote.success, true);
+  assert.equal(removedWithNote.sourceCode.includes('公开一'), false);
+  assert.equal(removedWithNote.sourceCode.includes('// 公开一备注'), false);
+});
+
 test('LingCpp AST edit service adds, updates and deletes method-scoped local variables', () => {
   const added = applyLingCppAstEdit(sampleSource, {
     kind: 'add-local',
@@ -3345,6 +3541,15 @@ test('beginner local and assembly variables expose pinyin completion aliases', (
   assert.match(assembly.detail, /程序集变量/u);
 });
 
+test('beginner subroutine completions expose pinyin initial aliases', () => {
+  assert.ok(buildChineseCompletionSearchAliases('新子程序').includes('xzcx'));
+  assert.ok(buildChineseCompletionSearchAliases('新子程序').includes('xinzichengxu'));
+
+  const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
+  assert.match(source, /buildChineseCompletionSearchAliases\(functionCallName\(target\)\)/u);
+  assert.match(source, /buildChineseCompletionSearchAliases\(target\.method\.name\)/u);
+});
+
 test('beginner editor exposes method-scoped local declarations with variable and constant categories', () => {
   const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
   assert.match(source, /局部声明 · .*变量与只读常量仅在当前子程序内有效/u);
@@ -3388,7 +3593,7 @@ test('beginner editor keeps a parameter entry row for zero-parameter subroutines
   assert.match(source, /const renderParameterCanvas = \(target: BeginnerCodeTarget, visualLine: number\)/u);
   assert.match(source, /填写名称和类型后新增/u);
   assert.match(source, /新增参数并写回子程序签名/u);
-  assert.match(source, /\{ label: '操 作', className: 'w-\[104px\]' \}/u);
+  assert.match(source, /\{ label: '操 作', width: 104 \}/u);
   assert.match(source, /gap-1 whitespace-nowrap rounded border px-1 text-\[10px\]/u);
   assert.match(source, /target\.method\.parameters\.length \+ 1/u);
   assert.match(source, /data-beginner-parameter-type/u);
@@ -3413,6 +3618,39 @@ test('beginner editor defers pointer state synchronization until after the caret
   assert.match(source, /onFocus=\{event => scheduleBeginnerPointerSync/u);
   assert.match(source, /onSelect=\{event => scheduleBeginnerPointerSync/u);
   assert.match(source, /const stateChanged = !previous/u);
+});
+
+test('beginner editor tables support dragging and resetting column widths', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
+  const serviceSource = readFileSync(
+    resolve(process.cwd(), 'src', 'services', 'editor', 'beginnerTableColumnWidths.ts'),
+    'utf8'
+  );
+  // 五类表格统一经 renderInlineTable 以表型 key 接入列宽状态。
+  for (const tableKey of ['declaration', 'process', 'member', 'parameters', 'locals']) {
+    assert.match(source, new RegExp(`renderInlineTable\\(\\s*'${tableKey}',`));
+  }
+  assert.match(source, /const beginBeginnerColumnResize/u);
+  assert.match(source, /role="separator"/u);
+  assert.match(source, /title="拖动调整列宽，双击恢复默认"/u);
+  assert.match(source, /const resetBeginnerColumnWidth/u);
+  assert.match(source, /resolveBeginnerColumnWidths\('process',/u);
+  // 列宽覆盖持久化走独立偏好 service，最小列宽有下限。
+  assert.match(serviceSource, /readBeginnerTableColumnWidthOverrides/u);
+  assert.match(serviceSource, /writeBeginnerTableColumnWidths/u);
+  assert.match(serviceSource, /BEGINNER_TABLE_MIN_COLUMN_WIDTH = 48/u);
+  // 项目变量与项目常量表共用同一列宽偏好 service。
+  const globalsSource = readFileSync(
+    resolve(process.cwd(), 'src', 'components', 'ProjectGlobalVariableEditor.tsx'),
+    'utf8'
+  );
+  for (const tableKey of ['project-globals', 'project-constants']) {
+    assert.match(globalsSource, new RegExp(`'${tableKey}'`));
+  }
+  assert.match(globalsSource, /const beginTableColumnResize/u);
+  assert.match(globalsSource, /title="拖动调整列宽，双击恢复默认"/u);
+  assert.match(globalsSource, /table-fixed/u);
+  assert.doesNotMatch(globalsSource, /min-w-\[96px\]/u);
 });
 
 test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wiring', () => {
@@ -4169,6 +4407,78 @@ test('beginner flow parser marks 如果真 and 计次循环首 as independently 
     ['loop', 2, 4]
   ]);
   assert.equal(blocks[1]?.parent, blocks[0]);
+});
+
+test('cross-segment flow folds resolve collapsed blocks split by local tables', () => {
+  // 模拟第 70 行场景：如果首行所在的代码段被局部声明表隔断，
+  // 段内解析只能得到 endLine === startLine 的未闭合块。
+  const segmentA = { segmentId: 'code:70', lines: ['如果 (页面目录 == "")'], statementStart: 8 };
+  const segmentB = {
+    segmentId: 'code:72',
+    lines: [
+      '    内嵌目录 = 系统_取临时目录()',
+      '    如果 (内嵌目录 != "")',
+      '        内嵌目录 = 内嵌目录 + "x"',
+      '        如果 (目录_是否存在(内嵌目录))',
+      '            页面目录 = 内嵌目录',
+      '        如果结束',
+      '    如果结束',
+      '    如果结束'
+    ],
+    statementStart: 9
+  };
+  const statements = [
+    ...Array.from({ length: 8 }, (_, index) => ({ line: index + 61, text: '调试输出("前置")' })),
+    { line: 70, text: '如果 (页面目录 == "")' },
+    { line: 72, text: '内嵌目录 = 系统_取临时目录()' },
+    { line: 73, text: '如果 (内嵌目录 != "")' },
+    { line: 74, text: '内嵌目录 = 内嵌目录 + "x"' },
+    { line: 75, text: '如果 (目录_是否存在(内嵌目录))' },
+    { line: 76, text: '页面目录 = 内嵌目录' },
+    { line: 77, text: '如果结束' },
+    { line: 78, text: '如果结束' },
+    { line: 79, text: '如果结束' },
+    { line: 80, text: '如果 (页面目录 == "")' },
+    { line: 81, text: '调试输出("之后")' }
+  ];
+  const locals = [{ line: 71 }];
+
+  const folds = getBeginnerCrossSegmentFlowFolds(
+    [segmentA, segmentB],
+    statements,
+    locals,
+    ['窗体:事件:演示:code:70:if:1'],
+    '窗体:事件:演示'
+  );
+
+  assert.equal(folds.length, 1);
+  assert.equal(folds[0]?.anchorSegmentId, 'code:70');
+  assert.equal(folds[0]?.sourceFrom, 70);
+  assert.equal(folds[0]?.sourceTo, 79);
+  assert.equal(folds[0]?.statementFrom, 9);
+  assert.equal(folds[0]?.statementTo, 16);
+  // 隐藏 8 条语句 + 1 行局部声明表 = 9 行。
+  assert.equal(folds[0]?.hiddenRows, 9);
+
+  // 段内已闭合的块不产出跨段折叠，避免与段内折叠渲染重复处理。
+  const balanced = getBeginnerCrossSegmentFlowFolds(
+    [segmentB],
+    statements,
+    locals,
+    ['窗体:事件:演示:code:72:if:2'],
+    '窗体:事件:演示'
+  );
+  assert.equal(balanced.length, 0);
+
+  // 未折叠的同名块不产出折叠范围。
+  const inactive = getBeginnerCrossSegmentFlowFolds(
+    [segmentA, segmentB],
+    statements,
+    locals,
+    [],
+    '窗体:事件:演示'
+  );
+  assert.equal(inactive.length, 0);
 });
 
 test('generateLingCppNativeWin32Project emits source map and native manifest', () => {

@@ -12,6 +12,11 @@ const execFileAsync = promisify(execFile);
 export const MAX_UPDATE_INSTALLER_BYTES = 2 * 1024 * 1024 * 1024;
 export const UPDATER_ARIA2C_CONNECTIONS = 8;
 export const UPDATER_ARIA2C_MIN_SPLIT_SIZE = '8M';
+/** aria2c 退出码 15/16/17 表示文件被占用或读写失败，多为杀毒软件瞬时扫描下载中的安装包所致。 */
+export const UPDATER_ARIA2C_FILE_LOCK_EXIT_CODES: ReadonlySet<number> = new Set([15, 16, 17]);
+const UPDATER_FILE_LOCK_RETRY_DELAY_MS = 2_500;
+const UPDATER_RENAME_RETRY_ATTEMPTS = 6;
+const UPDATER_RENAME_RETRY_BASE_DELAY_MS = 250;
 const UPDATER_PROGRESS_INTERVAL_MS = 500;
 const UPDATER_TERMINATION_GRACE_MS = 2_000;
 const UPDATER_SPAWN_PROBE_MS = 500;
@@ -142,16 +147,24 @@ export function describeAria2cExitMessage(exitCode: number | null): string | nul
     case 1: return '未知下载错误';
     case 2: return '下载超时';
     case 3: return '下载服务器上不存在该资源';
-    case 5: return '存在未完成的下载分段';
+    case 4: return '多次找不到下载资源';
+    case 5: return '下载速度过低被中止';
     case 6: return '网络连接失败';
     case 7: return '下载被取消或中断';
     case 8: return '下载服务器不支持断点续传';
     case 9: return '磁盘空间不足';
+    case 10: return '下载分段大小与续传记录不一致';
+    case 11: return '该文件已在下载中';
+    case 13: return '目标文件已存在';
+    case 14: return '下载器重命名文件失败';
+    case 15: return '下载器无法打开已下载的文件，可能被杀毒软件或其它程序临时占用';
+    case 16: return '下载器无法创建写入文件，可能被其它程序占用或权限不足';
+    case 17: return '下载器读写文件失败';
     default: return null;
   }
 }
 
-const UPDATER_NETWORK_ERROR_PATTERNS: ReadonlyArray<{ pattern: RegExp; cause: string }> = [
+const UPDATER_NETWORK_ERROR_PATTERNS: ReadonlyArray<{ pattern: RegExp; cause: string; advice?: string }> = [
   { pattern: /spawn\s+\S*\s*(EACCES|EPERM)\b/iu, cause: '下载器启动被拒绝（权限不足或被安全软件拦截）' },
   { pattern: /\bspawn\b.*\bENOENT\b/iu, cause: '下载器程序缺失，可能被安全软件清理，请重新安装 LingBuilder' },
   { pattern: /ECONNREFUSED|Connection refused|拒绝连接/iu, cause: '连接被拒绝' },
@@ -160,7 +173,9 @@ const UPDATER_NETWORK_ERROR_PATTERNS: ReadonlyArray<{ pattern: RegExp; cause: st
   { pattern: /ECONNRESET|Connection reset|连接被重置/iu, cause: '连接被重置' },
   { pattern: /EHOSTUNREACH|ENETUNREACH|No route to host|unreachable|网络不可达/iu, cause: '网络不可达' },
   { pattern: /certificate|SSL|TLS|EPROTO|OpenSSL/iu, cause: 'HTTPS 证书或 TLS 握手失败' },
-  { pattern: /fetch failed|network error|Network Error|ENETDOWN|ERR_INTERNET_DISCONNECTED|网络连接不可用/iu, cause: '网络连接不可用' }
+  { pattern: /fetch failed|network error|Network Error|ENETDOWN|ERR_INTERNET_DISCONNECTED|网络连接不可用/iu, cause: '网络连接不可用' },
+  { pattern: /\bEBUSY\b|resource busy or locked/iu, cause: '更新包文件被其它程序占用，可能是杀毒软件正在扫描或旧的安装包正在运行', advice: '请稍候重试，已保留的下载进度可续传' },
+  { pattern: /\bEPERM\b|operation not permitted/iu, cause: '更新包文件写入权限不足，可能被安全软件拦截', advice: '请检查安全软件设置后重试' }
 ];
 
 export function describeUpdaterDownloadError(message: string): string {
@@ -169,7 +184,8 @@ export function describeUpdaterDownloadError(message: string): string {
   const matched = UPDATER_NETWORK_ERROR_PATTERNS.find(item => item.pattern.test(text));
   if (!matched) return text;
   const original = text.length > 240 ? `${text.slice(0, 240)}…` : text;
-  return `更新包下载失败（${matched.cause}），请检查网络连接或代理设置后重试。（原始信息：${original}）`;
+  const advice = matched.advice || '请检查网络连接或代理设置后重试';
+  return `更新包下载失败（${matched.cause}），${advice}。（原始信息：${original}）`;
 }
 
 export async function removeFileWithRetry(target: string, attempts = 4): Promise<void> {
@@ -186,6 +202,47 @@ export async function removeFileWithRetry(target: string, attempts = 4): Promise
     }
   }
   throw lastError instanceof Error ? lastError : updaterError(`无法删除文件：${target}`);
+}
+
+/** Windows 上杀毒软件会短暂持有新落地文件（无 FILE_SHARE_DELETE），rename 报 EBUSY/EPERM/EACCES：退避重试等待扫描结束。 */
+export async function renameFileWithRetry(
+  source: string,
+  destination: string,
+  attempts: number = UPDATER_RENAME_RETRY_ATTEMPTS,
+  renameImpl: (from: string, to: string) => Promise<void> = (from, to) => fs.rename(from, to),
+  delayImpl: (ms: number) => Promise<void> = ms => new Promise<void>(resolve => setTimeout(resolve, ms))
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await renameImpl(source, destination);
+      return;
+    } catch (error) {
+      lastError = error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if ((code !== 'EBUSY' && code !== 'EPERM' && code !== 'EACCES') || attempt === attempts - 1) break;
+      await delayImpl(UPDATER_RENAME_RETRY_BASE_DELAY_MS * 2 ** attempt);
+    }
+  }
+  throw lastError instanceof Error ? lastError : updaterError(`无法移动文件：${source}`);
+}
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 const UPDATER_PROXY_ENV_KEYS = ['HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy'] as const;
@@ -408,18 +465,16 @@ export class UpdateDownloadService {
     if (totalBytes !== null) assertUpdaterSizeWithinLimit(totalBytes);
     this.emitState({ totalBytes, message: '正在下载更新包…' });
 
-    const markVerified = async (): Promise<void> => {
+    // 快路径：本地已有完整大小的 .part（常见于上一次改名被杀毒软件短暂占用），直接校验落位，不必重启下载器。
+    const partStat = await fs.stat(partFile).catch(() => null);
+    if (partStat && totalBytes !== null && partStat.size === totalBytes) {
       this.emitState({ state: 'verifying', message: '正在校验安装包完整性…', bytesPerSecond: null });
-      if (!await verifyInstallerSha256(partFile, expectedSha256)) {
-        await removeFileWithRetry(partFile).catch(() => undefined);
-        await removeFileWithRetry(controlFile).catch(() => undefined);
-        throw updaterError('安装包 SHA-256 校验失败，已删除下载内容。请重试，或前往官网手动下载。');
+      if (await verifyInstallerSha256(partFile, expectedSha256)) {
+        await this.promoteVerifiedPart(job, partFile, controlFile, expectedSha256, totalBytes);
+        return;
       }
-      await removeFileWithRetry(job.destination).catch(() => undefined);
-      await fs.rename(partFile, job.destination);
-      await removeFileWithRetry(controlFile).catch(() => undefined);
-      this.emit({ state: 'ready', version: job.info.latestVersion, downloadedBytes: 0, totalBytes, bytesPerSecond: null, engine: null, message: '更新包已下载并通过完整性校验。', installerPath: job.destination });
-    };
+      // 校验不过说明旧分段残缺，交给下载器按续传记录修复。
+    }
 
     const aria2cPath = resolveBundledUpdaterAria2cPath(this.options.isPackaged, this.options.resourcesPath);
     const aria2cAvailable = await fs.stat(aria2cPath).then(stat => stat.isFile()).catch(() => false);
@@ -428,7 +483,32 @@ export class UpdateDownloadService {
     } else {
       await this.downloadWithFetch(job, url, partFile, totalBytes);
     }
-    await markVerified();
+    this.emitState({ state: 'verifying', message: '正在校验安装包完整性…', bytesPerSecond: null });
+    if (!await verifyInstallerSha256(partFile, expectedSha256)) {
+      await removeFileWithRetry(partFile).catch(() => undefined);
+      await removeFileWithRetry(controlFile).catch(() => undefined);
+      throw updaterError('安装包 SHA-256 校验失败，已删除下载内容。请重试，或前往官网手动下载。');
+    }
+    await this.promoteVerifiedPart(job, partFile, controlFile, expectedSha256, totalBytes);
+  }
+
+  /** 把已通过校验的 .part 落位为最终安装包：改名被占用时退避重试，仍失败再走复制兜底；全部失败给中文诊断并保留续传断点。 */
+  private async promoteVerifiedPart(job: UpdaterJob, partFile: string, controlFile: string, expectedSha256: string, totalBytes: number | null): Promise<void> {
+    await removeFileWithRetry(job.destination).catch(() => undefined);
+    try {
+      await renameFileWithRetry(partFile, job.destination);
+    } catch {
+      // 源文件被杀毒软件短期持有时 rename 报 sharing violation，但内容仍可读：复制一份落位。
+      try {
+        await fs.copyFile(partFile, job.destination);
+        if (!await verifyInstallerSha256(job.destination, expectedSha256)) throw updaterError('安装包 SHA-256 校验失败。');
+      } catch {
+        throw updaterError('更新包被其它程序占用，无法完成落位（可能是杀毒软件正在扫描，或已下载的安装包正在运行）。下载进度已保留，请稍候重试，或前往官网手动下载。');
+      }
+    }
+    await removeFileWithRetry(controlFile).catch(() => undefined);
+    await removeFileWithRetry(partFile).catch(() => undefined);
+    this.emit({ state: 'ready', version: job.info.latestVersion, downloadedBytes: 0, totalBytes, bytesPerSecond: null, engine: null, message: '更新包已下载并通过完整性校验。', installerPath: job.destination });
   }
 
   /** 不跟随重定向的 HEAD 预检：网络层失败不阻断（交给下载引擎实测），但重定向/非 2xx 直接给中文诊断。 */
@@ -462,50 +542,65 @@ export class UpdateDownloadService {
       await removeFileWithRetry(controlFile).catch(() => undefined);
     }
     const proxy = await resolveUpdaterProxy(process.env, this.options.execFileImpl).catch(() => null);
-    const args = createUpdaterAria2cArguments(url, partFile, proxy);
     const spawnImpl = this.options.spawnImpl || spawn;
-    const child = spawnImpl(aria2cPath, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] }) as unknown as UpdaterChildProcess;
-    let stderr = '';
-    child.stderr?.on('data', chunk => {
-      stderr += String(chunk);
-      if (stderr.length > 8 * 1024) stderr = stderr.slice(-8 * 1024);
-    });
+    let fileLockRetriesLeft = 1;
+    for (;;) {
+      const args = createUpdaterAria2cArguments(url, partFile, proxy);
+      const child = spawnImpl(aria2cPath, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] }) as unknown as UpdaterChildProcess;
+      let stderr = '';
+      child.stderr?.on('data', chunk => {
+        stderr += String(chunk);
+        if (stderr.length > 8 * 1024) stderr = stderr.slice(-8 * 1024);
+      });
 
-    let previousBytes = 0;
-    let previousAt = this.options.now?.() ?? Date.now();
-    const reportProgress = async (): Promise<void> => {
-      if (signal.aborted) return;
-      let downloaded = previousBytes;
+      let previousBytes = (await fs.stat(partFile).catch(() => null))?.size ?? 0;
+      let previousAt = this.options.now?.() ?? Date.now();
+      const reportProgress = async (): Promise<void> => {
+        if (signal.aborted) return;
+        let downloaded = previousBytes;
+        try {
+          const stat = await fs.stat(partFile);
+          downloaded = totalBytes === null ? stat.size : Math.min(totalBytes, stat.size);
+        } catch {
+          downloaded = previousBytes;
+        }
+        const now = this.options.now?.() ?? Date.now();
+        const elapsedSeconds = Math.max(0.001, (now - previousAt) / 1000);
+        const bytesPerSecond = Math.max(0, Math.round((downloaded - previousBytes) / elapsedSeconds));
+        previousBytes = downloaded;
+        previousAt = now;
+        this.emitState({ downloadedBytes: downloaded, bytesPerSecond, engine: 'aria2c' });
+      };
+      const progressTimer = setInterval(() => { void reportProgress(); }, UPDATER_PROGRESS_INTERVAL_MS);
       try {
-        const stat = await fs.stat(partFile);
-        downloaded = totalBytes === null ? stat.size : Math.min(totalBytes, stat.size);
-      } catch {
-        downloaded = previousBytes;
+        const completion = await waitForChildExit(child, signal);
+        if (signal.aborted) {
+          await removeFileWithRetry(partFile).catch(() => undefined);
+          await removeFileWithRetry(controlFile).catch(() => undefined);
+          throw new DOMException('操作已取消。', 'AbortError');
+        }
+        if (completion.spawnFailed) throw completion.spawnFailed;
+        if (completion.code !== 0) {
+          // 退出码 15/16/17 多为杀毒软件瞬时占用下载文件：等待片刻自动重试一次，断点不丢。
+          if (completion.code !== null && UPDATER_ARIA2C_FILE_LOCK_EXIT_CODES.has(completion.code) && fileLockRetriesLeft > 0) {
+            fileLockRetriesLeft -= 1;
+            await abortableDelay(UPDATER_FILE_LOCK_RETRY_DELAY_MS, signal);
+            if (signal.aborted) {
+              await removeFileWithRetry(partFile).catch(() => undefined);
+              await removeFileWithRetry(controlFile).catch(() => undefined);
+              throw new DOMException('操作已取消。', 'AbortError');
+            }
+            continue;
+          }
+          const reason = describeAria2cExitMessage(completion.code);
+          const detail = stderr.trim().replace(/\s+/gu, ' ').slice(-240);
+          throw updaterError(`aria2c 下载未完成${reason ? `：${reason}` : ''}（退出码 ${completion.code ?? '未知'}）。已保留下载进度，重试可续传。${detail ? ` 下载器信息：${detail}` : ''}`);
+        }
+        await reportProgress();
+        return;
+      } finally {
+        clearInterval(progressTimer);
       }
-      const now = this.options.now?.() ?? Date.now();
-      const elapsedSeconds = Math.max(0.001, (now - previousAt) / 1000);
-      const bytesPerSecond = Math.max(0, Math.round((downloaded - previousBytes) / elapsedSeconds));
-      previousBytes = downloaded;
-      previousAt = now;
-      this.emitState({ downloadedBytes: downloaded, bytesPerSecond, engine: 'aria2c' });
-    };
-    const progressTimer = setInterval(() => { void reportProgress(); }, UPDATER_PROGRESS_INTERVAL_MS);
-    try {
-      const completion = await waitForChildExit(child, signal);
-      if (signal.aborted) {
-        await removeFileWithRetry(partFile).catch(() => undefined);
-        await removeFileWithRetry(controlFile).catch(() => undefined);
-        throw new DOMException('操作已取消。', 'AbortError');
-      }
-      if (completion.spawnFailed) throw completion.spawnFailed;
-      if (completion.code !== 0) {
-        const reason = describeAria2cExitMessage(completion.code);
-        const detail = stderr.trim().replace(/\s+/gu, ' ').slice(-240);
-        throw updaterError(`aria2c 下载未完成${reason ? `：${reason}` : ''}（退出码 ${completion.code ?? '未知'}）。已保留下载进度，重试可续传。${detail ? ` 下载器信息：${detail}` : ''}`);
-      }
-      await reportProgress();
-    } finally {
-      clearInterval(progressTimer);
     }
   }
 
@@ -544,7 +639,7 @@ export class UpdateDownloadService {
         throw updaterError('安装包 SHA-256 校验失败，已删除下载内容。请重试，或前往官网手动下载。');
       }
       await removeFileWithRetry(partFile).catch(() => undefined);
-      await fs.rename(temporaryPath, partFile);
+      await renameFileWithRetry(temporaryPath, partFile);
     } catch (error) {
       await handle.close().catch(() => undefined);
       await fs.rm(temporaryPath, { force: true }).catch(() => undefined);

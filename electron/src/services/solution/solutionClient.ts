@@ -16,6 +16,8 @@ export interface SolutionProject {
     buildDirectory?: string;
     /** 项目生成源码目录模板覆盖。 */
     generatedSourceDirectory?: string;
+    /** 项目构建产物 EXE 文件名（可带 .exe 后缀）；未设置时使用 LingBuilderPreview.exe。 */
+    executableName?: string;
   };
   solutionFolderId?: string;
 }
@@ -69,8 +71,40 @@ export const DEFAULT_SOLUTION: SolutionModel = {
   ]
 };
 
+/** 解决方案元数据请求的统一超时：本地服务正常应在毫秒级返回，超过视为服务无响应。构建/清理等长任务不套用该超时。 */
+const METADATA_REQUEST_TIMEOUT_MS = 30_000;
+
+interface JsonRequestOptions {
+  /** 外部中止信号（如用户在对话框点击「取消等待」）。 */
+  signal?: AbortSignal;
+  /** 超时毫秒数；不传则不设超时。 */
+  timeoutMs?: number;
+}
+
+function composeRequestSignal(options?: JsonRequestOptions): AbortSignal | undefined {
+  if (!options?.signal && !options?.timeoutMs) return undefined;
+  const signals = [
+    ...(options.signal ? [options.signal] : []),
+    ...(options.timeoutMs ? [AbortSignal.timeout(options.timeoutMs)] : [])
+  ];
+  return signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+}
+
+/** 把超时/中止异常翻译成中文提示；非中止类异常返回 null 由调用方按原逻辑处理。 */
+function abortErrorMessage(error: unknown): string | null {
+  const name = error instanceof Error ? error.name : '';
+  if (name === 'TimeoutError') return '本地服务长时间未响应，请求已超时中止。请检查 LingBuilder Local Service 进程后重试。';
+  if (name === 'AbortError') return '操作请求已取消。';
+  return null;
+}
+
 export async function fetchSolution(): Promise<SolutionModel> {
-  const response = await fetch('/api/solution');
+  let response: Response;
+  try {
+    response = await fetch('/api/solution', { signal: AbortSignal.timeout(METADATA_REQUEST_TIMEOUT_MS) });
+  } catch (error) {
+    throw new Error(abortErrorMessage(error) || '解决方案读取失败');
+  }
   const result = await response.json();
   if (!response.ok || !result.ok) throw new Error(result.error || '解决方案读取失败');
   return result.solution as SolutionModel;
@@ -86,45 +120,53 @@ export interface CreateSolutionProjectOptions {
 export async function createSolutionProject(
   name?: string,
   templateId?: 'blank-window' | 'windows-dll',
-  options?: CreateSolutionProjectOptions
+  options?: CreateSolutionProjectOptions,
+  signal?: AbortSignal
 ): Promise<SolutionCommandResult> {
   return postJson('/api/solution/projects', {
     name,
     ...(templateId ? { templateId } : {}),
     ...(options?.solutionName !== undefined ? { solutionName: options.solutionName } : {}),
     ...(options?.projectDirectory !== undefined ? { projectDirectory: options.projectDirectory } : {})
-  });
+  }, { signal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function importSolutionProject(projectFile: string): Promise<SolutionCommandResult> {
-  return postJson('/api/solution/import', { projectFile });
+  return postJson('/api/solution/import', { projectFile }, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function createSolutionFolder(name?: string): Promise<SolutionCommandResult & { folder?: SolutionFolder }> {
-  return postJson('/api/solution/folders', { name });
+  return postJson('/api/solution/folders', { name }, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function moveSolutionProject(projectId: string, solutionFolderId: string | null): Promise<SolutionCommandResult> {
-  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { solutionFolderId });
+  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { solutionFolderId }, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function renameSolutionProject(projectId: string, name: string): Promise<SolutionCommandResult> {
-  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { name });
+  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { name }, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function setStartupProject(projectId: string): Promise<SolutionCommandResult> {
-  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { startup: true });
+  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { startup: true }, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function configureSolutionProject(projectId: string, patch: { name?: string; references?: string[]; startupProjectIds?: string[]; buildProperties?: SolutionProject['buildProperties']; solutionFolderId?: string | null }): Promise<SolutionCommandResult> {
-  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, patch);
+  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, patch, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function deleteSolutionProject(projectId: string, deleteFiles: boolean): Promise<SolutionCommandResult> {
-  const response = await fetch(`/api/solution/projects/${encodeURIComponent(projectId)}?deleteFiles=${deleteFiles ? 'true' : 'false'}`, {
-    method: 'DELETE'
-  });
-  return await parseCommandResponse(response);
+  try {
+    const response = await fetch(`/api/solution/projects/${encodeURIComponent(projectId)}?deleteFiles=${deleteFiles ? 'true' : 'false'}`, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(METADATA_REQUEST_TIMEOUT_MS)
+    });
+    return await parseCommandResponse(response);
+  } catch (error) {
+    const message = abortErrorMessage(error);
+    if (message) return { ok: false, error: message, logs: [] };
+    throw error;
+  }
 }
 
 export async function buildSolution(projectId?: string): Promise<SolutionCommandResult> {
@@ -146,22 +188,36 @@ export function getSolutionProjectDirectory(project: SolutionProject): string {
   return separator > 0 ? projectFile.slice(0, separator) : '.';
 }
 
-async function postJson(url: string, body: unknown): Promise<SolutionCommandResult> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  return await parseCommandResponse(response);
+async function postJson(url: string, body: unknown, options?: JsonRequestOptions): Promise<SolutionCommandResult> {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: composeRequestSignal(options)
+    });
+    return await parseCommandResponse(response);
+  } catch (error) {
+    const message = abortErrorMessage(error);
+    if (message) return { ok: false, error: message, logs: [] };
+    throw error;
+  }
 }
 
-async function patchJson(url: string, body: unknown): Promise<SolutionCommandResult> {
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  return await parseCommandResponse(response);
+async function patchJson(url: string, body: unknown, options?: JsonRequestOptions): Promise<SolutionCommandResult> {
+  try {
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: composeRequestSignal(options)
+    });
+    return await parseCommandResponse(response);
+  } catch (error) {
+    const message = abortErrorMessage(error);
+    if (message) return { ok: false, error: message, logs: [] };
+    throw error;
+  }
 }
 
 async function parseCommandResponse(response: Response): Promise<SolutionCommandResult> {

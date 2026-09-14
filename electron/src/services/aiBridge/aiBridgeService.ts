@@ -7,7 +7,7 @@ import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
 import { createProjectFunctionContext } from '../lingCpp/functionLibraryService';
-import { LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile } from '../lingCpp/types';
+import { LingCppDiagnostic, LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
 import { AI_MODULE_MANIFEST_FILE } from '../modules/aiModuleImportParser';
@@ -49,6 +49,7 @@ import {
 } from '../windowDesigner/windowsExecutableIconService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath, isProjectBuildArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
+import { resolveExecutableNameParts } from '../solution/externalProjectService';
 import { resolveProjectBuildDirectories } from '../tasks/buildPathService';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
 import { SdkDependencyService } from '../sdkDependencies/sdkDependencyService';
@@ -56,6 +57,7 @@ import { resolveSdkCacheRoot } from '../sdkDependencies/sdkDependencyCatalog';
 import { AiBridgePermissionService } from './permissionService';
 import {
   AiBridgeBuildRunRequest,
+  AiBridgeDesignerContextInfo,
   AiBridgeEditApplyRequest,
   AiBridgeEditApplyResult,
   AiBridgeEditProposeRequest,
@@ -118,6 +120,17 @@ const WRITABLE_EXTENSIONS = new Set([
 ]);
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * MCP 工具共享的设计器上下文解析结果：
+ * - caller：调用方显式传入的完整设计器模型，始终优先；
+ * - workspace：按 projectId 从解决方案解析并读取磁盘设计器模型（persisted=false 表示文件缺失或无效，实为兜底空模型）；
+ * - none：无任何设计器上下文（未传模型且 projectId 缺失或不在解决方案中）。
+ */
+type AiBridgeDesignerContextResolution =
+  | { source: 'caller'; project: LingWindowProject }
+  | { source: 'workspace'; project: LingWindowProject; persisted: boolean; designerPath: string }
+  | { source: 'none'; reason: 'missing-project-id' | 'project-not-found'; projectId?: string };
 const SEARCH_FILE_LIMIT = 2 * 1024 * 1024;
 const SEARCH_TOTAL_LIMIT = 64 * 1024 * 1024;
 const SEARCH_FILE_COUNT_LIMIT = 20_000;
@@ -323,19 +336,24 @@ export class AiBridgeService {
     const projectFunctions = createProjectFunctionContext(
       effectiveSources.map(source => ({ ...source, language: 'lingcpp' }))
     );
+    const designerContext = await this.resolveDesignerContext(request.designerProject, request.projectId);
     const diagnostics = getLingCppSemanticDiagnostics(
       sourceCode,
-      request.designerProject,
+      designerContext.source === 'none' ? undefined : designerContext.project,
       request.filePath,
       moduleContext,
       projectGlobals,
       projectTypes,
-      projectFunctions
+      projectFunctions,
+      { suppressDesignerControlDiagnostics: designerContext.source === 'none' }
     );
+    const designerNotices = this.createDesignerContextDiagnostics(designerContext);
+    if (designerNotices.length > 0) diagnostics.unshift(...designerNotices);
     return {
       ok: true,
       filePath: normalizeFilePath(request.filePath),
       diagnostics,
+      designerContext: this.describeDesignerContext(designerContext),
       moduleContextSummary: describeLingCppModuleContextForAi(moduleContext)
     };
   }
@@ -344,6 +362,7 @@ export class AiBridgeService {
     const sourceCode = typeof request.sourceCode === 'string'
       ? request.sourceCode
       : (await this.readFile(request.filePath)).content;
+    const designerContext = await this.resolveDesignerContext(request.designerProject, request.projectId);
     const context: LingCppEditContext = {
       filePath: normalizeFilePath(request.filePath),
       sourceCode: normalizeLineEndings(sourceCode),
@@ -352,12 +371,13 @@ export class AiBridgeService {
       workspaceFiles: await this.resolveEditWorkspaceFiles(request),
       moduleContext: await this.getModuleContext(request.projectId),
       aiConfig: request.aiConfig,
-      designerProject: request.designerProject
+      designerProject: designerContext.source === 'none' ? undefined : designerContext.project
     };
     if (!planner && !request.files?.length) {
       throw new Error('当前独立 AI Bridge 未配置系统 AI planner；请由外部 AI 提供 files 完整文件草稿后再创建提案。');
     }
     const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: request.files, designerProject: request.updatedDesignerProject };
+    if (draft.designerProject) await this.assertDesignerProjectRegistered(draft.designerProject.id);
     const proposal = proposeLingCppEdit(context, draft);
     return { ok: true, proposal };
   }
@@ -375,6 +395,7 @@ export class AiBridgeService {
 
     if (proposal.designerProject) {
       const projectRef = await this.resolveAssetProject(proposal.designerProject);
+      await this.assertDesignerProjectRegistered(proposal.designerProject.id);
       // Always re-read the persisted model. A caller-provided snapshot is only
       // an assertion of what it observed, never an authority that can bypass
       // external edits made after the proposal was created.
@@ -401,6 +422,7 @@ export class AiBridgeService {
       });
     }
 
+    for (const file of appliedFiles) await this.assertDesignerFileWriteAllowed(file.filePath);
     try {
       for (const file of appliedFiles) {
         const absolutePath = await this.resolveWritablePath(file.filePath);
@@ -682,16 +704,17 @@ export class AiBridgeService {
       cacheKey: `${projectId}:native-preview-code-generators:${architecture}`
     });
     const files = [...generatedProject.files, ...codeGeneratorResult.textFiles];
+    const designerMismatchWarning = await this.describeDesignerModelMismatchWarning(request.project);
     return {
       ok: true,
       generatedFiles: generatedProject.files,
       files,
-      diagnostics: [...generatedProject.diagnostics, ...codeGeneratorResult.diagnostics],
+      diagnostics: [...generatedProject.diagnostics, ...codeGeneratorResult.diagnostics, ...(designerMismatchWarning ? [designerMismatchWarning] : [])],
       blockingDiagnostics: generatedProject.blockingDiagnostics,
       selectedWindow: generatedProject.selectedWindow,
       enabledModules,
       sourceMap: generatedProject.sourceMap,
-      logs: codeGeneratorResult.logs,
+      logs: [...codeGeneratorResult.logs, ...(designerMismatchWarning ? [designerMismatchWarning] : [])],
       codeGenerators: {
         fingerprint: codeGeneratorResult.fingerprint,
         incrementalHit: codeGeneratorResult.incrementalHit,
@@ -735,9 +758,18 @@ export class AiBridgeService {
       const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [exportDir]);
       const executableIcon = await this.windowsExecutableIconService.materialize(projectRef, preview.selectedWindow, [exportDir]);
       const moduleDiagnostics = await exportModuleNativeDependencies(preview.enabledModules, exportDir);
+      let previewExecutableBaseName = 'LingBuilderPreview';
+      try {
+        const exportSolution = await this.solutionService.getSolution();
+        const exportProjectRecord = exportSolution.projects.find(item => item.id === (request.project.id || 'window-preview'));
+        previewExecutableBaseName = resolveExecutableNameParts(exportProjectRecord?.buildProperties?.executableName).baseName;
+      } catch {
+        // 解决方案尚未建立或名称非法时按默认命名导出。
+      }
       const visualStudioProject = await exportVisualStudioProject({
         projectDir: exportDir,
         projectId: request.project.id || 'window-preview',
+        executableBaseName: previewExecutableBaseName,
         generatedFiles,
         enabledModules: preview.enabledModules,
         contentFiles: [
@@ -784,6 +816,8 @@ export class AiBridgeService {
       const buildSession = await this.projectBuildSessionService.begin(projectId, buildAdmission);
       buildLease = buildSession.lease;
       if (buildSession.previousRun.found) preBuildLogs = [buildSession.previousRun.message];
+      const designerMismatchWarning = await this.describeDesignerModelMismatchWarning(request.project);
+      if (designerMismatchWarning) preBuildLogs = [...preBuildLogs, designerMismatchWarning];
       if (buildLease.isCancelled()) {
         return await this.createCancelledBuildResult(projectId, '任务在生成前已被停止。', preBuildLogs);
       }
@@ -909,6 +943,7 @@ export class AiBridgeService {
     // 与 IDE F5 相同的目录解析规则：项目模板覆盖工作区默认，再回退内置缺省。
     const buildConfiguration = await this.buildConfigurationService.read();
     let pathTemplateOverrides: { projectName?: string; buildDirectory?: string; generatedSourceDirectory?: string } = {};
+    let executableNameParts = { baseName: 'LingBuilderPreview', fileName: 'LingBuilderPreview.exe' };
     try {
       const solution = await this.solutionService.getSolution();
       const projectRecord = solution.projects.find(item => item.id === managedProjectId);
@@ -918,6 +953,11 @@ export class AiBridgeService {
           buildDirectory: projectRecord.buildProperties?.buildDirectory?.trim() || buildConfiguration.buildDirectory,
           generatedSourceDirectory: projectRecord.buildProperties?.generatedSourceDirectory?.trim() || buildConfiguration.generatedSourceDirectory
         };
+        try {
+          executableNameParts = resolveExecutableNameParts(projectRecord.buildProperties?.executableName);
+        } catch (nameError) {
+          preBuildLogs.push(nameError instanceof Error ? nameError.message : '项目可执行文件名无效，已回退默认命名。');
+        }
       }
     } catch {
       // 解决方案尚未建立时按工作区默认目录构建。
@@ -981,6 +1021,9 @@ export class AiBridgeService {
     let codeGeneratorResult: ProjectCodeGeneratorResult;
     try {
       await fs.rm(path.join(binDir, 'LingBuilderPreview.exe'), { force: true });
+      if (executableNameParts.fileName !== 'LingBuilderPreview.exe') {
+        await fs.rm(path.join(binDir, executableNameParts.fileName), { force: true });
+      }
       codeGeneratorResult = await runProjectCodeGenerators({
         service: this.buildPipelineService,
         workspaceRoot: this.workspaceRoot,
@@ -1013,7 +1056,7 @@ export class AiBridgeService {
     }
     const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [buildDir, binDir, exportDir]);
-    const executableIcon = await this.windowsExecutableIconService.materialize(projectRef, generatedProject.selectedWindow, [buildDir, exportDir]);
+    const executableIcon = await this.windowsExecutableIconService.materialize(projectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir]);
     const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
     const buildContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -1069,7 +1112,8 @@ export class AiBridgeService {
       contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
-      fbroRuntimeFromBuildBin: true
+      fbroRuntimeFromBuildBin: true,
+      executableBaseName: executableNameParts.baseName
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
@@ -1078,7 +1122,8 @@ export class AiBridgeService {
       enabledModules,
       contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
-      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      executableBaseName: executableNameParts.baseName
     });
     if (buildLease.isCancelled()) {
       return await this.createCancelledBuildResult(
@@ -1123,16 +1168,69 @@ export class AiBridgeService {
     }
 
     const sourcePath = path.join(sourceDir, 'main.cpp');
-    const exePath = path.join(binDir, 'LingBuilderPreview.exe');
+    const exePath = path.join(binDir, executableNameParts.fileName);
     const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
       ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
       : undefined;
+    // new_emoji 运行时 DLL 内嵌：把按目标架构解析出的 DLL 以 RCDATA 资源追加进图标 rc，
+    // 配合 main.cpp 中的延迟加载钩子（首次 EU_* 调用时解压到 EXE 目录后 LoadLibrary），
+    // 生成单文件即可运行的 EXE。资源缺失时钩子自动回退为同目录加载。
+    const newEmojiRuntimeDllBase = moduleNativePlan.runtimeFiles.find(file => path.basename(file).toLowerCase() === 'new_emoji.dll');
+    // 内嵌源必须与编译器实际位数一致：CLI 默认编译器是 x64 而 buildDir 目录名可能仍是
+    // Win32（目录名只反映构建配置），按目录名猜架构会把 32 位 DLL 内嵌进 64 位 EXE。
+    // 因此以 preferredTargetId（已按 compiler.arch 选择）为准，优先取模块安装目录中
+    // 对应架构子目录的 DLL；缺失时回退 runtimeFiles 已按同一 target 复制进 bin 的副本。
+    let newEmojiRuntimeDll = newEmojiRuntimeDllBase;
+    const newEmojiModule = enabledModules.find(module => module.manifest.id === 'lingbuilder.new_emoji.ui');
+    const newEmojiTargetArch = preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'Win32';
+    if (newEmojiRuntimeDllBase && newEmojiModule?.installPath) {
+      const architectureCandidate = path.join(newEmojiModule.installPath, 'bin', newEmojiTargetArch, 'new_emoji.dll');
+      try {
+        await fs.access(architectureCandidate);
+        newEmojiRuntimeDll = architectureCandidate;
+      } catch {
+        // 安装目录缺少对应架构 DLL 时保持原路径，由后续资源/链接步骤给出诊断。
+      }
+    }
+    if (executableResourcePath && newEmojiRuntimeDll && compiler.kind === 'msvc') {
+      try {
+        // 把 DLL 复制进链接工作目录（rc 引用校验与 rc.exe 均以该目录解析相对路径），
+        // rc 行用相对链接目录的路径引用，保证可复制工程在同类环境下同样可编译。
+        const embeddedDllDir = path.join(sourceDir, 'modules', 'lingbuilder.new_emoji.ui', 'bin', newEmojiTargetArch);
+        await fs.mkdir(embeddedDllDir, { recursive: true });
+        const embeddedDllPath = path.join(embeddedDllDir, 'new_emoji.dll');
+        let embeddedFresh = false;
+        try {
+          const [existing, sourceStat] = await Promise.all([fs.stat(embeddedDllPath), fs.stat(newEmojiRuntimeDll)]);
+          embeddedFresh = existing.size === sourceStat.size;
+        } catch {
+          embeddedFresh = false;
+        }
+        if (!embeddedFresh) await fs.copyFile(newEmojiRuntimeDll, embeddedDllPath);
+        const rcOriginal = await fs.readFile(executableResourcePath, 'utf8');
+        // 幂等且自愈：先剥离历史（含带引号坏行）再追加规范行，避免旧产物残留导致重复或失效条目。
+        const rcLines = rcOriginal
+          .split(/\r?\n/)
+          .filter(line => !(line.includes('NEW_EMOJI_DLL') && line.includes('RCDATA')));
+        // rc 字符串里反斜杠是转义符，须双写；否则 `\new_emoji.dll` 中的 \n 被解析为换行导致文件找不到。
+        // 资源名必须用不带引号的裸标识符：实测 rc.exe（VS18 工具链）会把裸未定义标识符编译为
+        // 字符串资源名，与 FindResourceW(L"NEW_EMOJI_DLL") 对齐；若写成 "NEW_EMOJI_DLL"，引号
+        // 会被原样保留在资源名里（15 字符），运行期反而查不到资源。
+        const rcRelative = path.relative(sourceDir, embeddedDllPath).replace(/\\/g, '\\\\').replace(/\//g, '\\');
+        const rcLine = 'NEW_EMOJI_DLL RCDATA "' + rcRelative + '"';
+        await fs.writeFile(executableResourcePath, rcLines.join('\n').trimEnd() + '\n' + rcLine + '\n', 'utf8');
+        baseLogs.push(`已内嵌 new_emoji 运行时 DLL（延迟解压）：${path.relative(sourceDir, embeddedDllPath)}`);
+      } catch (error: any) {
+        baseLogs.push(`new_emoji 运行时 DLL 内嵌失败（回退为同目录加载）：${error?.message || error}`);
+      }
+    }
     const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, executableResourcePath, buildLease.signal);
     const logs = [
       ...baseLogs,
       `exe 输出目录：${binDir}`,
       `中间文件目录：${objDir}`,
       `编译器：${compiler.kind} (${compiler.command})`,
+      executableNameParts.fileName !== 'LingBuilderPreview.exe' ? `项目自定义 EXE 文件名：${executableNameParts.fileName}` : '',
       moduleNativePlan.runtimeFiles.length ? `已复制模块运行时文件：${moduleNativePlan.runtimeFiles.map(file => path.basename(file)).join(', ')}` : '',
       ...compileResult.logs
     ].filter(Boolean);
@@ -1239,6 +1337,106 @@ export class AiBridgeService {
       sourceMap: generatedProject.sourceMap,
       logs
     };
+  }
+
+  /** 设计器上下文统一解析：调用方显式传入的模型优先；否则按 projectId 从解决方案加载磁盘设计器模型；
+   *  两者都不可用时返回 none——控件引用改为“未校验”并附说明，不得误报成“找不到控件”。 */
+  private async resolveDesignerContext(
+    designerProject: LingWindowProject | undefined,
+    projectId?: string
+  ): Promise<AiBridgeDesignerContextResolution> {
+    if (designerProject) return { source: 'caller', project: designerProject };
+    if (!projectId) return { source: 'none', reason: 'missing-project-id' };
+    const solution = await this.solutionService.getSolution();
+    const projectRef = solution.projects.find(item => item.id === projectId);
+    if (!projectRef) return { source: 'none', reason: 'project-not-found', projectId };
+    const snapshot = await this.solutionService.readDesignerProjectSnapshot(projectRef);
+    return { source: 'workspace', project: snapshot.project, persisted: snapshot.persisted, designerPath: projectRef.designerPath };
+  }
+
+  /** 设计器上下文不足以做控件校验时，给外部 AI 的根因说明（warning 级，附修复路径）。 */
+  private createDesignerContextDiagnostics(context: AiBridgeDesignerContextResolution): LingCppDiagnostic[] {
+    if (context.source === 'caller') return [];
+    if (context.source === 'workspace') {
+      if (context.persisted) return [];
+      return [{
+        id: 'lingcpp-designer-model-missing',
+        line: 1,
+        level: 'warning',
+        message: `项目“${context.project.id}”的设计器模型文件缺失或无效（${context.designerPath}）：本轮控件引用按空窗口模型校验，可能产生“找不到控件”诊断。`,
+        codeSnippet: '',
+        suggestion: '请通过 lingbuilder.edit.apply 携带 updatedDesignerProject 重建设计器模型，或使用 lingbuilder.project.create 重新创建项目。'
+      }];
+    }
+    const message = context.reason === 'project-not-found'
+      ? `未提供窗口设计器模型，且项目“${context.projectId}”不在当前解决方案中：控件引用与设计器事件绑定本轮未校验。`
+      : '未提供窗口设计器模型：控件引用与设计器事件绑定本轮未校验。';
+    return [{
+      id: 'lingcpp-designer-context-missing',
+      line: 1,
+      level: 'warning',
+      message,
+      codeSnippet: '',
+      suggestion: '请传 designerProject 提供完整设计器模型；对解决方案中的已注册项目，可只传 projectId 由工作区设计器模型自动补齐。'
+    }];
+  }
+
+  private describeDesignerContext(context: AiBridgeDesignerContextResolution): AiBridgeDesignerContextInfo {
+    if (context.source === 'caller') {
+      return { source: 'caller', controlReferencesChecked: true, summary: '控件引用按调用方提供的设计器模型校验。' };
+    }
+    if (context.source === 'workspace') {
+      return {
+        source: 'workspace',
+        projectId: context.project.id,
+        persisted: context.persisted,
+        controlReferencesChecked: true,
+        summary: context.persisted
+          ? `控件引用按工作区设计器模型校验（${context.designerPath}）。`
+          : `工作区设计器模型文件缺失或无效（${context.designerPath}），已按空窗口模型校验。`
+      };
+    }
+    return {
+      source: 'none',
+      ...(context.projectId ? { projectId: context.projectId } : {}),
+      controlReferencesChecked: false,
+      summary: '未提供设计器模型，控件引用与设计器事件绑定未校验。'
+    };
+  }
+
+  /** 设计器模型与项目数据只允许写入解决方案中已注册的项目，封堵“文件落盘但 IDE 看不到项目”的幻影项目。 */
+  private async assertDesignerProjectRegistered(projectId: string): Promise<void> {
+    const solution = await this.solutionService.getSolution();
+    if (solution.projects.some(project => project.id === projectId)) return;
+    throw new Error(`项目“${projectId}”未在解决方案（.lingbuilder/solution.json）中注册：禁止为未注册项目写入设计器模型或项目数据。请先使用 lingbuilder.project.create 创建项目，或改为操作已注册项目。`);
+  }
+
+  /** 设计器模型本体必须走提案的 updatedDesignerProject 校验通道，不允许绕过布局校验直接改文件。 */
+  private async assertDesignerFileWriteAllowed(filePath: string): Promise<void> {
+    const normalized = normalizeFilePath(filePath);
+    const projectsMatch = normalized.match(/^\.lingbuilder\/projects\/([^/]+)(?:\/|$)/u);
+    if (projectsMatch) await this.assertDesignerProjectRegistered(projectsMatch[1]);
+    const solution = await this.solutionService.getSolution();
+    const designerOwner = solution.projects.find(project => normalizeFilePath(project.designerPath) === normalized);
+    if (designerOwner) {
+      throw new Error(`设计器模型文件（${normalized}）不能通过普通文件草稿写入：请在提案中携带 updatedDesignerProject，经布局校验后原子应用。`);
+    }
+  }
+
+  /** 构建/导出前检查传入模型与磁盘设计器是否脱节；只提示不阻断，避免静默生成与 IDE 不一致的结果。 */
+  private async describeDesignerModelMismatchWarning(project: LingWindowProject): Promise<string | undefined> {
+    try {
+      if (!project?.id) return undefined;
+      const solution = await this.solutionService.getSolution();
+      const projectRef = solution.projects.find(item => item.id === project.id);
+      if (!projectRef) return undefined;
+      const snapshot = await this.solutionService.readDesignerProjectSnapshot(projectRef);
+      if (!snapshot.persisted) return undefined;
+      if (JSON.stringify(snapshot.project) === JSON.stringify(project)) return undefined;
+      return `警告：传入的窗口设计器模型与磁盘版本（${projectRef.designerPath}）不一致，生成结果可能与 IDE 设计器脱节；请重新读取最新设计器模型后重试，或先通过 lingbuilder.edit.apply 同步磁盘。`;
+    } catch {
+      return undefined;
+    }
   }
 
   private async resolveAssetProject(project: LingWindowProject): Promise<LingBuilderSolutionProject> {
@@ -1571,8 +1769,14 @@ async function compileWin32Preview(
   const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
   const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
   const extraDefineArgs = (modulePlan?.extraCompileDefines || []).map(define => `/D${define}`);
+  const newEmojiDelayLoadLinkArgs = modulePlan?.runtimeFiles.some(file => path.basename(file).toLowerCase() === 'new_emoji.dll')
+    // 经 cl 调起链接时，纯链接器选项必须放在 /link 之后；否则 cl 会静默丢弃
+    // /DELAYLOAD（连 D9002 都不报），new_emoji.dll 退回静态导入，EXE 离开同目录
+    // DLL 直接 0xC0000135 无法启动，内嵌资源与延迟加载钩子全部失效。
+    ? ['delayimp.lib', '/link', '/DELAYLOAD:new_emoji.dll']
+    : [];
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, newEmojiDelayLoadLinkArgs, signal);
   }
 
   const commandArgs = compiler.kind === 'msvc'
@@ -1683,6 +1887,7 @@ async function compileMsvcPreviewWithModules(
   extraDefineArgs: string[],
   resourceOutputPath: string | undefined,
   resourceLogs: string[],
+  newEmojiDelayLoadLinkArgs: string[],
   signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
@@ -1710,7 +1915,8 @@ async function compileMsvcPreviewWithModules(
     'comctl32.lib',
     'ole32.lib',
     ...(resourceOutputPath ? [resourceOutputPath] : []),
-    ...moduleLibs
+    ...moduleLibs,
+    ...newEmojiDelayLoadLinkArgs
   ];
 
   try {

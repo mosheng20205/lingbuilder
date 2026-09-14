@@ -7,6 +7,11 @@ export const ADD_BEGINNER_LOCAL_VARIABLE_COMMAND = 'lingcpp.beginner.addLocalVar
 export const ADD_BEGINNER_LOCAL_CONSTANT_COMMAND = 'lingcpp.beginner.addLocalConstant';
 export const ADD_BEGINNER_SUBPROGRAM_COMMAND = 'lingcpp.beginner.addSubprogram';
 export const ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND = 'lingcpp.beginner.addAssemblyVariable';
+export const MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND = 'lingcpp.beginner.moveSubprogramUp';
+export const MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND = 'lingcpp.beginner.moveSubprogramDown';
+export const CUT_BEGINNER_SUBPROGRAM_COMMAND = 'lingcpp.beginner.cutSubprogram';
+export const COPY_BEGINNER_SUBPROGRAM_COMMAND = 'lingcpp.beginner.copySubprogram';
+export const PASTE_BEGINNER_SUBPROGRAM_COMMAND = 'lingcpp.beginner.pasteSubprogram';
 
 export interface LingCppBeginnerMethodTarget {
   className: string;
@@ -15,10 +20,14 @@ export interface LingCppBeginnerMethodTarget {
 
 export interface LingCppBeginnerCommandTarget {
   id: string;
-  addSubprogram(): unknown;
+  addSubprogram(target?: LingCppBeginnerMethodTarget): unknown;
   addAssemblyVariable(): unknown;
   addLocalVariable(target?: LingCppBeginnerMethodTarget): unknown;
   addLocalConstant(target?: LingCppBeginnerMethodTarget): unknown;
+  moveSubprogram(target: LingCppBeginnerMethodTarget | undefined, direction: 'up' | 'down'): unknown;
+  cutSubprogram(target?: LingCppBeginnerMethodTarget): unknown;
+  copySubprogram(target?: LingCppBeginnerMethodTarget): unknown;
+  pasteSubprogram(target?: LingCppBeginnerMethodTarget): unknown;
 }
 
 class ActiveLingCppBeginnerCommandTargetService {
@@ -57,6 +66,9 @@ export function acquireLingCppBeginnerCommands(commands: CommandService, menus: 
   const hasLocalTarget = (context: CommandContext) => Boolean(
     context['lingcpp.beginner.active'] && context['lingcpp.beginner.hasTarget']
   ) && isWritable(context);
+  const hasSubprogramTarget = (context: CommandContext) => Boolean(
+    context['lingcpp.beginner.active'] && context['lingcpp.beginner.hasSubprogramTarget']
+  );
   const commandRegistration = commands.registerCommands([
     {
       id: ADD_BEGINNER_SUBPROGRAM_COMMAND,
@@ -66,7 +78,8 @@ export function acquireLingCppBeginnerCommands(commands: CommandService, menus: 
       keybindingPriority: 100,
       when: 'lingcpp.beginner.active',
       enabled: context => Boolean(context['lingcpp.beginner.canAddSubprogram']) && isWritable(context),
-      handler: () => activeLingCppBeginnerCommandTargetService.require().addSubprogram()
+      handler: (_context, target?: LingCppBeginnerMethodTarget) =>
+        activeLingCppBeginnerCommandTargetService.require().addSubprogram(target)
     },
     {
       id: ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
@@ -99,6 +112,51 @@ export function acquireLingCppBeginnerCommands(commands: CommandService, menus: 
       enabled: hasLocalTarget,
       handler: (_context, target?: LingCppBeginnerMethodTarget) =>
         activeLingCppBeginnerCommandTargetService.require().addLocalConstant(target)
+    },
+    {
+      id: MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND,
+      title: '上移子程序',
+      category: 'LingCpp 新手模式',
+      when: 'lingcpp.beginner.active',
+      enabled: context => Boolean(context['lingcpp.beginner.canMoveSubprogramUp']) && isWritable(context),
+      handler: (_context, target?: LingCppBeginnerMethodTarget) =>
+        activeLingCppBeginnerCommandTargetService.require().moveSubprogram(target, 'up')
+    },
+    {
+      id: MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND,
+      title: '下移子程序',
+      category: 'LingCpp 新手模式',
+      when: 'lingcpp.beginner.active',
+      enabled: context => Boolean(context['lingcpp.beginner.canMoveSubprogramDown']) && isWritable(context),
+      handler: (_context, target?: LingCppBeginnerMethodTarget) =>
+        activeLingCppBeginnerCommandTargetService.require().moveSubprogram(target, 'down')
+    },
+    {
+      id: CUT_BEGINNER_SUBPROGRAM_COMMAND,
+      title: '剪切子程序',
+      category: 'LingCpp 新手模式',
+      when: 'lingcpp.beginner.active',
+      enabled: context => hasSubprogramTarget(context) && isWritable(context),
+      handler: (_context, target?: LingCppBeginnerMethodTarget) =>
+        activeLingCppBeginnerCommandTargetService.require().cutSubprogram(target)
+    },
+    {
+      id: COPY_BEGINNER_SUBPROGRAM_COMMAND,
+      title: '复制子程序',
+      category: 'LingCpp 新手模式',
+      when: 'lingcpp.beginner.active',
+      enabled: hasSubprogramTarget,
+      handler: (_context, target?: LingCppBeginnerMethodTarget) =>
+        activeLingCppBeginnerCommandTargetService.require().copySubprogram(target)
+    },
+    {
+      id: PASTE_BEGINNER_SUBPROGRAM_COMMAND,
+      title: '粘贴子程序',
+      category: 'LingCpp 新手模式',
+      when: 'lingcpp.beginner.active',
+      enabled: context => Boolean(context['lingcpp.beginner.canPasteSubprogram']) && isWritable(context),
+      handler: (_context, target?: LingCppBeginnerMethodTarget) =>
+        activeLingCppBeginnerCommandTargetService.require().pasteSubprogram(target)
     }
   ]);
   const menuRegistration = menus.registerMenuItems([
@@ -128,6 +186,41 @@ export function acquireLingCppBeginnerCommands(commands: CommandService, menus: 
       command: ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
       group: 'navigation',
       order: 40,
+      source: 'builtin'
+    },
+    {
+      menu: LINGCPP_BEGINNER_CONTEXT_MENU,
+      command: MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND,
+      group: 'navigation',
+      order: 50,
+      source: 'builtin'
+    },
+    {
+      menu: LINGCPP_BEGINNER_CONTEXT_MENU,
+      command: MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND,
+      group: 'navigation',
+      order: 60,
+      source: 'builtin'
+    },
+    {
+      menu: LINGCPP_BEGINNER_CONTEXT_MENU,
+      command: CUT_BEGINNER_SUBPROGRAM_COMMAND,
+      group: 'navigation',
+      order: 70,
+      source: 'builtin'
+    },
+    {
+      menu: LINGCPP_BEGINNER_CONTEXT_MENU,
+      command: COPY_BEGINNER_SUBPROGRAM_COMMAND,
+      group: 'navigation',
+      order: 80,
+      source: 'builtin'
+    },
+    {
+      menu: LINGCPP_BEGINNER_CONTEXT_MENU,
+      command: PASTE_BEGINNER_SUBPROGRAM_COMMAND,
+      group: 'navigation',
+      order: 90,
       source: 'builtin'
     }
   ]);

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useImperativeHandle } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
-import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink, GripHorizontal } from 'lucide-react';
+import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink, GripHorizontal, ArrowUp, ArrowDown, Scissors, ClipboardPaste } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
   if (fileName.endsWith('.lcpp')) {
@@ -51,18 +52,27 @@ import {
   DIFF_VIEW_MODE_CHANGE_EVENT,
   type DiffViewMode
 } from '../services/editor/diffViewMode';
+import {
+  BEGINNER_TABLE_MIN_COLUMN_WIDTH,
+  readBeginnerTableColumnWidthOverrides,
+  writeBeginnerTableColumnWidths,
+  type BeginnerTableColumnWidthOverrides,
+  type BeginnerTableKey
+} from '../services/editor/beginnerTableColumnWidths';
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppSourceDefinitionAtPosition, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppProjectGlobalContext, LingCppProjectTypeContext, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
-import { getBeginnerProcedureCallAtCursor, resolveBeginnerProcedureDefinition } from '../services/lingCpp/beginnerDefinitionNavigation';
+import { getBeginnerLibraryCallAtCursor, getBeginnerProcedureCallAtCursor, resolveBeginnerFunctionLibraryDefinition, resolveBeginnerProcedureDefinition } from '../services/lingCpp/beginnerDefinitionNavigation';
 import { getBeginnerTextareaOffsetAtPoint } from '../services/lingCpp/beginnerTextPosition';
 import {
   type BeginnerFlowGuideRow,
+  type BeginnerCrossSegmentFlowFold,
   beginnerIfLineKind,
   beginnerStructureAnchors,
   currentBeginnerBranch,
   findBeginnerIfBlocksAtLine,
   formatBeginnerFlowIndentation,
+  getBeginnerCrossSegmentFlowFolds,
   getBeginnerNextLineIndentation,
   getBeginnerIfFlowGuideRows,
   parseBeginnerIfBlocks
@@ -95,6 +105,7 @@ import {
   resolveBeginnerTypeAlias
 } from '../services/lingCpp/beginnerTypeCompletion';
 import { createBeginnerVariableCompletion } from '../services/lingCpp/beginnerVariableCompletion';
+import { buildChineseCompletionSearchAliases } from '../services/lingCpp/completionSearchAliases';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import { EditorExperienceMode } from '../services/lingCpp/beginnerService';
 import { importNativeCppToLingBuilder } from '../services/windowDesigner/nativeCppImportService';
@@ -135,8 +146,14 @@ import {
   ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
   ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
   ADD_BEGINNER_SUBPROGRAM_COMMAND,
+  COPY_BEGINNER_SUBPROGRAM_COMMAND,
+  CUT_BEGINNER_SUBPROGRAM_COMMAND,
+  MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND,
+  MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND,
+  PASTE_BEGINNER_SUBPROGRAM_COMMAND,
   type LingCppBeginnerMethodTarget
 } from '../services/lingCpp/beginnerCommandTargetService';
+import { getLingCppMethodBlock } from '../services/lingCpp/astEditService';
 import { getMenuService } from '../services/menus/menuService';
 import { LINGCPP_BEGINNER_CONTEXT_MENU, LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU } from '../services/menus/types';
 import {
@@ -320,6 +337,8 @@ type BeginnerCodeSegment = Extract<BeginnerMethodBodySegment, { kind: 'code' }>;
 type BeginnerCodeSegmentContext = {
   segment: BeginnerCodeSegment;
   segments: BeginnerMethodBodySegment[];
+  /** Folds anchored in an earlier segment whose range extends into this one. */
+  externalFlowFolds?: BeginnerCrossSegmentFlowFold[];
 };
 
 type BeginnerFlowLineTarget = {
@@ -374,6 +393,7 @@ interface BeginnerContextMenuState {
   className?: string;
   methodName?: string;
   definitionName?: string;
+  libraryCall?: { libraryName: string; functionName: string };
   controlReference?: LingCppControlReference;
 }
 
@@ -1418,11 +1438,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [viewType, setViewType] = useState<'code' | 'designer'>('code');
   const [beginnerCommandTargetId] = useState(() => `lingcpp-beginner-editor-${++diffViewerCommandTargetSerial}`);
   const beginnerCommandHandlerRef = useRef<{
-    addSubprogram?: () => unknown;
+    addSubprogram?: (target?: LingCppBeginnerMethodTarget) => unknown;
     addAssemblyVariable?: () => unknown;
     addVariable?: (target?: LingCppBeginnerMethodTarget) => unknown;
     addConstant?: (target?: LingCppBeginnerMethodTarget) => unknown;
+    moveSubprogram?: (target: LingCppBeginnerMethodTarget | undefined, direction: 'up' | 'down') => unknown;
+    cutSubprogram?: (target?: LingCppBeginnerMethodTarget) => unknown;
+    copySubprogram?: (target?: LingCppBeginnerMethodTarget) => unknown;
+    pasteSubprogram?: (target?: LingCppBeginnerMethodTarget) => unknown;
   }>({});
+  const beginnerMethodClipboardRef = useRef<{ name: string; access: LingCppAccessModifier; blockLines: string[] } | null>(null);
 
   useEffect(() => {
     const handleForceCodeView = () => {
@@ -1502,6 +1527,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [expandedBeginnerFunctionTargetKey, setExpandedBeginnerFunctionTargetKey] = useState<string | null>(null);
   const [collapsedBeginnerProcessTargetKeys, setCollapsedBeginnerProcessTargetKeys] = useState<string[]>([]);
   const [collapsedBeginnerLocalGroupKeys, setCollapsedBeginnerLocalGroupKeys] = useState<string[]>([]);
+  const [isBeginnerMemberTableCollapsed, setIsBeginnerMemberTableCollapsed] = useState(false);
   const [collapsedBeginnerFlowBlockKeys, setCollapsedBeginnerFlowBlockKeys] = useState<string[]>([]);
   const [hoveredBeginnerFlowLine, setHoveredBeginnerFlowLine] = useState<BeginnerFlowLineTarget | null>(null);
   const [activeBeginnerFlowLine, setActiveBeginnerFlowLine] = useState<BeginnerFlowLineTarget | null>(null);
@@ -1538,10 +1564,64 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
   const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
   const [beginnerInitialValueEditor, setBeginnerInitialValueEditor] = useState<BeginnerInitialValueEditorState | null>(null);
+  const [beginnerColumnWidthOverrides, setBeginnerColumnWidthOverrides] = useState<BeginnerTableColumnWidthOverrides>(
+    () => readBeginnerTableColumnWidthOverrides()
+  );
+  const beginnerColumnWidthOverridesRef = useRef(beginnerColumnWidthOverrides);
+  beginnerColumnWidthOverridesRef.current = beginnerColumnWidthOverrides;
+
+  const setBeginnerColumnWidthOverride = useCallback((tableKey: BeginnerTableKey, columnIndex: number, width: number | null) => {
+    const current = beginnerColumnWidthOverridesRef.current;
+    const columns = [...(current[tableKey] || [])];
+    if (width === null) {
+      if (columnIndex >= columns.length) return;
+      columns[columnIndex] = 0;
+    } else {
+      columns[columnIndex] = Math.max(BEGINNER_TABLE_MIN_COLUMN_WIDTH, Math.round(width));
+    }
+    const next: BeginnerTableColumnWidthOverrides = { ...current, [tableKey]: columns };
+    beginnerColumnWidthOverridesRef.current = next;
+    setBeginnerColumnWidthOverrides(next);
+  }, []);
+
+  const persistBeginnerColumnWidthOverrides = useCallback(() => {
+    writeBeginnerTableColumnWidths(beginnerColumnWidthOverridesRef.current);
+  }, []);
+
+  const beginBeginnerColumnResize = useCallback((event: ReactPointerEvent<HTMLSpanElement>, tableKey: BeginnerTableKey, columnIndex: number, startWidth: number) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const previousBodyCursor = document.body.style.cursor;
+    const previousBodyUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const handleMove = (moveEvent: PointerEvent) => {
+      setBeginnerColumnWidthOverride(tableKey, columnIndex, startWidth + moveEvent.clientX - startX);
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      document.body.style.cursor = previousBodyCursor;
+      document.body.style.userSelect = previousBodyUserSelect;
+      persistBeginnerColumnWidthOverrides();
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  }, [persistBeginnerColumnWidthOverrides, setBeginnerColumnWidthOverride]);
+
+  const resetBeginnerColumnWidth = useCallback((tableKey: BeginnerTableKey, columnIndex: number) => {
+    setBeginnerColumnWidthOverride(tableKey, columnIndex, null);
+    persistBeginnerColumnWidthOverrides();
+  }, [persistBeginnerColumnWidthOverrides, setBeginnerColumnWidthOverride]);
 
   useEffect(() => {
     setCollapsedBeginnerProcessTargetKeys([]);
     setCollapsedBeginnerLocalGroupKeys([]);
+    setIsBeginnerMemberTableCollapsed(false);
     setCollapsedBeginnerFlowBlockKeys([]);
     setHoveredBeginnerFlowLine(null);
     setActiveBeginnerFlowLine(null);
@@ -1889,10 +1969,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const commandRegistration = acquireLingCppBeginnerCommands(commandService, menus);
     const targetRegistration = activeLingCppBeginnerCommandTargetService.register({
       id: beginnerCommandTargetId,
-      addSubprogram: () => beginnerCommandHandlerRef.current.addSubprogram?.(),
+      addSubprogram: target => beginnerCommandHandlerRef.current.addSubprogram?.(target),
       addAssemblyVariable: () => beginnerCommandHandlerRef.current.addAssemblyVariable?.(),
       addLocalVariable: target => beginnerCommandHandlerRef.current.addVariable?.(target),
-      addLocalConstant: target => beginnerCommandHandlerRef.current.addConstant?.(target)
+      addLocalConstant: target => beginnerCommandHandlerRef.current.addConstant?.(target),
+      moveSubprogram: (target, direction) => beginnerCommandHandlerRef.current.moveSubprogram?.(target, direction),
+      cutSubprogram: target => beginnerCommandHandlerRef.current.cutSubprogram?.(target),
+      copySubprogram: target => beginnerCommandHandlerRef.current.copySubprogram?.(target),
+      pasteSubprogram: target => beginnerCommandHandlerRef.current.pasteSubprogram?.(target)
     });
     activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId);
     return () => {
@@ -3372,6 +3456,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   };
 
   const revealStructuredRow = (row: LingCppStructuredReadingRow) => {
+    if (row.group === 'member') setIsBeginnerMemberTableCollapsed(false);
     if (row.blockId) {
       setFocusedReadableBlockId(row.blockId);
       window.dispatchEvent(new CustomEvent('lingcpp-reveal-block', {
@@ -4782,7 +4867,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             label: functionCallName(target),
             detail: `${target.method.returnType || '空'} 子程序调用`,
             insertText: `${functionCallName(target)}(${target.method.parameters.map(defaultCodeArgument).join(', ')})`,
-            aliases: [target.method.name, '子程序', '功能', '调用'],
+            aliases: Array.from(new Set([
+              target.method.name,
+              '子程序', '功能', '调用',
+              ...buildChineseCompletionSearchAliases(functionCallName(target)),
+              ...buildChineseCompletionSearchAliases(target.method.name)
+            ])),
             kind: '子程序' as BeginnerCodeCompletion['kind']
           })),
         ...typeSuggestions.map(type => ({
@@ -4947,6 +5037,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     ) => {
       const token = getBeginnerCommandTokenAtCursor(input.value, input.selectionStart, beginnerCommandHintNames);
       if (!token) {
+        // 功能库限定调用提示：光标落在 库名.功能名 任一段都显示签名与说明。
+        const libraryCall = getLibraryCallFromInput(input);
+        if (libraryCall && lingCppLanguageContext) {
+          const library = (lingCppLanguageContext.projectFunctions?.libraries || []).find(
+            item => item.name === libraryCall.libraryName
+          );
+          const method = library?.methods.find(item => item.name === libraryCall.functionName);
+          if (library && method) {
+            const parameterText = method.parameters.map(parameter => `${parameter.type} ${parameter.name}`).join(', ');
+            onShowCommandHint?.({
+              command: `${library.name}.${method.name}`,
+              signature: `${method.returnType || '空'} ${library.name}.${method.name}(${parameterText})`,
+              returnType: method.returnType || '空',
+              summary: `${library.name} 功能库${method.access === '公开' ? '公开' : '私有'}功能；库内路径 ${library.filePath}`,
+              parameters: method.parameters.map(parameter => ({
+                name: parameter.name,
+                type: parameter.type,
+                note: parameter.defaultValue ? `默认值：${parameter.defaultValue}` : ''
+              })),
+              example: `${library.name}.${method.name}(${method.parameters.map(parameter => /文本/u.test(parameter.type) ? '"文本"' : /逻辑/u.test(parameter.type) ? '真' : /小数|双精度/u.test(parameter.type) ? '0.0' : '0').join(', ')})`
+            });
+            return;
+          }
+        }
         onShowCommandHint?.(null);
         return;
       }
@@ -5802,26 +5916,110 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const applied = applyCodeTargetSignature(target, { parameters: nextParameters });
       if (applied) setBeginnerParameterFocus({ targetKey: codeTargetKey(target), parameterName: name });
     };
-    const createBeginnerFunction = () => {
+    const createBeginnerFunction = (target?: BeginnerCodeTarget) => {
       if (!primaryMethodOwnerName) {
         setStructureEditError('当前源码里还没有类或功能库，无法新增子程序。');
         return;
       }
-      const name = uniqueBeginnerName('新子程序', codeTargets.map(target => target.method.name));
+      const anchor = target && target.className === primaryMethodOwnerName ? target : undefined;
+      const name = uniqueBeginnerName('新子程序', codeTargets.map(item => item.method.name));
       const applied = applyStructureAstEdits([{
         kind: 'add-method',
         className: primaryMethodOwnerName,
+        insertAfterMethodName: anchor?.method.name,
         method: {
           name,
           returnType: '空',
           access: primaryFunctionLibrary ? '公开' : undefined,
           bodyLines: [`调试输出("${name} 已执行")`],
-          note: '新手模式右键新增的子程序'
+          note: anchor ? '新手模式在当前子程序下方新增' : '新手模式右键新增的子程序'
         }
-      }]);
+      }], anchor?.method.line);
       if (applied) {
         setSelectedBeginnerCodeTarget({ className: primaryMethodOwnerName, methodName: name });
         setExpandedBeginnerFunctionTargetKey(`${primaryMethodOwnerName}:method:${name}`);
+      }
+    };
+    const requireSubprogramTarget = (target?: BeginnerCodeTarget): BeginnerCodeTarget | undefined => {
+      if (!target) {
+        setStructureEditError('请先在要操作的子程序上右键。');
+        return undefined;
+      }
+      if (target.method.kind !== 'method') {
+        setStructureEditError('事件处理器与构造、析构子程序不支持移动、剪切或复制。');
+        return undefined;
+      }
+      return target;
+    };
+    const moveBeginnerSubprogram = (target: BeginnerCodeTarget | undefined, direction: 'up' | 'down') => {
+      if (!requireSubprogramTarget(target)) return;
+      applyStructureAstEdits([{
+        kind: 'move-method',
+        className: target.className,
+        methodName: target.method.name,
+        direction
+      }]);
+    };
+    const copyBeginnerSubprogram = (target?: BeginnerCodeTarget) => {
+      if (!requireSubprogramTarget(target)) return;
+      const block = getLingCppMethodBlock(normalizedSourceCode, target.className, target.method.name);
+      if (!block) {
+        setStructureEditError(`未找到子程序「${target.method.name}」，无法复制。`);
+        return;
+      }
+      beginnerMethodClipboardRef.current = block;
+      setStructureEditError(null);
+    };
+    const cutBeginnerSubprogram = (target?: BeginnerCodeTarget) => {
+      if (!requireSubprogramTarget(target)) return;
+      const block = getLingCppMethodBlock(normalizedSourceCode, target.className, target.method.name);
+      if (!block) {
+        setStructureEditError(`未找到子程序「${target.method.name}」，无法剪切。`);
+        return;
+      }
+      beginnerMethodClipboardRef.current = block;
+      const applied = applyStructureAstEdits([{
+        kind: 'delete-method',
+        className: target.className,
+        methodName: target.method.name
+      }]);
+      if (applied) {
+        const targetKey = codeTargetKey(target);
+        setSelectedBeginnerCodeTarget(null);
+        setSelectedBeginnerHandler(null);
+        setExpandedBeginnerFunctionTargetKey(current => (current === targetKey ? null : current));
+        setCollapsedBeginnerProcessTargetKeys(current => current.filter(key => key !== targetKey));
+      }
+    };
+    const pasteBeginnerSubprogram = (target?: BeginnerCodeTarget) => {
+      const clipboard = beginnerMethodClipboardRef.current;
+      if (!clipboard) {
+        setStructureEditError('剪贴板里还没有子程序，请先剪切或复制一个子程序。');
+        return;
+      }
+      if (!primaryMethodOwnerName) {
+        setStructureEditError('当前源码里还没有类或功能库，无法粘贴子程序。');
+        return;
+      }
+      const ownerMethodNames = codeTargets
+        .filter(item => item.className === primaryMethodOwnerName)
+        .map(item => item.method.name);
+      if (ownerMethodNames.some(name => normalizeIdentifier(name) === normalizeIdentifier(clipboard.name))) {
+        setStructureEditError(`无法粘贴：当前已存在同名子程序「${clipboard.name}」，请先重命名后再粘贴。`);
+        return;
+      }
+      const anchor = target && target.className === primaryMethodOwnerName ? target : undefined;
+      const applied = applyStructureAstEdits([{
+        kind: 'insert-method-block',
+        className: primaryMethodOwnerName,
+        blockLines: clipboard.blockLines,
+        access: clipboard.access,
+        insertAfterMethodName: anchor?.method.name
+      }], anchor?.method.line);
+      if (applied) {
+        setSelectedBeginnerCodeTarget({ className: primaryMethodOwnerName, methodName: clipboard.name });
+        setExpandedBeginnerFunctionTargetKey(`${primaryMethodOwnerName}:method:${clipboard.name}`);
+        setStructureEditError(null);
       }
     };
     const createBeginnerMember = () => {
@@ -6069,10 +6267,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       ? codeTargets.find(item => item.className === target.className && item.method.name === target.methodName)
       : activeCanvasTarget;
     beginnerCommandHandlerRef.current = {
-      addSubprogram: createBeginnerFunction,
+      addSubprogram: target => createBeginnerFunction(resolveBeginnerCommandTarget(target)),
       addAssemblyVariable: createBeginnerMember,
       addVariable: target => createBeginnerLocal(resolveBeginnerCommandTarget(target), false),
-      addConstant: target => createBeginnerLocal(resolveBeginnerCommandTarget(target), true)
+      addConstant: target => createBeginnerLocal(resolveBeginnerCommandTarget(target), true),
+      moveSubprogram: (target, direction) => moveBeginnerSubprogram(resolveBeginnerCommandTarget(target), direction),
+      cutSubprogram: target => cutBeginnerSubprogram(resolveBeginnerCommandTarget(target)),
+      copySubprogram: target => copyBeginnerSubprogram(resolveBeginnerCommandTarget(target)),
+      pasteSubprogram: target => pasteBeginnerSubprogram(resolveBeginnerCommandTarget(target))
     };
     const deleteBeginnerCodeTarget = async (target?: BeginnerCodeTarget) => {
       if (!target) return;
@@ -6111,6 +6313,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         cursor,
         codeTargets.map(candidate => candidate.method.name)
       );
+    const getLibraryCallFromInput = (input: HTMLTextAreaElement, cursor = input.selectionStart) =>
+      lingCppLanguageContext
+        ? getBeginnerLibraryCallAtCursor(input.value, cursor, lingCppLanguageContext.projectFunctions?.libraries || [])
+        : null;
     const cancelBeginnerPointerSync = () => {
       const frames = beginnerPointerSyncFramesRef.current;
       if (frames.first !== null) window.cancelAnimationFrame(frames.first);
@@ -6171,6 +6377,26 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }));
       return true;
     };
+    // 跳转到功能库功能定义：切换到功能库 .lcpp 页签，再由 pendingHandlerFocus 定位到功能行。
+    const revealFunctionLibraryDefinition = (libraryName: string, functionName: string) => {
+      if (!lingCppLanguageContext) return false;
+      const definition = resolveBeginnerFunctionLibraryDefinition(
+        lingCppLanguageContext.projectFunctions?.libraries || [],
+        libraryName,
+        functionName
+      );
+      if (!definition) return false;
+      const normalizedTarget = definition.filePath.replace(/\\/gu, '/').toLowerCase();
+      const targetFile = allFiles.find(file => String(file.path || '').replace(/\\/gu, '/').toLowerCase() === normalizedTarget)
+        || allFiles.find(file => String(file.path || '').replace(/\\/gu, '/').toLowerCase().endsWith(normalizedTarget));
+      if (!targetFile) return false;
+      if (targetFile.path !== activeFile?.path) onSelectTab(targetFile);
+      setViewMode('chinese');
+      onExperienceModeChange?.('beginner');
+      setPendingHandlerFocus({ handlerName: functionName, filePath: targetFile.path });
+      closeBeginnerCompletion();
+      return true;
+    };
     const revealProjectConstantDefinition = (constantName: string) => {
       const globalFile = allFiles.find(file => isProjectGlobalsFilePath(String(file.path || file.name || '')));
       if (!globalFile) return false;
@@ -6202,6 +6428,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         activeFile?.path
       );
       const call = getProcedureCallFromInput(event.currentTarget, cursor);
+      const libraryCall = getLibraryCallFromInput(event.currentTarget, cursor);
       const sourceDefinition = getLingCppSourceDefinitionAtPosition(
         normalizedSourceCode,
         sourcePosition.line,
@@ -6218,6 +6445,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           ? (setCursorPosition({ line: sourceDefinition.range.startLine, column: sourceDefinition.range.startColumn }), setStructuredRevealLine(sourceDefinition.range.startLine), true)
         : call
           ? revealBeginnerProcedureDefinition(target.className, call.name)
+        : libraryCall
+          ? revealFunctionLibraryDefinition(libraryCall.libraryName, libraryCall.functionName)
         : constantName
           ? revealProjectConstantDefinition(constantName)
           : false;
@@ -6234,11 +6463,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       event.stopPropagation();
       setBeginnerCompletionState(null);
       const effectiveTarget = target || activeCanvasTarget;
-      const procedureCall = input
-        ? getProcedureCallFromInput(
-            input,
-            getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY)
-          )
+      const contextCursor = input
+        ? getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY)
+        : undefined;
+      const procedureCall = input && contextCursor !== undefined
+        ? getProcedureCallFromInput(input, contextCursor)
+        : null;
+      const libraryCall = input && contextCursor !== undefined
+        ? getLibraryCallFromInput(input, contextCursor)
         : null;
       const inputOffset = input
         ? getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY)
@@ -6266,6 +6498,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         className: effectiveTarget?.className,
         methodName: effectiveTarget?.method.name,
         definitionName: procedureCall?.name,
+        libraryCall: libraryCall ? { libraryName: libraryCall.libraryName, functionName: libraryCall.functionName } : undefined,
         controlReference
       });
     };
@@ -7699,7 +7932,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const compactEmptyCellClass = `h-[var(--beginner-table-row-height)] border px-[var(--beginner-table-cell-x)] align-middle text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder} ${
       isDarkMode ? 'bg-[#15161b] text-slate-600' : 'bg-white text-slate-400'
     }`;
-    type CompactColumn = { label: string; className?: string; style?: React.CSSProperties };
+    type CompactColumn = { label: string; width: number };
     const beginnerKnownMembers = new Set([
       ...memberRows.map(row => row.targetName || row.name),
       ...(projectGlobals?.constants || []).map(constant => constant.name),
@@ -7889,40 +8122,64 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       </section>
     );
 
+    const resolveBeginnerColumnWidths = (tableKey: BeginnerTableKey, widths: number[]) =>
+      widths.map((width, columnIndex) =>
+        Math.max(BEGINNER_TABLE_MIN_COLUMN_WIDTH, beginnerColumnWidthOverrides[tableKey]?.[columnIndex] || width)
+      );
+
     const renderInlineTable = (
+      tableKey: BeginnerTableKey,
       columns: CompactColumn[],
       rows: React.ReactNode[],
       maxWidth: number,
       preserveWidth = false
-    ) => (
-      <div
-        data-beginner-preserve-width={preserveWidth ? 'true' : undefined}
-        className={`inline-block align-top ${preserveWidth ? 'max-w-none' : 'w-full max-w-full'}`}
-        style={preserveWidth
-          ? {
-              width: `${maxWidth}px`,
-              minWidth: `${maxWidth}px`
-            }
-          : { maxWidth: `calc(${maxWidth}px * var(--beginner-table-scale))` }}
-      >
-        <table className={`w-full table-fixed border-collapse text-left font-sans text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder}`}>
-          <thead>
-            <tr>
-              {columns.map((column, columnIndex) => (
-                <th
-                  key={`${column.label}:${columnIndex}`}
-                  className={`${compactHeadCellClass} ${column.className || ''}`}
-                  style={column.style}
-                >
-                  {column.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>{rows}</tbody>
-        </table>
-      </div>
-    );
+    ) => {
+      const effectiveWidths = resolveBeginnerColumnWidths(tableKey, columns.map(column => column.width));
+      const tableWidth = Math.max(maxWidth, effectiveWidths.reduce((sum, width) => sum + width, 0));
+      return (
+        <div
+          data-beginner-preserve-width={preserveWidth ? 'true' : undefined}
+          data-beginner-table={tableKey}
+          className={`inline-block align-top ${preserveWidth ? 'max-w-none' : 'w-full max-w-full'}`}
+          style={preserveWidth
+            ? {
+                width: `${tableWidth}px`,
+                minWidth: `${tableWidth}px`
+              }
+            : { maxWidth: `calc(${tableWidth}px * var(--beginner-table-scale))` }}
+        >
+          <table className={`w-full table-fixed border-collapse text-left font-sans text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder}`}>
+            <thead>
+              <tr>
+                {columns.map((column, columnIndex) => (
+                  <th
+                    key={`${column.label}:${columnIndex}`}
+                    className={`${compactHeadCellClass} relative select-none`}
+                    style={{ width: effectiveWidths[columnIndex] }}
+                  >
+                    {column.label}
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`调整「${column.label}」列宽`}
+                      title="拖动调整列宽，双击恢复默认"
+                      onPointerDown={event => beginBeginnerColumnResize(event, tableKey, columnIndex, effectiveWidths[columnIndex])}
+                      onDoubleClick={event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        resetBeginnerColumnWidth(tableKey, columnIndex);
+                      }}
+                      className="absolute inset-y-0 right-0 z-10 w-[7px] cursor-col-resize touch-none after:absolute after:inset-y-[3px] after:right-0 after:w-[2px] after:rounded-full after:bg-transparent hover:after:bg-cyan-500/70"
+                    />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>
+      );
+    };
 
     const classDeclarationRow = classRows[0] || normalRows.find(row => row.editKind === 'class');
     const packageDeclarationRow = declarationRows.find(row => row.editKind === 'package') || declarationRows[0];
@@ -7937,11 +8194,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         row.line,
         'plain',
         renderInlineTable(
+          'declaration',
           [
-            { label: '窗口程序集名', className: 'w-[160px]' },
-            { label: '保 留', className: 'w-[58px]' },
-            { label: '保 留', className: 'w-[58px]' },
-            { label: '备 注', className: 'w-[120px]' }
+            { label: '窗口程序集名', width: 160 },
+            { label: '保 留', width: 58 },
+            { label: '保 留', width: 58 },
+            { label: '备 注', width: 120 }
           ],
           [
             <tr key={row.id} className={rowChrome(row)}>
@@ -7987,7 +8245,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const staticColumnWidth = Math.ceil(54 * beginnerTableScale);
       const accessColumnWidth = Math.ceil(74 * beginnerTableScale);
       const noteColumnWidth = Math.min(420, Math.max(280, Array.from(noteValue).length * 14 + 28));
-      const processTableWidth = nameColumnWidth + returnTypeColumnWidth + staticColumnWidth + accessColumnWidth + noteColumnWidth;
+      const processTableWidth = resolveBeginnerColumnWidths('process', [
+        nameColumnWidth,
+        returnTypeColumnWidth,
+        staticColumnWidth,
+        accessColumnWidth,
+        noteColumnWidth
+      ]).reduce((sum, width) => sum + width, 0);
       const collapsed = isBeginnerProcessCollapsed(target);
 
       return renderSourceShell(
@@ -7996,12 +8260,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         target.method.line,
         selected ? 'active' : 'plain',
         renderInlineTable(
+          'process',
           [
-            { label: '子程序名', style: { width: nameColumnWidth } },
-            { label: '返回值类型', style: { width: returnTypeColumnWidth } },
-            { label: '静态', style: { width: staticColumnWidth } },
-            { label: '公开', style: { width: accessColumnWidth } },
-            { label: '备注', style: { width: noteColumnWidth } }
+            { label: '子程序名', width: nameColumnWidth },
+            { label: '返回值类型', width: returnTypeColumnWidth },
+            { label: '静态', width: staticColumnWidth },
+            { label: '公开', width: accessColumnWidth },
+            { label: '备注', width: noteColumnWidth }
           ],
           [
             <tr
@@ -8053,20 +8318,36 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if (rows.length === 0 && !primaryLingCppClass) return null;
       const sourceLine = rows[0]?.line || primaryLingCppClass?.line || 1;
       const showNewMemberRow = Boolean(primaryLingCppClass);
-      const countedRows = rows.length > 0
-        ? rows.map((row, index) => ({ visualLine: visualLineStart + index, sourceLine: row.line }))
-        : showNewMemberRow
-          ? [{ visualLine: visualLineStart, sourceLine }]
-          : [];
+      const memberCollapsed = isBeginnerMemberTableCollapsed;
+      const countedRows = memberCollapsed
+        ? []
+        : rows.length > 0
+          ? rows.map((row, index) => ({ visualLine: visualLineStart + index, sourceLine: row.line }))
+          : showNewMemberRow
+            ? [{ visualLine: visualLineStart, sourceLine }]
+            : [];
 
       return (
         <section
           id={sectionDomId('member')}
           data-structured-line={sourceLine}
-          className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] border-b ${canvasBorder} ${canvasBg}`}
+          className={`group relative grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] border-b ${canvasBorder} ${canvasBg}`}
         >
           <div className={`select-none border-r px-2 py-2 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`}>
-            <div className={`h-[var(--beginner-table-row-height)] border-b ${canvasBorder}`} />
+            <div className={`relative h-[var(--beginner-table-row-height)] border-b ${canvasBorder}`}>
+              <button
+                type="button"
+                aria-expanded={!memberCollapsed}
+                aria-label={memberCollapsed ? '展开程序集变量表' : '折叠程序集变量表'}
+                onClick={() => setIsBeginnerMemberTableCollapsed(current => !current)}
+                className={`absolute left-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded transition-colors ${
+                  isDarkMode ? 'text-slate-500 hover:bg-slate-700/60 hover:text-cyan-200' : 'text-slate-400 hover:bg-slate-200 hover:text-cyan-700'
+                }`}
+                title={memberCollapsed ? '展开程序集变量表' : '折叠程序集变量表'}
+              >
+                {memberCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            </div>
             {countedRows.map(item => (
               <button
                 key={`${item.visualLine}:${item.sourceLine}`}
@@ -8078,22 +8359,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 {item.sourceLine}
               </button>
             ))}
-            {showNewMemberRow && rows.length > 0 && (
+            {!memberCollapsed && showNewMemberRow && rows.length > 0 && (
               <div className="h-[var(--beginner-table-row-height)] text-right text-slate-600">+</div>
             )}
           </div>
           <div className="min-w-0 px-3 py-2">
           {renderInlineTable(
+            'member',
             [
-              { label: '程序集变量', className: 'w-[140px]' },
-              { label: '类 型', className: 'w-[96px]' },
-              { label: '静 态', className: 'w-[56px]' },
-              { label: '数 组', className: 'w-[56px]' },
-              { label: '备 注', className: 'w-[140px]' },
-              { label: '操 作', className: 'w-[88px]' }
+              { label: memberCollapsed ? `程序集变量 · ${rows.length} 项` : '程序集变量', width: 140 },
+              { label: '类 型', width: 96 },
+              { label: '静 态', width: 56 },
+              { label: '数 组', width: 56 },
+              { label: '备 注', width: 140 },
+              { label: '操 作', width: 88 }
             ],
             [
-              ...rows.map(row => (
+              ...(memberCollapsed ? [] : rows.map(row => (
                 <tr key={`${row.id}:${row.line}`} className={rowChrome(row)}>
                   <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '变量名', 'variable')}</td>
                   <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-type', row.type || '', '类型', 'type')}</td>
@@ -8117,8 +8399,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     </button>
                   </td>
                 </tr>
-              )),
-              primaryLingCppClass ? (
+              ))),
+              !memberCollapsed && primaryLingCppClass ? (
                 <tr key="new-member" className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
                   <td className={compactCellClass}>{renderNewMemberInput('name', '输入变量名', 'variable')}</td>
                   <td className={compactCellClass}>{renderNewMemberInput('type', '类型', 'type')}</td>
@@ -8176,13 +8458,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         'plain',
         <div className="min-w-0">
           {renderInlineTable(
+            'parameters',
             [
-              { label: '参数名', className: 'w-[140px]' },
-              { label: '类 型', className: 'w-[96px]' },
-              { label: '数 组', className: 'w-[56px]' },
-              { label: '默认值', className: 'w-[96px]' },
-              { label: '备 注', className: 'w-[140px]' },
-              { label: '操 作', className: 'w-[104px]' }
+              { label: '参数名', width: 140 },
+              { label: '类 型', width: 96 },
+              { label: '数 组', width: 56 },
+              { label: '默认值', width: 96 },
+              { label: '备 注', width: 140 },
+              { label: '操 作', width: 104 }
             ],
             [
               ...target.method.parameters.map((parameter, index) => (
@@ -8403,14 +8686,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             <span className="ml-auto font-normal opacity-70">Ctrl+L 变量 · Ctrl+B 常量</span>
           </button>
           {!collapsed && renderInlineTable(
+            'locals',
             [
-              { label: '类 别', className: 'w-[78px]' },
-              { label: '名 称', className: 'w-[130px]' },
-              { label: '类 型', className: 'w-[105px]' },
-              { label: '数 组', className: 'w-[56px]' },
-              { label: '初始值', className: 'w-[165px]' },
-              { label: '备 注', className: 'w-[160px]' },
-              { label: '操 作', className: 'w-[88px]' }
+              { label: '类 别', width: 78 },
+              { label: '名 称', width: 130 },
+              { label: '类 型', width: 105 },
+              { label: '数 组', width: 56 },
+              { label: '初始值', width: 165 },
+              { label: '备 注', width: 160 },
+              { label: '操 作', width: 88 }
             ],
             locals.map((local, index) => {
               const isLastInGroup = index === locals.length - 1;
@@ -8513,6 +8797,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const collapsedFlowBlocks = flowBlocks.filter(block =>
         collapsedBeginnerFlowBlockKeys.includes(flowBlockKey(block))
       );
+      const externalFlowFolds = segmentContext?.externalFlowFolds;
+      const anchorFoldFor = (block: (typeof flowBlocks)[number]) =>
+        externalFlowFolds?.find(fold =>
+          fold.anchorSegmentId === segmentId && fold.anchorStartLine === block.startLine
+        );
       const flowBlockAtStartLine = (line: number) => flowBlocks.find(block => block.startLine === line);
       const isSameFlowLineTarget = (value: BeginnerFlowLineTarget | null, line: number) =>
         value?.targetKey === targetKey && value.segmentId === segmentId && value.line === line;
@@ -8718,13 +9007,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       };
       const flowMarkForLine = (_line: string, index: number) => flowGuideRows[index];
 
-      if (collapsedFlowBlocks.length > 0) {
-        const isLineHidden = (line: number) => collapsedFlowBlocks.some(block =>
-          line > block.startLine && line <= block.endLine
-        );
+      if (collapsedFlowBlocks.length > 0 || (externalFlowFolds?.length ?? 0) > 0) {
+        const isLineHidden = (line: number, index: number) =>
+          collapsedFlowBlocks.some(block =>
+            line > block.startLine && line <= block.endLine
+          ) || Boolean(externalFlowFolds?.some(fold => {
+            const sourceLine = displaySourceLine(index);
+            return sourceLine > fold.sourceFrom && sourceLine <= fold.sourceTo;
+          }));
         const visibleLines = bodyLines
           .map((line, index) => ({ line, index, lineNumber: index + 1 }))
-          .filter(item => !isLineHidden(item.lineNumber));
+          .filter(item => !isLineHidden(item.lineNumber, item.index));
+        if (visibleLines.length === 0) return null;
 
         return (
           <section
@@ -8782,7 +9076,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       <span className={`relative z-10 ml-3 text-[10px] ${
                         isDarkMode ? 'text-slate-500' : 'text-slate-400'
                       }`}>
-                        {`... 已收起 ${Math.max(0, block.endLine - block.startLine)} 行`}
+                        {`... 已收起 ${anchorFoldFor(block)?.hiddenRows ?? Math.max(0, block.endLine - block.startLine)} 行`}
                       </span>
                     )}
                   </div>
@@ -9130,7 +9424,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const memberVisualLineStart = 2;
     const memberCanvas = renderMemberCanvas(memberVisualLineStart);
     const memberVisualLineCount = memberCanvas
-      ? Math.max(1, memberRows.length)
+      ? (isBeginnerMemberTableCollapsed ? 1 : Math.max(1, memberRows.length))
       : 0;
     let nextVisualLine = memberVisualLineStart + memberVisualLineCount;
     const processCanvases: React.ReactNode[] = [];
@@ -9152,8 +9446,39 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         }
 
         const bodySegments = getBeginnerMethodBodySegments(target.method);
+        let foldStatementCursor = 0;
+        const foldSegmentSources = bodySegments.flatMap(segment => {
+          if (segment.kind !== 'code') return [];
+          const source = {
+            segmentId: segment.id,
+            lines: (getCodeSegmentDraft(target, { segment, segments: bodySegments }).value || '').split('\n'),
+            statementStart: foldStatementCursor
+          };
+          foldStatementCursor += segment.statements.length;
+          return [source];
+        });
+        const crossSegmentFolds = collapsedBeginnerFlowBlockKeys.length > 0
+          ? getBeginnerCrossSegmentFlowFolds(
+              foldSegmentSources,
+              target.method.statements,
+              target.method.locals || [],
+              collapsedBeginnerFlowBlockKeys,
+              codeTargetKey(target)
+            )
+          : [];
+        const isStatementRangeHidden = (index: number) => crossSegmentFolds.some(fold =>
+          index >= fold.statementFrom && index <= fold.statementTo
+        );
+        const isSourceRangeHidden = (line: number | undefined) =>
+          line !== undefined && crossSegmentFolds.some(fold =>
+            line > fold.sourceFrom && line <= fold.sourceTo
+          );
+        let codeStatementCursor = 0;
+
         bodySegments.forEach(segment => {
           if (segment.kind === 'locals') {
+            // 位于某个跨段折叠范围内（结构首行与结束行之间）的局部声明表随折叠收起。
+            if (isSourceRangeHidden(segment.locals[0]?.line ?? segment.sourceLine)) return;
             const groupKey = `${segment.id}:${segment.locals.map(local => local.name).join('|')}`;
             const collapsed = collapsedBeginnerLocalGroupKeys.includes(`${codeTargetKey(target)}:${groupKey}`);
             processCanvases.push(renderLocalVariableCanvas(
@@ -9168,9 +9493,28 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             return;
           }
 
+          const segmentStatementStart = codeStatementCursor;
+          codeStatementCursor += segment.statements.length;
           const segmentContext = { segment, segments: bodySegments };
-          processCanvases.push(renderContinuousCodeBody(target, nextVisualLine, segmentContext));
           const segmentBody = getCodeSegmentDraft(target, segmentContext).value;
+
+          if (crossSegmentFolds.length > 0 && segment.statements.length > 0) {
+            const statementIndices = segment.statements.map((_, offset) => segmentStatementStart + offset);
+            if (statementIndices.every(isStatementRangeHidden)) return;
+            const hiddenCount = statementIndices.filter(isStatementRangeHidden).length;
+            // 锚点段即使自身没有隐藏行，也要拿到折叠信息用于显示真实收起行数。
+            const anchorsHere = crossSegmentFolds.some(fold => fold.anchorSegmentId === segment.id);
+            if (hiddenCount > 0 || anchorsHere) {
+              processCanvases.push(renderContinuousCodeBody(target, nextVisualLine, {
+                ...segmentContext,
+                externalFlowFolds: crossSegmentFolds
+              }));
+              nextVisualLine += Math.max(1, segmentBody.split('\n').length - hiddenCount);
+              return;
+            }
+          }
+
+          processCanvases.push(renderContinuousCodeBody(target, nextVisualLine, segmentContext));
           nextVisualLine += Math.max(1, segmentBody.split('\n').length);
         });
       }
@@ -9194,6 +9538,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           beginnerContextMenu.definitionName
         )
       : undefined;
+    const contextLibraryDefinition = beginnerContextMenu?.libraryCall && lingCppLanguageContext
+      ? resolveBeginnerFunctionLibraryDefinition(
+          lingCppLanguageContext.projectFunctions?.libraries || [],
+          beginnerContextMenu.libraryCall.libraryName,
+          beginnerContextMenu.libraryCall.functionName
+        )
+      : undefined;
+    const contextDefinitionLabel = beginnerContextMenu?.definitionName
+      ? `转到定义：${beginnerContextMenu.definitionName}`
+      : beginnerContextMenu?.libraryCall
+        ? `转到定义：${beginnerContextMenu.libraryCall.libraryName}.${beginnerContextMenu.libraryCall.functionName}`
+        : '转到定义';
     const contextControlMenuItem = beginnerContextMenu?.controlReference?.symbol && commandService
       ? getMenuService(commandService).resolveMenu(
           LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU,
@@ -9201,6 +9557,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           { includeDisabled: true }
         ).find(item => item.kind === 'command' && item.command.id === REVEAL_LINGCPP_CONTROL_COMMAND)
       : undefined;
+    const canMoveBeginnerSubprogram = (target: BeginnerCodeTarget | undefined, direction: 'up' | 'down'): boolean => {
+      if (!target || target.method.kind !== 'method') return false;
+      const ordered = codeTargets
+        .filter(item => item.className === target.className)
+        .sort((left, right) => left.method.line - right.method.line);
+      const index = ordered.findIndex(item => item.method.name === target.method.name);
+      if (index < 0) return false;
+      return direction === 'up' ? index > 0 : index < ordered.length - 1;
+    };
     const getBeginnerCommandContext = (target?: BeginnerCodeTarget): CommandContext => ({
       ...(getCommandContext?.() || {}),
       'workspace.open': true,
@@ -9209,6 +9574,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       'lingcpp.beginner.hasTarget': Boolean(target),
       'lingcpp.beginner.canAddSubprogram': Boolean(primaryMethodOwnerName),
       'lingcpp.beginner.canAddAssemblyVariable': Boolean(primaryLingCppClass),
+      'lingcpp.beginner.hasSubprogramTarget': target?.method.kind === 'method',
+      'lingcpp.beginner.canMoveSubprogramUp': canMoveBeginnerSubprogram(target, 'up'),
+      'lingcpp.beginner.canMoveSubprogramDown': canMoveBeginnerSubprogram(target, 'down'),
+      'lingcpp.beginner.canPasteSubprogram': Boolean(beginnerMethodClipboardRef.current) && Boolean(primaryMethodOwnerName),
       'lingcpp.beginner.writable': Boolean(onUpdateSourceContent)
     });
     const beginnerCommandContext = getBeginnerCommandContext(contextTarget);
@@ -9222,6 +9591,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           || item.command.id === ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND
           || item.command.id === ADD_BEGINNER_LOCAL_VARIABLE_COMMAND
           || item.command.id === ADD_BEGINNER_LOCAL_CONSTANT_COMMAND
+        ))
+      : [];
+    const beginnerSubprogramMenuItems = commandService
+      ? getMenuService(commandService).resolveMenu(
+          LINGCPP_BEGINNER_CONTEXT_MENU,
+          beginnerCommandContext,
+          { includeDisabled: true }
+        ).filter(item => item.kind === 'command' && (
+          item.command.id === MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND
+          || item.command.id === MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND
+          || item.command.id === CUT_BEGINNER_SUBPROGRAM_COMMAND
+          || item.command.id === COPY_BEGINNER_SUBPROGRAM_COMMAND
+          || item.command.id === PASTE_BEGINNER_SUBPROGRAM_COMMAND
         ))
       : [];
     const executeBeginnerCreationCommand = (commandId: string, target?: BeginnerCodeTarget) => {
@@ -9312,26 +9694,33 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           )}
           {contextControlMenuItem?.kind === 'command' && <div className={`my-1 border-t ${canvasBorder}`} />}
           {renderContextMenuButton(
-            beginnerContextMenu.definitionName
-              ? `转到定义：${beginnerContextMenu.definitionName}`
-              : '转到定义',
+            contextDefinitionLabel,
             () => {
               if (beginnerContextMenu.definitionName && contextTarget) {
                 revealBeginnerProcedureDefinition(
                   beginnerContextMenu.className || contextTarget.className,
                   beginnerContextMenu.definitionName
                 );
+                return;
+              }
+              if (beginnerContextMenu.libraryCall) {
+                revealFunctionLibraryDefinition(
+                  beginnerContextMenu.libraryCall.libraryName,
+                  beginnerContextMenu.libraryCall.functionName
+                );
               }
             },
             <ExternalLink className="h-3.5 w-3.5" />,
             false,
-            !contextDefinition
+            !contextDefinition && !contextLibraryDefinition
           )}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {beginnerCreationMenuItems.map(item => item.kind === 'command' && (
             <React.Fragment key={item.id}>
               {renderContextMenuButton(
-                item.command.title,
+                item.command.id === ADD_BEGINNER_SUBPROGRAM_COMMAND && contextTarget
+                  ? '在当前下方新建子程序'
+                  : item.command.title,
                 () => executeBeginnerCreationCommand(item.command.id, contextTarget),
                 <Plus className="h-3.5 w-3.5" />,
                 false,
@@ -9341,8 +9730,31 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             </React.Fragment>
           ))}
           <div className={`my-1 border-t ${canvasBorder}`} />
+          {beginnerSubprogramMenuItems.map(item => item.kind === 'command' && (
+            <React.Fragment key={item.id}>
+              {renderContextMenuButton(
+                item.command.title,
+                () => executeBeginnerCreationCommand(item.command.id, contextTarget),
+                item.command.id === MOVE_BEGINNER_SUBPROGRAM_UP_COMMAND ? <ArrowUp className="h-3.5 w-3.5" />
+                  : item.command.id === MOVE_BEGINNER_SUBPROGRAM_DOWN_COMMAND ? <ArrowDown className="h-3.5 w-3.5" />
+                    : item.command.id === CUT_BEGINNER_SUBPROGRAM_COMMAND ? <Scissors className="h-3.5 w-3.5" />
+                      : item.command.id === COPY_BEGINNER_SUBPROGRAM_COMMAND ? <Copy className="h-3.5 w-3.5" />
+                        : <ClipboardPaste className="h-3.5 w-3.5" />,
+                false,
+                !item.command.enabled
+              )}
+            </React.Fragment>
+          ))}
+          <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('展开全部子程序', expandAllBeginnerProcesses, <ChevronDown className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
           {renderContextMenuButton('折叠全部子程序', collapseAllBeginnerProcesses, <ChevronRight className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
+          {renderContextMenuButton(
+            isBeginnerMemberTableCollapsed ? '展开程序集变量表' : '折叠程序集变量表',
+            () => setIsBeginnerMemberTableCollapsed(current => !current),
+            isBeginnerMemberTableCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />,
+            false,
+            !memberCanvas
+          )}
           {renderContextMenuButton(
             contextTarget && isBeginnerProcessCollapsed(contextTarget) ? '展开当前子程序' : '折叠当前子程序',
             () => contextTarget && toggleBeginnerProcessCollapsed(contextTarget),

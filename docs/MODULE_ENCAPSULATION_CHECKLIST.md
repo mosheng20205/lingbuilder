@@ -2,7 +2,7 @@
 
 更新时间：2026-09-08
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **87 个内置模块、3339 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **89 个内置模块、3402 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -14,13 +14,14 @@
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已封装 | `lingbuilder.std.text` | 文本处理模块 | 10 |
+ 已封装 | `lingbuilder.std.text` | 文本处理模块 | 18 |
 | 已封装 | `lingbuilder.std.array` | 数组操作模块 | 13 |
-| 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 13 |
+ 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 18 |
 | 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 30 |
 | 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 7 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 5 |
-| 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 5 |
+| 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 10 |
+ 已封装 | `lingbuilder.std.buffer` | 缓冲区模块 | 17 |
 | 已完整封装 | `lingbuilder.data.json` | JSON 数据模块 2.0 | 55 |
 | 已封装 | `lingbuilder.data.xml` | XML 文本模块 | 5 |
 
@@ -56,7 +57,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 |---|---|---|---:|
 | 已封装 | `lingbuilder.input.keyboard` | 键盘输入模块 | 31 |
 | 已封装 | `lingbuilder.input.mouse` | 鼠标输入模块 | 29 |
-| 已封装 | `lingbuilder.win32.window-utils` | Win32 窗口操作模块 | 7 |
+| 已封装 | `lingbuilder.win32.window-utils` | Win32 窗口操作模块 | 11 |
 | 已封装 | `lingbuilder.win32.monitor` | 显示器与 DPI 模块 | 6 |
 | 已封装 | `lingbuilder.win32.menu` | Win32 菜单模块 | 8 |
 | 已封装 | `lingbuilder.win32.tray` | 托盘图标模块 | 5 |
@@ -75,6 +76,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 | 已封装 | `lingbuilder.net.cookie` | Cookie 文本模块 | 5 |
 | 已封装 | `lingbuilder.net.ftp` | FTP 客户端模块 | 7 |
 | 已封装（普通 SMTP） | `lingbuilder.net.mail` | SMTP 邮件模块 | 2 |
+| 已完整封装 | `lingbuilder.web.http` | 网页访问模块 1.1.1（易语言风格 网页_访问_对象 / 网页_异步访问，内置运行时） | 12 |
 | 已完整封装（Windows x64） | `lingbuilder.net.aria2` | Aria2 异步下载模块 | 12 |
 
 SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS。服务端要求 TLS 时会明确失败，不能用于传输真实生产凭据。
@@ -156,7 +158,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已封装 | `lingbuilder.fbro.network` | FBro高级网络模块 | 2 |
 | 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口） | 198 |
 | 已封装 | `lingbuilder.new_emoji.fbro-shell` | new_emoji FBro x64 多标签浏览器外壳模块 | 50 |
-| 已有 | `lingbuilder.threading` | 多线程模块 | 54 |
+ 已有 | `lingbuilder.threading` | 多线程模块 | 66 |
 | 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
 | 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.0（受管多连接 HTTP/1.1、路由与完整请求/响应） | 48 |
 | 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |

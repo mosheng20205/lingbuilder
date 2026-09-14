@@ -16,6 +16,7 @@ interface SearchableTypeSelectProps {
   ariaLabel: string;
   onValueChange?: (value: string) => void;
   onCommit?: (value: string) => void;
+  rootClassName?: string;
 }
 
 export default function SearchableTypeSelect({
@@ -26,7 +27,8 @@ export default function SearchableTypeSelect({
   disabled,
   ariaLabel,
   onValueChange,
-  onCommit
+  onCommit,
+  rootClassName
 }: SearchableTypeSelectProps) {
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -99,7 +101,7 @@ export default function SearchableTypeSelect({
   return (
     <div
       ref={rootRef}
-      className="relative min-w-[150px]"
+      className={rootClassName || 'relative min-w-[150px]'}
       onBlur={() => window.setTimeout(() => {
         if (rootRef.current?.contains(document.activeElement)) return;
         commitTypedValue();

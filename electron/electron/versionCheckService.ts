@@ -39,14 +39,28 @@ function optionalSha256(value: unknown): string | null {
   return result && /^[a-f0-9]{64}$/iu.test(result) ? result.toLowerCase() : null;
 }
 
+export interface VersionCheckOptions {
+  /** 更新渠道：stable 为默认稳定渠道；preview 只对体验计划成员生效，云端会做资格门禁。 */
+  channel?: 'stable' | 'preview';
+  /** 登录令牌：请求 preview 渠道时携带，服务端据此做体验资格校验；未登录时省略。 */
+  accessToken?: string;
+}
+
 /** 向云端查询最新已发布版本并与当前版本比较；任何失败都返回 ok=false，不影响 IDE 主流程。 */
-export async function checkLatestVersion(origin: string, currentVersion: string): Promise<VersionCheckResult> {
+export async function checkLatestVersion(origin: string, currentVersion: string, options: VersionCheckOptions = {}): Promise<VersionCheckResult> {
   const fallback: VersionCheckResult = { ok: false, currentVersion, hasUpdate: false, websiteUrl: LINGBUILDER_OFFICIAL_SITE_URL, downloadUrl: null };
   if (!origin || /config-missing\.invalid$/u.test(origin)) return { ...fallback, error: '云端地址未配置。' };
+  // 渠道显式化：老客户端不带 channel 参数时云端跨渠道取最高版本（预览版也会被推送），
+  // 新客户端始终显式传 stable 或 preview，普通用户不再被预览版打扰。
+  const channel = options.channel === 'preview' ? 'preview' : 'stable';
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(`${origin}/v1/site/latest-version?platform=Windows&architecture=x64`, { signal: controller.signal });
+    const response = await fetch(`${origin}/v1/site/latest-version?platform=Windows&architecture=x64&channel=${channel}`, {
+      signal: controller.signal,
+      // 只有 preview 渠道需要身份：体验资格由云端校验，stable 查询保持匿名。
+      headers: channel === 'preview' && options.accessToken ? { authorization: `Bearer ${options.accessToken}` } : undefined
+    });
     clearTimeout(timer);
     const value: any = await response.json().catch(() => ({}));
     if (!response.ok || !value?.ok) return { ...fallback, error: String(value?.message || `云端版本检查失败（状态码 ${response.status}）。`) };

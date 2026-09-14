@@ -104,6 +104,85 @@ const wchar_t* 文本_转小写(const wchar_t* text) {
     std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
     return LB_ReturnText(std::move(value));
 }
+
+long long 文本_倒找(const wchar_t* text, const wchar_t* target) {
+    const std::wstring value = LB_Wide(text);
+    const size_t position = value.rfind(LB_Wide(target));
+    return position == std::wstring::npos ? -1 : static_cast<long long>(position);
+}
+
+const wchar_t* 文本_替换子文本(const wchar_t* text, const wchar_t* search, const wchar_t* replacement, int start, int count) {
+    std::wstring value = LB_Wide(text);
+    const std::wstring from = LB_Wide(search);
+    const std::wstring to = LB_Wide(replacement);
+    if (from.empty() || start < 0 || static_cast<size_t>(start) >= value.size()) return LB_ReturnText(std::move(value));
+    size_t position = static_cast<size_t>(start);
+    int replaced = 0;
+    while ((position = value.find(from, position)) != std::wstring::npos) {
+        value.replace(position, from.size(), to);
+        position += to.size();
+        ++replaced;
+        if (count > 0 && replaced >= count) break;
+    }
+    return LB_ReturnText(std::move(value));
+}
+
+const wchar_t* 文本_删全部空白(const wchar_t* text) {
+    std::wstring value = LB_Wide(text);
+    value.erase(std::remove_if(value.begin(), value.end(), [](wchar_t ch) { return iswspace(ch) != 0; }), value.end());
+    return LB_ReturnText(std::move(value));
+}
+
+const wchar_t* 文本_到全角(const wchar_t* text) {
+    std::wstring value = LB_Wide(text);
+    for (wchar_t& ch : value) {
+        if (ch == L' ') { ch = 0x3000; continue; }
+        if (ch >= L'!' && ch <= L'~') ch = static_cast<wchar_t>(ch - 0x21 + 0xFF01);
+    }
+    return LB_ReturnText(std::move(value));
+}
+
+const wchar_t* 文本_到半角(const wchar_t* text) {
+    std::wstring value = LB_Wide(text);
+    for (wchar_t& ch : value) {
+        if (ch == 0x3000) { ch = L' '; continue; }
+        if (ch >= 0xFF01 && ch <= 0xFF5E) ch = static_cast<wchar_t>(ch - 0xFF01 + 0x21);
+    }
+    return LB_ReturnText(std::move(value));
+}
+
+const wchar_t* 文本_重复(const wchar_t* text, int count) {
+    const std::wstring value = LB_Wide(text);
+    if (count <= 0 || value.empty()) return LB_ReturnText(L"");
+    const long long total = static_cast<long long>(value.size()) * static_cast<long long>(count);
+    if (total > 16777216) return LB_ReturnText(L"");
+    std::wstring result;
+    result.reserve(static_cast<size_t>(total));
+    for (int index = 0; index < count; ++index) result += value;
+    return LB_ReturnText(std::move(result));
+}
+
+const wchar_t* 文本_插入(const wchar_t* text, int position, const wchar_t* insertion) {
+    std::wstring value = LB_Wide(text);
+    if (position < 0 || static_cast<size_t>(position) > value.size()) return LB_ReturnText(std::move(value));
+    value.insert(static_cast<size_t>(position), LB_Wide(insertion));
+    return LB_ReturnText(std::move(value));
+}
+
+long long 文本_分割(const wchar_t* text, const wchar_t* separator, std::vector<std::wstring>& out) {
+    out.clear();
+    const std::wstring value = LB_Wide(text);
+    const std::wstring sep = LB_Wide(separator);
+    if (sep.empty()) { out.push_back(value); return 1; }
+    size_t start = 0;
+    for (;;) {
+        const size_t position = value.find(sep, start);
+        if (position == std::wstring::npos) { out.push_back(value.substr(start)); break; }
+        out.push_back(value.substr(start, position - start));
+        start = position + sep.size();
+    }
+    return static_cast<long long>(out.size());
+}
 `;
 
 const ARRAY_RUNTIME = String.raw`
@@ -315,6 +394,61 @@ std::vector<unsigned char> 字节集_十六进制解码(const wchar_t* hex) {
         if (high < 0 || low < 0) return {};
         result.push_back(static_cast<unsigned char>((high << 4) | low));
     }
+    return result;
+}
+
+long long 字节集_寻找(const std::vector<unsigned char>& bytes, const std::vector<unsigned char>& target, int start) {
+    if (target.empty() || start < 0 || target.size() > bytes.size() || static_cast<size_t>(start) > bytes.size() - target.size()) return -1;
+    const auto it = std::search(bytes.begin() + static_cast<std::ptrdiff_t>(start), bytes.end(), target.begin(), target.end());
+    return it == bytes.end() ? -1 : static_cast<long long>(it - bytes.begin());
+}
+
+long long 字节集_倒找(const std::vector<unsigned char>& bytes, const std::vector<unsigned char>& target, int start) {
+    if (target.empty() || target.size() > bytes.size()) return -1;
+    size_t windowEnd = start < 0 || static_cast<size_t>(start) >= bytes.size() ? bytes.size() : static_cast<size_t>(start) + 1;
+    if (windowEnd < target.size()) return -1;
+    const auto it = std::find_end(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(windowEnd), target.begin(), target.end());
+    return it == bytes.begin() + static_cast<std::ptrdiff_t>(windowEnd) ? -1 : static_cast<long long>(it - bytes.begin());
+}
+
+std::vector<unsigned char> 字节集_替换(const std::vector<unsigned char>& bytes, const std::vector<unsigned char>& target, const std::vector<unsigned char>& replacement, int count) {
+    if (target.empty() || target.size() > bytes.size()) return bytes;
+    std::vector<unsigned char> result;
+    result.reserve(bytes.size());
+    size_t position = 0;
+    int replaced = 0;
+    while (position < bytes.size()) {
+        if ((count <= 0 || replaced < count) && position + target.size() <= bytes.size() && std::equal(target.begin(), target.end(), bytes.begin() + static_cast<std::ptrdiff_t>(position))) {
+            result.insert(result.end(), replacement.begin(), replacement.end());
+            position += target.size();
+            ++replaced;
+        } else {
+            result.push_back(bytes[position]);
+            ++position;
+        }
+    }
+    return result;
+}
+
+std::vector<unsigned char> 字节集_插入(const std::vector<unsigned char>& bytes, int position, const std::vector<unsigned char>& insertion) {
+    if (position < 0) return bytes;
+    const size_t offset = (std::min)(static_cast<size_t>(position), bytes.size());
+    std::vector<unsigned char> result;
+    result.reserve(bytes.size() + insertion.size());
+    result.insert(result.end(), bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(offset));
+    result.insert(result.end(), insertion.begin(), insertion.end());
+    result.insert(result.end(), bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
+    return result;
+}
+
+std::vector<unsigned char> 字节集_删除(const std::vector<unsigned char>& bytes, int position, int length) {
+    if (position < 0 || static_cast<size_t>(position) >= bytes.size()) return bytes;
+    const size_t offset = static_cast<size_t>(position);
+    const size_t count = length < 0 ? bytes.size() - offset : (std::min)(static_cast<size_t>(length), bytes.size() - offset);
+    std::vector<unsigned char> result;
+    result.reserve(bytes.size() - count);
+    result.insert(result.end(), bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(offset));
+    result.insert(result.end(), bytes.begin() + static_cast<std::ptrdiff_t>(offset + count), bytes.end());
     return result;
 }
 `;
@@ -807,6 +941,245 @@ int 正则_匹配数量(const wchar_t* text, const wchar_t* pattern) {
         return static_cast<int>(std::distance(std::wsregex_iterator(value.begin(), value.end(), expression), std::wsregex_iterator()));
     } catch (const std::regex_error&) { return 0; }
 }
+
+const wchar_t* 正则_取所有匹配(const wchar_t* text, const wchar_t* pattern, const wchar_t* separator) {
+    try {
+        const std::wstring value = LB_Wide(text);
+        const std::wregex expression(LB_Wide(pattern));
+        const std::wstring joiner = LB_Wide(separator);
+        std::wstring result; bool first = true;
+        for (std::wsregex_iterator it(value.begin(), value.end(), expression), end; it != end; ++it) {
+            if (!first) result += joiner;
+            result += it->str();
+            first = false;
+        }
+        return LB_ReturnText(std::move(result));
+    } catch (const std::regex_error&) { return LB_ReturnText(L""); }
+}
+
+const wchar_t* 正则_取第N个匹配(const wchar_t* text, const wchar_t* pattern, int index) {
+    try {
+        if (index < 0) return LB_ReturnText(L"");
+        const std::wstring value = LB_Wide(text);
+        const std::wregex expression(LB_Wide(pattern));
+        int seen = 0;
+        for (std::wsregex_iterator it(value.begin(), value.end(), expression), end; it != end; ++it, ++seen) {
+            if (seen == index) return LB_ReturnText(it->str());
+        }
+        return LB_ReturnText(L"");
+    } catch (const std::regex_error&) { return LB_ReturnText(L""); }
+}
+
+const wchar_t* 正则_取分组(const wchar_t* text, const wchar_t* pattern, int group) {
+    try {
+        if (group < 0) return LB_ReturnText(L"");
+        const std::wstring value = LB_Wide(text);
+        std::wsmatch match;
+        if (!std::regex_search(value, match, std::wregex(LB_Wide(pattern)))) return LB_ReturnText(L"");
+        if (static_cast<size_t>(group) >= match.size()) return LB_ReturnText(L"");
+        return match[group].matched ? LB_ReturnText(match[group].str()) : LB_ReturnText(L"");
+    } catch (const std::regex_error&) { return LB_ReturnText(L""); }
+}
+
+const wchar_t* 正则_取所有分组(const wchar_t* text, const wchar_t* pattern, int group, const wchar_t* separator) {
+    try {
+        if (group < 0) return LB_ReturnText(L"");
+        const std::wstring value = LB_Wide(text);
+        const std::wregex expression(LB_Wide(pattern));
+        const std::wstring joiner = LB_Wide(separator);
+        std::wstring result; bool first = true;
+        for (std::wsregex_iterator it(value.begin(), value.end(), expression), end; it != end; ++it) {
+            if (static_cast<size_t>(group) >= it->size() || !(*it)[group].matched) continue;
+            if (!first) result += joiner;
+            result += (*it)[group].str();
+            first = false;
+        }
+        return LB_ReturnText(std::move(result));
+    } catch (const std::regex_error&) { return LB_ReturnText(L""); }
+}
+
+int 正则_取匹配位置(const wchar_t* text, const wchar_t* pattern, int index) {
+    try {
+        if (index < 0) return -1;
+        const std::wstring value = LB_Wide(text);
+        const std::wregex expression(LB_Wide(pattern));
+        int seen = 0;
+        for (std::wsregex_iterator it(value.begin(), value.end(), expression), end; it != end; ++it, ++seen) {
+            if (seen == index) return static_cast<int>(it->position());
+        }
+        return -1;
+    } catch (const std::regex_error&) { return -1; }
+}
+`;
+
+const BUFFER_RUNTIME = String.raw`
+struct LingBufferBlock {
+    std::mutex mutex;
+    std::vector<unsigned char> data;
+    size_t cursor = 0;
+};
+
+static std::mutex g_lbBufferRegistryMutex;
+static std::unordered_map<long long, std::shared_ptr<LingBufferBlock>> g_lbBufferRegistry;
+static long long g_lbBufferSequence = 0;
+static constexpr size_t LB_BUFFER_LIMIT = 268435456;
+
+static std::shared_ptr<LingBufferBlock> LB_FindBuffer(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbBufferRegistryMutex);
+    auto found = g_lbBufferRegistry.find(id);
+    return found == g_lbBufferRegistry.end() ? nullptr : found->second;
+}
+
+static long long LB_RegisterBuffer(std::vector<unsigned char>&& initial) {
+    auto block = std::make_shared<LingBufferBlock>();
+    block->data = std::move(initial);
+    std::lock_guard<std::mutex> lock(g_lbBufferRegistryMutex);
+    const long long id = ++g_lbBufferSequence;
+    g_lbBufferRegistry[id] = std::move(block);
+    return id;
+}
+
+long long 缓冲区_创建(int initialCapacity) {
+    if (initialCapacity < 0) return 0;
+    std::vector<unsigned char> initial;
+    if (initialCapacity > 0) initial.reserve(static_cast<size_t>((std::min)(initialCapacity, static_cast<int>(LB_BUFFER_LIMIT))));
+    return LB_RegisterBuffer(std::move(initial));
+}
+
+bool 缓冲区_销毁(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbBufferRegistryMutex);
+    return g_lbBufferRegistry.erase(id) > 0;
+}
+
+long long 缓冲区_取长度(long long id) {
+    auto block = LB_FindBuffer(id);
+    if (!block) return -1;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    return static_cast<long long>(block->data.size());
+}
+
+bool 缓冲区_写字节集(long long id, const std::vector<unsigned char>& bytes) {
+    auto block = LB_FindBuffer(id);
+    if (!block) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    if (bytes.size() > LB_BUFFER_LIMIT - block->data.size()) return false;
+    block->data.insert(block->data.end(), bytes.begin(), bytes.end());
+    return true;
+}
+
+bool 缓冲区_写文本(long long id, const wchar_t* text) {
+    const std::string utf8 = LB_WideToUtf8(text);
+    return 缓冲区_写字节集(id, std::vector<unsigned char>(utf8.begin(), utf8.end()));
+}
+
+bool 缓冲区_写整数(long long id, long long value, int width, bool bigEndian) {
+    if (width != 1 && width != 2 && width != 4 && width != 8) return false;
+    std::vector<unsigned char> bytes;
+    bytes.reserve(static_cast<size_t>(width));
+    const unsigned long long raw = static_cast<unsigned long long>(value);
+    for (int index = 0; index < width; ++index) {
+        const int shift = bigEndian ? (width - 1 - index) * 8 : index * 8;
+        bytes.push_back(static_cast<unsigned char>((raw >> shift) & 0xff));
+    }
+    return 缓冲区_写字节集(id, bytes);
+}
+
+std::vector<unsigned char> 缓冲区_读字节集(long long id, int length) {
+    auto block = LB_FindBuffer(id);
+    if (!block) return {};
+    std::lock_guard<std::mutex> lock(block->mutex);
+    if (block->cursor > block->data.size()) block->cursor = block->data.size();
+    const size_t remaining = block->data.size() - block->cursor;
+    const size_t count = length < 0 ? remaining : (std::min)(static_cast<size_t>(length), remaining);
+    std::vector<unsigned char> result(block->data.begin() + static_cast<std::ptrdiff_t>(block->cursor), block->data.begin() + static_cast<std::ptrdiff_t>(block->cursor + count));
+    block->cursor += count;
+    return result;
+}
+
+const wchar_t* 缓冲区_读文本(long long id, int length) {
+    const std::vector<unsigned char> bytes = 缓冲区_读字节集(id, length);
+    const std::string raw(bytes.begin(), bytes.end());
+    return LB_ReturnText(LB_Utf8ToWide(raw));
+}
+
+long long 缓冲区_读整数(long long id, int width, bool bigEndian) {
+    if (width != 1 && width != 2 && width != 4 && width != 8) return 0;
+    const std::vector<unsigned char> bytes = 缓冲区_读字节集(id, width);
+    if (bytes.size() != static_cast<size_t>(width)) return 0;
+    unsigned long long raw = 0;
+    if (bigEndian) {
+        for (unsigned char byte : bytes) raw = (raw << 8) | byte;
+    } else {
+        for (size_t index = bytes.size(); index-- > 0;) raw = (raw << 8) | bytes[index];
+    }
+    return static_cast<long long>(raw);
+}
+
+long long 缓冲区_取剩余(long long id) {
+    auto block = LB_FindBuffer(id);
+    if (!block) return -1;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    if (block->cursor > block->data.size()) return 0;
+    return static_cast<long long>(block->data.size() - block->cursor);
+}
+
+bool 缓冲区_重置读取(long long id) {
+    auto block = LB_FindBuffer(id);
+    if (!block) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->cursor = 0;
+    return true;
+}
+
+std::vector<unsigned char> 缓冲区_到字节集(long long id) {
+    auto block = LB_FindBuffer(id);
+    if (!block) return {};
+    std::lock_guard<std::mutex> lock(block->mutex);
+    return block->data;
+}
+
+long long 缓冲区_从字节集(const std::vector<unsigned char>& bytes) {
+    if (bytes.size() > LB_BUFFER_LIMIT) return 0;
+    return LB_RegisterBuffer(std::vector<unsigned char>(bytes));
+}
+
+bool 缓冲区_清空(long long id) {
+    auto block = LB_FindBuffer(id);
+    if (!block) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->data.clear();
+    block->cursor = 0;
+    return true;
+}
+
+bool 缓冲区_保存文件(long long id, const wchar_t* path) {
+    auto block = LB_FindBuffer(id);
+    if (!block || !path || !path[0]) return false;
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    file.write(reinterpret_cast<const char*>(block->data.data()), static_cast<std::streamsize>(block->data.size()));
+    const bool ok = file.good();
+    file.close();
+    return ok;
+}
+
+long long 缓冲区_从文件(const wchar_t* path) {
+    if (!path || !path[0]) return 0;
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) return 0;
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    if (bytes.size() > LB_BUFFER_LIMIT) return 0;
+    return LB_RegisterBuffer(std::move(bytes));
+}
+
+long long 缓冲区_寻找(long long id, const std::vector<unsigned char>& target, int start) {
+    auto block = LB_FindBuffer(id);
+    if (!block || target.empty() || start < 0 || target.size() > block->data.size() || static_cast<size_t>(start) > block->data.size() - target.size()) return -1;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    const auto it = std::search(block->data.begin() + static_cast<std::ptrdiff_t>(start), block->data.end(), target.begin(), target.end());
+    return it == block->data.end() ? -1 : static_cast<long long>(it - block->data.begin());
+}
 `;
 
 const XML_RUNTIME = String.raw`
@@ -850,6 +1223,7 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.std.encoding': ENCODING_RUNTIME,
   'lingbuilder.std.math': MATH_RUNTIME,
   'lingbuilder.std.datetime': DATETIME_RUNTIME,
+  'lingbuilder.std.buffer': BUFFER_RUNTIME,
   'lingbuilder.std.regex': REGEX_RUNTIME,
   'lingbuilder.data.json': JSON_RUNTIME,
   'lingbuilder.data.xml': XML_RUNTIME

@@ -633,7 +633,10 @@ function generateNewEmojiRuntimeControlCpp(enabledModules: InstalledModule[]): s
       if (name.endsWith('_bytes')) {
         const variable = `lb_runtime_utf8_${index + 1}`;
         const defaultText = stringifyNewEmojiRuntimeDefault(control.defaultProps?.[key]);
-        const wideValue = isNewEmojiDynamicContentParameter(key)
+        // JSON 型默认值（对象/数组，如富列表 itemsJson、表格 rows）不能被标题文本 content
+        // 覆盖：创建参数需要合法 JSON，文本会导致 new_emoji 解析失败、控件创建返回 0。
+        const jsonDefault = typeof control.defaultProps?.[key] === 'object' && control.defaultProps?.[key] !== null;
+        const wideValue = isNewEmojiDynamicContentParameter(key) && !jsonDefault
           ? 'content.c_str()'
           : `L"${escapeWideString(defaultText)}"`;
         beforeLines.push(`    const std::string ${variable} = LB_NE_ToUtf8(${wideValue});`);
@@ -707,7 +710,8 @@ function getNewEmojiRuntimeEventEntries(enabledModules: InstalledModule[]): NewE
 
 function getNewEmojiBoundHandlerNames(source: string, command: string): string[] {
   const escapedCommand = command.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const pattern = new RegExp(`${escapedCommand}\\s*[（(][^\\r\\n]*?&([\\p{L}_][\\p{L}\\p{N}_]*)`, 'gu');
+  // 命令名前必须是非标识符字符，避免 NE_显示消息框 被当成 显示消息框 的调用。
+  const pattern = new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escapedCommand}\\s*[（(][^\\r\\n]*?&([\\p{L}_][\\p{L}\\p{N}_]*)`, 'gu');
   return [...new Set(Array.from(source.matchAll(pattern)).map(match => match[1]).filter((name): name is string => Boolean(name)))];
 }
 
@@ -785,6 +789,20 @@ ${cases}`;
     NE_清空表格虚拟行数据();
 ${eventDispatch}
     lb_cached_utf8 = LB_NE_ToUtf8(NE_取表格虚拟行数据());
+    const int lb_required = static_cast<int>(lb_cached_utf8.size());
+    if (!lb_buffer || lb_buffer_size <= 0) return lb_required;
+    const int lb_written = (std::min)(lb_required, lb_buffer_size);
+    if (lb_written > 0) std::memcpy(lb_buffer, lb_cached_utf8.data(), static_cast<size_t>(lb_written));
+    if (lb_written < lb_buffer_size) lb_buffer[lb_written] = 0;
+    return lb_written;
+}`;
+  } else if (first.binding.callbackType === 'RichListVirtualItemCallback') {
+    const eventDispatch = dispatch(first);
+    return `static int __stdcall ${callbackName}(${signature.parameters}) {
+    static thread_local std::string lb_cached_utf8;
+    NE_清空富列表虚拟行数据();
+${eventDispatch}
+    lb_cached_utf8 = LB_NE_ToUtf8(NE_取富列表虚拟行数据());
     const int lb_required = static_cast<int>(lb_cached_utf8.size());
     if (!lb_buffer || lb_buffer_size <= 0) return lb_required;
     const int lb_written = (std::min)(lb_required, lb_buffer_size);
@@ -938,6 +956,803 @@ function generateNewEmojiRuntimeEventCpp(
   }).join('\n\n');
   return { declarations, definitions: `${callbacks}\n\n${methods}` };
 }
+
+// 属性命令 C++ 助手按需生成：按清单 control.runtime.propertyBridgeCommands 描述符，
+// 为源码实际引用的 `NE<类型>_设置<属性>` 命令生成宽字符 → UTF-8 转换助手。
+function generateNewEmojiPropertyBridgeCpp(program: LingCppProgram, enabledModules: InstalledModule[]): string {
+  const bindings = new Map<string, ModuleCommandBinding>();
+  const descriptors: Array<{ controlType: string; descriptor: NewEmojiPropertyCommandDescriptor; binding: ModuleCommandBinding }> = [];
+  enabledModules.forEach(module => {
+    (module.manifest.contributes?.designerControls || []).forEach(control => {
+      for (const descriptor of control.runtime?.propertyBridgeCommands || []) {
+        const binding = module.manifest.bindings?.commands?.find(item => item.command === descriptor.command);
+        if (!binding) continue;
+        bindings.set(descriptor.command, binding);
+        if (program.source.includes(descriptor.command)) {
+          descriptors.push({ controlType: control.type, descriptor, binding });
+        }
+      }
+    });
+  });
+  if (descriptors.length === 0) return '';
+  const emitHelper = ({ controlType, descriptor, binding }: { controlType: string; descriptor: NewEmojiPropertyCommandDescriptor; binding: ModuleCommandBinding }) => {
+    const parameters = binding.parameters || [];
+    const paramName = (index: number) => toCppIdentifier(parameters[index]?.name || `arg${index}`);
+    const utf8Params = new Set<number>();
+    descriptor.args.forEach(arg => {
+      if (arg.kind === 'utf8' || arg.kind === 'utf8len') utf8Params.add(arg.param);
+    });
+    const parameterDeclarations = parameters.map((parameter, index) => {
+      if (index === 0) return 'const wchar_t* controlName';
+      const name = paramName(index);
+      if (parameter.type === 'wideString') return `const std::wstring& ${name}`;
+      if (parameter.type === 'bytes') return `const std::vector<unsigned char>& ${name}`;
+      if (parameter.type === 'bool') return `bool ${name}`;
+      return `int ${name}`;
+    }).join(', ');
+    const utf8Declarations = [...utf8Params].map(index =>
+      `    const std::string lb_utf8_${index} = LB_NE_ToUtf8(${paramName(index)}.c_str());`
+    ).join('\n');
+    const argumentExpressions = descriptor.args.filter(arg => arg.kind !== 'hwnd' && arg.kind !== 'id').map(arg => {
+      if (arg.kind === 'utf8') return `reinterpret_cast<const unsigned char*>(lb_utf8_${arg.param}.data())`;
+      if (arg.kind === 'utf8len') return `static_cast<int>(lb_utf8_${arg.param}.size())`;
+      if (arg.kind === 'literal') return typeof arg.value === 'string' ? `"${escapeWideString(arg.value)}"` : String(arg.value);
+      const expression = arg.kind === 'float' ? `static_cast<float>(${paramName(arg.param)})` : paramName(arg.param);
+      if (arg.scale) return `static_cast<int>(${expression} * ${arg.scale})`;
+      return expression;
+    }).join(', ');
+    return `static bool ${toCppIdentifier(descriptor.command)}(${parameterDeclarations}) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"${escapeWideString(controlType)}" });
+    if (!element) return false;
+${utf8Declarations}
+    ${descriptor.eu}(g_newEmojiWindow, element->id${argumentExpressions ? ', ' + argumentExpressions : ''});
+    return true;
+}`;
+  };
+  return descriptors.map(emitHelper).join('\n\n');
+}
+
+interface NewEmojiPropertyCommandDescriptor {
+  command: string;
+  type: string;
+  eu: string;
+  args: Array<{ kind: 'hwnd' | 'id' | 'utf8' | 'utf8len' | 'int' | 'float' | 'literal'; param?: number; value?: string | number; scale?: number }>;
+}
+
+// LB_NE 数据桥接命令清单：这些命令的底层导出参数是 UTF-8 字节指针，
+// 禁止从 .lcpp 直接调用 NE_EU_* 版本；由生成模板提供宽字符版助手。
+const NEW_EMOJI_DATA_BRIDGE_COMMANDS = [
+  'NE表格_设置列', 'NE表格_设置行数据', 'NE表格_添加行', 'NE表格_插入行',
+  'NE富列表_设置模板', 'NE富列表_设置条目', 'NE富列表_添加条目', 'NE富列表_设置选中键',
+  'NE富列表_设置倒计时', 'NE富列表_设置倒计时状态',
+  'NE菜单_设置项目', 'NE菜单_设置项目图标', 'NE菜单_设置项目快捷键', 'NE菜单_设置项目元数据',
+  'NE徽标_设置文本', 'NE_设置窗口图标', 'NE_设置主题令牌',
+  'NE_显示消息框', 'NE_显示确认框', 'NE_显示扩展消息框',
+  'NE表格_投递设置行数据', 'NE表格_投递添加行', 'NE表格_投递插入行', 'NE表格_投递清空行',
+  'NE菜单_投递项目', 'NE菜单_投递项目图标', 'NE菜单_投递项目快捷键', 'NE菜单_投递展开状态',
+  'NE徽标_投递设置文本',
+  'NE富列表_投递设置模板', 'NE富列表_投递设置条目', 'NE富列表_投递添加条目', 'NE富列表_投递更新条目',
+  'NE富列表_投递删除条目', 'NE富列表_投递条目覆盖', 'NE富列表_投递设置选中键',
+  'NE表格_取单元格值', 'NE表格_取双击编辑状态', 'NE表格_取单元格双击可编辑', 'NE表格_导出Excel', 'NE表格_导入Excel',
+  'NE菜单_取状态', 'NE菜单_取活动路径', 'NE菜单_取颜色', 'NE菜单_取项目元数据',
+  'NE富列表_取模板', 'NE富列表_取条目们', 'NE富列表_取条目', 'NE富列表_取选中键', 'NE富列表_取选项',
+  'NE富列表_取样式', 'NE富列表_取倒计时状态', 'NE富列表_更新条目', 'NE富列表_删除条目', 'NE富列表_条目覆盖',
+  'NE富列表_追加倒计时', 'NE富列表_清空条目',
+  'NE_设置窗口图标字节', 'NE_显示提问框', 'NE_显示通知', 'NE_显示加载遮罩', 'NE_关闭加载遮罩'
+];
+
+// 数据桥接助手按需生成：源码未引用这些命令时不产出任何助手，
+// 保持历史工程生成结果不变（部分测试对生成 C++ 做整文件 EU_ 扫描）。
+function generateNewEmojiDataBridgeCpp(
+  program: LingCppProgram,
+  enabledModules: InstalledModule[],
+  dataTypes: LingCppDataType[]
+): string {
+  const used = NEW_EMOJI_DATA_BRIDGE_COMMANDS.some(command => program.source.includes(command));
+  if (!used) return '';
+  const collectHandlers = (commands: string[]) => {
+    const names = new Set<string>();
+    for (const command of commands) {
+      for (const name of getNewEmojiBoundHandlerNames(program.source, command)) names.add(name);
+    }
+    return [...names].flatMap(name => {
+      const method = findLingCppMethod(program, name);
+      return method ? [{ name, method }] : [];
+    });
+  };
+  const buildTrampoline = (callback: string, parameters: string, callbackType: string, method: LingCppMethod) => {
+    const binding: NewEmojiCatalogEventBinding = {
+      command: 'LB_NE_MsgBox',
+      eventName: 'Result',
+      callbackType,
+      method
+    };
+    return `static void __stdcall ${callback}(${parameters}) {
+${generateNewEmojiEventParameterDeclarations(binding, enabledModules, program.dataTypes)}
+${generateNewEmojiMethodBody(method, enabledModules, program.dataTypes)}
+}`;
+  };
+  const resultHandlers = collectHandlers(['NE_显示消息框', 'NE_显示确认框']);
+  const exHandlers = collectHandlers(['NE_显示扩展消息框']);
+  const resultTrampolines = resultHandlers.map((item, index) => buildTrampoline(
+    `LB_NE_MsgBoxResultCb_${index + 1}`,
+    'int lb_messagebox_id, int lb_result',
+    'MessageBoxResultCallback',
+    item.method
+  ));
+  const exTrampolines = exHandlers.map((item, index) => buildTrampoline(
+    `LB_NE_MsgBoxExCb_${index + 1}`,
+    'int lb_messagebox_id, int lb_action, const unsigned char* lb_value_utf8, int lb_value_utf8_length',
+    'MessageBoxExCallback',
+    item.method
+  ));
+  const resultCases = resultHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_MsgBoxResultCb_${index + 1};`).join('\n');
+  const exCases = exHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_MsgBoxExCb_${index + 1};`).join('\n');
+  return `${NEW_EMOJI_DATA_BRIDGE_HELPERS}
+${resultTrampolines.join('\n\n')}
+
+static LB_NE_MsgBoxResultFn LB_NE_FindMsgBoxResultHandler(const wchar_t* handlerName) {
+    if (!handlerName || !*handlerName) return nullptr;
+${resultCases}
+    return nullptr;
+}
+
+${exTrampolines.join('\n\n')}
+
+static LB_NE_MsgBoxExFn LB_NE_FindMsgBoxExHandler(const wchar_t* handlerName) {
+    if (!handlerName || !*handlerName) return nullptr;
+${exCases}
+    return nullptr;
+}`;
+}
+
+// 数据桥接助手本体：宽字符入参、内部经 LB_NE_ToUtf8 转换后调用原生导出；
+// LB_NE_FindTypedElement 校验控件类型并输出中文诊断。
+const NEW_EMOJI_DATA_BRIDGE_HELPERS = `
+static bool NE表格_设置列(const wchar_t* controlName, const std::wstring& columnsJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(columnsJson.c_str());
+    EU_SetTableColumnsEx(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+    return true;
+}
+
+static bool NE表格_设置行数据(const wchar_t* controlName, const std::wstring& rowsJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(rowsJson.c_str());
+    EU_SetTableRowsEx(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+    return true;
+}
+
+static int NE表格_添加行(const wchar_t* controlName, const std::wstring& rowJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(rowJson.c_str());
+    return EU_AddTableRow(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE表格_插入行(const wchar_t* controlName, int rowIndex, const std::wstring& rowJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(rowJson.c_str());
+    return EU_InsertTableRow(g_newEmojiWindow, element->id, rowIndex, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE富列表_设置模板(const wchar_t* controlName, const std::wstring& templateJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(templateJson.c_str());
+    return EU_SetRichListTemplate(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE富列表_设置条目(const wchar_t* controlName, const std::wstring& itemsJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(itemsJson.c_str());
+    return EU_SetRichListItems(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE富列表_添加条目(const wchar_t* controlName, const std::wstring& itemJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(itemJson.c_str());
+    return EU_AddRichListItem(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE富列表_设置选中键(const wchar_t* controlName, const std::wstring& keysJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(keysJson.c_str());
+    return EU_SetRichListSelectedKeys(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE富列表_设置倒计时(const wchar_t* controlName, const std::wstring& key, const std::wstring& node,
+                               long long targetUnixMs, const std::wstring& format, bool paused) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string nodeUtf8 = LB_NE_ToUtf8(node.c_str());
+    const std::string formatUtf8 = LB_NE_ToUtf8(format.c_str());
+    return EU_SetRichListCountdown(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+        reinterpret_cast<const unsigned char*>(nodeUtf8.data()), static_cast<int>(nodeUtf8.size()),
+        targetUnixMs,
+        reinterpret_cast<const unsigned char*>(formatUtf8.data()), static_cast<int>(formatUtf8.size()),
+        paused ? 1 : 0);
+}
+
+static int NE富列表_设置倒计时状态(const wchar_t* controlName, const std::wstring& key, const std::wstring& node, bool paused) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string nodeUtf8 = LB_NE_ToUtf8(node.c_str());
+    return EU_SetRichListCountdownState(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+        reinterpret_cast<const unsigned char*>(nodeUtf8.data()), static_cast<int>(nodeUtf8.size()),
+        paused ? 1 : 0);
+}
+
+static void NE菜单_设置项目(const wchar_t* controlName, const std::wstring& itemsText) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return;
+    const std::string utf8 = LB_NE_ToUtf8(itemsText.c_str());
+    EU_SetMenuItems(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static void NE菜单_设置项目图标(const wchar_t* controlName, int itemIndex, const std::wstring& icon) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return;
+    const std::string utf8 = LB_NE_ToUtf8(icon.c_str());
+    EU_SetMenuItemIcon(g_newEmojiWindow, element->id, itemIndex, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static void NE菜单_设置项目快捷键(const wchar_t* controlName, int itemIndex, const std::wstring& shortcut) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return;
+    const std::string utf8 = LB_NE_ToUtf8(shortcut.c_str());
+    EU_SetMenuItemShortcut(g_newEmojiWindow, element->id, itemIndex, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static void NE菜单_设置项目元数据(const wchar_t* controlName, const std::wstring& icons, const std::wstring& groups,
+                                 const std::wstring& hrefs, const std::wstring& targets, const std::wstring& commands) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return;
+    const std::string iconsUtf8 = LB_NE_ToUtf8(icons.c_str());
+    const std::string groupsUtf8 = LB_NE_ToUtf8(groups.c_str());
+    const std::string hrefsUtf8 = LB_NE_ToUtf8(hrefs.c_str());
+    const std::string targetsUtf8 = LB_NE_ToUtf8(targets.c_str());
+    const std::string commandsUtf8 = LB_NE_ToUtf8(commands.c_str());
+    EU_SetMenuItemMetaUtf8(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(iconsUtf8.data()), static_cast<int>(iconsUtf8.size()),
+        reinterpret_cast<const unsigned char*>(groupsUtf8.data()), static_cast<int>(groupsUtf8.size()),
+        reinterpret_cast<const unsigned char*>(hrefsUtf8.data()), static_cast<int>(hrefsUtf8.size()),
+        reinterpret_cast<const unsigned char*>(targetsUtf8.data()), static_cast<int>(targetsUtf8.size()),
+        reinterpret_cast<const unsigned char*>(commandsUtf8.data()), static_cast<int>(commandsUtf8.size()));
+}
+
+static void NE徽标_设置文本(const wchar_t* controlName, const std::wstring& text) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Badge" });
+    if (!element) return;
+    const std::string utf8 = LB_NE_ToUtf8(text.c_str());
+    EU_SetBadgeValue(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE_设置窗口图标(HWND hwnd, const std::wstring& iconPath) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string utf8 = LB_NE_ToUtf8(iconPath.c_str());
+    return EU_SetWindowIcon(hwnd, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static int NE_设置主题令牌(HWND hwnd, const std::wstring& tokenName, int colorValue) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string utf8 = LB_NE_ToUtf8(tokenName.c_str());
+    return EU_SetThemeToken(hwnd, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()), static_cast<unsigned int>(colorValue));
+}
+
+// 消息框回调按 &处理器名 派发：跳板由生成器按源码中实际引用的处理器生成，
+// 查找表在 LB_NE_FindMsgBox*Handler 中；未引用任何处理器时查找返回空指针，
+// 原生层仍会正常弹出消息框，只是没有回调。
+using LB_NE_MsgBoxResultFn = void (__stdcall *)(int, int);
+using LB_NE_MsgBoxExFn = void (__stdcall *)(int, int, const unsigned char*, int);
+static LB_NE_MsgBoxResultFn LB_NE_FindMsgBoxResultHandler(const wchar_t* handlerName);
+static LB_NE_MsgBoxExFn LB_NE_FindMsgBoxExHandler(const wchar_t* handlerName);
+
+static int NE_显示消息框(HWND hwnd, const std::wstring& title, const std::wstring& text, const std::wstring& confirmText, const wchar_t* handlerName) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string titleUtf8 = LB_NE_ToUtf8(title.c_str());
+    const std::string textUtf8 = LB_NE_ToUtf8(text.c_str());
+    const std::string confirmUtf8 = LB_NE_ToUtf8(confirmText.c_str());
+    return EU_ShowMessageBox(hwnd,
+        reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()),
+        reinterpret_cast<const unsigned char*>(textUtf8.data()), static_cast<int>(textUtf8.size()),
+        reinterpret_cast<const unsigned char*>(confirmUtf8.data()), static_cast<int>(confirmUtf8.size()),
+        LB_NE_FindMsgBoxResultHandler(handlerName));
+}
+
+static int NE_显示确认框(HWND hwnd, const std::wstring& title, const std::wstring& text,
+                         const std::wstring& confirmText, const std::wstring& cancelText, const wchar_t* handlerName) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string titleUtf8 = LB_NE_ToUtf8(title.c_str());
+    const std::string textUtf8 = LB_NE_ToUtf8(text.c_str());
+    const std::string confirmUtf8 = LB_NE_ToUtf8(confirmText.c_str());
+    const std::string cancelUtf8 = LB_NE_ToUtf8(cancelText.c_str());
+    return EU_ShowConfirmBox(hwnd,
+        reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()),
+        reinterpret_cast<const unsigned char*>(textUtf8.data()), static_cast<int>(textUtf8.size()),
+        reinterpret_cast<const unsigned char*>(confirmUtf8.data()), static_cast<int>(confirmUtf8.size()),
+        reinterpret_cast<const unsigned char*>(cancelUtf8.data()), static_cast<int>(cancelUtf8.size()),
+        LB_NE_FindMsgBoxResultHandler(handlerName));
+}
+
+static int NE_显示扩展消息框(HWND hwnd, const std::wstring& title, const std::wstring& text,
+                             const std::wstring& confirmText, const std::wstring& cancelText,
+                             int boxType, bool showCancel, bool center, bool rich, bool distinguishCancelClose,
+                             const wchar_t* handlerName) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string titleUtf8 = LB_NE_ToUtf8(title.c_str());
+    const std::string textUtf8 = LB_NE_ToUtf8(text.c_str());
+    const std::string confirmUtf8 = LB_NE_ToUtf8(confirmText.c_str());
+    const std::string cancelUtf8 = LB_NE_ToUtf8(cancelText.c_str());
+    return EU_ShowMessageBoxEx(hwnd,
+        reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()),
+        reinterpret_cast<const unsigned char*>(textUtf8.data()), static_cast<int>(textUtf8.size()),
+        reinterpret_cast<const unsigned char*>(confirmUtf8.data()), static_cast<int>(confirmUtf8.size()),
+        reinterpret_cast<const unsigned char*>(cancelUtf8.data()), static_cast<int>(cancelUtf8.size()),
+        boxType, showCancel ? 1 : 0, center ? 1 : 0, rich ? 1 : 0, distinguishCancelClose ? 1 : 0,
+        LB_NE_FindMsgBoxExHandler(handlerName));
+}
+// ===== Post 异步投递族：可在工作线程调用，由界面线程执行实际 setter =====
+static bool NE表格_投递设置行数据(const wchar_t* controlName, const std::wstring& rowsJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(rowsJson.c_str());
+    return EU_PostSetTableRowsEx(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE表格_投递添加行(const wchar_t* controlName, const std::wstring& rowJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(rowJson.c_str());
+    return EU_PostAddTableRow(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE表格_投递插入行(const wchar_t* controlName, int rowIndex, const std::wstring& rowJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(rowJson.c_str());
+    return EU_PostInsertTableRow(g_newEmojiWindow, element->id, rowIndex, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE表格_投递清空行(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    return EU_PostClearTableRows(g_newEmojiWindow, element->id) >= 0;
+}
+
+static bool NE菜单_投递项目(const wchar_t* controlName, const std::wstring& itemsText) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(itemsText.c_str());
+    return EU_PostSetMenuItems(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE菜单_投递项目图标(const wchar_t* controlName, int itemIndex, const std::wstring& icon) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(icon.c_str());
+    return EU_PostSetMenuItemIcon(g_newEmojiWindow, element->id, itemIndex, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE菜单_投递项目快捷键(const wchar_t* controlName, int itemIndex, const std::wstring& shortcut) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(shortcut.c_str());
+    return EU_PostSetMenuItemShortcut(g_newEmojiWindow, element->id, itemIndex, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE菜单_投递展开状态(const wchar_t* controlName, const std::wstring& indicesJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(indicesJson.c_str());
+    return EU_PostSetMenuExpandedUtf8(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE徽标_投递设置文本(const wchar_t* controlName, const std::wstring& text) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Badge" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(text.c_str());
+    return EU_PostSetBadgeValue(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE富列表_投递设置模板(const wchar_t* controlName, const std::wstring& templateJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(templateJson.c_str());
+    return EU_PostSetRichListTemplate(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE富列表_投递设置条目(const wchar_t* controlName, const std::wstring& itemsJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(itemsJson.c_str());
+    return EU_PostSetRichListItems(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE富列表_投递添加条目(const wchar_t* controlName, const std::wstring& itemJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(itemJson.c_str());
+    return EU_PostAddRichListItem(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+static bool NE富列表_投递更新条目(const wchar_t* controlName, const std::wstring& key, const std::wstring& itemJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return false;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string itemUtf8 = LB_NE_ToUtf8(itemJson.c_str());
+    return EU_PostUpdateRichListItem(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+        reinterpret_cast<const unsigned char*>(itemUtf8.data()), static_cast<int>(itemUtf8.size())) >= 0;
+}
+
+static bool NE富列表_投递删除条目(const wchar_t* controlName, const std::wstring& key) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return false;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    return EU_PostDeleteRichListItem(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size())) >= 0;
+}
+
+static bool NE富列表_投递条目覆盖(const wchar_t* controlName, const std::wstring& key, const std::wstring& overrideJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return false;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string overrideUtf8 = LB_NE_ToUtf8(overrideJson.c_str());
+    return EU_PostSetRichListItemOverride(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+        reinterpret_cast<const unsigned char*>(overrideUtf8.data()), static_cast<int>(overrideUtf8.size())) >= 0;
+}
+
+static bool NE富列表_投递设置选中键(const wchar_t* controlName, const std::wstring& keysJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(keysJson.c_str());
+    return EU_PostSetRichListSelectedKeys(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size())) >= 0;
+}
+
+// ===== 运行时读取族：输出指针参数封装为文本/JSON 返回 =====
+static std::wstring LB_NE_FetchUtf8Text(const std::function<int(unsigned char*, int)>& fetch) {
+    const int required = fetch(nullptr, 0);
+    if (required <= 0) return {};
+    std::vector<unsigned char> buffer(static_cast<size_t>(required) + 1, 0);
+    const int actual = fetch(buffer.data(), static_cast<int>(buffer.size()));
+    const int length = actual > 0 && actual < required ? actual : required;
+    return LB_NE_FromUtf8(buffer.data(), length);
+}
+
+static void LB_NE_JsonAppendInt(std::wstring& json, const wchar_t* key, long long value, bool& first) {
+    // 用字符码构造引号/冒号，避免模板转义层级问题。
+    const wchar_t quote = static_cast<wchar_t>(34);
+    const wchar_t colon = static_cast<wchar_t>(58);
+    const wchar_t comma = static_cast<wchar_t>(44);
+    if (first) { json += L'{'; first = false; } else json += comma;
+    json += quote; json += key; json += colon;
+    json += std::to_wstring(value);
+}
+
+static void LB_NE_JsonAppendText(std::wstring& json, const wchar_t* key, const std::wstring& value, bool& first) {
+    const wchar_t quote = static_cast<wchar_t>(34);
+    const wchar_t colon = static_cast<wchar_t>(58);
+    const wchar_t comma = static_cast<wchar_t>(44);
+    const wchar_t bslash = static_cast<wchar_t>(92);
+    if (first) { json += L'{'; first = false; } else json += comma;
+    json += quote; json += key; json += colon; json += quote;
+    for (wchar_t ch : value) {
+        if (ch == quote || ch == bslash) json += bslash;
+        json += ch;
+    }
+    json += quote;
+}
+
+static void LB_NE_JsonFinish(std::wstring& json, bool first) {
+    if (first) json += L'{';
+    json += L'}';
+}
+
+static std::wstring NE表格_取单元格值(const wchar_t* controlName, int row, int col) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return {};
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetTableCellValue(g_newEmojiWindow, element->id, row, col, buffer, size);
+    });
+}
+
+static std::wstring NE表格_取双击编辑状态(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return {};
+    int enabled = 0, editingRow = 0, editingCol = 0;
+    EU_GetTableDoubleClickEditState(g_newEmojiWindow, element->id, &enabled, &editingRow, &editingCol);
+    std::wstring json;
+    bool first = true;
+    LB_NE_JsonAppendInt(json, L"enabled", enabled, first);
+    LB_NE_JsonAppendInt(json, L"editingRow", editingRow, first);
+    LB_NE_JsonAppendInt(json, L"editingCol", editingCol, first);
+    LB_NE_JsonFinish(json, first);
+    return json;
+}
+
+static int NE表格_取单元格双击可编辑(const wchar_t* controlName, int row, int col) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return 0;
+    return EU_GetTableCellDoubleClickEditable(g_newEmojiWindow, element->id, row, col);
+}
+
+static std::wstring NE菜单_取状态(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return {};
+    int activeIndex = 0, itemCount = 0, orientation = 0, activeLevel = 0, visibleCount = 0, expandedCount = 0, hoverIndex = 0;
+    EU_GetMenuState(g_newEmojiWindow, element->id, &activeIndex, &itemCount, &orientation, &activeLevel, &visibleCount, &expandedCount, &hoverIndex);
+    std::wstring json;
+    bool first = true;
+    LB_NE_JsonAppendInt(json, L"activeIndex", activeIndex, first);
+    LB_NE_JsonAppendInt(json, L"itemCount", itemCount, first);
+    LB_NE_JsonAppendInt(json, L"orientation", orientation, first);
+    LB_NE_JsonAppendInt(json, L"activeLevel", activeLevel, first);
+    LB_NE_JsonAppendInt(json, L"visibleCount", visibleCount, first);
+    LB_NE_JsonAppendInt(json, L"expandedCount", expandedCount, first);
+    LB_NE_JsonAppendInt(json, L"hoverIndex", hoverIndex, first);
+    LB_NE_JsonFinish(json, first);
+    return json;
+}
+
+static std::wstring NE菜单_取活动路径(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return {};
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetMenuActivePath(g_newEmojiWindow, element->id, buffer, size);
+    });
+}
+
+static std::wstring NE菜单_取颜色(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return {};
+    unsigned int background = 0, textColor = 0, activeTextColor = 0, hoverBackground = 0, disabledTextColor = 0, border = 0;
+    EU_GetMenuColors(g_newEmojiWindow, element->id, &background, &textColor, &activeTextColor, &hoverBackground, &disabledTextColor, &border);
+    std::wstring json;
+    bool first = true;
+    LB_NE_JsonAppendInt(json, L"background", background, first);
+    LB_NE_JsonAppendInt(json, L"textColor", textColor, first);
+    LB_NE_JsonAppendInt(json, L"activeTextColor", activeTextColor, first);
+    LB_NE_JsonAppendInt(json, L"hoverBackground", hoverBackground, first);
+    LB_NE_JsonAppendInt(json, L"disabledTextColor", disabledTextColor, first);
+    LB_NE_JsonAppendInt(json, L"border", border, first);
+    LB_NE_JsonFinish(json, first);
+    return json;
+}
+
+static std::wstring NE菜单_取项目元数据(const wchar_t* controlName, int itemIndex) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Menu" });
+    if (!element) return {};
+    std::vector<unsigned char> icon(512, 0), href(512, 0), target(512, 0), command(512, 0);
+    int isGroup = 0, disabled = 0, level = 0;
+    EU_GetMenuItemMeta(g_newEmojiWindow, element->id, itemIndex,
+        icon.data(), static_cast<int>(icon.size()),
+        href.data(), static_cast<int>(href.size()),
+        target.data(), static_cast<int>(target.size()),
+        command.data(), static_cast<int>(command.size()),
+        &isGroup, &disabled, &level);
+    std::wstring json;
+    bool first = true;
+    LB_NE_JsonAppendText(json, L"icon", LB_NE_FromUtf8(icon.data(), static_cast<int>(std::strlen(reinterpret_cast<const char*>(icon.data())))), first);
+    LB_NE_JsonAppendText(json, L"href", LB_NE_FromUtf8(href.data(), static_cast<int>(std::strlen(reinterpret_cast<const char*>(href.data())))), first);
+    LB_NE_JsonAppendText(json, L"target", LB_NE_FromUtf8(target.data(), static_cast<int>(std::strlen(reinterpret_cast<const char*>(target.data())))), first);
+    LB_NE_JsonAppendText(json, L"command", LB_NE_FromUtf8(command.data(), static_cast<int>(std::strlen(reinterpret_cast<const char*>(command.data())))), first);
+    LB_NE_JsonAppendInt(json, L"isGroup", isGroup, first);
+    LB_NE_JsonAppendInt(json, L"disabled", disabled, first);
+    LB_NE_JsonAppendInt(json, L"level", level, first);
+    LB_NE_JsonFinish(json, first);
+    return json;
+}
+
+static std::wstring NE富列表_取模板(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return {};
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetRichListTemplate(g_newEmojiWindow, element->id, buffer, size);
+    });
+}
+
+static std::wstring NE富列表_取条目们(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return {};
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetRichListItems(g_newEmojiWindow, element->id, buffer, size);
+    });
+}
+
+static std::wstring NE富列表_取条目(const wchar_t* controlName, int index) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return {};
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetRichListItem(g_newEmojiWindow, element->id, index, buffer, size);
+    });
+}
+
+static std::wstring NE富列表_取选中键(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return {};
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetRichListSelectedKeys(g_newEmojiWindow, element->id, buffer, size);
+    });
+}
+
+static std::wstring NE富列表_取选项(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return {};
+    int selectionMode = 0, bordered = 0, zebra = 0, compact = 0, keyboardNavigation = 0, showScrollbar = 0;
+    EU_GetRichListOptions(g_newEmojiWindow, element->id, &selectionMode, &bordered, &zebra, &compact, &keyboardNavigation, &showScrollbar);
+    std::wstring json;
+    bool first = true;
+    LB_NE_JsonAppendInt(json, L"selectionMode", selectionMode, first);
+    LB_NE_JsonAppendInt(json, L"bordered", bordered, first);
+    LB_NE_JsonAppendInt(json, L"zebra", zebra, first);
+    LB_NE_JsonAppendInt(json, L"compact", compact, first);
+    LB_NE_JsonAppendInt(json, L"keyboardNavigation", keyboardNavigation, first);
+    LB_NE_JsonAppendInt(json, L"showScrollbar", showScrollbar, first);
+    LB_NE_JsonFinish(json, first);
+    return json;
+}
+
+static std::wstring NE富列表_取样式(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return {};
+    int rowHeight = 0, paddingX = 0, paddingY = 0, scrollbarWidth = 0, align = 0;
+    unsigned int selectedColor = 0, hoverColor = 0;
+    EU_GetRichListStyle(g_newEmojiWindow, element->id, &rowHeight, &paddingX, &paddingY, &scrollbarWidth, &align, &selectedColor, &hoverColor);
+    std::wstring json;
+    bool first = true;
+    LB_NE_JsonAppendInt(json, L"rowHeight", rowHeight, first);
+    LB_NE_JsonAppendInt(json, L"paddingX", paddingX, first);
+    LB_NE_JsonAppendInt(json, L"paddingY", paddingY, first);
+    LB_NE_JsonAppendInt(json, L"scrollbarWidth", scrollbarWidth, first);
+    LB_NE_JsonAppendInt(json, L"align", align, first);
+    LB_NE_JsonAppendInt(json, L"selectedColor", selectedColor, first);
+    LB_NE_JsonAppendInt(json, L"hoverColor", hoverColor, first);
+    LB_NE_JsonFinish(json, first);
+    return json;
+}
+
+static std::wstring NE富列表_取倒计时状态(const wchar_t* controlName, const std::wstring& key, const std::wstring& node) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return {};
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string nodeUtf8 = LB_NE_ToUtf8(node.c_str());
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetRichListCountdownState(g_newEmojiWindow, element->id,
+            reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+            reinterpret_cast<const unsigned char*>(nodeUtf8.data()), static_cast<int>(nodeUtf8.size()),
+            buffer, size);
+    });
+}
+
+static int NE富列表_更新条目(const wchar_t* controlName, const std::wstring& key, const std::wstring& itemJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string itemUtf8 = LB_NE_ToUtf8(itemJson.c_str());
+    return EU_UpdateRichListItem(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+        reinterpret_cast<const unsigned char*>(itemUtf8.data()), static_cast<int>(itemUtf8.size()));
+}
+
+static int NE富列表_删除条目(const wchar_t* controlName, const std::wstring& key) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    return EU_DeleteRichListItem(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()));
+}
+
+static int NE富列表_条目覆盖(const wchar_t* controlName, const std::wstring& key, const std::wstring& overrideJson) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string overrideUtf8 = LB_NE_ToUtf8(overrideJson.c_str());
+    return EU_SetRichListItemOverride(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+        reinterpret_cast<const unsigned char*>(overrideUtf8.data()), static_cast<int>(overrideUtf8.size()));
+}
+
+static int NE富列表_追加倒计时(const wchar_t* controlName, const std::wstring& key, const std::wstring& node, long long deltaMs) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    const std::string keyUtf8 = LB_NE_ToUtf8(key.c_str());
+    const std::string nodeUtf8 = LB_NE_ToUtf8(node.c_str());
+    return EU_AddRichListCountdownTime(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(keyUtf8.data()), static_cast<int>(keyUtf8.size()),
+        reinterpret_cast<const unsigned char*>(nodeUtf8.data()), static_cast<int>(nodeUtf8.size()),
+        deltaMs);
+}
+
+static int NE富列表_清空条目(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"RichList" });
+    if (!element) return -1;
+    return EU_ClearRichListItems(g_newEmojiWindow, element->id);
+}
+
+// ===== 特殊运行时能力 =====
+static int NE_设置窗口图标字节(HWND hwnd, const std::vector<unsigned char>& iconBytes) {
+    if (!hwnd || !IsWindow(hwnd) || iconBytes.empty()) return 0;
+    return EU_SetWindowIconFromBytes(hwnd, reinterpret_cast<const unsigned char*>(iconBytes.data()), static_cast<int>(iconBytes.size()));
+}
+
+static int NE_显示提问框(HWND hwnd, const std::wstring& title, const std::wstring& text,
+                         const std::wstring& placeholder, const std::wstring& initialValue,
+                         const std::wstring& pattern, const std::wstring& errorText,
+                         const std::wstring& confirmText, const std::wstring& cancelText,
+                         int boxType, bool center, bool rich, bool distinguishCancelClose,
+                         const wchar_t* handlerName) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string titleUtf8 = LB_NE_ToUtf8(title.c_str());
+    const std::string textUtf8 = LB_NE_ToUtf8(text.c_str());
+    const std::string placeholderUtf8 = LB_NE_ToUtf8(placeholder.c_str());
+    const std::string valueUtf8 = LB_NE_ToUtf8(initialValue.c_str());
+    const std::string patternUtf8 = LB_NE_ToUtf8(pattern.c_str());
+    const std::string errorUtf8 = LB_NE_ToUtf8(errorText.c_str());
+    const std::string confirmUtf8 = LB_NE_ToUtf8(confirmText.c_str());
+    const std::string cancelUtf8 = LB_NE_ToUtf8(cancelText.c_str());
+    return EU_ShowPromptBox(hwnd,
+        reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()),
+        reinterpret_cast<const unsigned char*>(textUtf8.data()), static_cast<int>(textUtf8.size()),
+        reinterpret_cast<const unsigned char*>(placeholderUtf8.data()), static_cast<int>(placeholderUtf8.size()),
+        reinterpret_cast<const unsigned char*>(valueUtf8.data()), static_cast<int>(valueUtf8.size()),
+        reinterpret_cast<const unsigned char*>(patternUtf8.data()), static_cast<int>(patternUtf8.size()),
+        reinterpret_cast<const unsigned char*>(errorUtf8.data()), static_cast<int>(errorUtf8.size()),
+        reinterpret_cast<const unsigned char*>(confirmUtf8.data()), static_cast<int>(confirmUtf8.size()),
+        reinterpret_cast<const unsigned char*>(cancelUtf8.data()), static_cast<int>(cancelUtf8.size()),
+        boxType, center ? 1 : 0, rich ? 1 : 0, distinguishCancelClose ? 1 : 0,
+        LB_NE_FindMsgBoxExHandler(handlerName));
+}
+
+static int NE_显示通知(HWND hwnd, const std::wstring& title, const std::wstring& body,
+                       int notifyType, bool closable, int durationMs, int placement, int offset,
+                       bool rich, int width, int height) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string titleUtf8 = LB_NE_ToUtf8(title.c_str());
+    const std::string bodyUtf8 = LB_NE_ToUtf8(body.c_str());
+    return EU_ShowNotification(hwnd,
+        reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()),
+        reinterpret_cast<const unsigned char*>(bodyUtf8.data()), static_cast<int>(bodyUtf8.size()),
+        notifyType, closable ? 1 : 0, durationMs, placement, offset, rich ? 1 : 0, width, height);
+}
+
+static int NE_显示加载遮罩(HWND hwnd, int targetElementId, const std::wstring& text,
+                           bool fullscreen, bool lockInput, unsigned int backgroundColor,
+                           unsigned int spinnerColor, unsigned int textColor, int spinnerType) {
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    const std::string textUtf8 = LB_NE_ToUtf8(text.c_str());
+    return EU_ShowLoading(hwnd, targetElementId,
+        reinterpret_cast<const unsigned char*>(textUtf8.data()), static_cast<int>(textUtf8.size()),
+        fullscreen ? 1 : 0, lockInput ? 1 : 0, backgroundColor, spinnerColor, textColor, spinnerType);
+}
+
+static void NE_关闭加载遮罩(HWND hwnd, int loadingId) {
+    if (!hwnd || !IsWindow(hwnd) || loadingId <= 0) return;
+    EU_CloseLoading(hwnd, loadingId);
+}
+
+static int NE表格_导出Excel(const wchar_t* controlName, const std::wstring& filePath, int flags) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(filePath.c_str());
+    return EU_ExportTableExcel(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()), flags);
+}
+
+static int NE表格_导入Excel(const wchar_t* controlName, const std::wstring& filePath, int flags) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return -1;
+    const std::string utf8 = LB_NE_ToUtf8(filePath.c_str());
+    return EU_ImportTableExcel(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()), flags);
+}`;
 
 function generateNewEmojiMenuResourceRuntime(
   project: LingWindowProject,
@@ -1122,6 +1937,8 @@ function generateNewEmojiMainCpp(
   const projectGlobalsDefinition = generateProjectGlobalsDefinition(program, enabledModules);
   const newEmojiRuntimeControlCpp = generateNewEmojiRuntimeControlCpp(enabledModules);
   const newEmojiRuntimeEventCpp = generateNewEmojiRuntimeEventCpp(program, enabledModules);
+  const newEmojiDataBridgeCpp = generateNewEmojiDataBridgeCpp(program, enabledModules, program.dataTypes);
+  const newEmojiPropertyBridgeCpp = generateNewEmojiPropertyBridgeCpp(program, enabledModules);
   const newEmojiFunctionLibraries = generateNewEmojiFunctionLibraries(program, enabledModules);
   const fbroControls: LingControl[] = fbroModuleEnabled
     ? window.controls
@@ -1751,6 +2568,7 @@ ${uiaCleanupLine}
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <windowsx.h>
+#include <delayimp.h>
 #include <winternl.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -1850,6 +2668,76 @@ ${cdpClientRuntime}
 ${webSocketServerRuntime}
 
 ${fbroModuleEnabled ? '#include <LingBuilderFbroProcessRuntime.hpp>' : ''}
+
+// new_emoji 专属模板独立成 main.cpp，不会复用 Win32 后端的链接 pragma 区；
+// 模板自带的窗口拖放子类化（DragQueryFileW/DragFinish）需要 shell32.lib。
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "delayimp")
+
+
+// new_emoji 运行时 DLL 内嵌方案：DLL 以 RCDATA 资源编入 EXE（构建管线按架构注入
+// new-emoji-runtime.rc）。首次 EU_* 调用触发延迟加载钩子：把资源解压到 EXE 目录
+// （不可写时回退到 LOCALAPPDATA 下的 LingBuilder/runtime 目录）后 LoadLibrary。
+// 资源不存在时钩子返回空指针，回退到 EXE 同目录加载的旧行为。
+#if defined(_M_IX86) || defined(_M_X64)
+static HMODULE LB_NE_LoadEmbeddedRuntimeDll() {
+    HMODULE exeModule = GetModuleHandleW(nullptr);
+    HRSRC resource = FindResourceW(exeModule, L"NEW_EMOJI_DLL", (LPCWSTR)RT_RCDATA);
+    if (!resource) return nullptr;
+    HGLOBAL handle = LoadResource(exeModule, resource);
+    if (!handle) return nullptr;
+    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(LockResource(handle));
+    const unsigned long size = SizeofResource(exeModule, resource);
+    if (!bytes || size == 0) return nullptr;
+    wchar_t exePath[MAX_PATH] = {};
+    GetModuleFileNameW(exeModule, exePath, MAX_PATH);
+    std::wstring target(exePath);
+    target = target.substr(0, target.find_last_of(L'/') + 1) + L"new_emoji.dll";
+    // CREATE_ALWAYS：目录里若已有更大尺寸的旧 DLL，OPEN_ALWAYS 不截断会留下脏尾字节导致 LoadLibrary 失败。
+    HANDLE file = CreateFileW(target.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        wchar_t localAppData[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) return nullptr;
+        const wchar_t pathSeparator = static_cast<wchar_t>(92);
+        target = std::wstring(localAppData) + pathSeparator + L"LingBuilder";
+        CreateDirectoryW(target.c_str(), nullptr);
+        target += pathSeparator;
+        target += L"runtime";
+        CreateDirectoryW(target.c_str(), nullptr);
+        target += pathSeparator;
+        target += L"new_emoji.dll";
+        file = CreateFileW(target.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE) return nullptr;
+        DWORD written = 0;
+        const BOOL saved = WriteFile(file, bytes, size, &written, nullptr);
+        CloseHandle(file);
+        if (!saved || written != size) { DeleteFileW(target.c_str()); return nullptr; }
+        return LoadLibraryW(target.c_str());
+    }
+    DWORD written = 0;
+    const BOOL ok = WriteFile(file, bytes, size, &written, nullptr);
+    CloseHandle(file);
+    if (!ok || written != size) { DeleteFileW(target.c_str()); return nullptr; }
+    return LoadLibraryW(target.c_str());
+}
+
+static HMODULE LB_NE_EmbeddedRuntimeDllCache = nullptr;
+
+static FARPROC WINAPI LB_NE_DelayLoadHook(unsigned reason, PDelayLoadInfo info) {
+    // 注意：DelayLoadInfo.szDll 是 ANSI 字符串（delayimp 不含宽字符变体）。
+    if (info && info->szDll && lstrcmpiA(info->szDll, "new_emoji.dll") == 0
+        && (reason == dliNotePreLoadLibrary || reason == dliFailLoadLib)) {
+        if (!LB_NE_EmbeddedRuntimeDllCache) LB_NE_EmbeddedRuntimeDllCache = LB_NE_LoadEmbeddedRuntimeDll();
+        if (LB_NE_EmbeddedRuntimeDllCache) return reinterpret_cast<FARPROC>(LB_NE_EmbeddedRuntimeDllCache);
+    }
+    return nullptr;
+}
+
+const PfnDliHook __pfnDliNotifyHook2 = LB_NE_DelayLoadHook;
+const PfnDliHook __pfnDliFailureHook2 = LB_NE_DelayLoadHook;
+#endif
 
 static HWND g_newEmojiWindow = nullptr;
 static constexpr UINT WM_LINGBUILDER_NE_BROWSER_SHELL_LAYOUT = WM_APP + 0x56;
@@ -2389,6 +3277,24 @@ static bool 控件_清空项目(const wchar_t* controlName) {
     return true;
 }
 
+static const LB_NE_ElementRef* LB_NE_FindTypedElement(const wchar_t* controlName, std::initializer_list<const wchar_t*> types) {
+    const LB_NE_ElementRef* element = LB_NE_FindElement(controlName);
+    if (!g_newEmojiWindow || !element || element->id <= 0) return nullptr;
+    if (!LB_NE_IsType(element, types)) {
+        LB_NE_Log(L"new_emoji 数据桥接失败：控件类型与命令不匹配。");
+        return nullptr;
+    }
+    return element;
+}
+// NE富列表 虚拟数据源事件的数据槽：跳板与绑定命令恒定生成，必须始终可用。
+// NE富列表 虚拟数据源事件的两阶段缓冲区数据槽：处理器内调用 NE_设置富列表虚拟行数据，
+// 同步跳板取走后写回原生缓冲区（与 NE_设置表格虚拟行数据 同范式，数据槽相互独立）。
+static thread_local std::wstring lb_neRichListVirtualRowData;
+static void NE_清空富列表虚拟行数据() { lb_neRichListVirtualRowData.clear(); }
+static void NE富列表_设置虚拟行数据(const std::wstring& rowData) { lb_neRichListVirtualRowData = rowData; }
+static const wchar_t* NE_取富列表虚拟行数据() { return lb_neRichListVirtualRowData.c_str(); }
+
+
 static void 写入调试输出(const wchar_t* message) {
     const wchar_t* text = message ? message : L"";
     OutputDebugStringW(text);
@@ -2464,6 +3370,12 @@ ${newEmojiWindowMembers}
 
 ${newEmojiMenuResourceRuntime}
 
+${newEmojiDataBridgeCpp}
+
+${newEmojiPropertyBridgeCpp}
+
+${newEmojiRuntimeEventCpp.definitions}
+
 ${newEmojiWindowEventRuntime.definitions}
 
 ${newEmojiUserMethodDefinitions}
@@ -2471,8 +3383,6 @@ ${newEmojiUserMethodDefinitions}
 ${webSocketHandlerDefinitions}
 
 ${catalogEventCallbackBlocks.join('\n\n')}
-
-${newEmojiRuntimeEventCpp.definitions}
 
 ${uploadCallbackBlocks.join('\n\n')}
 
@@ -6816,6 +7726,7 @@ const NEW_EMOJI_CALLBACK_SIGNATURES: Record<string, { parameters: string; return
   TableCellEditCallback: { parameters: 'int lb_table_id, int lb_row, int lb_col, int lb_action, const unsigned char* lb_utf8, int lb_utf8_length' },
   TableContextMenuCallback: { parameters: 'int lb_table_id, int lb_row, int lb_col, int lb_area, int lb_x, int lb_y' },
   TableVirtualRowCallback: { parameters: 'int lb_table_id, int lb_row, unsigned char* lb_buffer, int lb_buffer_size' },
+  RichListVirtualItemCallback: { parameters: 'int lb_element_id, int lb_index, unsigned char* lb_buffer, int lb_buffer_size' },
   ListBoxEditCallback: { parameters: 'int lb_element_id, int lb_index, int lb_field, int lb_action, const unsigned char* lb_utf8, int lb_utf8_length' },
   DropdownCommandCallback: { parameters: 'int lb_element_id, int lb_item_index, const unsigned char* lb_utf8, int lb_utf8_length' },
   MenuSelectCallback: { parameters: 'int lb_element_id, int lb_item_index, const unsigned char* lb_path_utf8, int lb_path_length, const unsigned char* lb_command_utf8, int lb_command_length' },
@@ -6839,6 +7750,10 @@ function getNewEmojiEventArgumentExpressions(binding: NewEmojiCatalogEventBindin
     'TableCellEditCallback.CellEdit': ['lb_row', 'lb_col', 'lb_action', 'LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
     'TableContextMenuCallback.ContextMenu': ['lb_row', 'lb_col', 'lb_area', 'lb_x', 'lb_y'],
     'TableVirtualRowCallback.VirtualRow': ['lb_row'],
+    'RichListVirtualItemCallback.VirtualRow': ['lb_index'],
+    'ElementValueCallback.ItemClosed': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'MessageBoxResultCallback.Result': ['lb_messagebox_id', 'lb_result'],
+    'MessageBoxExCallback.Result': ['lb_messagebox_id', 'lb_action', 'LB_NE_FromUtf8(lb_value_utf8, lb_value_utf8_length)'],
     'ElementTextCallback.SelectionChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
     'RichListEventCallback.ItemClicked': ['lb_event_json'],
     'RichListEventCallback.ItemDoubleClicked': ['lb_event_json'],
@@ -7677,6 +8592,58 @@ function validateNewEmojiDesignerControlReferences(window: LingWindowModel, enab
     }
   }
   return diagnostics;
+}
+
+function getWindowEmbeddedResourceEntries(window: LingWindowModel): Array<{ resourceId: number; fileName: string }> {
+  return (window.embeddedFiles || []).slice(0, 8).map((spec, index) => {
+    const baseName = (spec.file || '').split('\\').pop()?.split('/').pop() || '';
+    const rawName = (spec.extractName || baseName).trim();
+    const fileName = /^[A-Za-z0-9._-]{1,128}$/u.test(rawName) && !rawName.startsWith('.') ? rawName : '';
+    return { resourceId: 2001 + index, fileName };
+  }).filter(entry => entry.fileName.length > 0);
+}
+
+// 把随 EXE 编译为 RCDATA 的内嵌文件释放到「%TEMP%\lingbuilder-embedded\<工程ID>\」，
+// 与中文代码侧「系统_取临时目录() + lingbuilder-embedded\<工程ID>」约定路径一致；
+// 每次启动覆盖写，保证释放内容与 EXE 内资源一致。
+function generateEmbeddedResourceExtractorCpp(project: LingWindowProject, selectedWindow: LingWindowModel): string {
+  const entries = getWindowEmbeddedResourceEntries(selectedWindow);
+  const tableLines = entries.length > 0
+    ? entries.map(entry => `    { ${entry.resourceId}, L"${entry.fileName}" },`).join('\n')
+    : '    { 0, nullptr },';
+  return `struct LingBuilderEmbeddedResourceEntry {
+    unsigned int resourceId;
+    const wchar_t* fileName;
+};
+static const LingBuilderEmbeddedResourceEntry kLingBuilderEmbeddedResources[] = {
+${tableLines}
+};
+static void LingBuilder_释放内嵌资源文件() {
+    wchar_t tempRoot[MAX_PATH] = {};
+    if (GetTempPathW(MAX_PATH, tempRoot) == 0) return;
+    std::wstring rootDirectory = std::wstring(tempRoot) + L"lingbuilder-embedded";
+    CreateDirectoryW(rootDirectory.c_str(), nullptr);
+    std::wstring directory = rootDirectory + L"\\\\" + L"${project.id}";
+    CreateDirectoryW(directory.c_str(), nullptr);
+    HMODULE module = GetModuleHandleW(nullptr);
+    for (const LingBuilderEmbeddedResourceEntry& entry : kLingBuilderEmbeddedResources) {
+        if (!entry.fileName) continue;
+        HRSRC resource = FindResourceW(module, MAKEINTRESOURCEW(static_cast<WORD>(entry.resourceId)), MAKEINTRESOURCEW(10));
+        if (!resource) continue;
+        HGLOBAL loaded = LoadResource(module, resource);
+        if (!loaded) continue;
+        const void* data = LockResource(loaded);
+        const DWORD size = SizeofResource(module, resource);
+        if (!data || !size) continue;
+        const std::wstring target = directory + L"\\\\" + entry.fileName;
+        HANDLE file = CreateFileW(target.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE) continue;
+        DWORD written = 0;
+        WriteFile(file, data, size, &written, nullptr);
+        CloseHandle(file);
+    }
+}
+`;
 }
 
 function generateMainCpp(
@@ -9512,6 +10479,8 @@ ${fbroProcessRuntime}
 
 ${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson(project.windows), collectFbroJsQueryFunctions(project.windows)) : ''}
 
+${projectGlobalsDefinition}
+
 class LingWindowBase {
 public:
     explicit LingWindowBase(const WindowSpec& spec)
@@ -9771,6 +10740,18 @@ ${webSocketServerWindowField}
     std::mutex asyncWebExecutionMutex_;
     std::atomic<int> nextAsyncWebRequestId_{1};
     int currentAsyncWebRequestId_ = 0;
+#ifdef LINGBUILDER_WEB_HTTP_MODULE
+    struct LastWebAccessResult {
+        std::vector<unsigned char> body;
+        std::wstring text;
+        std::wstring cookies;
+        std::wstring headers;
+        int statusCode = 0;
+        std::wstring error;
+    };
+    inline static std::mutex webAccessResultMutex_;
+    inline static LastWebAccessResult lastWebAccessResult_;
+#endif
     struct EdgeViewInstance {
         int id = 0;
         int controlId = 0;
@@ -10836,6 +11817,25 @@ ${edgeViewEventIdCases}
         instance.controller->put_IsVisible(IsWindowVisible(instance.host) ? TRUE : FALSE);
     }
     void EdgeView_调整全部大小() { for (auto& item : edgeViews_) EdgeView_调整大小(*item.second); }
+    void EdgeView_随窗口调整设计器控件() {
+        RECT client = {};
+        if (!GetClientRect(hwnd_, &client) || client.right <= 0 || client.bottom <= 0) return;
+        for (int index = 0; index < spec_.controlCount; ++index) {
+            const ControlSpec& control = spec_.controls[index];
+            if (!IsType(control, L"EdgeBrowser")) continue;
+            // 只跟随“设计器声明铺满整个窗口”的浏览器控件（x/y 为 0 且宽高不小于窗口），
+            // 局部布局的 EdgeBrowser 控件保持设计器矩形，不参与窗口拉伸。
+            if (control.x != 0 || control.y != 0) continue;
+            if (control.width < spec_.width || control.height < spec_.height) continue;
+            RuntimeControl* runtime = FindRuntimeControl(control.id);
+            if (!runtime || !runtime->hwnd || !IsWindow(runtime->hwnd)) continue;
+            RECT current = {};
+            GetWindowRect(runtime->hwnd, &current);
+            MapWindowPoints(nullptr, hwnd_, reinterpret_cast<LPPOINT>(&current), 2);
+            if (current.left == 0 && current.top == 0 && current.right == client.right && current.bottom == client.bottom) continue;
+            MoveWindow(runtime->hwnd, 0, 0, client.right, client.bottom, TRUE);
+        }
+    }
     void EdgeView_记录事件(EdgeViewInstance& instance, const wchar_t* name, const wchar_t* data) {
         if (instance.closed) return;
         instance.lastEvent = name ? name : L""; instance.lastEventData = data ? data : L"";
@@ -18116,6 +19116,7 @@ ${generateFbroVipIndividualRuntime(false)}
         return currentAsyncWebRequestId_;
     }
 
+
     bool 网页_异步取消(int requestId) {
         std::lock_guard<std::mutex> lock(asyncWebMutex_);
         auto found = asyncWebResults_.find(requestId);
@@ -18123,6 +19124,458 @@ ${generateFbroVipIndividualRuntime(false)}
         found->second.cancelled = true;
         return true;
     }
+
+    // ── 同步网页访问族（网页_访问_对象 + 结果读取），实现内置于模板，
+    // 不依赖任何外部模块桥接源码；结果存取与异步族共用同一把结果锁。──
+    static std::wstring WebHttpMethodName(int method) {
+        switch (method) {
+            case 1: return L"POST";
+            case 2: return L"HEAD";
+            case 3: return L"PUT";
+            case 4: return L"OPTIONS";
+            case 5: return L"DELETE";
+            case 6: return L"TRACE";
+            case 7: return L"CONNECT";
+            case 8: return L"PATCH";
+            default: return L"GET";
+        }
+    }
+
+    static std::string WebHttpWideToUtf8(const std::wstring& value) {
+        if (value.empty()) return {};
+        const int bytes = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        if (bytes <= 1) return {};
+        std::string result(static_cast<size_t>(bytes - 1), '\\x00');
+        WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, result.data(), bytes, nullptr, nullptr);
+        return result;
+    }
+
+    static std::wstring WebHttpUtf8ToWide(const std::vector<unsigned char>& bytes) {
+        if (bytes.empty()) return {};
+        const char* data = reinterpret_cast<const char*>(bytes.data());
+        const int chars = MultiByteToWideChar(CP_UTF8, 0, data, static_cast<int>(bytes.size()), nullptr, 0);
+        if (chars <= 0) return {};
+        std::wstring result(static_cast<size_t>(chars), L'\\x00');
+        MultiByteToWideChar(CP_UTF8, 0, data, static_cast<int>(bytes.size()), result.data(), chars);
+        return result;
+    }
+
+    static std::wstring WebHttpTrim(const std::wstring& value) {
+        size_t start = 0;
+        while (start < value.size() && std::iswspace(value[start])) start += 1;
+        size_t end = value.size();
+        while (end > start && std::iswspace(value[end - 1])) end -= 1;
+        return value.substr(start, end - start);
+    }
+
+    static std::vector<std::wstring> WebHttpSplitLines(const std::wstring& text) {
+        std::vector<std::wstring> lines;
+        std::wstring current;
+        for (wchar_t ch : text) {
+            if (ch == L'\\n') {
+                if (!current.empty() && current.back() == L'\\r') current.pop_back();
+                lines.push_back(current);
+                current.clear();
+            } else {
+                current.push_back(ch);
+            }
+        }
+        if (!current.empty() && current.back() == L'\\r') current.pop_back();
+        if (!current.empty()) lines.push_back(current);
+        return lines;
+    }
+
+    static std::wstring WebHttpNormalizeHeaderName(const std::wstring& name) {
+        std::wstring result = WebHttpTrim(name);
+        bool upperNext = true;
+        for (wchar_t& ch : result) {
+            if (ch == L'-') {
+                upperNext = true;
+                continue;
+            }
+            ch = upperNext ? static_cast<wchar_t>(std::towupper(ch)) : static_cast<wchar_t>(std::towlower(ch));
+            upperNext = false;
+        }
+        return result;
+    }
+
+    static std::wstring WebHttpNormalizeHeaderBlock(const std::wstring& headers, bool fixCase) {
+        std::wstring output;
+        for (const std::wstring& rawLine : WebHttpSplitLines(headers)) {
+            std::wstring line = WebHttpTrim(rawLine);
+            if (line.empty()) continue;
+            const size_t colon = line.find(L':');
+            if (fixCase && colon != std::wstring::npos) {
+                line = WebHttpNormalizeHeaderName(line.substr(0, colon)) + L": " + WebHttpTrim(line.substr(colon + 1));
+            }
+            output += line + L"\\r\\n";
+        }
+        return output;
+    }
+
+    static bool WebHttpHasHeader(const std::wstring& headers, const std::wstring& key) {
+        std::wstring lowerHeaders = headers;
+        std::wstring lowerKey = key;
+        std::transform(lowerHeaders.begin(), lowerHeaders.end(), lowerHeaders.begin(), ::towlower);
+        std::transform(lowerKey.begin(), lowerKey.end(), lowerKey.begin(), ::towlower);
+        return lowerHeaders.find(lowerKey + L":") != std::wstring::npos;
+    }
+
+    static std::wstring WebHttpCollectSetCookies(const std::wstring& responseHeaders) {
+        std::wstring cookies;
+        for (const std::wstring& line : WebHttpSplitLines(responseHeaders)) {
+            std::wstring lower = line;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+            if (lower.rfind(L"set-cookie:", 0) == 0) {
+                std::wstring value = WebHttpTrim(line.substr(11));
+                const size_t semicolon = value.find(L';');
+                if (semicolon != std::wstring::npos) value = value.substr(0, semicolon);
+                if (!value.empty()) {
+                    if (!cookies.empty()) cookies += L"; ";
+                    cookies += value;
+                }
+            }
+        }
+        return cookies;
+    }
+
+    static std::map<std::wstring, std::wstring> WebHttpParseCookiePairs(const std::wstring& cookies) {
+        std::map<std::wstring, std::wstring> result;
+        std::wstring item;
+        for (wchar_t ch : cookies) {
+            if (ch == L';') {
+                const size_t equal = item.find(L'=');
+                if (equal != std::wstring::npos) {
+                    std::wstring key = WebHttpTrim(item.substr(0, equal));
+                    std::wstring value = WebHttpTrim(item.substr(equal + 1));
+                    if (!key.empty()) result[key] = value;
+                }
+                item.clear();
+            } else {
+                item.push_back(ch);
+            }
+        }
+        const size_t equal = item.find(L'=');
+        if (equal != std::wstring::npos) {
+            std::wstring key = WebHttpTrim(item.substr(0, equal));
+            std::wstring value = WebHttpTrim(item.substr(equal + 1));
+            if (!key.empty()) result[key] = value;
+        }
+        return result;
+    }
+
+    static std::wstring WebHttpJoinCookiePairs(const std::map<std::wstring, std::wstring>& cookies) {
+        std::wstring result;
+        for (const auto& pair : cookies) {
+            if (!result.empty()) result += L"; ";
+            result += pair.first + L"=" + pair.second;
+        }
+        return result;
+    }
+
+    static std::wstring WebHttpMergeCookies(const std::wstring& oldCookies, const std::wstring& newCookies) {
+        std::map<std::wstring, std::wstring> merged = WebHttpParseCookiePairs(oldCookies);
+        for (const auto& pair : WebHttpParseCookiePairs(newCookies)) merged[pair.first] = pair.second;
+        return WebHttpJoinCookiePairs(merged);
+    }
+
+    static std::wstring WebHttpLastErrorText(const std::wstring& prefix) {
+        const DWORD code = GetLastError();
+        wchar_t* buffer = nullptr;
+        FormatMessageW(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            nullptr,
+            code,
+            0,
+            reinterpret_cast<LPWSTR>(&buffer),
+            0,
+            nullptr);
+        std::wstring message = buffer ? WebHttpTrim(buffer) : L"未知错误";
+        if (buffer) LocalFree(buffer);
+        return prefix + L"失败，错误码 " + std::to_wstring(code) + L"：" + message;
+    }
+
+    static void WebHttpSaveLastResult(const LastWebAccessResult& result) {
+        std::lock_guard<std::mutex> lock(webAccessResultMutex_);
+        lastWebAccessResult_ = result;
+    }
+
+    std::vector<unsigned char> 网页_访问_对象(
+        const std::wstring& 网址,
+        int 访问方式 = 0,
+        const std::wstring& 提交信息 = L"",
+        const std::wstring& 提交Cookies = L"",
+        const std::wstring& 返回Cookies占位 = L"",
+        const std::wstring& 附加协议头 = L"",
+        const std::wstring& 返回协议头占位 = L"",
+        int 返回状态代码占位 = 0,
+        bool 禁止重定向 = false,
+        const std::vector<unsigned char>& 字节集提交 = std::vector<unsigned char>(),
+        const std::wstring& 代理地址 = L"",
+        int 超时 = 15,
+        const std::wstring& 代理用户名 = L"",
+        const std::wstring& 代理密码 = L"",
+        int 代理标识 = 1,
+        void* 对象继承 = nullptr,
+        bool 是否自动合并更新Cookie = true,
+        bool 是否补全必要协议头 = true,
+        bool 是否处理协议头大小写 = true) {
+        std::wstring mutableSubmitCookies = 提交Cookies;
+        std::wstring returnedCookies;
+        std::wstring returnedHeaders;
+        int statusCode = 0;
+        return 网页_访问对象_完整(
+            网址,
+            访问方式,
+            提交信息,
+            &mutableSubmitCookies,
+            &returnedCookies,
+            附加协议头,
+            &returnedHeaders,
+            &statusCode,
+            禁止重定向,
+            字节集提交,
+            代理地址,
+            超时,
+            代理用户名,
+            代理密码,
+            代理标识,
+            对象继承,
+            是否自动合并更新Cookie,
+            是否补全必要协议头,
+            是否处理协议头大小写);
+    }
+
+    std::vector<unsigned char> 网页_访问对象_完整(
+        const std::wstring& 网址,
+        int 访问方式,
+        const std::wstring& 提交信息,
+        std::wstring* 提交Cookies,
+        std::wstring* 返回Cookies,
+        const std::wstring& 附加协议头,
+        std::wstring* 返回协议头,
+        int* 返回状态代码,
+        bool 禁止重定向,
+        const std::vector<unsigned char>& 字节集提交,
+        const std::wstring& 代理地址,
+        int 超时,
+        const std::wstring& 代理用户名,
+        const std::wstring& 代理密码,
+        int 代理标识,
+        void*,
+        bool 是否自动合并更新Cookie,
+        bool 是否补全必要协议头,
+        bool 是否处理协议头大小写) {
+        LastWebAccessResult result;
+        if (返回状态代码) *返回状态代码 = 0;
+        if (返回Cookies) 返回Cookies->clear();
+        if (返回协议头) 返回协议头->clear();
+
+        URL_COMPONENTS parts{};
+        wchar_t host[512]{};
+        wchar_t path[4096]{};
+        parts.dwStructSize = sizeof(parts);
+        parts.lpszHostName = host;
+        parts.dwHostNameLength = static_cast<DWORD>(sizeof(host) / sizeof(host[0]));
+        parts.lpszUrlPath = path;
+        parts.dwUrlPathLength = static_cast<DWORD>(sizeof(path) / sizeof(path[0]));
+        parts.dwSchemeLength = static_cast<DWORD>(-1);
+        parts.dwExtraInfoLength = static_cast<DWORD>(-1);
+
+        if (!WinHttpCrackUrl(网址.c_str(), 0, 0, &parts) || !parts.lpszHostName || !parts.lpszUrlPath) {
+            result.error = L"网址解析失败：必须是完整的 http:// 或 https:// 地址。";
+            WebHttpSaveLastResult(result);
+            return {};
+        }
+
+        const bool isHttps = parts.nScheme == INTERNET_SCHEME_HTTPS;
+        if (!isHttps && parts.nScheme != INTERNET_SCHEME_HTTP) {
+            result.error = L"仅支持 http:// 和 https:// 地址。";
+            WebHttpSaveLastResult(result);
+            return {};
+        }
+
+        std::wstring pathAndQuery(parts.lpszUrlPath, parts.dwUrlPathLength);
+        if (parts.lpszExtraInfo && parts.dwExtraInfoLength > 0) {
+            pathAndQuery.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+        }
+
+        const DWORD accessType = 代理地址.empty() || 代理标识 == 0
+            ? WINHTTP_ACCESS_TYPE_DEFAULT_PROXY
+            : WINHTTP_ACCESS_TYPE_NAMED_PROXY;
+        struct WebHttpHandle {
+            HINTERNET value = nullptr;
+            ~WebHttpHandle() { if (value) WinHttpCloseHandle(value); }
+            operator HINTERNET() const { return value; }
+        };
+        WebHttpHandle session{
+            WinHttpOpen(
+                L"LingBuilder-WebHttp/1.0",
+                accessType,
+                代理地址.empty() || 代理标识 == 0 ? WINHTTP_NO_PROXY_NAME : 代理地址.c_str(),
+                WINHTTP_NO_PROXY_BYPASS,
+                0)
+        };
+        if (!session) {
+            result.error = WebHttpLastErrorText(L"创建 WinHTTP 会话");
+            WebHttpSaveLastResult(result);
+            return {};
+        }
+
+        if (超时 < 0) {
+            WinHttpSetTimeouts(session, INFINITE, INFINITE, INFINITE, INFINITE);
+        } else {
+            const int milliseconds = (std::max)(1, 超时) * 1000;
+            WinHttpSetTimeouts(session, milliseconds, milliseconds, milliseconds, milliseconds);
+        }
+
+        WebHttpHandle connectHandle{WinHttpConnect(session, std::wstring(parts.lpszHostName, parts.dwHostNameLength).c_str(), parts.nPort, 0)};
+        if (!connectHandle) {
+            result.error = WebHttpLastErrorText(L"连接服务器");
+            WebHttpSaveLastResult(result);
+            return {};
+        }
+
+        const std::wstring method = WebHttpMethodName(访问方式);
+        WebHttpHandle request{
+            WinHttpOpenRequest(
+                connectHandle,
+                method.c_str(),
+                pathAndQuery.c_str(),
+                nullptr,
+                WINHTTP_NO_REFERER,
+                WINHTTP_DEFAULT_ACCEPT_TYPES,
+                isHttps ? WINHTTP_FLAG_SECURE : 0)
+        };
+        if (!request) {
+            result.error = WebHttpLastErrorText(L"创建请求");
+            WebHttpSaveLastResult(result);
+            return {};
+        }
+
+        if (禁止重定向) {
+            DWORD disable = WINHTTP_DISABLE_REDIRECTS;
+            WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &disable, sizeof(disable));
+        }
+
+        if (!代理用户名.empty() || !代理密码.empty()) {
+            WinHttpSetCredentials(
+                request,
+                WINHTTP_AUTH_TARGET_PROXY,
+                WINHTTP_AUTH_SCHEME_BASIC,
+                代理用户名.empty() ? nullptr : 代理用户名.c_str(),
+                代理密码.empty() ? nullptr : 代理密码.c_str(),
+                nullptr);
+        }
+
+        std::wstring requestHeaders = WebHttpNormalizeHeaderBlock(附加协议头, 是否处理协议头大小写);
+        if (提交Cookies && !提交Cookies->empty()) {
+            requestHeaders += L"Cookie: " + *提交Cookies + L"\\r\\n";
+        }
+        if (是否补全必要协议头 && !WebHttpHasHeader(requestHeaders, L"User-Agent")) {
+            requestHeaders += L"User-Agent: LingBuilder-WebHttp/1.0\\r\\n";
+        }
+
+        std::vector<unsigned char> body = 字节集提交;
+        std::string postText;
+        if (body.empty() && !提交信息.empty()) {
+            postText = WebHttpWideToUtf8(提交信息);
+            body.assign(postText.begin(), postText.end());
+            if (!WebHttpHasHeader(requestHeaders, L"Content-Type")) {
+                requestHeaders += L"Content-Type: application/x-www-form-urlencoded; charset=utf-8\\r\\n";
+            }
+        }
+
+        if (!requestHeaders.empty()) {
+            WinHttpAddRequestHeaders(request, requestHeaders.c_str(), static_cast<DWORD>(requestHeaders.size()), WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+        }
+
+        const BOOL sent = WinHttpSendRequest(
+            request,
+            WINHTTP_NO_ADDITIONAL_HEADERS,
+            0,
+            body.empty() ? WINHTTP_NO_REQUEST_DATA : body.data(),
+            static_cast<DWORD>(body.size()),
+            static_cast<DWORD>(body.size()),
+            0);
+        if (!sent || !WinHttpReceiveResponse(request, nullptr)) {
+            result.error = WebHttpLastErrorText(L"发送或接收请求");
+            WebHttpSaveLastResult(result);
+            return {};
+        }
+
+        DWORD statusCode = 0;
+        DWORD statusCodeSize = sizeof(statusCode);
+        if (WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &statusCode, &statusCodeSize, nullptr)) {
+            result.statusCode = static_cast<int>(statusCode);
+            if (返回状态代码) *返回状态代码 = result.statusCode;
+        }
+
+        DWORD headerSize = 0;
+        WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &headerSize, WINHTTP_NO_HEADER_INDEX);
+        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && headerSize > 0) {
+            std::wstring rawHeaders(headerSize / sizeof(wchar_t), L'\\x00');
+            if (WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, rawHeaders.data(), &headerSize, WINHTTP_NO_HEADER_INDEX)) {
+                rawHeaders.resize(wcsnlen_s(rawHeaders.c_str(), rawHeaders.size()));
+                result.headers = rawHeaders;
+                if (返回协议头) *返回协议头 = result.headers;
+            }
+        }
+
+        result.cookies = WebHttpCollectSetCookies(result.headers);
+        if (是否自动合并更新Cookie && 提交Cookies) {
+            *提交Cookies = WebHttpMergeCookies(*提交Cookies, result.cookies);
+        }
+        if (返回Cookies) *返回Cookies = result.cookies;
+
+        for (;;) {
+            DWORD available = 0;
+            if (!WinHttpQueryDataAvailable(request, &available)) {
+                result.error = WebHttpLastErrorText(L"查询响应数据");
+                break;
+            }
+            if (available == 0) break;
+            const size_t oldSize = result.body.size();
+            result.body.resize(oldSize + available);
+            DWORD readBytes = 0;
+            if (!WinHttpReadData(request, result.body.data() + oldSize, available, &readBytes)) {
+                result.error = WebHttpLastErrorText(L"读取响应数据");
+                result.body.resize(oldSize);
+                break;
+            }
+            result.body.resize(oldSize + readBytes);
+        }
+
+        result.text = WebHttpUtf8ToWide(result.body);
+        WebHttpSaveLastResult(result);
+        return result.body;
+    }
+
+    std::wstring 网页_取返回文本() {
+        std::lock_guard<std::mutex> lock(webAccessResultMutex_);
+        return lastWebAccessResult_.text;
+    }
+
+    std::wstring 网页_取返回Cookies() {
+        std::lock_guard<std::mutex> lock(webAccessResultMutex_);
+        return lastWebAccessResult_.cookies;
+    }
+
+    std::wstring 网页_取返回协议头() {
+        std::lock_guard<std::mutex> lock(webAccessResultMutex_);
+        return lastWebAccessResult_.headers;
+    }
+
+    int 网页_取返回状态代码() {
+        std::lock_guard<std::mutex> lock(webAccessResultMutex_);
+        return lastWebAccessResult_.statusCode;
+    }
+
+    std::wstring 网页_取错误信息() {
+        std::lock_guard<std::mutex> lock(webAccessResultMutex_);
+        return lastWebAccessResult_.error;
+    }
+
 #endif
 
 ${httpClientWindowMethods}
@@ -22706,6 +24159,7 @@ ${comWndProcCase}
                 windowStateBaselineReady_ = true;
             }
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
+            EdgeView_随窗口调整设计器控件();
             EdgeView_调整全部大小();
 #endif
             CEF3_调整全部大小();
@@ -23500,8 +24954,6 @@ CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId) {
 }
 #endif
 
-${projectGlobalsDefinition}
-
 ${classDefinitions}
 
 static LingWindowBase* CreateWindowObject(int windowIndex) {
@@ -23576,6 +25028,7 @@ static void EnsureStartWindowForeground(HWND hwnd, int showCommand) {
     }
 }
 
+${generateEmbeddedResourceExtractorCpp(project, selectedWindow)}
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
     const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
@@ -23594,6 +25047,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     g_instance = instance;
     EnableDpiAwareness();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    LingBuilder_释放内嵌资源文件();
 #if LINGBUILDER_FBRO_AVAILABLE
     wchar_t fbroModulePath[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, fbroModulePath, MAX_PATH);
@@ -25099,6 +26553,9 @@ function translateModuleCallArguments(
       const parameter = binding.parameters?.[index]
         || binding.parameters?.find(item => item.variadic === true && index >= (binding.parameters?.indexOf(item) || 0));
       const parameterType = parameter?.type;
+      if (parameterType === 'handle' && argument.trim() === '当前窗口' && /^(?:NE_|EU_)/u.test(binding.runtimeName || binding.command || '')) {
+        return 'g_newEmojiWindow';
+      }
       if (parameterType === 'controlRef') {
         const bareControlName = argument.trim().match(/^[\p{L}_][\p{L}\p{N}_]*$/u)?.[0];
         if (bareControlName === '当前窗口' && parameter.runtimeRepresentation === 'nativeHandle') return 'hwnd_';
@@ -25122,7 +26579,7 @@ function translateModuleCallArguments(
         const trimmed = argument.trim();
         if (/^"(?:\\.|[^"\\])*"$/u.test(trimmed)) return `L${trimmed}`;
         const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
-        if (chineseQuoted) return `L"${escapeWideString(chineseQuoted[1] || '')}"`;
+        if (chineseQuoted) return `L"${escapeWideString(interpretLingCppStringEscapes(chineseQuoted[1] || ''))}"`;
       }
       const translated = translateLingCppExpression(argument, enabledModules, translationContext);
       if (parameterType === 'wideString' && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) {
@@ -25240,7 +26697,7 @@ function translateLingCppExpression(
   const quoted = trimmed.match(/^"((?:\\.|[^"\\])*)"$/u);
   if (quoted) return `L"${escapeWideString(interpretLingCppStringEscapes(quoted[1] || ''))}"`;
   const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
-  if (chineseQuoted) return `L"${escapeWideString(chineseQuoted[1] || '')}"`;
+  if (chineseQuoted) return `L"${escapeWideString(interpretLingCppStringEscapes(chineseQuoted[1] || ''))}"`;
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
   if (trimmed.startsWith('!') && !trimmed.startsWith('!=')) {
