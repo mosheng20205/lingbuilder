@@ -1,6 +1,7 @@
 import { LingCppModuleContext } from '../modules/types';
 import { inferLingCppExpressionType } from './expressionTypeService';
 import { LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import { LingCppConstant, LingCppDiagnostic, LingCppGlobalVariable, LingCppProjectGlobalContext } from './types';
 
 export const PROJECT_GLOBALS_FILE_NAME = '项目全局变量.lcpp';
@@ -234,8 +235,13 @@ export function renameProjectGlobalAcrossSources(
 function renameIdentifierOutsideStringsAndComments(sourceCode: string, oldName: string, newName: string): string {
   const escaped = oldName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   const identifier = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'gu');
+  const sourceLines = sourceCode.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(sourceLines), sourceLines.length);
+  let lineNumber = 0;
   return sourceCode.split(/(\r?\n)/u).map(part => {
     if (/^\r?\n$/u.test(part)) return part;
+    lineNumber += 1;
+    if (opaqueLines.has(lineNumber)) return part; // 多行文本块内容不参与全局变量重命名
     let output = '';
     let segment = '';
     let quote: '"' | '“' | undefined;

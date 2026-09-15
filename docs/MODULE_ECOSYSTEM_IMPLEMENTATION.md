@@ -192,6 +192,8 @@
 
 > 2026-07-27 补充：`contributes.designerControls[].runtime` 支持结构化 `createParameters`、`propertySetters`、`propertyCommands` 与 `eventBindings`。new_emoji 生成器必须从上游设计器目录和导出签名生成这些映射，属性面板只公开存在确定性运行时落地的项；组合 Setter 参数可声明固定 `literal`，共享鼠标/焦点回调可用 `eventCode` 聚合到一个原生回调，禁止同一 Setter 被后注册的事件静默覆盖。
 
+> 2026-09-15 补充：创建导出不携带文本参数的目录控件（如 `EU_CreateEditBox(hwnd, parent, x, y, w, h)`）必须在其 `runtime` 中声明 `applyContentCommand`（ABI 固定 `hwnd, element_id, bytes, len`；EditBox 为 `EU_SetElementText`）。生成器在目录创建行之后、`LB_NE_RegisterElement` 之前发射 `LB_NE_ToUtf8` + 该命令，把设计器通用 `content`（显示内容）写入元素；`content` 为空或未声明 `applyContentCommand` 时不生成。创建导出已带文本参数的控件（如 Button 的 `text_bytes`）不需要该声明。禁止让设计器填写的显示内容因创建签名限制而静默丢失。声明由 `generate-new-emoji-module.cjs` 的 `APPLY_CONTENT_COMMANDS` 表维护并经 `validateModuleManifest` 校验非空文本。
+
 > 2026-07-27 补充：外部模块同时声明 `windows-msvc-win32` 与 `windows-msvc-x64` 时，生成到 `main.cpp` 的 `#pragma comment(lib, ...)` 必须使用 `_WIN64` 条件分支选择对应 target；Visual Studio 工程和原生依赖物化仍按当前构建架构精确选择。禁止 x64 工程因默认 `targets[0]` 再引用 Win32 `.lib`，双架构模块生成测试必须覆盖两个库路径。
 
 > 2026-07-24 补充：内置 `lingbuilder.win32.common-controls` 已注册 `VideoPlayer` /“视频播放器”控件。该控件的 Media Foundation 依赖声明为 `mfplat.lib`、`mfplay.lib`、`mfuuid.lib`，中文播放命令同时存在于 `contributes.commands` 与 `bindings.commands`；设计器、语言服务和 C++ 生成器必须继续从同一模块清单消费这些定义。
@@ -201,6 +203,8 @@
 > 2026-07-26 补充：新增 CEF3 内核 SDK 离线载体模块 `lingbuilder.cef3.sdk`（x64），这是首个“纯二进制资产模块”参考实现：v2 manifest 只有基础字段（无 commands/designerControls/targets），安装到 `.lingbuilder/modules/lingbuilder.cef3.sdk/` 即生效，无需为项目启用；`findCef3SdkRoot` 新增该路径候选。打包脚本为 `electron/scripts/generate-cef3-sdk-module.cjs`（`npm run module:cef3-sdk -- --install`），把 CEF 官方包 `include/Release/Resources` 与预编译 /MD `libcef_dll_wrapper.lib` 打成 `cef3-sdk-x64.lbmod`（实测 184MB，版本自动读 `cef_version.h`）；为此 `moduleService.ts` 的 `.lbmod` 包上限从 100MB 放宽到 1GB。用户安装该模块后构建 CEF3 项目免下载 SDK、免 CMake 编译。
 
 > 2026-07-26 补充：CEF3 SDK 已纳入 Windows 发布强制门禁。`electron/scripts/verify-cef3-release-sdk.cjs` 以源 SDK 的完整路径/大小/CRC32 清单为基准；Electron Builder 的 `beforePack`、`afterPack` 和 NSIS 后置校验分别验证源目录、`win-unpacked` 与最终安装包。任何缺失、损坏、版本不一致、非 x64 产物或归档漏项都会让 `package:dir` / `package:win` 非零退出。修改默认模块复制位置、`extraResources`、CEF SDK 结构或发布脚本时必须同步更新校验器和测试，禁止绕过门禁发布。
+
+> 2026-09-14 补充：安装包随附模块（`extraResources` 落到 `resources/default-workspace/.lingbuilder/modules`，当前为 `lingbuilder.new_emoji.ui` 及演示模块）此前只在**新建/起始工作区**时铺设，老工作区升级安装后拿不到新增随包模块（实例：0.6.9 用户在既有工作区搜不到 new_emoji）。现 `DesktopWorkspaceService.ensureBundledModules` 已接入打开工作区链路（`resolveInitialWorkspace` 记忆路径与 `rememberWorkspace`，与 `ensureBundledToolchains` 并列）：每次打开工作区都执行 `copyMissingFiles(default-workspace/.lingbuilder/modules → <工作区>/.lingbuilder/modules)`，**只补缺失文件、绝不覆盖用户已有内容**；开发态无 `default-workspace` 时自动跳过；失败仅告警不阻断打开。修改铺设语义、随包清单或该函数时必须同步 `tests/workspaceService.test.ts` 的「provisioned into existing workspaces without clobbering」用例与本节。
 
 > 2026-07-26 补充：`lingbuilder.cef3.browser` 事件模型升级为集中式 92 项 CEF 150 浏览器回调目录，定义在 `electron/src/services/modules/cef3BrowserEvents.ts`。`win32ControlRegistry`、内置模块 manifest、设计器事件面板与 C++ 生成器必须消费同一目录；不得重新维护局部事件列表。普通通知、同步决策和高频事件必须区分：同步决策通过窗口线程桥返回 `默认/允许/拒绝/已处理`，高频音频与进度回调必须限流。离屏渲染 `CefRenderHandler`/无障碍像素事件只属于未来独立 OSR 控件，不属于当前 windowed `CefBrowser`。
 

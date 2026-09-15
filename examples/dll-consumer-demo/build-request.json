@@ -1,0 +1,51 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "dll-consumer-demo",
+    "name": "调用项目动态库演示",
+    "windows": [
+      {
+        "id": "consumer-window",
+        "fileName": "ConsumerDemo.xml",
+        "className": "消费窗口",
+        "title": "调用项目动态库",
+        "width": 560,
+        "height": 220,
+        "background": "#1E1E24",
+        "description": "启用项目动态库演示模块，调用 dll-lib-demo 项目生成的 DLL 导出函数。",
+        "events": {
+          "Loaded": "_消费窗口_创建完毕"
+        },
+        "controls": [
+          {
+            "id": "result-label",
+            "type": "Label",
+            "name": "结果标签",
+            "content": "就绪：等待调用项目动态库",
+            "x": 20,
+            "y": 40,
+            "width": 510,
+            "height": 30,
+            "fontSize": 14,
+            "background": "transparent",
+            "foreground": "#4FC3F7",
+            "isEnabled": true,
+            "visibility": "Visible"
+          }
+        ]
+      }
+    ],
+    "resources": []
+  },
+  "activeWindowId": "consumer-window",
+  "lingCppSourceFilePath": "examples/dll-consumer-demo/src/调用项目动态库.lcpp",
+  "run": false,
+  "approved": true,
+  "lingCppSourceCode": "包 调用项目动态库\n使用 Win32窗口基础模块\n使用 文件目录模块\n使用 项目动态库演示模块\n\n类 消费窗口 : 窗口\n公开\n  事件 _消费窗口_创建完毕()\n    局部 整数型 相加结果 = 0\n    局部 整数型 字符数 = 0\n    局部 小数型 距离 = 0\n    局部 逻辑型 写入成功 = 假\n    相加结果 = 项目_加法计算(2, 3)\n    字符数 = 项目_取字符数(\"灵码LingBuilder\")\n    距离 = 项目_两点距离计算(0, 0, 3, 4)\n    控件_设置文本(结果标签, 格式化文本(\"项目DLL：加法={}，字符数={}，距离={}\", 相加结果, 字符数, 距离))\n    写入成功 = 文件_写入文本(\"T:/electron/lingbuilder/.lingbuilder/dll-consumer-result.txt\", 格式化文本(\"项目_加法计算(2,3)={}，项目_取字符数(灵码LingBuilder)={}，项目_两点距离计算(0,0,3,4)={}\", 相加结果, 字符数, 距离))\n    调试输出(格式化文本(\"结果文件写入成功={}\", 写入成功))\n    结束()\n  结束\n结束类\n",
+  "lingCppSources": [
+    {
+      "filePath": "examples/dll-consumer-demo/src/调用项目动态库.lcpp",
+      "sourceCode": "包 调用项目动态库\n使用 Win32窗口基础模块\n使用 文件目录模块\n使用 项目动态库演示模块\n\n类 消费窗口 : 窗口\n公开\n  事件 _消费窗口_创建完毕()\n    局部 整数型 相加结果 = 0\n    局部 整数型 字符数 = 0\n    局部 小数型 距离 = 0\n    局部 逻辑型 写入成功 = 假\n    相加结果 = 项目_加法计算(2, 3)\n    字符数 = 项目_取字符数(\"灵码LingBuilder\")\n    距离 = 项目_两点距离计算(0, 0, 3, 4)\n    控件_设置文本(结果标签, 格式化文本(\"项目DLL：加法={}，字符数={}，距离={}\", 相加结果, 字符数, 距离))\n    写入成功 = 文件_写入文本(\"T:/electron/lingbuilder/.lingbuilder/dll-consumer-result.txt\", 格式化文本(\"项目_加法计算(2,3)={}，项目_取字符数(灵码LingBuilder)={}，项目_两点距离计算(0,0,3,4)={}\", 相加结果, 字符数, 距离))\n    调试输出(格式化文本(\"结果文件写入成功={}\", 写入成功))\n    结束()\n  结束\n结束类\n"
+    }
+  ]
+}

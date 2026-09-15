@@ -5,6 +5,8 @@ import type { TextFileSnapshot } from '../files/types';
 import { LingWindowProject, type LingControl } from '../windowDesigner/types';
 import { normalizeStartupProjects, topologicalProjectOrder, validateProjectDependencies } from './projectDependencyGraph';
 import { ExternalProjectService, validateProperties, type ExternalProjectProperties } from './externalProjectService';
+import { collectCppSourceFiles, generateCMakeSkeleton } from './externalProjectDetect';
+import { importNativeCppToLingBuilder } from '../windowDesigner/nativeCppImportService';
 import { BuildConfigurationService } from '../tasks/buildConfigurationService';
 import { getEffectiveBuildPathTemplates, resolveProjectBuildDirectories } from '../tasks/buildPathService';
 import { writeSolutionEntry } from './solutionEntryFile';
@@ -23,7 +25,7 @@ const solutionWriteQueues = new Map<string, Promise<void>>();
 export interface LingBuilderSolutionProject {
   id: string;
   name: string;
-  type: 'visual-cpp' | 'windows-dll' | 'external-msbuild' | 'external-cmake';
+  type: 'visual-cpp' | 'windows-dll' | 'windows-console' | 'external-msbuild' | 'external-cmake';
   sourceRoot: string;
   configRoot: string;
   designerPath: string;
@@ -60,13 +62,13 @@ export interface CreateSolutionProjectRequest {
   projectDirectory?: string;
 }
 
-export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'new-emoji-fbro-browser-shell' | 'windows-dll';
+export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'new-emoji-fbro-browser-shell' | 'windows-dll' | 'windows-console';
 
 export interface SolutionProjectTemplate {
   id: SolutionProjectTemplateId;
   name: string;
   description: string;
-  kind?: 'windows-ui' | 'windows-dll';
+  kind?: 'windows-ui' | 'windows-dll' | 'windows-console';
   moduleIds?: readonly string[];
   architecture?: 'Win32' | 'x64';
 }
@@ -118,6 +120,12 @@ export const SOLUTION_PROJECT_TEMPLATES: readonly SolutionProjectTemplate[] = [
     kind: 'windows-dll',
     moduleIds: [],
     architecture: 'Win32'
+  },
+  {
+    id: 'windows-console',
+    name: 'Windows 控制台程序',
+    description: '创建以“公开 启动()”子程序为主体的控制台项目，编译为命令行可执行文件。',
+    kind: 'windows-console'
   }
 ];
 
@@ -209,7 +217,7 @@ export class SolutionService {
     const project: LingBuilderSolutionProject = {
       id: DEFAULT_PROJECT_ID,
       name: projectName,
-      type: template.kind === 'windows-dll' ? 'windows-dll' : 'visual-cpp',
+      type: template.kind === 'windows-dll' ? 'windows-dll' : template.kind === 'windows-console' ? 'windows-console' : 'visual-cpp',
       sourceRoot: 'src',
       configRoot: 'config',
       designerPath: '.lingbuilder/window-designer.json',
@@ -265,13 +273,119 @@ export class SolutionService {
     return resolved;
   }
 
-  async importExternalProject(relativePath: string): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject }> {
+  async importExternalProject(relativePath: string, options: { mode?: 'expand' | 'single' } = {}): Promise<{
+    solution: LingBuilderSolution; project: LingBuilderSolutionProject; projects?: LingBuilderSolutionProject[]; logs?: string[]; warnings?: string[];
+  }> {
     const solution = await this.getSolution();
+    if (relativePath.trim().toLowerCase().endsWith('.sln') && options.mode !== 'single') {
+      // B1：把 .sln 展开为多个解决方案项目，依赖（ProjectDependencies）翻译为 references，
+      // 由现有依赖拓扑分批构建直接复用；解析失败时调用方可用 mode:'single' 回退为整 sln 导入。
+      const inspected = await this.externalProjectService.inspectSolution(relativePath);
+      // 展开导入的项目在写出前携带 sln GUID 元数据，依赖翻译为 references 后丢弃（见下方 expanded 映射）。
+      const projects: (LingBuilderSolutionProject & { solutionGuid?: string; solutionDependencies?: string[] })[] = [];
+      const guidToId = new Map<string, string>();
+      const dependenciesByGuid = new Map<string, string[]>();
+      for (const candidate of inspected.projects) {
+        const id = this.createUniqueProjectId(candidate.id, { ...solution, projects: [...solution.projects, ...projects] });
+        if (candidate.solutionGuid) {
+          guidToId.set(candidate.solutionGuid, id);
+          dependenciesByGuid.set(candidate.solutionGuid, candidate.solutionDependencies || []);
+        }
+        projects.push({ ...candidate, id });
+      }
+      const expanded = projects.map(project => {
+        if (!project.solutionGuid) return project;
+        const { solutionGuid, solutionDependencies, ...rest } = project;
+        const references = dependenciesByGuid.get(solutionGuid)
+          ?.map(guid => guidToId.get(guid))
+          .filter((referenceId): referenceId is string => Boolean(referenceId)) || [];
+        return { ...rest, references };
+      });
+      const nextSolution = { ...solution, projects: [...solution.projects, ...expanded] };
+      await this.writeSolution(nextSolution);
+      return { solution: nextSolution, project: expanded[0]!, projects: expanded, logs: inspected.logs, warnings: inspected.warnings };
+    }
     const inspected = await this.externalProjectService.inspect(relativePath);
     const project = { ...inspected, id: this.createUniqueProjectId(inspected.id, solution) } as LingBuilderSolutionProject;
     const nextSolution = { ...solution, projects: [...solution.projects, project] };
     await this.writeSolution(nextSolution);
     return { solution: nextSolution, project };
+  }
+
+  /**
+   * 扫描工作区内源码目录，生成最小 CMakeLists.txt（生成物，可自由修改）并作为 external-cmake 工程导入。
+   * 目录已有 CMakeLists.txt 时阻断；调用方确认后携带 overwrite=true 重试（只重写该文件）。
+   */
+  async importSourceDirectory(directory: string, options: { overwrite?: boolean } = {}): Promise<{
+    solution: LingBuilderSolution; project: LingBuilderSolutionProject; generatedCMakeListsPath: string; sourceFiles: string[];
+  }> {
+    const absoluteDirectory = this.resolveWorkspacePath(String(directory || '').trim());
+    const stat = await fs.stat(absoluteDirectory).catch(() => null);
+    if (!stat?.isDirectory()) throw new Error(`源码目录不存在或不是目录：${directory}`);
+    const sourceFiles = await collectCppSourceFiles(absoluteDirectory);
+    if (sourceFiles.length === 0) {
+      throw new Error('该目录（含三层子目录）下没有找到 C/C++ 源码文件（.cpp/.cc/.cxx/.c）。');
+    }
+    const cmakeListsPath = path.join(absoluteDirectory, 'CMakeLists.txt');
+    if (!options.overwrite && await exists(cmakeListsPath)) {
+      throw new Error('该目录已存在 CMakeLists.txt。如需重新生成请确认覆盖（只重写该文件）。');
+    }
+    const projectName = path.basename(absoluteDirectory);
+    await fs.writeFile(cmakeListsPath, generateCMakeSkeleton(projectName, sourceFiles), 'utf8');
+    const relativeCMakeLists = path.relative(path.resolve(this.workspaceRoot), cmakeListsPath).replace(/\\/gu, '/');
+    const result = await this.importExternalProject(relativeCMakeLists);
+    return { solution: result.solution, project: result.project, generatedCMakeListsPath: relativeCMakeLists, sourceFiles };
+  }
+
+  /**
+   * 原生 C++ 源码适配为新的中文工程（D2）：读取 .cpp → importNativeCppToLingBuilder 翻译，
+   * 新建空白窗口项目后覆写其 .lcpp 源码与设计器窗口模型；不修改被读取的原 C++ 源码。
+   * 未识别的 C++ 语句会降级为 @ 原生块保留，翻译报告与诊断随结果返回。
+   */
+  async adaptNativeCppToProject(projectFileRelative: string, options: { name?: string } = {}): Promise<{
+    solution: LingBuilderSolution; project: LingBuilderSolutionProject; report: string[]; diagnostics: string[]; preservedNativeBlockCount: number;
+  }> {
+    const absolutePath = this.resolveWorkspacePath(String(projectFileRelative || '').trim());
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat?.isFile()) throw new Error(`源码文件不存在：${projectFileRelative}`);
+    if (!/\.(?:cpp|cc|cxx|c)$/iu.test(absolutePath)) throw new Error('只能适配 .cpp/.cc/.cxx/.c 源码文件。');
+    const cppSource = await fs.readFile(absolutePath, 'utf8');
+    const adapted = importNativeCppToLingBuilder(cppSource);
+    const baseName = (options.name || '').trim() || `${path.basename(absolutePath, path.extname(absolutePath))}适配`;
+    // 项目显示名不可重复：带后缀依次重试，避免与既有项目冲突。
+    let created: Awaited<ReturnType<SolutionService['createProject']>> | null = null;
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
+      const candidateName = attempt === 0 ? baseName : `${baseName}${attempt + 1}`;
+      try {
+        created = await this.createProject({ name: candidateName, templateId: 'blank-window' });
+      } catch (error) {
+        lastError = error;
+        // 仅在名称冲突时重试，其他错误直接抛出。
+        if (!/已存在|重名|名称/iu.test(error instanceof Error ? error.message : String(error))) throw error;
+      }
+    }
+    if (!created) {
+      throw lastError instanceof Error ? lastError : new Error('创建适配项目失败。');
+    }
+    const project = created.project;
+    const designerAbsolute = this.resolveWorkspacePath(project.designerPath);
+    const designerProject = JSON.parse(await fs.readFile(designerAbsolute, 'utf8')) as LingWindowProject;
+    const adaptedWindows = Array.isArray(adapted.designerProjectPatch.windows) && adapted.designerProjectPatch.windows.length > 0
+      ? adapted.designerProjectPatch.windows
+      : designerProject.windows;
+    const nextDesigner = { ...designerProject, ...adapted.designerProjectPatch, windows: adaptedWindows };
+    await fs.writeFile(designerAbsolute, JSON.stringify(nextDesigner, null, 2), 'utf8');
+    const templateWindow = designerProject.windows[0];
+    const lcppRelative = path.posix.join(project.sourceRoot, `${templateWindow?.className || 'MainWindow'}.lcpp`);
+    await fs.writeFile(this.resolveWorkspacePath(lcppRelative), adapted.lcppSource, 'utf8');
+    return {
+      solution: created.solution,
+      project,
+      report: adapted.report,
+      diagnostics: adapted.diagnostics,
+      preservedNativeBlockCount: adapted.preservedNativeBlocks.length
+    };
   }
 
   async createFolder(request: CreateSolutionFolderRequest = {}): Promise<{ solution: LingBuilderSolution; folder: LingBuilderSolutionFolder }> {
@@ -578,7 +692,7 @@ export class SolutionService {
     const project: LingBuilderSolutionProject = {
       id: projectId,
       name: baseName,
-      type: template.kind === 'windows-dll' ? 'windows-dll' : 'visual-cpp',
+      type: template.kind === 'windows-dll' ? 'windows-dll' : template.kind === 'windows-console' ? 'windows-console' : 'visual-cpp',
       sourceRoot,
       configRoot: `config/${projectId}`,
       designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
@@ -591,6 +705,9 @@ export class SolutionService {
     const designerProject = template.kind === 'windows-dll'
       ? undefined
       : createDesignerProject(project.id, project.name, template.id, request.windowTitle);
+    if (template.kind === 'windows-console' && designerProject) {
+      applyConsoleTemplateWindow(designerProject, project.name);
+    }
     return await this.createMaterializationPlan(project, designerProject, template);
   }
 
@@ -619,6 +736,22 @@ export class SolutionService {
           }
         ]
       };
+    }
+    if (template.kind === 'windows-console') {
+      if (!designerProject) throw new Error('控制台项目缺少设计器模型。');
+      applyConsoleTemplateWindow(designerProject, project.name);
+      const files: PlannedSolutionProjectFile[] = [
+        {
+          relativePath: path.posix.join(project.sourceRoot, `${CONSOLE_TEMPLATE_CLASS_NAME}.lcpp`),
+          content: createConsoleTemplateLingCppSource(),
+          kind: 'source'
+        },
+        { relativePath: path.posix.join(project.sourceRoot, PROJECT_GLOBALS_FILE_NAME), content: EMPTY_PROJECT_GLOBALS_SOURCE, kind: 'source' },
+        { relativePath: path.posix.join(project.sourceRoot, PROJECT_DATA_TYPES_FILE_NAME), content: EMPTY_PROJECT_DATA_TYPES_SOURCE, kind: 'source' },
+        { relativePath: path.posix.join(project.configRoot, 'config.ini'), content: `[project]\nname=${project.name}\nid=${project.id}\ntype=windows-console\n`, kind: 'config' as const },
+        { relativePath: project.designerPath, content: JSON.stringify(designerProject, null, 2), kind: 'designer' }
+      ];
+      return { project, designerProject, template, files };
     }
     if (!designerProject) throw new Error('窗口项目缺少设计器模型。');
     const mainWindow = designerProject.windows[0];
@@ -750,6 +883,32 @@ async function replaceFile(sourcePath: string, targetPath: string): Promise<void
 
 export function createSolutionService(workspaceRoot: string): SolutionService {
   return new SolutionService(workspaceRoot);
+}
+
+export const CONSOLE_TEMPLATE_CLASS_NAME = '程序';
+
+/** 控制台模板窗口：不承载任何可视控件，仅作为“公开 启动()”子程序的生成宿主类。 */
+function applyConsoleTemplateWindow(designerProject: LingWindowProject, projectName: string): void {
+  const consoleWindow = designerProject.windows[0];
+  if (!consoleWindow) return;
+  consoleWindow.className = CONSOLE_TEMPLATE_CLASS_NAME;
+  consoleWindow.title = `${projectName} 控制台`;
+  consoleWindow.controls = [];
+}
+
+function createConsoleTemplateLingCppSource(): string {
+  return [
+    '包 控制台程序',
+    '',
+    `类 ${CONSOLE_TEMPLATE_CLASS_NAME}`,
+    '公开',
+    '  整数型 启动()',
+    '    调试输出("你好，LingBuilder 控制台！")',
+    '    返回 (0)',
+    '  结束',
+    '结束类',
+    ''
+  ].join('\n');
 }
 
 function createDesignerProject(

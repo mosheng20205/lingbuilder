@@ -666,6 +666,7 @@ function newEmojiDataBridgeCommands(designerControls) {
   const richListType = controlTypesOf(designerControls, 'RichList');
   const menuType = controlTypesOf(designerControls, 'Menu');
   const badgeType = controlTypesOf(designerControls, 'Badge');
+  const tabsType = controlTypesOf(designerControls, 'Tabs');
   const windowParameter = { name: '窗口句柄', type: 'handle', description: 'new_emoji 窗口句柄。' };
   return [
     build('NE表格_设置列', 'NE表格_设置列(控件, 列配置)',
@@ -732,6 +733,90 @@ function newEmojiDataBridgeCommands(designerControls) {
       '设置 new_emoji 徽标显示文本（如 "3"、"new"），与 NE_EU_SetBadgeValue 一致；纯数字可用控件_设置数值。',
       '空', [controlParameter(badgeType, '当前窗口中的 NE徽标 控件。'), { name: '文本', type: 'wideString', description: '徽标显示文本。' }],
       'NE徽标_设置文本(徽标1, "new")'),
+    build('NE标签页_设置激活索引', 'NE标签页_设置激活索引(控件, 索引)',
+      '设置 new_emoji 标签页当前激活的项目索引（从 0 开始），与 NE_EU_SetTabsActive 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '要激活的项目索引，从 0 开始。' }],
+      'NE标签页_设置激活索引(标签页1, 1)'),
+    build('NE标签页_取激活索引', 'NE标签页_取激活索引(控件)',
+      '读取 new_emoji 标签页当前激活的项目索引，与 NE_EU_GetTabsActive 一致。',
+      '整数型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
+      'NE标签页_取激活索引(标签页1)'),
+    build('NE标签页_取激活标题', 'NE标签页_取激活标题(控件)',
+      '读取 new_emoji 标签页当前激活项目的标题文本，与 NE_EU_GetTabsActiveName 一致。',
+      '文本型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
+      'NE标签页_取激活标题(标签页1)'),
+    build('NE标签页_取项目数量', 'NE标签页_取项目数量(控件)',
+      '读取 new_emoji 标签页项目总数，与 NE_EU_GetTabsItemCount 一致。',
+      '整数型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
+      'NE标签页_取项目数量(标签页1)'),
+    build('NE标签页_添加项目', 'NE标签页_添加项目(控件, 标题)',
+      '向 new_emoji 标签页末尾追加一个项目，与 NE_EU_AddTabsItem 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '标题', type: 'wideString', description: '新项目标题文本。' }],
+      'NE标签页_添加项目(标签页1, "新标签页")'),
+    build('NE标签页_关闭项目', 'NE标签页_关闭项目(控件, 索引)',
+      '关闭 new_emoji 标签页指定项目（从 0 开始），与 NE_EU_CloseTabsItem 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '要关闭的项目索引，从 0 开始。' }],
+      'NE标签页_关闭项目(标签页1, 0)'),
+    build('NE标签页_设置滚动偏移', 'NE标签页_设置滚动偏移(控件, 偏移)',
+      '设置 new_emoji 标签页表头滚动偏移，与 NE_EU_SetTabsScroll 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '偏移', type: 'int', description: '表头滚动偏移像素。' }],
+      'NE标签页_设置滚动偏移(标签页1, 40)'),
+    build('NE标签页_滚动', 'NE标签页_滚动(控件, 增量)',
+      '让 new_emoji 标签页表头按增量滚动，正数向右、负数向左，与 NE_EU_TabsScroll 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '增量', type: 'int', description: '滚动增量像素。' }],
+      'NE标签页_滚动(标签页1, -32)'),
+    build('NE标签页_设置标签样式', 'NE标签页_设置标签样式(控件, 样式)',
+      '设置 new_emoji 标签页样式：0 线条、1 卡片、2 边框卡片，与 NE_EU_SetTabsType 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '样式', type: 'int', description: '0 线条、1 卡片、2 边框卡片。' }],
+      'NE标签页_设置标签样式(标签页1, 1)'),
+    build('NE标签页_设置标签位置', 'NE标签页_设置标签位置(控件, 位置)',
+      '设置 new_emoji 标签页表头位置：0 顶部、1 右侧、2 底部、3 左侧，与 NE_EU_SetTabsPosition 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '位置', type: 'int', description: '0 顶部、1 右侧、2 底部、3 左侧。' }],
+      'NE标签页_设置标签位置(标签页1, 2)'),
+    build('NE标签页_设置表头对齐', 'NE标签页_设置表头对齐(控件, 对齐)',
+      '设置 new_emoji 标签页表头文字对齐：0 左对齐、1 居中、2 右对齐，与 NE_EU_SetTabsHeaderAlign 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '对齐', type: 'int', description: '0 左对齐、1 居中、2 右对齐。' }],
+      'NE标签页_设置表头对齐(标签页1, 1)'),
+    build('NE标签页_设置表头可见', 'NE标签页_设置表头可见(控件, 可见)',
+      '设置 new_emoji 标签页是否显示表头，与 NE_EU_SetTabsHeaderVisible 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可见', type: 'bool', description: '是否显示表头。' }],
+      'NE标签页_设置表头可见(标签页1, 假)'),
+    build('NE标签页_设置可编辑', 'NE标签页_设置可编辑(控件, 可编辑)',
+      '设置 new_emoji 标签页是否允许双击重命名项目，与 NE_EU_SetTabsEditable 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可编辑', type: 'bool', description: '是否允许双击重命名。' }],
+      'NE标签页_设置可编辑(标签页1, 真)'),
+    build('NE标签页_设置内容可见', 'NE标签页_设置内容可见(控件, 可见)',
+      '设置 new_emoji 标签页内容区是否可见，与 NE_EU_SetTabsContentVisible 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可见', type: 'bool', description: '内容区是否可见。' }],
+      'NE标签页_设置内容可见(标签页1, 真)'),
+    build('NE标签页_启用浏览器模式', 'NE标签页_启用浏览器模式(控件, 启用)',
+      '启用 new_emoji 标签页的浏览器式（Chrome）绘制，与 NE_EU_SetTabsChromeMode 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '启用', type: 'bool', description: '是否启用浏览器模式。' }],
+      'NE标签页_启用浏览器模式(标签页1, 真)'),
+    build('NE标签页_设置浏览器度量', 'NE标签页_设置浏览器度量(控件, 最小宽度, 最大宽度, 固定宽度, 标题高度, 重叠)',
+      '设置 new_emoji 标签页浏览器模式的标签宽度、高度和重叠度量，与 NE_EU_SetTabsChromeMetrics 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '最小宽度', type: 'int', description: '单个标签最小逻辑宽度。' }, { name: '最大宽度', type: 'int', description: '单个标签最大逻辑宽度。' }, { name: '固定宽度', type: 'int', description: '固定（钉住）标签的逻辑宽度。' }, { name: '标题高度', type: 'int', description: '标签标题的逻辑高度。' }, { name: '重叠', type: 'int', description: '相邻标签重叠的逻辑像素。' }],
+      'NE标签页_设置浏览器度量(标签页1, 96, 220, 46, 32, 0)'),
+    build('NE标签页_设置项目图标', 'NE标签页_设置项目图标(控件, 索引, 图标)',
+      '设置 new_emoji 标签页指定项目的图标，与 NE_EU_SetTabsItemIcon 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '项目索引，从 0 开始。' }, { name: '图标', type: 'wideString', description: '图标资源文本。' }],
+      'NE标签页_设置项目图标(标签页1, 0, "📁")'),
+    build('NE标签页_设置项目可关闭', 'NE标签页_设置项目可关闭(控件, 索引, 可关闭)',
+      '设置 new_emoji 标签页指定项目是否显示关闭按钮，与 NE_EU_SetTabsItemClosable 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '项目索引，从 0 开始。' }, { name: '可关闭', type: 'bool', description: '是否允许关闭。' }],
+      'NE标签页_设置项目可关闭(标签页1, 0, 假)'),
+    build('NE标签页_设置项目状态', 'NE标签页_设置项目状态(控件, 索引, 加载中, 固定, 静音, 提醒)',
+      '批量设置 new_emoji 标签页项目的加载中、固定、静音、提醒状态（浏览器模式视觉），与 NE_EU_SetTabsItemChromeState 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '项目索引，从 0 开始。' }, { name: '加载中', type: 'bool', description: '是否显示加载中。' }, { name: '固定', type: 'bool', description: '是否固定标签。' }, { name: '静音', type: 'bool', description: '是否显示静音。' }, { name: '提醒', type: 'bool', description: '是否显示提醒圆点。' }],
+      'NE标签页_设置项目状态(标签页1, 1, 假, 真, 假, 真)'),
+    build('NE标签页_设置新建按钮可见', 'NE标签页_设置新建按钮可见(控件, 可见)',
+      '设置 new_emoji 标签页浏览器模式的「新建标签页」按钮是否可见，与 NE_EU_SetTabsNewButtonVisible 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可见', type: 'bool', description: '新建按钮是否可见。' }],
+      'NE标签页_设置新建按钮可见(标签页1, 假)'),
+    build('NE标签页_设置拖拽选项', 'NE标签页_设置拖拽选项(控件, 允许重排, 允许分离)',
+      '设置 new_emoji 标签页是否允许拖拽重排和拖出分离，与 NE_EU_SetTabsDragOptions 一致。',
+      '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '允许重排', type: 'bool', description: '是否允许拖动改变顺序。' }, { name: '允许分离', type: 'bool', description: '是否允许拖出当前窗口。' }],
+      'NE标签页_设置拖拽选项(标签页1, 真, 假)'),
     build('NE_设置窗口图标', 'NE_设置窗口图标(窗口句柄, 图标路径)',
       '从本地 .ico 文件路径设置 new_emoji 窗口图标，与 NE_EU_SetWindowIcon 一致。',
       '整数型', [windowParameter, { name: '图标路径', type: 'wideString', description: '窗口图标文件完整路径。' }],
@@ -1400,11 +1485,15 @@ function newEmojiDesignerControls(catalog) {
       backend: 'new-emoji',
       nativeAdapter: `new-emoji-${component.id.toLowerCase()}`,
       isContainer: component.isContainer === true,
-      ...(component.id === 'Tabs' ? {
-        layout: {
+      ...(component.isContainer === true ? {
+        layout: component.id === 'Tabs' ? {
           mode: 'slots',
           coordinateSpace: 'window',
           adapterId: 'new-emoji.tabs.pages'
+        } : {
+          mode: 'absolute',
+          coordinateSpace: 'window',
+          adapterId: `new-emoji.${component.id.toLowerCase()}.absolute`
         }
       } : {}),
       isVisual: component.isVisual !== false,
@@ -1436,6 +1525,7 @@ function newEmojiDesignerControls(catalog) {
         createCommand: component.createExport,
         createReturnType: createExport.returnType,
         createParameters,
+        ...(APPLY_CONTENT_COMMANDS[component.id] ? { applyContentCommand: APPLY_CONTENT_COMMANDS[component.id] } : {}),
         propertyCommands: specialPropertyCommands,
         propertySetters,
         eventBindings
@@ -1995,6 +2085,12 @@ const NEW_EMOJI_EVENT_PARAMETERS = {
   'RichList.VirtualRow': [eventParameter('行号', 'int', '当前请求的虚拟条目索引，从 0 开始。')]
   ,
   'Tabs.ItemClosed': [eventParameter('项目索引', 'int', '被关闭标签页的索引，从 0 开始。')],
+  'Tabs.ItemAdded': [eventParameter('新项目索引', 'int', '新增标签页的索引，从 0 开始。')],
+  'Tabs.ItemsReordered': [
+    eventParameter('原索引', 'int', '被拖动标签页的原索引，从 0 开始。'),
+    eventParameter('新索引', 'int', '拖放后的新索引，从 0 开始。'),
+    eventParameter('项目总数', 'int', '重排完成后的项目总数。')
+  ],
   'Menu.ContextMenu': [
     eventParameter('项目索引', 'int', '右键命中的菜单项目索引，从 0 开始。'),
     eventParameter('附加值一', 'int', '原生回调 range_start，含义随控件实现。'),
@@ -2007,11 +2103,24 @@ const NEW_EMOJI_EVENT_STARTERS = {
   'RichList.VirtualRow': ['NE富列表_设置虚拟行数据("")']
 };
 
+// 创建函数不携带文本参数的组件：设计器「显示内容」在创建后经该原生命令写入（ABI：hwnd, element_id, bytes, len）。
+const APPLY_CONTENT_COMMANDS = {
+  EditBox: 'EU_SetElementText'
+};
+
 // 生成器侧合成的组件事件：上游目录没有对应事件、但原生导出具备该回调能力。
 const COMPONENT_EXTRA_EVENTS = {
   Tabs: [
     { name: 'ItemClosed', label: '关闭标签页', group: '标签页', parameters: [
       eventParameter('项目索引', 'int', '被关闭标签页的索引，从 0 开始。')
+    ] },
+    { name: 'ItemAdded', label: '新增标签页', group: '标签页', parameters: [
+      eventParameter('新项目索引', 'int', '新增标签页的索引，从 0 开始。')
+    ] },
+    { name: 'ItemsReordered', label: '拖拽重排', group: '标签页', parameters: [
+      eventParameter('原索引', 'int', '被拖动标签页的原索引，从 0 开始。'),
+      eventParameter('新索引', 'int', '拖放后的新索引，从 0 开始。'),
+      eventParameter('项目总数', 'int', '重排完成后的项目总数。')
     ] }
   ],
   Menu: [
@@ -2080,6 +2189,8 @@ const EVENT_BINDINGS = {
   'RichList.ContextMenu': ['EU_SetRichListEventCallback', 'RichListEventCallback'],
   'RichList.VirtualRow': ['EU_SetRichListVirtualItemProvider', 'RichListVirtualItemCallback'],
   'Tabs.ItemClosed': ['EU_SetTabsCloseCallback', 'ElementValueCallback'],
+  'Tabs.ItemAdded': ['EU_SetTabsAddCallback', 'ElementValueCallback'],
+  'Tabs.ItemsReordered': ['EU_SetTabsReorderCallback', 'ElementReorderCallback'],
   'Menu.ContextMenu': ['EU_SetContextMenuCallback', 'ElementValueCallback'],
   'Card.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback'],
   'Menu.MenuCommand': ['EU_SetMenuSelectCallback', 'MenuSelectCallback'],
@@ -2594,6 +2705,7 @@ RichList / 富列表已作为命名空间设计器控件提供，设计器属性
 - 富列表数据：\`NE富列表_设置模板\` / \`NE富列表_设置条目\` / \`NE富列表_添加条目\` / \`NE富列表_设置选中键\` / \`NE富列表_设置倒计时\` / \`NE富列表_设置倒计时状态\`；虚拟列表在 \`NE富列表_绑定虚拟数据源\` 的处理器中调用 \`NE富列表_设置虚拟行数据("条目 JSON")\` 回填（与表格的 \`NE_设置表格虚拟行数据\` 同范式）。
 - 菜单项目：\`NE菜单_设置项目\`（换行分隔项目，\`>\` 前缀表示子菜单层级）/ \`NE菜单_设置项目图标\` / \`NE菜单_设置项目快捷键\` / \`NE菜单_设置项目元数据\`。
 - 徽标文本：\`NE徽标_设置文本\`。
+- 标签页运行时：\`NE标签页_设置激活索引\` / \`取激活索引\` / \`取激活标题\` / \`取项目数量\` / \`添加项目\` / \`关闭项目\` / \`设置滚动偏移\` / \`滚动\`，以及运行时样式族 \`设置标签样式\`（0 线条、1 卡片、2 边框卡片）/ \`设置标签位置\`（0 顶部、1 右侧、2 底部、3 左侧）/ \`设置表头对齐\` / \`设置表头可见\` / \`设置可编辑\` / \`设置内容可见\` / \`启用浏览器模式\` / \`设置浏览器度量\` / \`设置项目图标\` / \`设置项目可关闭\` / \`设置项目状态\`（加载中/固定/静音/提醒）/ \`设置新建按钮可见\` / \`设置拖拽选项\`。
 - 窗口级：\`NE_设置窗口图标\`（.ico 文件路径）、\`NE_设置主题令牌\`（令牌名 + 0xAARRGGBB 颜色值）。
 - 消息框：\`NE_显示消息框\` / \`NE_显示确认框\` / \`NE_显示扩展消息框\`。处理器使用 \`&处理器名\` 引用；结果值 1 确认、2 取消/关闭，扩展消息框额外携带输入文本。这些命令的窗口句柄参数可写 \`当前窗口\`。
 
@@ -2611,7 +2723,7 @@ NE_显示确认框(当前窗口, "删除", "确定删除吗？", "删除", "取�
 Table 事件会按原生 ABI 自动生成行号、列号、动作、文本、坐标等强类型参数。VirtualRow 处理器接收行号，并通过 NE_设置表格虚拟行数据("高级行协议") 返回本次虚拟行；生成器负责 UTF-8 转换和两阶段缓冲区查询。
 
  ListBox 的 SelectionChanged、ItemClicked、ItemDoubleClicked、Edit、Reorder、ContextMenu 事件会按 new_emoji 回调 ABI 自动生成选中键、项目索引、编辑字段/动作、重排索引和右键坐标等强类型参数；MouseDown、MouseUp、MouseDoubleClick、MouseMove、MouseWheel 同样保留坐标/按钮/滚轮参数，进入、离开和焦点事件无额外参数。
- Tabs 的 SelectionChanged 事件会自动生成选中索引、项目数量和动作三个整数参数；动作编号 1/2/3/4/5/6 分别表示代码设置、鼠标、键盘、关闭、新增和滚动，并按 EU_SetTabsChangeCallback 的 ElementValueCallback ABI 映射。
+ Tabs 的 SelectionChanged 事件会自动生成选中索引、项目数量和动作三个整数参数；动作编号 1/2/3/4/5/6 分别表示代码设置、鼠标、键盘、关闭、新增和滚动，并按 EU_SetTabsChangeCallback 的 ElementValueCallback ABI 映射。ItemAdded（新增标签页）事件返回新项目索引；ItemsReordered（拖拽重排）事件返回原索引、新索引和项目总数。逐项「禁用」状态通过标签项数据随 \`EU_SetTabsItemsEx\` 高阶协议（标题\\tID\\t内容\\t图标\\t禁用\\t可关闭）传入原生。
 `;
 }
 

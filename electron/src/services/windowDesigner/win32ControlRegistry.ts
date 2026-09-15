@@ -82,6 +82,9 @@ export interface Win32ControlDefinition {
   requiredLibraries?: string[];
 }
 
+/** 运行时控件创建命令的参数角色，决定该参数的中文说明与生成代码位置。 */
+export type Win32RuntimeControlParameterRole = 'parent' | 'x' | 'y' | 'width' | 'height' | 'content' | 'tagText' | 'tagInteger';
+
 export interface Win32RuntimeControlContract {
   designerType: string;
   lingCppType: string;
@@ -95,7 +98,7 @@ export interface Win32RuntimeControlContract {
   createParameters: Array<{
     name: string;
     type: string;
-    role: 'parent' | 'x' | 'y' | 'width' | 'height' | 'content' | 'tagText' | 'tagInteger';
+    role: Win32RuntimeControlParameterRole;
     optional?: boolean;
     defaultValue?: string | number | null;
   }>;

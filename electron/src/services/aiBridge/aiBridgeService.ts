@@ -164,7 +164,8 @@ export interface AiBridgeServiceDependencies {
     cwd: string,
     modulePlan?: ModuleNativeDependencyPlan,
     resourcePath?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    outputType?: 'exe' | 'dll'
   ) => Promise<AiBridgeCompileResult>;
   assertModuleAccess?: (moduleIds: readonly string[]) => void;
   buildPipelineService?: BuildPipelineService;
@@ -668,6 +669,22 @@ export class AiBridgeService {
     }
   }
 
+  /**
+   * 解析项目的生成产物形态：windows-console 项目使用控制台入口（wmain + “公开 启动()”），
+   * dll 输出使用动态库入口（DllMain + 导出包装），其余为窗口应用（wWinMain + 消息循环）。
+   */
+  private async resolveProjectOutputKind(projectId: string): Promise<'application' | 'dynamic-library' | 'console-application'> {
+    try {
+      const solutionForOutputType = await this.solutionService.getSolution();
+      const recordForOutputType = solutionForOutputType.projects.find(item => item.id === projectId);
+      if (recordForOutputType?.type === 'windows-console') return 'console-application';
+      return recordForOutputType?.buildProperties?.outputType === 'dll' ? 'dynamic-library' : 'application';
+    } catch {
+      // 解决方案尚未建立时按窗口应用模式处理。
+      return 'application';
+    }
+  }
+
   async nativePreview(request: AiBridgeNativeRequest) {
     const projectId = request.project.id || 'lingbuilder-ui-project';
     const [enabledModules, lingCppSources] = await Promise.all([
@@ -676,12 +693,15 @@ export class AiBridgeService {
     ]);
     this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
+    // 与 executeBuildRun 同口径：预览产物跟随解决方案项目记录的输出形态（窗口应用缺省 / dll / 控制台）。
+    const previewOutputKind = await this.resolveProjectOutputKind(projectId);
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
       lingCppSourceCode: request.lingCppSourceCode || '',
       lingCppSourceFilePath: request.lingCppSourceFilePath,
       lingCppSources,
-      enabledModules
+      enabledModules,
+      outputKind: previewOutputKind
     });
     const projectRef = await this.resolveAssetProject(request.project);
     const compiler = await this.compilerDetector();
@@ -928,12 +948,17 @@ export class AiBridgeService {
     ]);
     this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
+    // 输出形态来自解决方案项目记录（windows-console / buildProperties.outputType）；
+    // 必须在生成前解析：DLL 模式生成 DllMain + “公开”子程序导出包装，控制台模式生成 wmain + “启动()”入口。
+    const outputKind = await this.resolveProjectOutputKind(buildLease.projectId);
+    const outputType: 'exe' | 'dll' = outputKind === 'dynamic-library' ? 'dll' : 'exe';
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
       lingCppSourceCode: request.lingCppSourceCode || '',
       lingCppSourceFilePath: request.lingCppSourceFilePath,
       lingCppSources,
-      enabledModules
+      enabledModules,
+      outputKind
     });
     if (generatedProject.blockingDiagnostics.length > 0) {
       throw new Error(`LCPP 项目源码存在阻止构建的错误：\n${generatedProject.blockingDiagnostics.join('\n')}`);
@@ -954,7 +979,7 @@ export class AiBridgeService {
           generatedSourceDirectory: projectRecord.buildProperties?.generatedSourceDirectory?.trim() || buildConfiguration.generatedSourceDirectory
         };
         try {
-          executableNameParts = resolveExecutableNameParts(projectRecord.buildProperties?.executableName);
+          executableNameParts = resolveExecutableNameParts(projectRecord.buildProperties?.executableName, outputType);
         } catch (nameError) {
           preBuildLogs.push(nameError instanceof Error ? nameError.message : '项目可执行文件名无效，已回退默认命名。');
         }
@@ -1112,6 +1137,7 @@ export class AiBridgeService {
       contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      projectKind: outputKind,
       fbroRuntimeFromBuildBin: true,
       executableBaseName: executableNameParts.baseName
     });
@@ -1123,6 +1149,7 @@ export class AiBridgeService {
       contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      projectKind: outputKind,
       executableBaseName: executableNameParts.baseName
     });
     if (buildLease.isCancelled()) {
@@ -1224,7 +1251,7 @@ export class AiBridgeService {
         baseLogs.push(`new_emoji 运行时 DLL 内嵌失败（回退为同目录加载）：${error?.message || error}`);
       }
     }
-    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, executableResourcePath, buildLease.signal);
+    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, executableResourcePath, buildLease.signal, outputType);
     const logs = [
       ...baseLogs,
       `exe 输出目录：${binDir}`,
@@ -1264,7 +1291,12 @@ export class AiBridgeService {
       );
     }
 
-    if (request.run !== false) {
+    if (request.run !== false && outputType === 'dll') {
+      // 动态库没有运行入口：链接完成后不启动进程，产物即 dll + 导入库。
+      const importLibraryPath = exePath.replace(/\.dll$/iu, '.lib');
+      logs.push('动态库输出模式：编译完成后不启动运行进程。', `DLL 产物：${exePath}`, `导入库：${importLibraryPath}`);
+    }
+    if (request.run !== false && outputType !== 'dll') {
       try {
         const logFile = path.join(buildDir, 'run.log');
         const started = await this.managedProcessService.start(managedProjectId, exePath, {
@@ -1274,7 +1306,8 @@ export class AiBridgeService {
             ...(this.fbroVipKey ? { LINGBUILDER_FBRO_VIP_KEY: this.fbroVipKey } : {})
           },
           detached: false,
-          windowsHide: false,
+          // 控制台程序的输出经 run.log 返回；隐藏宿主控制台，避免弹出空黑窗。
+          windowsHide: outputKind === 'console-application',
           logFilePath: logFile
         });
         if (buildLease.isCancelled()) {
@@ -1737,8 +1770,19 @@ async function compileWin32Preview(
   cwd: string,
   modulePlan?: ModuleNativeDependencyPlan,
   resourcePath?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  outputType: 'exe' | 'dll' = 'exe'
 ): Promise<AiBridgeCompileResult> {
+  const buildDynamicLibrary = outputType === 'dll';
+  if (buildDynamicLibrary && compiler.kind !== 'msvc') {
+    return {
+      ok: false,
+      logs: [
+        '编译失败。',
+        '动态库输出模式当前仅支持 MSVC/Visual Studio Build Tools：需要链接生成 .dll 与导入库 .lib；请安装 Visual Studio Build Tools 后重试。'
+      ]
+    };
+  }
   const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ['/I', includeDir]);
   const moduleSources = modulePlan?.sourceFiles || [];
   const moduleLibs = modulePlan?.libFiles || [];
@@ -1766,7 +1810,9 @@ async function compileWin32Preview(
   }
 
   const objectPath = path.join(objDir, 'main.obj');
-  const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
+  // 动态库强制动态 CRT（与 Visual Studio 导出器的 DynamicLibrary 行为一致）：
+  // 消费方工程链接导入库并传 std::wstring，跨 DLL 边界要求两侧共用同一 CRT。
+  const useDynamicCrt = modulePlan?.requiresDynamicCrt === true || buildDynamicLibrary;
   const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
   const extraDefineArgs = (modulePlan?.extraCompileDefines || []).map(define => `/D${define}`);
   const newEmojiDelayLoadLinkArgs = modulePlan?.runtimeFiles.some(file => path.basename(file).toLowerCase() === 'new_emoji.dll')
@@ -1776,7 +1822,7 @@ async function compileWin32Preview(
     ? ['delayimp.lib', '/link', '/DELAYLOAD:new_emoji.dll']
     : [];
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, newEmojiDelayLoadLinkArgs, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, newEmojiDelayLoadLinkArgs, signal, buildDynamicLibrary);
   }
 
   const commandArgs = compiler.kind === 'msvc'
@@ -1787,6 +1833,7 @@ async function compileWin32Preview(
         '/utf-8',
         ...extraDefineArgs,
         ...(useDynamicCrt ? ['/MD'] : []),
+        ...(buildDynamicLibrary ? ['/LD'] : []),
         '/DUNICODE',
         '/D_UNICODE',
         ...includeArgs,
@@ -1888,7 +1935,8 @@ async function compileMsvcPreviewWithModules(
   resourceOutputPath: string | undefined,
   resourceLogs: string[],
   newEmojiDelayLoadLinkArgs: string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  buildDynamicLibrary = false
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
   const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? 'main' : `module_${index}`}.obj`));
@@ -1908,6 +1956,7 @@ async function compileMsvcPreviewWithModules(
   ]);
   const linkArgs = [
     '/nologo',
+    ...(buildDynamicLibrary ? ['/DLL'] : []),
     ...objectFiles,
     '/Fe:' + exePath,
     'user32.lib',

@@ -436,6 +436,9 @@ function GroupsAdmin({ data, request, reload }: AdminProps) {
 /** 赞助名单：一笔赞助一条记录（同一 QQ 可多笔），官网 /sponsors 按赞助时间先后展示；金额按元录入、以分存储。 */
 function SponsorsAdmin({ data, request, reload }: AdminProps) {
   const sponsors = data?.sponsors || [];
+  const totalCents = sponsors.reduce((sum: number, item: any) => sum + (Number(item.amountCents) || 0), 0);
+  const hidden = sponsors.filter((item: any) => item.enabled === false);
+  const hiddenCents = hidden.reduce((sum: number, item: any) => sum + (Number(item.amountCents) || 0), 0);
   const [sponsor, setSponsor] = useState<any>(emptySponsor());
   const [editingId, setEditingId] = useState('');
   const [message, setMessage] = useState('');
@@ -461,8 +464,8 @@ function SponsorsAdmin({ data, request, reload }: AdminProps) {
       ]} onSubmit={submit}/>
       {editingId && <div className="editor-reset"><button onClick={startNew}>放弃当前编辑，返回新建记录</button></div>}
     </EditorPanel>
-    <RecordPanel title="赞助记录" empty="尚无赞助记录。">{sponsors.map((item: any) => <article className="site-record" key={item.id}>
-      <div><strong>{item.qqNumber}</strong><span>¥{(item.amountCents / 100).toFixed(2)} · {new Date(item.sponsoredAt).toLocaleDateString('zh-CN')}</span><small>{item.enabled ? '展示中' : '已隐藏'}</small></div>
+    <RecordPanel title="赞助记录" empty="尚无赞助记录。">{sponsors.length > 0 && <p className="site-records-summary">共 {sponsors.length} 笔 · 合计 {formatCents(totalCents)} · 官网展示 {sponsors.length - hidden.length} 笔 {formatCents(totalCents - hiddenCents)}{hidden.length ? ` · 已隐藏 ${hidden.length} 笔 ${formatCents(hiddenCents)}` : ''}</p>}{sponsors.map((item: any) => <article className="site-record" key={item.id}>
+      <div><strong>{item.qqNumber}</strong><span>{formatCents(item.amountCents)} · {new Date(item.sponsoredAt).toLocaleDateString('zh-CN')}</span><small>{item.enabled ? '展示中' : '已隐藏'}</small></div>
       <div className="site-record-actions"><button className={editingId === item.id ? 'active' : ''} onClick={() => edit(item)}>编辑</button><button onClick={() => void remove(item)}>删除</button></div>
     </article>)}</RecordPanel>
     {message && <p className="form-message form-message-error" role="alert">{message}</p>}
@@ -501,6 +504,8 @@ function emptyGroup(){return {name:'LingBuilder 官方 QQ 交流群',qqNumber:''
 function emptySponsor(){return {qqNumber:'',amountYuan:'',sponsoredAt:toLocalInputValue(new Date().toISOString()),enabled:true}}
 /** ISO 时间转 datetime-local 输入值（本地时区 YYYY-MM-DDTHH:mm），编辑赞助时间时使用。 */
 function toLocalInputValue(value:string){const date=new Date(value);if(Number.isNaN(date.getTime()))return '';const pad=(part:number)=>String(part).padStart(2,'0');return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`}
+/** 金额以分存储、按元展示（两位小数），赞助名单各处共用。 */
+function formatCents(cents:number){return `¥${(cents/100).toFixed(2)}`}
 interface AdminProps { data:any; request:Request; reload:()=>Promise<void> }
 interface Field { name:string; label:string; type:'text'|'number'|'select'|'checkbox'|'textarea'|'textarea-large'|'datetime'; options?:Array<string|{value:string;label:string}> }
 const statuses=['DRAFT','PUBLISHED','ARCHIVED'];

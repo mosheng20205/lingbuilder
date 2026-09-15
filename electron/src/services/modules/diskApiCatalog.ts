@@ -1,12 +1,17 @@
 import type { StandardCommandSpec } from './standardLibraryModules';
 import type { ModuleCommandBindingParameter, ModuleTypeContribution } from './types';
 
-const text = (name: string): ModuleCommandBindingParameter => ({ name, type: 'wideString' });
-const integer = (name: string): ModuleCommandBindingParameter => ({ name, type: 'int' });
+// 参数说明按 src/services/windowDesigner/systemLibraryRuntime.ts 的 DISK_RUNTIME 实现核实；
+// 重复语义（定位所属卷的路径、物理磁盘编号）提取为共享常量。
+const volumePathArg = '用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。';
+const diskNumberArg = 'PhysicalDrive 编号，从 0 开始，与 磁盘_枚举物理磁盘 返回的磁盘编号一致；查询只申请只读权限。';
+
+const text = (name: string, description: string) => ({ name, type: 'wideString' as const, description });
+const integer = (name: string, description: string) => ({ name, type: 'int' as const, description });
 
 function command(
   name: string,
-  parameters: ModuleCommandBindingParameter[],
+  parameters: Array<ModuleCommandBindingParameter & { description: string }>,
   returnType: string,
   description: string,
   category: string,
@@ -116,32 +121,32 @@ export const DISK_PUBLIC_TYPES: ModuleTypeContribution[] = [
 ];
 
 export const DISK_COMMANDS: StandardCommandSpec[] = [
-  command('磁盘_总容量MB', [text('路径')], 'longLong', '返回路径所在卷的总容量 MB，失败返回 -1；兼容旧源码。', '容量', '磁盘_总容量MB("C:\\")'),
-  command('磁盘_可用容量MB', [text('路径')], 'longLong', '返回当前用户配额下可用容量 MB，失败返回 -1；兼容旧源码。', '容量'),
-  command('磁盘_取卷标', [text('根路径')], 'wideString', '返回卷标，失败返回空文本。', '卷'),
-  command('磁盘_取文件系统', [text('根路径')], 'wideString', '返回 NTFS、ReFS、FAT32 等文件系统名称。', '卷'),
-  command('磁盘_取驱动器类型', [text('根路径')], 'int', '返回 Win32 DRIVE_* 类型编号。', '卷'),
-  command('磁盘_取总容量字节', [text('路径')], 'longLong', '返回路径所在卷的精确总容量字节数，失败返回 -1。', '容量'),
-  command('磁盘_取用户可用字节', [text('路径')], 'longLong', '返回当前用户配额下可用的精确字节数，失败返回 -1。', '容量'),
-  command('磁盘_取总空闲字节', [text('路径')], 'longLong', '返回卷上所有用户合计可见的空闲字节数，失败返回 -1。', '容量'),
-  command('磁盘_取已用容量字节', [text('路径')], 'longLong', '返回总容量减去总空闲容量的字节数，失败返回 -1。', '容量'),
-  command('磁盘_取使用率', [text('路径')], 'double', '返回卷使用率百分比，失败返回 -1。', '容量'),
-  command('磁盘_取容量信息', [text('路径')], '磁盘容量信息', '一次返回精确容量、空闲容量、已用容量和使用率。', '容量'),
-  command('磁盘_取卷信息', [text('路径')], '磁盘卷信息', '返回路径所在卷的容量、标识、文件系统、类型和挂载点快照。', '卷'),
+  command('磁盘_总容量MB', [text('路径', volumePathArg)], 'longLong', '返回路径所在卷的总容量 MB，失败返回 -1；兼容旧源码。', '容量', '磁盘_总容量MB("C:\\")'),
+  command('磁盘_可用容量MB', [text('路径', volumePathArg)], 'longLong', '返回当前用户配额下可用容量 MB，失败返回 -1；兼容旧源码。', '容量'),
+  command('磁盘_取卷标', [text('根路径', volumePathArg)], 'wideString', '返回卷标，失败返回空文本。', '卷'),
+  command('磁盘_取文件系统', [text('根路径', volumePathArg)], 'wideString', '返回 NTFS、ReFS、FAT32 等文件系统名称。', '卷'),
+  command('磁盘_取驱动器类型', [text('根路径', volumePathArg)], 'int', '返回 Win32 DRIVE_* 类型编号。', '卷'),
+  command('磁盘_取总容量字节', [text('路径', volumePathArg)], 'longLong', '返回路径所在卷的精确总容量字节数，失败返回 -1。', '容量'),
+  command('磁盘_取用户可用字节', [text('路径', volumePathArg)], 'longLong', '返回当前用户配额下可用的精确字节数，失败返回 -1。', '容量'),
+  command('磁盘_取总空闲字节', [text('路径', volumePathArg)], 'longLong', '返回卷上所有用户合计可见的空闲字节数，失败返回 -1。', '容量'),
+  command('磁盘_取已用容量字节', [text('路径', volumePathArg)], 'longLong', '返回总容量减去总空闲容量的字节数，失败返回 -1。', '容量'),
+  command('磁盘_取使用率', [text('路径', volumePathArg)], 'double', '返回卷使用率百分比，失败返回 -1。', '容量'),
+  command('磁盘_取容量信息', [text('路径', volumePathArg)], '磁盘容量信息', '一次返回精确容量、空闲容量、已用容量和使用率。', '容量'),
+  command('磁盘_取卷信息', [text('路径', volumePathArg)], '磁盘卷信息', '返回路径所在卷的容量、标识、文件系统、类型和挂载点快照。', '卷'),
   command('磁盘_枚举逻辑驱动器', [], '磁盘卷信息列表', '枚举当前会话可见的盘符和网络映射驱动器；未就绪设备也会保留并携带错误代码。', '枚举'),
   command('磁盘_枚举全部卷', [], '磁盘卷信息列表', '使用 Windows 卷枚举 API 返回包含无盘符卷在内的全部卷。', '枚举'),
-  command('磁盘_取挂载点列表', [text('卷GUID路径')], '磁盘路径列表', '返回卷对应的全部盘符和目录挂载点。', '卷'),
-  command('磁盘_取路径卷根', [text('路径')], 'wideString', '把任意本地路径解析为所属卷根路径。', '卷'),
-  command('磁盘_取卷GUID路径', [text('路径')], 'wideString', '返回路径所属卷的稳定 \\\\?\\Volume{GUID}\\ 名称。', '卷'),
-  command('磁盘_取驱动器类型名称', [text('根路径')], 'wideString', '返回未知、无效根路径、可移动、固定、网络、光盘或内存盘。', '卷'),
-  command('磁盘_取卷序列号', [text('根路径')], 'longLong', '返回文件系统卷序列号，失败返回 -1。', '文件系统'),
-  command('磁盘_取文件系统标志', [text('根路径')], 'longLong', '返回 GetVolumeInformationW 的 FILE_* 能力标志位，失败返回 -1。', '文件系统'),
-  command('磁盘_取最大文件名长度', [text('根路径')], 'int', '返回文件系统支持的单个名称最大字符数，失败返回 -1。', '文件系统'),
-  command('磁盘_卷是否就绪', [text('根路径')], 'bool', '判断卷是否存在且介质可读取。', '卷'),
-  command('磁盘_文件系统是否支持', [text('根路径'), text('能力名称')], 'bool', '按中文或英文能力名查询压缩、稀疏文件、重解析点、命名流、加密、ACL、硬链接、事务、USN、DAX 等 FILE_* 标志。', '文件系统'),
+  command('磁盘_取挂载点列表', [text('卷GUID路径', '\?\Volume{GUID}\ 形式的卷路径；传入普通路径时运行时会先解析为所属卷的 GUID 路径。')], '磁盘路径列表', '返回卷对应的全部盘符和目录挂载点。', '卷'),
+  command('磁盘_取路径卷根', [text('路径', volumePathArg)], 'wideString', '把任意本地路径解析为所属卷根路径。', '卷'),
+  command('磁盘_取卷GUID路径', [text('路径', volumePathArg)], 'wideString', '返回路径所属卷的稳定 \\\\?\\Volume{GUID}\\ 名称。', '卷'),
+  command('磁盘_取驱动器类型名称', [text('根路径', volumePathArg)], 'wideString', '返回未知、无效根路径、可移动、固定、网络、光盘或内存盘。', '卷'),
+  command('磁盘_取卷序列号', [text('根路径', volumePathArg)], 'longLong', '返回文件系统卷序列号，失败返回 -1。', '文件系统'),
+  command('磁盘_取文件系统标志', [text('根路径', volumePathArg)], 'longLong', '返回 GetVolumeInformationW 的 FILE_* 能力标志位，失败返回 -1。', '文件系统'),
+  command('磁盘_取最大文件名长度', [text('根路径', volumePathArg)], 'int', '返回文件系统支持的单个名称最大字符数，失败返回 -1。', '文件系统'),
+  command('磁盘_卷是否就绪', [text('根路径', volumePathArg)], 'bool', '判断卷是否存在且介质可读取。', '卷'),
+  command('磁盘_文件系统是否支持', [text('根路径', volumePathArg), text('能力名称', '要查询的 FILE_* 能力名称，支持中文名或英文名，例如 压缩、稀疏文件、重解析点、命名流、加密、ACL、硬链接、事务、USN、DAX；无法识别时返回假并记录未知能力错误。')], 'bool', '按中文或英文能力名查询压缩、稀疏文件、重解析点、命名流、加密、ACL、硬链接、事务、USN、DAX 等 FILE_* 标志。', '文件系统'),
   command('磁盘_枚举物理磁盘', [], '物理磁盘信息列表', '枚举 Windows PhysicalDrive 设备并返回只读存储描述、容量、扇区、分区、SSD 和 TRIM 信息。', '物理磁盘'),
-  command('磁盘_取物理磁盘信息', [integer('磁盘编号')], '物理磁盘信息', '按 PhysicalDrive 编号查询物理磁盘；不请求写权限。', '物理磁盘'),
-  command('磁盘_取分区列表', [integer('磁盘编号')], '磁盘分区信息列表', '读取物理磁盘的 MBR/GPT/RAW 分区布局，失败返回空数组并记录错误。', '分区'),
+  command('磁盘_取物理磁盘信息', [integer('磁盘编号', diskNumberArg)], '物理磁盘信息', '按 PhysicalDrive 编号查询物理磁盘；不请求写权限。', '物理磁盘'),
+  command('磁盘_取分区列表', [integer('磁盘编号', diskNumberArg)], '磁盘分区信息列表', '读取物理磁盘的 MBR/GPT/RAW 分区布局，失败返回空数组并记录错误。', '分区'),
   command('磁盘_取最近错误码', [], 'int', '返回当前线程最近一次磁盘模块失败的 Win32 错误代码；成功调用会清零。', '诊断'),
   command('磁盘_取最近错误', [], 'wideString', '返回当前线程最近一次磁盘模块失败的中文上下文和系统错误文本。', '诊断')
 ];

@@ -1,3 +1,5 @@
+import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
+
 export interface BeginnerLineCommentEdit {
   value: string;
   selectionStart: number;
@@ -27,7 +29,11 @@ export function toggleBeginnerLineComment(
   const nextLineBreak = value.indexOf('\n', effectiveEnd);
   const lastLineEnd = nextLineBreak === -1 ? value.length : nextLineBreak;
   const lines = collectLines(value, firstLineStart, lastLineEnd);
-  const nonBlankLines = lines.filter(line => line.content.trim().length > 0);
+  const blockConsumed = collectLingCppTextBlockLines(
+    scanLingCppTextBlockRanges(value.split('\n')),
+    value.split('\n').length
+  );
+  const nonBlankLines = lines.filter(line => line.content.trim().length > 0 && !blockConsumed.has(line.lineNumber));
 
   if (nonBlankLines.length === 0) {
     return { value, selectionStart: start, selectionEnd: end, commented: false };
@@ -58,7 +64,7 @@ export function toggleBeginnerLineComment(
 }
 
 function collectLines(value: string, start: number, end: number) {
-  const lines: Array<{ contentStart: number; content: string }> = [];
+  const lines: Array<{ contentStart: number; content: string; lineNumber: number }> = [];
   let lineStart = start;
 
   while (lineStart <= end) {
@@ -68,7 +74,8 @@ function collectLines(value: string, start: number, end: number) {
     const indentationLength = rawLine.match(/^[\t ]*/u)?.[0].length ?? 0;
     lines.push({
       contentStart: lineStart + indentationLength,
-      content: rawLine.slice(indentationLength)
+      content: rawLine.slice(indentationLength),
+      lineNumber: value.slice(0, lineStart).split('\n').length
     });
     if (lineBreak === -1 || lineBreak >= end) break;
     lineStart = lineBreak + 1;

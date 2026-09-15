@@ -83,6 +83,7 @@ import { formatBeginnerAssignmentAtCursor } from '../services/lingCpp/beginnerSt
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import {
   BeginnerMethodBodySegment,
+  getBeginnerLocalAnchorLayout,
   getBeginnerLocalInsertShortcutKind,
   getBeginnerLocalInsertStatementIndex,
   getBeginnerMethodBodySegments
@@ -174,11 +175,19 @@ import {
   TextModelIdentity,
   getOrCreateWorkbenchTextHistory,
   getBeginnerBodySourceColumns,
+  getBeginnerBodySourceLines,
   inferBeginnerBodyStartColumn,
   mapBeginnerBodyTextPosition,
   reconcileTextEditHistory,
   workbenchTextModelService
 } from '../services/textModel';
+import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from '../services/lingCpp/textBlock';
+
+/** 草稿文本中属于多行文本块（开始行/内容行/结束标记）的 1-based 行号集合。 */
+const beginnerTextBlockLineSet = (value: string): Set<number> => {
+  const lines = value.split('\n');
+  return collectLingCppTextBlockLines(scanLingCppTextBlockRanges(lines), lines.length);
+};
 
 let beginnerProcedureNameMeasureCanvas: HTMLCanvasElement | null = null;
 let diffViewerCommandTargetSerial = 0;
@@ -208,6 +217,21 @@ function measureRenderedInputText(input: HTMLInputElement) {
     Number.parseFloat(style.paddingRight || '0') +
     Number.parseFloat(style.borderLeftWidth || '0') +
     Number.parseFloat(style.borderRightWidth || '0');
+}
+
+// Same stack as Tailwind's default `font-mono` used by the beginner code body,
+// so a source-column indent measured here lands on the rendered code text.
+const BEGINNER_MONO_FONT_STACK =
+  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+let beginnerMonoMeasureCanvas: HTMLCanvasElement | null = null;
+
+function measureBeginnerMonoCharWidth(fontSize: number): number {
+  if (typeof document === 'undefined') return fontSize * 0.6;
+  beginnerMonoMeasureCanvas ||= document.createElement('canvas');
+  const context = beginnerMonoMeasureCanvas.getContext('2d');
+  if (!context) return fontSize * 0.6;
+  context.font = `${fontSize}px ${BEGINNER_MONO_FONT_STACK}`;
+  return context.measureText('0').width;
 }
 
 export interface DiffViewerHandle {
@@ -5445,6 +5469,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const nextBreak = input.value.indexOf('\n', cursor);
       const lineEnd = nextBreak >= 0 ? nextBreak : input.value.length;
       const lineText = input.value.slice(lineStart, lineEnd);
+      // 文本块开始行/内容行/结束标记不触发自动声明（raw 内容不是可执行语句）。
+      if (beginnerTextBlockLineSet(input.value).has(input.value.slice(0, lineStart).split('\n').length)) return false;
       const meaningfulLineEnd = lineStart + lineText.replace(/\s+$/u, '').length;
       if (cursor < meaningfulLineEnd || input.value.slice(cursor, lineEnd).trim()) return false;
 
@@ -7989,8 +8015,20 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
     };
 
-    const renderBeginnerCodeLine = (line: string, target?: BeginnerCodeTarget) => {
+    const renderBeginnerCodeLine = (line: string, target?: BeginnerCodeTarget, isTextBlockLine = false) => {
       if (!line) return <span>&nbsp;</span>;
+      if (isTextBlockLine) {
+        // 多行文本块内容行：整行按字符串着色，不做注释切分与命令 token 化。
+        const blockIndent = line.match(/^\s*/u)?.[0] || '';
+        return (
+          <>
+            <span>{blockIndent}</span>
+            <span data-lingcpp-token="string" style={{ ...BEGINNER_CODE_OVERLAY_TOKEN_STYLE, color: isDarkMode ? '#d7c5a1' : '#b45309' }}>
+              {line.slice(blockIndent.length)}
+            </span>
+          </>
+        );
+      }
       const { code, comment } = splitLingCppLineComment(line);
       // A whole-line comment (`//` or a leading `'`) is never tokenized: keeping
       // it out of the code path is what makes it read as a comment rather than
@@ -8047,6 +8085,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           onDelete: () => void;
           disabled?: boolean;
         };
+      },
+      flow?: {
+        column: React.ReactNode;
+        minWidthPx: number;
       }
     ) => (
       <section
@@ -8055,8 +8097,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         data-beginner-process-key={fold?.targetKey}
         style={fold?.contentMinWidth
           ? { minWidth: `calc(var(--beginner-gutter-width) + ${fold.contentMinWidth}px)` }
-          : undefined}
-        className={`group relative grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] border-b ${canvasBorder} ${
+          : flow
+            ? { minWidth: `calc(var(--beginner-gutter-width) + var(--beginner-flow-width) + ${flow.minWidthPx}px)` }
+            : undefined}
+        className={`group relative grid ${flow
+          ? 'grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)]'
+          : 'grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)]'} border-b ${canvasBorder} ${
           tone === 'active'
             ? `${canvasBg} ${isDarkMode ? 'shadow-[inset_2px_0_0_rgba(34,211,238,0.55)]' : 'shadow-[inset_2px_0_0_rgba(8,145,178,0.5)]'}`
             : tone === 'warning'
@@ -8091,6 +8137,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             </button>
           )}
         </div>
+        {flow?.column}
         <div className="min-w-0 px-3 py-2">{children}</div>
         {fold?.deleteAction && (
           <button
@@ -8660,15 +8707,20 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const sourceLine = locals[0]?.line || target.method.line + 1;
       const localGroupKey = `${codeTargetKey(target)}:${groupId}`;
       const collapsed = collapsedBeginnerLocalGroupKeys.includes(localGroupKey);
-      // Code body text starts one flow-guide column (--beginner-flow-width)
-      // further right than table shells; shift locals by the same amount so
-      // the block's left edge aligns with the outermost body statements.
-      return renderSourceShell(
-        `${target.method.kind}-${target.method.name}-locals`,
-        visualLine,
-        sourceLine,
-        'plain',
-        <div className="min-w-0" style={{ marginLeft: 'var(--beginner-flow-width)' }}>
+      // A 局部声明 inside a 如果/循环 block used to render as a full-width banner
+      // between the block header and its body, splitting the flow tree. Instead,
+      // align the table with the declaration's own source indent and continue the
+      // enclosing flow rails through the table rows. Top-level declarations keep
+      // the legacy single-column shell shifted by one fake flow column.
+      const anchorLayout = getBeginnerLocalAnchorLayout(target.method, sourceLine, normalizedSourceLines);
+      const outerTrack = anchorLayout.tracks.find(track => track.depth === 0);
+      const nestedTracks = anchorLayout.tracks.filter(track => track.depth > 0);
+      const railSpacing = Math.max(18, Math.round(editorFontSize * 2.45));
+      const indentPx = outerTrack
+        ? Math.round(anchorLayout.indentColumns * measureBeginnerMonoCharWidth(editorFontSize))
+        : 0;
+      const tableBlock = (
+        <>
           <button
             type="button"
             aria-expanded={!collapsed}
@@ -8748,7 +8800,52 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             }),
             574
           )}
-        </div>
+        </>
+      );
+      if (!outerTrack) {
+        return renderSourceShell(
+          `${target.method.kind}-${target.method.name}-locals`,
+          visualLine,
+          sourceLine,
+          'plain',
+          <div className="min-w-0" style={{ marginLeft: 'var(--beginner-flow-width)' }}>{tableBlock}</div>
+        );
+      }
+      return renderSourceShell(
+        `${target.method.kind}-${target.method.name}-locals`,
+        visualLine,
+        sourceLine,
+        'plain',
+        <div className="relative min-w-0">
+          {nestedTracks.map(track => (
+            <span
+              key={`${localGroupKey}:rail:${track.depth}`}
+              aria-hidden="true"
+              className={`pointer-events-none absolute -top-2 -bottom-2 w-px ${
+                isDarkMode ? 'bg-cyan-500/35' : 'bg-cyan-600/45'
+              }`}
+              // The shell's content column adds px-3 padding that the code body's
+              // own rail container does not have; pull rails back so they sit on
+              // the same absolute x as the nested rails beside the code lines.
+              style={{ left: `${Math.round((track.depth - 0.5) * railSpacing) - 12}px` }}
+            />
+          ))}
+          <div className="min-w-0" style={{ marginLeft: `${indentPx}px` }}>{tableBlock}</div>
+        </div>,
+        undefined,
+        {
+          column: (
+            <div className={`relative ${isDarkMode ? 'bg-[#101116]' : 'bg-slate-50'}`}>
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-y-0 left-1/2 w-px ${
+                  isDarkMode ? 'bg-cyan-500/55' : 'bg-cyan-600/60'
+                }`}
+              />
+            </div>
+          ),
+          minWidthPx: indentPx + 590
+        }
       );
     };
 
@@ -8764,14 +8861,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         : beginnerCodeDrafts[targetKey] ?? bodyText;
       const segmentStatements = segmentContext?.segment.statements || target.method.statements;
       const bodyLines = draftBodyText.split('\n').length ? draftBodyText.split('\n') : [''];
+      const textBlockLines = beginnerTextBlockLineSet(draftBodyText);
       const flowGuideRows = getBeginnerIfFlowGuideRows(bodyLines);
       const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
       const editorHeight = Math.max(lineHeight * Math.max(bodyLines.length, 1) + 24, lineHeight + 24);
       const editorTextStyle = { fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, height: `${editorHeight}px` };
       const segmentId = segmentContext?.segment.id || 'all';
       const commandExpansionKey = (index: number) => `${targetKey}:${segmentId}:${index}`;
-      const commandExpansions = bodyLines.map(line =>
-        parseBeginnerCommandExpansion(line, beginnerCommandParameterCatalog)
+      const commandExpansions = bodyLines.map((line, index) =>
+        textBlockLines.has(index + 1)
+          ? null
+          : parseBeginnerCommandExpansion(line, beginnerCommandParameterCatalog)
       );
       const expandedCommandIndex = expandedBeginnerCommand
         ? commandExpansions.findIndex((expansion, index) =>
@@ -8781,7 +8881,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const activeCommandExpansion = expandedCommandIndex >= 0
         ? commandExpansions[expandedCommandIndex]
         : null;
-      const displaySourceLine = (index: number) => segmentStatements[index]?.line
+      const expandedSourceLines = getBeginnerBodySourceLines(segmentStatements);
+      const displaySourceLine = (index: number) => expandedSourceLines[index]
         || (segmentStatements[0]?.line || segmentContext?.segment.sourceLine || target.method.line + 1) + index;
       const toggleCommandExpansion = (
         event: React.MouseEvent<HTMLButtonElement>,
@@ -9071,7 +9172,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   >
                     {renderBeginnerNestedFlowTracks(flowGuideRows[index], `${targetKey}:flow-fold:${index}`, lineHeight)}
                     {block && renderBeginnerFlowFoldButton(block, line, isCollapsed)}
-                    <span className="relative z-10">{renderBeginnerCodeLine(line, target)}</span>
+                    <span className="relative z-10">{renderBeginnerCodeLine(line, target, textBlockLines.has(index + 1))}</span>
                     {isCollapsed && block && (
                       <span className={`relative z-10 ml-3 text-[10px] ${
                         isDarkMode ? 'text-slate-500' : 'text-slate-400'
@@ -9146,7 +9247,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       title="收起参数后可继续按普通代码方式编辑整行"
                     >
                       {renderBeginnerNestedFlowTracks(flow, `${targetKey}:expanded:${index}`, lineHeight, 12)}
-                      <span className="relative z-10">{renderBeginnerCodeLine(line, target)}</span>
+                      <span className="relative z-10">{renderBeginnerCodeLine(line, target, textBlockLines.has(index + 1))}</span>
                     </div>
                   </div>
                   {expansionOpen && expansion && (
@@ -9328,7 +9429,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
                 >
                   {renderBeginnerNestedFlowTracks(flowGuideRows[index], `${targetKey}:highlight:${index}`, lineHeight)}
-                  <span className="relative z-10">{renderBeginnerCodeLine(line, target)}</span>
+                  <span className="relative z-10">{renderBeginnerCodeLine(line, target, textBlockLines.has(index + 1))}</span>
                 </div>
               ))}
             </div>
@@ -9353,7 +9454,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               data-beginner-statement-start={segmentContext?.segment.statementStartIndex ?? 0}
               data-lingbuilder-editor-command-owner="true"
               data-source-line-start={segmentStatements[0]?.line || segmentContext?.segment.sourceLine || target.method.line + 1}
-              data-source-line-map={segmentStatements.map(statement => statement.line).join(',')}
+              data-source-line-map={getBeginnerBodySourceLines(segmentStatements).join(',')}
               data-source-column-start={methodBodyStartColumn(target.method)}
               data-source-column-map={getBeginnerBodySourceColumns(segmentStatements, methodBodyStartColumn(target.method)).join(',')}
               value={draftBodyText}

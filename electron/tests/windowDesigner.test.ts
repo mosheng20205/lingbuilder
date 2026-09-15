@@ -1542,8 +1542,11 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
     'new_emoji 必须在 COM 和窗口创建前启用每显示器 DPI 感知'
   );
   assert.match(cpp, /NE_创建深色窗口\(L"new_emoji 主窗口"/);
-  assert.match(cpp, /LoadImageW\(nullptr, L"lingbuilder-newemoji-window\.ico", IMAGE_ICON/u);
-  assert.match(cpp, /SendMessageW\(g_newEmojiWindow, WM_SETICON, ICON_BIG/u);
+  // new_emoji 自绘标题栏的图标状态只能由 EU_SetWindowIcon 填充（同时覆盖任务栏），
+  // 不得退回裸 WM_SETICON：那只更新任务栏，标题栏不画图标。
+  assert.match(cpp, /LB_NE_ToUtf8\(L"lingbuilder-newemoji-window\.ico"\)/u);
+  assert.match(cpp, /EU_SetWindowIcon\(g_newEmojiWindow, reinterpret_cast<const unsigned char\*>\(lbWindowIconUtf8\.data\(\)\), static_cast<int>\(lbWindowIconUtf8\.size\(\)\)\);/u);
+  assert.doesNotMatch(cpp, /LoadImageW\(nullptr, L"lingbuilder-newemoji-window\.ico"/u);
   assert.match(cpp, /NE_创建容器\(/);
   assert.match(cpp, /NE_创建文本\([^\n]+欢迎使用 👋/);
   assert.match(cpp, /NE_设置元素字体\(g_newEmojiWindow, ne_element_2, L"KaiTi", 18\)/u);
@@ -1579,6 +1582,79 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.ok(generated.diagnostics.some(item => item.includes('说明文本') && item.includes('仅支持字体名称和字号')));
 });
 
+test('new_emoji 目录编辑框在创建后应用设计器显示内容', () => {
+  const buildModule = (applyContentCommand?: string): InstalledModule => ({
+    manifest: {
+      schemaVersion: 2, id: 'lingbuilder.new_emoji.ui', name: 'new_emoji 原生界面库', version: '1.0.0',
+      category: '界面', description: '测试模块',
+      targets: [
+        { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/Win32/new_emoji.lib'] },
+        { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/x64/new_emoji.lib'] }
+      ],
+      contributes: {
+        designerControls: [{
+          type: 'EditBox',
+          namespacedType: 'lingbuilder.new_emoji.ui/EditBox',
+          label: '编辑框 EditBox',
+          defaultProps: {},
+          isVisual: true,
+          properties: [],
+          events: [],
+          runtime: {
+            createCommand: 'EU_CreateEditBox',
+            createReturnType: 'int',
+            createParameters: [
+              { name: 'hwnd', type: 'HWND' },
+              { name: 'parent_id', type: 'int' },
+              { name: 'x', type: 'int' },
+              { name: 'y', type: 'int' },
+              { name: 'w', type: 'int' },
+              { name: 'h', type: 'int' }
+            ],
+            ...(applyContentCommand ? { applyContentCommand } : {})
+          }
+        }]
+      }
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui', isInstalled: true, isEnabledForProject: true, diagnostics: []
+  });
+  const buildProject = (content: string, enabledModules: InstalledModule[]) => {
+    const project: LingWindowProject = {
+      schemaVersion: 2,
+      id: 'new-emoji-editbox-content',
+      name: '编辑框显示内容',
+      windows: [{
+        id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '编辑框显示内容',
+        width: 720, height: 480, background: '#111827', description: '', designerBackend: 'new-emoji',
+        controls: [{
+          ...createControl('editor', undefined, 'TextBox'),
+          name: '编辑框1', designerType: 'lingbuilder.new_emoji.ui/EditBox', content, x: 220, y: 55, width: 260, height: 42
+        }]
+      }]
+    };
+    return generateLingCppNativeWin32Project(project, {
+      enabledModules,
+      lingCppSourceCode: '类 MainWindow\n结束类'
+    }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  };
+  const applyLine = 'EU_SetElementText(g_newEmojiWindow, ne_element_1, reinterpret_cast<const unsigned char*>(ne_element_1_utf8_content.data()), static_cast<int>(ne_element_1_utf8_content.size()));';
+
+  const withContent = buildProject('我是编辑框内容❤️😍', [buildModule('EU_SetElementText')]);
+  assert.match(withContent, /std::string ne_element_1_utf8_content = LB_NE_ToUtf8\(L"我是编辑框内容❤️😍"\);/u);
+  assert.ok(withContent.includes(applyLine), '声明 applyContentCommand 后必须在创建后应用显示内容');
+  assert.ok(
+    withContent.indexOf('int ne_element_1 = EU_CreateEditBox(') >= 0
+      && withContent.indexOf(applyLine) > withContent.indexOf('int ne_element_1 = EU_CreateEditBox('),
+    '显示内容应用必须发生在编辑框创建之后'
+  );
+
+  const withEmptyContent = buildProject('', [buildModule('EU_SetElementText')]);
+  assert.doesNotMatch(withEmptyContent, /_utf8_content/u);
+
+  const withoutDeclaration = buildProject('我是编辑框内容❤️😍', [buildModule(undefined)]);
+  assert.doesNotMatch(withoutDeclaration, /_utf8_content/u);
+});
+
 test('new_emoji 93 项目录生成类型化运行时创建和标记查找 C++', async () => {
   const moduleRoot = path.resolve('..', '.lingbuilder', 'module-build', 'lingbuilder.new_emoji.ui');
   const manifest = JSON.parse(await fs.readFile(path.join(moduleRoot, 'lingbuilder.module.json'), 'utf8')) as InstalledModule['manifest'];
@@ -1603,6 +1679,12 @@ test('new_emoji 93 项目录生成类型化运行时创建和标记查找 C++', 
         content: '静态',
         tagText: '静态确认',
         tagInteger: 0
+      }, {
+        ...createControl('editor', undefined, 'TextBox'),
+        name: '内容编辑框',
+        designerType: 'lingbuilder.new_emoji.ui/EditBox',
+        content: '设计器初始内容',
+        x: 40, y: 120, width: 260, height: 42
       }]
     }]
   };
@@ -1631,6 +1713,8 @@ test('new_emoji 93 项目录生成类型化运行时创建和标记查找 C++', 
   assert.equal((cpp.match(/static LingControlRef 通过标记文本获取NE/gu) || []).length, 93);
   assert.equal((cpp.match(/static LingControlRef 通过标记整数获取NE/gu) || []).length, 93);
   assert.match(cpp, /LB_NE_RegisterElement\(ne_element_1, L"Button", L"NE按钮", 0, L"静态按钮", L"静态确认", 0, false\)/u);
+  assert.match(cpp, /std::string ne_element_2_utf8_content = LB_NE_ToUtf8\(L"设计器初始内容"\);/u);
+  assert.match(cpp, /EU_SetElementText\(g_newEmojiWindow, ne_element_2, reinterpret_cast<const unsigned char\*>\(ne_element_2_utf8_content\.data\(\)\), static_cast<int>\(ne_element_2_utf8_content\.size\(\)\)\)/u);
   assert.match(cpp, /LingControlRef 动态按钮 = 控件_创建NE按钮\(0, 20, 20, 120, 36, L"确定", L"确认", -7\)/u);
   assert.match(cpp, /LingControlRef 查找按钮 = 通过标记文本获取NE按钮\(L"确认"\)/u);
   assert.match(cpp, /控件_设置文本\(LingCppControlWideName\(动态按钮\), L"动态确认"\);/u);

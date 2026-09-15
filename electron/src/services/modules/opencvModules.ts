@@ -11,7 +11,7 @@ export const OPENCV_VERSION = '4.14.0';
 
 interface OpenCvCommandSpec {
   name: string;
-  parameters?: Array<{ name: string; type: ModuleBindingValueType; description?: string }>;
+  parameters?: Array<{ name: string; type: ModuleBindingValueType; description: string }>;
   returnType: ModuleBindingValueType;
   description: string;
   returnDescription?: string;
@@ -37,42 +37,50 @@ const RETURN_LABELS: Record<ModuleBindingValueType, string> = {
   raw: '原生类型'
 };
 
-const p = (name: string, type: ModuleBindingValueType, description?: string) => ({ name, type, description });
+// 以下说明按 native/opencv-bridge/LingBuilderOpenCvBridge.cpp 的实际校验逻辑核实，重复语义提取为共享常量。
+const imageArg = 'OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。';
+const resultArg = 'OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。';
+const candidateIndexArg = '候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。';
+const savePathArg = '输出文件路径，支持中文；保存格式由扩展名决定，支持 png、jpg、jpeg 和 webp。';
+const maximumResultsArg = '最多返回的候选数量，1 到 100；超范围或小于 1 时返回失败并记录中文错误。';
+const minimumScoreArg = '保留候选的最低匹配分数，0 到 1；超出该范围返回失败并记录中文错误。';
+
+const p = (name: string, type: ModuleBindingValueType, description: string) => ({ name, type, description });
 
 const COMMANDS: OpenCvCommandSpec[] = [
   { name: 'OpenCV_取版本', returnType: 'wideString', description: '返回当前 Bridge 使用的 OpenCV 与 Bridge ABI 版本。', example: 'OpenCV_取版本()' },
   { name: 'OpenCV_加载图像', parameters: [p('路径', 'wideString', '支持中文路径的本地图像文件。'), p('读取模式', 'wideString', '彩色、灰度或原样。')], returnType: 'handle', description: '加载图像并返回受管图像句柄。', returnDescription: '成功返回 OpenCV图像句柄，失败返回 0。', example: 'OpenCV_加载图像("背景.png", "彩色")' },
-  { name: 'OpenCV_保存图像', parameters: [p('图像', 'handle'), p('路径', 'wideString'), p('质量', 'int', '0～100；JPEG 使用质量，PNG 使用压缩级别映射。')], returnType: 'bool', description: '按目标扩展名保存图像。', example: 'OpenCV_保存图像(图像, "输出.png", 95)' },
-  { name: 'OpenCV_克隆图像', parameters: [p('图像', 'handle')], returnType: 'handle', description: '深复制图像并返回新句柄。' },
-  { name: 'OpenCV_释放图像', parameters: [p('图像', 'handle')], returnType: 'bool', description: '释放一个受管图像句柄。' },
+  { name: 'OpenCV_保存图像', parameters: [p('图像', 'handle', imageArg), p('路径', 'wideString', savePathArg), p('质量', 'int', '0～100；JPEG 使用质量，PNG 使用压缩级别映射。')], returnType: 'bool', description: '按目标扩展名保存图像。', example: 'OpenCV_保存图像(图像, "输出.png", 95)' },
+  { name: 'OpenCV_克隆图像', parameters: [p('图像', 'handle', imageArg)], returnType: 'handle', description: '深复制图像并返回新句柄。' },
+  { name: 'OpenCV_释放图像', parameters: [p('图像', 'handle', imageArg)], returnType: 'bool', description: '释放一个受管图像句柄。' },
   { name: 'OpenCV_释放全部', returnType: 'void', description: '释放当前进程中全部 OpenCV 图像与结果句柄。' },
-  { name: 'OpenCV_取宽度', parameters: [p('图像', 'handle')], returnType: 'int', description: '返回图像像素宽度。' },
-  { name: 'OpenCV_取高度', parameters: [p('图像', 'handle')], returnType: 'int', description: '返回图像像素高度。' },
-  { name: 'OpenCV_取通道数', parameters: [p('图像', 'handle')], returnType: 'int', description: '返回图像通道数。' },
+  { name: 'OpenCV_取宽度', parameters: [p('图像', 'handle', imageArg)], returnType: 'int', description: '返回图像像素宽度。' },
+  { name: 'OpenCV_取高度', parameters: [p('图像', 'handle', imageArg)], returnType: 'int', description: '返回图像像素高度。' },
+  { name: 'OpenCV_取通道数', parameters: [p('图像', 'handle', imageArg)], returnType: 'int', description: '返回图像通道数。' },
   { name: 'OpenCV_取错误', returnType: 'wideString', description: '读取当前线程最近一次 OpenCV 操作的中文错误。' },
-  { name: 'OpenCV_灰度化', parameters: [p('图像', 'handle')], returnType: 'handle', description: '转换为灰度图并返回新句柄。' },
-  { name: 'OpenCV_缩放', parameters: [p('图像', 'handle'), p('宽度', 'int'), p('高度', 'int')], returnType: 'handle', description: '使用高质量插值缩放图像并返回新句柄。' },
-  { name: 'OpenCV_裁剪', parameters: [p('图像', 'handle'), p('横坐标', 'int'), p('纵坐标', 'int'), p('宽度', 'int'), p('高度', 'int')], returnType: 'handle', description: '裁剪图像区域并返回新句柄。' },
-  { name: 'OpenCV_高斯模糊', parameters: [p('图像', 'handle'), p('卷积核', 'int', '1～31 的正奇数。'), p('Sigma', 'double')], returnType: 'handle', description: '执行高斯模糊并返回新句柄。' },
-  { name: 'OpenCV_二值化', parameters: [p('图像', 'handle'), p('阈值', 'double'), p('模式', 'wideString', '二值、反二值、大津或大津反向。')], returnType: 'handle', description: '灰度化后执行固定或大津二值化。' },
-  { name: 'OpenCV_自适应二值化', parameters: [p('图像', 'handle'), p('块大小', 'int', '3～99 的正奇数。'), p('常数', 'double'), p('反向', 'bool')], returnType: 'handle', description: '执行高斯自适应二值化。' },
-  { name: 'OpenCV_Canny边缘', parameters: [p('图像', 'handle'), p('低阈值', 'double'), p('高阈值', 'double')], returnType: 'handle', description: '灰度化后执行 Canny 边缘检测。' },
-  { name: 'OpenCV_形态学', parameters: [p('图像', 'handle'), p('操作', 'wideString', '腐蚀、膨胀、开运算、闭运算或梯度。'), p('卷积核', 'int'), p('次数', 'int')], returnType: 'handle', description: '执行形态学操作并返回新句柄。' },
-  { name: 'OpenCV_模板匹配', parameters: [p('图像', 'handle'), p('模板', 'handle'), p('方法', 'wideString', '平方差、相关或相关系数。'), p('最低分数', 'double'), p('最大结果数', 'int')], returnType: 'handle', description: '执行模板匹配和重叠抑制，返回受管分析结果。', returnDescription: '成功返回 OpenCV结果句柄；没有候选时仍返回有效句柄。' },
-  { name: 'OpenCV_查找轮廓', parameters: [p('图像', 'handle'), p('最小面积', 'double'), p('最大面积', 'double', '0 表示不限制。'), p('最大结果数', 'int')], returnType: 'handle', description: '查找外部轮廓并按面积排序返回矩形候选。' },
-  { name: 'OpenCV_分析缺口', parameters: [p('背景图像', 'handle'), p('滑块图像', 'handle', '传 0 时只使用轮廓模式。'), p('候选数量', 'int', '1～8。'), p('配置JSON', 'wideString', '空文本或 {} 使用默认配置。')], returnType: 'handle', description: '使用模板边缘与轮廓的确定性规则分析单缺口或双缺口候选。', returnDescription: '成功返回 OpenCV结果句柄；未发现候选时结果数量为 0。', example: 'OpenCV_分析缺口(背景图, 0, 2, "{}")' },
-  { name: 'OpenCV结果_取类型', parameters: [p('结果', 'handle')], returnType: 'wideString', description: '返回模板匹配、轮廓或缺口。' },
-  { name: 'OpenCV结果_取数量', parameters: [p('结果', 'handle')], returnType: 'int', description: '返回候选项数量。' },
-  { name: 'OpenCV结果_取横坐标', parameters: [p('结果', 'handle'), p('索引', 'int')], returnType: 'int', description: '返回候选矩形左上角横坐标。' },
-  { name: 'OpenCV结果_取纵坐标', parameters: [p('结果', 'handle'), p('索引', 'int')], returnType: 'int', description: '返回候选矩形左上角纵坐标。' },
-  { name: 'OpenCV结果_取宽度', parameters: [p('结果', 'handle'), p('索引', 'int')], returnType: 'int', description: '返回候选矩形宽度。' },
-  { name: 'OpenCV结果_取高度', parameters: [p('结果', 'handle'), p('索引', 'int')], returnType: 'int', description: '返回候选矩形高度。' },
-  { name: 'OpenCV结果_取中心横坐标', parameters: [p('结果', 'handle'), p('索引', 'int')], returnType: 'int', description: '返回候选中心横坐标。' },
-  { name: 'OpenCV结果_取中心纵坐标', parameters: [p('结果', 'handle'), p('索引', 'int')], returnType: 'int', description: '返回候选中心纵坐标。' },
-  { name: 'OpenCV结果_取置信度', parameters: [p('结果', 'handle'), p('索引', 'int')], returnType: 'double', description: '返回 0～1 的候选置信度。' },
-  { name: 'OpenCV结果_取JSON', parameters: [p('结果', 'handle')], returnType: 'wideString', description: '返回 schemaVersion 1 的 UTF-16 JSON 结果。' },
-  { name: 'OpenCV结果_保存标注图', parameters: [p('结果', 'handle'), p('路径', 'wideString'), p('质量', 'int')], returnType: 'bool', description: '保存带候选矩形和置信度标注的调试图。' },
-  { name: 'OpenCV结果_释放', parameters: [p('结果', 'handle')], returnType: 'bool', description: '释放一个受管分析结果句柄。' }
+  { name: 'OpenCV_灰度化', parameters: [p('图像', 'handle', imageArg)], returnType: 'handle', description: '转换为灰度图并返回新句柄。' },
+  { name: 'OpenCV_缩放', parameters: [p('图像', 'handle', imageArg), p('宽度', 'int', '缩放后的目标宽度，像素；必须大于 0 且与高度的乘积不超过 100MP。'), p('高度', 'int', '缩放后的目标高度，像素；必须大于 0 且与宽度的乘积不超过 100MP。')], returnType: 'handle', description: '使用高质量插值缩放图像并返回新句柄。' },
+  { name: 'OpenCV_裁剪', parameters: [p('图像', 'handle', imageArg), p('横坐标', 'int', '裁剪起点列坐标，从 0 起；不能为负，且与宽度之和不得超出图像宽度。'), p('纵坐标', 'int', '裁剪起点行坐标，从 0 起；不能为负，且与高度之和不得超出图像高度。'), p('宽度', 'int', '裁剪区域宽度，像素；必须大于 0。'), p('高度', 'int', '裁剪区域高度，像素；必须大于 0。')], returnType: 'handle', description: '裁剪图像区域并返回新句柄。' },
+  { name: 'OpenCV_高斯模糊', parameters: [p('图像', 'handle', imageArg), p('卷积核', 'int', '1～31 的正奇数。'), p('Sigma', 'double', '高斯核标准差，不能为负数；传 0 时按卷积核大小自动推算。')], returnType: 'handle', description: '执行高斯模糊并返回新句柄。' },
+  { name: 'OpenCV_二值化', parameters: [p('图像', 'handle', imageArg), p('阈值', 'double', '像素灰度分界值，通常取 0 到 255；选择大津或大津反向模式时由算法自动求阈值。'), p('模式', 'wideString', '二值、反二值、大津或大津反向。')], returnType: 'handle', description: '灰度化后执行固定或大津二值化。' },
+  { name: 'OpenCV_自适应二值化', parameters: [p('图像', 'handle', imageArg), p('块大小', 'int', '3～99 的正奇数。'), p('常数', 'double', '从局部加权均值中减去的常数，可正可负。'), p('反向', 'bool', '传真时把结果反相输出。')], returnType: 'handle', description: '执行高斯自适应二值化。' },
+  { name: 'OpenCV_Canny边缘', parameters: [p('图像', 'handle', imageArg), p('低阈值', 'double', '从局部加权均值中减去的常数，可正可负。'), p('高阈值', 'double', '传真时把结果反相输出。')], returnType: 'handle', description: '灰度化后执行 Canny 边缘检测。' },
+  { name: 'OpenCV_形态学', parameters: [p('图像', 'handle', imageArg), p('操作', 'wideString', '腐蚀、膨胀、开运算、闭运算或梯度。'), p('卷积核', 'int', '结构元尺寸，1 到 31 的正奇数。'), p('次数', 'int', '同一形态学操作重复的次数，1 到 100。')], returnType: 'handle', description: '执行形态学操作并返回新句柄。' },
+  { name: 'OpenCV_模板匹配', parameters: [p('图像', 'handle', imageArg), p('模板', 'handle', '作为模板的图像句柄，尺寸不得大于待匹配图像。'), p('方法', 'wideString', '平方差、相关或相关系数。'), p('最低分数', 'double', minimumScoreArg), p('最大结果数', 'int', maximumResultsArg)], returnType: 'handle', description: '执行模板匹配和重叠抑制，返回受管分析结果。', returnDescription: '成功返回 OpenCV结果句柄；没有候选时仍返回有效句柄。' },
+  { name: 'OpenCV_查找轮廓', parameters: [p('图像', 'handle', imageArg), p('最小面积', 'double', '作为模板的图像句柄，尺寸不得大于待匹配图像。'), p('最大面积', 'double', '0 表示不限制。'), p('最大结果数', 'int', maximumResultsArg)], returnType: 'handle', description: '查找外部轮廓并按面积排序返回矩形候选。' },
+  { name: 'OpenCV_分析缺口', parameters: [p('背景图像', 'handle', '作为背景的整图句柄，检测按配置 JSON 中的 ROI 在其上执行。'), p('滑块图像', 'handle', '传 0 时只使用轮廓模式。'), p('候选数量', 'int', '1～8。'), p('配置JSON', 'wideString', '空文本或 {} 使用默认配置。')], returnType: 'handle', description: '使用模板边缘与轮廓的确定性规则分析单缺口或双缺口候选。', returnDescription: '成功返回 OpenCV结果句柄；未发现候选时结果数量为 0。', example: 'OpenCV_分析缺口(背景图, 0, 2, "{}")' },
+  { name: 'OpenCV结果_取类型', parameters: [p('结果', 'handle', '作为背景的整图句柄，检测按配置 JSON 中的 ROI 在其上执行。')], returnType: 'wideString', description: '返回模板匹配、轮廓或缺口。' },
+  { name: 'OpenCV结果_取数量', parameters: [p('结果', 'handle', resultArg)], returnType: 'int', description: '返回候选项数量。' },
+  { name: 'OpenCV结果_取横坐标', parameters: [p('结果', 'handle', resultArg), p('索引', 'int', candidateIndexArg)], returnType: 'int', description: '返回候选矩形左上角横坐标。' },
+  { name: 'OpenCV结果_取纵坐标', parameters: [p('结果', 'handle', resultArg), p('索引', 'int', candidateIndexArg)], returnType: 'int', description: '返回候选矩形左上角纵坐标。' },
+  { name: 'OpenCV结果_取宽度', parameters: [p('结果', 'handle', resultArg), p('索引', 'int', candidateIndexArg)], returnType: 'int', description: '返回候选矩形宽度。' },
+  { name: 'OpenCV结果_取高度', parameters: [p('结果', 'handle', resultArg), p('索引', 'int', candidateIndexArg)], returnType: 'int', description: '返回候选矩形高度。' },
+  { name: 'OpenCV结果_取中心横坐标', parameters: [p('结果', 'handle', resultArg), p('索引', 'int', candidateIndexArg)], returnType: 'int', description: '返回候选中心横坐标。' },
+  { name: 'OpenCV结果_取中心纵坐标', parameters: [p('结果', 'handle', resultArg), p('索引', 'int', candidateIndexArg)], returnType: 'int', description: '返回候选中心纵坐标。' },
+  { name: 'OpenCV结果_取置信度', parameters: [p('结果', 'handle', resultArg), p('索引', 'int', candidateIndexArg)], returnType: 'double', description: '返回 0～1 的候选置信度。' },
+  { name: 'OpenCV结果_取JSON', parameters: [p('结果', 'handle', resultArg)], returnType: 'wideString', description: '返回 schemaVersion 1 的 UTF-16 JSON 结果。' },
+  { name: 'OpenCV结果_保存标注图', parameters: [p('结果', 'handle', resultArg), p('路径', 'wideString', savePathArg), p('质量', 'int', '编码质量，0 到 100，超出范围会被夹到端点；PNG 按该值换算压缩级别。')], returnType: 'bool', description: '保存带候选矩形和置信度标注的调试图。' },
+  { name: 'OpenCV结果_释放', parameters: [p('结果', 'handle', resultArg)], returnType: 'bool', description: '释放一个受管分析结果句柄。' }
 ];
 
 function contribution(spec: OpenCvCommandSpec): ModuleCommandContribution {

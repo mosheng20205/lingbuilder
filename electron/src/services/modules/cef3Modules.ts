@@ -6,7 +6,7 @@ import type {
   ModuleCommandContribution,
   ModuleTypeContribution
 } from './types';
-import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter } from './bindingValueType';
+import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, withParamDocs, type ParamDocTable } from './bindingValueType';
 
 const CEF3_ALPHA_VERSION = '3.0.0-alpha.3';
 const CORE_DEPENDENCY = [{ moduleId: 'lingbuilder.cef3.browser', minimumVersion: CEF3_ALPHA_VERSION }];
@@ -79,6 +79,164 @@ function module(
     bindings: { commands: entries.map(entry => entry.binding) }
   };
 }
+
+const CEF3_EVENT_PARAM_DOCS: ParamDocTable = {
+  字段名: '当前事件 JSON 中的字段名，取值见各事件说明。',
+  动作: '同步事件动作码：0 默认、1 继续、2 取消、3 已处理；超出 0~3 设置失败返回 0。',
+  事件名: '要绑定的浏览器事件名（中文事件名，如 "加载完成"），须与事件清单一致。',
+  文本: '同步事件返回给调用方的文本内容。'
+};
+
+const CEF3_OBJECTS_PARAM_DOCS: ParamDocTable = {
+  任务ID: '异步命令返回的受管任务 ID；用 CEF3任务_释放 回收，释放后再用返回稳定错误码。',
+  十六进制: '偶数长度的十六进制文本，如 "89504e47"。',
+  路径: '项目允许文件根目录内的文件路径；越界、空路径或无法打开时返回 0 或失败。',
+  缓冲句柄: 'CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。',
+  另一缓冲句柄: '参与比较的另一个受管缓冲句柄。',
+  值句柄: 'CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。',
+  另一值句柄: '参与比较的另一个 CEF 值受管句柄。',
+  值: '要写入的值。',
+  字典句柄: 'CEF3字典_创建 等返回的 CEF 字典受管句柄。',
+  另一字典句柄: '参与比较的另一个 CEF 字典受管句柄。',
+  键: '字典键名；键不存在时按各命令说明返回默认值。',
+  排除空子项: '真=复制时跳过值为空的子项。',
+  列表句柄: 'CEF3列表_创建 等返回的 CEF 列表受管句柄。',
+  另一列表句柄: '参与比较的另一个 CEF 列表受管句柄。',
+  索引: '菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。',
+  数量: '新列表长度；扩大的位置填充空值。',
+  菜单句柄: 'CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。',
+  命令ID: '菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。',
+  标题: '菜单项标题文本。',
+  组ID: '单选项目分组 ID；同组内的单选项互斥。',
+  可见: '真=显示，假=隐藏。',
+  启用: '真=可用，假=置灰。',
+  勾选: '真=勾选，假=取消勾选。',
+  键码: '快捷键虚拟键码，如 13=回车、65=字母 A。',
+  Shift: '是否按住 Shift 键。',
+  Ctrl: '是否按住 Ctrl 键。',
+  Alt: '是否按住 Alt 键。',
+  颜色类型: 'CEF 菜单颜色类型常量，指定设置或读取哪一类颜色（文字、悬停背景等）。',
+  'CEF3图像_添加位图::颜色类型': '位图像素颜色类型常量（BGRA/RGBA 等），决定像素缓冲布局。',
+  'CEF3图像_取位图缓冲::颜色类型': '位图像素颜色类型常量，决定导出缓冲的像素布局。',
+  颜色: '32 位 CEF 颜色值，0xAARRGGBB 布局。',
+  字体描述: 'CSS 字体列表文本，如 "Microsoft YaHei, Arial"。',
+  图像句柄: 'CEF3图像_创建 返回的图像受管句柄。',
+  另一图像句柄: '参与比较的另一个图像受管句柄。',
+  缩放: '缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。',
+  像素宽度: '位图像素宽度；像素缓冲大小必须等于 宽×高×4。',
+  像素高度: '位图像素高度；像素缓冲大小必须等于 宽×高×4。',
+  透明类型: '像素透明类型常量，决定透明通道的解释方式。',
+  像素缓冲: '含原始像素数据的受管缓冲句柄，大小必须为 宽×高×4 字节。',
+  PNG缓冲: '含 PNG 编码数据的受管缓冲句柄。',
+  JPEG缓冲: '含 JPEG 编码数据的受管缓冲句柄。',
+  质量: 'JPEG 编码质量 0~100。',
+  保留透明: '真=保留 PNG 透明通道。',
+  导航项句柄: 'CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。',
+  仅当前项: '真=只读取当前可见导航项，假=读取全部历史。',
+  证书句柄: 'CEF3证书_取当前 返回的证书不可变快照受管句柄。',
+  主体句柄: 'CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。'
+};
+
+const CEF3_SESSION_PARAM_DOCS: ParamDocTable = {
+  上下文句柄: 'CEF3会话_取上下文 返回的 RequestContext 受管句柄；用 CEF3会话_释放上下文 释放。',
+  名称: 'Cookie 名称；删除命令传空文本时删除该地址全部 Cookie。',
+  'CEF3会话_是否有首选项::名称': '首选项名称（点分路径）。',
+  'CEF3会话_首选项是否可写::名称': '首选项名称（点分路径）。',
+  'CEF3会话_取首选项::名称': '首选项名称（点分路径）。',
+  'CEF3会话_设置首选项::名称': '首选项名称（点分路径）。',
+  值: 'Cookie 内容文本。',
+  值句柄: '首选项值的 CEF 值受管句柄；设置时传 0 恢复默认。',
+  地址: 'Cookie 目标的完整 URL（含协议），如 "https://example.com/"。',
+  包含HttpOnly: '真=包含 HttpOnly Cookie。',
+  包含默认值: '真=结果包含未显式设置的默认值。',
+  域: 'Cookie 归属域，如 "example.com"。',
+  路径: 'Cookie 生效路径，如 "/"。',
+  安全: '真=仅 HTTPS 传输（Secure）。',
+  HttpOnly: '真=禁止页面脚本读取（HttpOnly）。',
+  过期Unix秒: '过期时间 Unix 秒；小于等于 0 创建会话 Cookie（关闭浏览器即失效）。'
+};
+
+const CEF3_NETWORK_PARAM_DOCS: ParamDocTable = {
+  代理地址: '代理地址，格式 "scheme://host:port"；空文本表示直连。必须在浏览器创建前设置。',
+  证书状态: 'CEF 证书状态位掩码（CERT_STATUS_*），可取自 CEF3证书_取证书状态 或证书相关事件。'
+};
+
+const CEF3_TRANSFER_PARAM_DOCS: ParamDocTable = {
+  地址: '要下载的资源完整 URL（含协议）。',
+  路径: '项目允许文件根目录内的文件路径；越界、空路径或无法打开时返回 0。',
+  缓冲句柄: 'Bridge 受管缓冲句柄；读取流会保留源缓冲，源句柄释放后仍可继续读取。',
+  可能阻塞: '线程调度提示：真=告诉 CEF 该处理器的读写可能阻塞。',
+  读取处理器句柄: 'CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。',
+  写入处理器句柄: 'CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。',
+  读取流句柄: '读取流受管句柄（CEF3读取流句柄 类型）。',
+  写入流句柄: '写入流受管句柄（CEF3写入流句柄 类型）。',
+  最大字节数: '单次读取上限（字节），不超过 64 MiB。',
+  偏移量: '目标字节偏移；基准为当前位置时可为负。',
+  起始偏移: '源受管缓冲中数据起始字节下标，从 0 起。',
+  写入字节数: '要写入的字节数；单次和总容量均不超过 64 MiB。',
+  基准: '定位基准：0 开头、1 当前位置、2 结尾（写入处理器为当前内存结尾）。'
+};
+
+const CEF3_AUTOMATION_PARAM_DOCS: ParamDocTable = {
+  脚本: '要执行或注入的 JavaScript 源码文本。',
+  名称: 'JSHook 自定义名称，用于识别和管理。',
+  地址匹配: 'Frame URL 通配符匹配文本（如 "*.example.com/*"），传 "*" 匹配全部。',
+  全部框架: '真=在全部子 Frame 注入，假=只在主 Frame。',
+  立即执行当前上下文: '真=对已存在的 V8 上下文立即执行一次。',
+  Hook句柄: 'CEF3Hook_注册脚本 返回的受管 Hook 句柄。',
+  请求ID: '页面 LingBuilder调用宿主 请求的唯一 ID，取自对应事件字段。',
+  是否成功: '真=页面 Promise 按 resolve 完成，假=按 reject 拒绝。',
+  返回文本: '返回给页面的结果文本。'
+};
+
+const CEF3_DEVTOOLS_PARAM_DOCS: ParamDocTable = {
+  方法名: 'DevTools Protocol 方法名，如 "Runtime.enable"。',
+  参数JSON: '方法参数 JSON 对象文本；无参数传 "{}"。',
+  启用: '真=开启订阅并投递对应事件，假=停止。'
+};
+
+const CEF3_VIEWS_PARAM_DOCS: ParamDocTable = {
+  地址: '新窗口要打开的完整 URL（含协议）。'
+};
+
+const CEF3_PLATFORM_PARAM_DOCS: ParamDocTable = {
+  任务句柄: '异步命令返回的受管任务句柄；用 CEF3任务_取结果 读取结果，用 CEF3任务_释放 回收。',
+  任务运行器句柄: '受管 CEF 任务运行器句柄（由取当前/指定线程任务运行器或线程取任务运行器获得）。',
+  另一任务运行器句柄: '参与比较的另一个任务运行器受管句柄。',
+  CEF线程ID: 'CEF 公开线程枚举值（如 UI 线程 TID_UI）。',
+  延迟毫秒数: '延迟执行的毫秒数，0 表示尽快执行。',
+  类别: 'Trace 类别过滤文本，如 "*" 或逗号分隔的类别列表。',
+  输出文件: '跟踪数据输出文件路径；空文本由 CEF 创建临时文件，路径见任务结果 tracingFile 字段。',
+  MIME类型: '小写 MIME 类型，如 "text/plain"。',
+  扩展名: '文件扩展名，可带前导点号。',
+  允许: '真=允许嵌套任务。',
+  任务管理器句柄: 'CEF3平台_取任务管理器 返回的全局任务管理器受管句柄。',
+  'CEF3平台_任务管理器终止任务::任务ID': '任务管理器返回的任务 ID（取自 CEF3平台_任务管理器取任务ID数组），不是受管异步任务 ID。',
+  'CEF3平台_任务管理器取任务信息::任务ID': '任务管理器返回的任务 ID（取自 CEF3平台_任务管理器取任务ID数组），不是受管异步任务 ID。',
+  浏览器ID: '目标浏览器的 CEF 浏览器 ID。',
+  显示名称: '线程调试显示名称。',
+  优先级: '线程优先级 0~3。',
+  消息循环类型: '消息循环类型：0 默认、1 UI、2 IO；STA COM 必须使用 UI。',
+  可停止: '真=允许 CEF3平台_停止专用线程 停止。',
+  COM初始化模式: 'COM 初始化模式：0 无、1 STA、2 MTA；STA 必须使用 UI 消息循环。',
+  线程句柄: 'CEF3平台_创建专用线程 返回的受管线程句柄。',
+  组件句柄: '组件快照受管句柄（由组件更新器查询接口产生）。',
+  组件更新器句柄: '组件更新器的受管句柄。',
+  组件ID: '组件唯一标识，可从组件数组查询获得。',
+  进程类型: '目标子进程类型；空文本应用到浏览器及全部子进程。',
+  开关名: '命令行开关名（不带 -- 前缀），CEF 规范化为小写。',
+  开关值: '开关值文本，允许为空。',
+  参数: '要添加的非开关参数文本。',
+  自动重置: '真=触发后自动恢复未触发状态。',
+  初始已触发: '真=创建时即为已触发状态。',
+  事件句柄: 'CEF3平台_创建可等待事件 返回的受管等待事件句柄。',
+  最大毫秒: '最长等待毫秒数；UI 和 IO 线程禁止调用等待。',
+  命令行句柄: 'CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。',
+  参数数组: 'UTF-16 文本数组；首项必须是程序名。',
+  命令行文本: 'GetCommandLineW 格式的完整命令行文本。',
+  程序: '可执行程序路径或名称。',
+  包装器: '前置包装命令文本，如 "gdb --args"。'
+};
 
 const eventEntries = [
   api('CEF3事件_取最近事件', 'LB_CEF3_GetLastEvent', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得指定浏览器最近事件名。', { runtimeName: 'CEF3_取最近事件' }),
@@ -504,13 +662,13 @@ const platformTypes: ModuleTypeContribution[] = [
 ];
 
 export const CEF3_SUBMODULES: LingBuilderModuleManifest[] = [
-  module('lingbuilder.cef3.events', 'CEF3事件模块', '界面', '提供浏览器事件数据、同步决策和处理器引用绑定。', eventEntries),
-  module('lingbuilder.cef3.objects', 'CEF3受管对象模块', '系统', '提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。', objectEntries),
-  module('lingbuilder.cef3.session', 'CEF3会话模块', '网络', '提供每实例RequestContext、缓存和Cookie隔离会话能力。', sessionEntries, true),
-  module('lingbuilder.cef3.network', 'CEF3网络模块', '网络', '提供实例级代理及后续请求/响应扩展入口。', networkEntries),
-  module('lingbuilder.cef3.transfer', 'CEF3传输模块', '网络', '提供下载、打印、受管二进制流和读写处理器能力。', transferEntries, true, transferTypes),
-  module('lingbuilder.cef3.automation', 'CEF3自动化模块', '系统', '提供异步JavaScript任务及后续DOM/V8能力。', automationEntries, true),
-  module('lingbuilder.cef3.devtools', 'CEF3开发者工具模块', '系统', '提供受设计器策略控制的DevTools入口。', devtoolsEntries),
-  module('lingbuilder.cef3.views', 'CEF3视图模块', '界面', '提供Chrome Runtime独立窗口入口。', viewsEntries),
-  module('lingbuilder.cef3.platform', 'CEF3平台工具模块', '系统', '提供CEF版本与平台工具能力。', platformEntries, false, platformTypes)
+  module('lingbuilder.cef3.events', 'CEF3事件模块', '界面', '提供浏览器事件数据、同步决策和处理器引用绑定。', withParamDocs(CEF3_EVENT_PARAM_DOCS, eventEntries)),
+  module('lingbuilder.cef3.objects', 'CEF3受管对象模块', '系统', '提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。', withParamDocs(CEF3_OBJECTS_PARAM_DOCS, objectEntries)),
+  module('lingbuilder.cef3.session', 'CEF3会话模块', '网络', '提供每实例RequestContext、缓存和Cookie隔离会话能力。', withParamDocs(CEF3_SESSION_PARAM_DOCS, sessionEntries), true),
+  module('lingbuilder.cef3.network', 'CEF3网络模块', '网络', '提供实例级代理及后续请求/响应扩展入口。', withParamDocs(CEF3_NETWORK_PARAM_DOCS, networkEntries)),
+  module('lingbuilder.cef3.transfer', 'CEF3传输模块', '网络', '提供下载、打印、受管二进制流和读写处理器能力。', withParamDocs(CEF3_TRANSFER_PARAM_DOCS, transferEntries), true, transferTypes),
+  module('lingbuilder.cef3.automation', 'CEF3自动化模块', '系统', '提供异步JavaScript任务及后续DOM/V8能力。', withParamDocs(CEF3_AUTOMATION_PARAM_DOCS, automationEntries), true),
+  module('lingbuilder.cef3.devtools', 'CEF3开发者工具模块', '系统', '提供受设计器策略控制的DevTools入口。', withParamDocs(CEF3_DEVTOOLS_PARAM_DOCS, devtoolsEntries)),
+  module('lingbuilder.cef3.views', 'CEF3视图模块', '界面', '提供Chrome Runtime独立窗口入口。', withParamDocs(CEF3_VIEWS_PARAM_DOCS, viewsEntries)),
+  module('lingbuilder.cef3.platform', 'CEF3平台工具模块', '系统', '提供CEF版本与平台工具能力。', withParamDocs(CEF3_PLATFORM_PARAM_DOCS, platformEntries), false, platformTypes)
 ];

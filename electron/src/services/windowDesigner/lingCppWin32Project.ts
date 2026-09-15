@@ -29,6 +29,7 @@ import {
   getModuleRecordDataTypes
 } from '../modules/modulePublicTypeService';
 import { parseLingCppControlFlowLine } from '../lingCpp/controlFlow';
+import { parseLingCppTextBlockStatement } from '../lingCpp/textBlock';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from '../lingCpp/parameterTypeService';
 import { createProjectGlobalContext, getProjectGlobalDiagnostics, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, getProjectDataTypeDiagnostics, isProjectDataTypesFilePath, sortProjectDataTypes } from '../lingCpp/projectDataTypeService';
@@ -266,6 +267,11 @@ export interface GenerateLingCppNativeWin32ProjectOptions {
   lingCppSourceFilePath?: string;
   lingCppSources?: LingCppProjectSourceFile[];
   enabledModules?: InstalledModule[];
+  /**
+   * 产物形态：application（缺省，wWinMain + 消息循环）、dynamic-library（DllMain + 导出“公开”子程序）
+   * 或 console-application（wmain 入口 + 类的“公开 整数型 启动()”作为程序主体，无窗口、无消息循环）。
+   */
+  outputKind?: 'application' | 'dynamic-library' | 'console-application';
 }
 
 interface GeneratedWindowClassBlock {
@@ -321,17 +327,37 @@ export function generateLingCppNativeWin32Project(
 ): GeneratedLingCppNativeProject {
   const enabledModules = options.enabledModules || [];
   const projectSources = normalizeProjectSources(options);
-  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, project);
-  const selectedWindow = resolveNativeWindowForSource(project, options, aggregate.program);
+  // 控制台模式：以“公开 启动()”子程序所在类为程序主体；设计器窗口类名与源码类名不一致时
+  // 以源码为准修正生成窗口（只调整本次生成的内存模型，不改写设计器持久化数据）。
+  const consoleStartup = options.outputKind === 'console-application'
+    ? resolveConsoleStartupEntry(projectSources.map(source => source.sourceCode))
+    : undefined;
+  const effectiveProject = consoleStartup?.entry
+    ? withConsoleStartupWindow(project, consoleStartup.entry.className)
+    : project;
+  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, effectiveProject);
+  const selectedWindow = resolveNativeWindowForSource(effectiveProject, options, aggregate.program);
   const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
   const newEmojiModuleEnabled = enabledModules.some(module => module.manifest.id === NEW_EMOJI_MODULE_ID);
   const selectedBackendId = selectedWindow.designerBackend || (newEmojiModuleEnabled ? NEW_EMOJI_UI_BACKEND_ID : WIN32_UI_BACKEND_ID);
   const edgeViewApiUsage = collectEdgeViewApiUsage(aggregate.program.source);
   const usesNewEmojiDesigner = selectedBackendId === NEW_EMOJI_UI_BACKEND_ID;
   const hasNativeLayoutGenerator = selectedBackendId === WIN32_UI_BACKEND_ID || usesNewEmojiDesigner;
+  const dynamicLibraryRequested = options.outputKind === 'dynamic-library';
+  // 动态库输出当前仅支持标准 Win32 后端；new_emoji 后端的窗口/消息循环由 new_emoji 运行时托管，不能作为逻辑库导出。
+  // 控制台输出不创建窗口，强制使用标准 Win32 后端的生成窗口类（仅作为“启动”子程序的宿主）。
+  const outputKind: 'application' | 'dynamic-library' | 'console-application' = consoleStartup
+    ? 'console-application'
+    : dynamicLibraryRequested && !usesNewEmojiDesigner ? 'dynamic-library' : 'application';
+  const dynamicLibraryEntry = outputKind === 'dynamic-library'
+    ? generateDynamicLibraryEntrySection(effectiveProject, aggregate.program, enabledModules)
+    : undefined;
+  const consoleEntry = outputKind === 'console-application' && consoleStartup?.entry
+    ? generateConsoleEntrySection(effectiveProject, aggregate.program, { ...consoleStartup, entry: consoleStartup.entry })
+    : undefined;
   const mainCppContent = usesNewEmojiDesigner
-    ? generateNewEmojiMainCpp(project, selectedWindow, aggregate.program, enabledModules)
-    : generateMainCpp(project, selectedWindow, { ...aggregate.baseAst, program: aggregate.program }, enabledModules);
+    ? generateNewEmojiMainCpp(effectiveProject, selectedWindow, aggregate.program, enabledModules)
+    : generateMainCpp(effectiveProject, selectedWindow, { ...aggregate.baseAst, program: aggregate.program }, enabledModules, dynamicLibraryEntry?.section, consoleEntry);
   const backendModuleDiagnostics = usesNewEmojiDesigner && !newEmojiModuleEnabled
     ? ['当前窗口使用 new_emoji 后端，但项目尚未启用 lingbuilder.new_emoji.ui 模块。']
     : [];
@@ -381,6 +407,9 @@ export function generateLingCppNativeWin32Project(
       .filter(control => control.fontBold === true || control.fontItalic === true || control.fontUnderline === true)
       .map(control => `new_emoji 控件“${control.name}”已保留粗体/斜体/下划线属性，但当前 DLL 通用字体 API 仅支持字体名称和字号。`)
     : [];
+  const dynamicLibraryMismatchDiagnostics = dynamicLibraryRequested && usesNewEmojiDesigner
+    ? ['动态库输出当前仅支持标准 Win32 后端；new_emoji 窗口请使用 EXE 应用模式。']
+    : [];
   const customIconDiagnostics = project.windows.flatMap(window => {
     if (window.iconStyle !== 'custom') return [];
     if (!window.iconPath?.trim()) return [`窗口“${window.title}”选择了自定义图标，但尚未指定 ICO 文件。`];
@@ -410,9 +439,11 @@ export function generateLingCppNativeWin32Project(
       ...customIconDiagnostics,
       ...legacyUploadDiagnostics,
       ...newEmojiControlReferenceDiagnostics,
-      ...resourceDiagnostics
+      ...resourceDiagnostics,
+      ...(dynamicLibraryEntry?.diagnostics ?? []),
+      ...dynamicLibraryMismatchDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? [])],
     sourceMap,
     files: [
       {
@@ -1038,7 +1069,13 @@ const NEW_EMOJI_DATA_BRIDGE_COMMANDS = [
   'NE富列表_取模板', 'NE富列表_取条目们', 'NE富列表_取条目', 'NE富列表_取选中键', 'NE富列表_取选项',
   'NE富列表_取样式', 'NE富列表_取倒计时状态', 'NE富列表_更新条目', 'NE富列表_删除条目', 'NE富列表_条目覆盖',
   'NE富列表_追加倒计时', 'NE富列表_清空条目',
-  'NE_设置窗口图标字节', 'NE_显示提问框', 'NE_显示通知', 'NE_显示加载遮罩', 'NE_关闭加载遮罩'
+  'NE_设置窗口图标字节', 'NE_显示提问框', 'NE_显示通知', 'NE_显示加载遮罩', 'NE_关闭加载遮罩',
+  'NE标签页_设置激活索引', 'NE标签页_取激活索引', 'NE标签页_取激活标题', 'NE标签页_取项目数量',
+  'NE标签页_添加项目', 'NE标签页_关闭项目', 'NE标签页_设置滚动偏移', 'NE标签页_滚动',
+  'NE标签页_设置标签样式', 'NE标签页_设置标签位置', 'NE标签页_设置表头对齐',
+  'NE标签页_设置表头可见', 'NE标签页_设置可编辑', 'NE标签页_设置内容可见',
+  'NE标签页_启用浏览器模式', 'NE标签页_设置浏览器度量', 'NE标签页_设置项目图标',
+  'NE标签页_设置项目可关闭', 'NE标签页_设置项目状态', 'NE标签页_设置新建按钮可见', 'NE标签页_设置拖拽选项'
 ];
 
 // 数据桥接助手按需生成：源码未引用这些命令时不产出任何助手，
@@ -1752,6 +1789,157 @@ static int NE表格_导入Excel(const wchar_t* controlName, const std::wstring& 
     if (!element) return -1;
     const std::string utf8 = LB_NE_ToUtf8(filePath.c_str());
     return EU_ImportTableExcel(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()), flags);
+}
+
+// ===== 标签页运行时操作族（void 导出一律返回元素是否解析成功） =====
+static int NE标签页_设置激活索引(const wchar_t* controlName, int index) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsActive(g_newEmojiWindow, element->id, index);
+    return 1;
+}
+
+static int NE标签页_取激活索引(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return -1;
+    return EU_GetTabsActive(g_newEmojiWindow, element->id);
+}
+
+static std::wstring NE标签页_取激活标题(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return {};
+    return LB_NE_FetchUtf8Text([&](unsigned char* buffer, int size) {
+        return EU_GetTabsActiveName(g_newEmojiWindow, element->id, buffer, size);
+    });
+}
+
+static int NE标签页_取项目数量(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    return EU_GetTabsItemCount(g_newEmojiWindow, element->id);
+}
+
+static int NE标签页_添加项目(const wchar_t* controlName, const std::wstring& title) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    const std::string titleUtf8 = LB_NE_ToUtf8(title.c_str());
+    EU_AddTabsItem(g_newEmojiWindow, element->id,
+        reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()));
+    return 1;
+}
+
+static int NE标签页_关闭项目(const wchar_t* controlName, int index) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_CloseTabsItem(g_newEmojiWindow, element->id, index);
+    return 1;
+}
+
+static int NE标签页_设置滚动偏移(const wchar_t* controlName, int offset) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsScroll(g_newEmojiWindow, element->id, offset);
+    return 1;
+}
+
+static int NE标签页_滚动(const wchar_t* controlName, int delta) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_TabsScroll(g_newEmojiWindow, element->id, delta);
+    return 1;
+}
+
+static int NE标签页_设置标签样式(const wchar_t* controlName, int style) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsType(g_newEmojiWindow, element->id, style);
+    return 1;
+}
+
+static int NE标签页_设置标签位置(const wchar_t* controlName, int position) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsPosition(g_newEmojiWindow, element->id, position);
+    return 1;
+}
+
+static int NE标签页_设置表头对齐(const wchar_t* controlName, int align) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsHeaderAlign(g_newEmojiWindow, element->id, align);
+    return 1;
+}
+
+static int NE标签页_设置表头可见(const wchar_t* controlName, int visible) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsHeaderVisible(g_newEmojiWindow, element->id, visible);
+    return 1;
+}
+
+static int NE标签页_设置可编辑(const wchar_t* controlName, int editable) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsEditable(g_newEmojiWindow, element->id, editable);
+    return 1;
+}
+
+static int NE标签页_设置内容可见(const wchar_t* controlName, int visible) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsContentVisible(g_newEmojiWindow, element->id, visible);
+    return 1;
+}
+
+static int NE标签页_启用浏览器模式(const wchar_t* controlName, int enabled) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsChromeMode(g_newEmojiWindow, element->id, enabled);
+    return 1;
+}
+
+static int NE标签页_设置浏览器度量(const wchar_t* controlName, int minWidth, int maxWidth, int pinnedWidth, int tabHeight, int overlap) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsChromeMetrics(g_newEmojiWindow, element->id, minWidth, maxWidth, pinnedWidth, tabHeight, overlap);
+    return 1;
+}
+
+static int NE标签页_设置项目图标(const wchar_t* controlName, int index, const std::wstring& icon) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    const std::string iconUtf8 = LB_NE_ToUtf8(icon.c_str());
+    EU_SetTabsItemIcon(g_newEmojiWindow, element->id, index,
+        reinterpret_cast<const unsigned char*>(iconUtf8.data()), static_cast<int>(iconUtf8.size()));
+    return 1;
+}
+
+static int NE标签页_设置项目可关闭(const wchar_t* controlName, int index, int closable) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsItemClosable(g_newEmojiWindow, element->id, index, closable);
+    return 1;
+}
+
+static int NE标签页_设置项目状态(const wchar_t* controlName, int index, int loading, int pinned, int muted, int alerting) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsItemChromeState(g_newEmojiWindow, element->id, index, loading, pinned, muted, alerting);
+    return 1;
+}
+
+static int NE标签页_设置新建按钮可见(const wchar_t* controlName, int visible) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsNewButtonVisible(g_newEmojiWindow, element->id, visible);
+    return 1;
+}
+
+static int NE标签页_设置拖拽选项(const wchar_t* controlName, int reorderEnabled, int detachEnabled) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    EU_SetTabsDragOptions(g_newEmojiWindow, element->id, reorderEnabled, detachEnabled);
+    return 1;
 }`;
 
 function generateNewEmojiMenuResourceRuntime(
@@ -2071,6 +2259,7 @@ function generateNewEmojiMainCpp(
     const progress = parseControlValue(control);
     let call: string;
     const beforeLines: string[] = [];
+    const afterLines: string[] = [];
     const extraLines: string[] = [];
     const catalogCall = control.designerType
       ? generateNewEmojiCatalogCreateCall(control, parentVariable, variable, enabledModules, coordinateParent)
@@ -2078,6 +2267,7 @@ function generateNewEmojiMainCpp(
     if (catalogCall) {
       call = catalogCall.call;
       beforeLines.push(...catalogCall.beforeLines);
+      afterLines.push(...catalogCall.afterLines);
     } else switch (control.type) {
       case 'Button':
         call = `NE_创建按钮(g_newEmojiWindow, ${parentVariable}, L"", ${text}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
@@ -2148,6 +2338,7 @@ function generateNewEmojiMainCpp(
           if (!fallbackCatalogCall) return [];
           call = fallbackCatalogCall.call;
           beforeLines.push(...fallbackCatalogCall.beforeLines);
+          afterLines.push(...fallbackCatalogCall.afterLines);
         }
     }
     const pageLines: string[] = [];
@@ -2174,6 +2365,7 @@ function generateNewEmojiMainCpp(
     return [
       ...beforeLines,
       `    int ${variable} = ${call};`,
+      ...afterLines,
       `    LB_NE_RegisterElement(${variable}, L"${escapeWideString(contractType)}", L"${escapeWideString(lingCppType)}", ${parentVariable}, L"${escapeWideString(control.name)}", L"${escapeWideString(tagText)}", ${tagInteger}, ${isContainer ? 'true' : 'false'});`,
       `    NE_设置元素状态(g_newEmojiWindow, ${variable}, ${control.visibility === 'Collapsed' ? 0 : 1}, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor(control.background, 0x00000000)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`,
       `    NE_设置元素字体(g_newEmojiWindow, ${variable}, L"${escapeWideString(font.family)}", ${font.size});`,
@@ -2259,16 +2451,16 @@ function generateNewEmojiMainCpp(
   const iconPath = iconStyle === 'lingbuilder'
     ? 'lingbuilder-newemoji-window.ico'
     : getSafeCustomWindowIconPath(window);
+  // 自绘标题栏的图标来自 EU_SetWindowIcon 内部维护的 WindowState（该函数同时完成
+  // WM_SETICON 与标题栏重绘）；直接 SendMessageW(WM_SETICON) 只会更新任务栏，
+  // 标题栏不会绘制图标，因此这里禁止绕开 EU_SetWindowIcon 手工加载 HICON。
   const iconSetup = iconStyle === 'none'
     ? `    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_BIG, 0);\n    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_SMALL, 0);`
     : iconStyle === 'system'
       ? `    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(LoadIconW(nullptr, IDI_APPLICATION)));\n    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(LoadIconW(nullptr, IDI_APPLICATION)));`
       : iconPath
-        ? `    HICON windowLargeIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, L"${escapeWideString(iconPath)}", IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));\n    HICON windowSmallIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, L"${escapeWideString(iconPath)}", IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));\n    if (windowLargeIcon) SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(windowLargeIcon));\n    if (windowSmallIcon) SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(windowSmallIcon));`
+        ? `    const std::string lbWindowIconUtf8 = LB_NE_ToUtf8(L"${escapeWideString(iconPath)}");\n    EU_SetWindowIcon(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(lbWindowIconUtf8.data()), static_cast<int>(lbWindowIconUtf8.size()));`
         : '';
-  const iconCleanup = iconPath
-    ? `    if (windowLargeIcon) DestroyIcon(windowLargeIcon);\n    if (windowSmallIcon && windowSmallIcon != windowLargeIcon) DestroyIcon(windowSmallIcon);`
-    : '';
   const sourceClass = findLingCppClassForWindow(program, window);
   const newEmojiUserMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
   const newEmojiUserMethodDeclarations = newEmojiUserMethods.map(method => (
@@ -3448,7 +3640,6 @@ ${webSocketClientCleanup}
 ${cdpClientCleanup}
 ${webSocketCleanup}
     LB_NE_ShutdownFbro();
-${iconCleanup}
 ${uiaCleanupLine}
     if (SUCCEEDED(comResult)) CoUninitialize();
     return exitCode;
@@ -7752,6 +7943,8 @@ function getNewEmojiEventArgumentExpressions(binding: NewEmojiCatalogEventBindin
     'TableVirtualRowCallback.VirtualRow': ['lb_row'],
     'RichListVirtualItemCallback.VirtualRow': ['lb_index'],
     'ElementValueCallback.ItemClosed': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'ElementValueCallback.ItemAdded': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'ElementReorderCallback.ItemsReordered': ['lb_from_index', 'lb_to_index', 'lb_count'],
     'MessageBoxResultCallback.Result': ['lb_messagebox_id', 'lb_result'],
     'MessageBoxExCallback.Result': ['lb_messagebox_id', 'lb_action', 'LB_NE_FromUtf8(lb_value_utf8, lb_value_utf8_length)'],
     'ElementTextCallback.SelectionChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
@@ -7925,16 +8118,18 @@ function generateNewEmojiCatalogCreateCall(
   variable: string,
   enabledModules: InstalledModule[],
   parent?: LingControl
-): { call: string; beforeLines: string[] } | undefined {
+): { call: string; beforeLines: string[]; afterLines: string[] } | undefined {
   const contribution = enabledModules
     .flatMap(module => module.manifest.contributes?.designerControls || [])
     .find(item => item.namespacedType === control.designerType);
   const runtime = contribution?.runtime as (typeof contribution.runtime & {
     createParameters?: Array<{ name: string; type: string; propertyKey?: string }>;
+    applyContentCommand?: string;
   }) | undefined;
   if (!runtime?.createCommand || !runtime.createParameters) return undefined;
 
   const beforeLines: string[] = [];
+  const afterLines: string[] = [];
   const utf8Variables = new Map<string, string>();
   const args = runtime.createParameters.map((parameter, index) => {
     const name = parameter.name;
@@ -7973,7 +8168,12 @@ function generateNewEmojiCatalogCreateCall(
     }
     return '0';
   });
-  return { call: `${runtime.createCommand}(${args.join(', ')})`, beforeLines };
+  if (typeof runtime.applyContentCommand === 'string' && runtime.applyContentCommand.trim() && control.content.length > 0) {
+    const contentVariable = `${variable}_utf8_content`;
+    beforeLines.push(`    std::string ${contentVariable} = LB_NE_ToUtf8(L"${escapeWideString(control.content)}");`);
+    afterLines.push(`    ${runtime.applyContentCommand.trim()}(g_newEmojiWindow, ${variable}, reinterpret_cast<const unsigned char*>(${contentVariable}.data()), static_cast<int>(${contentVariable}.size()));`);
+  }
+  return { call: `${runtime.createCommand}(${args.join(', ')})`, beforeLines, afterLines };
 }
 
 function isDeferredNewEmojiShowControl(control: LingControl): boolean {
@@ -8011,7 +8211,18 @@ function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown
   if (isNewEmojiTabsControl(control)) {
     if (key === 'items') return getTabControlPages(control).map(page => page.title);
     if (key === 'itemsEx') {
-      return getTabControlPages(control).map(page => `${page.title}\t${page.id}\t `).join('|');
+      // EU_SetTabsItemsEx 高阶协议每项 6 字段：标题\tID\t内容\t图标\t禁用\t可关闭。
+      // 禁用只能经该协议传入（库没有 EU_SetTabsItemDisabled），不能省略，否则设计器
+      // 中勾选的「禁用」在生成后无效。字段值中的协议分隔符需清洗。
+      const sanitize = (value: unknown) => String(value ?? '').replace(/[\t|\r\n]/gu, ' ');
+      return getTabControlPages(control).map(page => [
+        sanitize(page.title),
+        sanitize(page.id),
+        ' ',
+        sanitize(page.icon),
+        page.disabled === true ? '1' : '0',
+        page.closable === false ? '0' : '1'
+      ].join('\t')).join('|');
     }
     if (key === 'activeIndex') {
       const selectedPage = getSelectedTabPageIndex(control);
@@ -8646,11 +8857,266 @@ static void LingBuilder_释放内嵌资源文件() {
 `;
 }
 
+/** 允许跨 DLL 边界导出的 C++ 类型：仅 POD 与 std::wstring（与模块 binding 的 wideString/POD 门禁同口径）。 */
+const DLL_EXPORT_SAFE_CPP_TYPES = new Set(['void', 'int', 'long long', 'double', 'bool', 'unsigned char', 'std::wstring']);
+
+interface DynamicLibraryEntrySection {
+  section: string;
+  blockingDiagnostics: string[];
+  diagnostics: string[];
+}
+
+/**
+ * 生成动态库模式的入口段：DllMain + 惰性运行时初始化 + 各窗口类的“公开”子程序导出包装。
+ * 导出函数经窗口类单例转发（生成的子程序是类成员，不能直接 dllexport）；
+ * 跨 DLL 边界只允许 POD/文本签名，其余签名给出阻断诊断，不静默降级。
+ */
+function generateDynamicLibraryEntrySection(
+  project: LingWindowProject,
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): DynamicLibraryEntrySection {
+  const blockingDiagnostics: string[] = [];
+  const diagnostics: string[] = [];
+  interface ExportedMethod {
+    classNameCpp: string;
+    windowClassName: string;
+    windowIndex: number;
+    method: LingCppMethod;
+  }
+  const exported: ExportedMethod[] = [];
+  const seenExportNames = new Map<string, string>();
+  project.windows.forEach((window, windowIndex) => {
+    const classAst = program.classes.find(item => item.name === window.className);
+    if (!classAst) return;
+    for (const method of classAst.methods) {
+      // 导出口径：仅显式标记“公开”的子程序（方法）；事件处理器、构造/析构、私有与保护成员一律不导出。
+      if (method.kind !== 'method' || method.access !== '公开') continue;
+      const exportName = toCppIdentifier(method.name);
+      const ownerClassName = seenExportNames.get(exportName);
+      if (ownerClassName) {
+        blockingDiagnostics.push(`公开子程序“${method.name}”已在窗口类“${ownerClassName}”中导出，窗口类“${window.className}”中的同名子程序不能重复导出；请重命名或改为非公开。`);
+        continue;
+      }
+      seenExportNames.set(exportName, window.className);
+      const cppParameterTypes = method.parameters.map(parameter => toCppType(parameter.type, 'parameter', enabledModules, program.dataTypes));
+      const cppReturnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
+      const unsupportedType = [cppReturnType, ...cppParameterTypes].find(type => !DLL_EXPORT_SAFE_CPP_TYPES.has(type));
+      if (unsupportedType) {
+        blockingDiagnostics.push(`公开子程序“${method.name}”的签名包含不能跨 DLL 边界的类型“${unsupportedType}”；动态库导出仅支持 空、整数型、长整数型、小数型、逻辑型、字节型与文本型的参数和返回值。`);
+        continue;
+      }
+      exported.push({ classNameCpp: toCppIdentifier(window.className), windowClassName: window.className, windowIndex, method });
+    }
+  });
+  if (exported.length === 0) {
+    diagnostics.push('动态库模式：当前项目没有可导出的“公开”子程序，生成的 DLL 不含导出函数。');
+  }
+  const singletonItems = [...new Map(exported.map(item => [`${item.classNameCpp}#${item.windowIndex}`, item])).values()];
+  const singletonAccessors = singletonItems.map(item => (
+`static ${item.classNameCpp}& LingBuilder_应用单例_${item.classNameCpp}() {
+    static ${item.classNameCpp} instance(g_windows[${item.windowIndex}]);
+    return instance;
+}`
+  )).join('\n\n');
+  // 跨 DLL 边界 ABI：文本参数一律 const wchar_t*、文本返回经 DLL 侧 thread_local 缓冲以 const wchar_t* 交出。
+  // 生成器对 wideString 实参本来就发 LingCppWideArg(...)=c_str() 或 L"..." 字面量，指针直达；
+  // 绝不能让 std::wstring 以按值或引用跨 DLL——调用方 /MDd(Debug 迭代器布局) 与 DLL /MD 布局不同，
+  // 引用/按值都会被 DLL 按错误布局读取（实测 返回 2）甚至跨 CRT 堆释放（0xC0000374 堆损坏）。
+  const dllBoundaryParameterType = (cppType: string) => (cppType === 'std::wstring' ? 'const wchar_t*' : cppType);
+  const exportWrappers = exported.map(item => {
+    const cppReturnType = toCppType(item.method.returnType, 'return', enabledModules, program.dataTypes);
+    const returnsWideText = cppReturnType === 'std::wstring';
+    const wrapperReturnType = returnsWideText ? 'const wchar_t*' : cppReturnType;
+    const cppParameters = item.method.parameters
+      .map(parameter => `${dllBoundaryParameterType(toCppType(parameter.type, 'parameter', enabledModules, program.dataTypes))} ${toCppIdentifier(parameter.name)}`)
+      .join(', ');
+    const cppArguments = item.method.parameters.map(parameter => toCppIdentifier(parameter.name)).join(', ');
+    const call = `LingBuilder_应用单例_${item.classNameCpp}().${toCppIdentifier(item.method.name)}(${cppArguments})`;
+    const body = returnsWideText
+      ? `    LingBuilder_EnsureRuntimeInitialized();
+    static thread_local std::wstring LingBuilder_Dll文本返回缓冲;
+    LingBuilder_Dll文本返回缓冲 = ${call};
+    return LingBuilder_Dll文本返回缓冲.c_str();`
+      : `    LingBuilder_EnsureRuntimeInitialized();
+    ${cppReturnType === 'void' ? `${call};` : `return ${call};`}`;
+    return `extern "C" __declspec(dllexport) ${wrapperReturnType} ${toCppIdentifier(item.method.name)}(${cppParameters}) {
+${body}
+}`;
+  }).join('\n\n');
+  const section = `
+// ===== LingBuilder 动态库模式：入口、运行时初始化与“公开”子程序导出 =====
+// 动态库不创建窗口、不进入消息循环；首次导出调用时惰性完成 COM/GDI+/通用控件
+// 与生成窗口类注册，初始化内容与 EXE 模式 wWinMain 保持一致（不含媒体循环）。
+static HINSTANCE g_LingBuilderDllInstance = nullptr;
+static ULONG_PTR g_LingBuilderDllGdiplusToken = 0;
+static std::once_flag g_LingBuilderDllRuntimeOnce;
+
+static void LingBuilder_EnsureRuntimeInitialized() {
+    std::call_once(g_LingBuilderDllRuntimeOnce, []() {
+        g_instance = g_LingBuilderDllInstance ? g_LingBuilderDllInstance : GetModuleHandleW(nullptr);
+        EnableDpiAwareness();
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        Gdiplus::GdiplusStartupInput gdiplusInput;
+        Gdiplus::GdiplusStartup(&g_LingBuilderDllGdiplusToken, &gdiplusInput, nullptr);
+        INITCOMMONCONTROLSEX controls = {};
+        controls.dwSize = sizeof(INITCOMMONCONTROLSEX);
+        controls.dwICC = ICC_WIN95_CLASSES | ICC_DATE_CLASSES | ICC_USEREX_CLASSES |
+            ICC_COOL_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES |
+            ICC_TREEVIEW_CLASSES | ICC_LISTVIEW_CLASSES |
+            ICC_PAGESCROLLER_CLASS | ICC_LINK_CLASS;
+        InitCommonControlsEx(&controls);
+        LoadLibraryW(L"Msftedit.dll");
+        RegisterLingBuilderDataGridClass(g_instance);
+        WNDCLASSEXW windowClass = {};
+        windowClass.cbSize = sizeof(WNDCLASSEXW);
+        windowClass.lpfnWndProc = LingWindowBase::WindowProc;
+        windowClass.hInstance = g_instance;
+        windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        windowClass.hbrBackground = nullptr;
+        windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
+        RegisterClassExW(&windowClass);
+    });
+}
+
+// 不在 DLL_PROCESS_DETACH 中做任何清理：进程退出由操作系统回收，
+// 避免在加载器锁内销毁 GDI+/COM 资源导致宿主进程不稳定。
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
+    (void)reserved;
+    if (reason == DLL_PROCESS_ATTACH) {
+        DisableThreadLibraryCalls(instance);
+        g_LingBuilderDllInstance = instance;
+    }
+    return TRUE;
+}
+
+${singletonAccessors}
+
+${exportWrappers}`;
+  return { section, blockingDiagnostics, diagnostics };
+}
+
+interface ConsoleStartupEntry {
+  className: string;
+  returnType: string;
+}
+
+interface ConsoleStartupResolution {
+  entry?: ConsoleStartupEntry;
+  blockingDiagnostics: string[];
+}
+
+/**
+ * 控制台模式入口解析：在项目源码中查找唯一声明了“公开 启动()”子程序的类。
+ * 缺失、重复或返回值类型不符时给出阻断诊断，不静默降级为窗口程序。
+ */
+function resolveConsoleStartupEntry(sourceCodes: string[]): ConsoleStartupResolution {
+  const matched = sourceCodes
+    .flatMap(sourceCode => parseLingCpp(sourceCode).program.classes)
+    .map(clazz => ({
+      clazz,
+      method: clazz.methods.find(method => method.kind === 'method' && method.access === '公开' && method.name === '启动')
+    }))
+    .filter((item): item is { clazz: (typeof item)['clazz']; method: LingCppMethod } => Boolean(item.method));
+  if (matched.length === 0) {
+    return { blockingDiagnostics: ['控制台程序缺少入口：请在类的“公开”区域定义“整数型 启动()”子程序作为控制台程序主体。'] };
+  }
+  if (matched.length > 1) {
+    return { blockingDiagnostics: [`控制台程序入口不唯一：${matched.map(item => `类“${item.clazz.name}”`).join('、')}都定义了公开的“启动”子程序；请只保留一个。`] };
+  }
+  const found = matched[0]!;
+  const returnType = found.method!.returnType;
+  if (returnType !== '整数型' && returnType !== '空') {
+    return {
+      entry: { className: found.clazz.name, returnType },
+      blockingDiagnostics: [`控制台入口“启动”的返回值类型必须是“整数型”或“空”，当前是“${returnType}”。`]
+    };
+  }
+  return { entry: { className: found.clazz.name, returnType }, blockingDiagnostics: [] };
+}
+
+/** 控制台模式：把生成窗口类对齐到“启动”子程序所在类（仅调整本次生成的内存模型，不改写设计器持久化数据）。 */
+function withConsoleStartupWindow(project: LingWindowProject, startupClassName: string): LingWindowProject {
+  if (project.windows.some(window => window.className === startupClassName)) return project;
+  const baseWindow = project.windows[0];
+  if (!baseWindow) return project;
+  return { ...project, windows: [{ ...baseWindow, className: startupClassName }, ...project.windows.slice(1)] };
+}
+
+/**
+ * 生成控制台模式的入口段：wmain + 运行时初始化 + “启动”子程序调用。
+ * 控制台程序不创建窗口、不进入消息循环；“公开 整数型 启动()”的返回值作为进程退出码。
+ * 入口用 _WIN32 分隔 wmain/main：控制台运行时只依赖 CRT 与已启用模块，
+ * 为后续 macOS（clang 后端）复用同一入口形态预留结构。
+ */
+function generateConsoleEntrySection(
+  project: LingWindowProject,
+  program: LingCppProgram,
+  startup: ConsoleStartupResolution & { entry: ConsoleStartupEntry }
+): string {
+  const startupClass = program.classes.find(item => item.name === startup.entry.className);
+  const startupMethod = startupClass?.methods.find(method => method.kind === 'method' && method.access === '公开' && method.name === '启动');
+  const classCppName = toCppIdentifier(startup.entry.className);
+  const windowIndex = Math.max(0, project.windows.findIndex(window => window.className === startup.entry.className));
+  const singletonName = `LingBuilder_控制台应用单例_${classCppName}`;
+  return `
+// ===== LingBuilder 控制台模式：入口、运行时初始化与“启动”子程序调用 =====
+// 控制台程序不创建窗口、不进入消息循环；运行时初始化与 EXE 模式同源（不含窗口类注册与媒体循环）。
+static HINSTANCE g_LingBuilderConsoleInstance = nullptr;
+static ULONG_PTR g_LingBuilderConsoleGdiplusToken = 0;
+static std::once_flag g_LingBuilderConsoleRuntimeOnce;
+
+static void LingBuilder_EnsureConsoleRuntimeInitialized() {
+    std::call_once(g_LingBuilderConsoleRuntimeOnce, []() {
+        g_LingBuilderConsoleInstance = GetModuleHandleW(nullptr);
+        EnableDpiAwareness();
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        Gdiplus::GdiplusStartupInput gdiplusInput;
+        Gdiplus::GdiplusStartup(&g_LingBuilderConsoleGdiplusToken, &gdiplusInput, nullptr);
+        INITCOMMONCONTROLSEX controls = {};
+        controls.dwSize = sizeof(INITCOMMONCONTROLSEX);
+        controls.dwICC = ICC_WIN95_CLASSES | ICC_DATE_CLASSES | ICC_USEREX_CLASSES |
+            ICC_COOL_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES |
+            ICC_TREEVIEW_CLASSES | ICC_LISTVIEW_CLASSES |
+            ICC_PAGESCROLLER_CLASS | ICC_LINK_CLASS;
+        InitCommonControlsEx(&controls);
+        LoadLibraryW(L"Msftedit.dll");
+    });
+}
+
+static ${classCppName}& ${singletonName}() {
+    // 与窗口应用的生命周期口径一致：实例常驻到进程结束，不参与静态析构
+    // （静态析构逆序会先于模块运行时销毁宿主对象，~LingWindowBase 的收尾在无窗口环境没有安全顺序）。
+    static ${classCppName}* instance = new ${classCppName}(g_windows[${windowIndex}]);
+    return *instance;
+}
+
+#ifdef _WIN32
+int wmain(int argc, wchar_t* argv[]) {
+#else
+int main(int argc, char* argv[]) {
+#endif
+    (void)argc;
+    (void)argv;
+    SetConsoleOutputCP(CP_UTF8);
+    LingBuilder_EnsureConsoleRuntimeInitialized();
+    ${classCppName}& consoleApp = ${singletonName}();
+#ifdef LINGBUILDER_THREADING_MODULE
+    // 控制台没有窗口 owner：绑定无通知 owner 后任务族/线程池族可用；
+    // 完成处理器不会被排空，控制台程序应以「线程_提交 + 线程_等待」取结果。
+    consoleApp.LingBuilder_RegisterHeadlessThreadOwner();
+#endif
+    ${startup.entry.returnType === '整数型' && startupMethod ? `return consoleApp.${toCppIdentifier(startupMethod.name)}();` : `consoleApp.${toCppIdentifier(startupMethod?.name || '启动')}();\n    return 0;`}
+}`;
+}
+
 function generateMainCpp(
   project: LingWindowProject,
   selectedWindow: LingWindowModel,
   ast: LingCppAst,
-  enabledModules: InstalledModule[] = []
+  enabledModules: InstalledModule[] = [],
+  dynamicLibrarySection?: string,
+  consoleEntrySection?: string
 ): string {
   const program = ast.program;
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
@@ -18991,6 +19457,14 @@ ${generateFbroVipIndividualRuntime(false)}
     bool 线程_释放任务(long long task) { return LingThreadProjectRuntime::Instance().ReleaseTask(task); }
     int 线程_清理已完成() { return LingThreadProjectRuntime::Instance().CleanupCompleted(); }
 
+public:
+    // 控制台等无窗口程序在入口调用：注册无通知 owner，使任务族/线程池族命令可用。
+    void LingBuilder_RegisterHeadlessThreadOwner() {
+        if (threadOwnerToken_ == 0) threadOwnerToken_ = LingThreadRegisterHeadlessOwner();
+    }
+
+protected:
+
     long long 线程池_取默认池() { return LingThreadProjectRuntime::Instance().DefaultPool(); }
     long long 线程池_创建(int concurrency, int capacity) { return LingThreadProjectRuntime::Instance().CreatePool(concurrency, capacity); }
     template<class Work> long long 线程池_提交(long long pool, Work&& work) { return LingThreadProjectRuntime::Instance().Submit(threadOwnerToken_, pool, std::forward<Work>(work)); }
@@ -25029,7 +25503,7 @@ static void EnsureStartWindowForeground(HWND hwnd, int showCommand) {
 }
 
 ${generateEmbeddedResourceExtractorCpp(project, selectedWindow)}
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+${dynamicLibrarySection ? dynamicLibrarySection : consoleEntrySection ? consoleEntrySection : `int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
     const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
     if (fbroSubprocessExitCode != LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED) return fbroSubprocessExitCode;
@@ -25115,7 +25589,7 @@ ${fbroInProcessEnabled ? '    LB_FBro_Shutdown();' : ''}
 ${uiaCleanupLine}
     CoUninitialize();
     return static_cast<int>(message.wParam);
-}
+}`}
 `;
   return enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser')
     ? createBridgeOnlyCef3Source(generatedSource)
@@ -25829,6 +26303,7 @@ function getAria2ProgressHandlerNames(sourceClass: LingCppClass | undefined): st
   const handlers = new Set<string>();
   for (const method of sourceClass?.methods || []) {
     for (const statement of method.statements) {
+      if (statement.endLine) continue; // 多行文本块内容不透明，不参与 handler 扫描
       const match = statement.text.match(/Aria2_下载\s*[（(]([\s\S]*)[）)]/u);
       if (!match) continue;
       const handler = splitCallArguments(match[1] || '')[5]?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
@@ -25842,6 +26317,7 @@ function getComEventHandlerNames(sourceClass: LingCppClass | undefined): string[
   const handlers = new Set<string>();
   for (const method of sourceClass?.methods || []) {
     for (const statement of method.statements) {
+      if (statement.endLine) continue; // 多行文本块内容不透明，不参与 handler 扫描
       const match = statement.text.match(/COM_映射事件\s*[（(]([\s\S]*)[）)]/u);
       if (!match) continue;
       const handler = splitCallArguments(match[1] || '')[2]?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
@@ -26122,6 +26598,12 @@ function translateLingCppStatementBlock(
 
     if (!current || !currentStatement || skippedFinallyBody.has(index)) continue;
 
+    // 多行文本块语句整体不透明：跳过消息框/控制流特判，直接走单行宽字面量生成。
+    if (currentStatement.endLine) {
+      lines.push(translateStatementToMetadata(currentStatement, enabledModules, translationContext));
+      continue;
+    }
+
     const messageBox = parseMessageBox(current);
     if (
       messageBox &&
@@ -26323,7 +26805,7 @@ function translateStatementToMetadata(
   return {
     code: nativeCpp !== undefined ? nativeCpp : translateStatement(text, enabledModules, translationContext),
     sourceStartLine: statement.line,
-    sourceEndLine: statement.line,
+    sourceEndLine: statement.endLine ?? statement.line,
     kind: nativeCpp !== undefined ? 'native-cpp' : 'statement'
   };
 }
@@ -26345,6 +26827,13 @@ function translateStatement(
 ): string {
   const nativeCpp = parseNativeCppStatement(statement);
   if (nativeCpp !== undefined) return nativeCpp;
+
+  // 多行文本块：内容原样（不解释转义），生成期确定性转义为单行宽字符串字面量。
+  const textBlock = parseLingCppTextBlockStatement(statement);
+  if (textBlock) {
+    const target = textBlock.target.split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
+    return `${target} = L"${escapeWideString(textBlock.content)}";`;
+  }
 
   const messageBox = parseMessageBox(statement);
   if (/^如果(?:真)?(?:\s|[（(])/.test(statement) && messageBox && /[=＝]{1,2}\s*6/.test(statement)) {
@@ -26742,6 +27231,9 @@ function translateLingCppExpression(
   if (/^[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*$/u.test(trimmed)) {
     return trimmed.split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
   }
+  // 文本块误用兜底（未闭合、声明初值、实参位等）：解析层已出中文诊断，这里按空文本降级，
+  // 绝不把含三引号的原文吐进 C++ 产生坏代码。
+  if (trimmed.includes('"""')) return 'L"" /* 多行文本块用法有误，已按空文本降级 */';
   return trimmed;
 }
 

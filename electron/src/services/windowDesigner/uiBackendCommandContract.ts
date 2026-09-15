@@ -1,4 +1,5 @@
 import type { LingCppProgram } from '../lingCpp/types';
+import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from '../lingCpp/textBlock';
 import { DATA_MEDIA_MODULES } from '../modules/dataMediaModules';
 import { NETWORK_LIBRARY_MODULES } from '../modules/networkLibraryModules';
 import { PLATFORM_ADVANCED_MODULES } from '../modules/platformAdvancedModules';
@@ -158,8 +159,14 @@ export function collectLingCppCommandCalls(program: LingCppProgram, commandNames
   if (known.size === 0 || !program.source.trim()) return [];
   const calls: NativeUiBackendCommandCall[] = [];
   const callPattern = /([\p{L}_][\p{L}\p{N}_]*)\s*[（(]/gu;
+  const sourceLines = program.source.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(
+    scanLingCppTextBlockRanges(sourceLines),
+    sourceLines.length
+  );
 
-  program.source.split(/\r?\n/u).forEach((lineText, index) => {
+  sourceLines.forEach((lineText, index) => {
+    if (opaqueLines.has(index + 1)) return; // 多行文本块内容不透明：块内文本不计入后端命令调用
     const code = stripLingCppStringsAndComment(lineText);
     for (const match of code.matchAll(callPattern)) {
       const name = match[1];

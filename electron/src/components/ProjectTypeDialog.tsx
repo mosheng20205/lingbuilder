@@ -5,6 +5,7 @@ import {
   Box,
   Monitor,
   PackageOpen,
+  SquareTerminal,
   X
 } from 'lucide-react';
 
@@ -13,6 +14,7 @@ interface ProjectTypeDialogProps {
   isDarkMode: boolean;
   onSelectWindowsUi: () => void;
   onSelectWindowsDll: () => void;
+  onSelectWindowsConsole: () => void;
   onClose: () => void;
 }
 
@@ -34,6 +36,14 @@ const projectTypes = [
     icon: Box
   },
   {
+    id: 'windows-console',
+    title: 'Windows 控制台程序',
+    description: '以“公开 启动()”子程序为主体创建命令行程序。',
+    status: '当前可用',
+    enabled: true,
+    icon: SquareTerminal
+  },
+  {
     id: 'mac-ui',
     title: 'Mac 界面设计',
     description: '使用可视化设计器创建 macOS 桌面应用。',
@@ -48,6 +58,14 @@ const projectTypes = [
     status: '规划中',
     enabled: false,
     icon: PackageOpen
+  },
+  {
+    id: 'mac-console',
+    title: 'Mac 控制台程序',
+    description: '复用同一控制台入口形态，构建 macOS 命令行程序。',
+    status: '规划中',
+    enabled: false,
+    icon: SquareTerminal
   }
 ] as const;
 
@@ -56,6 +74,7 @@ export default function ProjectTypeDialog({
   isDarkMode,
   onSelectWindowsUi,
   onSelectWindowsDll,
+  onSelectWindowsConsole,
   onClose
 }: ProjectTypeDialogProps) {
   const availableProjectRef = useRef<HTMLButtonElement>(null);
@@ -107,7 +126,7 @@ export default function ProjectTypeDialog({
         </div>
 
         <div className="min-h-0 overflow-auto p-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {projectTypes.map(projectType => {
               const Icon = projectType.icon;
               const enabledClasses = isDarkMode
@@ -116,16 +135,19 @@ export default function ProjectTypeDialog({
               const disabledClasses = isDarkMode
                 ? 'cursor-not-allowed border-[#37373f] bg-[#232329] text-slate-500'
                 : 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400';
+              const firstEnabledId = projectTypes.find(item => item.enabled)?.id;
 
               return (
                 <button
-                  ref={projectType.enabled ? availableProjectRef : undefined}
+                  ref={projectType.id === firstEnabledId ? availableProjectRef : undefined}
                   key={projectType.id}
                   type="button"
                   data-project-type={projectType.id}
                   disabled={!projectType.enabled}
                   onClick={projectType.enabled
-                    ? projectType.id === 'windows-dll' ? onSelectWindowsDll : onSelectWindowsUi
+                    ? projectType.id === 'windows-dll' ? onSelectWindowsDll
+                      : projectType.id === 'windows-console' ? onSelectWindowsConsole
+                        : onSelectWindowsUi
                     : undefined}
                   className={`group flex min-h-36 w-full items-start gap-4 rounded-lg border p-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/60 ${
                     projectType.enabled ? `cursor-pointer ${enabledClasses}` : disabledClasses
@@ -181,7 +203,7 @@ export default function ProjectTypeDialog({
 
         <div className={`flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 ${isDarkMode ? 'border-[#35353c] bg-[#1b1b20]' : 'border-slate-200 bg-slate-50'}`}>
           <p className={`text-[11px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
-            当前开放 Windows 界面设计和 Windows 平台 DLL 开发。
+            当前开放 Windows 界面设计、Windows 平台 DLL 开发和 Windows 控制台程序。
           </p>
           <button
             type="button"

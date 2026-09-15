@@ -1,5 +1,6 @@
 import { createWorkspaceEditChangeFromRewrite } from './aiEditService';
 import { normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import type { LingCppWorkspaceFile, WorkspaceEditProposal } from './types';
 
 export interface ProjectConstantReference {
@@ -83,6 +84,11 @@ export function getProjectConstantNameAtCursor(
   const lineEnd = lineEndCandidate < 0 ? source.length : lineEndCandidate;
   const line = source.slice(lineStart, lineEnd).replace(/\r$/u, '');
   const offset = safeCursor - lineStart;
+  const blockLines = source.split(/\r?\n/u);
+  if (collectLingCppTextBlockOpaqueLines(
+    scanLingCppTextBlockRanges(blockLines),
+    blockLines.length
+  ).has(source.slice(0, lineStart).split('\n').length)) return undefined; // 文本块内容不算常量引用
   if (!line.trim() || line.trimStart().startsWith('//') || line.trimStart().startsWith('注释 ')) return undefined;
   const stringRanges = collectStringRanges(line);
   for (const match of line.matchAll(IDENTIFIER_PATTERN)) {
@@ -103,7 +109,10 @@ function scanFile(file: LingCppWorkspaceFile, normalizedName: string): ProjectCo
   const parsed = parseLingCpp(file.sourceCode);
   const declarationLines = new Set(parsed.program.constants.filter(item => normalizeIdentifier(item.name) === normalizedName).map(item => item.line));
   const references: ProjectConstantReference[] = [];
-  file.sourceCode.split(/\r?\n/u).forEach((lineText, index) => {
+  const sourceLines = file.sourceCode.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(sourceLines), sourceLines.length);
+  sourceLines.forEach((lineText, index) => {
+    if (opaqueLines.has(index + 1)) return; // 多行文本块内容不透明：不算常量引用，重命名不得改写
     const trimmed = lineText.trimStart();
     if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('注释 ')) return;
     const stringRanges = collectStringRanges(lineText);

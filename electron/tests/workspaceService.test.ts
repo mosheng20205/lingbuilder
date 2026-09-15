@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, RECENT_WORKSPACES_LIMIT, resolveWorkspaceDropTarget } from '../electron/workspaceService';
+import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue, isWorkspaceFilePath, RECENT_WORKSPACES_LIMIT, resolveWorkspaceDropTarget } from '../electron/workspaceService';
 
 test('workspace service prefers --workspace and remembers it', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-arg-'));
@@ -169,6 +169,25 @@ test('a valid .lbsln opens its workspace and damaged entries are rejected', asyn
   await assert.rejects(resolveWorkspaceDropTarget(entryPath), /不是有效/u);
 });
 
+test('second-instance transfer recognizes every associated workspace file argument', () => {
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\演示\\多线程全功能演示解决方案.lbsln']), 'D:\\演示\\多线程全功能演示解决方案.lbsln');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', '--workspace', 'X:\\已有', 'C:\\工作区.LBSLN']), 'C:\\工作区.LBSLN');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\工作区.lingbuilder']), 'D:\\工作区.lingbuilder');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\工作区.lbworkspace']), 'D:\\工作区.lbworkspace');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\源码.lcpp']), 'D:\\源码.lcpp');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\工程.sln']), 'D:\\工程.sln');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\工程.code-workspace']), 'D:\\工程.code-workspace');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\旧工程.e']), 'D:\\旧工程.e');
+  // 模块包与源码包属于 second-instance 的其他分支，不能混进工作区切换。
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'D:\\模块.lbmod', 'D:\\源码包.lcpppkg']), undefined);
+  // 只跳过 flag 本身，flag 的取值参数照常参与匹配（与 findLbmodArgument 同口径）。
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', '--workspace', 'D:\\演示\\解决方案.lbsln']), 'D:\\演示\\解决方案.lbsln');
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe', 'readme.txt']), undefined);
+  assert.equal(findWorkspaceFileArgument(['LingBuilder.exe']), undefined);
+  assert.ok(isWorkspaceFilePath('C:\\任何\\X.e'));
+  assert.ok(!isWorkspaceFilePath('C:\\任何\\X.lcpppkg'));
+});
+
 test('new workspace windows use an isolated process with an explicit workspace argument', () => {
   const packaged = buildWorkspaceWindowLaunch({ packaged: true, executablePath: 'LingBuilder.exe', mainEntryPath: 'main.cjs', workspacePath: 'C:\\项目' });
   assert.equal(packaged.command, 'LingBuilder.exe');
@@ -286,4 +305,43 @@ test('bundled protobuf SDK is provisioned into the workspace without clobbering 
 
   await service.rememberWorkspace(workspace);
   assert.equal(await fs.readFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'utf8'), 'user-sdk');
+});
+
+test('bundled default-workspace modules are provisioned into existing workspaces without clobbering', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-modules-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const defaultWorkspaceSource = path.join(root, 'resources', 'default-workspace');
+  const modulesSource = path.join(defaultWorkspaceSource, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  await fs.mkdir(path.join(modulesSource, 'bin', 'x64'), { recursive: true });
+  await fs.mkdir(path.join(modulesSource, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(modulesSource, 'lingbuilder.module.json'), '{"id":"lingbuilder.new_emoji.ui","version":"2.0.0"}', 'utf8');
+  await fs.writeFile(path.join(modulesSource, 'bin', 'x64', 'new_emoji.dll'), 'dll', 'utf8');
+  await fs.writeFile(path.join(modulesSource, 'docs', 'rich-list.md'), '文档', 'utf8');
+
+  const workspace = path.join(root, '现有工作区');
+  // 老工作区已有同 ID 模块的旧文件：只补缺，绝不覆盖用户已有内容。
+  await fs.mkdir(path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'bin', 'x64'), { recursive: true });
+  await fs.writeFile(path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'bin', 'x64', 'new_emoji.dll'), 'user-dll', 'utf8');
+
+  const service = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', workspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData'),
+    defaultWorkspaceSource
+  });
+  await service.resolveInitialWorkspace();
+  const installed = path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  assert.equal(await fs.readFile(path.join(installed, 'lingbuilder.module.json'), 'utf8'), '{"id":"lingbuilder.new_emoji.ui","version":"2.0.0"}');
+  assert.equal(await fs.readFile(path.join(installed, 'bin', 'x64', 'new_emoji.dll'), 'utf8'), 'user-dll');
+  assert.equal(await fs.readFile(path.join(installed, 'docs', 'rich-list.md'), 'utf8'), '文档');
+
+  // 随包源缺失（如开发态没有 default-workspace）时不抛错、不清空工作区。
+  const withoutBundled = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', workspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData')
+  });
+  await withoutBundled.resolveInitialWorkspace();
+  assert.ok(await exists(path.join(installed, 'lingbuilder.module.json')));
+  assert.equal(await fs.readFile(path.join(installed, 'bin', 'x64', 'new_emoji.dll'), 'utf8'), 'user-dll');
 });

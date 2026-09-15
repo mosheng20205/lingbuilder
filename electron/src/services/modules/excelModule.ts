@@ -2,7 +2,7 @@ import { createModuleBindingSnippetArgument } from './bindingValueType';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { LingBuilderModuleManifest, ModuleCommandBindingParameter, ModuleCommandValueType } from './types';
 
-type ExcelParameter = ModuleCommandBindingParameter & { type: ModuleCommandValueType };
+type ExcelParameter = ModuleCommandBindingParameter & { type: ModuleCommandValueType; description: string };
 type ExcelCommandOptions = Pick<StandardCommandSpec, 'category' | 'example' | 'returnDescription' | 'visibility'>;
 
 function snippetArgument(parameter: ExcelParameter, index: number): string {
@@ -121,12 +121,12 @@ const excelStandardModule = createStandardModule({
     excelCommand('Excel_取当前工作表', [workbook()], 'wideString', '返回当前读写操作所用的工作表名称。'),
     excelCommand('Excel_置当前工作表', [workbook(), { name: '名称', type: 'wideString', description: '工作表名称。' }], 'bool', '切换当前读写操作所用的工作表；找不到同名工作表返回假。'),
     excelCommand('Excel_添加工作表', [workbook(), { name: '名称', type: 'wideString', description: '新工作表名称，不能与现有名称重复。' }], 'bool', '在工作簿末尾追加一个空工作表。'),
-    excelCommand('Excel_删除工作表', [workbook(), { name: '名称', type: 'wideString' }], 'bool', '删除指定工作表；工作簿至少保留一个工作表。'),
+    excelCommand('Excel_删除工作表', [workbook(), { name: '名称', type: 'wideString', description: '要删除的工作表名称，必须与表签完全一致；不能删除最后一个可见工作表。'}], 'bool', '删除指定工作表；工作簿至少保留一个工作表。'),
 
     // ---------- 单元格写入 ----------
-    excelCommand('Excel_写文本', [workbook(), workbookCell, { name: '内容', type: 'wideString' }], 'bool', '把文本写入单元格。'),
-    excelCommand('Excel_写数值', [workbook(), workbookCell, { name: '数值', type: 'double' }], 'bool', '把数值写入单元格。'),
-    excelCommand('Excel_写布尔', [workbook(), workbookCell, { name: '值', type: 'bool' }], 'bool', '把布尔值写入单元格。'),
+    excelCommand('Excel_写文本', [workbook(), workbookCell, { name: '内容', type: 'wideString', description: '写入单元格的文本内容，按字符串类型保存。'}], 'bool', '把文本写入单元格。'),
+    excelCommand('Excel_写数值', [workbook(), workbookCell, { name: '数值', type: 'double', description: '写入单元格的数值，按数字类型保存。'}], 'bool', '把数值写入单元格。'),
+    excelCommand('Excel_写布尔', [workbook(), workbookCell, { name: '值', type: 'bool', description: '写入单元格的逻辑值，Excel 中显示为 TRUE 或 FALSE。'}], 'bool', '把布尔值写入单元格。'),
     excelCommand('Excel_写公式', [workbook(), workbookCell, { name: '公式', type: 'wideString', description: '可带或不带等号，例如 "SUM(B1:B9)"。' }], 'bool', '写入公式；Excel/WPS 打开文件时自动计算。创建模式公式没有缓存值。'),
     excelCommand('Excel_写日期', [workbook(), workbookCell, { name: '日期时间', type: 'wideString', description: '形如 "2026-01-31" 或 "2026-01-31 08:30:00"。' }], 'bool', '把日期时间写入单元格：自动换算为日期序列值；创建模式会同时套用日期显示格式，打开模式只写序列值。'),
     excelCommand('Excel_清除单元格', [workbook(), workbookCell], 'bool', '清空单元格内容和格式。'),
@@ -165,17 +165,17 @@ const excelStandardModule = createStandardModule({
     excelCommand('Excel_合并单元格', [workbook(), { name: '范围', type: 'wideString', description: '矩形区域，例如 "A1:C3"。' }], 'bool', '合并一个矩形区域；左上角单元格的值作为合并后内容。'),
     excelCommand('Excel_冻结窗格', [workbook(), { name: '行数', type: 'int', description: '冻结的首部行数。' }, { name: '列数', type: 'int', description: '冻结的左侧列数。' }], 'bool', '冻结当前工作表首部行与左侧列，滚动时保持表头可见。'),
     excelCommand('Excel_置数字格式', [workbook(), workbookCell, { name: '格式索引', type: 'int', description: '0=文本，1=整数，2=两位小数，3=百分比，4=日期时间。' }], 'bool', '设置单元格数字显示格式。'),
-    excelCommand('Excel_置加粗', [workbook(), workbookCell, { name: '启用', type: 'bool' }], 'bool', '设置单元格字体加粗。'),
+    excelCommand('Excel_置加粗', [workbook(), workbookCell, { name: '启用', type: 'bool', description: '传真把该单元格字体设为加粗，传假取消加粗。'}], 'bool', '设置单元格字体加粗。'),
     excelCommand('Excel_置字号', [workbook(), workbookCell, { name: '字号', type: 'double', description: '1～409 的字号。' }], 'bool', '设置单元格字号。'),
     excelCommand('Excel_置字体颜色', [workbook(), workbookCell, { name: '颜色值', type: 'int', description: '0xRRGGBB 颜色值，例如 0xFF0000 表示红色；十进制 16711680 等价。' }], 'bool', '设置单元格字体颜色。'),
     excelCommand('Excel_置背景色', [workbook(), workbookCell, { name: '颜色值', type: 'int', description: '0xRRGGBB 颜色值。' }], 'bool', '设置单元格背景填充色。'),
     excelCommand('Excel_置水平对齐', [workbook(), workbookCell, { name: '对齐方式', type: 'int', description: '0=左对齐，1=居中，2=右对齐。' }], 'bool', '设置单元格水平对齐方式。'),
 
     // ---------- 插入/删除行列（创建模式） ----------
-    excelCommand('Excel_插入行', [workbook(), { name: '行号', type: 'int', description: '从该行（1 起始）开始下移。' }, { name: '数量', type: 'int' }], 'bool', '在指定行前插入空行，已有内容整体下移。'),
-    excelCommand('Excel_删除行', [workbook(), { name: '行号', type: 'int', description: '从 1 开始的起始行号。' }, { name: '数量', type: 'int' }], 'bool', '删除指定起点的若干行，后续内容上移补位。'),
-    excelCommand('Excel_插入列', [workbook(), { name: '列号', type: 'int', description: '从该列（1 起始，A=1）开始右移。' }, { name: '数量', type: 'int' }], 'bool', '在指定列前插入空列，已有内容整体右移。'),
-    excelCommand('Excel_删除列', [workbook(), { name: '列号', type: 'int', description: '从 1 开始的起始列号（A=1）。' }, { name: '数量', type: 'int' }], 'bool', '删除指定起点的若干列，后续内容左移补位。'),
+    excelCommand('Excel_插入行', [workbook(), { name: '行号', type: 'int', description: '从该行（1 起始）开始下移。' }, { name: '数量', type: 'int', description: '要在该行之前插入的行数量，必须大于 0。'}], 'bool', '在指定行前插入空行，已有内容整体下移。'),
+    excelCommand('Excel_删除行', [workbook(), { name: '行号', type: 'int', description: '从 1 开始的起始行号。' }, { name: '数量', type: 'int', description: '要从该行开始删除的行数量，必须大于 0。'}], 'bool', '删除指定起点的若干行，后续内容上移补位。'),
+    excelCommand('Excel_插入列', [workbook(), { name: '列号', type: 'int', description: '从该列（1 起始，A=1）开始右移。' }, { name: '数量', type: 'int', description: '要在该列之前插入的列数量，必须大于 0。'}], 'bool', '在指定列前插入空列，已有内容整体右移。'),
+    excelCommand('Excel_删除列', [workbook(), { name: '列号', type: 'int', description: '从 1 开始的起始列号（A=1）。' }, { name: '数量', type: 'int', description: '要从该列开始删除的列数量，必须大于 0。'}], 'bool', '删除指定起点的若干列，后续内容左移补位。'),
 
     // ---------- 日期换算 ----------
     excelCommand('Excel_日期转序列', [

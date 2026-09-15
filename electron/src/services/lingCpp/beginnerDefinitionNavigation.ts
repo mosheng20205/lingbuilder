@@ -1,5 +1,6 @@
 import { scanBeginnerCodePrefix } from './beginnerCompletionContext';
 import { normalizeIdentifier } from './parser';
+import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
 import type { LingCppMethod, LingCppProgram, LingCppProjectFunctionLibrary } from './types';
 
 export interface BeginnerProcedureCall {
@@ -44,6 +45,15 @@ function readCursorLine(value: string, cursor: number): CursorLine {
   return { line: value.slice(lineStart, lineEnd), lineStart };
 }
 
+/** 光标行是否落在多行文本块（开始行/内容行/结束标记）内——块内不做跳转识别。 */
+function isCursorLineInTextBlock(value: string, lineStart: number): boolean {
+  const lines = value.split('\n');
+  return collectLingCppTextBlockLines(
+    scanLingCppTextBlockRanges(lines),
+    lines.length
+  ).has(value.slice(0, lineStart).split('\n').length);
+}
+
 export function getBeginnerProcedureCallAtCursor(
   value: string,
   cursor: number,
@@ -61,6 +71,7 @@ export function getBeginnerProcedureCallAtCursor(
   const lineEnd = nextNewline >= 0 ? nextNewline : value.length;
   const line = value.slice(lineStart, lineEnd);
   const column = safeCursor - lineStart;
+  if (isCursorLineInTextBlock(value, lineStart)) return null;
 
   for (const match of line.matchAll(PROCEDURE_IDENTIFIER_PATTERN)) {
     const columnStart = match.index ?? 0;
@@ -129,6 +140,7 @@ export function getBeginnerLibraryCallAtCursor(
   const { line, lineStart } = readCursorLine(value, cursor);
   const column = Math.max(0, Math.min(cursor, value.length)) - lineStart;
   if (line.trimStart().startsWith('@')) return null;
+  if (isCursorLineInTextBlock(value, lineStart)) return null;
 
   for (const match of line.matchAll(LIBRARY_QUALIFIED_CALL_PATTERN)) {
     const libraryStart = match.index ?? 0;

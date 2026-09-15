@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 2,
+  "id": "dll-lib-demo",
+  "name": "项目动态库演示",
+  "windows": [
+    {
+      "id": "lib-window",
+      "fileName": "LibDemo.xml",
+      "className": "库窗口",
+      "title": "项目动态库（DLL 输出）",
+      "width": 480,
+      "height": 200,
+      "background": "#1E1E24",
+      "description": "纯逻辑动态库示例：公开子程序经 DLL 导出，供其他项目封装模块后调用。",
+      "events": {
+        "Loaded": "_库窗口_创建完毕"
+      },
+      "controls": [
+        {
+          "id": "status-label",
+          "type": "Label",
+          "name": "状态标签",
+          "content": "动态库已加载",
+          "x": 20,
+          "y": 36,
+          "width": 430,
+          "height": 28,
+          "fontSize": 13,
+          "background": "transparent",
+          "foreground": "#4FC3F7",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "resizable": true,
+      "maximizable": true,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
+    }
+  ],
+  "resources": []
+}

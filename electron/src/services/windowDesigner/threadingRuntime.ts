@@ -826,6 +826,12 @@ static long long LingThreadRegisterWindowOwner(HWND window) {
     });
 }
 
+// 控制台等无窗口程序的 owner 注册：notify 为空操作，任务状态/等待/队列族全部可用；
+// 完成处理器不会被排空，无窗口程序应以「线程_提交 + 线程_等待」取结果，不要依赖完成处理器。
+static long long LingThreadRegisterHeadlessOwner() {
+    return LingThreadProjectRuntime::Instance().RegisterOwner([](long long) {});
+}
+
 static void LingThreadDrainWindowCallbacks(long long ownerId) {
     LingThreadProjectRuntime::Instance().DrainOwnerCallbacks(ownerId);
 }

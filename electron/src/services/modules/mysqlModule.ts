@@ -2,7 +2,7 @@ import { createModuleBindingSnippetArgument } from './bindingValueType';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { LingBuilderModuleManifest, ModuleCommandBindingParameter, ModuleCommandValueType } from './types';
 
-type MySqlParameter = ModuleCommandBindingParameter & { type: ModuleCommandValueType };
+type MySqlParameter = ModuleCommandBindingParameter & { type: ModuleCommandValueType; description: string };
 type MySqlCommandOptions = Pick<StandardCommandSpec, 'category' | 'example' | 'returnDescription' | 'visibility'>;
 
 function snippetArgument(parameter: MySqlParameter, index: number): string {
@@ -114,17 +114,17 @@ const mysqlStandardModule = createStandardModule({
     mysqlCommand('MySQL_连接', [
       { name: '主机', type: 'wideString', description: '服务器地址或域名。' },
       { name: '端口', type: 'int', description: '服务器端口，默认 3306。' },
-      { name: '用户名', type: 'wideString' },
+      { name: '用户名', type: 'wideString', description: 'MySQL 登录账号名，账号权限决定后续可访问的数据库和表。' },
       { name: '密码', type: 'wideString', description: '账号密码；连接失败时不会写日志或诊断输出该密码。' },
       { name: '数据库', type: 'wideString', description: '连接后选用的数据库；空文本表示暂不选择。' }
     ], 'MySQL连接', '用原生协议连接 MySQL/MariaDB 服务器并校验密码；成功后自动把字符集协商为 utf8mb4。', {
       category: '连接', example: 'MySQL_连接("127.0.0.1", 3306, "root", "密码", "test")', returnDescription: '成功返回非 0 的 MySQL连接，失败返回 0，可通过 MySQL_取错误 查看原因。'
     }),
     mysqlCommand('MySQL_连接扩展', [
-      { name: '主机', type: 'wideString' },
+      { name: '主机', type: 'wideString', description: 'MySQL 服务器主机名或 IP 文本，例如 127.0.0.1；解析失败或服务器不可达时返回 0 并记录中文错误。' },
       { name: '端口', type: 'int', description: '服务器端口，默认 3306。' },
-      { name: '用户名', type: 'wideString' },
-      { name: '密码', type: 'wideString' },
+      { name: '用户名', type: 'wideString', description: 'MySQL 登录账号名，账号权限决定后续可访问的数据库和表。' },
+      { name: '密码', type: 'wideString', description: '登录密码，只在连接期间使用，不写入日志或诊断输出。' },
       { name: '数据库', type: 'wideString', description: '连接后选用的数据库；空文本表示暂不选择。' },
       { name: '连接超时秒', type: 'int', description: 'TCP 连接与读写超时秒数，范围 1～86400。' },
       { name: '启用SSL', type: 'bool', description: '真表示使用 TLS 加密连接（Schannel）；服务器不支持时回退行为由服务器配置决定。' }
@@ -134,14 +134,14 @@ const mysqlStandardModule = createStandardModule({
     mysqlCommand('MySQL_关闭连接', [connection()], 'bool', '释放连接所属全部语句后关闭连接。失效句柄返回假。', { category: '连接' }),
     mysqlCommand('MySQL_关闭全部', [], 'void', '释放所有语句、关闭所有连接并卸载运行库。', { category: '连接' }),
     mysqlCommand('MySQL_连接是否有效', [connection()], 'bool', '检查受管连接 ID 当前是否仍然有效。', { category: '连接' }),
-    mysqlCommand('MySQL_切换数据库', [connection(), { name: '数据库名', type: 'wideString' }], 'bool', '切换当前连接使用的数据库。', { category: '连接' }),
+    mysqlCommand('MySQL_切换数据库', [connection(), { name: '数据库名', type: 'wideString', description: '要切换到的数据库名，不能为空文本，当前账号必须有权访问。'}], 'bool', '切换当前连接使用的数据库。', { category: '连接' }),
     mysqlCommand('MySQL_设置字符集', [connection(), { name: '字符集', type: 'wideString', description: '例如 utf8mb4、gbk、latin1。' }], 'bool', '修改连接字符集；默认已在连接时设置为 utf8mb4。', { category: '连接' }),
     mysqlCommand('MySQL_取服务器信息', [connection()], 'wideString', '返回服务器版本描述文本，失败返回空文本。', { category: '连接' }),
 
     mysqlCommand('MySQL_执行', [connection(), { name: 'SQL语句', type: 'wideString', description: '单条无参数 SQL；处理外部输入时应使用预编译语句。' }], 'longLong', '直接执行一条 SQL 并返回受影响行数，失败返回 -1。', {
       category: '执行', example: 'MySQL_执行(数据库, "DELETE FROM users WHERE score < 0")', returnDescription: '返回受影响行数；失败返回 -1。'
     }),
-    mysqlCommand('MySQL_查询首值', [connection(), { name: 'SQL语句', type: 'wideString' }], 'wideString', '执行查询并返回首行首列的文本表示；NULL、无行或失败返回空文本，应结合错误码判断。', { category: '执行' }),
+    mysqlCommand('MySQL_查询首值', [connection(), { name: 'SQL语句', type: 'wideString', description: '单条 SELECT 语句文本；含参数时请改用准备语句。'}], 'wideString', '执行查询并返回首行首列的文本表示；NULL、无行或失败返回空文本，应结合错误码判断。', { category: '执行' }),
     mysqlCommand('MySQL_取最后插入ID', [connection()], 'longLong', '返回连接最近一次成功 INSERT 生成的自增主键值。', { category: '执行' }),
 
     mysqlCommand('MySQL_准备', [connection(), { name: 'SQL语句', type: 'wideString', description: '只允许一条 SQL，用 ? 作为参数占位符。' }], 'MySQL语句', '在服务器端创建参数化预编译语句，用于安全执行和逐行读取。', {
@@ -156,11 +156,11 @@ const mysqlStandardModule = createStandardModule({
     mysqlCommand('MySQL_语句清空绑定', [statement()], 'bool', '把语句的全部参数恢复为 NULL。', { category: '预编译语句' }),
     mysqlCommand('MySQL_语句释放', [statement()], 'bool', '立即释放预编译语句；连接关闭时也会兜底释放。', { category: '预编译语句' }),
     mysqlCommand('MySQL_绑定空值', [statement(), parameterIndex], 'bool', '把参数绑定为 SQL NULL。', { category: '参数绑定' }),
-    mysqlCommand('MySQL_绑定整数', [statement(), parameterIndex, { name: '数值', type: 'int' }], 'bool', '把参数绑定为 32 位整数。', { category: '参数绑定' }),
-    mysqlCommand('MySQL_绑定长整数', [statement(), parameterIndex, { name: '数值', type: 'longLong' }], 'bool', '把参数绑定为 64 位整数。', { category: '参数绑定' }),
-    mysqlCommand('MySQL_绑定小数', [statement(), parameterIndex, { name: '数值', type: 'double' }], 'bool', '把参数绑定为双精度小数。', { category: '参数绑定' }),
+    mysqlCommand('MySQL_绑定整数', [statement(), parameterIndex, { name: '数值', type: 'int', description: '绑定到占位符的 32 位整数值。'}], 'bool', '把参数绑定为 32 位整数。', { category: '参数绑定' }),
+    mysqlCommand('MySQL_绑定长整数', [statement(), parameterIndex, { name: '数值', type: 'longLong', description: '绑定到占位符的 64 位整数值。'}], 'bool', '把参数绑定为 64 位整数。', { category: '参数绑定' }),
+    mysqlCommand('MySQL_绑定小数', [statement(), parameterIndex, { name: '数值', type: 'double', description: '绑定到占位符的双精度小数值。'}], 'bool', '把参数绑定为双精度小数。', { category: '参数绑定' }),
     mysqlCommand('MySQL_绑定文本', [statement(), parameterIndex, { name: '文本', type: 'wideString', description: '按 UTF-8 编码传给服务器。' }], 'bool', '把参数安全绑定为文本，防止 SQL 注入。', { category: '参数绑定' }),
-    mysqlCommand('MySQL_绑定字节集', [statement(), parameterIndex, { name: '数据', type: 'bytes' }], 'bool', '把参数安全绑定为二进制数据。', { category: '参数绑定' }),
+    mysqlCommand('MySQL_绑定字节集', [statement(), parameterIndex, { name: '数据', type: 'bytes', description: '绑定到占位符的二进制字节集，作为 BLOB 写入。'}], 'bool', '把参数安全绑定为二进制数据。', { category: '参数绑定' }),
 
     mysqlCommand('MySQL_取列数量', [statement()], 'int', '返回结果集列数量；非查询语句返回 0。', { category: '结果读取' }),
     mysqlCommand('MySQL_取列名称', [statement(), columnIndex], 'wideString', '返回结果列名。', { category: '结果读取' }),
@@ -174,7 +174,7 @@ const mysqlStandardModule = createStandardModule({
     mysqlCommand('MySQL_开始事务', [connection()], 'bool', '在连接上开始显式事务（START TRANSACTION）。', { category: '事务' }),
     mysqlCommand('MySQL_提交', [connection()], 'bool', '提交当前事务。', { category: '事务' }),
     mysqlCommand('MySQL_回滚', [connection()], 'bool', '回滚当前事务。', { category: '事务' }),
-    mysqlCommand('MySQL_设置自动提交', [connection(), { name: '启用', type: 'bool' }], 'bool', '启用或禁用连接的自动提交模式。', { category: '事务' }),
+    mysqlCommand('MySQL_设置自动提交', [connection(), { name: '启用', type: 'bool', description: '传真恢复逐语句自动提交，传假进入显式事务模式。'}], 'bool', '启用或禁用连接的自动提交模式。', { category: '事务' }),
 
     mysqlCommand('MySQL_取错误', [], 'wideString', '返回本线程最近一次 MySQL 模块错误的中文描述与原始服务器错误，连接失败时也可读取。', { category: '错误诊断' }),
     mysqlCommand('MySQL_取错误码', [], 'int', '返回本线程最近一次 MySQL 错误码；0 表示没有错误。', { category: '错误诊断' }),

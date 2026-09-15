@@ -34,6 +34,32 @@
 - 自定义图标只能来自当前项目 `assets/` 内的相对 `.ico` 路径。生成资源使用固定 ASCII 路径承载实际字节，避免中文文件名和不同构建目录破坏 `rc.exe`；图标内容摘要必须进入增量构建指纹。
 - `system` 保持 Windows 通用程序图标，`none` 不嵌入项目图标；这两种显式选择不得被默认 LingBuilder 图标覆盖。多窗口项目当前以本次原生生成的入口窗口作为 EXE 图标来源。
 
+## 动态库（DLL）输出与模块调用规则
+
+- 第三方或自制的 C++ DLL 接入 LingBuilder 的正式路径是封装成 v2 模块（`.lbmod`）：`bindings.commands[].runtimeName` 指向 DLL 导出函数（薄封装直连）或桥接函数（需参数/句柄适配时），`targets[]` 必须按架构各自声明真实 `headers`/`libs`/`runtimeFiles`（`lib/{Win32,x64}`、`bin/{Win32,x64}`），构建期自动复制 DLL 到 exe 同目录。跨 DLL 边界只允许 POD 与文本签名（空/整数型/长整数型/小数型/逻辑型/字节型/文本型）；**文本参数必须是 `const wchar_t*`、文本返回必须返回 `const wchar_t*`（DLL 侧稳定存储，调用方在下次调用前取走）——`std::wstring` 按值或引用跨界，在 Debug(/MDd) 调用方 + Release(/MD) DLL 组合下会被按错误布局读取（实测 13 字符串返回 2）甚至跨 CRT 堆释放（0xC0000374 堆损坏）；生成器对 wideString 实参发 `LingCppWideArg(...)`=c_str() 或 `L"..."` 字面量，与该 ABI 天然匹配**；DLL 输出强制 /MD 动态 CRT。操作步骤见 `docs/DLL封装成模块操作手册.md`。
+- 中文项目可以把「公开」子程序导出为 DLL：解决方案项目 `buildProperties.outputType: "dll"`（缺省 `exe`）。导出口径是确定性的——仅「公开」节的子程序（方法）导出，事件处理器、构造/析构、私有/保护成员一律不导出；AI 不得生成「全导出」或「按名称挑选导出」的错误描述。DLL 模式不生成 `wWinMain` 与消息循环，生成 `DllMain` + 首次导出调用时的惰性运行时初始化，动态库定位为纯逻辑库（不自动创建设计器窗口）；调用约定 `__cdecl`、`extern "C"`。
+- AI Bridge 构建（CLI `project build`、MCP `build.run`、`nativePreview`）与 IDE 内「生成解决方案 / 生成项目」（server.ts `runControlledWindowDesignerBuild`）都读取并尊重 `outputType`；**F5「生成并运行」对 DLL 项目自动禁用**（工具栏按钮/命令 enabled 上下文 `project.dllOutput`，服务端 build-run 路由对 DLL + run 返回 run-unsupported 中文引导）。DLL 产物为 `<产物名>.dll` + 同名导入库 `.lib`，任何 run 请求对 DLL 产物都不启动进程。
+- 导出签名违规（控件/数组/记录/未知类型）必须给中文阻断诊断，禁止静默跳过或降级生成；new_emoji 后端窗口不能请求 DLL 输出。
+
+## 控制台程序项目规则（2026-09-14）
+
+- 新建项目对话框第三种可用类型是「Windows 控制台程序」（模板 ID `windows-console`，解决方案项目 `type: "windows-console"`）。控制台程序不使用窗口设计器布局：设计器模型只保留一个无控件的宿主窗口（类名固定 `程序`），工作台导航直接打开 `程序.lcpp`。
+- 控制台程序入口是唯一契约：某个类「公开」节中的 `整数型 启动()`（或 `空 启动()`）子程序即程序主体；生成器生成 `wmain`（`_WIN32` 下）调用该子程序，「整数型」返回值成为进程退出码。缺失、多类重复定义或返回值类型不是「整数型/空」时必须给中文阻断诊断（`控制台程序缺少入口` / `控制台程序入口不唯一` / `返回值类型必须是…`），AI 不得生成其它入口名（如 `main`、`开始`）或绕过该契约的代码。
+- 控制台模式生成物：`wmain` + `SetConsoleOutputCP(CP_UTF8)` + 惰性运行时初始化（COM/GDI+/通用控件，不含窗口类注册与消息循环）；`调试输出` 走既有运行时（OutputDebugStringW + UTF-8 标准输出），IDE 运行时输出经 run.log 进输出面板，不弹独立控制台窗口。控件类模块命令在控制台程序中无意义（无窗口、控件句柄为空），第一版不做模块门禁，AI 生成控制台示例时应只使用非 UI 命令（文件、线程、网络、数据库、正则、队列、缓冲区等）。
+- F5 对控制台项目是「生成并运行」：走 `handleSolutionBuildCommand('build', projectId, run=true)`，服务端 `runControlledWindowDesignerBuild` 按 `type === "windows-console"` 选择 `outputKind: "console-application"`（生成入口）与 `projectKind: "console-application"`（vcxproj `<SubSystem>Console</SubSystem>`），运行时 `windowsHide: true`。VS 导出工程为 Application + Console 子系统，`wmain` 决定子系统，无需额外链接参数。
+- 控制台线程边界：生成器在控制台入口自动注册无通知 owner（`LingThreadRegisterHeadlessOwner`），任务族/线程池族命令可用；但完成处理器与进度处理器靠窗口消息循环排空，控制台永远不会派发，AI 必须用「线程_提交 + 线程_等待 + 队列_出队」模式取结果，不得生成 `线程_提交完成` / `线程_提交进度`。队列/任务等句柄不能按值传给工作处理器（语言服务阻断诊断），句柄存类成员、工作处理器直读成员。控制台应用单例常驻到进程结束、不参与静态析构（与窗口应用口径一致，规避无窗口收尾崩溃）。
+- Mac 兼容预留：控制台入口模板使用 `#ifdef _WIN32`（`wmain`）/`#else`（`main`）分隔，控制台运行时只依赖 CRT 与已启用模块；后续 macOS 适配复用同一入口形态与 `platform` 维度（对话框已保留「Mac 控制台程序（规划中）」占位）。
+
+## 外部工程导入与混合解决方案规则（2026-09-14 已落地）
+
+- IDE 支持导入既有 C++ 工程：文件菜单「导入 MSBuild/CMake 工程…」（桌面版原生文件对话框选 `CMakeLists.txt/.vcxproj/.sln`，Web 版输入工作区相对路径）。工作区外工程优先「切换到工程所在目录作为工作区并导入」，用户拒绝时可「复制进当前工作区」（复制到 `external/<目录名>`，自动跳过 Debug/Release/obj/.vs 等产物目录，上限 1GB/2 万文件）。AI 帮用户导入时应说明这两条通道，不要建议手工改 `solution.json`。
+- `.sln` 默认**展开为多个项目**导入：每个 `.vcxproj` 生成一个 `external-msbuild` 解决方案项目，sln 内 `ProjectDependencies` 翻译为 `references`（构建顺序由既有依赖拓扑直接保证）；只有 x64 平台的项目构建属性自动默认 x64；工作区外或非 Visual C++ 项目跳过并给出中文告警。导入确认框里用户也可选择「整 sln 单目标导入」（`mode:'single'`，旧行为）。AI 生成导入指令时应默认展开模式，仅在 sln 解析失败或用户明确要求整体构建时用单目标。
+- 外部工程构建产物目录是确定性的：MSBuild 钉定 `/p:OutDir=<构建目录>\`、CMake 传 `-DCMAKE_RUNTIME_OUTPUT_DIRECTORY`，产物按构建配置（Debug/Release × Win32/x64）落在统一构建目录。外部工程作为启动项目时 F5「生成并运行」会定位并托管启动 exe（可用构建属性 `executableName` 帮助定位）；windows-dll 工程没有可运行产物，AI 不得为 DLL 项目生成运行预期。
+- 外部工程的构建输出会解析为结构化诊断进「问题」面板：常见 `Cxxxx`/`LNKxxxx`/`MSBxxxx` 错误码附中文解释。AI 解释外部构建失败时，应优先引用问题面板中已解析的「文件(行,列)+代码+中文解释」，而不是让用户重读原始日志。
+- 打开一个含 C++ 内容的文件夹时，IDE 会在默认解决方案工作区自动检测既有工程（浅层扫描 `CMakeLists.txt/.sln/.vcxproj`）或「含源码无工程文件」的目录并提示一次；后者可「扫描源码生成 CMakeLists.txt（生成物，显式源码列表+C++17）并导入」。AI 替用户新建工程时，若目标是已有源码目录，应使用该导入通道而不是让用户手工从零新建。
+- 资源管理器中 `.cpp/.cc/.cxx/.c` 右键「适配为中文工程…」：读取源码经原生 C++ 适配服务翻译为**新的**中文工程（窗口/控件/方法转中文代码与设计器模型，未识别语句保留为 `@` 原生块），原 C++ 文件不会被修改。AI 描述该能力时必须说明「生成新工程、不改原文件、未识别语句会降级为 @ 原生块」三个边界。
+- 混合解决方案：中文项目 `references` 引用外部工程时，IDE 构建会自动把被引用工程的 include 目录（源码根 + `include/`）与导入库 `.lib` 合并进编译链接计划——中文主程序可以直接 `#include` 外部头文件并链接外部库（构建顺序先外部后中文）。注意：VS 导出工程暂不自动注入这些 include/lib（见 `docs/FUTURE_OPTIMIZATIONS.md`），AI 在解释「IDE 内能编译、导出 VS 工程缺头文件/链接错误」时应指出这一差异。外部工程本身没有窗口设计器与 `.lcpp` 源码，`controlRef`、中文命令、事件绑定等规则不适用于外部工程的源码文件。
+
 ## 模块设计器事件参数规则
 
 - NewEmoji 原生窗口中的 `调试输出`必须同时保留 Windows `OutputDebugStringW` 和 IDE 受控运行日志的 UTF-8 标准输出；只写调试器通道会导致 F5 已触发事件但“调试控制台”没有任何输出。标准输出固定使用 `[调试输出] `前缀并立即刷新，不能依赖进程退出才落盘。
@@ -48,6 +74,7 @@
 - `NE_显示消息框` / `NE_显示确认框` / `NE_显示扩展消息框` 是 new_emoji 过程式消息框的高层入口（底层 `NE_EU_ShowMessageBox*` 同样不可直调）。处理器参数必须写 `&处理器名`：结果回调签名为 `(整数型 结果编号, 整数型 结果值)`，扩展消息框为 `(整数型 结果编号, 整数型 动作, 文本型 输入文本)`；结果值 1 确认、2 取消/关闭。这三个命令与 `NE_设置窗口图标`、`NE_设置主题令牌` 的窗口句柄参数可写 `当前窗口`，生成 C++ 使用模块主窗口句柄。
 - 2026-09-13 第二批：Post 投递族（`NE菜单_投递*`、`NE富列表_投递*`、`NE表格_投递*`、`NE徽标_投递设置文本`）供工作线程安全刷新界面，处理器内仍只读快照；输出指针型原生 getter 一律不要直调，用 JSON 返回封装（`NE菜单_取状态/取颜色/取项目元数据`、`NE表格_取单元格值/取双击编辑状态`、`NE富列表_取选项/取样式/取倒计时状态` 等）。Tabs 新增 `关闭标签页` 事件（`NE标签页_绑定关闭标签页`）、Menu 新增 `右键菜单` 事件（`NE菜单_绑定右键菜单`）。
 - RichList 的 `VirtualRow`（虚拟数据源）与 Table 的 `VirtualRow` 同范式：`NE富列表_绑定虚拟数据源(富列表, &处理器)` 绑定，处理器签名 `(整数型 行号)`，处理器内调用 `NE富列表_设置虚拟行数据("条目 JSON")` 回填本次数据；生成器负责 UTF-8 转换与两阶段缓冲区协议。两者数据槽相互独立，不得混用。
+- 2026-09-15 第三批：Tabs 样式与运行时全量补齐。① 逐项「禁用/图标/可关闭」必须随 `EU_SetTabsItemsEx` 六字段高阶协议（`标题\tID\t内容\t图标\t禁用\t可关闭`）传入原生——库没有 `EU_SetTabsItemDisabled`，省略该协议会让设计器勾选的禁用态在 F5 后无效；② 新增 `新增标签页`（`NE标签页_绑定新增标签页`，处理器收新项目索引）与 `拖拽重排`（`NE标签页_绑定拖拽重排`，处理器收原索引/新索引/项目总数）两个事件；③ 新增标签页运行时命令族 `NE标签页_设置激活索引` / `取激活索引` / `取激活标题` / `取项目数量` / `添加项目` / `关闭项目` / `设置滚动偏移` / `滚动` 与运行时样式族 `设置标签样式`（0 线条、1 卡片、2 边框卡片）/ `设置标签位置`（0 顶部、1 右侧、2 底部、3 左侧）/ `设置表头对齐` / `设置表头可见` / `设置可编辑` / `设置内容可见` / `启用浏览器模式` / `设置浏览器度量` / `设置项目图标` / `设置项目可关闭` / `设置项目状态` / `设置新建按钮可见` / `设置拖拽选项`，AI 优先用它们而非 `NE_EU_*` 底层命令；设计器画布预览（`TabControlDesignerPreview`）同步渲染卡片/边框卡片样式、四向表头、逐项状态徽标、×/+ 按钮与浏览器模式。
 
 ## HTTP 客户端 2.0 生成规则
 
@@ -142,6 +169,7 @@
 - AI 配置 `lingbuilder.new_emoji.ui/ListBox` 时，普通逐行文本只写入 `properties.items`；只有需要 key、parent_key、group_key、text、value、icon、desc、tag 等 TSV 高级字段时才写 `properties.listBoxItemsEx`，不得把简单项目机械复制到高级项目。空高级项目、空 `selectedKeys` 和 `virtualItemCount=0` 表示不启用对应覆盖模式，生成器不得调用会重置项目或选择状态的 Setter。只有真实虚拟数据源场景才设置正数 `virtualItemCount`。
 - AI 使用 `lingbuilder.new_emoji.ui/Tabs` 时，必须把它视为带独立页面槽位的分页容器，不是可任意拉高的标签导航条。标签页由稳定页面 ID 和标题组成，页面内控件必须保存对应 `containerSlot`；不得把全部子控件直接放到 Tabs 根级，也不得生成 `contentVisible=false`。原生生成由 LingBuilder 创建每页无边框、0 圆角的独立 Panel、把 `ItemsEx` 内置内容字段设为空白并调用 `EU_SetTabsPageElements`；AI 不应手写字符串形式的页面元素 ID、保留 Tabs 自绘内容或绕过设计器页面模型。
 - AI 生成 new_emoji 窗口时，可以使用模块目录公开的全部属性和事件；当前 92 个控件共 698 个属性、902 个事件均具有确定性运行时映射。
+- 设计器「显示内容」（通用 `content`）对目录控件的落地分两类：创建导出带文本参数的控件（如 Button 的 `text_bytes`）在创建时写入；创建导出不带文本参数的控件（如 `EU_CreateEditBox`）由模块清单 `contributes.designerControls[].runtime.applyContentCommand` 声明创建后的文本应用命令（ABI 固定 `hwnd, element_id, bytes, len`，EditBox 声明为 `EU_SetElementText`）。生成器在创建行之后发射 `LB_NE_ToUtf8` + 该命令；`content` 为空或未声明时不生成。2026-09-15 起旧的「编辑框显示内容运行后为空」即此缺口，已修复并实测。新增目录控件若创建函数不携带文本参数，必须同步在其 runtime 声明 `applyContentCommand`，不得让设计器填写的显示内容静默丢失。
 - 按钮可设置鼠标经过背景/边框/文字色和按下背景/边框/文字色。通用事件包括 `MouseEnter`、`MouseLeave`、`MouseDown`、`MouseUp`、`MouseDoubleClick`、`MouseMove`、`MouseWheel`、`GotFocus`、`LostFocus`。
 - Upload 事件名固定为 `FilesSelected` 与 `UploadAction`，不得生成旧的 `FileSelected` / `Action`。
 - new_emoji 新事件绑定必须保存模块目录的规范事件名；读取旧项目时允许通过模块清单 `aliases` 把通用预览事件键映射到规范事件，例如 `Click` 映射为 `Clicked`。只要设计器已有处理器名，F5/导出就必须生成对应原生回调注册，不能因事件键差异静默丢弃 `_按钮1_被单击` 等处理器。
@@ -229,7 +257,8 @@ AI 必须遵守：
 - 独立一行的 `结束` 是方法、事件或构造块的结构结束；条件、选择、循环和异常结构使用各自的结束命令。需要退出窗口/程序时使用明确命令 `结束()`，不要把块结束误当成退出命令。
 - `.lcpp` 整行注释使用 `// 注释内容` 或 `注释 注释内容`。注释可由结构编辑器保留和显示，但绝不能参与信息框、调试输出、模块命令或控制流的 C++ 生成；临时停用 `// 信息框(...)` 后，F5、原生预览、导出工程和 AI Bridge 构建都不得继续执行该调用。AI 不得通过删除注释前缀或改写成可执行语句来恢复用户已停用的代码。
 - 编辑器显示注释时必须使用统一注释色 `LINGCPP_COMMENT_TOKEN_COLORS`（`electron/src/services/lingCpp/semanticTheme.ts`，深色 `#3f8f3f` / 浅色 `#166534`）。新手结构编辑器、专业 Monaco 编辑器、Diff 视图和旧 EPL 编辑器必须共用该令牌，不得再各自硬编码绿色；同一行注释在切换新手/专业模式时不得变色。新手编辑器拆分代码与注释统一走 `splitLingCppLineComment()`（`electron/src/services/lingCpp/beginnerSyntaxPresentation.ts`），它识别整行 `'` 与字符串外的 `//`，并跳过双引号、中文引号和 `\` 转义内的 `//`。注意：**显示**层面已把整行 `'` 当注释，但解析器 `isLingCppCommentLine` 仍只认 `//` 与 `注释`；带 `'` 注释的源码目前会在生成 C++ 时降级为 `// 暂不支持的中文 C++ 语句：'`，AI 不得声称该写法已被生成链路完整支持。
-- 不支持或不确定的语法要保守处理，可以在说明中提示需要人工复核，不能编造不可执行的新语法。
+- 内嵌 HTML、JSON、模板等大段文本时使用多行文本块：开始行必须形如 `变量 = """`（行尾恰好是三引号），内容行**原样输出**（引号、反斜杠、`\n` 都不解释、不转义），结束标记是单独一行的 `"""` 且其后不得有内容。一期只支持赋值右部：不能作类型声明初值（`局部 文本型 X = """` 报中文诊断）、不能进命令实参或 `返回`；正确写法是先 `局部 文本型 X` 声明，再单独一行 `X = """` 开始文本块赋值（与局部变量提升口径一致）。文本块内容不透明：块内出现的 `结束`、`如果`、命令名、控件名、功能库调用一律不参与控制流配对、补全、悬停、重命名和后端命令契约扫描；AI 不得把块内文本当可执行代码解释，也不得在重构、格式化或重命名时改写块内内容。生成期确定性折叠为单个 C++ 宽字符串字面量（真实换行转 `\n`）。
+- 不支持或不确定的语法要保守处理，可以在说明中提示需要人工复核，不能编造不可执行的新语法。多行文本块（三引号）已被解析、生成与语言服务链路完整支持（见上条与「2026-09-14 多行文本块生成规则补充」），AI 可以直接生成，不属于需保守处理的未支持语法。
 
 ## 3. 中文关键字与命令习惯
 
@@ -340,6 +369,7 @@ LingBuilder 模块系统用于扩展中文命令、类型、补全、诊断和 C
 - `record` 和 `array` 是 LingCpp 语义契约，不是 DLL ABI。生成工程内部可输出 C++ `struct` 和 `std::vector<T>`，但预编译 DLL 边界禁止直接传递 STL 或未固定布局的 C++ 对象。需要原生交换复杂数据时必须使用模块明确提供的 POD、数据指针加数量、调用方缓冲区、任务或受管句柄命令；没有经过 binding 和生成器验证时，AI 不得声称结构化值可直接跨 DLL 传递。
 - 模块命令的 `bindings.commands[].parameters[].type` 和 `returnType` 可以引用本模块公开的 `record/array` 名称，但仅适用于由 LingBuilder 生成在同一工程内的值语义运行时。只要 target 携带原生 DLL，清单校验就会拒绝结构化类型直接跨 ABI；AI 不得通过改成 `raw`、裸指针或伪造 `cppType` 绕过门禁。
 - 使用 `lingbuilder.system.disk@1.1.0` 时，应优先采用 `磁盘_取容量信息`、`磁盘_取卷信息`、`磁盘_枚举逻辑驱动器`、`磁盘_枚举全部卷`、`磁盘_枚举物理磁盘` 和 `磁盘_取分区列表` 返回的公开记录/数组。原 5 条标量命令只用于旧源码兼容；模块是只读信息模块，不得生成格式化、分区修改、写扇区或绕过权限的调用。
+- 使用 `lingbuilder.system.shell@1.0.0` 时，`系统_取运行目录()` 返回当前运行 exe 所在目录（不带尾部反斜杠），是易语言「取运行目录」的对应物；需要读取 exe 旁边的配置或数据文件时必须用它拼接路径，不得改用相对路径，也不得把进程当前工作目录当成运行目录（快捷方式或外部程序设置的工作目录会让两者不一致）。`系统_取临时目录()` 返回值带尾部反斜杠，`系统_取桌面目录()`、`系统_取文档目录()` 不带；拼接子路径一律使用 `路径_合并`（`lingbuilder.fs.path`），不要手工补斜杠。
 
 同时提供 `windows-msvc-win32` 与 `windows-msvc-x64` 的外部模块，其生成源码中的库指令必须按 `_WIN64` 确定性选择对应 target；不得在 x64 工程中残留 Win32 `.lib` 的 `#pragma comment`，也不得用 `targets[0]` 代替当前架构。
 
@@ -672,6 +702,7 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - `cornerStyle` 只允许 `system`、`rounded`、`small-rounded`、`square`；`iconStyle` 只允许 `lingbuilder`、`system`、`custom`、`none`。`custom` 必须同时设置工作区内项目 `assets/` 下的相对 `.ico` 路径 `iconPath`，禁止保存开发机绝对路径。旧项目缺失字段时迁移为暗色标题栏、圆角和 LingBuilder 内置图标。
 - F5 和导出的 Win32 工程通过动态 DWM 属性设置标题栏背景、标题文字和圆角；旧版 Windows 不支持对应 DWM 属性时保持系统标题栏和系统边框，不能承诺完全一致的非客户区颜色。禁止使用 `SetWindowRgn` 模拟窗口圆角，因为整数区域裁剪会产生明显锯齿；不支持 DWM 抗锯齿圆角时必须干净回退为系统边框。
 - LingBuilder 内置窗口图标由生成的 C++ 资源数据确定性创建并同时设置大、小窗口图标，不依赖本机临时文件；自定义 ICO 通过统一设计器资源导入链路复制并随 F5、导出、Visual Studio post-build 和 AI Bridge 构建携带，运行时分别按系统大、小图标尺寸加载；`none` 表示不主动设置图标。
+- new_emoji 后端窗口的标题栏由 new_emoji 自绘，其图标状态只能由 `EU_SetWindowIcon`（中文命令 `NE_设置窗口图标`）填充——该函数同时完成 `WM_SETICON`、内部 WindowState 记录和标题栏重绘；直接 `SendMessageW(WM_SETICON)` 只会更新任务栏，自绘标题栏不绘制图标。生成器（2026-09-15 起）与 AI 生成代码都必须经 `EU_SetWindowIcon` 设置 new_emoji 窗口图标，不得回退为手工 `LoadImageW` + `WM_SETICON`。
 - 窗口是否允许拖拽调整大小和是否允许最大化是两个独立设计器字段，旧项目均默认允许。生成 Win32 C++ 时，禁止调整大小必须移除 `WS_THICKFRAME`，禁止最大化必须移除 `WS_MAXIMIZEBOX`；窗口尺寸计算与实际创建必须使用同一份最终窗口样式，不能只在 React 预览中隐藏按钮或拦截鼠标。
 - ListView 的 `background: "transparent"` 在原生 Win32 中安全解析为与设计器一致的深色不透明表面 `#0F172A`，因为系统 ListView 不支持设计器 CSS 式透明混合。生成器必须同时设置列表背景、文字背景、文字颜色并绘制表头，包括最后一个真实列头之后的空白表头区域；不能只在 React 预览中改色。
 - 独立 Header（表头）控件的 `background`、`foreground` 和字体必须由 Win32 `NM_CUSTOMDRAW` 确定性绘制，背景使用设计器选择的精确颜色，并覆盖最后一列后的空白区域；自绘必须保留悬停和按下视觉状态。位于选项卡页面或其他容器中时必须通过父级通知转发保持同样效果，不能退回系统白底黑字。表头点击只负责产生 `ColumnClick` /“列被单击”事件，没有事件绑定时不得虚构业务动作。
@@ -943,3 +974,11 @@ untime`）后 LoadLibrary；资源缺失时钩子返回空指针，自动回退�
 - 后台创建：`FBro_后台创建(地址, 缓存目录, 附加信息JSON)` 创建无窗口实例（FBroHsCreateBackground），事件照常分发；附加信息 JSON 键不覆盖内置 flag。
 - 有意不暴露：`FBroHsOnlineLicenseControl_SetKey`/`SetLicenceKey`（Key 走环境变量）、`CreateSync/CreateBackgroundSync`（阻塞冲突）、`UseExtraData` 族（字典直传等价）、`FBroHsRequest_Set`（PTELIB 结构）；实例列表族用桥自有注册表等价实现。火山内部管线（结构转换器/SynEventDis/迭代器）确认不封装。
 - 待办：R2 上传 2.6.0 归档（sha256 eeb1494c…f12）+ 管理后台 SDK 下载源发布（sequence+1）；各命令端到端 exe 冒烟（当前为导出探针+门禁绿）。
+
+# 2026-09-14 多行文本块生成规则补充
+
+- `.lcpp` 新增多行文本块语法（三引号），用于内嵌 HTML/JSON/模板等大段文本：开始行 `变量 = """`（行尾三引号、目标为标识符或成员链），内容行原样保留（不解释 `\n`/`\t`/反斜杠/引号，行尾统一按 `\n`），结束标记单独一行 `"""` 且其后不得有内容。词法与收敛实现在 `electron/src/services/lingCpp/textBlock.ts`（共享扫描器）与 `parser.ts`（块收敛为单条语句、`LingCppStatement.endLine`）。
+- 一期边界：只允许赋值右部。`局部 文本型 X = """`、常量/全局/成员/字段声明初值、命令实参、`返回` 都出中文诊断；两步写法（先声明、后 `X = """` 赋值）是唯一合法形态，与局部变量提升口径一致。未闭合块吞到文件末尾并在开始行报「多行文本块缺少结束标记」，孤立结束标记报「多余的文本块结束标记」。
+- C++ 生成：`lingCppWin32Project.ts` 的 `translateStatement` 文本块分支把内容经 `escapeWideString` 折叠为单行 `目标 = L"…\n…";` 宽字面量（真实换行→`\n`、引号→`\"`、反斜杠→`\`），Win32 与 new_emoji 后端共用；误用兜底降级为 `L""` 注释，绝不把三引号原文吐进 C++。
+- 豁免面（AI 生成或重构时必须保持）：块内文本对控制流配对、新手缩进/注释切换/自动声明/命令展开/补全、Monaco 与新手着色、功能库与控件引用扫描、后端命令契约、全局/常量/数据类型重命名、`formatLingCpp` 全部不透明；重命名与格式化改写器必须跳过块行。
+- 编辑器口径：新手画布把块行渲染为不透明字符串行（不参与命令参数面板与流程导轨）；专业 Monaco 用 `textBlock` tokenizer 状态跨行着色。生成↔回读往返（importNativeCpp）与命令实参位文本块属二期，见 `docs/FUTURE_OPTIMIZATIONS.md`。

@@ -1,3 +1,5 @@
+import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
+
 export interface BeginnerStatementFormatResult {
   value: string;
   cursor: number;
@@ -77,6 +79,14 @@ export function formatBeginnerAssignmentAtCursor(value: string, cursor: number):
   if (safeCursor !== lineEnd) return { value, cursor: safeCursor, changed: false };
 
   const line = value.slice(lineStart, lineEnd);
+  // 多行文本块的开始行/内容行/结束标记不参与赋值格式化（内容按 raw 语义原样保留）。
+  const blockLines = collectLingCppTextBlockLines(
+    scanLingCppTextBlockRanges(value.split('\n')),
+    value.split('\n').length
+  );
+  if (blockLines.has(value.slice(0, lineStart).split('\n').length)) {
+    return { value, cursor: safeCursor, changed: false };
+  }
   const formatted = formatBeginnerAssignmentLine(line);
   if (formatted === line) return { value, cursor: safeCursor, changed: false };
 

@@ -1,7 +1,7 @@
 export interface SolutionProject {
   id: string;
   name: string;
-  type: 'visual-cpp' | 'windows-dll' | 'external-msbuild' | 'external-cmake';
+  type: 'visual-cpp' | 'windows-dll' | 'windows-console' | 'external-msbuild' | 'external-cmake';
   sourceRoot: string;
   configRoot: string;
   designerPath: string;
@@ -18,6 +18,8 @@ export interface SolutionProject {
     generatedSourceDirectory?: string;
     /** 项目构建产物 EXE 文件名（可带 .exe 后缀）；未设置时使用 LingBuilderPreview.exe。 */
     executableName?: string;
+    /** 项目产物类型：exe（缺省）生成应用程序；dll 生成动态库 + 导入库并导出「公开」子程序；DLL 项目不支持 F5 生成并运行。 */
+    outputType?: 'exe' | 'dll';
   };
   solutionFolderId?: string;
 }
@@ -41,7 +43,10 @@ export interface SolutionCommandResult {
   ok: boolean;
   solution?: SolutionModel;
   project?: SolutionProject;
+  /** .sln 展开导入时返回全部新增项目。 */
+  projects?: SolutionProject[];
   logs?: string[];
+  warnings?: string[];
   error?: string;
   stage?: string;
   compilerDiagnostics?: any[];
@@ -119,7 +124,7 @@ export interface CreateSolutionProjectOptions {
 
 export async function createSolutionProject(
   name?: string,
-  templateId?: 'blank-window' | 'windows-dll',
+  templateId?: 'blank-window' | 'windows-dll' | 'windows-console',
   options?: CreateSolutionProjectOptions,
   signal?: AbortSignal
 ): Promise<SolutionCommandResult> {
@@ -131,8 +136,8 @@ export async function createSolutionProject(
   }, { signal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
-export async function importSolutionProject(projectFile: string): Promise<SolutionCommandResult> {
-  return postJson('/api/solution/import', { projectFile }, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
+export async function importSolutionProject(projectFile: string, mode: 'expand' | 'single' = 'expand'): Promise<SolutionCommandResult> {
+  return postJson('/api/solution/import', { projectFile, mode }, { timeoutMs: METADATA_REQUEST_TIMEOUT_MS });
 }
 
 export async function createSolutionFolder(name?: string): Promise<SolutionCommandResult & { folder?: SolutionFolder }> {
@@ -169,8 +174,8 @@ export async function deleteSolutionProject(projectId: string, deleteFiles: bool
   }
 }
 
-export async function buildSolution(projectId?: string): Promise<SolutionCommandResult> {
-  return postJson('/api/solution/build', projectId ? { projectId, run: false } : { run: false });
+export async function buildSolution(projectId?: string, run = false): Promise<SolutionCommandResult> {
+  return postJson('/api/solution/build', projectId ? { projectId, run } : { run });
 }
 
 export async function cleanSolution(projectId?: string): Promise<SolutionCommandResult> {
@@ -182,7 +187,7 @@ export async function rebuildSolution(projectId?: string): Promise<SolutionComma
 }
 
 export function getSolutionProjectDirectory(project: SolutionProject): string {
-  if (project.type === 'visual-cpp' || project.type === 'windows-dll') return project.sourceRoot || '.';
+  if (project.type === 'visual-cpp' || project.type === 'windows-dll' || project.type === 'windows-console') return project.sourceRoot || '.';
   const projectFile = (project.projectFile || '').replace(/\\/gu, '/');
   const separator = projectFile.lastIndexOf('/');
   return separator > 0 ? projectFile.slice(0, separator) : '.';

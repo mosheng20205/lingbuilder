@@ -323,6 +323,7 @@ function CommunityPage({ content, error }: PageProps) {
 /** 赞助列表：按赞助时间先后展示 QQ 号与金额；顶部放收款码说明如何赞助。名单由管理后台维护。 */
 function SponsorsPage({ content, error }: PageProps) {
   const sponsors = content?.sponsors || [];
+  const totalCents = sponsors.reduce((sum: number, sponsor: WebsiteSponsor) => sum + sponsor.amountCents, 0);
   return <><PageHero kicker="SPONSORS" title="赞助列表" description="感谢每一位赞助 LingBuilder 开发的朋友。名单按赞助时间先后排列，金额公开可查。" icon={Heart}/>
     <section className="website-section"><div className="website-shell">
       <div className="sponsor-support">
@@ -334,7 +335,7 @@ function SponsorsPage({ content, error }: PageProps) {
       </div>
       {error && <LoadNotice text={error}/>}
       {!content && !error && <LoadNotice text="正在加载赞助列表…"/>}
-      {content && <p className="sponsor-count">{sponsors.length ? `共 ${sponsors.length} 笔赞助` : ''}</p>}
+      {content && <p className="sponsor-count">{sponsors.length ? `共 ${sponsors.length} 笔赞助 · 合计 ${formatSponsorYuan(totalCents)}` : ''}</p>}
       {content && (sponsors.length
         ? <div className="sponsor-list">{sponsors.map((sponsor: WebsiteSponsor, index: number) => <article className="sponsor-row" key={sponsor.id}>
             <span className="sponsor-qq"><Heart/><strong>{sponsor.qqNumber}</strong></span>

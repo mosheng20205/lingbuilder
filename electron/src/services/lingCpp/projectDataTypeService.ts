@@ -1,6 +1,7 @@
 import { LingCppModuleContext } from '../modules/types';
 import { areLingCppTypesCompatible, inferLingCppExpressionType } from './expressionTypeService';
 import { LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import { getModulePublicTypeKind } from '../modules/modulePublicTypeService';
 import {
   LingCppDataField,
@@ -224,8 +225,9 @@ export function findProjectDataTypeReferences(
     const lines = file.sourceCode.split(/\r?\n/u);
     const parsed = parseLingCpp(file.sourceCode);
     const scopes = buildLineScopeTypes(parsed.program.classes, context);
+    const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
     lines.forEach((line, index) => {
-      if (isIgnoredLine(line)) return;
+      if (isIgnoredLine(line) || opaqueLines.has(index + 1)) return; // 多行文本块内容不透明：不算类型引用
       if (!fieldName) {
         for (const match of line.matchAll(identifierRegex(typeName))) {
           references.push({ filePath: file.filePath, line: index + 1, column: (match.index || 0) + 1, text: line.trim(), kind: 'type' });
@@ -273,10 +275,15 @@ export function renameProjectDataFieldAcrossSources(
     const parsed = parseLingCpp(file.sourceCode);
     const scopes = buildLineScopeTypes(parsed.program.classes, context);
     const lines = file.sourceCode.split(/(\r?\n)/u);
+    const sourceLinesForBlocks = file.sourceCode.split(/\r?\n/u);
+    const opaqueLines = collectLingCppTextBlockOpaqueLines(
+      scanLingCppTextBlockRanges(sourceLinesForBlocks),
+      sourceLinesForBlocks.length
+    );
     let sourceLine = 1;
     const sourceCode = lines.map(part => {
       if (/^\r?\n$/u.test(part)) { sourceLine += 1; return part; }
-      if (isIgnoredLine(part)) return part;
+      if (isIgnoredLine(part) || opaqueLines.has(sourceLine)) return part; // 文本块内容不参与字段重命名
       const scope = scopes.get(sourceLine) || new Map<string, string>();
       return replaceTypedFieldAccess(part, scope, context, typeName, oldName, newName.trim());
     }).join('');
@@ -345,8 +352,13 @@ function identifierRegex(name: string): RegExp {
 }
 
 function replaceOutsideStringsAndComments(source: string, pattern: RegExp, replacement: string | ((substring: string) => string)): string {
+  const sourceLines = source.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(sourceLines), sourceLines.length);
+  let lineNumber = 0;
   return source.split(/(\r?\n)/u).map(part => {
-    if (/^\r?\n$/u.test(part) || isIgnoredLine(part)) return part;
+    if (/^\r?\n$/u.test(part)) return part;
+    lineNumber += 1;
+    if (isIgnoredLine(part) || opaqueLines.has(lineNumber)) return part; // 文本块内容不参与类型重命名替换
     let output = '';
     let code = '';
     let quote: '"' | '“' | undefined;

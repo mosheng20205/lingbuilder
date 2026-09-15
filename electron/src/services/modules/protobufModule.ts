@@ -49,15 +49,15 @@ export const PROTOBUF_MODULE: LingBuilderModuleManifest = {
   ],
   bindings: {
     commands: [
-      { command: 'PB_加载描述集', runtimeName: 'PB_加载描述集', parameters: [{ name: '路径', type: 'wideString' }], returnType: 'Proto描述集', encoding: 'wide' },
-      { command: 'PB_创建消息', runtimeName: 'PB_创建消息', parameters: [{ name: '描述集', type: 'Proto描述集' }, { name: '类型名', type: 'wideString' }], returnType: 'Proto消息', encoding: 'wide' },
-      { command: 'PB_从字节集解析', runtimeName: 'PB_从字节集解析', parameters: [{ name: '消息', type: 'Proto消息' }, { name: '数据', type: 'bytes' }], returnType: 'bool' },
-      { command: 'PB_序列化为字节集', runtimeName: 'PB_序列化为字节集', parameters: [{ name: '消息', type: 'Proto消息' }], returnType: 'bytes' },
-      { command: 'PB_从JSON', runtimeName: 'PB_从JSON', parameters: [{ name: '消息', type: 'Proto消息' }, { name: 'JSON', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
-      { command: 'PB_到JSON', runtimeName: 'PB_到JSON', parameters: [{ name: '消息', type: 'Proto消息' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'PB_加载描述集', runtimeName: 'PB_加载描述集', parameters: [{ name: '路径', type: 'wideString', description: 'protoc 生成的 descriptor set 文件路径，不能为空文本；打不开或解析失败返回句柄 0。'}], returnType: 'Proto描述集', encoding: 'wide' },
+      { command: 'PB_创建消息', runtimeName: 'PB_创建消息', parameters: [{ name: '描述集', type: 'Proto描述集', description: 'PB_加载描述集 返回的描述集句柄；句柄无效或类型名为空时返回消息句柄 0。'}, { name: '类型名', type: 'wideString', description: '描述集内的完整消息类型名，例如 package.OrderMessage，区分大小写。'}], returnType: 'Proto消息', encoding: 'wide' },
+      { command: 'PB_从字节集解析', runtimeName: 'PB_从字节集解析', parameters: [{ name: '消息', type: 'Proto消息', description: 'PB_创建消息 返回的消息句柄；句柄无效时返回假。'}, { name: '数据', type: 'bytes', description: '要解析的 protobuf 二进制字节集；空字节集表示清空该消息。'}], returnType: 'bool' },
+      { command: 'PB_序列化为字节集', runtimeName: 'PB_序列化为字节集', parameters: [{ name: '消息', type: 'Proto消息', description: 'PB_创建消息 返回的消息句柄；句柄无效时返回空字节集。'}], returnType: 'bytes' },
+      { command: 'PB_从JSON', runtimeName: 'PB_从JSON', parameters: [{ name: '消息', type: 'Proto消息', description: 'PB_创建消息 返回的消息句柄；句柄无效时返回假。'}, { name: 'JSON', type: 'wideString', description: '符合 Protobuf JSON 映射的 JSON 文本；字段名或类型不合法时返回假并记录错误。'}], returnType: 'bool', encoding: 'wide' },
+      { command: 'PB_到JSON', runtimeName: 'PB_到JSON', parameters: [{ name: '消息', type: 'Proto消息', description: 'PB_创建消息 返回的消息句柄；句柄无效时返回空文本。'}], returnType: 'wideString', encoding: 'wide' },
       { command: 'PB_取最后错误', runtimeName: 'PB_取最后错误', returnType: 'wideString', encoding: 'wide' },
-      { command: 'PB_释放消息', runtimeName: 'PB_释放消息', parameters: [{ name: '消息', type: 'Proto消息' }], returnType: 'void' },
-      { command: 'PB_释放描述集', runtimeName: 'PB_释放描述集', parameters: [{ name: '描述集', type: 'Proto描述集' }], returnType: 'void' }
+      { command: 'PB_释放消息', runtimeName: 'PB_释放消息', parameters: [{ name: '消息', type: 'Proto消息', description: 'PB_创建消息 返回的消息句柄；释放后不可再用。'}], returnType: 'void' },
+      { command: 'PB_释放描述集', runtimeName: 'PB_释放描述集', parameters: [{ name: '描述集', type: 'Proto描述集', description: 'PB_加载描述集 返回的描述集句柄；释放后由它创建的消息句柄需先释放。'}], returnType: 'void' }
     ]
   }
 };

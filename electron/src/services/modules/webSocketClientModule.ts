@@ -25,8 +25,16 @@ interface WebSocketClientCommandSpec {
 const parameter = (
   name: string,
   type: ModuleBindingValueType | (string & {}),
-  description?: string
+  description: string
 ): ModuleCommandBindingParameter => ({ name, type, description });
+
+// 以下说明按 webSocketClientRuntime.ts 的实际校验逻辑核实，重复语义提取为共享常量。
+const wsConnectionArg = 'WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。';
+const wsStoppedArg = 'WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。';
+const wsHandlerArg = '必须使用 &处理器名；处理器必须无参数，事件内容用 WS_取当前事件类型 等系列命令读取。';
+const wsCloseCodeArg = 'RFC 6455 关闭状态码，取 1000 到 4999；保留码 1004、1005、1006、1015 和 1016 到 2999 不允许，常用值是 1000 正常关闭和 1001 离开。';
+const wsCloseReasonArg = '关闭原因文本，UTF-8 编码后不得超过 123 字节；空文本表示不带原因。';
+const wsTextArg = '要发送的文本，按 UTF-8 编码为一条完整消息；含未配对代理项或超过单次发送上限时返回假。';
 
 const specs: WebSocketClientCommandSpec[] = [
   {
@@ -35,53 +43,53 @@ const specs: WebSocketClientCommandSpec[] = [
   },
   {
     name: 'WS_配置连接', signature: 'WS_配置连接(连接, 地址)', description: '配置 ws:// 或 wss:// 地址；只能在连接停止时修改。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('地址', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '配置',
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('地址', 'wideString', 'WebSocket 服务地址，必须以 ws:// 或 wss:// 开头且不能含换行；wss:// 由系统 TLS 完成证书校验。')], returnType: 'bool', returnLabel: '逻辑型', category: '配置',
     insertText: 'WS_配置连接($1, "wss://example.com/ws")'
   },
   {
     name: 'WS_设置资源限制', signature: 'WS_设置资源限制(连接, 连接超时毫秒, 接收超时毫秒, 消息上限MB, 单次发送上限MB)', description: '设置连接/接收超时和消息硬限制，防止无限阻塞或超大消息耗尽内存。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('连接超时毫秒', 'int'), parameter('接收超时毫秒', 'int'), parameter('消息上限MB', 'int'), parameter('单次发送上限MB', 'int')],
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('连接超时毫秒', 'int', '握手连接超时毫秒数，1000 到 300000。'), parameter('接收超时毫秒', 'int', '单次接收等待上限毫秒数，1000 到 3600000。'), parameter('消息上限MB', 'int', '单条消息重组后的字节上限，单位 MB，1 到 1024；超限按协议错误断开。'), parameter('单次发送上限MB', 'int', '单条消息允许发送的字节上限，单位 MB，1 到 1024；超限拒绝发送。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WS_设置资源限制($1, 15000, 60000, 16, 8)'
   },
   {
     name: 'WS_设置UserAgent', signature: 'WS_设置UserAgent(连接, UserAgent)', description: '设置握手使用的 User-Agent；只能在连接停止时修改。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('UserAgent', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '配置'
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('UserAgent', 'wideString', '握手使用的 User-Agent 文本，不能含换行；空文本时使用 LingBuilder WebSocket Client/2.0。')], returnType: 'bool', returnLabel: '逻辑型', category: '配置'
   },
   {
     name: 'WS_设置请求头', signature: 'WS_设置请求头(连接, 请求头)', description: '设置 UTF-16 原始请求头，每行一个“名称: 值”；禁止覆盖 WebSocket 升级关键头。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('请求头', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '配置',
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('请求头', 'wideString', '每行一条“名称: 值”的原始请求头文本；不得覆盖 Upgrade、Connection、Host、Sec-WebSocket-Key、Sec-WebSocket-Version、Sec-WebSocket-Extensions、Sec-WebSocket-Protocol 和 Origin。')], returnType: 'bool', returnLabel: '逻辑型', category: '配置',
     insertText: 'WS_设置请求头($1, "Authorization: Bearer token")'
   },
   {
     name: 'WS_设置Origin', signature: 'WS_设置Origin(连接, 来源)', description: '设置 WebSocket 握手 Origin；空文本表示不发送。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('来源', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '配置'
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('来源', 'wideString', '握手 Origin 文本，例如 https://example.com；不能含换行，空文本表示不发送该头。')], returnType: 'bool', returnLabel: '逻辑型', category: '配置'
   },
   {
     name: 'WS_设置子协议', signature: 'WS_设置子协议(连接, 子协议列表)', description: '设置逗号分隔的客户端子协议优先表，并校验服务端选择结果。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('子协议列表', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '配置',
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('子协议列表', 'wideString', '逗号分隔的子协议 token 优先级列表，越靠前越优先；含非法 token 会被拒绝，服务端返回未请求的子协议时握手失败。')], returnType: 'bool', returnLabel: '逻辑型', category: '配置',
     insertText: 'WS_设置子协议($1, "chat.v2, chat.v1")'
   },
   {
     name: 'WS_设置代理', signature: 'WS_设置代理(连接, 模式, 代理地址, 绕过列表)', description: '设置代理模式：0=系统自动，1=直连，2=固定代理；固定代理格式遵循 WinHTTP。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('模式', 'int'), parameter('代理地址', 'wideString'), parameter('绕过列表', 'wideString')],
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('模式', 'int', '代理模式：0 跟随系统设置，1 直连不使用代理，2 固定代理地址。'), parameter('代理地址', 'wideString', '固定代理地址，格式遵循 WinHTTP，例如 127.0.0.1:8888；模式为 2 时不能为空，且不能含换行。'), parameter('绕过列表', 'wideString', '不走代理的主机列表，分号分隔，可为空文本但不能含换行。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '配置', insertText: 'WS_设置代理($1, 0, "", "")'
   },
   {
     name: 'WS_设置服务器凭据', signature: 'WS_设置服务器凭据(连接, 用户名, 密码)', description: '设置握手服务器 HTTP Basic 身份验证凭据；仅保存在连接对象内存中。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('用户名', 'wideString'), parameter('密码', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('用户名', 'wideString', '目标服务器 Basic 验证的用户名，不能含换行。'), parameter('密码', 'wideString', 'Basic 验证密码，只保存在连接对象内存中，不能含换行。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'WS_设置代理凭据', signature: 'WS_设置代理凭据(连接, 用户名, 密码)', description: '设置代理 HTTP Basic 身份验证凭据；仅保存在连接对象内存中。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('用户名', 'wideString'), parameter('密码', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('用户名', 'wideString', '代理服务器 Basic 验证的用户名，不能含换行。'), parameter('密码', 'wideString', '代理 Basic 验证密码，只保存在连接对象内存中，不能含换行。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'WS_设置TLS验证', signature: 'WS_设置TLS验证(连接, 验证证书, 允许自签名, 证书SHA256)', description: '配置 wss:// 证书验证和可选 SHA-256 证书固定；关闭验证属于高风险调试能力。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('验证证书', 'bool'), parameter('允许自签名', 'bool'), parameter('证书SHA256', 'wideString')],
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('验证证书', 'bool', '传真执行完整的证书链与域名校验；传假关闭校验，属于高风险调试能力。'), parameter('允许自签名', 'bool', '传真时额外接受自签名证书，其余校验保持不变。'), parameter('证书SHA256', 'wideString', '要固定的服务端证书 SHA-256 指纹，64 位十六进制文本，可含冒号或空格；空文本表示不做指纹固定。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '安全', visibility: 'advanced', insertText: 'WS_设置TLS验证($1, 真, 假, "")'
   },
   {
     name: 'WS_设置自动重连', signature: 'WS_设置自动重连(连接, 启用, 最大次数, 初始延迟毫秒, 最大延迟毫秒)', description: '设置意外断开后的指数退避重连；主动关闭不会触发重连。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('启用', 'bool'), parameter('最大次数', 'int'), parameter('初始延迟毫秒', 'int'), parameter('最大延迟毫秒', 'int')],
+    parameters: [parameter('连接', 'WebSocket连接', wsStoppedArg), parameter('启用', 'bool', '传真在意外断开后按指数退避自动重连；主动 WS_关闭连接 不会触发重连。'), parameter('最大次数', 'int', '单个启动周期内允许的最大重连次数，1 到 1000，仅在启用时校验。'), parameter('初始延迟毫秒', 'int', '首次重连前的等待毫秒数，100 到 300000。'), parameter('最大延迟毫秒', 'int', '退避延迟上限毫秒数，不得小于初始延迟且不超过 3600000。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '配置', insertText: 'WS_设置自动重连($1, 真, 8, 500, 30000)'
   },
   ...([
@@ -95,7 +103,7 @@ const specs: WebSocketClientCommandSpec[] = [
     signature: `${name}(连接, &处理器)`,
     description: `绑定${event}事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。`,
     parameters: [
-      parameter('连接', 'WebSocket连接'),
+      parameter('连接', 'WebSocket连接', wsConnectionArg),
       { ...parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。'), handlerSignature: { parameterTypes: [], returnType: '空' } }
     ],
     returnType: 'bool' as const,
@@ -105,24 +113,24 @@ const specs: WebSocketClientCommandSpec[] = [
   })),
   {
     name: 'WS_开始连接', signature: 'WS_开始连接(连接)', description: '在后台启动连接、握手和接收循环，不阻塞 UI 线程。',
-    parameters: [parameter('连接', 'WebSocket连接')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
+    parameters: [parameter('连接', 'WebSocket连接', `${wsConnectionArg}必须已配置地址且尚未启动，重复启动返回假。`)], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
   },
   {
     name: 'WS_等待连接', signature: 'WS_等待连接(连接, 超时毫秒)', description: '等待连接进入“已连接”或失败状态；主要用于命令行和测试，UI 代码应使用已连接处理器。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('超时毫秒', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
+    parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg), parameter('超时毫秒', 'int', '等待进入已连接或失败状态的毫秒数，0 到 3600000；在界面事件里等待会卡住界面。')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
   },
   {
     name: 'WS_关闭连接', signature: 'WS_关闭连接(连接, 状态码, 原因)', description: '发送关闭帧并停止后台接收；状态码和 UTF-8 原因按 RFC 6455 校验。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('状态码', 'int'), parameter('原因', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '连接',
+    parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg), parameter('状态码', 'int', wsCloseCodeArg), parameter('原因', 'wideString', wsCloseReasonArg)], returnType: 'bool', returnLabel: '逻辑型', category: '连接',
     insertText: 'WS_关闭连接($1, 1000, "正常关闭")'
   },
   {
     name: 'WS_强制断开', signature: 'WS_强制断开(连接)', description: '立即关闭底层 WinHTTP 句柄并停止自动重连，仅用于超时或故障恢复。',
-    parameters: [parameter('连接', 'WebSocket连接')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
+    parameters: [parameter('连接', 'WebSocket连接', `${wsConnectionArg}强制断开后不会再自动重连。`)], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
   },
   {
     name: 'WS_销毁连接', signature: 'WS_销毁连接(连接)', description: '停止并释放受管连接；重复销毁返回假。',
-    parameters: [parameter('连接', 'WebSocket连接')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
+    parameters: [parameter('连接', 'WebSocket连接', 'WS_创建连接 返回的连接 ID；销毁会先停止后台线程，重复销毁返回假。')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
   },
   ...([
     ['WS_是否已连接', 'bool', '逻辑型', '判断连接是否已完成握手且未进入关闭状态。'],
@@ -140,16 +148,16 @@ const specs: WebSocketClientCommandSpec[] = [
     ['WS_取重连次数', 'int', '整数型', '返回当前启动周期已经执行的自动重连次数。']
   ] as const).map(([name, returnType, returnLabel, description]) => ({
     name, signature: `${name}(连接)`, description,
-    parameters: [parameter('连接', 'WebSocket连接')], returnType, returnLabel, category: '状态' as const
+    parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg)], returnType, returnLabel, category: '状态' as const
   })),
   {
     name: 'WS_发送文本到连接', signature: 'WS_发送文本到连接(连接, 内容)', description: '向指定已连接客户端发送一条完整 UTF-8 文本消息，并执行 UTF-8 与发送大小校验。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('内容', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '消息',
+    parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg), parameter('内容', 'wideString', wsTextArg)], returnType: 'bool', returnLabel: '逻辑型', category: '消息',
     insertText: 'WS_发送文本到连接($1, "$2")'
   },
   {
     name: 'WS_发送二进制到连接', signature: 'WS_发送二进制到连接(连接, 数据)', description: '向指定已连接客户端发送一条完整二进制消息。',
-    parameters: [parameter('连接', 'WebSocket连接'), parameter('数据', 'bytes')], returnType: 'bool', returnLabel: '逻辑型', category: '消息'
+    parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg), parameter('数据', 'bytes', '要发送的字节集，作为一条完整二进制消息；超过单次发送上限时返回假。')], returnType: 'bool', returnLabel: '逻辑型', category: '消息'
   },
   ...([
     ['WS_取当前事件类型', 'wideString', '文本型', '返回当前回调事件类型：已连接、文本、二进制、已断开、错误或重连。'],
@@ -166,11 +174,11 @@ const specs: WebSocketClientCommandSpec[] = [
   })),
   {
     name: 'WS_连接', signature: 'WS_连接(地址)', description: '旧版单连接兼容入口；同步等待最多 30 秒，新代码应使用受管连接和事件处理器。',
-    parameters: [parameter('地址', 'wideString')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('地址', 'wideString', '旧版默认连接的 ws:// 或 wss:// 地址；同步等待最多 30 秒。')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'WS_发送文本', signature: 'WS_发送文本(内容)', description: '旧版兼容入口；向默认受管连接发送文本。',
-    parameters: [parameter('内容', 'wideString')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('内容', 'wideString', wsTextArg)], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'WS_接收到调试输出', signature: 'WS_接收到调试输出()', description: '旧版阻塞兼容入口；等待一条默认连接文本消息并写入调试输出。',

@@ -23,7 +23,7 @@ interface HttpClientCommandSpec {
 const parameter = (
   name: string,
   type: ModuleBindingValueType | (string & {}),
-  description?: string
+  description: string
 ): ModuleCommandBindingParameter => ({
   name,
   type,
@@ -31,8 +31,17 @@ const parameter = (
   ...(type === 'handler' ? { handlerSignature: { parameterTypes: [], returnType: '空' } } : {})
 });
 
-const client = [parameter('客户端', 'HTTP客户端')];
-const request = [parameter('请求', 'HTTP客户端请求')];
+// 以下说明按 src/services/windowDesigner/httpClientRuntime.ts 的实际校验逻辑核实，重复语义提取为共享常量。
+const clientArg = 'HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。';
+const requestArg = 'HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。';
+const headerNameArg = '请求头名称，长度 1 到 256 的合法 token 且不含控制字符；Host、Content-Length、Connection、Transfer-Encoding、Cookie 和 Set-Cookie 由运行时管理，不能手工设置。';
+const headerValueArg = '请求头值，不得包含 CR、LF 或其它控制字符。';
+const requestUrlArg = '完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。';
+const bodyContentTypeArg = '请求正文的 Content-Type 文本；文本正文留空时按 text/plain; charset=utf-8 发送。';
+const completionHandlerArg = '必须使用 &处理器名；处理器必须无参数，在创建请求的窗口 UI 线程执行，内部用 HTTP客户端_取当前请求 取回请求。';
+
+const client = [parameter('客户端', 'HTTP客户端', clientArg)];
+const request = [parameter('请求', 'HTTP客户端请求', requestArg)];
 
 const specs: HttpClientCommandSpec[] = [
   {
@@ -45,63 +54,63 @@ const specs: HttpClientCommandSpec[] = [
   },
   {
     name: 'HTTP客户端_设置UserAgent', signature: 'HTTP客户端_设置UserAgent(客户端, UserAgent)', description: '设置该客户端后续请求使用的 User-Agent；仅在无活动请求时修改。',
-    parameters: [...client, parameter('UserAgent', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端',
+    parameters: [...client, parameter('UserAgent', 'wideString', '该客户端后续请求使用的 User-Agent 文本，不能为空且不得含控制字符。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端',
     insertText: 'HTTP客户端_设置UserAgent($1, "LingBuilderApp/1.0")'
   },
   {
     name: 'HTTP客户端_设置超时', signature: 'HTTP客户端_设置超时(客户端, 解析毫秒, 连接毫秒, 发送毫秒, 接收毫秒)', description: '分别设置 DNS 解析、连接、发送和接收超时，范围 100-3600000 毫秒。',
-    parameters: [...client, parameter('解析毫秒', 'int'), parameter('连接毫秒', 'int'), parameter('发送毫秒', 'int'), parameter('接收毫秒', 'int')],
+    parameters: [...client, parameter('解析毫秒', 'int', 'DNS 解析阶段超时毫秒数，100 到 3600000。'), parameter('连接毫秒', 'int', '建立 TCP 连接阶段超时毫秒数，100 到 3600000。'), parameter('发送毫秒', 'int', '发送请求头与正文阶段超时毫秒数，100 到 3600000。'), parameter('接收毫秒', 'int', '接收响应阶段单次读取超时毫秒数，100 到 3600000。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '客户端', insertText: 'HTTP客户端_设置超时($1, 10000, 15000, 30000, 30000)'
   },
   {
     name: 'HTTP客户端_设置资源限制', signature: 'HTTP客户端_设置资源限制(客户端, 响应头上限KB, 响应体上限MB, 上传上限MB, 最大重定向次数)', description: '限制响应头、内存或文件响应、上传和自动重定向，阻止不受控资源占用。',
-    parameters: [...client, parameter('响应头上限KB', 'int'), parameter('响应体上限MB', 'int'), parameter('上传上限MB', 'int'), parameter('最大重定向次数', 'int')],
+    parameters: [...client, parameter('响应头上限KB', 'int', '响应头总大小上限，单位 KB，1 到 1024。'), parameter('响应体上限MB', 'int', '内存中响应正文的大小上限，单位 MB，1 到 4096。'), parameter('上传上限MB', 'int', '上传正文或文件的大小上限，单位 MB，1 到 4096。'), parameter('最大重定向次数', 'int', '自动跟随重定向的最大次数，0 到 100。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '客户端', insertText: 'HTTP客户端_设置资源限制($1, 64, 64, 64, 10)'
   },
   {
     name: 'HTTP客户端_设置重定向策略', signature: 'HTTP客户端_设置重定向策略(客户端, 允许重定向, 允许HTTPS降级HTTP)', description: '设置自动重定向；默认允许同等或更安全协议，禁止 HTTPS 降级到 HTTP。',
-    parameters: [...client, parameter('允许重定向', 'bool'), parameter('允许HTTPS降级HTTP', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [...client, parameter('允许重定向', 'bool', '传真自动跟随 3xx 重定向，传假把 3xx 原样交给调用方。'), parameter('允许HTTPS降级HTTP', 'bool', '传真才允许 HTTPS 请求被重定向到 HTTP；默认假，防止协议降级。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'HTTP客户端_设置代理', signature: 'HTTP客户端_设置代理(客户端, 模式, 代理地址, 绕过列表)', description: '配置代理模式：0 系统默认、1 直连、2 固定代理；固定代理必须提供地址。',
-    parameters: [...client, parameter('模式', 'int'), parameter('代理地址', 'wideString'), parameter('绕过列表', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端',
+    parameters: [...client, parameter('模式', 'int', '代理模式：0 使用系统默认配置，1 直连不经代理，2 固定代理地址。'), parameter('代理地址', 'wideString', '固定代理地址，模式为 2 时必须提供且不能含换行。'), parameter('绕过列表', 'wideString', '不走代理的域名或 IP 列表，格式遵循 WinHTTP；不需要时传空文本。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端',
     insertText: 'HTTP客户端_设置代理($1, 0, "", "")'
   },
   {
     name: 'HTTP客户端_设置服务器凭据', signature: 'HTTP客户端_设置服务器凭据(客户端, 用户名, 密码)', description: '设置内存中的 HTTP Basic 服务器凭据；不会写入模块日志或持久化配置。',
-    parameters: [...client, parameter('用户名', 'wideString'), parameter('密码', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [...client, parameter('用户名', 'wideString', 'HTTP Basic 服务器验证用户名，不得含控制字符。'), parameter('密码', 'wideString', 'HTTP Basic 服务器验证密码，不得含控制字符；只保存在内存中，不写入日志。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'HTTP客户端_设置代理凭据', signature: 'HTTP客户端_设置代理凭据(客户端, 用户名, 密码)', description: '设置内存中的 HTTP Basic 代理凭据。',
-    parameters: [...client, parameter('用户名', 'wideString'), parameter('密码', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [...client, parameter('用户名', 'wideString', '代理 Basic 验证用户名，不得含控制字符。'), parameter('密码', 'wideString', '代理 Basic 验证密码，不得含控制字符；只保存在内存中。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'HTTP客户端_设置TLS策略', signature: 'HTTP客户端_设置TLS策略(客户端, 验证证书, 允许自签名)', description: '设置 HTTPS 证书策略；默认完整验证系统信任链、主机名、用途和有效期。',
-    parameters: [...client, parameter('验证证书', 'bool'), parameter('允许自签名', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [...client, parameter('验证证书', 'bool', '传真校验证书链、主机名、用途和有效期；传假属于高风险调试能力。'), parameter('允许自签名', 'bool', '传真额外接受自签名证书，其余校验保持不变。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'HTTP客户端_设置证书固定', signature: 'HTTP客户端_设置证书固定(客户端, SHA256指纹)', description: '设置最终 HTTPS 服务端证书的 SHA-256 指纹；空文本清除固定，可包含冒号或空格。',
-    parameters: [...client, parameter('SHA256指纹', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [...client, parameter('SHA256指纹', 'wideString', '要固定的服务端证书 SHA-256 指纹，64 位十六进制，可含冒号或空格；空文本清除固定。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'HTTP客户端_设置自动解压', signature: 'HTTP客户端_设置自动解压(客户端, 启用)', description: '启用或关闭 WinHTTP gzip/deflate 自动解压；默认启用。',
-    parameters: [...client, parameter('启用', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
+    parameters: [...client, parameter('启用', 'bool', '传真由 WinHTTP 自动解压 gzip 与 deflate 响应，默认启用。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
   },
   {
     name: 'HTTP客户端_设置Cookie', signature: 'HTTP客户端_设置Cookie(客户端, 启用)', description: '启用或关闭该受管客户端会话内的 Cookie 接收和回送；默认启用且不与浏览器共享。',
-    parameters: [...client, parameter('启用', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
+    parameters: [...client, parameter('启用', 'bool', '传真在该受管客户端会话内自动接收和回送 Cookie，默认启用，不与浏览器共享。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
   },
   {
     name: 'HTTP客户端_设置默认请求头', signature: 'HTTP客户端_设置默认请求头(客户端, 名称, 值)', description: '设置或替换客户端默认请求头，拒绝非法名称、CR/LF 注入和受运行时管理的头。',
-    parameters: [...client, parameter('名称', 'wideString'), parameter('值', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...client, parameter('名称', 'wideString', headerNameArg), parameter('值', 'wideString', `${headerValueArg}同名头会被替换。`)], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_添加默认请求头', signature: 'HTTP客户端_添加默认请求头(客户端, 名称, 值)', description: '追加客户端默认请求头；适合 Accept、Cache-Control 等可重复头。',
-    parameters: [...client, parameter('名称', 'wideString'), parameter('值', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...client, parameter('名称', 'wideString', headerNameArg), parameter('值', 'wideString', `${headerValueArg}追加到已有同名头之后，适合 Accept 等可重复头。`)], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_删除默认请求头', signature: 'HTTP客户端_删除默认请求头(客户端, 名称)', description: '删除客户端中全部同名默认请求头。',
-    parameters: [...client, parameter('名称', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...client, parameter('名称', 'wideString', '要删除的客户端默认请求头名称，大小写不敏感，同名全部删除。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_清空默认请求头', signature: 'HTTP客户端_清空默认请求头(客户端)', description: '清空客户端默认请求头。',
@@ -125,20 +134,20 @@ const specs: HttpClientCommandSpec[] = [
   },
   {
     name: 'HTTP客户端_创建请求', signature: 'HTTP客户端_创建请求(客户端, 方法, 地址)', description: '创建尚未执行的受管请求；仅接受 http:// 或 https:// 和合法 HTTP 方法。',
-    parameters: [...client, parameter('方法', 'wideString'), parameter('地址', 'wideString')], returnType: 'HTTP客户端请求', returnLabel: 'HTTP客户端请求', category: '请求',
+    parameters: [...client, parameter('方法', 'wideString', 'HTTP 方法文本，只接受合法方法名，内部按大写比较，例如 GET、POST。'), parameter('地址', 'wideString', requestUrlArg)], returnType: 'HTTP客户端请求', returnLabel: 'HTTP客户端请求', category: '请求',
     insertText: 'HTTP客户端_创建请求($1, "GET", "https://example.com/api")'
   },
   {
     name: 'HTTP客户端_设置请求头', signature: 'HTTP客户端_设置请求头(请求, 名称, 值)', description: '在请求启动前设置或替换请求头。',
-    parameters: [...request, parameter('名称', 'wideString'), parameter('值', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...request, parameter('名称', 'wideString', headerNameArg), parameter('值', 'wideString', `${headerValueArg}同名头会被替换。`)], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_添加请求头', signature: 'HTTP客户端_添加请求头(请求, 名称, 值)', description: '在请求启动前追加请求头。',
-    parameters: [...request, parameter('名称', 'wideString'), parameter('值', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...request, parameter('名称', 'wideString', headerNameArg), parameter('值', 'wideString', `${headerValueArg}追加到已有同名头之后。`)], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_删除请求头', signature: 'HTTP客户端_删除请求头(请求, 名称)', description: '在请求启动前删除全部同名请求头。',
-    parameters: [...request, parameter('名称', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...request, parameter('名称', 'wideString', '要删除的请求头名称，大小写不敏感，同名全部删除。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_清空请求头', signature: 'HTTP客户端_清空请求头(请求)', description: '在请求启动前清空请求级请求头，不影响客户端默认头。',
@@ -146,28 +155,28 @@ const specs: HttpClientCommandSpec[] = [
   },
   {
     name: 'HTTP客户端_设置文本正文', signature: 'HTTP客户端_设置文本正文(请求, 正文, 内容类型)', description: '把文本编码为 UTF-8 请求正文并设置 Content-Type。',
-    parameters: [...request, parameter('正文', 'wideString'), parameter('内容类型', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求',
+    parameters: [...request, parameter('正文', 'wideString', '作为请求正文的文本，按 UTF-8 编码，会清除之前的文件或二进制正文。'), parameter('内容类型', 'wideString', bodyContentTypeArg)], returnType: 'bool', returnLabel: '逻辑型', category: '请求',
     insertText: 'HTTP客户端_设置文本正文($1, "$2", "text/plain; charset=utf-8")'
   },
   {
     name: 'HTTP客户端_设置JSON正文', signature: 'HTTP客户端_设置JSON正文(请求, JSON)', description: '把 UTF-8 JSON 文本设为请求正文并使用 application/json。',
-    parameters: [...request, parameter('JSON', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...request, parameter('JSON', 'wideString', '完整的 JSON 文本，按 UTF-8 作为请求正文，运行时不校验语法。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_设置二进制正文', signature: 'HTTP客户端_设置二进制正文(请求, 数据, 内容类型)', description: '设置独立复制的字节集请求正文。',
-    parameters: [...request, parameter('数据', 'bytes'), parameter('内容类型', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...request, parameter('数据', 'bytes', '作为请求正文的字节集，运行时独立复制一份，受上传上限约束。'), parameter('内容类型', 'wideString', '请求正文的 Content-Type 文本，例如 application/octet-stream。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_设置十六进制正文', signature: 'HTTP客户端_设置十六进制正文(请求, 十六进制, 内容类型)', description: '校验并解码偶数长度十六进制文本作为请求正文。',
-    parameters: [...request, parameter('十六进制', 'wideString'), parameter('内容类型', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...request, parameter('十六进制', 'wideString', '偶数长度的十六进制文本，只允许 0-9、a-f、A-F；解码后作为二进制正文，格式非法返回假。'), parameter('内容类型', 'wideString', '请求正文的 Content-Type 文本，例如 application/octet-stream。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_设置文件正文', signature: 'HTTP客户端_设置文件正文(请求, 文件路径, 内容类型)', description: '以 64KB 分块上传本机文件，不把整个文件载入内存。',
-    parameters: [...request, parameter('文件路径', 'wideString'), parameter('内容类型', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    parameters: [...request, parameter('文件路径', 'wideString', '要上传的本机文件路径，不能为空；按 64KB 分块读取，不把整个文件载入内存。'), parameter('内容类型', 'wideString', '上传时的 Content-Type 文本，例如 application/octet-stream。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端_设置响应文件', signature: 'HTTP客户端_设置响应文件(请求, 文件路径, 允许覆盖)', description: '把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存。',
-    parameters: [...request, parameter('文件路径', 'wideString'), parameter('允许覆盖', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [...request, parameter('文件路径', 'wideString', '保存响应的本机文件路径，不能为空；先写临时文件再原子替换到该路径。'), parameter('允许覆盖', 'bool', '传真时覆盖已存在的目标文件，传假时目标已存在会失败。')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP客户端_绑定完成处理器', signature: 'HTTP客户端_绑定完成处理器(请求, &处理器)', description: '绑定请求完成后在创建窗口 UI 线程调用的无参数处理器。',
@@ -184,7 +193,7 @@ const specs: HttpClientCommandSpec[] = [
   },
   {
     name: 'HTTP客户端_等待请求', signature: 'HTTP客户端_等待请求(请求, 超时毫秒)', description: '等待异步请求完成；主要用于测试和后台任务，UI 线程不应长时间等待。',
-    parameters: [...request, parameter('超时毫秒', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '请求', visibility: 'advanced'
+    parameters: [...request, parameter('超时毫秒', 'int', '等待请求完成的超时毫秒数，0 到 3600000。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求', visibility: 'advanced'
   },
   {
     name: 'HTTP客户端_取消请求', signature: 'HTTP客户端_取消请求(请求)', description: '请求取消并关闭活动 WinHTTP 句柄；已完成请求返回假。',
@@ -226,7 +235,7 @@ const specs: HttpClientCommandSpec[] = [
   })),
   {
     name: 'HTTP客户端_取响应头', signature: 'HTTP客户端_取响应头(请求, 名称)', description: '不区分大小写返回合并后的指定响应头。',
-    parameters: [...request, parameter('名称', 'wideString')], returnType: 'wideString', returnLabel: '文本型', category: '响应'
+    parameters: [...request, parameter('名称', 'wideString', '要读取的响应头名称，大小写不敏感；重复头合并为逗号分隔文本。')], returnType: 'wideString', returnLabel: '文本型', category: '响应'
   },
   {
     name: 'HTTP客户端_取响应字节集', signature: 'HTTP客户端_取响应字节集(请求)', description: '返回内存响应正文的独立字节集副本；流式文件响应返回空字节集。',
@@ -234,12 +243,12 @@ const specs: HttpClientCommandSpec[] = [
   },
   {
     name: 'HTTP客户端_取响应文本编码', signature: 'HTTP客户端_取响应文本编码(请求, 编码)', description: '按 auto、UTF-8、UTF-16LE、UTF-16BE、GBK、GB18030 或 ANSI 解码内存响应。',
-    parameters: [...request, parameter('编码', 'wideString')], returnType: 'wideString', returnLabel: '文本型', category: '响应',
+    parameters: [...request, parameter('编码', 'wideString', '解码字符集名称，支持 auto、UTF-8、UTF-16LE、UTF-16BE、GBK、GB18030 和 ANSI。')], returnType: 'wideString', returnLabel: '文本型', category: '响应',
     insertText: 'HTTP客户端_取响应文本编码($1, "auto")'
   },
   {
     name: 'HTTP客户端_保存响应文件', signature: 'HTTP客户端_保存响应文件(请求, 文件路径, 允许覆盖)', description: '把已缓冲的响应正文原子保存为文件；流式响应应使用设置响应文件。',
-    parameters: [...request, parameter('文件路径', 'wideString'), parameter('允许覆盖', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [...request, parameter('文件路径', 'wideString', '保存响应正文的本机文件路径，不能为空。'), parameter('允许覆盖', 'bool', '传真时覆盖已存在的目标文件，传假时目标已存在会失败。')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP客户端_取当前请求', signature: 'HTTP客户端_取当前请求()', description: '在完成处理器中返回当前请求 ID；其它上下文返回 0。',
@@ -247,25 +256,25 @@ const specs: HttpClientCommandSpec[] = [
   },
   {
     name: 'HTTP客户端_GET异步', signature: 'HTTP客户端_GET异步(客户端, 地址, &处理器)', description: '创建并开始 GET 请求，返回请求 ID；完成后在 UI 线程调用处理器。',
-    parameters: [...client, parameter('地址', 'wideString'), parameter('处理器', 'handler')], returnType: 'HTTP客户端请求', returnLabel: 'HTTP客户端请求', category: '请求',
+    parameters: [...client, parameter('地址', 'wideString', requestUrlArg), parameter('处理器', 'handler', completionHandlerArg)], returnType: 'HTTP客户端请求', returnLabel: 'HTTP客户端请求', category: '请求',
     insertText: 'HTTP客户端_GET异步($1, "https://example.com", &$2)'
   },
   {
     name: 'HTTP客户端_POSTJSON异步', signature: 'HTTP客户端_POSTJSON异步(客户端, 地址, JSON, &处理器)', description: '创建带 UTF-8 JSON 正文的 POST 请求并异步开始。',
-    parameters: [...client, parameter('地址', 'wideString'), parameter('JSON', 'wideString'), parameter('处理器', 'handler')], returnType: 'HTTP客户端请求', returnLabel: 'HTTP客户端请求', category: '请求',
+    parameters: [...client, parameter('地址', 'wideString', requestUrlArg), parameter('JSON', 'wideString', '作为请求正文提交的完整 JSON 文本，按 UTF-8 编码。'), parameter('处理器', 'handler', completionHandlerArg)], returnType: 'HTTP客户端请求', returnLabel: 'HTTP客户端请求', category: '请求',
     insertText: 'HTTP客户端_POSTJSON异步($1, "https://example.com/api", "{\\"ok\\":true}", &$2)'
   },
   {
     name: 'HTTP客户端_请求', signature: 'HTTP客户端_请求(方法, 地址, 正文, 超时毫秒)', description: '旧版同步兼容入口；使用默认客户端发送 UTF-8 请求，新代码应使用受管客户端和请求。',
-    parameters: [parameter('方法', 'wideString'), parameter('地址', 'wideString'), parameter('正文', 'wideString'), parameter('超时毫秒', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('方法', 'wideString', 'HTTP 方法文本，例如 GET 或 POST。'), parameter('地址', 'wideString', requestUrlArg), parameter('正文', 'wideString', 'UTF-8 请求正文文本，GET 等无正文请求传空文本。'), parameter('超时毫秒', 'int', '同步等待完成的最长毫秒数。')], returnType: 'bool', returnLabel: '逻辑型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'HTTP客户端_GET', signature: 'HTTP客户端_GET(地址)', description: '旧版同步 GET 兼容入口。',
-    parameters: [parameter('地址', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('地址', 'wideString', requestUrlArg)], returnType: 'bool', returnLabel: '逻辑型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'HTTP客户端_POST', signature: 'HTTP客户端_POST(地址, 正文)', description: '旧版同步 UTF-8 JSON POST 兼容入口。',
-    parameters: [parameter('地址', 'wideString'), parameter('正文', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('地址', 'wideString', requestUrlArg), parameter('正文', 'wideString', '作为 JSON 正文提交的文本，按 UTF-8 编码。')], returnType: 'bool', returnLabel: '逻辑型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'HTTP客户端_取状态码', signature: 'HTTP客户端_取状态码()', description: '旧版兼容入口；返回最近默认请求状态码。',

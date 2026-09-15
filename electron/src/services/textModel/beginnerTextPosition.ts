@@ -28,11 +28,38 @@ export function getBeginnerBodySourceColumns(
   fallbackStartColumn: number
 ): number[] {
   const fallback = Math.max(1, Math.trunc(fallbackStartColumn) || 1);
-  return statements.map(statement => (
-    statement.text.trim()
-      ? statement.indent.length + 1
-      : fallback
-  ));
+  const columns: number[] = [];
+  statements.forEach(statement => {
+    if (!statement.text.trim()) {
+      columns.push(fallback);
+      return;
+    }
+    // 多行文本块语句：每个物理行（开始行/内容行/结束标记）各占一个映射位，列取该行自身缩进。
+    if (statement.text.includes('\n')) {
+      statement.text.split('\n').forEach((physicalLine, index) => {
+        const indentLength = index === 0 ? statement.indent.length : (physicalLine.match(/^\s*/u)?.[0].length || 0);
+        columns.push(indentLength + 1);
+      });
+      return;
+    }
+    columns.push(statement.indent.length + 1);
+  });
+  return columns;
+}
+
+/** 草稿物理行 → 源文件行号映射；多行文本块语句展开为其覆盖的每一源行。 */
+export function getBeginnerBodySourceLines(
+  statements: readonly { line: number; endLine?: number }[]
+): number[] {
+  const lines: number[] = [];
+  statements.forEach(statement => {
+    if (statement.endLine && statement.endLine > statement.line) {
+      for (let line = statement.line; line <= statement.endLine; line += 1) lines.push(line);
+      return;
+    }
+    lines.push(statement.line);
+  });
+  return lines;
 }
 
 /** Converts a method-body textarea offset into the complete source document. */

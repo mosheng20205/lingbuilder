@@ -35,7 +35,7 @@ export interface WelcomePageProps {
   onMinimize: () => void | Promise<void>;
   onToggleMaximize: () => void | Promise<void>;
   onClose: () => void | Promise<void>;
-  onCreateProject: (projectType: 'windows-ui' | 'windows-dll') => void;
+  onCreateProject: (projectType: 'windows-ui' | 'windows-dll' | 'windows-console') => void;
   onOpenWorkspace: () => void | Promise<void>;
   onOpenRecentWorkspace: (workspacePath: string) => void | Promise<void>;
   onForgetWorkspace: (workspacePath: string) => void | Promise<void>;
@@ -314,6 +314,10 @@ export default function WelcomePage({
         onSelectWindowsDll={() => {
           setShowProjectTypeDialog(false);
           onCreateProject('windows-dll');
+        }}
+        onSelectWindowsConsole={() => {
+          setShowProjectTypeDialog(false);
+          onCreateProject('windows-console');
         }}
         onClose={() => setShowProjectTypeDialog(false)}
       />

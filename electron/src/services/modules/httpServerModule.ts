@@ -23,13 +23,21 @@ interface HttpServerCommandSpec {
 const parameter = (
   name: string,
   type: ModuleBindingValueType | (string & {}),
-  description?: string
+  description: string
 ): ModuleCommandBindingParameter => ({
   name,
   type,
   description,
   ...(type === 'handler' ? { handlerSignature: { parameterTypes: [], returnType: '空' } } : {})
 });
+
+const serverHandle = 'HTTP_创建服务 返回的服务端句柄。';
+const serverStopped = 'HTTP_创建服务 返回的服务端句柄；服务必须处于停止状态。';
+const requestHandle = '请求处理器内 HTTP_取当前请求() 返回的请求句柄，仅在本次请求处理期间有效。';
+const responseStatus = '响应状态码，100 到 599。';
+const responseHeaderName = '响应头名称，必须是合法 token；Content-Length、Connection、Transfer-Encoding 由运行时统一管理，不能手工设置。';
+const responseHeaderValue = '响应头内容，不得包含 CR 或 LF 字符。';
+const octetStreamType = '响应 Content-Type；空文本时使用 application/octet-stream。';
 
 const specs: HttpServerCommandSpec[] = [
   {
@@ -38,67 +46,67 @@ const specs: HttpServerCommandSpec[] = [
   },
   {
     name: 'HTTP_配置服务', signature: 'HTTP_配置服务(服务端, 监听地址, 端口, 工作线程数, 等待队列上限)', description: '配置监听地址、端口、有界工作线程和连接等待队列；只能在停止状态修改。',
-    parameters: [parameter('服务端', 'HTTP服务端'), parameter('监听地址', 'wideString'), parameter('端口', 'int'), parameter('工作线程数', 'int'), parameter('等待队列上限', 'int')],
+    parameters: [parameter('服务端', 'HTTP服务端', serverStopped), parameter('监听地址', 'wideString', '要监听的 IPv4/IPv6 地址文本，如 "127.0.0.1"；空文本按 127.0.0.1 处理；非回环地址必须先调用 HTTP_允许外部监听。'), parameter('端口', 'int', '监听端口，0 到 65535；0 表示由系统分配临时端口，启动后用 HTTP_取监听端口 读取实际端口。'), parameter('工作线程数', 'int', '后台工作线程数量，1 到 64，决定可同时处理的请求连接数。'), parameter('等待队列上限', 'int', '等待被工作线程取走的连接队列上限，1 到 65535；队列满时新连接会被直接关闭。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '服务', insertText: 'HTTP_配置服务($1, "127.0.0.1", 8080, 4, 256)'
   },
   {
     name: 'HTTP_设置请求限制', signature: 'HTTP_设置请求限制(服务端, 请求头上限KB, 请求体上限MB, 请求超时毫秒)', description: '在停止状态设置请求头、请求体和单次读写超时，阻止无限请求与慢速连接耗尽资源。',
-    parameters: [parameter('服务端', 'HTTP服务端'), parameter('请求头上限KB', 'int'), parameter('请求体上限MB', 'int'), parameter('请求超时毫秒', 'int')],
+    parameters: [parameter('服务端', 'HTTP服务端', serverStopped), parameter('请求头上限KB', 'int', '请求头部总大小上限，单位 KB，4 到 1024；超限请求会被拒绝。'), parameter('请求体上限MB', 'int', '请求正文大小上限，单位 MB，0 到 1024；0 表示不接收任何请求正文。'), parameter('请求超时毫秒', 'int', '单次读写超时，单位毫秒，100 到 3600000；慢速连接超过该时限会被断开，用于防御慢速攻击。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '服务', insertText: 'HTTP_设置请求限制($1, 64, 16, 30000)'
   },
   {
     name: 'HTTP_允许外部监听', signature: 'HTTP_允许外部监听(服务端, 允许)', description: '显式允许非回环地址监听；默认关闭，避免无意把开发服务暴露到局域网。',
-    parameters: [parameter('服务端', 'HTTP服务端'), parameter('允许', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
+    parameters: [parameter('服务端', 'HTTP服务端', serverStopped), parameter('允许', 'bool', '传真允许监听非回环地址；默认假，只允许解析为回环地址的监听目标。')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
   },
   {
     name: 'HTTP_绑定请求处理器', signature: 'HTTP_绑定请求处理器(服务端, &处理器)', description: '绑定未命中路由时在窗口 UI 线程执行的无参数处理器；处理器用 HTTP_取当前请求() 取得请求。',
-    parameters: [parameter('服务端', 'HTTP服务端'), parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。')],
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_绑定请求处理器($1, &$2)'
   },
   {
     name: 'HTTP_添加路由', signature: 'HTTP_添加路由(服务端, 方法, 路径模式, &处理器)', description: '添加方法和路径路由；支持精确路径、末尾 /* 前缀匹配及方法 *。',
-    parameters: [parameter('服务端', 'HTTP服务端'), parameter('方法', 'wideString'), parameter('路径模式', 'wideString'), parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。')],
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', 'HTTP 方法文本，大小写不敏感（自动转大写），如 GET、POST；* 表示匹配任意方法。'), parameter('路径模式', 'wideString', '必须以 / 开头的路径，如 /api/health；支持精确匹配和末尾 /* 前缀通配（/api/* 匹配 /api/users，不匹配 /api）。'), parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_添加路由($1, "GET", "/api/health", &$2)'
   },
   {
     name: 'HTTP_清空路由', signature: 'HTTP_清空路由(服务端)', description: '清空服务端的全部显式路由，不影响默认请求处理器。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '路由'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '路由'
   },
   {
     name: 'HTTP_启动', signature: 'HTTP_启动(服务端)', description: '启动后台监听、连接队列和工作线程；成功返回真。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
   },
   {
     name: 'HTTP_停止', signature: 'HTTP_停止(服务端)', description: '停止监听、取消等待请求并回收全部连接和工作线程。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
   },
   {
     name: 'HTTP_销毁服务', signature: 'HTTP_销毁服务(服务端)', description: '停止并释放服务端句柄；重复销毁会返回假。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
   },
   {
     name: 'HTTP_是否运行', signature: 'HTTP_是否运行(服务端)', description: '判断服务端是否正在接受连接。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '状态'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '状态'
   },
   {
     name: 'HTTP_取监听地址', signature: 'HTTP_取监听地址(服务端)', description: '返回服务端当前配置的监听地址。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'wideString', returnLabel: '文本型', category: '状态'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'wideString', returnLabel: '文本型', category: '状态'
   },
   {
     name: 'HTTP_取监听端口', signature: 'HTTP_取监听端口(服务端)', description: '返回实际监听端口；配置端口为 0 时可取得系统分配的临时端口。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'int', returnLabel: '整数型', category: '状态'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'int', returnLabel: '整数型', category: '状态'
   },
   {
     name: 'HTTP_取活动连接数', signature: 'HTTP_取活动连接数(服务端)', description: '返回当前正在处理的客户端连接数量。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'int', returnLabel: '整数型', category: '状态'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'int', returnLabel: '整数型', category: '状态'
   },
   {
     name: 'HTTP_取累计请求数', signature: 'HTTP_取累计请求数(服务端)', description: '返回服务端成功解析并分发的累计请求数量。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'longLong', returnLabel: '长整数型', category: '状态'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'longLong', returnLabel: '长整数型', category: '状态'
   },
   {
     name: 'HTTP_取服务错误', signature: 'HTTP_取服务错误(服务端)', description: '返回该服务端最近一次中文错误；句柄无效时返回管理器错误。',
-    parameters: [parameter('服务端', 'HTTP服务端')], returnType: 'wideString', returnLabel: '文本型', category: '状态'
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)], returnType: 'wideString', returnLabel: '文本型', category: '状态'
   },
   {
     name: 'HTTP_取当前请求', signature: 'HTTP_取当前请求()', description: '在请求处理器内取得当前受管请求句柄；其它上下文返回 0。',
@@ -106,114 +114,114 @@ const specs: HttpServerCommandSpec[] = [
   },
   {
     name: 'HTTP_取请求服务', signature: 'HTTP_取请求服务(请求)', description: '返回接收该请求的服务端句柄。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'HTTP服务端', returnLabel: 'HTTP服务端', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'HTTP服务端', returnLabel: 'HTTP服务端', category: '请求'
   },
   {
     name: 'HTTP_取请求方法', signature: 'HTTP_取请求方法(请求)', description: '返回大写 HTTP 方法，例如 GET、POST。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取请求目标', signature: 'HTTP_取请求目标(请求)', description: '返回请求行中的原始目标，包含原始查询字符串。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取请求路径', signature: 'HTTP_取请求路径(请求)', description: '返回经过安全百分号解码的 URL 路径。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取查询字符串', signature: 'HTTP_取查询字符串(请求)', description: '返回未解码的查询字符串，不含问号。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取查询参数', signature: 'HTTP_取查询参数(请求, 名称)', description: '按 UTF-8 URL 编码读取首个查询参数值；不存在时返回空文本。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('名称', 'wideString')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('名称', 'wideString', '查询参数名，按 UTF-8 百分号解码后比较；存在多个同名参数时取第一个。')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取请求头', signature: 'HTTP_取请求头(请求, 名称)', description: '不区分大小写读取首个请求头值。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('名称', 'wideString')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('名称', 'wideString', '请求头名称，大小写不敏感；存在多个同名头时返回第一个值。')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取全部请求头', signature: 'HTTP_取全部请求头(请求)', description: '以 UTF-16 JSON 对象返回全部请求头；重复头以逗号合并。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取请求正文', signature: 'HTTP_取请求正文(请求)', description: '把 UTF-8 请求正文转换为文本；二进制数据请使用十六进制接口。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取请求正文十六进制', signature: 'HTTP_取请求正文十六进制(请求)', description: '以小写十六进制返回原始请求正文字节，适用于二进制上传。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取请求正文大小', signature: 'HTTP_取请求正文大小(请求)', description: '返回原始请求正文的字节数。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'longLong', returnLabel: '长整数型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'longLong', returnLabel: '长整数型', category: '请求'
   },
   {
     name: 'HTTP_取客户端地址', signature: 'HTTP_取客户端地址(请求)', description: '返回 TCP 对端的数字 IP 地址。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_取客户端端口', signature: 'HTTP_取客户端端口(请求)', description: '返回 TCP 对端端口。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'int', returnLabel: '整数型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'int', returnLabel: '整数型', category: '请求'
   },
   {
     name: 'HTTP_取协议版本', signature: 'HTTP_取协议版本(请求)', description: '返回 HTTP/1.0 或 HTTP/1.1。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'wideString', returnLabel: '文本型', category: '请求'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'wideString', returnLabel: '文本型', category: '请求'
   },
   {
     name: 'HTTP_设置状态码', signature: 'HTTP_设置状态码(请求, 状态码)', description: '设置响应状态码，范围为 100 到 599。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('状态码', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('状态码', 'int', '响应状态码，100 到 599；须在发送响应前设置。')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_设置响应头', signature: 'HTTP_设置响应头(请求, 名称, 值)', description: '设置或替换响应头；拒绝非法名称和 CR/LF 注入。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('名称', 'wideString'), parameter('值', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('名称', 'wideString', responseHeaderName), parameter('值', 'wideString', `${responseHeaderValue}同名头存在时替换原值。`)], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_添加响应头', signature: 'HTTP_添加响应头(请求, 名称, 值)', description: '追加响应头，适用于多个 Set-Cookie；拒绝 CR/LF 注入。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('名称', 'wideString'), parameter('值', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('名称', 'wideString', responseHeaderName), parameter('值', 'wideString', `${responseHeaderValue}追加到现有同名头之后，不覆盖。`)], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_设置Cookie', signature: 'HTTP_设置Cookie(请求, 名称, 值, 路径, 最大秒数, HttpOnly, Secure, SameSite)', description: '追加安全编码的 Set-Cookie；SameSite 支持 Lax、Strict、None，None 必须同时启用 Secure。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('名称', 'wideString'), parameter('值', 'wideString'), parameter('路径', 'wideString'), parameter('最大秒数', 'int'), parameter('HttpOnly', 'bool'), parameter('Secure', 'bool'), parameter('SameSite', 'wideString')],
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('名称', 'wideString', 'Cookie 名称，不得包含分号、CR 或 LF 等非法字符。'), parameter('值', 'wideString', 'Cookie 值，发送前按 UTF-8 百分号编码；不得包含分号、CR 或 LF。'), parameter('路径', 'wideString', 'Cookie 的 Path 属性；空文本时使用 /；不得包含分号、CR 或 LF。'), parameter('最大秒数', 'int', 'Max-Age 秒数；负数表示不写 Max-Age，即会话 Cookie。'), parameter('HttpOnly', 'bool', '真时附加 HttpOnly 属性，禁止浏览器脚本读取该 Cookie。'), parameter('Secure', 'bool', '真时附加 Secure 属性，仅 HTTPS 连接发送；SameSite 为 None 时必须启用。'), parameter('SameSite', 'wideString', 'SameSite 属性，支持 Lax、Strict 或 None（大小写不敏感）；空文本表示不写该属性。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_发送文本', signature: 'HTTP_发送文本(请求, 内容, 内容类型, 状态码)', description: '发送 UTF-8 文本并完成响应；内容类型为空时使用 text/plain。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('内容', 'wideString'), parameter('内容类型', 'wideString'), parameter('状态码', 'int')],
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('内容', 'wideString', '响应正文文本，按 UTF-8 编码发送。'), parameter('内容类型', 'wideString', '响应 Content-Type；空文本时使用 text/plain; charset=utf-8。'), parameter('状态码', 'int', `${responseStatus}通常填 200。`)],
     returnType: 'bool', returnLabel: '逻辑型', category: '响应', insertText: 'HTTP_发送文本($1, "$2", "text/plain; charset=utf-8", 200)'
   },
   {
     name: 'HTTP_发送JSON', signature: 'HTTP_发送JSON(请求, JSON, 状态码)', description: '发送 application/json; charset=utf-8 响应并完成请求。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('JSON', 'wideString'), parameter('状态码', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '响应', insertText: 'HTTP_发送JSON($1, "{\\"ok\\":true}", 200)'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('JSON', 'wideString', '完整的 JSON 文本，按 UTF-8 发送；运行时不校验语法，请确保是合法 JSON。'), parameter('状态码', 'int', `${responseStatus}通常填 200。`)], returnType: 'bool', returnLabel: '逻辑型', category: '响应', insertText: 'HTTP_发送JSON($1, "{\\"ok\\":true}", 200)'
   },
   {
     name: 'HTTP_发送十六进制', signature: 'HTTP_发送十六进制(请求, 十六进制, 内容类型, 状态码)', description: '校验并解码偶数长度十六进制文本，发送原始二进制响应。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('十六进制', 'wideString'), parameter('内容类型', 'wideString'), parameter('状态码', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('十六进制', 'wideString', '偶数长度的十六进制文本（如 48656C6C6F），只允许 0-9、a-f、A-F，解码后作为二进制正文发送。'), parameter('内容类型', 'wideString', octetStreamType), parameter('状态码', 'int', responseStatus)], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_发送文件', signature: 'HTTP_发送文件(请求, 文件路径, 下载名称, 内容类型, 状态码)', description: '以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('文件路径', 'wideString'), parameter('下载名称', 'wideString'), parameter('内容类型', 'wideString'), parameter('状态码', 'int')],
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('文件路径', 'wideString', '要发送的本机文件路径，不能为空；分块读取不整体载入内存。不得把未验证的 URL 参数直接拼进路径。'), parameter('下载名称', 'wideString', '非空时附加 Content-Disposition: attachment 触发浏览器下载，自动剔除换行和引号；空文本表示内联展示。'), parameter('内容类型', 'wideString', octetStreamType), parameter('状态码', 'int', `${responseStatus}通常填 200。`)],
     returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_重定向', signature: 'HTTP_重定向(请求, 地址, 状态码)', description: '发送 301、302、303、307 或 308 重定向响应。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('地址', 'wideString'), parameter('状态码', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('地址', 'wideString', '重定向目标地址，写入 Location 响应头，不能为空。'), parameter('状态码', 'int', '只支持 301、302、303、307 或 308。')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_发送空响应', signature: 'HTTP_发送空响应(请求, 状态码)', description: '发送无正文响应并完成请求，适用于 204、304 等状态。',
-    parameters: [parameter('请求', 'HTTP请求'), parameter('状态码', 'int')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('状态码', 'int', '无正文状态码，100 到 599，适用于 204、304 等。')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_是否已响应', signature: 'HTTP_是否已响应(请求)', description: '判断请求是否已经提交响应或被中止。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'bool', returnLabel: '逻辑型', category: '状态'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '状态'
   },
   {
     name: 'HTTP_中止请求', signature: 'HTTP_中止请求(请求)', description: '中止请求并关闭对应连接，不发送应用层响应。',
-    parameters: [parameter('请求', 'HTTP请求')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+    parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
     name: 'HTTP_启动服务', signature: 'HTTP_启动服务(端口)', description: '旧版单服务兼容入口；在 127.0.0.1 启动后台服务，建议新代码使用受管服务 API。',
-    parameters: [parameter('端口', 'int')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('端口', 'int', '在 127.0.0.1 上监听的端口，0 到 65535。')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'HTTP_等待请求', signature: 'HTTP_等待请求()', description: '旧版阻塞兼容入口；等待一个请求并返回原始请求文本，新代码应使用请求处理器。',
@@ -225,7 +233,7 @@ const specs: HttpServerCommandSpec[] = [
   },
   {
     name: 'HTTP_回复文本', signature: 'HTTP_回复文本(内容)', description: '旧版兼容入口；向最近等待或当前回调请求发送 200 文本响应。',
-    parameters: [parameter('内容', 'wideString')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('内容', 'wideString', '回复的文本内容，以 UTF-8 编码、状态码 200 发送。')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'HTTP_关闭服务', signature: 'HTTP_关闭服务()', description: '旧版兼容入口；停止并销毁旧版默认服务。',

@@ -17,7 +17,7 @@ import fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue } from './workspaceService';
+import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
 import { checkLatestVersion, type VersionCheckResult } from './versionCheckService';
 import { UpdateDownloadService } from './updateDownloadService';
@@ -918,6 +918,103 @@ function registerIpcHandlers(): void {
     });
     return { ok: true, sessionId, detail: plan.detail };
   });
+  // 「导入 MSBuild/CMake 工程」：原生文件对话框与区外工程复制进工作区（桌面版专属通道）。
+  ipcMain.handle('solution-import:pick-project', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择要导入的 C++ 工程',
+      properties: ['openFile'],
+      filters: [
+        { name: 'C++ 工程（.vcxproj / .sln / CMakeLists.txt）', extensions: ['vcxproj', 'sln', 'txt'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    try {
+      const selected = await fs.realpath(result.filePaths[0]);
+      const lower = selected.toLowerCase();
+      const base = path.basename(lower);
+      if (base !== 'cmakelists.txt' && !lower.endsWith('.vcxproj') && !lower.endsWith('.sln')) {
+        return { ok: false, canceled: false, error: '只能导入 CMakeLists.txt、.vcxproj 或 .sln 工程文件。' };
+      }
+      return { ok: true, canceled: false, filePath: selected };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('solution-import:pick-source-directory', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择要导入的 C++ 源码目录',
+      properties: ['openDirectory']
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    try {
+      return { ok: true, canceled: false, filePath: await fs.realpath(result.filePaths[0]) };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('solution-import:copy-external-project', async (_event, projectFilePath: string) => {
+    // 复制工作区外的工程到 <工作区>/external/<目录名>（排除构建产物与环境目录），
+    // 返回复制后工程文件的工作区相对路径，供后续导入走同一条区内导入链路。
+    const SKIPPED_DIRECTORIES = new Set([
+      '.vs', '.git', '.svn', '.lingbuilder', '.lingbuilder-build', 'node_modules', 'packages',
+      'obj', 'bin', 'build', 'builds', 'out', 'output', 'debug', 'release', 'x64', 'win32',
+      'cmake-build-debug', 'cmake-build-release', '.cache', '.idea'
+    ]);
+    const MAX_FILE_COUNT = 20_000;
+    const MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
+    try {
+      if (!activeWorkspace) throw new Error('当前没有已打开的工作区。');
+      const source = await fs.realpath(String(projectFilePath || ''));
+      const lower = source.toLowerCase();
+      const base = path.basename(lower);
+      if (base !== 'cmakelists.txt' && !lower.endsWith('.vcxproj') && !lower.endsWith('.sln')) {
+        throw new Error('只能复制 CMakeLists.txt、.vcxproj 或 .sln 工程文件所在目录。');
+      }
+      const sourceDir = path.dirname(source);
+      const workspaceRoot = path.resolve(activeWorkspace);
+      if (path.relative(workspaceRoot, sourceDir) === '' || (!path.relative(workspaceRoot, sourceDir).startsWith('..') && !path.isAbsolute(path.relative(workspaceRoot, sourceDir)))) {
+        throw new Error('该工程已位于当前工作区内，无需复制。');
+      }
+      const externalRoot = path.join(workspaceRoot, 'external');
+      await fs.mkdir(externalRoot, { recursive: true });
+      let targetDir = path.join(externalRoot, path.basename(sourceDir));
+      let suffix = 2;
+      while (true) {
+        try { await fs.access(targetDir); targetDir = path.join(externalRoot, `${path.basename(sourceDir)}-${suffix++}`); } catch { break; }
+      }
+      let fileCount = 0;
+      let totalBytes = 0;
+      const copyTree = async (from: string, to: string): Promise<void> => {
+        const entries = await fs.readdir(from, { withFileTypes: true });
+        await fs.mkdir(to, { recursive: true });
+        for (const entry of entries) {
+          if (fileCount >= MAX_FILE_COUNT) throw new Error(`工程文件数超过 ${MAX_FILE_COUNT} 上限，已中止复制。`);
+          const sourcePath = path.join(from, entry.name);
+          const targetPath = path.join(to, entry.name);
+          if (entry.isDirectory()) {
+            if (SKIPPED_DIRECTORIES.has(entry.name.toLowerCase())) continue;
+            await copyTree(sourcePath, targetPath);
+          } else if (entry.isFile()) {
+            const stat = await fs.stat(sourcePath);
+            totalBytes += stat.size;
+            if (totalBytes > MAX_TOTAL_BYTES) throw new Error('工程体积超过 1GB 上限，已中止复制。请改为把工程目录移动到工作区内后重新打开。');
+            fileCount += 1;
+            await fs.copyFile(sourcePath, targetPath);
+          }
+        }
+      };
+      await copyTree(sourceDir, targetDir);
+      const projectFileRelative = path.relative(workspaceRoot, path.join(targetDir, path.basename(source))).replace(/\\/gu, '/');
+      return { ok: true, projectFileRelative, targetDir };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   ipcMain.handle('modules:import-package', async (_event, sourcePath: string) => {
     try {
       if (!activeWorkspace) throw new Error('当前没有已打开的工作区。');
@@ -1239,6 +1336,17 @@ if (!singleInstanceLock) {
           // 渲染端没有这条通道的监听器，失败必须用系统对话框告诉用户，不能静默吞掉。
           const reason = error instanceof Error ? error.message : String(error);
           dialog.showErrorBox('打开 LCPP 源码包失败', [packagePath, '', reason].join('\n'));
+        });
+    }
+    // IDE 已经开着时再双击 .lbsln / .lcpp 等工作区类关联文件：与冷启动走同一套
+    // resolveWorkspaceTarget 口径切换工作区；没有这个分支时双击只会触发下面的 focus。
+    const workspaceFilePath = findWorkspaceFileArgument(argv);
+    if (workspaceFilePath && workspaceService) {
+      void workspaceService.resolveWorkspaceTarget(workspaceFilePath)
+        .then(workspacePath => switchWorkspace(workspacePath))
+        .catch(error => {
+          const reason = error instanceof Error ? error.message : String(error);
+          dialog.showErrorBox('打开工作区失败', [workspaceFilePath, '', reason].join('\n'));
         });
     }
     if (mainWindow && !mainWindow.isDestroyed()) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }

@@ -2,6 +2,7 @@ import type { LingCppModuleContext, ModuleCommandBinding, ModuleCommandBindingPa
 import type { LingControl, LingDesignerResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
 import { normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
 import type { LingCppDiagnostic } from './types';
 import {
   collectRuntimeControlMethodCandidates,
@@ -534,11 +535,28 @@ function buildBindingIndex(moduleContext: LingCppModuleContext): Map<string, Res
 
 function parseInvocations(source: string): ParsedInvocation[] {
   const result: ParsedInvocation[] = [];
+  const sourceLines = source.split(/\r?\n/u);
+  // 全文偏移扫描里连开始行一起跳过：`X = """` 行尾的孤立引号会让字符串态跨行吞掉后续真实调用。
+  const opaqueLines = collectLingCppTextBlockLines(
+    scanLingCppTextBlockRanges(sourceLines),
+    sourceLines.length
+  );
   let index = 0;
+  let lineNumber = 1;
   while (index < source.length) {
+    if (source[index] === '\n') { lineNumber += 1; index += 1; continue; }
+    const atLineStart = index === 0 || source[index - 1] === '\n';
+    // 多行文本块内容行/结束标记不透明：整行跳过，块内文本不得解析成控件调用。
+    if (atLineStart && opaqueLines.has(lineNumber)) {
+      const blockLineEnd = source.indexOf('\n', index);
+      index = blockLineEnd < 0 ? source.length : blockLineEnd + 1;
+      lineNumber += 1;
+      continue;
+    }
     if (source[index] === '@' && /^\s*$/u.test(source.slice(source.lastIndexOf('\n', index - 1) + 1, index))) {
       const lineEnd = source.indexOf('\n', index);
       index = lineEnd < 0 ? source.length : lineEnd + 1;
+      lineNumber += 1;
       continue;
     }
     const skipped = skipTriviaOrLiteral(source, index);

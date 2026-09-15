@@ -1,0 +1,51 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "dll-module-demo",
+    "name": "DLL模块演示",
+    "windows": [
+      {
+        "id": "dll-demo-window",
+        "fileName": "DllDemo.xml",
+        "className": "演示窗口",
+        "title": "演示数学 DLL 调用",
+        "width": 520,
+        "height": 220,
+        "background": "#1E1E24",
+        "description": "调用演示数学 DLL 模块的三条中文命令，把结果写入窗口标签并落盘验证。",
+        "events": {
+          "Loaded": "_演示窗口_创建完毕"
+        },
+        "controls": [
+          {
+            "id": "result-label",
+            "type": "Label",
+            "name": "结果标签",
+            "content": "就绪：等待调用演示数学 DLL",
+            "x": 20,
+            "y": 40,
+            "width": 470,
+            "height": 30,
+            "fontSize": 14,
+            "background": "transparent",
+            "foreground": "#4FC3F7",
+            "isEnabled": true,
+            "visibility": "Visible"
+          }
+        ]
+      }
+    ],
+    "resources": []
+  },
+  "activeWindowId": "dll-demo-window",
+  "lingCppSourceFilePath": "examples/dll-module-demo/src/Dll模块演示.lcpp",
+  "run": false,
+  "approved": true,
+  "lingCppSourceCode": "包 DLL模块演示\n使用 Win32窗口基础模块\n使用 文件目录模块\n使用 演示数学 DLL\n\n类 演示窗口 : 窗口\n公开\n  事件 _演示窗口_创建完毕()\n    局部 整数型 相加结果 = 0\n    局部 整数型 长度结果 = 0\n    局部 小数型 距离结果 = 0\n    局部 逻辑型 写入成功 = 假\n    相加结果 = 演示_加法(2, 3)\n    长度结果 = 演示_取文本长度(\"灵码LingBuilder\")\n    距离结果 = 演示_两点距离(0, 0, 3, 4)\n    控件_设置文本(结果标签, 格式化文本(\"加法结果={}，文本长度={}，两点距离={}\", 相加结果, 长度结果, 距离结果))\n    写入成功 = 文件_写入文本(\"T:/electron/lingbuilder/.lingbuilder/dll-module-demo-result.txt\", 格式化文本(\"demo_add(2,3)={}，demo_text_length(灵码LingBuilder)={}，demo_distance(0,0,3,4)={}\", 相加结果, 长度结果, 距离结果))\n    调试输出(格式化文本(\"结果文件写入成功={}\", 写入成功))\n    结束()\n  结束\n结束类\n",
+  "lingCppSources": [
+    {
+      "filePath": "examples/dll-module-demo/src/Dll模块演示.lcpp",
+      "sourceCode": "包 DLL模块演示\n使用 Win32窗口基础模块\n使用 文件目录模块\n使用 演示数学 DLL\n\n类 演示窗口 : 窗口\n公开\n  事件 _演示窗口_创建完毕()\n    局部 整数型 相加结果 = 0\n    局部 整数型 长度结果 = 0\n    局部 小数型 距离结果 = 0\n    局部 逻辑型 写入成功 = 假\n    相加结果 = 演示_加法(2, 3)\n    长度结果 = 演示_取文本长度(\"灵码LingBuilder\")\n    距离结果 = 演示_两点距离(0, 0, 3, 4)\n    控件_设置文本(结果标签, 格式化文本(\"加法结果={}，文本长度={}，两点距离={}\", 相加结果, 长度结果, 距离结果))\n    写入成功 = 文件_写入文本(\"T:/electron/lingbuilder/.lingbuilder/dll-module-demo-result.txt\", 格式化文本(\"demo_add(2,3)={}，demo_text_length(灵码LingBuilder)={}，demo_distance(0,0,3,4)={}\", 相加结果, 长度结果, 距离结果))\n    调试输出(格式化文本(\"结果文件写入成功={}\", 写入成功))\n    结束()\n  结束\n结束类\n"
+    }
+  ]
+}

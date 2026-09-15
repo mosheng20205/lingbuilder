@@ -1,6 +1,6 @@
 import { LingBuilderModuleManifest, ModuleCommandBinding, ModuleCommandBindingParameter } from './types';
-import { normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, normalizeControlReferenceSnippet } from './bindingValueType';
-import { getWin32ControlsForModule, getWin32RuntimeControlContract, getWin32RuntimeControlContracts, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
+import { normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, normalizeControlReferenceSnippet, normalizeHandlerParameter, type ParamDocTable } from './bindingValueType';
+import { getWin32ControlsForModule, getWin32RuntimeControlContract, getWin32RuntimeControlContracts, Win32ControlModuleId, Win32RuntimeControlParameterRole } from '../windowDesigner/win32ControlRegistry';
 import { STANDARD_LIBRARY_MODULES } from './standardLibraryModules';
 import { PROTOBUF_MODULE } from './protobufModule';
 import { ARIA2_MODULE } from './aria2Module';
@@ -116,6 +116,24 @@ function createRuntimeControlEventCommandContributions(moduleId: Win32ControlMod
   });
 }
 
+// 运行时控件的创建与标记查找命令由契约集中生成，参数语义按 lingCppWin32Project.ts 的 CreateRuntimeControl
+// 与 HasDuplicateTag 实现核实，因此说明也在这里按 role 集中生成，避免逐控件重复手写。
+const RUNTIME_CONTROL_ROLE_DESCRIPTIONS: Record<Win32RuntimeControlParameterRole, string> = {
+  parent: '当前窗口、可视容器控件或选项卡页面容器。',
+  x: '控件左上角在父容器客户区内的横坐标，使用与设计器一致的逻辑坐标，运行时按窗口 DPI 缩放。',
+  y: '控件左上角在父容器客户区内的纵坐标，使用与设计器一致的逻辑坐标，运行时按窗口 DPI 缩放。',
+  width: '控件宽度，逻辑坐标单位；必须大于 0，否则创建失败并输出中文日志。',
+  height: '控件高度，逻辑坐标单位；必须大于 0，否则创建失败并输出中文日志。',
+  content: '控件初始文本；空文本表示创建后不设置任何文字。',
+  tagText: '可选的文本标记，创建时会去掉首尾空白；同一窗口内同类型控件的非空文本标记必须唯一，重复时创建失败。',
+  tagInteger: '可选的整数标记，用于 通过标记整数获取 查找；0 也算已设置的标记，同一窗口内同类型控件的非空标记必须唯一。'
+};
+
+const RUNTIME_CONTROL_LOOKUP_DESCRIPTIONS: Record<string, string> = {
+  标记文本: '创建控件时写入的文本标记，区分大小写；没有匹配的控件时返回无效引用。',
+  标记整数: '创建控件时写入的整数标记；没有匹配的控件时返回无效引用。'
+};
+
 function createRuntimeControlBindings(moduleId: Win32ControlModuleId): ModuleCommandBinding[] {
   return getWin32RuntimeControlContracts(moduleId).flatMap(contract => {
     const parameters: ModuleCommandBindingParameter[] = contract.createParameters.map(parameter => parameter.role === 'parent'
@@ -130,6 +148,7 @@ function createRuntimeControlBindings(moduleId: Win32ControlModuleId): ModuleCom
       : {
           name: parameter.name,
           type: parameter.type,
+          description: RUNTIME_CONTROL_ROLE_DESCRIPTIONS[parameter.role],
           optional: parameter.optional,
           defaultValue: parameter.defaultValue
         });
@@ -145,14 +164,14 @@ function createRuntimeControlBindings(moduleId: Win32ControlModuleId): ModuleCom
       {
         command: contract.lookupByTagTextCommand,
         runtimeName: contract.lookupByTagTextCommand,
-        parameters: [{ name: '标记文本', type: 'wideString' }],
+        parameters: [{ name: '标记文本', type: 'wideString', description: RUNTIME_CONTROL_LOOKUP_DESCRIPTIONS.标记文本 }],
         returnType: contract.lingCppType,
         encoding: 'wide'
       },
       {
         command: contract.lookupByTagIntegerCommand,
         runtimeName: contract.lookupByTagIntegerCommand,
-        parameters: [{ name: '标记整数', type: 'int' }],
+        parameters: [{ name: '标记整数', type: 'int', description: RUNTIME_CONTROL_LOOKUP_DESCRIPTIONS.标记整数 }],
         returnType: contract.lingCppType
       }
     ];
@@ -209,7 +228,7 @@ function ensureBuiltinX64Target(manifest: LingBuilderModuleManifest): LingBuilde
 
 function normalizeBuiltinControlReferences(manifest: LingBuilderModuleManifest): LingBuilderModuleManifest {
   const bindings = (manifest.bindings?.commands || []).map(binding => {
-    const parameters = (binding.parameters || []).map(parameter => normalizeBuiltinControlParameter(manifest.id, binding.command, parameter));
+    const parameters = (binding.parameters || []).map(parameter => describeBuiltinParameter(binding.command, normalizeBuiltinControlParameter(manifest.id, binding.command, parameter)));
     return {
       ...binding,
       parameters,
@@ -235,12 +254,186 @@ function normalizeBuiltinControlReferences(manifest: LingBuilderModuleManifest):
   };
 }
 
+const BUILTIN_PARAM_DOCS: ParamDocTable = {
+  内容: '对话框正文或要写入的文本内容。',
+  标题: '对话框或窗口标题文本。',
+  标志: '信息框类型值：按钮与图标组合，可相加（0 确定、1 确定/取消、4 是/否、16 错误图标、32 询问图标、48 警告图标、64 信息图标）。',
+  值: '要写入或转换的值。',
+  '到文本::值': '要转换成文本的任意值。',
+  'CEF3_设置崩溃键值::值': '崩溃键对应的值文本。',
+  格式模板: '格式模板文本；用 {} 占位并按顺序填充后续参数。',
+  文本: '要写入或查找的文本内容。',
+  图片路径: '图片文件路径。',
+  启用: '真=开启，假=关闭。',
+  可见: '真=显示，假=隐藏。',
+  横坐标: 'X 坐标，相对浏览器或窗口客户区。',
+  纵坐标: 'Y 坐标，相对浏览器或窗口客户区。',
+  宽度: '宽度（像素）。',
+  高度: '高度（像素）。',
+  勾选: '真=勾选，假=取消勾选。',
+  数值: '要设置的整数值。',
+  索引: '项目下标，从 0 起。',
+  筛选器: '文件类型筛选器文本，格式 "说明|*.扩展名|..."，如 "文本文件|*.txt|全部文件|*.*"。',
+  默认颜色: '对话框初始选中的颜色值（0x00BBGGRR）。',
+  颜色: '颜色值（0x00BBGGRR）。',
+  默认字号: '字体对话框初始选中的字号。',
+  默认文本: '查找对话框的初始文本。',
+  查找内容: '要查找的文本。',
+  替换内容: '要替换成的文本。',
+  文档名: '打印任务显示的文档名称。',
+  行索引: '行下标，从 0 起。',
+  列索引: '列下标，从 0 起。',
+  升序: '真=按该列升序排序，假=降序。',
+  行数: '虚拟模式下的总行数。',
+  选中: '真=选中该行。',
+  起始行: '查找起始行下标；传 -1 表示从头查找。',
+  部分匹配: '真=按前缀部分匹配，假=整行精确匹配。',
+  部位: '矩形部位文本（"item" 整行或 "label" 标签）。',
+  允许部分可见: '真=该行部分进入视口即算可见。',
+  横向像素: '水平滚动像素量。',
+  纵向像素: '垂直滚动像素量。',
+  结束行: '重绘结束行下标（含）。',
+  视图: '视图模式文本（"details"、"list"、"largeicon"、"smallicon"、"tile"）。',
+  样式名: '扩展样式名称，取值见列表视图文档。',
+  红: '红色分量 0~255。',
+  绿: '绿色分量 0~255。',
+  蓝: '蓝色分量 0~255。',
+  组ID: '分组 ID（自定义整数，同组行归为一组）。',
+  可编辑: '真=允许双击编辑标签。',
+  在后方: '真=插入标记放在该行后方，假=放在行上。',
+  水平: '水平图标间距（像素）。',
+  垂直: '垂直图标间距（像素）。',
+  排列: '图标排列方式名称，取值见列表视图文档。',
+  类型: '图像列表类型文本（"normal"、"small"、"state"）。',
+  毫秒: '时间数值（毫秒）。',
+  图像索引: '图像列表中的图标下标，从 0 起。',
+  数据: '要绑定到该行的自定义整数值。',
+  父节点文字: '父节点显示文本。',
+  节点文字: '新节点显示文本。',
+  隐藏: '真=隐藏。',
+  视频路径: '视频文件路径。',
+  音量: '音量 0~100，越界值被钳制。',
+  对齐: '列对齐文本："left"、"center" 或 "right"；其他值按左对齐。',
+  'FBro_替换资源响应文件::文件路径': '替换用的本地文件路径；文件内容作为命中规则的响应整体返回。',
+  路径: '截图保存路径。',
+  格式: '图像格式 "png" 或 "jpeg"。',
+  质量: 'JPEG 压缩质量 0~100；png 忽略。',
+  父组件句柄: '承载 EdgeView 的父窗口或组件 HWND；传 0 嵌入当前窗口。',
+  实例编号: 'EdgeView 实例的正整数编号；后续命令按它指定实例。',
+  地址: '完整 URL 或本地文件路径。',
+  独立缓存目录: '实例专用缓存目录（相对工作目录或绝对路径）；相同目录共享会话数据。',
+  代理地址: '代理地址，如 "http://127.0.0.1:7890" 或 "socks5://127.0.0.1:1080"。',
+  事件名: '中文事件名，如 "导航完成"，取值见事件清单。',
+  协议事件名: 'Chromium DevTools Protocol 事件名，如 "Console.messageAdded"。',
+  超时毫秒: '最长等待毫秒数，超时返回 0。',
+  脚本: 'JavaScript 源码文本。',
+  左: '左边界 X 坐标（像素或 DIP，视命令而定）。',
+  顶: '顶边界 Y 坐标（像素或 DIP，视命令而定）。',
+  宽: '宽度（像素或 DIP，视命令而定）。',
+  高: '高度（像素或 DIP，视命令而定）。',
+  键: '崩溃报告键名。',
+  'CEF3_取命令资源ID::名称': '命令资源名，如 "IDC_BACK"。',
+  相对路径: '资源相对路径（相对生成的资源目录）。',
+  目录: '缓存目录路径。',
+  字段名: '当前事件 JSON 的字段名，取值见事件说明。',
+  最大字节数: '允许捕获的正文最大字节数，超出部分截断。',
+  结果: '同步事件结果：0 默认、1 允许/继续、2 拒绝/取消、3 已处理。',
+  级别: 'CEF 缩放级别（对数刻度，0 表示 100%，每 ±1 约增减 20%）。',
+  缩放命令: '缩放命令：0 缩小、1 重置、2 放大。',
+  保留选择: '真=完成输入法组合时保留当前选区。',
+  单词: '要加入词典或替换的单词。',
+  是否隐藏: '真=通知浏览器控件已被隐藏。',
+  是否调整大小: '真=退出全屏时同步调整控件大小。',
+  向前: '真=按正方向查找下一处。',
+  区分大小写: '真=区分大小写。',
+  查找下一个: '真=从当前位置查找下一个匹配，假=从头查找。',
+  清除选择: '真=停止查找时清除当前选区。',
+  是否聚焦: '真=把焦点移入浏览器。',
+  X: '相对浏览器客户区的 X 坐标。',
+  Y: '相对浏览器客户区的 Y 坐标。',
+  修饰键: 'CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。',
+  按钮类型: '鼠标按钮：0 左键、1 中键、2 右键。',
+  是否抬起: '真=发送抬起事件，假=按下事件。',
+  单击次数: '连击次数：1 单击、2 双击，依此类推。',
+  是否离开: '真=鼠标离开事件。',
+  横向增量: '滚轮横向滚动增量。',
+  纵向增量: '滚轮纵向滚动增量。',
+  触点ID: '触点编号，多指触控时用于区分触点。',
+  半径X: '触点 X 方向半径。',
+  半径Y: '触点 Y 方向半径。',
+  旋转角度: '触点旋转角度（弧度）。',
+  压力: '触点压力 0.0~1.0。',
+  指针类型: '指针类型：0 触摸、1 鼠标、2 笔、3 橡皮擦、4 未知。',
+  Windows键码: 'Windows 虚拟键码（VK_*），如 65=A。',
+  原生键码: '平台原生键码/扫描码。',
+  是否系统键: '真=系统键事件（如 Alt 组合）。',
+  字符编码: '字符的 UTF-16 代码单元。',
+  未修改字符编码: '未经修饰键修改的字符 UTF-16 代码单元。',
+  焦点在可编辑字段: '真=当前焦点位于可编辑字段。',
+  是否静音: '真=静音。',
+  最小高度: '自动调整的最小高度（像素）。',
+  最小宽度: '自动调整的最小宽度（像素）。',
+  最大高度: '自动调整的最大高度（像素）。',
+  最大宽度: '自动调整的最大宽度（像素）。',
+  UserAgent: '要设置的 User-Agent 字符串。',
+  JSON: '完整指纹配置 JSON 文本。',
+  缓存目录: '实例专用缓存目录路径。',
+  附加信息JSON: '实例附加信息 JSON 文本。',
+  查询函数名: '页面发起 cefQuery 查询使用的全局函数名。',
+  取消函数名: '页面取消查询使用的全局函数名。',
+  工作区键: '浏览器管理器的工作区标识键，用于实例列表持久化。',
+  名称: '实例显示名称。',
+  清除数据: '真=同时清除实例的缓存数据。',
+  包含Cookie: '真=清理时同时删除 Cookie。',
+  文件: '导出或导入 Cookie 的文件路径。',
+  全部网站: '真=导出全部网站的 Cookie。',
+  覆盖冲突: '真=导入时覆盖同名 Cookie。',
+  'FBro_替换资源响应内容::地址': 'URL 匹配规则；命中规则的响应会被整体替换。',
+  'FBro_替换资源响应文件::地址': 'URL 匹配规则；命中规则的响应会被文件内容整体替换。',
+  'FBro_清除资源响应替换::地址': '要清除替换规则的 URL 匹配规则。',
+  'FBro_替换资源响应内容::内容': '替换后的响应内容文本。',
+  事件类型: '触摸事件类型：0 松开、1 按下、2 移动、3 取消。',
+  'FBro_发送按键事件::事件类型': '按键事件类型：0 原始按下、1 按下、2 松开、3 字符。',
+  选中键JSON: '列表选择动作携带的选中键 JSON 文本。',
+  稳定ID: '实例的稳定 ID 文本，唯一标识一个外壳实例。',
+  新名称: '实例的新显示名称。',
+  工作台键: '工作台标识键，用于外壳实例列表持久化恢复。',
+  事件JSON: '实例列表 UI 动作事件 JSON 文本。',
+  Cookie文本: '要写入的 Cookie 文本，格式与导出文件一致。',
+  默认地址: 'Cookie 对话框默认显示的地址。',
+  包含过期: '真=导入时包含已过期的 Cookie。',
+  新索引: '标签页新位置下标，从 0 起。',
+  代理: '实例代理地址，空文本表示直连。',
+  指纹JSON: '指纹配置 JSON 文本。'
+};
+
+function describeBuiltinParameter(command: string, parameter: ModuleCommandBindingParameter): ModuleCommandBindingParameter {
+  if ((parameter.description || '').trim()) return parameter;
+  const description = BUILTIN_PARAM_DOCS[`${command}::${parameter.name}`] || BUILTIN_PARAM_DOCS[parameter.name];
+  return description ? { ...parameter, description } : parameter;
+}
+
+/**
+ * 说明必填门禁：任何内置模块存在缺说明参数时在加载期直接抛错，
+ * 新增或修改命令必须同步补 BUILTIN_PARAM_DOCS 或各 catalog 集中表。
+ */
+function assertBuiltinParameterDescriptions(manifest: LingBuilderModuleManifest): LingBuilderModuleManifest {
+  const missing: string[] = [];
+  for (const command of manifest.bindings?.commands ?? []) {
+    for (const parameter of command.parameters ?? []) {
+      if (!(parameter.description || '').trim()) missing.push(`${command.command} :: ${parameter.name}`);
+    }
+  }
+  if (missing.length) throw new Error(`内置模块参数缺少中文说明：${manifest.id} :: ${missing.join(', ')}`);
+  return manifest;
+}
+
 function normalizeBuiltinControlParameter(
   moduleId: string,
   command: string,
   parameter: ModuleCommandBindingParameter
 ): ModuleCommandBindingParameter {
-  const converted = parameter;
+  const converted = normalizeHandlerParameter(parameter);
   if (converted.type !== 'controlRef') return converted;
   const resourceTypes = command.startsWith('文件对话框_') ? ['FileDialog']
     : command.startsWith('上下文菜单_') ? ['ContextMenu']
@@ -624,7 +817,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'EdgeView_清除全局代理', signature: 'EdgeView_清除全局代理()', description: '清除后续新建实例的全局代理，现有实例不变。', insertText: 'EdgeView_清除全局代理()', returnType: '空' },
         { name: 'EdgeView_取全局代理', signature: 'EdgeView_取全局代理()', description: '返回当前 EdgeView 全局代理设置。', insertText: 'EdgeView_取全局代理()', returnType: '文本型' },
         { name: 'EdgeView_取实例代理', signature: 'EdgeView_取实例代理(实例编号)', description: '返回指定实例创建时实际采用的代理地址。', insertText: 'EdgeView_取实例代理(1)', returnType: '文本型' },
-        { name: 'EdgeView_绑定事件', signature: 'EdgeView_绑定事件(实例编号, 事件名, &处理器名)', description: `绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定事件(1, "导航完成", &$1)', returnType: '整数型' },
+        { name: 'EdgeView_绑定事件', signature: 'EdgeView_绑定事件(实例编号, 事件名, &处理器名)', description: `绑定 WebView2 完整事件清单中的中文事件；当前清单共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定事件(1, "导航完成", &$1)', returnType: '整数型' },
         { name: 'EdgeView_监听开发者工具事件', signature: 'EdgeView_监听开发者工具事件(实例编号, 协议事件名)', description: '监听指定 Chromium DevTools Protocol 事件，触发“开发者工具协议事件”。', insertText: 'EdgeView_监听开发者工具事件(1, "Console.messageAdded")', returnType: '整数型' },
         { name: 'EdgeView_等待事件', signature: 'EdgeView_等待事件(实例编号, 事件名, 超时毫秒)', description: '泵送窗口消息并等待指定浏览器事件，成功返回 1，超时返回 0。', insertText: 'EdgeView_等待事件(1, "导航完成", 15000)', returnType: '整数型' },
         { name: 'EdgeView_等待事件控件', signature: 'EdgeView_等待事件控件(控件名, 事件名, 超时毫秒)', description: '在设计器 Edge 浏览器控件上泵送消息并等待指定中文事件，成功返回 1，超时或控件不存在返回 0。用于在“创建完毕”里等页面就绪后再调用同步命令；不能在其它浏览器事件处理器内调用，否则同样会等满超时。', insertText: 'EdgeView_等待事件控件($1, "导航完成", 5000)', returnType: '整数型' },
@@ -650,7 +843,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView_前进控件', signature: 'EdgeView_前进控件(控件名)', description: '让指定设计器 Edge 浏览器控件前进。', insertText: 'EdgeView_前进控件($1)', returnType: '整数型' }
         ,{ name: 'EdgeView_刷新控件', signature: 'EdgeView_刷新控件(控件名)', description: '刷新指定设计器 Edge 浏览器控件。', insertText: 'EdgeView_刷新控件($1)', returnType: '空' }
         ,{ name: 'EdgeView_关闭控件', signature: 'EdgeView_关闭控件(控件名)', description: '关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。', insertText: 'EdgeView_关闭控件($1)', returnType: '空' }
-        ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, &处理器名)', description: `按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定控件事件($1, "导航完成", &$2)', returnType: '整数型' }
+        ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, &处理器名)', description: `按控件名绑定 WebView2 完整事件清单中的中文事件；当前清单共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定控件事件($1, "导航完成", &$2)', returnType: '整数型' }
         ,{ name: 'EdgeView_监听开发者工具事件控件', signature: 'EdgeView_监听开发者工具事件控件(控件名, 协议事件名)', description: '按设计器控件名监听 Chromium DevTools Protocol 事件。', insertText: 'EdgeView_监听开发者工具事件控件($1, "Console.messageAdded")', returnType: '整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
@@ -735,7 +928,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建($1)', returnType: '整数型' },
         { name: 'CEF3_执行消息循环工作', aliases: ['cef_do_message_loop_work'], signature: 'CEF3_执行消息循环工作()', description: '在 CEF 消息循环模式下执行一次非阻塞消息循环工作；Bridge 会安全调度到 CEF UI 线程。', insertText: 'CEF3_执行消息循环工作()', returnType: '空', visibility: 'advanced' },
         { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭($1)', returnType: '空' },
-        { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: `返回最近 CEF3 事件名；当前目录包含 ${CEF3_BROWSER_EVENT_NAMES.length} 个浏览器回调。`, insertText: 'CEF3_取最近事件($1)', returnType: '文本型' },
+        { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: `返回最近 CEF3 事件名；当前事件清单共 ${CEF3_BROWSER_EVENT_NAMES.length} 个浏览器回调。`, insertText: 'CEF3_取最近事件($1)', returnType: '文本型' },
         { name: 'CEF3_取事件数据', signature: 'CEF3_取事件数据(控件名)', description: '返回最近事件的主要文本数据。', insertText: 'CEF3_取事件数据($1)', returnType: '文本型' },
         { name: 'CEF3_取事件字段', signature: 'CEF3_取事件字段(控件名, 字段名)', description: '读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。', insertText: 'CEF3_取事件字段($1, "url")', returnType: '文本型' },
         { name: 'CEF3_读资源响应正文', signature: 'CEF3_读资源响应正文(控件名, 最大字节数, 完成处理器)', description: '在“资源响应到达”处理器执行期间，为当前资源安装有界正文捕获；完成后触发“资源响应正文到达”，通过 CEF3_取事件字段读取 bodyText、bodyBase64、receivedBytes、truncated 和 error。不会重新发起请求。', insertText: 'CEF3_读资源响应正文($1, 1048576, &$2)', returnType: '整数型' },
@@ -743,7 +936,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_清除资源响应替换', signature: 'CEF3_清除资源响应替换(控件名)', description: '移除指定 CEF3 浏览器当前的响应替换配置，之后加载的资源恢复原始正文；已加载页面不受影响。同时取消尚未生效的排队配置。', insertText: 'CEF3_清除资源响应替换($1)', returnType: '整数型' },
         { name: 'CEF3_设置事件结果', signature: 'CEF3_设置事件结果(控件名, 结果)', description: '设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。', insertText: 'CEF3_设置事件结果($1, 1)', returnType: '整数型' },
         { name: 'CEF3_设置事件返回文本', signature: 'CEF3_设置事件返回文本(控件名, 文本)', description: '设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。', insertText: 'CEF3_设置事件返回文本($1, "$2")', returnType: '整数型' },
-        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器)', description: `绑定 CEF3 浏览器事件目录（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。`, insertText: 'CEF3_绑定事件($1, "加载完成", &$2)', returnType: '整数型' },
+        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器)', description: `绑定 CEF3 浏览器事件清单（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。`, insertText: 'CEF3_绑定事件($1, "加载完成", &$2)', returnType: '整数型' },
         { name: 'CEF3_启用JS扩展', signature: 'CEF3_启用JS扩展(控件名, 查询函数名, 取消函数名)', description: '启用页面调用原生的 JS 交互（cefQuery）通道：页面通过 window.查询函数名({request, onSuccess, onFailure}) 发起查询，原生通过「查询请求」事件接收并用 CEF3_查询应答 / CEF3_查询应答失败 应答。通道必须在 CEF 初始化之前配置——请优先使用 CEF3 浏览器控件的 jsQueryFunctions 属性（格式“查询函数名,取消函数名”），本命令仅在初始化前调用有效，初始化后调用返回 0。CEF3 每个程序只支持一条查询通道，同名重复调用按幂等成功处理。', insertText: 'CEF3_启用JS扩展($1, "cefQuery", "cefQueryCancel")', returnType: '整数型' },
         { name: 'CEF3_查询应答', signature: 'CEF3_查询应答(控件名, 查询ID, 结果文本)', description: '应答「查询请求」事件：查询ID 从事件字段 queryId 读取（数字文本，原样传回），结果文本回传给页面 onSuccess。每条查询只能应答一次；未应答的查询 120 秒后自动对页面回错误码 -4。', insertText: 'CEF3_查询应答($1, CEF3_取事件字段($1, "queryId"), "完成")', returnType: '整数型' },
         { name: 'CEF3_查询应答失败', signature: 'CEF3_查询应答失败(控件名, 查询ID, 错误码, 错误文本)', description: '以失败结果应答「查询请求」事件：错误码与错误文本回传给页面 onFailure（错误码 0 视为 -1）。每条查询只能应答一次。', insertText: 'CEF3_查询应答失败($1, CEF3_取事件字段($1, "queryId"), -1, "没有数据")', returnType: '整数型' },
@@ -1326,4 +1519,4 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   WEBSOCKET_CLIENT_MODULE,
   HTTP_SERVER_MODULE,
   WEBSOCKET_SERVER_MODULE
-].map(normalizeBuiltinControlReferences).map(ensureBuiltinX64Target);
+].map(normalizeBuiltinControlReferences).map(ensureBuiltinX64Target).map(assertBuiltinParameterDescriptions);

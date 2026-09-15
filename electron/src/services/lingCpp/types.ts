@@ -130,6 +130,8 @@ export interface LingCppStatement {
   line: number;
   indent: string;
   text: string;
+  /** 多行文本块语句的结束行（1-based，含）；普通单行语句缺省。 */
+  endLine?: number;
 }
 
 export interface LingCppSourceRange {

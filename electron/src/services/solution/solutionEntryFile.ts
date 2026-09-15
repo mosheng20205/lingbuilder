@@ -16,7 +16,7 @@ interface SolutionEntrySource {
   projects: Array<{
     id: string;
     name: string;
-    type: 'visual-cpp' | 'windows-dll' | 'external-msbuild' | 'external-cmake';
+    type: 'visual-cpp' | 'windows-dll' | 'windows-console' | 'external-msbuild' | 'external-cmake';
     sourceRoot: string;
     projectFile?: string;
     references?: string[];

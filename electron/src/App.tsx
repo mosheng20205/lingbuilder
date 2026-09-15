@@ -231,7 +231,8 @@ import {
   moveSolutionProject,
   renameSolutionProject,
   rebuildSolution,
-  setStartupProject
+  setStartupProject,
+  type SolutionCommandResult
 } from './services/solution/solutionClient';
 import {
   CREATE_SOLUTION_FOLDER_COMMAND,
@@ -397,6 +398,23 @@ const getInitialEditorExperienceMode = (): EditorExperienceMode => {
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** Windows 路径不区分大小写；统一正斜杠比较，判断绝对路径是否位于工作区内。 */
+const isPathInsideWorkspace = (absolutePath: string, workspacePath: string): boolean => {
+  const normalize = (value: string) => value.replace(/\\+/g, '/').replace(/\/+$/g, '').toLowerCase();
+  const normalizedPath = normalize(absolutePath);
+  const normalizedRoot = normalize(workspacePath);
+  if (!normalizedPath || !normalizedRoot) return false;
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
+};
+
+/** 把工作区内绝对路径换算为相对路径（正斜杠）。调用前应先用 isPathInsideWorkspace 校验。 */
+const toWorkspaceRelativeFrom = (absolutePath: string, workspacePath: string): string => {
+  const normalize = (value: string) => value.replace(/\\+/g, '/').replace(/\/+$/g, '');
+  const normalizedPath = normalize(absolutePath);
+  const normalizedRoot = normalize(workspacePath);
+  return normalizedPath.startsWith(`${normalizedRoot}/`) ? normalizedPath.slice(normalizedRoot.length + 1) : normalizedPath;
+};
+
 const sanitizeLingCppText = (value: string | undefined, fallback: string) => {
   return (value || fallback)
     .replace(/[\r\n]+/g, ' ')
@@ -538,6 +556,8 @@ export default function App() {
   const activeSolutionProject = solution.projects.find(project => project.id === solution.startupProjectId) || solution.projects[0] || DEFAULT_SOLUTION.projects[0];
   const activeProjectHasWindowDesigner = activeSolutionProject.type === 'visual-cpp';
   const activeProjectId = activeSolutionProject.id;
+  // 动态库输出项目没有运行入口：F5「生成并运行」禁用，编译走「生成」/「生成解决方案」。
+  const activeProjectIsDllOutput = activeSolutionProject.buildProperties?.outputType === 'dll';
   const textModelWorkspaceId = solution.id || DEFAULT_SOLUTION.id;
   const textModelIdentity = (projectId: string, filePath: string): TextModelIdentity => ({
     workspaceId: textModelWorkspaceId,
@@ -1218,7 +1238,7 @@ export default function App() {
   const [showCliGuide, setShowCliGuide] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [createProjectName, setCreateProjectName] = useState('');
-  const [createProjectTemplateId, setCreateProjectTemplateId] = useState<'blank-window' | 'windows-dll'>('blank-window');
+  const [createProjectTemplateId, setCreateProjectTemplateId] = useState<'blank-window' | 'windows-dll' | 'windows-console'>('blank-window');
   const [createSolutionName, setCreateSolutionName] = useState('');
   const [createProjectLocation, setCreateProjectLocation] = useState('');
   const [createProjectError, setCreateProjectError] = useState('');
@@ -4450,9 +4470,9 @@ void DisplayStatus() {
     window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', { detail: { diagnostics } }));
   }, []);
 
-  const openCreateSolutionProjectDialog = useCallback((projectType: 'windows-ui' | 'windows-dll' = 'windows-ui') => {
+  const openCreateSolutionProjectDialog = useCallback((projectType: 'windows-ui' | 'windows-dll' | 'windows-console' = 'windows-ui') => {
     setCreateProjectName(`LingBuilder项目${solution.projects.length + 1}`);
-    setCreateProjectTemplateId(projectType === 'windows-dll' ? 'windows-dll' : 'blank-window');
+    setCreateProjectTemplateId(projectType === 'windows-dll' ? 'windows-dll' : projectType === 'windows-console' ? 'windows-console' : 'blank-window');
     setCreateSolutionName(solution.name?.trim() || '');
     createDialogSolutionNameTouchedRef.current = false;
     setCreateProjectLocation('');
@@ -4466,7 +4486,7 @@ void DisplayStatus() {
 
   const handleCreateSolutionProject = useCallback(async (
     name: string,
-    templateId: 'blank-window' | 'windows-dll' = createProjectTemplateId,
+    templateId: 'blank-window' | 'windows-dll' | 'windows-console' = createProjectTemplateId,
     options?: { solutionName?: string; projectDirectory?: string },
     signal?: AbortSignal
   ): Promise<{ ok: boolean; workspacePath?: string }> => {
@@ -4702,17 +4722,218 @@ void DisplayStatus() {
   }, [appendSolutionLogs, solution]);
 
   const handleImportExternalProject = useCallback(async () => {
-    const projectFile = await requestWorkbenchPrompt({
-      title: '导入现有工程',
-      description: '输入工作区内的 CMakeLists.txt、.vcxproj 或 .sln 相对路径：',
-      inputLabel: '工程文件相对路径',
-      inputPlaceholder: '例如 external/hello/CMakeLists.txt'
+    const solutionImportApi = window.lingBuilder?.solutionImport;
+    // 浏览器（Web 原型）环境没有原生对话框，保留相对路径文本输入通道。
+    if (!solutionImportApi?.pickProject) {
+      const projectFile = await requestWorkbenchPrompt({
+        title: '导入现有工程',
+        description: '输入工作区内的 CMakeLists.txt、.vcxproj 或 .sln 相对路径：',
+        inputLabel: '工程文件相对路径',
+        inputPlaceholder: '例如 external/hello/CMakeLists.txt'
+      });
+      if (!projectFile?.trim()) return;
+      const result = await importSolutionProject(projectFile.trim());
+      appendSolutionLogs('导入现有工程', result);
+      if (result.solution) setSolution(result.solution);
+      return;
+    }
+
+    const picked = await solutionImportApi.pickProject();
+    if (picked.canceled) return;
+    if (!picked.ok || !picked.filePath) {
+      appendSolutionLogs('导入现有工程', { ok: false, error: picked.error || '未选择工程文件。', logs: [] });
+      return;
+    }
+
+    // .sln：推荐展开为多项目导入（保留依赖构建顺序）；取消则回退整 sln 单目标导入。
+    let importMode: 'expand' | 'single' = 'expand';
+    if (picked.filePath.toLowerCase().endsWith('.sln')) {
+      const expand = await requestWorkbenchConfirm({
+        title: '导入 Visual Studio 解决方案',
+        description: '推荐把 .sln 展开为多个项目分别导入：每个项目可单独构建，项目间依赖顺序自动保留。\n选择「取消」则把整个 .sln 作为单一构建目标导入。',
+        confirmLabel: '展开为多个项目',
+        cancelLabel: '整 sln 单目标导入'
+      });
+      importMode = expand ? 'expand' : 'single';
+    }
+
+    const workspacePath = currentWorkspacePath || await window.lingBuilder?.workspace?.getCurrent?.() || '';
+    if (workspacePath && isPathInsideWorkspace(picked.filePath, workspacePath)) {
+      const result = await importSolutionProject(toWorkspaceRelativeFrom(picked.filePath, workspacePath), importMode);
+      appendSolutionLogs('导入现有工程', result);
+      if (result.solution) setSolution(result.solution);
+      return;
+    }
+
+    // 工作区外的工程：推荐切换到工程所在目录作为工作区打开并导入；拒绝时可复制进当前工作区。
+    const projectDir = picked.filePath.slice(0, Math.max(picked.filePath.lastIndexOf('/'), picked.filePath.lastIndexOf('\\')));
+    const switchConfirmed = await requestWorkbenchConfirm({
+      title: '导入工作区外的工程',
+      description: `该工程位于当前工作区之外：\n${picked.filePath}\n\n推荐切换到该工程所在目录并作为工作区打开，然后完成导入。`,
+      confirmLabel: '切换工作区并导入',
+      cancelLabel: '不切换'
     });
-    if (!projectFile?.trim()) return;
-    const result = await importSolutionProject(projectFile.trim());
-    appendSolutionLogs('导入现有工程', result);
+    if (switchConfirmed) {
+      const opened = await handleOpenWorkspacePath(projectDir, false);
+      if (!opened) return;
+      // 等待工作区切换落定（工作区状态重载完成）后再执行导入，避免刷新覆盖导入结果。
+      for (let attempt = 0; attempt < 50 && workspaceSwitchInFlightRef.current; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      const result = await importSolutionProject(toWorkspaceRelativeFrom(picked.filePath, projectDir), importMode);
+      appendSolutionLogs('导入现有工程', result);
+      if (result.solution) setSolution(result.solution);
+      return;
+    }
+    const copyConfirmed = await requestWorkbenchConfirm({
+      title: '复制工程进当前工作区',
+      description: '将把该工程所在目录复制到当前工作区的 external/ 目录（自动跳过 Debug/Release/obj/.vs 等构建产物与环境目录，上限 1GB），然后完成导入。',
+      confirmLabel: '复制并导入',
+      cancelLabel: '取消'
+    });
+    if (!copyConfirmed) return;
+    const copied = await solutionImportApi.copyExternalProject(picked.filePath);
+    if (!copied.ok || !copied.projectFileRelative) {
+      appendSolutionLogs('复制外部工程', { ok: false, error: copied.error || '复制失败。', logs: [] });
+      return;
+    }
+    const result = await importSolutionProject(copied.projectFileRelative, importMode);
+    appendSolutionLogs('导入现有工程（已复制进工作区）', result);
+    if (result.solution) setSolution(result.solution);
+  }, [appendSolutionLogs, currentWorkspacePath, handleOpenWorkspacePath]);
+
+  const handleImportSourceDirectory = useCallback(async () => {
+    const solutionImportApi = window.lingBuilder?.solutionImport;
+    let directory = '';
+    if (solutionImportApi?.pickSourceDirectory) {
+      const picked = await solutionImportApi.pickSourceDirectory();
+      if (picked.canceled) return;
+      if (!picked.ok || !picked.filePath) {
+        appendSolutionLogs('导入 C++ 源码目录', { ok: false, error: picked.error || '未选择目录。', logs: [] });
+        return;
+      }
+      const workspacePath = currentWorkspacePath || await window.lingBuilder?.workspace?.getCurrent?.() || '';
+      if (!workspacePath || !isPathInsideWorkspace(picked.filePath, workspacePath)) {
+        appendSolutionLogs('导入 C++ 源码目录', { ok: false, error: '所选目录不在当前工作区内。请把源码目录放入工作区后重试，或使用「文件 → 导入 MSBuild/CMake 工程」切换工作区。', logs: [] });
+        return;
+      }
+      directory = toWorkspaceRelativeFrom(picked.filePath, workspacePath);
+    } else {
+      const input = await requestWorkbenchPrompt({
+        title: '导入 C++ 源码目录',
+        description: '输入工作区内含 C++ 源码的目录相对路径（将扫描源码生成 CMakeLists.txt 并导入）：',
+        inputLabel: '目录相对路径',
+        inputPlaceholder: '例如 external/hello-src'
+      });
+      if (!input?.trim()) return;
+      directory = input.trim();
+    }
+    const requestImport = async (overwrite: boolean): Promise<SolutionCommandResult> => {
+      const response = await fetch('/api/solution/import-source-directory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directory, overwrite })
+      });
+      return response.json();
+    };
+    let result = await requestImport(false);
+    if (!result.ok && typeof result.error === 'string' && result.error.includes('已存在 CMakeLists')) {
+      const overwrite = await requestWorkbenchConfirm({
+        title: '覆盖已有的 CMakeLists.txt',
+        description: `${result.error}\n覆盖只重写该 CMakeLists.txt 文件，不会删除其他文件。`,
+        confirmLabel: '覆盖并导入',
+        cancelLabel: '取消'
+      });
+      if (!overwrite) return;
+      result = await requestImport(true);
+    }
+    appendSolutionLogs('导入 C++ 源码目录', result);
+    if (result.solution) setSolution(result.solution);
+  }, [appendSolutionLogs, currentWorkspacePath]);
+
+  // D2：原生 C++ 源码适配为新的中文工程（读取 .cpp 翻译，不改原文件）。
+  const handleAdaptNativeCppFile = useCallback(async (projectFileRelative?: unknown) => {
+    if (typeof projectFileRelative !== 'string' || !projectFileRelative.trim()) return;
+    const confirmed = await requestWorkbenchConfirm({
+      title: '适配为中文工程',
+      description: `将读取以下 C++ 源码并翻译为新的中文工程：\n${projectFileRelative}\n\n识别的窗口、控件和方法会转为中文代码与设计器模型，未识别的语句保留为 @ 原生块。原 C++ 源码不会被修改。`,
+      confirmLabel: '创建中文工程',
+      cancelLabel: '取消'
+    });
+    if (!confirmed) return;
+    const response = await fetch('/api/solution/adapt-native-cpp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectFile: projectFileRelative.trim() })
+    });
+    const result: SolutionCommandResult = await response.json();
+    appendSolutionLogs('原生 C++ 适配', result);
     if (result.solution) setSolution(result.solution);
   }, [appendSolutionLogs]);
+
+  // C1：打开文件夹后检测既有 C++ 工程或源码目录，给出一次性导入提示（每个工作区最多提示一次，可永久不再提示）。
+  const externalDetectPromptedWorkspaceRef = useRef('');  const promptDetectedExternalProjects = useCallback(async () => {
+    let detection: { ok?: boolean; candidates?: Array<{ relativePath: string; kind: string; name?: string }>; sourceDirectories?: Array<{ relativePath: string; sourceFileCount: number }> };
+    try {
+      detection = await (await fetch('/api/solution/external-detect')).json();
+    } catch { return; }
+    if (!detection?.ok) return;
+    const candidates = detection.candidates || [];
+    const sourceDirectories = detection.sourceDirectories || [];
+    if (candidates.length === 0 && sourceDirectories.length === 0) return;
+    const dismissedKey = `lingbuilder.external-import.dismissed:${currentWorkspacePath}`;
+    if (window.localStorage.getItem(dismissedKey) === '1') return;
+
+    if (candidates.length > 0) {
+      const list = candidates.slice(0, 5).map(item => `• ${item.relativePath}`).join('\n');
+      const extra = candidates.length > 5 ? `\n…等共 ${candidates.length} 个` : '';
+      const confirmed = await requestWorkbenchConfirm({
+        title: '检测到现有 C++ 工程',
+        description: `当前工作区内检测到以下工程文件：\n${list}${extra}\n\n是否导入为解决方案项目？.sln 会展开为多个项目并保留依赖顺序。`,
+        confirmLabel: '导入',
+        cancelLabel: '不再提示'
+      });
+      if (!confirmed) {
+        window.localStorage.setItem(dismissedKey, '1');
+        return;
+      }
+      let lastResult: Awaited<ReturnType<typeof importSolutionProject>> | null = null;
+      for (const candidate of candidates) {
+        lastResult = await importSolutionProject(candidate.relativePath, 'expand');
+        appendSolutionLogs(`导入 ${candidate.relativePath}`, lastResult);
+      }
+      if (lastResult?.solution) setSolution(lastResult.solution);
+      return;
+    }
+
+    const sourceDir = sourceDirectories[0]!;
+    const confirmed = await requestWorkbenchConfirm({
+      title: '检测到 C++ 源码目录',
+      description: `目录 ${sourceDir.relativePath} 中发现 ${sourceDir.sourceFileCount} 个 C/C++ 源码文件，但没有工程文件。\n\n是否扫描源码生成 CMakeLists.txt（生成物，可自由修改）并导入为 CMake 工程？`,
+      confirmLabel: '生成并导入',
+      cancelLabel: '不再提示'
+    });
+    if (!confirmed) {
+      window.localStorage.setItem(dismissedKey, '1');
+      return;
+    }
+    const result = await (await fetch('/api/solution/import-source-directory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directory: sourceDir.relativePath })
+    })).json();
+    appendSolutionLogs('导入 C++ 源码目录', result);
+    if (result.solution) setSolution(result.solution);
+  }, [appendSolutionLogs, currentWorkspacePath]);
+
+  useEffect(() => {
+    if (!hasEnteredWorkbench || isWorkspaceSwitching || isBuilding) return;
+    if (!solution || solution.projects.length > 1 || !solution.projects[0]?.isDefault) return;
+    if (!currentWorkspacePath || externalDetectPromptedWorkspaceRef.current === currentWorkspacePath) return;
+    externalDetectPromptedWorkspaceRef.current = currentWorkspacePath;
+    const timer = setTimeout(() => { void promptDetectedExternalProjects(); }, 1500);
+    return () => clearTimeout(timer);
+  }, [hasEnteredWorkbench, isWorkspaceSwitching, isBuilding, solution, currentWorkspacePath, promptDetectedExternalProjects]);
 
   const openProjectBuildPathsDialog = useCallback((projectId?: string) => {
     const targetId = projectId || solution.startupProjectIds?.[0] || solution.startupProjectId || solution.projects[0]?.id;
@@ -4825,7 +5046,8 @@ void DisplayStatus() {
 
   const handleSolutionBuildCommand = useCallback(async (
     command: 'build' | 'clean' | 'rebuild',
-    projectId?: string
+    projectId?: string,
+    run = false
   ): Promise<boolean> => {
     const titleMap = {
       build: projectId ? '生成项目' : '生成解决方案',
@@ -4833,7 +5055,7 @@ void DisplayStatus() {
       rebuild: projectId ? '重新生成项目' : '重新生成解决方案'
     };
     const result = command === 'build'
-      ? await buildSolution(projectId)
+      ? await buildSolution(projectId, run)
       : command === 'clean'
         ? await cleanSolution(projectId)
         : await rebuildSolution(projectId);
@@ -4900,7 +5122,7 @@ void DisplayStatus() {
 
   // Real window designer build task (F5)
   const handleRunBuild = useCallback(async (): Promise<boolean> => {
-    if (activeSolutionProject.type === 'windows-dll') {
+    if (activeSolutionProject.type === 'windows-dll' || activeSolutionProject.type === 'windows-console') {
       if (editorOperationRef.current) {
         appendEditorTransactionLog(`【F5】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，本次运行请求未重复执行。`);
         return false;
@@ -4908,11 +5130,14 @@ void DisplayStatus() {
       editorOperationRef.current = 'build';
       setIsBuilding(true);
       try {
-        if (!await saveWorkspaceCore('DLL 构建前保存', true)) {
-          appendEditorTransactionLog('【F5】DLL 源码保存未完成，已取消构建。');
+        if (!await saveWorkspaceCore('构建前保存', true)) {
+          appendEditorTransactionLog(activeSolutionProject.type === 'windows-console'
+            ? '【F5】控制台源码保存未完成，已取消构建。'
+            : '【F5】DLL 源码保存未完成，已取消构建。');
           return false;
         }
-        return await handleSolutionBuildCommand('build', activeProjectId);
+        // 控制台项目 F5 = 生成并运行：编译成功后由本地服务启动 exe，输出经 run.log 进输出面板。
+        return await handleSolutionBuildCommand('build', activeProjectId, activeSolutionProject.type === 'windows-console');
       } finally {
         if (editorOperationRef.current === 'build') editorOperationRef.current = null;
         setIsBuilding(false);
@@ -5005,6 +5230,27 @@ void DisplayStatus() {
     }
   }, [activeProjectId, activeSolutionProject.type, appendEditorTransactionLog, handleSolutionBuildCommand, saveWorkspaceCore]);
 
+  // 动态库输出项目专用「生成」：保存后走解决方案生成链路编译 DLL（.dll + 导入库 .lib），不启动运行。
+  const handleGenerateDllOutput = useCallback(async (): Promise<boolean> => {
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【生成】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，本次生成请求未重复执行。`);
+      return false;
+    }
+    editorOperationRef.current = 'build';
+    setIsBuilding(true);
+    try {
+      if (!await saveWorkspaceCore('DLL 生成前保存', true)) {
+        appendEditorTransactionLog('【生成】源码保存未完成，已取消生成，磁盘不会使用旧草稿。');
+        return false;
+      }
+      appendEditorTransactionLog('【生成】正在编译动态库项目（输出 .dll + 导入库 .lib，不运行）...');
+      return await handleSolutionBuildCommand('build', activeProjectId);
+    } finally {
+      if (editorOperationRef.current === 'build') editorOperationRef.current = null;
+      setIsBuilding(false);
+    }
+  }, [activeProjectId, appendEditorTransactionLog, handleSolutionBuildCommand, saveWorkspaceCore]);
+
   const handleStartNativeDebug = useCallback(async (): Promise<boolean> => {
     if (editorOperationRef.current) return false;
     editorOperationRef.current = 'build'; setIsBuilding(true);
@@ -5096,6 +5342,7 @@ void DisplayStatus() {
     pasteFunctionLibrary: (projectId?: unknown) => handlePasteFunctionLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     closeSolution: handleCloseCurrentSolution,
     save: () => handleSaveWorkspace(),
+    adaptNativeCpp: (projectFile?: unknown) => handleAdaptNativeCppFile(projectFile),
     undo: () => handleToolbarAction('undo'),
     redo: () => handleToolbarAction('redo'),
     run: handleRunBuild,
@@ -5228,6 +5475,7 @@ void DisplayStatus() {
     'operation.saving': isSaving,
     'operation.building': isBuilding,
     'operation.busy': Boolean(editorOperationRef.current) || projectFilesLoading,
+    'project.dllOutput': activeProjectIsDllOutput,
     'editor.canUndo': editorState.canUndo,
     'editor.canRedo': editorState.canRedo,
     'editor.readOnly': editorState.readOnly,
@@ -5543,13 +5791,24 @@ void DisplayStatus() {
         handler: (_context, relativePath) => workbenchCommandHandlersRef.current.copyProjectResourcePath(relativePath)
       },
       {
+        id: 'workbench.action.project.adaptNativeCpp',
+        title: '项目：原生 C++ 适配为中文工程',
+        aliases: ['Adapt Native C++', 'Import C++ As Chinese Project'],
+        category: '文件',
+        description: '读取 C++ 源码文件并翻译生成新的中文工程，未识别语句保留为 @ 原生块；原文件不修改。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 15,
+        handler: (_context, projectFile) => workbenchCommandHandlersRef.current.adaptNativeCpp(projectFile)
+      },
+      {
         id: 'workbench.action.build.run',
         title: '生成并运行当前项目',
         aliases: ['Run', 'Build and Run'],
         category: '生成',
+        description: '按 F5 编译并运行当前项目；动态库（outputType: dll）项目不支持运行，请使用「生成解决方案」。',
         keybindings: bindings('workbench.action.build.run', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.build.run']),
         when: '!workbench.modalOpen',
-        enabled: context => !context['operation.busy'],
+        enabled: context => !context['operation.busy'] && !context['project.dllOutput'],
         order: 20,
         handler: () => workbenchCommandHandlersRef.current.run()
       },
@@ -6298,6 +6557,9 @@ void DisplayStatus() {
                   <button onClick={() => { void handleImportExternalProject(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     导入 MSBuild/CMake 工程…
                   </button>
+                  <button onClick={() => { void handleImportSourceDirectory(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    导入 C++ 源码目录（生成 CMake 工程）…
+                  </button>
                   <button onClick={() => { void window.lingBuilder?.workspace?.openNewWindow(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     在新窗口打开工作区…
                   </button>
@@ -6736,15 +6998,37 @@ void DisplayStatus() {
             >
               <Cpu className="w-4 h-4 text-amber-500" />
             </button>
+            {activeProjectIsDllOutput && (
+              <button
+                id="btn-generate-dll"
+                onClick={() => { void handleGenerateDllOutput(); }}
+                disabled={isBuilding}
+                className={`p-1 rounded transition-all active:scale-95 ${
+                  isBuilding
+                    ? 'opacity-50 text-sky-500 cursor-wait'
+                    : isDarkMode
+                      ? 'text-sky-400 hover:text-sky-300 hover:bg-[#2d2d30]'
+                      : 'text-sky-600 hover:text-sky-700 hover:bg-slate-100'
+                } ${isBuilding ? '' : 'cursor-pointer'}`}
+                title="生成动态库 (编译当前项目产出 .dll 与导入库 .lib，不运行；快捷方式：生成菜单 → 生成解决方案)"
+              >
+                <Hammer className="w-4 h-4" />
+              </button>
+            )}
             <button
+              id="btn-run-f5"
               onClick={handleRunBuild}
-              disabled={isBuilding}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isBuilding 
-                  ? 'opacity-50 text-emerald-600' 
-                  : 'text-emerald-500 hover:text-emerald-650'
+              disabled={isBuilding || activeProjectIsDllOutput}
+              className={`p-1 rounded transition-all active:scale-95 ${
+                isBuilding
+                  ? 'opacity-50 text-emerald-600 cursor-wait'
+                  : activeProjectIsDllOutput
+                    ? 'opacity-40 text-emerald-500 cursor-not-allowed'
+                    : 'text-emerald-500 hover:text-emerald-650 cursor-pointer'
               }`}
-              title="运行 F5 (编译并运行当前项目，快捷键是 F5)"
+              title={activeProjectIsDllOutput
+                ? "运行 F5 已禁用：动态库（DLL）项目没有运行入口。请点击旁边的「生成」按钮（锤子图标）一键编译 DLL 产物"
+                : "运行 F5 (编译并运行当前项目，快捷键是 F5)"}
             >
               <Play className="w-4 h-4 fill-emerald-500/10" />
             </button>
@@ -6763,11 +7047,13 @@ void DisplayStatus() {
                 setBuildLogs(prev => [...prev, `> [${new Date().toLocaleTimeString()}] 正在重启当前调试实例...`]);
                 void handleRunBuild();
               }}
-              disabled={isBuilding}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
+              disabled={isBuilding || activeProjectIsDllOutput}
+              className={`p-1 rounded transition-all active:scale-95 ${
                 isDarkMode ? 'text-indigo-400 hover:text-indigo-300 hover:bg-[#2d2d30]' : 'text-indigo-600 hover:text-indigo-700 hover:bg-slate-100'
-              }`}
-              title="重新运行 (停止/刷新后重新运行当前项目)"
+              } ${activeProjectIsDllOutput ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+              title={activeProjectIsDllOutput
+                ? "重新运行已禁用：动态库（DLL）项目没有运行入口。请使用「生成解决方案」编译 DLL 产物"
+                : "重新运行 (停止/刷新后重新运行当前项目)"}
             >
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -7308,11 +7594,17 @@ void DisplayStatus() {
         open={showCreateProjectDialog}
         value={createProjectName}
         isDarkMode={isDarkMode}
-        title={createProjectTemplateId === 'windows-dll' ? '新建 Windows DLL 项目' : undefined}
+        title={createProjectTemplateId === 'windows-dll'
+          ? '新建 Windows DLL 项目'
+          : createProjectTemplateId === 'windows-console' ? '新建 Windows 控制台程序' : undefined}
         description={createProjectTemplateId === 'windows-dll'
           ? '将创建 MSVC DLL 源码、C ABI 导出示例和可复制的 Visual Studio 工程。'
-          : undefined}
-        confirmLabel={createProjectTemplateId === 'windows-dll' ? '创建 DLL 项目' : undefined}
+          : createProjectTemplateId === 'windows-console'
+            ? '将创建以“公开 启动()”子程序为主体的控制台项目，F5 生成并运行，输出显示在输出面板。'
+            : undefined}
+        confirmLabel={createProjectTemplateId === 'windows-dll'
+          ? '创建 DLL 项目'
+          : createProjectTemplateId === 'windows-console' ? '创建控制台项目' : undefined}
         busy={isCreatingSolutionProject}
         error={createProjectError || undefined}
         solutionName={createSolutionName}

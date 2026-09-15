@@ -1,0 +1,51 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "dll-lib-demo",
+    "name": "项目动态库演示",
+    "windows": [
+      {
+        "id": "lib-window",
+        "fileName": "LibDemo.xml",
+        "className": "库窗口",
+        "title": "项目动态库（DLL 输出）",
+        "width": 480,
+        "height": 200,
+        "background": "#1E1E24",
+        "description": "纯逻辑动态库示例：公开子程序经 DLL 导出，供其他项目封装模块后调用。",
+        "events": {
+          "Loaded": "_库窗口_创建完毕"
+        },
+        "controls": [
+          {
+            "id": "status-label",
+            "type": "Label",
+            "name": "状态标签",
+            "content": "动态库已加载",
+            "x": 20,
+            "y": 36,
+            "width": 430,
+            "height": 28,
+            "fontSize": 13,
+            "background": "transparent",
+            "foreground": "#4FC3F7",
+            "isEnabled": true,
+            "visibility": "Visible"
+          }
+        ]
+      }
+    ],
+    "resources": []
+  },
+  "activeWindowId": "lib-window",
+  "lingCppSourceFilePath": "examples/dll-lib-demo/src/项目动态库.lcpp",
+  "run": false,
+  "approved": true,
+  "lingCppSourceCode": "包 项目动态库演示\n使用 Win32窗口基础模块\n使用 文本处理模块\n使用 数学与随机模块\n\n类 库窗口 : 窗口\n公开\n  事件 _库窗口_创建完毕()\n    局部 整数型 自测结果 = 0\n    自测结果 = 加法计算(20, 22)\n    控件_设置文本(状态标签, 格式化文本(\"库内自测结果={}\", 自测结果))\n  结束\n\n  整数型 加法计算(整数型 被加数, 整数型 加数)\n    局部 整数型 合计 = 0\n    合计 = 被加数 + 加数\n    返回 合计\n  结束\n\n  整数型 取字符数(文本型 文本)\n    局部 整数型 字符数 = 0\n    字符数 = 文本_取长度(文本)\n    返回 字符数\n  结束\n\n  小数型 两点距离计算(小数型 横1, 小数型 纵1, 小数型 横2, 小数型 纵2)\n    局部 小数型 横向差 = 0\n    局部 小数型 纵向差 = 0\n    横向差 = 横2 - 横1\n    纵向差 = 纵2 - 纵1\n    返回 数学_平方根(横向差 * 横向差 + 纵向差 * 纵向差)\n  结束\n\n私有\n  整数型 内部翻倍(整数型 输入值)\n    返回 输入值 * 2\n  结束\n结束类\n",
+  "lingCppSources": [
+    {
+      "filePath": "examples/dll-lib-demo/src/项目动态库.lcpp",
+      "sourceCode": "包 项目动态库演示\n使用 Win32窗口基础模块\n使用 文本处理模块\n使用 数学与随机模块\n\n类 库窗口 : 窗口\n公开\n  事件 _库窗口_创建完毕()\n    局部 整数型 自测结果 = 0\n    自测结果 = 加法计算(20, 22)\n    控件_设置文本(状态标签, 格式化文本(\"库内自测结果={}\", 自测结果))\n  结束\n\n  整数型 加法计算(整数型 被加数, 整数型 加数)\n    局部 整数型 合计 = 0\n    合计 = 被加数 + 加数\n    返回 合计\n  结束\n\n  整数型 取字符数(文本型 文本)\n    局部 整数型 字符数 = 0\n    字符数 = 文本_取长度(文本)\n    返回 字符数\n  结束\n\n  小数型 两点距离计算(小数型 横1, 小数型 纵1, 小数型 横2, 小数型 纵2)\n    局部 小数型 横向差 = 0\n    局部 小数型 纵向差 = 0\n    横向差 = 横2 - 横1\n    纵向差 = 纵2 - 纵1\n    返回 数学_平方根(横向差 * 横向差 + 纵向差 * 纵向差)\n  结束\n\n私有\n  整数型 内部翻倍(整数型 输入值)\n    返回 输入值 * 2\n  结束\n结束类\n"
+    }
+  ]
+}

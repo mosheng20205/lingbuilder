@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectId": "emoji",
   "startupProjectIds": [
-    "lingbuilder-ui-project"
+    "emoji"
   ],
   "folders": [],
   "projects": [
@@ -15,6 +15,13 @@
       "name": "GameClient",
       "type": "visual-cpp",
       "sourceRoot": "src",
+      "references": []
+    },
+    {
+      "id": "emoji",
+      "name": "emoji项目",
+      "type": "visual-cpp",
+      "sourceRoot": "src/emoji",
       "references": []
     }
   ]

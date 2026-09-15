@@ -1,0 +1,54 @@
+{
+  "id": "lingbuilder.demo.mathdll",
+  "name": "演示数学 DLL",
+  "version": "1.0.0",
+  "category": "其他",
+  "description": "演示用第三方 C++ DLL（demo_mathdll.dll）的薄封装模块：整数加法、取文本长度与两点距离，展示第三方 DLL 接入 LingBuilder 的完整路径。",
+  "author": "LingBuilder 示例",
+  "headers": ["include/demo_mathdll.h"],
+  "includeDirs": ["include"],
+  "libs": ["lib/Win32/demo_mathdll.lib"],
+  "runtimeFiles": ["bin/Win32/demo_mathdll.dll"],
+  "commands": [
+    {
+      "name": "演示_加法",
+      "signature": "演示_加法(被加数, 加数)",
+      "description": "调用演示 DLL 计算两个整数之和。",
+      "runtimeName": "demo_add",
+      "returnType": "整数型",
+      "insertText": "演示_加法(被加数, 加数)",
+      "parameters": [
+        { "name": "被加数", "type": "整数型", "description": "第一个加数。" },
+        { "name": "加数", "type": "整数型", "description": "第二个加数。" }
+      ]
+    },
+    {
+      "name": "演示_取文本长度",
+      "signature": "演示_取文本长度(文本)",
+      "description": "调用演示 DLL 统计宽文本的字符数。",
+      "runtimeName": "demo_text_length",
+      "returnType": "整数型",
+      "insertText": "演示_取文本长度(文本)",
+      "parameters": [
+        { "name": "文本", "type": "文本型", "description": "要统计长度的文本。" }
+      ]
+    },
+    {
+      "name": "演示_两点距离",
+      "signature": "演示_两点距离(横1, 纵1, 横2, 纵2)",
+      "description": "调用演示 DLL 计算平面两点间的直线距离。",
+      "runtimeName": "demo_distance",
+      "returnType": "小数型",
+      "insertText": "演示_两点距离(横1, 纵1, 横2, 纵2)",
+      "parameters": [
+        { "name": "横1", "type": "小数型", "description": "第一个点的横坐标。" },
+        { "name": "纵1", "type": "小数型", "description": "第一个点的纵坐标。" },
+        { "name": "横2", "type": "小数型", "description": "第二个点的横坐标。" },
+        { "name": "纵2", "type": "小数型", "description": "第二个点的纵坐标。" }
+      ]
+    }
+  ],
+  "targetId": "windows-msvc-win32",
+  "arch": "win32",
+  "toolchain": "msvc"
+}

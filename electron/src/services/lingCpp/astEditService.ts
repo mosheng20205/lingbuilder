@@ -1,5 +1,6 @@
 import { createWorkspaceEditChangeFromRewrite } from './aiEditService';
 import { LING_CPP_KEYWORDS, normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import {
   LingCppAstEdit,
   LingCppAstEditResult,
@@ -821,8 +822,13 @@ function replaceMethodBody(
   const endExclusive = closesWithEndMarker ? lineIndex(methodEndLine) : lineIndex(methodEndLine) + 1;
   const deleteCount = Math.max(0, endExclusive - start);
   const bodyIndent = inferMethodBodyIndent(lines, method);
-  const normalizedBody = normalizeMethodBodyLines(bodyLines).map(line =>
-    line.trim() ? `${bodyIndent}${line}` : ''
+  const normalizedLines = normalizeMethodBodyLines(bodyLines);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(
+    scanLingCppTextBlockRanges(normalizedLines),
+    normalizedLines.length
+  );
+  const normalizedBody = normalizedLines.map((line, index) =>
+    opaqueLines.has(index + 1) ? line : (line.trim() ? `${bodyIndent}${line}` : '')
   );
   const mergedBody: string[] = [];
   let localIndex = 0;
@@ -1001,11 +1007,18 @@ function normalizeMethodBodyLines(bodyLines: string[]): string[] {
   const lastMeaningful = trimmedRight.length - 1 - [...trimmedRight].reverse().findIndex(line => line.trim());
   if (firstMeaningful < 0) return [];
   const meaningfulRange = trimmedRight.slice(firstMeaningful, lastMeaningful + 1);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(
+    scanLingCppTextBlockRanges(meaningfulRange),
+    meaningfulRange.length
+  );
   const minIndent = meaningfulRange
-    .filter(line => line.trim())
+    .filter((line, index) => line.trim() && !opaqueLines.has(index + 1))
     .reduce((min, line) => Math.min(min, indentOf(line).length), Number.POSITIVE_INFINITY);
   const removableIndent = Number.isFinite(minIndent) ? minIndent : 0;
-  return meaningfulRange.map(line => line.slice(removableIndent));
+  return meaningfulRange.map((line, index) =>
+    // 文本块内容行与结束标记按 raw 语义原样保留，不参与去公共缩进。
+    opaqueLines.has(index + 1) ? line : line.slice(removableIndent)
+  );
 }
 
 function indentOf(line: string): string {

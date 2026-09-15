@@ -73,6 +73,8 @@ import { createAiBridgeRouter } from "./src/services/aiBridge/httpRoutes";
 import { AiBridgePermissionMode, AiBridgeServerOptions } from "./src/services/aiBridge/types";
 import { createSolutionService, LingBuilderSolutionProject } from "./src/services/solution/solutionService";
 import { ExternalProjectService } from "./src/services/solution/externalProjectService";
+import { detectExternalCppProjects } from "./src/services/solution/externalProjectDetect";
+import { parseMsvcBuildOutput } from "./src/services/tasks/msvcOutputParser";
 import {
   WorkspacePathPolicy,
   WorkspacePathPolicyError
@@ -108,6 +110,7 @@ import { WorkspaceSearchError } from "./src/services/workspace/workspaceSearchTy
 import { createManagedProcessService } from "./src/services/tasks/managedProcessService";
 import { TaskService } from "./src/services/tasks/taskService";
 import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
+import { resolveExecutableNameParts } from "./src/services/solution/externalProjectService";
 import { resolveProjectBuildDirectories, setActiveWorkspaceBuildExcludeDirs } from "./src/services/tasks/buildPathService";
 import { ClangdService } from "./src/services/lsp/clangdService";
 import { LspWorkspaceEditService } from "./src/services/lsp/lspWorkspaceEditService";
@@ -1372,8 +1375,58 @@ app.post("/api/solution/folders", async (req, res) => {
 app.post("/api/solution/import", async (req, res) => {
   try {
     if (!isNonEmptyString(req.body?.projectFile)) return res.status(400).json({ ok: false, error: "缺少要导入的工程路径。" });
-    const result = await getSolutionService().importExternalProject(req.body.projectFile);
-    res.json({ ok: true, ...result, logs: [`已导入 ${result.project.type}：${result.project.name}`] });
+    const mode = req.body?.mode === "single" ? "single" : "expand";
+    const result = await getSolutionService().importExternalProject(req.body.projectFile, { mode });
+    const logs = [`已导入 ${result.project.type}：${result.project.name}`, ...(result.logs || []), ...(result.warnings || [])];
+    if (result.projects && result.projects.length > 1) {
+      logs.unshift(`.sln 展开导入：共 ${result.projects.length} 个项目。`);
+    }
+    res.json({ ok: true, ...result, logs });
+  } catch (error: any) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+// 打开文件夹后的「检测到现有 C++ 工程」提示数据：只读浅层扫描。
+app.get("/api/solution/external-detect", async (_req, res) => {
+  try {
+    res.json({ ok: true, ...(await detectExternalCppProjects(serverRuntimeConfig.workspaceRoot)) });
+  } catch (error: any) { res.status(500).json({ ok: false, error: error?.message || "检测已有工程失败" }); }
+});
+
+// 源码目录导入：生成最小 CMakeLists.txt（生成物，可自由修改）并作为 CMake 工程导入。
+app.post("/api/solution/import-source-directory", async (req, res) => {
+  try {
+    const directory = typeof req.body?.directory === "string" ? req.body.directory.trim() : "";
+    if (!directory) return res.status(400).json({ ok: false, error: "缺少要导入的源码目录。" });
+    const overwrite = req.body?.overwrite === true;
+    const result = await getSolutionService().importSourceDirectory(directory, { overwrite });
+    res.json({
+      ok: true,
+      ...result,
+      logs: [
+        `已扫描到 ${result.sourceFiles.length} 个 C/C++ 源码文件，生成 ${result.generatedCMakeListsPath}（生成物，可自由修改）。`,
+        `已导入 ${result.project.type}：${result.project.name}`
+      ]
+    });
+  } catch (error: any) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+// 原生 C++ 源码适配：读取 .cpp 翻译为新的中文工程（不改原文件），未识别语句降级为 @ 原生块。
+app.post("/api/solution/adapt-native-cpp", async (req, res) => {
+  try {
+    const projectFile = typeof req.body?.projectFile === "string" ? req.body.projectFile.trim() : "";
+    if (!projectFile) return res.status(400).json({ ok: false, error: "缺少要适配的源码文件。" });
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const result = await getSolutionService().adaptNativeCppToProject(projectFile, { name });
+    res.json({
+      ok: true,
+      ...result,
+      logs: [
+        ...result.report,
+        ...result.diagnostics.map(item => `警告：${item}`),
+        result.preservedNativeBlockCount > 0 ? `已保留 ${result.preservedNativeBlockCount} 段 @ 原生代码块，可在中文工程中继续处理。` : "",
+        `已创建中文工程：${result.project.name}（原 C++ 源码未修改）。`
+      ].filter(Boolean)
+    });
   } catch (error: any) { res.status(400).json({ ok: false, error: error.message }); }
 });
 
@@ -2531,6 +2584,28 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     return res.status(400).json({ ok: false, error: "窗口设计器项目缺少有效 project.id。" });
   }
   const requestedProjectId = project.id.trim();
+  // 动态库项目没有运行入口：F5「生成并运行」直接拒绝并引导「生成」。
+  // UI 工具栏按钮对 DLL 项目已禁用，这里是绕过 UI 直接调用接口时的兜底护栏。
+  if (run) {
+    try {
+      const solutionForRunGuard = await getSolutionService().getSolution();
+      const recordForRunGuard = solutionForRunGuard.projects.find(item => item.id === requestedProjectId);
+      if (recordForRunGuard?.buildProperties?.outputType === "dll") {
+        return res.status(200).json({
+          ok: false,
+          stage: "run-unsupported",
+          error: "动态库项目不支持生成并运行：请使用「生成解决方案」或命令面板「生成项目」编译 DLL 产物。",
+          logs: [
+            "动态库项目不支持生成并运行。",
+            "请使用菜单/命令面板中的「生成解决方案」，或在解决方案资源管理器中右键项目选择「生成」。",
+            "生成的 DLL 与导入库位于构建输出目录的 bin 子目录。"
+          ]
+        });
+      }
+    } catch {
+      // 解决方案尚未建立时按 EXE 模式继续。
+    }
+  }
   const buildAdmission = projectBuildCoordinator.captureAdmission(requestedProjectId);
   const trackedTask = taskService.enqueue({
     type: run ? "project.build-run" : "project.build",
@@ -2574,12 +2649,34 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const buildCompatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
     const buildConfiguration = buildCompatibility.configuration;
     preBuildLogs.push(...buildCompatibility.messages);
+    // 输出类型来自解决方案项目记录的 buildProperties.outputType（exe 缺省 / dll）；
+    // 「生成项目」（run:false）同样按 DLL 模式生成与编译；windows-console 项目按控制台形态生成。
+    let routeOutputType: "exe" | "dll" = "exe";
+    let routeConsoleMode = false;
+    let routeExecutableName: string | undefined;
+    try {
+      const solutionForOutputType = await getSolutionService().getSolution();
+      const recordForOutputType = solutionForOutputType.projects.find(item => item.id === projectId);
+      routeOutputType = recordForOutputType?.buildProperties?.outputType === "dll" ? "dll" : "exe";
+      routeConsoleMode = recordForOutputType?.type === "windows-console";
+      routeExecutableName = recordForOutputType?.buildProperties?.executableName;
+    } catch {
+      // 解决方案尚未建立时按 EXE 模式构建。
+    }
+    const routeOutputKind = routeConsoleMode ? "console-application" : routeOutputType === "dll" ? "dynamic-library" : "application";
+    let routeOutputNameParts = { baseName: "LingBuilderPreview", fileName: "LingBuilderPreview.exe" };
+    try {
+      routeOutputNameParts = resolveExecutableNameParts(routeExecutableName, routeOutputType);
+    } catch {
+      preBuildLogs.push("项目可执行文件名无效，已回退默认命名。");
+    }
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
       lingCppSourceCode: sourceCode,
       lingCppSourceFilePath,
       lingCppSources: await resolveLingCppProjectSources(projectId, lingCppSources),
-      enabledModules
+      enabledModules,
+      outputKind: routeOutputKind
     });
     assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
     const repoRoot = getRepoWorkspaceRoot();
@@ -2690,6 +2787,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      projectKind: routeOutputKind,
       fbroRuntimeFromBuildBin: true
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
@@ -2699,7 +2797,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       enabledModules,
       contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
-      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      projectKind: routeOutputKind
     });
 
     if (buildLease.isCancelled()) {
@@ -2736,11 +2835,11 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     }
 
     const sourcePath = path.join(sourceDir, "main.cpp");
-    const exePath = path.join(binDir, "LingBuilderPreview.exe");
+    const exePath = path.join(binDir, routeOutputNameParts.fileName);
     const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
       ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
       : undefined;
-    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath);
+    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, undefined, routeOutputType);
     const compilerDiagnostics = mapCompilerDiagnostics(
       parseCompilerDiagnostics(compileResult.logs.join("\n"), compiler.kind === "clang++" ? "clang" : compiler.kind === "g++" ? "gcc" : "msvc"),
       generatedProject.sourceMap,
@@ -2798,7 +2897,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
           cwd: binDir,
           env: createFbroRuntimeEnvironment(),
           detached: false,
-          windowsHide: false,
+          // 控制台程序输出经 run.log 进输出面板；隐藏宿主控制台，避免弹出空黑窗。
+          windowsHide: routeConsoleMode,
           logFilePath: logFile
         });
         if (buildLease.isCancelled()) {
@@ -2912,8 +3012,38 @@ function enqueueSolutionBuildTask(options: {
   });
 }
 
-async function buildSolutionProjects(options: {
-  projectId?: string;
+/**
+ * D3：收集本项目 references 指向的外部工程产物——include 目录（源码根 + include 子目录）
+ * 与导入库（.lib）。中文主程序引用外部 C++ 工程时，这些产物会合并进编译链接计划，
+ * 形成“中文主程序 + C++ 库”混合解决方案。外部工程需先构建成功，否则只给提示不阻断。
+ */
+async function collectReferencedExternalArtifacts(
+  solution: { projects: Array<{ id: string; name: string; type: string; sourceRoot?: string; projectFile?: string; references?: string[]; buildProperties?: any }> },
+  projectRef: { id: string; references?: string[] }
+): Promise<{ artifacts: { includeDirs: string[]; libFiles: string[] }; logs: string[] }> {
+  const artifacts = { includeDirs: [] as string[], libFiles: [] as string[] };
+  const logs: string[] = [];
+  for (const referenceId of projectRef.references || []) {
+    const referenced = solution.projects.find(project => project.id === referenceId);
+    if (!referenced || !["external-cmake", "external-msbuild", "windows-dll"].includes(referenced.type)) continue;
+    try {
+      const outputDir = await externalProjectService.resolveOutputDir(referenced as any);
+      const libraries = await externalProjectService.locateLibraries(referenced as any, outputDir);
+      const sourceRootAbsolute = path.resolve(serverRuntimeConfig.workspaceRoot, referenced.sourceRoot || ".");
+      const includeDirs = [sourceRootAbsolute];
+      const includeSubdir = path.join(sourceRootAbsolute, "include");
+      try { if ((await fs.stat(includeSubdir)).isDirectory()) includeDirs.push(includeSubdir); } catch { /* 无 include 子目录 */ }
+      artifacts.includeDirs.push(...includeDirs);
+      artifacts.libFiles.push(...libraries);
+      logs.push(`引用外部工程 ${referenced.name}：include ${includeDirs.join(" ; ")}；${libraries.length ? `链接 ${libraries.map(file => path.basename(file)).join(", ")}` : "未找到可链接的 .lib（如需链接请先构建该工程）"}`);
+    } catch (error: any) {
+      logs.push(`引用外部工程 ${referenced.name} 的产物收集失败：${error?.message || error}`);
+    }
+  }
+  return { artifacts, logs };
+}
+
+async function buildSolutionProjects(options: {  projectId?: string;
   run?: boolean;
   admission?: ProjectBuildAdmission;
   incremental?: boolean;
@@ -2942,23 +3072,67 @@ async function buildSolutionProjects(options: {
       const lease = projectBuildCoordinator.begin(projectRef.id, options.admission);
       try {
         const externalResult = await externalProjectService.build(projectRef as any, lease.signal);
-        return {
-          projectId: projectRef.id,
-          projectName: projectRef.name,
-          stage: "external-build",
-          logs: [
-            ...(projectRef.type === "windows-dll" ? [`DLL 输出目录：${externalResult.outputDir}`, ...(externalResult.artifacts || []).map(file => `产物：${file}`)] : []),
-            externalResult.stdout,
-            externalResult.stderr
-          ].filter(Boolean),
-          ...externalResult
-        };
+        // D1：解析 MSVC/MSBuild 原样输出为结构化诊断，复用问题面板与 AI 解释链路。
+        const compilerDiagnostics = parseMsvcBuildOutput(externalResult.stdout, externalResult.stderr);
+        // 诊断文件路径规整为工作区相对路径（编译器输出多为绝对路径或相对工程目录），便于问题面板点击跳转。
+        const detectWorkspaceRoot = path.resolve(serverRuntimeConfig.workspaceRoot);
+        for (const diagnostic of compilerDiagnostics) {
+          if (!diagnostic.filePath || diagnostic.filePath === "LINK") continue;
+          try {
+            const absolute = path.isAbsolute(diagnostic.filePath)
+              ? diagnostic.filePath
+              : path.resolve(externalResult.cwd, diagnostic.filePath);
+            const relative = path.relative(detectWorkspaceRoot, absolute);
+            diagnostic.filePath = relative && !relative.startsWith("..") && !path.isAbsolute(relative)
+              ? relative.replace(/\\/gu, "/")
+              : absolute;
+          } catch { /* 保持原值 */ }
+        }
+        const externalLogs = [
+          ...(projectRef.type === "windows-dll" ? [`DLL 输出目录：${externalResult.outputDir}`, ...(externalResult.artifacts || []).map(file => `产物：${file}`)] : []),
+          externalResult.stdout,
+          externalResult.stderr
+        ].filter(Boolean);
+        if (compilerDiagnostics.length) {
+          const errorCount = compilerDiagnostics.filter(item => item.severity === "error").length;
+          externalLogs.push(`已解析出 ${compilerDiagnostics.length} 条构建诊断（错误 ${errorCount} 条），可在“问题”面板查看。`);
+        }
+        if (!externalResult.ok) {
+          return { projectId: projectRef.id, projectName: projectRef.name, stage: "external-build", logs: externalLogs, compilerDiagnostics, ...externalResult };
+        }
+        // E1：外部工程作为运行目标时，构建成功后定位可执行文件并托管启动；DLL 工程没有可运行产物。
+        const shouldRun = options.run && runProjectIds.has(projectRef.id) && projectRef.type !== "windows-dll";
+        if (!shouldRun) {
+          return { projectId: projectRef.id, projectName: projectRef.name, stage: "external-build", logs: externalLogs, compilerDiagnostics, ...externalResult };
+        }
+        try {
+          const executablePath = await externalProjectService.locateExecutable(projectRef as any, externalResult.outputDir);
+          if (!executablePath) {
+            externalLogs.push(`未找到可执行文件：已在 ${externalResult.outputDir} 与工程目录中查找。可在“构建属性”中填写“可执行文件名”帮助定位。`);
+            return { projectId: projectRef.id, projectName: projectRef.name, logs: externalLogs, compilerDiagnostics, ...externalResult, ok: false, stage: "run-start" };
+          }
+          const started = await managedProcessService.start(projectRef.id, executablePath, {
+            cwd: path.dirname(executablePath),
+            detached: false,
+            windowsHide: false,
+            logFilePath: path.join(externalResult.outputDir, "run.log")
+          });
+          externalLogs.push(`已启动运行：${executablePath}（PID ${started.pid}）`);
+          if (started.replaced) externalLogs.push("已停止并替换该项目先前的运行进程。");
+          return { projectId: projectRef.id, projectName: projectRef.name, stage: "external-build", logs: externalLogs, compilerDiagnostics, ...externalResult };
+        } catch (runError: any) {
+          const message = runError?.message || "无法启动构建产物";
+          externalLogs.push(`运行启动失败：${message}`);
+          return { projectId: projectRef.id, projectName: projectRef.name, logs: externalLogs, compilerDiagnostics, ...externalResult, ok: false, stage: "run-start", error: message };
+        }
       } finally { lease.finish(); }
     }
     const project = await solutionService.readDesignerProject(projectRef);
     const files = await solutionService.readProjectFiles(projectRef);
     const source = resolveProjectLingCppSource(projectRef, project, files);
     logs.push(`正在生成项目 ${projectRef.name} (${projectRef.id})...`);
+    const referencedExternal = await collectReferencedExternalArtifacts(solution, projectRef);
+    logs.push(...referencedExternal.logs);
     const result = await runControlledWindowDesignerBuild({
       project,
       activeWindowId: project.windows[0]?.id,
@@ -2967,7 +3141,8 @@ async function buildSolutionProjects(options: {
       lingCppSources: source.sources,
       run: Boolean(options.run && runProjectIds.has(projectRef.id)),
       buildAdmission: options.admission,
-      incremental: options.incremental !== false
+      incremental: options.incremental !== false,
+      referencedExternalArtifacts: referencedExternal.artifacts
     });
     return { projectId: projectRef.id, projectName: projectRef.name, ...result };
     }));
@@ -3001,8 +3176,10 @@ async function runControlledWindowDesignerBuild(options: {
   run?: boolean;
   buildAdmission?: ProjectBuildAdmission;
   incremental?: boolean;
+  /** D3：本项目 references 指向的外部工程产物（include 目录与导入库），合并进编译链接计划。 */
+  referencedExternalArtifacts?: { includeDirs: string[]; libFiles: string[] };
 }) {
-  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, lingCppSources, run = false, buildAdmission, incremental = true } = options;
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, lingCppSources, run = false, buildAdmission, incremental = true, referencedExternalArtifacts } = options;
   let buildLease: ProjectBuildLease | undefined;
   let projectId: string;
   let preBuildLogs: string[] = [];
@@ -3038,12 +3215,34 @@ async function runControlledWindowDesignerBuild(options: {
   const buildCompatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
   const buildConfiguration = buildCompatibility.configuration;
   preBuildLogs.push(...buildCompatibility.messages);
+  // 输出类型来自解决方案项目记录的 buildProperties.outputType（exe 缺省 / dll）；
+  // DLL 模式会改变生成入口（DllMain + "公开"子程序导出包装），必须在生成前解析。
+  // windows-console 项目使用控制台入口（wmain + “公开 启动()”），同样必须在生成前解析。
+  let outputType: "exe" | "dll" = "exe";
+  let consoleMode = false;
+  let outputExecutableName: string | undefined;
+  try {
+    const solutionForOutputType = await getSolutionService().getSolution();
+    const recordForOutputType = solutionForOutputType.projects.find(item => item.id === projectId);
+    outputType = recordForOutputType?.buildProperties?.outputType === "dll" ? "dll" : "exe";
+    consoleMode = recordForOutputType?.type === "windows-console";
+    outputExecutableName = recordForOutputType?.buildProperties?.executableName;
+  } catch {
+    // 解决方案尚未建立时按 EXE 模式构建。
+  }
+  let outputFileNameParts = { baseName: "LingBuilderPreview", fileName: "LingBuilderPreview.exe" };
+  try {
+    outputFileNameParts = resolveExecutableNameParts(outputExecutableName, outputType);
+  } catch {
+    preBuildLogs.push("项目可执行文件名无效，已回退默认命名。");
+  }
   const generatedProject = generateLingCppNativeWin32Project(project, {
     activeWindowId,
     lingCppSourceCode: sourceCode,
     lingCppSourceFilePath,
     lingCppSources: lingCppSources?.length ? lingCppSources : await resolveLingCppProjectSources(projectId),
-    enabledModules
+    enabledModules,
+    outputKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application"
   });
   assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
   const repoRoot = getRepoWorkspaceRoot();
@@ -3053,7 +3252,7 @@ async function runControlledWindowDesignerBuild(options: {
   const binDir = buildPaths.binDir;
   const objDir = buildPaths.objDir;
   const exportDir = buildPaths.exportDir;
-  const exePath = path.join(binDir, "LingBuilderPreview.exe");
+  const exePath = path.join(binDir, outputFileNameParts.fileName);
 
   await Promise.all([
     fs.mkdir(sourceDir, { recursive: true }),
@@ -3137,6 +3336,11 @@ async function runControlledWindowDesignerBuild(options: {
   const generatedNativeSources = codeGeneratorResult.outputFiles.filter((file): file is string => typeof file === "string" && /\.(?:c|cc|cpp|cxx)$/iu.test(file));
   moduleNativePlan.sourceFiles.push(...generatedNativeSources);
   moduleNativePlan.includeDirs.push(...new Set(generatedNativeSources.map(file => path.dirname(file))));
+  // D3：合并 references 指向的外部工程产物（include 目录 + 导入库），实现“中文主程序 + C++ 库”混合构建。
+  if (referencedExternalArtifacts && (referencedExternalArtifacts.includeDirs.length || referencedExternalArtifacts.libFiles.length)) {
+    moduleNativePlan.includeDirs.push(...referencedExternalArtifacts.includeDirs);
+    moduleNativePlan.libFiles.push(...referencedExternalArtifacts.libFiles);
+  }
   moduleNativePlan.sourceFiles = [...new Set(moduleNativePlan.sourceFiles)];
   moduleNativePlan.includeDirs = [...new Set(moduleNativePlan.includeDirs)];
   const buildVisualStudioProject = await exportVisualStudioProject({
@@ -3150,6 +3354,7 @@ async function runControlledWindowDesignerBuild(options: {
     contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
     requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+    projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
     fbroRuntimeFromBuildBin: true
   });
   const exportVisualStudioProjectResult = await exportVisualStudioProject({
@@ -3159,7 +3364,8 @@ async function runControlledWindowDesignerBuild(options: {
     enabledModules,
     contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
-    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
+    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+    projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application"
   });
 
   const incrementalKey = `${projectId}:${buildConfiguration.mode}:${buildConfiguration.architecture}`;
@@ -3226,7 +3432,7 @@ async function runControlledWindowDesignerBuild(options: {
   const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
     ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
     : undefined;
-  const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, buildLease.signal);
+  const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, buildLease.signal, outputType);
   if (buildLease.isCancelled()) {
     return createCancelledBuildResult(buildLease, [...preBuildLogs, ...compileResult.logs, "编译子进程已终止并完成取消清理。"]);
   }
@@ -3281,14 +3487,20 @@ async function runControlledWindowDesignerBuild(options: {
     ]);
   }
 
-  if (run) {
+  if (run && outputType === "dll") {
+    // 动态库没有运行入口：编译完成后不启动进程，产物即 dll + 导入库。
+    const importLibraryPath = exePath.replace(/\.dll$/iu, ".lib");
+    logs.push("动态库输出模式：编译完成后不启动运行进程。", `DLL 产物：${exePath}`, `导入库：${importLibraryPath}`);
+  }
+  if (run && outputType !== "dll") {
     try {
       const logFile = path.join(buildDir, "run.log");
       const started = await managedProcessService.start(projectId, exePath, {
         cwd: binDir,
         env: createFbroRuntimeEnvironment(),
         detached: false,
-        windowsHide: false,
+        // 控制台程序的输出经 run.log 进入 IDE 输出面板；隐藏宿主控制台，避免弹出空黑窗。
+        windowsHide: consoleMode,
         logFilePath: logFile
       });
       if (buildLease.isCancelled()) {
@@ -3325,7 +3537,7 @@ async function runControlledWindowDesignerBuild(options: {
 
   return {
     ok: true,
-    stage: run ? "run" : "build",
+    stage: run && outputType !== "dll" ? "run" : "build",
     buildDir,
     sourceDir,
     binDir,
@@ -4277,8 +4489,19 @@ async function compileWin32Preview(
   modulePlan?: ModuleNativeDependencyPlan,
   buildConfiguration: BuildConfiguration = { schemaVersion: 1, mode: "Debug", architecture: "Win32" },
   resourcePath?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  outputType: "exe" | "dll" = "exe"
 ): Promise<{ ok: boolean; logs: string[] }> {
+  const buildDynamicLibrary = outputType === "dll";
+  if (buildDynamicLibrary && compiler.kind !== "msvc") {
+    return {
+      ok: false,
+      logs: [
+        "编译失败。",
+        "动态库输出模式当前仅支持 MSVC/Visual Studio Build Tools：需要链接生成 .dll 与导入库 .lib；请安装 Visual Studio Build Tools 后重试。"
+      ]
+    };
+  }
   const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ["/I", includeDir]);
   const moduleSources = modulePlan?.sourceFiles || [];
   const moduleLibs = modulePlan?.libFiles || [];
@@ -4308,7 +4531,9 @@ async function compileWin32Preview(
 
   const objectPath = path.join(objDir, "main.obj");
   const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
-  const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
+  // 动态库强制动态 CRT（与 Visual Studio 导出器的 DynamicLibrary 行为一致）：
+  // 消费方工程链接导入库并传 std::wstring，跨 DLL 边界要求两侧共用同一 CRT。
+  const useDynamicCrt = modulePlan?.requiresDynamicCrt === true || buildDynamicLibrary;
   const extraDefineArgs = (modulePlan?.extraCompileDefines || []).map(define => `/D${define}`);
   const msvcBuildFlags = getBuildCompilerFlags(buildConfiguration, "msvc")
     .filter(flag => !useDynamicCrt || (flag !== "/MD" && flag !== "/MDd" && flag !== "/D_DEBUG"));
@@ -4317,7 +4542,7 @@ async function compileWin32Preview(
     msvcBuildFlags.push("/MD");
   }
   if (compiler.kind === "msvc" && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, msvcLinkLibraries, buildConfiguration, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, msvcLinkLibraries, buildConfiguration, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, signal, buildDynamicLibrary);
   }
 
   const commandArgs = compiler.kind === "msvc"
@@ -4330,6 +4555,7 @@ async function compileWin32Preview(
         "/DUNICODE",
         "/D_UNICODE",
         ...msvcBuildFlags,
+        ...(buildDynamicLibrary ? ["/LD"] : []),
         ...includeArgs,
         sourcePath,
         "/Fo:" + objectPath,
@@ -4429,7 +4655,8 @@ async function compileMsvcPreviewWithModules(
   extraDefineArgs: string[],
   resourceOutputPath: string | undefined,
   resourceLogs: string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  buildDynamicLibrary = false
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
   const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? "main" : `module_${index}`}.obj`));
@@ -4455,6 +4682,7 @@ async function compileMsvcPreviewWithModules(
   ]);
   const linkArgs = [
     "/nologo",
+    ...(buildDynamicLibrary ? ["/DLL"] : []),
     ...objectFiles,
     "/Fe:" + exePath,
     ...linkLibraries,

@@ -1,0 +1,54 @@
+{
+  "id": "lingbuilder.demo.projectdll",
+  "name": "项目动态库演示模块",
+  "version": "1.0.0",
+  "category": "其他",
+  "description": "把 LingBuilder 中文项目（dll-lib-demo）经原生 C++ 管线生成的 ProjectMathDll.dll 封装成模块：加法计算、取字符数与两点距离计算三条命令，展示“项目生成 DLL → 模块 → 其他项目调用”闭环。",
+  "author": "LingBuilder 示例",
+  "headers": ["include/ProjectMathDll.h"],
+  "includeDirs": ["include"],
+  "libs": ["lib/x64/ProjectMathDll.lib"],
+  "runtimeFiles": ["bin/x64/ProjectMathDll.dll"],
+  "commands": [
+    {
+      "name": "项目_加法计算",
+      "signature": "项目_加法计算(被加数, 加数)",
+      "description": "调用项目动态库导出的加法计算，返回两整数之和。",
+      "runtimeName": "加法计算",
+      "returnType": "整数型",
+      "insertText": "项目_加法计算(被加数, 加数)",
+      "parameters": [
+        { "name": "被加数", "type": "整数型", "description": "第一个加数。" },
+        { "name": "加数", "type": "整数型", "description": "第二个加数。" }
+      ]
+    },
+    {
+      "name": "项目_取字符数",
+      "signature": "项目_取字符数(文本)",
+      "description": "调用项目动态库导出的取字符数，统计宽文本字符个数。",
+      "runtimeName": "取字符数",
+      "returnType": "整数型",
+      "insertText": "项目_取字符数(文本)",
+      "parameters": [
+        { "name": "文本", "type": "文本型", "description": "要统计字符数的文本。" }
+      ]
+    },
+    {
+      "name": "项目_两点距离计算",
+      "signature": "项目_两点距离计算(横1, 纵1, 横2, 纵2)",
+      "description": "调用项目动态库导出的两点距离计算，返回平面两点直线距离。",
+      "runtimeName": "两点距离计算",
+      "returnType": "小数型",
+      "insertText": "项目_两点距离计算(横1, 纵1, 横2, 纵2)",
+      "parameters": [
+        { "name": "横1", "type": "小数型", "description": "第一个点的横坐标。" },
+        { "name": "纵1", "type": "小数型", "description": "第一个点的纵坐标。" },
+        { "name": "横2", "type": "小数型", "description": "第二个点的横坐标。" },
+        { "name": "纵2", "type": "小数型", "description": "第二个点的纵坐标。" }
+      ]
+    }
+  ],
+  "targetId": "windows-msvc-x64",
+  "arch": "x64",
+  "toolchain": "msvc"
+}

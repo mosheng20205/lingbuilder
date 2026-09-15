@@ -25,8 +25,18 @@ interface WebSocketServerCommandSpec {
 const parameter = (
   name: string,
   type: ModuleBindingValueType | (string & {}),
-  description?: string
+  description: string
 ): ModuleCommandBindingParameter => ({ name, type, description });
+
+// 以下说明按 webSocketServerRuntime.ts 的实际校验逻辑核实，重复语义提取为共享常量。
+const wssServerArg = 'WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。';
+const wssStoppedArg = 'WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。';
+const wssClientArg = 'WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。';
+const wssHandlerArg = '必须使用 &处理器名；处理器必须无参数，事件内容用 WSS_取当前事件类型 等系列命令读取。';
+const wssCloseCodeArg = 'RFC 6455 关闭状态码，取 1000 到 4999；保留码 1004、1005、1006、1015 和 1016 到 2999 不允许，常用值是 1000 正常关闭和 1001 离开。';
+const wssCloseReasonArg = '关闭原因文本，UTF-8 编码后不得超过 123 字节；空文本表示不带原因。';
+const wssTextArg = '要发送的文本，按 UTF-8 编码为一条完整消息，加入发送队列后立即返回。';
+const wssBytesArg = '要发送的字节集，作为一条完整二进制消息加入发送队列；队列超限时该客户端被断开。';
 
 const specs: WebSocketServerCommandSpec[] = [
   {
@@ -35,34 +45,34 @@ const specs: WebSocketServerCommandSpec[] = [
   },
   {
     name: 'WSS_配置服务', signature: 'WSS_配置服务(服务端, 监听地址, 端口, 最大客户端数)', description: '配置监听地址、端口和最大并发客户端数；只能在停止状态修改。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('监听地址', 'wideString'), parameter('端口', 'int'), parameter('最大客户端数', 'int')],
+    parameters: [parameter('服务端', 'WebSocket服务端', wssStoppedArg), parameter('监听地址', 'wideString', '要监听的 IPv4/IPv6 地址文本，例如 127.0.0.1；非回环地址必须先调用 WSS_允许外部监听。'), parameter('端口', 'int', '监听端口，0 到 65535；0 表示由系统分配临时端口，启动后用 WSS_取监听端口 读取实际端口。'), parameter('最大客户端数', 'int', '同时在线的客户端上限，1 到 4096；达到上限后新握手会被拒绝。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '服务', insertText: 'WSS_配置服务($1, "127.0.0.1", 18080, 512)'
   },
   {
     name: 'WSS_设置资源限制', signature: 'WSS_设置资源限制(服务端, 握手头上限KB, 消息上限MB, 单客户端发送队列上限MB, 超时毫秒)', description: '设置握手、消息、发送背压和空闲连接硬限制，防止慢连接或大消息耗尽资源。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('握手头上限KB', 'int'), parameter('消息上限MB', 'int'), parameter('单客户端发送队列上限MB', 'int'), parameter('超时毫秒', 'int')],
+    parameters: [parameter('服务端', 'WebSocket服务端', wssStoppedArg), parameter('握手头上限KB', 'int', '握手请求头总大小上限，单位 KB，4 到 1024；超限连接直接关闭。'), parameter('消息上限MB', 'int', '单条消息重组后的字节上限，单位 MB，1 到 1024。'), parameter('单客户端发送队列上限MB', 'int', '每个客户端待发队列的字节上限，单位 MB，1 到 1024；超限时该客户端被断开以形成背压。'), parameter('超时毫秒', 'int', '读写空闲超时毫秒数，1000 到 3600000。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置资源限制($1, 64, 16, 8, 30000)'
   },
   {
     name: 'WSS_设置心跳', signature: 'WSS_设置心跳(服务端, 间隔毫秒, Pong超时毫秒)', description: '设置自动 Ping/Pong 心跳；间隔为 0 时关闭自动心跳。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('间隔毫秒', 'int'), parameter('Pong超时毫秒', 'int')],
+    parameters: [parameter('服务端', 'WebSocket服务端', wssStoppedArg), parameter('间隔毫秒', 'int', '自动 Ping 的间隔毫秒数，0 到 3600000；0 表示关闭自动心跳。'), parameter('Pong超时毫秒', 'int', '等待 Pong 回应的毫秒数，必须在 1000 毫秒到心跳间隔之间。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置心跳($1, 30000, 10000)'
   },
   {
     name: 'WSS_允许外部监听', signature: 'WSS_允许外部监听(服务端, 允许)', description: '显式允许非回环地址监听；默认关闭，避免开发服务意外暴露到局域网。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('允许', 'bool')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssStoppedArg), parameter('允许', 'bool', '传真才允许绑定非回环地址；默认假，只允许回环监听。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
     name: 'WSS_设置访问路径', signature: 'WSS_设置访问路径(服务端, 路径)', description: '限制握手请求路径；空文本接受任意路径，非空路径必须以 / 开头。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('路径', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置访问路径($1, "/ws")'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssStoppedArg), parameter('路径', 'wideString', '允许的握手路径，必须以 / 开头；空文本接受任意路径。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置访问路径($1, "/ws")'
   },
   {
     name: 'WSS_设置允许来源', signature: 'WSS_设置允许来源(服务端, 来源列表)', description: '设置逗号分隔的 Origin 白名单；空文本不限制来源，条目按完整值匹配。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('来源列表', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置允许来源($1, "https://example.com")'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssStoppedArg), parameter('来源列表', 'wideString', '逗号分隔的 Origin 白名单，按完整值匹配、不支持通配；空文本表示不校验来源。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置允许来源($1, "https://example.com")'
   },
   {
     name: 'WSS_设置子协议', signature: 'WSS_设置子协议(服务端, 子协议列表)', description: '设置逗号分隔的服务端子协议优先表；握手时选择客户端同时支持的第一项。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('子协议列表', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置子协议($1, "chat.v2, chat.v1")'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssStoppedArg), parameter('子协议列表', 'wideString', '逗号分隔的服务端子协议优先表；握手时选择客户端也支持的第一项回给对端。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全', insertText: 'WSS_设置子协议($1, "chat.v2, chat.v1")'
   },
   ...([
     ['WSS_绑定连接处理器', '连接'],
@@ -73,7 +83,7 @@ const specs: WebSocketServerCommandSpec[] = [
     name,
     signature: `${name}(服务端, &处理器)`,
     description: `绑定${event}事件处理器；运行时通过窗口消息回到创建服务的 UI 线程，处理器内使用 WSS_取当前事件系列命令读取快照。`,
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。')],
+    parameters: [parameter('服务端', 'WebSocket服务端', wssServerArg), parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。')],
     returnType: 'bool' as const,
     returnLabel: '逻辑型',
     category: '事件' as const,
@@ -81,15 +91,15 @@ const specs: WebSocketServerCommandSpec[] = [
   })),
   {
     name: 'WSS_启动', signature: 'WSS_启动(服务端)', description: '启动后台非阻塞监听和多客户端 WebSocket reactor；成功返回真。',
-    parameters: [parameter('服务端', 'WebSocket服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
+    parameters: [parameter('服务端', 'WebSocket服务端', `${wssServerArg}必须先完成配置；启动后配置类命令会被拒绝。`)], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
   },
   {
     name: 'WSS_停止', signature: 'WSS_停止(服务端)', description: '停止监听，向在线客户端发送 1001 关闭帧并回收后台线程。',
-    parameters: [parameter('服务端', 'WebSocket服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssServerArg)], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
   },
   {
     name: 'WSS_销毁服务', signature: 'WSS_销毁服务(服务端)', description: '停止并释放受管服务端句柄；重复销毁返回假。',
-    parameters: [parameter('服务端', 'WebSocket服务端')], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
+    parameters: [parameter('服务端', 'WebSocket服务端', `${wssServerArg}销毁会先停止服务，重复销毁返回假。`)], returnType: 'bool', returnLabel: '逻辑型', category: '服务'
   },
   ...([
     ['WSS_是否运行', 'bool', '逻辑型', '判断服务端是否正在接受连接。'],
@@ -101,7 +111,7 @@ const specs: WebSocketServerCommandSpec[] = [
     ['WSS_取服务错误', 'wideString', '文本型', '返回服务端最近一次中文错误；句柄无效时返回管理器错误。']
   ] as const).map(([name, returnType, returnLabel, description]) => ({
     name, signature: `${name}(服务端)`, description,
-    parameters: [parameter('服务端', 'WebSocket服务端')], returnType, returnLabel, category: '状态' as const
+    parameters: [parameter('服务端', 'WebSocket服务端', wssServerArg)], returnType, returnLabel, category: '状态' as const
   })),
   ...([
     ['WSS_取当前事件类型', 'wideString', '文本型', '返回当前回调事件类型：连接、文本、二进制、断开或错误。'],
@@ -124,43 +134,43 @@ const specs: WebSocketServerCommandSpec[] = [
     ['WSS_取客户端连接时长', 'longLong', '长整数型', '返回客户端完成握手后的在线毫秒数。']
   ] as const).map(([name, returnType, returnLabel, description]) => ({
     name, signature: `${name}(客户端)`, description,
-    parameters: [parameter('客户端', 'WebSocket客户端')], returnType, returnLabel, category: '客户端' as const
+    parameters: [parameter('客户端', 'WebSocket客户端', wssClientArg)], returnType, returnLabel, category: '客户端' as const
   })),
   {
     name: 'WSS_取客户端列表JSON', signature: 'WSS_取客户端列表JSON(服务端)', description: '返回在线客户端的 UTF-16 JSON 数组，包含句柄、地址、端口、路径、来源和子协议。',
-    parameters: [parameter('服务端', 'WebSocket服务端')], returnType: 'wideString', returnLabel: '文本型', category: '客户端'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssServerArg)], returnType: 'wideString', returnLabel: '文本型', category: '客户端'
   },
   {
     name: 'WSS_发送文本给客户端', signature: 'WSS_发送文本给客户端(客户端, 内容)', description: '把一条完整 UTF-8 文本消息加入指定客户端的有界发送队列。',
-    parameters: [parameter('客户端', 'WebSocket客户端'), parameter('内容', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '消息', insertText: 'WSS_发送文本给客户端($1, "$2")'
+    parameters: [parameter('客户端', 'WebSocket客户端', wssClientArg), parameter('内容', 'wideString', wssTextArg)], returnType: 'bool', returnLabel: '逻辑型', category: '消息', insertText: 'WSS_发送文本给客户端($1, "$2")'
   },
   {
     name: 'WSS_发送二进制给客户端', signature: 'WSS_发送二进制给客户端(客户端, 数据)', description: '把字节集作为一条完整二进制消息加入指定客户端的有界发送队列。',
-    parameters: [parameter('客户端', 'WebSocket客户端'), parameter('数据', 'bytes')], returnType: 'bool', returnLabel: '逻辑型', category: '消息'
+    parameters: [parameter('客户端', 'WebSocket客户端', wssClientArg), parameter('数据', 'bytes', wssBytesArg)], returnType: 'bool', returnLabel: '逻辑型', category: '消息'
   },
   {
     name: 'WSS_广播文本', signature: 'WSS_广播文本(服务端, 内容)', description: '向服务端全部在线客户端广播文本，返回成功入队的客户端数量。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('内容', 'wideString')], returnType: 'int', returnLabel: '整数型', category: '消息', insertText: 'WSS_广播文本($1, "$2")'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssServerArg), parameter('内容', 'wideString', wssTextArg)], returnType: 'int', returnLabel: '整数型', category: '消息', insertText: 'WSS_广播文本($1, "$2")'
   },
   {
     name: 'WSS_广播二进制', signature: 'WSS_广播二进制(服务端, 数据)', description: '向服务端全部在线客户端广播二进制消息，返回成功入队的客户端数量。',
-    parameters: [parameter('服务端', 'WebSocket服务端'), parameter('数据', 'bytes')], returnType: 'int', returnLabel: '整数型', category: '消息'
+    parameters: [parameter('服务端', 'WebSocket服务端', wssServerArg), parameter('数据', 'bytes', wssBytesArg)], returnType: 'int', returnLabel: '整数型', category: '消息'
   },
   {
     name: 'WSS_发送Ping', signature: 'WSS_发送Ping(客户端, 数据)', description: '发送最多 125 字节的 Ping 控制帧；数据使用 UTF-8 编码。',
-    parameters: [parameter('客户端', 'WebSocket客户端'), parameter('数据', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '消息', insertText: 'WSS_发送Ping($1, "health")'
+    parameters: [parameter('客户端', 'WebSocket客户端', wssClientArg), parameter('数据', 'wideString', 'Ping 控制帧附带的数据，UTF-8 编码后不得超过 125 字节；空文本发送空 Ping。')], returnType: 'bool', returnLabel: '逻辑型', category: '消息', insertText: 'WSS_发送Ping($1, "health")'
   },
   {
     name: 'WSS_关闭客户端', signature: 'WSS_关闭客户端(客户端, 状态码, 原因)', description: '执行 WebSocket 优雅关闭握手；状态码和 UTF-8 原因会经过 RFC 6455 校验。',
-    parameters: [parameter('客户端', 'WebSocket客户端'), parameter('状态码', 'int'), parameter('原因', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端', insertText: 'WSS_关闭客户端($1, 1000, "正常关闭")'
+    parameters: [parameter('客户端', 'WebSocket客户端', wssClientArg), parameter('状态码', 'int', wssCloseCodeArg), parameter('原因', 'wideString', wssCloseReasonArg)], returnType: 'bool', returnLabel: '逻辑型', category: '客户端', insertText: 'WSS_关闭客户端($1, 1000, "正常关闭")'
   },
   {
     name: 'WSS_强制断开客户端', signature: 'WSS_强制断开客户端(客户端)', description: '立即关闭客户端 TCP 连接，仅用于协议错误、超时或管理操作。',
-    parameters: [parameter('客户端', 'WebSocket客户端')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
+    parameters: [parameter('客户端', 'WebSocket客户端', 'WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；直接关闭 TCP 连接，不走关闭握手。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
   },
   {
     name: 'WSS_启动服务', signature: 'WSS_启动服务(端口)', description: '旧版默认服务兼容入口；启动回环服务，新代码应使用受管服务 API。',
-    parameters: [parameter('端口', 'int')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('端口', 'int', '旧版默认服务在本机回环地址上监听的端口。')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'WSS_等待连接', signature: 'WSS_等待连接()', description: '旧版阻塞兼容入口；最多等待 30 秒，新代码应使用连接处理器。',
@@ -176,7 +186,7 @@ const specs: WebSocketServerCommandSpec[] = [
   },
   {
     name: 'WSS_发送文本', signature: 'WSS_发送文本(内容)', description: '旧版兼容入口；向默认服务最近连接的客户端发送文本。',
-    parameters: [parameter('内容', 'wideString')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
+    parameters: [parameter('内容', 'wideString', `${wssTextArg}旧版入口只面向默认服务最近连接的客户端。`)], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
   {
     name: 'WSS_关闭服务', signature: 'WSS_关闭服务()', description: '旧版兼容入口；停止并销毁默认受管服务。',

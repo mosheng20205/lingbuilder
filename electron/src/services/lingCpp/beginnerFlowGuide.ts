@@ -2,6 +2,19 @@ import {
   LingCppControlFlowFamily,
   parseLingCppControlFlowLine
 } from './controlFlow';
+import { LingCppTextBlockRange, collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
+
+/**
+ * 多行文本块的物理行（开始行、内容行、结束标记）对流程导轨与缩进重写不透明：
+ * 块内出现 `结束`/`如果` 等形态不得参与控制流配对，内容缩进原样保留。
+ */
+function scanTextBlockLines(lines: string[]): { consumed: Set<number>; openLines: Set<number> } {
+  const scan = scanLingCppTextBlockRanges(lines);
+  const consumed = collectLingCppTextBlockLines(scan, lines.length);
+  const openLines = new Set<number>(scan.ranges.map((range: LingCppTextBlockRange) => range.openLine));
+  if (scan.unclosedOpenLine) openLines.add(scan.unclosedOpenLine);
+  return { consumed, openLines };
+}
 
 export type BeginnerIfBranchKind =
   | 'if'
@@ -74,9 +87,11 @@ export function beginnerIfLineKind(line: string): BeginnerFlowGuideRow['kind'] {
 export function parseBeginnerIfBlocks(lines: string[]): BeginnerIfBlock[] {
   const blocks: BeginnerIfBlock[] = [];
   const stack: BeginnerIfBlock[] = [];
+  const { consumed } = scanTextBlockLines(lines);
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
+    if (consumed.has(lineNumber)) return;
     const control = parseLingCppControlFlowLine(line);
     const kind = beginnerFlowLineKind(line);
     if (!control || !kind || control.role === 'break' || control.role === 'continue' || control.role === 'throw') return;
@@ -116,11 +131,13 @@ export function parseBeginnerIfBlocks(lines: string[]): BeginnerIfBlock[] {
 export function getBeginnerIfFlowGuideRows(lines: string[]): BeginnerFlowGuideRow[] {
   const blocks = parseBeginnerIfBlocks(lines);
   const stack: LingCppControlFlowFamily[] = [];
+  const { consumed } = scanTextBlockLines(lines);
 
   return lines.map((line, index) => {
     const lineNumber = index + 1;
-    const kind = beginnerFlowLineKind(line);
-    const control = parseLingCppControlFlowLine(line);
+    const opaque = consumed.has(lineNumber);
+    const kind = opaque ? undefined : beginnerFlowLineKind(line);
+    const control = opaque ? undefined : parseLingCppControlFlowLine(line);
     const inBlock = blocks.some(block => lineNumber >= block.startLine && lineNumber <= block.endLine);
     const mark =
       kind === 'if' || kind === 'select' || kind === 'loop' || kind === 'try' ? '┌' :
@@ -158,8 +175,11 @@ export function getBeginnerIfFlowGuideRows(lines: string[]): BeginnerFlowGuideRo
  */
 export function formatBeginnerFlowIndentation(lines: string[]): string[] {
   let depth = 0;
+  const { consumed } = scanTextBlockLines(lines);
 
-  return lines.map(line => {
+  return lines.map((line, index) => {
+    // 文本块内容行原样保留（raw 语义），不重写缩进、不 trim。
+    if (consumed.has(index + 1)) return line;
     const text = line.trim();
     const control = parseLingCppControlFlowLine(text);
     const sourceIndent = line.match(/^\s*/u)?.[0] || '';
@@ -193,15 +213,21 @@ export function getBeginnerNextLineIndentation(value: string, cursor: number): s
   const beforeCursor = value.slice(0, Math.max(0, Math.min(cursor, value.length)));
   const lines = beforeCursor.split(/\r?\n/u);
   const currentLine = lines.at(-1) || '';
+  const currentIndent = currentLine.match(/^\s*/u)?.[0] || '';
+
+  // 光标在文本块开始行/内容行/结束标记上回车：新行保持当前行缩进，块内容不被流程缩进改写。
+  const { consumed } = scanTextBlockLines(lines);
+  if (consumed.has(lines.length)) return currentIndent;
+
   let depth = 0;
 
-  lines.forEach(line => {
+  lines.forEach((line, index) => {
+    if (consumed.has(index + 1)) return;
     const control = parseLingCppControlFlowLine(line);
     if (control?.role === 'end') depth = Math.max(0, depth - 1);
     if (control?.role === 'start') depth += 1;
   });
 
-  const currentIndent = currentLine.match(/^\s*/u)?.[0] || '';
   const requiredIndentLength = depth * 4;
   return currentIndent.length >= requiredIndentLength
     ? currentIndent

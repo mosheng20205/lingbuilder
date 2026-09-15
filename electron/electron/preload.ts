@@ -90,6 +90,11 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     exportProject: (projectId: string, suggestedName?: string) => ipcRenderer.invoke('source-packages:export-project', projectId, suggestedName),
     open: () => ipcRenderer.invoke('source-packages:open'),
   },
+  solutionImport: {
+    pickProject: () => ipcRenderer.invoke('solution-import:pick-project'),
+    pickSourceDirectory: () => ipcRenderer.invoke('solution-import:pick-source-directory'),
+    copyExternalProject: (projectFilePath: string) => ipcRenderer.invoke('solution-import:copy-external-project', projectFilePath),
+  },
   designerAssets: {
     selectImage: () => ipcRenderer.invoke('designer-assets:select-image'),
     selectGif: () => ipcRenderer.invoke('designer-assets:select-gif'),

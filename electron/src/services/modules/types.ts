@@ -51,6 +51,8 @@ export interface ModuleDesignerRuntimeMapping {
   createCommand?: string;
   createReturnType?: string;
   createParameters?: ModuleDesignerRuntimeParameter[];
+  /** 创建函数不携带文本参数的控件，在创建后应用设计器「显示内容」的原生命令（ABI 约定：hwnd, element_id, bytes, len）。 */
+  applyContentCommand?: string;
   propertyCommands?: Record<string, string>;
   propertyBridgeCommands?: ModuleDesignerPropertyBridgeCommand[];
   eventCommands?: Record<string, string>;

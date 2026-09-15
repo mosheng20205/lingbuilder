@@ -81,3 +81,6 @@
 
 /* 赞助名单记录：编辑 + 删除两个动作并排。 */
 .site-record-actions{display:flex;flex:none;gap:6px}
+
+/* 赞助名单合计行。 */
+.site-records-summary{margin:0;color:#9aa7ba;font-size:10px}

@@ -68,35 +68,29 @@ export class WebsiteContentService {
       ...(input.kind ? { kind: clean(input.kind, 40) } : {}),
       ...(input.category ? { category: clean(input.category, 80) } : {}),
       ...(input.moduleId ? { moduleId: clean(input.moduleId, 100) } : {}),
-      ...(input.lifecycle ? { lifecycle: clean(input.lifecycle, 40) } : {}),
-      ...(query ? {
-        OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { summary: { contains: query, mode: 'insensitive' } },
-          { signature: { contains: query, mode: 'insensitive' } },
-          { category: { contains: query, mode: 'insensitive' } },
-          { moduleId: { contains: query, mode: 'insensitive' } },
-          { moduleName: { contains: query, mode: 'insensitive' } },
-          { aliases: { has: query } }
-        ]
-      } : {})
+      ...(input.lifecycle ? { lifecycle: clean(input.lifecycle, 40) } : {})
     };
     const take = Math.max(1, Math.min(Number(input.limit || 100), 200));
+    // 命令表在数千条量级：带关键词时取全量命中在内存里做范围判定与相关度排序，
+    // 以便覆盖参数说明与别名子串这类 Prisma where 难以表达（或大小写语义与其它字段不一致）的搜索范围。
+    if (query) {
+      const [matches, facetRows] = await Promise.all([
+        this.prisma.websiteCommandReference.findMany({ where, orderBy: commandListOrder }),
+        this.facetRows()
+      ]);
+      const ranked = rankCommandMatches(matches, query.toLowerCase());
+      return { ok: true, total: ranked.length, commands: ranked.slice(0, take), facets: commandFacets(facetRows) };
+    }
     const [commands, total, facetRows] = await Promise.all([
-      this.prisma.websiteCommandReference.findMany({ where, orderBy: [{ lifecycle: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }], take }),
+      this.prisma.websiteCommandReference.findMany({ where, orderBy: commandListOrder, take }),
       this.prisma.websiteCommandReference.count({ where }),
-      this.prisma.websiteCommandReference.findMany({ where: { publicationStatus: 'PUBLISHED' }, select: { category: true, kind: true, moduleId: true, moduleName: true } })
+      this.facetRows()
     ]);
-    return {
-      ok: true,
-      total,
-      commands,
-      facets: {
-        categories: unique(facetRows.map(item => item.category)),
-        kinds: unique(facetRows.map(item => item.kind)),
-        modules: Array.from(new Map(facetRows.filter(item => item.moduleId).map(item => [item.moduleId!, { id: item.moduleId!, name: item.moduleName || item.moduleId! }])).values())
-      }
-    };
+    return { ok: true, total, commands, facets: commandFacets(facetRows) };
+  }
+
+  private facetRows() {
+    return this.prisma.websiteCommandReference.findMany({ where: { publicationStatus: 'PUBLISHED' }, select: { category: true, kind: true, moduleId: true, moduleName: true } });
   }
 
   async publicGuide(slug: string) {
@@ -381,6 +375,40 @@ function stringArray(value: unknown, maxItems: number, maxLength: number) {
   return unique(source.map(item => clean(item, maxLength)).filter(Boolean)).slice(0, maxItems);
 }
 function unique<T>(values: T[]) { return Array.from(new Set(values)); }
+
+const commandListOrder: Prisma.WebsiteCommandReferenceOrderByWithRelationInput[] = [{ lifecycle: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }];
+
+function commandFacets(facetRows: Array<{ category: string; kind: string; moduleId: string | null; moduleName: string | null }>) {
+  return {
+    categories: unique(facetRows.map(item => item.category)),
+    kinds: unique(facetRows.map(item => item.kind)),
+    modules: Array.from(new Map(facetRows.filter(item => item.moduleId).map(item => [item.moduleId!, { id: item.moduleId!, name: item.moduleName || item.moduleId! }])).values())
+  };
+}
+
+/** 命令搜索相关度分层：0 名称/别名命中，1 摘要/签名/参数说明命中，2 仅分类或模块字段连带命中；同层保持数据库给定顺序。 */
+function rankCommandMatches<T extends WebsiteCommandReference>(rows: T[], query: string): T[] {
+  return rows
+    .map(row => ({ row, rank: commandMatchRank(row, query) }))
+    .filter((item): item is { row: T; rank: number } => item.rank !== null)
+    .sort((left, right) =>
+      left.rank - right.rank ||
+      compareText(left.row.lifecycle, right.row.lifecycle) ||
+      left.row.sortOrder - right.row.sortOrder ||
+      compareText(left.row.name, right.row.name))
+    .map(item => item.row);
+}
+
+function commandMatchRank(row: WebsiteCommandReference, query: string): number | null {
+  if (textHits([row.name, ...row.aliases], query)) return 0;
+  if (textHits([row.summary, row.signature], query)) return 1;
+  if (textHits(arrayOfRecords(row.parameters).map(item => item.description), query)) return 1;
+  if (textHits([row.category, row.moduleId || '', row.moduleName || ''], query)) return 2;
+  return null;
+}
+
+function textHits(values: unknown[], query: string) { return values.some(value => typeof value === 'string' && value.toLowerCase().includes(query)); }
+function compareText(left: string, right: string) { return left < right ? -1 : left > right ? 1 : 0; }
 function externalUrl(value: unknown, label: string) { const result = clean(value, 2000); try { const parsed = new URL(result); if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error(); return parsed.toString(); } catch { throw validation(`${label}必须是有效的 HTTP 或 HTTPS 地址。`); } }
 function optionalExternalUrl(value: unknown, label: string) { const result = clean(value, 2000); return result ? externalUrl(result, label) : ''; }
 function linkArray(value: unknown, label: string) {

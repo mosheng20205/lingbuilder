@@ -1022,6 +1022,14 @@ export default function Sidebar({
         >
           <span>复制路径 (C)</span>
         </div>
+        {/\.(?:cpp|cc|cxx|c)$/iu.test(contextMenu.file.name) && (
+          <div
+            className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors`}
+            onClick={() => { onExecuteCommand?.('workbench.action.project.adaptNativeCpp', contextMenu.file.path); }}
+          >
+            <span>适配为中文工程…</span>
+          </div>
+        )}
         {contextMenu.file.language === 'lingcpp' && isFunctionLibrarySource(contextMenu.file.translatedContent || contextMenu.file.originalContent) && (
           <div
             className="px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors flex items-center gap-1.5"

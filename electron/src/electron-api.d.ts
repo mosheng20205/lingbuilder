@@ -170,6 +170,11 @@ declare global {
         }>;
         open: () => Promise<{ ok: boolean; canceled: boolean; workspacePath?: string; error?: string }>;
       };
+      solutionImport?: {
+        pickProject: () => Promise<{ ok: boolean; canceled: boolean; filePath?: string; error?: string }>;
+        pickSourceDirectory: () => Promise<{ ok: boolean; canceled: boolean; filePath?: string; error?: string }>;
+        copyExternalProject: (projectFilePath: string) => Promise<{ ok: boolean; projectFileRelative?: string; targetDir?: string; error?: string }>;
+      };
       designerAssets?: {
         selectImage: () => Promise<{ canceled: boolean; filePath?: string }>;
         selectGif: () => Promise<{ canceled: boolean; filePath?: string }>;

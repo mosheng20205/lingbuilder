@@ -163,6 +163,32 @@ test('Windows DLL template creates a C ABI library project and DynamicLibrary Vi
   );
 });
 
+test('Windows console template creates a 启动-entry project with a minimal designer model', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  const preview = await service.previewCreateProject({ name: '批处理工具', projectId: 'batch-tool', templateId: 'windows-console' });
+
+  assert.equal(preview.project.type, 'windows-console');
+  assert.equal(preview.project.projectFile, undefined);
+  assert.equal(await exists(path.join(root, 'src', 'batch-tool')), false);
+  const previewFiles = new Map(preview.files.map(file => [file.relativePath, file.content]));
+  assert.match(previewFiles.get('src/batch-tool/程序.lcpp') || '', /整数型 启动\(\)/u);
+  assert.match(previewFiles.get('src/batch-tool/程序.lcpp') || '', /调试输出/u);
+  assert.match(previewFiles.get('config/batch-tool/config.ini') || '', /type=windows-console/u);
+  const previewDesigner = JSON.parse(previewFiles.get('.lingbuilder/projects/batch-tool/window-designer.json') || '{}');
+  assert.equal(previewDesigner.windows[0].className, '程序');
+  assert.equal(previewDesigner.windows[0].controls.length, 0);
+  assert.equal(preview.designerProject?.windows[0].className, '程序');
+
+  const created = await service.createProject({ name: '批处理工具', projectId: 'batch-tool', templateId: 'windows-console' });
+  assert.equal(created.project.type, 'windows-console');
+  assert.ok(await exists(path.join(root, 'src', 'batch-tool', '程序.lcpp')));
+  assert.ok(await exists(path.join(root, '.lingbuilder', 'projects', 'batch-tool', 'window-designer.json')));
+  const designer = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'projects', 'batch-tool', 'window-designer.json'), 'utf8'));
+  assert.equal(designer.windows[0].className, '程序');
+  assert.equal(designer.windows[0].controls.length, 0);
+});
+
 test('new_emoji FBro browser shell template previews x64 frame, controls, handlers and shortcuts without writing', async () => {
   const root = await createTempWorkspace();
   const service = createSolutionService(root);

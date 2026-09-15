@@ -21,6 +21,14 @@ import {
   LingCppSymbolIndex
 } from './types';
 import { LingCppControlFlowLine, lingCppControlFlowEndLabel, parseLingCppControlFlowLine } from './controlFlow';
+import {
+  LING_CPP_TEXT_BLOCK_DELIMITER,
+  LingCppTextBlockRange,
+  collectLingCppTextBlockLines,
+  lineContainsLingCppTextBlockDelimiter,
+  matchLingCppTextBlockOpening,
+  scanLingCppTextBlockRanges
+} from './textBlock';
 
 export const LING_CPP_KEYWORDS = [
   '包',
@@ -191,6 +199,13 @@ export function parseLingCpp(source: string): LingCppParseResult {
   };
 
   const lines = source.split(/\r?\n/);
+  // 多行文本块预扫描：块内物理行在行循环里被整体跳过，开始行收敛为单条语句。
+  const textBlockScan = scanLingCppTextBlockRanges(lines);
+  const textBlockByOpenLine = new Map<number, LingCppTextBlockRange>(
+    textBlockScan.ranges.map(range => [range.openLine, range])
+  );
+  const textBlockConsumedLines = collectLingCppTextBlockLines(textBlockScan, lines.length);
+  const textBlockStrayCloses = new Set(textBlockScan.strayCloseLines);
   let currentClass: LingCppClass | null = null;
   let currentClassNode: LingCppAstNode | null = null;
   let currentAccess: LingCppAccessModifier = '私有';
@@ -249,6 +264,13 @@ export function parseLingCpp(source: string): LingCppParseResult {
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
     const trimmed = line.trim();
+
+    // 文本块内部行与结束标记不参与任何行级语法；开始行落到兜底时收敛为单条语句。
+    if (textBlockConsumedLines.has(lineNumber) && !textBlockByOpenLine.has(lineNumber)) return;
+    if (textBlockStrayCloses.has(lineNumber)) {
+      diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的文本块结束标记。', `请删除该行，或在前面补写「变量 = ${LING_CPP_TEXT_BLOCK_DELIMITER}」开始行。`));
+      return;
+    }
 
     if (!trimmed) {
       appendStatement(currentMethod, line, lineNumber);
@@ -583,11 +605,76 @@ export function parseLingCpp(source: string): LingCppParseResult {
       return;
     }
 
+    const blockRange = textBlockByOpenLine.get(lineNumber);
+    if (blockRange) {
+      if (!currentMethod) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '多行文本块只能写在事件、方法、构造或功能库函数内部。', '请把「变量 = """」开始行移动到子程序正文中。'));
+      } else {
+        const contentLines = lines.slice(lineNumber, blockRange.closeLine - 1);
+        const statement: LingCppStatement = {
+          line: lineNumber,
+          indent: line.match(/^\s*/)?.[0] || '',
+          text: [trimmed, ...contentLines, LING_CPP_TEXT_BLOCK_DELIMITER].join('\n'),
+          endLine: blockRange.closeLine
+        };
+        currentMethod.statements.push(statement);
+        pushNode(createAstNode('statement', trimmed, lineNumber, line, currentMethodNode?.id, {
+          value: statement.text,
+          detail: '多行文本块'
+        }), currentMethodNode);
+      }
+      return;
+    }
+
+    if (lineContainsLingCppTextBlockDelimiter(trimmed) && !matchLingCppTextBlockOpening(trimmed)) {
+      diagnostics.push(createDiagnostic('error', lineNumber, line, `多行文本块标记 ${LING_CPP_TEXT_BLOCK_DELIMITER} 只能写在「变量 = ${LING_CPP_TEXT_BLOCK_DELIMITER}」行尾，或作为单独一行的结束标记。`, '一期仅支持赋值右部文本块；命令实参、返回值和类型声明初值请先赋值给变量再引用。'));
+    }
+
     const statement = appendStatement(currentMethod, line, lineNumber);
     pushNode(createAstNode('statement', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id || currentFunctionLibraryNode?.id, {
       value: statement?.text || trimmed,
       detail: currentMethod ? '方法语句' : '未识别类成员'
     }), currentMethodNode || currentClassNode || currentFunctionLibraryNode);
+  });
+
+  if (textBlockScan.unclosedOpenLine) {
+    diagnostics.push(createDiagnostic(
+      'error',
+      textBlockScan.unclosedOpenLine,
+      lines[textBlockScan.unclosedOpenLine - 1] || '',
+      '多行文本块缺少结束标记。',
+      `请在块末尾单独一行补写 ${LING_CPP_TEXT_BLOCK_DELIMITER}。`
+    ));
+  }
+  textBlockScan.contentAfterCloseLines.forEach(lineNumber => {
+    diagnostics.push(createDiagnostic(
+      'error',
+      lineNumber,
+      lines[lineNumber - 1] || '',
+      '多行文本块结束标记后不得再有内容。',
+      `请删除 ${LING_CPP_TEXT_BLOCK_DELIMITER} 之后的内容，结束标记必须单独成行。`
+    ));
+  });
+  [
+    ...program.constants.map(constant => ({ name: constant.name, line: constant.line, initialValue: constant.initialValue })),
+    ...program.globals.map(global => ({ name: global.name, line: global.line, initialValue: global.initialValue })),
+    ...program.dataTypes.flatMap(dataType => dataType.fields.map(field => ({ name: `${dataType.name} 字段 ${field.name}`, line: field.line, initialValue: field.initialValue }))),
+    ...program.classes.flatMap(cls => [
+      ...cls.members.map(member => ({ name: member.name, line: member.line, initialValue: member.initialValue })),
+      ...cls.methods.flatMap(method => (method.locals || []).map(local => ({ name: local.name, line: local.line, initialValue: local.initialValue })))
+    ]),
+    ...program.functionLibraries.flatMap(library =>
+      library.methods.flatMap(method => (method.locals || []).map(local => ({ name: local.name, line: local.line, initialValue: local.initialValue })))
+    )
+  ].forEach(declaration => {
+    if (!declaration.initialValue || !declaration.initialValue.includes(LING_CPP_TEXT_BLOCK_DELIMITER)) return;
+    diagnostics.push(createDiagnostic(
+      'error',
+      declaration.line,
+      lines[declaration.line - 1] || declaration.name,
+      `多行文本块不能作为「${declaration.name}」的声明初值。`,
+      `请先单独声明「${declaration.name}」，再在方法体内用「${declaration.name} = ${LING_CPP_TEXT_BLOCK_DELIMITER}」开始文本块赋值。`
+    ));
   });
 
   if (currentMethod) closeCurrentMethod(lines.length);

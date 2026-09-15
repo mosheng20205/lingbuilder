@@ -5,7 +5,7 @@ import type {
   ModuleCommandBindingParameter,
   ModuleCommandContribution
 } from './types';
-import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter } from './bindingValueType';
+import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, withParamDocs, type ParamDocTable } from './bindingValueType';
 import {
   FBRO_VIP_AGGREGATE_CATEGORY,
   FBRO_VIP_OFFICIAL_ENTRIES
@@ -88,10 +88,192 @@ function module(
   };
 }
 
+const FBRO_EVENT_PARAM_DOCS: ParamDocTable = {
+  字段名: '要读取的事件字段名，取值见各事件说明（如 url、downloadItem、menuHandle）。',
+  动作: '同步事件动作码：0 默认、1 继续、2 取消、3 已处理、4 延迟决定；未设置时使用事件清单默认动作。',
+  文本: '同步事件返回给调用方的文本内容。',
+  响应JSON: 'UTF-16 JSON 响应内容；作为事件或延续的结果交回浏览器，字段结构见对应事件说明。',
+  延续句柄: '“FBro_取事件延续”取得的受管延续句柄，一次延迟决策事件对应一个；完成或取消后即失效，重复操作返回稳定错误码。',
+  事件名: 'FBro 事件名，须与事件清单名称一致（如 OnBeforeDownload）；名称不匹配时绑定或采样设置不生效。',
+  每秒次数: '该事件每秒最大投递次数；0 表示暂停投递。',
+  最大字节数: '允许捕获的响应正文最大字节数；超出部分截断，事件字段 truncated 为 1。'
+};
+
+const FBRO_SESSION_PARAM_DOCS: ParamDocTable = {
+  地址: 'Cookie 目标的完整 URL（含协议），如 "https://example.com/"；按该 URL 匹配 Cookie 域和路径。',
+  代理地址: '代理地址，格式 "scheme://host:port"，如 "http://127.0.0.1:8080"。',
+  用户名: '代理认证用户名；代理不要求认证时传空文本。',
+  密码: '代理认证密码；代理不要求认证时传空文本。',
+  包含HttpOnly: '是否包含 HttpOnly Cookie：1 包含，0 排除。',
+  名称: 'Cookie 名称；删除命令传空文本时删除该地址全部 Cookie。',
+  值: 'Cookie 内容文本。',
+  域: 'Cookie 归属域，如 "example.com"。',
+  路径: 'Cookie 生效路径，如 "/"。',
+  安全: '是否标记仅 HTTPS 传输（Secure）：1 是，0 否。',
+  仅HTTP: '是否标记 HttpOnly（禁止页面脚本读取）：1 是，0 否。',
+  来源: '缓存来源限定文本；空文本时不限定来源。',
+  移除标志: '缓存移除标志位掩码；0 使用默认清除范围。',
+  配额标志: '配额数据移除标志位掩码；0 使用默认。',
+  设置JSON: '上下文设置 JSON 文本，支持 cachePath、persistSessionCookies、acceptLanguageList、cookieableSchemesList、cookieableSchemesExcludeDefaults 键。',
+  上下文句柄: '“FBro会话_创建上下文”任务结果中 context 字段的上下文句柄；只用于“FBro会话_使用上下文重建”。'
+};
+
+const FBRO_TRANSFER_PARAM_DOCS: ParamDocTable = {
+  地址: '要下载的资源完整 URL（含协议）；空文本按无效参数拒绝。',
+  下载句柄: '“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。',
+  输出路径: 'PDF 保存路径，必须以 .pdf 结尾（大小写不限）；父目录不存在会自动创建，路径非法时不产生任务（返回 0）。',
+  设置JSON: 'PDF 生成设置 JSON 文本；传空文本使用默认设置，JSON 解析失败时不产生任务（返回 0）。',
+  模式: '对话框模式：0 打开单文件、1 多选打开、2 选择文件夹、3 保存；越界不产生任务（返回 0）。',
+  标题: '对话框标题文本，可传空。',
+  默认路径: '对话框初始目录或默认文件名，可传空文本。',
+  筛选器JSON: '扩展名筛选器 JSON 字符串数组，如 ["*.txt","*.png"]；必须是合法 JSON 数组，否则不产生任务（返回 0）。',
+  格式: '截图格式 "png" 或 "jpeg"（大小写不限）；传空按 "png"，其他值不产生任务（返回 0）。',
+  质量: 'JPEG 压缩质量 0~100；png 格式忽略，越界不产生任务。',
+  横坐标: '截图区域左上角 X（CSS 像素，≥0；负数不产生任务）。',
+  纵坐标: '截图区域左上角 Y（CSS 像素，≥0；负数不产生任务）。',
+  宽度: '截图区域宽度（CSS 像素，≥0）。',
+  高度: '截图区域高度（CSS 像素，≥0）。',
+  缩放: '页面缩放因子 0~8；越界不产生任务。',
+  来自表面: '真=等待从渲染表面截取，结果更稳定；假=直接从当前视图截取。',
+  超出视口: '真=允许截取视口之外的完整页面内容。'
+};
+
+const FBRO_AUTOMATION_PARAM_DOCS: ParamDocTable = {
+  脚本: '要执行的 JavaScript 源码文本。',
+  脚本地址: '模拟脚本来源 URL，仅用于错误定位信息；可传空文本。',
+  起始行: '配合脚本地址在错误信息中定位行号的起始行号，一般传 1。',
+  标识: '框架官方字符串标识，可从“FBro框架_取标识列表JSON”获得。',
+  地址: '要让该框架载入的完整 URL（含协议）。',
+  名称: '框架名称，可从“FBro框架_取名称列表JSON”获得。',
+  框架句柄: '“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。',
+  请求句柄: '“FBro请求_创建”创建的受管请求对象句柄。',
+  目标进程: '消息目标进程：0 浏览器进程、1 渲染进程。',
+  消息句柄: '“FBro消息_创建”创建的受管进程消息句柄。',
+  URL请求句柄: '异步 URL 请求任务结果中 urlRequest 字段的受管请求句柄；用 FBro异步请求_取状态 等命令查询。',
+  选择器: 'CSS 选择器文本，如 "#submit" 或 "input[name=q]"；匹配多个元素时用序号选择。',
+  序号: '同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。',
+  滚到顶部: '真=滚动到元素顶部对齐，假=尽量贴底对齐。',
+  是否聚焦: '真=聚焦该元素，假=移除焦点。',
+  值: '要写入的表单值文本。',
+  是否选中: '真=勾选，假=取消勾选。',
+  选项序号: '下拉框 option 下标，从 0 起。',
+  文本: '要写入的纯文本内容。',
+  代码文本: '要写入的 HTML 片段文本。',
+  属性名: '要读取或设置的 HTML 属性名，如 "href"。',
+  属性值: '要写入的属性值文本。',
+  事件名: '要合成的 DOM 事件名，如 onclick、ondblclick、keydown、change、input。',
+  按键代码: '键盘类事件的虚拟键码，回车传 13。',
+  最大深度: 'DOM 遍历最大嵌套深度；0 使用默认值 16。',
+  最大节点数: 'DOM 快照最多捕获的节点总数；0 使用默认值 4000。',
+  快照句柄: '“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。',
+  节点序号: '快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。',
+  属性序号: '元素属性下标，从 0 起、小于“FBro遍历_取节点属性数”；越界返回负错误码或空文本。',
+  路径JSON: '“FBro遍历_取节点路径”返回的节点路径 JSON，如 "[0,2,1]"。'
+};
+
+const FBRO_OBJECTS_PARAM_DOCS: ParamDocTable = {
+  任务ID: '异步命令返回的受管任务 ID；释放后再使用返回负错误码。',
+  超时毫秒: '最长等待毫秒数；0 表示只查当前状态不等待，上限 600000（10 分钟），负数或超限按无效参数拒绝。',
+  文本: '要写入或发送的文本内容。',
+  路径: '保存目标文件的完整路径。',
+  缓冲句柄: '“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。',
+  MIME类型: 'MIME 类型文本，如 "image/png"、"text/html"。',
+  数据: '要编码为 data URI 的文本内容。',
+  请求句柄: '“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。',
+  地址: '完整 URL（含协议）。',
+  方法: 'HTTP 方法文本，如 "GET"、"POST"。',
+  引用页: '引用页 URL，配合策略参数使用。',
+  策略: '引用页策略：0 清除、1 省略、2 降级、3 始终、4 源。',
+  头列表JSON: '请求头 JSON 数组，格式 [{"name":"...","value":"..."}]。',
+  提交数据句柄: '“FBro提交数据_创建”创建的 POST 提交数据对象句柄。',
+  元素句柄: '“FBro提交数据_创建元素”创建或“FBro提交数据_取元素句柄列表JSON”注册的提交元素句柄。',
+  消息名: '进程消息名称，接收方按该名称识别消息。',
+  消息句柄: '“FBro消息_创建”创建的受管进程消息句柄。',
+  菜单句柄: '“上下文菜单显示前”事件字段 menuHandle 携带的菜单模型句柄；仅事件处理期内有效，事件结束后被回收。',
+  句柄: '菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。',
+  命令ID: '菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。',
+  标题: '菜单项显示文本。',
+  键码: '加速键的 Windows 虚拟键码，如 13=回车、65=字母 A。',
+  Shift: '是否按住 Shift 键。',
+  Ctrl: '是否按住 Ctrl 键。',
+  Alt: '是否按住 Alt 键。',
+  是否Shift: '是否按住 Shift 键。',
+  是否Ctrl: '是否按住 Ctrl 键。',
+  是否Alt: '是否按住 Alt 键。',
+  颜色类型: '菜单颜色类型常量，指定读取或设置哪一类颜色（文字、悬停背景等）。',
+  'FBro图像_转位图缓冲::颜色类型': '位图像素颜色类型常量（RGBA 等），决定输出缓冲的像素布局。',
+  'FBro图像_转位图缓冲::透明类型': '图像透明类型常量，决定输出位图透明通道的处理方式。',
+  'FBro字典_复制::排除空子项': '真=复制时跳过值为空的子项。',
+  标签: '菜单项标签文本。',
+  分组ID: '单选项分组标识；同分组内的单选项互斥。',
+  序号: '菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。',
+  是否可见: '真=显示，假=隐藏。',
+  是否启用: '真=可用，假=置灰。',
+  是否选中: '真=勾选，假=取消勾选。',
+  字体列表: 'CSS 字体列表文本，如 "Microsoft YaHei, Arial"。',
+  Alpha: 'Alpha 透明度分量 0~255。',
+  Red: '红色分量 0~255。',
+  Green: '绿色分量 0~255。',
+  Blue: '蓝色分量 0~255。',
+  参数句柄: '“上下文菜单显示前”事件字段 paramsHandle 携带的右键菜单参数句柄；仅事件处理期内有效，事件结束后被回收。',
+  响应句柄: '资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。',
+  错误码: '响应错误码；0 表示无错误。',
+  状态码: 'HTTP 状态码，如 200、404。',
+  状态文本: 'HTTP 状态文本，如 "OK"、"Not Found"。',
+  字符集: '响应字符集名称，如 "utf-8"。',
+  头名: '协议头名称，如 "Content-Type"。',
+  覆盖同名: '真=替换已存在的同名协议头。',
+  协议头JSON: '协议头 JSON 数组，格式 [{"name":"...","value":"..."}]。',
+  清除原有: '真=先移除全部已有协议头再写入。',
+  对象句柄: '任意 FBro 受管对象句柄；已释放后再操作返回负错误码。',
+  值句柄: '“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。',
+  另一值句柄: '参与比较的另一个 Value 受管句柄。',
+  值: '要写入的值。',
+  字典句柄: '“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。',
+  键: '字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。',
+  另一字典句柄: '参与比较的另一个 Dictionary 受管句柄。',
+  子字典句柄: '要交给该键管理的子 Dictionary 受管句柄。',
+  列表句柄: '“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。',
+  另一列表句柄: '参与比较的另一个 List 受管句柄。',
+  子列表句柄: '要交给该下标管理的子 List 受管句柄。',
+  索引: '元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。',
+  数量: '新列表长度；扩大的位置填充空值。',
+  流句柄: '“FBro流_从文件创建”“FBro流_从缓冲创建”返回的只读流句柄。',
+  元素大小: '单个元素的字节数，如 1=字节。',
+  元素数量: '最多读取的元素个数；单次总读取上限 256 MiB。',
+  偏移: '目标字节偏移，配合基准参数使用。',
+  基准: '定位基准：0 开头、1 当前位置、2 结尾。',
+  图像句柄: '“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。',
+  缩放因子: '目标缩放因子，如 1.0、1.5、2.0，用于匹配对应 DPI 的图像表示。',
+  质量: 'JPEG 编码质量 0~100。',
+  保留透明: '真=保留 PNG 透明通道。',
+  作为图标: '真=按图标用途下载（浏览器优先选择图标尺寸资源）。',
+  最大尺寸: '返回图像的最大尺寸（像素），超出会被缩放。',
+  绕过缓存: '真=绕过本地缓存重新下载。',
+  证书句柄: '证书异步任务或证书错误事件返回的受管证书句柄。',
+  主体句柄: '“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。',
+  拖放数据句柄: 'DragEnter 事件携带的受管拖放数据句柄。'
+};
+
+const FBRO_NETWORK_PARAM_DOCS: ParamDocTable = {
+  代理地址: '代理地址，格式 "scheme://host:port"，如 "http://127.0.0.1:8080"。',
+  用户名: '代理认证用户名；代理不要求认证时传空文本。',
+  密码: '代理认证密码；代理不要求认证时传空文本。',
+  监听地址: '服务器监听地址，如 "127.0.0.1"；实际监听地址见任务结果 address 字段。',
+  端口: 'TCP 监听端口 1~65535。',
+  最大连接数: '允许的最大并发连接数。',
+  服务器句柄: '“FBro服务器_创建”任务结果 server 字段携带的内嵌服务器句柄；关闭后失效。',
+  连接ID: '服务器事件字段 connectionId 携带的连接编号。',
+  通道名: '页面拦截挂钩脚本使用的通道名称，须与页面侧注册的通道一致。',
+  文本: '要发送的文本内容（按 UTF-8 传输）。',
+  缓冲句柄: '“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。',
+  WS客户端句柄: 'WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。'
+};
+
 const eventEntries = [
   api('FBro_取事件数据', 'LB_FBro_GetLastEventData', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得当前处理中的事件主数据。'),
   api('FBro_取事件字段', 'LB_FBro_GetEventField', [{ name: '控件名', type: 'controlRef' }, { name: '字段名', type: 'wideString' }], 'wideString', '从 UTF-16 JSON 事件包读取结构化字段。'),
-  api('FBro_设置事件结果', 'LB_FBro_SetEventResult', [{ name: '控件名', type: 'controlRef' }, { name: '动作', type: 'int' }], 'int', '设置同步事件动作；未设置时使用事件目录默认动作。'),
+  api('FBro_设置事件结果', 'LB_FBro_SetEventResult', [{ name: '控件名', type: 'controlRef' }, { name: '动作', type: 'int' }], 'int', '设置同步事件动作；未设置时使用事件清单默认动作。'),
   api('FBro_设置事件返回文本', 'LB_FBro_SetEventResultText', [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], 'int', '设置同步事件返回文本。'),
   api('FBro_设置事件响应JSON', 'LB_FBro_SetEventResponseJson', [{ name: '控件名', type: 'controlRef' }, { name: '响应JSON', type: 'wideString' }], 'int', '设置 C ABI v3 事件结构化响应；回调返回后 Bridge 会立即复制。'),
   api('FBro_取事件对象', 'LB_FBro_GetLastEventObject', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。', { visibility: 'advanced' }),
@@ -484,6 +666,15 @@ const vipAggregateOptions = {
   capabilityKind: 'aggregate' as const
 };
 
+const FBRO_VIP_PARAM_DOCS: ParamDocTable = {
+  命令: '要执行的 VIP 子命令名，取值见对应分类的单项命令文档。',
+  参数JSON: '子命令参数 JSON 对象文本。',
+  用户名: '启动代理认证用户名。',
+  密码: '启动代理认证密码。',
+  JSON: '完整指纹配置 JSON 文本，键见模块文档。',
+  地址: '启动代理地址，格式 "scheme://host:port"。'
+};
+
 const vipEntries = [
   ...FBRO_VIP_OFFICIAL_ENTRIES,
   api('FBroVIP_应用指纹JSON', 'LB_FBro_ApplyFingerprintJson', [{ name: '控件名', type: 'controlRef' }, { name: 'JSON', type: 'wideString' }], 'int', '通过 UTF-16 JSON 批量应用完整直接指纹配置，覆盖浏览器、屏幕、GPU、WebRTC、时区、电池、位置、设备、Canvas/WebGL/Audio 和 User-Agent Data；不会暴露 Key。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_应用配置' }),
@@ -499,11 +690,11 @@ const vipEntries = [
 ];
 
 export const FBRO_SUBMODULES: LingBuilderModuleManifest[] = [
-  module('lingbuilder.fbro.events', 'FBro事件模块', '界面', '提供 UTF-16 JSON 事件包、同步决策与动态处理器绑定。', eventEntries),
-  module('lingbuilder.fbro.session', 'FBro会话模块', '网络', '提供隔离 Profile、Cookie 和代理认证高层能力。', sessionEntries),
-  module('lingbuilder.fbro.transfer', 'FBro传输模块', '网络', '提供下载与原生打印高层能力。', transferEntries),
-  module('lingbuilder.fbro.automation', 'FBro自动化模块', '系统', '提供受管异步 JavaScript 任务与类型化 Frame 操作。', automationEntries),
-  module('lingbuilder.fbro.objects', 'FBro受管对象模块', '系统', '提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。', objectEntries),
-  module('lingbuilder.fbro.network', 'FBro高级网络模块', '网络', '提供显式启用的代理与认证高级 API。', networkEntries),
-  module('lingbuilder.fbro.vip', 'FBro VIP 指纹模块', '系统', '提供不泄露授权信息的结构化 VIP 指纹入口。', vipEntries)
+  module('lingbuilder.fbro.events', 'FBro事件模块', '界面', '提供 UTF-16 JSON 事件包、同步决策与动态处理器绑定。', withParamDocs(FBRO_EVENT_PARAM_DOCS, eventEntries)),
+  module('lingbuilder.fbro.session', 'FBro会话模块', '网络', '提供隔离 Profile、Cookie 和代理认证高层能力。', withParamDocs(FBRO_SESSION_PARAM_DOCS, sessionEntries)),
+  module('lingbuilder.fbro.transfer', 'FBro传输模块', '网络', '提供下载与原生打印高层能力。', withParamDocs(FBRO_TRANSFER_PARAM_DOCS, transferEntries)),
+  module('lingbuilder.fbro.automation', 'FBro自动化模块', '系统', '提供受管异步 JavaScript 任务与类型化 Frame 操作。', withParamDocs(FBRO_AUTOMATION_PARAM_DOCS, automationEntries)),
+  module('lingbuilder.fbro.objects', 'FBro受管对象模块', '系统', '提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。', withParamDocs(FBRO_OBJECTS_PARAM_DOCS, objectEntries)),
+  module('lingbuilder.fbro.network', 'FBro高级网络模块', '网络', '提供显式启用的代理与认证高级 API。', withParamDocs(FBRO_NETWORK_PARAM_DOCS, networkEntries)),
+  module('lingbuilder.fbro.vip', 'FBro VIP 指纹模块', '系统', '提供不泄露授权信息的结构化 VIP 指纹入口。', withParamDocs(FBRO_VIP_PARAM_DOCS, vipEntries))
 ];

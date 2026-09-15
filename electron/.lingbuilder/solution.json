@@ -2,9 +2,9 @@
   "schemaVersion": 2,
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
-  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectId": "emoji",
   "startupProjectIds": [
-    "lingbuilder-ui-project"
+    "emoji"
   ],
   "folders": [],
   "projects": [
@@ -16,6 +16,15 @@
       "configRoot": "config",
       "designerPath": ".lingbuilder/window-designer.json",
       "isDefault": true,
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "emoji",
+      "name": "emoji项目",
+      "sourceRoot": "src/emoji",
+      "configRoot": "config/emoji",
+      "designerPath": ".lingbuilder/projects/emoji/window-designer.json",
       "references": []
     }
   ]

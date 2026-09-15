@@ -2,7 +2,7 @@ import { createModuleBindingSnippetArgument } from './bindingValueType';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { LingBuilderModuleManifest, ModuleCommandBindingParameter, ModuleCommandValueType } from './types';
 
-type SqliteParameter = ModuleCommandBindingParameter & { type: ModuleCommandValueType };
+type SqliteParameter = ModuleCommandBindingParameter & { type: ModuleCommandValueType; description: string };
 type SqliteCommandOptions = Pick<StandardCommandSpec, 'category' | 'example' | 'returnDescription' | 'visibility'>;
 
 function snippetArgument(parameter: SqliteParameter, index: number): string {
@@ -161,8 +161,8 @@ const sqliteStandardModule = createStandardModule({
 
     sqliteCommand('SQLite_执行', [{ name: 'SQL语句', type: 'wideString', description: '可包含多条 SQL；不得拼接不可信输入。' }], 'bool', '兼容接口：在默认连接执行无结果 SQL。', { category: '兼容接口' }),
     sqliteCommand('SQLite_执行于', [connection(), { name: 'SQL语句', type: 'wideString', description: '可包含多条无参数 SQL。处理外部输入时应使用预编译语句。' }], 'bool', '在指定连接执行一条或多条无结果 SQL。', { category: '执行' }),
-    sqliteCommand('SQLite_查询首值', [{ name: 'SQL语句', type: 'wideString' }], 'wideString', '兼容接口：返回默认连接首行首列的文本表示。NULL、无行或失败均返回空文本，应结合错误码判断。', { category: '兼容接口' }),
-    sqliteCommand('SQLite_查询首值于', [connection(), { name: 'SQL语句', type: 'wideString' }], 'wideString', '返回指定连接首行首列的文本表示；复杂查询应使用预编译语句。', { category: '执行' }),
+    sqliteCommand('SQLite_查询首值', [{ name: 'SQL语句', type: 'wideString', description: '单条 SELECT 语句文本，返回首行首列；参数化查询请改用准备语句。'}], 'wideString', '兼容接口：返回默认连接首行首列的文本表示。NULL、无行或失败均返回空文本，应结合错误码判断。', { category: '兼容接口' }),
+    sqliteCommand('SQLite_查询首值于', [connection(), { name: 'SQL语句', type: 'wideString', description: '单条 SELECT 语句文本，返回首行首列；语句含参数时不会被绑定。'}], 'wideString', '返回指定连接首行首列的文本表示；复杂查询应使用预编译语句。', { category: '执行' }),
 
     sqliteCommand('SQLite_准备', [connection(), { name: 'SQL语句', type: 'wideString', description: '只允许一条 SQL；尾部除空白和分号外存在其它语句时拒绝。' }], 'SQLite语句', '创建受管预编译语句，用于参数化执行和逐行读取。', {
       category: '预编译语句', example: 'SQLite_准备(数据库, "SELECT id, name FROM users WHERE score >= ?1")', returnDescription: '成功返回非 0 的 SQLite语句，失败返回 0。'
@@ -176,9 +176,9 @@ const sqliteStandardModule = createStandardModule({
     sqliteCommand('SQLite_语句取参数数量', [statement()], 'int', '返回 SQL 中参数的最大索引。', { category: '参数绑定' }),
     sqliteCommand('SQLite_语句取参数索引', [statement(), { name: '参数名', type: 'wideString', description: '包含前缀的参数名，例如 :name、@name 或 $name。' }], 'int', '返回命名参数的 1 起始索引，找不到返回 0。', { category: '参数绑定' }),
     sqliteCommand('SQLite_绑定空值', [statement(), parameterIndex], 'bool', '把参数绑定为 SQL NULL。', { category: '参数绑定' }),
-    sqliteCommand('SQLite_绑定整数', [statement(), parameterIndex, { name: '数值', type: 'int' }], 'bool', '把参数绑定为 32 位整数。', { category: '参数绑定' }),
-    sqliteCommand('SQLite_绑定长整数', [statement(), parameterIndex, { name: '数值', type: 'longLong' }], 'bool', '把参数绑定为 64 位整数。', { category: '参数绑定' }),
-    sqliteCommand('SQLite_绑定小数', [statement(), parameterIndex, { name: '数值', type: 'double' }], 'bool', '把参数绑定为双精度小数。', { category: '参数绑定' }),
+    sqliteCommand('SQLite_绑定整数', [statement(), parameterIndex, { name: '数值', type: 'int', description: '绑定到占位符的 32 位整数值。'}], 'bool', '把参数绑定为 32 位整数。', { category: '参数绑定' }),
+    sqliteCommand('SQLite_绑定长整数', [statement(), parameterIndex, { name: '数值', type: 'longLong', description: '绑定到占位符的 64 位整数值。'}], 'bool', '把参数绑定为 64 位整数。', { category: '参数绑定' }),
+    sqliteCommand('SQLite_绑定小数', [statement(), parameterIndex, { name: '数值', type: 'double', description: '绑定到占位符的双精度小数值。'}], 'bool', '把参数绑定为双精度小数。', { category: '参数绑定' }),
     sqliteCommand('SQLite_绑定文本', [statement(), parameterIndex, { name: '文本', type: 'wideString', description: '按 UTF-8 编码并由 SQLite 复制。' }], 'bool', '把参数安全绑定为文本。', { category: '参数绑定' }),
     sqliteCommand('SQLite_绑定字节集', [statement(), parameterIndex, { name: '数据', type: 'bytes', description: '由 SQLite 复制的二进制数据。' }], 'bool', '把参数安全绑定为 BLOB。', { category: '参数绑定' }),
 
@@ -196,8 +196,8 @@ const sqliteStandardModule = createStandardModule({
     sqliteCommand('SQLite_提交事务', [connection()], 'bool', '提交当前事务。失败时事务可能仍保持活动，应读取错误并决定回滚。', { category: '事务' }),
     sqliteCommand('SQLite_回滚事务', [connection()], 'bool', '回滚当前事务。', { category: '事务' }),
     sqliteCommand('SQLite_创建保存点', [connection(), { name: '名称', type: 'wideString', description: '保存点名称会作为 SQLite 标识符安全引用。' }], 'bool', '创建可嵌套保存点。', { category: '事务' }),
-    sqliteCommand('SQLite_释放保存点', [connection(), { name: '名称', type: 'wideString' }], 'bool', '释放并提交指定保存点。', { category: '事务' }),
-    sqliteCommand('SQLite_回滚到保存点', [connection(), { name: '名称', type: 'wideString' }], 'bool', '回滚到指定保存点但不自动释放它。', { category: '事务' }),
+    sqliteCommand('SQLite_释放保存点', [connection(), { name: '名称', type: 'wideString', description: '要释放的保存点名称，必须与 SQLite_创建保存点 使用的名称一致。'}], 'bool', '释放并提交指定保存点。', { category: '事务' }),
+    sqliteCommand('SQLite_回滚到保存点', [connection(), { name: '名称', type: 'wideString', description: '要回滚到的保存点名称，必须与 SQLite_创建保存点 使用的名称一致。'}], 'bool', '回滚到指定保存点但不自动释放它。', { category: '事务' }),
 
     sqliteCommand('SQLite_备份到文件', [connection(), { name: '目标路径', type: 'wideString', description: '目标 SQLite 文件路径。' }, { name: '忙等待毫秒', type: 'int', description: '备份遇到 BUSY/LOCKED 时的总等待上限，范围 0～600000。' }], 'bool', '使用 SQLite Online Backup API 生成一致性备份，不直接复制活动数据库文件。', {
       category: '维护', example: 'SQLite_备份到文件(数据库, "backup/app.db", 10000)'
@@ -213,7 +213,7 @@ const sqliteStandardModule = createStandardModule({
     sqliteCommand('SQLite_取错误码', [], 'int', '返回当前线程最近一次 SQLite 主错误码。', { category: '错误诊断' }),
     sqliteCommand('SQLite_取扩展错误码', [], 'int', '返回当前线程最近一次 SQLite 扩展错误码。', { category: '错误诊断' }),
     sqliteCommand('SQLite_取系统错误码', [], 'int', '返回当前线程最近一次 SQLite 关联的操作系统错误码；运行库不支持时为 0。', { category: '错误诊断' }),
-    sqliteCommand('SQLite_错误码到文本', [{ name: '错误码', type: 'int' }], 'wideString', '把 SQLite 错误码转换为运行库提供的英文稳定说明，便于日志和支持。', { category: '错误诊断' })
+    sqliteCommand('SQLite_错误码到文本', [{ name: '错误码', type: 'int', description: 'SQLite 返回的整数错误码，通常来自 SQLite_取错误码。'}], 'wideString', '把 SQLite 错误码转换为运行库提供的英文稳定说明，便于日志和支持。', { category: '错误诊断' })
   ]
 });
 

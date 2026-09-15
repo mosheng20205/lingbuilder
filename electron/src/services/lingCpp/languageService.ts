@@ -1,4 +1,5 @@
 import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import { LIST_VIEW_ADVANCED_API } from '../modules/listViewApiCatalog';
 import { DATA_GRID_API } from '../modules/dataGridApiCatalog';
 import {
@@ -419,6 +420,14 @@ export function getLingCppCompletionItems(
   context: LingCppCompletionContext,
   languageContext = buildLingCppLanguageContext(context.source)
 ): LingCppCompletionItem[] {
+  // 多行文本块内容行/结束标记不弹补全：块内文本不是可执行语句。
+  {
+    const sourceLines = context.source.split(/\r?\n/u);
+    if (collectLingCppTextBlockOpaqueLines(
+      scanLingCppTextBlockRanges(sourceLines),
+      sourceLines.length
+    ).has(context.line)) return [];
+  }
   const controlReferenceCompletion = getLingCppControlReferenceCompletion(
     context.source,
     context.line,
@@ -488,6 +497,11 @@ export function getLingCppHover(
   context: LingCppCompletionContext,
   languageContext = buildLingCppLanguageContext(context.source)
 ): LingCppHover | undefined {
+  // 多行文本块内容行不提供悬停：块内文本不是符号。
+  {
+    const hoverLines = context.source.split(/\r?\n/u);
+    if (collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(hoverLines), hoverLines.length).has(context.line)) return undefined;
+  }
   const controlReference = getLingCppControlReferenceAtPosition(
     context.source,
     context.line,
@@ -1532,7 +1546,9 @@ export function getLingCppEventBlockHighlights(
 
 export function formatLingCpp(source: string): string {
   const lines = splitLines(source);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
   const formatted: string[] = [];
+  const opaqueOutputIndices = new Set<number>();
   let bodyIndent = 0;
   let inClass = false;
   let inMethod = false;
@@ -1553,7 +1569,13 @@ export function formatLingCpp(source: string): string {
     previousStructuralKind = kind;
   };
 
-  lines.forEach(rawLine => {
+  lines.forEach((rawLine, index) => {
+    // 多行文本块内容行与结束标记原样输出：不 trim、不重缩进、不参与空行折叠。
+    if (opaqueLines.has(index + 1)) {
+      opaqueOutputIndices.add(formatted.length);
+      formatted.push(rawLine);
+      return;
+    }
     const trimmed = rawLine.trim();
     if (!trimmed) {
       return;
@@ -1620,7 +1642,26 @@ export function formatLingCpp(source: string): string {
     }
   });
 
-  return formatted.join('\n').replace(/\n{3,}/gu, '\n\n').replace(/\s+$/u, '');
+  // 连续空行折叠为最多一行，但文本块内容行（含空行）不参与折叠。
+  const collapsed: string[] = [];
+  let blankRunStart = -1;
+  const closeBlankRun = () => {
+    if (blankRunStart >= 0 && collapsed.length - blankRunStart > 1) {
+      collapsed.length = blankRunStart + 1;
+    }
+    blankRunStart = -1;
+  };
+  formatted.forEach((line, index) => {
+    if (line === '' && !opaqueOutputIndices.has(index)) {
+      if (blankRunStart < 0) blankRunStart = collapsed.length;
+      collapsed.push(line);
+      return;
+    }
+    closeBlankRun();
+    collapsed.push(line);
+  });
+  closeBlankRun();
+  return collapsed.join('\n').replace(/\s+$/u, '');
 }
 
 export const lingCppLanguageService = {
@@ -2842,14 +2883,15 @@ function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModule
   );
   const diagnostics: LingCppDiagnostic[] = [];
   const lines = splitLines(source);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
 
   moduleContext.availableModules
     .filter(module => !enabledIds.has(module.manifest.id))
     .forEach(module => {
       (module.manifest.contributes?.commands || []).forEach(command => {
         const invokedName = [command.name, ...(command.aliases || [])]
-          .find(name => lines.some(line => containsCommandInvocation(line, name)));
-        const lineIndex = invokedName ? lines.findIndex(line => containsCommandInvocation(line, invokedName)) : -1;
+          .find(name => lines.some((line, index) => !opaqueLines.has(index + 1) && containsCommandInvocation(line, name)));
+        const lineIndex = invokedName ? lines.findIndex((line, index) => !opaqueLines.has(index + 1) && containsCommandInvocation(line, invokedName)) : -1;
         if (lineIndex < 0) return;
         if (invokedName && enabledCommandNames.has(normalizeIdentifier(invokedName))) return;
         diagnostics.push({
@@ -2890,8 +2932,10 @@ function getThreadingDiagnostics(
   if (!threadingModule) return [];
   const diagnostics: LingCppDiagnostic[] = [];
   const sourceLines = splitLines(source);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(sourceLines), sourceLines.length);
 
   THREADING_LEGACY_COMMANDS.forEach(command => sourceLines.forEach((line, index) => {
+    if (opaqueLines.has(index + 1)) return; // 多行文本块内容不透明：块内文本不算旧命令调用
     if (!containsCommandInvocation(line, command)) return;
     diagnostics.push(createDiagnostic(
       'error', index + 1, line,
@@ -2928,7 +2972,7 @@ function getThreadingDiagnostics(
       caller.parameters.forEach(item => scopeTypes.set(normalizeIdentifier(item.name), item.type));
       (caller.locals || []).forEach(item => scopeTypes.set(normalizeIdentifier(item.name), item.isArray ? `${item.type}[]` : item.type));
 
-      caller.statements.filter(statement => !isLingCppCommentLine(statement.text)).forEach(statement => managedBindings.forEach(binding => {
+      caller.statements.filter(statement => !isLingCppCommentLine(statement.text) && !statement.endLine).forEach(statement => managedBindings.forEach(binding => {
         const commandNames = [binding.command, ...((enabledThreading.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [])];
         commandNames.flatMap(command => extractCommandInvocationArguments(statement.text, command)).forEach(args => {
           validateThreadingManagedInvocation(binding, args, statement, handlers, scopeTypes, moduleContext, projectTypes, opaqueTypes, structuredTypes, diagnostics);
@@ -2939,7 +2983,7 @@ function getThreadingDiagnostics(
     const memberNames = new Set(cls.members.map(member => normalizeIdentifier(member.name)));
     handlers.forEach(handler => {
       if (!isThreadWorkerHandler(source, handler.name, managedBindings)) return;
-      const usesMutex = handler.statements.some(statement => containsCommandInvocation(statement.text, '互斥锁_执行') || containsCommandInvocation(statement.text, '互斥锁_尝试执行'));
+      const usesMutex = handler.statements.some(statement => containsCommandInvocation(statement.text.split('\n')[0] || '', '互斥锁_执行') || containsCommandInvocation(statement.text.split('\n')[0] || '', '互斥锁_尝试执行'));
       const workerExpressions = [
         ...handler.statements,
         ...(handler.locals || []).filter(local => local.initialValue).map(local => ({

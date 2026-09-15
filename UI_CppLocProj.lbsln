@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "未命名解决方案",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectId": "dll-consumer-demo",
   "startupProjectIds": [
-    "lingbuilder-ui-project"
+    "dll-consumer-demo"
   ],
   "folders": [],
   "projects": [
@@ -15,6 +15,34 @@
       "name": "新建项目",
       "type": "visual-cpp",
       "sourceRoot": "src",
+      "references": []
+    },
+    {
+      "id": "dll-module-demo",
+      "name": "DLL模块演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/dll-module-demo/src",
+      "references": []
+    },
+    {
+      "id": "dll-lib-demo",
+      "name": "项目动态库演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/dll-lib-demo/src",
+      "references": []
+    },
+    {
+      "id": "dll-consumer-demo",
+      "name": "调用项目动态库演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/dll-consumer-demo/src",
+      "references": []
+    },
+    {
+      "id": "tabs-probe",
+      "name": "标签页探针",
+      "type": "visual-cpp",
+      "sourceRoot": ".lingbuilder/projects/tabs-probe/src",
       "references": []
     }
   ]

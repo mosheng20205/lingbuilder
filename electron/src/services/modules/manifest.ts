@@ -160,6 +160,10 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
           validateDesignerControlReference(property, `控件 ${control.type} 的属性 ${property?.key || propertyIndex}`, diagnostics);
           if (property?.type === 'recordList') validateDesignerRecordList(property, control.type, diagnostics);
         });
+        if (control?.runtime?.applyContentCommand !== undefined
+          && (typeof control.runtime.applyContentCommand !== 'string' || !control.runtime.applyContentCommand.trim())) {
+          diagnostics.push(`designerControls[${controlIndex}].runtime.applyContentCommand 必须是非空文本。`);
+        }
         validateRuntimeControlContribution(control, controlIndex, contributes, raw.bindings, diagnostics);
       });
     }

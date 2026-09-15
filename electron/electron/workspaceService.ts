@@ -75,6 +75,7 @@ export class DesktopWorkspaceService {
       // 这条路径不经过 rememberWorkspace，也要补齐随附工具链，否则老工作区第一次
       // 用到 Protobuf 模块仍会因缺 SDK 阻断构建。
       await this.ensureBundledToolchains(remembered);
+      await this.ensureBundledModules(remembered);
       return remembered;
     }
 
@@ -93,6 +94,7 @@ export class DesktopWorkspaceService {
     await fs.mkdir(resolved, { recursive: true });
     await this.assertWorkspaceDirectory(resolved);
     await this.ensureBundledToolchains(resolved);
+    await this.ensureBundledModules(resolved);
     await fs.mkdir(path.dirname(this.statePath), { recursive: true });
     const previous = await this.readState();
     await this.writeState({
@@ -203,6 +205,26 @@ export class DesktopWorkspaceService {
     }
   }
 
+  /**
+   * 把安装包随附的 default-workspace 模块（当前为 lingbuilder.new_emoji.ui 等）
+   * 补铺进工作区。与工具链铺设同语义：只补缺失文件、绝不覆盖用户已有内容；
+   * 每次打开工作区都补一次，升级安装后老工作区也能拿到新增随包模块。开发态
+   * 没有 default-workspace 时自动跳过。失败不阻断打开工作区——模块面板刷新
+   * 后仍可手动安装。
+   */
+  async ensureBundledModules(workspacePath: string): Promise<void> {
+    const source = this.options.defaultWorkspaceSource
+      ? path.join(this.options.defaultWorkspaceSource, '.lingbuilder', 'modules')
+      : undefined;
+    if (!source || !await isDirectory(source)) return;
+    const target = path.join(workspacePath, '.lingbuilder', 'modules');
+    try {
+      await copyMissingFiles(source, target);
+    } catch (error) {
+      console.warn(`铺设随包模块失败（可在模块面板手动安装）：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   private async readState(): Promise<WorkspaceState | undefined> {    try {
       const parsed = JSON.parse(await fs.readFile(this.statePath, 'utf8')) as {
         schemaVersion?: number;
@@ -241,13 +263,24 @@ export class DesktopWorkspaceService {
   }
 }
 
+/** 允许「以文件打开工作区」的全部扩展名；second-instance 转交与拖放必须保持同一口径。 */
+const WORKSPACE_FILE_PATTERN = /\.(?:lbsln|sln|code-workspace|lingbuilder|lbworkspace|lcpp|e)$/iu;
+
+export function isWorkspaceFilePath(value: string): boolean {
+  return WORKSPACE_FILE_PATTERN.test(value);
+}
+
+/** 从命令行参数里找出被双击的工作区类文件（`.lbsln` 等），与 `findLbmodArgument` 同一口径。 */
+export const findWorkspaceFileArgument = (argv: readonly string[]): string | undefined =>
+  argv.slice(1).find(value => value && !value.startsWith('-') && isWorkspaceFilePath(value));
+
 export async function resolveWorkspaceDropTarget(targetPath: string): Promise<string> {
   const resolved = path.resolve(targetPath);
   const stat = await fs.stat(resolved);
   if (stat.isDirectory()) return resolved;
   if (!stat.isFile()) throw new Error(`不支持的工作区目标：${targetPath}`);
   if (resolved.toLowerCase().endsWith('.lbsln')) return await resolveSolutionEntryWorkspace(resolved);
-  if (!/\.(?:sln|code-workspace|lingbuilder|lbworkspace|lcpp|e)$/iu.test(resolved)) {
+  if (!isWorkspaceFilePath(resolved)) {
     throw new Error(`不支持通过该文件打开工作区：${path.basename(resolved)}`);
   }
   return path.dirname(resolved);

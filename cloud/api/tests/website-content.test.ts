@@ -35,20 +35,39 @@ test('module manifest sync uses stable module command keys and preserves handler
   assert.equal(audits[0].data.action, 'website.command.sync-manifest');
 });
 
-test('public command query is publication-scoped and clamps result size', async () => {
-  let captured: any;
+test('public command query is publication-scoped, ranks by relevance and clamps result size', async () => {
+  const row = (over: Record<string, unknown>) => ({
+    id: 'row', name: '', aliases: [] as string[], summary: '', signature: '', kind: 'COMMAND', category: '窗口',
+    moduleId: 'm1', moduleName: '示例模块', returnType: 'int', parameters: [] as unknown[], lifecycle: 'AVAILABLE', sortOrder: 0, ...over
+  });
+  const rows = [
+    row({ id: 'summary-only', name: '窗口_创建', summary: '创建窗口，信息框样式可选。' }),
+    row({ id: 'module-only', name: '窗口_置顶', summary: '把窗口置顶。', moduleName: '信息框模块' }),
+    row({ id: 'param-only', name: '窗口_置底', summary: '把窗口置底。', parameters: [{ name: '样式', type: 'int', description: '信息框按钮样式。' }] }),
+    row({ id: 'alias', name: '窗口_标题', summary: '改窗口标题。', aliases: ['信息框工具'] }),
+    row({ id: 'name', name: '信息框', summary: '弹出信息框。' })
+  ];
+  const calls: any[] = [];
   const prisma = {
     websiteCommandReference: {
-      findMany: async (args: any) => { captured ||= args; return []; },
+      findMany: async (args: any) => { calls.push(args); return args.select ? [] : rows; },
       count: async () => 0
     }
   };
   const service = new WebsiteContentService(prisma as any);
-  const result = await service.publicCommands({ query: '信息框', category: '窗口', limit: 999 });
-  assert.equal(captured.where.publicationStatus, 'PUBLISHED');
-  assert.equal(captured.where.category, '窗口');
-  assert.equal(captured.take, 200);
-  assert.equal(result.total, 0);
+  const result = await service.publicCommands({ query: '信息框', category: '窗口', limit: 3 });
+  const first = calls[0];
+  assert.equal(first.where.publicationStatus, 'PUBLISHED');
+  assert.equal(first.where.category, '窗口');
+  assert.equal(first.OR, undefined);
+  // 名称/别名命中 > 摘要/签名/参数说明命中 > 仅模块字段连带命中；截断发生在相关度排序之后。
+  assert.deepEqual(result.commands.map(item => item.id), ['name', 'alias', 'summary-only']);
+  assert.equal(result.total, 5);
+  assert.equal(calls[1].select?.moduleId, true);
+
+  const bare = await service.publicCommands({ category: '窗口', limit: 999 });
+  assert.equal(calls[2].take, 200);
+  assert.equal(bare.total, 0);
 });
 
 test('cloud API allows bounded manifest payloads larger than the Express default', () => {

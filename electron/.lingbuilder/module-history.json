@@ -1,5 +1,82 @@
 [
   {
+    "id": "module-history-1789403614455-f6a548",
+    "time": "2026-09-14T16:33:34.456Z",
+    "action": "export",
+    "moduleId": "lingbuilder.demo.projectdll",
+    "moduleName": "项目动态库演示模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 项目动态库演示模块",
+    "details": "导出路径：T:\\electron\\lingbuilder\\.lingbuilder\\module-packages\\lingbuilder.demo.projectdll.lbmod\nSHA256：dd4b57008ab0c0a9986e2496f57c72a9dd83178fae86a5bae72c8aba01c26da8"
+  },
+  {
+    "id": "module-history-1789402392330-73357c",
+    "time": "2026-09-14T16:13:12.330Z",
+    "action": "export",
+    "moduleId": "lingbuilder.demo.projectdll",
+    "moduleName": "项目动态库演示模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 项目动态库演示模块",
+    "details": "导出路径：T:\\electron\\lingbuilder\\.lingbuilder\\module-packages\\lingbuilder.demo.projectdll.lbmod\nSHA256：dde58ed6a0b1910ef28d001709f55cbdc6627bed9ca1cb0a1d4e1dffe91706bb"
+  },
+  {
+    "id": "module-history-1789402314488-eaeaa2",
+    "time": "2026-09-14T16:11:54.488Z",
+    "action": "export",
+    "moduleId": "lingbuilder.demo.projectdll",
+    "moduleName": "项目动态库演示模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 项目动态库演示模块",
+    "details": "导出路径：T:\\electron\\lingbuilder\\.lingbuilder\\module-packages\\lingbuilder.demo.projectdll.lbmod\nSHA256：ce8879d65a55df49e0392a1e92c955492bdb543776aeb1747d1653a2a6c184c2"
+  },
+  {
+    "id": "module-history-1789396600554-785783",
+    "time": "2026-09-14T14:36:40.554Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.new_emoji.ui",
+    "moduleName": "new_emoji 原生界面库",
+    "version": "2.0.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 new_emoji 原生界面库",
+    "details": "项目 emoji 已引用 lingbuilder.new_emoji.ui@2.0.0。"
+  },
+  {
+    "id": "module-history-1789385997362-23fa28",
+    "time": "2026-09-14T11:39:57.362Z",
+    "action": "export",
+    "moduleId": "lingbuilder.demo.projectdll",
+    "moduleName": "项目动态库演示模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 项目动态库演示模块",
+    "details": "导出路径：T:\\electron\\lingbuilder\\.lingbuilder\\module-packages\\lingbuilder.demo.projectdll.lbmod\nSHA256：78d58195179c18efb9a316f2c468158f7dcd6a346519dde95368ef29318b5459"
+  },
+  {
+    "id": "module-history-1789385376662-41cd31",
+    "time": "2026-09-14T11:29:36.662Z",
+    "action": "export",
+    "moduleId": "lingbuilder.demo.projectdll",
+    "moduleName": "项目动态库演示模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 项目动态库演示模块",
+    "details": "导出路径：T:\\electron\\lingbuilder\\.lingbuilder\\module-packages\\lingbuilder.demo.projectdll.lbmod\nSHA256：f58102ca4ee8e7c4c0701e7adeb9951776f8115f789a638797a0057491d9bb55"
+  },
+  {
+    "id": "module-history-1789383848301-303c8c",
+    "time": "2026-09-14T11:04:08.301Z",
+    "action": "export",
+    "moduleId": "lingbuilder.demo.mathdll",
+    "moduleName": "演示数学 DLL",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 演示数学 DLL",
+    "details": "导出路径：T:\\electron\\lingbuilder\\.lingbuilder\\module-packages\\lingbuilder.demo.mathdll.lbmod\nSHA256：b85df8f4453595878b111911392b1408b9f21bdf8131065db1783ece55019a14"
+  },
+  {
     "id": "module-history-1789201303175-c152e5",
     "time": "2026-09-12T08:21:43.175Z",
     "action": "enable",

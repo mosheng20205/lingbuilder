@@ -1,6 +1,8 @@
 import type {
   ModuleBindingValueType,
+  ModuleCommandBinding,
   ModuleCommandBindingParameter,
+  ModuleCommandContribution,
   ModuleControlReferenceKind,
   ModuleControlReferenceScope,
   ModuleControlRuntimeRepresentation
@@ -127,6 +129,39 @@ export function normalizeControlReferenceSnippet(
   return normalized;
 }
 
+/**
+ * 为缺少说明的 handler 参数按 handlerSignature 契约生成中文说明。
+ * 语言服务正是按该签名校验 &引用目标的形参和返回类型，因此文案与诊断口径一致；已有说明一律保留。
+ */
+export function normalizeHandlerParameter(parameter: ModuleCommandBindingParameter): ModuleCommandBindingParameter {
+  if (parameter.type !== 'handler' || (parameter.description || '').trim()) return parameter;
+  const signature = parameter.handlerSignature;
+  if (!signature) return { ...parameter, description: '必须使用 &处理器名。' };
+  const argumentText = signature.parameterTypes.length
+    ? `形参类型依次为 ${signature.parameterTypes.join('、')}`
+    : '必须无参数';
+  return { ...parameter, description: `必须使用 &处理器名；${argumentText}，返回类型${signature.returnType === '空' ? '必须是 空' : `必须是 ${signature.returnType}`}。` };
+}
+
+/**
+ * 为缺少说明的 controlRef 参数按契约生成中文说明。
+ * 文案只取该参数自身的元数据（对象种类、解析作用域、允许类型、运行时表示），
+ * 语义与 AGENTS.md 的 controlRef 规则和 lingCpp 语言服务诊断一致；已有说明一律保留。
+ */
+function describeControlReferenceParameter(parameter: ModuleCommandBindingParameter): string {
+  const kinds = parameter.controlKinds?.length ? parameter.controlKinds : ['visual'];
+  const kindText = kinds.map(kind => kind === 'visual' ? '可视控件' : kind === 'nonVisual' ? '非可视组件' : '设计器资源').join('或');
+  const scopeText = parameter.scope === 'project' ? '按项目范围解析' : '只在当前窗口内解析';
+  const typeText = parameter.controlTypes?.length ? `且类型必须是 ${parameter.controlTypes.join('、')}` : '接受任意兼容对象';
+  const representation = parameter.runtimeRepresentation || 'wideName';
+  const runtimeText = representation === 'nativeHandle'
+    ? '生成 C++ 时解析为真实控件句柄'
+    : representation === 'stableId'
+      ? '生成 C++ 时按设计器稳定 ID 定位'
+      : '生成 C++ 时按对象名定位';
+  return `裸写的${kindText}名称（不能加引号），${scopeText}、${typeText}；${runtimeText}。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。`;
+}
+
 export function normalizeControlReferenceParameter(
   parameter: ModuleCommandBindingParameter,
   defaults: {
@@ -137,13 +172,43 @@ export function normalizeControlReferenceParameter(
   } = {}
 ): ModuleCommandBindingParameter {
   if (parameter.type !== 'controlRef') return parameter;
-  return {
+  const normalized = {
     ...parameter,
     controlTypes: parameter.controlTypes?.length ? parameter.controlTypes : defaults.controlTypes,
     scope: parameter.scope || defaults.scope || 'currentWindow',
     controlKinds: parameter.controlKinds?.length ? parameter.controlKinds : defaults.controlKinds || ['visual'],
     runtimeRepresentation: parameter.runtimeRepresentation || defaults.runtimeRepresentation || 'wideName'
   };
+  return (normalized.description || '').trim() ? normalized : { ...normalized, description: describeControlReferenceParameter(normalized) };
+}
+
+export type ParamDocTable = Record<string, string>;
+
+interface ParamDocEntry {
+  command: ModuleCommandContribution;
+  binding: ModuleCommandBinding;
+}
+
+/**
+ * 按参数名集中补齐缺失的中文说明：已写说明的参数原样保留；先按「命令名::参数名」精确匹配，
+ * 再退回参数名匹配。表未覆盖的参数在模块加载期直接抛错——新增或修改命令时必须同步补表，
+ * 审计脚本与测试导入清单时即会失败，构成说明必填门禁。
+ */
+export function withParamDocs<T extends ParamDocEntry>(docs: ParamDocTable, entries: readonly T[]): T[] {
+  return entries.map(entry => {
+    const parameters = entry.binding.parameters ?? [];
+    const uncovered = parameters.filter(parameter => !(parameter.description || '').trim() && !docs[`${entry.binding.command}::${parameter.name}`] && !docs[parameter.name]);
+    if (uncovered.length) {
+      throw new Error(`模块参数缺少中文说明：${entry.binding.command} :: ${uncovered.map(item => item.name).join(', ')}`);
+    }
+    return {
+      ...entry,
+      binding: {
+        ...entry.binding,
+        parameters: parameters.map(parameter => ((parameter.description || '').trim() ? parameter : { ...parameter, description: docs[`${entry.binding.command}::${parameter.name}`] || docs[parameter.name] }))
+      }
+    } as T;
+  });
 }
 
 

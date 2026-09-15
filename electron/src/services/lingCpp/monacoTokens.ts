@@ -44,6 +44,11 @@ export function createLingCppMonarchLanguage(moduleContext?: LingCppModuleContex
           next: '@nativeCpp',
           nextEmbedded: 'cpp'
         }]],
+        // 多行文本块开始行：`目标 = """` 整行进入块状态，块内行按字符串着色（与解析器收敛口径一致）。
+        [/^\s*[a-zA-Z\u4e00-\u9fa5_][a-zA-Z0-9\u4e00-\u9fa5_]*(?:\s*\.\s*[a-zA-Z\u4e00-\u9fa5_][a-zA-Z0-9\u4e00-\u9fa5_]*)*\s*[=＝]\s*"""$/, {
+          token: 'string.block.delimiter',
+          next: '@textBlock'
+        }],
         [/[a-zA-Z\u4e00-\u9fa5_][a-zA-Z0-9\u4e00-\u9fa5_]*/, {
           cases: {
             '@keywords': 'keyword',
@@ -71,6 +76,10 @@ export function createLingCppMonarchLanguage(moduleContext?: LingCppModuleContex
       ],
       nativeCpp: [
         [/$/, { token: '', next: '@pop', nextEmbedded: '@pop' }]
+      ],
+      textBlock: [
+        [/^\s*"""$/, { token: 'string.block.delimiter', next: '@pop' }],
+        [/.*/, 'string.block']
       ],
       whitespace: [
         [/[ \t\r\n]+/, 'white'],

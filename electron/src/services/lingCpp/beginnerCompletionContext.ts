@@ -1,3 +1,5 @@
+import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
+
 export interface BeginnerCompletionContext {
   token: string;
   isBlankLine: boolean;
@@ -70,9 +72,29 @@ export function scanBeginnerCodePrefix(text: string) {
   };
 }
 
+function textBlockConsumedLines(value: string): Set<number> {
+  const lines = value.split('\n');
+  return collectLingCppTextBlockLines(scanLingCppTextBlockRanges(lines), lines.length);
+}
+
 export function getBeginnerCompletionContext(value: string, cursor: number): BeginnerCompletionContext {
   const safeCursor = Math.max(0, Math.min(cursor, value.length));
   const lineStart = value.lastIndexOf('\n', Math.max(0, safeCursor - 1)) + 1;
+  // 多行文本块内（含开始行）不弹补全：内容按 raw 语义处理，不是可执行语句。
+  if (textBlockConsumedLines(value).has(value.slice(0, lineStart).split('\n').length)) {
+    return {
+      token: '',
+      isBlankLine: false,
+      isCommandStart: false,
+      isAssignmentValue: false,
+      isNumericLiteral: false,
+      isInsideString: true,
+      isInsideComment: false,
+      parenDepth: 0,
+      isWindowTargetContext: false,
+      isWindowPlacementContext: false
+    };
+  }
   const linePrefix = value.slice(lineStart, safeCursor);
   const token = linePrefix.match(/[a-zA-Z0-9_@.\u4e00-\u9fa5]+$/u)?.[0] || '';
   const beforeToken = linePrefix.slice(0, linePrefix.length - token.length);
@@ -123,6 +145,7 @@ export function getBeginnerCommandTokenAtCursor(
   const lineEnd = nextNewline >= 0 ? nextNewline : value.length;
   const line = value.slice(lineStart, lineEnd);
   const column = safeCursor - lineStart;
+  if (textBlockConsumedLines(value).has(value.slice(0, lineStart).split('\n').length)) return null;
   const tokenPattern = /[a-zA-Z0-9_@.．\u4e00-\u9fa5]+/gu;
 
   for (const match of line.matchAll(tokenPattern)) {

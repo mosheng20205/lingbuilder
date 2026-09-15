@@ -1,5 +1,6 @@
 import { LingCppModuleContext } from '../modules/types';
 import { normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE } from './projectDataTypeService';
 import { EMPTY_PROJECT_GLOBALS_SOURCE } from './projectGlobalService';
 import {
@@ -482,9 +483,16 @@ export function findFunctionLibraryReferences(files: LingCppWorkspaceFile[], lib
     .map(call => ({ filePath: file.filePath, line: call.line })));
 }
 
+function textBlockOpaqueLineSet(sourceCode: string): Set<number> {
+  const lines = sourceCode.split(/\r?\n/u);
+  return collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
+}
+
 function scanQualifiedCalls(sourceCode: string): Array<{ libraryName: string; functionName: string; line: number; text: string }> {
   const calls: Array<{ libraryName: string; functionName: string; line: number; text: string }> = [];
+  const opaqueLines = textBlockOpaqueLineSet(sourceCode);
   sourceCode.split(/\r?\n/u).forEach((rawLine, index) => {
+    if (opaqueLines.has(index + 1)) return; // 多行文本块内容不透明，不参与功能库调用扫描
     const line = maskStringLiterals(stripLineComment(rawLine));
     if (isLingCppNativeLine(line)) return;
     for (const match of line.matchAll(QUALIFIED_CALL_RE)) {
@@ -497,7 +505,9 @@ function scanQualifiedCalls(sourceCode: string): Array<{ libraryName: string; fu
 function scanUnqualifiedCalls(sourceCode: string): Array<{ name: string; line: number }> {
   const calls: Array<{ name: string; line: number }> = [];
   const callPattern = new RegExp(`(^|[^.\\p{L}\\p{N}_])(${IDENTIFIER})\\s*[（(]`, 'gu');
+  const opaqueLines = textBlockOpaqueLineSet(sourceCode);
   sourceCode.split(/\r?\n/u).forEach((rawLine, index) => {
+    if (opaqueLines.has(index + 1)) return; // 多行文本块内容不透明，不参与功能库调用扫描
     const line = maskStringLiterals(stripLineComment(rawLine));
     if (isLingCppNativeLine(line)) return;
     for (const match of line.matchAll(callPattern)) calls.push({ name: match[2] || '', line: index + 1 });
@@ -598,7 +608,9 @@ function hasCall(source: string, name: string): boolean {
 }
 
 function rewriteCodeOnly(source: string, rewrite: (code: string) => string): string {
-  return source.split(/\r?\n/u).map(line => {
+  const opaqueLines = textBlockOpaqueLineSet(source);
+  return source.split(/\r?\n/u).map((line, index) => {
+    if (opaqueLines.has(index + 1)) return line; // 多行文本块内容不透明，不参与功能库重命名
     let result = '';
     let code = '';
     for (let index = 0; index < line.length;) {

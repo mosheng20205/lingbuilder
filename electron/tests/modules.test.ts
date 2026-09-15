@@ -290,11 +290,14 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 扩多元素类型 +4（入队整数/出队整数/入队字节集/出队字节集，+10 参数）；
       // 字节集 +5（寻找/倒找/替换/插入/删除，+16 参数）；缓冲区 +1（寻找，+3 参数）。
       // 合计 +18 命令 +47 参数，无控件参数，模块数不变。
+      // 基线 2026-09-14 写回：系统外壳模块（lingbuilder.system.shell）新增
+      // 系统_取运行目录 命令（+1 命令，0 参数，无控件参数），返回当前运行
+      // exe 所在目录（不带尾部反斜杠），对齐易语言「取运行目录」；模块数不变。
       modules: 89,
-      commands: 3402,
+      commands: 3403,
       parameters: 5982,
       controlReferences: 1303,
-      commandDigest: 'e911d550',
+      commandDigest: '4cc3f152',
       parameterDigest: '1a6c15b2'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
@@ -5681,15 +5684,14 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.equal(runtimeControls.filter((control: any) => control.runtimeControl.lookupByTagTextCommand).length, 93);
   assert.equal(runtimeControls.filter((control: any) => control.runtimeControl.lookupByTagIntegerCommand).length, 93);
   const runtimeEventCount = runtimeControls.reduce((count: number, control: any) => count + (control.runtime?.eventBindings?.length || 0), 0);
-  // 基线 2026-09-13 写回（第二批）：Tabs 新增 ItemClosed（关闭标签页）、Menu 新增 ContextMenu
-  // （右键菜单）事件绑定，事件绑定 919→921；同批再新增 Post 投递族/JSON 读取族/提问框/通知/
-  // 加载遮罩/Excel 导入导出/窗口图标字节集等手工桥接，以及按控件属性表自动生成的宽字符属性
-  // 命令（NE<类型>_设置<属性>），非 _绑定 形态的 handler binding 91→92（提问框）。
-  assert.equal(runtimeEventCount, 921);
-  assert.equal(manifest.contributes.commands.filter((command: any) => /_绑定/u.test(command.name)).length, 921);
-  assert.equal(manifest.contributes.commands.filter((command: any) => /_解绑/u.test(command.name)).length, 921);
+  // 基线 2026-09-15 写回（第三批）：Tabs 新增 ItemAdded（新增标签页）、ItemsReordered（拖拽重排）
+  // 事件绑定，事件绑定 921→923；同批新增 NE标签页_ 运行时操作族/浏览器模式族 21 条宽字符桥接命令
+  // 与逐项「禁用」字段随 EU_SetTabsItemsEx 高阶协议传入原生。
+  assert.equal(runtimeEventCount, 923);
+  assert.equal(manifest.contributes.commands.filter((command: any) => /_绑定/u.test(command.name)).length, 923);
+  assert.equal(manifest.contributes.commands.filter((command: any) => /_解绑/u.test(command.name)).length, 923);
   const handlerBindings = manifest.bindings.commands.filter((binding: any) => binding.parameters?.some((parameter: any) => parameter.type === 'handler'));
-  assert.equal(handlerBindings.filter((binding: any) => /_绑定/u.test(binding.command)).length, 921);
+  assert.equal(handlerBindings.filter((binding: any) => /_绑定/u.test(binding.command)).length, 923);
   assert.equal(handlerBindings.filter((binding: any) => !/_绑定/u.test(binding.command)).length, 92);
   const buttonCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_SetButtonStateColors');
   assert.deepEqual(buttonCommand.parameters[1], {
@@ -5995,7 +5997,8 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.match(cpp, /EU_SetTableVirtualRowProvider\(g_newEmojiWindow, ne_element_2, LB_NE_Event_/u);
   assert.match(cpp, /EU_SetTableColumnAlign\(g_newEmojiWindow/u);
   assert.match(cpp, /LB_NE_ToUtf8\(L"概览\|设置"\)/u);
-  assert.match(cpp, /LB_NE_ToUtf8\(L"概览\\toverview\\t \|设置\\tsettings\\t "\)/u);
+  // EU_SetTabsItemsEx 高阶协议 6 字段：标题\tID\t内容\t图标\t禁用\t可关闭。
+  assert.match(cpp, /LB_NE_ToUtf8\(L"概览\\toverview\\t \\t\\t0\\t1\|设置\\tsettings\\t \\t\\t0\\t1"\)/u);
   assert.match(cpp, /EU_CreateTabs\(g_newEmojiWindow/u);
   assert.match(cpp, /EU_SetTabsHeaderVisible\(g_newEmojiWindow, ne_element_3, 0\)/u);
   assert.match(cpp, /EU_SetTabsContentVisible\(g_newEmojiWindow, ne_element_3, 1\)/u);
@@ -6123,6 +6126,14 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
     ['NE菜单_设置项目快捷键', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['项目索引', 'int'], ['快捷键', 'wideString']]],
     ['NE菜单_设置项目元数据', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['图标列表', 'wideString'], ['分组列表', 'wideString'], ['链接列表', 'wideString'], ['目标列表', 'wideString'], ['命令列表', 'wideString']]],
     ['NE徽标_设置文本', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Badge'], ['文本', 'wideString']]],
+    ['NE标签页_设置激活索引', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs'], ['索引', 'int']]],
+    ['NE标签页_取激活索引', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs']]],
+    ['NE标签页_取激活标题', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs']]],
+    ['NE标签页_取项目数量', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs']]],
+    ['NE标签页_添加项目', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs'], ['标题', 'wideString']]],
+    ['NE标签页_关闭项目', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs'], ['索引', 'int']]],
+    ['NE标签页_设置项目状态', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs'], ['索引', 'int'], ['加载中', 'bool'], ['固定', 'bool'], ['静音', 'bool'], ['提醒', 'bool']]],
+    ['NE标签页_设置拖拽选项', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs'], ['允许重排', 'bool'], ['允许分离', 'bool']]],
     ['NE_设置窗口图标', [['窗口句柄', 'handle'], ['图标路径', 'wideString']]],
     ['NE_设置主题令牌', [['窗口句柄', 'handle'], ['令牌名', 'wideString'], ['颜色值', 'int']]]
   ];
@@ -6165,6 +6176,14 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
     fontSize: 14, background: 'transparent', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible' as const,
     properties: { ...contribution.defaultProps }, events: {}
   });
+  const tabsContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Tabs');
+  assert.ok(tabsContribution, '缺少 Tabs 控件贡献');
+  assert.deepEqual(
+    tabsContribution.events.filter((event: { name: string }) => ['ItemClosed', 'ItemAdded', 'ItemsReordered'].includes(event.name)).map((event: { name: string; label: string }) => [event.name, event.label]),
+    [['ItemClosed', '关闭标签页'], ['ItemAdded', '新增标签页'], ['ItemsReordered', '拖拽重排']]
+  );
+  assert.deepEqual(tabsContribution.events.find((event: { name: string }) => event.name === 'ItemAdded').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [['新项目索引', 'int']]);
+  assert.deepEqual(tabsContribution.events.find((event: { name: string }) => event.name === 'ItemsReordered').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [['原索引', 'int'], ['新索引', 'int'], ['项目总数', 'int']]);
   const generated = generateLingCppNativeWin32Project({
     ...sampleProject,
     windows: [{
@@ -6174,7 +6193,11 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
         buildControl(tableContribution, 'table', '表格1'),
         buildControl(richListContribution, 'rich-list', '富列表1'),
         buildControl(menuContribution, 'menu', '菜单1'),
-        buildControl(badgeContribution, 'badge', '徽标1')
+        buildControl(badgeContribution, 'badge', '徽标1'),
+        {
+          ...buildControl(tabsContribution, 'tabs', '标签页1'),
+          events: { ItemAdded: '_标签页1_新增标签页', ItemsReordered: '_标签页1_拖拽重排' }
+        }
       ]
     }]
   }, {
@@ -6198,6 +6221,11 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
       '        NE菜单_设置项目快捷键(菜单1, 1, "Ctrl+O")',
       '        NE菜单_设置项目元数据(菜单1, "", "", "", "", "命令文本")',
       '        NE徽标_设置文本(徽标1, "new")',
+      '        NE标签页_设置激活索引(标签页1, 1)',
+      '        NE标签页_添加项目(标签页1, "新标签页")',
+      '        NE标签页_取激活标题(标签页1)',
+      '        NE标签页_设置项目状态(标签页1, 1, 假, 真, 假, 真)',
+      '        NE标签页_设置拖拽选项(标签页1, 真, 假)',
       '        NE_设置窗口图标(当前窗口, "图标路径")',
       '        NE_设置主题令牌(当前窗口, "panel.bg", 4288621312)',
       '        NE_显示消息框(当前窗口, "提示", "正文", "确定", &消息框已关闭)',
@@ -6215,6 +6243,12 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
       '    结束',
       '    事件 扩展消息框已关闭(整数型 结果编号, 整数型 动作, 文本型 输入文本)',
       '        调试输出(动作, 输入文本)',
+      '    结束',
+      '    事件 _标签页1_新增标签页(整数型 新项目索引)',
+      '        调试输出(新项目索引)',
+      '    结束',
+      '    事件 _标签页1_拖拽重排(整数型 原索引, 整数型 新索引, 整数型 项目总数)',
+      '        调试输出(原索引, 新索引, 项目总数)',
       '    结束',
       '结束类'
     ].join('\n')
@@ -6247,6 +6281,23 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
   assert.match(cpp, /EU_SetRichListVirtualItemProvider\(g_newEmojiWindow, elementId, LB_NE_RuntimeEvent_/u);
   assert.match(cpp, /static int __stdcall LB_NE_RuntimeEvent_\d+\(int lb_element_id, int lb_index, unsigned char\* lb_buffer, int lb_buffer_size\) \{/u);
   assert.match(cpp, /NE_清空富列表虚拟行数据\(\);[\s\S]{0,600}int 行号 = lb_index;[\s\S]{0,600}NE富列表_设置虚拟行数据\(L"条目文本"\);[\s\S]{0,600}LB_NE_ToUtf8\(NE_取富列表虚拟行数据\(\)\)/u);
+  // 标签页运行时命令族：宽字符调用 → 助手 → 原生导出。
+  assert.match(cpp, /NE标签页_设置激活索引\(L"标签页1", 1\);/u);
+  assert.match(cpp, /static int NE标签页_设置激活索引\(const wchar_t\* controlName, int index\)[\s\S]{0,200}EU_SetTabsActive\(g_newEmojiWindow, element->id, index\);/u);
+  assert.match(cpp, /NE标签页_添加项目\(L"标签页1", L"新标签页"\);/u);
+  assert.match(cpp, /static int NE标签页_添加项目\(const wchar_t\* controlName, const std::wstring& title\)[\s\S]{0,300}EU_AddTabsItem\(g_newEmojiWindow, element->id,/u);
+  assert.match(cpp, /static std::wstring NE标签页_取激活标题\(const wchar_t\* controlName\)[\s\S]{0,260}EU_GetTabsActiveName\(g_newEmojiWindow, element->id, buffer, size\)/u);
+  assert.match(cpp, /NE标签页_设置项目状态\(L"标签页1", 1, false, true, false, true\);/u);
+  assert.match(cpp, /static int NE标签页_设置项目状态\(const wchar_t\* controlName, int index, int loading, int pinned, int muted, int alerting\)[\s\S]{0,240}EU_SetTabsItemChromeState\(g_newEmojiWindow, element->id, index, loading, pinned, muted, alerting\);/u);
+  assert.match(cpp, /NE标签页_设置拖拽选项\(L"标签页1", true, false\);/u);
+  assert.match(cpp, /EU_SetTabsDragOptions\(g_newEmojiWindow, element->id, reorderEnabled, detachEnabled\);/u);
+  // 逐项「禁用/图标/可关闭」随 EU_SetTabsItemsEx 六字段高阶协议传入原生（默认项：未禁用、可关闭）。
+  assert.match(cpp, /LB_NE_ToUtf8\(L"标签页 1\\tpage1\\t \\t\\t0\\t1"\)/u);
+  // 新增标签页 / 拖拽重排 事件按原生回调 ABI 生成强类型参数跳板。
+  assert.match(cpp, /EU_SetTabsAddCallback\(g_newEmojiWindow, ne_element_\d+, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetTabsReorderCallback\(g_newEmojiWindow, ne_element_\d+, LB_NE_Event_/u);
+  assert.match(cpp, /int 新项目索引 = lb_value;/u);
+  assert.match(cpp, /int 原索引 = lb_from_index;\s+int 新索引 = lb_to_index;\s+int 项目总数 = lb_count;/u);
 });
 
 test('new_emoji Tabs can host one independent FBro HWND browser on each page', async () => {
@@ -6333,6 +6384,30 @@ test('new_emoji Tabs can host one independent FBro HWND browser on each page', a
   assert.match(cpp, /NE_显示并激活窗口\(g_newEmojiWindow\);\s*LB_NE_UpdateFbroTabVisibility\(0, -1\);/u);
   const browserGroup = createControlToolboxGroups(['FBroBrowser'], true).find(group => group.id === 'browser');
   assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
+});
+
+test('new_emoji container designerControls all declare layout contributions', async () => {
+  const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const newEmojiManifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const containers = newEmojiManifest.contributes.designerControls.filter((control: { isContainer?: boolean }) => control.isContainer === true);
+  assert.ok(containers.length >= 11);
+  const validModes = ['absolute', 'flow', 'stack', 'grid', 'dock', 'slots', 'single', 'custom'];
+  for (const control of containers) {
+    assert.ok(control.layout, `容器 ${control.type} 未声明 layout，设计器将按 legacy 绝对坐标兜底。`);
+    assert.ok(validModes.includes(control.layout.mode), `容器 ${control.type} 的 layout.mode 无效：${control.layout.mode}`);
+    assert.ok(!control.layout.coordinateSpace || ['window', 'parent'].includes(control.layout.coordinateSpace), `容器 ${control.type} 的 layout.coordinateSpace 无效。`);
+  }
+  const tabs = containers.find((control: { type: string }) => control.type === 'Tabs');
+  assert.deepEqual(tabs.layout, { mode: 'slots', coordinateSpace: 'window', adapterId: 'new-emoji.tabs.pages' });
+  for (const type of ['Panel', 'Card', 'Container', 'Header', 'Aside', 'Main', 'Footer', 'Layout', 'Border', 'Collapse']) {
+    const control = containers.find((item: { type: string }) => item.type === type);
+    assert.ok(control, `缺少容器控件 ${type}。`);
+    assert.deepEqual(control.layout, {
+      mode: 'absolute',
+      coordinateSpace: 'window',
+      adapterId: `new-emoji.${type.toLowerCase()}.absolute`
+    });
+  }
 });
 
 test('exportVisualStudioProject writes sln and vcxproj with module dependencies', async () => {

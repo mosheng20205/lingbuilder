@@ -11,15 +11,20 @@ import {
   isWideStringAbiBindingType,
   MODULE_BINDING_TYPE_LABELS,
   normalizeControlReferenceCallSnippet,
-  normalizeControlReferenceParameter
+  normalizeControlReferenceParameter,
+  normalizeHandlerParameter
 } from './bindingValueType';
+
+/** 参数说明必填的绑定参数类型；漏写说明会在编译期报错。 */
+export type StandardCommandParameter = ModuleCommandBindingParameter & { description: string };
 
 export interface StandardCommandSpec {
   name: string;
   signature: string;
   description: string;
   insertText: string;
-  parameters?: ModuleCommandBindingParameter[];
+  /** 逐参数中文说明是硬性契约：新手模式命令提示面板直接读取该字段。 */
+  parameters?: StandardCommandParameter[];
   returnType: string;
   returnDescription?: string;
   category?: string;
@@ -51,7 +56,8 @@ const RETURN_TYPE_LABELS: Record<ModuleBindingValueType, string> = {
 /** Creates a manifest whose commands, bindings and snippets stay in one source of truth. */
 export function createStandardModule(spec: StandardModuleSpec): LingBuilderModuleManifest {
   const commands = spec.commands.map(command => {
-    const parameters = (command.parameters || []).map(parameter => normalizeControlReferenceParameter(parameter));
+    const parameters = (command.parameters || [])
+      .map(parameter => normalizeHandlerParameter(normalizeControlReferenceParameter(parameter)));
     return {
       ...command,
       parameters,

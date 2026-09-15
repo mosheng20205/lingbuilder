@@ -193,13 +193,14 @@ test('workbench prompt dialog renders a labelled input and both buttons', () => 
   assert.equal((markup.match(/<button/gu) || []).length, 2, 'prompt 模式应有取消与确认两个按钮');
 });
 
-test('welcome project type dialog exposes Windows UI and DLL projects', () => {
+test('welcome project type dialog exposes Windows UI, DLL and console projects', () => {
   const markup = renderToStaticMarkup(
     <ProjectTypeDialog
       open
       isDarkMode
       onSelectWindowsUi={() => undefined}
       onSelectWindowsDll={() => undefined}
+      onSelectWindowsConsole={() => undefined}
       onClose={() => undefined}
     />
   );
@@ -208,14 +209,18 @@ test('welcome project type dialog exposes Windows UI and DLL projects', () => {
   assert.match(markup, /aria-modal="true"/u);
   assert.match(markup, /Windows 界面设计/u);
   assert.match(markup, /Windows 平台 DLL 开发/u);
+  assert.match(markup, /Windows 控制台程序/u);
   assert.match(markup, /Mac 界面设计/u);
   assert.match(markup, /Mac 平台动态库开发/u);
+  assert.match(markup, /Mac 控制台程序/u);
   assert.match(markup, /data-project-type="windows-ui"(?![^>]*\sdisabled="")/u);
   assert.match(markup, /data-project-type="windows-dll"(?![^>]*\sdisabled="")/u);
+  assert.match(markup, /data-project-type="windows-console"(?![^>]*\sdisabled="")/u);
   assert.match(markup, /data-project-type="mac-ui"[^>]*\sdisabled=""/u);
   assert.match(markup, /data-project-type="mac-library"[^>]*\sdisabled=""/u);
-  assert.equal((markup.match(/>规划中</gu) || []).length, 2);
-  assert.match(markup, /当前开放 Windows 界面设计和 Windows 平台 DLL 开发/u);
+  assert.match(markup, /data-project-type="mac-console"[^>]*\sdisabled=""/u);
+  assert.equal((markup.match(/>规划中</gu) || []).length, 3);
+  assert.match(markup, /当前开放 Windows 界面设计、Windows 平台 DLL 开发和 Windows 控制台程序/u);
 });
 
 test('closed project type dialog does not leave a hidden interactive surface', () => {
@@ -225,6 +230,7 @@ test('closed project type dialog does not leave a hidden interactive surface', (
       isDarkMode
       onSelectWindowsUi={() => undefined}
       onSelectWindowsDll={() => undefined}
+      onSelectWindowsConsole={() => undefined}
       onClose={() => undefined}
     />
   );

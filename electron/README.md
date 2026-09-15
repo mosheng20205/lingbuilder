@@ -1,4 +1,8 @@
 # LingBuilder Electron
+> 2026-09-14：**导入 C++ 工程体验升级**（一期~三期全量落地）。①导入入口改为原生文件选择对话框（`CMakeLists.txt/.vcxproj/.sln` 过滤，Web 版保留相对路径输入通道）；选择工作区外工程时推荐「切换到工程所在目录作为工作区并导入」（原地切换、不重载窗口），也可选「复制进当前工作区」（复制到 `external/<目录名>`，自动跳过 Debug/Release/obj/.vs 等产物目录，上限 1GB/2 万文件）。②`.sln` 默认**展开为多项目导入**（新解析器 `src/services/solution/solutionFileParser.ts`：解析 Project 块/ProjectDependencies/ProjectConfigurationPlatforms），项目间依赖翻译为 `references` 由既有拓扑分批构建直接复用；仅 x64 的项目构建属性自动默认 x64；工作区外与非 C++ 项目跳过并给中文告警；解析失败可用 `mode:'single'` 回退整 sln 单目标导入（导入确认框可选）。③外部工程**构建后可运行**：MSBuild 钉定 `/p:OutDir`、CMake 传 `CMAKE_RUNTIME_OUTPUT_DIRECTORY` 保证产物可定位（`locateExecutable` 支持多配置子目录/executableName 精确匹配/深度兜底扫描），作为启动项目 F5 时经 `managedProcessService` 托管启动、run.log 进输出面板。④MSVC/MSBuild 构建输出解析进**问题面板**（`src/services/tasks/msvcOutputParser.ts`：编译/链接器/MSB 诊断结构化，常见 Cxxxx/LNKxxxx/MSBxxxx 附中文解释，文件路径规整为工作区相对可点击跳转）。⑤打开文件夹自动**检测已有工程**（`GET /api/solution/external-detect` 浅层扫描，仅默认解决方案工作区提示一次、可不再提示）；无工程文件但含 C++ 源码的目录可「生成 CMakeLists.txt（生成物，显式源码列表+C++17）并导入」（菜单「导入 C++ 源码目录」/`POST /api/solution/import-source-directory`，已有 CMakeLists 需确认覆盖）。⑥资源管理器 `.cpp` 右键「**适配为中文工程…**」：读取源码经 `importNativeCppToLingBuilder` 翻译为新的中文工程（窗口/控件/方法转中文代码，未识别语句保留 @ 原生块），原文件不修改。⑦中文项目 `references` 引用外部工程时自动收集其 include 目录与 `.lib` 合并进编译链接计划（「中文主程序 + C++ 库」混合解决方案；VS 导出工程暂不自动注入，见 FUTURE_OPTIMIZATIONS）。测试 `tests/externalProjectImport.test.ts` 新增 11 用例；既有 `externalProject/solution/buildPipeline` 套件全绿。详见 `docs/FUTURE_OPTIMIZATIONS.md` 2026-09-14 条目与 `LingBuilder AI 规则手册.md`「外部工程导入与混合解决方案规则」。
+> 2026-09-14：新建项目对话框新增第三种可用类型「**Windows 控制台程序**」（模板 `windows-console`，解决方案项目 `type: "windows-console"`），对话框扩为 2×3 六卡（Windows 界面/DLL/控制台 + Mac 三张规划中占位，含「Mac 控制台程序」）。控制台程序以某个类「公开」节的 `整数型 启动()`（或 `空 启动()`）子程序为程序主体：生成器新增 `outputKind: "console-application"` 产物形态，生成 `wmain`（`#ifdef _WIN32`/`#else main`，为 macOS 预留）+ `SetConsoleOutputCP(CP_UTF8)` + 惰性运行时初始化，「整数型」返回值即进程退出码；入口缺失/重复/返回类型不符给中文阻断诊断。F5 对控制台项目是「生成并运行」（`buildSolution(projectId, run=true)`，运行输出经 run.log 进输出面板、`windowsHide` 不弹黑窗）；VS 导出工程 `<SubSystem>Console</SubSystem>`；AI Bridge `project.create` 模板枚举与 `build.run`/`native.preview` 同步支持（`resolveProjectOutputKind` 统一解析窗口应用/DLL/控制台三形态）。设计器模型只保留一个无控件宿主窗口（类名 `程序`），工作台导航直接打开 `程序.lcpp`。E2E 已实测：CLI 创建→编译（PE32+ console 子系统）→运行退出码 0、`调试输出` 中文正确落 run.log。测试 `tests/consoleProject.test.ts` 新增 7 用例。详见 `LingBuilder AI 规则手册.md`「控制台程序项目规则（2026-09-14）」。
+> 2026-09-14：`.lcpp` 新增**多行文本块**语法（三引号），用于内嵌 HTML/JSON/模板等大段文本：开始行 `变量 = """`（行尾三引号），内容行原样输出（引号、反斜杠、`\n` 都不解释），结束标记单独一行 `"""`。一期只允许赋值右部，类型声明初值/命令实参/返回出中文诊断，两步写法（先 `局部 文本型 X` 再 `X = """`）与局部变量提升口径一致；未闭合块、孤立结束标记、标记后带内容均有明确中文诊断。生成期确定性折叠为单行 C++ 宽字面量（`escapeWideString`，真实换行→`\n`），Win32 与 new_emoji 后端共用同一语句翻译。块内文本对控制流配对、新手缩进/注释切换/自动声明/命令展开/补全、Monaco 与新手着色、功能库/控件引用扫描、后端命令契约、全局/常量/数据类型重命名、`formatLingCpp` 全部不透明（共享扫描器 `src/services/lingCpp/textBlock.ts`，`LingCppStatement.endLine` 记录块跨度）。词法、语法与 AI 生成口径见 `LingBuilder AI 规则手册.md`「2026-09-14 多行文本块生成规则补充」；实测样板 `AI 视频自主生产/进阶方案/内嵌网页托管演示`（140 行字符串拼接改为一块文本块，verify-web-host-demo.ps1 14/14 PASS 含零落地断言）。测试 `tests/lingcpp.test.ts` 新增 12 用例。二期边界（命令实参位、常量表初值、生成回读往返）见 `docs/FUTURE_OPTIMIZATIONS.md`。
+
 > 2026-09-13：更新渠道分层与体验计划一期：客户端更新检查显式携带 `channel=stable|preview`（`versionCheckService`，普通用户不再被云端跨渠道最高版本误推预览版）；preview 渠道需登录并已加入体验计划（主进程经 `cloudAccountService.currentAccessToken()` 附 Bearer，资格由云端校验、无资格静默降级 stable，更新检查保持弱依赖）。设置新增「更新」分区：`updates.autoCheck` 自动检查开关、体验计划卡片（资格展示/申请/撤回报名）、`updates.experienceChannel` 接收预览版开关、`updates.skippedVersion`；更新弹窗按渠道分化（预览版「抢先体验 vX.Y.Z」+ 反馈问题入口；稳定版新增「跳过此版本」，跳过后该版本只保留标题栏徽标不再自动弹窗），标题栏徽标按渠道显示「升级/体验」。IPC 契约：`app:check-update` 可带 `{channel}`，新增 `beta-program:entitlement|apply|cancel-application`（token 只在主进程使用，不暴露给渲染层）。被移出名单/资格到期/渠道暂停的用户冻结在当前预览版，稳定版追上后自然恢复更新，不做自动降级。云端配套接口与管理后台「体验计划」页见 `docs/FUTURE_OPTIMIZATIONS.md` 2026-09-13 条目。
 
 > 2026-09-13：`lingbuilder.web.http` 网页访问模块 1.1.1 转为内置模块随 IDE 分发（此前仅存在于个别工作区的 `.lingbuilder/modules/` 安装记录，新工作区搜不到）：12 条命令（`网页_访问_对象` 同步族 6 条 + `网页_异步访问` 后台线程族 6 条）注册进 `BUILTIN_MODULES` 网络分节，运行时沿用生成模板中 `#ifdef LINGBUILDER_WEB_HTTP_MODULE` 的 WinHTTP 实现（F5、原生预览与 VS 导出行为一致）；模块详情文档 `docs/modules/web-http/README.md`，命令查找页随 `module:web-sync` 同步上线。旧工作区安装的 1.0.0 `.lbmod` 建议卸载，改用内置模块避免同名冲突。
@@ -118,7 +122,7 @@
 
 > 0.2.8 发布基线：HTTP 客户端 2.0、WebSocket 客户端 2.0 和 WebSocket 服务端 2.0 最低要求 LingBuilder `0.2.8`；EdgeView、ListView 和 OpenCV 继续沿用已发布的 `0.2.7` 契约。
 
-> Windows 原生项目的入口窗口使用 LingBuilder 默认图标或自定义 ICO 时，生成目录会包含 `lingbuilder-app.rc` 与 `resources/lingbuilder-app.ico`。F5、CLI、AI Bridge 和导出的 Visual Studio 工程统一编译该资源，最终 EXE 同时包含 `ICON` / `GROUP_ICON`，可在文件资源管理器中直接显示；运行时 `WM_SETICON` 仍负责窗口大、小图标，但不再被当作 EXE 文件图标的替代品。
+> Windows 原生项目的入口窗口使用 LingBuilder 默认图标或自定义 ICO 时，生成目录会包含 `lingbuilder-app.rc` 与 `resources/lingbuilder-app.ico`。F5、CLI、AI Bridge 和导出的 Visual Studio 工程统一编译该资源，最终 EXE 同时包含 `ICON` / `GROUP_ICON`，可在文件资源管理器中直接显示；运行时 `WM_SETICON` 仍负责窗口大、小图标，但不再被当作 EXE 文件图标的替代品。new_emoji 后端窗口例外：自绘标题栏的图标只能由 `EU_SetWindowIcon` 同步（2026-09-15 起），裸 `WM_SETICON` 只覆盖任务栏。
 
 > 2026-08-03：修复 NewEmoji 原生事件已经触发、IDE 调试控制台却没有输出的问题。NewEmoji 生成器现在与普通 Win32 一致，把 `调试输出`同时写入 `OutputDebugStringW` 和带 `[调试输出] `前缀的 UTF-8 `stdout` 并立即刷新，`ManagedProcessService` 可实时写入 `run.log`；验证项目同时补回 `表格06.MouseEnter` 绑定。
 
@@ -176,6 +180,8 @@
 
 > 2026-07-27：new_emoji 模块完成 92 控件属性/事件全量运行时封装。生成清单现含 698/698 属性与 902/902 事件映射；C++ 生成器应用结构化 Setter、表格复合配置、按钮经过/按下颜色和聚合鼠标/焦点/值变化回调。Upload 使用 `FilesSelected` / `UploadAction`。修改上游控件目录或导出后必须运行 `npm run module:new-emoji -- --install` 并保持模块完整性测试通过。
 
+> 2026-09-15：目录控件创建导出不带文本参数时，设计器「显示内容」此前会被静默丢弃（用户实测：编辑框填了显示内容、F5 运行后空白）。现由模块清单 `contributes.designerControls[].runtime.applyContentCommand`（EditBox 为 `EU_SetElementText`，ABI `hwnd, element_id, bytes, len`）声明创建后的文本应用命令，生成器在创建行后发射 `LB_NE_ToUtf8` + 该命令；声明维护在 `scripts/generate-new-emoji-module.cjs` 的 `APPLY_CONTENT_COMMANDS` 表，新增此类控件时必须同步声明，详见 `docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md` 2026-09-15 补充。
+
 > 2026-07-24：IDE 与 AI Bridge 的受控 C++ 构建统一按原始字节读取编译器输出，优先严格 UTF-8、失败时回退 GB18030，避免中文 MSVC 诊断和路径出现 `��`。LingCpp `调试输出` 支持英文逗号分隔的任意数量参数。
 
 > 2026-07-27：`.lcpp` 支持项目功能库。使用 `功能库 名称 ... 结束功能库` 声明一个文件一个、无状态的复用单元，并以 `功能库名.功能名(...)` 跨文件调用。项目树可新建、复制和跨项目粘贴功能库；粘贴会递归收集间接功能库、嵌套项目数据类型、项目常量/全局变量初始化链和模块引用。目标相同定义会复用，间接功能库重名会自动生成唯一副本名并改写调用，不同项目级定义会在确认前阻止覆盖；新增源码、项目资源与模块引用在同一可回滚事务中落盘。F5、原生预览/导出和 AI Bridge 诊断继续消费同一 `lingCppSources` 集合与功能库项目上下文。
@@ -185,6 +191,7 @@
 - 工作区根目录的 `<解决方案名称>.lbsln` 是用户可见的解决方案入口，可双击、拖入或通过“打开项目”选择。
 - `.lbsln` 保存解决方案 ID、名称、启动项目、项目摘要及内部状态路径；完整状态继续保存在 `.lingbuilder/solution.json`。
 - 新工作区和旧工作区首次读取解决方案时都会自动生成 `.lbsln`，新增/删除项目、项目引用和启动项变化会同步更新。
+- IDE 已在运行时再双击 `.lbsln`（或 `.lingbuilder`、`.lbworkspace`、`.lcpp`、`.sln`、`.code-workspace`、`.e`）会由首实例切换到对应工作区，与冷启动双击行为一致；`.lbmod`、`.lcpppkg` 继续走各自的导入通道。
 - `generated/cpp/<项目>/<项目>.sln` 是导给 Visual Studio 的标准解决方案，不是 LingBuilder 入口。
 
 ## LCPP 源码包
@@ -843,6 +850,18 @@ DLL 模板仍可使用新手模式 `.lcpp`。`DllApi.lcpp` 是项目的中文源
 
 DLL 对外接口应保持 C ABI，明确调用约定、编码、缓冲区长度和释放责任。不要跨 DLL 暴露 STL、异常或未约定所有权的裸指针。新增导出时同步维护头文件、`exports.def`、`lingbuilder.dll.json`、文档和测试。
 
+### 中文项目 DLL 输出（outputType）
+
+除 `windows-dll` 模板外，普通中文项目（`.lcpp` + 窗口设计器）也可以直接生成为动态库：在解决方案项目 `buildProperties` 中设置 `outputType: "dll"`（可配 `executableName` 指定产物名）。AI Bridge 构建（CLI `project build`、MCP `build.run`）与原生预览会尊重该属性：生成的 C++ 不含 `wWinMain` 与消息循环，改为 `DllMain` + 首次导出调用时的惰性运行时初始化；源码中「公开」节的每个子程序生成 `extern "C" __declspec(dllexport)` 包装（单例转发，调用约定 `__cdecl`），事件处理器与私有/保护成员不导出；VS 导出工程 `ConfigurationType` 同步为 `DynamicLibrary`（强制 /MD）。跨 DLL 边界签名只允许 POD 与文本类型，违规给出中文阻断诊断。产物为 `<产物名>.dll` + 同名导入库 `.lib`，run 请求不会启动进程。生成 DLL 再经 `module migrate-cpp` 封装成 v2 模块即可被其他项目调用，完整流程与实测示例见 `docs/DLL封装成模块操作手册.md` 与 `examples/dll-lib-demo/`、`examples/dll-consumer-demo/`。DLL 项目在 IDE 内的工具栏「运行 F5」按钮与「生成并运行当前项目」命令会自动禁用（动态库没有运行入口），服务端对绕过 UI 的 run 请求返回 run-unsupported 中文引导；IDE 内编译使用「生成解决方案 / 生成项目」，其产物与 AI Bridge 构建一致。
+
+## Windows 控制台程序项目
+
+欢迎页的「Windows 控制台程序」入口会创建 `windows-console` 项目（模板 `windows-console`）。控制台程序不使用窗口布局：设计器模型只保留一个无控件宿主窗口（类名 `程序`，仅为生成宿主），工作台导航直接打开 `程序.lcpp`。
+
+程序主体是唯一入口契约：某个类「公开」节中的 `整数型 启动()`（或 `空 启动()`）子程序。生成器以 `outputKind: "console-application"` 生成 `wmain` 入口调用该子程序，「整数型」返回值即进程退出码；入口缺失、多个类重复定义或返回值类型不符会给中文阻断诊断。控制台运行时初始化与 EXE 模式同源（COM/GDI+/通用控件），但不注册窗口类、不进入消息循环；入口用 `#ifdef _WIN32`（`wmain`）/`#else`（`main`）分隔，为后续 macOS（clang 后端）复用同一形态预留。
+
+F5 对控制台项目是「生成并运行」：编译成功后由本地服务启动 exe，输出经 run.log 进入输出面板（`windowsHide` 不弹独立黑窗）。VS 导出工程为 Application + `<SubSystem>Console</SubSystem>`。AI Bridge 的 `project.create`（模板枚举含 `windows-console`，返回最小设计器模型）、`build.run`、`native.preview` 与 CLI 全部支持；`resolveProjectOutputKind` 统一解析窗口应用 / DLL / 控制台三种产物形态。控件类模块命令在控制台程序中无意义（无窗口、控件句柄为空），生成示例时应只使用非 UI 命令（文件、线程、网络、数据库、正则、队列、缓冲区等）。控制台线程：入口自动注册无通知 owner，`线程_提交`/线程池族可用，但完成/进度处理器不排空（无消息循环），取结果用「提交 + 等待 + 队列交接」；队列句柄存类成员、不能按值传工作处理器。全功能实机演示见 `AI 视频自主生产/进阶方案/控制台功能报告演示/`（8 组报告全 PASS、退出码 0）。
+
 ## Aria2 下载模块
 
 启用内置 `lingbuilder.net.aria2` 后，`.lcpp` 可使用 `Aria2_下载` 创建异步任务，并可在可选第六参数传入 `&下载进度`，在窗口线程接收任务、百分比、已下载/总字节、字节/秒速度和状态。轮询仍可使用 `Aria2_等待`、`Aria2_取状态`、`Aria2_取进度`、`Aria2_取下载速度`、`Aria2_取错误` 和 `Aria2_释放`；速度优先解析 aria2 `DL:` 输出。当前仅支持 Windows x64 MSVC；F5 与 Visual Studio 导出会由原生依赖服务复制已校验的 `aria2c.exe`、GPLv2 `COPYING` 和 `NOTICE.md`。完整命令和示例见 `docs/modules/aria2/README.md`。
@@ -906,6 +925,10 @@ Windows 安装包注册 .lbmod 后，双击会转发到已运行 LingBuilder 实
 ## new_emoji 数据桥接命令（2026-09-12）
 
 new_emoji 模块命令数 3784 → 3986：两批共新增 179 条宽字符数据桥接命令（含 Post 投递族、JSON 运行时读取族、提问框/通知/加载遮罩、窗口图标字节集、Excel 导入导出、按控件属性表自动生成的属性命令）（表格行/列、富列表模板/条目/倒计时/虚拟数据源、菜单项族、徽标文本、窗口图标、主题令牌）与三条过程式消息框命令（`NE_显示消息框`/`NE_显示确认框`/`NE_显示扩展消息框`，`&处理器名` 回调按名派发），并新增 RichList「虚拟数据源」事件绑定。底层 `NE_EU_*` 的 UTF-8 字节指针参数不可从 `.lcpp` 传字符串（语言服务行内阻断诊断）；消息框与窗口级命令的窗口句柄参数可写 `当前窗口`。模块细节与边界见 `docs/FUTURE_OPTIMIZATIONS.md`「new_emoji 数据桥接命令与消息框补齐」，编译验证样例见 `examples/new-emoji-data-bridge-demo/`。
+
+## new_emoji Tabs 样式与运行时补齐（2026-09-15）
+
+new_emoji 模块命令数 3986 → 4011：第三批新增 21 条 `NE标签页_` 宽字符运行时命令（设置激活索引/取激活索引/取激活标题/取项目数量/添加项目/关闭项目/设置滚动偏移/滚动，以及运行时样式族 设置标签样式/设置标签位置/设置表头对齐/设置表头可见/设置可编辑/设置内容可见/启用浏览器模式/设置浏览器度量/设置项目图标/设置项目可关闭/设置项目状态/设置新建按钮可见/设置拖拽选项），并新增「新增标签页」「拖拽重排」两个事件（绑定/解绑命令自动生成，事件绑定 921→923）。设计器逐项「禁用/图标/可关闭」现随 `EU_SetTabsItemsEx` 六字段高阶协议传入原生（此前禁用勾选在生成后无效）；设计器画布预览同步渲染卡片/边框卡片、四向表头、逐项状态徽标、×/+ 按钮与浏览器模式。详见 `docs/FUTURE_OPTIMIZATIONS.md`「new_emoji Tabs 样式与运行时全量补齐」。
 
 ## 动态图像控件 GIF 播放
 

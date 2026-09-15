@@ -24,6 +24,101 @@ interface CdpClientCommandSpec {
   visibility?: 'default' | 'advanced' | 'internal';
 }
 
+/**
+ * CDP 模块参数说明集中表：按参数名（必要时用「命令名::参数名」精确限定）补齐缺失说明。
+ * 表未覆盖的参数在加载期直接抛错，新增命令必须同步补表（审计脚本与测试导入时即失败）。
+ */
+const CDP_PARAM_DOCS: Record<string, string> = {
+  连接: 'CDP_连接 返回的受管连接 ID；断开后失效。',
+  页面: '受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。',
+  元素: 'CDP_查询元素 返回的受管元素引用；页面导航后失效。',
+  拦截: '“请求被拦截”事件携带的受管请求句柄；网络已挂起，必须在处理器内尽快继续、改写或终止。',
+  会话: 'CDP_附加目标 返回的调试会话 ID。',
+  目标: '目标标识，取自 CDP_枚举目标JSON 结果。',
+  断点: 'CDP_设置断点 返回的受管断点句柄。',
+  调用帧: '调试暂停时调用帧的标识（callFrameId）。',
+  录制: 'CDP_开始录制 返回的录制会话 ID。',
+  回放: 'CDP_加载回放 返回的回放会话 ID。',
+  绑定: '已安装的页面绑定名称。',
+  网址: '完整 URL（含协议）。',
+  'CDP_设置断点::网址': '断点所在脚本的 URL 匹配文本。',
+  选择器: 'CSS 选择器文本，如 "#submit"。',
+  属性名: 'HTML 属性名，如 "href"。',
+  键名: 'CDP Key 键值，如 Enter、Tab、a、F5。',
+  密码: '认证密码文本。',
+  接受: '真=接受（确认）对话框，假=取消对话框。',
+  允许: '真=允许。',
+  'CDP_设置下载目录::允许': '真=下载到指定目录（目录必须已存在），假=拒绝全部下载。',
+  离线: '真=模拟断网。',
+  禁用: '真=禁用 HTTP 缓存。',
+  延迟毫秒: '模拟的额外网络延迟（毫秒）。',
+  纬度: '纬度，-90 到 90。',
+  经度: '经度，-180 到 180。',
+  时区: 'IANA 时区名称，如 "Asia/Shanghai"。',
+  语言: '语言标签，如 "zh-CN"。',
+  启动时等待调试器: '真=新目标启动时先暂停，等待调试器接入后再运行。',
+  行: '断点行号，从 1 起。',
+  列: '断点列号，从 1 起。',
+  条件: '断点触发条件表达式；空表示无条件触发。',
+  作用域索引: '作用域下标，从 0 起。',
+  最大数量: '最多返回的变量数量。',
+  来源: '精确来源（origin），如 "https://example.com"。',
+  存储类型: '存储类型文本（如 "cookies"、"local_storage"）。',
+  已确认: '必须传真；用于确认破坏性清理操作。',
+  来源白名单: '允许忽略证书错误的来源列表文本。',
+  有效秒数: '证书错误接管设置的有效期（秒）。',
+  证书错误: '“证书错误”事件携带的错误标识。',
+  文件路径: '录制数据文件路径。',
+  'CDP_设置元素文件::文件路径': '要上传的文件路径；文件必须真实存在。',
+  数据JSON: '录制步骤数据 JSON 文本。',
+  触点JSON: '触点描述 JSON 数组文本。',
+  填充颜色: '高亮填充颜色；当前版本保留该参数，暂不生效。',
+  脚本代码: '要执行的 JavaScript 源码。',
+  上: '窗口上边界 Y 坐标。',
+  起点横坐标: '拖拽起点的 X 坐标。',
+  起点纵坐标: '拖拽起点的 Y 坐标。',
+  终点横坐标: '拖拽终点的 X 坐标。',
+  终点纵坐标: '拖拽终点的 Y 坐标。',
+  UserAgent: '要覆盖的 User-Agent 字符串。',
+  上行速率: '模拟上行速率（字节/秒），-1 表示不限。',
+  下行速率: '模拟下行速率（字节/秒），-1 表示不限。',
+  事件类型: '等待的加载事件类型：0 load、1 DOMContentLoaded、2 networkIdle、3 networkAlmostIdle。',
+  'CDP_派发触摸::事件类型': '触摸阶段：touchStart、touchMove、touchEnd 或 touchCancel。',
+  类型: '单步方式：0 越过、1 进入、2 跳出。',
+  修饰键: '逗号分隔的修饰键名，支持 Ctrl、Shift、Alt、Meta。',
+  倍率: 'CPU 降速倍率：1 不节流，20 表示按 20 倍慢速运行。',
+  'CDP_置Cookie::值': 'Cookie 内容文本。',
+  全页: '真=捕获超出视口的完整页面。',
+  函数代码: '页面函数源码，例如 function(x){return x.value}；元素作为唯一实参传入。',
+  名称: '要安装的绑定名称，页面通过 window[名称] 调用。',
+  'CDP_置Cookie::名称': 'Cookie 名称。',
+  启用: '真=开启。',
+  响应体: '模拟响应正文，UTF-8 文本，不能超过 8MB。',
+  失败原因: '终止请求时返回给页面的失败原因；默认 "Failed"。',
+  头JSON: '头 JSON 数组，格式 [{名称, 值}]；拦截改写时空表示不改头，非空整体替换。',
+  宽度: '新视口宽度（像素）。',
+  'CDP_设置窗口边界::宽度': '窗口宽度（像素），100~10000。',
+  高度: '新视口高度（像素）。',
+  'CDP_设置窗口边界::高度': '窗口高度（像素），100~10000。',
+  左: '窗口左边界 X 坐标。',
+  提示文本: 'prompt 对话框的应答输入文本。',
+  文本: '要输入的文本内容。',
+  横向增量: '滚轮横向滚动增量。',
+  纵向增量: '滚轮纵向增量；负数向上、正数向下。',
+  横坐标: '鼠标事件 X 坐标（视口坐标）。',
+  纵坐标: '鼠标事件 Y 坐标（视口坐标）。',
+  步数: '拖拽插值步数，1 到 100。',
+  状态码: '模拟响应的 HTTP 状态码。',
+  用户名: '认证用户名。',
+  目录: '下载保存目录；目录必须已存在。',
+  索引: '当前暂停 generation 内调用帧列表的零基下标。',
+  网址模式: '请求 URL 通配符匹配文本，如 "*://api.example.com/*"。',
+  请求编号: '网络事件快照中的请求编号。',
+  调试地址: '浏览器调试服务 HTTP 地址，如 http://127.0.0.1:9222。',
+  超时毫秒: '命令与导航/就绪等待的超时上限（毫秒）。',
+  超时秒: '等待超时（秒）。'
+};
+
 const parameter = (
   name: string,
   type: ModuleBindingValueType | (string & {}),
@@ -679,6 +774,16 @@ function binding(spec: CdpClientCommandSpec): ModuleCommandBinding {
     example: spec.insertText?.replace(/\$\{\d+:([^}]*)\}/gu, '$1').replace(/\$\d+/gu, '示例值') || `${spec.name}()`,
     description: spec.description
   };
+}
+
+// 加载期说明门禁：集中表未覆盖且调用点未写说明的参数直接抛错。
+for (const spec of specs) {
+  spec.parameters = spec.parameters.map(parameter => {
+    if ((parameter.description || '').trim()) return parameter;
+    const resolved = CDP_PARAM_DOCS[`${spec.name}::${parameter.name}`] || CDP_PARAM_DOCS[parameter.name];
+    if (!resolved) throw new Error(`CDP 模块参数缺少中文说明：${spec.name} :: ${parameter.name}`);
+    return { ...parameter, description: resolved };
+  });
 }
 
 export const CDP_CLIENT_COMMAND_SPECS = specs;

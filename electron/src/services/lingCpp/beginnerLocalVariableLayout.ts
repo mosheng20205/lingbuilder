@@ -1,3 +1,8 @@
+import {
+  BeginnerFlowGuideTrack,
+  formatBeginnerFlowIndentation,
+  getBeginnerIfFlowGuideRows
+} from './beginnerFlowGuide';
 import { LingCppLocalVariable, LingCppMethod, LingCppStatement } from './types';
 
 export type BeginnerMethodBodySegment =
@@ -133,4 +138,54 @@ export function isBeginnerLocalInsertShortcut(event: {
   shiftKey: boolean;
 }): boolean {
   return getBeginnerLocalInsertShortcutKind(event) === 'variable';
+}
+
+export interface BeginnerLocalAnchorLayout {
+  /** Leading whitespace columns of the declaration row as rendered in the body. */
+  indentColumns: number;
+  /** Flow rails that must continue through the declaration table rows. */
+  tracks: BeginnerFlowGuideTrack[];
+}
+
+/**
+ * A local declaration table sits between two code segments, so neither segment's
+ * per-segment flow parse can see the blocks enclosing the declaration. This
+ * merges statements and declaration lines in source order, formats them with the
+ * same rules as the rendered body, and reports the declaration row's own indent
+ * columns plus its enclosing flow tracks, so the canvas can indent the table to
+ * the declaration level and draw the 如果/循环 rails through the table rows.
+ */
+export function getBeginnerLocalAnchorLayout(
+  method: LingCppMethod,
+  firstLocalLine: number,
+  sourceLines: string[]
+): BeginnerLocalAnchorLayout {
+  const meaningfulStatements = method.statements.filter(statement => statement.text.trim());
+  const baseIndentLength = meaningfulStatements.reduce(
+    (minimum, statement) => Math.min(minimum, statement.indent.length),
+    Number.POSITIVE_INFINITY
+  );
+  const baseIndent = Number.isFinite(baseIndentLength) ? baseIndentLength : 0;
+  const rows = [
+    ...method.statements.map(statement => ({
+      line: statement.line,
+      text: `${statement.indent.slice(Math.min(baseIndent, statement.indent.length))}${statement.text}`
+    })),
+    ...(method.locals || []).map(local => {
+      const rawLine = sourceLines[Math.max(0, (local.line || 1) - 1)] || '';
+      const indent = rawLine.match(/^\s*/u)?.[0] || '';
+      return {
+        line: local.line || 0,
+        text: `${indent.slice(Math.min(baseIndent, indent.length))}${rawLine.trim()}`
+      };
+    })
+  ].sort((left, right) => left.line - right.line);
+  const formatted = formatBeginnerFlowIndentation(rows.map(row => row.text));
+  const flowRows = getBeginnerIfFlowGuideRows(formatted);
+  const anchorIndex = rows.findIndex(row => row.line === firstLocalLine);
+  if (anchorIndex < 0) return { indentColumns: 0, tracks: [] };
+  return {
+    indentColumns: formatted[anchorIndex].match(/^\s*/u)?.[0].length || 0,
+    tracks: flowRows[anchorIndex]?.tracks || []
+  };
 }

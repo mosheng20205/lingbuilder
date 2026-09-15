@@ -1,5 +1,5 @@
 import type { ModuleBindingValueType, ModuleCommandBinding, ModuleCommandBindingParameter, ModuleCommandContribution } from './types';
-import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter } from './bindingValueType';
+import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, withParamDocs, type ParamDocTable } from './bindingValueType';
 
 export const EDGEVIEW_SAFE_API_CAPABILITY = 'edgeview.safe-api.v1';
 export const EDGEVIEW_SAFE_API_V2_CAPABILITY = 'edgeview.safe-api.v2';
@@ -72,7 +72,99 @@ function api(
 const control: ModuleCommandBindingParameter = { name: '控件名', type: 'controlRef', controlTypes: ['EdgeBrowser'] };
 const task = { name: '任务ID', type: 'longLong' as const };
 
-export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [
+const EDGEVIEW_PARAM_DOCS: ParamDocTable = {
+  任务ID: 'EdgeView 异步命令返回的任务 ID；状态 0 等待、1 成功、2 失败、3 已取消、4 已超时，用 EdgeView任务_释放 回收。',
+  HTML: '要在控件中渲染的完整 HTML 文本。',
+  地址: '要导航到的完整 URL（含协议）。',
+  方法: 'HTTP 方法文本，如 "GET"、"POST"；空文本按 GET。',
+  请求头: '附加请求头文本（"名称: 值" 对）；可传空。',
+  正文: '请求正文文本，按 UTF-8 编码发送；可传空。',
+  主机名: '虚拟主机名，如 "app.local"；页面通过该主机名访问映射目录。',
+  目录: '要映射的本地目录绝对路径。',
+  'EdgeView会话_置下载目录::目录': 'Profile 默认下载目录的绝对路径。',
+  访问模式: '共享缓冲访问模式枚举：0 只读、1 读写。',
+  脚本: '要执行或注入的 JavaScript 源码文本。',
+  脚本ID: '文档预注入脚本的 ID（注册任务返回结果），用于移除脚本。',
+  消息: '要发送给网页的字符串消息内容。',
+  JSON: '要发送的 JSON 消息文本。',
+  启用: '真=开启，假=关闭。',
+  用户代理: '要使用的 User-Agent 字符串。',
+  缩放倍数: '缩放倍数，1.0 表示 100%。',
+  静音: '真=静音。',
+  可见: '真=显示，假=隐藏。',
+  左: '边界左上角 X 坐标（DIP）。',
+  顶: '边界左上角 Y 坐标（DIP）。',
+  宽: '边界宽度（DIP）。',
+  高: '边界高度（DIP）。',
+  原因: '移动焦点原因枚举：0 程序、1 上一个、2 下一个。',
+  缩放: '光栅化缩放因子。',
+  模式: '边界模式枚举：0 使用物理大小、1 使用逻辑大小。',
+  掩码: 'PDF 工具栏隐藏项位掩码（COREWEBVIEW2_PDF_TOOLBAR_ITEMS 组合）。',
+  级别: '内存使用目标级别枚举：0 正常、1 低。',
+  方式: 'Runtime 通道搜索方式枚举（COREWEBVIEW2_CHANNEL_SEARCH_KIND）。',
+  通道掩码: '允许的 Runtime 发布通道位掩码（COREWEBVIEW2_RELEASE_CHANNELS 组合）。',
+  样式: '滚动条样式枚举：0 默认、1 Fluent。',
+  区域: '脚本语言区域标签（如 "zh-CN"）；修改后必须重建。',
+  ARGB: '32 位背景色，0xAARRGGBB 布局。',
+  协议名: '自定义协议名（不含 ://），如 "app"。',
+  含权限部分: '真=协议 URL 含权限（主机）部分。',
+  视为安全: '真=该协议视为安全上下文。',
+  允许来源: '允许调用该协议的来源列表，分号分隔；传 * 不限制。',
+  名称: 'Cookie 名称。',
+  值: '要设置的属性值；取值由对应 WebView2 枚举或数值定义。',
+  'EdgeView会话_置Cookie::值': 'Cookie 内容文本。',
+  域: 'Cookie 归属域，如 "example.com"。',
+  路径: 'Cookie 生效路径，如 "/"。',
+  数据类型掩码: '浏览数据类型位掩码（COREWEBVIEW2_BROWSING_DATA_KINDS 组合）。',
+  开始时间: '起始 Unix 秒时间。',
+  结束时间: '结束 Unix 秒时间。',
+  方案: '配色方案枚举：0 自动、1 浅色、2 深色。',
+  下载ID: '“下载开始”事件字段 downloadId 携带的下载编号；未知编号时查询返回空 JSON、操作返回 0。',
+  对齐: '下载窗口角对齐枚举：0 左上、1 右上、2 左下、3 右下。',
+  横向: '下载窗口水平边距（像素）。',
+  纵向: '下载窗口垂直边距（像素）。',
+  文本: '要查找或设置的文本内容。',
+  选项JSON: '查找选项 JSON 文本（WebView2 驼峰键，如 isCaseSensitive）；传空对象使用默认。',
+  界面类型: '打印界面类型枚举：0 浏览器、1 系统。',
+  设置JSON: '打印设置 JSON 文本（WebView2 驼峰键覆盖打印设置）；传空对象不改设置。',
+  格式: '截图图像格式枚举：0 PNG、1 JPEG。',
+  URI模式: '资源 URI 通配符匹配文本，如 "https://example.com/*"。',
+  上下文: '资源请求上下文位掩码（WEB_RESOURCE_CONTEXT_* 组合）。',
+  来源类型: '请求来源类型位掩码（WEB_RESOURCE_REQUEST_SOURCE_* 组合）。',
+  状态码: 'HTTP 状态码 100~599；仅在同步事件处理期有效。',
+  原因短语: '状态行原因文本。',
+  响应头: '响应头文本（"名称: 值" 对）；可传空。',
+  响应句柄: '“Web资源响应收到”事件字段 responseHandle 携带的响应句柄；仅事件处理期内可读正文。',
+  最大字节数: '单次读取的最大字节数，超出部分截断。',
+  字段名: '当前同步事件的字段名，取值见事件说明。',
+  动作: '同步事件动作码；1 表示按事件语义取消默认行为，未设置时保持 WebView2 默认。',
+  用户名: '基本身份验证用户名。',
+  密码: '基本身份验证密码。',
+  文件路径: '目标文件路径；相对路径按当前工作目录解析为绝对路径。',
+  菜单项句柄: '“右键菜单请求”事件菜单树携带的受管菜单项句柄。',
+  勾选: '真=勾选。',
+  对象句柄: '受管对象句柄（Frame、Worker、响应等），来自对应事件字段 handle 或创建命令返回；释放后不复用。',
+  框架句柄: '“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。',
+  附加JSON: '随共享缓冲发送的附加数据 JSON 文本。',
+  类型: '要枚举的工作线程类型枚举值。',
+  工作线程句柄: '工作线程枚举结果中的受管句柄。',
+  扩展目录: '包含 manifest.json 的扩展目录绝对路径。',
+  扩展句柄: '扩展枚举或安装结果中的受管扩展句柄。',
+  权限类型: '权限类型枚举（COREWEBVIEW2_PERMISSION_KIND）。',
+  权限: '文件系统句柄权限枚举：0 只读、1 读写。',
+  来源: '权限目标来源，如 "https://example.com"。',
+  状态: '权限状态枚举：0 默认、1 允许、2 拒绝。',
+  通知句柄: '“网页通知收到”事件字段 handle 携带的通知受管句柄。',
+  字节数: '要创建的共享缓冲字节数，不超过 16 MiB。',
+  十六进制: '偶数长度十六进制文本。',
+  证书句柄: '客户端证书决策事件携带的受管证书句柄。',
+  会话ID: 'DevTools 会话 ID，取自协议事件字段 sessionId。',
+  缓冲句柄: 'EdgeView缓冲_创建 返回的共享缓冲受管句柄。',
+  参数JSON: '方法参数 JSON 对象文本；无参数传 "{}"。',
+  完成处理器: '必须使用 &处理器名；任务完成时被调用，结果用 EdgeView任务_取结果 读取。'
+};
+
+const EDGEVIEW_RAW_API_CATALOG: EdgeViewApiCatalogEntry[] = [
   api('任务', 'EdgeView任务_取当前任务ID', [], 'longLong', '取得当前 EdgeView 完成处理器正在消费的任务 ID。', [], { visibility: 'advanced' }),
   api('任务', 'EdgeView任务_取状态', [task], 'int', '取得任务状态：0等待、1成功、2失败、3已取消、4已超时。', [], { visibility: 'advanced' }),
   api('任务', 'EdgeView任务_取结果', [task], 'wideString', '取得任务 UTF-16 文本或 JSON 结果。', [], { visibility: 'advanced' }),
@@ -185,7 +277,7 @@ export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [
   api('会话', 'EdgeView会话_取密码保存', [control], 'int', '取得 Profile 密码自动保存状态。', ['ICoreWebView2Profile6.IsPasswordAutosaveEnabled']),
   api('会话', 'EdgeView会话_置自动填充', [control, { name: '启用', type: 'bool' }], 'int', '设置 Profile 通用自动填充。', ['ICoreWebView2Profile6.IsGeneralAutofillEnabled']),
   api('会话', 'EdgeView会话_取自动填充', [control], 'int', '取得 Profile 通用自动填充状态。', ['ICoreWebView2Profile6.IsGeneralAutofillEnabled']),
-  api('会话', 'EdgeView会话_删除Profile', [control], 'int', '删除当前 Profile；删除完成事件通过事件目录通知。', ['ICoreWebView2Profile8.Delete']),
+  api('会话', 'EdgeView会话_删除Profile', [control], 'int', '删除当前 Profile；删除完成通过事件清单中的对应完成事件通知。', ['ICoreWebView2Profile8.Delete']),
 
   api('下载', 'EdgeView下载_取状态JSON', [control, { name: '下载ID', type: 'longLong' }], 'wideString', '取得受管下载状态、地址、MIME、进度、可恢复性、中断原因、本次请求的 pendingResultFilePath 与 put_ResultFilePath 的 resultFilePathError JSON。在「下载开始」处理器内读到的 path 是决策前的默认落点快照，要确认改路径是否生效必须在事件结束后再读。', [
     'ICoreWebView2DownloadOperation.State', 'ICoreWebView2DownloadOperation.BytesReceived', 'ICoreWebView2DownloadOperation.TotalBytesToReceive',
@@ -336,6 +428,8 @@ export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [
   api('对象', 'EdgeView对象_创建文件系统句柄', [control, { name: '路径', type: 'wideString' }, { name: '目录', type: 'bool' }, { name: '权限', type: 'int' }], 'handle', '从绝对路径创建受管文件或目录句柄；拒绝相对路径和不存在路径。', ['ICoreWebView2Environment14.CreateWebFileSystemFileHandle', 'ICoreWebView2Environment14.CreateWebFileSystemDirectoryHandle'], { capability: EDGEVIEW_SAFE_API_V2_CAPABILITY, minimumRuntimeMajor: EDGEVIEW_FULL_RUNTIME_MAJOR, visibility: 'advanced' }),
   api('脚本', 'EdgeView脚本_发送附加对象JSON', [control, { name: 'JSON', type: 'wideString' }, { name: '对象句柄', type: 'handle' }], 'int', '向网页发送 JSON 与一个受管文件系统附加对象。', ['ICoreWebView2Environment14.CreateObjectCollection', 'ICoreWebView2_23.PostWebMessageAsJsonWithAdditionalObjects'], { capability: EDGEVIEW_SAFE_API_V2_CAPABILITY, minimumRuntimeMajor: EDGEVIEW_FULL_RUNTIME_MAJOR, visibility: 'advanced' })
 ];
+
+export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = withParamDocs(EDGEVIEW_PARAM_DOCS, EDGEVIEW_RAW_API_CATALOG);
 
 export const EDGEVIEW_SAFE_API_COMMANDS = EDGEVIEW_SAFE_API_CATALOG.map(entry => entry.command);
 export const EDGEVIEW_SAFE_API_BINDINGS = EDGEVIEW_SAFE_API_CATALOG.map(entry => entry.binding);

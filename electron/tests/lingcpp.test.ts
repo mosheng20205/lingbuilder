@@ -64,6 +64,18 @@ import {
   resolveBeginnerProcedureDefinition
 } from '../src/services/lingCpp/beginnerDefinitionNavigation';
 import { formatBeginnerFlowIndentation, getBeginnerCrossSegmentFlowFolds, getBeginnerIfFlowGuideRows, getBeginnerNextLineIndentation, parseBeginnerIfBlocks } from '../src/services/lingCpp/beginnerFlowGuide';
+import { toggleBeginnerLineComment } from '../src/services/lingCpp/beginnerLineComment';
+import { getBeginnerCompletionContext, shouldShowBeginnerCompletion } from '../src/services/lingCpp/beginnerCompletionContext';
+import { createLingCppMonarchLanguage } from '../src/services/lingCpp/monacoTokens';
+import { renameProjectGlobalAcrossSources } from '../src/services/lingCpp/projectGlobalService';
+import { findFunctionLibraryReferences } from '../src/services/lingCpp/functionLibraryService';
+import { collectLingCppCommandCalls } from '../src/services/windowDesigner/uiBackendCommandContract';
+import {
+  collectLingCppTextBlockLines,
+  collectLingCppTextBlockOpaqueLines,
+  parseLingCppTextBlockStatement,
+  scanLingCppTextBlockRanges
+} from '../src/services/lingCpp/textBlock';
 import { getBeginnerTextOffsetAtPoint } from '../src/services/lingCpp/beginnerTextPosition';
 import {
   applyPendingBeginnerCodeDrafts,
@@ -77,6 +89,7 @@ import {
   getCodeExplanation
 } from '../src/services/lingCpp/beginnerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { ExternalProjectProperties, resolveExecutableNameParts, validateProperties } from '../src/services/solution/externalProjectService';
 import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
@@ -4905,4 +4918,303 @@ test('数组下标和数组命令参与类型推断，并对非数组实参给�
       .filter(diagnostic => diagnostic.message.includes('不是数组')),
     []
   );
+});
+
+// ── 多行文本块（三引号）语法 ──────────────────────────────────────────────
+
+const TEXT_BLOCK_SOURCE = `包 文本块演示
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    文本型 关联设计文件 = "MainWindow.xml"
+
+    空 准备主页HTML()
+        局部 文本型 主页HTML
+        主页HTML = """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><title>结束 如果 测试</title></head>
+<body>
+<p>信息框("误伤")</p>
+</body>
+</html>
+"""
+        调试输出("完成")
+结束类`;
+
+test('parseLingCpp converges triple-quoted text blocks into one opaque statement', () => {
+  const parsed = parseLingCpp(TEXT_BLOCK_SOURCE);
+  assert.deepEqual(parsed.diagnostics.filter(item => item.level === 'error').map(item => item.message), []);
+  const method = parsed.program.classes[0]?.methods.find(item => item.name === '准备主页HTML');
+  const blocks = (method?.statements || []).filter(statement => statement.text.startsWith('主页HTML = """'));
+  assert.equal(blocks.length, 1);
+  const block = blocks[0];
+  assert.ok(block);
+  assert.equal(block?.endLine, (block?.line ?? 0) + 8); // 7 行内容 + 结束标记
+  // 块内的 结束/如果/信息框 行不得提前关闭子程序：后续调试输出仍是同一方法的语句
+  assert.ok(method?.statements.some(statement => statement.text === '调试输出("完成")'));
+  assert.equal(method?.statements.some(statement => statement.text === '结束'), false);
+  assert.equal(method?.locals?.map(local => local.name).join(','), '主页HTML');
+});
+
+test('text block misuse produces Chinese diagnostics', () => {
+  const unclosed = parseLingCpp(`包 演示
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    空 方法甲()
+        文本 = """
+        内容
+结束类`);
+  assert.ok(unclosed.diagnostics.some(item => item.message.includes('多行文本块缺少结束标记')));
+
+  const stray = parseLingCpp(`包 演示
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    空 方法甲()
+        调试输出("x")
+"""
+结束类`);
+  assert.ok(stray.diagnostics.some(item => item.message.includes('多余的文本块结束标记')));
+
+  const afterClose = parseLingCpp(`包 演示
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    空 方法甲()
+        文本 = """
+内容
+""" 多余
+结束类`);
+  assert.ok(afterClose.diagnostics.some(item => item.message.includes('结束标记后不得再有内容')));
+
+  const typedInit = parseLingCpp(`包 演示
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    空 方法甲()
+        局部 文本型 初值 = """
+        返回
+结束类`);
+  assert.ok(typedInit.diagnostics.some(item => item.message.includes('不能作为「初值」的声明初值')));
+});
+
+test('generateLingCppNativeWin32Project emits text block as one escaped wide literal', () => {
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: TEXT_BLOCK_SOURCE
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('主页HTML = L"<!DOCTYPE html>\\n<html lang=\\"zh-CN\\">'), '块生成必须折叠为单行宽字面量');
+  assert.ok(mainCpp.includes('\\n</html>";'), '结束标记前不得遗漏最后一行内容');
+  // 块内 信息框( 不得被翻译成功能库/内置命令调用
+  assert.equal(mainCpp.includes('信息框(L"误伤"'), false);
+  assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：主页HTML'), false);
+  assert.ok(mainCpp.includes('调试输出(L"完成");'));
+});
+
+test('beginner flow indentation and fold parsing keep text block lines opaque', () => {
+  const lines = [
+    '主页HTML = """',
+    '结束',
+    '如果 (x)',
+    '"""',
+    '调试输出("完成")'
+  ];
+  const formatted = formatBeginnerFlowIndentation(lines);
+  assert.deepEqual(formatted.slice(1, 4), ['结束', '如果 (x)', '"""']);
+  assert.equal(formatted[4], '调试输出("完成")');
+  assert.equal(parseBeginnerIfBlocks(lines).length, 0);
+  assert.equal(getBeginnerIfFlowGuideRows(lines).some(row => row.kind === 'end' || row.kind === 'if'), false);
+});
+
+test('beginner line comment toggle and completion stay out of text blocks', () => {
+  const value = '甲 = 1\n乙 = """\n结束\n"""\n丙 = 2';
+  const result = toggleBeginnerLineComment(value, 0, value.length);
+  assert.equal(result.value, '// 甲 = 1\n乙 = """\n结束\n"""\n// 丙 = 2');
+
+  const inside = '乙 = """\n信息框(';
+  const context = getBeginnerCompletionContext(inside, inside.length);
+  assert.equal(context.isInsideString, true);
+  assert.equal(shouldShowBeginnerCompletion(context, true), false);
+});
+
+test('backend contract and function library scans ignore text block content', () => {
+  const parsed = parseLingCpp(TEXT_BLOCK_SOURCE);
+  assert.deepEqual(collectLingCppCommandCalls(parsed.program, ['信息框']), []);
+
+  const librarySource = TEXT_BLOCK_SOURCE.replace('        调试输出("完成")', '        工具库.取时间()');
+  const withBlock = `包 演示
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    空 方法甲()
+        文本 = """
+工具库.取时间()
+"""
+结束类`;
+  const files = [{ filePath: 'block.lcpp', sourceCode: withBlock, language: 'lingcpp' as const }];
+  assert.equal(findFunctionLibraryReferences(files, '工具库').length, 0);
+  assert.ok(librarySource.includes('工具库.取时间()'));
+});
+
+test('update-method-body rewrite keeps text block content byte-identical', () => {
+  const bodyLines = ['主页HTML = """', '<!DOCTYPE html>', '<p>结束 如果</p>', '"""', '调试输出("完成")'];
+  const result = applyLingCppAstEdit(TEXT_BLOCK_SOURCE, {
+    kind: 'update-method-body',
+    className: '游戏主窗体',
+    methodName: '准备主页HTML',
+    bodyLines
+  });
+  assert.equal(result.success, true);
+  assert.ok(result.sourceCode.includes('<!DOCTYPE html>\n<p>结束 如果</p>\n"""'));
+  const reparsed = parseLingCpp(result.sourceCode);
+  assert.deepEqual(reparsed.diagnostics.filter(item => item.level === 'error').map(item => item.message), []);
+});
+
+test('global rename does not rewrite text block content', () => {
+  const source = `包 演示
+使用 Win32窗口
+
+全局 文本型 计数
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    空 方法甲()
+        文本 = """
+计数 计数
+"""
+        计数 = "更新"
+结束类`;
+  const context = createProjectGlobalContext('globals.lcpp', source);
+  const [renamed] = renameProjectGlobalAcrossSources([{ filePath: 'globals.lcpp', sourceCode: source }], context, '计数', '总数');
+  assert.ok(renamed.sourceCode.includes('\n计数 计数\n'), '块内容必须原样保留');
+  assert.ok(renamed.sourceCode.includes('总数 = "更新"'));
+});
+
+test('formatLingCpp keeps text block lines raw including blank lines', () => {
+  const source = `包 演示
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    空 方法甲()
+        文本 = """
+
+
+内容  
+"""
+结束类`;
+  const formatted = formatLingCpp(source);
+  assert.ok(formatted.includes('\n\n\n内容  \n"""'), '块内空行与行尾空格必须原样保留');
+});
+
+test('text block lexical helpers match parser and generator contract', () => {
+  const lines = TEXT_BLOCK_SOURCE.split('\n');
+  const scan = scanLingCppTextBlockRanges(lines);
+  assert.equal(scan.ranges.length, 1);
+  assert.equal(scan.unclosedOpenLine, undefined);
+  assert.deepEqual(scan.strayCloseLines, []);
+  const consumed = collectLingCppTextBlockLines(scan, lines.length);
+  const opaque = collectLingCppTextBlockOpaqueLines(scan, lines.length);
+  assert.equal(consumed.size, opaque.size + 1); // 开始行可参与缩进，不透明行少一行
+
+  const block = parseLingCppTextBlockStatement('甲 = """\n<!DOCTYPE html>\n<p>x</p>\n"""');
+  assert.equal(block?.target, '甲');
+  assert.equal(block?.content, '<!DOCTYPE html>\n<p>x</p>');
+  assert.equal(parseLingCppTextBlockStatement('甲 = """\n内容'), undefined);
+  assert.equal(parseLingCppTextBlockStatement('甲 = """\n内容\n""" 多余'), undefined);
+});
+
+test('Monarch tokenizer defines a text block state for triple quotes', () => {
+  const monarch = createLingCppMonarchLanguage();
+  assert.ok(Array.isArray(monarch.tokenizer.textBlock));
+  assert.ok(monarch.tokenizer.root.some(rule => Array.isArray(rule) && String(rule[0]).includes('"""')));
+});
+
+test('LingCpp dynamic-library output exports 公开 methods via DllMain entry and singleton forwarders', () => {
+  const source = [
+    '类 游戏主窗体 : 窗口',
+    '公开',
+    '  事件 _游戏主窗体_创建完毕()',
+    '    局部 整数型 自测 = 0',
+    '    自测 = 加法计算(1, 2)',
+    '  结束',
+    '  整数型 加法计算(整数型 被加数, 整数型 加数)',
+    '    局部 整数型 合计 = 0',
+    '    合计 = 被加数 + 加数',
+    '    返回 合计',
+    '  结束',
+    '  文本型 问候生成(文本型 姓名)',
+    '    返回 姓名',
+    '  结束',
+    '私有',
+    '  整数型 内部翻倍(整数型 输入值)',
+    '    返回 输入值 * 2',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, outputKind: 'dynamic-library' });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(!cpp.includes('int WINAPI wWinMain'), '动态库模式不应生成 wWinMain 入口');
+  assert.match(cpp, /BOOL WINAPI DllMain\(HINSTANCE instance, DWORD reason, LPVOID reserved\)/u);
+  assert.match(cpp, /LingBuilder_EnsureRuntimeInitialized\(\)/u);
+  assert.match(cpp, /extern "C" __declspec\(dllexport\) int 加法计算\(int 被加数, int 加数\)/u);
+  // 文本参数必须以 const& 跨界、文本返回经 thread_local 缓冲以 const wchar_t* 交出（按值跨界会跨 CRT 堆损坏）。
+  assert.match(cpp, /extern "C" __declspec\(dllexport\) const wchar_t\* 问候生成\(const wchar_t\* 姓名\)/u);
+  assert.match(cpp, /LingBuilder_Dll文本返回缓冲 = LingBuilder_应用单例_游戏主窗体\(\)\.问候生成\(姓名\);/u);
+  assert.match(cpp, /LingBuilder_应用单例_游戏主窗体\(\)\.加法计算\(被加数, 加数\)/u);
+  assert.ok(!cpp.includes('dllexport) 整数型 内部翻倍'), '私有子程序不应出现在导出包装中');
+});
+
+test('LingCpp dynamic-library output blocks non-POD export signatures', () => {
+  const source = [
+    '类 游戏主窗体 : 窗口',
+    '公开',
+    '  整数型 异常计算(按钮 目标按钮)',
+    '    返回 0',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, outputKind: 'dynamic-library' });
+  assert.ok(generated.blockingDiagnostics.some(message => message.includes('不能跨 DLL 边界的类型')), generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(!cpp.includes('__declspec(dllexport)'), '存在阻断诊断时不应生成导出包装');
+});
+
+test('LingCpp application output keeps wWinMain and generates no export wrappers', () => {
+  const source = [
+    '类 游戏主窗体 : 窗口',
+    '公开',
+    '  整数型 加法计算(整数型 被加数, 整数型 加数)',
+    '    局部 整数型 合计 = 0',
+    '    合计 = 被加数 + 加数',
+    '    返回 合计',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /int WINAPI wWinMain\(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand\)/u);
+  assert.ok(!cpp.includes('__declspec(dllexport)'), 'EXE 模式不应生成导出包装');
+});
+
+test('External project properties accept outputType and resolve dll file names', () => {
+  assert.deepEqual(resolveExecutableNameParts('MathLib', 'dll'), { baseName: 'MathLib', fileName: 'MathLib.dll' });
+  assert.deepEqual(resolveExecutableNameParts('MathLib.dll'), { baseName: 'MathLib', fileName: 'MathLib.exe' });
+  assert.deepEqual(resolveExecutableNameParts(undefined, 'dll'), { baseName: 'LingBuilderPreview', fileName: 'LingBuilderPreview.dll' });
+  const properties: ExternalProjectProperties = {
+    configuration: 'Debug', architecture: 'Win32', additionalArguments: [], outputType: 'dll'
+  };
+  validateProperties(properties);
+  assert.throws(() => validateProperties({ ...properties, outputType: 'lib' as never }), /输出类型/u);
 });

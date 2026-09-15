@@ -19,10 +19,13 @@ interface Aria2CommandSpec {
   insertText: string;
 }
 
+// 下载任务句柄的重复语义提取为共享常量，说明按 aria2Runtime.ts 实现核实。
+const aria2TaskArg = 'Aria2_下载 等命令返回的下载任务句柄；任务已释放或从未存在时命令按说明返回失败值。';
+
 const parameter = (
   name: string,
   type: ModuleCommandValueType,
-  description?: string
+  description: string
 ): ModuleCommandBindingParameter => ({ name, type, description });
 
 export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
@@ -57,7 +60,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_等待',
     signature: 'Aria2_等待(任务, 超时毫秒)',
     description: '等待下载结束。返回真表示任务成功完成；超时、停止或下载失败均返回假。超时毫秒为 0 时只检查当前状态。',
-    parameters: [parameter('任务', 'Aria2任务'), parameter('超时毫秒', 'int')],
+    parameters: [parameter('任务', 'Aria2任务', 'Aria2_下载 等命令返回的下载任务句柄；任务已释放时命令按说明返回失败值。'), parameter('超时毫秒', 'int', '等待下载结束的超时毫秒数；0 表示只检查一次当前状态不等待。')],
     returnType: 'bool',
     returnLabel: '逻辑型',
     category: '下载任务',
@@ -67,7 +70,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_取状态',
     signature: 'Aria2_取状态(任务)',
     description: '返回“下载中”“已完成”“已失败”或“已停止”。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}任务不存在时返回 无效任务。`)],
     returnType: 'wideString',
     returnLabel: '文本型',
     category: '状态',
@@ -77,7 +80,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_取进度',
     signature: 'Aria2_取进度(任务)',
     description: '返回 aria2 已报告的下载进度百分比；未知时为 0，成功完成时为 100。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}任务不存在时返回 0。`)],
     returnType: 'int',
     returnLabel: '整数型',
     category: '状态',
@@ -87,7 +90,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_取已下载字节',
     signature: 'Aria2_取已下载字节(任务)',
     description: '读取当前目标文件的实际字节数，适合显示下载量。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}任务不存在时返回 0。`)],
     returnType: 'longLong',
     returnLabel: '长整数型',
     category: '状态',
@@ -97,7 +100,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_取总字节',
     signature: 'Aria2_取总字节(任务)',
     description: '返回任务结束后确认的文件总字节数；下载尚未结束或服务器未报告时可能为 0。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}任务不存在时返回 0。`)],
     returnType: 'longLong',
     returnLabel: '长整数型',
     category: '状态',
@@ -107,7 +110,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_取错误',
     signature: 'Aria2_取错误(任务)',
     description: '读取任务最近一次中文错误或 aria2 输出尾部。任务成功时返回空文本。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}任务不存在时返回下载任务不存在提示。`)],
     returnType: 'wideString',
     returnLabel: '文本型',
     category: '状态',
@@ -117,7 +120,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_取下载速度',
     signature: 'Aria2_取下载速度(任务)',
     description: '按目标文件最近一次采样返回下载速度，单位为字节/秒；适合定时刷新下载面板。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', aria2TaskArg)],
     returnType: 'longLong',
     returnLabel: '长整数型',
     category: '状态',
@@ -127,7 +130,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_取保存目录',
     signature: 'Aria2_取保存目录(任务)',
     description: '返回任务实际使用的绝对保存目录；任务不存在时返回空文本。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', aria2TaskArg)],
     returnType: 'wideString',
     returnLabel: '文本型',
     category: '状态',
@@ -137,7 +140,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_打开目录',
     signature: 'Aria2_打开目录(任务)',
     description: '使用系统文件管理器打开任务的实际保存目录；目录来自任务句柄，不接受任意外部路径。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}用系统默认程序打开任务所在目录。`)],
     returnType: 'bool',
     returnLabel: '逻辑型',
     category: '文件位置',
@@ -147,7 +150,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_停止',
     signature: 'Aria2_停止(任务)',
     description: '停止 aria2 子进程并保留 aria2 的断点续传元数据；再次创建同目录同文件名任务可继续下载。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}停止后任务不再继续下载。`)],
     returnType: 'bool',
     returnLabel: '逻辑型',
     category: '下载任务',
@@ -157,7 +160,7 @@ export const ARIA2_COMMAND_SPECS: readonly Aria2CommandSpec[] = [
     name: 'Aria2_释放',
     signature: 'Aria2_释放(任务)',
     description: '停止仍在运行的任务并释放其本地句柄和状态记录。',
-    parameters: [parameter('任务', 'Aria2任务')],
+    parameters: [parameter('任务', 'Aria2任务', `${aria2TaskArg}释放后任务不再存在。`)],
     returnType: 'bool',
     returnLabel: '逻辑型',
     category: '下载任务',
