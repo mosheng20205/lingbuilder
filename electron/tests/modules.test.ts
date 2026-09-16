@@ -57,7 +57,7 @@ import {
   getBeginnerModuleCommandHints
 } from '../src/services/modules/moduleContextAdapters';
 import { InstalledModule } from '../src/services/modules/types';
-import { exportModuleNativeDependencies, inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies, peExportProbe } from '../src/services/modules/nativeDependencyService';
+import { EDGEVIEW_WEBVIEW2_SDK_VERSION, exportModuleNativeDependencies, inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies, peExportProbe } from '../src/services/modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { createControlToolboxGroups } from '../src/services/windowDesigner/controlToolboxModel';
@@ -239,6 +239,45 @@ test('标准库模块命令、binding、Win32/x64 target 保持完整对应', ()
   }
 });
 
+test('句柄族名义返回类型（文件号/日期时间）登记且 contributes 与 binding 类型成对', () => {
+  const modules = new Map(BUILTIN_MODULES.map(module => [module.id, module]));
+
+  const fsCore = modules.get('lingbuilder.fs.core');
+  assert.ok(fsCore, '文件目录模块必须内置注册');
+  assert.deepEqual(
+    fsCore?.contributes?.types?.filter(type => type.name === '文件号').map(type => type.cppType),
+    ['long long'],
+    '文件目录模块必须登记「文件号」名义类型'
+  );
+  const fileOpen = fsCore?.contributes?.commands?.find(command => command.name === '文件_打开');
+  const fileOpenBinding = fsCore?.bindings?.commands?.find(binding => binding.command === '文件_打开');
+  assert.equal(fileOpen?.returnType, '文件号', '文件_打开 的 .lcpp 返回类型必须是 文件号');
+  assert.equal(fileOpenBinding?.returnType, 'longLong', '文件_打开 的 binding ABI 类型必须是 longLong');
+
+  const datetime = modules.get('lingbuilder.std.datetime');
+  assert.ok(datetime, '日期时间模块必须内置注册');
+  assert.deepEqual(
+    datetime?.contributes?.types?.filter(type => type.name === '日期时间').map(type => type.cppType),
+    ['long long'],
+    '日期时间模块必须登记「日期时间」名义类型'
+  );
+  const now = datetime?.contributes?.commands?.find(command => command.name === '时间_取现行');
+  const nowBinding = datetime?.bindings?.commands?.find(binding => binding.command === '时间_取现行');
+  assert.equal(now?.returnType, '日期时间', '时间_取现行 的 .lcpp 返回类型必须是 日期时间');
+  assert.equal(nowBinding?.returnType, 'longLong', '时间_取现行 的 binding ABI 类型必须是 longLong');
+
+  // 句柄族：文件_打开 的可选参数必须带默认值且位于参数表尾部；变参读写命令必须按 lingValue 声明。
+  const openParams = fileOpenBinding?.parameters || [];
+  assert.ok(openParams.slice(1).every(parameter => parameter.optional === true), '文件_打开 只有路径是必填参数');
+  const readData = fsCore?.bindings?.commands?.find(binding => binding.command === '文件_读入数据');
+  const readDataVariadic = readData?.parameters?.find(parameter => parameter.variadic === true);
+  assert.equal(readDataVariadic?.type, 'lingValue', '文件_读入数据 的可变参数必须是 lingValue');
+  assert.equal(readDataVariadic?.byRef, true, '文件_读入数据 的可变参数必须传址以写回变量');
+  const writeData = fsCore?.bindings?.commands?.find(binding => binding.command === '文件_写出数据');
+  const writeDataVariadic = writeData?.parameters?.find(parameter => parameter.variadic === true);
+  assert.equal(writeDataVariadic?.type, 'lingValue', '文件_写出数据 的可变参数必须是 lingValue');
+});
+
 test('全部内置方法的控件参数统一使用 controlRef、裸补全和明确运行时元数据', () => {
   const audit = auditControlReferenceManifests(BUILTIN_MODULES);
   assert.deepEqual(audit.violations, []);
@@ -293,12 +332,28 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-14 写回：系统外壳模块（lingbuilder.system.shell）新增
       // 系统_取运行目录 命令（+1 命令，0 参数，无控件参数），返回当前运行
       // exe 所在目录（不带尾部反斜杠），对齐易语言「取运行目录」；模块数不变。
+      // 基线 2026-09-16 写回（易语言支持库迁移批次）：文件目录模块 +25 命令
+      //（文件流句柄族 23 条：打开/关闭/关闭全部/移动读写位置/移到文件首/移到文件尾/
+      // 读入字节集/写出字节集/读入文本/写出文本/读入一行/写文本行/读入数据/写出数据/
+      // 是否在文件尾/取读写位置/取长度/插入字节集/插入文本/插入文本行/删除数据/锁定/解锁；
+      // 枚举族 2 条：文件_枚举/目录_枚举），+86 参数，新增「文件号」名义类型；
+      // 文本处理模块 +6（取左边/取右边/码点转字符/取码点/删首空白/删尾空白），
+      // 日期时间模块 +17（取现行/置现行/从文本/到文本/指定/年月日星期时分秒/增减/
+      // 取间隔/取某月天数/取日期/取时间），新增「日期时间」名义类型；数学模块 +11
+      //（取整/绝对取整/四舍五入/取符号/正弦/余弦/正切/反正切/自然对数/反对数/置随机种子）；
+      // 字节与十六进制模块 +7（字节集_从文本/重复/分割 + 数值_到十六进制文本/到八进制文本/
+      // 十六进制解析/八进制解析）。合计 +66 命令 +108 参数，无控件参数，模块数不变。
+      // 基线 2026-09-16 追加写回（variadic 补标）：格式化文本/列表视图_创建行/
+      // 列表视图_创建行集合 的可变参形参补 variadic: true 并按清单校验要求从 raw
+      // 切换为 lingValue；命令/参数计数与命令摘要不变，仅参数摘要变化。
+      // 基线 2026-09-16 再追加（SQLite 2.2 加密算法支持）：SQLite_设置加密算法
+      //（+1 命令 +1 参数）、SQLite_探测加密算法（+1 命令 +2 参数）入账，无控件参数。
       modules: 89,
-      commands: 3403,
-      parameters: 5982,
+      commands: 3471,
+      parameters: 6093,
       controlReferences: 1303,
-      commandDigest: '4cc3f152',
-      parameterDigest: '1a6c15b2'
+      commandDigest: 'c0771f22',
+      parameterDigest: '6e17d65c'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -430,7 +485,8 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 54, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-09-16 写回 54→55：项目 DLL 命令声明功能新增 projectDllMaterializeService.ts（已重新确认全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 55, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1320,7 +1376,8 @@ test('Win32 基础模块提供可变参数占位符文本格式化命令', () =>
   assert.equal(contribution?.signature, '格式化文本(格式模板, 参数...)');
   assert.match(contribution?.description || '', /\{\}.*\{\{.*\}\}/u);
   assert.equal(binding?.runtimeName, '格式化文本');
-  assert.deepEqual(binding?.parameters?.map(parameter => parameter.type), ['wideString', 'raw']);
+  // 可变参形参按清单校验要求声明为 variadic lingValue（lingValue 必须 variadic: true）。
+  assert.deepEqual(binding?.parameters?.map(parameter => [parameter.type, parameter.variadic === true]), [['wideString', false], ['lingValue', true]]);
   assert.equal(binding?.returnType, 'wideString');
 });
 
@@ -1384,24 +1441,24 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   assert.match(mainCpp, /bool 音频_播放WAV/u);
 });
 
-test('SQLite 2.1 提供多连接、参数化查询、事务、WAL、备份、加密和完整错误闭环', () => {
+test('SQLite 2.2 提供多连接、参数化查询、事务、WAL、备份、多算法加密和完整错误闭环', () => {
   const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.database.sqlite')!;
   const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
   const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
-  assert.equal(manifest.version, '2.1.0');
-  assert.equal(commandNames.length, 70);
+  assert.equal(manifest.version, '2.2.0');
+  assert.equal(commandNames.length, 72);
   assert.deepEqual(bindingNames, commandNames);
   assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [
     ['SQLite连接', 'long long'],
     ['SQLite语句', 'long long']
   ]);
   for (const required of [
-    'SQLite_打开连接', 'SQLite_打开加密库', 'SQLite_打开加密连接', 'SQLite_运行库是否支持加密', 'SQLite_准备', 'SQLite_绑定空值', 'SQLite_绑定长整数', 'SQLite_绑定文本', 'SQLite_绑定字节集',
+    'SQLite_打开连接', 'SQLite_打开加密库', 'SQLite_打开加密连接', 'SQLite_运行库是否支持加密', 'SQLite_设置加密算法', 'SQLite_探测加密算法', 'SQLite_准备', 'SQLite_绑定空值', 'SQLite_绑定长整数', 'SQLite_绑定文本', 'SQLite_绑定字节集',
     'SQLite_语句步进', 'SQLite_取列类型', 'SQLite_取列字节集', 'SQLite_开始事务', 'SQLite_创建保存点',
     'SQLite_启用WAL', 'SQLite_WAL检查点', 'SQLite_备份到文件', 'SQLite_完整性检查', 'SQLite_中断',
     'SQLite_取扩展错误码', 'SQLite_取系统错误码'
   ]) {
-    assert.ok(commandNames.includes(required), `SQLite 2.1 缺少 ${required}`);
+    assert.ok(commandNames.includes(required), `SQLite 2.2 缺少 ${required}`);
   }
   assert.deepEqual(
     manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_绑定字节集')?.parameters?.map(parameter => parameter.type),
@@ -1411,6 +1468,16 @@ test('SQLite 2.1 提供多连接、参数化查询、事务、WAL、备份、加
     manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开加密连接')?.parameters?.map(parameter => parameter.type),
     ['wideString', 'wideString', 'int', 'int']
   );
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_设置加密算法')?.parameters?.map(parameter => [parameter.name, parameter.type]),
+    [['算法', 'wideString']]
+  );
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_探测加密算法')?.parameters?.map(parameter => [parameter.name, parameter.type]),
+    [['数据库路径', 'wideString'], ['密码', 'wideString']]
+  );
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_设置加密算法')?.returnType, 'bool');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_探测加密算法')?.returnType, 'wideString');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_取列字节集')?.returnType, 'bytes');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开连接')?.returnType, 'SQLite连接');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开加密连接')?.returnType, 'SQLite连接');
@@ -1473,6 +1540,37 @@ test('SQLite 2.1 提供多连接、参数化查询、事务、WAL、备份、加
   }
   assert.match(encryptedMainCpp, /SQLite_打开加密连接\(L"data\/app\.db", L"我的密码", 0, 5000\)/u);
   assert.match(encryptedMainCpp, /SQLite_打开加密库\(L"data\/cache\.db", L"另一个密码"\)/u);
+
+  const algorithmGenerated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        文本型 算法 = SQLite_探测加密算法("data/legacy.db", "旧密码")',
+      '        如果 (算法 != "")',
+      '            SQLite_设置加密算法(算法)',
+      '        如果结束',
+      '        SQLite_设置加密算法("rc4")',
+      '        局部 SQLite连接 旧库 = SQLite_打开加密连接("data/legacy.db", "旧密码", 2, 5000)',
+      '        SQLite_关闭连接(旧库)',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  assert.deepEqual(algorithmGenerated.blockingDiagnostics, []);
+  const algorithmMainCpp = algorithmGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  for (const runtimeSymbol of [
+    'bool SQLite_设置加密算法(const wchar_t* algorithm)',
+    'const wchar_t* SQLite_探测加密算法(const wchar_t* path, const wchar_t* password)',
+    'PRAGMA cipher_compatibility=3',
+    'PRAGMA cipher=rc4'
+  ]) {
+    assert.ok(algorithmMainCpp.includes(runtimeSymbol), `SQLite 多算法加密运行时缺少 ${runtimeSymbol}`);
+  }
+  assert.ok(algorithmMainCpp.includes('SnapshotPendingCipher'), 'SQLite 加密打开路径必须按待用算法注入 PRAGMA');
+  assert.match(algorithmMainCpp, /SQLite_探测加密算法\(L"data\/legacy\.db", L"旧密码"\)/u);
+  assert.match(algorithmMainCpp, /SQLite_设置加密算法\(L"rc4"\)/u);
+  assert.match(algorithmMainCpp, /SQLite_打开加密连接\(L"data\/legacy\.db", L"旧密码", 2, 5000\)/u);
 });
 
 test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭环', () => {
@@ -4083,6 +4181,53 @@ test('EdgeView native dependencies reject an arbitrary latest NuGet cache versio
     });
     assert.ok(plan.diagnostics.some(item => item.includes('固定版本 Microsoft.Web.WebView2 1.0.4078.44')));
     assert.equal(plan.includeDirs.some(item => item.endsWith(path.join('lingbuilder.edgeview', 'include'))), false);
+    assert.equal(await exists(path.join(tempRoot, 'bin', 'WebView2Loader.dll')), false);
+  } finally {
+    if (previousNugetPackages === undefined) delete process.env.NUGET_PACKAGES;
+    else process.env.NUGET_PACKAGES = previousNugetPackages;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('EdgeView native dependencies materialize the static WebView2 loader library', async () => {
+  const nugetRoot = process.env.NUGET_PACKAGES || path.join(os.homedir(), '.nuget', 'packages');
+  const realHeader = path.join(nugetRoot, 'microsoft.web.webview2', EDGEVIEW_WEBVIEW2_SDK_VERSION, 'build', 'native', 'include', 'WebView2.h');
+  if (!(await exists(realHeader))) {
+    return;
+  }
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-edgeview-static-'));
+  const previousNugetPackages = process.env.NUGET_PACKAGES;
+  const previousUserProfile = process.env.USERPROFILE;
+  try {
+    // 用真实 WebView2.h（通过固定版本哈希门禁）+ 假静态库构造固定版本包。
+    const packageRoot = path.join(tempRoot, 'packages', 'microsoft.web.webview2', EDGEVIEW_WEBVIEW2_SDK_VERSION, 'build', 'native');
+    await fs.mkdir(path.join(packageRoot, 'include'), { recursive: true });
+    await fs.mkdir(path.join(packageRoot, 'x86'), { recursive: true });
+    await fs.mkdir(path.join(packageRoot, 'x64'), { recursive: true });
+    await fs.copyFile(realHeader, path.join(packageRoot, 'include', 'WebView2.h'));
+    await fs.writeFile(path.join(packageRoot, 'include', 'WebView2EnvironmentOptions.h'), '// options', 'utf8');
+    await fs.writeFile(path.join(packageRoot, 'x86', 'WebView2LoaderStatic.lib'), Buffer.from([1, 2, 3]));
+    await fs.writeFile(path.join(packageRoot, 'x64', 'WebView2LoaderStatic.lib'), Buffer.from([4, 5, 6, 7]));
+    process.env.NUGET_PACKAGES = path.join(tempRoot, 'packages');
+    process.env.USERPROFILE = tempRoot;
+    const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+    assert.ok(manifest);
+    const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, diagnostics: [] };
+    const buildDir = path.join(tempRoot, 'build');
+    const plan = await materializeModuleNativeDependencies([module], {
+      buildDir,
+      sourceDir: path.join(tempRoot, 'source'),
+      binDir: path.join(tempRoot, 'bin'),
+      exportDir: path.join(tempRoot, 'export'),
+      preferredTargetId: 'windows-msvc-x64'
+    });
+    assert.ok(plan.libFiles.some(item => item.endsWith(path.join('lingbuilder.edgeview', 'lib', 'x64', 'WebView2LoaderStatic.lib'))));
+    assert.ok(await exists(path.join(buildDir, 'modules', 'lingbuilder.edgeview', 'lib', 'x64', 'WebView2LoaderStatic.lib')));
+    assert.ok(await exists(path.join(tempRoot, 'export', 'modules', 'lingbuilder.edgeview', 'lib', 'x86', 'WebView2LoaderStatic.lib')));
+    // 单文件分发：不再向 exe 目录部署 WebView2Loader.dll。
+    assert.equal(plan.runtimeFiles.some(item => item.includes('WebView2Loader.dll')), false);
     assert.equal(await exists(path.join(tempRoot, 'bin', 'WebView2Loader.dll')), false);
   } finally {
     if (previousNugetPackages === undefined) delete process.env.NUGET_PACKAGES;

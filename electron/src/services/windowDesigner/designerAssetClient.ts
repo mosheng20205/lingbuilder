@@ -21,6 +21,17 @@ export async function listDesignerImageResources(projectId: string): Promise<Des
   return result.resources;
 }
 
+/** 内嵌站点「扫描目录」：递归列出工作区内一个目录的全部文件（工作区相对路径）。 */
+export async function scanEmbeddedSiteDirectory(directory: string): Promise<string[]> {
+  const query = new URLSearchParams({ dir: directory });
+  const response = await fetch(`/api/window-designer/embedded-site/scan?${query.toString()}`);
+  const result = await response.json() as { ok?: boolean; files?: string[]; error?: string };
+  if (!response.ok || !result.ok || !Array.isArray(result.files)) {
+    throw new Error(result.error || '内嵌站点目录扫描失败。');
+  }
+  return result.files;
+}
+
 export function getDesignerImagePreviewSource(projectId: string, imageSource: string): string {
   const source = imageSource.trim();
   if (!source || /^(?:https?:|data:|blob:)/iu.test(source)) return source;

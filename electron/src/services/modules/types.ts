@@ -376,6 +376,8 @@ export interface ModuleCommandBindingParameter {
   variadic?: boolean;
   /** 仅 handler 可用；由语言服务校验 &引用目标的参数和返回类型。 */
   handlerSignature?: ModuleHandlerSignatureContract;
+  /** 项目 DLL 命令声明：POD 参数按指针传址（输出参数），调用点自动取 `&实参`。 */
+  byRef?: boolean;
   /** 可选参数只能出现在参数列表尾部。 */
   optional?: boolean;
   /** 可选参数省略时使用的确定性默认值；null 表示“未设置”。 */
@@ -472,6 +474,8 @@ export interface InstalledModule {
   isInstalled: boolean;
   isEnabledForProject?: boolean;
   diagnostics: string[];
+  /** 项目级 DLL 命令声明合成的虚拟模块：无安装目录，由物化服务单独处理，模块管理 UI 不展示。 */
+  isProjectDeclaration?: boolean;
   sha256?: string;
 }
 

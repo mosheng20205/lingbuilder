@@ -88,6 +88,7 @@ import { DEFAULT_WINDOW_BORDER_STYLE, LING_WINDOW_BORDER_STYLE_OPTIONS, deriveLi
 import { normalizeToolbarButtons } from '../services/windowDesigner/toolbarButtonCollectionModel';
 import { normalizeStatusBarParts } from '../services/windowDesigner/statusBarPartCollectionModel';
 import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
+import { draftFromEmbeddedSite, embeddedSiteFromDraft, getEmbeddedSiteEntryDirectory, parseEmbeddedSiteFilesText, pickEmbeddedSiteEntry, validateEmbeddedSiteDraft, type EmbeddedSiteDraft } from '../services/windowDesigner/embeddedSiteModel';
 import { normalizeDataGridModel } from '../services/windowDesigner/dataGridModel';
 import { captureDesignerHotKey } from '../services/windowDesigner/hotKeyProperty';
 import {
@@ -160,7 +161,7 @@ import {
   type ListViewEditableRow
 } from '../services/windowDesigner/listViewCollectionModel';
 import { flattenTreeViewNodes, normalizeTreeViewNodes } from '../services/windowDesigner/treeViewCollectionModel';
-import { getDesignerImagePreviewSource, selectAndImportDesignerAnimation, selectAndImportDesignerGif, selectAndImportDesignerIcon, selectAndImportDesignerImage, selectAndImportDesignerVideo } from '../services/windowDesigner/designerAssetClient';
+import { getDesignerImagePreviewSource, scanEmbeddedSiteDirectory, selectAndImportDesignerAnimation, selectAndImportDesignerGif, selectAndImportDesignerIcon, selectAndImportDesignerImage, selectAndImportDesignerVideo } from '../services/windowDesigner/designerAssetClient';
 import {
   getNewEmojiThemePreview,
   isNewEmojiDesignerControlSupported,
@@ -5241,6 +5242,45 @@ function WindowProperties({
 }) {
   const [isSelectingIcon, setIsSelectingIcon] = useState(false);
   const [iconStatus, setIconStatus] = useState('');
+  const [siteDraft, setSiteDraft] = useState<EmbeddedSiteDraft>(() => draftFromEmbeddedSite(window.embeddedSite));
+  const [siteScanDirectory, setSiteScanDirectory] = useState(() => getEmbeddedSiteEntryDirectory(window.embeddedSite?.entry || '').replace(/\/$/u, ''));
+  const [siteScanning, setSiteScanning] = useState(false);
+  const [siteStatus, setSiteStatus] = useState('');
+  useEffect(() => {
+    setSiteDraft(draftFromEmbeddedSite(window.embeddedSite));
+    setSiteScanDirectory(getEmbeddedSiteEntryDirectory(window.embeddedSite?.entry || '').replace(/\/$/u, ''));
+    setSiteStatus('');
+    // 切换选中窗口时才重置内嵌站点草稿；编辑过程中以本地草稿为准，失焦时提交。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [window.id]);
+  const commitEmbeddedSiteDraft = (draft: EmbeddedSiteDraft) => {
+    setSiteDraft(draft);
+    onChange({ embeddedSite: embeddedSiteFromDraft(draft) });
+  };
+  const runEmbeddedSiteScan = async () => {
+    const directory = siteScanDirectory.trim();
+    if (!directory) {
+      setSiteStatus('请先填写站点目录（工作区相对路径，如 www）。');
+      return;
+    }
+    setSiteScanning(true);
+    try {
+      const files = await scanEmbeddedSiteDirectory(directory);
+      if (files.length === 0) {
+        setSiteStatus(`目录 ${directory} 中没有文件。`);
+        return;
+      }
+      const entry = siteDraft.entry.trim().replace(/\\/gu, '/');
+      const nextEntry = entry && files.includes(entry) ? entry : pickEmbeddedSiteEntry(files);
+      commitEmbeddedSiteDraft({ ...siteDraft, entry: nextEntry, filesText: files.join('\n') });
+      setSiteStatus(`已扫描 ${files.length} 个文件，入口：${nextEntry}`);
+    } catch (error) {
+      setSiteStatus(`扫描失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSiteScanning(false);
+    }
+  };
+  const embeddedSiteProblems = validateEmbeddedSiteDraft(siteDraft);
   const openPlacement = window.openPlacement || 'default';
   const windowFrame = normalizeLingWindowFrame(window.windowFrame, deriveLingWindowBorderStyle(window.borderStyle), window.cornerStyle);
   const updateWindowFrameFlag = (flag: number, enabled: boolean) => {
@@ -5442,6 +5482,95 @@ function WindowProperties({
               </div>
             </div>
           </PropertyRow>
+        )}
+      </PropertyGroup>
+      <PropertyGroup title="当前窗口 / 内嵌站点" isDarkMode={isDarkMode}>
+        <PropertyRow label="内嵌站点" isDarkMode={isDarkMode}>
+          <input
+            type="checkbox"
+            checked={Boolean(window.embeddedSite)}
+            onChange={event => {
+              if (!event.target.checked) {
+                onChange({ embeddedSite: undefined });
+                setSiteStatus('');
+                return;
+              }
+              commitEmbeddedSiteDraft(siteDraft);
+            }}
+            aria-label="启用内嵌站点"
+            className="h-4 w-4 accent-amber-500"
+          />
+        </PropertyRow>
+        {window.embeddedSite && (
+          <>
+            <PropertyRow label="主机名" isDarkMode={isDarkMode}>
+              <input
+                type="text"
+                value={siteDraft.host}
+                placeholder="embedded.local"
+                aria-label="内嵌站点主机名"
+                onChange={event => commitEmbeddedSiteDraft({ ...siteDraft, host: event.target.value })}
+                className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+              />
+            </PropertyRow>
+            <PropertyRow label="入口文件" isDarkMode={isDarkMode}>
+              <input
+                type="text"
+                value={siteDraft.entry}
+                placeholder="www/index.html"
+                aria-label="内嵌站点入口文件"
+                onChange={event => commitEmbeddedSiteDraft({ ...siteDraft, entry: event.target.value })}
+                className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+              />
+            </PropertyRow>
+            <PropertyRow label="扫描目录" isDarkMode={isDarkMode}>
+              <div className="min-w-0 space-y-1">
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={siteScanDirectory}
+                    placeholder="工作区内目录，如 www"
+                    aria-label="内嵌站点扫描目录"
+                    onChange={event => setSiteScanDirectory(event.target.value)}
+                    className={`min-w-0 flex-1 rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void runEmbeddedSiteScan()}
+                    disabled={siteScanning}
+                    title="递归扫描目录并把全部文件填入清单（替换现有清单）"
+                    className={`h-7 shrink-0 whitespace-nowrap rounded border px-2 text-xs transition-colors disabled:cursor-wait disabled:opacity-50 ${isDarkMode ? 'border-[#3c3c44] bg-[#24242b] text-amber-400 hover:bg-[#303038]' : 'border-slate-300 bg-white text-amber-600 hover:bg-slate-100'}`}
+                  >
+                    {siteScanning ? '扫描中…' : '扫描目录'}
+                  </button>
+                </div>
+              </div>
+            </PropertyRow>
+            <PropertyRow label="文件清单" isDarkMode={isDarkMode}>
+              <div className="min-w-0 space-y-1">
+                <textarea
+                  value={siteDraft.filesText}
+                  onChange={event => setSiteDraft({ ...siteDraft, filesText: event.target.value })}
+                  onBlur={() => commitEmbeddedSiteDraft(siteDraft)}
+                  rows={8}
+                  spellCheck={false}
+                  placeholder={'每行一个工作区相对路径，如：\nwww/index.html\nwww/assets/index.js'}
+                  aria-label="内嵌站点文件清单"
+                  className={`w-full rounded border px-2 py-1 font-mono text-[11px] leading-4 focus:outline-none focus:border-amber-500 ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+                />
+                <div className={`text-[9px] leading-3 ${embeddedSiteProblems.length > 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                  {embeddedSiteProblems.length > 0
+                    ? embeddedSiteProblems.join('；')
+                    : `共 ${parseEmbeddedSiteFilesText(siteDraft.filesText).length} 个文件。构建时编入 EXE 内存服务，运行期零释放；需配合 EdgeBrowser 控件与 EdgeView 浏览器模块使用。`}
+                </div>
+                {siteStatus && (
+                  <div className={`text-[9px] leading-3 ${siteStatus.includes('失败') || siteStatus.includes('没有文件') ? 'text-red-400' : 'text-slate-500'}`}>
+                    {siteStatus}
+                  </div>
+                )}
+              </div>
+            </PropertyRow>
+          </>
         )}
       </PropertyGroup>
       {migrateDesignerBackend(window.designerBackend, newEmojiAvailable) === 'new-emoji' && (

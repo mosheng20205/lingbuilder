@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Heart, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
+import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Heart, History, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import sponsorQr from '../../../image/sponsor-qr-alipay-wechat.png';
-import { CLOUD_API, fetchWebsiteBootstrap, type WebsiteBootstrap, type WebsiteCommand, type WebsiteDemo, type WebsiteGuide, type WebsiteSponsor } from './websiteApi';
+import { CLOUD_API, fetchWebsiteBootstrap, fetchWebsiteUpdates, type WebsiteBootstrap, type WebsiteCommand, type WebsiteDemo, type WebsiteGuide, type WebsiteSponsor, type WebsiteUpdateEntry } from './websiteApi';
 import { readDemoArchive } from './demoSourceArchive';
 import { isDocsSectionItem, WEBSITE_NAV_ITEMS, type WebsiteNavItem } from './websiteNav';
 import './website.css';
 
 const NAV = [{ href: '/', label: '首页' }, ...WEBSITE_NAV_ITEMS];
 
-export const PUBLIC_WEBSITE_PATHS = ['/commands', '/downloads', '/controls', '/modules', '/demos', '/community', '/sponsors'];
+export const PUBLIC_WEBSITE_PATHS = ['/commands', '/downloads', '/controls', '/modules', '/demos', '/community', '/sponsors', '/updates'];
 
 export function WebsitePortal() {
   const path = location.pathname.replace(/\/$/u, '') || '/';
@@ -32,6 +32,7 @@ export function WebsitePortal() {
       {path === '/demos' && <DemosPage content={content} error={error}/>} 
       {path === '/community' && <CommunityPage content={content} error={error}/>}
       {path === '/sponsors' && <SponsorsPage content={content} error={error}/>}
+      {path === '/updates' && <UpdatesPage/>}
     </main>
     <WebsiteFooter/>
   </div>;
@@ -352,6 +353,80 @@ function formatSponsorYuan(cents: number): string {
   return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: cents % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 }
 
+/** 更新记录条目的分类标识与配色键；与服务端 syncUpdates 的分类白名单保持一致。 */
+const UPDATE_CATEGORY_META: Record<string, { icon: string; className: string }> = {
+  新功能: { icon: '✨', className: 'feature' },
+  问题修复: { icon: '🐛', className: 'fix' },
+  新模块: { icon: '📦', className: 'module' },
+  体验优化: { icon: '⚡', className: 'tuning' },
+  教程与示例: { icon: '📚', className: 'tutorial' },
+  版本发布: { icon: '🚀', className: 'release' }
+};
+
+/** 默认只展示最近 10 天，更早的通过「查看更早的更新 / 查看全部记录」展开，避免时间线随历史无限拉长。 */
+const UPDATES_VISIBLE_DAYS_STEP = 10;
+
+/** 更新记录：按日期倒序的时间线，支持分类筛选与分批展开。内容由同步脚本从仓库更新记录目录筛选改写后发布，管理后台不维护。 */
+function UpdatesPage() {
+  const [updates, setUpdates] = useState<WebsiteUpdateEntry[] | null>(null);
+  const [error, setError] = useState('');
+  const [category, setCategory] = useState('');
+  const [visibleDays, setVisibleDays] = useState(UPDATES_VISIBLE_DAYS_STEP);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchWebsiteUpdates(controller.signal).then(value => setUpdates(value)).catch(reason => {
+      if (reason?.name !== 'AbortError') setError(reason instanceof Error ? reason.message : '更新记录暂时无法加载。');
+    });
+    return () => controller.abort();
+  }, []);
+  const filtered = useMemo(() => {
+    if (!updates) return [];
+    if (!category) return updates;
+    return updates
+      .map(entry => ({ date: entry.date, items: entry.items.filter(item => item.category === category) }))
+      .filter(entry => entry.items.length > 0);
+  }, [updates, category]);
+  const changeCategory = (value: string) => { setCategory(value); setVisibleDays(UPDATES_VISIBLE_DAYS_STEP); };
+  const shown = filtered.slice(0, visibleDays);
+  const remaining = filtered.length - shown.length;
+  return <>
+    <PageHero kicker="CHANGELOG" title="更新记录" description="LingBuilder 的每一次功能新增、问题修复与体验改进，按日期倒序公开，与各版本安装包同步演进。" icon={History}/>
+    <section className="website-section"><div className="website-shell">
+      {error && <LoadNotice text={error}/>}
+      {!updates && !error && <LoadNotice text="正在加载更新记录…"/>}
+      {updates && !error && <>
+        <div className="filter-row">
+          <button className={!category ? 'active' : ''} onClick={() => changeCategory('')}>全部</button>
+          {Object.entries(UPDATE_CATEGORY_META).map(([name, meta]) => (
+            <button key={name} className={category === name ? 'active' : ''} onClick={() => changeCategory(name)}>{meta.icon} {name}</button>
+          ))}
+        </div>
+        <p className="update-count">{filtered.length
+          ? `${filtered.length} 天 · 共 ${filtered.reduce((sum, entry) => sum + entry.items.length, 0)} 条更新${category ? ` · 分类「${category}」` : ''}${remaining > 0 ? ` · 已展示 ${shown.length} 天` : ''}`
+          : ''}</p>
+        {filtered.length
+          ? <div className="update-timeline">{shown.map(entry => <article className="update-entry" key={entry.date}>
+              <h2 className="update-date">{formatUpdateDate(entry.date)}</h2>
+              <ul>{entry.items.map((item, index) => {
+                const meta = UPDATE_CATEGORY_META[item.category] || { icon: '•', className: 'misc' };
+                return <li key={index}><em className={`update-tag update-tag-${meta.className}`}>{meta.icon} {item.category}</em><span>{item.text}</span></li>;
+              })}</ul>
+            </article>)}</div>
+          : <div className="website-empty">{updates.length ? '该分类下暂时没有更新记录。' : '还没有发布更新记录。'}</div>}
+        {remaining > 0 && <div className="update-more">
+          <button onClick={() => setVisibleDays(days => days + UPDATES_VISIBLE_DAYS_STEP)}>查看更早的更新（还有 {remaining} 天）</button>
+          <button onClick={() => setVisibleDays(filtered.length)}>查看全部记录</button>
+        </div>}
+      </>}
+    </div></section>
+  </>;
+}
+
+function formatUpdateDate(date: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(date);
+  return match ? `${match[1]}年${Number(match[2])}月${Number(match[3])}日` : date;
+}
+
 function MarkdownText({ source }: { source: string }) {
   const blocks: Array<{type: string; text: string}> = [];
   let code = false; let codeBuffer: string[] = [];
@@ -379,5 +454,5 @@ function InlineCode({ text }: { text: string }) { return <>{text.split(/(`[^`]+`
 function LoadNotice({ text }: { text: string }) { return <div className="load-notice">{text}</div>; }
 function EmptyState({ text }: { text: string }) { return <div className="website-empty">{text}</div>; }
 function kindLabel(kind: string) { return ({ COMMAND: '命令', EVENT: '事件', CONSTANT: '常量', TYPE: '数据类型' } as Record<string,string>)[kind] || kind; }
-function WebsiteFooter() { return <footer className="website-footer"><div className="website-shell"><a href="/"><ArrowLeft size={15}/>返回灵码首页</a><span>Windows · 中文编程 · 原生 C++</span><a href="/community">官方交流群</a><a href="/sponsors">赞助列表</a></div></footer>; }
+function WebsiteFooter() { return <footer className="website-footer"><div className="website-shell"><a href="/"><ArrowLeft size={15}/>返回灵码首页</a><span>Windows · 中文编程 · 原生 C++</span><a href="/updates">更新记录</a><a href="/community">官方交流群</a><a href="/sponsors">赞助列表</a></div></footer>; }
 interface PageProps { content: WebsiteBootstrap | null; error: string }

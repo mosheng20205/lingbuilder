@@ -1,5 +1,18 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+// Monaco 中文 NLS 数据门禁：确保随包语言表与当前安装的 monaco-editor 版本索引一致。
+// 升级 monaco-editor 后若未重跑 npm run monaco:nls-zh-cn，在这里阻断构建。
+try {
+  execFileSync(
+    process.execPath,
+    ['--import', 'tsx', path.join(__dirname, 'generate-monaco-zh-cn-nls.ts'), '--check'],
+    { stdio: 'inherit', cwd: path.resolve(__dirname, '..') }
+  );
+} catch {
+  throw new Error('Monaco 本地构建校验失败：中文 NLS 数据与 monaco-editor 版本不一致，请运行 npm run monaco:nls-zh-cn 重新生成。');
+}
 
 const distRoot = path.resolve(__dirname, '..', 'dist');
 const assetsRoot = path.join(distRoot, 'assets');

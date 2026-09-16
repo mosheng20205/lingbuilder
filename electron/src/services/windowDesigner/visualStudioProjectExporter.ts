@@ -190,10 +190,8 @@ function getModuleLibFiles(enabledModules: InstalledModule[], targetId = 'window
   return unique([...enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
     return (getPreferredModuleTarget(module, targetId)?.libs || [])
-      .map(file => isBuiltinModule(module)
-        ? module.manifest.id === PROTOBUF_MODULE_ID
-          ? normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file)))
-          : normalizeSlash(file)
+      .map(file => isBuiltinModule(module) && !file.includes('/')
+        ? normalizeSlash(file)
         : normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
   }),
   ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/lib/${architecture}/botan-3.lib`] : []),

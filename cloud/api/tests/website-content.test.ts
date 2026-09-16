@@ -296,6 +296,84 @@ test('latest version normalizes uppercase sha256 and rejects malformed values', 
   assert.equal((malformed as any).sha256, null);
 });
 
+const updatesActor = { id: 'admin-1', email: 'admin@example.com', role: 'operator', mfa: true };
+
+function updatesPrisma(existingDates: string[], upserts: any[], deletes: any[], audits: any[]) {
+  return {
+    websiteUpdateEntry: {
+      findMany: async () => existingDates.map(date => ({ date })),
+      upsert: async (args: any) => { upserts.push(args); return { id: `update-${upserts.length}`, ...args.create }; },
+      deleteMany: async (args: any) => { deletes.push(args); return { count: 2 }; }
+    },
+    adminAuditLog: { create: async (args: any) => { audits.push(args); return args.data; } }
+  };
+}
+
+test('update sync mirrors the local file: upserts every date, deletes missing dates and audits', async () => {
+  const upserts: any[] = [];
+  const deletes: any[] = [];
+  const audits: any[] = [];
+  const service = new WebsiteContentService(updatesPrisma(['2026-08-29'], upserts, deletes, audits) as any);
+  const result = await service.syncUpdates({ updates: [
+    { date: '2026-09-15', items: [{ category: '新功能', text: '新手模式支持循环变量自动声明。' }, { category: '问题修复', text: '修复编辑框显示内容不生效。' }] },
+    { date: '2026-08-29', items: [{ category: '体验优化', text: '优化启动速度。' }] }
+  ] }, updatesActor);
+  assert.deepEqual(result, { ok: true, synced: 2, created: 1, updated: 1, removed: 2 });
+  assert.equal(upserts[0].where.date, '2026-09-15');
+  assert.deepEqual(JSON.parse(upserts[0].create.itemsJson), [
+    { category: '新功能', text: '新手模式支持循环变量自动声明。' },
+    { category: '问题修复', text: '修复编辑框显示内容不生效。' }
+  ]);
+  assert.deepEqual(deletes[0].where, { date: { notIn: ['2026-09-15', '2026-08-29'] } });
+  assert.equal(audits[0].data.action, 'website.update.sync');
+  assert.deepEqual(audits[0].data.details, { synced: 2, created: 1, updated: 1, removed: 2 });
+});
+
+test('update sync rejects invalid dates, duplicate dates, empty items and unknown categories', async () => {
+  const upserts: any[] = [];
+  const deletes: any[] = [];
+  const audits: any[] = [];
+  const service = new WebsiteContentService(updatesPrisma([], upserts, deletes, audits) as any);
+  await assert.rejects(() => service.syncUpdates({ updates: [{ date: '2026-9-15', items: [{ category: '新功能', text: 'x' }] }] }, updatesActor), /日期格式无效/u);
+  await assert.rejects(() => service.syncUpdates({ updates: [{ date: '2026-02-30', items: [{ category: '新功能', text: 'x' }] }] }, updatesActor), /日期格式无效/u);
+  await assert.rejects(() => service.syncUpdates({ updates: [
+    { date: '2026-09-15', items: [{ category: '新功能', text: 'x' }] },
+    { date: '2026-09-15', items: [{ category: '新功能', text: 'y' }] }
+  ] }, updatesActor), /日期重复/u);
+  await assert.rejects(() => service.syncUpdates({ updates: [{ date: '2026-09-15', items: [] }] }, updatesActor), /至少需要一条更新内容/u);
+  await assert.rejects(() => service.syncUpdates({ updates: [{ date: '2026-09-15', items: [{ category: '内部优化', text: 'x' }] }] }, updatesActor), /无效分类/u);
+  await assert.rejects(() => service.syncUpdates({ updates: [] }, updatesActor), /同步内容为空/u);
+  assert.equal(upserts.length, 0);
+  assert.equal(deletes.length, 0);
+});
+
+test('public updates return entries ordered by date descending with parsed items', async () => {
+  const calls: any[] = [];
+  const prisma = {
+    websiteUpdateEntry: {
+      findMany: async (args: any) => {
+        calls.push(args);
+        return [
+          { date: '2026-09-15', itemsJson: JSON.stringify([{ category: '新功能', text: 'a' }]) },
+          { date: '2026-09-14', itemsJson: 'not-json' }
+        ];
+      }
+    }
+  };
+  const result = await new WebsiteContentService(prisma as any).publicUpdates();
+  assert.deepEqual(calls[0].orderBy, [{ date: 'desc' }]);
+  assert.deepEqual(result.updates[0], { date: '2026-09-15', items: [{ category: '新功能', text: 'a' }] });
+  assert.deepEqual(result.updates[1].items, []);
+});
+
+test('update endpoints exist with the expected visibility and role gates', () => {
+  const source = requireSource('../src/website/website-content.controller.ts');
+  assert.match(source, /@Get\('updates'\) updates\(\)/u);
+  // 快照走类级四角色可读（与 snapshot 一致）；写入接口必须显式收窄到 super_admin/operator。
+  assert.match(source, /@Get\('updates'\) updatesSnapshot/u);
+  assert.match(source, /@Post\('updates\/sync'\) @Roles\('super_admin', 'operator'\) syncUpdates/u);
+});
+
 function requireSource(relativePath: string) {
   return fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 }

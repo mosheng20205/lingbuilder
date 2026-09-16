@@ -1313,8 +1313,530 @@ int 显示器_工作区高度() { RECT area = {}; return SystemParametersInfoW(S
 int 显示器_系统DPI() { using GetDpiForSystemFn = UINT(WINAPI*)(); HMODULE user = GetModuleHandleW(L"user32.dll"); auto function = user ? reinterpret_cast<GetDpiForSystemFn>(GetProcAddress(user, "GetDpiForSystem")) : nullptr; return function ? static_cast<int>(function()) : 96; }
 `;
 
+// 文件流族：CreateFileW 句柄注册表（同缓冲区模块的互斥保护模式），
+// 打开方式/共享方式/起始位置编号与易语言一致，文本一律 UTF-8，插入与删除按“尾部整体搬移”实现。
+const FILE_STREAM_RUNTIME = String.raw`
+struct LingFileStream {
+    std::mutex mutex;
+    HANDLE handle = INVALID_HANDLE_VALUE;
+};
+
+static std::mutex g_lbFileRegistryMutex;
+static std::unordered_map<long long, std::shared_ptr<LingFileStream>> g_lbFileRegistry;
+static long long g_lbFileSequence = 0;
+
+static std::shared_ptr<LingFileStream> LB_FindFile(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbFileRegistryMutex);
+    auto found = g_lbFileRegistry.find(id);
+    return found == g_lbFileRegistry.end() ? nullptr : found->second;
+}
+
+static long long LB_RegisterFile(HANDLE handle) {
+    auto stream = std::make_shared<LingFileStream>();
+    stream->handle = handle;
+    std::lock_guard<std::mutex> lock(g_lbFileRegistryMutex);
+    const long long id = ++g_lbFileSequence;
+    g_lbFileRegistry[id] = std::move(stream);
+    return id;
+}
+
+long long 文件_打开(const wchar_t* path, int openMode = 3, int shareMode = 1) {
+    if (!path || !path[0]) return 0;
+    DWORD access = 0;
+    DWORD creation = 0;
+    switch (openMode) {
+        case 1: access = GENERIC_READ; creation = OPEN_EXISTING; break;
+        case 2: access = GENERIC_WRITE; creation = OPEN_EXISTING; break;
+        case 4: access = GENERIC_WRITE; creation = CREATE_ALWAYS; break;
+        case 5: access = GENERIC_WRITE; creation = OPEN_ALWAYS; break;
+        case 6: access = GENERIC_READ | GENERIC_WRITE; creation = OPEN_ALWAYS; break;
+        case 3: access = GENERIC_READ | GENERIC_WRITE; creation = OPEN_EXISTING; break;
+        default: return 0;
+    }
+    DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE;
+    switch (shareMode) {
+        case 2: share = FILE_SHARE_READ; break;
+        case 3: share = FILE_SHARE_WRITE; break;
+        case 4: share = 0; break;
+        case 1: break;
+        default: return 0;
+    }
+    HANDLE handle = CreateFileW(path, access, share, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return 0;
+    return LB_RegisterFile(handle);
+}
+
+bool 文件_关闭(long long id) {
+    std::shared_ptr<LingFileStream> stream;
+    {
+        std::lock_guard<std::mutex> lock(g_lbFileRegistryMutex);
+        auto found = g_lbFileRegistry.find(id);
+        if (found == g_lbFileRegistry.end()) return false;
+        stream = found->second;
+        g_lbFileRegistry.erase(found);
+    }
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(stream->handle);
+        stream->handle = INVALID_HANDLE_VALUE;
+    }
+    return true;
+}
+
+void 文件_关闭全部() {
+    std::vector<std::shared_ptr<LingFileStream>> streams;
+    {
+        std::lock_guard<std::mutex> lock(g_lbFileRegistryMutex);
+        streams.reserve(g_lbFileRegistry.size());
+        for (auto& entry : g_lbFileRegistry) streams.push_back(entry.second);
+        g_lbFileRegistry.clear();
+    }
+    for (auto& stream : streams) {
+        std::lock_guard<std::mutex> lock(stream->mutex);
+        if (stream->handle != INVALID_HANDLE_VALUE) {
+            CloseHandle(stream->handle);
+            stream->handle = INVALID_HANDLE_VALUE;
+        }
+    }
+}
+
+static bool LB_FileSeek(HANDLE handle, long long distance, DWORD method) {
+    LARGE_INTEGER offset = {};
+    offset.QuadPart = distance;
+    return SetFilePointerEx(handle, offset, nullptr, method) != 0;
+}
+
+bool 文件_移动读写位置(long long id, long long distance, int origin = 1) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    DWORD method;
+    switch (origin) {
+        case 2: method = FILE_END; break;
+        case 3: method = FILE_CURRENT; break;
+        case 1: method = FILE_BEGIN; break;
+        default: return false;
+    }
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    return LB_FileSeek(stream->handle, distance, method);
+}
+
+bool 文件_移到文件首(long long id) { return 文件_移动读写位置(id, 0, 1); }
+bool 文件_移到文件尾(long long id) { return 文件_移动读写位置(id, 0, 2); }
+
+static bool LB_FileReadAtMost(HANDLE handle, long long length, std::vector<unsigned char>& out) {
+    out.clear();
+    LARGE_INTEGER size = {};
+    LARGE_INTEGER current = {};
+    if (!GetFileSizeEx(handle, &size) || !SetFilePointerEx(handle, LARGE_INTEGER{}, &current, FILE_CURRENT)) return false;
+    long long remaining = size.QuadPart - current.QuadPart;
+    if (remaining < 0) remaining = 0;
+    long long want = length < 0 ? remaining : (std::min)(length, remaining);
+    want = (std::min)(want, static_cast<long long>(0x7FFFFFFF));
+    out.resize(static_cast<size_t>(want));
+    DWORD got = 0;
+    if (want > 0 && (!ReadFile(handle, out.data(), static_cast<DWORD>(want), &got, nullptr) || got == 0)) {
+        out.clear();
+        return false;
+    }
+    out.resize(got);
+    return true;
+}
+
+std::vector<unsigned char> 文件_读入字节集(long long id, int length) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return {};
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return {};
+    std::vector<unsigned char> out;
+    LB_FileReadAtMost(stream->handle, length, out);
+    return out;
+}
+
+bool 文件_写出字节集(long long id, const std::vector<unsigned char>& bytes) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    if (bytes.empty()) return true;
+    DWORD written = 0;
+    const DWORD size = bytes.size() > 0xFFFFFFFFULL ? 0xFFFFFFFFu : static_cast<DWORD>(bytes.size());
+    return WriteFile(stream->handle, bytes.data(), size, &written, nullptr) && written == size;
+}
+
+const wchar_t* 文件_读入文本(long long id, long long length = -1) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return LB_ReturnText(L"");
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return LB_ReturnText(L"");
+    std::vector<unsigned char> bytes;
+    LB_FileReadAtMost(stream->handle, length, bytes);
+    return LB_ReturnText(LB_Utf8ToWide(std::string(bytes.begin(), bytes.end())));
+}
+
+bool 文件_写出文本(long long id, const wchar_t* text) {
+    const std::string utf8 = LB_WideToUtf8(text);
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    if (utf8.empty()) return true;
+    DWORD written = 0;
+    return WriteFile(stream->handle, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr) && written == utf8.size();
+}
+
+const wchar_t* 文件_读入一行(long long id) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return LB_ReturnText(L"");
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return LB_ReturnText(L"");
+    std::string line;
+    std::vector<char> chunk(4096);
+    for (;;) {
+        DWORD got = 0;
+        if (!ReadFile(stream->handle, chunk.data(), static_cast<DWORD>(chunk.size()), &got, nullptr) || got == 0) break;
+        const char* begin = chunk.data();
+        const char* end = begin + got;
+        const char* newline = static_cast<const char*>(memchr(begin, '\n', got));
+        if (newline) {
+            line.append(begin, newline - begin);
+            LARGE_INTEGER back = {};
+            back.QuadPart = -static_cast<LONGLONG>(end - newline - 1);
+            if (back.QuadPart < 0) SetFilePointerEx(stream->handle, back, nullptr, FILE_CURRENT);
+            break;
+        }
+        line.append(begin, got);
+    }
+    while (!line.empty() && line.back() == '\r') line.pop_back();
+    return LB_ReturnText(LB_Utf8ToWide(line));
+}
+
+bool 文件_写文本行(long long id, const wchar_t* text) {
+    std::string utf8 = LB_WideToUtf8(text);
+    utf8.push_back('\r');
+    utf8.push_back('\n');
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    return WriteFile(stream->handle, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr) && written == utf8.size();
+}
+
+static bool LB_FileReadAllRemaining(HANDLE handle, std::vector<unsigned char>& out) {
+    out.clear();
+    std::vector<char> chunk(65536);
+    for (;;) {
+        DWORD got = 0;
+        if (!ReadFile(handle, chunk.data(), static_cast<DWORD>(chunk.size()), &got, nullptr)) return false;
+        if (got == 0) return true;
+        out.insert(out.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(got));
+        if (out.size() > 536870912ULL) return false;
+    }
+}
+
+static bool LB_FileInsertBytes(HANDLE handle, const std::vector<unsigned char>& bytes) {
+    if (bytes.size() > 0xFFFFFFFFULL) return false;
+    LARGE_INTEGER current = {};
+    if (!SetFilePointerEx(handle, LARGE_INTEGER{}, &current, FILE_CURRENT)) return false;
+    std::vector<unsigned char> tail;
+    if (!LB_FileReadAllRemaining(handle, tail)) return false;
+    if (!tail.empty()) {
+        LARGE_INTEGER back = {};
+        back.QuadPart = -static_cast<LONGLONG>(tail.size());
+        if (!SetFilePointerEx(handle, back, nullptr, FILE_CURRENT)) return false;
+    }
+    DWORD written = 0;
+    if (!bytes.empty() && (!WriteFile(handle, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) || written != bytes.size())) return false;
+    if (!tail.empty() && (!WriteFile(handle, tail.data(), static_cast<DWORD>(tail.size()), &written, nullptr) || written != tail.size())) return false;
+    return LB_FileSeek(handle, current.QuadPart, FILE_BEGIN);
+}
+
+bool 文件_插入字节集(long long id, const std::vector<unsigned char>& bytes) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    return LB_FileInsertBytes(stream->handle, bytes);
+}
+
+bool 文件_插入文本(long long id, const wchar_t* text) {
+    const std::string utf8 = LB_WideToUtf8(text);
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    return LB_FileInsertBytes(stream->handle, std::vector<unsigned char>(utf8.begin(), utf8.end()));
+}
+
+bool 文件_插入文本行(long long id, const wchar_t* text) {
+    std::string utf8 = LB_WideToUtf8(text);
+    utf8.push_back('\r');
+    utf8.push_back('\n');
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    return LB_FileInsertBytes(stream->handle, std::vector<unsigned char>(utf8.begin(), utf8.end()));
+}
+
+bool 文件_删除数据(long long id, long long count) {
+    if (count < 0) return false;
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER current = {};
+    if (!SetFilePointerEx(stream->handle, LARGE_INTEGER{}, &current, FILE_CURRENT)) return false;
+    LARGE_INTEGER forward = {};
+    forward.QuadPart = count;
+    if (!SetFilePointerEx(stream->handle, forward, nullptr, FILE_CURRENT)) return false;
+    std::vector<unsigned char> tail;
+    if (!LB_FileReadAllRemaining(stream->handle, tail)) return false;
+    if (!LB_FileSeek(stream->handle, current.QuadPart, FILE_BEGIN)) return false;
+    DWORD written = 0;
+    if (!tail.empty() && (!WriteFile(stream->handle, tail.data(), static_cast<DWORD>(tail.size()), &written, nullptr) || written != tail.size())) return false;
+    if (!SetEndOfFile(stream->handle)) return false;
+    // 删除后读写位置停留在删除点（后续读入从被删除处继续）。
+    return LB_FileSeek(stream->handle, current.QuadPart, FILE_BEGIN);
+}
+
+bool 文件_是否在文件尾(long long id) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return true;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return true;
+    LARGE_INTEGER size = {};
+    LARGE_INTEGER current = {};
+    if (!GetFileSizeEx(stream->handle, &size) || !SetFilePointerEx(stream->handle, LARGE_INTEGER{}, &current, FILE_CURRENT)) return true;
+    return current.QuadPart >= size.QuadPart;
+}
+
+long long 文件_取读写位置(long long id) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return -1;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return -1;
+    LARGE_INTEGER current = {};
+    if (!SetFilePointerEx(stream->handle, LARGE_INTEGER{}, &current, FILE_CURRENT)) return -1;
+    return current.QuadPart;
+}
+
+long long 文件_取长度(long long id) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return -1;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return -1;
+    LARGE_INTEGER size = {};
+    if (!GetFileSizeEx(stream->handle, &size)) return -1;
+    return size.QuadPart;
+}
+
+// —— 文件_写出数据 / 文件_读入数据：按 IDE 静态类型的确定性二进制打包 ——
+// 整数 4 字节、长整数 8 字节、小数 8 字节、逻辑 1 字节（均小端）；文本 UTF-8 加 0 结尾；
+// 字节集 4 字节长度前缀加数据；数组按元素顺序展开（读入侧数组须先按元素数重定义）。
+
+static void LB_WriteDataValue(HANDLE handle, int value, bool& ok) {
+    const unsigned char raw[4] = { static_cast<unsigned char>(value & 0xFF), static_cast<unsigned char>((value >> 8) & 0xFF), static_cast<unsigned char>((value >> 16) & 0xFF), static_cast<unsigned char>((value >> 24) & 0xFF) };
+    DWORD written = 0;
+    if (!WriteFile(handle, raw, 4, &written, nullptr) || written != 4) ok = false;
+}
+
+static void LB_WriteDataValue(HANDLE handle, long long value, bool& ok) {
+    unsigned char raw[8] = {};
+    unsigned long long rawValue = static_cast<unsigned long long>(value);
+    for (int index = 0; index < 8; ++index) raw[index] = static_cast<unsigned char>((rawValue >> (index * 8)) & 0xFF);
+    DWORD written = 0;
+    if (!WriteFile(handle, raw, 8, &written, nullptr) || written != 8) ok = false;
+}
+
+static void LB_WriteDataValue(HANDLE handle, double value, bool& ok) {
+    DWORD written = 0;
+    if (!WriteFile(handle, &value, 8, &written, nullptr) || written != 8) ok = false;
+}
+
+static void LB_WriteDataValue(HANDLE handle, bool value, bool& ok) {
+    const unsigned char raw = value ? 1 : 0;
+    DWORD written = 0;
+    if (!WriteFile(handle, &raw, 1, &written, nullptr) || written != 1) ok = false;
+}
+
+static void LB_WriteDataValue(HANDLE handle, const std::wstring& value, bool& ok) {
+    const std::string utf8 = LB_WideToUtf8(value.c_str());
+    const unsigned char terminator = 0;
+    DWORD written = 0;
+    if (!utf8.empty() && (!WriteFile(handle, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr) || written != utf8.size())) { ok = false; return; }
+    if (!WriteFile(handle, &terminator, 1, &written, nullptr) || written != 1) ok = false;
+}
+
+static void LB_WriteDataValue(HANDLE handle, const wchar_t* value, bool& ok) {
+    // 显式构造 std::wstring 分派到文本重载；直接转发 const wchar_t* 会递归回本重载。
+    LB_WriteDataValue(handle, std::wstring(value ? value : L""), ok);
+}
+
+static void LB_WriteDataValue(HANDLE handle, const std::vector<unsigned char>& value, bool& ok) {
+    const int length = value.size() > 0x7FFFFFFFULL ? 0x7FFFFFFF : static_cast<int>(value.size());
+    LB_WriteDataValue(handle, length, ok);
+    if (!ok || value.empty()) return;
+    DWORD written = 0;
+    if (!WriteFile(handle, value.data(), static_cast<DWORD>(value.size()), &written, nullptr) || written != value.size()) ok = false;
+}
+
+template <typename T>
+static void LB_WriteDataValue(HANDLE handle, const std::vector<T>& value, bool& ok) {
+    for (const T& item : value) LB_WriteDataValue(handle, item, ok);
+}
+
+template <typename... Values>
+bool 文件_写出数据(long long id, Values... values) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    bool ok = true;
+    (LB_WriteDataValue(stream->handle, values, ok), ...);
+    return ok;
+}
+
+static bool LB_FileReadExact(HANDLE handle, void* buffer, DWORD size) {
+    DWORD got = 0;
+    return ReadFile(handle, buffer, size, &got, nullptr) && got == size;
+}
+
+static void LB_ReadDataValue(HANDLE handle, int* out, bool& ok) {
+    unsigned char raw[4] = {};
+    if (!LB_FileReadExact(handle, raw, 4)) { ok = false; return; }
+    *out = static_cast<int>(raw[0]) | (static_cast<int>(raw[1]) << 8) | (static_cast<int>(raw[2]) << 16) | (static_cast<int>(raw[3]) << 24);
+}
+
+static void LB_ReadDataValue(HANDLE handle, long long* out, bool& ok) {
+    unsigned char raw[8] = {};
+    if (!LB_FileReadExact(handle, raw, 8)) { ok = false; return; }
+    unsigned long long rawValue = 0;
+    for (int index = 0; index < 8; ++index) rawValue |= static_cast<unsigned long long>(raw[index]) << (index * 8);
+    *out = static_cast<long long>(rawValue);
+}
+
+static void LB_ReadDataValue(HANDLE handle, double* out, bool& ok) {
+    if (!LB_FileReadExact(handle, out, 8)) { ok = false; return; }
+}
+
+static void LB_ReadDataValue(HANDLE handle, bool* out, bool& ok) {
+    unsigned char raw = 0;
+    if (!LB_FileReadExact(handle, &raw, 1)) { ok = false; return; }
+    *out = raw != 0;
+}
+
+static void LB_ReadDataValue(HANDLE handle, std::wstring* out, bool& ok) {
+    std::string bytes;
+    char ch = 0;
+    for (;;) {
+        if (!LB_FileReadExact(handle, &ch, 1)) { ok = false; return; }
+        if (ch == 0) break;
+        bytes.push_back(ch);
+        if (bytes.size() > 67108864ULL) { ok = false; return; }
+    }
+    *out = LB_Utf8ToWide(bytes);
+}
+
+static void LB_ReadDataValue(HANDLE handle, std::vector<unsigned char>* out, bool& ok) {
+    int length = 0;
+    LB_ReadDataValue(handle, &length, ok);
+    if (!ok) return;
+    if (length < 0 || length > 268435456) { ok = false; return; }
+    out->resize(static_cast<size_t>(length));
+    if (length == 0) return;
+    if (!LB_FileReadExact(handle, out->data(), static_cast<DWORD>(length))) ok = false;
+}
+
+template <typename T>
+static void LB_ReadDataValue(HANDLE handle, std::vector<T>* out, bool& ok) {
+    for (T& item : *out) LB_ReadDataValue(handle, &item, ok);
+}
+
+template <typename... Values>
+bool 文件_读入数据(long long id, Values... values) {
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    bool ok = true;
+    (LB_ReadDataValue(stream->handle, values, ok), ...);
+    return ok;
+}
+
+bool 文件_锁定(long long id, long long position, long long length, int retryMilliseconds = 0) {
+    if (position < 0 || length < 0) return false;
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    const ULONGLONG deadline = retryMilliseconds < 0 ? ~0ULL : GetTickCount64() + static_cast<ULONGLONG>(retryMilliseconds);
+    for (;;) {
+        {
+            std::lock_guard<std::mutex> lock(stream->mutex);
+            if (stream->handle != INVALID_HANDLE_VALUE) {
+                OVERLAPPED overlapped = {};
+                overlapped.Offset = static_cast<DWORD>(static_cast<unsigned long long>(position) & 0xFFFFFFFFULL);
+                overlapped.OffsetHigh = static_cast<DWORD>(static_cast<unsigned long long>(position) >> 32);
+                if (LockFile(stream->handle, overlapped.Offset, overlapped.OffsetHigh, static_cast<DWORD>(static_cast<unsigned long long>(length) & 0xFFFFFFFFULL), static_cast<DWORD>(static_cast<unsigned long long>(length) >> 32))) return true;
+            }
+        }
+        if (retryMilliseconds == 0) return false;
+        if (retryMilliseconds > 0 && GetTickCount64() >= deadline) return false;
+        Sleep(10);
+    }
+}
+
+bool 文件_解锁(long long id, long long position, long long length) {
+    if (position < 0 || length < 0) return false;
+    auto stream = LB_FindFile(id);
+    if (!stream) return false;
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (stream->handle == INVALID_HANDLE_VALUE) return false;
+    OVERLAPPED overlapped = {};
+    overlapped.Offset = static_cast<DWORD>(static_cast<unsigned long long>(position) & 0xFFFFFFFFULL);
+    overlapped.OffsetHigh = static_cast<DWORD>(static_cast<unsigned long long>(position) >> 32);
+    return UnlockFile(stream->handle, overlapped.Offset, overlapped.OffsetHigh, static_cast<DWORD>(static_cast<unsigned long long>(length) & 0xFFFFFFFFULL), static_cast<DWORD>(static_cast<unsigned long long>(length) >> 32)) != 0;
+}
+
+static void LB_EnumWalk(const std::filesystem::path& root, const std::wstring& pattern, bool recursive, int kind, int depth, std::vector<std::wstring>& out) {
+    if (depth > 64) return;
+    std::error_code error;
+    std::filesystem::directory_iterator it(root, std::filesystem::directory_options::skip_permission_denied, error);
+    std::filesystem::directory_iterator end;
+    while (!error && it != end) {
+        error.clear();
+        const std::filesystem::path entryPath = it->path();
+        std::error_code entryError;
+        const bool isDirectory = std::filesystem::is_directory(entryPath, entryError);
+        const bool accepted = !entryError && (kind == 1 ? isDirectory : !isDirectory)
+            && (kind == 1 || pattern.empty() || PathMatchSpecExW(entryPath.filename().c_str(), pattern.c_str(), PMSF_NORMAL) == S_OK);
+        if (accepted) out.push_back(entryPath.wstring());
+        if (recursive && !entryError && isDirectory) LB_EnumWalk(entryPath, pattern, recursive, kind, depth + 1, out);
+        it.increment(error);
+    }
+}
+
+long long 文件_枚举(const wchar_t* directory, const wchar_t* pattern, bool recursive, std::vector<std::wstring>& out) {
+    out.clear();
+    const std::filesystem::path root(LB_Wide(directory));
+    std::error_code error;
+    if (!std::filesystem::is_directory(root, error)) return 0;
+    LB_EnumWalk(root, LB_Wide(pattern), recursive, 0, 0, out);
+    return static_cast<long long>(out.size());
+}
+
+long long 目录_枚举(const wchar_t* directory, bool recursive, std::vector<std::wstring>& out) {
+    out.clear();
+    const std::filesystem::path root(LB_Wide(directory));
+    std::error_code error;
+    if (!std::filesystem::is_directory(root, error)) return 0;
+    LB_EnumWalk(root, L"", recursive, 1, 0, out);
+    return static_cast<long long>(out.size());
+}
+`;
+
 const RUNTIMES: Record<string, string> = {
-  'lingbuilder.fs.core': FILE_RUNTIME,
+  'lingbuilder.fs.core': [FILE_RUNTIME, FILE_STREAM_RUNTIME].join('\n'),
   'lingbuilder.fs.path': PATH_RUNTIME,
   'lingbuilder.config.ini': INI_RUNTIME,
   'lingbuilder.config.registry': REGISTRY_RUNTIME,

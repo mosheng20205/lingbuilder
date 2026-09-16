@@ -73,13 +73,13 @@ async function main() {
   for (const platform of ['Win32', 'x64'] as const) {
     await execFileAsync(msbuild, [exported.solutionPath, '/m', '/t:Build', '/p:Configuration=Release', `/p:Platform=${platform}`, '/v:minimal'], { cwd: projectDir, windowsHide: true, timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 });
     const executable = path.join(projectDir, platform, 'Release', 'bin', `${exported.projectName}.exe`);
-    const loader = path.join(path.dirname(executable), 'WebView2Loader.dll');
-    await Promise.all([fs.access(executable), fs.access(loader)]);
+    // WebView2 Loader 已静态链接进 EXE，不再要求 exe 同目录存在 WebView2Loader.dll。
+    await fs.access(executable);
     const child = spawn(executable, [], { cwd: path.dirname(executable), windowsHide: true, stdio: 'ignore' });
     await new Promise(resolve => setTimeout(resolve, 5000));
     if (child.exitCode !== null) throw new Error(`EdgeView ${platform} 冒烟程序提前退出，代码 ${child.exitCode}。`);
     child.kill();
-    results.push({ platform, executable, loader, survivedMilliseconds: 5000 });
+    results.push({ platform, executable, survivedMilliseconds: 5000 });
   }
   console.log(JSON.stringify({ ok: true, projectDir, results }, null, 2));
 }

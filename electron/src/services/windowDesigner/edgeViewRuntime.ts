@@ -125,10 +125,9 @@ export const EDGEVIEW_SAFE_API_NATIVE_MEMBERS = String.raw`
 #ifndef LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR
 #define LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR 141
 #endif
-        if (!edgeViewLoader_) return false;
-        using GetVersionProc = HRESULT (STDAPICALLTYPE*)(PCWSTR, LPWSTR*);
-        auto getVersion = reinterpret_cast<GetVersionProc>(GetProcAddress(edgeViewLoader_, "GetAvailableCoreWebView2BrowserVersionString"));
-        LPWSTR version = nullptr; HRESULT result = getVersion ? getVersion(nullptr, &version) : E_NOINTERFACE;
+        // Loader 已静态链接（WebView2LoaderStatic.lib），直接调用入口，不再经 LoadLibrary/GetProcAddress。
+        LPWSTR version = nullptr;
+        const HRESULT result = GetAvailableCoreWebView2BrowserVersionString(nullptr, &version);
         const long major = SUCCEEDED(result) && version ? wcstol(version, nullptr, 10) : 0; if (version) CoTaskMemFree(version);
         if (major >= LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR) return true;
         std::wstring message = L"EdgeView 启动被阻止：源码使用的 API 至少需要 WebView2 Runtime "; message += std::to_wstring(LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR); message += L"，当前 Runtime 为 "; message += major > 0 ? std::to_wstring(major) : L"未知"; message += L"。"; 调试输出(message.c_str()); return false;

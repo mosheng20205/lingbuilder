@@ -79,6 +79,8 @@ using FnKey = int(*)(sqlite3*, const char*, int);
 static HMODULE module = nullptr;
 static std::mutex moduleMutex;
 static std::mutex registryMutex;
+static std::mutex cipherMutex;
+static std::wstring pendingCipher = L"sqlcipher";
 static std::atomic<long long> nextConnectionId{1};
 static std::atomic<long long> nextStatementId{1};
 static long long defaultConnectionId = 0;
@@ -137,6 +139,11 @@ static void ClearError() {
     lastErrorCode = 0;
     lastExtendedErrorCode = 0;
     lastSystemErrorCode = 0;
+}
+
+static std::wstring SnapshotPendingCipher() {
+    std::lock_guard<std::mutex> lock(cipherMutex);
+    return pendingCipher;
 }
 
 static bool Fail(const std::wstring& operation, const std::wstring& detail, int code = Error, int extended = 0, int system = 0) {
@@ -309,9 +316,14 @@ static long long OpenConnection(const wchar_t* path, int mode, int waitMilliseco
             close_v2(database);
             return 0;
         }
-        // 统一按 SQLCipher 方案开库：SQLCipher 兼容运行库按 SQLCipher 4 参数解密/建库，
-        // 标准 SQLite 运行库会忽略未知 PRAGMA（此路径已在上方因缺 sqlite3_key 被拒绝）。
-        exec(database, "PRAGMA cipher=sqlcipher", nullptr, nullptr, nullptr);
+        // 按 SQLite_设置加密算法 选定的算法开库（缺省 sqlcipher）；SQLCipher 兼容运行库
+        // 按对应参数解密/建库，标准 SQLite 运行库会忽略未知 PRAGMA（此路径已在上方因缺 sqlite3_key 被拒绝）。
+        const std::wstring cipherName = SnapshotPendingCipher();
+        std::string cipherPragma = "PRAGMA cipher=";
+        if (cipherName == L"sqlcipher" || cipherName == L"sqlcipher4" || cipherName == L"sqlcipher3") cipherPragma += "sqlcipher";
+        else cipherPragma += LB_WideToUtf8(cipherName.c_str());
+        exec(database, cipherPragma.c_str(), nullptr, nullptr, nullptr);
+        if (cipherName == L"sqlcipher3") exec(database, "PRAGMA cipher_compatibility=3", nullptr, nullptr, nullptr);
         const std::string utf8Key = LB_WideToUtf8(password);
         const int keyResult = key(database, utf8Key.c_str(), static_cast<int>(utf8Key.size()));
         if (keyResult != Ok) {
@@ -324,7 +336,7 @@ static long long OpenConnection(const wchar_t* path, int mode, int waitMilliseco
         if (probeError) free(probeError);
         if (probeResult != Ok) {
             const char* message = errmsg ? errmsg(database) : nullptr;
-            Fail(operation, (message ? LB_Utf8ToWide(message) : std::wstring(L"SQLite 未提供错误详情")) + L"；密码错误或数据库不是 SQLCipher 兼容加密格式",
+            Fail(operation, (message ? LB_Utf8ToWide(message) : std::wstring(L"SQLite 未提供错误详情")) + L"；密码错误或数据库不是 " + cipherName + L" 加密格式（可先用 SQLite_探测加密算法 识别算法）",
                 errcode ? errcode(database) : probeResult,
                 extended_errcode ? extended_errcode(database) : probeResult,
                 system_errno ? system_errno(database) : 0);
@@ -470,6 +482,76 @@ bool SQLite_运行库是否支持加密() {
     using namespace LingBuilderSqlite;
     std::lock_guard<std::mutex> lock(moduleMutex);
     return LoadLibraryUnlocked(L"") && key != nullptr;
+}
+
+bool SQLite_设置加密算法(const wchar_t* algorithm) {
+    using namespace LingBuilderSqlite;
+    std::wstring name = algorithm ? LB_Wide(algorithm) : std::wstring();
+    for (auto& character : name) {
+        if (character >= L'A' && character <= L'Z') character = static_cast<wchar_t>(character + (L'a' - L'A'));
+    }
+    const bool known = name.empty() || name == L"sqlcipher" || name == L"sqlcipher3" || name == L"sqlcipher4"
+        || name == L"rc4" || name == L"aes128" || name == L"aes256" || name == L"chacha20";
+    if (!known) {
+        return Fail(L"设置 SQLite 加密算法", L"不支持的加密算法「" + name + L"」；支持 sqlcipher（默认）、sqlcipher3、rc4、aes128、aes256、chacha20，传空恢复默认", Misuse);
+    }
+    {
+        std::lock_guard<std::mutex> lock(cipherMutex);
+        pendingCipher = name.empty() ? std::wstring(L"sqlcipher") : name;
+    }
+    ClearError();
+    return true;
+}
+
+const wchar_t* SQLite_探测加密算法(const wchar_t* path, const wchar_t* password) {
+    using namespace LingBuilderSqlite;
+    std::lock_guard<std::mutex> registryLock(registryMutex);
+    std::lock_guard<std::mutex> moduleLock(moduleMutex);
+    if (!LoadLibraryUnlocked(L"")) return LB_ReturnText(L"");
+    if (!key) {
+        Fail(L"探测 SQLite 加密算法", L"当前运行库缺少 sqlite3_key 导出，不支持加密数据库", Misuse);
+        return LB_ReturnText(L"");
+    }
+    if (!path || !path[0]) {
+        Fail(L"探测 SQLite 加密算法", L"数据库路径不能为空", Misuse);
+        return LB_ReturnText(L"");
+    }
+    if (!password || !password[0]) {
+        Fail(L"探测 SQLite 加密算法", L"密码不能为空", Misuse);
+        return LB_ReturnText(L"");
+    }
+    struct CipherProfile {
+        const char* name;
+        const char* pragma;
+        const char* extra;
+    };
+    const CipherProfile profiles[] = {
+        { "sqlcipher", "PRAGMA cipher=sqlcipher", nullptr },
+        { "sqlcipher3", "PRAGMA cipher=sqlcipher", "PRAGMA cipher_compatibility=3" },
+        { "rc4", "PRAGMA cipher=rc4", nullptr },
+        { "aes128", "PRAGMA cipher=aes128", nullptr },
+        { "aes256", "PRAGMA cipher=aes256", nullptr },
+        { "chacha20", "PRAGMA cipher=chacha20", nullptr }
+    };
+    const std::string utf8Path = LB_WideToUtf8(path);
+    const std::string utf8Key = LB_WideToUtf8(password);
+    // 全程只读打开：文件不存在时 open_v2 直接失败，不会误建空库。
+    for (const CipherProfile& profile : profiles) {
+        sqlite3* candidate = nullptr;
+        if (open_v2(utf8Path.c_str(), &candidate, OpenReadOnly, nullptr) != Ok || !candidate) continue;
+        extended_result_codes(candidate, 1);
+        exec(candidate, profile.pragma, nullptr, nullptr, nullptr);
+        if (profile.extra) exec(candidate, profile.extra, nullptr, nullptr, nullptr);
+        if (key(candidate, utf8Key.c_str(), static_cast<int>(utf8Key.size())) == Ok
+            && exec(candidate, "SELECT count(*) FROM sqlite_master", nullptr, nullptr, nullptr) == Ok) {
+            close_v2(candidate);
+            ClearError();
+            return LB_ReturnText(LB_Utf8ToWide(profile.name));
+        }
+        close_v2(candidate);
+    }
+    Fail(L"探测 SQLite 加密算法", L"sqlcipher、sqlcipher3、rc4、aes128、aes256、chacha20 档位都无法用该密码读出数据；密码错误或不是支持的加密格式", Misuse);
+    return LB_ReturnText(L"");
 }
 
 bool SQLite_关闭连接(long long connectionId) {
@@ -823,9 +905,18 @@ int SQLite_取列数量(long long statementId) {
     return column_count(statementValue->statement);
 }
 const wchar_t* SQLite_取列名称(long long statementId, int index) {
-    LB_SQLITE_COLUMN_BEGIN(L"读取 SQLite 列名", LB_ReturnText(L""));
-    const char* value = column_name(statementValue->statement, index);
+    using namespace LingBuilderSqlite;
+    auto statementValue = FindStatement(statementId, L"读取 SQLite 列名");
+    if (!statementValue) return LB_ReturnText(L"");
+    std::lock_guard<std::recursive_mutex> lock(statementValue->connection->mutex);
+    if (!EnsureLive(statementValue, L"读取 SQLite 列名")) return LB_ReturnText(L"");
+    // 列名是 prepare 后即可读取的元数据，不要求先步进到结果行（SQLite_取列数量 同口径）。
+    if (index < 0 || index >= column_count(statementValue->statement)) {
+        Fail(L"读取 SQLite 列名", L"结果列索引越界", Misuse);
+        return LB_ReturnText(L"");
+    }
     ClearError();
+    const char* value = column_name(statementValue->statement, index);
     return LB_ReturnText(value ? LB_Utf8ToWide(value) : L"");
 }
 int SQLite_取列类型(long long statementId, int index) {

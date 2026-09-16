@@ -59,15 +59,15 @@ export const SQLITE_BUNDLED_RUNTIME_SHA256 = {
 const sqliteStandardModule = createStandardModule({
   id: SQLITE_MODULE_ID,
   name: 'SQLite 数据库模块',
-  version: '2.1.0',
+  version: '2.2.0',
   category: '数据库',
-  description: '面向生产项目的 SQLite 动态桥接：多连接、参数化预编译语句、强类型字段、事务、WAL、备份、SQLCipher 兼容加密和完整错误诊断。',
+  description: '面向生产项目的 SQLite 动态桥接：多连接、参数化预编译语句、强类型字段、事务、WAL、备份、SQLCipher/RC4 等多算法加密与完整错误诊断。',
   tags: ['数据库', 'SQLite', '事务', '预编译语句', 'WAL', '备份', 'SQLCipher', '加密'],
   types: [
     { name: 'SQLite连接', description: '进程内不复用的受管 SQLite 连接 ID；不暴露 sqlite3 指针。', cppType: 'long long' },
     { name: 'SQLite语句', description: '归属于单个连接的受管预编译语句 ID；不暴露 sqlite3_stmt 指针。', cppType: 'long long' }
   ],
-  docs: [{ title: 'SQLite 数据库模块 2.0 使用说明', path: 'docs/modules/sqlite/README.md' }],
+  docs: [{ title: 'SQLite 数据库模块 2.2 使用说明', path: 'docs/modules/sqlite/README.md' }],
   snippets: [
     {
       label: 'SQLite 参数化事务',
@@ -116,6 +116,11 @@ const sqliteStandardModule = createStandardModule({
     sqliteCommand('SQLite_取运行库版本', [], 'wideString', '返回当前已加载 SQLite 运行库的版本号。', { category: '运行库' }),
     sqliteCommand('SQLite_运行库线程安全', [], 'bool', '返回运行库编译时是否启用了 SQLite 线程安全支持。', { category: '运行库' }),
     sqliteCommand('SQLite_运行库是否支持加密', [], 'bool', '检查当前运行库是否提供 sqlite3_key 加密导出（LingBuilder 随附运行库或 SQLCipher 兼容运行库）；不支持时加密打开命令会直接失败。', { category: '运行库' }),
+    sqliteCommand('SQLite_设置加密算法', [
+      { name: '算法', type: 'wideString', description: 'sqlcipher（默认，SQLCipher 4 参数）、sqlcipher3（SQLCipher 3 兼容）、rc4（老版 wxSQLite3/RC4 格式）、aes128、aes256、chacha20；传空恢复默认 sqlcipher。' }
+    ], 'bool', '设置下一次 SQLite_打开加密库 / SQLite_打开加密连接 使用的加密算法（进程级，对之后每次加密打开都生效，默认 sqlcipher）；未知算法返回假并记录中文错误。', {
+      category: '连接', example: 'SQLite_设置加密算法("rc4")', returnDescription: '设置成功返回真；算法名未知返回假。'
+    }),
 
     sqliteCommand('SQLite_打开', [{ name: '数据库路径', type: 'wideString', description: '数据库文件路径。' }], 'bool', '兼容接口：打开默认读写连接，自动创建文件、启用外键并设置 5 秒忙等待。', {
       category: '兼容接口', example: 'SQLite_打开("data/app.db")'
@@ -132,17 +137,23 @@ const sqliteStandardModule = createStandardModule({
     }),
     sqliteCommand('SQLite_打开加密库', [
       { name: '数据库路径', type: 'wideString', description: '加密数据库文件路径。' },
-      { name: '密码', type: 'wideString', description: 'SQLCipher 兼容密钥，不能为空。' }
-    ], 'bool', '兼容接口：以 SQLCipher 方案打开默认读写加密连接，自动创建文件、启用外键并设置 5 秒忙等待；需运行库支持加密，密码错误会返回假并记录中文错误。', {
+      { name: '密码', type: 'wideString', description: '加密密钥，不能为空；算法由 SQLite_设置加密算法 决定，默认 SQLCipher。' }
+    ], 'bool', '兼容接口：按 SQLite_设置加密算法 选定的算法（默认 SQLCipher）打开默认读写加密连接，自动创建文件、启用外键并设置 5 秒忙等待；需运行库支持加密，密码错误会返回假并记录中文错误。', {
       category: '连接', example: 'SQLite_打开加密库("data/app.db", "我的密码")', returnDescription: '成功返回真；运行库不支持加密、密码错误或不是加密数据库返回假。'
     }),
     sqliteCommand('SQLite_打开加密连接', [
       { name: '数据库路径', type: 'wideString', description: '加密数据库文件路径。' },
-      { name: '密码', type: 'wideString', description: 'SQLCipher 兼容密钥，不能为空。' },
+      { name: '密码', type: 'wideString', description: '加密密钥，不能为空；算法由 SQLite_设置加密算法 决定，默认 SQLCipher。' },
       { name: '打开模式', type: 'int', description: '0=读写并创建，1=只读，2=读写但不创建，3=独立内存库。' },
       { name: '忙等待毫秒', type: 'int', description: '遇到锁竞争时等待的毫秒数，范围 0～600000。' }
-    ], 'SQLite连接', '以 SQLCipher 方案打开独立 FULLMUTEX 加密连接；打开后立即校验密码，需运行库提供 sqlite3_key 导出。', {
+    ], 'SQLite连接', '按 SQLite_设置加密算法 选定的算法（默认 SQLCipher）打开独立 FULLMUTEX 加密连接；打开后立即校验密码，需运行库提供 sqlite3_key 导出。', {
       category: '连接', example: 'SQLite_打开加密连接("data/app.db", "我的密码", 0, 5000)', returnDescription: '成功返回非 0 的 SQLite连接，失败返回 0。'
+    }),
+    sqliteCommand('SQLite_探测加密算法', [
+      { name: '数据库路径', type: 'wideString', description: '已存在的加密数据库文件路径；只读探测，不会创建文件。' },
+      { name: '密码', type: 'wideString', description: '要尝试的密码，不能为空。' }
+    ], 'wideString', '依次按 sqlcipher、sqlcipher3、rc4、aes128、aes256、chacha20 档位只读尝试打开，返回第一个能用该密码读出 sqlite_master 的算法名；全部失败返回空文本并记录中文错误。', {
+      category: '连接', example: 'SQLite_探测加密算法("data/旧系统.db", "我的密码")', returnDescription: '返回命中的算法名（可直接交给 SQLite_设置加密算法）；探测失败返回空文本。'
     }),
     sqliteCommand('SQLite_关闭', [], 'void', '兼容接口：关闭默认连接；没有其它连接时同时卸载运行库。', { category: '兼容接口' }),
     sqliteCommand('SQLite_关闭连接', [connection()], 'bool', '释放连接所属全部语句后关闭连接。失效句柄会返回假。', { category: '连接' }),

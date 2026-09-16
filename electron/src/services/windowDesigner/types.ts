@@ -97,6 +97,21 @@ export interface LingWindowEmbeddedFileSpec {
   extractName?: string;
 }
 
+/**
+ * 内嵌站点：把一组网页静态文件（dist 产物）以 RCDATA 资源编入 EXE，
+ * 运行时经 WebView2 WebResourceRequested 从内存直接服务，不向磁盘释放任何文件。
+ * 与 embeddedFiles（释放到 %TEMP%）互不影响，可同时使用。
+ */
+export interface LingWindowEmbeddedSite {
+  /** 工作区内相对文件清单（如 "www/index.html"）；全部必须位于 entry 所在目录内，最多 64 个。 */
+  files: string[];
+  /** 站点入口文件（files 之一）；缺省 "index.html"，站点根路径 "/" 映射到该文件。 */
+  entry?: string;
+  /** 虚拟主机名；缺省 "embedded.local"，页面地址形如 https://<host>/<站点相对路径>。 */
+  host?: string;
+}
+
+
 export interface LingWindowModel {
   id: string;
   fileName: string;
@@ -114,6 +129,8 @@ export interface LingWindowModel {
   iconPath?: string;
   /** 随 EXE 编译为 RCDATA 资源、启动时自动释放到「%TEMP%\lingbuilder-embedded\<工程ID>\」的文件（工作区相对路径）。 */
   embeddedFiles?: LingWindowEmbeddedFileSpec[];
+  /** 内嵌站点：网页静态文件编入 EXE 资源并从内存服务，运行期零文件释放。 */
+  embeddedSite?: LingWindowEmbeddedSite;
   description: string;
   /** 每个窗口独立选择原生设计后端；值由后端注册表提供，同一窗口不混用后端。 */
   designerBackend?: string;

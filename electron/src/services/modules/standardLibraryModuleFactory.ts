@@ -25,7 +25,10 @@ export interface StandardCommandSpec {
   insertText: string;
   /** 逐参数中文说明是硬性契约：新手模式命令提示面板直接读取该字段。 */
   parameters?: StandardCommandParameter[];
+  /** binding 层的 C++ ABI 类型（longLong 等）；决定生成代码的实参/返回类型。 */
   returnType: string;
+  /** .lcpp 侧返回类型标签（如 文件号、日期时间）；缺省按 returnType 查标准标签表。 */
+  returnLabel?: string;
   returnDescription?: string;
   category?: string;
   visibility?: 'default' | 'advanced' | 'internal';
@@ -81,7 +84,7 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
         signature: command.signature,
         description: command.description,
         insertText: command.insertText,
-        returnType: RETURN_TYPE_LABELS[command.returnType as ModuleBindingValueType] || command.returnType,
+        returnType: command.returnLabel || RETURN_TYPE_LABELS[command.returnType as ModuleBindingValueType] || command.returnType,
         returnDescription: command.returnDescription,
         category: command.category,
         visibility: command.visibility

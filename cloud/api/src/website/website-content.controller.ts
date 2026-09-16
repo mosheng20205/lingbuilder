@@ -20,6 +20,8 @@ export class WebsiteContentController {
 
   @Get('guides/:slug') guide(@Param('slug') slug: string) { return this.website.publicGuide(slug); }
 
+  @Get('updates') updates() { return this.website.publicUpdates(); }
+
   // channel 缺省为空：客户端未指定渠道时跨渠道取最高版本，显式传入时才按渠道过滤。
   // preview 渠道需要体验计划资格：把 Authorization 头透传给服务层做可选鉴权，无资格时服务层静默降级 stable。
   @Get('latest-version') latestVersion(@Req() request: { headers: Record<string, unknown> }, @Query('platform') platform = 'Windows', @Query('architecture') architecture = 'x64', @Query('channel') channel = '') {
@@ -43,4 +45,6 @@ export class WebsiteContentAdminController {
   @Post('demos') @Roles('super_admin', 'operator') demo(@Body() body: Record<string, unknown>, @CurrentUser() actor: AuthenticatedUser) { return this.website.upsertDemo(body, actor); }
   @Post('commands') @Roles('super_admin', 'operator') command(@Body() body: Record<string, unknown>, @CurrentUser() actor: AuthenticatedUser) { return this.website.upsertCommand(body, actor); }
   @Post('commands/sync-manifest') @Roles('super_admin', 'operator') syncManifest(@Body() body: Record<string, unknown>, @CurrentUser() actor: AuthenticatedUser) { return this.website.syncManifest(body, actor); }
+  @Get('updates') updatesSnapshot() { return this.website.adminUpdatesSnapshot(); }
+  @Post('updates/sync') @Roles('super_admin', 'operator') syncUpdates(@Body() body: Record<string, unknown>, @CurrentUser() actor: AuthenticatedUser) { return this.website.syncUpdates(body, actor); }
 }

@@ -63,3 +63,24 @@
 .sponsor-amount{flex:none;color:#55d7ad;font-size:15px}
 .sponsor-order{flex:none;color:#4e5f78;font-size:10px}
 @media(max-width:760px){.sponsor-support{grid-template-columns:1fr;padding:22px}.sponsor-support img{max-width:260px}.sponsor-row{padding:13px 16px}}
+
+/* ── 更新记录：按日期倒序的时间线，内容由同步脚本整量发布 ── */
+.update-count{margin:0 0 16px;color:#728198;font-size:11px}
+.update-timeline{display:grid;gap:16px}
+.update-entry{padding:26px 30px;border:1px solid var(--web-line);border-radius:13px;background:var(--web-panel)}
+.update-date{display:flex;align-items:center;gap:11px;margin:0 0 16px;font-size:20px}
+.update-date:before{content:"";flex:none;width:9px;height:9px;border-radius:999px;background:var(--web-cyan);box-shadow:0 0 0 4px #31d4e322}
+.update-entry ul{display:grid;gap:11px;margin:0;padding:0;list-style:none}
+.update-entry li{display:flex;align-items:flex-start;gap:12px;color:#bdc7d6;font-size:13px;line-height:1.75}
+.update-tag{flex:none;min-width:82px;padding:3px 10px;border-radius:999px;font-size:10px;font-style:normal;text-align:center;white-space:nowrap}
+.update-tag-feature{border:1px solid #3f8f5f66;color:#6fd698;background:#12331f55}
+.update-tag-fix{border:1px solid #e88a4d66;color:#f0a676;background:#33230f55}
+.update-tag-module{border:1px solid #8f7ff066;color:#b3a6ff;background:#1d1a3a55}
+.update-tag-tuning{border:1px solid #d4c25a66;color:#e2d37f;background:#33301a55}
+.update-tag-tutorial{border:1px solid #4db6e866;color:#7cc7ee;background:#0f273355}
+.update-tag-misc{border:1px solid #2b3a55;color:#9fb0c7}
+@media(max-width:560px){.update-entry{padding:20px}.update-entry li{flex-direction:column;gap:6px}.update-tag{align-self:flex-start}}
+.update-tag-release{border:1px solid #55d7ad66;color:#55d7ad;background:#0f332a55}
+.update-more{display:flex;justify-content:center;gap:10px;margin-top:24px}
+.update-more button{padding:10px 16px;border:1px solid #31435f;border-radius:8px;background:#0c1524;color:#b9c4d6;font-size:12px;cursor:pointer}
+.update-more button:hover{border-color:var(--web-cyan);color:#fff}

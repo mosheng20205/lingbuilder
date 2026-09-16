@@ -12,6 +12,7 @@ import { getEffectiveBuildPathTemplates, resolveProjectBuildDirectories } from '
 import { writeSolutionEntry } from './solutionEntryFile';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, PROJECT_GLOBALS_FILE_NAME } from '../lingCpp/projectGlobalService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '../lingCpp/projectDataTypeService';
+import { EMPTY_PROJECT_DLL_COMMANDS_SOURCE, PROJECT_DLL_COMMANDS_FILE_NAME } from '../lingCpp/projectDllCommandService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, isProjectBuildArtifactRelativePath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
 import type { Win32ControlPropertyValue } from '../windowDesigner/win32ControlRegistry';
 import { detectLatestMsvcPlatformToolset } from '../windowDesigner/msvcPlatformToolset';
@@ -748,6 +749,7 @@ export class SolutionService {
         },
         { relativePath: path.posix.join(project.sourceRoot, PROJECT_GLOBALS_FILE_NAME), content: EMPTY_PROJECT_GLOBALS_SOURCE, kind: 'source' },
         { relativePath: path.posix.join(project.sourceRoot, PROJECT_DATA_TYPES_FILE_NAME), content: EMPTY_PROJECT_DATA_TYPES_SOURCE, kind: 'source' },
+        { relativePath: path.posix.join(project.sourceRoot, PROJECT_DLL_COMMANDS_FILE_NAME), content: EMPTY_PROJECT_DLL_COMMANDS_SOURCE, kind: 'source' },
         { relativePath: path.posix.join(project.configRoot, 'config.ini'), content: `[project]\nname=${project.name}\nid=${project.id}\ntype=windows-console\n`, kind: 'config' as const },
         { relativePath: project.designerPath, content: JSON.stringify(designerProject, null, 2), kind: 'designer' }
       ];
@@ -764,6 +766,7 @@ export class SolutionService {
       },
       { relativePath: path.posix.join(project.sourceRoot, PROJECT_GLOBALS_FILE_NAME), content: EMPTY_PROJECT_GLOBALS_SOURCE, kind: 'source' },
       { relativePath: path.posix.join(project.sourceRoot, PROJECT_DATA_TYPES_FILE_NAME), content: EMPTY_PROJECT_DATA_TYPES_SOURCE, kind: 'source' },
+      { relativePath: path.posix.join(project.sourceRoot, PROJECT_DLL_COMMANDS_FILE_NAME), content: EMPTY_PROJECT_DLL_COMMANDS_SOURCE, kind: 'source' },
       { relativePath: path.posix.join(project.configRoot, 'config.ini'), content: `[project]\nname=${project.name}\nid=${project.id}\n`, kind: 'config' },
       { relativePath: project.designerPath, content: JSON.stringify(designerProject, null, 2), kind: 'designer' }
     ];

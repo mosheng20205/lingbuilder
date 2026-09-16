@@ -97,9 +97,20 @@ import { createDesignerAssetService } from '../src/services/windowDesigner/desig
 import { createSolutionService } from '../src/services/solution/solutionService';
 import {
   createWindowsExecutableIconService,
+  generateWindowsExecutableResourceFile,
+  getEmbeddedSiteContentType,
+  getWindowEmbeddedSiteResourceSpecs,
+  WINDOWS_EMBEDDED_SITE_MAX_FILE_BYTES,
   WINDOWS_EXECUTABLE_ICON_FILE,
   WINDOWS_EXECUTABLE_RESOURCE_FILE
 } from '../src/services/windowDesigner/windowsExecutableIconService';
+import {
+  draftFromEmbeddedSite,
+  embeddedSiteFromDraft,
+  parseEmbeddedSiteFilesText,
+  pickEmbeddedSiteEntry,
+  validateEmbeddedSiteDraft
+} from '../src/services/windowDesigner/embeddedSiteModel';
 import { fetchDesignerImagePreviewBlob, getDesignerImagePreviewSource } from '../src/services/windowDesigner/designerAssetClient';
 
 import {
@@ -3658,6 +3669,172 @@ test('LingBuilder 默认窗口图标生成 EXE 资源并物化为可移植 ICO',
   const noIcon = await service.materialize(projectRef, { ...window, iconStyle: 'none' }, [outputRoot]);
   assert.equal(noIcon.source, 'none');
   await assert.rejects(() => fs.stat(target), /ENOENT/u);
+});
+
+test('内嵌站点模型解析为 RCDATA 清单并解除 rc 生成对图标样式的依赖', () => {
+  const baseWindow = {
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '内嵌站点窗口', width: 800, height: 600,
+    background: '#FFFFFF', description: '', controls: []
+  };
+  const specs = getWindowEmbeddedSiteResourceSpecs({
+    ...baseWindow,
+    embeddedSite: { files: ['www/assets/b.js', 'www/index.html', 'www/assets/a.css'] }
+  } as LingWindowModel);
+  assert.deepEqual(specs.map(spec => [spec.sitePath, spec.resourceId]), [
+    ['index.html', 2101],
+    ['assets/a.css', 2102],
+    ['assets/b.js', 2103]
+  ]);
+  assert.equal(specs[1].contentType, 'text/css; charset=utf-8');
+
+  assert.throws(
+    () => getWindowEmbeddedSiteResourceSpecs({ ...baseWindow, embeddedSite: { files: ['www/index.html', 'www/index.html'] } } as LingWindowModel),
+    /重复/u
+  );
+  assert.throws(
+    () => getWindowEmbeddedSiteResourceSpecs({ ...baseWindow, embeddedSite: { files: ['www/index.html'], entry: 'www/missing.html' } } as LingWindowModel),
+    /不在文件清单/u
+  );
+  assert.throws(
+    () => getWindowEmbeddedSiteResourceSpecs({ ...baseWindow, embeddedSite: { files: ['www/index.html', 'other/x.js'] } } as LingWindowModel),
+    /必须位于入口文件/u
+  );
+  assert.throws(
+    () => getWindowEmbeddedSiteResourceSpecs({ ...baseWindow, embeddedSite: { files: ['www/index.html'], host: 'bad host' } } as LingWindowModel),
+    /主机名不合法/u
+  );
+
+  const resource = generateWindowsExecutableResourceFile({
+    ...baseWindow,
+    iconStyle: 'none',
+    embeddedSite: { files: ['www/index.html', 'www/assets/a.css'] }
+  } as LingWindowModel);
+  assert.ok(resource);
+  assert.doesNotMatch(resource.content, /\bICON\s+"/u);
+  assert.match(resource.content, /ID_RCDATA_LINGBUILDER_SITE_2101 RCDATA "resources\/lbsite-1\.bin"/u);
+  assert.match(resource.content, /ID_RCDATA_LINGBUILDER_SITE_2102 RCDATA "resources\/lbsite-2\.bin"/u);
+
+  assert.equal(getEmbeddedSiteContentType('assets/index.JS'), 'text/javascript; charset=utf-8');
+  assert.equal(getEmbeddedSiteContentType('fonts/x.woff2'), 'font/woff2');
+  assert.equal(getEmbeddedSiteContentType('data.bin'), 'application/octet-stream');
+});
+
+test('内嵌站点生成零释放内存服务运行时并要求启用 EdgeView 模块', () => {
+  const window = {
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '内嵌站点窗口', width: 800, height: 600,
+    background: '#FFFFFF', description: '', controls: [],
+    embeddedSite: { files: ['www/index.html', 'www/assets/app.js'], host: 'demo.local', entry: 'www/index.html' }
+  } as LingWindowModel;
+  const project = { schemaVersion: 2 as const, id: 'site-demo', name: '内嵌站点', windows: [window] };
+  const source = '类 主窗口 : 公开 窗体\n结束类';
+
+  const withoutModule = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source });
+  assert.ok(withoutModule.blockingDiagnostics.some(item => item.includes('未启用 EdgeView 浏览器模块')));
+  assert.ok(withoutModule.diagnostics.some(item => item.includes('未启用 EdgeView 浏览器模块')));
+
+  const edgeviewModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.edgeview')!,
+    installPath: 'builtin://lingbuilder.edgeview',
+    isBuiltin: true,
+    isInstalled: true,
+    diagnostics: []
+  };
+  const withModule = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [edgeviewModule] });
+  assert.equal(withModule.blockingDiagnostics.length, 0);
+  const cpp = withModule.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /void LingBuilderEmbeddedSite_注册\(EdgeViewInstance& instance\)/u);
+  assert.match(cpp, /LingBuilderEmbeddedSite_注册\(instance\);/u);
+  assert.match(cpp, /static const wchar_t\* const kHost = L"demo\.local";/u);
+  assert.match(cpp, /static const wchar_t\* const kEntry = L"index\.html";/u);
+  assert.match(cpp, /\{ L"index\.html", 2101, L"text\/html; charset=utf-8" \}/u);
+  assert.match(cpp, /\{ L"assets\/app\.js", 2102, L"text\/javascript; charset=utf-8" \}/u);
+  // 零释放：内嵌站点不得生成任何“释放到磁盘”的代码路径。
+  assert.doesNotMatch(cpp, /LingBuilderEmbeddedSite.*释放/u);
+
+  // 静态链接：运行时直接调用 Loader 入口，不再声明 DLL 句柄成员。
+  assert.match(cpp, /auto createEnvironment = &CreateCoreWebView2EnvironmentWithOptions;/u);
+  assert.doesNotMatch(cpp, /HMODULE edgeViewLoader_/u);
+});
+
+test('内嵌站点物化写入 resources 且不影响图标语义', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-embedded-site-'));
+  const bundledIcon = fileURLToPath(new URL('../../image/lingbuilder-ide-icon-v2.ico', import.meta.url));
+  await fs.mkdir(path.join(root, 'www', 'assets'), { recursive: true });
+  await fs.writeFile(path.join(root, 'www', 'index.html'), '<html><body>站点</body></html>', 'utf8');
+  await fs.writeFile(path.join(root, 'www', 'assets', 'app.js'), 'console.log(1);', 'utf8');
+  const projectRef = {
+    id: 'site-demo', name: '内嵌站点', type: 'visual-cpp' as const, sourceRoot: 'src/site', configRoot: 'config/site',
+    designerPath: '.lingbuilder/projects/site/window-designer.json', isDefault: false
+  };
+  const service = createWindowsExecutableIconService(root, createDesignerAssetService(root), bundledIcon);
+  const outputRoot = path.join(root, 'generated');
+  const window = {
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '内嵌站点窗口', width: 800, height: 600,
+    background: '#FFFFFF', description: '', controls: [], iconStyle: 'none' as const,
+    embeddedSite: { files: ['www/index.html', 'www/assets/app.js'] }
+  } as LingWindowModel;
+
+  const materialized = await service.materialize(projectRef, window, [outputRoot]);
+  assert.equal(materialized.source, 'none');
+  assert.deepEqual(await fs.readFile(path.join(outputRoot, 'resources', 'lbsite-1.bin')), Buffer.from('<html><body>站点</body></html>', 'utf8'));
+  assert.deepEqual(await fs.readFile(path.join(outputRoot, 'resources', 'lbsite-2.bin')), Buffer.from('console.log(1);', 'utf8'));
+  await assert.rejects(() => fs.stat(path.join(outputRoot, WINDOWS_EXECUTABLE_ICON_FILE)), /ENOENT/u);
+
+  await assert.rejects(
+    () => service.materialize(projectRef, {
+      ...window,
+      embeddedSite: { files: ['www/index.html', 'www/assets/missing.js'] }
+    } as LingWindowModel, [outputRoot]),
+    /内嵌站点文件不存在/u
+  );
+  const hugePath = path.join(root, 'www', 'huge.js');
+  await fs.writeFile(hugePath, Buffer.alloc(WINDOWS_EMBEDDED_SITE_MAX_FILE_BYTES + 1));
+  await assert.rejects(
+    () => service.materialize(projectRef, {
+      ...window,
+      embeddedSite: { files: ['www/huge.js'] }
+    } as LingWindowModel, [outputRoot]),
+    /内嵌站点文件超过 32MB 上限/u
+  );
+});
+
+test('内嵌站点面板草稿与扫描目录的纯模型行为', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-site-scan-'));
+  const service = createWindowsExecutableIconService(root, createDesignerAssetService(root));
+  await fs.mkdir(path.join(root, 'www', 'assets'), { recursive: true });
+  await fs.writeFile(path.join(root, 'www', 'index.html'), '<html></html>', 'utf8');
+  await fs.writeFile(path.join(root, 'www', 'assets', 'app.js'), 'console.log(1);', 'utf8');
+  await fs.symlink(path.join(root, 'www', 'index.html'), path.join(root, 'www', 'link.html')).catch(() => undefined);
+
+  const files = await service.scanEmbeddedSiteDirectory('www');
+  assert.deepEqual(files, ['www/assets/app.js', 'www/index.html']);
+  await assert.rejects(() => service.scanEmbeddedSiteDirectory('missing-dir'), /站点目录不存在/u);
+  await assert.rejects(() => service.scanEmbeddedSiteDirectory('..'), /站点目录不安全/u);
+  await assert.rejects(() => service.scanEmbeddedSiteDirectory(''), /请填写要扫描的站点目录/u);
+
+  // 草稿解析：换行、反斜杠、空行、去重。
+  assert.deepEqual(parseEmbeddedSiteFilesText('www/index.html\n\nwww\\a.js\nwww/index.html'), ['www/index.html', 'www/a.js']);
+  assert.deepEqual(
+    embeddedSiteFromDraft({ host: ' APP.LOCAL ', entry: ' www/index.html ', filesText: 'www/index.html' }),
+    { files: ['www/index.html'], entry: 'www/index.html', host: 'app.local' }
+  );
+  assert.deepEqual(draftFromEmbeddedSite({ files: ['www/index.html'], entry: 'www/index.html', host: 'app.local' }),
+    { host: 'app.local', entry: 'www/index.html', filesText: 'www/index.html' });
+
+  // 校验：与生成器门禁同口径。
+  assert.deepEqual(validateEmbeddedSiteDraft({ host: '', entry: '', filesText: '' }), ['尚未添加文件：填写站点目录后点击「扫描目录」，或每行一个工作区相对路径。']);
+  const okDraft = { host: 'app.local', entry: 'www/index.html', filesText: 'www/index.html\nwww/assets/app.js' };
+  assert.deepEqual(validateEmbeddedSiteDraft(okDraft), []);
+  assert.match(
+    validateEmbeddedSiteDraft({ ...okDraft, entry: 'www/missing.html' }).join(''),
+    /入口文件 www\/missing\.html 不在文件清单内/u
+  );
+  assert.match(
+    validateEmbeddedSiteDraft({ ...okDraft, entry: 'www/index.html', filesText: 'www/index.html\nother/x.js' }).join(''),
+    /文件 other\/x\.js 必须位于入口文件/u
+  );
+  assert.match(validateEmbeddedSiteDraft({ ...okDraft, host: 'bad host' }).join(''), /主机名仅限字母、数字、点、连字符/u);
+  assert.equal(pickEmbeddedSiteEntry(['www/assets/app.js', 'www/index.html']), 'www/index.html');
 });
 
 test('标签页中的透明标签在 Win32 运行时继承实际父容器背景', () => {

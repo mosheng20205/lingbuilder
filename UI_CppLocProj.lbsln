@@ -37,13 +37,6 @@
       "type": "visual-cpp",
       "sourceRoot": "examples/dll-consumer-demo/src",
       "references": []
-    },
-    {
-      "id": "tabs-probe",
-      "name": "标签页探针",
-      "type": "visual-cpp",
-      "sourceRoot": ".lingbuilder/projects/tabs-probe/src",
-      "references": []
     }
   ]
 }

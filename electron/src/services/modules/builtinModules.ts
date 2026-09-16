@@ -593,7 +593,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           example: '结束()'
         },
         { command: '到文本', runtimeName: '到文本', parameters: [{ name: '值', type: 'raw' }], returnType: 'wideString', encoding: 'wide', example: '到文本(123)' },
-        { command: '格式化文本', runtimeName: '格式化文本', parameters: [{ name: '格式模板', type: 'wideString' }, { name: '参数', type: 'raw', description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'wideString', encoding: 'wide', example: '格式化文本("姓名：{}，年龄：{}", "小林", 18)' },
+        { command: '格式化文本', runtimeName: '格式化文本', parameters: [{ name: '格式模板', type: 'wideString' }, { name: '参数', type: 'lingValue', variadic: true, description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'wideString', encoding: 'wide', example: '格式化文本("姓名：{}，年龄：{}", "小林", 18)' },
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '取鼠标水平位置', runtimeName: '取鼠标水平位置', parameters: [], returnType: 'int' },
         { command: '取鼠标垂直位置', runtimeName: '取鼠标垂直位置', parameters: [], returnType: 'int' },
@@ -755,8 +755,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '页面设置_右边距', runtimeName: '页面设置_右边距', parameters: [], returnType: 'int' }
         ,{ command: '页面设置_下边距', runtimeName: '页面设置_下边距', parameters: [], returnType: 'int' }
         ,{ command: '属性页_显示', runtimeName: '属性页_显示', parameters: [{ name: '属性页', type: 'controlRef', controlTypes: ['PropertySheet'], controlKinds: ['resource'], scope: 'project' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_创建行', runtimeName: '列表视图_创建行', parameters: [{ name: '单元格', type: 'raw', description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'raw', encoding: 'wide' }
-        ,{ command: '列表视图_创建行集合', runtimeName: '列表视图_创建行集合', parameters: [{ name: '行', type: 'raw', description: '可继续传入任意数量的列表视图行。' }], returnType: 'raw' }
+        ,{ command: '列表视图_创建行', runtimeName: '列表视图_创建行', parameters: [{ name: '单元格', type: 'lingValue', variadic: true, description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'raw', encoding: 'wide' }
+        ,{ command: '列表视图_创建行集合', runtimeName: '列表视图_创建行集合', parameters: [{ name: '行', type: 'lingValue', variadic: true, description: '可继续传入任意数量的列表视图行。' }], returnType: 'raw' }
         ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行数据', type: 'raw', description: '列表视图行；兼容旧式 Tab 分隔文本。' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '列表视图_插入行', runtimeName: '列表视图_插入行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: '行数据', type: 'raw', description: '列表视图行；兼容旧式 Tab 分隔文本。' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '列表视图_删除行', runtimeName: '列表视图_删除行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }], returnType: 'bool', encoding: 'wide' }
@@ -854,8 +854,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ]
     },
     targets: [
-      { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/WebView2.h', 'include/WebView2EnvironmentOptions.h'], libs: ['ole32.lib'], runtimeFiles: ['bin/x86/WebView2Loader.dll'], defines: ['LINGBUILDER_EDGEVIEW_MODULE'] },
-      { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/WebView2.h', 'include/WebView2EnvironmentOptions.h'], libs: ['ole32.lib'], runtimeFiles: ['bin/x64/WebView2Loader.dll'], defines: ['LINGBUILDER_EDGEVIEW_MODULE'] }
+      { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/WebView2.h', 'include/WebView2EnvironmentOptions.h'], libs: ['ole32.lib', 'lib/x86/WebView2LoaderStatic.lib'], defines: ['LINGBUILDER_EDGEVIEW_MODULE'] },
+      { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/WebView2.h', 'include/WebView2EnvironmentOptions.h'], libs: ['ole32.lib', 'lib/x64/WebView2LoaderStatic.lib'], defines: ['LINGBUILDER_EDGEVIEW_MODULE'] }
     ],
     bindings: { commands: [
       ...EDGEVIEW_SAFE_API_BINDINGS,

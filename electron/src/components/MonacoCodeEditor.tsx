@@ -1,3 +1,5 @@
+// 必须保持为第一条导入：在任何 monaco-editor 模块求值之前注入简体中文 NLS 表（右键菜单等内置界面文案）。
+import '../services/monacoNls/monacoNlsZhCn';
 import {
   forwardRef,
   useCallback,
@@ -1316,7 +1318,10 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     ]).then(([installedResult, enabledResult]) => {
       if (cancelled) return;
       const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
-      const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
+      const enabledModulesBase = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
+      // 项目级 DLL 命令声明：虚拟模块只并入补全上下文。
+      const declaredModule = (enabledResult as { projectDeclarationModule?: InstalledModule | null }).projectDeclarationModule ?? null;
+      const enabledModules = declaredModule ? [...enabledModulesBase, declaredModule] : enabledModulesBase;
       setFetchedModuleContext({ availableModules, enabledModules });
     });
 

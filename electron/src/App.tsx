@@ -211,6 +211,7 @@ import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';
 import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';
+import { EMPTY_PROJECT_DLL_COMMANDS_SOURCE, isProjectDllCommandsFilePath, PROJECT_DLL_COMMANDS_FILE_NAME } from './services/lingCpp/projectDllCommandService';
 import { executeProjectDataTypeCommand } from './services/lingCpp/projectDataTypeCommandService';
 import { createProjectConstantRenameProposal, findProjectConstantReferences } from './services/lingCpp/projectConstantReferenceService';
 import { findFunctionLibraryReferences, isFunctionLibrarySource, renameFunctionLibraryAcrossSources } from './services/lingCpp/functionLibraryService';
@@ -868,6 +869,38 @@ export default function App() {
     await handleSelectFile(targetFile);
   }, [handleSelectFile, solution.projects]);
 
+  const handleOpenProjectDllCommands = useCallback(async (projectId: string): Promise<void> => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project || project.type !== 'visual-cpp') return;
+    if (projectId !== activeProjectIdRef.current) {
+      await requestWorkbenchAlert({ title: '项目尚未就绪', description: '请先等待该项目切换并载入完成。', confirmLabel: '知道了' });
+      return;
+    }
+    const sourceRoot = project.sourceRoot.replace(/\\/gu, '/').replace(/\/+$/u, '');
+    const filePath = `${sourceRoot}/${PROJECT_DLL_COMMANDS_FILE_NAME}`;
+    let targetFile = filesRef.current.find(file => file.path.replace(/\\/gu, '/') === filePath);
+    if (!targetFile) {
+      targetFile = {
+        path: filePath,
+        name: PROJECT_DLL_COMMANDS_FILE_NAME,
+        language: 'lingcpp',
+        encoding: 'utf8',
+        eol: 'lf',
+        savedEncoding: 'utf8',
+        savedEol: 'lf',
+        formatModified: false,
+        originalContent: '',
+        translatedContent: EMPTY_PROJECT_DLL_COMMANDS_SOURCE,
+        strings: [],
+        isModified: true
+      };
+      const nextFiles = [...filesRef.current, targetFile];
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+    }
+    await handleSelectFile(targetFile);
+  }, [handleSelectFile, solution.projects]);
+
   const addPersistedFunctionLibraryToEditor = useCallback(async (filePath: string, sourceCode: string, select = true) => {
     const existing = filesRef.current.find(file => file.path.replace(/\\/gu, '/') === filePath.replace(/\\/gu, '/'));
     if (existing) {
@@ -1352,7 +1385,10 @@ export default function App() {
     if (activeProjectIdRef.current !== projectId
       || projectFileLoadGenerationRef.current !== loadGeneration) return;
     const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
-    const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
+    const enabledModulesBase = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
+    // 项目级 DLL 命令声明：虚拟模块只并入补全/诊断上下文，模块管理 UI 读独立字段。
+    const declaredModule = (enabledResult as { projectDeclarationModule?: InstalledModule | null }).projectDeclarationModule ?? null;
+    const enabledModules = declaredModule ? [...enabledModulesBase, declaredModule] : enabledModulesBase;
     // 模块列表内容未变化时保持引用稳定：moduleContext 是语言诊断、补全等重计算
     // useMemo 的依赖项，设计器每次提交后都换新引用会让这些计算重复执行并卡住主线程。
     setModuleContext(previous => (
@@ -2347,7 +2383,7 @@ void DisplayStatus() {
   };
 
   const handleDeleteFile = async (file: CppFile): Promise<boolean> => {
-    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path)) {
+    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path) || isProjectDllCommandsFilePath(file.path)) {
       await requestWorkbenchAlert({ title: '无法删除', description: '该项目结构文件不能在 IDE 中删除；请在对应的新手编辑器中清空内容。', confirmLabel: '知道了' });
       return false;
     }
@@ -2439,7 +2475,7 @@ void DisplayStatus() {
   };
 
   const handleRenameFile = async (file: CppFile, newName: string): Promise<boolean> => {
-    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path)) {
+    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path) || isProjectDllCommandsFilePath(file.path)) {
       await requestWorkbenchAlert({ title: '无法重命名', description: '该项目结构文件使用固定名称，不能在 IDE 中重命名。', confirmLabel: '知道了' });
       return false;
     }
@@ -5338,6 +5374,7 @@ void DisplayStatus() {
     exportLcppSourcePackage: (projectId?: unknown) => handleExportLcppSourcePackage(typeof projectId === 'string' ? projectId : undefined),
     openProjectGlobalVariables: (projectId?: unknown) => handleOpenProjectGlobalVariables(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     openProjectDataTypes: (projectId?: unknown) => handleOpenProjectDataTypes(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
+    openProjectDllCommands: (projectId?: unknown) => handleOpenProjectDllCommands(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     createFunctionLibrary: (projectId?: unknown) => handleCreateFunctionLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     pasteFunctionLibrary: (projectId?: unknown) => handlePasteFunctionLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     closeSolution: handleCloseCurrentSolution,
@@ -5564,6 +5601,16 @@ void DisplayStatus() {
         when: 'workspace.open && !workbench.modalOpen',
         order: 12,
         handler: (_context, projectId) => workbenchCommandHandlersRef.current.openProjectDataTypes(projectId)
+      },
+      {
+        id: 'workbench.action.project.openDllCommands',
+        title: '项目：打开 DLL 命令声明',
+        aliases: ['Open Project DLL Commands', 'DLL Commands'],
+        category: '文件',
+        description: '声明项目自带 DLL 的导出函数为中文命令，构建时自动链接并部署 DLL。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 12,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.openProjectDllCommands(projectId)
       },
       {
         id: 'workbench.action.project.createFunctionLibrary',
@@ -7285,6 +7332,7 @@ void DisplayStatus() {
           onOpenProjectDirectory={handleOpenProjectDirectory}
           onOpenProjectGlobalVariables={projectId => { void executeWorkbenchCommand('workbench.action.project.openGlobalVariables', projectId); }}
           onOpenProjectDataTypes={projectId => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', projectId); }}
+          onOpenProjectDllCommands={projectId => { void executeWorkbenchCommand('workbench.action.project.openDllCommands', projectId); }}
           onCreateFunctionLibrary={handleCreateFunctionLibrary}
           onPasteFunctionLibrary={handlePasteFunctionLibrary}
           onCopySolutionFullPath={() => executeWorkbenchCommand('workbench.action.solution.copyFullPath')}
@@ -7349,6 +7397,9 @@ void DisplayStatus() {
               onUpdateProjectSources={handleUpdateProjectSources}
               onOpenProjectDataTypes={activeProjectHasWindowDesigner
                 ? () => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', activeProjectIdRef.current); }
+                : undefined}
+              onOpenProjectDllCommands={activeProjectHasWindowDesigner
+                ? () => { void executeWorkbenchCommand('workbench.action.project.openDllCommands', activeProjectIdRef.current); }
                 : undefined}
               isDarkMode={isDarkMode}
               activeFile={activeFile}

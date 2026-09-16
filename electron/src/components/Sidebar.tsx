@@ -66,6 +66,9 @@ import {
   MODULE_FAMILIES
 } from '../services/modules/moduleFamilies';
 import type { SolutionFolder, SolutionModel, SolutionProject } from '../services/solution/solutionClient';
+import { isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
+import { isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
+import { isProjectDllCommandsFilePath } from '../services/lingCpp/projectDllCommandService';
 import type { CommandService } from '../services/commands/commandService';
 import { getMenuService } from '../services/menus/menuService';
 import { SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../services/menus/types';
@@ -109,6 +112,17 @@ type ModuleCppRow = {
   label: string;
   values: Array<{ id: string; value: string }>;
 };
+
+/** 判断项目源码根下是否已创建固定声明文件（路径规范化后比较，容忍前导斜杠与 ./ 前缀差异）。 */
+function projectDeclarationFileExists(files: CppFile[], sourceRoot: string, fileName: string): boolean {
+
+  const root = `/${sourceRoot.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '').replace(/^\/+/u, '').toLowerCase()}`;
+  return files.some(file => {
+    const normalized = `/${file.path.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/^\/+/u, '').toLowerCase()}`;
+    const expected = `${root}/${fileName}`.toLowerCase();
+    return normalized === expected || normalized.endsWith(expected);
+  });
+}
 
 function buildModuleCppRows(
   targets: ModuleTargetContribution[],
@@ -193,6 +207,7 @@ interface SidebarProps {
   onOpenProjectDirectory?: (projectId: string) => void | Promise<void>;
   onOpenProjectGlobalVariables?: (projectId: string) => void | Promise<void>;
   onOpenProjectDataTypes?: (projectId: string) => void | Promise<void>;
+  onOpenProjectDllCommands?: (projectId: string) => void | Promise<void>;
   onCreateFunctionLibrary?: (projectId: string) => void | Promise<void>;
   onPasteFunctionLibrary?: (projectId: string) => void | Promise<void>;
   onCopySolutionFullPath?: () => boolean | Promise<boolean>;
@@ -245,6 +260,7 @@ export default function Sidebar({
   onOpenProjectDirectory,
   onOpenProjectGlobalVariables,
   onOpenProjectDataTypes,
+  onOpenProjectDllCommands,
   onCreateFunctionLibrary,
   onPasteFunctionLibrary,
   onCopySolutionFullPath,
@@ -347,7 +363,12 @@ export default function Sidebar({
   );
   const srcFiles = files.filter(f => f.path.startsWith('src/') && includesSearch(f.name, f.path));
   const functionLibraryFiles = files.filter(file => file.language === 'lingcpp' && includesSearch(file.name, file.path) && isFunctionLibrarySource(file.translatedContent || file.originalContent));
-  const regularSrcFiles = srcFiles.filter(file => !functionLibraryFiles.includes(file));
+  const regularSrcFiles = srcFiles.filter(file =>
+    !functionLibraryFiles.includes(file)
+    // 项目固定结构文件（项目全局变量/项目数据类型/项目DLL命令）由解决方案树顶部的固定入口展示，不在 src 目录下重复列出。
+    && !isProjectGlobalsFilePath(file.path)
+    && !isProjectDataTypesFilePath(file.path)
+    && !isProjectDllCommandsFilePath(file.path));
   const configFiles = files.filter(f => f.path.startsWith('config/') && includesSearch(f.name, f.path));
   const designerStateMatchesActiveProject = designerState.project.id === activeSolutionProjectId;
   const designerWindows = (designerStateMatchesActiveProject ? designerState.project.windows : []).filter(windowModel => includesSearch(
@@ -1919,7 +1940,22 @@ export default function Sidebar({
                             <span aria-hidden="true" className="h-4 w-4 shrink-0" />
                             <FileCode className="h-4 w-4 shrink-0 text-emerald-500" />
                             <span className="truncate">自定义数据类型</span>
-                            {!files.some(file => file.path.replace(/\\/gu, '/').endsWith(`/${project.sourceRoot.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '')}/项目数据类型.lcpp`)) && (
+                            {!projectDeclarationFileExists(files, project.sourceRoot, '项目数据类型.lcpp') && (
+                              <span className="ml-auto text-[9px] opacity-60">未创建</span>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void onOpenProjectDllCommands?.(project.id)}
+                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] font-sans transition-colors ${
+                              isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/50' : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                            title="声明项目自带 DLL 的导出函数为中文命令；旧项目会在首次编辑时创建文件"
+                          >
+                            <span aria-hidden="true" className="h-4 w-4 shrink-0" />
+                            <FileCode className="h-4 w-4 shrink-0 text-amber-500" />
+                            <span className="truncate">DLL 命令</span>
+                            {!projectDeclarationFileExists(files, project.sourceRoot, '项目DLL命令.lcpp') && (
                               <span className="ml-auto text-[9px] opacity-60">未创建</span>
                             )}
                           </button>

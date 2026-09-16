@@ -173,8 +173,8 @@ async function verifyNativeBuild(
       ].filter(Boolean).join('\n'));
     }
     const executable = path.join(buildRoot, platform, 'Release', 'bin', `${exported.projectName}.exe`);
-    const loader = path.join(path.dirname(executable), 'WebView2Loader.dll');
-    await Promise.all([fs.access(executable), fs.access(loader)]);
+    // WebView2 Loader 已静态链接进 EXE，不再要求 exe 同目录存在 WebView2Loader.dll。
+    await fs.access(executable);
     platforms.push(platform);
   }
   return { buildRoot, platforms };

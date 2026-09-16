@@ -5,9 +5,17 @@ import { DISK_COMMANDS, DISK_PUBLIC_TYPES } from './diskApiCatalog';
 import { KEYBOARD_COMMANDS } from './keyboardApiCatalog';
 import { MOUSE_COMMANDS } from './mouseApiCatalog';
 
-type Parameter = { name: string; type: ModuleBindingValueType; description: string };
+type Parameter = {
+  name: string;
+  type: ModuleBindingValueType;
+  description: string;
+  optional?: boolean;
+  defaultValue?: string | number | boolean | null;
+  variadic?: boolean;
+  byRef?: boolean;
+};
 
-// 以下说明按 src/services/windowDesigner/systemLibraryRuntime.ts 的实际实现核实，
+// 以下说明按 src/services/windowDesigner/systemLibraryRuntime.ts 的实际边界行为核实，
 // 重复语义（文件路径、写入内容、覆盖开关、注册表子键、窗口句柄、命令行）提取为共享常量。
 const filePathArg = '文件或目录的 Unicode 路径，允许相对路径，运行时按当前工作目录解析。';
 const writePathArg = '要写入的文件路径；所在目录必须已存在，打不开文件时返回假。';
@@ -21,13 +29,16 @@ const regValueNameArg = '子键下的值名称；读文本只接受 REG_SZ 与 R
 const hwndArg = '目标窗口的原生窗口句柄，可来自 窗口_按标题查找 或控件的窗口句柄；句柄已失效时命令返回假。';
 const commandLineArg = '完整的命令行文本，含可执行文件和参数，不能为空；路径中有空格时必须用双引号包住该段。';
 const workDirArg = '新进程的当前工作目录；空文本表示沿用本进程的工作目录。';
+const fileHandleArg = '文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。';
+const fileTextLengthArg = '要读取的字节数；小于 0 表示读取到文件末尾，实际读到的内容可能少于请求数量。';
 
 function command(
   name: string,
   parameters: Parameter[],
   returnType: ModuleBindingValueType,
   description: string,
-  example?: string
+  example?: string,
+  options?: { insertText?: string; returnLabel?: string }
 ): StandardCommandSpec {
   const placeholders = parameters.map((parameter, index) => parameter.type === 'controlRef' || parameter.type === 'handler'
     ? createModuleBindingSnippetArgument(parameter, index)
@@ -36,16 +47,23 @@ function command(
     name,
     signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`,
     description,
-    insertText: `${name}(${placeholders.join(', ')})`,
+    insertText: options?.insertText || `${name}(${placeholders.join(', ')})`,
     parameters,
     returnType,
+    returnLabel: options?.returnLabel,
     example
   };
 }
 
 const fsCore = createStandardModule({
-  id: 'lingbuilder.fs.core', name: '文件目录模块', category: '系统',
-  description: '提供 UTF-8 文本文件和常用文件目录操作，所有路径均使用 Unicode。', tags: ['文件', '目录'],
+  id: 'lingbuilder.fs.core', name: '文件目录模块', version: '1.1.0', category: '系统',
+  description: '提供 UTF-8 文本文件、常用文件目录操作、句柄式文件流读写和文件目录枚举，所有路径均使用 Unicode。',
+  tags: ['文件', '目录'],
+  types: [{
+    name: '文件号',
+    description: '文件_打开 返回的文件流句柄（64 位、进程内不复用），0 表示打开失败；用 文件_关闭 或 文件_关闭全部 释放。',
+    cppType: 'long long'
+  }],
   commands: [
     command('文件_是否存在', [{ name: '路径', type: 'wideString', description: '要判断的 Unicode 路径；只有普通文件返回真，目录、不存在或非法路径都返回假。'}], 'bool', '判断指定路径是否为普通文件。', '文件_是否存在("配置.json")'),
     command('目录_是否存在', [{ name: '路径', type: 'wideString', description: '要判断的 Unicode 路径；只有真实目录返回真，文件和不存在路径返回假。'}], 'bool', '判断指定路径是否为目录。'),
@@ -58,6 +76,91 @@ const fsCore = createStandardModule({
     command('文件_取大小', [{ name: '路径', type: 'wideString', description: '要统计的文件路径；路径不存在或不是文件时返回 -1。'}], 'longLong', '返回文件字节数，失败返回 -1。'),
     command('目录_创建', [{ name: '路径', type: 'wideString', description: '要创建的目录路径；缺失的父目录会逐级一起创建，目录已存在也算成功返回真。'}], 'bool', '递归创建目录；目录已经存在也返回真。'),
     command('目录_删除空目录', [{ name: '路径', type: 'wideString', description: '要删除的目录路径；目录内仍有条目时返回假，不会递归删除内容。'}], 'bool', '只删除空目录，不执行递归删除。')
+,
+    command('文件_打开', [
+      { name: '路径', type: 'wideString', description: '要打开的文件路径；路径为空或打不开时返回 0。'},
+      { name: '打开方式', type: 'int', optional: true, defaultValue: 3, description: '对文件的操作方式，对齐易语言编号：1 读入（不存在则失败）、2 写出（不存在则失败）、3 读写（不存在则失败）、4 重写（清空后写入，不存在则新建）、5 改写（不存在则新建，保留已有内容）、6 改读（读写，不存在则新建）；省略默认 3。'},
+      { name: '共享方式', type: 'int', optional: true, defaultValue: 1, description: '限制其它进程操作此文件的方式：1 无限制、2 禁止其它进程写、3 禁止其它进程读、4 禁止其它进程读写；省略默认 1。'}
+    ], 'longLong', '打开一个普通文件供句柄式读写，成功返回文件号，失败返回 0。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)\n文件_关闭(号)', { returnLabel: '文件号' }),
+    command('文件_关闭', [{ name: '文件号', type: 'longLong', description: fileHandleArg}], 'void', '关闭被打开的文件并释放文件号；句柄无效时不产生任何效果。', '局部 文件号 号\n号 = 文件_打开("data.txt", 3, 1)\n文件_关闭(号)', { insertText: '文件_关闭($1)' }),
+    command('文件_关闭全部', [], 'void', '关闭当前进程内所有被打开的文件。程序退出前调用可以确保数据落盘。', '文件_关闭全部()', { insertText: '文件_关闭全部()' }),
+    command('文件_移动读写位置', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '移动距离', type: 'longLong', description: '相对于起始位置的移动字节数，可为负表示向文件首方向移动。'},
+      { name: '起始位置', type: 'int', optional: true, defaultValue: 1, description: '移动的基准位置：1 文件首、2 文件尾、3 现行位置；省略默认 1。'}
+    ], 'bool', '在打开的文件中设置下一次读写的位置；成功返回真，文件号无效或基准位置非法返回假。', '局部 文件号 号\n号 = 文件_打开("data.txt", 3, 1)\n文件_移动读写位置(号, 0, 2)', { insertText: '文件_移动读写位置($1, 0, 1)' }),
+    command('文件_移到文件首', [{ name: '文件号', type: 'longLong', description: fileHandleArg}], 'bool', '把读写位置移到文件首；成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.txt", 3, 1)\n文件_移到文件首(号)', { insertText: '文件_移到文件首($1)' }),
+    command('文件_移到文件尾', [{ name: '文件号', type: 'longLong', description: fileHandleArg}], 'bool', '把读写位置移到文件尾；成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)\n文件_移到文件尾(号)', { insertText: '文件_移到文件尾($1)' }),
+    command('文件_读入字节集', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '长度', type: 'int', description: '要读取的字节数；剩余内容不足时只返回剩余部分，到文件尾后返回空字节集。'}
+    ], 'bytes', '从文件当前读写位置读取字节集；失败或已到文件尾返回空字节集。', '局部 文件号 号\n号 = 文件_打开("data.bin", 1, 1)', { insertText: '文件_读入字节集($1, 4)' }),
+    command('文件_写出字节集', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '数据', type: 'bytes', description: '要写出的字节集，在当前读写位置写入，空字节集不写任何内容。'}
+    ], 'bool', '把字节集写到文件当前读写位置；成功返回真，以只读方式打开的文件返回假。', '局部 文件号 号\n号 = 文件_打开("data.bin", 6, 1)\n文件_移到文件尾(号)', { insertText: '文件_写出字节集($1, $2)' }),
+    command('文件_读入文本', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '长度', type: 'longLong', optional: true, defaultValue: -1, description: fileTextLengthArg + '省略或小于 0 表示读取到文件末尾。'}
+    ], 'wideString', '从文件当前读写位置读取文本（内容按 UTF-8 解码）；失败返回空文本。', '局部 文件号 号\n号 = 文件_打开("data.txt", 1, 1)\n文件_移到文件首(号)', { insertText: '文件_读入文本($1, -1)' }),
+    command('文件_写出文本', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '文本', type: 'wideString', description: '要写出的文本，按 UTF-8 编码写入当前读写位置，不自动追加换行。'}
+    ], 'bool', '把文本写到文件当前读写位置；成功返回真，以只读方式打开的文件返回假。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)\n文件_移到文件尾(号)', { insertText: '文件_写出文本($1, "$2")' }),
+    command('文件_读入一行', [{ name: '文件号', type: 'longLong', description: fileHandleArg}], 'wideString', '从文件当前读写位置读取一行文本，行尾回车换行符被抛弃（按 UTF-8 解码）；已到文件尾返回空文本。', '局部 文件号 号\n号 = 文件_打开("data.txt", 1, 1)\n文件_移到文件首(号)', { insertText: '文件_读入一行($1)' }),
+    command('文件_写文本行', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '文本', type: 'wideString', description: '要写出的整行文本，行尾自动补回车换行符（CRLF）。'}
+    ], 'bool', '把一行文本写到文件当前读写位置并自动换行；成功返回真。', '局部 文件号 号\n号 = 文件_打开("log.txt", 6, 1)\n文件_移到文件尾(号)', { insertText: '文件_写文本行($1, "$2")' }),
+    command('文件_读入数据', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '变量', type: 'lingValue', variadic: true, byRef: true, description: '一个或多个接收数据的变量，按书写顺序依次读取；支持整数型、长整数型、小数型、逻辑型、文本型（UTF-8 加 0 结尾）和字节集（4 字节长度前缀）格式，必须与 文件_写出数据 的写出顺序一致。'}
+    ], 'bool', '从文件当前读写位置按 文件_写出数据 的格式依次读出多个值到变量；成功返回真，数据不足或类型不匹配返回假。', '局部 文件号 号\n号 = 文件_打开("data.bin", 1, 1)', { insertText: '文件_读入数据($1, $0)' }),
+    command('文件_写出数据', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '数据', type: 'lingValue', variadic: true, description: '一个或多个要写出的值：整数 4 字节、长整数 8 字节、小数 8 字节、逻辑值 1 字节（均小端），文本按 UTF-8 加 0 结尾，字节集为 4 字节长度前缀加数据，数组按元素顺序展开。'}
+    ], 'bool', '把多个值按固定二进制格式写到文件当前读写位置，供 文件_读入数据 读回；成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.bin", 6, 1)', { insertText: '文件_写出数据($1, $0)' }),
+    command('文件_是否在文件尾', [{ name: '文件号', type: 'longLong', description: fileHandleArg}], 'bool', '判断文件当前读写位置是否已处于数据尾部；是返回真，无效文件号也返回真。', '局部 文件号 号\n号 = 文件_打开("data.txt", 1, 1)\n文件_移到文件尾(号)', { insertText: '文件_是否在文件尾($1)' }),
+    command('文件_取读写位置', [{ name: '文件号', type: 'longLong', description: fileHandleArg}], 'longLong', '返回文件当前读写位置（从 0 起）；文件号无效返回 -1。', '局部 文件号 号\n号 = 文件_打开("data.txt", 3, 1)', { insertText: '文件_取读写位置($1)' }),
+    command('文件_取长度', [{ name: '文件号', type: 'longLong', description: fileHandleArg}], 'longLong', '返回打开文件的字节长度；文件号无效返回 -1。与按路径取大小的 文件_取大小 不同，本命令作用于已打开的文件。', '局部 文件号 号\n号 = 文件_打开("data.txt", 3, 1)', { insertText: '文件_取长度($1)' }),
+    command('文件_插入字节集', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '数据', type: 'bytes', description: '要插入的字节集，插入点之后的原有内容整体后移。'}
+    ], 'bool', '在文件当前读写位置插入字节集（要求以可写方式打开）；插入后读写位置回到插入内容首部，成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.bin", 6, 1)\n文件_移到文件首(号)', { insertText: '文件_插入字节集($1, $2)' }),
+    command('文件_插入文本', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '文本', type: 'wideString', description: '要插入的文本，按 UTF-8 编码插入，插入点之后的原有内容整体后移。'}
+    ], 'bool', '在文件当前读写位置插入文本（要求以可写方式打开）；插入后读写位置回到插入内容首部，成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)\n文件_移到文件首(号)', { insertText: '文件_插入文本($1, "$2")' }),
+    command('文件_插入文本行', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '文本', type: 'wideString', description: '要插入的整行文本，行尾自动补回车换行符，插入点之后的原有内容整体后移。'}
+    ], 'bool', '在文件当前读写位置插入一行文本（要求以可写方式打开）；插入后读写位置回到插入内容首部，成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)\n文件_移到文件首(号)', { insertText: '文件_插入文本行($1, "$2")' }),
+    command('文件_删除数据', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '字节数', type: 'longLong', description: '从当前读写位置起删除的字节数；超出文件剩余内容时删除到文件尾，不能为负。'}
+    ], 'bool', '在文件当前读写位置删除一段数据，后续内容顺序前移（要求以可写方式打开）；成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)\n文件_移到文件首(号)', { insertText: '文件_删除数据($1, 4)' }),
+    command('文件_锁定', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '位置', type: 'longLong', description: '加锁区域的起始字节位置，从 0 起；不能为负。'},
+      { name: '长度', type: 'longLong', description: '加锁区域的字节长度；不能为负。'},
+      { name: '重试毫秒', type: 'int', optional: true, defaultValue: 0, description: '加锁失败后的重试毫秒数；0 表示失败立即返回（省略时同为 0），-1 表示一直重试直到成功，其它正值在时限内每 10 毫秒重试一次。'}
+    ], 'bool', '拒绝其它进程读写文件指定区域，用于多进程共享文件；成功返回真。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)', { insertText: '文件_锁定($1, 0, 16, 0)' }),
+    command('文件_解锁', [
+      { name: '文件号', type: 'longLong', description: fileHandleArg},
+      { name: '位置', type: 'longLong', description: '解锁区域的起始字节位置；必须与 文件_锁定 时完全一致。'},
+      { name: '长度', type: 'longLong', description: '解锁区域的字节长度；必须与 文件_锁定 时完全一致。'}
+    ], 'bool', '解除 文件_锁定 加上的区域锁；参数必须与加锁时完全一致才会成功。', '局部 文件号 号\n号 = 文件_打开("data.txt", 6, 1)', { insertText: '文件_解锁($1, 0, 16)' }),
+    command('文件_枚举', [
+      { name: '目录', type: 'wideString', description: '要枚举的目录路径；目录不存在时返回 0。'},
+      { name: '通配符', type: 'wideString', description: '文件名匹配模式，支持 * 和 ? 通配符，例如 "*.txt"；空文本匹配全部文件。只按文件名匹配，不含目录前缀。'},
+      { name: '含子目录', type: 'bool', description: '传真时递归枚举全部子目录下的匹配文件，传假只枚举当前一层。'},
+      { name: '结果数组', type: 'array', description: '接收匹配文件完整路径的文本数组变量，调用前会先清空原有内容；结果不保证排序。'}
+    ], 'int', '枚举目录下的文件（含隐藏、系统文件），返回命中数量。', '局部 文本型 名单[]\n文件_枚举("日志目录", "*.txt", 真, 名单)', { insertText: '文件_枚举("$1", "*.txt", 真, $4)' }),
+    command('目录_枚举', [
+      { name: '目录', type: 'wideString', description: '要枚举的目录路径；目录不存在时返回 0。'},
+      { name: '含子目录', type: 'bool', description: '传真时递归枚举全部下级子目录，传假只枚举当前一层的直接子目录。'},
+      { name: '结果数组', type: 'array', description: '接收子目录完整路径的文本数组变量，调用前会先清空原有内容；结果不保证排序。'}
+    ], 'int', '枚举目录下的子目录，返回命中数量。', '局部 文本型 名单[]\n目录_枚举("工作目录", 假, 名单)', { insertText: '目录_枚举("$1", 假, $3)' })
   ]
 });
 

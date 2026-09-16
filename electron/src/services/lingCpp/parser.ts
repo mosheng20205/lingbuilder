@@ -8,6 +8,8 @@ import {
   LingCppDataField,
   LingCppDataType,
   LingCppDiagnostic,
+  LingCppDllCommand,
+  LingCppDllLibrary,
   LingCppGlobalVariable,
   LingCppFunctionLibrary,
   LingCppLocalVariable,
@@ -172,6 +174,12 @@ const TYPE_NAME_SOURCE = '[\\p{L}_][\\p{L}\\p{N}_]*';
 const TYPE_EXPRESSION_SOURCE = `${TYPE_NAME_SOURCE}(?:\\[\\]|［］)?`;
 const CLASS_RE = /^类\s+([\w\u4e00-\u9fa5]+)(?:\s*[:：]\s*(?:公开|私有|保护)?\s*([\w\u4e00-\u9fa5]+))?/;
 const FUNCTION_LIBRARY_RE = new RegExp(`^功能库\\s+(${TYPE_NAME_SOURCE})$`, 'u');
+const DLL_LIBRARY_RE = new RegExp(`^DLL命令库\\s+(${TYPE_NAME_SOURCE})$`, 'u');
+const DLL_ARCH_RE = /^(Win32|x64)\s*=\s*["“]([^"”]+)["”]$/u;
+const DLL_SYSTEM_RE = /^系统\s*=\s*真$/u;
+const DLL_PUBLIC_RE = /^公开\s*=\s*(真|假)$/u;
+const DLL_REMARK_RE = /^备注\s*[:：]?\s*(.+)$/u;
+const DLL_COMMAND_RE = new RegExp(`^(空|${TYPE_EXPRESSION_SOURCE})\\s+(${TYPE_NAME_SOURCE})\\s*[（(]([^）)]*)[）)](?:\\s*=\\s*(${TYPE_NAME_SOURCE}))?(?:\\s+(cdecl|stdcall))?$`, 'u');
 const DATA_TYPE_RE = new RegExp(`^数据类型\\s+(${TYPE_NAME_SOURCE})$`, 'u');
 const DATA_FIELD_RE = new RegExp(`^(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`, 'u');
 const CONSTANT_RE = new RegExp(`^常量\\s+(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.*))?$`, 'u');
@@ -193,6 +201,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
     globals: [],
     dataTypes: [],
     functionLibraries: [],
+    dllLibraries: [],
     classes: [],
     diagnostics,
     source
@@ -215,6 +224,8 @@ export function parseLingCpp(source: string): LingCppParseResult {
   let currentDataTypeNode: LingCppAstNode | null = null;
   let currentFunctionLibrary: LingCppFunctionLibrary | null = null;
   let currentFunctionLibraryNode: LingCppAstNode | null = null;
+  let currentDllLibrary: LingCppDllLibrary | null = null;
+  let currentDllLibraryNode: LingCppAstNode | null = null;
   const astNodes: LingCppAstNode[] = [];
   const rootNode = createAstNode('program', '源文件', 1, lines[0] || '', undefined, {
     range: createDocumentRange(lines)
@@ -261,6 +272,15 @@ export function parseLingCpp(source: string): LingCppParseResult {
     currentAccess = '公开';
   };
 
+  const closeCurrentDllLibrary = (endLine: number) => {
+    if (!currentDllLibrary || !currentDllLibraryNode) return;
+    const safeEndLine = Math.max(currentDllLibrary.line, Math.min(Math.max(1, lines.length), endLine));
+    currentDllLibrary.endLine = safeEndLine;
+    setNodeEndRange(currentDllLibraryNode, lines, safeEndLine);
+    currentDllLibrary = null;
+    currentDllLibraryNode = null;
+  };
+
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
     const trimmed = line.trim();
@@ -294,6 +314,124 @@ export function parseLingCpp(source: string): LingCppParseResult {
       setNodeEndRange(currentDataTypeNode, lines, lineNumber);
       currentDataType = null;
       currentDataTypeNode = null;
+      return;
+    }
+
+    const dllLibraryMatch = !currentClass && !currentDataType && !currentFunctionLibrary && !currentDllLibrary
+      ? trimmed.match(DLL_LIBRARY_RE)
+      : null;
+    if (dllLibraryMatch) {
+      if (currentMethod) closeCurrentMethod(lineNumber - 1);
+      currentDllLibrary = {
+        name: dllLibraryMatch[1],
+        line: lineNumber,
+        archFiles: [],
+        commands: []
+      };
+      currentDllLibraryNode = pushNode(createAstNode('dll-library', currentDllLibrary.name, lineNumber, line, rootNode.id, {
+        detail: '项目 DLL 命令库'
+      }));
+      program.dllLibraries.push(currentDllLibrary);
+      return;
+    }
+    if (trimmed === '结束DLL命令库') {
+      if (!currentDllLibrary || !currentDllLibraryNode) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的结束DLL命令库。', '请删除该行，或在前面添加 DLL命令库 声明。'));
+        return;
+      }
+      closeCurrentDllLibrary(lineNumber);
+      return;
+    }
+    if (currentDllLibrary) {
+      if (DLL_SYSTEM_RE.test(trimmed)) {
+        currentDllLibrary.isSystem = true;
+        pushNode(createAstNode('dll-arch', '系统 = 真', lineNumber, line, currentDllLibraryNode?.id, {
+          detail: '系统 DLL（免分发）'
+        }), currentDllLibraryNode);
+        return;
+      }
+      const dllRemarkMatch = trimmed.match(DLL_REMARK_RE);
+      if (dllRemarkMatch) {
+        const target = currentDllLibrary.commands[currentDllLibrary.commands.length - 1];
+        if (!target) {
+          diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的备注行。', '备注必须写在某条声明命令的下一行。'));
+          return;
+        }
+        target.remark = (dllRemarkMatch[1] || '').trim();
+        return;
+      }
+      const dllPublicMatch = trimmed.match(DLL_PUBLIC_RE);
+      if (dllPublicMatch) {
+        const target = currentDllLibrary.commands[currentDllLibrary.commands.length - 1];
+        if (!target) {
+          diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的「公开」标记行。', '公开标记必须写在某条声明命令的下一行，例如 `公开 = 假`。'));
+          return;
+        }
+        target.isPublic = dllPublicMatch[1] === '真';
+        return;
+      }
+      const dllArchMatch = trimmed.match(DLL_ARCH_RE);
+      if (dllArchMatch) {
+        const relativePath = (dllArchMatch[2] || '').trim().replace(/\\/gu, '/');
+        if (!/\.dll$/iu.test(relativePath) || relativePath.includes('..') || /^[a-zA-Z]:/u.test(relativePath) || relativePath.startsWith('/')) {
+          diagnostics.push(createDiagnostic('error', lineNumber, line, 'DLL 路径必须是项目内相对的 .dll 文件。', `示例：Win32 = "dll/Win32/${currentDllLibrary.name}.dll"`));
+          return;
+        }
+        currentDllLibrary.archFiles = currentDllLibrary.archFiles.filter(item => item.arch !== dllArchMatch[1]);
+        currentDllLibrary.archFiles.push({ arch: dllArchMatch[1] as 'Win32' | 'x64', relativePath, line: lineNumber });
+        pushNode(createAstNode('dll-arch', `${dllArchMatch[1]} = ${relativePath}`, lineNumber, line, currentDllLibraryNode?.id, {
+          detail: '架构 DLL 文件'
+        }), currentDllLibraryNode);
+        return;
+      }
+      const dllCommandMatch = trimmed.match(DLL_COMMAND_RE);
+      if (dllCommandMatch) {
+        const commandName = dllCommandMatch[2] || '';
+        if (currentDllLibrary.commands.some(item => item.name === commandName)) {
+          diagnostics.push(createDiagnostic('error', lineNumber, line, `DLL 命令 ${commandName} 重复声明。`, '命令名即 DLL 导出函数名，请保持唯一。'));
+          return;
+        }
+        const parameters = (dllCommandMatch[3] || '').split(/[,，]/u).map(piece => piece.trim()).filter(Boolean).map((piece, index) => {
+          let note: string | undefined;
+          const noteSeparator = piece.indexOf('//');
+          if (noteSeparator >= 0) {
+            const noteText = piece.slice(noteSeparator + 2).trim();
+            if (noteText) note = noteText;
+            piece = piece.slice(0, noteSeparator).trim();
+          }
+          const pieces = piece.split(/\s+/u).filter(Boolean);
+          const byRef = pieces[pieces.length - 1] === '传址';
+          if (byRef) pieces.pop();
+          const parameterType = pieces[0] || '文本型';
+          const parameterName = pieces.length > 1 ? pieces.slice(1).join('') : `参数${index + 1}`;
+          const parameter: LingCppParameter & { line: number } = { name: parameterName, type: parameterType, byRef, line: lineNumber };
+          if (note !== undefined) parameter.note = note;
+          return parameter;
+        });
+        const command: LingCppDllCommand = {
+          name: commandName,
+          returnType: dllCommandMatch[1] || '空',
+          parameters,
+          callingConvention: dllCommandMatch[5] === 'stdcall' ? 'stdcall' : 'cdecl',
+          exportName: dllCommandMatch[4] || undefined,
+          line: lineNumber
+        };
+        currentDllLibrary.commands.push(command);
+        pushNode(createAstNode('dll-command', commandName, lineNumber, line, currentDllLibraryNode?.id, {
+          returnType: command.returnType,
+          detail: `${command.returnType} ${commandName}(${parameters.map(parameter => `${parameter.type}${parameter.byRef ? '*' : ''} ${parameter.name}`).join(', ')})${command.exportName ? ` = ${command.exportName}` : ''}${command.callingConvention === 'stdcall' ? ' stdcall' : ''}`
+        }), currentDllLibraryNode);
+        return;
+      }
+      if (ACCESS_RE.test(trimmed)) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, 'DLL 命令库不支持访问修饰符。', '声明的导出函数即对外命令，无需公开/私有区分。'));
+        return;
+      }
+      if (trimmed === '结束') {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, 'DLL 命令库不支持「结束」标记。', '请继续写声明行，或用 `结束DLL命令库` 收尾。'));
+        return;
+      }
+      diagnostics.push(createDiagnostic('error', lineNumber, line, '无法识别的 DLL 命令声明行。', '格式：`返回类型 命令名(类型 参数, ...) [= 导出名] [stdcall]`、`Win32 = "dll/..."`、`系统 = 真` 或 `备注: 文本`。'));
       return;
     }
 
@@ -687,6 +825,11 @@ export function parseLingCpp(source: string): LingCppParseResult {
     currentFunctionLibrary.endLine = lines.length;
     setNodeEndRange(currentFunctionLibraryNode, lines, lines.length);
     diagnostics.push(createDiagnostic('error', currentFunctionLibrary.line, lines[currentFunctionLibrary.line - 1] || `功能库 ${currentFunctionLibrary.name}`, '功能库声明缺少结束语句。', '请在功能库末尾添加 `结束功能库`。'));
+  }
+  if (currentDllLibrary && currentDllLibraryNode) {
+    currentDllLibrary.endLine = lines.length;
+    setNodeEndRange(currentDllLibraryNode, lines, lines.length);
+    diagnostics.push(createDiagnostic('error', currentDllLibrary.line, lines[currentDllLibrary.line - 1] || `DLL命令库 ${currentDllLibrary.name}`, 'DLL命令库 声明缺少结束语句。', '请在末尾添加 `结束DLL命令库`。'));
   }
   if (currentClass && currentClassNode) {
     currentClass.endLine = lines.length;

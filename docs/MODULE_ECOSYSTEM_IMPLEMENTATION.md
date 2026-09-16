@@ -498,6 +498,7 @@ lingbuilder.module.json
 - v2 创建期选项包括独占 UDF、崩溃报告、环境跟踪保护、扩展开关、通道搜索、发布通道、滚动条样式、脚本区域、背景色和宿主输入处理。属性修改后必须显式重建；运行期以 `QueryInterface` 检测接口，使用 v2 命令时生成物要求 Runtime 150。CompositionController、PointerInfo、AutomationProvider、实验 API、裸 COM/指针、Host Object 注入继续排除。
 - 新增 API 只接受文本、数字、JSON、明确文件路径和受管任务/下载 ID；CompositionController、PointerInfo、AutomationProvider、任意 Host Object 注入、裸 COM/指针和内存地址继续明确排除。异步操作统一返回任务 ID，并通过 `&处理器名` 在所属窗口线程完成；实例关闭或重建会增加 generation、取消任务并拒绝迟到回调。
 - 设计器继续只绘制安全占位。统一命令 `designer.edgeview.previewControl` 会生成只含当前 Edge 控件、不执行项目用户代码的独立 Win32 临时项目，通过 MSVC 和受管进程启动；再次预览、停止或切换项目会回收旧进程。
+- 2026-09-15 起 EdgeView 两个 MSVC target 以 `WebView2LoaderStatic.lib` 静态链接（`libs: ['ole32.lib', 'lib/<arch>/WebView2LoaderStatic.lib']`，由 `materializeEdgeViewSdk` 从固定版本 NuGet 包物化），不再声明 `runtimeFiles`（WebView2Loader.dll 不随 exe 部署）；生成器同步改为直接调用 Loader 入口，F5/CLI 链接统一 `/MANIFEST:EMBED`。窗口模型 `embeddedSite` 可把网页静态文件编入 EXE 并由生成运行时经 `WebResourceRequested` 内存服务（零释放），详见 `LingBuilder AI 规则手册.md` EdgeView 节。
 
 ## 分类内置模块库（2026-07）
 

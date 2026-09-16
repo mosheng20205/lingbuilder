@@ -20,6 +20,7 @@ export interface LingCppProgram {
   globals: LingCppGlobalVariable[];
   dataTypes: LingCppDataType[];
   functionLibraries: LingCppFunctionLibrary[];
+  dllLibraries: LingCppDllLibrary[];
   classes: LingCppClass[];
   diagnostics: LingCppDiagnostic[];
   source: string;
@@ -124,6 +125,8 @@ export interface LingCppParameter {
   type: string;
   defaultValue?: string;
   note?: string;
+  /** 项目 DLL 命令声明：按指针传址（输出参数），生成 `类型*` 形参与 `&实参` 调用。 */
+  byRef?: boolean;
 }
 
 export interface LingCppStatement {
@@ -150,6 +153,9 @@ export type LingCppAstNodeKind =
   | 'data-type'
   | 'data-field'
   | 'function-library'
+  | 'dll-library'
+  | 'dll-command'
+  | 'dll-arch'
   | 'class'
   | 'access'
   | 'member'
@@ -269,6 +275,45 @@ export interface LingCppProjectTypeContext {
   filePath: string;
   sourceCode: string;
   dataTypes: LingCppDataType[];
+}
+
+/** 项目 DLL 命令库：单个架构的 DLL 文件映射（项目内相对路径）。 */
+export interface LingCppDllArchitectureFile {
+  arch: 'Win32' | 'x64';
+  relativePath: string;
+  line: number;
+}
+
+/** 项目 DLL 命令库单条导出声明：命令名默认即 DLL 导出函数名，可用 `= 导出名` 指定不同导出名。 */
+export interface LingCppDllCommand {
+  name: string;
+  returnType: string;
+  parameters: LingCppParameter[];
+  callingConvention: 'cdecl' | 'stdcall';
+  /** 命令备注（写入合成模块的 description，补全/新手提示可见）。 */
+  remark?: string;
+  /** 实际导出函数名；省略时与命令名相同。 */
+  exportName?: string;
+  /** 命令是否公开（对补全和新手编辑器可见）；缺省视为公开，仅 `公开 = 假` 显式关闭。 */
+  isPublic?: boolean;
+  line: number;
+}
+
+/** 项目 DLL 命令库：不经 .lbmod 模块，项目内直接声明「DLL 文件 + 导出函数 → 中文命令」。 */
+export interface LingCppDllLibrary {
+  name: string;
+  line: number;
+  endLine?: number;
+  /** 系统 DLL（user32/gdi32 等）：免分发、不复制、不生成导入库，链接系统导入库。 */
+  isSystem?: boolean;
+  archFiles: LingCppDllArchitectureFile[];
+  commands: LingCppDllCommand[];
+}
+
+export interface LingCppProjectDllCommandContext {
+  filePath: string;
+  sourceCode: string;
+  dllLibraries: LingCppDllLibrary[];
 }
 
 export interface AiConnectionConfig {

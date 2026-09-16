@@ -99,6 +99,54 @@ export class WebsiteContentService {
     return { ok: true, guide };
   }
 
+  /** 公开「更新记录」：全部日期按倒序返回，itemsJson 解析为结构化条目后再下发。 */
+  async publicUpdates() {
+    const entries = await this.prisma.websiteUpdateEntry.findMany({ orderBy: [{ date: 'desc' }] });
+    return { ok: true, updates: entries.map(entry => ({ date: entry.date, items: parseUpdateItems(entry.itemsJson) })) };
+  }
+
+  /** 管理端只读快照：供同步脚本对比本地发布文件与云端的日期差异、展示增量计划。 */
+  async adminUpdatesSnapshot() {
+    const entries = await this.prisma.websiteUpdateEntry.findMany({ orderBy: [{ date: 'asc' }], select: { date: true, itemsJson: true, updatedAt: true } });
+    return { ok: true, updates: entries.map(entry => ({ date: entry.date, items: parseUpdateItems(entry.itemsJson), updatedAt: entry.updatedAt })) };
+  }
+
+  /**
+   * 更新记录整量同步：payload 即「应当公开的全部日期」，逐日期 upsert，
+   * 并删除云端有而 payload 没有的日期——同步后云端始终是本地发布文件的镜像，重复执行结果一致。
+   */
+  async syncUpdates(body: JsonRecord, actor: AuthenticatedUser) {
+    const rows = arrayOfRecords(body.updates);
+    if (!rows.length) throw validation('同步内容为空：updates 至少需要一个日期条目。');
+    if (rows.length > 400) throw validation('单次同步最多支持 400 个日期。');
+    const merged = new Map<string, string>();
+    for (const row of rows) {
+      const date = clean(row.date, 10);
+      if (!isValidUpdateDate(date)) throw validation(`日期格式无效：${date || '（空）'}，应为真实存在的 YYYY-MM-DD 日期。`);
+      if (merged.has(date)) throw validation(`日期重复：${date}。`);
+      const items = arrayOfRecords(row.items)
+        .slice(0, 40)
+        .map(item => ({ category: clean(item.category, 20), text: clean(item.text, 600) }))
+        .filter(item => item.text);
+      if (!items.length) throw validation(`${date} 至少需要一条更新内容。`);
+      for (const item of items) {
+        if (!(UPDATE_CATEGORIES as readonly string[]).includes(item.category)) throw validation(`${date} 存在无效分类「${item.category || '（空）'}」，只允许：${UPDATE_CATEGORIES.join('、')}。`);
+      }
+      merged.set(date, JSON.stringify(items));
+    }
+    const existing = await this.prisma.websiteUpdateEntry.findMany({ select: { date: true } });
+    const existingDates = new Set(existing.map(entry => entry.date));
+    let created = 0;
+    let updated = 0;
+    for (const [date, itemsJson] of merged) {
+      await this.prisma.websiteUpdateEntry.upsert({ where: { date }, create: { date, itemsJson }, update: { itemsJson } });
+      if (existingDates.has(date)) updated += 1; else created += 1;
+    }
+    const removed = await this.prisma.websiteUpdateEntry.deleteMany({ where: { date: { notIn: [...merged.keys()] } } });
+    await this.audit(actor, 'website.update.sync', 'website-update-set', 'all', { synced: merged.size, created, updated, removed: removed.count });
+    return { ok: true, synced: merged.size, created, updated, removed: removed.count };
+  }
+
   async adminSnapshot() {
     const [downloads, commands, guides, demos, groups, sponsors] = await Promise.all([
       this.prisma.websiteDownloadRelease.findMany({ include: { mirrors: { orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] } }, orderBy: [{ sortOrder: 'desc' }, { updatedAt: 'desc' }] }),
@@ -469,3 +517,29 @@ function pickHttpsDirectMirrorUrl(mirrors: Array<{ provider: string; enabled: bo
 
 function validation(message: string) { return Object.assign(new Error(message), { status: 400, code: 'VALIDATION_FAILED' }); }
 function notFound(message: string) { return Object.assign(new Error(message), { status: 404, code: 'NOT_FOUND' }); }
+
+/** 更新记录条目允许的分类；官网前端按同一份清单渲染标识与配色。 */
+const UPDATE_CATEGORIES = ['新功能', '问题修复', '新模块', '体验优化', '教程与示例', '版本发布'] as const;
+
+/** 严格校验真实存在的日历日期：Date.parse 会把 2026-02-30 滚动成 3 月初，不能依赖。 */
+function isValidUpdateDate(date: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(date);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function parseUpdateItems(itemsJson: string): Array<{ category: string; text: string }> {
+  try {
+    const value: unknown = JSON.parse(itemsJson);
+    if (!Array.isArray(value)) return [];
+    return value.filter(isRecord)
+      .map(item => ({ category: clean(item.category, 20), text: clean(item.text, 600) }))
+      .filter(item => item.text);
+  } catch {
+    return [];
+  }
+}

@@ -128,6 +128,8 @@ export async function materializeModuleNativeDependencies(
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
+    // 项目 DLL 命令声明的虚拟模块没有安装目录，由 projectDllMaterializeService 单独物化。
+    if (module.isProjectDeclaration) continue;
     const target = getPreferredModuleTarget(module, layout.preferredTargetId);
     if (!target) {
       const diagnostic = getUnsupportedModuleTargetDiagnostic(module, layout.preferredTargetId);
@@ -1424,7 +1426,8 @@ async function materializeEdgeViewSdk(
   const moduleRoot = path.join('modules', 'lingbuilder.edgeview');
   const includeSource = path.join(packageRoot, 'build', 'native', 'include');
   const architecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'x86';
-  const loaderSource = path.join(packageRoot, 'build', 'native', architecture, 'WebView2Loader.dll');
+  // WebView2 Loader 以静态库链入 EXE：EXE 不再依赖同目录 WebView2Loader.dll，可直接单文件分发。
+  const staticLibSource = path.join(packageRoot, 'build', 'native', architecture, 'WebView2LoaderStatic.lib');
   const roots = unique([
     path.join(layout.buildDir, moduleRoot),
     path.join(layout.sourceDir, moduleRoot),
@@ -1439,21 +1442,19 @@ async function materializeEdgeViewSdk(
       await fs.mkdir(path.join(root, 'include'), { recursive: true });
       await fs.copyFile(path.join(includeSource, 'WebView2.h'), path.join(root, 'include', 'WebView2.h'));
       await fs.copyFile(path.join(includeSource, 'WebView2EnvironmentOptions.h'), path.join(root, 'include', 'WebView2EnvironmentOptions.h'));
-      const packagedLoader = path.join(root, 'bin', architecture, 'WebView2Loader.dll');
-      await fs.mkdir(path.dirname(packagedLoader), { recursive: true });
-      await fs.copyFile(loaderSource, packagedLoader);
+      const packagedStaticLib = path.join(root, 'lib', architecture, 'WebView2LoaderStatic.lib');
+      await fs.mkdir(path.dirname(packagedStaticLib), { recursive: true });
+      await fs.copyFile(staticLibSource, packagedStaticLib);
     }
+    // 导出工程同时包含 Win32 与 x64 两种配置，两套静态库都要落盘。
     for (const exportArchitecture of ['x86', 'x64']) {
-      const exportLoaderSource = path.join(packageRoot, 'build', 'native', exportArchitecture, 'WebView2Loader.dll');
-      const exportLoaderTarget = path.join(layout.exportDir, moduleRoot, 'bin', exportArchitecture, 'WebView2Loader.dll');
-      await fs.mkdir(path.dirname(exportLoaderTarget), { recursive: true });
-      await fs.copyFile(exportLoaderSource, exportLoaderTarget);
+      const exportLibSource = path.join(packageRoot, 'build', 'native', exportArchitecture, 'WebView2LoaderStatic.lib');
+      const exportLibTarget = path.join(layout.exportDir, moduleRoot, 'lib', exportArchitecture, 'WebView2LoaderStatic.lib');
+      await fs.mkdir(path.dirname(exportLibTarget), { recursive: true });
+      await fs.copyFile(exportLibSource, exportLibTarget);
     }
-    await fs.mkdir(layout.binDir, { recursive: true });
-    const runtimeTarget = path.join(layout.binDir, 'WebView2Loader.dll');
-    await fs.copyFile(loaderSource, runtimeTarget);
     plan.includeDirs.push(path.join(layout.sourceDir, moduleRoot, 'include'));
-    plan.runtimeFiles.push(runtimeTarget);
+    plan.libFiles.push(path.join(layout.buildDir, moduleRoot, 'lib', architecture, 'WebView2LoaderStatic.lib'));
     plan.requiresMsvc = true;
   } catch (error) {
     plan.diagnostics.push(`准备 EdgeView WebView2 SDK 失败：${errorMessage(error)}`);
@@ -1780,5 +1781,5 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-const EDGEVIEW_WEBVIEW2_SDK_VERSION = '1.0.4078.44';
+export const EDGEVIEW_WEBVIEW2_SDK_VERSION = '1.0.4078.44';
 const EDGEVIEW_WEBVIEW2_HEADER_SHA256 = 'dff1e3181ec7ec203a34ef6efa966590e0ef0ba1a5c3fe3b69da6508c2f8a02e';

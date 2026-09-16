@@ -1,6 +1,7 @@
 import { LingControl, LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
+import { createProjectDllDeclarationModule } from '../lingCpp/projectDllCommandService';
 import {
   LingCppAst,
   LingCppClass,
@@ -103,7 +104,7 @@ import {
   resolveEplRuntimeCallName,
   splitEplBinaryExpression
 } from './eplToCppRules';
-import { generateWindowsExecutableResourceFile, getSafeCustomWindowIconPath } from './windowsExecutableIconService';
+import { generateWindowsExecutableResourceFile, getSafeCustomWindowIconPath, getWindowEmbeddedSiteHost, getWindowEmbeddedSiteResourceSpecs, type WindowsEmbeddedSiteResourceSpec } from './windowsExecutableIconService';
 import { generateFbroBrowserManagerRuntime } from './fbroBrowserManagerRuntime';
 
 /** FBro 资源替换宿主辅助：String.raw 书写，避免宿主模板的多层反斜杠转义。 */
@@ -325,7 +326,7 @@ export function generateLingCppNativeWin32Project(
   project: LingWindowProject,
   options: GenerateLingCppNativeWin32ProjectOptions = {}
 ): GeneratedLingCppNativeProject {
-  const enabledModules = options.enabledModules || [];
+  let enabledModules = options.enabledModules || [];
   const projectSources = normalizeProjectSources(options);
   // 控制台模式：以“公开 启动()”子程序所在类为程序主体；设计器窗口类名与源码类名不一致时
   // 以源码为准修正生成窗口（只调整本次生成的内存模型，不改写设计器持久化数据）。
@@ -336,6 +337,9 @@ export function generateLingCppNativeWin32Project(
     ? withConsoleStartupWindow(project, consoleStartup.entry.className)
     : project;
   const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, effectiveProject);
+  // 项目级 DLL 命令声明：合成虚拟模块并入启用模块，诊断/补全/C++ 生成/构建自动复用模块链路。
+  const projectDllModule = createProjectDllDeclarationModule(aggregate.program.dllLibraries || [], project.id);
+  if (projectDllModule) enabledModules = [...enabledModules, projectDllModule];
   const selectedWindow = resolveNativeWindowForSource(effectiveProject, options, aggregate.program);
   const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
   const newEmojiModuleEnabled = enabledModules.some(module => module.manifest.id === NEW_EMOJI_MODULE_ID);
@@ -410,6 +414,9 @@ export function generateLingCppNativeWin32Project(
   const dynamicLibraryMismatchDiagnostics = dynamicLibraryRequested && usesNewEmojiDesigner
     ? ['动态库输出当前仅支持标准 Win32 后端；new_emoji 窗口请使用 EXE 应用模式。']
     : [];
+  const projectDllBackendDiagnostics = projectDllModule && usesNewEmojiDesigner
+    ? ['项目 DLL 命令声明当前仅支持标准 Win32 与控制台后端；new_emoji 窗口项目不支持。']
+    : [];
   const customIconDiagnostics = project.windows.flatMap(window => {
     if (window.iconStyle !== 'custom') return [];
     if (!window.iconPath?.trim()) return [`窗口“${window.title}”选择了自定义图标，但尚未指定 ICO 文件。`];
@@ -419,6 +426,23 @@ export function generateLingCppNativeWin32Project(
   const legacyUploadDiagnostics = project.windows.flatMap(window => window.controls
     .filter(control => control.type === 'Upload' || control.type === 'DragUpload')
     .map(control => `窗口“${window.title}”仍包含已从 Win32 工具箱移除的旧上传控件“${control.name}”；当前继续兼容生成，请改用非可视“文件对话框”绑定现有按钮或拖放目标。`));
+  const embeddedSiteModelDiagnostics = project.windows
+    .filter(window => window.embeddedSite)
+    .flatMap(window => {
+      try {
+        getWindowEmbeddedSiteResourceSpecs(window);
+      } catch (error) {
+        return [error instanceof Error ? error.message : String(error)];
+      }
+      return [];
+    });
+  const embeddedSiteRequiresEdgeViewDiagnostics = project.windows
+    .filter(window => window.embeddedSite && !enabledModuleIds.has('lingbuilder.edgeview'))
+    .map(window => `窗口“${window.title}”声明了内嵌站点，但项目未启用 EdgeView 浏览器模块（lingbuilder.edgeview）；内嵌站点页面无法加载。请启用该模块后重新构建。`);
+  const embeddedSiteWindow = project.windows.find(window => window.embeddedSite);
+  const embeddedSiteMultipleWindowDiagnostics = project.windows.filter(window => window.embeddedSite).length > 1
+    ? [`有 ${project.windows.filter(window => window.embeddedSite).length} 个窗口声明了内嵌站点；当前仅构建活动窗口“${embeddedSiteWindow?.title || ''}”的内嵌站点资源。`]
+    : [];
   const executableResourceFile = generateWindowsExecutableResourceFile(selectedWindow);
 
   return {
@@ -441,9 +465,13 @@ export function generateLingCppNativeWin32Project(
       ...newEmojiControlReferenceDiagnostics,
       ...resourceDiagnostics,
       ...(dynamicLibraryEntry?.diagnostics ?? []),
-      ...dynamicLibraryMismatchDiagnostics
+      ...dynamicLibraryMismatchDiagnostics,
+      ...projectDllBackendDiagnostics,
+      ...embeddedSiteModelDiagnostics,
+      ...embeddedSiteRequiresEdgeViewDiagnostics,
+      ...embeddedSiteMultipleWindowDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? [])],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresEdgeViewDiagnostics],
     sourceMap,
     files: [
       {
@@ -608,7 +636,8 @@ function aggregateLingCppProjectSources(
     constants: globalsSource?.parsed.program.constants || [],
     globals: globalsSource?.parsed.program.globals || [],
     functionLibraries: parsedSources.flatMap(item => item.parsed.program.functionLibraries),
-    classes: parsedSources.filter(item => !isProjectGlobalsFilePath(item.source.filePath) && !isProjectDataTypesFilePath(item.source.filePath)).flatMap(item => item.parsed.program.classes),
+    dllLibraries: parsedSources.flatMap(item => item.parsed.program.dllLibraries || []),
+    classes: parsedSources.filter(item => !isProjectGlobalsFilePath(item.source.filePath) && !isProjectDataTypesFilePath(item.source.filePath) && !(item.parsed.program.dllLibraries?.length)).flatMap(item => item.parsed.program.classes),
     diagnostics: parsedSources.flatMap(item => item.parsed.program.diagnostics),
     source: parsedSources.map(item => item.source.sourceCode).join('\n')
   };
@@ -8819,10 +8848,11 @@ function getWindowEmbeddedResourceEntries(window: LingWindowModel): Array<{ reso
 // 每次启动覆盖写，保证释放内容与 EXE 内资源一致。
 function generateEmbeddedResourceExtractorCpp(project: LingWindowProject, selectedWindow: LingWindowModel): string {
   const entries = getWindowEmbeddedResourceEntries(selectedWindow);
-  const tableLines = entries.length > 0
-    ? entries.map(entry => `    { ${entry.resourceId}, L"${entry.fileName}" },`).join('\n')
-    : '    { 0, nullptr },';
-  return `struct LingBuilderEmbeddedResourceEntry {
+  // 无内嵌释放文件时整体不生成（也不创建 %TEMP% 目录），保持构建产物零释放。
+  if (entries.length === 0) return '';
+  const tableLines = entries.map(entry => `    { ${entry.resourceId}, L"${entry.fileName}" },`).join('\n');
+  return `#define LINGBUILDER_HAS_EMBEDDED_EXTRACTOR 1
+struct LingBuilderEmbeddedResourceEntry {
     unsigned int resourceId;
     const wchar_t* fileName;
 };
@@ -8871,6 +8901,105 @@ interface DynamicLibraryEntrySection {
  * 导出函数经窗口类单例转发（生成的子程序是类成员，不能直接 dllexport）；
  * 跨 DLL 边界只允许 POD/文本签名，其余签名给出阻断诊断，不静默降级。
  */
+// 生成「内嵌站点」运行时成员：页面静态文件已按 RCDATA 编入 EXE（资源 ID 2101 起），
+// 生成的运行时经 WebView2 WebResourceRequested 在内存中直接服务 https://<host>/*，
+// 运行期不向磁盘（含 %TEMP%）释放任何 HTML/JS/CSS 等网页文件。
+function generateEmbeddedSiteRuntimeMembers(window: LingWindowModel): string {
+  let specs: WindowsEmbeddedSiteResourceSpec[];
+  try {
+    specs = getWindowEmbeddedSiteResourceSpecs(window);
+  } catch {
+    // 模型错误已在生成诊断中报告；这里安全跳过内嵌站点代码生成。
+    return '';
+  }
+  const escapeLiteral = (value: string): string => value.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
+  const host = getWindowEmbeddedSiteHost(window);
+  const entry = window.embeddedSite?.entry?.trim().replace(/\\/gu, '/') || 'index.html';
+  const entrySitePath = specs.find(spec => spec.sourceFile === entry)?.sitePath || entry;
+  const tableLines = specs.map(spec =>
+    `            { L"${escapeLiteral(spec.sitePath)}", ${spec.resourceId}, L"${escapeLiteral(spec.contentType)}" },`
+  ).join('\n');
+  return String.raw`
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+    // ================= 内嵌站点（零释放内存服务） =================
+    struct LingBuilderEmbeddedSiteEntry { const wchar_t* path; unsigned int resourceId; const wchar_t* contentType; };
+
+    void LingBuilderEmbeddedSite_注册(EdgeViewInstance& instance) {
+        if (!instance.webView || !instance.environment) return;
+        static const LingBuilderEmbeddedSiteEntry kEntries[] = {
+${tableLines}
+            { nullptr, 0, nullptr }
+        };
+        static const wchar_t* const kHost = L"${escapeLiteral(host)}";
+        static const wchar_t* const kEntry = L"${escapeLiteral(entrySitePath)}";
+        if (kEntries[0].path == nullptr) return;
+        const std::wstring filter = std::wstring(L"https://") + kHost + L"/*";
+        instance.webView->AddWebResourceRequestedFilter(filter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+        Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment = instance.environment;
+        EventRegistrationToken token = {};
+        instance.webView->add_WebResourceRequested(Microsoft::WRL::Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+            [environment](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+                if (!args) return S_OK;
+                Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequest> request;
+                if (FAILED(args->get_Request(&request)) || !request) return S_OK;
+                LPWSTR uri = nullptr;
+                if (FAILED(request->get_Uri(&uri)) || !uri) return S_OK;
+                std::wstring path(uri);
+                CoTaskMemFree(uri);
+                const size_t schemeEnd = path.find(L"://");
+                if (schemeEnd != std::wstring::npos) path.erase(0, schemeEnd + 3);
+                const size_t slash = path.find(L'/');
+                path = slash == std::wstring::npos ? std::wstring() : path.substr(slash + 1);
+                const size_t cut = path.find_first_of(L"?#");
+                if (cut != std::wstring::npos) path.resize(cut);
+                if (path.empty()) path = kEntry;
+                const LingBuilderEmbeddedSiteEntry* matched = nullptr;
+                for (const LingBuilderEmbeddedSiteEntry& entry : kEntries) {
+                    if (entry.path && _wcsicmp(entry.path, path.c_str()) == 0) { matched = &entry; break; }
+                }
+                int status = 404;
+                const wchar_t* reason = L"Not Found";
+                const void* data = nullptr;
+                unsigned int size = 0;
+                std::wstring contentType = L"text/plain; charset=utf-8";
+                if (matched) {
+                    HMODULE module = GetModuleHandleW(nullptr);
+                    HRSRC resource = FindResourceW(module, MAKEINTRESOURCEW(static_cast<WORD>(matched->resourceId)), MAKEINTRESOURCEW(10));
+                    HGLOBAL loaded = resource ? LoadResource(module, resource) : nullptr;
+                    const void* bytes = loaded ? LockResource(loaded) : nullptr;
+                    const DWORD byteSize = resource ? SizeofResource(module, resource) : 0;
+                    if (bytes && byteSize) {
+                        status = 200;
+                        reason = L"OK";
+                        data = bytes;
+                        size = static_cast<unsigned int>(byteSize);
+                        contentType = matched->contentType;
+                    } else {
+                        status = 500;
+                        reason = L"Embedded Resource Missing";
+                    }
+                }
+                HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, size);
+                Microsoft::WRL::ComPtr<IStream> stream;
+                if (memory) {
+                    if (size > 0 && data) {
+                        void* target = GlobalLock(memory);
+                        if (target) { memcpy(target, data, size); GlobalUnlock(memory); }
+                    }
+                    CreateStreamOnHGlobal(memory, TRUE, &stream);
+                }
+                const std::wstring headers = std::wstring(L"Content-Type: ") + contentType + L"\r\nCache-Control: no-cache";
+                Microsoft::WRL::ComPtr<ICoreWebView2WebResourceResponse> response;
+                if (environment && SUCCEEDED(environment->CreateWebResourceResponse(stream.Get(), status, reason, headers.c_str(), &response)) && response) {
+                    args->put_Response(response.Get());
+                }
+                return S_OK;
+            }).Get(), &token);
+    }
+#endif
+`;
+}
+
 function generateDynamicLibraryEntrySection(
   project: LingWindowProject,
   program: LingCppProgram,
@@ -9140,6 +9269,8 @@ function generateMainCpp(
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
     .join('\n');
   const moduleCppPreamble = generateModuleCppPreamble(enabledModules);
+  const edgeViewModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview');
+  const embeddedSiteRuntimeSection = edgeViewModuleEnabled ? generateEmbeddedSiteRuntimeMembers(selectedWindow) : '';
   const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
   const fbroBrowserManagerRuntime = generateFbroBrowserManagerRuntime(fbroModuleEnabled);
   const fbroInProcessEnabled = fbroModuleEnabled && project.windows.some(window => window.controls.some(control =>
@@ -11269,9 +11400,6 @@ ${webSocketServerWindowField}
         bool allowHostInputProcessing = false;
         std::vector<EdgeViewCustomSchemeSpec> customSchemes;
     };
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
-    HMODULE edgeViewLoader_ = nullptr;
-#endif
     std::map<int, std::shared_ptr<EdgeViewInstance>> edgeViews_;
     std::vector<std::shared_ptr<EdgeViewInstance>> retiredEdgeViews_;
     std::wstring edgeViewGlobalProxy_;
@@ -12169,12 +12297,9 @@ ${edgeViewEventIdCases}
             调试输出(L"EdgeView 创建失败：代理地址无效。");
             return 0;
         }
-        if (!edgeViewLoader_) edgeViewLoader_ = LoadLibraryW(L"WebView2Loader.dll");
-        if (!edgeViewLoader_) { 调试输出(L"EdgeView 创建失败：exe 同目录缺少 WebView2Loader.dll。"); return 0; }
         if (!EdgeView_检查运行时版本()) return 0;
-        using CreateEnvironmentProc = HRESULT (STDAPICALLTYPE*)(PCWSTR, PCWSTR, ICoreWebView2EnvironmentOptions*, ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
-        auto createEnvironment = reinterpret_cast<CreateEnvironmentProc>(GetProcAddress(edgeViewLoader_, "CreateCoreWebView2EnvironmentWithOptions"));
-        if (!createEnvironment) { 调试输出(L"EdgeView 创建失败：Loader 入口无效。"); return 0; }
+        // WebView2 Loader 以 WebView2LoaderStatic.lib 静态链接进 EXE，不再依赖 exe 同目录的 WebView2Loader.dll。
+        auto createEnvironment = &CreateCoreWebView2EnvironmentWithOptions;
         auto instance = std::make_shared<EdgeViewInstance>();
         instance->id = instanceId; instance->host = host; instance->ownsHost = ownsHost;
         instance->cacheDirectory = cacheDirectory ? cacheDirectory : L"";
@@ -12371,6 +12496,7 @@ ${edgeViewEventIdCases}
         instance.webView->add_NewWindowRequested(Microsoft::WRL::Callback<ICoreWebView2NewWindowRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, name = nullptr, sourceFrameName = nullptr, sourceFrameUri = nullptr; BOOL user = FALSE; args->get_Uri(&uri); args->get_IsUserInitiated(&user); Microsoft::WRL::ComPtr<ICoreWebView2NewWindowRequestedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_Name(&name); Microsoft::WRL::ComPtr<ICoreWebView2NewWindowRequestedEventArgs3> args3; Microsoft::WRL::ComPtr<ICoreWebView2FrameInfo> sourceFrame; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args3))) && args3) args3->get_OriginalSourceFrameInfo(&sourceFrame); if (sourceFrame) { sourceFrame->get_Name(&sourceFrameName); sourceFrame->get_Source(&sourceFrameUri); } Microsoft::WRL::ComPtr<ICoreWebView2WindowFeatures> features; args->get_WindowFeatures(&features); BOOL hasPosition = FALSE, hasSize = FALSE, menu = FALSE, scroll = FALSE, status = FALSE, toolbar = FALSE; UINT32 left = 0, top = 0, width = 0, height = 0; if (features) { features->get_HasPosition(&hasPosition); features->get_HasSize(&hasSize); features->get_Left(&left); features->get_Top(&top); features->get_Width(&width); features->get_Height(&height); features->get_ShouldDisplayMenuBar(&menu); features->get_ShouldDisplayScrollBars(&scroll); features->get_ShouldDisplayStatus(&status); features->get_ShouldDisplayToolbar(&toolbar); } std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"name", EdgeView_接管字符串(name)}, {L"sourceFrameName", EdgeView_接管字符串(sourceFrameName)}, {L"sourceFrameUri", EdgeView_接管字符串(sourceFrameUri)}, {L"userInitiated", EdgeView_布尔值(user)}, {L"hasPosition", EdgeView_布尔值(hasPosition)}, {L"hasSize", EdgeView_布尔值(hasSize)}, {L"left", EdgeView_数值(left)}, {L"top", EdgeView_数值(top)}, {L"width", EdgeView_数值(width)}, {L"height", EdgeView_数值(height)}, {L"showMenuBar", EdgeView_布尔值(menu)}, {L"showScrollBars", EdgeView_布尔值(scroll)}, {L"showStatus", EdgeView_布尔值(status)}, {L"showToolbar", EdgeView_布尔值(toolbar)}}); EdgeView_记录事件(*raw, L"新窗口请求", data.c_str()); if (raw->eventAction == 1) args->put_Handled(TRUE); return S_OK; }).Get(), &token);
         instance.webView->add_DocumentTitleChanged(Microsoft::WRL::Callback<ICoreWebView2DocumentTitleChangedEventHandler>([this, raw](ICoreWebView2* sender, IUnknown*) -> HRESULT { LPWSTR value = nullptr; sender->get_DocumentTitle(&value); std::wstring data = EdgeView_事件数据({{L"title", EdgeView_接管字符串(value)}}); EdgeView_记录事件(*raw, L"标题改变", data.c_str()); return S_OK; }).Get(), &token);
         instance.webView->add_ContainsFullScreenElementChanged(Microsoft::WRL::Callback<ICoreWebView2ContainsFullScreenElementChangedEventHandler>([this, raw](ICoreWebView2* sender, IUnknown*) -> HRESULT { BOOL value = FALSE; sender->get_ContainsFullScreenElement(&value); std::wstring data = EdgeView_事件数据({{L"containsFullScreenElement", EdgeView_布尔值(value)}}); EdgeView_记录事件(*raw, L"全屏元素状态改变", data.c_str()); return S_OK; }).Get(), &token);
+        LingBuilderEmbeddedSite_注册(instance);
         instance.webView->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
         instance.webView->add_WebResourceRequested(Microsoft::WRL::Callback<ICoreWebView2WebResourceRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequest> request; LPWSTR uri = nullptr, method = nullptr; COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL; COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS sourceKind = COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_NONE; args->get_Request(&request); args->get_ResourceContext(&context); Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequestedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_RequestedSourceKind(&sourceKind); if (request) { request->get_Uri(&uri); request->get_Method(&method); } long long requestHandle = EdgeView对象_注册(raw, L"WebResourceRequest", request.Get()); std::wstring data = EdgeView_事件数据({{L"requestHandle", EdgeView_数值(requestHandle)}, {L"uri", EdgeView_接管字符串(uri)}, {L"method", EdgeView_接管字符串(method)}, {L"context", EdgeView_数值(context)}, {L"sourceKind", EdgeView_数值(sourceKind)}}); EdgeView_记录事件(*raw, L"Web资源请求", data.c_str()); if (raw->eventAction == 1 && raw->eventFields.count(L"responseStatus")) { const std::wstring body = raw->eventFields[L"responseBody"]; const int byteCount = body.empty() ? 0 : WideCharToMultiByte(CP_UTF8, 0, body.c_str(), static_cast<int>(body.size()), nullptr, 0, nullptr, nullptr); HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, static_cast<SIZE_T>(byteCount)); Microsoft::WRL::ComPtr<IStream> stream; if (memory) { if (byteCount > 0) { void* target = GlobalLock(memory); WideCharToMultiByte(CP_UTF8, 0, body.c_str(), static_cast<int>(body.size()), static_cast<char*>(target), byteCount, nullptr, nullptr); GlobalUnlock(memory); } CreateStreamOnHGlobal(memory, TRUE, &stream); } Microsoft::WRL::ComPtr<ICoreWebView2WebResourceResponse> response; const int status = _wtoi(raw->eventFields[L"responseStatus"].c_str()); if (raw->environment && SUCCEEDED(raw->environment->CreateWebResourceResponse(stream.Get(), status, raw->eventFields[L"responseReason"].c_str(), raw->eventFields[L"responseHeaders"].c_str(), &response)) && response) args->put_Response(response.Get()); } return S_OK; }).Get(), &token);
         instance.webView->add_WindowCloseRequested(Microsoft::WRL::Callback<ICoreWebView2WindowCloseRequestedEventHandler>([this, raw](ICoreWebView2*, IUnknown*) -> HRESULT { EdgeView_记录事件(*raw, L"窗口关闭请求", L"{}"); return S_OK; }).Get(), &token);
@@ -12588,6 +12714,8 @@ ${edgeViewEventIdCases}
 #endif
 
 ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
+
+${embeddedSiteRuntimeSection}
 
 ${fbroBrowserManagerRuntime.methods}
 
@@ -25521,7 +25649,9 @@ ${dynamicLibrarySection ? dynamicLibrarySection : consoleEntrySection ? consoleE
     g_instance = instance;
     EnableDpiAwareness();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+#if LINGBUILDER_HAS_EMBEDDED_EXTRACTOR
     LingBuilder_释放内嵌资源文件();
+#endif
 #if LINGBUILDER_FBRO_AVAILABLE
     wchar_t fbroModulePath[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, fbroModulePath, MAX_PATH);
@@ -27071,6 +27201,11 @@ function translateModuleCallArguments(
         if (chineseQuoted) return `L"${escapeWideString(interpretLingCppStringEscapes(chineseQuoted[1] || ''))}"`;
       }
       const translated = translateLingCppExpression(argument, enabledModules, translationContext);
+      // 项目 DLL 命令声明的传址参数：POD 按指针形参接收，调用点自动取地址。
+      // parameter 可能为 undefined（实参数量超过 binding 声明且无 variadic），必须空安全访问。
+      if (parameter?.byRef === true && parameterType !== 'wideString' && parameterType !== 'controlRef' && parameterType !== 'handler') {
+        return `&(${translated})`;
+      }
       if (parameterType === 'wideString' && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) {
         return `LingCppWideArg(${translated})`;
       }

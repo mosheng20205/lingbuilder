@@ -35,6 +35,7 @@ const regexSeparatorArg = '拼接各匹配结果之间插入的文本，允许�
 const textModule = createStandardModule({
   id: 'lingbuilder.std.text',
   name: '文本处理模块',
+  version: '1.1.0',
   category: '其他',
   description: '提供 Unicode 文本查找、截取、替换、修剪和大小写转换能力。索引统一从 0 开始。',
   tags: ['文本', 'Unicode'],
@@ -57,20 +58,33 @@ const textModule = createStandardModule({
     { name: '文本_到全角', signature: '文本_到全角(文本)', description: '把半角空格与 ASCII 可见字符转换为对应全角字符。', insertText: '文本_到全角("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要转换的源文本；仅空格和感叹号到波浪号区间的 ASCII 可见字符有全角形式，其余字符不变。'}], returnType: 'wideString' },
     { name: '文本_到半角', signature: '文本_到半角(文本)', description: '把全角空格与全角 ASCII 字符转换为对应半角字符。', insertText: '文本_到半角("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要转换的源文本；仅全角空格和 U+FF01 到 U+FF5E 区间的字符会转回半角，其余字符不变。'}], returnType: 'wideString' },
     { name: '文本_重复', signature: '文本_重复(文本, 次数)', description: '把文本重复拼接指定次数；次数小于等于 0 或总长超过 16777216 字符时返回空文本。', insertText: '文本_重复("$1", 3)', parameters: [{ name: '文本', type: 'wideString', description: '要重复拼接的源文本；空文本直接返回空文本。'},{ name: '次数', type: 'int', description: '重复次数；小于等于 0，或重复后总字符数超过 16777216 时返回空文本。'}], returnType: 'wideString' },
-    { name: '文本_插入', signature: '文本_插入(文本, 位置, 插入内容)', description: '在指定位置（从 0 起）插入内容；位置为负或超过长度时原样返回。', insertText: '文本_插入("$1", 0, "$2")', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged},{ name: '位置', type: 'int', description: '插入点字符索引，从 0 起，等于文本长度时追加到末尾；为负或更大时原样返回。'},{ name: '插入内容', type: 'wideString', description: '要插入的文本；空文本时结果与源文本相同。'}], returnType: 'wideString' }  ]
+    { name: '文本_插入', signature: '文本_插入(文本, 位置, 插入内容)', description: '在指定位置（从 0 起）插入内容；位置为负或超过长度时原样返回。', insertText: '文本_插入("$1", 0, "$2")', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged},{ name: '位置', type: 'int', description: '插入点字符索引，从 0 起，等于文本长度时追加到末尾；为负或更大时原样返回。'},{ name: '插入内容', type: 'wideString', description: '要插入的文本；空文本时结果与源文本相同。'}], returnType: 'wideString' }
+,
+    { name: '文本_取左边', signature: '文本_取左边(文本, 长度)', description: '取出文本左边指定数量的字符；长度小于等于 0 返回空文本，超过文本长度时取全部。', insertText: '文本_取左边("$1", 1)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '长度', type: 'int', description: '要从左边取出的字符数；小于等于 0 返回空文本，大于文本长度时返回整个文本。'}], returnType: 'wideString', example: '文本_取左边("LingBuilder", 4)' },
+    { name: '文本_取右边', signature: '文本_取右边(文本, 长度)', description: '取出文本右边指定数量的字符；长度小于等于 0 返回空文本，超过文本长度时取全部。', insertText: '文本_取右边("$1", 1)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '长度', type: 'int', description: '要从右边取出的字符数；小于等于 0 返回空文本，大于文本长度时返回整个文本。'}], returnType: 'wideString', example: '文本_取右边("LingBuilder", 6)' },
+    { name: '文本_码点转字符', signature: '文本_码点转字符(码点)', description: '返回 Unicode 码点对应的字符；超过 0xFFFF 的码点自动生成代理对。', insertText: '文本_码点转字符(0)', parameters: [{ name: '码点', type: 'int', description: 'Unicode 码点，0 到 1114111；代理区（55296～57343）或超出上限时返回空文本，65536 以上自动编码为 UTF-16 代理对。'}], returnType: 'wideString', example: '文本_码点转字符(20320)' },
+    { name: '文本_取码点', signature: '文本_取码点(文本, 位置)', description: '返回文本中指定位置（从 0 起）字符的 Unicode 码点；越界返回 0。', insertText: '文本_取码点("$1", 0)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '位置', type: 'int', description: '字符位置索引，从 0 起；越界返回 0。若该位置是代理对的高半部分且后继合法，返回合成后的完整码点。'}], returnType: 'int', example: '文本_取码点("你", 0)' },
+    { name: '文本_删首空白', signature: '文本_删首空白(文本)', description: '删除文本首部的空白字符。', insertText: '文本_删首空白("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要修剪的源文本；首部符合 iswspace 判定的空白（含空格、全角空格、制表符和换行）全部删除，其余不变。'}], returnType: 'wideString', example: '文本_删首空白("  你好")' },
+    { name: '文本_删尾空白', signature: '文本_删尾空白(文本)', description: '删除文本尾部的空白字符。', insertText: '文本_删尾空白("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要修剪的源文本；尾部符合 iswspace 判定的空白（含空格、全角空格、制表符和换行）全部删除，其余不变。'}], returnType: 'wideString', example: '文本_删尾空白("你好  ")' }  ]
 });
 
 const bytesModule = createStandardModule({
   id: 'lingbuilder.std.bytes',
   name: '字节与十六进制模块',
+  version: '1.1.0',
   category: '其他',
-  description: '通过安全文本接口提供 UTF-8 字节长度与十六进制编解码，不暴露裸内存指针。',
+  description: '通过安全文本接口提供 UTF-8 字节长度、十六进制编解码和数值进制文本转换。',
   tags: ['字节', '十六进制'],
   commands: [
     { name: '字节_UTF8长度', signature: '字节_UTF8长度(文本)', description: '返回文本编码为 UTF-8 后的字节数。', insertText: '字节_UTF8长度("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要统计的文本；返回其 UTF-8 编码后的字节数，编码失败返回 0。'}], returnType: 'int', example: '字节_UTF8长度("中文")' },
     { name: '字节_文本转十六进制', signature: '字节_文本转十六进制(文本)', description: '把文本的 UTF-8 字节转换为大写十六进制文本。', insertText: '字节_文本转十六进制("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要转换的文本；输出大写十六进制文本，编码失败时返回空文本。'}], returnType: 'wideString', example: '字节_文本转十六进制("Ling")' },
     { name: '字节_十六进制转文本', signature: '字节_十六进制转文本(十六进制)', description: '把十六进制字节文本按 UTF-8 解码，格式错误返回空文本。', insertText: '字节_十六进制转文本("$1")', parameters: [{ name: '十六进制', type: 'wideString', description: hexDecodeArg}], returnType: 'wideString' },
     { name: '字节_十六进制是否有效', signature: '字节_十六进制是否有效(十六进制)', description: '判断文本是否由偶数个十六进制字符组成。', insertText: '字节_十六进制是否有效("$1")', parameters: [{ name: '十六进制', type: 'wideString', description: '待校验的文本；要求长度为偶数且每个字符都是 0-9、a-f、A-F。'}], returnType: 'bool' }
+,
+    { name: '数值_到十六进制文本', signature: '数值_到十六进制文本(数值)', description: '返回整数的十六进制文本形式：非负数为大写十六进制（无前缀），负数为 8 位 32 位补码形式。', insertText: '数值_到十六进制文本(0)', parameters: [{ name: '数值', type: 'int', description: '要转换的整数；例如 255 得 FF，-1 得 FFFFFFFF。'}], returnType: 'wideString', example: '数值_到十六进制文本(255)' },
+    { name: '数值_到八进制文本', signature: '数值_到八进制文本(数值)', description: '返回整数的八进制文本形式（无前缀）；负数按 32 位补码的八进制输出。', insertText: '数值_到八进制文本(0)', parameters: [{ name: '数值', type: 'int', description: '要转换的整数；例如 8 得 10，-1 得 37777777777。'}], returnType: 'wideString', example: '数值_到八进制文本(8)' },
+    { name: '数值_十六进制解析', signature: '数值_十六进制解析(十六进制文本)', description: '把十六进制文本解析为整数；可带 0x/0X 前缀，非法内容返回 0。', insertText: '数值_十六进制解析("$1")', parameters: [{ name: '十六进制文本', type: 'wideString', description: '只含十六进制字符的文本，允许首尾空白和可选 0x/0X 前缀；超过 8 位取低 32 位（按补码解释），没有有效字符时返回 0。'}], returnType: 'int', example: '数值_十六进制解析("FF")' },
+    { name: '数值_八进制解析', signature: '数值_八进制解析(八进制文本)', description: '把八进制文本解析为整数；非法内容返回 0。', insertText: '数值_八进制解析("$1")', parameters: [{ name: '八进制文本', type: 'wideString', description: '只含八进制字符（0-7）的文本，允许首尾空白；超过位数取低 32 位（按补码解释），没有有效字符时返回 0。'}], returnType: 'int', example: '数值_八进制解析("10")' }
   ]
 });
 
@@ -95,7 +109,11 @@ const byteArrayOperationsModule = createStandardModule({
     { name: '字节集_倒找', signature: '字节集_倒找(数据, 欲寻找, 起始位置)', description: '从起始位置（含）向左查找字节集最后一次出现的位置；起始位置小于 0 或越界时按末尾处理；未找到返回 -1。', insertText: '字节集_倒找($1, $2, 0)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '欲寻找', type: 'bytes', description: '要查找的目标字节集；为空时返回 -1。'}, { name: '起始位置', type: 'int', description: '查找窗口的右端字节索引，含该位置，从 0 起；小于 0 或不小于字节集长度时按整个字节集查找。'}], returnType: 'int' },
     { name: '字节集_替换', signature: '字节集_替换(数据, 欲寻找, 替换内容, 次数)', description: '把字节集中的欲替换内容替换为替换内容；次数小于等于 0 表示全部替换；欲替换为空时原样返回。', insertText: '字节集_替换($1, $2, $3, 0)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '欲寻找', type: 'bytes', description: '要被替换掉的目标字节集；为空时原样返回。'}, { name: '替换内容', type: 'bytes', description: '替换写入的字节集，长度可以和目标不同，空字节集表示删除匹配。'}, { name: '次数', type: 'int', description: '最多替换次数；小于等于 0 表示全部替换。'}], returnType: 'bytes' },
     { name: '字节集_插入', signature: '字节集_插入(数据, 位置, 插入内容)', description: '在指定位置（从 0 起）插入字节集；位置小于 0 原样返回，超过长度时追加到末尾。', insertText: '字节集_插入($1, 0, $2)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '位置', type: 'int', description: '插入点字节索引，从 0 起；小于 0 原样返回，大于长度时追加到末尾。'}, { name: '插入内容', type: 'bytes', description: '要插入的字节集；空字节集时结果与源字节集相同。'}], returnType: 'bytes' },
-    { name: '字节集_删除', signature: '字节集_删除(数据, 位置, 长度)', description: '从指定位置（从 0 起）删除指定长度的字节；长度小于 0 表示删除到末尾；位置越界时原样返回。', insertText: '字节集_删除($1, 0, 1)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '位置', type: 'int', description: '起始删除的字节索引，从 0 起；为负或不小于长度时原样返回。'}, { name: '长度', type: 'int', description: '要删除的字节数；小于 0 表示删除到末尾，超出剩余时删除到末尾。'}], returnType: 'bytes' }  ]
+    { name: '字节集_删除', signature: '字节集_删除(数据, 位置, 长度)', description: '从指定位置（从 0 起）删除指定长度的字节；长度小于 0 表示删除到末尾；位置越界时原样返回。', insertText: '字节集_删除($1, 0, 1)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '位置', type: 'int', description: '起始删除的字节索引，从 0 起；为负或不小于长度时原样返回。'}, { name: '长度', type: 'int', description: '要删除的字节数；小于 0 表示删除到末尾，超出剩余时删除到末尾。'}], returnType: 'bytes' }
+,
+    { name: '字节集_从文本', signature: '字节集_从文本(文本)', description: '把文本按 UTF-8 编码转为字节集。', insertText: '字节集_从文本("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要转换的文本；按 UTF-8 编码为字节序列，空文本返回空字节集。'}], returnType: 'bytes', example: '字节集_从文本("你好")' },
+    { name: '字节集_重复', signature: '字节集_重复(次数, 数据)', description: '把字节集重复拼接指定次数；次数小于等于 0 或源为空时返回空字节集。', insertText: '字节集_重复(3, $1)', parameters: [{ name: '次数', type: 'int', description: '重复次数；小于等于 0，或重复结果超过 268435456 字节时返回空字节集。'}, { name: '数据', type: 'bytes', description: '要重复的字节集；空字节集直接返回空字节集。'}], returnType: 'bytes', example: '局部 字节集 原始数据\n原始数据 = 字节集_从文本("AB")' },
+    { name: '字节集_分割', signature: '字节集_分割(数据, 分隔字节集, 结果数组, 数目)', description: '把字节集按分隔字节集切分为多段写入字节集数组，返回分段数量；分隔字节集为空时按单个字节 0 分割。', insertText: '字节集_分割($1, $2, $3, 0)', parameters: [{ name: '数据', type: 'bytes', description: '待分割的字节集；空字节集返回 0 且不写数组。'}, { name: '分隔字节集', type: 'bytes', description: '分段边界的字节集；为空时按单个字节 0 分割，连续分隔符会产生空分段。'}, { name: '结果数组', type: 'array', description: '接收分段结果的字节集数组变量，调用前会先清空原有内容。'}, { name: '数目', type: 'int', description: '最多返回的分段数；小于等于 0 表示返回全部分段，达到数目后剩余内容整体作为最后一段。'}], returnType: 'int' }  ]
 });
 
 const bytesModuleWithBinary: LingBuilderModuleManifest = {
@@ -183,8 +201,9 @@ const encodingModule = createStandardModule({
 const mathModule = createStandardModule({
   id: 'lingbuilder.std.math',
   name: '数学与随机模块',
+  version: '1.1.0',
   category: '其他',
-  description: '提供常用数学函数、范围限制和线程安全随机整数。',
+  description: '提供常用数学函数、三角对数、取整舍入、范围限制和线程安全随机整数。',
   tags: ['数学', '随机'],
   commands: [
     { name: '数学_绝对值', signature: '数学_绝对值(数值)', description: '返回数值的绝对值。', insertText: '数学_绝对值(0)', parameters: [{ name: '数值', type: 'double', description: '参与计算的双精度数值，正负不限。'}], returnType: 'double', example: '数学_绝对值(-3.14)' },
@@ -194,21 +213,57 @@ const mathModule = createStandardModule({
     { name: '数学_平方根', signature: '数学_平方根(数值)', description: '返回非负数值的平方根，负数返回 0。', insertText: '数学_平方根(0)', parameters: [{ name: '数值', type: 'double', description: '被开方数；为负时返回 0 而不是报错。'}], returnType: 'double' },
     { name: '数学_乘方', signature: '数学_乘方(底数, 指数)', description: '返回底数的指定次方。', insertText: '数学_乘方(2, 8)', parameters: [{ name: '底数', type: 'double', description: '乘方的底数。'}, { name: '指数', type: 'double', description: '乘方的指数，允许小数和负数。'}], returnType: 'double' },
     { name: '数学_随机整数', signature: '数学_随机整数(最小值, 最大值)', description: '返回指定闭区间内的随机整数，参数顺序可交换。', insertText: '数学_随机整数(1, 100)', parameters: [{ name: '最小值', type: 'int', description: '随机闭区间的下界；大于上界时两者自动交换。'}, { name: '最大值', type: 'int', description: '随机闭区间的上界，可以等于下界。'}], returnType: 'int', example: '数学_随机整数(1, 100)' }
+,
+    { name: '数学_取整', signature: '数学_取整(数值)', description: '返回不大于数值的最大整数（向下取整）：-7.8 得 -8，7.8 得 7。', insertText: '数学_取整(0)', parameters: [{ name: '数值', type: 'double', description: '要取整的双精度数值；负数按向下取整（floor），例如 -7.8 返回 -8。'}], returnType: 'int', example: '数学_取整(-7.8)' },
+    { name: '数学_绝对取整', signature: '数学_绝对取整(数值)', description: '返回数值的整数部分（向零取整）：-7.8 得 -7，7.8 得 7。', insertText: '数学_绝对取整(0)', parameters: [{ name: '数值', type: 'double', description: '要取整的双精度数值；负数丢弃小数部分向零靠拢（trunc），例如 -7.8 返回 -7。'}], returnType: 'int', example: '数学_绝对取整(-7.8)' },
+    { name: '数学_四舍五入', signature: '数学_四舍五入(数值, 舍入位置)', description: '按指定位置四舍五入：位置大于 0 保留小数位，等于 0 舍入到整数，小于 0 舍入到整数侧。', insertText: '数学_四舍五入(0, 0)', parameters: [{ name: '数值', type: 'double', description: '要舍入的双精度数值；采用四舍五入（远离零）规则，例如 1056.65 舍入到整数得 1057。'}, { name: '舍入位置', type: 'int', description: '舍入的位置：大于 0 表示小数点右边保留的位数，等于 0 舍入到整数，小于 0 表示小数点左边舍入到的位置（-1 表示舍入到十位）；省略时为 0。'}], returnType: 'double', example: '数学_四舍五入(1056.65, 0)' },
+    { name: '数学_取符号', signature: '数学_取符号(数值)', description: '返回数值的符号：正数得 1，零得 0，负数得 -1。', insertText: '数学_取符号(0)', parameters: [{ name: '数值', type: 'double', description: '要判断符号的双精度数值；无法与零比较的非数值按 0 处理。'}], returnType: 'int', example: '数学_取符号(-3.2)' },
+    { name: '数学_正弦', signature: '数学_正弦(角度)', description: '返回指定弧度的正弦值。', insertText: '数学_正弦(0)', parameters: [{ name: '角度', type: 'double', description: '以弧度为单位的角；角度转弧度可乘以 3.14159… 再除以 180。'}], returnType: 'double', example: '数学_正弦(0)' },
+    { name: '数学_余弦', signature: '数学_余弦(角度)', description: '返回指定弧度的余弦值。', insertText: '数学_余弦(0)', parameters: [{ name: '角度', type: 'double', description: '以弧度为单位的角。'}], returnType: 'double', example: '数学_余弦(0)' },
+    { name: '数学_正切', signature: '数学_正切(角度)', description: '返回指定弧度的正切值。', insertText: '数学_正切(0)', parameters: [{ name: '角度', type: 'double', description: '以弧度为单位的角；接近 ±π/2 的奇数倍时结果会非常大。'}], returnType: 'double', example: '数学_正切(0)' },
+    { name: '数学_反正切', signature: '数学_反正切(数值)', description: '返回数值的反正切值（弧度），结果在 -π/2 到 π/2 之间。', insertText: '数学_反正切(0)', parameters: [{ name: '数值', type: 'double', description: '正切值；返回其对应的角度（弧度），例如 1 返回约 0.785398。'}], returnType: 'double', example: '数学_反正切(1)' },
+    { name: '数学_自然对数', signature: '数学_自然对数(数值)', description: '返回数值的自然对数（以 e 为底）。', insertText: '数学_自然对数(1)', parameters: [{ name: '数值', type: 'double', description: '必须大于 0；0 或负数返回 0。例如 2.718281828… 返回约 1。'}], returnType: 'double', example: '数学_自然对数(1)' },
+    { name: '数学_反对数', signature: '数学_反对数(数值)', description: '返回 e 的指定次方（e≈2.718281828）。', insertText: '数学_反对数(0)', parameters: [{ name: '数值', type: 'double', description: '指数；结果溢出时返回 0。例如 1 返回约 2.718282。'}], returnType: 'double', example: '数学_反对数(1)' },
+    { name: '数学_置随机种子', signature: '数学_置随机种子(种子)', description: '为随机数生成器设置种子；相同种子将得到相同的随机数序列。', insertText: '数学_置随机种子(0)', parameters: [{ name: '种子', type: 'int', description: '种子数值；-1 表示使用系统时钟作为种子（省略时的默认行为），其它数值原样作为种子。影响 数学_随机整数 的后续序列。'}], returnType: 'void', example: '数学_置随机种子(1)' }
   ]
 });
 
 const datetimeModule = createStandardModule({
   id: 'lingbuilder.std.datetime',
   name: '日期时间模块',
+  version: '1.1.0',
   category: '其他',
-  description: '提供本地时间格式化、Unix 时间戳和高精度单调计时。',
+  description: '提供日期时间值（64 位打包的本地年月日时分秒）与时间戳、格式化、分量读取、增减、间隔和高精度计时。',
   tags: ['日期', '时间'],
+  types: [{
+    name: '日期时间',
+    description: '64 位打包的本地日期时间值（年月日时分秒），由 时间_取现行、时间_指定、时间_从文本 等命令返回；0 表示无效时间。',
+    cppType: 'long long'
+  }],
   commands: [
     { name: '时间_当前时间戳', signature: '时间_当前时间戳()', description: '返回当前 Unix 秒级时间戳。', insertText: '时间_当前时间戳()', returnType: 'longLong', example: '时间_当前时间戳()' },
     { name: '时间_当前毫秒', signature: '时间_当前毫秒()', description: '返回当前 Unix 毫秒级时间戳。', insertText: '时间_当前毫秒()', returnType: 'longLong', example: '时间_当前毫秒()' },
     { name: '时间_单调毫秒', signature: '时间_单调毫秒()', description: '返回适合计算耗时的单调时钟毫秒值。', insertText: '时间_单调毫秒()', returnType: 'longLong' },
     { name: '时间_格式化当前', signature: '时间_格式化当前(格式)', description: '使用 wcsftime 格式格式化当前本地时间。', insertText: '时间_格式化当前("%Y-%m-%d %H:%M:%S")', parameters: [{ name: '格式', type: 'wideString', description: 'wcsftime 格式串，例如 %Y-%m-%d %H:%M:%S；输出上限 256 个字符，格式化失败返回空文本。'}], returnType: 'wideString' },
     { name: '时间_格式化时间戳', signature: '时间_格式化时间戳(时间戳, 格式)', description: '格式化指定 Unix 秒级时间戳。', insertText: '时间_格式化时间戳(0, "%Y-%m-%d %H:%M:%S")', parameters: [{ name: '时间戳', type: 'longLong', description: '要格式化的 Unix 秒级时间戳，按系统本地时区换算。'}, { name: '格式', type: 'wideString', description: 'wcsftime 格式串，例如 %Y-%m-%d %H:%M:%S；空文本时使用 %Y-%m-%d %H:%M:%S。'}], returnType: 'wideString' }
+,
+    { name: '时间_取现行', signature: '时间_取现行()', description: '返回当前系统日期及时间（本地时区）。', insertText: '时间_取现行()', returnType: 'longLong', returnLabel: '日期时间', example: '局部 日期时间 当前时间\n当前时间 = 时间_取现行()' },
+    { name: '时间_置现行', signature: '时间_置现行(时间)', description: '设置当前系统日期及时间（本地时区）；需要系统权限，普通权限下返回假。', insertText: '时间_置现行($1)', parameters: [{ name: '时间', type: 'longLong', description: '要写入系统时钟的日期时间值；无效值（0）返回假。修改系统时钟通常需要管理员权限，失败返回假。'}], returnType: 'bool', returnLabel: '逻辑型', example: '局部 日期时间 新时间\n新时间 = 时间_指定(2026, 9, 16, 12, 0, 0)' },
+    { name: '时间_从文本', signature: '时间_从文本(文本)', description: '把文本解析为日期时间；支持“2026年9月16日12时30分25秒”“2026-09-16 12:30:25”“20260916123025”等书写格式，时间部分可以省略。', insertText: '时间_从文本("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要解析的时间文本，支持 年月日时分秒 中文格式、斜杠/连字符/点号分隔格式和 8 位或 14 位纯数字格式；格式不符或数值非法时返回 0（无效时间）。'}], returnType: 'longLong', returnLabel: '日期时间', example: '局部 日期时间 已解析\n已解析 = 时间_从文本("2026-09-16 12:30:25")' },
+    { name: '时间_到文本', signature: '时间_到文本(时间, 转换部分)', description: '把日期时间转为“2026年09月16日12时30分25秒”风格的中文文本。', insertText: '时间_到文本($1, 0)', parameters: [{ name: '时间', type: 'longLong', description: '要转换的日期时间值；无效值返回空文本。'}, { name: '转换部分', type: 'int', description: '0 全部转换，1 只取日期部分，2 只取时间部分；省略时为 0。'}], returnType: 'wideString', example: '局部 日期时间 当前时间\n当前时间 = 时间_取现行()' },
+    { name: '时间_指定', signature: '时间_指定(年, 月, 日, 小时, 分钟, 秒)', description: '用指定年月日时分秒构造日期时间；超出范围的分量自动取最相近的有效值。', insertText: '时间_指定(2026, 1, 1, 0, 0, 0)', parameters: [{ name: '年', type: 'int', description: '年份，100 到 9999；超出范围自动取边界值。'}, { name: '月', type: 'int', description: '月份 1 到 12，省略默认 1；超出范围自动取边界值。'}, { name: '日', type: 'int', description: '日 1 到该月天数，省略默认 1；超出该月天数时自动取该月最后一天。'}, { name: '小时', type: 'int', description: '小时 0 到 23，省略默认 0；超出范围自动取边界值。'}, { name: '分钟', type: 'int', description: '分钟 0 到 59，省略默认 0；超出范围自动取边界值。'}, { name: '秒', type: 'int', description: '秒 0 到 59，省略默认 0；超出范围自动取边界值。'}], returnType: 'longLong', returnLabel: '日期时间', example: '局部 日期时间 指定值\n指定值 = 时间_指定(2026, 9, 16, 8, 30, 0)' },
+    { name: '时间_取年份', signature: '时间_取年份(时间)', description: '返回日期时间中的年份。', insertText: '时间_取年份($1)', parameters: [{ name: '时间', type: 'longLong', description: '要读取分量的日期时间值；无效值返回 0。'}], returnType: 'int', example: '局部 日期时间 当前时间\n当前时间 = 时间_取现行()' },
+    { name: '时间_取月份', signature: '时间_取月份(时间)', description: '返回日期时间中的月份（1～12）。', insertText: '时间_取月份($1)', parameters: [{ name: '时间', type: 'longLong', description: '要读取分量的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '时间_取日', signature: '时间_取日(时间)', description: '返回日期时间中的日（1～31）。', insertText: '时间_取日($1)', parameters: [{ name: '时间', type: 'longLong', description: '要读取分量的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '时间_取星期几', signature: '时间_取星期几(时间)', description: '返回日期时间是星期几：星期日为 1，星期一为 2，依此类推，星期六为 7。', insertText: '时间_取星期几($1)', parameters: [{ name: '时间', type: 'longLong', description: '要读取分量的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '时间_取小时', signature: '时间_取小时(时间)', description: '返回日期时间中的小时（0～23）。', insertText: '时间_取小时($1)', parameters: [{ name: '时间', type: 'longLong', description: '要读取分量的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '时间_取分钟', signature: '时间_取分钟(时间)', description: '返回日期时间中的分钟（0～59）。', insertText: '时间_取分钟($1)', parameters: [{ name: '时间', type: 'longLong', description: '要读取分量的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '时间_取秒', signature: '时间_取秒(时间)', description: '返回日期时间中的秒（0～59）。', insertText: '时间_取秒($1)', parameters: [{ name: '时间', type: 'longLong', description: '要读取分量的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '时间_增减', signature: '时间_增减(时间, 被增减部分, 增减值)', description: '返回增减一段时间间隔后的新时间；结果无效时自动靠拢到最近的有效时间。', insertText: '时间_增减($1, 5, 1)', parameters: [{ name: '时间', type: 'longLong', description: '起始日期时间值；无效值返回 0。'}, { name: '被增减部分', type: 'int', description: '增减的单位：1 年份、2 季度、3 月份、4 周、5 日、6 小时、7 分钟、8 秒；其它值返回 0。'}, { name: '增减值', type: 'int', description: '增减的数量，可为负表示减少；例如 月份 单位下 1月31日 加 1 得 2月28日。'}], returnType: 'longLong', returnLabel: '日期时间', example: '局部 日期时间 当前时间\n当前时间 = 时间_取现行()' },
+    { name: '时间_取间隔', signature: '时间_取间隔(时间一, 时间二, 间隔单位)', description: '返回“时间一”减去“时间二”的间隔数量；按指定单位取完整间隔数。', insertText: '时间_取间隔($1, $2, 8)', parameters: [{ name: '时间一', type: 'longLong', description: '被减数日期时间值；无效值返回 0。'}, { name: '时间二', type: 'longLong', description: '减数日期时间值；无效值返回 0。'}, { name: '间隔单位', type: 'int', description: '间隔的单位：1 年份、2 季度、3 月份、4 周、5 日、6 小时、7 分钟、8 秒；年季月取完整单位数，其余按秒差换算取整。'}], returnType: 'double', example: '局部 日期时间 早期\n早期 = 时间_指定(2026, 1, 1, 0, 0, 0)' },
+    { name: '时间_取某月天数', signature: '时间_取某月天数(年份, 月份)', description: '返回指定月份的天数；月份无效返回 0。', insertText: '时间_取某月天数(2026, 2)', parameters: [{ name: '年份', type: 'int', description: '年份，用于判断闰年二月。'}, { name: '月份', type: 'int', description: '月份 1 到 12；超出范围返回 0。'}], returnType: 'int', example: '时间_取某月天数(2026, 2)' },
+    { name: '时间_取日期', signature: '时间_取日期(时间)', description: '返回日期时间值的日期部分，时分秒固定为 0 时 0 分 0 秒。', insertText: '时间_取日期($1)', parameters: [{ name: '时间', type: 'longLong', description: '源日期时间值；无效值返回 0。'}], returnType: 'longLong', returnLabel: '日期时间' },
+    { name: '时间_取时间', signature: '时间_取时间(时间)', description: '返回日期时间值的时间部分，年月日固定为 2000 年 1 月 1 日。', insertText: '时间_取时间($1)', parameters: [{ name: '时间', type: 'longLong', description: '源日期时间值；无效值返回 0。'}], returnType: 'longLong', returnLabel: '日期时间' }
   ]
 });
 

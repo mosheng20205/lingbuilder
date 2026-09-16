@@ -38,6 +38,9 @@ import { WorkspacePathPolicy } from '../workspace/workspacePathPolicy';
 import { decodeTextFile, encodeTextFile } from '../files/textFileService';
 import type { TextFileFormat } from '../files/types';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
+import { createProjectDllDeclarationModuleFromSources, getProjectDllCommandsDiagnostics, isProjectDllCommandsFilePath } from '../lingCpp/projectDllCommandService';
+import { materializeProjectDllDeclarationModules } from '../modules/projectDllMaterializeService';
+import { parseLingCpp } from '../lingCpp/parser';
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { createDesignerAssetService } from '../windowDesigner/designerAssetService';
 import { LingWindowProject } from '../windowDesigner/types';
@@ -334,6 +337,7 @@ export class AiBridgeService {
     if (globalSource) projectGlobals = createProjectGlobalContext(globalSource.filePath, globalSource.sourceCode);
     const typeSource = effectiveSources.find(source => isProjectDataTypesFilePath(source.filePath));
     if (typeSource) projectTypes = createProjectTypeContext(typeSource.filePath, typeSource.sourceCode);
+    const dllCommandSource = effectiveSources.find(source => isProjectDllCommandsFilePath(source.filePath));
     const projectFunctions = createProjectFunctionContext(
       effectiveSources.map(source => ({ ...source, language: 'lingcpp' }))
     );
@@ -350,6 +354,7 @@ export class AiBridgeService {
     );
     const designerNotices = this.createDesignerContextDiagnostics(designerContext);
     if (designerNotices.length > 0) diagnostics.unshift(...designerNotices);
+    if (dllCommandSource) diagnostics.unshift(...getProjectDllCommandsDiagnostics(dllCommandSource.sourceCode, dllCommandSource.filePath));
     return {
       ok: true,
       filePath: normalizeFilePath(request.filePath),
@@ -948,6 +953,8 @@ export class AiBridgeService {
     ]);
     this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
+    // 项目级 DLL 命令声明：扫描全部源码解析声明库（虚拟模块由生成器内部合成，这里准备物化数据）。
+    const projectDllLibraries = lingCppSources.flatMap(source => parseLingCpp(source.sourceCode).program.dllLibraries || []);
     // 输出形态来自解决方案项目记录（windows-console / buildProperties.outputType）；
     // 必须在生成前解析：DLL 模式生成 DllMain + “公开”子程序导出包装，控制台模式生成 wmain + “启动()”入口。
     const outputKind = await this.resolveProjectOutputKind(buildLease.projectId);
@@ -1098,6 +1105,22 @@ export class AiBridgeService {
       exportDir,
       preferredTargetId
     });
+    // 项目级 DLL 命令声明物化：声明头 + 按实际导出表生成导入库 + DLL 拷到 exe 目录。
+    if (projectDllLibraries.length > 0) {
+      const projectDllSourceRoot = path.resolve(this.workspaceRoot, projectRef.sourceRoot || 'src');
+      const { blocking: projectDllBlocking, libFiles: projectDllLibFiles } = await materializeProjectDllDeclarationModules({
+        dllLibraries: projectDllLibraries,
+        sourceRootAbsolute: projectDllSourceRoot,
+        buildDir,
+        sourceDir,
+        binDir,
+        exportDir,
+        machine: preferredTargetId === 'windows-msvc-x64' ? 'X64' : 'X86',
+        logs: []
+      });
+      moduleNativePlan.blockingDiagnostics.push(...projectDllBlocking);
+      moduleNativePlan.libFiles.push(...projectDllLibFiles);
+    }
     if (moduleNativePlan.blockingDiagnostics.length > 0) {
       const result = {
         ok: false,
@@ -1516,7 +1539,11 @@ export class AiBridgeService {
       this.moduleService.getEnabledProjectModules(projectId)
     ]);
     this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
-    return { availableModules, enabledModules };
+    // 项目级 DLL 命令声明：合成虚拟模块并入上下文，使诊断/补全/AI 描述覆盖声明命令。
+    const sources = await this.resolveLingCppProjectSources(projectId);
+    const projectDllModule = createProjectDllDeclarationModuleFromSources(sources, projectId);
+    const mergedEnabled = projectDllModule ? [...enabledModules, projectDllModule] : enabledModules;
+    return { availableModules, enabledModules: mergedEnabled };
   }
 
   private async resolveEditWorkspaceFiles(request: AiBridgeEditProposeRequest): Promise<LingCppWorkspaceFile[]> {
@@ -1845,7 +1872,11 @@ async function compileWin32Preview(
         'comctl32.lib',
         'ole32.lib',
         ...(resourceOutputPath ? [resourceOutputPath] : []),
-        ...moduleLibs
+        ...moduleLibs,
+        // 清单内嵌为 RT_MANIFEST（与 Visual Studio 工程默认行为一致）：
+        // exe 目录不再出现外置 .exe.manifest，支持真正的单文件分发。
+        '/link',
+        '/MANIFEST:EMBED'
       ]
     : [
         '-municode',
@@ -1965,7 +1996,9 @@ async function compileMsvcPreviewWithModules(
     'ole32.lib',
     ...(resourceOutputPath ? [resourceOutputPath] : []),
     ...moduleLibs,
-    ...newEmojiDelayLoadLinkArgs
+    // 清单内嵌为 RT_MANIFEST（与 Visual Studio 工程默认行为一致），不落外置 .exe.manifest。
+    // /link 区段只能开启一次：延迟加载参数已带 '/link' 时直接并入该区段。
+    ...(newEmojiDelayLoadLinkArgs.length > 0 ? ['/MANIFEST:EMBED'] : ['/link', '/MANIFEST:EMBED'])
   ];
 
   try {

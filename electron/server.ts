@@ -111,6 +111,8 @@ import { createManagedProcessService } from "./src/services/tasks/managedProcess
 import { TaskService } from "./src/services/tasks/taskService";
 import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
 import { resolveExecutableNameParts } from "./src/services/solution/externalProjectService";
+import { isProjectDllCommandsFilePath, createProjectDllDeclarationModuleFromSources } from "./src/services/lingCpp/projectDllCommandService";
+import { materializeProjectDllDeclarationModules } from "./src/services/modules/projectDllMaterializeService";
 import { resolveProjectBuildDirectories, setActiveWorkspaceBuildExcludeDirs } from "./src/services/tasks/buildPathService";
 import { ClangdService } from "./src/services/lsp/clangdService";
 import { LspWorkspaceEditService } from "./src/services/lsp/lspWorkspaceEditService";
@@ -1121,7 +1123,12 @@ app.get("/api/modules/project", async (req, res) => {
   try {
     const { projectId } = req.query as { projectId?: string };
     const validatedProjectId = await requireExistingProject(projectId);
-    res.json({ ok: true, modules: await getModuleService().getEnabledProjectModules(validatedProjectId) });
+    const modules = await getModuleService().getEnabledProjectModules(validatedProjectId);
+    // 项目级 DLL 命令声明：虚拟模块作为独立字段返回，由补全上下文合并；
+    // 模块管理 UI（侧边栏模块组/模块检查器）读取 modules，不显示虚拟模块。
+    const sources = await resolveLingCppProjectSources(validatedProjectId, undefined);
+    const projectDeclarationModule = createProjectDllDeclarationModuleFromSources(sources, validatedProjectId) ?? null;
+    res.json({ ok: true, modules, projectDeclarationModule });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "项目模块读取失败" });
   }
@@ -2042,6 +2049,17 @@ app.get("/api/window-designer/assets/content", async (req, res) => {
   }
 });
 
+// 内嵌站点「扫描目录」：递归列出工作区内一个目录的全部文件（工作区相对路径），只读。
+app.get("/api/window-designer/embedded-site/scan", async (req, res) => {
+  const directory = String(req.query.dir || "");
+  try {
+    const files = await windowsExecutableIconService.scanEmbeddedSiteDirectory(directory);
+    res.json({ ok: true, files });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "内嵌站点目录扫描失败。" });
+  }
+});
+
 app.post("/api/window-designer/edge-control-preview", async (req, res) => {
   const { project, windowId, controlId } = req.body as { project?: LingWindowProject; windowId?: string; controlId?: string };
   if (!project || !isNonEmptyString(project.id) || !isNonEmptyString(windowId) || !isNonEmptyString(controlId)) {
@@ -2638,6 +2656,12 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     if (buildLease.isCancelled()) {
       return res.status(409).json(createCancelledBuildResult(buildLease, preBuildLogs));
     }
+    // 项目级 DLL 命令声明：解析声明文件（虚拟模块由生成器内部合成，这里准备物化数据）。
+    const projectDllSource = lingCppSources?.find(source => isProjectDllCommandsFilePath(source.filePath))
+      ?? (typeof lingCppSourceCode === "string" && isProjectDllCommandsFilePath(lingCppSourceFilePath || "") ? { sourceCode: lingCppSourceCode } : undefined);
+    const projectDllLibraries = projectDllSource
+      ? (parseLingCpp(projectDllSource.sourceCode).program.dllLibraries || [])
+      : [];
     const sourceCode = typeof lingCppSourceCode === "string"
       ? lingCppSourceCode
       : typeof eplSourceCode === "string"
@@ -2654,12 +2678,14 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     let routeOutputType: "exe" | "dll" = "exe";
     let routeConsoleMode = false;
     let routeExecutableName: string | undefined;
+    let routeSourceRoot = "src";
     try {
       const solutionForOutputType = await getSolutionService().getSolution();
       const recordForOutputType = solutionForOutputType.projects.find(item => item.id === projectId);
       routeOutputType = recordForOutputType?.buildProperties?.outputType === "dll" ? "dll" : "exe";
       routeConsoleMode = recordForOutputType?.type === "windows-console";
       routeExecutableName = recordForOutputType?.buildProperties?.executableName;
+      routeSourceRoot = recordForOutputType?.sourceRoot || "src";
     } catch {
       // 解决方案尚未建立时按 EXE 模式构建。
     }
@@ -2757,6 +2783,23 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       exportDir
       , preferredTargetId: getModuleTargetId(buildConfiguration)
     });
+    // 项目级 DLL 命令声明物化：声明头 + 按实际导出表生成导入库 + DLL 拷到 exe 目录。
+    const projectDllLogs: string[] = [];
+    if (projectDllLibraries.length > 0) {
+      const projectDllSourceRoot = path.resolve(getRepoWorkspaceRoot(), routeSourceRoot);
+      const { blocking: projectDllBlocking, libFiles: projectDllLibFiles } = await materializeProjectDllDeclarationModules({
+        dllLibraries: projectDllLibraries,
+        sourceRootAbsolute: projectDllSourceRoot,
+        buildDir,
+        sourceDir,
+        binDir,
+        exportDir,
+        machine: buildConfiguration.architecture === "x64" ? "X64" : "X86",
+        logs: projectDllLogs
+      });
+      moduleNativePlan.blockingDiagnostics.push(...projectDllBlocking);
+      moduleNativePlan.libFiles.push(...projectDllLibFiles);
+    }
     if (moduleNativePlan.blockingDiagnostics.length > 0) {
       return res.status(200).json({
         ok: false,
@@ -2847,6 +2890,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     );
     const logs = [
       ...preBuildLogs,
+      ...projectDllLogs,
       `已生成 Win32 C++ 工程：${buildDir}`,
       `C++ 源码目录：${sourceDir}`,
       `可复制生成目录：${exportDir}`,
@@ -3221,14 +3265,23 @@ async function runControlledWindowDesignerBuild(options: {
   let outputType: "exe" | "dll" = "exe";
   let consoleMode = false;
   let outputExecutableName: string | undefined;
+  let projectSourceRootForDll = "src";
+  let projectDllLibraries: import("./src/services/lingCpp/types").LingCppDllLibrary[] = [];
   try {
     const solutionForOutputType = await getSolutionService().getSolution();
     const recordForOutputType = solutionForOutputType.projects.find(item => item.id === projectId);
     outputType = recordForOutputType?.buildProperties?.outputType === "dll" ? "dll" : "exe";
     consoleMode = recordForOutputType?.type === "windows-console";
     outputExecutableName = recordForOutputType?.buildProperties?.executableName;
+    projectSourceRootForDll = recordForOutputType?.sourceRoot || "src";
   } catch {
     // 解决方案尚未建立时按 EXE 模式构建。
+  }
+  {
+    const declarationSource = lingCppSources?.find(source => isProjectDllCommandsFilePath(source.filePath));
+    if (declarationSource) {
+      projectDllLibraries = parseLingCpp(declarationSource.sourceCode).program.dllLibraries || [];
+    }
   }
   let outputFileNameParts = { baseName: "LingBuilderPreview", fileName: "LingBuilderPreview.exe" };
   try {
@@ -3319,6 +3372,22 @@ async function runControlledWindowDesignerBuild(options: {
     exportDir,
     preferredTargetId: getModuleTargetId(buildConfiguration)
   });
+  // 项目级 DLL 命令声明物化：声明头 + 按实际导出表生成导入库 + DLL 拷到 exe 目录。
+  const projectDllLogs: string[] = [];
+  if (outputType === "exe" && projectDllLibraries.length > 0) {
+    const { blocking: projectDllBlocking, libFiles: projectDllLibFiles } = await materializeProjectDllDeclarationModules({
+      dllLibraries: projectDllLibraries,
+      sourceRootAbsolute: path.resolve(getRepoWorkspaceRoot(), projectSourceRootForDll),
+      buildDir,
+      sourceDir,
+      binDir,
+      exportDir,
+      machine: buildConfiguration.architecture === "x64" ? "X64" : "X86",
+      logs: projectDllLogs
+    });
+    moduleNativePlan.blockingDiagnostics.push(...projectDllBlocking);
+    moduleNativePlan.libFiles.push(...projectDllLibFiles);
+  }
   if (moduleNativePlan.blockingDiagnostics.length > 0) {
     return {
       ok: false,
@@ -3443,6 +3512,7 @@ async function runControlledWindowDesignerBuild(options: {
   );
   const logs = [
     ...preBuildLogs,
+    ...projectDllLogs,
     `已生成 Win32 C++ 工程：${buildDir}`,
     `C++ 源码目录：${sourceDir}`,
     `可复制生成目录：${exportDir}`,

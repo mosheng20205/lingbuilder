@@ -48,6 +48,7 @@ import MonacoCodeEditor, {
 import LingCppStructureEditor from './LingCppStructureEditor';
 import ProjectGlobalVariableEditor from './ProjectGlobalVariableEditor';
 import ProjectDataTypeEditor from './ProjectDataTypeEditor';
+import ProjectDllCommandsEditor from './ProjectDllCommandsEditor';
 import {
   DIFF_VIEW_MODE_CHANGE_EVENT,
   type DiffViewMode
@@ -114,6 +115,7 @@ import { saveWindowDesignerState } from '../services/windowDesigner/windowDesign
 import { normalizeIdentifier, parseLingCpp } from '../services/lingCpp/parser';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
+import { isProjectDllCommandsFilePath } from '../services/lingCpp/projectDllCommandService';
 import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
 import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
 import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCppArrayParameterType } from '../services/lingCpp/parameterTypeService';
@@ -255,6 +257,7 @@ interface DiffViewerProps {
   onUpdateSourceContent?: (value: string) => void;
   onUpdateProjectSources?: (sources: Array<{ filePath: string; sourceCode: string }>) => void;
   onOpenProjectDataTypes?: () => void;
+  onOpenProjectDllCommands?: () => void;
   isDarkMode: boolean;
   activeFile?: any;
   editorFontSize?: number;
@@ -1435,6 +1438,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   onUpdateSourceContent,
   onUpdateProjectSources,
   onOpenProjectDataTypes,
+  onOpenProjectDllCommands,
   isDarkMode,
   activeFile,
   editorFontSize = 13,
@@ -1913,6 +1917,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       : String(typeFile.translatedContent || typeFile.originalContent || '');
     return createProjectTypeContext(String(typeFile.path || typeFile.name || ''), sourceCode);
   }, [activeFile?.path, allFiles, normalizedSourceCode]);
+  const isActiveProjectDllCommandsFile = Boolean(activeFile?.path && isProjectDllCommandsFilePath(String(activeFile.path)));
   const lingCppProjectSources = useMemo(() => allFiles
     .filter(file => file.language === 'lingcpp' || String(file.path || '').toLocaleLowerCase().endsWith('.lcpp'))
     .map(file => ({
@@ -10602,6 +10607,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
         {/* Top-Right Quick Toggle Button between Code/Designer */}
         <div className="flex shrink-0 items-center gap-2 pr-2">
+          {onOpenProjectDllCommands && editorExperienceMode === 'beginner' && viewType === 'code' && activeFile?.language === 'lingcpp' && isActiveProjectDllCommandsFile && (
+            <button
+              type="button"
+              onClick={onOpenProjectDllCommands}
+              className={`flex items-center gap-1 rounded border px-2.5 py-1 text-[10px] font-medium ${isDarkMode ? 'border-amber-500/30 bg-amber-600/10 text-amber-300 hover:bg-amber-600/20' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+              title="打开项目 DLL 命令声明"
+            >
+              <span className="font-semibold">DLL</span>
+              <span>命令</span>
+            </button>
+          )}
           {onOpenProjectDataTypes && editorExperienceMode === 'beginner' && viewType === 'code' && activeFile?.language === 'lingcpp' && (
             <button
               type="button"
@@ -10789,7 +10805,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             )}
 
             <div className="flex-1 min-h-0 flex overflow-hidden">
-              {isLingCppBeginnerStructureMode && isProjectDataTypesFilePath(activeFile?.path) ? (
+              {isActiveProjectDllCommandsFile ? (
+                <ProjectDllCommandsEditor
+                  sourceCode={normalizedSourceCode}
+                  filePath={activeFile?.path}
+                  isDarkMode={isDarkMode}
+                  readOnly={!onUpdateSourceContent}
+                  commandService={commandService}
+                  onChange={updateSourceCode}
+                />
+              ) : isLingCppBeginnerStructureMode && isProjectDataTypesFilePath(activeFile?.path) ? (
                 <ProjectDataTypeEditor
                   sourceCode={normalizedSourceCode}
                   filePath={activeFile?.path}
@@ -11134,3 +11159,4 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 DiffViewer.displayName = 'DiffViewer';
 
 export default DiffViewer;
+

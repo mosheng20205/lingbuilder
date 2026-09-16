@@ -90,6 +90,7 @@ import {
 } from '../src/services/lingCpp/beginnerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { ExternalProjectProperties, resolveExecutableNameParts, validateProperties } from '../src/services/solution/externalProjectService';
+import { createProjectDllCommandContext, createProjectDllDeclarationModule, getProjectDllCommandsDiagnostics, serializeProjectDllCommandLibraries, serializeSingleDllCommand } from '../src/services/lingCpp/projectDllCommandService';
 import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
@@ -5217,4 +5218,207 @@ test('External project properties accept outputType and resolve dll file names',
   };
   validateProperties(properties);
   assert.throws(() => validateProperties({ ...properties, outputType: 'lib' as never }), /输出类型/u);
+});
+
+test('LingCpp parses project DLL command declarations and guards boundary types', () => {
+  const source = [
+    '包 项目DLL命令',
+    '',
+    'DLL命令库 AdvancedMathDll',
+    '  Win32 = "dll/Win32/AdvancedMathDll.dll"',
+    '  x64 = "dll/x64/AdvancedMathDll.dll"',
+    '',
+    '  整数型 加法计算(整数型 被加数, 整数型 加数)',
+    '  文本型 问候生成(文本型 姓名) stdcall',
+    '结束DLL命令库'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  assert.equal(parsed.program.diagnostics.filter(item => item.level === 'error').length, 0, parsed.program.diagnostics.map(item => item.message).join('\n'));
+  const library = parsed.program.dllLibraries[0];
+  assert.equal(library?.name, 'AdvancedMathDll');
+  assert.deepEqual(library?.archFiles.map(file => [file.arch, file.relativePath]), [['Win32', 'dll/Win32/AdvancedMathDll.dll'], ['x64', 'dll/x64/AdvancedMathDll.dll']]);
+  assert.equal(library?.commands[0]?.name, '加法计算');
+  assert.equal(library?.commands[0]?.returnType, '整数型');
+  assert.equal(library?.commands[1]?.callingConvention, 'stdcall');
+  const diagnostics = getProjectDllCommandsDiagnostics(source, 'src/项目DLL命令.lcpp');
+  assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
+});
+
+test('LingCpp project DLL declarations reject boundary-unsafe types and paths', () => {
+  const source = [
+    'DLL命令库 AdvancedMathDll',
+    '  Win32 = "C:/绝对路径/AdvancedMathDll.dll"',
+    '  整数型 异常计算(按钮 目标按钮)',
+    '结束DLL命令库'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  const messages = parsed.program.diagnostics.map(item => item.message).join('\n');
+  assert.match(messages, /DLL 路径必须是项目内相对的 \.dll 文件/u);
+  const serviceMessages = getProjectDllCommandsDiagnostics(source, 'src/项目DLL命令.lcpp').map(item => item.message).join('\n');
+  assert.match(serviceMessages, /不能跨 DLL 边界/u);
+});
+
+test('Project DLL declarations support aliases, system DLLs, byRef parameters and remarks', () => {
+  const source = [
+    'DLL命令库 user32',
+    '  系统 = 真',
+    '  整数型 查找子窗口(整数型 父窗口句柄, 文本型 类名, 文本型 标题) = FindWindowExA',
+    '  备注: 查找子窗口，返回窗口句柄。',
+    '  整数型 取前台窗口句柄() = GetForegroundWindow',
+    '结束DLL命令库'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  assert.equal(parsed.program.diagnostics.filter(item => item.level === 'error').length, 0, parsed.program.diagnostics.map(item => item.message).join('\n'));
+  const library = parsed.program.dllLibraries[0];
+  assert.equal(library?.isSystem, true);
+  const command = library?.commands[0];
+  assert.equal(command?.name, '查找子窗口');
+  assert.equal(command?.exportName, 'FindWindowExA');
+  assert.equal(command?.remark, '查找子窗口，返回窗口句柄。');
+  // 系统 DLL 链接系统导入库，不需要架构文件映射，不应误报缺架构诊断。
+  const systemDiagnostics = getProjectDllCommandsDiagnostics(source, 'src/项目DLL命令.lcpp');
+  assert.equal(systemDiagnostics.filter(item => item.level === 'error').length, 0, systemDiagnostics.map(item => item.message).join('\n'));
+  const module = createProjectDllDeclarationModule(parsed.program.dllLibraries, 'some-project');
+  assert.ok(module);
+  assert.equal(module.manifest.bindings?.commands?.[0]?.runtimeName, 'FindWindowExA');
+  assert.equal(module.manifest.contributes?.commands?.[0]?.name, '查找子窗口');
+  assert.equal(module.manifest.contributes?.commands?.[0]?.description, '查找子窗口，返回窗口句柄。');
+  // 无备注命令的补全描述回退为「调用 DLL 导出函数」并携带实际导出名。
+  assert.match(module.manifest.contributes?.commands?.[1]?.description || '', /GetForegroundWindow/);
+});
+
+test('Project DLL declarations round-trip byRef parameters through serialization', () => {
+  const source = [
+    'DLL命令库 AdvancedMathDll',
+    '  Win32 = "dll/Win32/AdvancedMathDll.dll"',
+    '  整数型 加法计算(整数型 被加数, 整数型 加数)',
+    '  空 填充值(整数型 输出值 传址)',
+    '结束DLL命令库'
+  ].join('\n');
+  const context = createProjectDllCommandContext('src/项目DLL命令.lcpp', source);
+  const serialized = serializeProjectDllCommandLibraries('项目DLL命令', context.dllLibraries);
+  const reparsed = parseLingCpp(serialized);
+  assert.equal(reparsed.program.diagnostics.filter(item => item.level === 'error').length, 0, reparsed.program.diagnostics.map(item => item.message).join('\n'));
+  const parameters = reparsed.program.dllLibraries[0]?.commands[1]?.parameters || [];
+  assert.equal(parameters.length, 1);
+  assert.equal(parameters[0].byRef, true);
+  assert.equal(parameters[0].type, '整数型');
+});
+
+test('Project DLL command declarations parse parameter notes and public markers', () => {
+  const source = [
+    'DLL命令库 AdvancedMathDll',
+    '  Win32 = "dll/Win32/AdvancedMathDll.dll"',
+    '  整数型 加法计算(整数型 被加数 // 第一个加数, 整数型 加数 // 第二个加数)',
+    '  备注: 调用 DLL 计算两个整数之和。',
+    '  空 内部填充(整数型 输出值 传址 // 回填计算结果)',
+    '  公开 = 假',
+    '结束DLL命令库'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  assert.equal(parsed.program.diagnostics.filter(item => item.level === 'error').length, 0, parsed.program.diagnostics.map(item => item.message).join('\n'));
+  const commands = parsed.program.dllLibraries[0]?.commands || [];
+  assert.equal(commands.length, 2);
+  assert.equal(commands[0].remark, '调用 DLL 计算两个整数之和。');
+  assert.equal(commands[0].parameters[0].note, '第一个加数');
+  assert.equal(commands[0].parameters[1].note, '第二个加数');
+  assert.equal(commands[0].isPublic, undefined);
+  assert.equal(commands[1].parameters[0].byRef, true);
+  assert.equal(commands[1].parameters[0].note, '回填计算结果');
+  assert.equal(commands[1].isPublic, false);
+  const diagnostics = getProjectDllCommandsDiagnostics(source, 'src/项目DLL命令.lcpp');
+  assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
+});
+
+test('Project DLL command declarations round-trip notes and visibility through serialization', () => {
+  const source = [
+    '包 项目DLL命令',
+    '',
+    'DLL命令库 AdvancedMathDll',
+    '  Win32 = "dll/Win32/AdvancedMathDll.dll"',
+    '  x64 = "dll/x64/AdvancedMathDll.dll"',
+    '',
+    '  整数型 加法计算(整数型 被加数 // 第一个加数, 整数型 加数)',
+    '  备注: 调用 DLL 计算两个整数之和。',
+    '  空 内部填充(整数型 输出值 传址)',
+    '  公开 = 假',
+    '结束DLL命令库',
+    ''
+  ].join('\n');
+  const context = createProjectDllCommandContext('src/项目DLL命令.lcpp', source);
+  const serialized = serializeProjectDllCommandLibraries('项目DLL命令', context.dllLibraries);
+  assert.match(serialized, /整数型 被加数 \/\/ 第一个加数/u);
+  assert.match(serialized, /备注: 调用 DLL 计算两个整数之和。/u);
+  assert.match(serialized, /公开 = 假/u);
+  const reparsed = parseLingCpp(serialized);
+  assert.equal(reparsed.program.diagnostics.filter(item => item.level === 'error').length, 0, reparsed.program.diagnostics.map(item => item.message).join('\n'));
+  const library = reparsed.program.dllLibraries[0];
+  assert.equal(library?.name, 'AdvancedMathDll');
+  const commands = library?.commands || [];
+  assert.equal(commands.length, 2);
+  assert.equal(commands[0].remark, '调用 DLL 计算两个整数之和。');
+  assert.equal(commands[0].parameters[0].note, '第一个加数');
+  assert.equal(commands[0].parameters[0].byRef, false);
+  assert.equal(commands[1].isPublic, false);
+  assert.equal(commands[1].parameters[0].byRef, true);
+  assert.equal(commands[1].parameters[0].note, undefined);
+  assert.equal(commands[1].returnType, '空');
+  // 再次序列化保持文本一致（幂等）。
+  const secondPass = serializeProjectDllCommandLibraries('项目DLL命令', reparsed.program.dllLibraries);
+  assert.equal(secondPass, serialized);
+});
+
+test('Project DLL command declarations serialize a single paste-ready command snippet', () => {
+  const source = [
+    'DLL命令库 AdvancedMathDll',
+    '  Win32 = "dll/Win32/AdvancedMathDll.dll"',
+    '  x64 = "dll/x64/AdvancedMathDll.dll"',
+    '  整数型 加法计算(整数型 被加数 // 第一个加数, 整数型 加数)',
+    '  备注: 调用 DLL 计算两个整数之和。',
+    '结束DLL命令库'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  const library = parsed.program.dllLibraries[0];
+  assert.ok(library);
+  const snippet = serializeSingleDllCommand(library.name, library.isSystem === true, library.commands[0], library.archFiles);
+  assert.match(snippet, /^DLL命令库 AdvancedMathDll\n/u);
+  assert.match(snippet, /Win32 = "dll\/Win32\/AdvancedMathDll\.dll"/u);
+  assert.match(snippet, /x64 = "dll\/x64\/AdvancedMathDll\.dll"/u);
+  assert.match(snippet, /整数型 加法计算\(整数型 被加数 \/\/ 第一个加数, 整数型 加数\)/u);
+  assert.match(snippet, /备注: 调用 DLL 计算两个整数之和。/u);
+  assert.match(snippet, /结束DLL命令库\n?$/u);
+  assert.doesNotMatch(snippet, /^包 /mu);
+  const reparsed = parseLingCpp(snippet);
+  assert.equal(reparsed.program.diagnostics.filter(item => item.level === 'error').length, 0, reparsed.program.diagnostics.map(item => item.message).join('\n'));
+  const pasted = reparsed.program.dllLibraries[0];
+  assert.equal(pasted?.name, 'AdvancedMathDll');
+  assert.equal(pasted?.commands.length, 1);
+  assert.equal(pasted?.commands[0].name, '加法计算');
+  assert.equal(pasted?.commands[0].remark, '调用 DLL 计算两个整数之和。');
+  assert.equal(pasted?.commands[0].parameters[0].note, '第一个加数');
+});
+
+test('Project DLL declarations synthesize a virtual module consumed by generation', () => {
+  const source = [
+    'DLL命令库 AdvancedMathDll',
+    '  x64 = "dll/x64/AdvancedMathDll.dll"',
+    '  整数型 加法计算(整数型 被加数, 整数型 加数)',
+    '  文本型 问候生成(文本型 姓名)',
+    '结束DLL命令库'
+  ].join('\n');
+  const context = createProjectDllCommandContext('src/项目DLL命令.lcpp', source);
+  const module = createProjectDllDeclarationModule(context.dllLibraries, 'dll-lib-demo');
+  assert.ok(module, '应合成虚拟模块');
+  assert.equal(module.manifest.id, 'lingbuilder.project.dll');
+  assert.equal(module.manifest.bindings?.commands?.length, 2);
+  assert.equal(module.manifest.contributes?.commands?.length, 2);
+  assert.equal(module.manifest.bindings?.commands?.[0]?.runtimeName, '加法计算');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: '类 游戏主窗体 : 窗口\n公开\n  事件 _游戏主窗体_创建完毕()\n    局部 整数型 结果 = 0\n    结果 = 加法计算(1, 2)\n  结束\n结束类',
+    enabledModules: [module]
+  });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /#include "modules\/lingbuilder\.project\.dll\/include\/ProjectDllCommands\.h"/u);
+  assert.match(cpp, /加法计算\(1, 2\)/u);
 });

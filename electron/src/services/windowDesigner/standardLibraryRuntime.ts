@@ -183,6 +183,62 @@ long long 文本_分割(const wchar_t* text, const wchar_t* separator, std::vect
     }
     return static_cast<long long>(out.size());
 }
+
+const wchar_t* 文本_取左边(const wchar_t* text, int length) {
+    const std::wstring value = LB_Wide(text);
+    if (length <= 0) return LB_ReturnText(L"");
+    return LB_ReturnText(value.substr(0, static_cast<size_t>((std::min)(static_cast<size_t>(length), value.size()))));
+}
+
+const wchar_t* 文本_取右边(const wchar_t* text, int length) {
+    const std::wstring value = LB_Wide(text);
+    if (length <= 0) return LB_ReturnText(L"");
+    const size_t count = (std::min)(static_cast<size_t>(length), value.size());
+    return LB_ReturnText(value.substr(value.size() - count));
+}
+
+const wchar_t* 文本_码点转字符(int code) {
+    std::wstring result;
+    if (code < 0 || code > 0x10FFFF) return LB_ReturnText(L"");
+    if (code >= 0xD800 && code <= 0xDFFF) return LB_ReturnText(L"");
+    if (code <= 0xFFFF) {
+        result.push_back(static_cast<wchar_t>(code));
+    } else {
+        const uint32_t offset = static_cast<uint32_t>(code) - 0x10000;
+        result.push_back(static_cast<wchar_t>(0xD800 + (offset >> 10)));
+        result.push_back(static_cast<wchar_t>(0xDC00 + (offset & 0x3FF)));
+    }
+    return LB_ReturnText(std::move(result));
+}
+
+int 文本_取码点(const wchar_t* text, int position) {
+    const std::wstring value = LB_Wide(text);
+    if (position < 0 || static_cast<size_t>(position) >= value.size()) return 0;
+    const wchar_t first = value[static_cast<size_t>(position)];
+    if (first >= 0xD800 && first <= 0xDBFF && static_cast<size_t>(position) + 1 < value.size()) {
+        const wchar_t second = value[static_cast<size_t>(position) + 1];
+        if (second >= 0xDC00 && second <= 0xDFFF) {
+            const uint32_t high = static_cast<uint32_t>(static_cast<uint16_t>(first)) - 0xD800;
+            const uint32_t low = static_cast<uint32_t>(static_cast<uint16_t>(second)) - 0xDC00;
+            return static_cast<int>(0x10000 + (high << 10) + low);
+        }
+    }
+    return static_cast<int>(static_cast<uint16_t>(first));
+}
+
+const wchar_t* 文本_删首空白(const wchar_t* text) {
+    std::wstring value = LB_Wide(text);
+    size_t first = 0;
+    while (first < value.size() && iswspace(value[first])) ++first;
+    return LB_ReturnText(value.substr(first));
+}
+
+const wchar_t* 文本_删尾空白(const wchar_t* text) {
+    std::wstring value = LB_Wide(text);
+    size_t last = value.size();
+    while (last > 0 && iswspace(value[last - 1])) --last;
+    return LB_ReturnText(value.substr(0, last));
+}
 `;
 
 const ARRAY_RUNTIME = String.raw`
@@ -451,6 +507,90 @@ std::vector<unsigned char> 字节集_删除(const std::vector<unsigned char>& by
     result.insert(result.end(), bytes.begin() + static_cast<std::ptrdiff_t>(offset + count), bytes.end());
     return result;
 }
+
+std::vector<unsigned char> 字节集_从文本(const wchar_t* text) {
+    const std::string utf8 = LB_WideToUtf8(text);
+    return std::vector<unsigned char>(utf8.begin(), utf8.end());
+}
+
+std::vector<unsigned char> 字节集_重复(int count, const std::vector<unsigned char>& bytes) {
+    if (count <= 0 || bytes.empty()) return {};
+    const long long total = static_cast<long long>(bytes.size()) * static_cast<long long>(count);
+    if (total > 268435456LL) return {};
+    std::vector<unsigned char> result;
+    result.reserve(static_cast<size_t>(total));
+    for (int index = 0; index < count; ++index) result.insert(result.end(), bytes.begin(), bytes.end());
+    return result;
+}
+
+long long 字节集_分割(const std::vector<unsigned char>& bytes, const std::vector<unsigned char>& separator, std::vector<std::vector<unsigned char>>& out, int limit) {
+    out.clear();
+    if (bytes.empty()) return 0;
+    std::vector<unsigned char> sep = separator;
+    if (sep.empty()) sep.assign(1, 0x00);
+    const size_t maxPieces = limit > 0 ? static_cast<size_t>(limit) : (std::numeric_limits<size_t>::max)();
+    size_t start = 0;
+    for (;;) {
+        if (out.size() + 1 >= maxPieces) {
+            out.emplace_back(bytes.begin() + static_cast<std::ptrdiff_t>(start), bytes.end());
+            break;
+        }
+        const auto found = std::search(bytes.begin() + static_cast<std::ptrdiff_t>(start), bytes.end(), sep.begin(), sep.end());
+        if (found == bytes.end()) {
+            out.emplace_back(bytes.begin() + static_cast<std::ptrdiff_t>(start), bytes.end());
+            break;
+        }
+        out.emplace_back(bytes.begin() + static_cast<std::ptrdiff_t>(start), found);
+        start = static_cast<size_t>(found - bytes.begin()) + sep.size();
+    }
+    return static_cast<long long>(out.size());
+}
+
+const wchar_t* 数值_到十六进制文本(int value) {
+    wchar_t buffer[16] = {};
+    if (value < 0) swprintf(buffer, 16, L"%08X", static_cast<unsigned int>(value));
+    else swprintf(buffer, 16, L"%X", static_cast<unsigned int>(value));
+    return LB_ReturnText(buffer);
+}
+
+const wchar_t* 数值_到八进制文本(int value) {
+    wchar_t buffer[16] = {};
+    swprintf(buffer, 16, L"%o", static_cast<unsigned int>(value));
+    return LB_ReturnText(buffer);
+}
+
+static bool LB_ParseRadixText(const wchar_t* text, int radix, int& out) {
+    const std::wstring value = LB_Wide(text);
+    size_t index = 0;
+    size_t end = value.size();
+    while (index < end && iswspace(value[index])) ++index;
+    while (end > index && iswspace(value[end - 1])) --end;
+    bool negative = false;
+    if (index < end && (value[index] == L'+' || value[index] == L'-')) {
+        negative = value[index] == L'-';
+        ++index;
+    }
+    if (radix == 16 && index + 1 < end && value[index] == L'0' && (value[index + 1] == L'x' || value[index + 1] == L'X')) index += 2;
+    unsigned long long accumulated = 0;
+    bool any = false;
+    for (; index < end; ++index) {
+        const wchar_t ch = value[index];
+        int digit = -1;
+        if (ch >= L'0' && ch <= L'9') digit = ch - L'0';
+        else if (radix == 16 && ch >= L'a' && ch <= L'f') digit = ch - L'a' + 10;
+        else if (radix == 16 && ch >= L'A' && ch <= L'F') digit = ch - L'A' + 10;
+        if (digit < 0 || digit >= radix) return false;
+        accumulated = (accumulated * static_cast<unsigned long long>(radix) + static_cast<unsigned long long>(digit)) & 0xFFFFFFFFULL;
+        any = true;
+    }
+    if (!any) return false;
+    const int signedValue = static_cast<int>(static_cast<unsigned int>(accumulated));
+    out = negative ? -signedValue : signedValue;
+    return true;
+}
+
+int 数值_十六进制解析(const wchar_t* text) { int out = 0; LB_ParseRadixText(text, 16, out); return out; }
+int 数值_八进制解析(const wchar_t* text) { int out = 0; LB_ParseRadixText(text, 8, out); return out; }
 `;
 
 const ENCODING_RUNTIME = String.raw`
@@ -878,6 +1018,11 @@ const wchar_t* 编码_HTML反转义(const wchar_t* text) {
 `;
 
 const MATH_RUNTIME = String.raw`
+static std::mt19937& LB_MathRandomEngine() {
+    static thread_local std::mt19937 engine(std::random_device{}());
+    return engine;
+}
+
 double 数学_绝对值(double value) { return std::fabs(value); }
 double 数学_最小值(double first, double second) { return (std::min)(first, second); }
 double 数学_最大值(double first, double second) { return (std::max)(first, second); }
@@ -886,8 +1031,40 @@ double 数学_平方根(double value) { return value < 0 ? 0 : std::sqrt(value);
 double 数学_乘方(double base, double exponent) { return std::pow(base, exponent); }
 int 数学_随机整数(int minimum, int maximum) {
     if (minimum > maximum) std::swap(minimum, maximum);
-    static thread_local std::mt19937 engine(std::random_device{}());
-    return std::uniform_int_distribution<int>(minimum, maximum)(engine);
+    return std::uniform_int_distribution<int>(minimum, maximum)(LB_MathRandomEngine());
+}
+void 数学_置随机种子(int seed) {
+    if (seed < 0) {
+        LB_MathRandomEngine().seed(static_cast<unsigned int>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    } else {
+        LB_MathRandomEngine().seed(static_cast<unsigned int>(seed));
+    }
+}
+
+int 数学_取整(double value) { return static_cast<int>(std::floor(value)); }
+int 数学_绝对取整(double value) { return static_cast<int>(std::trunc(value)); }
+double 数学_四舍五入(double value, int digits) {
+    const double scale = std::pow(10.0, static_cast<double>(digits));
+    if (!(scale > 0.0) || !std::isfinite(scale)) return value;
+    const double scaled = value * scale;
+    if (!std::isfinite(scaled)) return value;
+    // 容忍二进制表示误差（例如 1056.65 实际存储为 1056.6499…），保证四舍五入口径稳定。
+    const double tolerance = std::fabs(scaled) * 1e-12 + 1e-12;
+    const double rounded = scaled >= 0 ? std::floor(scaled + 0.5 + tolerance) : std::ceil(scaled - 0.5 - tolerance);
+    const double result = rounded / scale;
+    const double snapped = std::round(result);
+    return std::fabs(result - snapped) <= std::fabs(result) * 1e-9 + 1e-9 ? snapped : result;
+}
+int 数学_取符号(double value) { return value > 0 ? 1 : value < 0 ? -1 : 0; }
+double 数学_正弦(double angle) { return std::sin(angle); }
+double 数学_余弦(double angle) { return std::cos(angle); }
+double 数学_正切(double angle) { return std::tan(angle); }
+double 数学_反正切(double value) { return std::atan(value); }
+double 数学_自然对数(double value) { return value > 0 ? std::log(value) : 0; }
+double 数学_反对数(double value) {
+    if (!std::isfinite(value)) return 0;
+    const double result = std::exp(value);
+    return std::isfinite(result) ? result : 0;
 }
 `;
 
@@ -914,6 +1091,272 @@ const wchar_t* 时间_格式化时间戳(long long timestamp, const wchar_t* for
 }
 
 const wchar_t* 时间_格式化当前(const wchar_t* format) { return 时间_格式化时间戳(时间_当前时间戳(), format); }
+`;
+
+// 日期时间族：long long 按位打包本地年月日时分秒（year<<26 | month<<22 | day<<17 | hour<<12 | minute<<6 | second），
+// 0 表示无效时间。增减与间隔基于公历日数换算，年份支持 1～9999，与易语言“自动靠拢最近有效时间”的口径一致。
+const DATETIME_FIELDS_RUNTIME = String.raw`
+struct LB_DateTimeFields {
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+};
+
+static LB_DateTimeFields LB_MakeDateTimeFields(int year, int month, int day, int hour, int minute, int second) {
+    LB_DateTimeFields fields = { year, month, day, hour, minute, second };
+    return fields;
+}
+
+static int LB_DaysInMonth(int year, int month) {
+    static const int days[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    if (month < 1 || month > 12) return 0;
+    const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    if (month == 2 && leap) return 29;
+    return days[month - 1];
+}
+
+static bool LB_DateTimeFieldsValid(const LB_DateTimeFields& f) {
+    return f.year >= 1 && f.year <= 9999 && f.month >= 1 && f.month <= 12 && f.day >= 1
+        && f.day <= LB_DaysInMonth(f.year, f.month) && f.hour >= 0 && f.hour <= 23
+        && f.minute >= 0 && f.minute <= 59 && f.second >= 0 && f.second <= 59;
+}
+
+static long long LB_PackDateTime(const LB_DateTimeFields& f) {
+    if (!LB_DateTimeFieldsValid(f)) return 0;
+    return (static_cast<long long>(f.year) << 26) | (static_cast<long long>(f.month) << 22)
+        | (static_cast<long long>(f.day) << 17) | (static_cast<long long>(f.hour) << 12)
+        | (static_cast<long long>(f.minute) << 6) | static_cast<long long>(f.second);
+}
+
+static LB_DateTimeFields LB_UnpackDateTime(long long value) {
+    return LB_MakeDateTimeFields(
+        static_cast<int>((static_cast<unsigned long long>(value) >> 26) & 0x3FFFFFFULL),
+        static_cast<int>((static_cast<unsigned long long>(value) >> 22) & 0xFULL),
+        static_cast<int>((static_cast<unsigned long long>(value) >> 17) & 0x1FULL),
+        static_cast<int>((static_cast<unsigned long long>(value) >> 12) & 0x1FULL),
+        static_cast<int>((static_cast<unsigned long long>(value) >> 6) & 0x3FULL),
+        static_cast<int>(static_cast<unsigned long long>(value) & 0x3FULL));
+}
+
+// Howard Hinnant 的 civil_from_days / days_from_civil：公历日数换算，负年份同样正确。
+static long long LB_CivilDaysFrom(int year, unsigned month, unsigned day) {
+    year -= month <= 2;
+    const long long era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned yearOfEra = static_cast<unsigned>(year - era * 400);
+    const unsigned dayOfYear = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+    const unsigned dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+    return era * 146097 + static_cast<long long>(dayOfEra) - 719468;
+}
+
+static void LB_CivilFromDays(long long days, int& year, int& month, int& day) {
+    days += 719468;
+    const long long era = (days >= 0 ? days : days - 146096) / 146097;
+    const unsigned dayOfEra = static_cast<unsigned>(days - era * 146097);
+    const unsigned yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
+    const long long y = static_cast<long long>(yearOfEra) + era * 400;
+    const unsigned dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
+    const unsigned mp = (5 * dayOfYear + 2) / 153;
+    day = static_cast<int>(dayOfYear - (153 * mp + 2) / 5 + 1);
+    month = static_cast<int>(mp + (mp < 10 ? 3 : -9));
+    year = static_cast<int>(y + (month <= 2));
+}
+
+static long long LB_DateTimeTotalSeconds(const LB_DateTimeFields& f) {
+    return LB_CivilDaysFrom(f.year, static_cast<unsigned>(f.month), static_cast<unsigned>(f.day)) * 86400LL
+        + f.hour * 3600LL + f.minute * 60LL + f.second;
+}
+
+static long long LB_ClampDateTimeTotal(long long total) {
+    const long long minimum = LB_DateTimeTotalSeconds(LB_MakeDateTimeFields(1, 1, 1, 0, 0, 0));
+    const long long maximum = LB_DateTimeTotalSeconds(LB_MakeDateTimeFields(9999, 12, 31, 23, 59, 59));
+    return (std::min)(maximum, (std::max)(minimum, total));
+}
+
+static long long LB_DateTimeAddSeconds(long long value, long long delta) {
+    const LB_DateTimeFields base = LB_UnpackDateTime(value);
+    if (!LB_DateTimeFieldsValid(base)) return 0;
+    const long long total = LB_ClampDateTimeTotal(LB_DateTimeTotalSeconds(base) + delta);
+    const long long days = total >= 0 ? total / 86400 : (total - 86399) / 86400;
+    long long remainder = total - days * 86400;
+    int year = 0, month = 0, day = 0;
+    LB_CivilFromDays(days, year, month, day);
+    const int hour = static_cast<int>(remainder / 3600);
+    remainder %= 3600;
+    return LB_PackDateTime(LB_MakeDateTimeFields(year, month, day, hour, static_cast<int>(remainder / 60), static_cast<int>(remainder % 60)));
+}
+
+// 月内序比较：同“几日几时几分几秒”的先后，用于年/季/月完整单位数的靠整修正。
+static int LB_DateTimeWithinMonthCompare(const LB_DateTimeFields& a, const LB_DateTimeFields& b) {
+    if (a.day != b.day) return a.day < b.day ? -1 : 1;
+    if (a.hour != b.hour) return a.hour < b.hour ? -1 : 1;
+    if (a.minute != b.minute) return a.minute < b.minute ? -1 : 1;
+    if (a.second != b.second) return a.second < b.second ? -1 : 1;
+    return 0;
+}
+
+static long long LB_DateTimeFullMonths(const LB_DateTimeFields& a, const LB_DateTimeFields& b) {
+    long long months = static_cast<long long>(a.year) * 12 + (a.month - 1) - (static_cast<long long>(b.year) * 12 + (b.month - 1));
+    if (months > 0 && LB_DateTimeWithinMonthCompare(a, b) < 0) --months;
+    else if (months < 0 && LB_DateTimeWithinMonthCompare(a, b) > 0) ++months;
+    return months;
+}
+`;
+
+const DATETIME_COMMAND_RUNTIME = String.raw`
+long long 时间_取现行() {
+    SYSTEMTIME now = {};
+    GetLocalTime(&now);
+    return LB_PackDateTime(LB_MakeDateTimeFields(now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond));
+}
+
+bool 时间_置现行(long long value) {
+    const LB_DateTimeFields fields = LB_UnpackDateTime(value);
+    if (!LB_DateTimeFieldsValid(fields)) return false;
+    SYSTEMTIME next = {};
+    next.wYear = static_cast<WORD>(fields.year);
+    next.wMonth = static_cast<WORD>(fields.month);
+    next.wDay = static_cast<WORD>(fields.day);
+    next.wHour = static_cast<WORD>(fields.hour);
+    next.wMinute = static_cast<WORD>(fields.minute);
+    next.wSecond = static_cast<WORD>(fields.second);
+    return SetLocalTime(&next) != 0;
+}
+
+long long 时间_从文本(const wchar_t* text) {
+    const std::wstring value = LB_Wide(text);
+    std::vector<std::wstring> tokens;
+    std::wstring current;
+    for (wchar_t ch : value) {
+        if (ch >= L'0' && ch <= L'9') {
+            current.push_back(ch);
+        } else if (!current.empty()) {
+            tokens.push_back(std::move(current));
+            current.clear();
+        }
+    }
+    if (!current.empty()) tokens.push_back(std::move(current));
+    LB_DateTimeFields fields = LB_MakeDateTimeFields(0, 0, 0, 0, 0, 0);
+    if (tokens.size() == 1) {
+        const std::wstring& token = tokens[0];
+        if (token.size() == 8) {
+            fields.year = _wtoi(token.substr(0, 4).c_str());
+            fields.month = _wtoi(token.substr(4, 2).c_str());
+            fields.day = _wtoi(token.substr(6, 2).c_str());
+        } else if (token.size() == 14) {
+            fields.year = _wtoi(token.substr(0, 4).c_str());
+            fields.month = _wtoi(token.substr(4, 2).c_str());
+            fields.day = _wtoi(token.substr(6, 2).c_str());
+            fields.hour = _wtoi(token.substr(8, 2).c_str());
+            fields.minute = _wtoi(token.substr(10, 2).c_str());
+            fields.second = _wtoi(token.substr(12, 2).c_str());
+        } else {
+            return 0;
+        }
+    } else if (tokens.size() >= 3 && tokens.size() <= 6) {
+        fields.year = _wtoi(tokens[0].c_str());
+        fields.month = _wtoi(tokens[1].c_str());
+        fields.day = _wtoi(tokens[2].c_str());
+        if (tokens.size() >= 4) fields.hour = _wtoi(tokens[3].c_str());
+        if (tokens.size() >= 5) fields.minute = _wtoi(tokens[4].c_str());
+        if (tokens.size() >= 6) fields.second = _wtoi(tokens[5].c_str());
+    } else {
+        return 0;
+    }
+    return LB_PackDateTime(fields);
+}
+
+const wchar_t* 时间_到文本(long long value, int part) {
+    const LB_DateTimeFields fields = LB_UnpackDateTime(value);
+    if (!LB_DateTimeFieldsValid(fields)) return LB_ReturnText(L"");
+    wchar_t buffer[64] = {};
+    if (part == 1) swprintf(buffer, 64, L"%04d年%02d月%02d日", fields.year, fields.month, fields.day);
+    else if (part == 2) swprintf(buffer, 64, L"%02d时%02d分%02d秒", fields.hour, fields.minute, fields.second);
+    else swprintf(buffer, 64, L"%04d年%02d月%02d日%02d时%02d分%02d秒", fields.year, fields.month, fields.day, fields.hour, fields.minute, fields.second);
+    return LB_ReturnText(buffer);
+}
+
+long long 时间_指定(int year, int month, int day, int hour, int minute, int second) {
+    if (year < 1) year = 1;
+    if (year > 9999) year = 9999;
+    month = (std::max)(1, (std::min)(12, month));
+    day = (std::max)(1, (std::min)(LB_DaysInMonth(year, month), day));
+    hour = (std::max)(0, (std::min)(23, hour));
+    minute = (std::max)(0, (std::min)(59, minute));
+    second = (std::max)(0, (std::min)(59, second));
+    return LB_PackDateTime(LB_MakeDateTimeFields(year, month, day, hour, minute, second));
+}
+
+int 时间_取年份(long long value) { const LB_DateTimeFields f = LB_UnpackDateTime(value); return LB_DateTimeFieldsValid(f) ? f.year : 0; }
+int 时间_取月份(long long value) { const LB_DateTimeFields f = LB_UnpackDateTime(value); return LB_DateTimeFieldsValid(f) ? f.month : 0; }
+int 时间_取日(long long value) { const LB_DateTimeFields f = LB_UnpackDateTime(value); return LB_DateTimeFieldsValid(f) ? f.day : 0; }
+int 时间_取星期几(long long value) {
+    const LB_DateTimeFields f = LB_UnpackDateTime(value);
+    if (!LB_DateTimeFieldsValid(f)) return 0;
+    // 1970-01-01 是星期四；易语言口径星期日=1，故 +4 后对 7 取余再加 1。
+    const long long weekday = ((LB_CivilDaysFrom(f.year, static_cast<unsigned>(f.month), static_cast<unsigned>(f.day)) % 7) + 7 + 4) % 7;
+    return static_cast<int>(weekday) + 1;
+}
+int 时间_取小时(long long value) { const LB_DateTimeFields f = LB_UnpackDateTime(value); return LB_DateTimeFieldsValid(f) ? f.hour : 0; }
+int 时间_取分钟(long long value) { const LB_DateTimeFields f = LB_UnpackDateTime(value); return LB_DateTimeFieldsValid(f) ? f.minute : 0; }
+int 时间_取秒(long long value) { const LB_DateTimeFields f = LB_UnpackDateTime(value); return LB_DateTimeFieldsValid(f) ? f.second : 0; }
+
+long long 时间_增减(long long value, int part, int amount) {
+    const LB_DateTimeFields base = LB_UnpackDateTime(value);
+    if (!LB_DateTimeFieldsValid(base)) return 0;
+    switch (part) {
+        case 4: return LB_DateTimeAddSeconds(value, static_cast<long long>(amount) * 7 * 86400LL);
+        case 5: return LB_DateTimeAddSeconds(value, static_cast<long long>(amount) * 86400LL);
+        case 6: return LB_DateTimeAddSeconds(value, static_cast<long long>(amount) * 3600LL);
+        case 7: return LB_DateTimeAddSeconds(value, static_cast<long long>(amount) * 60LL);
+        case 8: return LB_DateTimeAddSeconds(value, static_cast<long long>(amount));
+        case 1: case 2: case 3: break;
+        default: return 0;
+    }
+    const int step = part == 1 ? 12 : part == 2 ? 3 : 1;
+    long long totalMonths = static_cast<long long>(base.year) * 12 + (base.month - 1) + static_cast<long long>(amount) * step;
+    totalMonths = (std::max)(0LL, (std::min)(9999LL * 12 + 11, totalMonths));
+    int year = static_cast<int>(totalMonths / 12);
+    int month = static_cast<int>(totalMonths % 12) + 1;
+    const int day = (std::min)(base.day, LB_DaysInMonth(year, month));
+    return LB_PackDateTime(LB_MakeDateTimeFields(year, month, day, base.hour, base.minute, base.second));
+}
+
+double 时间_取间隔(long long first, long long second, int unit) {
+    const LB_DateTimeFields a = LB_UnpackDateTime(first);
+    const LB_DateTimeFields b = LB_UnpackDateTime(second);
+    if (!LB_DateTimeFieldsValid(a) || !LB_DateTimeFieldsValid(b)) return 0;
+    if (unit == 8) return static_cast<double>(LB_DateTimeTotalSeconds(a) - LB_DateTimeTotalSeconds(b));
+    if (unit == 7) return static_cast<double>((LB_DateTimeTotalSeconds(a) - LB_DateTimeTotalSeconds(b)) / 60);
+    if (unit == 6) return static_cast<double>((LB_DateTimeTotalSeconds(a) - LB_DateTimeTotalSeconds(b)) / 3600);
+    if (unit == 5) return static_cast<double>((LB_DateTimeTotalSeconds(a) - LB_DateTimeTotalSeconds(b)) / 86400);
+    if (unit == 4) return static_cast<double>((LB_DateTimeTotalSeconds(a) - LB_DateTimeTotalSeconds(b)) / (7 * 86400));
+    if (unit == 1) {
+        long long years = a.year - b.year;
+        if (years > 0 && LB_DateTimeWithinMonthCompare(a, b) < 0) --years;
+        else if (years < 0 && LB_DateTimeWithinMonthCompare(a, b) > 0) ++years;
+        return static_cast<double>(years);
+    }
+    if (unit == 2) return static_cast<double>(LB_DateTimeFullMonths(a, b) / 3);
+    if (unit == 3) return static_cast<double>(LB_DateTimeFullMonths(a, b));
+    return 0;
+}
+
+int 时间_取某月天数(int year, int month) { return LB_DaysInMonth(year, month); }
+
+long long 时间_取日期(long long value) {
+    const LB_DateTimeFields f = LB_UnpackDateTime(value);
+    if (!LB_DateTimeFieldsValid(f)) return 0;
+    return LB_PackDateTime(LB_MakeDateTimeFields(f.year, f.month, f.day, 0, 0, 0));
+}
+
+long long 时间_取时间(long long value) {
+    const LB_DateTimeFields f = LB_UnpackDateTime(value);
+    if (!LB_DateTimeFieldsValid(f)) return 0;
+    return LB_PackDateTime(LB_MakeDateTimeFields(2000, 1, 1, f.hour, f.minute, f.second));
+}
 `;
 
 const REGEX_RUNTIME = String.raw`
@@ -1222,7 +1665,7 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.std.bytes': BYTES_RUNTIME,
   'lingbuilder.std.encoding': ENCODING_RUNTIME,
   'lingbuilder.std.math': MATH_RUNTIME,
-  'lingbuilder.std.datetime': DATETIME_RUNTIME,
+  'lingbuilder.std.datetime': [DATETIME_RUNTIME, DATETIME_FIELDS_RUNTIME, DATETIME_COMMAND_RUNTIME].join('\n'),
   'lingbuilder.std.buffer': BUFFER_RUNTIME,
   'lingbuilder.std.regex': REGEX_RUNTIME,
   'lingbuilder.data.json': JSON_RUNTIME,

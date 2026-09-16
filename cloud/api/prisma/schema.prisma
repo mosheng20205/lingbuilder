@@ -647,6 +647,16 @@ model WebsiteSponsor {
   @@index([enabled, sponsoredAt])
 }
 
+// 官网「更新记录」页：按日期一条记录，itemsJson 为 [{category, text}] 的 JSON 数组文本。
+// 内容由 sync-website-updates 脚本从仓库 更新记录/ 目录筛选改写后整量同步，不在管理后台维护。
+model WebsiteUpdateEntry {
+  id        String   @id @default(uuid())
+  date      String   @unique
+  itemsJson String   @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model SdkCatalogRelease {
   id        String   @id @default(cuid())
   sequence  Int      @unique

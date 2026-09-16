@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-09-14
+更新时间：2026-09-16
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **89 个内置模块、3403 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **89 个内置模块、3471 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -14,12 +14,12 @@
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
- 已封装 | `lingbuilder.std.text` | 文本处理模块 | 18 |
+ 已封装 | `lingbuilder.std.text` | 文本处理模块 | 24 |
 | 已封装 | `lingbuilder.std.array` | 数组操作模块 | 13 |
- 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 18 |
+ 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 25 |
 | 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 30 |
-| 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 7 |
-| 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 5 |
+| 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 18 |
+| 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 22 |
 | 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 10 |
  已封装 | `lingbuilder.std.buffer` | 缓冲区模块 | 17 |
 | 已完整封装 | `lingbuilder.data.json` | JSON 数据模块 2.0 | 55 |
@@ -33,7 +33,7 @@ JSON 数据模块 2.0 提供受管 `JSON值`、严格 RFC 8259 解析与创建�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已封装 | `lingbuilder.fs.core` | 文件目录模块 | 11 |
+| 已封装 | `lingbuilder.fs.core` | 文件目录模块 | 36 |
 | 已封装 | `lingbuilder.fs.path` | 路径处理模块 | 7 |
 | 已封装 | `lingbuilder.config.ini` | INI 配置模块 | 6 |
 | 已封装 | `lingbuilder.config.registry` | 用户注册表模块 | 6 |
@@ -93,7 +93,7 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 已封装 | `lingbuilder.crypto.asymmetric` | 非对称加密模块 | 27 |
 | 已封装 | `lingbuilder.crypto.windows` | Windows 数据保护模块 | 4 |
 | 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 | 8 |
-| 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.0 | 67 |
+| 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.2 | 72 |
 | 已完整封装（动态运行库） | `lingbuilder.database.mysql` | MySQL 数据库模块 1.0 | 43 |
 | 已完整封装（动态运行库） | `lingbuilder.data.excel` | Excel 表格模块 1.0 | 45 |
 
