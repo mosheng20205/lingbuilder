@@ -64,6 +64,11 @@ export const WINDOW_EVENT_DEFINITIONS: LingWindowEventDefinition[] = [
   ]),
   event('FileDropped', '文件被拖入', '文件被拖入', '系统与拖放', 'advanced', '用户把一个或多个文件或目录拖入窗口时触发，处理器参数为按拖入顺序排列的完整路径数组。', [
     parameter('文件集合', '文本型[]', '本次拖入的文件和目录完整路径，索引从 0 开始。')
+  ]),
+  event('HotKeyDown', '全局热键被按下', '全局热键被按下', '焦点与键盘', 'advanced', '用 键盘_注册全局热键 注册的热键在系统范围内被按下时触发，处理器参数依次为热键 ID、虚拟键码和修饰键组合。', [
+    parameter('热键ID', '整数型', '注册时返回的热键 ID。'),
+    parameter('键码', '整数型', '触发热键的虚拟键码。'),
+    parameter('修饰键', '整数型', '修饰键组合：1 Shift、2 Ctrl、4 Alt、8 Win。')
   ])
 ];
 

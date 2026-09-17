@@ -861,11 +861,11 @@ test('双击默认事件保留自定义处理器且菜单项稳定使用 Select'
 });
 
 test('窗口事件注册表完整覆盖常用和高级事件', () => {
-  assert.equal(WINDOW_EVENT_DEFINITIONS.length, 18);
-  assert.equal(new Set(WINDOW_EVENT_DEFINITIONS.map(item => item.name)).size, 18);
+  assert.equal(WINDOW_EVENT_DEFINITIONS.length, 19);
+  assert.equal(new Set(WINDOW_EVENT_DEFINITIONS.map(item => item.name)).size, 19);
   assert.deepEqual(WINDOW_EVENT_CATEGORIES, ['生命周期', '布局与状态', '焦点与键盘', '系统与拖放']);
   assert.equal(WINDOW_EVENT_DEFINITIONS.filter(item => item.batch === 'common').length, 8);
-  assert.equal(WINDOW_EVENT_DEFINITIONS.filter(item => item.batch === 'advanced').length, 10);
+  assert.equal(WINDOW_EVENT_DEFINITIONS.filter(item => item.batch === 'advanced').length, 11);
   assert.equal(getWindowEventHandlerName('主窗口', 'FileDropped'), '_主窗口_文件被拖入');
 });
 
@@ -3729,8 +3729,8 @@ test('内嵌站点生成零释放内存服务运行时并要求启用 EdgeView �
   const source = '类 主窗口 : 公开 窗体\n结束类';
 
   const withoutModule = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source });
-  assert.ok(withoutModule.blockingDiagnostics.some(item => item.includes('未启用 EdgeView 浏览器模块')));
-  assert.ok(withoutModule.diagnostics.some(item => item.includes('未启用 EdgeView 浏览器模块')));
+  assert.ok(withoutModule.blockingDiagnostics.some(item => item.includes('未启用任何受支持的浏览器模块')));
+  assert.ok(withoutModule.diagnostics.some(item => item.includes('未启用任何受支持的浏览器模块')));
 
   const edgeviewModule: InstalledModule = {
     manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.edgeview')!,
@@ -3754,6 +3754,64 @@ test('内嵌站点生成零释放内存服务运行时并要求启用 EdgeView �
   // 静态链接：运行时直接调用 Loader 入口，不再声明 DLL 句柄成员。
   assert.match(cpp, /auto createEnvironment = &CreateCoreWebView2EnvironmentWithOptions;/u);
   assert.doesNotMatch(cpp, /HMODULE edgeViewLoader_/u);
+});
+
+test('内嵌站点在仅有 CEF3 模块时给出暂不支持诊断', () => {
+  const window = {
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '内嵌站点窗口', width: 800, height: 600,
+    background: '#FFFFFF', description: '', controls: [],
+    embeddedSite: { files: ['www/index.html'], host: 'cef3.local', entry: 'www/index.html' }
+  } as LingWindowModel;
+  const cef3Module: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.cef3.browser')!,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    diagnostics: []
+  };
+  const result = generateLingCppNativeWin32Project(
+    { schemaVersion: 2, id: 'site-cef3', name: '内嵌站点CEF3', windows: [window] },
+    { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类', enabledModules: [cef3Module] }
+  );
+  assert.ok(result.blockingDiagnostics.some(item => item.includes('CEF3 浏览器模块暂不支持内嵌站点')));
+});
+test('内嵌站点在 FBro 生成创建后注册流程并阻断独立进程模式', () => {
+  const fbroModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.fbro.browser')!,
+    installPath: 'builtin://lingbuilder.fbro.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    diagnostics: []
+  };
+  const makeWindow = (properties: Record<string, unknown>) => ({
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '内嵌站点窗口', width: 800, height: 600,
+    background: '#FFFFFF', description: '',
+    controls: [{
+      id: 'fbro-1', type: 'FBroBrowser', name: '浏览器控件', content: 'FBro 浏览器',
+      x: 0, y: 0, width: 800, height: 600, fontSize: 12, background: '#FFFFFF', foreground: '#1F2329',
+      isEnabled: true, visibility: 'Visible' as const, properties
+    }],
+    embeddedSite: { files: ['www/index.html'], host: 'fbro.local', entry: 'www/index.html' }
+  } as unknown as LingWindowModel);
+  const source = '类 主窗口 : 公开 窗体\n结束类';
+
+  const inProcess = generateLingCppNativeWin32Project(
+    { schemaVersion: 2, id: 'site-fbro', name: '内嵌站点FBro', windows: [makeWindow({ processMode: 'in-process' })] },
+    { lingCppSourceCode: source, enabledModules: [fbroModule] }
+  );
+  assert.equal(inProcess.blockingDiagnostics.length, 0);
+  const cpp = inProcess.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /#define LINGBUILDER_FBRO_EMBEDDED_SITE 1/u);
+  assert.match(cpp, /int FBro_内嵌站点_注册规则\(long long handle\)/u);
+  assert.match(cpp, /FBroHsVIPControl_AddResourceHandlerChangeData/u);
+  assert.match(cpp, /instance->url = L"about:blank";/u);
+  assert.match(cpp, /FBro_内嵌站点_注册规则\(static_cast<long long>\(reinterpret_cast<uintptr_t>\(instance->handle\)\)\)/u);
+
+  const processMode = generateLingCppNativeWin32Project(
+    { schemaVersion: 2, id: 'site-fbro2', name: '内嵌站点FBro独立进程', windows: [makeWindow({ processMode: '独立进程嵌入' })] },
+    { lingCppSourceCode: source, enabledModules: [fbroModule] }
+  );
+  assert.ok(processMode.blockingDiagnostics.some(item => item.includes('独立进程') && item.includes('内嵌站点')));
 });
 
 test('内嵌站点物化写入 resources 且不影响图标语义', async () => {

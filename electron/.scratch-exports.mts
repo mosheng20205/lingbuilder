@@ -1,0 +1,11 @@
+import { enumeratePeExports } from './src/services/modules/projectDllMaterializeService';
+import { readFileSync } from 'fs';
+const buffer = readFileSync('C:/Windows/System32/user32.dll');
+const exports = enumeratePeExports(buffer);
+console.log('total exports:', exports?.length);
+console.log('IsDebuggerPresent:', exports?.includes('IsDebuggerPresent'));
+console.log('MessageBeep:', exports?.includes('MessageBeep'));
+console.log('GetSystemMetrics:', exports?.includes('GetSystemMetrics'));
+const hits = (exports || []).filter(name => name.startsWith('Is'));
+console.log('Is*:', hits.slice(0, 10));
+console.log('first5:', (exports || []).slice(0, 5));

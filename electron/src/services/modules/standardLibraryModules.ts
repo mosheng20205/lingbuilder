@@ -330,6 +330,141 @@ const xmlModule = createStandardModule({
   ]
 });
 
+// ---------- 哈希表与栈模块 ----------
+const mapHandle = '哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。';
+const stackHandle = '栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。';
+const mapKeyArg = '映射键，区分大小写；同一个键重复写入时覆盖旧值。';
+
+const mapModule = createStandardModule({
+  id: 'lingbuilder.std.map',
+  name: '哈希表与栈模块',
+  category: '其他',
+  description: '提供句柄制哈希表（键值映射）与后进先出栈：文本/整数/逻辑/字节集四组值类型，键查找与压弹均为常数级操作。',
+  tags: ['哈希表', '键值', '栈', '数据结构'],
+  version: '1.0.0',
+  types: [
+    { name: '哈希表', description: '哈希表句柄（64 位整数），由 哈希表_创建 返回；0 表示无效句柄。', cppType: 'long long' },
+    { name: '栈', description: '栈句柄（64 位整数），由 栈_创建 返回；0 表示无效句柄。', cppType: 'long long' }
+  ],
+  docs: [{ title: '哈希表与栈模块', path: 'docs/modules/std-map/README.md' }],
+  commands: [
+    { name: '哈希表_创建', signature: '哈希表_创建(初始容量)', description: '创建空哈希表并返回句柄（0 表示失败）；初始容量只用于预分配，哈希表会自动增长。', insertText: '哈希表_创建(16)', parameters: [{ name: '初始容量', type: 'int', description: '预分配的键值对数量估计值，0 表示不预分配；负数返回句柄 0。'}], returnType: 'longLong', returnLabel: '哈希表', example: '局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)' },
+    { name: '哈希表_销毁', signature: '哈希表_销毁(哈希表)', description: '销毁哈希表并回收句柄；销毁后句柄不可再用。', insertText: '哈希表_销毁($1)', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}], returnType: 'bool' },
+    { name: '哈希表_取数量', signature: '哈希表_取数量(哈希表)', description: '返回哈希表当前的键值对数量；句柄无效返回 -1。', insertText: '哈希表_取数量($1)', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}], returnType: 'int' },
+    { name: '哈希表_是否包含', signature: '哈希表_是否包含(哈希表, 键)', description: '判断哈希表中是否存在指定键。', insertText: '哈希表_是否包含($1, "$2")', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}], returnType: 'bool' },
+    { name: '哈希表_删除', signature: '哈希表_删除(哈希表, 键)', description: '删除指定键值对；键不存在返回假。', insertText: '哈希表_删除($1, "$2")', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}], returnType: 'bool' },
+    { name: '哈希表_清空', signature: '哈希表_清空(哈希表)', description: '删除哈希表中的全部键值对，句柄保持可用。', insertText: '哈希表_清空($1)', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}], returnType: 'bool' },
+    { name: '哈希表_置文本', signature: '哈希表_置文本(哈希表, 键, 值)', description: '写入或覆盖文本型键值对。', insertText: '哈希表_置文本($1, "$2", "$3")', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}, { name: '值', type: 'wideString', description: '要写入的文本值，允许空文本。'}], returnType: 'bool', example: '局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)\n哈希表_置文本(成绩表, "张三", "96")' },
+    { name: '哈希表_取文本', signature: '哈希表_取文本(哈希表, 键)', description: '读取文本型值；键不存在时返回空文本。', insertText: '哈希表_取文本($1, "$2")', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}], returnType: 'wideString', example: '局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)\n调试输出(哈希表_取文本(成绩表, "张三"))' },
+    { name: '哈希表_置整数', signature: '哈希表_置整数(哈希表, 键, 值)', description: '写入或覆盖整数型键值对。', insertText: '哈希表_置整数($1, "$2", $3)', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}, { name: '值', type: 'longLong', description: '要写入的 64 位整数值。'}], returnType: 'bool' },
+    { name: '哈希表_取整数', signature: '哈希表_取整数(哈希表, 键)', description: '读取整数型值；键不存在时返回 0。', insertText: '哈希表_取整数($1, "$2")', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}], returnType: 'longLong' },
+    { name: '哈希表_置逻辑', signature: '哈希表_置逻辑(哈希表, 键, 值)', description: '写入或覆盖逻辑型键值对。', insertText: '哈希表_置逻辑($1, "$2", $3)', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}, { name: '值', type: 'bool', description: '要写入的逻辑值。'}], returnType: 'bool' },
+    { name: '哈希表_取逻辑', signature: '哈希表_取逻辑(哈希表, 键)', description: '读取逻辑型值；键不存在时返回假。', insertText: '哈希表_取逻辑($1, "$2")', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}], returnType: 'bool' },
+    { name: '哈希表_置字节集', signature: '哈希表_置字节集(哈希表, 键, 值)', description: '写入或覆盖字节集型键值对。', insertText: '哈希表_置字节集($1, "$2", $3)', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}, { name: '值', type: 'bytes', description: '要写入的字节集值，内部保存副本。'}], returnType: 'bool' },
+    { name: '哈希表_取字节集', signature: '哈希表_取字节集(哈希表, 键)', description: '读取字节集型值；键不存在时返回空字节集。', insertText: '哈希表_取字节集($1, "$2")', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '键', type: 'wideString', description: mapKeyArg}], returnType: 'bytes' },
+    { name: '哈希表_取全部键', signature: '哈希表_取全部键(哈希表, 结果数组)', description: '把全部键写入文本型数组，返回键的数量；写入顺序不保证与插入顺序一致。', insertText: '哈希表_取全部键($1, $2)', parameters: [{ name: '哈希表', type: 'longLong', description: mapHandle}, { name: '结果数组', type: 'array', description: '接收全部键的文本型数组变量，调用前会先清空原有内容。'}], returnType: 'int' },
+    { name: '哈希表_上次操作是否成功', signature: '哈希表_上次操作是否成功()', description: '报告本线程上一次 哈希表_取 命令是否取到有效值；哈希表句柄各自独立保存该状态。', insertText: '哈希表_上次操作是否成功()', returnType: 'bool', example: '局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)\n哈希表_取文本(成绩表, "缺省")\n调试输出(哈希表_上次操作是否成功())' },
+    { name: '栈_创建', signature: '栈_创建(初始容量)', description: '创建空栈并返回句柄（0 表示失败）；初始容量只用于预分配，栈会自动增长。', insertText: '栈_创建(16)', parameters: [{ name: '初始容量', type: 'int', description: '预分配的元素数量估计值，0 表示不预分配；负数返回句柄 0。'}], returnType: 'longLong', returnLabel: '栈', example: '局部 栈 撤销栈\n撤销栈 = 栈_创建(16)' },
+    { name: '栈_销毁', signature: '栈_销毁(栈)', description: '销毁栈并回收句柄；销毁后句柄不可再用。', insertText: '栈_销毁($1)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}], returnType: 'bool' },
+    { name: '栈_取数量', signature: '栈_取数量(栈)', description: '返回栈当前的元素数量；句柄无效返回 -1。', insertText: '栈_取数量($1)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}], returnType: 'int' },
+    { name: '栈_是否为空', signature: '栈_是否为空(栈)', description: '判断栈是否没有任何元素；句柄无效返回真。', insertText: '栈_是否为空($1)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}], returnType: 'bool' },
+    { name: '栈_清空', signature: '栈_清空(栈)', description: '清空栈内全部元素，句柄保持可用。', insertText: '栈_清空($1)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}], returnType: 'bool' },
+    { name: '栈_压入', signature: '栈_压入(栈, 值)', description: '把文本值压入栈顶。', insertText: '栈_压入($1, "$2")', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}, { name: '值', type: 'wideString', description: '要压入的文本值。'}], returnType: 'bool', example: '局部 栈 撤销栈\n撤销栈 = 栈_创建(16)\n栈_压入(撤销栈, "第一步")\n调试输出(栈_弹出(撤销栈))' },
+    { name: '栈_弹出', signature: '栈_弹出(栈)', description: '弹出栈顶文本值；栈为空时返回空文本。', insertText: '栈_弹出($1)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}], returnType: 'wideString' },
+    { name: '栈_压入整数', signature: '栈_压入整数(栈, 值)', description: '把整数压入栈顶。', insertText: '栈_压入整数($1, $2)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}, { name: '值', type: 'longLong', description: '要压入的 64 位整数值。'}], returnType: 'bool' },
+    { name: '栈_弹出整数', signature: '栈_弹出整数(栈)', description: '弹出栈顶整数；栈为空时返回 0。', insertText: '栈_弹出整数($1)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}], returnType: 'longLong' },
+    { name: '栈_压入字节集', signature: '栈_压入字节集(栈, 值)', description: '把字节集压入栈顶。', insertText: '栈_压入字节集($1, $2)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}, { name: '值', type: 'bytes', description: '要压入的字节集，内部保存副本。'}], returnType: 'bool' },
+    { name: '栈_弹出字节集', signature: '栈_弹出字节集(栈)', description: '弹出栈顶字节集；栈为空时返回空字节集。', insertText: '栈_弹出字节集($1)', parameters: [{ name: '栈', type: 'longLong', description: stackHandle}], returnType: 'bytes' },
+    { name: '栈_上次弹出是否成功', signature: '栈_上次弹出是否成功()', description: '报告本线程上一次 栈_弹出 命令是否真的弹出了元素；栈句柄各自独立保存该状态。', insertText: '栈_上次弹出是否成功()', returnType: 'bool' }
+  ]
+});
+
+// ---------- 大数运算模块 ----------
+const bigHandle = '大数_创建 或 大数_从整数 返回的大数句柄；句柄无效或已销毁时命令按说明返回失败值。';
+const bigOperand = '参与运算的大数句柄，运算不修改两个操作数本身。';
+
+const bigintModule = createStandardModule({
+  id: 'lingbuilder.std.bigint',
+  name: '大数运算模块',
+  category: '其他',
+  description: '提供任意长度整数的精确四则、求余与比较运算，突破 64 位整数范围限制；十进制存储，除法向零取整。',
+  tags: ['大数', '任意精度', '数学'],
+  version: '1.0.0',
+  types: [{ name: '大数', description: '大数句柄（64 位整数），由 大数_创建 或 大数_从整数 返回；0 表示无效句柄。', cppType: 'long long' }],
+  docs: [{ title: '大数运算模块', path: 'docs/modules/std-bigint/README.md' }],
+  commands: [
+    { name: '大数_创建', signature: '大数_创建(十进制文本)', description: '把十进制整数字符串解析为大数；格式非法返回句柄 0。', insertText: '大数_创建("$1")', parameters: [{ name: '十进制文本', type: 'wideString', description: '十进制整数文本，允许开头一个正负号和任意多位数字；其余字符视为格式非法。空文本按 0 处理。'}], returnType: 'longLong', returnLabel: '大数', example: '局部 大数 天文数字\n天文数字 = 大数_创建("123456789012345678901234567890")' },
+    { name: '大数_从整数', signature: '大数_从整数(整数)', description: '把 64 位整数转为大数。', insertText: '大数_从整数($1)', parameters: [{ name: '整数', type: 'longLong', description: '要转换的 64 位整数。'}], returnType: 'longLong', returnLabel: '大数', example: '局部 大数 基数\n基数 = 大数_从整数(1)' },
+    { name: '大数_到文本', signature: '大数_到文本(大数)', description: '把大数转为十进制文本；句柄无效返回空文本。', insertText: '大数_到文本($1)', parameters: [{ name: '大数', type: 'longLong', description: bigHandle}], returnType: 'wideString' },
+    { name: '大数_销毁', signature: '大数_销毁(大数)', description: '销毁大数并回收句柄；销毁后句柄不可再用。', insertText: '大数_销毁($1)', parameters: [{ name: '大数', type: 'longLong', description: bigHandle}], returnType: 'bool' },
+    { name: '大数_加', signature: '大数_加(左值, 右值)', description: '返回两个大数之和的新大数；任一操作数无效返回句柄 0。', insertText: '大数_加($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'longLong', returnLabel: '大数', example: '局部 大数 天文数字\n天文数字 = 大数_创建("99999999999999999999")\n调试输出(大数_到文本(大数_加(天文数字, 大数_从整数(1))))' },
+    { name: '大数_减', signature: '大数_减(左值, 右值)', description: '返回左值减右值之差的新大数；任一操作数无效返回句柄 0。', insertText: '大数_减($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'longLong', returnLabel: '大数' },
+    { name: '大数_乘', signature: '大数_乘(左值, 右值)', description: '返回两个大数之积的新大数；任一操作数无效返回句柄 0。', insertText: '大数_乘($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'longLong', returnLabel: '大数' },
+    { name: '大数_除', signature: '大数_除(被除数, 除数)', description: '返回被除数除以除数之商的新大数，向零取整；除数为 0 时返回句柄 0。', insertText: '大数_除($1, $2)', parameters: [{ name: '被除数', type: 'longLong', description: bigOperand}, { name: '除数', type: 'longLong', description: '作除数的大数句柄；为 0 或无效时返回句柄 0。'}], returnType: 'longLong', returnLabel: '大数' },
+    { name: '大数_求余', signature: '大数_求余(被除数, 除数)', description: '返回被除数对除数求余的新大数，余数符号与被除数一致；除数为 0 时返回句柄 0。', insertText: '大数_求余($1, $2)', parameters: [{ name: '被除数', type: 'longLong', description: bigOperand}, { name: '除数', type: 'longLong', description: '作除数的大数句柄；为 0 或无效时返回句柄 0。'}], returnType: 'longLong', returnLabel: '大数' },
+    { name: '大数_取符号', signature: '大数_取符号(大数)', description: '返回大数的符号：正数得 1，零得 0，负数得 -1；句柄无效返回 -2。', insertText: '大数_取符号($1)', parameters: [{ name: '大数', type: 'longLong', description: bigHandle}], returnType: 'int' },
+    { name: '大数_是否等于', signature: '大数_是否等于(左值, 右值)', description: '比较两个大数是否相等；任一操作数无效返回假。', insertText: '大数_是否等于($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'bool' },
+    { name: '大数_是否大于', signature: '大数_是否大于(左值, 右值)', description: '比较左值是否严格大于右值；任一操作数无效返回假。', insertText: '大数_是否大于($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'bool' },
+    { name: '大数_是否小于', signature: '大数_是否小于(左值, 右值)', description: '比较左值是否严格小于右值；任一操作数无效返回假。', insertText: '大数_是否小于($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'bool' },
+    { name: '大数_是否大于等于', signature: '大数_是否大于等于(左值, 右值)', description: '比较左值是否大于或等于右值；任一操作数无效返回假。', insertText: '大数_是否大于等于($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'bool' },
+    { name: '大数_是否小于等于', signature: '大数_是否小于等于(左值, 右值)', description: '比较左值是否小于或等于右值；任一操作数无效返回假。', insertText: '大数_是否小于等于($1, $2)', parameters: [{ name: '左值', type: 'longLong', description: bigOperand}, { name: '右值', type: 'longLong', description: bigOperand}], returnType: 'bool' }
+  ]
+});
+
+// ---------- 拼音处理模块 ----------
+const pinyinTextArg = '要处理的文本；收录在码表中的汉字按拼音转换，其它字符原样保留。';
+const pinyinSingleCharArg = '单个汉字；多音字返回全部读音，非汉字字符返回空结果。';
+
+const pinyinModule = createStandardModule({
+  id: 'lingbuilder.std.pinyin',
+  name: '拼音处理模块',
+  category: '其他',
+  description: '基于内置汉字码表（含多音字）提供全拼、首字母、声母韵母与发音比较能力，适合中文检索与排序场景。',
+  tags: ['拼音', '中文', '检索'],
+  version: '1.0.0',
+  docs: [{ title: '拼音处理模块', path: 'docs/modules/std-pinyin/README.md' }],
+  commands: [
+    { name: '拼音_取全拼', signature: '拼音_取全拼(文本, 分隔符)', description: '把文本中每个汉字转换为小写全拼（多音字取最常用读音），非汉字字符原样保留。', insertText: '拼音_取全拼("$1", "$2")', parameters: [{ name: '文本', type: 'wideString', description: pinyinTextArg}, { name: '分隔符', type: 'wideString', optional: true, defaultValue: '', description: '插入在每个汉字读音之间的文本；省略时各字读音连写。'}], returnType: 'wideString', example: '调试输出(拼音_取全拼("中文编程", "-"))' },
+    { name: '拼音_取首字母', signature: '拼音_取首字母(文本)', description: '取每个汉字读音的首个小写字母，非汉字字符原样保留，常用于首字母检索。', insertText: '拼音_取首字母("$1")', parameters: [{ name: '文本', type: 'wideString', description: pinyinTextArg}], returnType: 'wideString', example: '调试输出(拼音_取首字母("中文编程"))' },
+    { name: '拼音_取所有发音', signature: '拼音_取所有发音(汉字, 结果数组)', description: '取出单个汉字的全部读音（多音字返回多条，按常用度排序），返回读音数量。', insertText: '拼音_取所有发音($1, $2)', parameters: [{ name: '汉字', type: 'wideString', description: pinyinSingleCharArg}, { name: '结果数组', type: 'array', description: '接收读音的文本型数组变量，调用前会先清空原有内容。'}], returnType: 'int', example: '局部 文本型 读音[]\n拼音_取所有发音("重", 读音)\n调试输出(数组_取成员数(读音))' },
+    { name: '拼音_取发音数目', signature: '拼音_取发音数目(汉字)', description: '返回单个汉字的读音数量；非汉字字符返回 0。', insertText: '拼音_取发音数目($1)', parameters: [{ name: '汉字', type: 'wideString', description: pinyinSingleCharArg}], returnType: 'int' },
+    { name: '拼音_取声母', signature: '拼音_取声母(文本)', description: '取每个汉字读音的声母（zh、ch、sh 算一个声母，无声母的音节输出空）；非汉字字符原样保留。', insertText: '拼音_取声母("$1")', parameters: [{ name: '文本', type: 'wideString', description: pinyinTextArg}], returnType: 'wideString', example: '调试输出(拼音_取声母("中文编程"))' },
+    { name: '拼音_取韵母', signature: '拼音_取韵母(文本)', description: '取每个汉字读音的韵母（去掉声母后的部分）；非汉字字符原样保留。', insertText: '拼音_取韵母("$1")', parameters: [{ name: '文本', type: 'wideString', description: pinyinTextArg}], returnType: 'wideString' },
+    { name: '拼音_发音比较', signature: '拼音_发音比较(汉字一, 汉字二)', description: '按最常用读音比较两个汉字：小于返回 -1，相等返回 0，大于返回 1；非汉字按字符编码比较。', insertText: '拼音_发音比较($1, $2)', parameters: [{ name: '汉字一', type: 'wideString', description: '参加比较的第一个汉字（取首字符）。'}, { name: '汉字二', type: 'wideString', description: '参加比较的第二个汉字（取首字符）。'}], returnType: 'int' },
+    { name: '拼音_首字母匹配', signature: '拼音_首字母匹配(文本, 首字母序列)', description: '判断文本的拼音首字母序列是否以指定字母序列开头（不区分大小写），用于中文输入检索。', insertText: '拼音_首字母匹配("$1", "$2")', parameters: [{ name: '文本', type: 'wideString', description: '被检索的原始文本。'}, { name: '首字母序列', type: 'wideString', description: '要匹配的小写首字母序列，例如 nh 匹配 你好；空序列恒匹配。'}], returnType: 'bool', example: '调试输出(拼音_首字母匹配("你好世界", "nhsj"))' }
+  ]
+});
+
+// ---------- 农历日期模块 ----------
+const lunarYearArg = '公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。';
+
+const lunarModule = createStandardModule({
+  id: 'lingbuilder.std.lunar',
+  name: '农历日期模块',
+  category: '其他',
+  description: '提供公历农历互转、闰月与月天数查询、属相干支六十甲子、二十四节气（天文算法，精确到分钟）与四柱（生辰八字）计算。',
+  tags: ['农历', '节气', '干支', '日期'],
+  version: '1.0.0',
+  types: [{ name: '日期时间', description: '64 位打包的本地日期时间值（年月日时分秒），与 日期时间模块 同一编码；0 表示无效时间。', cppType: 'long long' }],
+  docs: [{ title: '农历日期模块', path: 'docs/modules/std-lunar/README.md' }],
+  commands: [
+    { name: '农历_公历转农历年', signature: '农历_公历转农历年(时间)', description: '返回公历日期时间对应的农历年份；无效时间返回 0。', insertText: '农历_公历转农历年($1)', parameters: [{ name: '时间', type: 'longLong', description: '要转换的日期时间值；无效值返回 0。'}], returnType: 'int', example: '局部 日期时间 当前时间\n当前时间 = 时间_取现行()\n调试输出(农历_公历转农历年(当前时间))' },
+    { name: '农历_公历转农历月', signature: '农历_公历转农历月(时间)', description: '返回农历月份（1～12），闰月返回负数（如闰六月得 -6）；无效时间返回 0。', insertText: '农历_公历转农历月($1)', parameters: [{ name: '时间', type: 'longLong', description: '要转换的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '农历_公历转农历日', signature: '农历_公历转农历日(时间)', description: '返回农历日（1～30）；无效时间返回 0。', insertText: '农历_公历转农历日($1)', parameters: [{ name: '时间', type: 'longLong', description: '要转换的日期时间值；无效值返回 0。'}], returnType: 'int' },
+    { name: '农历_农历转公历', signature: '农历_农历转公历(农历年, 农历月, 农历日)', description: '把农历日期转为公历日期时间；农历月传负数表示闰月，超出年历表范围或日期不存在返回 0。', insertText: '农历_农历转公历(2026, 1, 1)', parameters: [{ name: '农历年', type: 'int', description: '农历年份，如 2026。'}, { name: '农历月', type: 'int', description: '农历月份 1～12；闰月传负数，如 -6 表示闰六月。'}, { name: '农历日', type: 'int', description: '农历日 1～30，不能超过该月天数。'}], returnType: 'longLong', returnLabel: '日期时间', example: '局部 日期时间 春节\n春节 = 农历_农历转公历(2026, 1, 1)\n调试输出(时间_到文本(春节, 1))' },
+    { name: '农历_公历转农历文本', signature: '农历_公历转农历文本(时间, 是否含属相)', description: '把公历日期时间转为“丙午年七月初五”风格的中文农历文本。', insertText: '农历_公历转农历文本($1, 真)', parameters: [{ name: '时间', type: 'longLong', description: '要转换的日期时间值；无效值返回空文本。'}, { name: '是否含属相', type: 'bool', description: '传真在年份干支后追加属相，如 丙午（马）年。'}], returnType: 'wideString' },
+    { name: '农历_取闰月月份', signature: '农历_取闰月月份(公历年)', description: '返回指定公历年份的农历闰月月份（1～12）；无闰月返回 0。', insertText: '农历_取闰月月份(2025)', parameters: [{ name: '公历年', type: 'int', description: lunarYearArg}], returnType: 'int', example: '调试输出(农历_取闰月月份(2025))' },
+    { name: '农历_取月天数', signature: '农历_取月天数(公历年, 农历月)', description: '返回农历某月的天数（29 或 30）；农历月传负数表示闰月。', insertText: '农历_取月天数(2025, 6)', parameters: [{ name: '公历年', type: 'int', description: lunarYearArg}, { name: '农历月', type: 'int', description: '农历月份 1～12；闰月传负数。'}], returnType: 'int' },
+    { name: '农历_取年天数', signature: '农历_取年天数(公历年)', description: '返回农历全年天数（353～355 天，含闰月）。', insertText: '农历_取年天数(2025)', parameters: [{ name: '公历年', type: 'int', description: lunarYearArg}], returnType: 'int' },
+    { name: '农历_取属相', signature: '农历_取属相(公历年)', description: '返回年份对应的属相名称。', insertText: '农历_取属相(2026)', parameters: [{ name: '公历年', type: 'int', description: lunarYearArg}], returnType: 'wideString', example: '调试输出(农历_取属相(2026))' },
+    { name: '农历_取天干地支', signature: '农历_取天干地支(公历年)', description: '返回年份的干支文本（如 丙午），按立春分界。', insertText: '农历_取天干地支(2026)', parameters: [{ name: '公历年', type: 'int', description: lunarYearArg}], returnType: 'wideString' },
+    { name: '农历_取六十甲子', signature: '农历_取六十甲子(公历年)', description: '返回年份在六十甲子中的序位（1～60，如 第41甲辰），按立春分界。', insertText: '农历_取六十甲子(2024)', parameters: [{ name: '公历年', type: 'int', description: lunarYearArg}], returnType: 'wideString' },
+    { name: '农历_取节气', signature: '农历_取节气(公历年, 节气序号)', description: '返回指定节气的日期时间（北京时间，精确到分钟）；序号 1～24 依次为小寒、大寒、立春……冬至。', insertText: '农历_取节气(2026, 3)', parameters: [{ name: '公历年', type: 'int', description: lunarYearArg}, { name: '节气序号', type: 'int', description: '1 小寒、2 大寒、3 立春、4 雨水、5 惊蛰、6 春分、7 清明、8 谷雨、9 立夏、10 小满、11 芒种、12 夏至、13 小暑、14 大暑、15 立秋、16 处暑、17 白露、18 秋分、19 寒露、20 霜降、21 立冬、22 小雪、23 大雪、24 冬至。'}], returnType: 'longLong', returnLabel: '日期时间', example: '局部 日期时间 立春\n立春 = 农历_取节气(2026, 3)\n调试输出(时间_到文本(立春, 0))' },
+    { name: '农历_取节气名称', signature: '农历_取节气名称(节气序号)', description: '返回节气序号对应的中文名称；序号超出 1～24 返回空文本。', insertText: '农历_取节气名称(3)', parameters: [{ name: '节气序号', type: 'int', description: '1～24，含义同 农历_取节气。'}], returnType: 'wideString' },
+    { name: '农历_取四柱', signature: '农历_取四柱(时间)', description: '返回日期时间的四柱（生辰八字）文本，如 甲子年 丙寅月 戊午日 庚子时；年柱月柱按节气分界。', insertText: '农历_取四柱($1)', parameters: [{ name: '时间', type: 'longLong', description: '要计算的日期时间值；无效值返回空文本。'}], returnType: 'wideString' }
+  ]
+});
+
 export const STANDARD_LIBRARY_MODULES: LingBuilderModuleManifest[] = [
   textModule,
   arrayModule,
@@ -339,6 +474,10 @@ export const STANDARD_LIBRARY_MODULES: LingBuilderModuleManifest[] = [
   datetimeModule,
   regexModule,
   bufferModule,
+  mapModule,
+  bigintModule,
+  pinyinModule,
+  lunarModule,
 
   JSON_MODULE,
   xmlModule

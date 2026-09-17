@@ -7,6 +7,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import DataGridDesignerPreview from '../src/components/DataGridDesignerPreview';
 import DataGridEditorDialog from '../src/components/DataGridEditorDialog';
 import NewEmojiTableEditorDialog, { getNewEmojiTableEditorData, serializeNewEmojiTableProperties } from '../src/components/NewEmojiTableEditorDialog';
+import NewEmojiDesignerControlPreview from '../src/components/NewEmojiDesignerControlPreview';
+import { getNewEmojiThemePreview } from '../src/services/windowDesigner/newEmojiDesignerAdapter';
 import { DATA_GRID_API, DATA_GRID_BINDINGS, DATA_GRID_COMMANDS } from '../src/services/modules/dataGridApiCatalog';
 import {
   encodeDataGridDelimited,
@@ -90,6 +92,66 @@ test('new_emoji Table editor exposes structured columns, typed cells and batch i
   assert.deepEqual(getNewEmojiTableEditorData(control), { columns: 2, rows: 1 });
 });
 
+test('new_emoji Table designer preview renders structured columns, rows and alignment live', () => {
+  const control: LingControl = {
+    id: 'new-emoji-table-preview', type: 'Grid', designerType: 'lingbuilder.new_emoji.ui/Table', name: '表格1', content: '', x: 0, y: 0, width: 540, height: 280,
+    fontSize: 12, background: '#202028', foreground: '#F8FAFC', isEnabled: true, visibility: 'Visible',
+    properties: {
+      dataGridColumns: [
+        { id: 'column1', title: '列 1', type: 'text', width: 140, alignment: 'center' },
+        { id: 'column2', title: '列 2', type: 'text', width: 120, alignment: 'right' },
+        { id: 'hidden', title: '隐藏列', type: 'text', width: 100, visible: false }
+      ],
+      dataGridRows: [
+        { key: 'r1', enabled: true, cells: { column1: '单元格 A1', column2: '单元格 B1', hidden: 'x' } },
+        { key: 'r2', enabled: false, cells: { column1: '单元格 A2', column2: '单元格 B2', hidden: 'x' } }
+      ]
+    }
+  };
+  const markup = renderToStaticMarkup(React.createElement(NewEmojiDesignerControlPreview, {
+    control, isEnabled: true, theme: getNewEmojiThemePreview('#242941')
+  }));
+  assert.match(markup, /data-new-emoji-preview="Table"/u);
+  // 列标题、列宽与对齐直接来自结构化属性（历史缺陷：画布只渲染硬编码演示数据）。
+  assert.match(markup, /列 1/u);
+  assert.match(markup, /width:140px/u);
+  assert.match(markup, /text-align:center/u);
+  assert.match(markup, /text-align:right/u);
+  assert.match(markup, /单元格 A1/u);
+  assert.match(markup, /单元格 B2/u);
+  // 不可见列与旧演示占位都不出现。
+  assert.doesNotMatch(markup, /隐藏列/u);
+  assert.doesNotMatch(markup, /示例项目/u);
+});
+
+test('new_emoji 十个数据型预览实时消费设计器属性而不渲染硬编码演示', () => {
+  const renderWith = (kind: string, properties: Record<string, unknown>) => renderToStaticMarkup(React.createElement(NewEmojiDesignerControlPreview, {
+    control: {
+      id: `pv-${kind}`, type: 'Label', designerType: `lingbuilder.new_emoji.ui/${kind}`, name: kind, content: '',
+      x: 0, y: 0, width: 320, height: 200, fontSize: 12, background: '#202028', foreground: '#F8FAFC',
+      isEnabled: true, visibility: 'Visible', properties
+    } as unknown as LingControl,
+    isEnabled: true, theme: getNewEmojiThemePreview('#242941')
+  }));
+  // 数据集合类：items/points/steps 按运行时同口径解析并渲染。
+  assert.match(renderWith('Tree', { items: ['根节点\t0', '子节点\t1'], selectedIndex: 1 }), /子节点/);
+  assert.match(renderWith('Timeline', { items: ['需求评审', '开发完成'] }), /需求评审/);
+  assert.match(renderWith('LineChart', { points: ['一月\t12', '二月\t30'], title: '销量' }), /销量/);
+  assert.match(renderWith('Descriptions', { items: ['版本=2.0.0'], title: '信息' }), /2\.0\.0/);
+  assert.match(renderWith('Mentions', { value: '请 @王五 审核', trigger: '@', open: true, suggestions: ['王五'] }), /王五/);
+  assert.match(renderWith('Cascader', { options: ['省 / 市'], selected: '浙江 / 杭州' }), /浙江 \/ 杭州/);
+  assert.match(renderWith('Anchor', { items: ['第一章', '第二章'], activeIndex: 1 }), /第二章/);
+  assert.match(renderWith('Affix', { title: '固定标题', body: ['说明文字'] }), /固定标题/);
+  assert.match(renderWith('Tour', { steps: ['创建项目', '配置模块'], activeIndex: 1 }), /配置模块/);
+  assert.match(renderWith('Tour', { steps: ['创建项目'], activeIndex: 0 }), /1\/1/);
+  // 布尔/数值类属性驱动预览形态。
+  assert.match(renderWith('Skeleton', { rows: 3 }), /animate-pulse/u);
+  assert.doesNotMatch(renderWith('Skeleton', { rows: 3, animated: false }), /animate-pulse/u);
+  // 旧硬编码演示数据不再出现。
+  assert.doesNotMatch(renderWith('Timeline', { items: ['需求评审'] }), /构建成功/u);
+  assert.doesNotMatch(renderWith('Descriptions', { items: ['版本=2.0.0'] }), /New Emoji/u);
+});
+
 test('new_emoji Table serialization keeps typed advanced column metadata and legacy runtime fields', () => {
   const model = normalizeDataGridModel({
     columns: [{
@@ -109,7 +171,7 @@ test('new_emoji Table serialization keeps typed advanced column metadata and leg
   assert.deepEqual(rows[0], { id: 'order-1', enabled: false, cells: ['ready to ship'] });
 });
 
-test('new_emoji Table generator renders structured data through the safe basic ABI', async () => {
+test('new_emoji Table generator forwards structured data through the Ex kv protocol', async () => {
   const workspaceRoot = path.resolve('..');
   const manifestPath = path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
@@ -147,11 +209,68 @@ test('new_emoji Table generator renders structured data through the safe basic A
   assert.deepEqual(generated.blockingDiagnostics, []);
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.match(cpp, /EU_CreateTable\(g_newEmojiWindow/u);
-  assert.match(cpp, /LB_NE_ToUtf8\(L"名称\|状态"\)/u);
-  assert.match(cpp, /LB_NE_ToUtf8\(L"订单 A\\t待处理"\)/u);
-  assert.match(cpp, /EU_SetTableData\(g_newEmojiWindow/u);
-  assert.doesNotMatch(cpp, /EU_SetTableColumnsEx\(g_newEmojiWindow/u);
-  assert.doesNotMatch(cpp, /EU_SetTableRowsEx\(g_newEmojiWindow/u);
+  // 结构化列/行必须完整翻译为 Ex kv 协议（列对齐、宽度一并下发），而不是只发基础标题文本。
+  assert.match(cpp, /EU_SetTableColumnsEx\(g_newEmojiWindow/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"title=名称\\tkey=name\\twidth=160\\talign=center\\tsortable=1\\tfilterable=1\\ntitle=状态/u);
+  assert.match(cpp, /EU_SetTableRowsEx\(g_newEmojiWindow/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"key=order-1\\tc0=订单 A\\tc1=待处理"/u);
+  // 基础 EU_SetTableData 只含标题与 Tab 行文本，会被 Ex 覆盖，结构化数据存在时不再生成。
+  assert.doesNotMatch(cpp, /EU_SetTableData\(g_newEmojiWindow/u);
+});
+
+test('new_emoji Table Ex kv protocol carries alignment, frozen, type, hidden and escaping', async () => {
+  const workspaceRoot = path.resolve('..');
+  const manifestPath = path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const table = manifest.contributes.designerControls.find((item: { namespacedType?: string }) => item.namespacedType === 'lingbuilder.new_emoji.ui/Table');
+  assert.ok(table);
+  const installedModule: InstalledModule = {
+    manifest,
+    installPath: path.dirname(manifestPath),
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-table-kv-protocol',
+    name: 'new_emoji Table kv protocol',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 420, background: '#202028', description: '', designerBackend: 'new-emoji',
+      controls: [{
+        id: 'table', type: 'Grid', designerType: 'lingbuilder.new_emoji.ui/Table', name: '演示表格', content: '表格', x: 20, y: 20, width: 460, height: 240,
+        fontSize: 12, background: '#202028', foreground: '#F8FAFC', isEnabled: true, visibility: 'Visible',
+        properties: {
+          ...table.defaultProps,
+          tableColumnsEx: [], tableRowsEx: [],
+          dataGridColumns: [
+            { id: 'name', title: '名称', type: 'text', width: 160, alignment: 'left', readOnly: true },
+            { id: 'value', title: '数值', type: 'integer', width: 90, alignment: 'right' },
+            { id: 'status', title: '状态', type: 'checkbox', width: 80, alignment: 'center', frozen: true },
+            { id: 'action', title: '操作', type: 'buttons', width: 120, alignment: 'center', buttons: [{ id: 'view', text: '查看', style: 'primary' }] },
+            { id: 'ghost', title: '隐藏列', type: 'text', width: 80, visible: false }
+          ],
+          dataGridRows: [{ key: 'r1', enabled: false, cells: { name: 'A\tB', value: 12, status: true, action: '', ghost: '隐藏' } }]
+        }, events: {}
+      }]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [installedModule],
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // 列对齐显式下发（运行时文本列默认居左）；冻结映射 fixed=left；选择框映射 type=selection。
+  assert.match(cpp, /title=名称\\tkey=name\\twidth=160\\talign=left\\tsortable=1/u);
+  assert.match(cpp, /title=数值\\tkey=value\\twidth=90\\talign=right/u);
+  assert.match(cpp, /title=状态\\tkey=status\\twidth=80\\talign=center\\tfixed=left\\ttype=selection/u);
+  // 不可见列不进入协议，行单元格按可见列重新编号；按钮组单元格回退为列定义按钮文字。
+  // 单元格中的真实制表符先经 kv 转义（\t）再经 C++ 字面量转义（\\t），源码里是两个反斜杠。
+  assert.doesNotMatch(cpp, /隐藏列/u);
+  assert.match(cpp, /key=r1\\tdisabled=1\\tc0=A\\\\tB\\tc1=12\\tc2=1\\tc3=查看/u);
+  // 「只读」列映射为双击编辑关闭（按可见列序号）。
+  assert.match(cpp, /EU_SetTableColumnDoubleClickEdit\(g_newEmojiWindow, [A-Za-z0-9_]+, 0, 0\)/u);
 });
 
 test('new_emoji Table keeps legacy string Ex data compatible', async () => {

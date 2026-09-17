@@ -1,4 +1,5 @@
 import { InstalledModule } from '../modules/types';
+import { MAIL_CLIENT_RUNTIME } from './mailClientRuntime';
 
 const SOCKET_SUPPORT = String.raw`
 static bool LB_EnsureSockets() {
@@ -58,6 +59,9 @@ const wchar_t* UDP_接收文本(int maximumBytes, int timeoutMs) {
 `;
 
 const DNS_RUNTIME = String.raw`
+#pragma comment(lib, "iphlpapi.lib")
+#include <iphlpapi.h>
+
 const wchar_t* DNS_解析首个地址(const wchar_t* host) { if (!LB_EnsureSockets()) return LB_ReturnText(L""); ADDRINFOW hints = {}; hints.ai_family = AF_UNSPEC; ADDRINFOW* addresses = nullptr; if (GetAddrInfoW(host, nullptr, &hints, &addresses) != 0 || !addresses) return LB_ReturnText(L""); wchar_t buffer[INET6_ADDRSTRLEN] = {}; void* raw = addresses->ai_family == AF_INET ? static_cast<void*>(&reinterpret_cast<sockaddr_in*>(addresses->ai_addr)->sin_addr) : static_cast<void*>(&reinterpret_cast<sockaddr_in6*>(addresses->ai_addr)->sin6_addr); InetNtopW(addresses->ai_family, raw, buffer, _countof(buffer)); FreeAddrInfoW(addresses); return LB_ReturnText(buffer); }
 
 const wchar_t* DNS_反向查询(const wchar_t* ip) { if (!LB_EnsureSockets()) return LB_ReturnText(L""); sockaddr_storage address = {}; int size = 0; sockaddr_in* ipv4 = reinterpret_cast<sockaddr_in*>(&address); sockaddr_in6* ipv6 = reinterpret_cast<sockaddr_in6*>(&address); if (InetPtonW(AF_INET, ip, &ipv4->sin_addr) == 1) { ipv4->sin_family = AF_INET; size = sizeof(*ipv4); } else if (InetPtonW(AF_INET6, ip, &ipv6->sin6_addr) == 1) { ipv6->sin6_family = AF_INET6; size = sizeof(*ipv6); } else return LB_ReturnText(L""); wchar_t host[NI_MAXHOST] = {}; return GetNameInfoW(reinterpret_cast<sockaddr*>(&address), size, host, _countof(host), nullptr, 0, NI_NAMEREQD) == 0 ? LB_ReturnText(host) : LB_ReturnText(L""); }
@@ -65,6 +69,73 @@ const wchar_t* DNS_反向查询(const wchar_t* ip) { if (!LB_EnsureSockets()) re
 const wchar_t* 网络_取本机名() { if (!LB_EnsureSockets()) return LB_ReturnText(L""); char host[256] = {}; return gethostname(host, sizeof(host)) == 0 ? LB_ReturnText(LB_Utf8ToWide(host)) : LB_ReturnText(L""); }
 bool 网络_是否IPv4(const wchar_t* value) { IN_ADDR address = {}; return InetPtonW(AF_INET, value, &address) == 1; }
 bool 网络_是否IPv6(const wchar_t* value) { IN6_ADDR address = {}; return InetPtonW(AF_INET6, value, &address) == 1; }
+
+static std::vector<unsigned char> LB_NetworkAdapterBuffer() {
+    unsigned long size = 16 * 1024;
+    std::vector<unsigned char> buffer(size);
+    auto* addresses = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data());
+    unsigned long result = GetAdaptersAddresses(AF_UNSPEC, 0, nullptr, addresses, &size);
+    if (result == ERROR_BUFFER_OVERFLOW) { buffer.resize(size); addresses = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data()); result = GetAdaptersAddresses(AF_UNSPEC, 0, nullptr, addresses, &size); }
+    if (result != NO_ERROR) buffer.clear();
+    return buffer;
+}
+
+const wchar_t* 网络_取MAC地址() {
+    const std::vector<unsigned char> buffer = LB_NetworkAdapterBuffer();
+    if (buffer.empty()) return LB_ReturnText(L"");
+    auto* addresses = reinterpret_cast<const IP_ADAPTER_ADDRESSES*>(buffer.data());
+    for (auto* adapter = addresses; adapter; adapter = adapter->Next) {
+        if (adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK || adapter->PhysicalAddressLength == 0) continue;
+        std::wstring mac;
+        wchar_t byteText[4];
+        for (unsigned long i = 0; i < adapter->PhysicalAddressLength; ++i) {
+            if (i) mac += L'-';
+            _snwprintf_s(byteText, _countof(byteText), _TRUNCATE, L"%02X", adapter->PhysicalAddress[i]);
+            mac += byteText;
+        }
+        return LB_ReturnText(std::move(mac));
+    }
+    return LB_ReturnText(L"");
+}
+
+int 网络_取网卡名称列表(std::vector<std::wstring>& out) {
+    out.clear();
+    const std::vector<unsigned char> buffer = LB_NetworkAdapterBuffer();
+    if (buffer.empty()) return -1;
+    auto* addresses = reinterpret_cast<const IP_ADAPTER_ADDRESSES*>(buffer.data());
+    for (auto* adapter = addresses; adapter; adapter = adapter->Next) {
+        if (adapter->FriendlyName) out.push_back(adapter->FriendlyName);
+    }
+    return static_cast<int>(out.size());
+}
+
+int 网络_取IP地址列表(std::vector<std::wstring>& out) {
+    out.clear();
+    if (!LB_EnsureSockets()) return -1;
+    const std::vector<unsigned char> buffer = LB_NetworkAdapterBuffer();
+    if (buffer.empty()) return -1;
+    auto* addresses = reinterpret_cast<const IP_ADAPTER_ADDRESSES*>(buffer.data());
+    for (auto* adapter = addresses; adapter; adapter = adapter->Next) {
+        for (auto* unicast = adapter->FirstUnicastAddress; unicast; unicast = unicast->Next) {
+            wchar_t text[INET6_ADDRSTRLEN] = {};
+            const int family = unicast->Address.lpSockaddr->sa_family;
+            void* raw = family == AF_INET ? static_cast<void*>(&reinterpret_cast<sockaddr_in*>(unicast->Address.lpSockaddr)->sin_addr)
+                : family == AF_INET6 ? static_cast<void*>(&reinterpret_cast<sockaddr_in6*>(unicast->Address.lpSockaddr)->sin6_addr) : nullptr;
+            if (raw && InetNtopW(family, raw, text, _countof(text))) out.push_back(text);
+        }
+    }
+    return static_cast<int>(out.size());
+}
+
+const wchar_t* 网络_取DNS后缀() {
+    const std::vector<unsigned char> buffer = LB_NetworkAdapterBuffer();
+    if (buffer.empty()) return LB_ReturnText(L"");
+    auto* addresses = reinterpret_cast<const IP_ADAPTER_ADDRESSES*>(buffer.data());
+    for (auto* adapter = addresses; adapter; adapter = adapter->Next) {
+        if (adapter->DnsSuffix && adapter->DnsSuffix[0]) return LB_ReturnText(adapter->DnsSuffix);
+    }
+    return LB_ReturnText(L"");
+}
 `;
 
 const URL_RUNTIME = String.raw`
@@ -100,6 +171,8 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.net.tcp': TCP_RUNTIME,
   'lingbuilder.net.udp': UDP_RUNTIME,
   'lingbuilder.net.dns': DNS_RUNTIME,
+  'lingbuilder.net.pop3': MAIL_CLIENT_RUNTIME,
+  'lingbuilder.net.imap': MAIL_CLIENT_RUNTIME,
   'lingbuilder.net.url': URL_RUNTIME,
   'lingbuilder.net.cookie': COOKIE_RUNTIME,
   'lingbuilder.net.ftp': FTP_RUNTIME

@@ -671,6 +671,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '页面设置_上边距', signature: '页面设置_上边距()', description: '返回最近页面设置的上边距。', insertText: '页面设置_上边距()', returnType: '整数型' }
         ,{ name: '页面设置_右边距', signature: '页面设置_右边距()', description: '返回最近页面设置的右边距。', insertText: '页面设置_右边距()', returnType: '整数型' }
         ,{ name: '页面设置_下边距', signature: '页面设置_下边距()', description: '返回最近页面设置的下边距。', insertText: '页面设置_下边距()', returnType: '整数型' }
+        ,{ name: '打印机_取列表', signature: '打印机_取列表(结果数组)', description: '把本机可用的打印机名称写入文本型数组，返回打印机数量。', insertText: '打印机_取列表($1)', returnType: '整数型' }
+        ,{ name: '打印机_取默认', signature: '打印机_取默认()', description: '返回当前默认打印机的名称；读取失败返回空文本。', insertText: '打印机_取默认()', returnType: '文本型' }
+        ,{ name: '打印机_置默认', signature: '打印机_置默认(名称)', description: '把指定名称的打印机设为系统默认；名称不存在或无权限返回假。', insertText: '打印机_置默认("$1")', returnType: '逻辑型' }
+        ,{ name: '打印机_是否在线', signature: '打印机_是否在线(名称)', description: '判断指定打印机当前是否可用（非脱机状态）；名称不存在返回假。', insertText: '打印机_是否在线("$1")', returnType: '逻辑型' }
         ,{ name: '属性页_显示', signature: '属性页_显示(属性页)', description: '显示设计器资源中定义的顶层 Windows PropertySheet。', insertText: '属性页_显示(属性页1)', returnType: '整数型' }
         ,{ name: '列表视图_创建行', signature: '列表视图_创建行(单元格...)', description: '按参数顺序创建类型化列表视图行；文本、整数、小数和逻辑值会确定性转换为单元格文本。', insertText: '列表视图_创建行("$1", "$2")', returnType: '列表视图行' }
         ,{ name: '列表视图_创建行集合', signature: '列表视图_创建行集合(行...)', description: '把一个或多个列表视图行组成可批量提交的类型化行集合。', insertText: '列表视图_创建行集合(列表视图_创建行("$1", "$2"), 列表视图_创建行("$3", "$4"))', returnType: '列表视图行集合' }
@@ -754,6 +758,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '页面设置_上边距', runtimeName: '页面设置_上边距', parameters: [], returnType: 'int' }
         ,{ command: '页面设置_右边距', runtimeName: '页面设置_右边距', parameters: [], returnType: 'int' }
         ,{ command: '页面设置_下边距', runtimeName: '页面设置_下边距', parameters: [], returnType: 'int' }
+        ,{ command: '打印机_取列表', runtimeName: '打印机_取列表', parameters: [{ name: '结果数组', type: 'array', description: '接收打印机名称的文本型数组变量，调用前会先清空原有内容。' }], returnType: 'int' }
+        ,{ command: '打印机_取默认', runtimeName: '打印机_取默认', parameters: [], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '打印机_置默认', runtimeName: '打印机_置默认', parameters: [{ name: '名称', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '打印机_是否在线', runtimeName: '打印机_是否在线', parameters: [{ name: '名称', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '属性页_显示', runtimeName: '属性页_显示', parameters: [{ name: '属性页', type: 'controlRef', controlTypes: ['PropertySheet'], controlKinds: ['resource'], scope: 'project' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '列表视图_创建行', runtimeName: '列表视图_创建行', parameters: [{ name: '单元格', type: 'lingValue', variadic: true, description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'raw', encoding: 'wide' }
         ,{ command: '列表视图_创建行集合', runtimeName: '列表视图_创建行集合', parameters: [{ name: '行', type: 'lingValue', variadic: true, description: '可继续传入任意数量的列表视图行。' }], returnType: 'raw' }

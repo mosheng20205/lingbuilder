@@ -94,6 +94,111 @@ void 音频_停止() { PlaySoundW(nullptr, nullptr, 0); }
 bool 音频_播放系统提示() { return PlaySoundW(L"SystemNotification", nullptr, SND_ALIAS | SND_ASYNC | SND_NODEFAULT) == TRUE; }
 int 音频_取主音量() { DWORD volume = 0; if (waveOutGetVolume(nullptr, &volume) != MMSYSERR_NOERROR) return -1; return static_cast<int>((LOWORD(volume) * 100ULL) / 0xffff); }
 bool 音频_设置主音量(int volume) { DWORD value = static_cast<DWORD>(((std::max)(0, (std::min)(volume, 100)) * 0xffff) / 100); return waveOutSetVolume(nullptr, MAKELONG(value, value)) == MMSYSERR_NOERROR; }
+
+// 静音：WinMM Mixer API（操作默认波形输出的扬声器静音控制）
+static bool LB_AudioGetSpeakerMuteControl(HMIXER* mixerHandle, MIXERCONTROL* control) {
+    if (mixerOpen(mixerHandle, 0, 0, 0, 0) != MMSYSERR_NOERROR) return false;
+    MIXERLINE line = {}; line.cbStruct = sizeof(line);
+    line.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
+    if (mixerGetLineInfo(reinterpret_cast<HMIXEROBJ>(*mixerHandle), &line, MIXER_GETLINEINFOF_COMPONENTTYPE) != MMSYSERR_NOERROR) { mixerClose(*mixerHandle); return false; }
+    MIXERLINECONTROLS controls = {}; controls.cbStruct = sizeof(controls);
+    controls.dwLineID = line.dwLineID;
+    controls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
+    controls.cControls = 1;
+    controls.cbmxctrl = sizeof(*control);
+    controls.pamxctrl = control;
+    if (mixerGetLineControls(reinterpret_cast<HMIXEROBJ>(*mixerHandle), &controls, MIXER_GETLINECONTROLSF_ONEBYTYPE) != MMSYSERR_NOERROR) { mixerClose(*mixerHandle); return false; }
+    return true;
+}
+
+bool 音频_置静音(bool mute) {
+    HMIXER mixer = nullptr;
+    MIXERCONTROL control = {};
+    if (!LB_AudioGetSpeakerMuteControl(&mixer, &control)) return false;
+    MIXERCONTROLDETAILS details = {}; details.cbStruct = sizeof(details);
+    details.dwControlID = control.dwControlID;
+    details.cChannels = 1;
+    details.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
+    MIXERCONTROLDETAILS_BOOLEAN value = {};
+    value.fValue = mute ? 1 : 0;
+    details.paDetails = &value;
+    const bool ok = mixerSetControlDetails(reinterpret_cast<HMIXEROBJ>(mixer), &details, MIXER_SETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR;
+    mixerClose(mixer);
+    return ok;
+}
+
+bool 音频_取静音() {
+    HMIXER mixer = nullptr;
+    MIXERCONTROL control = {};
+    if (!LB_AudioGetSpeakerMuteControl(&mixer, &control)) return false;
+    MIXERCONTROLDETAILS details = {}; details.cbStruct = sizeof(details);
+    details.dwControlID = control.dwControlID;
+    details.cChannels = 1;
+    details.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
+    MIXERCONTROLDETAILS_BOOLEAN value = {};
+    details.paDetails = &value;
+    mixerGetControlDetails(reinterpret_cast<HMIXEROBJ>(mixer), &details, MIXER_GETCONTROLDETAILSF_VALUE);
+    mixerClose(mixer);
+    return value.fValue != 0;
+}
+// ===== MCI 播放控制族（mp3/midi 等，按扩展名自动选驱动） =====
+static bool LB_Mci(const wchar_t* commandText) { return mciSendStringW(commandText, nullptr, 0, nullptr) == 0; }
+
+static bool 音频_播放MP3(const wchar_t* path, bool loop) {
+    const std::wstring file = LB_Wide(path);
+    if (file.empty()) return false;
+    mciSendStringW(L"close LB_MP3", nullptr, 0, nullptr);
+    std::wstring open = L"open \"" + file + L"\" alias LB_MP3";
+    if (!LB_Mci(open.c_str())) return false;
+    LB_Mci(L"set LB_MP3 time format ms");
+    std::wstring play = L"play LB_MP3";
+    if (loop) play += L" repeat";
+    return LB_Mci(play.c_str());
+}
+
+bool 音频_暂停MP3() { return LB_Mci(L"pause LB_MP3"); }
+bool 音频_继续MP3() { return LB_Mci(L"resume LB_MP3"); }
+bool 音频_停止MP3() { return LB_Mci(L"stop LB_MP3"); }
+
+const wchar_t* 音频_取MP3状态() {
+    wchar_t buffer[64] = {};
+    if (mciSendStringW(L"status LB_MP3 mode", buffer, 64, nullptr) != 0) return LB_ReturnText(L"已停止");
+    const std::wstring mode = buffer;
+    if (mode == L"playing") return LB_ReturnText(L"播放中");
+    if (mode == L"paused") return LB_ReturnText(L"已暂停");
+    return LB_ReturnText(L"已停止");
+}
+
+int 音频_取MP3长度() {
+    wchar_t buffer[64] = {};
+    if (mciSendStringW(L"status LB_MP3 length", buffer, 64, nullptr) != 0) return 0;
+    return _wtoi(buffer);
+}
+
+int 音频_取MP3位置() {
+    wchar_t buffer[64] = {};
+    if (mciSendStringW(L"status LB_MP3 position", buffer, 64, nullptr) != 0) return 0;
+    return _wtoi(buffer);
+}
+
+bool 音频_跳转MP3(int positionMs) {
+    std::wstring command = L"seek LB_MP3 to " + std::to_wstring((std::max)(0, positionMs));
+    if (!LB_Mci(command.c_str())) return false;
+    return LB_Mci(L"play LB_MP3");
+}
+
+bool 音频_播放MIDI(const wchar_t* path, bool loop) {
+    const std::wstring file = LB_Wide(path);
+    if (file.empty()) return false;
+    mciSendStringW(L"close LB_MIDI", nullptr, 0, nullptr);
+    std::wstring open = L"open \"" + file + L"\" type sequencer alias LB_MIDI";
+    if (!LB_Mci(open.c_str())) return false;
+    std::wstring play = L"play LB_MIDI";
+    if (loop) play += L" repeat";
+    return LB_Mci(play.c_str());
+}
+
+bool 音频_停止MIDI() { return LB_Mci(L"stop LB_MIDI"); }
 `;
 
 const RUNTIMES: Record<string, string> = {

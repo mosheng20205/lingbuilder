@@ -60,6 +60,32 @@ bool INI_写文本(const wchar_t* file, const wchar_t* section, const wchar_t* k
 bool INI_写整数(const wchar_t* file, const wchar_t* section, const wchar_t* key, int value) { return INI_写文本(file, section, key, std::to_wstring(value).c_str()); }
 bool INI_删除键(const wchar_t* file, const wchar_t* section, const wchar_t* key) { const std::wstring path = LB_IniPath(file); return WritePrivateProfileStringW(section, key, nullptr, path.c_str()) == TRUE; }
 bool INI_删除节(const wchar_t* file, const wchar_t* section) { const std::wstring path = LB_IniPath(file); return WritePrivateProfileStringW(section, nullptr, nullptr, path.c_str()) == TRUE; }
+
+// 枚举辅助：把双 NUL 终止的名称列表拆分为数组；缓冲不足自动扩容重试
+static std::vector<std::wstring> LB_IniNameList(const wchar_t* file, const wchar_t* section) {
+    std::vector<std::wstring> out;
+    unsigned long size = 32768;
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        std::vector<wchar_t> buffer(size);
+        unsigned long read = GetPrivateProfileStringW(section, nullptr, nullptr, buffer.data(), size, file);
+        if (read < size - 2) {
+            for (const wchar_t* p = buffer.data(); *p; p += wcslen(p) + 1) out.push_back(p);
+            return out;
+        }
+        size *= 4;
+    }
+    return out;
+}
+
+int INI_枚举节(const wchar_t* file, std::vector<std::wstring>& out) {
+    out = LB_IniNameList(file, nullptr);
+    return static_cast<int>(out.size());
+}
+
+int INI_枚举键(const wchar_t* file, const wchar_t* section, std::vector<std::wstring>& out) {
+    out = LB_IniNameList(file, section);
+    return static_cast<int>(out.size());
+}
 `;
 
 const REGISTRY_RUNTIME = String.raw`
@@ -872,6 +898,8 @@ bool 剪贴板_清空() { if (!OpenClipboard(nullptr)) return false; const bool 
 `;
 
 const SHELL_RUNTIME = String.raw`
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "shell32.lib")
 bool 系统_打开(const wchar_t* target) { return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", target, nullptr, nullptr, SW_SHOWNORMAL)) > 32; }
 bool 系统_定位文件(const wchar_t* path) { std::wstring arguments = L"/select,\"" + LB_Wide(path) + L"\""; return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", L"explorer.exe", arguments.c_str(), nullptr, SW_SHOWNORMAL)) > 32; }
 const wchar_t* 系统_取临时目录() { DWORD size = GetTempPathW(0, nullptr); if (!size) return LB_ReturnText(L""); std::vector<wchar_t> buffer(size + 1); return GetTempPathW(static_cast<DWORD>(buffer.size()), buffer.data()) ? LB_ReturnText(buffer.data()) : LB_ReturnText(L""); }
@@ -880,6 +908,60 @@ const wchar_t* 系统_取运行目录() { std::vector<wchar_t> buffer(MAX_PATH);
 static const wchar_t* LB_KnownFolder(REFKNOWNFOLDERID id) { PWSTR path = nullptr; if (FAILED(SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &path))) return LB_ReturnText(L""); std::wstring value = path; CoTaskMemFree(path); return LB_ReturnText(std::move(value)); }
 const wchar_t* 系统_取桌面目录() { return LB_KnownFolder(FOLDERID_Desktop); }
 const wchar_t* 系统_取文档目录() { return LB_KnownFolder(FOLDERID_Documents); }
+
+#include <shlobj.h>
+
+static bool LB_EnableShutdownPrivilege() {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token)) return false;
+    TOKEN_PRIVILEGES privileges = {};
+    LookupPrivilegeValueW(nullptr, SE_SHUTDOWN_NAME, &privileges.Privileges[0].Luid);
+    privileges.PrivilegeCount = 1;
+    privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    const bool ok = AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr) != FALSE && GetLastError() == ERROR_SUCCESS;
+    CloseHandle(token);
+    return ok;
+}
+
+bool 系统_创建桌面快捷方式(const wchar_t* name, const wchar_t* targetPath, const wchar_t* arguments, const wchar_t* iconPath) {
+    if (!name || !name[0] || !targetPath || !targetPath[0]) return false;
+    PWSTR desktop = nullptr;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_Desktop, KF_FLAG_DEFAULT, nullptr, &desktop))) return false;
+    std::wstring linkPath = std::wstring(desktop) + L"\\" + name;
+    CoTaskMemFree(desktop);
+    const std::wstring suffix = L".lnk";
+    if (linkPath.size() < suffix.size() || linkPath.compare(linkPath.size() - suffix.size(), suffix.size(), suffix) != 0) linkPath += suffix;
+    IShellLinkW* link = nullptr;
+    bool ok = false;
+    if (SUCCEEDED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link)))) {
+        const std::wstring target = LB_Wide(targetPath);
+        const std::wstring argumentText = arguments ? LB_Wide(arguments) : std::wstring();
+        const std::wstring iconSource = iconPath && iconPath[0] ? LB_Wide(iconPath) : target;
+        link->SetPath(target.c_str());
+        link->SetArguments(argumentText.c_str());
+        link->SetIconLocation(iconSource.c_str(), 0);
+        IPersistFile* file = nullptr;
+        if (SUCCEEDED(link->QueryInterface(IID_PPV_ARGS(&file)))) {
+            ok = SUCCEEDED(file->Save(linkPath.c_str(), TRUE));
+            file->Release();
+        }
+        link->Release();
+    }
+    return ok;
+}
+
+bool 系统_执行关机动作(unsigned int flags) {
+    LB_EnableShutdownPrivilege();
+    return ExitWindowsEx(flags, SHTDN_REASON_MAJOR_OPERATINGSYSTEM | SHTDN_REASON_FLAG_PLANNED) != FALSE;
+}
+
+bool 系统_关机() { return 系统_执行关机动作(EWX_SHUTDOWN | EWX_POWEROFF); }
+bool 系统_重启() { return 系统_执行关机动作(EWX_REBOOT); }
+bool 系统_注销() { return ExitWindowsEx(EWX_LOGOFF, SHTDN_REASON_FLAG_PLANNED) != FALSE; }
+
+bool 系统_清空回收站() {
+    return SHEmptyRecycleBinW(nullptr, nullptr, SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND) == S_OK;
+}
 `;
 
 const PROCESS_RUNTIME = String.raw`
@@ -894,6 +976,59 @@ int 程序_启动并等待(const wchar_t* commandLine, const wchar_t* workingDir
     PROCESS_INFORMATION process = {}; if (!LB_StartProcess(commandLine, workingDirectory, process)) return -1; CloseHandle(process.hThread);
     const DWORD wait = WaitForSingleObject(process.hProcess, timeoutMs < 0 ? INFINITE : static_cast<DWORD>(timeoutMs)); DWORD exitCode = 0; const bool success = wait == WAIT_OBJECT_0 && GetExitCodeProcess(process.hProcess, &exitCode); CloseHandle(process.hProcess); return success ? static_cast<int>(exitCode) : -1;
 }
+
+// 执行命令行并合并捕获 stdout+stderr；超时强制结束子进程
+static thread_local int g_lbProcessLastExitCode = -1;
+
+const wchar_t* 程序_执行并取输出(const wchar_t* commandLine, int timeoutMs) {
+    g_lbProcessLastExitCode = -1;
+    std::wstring command = LB_Wide(commandLine);
+    if (command.empty()) return LB_ReturnText(L"");
+    SECURITY_ATTRIBUTES inheritable = { sizeof(inheritable), nullptr, TRUE };
+    HANDLE outRead = nullptr, outWrite = nullptr;
+    if (!CreatePipe(&outRead, &outWrite, &inheritable, 0)) return LB_ReturnText(L"");
+    SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOW startup = {}; startup.cb = sizeof(startup); startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdOutput = outWrite; startup.hStdError = outWrite;
+    std::vector<wchar_t> mutableCommand(command.begin(), command.end()); mutableCommand.push_back(L'\0');
+    PROCESS_INFORMATION process = {};
+    const BOOL created = CreateProcessW(nullptr, mutableCommand.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process);
+    CloseHandle(outWrite);
+    if (!created) { CloseHandle(outRead); return LB_ReturnText(L""); }
+    const DWORD timeout = timeoutMs < 0 ? INFINITE : static_cast<DWORD>(timeoutMs);
+    std::string bytes;
+    char chunk[4096];
+    unsigned long read = 0;
+    DWORD waited = 0;
+    for (;;) {
+        unsigned long available = 0;
+        if (!PeekNamedPipe(outRead, nullptr, 0, nullptr, &available, nullptr)) break;
+        if (available > 0) {
+            if (ReadFile(outRead, chunk, sizeof(chunk), &read, nullptr) && read > 0) bytes.append(chunk, read); else break;
+            continue;
+        }
+        if (WaitForSingleObject(process.hProcess, 100) == WAIT_OBJECT_0) {
+            while (PeekNamedPipe(outRead, nullptr, 0, nullptr, &available, nullptr) && available > 0) {
+                if (ReadFile(outRead, chunk, sizeof(chunk), &read, nullptr) && read > 0) bytes.append(chunk, read); else break;
+            }
+            break;
+        }
+        waited += 100;
+        if (timeout != INFINITE && waited >= timeout) { TerminateProcess(process.hProcess, 1); break; }
+    }
+    DWORD exitCode = 0;
+    GetExitCodeProcess(process.hProcess, &exitCode);
+    g_lbProcessLastExitCode = static_cast<int>(exitCode);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    CloseHandle(outRead);
+    const int wideSize = MultiByteToWideChar(CP_OEMCP, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
+    std::wstring text(wideSize > 0 ? static_cast<size_t>(wideSize) : 0, L'\0');
+    if (wideSize > 0) MultiByteToWideChar(CP_OEMCP, 0, bytes.data(), static_cast<int>(bytes.size()), text.data(), wideSize);
+    return LB_ReturnText(std::move(text));
+}
+
+int 程序_上次执行退出码() { return g_lbProcessLastExitCode; }
 
 int 进程_取当前ID() { return static_cast<int>(GetCurrentProcessId()); }
 bool 进程_是否运行(int processId) { if (processId <= 0) return false; HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, static_cast<DWORD>(processId)); if (!process) return false; const bool running = WaitForSingleObject(process, 0) == WAIT_TIMEOUT; CloseHandle(process); return running; }
@@ -1127,6 +1262,38 @@ bool 键盘_大小写锁定状态() { return 键盘_全局_大小写锁定状态
 bool 键盘_数字锁定状态() { return 键盘_全局_数字锁定状态(); }
 bool 键盘_单击(int keyCode) { return 键盘_前台_单击(keyCode); }
 bool 键盘_组合按键(int modifier, int keyCode) { return 键盘_前台_组合按键(keyCode, modifier, 0, 0); }
+static HWND g_lbKeyboardHotkeyHost = nullptr;
+
+static void LB_KeyboardSetHotkeyHost(HWND hwnd) { g_lbKeyboardHotkeyHost = hwnd; }
+
+static std::mutex g_lbHotkeyTableMutex;
+static std::unordered_map<int, std::pair<unsigned int, unsigned int>> g_lbHotkeyTable;
+static int g_lbHotkeySequence = 0;
+
+int 键盘_注册全局热键(int modifiers, int virtualKey) {
+    if (virtualKey < 1 || virtualKey > 255) return 0;
+    std::lock_guard<std::mutex> lock(g_lbHotkeyTableMutex);
+    const int id = ++g_lbHotkeySequence;
+    if (!RegisterHotKey(g_lbKeyboardHotkeyHost, id, static_cast<unsigned int>(modifiers) & 0xFu, static_cast<unsigned int>(virtualKey))) return 0;
+    g_lbHotkeyTable[id] = { static_cast<unsigned int>(modifiers) & 0xFu, static_cast<unsigned int>(virtualKey) };
+    return id;
+}
+
+bool 键盘_注销全局热键(int hotkeyId) {
+    std::lock_guard<std::mutex> lock(g_lbHotkeyTableMutex);
+    const auto found = g_lbHotkeyTable.find(hotkeyId);
+    if (found == g_lbHotkeyTable.end()) return false;
+    UnregisterHotKey(g_lbKeyboardHotkeyHost, hotkeyId);
+    g_lbHotkeyTable.erase(found);
+    return true;
+}
+
+void 键盘_注销全部热键() {
+    std::lock_guard<std::mutex> lock(g_lbHotkeyTableMutex);
+    for (const auto& entry : g_lbHotkeyTable) UnregisterHotKey(g_lbKeyboardHotkeyHost, entry.first);
+    g_lbHotkeyTable.clear();
+}
+
 `;
 
 const MOUSE_RUNTIME = String.raw`
@@ -1835,6 +2002,115 @@ long long 目录_枚举(const wchar_t* directory, bool recursive, std::vector<st
 }
 `;
 
+
+const CONSOLE_RUNTIME = String.raw`
+// ---------- 控制台运行时 ----------
+static HANDLE LB_ConsoleOut() { return GetStdHandle(STD_OUTPUT_HANDLE); }
+
+void 控制台_输出(const wchar_t* text) {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    std::wstring value = LB_Wide(text);
+    unsigned long written = 0;
+    WriteConsoleW(out, value.c_str(), static_cast<unsigned long>(value.size()), &written, nullptr);
+}
+
+void 控制台_输出行(const wchar_t* text) {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    std::wstring value = LB_Wide(text);
+    value += L'\r\n';
+    unsigned long written = 0;
+    WriteConsoleW(out, value.c_str(), static_cast<unsigned long>(value.size()), &written, nullptr);
+}
+
+const wchar_t* 控制台_读行() {
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    if (!in || in == INVALID_HANDLE_VALUE) return LB_ReturnText(L"");
+    wchar_t buffer[2048] = {};
+    unsigned long read = 0;
+    if (!ReadConsoleW(in, buffer, 2047, &read, nullptr)) return LB_ReturnText(L"");
+    std::wstring line(buffer, read);
+    while (!line.empty() && (line.back() == L'\r' || line.back() == L'\n')) line.pop_back();
+    return LB_ReturnText(std::move(line));
+}
+
+void 控制台_清屏() {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    CONSOLE_SCREEN_BUFFER_INFO info = {};
+    if (!GetConsoleScreenBufferInfo(out, &info)) return;
+    const unsigned long total = static_cast<unsigned long>(info.dwSize.X) * static_cast<unsigned long>(info.dwSize.Y);
+    unsigned long written = 0;
+    const COORD origin = { 0, 0 };
+    FillConsoleOutputCharacterW(out, L' ', total, origin, &written);
+    FillConsoleOutputAttribute(out, info.wAttributes, total, origin, &written);
+    SetConsoleCursorPosition(out, origin);
+}
+
+void 控制台_置光标位置(int column, int row) {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    CONSOLE_SCREEN_BUFFER_INFO info = {};
+    if (!GetConsoleScreenBufferInfo(out, &info)) return;
+    COORD position;
+    position.X = static_cast<short>((std::min)((std::max)(column, 0), static_cast<int>(info.dwSize.X - 1)));
+    position.Y = static_cast<short>((std::min)((std::max)(row, 0), static_cast<int>(info.dwSize.Y - 1)));
+    SetConsoleCursorPosition(out, position);
+}
+
+static bool LB_ConsoleCursorPos(int& column, int& row) {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return false;
+    CONSOLE_SCREEN_BUFFER_INFO info = {};
+    if (!GetConsoleScreenBufferInfo(out, &info)) return false;
+    column = info.dwCursorPosition.X;
+    row = info.dwCursorPosition.Y;
+    return true;
+}
+
+int 控制台_取光标列() { int c = 0, r = 0; LB_ConsoleCursorPos(c, r); return c; }
+int 控制台_取光标行() { int c = 0, r = 0; LB_ConsoleCursorPos(c, r); return r; }
+
+int 控制台_取宽度() {
+    HANDLE out = LB_ConsoleOut();
+    CONSOLE_SCREEN_BUFFER_INFO info = {};
+    if (!out || out == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(out, &info)) return 80;
+    return info.dwSize.X;
+}
+
+int 控制台_取高度() {
+    HANDLE out = LB_ConsoleOut();
+    CONSOLE_SCREEN_BUFFER_INFO info = {};
+    if (!out || out == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(out, &info)) return 25;
+    return info.srWindow.Bottom - info.srWindow.Top + 1;
+}
+
+void 控制台_显示光标(bool visible) {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    CONSOLE_CURSOR_INFO info = {};
+    if (!GetConsoleCursorInfo(out, &info)) return;
+    info.bVisible = visible ? TRUE : FALSE;
+    SetConsoleCursorInfo(out, &info);
+}
+
+void 控制台_置颜色(int foreground, int background) {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    const int fg = (std::min)((std::max)(foreground, 0), 15) & 0xF;
+    const int bg = (std::min)((std::max)(background, 0), 15) & 0xF;
+    SetConsoleTextAttribute(out, static_cast<unsigned short>(fg | (bg << 4)));
+}
+
+void 控制台_恢复颜色() {
+    HANDLE out = LB_ConsoleOut();
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    SetConsoleTextAttribute(out, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+}
+
+`;
+
 const RUNTIMES: Record<string, string> = {
   'lingbuilder.fs.core': [FILE_RUNTIME, FILE_STREAM_RUNTIME].join('\n'),
   'lingbuilder.fs.path': PATH_RUNTIME,
@@ -1848,7 +2124,8 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.input.keyboard': KEYBOARD_RUNTIME,
   'lingbuilder.input.mouse': MOUSE_RUNTIME,
   'lingbuilder.win32.window-utils': WINDOW_RUNTIME,
-  'lingbuilder.win32.monitor': MONITOR_RUNTIME
+  'lingbuilder.win32.monitor': MONITOR_RUNTIME,
+  'lingbuilder.console': CONSOLE_RUNTIME
 };
 
 export function generateSystemLibraryRuntime(enabledModules: InstalledModule[]): string {

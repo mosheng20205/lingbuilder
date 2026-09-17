@@ -224,6 +224,10 @@ test('标准库模块命令、binding、Win32/x64 target 保持完整对应', ()
     'lingbuilder.std.datetime',
     'lingbuilder.std.regex',
     'lingbuilder.std.buffer',
+    'lingbuilder.std.map',
+    'lingbuilder.std.bigint',
+    'lingbuilder.std.pinyin',
+    'lingbuilder.std.lunar',
     'lingbuilder.data.json',
     'lingbuilder.data.xml'
   ];
@@ -348,12 +352,23 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 切换为 lingValue；命令/参数计数与命令摘要不变，仅参数摘要变化。
       // 基线 2026-09-16 再追加（SQLite 2.2 加密算法支持）：SQLite_设置加密算法
       //（+1 命令 +1 参数）、SQLite_探测加密算法（+1 命令 +2 参数）入账，无控件参数。
-      modules: 89,
-      commands: 3471,
-      parameters: 6093,
+      // 基线 2026-09-16 追加写回（中优先级九能力·第一波）：新增 lingbuilder.std.map
+      //（28 命令 44 参数）、lingbuilder.std.bigint（15 命令 25 参数）、lingbuilder.std.pinyin
+      //（8 命令 12 参数）、lingbuilder.std.lunar（14 命令 19 参数），无控件参数。
+      // 基线 2026-09-16 追加写回（中优先级九能力·第二波）：新增 lingbuilder.console（12 命令
+      // 19 参数）、键盘模块 2.1 全局热键族（+3 命令 +3 参数）、Win32 高级控件模块打印机族
+      //（+4 命令 +8 参数），无控件参数。
+      // 基线 2026-09-17 追加写回（快速补缺批次）：进程管理模块 DOS 执行结果族（+2 命令 +2 参数）、
+      // DNS 与 IP 模块网卡信息族（+4 命令 +2 参数）、系统外壳模块（+5 命令 +4 参数）、基础音频
+      // 模块静音族（+2 命令 +1 参数），无控件参数。
+      // 基线 2026-09-17 再追加写回（待办收尾批次）：新增 lingbuilder.net.pop3 邮件接收模块
+      //（18 命令 28 参数）与 lingbuilder.net.imap IMAP邮件接收模块（15 命令 23 参数），无控件参数。
+      modules: 96,
+      commands: 3615,
+      parameters: 6264,
       controlReferences: 1303,
-      commandDigest: 'c0771f22',
-      parameterDigest: '6e17d65c'
+      commandDigest: '6e5f4014',
+      parameterDigest: 'e9d79928'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -767,12 +782,12 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     commandDigest: audit.commandDigest,
     parameterDigest: audit.parameterDigest
   }, {
-      modules: 91,
-      commands: 6801,
-      parameters: 16680,
-      controlReferences: 4806,
-      commandDigest: '2e5b6f72',
-      parameterDigest: 'a4d7ce3f'
+      modules: 101,
+      commands: 7632,
+      parameters: 18385,
+      controlReferences: 5061,
+      commandDigest: '07070607',
+      parameterDigest: 'f95e32c4'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -1062,7 +1077,7 @@ test('编码与 JSON 标准库运行时不依赖字节模块提供十六进制�
 });
 
 test('文件、配置、系统、进程、输入和窗口模块提供完整确定性绑定', () => {
-  assert.equal(SYSTEM_LIBRARY_MODULES.length, 13);
+  assert.equal(SYSTEM_LIBRARY_MODULES.length, 14);
   for (const manifest of SYSTEM_LIBRARY_MODULES) {
     assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
     assert.deepEqual(
@@ -1191,14 +1206,14 @@ test('剪贴板模块支持图片字节集和保留动画帧的 GIF 剪贴板格
 
 test('键盘输入模块分类公开全局、前台与 HWND 后台能力', () => {
   const manifest = SYSTEM_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.input.keyboard')!;
-  assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.version, '2.1.0');
   assert.deepEqual(validateModuleManifest(manifest).diagnostics, []);
   assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), KEYBOARD_COMMAND_NAMES);
   assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), KEYBOARD_COMMAND_NAMES);
-  assert.equal(KEYBOARD_COMMAND_NAMES.length, 31);
+  assert.equal(KEYBOARD_COMMAND_NAMES.length, 34);
   assert.deepEqual(
     Array.from(new Set(manifest.contributes?.commands?.map(command => command.category))).sort(),
-    ['全局状态', '兼容入口', '前台输入（SendInput）', '后台窗口（PostMessage）', '键码转换'].sort()
+    ['全局状态', '全局热键', '兼容入口', '前台输入（SendInput）', '后台窗口（PostMessage）', '键码转换'].sort()
   );
   for (const command of manifest.contributes?.commands || []) {
     assert.match(command.description, /^\[/u, `${command.name} 必须首先标明作用范围`);
@@ -1384,7 +1399,8 @@ test('Win32 基础模块提供可变参数占位符文本格式化命令', () =>
 test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
     'lingbuilder.net.http-client', 'lingbuilder.cdp.client', 'lingbuilder.web.http', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
-    'lingbuilder.net.dns', 'lingbuilder.net.url', 'lingbuilder.net.cookie', 'lingbuilder.net.ftp'
+    'lingbuilder.net.dns', 'lingbuilder.net.url', 'lingbuilder.net.cookie', 'lingbuilder.net.ftp',
+        'lingbuilder.net.pop3', 'lingbuilder.net.imap'
   ]);
   for (const manifest of NETWORK_LIBRARY_MODULES) {
     assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);

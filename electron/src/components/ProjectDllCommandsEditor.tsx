@@ -107,6 +107,8 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
   const [searchText, setSearchText] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  /** 卡片「库文件名」的输入草稿（onBlur/回车时提交移动）。 */
+  const [libraryDrafts, setLibraryDrafts] = useState<Record<string, string>>({});
 
   const packageName = packageNameOf(sourceCode);
   const header = libraries[0];
@@ -202,8 +204,21 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
     applyModel(libraries.map((library, index) => index === 0 ? { ...library, ...patch } : library));
   };
 
-  const updateLibraryName = (libraryIndex: number, name: string) => {
-    applyModel(libraries.map((library, index) => index === libraryIndex ? { ...library, name: name.trim() } : library));
+  /** 卡片「库文件名」编辑：把该命令移动到目标库（库名不存在时自动新建库），对齐易语言「每条命令自带库文件名」的体验。 */
+  const moveCommandToLibrary = (libraryIndex: number, commandIndex: number, targetName: string) => {
+    const trimmed = targetName.trim();
+    if (!trimmed || trimmed === libraries[libraryIndex]?.name) return;
+    const next = libraries.map(library => ({ ...library, archFiles: [...library.archFiles], commands: [...library.commands] }));
+    const [moved] = next[libraryIndex].commands.splice(commandIndex, 1);
+    if (!moved) return;
+    let targetIndex = next.findIndex(library => library.name === trimmed);
+    if (targetIndex < 0) {
+      next.splice(libraryIndex + 1, 0, { name: trimmed, line: 0, archFiles: PLACEHOLDER_ARCH_FILES.map(file => ({ ...file })), commands: [] });
+      targetIndex = libraryIndex + 1;
+    }
+    next[targetIndex].commands.push({ ...moved, line: next[targetIndex].commands.length + 1 });
+    if (next[libraryIndex].commands.length === 0 && next.length > 1) next.splice(libraryIndex, 1);
+    applyModel(next);
   };
 
   const updateCommand = (libraryIndex: number, commandIndex: number, patch: Partial<LingCppDllCommand>) => {
@@ -486,9 +501,27 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
               {!isCollapsed && (<>
               <div className={`flex h-8 items-center gap-2 border-t px-2 ${line}`}>
                 <span className={rowLabel}>库文件名:</span>
-                <input className={cellInput} style={{ color: commandNameColor, width: 208 }} value={library.name} readOnly={readOnly}
-                  onChange={event => updateLibraryName(libraryIndex, event.target.value)}
-                  placeholder="示例DLL" />
+                {(() => {
+                  const draftKey = `${libraryIndex}::${library.name}`;
+                  const draftValue = libraryDrafts[draftKey] ?? library.name;
+                  const commit = () => {
+                    const draft = libraryDrafts[draftKey];
+                    setLibraryDrafts(previous => {
+                      const next = { ...previous };
+                      delete next[draftKey];
+                      return next;
+                    });
+                    if (draft !== undefined) moveCommandToLibrary(libraryIndex, commandIndex, draft);
+                  };
+                  return (
+                    <input className={cellInput} style={{ color: commandNameColor, width: 208 }} value={draftValue} readOnly={readOnly}
+                      title="输入库名后按回车：该命令移动到对应 DLL 命令库；新库名会自动创建（需补架构 DLL 路径）"
+                      onChange={event => setLibraryDrafts(previous => ({ ...previous, [draftKey]: event.target.value }))}
+                      onKeyDown={event => { if (event.key === 'Enter') { commit(); } }}
+                      onBlur={commit}
+                      placeholder="示例DLL" />
+                  );
+                })()}
                 <span className={rowLabel}>.dll</span>
                 {library.isSystem === true && (
                   <span className={`rounded-sm border px-1 py-px text-[10px] ${isDarkMode ? 'border-emerald-700/60 text-emerald-400' : 'border-emerald-500 text-emerald-600'}`}>

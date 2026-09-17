@@ -20,6 +20,137 @@ static std::string LB_SmtpBase64(const std::string& input) { static constexpr ch
 static bool LB_SmtpRead(SOCKET socket, int expectedClass) { std::array<char, 4096> buffer = {}; int count = recv(socket, buffer.data(), static_cast<int>(buffer.size() - 1), 0); if (count <= 0) { g_lbSmtpError = L"SMTP 服务端未返回响应。"; return false; } std::string response(buffer.data(), count); if (response.size() < 3 || response[0] - '0' != expectedClass) { g_lbSmtpError = LB_Utf8ToWide(response); return false; } return true; }
 static bool LB_SmtpSend(SOCKET socket, const std::string& command, int expectedClass) { size_t sent = 0; while (sent < command.size()) { int count = send(socket, command.data() + sent, static_cast<int>(command.size() - sent), 0); if (count <= 0) return false; sent += count; } return LB_SmtpRead(socket, expectedClass); }
 bool SMTP_发送普通邮件(const wchar_t* host, int port, const wchar_t* username, const wchar_t* password, const wchar_t* from, const wchar_t* to, const wchar_t* subject, const wchar_t* body) { g_lbSmtpError.clear(); if (!LB_EnsureSockets() || port <= 0 || port > 65535) return false; ADDRINFOW hints = {}; hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_STREAM; hints.ai_protocol = IPPROTO_TCP; ADDRINFOW* addresses = nullptr; std::wstring service = std::to_wstring(port); if (GetAddrInfoW(host, service.c_str(), &hints, &addresses) != 0) return false; SOCKET socketHandle = INVALID_SOCKET; for (auto address = addresses; address; address = address->ai_next) { socketHandle = socket(address->ai_family, address->ai_socktype, address->ai_protocol); if (socketHandle != INVALID_SOCKET && connect(socketHandle, address->ai_addr, static_cast<int>(address->ai_addrlen)) == 0) break; if (socketHandle != INVALID_SOCKET) closesocket(socketHandle); socketHandle = INVALID_SOCKET; } FreeAddrInfoW(addresses); if (socketHandle == INVALID_SOCKET) { g_lbSmtpError = L"SMTP 连接失败。"; return false; } DWORD timeout = 30000; setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout)); bool ok = LB_SmtpRead(socketHandle, 2) && LB_SmtpSend(socketHandle, "EHLO LingBuilder\r\n", 2); std::string user = LB_WideToUtf8(username), pass = LB_WideToUtf8(password); if (ok && !user.empty()) ok = LB_SmtpSend(socketHandle, "AUTH LOGIN\r\n", 3) && LB_SmtpSend(socketHandle, LB_SmtpBase64(user) + "\r\n", 3) && LB_SmtpSend(socketHandle, LB_SmtpBase64(pass) + "\r\n", 2); std::string fromText = LB_WideToUtf8(from), toText = LB_WideToUtf8(to); if (ok) ok = LB_SmtpSend(socketHandle, "MAIL FROM:<" + fromText + ">\r\n", 2) && LB_SmtpSend(socketHandle, "RCPT TO:<" + toText + ">\r\n", 2) && LB_SmtpSend(socketHandle, "DATA\r\n", 3); if (ok) { std::string message = "From: <" + fromText + ">\r\nTo: <" + toText + ">\r\nSubject: =?UTF-8?B?" + LB_SmtpBase64(LB_WideToUtf8(subject)) + "?=\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + LB_WideToUtf8(body) + "\r\n.\r\n"; ok = LB_SmtpSend(socketHandle, message, 2); } if (ok) LB_SmtpSend(socketHandle, "QUIT\r\n", 2); closesocket(socketHandle); return ok; }
+static std::string LB_SmtpBase64Bin(const std::string& bytes) {
+    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string output;
+    size_t i = 0;
+    while (i + 2 < bytes.size()) {
+        const unsigned int n = (static_cast<unsigned int>(bytes[i]) << 16) | (static_cast<unsigned int>(bytes[i + 1]) << 8) | bytes[i + 2];
+        output += alphabet[(n >> 18) & 63];
+        output += alphabet[(n >> 12) & 63];
+        output += alphabet[(n >> 6) & 63];
+        output += alphabet[n & 63];
+        i += 3;
+        if (i % 57 == 0) output += "\r\n";
+    }
+    if (i + 1 == bytes.size()) {
+        const unsigned int n = static_cast<unsigned int>(bytes[i]) << 16;
+        output += alphabet[(n >> 18) & 63];
+        output += alphabet[(n >> 12) & 63];
+        output += "==";
+    } else if (i + 2 == bytes.size()) {
+        const unsigned int n = (static_cast<unsigned int>(bytes[i]) << 16) | (static_cast<unsigned int>(bytes[i + 1]) << 8);
+        output += alphabet[(n >> 18) & 63];
+        output += alphabet[(n >> 12) & 63];
+        output += alphabet[(n >> 6) & 63];
+        output += '=';
+    }
+    return output;
+}
+
+static bool LB_SmtpReadFileBytes(const wchar_t* path, std::string& out) {
+    HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    char buffer[65536];
+    unsigned long read = 0;
+    while (ReadFile(file, buffer, sizeof(buffer), &read, nullptr) && read > 0) out.append(buffer, read);
+    CloseHandle(file);
+    return true;
+}
+
+static std::wstring LB_SmtpFileNameOf(const wchar_t* path) {
+    std::wstring value = LB_Wide(path);
+    const size_t slash = value.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) value = value.substr(slash + 1);
+    return value;
+}
+
+static std::string LB_SmtpEncodedFileName(const std::wstring& fileName) {
+    return "=?UTF-8?B?" + LB_SmtpBase64(LB_WideToUtf8(fileName.c_str())) + "?=";
+}
+
+bool SMTP_发送HTML邮件(const wchar_t* host, int port, const wchar_t* username, const wchar_t* password, const wchar_t* from, const wchar_t* to, const wchar_t* subject, const wchar_t* htmlBody) {
+    g_lbSmtpError.clear();
+    if (!LB_EnsureSockets() || port <= 0 || port > 65535) return false;
+    ADDRINFOW hints = {}; hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_STREAM; hints.ai_protocol = IPPROTO_TCP;
+    ADDRINFOW* addresses = nullptr;
+    std::wstring service = std::to_wstring(port);
+    if (GetAddrInfoW(host, service.c_str(), &hints, &addresses) != 0) { g_lbSmtpError = L"SMTP 主机解析失败。"; return false; }
+    SOCKET socketHandle = INVALID_SOCKET;
+    for (auto address = addresses; address; address = address->ai_next) {
+        socketHandle = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
+        if (socketHandle != INVALID_SOCKET && connect(socketHandle, address->ai_addr, static_cast<int>(address->ai_addrlen)) == 0) break;
+        if (socketHandle != INVALID_SOCKET) closesocket(socketHandle);
+        socketHandle = INVALID_SOCKET;
+    }
+    FreeAddrInfoW(addresses);
+    if (socketHandle == INVALID_SOCKET) { g_lbSmtpError = L"SMTP 连接失败。"; return false; }
+    DWORD timeout = 30000;
+    setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    bool ok = LB_SmtpRead(socketHandle, 2) && LB_SmtpSend(socketHandle, "EHLO LingBuilder\r\n", 2);
+    std::string user = LB_WideToUtf8(username), pass = LB_WideToUtf8(password);
+    if (ok && !user.empty()) ok = LB_SmtpSend(socketHandle, "AUTH LOGIN\r\n", 3) && LB_SmtpSend(socketHandle, LB_SmtpBase64(user) + "\r\n", 3) && LB_SmtpSend(socketHandle, LB_SmtpBase64(pass) + "\r\n", 2);
+    std::string fromText = LB_WideToUtf8(from), toText = LB_WideToUtf8(to);
+    if (ok) ok = LB_SmtpSend(socketHandle, "MAIL FROM:<" + fromText + ">\r\n", 2) && LB_SmtpSend(socketHandle, "RCPT TO:<" + toText + ">\r\n", 2) && LB_SmtpSend(socketHandle, "DATA\r\n", 3);
+    if (ok) {
+        std::string message = "From: <" + fromText + ">\r\nTo: <" + toText + ">\r\nSubject: =?UTF-8?B?" + LB_SmtpBase64(LB_WideToUtf8(subject)) + "?=\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + LB_WideToUtf8(htmlBody) + "\r\n.\r\n";
+        ok = LB_SmtpSend(socketHandle, message, 2);
+    }
+    if (ok) LB_SmtpSend(socketHandle, "QUIT\r\n", 2);
+    closesocket(socketHandle);
+    return ok;
+}
+
+bool SMTP_发送附件邮件(const wchar_t* host, int port, const wchar_t* username, const wchar_t* password, const wchar_t* from, const wchar_t* to, const wchar_t* subject, const wchar_t* body, bool htmlBody, const std::vector<std::wstring>& attachments) {
+    g_lbSmtpError.clear();
+    if (!LB_EnsureSockets() || port <= 0 || port > 65535) return false;
+    std::vector<std::pair<std::wstring, std::string>> files;
+    for (const std::wstring& path : attachments) {
+        std::string bytes;
+        if (!LB_SmtpReadFileBytes(path.c_str(), bytes)) { g_lbSmtpError = L"附件读取失败：" + path; return false; }
+        files.push_back({ LB_SmtpFileNameOf(path.c_str()), std::move(bytes) });
+    }
+    ADDRINFOW hints = {}; hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_STREAM; hints.ai_protocol = IPPROTO_TCP;
+    ADDRINFOW* addresses = nullptr;
+    std::wstring service = std::to_wstring(port);
+    if (GetAddrInfoW(host, service.c_str(), &hints, &addresses) != 0) { g_lbSmtpError = L"SMTP 主机解析失败。"; return false; }
+    SOCKET socketHandle = INVALID_SOCKET;
+    for (auto address = addresses; address; address = address->ai_next) {
+        socketHandle = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
+        if (socketHandle != INVALID_SOCKET && connect(socketHandle, address->ai_addr, static_cast<int>(address->ai_addrlen)) == 0) break;
+        if (socketHandle != INVALID_SOCKET) closesocket(socketHandle);
+        socketHandle = INVALID_SOCKET;
+    }
+    FreeAddrInfoW(addresses);
+    if (socketHandle == INVALID_SOCKET) { g_lbSmtpError = L"SMTP 连接失败。"; return false; }
+    DWORD timeout = 30000;
+    setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    bool ok = LB_SmtpRead(socketHandle, 2) && LB_SmtpSend(socketHandle, "EHLO LingBuilder\r\n", 2);
+    std::string user = LB_WideToUtf8(username), pass = LB_WideToUtf8(password);
+    if (ok && !user.empty()) ok = LB_SmtpSend(socketHandle, "AUTH LOGIN\r\n", 3) && LB_SmtpSend(socketHandle, LB_SmtpBase64(user) + "\r\n", 3) && LB_SmtpSend(socketHandle, LB_SmtpBase64(pass) + "\r\n", 2);
+    std::string fromText = LB_WideToUtf8(from), toText = LB_WideToUtf8(to);
+    if (ok) ok = LB_SmtpSend(socketHandle, "MAIL FROM:<" + fromText + ">\r\n", 2) && LB_SmtpSend(socketHandle, "RCPT TO:<" + toText + ">\r\n", 2) && LB_SmtpSend(socketHandle, "DATA\r\n", 3);
+    if (ok) {
+        const std::string boundary = "LB_MAIL_BOUNDARY_7F3A";
+        const std::string contentType = htmlBody ? "text/html" : "text/plain";
+        std::string message = "From: <" + fromText + ">\r\nTo: <" + toText + ">\r\nSubject: =?UTF-8?B?" + LB_SmtpBase64(LB_WideToUtf8(subject)) + "?=\r\nMIME-Version: 1.0\r\n";
+        message += "Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\n\r\n";
+        message += "--" + boundary + "\r\nContent-Type: " + contentType + "; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + LB_WideToUtf8(body) + "\r\n";
+        for (const auto& file : files) {
+            message += "--" + boundary + "\r\n";
+            message += "Content-Type: application/octet-stream; name=\"" + LB_SmtpEncodedFileName(file.first) + "\"\r\n";
+            message += "Content-Transfer-Encoding: base64\r\n";
+            message += "Content-Disposition: attachment; filename=\"" + LB_SmtpEncodedFileName(file.first) + "\"\r\n\r\n";
+            message += LB_SmtpBase64Bin(file.second);
+            message += "\r\n";
+        }
+        message += "--" + boundary + "--\r\n.\r\n";
+        ok = LB_SmtpSend(socketHandle, message, 2);
+    }
+    if (ok) LB_SmtpSend(socketHandle, "QUIT\r\n", 2);
+    closesocket(socketHandle);
+    return ok;
+}
 `;
 
 const IPC_RUNTIME = String.raw`

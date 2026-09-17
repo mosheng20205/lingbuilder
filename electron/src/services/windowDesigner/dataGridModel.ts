@@ -267,6 +267,50 @@ export function migrateLegacyNewEmojiTableProperties(properties: Record<string, 
   return { ...properties, dataGridSchemaVersion: DATA_GRID_SCHEMA_VERSION, dataGridColumns: columns, dataGridRows: rows };
 }
 
+/**
+ * 读取 new_emoji 表格控件的结构化模型（设计器预览、属性统计等只读消费共用）。
+ * 属性优先级与 NewEmojiTableEditorDialog 一致：结构化 dataGrid* → 旧 Ex 集合 → 基础标题/Tab 行。
+ */
+export function loadNewEmojiTableModel(properties?: Record<string, unknown> | null): DataGridModel {
+  const pick = (keys: readonly string[]): unknown[] => {
+    let fallback: unknown[] = [];
+    for (const key of keys) {
+      const value = properties?.[key];
+      if (!Array.isArray(value)) continue;
+      if (fallback.length === 0) fallback = value;
+      if (value.length > 0) return value;
+    }
+    return fallback;
+  };
+  const columns = normalizeDataGridColumns(pick(['dataGridColumns', 'tableColumnsEx', 'columns']).map(item =>
+    typeof item === 'string' ? { title: item } : item));
+  // 运行时对空列会兜底显示「名称/状态」（EU_SetTableData 空数据 → set_columns 默认列），
+  // 预览保持同一兜底，避免新拖入的表格在设计器里是一块空白。
+  const effectiveColumns = columns.length > 0 ? columns : createDefaultDataGridColumns();
+  const rawRows = pick(['dataGridRows', 'tableRowsEx', 'rows', 'items']);
+  let rows: DataGridRow[];
+  if (rawRows.some(item => typeof item === 'string')) {
+    const text = rawRows.map(item => String(item ?? '')).join('\n').replace(/\r\n?/gu, '\n');
+    const delimiter = text.includes('\t') ? '\t' : text.includes(',') ? ',' : null;
+    const matrix = delimiter ? parseDataGridDelimited(text, delimiter) : text.split('\n').map(line => [line]);
+    rows = normalizeDataGridRows(
+      matrix.filter(row => row.some(cell => cell.length > 0)).map((cells, index) => ({ key: `row${index + 1}`, cells })),
+      effectiveColumns
+    );
+  } else {
+    rows = normalizeDataGridRows(rawRows as Win32ControlPropertyValue, effectiveColumns);
+  }
+  return {
+    dataGridSchemaVersion: DATA_GRID_SCHEMA_VERSION,
+    columns: effectiveColumns,
+    rows,
+    selectionMode: 'cell',
+    emptyText: typeof properties?.emptyText === 'string' && properties.emptyText.trim() ? properties.emptyText : '暂无数据',
+    virtualMode: false,
+    virtualRowCount: 0
+  };
+}
+
 export function removeDataGridColumn(model: DataGridModel, columnId: string): DataGridModel {
   const columns = model.columns.filter(column => column.id !== columnId);
   return {

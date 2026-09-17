@@ -2,6 +2,8 @@ import { ArrowRight, BookOpen, Boxes, Braces, CheckCircle2, Code2, Download, Git
 import { useState } from 'react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import { WEBSITE_NAV_ITEMS, isDocsSectionItem } from './websiteNav';
+import { GITHUB_REPO_URL } from './WebsitePortal';
+import { WebsiteThemeToggle } from './websiteTheme';
 import './home.css';
 
 const notes = [
@@ -25,6 +27,10 @@ export function HomePage() {
         </nav>
         <a className="blog-nav-action" href="/downloads"><Download size={16} /> 下载 IDE</a>
         <a className="blog-nav-action" href="/community"><MessageCircle size={16} /> QQ交流群</a>
+        <div className="blog-head-actions">
+          <a className="blog-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="GitHub 开源仓库" title="GitHub 开源仓库"><Github size={17}/></a>
+          <WebsiteThemeToggle/>
+        </div>
       </div>
     </header>
 
@@ -53,6 +59,6 @@ export function HomePage() {
       <section className="blog-download"><div className="blog-container download-inner"><div><p className="blog-eyebrow">WINDOWS · EARLY DEVELOPMENT</p><h2>下载并在本地体验灵码</h2><p>当前版本仍在持续开发与测试中。部分构建和调试能力需要 Visual Studio Build Tools 与 Windows SDK。</p></div><a className="blog-button primary" href="/downloads"><Download size={17} /> 查看下载方式</a></div></section>
     </main>
 
-    <footer className="blog-footer"><div className="blog-container footer-inner"><div><a className="blog-brand" href="#top"><img src={brandIcon} alt="" /><span><strong>灵码</strong><small>LINGBUILDER 技术文档</small></span></a><p>个人技术博客，记录中文集成开发环境的开发过程。</p></div><div className="footer-links"><a href="/community">官方交流群</a><a href="/docs">文档</a><a href="/downloads">下载</a><a href="/updates">更新记录</a><a href="/sponsors">赞助列表</a></div><div className="icp"><span>鄂ICP备18003834号-7</span><small>本站仅用于个人技术沉淀与代码片段分享，不涉及论坛、电商及收费服务。</small></div></div></footer>
+    <footer className="blog-footer"><div className="blog-container footer-inner"><div><a className="blog-brand" href="#top"><img src={brandIcon} alt="" /><span><strong>灵码</strong><small>LINGBUILDER 技术文档</small></span></a><p>个人技术博客，记录中文集成开发环境的开发过程。</p></div><div className="footer-links"><a href="/community">官方交流群</a><a href="/docs">文档</a><a href="/downloads">下载</a><a href="/updates">更新记录</a><a href="/sponsors">赞助列表</a><a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">GitHub 仓库</a></div><div className="icp"><span>鄂ICP备18003834号-7</span><small>本站仅用于个人技术沉淀与代码片段分享，不涉及论坛、电商及收费服务。</small></div></div></footer>
   </div>;
 }

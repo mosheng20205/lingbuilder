@@ -12,6 +12,8 @@ const CONVERSION_NOTE = '[本地转换｜不发送输入｜不占用键盘] ';
 const FOREGROUND_NOTE = '[前台输入｜作用于当前焦点｜不独占实体键盘] ';
 const WINDOW_NOTE = '[后台窗口｜指定 HWND｜不抢焦点且不占用实体键盘] ';
 const COMPATIBILITY_NOTE = '[兼容入口] ';
+const HOTKEY_NOTE = '[全局热键｜RegisterHotKey｜不占用实体键盘] ';
+
 
 function parameter(name: string, type: ModuleBindingValueType, description: string): KeyboardParameter {
   return { name, type, description };
@@ -89,7 +91,11 @@ export const KEYBOARD_COMMANDS: StandardCommandSpec[] = [
   command('兼容入口', `${COMPATIBILITY_NOTE}${GLOBAL_NOTE}`, '键盘_大小写锁定状态', [], 'bool', '保留 1.x 源码兼容；等价于全局 Caps Lock 状态查询。'),
   command('兼容入口', `${COMPATIBILITY_NOTE}${GLOBAL_NOTE}`, '键盘_数字锁定状态', [], 'bool', '保留 1.x 源码兼容；等价于全局 Num Lock 状态查询。'),
   command('兼容入口', `${COMPATIBILITY_NOTE}${FOREGROUND_NOTE}`, '键盘_单击', [virtualKey], 'bool', '保留 1.x 源码兼容；等价于“键盘_前台_单击”。'),
-  command('兼容入口', `${COMPATIBILITY_NOTE}${FOREGROUND_NOTE}`, '键盘_组合按键', [parameter('修饰键码', 'int', '保留的单修饰键参数。'), mainKey], 'bool', '保留 1.x 源码兼容；仅支持一个修饰键，新代码应使用“键盘_前台_组合按键”。')
+  command('兼容入口', `${COMPATIBILITY_NOTE}${FOREGROUND_NOTE}`, '键盘_组合按键', [parameter('修饰键码', 'int', '保留的单修饰键参数。'), mainKey], 'bool', '保留 1.x 源码兼容；仅支持一个修饰键，新代码应使用“键盘_前台_组合按键”。'),
+
+  command('全局热键', HOTKEY_NOTE, '键盘_注册全局热键', [parameter('修饰键组合', 'int', '修饰键位掩码：1 Shift、2 Ctrl、4 Alt、8 Win，可相加组合，例如 2+4=6 表示 Ctrl+Alt。'), parameter('虚拟键码', 'int', '热键主键的 Win32 虚拟键码，有效范围 1～255。')], 'int', '注册系统范围全局热键，返回热键 ID（0 表示失败，例如组合已被其它程序占用）。热键触发时窗口会收到「全局热键被按下」事件；需在窗口创建完成后调用。', '键盘_注册全局热键(6, 71)'),
+  command('全局热键', HOTKEY_NOTE, '键盘_注销全局热键', [parameter('热键ID', 'int', '键盘_注册全局热键 返回的热键 ID。')], 'bool', '注销一个全局热键；ID 不存在返回假。'),
+  command('全局热键', HOTKEY_NOTE, '键盘_注销全部热键', [], 'void', '注销本进程注册的全部全局热键；进程退出时系统也会自动回收。')
 ];
 
 export const KEYBOARD_COMMAND_NAMES = KEYBOARD_COMMANDS.map(item => item.name);

@@ -89,10 +89,10 @@ import {
   NEW_EMOJI_MODULE_ID
 } from './newEmojiDesignerAdapter';
 import { getEffectiveControlState } from './controlHierarchy';
-import { getUiBackendCommandDiagnostics, NEW_EMOJI_UI_BACKEND_ID, WIN32_UI_BACKEND_ID } from './uiBackendCommandContract';
+import { collectLingCppCommandCalls, getUiBackendCommandDiagnostics, NEW_EMOJI_UI_BACKEND_ID, WIN32_UI_BACKEND_ID } from './uiBackendCommandContract';
 import { normalizeControlFont } from './controlFont';
 import { reconcileRebarBands } from './designerOperations';
-import { normalizeDataGridModel, type DataGridColumn, type DataGridRow } from './dataGridModel';
+import { normalizeDataGridModel, type DataGridColumn, type DataGridColumnType, type DataGridRow } from './dataGridModel';
 import { DATA_GRID_NATIVE_GLOBALS, DATA_GRID_NATIVE_METHODS } from './dataGridNativeRuntime';
 import { EDGEVIEW_SAFE_API_NATIVE_MEMBERS } from './edgeViewRuntime';
 import { generateFbroVipIndividualRuntime } from '../modules/fbroVipApiCatalog';
@@ -366,6 +366,18 @@ export function generateLingCppNativeWin32Project(
     ? ['当前窗口使用 new_emoji 后端，但项目尚未启用 lingbuilder.new_emoji.ui 模块。']
     : [];
   const backendCommandDiagnostics = getUiBackendCommandDiagnostics(selectedBackendId, aggregate.program, enabledModules);
+  // 控制台模块命令只能在控制台程序中使用；窗口应用中给出阻断诊断。
+  const consoleOnlyCommandDiagnostics: string[] = [];
+  if (outputKind !== 'console-application') {
+    const consoleModule = enabledModules.find((module) => module.manifest.id === 'lingbuilder.console');
+    const consoleCommands = consoleModule?.manifest.bindings?.commands ?? [];
+    if (consoleCommands.length) {
+      const consoleCommandNames = new Set(consoleCommands.map((binding) => binding.command));
+      for (const call of collectLingCppCommandCalls(aggregate.program, consoleCommandNames)) {
+        consoleOnlyCommandDiagnostics.push(`第 ${call.line} 行：控制台命令「${call.name}」只能在控制台程序中使用；请把本项目设为控制台程序（含「整数型 启动()」入口）或移除该调用。`);
+      }
+    }
+  }
   const backendGeneratorDiagnostics = hasNativeLayoutGenerator
     ? []
     : [`UI 后端“${selectedBackendId}”尚未注册原生 C++ 布局生成器，已阻止回退到错误的 Win32 实现。`];
@@ -436,9 +448,23 @@ export function generateLingCppNativeWin32Project(
       }
       return [];
     });
-  const embeddedSiteRequiresEdgeViewDiagnostics = project.windows
-    .filter(window => window.embeddedSite && !enabledModuleIds.has('lingbuilder.edgeview'))
-    .map(window => `窗口“${window.title}”声明了内嵌站点，但项目未启用 EdgeView 浏览器模块（lingbuilder.edgeview）；内嵌站点页面无法加载。请启用该模块后重新构建。`);
+  const embeddedSiteSupportedBrowserModuleIds = ['lingbuilder.edgeview', 'lingbuilder.fbro.browser'];
+  const embeddedSiteRequiresBrowserDiagnostics = project.windows
+    .filter(window => window.embeddedSite && !embeddedSiteSupportedBrowserModuleIds.some(id => enabledModuleIds.has(id)))
+    .map(window => {
+      if (enabledModuleIds.has('lingbuilder.cef3.browser')) {
+        return `窗口“${window.title}”声明了内嵌站点；CEF3 浏览器模块暂不支持内嵌站点（需扩展 CEF3 桥 ABI），请同时启用 EdgeView 浏览器模块或 FBro 浏览器模块后重新构建。`;
+      }
+      return `窗口“${window.title}”声明了内嵌站点，但项目未启用任何受支持的浏览器模块（EdgeView 浏览器模块 / FBro浏览器模块）；内嵌站点页面无法加载。请启用其一后重新构建。`;
+    });
+  const embeddedSiteFbroProcessDiagnostics = project.windows
+    .filter(window => window.embeddedSite)
+    .flatMap(window => window.controls
+      .filter(control => control.type === 'FBroBrowser' && control.properties?.processMode && control.properties.processMode !== 'in-process')
+      .map(control => `窗口“${window.title}”的内嵌站点暂不支持“独立进程”FBro 浏览器控件（${control.name}）；请把控件的进程模式改回“进程内嵌入”后重新构建。`));
+  const embeddedSiteNewEmojiDiagnostics = usesNewEmojiDesigner && selectedWindow.embeddedSite
+    ? [`窗口“${selectedWindow.title}”声明了内嵌站点；new_emoji 原生后端暂不支持内嵌站点，请改用标准 Win32 后端的 EdgeBrowser / CefBrowser / FBroBrowser 控件。`]
+    : [];
   const embeddedSiteWindow = project.windows.find(window => window.embeddedSite);
   const embeddedSiteMultipleWindowDiagnostics = project.windows.filter(window => window.embeddedSite).length > 1
     ? [`有 ${project.windows.filter(window => window.embeddedSite).length} 个窗口声明了内嵌站点；当前仅构建活动窗口“${embeddedSiteWindow?.title || ''}”的内嵌站点资源。`]
@@ -468,10 +494,12 @@ export function generateLingCppNativeWin32Project(
       ...dynamicLibraryMismatchDiagnostics,
       ...projectDllBackendDiagnostics,
       ...embeddedSiteModelDiagnostics,
-      ...embeddedSiteRequiresEdgeViewDiagnostics,
+      ...embeddedSiteRequiresBrowserDiagnostics,
+      ...embeddedSiteFbroProcessDiagnostics,
+      ...embeddedSiteNewEmojiDiagnostics,
       ...embeddedSiteMultipleWindowDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresEdgeViewDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics],
     sourceMap,
     files: [
       {
@@ -3607,12 +3635,15 @@ ${catalogEventCallbackBlocks.join('\n\n')}
 
 ${uploadCallbackBlocks.join('\n\n')}
 
+${generateEmbeddedResourceExtractorCpp(project, window)}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 ${fbroModuleEnabled ? `    const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
     if (fbroSubprocessExitCode != LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED) return fbroSubprocessExitCode;
     const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
     if (fbroHostExitCode != LINGBUILDER_FBRO_HOST_NOT_REQUESTED) return fbroHostExitCode;` : ''}
     EnableNewEmojiDpiAwareness();
+    LingBuilder_释放内嵌资源文件();
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 ${fbroInProcessEnabled ? `    if (!LB_NE_InitializeFbro()) {
         MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时和 LingBuilderFbroBridge.dll。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
@@ -3796,7 +3827,8 @@ function generateNewEmojiWindowEventRuntime(
     KeyUp: ['g_neWindowEventKeyCode', 'g_neWindowEventCtrl', 'g_neWindowEventShift', 'g_neWindowEventAlt'],
     TextInput: ['g_neWindowEventCharacter'],
     DpiChanged: ['g_neWindowEventDpi'],
-    FileDropped: ['g_neWindowDroppedFiles']
+    FileDropped: ['g_neWindowDroppedFiles'],
+    HotKeyDown: ['g_neWindowHotkeyId', 'g_neWindowHotkeyVk', 'g_neWindowHotkeyMods']
   };
   const dispatchCases = WINDOW_EVENT_DEFINITIONS.flatMap(definition => {
     if (definition.name === 'Loaded') return [];
@@ -3915,6 +3947,9 @@ static int g_neWindowEventHeight = 0;
 static int g_neWindowEventX = 0;
 static int g_neWindowEventY = 0;
 static int g_neWindowEventKeyCode = 0;
+static int g_neWindowHotkeyId = 0;
+static int g_neWindowHotkeyVk = 0;
+static int g_neWindowHotkeyMods = 0;
 static int g_neWindowEventDpi = 96;
 static bool g_neWindowEventCtrl = false;
 static bool g_neWindowEventShift = false;
@@ -4028,6 +4063,12 @@ ${browserShellHitTestCase}
             break;
         }
         case WM_SETFOCUS: LB_NE_DispatchWindowEvent(L"GotFocus"); break;
+        case WM_HOTKEY:
+            g_neWindowHotkeyId = static_cast<int>(wParam);
+            g_neWindowHotkeyMods = static_cast<int>(LOWORD(lParam));
+            g_neWindowHotkeyVk = static_cast<int>(HIWORD(lParam));
+            LB_NE_DispatchWindowEvent(L"HotKeyDown");
+            break;
         case WM_KILLFOCUS: LB_NE_DispatchWindowEvent(L"LostFocus"); break;
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
@@ -4087,6 +4128,7 @@ ${browserShellLayoutMessageCase}
     '    EU_SetWindowResizeCallback(g_newEmojiWindow, LB_NE_WindowResizeCallback);',
     '    EU_SetWindowCloseCallback(g_newEmojiWindow, LB_NE_WindowCloseCallback);',
     '    SetWindowSubclass(g_newEmojiWindow, LB_NE_WindowEventSubclass, 0x4E455756, 0);',
+    ...(enabledModules.some((module) => module.manifest.id === 'lingbuilder.input.keyboard') ? ['    LB_KeyboardSetHotkeyHost(g_newEmojiWindow);'] : []),
     ...(hasFileDroppedHandler ? ['    DragAcceptFiles(g_newEmojiWindow, TRUE);'] : [])
   ].join('\n');
   return { definitions, setup };
@@ -8312,8 +8354,15 @@ function getNewEmojiTableDataFallback(control: LingControl, key: string): unknow
     columns: rawColumns as DataGridColumn[] | undefined,
     rows: rawRows as DataGridRow[] | undefined
   });
-  if (key === 'columns') return model.columns.map(column => column.title);
-  if (key === 'rows') return model.rows.map(row => model.columns.map(column => row.cells[column.id] === null ? '' : String(row.cells[column.id] ?? '')).join('\t'));
+  // 基础 ABI（EU_CreateTable/EU_SetTableData 的标题与 Tab 行文本）只覆盖可见列，
+  // 与 Ex kv 协议的列口径保持一致，避免「不可见列」从创建参数泄漏到运行时。
+  if (key === 'columns') return model.columns.filter(column => column.visible !== false).map(column => column.title);
+  if (key === 'rows') {
+    return model.rows.map(row => model.columns
+      .filter(column => column.visible !== false)
+      .map(column => row.cells[column.id] === null ? '' : String(row.cells[column.id] ?? ''))
+      .join('\t'));
+  }
   if (key === 'tableColumnsEx') return rawColumns === undefined ? model.columns : rawColumns;
   if (key === 'tableRowsEx') return rawRows === undefined ? model.rows : rawRows;
   return undefined;
@@ -8352,11 +8401,27 @@ function hasStructuredNewEmojiTableData(control: LingControl, command: string): 
   return Array.isArray(value) && value.some(item => item !== null && typeof item === 'object');
 }
 
+function hasLegacyNewEmojiTableExStrings(control: LingControl, propertyKey: 'tableColumnsEx' | 'tableRowsEx'): boolean {
+  const value = readNewEmojiCatalogProperty(control, propertyKey);
+  return Array.isArray(value) && value.some(item => typeof item === 'string' && item.trim().length > 0);
+}
+
 function shouldGenerateNewEmojiCatalogPropertySetter(control: LingControl, command: string): boolean {
-  // new_emoji Table 的 Ex setter 当前只声明为 UTF-8 字节集/字符串列表，
-  // 没有 JSON ABI。结构化编辑器的数据先由基础 columns/rows 安全渲染，
-  // 避免把内部行对象直接显示成 JSON 文本；旧字符串型 Ex 数据仍可调用。
-  if (hasStructuredNewEmojiTableData(control, command)) return false;
+  // new_emoji Table：结构化编辑器数据会经 serializeNewEmojiUtf8Property 完整翻译为
+  // Ex kv 协议（列对齐、宽度、类型、冻结等），因此结构化数据存在时 Ex setter 必须生成；
+  // 基础 EU_SetTableData 只含标题与 Tab 行文本，会被 Ex 覆盖，此时跳过避免重复重置。
+  // 旧字符串型 Ex 数据继续走原有路径（基础 + 字符串 Ex 同时下发，保持历史工程行为）。
+  if (control.designerType?.endsWith('/Table')) {
+    const structured = hasStructuredNewEmojiTableData(control, 'EU_SetTableColumnsEx')
+      || hasStructuredNewEmojiTableData(control, 'EU_SetTableRowsEx');
+    if (command === 'EU_SetTableData') return !structured;
+    if (command === 'EU_SetTableColumnsEx') {
+      return structured || hasLegacyNewEmojiTableExStrings(control, 'tableColumnsEx');
+    }
+    if (command === 'EU_SetTableRowsEx') {
+      return structured || hasLegacyNewEmojiTableExStrings(control, 'tableRowsEx');
+    }
+  }
   if (control.designerType?.endsWith('/RichList') && command === 'EU_SetRichListVirtualItemCount') {
     return Number(readNewEmojiCatalogProperty(control, 'virtualItemCount')) > 0;
   }
@@ -8438,7 +8503,100 @@ function generateNewEmojiCatalogPropertySetterCalls(
   return lines;
 }
 
+// new_emoji 表格 Ex 协议（EU_SetTableColumnsEx / EU_SetTableRowsEx）是 UTF-8 kv 行文本，
+// 不是 JSON：列每行 `title=名称\tkey=name\twidth=180\talign=center`，行每行 `key=r1\tc0=值\tc1=值`，
+// 制表符分隔字段、换行分隔行；值中的协议分隔符须反斜杠转义（运行时 split_escaped 解码）。
+function escapeNewEmojiTableSpecField(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\\/gu, '\\\\')
+    .replace(/\t/gu, '\\t')
+    .replace(/\r\n?/gu, '\\n')
+    .replace(/\|/gu, '\\|');
+}
+
+function newEmojiTableColumnTypeText(type: DataGridColumnType): string {
+  if (type === 'checkbox') return 'selection';
+  if (type === 'switch') return 'switch';
+  if (type === 'combo') return 'combo';
+  if (type === 'buttons') return 'buttons';
+  if (type === 'progress') return 'progress';
+  // 文本/整数/小数/日期/图片按原生 text 处理（运行时没有对应 kind，对话框中已标注）。
+  return '';
+}
+
+function newEmojiTableColumnCellText(column: DataGridColumn, value: unknown): string {
+  if (column.type === 'checkbox' || column.type === 'switch') {
+    if (value === null || value === undefined || value === '') return '';
+    return value === true || value === '1' || value === 'true' ? '1' : '0';
+  }
+  if (column.type === 'buttons') {
+    const explicit = String(value ?? '').trim();
+    if (explicit) return explicit;
+    // 按钮组单元格由列定义的按钮文字按 | 连接渲染（运行时按 cell.parts 拆分）。
+    return (column.buttons || []).map(button => escapeNewEmojiTableSpecField(button.text)).join('|');
+  }
+  return escapeNewEmojiTableSpecField(value);
+}
+
+function getNewEmojiTableStructuredModel(control: LingControl): ReturnType<typeof normalizeDataGridModel> | undefined {
+  const properties = control.properties || {};
+  const hasColumns = [properties.dataGridColumns, properties.tableColumnsEx].some(value => Array.isArray(value) && value.some(item => item !== null && typeof item === 'object'));
+  const hasRows = [properties.dataGridRows, properties.tableRowsEx].some(value => Array.isArray(value) && value.some(item => item !== null && typeof item === 'object'));
+  if (!hasColumns && !hasRows) return undefined;
+  const rawColumns = firstNonEmptyCollection(properties.dataGridColumns, properties.tableColumnsEx, properties.columns);
+  const rawRows = firstNonEmptyCollection(properties.dataGridRows, properties.tableRowsEx, properties.rows, properties.items);
+  return normalizeDataGridModel({
+    columns: rawColumns as DataGridColumn[] | undefined,
+    rows: rawRows as DataGridRow[] | undefined
+  });
+}
+
+function serializeNewEmojiTableColumnsSpec(model: ReturnType<typeof normalizeDataGridModel>): string[] {
+  // 运行时没有列隐藏能力，不可见列整体不进入 Ex 协议，行单元格按可见列重新编号。
+  return model.columns.filter(column => column.visible !== false).map(column => {
+    const fields = [
+      `title=${escapeNewEmojiTableSpecField(column.title)}`,
+      `key=${escapeNewEmojiTableSpecField(column.id)}`,
+      `width=${Math.max(0, Math.round(column.width))}`,
+      // 对齐必须显式下发：运行时文本列默认居左，设计器默认居中，缺失会导致「列居中不生效」。
+      `align=${column.alignment}`,
+      ...(column.frozen ? ['fixed=left'] : []),
+      ...(newEmojiTableColumnTypeText(column.type) ? [`type=${newEmojiTableColumnTypeText(column.type)}`] : []),
+      ...(column.sortable ? ['sortable=1'] : []),
+      ...(column.filterable ? ['filterable=1'] : []),
+      ...(column.type === 'combo' && column.options?.length
+        ? [`options=${column.options.map(option => escapeNewEmojiTableSpecField(option.label || option.value)).join('|')}`]
+        : [])
+    ];
+    return fields.join('\t');
+  });
+}
+
+function serializeNewEmojiTableRowsSpec(model: ReturnType<typeof normalizeDataGridModel>): string[] {
+  const visibleColumns = model.columns.filter(column => column.visible !== false);
+  return model.rows.map(row => {
+    const fields = [`key=${escapeNewEmojiTableSpecField(row.key)}`];
+    if (!row.enabled) fields.push('disabled=1');
+    visibleColumns.forEach((column, columnIndex) => {
+      fields.push(`c${columnIndex}=${newEmojiTableColumnCellText(column, row.cells[column.id])}`);
+    });
+    return fields.join('\t');
+  });
+}
+
 function serializeNewEmojiUtf8Property(control: LingControl, propertyKey: string, value: unknown): string {
+  if (control.designerType?.endsWith('/Table') && (propertyKey === 'tableColumnsEx' || propertyKey === 'tableRowsEx')) {
+    const structured = Array.isArray(value) && value.some(item => item !== null && typeof item === 'object');
+    if (structured) {
+      // 结构化编辑器数据在此确定性翻译为 Ex kv 协议（列对齐、宽度、类型、冻结等全量下发），
+      // 兜住清单 setter 与回退两条路径；旧字符串型 Ex 数据保持原样透传。
+      const model = getNewEmojiTableStructuredModel(control);
+      if (model) {
+        const lines = propertyKey === 'tableColumnsEx' ? serializeNewEmojiTableColumnsSpec(model) : serializeNewEmojiTableRowsSpec(model);
+        return lines.join('\n');
+      }
+    }
+  }
   if (control.designerType?.endsWith('/Omnibox') && Array.isArray(value)) {
     const records = value.filter(item => item && typeof item === 'object') as Array<Record<string, unknown>>;
     if (propertyKey === 'actionIcons') {
@@ -8594,6 +8752,15 @@ function generateNewEmojiCatalogComplexPropertySetterCalls(control: LingControl,
   specs('tableColumnEditOverrides').forEach(item => lines.push(
     `    EU_SetTableColumnDoubleClickEdit(g_newEmojiWindow, ${variable}, ${specInt(item, ['col', 'column', '$0'])}, ${specInt(item, ['editable', '$1'], -1)});`
   ));
+  // 结构化编辑器的「只读」列没有原生同名字段，映射为双击编辑关闭；
+  // 序号按可见列计，与 Ex 列协议的单元格编号一致。
+  const structuredTableModel = getNewEmojiTableStructuredModel(control);
+  if (structuredTableModel) {
+    structuredTableModel.columns.filter(column => column.visible !== false).forEach((column, columnIndex) => {
+      if (!column.readOnly) return;
+      lines.push(`    EU_SetTableColumnDoubleClickEdit(g_newEmojiWindow, ${variable}, ${columnIndex}, 0);`);
+    });
+  }
   specs('tableCellEditOverrides').forEach(item => lines.push(
     `    EU_SetTableCellDoubleClickEdit(g_newEmojiWindow, ${variable}, ${specInt(item, ['row', '$0'])}, ${specInt(item, ['col', 'column', '$1'])}, ${specInt(item, ['editable', '$2'], -1)});`
   ));
@@ -8904,6 +9071,21 @@ interface DynamicLibraryEntrySection {
 // 生成「内嵌站点」运行时成员：页面静态文件已按 RCDATA 编入 EXE（资源 ID 2101 起），
 // 生成的运行时经 WebView2 WebResourceRequested 在内存中直接服务 https://<host>/*，
 // 运行期不向磁盘（含 %TEMP%）释放任何 HTML/JS/CSS 等网页文件。
+function escapeEmbeddedSiteCppLiteral(value: string): string {
+  return value.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
+}
+
+function buildEmbeddedSiteTableLines(specs: WindowsEmbeddedSiteResourceSpec[]): string {
+  return specs.map(spec =>
+    `            { L"${escapeEmbeddedSiteCppLiteral(spec.sitePath)}", ${spec.resourceId}, L"${escapeEmbeddedSiteCppLiteral(spec.contentType)}" },`
+  ).join('\n');
+}
+
+function getEmbeddedSiteEntrySitePath(window: LingWindowModel, specs: WindowsEmbeddedSiteResourceSpec[]): string {
+  const entry = window.embeddedSite?.entry?.trim().replace(/\\/gu, '/') || 'index.html';
+  return specs.find(spec => spec.sourceFile === entry)?.sitePath || entry;
+}
+
 function generateEmbeddedSiteRuntimeMembers(window: LingWindowModel): string {
   let specs: WindowsEmbeddedSiteResourceSpec[];
   try {
@@ -8912,13 +9094,9 @@ function generateEmbeddedSiteRuntimeMembers(window: LingWindowModel): string {
     // 模型错误已在生成诊断中报告；这里安全跳过内嵌站点代码生成。
     return '';
   }
-  const escapeLiteral = (value: string): string => value.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
   const host = getWindowEmbeddedSiteHost(window);
-  const entry = window.embeddedSite?.entry?.trim().replace(/\\/gu, '/') || 'index.html';
-  const entrySitePath = specs.find(spec => spec.sourceFile === entry)?.sitePath || entry;
-  const tableLines = specs.map(spec =>
-    `            { L"${escapeLiteral(spec.sitePath)}", ${spec.resourceId}, L"${escapeLiteral(spec.contentType)}" },`
-  ).join('\n');
+  const entrySitePath = getEmbeddedSiteEntrySitePath(window, specs);
+  const tableLines = buildEmbeddedSiteTableLines(specs);
   return String.raw`
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
     // ================= 内嵌站点（零释放内存服务） =================
@@ -8930,8 +9108,8 @@ function generateEmbeddedSiteRuntimeMembers(window: LingWindowModel): string {
 ${tableLines}
             { nullptr, 0, nullptr }
         };
-        static const wchar_t* const kHost = L"${escapeLiteral(host)}";
-        static const wchar_t* const kEntry = L"${escapeLiteral(entrySitePath)}";
+        static const wchar_t* const kHost = L"${escapeEmbeddedSiteCppLiteral(host)}";
+        static const wchar_t* const kEntry = L"${escapeEmbeddedSiteCppLiteral(entrySitePath)}";
         if (kEntries[0].path == nullptr) return;
         const std::wstring filter = std::wstring(L"https://") + kHost + L"/*";
         instance.webView->AddWebResourceRequestedFilter(filter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
@@ -8995,6 +9173,74 @@ ${tableLines}
                 }
                 return S_OK;
             }).Get(), &token);
+    }
+#endif
+`;
+}
+
+// FBro 内嵌站点：浏览器创建后（消息循环上下文）把站点表逐条注册为
+// 「URL → 整响应替换」规则（EXE RCDATA → 桥受管缓冲），随后导航入口地址。
+// 走 FBro VIP 控制通道（FBroHsVIPControl_AddResourceHandlerChangeData），
+// 目标环境无 VIP 授权时逐条失败并输出中文诊断；独立进程模式由生成诊断阻断。
+function generateEmbeddedSiteFbroMembers(window: LingWindowModel): string {
+  let specs: WindowsEmbeddedSiteResourceSpec[];
+  try {
+    specs = getWindowEmbeddedSiteResourceSpecs(window);
+  } catch {
+    return '';
+  }
+  if (specs.length === 0) return '';
+  const host = getWindowEmbeddedSiteHost(window);
+  const entrySitePath = getEmbeddedSiteEntrySitePath(window, specs);
+  const tableLines = buildEmbeddedSiteTableLines(specs);
+  return String.raw`
+#if LINGBUILDER_FBRO_AVAILABLE
+#define LINGBUILDER_FBRO_EMBEDDED_SITE 1
+    // ================= 内嵌站点（FBro，零释放内存服务） =================
+    struct LingBuilderEmbeddedSiteFbroEntry { const wchar_t* path; unsigned int resourceId; const wchar_t* contentType; };
+
+    // 浏览器创建后调用：注册全部站点规则（EXE RCDATA → 受管缓冲），成功后导航入口地址。
+    // 必须在首次导航前调用；规则随后续请求持续生效，随浏览器句柄销毁一并释放。
+    int FBro_内嵌站点_注册规则(long long handle) {
+        static const LingBuilderEmbeddedSiteFbroEntry kEntries[] = {
+${tableLines}
+            { nullptr, 0, nullptr }
+        };
+        static const wchar_t* const kHost = L"${escapeEmbeddedSiteCppLiteral(host)}";
+        static const wchar_t* const kEntry = L"${escapeEmbeddedSiteCppLiteral(entrySitePath)}";
+        if (!handle || kEntries[0].path == nullptr) return 0;
+        int registered = 0;
+        HMODULE module = GetModuleHandleW(nullptr);
+        for (const LingBuilderEmbeddedSiteFbroEntry& entry : kEntries) {
+            if (!entry.path) break;
+            HRSRC resource = FindResourceW(module, MAKEINTRESOURCEW(static_cast<WORD>(entry.resourceId)), MAKEINTRESOURCEW(10));
+            HGLOBAL loaded = resource ? LoadResource(module, resource) : nullptr;
+            const void* bytes = loaded ? LockResource(loaded) : nullptr;
+            const DWORD byteSize = resource ? SizeofResource(module, resource) : 0;
+            if (!bytes || !byteSize) { 调试输出(L"FBro 内嵌站点资源缺失：", entry.path); continue; }
+            const LB_FBRO_BUFFER_HANDLE buffer = LB_FBro_BufferCreate(bytes, byteSize);
+            if (!buffer) { 调试输出(L"FBro 内嵌站点受管缓冲创建失败：", entry.path); continue; }
+            const std::wstring args = std::wstring(L"{\"url\":\"https://") + kHost + L"/" + entry.path + L"\",\"findType\":0,\"mimeType\":\"" + entry.contentType + L"\",\"bufferHandle\":" + std::to_wstring(static_cast<unsigned long long>(buffer)) + L"}";
+            const LB_FBRO_TASK_HANDLE task = LB_FBro_VipResourceCommandAsync(static_cast<LB_FBRO_HANDLE>(handle), L"FBroHsVIPControl_AddResourceHandlerChangeData", args.c_str(), nullptr, nullptr);
+            const bool completed = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_OK;
+            wchar_t error[4096] = {};
+            if (task) LB_FBro_TaskGetError(task, error, 4096);
+            if (task) LB_FBro_TaskRelease(task);
+            // 桥在 CEF UI 线程复制缓冲字节，等待完成后再释放是安全的。
+            LB_FBro_BufferRelease(buffer);
+            if (!completed || error[0]) {
+                const std::wstring message = std::wstring(L"FBro 内嵌站点注册失败（整响应替换需要 FBro VIP 授权）：") + entry.path + (error[0] ? L"：" + std::wstring(error) : L"：任务未在时限内完成");
+                调试输出(message.c_str());
+                continue;
+            }
+            ++registered;
+        }
+        if (registered > 0) {
+            const std::wstring entryUrl = std::wstring(L"https://") + kHost + L"/" + kEntry;
+            调试输出(L"FBro 内嵌站点：已注册 ", registered, L" 项，导航 ", entryUrl.c_str());
+            LB_FBro_Navigate(static_cast<LB_FBRO_HANDLE>(handle), entryUrl.c_str());
+        }
+        return registered;
     }
 #endif
 `;
@@ -9272,6 +9518,7 @@ function generateMainCpp(
   const edgeViewModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview');
   const embeddedSiteRuntimeSection = edgeViewModuleEnabled ? generateEmbeddedSiteRuntimeMembers(selectedWindow) : '';
   const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  const embeddedSiteFbroSection = fbroModuleEnabled ? generateEmbeddedSiteFbroMembers(selectedWindow) : '';
   const fbroBrowserManagerRuntime = generateFbroBrowserManagerRuntime(fbroModuleEnabled);
   const fbroInProcessEnabled = fbroModuleEnabled && project.windows.some(window => window.controls.some(control =>
     control.type === 'FBroBrowser' && (!control.properties?.processMode || control.properties.processMode === 'in-process')
@@ -9545,6 +9792,7 @@ static std::wstring LingCppUtf8ToWide(const char* value) {
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "winspool.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "shlwapi.lib")
@@ -9559,6 +9807,53 @@ static std::wstring LingCppUtf8ToWide(const char* value) {
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "odbc32.lib")
+
+#include <winspool.h>
+// ===== 打印机信息命令（winspool） =====
+int 打印机_取列表(std::vector<std::wstring>& out) {
+    out.clear();
+    unsigned long needed = 0, returned = 0;
+    EnumPrintersW(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, nullptr, 0, &needed, &returned);
+    if (needed == 0) return 0;
+    std::vector<unsigned char> buffer(needed);
+    if (!EnumPrintersW(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, buffer.data(), needed, &needed, &returned)) return -1;
+    const auto* printers = reinterpret_cast<PRINTER_INFO_4W*>(buffer.data());
+    for (unsigned long i = 0; i < returned; ++i) {
+        if (printers[i].pPrinterName) out.push_back(printers[i].pPrinterName);
+    }
+    return static_cast<int>(out.size());
+}
+
+static wchar_t g_lbDefaultPrinterName[256];
+const wchar_t* 打印机_取默认() {
+    unsigned long size = 256;
+    g_lbDefaultPrinterName[0] = L'\\0';
+    if (!GetDefaultPrinterW(g_lbDefaultPrinterName, &size)) return L"";
+    return g_lbDefaultPrinterName;
+}
+
+bool 打印机_置默认(const wchar_t* name) {
+    if (!name || !name[0]) return false;
+    return SetDefaultPrinterW(name) != 0;
+}
+
+bool 打印机_是否在线(const wchar_t* name) {
+    if (!name || !name[0]) return false;
+    HANDLE handle = nullptr;
+    if (!OpenPrinterW(const_cast<wchar_t*>(name), &handle, nullptr)) return false;
+    bool online = false;
+    unsigned long needed = 0;
+    GetPrinterW(handle, 2, nullptr, 0, &needed);
+    if (needed > 0) {
+        std::vector<unsigned char> buffer(needed);
+        if (GetPrinterW(handle, 2, buffer.data(), needed, &needed)) {
+            const auto* info = reinterpret_cast<PRINTER_INFO_2W*>(buffer.data());
+            online = (info->Status & (PRINTER_STATUS_OFFLINE | PRINTER_STATUS_NOT_AVAILABLE | PRINTER_STATUS_ERROR)) == 0;
+        }
+    }
+    ClosePrinter(handle);
+    return online;
+}
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "oleacc.lib")
 #pragma comment(lib, "oleaut32.lib")
@@ -11092,6 +11387,14 @@ public:
         controlLifetimeState_->owner = this;
     }
 
+    // 全局热键（线程热键）转发入口：由消息循环在收到 WM_HOTKEY 时调用。
+    void LingDispatchHotkey(unsigned int id, unsigned long lParam) {
+        hotkeyEventId_ = static_cast<int>(id);
+        hotkeyEventMods_ = static_cast<int>(LOWORD(lParam));
+        hotkeyEventVk_ = static_cast<int>(HIWORD(lParam));
+        DispatchWindowEvent(L"HotKeyDown");
+    }
+
 ${functionLibraryMethods}
 
     virtual ~LingWindowBase() {
@@ -11291,6 +11594,9 @@ protected:
     bool eventCtrlDown_ = false;
     bool eventShiftDown_ = false;
     bool eventAltDown_ = false;
+    int hotkeyEventId_ = 0;
+    int hotkeyEventVk_ = 0;
+    int hotkeyEventMods_ = 0;
     std::wstring eventCharacter_;
     wchar_t pendingHighSurrogate_ = 0;
     std::vector<std::wstring> droppedFiles_;
@@ -12891,6 +13197,10 @@ ${fbroBrowserManagerRuntime.methods}
             if (!runtime || !runtime->hwnd || instance->handle) continue;
             instance->host = runtime->hwnd;
             if (instance->url.empty()) instance->url = control.data && control.data[0] ? control.data : L"about:blank";
+#ifdef LINGBUILDER_FBRO_EMBEDDED_SITE
+            // 内嵌站点：先建空白页，注册内存站点规则后再导航入口（规则必须先于导航生效）。
+            instance->url = L"about:blank";
+#endif
             if (FBro_是独立进程(instance)) {
                 if (LingFbroProcessController::Instance().State(instance->processInstanceId) == L"就绪") { ++created; continue; }
                 RECT bounds{}; GetClientRect(instance->host, &bounds);
@@ -12925,6 +13235,13 @@ ${fbroBrowserManagerRuntime.methods}
             LB_FBro_SetEventCallbackV3(instance->handle, FBro_桥接事件V3, this);
             if (!instance->proxyServer.empty()) LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"");
             if (!instance->fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str());
+#ifdef LINGBUILDER_FBRO_EMBEDDED_SITE
+            if (instance->handle) {
+                // OnWindowCreated 处于消息循环上下文，注册等待安全；成功后导航入口地址。
+                const int siteRegistered = FBro_内嵌站点_注册规则(static_cast<long long>(reinterpret_cast<uintptr_t>(instance->handle)));
+                if (siteRegistered <= 0) 调试输出(L"FBro 内嵌站点注册未成功，页面将无法加载。");
+            }
+#endif
             ++created;
         }
         return created > 0 ? 1 : 0;
@@ -13664,6 +13981,7 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
 #endif
     }
 ${FBRO_RESOURCE_REPLACE_HELPERS}
+${embeddedSiteFbroSection}
     int FBro_实例导航(long long instanceId, const wchar_t* address) {
 #if LINGBUILDER_FBRO_AVAILABLE
         return instanceId > 0 && address ? LB_FBro_Navigate(static_cast<LB_FBRO_HANDLE>(instanceId), address) : 0;
@@ -25121,7 +25439,6 @@ public:
         return result;
     }
 };
-
 #if LINGBUILDER_CEF3_AVAILABLE
 class LingCefClient final : public CefClient,
     public CefAudioHandler, public CefCommandHandler, public CefContextMenuHandler,
@@ -25700,6 +26017,10 @@ ${fbroInProcessEnabled ? '        LB_FBro_Shutdown();' : ''}
     while (GetMessageW(&message, nullptr, 0, 0)) {
         HWND navigationRoot = message.hwnd ? GetAncestor(message.hwnd, GA_ROOT) : startWindow;
         LingWindowBase* messageOwner = LingWindowBase::FromMessageWindow(navigationRoot);
+        if (message.message == WM_HOTKEY && message.hwnd == nullptr && messageOwner) {
+            messageOwner->LingDispatchHotkey(static_cast<unsigned int>(message.wParam), static_cast<unsigned long>(message.lParam));
+            continue;
+        }
         if (messageOwner && messageOwner->PreTranslateKeyboardMessage(message)) continue;
         if (navigationRoot && IsWindow(navigationRoot) && IsDialogMessageW(navigationRoot, &message)) continue;
         TranslateMessage(&message);
@@ -26474,7 +26795,8 @@ function generateWindowEventInvocation(handler: string, eventName: string, metho
     KeyUp: ['eventKeyCode_', 'eventCtrlDown_', 'eventShiftDown_', 'eventAltDown_'],
     TextInput: ['eventCharacter_'],
     DpiChanged: ['static_cast<int>(dpi_)'],
-    FileDropped: ['droppedFiles_']
+    FileDropped: ['droppedFiles_'],
+    HotKeyDown: ['hotkeyEventId_', 'hotkeyEventVk_', 'hotkeyEventMods_']
   };
   const argumentsForEvent = (eventArguments[eventName] || []).slice(0, method.parameters.length);
   return `${toCppIdentifier(handler)}(${argumentsForEvent.join(', ')})`;
@@ -27335,15 +27657,20 @@ function translateLingCppExpression(
   if (binaryExpression) {
     const left = translateLingCppExpression(binaryExpression.left, enabledModules, translationContext);
     const right = translateLingCppExpression(binaryExpression.right, enabledModules, translationContext);
+    const translateComparisonOperator = (operator: string): string => {
+      if (operator === '=') return '==';
+      if (operator === '<>' || operator === '≠') return '!=';
+      return operator;
+    };
     if (
       (binaryExpression.operator === '==' || binaryExpression.operator === '!=' || binaryExpression.operator === '=')
       && isDefinitelyWideStringExpression(binaryExpression.left, enabledModules, translationContext)
       && isDefinitelyWideStringExpression(binaryExpression.right, enabledModules, translationContext)
     ) {
-      const comparisonOperator = binaryExpression.operator === '=' ? '==' : binaryExpression.operator;
+      const comparisonOperator = translateComparisonOperator(binaryExpression.operator);
       return `std::wstring(LingCppWideArg(${left}))${comparisonOperator}LingCppWideArg(${right})`;
     }
-    return `${left}${binaryExpression.operator === '=' ? '==' : binaryExpression.operator}${right}`;
+    return `${left}${translateComparisonOperator(binaryExpression.operator)}${right}`;
   }
   const controlTextProperty = parseEplControlMemberRule(trimmed);
   if (controlTextProperty) return `${controlTextProperty.getterRuntimeName}(${translateControlReferenceOperand(controlTextProperty.controlName, translationContext)})`;

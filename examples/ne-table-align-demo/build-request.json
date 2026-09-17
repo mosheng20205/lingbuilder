@@ -1,0 +1,187 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "ne-table-align-demo",
+    "name": "NE表格设计器对齐验证",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "MainWindow.xml",
+        "className": "演示窗口",
+        "title": "NE表格设计器对齐验证",
+        "width": 720,
+        "height": 480,
+        "background": "#181825",
+        "designerBackend": "new-emoji",
+        "description": "验证设计器结构化表格数据（列对齐/宽度/类型/冻结/隐藏列/行数据）生成 Ex kv 协议。",
+        "events": {},
+        "controls": [
+          {
+            "id": "table-1",
+            "type": "Table",
+            "designerType": "lingbuilder.new_emoji.ui/Table",
+            "name": "数据表格",
+            "content": "数据表格",
+            "x": 24,
+            "y": 24,
+            "width": 660,
+            "height": 400,
+            "fontSize": 14,
+            "background": "#1E1E2E",
+            "foreground": "#F8FAFC",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "properties": {
+              "content": "表格",
+              "width": 360,
+              "height": 180,
+              "background": "transparent",
+              "foreground": "#F8FAFC",
+              "columns": [],
+              "rows": [],
+              "tableColumnsEx": [],
+              "tableRowsEx": [],
+              "tableCellOverrides": [],
+              "tableSpans": [],
+              "striped": true,
+              "bordered": true,
+              "tableBorderColor": "#FFB7C7DD",
+              "tableBorderWidth": 1.5,
+              "rowHeight": 42,
+              "headerHeight": 46,
+              "columnWidth": 0,
+              "emptyText": "暂无数据 📭",
+              "selectable": true,
+              "selectionMode": "1",
+              "selectedRow": -1,
+              "selectedRows": "",
+              "sortColumn": -1,
+              "sortDescending": false,
+              "tableFilters": [],
+              "searchText": "",
+              "tableColumnAligns": [],
+              "tableRowAligns": [],
+              "tableCellAligns": [],
+              "tableRowStyles": [],
+              "scrollRow": 0,
+              "scrollX": 0,
+              "tableMaxHeight": 0,
+              "tableFixedHeader": true,
+              "tableHorizontalScroll": false,
+              "tableShowSummary": false,
+              "tableSummary": "",
+              "tableTreeEnabled": false,
+              "tableTreeIndent": 18,
+              "tableTreeLazy": false,
+              "tableColumnResize": false,
+              "tableHeaderHeightResize": false,
+              "tableMinColumnWidth": 48,
+              "tableMaxColumnWidth": 720,
+              "tableMinHeaderHeight": 34,
+              "tableMaxHeaderHeight": 180,
+              "tableDoubleClickEdit": false,
+              "tableColumnEditOverrides": [],
+              "tableCellEditOverrides": [],
+              "tableVirtualEnabled": false,
+              "tableVirtualRowCount": 0,
+              "tableVirtualCacheWindow": 32,
+              "dataGridColumns": [
+                {
+                  "id": "name",
+                  "title": "名称",
+                  "type": "text",
+                  "width": 180,
+                  "alignment": "center",
+                  "readOnly": false,
+                  "visible": true,
+                  "frozen": false,
+                  "sortable": true,
+                  "filterable": true,
+                  "required": false,
+                  "format": ""
+                },
+                {
+                  "id": "status",
+                  "title": "状态",
+                  "type": "text",
+                  "width": 120,
+                  "alignment": "right",
+                  "readOnly": false,
+                  "visible": true,
+                  "frozen": false,
+                  "sortable": true,
+                  "filterable": true,
+                  "required": false,
+                  "format": ""
+                },
+                {
+                  "id": "ok",
+                  "title": "启用",
+                  "type": "checkbox",
+                  "width": 90,
+                  "alignment": "center",
+                  "readOnly": false,
+                  "visible": true,
+                  "frozen": true,
+                  "sortable": false,
+                  "filterable": false,
+                  "required": false,
+                  "format": ""
+                },
+                {
+                  "id": "hidden",
+                  "title": "隐藏列",
+                  "type": "text",
+                  "width": 100,
+                  "alignment": "left",
+                  "readOnly": false,
+                  "visible": false,
+                  "frozen": false,
+                  "sortable": false,
+                  "filterable": false,
+                  "required": false,
+                  "format": ""
+                }
+              ],
+              "dataGridRows": [
+                {
+                  "key": "r1",
+                  "enabled": true,
+                  "cells": {
+                    "name": "设计器订单 A",
+                    "status": "待处理",
+                    "ok": true,
+                    "hidden": "x"
+                  }
+                },
+                {
+                  "key": "r2",
+                  "enabled": true,
+                  "cells": {
+                    "name": "设计器订单 B",
+                    "status": "已发货",
+                    "ok": false,
+                    "hidden": "x"
+                  }
+                },
+                {
+                  "key": "r3",
+                  "enabled": false,
+                  "cells": {
+                    "name": "禁用行",
+                    "status": "已取消",
+                    "ok": false,
+                    "hidden": "x"
+                  }
+                }
+              ]
+            },
+            "events": {}
+          }
+        ]
+      }
+    ]
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceCode": "包 NE表格设计器对齐验证\r\n使用 new_emoji原生界面库\r\n\r\n类 演示窗口 : 窗口\r\n公开\r\n  事件 创建完毕()\r\n    调试输出(\"设计器表格数据应由生成器自动下发\")\r\n  结束\r\n结束类"
+}

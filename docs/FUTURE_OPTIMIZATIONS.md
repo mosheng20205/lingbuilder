@@ -697,6 +697,7 @@
 - 已完成（2026-09-13）：窗口模型新增 `embeddedFiles`（RCDATA 内嵌资源）：构建随 `lingbuilder-app.rc` 编译、EXE 启动自动释放到 `%TEMP%\lingbuilder-embedded\<工程ID>\`，中文代码按约定路径直读；实测 `AI 视频自主生产/进阶方案/高颜值应用商店-EdgeView/` 双击 exe 零外部文件运行（释放内容 SHA-256 与源文件一致）。
 - 已修复（2026-09-13）：生成模板 WM_SIZE 新增 `EdgeView_随窗口调整设计器控件`，把「设计器 x/y=0 且宽高≥窗口」的全幅 EdgeBrowser 控件宿主拉伸到当前客户区后再 `EdgeView_调整全部大小()`——此前窗口最大化/缩放后 WebView2 子窗口保持创建尺寸、页面缩在左上角（FBro 进程内浏览器不受影响，桥自己撑满窗口）。局部布局的 EdgeBrowser 控件保持设计器矩形不参与拉伸；需要随窗口重排的局部控件仍走「大小被改变」事件 + `控件_设置位置大小` 应用层布局。实测证据见 `AI 视频自主生产/进阶方案/高颜值应用商店-EdgeView/`（最大化 3840×2160 全屏铺满截图）。
 - 已完成（2026-09-15）：WebView2 Loader 改静态链接（`WebView2LoaderStatic.lib`，x86/x64 各自从固定版本 NuGet 包物化到模块 `lib/<arch>/` 并进 F5/CLI 与 VS 导出两条链接路径），模块 targets 移除 `runtimeFiles: WebView2Loader.dll`，生成运行时直接调用 `CreateCoreWebView2EnvironmentWithOptions`/`GetAvailableCoreWebView2BrowserVersionString`；F5/CLI 链接统一 `/MANIFEST:EMBED`（不再落外置 `.exe.manifest`）。EdgeView EXE 从此可单文件复制运行（目标机仍需系统 WebView2 Runtime）。
+- 已完成（2026-09-16）：内嵌站点扩展到 FBro 浏览器模块（进程内 FBroBrowser：创建后注册 `FBroHsVIPControl_AddResourceHandlerChangeData` 规则再导航入口，VIP 授权门禁 fail-closed，独立进程阻断诊断）；CEF3 因 bridge-only 架构（生成工程禁止 CEF 头文件）暂不支持，需扩展 LingBuilderCefBridge ABI 后另行落地；属性面板新增「当前窗口 / 内嵌站点」编辑组（扫描目录/清单/校验，端点 `/api/window-designer/embedded-site/scan`）。
 - 已完成（2026-09-15）：窗口模型新增 `embeddedSite: { files, entry?, host? }` 内嵌站点：网页静态文件（≤64 个、单个 ≤32MB、必须位于 entry 目录内）编译为 RCDATA（ID 2101 起，`resources/lbsite-N.bin`），生成 EdgeView 运行时注册 `WebResourceRequested` 对 `https://<host>/*` 从 EXE 内存资源直接应答（按扩展名给 Content-Type、未命中 404），运行期零文件释放；`embeddedFiles`（%TEMP% 释放）语义不变，且资源编译器在 rc 无 ICON 行时不再强制图标文件、释放器在无释放文件时整体不生成（不再建空 %TEMP% 目录）。端到端实测：`AI 视频自主生产/进阶方案/AI智能助手-EdgeView/`、`Cat小助手-EdgeView/`、`抖音助手-EdgeView/` 三个单文件 exe（源码 `T:/UiProject` 三个 Vite 项目），真实鼠标验证无边框窗口、网页标题栏拖拽（dx≈270）、网页按钮最小化/最大化/还原/关闭全链路，%TEMP% 零释放。
 - 已完成（2026-09-16）：设计器属性面板新增「当前窗口 / 内嵌站点」编辑组（启用开关、主机名、入口文件、扫描目录 + 文件清单文本框），服务端 `GET /api/window-designer/embedded-site/scan` 递归列出目录内文件（只读、拒越界路径）；纯模型口径集中在 `embeddedSiteModel.ts`（渲染层可安全导入），与生成器门禁同口径校验。实测：AI智能助手-EdgeView 工程面板显示既有配置、「扫描目录」一键回填清单并随设计器持久化。
 - 后续优化：双击标题栏最大化与 mousedown 拖拽存在系统模态循环竞争（拖拽捕获吃掉 click 对），双击最大化触发率依赖 postMessage 时序，后续可在生成运行时做拖拽阈值判定（位移超阈值才算拖拽）让双击可靠；内嵌站点面板暂未提供「新建后一键从模板创建 www 目录」的引导，空白工作区用户需先自行放置网页文件。
@@ -1581,3 +1582,25 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
 - 控制台项目的模块门禁：第一版不限制启用模块；控件类命令在无窗口运行时自然无效。后续可按「控制台项目禁用设计器控件模块」给出中文诊断（当前 #3 决策按「先不限」落地）。
 - 控制台交互输入（`scanf`/控制台读行）没有对应中文命令；如需「控制台_读取行」类命令，走模块命令入账门禁新增。
 - `Mac 界面设计`/`Mac 平台动态库开发`/`Mac 控制台程序` 三张规划中卡片为占位，后续 macOS 适配时逐张转「当前可用」。
+
+
+# 2026-09-16 中优先级九能力·第三波交接（TCP 服务端 + POP3 收信，未开工）
+
+第一、二波已交付（5 新模块 + 2 扩展模块，约 97 新命令，e2e 全过）。第三波两项网络能力未开工，实现要点如下（调研已完成）：
+
+## lingbuilder.net.tcp.server（TCP 服务端模块，17 命令）
+- 完整仿 lingbuilder.http.server 范式：受管句柄（long long）+ 后台 accept/recv 线程 + 隐藏 message-only 事件窗口 + WM_APP 新槽位（0x59 起，0x4D~0x58 已占用）+ 生成器扫描无参方法生成 dispatch cases（复用 webSocketDispatchCases 模式，lingCppWin32Project.ts 2521/2728-2761）。
+- 命令：TCP服务端_创建(端口0=动态)/取监听端口/启动/停止/销毁/绑定客户端接入(&处理器)/绑定数据到达/绑定连接断开/取当前客户端/取当前数据文本/取当前数据字节集/发送文本(客户端,文本)/发送字节集/断开客户端/广播文本/取客户端数量/取错误。
+- targets 仿 httpServerModule.ts 手写（ws2_32.lib + define LINGBUILDER_TCP_SERVER_MODULE）；运行时新建 networkTcpServerRuntime.ts 并入 generateModuleCppPreamble（9271/9570）。
+- 处理器内用「取当前客户端/取当前数据」thread_local 上下文命令取事件数据（http.server 同范式）。
+
+## lingbuilder.net.pop3（邮件接收模块，19 命令）
+- 自研 POP3 客户端：Winsock + Schannel TLS（隐式 995/明文 110/STARTTLS），MIME 解码（Base64/Quoted-Printable + GBK/UTF-8 charset → Unicode）。
+- 命令：POP3_连接(地址,端口,用户名,密码,是否SSL)/断开/是否已连接/取邮件数量/取邮箱总大小/取邮件大小(序号)/取邮件头/取主题/取发件人/取日期/取正文文本/取网页正文/取附件个数/取附件名称/保存附件/删除邮件/复位删除/设置超时/取错误。
+- 新文件 pop3Module.ts + pop3Runtime.ts（源文件计数门禁 +1）；e2e：demo 附带本地 node 迷你 POP3 服务器回放固定邮件，exe 连 127.0.0.1 断言主题/正文/附件。
+
+## 门禁写回提醒（两波完成后）
+- modules.test.ts：L351-356 内置基线（当前 94/3555/6206/1303，摘要 f6a9ca9e/00afcbe0）+ L770 合并基线 + NETWORK_LIBRARY_MODULES 9→11 + 源文件计数。
+- 封装清单计数行 + 逐模块行；module:web-sync（凭据走环境变量）；规则手册与更新记录同步。
+
+- 已完成（2026-09-17）：**AI Bridge 无头构建 new_emoji 单文件内嵌回归修复**。`compileMsvcPreviewWithModules` 的 linkArgs 只把 `newEmojiDelayLoadLinkArgs`（delayimp.lib + /link + /DELAYLOAD:new_emoji.dll）当非空开关用、从未展开进链接命令，且该分支下 `/MANIFEST:EMBED` 落在 `/link` 区段外被 cl 以 D9002 静默忽略——new_emoji.dll 退回硬导入，EXE 单独分发（目录无 DLL）加载期即 0xC0000135，RCDATA 内嵌与延迟解压钩子全部失效（09-13 落地的单文件能力被后续清单内嵌改造回归，bin 目录常驻 DLL 掩盖了问题）。修复为 delay 参数真实展开并入同一段 `/link`（`...newEmojiDelayLoadLinkArgs, '/MANIFEST:EMBED'`）。验证：重建 cli.cjs 后 emoji 六标签页工程无头构建链接日志不再出现 D9002；单 exe 拷入干净目录运行 5 秒存活 Responding=True，自动释放 new_emoji.dll（2,790,400 字节逐字节一致）并正常渲染；`lint` 全绿，aiBridge/buildPipeline/windowDesigner/modules 四套件 351 项 340 过（11 失败全为在案环境基线：modules 4 环境项 + windowDesigner 7 缺 `.lingbuilder/projects` 演示工程 fixture）。

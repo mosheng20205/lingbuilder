@@ -225,9 +225,22 @@ export function generateProjectDllDeclarationHeader(dllLibraries: LingCppDllLibr
         const cpp = parameter.byRef ? resolveDllBoundaryPointerType(parameter.type) : `${base?.cpp || 'void*'}`;
         return `${cpp || 'void*'} ${parameter.name}`;
       });
+      const parameterText = parameters.join(', ');
       const convention = command.callingConvention === 'stdcall' ? '__stdcall' : '__cdecl';
       if (command.remark) lines.push(`// ${command.remark}`);
-      lines.push(`__declspec(dllimport) ${boundaryReturn?.cpp || 'void'} ${convention} ${command.name}(${parameters.join(', ')});`);
+      if (library.isSystem && !command.exportName) {
+        // 系统 DLL 的原生导出名（如 GetCurrentProcessId）已由 Windows SDK 头文件声明；
+        // 再生成一份 dllimport 声明会因返回类型/类型修饰不同触发 C2556/C2373，符号由系统导入库解析。
+        lines.push(`// ${command.name}：由 ${library.name}.dll 导出，声明来自 Windows SDK 头文件。`);
+        return;
+      }
+      if (library.isSystem && command.exportName) {
+        // 系统 DLL 的中文别名命令：生成转发内联函数（调用真实导出名，经系统导入库链接）。
+        // 不用 dllimport + 别名导入库：x86 下 def 别名无法表达 stdcall 装饰，会产生栈不平衡。
+        lines.push(`inline ${boundaryReturn?.cpp || 'void'} __cdecl ${command.name}(${parameterText}) { return ${command.exportName}(${command.parameters.map(parameter => parameter.name).join(', ')}); }`);
+        return;
+      }
+      lines.push(`__declspec(dllimport) ${boundaryReturn?.cpp || 'void'} ${convention} ${command.name}(${parameterText});`);
     });
     lines.push('');
   });

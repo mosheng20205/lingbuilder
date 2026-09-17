@@ -1,5 +1,6 @@
 import React from 'react';
 import type { NewEmojiThemePreview } from '../services/windowDesigner/newEmojiDesignerAdapter';
+import { loadNewEmojiTableModel } from '../services/windowDesigner/dataGridModel';
 import type { LingControl } from '../services/windowDesigner/types';
 
 const MODULE_PREFIX = 'lingbuilder.new_emoji.ui/';
@@ -49,6 +50,32 @@ function richListItems(value: unknown): Array<{ key: string; label: string }> {
     const key = textValue(record.key, `item-${index + 1}`);
     return { key, label: textValue(data.title ?? data.label ?? data.name ?? record.title, key) };
   });
+}
+
+/** 图表数据点与运行时 parse_chart_points 同口径：`标签\t值` 行，兼容 , : = 分隔。 */
+function chartPoints(value: unknown, fallback: Array<{ label: string; value: number }>): Array<{ label: string; value: number }> {
+  const lines = Array.isArray(value) ? value.map(item => String(item ?? '')) : String(value ?? '').split('|');
+  const points = lines.map(line => {
+    const fields = line.includes('\t') ? line.split('\t') : line.split(/[:=,]/u);
+    const label = (fields[0] ?? '').trim();
+    const parsed = Number((fields[1] ?? '').trim());
+    return { label, value: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 };
+  }).filter(point => point.label.length > 0);
+  return points.length > 1 ? points : fallback;
+}
+
+/** 树节点与运行时 parse_tree_items 同口径：`文本\t层级\t展开\t勾选…` 行。 */
+function treePreviewItems(value: unknown, fallback: string[]): Array<{ label: string; level: number; checked: boolean }> {
+  const lines = Array.isArray(value) ? value.map(item => String(item ?? '')) : String(value ?? '').split(/\|\s*\n?/u);
+  const items = lines.filter(line => line.trim()).map(line => {
+    const fields = line.split('\t');
+    return {
+      label: (fields[0] ?? '').trim() || '节点',
+      level: Math.max(0, Number.parseInt(fields[1] ?? '0', 10) || 0),
+      checked: (Number.parseInt(fields[3] ?? '0', 10) || 0) !== 0
+    };
+  }).slice(0, 6);
+  return items.length ? items : fallback.map(label => ({ label, level: 0, checked: false }));
 }
 
 /**
@@ -183,9 +210,32 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'EditBox':
       preview = <Shell className="px-3 py-2 text-left text-[11px] text-slate-300"><span>{textValue(p.placeholder, content)}</span><span className="ml-0.5 animate-pulse text-violet-300">│</span></Shell>;
       break;
-    case 'Table':
-      preview = <Shell className="grid grid-rows-[auto_1fr] text-[9px]"><div className="grid grid-cols-3 border-b border-slate-600 bg-slate-800 font-semibold"><span className="p-1.5">名称</span><span className="border-l border-slate-600 p-1.5">状态</span><span className="border-l border-slate-600 p-1.5">操作</span></div><div className="grid grid-cols-3 text-slate-400"><span className="p-1.5">示例项目</span><span className="border-l border-slate-700 p-1.5 text-emerald-400">正常</span><span className="border-l border-slate-700 p-1.5 text-violet-300">查看</span></div></Shell>;
+    case 'Table': {
+      // 画布预览必须与结构化编辑器实时一致：列（宽度/对齐/类型）与行数据都来自控件属性，
+      // 不再使用硬编码演示数据（历史问题：设计器里配置的列与行不渲染）。
+      const tableModel = loadNewEmojiTableModel(p as Record<string, unknown>);
+      const tableColumns = tableModel.columns.filter(column => column.visible !== false);
+      const alignText = (alignment: string) => alignment === 'right' ? 'right' : alignment === 'left' ? 'left' : 'center';
+      const cellText = (column: (typeof tableColumns)[number], value: unknown): string => {
+        if (column.type === 'checkbox') return value === null || value === undefined || value === '' ? '▢' : value === true || value === '1' || value === 'true' ? '☑' : '☐';
+        if (column.type === 'switch') return value === true || value === '1' || value === 'true' ? (column.onText || '开启') : (column.offText || '关闭');
+        if (column.type === 'progress') return `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
+        if (column.type === 'buttons') return (column.buttons || []).map(button => button.text).join(' ') || String(value ?? '');
+        return String(value ?? '');
+      };
+      preview = <Shell className="flex flex-col text-[9px]">
+        <div className="flex shrink-0 border-b border-slate-600 bg-slate-800 font-semibold">
+          {tableColumns.map(column => <span key={column.id} className="truncate border-l border-slate-600 px-1.5 py-1 first:border-l-0" style={{ width: column.width, flex: '0 0 auto', textAlign: alignText(column.alignment) }}>{column.title || column.id}</span>)}
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {tableModel.rows.slice(0, 60).map(row => <div key={row.key} className="flex border-b border-slate-800/70 text-slate-400" style={{ opacity: row.enabled === false ? 0.45 : 1 }}>
+            {tableColumns.map(column => <span key={column.id} className="truncate border-l border-slate-800/70 px-1.5 py-1 first:border-l-0" style={{ width: column.width, flex: '0 0 auto', textAlign: alignText(column.alignment) }}>{cellText(column, row.cells[column.id])}</span>)}
+          </div>)}
+          {tableModel.rows.length === 0 && <div className="p-2 text-center text-slate-600">{tableModel.emptyText}</div>}
+        </div>
+      </Shell>;
       break;
+    }
     case 'ListBox':
       preview = <Shell className="p-1 text-[10px]">{items.slice(0, 4).map((item, index) => <div key={item} className={`rounded px-2 py-1 ${index === 0 ? 'bg-violet-500/30 text-violet-100' : 'text-slate-400'}`}>{item}</div>)}</Shell>;
       break;
@@ -340,18 +390,60 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'Steps':
       preview = <div className="flex h-full w-full items-center px-2 text-[8px]">{['开始', '处理中', '完成'].map((item, i) => <React.Fragment key={item}><span className="flex flex-col items-center gap-1"><i className={`flex h-5 w-5 items-center justify-center rounded-full ${i < 2 ? 'bg-violet-500 text-white' : 'border border-slate-600 text-slate-500'}`}>{i + 1}</i><b className={i === 1 ? 'text-violet-300' : 'text-slate-500'}>{item}</b></span>{i < 2 && <span className={`mb-4 h-px flex-1 ${i === 0 ? 'bg-violet-500' : 'bg-slate-700'}`}/>}</React.Fragment>)}</div>;
       break;
-    case 'Skeleton':
-      preview = <div className="flex h-full w-full gap-3 rounded border border-slate-700 p-3"><span className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-slate-700"/><span className="flex flex-1 flex-col gap-2"><i className="h-2 w-2/3 animate-pulse rounded bg-slate-700"/><i className="h-2 w-full animate-pulse rounded bg-slate-700"/><i className="h-2 w-4/5 animate-pulse rounded bg-slate-700"/></span></div>;
+    case 'Skeleton': {
+      const skeletonRows = Math.max(1, Math.min(6, numberValue(p.rows, 3)));
+      const skeletonAnimated = p.animated !== false && p.loading !== false;
+      preview = <div className={`flex h-full w-full gap-3 rounded border border-slate-700 p-3 ${p.loading === false ? 'opacity-45' : ''}`}>
+        {p.showAvatar === true && <span className={`h-9 w-9 shrink-0 rounded-full bg-slate-700 ${skeletonAnimated ? 'animate-pulse' : ''}`}/>}
+        <span className="flex flex-1 flex-col gap-2">
+          {Array.from({ length: skeletonRows }, (_, row) => <i key={row} className={`h-2 rounded bg-slate-700 ${skeletonAnimated ? 'animate-pulse' : ''}`} style={{ width: row === skeletonRows - 1 ? '60%' : `${92 - row * 8}%` }}/>)}
+        </span>
+      </div>;
       break;
-    case 'Descriptions':
-      preview = <Shell className="grid grid-cols-[35%_1fr] text-[9px]">{['名称','New Emoji','版本','1.0.0','状态','已启用'].map((item, i) => <span key={`${item}-${i}`} className={`border-b border-slate-700 p-1.5 ${i % 2 === 0 ? 'bg-slate-800 text-slate-400' : i === 5 ? 'text-emerald-400' : ''}`}>{item}</span>)}</Shell>;
+    }
+    case 'Descriptions': {
+      const descriptionItems = (Array.isArray(p.items) ? p.items.map(item => String(item ?? '')) : []).slice(0, 8);
+      const descriptionColumns = Math.max(1, Math.min(3, numberValue(p.columns, 1)));
+      const descriptionCells = descriptionItems.map(item => {
+        const position = item.indexOf('=');
+        return position > 0 ? [item.slice(0, position), item.slice(position + 1)] : ['', item];
+      });
+      preview = <Shell className="flex flex-col text-[9px]">
+        {textValue(p.title, '') ? <div className="border-b border-slate-700 bg-slate-800 px-2 py-1.5 font-semibold">{title}</div> : null}
+        <div className="grid flex-1 content-start gap-px overflow-hidden p-1" style={{ gridTemplateColumns: `repeat(${descriptionColumns}, minmax(0, 1fr))` }}>
+          {descriptionCells.length ? descriptionCells.map(([label, value], cellIndex) => <span key={cellIndex} className={`truncate px-1.5 py-1 ${p.bordered === true ? 'border border-slate-700' : ''} ${cellIndex % 2 === 0 ? 'bg-slate-800/60 text-slate-400' : 'text-slate-300'}`}>{label ? `${label}：` : ''}{value}</span>) : <span className="p-1.5 text-slate-500">暂无描述项</span>}
+        </div>
+      </Shell>;
       break;
-    case 'Collapse':
-      preview = <Shell className="text-[9px]"><div className="flex items-center gap-2 border-b border-slate-700 px-2 py-2"><span className="rotate-90"><Chevron /></span><b>展开的面板</b></div><div className="px-5 py-2 text-slate-400">{body}</div><div className="flex items-center gap-2 border-t border-slate-700 px-2 py-2"><Chevron /><span>折叠的面板</span></div></Shell>;
+    }
+    case 'Timeline': {
+      const timelineItems = (Array.isArray(p.items) ? p.items.map(item => String(item ?? '')).filter(Boolean) : []);
+      const timelineRows = (p.reverse === true ? [...timelineItems].reverse() : timelineItems).slice(0, 5);
+      preview = <div className="relative h-full w-full overflow-hidden py-2 pl-5 text-[9px] before:absolute before:bottom-3 before:left-[9px] before:top-3 before:w-px before:bg-slate-600">
+        {timelineRows.length ? timelineRows.map((item, i) => <div key={`${item}-${i}`} className="relative mb-2"><i className={`absolute -left-[15px] top-1 h-2 w-2 rounded-full ${i === timelineRows.length - 1 ? 'bg-emerald-400' : 'bg-violet-400'}`}/><b>{item}</b>{p.showTime !== false && <span className="ml-2 text-slate-500">{10 + i}:00</span>}</div>) : <span className="text-slate-500">暂无时间线项</span>}
+      </div>;
       break;
-    case 'Timeline':
-      preview = <div className="relative h-full w-full py-2 pl-5 text-[9px] before:absolute before:bottom-3 before:left-[9px] before:top-3 before:w-px before:bg-slate-600">{['创建项目','配置模块','构建成功'].map((item, i) => <div key={item} className="relative mb-2"><i className={`absolute -left-[15px] top-1 h-2 w-2 rounded-full ${i === 2 ? 'bg-emerald-400' : 'bg-violet-400'}`}/><b>{item}</b><span className="ml-2 text-slate-500">{10 + i}:00</span></div>)}</div>;
+    }
+    case 'LineChart': {
+      const linePoints = chartPoints(p.points, [{ label: '一月', value: 24 }, { label: '二月', value: 48 }, { label: '三月', value: 32 }, { label: '四月', value: 66 }]);
+      const lineMax = Math.max(1, ...linePoints.map(point => point.value));
+      const lineCoords = linePoints.map((point, pointIndex) => `${4 + pointIndex * (172 / Math.max(1, linePoints.length - 1))},${64 - (point.value / lineMax) * 52}`);
+      preview = <Shell className="flex flex-col p-2">
+        {textValue(p.title, '') ? <b className="shrink-0 truncate text-[9px]">{title}</b> : null}
+        <svg viewBox="0 0 180 80" className="min-h-0 w-full flex-1" preserveAspectRatio="none" aria-hidden="true">
+          {p.showAxis !== false && <path d="M5 67H175M5 45H175M5 23H175" stroke="#334155" strokeWidth="1"/>}
+          {p.showArea !== false && <polyline points={`${lineCoords.join(' ')} ${4 + (lineCoords.length - 1) * (172 / Math.max(1, linePoints.length - 1))},68 4,68`} fill="rgba(139,92,246,.14)" stroke="none"/>}
+          <polyline points={lineCoords.join(' ')} fill="none" stroke="#22D3EE" strokeWidth="2"/>
+          {lineCoords.map((coord, coordIndex) => {
+            const [cx, cy] = coord.split(',');
+            const selected = numberValue(p.selectedIndex, -1) === coordIndex;
+            return <circle key={coordIndex} cx={cx} cy={cy} r={selected ? 3.4 : 2} fill={selected ? '#F8FAFC' : '#22D3EE'}/>;
+          })}
+        </svg>
+        <span className="flex shrink-0 justify-between text-[7px] text-slate-500">{linePoints.map((point, pointIndex) => <i key={pointIndex} className="truncate">{point.label}</i>)}</span>
+      </Shell>;
       break;
+    }
     case 'Statistic':
       preview = <Shell className="flex flex-col justify-center p-3"><span className="text-[9px] text-slate-400">{title}</span><span className="mt-1 text-2xl font-semibold text-white">{numberValue(p.value, 1280).toLocaleString()}</span><span className="text-[8px] text-emerald-400">↑ 12.5%</span></Shell>;
       break;
@@ -373,9 +465,6 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'BulletProgress':
       preview = <div className="flex h-full w-full flex-col justify-center gap-1"><div className="relative h-4 overflow-hidden rounded-sm bg-slate-700"><div className="h-full bg-cyan-500" style={{ width: `${value}%` }}/><i className="absolute inset-y-0 left-[80%] w-0.5 bg-amber-300"/></div><div className="flex justify-between text-[8px] text-slate-500"><span>0</span><span>目标 80</span><span>100</span></div></div>;
       break;
-    case 'LineChart':
-      preview = <Shell className="p-2"><svg viewBox="0 0 180 80" className="h-full w-full" preserveAspectRatio="none" aria-hidden="true"><path d="M5 67H175M5 45H175M5 23H175" stroke="#334155" strokeWidth="1"/><polyline points="6,61 35,48 63,54 90,25 120,37 148,16 174,26" fill="none" stroke="#22D3EE" strokeWidth="3"/><polyline points="6,68 35,58 63,40 90,47 120,25 148,35 174,12" fill="none" stroke="#A78BFA" strokeWidth="2"/></svg></Shell>;
-      break;
     case 'BarChart':
       preview = <Shell className="flex items-end justify-around gap-2 p-3"><span className="h-[38%] flex-1 rounded-t bg-violet-500/70"/><span className="h-[72%] flex-1 rounded-t bg-cyan-500/70"/><span className="h-[55%] flex-1 rounded-t bg-violet-400/70"/><span className="h-[88%] flex-1 rounded-t bg-emerald-500/70"/><span className="h-[64%] flex-1 rounded-t bg-cyan-400/70"/></Shell>;
       break;
@@ -385,9 +474,17 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'Calendar':
       preview = <Shell className="grid grid-rows-[auto_auto_1fr] p-2 text-[8px]"><div className="flex justify-between pb-1 font-semibold"><span>‹</span><span>2026 年 7 月</span><span>›</span></div><div className="grid grid-cols-7 text-center text-slate-500">{'一二三四五六日'.split('').map(d => <span key={d}>{d}</span>)}</div><div className="grid grid-cols-7 place-items-center">{Array.from({length: 21},(_,i)=><span key={i} className={i===14?'flex h-4 w-4 items-center justify-center rounded-full bg-violet-500 text-white':''}>{i+1}</span>)}</div></Shell>;
       break;
-    case 'Tree':
-      preview = <Shell className="p-2 text-[9px]"><div>⌄ 📁 项目</div><div className="pl-4 text-violet-200">⌄ 📁 源代码</div><div className="rounded bg-violet-500/20 py-0.5 pl-8">📄 main.lcpp</div><div className="pl-4 text-slate-400">› 📁 资源</div></Shell>;
+    case 'Tree': {
+      const treeItems = treePreviewItems(p.items, ['📁 项目', '  📄 main.lcpp', '  📁 资源']);
+      const treeSelected = numberValue(p.selectedIndex, -1);
+      preview = <Shell className="p-2 text-[9px]">
+        {treeItems.map((item, itemIndex) => <div key={itemIndex} className={`flex items-center gap-1 rounded py-0.5 ${itemIndex === treeSelected ? 'bg-violet-500/20 pl-2 text-violet-100' : 'text-slate-300'}`} style={{ marginLeft: `${item.level * 12}px` }}>
+          {p.showCheckbox === true || item.checked ? <i className={`inline-block h-2.5 w-2.5 shrink-0 rounded-sm border ${item.checked ? 'border-violet-400 bg-violet-500' : 'border-slate-600'}`}/> : null}
+          <span className="truncate">{item.label}</span>
+        </div>)}
+      </Shell>;
       break;
+    }
     case 'TreeSelect':
       preview = <Shell className="flex flex-col text-[9px]"><div className="flex h-7 items-center justify-between border-b border-slate-600 px-2"><span>项目 / 源代码</span><Chevron/></div><div className="p-1"><div>⌄ 📁 项目</div><div className="rounded bg-violet-500/25 py-1 pl-4">✓ 源代码</div></div></Shell>;
       break;
@@ -397,12 +494,43 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'Autocomplete':
       preview = <Shell className="flex flex-col text-[9px]"><div className="flex h-7 items-center border-b border-violet-400 px-2">new_<span className="text-violet-300">emoji</span><i className="animate-pulse">│</i></div><div className="p-1"><div className="rounded bg-violet-500/25 px-2 py-1">new_emoji.ui</div><div className="px-2 py-1 text-slate-500">new_project</div></div></Shell>;
       break;
-    case 'Mentions':
-      preview = <Shell className="flex flex-col p-2 text-[9px]"><span>分配给 <b className="rounded bg-violet-500/20 px-1 text-violet-300">@开发者</b></span><div className="mt-2 rounded border border-slate-600 bg-slate-800 p-1 shadow"><div className="rounded bg-violet-500/25 px-2 py-1">@开发者</div><div className="px-2 py-1 text-slate-500">@测试人员</div></div></Shell>;
+    case 'Mentions': {
+      const mentionsTrigger = textValue(p.trigger, '@');
+      const mentionsSuggestions = (Array.isArray(p.suggestions) ? p.suggestions.map(item => String(item ?? '')).filter(Boolean) : ['张三', '李四']).slice(0, 4);
+      const mentionsOpen = p.open === true;
+      preview = <Shell className="flex flex-col text-[9px]">
+        <div className="flex h-7 shrink-0 items-center gap-1 border-b border-violet-400 px-2">
+          <span className="text-violet-300">{mentionsTrigger}</span>
+          <span className="truncate text-slate-300">{textValue(p.value, '').replace(mentionsTrigger, '') || '提及成员…'}</span>
+          <i className="ml-auto animate-pulse text-violet-300">│</i>
+        </div>
+        {mentionsOpen && <div className="min-h-0 flex-1 overflow-hidden p-1">
+          {mentionsSuggestions.map((suggestion, suggestionIndex) => <div key={suggestionIndex} className={`flex items-center gap-1.5 rounded px-2 py-1 ${suggestionIndex === numberValue(p.selectedIndex, 0) ? 'bg-violet-500/25 text-violet-100' : 'text-slate-400'}`}>
+            <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[7px]">{suggestion.slice(0, 1)}</span>
+            <span className="truncate">{mentionsTrigger}{suggestion}</span>
+          </div>)}
+        </div>}
+      </Shell>;
       break;
-    case 'Cascader':
-      preview = <Shell className="grid grid-cols-3 text-[8px]"><div className="border-r border-slate-700 p-1"><b>界面 ›</b><div>数据 ›</div></div><div className="border-r border-slate-700 p-1"><b className="text-violet-300">控件 ›</b><div>布局 ›</div></div><div className="p-1"><b className="text-violet-300">按钮 ✓</b><div>文本</div></div></Shell>;
+    }
+    case 'Cascader': {
+      const cascaderOptions = (Array.isArray(p.options) ? p.options.map(item => String(item ?? '')).filter(Boolean) : ['界面 / 布局', '控件 / 数据', '组件 / 反馈']).slice(0, 5);
+      const cascaderSelected = textValue(p.selected, '');
+      preview = <Shell className="flex flex-col text-[9px]">
+        <div className="flex h-7 shrink-0 items-center justify-between border-b border-slate-600 px-2">
+          <span className={cascaderSelected ? 'truncate text-slate-200' : 'text-slate-500'}>{cascaderSelected || '请选择'}</span>
+          <Chevron />
+        </div>
+        <div className={`min-h-0 flex-1 overflow-hidden p-1 ${p.open === true ? '' : 'opacity-80'}`}>
+          {cascaderOptions.map((option, optionIndex) => <div key={optionIndex} className="flex items-center justify-between rounded px-2 py-1 text-slate-400">
+            <span className="truncate">{option}</span>
+            <span className="shrink-0 text-slate-600">›</span>
+          </div>)}
+          {p.searchable === true && <div className="px-2 pt-1 text-[8px] text-slate-600">🔍 {textValue(p.search, '搜索…')}</div>}
+        </div>
+      </Shell>;
       break;
+    }
     case 'DatePicker':
       preview = <InputShell><span>{textValue(p.value, '2026-07-28')}</span><CalendarIcon/></InputShell>;
       break;
@@ -418,9 +546,17 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'Dropdown':
       preview = <Shell className="flex flex-col text-[9px]"><div className="flex h-7 items-center justify-between border-b border-slate-600 px-2"><span>{content}</span><Chevron/></div><div className="p-1">{items.slice(0,3).map((item,i)=><div key={item} className={`rounded px-2 py-1 ${i===0?'bg-violet-500/25':''}`}>{item}</div>)}</div></Shell>;
       break;
-    case 'Anchor':
-      preview = <div className="relative h-full w-full border-l border-slate-700 pl-3 text-[9px]"><i className="absolute -left-px top-1 h-5 w-0.5 bg-violet-400"/><div className="mb-2 text-violet-300">基础用法</div><div className="mb-2 text-slate-500">组件属性</div><div className="text-slate-500">事件说明</div></div>;
+    case 'Anchor': {
+      const anchorItems = (Array.isArray(p.items) ? p.items.map(item => String(item ?? '')).filter(Boolean) : ['基础用法', '组件属性', '事件说明']).slice(0, 6);
+      const anchorActive = Math.max(0, Math.min(anchorItems.length - 1, numberValue(p.activeIndex, 0)));
+      preview = <div className="relative h-full w-full overflow-hidden border-l border-slate-700 pl-3 text-[9px]">
+        {anchorItems.map((item, itemIndex) => <React.Fragment key={`${item}-${itemIndex}`}>
+          <i className={`absolute -left-px h-4 w-0.5 ${itemIndex === anchorActive ? 'top-1 bg-violet-400' : 'hidden'}`}/>
+          <div className={`mb-2 ${itemIndex === anchorActive ? 'text-violet-300' : 'text-slate-500'}`}>{item}</div>
+        </React.Fragment>)}
+      </div>;
       break;
+    }
     case 'Backtop':
       preview = <div className="flex h-full w-full items-center justify-center"><span className="flex h-10 w-10 flex-col items-center justify-center rounded-full border border-violet-400/50 bg-violet-500/20 text-violet-200 shadow-lg"><b>↑</b><i className="text-[7px]">顶部</i></span></div>;
       break;
@@ -430,15 +566,37 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'PageHeader':
       preview = <Shell className="flex items-center gap-3 px-3"><span className="text-lg">‹</span><span><b className="block">{title}</b><i className="text-[8px] text-slate-500">{body}</i></span><span className="ml-auto"><MiniButton primary>操作</MiniButton></span></Shell>;
       break;
-    case 'Affix':
-      preview = <div className="relative h-full w-full rounded border border-dashed border-slate-600"><span className="absolute left-1/2 top-1 -translate-x-1/2 rounded bg-violet-500 px-3 py-1 text-[9px] text-white shadow">📌 固定内容</span><span className="absolute bottom-1 left-2 text-[8px] text-slate-600">滚动容器</span></div>;
+    case 'Affix': {
+      const affixLines = (Array.isArray(p.body) ? p.body.map(item => String(item ?? '')).filter(Boolean) : [textValue(p.body as unknown as string, '页面加载后固定在顶部')]).slice(0, 3);
+      preview = <div className="relative h-full w-full overflow-hidden rounded border border-dashed border-slate-600 text-[9px]">
+        <div className="absolute left-1/2 shadow" style={{ top: `${Math.max(2, Math.min(60, numberValue(p.offset, 8)))}%`, transform: 'translateX(-50%)' }}>
+          <span className="rounded bg-violet-500 px-3 py-1 text-white shadow">📌 {title}</span>
+          {affixLines.length > 0 && affixLines[0] && <div className="mt-1 max-w-[180px] truncate rounded bg-slate-800 px-2 py-0.5 text-[8px] text-slate-400">{affixLines[0]}</div>}
+        </div>
+        <span className="absolute bottom-1 left-2 text-[8px] text-slate-600">滚动容器</span>
+      </div>;
       break;
+    }
     case 'Watermark':
       preview = <Shell className="relative grid grid-cols-2 place-items-center bg-slate-900"><span className="-rotate-12 text-[10px] text-slate-600">new_emoji</span><span className="-rotate-12 text-[10px] text-slate-600">new_emoji</span><span className="-rotate-12 text-[10px] text-slate-600">new_emoji</span><span className="-rotate-12 text-[10px] text-slate-600">new_emoji</span><b className="absolute text-[10px] text-slate-300">{content}</b></Shell>;
       break;
-    case 'Tour':
-      preview = <div className="relative h-full w-full overflow-hidden rounded"><div className="absolute left-3 top-3 h-8 w-16 rounded border-2 border-violet-400 bg-violet-500/10 shadow-[0_0_0_999px_rgba(0,0,0,.3)]"/><div className="absolute bottom-2 right-2 w-[62%] rounded border border-slate-600 bg-slate-800 p-2 text-[8px] shadow-xl"><b className="block text-violet-200">功能引导 1/3</b><span className="text-slate-400">点击这里开始操作</span><div className="mt-1 text-right"><MiniButton primary>下一步</MiniButton></div></div></div>;
+    case 'Tour': {
+      const tourSteps = (Array.isArray(p.steps) ? p.steps.map(item => String(item ?? '')).filter(Boolean) : ['第一步：创建项目', '第二步：配置模块', '第三步：构建成功']);
+      const tourActive = Math.max(0, Math.min(tourSteps.length - 1, numberValue(p.activeIndex, 0)));
+      const tourOpen = p.open !== false;
+      preview = <div className="relative h-full w-full overflow-hidden rounded">
+        {tourOpen && p.mask !== false && <div className="absolute inset-0 bg-black/30"/>}
+        <div className="absolute bg-transparent" style={{ left: `${Math.max(2, Math.min(55, numberValue(p.targetX, 12)))}%`, top: `${Math.max(4, Math.min(60, numberValue(p.targetY, 12)))}%`, width: `${Math.max(14, Math.min(60, numberValue(p.targetWidth, 30)))}%`, height: `${Math.max(10, Math.min(60, numberValue(p.targetHeight, 28)))}%` }}>
+          <div className={`h-full w-full rounded border-2 ${tourOpen && p.mask !== false ? 'border-violet-400' : 'border-slate-500'} ${tourOpen && p.mask !== false ? 'bg-violet-500/10' : 'bg-transparent'}`}/>
+        </div>
+        <div className="absolute bottom-2 right-2 w-[62%] rounded border border-slate-600 bg-slate-800 p-2 text-[8px] shadow-xl">
+          <b className="block text-violet-200">功能引导 {tourActive + 1}/{tourSteps.length}</b>
+          <span className="text-slate-400">{tourSteps[tourActive]}</span>
+          <div className="mt-1 text-right"><MiniButton primary>下一步</MiniButton></div>
+        </div>
+      </div>;
       break;
+    }
     case 'Image':
       preview = <Shell className="relative flex items-center justify-center bg-gradient-to-br from-violet-950 via-slate-900 to-cyan-950"><svg viewBox="0 0 100 70" className="h-[75%] w-[75%] text-violet-300" aria-hidden="true"><circle cx="70" cy="18" r="7" fill="#FBBF24"/><path d="M8 62 35 30l17 19 11-12 29 25Z" fill="currentColor" opacity=".65"/><path d="M8 62 35 30l17 19" fill="none" stroke="#22D3EE" strokeWidth="2"/></svg><span className="absolute bottom-1 right-2 text-[8px] text-slate-500">图片</span></Shell>;
       break;

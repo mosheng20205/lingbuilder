@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>emoji项目主窗口 · 六标签页 + 分组导航 + 组件演示（UI 预览稿）</title>
+<style>
+  /* ===== 主题变量（深色 = Python 总览 DARK_THEME，浅色 = LIGHT_THEME） ===== */
+  :root {
+    --page-bg: #14172A;
+    --surface: #20243A;
+    --titlebar: #1B1F30;
+    --tabs-bg: #1E2336;
+    --statusbar: #1D2236;
+    --panel: #1E2336;
+    --panel-border: #343B5C;
+    --border: #3D4668;
+    --border-soft: #343B5C;
+    --text: #EAF0FF;
+    --muted: #8FA0C9;
+    --muted-2: #B9C5E8;
+    --accent: #7AA7FF;
+    --btn-primary: #5B8DEF;
+    --hover: #2A3050;
+    --active-item: #2B3453;
+    --active-item-text: #B9D0FA;
+    --field-bg: #1F2438;
+    --btn-bg: #3A425F;
+    --btn-text: #FFFFFF;
+    --track: #3A4260;
+    --th-bg: #333A58;
+    --th-text: #CFE0FF;
+    --ok-bg: #213D2F;   --ok-border: #63B77C;   --ok-text: #A8E6BE;
+    --blue-bg: #253654; --blue-border: #5C86D6; --blue-text: #EAF2FF;
+    --gold-bg: #443725; --gold-border: #D19A3D; --gold-text: #FFE4B5;
+    --neutral-bg: #22283D; --neutral-border: #465473; --neutral-text: #EAF0FF;
+    --pos-text: #7CE0A3;
+  }
+  [data-theme="light"] {
+    --page-bg: #DDE6F5;
+    --surface: #F7FAFF;
+    --titlebar: #FFFFFF;
+    --tabs-bg: #FFFFFF;
+    --statusbar: #EDF2FB;
+    --panel: #FFFFFF;
+    --panel-border: #D2DCEB;
+    --border: #D2DCEB;
+    --border-soft: #C8D4E8;
+    --text: #162033;
+    --muted: #7B8AA3;
+    --muted-2: #53627A;
+    --accent: #2F6FD6;
+    --btn-primary: #2F6FD6;
+    --hover: #F1F5FF;
+    --active-item: #DCE9FF;
+    --active-item-text: #1F3D64;
+    --field-bg: #FFFFFF;
+    --btn-bg: #E4EBF7;
+    --btn-text: #162033;
+    --track: #D7E0F0;
+    --th-bg: #E4EBF7;
+    --th-text: #1F3D64;
+    --ok-bg: #EAF8EF;   --ok-border: #69C587;   --ok-text: #185A2F;
+    --blue-bg: #EBF5FF; --blue-border: #78A8F8; --blue-text: #1F3D64;
+    --gold-bg: #FFF7E7; --gold-border: #F1B85B; --gold-text: #7A4B00;
+    --neutral-bg: #F8FBFF; --neutral-border: #B6C6DE; --neutral-text: #34435A;
+    --pos-text: #2E9E57;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--page-bg);
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--text);
+  }
+  .note { max-width: 1680px; margin: 0 auto 12px; font-size: 12.5px; color: var(--muted); }
+  .note b { color: var(--muted-2); }
+
+  /* ===== 窗口外壳 ===== */
+  .window {
+    max-width: 1680px; margin: 0 auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; box-shadow: 0 18px 50px rgba(0,0,0,.25);
+  }
+  .titlebar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; background: var(--titlebar); border-bottom: 1px solid var(--border);
+  }
+  .titlebar .title { font-size: 13px; color: var(--muted-2); }
+  .winbtns span { display: inline-block; width: 30px; text-align: center; color: var(--muted); font-size: 12px; cursor: default; }
+  .winbtns span.close:hover { background: #E36C6C; color: #fff; border-radius: 3px; }
+
+  /* ===== 线条样式标签头（居中）+ 主题切换 ===== */
+  .tabs {
+    position: relative;
+    display: flex; justify-content: center; gap: 4px;
+    border-bottom: 1px solid var(--border); background: var(--tabs-bg);
+  }
+  .tab {
+    position: relative; padding: 11px 26px; font-size: 13.5px; color: var(--muted-2);
+    cursor: pointer; user-select: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); font-weight: bold; }
+  .tab.active::after {
+    content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px;
+    height: 2px; background: var(--accent); border-radius: 2px;
+  }
+  .theme-switch {
+    position: absolute; right: 12px; top: 5px; z-index: 5;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12.5px; color: var(--muted-2);
+  }
+  .ts-btn {
+    border: 1px solid var(--border-soft); background: var(--field-bg); color: var(--muted-2);
+    border-radius: 6px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+  }
+  .ts-btn:hover { background: var(--hover); }
+  .ts-btn.on { background: var(--active-item); color: var(--active-item-text); border-color: var(--accent); }
+
+  /* ===== 内容页：组件导航 + 演示面板 ===== */
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-body { display: flex; gap: 22px; padding: 18px 24px; min-height: 600px; align-items: stretch; }
+
+  .navpanel {
+    width: 330px; flex: none;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
+    padding: 10px; display: flex; flex-direction: column; gap: 2px; align-self: flex-start;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 12px; border-radius: 5px; font-size: 13px;
+    color: var(--text); cursor: pointer; user-select: none;
+  }
+  .nav-item:hover { background: var(--hover); }
+  .nav-item.active { background: var(--active-item); color: var(--active-item-text); }
+
+  .preview {
+    flex: 1; min-width: 0;
+    border: 1px dashed var(--border); border-radius: 8px;
+    display: flex; flex-direction: column; gap: 12px; padding: 18px 22px;
+  }
+  .demo-head { text-align: center; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+  .demo-head .p-emoji { font-size: 34px; line-height: 1.1; }
+  .demo-head .p-title { font-size: 18px; font-weight: bold; }
+  .demo-head .p-title small { color: var(--muted); font-weight: normal; margin-left: 7px; font-size: 13.5px; }
+  .demo-head .p-desc { color: var(--muted-2); font-size: 12.5px; }
+  .demo-stage { flex: 1; display: flex; overflow: auto; padding: 4px 2px 8px; }
+  .demo-view { display: none; width: 100%; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .demo-view.active { display: flex; }
+  .demo-view.col { flex-direction: column; align-items: stretch; max-width: 680px; }
+  .hint-note { font-size: 11.5px; color: var(--muted); }
+
+  /* ===== 状态栏 ===== */
+  .statusbar {
+    padding: 7px 20px; border-top: 1px solid var(--border); background: var(--statusbar);
+    font-size: 12px; color: var(--muted);
+  }
+
+  /* ===== 演示组件样式 ===== */
+  .btn {
+    border: none; border-radius: 4px; padding: 6px 14px; font-size: 12.5px;
+    color: #fff; cursor: pointer; font-family: inherit; background: var(--btn-bg); color: var(--btn-text);
+  }
+  .btn.b-primary { background: var(--btn-primary); color: #fff; }
+  .btn.b-success { background: #5FAF72; color: #fff; }
+  .btn.b-warning { background: #D19A3D; color: #fff; }
+  .btn.b-danger  { background: #E36C6C; color: #fff; }
+  .btn.b-info    { background: #6B7A99; color: #fff; }
+  .btn:hover { filter: brightness(1.1); }
+
+  .blk { border-radius: 4px; padding: 8px; display: flex; align-items: center; justify-content: center; font-size: 12.5px; border: 1px solid; }
+  .blk-blue    { background: var(--blue-bg); border-color: var(--blue-border); color: var(--blue-text); }
+  .blk-gold    { background: var(--gold-bg); border-color: var(--gold-border); color: var(--gold-text); }
+  .blk-green   { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
+  .blk-neutral { background: var(--neutral-bg); border-color: var(--neutral-border); color: var(--neutral-text); }
+
+  .lnk { color: var(--accent); font-size: 13px; cursor: pointer; }
+  .lnk:hover { text-decoration: underline; }
+  .lnk.l-dis { color: var(--muted); cursor: not-allowed; }
+
+  .field {
+    display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--field-bg); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); padding: 7px 11px; font-size: 13px; min-width: 220px;
+  }
+  .caret { color: var(--muted); font-size: 10px; }
+  .inp {
+    background: var(--field-bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+    padding: 7px 11px; font-size: 13px; width: 100%; font-family: inherit; outline: none;
+  }
+  .inp:focus { border-color: var(--btn-primary); }
+
+  .ck { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .ckbox { width: 15px; height: 15px; border: 1px solid var(--border-soft); border-radius: 3px; display: grid; place-items: center; font-size: 11px; color: #fff; flex: none; }
+  .ckbox.on { background: var(--btn-primary); border-color: var(--btn-primary); }
+  .rdo { width: 14px; height: 14px; border: 1px solid var(--border-soft); border-radius: 50%; flex: none; }
+  .rdo.on { border-color: var(--btn-primary); box-shadow: inset 0 0 0 3.5px var(--field-bg); background: var(--btn-primary); }
+
+  .sw { width: 36px; height: 20px; border-radius: 10px; background: var(--border-soft); position: relative; display: inline-block; flex: none; }
+  .sw i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+  .sw.on { background: var(--btn-primary); }
+  .sw.on i { left: auto; right: 2px; }
+
+  .slider { position: relative; width: 100%; height: 5px; background: var(--track); border-radius: 3px; }
+  .slider-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+  .slider-thumb { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 14px; height: 14px; background: #fff; border: 2px solid var(--accent); border-radius: 50%; }
+
+  .numbox { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .numbox .btn { border-radius: 0; padding: 4px 12px; }
+  .numv { padding: 4px 18px; font-size: 13px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); display: grid; place-items: center; min-width: 46px; }
+
+  .igroup { display: flex; width: 100%; }
+  .ig-pre { background: var(--th-bg); color: var(--th-text); border: 1px solid var(--border); padding: 7px 12px; font-size: 13px; border-radius: 4px 0 0 4px; display: grid; place-items: center; }
+  .ig-mid { border-radius: 0; flex: 1; }
+
+  .tagbox { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 6px 9px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; background: var(--field-bg); }
+  .tag { background: var(--th-bg); color: var(--th-text); border: 1px solid var(--border-soft); border-radius: 3px; padding: 2px 8px; font-size: 11.5px; }
+  .tag i { opacity: .6; font-style: normal; margin-left: 2px; }
+
+  .stars { color: #F5B041; font-size: 20px; letter-spacing: 2px; }
+  .stars .off { color: var(--track); }
+  .swatch { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border-soft); }
+
+  .ac { width: 100%; border: 1px solid var(--border); border-radius: 4px; background: var(--field-bg); font-size: 13px; display: flex; flex-direction: column; overflow: hidden; }
+  .ac span { padding: 5px 12px; }
+  .ac .on { background: var(--btn-primary); color: #fff; }
+
+  .cal-head { font-size: 13px; font-weight: bold; margin-bottom: 5px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 46px); gap: 3px; font-size: 12px; text-align: center; }
+  .cal-w { color: var(--muted); }
+  .cal-d { padding: 4px 0; border-radius: 4px; }
+  .cal-d.today { background: var(--btn-primary); color: #fff; font-weight: bold; }
+
+  .tree { font-size: 13px; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+  .tree .t2 { padding-left: 26px; color: var(--muted-2); }
+
+  .tr-box { flex: 1; border: 1px solid var(--border); border-radius: 4px; background: var(--field-bg); font-size: 12.5px; padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; min-width: 170px; }
+  .tr-box b { font-size: 11.5px; color: var(--muted); }
+  .tr-mid { display: flex; flex-direction: column; gap: 5px; }
+
+  .upload { width: 100%; border: 1px dashed var(--border-soft); border-radius: 6px; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 13px; }
+  .imgph { flex: 1; height: 150px; border-radius: 6px; background: linear-gradient(135deg, #31456e, rgba(122,167,255,.35)); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12.5px; gap: 3px; }
+  .car { position: relative; width: 100%; height: 130px; border-radius: 6px; background: linear-gradient(120deg, var(--blue-bg), var(--btn-primary)); display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; }
+  .car-arrow { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,.28); border: none; color: #fff; border-radius: 4px; width: 22px; height: 44px; font-size: 12px; cursor: pointer; }
+  .car-dots { position: absolute; bottom: 6px; left: 0; right: 0; display: flex; justify-content: center; gap: 4px; }
+  .car-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.4); }
+  .car-dots i.on { background: #fff; }
+
+  .pill { padding: 3px 12px; border-radius: 10px; font-size: 12.5px; border: 1px solid; }
+  .p-success { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
+
+  .badge-wrap { position: relative; font-size: 14px; margin-right: 16px; }
+  .bdg { position: absolute; top: -9px; right: -22px; background: #E36C6C; color: #fff; font-size: 10px; font-style: normal; border-radius: 9px; padding: 1px 5px; }
+
+  .p-label { display: flex; justify-content: space-between; font-size: 12.5px; width: 100%; }
+  .pbar { width: 100%; height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; }
+  .pbar > div { height: 100%; background: var(--accent); }
+
+  .avat { width: 42px; height: 42px; border-radius: 50%; background: var(--btn-primary); color: #fff; display: grid; place-items: center; font-size: 15px; }
+
+  .sk { display: inline-block; background: var(--track); border-radius: 4px; height: 10px; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+
+  .desc { display: grid; grid-template-columns: 90px 1fr; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; width: 100%; font-size: 12.5px; }
+  .desc span { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .desc span:nth-last-child(-n+2) { border-bottom: none; }
+  .desc .dl { background: var(--th-bg); color: var(--th-text); border-right: 1px solid var(--border); }
+
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; border: 1px solid var(--border); }
+  .tbl th { background: var(--th-bg); color: var(--th-text); padding: 6px 10px; text-align: left; }
+  .tbl td { border-top: 1px solid var(--border); padding: 6px 10px; }
+
+  .lb { width: 100%; border: 1px solid var(--border); border-radius: 4px; background: var(--field-bg); font-size: 13px; display: flex; flex-direction: column; }
+  .lb b { padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .lb span { padding: 5px 12px; }
+  .lb .on { background: var(--btn-primary); color: #fff; }
+
+  .isc { width: 100%; display: flex; align-items: center; gap: 9px; border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-size: 12.5px; }
+  .isc span { flex: 1; color: var(--muted-2); }
+  .isc em { font-style: normal; color: var(--accent); }
+
+  .dcard { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--field-bg); overflow: hidden; font-size: 13px; }
+  .dcard b { display: block; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .dcard span { display: block; padding: 9px 12px; color: var(--muted-2); }
+
+  .clp { width: 100%; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; font-size: 13px; }
+  .clp-h { padding: 7px 12px; background: var(--th-bg); color: var(--th-text); }
+  .clp-b { padding: 7px 12px; color: var(--muted-2); border-bottom: 1px solid var(--border); }
+
+  .tl-i { display: flex; gap: 10px; align-items: flex-start; }
+  .tl-i i { width: 8px; height: 8px; border-radius: 50%; background: var(--btn-primary); margin-top: 6px; box-shadow: 0 0 0 2px var(--track); flex: none; }
+  .tl-i b { font-size: 13px; font-weight: normal; }
+
+  .big { font-size: 28px; font-weight: bold; line-height: 1.2; }
+  .big small { font-size: 12.5px; color: var(--muted-2); font-weight: normal; }
+
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #5FD08A; box-shadow: 0 0 0 3px rgba(95,208,138,.2); flex: none; }
+
+  .ring { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  .ring-in { width: 70px; height: 70px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 15px; font-weight: bold; }
+
+  .bullet { position: relative; width: 100%; height: 14px; background: var(--track); border-radius: 7px; }
+  .bf { height: 100%; background: var(--btn-primary); border-radius: 7px; }
+  .bullet i { position: absolute; top: -3px; width: 2px; height: 20px; background: #D19A3D; }
+  .bullet span { position: absolute; right: 8px; top: -1px; font-size: 10px; color: #fff; }
+
+  .chart { width: 100%; height: 90px; background: var(--field-bg); border-radius: 4px; }
+  .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); width: 100%; }
+  .bars { display: flex; gap: 40px; align-items: flex-end; height: 104px; padding-left: 10px; }
+  .bar { width: 36px; background: linear-gradient(var(--accent), var(--btn-primary)); border-radius: 3px 3px 0 0; position: relative; }
+  .bar b { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 10.5px; color: var(--muted-2); font-weight: normal; }
+  .legend { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+
+  .hoverwrap { position: relative; }
+  .bubble {
+    display: none; position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+    background: var(--th-bg); color: var(--th-text); border: 1px solid var(--border-soft); border-radius: 6px; padding: 8px 12px;
+    font-size: 12px; white-space: nowrap; z-index: 40; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  }
+  .hoverwrap:hover .bubble { display: block; }
+  .bubble b { display: block; margin-bottom: 2px; }
+  .pc-btns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 7px; }
+  .pc-btns .btn { padding: 2px 9px; font-size: 11px; }
+
+  .menu-pop {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0; background: var(--th-bg); color: var(--th-text);
+    border: 1px solid var(--border-soft); border-radius: 6px; padding: 4px; min-width: 130px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.3); z-index: 40;
+  }
+  .menu-pop span { display: block; padding: 6px 12px; border-radius: 4px; font-size: 12.5px; }
+  .menu-pop span:hover { background: var(--btn-primary); color: #fff; }
+  .hoverwrap:hover .menu-pop { display: block; }
+
+  .vmenu { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; width: 170px; font-size: 13px; }
+  .vmenu span { padding: 7px 14px; }
+  .vmenu .on { background: var(--btn-primary); color: #fff; }
+
+  .anch { display: flex; flex-direction: column; gap: 7px; font-size: 13px; border-left: 2px solid var(--border); padding-left: 12px; }
+  .anch .on { color: var(--accent); font-weight: bold; }
+
+  .backtop { width: 46px; height: 46px; border-radius: 50%; background: var(--btn-primary); color: #fff; border: none; font-size: 16px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,.25); }
+
+  .seg { display: inline-flex; background: var(--field-bg); border: 1px solid var(--border); border-radius: 6px; padding: 3px; gap: 2px; }
+  .seg span { padding: 4px 17px; border-radius: 4px; font-size: 13px; color: var(--muted-2); }
+  .seg .on { background: var(--btn-primary); color: #fff; }
+
+  .phead { width: 100%; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 8px; font-size: 13.5px; }
+
+  .crumb { font-size: 13px; color: var(--muted-2); }
+  .crumb.on { color: var(--text); }
+  .sep { color: var(--muted); margin: 0 8px; }
+
+  .mini-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); }
+  .mini-tabs span { padding: 5px 2px; font-size: 13px; color: var(--muted-2); }
+  .mini-tabs .on { color: var(--text); border-bottom: 2px solid var(--accent); }
+
+  .pg { min-width: 29px; height: 29px; border-radius: 4px; border: 1px solid var(--border); background: var(--field-bg); color: var(--muted-2); font-size: 12.5px; cursor: pointer; font-family: inherit; }
+  .pg.on { background: var(--btn-primary); color: #fff; border-color: var(--btn-primary); }
+  .pg-ellipsis { color: var(--muted); padding: 0 2px; }
+
+  .steps { display: flex; align-items: center; width: 100%; }
+  .stp { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12.5px; }
+  .stp i { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--track); color: var(--muted-2); font-style: normal; font-size: 11.5px; }
+  .stp.done i { background: #5FAF72; color: #fff; }
+  .stp.cur i { background: var(--btn-primary); color: #fff; box-shadow: 0 0 0 3px rgba(91,141,239,.28); }
+  .stp-line { flex: 1; height: 2px; background: var(--track); margin: 0 8px 20px; }
+  .stp-line.done { background: #5FAF72; }
+
+  .alert { width: 100%; display: flex; align-items: center; gap: 8px; background: var(--ok-bg); border: 1px solid var(--ok-border); border-radius: 4px; padding: 9px 12px; font-size: 13px; }
+  .alert span { color: var(--ok-text); flex: 1; font-size: 12.5px; }
+  .alert i { opacity: .6; font-style: normal; }
+
+  .res { width: 48px; height: 48px; border-radius: 50%; background: var(--ok-bg); border: 2px solid var(--ok-border); color: var(--pos-text); display: grid; place-items: center; font-size: 21px; }
+
+  .spin { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--track); border-top-color: var(--accent); animation: rot 1s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  .tour { width: 100%; border: 1px solid var(--blue-border); background: var(--blue-bg); border-radius: 6px; padding: 10px 12px; font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; color: var(--blue-text); }
+  .tour span { opacity: .8; }
+  .tour .on { opacity: 1; font-weight: bold; }
+
+  .infobox { border: 1px solid var(--blue-border); background: var(--blue-bg); color: var(--blue-text); border-radius: 6px; padding: 10px 14px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; width: 100%; }
+  .affix { border: 1px solid var(--gold-border); background: var(--gold-bg); color: var(--gold-text); border-radius: 6px; padding: 10px 14px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+  .space-box { width: 120px; height: 40px; border: 1px dashed var(--border-soft); border-radius: 4px; display: grid; place-items: center; font-size: 11.5px; color: var(--muted); }
+  .div-line { display: flex; align-items: center; gap: 10px; width: 100%; color: var(--muted-2); font-size: 12.5px; }
+  .div-line i { flex: 1; height: 1px; background: var(--border-soft); }
+  .wm { position: relative; width: 100%; height: 110px; border: 1px solid var(--neutral-border); border-radius: 6px; overflow: hidden; display: grid; place-items: center; font-size: 13px; }
+  .wm em { position: absolute; color: var(--accent); opacity: .16; font-size: 14px; transform: rotate(-18deg); white-space: nowrap; font-style: normal; }
+
+  /* ===== 弹层（反馈流程演示交互） ===== */
+  #toast-top { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  #toast-right { position: fixed; top: 18px; right: 18px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--th-bg); border: 1px solid var(--border-soft); border-left: 3px solid var(--accent); color: var(--text);
+    padding: 10px 16px; border-radius: 6px; font-size: 13px; box-shadow: 0 6px 18px rgba(0,0,0,.3); animation: tin .25s;
+  }
+  .toast small { display: block; color: var(--muted-2); margin-top: 2px; }
+  @keyframes tin { from { opacity: 0; transform: translateY(-8px); } }
+  .toast.out { opacity: 0; transition: .3s; }
+
+  #modal { position: fixed; inset: 0; background: rgba(10,12,22,.55); display: none; z-index: 1000; place-items: center; }
+  #modal.show { display: grid; }
+  .modal-box { background: var(--panel); border: 1px solid var(--border-soft); border-radius: 10px; padding: 20px 22px; width: 360px; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+  .modal-box h3 { margin: 0 0 6px; font-size: 15px; }
+  .modal-box p { margin: 0 0 16px; font-size: 12.5px; color: var(--muted-2); }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; }
+
+  #doverlay { position: fixed; inset: 0; background: rgba(10,12,22,.45); display: none; z-index: 999; }
+  #doverlay.show { display: block; }
+  #drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 320px; background: var(--panel); border-left: 1px solid var(--border-soft); z-index: 1000; transform: translateX(105%); transition: .25s; padding: 18px; }
+  #drawer.show { transform: none; }
+  #drawer h3 { margin: 0 0 8px; font-size: 15px; }
+</style>
+</head>
+<body>
+
+<div class="note">📎 <b>UI 预览稿（HTML 模拟）</b> — 六个「线条」标签页 + Python 总览左侧同款组件导航；<b>点击组件项或切换标签页，右侧面板展示该组件的完整演示</b>（对齐 Python 总览对应 showcase）；标签栏右侧为 🎨 主题切换（浅色 / 深色 / 跟随系统）。</div>
+
+<div class="window">
+  <div class="titlebar">
+    <div class="title">🧩 emoji项目主窗口</div>
+    <div class="winbtns"><span>—</span><span>□</span><span class="close">✕</span></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-page="p1">基础布局</div>
+    <div class="tab" data-page="p2">表单输入</div>
+    <div class="tab" data-page="p3">选择媒体</div>
+    <div class="tab" data-page="p4">数据展示</div>
+    <div class="tab" data-page="p5">图表导航</div>
+    <div class="tab" data-page="p6">反馈流程</div>
+    <div class="theme-switch">
+      <span>🎨 主题</span>
+      <button class="ts-btn" data-mode="light">☀️ 浅色</button>
+      <button class="ts-btn on" data-mode="dark">🌙 深色</button>
+      <button class="ts-btn" data-mode="system">💻 系统</button>
+    </div>
+  </div>
+
+  <!-- ================= 1 基础布局（17） ================= -->
+  <div class="page active" id="p1" data-cat="基础布局">
+    <div class="page-body">
+      <div class="navpanel">
+        <div class="nav-item active" data-emoji="🧱" data-cn="面板" data-en="Panel" data-sum="面板容器">🧱 面板 Panel</div>
+        <div class="nav-item" data-emoji="🚀" data-cn="按钮" data-en="Button" data-sum="按钮交互">🚀 按钮 Button</div>
+        <div class="nav-item" data-emoji="💡" data-cn="信息框" data-en="InfoBox" data-sum="信息提示">💡 信息框 InfoBox</div>
+        <div class="nav-item" data-emoji="🔤" data-cn="文本" data-en="Text" data-sum="文本渲染">🔤 文本 Text</div>
+        <div class="nav-item" data-emoji="🔗" data-cn="链接" data-en="Link" data-sum="链接状态">🔗 链接 Link</div>
+        <div class="nav-item" data-emoji="⭐" data-cn="图标" data-en="Icon" data-sum="图标 / emoji">⭐ 图标 Icon</div>
+        <div class="nav-item" data-emoji="↔️" data-cn="间距" data-en="Space" data-sum="占位间距">↔️ 间距 Space</div>
+        <div class="nav-item" data-emoji="📦" data-cn="容器" data-en="Container" data-sum="内容容器">📦 容器 Container</div>
+        <div class="nav-item" data-emoji="📌" data-cn="顶栏" data-en="Header" data-sum="顶栏容器">📌 顶栏 Header</div>
+        <div class="nav-item" data-emoji="🧭" data-cn="侧边栏" data-en="Aside" data-sum="侧边栏容器">🧭 侧边栏 Aside</div>
+        <div class="nav-item" data-emoji="📄" data-cn="主区域" data-en="Main" data-sum="主要区域容器">📄 主区域 Main</div>
+        <div class="nav-item" data-emoji="✅" data-cn="底栏" data-en="Footer" data-sum="底栏容器">✅ 底栏 Footer</div>
+        <div class="nav-item" data-emoji="🧭" data-cn="布局" data-en="Layout" data-sum="自动布局">🧭 布局 Layout</div>
+        <div class="nav-item" data-emoji="▣" data-cn="边框" data-en="Border" data-sum="边框区域">▣ 边框 Border</div>
+        <div class="nav-item" data-emoji="➖" data-cn="分割线" data-en="Divider" data-sum="分割线">➖ 分割线 Divider</div>
+        <div class="nav-item" data-emoji="📌" data-cn="固钉" data-en="Affix" data-sum="固钉区域">📌 固钉 Affix</div>
+        <div class="nav-item" data-emoji="💧" data-cn="水印" data-en="Watermark" data-sum="水印背景">💧 水印 Watermark</div>
+      </div>
+      <div class="preview">
+        <div class="demo-head">
+          <div class="p-emoji">🧱</div>
+          <div class="p-title">面板 <small>Panel</small></div>
+          <div class="p-desc">面板容器 · 基础布局 分组 · 已选组件 1 / 17</div>
+        </div>
+        <div class="demo-stage">
+          <div class="demo-view col active">
+            <div class="blk blk-blue" style="width:100%;padding:26px;font-size:13.5px">🧱 面板内容（底色 / 边框 / 圆角 / 内边距 可调）</div>
+            <div style="display:flex;gap:12px">
+              <div class="blk blk-gold" style="flex:1;padding:20px">金色面板</div>
+              <div class="blk blk-green" style="flex:1;padding:20px">绿色面板</div>
+              <div class="blk blk-neutral" style="flex:1;padding:20px">中性面板</div>
+            </div>
+          </div>
+          <div class="demo-view col">
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn">默认按钮</button><button class="btn b-primary">🚀 主要按钮</button>
+              <button class="btn b-success">✅ 成功按钮</button><button class="btn b-info">💬 信息按钮</button>
+              <button class="btn b-warning">⚠️ 警告按钮</button><button class="btn b-danger">🧯 危险按钮</button>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn" style="border-radius:18px">圆角按钮</button>
+              <button class="btn b-primary" style="border-radius:18px">⏳ 加载中…</button>
+              <button class="btn" disabled style="opacity:.45;cursor:not-allowed">禁用按钮</button>
+              <button class="btn b-primary" style="width:42px;height:42px;border-radius:50%;padding:0">🚀</button>
+            </div>
+          </div>
+          <div class="demo-view col">
+            <div class="infobox"><b>💡 提示</b><span style="opacity:.85;font-size:12.5px">支持中文与 emoji</span></div>
+          </div>
+          <div class="demo-view"><span style="font-size:20px">彩色 emoji 文本 🌈</span></div>
+          <div class="demo-view"><span class="lnk">🔗 打开文档导航</span><span class="lnk">主要链接 🚀</span><span class="lnk l-dis">禁用链接</span></div>
+          <div class="demo-view" style="justify-content:center"><span style="font-size:52px">⭐</span></div>
+          <div class="demo-view"><div class="space-box">↔️ 90 × 36</div><span class="hint-note">占位空白，撑开布局</span></div>
+          <div class="demo-view col"><div style="border:1px solid var(--neutral-border);border-radius:4px;overflow:hidden;width:100%">
+            <div class="blk blk-blue" style="border:none;border-bottom:1px solid var(--neutral-border);border-radius:0;padding:10px">📌 顶栏</div>
+            <div class="blk blk-neutral" style="border:none;border-radius:0;padding:24px">📦 容器内容（纵向 / 横向流式排列）</div>
+          </div></div>
+          <div class="demo-view col"><div class="blk blk-blue" style="width:100%;justify-content:space-between;padding:12px 16px">
+            <span>📌 项目看板</span><span style="font-size:12.5px">🔍 ➕ ⚙</span>
+          </div></div>
+          <div class="demo-view"><div class="blk blk-gold" style="width:130px;height:100px">🧭 侧边栏</div>
+          <div class="blk blk-neutral" style="flex:1;height:100px">📄 相邻主区域</div></div>
+          <div class="demo-view col"><div class="blk blk-neutral" style="width:100%;height:96px">📄 主要区域（表格 / 表单 / 详情等核心内容）</div></div>
+          <div class="demo-view col"><div class="blk blk-green" style="width:100%;justify-content:space-between;padding:10px 14px">
+            <span>✅ 已自动保存草稿</span>
+            <span><button class="btn" style="padding:3px 10px;font-size:11.5px">取消</button> <button class="btn b-primary" style="padding:3px 10px;font-size:11.5px">提交</button></span>
+          </div></div>
+          <div class="demo-view"><div class="blk blk-blue" style="flex:1;height:80px">左</div>
+          <div class="blk blk-gold" style="flex:1;height:80px">中</div>
+          <div class="blk blk-green" style="flex:1;height:80px">右</div></div>
+          <div class="demo-view col"><div style="border:2px solid var(--blue-border);border-radius:8px;padding:16px;width:100%;font-size:13px">▣ 边框区域（四边 / 单边 / 虚线）</div></div>
+          <div class="demo-view col"><div class="div-line"><i></i><span>⚖️ 分区</span><i></i></div></div>
+          <div class="demo-view"><div class="affix">📌 固钉<b style="font-size:12px">重要操作始终可见</b></div>
+          <span class="hint-note">滚动超过阈值后吸顶</span></div>
+          <div class="demo-view col"><div class="wm">
+            <em style="top:8px;left:10px">new_emoji 💧</em><em style="top:40px;left:120px">new_emoji 💧</em><em style="bottom:6px;left:250px">new_emoji 💧</em>
+            <b>📄 文档内容区域</b>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 2 表单输入（15） ================= -->
+  <div class="page" id="p2" data-cat="表单输入">
+    <div class="page-body">
+      <div class="navpanel">
+        <div class="nav-item active" data-emoji="☑️" data-cn="复选框" data-en="Checkbox" data-sum="复选框">☑️ 复选框 Checkbox</div>
+        <div class="nav-item" data-emoji="🔘" data-cn="单选框" data-en="Radio" data-sum="单选项">🔘 单选框 Radio</div>
+        <div class="nav-item" data-emoji="🎚️" data-cn="开关" data-en="Switch" data-sum="开关">🎚️ 开关 Switch</div>
+        <div class="nav-item" data-emoji="🎛️" data-cn="滑块" data-en="Slider" data-sum="滑块">🎛️ 滑块 Slider</div>
+        <div class="nav-item" data-emoji="🔢" data-cn="数字输入" data-en="InputNumber" data-sum="数字输入">🔢 数字输入 InputNumber</div>
+        <div class="nav-item" data-emoji="⌨️" data-cn="输入框" data-en="Input" data-sum="增强输入">⌨️ 输入框 Input</div>
+        <div class="nav-item" data-emoji="🔗" data-cn="组合输入" data-en="InputGroup" data-sum="组合输入">🔗 组合输入 InputGroup</div>
+        <div class="nav-item" data-emoji="🏷️" data-cn="标签输入" data-en="InputTag" data-sum="标签输入">🏷️ 标签输入 InputTag</div>
+        <div class="nav-item" data-emoji="📋" data-cn="下拉选择" data-en="Select" data-sum="下拉选择">📋 下拉选择 Select</div>
+        <div class="nav-item" data-emoji="🧾" data-cn="虚拟选择" data-en="SelectV2" data-sum="虚拟选择（大数据量）">🧾 虚拟选择 SelectV2</div>
+        <div class="nav-item" data-emoji="⭐" data-cn="评分" data-en="Rate" data-sum="评分">⭐ 评分 Rate</div>
+        <div class="nav-item" data-emoji="🎨" data-cn="颜色选择" data-en="ColorPicker" data-sum="颜色选择">🎨 颜色选择 ColorPicker</div>
+        <div class="nav-item" data-emoji="🔎" data-cn="自动完成" data-en="Autocomplete" data-sum="自动完成">🔎 自动完成 Autocomplete</div>
+        <div class="nav-item" data-emoji="@" data-cn="提及输入" data-en="Mentions" data-sum="提及输入">@ 提及输入 Mentions</div>
+        <div class="nav-item" data-emoji="🧭" data-cn="级联选择" data-en="Cascader" data-sum="级联选择">🧭 级联选择 Cascader</div>
+      </div>
+      <div class="preview">
+        <div class="demo-head">
+          <div class="p-emoji">☑️</div>
+          <div class="p-title">复选框 <small>Checkbox</small></div>
+          <div class="p-desc">复选框 · 表单输入 分组 · 已选组件 1 / 15</div>
+        </div>
+        <div class="demo-stage">
+          <div class="demo-view col active" style="gap:10px">
+            <label class="ck"><span class="ckbox on">✓</span>同意协议 ✅</label>
+            <label class="ck"><span class="ckbox"></span>备选项 🔔</label>
+            <label class="ck" style="opacity:.5"><span class="ckbox on">✓</span>选中且禁用</label>
+          </div>
+          <div class="demo-view col" style="gap:10px">
+            <label class="ck"><span class="rdo on"></span>方案 A</label>
+            <label class="ck"><span class="rdo"></span>方案 B</label>
+          </div>
+          <div class="demo-view"><span class="sw on"><i></i></span><span style="font-size:13px">启用通知</span>
+          <span class="sw"><i></i></span><span class="hint-note">关闭</span></div>
+          <div class="demo-view col"><div class="slider"><div class="slider-fill" style="width:68%"></div><div class="slider-thumb" style="left:68%"></div></div>
+          <span class="hint-note">满意度 0 ~ 100 · 当前 68</span></div>
+          <div class="demo-view"><div class="numbox"><button class="btn">−</button><span class="numv">8</span><button class="btn">＋</button></div>
+          <span class="hint-note">数量 · 0 ~ 99</span></div>
+          <div class="demo-view col"><input class="inp" value="你好 👋"><span class="hint-note">占位提示：请输入内容</span></div>
+          <div class="demo-view col"><div class="igroup"><span class="ig-pre">前置</span><input class="inp ig-mid" placeholder="请输入关键词"><button class="btn b-primary" style="border-radius:0 4px 4px 0">🔎</button></div></div>
+          <div class="demo-view col"><div class="tagbox">
+            <span class="tag">设计 <i>×</i></span><span class="tag">D2D <i>×</i></span><span class="tag">emoji <i>×</i></span>
+            <span class="hint-note">输入标签…</span>
+          </div></div>
+          <div class="demo-view"><div class="field" style="flex:1">北京 <span class="caret">▾</span></div></div>
+          <div class="demo-view"><div class="field" style="flex:1">弹窗 <span class="caret">▾</span></div></div>
+          <div class="demo-view"><span class="stars">★★★★<span class="off">☆</span></span><span class="hint-note">体验评分 4 / 5</span></div>
+          <div class="demo-view"><span class="swatch" style="background:#3B82F6"></span><div class="field" style="flex:1">主题色 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%">北<span class="caret">▾</span></div>
+          <div class="ac"><span class="on">北京</span><span>北海</span><span>北极星</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%"><span><b style="color:var(--accent)">@</b>设计师</span><span class="caret">▾</span></div>
+          <span class="hint-note">候选：设计师 / 开发者 / 测试同学</span></div>
+          <div class="demo-view col"><div class="field" style="width:100%">华东 / 上海 / 浦东 <span class="caret">▾</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 3 选择媒体（14） ================= -->
+  <div class="page" id="p3" data-cat="选择媒体">
+    <div class="page-body">
+      <div class="navpanel">
+        <div class="nav-item active" data-emoji="📅" data-cn="日历" data-en="Calendar" data-sum="日历全样式">📅 日历 Calendar</div>
+        <div class="nav-item" data-emoji="🌳" data-cn="树形控件" data-en="Tree" data-sum="树组件">🌳 树形控件 Tree</div>
+        <div class="nav-item" data-emoji="🌲" data-cn="树形选择" data-en="TreeSelect" data-sum="树选择">🌲 树形选择 TreeSelect</div>
+        <div class="nav-item" data-emoji="🔁" data-cn="穿梭框" data-en="Transfer" data-sum="穿梭框">🔁 穿梭框 Transfer</div>
+        <div class="nav-item" data-emoji="📆" data-cn="日期选择" data-en="DatePicker" data-sum="日期选择">📆 日期选择 DatePicker</div>
+        <div class="nav-item" data-emoji="📅" data-cn="日期范围" data-en="DateRangePicker" data-sum="日期范围">📅 日期范围 DateRangePicker</div>
+        <div class="nav-item" data-emoji="🕐" data-cn="时间范围" data-en="TimeRange" data-sum="时间范围">🕐 时间范围 TimeRange</div>
+        <div class="nav-item" data-emoji="🗓️" data-cn="日期时间范围" data-en="DateTimeRange" data-sum="日期时间范围">🗓️ 日期时间范围 DateTimeRange</div>
+        <div class="nav-item" data-emoji="⏰" data-cn="时间选择" data-en="TimePicker" data-sum="时间选择">⏰ 时间选择 TimePicker</div>
+        <div class="nav-item" data-emoji="🗓️" data-cn="日期时间" data-en="DateTimePicker" data-sum="日期时间">🗓️ 日期时间 DateTimePicker</div>
+        <div class="nav-item" data-emoji="🕘" data-cn="时间候选" data-en="TimeSelect" data-sum="时间候选">🕘 时间候选 TimeSelect</div>
+        <div class="nav-item" data-emoji="📤" data-cn="上传" data-en="Upload" data-sum="上传入口">📤 上传 Upload</div>
+        <div class="nav-item" data-emoji="🖼️" data-cn="图片" data-en="Image" data-sum="纯图片、边框、占位、懒加载、预览列表">🖼️ 图片 Image</div>
+        <div class="nav-item" data-emoji="🎠" data-cn="轮播" data-en="Carousel" data-sum="轮播">🎠 轮播 Carousel</div>
+      </div>
+      <div class="preview">
+        <div class="demo-head">
+          <div class="p-emoji">📅</div>
+          <div class="p-title">日历 <small>Calendar</small></div>
+          <div class="p-desc">日历全样式 · 选择媒体 分组 · 已选组件 1 / 14</div>
+        </div>
+        <div class="demo-stage">
+          <div class="demo-view col active"><div id="cal"></div></div>
+          <div class="demo-view col"><div class="tree">
+            <div>▾ 🏠 首页</div>
+            <div>▾ 📁 组件</div>
+            <div class="t2">▫ 表单</div>
+            <div class="t2">▫ 反馈</div>
+          </div></div>
+          <div class="demo-view col"><div class="field" style="width:100%">部门 / 研发 <span class="caret">▾</span></div></div>
+          <div class="demo-view">
+            <div class="tr-box"><b>可选 2</b><span>☐ 按钮</span><span>☐ 输入框</span></div>
+            <div class="tr-mid"><button class="btn" style="padding:4px 10px">›</button><button class="btn" style="padding:4px 10px">‹</button></div>
+            <div class="tr-box"><b>已选 1</b><span>☑ 表格</span></div>
+          </div>
+          <div class="demo-view col"><div class="field" style="width:100%">📆 2026-05-03 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%">2026-05-01 → 2026-05-10 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%">09:00:00 → 18:00:00 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%;font-size:12px">2026-05-01 09:00 → 2026-05-10 18:00 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%">⏰ 09:30:00 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%">🗓️ 2026-05-03 09:30 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="field" style="width:100%">🕘 10:00 <span class="caret">▾</span></div></div>
+          <div class="demo-view col"><div class="upload"><b style="font-size:22px">📤</b><span>选择文件</span><span class="hint-note">支持状态读回</span></div></div>
+          <div class="demo-view"><div class="imgph"><span style="font-size:28px">🖼️</span><span class="hint-note">图片预览 · 支持懒加载 / 预览列表</span></div></div>
+          <div class="demo-view col"><div class="car">
+            <button class="car-arrow" style="left:8px">‹</button><span>第一屏 🚀</span><button class="car-arrow" style="right:8px">›</button>
+            <div class="car-dots"><i class="on"></i><i></i><i></i></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 4 数据展示（17） ================= -->
+  <div class="page" id="p4" data-cat="数据展示">
+    <div class="page-body">
+      <div class="navpanel">
+        <div class="nav-item active" data-emoji="🏷️" data-cn="标签" data-en="Tag" data-sum="标签">🏷️ 标签 Tag</div>
+        <div class="nav-item" data-emoji="🔴" data-cn="徽标" data-en="Badge" data-sum="徽标">🔴 徽标 Badge</div>
+        <div class="nav-item" data-emoji="📈" data-cn="进度条" data-en="Progress" data-sum="进度条">📈 进度条 Progress</div>
+        <div class="nav-item" data-emoji="😀" data-cn="头像" data-en="Avatar" data-sum="头像">😀 头像 Avatar</div>
+        <div class="nav-item" data-emoji="📭" data-cn="空状态" data-en="Empty" data-sum="空状态">📭 空状态 Empty</div>
+        <div class="nav-item" data-emoji="💀" data-cn="骨架屏" data-en="Skeleton" data-sum="骨架屏">💀 骨架屏 Skeleton</div>
+        <div class="nav-item" data-emoji="📋" data-cn="描述列表" data-en="Descriptions" data-sum="描述列表">📋 描述列表 Descriptions</div>
+        <div class="nav-item" data-emoji="📊" data-cn="表格" data-en="Table" data-sum="表格">📊 表格 Table</div>
+        <div class="nav-item" data-emoji="📋" data-cn="列表框" data-en="ListBox" data-sum="列表框">📋 列表框 ListBox</div>
+        <div class="nav-item" data-emoji="♾️" data-cn="无限滚动" data-en="InfiniteScroll" data-sum="无限滚动">♾️ 无限滚动 InfiniteScroll</div>
+        <div class="nav-item" data-emoji="💳" data-cn="卡片" data-en="Card" data-sum="基础、列表、图片和插槽卡片">💳 卡片 Card</div>
+        <div class="nav-item" data-emoji="📂" data-cn="折叠面板" data-en="Collapse" data-sum="折叠面板">📂 折叠面板 Collapse</div>
+        <div class="nav-item" data-emoji="🕒" data-cn="时间线" data-en="Timeline" data-sum="时间线">🕒 时间线 Timeline</div>
+        <div class="nav-item" data-emoji="📌" data-cn="统计数值" data-en="Statistic" data-sum="统计数值">📌 统计数值 Statistic</div>
+        <div class="nav-item" data-emoji="🎯" data-cn="指标卡" data-en="KPI Card" data-sum="指标卡">🎯 指标卡 KPI Card</div>
+        <div class="nav-item" data-emoji="📈" data-cn="趋势" data-en="Trend" data-sum="趋势">📈 趋势 Trend</div>
+        <div class="nav-item" data-emoji="🟢" data-cn="状态点" data-en="StatusDot" data-sum="状态点">🟢 状态点 StatusDot</div>
+      </div>
+      <div class="preview">
+        <div class="demo-head">
+          <div class="p-emoji">🏷️</div>
+          <div class="p-title">标签 <small>Tag</small></div>
+          <div class="p-desc">标签 · 数据展示 分组 · 已选组件 1 / 17</div>
+        </div>
+        <div class="demo-stage">
+          <div class="demo-view"><span class="pill p-success">已完成 🟢</span></div>
+          <div class="demo-view"><span class="badge-wrap">消息<i class="bdg">12</i></span></div>
+          <div class="demo-view col"><div class="p-label"><span>构建进度</span><span>76%</span></div><div class="pbar"><div style="width:76%"></div></div></div>
+          <div class="demo-view"><span class="avat">新</span><span class="avat" style="background:#5FAF72">林</span><span class="avat" style="background:#D19A3D">陈</span></div>
+          <div class="demo-view col" style="align-items:center;text-align:center;max-width:none">
+            <span style="font-size:40px">📭</span><b style="font-size:14px">暂无数据</b><span class="hint-note">请稍后刷新</span>
+          </div>
+          <div class="demo-view col" style="gap:9px">
+            <div style="display:flex;gap:9px;width:100%"><span class="sk" style="width:42px;height:42px;border-radius:50%;flex:none"></span><span class="sk" style="flex:1;height:42px"></span></div>
+            <span class="sk" style="width:100%"></span><span class="sk" style="width:70%"></span>
+          </div>
+          <div class="demo-view col"><div class="desc">
+            <span class="dl">组件</span><span>92</span>
+            <span class="dl">许可</span><span>MIT</span>
+          </div></div>
+          <div class="demo-view col"><table class="tbl">
+            <tr><th>组件</th><th>状态</th></tr>
+            <tr><td>Button</td><td>完成 ✅</td></tr>
+            <tr><td>Tabs</td><td>完成 ✅</td></tr>
+          </table></div>
+          <div class="demo-view col"><div class="lb"><b>📋 列表框</b><span class="on">📄 需求</span><span>🧪 测试</span><span>🚀 发布</span></div></div>
+          <div class="demo-view col" style="gap:8px">
+            <div class="isc"><b>📌 任务 01</b><span>触底自动加载</span><em>进行中</em></div>
+            <div class="isc"><b>📌 任务 02</b><span>支持状态读回</span><em>已同步</em></div>
+            <span class="hint-note">⋮ 滚动到底自动加载</span>
+          </div>
+          <div class="demo-view col"><div class="dcard"><b>💳 项目卡片</b><span>用于组织信息块</span></div></div>
+          <div class="demo-view col"><div class="clp">
+            <div class="clp-h">▾ 基础组件</div>
+            <div class="clp-b">按钮 / 文本 / 面板</div>
+            <div class="clp-h" style="border-top:1px solid var(--border)">▸ 反馈组件</div>
+          </div></div>
+          <div class="demo-view col" style="gap:8px">
+            <div class="tl-i"><i></i><b>09:00 🚀 启动</b></div>
+            <div class="tl-i"><i></i><b>10:30 ✅ 封装</b></div>
+            <div class="tl-i"><i></i><b>14:20 📦 开源</b></div>
+          </div>
+          <div class="demo-view"><div><span class="hint-note">组件数</span><div class="big">92<small> 个</small></div></div></div>
+          <div class="demo-view"><div><span class="hint-note">完成率</span><div class="big">100%</div><span class="hint-note">全部组件已封装</span></div></div>
+          <div class="demo-view"><div><span class="hint-note">星标增长</span><div class="big" style="color:var(--pos-text)">+128</div></div>
+          <span class="pill p-success">↑ 12%</span><span class="hint-note">本周</span></div>
+          <div class="demo-view"><span class="dot"></span><span><b style="font-size:14px">运行正常</b><br><span class="hint-note">DLL 已加载</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 5 图表导航（14） ================= -->
+  <div class="page" id="p5" data-cat="图表导航">
+    <div class="page-body">
+      <div class="navpanel">
+        <div class="nav-item active" data-emoji="🎯" data-cn="仪表盘" data-en="Gauge" data-sum="仪表盘">🎯 仪表盘 Gauge</div>
+        <div class="nav-item" data-emoji="⭕" data-cn="环形进度" data-en="RingProgress" data-sum="环形进度">⭕ 环形进度 RingProgress</div>
+        <div class="nav-item" data-emoji="🧭" data-cn="子弹进度" data-en="BulletProgress" data-sum="子弹进度">🧭 子弹进度 BulletProgress</div>
+        <div class="nav-item" data-emoji="📈" data-cn="折线图" data-en="LineChart" data-sum="折线图">📈 折线图 LineChart</div>
+        <div class="nav-item" data-emoji="📊" data-cn="柱状图" data-en="BarChart" data-sum="柱状图">📊 柱状图 BarChart</div>
+        <div class="nav-item" data-emoji="🍩" data-cn="环形图" data-en="DonutChart" data-sum="环形图">🍩 环形图 DonutChart</div>
+        <div class="nav-item" data-emoji="📂" data-cn="下拉菜单" data-en="Dropdown" data-sum="下拉菜单">📂 下拉菜单 Dropdown</div>
+        <div class="nav-item" data-emoji="🧭" data-cn="菜单" data-en="Menu" data-sum="菜单">🧭 菜单 Menu</div>
+        <div class="nav-item" data-emoji="⚓" data-cn="锚点" data-en="Anchor" data-sum="锚点">⚓ 锚点 Anchor</div>
+        <div class="nav-item" data-emoji="⬆️" data-cn="返回顶部" data-en="Backtop" data-sum="返回顶部">⬆️ 返回顶部 Backtop</div>
+        <div class="nav-item" data-emoji="🔀" data-cn="分段控制" data-en="Segmented" data-sum="分段控制">🔀 分段控制 Segmented</div>
+        <div class="nav-item" data-emoji="📄" data-cn="页头" data-en="PageHeader" data-sum="页头">📄 页头 PageHeader</div>
+        <div class="nav-item" data-emoji="🍞" data-cn="面包屑" data-en="Breadcrumb" data-sum="面包屑">🍞 面包屑 Breadcrumb</div>
+        <div class="nav-item" data-emoji="📑" data-cn="标签页" data-en="Tabs" data-sum="标签页">📑 标签页 Tabs</div>
+      </div>
+      <div class="preview">
+        <div class="demo-head">
+          <div class="p-emoji">🎯</div>
+          <div class="p-title">仪表盘 <small>Gauge</small></div>
+          <div class="p-desc">仪表盘 · 图表导航 分组 · 已选组件 1 / 14</div>
+        </div>
+        <div class="demo-stage">
+          <div class="demo-view col" style="align-items:center;text-align:center;max-width:none">
+            <svg viewBox="0 0 120 64" style="width:260px">
+              <path d="M12 58 A48 48 0 0 1 108 58" fill="none" style="stroke:var(--track)" stroke-width="9" stroke-linecap="round"/>
+              <path d="M12 58 A48 48 0 0 1 108 58" fill="none" style="stroke:var(--accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="139 151"/>
+              <text x="60" y="50" text-anchor="middle" style="fill:var(--text)" font-size="17" font-weight="bold">92</text>
+            </svg>
+            <span class="hint-note">质量分 92 · 运行良好</span>
+          </div>
+          <div class="demo-view" style="gap:16px"><div class="ring" style="background:conic-gradient(var(--accent) 0 82%, var(--track) 82% 100%)"><div class="ring-in">82%</div></div>
+          <span class="hint-note">完成度 · 组件完成</span></div>
+          <div class="demo-view col"><span class="hint-note">目标 · 发布准备（72 / 90）</span>
+          <div class="bullet"><div class="bf" style="width:72%"></div><i style="left:90%"></i><span>72</span></div></div>
+          <div class="demo-view col"><svg viewBox="0 0 220 90" class="chart" preserveAspectRatio="none">
+            <polyline points="12,74 110,42 208,12" fill="none" style="stroke:var(--accent)" stroke-width="2"/>
+            <circle cx="208" cy="12" r="3.5" style="fill:var(--accent)"/>
+          </svg>
+          <div class="axis"><span>周一 12</span><span>周二 18</span><span>周三 24</span></div></div>
+          <div class="demo-view col"><div class="bars">
+            <div class="bar" style="height:92px"><b>12</b></div>
+            <div class="bar" style="height:70px"><b>9</b></div>
+            <div class="bar" style="height:54px"><b>7</b></div>
+          </div>
+          <div class="axis" style="padding-left:10px"><span style="width:36px;text-align:center">表单</span><span style="width:36px;text-align:center">反馈</span><span style="width:36px;text-align:center">导航</span></div></div>
+          <div class="demo-view" style="gap:16px">
+            <div class="ring" style="background:conic-gradient(var(--btn-primary) 0 35%, #5FAF72 35% 70%, #D19A3D 70% 100%)"><div class="ring-in" style="font-size:12px">占比</div></div>
+            <div class="legend"><span><i style="background:var(--btn-primary)"></i>基础 14</span><span><i style="background:#5FAF72"></i>表单 14</span><span><i style="background:#D19A3D"></i>反馈 12</span></div>
+          </div>
+          <div class="demo-view"><div class="hoverwrap"><button class="btn">📂 更多操作 ▾</button>
+          <div class="menu-pop"><span>📋 复制</span><span>📤 导出</span><span>🗑️ 删除</span></div></div>
+          <span class="hint-note">悬停预览菜单</span></div>
+          <div class="demo-view"><div class="vmenu"><span class="on">🏠 首页</span><span>🧩 组件</span><span>📚 文档</span></div></div>
+          <div class="demo-view"><div class="anch"><span class="on">基础</span><span>表单</span><span>反馈</span></div>
+          <span class="hint-note">点击滚动定位章节</span></div>
+          <div class="demo-view" style="justify-content:center"><button class="backtop">⬆️</button></div>
+          <div class="demo-view"><div class="seg"><span>日</span><span class="on">周</span><span>月</span></div></div>
+          <div class="demo-view col"><div class="phead"><span class="lnk">‹ 返回</span><b>📄 组件详情</b><span></span></div></div>
+          <div class="demo-view"><span class="crumb">🏠 首页</span><span class="sep">/</span><span class="crumb">🧩 组件</span><span class="sep">/</span><span class="crumb on">导航</span></div>
+          <div class="demo-view col"><div class="mini-tabs"><span class="on">预览</span><span>代码</span><span>文档</span></div>
+          <span class="hint-note">本窗口顶部即为线条样式 Tabs</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 6 反馈流程（15） ================= -->
+  <div class="page" id="p6" data-cat="反馈流程">
+    <div class="page-body">
+      <div class="navpanel">
+        <div class="nav-item active" data-emoji="📚" data-cn="分页" data-en="Pagination" data-sum="分页">📚 分页 Pagination</div>
+        <div class="nav-item" data-emoji="👣" data-cn="步骤条" data-en="Steps" data-sum="步骤条全样式">👣 步骤条 Steps</div>
+        <div class="nav-item" data-emoji="🚨" data-cn="警告提示" data-en="Alert" data-sum="警告提示">🚨 警告提示 Alert</div>
+        <div class="nav-item" data-emoji="✅" data-cn="结果页" data-en="Result" data-sum="结果页">✅ 结果页 Result</div>
+        <div class="nav-item" data-emoji="💬" data-cn="消息提示" data-en="Message" data-sum="消息提示">💬 消息提示 Message</div>
+        <div class="nav-item" data-emoji="📬" data-cn="消息框" data-en="MessageBox" data-sum="消息框">📬 消息框 MessageBox</div>
+        <div class="nav-item" data-emoji="🔔" data-cn="通知" data-en="Notification" data-sum="通知">🔔 通知 Notification</div>
+        <div class="nav-item" data-emoji="⏳" data-cn="加载" data-en="Loading" data-sum="加载">⏳ 加载 Loading</div>
+        <div class="nav-item" data-emoji="💬" data-cn="对话框" data-en="Dialog" data-sum="对话框">💬 对话框 Dialog</div>
+        <div class="nav-item" data-emoji="📚" data-cn="抽屉" data-en="Drawer" data-sum="抽屉">📚 抽屉 Drawer</div>
+        <div class="nav-item" data-emoji="💭" data-cn="文字提示" data-en="Tooltip" data-sum="文字提示">💭 文字提示 Tooltip</div>
+        <div class="nav-item" data-emoji="🗯️" data-cn="气泡卡片" data-en="Popover" data-sum="气泡卡片">🗯️ 气泡卡片 Popover</div>
+        <div class="nav-item" data-emoji="🖱️" data-cn="右键弹层" data-en="ElementPopup" data-sum="右键弹层绑定">🖱️ 右键弹层 ElementPopup</div>
+        <div class="nav-item" data-emoji="❓" data-cn="确认气泡" data-en="Popconfirm" data-sum="确认气泡">❓ 确认气泡 Popconfirm</div>
+        <div class="nav-item" data-emoji="🧭" data-cn="引导" data-en="Tour" data-sum="引导">🧭 引导 Tour</div>
+      </div>
+      <div class="preview">
+        <div class="demo-head">
+          <div class="p-emoji">📚</div>
+          <div class="p-title">分页 <small>Pagination</small></div>
+          <div class="p-desc">分页 · 反馈流程 分组 · 已选组件 1 / 15</div>
+        </div>
+        <div class="demo-stage">
+          <div class="demo-view col" style="gap:8px"><div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+            <button class="pg">‹</button><button class="pg">1</button><button class="pg">2</button><button class="pg on">3</button>
+            <button class="pg">4</button><button class="pg">5</button><span class="pg-ellipsis">…</span><button class="pg">13</button><button class="pg">›</button>
+          </div><span class="hint-note">共 128 条 · 每页 10 条 · 当前第 3 页</span></div>
+          <div class="demo-view col"><div class="steps">
+            <div class="stp done"><i>✓</i><span>创建</span></div><div class="stp-line done"></div>
+            <div class="stp cur"><i>2</i><span>构建</span></div><div class="stp-line"></div>
+            <div class="stp"><i>3</i><span>发布</span></div>
+          </div></div>
+          <div class="demo-view col"><div class="alert"><b>✓ 保存成功</b><span>配置已经同步</span><i>×</i></div></div>
+          <div class="demo-view col" style="align-items:center;text-align:center;max-width:none">
+            <span class="res">✓</span><b style="font-size:15px">操作成功</b><span class="hint-note">所有组件加载完成</span>
+          </div>
+          <div class="demo-view"><button class="btn b-primary" onclick="toast('💬 操作成功')">💬 触发消息提示</button><span class="hint-note">顶部浮层，2 秒后消失</span></div>
+          <div class="demo-view"><button class="btn" onclick="openModal('消息框','📬')">📬 触发消息框</button><span class="hint-note">模态弹窗</span></div>
+          <div class="demo-view"><button class="btn" onclick="toast('🔔 通知标题<small>这是一条来自构建服务的通知</small>','right')">🔔 触发通知</button><span class="hint-note">右上角浮层</span></div>
+          <div class="demo-view col" style="align-items:center;text-align:center;max-width:none"><span class="spin"></span><span class="hint-note">加载组件中…</span></div>
+          <div class="demo-view"><button class="btn b-primary" onclick="openModal('对话框','💬')">💬 打开对话框</button><span class="hint-note">模态弹窗</span></div>
+          <div class="demo-view"><button class="btn" onclick="openDrawer()">📚 打开抽屉</button><span class="hint-note">从右侧滑出，点击遮罩关闭</span></div>
+          <div class="demo-view"><div class="hoverwrap"><button class="btn">悬停我 💭</button><div class="bubble">这是 Tooltip 内容</div></div>
+          <span class="hint-note">悬停预览</span></div>
+          <div class="demo-view"><div class="hoverwrap"><button class="btn">打开气泡</button>
+          <div class="bubble"><b>Popover</b>支持标题和内容</div></div><span class="hint-note">悬停预览</span></div>
+          <div class="demo-view"><button class="btn">🖱️ 右键绑定</button><span class="hint-note">运行时右键弹出弹层</span></div>
+          <div class="demo-view"><div class="hoverwrap"><button class="btn b-danger">删除确认</button>
+          <div class="bubble">是否继续？<div class="pc-btns"><button class="btn">取消</button><button class="btn b-primary">确定</button></div></div></div>
+          <span class="hint-note">悬停预览</span></div>
+          <div class="demo-view col"><div class="tour"><b>🧭 新手引导</b>
+            <span class="on">① 第一步：选择分类</span><span>② 第二步：查看组件</span><span>③ 第三步：运行示例</span>
+            <div><button class="btn b-primary" style="padding:4px 12px;font-size:11.5px">下一步</button></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar" id="status">当前分类：基础布局 · 组件 17 / 92 · 已选：🧱 面板 Panel</div>
+</div>
+
+<!-- 弹层（反馈流程演示） -->
+<div id="toast-top"></div>
+<div id="toast-right"></div>
+<div id="modal">
+  <div class="modal-box">
+    <h3><span id="m-icon">💬</span> <span id="m-title">对话框</span></h3>
+    <p>这是模态弹层内容（实际由 new_emoji 对话框 / 消息框命令弹出）。</p>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn b-primary" onclick="closeModal()">确定</button></div>
+  </div>
+</div>
+<div id="doverlay" onclick="closeDrawer()"></div>
+<div id="drawer"><h3>📚 抽屉</h3><p class="hint-note" style="font-size:12.5px">从右侧滑出的抽屉面板（实际由 new_emoji 抽屉命令弹出）。点击遮罩关闭。</p></div>
+
+<script>
+  // ===== 主题切换：浅色 / 深色 / 跟随系统 =====
+  var themeMode = 'dark';
+  var mq = window.matchMedia('(prefers-color-scheme: light)');
+  function applyTheme(mode) {
+    themeMode = mode;
+    var effective = mode === 'system' ? (mq.matches ? 'light' : 'dark') : mode;
+    document.documentElement.dataset.theme = effective;
+    document.querySelectorAll('.ts-btn').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.mode === mode);
+    });
+  }
+  document.querySelectorAll('.ts-btn').forEach(function (b) {
+    b.addEventListener('click', function () { applyTheme(b.dataset.mode); });
+  });
+  mq.addEventListener('change', function () { if (themeMode === 'system') applyTheme('system'); });
+
+  // ===== 标签页切换 =====
+  function statusText(page) {
+    var active = page.querySelector('.nav-item.active');
+    var d = active.dataset;
+    return '当前分类：' + page.dataset.cat + ' · 组件 ' + active.parentElement.querySelectorAll('.nav-item').length +
+      ' / 92 · 已选：' + d.emoji + ' ' + d.cn + ' ' + d.en;
+  }
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+      document.querySelectorAll('.page').forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+      var page = document.getElementById(t.dataset.page);
+      page.classList.add('active');
+      document.getElementById('status').textContent = statusText(page);
+    });
+  });
+
+  // ===== 分组导航：点击组件项，右侧演示面板联动 =====
+  document.querySelectorAll('.page').forEach(function (page) {
+    var items = page.querySelectorAll('.nav-item');
+    var views = page.querySelectorAll('.demo-view');
+    items.forEach(function (it, idx) {
+      it.addEventListener('click', function () {
+        items.forEach(function (x) { x.classList.remove('active'); });
+        it.classList.add('active');
+        views.forEach(function (v, i) { v.classList.toggle('active', i === idx); });
+        var head = page.querySelector('.demo-head');
+        head.querySelector('.p-emoji').textContent = it.dataset.emoji;
+        head.querySelector('.p-title').innerHTML = it.dataset.cn + ' <small>' + it.dataset.en + '</small>';
+        head.querySelector('.p-desc').textContent = it.dataset.sum + ' · ' + page.dataset.cat + ' 分组 · 已选组件 ' + (idx + 1) + ' / ' + items.length;
+        document.getElementById('status').textContent = statusText(page);
+      });
+    });
+  });
+
+  // ===== 日历（2026年5月，选中 3 日） =====
+  (function () {
+    var el = document.getElementById('cal');
+    var offset = (new Date(2026, 4, 1).getDay() + 6) % 7; // 周一为一周起始
+    var html = '<div class="cal-head">2026年5月</div><div class="cal-grid">';
+    ['一', '二', '三', '四', '五', '六', '日'].forEach(function (w) { html += '<span class="cal-w">' + w + '</span>'; });
+    for (var i = 0; i < offset; i++) html += '<span></span>';
+    for (var d = 1; d <= 31; d++) html += '<span class="cal-d' + (d === 3 ? ' today' : '') + '">' + d + '</span>';
+    el.innerHTML = html + '</div>';
+  })();
+
+  // ===== 消息 / 通知浮层 =====
+  function toast(msg, corner) {
+    var layer = document.getElementById(corner === 'right' ? 'toast-right' : 'toast-top');
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = msg;
+    layer.appendChild(t);
+    setTimeout(function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 300); }, 2200);
+  }
+
+  // ===== 模态（对话框 / 消息框） =====
+  function openModal(title, icon) {
+    document.getElementById('m-title').textContent = title;
+    document.getElementById('m-icon').textContent = icon;
+    document.getElementById('modal').classList.add('show');
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+  // ===== 抽屉 =====
+  function openDrawer() {
+    document.getElementById('drawer').classList.add('show');
+    document.getElementById('doverlay').classList.add('show');
+  }
+  function closeDrawer() {
+    document.getElementById('drawer').classList.remove('show');
+    document.getElementById('doverlay').classList.remove('show');
+  }
+</script>
+</body>
+</html>

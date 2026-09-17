@@ -670,21 +670,21 @@ function newEmojiDataBridgeCommands(designerControls) {
   const windowParameter = { name: '窗口句柄', type: 'handle', description: 'new_emoji 窗口句柄。' };
   return [
     build('NE表格_设置列', 'NE表格_设置列(控件, 列配置)',
-      '设置 new_emoji 表格列。列配置为 new_emoji 表格列 JSON 数组文本，与 NE_EU_SetTableColumnsEx 的高阶协议一致。',
-      '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '列配置', type: 'wideString', description: '表格列 JSON 数组文本。' }],
-      'NE表格_设置列(表格1, "[{\\"key\\":\\"name\\",\\"title\\":\\"名称\\"}]")'),
+      '设置 new_emoji 表格列。列配置为 new_emoji 高阶列 kv 协议文本（与 NE_EU_SetTableColumnsEx 一致）：每行一列，字段用制表符分隔，支持 title=标题 key=标识 width=宽度 align=对齐(left/center/right) type=类型(text/selection/switch/combo/buttons/progress 等) fixed=left(冻结) sortable=1 filterable=1 options=选项1|选项2。',
+      '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '列配置', type: 'wideString', description: '表格列 kv 协议文本，每行一列（title=…\tkey=…\twidth=…\talign=…），不是 JSON。' }],
+      'NE表格_设置列(表格1, "title=名称\\tkey=name\\twidth=180\\talign=center\\ntitle=状态\\tkey=status\\twidth=120\\talign=left")'),
     build('NE表格_设置行数据', 'NE表格_设置行数据(控件, 行数据)',
-      '整体替换 new_emoji 表格行数据。行数据为 new_emoji 高阶行协议 JSON 数组文本，与 NE_EU_SetTableRowsEx 一致。',
-      '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '表格行 JSON 数组文本。' }],
-      'NE表格_设置行数据(表格1, 行数组文本)'),
+      '整体替换 new_emoji 表格行数据。行数据为 new_emoji 高阶行 kv 协议文本（与 NE_EU_SetTableRowsEx 一致）：每行一条记录，字段用制表符分隔，支持 key=行键 disabled=1 align=对齐，单元格按列序号写入 c0=第1列 c1=第2列……。',
+      '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '表格行 kv 协议文本，每行一条（key=…\tc0=…\tc1=…），不是 JSON。' }],
+      'NE表格_设置行数据(表格1, "key=r1\\tc0=订单 A\\tc1=待处理\\nkey=r2\\tc0=订单 B\\tc1=已发货")'),
     build('NE表格_添加行', 'NE表格_添加行(控件, 行数据)',
-      '向 new_emoji 表格追加一行，行数据为高阶行协议 JSON 文本，返回新行索引（失败返回 -1）。',
-      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '单行 JSON 文本。' }],
-      'NE表格_添加行(表格1, 行文本)'),
+      '向 new_emoji 表格追加一行，行数据为高阶行 kv 协议单行文本（key=…\tc0=…\tc1=…），返回新行索引（失败返回 -1）。',
+      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '单行 kv 协议文本（key=…\tc0=…），不是 JSON。' }],
+      'NE表格_添加行(表格1, "key=r3\\tc0=新订单\\tc1=待处理")'),
     build('NE表格_插入行', 'NE表格_插入行(控件, 行号, 行数据)',
-      '向 new_emoji 表格指定位置插入一行，行数据为高阶行协议 JSON 文本，返回插入后的行索引（失败返回 -1）。',
-      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行号', type: 'int', description: '插入位置，从 0 开始。' }, { name: '行数据', type: 'wideString', description: '单行 JSON 文本。' }],
-      'NE表格_插入行(表格1, 0, 行文本)'),
+      '向 new_emoji 表格指定位置插入一行，行数据为高阶行 kv 协议单行文本（key=…\tc0=…\tc1=…），返回插入后的行索引（失败返回 -1）。',
+      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行号', type: 'int', description: '插入位置，从 0 开始。' }, { name: '行数据', type: 'wideString', description: '单行 kv 协议文本（key=…\tc0=…），不是 JSON。' }],
+      'NE表格_插入行(表格1, 0, "key=r0\\tc0=置顶订单\\tc1=已发货")'),
     build('NE富列表_设置模板', 'NE富列表_设置模板(控件, 模板JSON)',
       '设置 new_emoji 富列表节点模板。模板为 new_emoji 高阶模板 JSON 文本，与 NE_EU_SetRichListTemplate 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '模板JSON', type: 'wideString', description: '富列表节点模板 JSON 文本。' }],
@@ -839,17 +839,17 @@ function newEmojiDataBridgeCommands(designerControls) {
       'NE_显示扩展消息框(窗口1, "反馈", "请描述问题", "提交", "取消", 4, 真, 真, 假, 真, &反馈框已关闭)'),
     // ===== Post 异步投递族：可在工作线程安全投递到界面线程执行 =====
     build('NE表格_投递设置行数据', 'NE表格_投递设置行数据(控件, 行数据)',
-      '向界面线程投递整体替换 new_emoji 表格行数据（可在工作线程调用），与 NE_EU_PostSetTableRowsEx 一致。',
-      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '表格行 JSON 数组文本。' }],
-      'NE表格_投递设置行数据(表格1, 行数组文本)'),
+      '向界面线程投递整体替换 new_emoji 表格行数据（可在工作线程调用），协议与 NE表格_设置行数据 一致：每行一条 kv 记录（key=…\tc0=…\tc1=…），不是 JSON。',
+      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '表格行 kv 协议文本，每行一条（key=…\tc0=…）。' }],
+      'NE表格_投递设置行数据(表格1, "key=r1\\tc0=订单 A\\tc1=待处理")'),
     build('NE表格_投递添加行', 'NE表格_投递添加行(控件, 行数据)',
-      '向界面线程投递向 new_emoji 表格追加一行（可在工作线程调用）。',
-      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '单行 JSON 文本。' }],
-      'NE表格_投递添加行(表格1, 行文本)'),
+      '向界面线程投递向 new_emoji 表格追加一行（可在工作线程调用），行数据为高阶行 kv 协议单行文本（key=…\tc0=…），不是 JSON。',
+      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '单行 kv 协议文本（key=…\tc0=…）。' }],
+      'NE表格_投递添加行(表格1, "key=r3\\tc0=新订单\\tc1=待处理")'),
     build('NE表格_投递插入行', 'NE表格_投递插入行(控件, 行号, 行数据)',
-      '向界面线程投递向 new_emoji 表格指定位置插入一行（可在工作线程调用）。',
-      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行号', type: 'int', description: '插入位置，从 0 开始。' }, { name: '行数据', type: 'wideString', description: '单行 JSON 文本。' }],
-      'NE表格_投递插入行(表格1, 0, 行文本)'),
+      '向界面线程投递向 new_emoji 表格指定位置插入一行（可在工作线程调用），行数据为高阶行 kv 协议单行文本（key=…\tc0=…），不是 JSON。',
+      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行号', type: 'int', description: '插入位置，从 0 开始。' }, { name: '行数据', type: 'wideString', description: '单行 kv 协议文本（key=…\tc0=…）。' }],
+      'NE表格_投递插入行(表格1, 0, "key=r0\\tc0=置顶订单\\tc1=已发货")'),
     build('NE表格_投递清空行', 'NE表格_投递清空行(控件)',
       '向界面线程投递清空 new_emoji 表格全部行（可在工作线程调用）。',
       '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。')],
@@ -2701,7 +2701,7 @@ RichList / 富列表已作为命名空间设计器控件提供，设计器属性
 
 下列命令为底层 UTF-8 字节指针导出的宽字符封装，\`.lcpp\` 直接传字符串即可，生成器自动完成 UTF-8 转换；请勿改调参数相同的 \`NE_EU_*\` 底层命令（宽指针与字节指针 ABI 不匹配，无法编译）：
 
-- 表格数据：\`NE表格_设置列\` / \`NE表格_设置行数据\` / \`NE表格_添加行\` / \`NE表格_插入行\`（列与行使用 new_emoji 高阶 JSON 协议文本）。
+- 表格数据：\`NE表格_设置列\` / \`NE表格_设置行数据\` / \`NE表格_添加行\` / \`NE表格_插入行\`。列与行使用 new_emoji 高阶 kv 协议文本（不是 JSON）：列每行一条 \`title=标题\u005ctkey=标识\u005ctwidth=宽度\u005ctalign=对齐(left/center/right)\u005cttype=类型\`，行每行一条 \`key=行键\u005ctc0=第1列\u005ctc1=第2列\`，字段用制表符分隔、记录用换行分隔；单元格文本中的制表符、换行、反斜杠、竖线需写成 \u005ct、\u005cn、\u005c\u005c、\u005c| 转义。
 - 富列表数据：\`NE富列表_设置模板\` / \`NE富列表_设置条目\` / \`NE富列表_添加条目\` / \`NE富列表_设置选中键\` / \`NE富列表_设置倒计时\` / \`NE富列表_设置倒计时状态\`；虚拟列表在 \`NE富列表_绑定虚拟数据源\` 的处理器中调用 \`NE富列表_设置虚拟行数据("条目 JSON")\` 回填（与表格的 \`NE_设置表格虚拟行数据\` 同范式）。
 - 菜单项目：\`NE菜单_设置项目\`（换行分隔项目，\`>\` 前缀表示子菜单层级）/ \`NE菜单_设置项目图标\` / \`NE菜单_设置项目快捷键\` / \`NE菜单_设置项目元数据\`。
 - 徽标文本：\`NE徽标_设置文本\`。
@@ -2715,7 +2715,8 @@ RichList / 富列表已作为命名空间设计器控件提供，设计器属性
 - 属性命令（自动生成）：全部 93 控件属性面板背后带 UTF-8 字节参数的 setter，均自动生成 \`NE<类型>_设置<属性>\` 宽字符命令（约 130 条，含标签页 chrome、图标按钮配色、地址栏建议项、图表数据、日期格式等），按需生成 C++，未引用不产出。
 
 \`\`\`lcpp
-NE表格_设置行数据(表格1, "行数组文本")
+NE表格_设置列(表格1, "title=名称\u005ctkey=name\u005ctwidth=180\u005ctalign=center\u005cntitle=状态\u005ctkey=status\u005ctwidth=120\u005ctalign=left")
+NE表格_设置行数据(表格1, "key=r1\u005ctc0=订单 A\u005ctc1=待处理\u005cnkey=r2\u005ctc0=订单 B\u005ctc1=已发货")
 NE富列表_绑定虚拟数据源(富列表1, &富列表虚拟数据)
 NE_显示确认框(当前窗口, "删除", "确定删除吗？", "删除", "取消", &确认框已关闭)
 \`\`\`

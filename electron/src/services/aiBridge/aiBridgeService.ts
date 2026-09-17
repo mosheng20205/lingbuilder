@@ -1997,8 +1997,12 @@ async function compileMsvcPreviewWithModules(
     ...(resourceOutputPath ? [resourceOutputPath] : []),
     ...moduleLibs,
     // 清单内嵌为 RT_MANIFEST（与 Visual Studio 工程默认行为一致），不落外置 .exe.manifest。
-    // /link 区段只能开启一次：延迟加载参数已带 '/link' 时直接并入该区段。
-    ...(newEmojiDelayLoadLinkArgs.length > 0 ? ['/MANIFEST:EMBED'] : ['/link', '/MANIFEST:EMBED'])
+    // /link 区段只能开启一次：延迟加载参数自带 '/link'，必须真实展开并入该区段——
+    // 只判空不展开会让 new_emoji.dll 退回硬导入，EXE 离开同目录即 0xC0000135，
+    // 且 /MANIFEST:EMBED 落在 /link 外被 cl 以 D9002 静默忽略。
+    ...(newEmojiDelayLoadLinkArgs.length > 0
+      ? [...newEmojiDelayLoadLinkArgs, '/MANIFEST:EMBED']
+      : ['/link', '/MANIFEST:EMBED'])
   ];
 
   try {

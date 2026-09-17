@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, FlaskConical, Gauge, Globe2, HardDriveDownload, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, Search, ShieldCheck, ShieldAlert, Users, X } from 'lucide-react';
 import './styles.css';
 import './mfa.css';
+import { initWebsiteRouteTheme } from './websiteTheme';
 import { HomePage } from './HomePage';
 import { SystemAiProviderAdmin } from './SystemAiProviderAdmin';
 import { PUBLIC_WEBSITE_PATHS, WebsitePortal } from './WebsitePortal';
@@ -48,6 +49,8 @@ async function refreshSession():Promise<AdminTokens>{
 
 function App(){
   const [tokens,setTokens]=useState(()=>tokenRef);
+  // 官网路由（首页 + 公开子页）应用持久化的亮/暗主题；管理后台路由强制恢复暗色文档状态。
+  useEffect(()=>initWebsiteRouteTheme(location.pathname,PUBLIC_WEBSITE_PATHS),[]);
   const [page,setPage]=useState<Page>('overview'); const [mobile,setMobile]=useState(false); const [data,setData]=useState<any>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [needsMfa,setNeedsMfa]=useState(false); const [role,setRole]=useState(''); const [showPassword,setShowPassword]=useState(false); const [showMfaSetup,setShowMfaSetup]=useState(false); const [mfaBannerDismissed,setMfaBannerDismissed]=useState(()=>sessionStorage.getItem('lb-mfa-banner-dismissed')==='1');
   const applySessionFailure=()=>{clearTokens();setTokens({access:'',refresh:''})};
   const ensureFreshAccessToken=async()=>{const exp=getTokenExpAt(tokenRef.access);if(!tokenRef.access||!exp||exp-Date.now()>=60_000)return;try{await refreshSession()}catch(reason){if((reason as {status?:number}).status===401){applySessionFailure();throw reason}}};

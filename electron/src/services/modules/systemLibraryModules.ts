@@ -187,7 +187,9 @@ const ini = createStandardModule({
     command('INI_写文本', [{ name: '文件', type: 'wideString', description: iniFileArg}, { name: '节', type: 'wideString', description: iniSectionArg}, { name: '键', type: 'wideString', description: iniKeyArg}, { name: '值', type: 'wideString', description: '写入的文本值，落在等号右边；含换行会破坏 INI 结构，应避免。'}], 'bool', '写入 INI 文本值。'),
     command('INI_写整数', [{ name: '文件', type: 'wideString', description: iniFileArg}, { name: '节', type: 'wideString', description: iniSectionArg}, { name: '键', type: 'wideString', description: iniKeyArg}, { name: '值', type: 'int', description: '写入的整数值，以十进制文本形式保存。'}], 'bool', '写入 INI 整数值。'),
     command('INI_删除键', [{ name: '文件', type: 'wideString', description: iniFileArg}, { name: '节', type: 'wideString', description: iniSectionArg}, { name: '键', type: 'wideString', description: '要删除的键名；底层用写空值的方式删除该键。'}], 'bool', '删除指定 INI 键。'),
-    command('INI_删除节', [{ name: '文件', type: 'wideString', description: iniFileArg}, { name: '节', type: 'wideString', description: '要整节删除的节名；底层以空键名方式删除整节。'}], 'bool', '删除整个 INI 节。')
+    command('INI_删除节', [{ name: '文件', type: 'wideString', description: iniFileArg}, { name: '节', type: 'wideString', description: '要整节删除的节名；底层以空键名方式删除整节。'}], 'bool', '删除整个 INI 节。'),
+    command('INI_枚举节', [{ name: '文件', type: 'wideString', description: iniFileArg}, { name: '结果数组', type: 'array', description: '接收全部节名的文本型数组变量，调用前会先清空原有内容。'}], 'int', '把 INI 文件中的全部节名写入文本数组，返回节的数量。'),
+    command('INI_枚举键', [{ name: '文件', type: 'wideString', description: iniFileArg}, { name: '节', type: 'wideString', description: '要枚举键名的节名。'}, { name: '结果数组', type: 'array', description: '接收该节全部键名的文本型数组变量，调用前会先清空原有内容。'}], 'int', '把指定节中的全部键名写入文本数组，返回键的数量。')
   ]
 });
 
@@ -256,7 +258,12 @@ const shell = createStandardModule({
     command('系统_取运行目录', [], 'wideString', '返回当前运行 exe 所在目录，不带尾部反斜杠。', '系统_取运行目录()'),
     command('系统_取临时目录', [], 'wideString', '返回当前用户临时目录。'),
     command('系统_取桌面目录', [], 'wideString', '返回当前用户桌面目录。'),
-    command('系统_取文档目录', [], 'wideString', '返回当前用户文档目录。')
+    command('系统_取文档目录', [], 'wideString', '返回当前用户文档目录。'),
+    command('系统_创建桌面快捷方式', [{ name: '快捷方式名称', type: 'wideString', description: '快捷方式文件名，不带路径；不带 .lnk 后缀时自动补上。'}, { name: '目标路径', type: 'wideString', description: '快捷方式指向的文件或目录，不能为空。'}, { name: '参数', type: 'wideString', optional: true, defaultValue: '', description: '传给目标的命令行参数，可省略。'}, { name: '图标路径', type: 'wideString', optional: true, defaultValue: '', description: '快捷方式图标来源文件；省略时使用目标路径自身图标。'}], 'bool', '在当前用户桌面创建快捷方式；COM 初始化失败或目标无效返回假。'),
+    command('系统_关机', [], 'bool', '关闭计算机（先取得关机权限，失败返回假）。'),
+    command('系统_重启', [], 'bool', '重启计算机（先取得关机权限，失败返回假）。'),
+    command('系统_注销', [], 'bool', '注销当前登录用户。'),
+    command('系统_清空回收站', [], 'bool', '清空回收站，不弹确认框、不播放声音；回收站已为空同样返回真。')
   ]
 });
 
@@ -268,13 +275,15 @@ const process = createStandardModule({
     command('程序_启动并等待', [{ name: '命令行', type: 'wideString', description: commandLineArg}, { name: '工作目录', type: 'wideString', description: workDirArg}, { name: '超时毫秒', type: 'int', description: '等待进程退出的最长毫秒数；小于 0 表示一直等待。超时或启动失败返回 -1；在界面事件里等待会卡住界面。'}], 'int', '启动程序并等待，返回退出码；超时或失败返回 -1。'),
     command('进程_取当前ID', [], 'int', '返回当前进程 ID。'),
     command('进程_是否运行', [{ name: '进程ID', type: 'int', description: '要检查的进程 ID，必须大于 0；进程已退出或无权打开时返回假。'}], 'bool', '判断指定进程是否仍在运行。'),
-    command('进程_终止', [{ name: '进程ID', type: 'int', description: '要终止的进程 ID，必须大于 0 且不能等于当前进程自身。'}, { name: '退出码', type: 'int', description: '强制写入被终止进程的退出码。'}], 'bool', '显式终止指定进程；不能用于当前进程。')
+    command('进程_终止', [{ name: '进程ID', type: 'int', description: '要终止的进程 ID，必须大于 0 且不能等于当前进程自身。'}, { name: '退出码', type: 'int', description: '强制写入被终止进程的退出码。'}], 'bool', '显式终止指定进程；不能用于当前进程。'),
+    command('程序_执行并取输出', [{ name: '命令行', type: 'wideString', description: '要执行的完整命令行，例如 cmd /c ping 127.0.0.1；输出与错误回显合并读回，中文按系统 OEM 代码页解码。'}, { name: '超时毫秒', type: 'int', optional: true, defaultValue: 30000, description: '最长等待毫秒数，超时强制结束子进程并返回已捕获的输出；小于 0 表示无限等待，省略默认 30000。'}], 'wideString', '执行命令行并等待结束，把标准输出与错误输出合并读回为文本；命令无法启动返回空文本，用 程序_上次执行退出码 查询退出码。', '程序_执行并取输出("cmd /c echo 你好")'),
+    command('程序_上次执行退出码', [], 'int', '返回本线程上一次 程序_执行并取输出 的子进程退出码；尚未执行过或命令无法启动返回 -1。')
   ]
 });
 
 const keyboard = createStandardModule({
   id: 'lingbuilder.input.keyboard', name: '键盘输入模块', category: '系统',
-  version: '2.0.0',
+  version: '2.1.0',
   description: '分类提供全局状态、前台 SendInput 注入、指定 HWND 后台消息和键码转换能力。',
   tags: ['键盘', '输入', '全局', '前台', '后台', 'Win32'],
   commands: KEYBOARD_COMMANDS,
@@ -331,8 +340,30 @@ const monitor = createStandardModule({
   ]
 });
 
+const consoleModule = createStandardModule({
+  id: 'lingbuilder.console', name: '控制台模块', category: '系统',
+  version: '1.0.0',
+  description: '为控制台程序提供标准输入输出、光标与文本颜色控制；命令只能在控制台程序（含「整数型 启动()」入口）中使用，窗口应用中会给出阻断诊断。',
+  tags: ['控制台', '输入输出', '控制台程序'],
+  docs: [{ title: '控制台模块使用说明', path: 'docs/modules/console/README.md' }],
+  commands: [
+    command('控制台_输出', [{ name: '内容', type: 'wideString', description: '要写入控制台的文本；不附加换行，输出后光标停在文本末尾。'}], 'void', '向控制台标准输出写入文本（不换行）。'),
+    command('控制台_输出行', [{ name: '内容', type: 'wideString', description: '要写入控制台的文本；写入后光标移动到下一行行首。'}], 'void', '向控制台标准输出写入一行文本并换行。'),
+    command('控制台_读行', [], 'wideString', '从控制台读取一行输入，遇到回车返回（结果不含回车）；流被重定向或读取失败返回空文本。', '控制台_读行()'),
+    command('控制台_清屏', [], 'void', '清空控制台屏幕并把光标移回左上角。'),
+    command('控制台_置光标位置', [{ name: '列', type: 'int', description: '目标列号，从 0 起；超出屏幕宽度时取边界值。'}, { name: '行', type: 'int', description: '目标行号，从 0 起；超出屏幕高度时取边界值。'}], 'void', '把控制台光标移动到指定字符位置（后续输出从该位置开始）。'),
+    command('控制台_取光标列', [], 'int', '返回控制台光标当前列号（从 0 起）。'),
+    command('控制台_取光标行', [], 'int', '返回控制台光标当前行号（从 0 起）。'),
+    command('控制台_取宽度', [], 'int', '返回控制台屏幕缓冲区的字符宽度。'),
+    command('控制台_取高度', [], 'int', '返回控制台屏幕窗口的字符高度。'),
+    command('控制台_显示光标', [{ name: '可见', type: 'bool', description: '真显示光标，假隐藏光标。'}], 'void', '设置控制台光标是否可见。'),
+    command('控制台_置颜色', [{ name: '前景色', type: 'int', description: '前景色编号 0～15：0 黑、1 深蓝、2 深绿、3 青灰、4 深红、5 紫、6 橄榄、7 灰白、8 深灰、9 蓝、10 绿、11 浅青、12 红、13 粉、14 黄、15 白。'}, { name: '背景色', type: 'int', description: '背景色编号 0～15，取值同前景色。'}], 'void', '设置控制台后续输出的前景色与背景色（0～15 编号组合）。'),
+    command('控制台_恢复颜色', [], 'void', '把控制台颜色恢复为默认（灰字黑底）。')
+  ]
+});
+
 export const SYSTEM_LIBRARY_MODULES: LingBuilderModuleManifest[] = [
-  fsCore, fsPath, ini, registry, systemInfo, disk, clipboard, shell, process, keyboard, mouse, windowUtils, monitor
+  fsCore, fsPath, ini, registry, systemInfo, disk, clipboard, shell, process, keyboard, mouse, windowUtils, monitor, consoleModule
 ];
 
 export const SYSTEM_LIBRARY_MODULE_IDS = new Set(SYSTEM_LIBRARY_MODULES.map(module => module.id));

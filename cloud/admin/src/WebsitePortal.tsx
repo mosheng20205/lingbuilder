@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Heart, History, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
+import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Github, Heart, History, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import sponsorQr from '../../../image/sponsor-qr-alipay-wechat.png';
 import { CLOUD_API, fetchWebsiteBootstrap, fetchWebsiteUpdates, type WebsiteBootstrap, type WebsiteCommand, type WebsiteDemo, type WebsiteGuide, type WebsiteSponsor, type WebsiteUpdateEntry } from './websiteApi';
 import { readDemoArchive } from './demoSourceArchive';
 import { isDocsSectionItem, WEBSITE_NAV_ITEMS, type WebsiteNavItem } from './websiteNav';
+import { WebsiteThemeToggle } from './websiteTheme';
 import './website.css';
 
 const NAV = [{ href: '/', label: '首页' }, ...WEBSITE_NAV_ITEMS];
 
 export const PUBLIC_WEBSITE_PATHS = ['/commands', '/downloads', '/controls', '/modules', '/demos', '/community', '/sponsors', '/updates'];
+
+/** 开源仓库地址：官网头部、页脚与博客首页共用。 */
+export const GITHUB_REPO_URL = 'https://github.com/mosheng20205/lingbuilder';
 
 export function WebsitePortal() {
   const path = location.pathname.replace(/\/$/u, '') || '/';
@@ -42,6 +46,10 @@ function WebsiteHeader({ activePath }: { activePath: string }) {
   return <header className="website-header"><div className="website-shell website-nav">
     <a className="website-brand" href="/"><img src={brandIcon} alt=""/><span><strong>灵码</strong><small>LINGBUILDER</small></span></a>
     <nav aria-label="官网导航">{NAV.map((item: WebsiteNavItem) => <a key={item.href} className={activePath === item.href ? 'active' : isDocsSectionItem(item) ? 'doc-link' : ''} href={item.href}>{item.label}</a>)}</nav>
+    <div className="website-head-actions">
+      <a className="website-github-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="GitHub 开源仓库" title="GitHub 开源仓库"><Github size={17}/></a>
+      <WebsiteThemeToggle/>
+    </div>
     <a className="website-community-link" href="/downloads"><Download size={16}/>下载 IDE</a>
     <a className="website-community-link" href="/community"><MessageCircle size={16}/>QQ交流群</a>
   </div></header>;
@@ -454,5 +462,5 @@ function InlineCode({ text }: { text: string }) { return <>{text.split(/(`[^`]+`
 function LoadNotice({ text }: { text: string }) { return <div className="load-notice">{text}</div>; }
 function EmptyState({ text }: { text: string }) { return <div className="website-empty">{text}</div>; }
 function kindLabel(kind: string) { return ({ COMMAND: '命令', EVENT: '事件', CONSTANT: '常量', TYPE: '数据类型' } as Record<string,string>)[kind] || kind; }
-function WebsiteFooter() { return <footer className="website-footer"><div className="website-shell"><a href="/"><ArrowLeft size={15}/>返回灵码首页</a><span>Windows · 中文编程 · 原生 C++</span><a href="/updates">更新记录</a><a href="/community">官方交流群</a><a href="/sponsors">赞助列表</a></div></footer>; }
+function WebsiteFooter() { return <footer className="website-footer"><div className="website-shell"><a href="/"><ArrowLeft size={15}/>返回灵码首页</a><span>Windows · 中文编程 · 原生 C++</span><a href="/updates">更新记录</a><a href="/community">官方交流群</a><a href="/sponsors">赞助列表</a><a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer"><Github size={14}/>GitHub 仓库</a></div></footer>; }
 interface PageProps { content: WebsiteBootstrap | null; error: string }

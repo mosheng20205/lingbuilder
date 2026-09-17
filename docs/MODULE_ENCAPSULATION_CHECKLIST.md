@@ -2,7 +2,7 @@
 
 更新时间：2026-09-16
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **89 个内置模块、3471 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **96 个内置模块、3615 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -22,6 +22,10 @@
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 22 |
 | 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 10 |
  已封装 | `lingbuilder.std.buffer` | 缓冲区模块 | 17 |
+| 已封装 | `lingbuilder.std.map` | 哈希表与栈模块 | 28 |
+| 已封装 | `lingbuilder.std.bigint` | 大数运算模块 | 15 |
+| 已封装 | `lingbuilder.std.pinyin` | 拼音处理模块 | 8 |
+| 已封装 | `lingbuilder.std.lunar` | 农历日期模块 | 14 |
 | 已完整封装 | `lingbuilder.data.json` | JSON 数据模块 2.0 | 55 |
 | 已封装 | `lingbuilder.data.xml` | XML 文本模块 | 5 |
 
@@ -41,7 +45,7 @@ JSON 数据模块 2.0 提供受管 `JSON值`、严格 RFC 8259 解析与创建�
 | 已完整封装（只读信息） | `lingbuilder.system.disk` | 磁盘信息模块 | 28 |
 | 已完整封装 | `lingbuilder.system.clipboard` | 剪贴板模块 | 10 |
 | 已封装 | `lingbuilder.system.shell` | 系统外壳模块 | 6 |
-| 已封装 | `lingbuilder.process` | 进程管理模块 | 5 |
+| 已封装 | `lingbuilder.process` | 进程管理模块 | 7 |
 | 已封装 | `lingbuilder.ipc` | 进程通信模块 | 8 |
 | 已封装 | `lingbuilder.archive` | ZIP 压缩模块 | 4 |
 
@@ -55,10 +59,11 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已封装 | `lingbuilder.input.keyboard` | 键盘输入模块 | 31 |
+| 已封装 | `lingbuilder.input.keyboard` | 键盘输入模块 | 34 |
 | 已封装 | `lingbuilder.input.mouse` | 鼠标输入模块 | 29 |
 | 已封装 | `lingbuilder.win32.window-utils` | Win32 窗口操作模块 | 11 |
 | 已封装 | `lingbuilder.win32.monitor` | 显示器与 DPI 模块 | 6 |
+| 已封装 | `lingbuilder.console` | 控制台模块 | 12 |
 | 已封装 | `lingbuilder.win32.menu` | Win32 菜单模块 | 8 |
 | 已封装 | `lingbuilder.win32.tray` | 托盘图标模块 | 5 |
 | 已封装 | `lingbuilder.win32.accessibility` | 辅助功能模块 | 4 |
@@ -113,7 +118,9 @@ MySQL 数据库模块 1.0 通过原生客户端/服务器协议直连 MySQL/Mari
 | 已封装 | `lingbuilder.image.icon` | 图标处理模块 | 3 |
 | 已封装 | `lingbuilder.image.recognition` | 基础识图模块 | 5 |
 | 已封装（OpenCV 4.14.0 x64） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选模块 | 33 |
-| 已封装 | `lingbuilder.media.audio` | 基础音频模块 | 5 |
+| 已封装 | `lingbuilder.media.audio` | 基础音频模块 | 7 |
+| 已封装 | `lingbuilder.net.pop3` | 邮件接收模块 | 18 |
+| 已封装 | `lingbuilder.net.imap` | IMAP邮件接收模块 | 15 |
 
 基础识图使用确定性像素遍历，适合找色和小模板。它不是 OCR 或机器学习识别模块。
 
@@ -137,7 +144,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
 | 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 206 |
-| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 546 |
+| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 550 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 271 |
 | 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
 | 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |

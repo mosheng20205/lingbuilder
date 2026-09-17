@@ -1,0 +1,156 @@
+/* 官网双主题令牌：暗色为默认值，html[data-website-theme='light'] 时整组切换到亮色。
+   只作用于官网两套皮肤根类（.blog-home / .website-page）；管理后台样式不走本文件。
+   代码演示窗（.code-copy、.blog-terminal、.markdown-body pre）刻意常驻深色，不参与令牌。 */
+
+.blog-home,
+.website-page {
+  --t-header:#070b14e8;
+  --t-header-strong:#070b14d9;
+  --t-header-strong-line:#ffffff26;
+  --t-footer:#070d15;
+  --t-hairline:#ffffff0d;
+  --t-grid:#ffffff05;
+  --t-hero-a:#0a1220;
+  --t-hero-b:#080d17;
+  --t-hero-line:#1b2a41;
+  --t-hero-icon-line:#2d5067;
+  --t-hero-icon-bg:#15314988;
+  --t-bg2:#0a111e;
+  --t-panel2:#0c1524;
+  --t-panel-deep:#0c1422;
+  --t-card-a:#111c2e;
+  --t-card-b:#0b1720;
+  --t-inset:#101a2b;
+  --t-btn-bg:#132238;
+  --t-chip-active:#163047;
+  --t-hover:#142038;
+  --t-input:#0e1727;
+  --t-icon-btn:#19263b;
+  --t-mirror:#0b1423;
+  --t-lightbox:#04070af2;
+  --t-text-strong:#ffffff;
+  --t-text-soft:#c3d0dc;
+  --t-faint:#7c8ba1;
+  --t-fainter:#5f7088;
+  --t-line-soft:#20304a;
+  --t-line-mid:#2a3a55;
+  --t-line-strong:#31435f;
+  --t-ok:#55d7ad;
+  --t-ok-line:#4fc79b66;
+  --t-ok-bg:#40c99d12;
+  --t-warn:#f0a676;
+  --t-warn-line:#e88a4d66;
+  --t-param:#b590ff;
+  --t-ver:#91a5ff;
+  --t-code-accent:#61dce7;
+  --t-inline-code-bg:#101c2e;
+  --t-tag-feature:#6fd698;
+  --t-tag-module:#b3a6ff;
+  --t-tag-tuning:#e2d37f;
+  --t-tag-tutorial:#7cc7ee;
+  --t-tag-release:#55d7ad;
+  --t-demo-btn-line:#3d7f8c;
+  --t-demo-btn-fg:#eafcff;
+  --t-demo-btn-bg:#12333c;
+  --t-accent-hover:#69e5cf;
+  --t-accent-line:#3a7d78;
+  --t-accent-soft:#15373b;
+  --t-hero-em:#9ee8dc;
+  --t-cta-a:#102b31;
+  --t-cta-b:#0c1a24;
+}
+
+:root[data-website-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-website-theme='light'] .blog-home,
+:root[data-website-theme='light'] .website-page {
+  --t-header:#ffffffee;
+  --t-header-strong:#ffffffe8;
+  --t-header-strong-line:#17263f33;
+  --t-footer:#edf1f7;
+  --t-hairline:#17263f14;
+  --t-grid:#17263f0a;
+  --t-hero-a:#f8fafd;
+  --t-hero-b:#f1f4fa;
+  --t-hero-line:#e2e9f2;
+  --t-hero-icon-line:#b9c9dd;
+  --t-hero-icon-bg:#ffffffaa;
+  --t-bg2:#eef2f8;
+  --t-panel2:#f2f5fa;
+  --t-panel-deep:#edf1f8;
+  --t-card-a:#ffffff;
+  --t-card-b:#f4f7fb;
+  --t-inset:#f0f4fa;
+  --t-btn-bg:#eaf1fb;
+  --t-chip-active:#d8eafa;
+  --t-hover:#e9f0fa;
+  --t-input:#ffffff;
+  --t-icon-btn:#e6edf7;
+  --t-mirror:#f0f4fa;
+  --t-lightbox:#1d2c4459;
+  --t-text-strong:#13233e;
+  --t-text-soft:#3c516f;
+  --t-faint:#667999;
+  --t-fainter:#8494ac;
+  --t-line-soft:#e3e9f1;
+  --t-line-mid:#c9d5e4;
+  --t-line-strong:#b3c2d6;
+  --t-ok:#0e8a63;
+  --t-ok-line:#0e8a6359;
+  --t-ok-bg:#0e8a6314;
+  --t-warn:#b05e1f;
+  --t-warn-line:#b05e1f59;
+  --t-param:#7440e8;
+  --t-ver:#3d5bd9;
+  --t-code-accent:#0b7d90;
+  --t-inline-code-bg:#eef3f9;
+  --t-tag-feature:#1c7f47;
+  --t-tag-module:#6d3fd6;
+  --t-tag-tuning:#8a741a;
+  --t-tag-tutorial:#1d6ea8;
+  --t-tag-release:#0e8a63;
+  --t-demo-btn-line:#0b7d90;
+  --t-demo-btn-fg:#07272e;
+  --t-demo-btn-bg:#d5eff3;
+}
+
+:root[data-website-theme='light'] .website-page {
+  --web-bg:#f4f6fb;
+  --web-panel:#ffffff;
+  --web-panel-2:#eef2f8;
+  --web-line:#d9e1ec;
+  --web-text:#17263f;
+  --web-muted:#5a6c88;
+  --web-cyan:#0b7d90;
+}
+
+:root[data-website-theme='light'] .blog-home {
+  --bg:#f3f8f7;
+  --surface:#ffffff;
+  --surface-2:#e9f2f0;
+  --line:#d3e2df;
+  --text:#1b3734;
+  --muted:#587671;
+  --accent:#0b9a81;
+  --accent-2:#3b6ce0;
+  --t-accent-hover:#0fae90;
+  --t-accent-line:#93d2c7;
+  --t-accent-soft:#def2ee;
+  --t-hero-em:#0b8a72;
+  --t-cta-a:#d9efec;
+  --t-cta-b:#ecf5f3;
+}
+
+/* 头部右侧的 GitHub 外链与主题切换按钮：官网两套皮肤共用形状，各自套用强调色。 */
+.website-head-actions,
+.blog-head-actions{display:flex;flex:none;align-items:center;gap:8px}
+.website-theme-toggle,
+.website-github-link,
+.blog-github-link{display:grid;place-items:center;width:38px;height:38px;flex:none;border:1px solid var(--t-line-strong);border-radius:8px;background:transparent;color:inherit;cursor:pointer;text-decoration:none;transition:border-color .2s ease,color .2s ease}
+.website-page .website-theme-toggle:hover,
+.website-page .website-github-link:hover{border-color:var(--web-cyan);color:var(--web-cyan)}
+.blog-home .website-theme-toggle:hover,
+.blog-home .blog-github-link:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:430px){.website-github-link,.blog-github-link,.website-theme-toggle{width:34px;height:34px}}

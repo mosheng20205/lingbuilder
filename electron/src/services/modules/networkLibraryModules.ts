@@ -55,7 +55,11 @@ const dns = createStandardModule({
     command('DNS_反向查询', [{ name: 'IP地址', type: 'wideString', description: '点分 IPv4 或标准 IPv6 文本；传入域名等非法地址直接返回空文本，没有 PTR 记录同样返回空文本。'}], 'wideString', '对 IP 地址执行反向名称查询。'),
     command('网络_取本机名', [], 'wideString', '返回 Winsock 本机主机名。'),
     command('网络_是否IPv4', [{ name: '地址', type: 'wideString', description: '待检查的地址文本，必须是点分十进制 IPv4，不接受前导零之外的空格或端口写法。'}], 'bool', '检查是否为合法 IPv4 文本。'),
-    command('网络_是否IPv6', [{ name: '地址', type: 'wideString', description: '待检查的地址文本，必须是冒号分隔的 IPv6，允许双冒号缩写形式。'}], 'bool', '检查是否为合法 IPv6 文本。')
+    command('网络_是否IPv6', [{ name: '地址', type: 'wideString', description: '待检查的地址文本，必须是冒号分隔的 IPv6，允许双冒号缩写形式。'}], 'bool', '检查是否为合法 IPv6 文本。'),
+    command('网络_取MAC地址', [], 'wideString', '返回首个非环回网卡的物理地址，格式如 00-1A-2B-3C-4D-5E；读取失败返回空文本。', '网络_取MAC地址()'),
+    command('网络_取网卡名称列表', [{ name: '结果数组', type: 'array', description: '接收网卡友好名称的文本型数组变量，调用前会先清空原有内容。'}], 'int', '把本机全部网卡的名称写入文本数组，返回网卡数量。'),
+    command('网络_取IP地址列表', [{ name: '结果数组', type: 'array', description: '接收 IP 地址的文本型数组变量，调用前会先清空原有内容。'}], 'int', '把本机全部网卡的 IPv4 与 IPv6 地址写入文本数组，返回地址数量。'),
+    command('网络_取DNS后缀', [], 'wideString', '返回首个配置了主 DNS 后缀的网卡后缀文本；没有配置返回空文本。')
   ]
 });
 
@@ -98,4 +102,56 @@ const ftp = createStandardModule({
   ]
 });
 
-export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [HTTP_CLIENT_MODULE, CDP_CLIENT_MODULE, WEB_HTTP_MODULE, tcp, udp, dns, url, cookie, ftp];
+
+const pop3 = createStandardModule({
+  id: 'lingbuilder.net.pop3', name: '邮件接收模块', category: '网络',
+  description: '通过 POP3 协议接收邮件：连接后取回邮件并解析主题、发件人、日期、正文与附件，支持 SSL(TLS) 加密连接（不校验服务器证书）。',
+  tags: ['邮件', 'POP3', '接收'],
+  docs: [{ title: '邮件接收模块使用说明', path: 'docs/modules/pop3/README.md' }],
+  commands: [
+    command('POP3_连接', [{ name: '服务器', type: 'wideString', description: 'POP3 服务器主机名或 IP。'}, { name: '端口', type: 'int', description: '服务端口：明文 110、SSL 995；1 到 65535。'}, { name: '用户名', type: 'wideString', description: '登录账号。'}, { name: '密码', type: 'wideString', description: '登录密码。'}, { name: '是否SSL', type: 'bool', description: '真使用 SSL/TLS 加密连接（不校验服务器证书），假使用明文。'}], 'bool', '连接 POP3 收信服务器并完成登录；失败返回假，用 POP3_取错误 查看原因。', 'POP3_连接("pop.example.com", 995, "user@example.com", "密码", 真)'),
+    command('POP3_断开', [], 'void', '断开与收信服务器的连接。'),
+    command('POP3_是否已连接', [], 'bool', '判断当前是否已连接收信服务器。'),
+    command('POP3_取邮件数量', [], 'int', '返回邮箱中的邮件数量；未连接返回 -1。'),
+    command('POP3_取邮箱总大小', [], 'int', '返回邮箱中全部邮件的总字节数；未连接返回 -1。'),
+    command('POP3_取邮件大小', [{ name: '序号', type: 'int', description: '邮件序号，从 1 起。'}], 'int', '返回指定邮件的字节数。'),
+    command('POP3_接收邮件', [{ name: '序号', type: 'int', description: '邮件序号，从 1 起。'}], 'bool', '取回指定邮件的完整内容并解析为当前邮件上下文，之后用 取主题/取发件人/取正文文本/附件族 命令读取。'),
+    command('POP3_删除邮件', [{ name: '序号', type: 'int', description: '要删除的邮件序号，从 1 起。'}], 'bool', '把指定邮件标记为删除；真正删除发生在 QUIT 时，可用 POP3_复位删除 撤销。'),
+    command('POP3_复位删除', [], 'bool', '撤销本次连接中所有删除标记。'),
+    command('POP3_取主题', [], 'wideString', '返回已接收邮件的主题（自动解码编码字）。'),
+    command('POP3_取发件人', [], 'wideString', '返回已接收邮件的发件人。'),
+    command('POP3_取日期', [], 'wideString', '返回已接收邮件的日期头。'),
+    command('POP3_取正文文本', [], 'wideString', '返回已接收邮件的纯文本正文。'),
+    command('POP3_取网页正文', [], 'wideString', '返回已接收邮件的 HTML 正文。'),
+    command('POP3_取附件个数', [], 'int', '返回已接收邮件的附件数量。'),
+    command('POP3_取附件名称', [{ name: '附件序号', type: 'int', description: '附件序号，从 0 起。'}], 'wideString', '返回指定附件的文件名。'),
+    command('POP3_保存附件', [{ name: '附件序号', type: 'int', description: '附件序号，从 0 起。'}, { name: '保存路径', type: 'wideString', description: '保存的完整文件路径，所在目录必须已存在。'}], 'bool', '把指定附件内容写入目标文件。'),
+    command('POP3_取错误', [], 'wideString', '返回最近一次 POP3 错误或服务端响应。')
+  ]
+});
+
+const imap = createStandardModule({
+  id: 'lingbuilder.net.imap', name: 'IMAP邮件接收模块', category: '网络',
+  description: '通过 IMAP 协议接收邮件：连接后选择文件夹、取回邮件并解析主题、发件人、日期、正文与附件，支持 SSL(TLS) 加密连接（不校验服务器证书）。',
+  tags: ['邮件', 'IMAP', '接收'],
+  docs: [{ title: 'IMAP邮件接收模块使用说明', path: 'docs/modules/imap/README.md' }],
+  commands: [
+    command('IMAP_连接', [{ name: '服务器', type: 'wideString', description: 'IMAP 服务器主机名或 IP。'}, { name: '端口', type: 'int', description: '服务端口：明文 143、SSL 993；1 到 65535。'}, { name: '用户名', type: 'wideString', description: '登录账号。'}, { name: '密码', type: 'wideString', description: '登录密码。'}, { name: '是否SSL', type: 'bool', description: '真使用 SSL/TLS 加密连接（不校验服务器证书），假使用明文。'}], 'bool', '连接 IMAP 收信服务器并完成登录；失败返回假，用 IMAP_取错误 查看原因。', 'IMAP_连接("imap.example.com", 993, "user@example.com", "密码", 真)'),
+    command('IMAP_断开', [], 'void', '断开与收信服务器的连接。'),
+    command('IMAP_是否已连接', [], 'bool', '判断当前是否已连接收信服务器。'),
+    command('IMAP_选择文件夹', [{ name: '文件夹名称', type: 'wideString', description: '要打开的文件夹名称，例如 INBOX。'}], 'bool', '打开指定邮件文件夹；之后的取件命令都作用于该文件夹。'),
+    command('IMAP_取邮件数量', [], 'int', '返回当前文件夹中的邮件数量；未连接或未选择文件夹返回 -1。'),
+    command('IMAP_接收邮件', [{ name: '序号', type: 'int', description: '邮件序号，从 1 起。'}], 'bool', '取回指定邮件的完整内容并解析为当前邮件上下文，之后用 取主题/取发件人/取正文文本/附件族 命令读取。'),
+    command('IMAP_取主题', [], 'wideString', '返回已接收邮件的主题（自动解码编码字）。'),
+    command('IMAP_取发件人', [], 'wideString', '返回已接收邮件的发件人。'),
+    command('IMAP_取日期', [], 'wideString', '返回已接收邮件的日期头。'),
+    command('IMAP_取正文文本', [], 'wideString', '返回已接收邮件的纯文本正文。'),
+    command('IMAP_取网页正文', [], 'wideString', '返回已接收邮件的 HTML 正文。'),
+    command('IMAP_取附件个数', [], 'int', '返回已接收邮件的附件数量。'),
+    command('IMAP_取附件名称', [{ name: '附件序号', type: 'int', description: '附件序号，从 0 起。'}], 'wideString', '返回指定附件的文件名。'),
+    command('IMAP_保存附件', [{ name: '附件序号', type: 'int', description: '附件序号，从 0 起。'}, { name: '保存路径', type: 'wideString', description: '保存的完整文件路径，所在目录必须已存在。'}], 'bool', '把指定附件内容写入目标文件。'),
+    command('IMAP_取错误', [], 'wideString', '返回最近一次 IMAP 错误或服务端响应。')
+  ]
+});
+
+export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [HTTP_CLIENT_MODULE, CDP_CLIENT_MODULE, WEB_HTTP_MODULE, tcp, udp, dns, url, cookie, ftp, pop3, imap];

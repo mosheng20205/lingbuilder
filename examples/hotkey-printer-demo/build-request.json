@@ -1,0 +1,43 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "hotkey-printer-demo",
+    "name": "全局热键与打印机演示",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "HotkeyPrinterDemo.xml",
+        "className": "热键打印机演示",
+        "title": "LingBuilder 全局热键与打印机验证",
+        "width": 560,
+        "height": 300,
+        "background": "#14141C",
+        "description": "验证键盘模块 2.1 全局热键族与 Win32 高级控件模块打印机族。",
+        "events": {
+          "Loaded": "_热键打印机演示_创建完毕",
+          "HotKeyDown": "_热键打印机演示_全局热键被按下"
+        },
+        "controls": [
+          {
+            "id": "status-label",
+            "type": "Label",
+            "name": "状态标签",
+            "content": "就绪",
+            "x": 16,
+            "y": 12,
+            "width": 520,
+            "height": 26,
+            "fontSize": 13,
+            "background": "transparent",
+            "foreground": "#4FC3F7",
+            "isEnabled": true,
+            "visibility": "Visible"
+          }
+        ]
+      }
+    ]
+  },
+  "lingCppSourceCode": "包 热键打印机演示\n使用 键盘输入模块\n使用 通用控件模块\n使用 文件目录模块\n使用 文本处理模块\n使用 Win32窗口基础模块\n\n类 热键打印机演示 : 窗口\n公开\n  事件 _热键打印机演示_创建完毕()\n    局部 文本型 报告文件 = \"hotkey-printer-report.txt\"\n    局部 文件号 报告\n    报告 = 文件_打开(报告文件, 4, 1)\n\n    局部 整数型 热键\n    热键 = 键盘_注册全局热键(6, 71)\n    文件_写文本行(报告, 格式化文本(\"H注册成功={}\", 到文本(热键 > 0)))\n\n    局部 文本型 打印机列表[]\n    局部 整数型 打印机数\n    打印机数 = 打印机_取列表(打印机列表)\n    文件_写文本行(报告, 格式化文本(\"P列表数大于0={}\", 到文本(打印机数 > 0)))\n    局部 文本型 默认打印机\n    默认打印机 = 打印机_取默认()\n    文件_写文本行(报告, 格式化文本(\"P默认长度大于0={}\", 到文本(文本_取长度(默认打印机) > 0)))\n\n    文件_写文本行(报告, \"DONE=1\")\n    文件_关闭(报告)\n\n    键盘_前台_组合按键(71, 17, 18, 0)\n  结束\n\n  事件 _热键打印机演示_全局热键被按下(整数型 热键ID, 整数型 键码, 整数型 修饰键)\n    局部 文本型 触发文件 = \"hotkey-fired.txt\"\n    局部 文件号 触发报告\n    触发报告 = 文件_打开(触发文件, 4, 1)\n    文件_写文本行(触发报告, 格式化文本(\"H触发ID大于0={}\", 到文本(热键ID > 0)))\n    文件_写文本行(触发报告, \"DONE=1\")\n    文件_关闭(触发报告)\n    结束()\n  结束\n结束类\n",
+  "run": false,
+  "approved": true
+}

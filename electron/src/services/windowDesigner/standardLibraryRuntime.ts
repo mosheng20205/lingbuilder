@@ -1,6 +1,7 @@
 import { InstalledModule } from '../modules/types';
 import { STANDARD_LIBRARY_MODULE_IDS } from '../modules/standardLibraryModules';
 import { JSON_RUNTIME } from './jsonRuntime';
+import { LB_PINYIN_TABLE_CPP, LB_LUNAR_TABLE_CPP } from './stdDataTables';
 
 export const BUILTIN_LIBRARY_COMMON_RUNTIME = String.raw`
 static thread_local std::array<std::wstring, 16> g_lbTextResults;
@@ -1659,6 +1660,1009 @@ const wchar_t* XML_取节点文本(const wchar_t* xml, const wchar_t* name) {
 }
 `;
 
+
+// ---------- 哈希表与栈运行时 ----------
+const MAP_RUNTIME = String.raw`// ---------- 哈希表与栈运行时 ----------
+struct LbMapValue {
+    int kind = 0; // 0 文本, 1 整数, 2 逻辑, 3 字节集
+    std::wstring text;
+    long long number = 0;
+    bool flag = false;
+    std::vector<unsigned char> bytes;
+};
+
+struct LingHashMapBlock {
+    std::mutex mutex;
+    std::unordered_map<std::wstring, LbMapValue> items;
+};
+
+struct LingStackBlock {
+    std::mutex mutex;
+    std::vector<LbMapValue> items;
+};
+
+static std::mutex g_lbMapRegistryMutex;
+static std::unordered_map<long long, std::shared_ptr<LingHashMapBlock>> g_lbMapRegistry;
+static std::unordered_map<long long, std::shared_ptr<LingStackBlock>> g_lbStackRegistry;
+static long long g_lbMapSequence = 0;
+static thread_local bool g_lbMapLastOpOk = false;
+static thread_local bool g_lbStackLastPopOk = false;
+
+static std::shared_ptr<LingHashMapBlock> LB_FindMap(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbMapRegistryMutex);
+    auto found = g_lbMapRegistry.find(id);
+    return found == g_lbMapRegistry.end() ? nullptr : found->second;
+}
+
+static std::shared_ptr<LingStackBlock> LB_FindStack(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbMapRegistryMutex);
+    auto found = g_lbStackRegistry.find(id);
+    return found == g_lbStackRegistry.end() ? nullptr : found->second;
+}
+
+static void LB_MapPut(long long id, const wchar_t* key, LbMapValue value) {
+    auto block = LB_FindMap(id);
+    if (!block) { g_lbMapLastOpOk = false; return; }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->items[LB_Wide(key)] = std::move(value);
+    g_lbMapLastOpOk = true;
+}
+
+long long 哈希表_创建(int initialCapacity) {
+    if (initialCapacity < 0) return 0;
+    auto block = std::make_shared<LingHashMapBlock>();
+    block->items.reserve(static_cast<size_t>(initialCapacity));
+    std::lock_guard<std::mutex> lock(g_lbMapRegistryMutex);
+    const long long id = ++g_lbMapSequence;
+    g_lbMapRegistry[id] = std::move(block);
+    return id;
+}
+
+bool 哈希表_销毁(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbMapRegistryMutex);
+    return g_lbMapRegistry.erase(id) > 0;
+}
+
+int 哈希表_取数量(long long id) {
+    auto block = LB_FindMap(id);
+    if (!block) return -1;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    return static_cast<int>(block->items.size());
+}
+
+bool 哈希表_是否包含(long long id, const wchar_t* key) {
+    auto block = LB_FindMap(id);
+    if (!block) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    return block->items.count(LB_Wide(key)) > 0;
+}
+
+bool 哈希表_删除(long long id, const wchar_t* key) {
+    auto block = LB_FindMap(id);
+    if (!block) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    return block->items.erase(LB_Wide(key)) > 0;
+}
+
+bool 哈希表_清空(long long id) {
+    auto block = LB_FindMap(id);
+    if (!block) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->items.clear();
+    return true;
+}
+
+bool 哈希表_置文本(long long id, const wchar_t* key, const wchar_t* value) {
+    LbMapValue v; v.kind = 0; v.text = LB_Wide(value);
+    LB_MapPut(id, key, std::move(v));
+    return g_lbMapLastOpOk;
+}
+
+const wchar_t* 哈希表_取文本(long long id, const wchar_t* key) {
+    auto block = LB_FindMap(id);
+    if (!block) { g_lbMapLastOpOk = false; return LB_ReturnText(L""); }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    auto found = block->items.find(LB_Wide(key));
+    if (found == block->items.end() || found->second.kind != 0) { g_lbMapLastOpOk = false; return LB_ReturnText(L""); }
+    g_lbMapLastOpOk = true;
+    return LB_ReturnText(found->second.text);
+}
+
+bool 哈希表_置整数(long long id, const wchar_t* key, long long value) {
+    LbMapValue v; v.kind = 1; v.number = value;
+    LB_MapPut(id, key, std::move(v));
+    return g_lbMapLastOpOk;
+}
+
+long long 哈希表_取整数(long long id, const wchar_t* key) {
+    auto block = LB_FindMap(id);
+    if (!block) { g_lbMapLastOpOk = false; return 0; }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    auto found = block->items.find(LB_Wide(key));
+    if (found == block->items.end() || found->second.kind != 1) { g_lbMapLastOpOk = false; return 0; }
+    g_lbMapLastOpOk = true;
+    return found->second.number;
+}
+
+bool 哈希表_置逻辑(long long id, const wchar_t* key, bool value) {
+    LbMapValue v; v.kind = 2; v.flag = value;
+    LB_MapPut(id, key, std::move(v));
+    return g_lbMapLastOpOk;
+}
+
+bool 哈希表_取逻辑(long long id, const wchar_t* key) {
+    auto block = LB_FindMap(id);
+    if (!block) { g_lbMapLastOpOk = false; return false; }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    auto found = block->items.find(LB_Wide(key));
+    if (found == block->items.end() || found->second.kind != 2) { g_lbMapLastOpOk = false; return false; }
+    g_lbMapLastOpOk = true;
+    return found->second.flag;
+}
+
+bool 哈希表_置字节集(long long id, const wchar_t* key, const std::vector<unsigned char>& value) {
+    LbMapValue v; v.kind = 3; v.bytes = value;
+    LB_MapPut(id, key, std::move(v));
+    return g_lbMapLastOpOk;
+}
+
+std::vector<unsigned char> 哈希表_取字节集(long long id, const wchar_t* key) {
+    auto block = LB_FindMap(id);
+    if (!block) { g_lbMapLastOpOk = false; return {}; }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    auto found = block->items.find(LB_Wide(key));
+    if (found == block->items.end() || found->second.kind != 3) { g_lbMapLastOpOk = false; return {}; }
+    g_lbMapLastOpOk = true;
+    return found->second.bytes;
+}
+
+int 哈希表_取全部键(long long id, std::vector<std::wstring>& out) {
+    out.clear();
+    auto block = LB_FindMap(id);
+    if (!block) return -1;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    for (const auto& entry : block->items) out.push_back(entry.first);
+    return static_cast<int>(out.size());
+}
+
+bool 哈希表_上次操作是否成功() { return g_lbMapLastOpOk; }
+
+long long 栈_创建(int initialCapacity) {
+    if (initialCapacity < 0) return 0;
+    auto block = std::make_shared<LingStackBlock>();
+    block->items.reserve(static_cast<size_t>(initialCapacity));
+    std::lock_guard<std::mutex> lock(g_lbMapRegistryMutex);
+    const long long id = ++g_lbMapSequence;
+    g_lbStackRegistry[id] = std::move(block);
+    return id;
+}
+
+bool 栈_销毁(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbMapRegistryMutex);
+    return g_lbStackRegistry.erase(id) > 0;
+}
+
+int 栈_取数量(long long id) {
+    auto block = LB_FindStack(id);
+    if (!block) return -1;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    return static_cast<int>(block->items.size());
+}
+
+bool 栈_是否为空(long long id) {
+    auto block = LB_FindStack(id);
+    if (!block) return true;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    return block->items.empty();
+}
+
+bool 栈_清空(long long id) {
+    auto block = LB_FindStack(id);
+    if (!block) return false;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->items.clear();
+    return true;
+}
+
+bool 栈_压入(long long id, const wchar_t* value) {
+    auto block = LB_FindStack(id);
+    if (!block) return false;
+    LbMapValue v; v.kind = 0; v.text = LB_Wide(value);
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->items.push_back(std::move(v));
+    return true;
+}
+
+const wchar_t* 栈_弹出(long long id) {
+    auto block = LB_FindStack(id);
+    if (!block) { g_lbStackLastPopOk = false; return LB_ReturnText(L""); }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    if (block->items.empty() || block->items.back().kind != 0) { g_lbStackLastPopOk = false; return LB_ReturnText(L""); }
+    std::wstring result = std::move(block->items.back().text);
+    g_lbStackLastPopOk = true;
+    block->items.pop_back();
+    return LB_ReturnText(std::move(result));
+}
+
+bool 栈_压入整数(long long id, long long value) {
+    auto block = LB_FindStack(id);
+    if (!block) return false;
+    LbMapValue v; v.kind = 1; v.number = value;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->items.push_back(std::move(v));
+    return true;
+}
+
+long long 栈_弹出整数(long long id) {
+    auto block = LB_FindStack(id);
+    if (!block) { g_lbStackLastPopOk = false; return 0; }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    if (block->items.empty() || block->items.back().kind != 1) { g_lbStackLastPopOk = false; return 0; }
+    const long long result = block->items.back().number;
+    g_lbStackLastPopOk = true;
+    block->items.pop_back();
+    return result;
+}
+
+bool 栈_压入字节集(long long id, const std::vector<unsigned char>& value) {
+    auto block = LB_FindStack(id);
+    if (!block) return false;
+    LbMapValue v; v.kind = 3; v.bytes = value;
+    std::lock_guard<std::mutex> lock(block->mutex);
+    block->items.push_back(std::move(v));
+    return true;
+}
+
+std::vector<unsigned char> 栈_弹出字节集(long long id) {
+    auto block = LB_FindStack(id);
+    if (!block) { g_lbStackLastPopOk = false; return {}; }
+    std::lock_guard<std::mutex> lock(block->mutex);
+    if (block->items.empty() || block->items.back().kind != 3) { g_lbStackLastPopOk = false; return {}; }
+    std::vector<unsigned char> result = std::move(block->items.back().bytes);
+    g_lbStackLastPopOk = true;
+    block->items.pop_back();
+    return result;
+}
+
+bool 栈_上次弹出是否成功() { return g_lbStackLastPopOk; }
+`;
+
+const BIGINT_RUNTIME = String.raw`
+// ---------- 大数运算运行时 ----------
+struct LbBigValue {
+    bool neg = false;                       // 负号；零规定为非负
+    std::vector<unsigned int> mag;          // 十亿进制（base 1e9）低位在前
+};
+
+static std::mutex g_lbBigRegistryMutex;
+static std::unordered_map<long long, std::shared_ptr<LbBigValue>> g_lbBigRegistry;
+static long long g_lbBigSequence = 0;
+
+static std::shared_ptr<LbBigValue> LB_FindBig(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbBigRegistryMutex);
+    auto found = g_lbBigRegistry.find(id);
+    return found == g_lbBigRegistry.end() ? nullptr : found->second;
+}
+
+static long long LB_RegisterBig(LbBigValue value) {
+    auto block = std::make_shared<LbBigValue>(std::move(value));
+    std::lock_guard<std::mutex> lock(g_lbBigRegistryMutex);
+    const long long id = ++g_lbBigSequence;
+    g_lbBigRegistry[id] = std::move(block);
+    return id;
+}
+
+static void LB_BigTrim(LbBigValue& v) {
+    while (!v.mag.empty() && v.mag.back() == 0) v.mag.pop_back();
+    if (v.mag.empty()) v.neg = false;
+}
+
+static int LB_BigCompareMag(const LbBigValue& a, const LbBigValue& b) {
+    if (a.mag.size() != b.mag.size()) return a.mag.size() < b.mag.size() ? -1 : 1;
+    for (size_t i = a.mag.size(); i-- > 0;) {
+        if (a.mag[i] != b.mag[i]) return a.mag[i] < b.mag[i] ? -1 : 1;
+    }
+    return 0;
+}
+
+static LbBigValue LB_BigAddMag(const LbBigValue& a, const LbBigValue& b) {
+    LbBigValue out;
+    out.mag.reserve((std::max)(a.mag.size(), b.mag.size()) + 1);
+    unsigned long long carry = 0;
+    const size_t n = (std::max)(a.mag.size(), b.mag.size());
+    for (size_t i = 0; i < n; ++i) {
+        unsigned long long sum = carry;
+        if (i < a.mag.size()) sum += a.mag[i];
+        if (i < b.mag.size()) sum += b.mag[i];
+        out.mag.push_back(static_cast<unsigned int>(sum % 1000000000ULL));
+        carry = sum / 1000000000ULL;
+    }
+    if (carry) out.mag.push_back(static_cast<unsigned int>(carry));
+    return out;
+}
+
+// 要求 |a| >= |b|
+static LbBigValue LB_BigSubMag(const LbBigValue& a, const LbBigValue& b) {
+    LbBigValue out;
+    out.mag.reserve(a.mag.size());
+    long long borrow = 0;
+    for (size_t i = 0; i < a.mag.size(); ++i) {
+        long long cur = static_cast<long long>(a.mag[i]) - borrow - (i < b.mag.size() ? b.mag[i] : 0);
+        if (cur < 0) { cur += 1000000000LL; borrow = 1; } else borrow = 0;
+        out.mag.push_back(static_cast<unsigned int>(cur));
+    }
+    LB_BigTrim(out);
+    return out;
+}
+
+// 加减统一入口：结果符号按有符号运算规则
+static LbBigValue LB_BigAddSub(const LbBigValue& a, const LbBigValue& b, bool subtract) {
+    LbBigValue out;
+    const bool bNeg = b.neg ^ subtract;
+    if (a.neg == bNeg) {
+        out = LB_BigAddMag(a, b);
+        out.neg = a.neg;
+    } else {
+        const int cmp = LB_BigCompareMag(a, b);
+        if (cmp == 0) return out;
+        if (cmp > 0) { out = LB_BigSubMag(a, b); out.neg = a.neg; }
+        else { out = LB_BigSubMag(b, a); out.neg = bNeg; }
+    }
+    LB_BigTrim(out);
+    return out;
+}
+
+static LbBigValue LB_BigMul(const LbBigValue& a, const LbBigValue& b) {
+    LbBigValue out;
+    if (a.mag.empty() || b.mag.empty()) return out;
+    out.mag.assign(a.mag.size() + b.mag.size(), 0);
+    for (size_t i = 0; i < a.mag.size(); ++i) {
+        unsigned long long carry = 0;
+        for (size_t j = 0; j < b.mag.size() || carry; ++j) {
+            unsigned long long cur = out.mag[i + j] + carry;
+            if (j < b.mag.size()) cur += static_cast<unsigned long long>(a.mag[i]) * b.mag[j];
+            out.mag[i + j] = static_cast<unsigned int>(cur % 1000000000ULL);
+            carry = cur / 1000000000ULL;
+        }
+    }
+    out.neg = a.neg != b.neg;
+    LB_BigTrim(out);
+    return out;
+}
+
+// 乘以单个 limb（标量 < 1e9）；u64 累加安全（< 1e18 + 1e9）
+static LbBigValue LB_BigMulSmall(const LbBigValue& v, unsigned int scalar) {
+    LbBigValue out;
+    if (scalar == 0 || v.mag.empty()) return out;
+    out.mag.reserve(v.mag.size() + 1);
+    unsigned long long carry = 0;
+    for (size_t i = 0; i < v.mag.size(); ++i) {
+        const unsigned long long cur = static_cast<unsigned long long>(v.mag[i]) * scalar + carry;
+        out.mag.push_back(static_cast<unsigned int>(cur % 1000000000ULL));
+        carry = cur / 1000000000ULL;
+    }
+    while (carry) {
+        out.mag.push_back(static_cast<unsigned int>(carry % 1000000000ULL));
+        carry /= 1000000000ULL;
+    }
+    return out;
+}
+
+// 十进制逐位长除：商向零取整，余数符号随被除数；除数为 0 返回 false。
+// 每一步把余数整体乘 1e9 并落下一个十进制位，再用二分试商（u64 乘法有界）。
+static bool LB_BigDivMod(const LbBigValue& a, const LbBigValue& b, LbBigValue& q, LbBigValue& r) {
+    q = LbBigValue(); r = LbBigValue();
+    if (b.mag.empty()) return false;
+    q.mag.assign(a.mag.size(), 0);
+    for (size_t i = a.mag.size(); i-- > 0;) {
+        if (r.mag.empty()) r.mag.push_back(0);
+        r.mag.insert(r.mag.begin(), a.mag[i]);
+        LB_BigTrim(r);
+        unsigned int low = 0, high = 999999999u;
+        while (low < high) {
+            const unsigned int mid = low + (high - low + 1) / 2;
+            if (LB_BigCompareMag(LB_BigMulSmall(b, mid), r) <= 0) low = mid; else high = mid - 1;
+        }
+        q.mag[i] = low;
+        if (low) r = LB_BigSubMag(r, LB_BigMulSmall(b, low));
+    }
+    q.neg = a.neg != b.neg; LB_BigTrim(q);
+    r.neg = a.neg; LB_BigTrim(r);
+    return true;
+}
+
+const wchar_t* 大数_到文本(long long id) {
+    auto v = LB_FindBig(id);
+    if (!v) return LB_ReturnText(L"");
+    if (v->mag.empty()) return LB_ReturnText(L"0");
+    std::wstring out;
+    if (v->neg) out += L'-';
+    unsigned int top = v->mag.back();
+    wchar_t buffer[12];
+    int n = 0;
+    do { buffer[n++] = static_cast<wchar_t>(L'0' + top % 10); top /= 10; } while (top);
+    while (n) out += buffer[--n];
+    for (size_t i = v->mag.size() - 1; i-- > 0;) {
+        unsigned int limb = v->mag[i];
+        wchar_t chunk[9];
+        for (int d = 8; d >= 0; --d) { chunk[d] = static_cast<wchar_t>(L'0' + limb % 10); limb /= 10; }
+        out.append(chunk, 9);
+    }
+    return LB_ReturnText(std::move(out));
+}
+
+long long 大数_创建(const wchar_t* text) {
+    std::wstring value = LB_Wide(text);
+    const size_t start = value.find_first_not_of(L" \t\r\n");
+    if (start == std::wstring::npos) return LB_RegisterBig(LbBigValue());
+    const size_t finish = value.find_last_not_of(L" \t\r\n");
+    value = value.substr(start, finish - start + 1);
+    LbBigValue v;
+    if (value[0] == L'-' || value[0] == L'+') { v.neg = value[0] == L'-'; value.erase(0, 1); }
+    if (value.empty()) return 0;
+    std::vector<unsigned int> limbs;
+    for (size_t pos = value.size(); pos > 0;) {
+        const size_t take = (std::min)(static_cast<size_t>(9), pos);
+        const std::wstring chunk = value.substr(pos - take, take);
+        unsigned int limb = 0;
+        for (wchar_t ch : chunk) {
+            if (ch < L'0' || ch > L'9') return 0;
+            limb = limb * 10 + static_cast<unsigned int>(ch - L'0');
+        }
+        limbs.push_back(limb);
+        pos -= take;
+    }
+    v.mag = std::move(limbs);
+    LB_BigTrim(v);
+    return LB_RegisterBig(std::move(v));
+}
+
+long long 大数_从整数(long long value) {
+    LbBigValue v;
+    if (value < 0) v.neg = true;
+    unsigned long long magnitude = value < 0
+        ? static_cast<unsigned long long>(-(value + 1)) + 1
+        : static_cast<unsigned long long>(value);
+    while (magnitude) {
+        v.mag.push_back(static_cast<unsigned int>(magnitude % 1000000000ULL));
+        magnitude /= 1000000000ULL;
+    }
+    return LB_RegisterBig(std::move(v));
+}
+
+bool 大数_销毁(long long id) {
+    std::lock_guard<std::mutex> lock(g_lbBigRegistryMutex);
+    return g_lbBigRegistry.erase(id) > 0;
+}
+
+long long 大数_加(long long a, long long b) {
+    auto left = LB_FindBig(a), right = LB_FindBig(b);
+    if (!left || !right) return 0;
+    return LB_RegisterBig(LB_BigAddSub(*left, *right, false));
+}
+
+long long 大数_减(long long a, long long b) {
+    auto left = LB_FindBig(a), right = LB_FindBig(b);
+    if (!left || !right) return 0;
+    return LB_RegisterBig(LB_BigAddSub(*left, *right, true));
+}
+
+long long 大数_乘(long long a, long long b) {
+    auto left = LB_FindBig(a), right = LB_FindBig(b);
+    if (!left || !right) return 0;
+    return LB_RegisterBig(LB_BigMul(*left, *right));
+}
+
+long long 大数_除(long long a, long long b) {
+    auto left = LB_FindBig(a), right = LB_FindBig(b);
+    if (!left || !right) return 0;
+    LbBigValue q, r;
+    if (!LB_BigDivMod(*left, *right, q, r)) return 0;
+    return LB_RegisterBig(std::move(q));
+}
+
+long long 大数_求余(long long a, long long b) {
+    auto left = LB_FindBig(a), right = LB_FindBig(b);
+    if (!left || !right) return 0;
+    LbBigValue q, r;
+    if (!LB_BigDivMod(*left, *right, q, r)) return 0;
+    return LB_RegisterBig(std::move(r));
+}
+
+int 大数_取符号(long long id) {
+    auto v = LB_FindBig(id);
+    if (!v) return -2;
+    if (v->mag.empty()) return 0;
+    return v->neg ? -1 : 1;
+}
+
+static int 大数_比较(long long a, long long b) {
+    auto left = LB_FindBig(a), right = LB_FindBig(b);
+    if (!left || !right) return -2;
+    const int av = left->mag.empty() ? 0 : (left->neg ? -1 : 1);
+    const int bv = right->mag.empty() ? 0 : (right->neg ? -1 : 1);
+    if (av != bv) return av < bv ? -1 : 1;
+    if (av == 0) return 0;
+    const int cmp = LB_BigCompareMag(*left, *right);
+    return left->neg ? -cmp : cmp;
+}
+
+bool 大数_是否等于(long long a, long long b) { return 大数_比较(a, b) == 0; }
+bool 大数_是否大于(long long a, long long b) { return 大数_比较(a, b) > 0; }
+bool 大数_是否小于(long long a, long long b) { return 大数_比较(a, b) < 0; }
+bool 大数_是否大于等于(long long a, long long b) { return 大数_比较(a, b) >= 0; }
+bool 大数_是否小于等于(long long a, long long b) { return 大数_比较(a, b) <= 0; }
+`;
+
+// ---------- 拼音处理运行时 ----------
+const PINYIN_RUNTIME = String.raw`${LB_PINYIN_TABLE_CPP}
+
+static const wchar_t* const LB_PinyinInitialTable[] = {
+    L"zh", L"ch", L"sh", L"b", L"p", L"m", L"f", L"d", L"t", L"n",
+    L"l", L"g", L"k", L"h", L"j", L"q", L"x", L"r", L"y", L"w"
+};
+
+// 取音节的声母长度：zh/ch/sh 为 2，其余单声母为 1，无声母为 0
+static int LB_PinyinInitialLength(const std::wstring& syllable) {
+    if (syllable.size() >= 2) {
+        const wchar_t c0 = syllable[0], c1 = syllable[1];
+        if ((c0 == L'z' || c0 == L'c' || c0 == L's') && c1 == L'h') return 2;
+    }
+    if (syllable.empty()) return 0;
+    const wchar_t c0 = syllable[0];
+    static const wchar_t singles[] = L"bpmfdtnlgkhjqxywr";
+    for (const wchar_t* p = singles; *p; ++p) {
+        if (c0 == *p) return 1;
+    }
+    return 0;
+}
+
+static std::vector<int> LB_PinyinReadings(wchar_t ch) {
+    std::vector<int> readings;
+    const int row = LB_PinyinFindChar(ch);
+    if (row < 0) return readings;
+    const unsigned short offset = g_lbPinyinOffsets[row];
+    const unsigned short count = g_lbPinyinLists[offset];
+    for (int i = 0; i < count; ++i) readings.push_back(g_lbPinyinLists[offset + 1 + i]);
+    return readings;
+}
+
+static std::wstring LB_PinyinJoinReadings(const std::wstring& text, const std::wstring& separator, bool initialsOnly) {
+    std::wstring out;
+    bool lastWasReading = false;
+    for (wchar_t ch : text) {
+        const std::vector<int> readings = LB_PinyinReadings(ch);
+        if (readings.empty()) {
+            out += ch;
+            lastWasReading = false;
+            continue;
+        }
+        if (lastWasReading && !separator.empty()) out += separator;
+        const std::wstring syllable = g_lbPinyinSyllables[readings.front()];
+        if (initialsOnly) {
+            out += syllable[0];
+        } else {
+            out += syllable;
+        }
+        lastWasReading = true;
+    }
+    return out;
+}
+
+const wchar_t* 拼音_取全拼(const wchar_t* text, const wchar_t* separator) {
+    return LB_ReturnText(LB_PinyinJoinReadings(LB_Wide(text), LB_Wide(separator), false));
+}
+
+const wchar_t* 拼音_取首字母(const wchar_t* text) {
+    return LB_ReturnText(LB_PinyinJoinReadings(LB_Wide(text), L"", true));
+}
+
+int 拼音_取所有发音(const wchar_t* hanzi, std::vector<std::wstring>& out) {
+    out.clear();
+    const std::wstring value = LB_Wide(hanzi);
+    if (value.empty()) return 0;
+    for (wchar_t ch : value) {
+        for (int index : LB_PinyinReadings(ch)) {
+            out.push_back(g_lbPinyinSyllables[index]);
+        }
+        if (!out.empty()) break;
+    }
+    return static_cast<int>(out.size());
+}
+
+int 拼音_取发音数目(const wchar_t* hanzi) {
+    const std::wstring value = LB_Wide(hanzi);
+    for (wchar_t ch : value) {
+        const std::vector<int> readings = LB_PinyinReadings(ch);
+        if (!readings.empty()) return static_cast<int>(readings.size());
+    }
+    return 0;
+}
+
+const wchar_t* 拼音_取声母(const wchar_t* text) {
+    std::wstring out;
+    for (wchar_t ch : LB_Wide(text)) {
+        const std::vector<int> readings = LB_PinyinReadings(ch);
+        if (readings.empty()) { out += ch; continue; }
+        const std::wstring syllable = g_lbPinyinSyllables[readings.front()];
+        const int length = LB_PinyinInitialLength(syllable);
+        if (length > 0) out.append(syllable, 0, static_cast<size_t>(length));
+    }
+    return LB_ReturnText(std::move(out));
+}
+
+const wchar_t* 拼音_取韵母(const wchar_t* text) {
+    std::wstring out;
+    for (wchar_t ch : LB_Wide(text)) {
+        const std::vector<int> readings = LB_PinyinReadings(ch);
+        if (readings.empty()) { out += ch; continue; }
+        const std::wstring syllable = g_lbPinyinSyllables[readings.front()];
+        const int length = LB_PinyinInitialLength(syllable);
+        out.append(syllable, static_cast<size_t>(length), syllable.size() - static_cast<size_t>(length));
+    }
+    return LB_ReturnText(std::move(out));
+}
+
+int 拼音_发音比较(const wchar_t* first, const wchar_t* second) {
+    auto readFirst = [](wchar_t ch) -> std::wstring {
+        const std::vector<int> readings = LB_PinyinReadings(ch);
+        return readings.empty() ? std::wstring() : g_lbPinyinSyllables[readings.front()];
+    };
+    const std::wstring left = LB_Wide(first), right = LB_Wide(second);
+    const std::wstring a = left.empty() ? std::wstring() : readFirst(left[0]);
+    const std::wstring b = right.empty() ? std::wstring() : readFirst(right[0]);
+    const int cmp = a.compare(b);
+    return cmp < 0 ? -1 : (cmp > 0 ? 1 : 0);
+}
+
+bool 拼音_首字母匹配(const wchar_t* text, const wchar_t* sequence) {
+    std::wstring initials = LB_PinyinJoinReadings(LB_Wide(text), L"", true);
+    std::wstring needle = LB_Wide(sequence);
+    for (wchar_t& ch : initials) if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
+    for (wchar_t& ch : needle) if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
+    if (needle.empty()) return true;
+    if (initials.size() < needle.size()) return false;
+    return initials.compare(0, needle.size(), needle) == 0;
+}
+`;
+
+// ---------- 农历日期运行时 ----------
+const LUNAR_RUNTIME = String.raw`${LB_LUNAR_TABLE_CPP}
+
+// 与 日期时间模块 相同的 64 位打包布局：year<<26 | month<<22 | day<<17 | hour<<12 | minute<<6 | second
+static long long LB_LunarPackDateTime(int year, int month, int day, int hour, int minute, int second) {
+    if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31
+        || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return 0;
+    return (static_cast<long long>(year) << 26) | (static_cast<long long>(month) << 22)
+        | (static_cast<long long>(day) << 17) | (static_cast<long long>(hour) << 12)
+        | (static_cast<long long>(minute) << 6) | static_cast<long long>(second);
+}
+
+static void LB_LunarUnpackDateTime(long long value, int& year, int& month, int& day, int& hour, int& minute, int& second) {
+    year = static_cast<int>((static_cast<unsigned long long>(value) >> 26) & 0x3FFFFFFULL);
+    month = static_cast<int>((static_cast<unsigned long long>(value) >> 22) & 0xFULL);
+    day = static_cast<int>((static_cast<unsigned long long>(value) >> 17) & 0x1FULL);
+    hour = static_cast<int>((static_cast<unsigned long long>(value) >> 12) & 0x1FULL);
+    minute = static_cast<int>((static_cast<unsigned long long>(value) >> 6) & 0x3FULL);
+    second = static_cast<int>(static_cast<unsigned long long>(value) & 0x3FULL);
+}
+
+// Howard Hinnant civil date 算法：返回 Unix 时代天数（1970-01-01 为 0）
+static long long LB_LunarDaysFromCivil(int y, int m, int d) {
+    y -= m <= 2;
+    const long long era = (y >= 0 ? y : y - 399) / 400;
+    const int yoe = static_cast<int>(y - era * 400);
+    const int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+}
+
+static void LB_LunarCivilFromDays(long long z, int& y, int& m, int& d) {
+    z += 719468;
+    const long long era = (z >= 0 ? z : z - 146096) / 146097;
+    const int doe = static_cast<int>(z - era * 146097);
+    const int yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const long long yy = static_cast<long long>(yoe) + era * 400;
+    const int doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const int mp = (5 * doy + 2) / 153;
+    d = doy - (153 * mp + 2) / 5 + 1;
+    m = mp + (mp < 10 ? 3 : -9);
+    y = static_cast<int>(yy + (m <= 2));
+}
+
+static bool LB_LunarInfoValid(int year) {
+    return year >= g_lbLunarBaseYear && year < g_lbLunarBaseYear + g_lbLunarYearCount;
+}
+
+static int LB_LunarLeapMonth(int year) {
+    if (!LB_LunarInfoValid(year)) return 0;
+    return static_cast<int>(g_lbLunarInfo[year - g_lbLunarBaseYear] & 0xF);
+}
+
+static int LB_LunarMonthDays(int year, int month) {
+    if (!LB_LunarInfoValid(year) || month < 1 || month > 12) return 0;
+    const unsigned int info = g_lbLunarInfo[year - g_lbLunarBaseYear];
+    return (info & (0x10000u >> month)) ? 30 : 29;
+}
+
+static int LB_LunarLeapDays(int year) {
+    if (!LB_LunarInfoValid(year)) return 0;
+    const unsigned int info = g_lbLunarInfo[year - g_lbLunarBaseYear];
+    const int leap = static_cast<int>(info & 0xF);
+    if (!leap) return 0;
+    return (info & 0x10000u) ? 30 : 29;
+}
+
+static int LB_LunarYearDays(int year) {
+    if (!LB_LunarInfoValid(year)) return 0;
+    unsigned int info = g_lbLunarInfo[year - g_lbLunarBaseYear];
+    int sum = 348;
+    for (unsigned int bit = 0x8000u; bit > 0x8u; bit >>= 1) sum += (info & bit) ? 1 : 0;
+    return sum + LB_LunarLeapDays(year);
+}
+
+struct LbLunarDate {
+    int year = 0;
+    int month = 0;   // 1-12
+    bool leap = false;
+    int day = 0;     // 1-30
+};
+
+// 经典公历→农历：以 1900-01-31（1900 年正月初一）为基准逐日回减
+static bool LB_LunarFromSolar(int y, int m, int d, LbLunarDate& out) {
+    long long offset = LB_LunarDaysFromCivil(y, m, d) - LB_LunarDaysFromCivil(1900, 1, 31);
+    if (offset < 0) return false;
+    int year = g_lbLunarBaseYear;
+    for (;;) {
+        if (!LB_LunarInfoValid(year)) return false;
+        const int days = LB_LunarYearDays(year);
+        if (offset < days) break;
+        offset -= days;
+        ++year;
+    }
+    const int leap = LB_LunarLeapMonth(year);
+    bool isLeap = false;
+    int month = 1;
+    int temp = 0;
+    for (; month <= 12 && offset > 0; ++month) {
+        if (leap > 0 && month == leap + 1 && !isLeap) {
+            --month;
+            isLeap = true;
+            temp = LB_LunarLeapDays(year);
+        } else {
+            temp = LB_LunarMonthDays(year, month);
+        }
+        if (isLeap && month == leap + 1) isLeap = false;
+        offset -= temp;
+    }
+    if (offset == 0 && leap > 0 && month == leap + 1) {
+        if (isLeap) isLeap = false;
+        else { isLeap = true; --month; }
+    }
+    if (offset < 0) { offset += temp; --month; }
+    out.year = year;
+    out.month = month;
+    out.leap = isLeap;
+    out.day = static_cast<int>(offset) + 1;
+    return out.month >= 1 && out.month <= 12 && out.day >= 1 && out.day <= 30;
+}
+
+static bool LB_LunarToSolar(int lunarYear, int lunarMonth, int lunarDay, int& y, int& m, int& d) {
+    const bool leapMonth = lunarMonth < 0;
+    const int month = leapMonth ? -lunarMonth : lunarMonth;
+    if (!LB_LunarInfoValid(lunarYear) || month < 1 || month > 12 || lunarDay < 1 || lunarDay > 30) return false;
+    const int leap = LB_LunarLeapMonth(lunarYear);
+    if (leapMonth && leap != month) return false;
+    if (!leapMonth && lunarDay > LB_LunarMonthDays(lunarYear, month)) return false;
+    if (leapMonth && lunarDay > LB_LunarLeapDays(lunarYear)) return false;
+    long long offset = 0;
+    for (int yy = g_lbLunarBaseYear; yy < lunarYear; ++yy) offset += LB_LunarYearDays(yy);
+    for (int mm = 1; mm < month; ++mm) {
+        offset += LB_LunarMonthDays(lunarYear, mm);
+        if (leap > 0 && mm == leap) offset += LB_LunarLeapDays(lunarYear);
+    }
+    offset += (leapMonth ? LB_LunarLeapDays(lunarYear) : 0) + lunarDay - 1;
+    LB_LunarCivilFromDays(LB_LunarDaysFromCivil(1900, 1, 31) + offset, y, m, d);
+    return true;
+}
+
+// 节气表查询：n 1..24（1 小寒 … 24 冬至）
+static bool LB_LunarTerm(int year, int n, int& day, int& minute) {
+    if (n < 1 || n > 24) return false;
+    if (year < g_lbSolarTermBaseYear || year >= g_lbSolarTermBaseYear + g_lbSolarTermYearCount) return false;
+    day = g_lbSolarTermDays[year - g_lbSolarTermBaseYear][n - 1];
+    minute = g_lbSolarTermMinutes[year - g_lbSolarTermBaseYear][n - 1];
+    return true;
+}
+
+static const wchar_t* LB_LunarTermName(int n) {
+    static const wchar_t* const names[24] = {
+        L"小寒", L"大寒", L"立春", L"雨水", L"惊蛰", L"春分", L"清明", L"谷雨",
+        L"立夏", L"小满", L"芒种", L"夏至", L"小暑", L"大暑", L"立秋", L"处暑",
+        L"白露", L"秋分", L"寒露", L"霜降", L"立冬", L"小雪", L"大雪", L"冬至"
+    };
+    if (n < 1 || n > 24) return L"";
+    return names[n - 1];
+}
+
+static const wchar_t* LB_LunarGan(int index) {
+    static const wchar_t* const gan[10] = { L"甲", L"乙", L"丙", L"丁", L"戊", L"己", L"庚", L"辛", L"壬", L"癸" };
+    return gan[index % 10];
+}
+
+static const wchar_t* LB_LunarZhi(int index) {
+    static const wchar_t* const zhi[12] = { L"子", L"丑", L"寅", L"卯", L"辰", L"巳", L"午", L"未", L"申", L"酉", L"戌", L"亥" };
+    return zhi[index % 12];
+}
+
+static const wchar_t* LB_LunarZodiac(int branch) {
+    static const wchar_t* const zodiac[12] = { L"鼠", L"牛", L"虎", L"兔", L"龙", L"蛇", L"马", L"羊", L"猴", L"鸡", L"狗", L"猪" };
+    return zodiac[branch % 12];
+}
+
+static int LB_LunarGanzhi(int stem, int branch) {
+    for (int i = 0; i < 60; ++i) {
+        if (i % 10 == stem && i % 12 == branch) return i;
+    }
+    return 0;
+}
+
+static std::wstring LB_LunarGanzhiText(int ganzhi) {
+    const int index = ((ganzhi % 60) + 60) % 60;
+    return std::wstring(LB_LunarGan(index)) + LB_LunarZhi(index);
+}
+
+static std::wstring LB_LunarChineseMonth(int month, bool leap) {
+    static const wchar_t* const names[12] = {
+        L"正", L"二", L"三", L"四", L"五", L"六", L"七", L"八", L"九", L"十", L"冬", L"腊"
+    };
+    std::wstring out;
+    if (leap) out += L"闰";
+    out += names[(month - 1) % 12];
+    out += L"月";
+    return out;
+}
+
+static std::wstring LB_LunarChineseDay(int day) {
+    static const wchar_t* const digits[10] = {
+        L"〇", L"一", L"二", L"三", L"四", L"五", L"六", L"七", L"八", L"九"
+    };
+    std::wstring out = L"初";
+    if (day <= 10) {
+        out = std::wstring(L"初") + digits[day % 10];
+    } else if (day < 20) {
+        out = std::wstring(L"十") + (day % 10 ? digits[day % 10] : L"");
+    } else if (day == 20) {
+        out = L"二十";
+    } else if (day < 30) {
+        out = std::wstring(L"廿") + (day % 10 ? digits[day % 10] : L"");
+    } else {
+        out = L"三十";
+    }
+    return out;
+}
+
+int 农历_公历转农历年(long long value) {
+    int y, mo, d, h, mi, s;
+    LB_LunarUnpackDateTime(value, y, mo, d, h, mi, s);
+    if (y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31) return 0;
+    LbLunarDate lunar;
+    return LB_LunarFromSolar(y, mo, d, lunar) ? lunar.year : 0;
+}
+
+int 农历_公历转农历月(long long value) {
+    int y, mo, d, h, mi, s;
+    LB_LunarUnpackDateTime(value, y, mo, d, h, mi, s);
+    if (y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31) return 0;
+    LbLunarDate lunar;
+    if (!LB_LunarFromSolar(y, mo, d, lunar)) return 0;
+    return lunar.leap ? -lunar.month : lunar.month;
+}
+
+int 农历_公历转农历日(long long value) {
+    int y, mo, d, h, mi, s;
+    LB_LunarUnpackDateTime(value, y, mo, d, h, mi, s);
+    if (y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31) return 0;
+    LbLunarDate lunar;
+    return LB_LunarFromSolar(y, mo, d, lunar) ? lunar.day : 0;
+}
+
+long long 农历_农历转公历(int lunarYear, int lunarMonth, int lunarDay) {
+    int y, m, d;
+    if (!LB_LunarToSolar(lunarYear, lunarMonth, lunarDay, y, m, d)) return 0;
+    return LB_LunarPackDateTime(y, m, d, 0, 0, 0);
+}
+
+const wchar_t* 农历_公历转农历文本(long long value, bool includeZodiac) {
+    int y, mo, d, h, mi, s;
+    LB_LunarUnpackDateTime(value, y, mo, d, h, mi, s);
+    if (y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31) return LB_ReturnText(L"");
+    LbLunarDate lunar;
+    if (!LB_LunarFromSolar(y, mo, d, lunar)) return LB_ReturnText(L"");
+    std::wstring out = LB_LunarGanzhiText(lunar.year - 4);
+    if (includeZodiac) {
+        const int branch = ((lunar.year - 4) % 60 + 60) % 60 % 12;
+        out += std::wstring(L"（") + LB_LunarZodiac(branch) + L"）";
+    }
+    out += L"年" + LB_LunarChineseMonth(lunar.month, lunar.leap) + LB_LunarChineseDay(lunar.day);
+    return LB_ReturnText(std::move(out));
+}
+
+int 农历_取闰月月份(int year) { return LB_LunarLeapMonth(year); }
+
+int 农历_取月天数(int year, int month) {
+    return month < 0 ? LB_LunarLeapDays(year) : LB_LunarMonthDays(year, month);
+}
+
+int 农历_取年天数(int year) { return LB_LunarYearDays(year); }
+
+const wchar_t* 农历_取属相(int year) {
+    const int index = ((year - 4) % 60 + 60) % 60;
+    return LB_LunarZodiac(index % 12);
+}
+
+const wchar_t* 农历_取天干地支(int year) {
+    const int index = ((year - 4) % 60 + 60) % 60;
+    return LB_ReturnText(LB_LunarGanzhiText(index));
+}
+
+const wchar_t* 农历_取六十甲子(int year) {
+    const int index = ((year - 4) % 60 + 60) % 60;
+    return LB_ReturnText(L"第" + std::to_wstring(index + 1) + LB_LunarGanzhiText(index));
+}
+
+long long 农历_取节气(int year, int term) {
+    int day = 0, minute = 0;
+    if (!LB_LunarTerm(year, term, day, minute)) return 0;
+    const int month = (term + 1) / 2;
+    return LB_LunarPackDateTime(year, month, day, minute / 60, minute % 60, 0);
+}
+
+const wchar_t* 农历_取节气名称(int term) {
+    return LB_ReturnText(LB_LunarTermName(term));
+}
+
+const wchar_t* 农历_取四柱(long long value) {
+    int y, mo, d, h, mi, s;
+    LB_LunarUnpackDateTime(value, y, mo, d, h, mi, s);
+    if (y < 1901 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31 || h < 0 || h > 23) return LB_ReturnText(L"");
+    // 年柱：立春分界
+    int lichunDay = 0, lichunMinute = 0;
+    if (!LB_LunarTerm(y, 3, lichunDay, lichunMinute)) return LB_ReturnText(L"");
+    const int adjustedYear = (mo < 2 || (mo == 2 && d < lichunDay)) ? y - 1 : y;
+    const int yearGZ = ((adjustedYear - 4) % 60 + 60) % 60;
+    // 月柱：找当前时刻之前最近的一个「节」（奇数序号节气，含跨年大小雪/小寒）
+    long long best = -1;
+    int bestN = -1;
+    const long long nowDays = LB_LunarDaysFromCivil(y, mo, d) * 1440LL + h * 60LL + mi;
+    for (int yy = y - 1; yy <= y + 1; ++yy) {
+        for (int n = 1; n <= 23; n += 2) {
+            int day = 0, minute = 0;
+            if (!LB_LunarTerm(yy, n, day, minute)) continue;
+            const long long termStamp = LB_LunarDaysFromCivil(yy, (n + 1) / 2, day) * 1440LL + minute;
+            if (termStamp <= nowDays && termStamp > best) { best = termStamp; bestN = n; }
+        }
+    }
+    if (bestN < 0) return LB_ReturnText(L"");
+    const int monthBranch = ((bestN - 1) / 2 + 1) % 12;
+    const int monthSeq = (monthBranch - 2 + 12) % 12;
+    const int monthStem = ((yearGZ % 10) * 2 + 2 + monthSeq) % 10;
+    const int monthGZ = LB_LunarGanzhi(monthStem, monthBranch);
+    // 日柱：已知 1949-10-01 为甲子日
+    const long long jdn = LB_LunarDaysFromCivil(y, mo, d) + 2440588LL;
+    const int dayGZ = static_cast<int>(((jdn - 11) % 60 + 60) % 60);
+    // 时柱：23-1 点为子时
+    const int hourBranch = ((h + 1) / 2) % 12;
+    const int hourStem = ((dayGZ % 10) * 2 + hourBranch) % 10;
+    const int hourGZ = LB_LunarGanzhi(hourStem, hourBranch);
+    std::wstring out = LB_LunarGanzhiText(yearGZ) + L"年 "
+        + LB_LunarGanzhiText(monthGZ) + L"月 "
+        + LB_LunarGanzhiText(dayGZ) + L"日 "
+        + LB_LunarGanzhiText(hourGZ) + L"时";
+    return LB_ReturnText(std::move(out));
+}
+`;
+
 const RUNTIMES: Record<string, string> = {
   'lingbuilder.std.text': TEXT_RUNTIME,
   'lingbuilder.std.array': ARRAY_RUNTIME,
@@ -1669,6 +2673,10 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.std.buffer': BUFFER_RUNTIME,
   'lingbuilder.std.regex': REGEX_RUNTIME,
   'lingbuilder.data.json': JSON_RUNTIME,
+  'lingbuilder.std.map': MAP_RUNTIME,
+  'lingbuilder.std.bigint': BIGINT_RUNTIME,
+  'lingbuilder.std.pinyin': PINYIN_RUNTIME,
+  'lingbuilder.std.lunar': LUNAR_RUNTIME,
   'lingbuilder.data.xml': XML_RUNTIME
 };
 

@@ -248,7 +248,19 @@ const audio = createStandardModule({
     command('音频_停止', [], 'void', '停止当前 PlaySound 音频。'),
     command('音频_播放系统提示', [], 'bool', '播放系统通知声音。'),
     command('音频_取主音量', [], 'int', '返回 waveOut 主音量 0 到 100。'),
-    command('音频_设置主音量', [{ name: '音量', type: 'int', description: '目标音量百分比，0 到 100；超出范围会被夹到端点，左右声道同时设置。'}], 'bool', '设置 waveOut 主音量 0 到 100。')
+    command('音频_设置主音量', [{ name: '音量', type: 'int', description: '目标音量百分比，0 到 100；超出范围会被夹到端点，左右声道同时设置。'}], 'bool', '设置 waveOut 主音量 0 到 100。'),
+    command('音频_置静音', [{ name: '静音', type: 'bool', description: '真静音系统默认输出设备，假解除静音。'}], 'void', '设置系统默认输出设备的静音状态。'),
+    command('音频_取静音', [], 'bool', '返回系统默认输出设备是否处于静音状态。'),
+    command('音频_播放MP3', [{ name: '路径', type: 'wideString', description: 'MP3/音频文件路径；由 MCI 按扩展名自动选择解码器，也支持 WAV 等可解码格式。'}, { name: '循环', type: 'bool', description: '传真时播放结束后从头循环，需要 音频_停止MP3 才会停止。'}], 'bool', '异步播放 MP3 音频文件（同一时间只有一个 MP3 播放通道，再次播放会替换当前曲目）。'),
+    command('音频_暂停MP3', [], 'bool', '暂停当前 MP3 播放。'),
+    command('音频_继续MP3', [], 'bool', '继续被暂停的 MP3 播放。'),
+    command('音频_停止MP3', [], 'bool', '停止当前 MP3 播放（播放位置归零，文件保持打开以便查询状态）。'),
+    command('音频_取MP3状态', [], 'wideString', '返回 MP3 当前状态文本：播放中、已暂停或已停止。'),
+    command('音频_取MP3长度', [], 'int', '返回当前 MP3 总时长（毫秒）；未打开文件返回 0。'),
+    command('音频_取MP3位置', [], 'int', '返回当前 MP3 播放位置（毫秒）。'),
+    command('音频_跳转MP3', [{ name: '位置毫秒', type: 'int', description: '要跳转到的位置（毫秒），从 0 起。'}], 'bool', '把 MP3 播放位置跳到指定毫秒并继续播放。'),
+    command('音频_播放MIDI', [{ name: '路径', type: 'wideString', description: 'MIDI 文件路径。'}, { name: '循环', type: 'bool', description: '传真时播放结束后从头循环。'}], 'bool', '异步播放 MIDI 音乐（同一时间只有一个 MIDI 通道）。'),
+    command('音频_停止MIDI', [], 'bool', '停止当前 MIDI 播放。')
   ]
 });
 

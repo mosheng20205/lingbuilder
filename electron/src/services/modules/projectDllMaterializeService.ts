@@ -143,9 +143,10 @@ export async function materializeProjectDllDeclarationModules(options: ProjectDl
     const declared = collectProjectDllDeclaredExports(dllLibraries, library.name, options.machine === 'X64' ? 'x64' : 'Win32').exports;
 
     if (library.isSystem) {
-      // 系统 DLL：不复制文件、链接系统导入库；导出名固定为英文——
-      // 「别名 ≠ 命令名」的命令另生成补充导入库（def: LIBRARY <系统DLL> + 提示音 = MessageBeep），
-      // 否则 SDK 的 user32.lib 里没有中文符号可解析。
+      // 系统 DLL：不复制文件、链接系统导入库（kernel32.lib/user32.lib 等）。
+      // 命令的 C++ 侧声明由声明头生成：无别名命令（如 GetCurrentProcessId）使用 Windows SDK
+      // 头文件既有声明（重复 dllimport 声明会因返回类型/修饰不同触发 C2556/C2373）；
+      // 中文别名命令生成 inline 转发函数调用真实导出名，经系统导入库链接。
       const systemDllPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', `${library.name}.dll`);
       let systemExports: string[] | null = null;
       try {
@@ -153,41 +154,16 @@ export async function materializeProjectDllDeclarationModules(options: ProjectDl
       } catch {
         systemExports = null; // 读不到 System32 DLL 时降级为不校验导出表。
       }
+      // 仅校验显式别名（= 真实导出名）；无别名命令的符号由系统导入库与 API Set 转发解析
+      // （如 IsDebuggerPresent 在 user32.dll 导出表中不存在但链接运行均正常），不做静态校验。
       library.commands.forEach(command => {
-        const effectiveExport = command.exportName || command.name;
-        if (systemExports && !systemExports.includes(effectiveExport)) {
-          blocking.push(`系统 DLL「${library.name}」未导出「${effectiveExport}」。系统 DLL 的导出名固定为英文，请声明为「${command.returnType} ${command.name}(...) = 真实导出名」的形式（例如 = MessageBeep）。`);
+        if (!command.exportName || !systemExports) return;
+        if (!systemExports.includes(command.exportName)) {
+          blocking.push(`系统 DLL「${library.name}」未导出「${command.exportName}」，请核对真实导出名。`);
         }
       });
-      const aliasedCommands = library.commands.filter(command => command.exportName && command.exportName !== command.name);
-      if (aliasedCommands.length === 0) {
-        libFiles.push(`${library.name}.lib`);
-        options.logs.push(`系统 DLL：${library.name}（链接系统导入库 ${library.name}.lib，不复制文件）`);
-        continue;
-      }
-      const libExecutable = await locateMsvcLibExecutable();
-      if (!libExecutable) {
-        blocking.push(`系统 DLL ${library.name} 的别名命令需要 MSVC 的 lib.exe 生成补充导入库；未检测到 Visual Studio C++ 工具集，请安装后重试。`);
-        continue;
-      }
-      const moduleRoot = path.join(options.buildDir, 'modules', PROJECT_DLL_MODULE_ID, 'lib', archDir);
-      await fs.mkdir(moduleRoot, { recursive: true });
-      const defPath = path.join(moduleRoot, `${library.name}.def`);
-      const libPath = path.join(moduleRoot, `${library.name}.lib`);
-      const defLines = [
-        `LIBRARY ${library.name}`,
-        'EXPORTS',
-        ...aliasedCommands.map(command => `    ${command.name} = ${command.exportName}`)
-      ];
-      const defContent = '﻿' + defLines.join('\r\n') + '\r\n';
-      await fs.writeFile(defPath, defContent, 'utf8');
-      const aliasResult = await runLibExecutable(libExecutable, [`/def:${defPath}`, `/machine:${options.machine}`, `/out:${libPath}`], options.buildDir);
-      if (aliasResult.code !== 0) {
-        blocking.push(`生成系统 DLL 别名导入库失败（lib.exe 退出码 ${aliasResult.code}）：${aliasResult.stderr.slice(0, 400)}`);
-        continue;
-      }
-      libFiles.push(libPath);
-      options.logs.push(`系统 DLL：${library.name}（别名命令经补充导入库解析：${aliasedCommands.map(command => `${command.name}=${command.exportName}`).join('、')}）`);
+      libFiles.push(`${library.name}.lib`);
+      options.logs.push(`系统 DLL：${library.name}（链接系统导入库 ${library.name}.lib，不复制文件）`);
       continue;
     }
 
