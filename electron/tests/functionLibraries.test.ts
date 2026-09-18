@@ -82,6 +82,56 @@ test('行首 @ 的内嵌 C++ 行不触发功能库调用误判', () => {
   assert.deepEqual(libraryErrors, [], JSON.stringify(libraryErrors));
 });
 
+test('功能库内的 @ 内联 C++ 不因 & 被误判为处理器引用', () => {
+  const nativeLibraryPath = 'src/功能/Cookie导出.lcpp';
+  const nativeLibrarySource = [
+    '功能库 Cookie导出',
+    '公开:',
+    '  文本型 提取并导出(文本型 验证串)',
+    '    @ if (a&&b) { }',
+    '    @ auto p = &buf[0];',
+    '    @ const auto flags = attr & FILE_ATTRIBUTE_DIRECTORY;',
+    '    @ auto& 引用 = 会话.get();',
+    '    返回(验证串)',
+    '  结束',
+    '结束功能库',
+    ''
+  ].join('\n');
+  const context = createProjectFunctionContext([
+    { filePath: nativeLibraryPath, sourceCode: nativeLibrarySource, language: 'lingcpp' }
+  ]);
+  const diagnostics = getFunctionLibraryDiagnostics(nativeLibrarySource, nativeLibraryPath, context);
+  const handlerErrors = diagnostics.filter(item => /处理器/u.test(item.message));
+  assert.deepEqual(handlerErrors, [], `@ 行里的 C++ 取地址/逻辑与/位与不得当成 &处理器：${JSON.stringify(handlerErrors)}`);
+});
+
+test('功能库内真实的 &处理器 传参仍然阻断', () => {
+  const handlerLibrary = '功能库 任务工具\n公开:\n  空 启动()\n    线程_提交完成(工作, &完成处理器, 0)\n  结束\n结束功能库\n';
+  const filePath = 'src/功能/任务工具.lcpp';
+  const context = createProjectFunctionContext([{ filePath, sourceCode: handlerLibrary, language: 'lingcpp' }]);
+  const diagnostics = getFunctionLibraryDiagnostics(handlerLibrary, filePath, context);
+  assert.ok(
+    diagnostics.some(item => /处理器/u.test(item.message) && item.level === 'error'),
+    `真实 &处理器 必须继续报错：${JSON.stringify(diagnostics)}`
+  );
+});
+
+test('功能库文件名含 ASCII 大写时不误报名称不一致且保留真实路径大小写', () => {
+  const filePath = 'src\\功能\\Cookie导出.lcpp';
+  const source = '功能库 Cookie导出\n公开:\n  空 导出()\n    调试输出("x")\n  结束\n结束功能库\n';
+  const context = createProjectFunctionContext([{ filePath, sourceCode: source, language: 'lingcpp' }]);
+  assert.equal(context.libraries[0]?.filePath, 'src/功能/Cookie导出.lcpp', '登记的 filePath 必须保留磁盘真实大小写，只统一分隔符');
+  const diagnostics = getFunctionLibraryDiagnostics(source, filePath, context);
+  assert.equal(
+    diagnostics.some(item => /文件名/u.test(item.message)),
+    false,
+    `路径大小写规范化不得制造不一致告警：${JSON.stringify(diagnostics)}`
+  );
+
+  const mismatched = getFunctionLibraryDiagnostics(source, 'src/功能/别的名字.lcpp', context);
+  assert.ok(mismatched.some(item => /文件名/u.test(item.message)), '库名与文件名真的不同时必须仍然告警');
+});
+
 test('Win32 生成器输出隐藏功能库方法并翻译限定调用', () => {
   const project: LingWindowProject = {
     id: 'library-demo', name: '功能库演示', windows: [

@@ -1880,6 +1880,8 @@ test('AI Bridge diagnostics return the designer control inventory and code organ
   await registerSolutionProject(workspaceRoot, { id: projectId, name: '组件清单项目' });
   await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
   await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'main.lcpp'), CONTROL_REF_SOURCE, 'utf8');
+  const librarySource = '功能库 Cookie导出\n公开:\n  空 导出()\n    调试输出("导出完成")\n  结束\n结束功能库\n';
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'Cookie导出.lcpp'), librarySource, 'utf8');
 
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
   const result = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/main.lcpp`, sourceCode: CONTROL_REF_SOURCE });
@@ -1905,7 +1907,14 @@ test('AI Bridge diagnostics return the designer control inventory and code organ
   const mainFile = organization.files.find(file => file.filePath === `${sourceRoot}/main.lcpp`);
   assert.equal(mainFile?.kind, 'window-main');
   assert.ok((mainFile?.lineCount ?? 0) >= 4);
-  assert.deepEqual(organization.functionLibraries, []);
+
+  const libraryFile = organization.files.find(file => file.filePath === `${sourceRoot}/Cookie导出.lcpp`);
+  assert.equal(libraryFile?.kind, 'function-library');
+  assert.equal(organization.functionLibraries.length, 1);
+  assert.equal(organization.functionLibraries[0]?.name, 'Cookie导出');
+  assert.deepEqual(organization.functionLibraries[0]?.publicMethods, ['导出']);
+  assert.equal(organization.functionLibraries[0]?.filePath, `${sourceRoot}/Cookie导出.lcpp`, '功能库路径必须保留磁盘真实大小写，供外部 AI 直接引用');
+  assert.match(organization.summary, /代码组织良好/u);
 });
 
 test('AI Bridge diagnostics name the empty designer model as the reason no components show', async () => {

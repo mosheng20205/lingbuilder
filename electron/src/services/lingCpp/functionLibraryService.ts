@@ -23,7 +23,7 @@ export function createProjectFunctionContext(files: LingCppWorkspaceFile[]): Lin
   files.forEach(file => {
     if (file.language && file.language !== 'lingcpp' && !file.filePath.toLocaleLowerCase().endsWith('.lcpp')) return;
     parseLingCpp(file.sourceCode).program.functionLibraries.forEach(library => {
-      libraries.push({ ...library, filePath: normalizePath(file.filePath) });
+      libraries.push({ ...library, filePath: toDisplayPath(file.filePath) });
     });
   });
   return { libraries };
@@ -85,7 +85,7 @@ export function getFunctionLibraryDiagnostics(
         diagnostics.push(diagnostic('error', method.line, method.name, '首版功能库不支持默认参数。', '请删除参数默认值，并在调用处显式传入。'));
       }
       if (method.isStatic) diagnostics.push(diagnostic('error', method.line, method.name, '功能库功能无需也不支持“静态”修饰。', '请删除“静态”；功能库本身就是无状态的。'));
-      method.statements.filter(statement => /&[\p{L}_][\p{L}\p{N}_]*/u.test(stripLineComment(statement.text))).forEach(statement => {
+      method.statements.filter(statement => !isLingCppNativeLine(statement.text) && /&[\p{L}_][\p{L}\p{N}_]*/u.test(stripLineComment(statement.text))).forEach(statement => {
         diagnostics.push(diagnostic('error', statement.line, statement.text, '首版功能库不能把窗口事件处理器作为 &处理器参数传递。', '请在窗口事件中完成回调绑定，或把普通数据传给功能库。'));
       });
     });
@@ -554,9 +554,13 @@ function diagnostic(level: LingCppDiagnostic['level'], line: number, codeSnippet
 }
 
 function getFileBaseName(filePath?: string): string | undefined {
-  const normalized = normalizePath(filePath || '');
-  const fileName = normalized.split('/').at(-1);
+  const fileName = toDisplayPath(filePath || '').split('/').at(-1);
   return fileName?.toLocaleLowerCase().endsWith('.lcpp') ? fileName.slice(0, -5) : undefined;
+}
+
+/** 展示与导航用路径：只统一分隔符，不做大小写规范化（大小写折叠只用于比较，见 normalizePath）。 */
+function toDisplayPath(filePath: string): string {
+  return filePath.replace(/\\/gu, '/').replace(/^\.\//u, '');
 }
 
 function normalizePath(filePath: string): string {
