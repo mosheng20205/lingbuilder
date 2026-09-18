@@ -14,7 +14,7 @@ import {
 export const PROJECT_DATA_TYPES_FILE_NAME = '项目数据类型.lcpp';
 export const EMPTY_PROJECT_DATA_TYPES_SOURCE = '// 项目自定义数据类型：用于组织可复制、可嵌套的结构化数据。\n';
 export const SAFE_DATA_FIELD_TYPES = [
-  '文本型', '整数型', '长整数型', '逻辑型', '小数型', '双精度小数型', '字节型', '字节集'
+  '文本型', '整数型', '长整数型', '逻辑型', '小数型', '单精度小数型', '双精度小数型', '字节型', '字节集'
 ] as const;
 
 export interface ProjectDataTypeReference {
@@ -46,7 +46,10 @@ export function createProjectTypeContext(filePath: string, sourceCode: string): 
 }
 
 function readDeclarationNote(lines: string[], line: number): string | undefined {
-  const previous = lines[Math.max(0, line - 2)]?.trim() || '';
+  const previousIndex = line - 2;
+  // 文件首行注释是文件级说明（如模板自带的「项目自定义数据类型：…」），不得当作首个类型/字段的说明。
+  if (previousIndex <= 0) return undefined;
+  const previous = lines[previousIndex]?.trim() || '';
   return previous.startsWith('//') ? previous.slice(2).trim() || undefined : undefined;
 }
 

@@ -1,7 +1,7 @@
 import { LingControl, LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
-import { createProjectDllDeclarationModule } from '../lingCpp/projectDllCommandService';
+import { createProjectDllDeclarationModule, buildProjectDllMemoryResourceLines, collectProjectDllMissingSystemAliasDiagnostics, getProjectDllMemoryLibrarySpecs } from '../lingCpp/projectDllCommandService';
 import {
   LingCppAst,
   LingCppClass,
@@ -45,6 +45,10 @@ import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
 import { generateComWindowMethods, generateComWndProcCase, generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
+import { MEMORY_DLL_MODULE_ID, MEMORY_DLL_REQUIRED_MODULE_HINT } from './memoryDllRuntime';
+import { buildEmbeddedResourceRcLines, getEmbeddedResourceSpecs, getEmbeddedResourceSpecsOrEmpty, validateEmbeddedResources } from './embeddedResourceService';
+import { migrateLegacyEmbeddedFiles } from './embeddedResourceMigration';
+import { EMBEDDED_RESOURCE_MODULE_ID, EMBEDDED_RESOURCE_REQUIRED_MODULE_HINT, generateEmbeddedResourceRuntime } from './embeddedResourceRuntime';
 import { generateThreadingRuntime } from './threadingRuntime';
 import {
   generateHttpClientGlobalMethodDeclarations,
@@ -273,6 +277,8 @@ export interface GenerateLingCppNativeWin32ProjectOptions {
    * 或 console-application（wmain 入口 + 类的“公开 整数型 启动()”作为程序主体，无窗口、无消息循环）。
    */
   outputKind?: 'application' | 'dynamic-library' | 'console-application';
+  /** 真＝生成的 exe 以 UAC requireAdministrator 请求管理员权限；缺省假＝asInvoker。 */
+  requireAdministrator?: boolean;
 }
 
 interface GeneratedWindowClassBlock {
@@ -323,9 +329,13 @@ interface OpenWindowCommand {
 const TITLE_BAR_HEIGHT = 28;
 
 export function generateLingCppNativeWin32Project(
-  project: LingWindowProject,
+  inputProject: LingWindowProject,
   options: GenerateLingCppNativeWin32ProjectOptions = {}
 ): GeneratedLingCppNativeProject {
+  // 旧「窗口内嵌文件」清单在生成前统一迁移到项目级内嵌资源（启动释放），
+  // 因此 rc 行、运行期释放代码与诊断三处只消费 embeddedResources 一份数据。
+  const legacyEmbeddedMigration = migrateLegacyEmbeddedFiles(inputProject);
+  const project: LingWindowProject = legacyEmbeddedMigration.project;
   let enabledModules = options.enabledModules || [];
   const projectSources = normalizeProjectSources(options);
   // 控制台模式：以“公开 启动()”子程序所在类为程序主体；设计器窗口类名与源码类名不一致时
@@ -469,7 +479,32 @@ export function generateLingCppNativeWin32Project(
   const embeddedSiteMultipleWindowDiagnostics = project.windows.filter(window => window.embeddedSite).length > 1
     ? [`有 ${project.windows.filter(window => window.embeddedSite).length} 个窗口声明了内嵌站点；当前仅构建活动窗口“${embeddedSiteWindow?.title || ''}”的内嵌站点资源。`]
     : [];
-  const executableResourceFile = generateWindowsExecutableResourceFile(selectedWindow);
+  // 项目 DLL 命令声明的「加载方式 = 内存」：DLL 以 RCDATA 内嵌，运行期手工映射（不落盘）。
+  const projectDllMemorySpecs = getProjectDllMemoryLibrarySpecs(aggregate.program.dllLibraries || []);
+  const projectDllMemoryResourceLines = buildProjectDllMemoryResourceLines(projectDllMemorySpecs);
+  const memoryDllModuleEnabled = enabledModules.some(module => module.manifest.id === MEMORY_DLL_MODULE_ID);
+  const projectDllMemoryDiagnostics = projectDllMemorySpecs.length > 0 && !memoryDllModuleEnabled
+    ? [`DLL命令库「${projectDllMemorySpecs.map(spec => spec.libraryName).join('、')}」声明了「加载方式 = 内存」，但项目未启用「内存加载DLL模块」。${MEMORY_DLL_REQUIRED_MODULE_HINT}`]
+    : [];
+  // 系统 DLL 的中文命令没有 `= 真实导出名` 时生成不出任何声明，必须在生成前阻断（否则是编译器 C3861）。
+  const projectDllSystemAliasDiagnostics = collectProjectDllMissingSystemAliasDiagnostics(aggregate.program.dllLibraries || []);
+  // 项目级内嵌资源：RCDATA 资源号 2301 起，与内嵌文件/站点/项目 DLL 段并存于同一个 rc。
+  const embeddedResourceDiagnostics: string[] = [];
+  let embeddedResourceSpecs: ReturnType<typeof getEmbeddedResourceSpecs> = [];
+  try {
+    embeddedResourceSpecs = getEmbeddedResourceSpecs(project);
+  } catch (error) {
+    embeddedResourceDiagnostics.push(error instanceof Error ? error.message : String(error));
+  }
+  embeddedResourceDiagnostics.push(...validateEmbeddedResources(project));
+  const embeddedResourceModuleEnabled = enabledModules.some(module => module.manifest.id === EMBEDDED_RESOURCE_MODULE_ID);
+  if (embeddedResourceSpecs.length > 0 && !embeddedResourceModuleEnabled) {
+    embeddedResourceDiagnostics.push(`项目声明了内嵌资源（${embeddedResourceSpecs.length} 条），但未启用「内嵌资源模块」。${EMBEDDED_RESOURCE_REQUIRED_MODULE_HINT}`);
+  }
+  // 旧「内嵌文件」清单已弃用：迁移说明只提示（不阻断），命名冲突才阻断并给出中文修复指引。
+  const embeddedResourceWarnings = [...legacyEmbeddedMigration.deprecation];
+  const embeddedResourceBlockingDiagnostics = [...legacyEmbeddedMigration.diagnostics];
+  const executableResourceFile = generateWindowsExecutableResourceFile(selectedWindow, [...projectDllMemoryResourceLines, ...buildEmbeddedResourceRcLines(embeddedResourceSpecs)]);
 
   return {
     selectedWindow,
@@ -497,9 +532,14 @@ export function generateLingCppNativeWin32Project(
       ...embeddedSiteRequiresBrowserDiagnostics,
       ...embeddedSiteFbroProcessDiagnostics,
       ...embeddedSiteNewEmojiDiagnostics,
-      ...embeddedSiteMultipleWindowDiagnostics
+      ...embeddedSiteMultipleWindowDiagnostics,
+      ...projectDllMemoryDiagnostics,
+      ...projectDllSystemAliasDiagnostics,
+      ...embeddedResourceDiagnostics,
+      ...embeddedResourceWarnings,
+      ...embeddedResourceBlockingDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics],
     sourceMap,
     files: [
       {
@@ -2160,6 +2200,7 @@ function generateNewEmojiMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
+    generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
     aria2Runtime
   ].filter(Boolean);
@@ -2184,7 +2225,8 @@ function generateNewEmojiMainCpp(
   const newEmojiRuntimeEventCpp = generateNewEmojiRuntimeEventCpp(program, enabledModules);
   const newEmojiDataBridgeCpp = generateNewEmojiDataBridgeCpp(program, enabledModules, program.dataTypes);
   const newEmojiPropertyBridgeCpp = generateNewEmojiPropertyBridgeCpp(program, enabledModules);
-  const newEmojiFunctionLibraries = generateNewEmojiFunctionLibraries(program, enabledModules);
+  const newEmojiFunctionLibraryDeclarations = generateNewEmojiFunctionLibraryDeclarations(program, enabledModules);
+  const newEmojiFunctionLibraryDefinitions = generateNewEmojiFunctionLibraryDefinitions(program, enabledModules);
   const fbroControls: LingControl[] = fbroModuleEnabled
     ? window.controls
       .filter(control => control.type === 'FBroBrowser')
@@ -3593,7 +3635,7 @@ ${newEmojiUserMethodDeclarations}
 
 ${generateNewEmojiFbroRuntime(fbroModuleEnabled, fbroControls, program, enabledModules)}
 
-${newEmojiFunctionLibraries}
+${newEmojiFunctionLibraryDeclarations}
 
 ${httpClientGlobalMethodDeclarations}
 
@@ -3627,6 +3669,10 @@ ${newEmojiRuntimeEventCpp.definitions}
 
 ${newEmojiWindowEventRuntime.definitions}
 
+// 功能库定义必须位于全部 new_emoji 命令包装之后：功能库内部可以调用任意模块命令，
+// 提前生成会让编译器在包装函数可见之前报 C3861；早期位置只保留前置声明供事件分发调用。
+${newEmojiFunctionLibraryDefinitions}
+
 ${newEmojiUserMethodDefinitions}
 
 ${webSocketHandlerDefinitions}
@@ -3635,15 +3681,15 @@ ${catalogEventCallbackBlocks.join('\n\n')}
 
 ${uploadCallbackBlocks.join('\n\n')}
 
-${generateEmbeddedResourceExtractorCpp(project, window)}
-
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 ${fbroModuleEnabled ? `    const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
     if (fbroSubprocessExitCode != LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED) return fbroSubprocessExitCode;
     const int fbroHostExitCode = LB_FBroProcess_RunHostIfRequested(instance);
     if (fbroHostExitCode != LINGBUILDER_FBRO_HOST_NOT_REQUESTED) return fbroHostExitCode;` : ''}
     EnableNewEmojiDpiAwareness();
-    LingBuilder_释放内嵌资源文件();
+#if LINGBUILDER_EMBEDDED_RESOURCE_RUNTIME
+    LB_EmbeddedResourceReleaseExtracted();
+#endif
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 ${fbroInProcessEnabled ? `    if (!LB_NE_InitializeFbro()) {
         MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时和 LingBuilderFbroBridge.dll。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
@@ -9001,59 +9047,6 @@ function validateNewEmojiDesignerControlReferences(window: LingWindowModel, enab
   return diagnostics;
 }
 
-function getWindowEmbeddedResourceEntries(window: LingWindowModel): Array<{ resourceId: number; fileName: string }> {
-  return (window.embeddedFiles || []).slice(0, 8).map((spec, index) => {
-    const baseName = (spec.file || '').split('\\').pop()?.split('/').pop() || '';
-    const rawName = (spec.extractName || baseName).trim();
-    const fileName = /^[A-Za-z0-9._-]{1,128}$/u.test(rawName) && !rawName.startsWith('.') ? rawName : '';
-    return { resourceId: 2001 + index, fileName };
-  }).filter(entry => entry.fileName.length > 0);
-}
-
-// 把随 EXE 编译为 RCDATA 的内嵌文件释放到「%TEMP%\lingbuilder-embedded\<工程ID>\」，
-// 与中文代码侧「系统_取临时目录() + lingbuilder-embedded\<工程ID>」约定路径一致；
-// 每次启动覆盖写，保证释放内容与 EXE 内资源一致。
-function generateEmbeddedResourceExtractorCpp(project: LingWindowProject, selectedWindow: LingWindowModel): string {
-  const entries = getWindowEmbeddedResourceEntries(selectedWindow);
-  // 无内嵌释放文件时整体不生成（也不创建 %TEMP% 目录），保持构建产物零释放。
-  if (entries.length === 0) return '';
-  const tableLines = entries.map(entry => `    { ${entry.resourceId}, L"${entry.fileName}" },`).join('\n');
-  return `#define LINGBUILDER_HAS_EMBEDDED_EXTRACTOR 1
-struct LingBuilderEmbeddedResourceEntry {
-    unsigned int resourceId;
-    const wchar_t* fileName;
-};
-static const LingBuilderEmbeddedResourceEntry kLingBuilderEmbeddedResources[] = {
-${tableLines}
-};
-static void LingBuilder_释放内嵌资源文件() {
-    wchar_t tempRoot[MAX_PATH] = {};
-    if (GetTempPathW(MAX_PATH, tempRoot) == 0) return;
-    std::wstring rootDirectory = std::wstring(tempRoot) + L"lingbuilder-embedded";
-    CreateDirectoryW(rootDirectory.c_str(), nullptr);
-    std::wstring directory = rootDirectory + L"\\\\" + L"${project.id}";
-    CreateDirectoryW(directory.c_str(), nullptr);
-    HMODULE module = GetModuleHandleW(nullptr);
-    for (const LingBuilderEmbeddedResourceEntry& entry : kLingBuilderEmbeddedResources) {
-        if (!entry.fileName) continue;
-        HRSRC resource = FindResourceW(module, MAKEINTRESOURCEW(static_cast<WORD>(entry.resourceId)), MAKEINTRESOURCEW(10));
-        if (!resource) continue;
-        HGLOBAL loaded = LoadResource(module, resource);
-        if (!loaded) continue;
-        const void* data = LockResource(loaded);
-        const DWORD size = SizeofResource(module, resource);
-        if (!data || !size) continue;
-        const std::wstring target = directory + L"\\\\" + entry.fileName;
-        HANDLE file = CreateFileW(target.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file == INVALID_HANDLE_VALUE) continue;
-        DWORD written = 0;
-        WriteFile(file, data, size, &written, nullptr);
-        CloseHandle(file);
-    }
-}
-`;
-}
-
 /** 允许跨 DLL 边界导出的 C++ 类型：仅 POD 与 std::wstring（与模块 binding 的 wideString/POD 门禁同口径）。 */
 const DLL_EXPORT_SAFE_CPP_TYPES = new Set(['void', 'int', 'long long', 'double', 'bool', 'unsigned char', 'std::wstring']);
 
@@ -9539,6 +9532,7 @@ function generateMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
+    generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
     aria2Runtime
   ].filter(Boolean);
@@ -25947,7 +25941,6 @@ static void EnsureStartWindowForeground(HWND hwnd, int showCommand) {
     }
 }
 
-${generateEmbeddedResourceExtractorCpp(project, selectedWindow)}
 ${dynamicLibrarySection ? dynamicLibrarySection : consoleEntrySection ? consoleEntrySection : `int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
     const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
@@ -25966,8 +25959,8 @@ ${dynamicLibrarySection ? dynamicLibrarySection : consoleEntrySection ? consoleE
     g_instance = instance;
     EnableDpiAwareness();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-#if LINGBUILDER_HAS_EMBEDDED_EXTRACTOR
-    LingBuilder_释放内嵌资源文件();
+#if LINGBUILDER_EMBEDDED_RESOURCE_RUNTIME
+    LB_EmbeddedResourceReleaseExtracted();
 #endif
 #if LINGBUILDER_FBRO_AVAILABLE
     wchar_t fbroModulePath[MAX_PATH] = {};
@@ -26845,6 +26838,7 @@ function toCppType(
   if (/^(整数型|整数)$/u.test(normalized)) return 'int';
   if (/^(长整数型|长整数)$/u.test(normalized)) return 'long long';
   if (/^(小数型|小数|双精度|双精度型|双精度小数型)$/u.test(normalized)) return 'double';
+  if (/^(单精度小数型|单精度小数|单精度)$/u.test(normalized)) return 'float';
   if (/^(逻辑型|逻辑|布尔型|布尔)$/u.test(normalized)) return 'bool';
   if (/^(字节型|字节)$/u.test(normalized)) return 'unsigned char';
   if (/^字节集$/u.test(normalized)) return 'std::vector<unsigned char>';
@@ -26875,20 +26869,24 @@ function generateFunctionLibraryMethods(program: LingCppProgram, enabledModules:
   }, enabledModules, program.dataTypes))).join('\n\n');
 }
 
-function generateNewEmojiFunctionLibraries(program: LingCppProgram, enabledModules: InstalledModule[]): string {
+function generateNewEmojiFunctionLibraryDeclarations(program: LingCppProgram, enabledModules: InstalledModule[]): string {
   const entries = program.functionLibraries.flatMap(library => library.methods.map(method => ({ library, method })));
   if (entries.length === 0) return '// 当前项目暂无独立功能库。';
-  const declarations = entries.map(({ library, method }) => (
+  return entries.map(({ library, method }) => (
     `static ${toCppType(method.returnType, 'return', enabledModules, program.dataTypes)} ${functionLibraryCppName(library.name, method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)});`
   )).join('\n');
-  const definitions = entries.map(({ library, method }) => {
+}
+
+function generateNewEmojiFunctionLibraryDefinitions(program: LingCppProgram, enabledModules: InstalledModule[]): string {
+  const entries = program.functionLibraries.flatMap(library => library.methods.map(method => ({ library, method })));
+  if (entries.length === 0) return '// 当前项目暂无独立功能库定义。';
+  return entries.map(({ library, method }) => {
     const returnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
     const body = [generateLocalDeclarations(method, enabledModules, program.dataTypes), translateMethodStatements(method, enabledModules, program.dataTypes)]
       .filter(Boolean).join('\n').replace(/^ {8}/gmu, '    ');
     const fallback = defaultReturnStatement(returnType, program.dataTypes);
     return `static ${returnType} ${functionLibraryCppName(library.name, method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${body}${fallback ? `${body ? '\n' : ''}    ${fallback}` : ''}\n}`;
   }).join('\n\n');
-  return `${declarations}\n\n${definitions}`;
 }
 
 function functionLibraryCppName(libraryName: string, functionName: string): string {
@@ -26907,6 +26905,12 @@ function generateLocalDeclarations(method: LingCppMethod, enabledModules: Instal
     .join('\n');
 }
 
+/** float 声明的实数字面量补 f 后缀，避免 `float x = 0.0;` 触发 C4305 截断告警。 */
+function formatCppInitializerValue(cppType: string, translatedExpression: string): string {
+  if (cppType === 'float' && /^-?\d+\.\d+$/u.test(translatedExpression.trim())) return `${translatedExpression.trim()}f`;
+  return translatedExpression;
+}
+
 function formatCppVariableDeclaration(
   variable: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean },
   enabledModules: InstalledModule[],
@@ -26917,7 +26921,7 @@ function formatCppVariableDeclaration(
   const itemType = toCppType(variable.type, 'variable', enabledModules, dataTypes);
   const cppType = variable.isArray ? `std::vector<${itemType}>` : itemType;
   const initializer = variable.initialValue?.trim()
-    ? ` = ${translateLingCppExpression(variable.initialValue, enabledModules, translationContext)}`
+    ? ` = ${formatCppInitializerValue(itemType, translateLingCppExpression(variable.initialValue, enabledModules, translationContext))}`
     : '{}';
   const constantSuffix = variable.isConstant ? ' const' : '';
   return `${prefix}${cppType}${constantSuffix} ${toCppIdentifier(variable.name)}${initializer};`;
@@ -26929,7 +26933,7 @@ function generateProjectGlobalsDefinition(program: LingCppProgram, enabledModule
     ...program.constants.map(constant => {
       const cppType = toCppType(constant.type, 'variable', enabledModules, program.dataTypes);
       const prefix = cppType === 'std::wstring' ? 'inline const ' : 'inline constexpr ';
-      return `    ${prefix}${cppType} ${toCppIdentifier(constant.name)} = ${translateLingCppExpression(constant.initialValue, enabledModules)};`;
+      return `    ${prefix}${cppType} ${toCppIdentifier(constant.name)} = ${formatCppInitializerValue(cppType, translateLingCppExpression(constant.initialValue, enabledModules))};`;
     }),
     ...program.globals.map(global => `    ${formatCppVariableDeclaration(global, enabledModules, '', program.dataTypes)}`)
   ]
@@ -26963,7 +26967,7 @@ function formatProjectDataField(field: LingCppDataField, enabledModules: Install
   const itemType = toCppType(field.type, 'variable', enabledModules, dataTypes);
   const cppType = field.isArray ? `std::vector<${itemType}>` : itemType;
   const initializer = field.initialValue?.trim()
-    ? ` = ${translateLingCppExpression(field.initialValue, enabledModules)}`
+    ? ` = ${formatCppInitializerValue(itemType, translateLingCppExpression(field.initialValue, enabledModules))}`
     : '{}';
   return `${cppType} ${toCppIdentifier(field.name)}${initializer};`;
 }
@@ -26976,7 +26980,8 @@ function defaultReturnStatement(returnType: string, dataTypes: LingCppDataType[]
   if (returnType.startsWith('std::vector<')) return 'return {};';
   if (dataTypes.some(dataType => toCppIdentifier(dataType.name) === returnType)) return 'return {};';
   if (returnType.endsWith('*')) return 'return nullptr;';
-  if (returnType === 'double' || returnType === 'float') return 'return 0.0;';
+  if (returnType === 'double') return 'return 0.0;';
+  if (returnType === 'float') return 'return 0.0f;';
   return 'return 0;';
 }
 
@@ -27523,6 +27528,10 @@ function translateModuleCallArguments(
         if (chineseQuoted) return `L"${escapeWideString(interpretLingCppStringEscapes(chineseQuoted[1] || ''))}"`;
       }
       const translated = translateLingCppExpression(argument, enabledModules, translationContext);
+      // 项目 DLL 命令声明的结构体参数：调用端传长整数型句柄，此处自动强转为结构体指针。
+      if (parameter?.cppStructName) {
+        return `reinterpret_cast<${toCppIdentifier(parameter.cppStructName)}*>(${translated})`;
+      }
       // 项目 DLL 命令声明的传址参数：POD 按指针形参接收，调用点自动取地址。
       // parameter 可能为 undefined（实参数量超过 binding 声明且无 variadic），必须空安全访问。
       if (parameter?.byRef === true && parameterType !== 'wideString' && parameterType !== 'controlRef' && parameterType !== 'handler') {
@@ -27660,6 +27669,8 @@ function translateLingCppExpression(
     const translateComparisonOperator = (operator: string): string => {
       if (operator === '=') return '==';
       if (operator === '<>' || operator === '≠') return '!=';
+      if (operator === '或') return '||';
+      if (operator === '且') return '&&';
       return operator;
     };
     if (
@@ -28025,9 +28036,11 @@ function generateControlSpec(
     .filter(([, handler]) => handler.trim())
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
+  // 控件取色必须容忍缺省字段：手写/由 AI 生成的精简设计器模型不带 background/foreground，
+  // 直接 toColorRef(undefined) 会让整次生成以 TypeError 崩掉（与文件里其它 numericControlProperty 口径一致）。
   const background = control.background === 'transparent'
     ? control.type === 'ListView' || control.type === 'DataGrid' ? '#0F172A' : windowBackground
-    : control.background;
+    : typeof control.background === 'string' && control.background.trim() ? control.background : windowBackground;
   const x = parent ? control.x - parent.x : control.x;
   const y = parent ? control.y - parent.y : control.y;
   const uploadControl = control.type === 'Upload' || control.type === 'DragUpload';
@@ -28104,7 +28117,7 @@ function generateControlSpec(
   const hasTagInteger = typeof control.tagInteger === 'number' && Number.isInteger(control.tagInteger)
     && control.tagInteger >= -2147483648 && control.tagInteger <= 2147483647;
   const tagInteger = hasTagInteger ? control.tagInteger! : 0;
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${toColorRef(selectedColor)}, ${toColorRef(selectedMarkColor)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(tagText)}", ${hasTagInteger ? 'true' : 'false'}, ${tagInteger}, L"${escapeWideString(events)}" }`;
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground, 'RGB(0, 0, 0)')}, ${toColorRef(selectedColor)}, ${toColorRef(selectedMarkColor)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(tagText)}", ${hasTagInteger ? 'true' : 'false'}, ${tagInteger}, L"${escapeWideString(events)}" }`;
 }
 
 function controlColorProperty(control: LingControl, key: string, fallback: string): string {
@@ -28438,9 +28451,9 @@ function getControlOptions(control: LingControl, controlIds: Map<string, number>
   }
 }
 
-function toColorRef(hex: string): string {
-  const normalized = hex.trim().replace('#', '');
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return 'RGB(30, 30, 36)';
+function toColorRef(hex: string | undefined, fallback = 'RGB(30, 30, 36)'): string {
+  const normalized = String(hex ?? '').trim().replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return fallback;
   const r = Number.parseInt(normalized.slice(0, 2), 16);
   const g = Number.parseInt(normalized.slice(2, 4), 16);
   const b = Number.parseInt(normalized.slice(4, 6), 16);

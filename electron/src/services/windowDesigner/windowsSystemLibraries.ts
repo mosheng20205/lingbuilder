@@ -35,3 +35,12 @@ export function createWindowsMsvcLinkLibraries(additionalLibraries: readonly str
     return true;
   });
 }
+
+/**
+ * requireAdministrator 的直编链接参数：请求 UAC 提权（requestedExecutionLevel=requireAdministrator）。
+ * 值不含空格与双引号，可安全穿过 cmd /c call 包装；单引号为链接器要求的取值形式。
+ * 与 Visual Studio 导出工程的 <UACExecutionLevel>RequireAdministrator</UACExecutionLevel> 行为一致；
+ * 注意 #pragma comment(linker, "/manifestuac:...") 不生效（MSVC 仅支持 pragma 传 manifestdependency），
+ * 因此该能力必须在编译/链接调用点显式传参，不能放在生成的 main.cpp 里。
+ */
+export const REQUIRE_ADMINISTRATOR_LINK_ARGS = ["/MANIFESTUAC:level='requireAdministrator'"] as const;

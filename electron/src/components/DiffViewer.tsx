@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useImperativeHandle, startTransition } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink, GripHorizontal, ArrowUp, ArrowDown, Scissors, ClipboardPaste } from 'lucide-react';
@@ -60,6 +60,7 @@ import {
   type BeginnerTableColumnWidthOverrides,
   type BeginnerTableKey
 } from '../services/editor/beginnerTableColumnWidths';
+import BeginnerVirtualCanvas, { type BeginnerCanvasItem, type BeginnerVirtualCanvasHandle } from './beginner/BeginnerVirtualCanvas';
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppSourceDefinitionAtPosition, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppProjectGlobalContext, LingCppProjectTypeContext, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
@@ -459,6 +460,17 @@ const BEGINNER_CODE_OVERLAY_TOKEN_STYLE: React.CSSProperties = {
 };
 
 const BEGINNER_IF_SNIPPET = '如果 (条件)\n    \n否则\n    \n如果结束';
+
+/** 会改变新手结构画布「流程图 / 分支折叠」的关键字行首词；只有它们变化才需要重渲结构。 */
+const BEGINNER_FLOW_KEYWORD_HEADS = new Set<string>([
+  '如果', '如果真', '否则', '否则如果', '如果结束', '如果真结束',
+  '循环', '循环结束', '判断循环首', '判断循环尾', '循环判断首', '循环判断尾',
+  '计次循环首', '计次循环尾', '变量循环首', '变量循环尾', '枚举循环首', '枚举循环尾',
+  '选择', '选择结束', '判断', '判断结束', '分支', '情况', '默认',
+  '尝试', '尝试结束', '捕获', '最终',
+  '跳出循环', '到循环尾', '继续循环', '抛出', '结束', '返回'
+]);
+
 const BEGINNER_IF_TRUE_SNIPPET = '如果真 (条件)\n    \n如果真结束';
 const BEGINNER_SELECT_SNIPPET = '选择 (表达式)\n    分支 (值)\n        \n    默认\n        \n选择结束';
 const BEGINNER_LOOP_SNIPPET = '循环\n    \n循环结束';
@@ -468,6 +480,24 @@ const BEGINNER_COUNT_LOOP_SNIPPET = '计次循环首 (次数, 计次变量)\n   
 const BEGINNER_RANGE_LOOP_SNIPPET = '变量循环首 (起始值, 目标值, 递增值, 循环变量)\n    \n变量循环尾 ()';
 const BEGINNER_FOREACH_SNIPPET = '枚举循环首 (集合, 当前项)\n    \n枚举循环尾 ()';
 const BEGINNER_TRY_SNIPPET = '尝试\n    \n捕获 (错误信息)\n    \n最终\n    \n尝试结束';
+
+// 工具栏片段插入后要选中的第一个中文占位词，例如「如果 (条件)」里的「条件」、
+// 「信息框("提示内容", …)」里的「提示内容」。找不到时插入后光标落在片段末尾。
+function findSnippetPlaceholderSelection(snippet: string): { offset: number; length: number } | undefined {
+  const openIndex = snippet.search(/[（(]/u);
+  if (openIndex < 0) return undefined;
+  const contentStart = openIndex + 1;
+  const closeIndex = snippet.slice(contentStart).search(/[）)]/u);
+  if (closeIndex < 0) return undefined;
+  let token = snippet.slice(contentStart, contentStart + closeIndex);
+  const quoted = token.startsWith('"') || token.startsWith('“');
+  if (quoted) token = token.slice(1, -1);
+  const commaIndex = token.search(/[,，]/u);
+  if (commaIndex >= 0) token = token.slice(0, commaIndex);
+  token = token.trim();
+  if (!token) return undefined;
+  return { offset: contentStart + (quoted ? 1 : 0), length: token.length };
+}
 
 const BEGINNER_COMMAND_HINTS: Record<string, BeginnerCommandHintInfo> = {
   信息框: {
@@ -1582,11 +1612,41 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [showNativeImportPanel, setShowNativeImportPanel] = useState(false);
   const [structuredRevealLine, setStructuredRevealLine] = useState<number | null>(null);
   const [pendingNativeSourceReveal, setPendingNativeSourceReveal] = useState<{ line: number; filePath?: string } | null>(null);
-  const [beginnerCompletionState, setBeginnerCompletionState] = useState<BeginnerCompletionState | null>(null);
-  const [beginnerAutoLocalTypeState, setBeginnerAutoLocalTypeState] = useState<BeginnerAutoLocalTypeState | null>(null);
+  const [beginnerCompletionState, _setBeginnerCompletionState] = useState<BeginnerCompletionState | null>(null);
+  const [beginnerAutoLocalTypeState, _setBeginnerAutoLocalTypeState] = useState<BeginnerAutoLocalTypeState | null>(null);
+  /**
+   * 补全面板 / 自动局部变量类型面板的状态镜像。
+   * React 对「函数式 setState 返回同一个值」仍然会安排一次渲染，而新手结构化画布
+   * 一次重渲要几十毫秒；这两个状态在每次按键都会被条件性清空，因此必须在这里
+   * 先比对再决定要不要真的 setState（2026-09-17 实测：12 键触发 50 次画布重渲）。
+   */
+  const beginnerCompletionStateRef = useRef<BeginnerCompletionState | null>(null);
+  const beginnerAutoLocalTypeStateRef = useRef<BeginnerAutoLocalTypeState | null>(null);
+  const setBeginnerCompletionState = useCallback<React.Dispatch<React.SetStateAction<BeginnerCompletionState | null>>>(next => {
+    const resolved = typeof next === 'function'
+      ? (next as (current: BeginnerCompletionState | null) => BeginnerCompletionState | null)(beginnerCompletionStateRef.current)
+      : next;
+    if (Object.is(resolved, beginnerCompletionStateRef.current)) return;
+    beginnerCompletionStateRef.current = resolved;
+    _setBeginnerCompletionState(resolved);
+  }, []);
+  const setBeginnerAutoLocalTypeState = useCallback<React.Dispatch<React.SetStateAction<BeginnerAutoLocalTypeState | null>>>(next => {
+    const resolved = typeof next === 'function'
+      ? (next as (current: BeginnerAutoLocalTypeState | null) => BeginnerAutoLocalTypeState | null)(beginnerAutoLocalTypeStateRef.current)
+      : next;
+    if (Object.is(resolved, beginnerAutoLocalTypeStateRef.current)) return;
+    beginnerAutoLocalTypeStateRef.current = resolved;
+    _setBeginnerAutoLocalTypeState(resolved);
+  }, []);
   const [beginnerJumpHighlight, setBeginnerJumpHighlight] = useState<BeginnerJumpHighlightState | null>(null);
   const [beginnerCodeDrafts, setBeginnerCodeDrafts] = useState<Record<string, string>>({});
   const beginnerCodeDraftsRef = useRef<Record<string, string>>({});
+  /** 连续输入的去抖同步定时器：见 updateBeginnerCodeDraft 的说明。 */
+  const beginnerDraftSyncTimerRef = useRef<number | null>(null);
+  /** 已同步进 state 的草稿结构指纹，用于跳过「只改字词」的无意义重渲。 */
+  const beginnerDraftSignaturesRef = useRef<Record<string, string>>({});
+  /** 外部（非连续输入）改写草稿的版本号，用于让 code textarea 重新挂载并刷新内容。 */
+  const beginnerDraftExternalRevisionRef = useRef<Record<string, number>>({});
   const beginnerCodeSegmentLineCountsRef = useRef<Record<string, Record<string, number>>>({});
   const beginnerLocalStatementAnchorsRef = useRef<Record<string, Record<string, number>>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
@@ -1702,6 +1762,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     beginnerCodeDraftsRef.current = {};
     beginnerCodeSegmentLineCountsRef.current = {};
     beginnerLocalStatementAnchorsRef.current = {};
+    if (beginnerDraftSyncTimerRef.current !== null) {
+      window.clearTimeout(beginnerDraftSyncTimerRef.current);
+      beginnerDraftSyncTimerRef.current = null;
+    }
+    beginnerDraftSignaturesRef.current = {};
+    if (beginnerCursorSyncFrameRef.current !== null) {
+      window.cancelAnimationFrame(beginnerCursorSyncFrameRef.current);
+      beginnerCursorSyncFrameRef.current = null;
+    }
+    beginnerCursorSyncRef.current = null;
     setBeginnerCodeDrafts({});
     setBeginnerContextMenu(null);
     setBeginnerTypeCompletionState(null);
@@ -1725,6 +1795,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const sourceEditorRef = useRef<HTMLTextAreaElement>(null);
   const sourceLineNumberRef = useRef<HTMLDivElement>(null);
   const beginnerStructureScrollRef = useRef<HTMLDivElement>(null);
+  // 新手结构画布的窗口化句柄：跳转到行时先让目标块进入视口，再定位到具体行。
+  const beginnerCanvasHandleRef = useRef<BeginnerVirtualCanvasHandle | null>(null);
   const beginnerJumpHighlightTimerRef = useRef<number | null>(null);
   const beginnerPointerSyncFramesRef = useRef<{ first: number | null; second: number | null }>({
     first: null,
@@ -1732,6 +1804,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   });
   const cursorPositionRef = useRef(cursorPosition);
   cursorPositionRef.current = cursorPosition;
+  /** 待合并提交的光标位置与编辑器状态（见 flushBeginnerCursorSync）。 */
+  const beginnerCursorSyncRef = useRef<{ cursor?: { line: number; column: number }; state?: MonacoEditorState } | null>(null);
   const beginnerTextareaViewRef = useRef<{
     focusKey: string;
     value: string;
@@ -1795,6 +1869,32 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       publishProfessionalEditorState(latest);
     }
   }, [editorExperienceMode, publishProfessionalEditorState, textHistoryVersion]);
+  /**
+   * 新手编辑器在每次按键/选区变化/指针同步时都会刷新光标视图状态；直接 setState +
+   * 回调父级会在一帧内触发多次 App/DiffViewer 重渲（实测每键 5 次 App 重渲）。
+   * 这里合并到一次 requestAnimationFrame 里提交，光标同步也保持同值短路。
+   */
+  const beginnerCursorSyncFrameRef = useRef<number | null>(null);
+  const flushBeginnerCursorSync = useCallback(() => {
+    beginnerCursorSyncFrameRef.current = null;
+    const pending = beginnerCursorSyncRef.current;
+    beginnerCursorSyncRef.current = null;
+    if (!pending) return;
+    // 光标/状态栏发布属于「可以晚一点」的更新：放进 transition，输入事件优先渲染，
+    // 避免每次按键都被整棵工作台的重渲挡住。
+    startTransition(() => {
+      if (pending.cursor) {
+        setCursorPosition(current => (
+          current.line === pending.cursor!.line && current.column === pending.cursor!.column ? current : pending.cursor!
+        ));
+      }
+      if (pending.state) onEditorStateChange?.(pending.state);
+    });
+  }, [onEditorStateChange]);
+  const scheduleBeginnerCursorSync = useCallback(() => {
+    if (beginnerCursorSyncFrameRef.current !== null) return;
+    beginnerCursorSyncFrameRef.current = window.requestAnimationFrame(flushBeginnerCursorSync);
+  }, [flushBeginnerCursorSync]);
   const captureBeginnerTextareaView = useCallback((textarea: HTMLTextAreaElement) => {
     const selectionStart = textarea.selectionStart;
     const selectionEnd = textarea.selectionEnd;
@@ -1816,7 +1916,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     };
     if (cursorPositionRef.current.line !== cursor.line || cursorPositionRef.current.column !== cursor.column) {
       cursorPositionRef.current = cursor;
-      setCursorPosition(cursor);
+      beginnerCursorSyncRef.current = { ...(beginnerCursorSyncRef.current || {}), cursor };
+      scheduleBeginnerCursorSync();
     }
     const state: MonacoEditorState = {
       modelId: sourceModelRecord.modelId,
@@ -1842,7 +1943,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       || previous.positionAvailable !== state.positionAvailable;
     if (stateChanged) {
       latestEditorStateRef.current = state;
-      onEditorStateChange?.(state);
+      beginnerCursorSyncRef.current = { cursor, state };
+      scheduleBeginnerCursorSync();
     }
   }, [onEditorStateChange, sourceModelRecord.modelId, textEditHistory]);
   const saveBeginnerViewState = useCallback(() => {
@@ -2923,13 +3025,28 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
   useEffect(() => {
     if (!structuredRevealLine || editorExperienceMode !== 'beginner') return;
-    const timer = window.setTimeout(() => {
+    let cancelled = false;
+    let attempts = 0;
+    // 结构画布改为窗口化渲染后，目标行所在的块可能还没进 DOM：先让画布把该块滚入视口，
+    // 再重试定位具体行（最多约 0.8s），避免跳转失效。
+    const run = () => {
+      if (cancelled) return;
+      attempts += 1;
       const row = document.querySelector<HTMLElement>(`[data-structured-line="${structuredRevealLine}"]`);
-      if (!row) return;
-      scrollElementInsideBeginnerEditor(row, 'center');
-      setStructuredRevealLine(null);
-    }, 120);
-    return () => window.clearTimeout(timer);
+      if (row) {
+        scrollElementInsideBeginnerEditor(row, 'center');
+        setStructuredRevealLine(null);
+        return;
+      }
+      if (attempts === 1) beginnerCanvasHandleRef.current?.scrollToSourceLine(structuredRevealLine);
+      if (attempts < 12) window.setTimeout(run, 60);
+      else setStructuredRevealLine(null);
+    };
+    const timer = window.setTimeout(run, 60);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [structuredRevealLine, editorExperienceMode]);
 
   useEffect(() => {
@@ -3027,6 +3144,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       window.dispatchEvent(new CustomEvent('insert-epl-snippet', { detail: { text: snippet } }));
       return;
     }
+
+    // 专业模式 Monaco：在当前光标选区插入，并把光标/选中区落在片段占位词上。
+    // 插入引发的 onChange 会自动同步 App 状态与撤销历史，无需在这里改 state。
+    const placeholder = findSnippetPlaceholderSelection(snippet);
+    if (monacoEditorRef.current?.insertSnippet(snippet, placeholder?.offset, placeholder?.length)) return;
 
     const editor = sourceEditorRef.current;
     if (!editor) {
@@ -4926,10 +5048,74 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       ].map(item => [`${item.label}:${item.insertText}`, item]))
         .values()
     );
-    const updateBeginnerCodeDraft = (target: BeginnerCodeTarget, nextValue: string) => {
+    const cancelBeginnerDraftSync = () => {
+      if (beginnerDraftSyncTimerRef.current !== null) {
+        window.clearTimeout(beginnerDraftSyncTimerRef.current);
+        beginnerDraftSyncTimerRef.current = null;
+      }
+    };
+    /**
+     * 草稿的「结构指纹」：行数 + 每行缩进 + 控制流关键字。
+     * 只改字词（结构不变）时不需要重渲结构画布，因为流程图/分支折叠不会变；
+     * 改行数、缩进或 如果/循环/选择 之类关键字时才需要。
+     */
+    const beginnerDraftStructureSignature = (value: string) => value
+      .split('\n')
+      .map(line => {
+        const indent = line.match(/^\s*/u)?.[0].length ?? 0;
+        const head = line.trim().match(/^[\u4e00-\u9fa5A-Za-z_]+/u)?.[0] ?? '';
+        return `${indent}:${BEGINNER_FLOW_KEYWORD_HEADS.has(head) ? head : '·'}`;
+      })
+      .join('|');
+    const scheduleBeginnerDraftSync = (delay = 400) => {
+      cancelBeginnerDraftSync();
+      beginnerDraftSyncTimerRef.current = window.setTimeout(() => {
+        beginnerDraftSyncTimerRef.current = null;
+        const drafts = beginnerCodeDraftsRef.current;
+        const nextSignatures: Record<string, string> = { ...beginnerDraftSignaturesRef.current };
+        let changed = false;
+        for (const [key, value] of Object.entries(drafts)) {
+          const signature = beginnerDraftStructureSignature(value);
+          if (nextSignatures[key] !== signature) {
+            nextSignatures[key] = signature;
+            changed = true;
+          }
+        }
+        for (const key of Object.keys(nextSignatures)) {
+          if (!(key in drafts)) {
+            delete nextSignatures[key];
+            changed = true;
+          }
+        }
+        if (!changed) return;
+        beginnerDraftSignaturesRef.current = nextSignatures;
+        setBeginnerCodeDrafts({ ...drafts });
+      }, delay);
+    };
+    const updateBeginnerCodeDraft = (
+      target: BeginnerCodeTarget,
+      nextValue: string,
+      options?: { defer?: boolean }
+    ) => {
       const targetKey = codeTargetKey(target);
       const nextDrafts = { ...beginnerCodeDraftsRef.current, [targetKey]: nextValue };
       beginnerCodeDraftsRef.current = nextDrafts;
+      // 连续输入只写 ref，再空闲 500ms 同步一次 state：
+      // 之前每个按键都 setState → 重渲整棵结构画布，实测 ~100ms/键。
+      if (options?.defer) {
+        scheduleBeginnerDraftSync();
+        return;
+      }
+      cancelBeginnerDraftSync();
+      beginnerDraftSignaturesRef.current = {
+        ...beginnerDraftSignaturesRef.current,
+        [targetKey]: beginnerDraftStructureSignature(nextValue)
+      };
+      // 外部改写（补全上屏、插入局部变量、格式化等）需要让 textarea 重新挂载以显示新内容。
+      beginnerDraftExternalRevisionRef.current = {
+        ...beginnerDraftExternalRevisionRef.current,
+        [targetKey]: (beginnerDraftExternalRevisionRef.current[targetKey] ?? 0) + 1
+      };
       setBeginnerCodeDrafts(nextDrafts);
     };
     const getCodeSegmentLineCounts = (
@@ -4985,7 +5171,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const updateBeginnerCodeSegmentDraft = (
       target: BeginnerCodeTarget,
       context: BeginnerCodeSegmentContext,
-      nextSegmentValue: string
+      nextSegmentValue: string,
+      options?: { defer?: boolean }
     ) => {
       const targetKey = codeTargetKey(target);
       const currentFullBody = beginnerCodeDraftsRef.current[targetKey] ?? methodBodyText(target.method);
@@ -5003,7 +5190,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         [context.segment.id]: nextSegmentLines.length
       };
       getCodeSegmentLineCounts(target, context.segments);
-      updateBeginnerCodeDraft(target, nextFullLines.join('\n'));
+      updateBeginnerCodeDraft(target, nextFullLines.join('\n'), options);
     };
     const clearBeginnerCodeDraft = (target: BeginnerCodeTarget) => {
       const targetKey = codeTargetKey(target);
@@ -5017,6 +5204,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const nextAnchors = { ...beginnerLocalStatementAnchorsRef.current };
       delete nextAnchors[targetKey];
       beginnerLocalStatementAnchorsRef.current = nextAnchors;
+      beginnerDraftExternalRevisionRef.current = {
+        ...beginnerDraftExternalRevisionRef.current,
+        [targetKey]: (beginnerDraftExternalRevisionRef.current[targetKey] ?? 0) + 1
+      };
       setBeginnerCodeDrafts(nextDrafts);
     };
     const updateBeginnerCompletion = (
@@ -5227,8 +5418,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       setBeginnerAutoLocalTypeState(current =>
         current?.targetKey === codeTargetKey(target) ? null : current
       );
-      if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, event.currentTarget.value);
-      else updateBeginnerCodeDraft(target, event.currentTarget.value);
+      if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, event.currentTarget.value, { defer: true });
+      else updateBeginnerCodeDraft(target, event.currentTarget.value, { defer: true });
       updateBeginnerCompletion(target, event.currentTarget, false, segmentContext);
       updateBeginnerCommandHint(target, event.currentTarget);
     };
@@ -6332,7 +6523,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const appendBeginnerSnippet = (target: BeginnerCodeTarget | undefined, snippet: string) => {
       if (!target) return;
       const targetKey = codeTargetKey(target);
-      const currentBody = beginnerCodeDrafts[targetKey] ?? methodBodyText(target.method);
+      const currentBody = beginnerCodeDraftsRef.current[targetKey] ?? beginnerCodeDrafts[targetKey] ?? methodBodyText(target.method);
       const nextBody = currentBody.trim() ? `${currentBody}\n${snippet}` : snippet;
       updateBeginnerCodeDraft(target, nextBody);
       const applied = commitBeginnerCodeBody(target.className, target.method.name, currentBody, nextBody);
@@ -7185,7 +7376,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const renderCodeBodyEditor = (target: BeginnerCodeTarget, compact = false) => {
       const bodyText = methodBodyText(target.method);
       const targetKey = codeTargetKey(target);
-      const draftBodyText = beginnerCodeDrafts[targetKey] ?? bodyText;
+      const draftBodyText = beginnerCodeDraftsRef.current[targetKey] ?? beginnerCodeDrafts[targetKey] ?? bodyText;
       const bodyLines = draftBodyText.split('\n').length ? draftBodyText.split('\n') : [''];
       const flowGuideRows = getBeginnerIfFlowGuideRows(bodyLines);
       const editorHeightClass = compact ? 'min-h-[170px]' : 'min-h-[230px]';
@@ -7263,14 +7454,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 ))}
               </div>
               <textarea
-                key={`${target.className}:${target.method.name}:${target.method.line}:${bodyText}:${compact ? 'inline' : 'section'}`}
+                key={`${target.className}:${target.method.name}:${target.method.line}:${bodyText}:${compact ? 'inline' : 'section'}:${beginnerDraftExternalRevisionRef.current[codeTargetKey(target)] ?? 0}`}
                 data-text-model-view-key={`${target.className}:${target.method.kind}:${target.method.name}`}
                 data-lingbuilder-editor-command-owner="true"
                 data-source-line-start={target.method.statements[0]?.line || target.method.line + 1}
                 data-source-line-map={target.method.statements.map(statement => statement.line).join(',')}
                 data-source-column-start={methodBodyStartColumn(target.method)}
                 data-source-column-map={methodBodySourceColumns(target.method).join(',')}
-                value={draftBodyText}
+                defaultValue={draftBodyText}
                 wrap="off"
                 spellCheck={false}
                 readOnly={!onUpdateSourceContent}
@@ -8863,7 +9054,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const targetKey = codeTargetKey(target);
       const draftBodyText = segmentContext
         ? getCodeSegmentDraft(target, segmentContext).value
-        : beginnerCodeDrafts[targetKey] ?? bodyText;
+        : beginnerCodeDraftsRef.current[targetKey] ?? beginnerCodeDrafts[targetKey] ?? bodyText;
       const segmentStatements = segmentContext?.segment.statements || target.method.statements;
       const bodyLines = draftBodyText.split('\n').length ? draftBodyText.split('\n') : [''];
       const textBlockLines = beginnerTextBlockLineSet(draftBodyText);
@@ -9453,7 +9644,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               })}
             </div>
             <textarea
-              key={`${target.className}:${target.method.name}:${target.method.line}:${segmentContext?.segment.id || 'all'}:${bodyText}:yc-source`}
+              key={`${target.className}:${target.method.name}:${target.method.line}:${segmentContext?.segment.id || 'all'}:${bodyText}:${beginnerDraftExternalRevisionRef.current[targetKey] ?? 0}:yc-source`}
               data-text-model-view-key={`${target.className}:${target.method.kind}:${target.method.name}:${segmentContext?.segment.id || 'all'}`}
               data-beginner-target-key={targetKey}
               data-beginner-statement-start={segmentContext?.segment.statementStartIndex ?? 0}
@@ -9462,7 +9653,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               data-source-line-map={getBeginnerBodySourceLines(segmentStatements).join(',')}
               data-source-column-start={methodBodyStartColumn(target.method)}
               data-source-column-map={getBeginnerBodySourceColumns(segmentStatements, methodBodyStartColumn(target.method)).join(',')}
-              value={draftBodyText}
+              defaultValue={draftBodyText}
               wrap="off"
               spellCheck={false}
               readOnly={!onUpdateSourceContent}
@@ -9526,30 +9717,142 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
     };
 
-    const declarationCanvas = renderDeclarationCanvas();
+    // 结构化画布改为「描述 + 惰性渲染」：只有进入视口窗口的块才真正创建 React 元素与 DOM。
+    // 之前这里会把 260 个块全部 eager 建好，是打开 3.8s、交互 1.3s/次的主要来源。
+    //
+    // blockRevision：块内容真正依赖的状态指纹。App/DiffViewer 因为无关状态（命令提示、
+    // 面板显隐、后台刷新等）重渲时指纹不变，BeginnerVirtualCanvas 内的记忆化外壳就会跳过
+    // 整棵子树，避免每次按键/悬浮都重建几十毫秒的结构画布。
+    const blockRevision = [
+      isDarkMode ? 'd' : 'l',
+      editorFontSize,
+      beginnerTableFontSize,
+      beginnerTableScale,
+      normalizedSourceCode,
+      activeFile?.path || '',
+      textHistoryVersion,
+      JSON.stringify(beginnerColumnWidthOverrides),
+      selectedBeginnerHandler || '',
+      activeBeginnerHandler || '',
+      selectedBeginnerCodeTarget ? `${selectedBeginnerCodeTarget.className || ''}.${selectedBeginnerCodeTarget.methodName}` : '',
+      beginnerJumpHighlight ? `${beginnerJumpHighlight.targetKey}:${beginnerJumpHighlight.line}:${beginnerJumpHighlight.label}` : '',
+      beginnerParameterFocus ? `${beginnerParameterFocus.targetKey}:${beginnerParameterFocus.parameterName}` : '',
+      structureEditDraft ? JSON.stringify(structureEditDraft) : '',
+      isBeginnerMemberTableCollapsed ? '1' : '0',
+      collapsedBeginnerProcessTargetKeys.join(','),
+      collapsedBeginnerLocalGroupKeys.join(','),
+      collapsedBeginnerFlowBlockKeys.join(','),
+      expandedBeginnerCommand || '',
+      expandedBeginnerEventTargetKey || '',
+      expandedBeginnerFunctionTargetKey || '',
+      beginnerCompletionState
+        ? `${beginnerCompletionState.targetKey}:${beginnerCompletionState.segmentId}:${beginnerCompletionState.token}:${beginnerCompletionState.items.length}:${beginnerCompletionState.selectedIndex}:${beginnerCompletionState.position?.top ?? ''}:${beginnerCompletionState.position?.left ?? ''}:${beginnerCompletionState.position?.placement ?? ''}`
+        : '',
+      beginnerAutoLocalTypeState ? `${beginnerAutoLocalTypeState.targetKey}:${beginnerAutoLocalTypeState.variableName}:${beginnerAutoLocalTypeState.expression}:${beginnerAutoLocalTypeState.selectedIndex}` : '',
+      beginnerTypeCompletionState ? `${beginnerTypeCompletionState.inputKey}:${beginnerTypeCompletionState.value}` : '',
+      Object.keys(beginnerCommandArgumentDrafts).join(','),
+      beginnerContextMenu ? `${beginnerContextMenu.className}:${beginnerContextMenu.methodName}` : '',
+      Object.entries(beginnerCodeDrafts).map(([key, value]) => `${key}#${value.length}`).join(',')
+    ].join('\u0001');
+    const canvasItems: BeginnerCanvasItem[] = [];
+    /**
+     * 悬浮/当前行只会影响「所属块」的折叠按钮显隐，因此只把这份状态挂到对应 targetKey 的块上：
+     * 鼠标划过时只有那一两个块重渲，而不是视口内所有块（实测从 60~90ms 降到 10ms 级）。
+     */
+    const interactionSliceFor = (targetKey?: string) => {
+      if (!targetKey) return '';
+      const hovered = hoveredBeginnerFlowLine?.targetKey === targetKey
+        ? `${hoveredBeginnerFlowLine.segmentId}:${hoveredBeginnerFlowLine.line}`
+        : '';
+      const active = activeBeginnerFlowLine?.targetKey === targetKey
+        ? `${activeBeginnerFlowLine.segmentId}:${activeBeginnerFlowLine.line}`
+        : '';
+      return `|h:${hovered}|a:${active}`;
+    };
+    const pushCanvasItem = (
+      key: string,
+      estimateSize: number,
+      sourceFrom: number,
+      sourceTo: number,
+      render: () => React.ReactNode,
+      interactionTargetKey?: string
+    ) => {
+      canvasItems.push({
+        key,
+        revision: `${blockRevision}${interactionSliceFor(interactionTargetKey)}`,
+        estimateSize,
+        sourceFrom,
+        sourceTo,
+        render
+      });
+    };
+    const sourceRangeOfRows = (rows: LingCppStructuredReadingRow[], fallback = 1) => {
+      const lines = rows.map(row => row.line).filter(line => Number.isFinite(line) && line > 0);
+      return lines.length
+        ? { from: Math.min(...lines), to: Math.max(...lines) }
+        : { from: fallback, to: fallback };
+    };
+    const estimateCodeBodySize = (body: string) => 34 + Math.max(1, body.split('\n').length) * 26;
+
+    const hasDeclarationCanvas = Boolean(classDeclarationRow || packageDeclarationRow);
+    const hasMemberCanvas = memberRows.length > 0 || Boolean(primaryLingCppClass);
     const memberVisualLineStart = 2;
-    const memberCanvas = renderMemberCanvas(memberVisualLineStart);
-    const memberVisualLineCount = memberCanvas
+    const memberVisualLineCount = hasMemberCanvas
       ? (isBeginnerMemberTableCollapsed ? 1 : Math.max(1, memberRows.length))
       : 0;
     let nextVisualLine = memberVisualLineStart + memberVisualLineCount;
-    const processCanvases: React.ReactNode[] = [];
 
-    if (memberCanvas && allProcessTargets.length > 0) {
-      processCanvases.push(renderBlankSourceLine(nextVisualLine));
+    if (hasDeclarationCanvas) {
+      const declarationRow = classDeclarationRow || packageDeclarationRow;
+      pushCanvasItem(
+        'declaration',
+        96,
+        declarationRow?.line || 1,
+        declarationRow?.line || 1,
+        () => renderDeclarationCanvas()
+      );
+    }
+    if (hasMemberCanvas) {
+      const memberRange = sourceRangeOfRows(memberRows, primaryLingCppClass?.line || 1);
+      pushCanvasItem(
+        'member',
+        isBeginnerMemberTableCollapsed ? 56 : 56 + Math.max(1, memberRows.length) * 34,
+        memberRange.from,
+        memberRange.to,
+        () => renderMemberCanvas(memberVisualLineStart)
+      );
+    }
+
+    if (hasMemberCanvas && allProcessTargets.length > 0) {
+      const blankLine = nextVisualLine;
+      pushCanvasItem(`blank:${blankLine}`, 26, blankLine, blankLine, () => renderBlankSourceLine(blankLine));
       nextVisualLine += 1;
     }
 
     allProcessTargets.forEach((target, index) => {
-      processCanvases.push(renderProcessHeader(target, nextVisualLine));
+      const targetKey = codeTargetKey(target);
+      const targetLastLine = target.method.endLine || target.method.line;
+      const processHeaderLine = nextVisualLine;
+      pushCanvasItem(
+        `process:${targetKey}:${processHeaderLine}`,
+        46,
+        target.method.line,
+        targetLastLine,
+        () => renderProcessHeader(target, processHeaderLine)
+      );
       nextVisualLine += 1;
 
       if (!isBeginnerProcessCollapsed(target)) {
-        const parameterCanvas = renderParameterCanvas(target, nextVisualLine);
-        if (parameterCanvas) {
-          processCanvases.push(parameterCanvas);
-          nextVisualLine += Math.max(1, target.method.parameters.length + 1);
-        }
+        const parameterLine = nextVisualLine;
+        const parameterCount = target.method.parameters.length;
+        pushCanvasItem(
+          `parameters:${targetKey}:${parameterLine}`,
+          parameterCount * 34 + 76,
+          target.method.line,
+          target.method.line,
+          () => renderParameterCanvas(target, parameterLine)
+        );
+        nextVisualLine += Math.max(1, target.method.parameters.length + 1);
 
         const bodySegments = getBeginnerMethodBodySegments(target.method);
         let foldStatementCursor = 0;
@@ -9587,12 +9890,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             if (isSourceRangeHidden(segment.locals[0]?.line ?? segment.sourceLine)) return;
             const groupKey = `${segment.id}:${segment.locals.map(local => local.name).join('|')}`;
             const collapsed = collapsedBeginnerLocalGroupKeys.includes(`${codeTargetKey(target)}:${groupKey}`);
-            processCanvases.push(renderLocalVariableCanvas(
-              target,
-              nextVisualLine,
-              segment.locals,
-              groupKey
-            ));
+            const localCanvasLine = nextVisualLine;
+            if (segment.locals.length > 0) {
+              const localStartLine = segment.locals[0]?.line ?? segment.sourceLine;
+              const localEndLine = segment.locals[segment.locals.length - 1]?.line ?? localStartLine;
+              pushCanvasItem(
+                `locals:${codeTargetKey(target)}:${groupKey}:${localCanvasLine}`,
+                collapsed ? 40 : 46 + segment.locals.length * 34,
+                localStartLine,
+                localEndLine,
+                () => renderLocalVariableCanvas(target, localCanvasLine, segment.locals, groupKey),
+                codeTargetKey(target)
+              );
+            }
             nextVisualLine += collapsed
               ? 1
               : Math.max(1, segment.locals.length);
@@ -9603,6 +9913,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           codeStatementCursor += segment.statements.length;
           const segmentContext = { segment, segments: bodySegments };
           const segmentBody = getCodeSegmentDraft(target, segmentContext).value;
+          const segmentSourceLines = segment.statements
+            .map(statement => statement.line)
+            .filter(line => Number.isFinite(line) && line > 0);
+          const segmentSourceFrom = segmentSourceLines[0] ?? target.method.line;
+          const segmentSourceTo = segmentSourceLines[segmentSourceLines.length - 1] ?? segmentSourceFrom;
 
           if (crossSegmentFolds.length > 0 && segment.statements.length > 0) {
             const statementIndices = segment.statements.map((_, offset) => segmentStatementStart + offset);
@@ -9611,22 +9926,45 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             // 锚点段即使自身没有隐藏行，也要拿到折叠信息用于显示真实收起行数。
             const anchorsHere = crossSegmentFolds.some(fold => fold.anchorSegmentId === segment.id);
             if (hiddenCount > 0 || anchorsHere) {
-              processCanvases.push(renderContinuousCodeBody(target, nextVisualLine, {
-                ...segmentContext,
-                externalFlowFolds: crossSegmentFolds
-              }));
+              const foldedCanvasLine = nextVisualLine;
+              pushCanvasItem(
+                `code:${codeTargetKey(target)}:${segment.id}:${foldedCanvasLine}`,
+                estimateCodeBodySize(segmentBody),
+                segmentSourceFrom,
+                segmentSourceTo,
+                () => renderContinuousCodeBody(target, foldedCanvasLine, {
+                  ...segmentContext,
+                  externalFlowFolds: crossSegmentFolds
+                }),
+                codeTargetKey(target)
+              );
               nextVisualLine += Math.max(1, segmentBody.split('\n').length - hiddenCount);
               return;
             }
           }
 
-          processCanvases.push(renderContinuousCodeBody(target, nextVisualLine, segmentContext));
+          const codeCanvasLine = nextVisualLine;
+          pushCanvasItem(
+            `code:${codeTargetKey(target)}:${segment.id}:${codeCanvasLine}`,
+            estimateCodeBodySize(segmentBody),
+            segmentSourceFrom,
+            segmentSourceTo,
+            () => renderContinuousCodeBody(target, codeCanvasLine, segmentContext),
+            codeTargetKey(target)
+          );
           nextVisualLine += Math.max(1, segmentBody.split('\n').length);
         });
       }
 
       if (index < allProcessTargets.length - 1) {
-        processCanvases.push(renderBlankSourceLine(nextVisualLine));
+        const trailingBlankLine = nextVisualLine;
+        pushCanvasItem(
+          `blank:${trailingBlankLine}`,
+          26,
+          trailingBlankLine,
+          trailingBlankLine,
+          () => renderBlankSourceLine(trailingBlankLine)
+        );
         nextVisualLine += 1;
       }
     });
@@ -9859,7 +10197,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             () => setIsBeginnerMemberTableCollapsed(current => !current),
             isBeginnerMemberTableCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />,
             false,
-            !memberCanvas
+            !hasMemberCanvas
           )}
           {renderContextMenuButton(
             contextTarget && isBeginnerProcessCollapsed(contextTarget) ? '展开当前子程序' : '折叠当前子程序',
@@ -9896,22 +10234,20 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         </div>
       );
     };
-    const canvasItems = [
-      declarationCanvas,
-      memberCanvas,
-      ...processCanvases
-    ].filter(Boolean);
-
     return (
-      <div
-        ref={beginnerStructureScrollRef}
-        data-beginner-structure-scroll
+      <BeginnerVirtualCanvas
+        items={canvasItems}
+        scrollRef={beginnerStructureScrollRef}
+        handleRef={beginnerCanvasHandleRef}
         className={`h-full min-h-0 overflow-auto ${editorCanvasBg}`}
         onFocusCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
         onPointerDownCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
         onKeyDown={handleBeginnerCreationShortcut}
         onScroll={saveBeginnerViewState}
         onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
+        footer={canvasItems.length > 0 ? (
+          <div aria-hidden="true" className="h-[50vh] min-h-[160px] max-h-[360px]" data-beginner-scroll-tail />
+        ) : null}
       >
         <datalist id="beginner-member-name-suggestions">
           {memberNameSuggestions.map(item => <option key={item} value={item} />)}
@@ -9920,15 +10256,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           {methodNameSuggestions.map(item => <option key={item} value={item} />)}
         </datalist>
         {renderBeginnerContextMenu()}
-        <div className="min-w-0">
-          {canvasItems.length > 0 ? canvasItems.map((item, index) => <React.Fragment key={index}>{item}</React.Fragment>) : (
-            <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>
-          )}
-          {canvasItems.length > 0 && (
-            <div aria-hidden="true" className="h-[50vh] min-h-[160px] max-h-[360px]" data-beginner-scroll-tail />
-          )}
-        </div>
-      </div>
+        {canvasItems.length === 0 && (
+          <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>
+        )}
+      </BeginnerVirtualCanvas>
     );
   };
 
@@ -10346,6 +10677,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       isDarkMode={isDarkMode}
       onRevealLine={revealLingCppLine}
       onGenerateMissingEvent={quickGenerateMissingDesignerEvent}
+      onSwitchToProfessional={() => { void onExperienceModeChange?.('professional'); }}
     >
       {structuredReadingRows.length > 0 ? renderVolcanoStructuredRows() : (
         <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>

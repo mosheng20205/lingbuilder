@@ -12,8 +12,11 @@ import {
   areDesignerProjectsEquivalent,
   createDesignerBeautificationFallback,
   createWorkspaceEditChangeFromRewrite,
+  describeAllowedDesignerControlTypes,
   isDesignerBeautificationInstruction,
   isDesignerEditInstruction,
+  getAllowedDesignerControlTypes,
+  normalizeDesignerControlTypes,
   proposeLingCppEdit,
   validateDesignerProjectEdit
 } from '../src/services/lingCpp/aiEditService';
@@ -90,7 +93,7 @@ import {
 } from '../src/services/lingCpp/beginnerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { ExternalProjectProperties, resolveExecutableNameParts, validateProperties } from '../src/services/solution/externalProjectService';
-import { createProjectDllCommandContext, createProjectDllDeclarationModule, getProjectDllCommandsDiagnostics, serializeProjectDllCommandLibraries, serializeSingleDllCommand } from '../src/services/lingCpp/projectDllCommandService';
+import { buildProjectDllDefLines, createProjectDllCommandContext, createProjectDllDeclarationModule, DLL_STRUCT_FIELD_TYPE_MAP, generateProjectDllDeclarationHeader, getProjectDllCommandsDiagnostics, parseDllDeclarationSnippet, resolveDllBoundaryPointerType, resolveDllBoundaryType, serializeDllCommandSnippet, serializeProjectDllCommandLibraries } from '../src/services/lingCpp/projectDllCommandService';
 import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
@@ -4764,6 +4767,137 @@ test('AI 设计器提案仍拒绝新注入的未知控件类型', () => {
   );
 });
 
+test('AI 设计器提案把常见控件类型别名归一化为注册表标识', () => {
+  // 复刻「帮我写一个会员登录系统」场景：模型把编辑框写成 Edit 导致提案被整份拒绝。
+  const original: LingWindowProject = {
+    id: 'ai-designer-alias', name: '别名归一化', windows: [{
+      id: 'login-window', fileName: 'LoginWindow.xml', className: 'LoginWindow', title: '登录窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: []
+    }]
+  };
+  const candidate = {
+    ...original,
+    windows: [{
+      ...original.windows[0],
+      controls: [
+        {
+          id: 'account-input', type: 'Edit', name: '账号输入', content: '',
+          width: 160, height: 34, x: 24, y: 24, fontSize: 12,
+          background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+        },
+        {
+          id: 'password-input', type: '编辑框', name: '密码输入', content: '',
+          width: 160, height: 34, x: 24, y: 70, fontSize: 12,
+          background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+        },
+        {
+          id: 'login-button', type: 'button', name: '登录按钮', content: '登录',
+          width: 120, height: 35, x: 24, y: 116, fontSize: 12,
+          background: '#007ACC', foreground: '#FFFFFF', isEnabled: true, visibility: 'Visible'
+        }
+      ]
+    }]
+  } as unknown as LingWindowProject;
+
+  const proposal = proposeLingCppEdit(
+    {
+      filePath: 'src/LoginWindow.lcpp', sourceCode: '旧源码',
+      instruction: '帮我写一个会员登录系统，要有登录窗口和会员窗口', designerProject: original
+    },
+    { updatedSource: '新源码', designerProject: candidate }
+  );
+
+  assert.deepEqual(
+    proposal.designerProject?.windows[0].controls.map(control => control.type),
+    ['TextBox', 'TextBox', 'Button']
+  );
+  // 提案携带生成时的允许类型快照，apply 侧复用同一集合校验。
+  assert.ok(proposal.designerAllowedControlTypes?.includes('TextBox'));
+});
+
+test('控件类型归一化不触碰允许集合内与无法识别的类型', () => {
+  const allowed = new Set(['TextBox', 'Button', 'FBroBrowser']);
+  const project = {
+    windows: [{
+      controls: [
+        { name: '甲', type: 'textbox' },
+        { name: '乙', type: 'FBroBrowser' },
+        { name: '丙', type: 'UnknownInjectedControl' }
+      ]
+    }]
+  } as unknown as LingWindowProject;
+
+  assert.equal(normalizeDesignerControlTypes(project, allowed), 1);
+  const controls = (project.windows[0] as unknown as { controls: Array<{ name: string; type: string }> }).controls;
+  assert.equal(controls[0].type, 'TextBox');
+  assert.equal(controls[1].type, 'FBroBrowser');
+  assert.equal(controls[2].type, 'UnknownInjectedControl');
+});
+
+const gaugeModuleFixture: InstalledModule = {
+  isInstalled: true,
+  isEnabledForProject: true,
+  installPath: 'C:/modules/test.mod',
+  diagnostics: [],
+  manifest: {
+    schemaVersion: 2,
+    id: 'test.mod',
+    name: '测试模块',
+    version: '1.0.0',
+    contributes: {
+      designerControls: [{ type: 'TestGauge', label: '仪表盘', defaultProps: {} }]
+    }
+  }
+} as unknown as InstalledModule;
+
+test('合法控件类型清单描述包含规范标识、中文标签与模块贡献类型', () => {
+  const description = describeAllowedDesignerControlTypes();
+  assert.match(description, /TextBox（编辑框）/u);
+  assert.match(description, /Button（按钮）/u);
+  assert.match(description, /FileDialog（文件对话框）/u);
+
+  const moduleContext = { availableModules: [gaugeModuleFixture], enabledModules: [gaugeModuleFixture] };
+  assert.match(
+    describeAllowedDesignerControlTypes({ moduleContext }),
+    /TestGauge（测试模块 仪表盘）/u
+  );
+
+  const allowed = getAllowedDesignerControlTypes({ moduleContext });
+  assert.equal(allowed.has('TestGauge'), true);
+  assert.equal(allowed.has('TextBox'), true);
+});
+
+test('应用侧复用提案允许类型集合时模块贡献控件不被误拒', () => {
+  const moduleContext = { availableModules: [gaugeModuleFixture], enabledModules: [gaugeModuleFixture] };
+  const allowedTypes = getAllowedDesignerControlTypes({ moduleContext });
+  const original: LingWindowProject = {
+    id: 'apply-module-types', name: '应用侧类型集合', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: []
+    }]
+  };
+  const candidate = {
+    ...original,
+    windows: [{
+      ...original.windows[0],
+      controls: [{
+        id: 'gauge-1', type: 'TestGauge', name: '仪表盘', content: '',
+        width: 120, height: 30, x: 0, y: 0, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+      }]
+    }]
+  } as unknown as LingWindowProject;
+
+  // 默认集合拒绝模块贡献控件（apply 侧旧缺陷的复现）。
+  assert.throws(
+    () => validateDesignerProjectEdit(original, candidate),
+    /不受支持的类型/u
+  );
+  // 提案快照集合通过（apply 侧修复后的行为）。
+  const validated = validateDesignerProjectEdit(original, candidate, { allowedControlTypes: allowedTypes });
+  assert.equal(validated.windows[0].controls[0].type, 'TestGauge');
+});
+
 test('createWorkspaceEditChangeFromRewrite keeps range tightly scoped', () => {
   const originalSource = '第一行\n第二行旧内容\n第三行';
   const updatedSource = '第一行\n第二行新内容\n第三行';
@@ -5305,6 +5439,64 @@ test('Project DLL declarations round-trip byRef parameters through serialization
   assert.equal(parameters[0].type, '整数型');
 });
 
+test('单精度小数型登记为基础类型、float 别名指向单精度、项目 DLL 边界放行 float', () => {
+  // 语言层：单精度小数型是合法基础类型，不再报未知类型。
+  assert.ok(LING_CPP_TYPES.includes('单精度小数型'));
+  const classSource = [
+    '类 MainWindow : 公开 窗体',
+    '    单精度小数型 成员比例 = 1.5',
+    '    事件 创建完毕()',
+    '        局部 单精度小数型 局部值 = 2.5',
+    '        调试输出(局部值 + 成员比例)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const classDiagnostics = getLingCppSemanticDiagnostics(classSource, undefined, 'src/MainWindow.lcpp');
+  assert.equal(classDiagnostics.filter(item => item.level === 'error').length, 0, classDiagnostics.map(item => item.message).join('\n'));
+
+  // 项目 DLL 命令声明：参数、返回值、传址、结构体字段都放行单精度。
+  const dllSource = [
+    'DLL命令库 FloatMathDll',
+    '  Win32 = "dll/Win32/FloatMathDll.dll"',
+    '  x64 = "dll/x64/FloatMathDll.dll"',
+    '  单精度小数型 取比例(单精度小数型 输入值, 单精度小数型 输出值 传址)',
+    '  单精度小数型 半值(单精度小数型 输入值) = HalfF',
+    '结束DLL命令库'
+  ].join('\n');
+  const parsed = parseLingCpp(dllSource);
+  assert.equal(parsed.program.diagnostics.filter(item => item.level === 'error').length, 0, parsed.program.diagnostics.map(item => item.message).join('\n'));
+  const command = parsed.program.dllLibraries[0]?.commands[0];
+  assert.equal(command?.returnType, '单精度小数型');
+  assert.equal(command?.parameters[0]?.type, '单精度小数型');
+  assert.equal(command?.parameters[1]?.byRef, true);
+  const dllDiagnostics = getProjectDllCommandsDiagnostics(dllSource, 'src/项目DLL命令.lcpp');
+  assert.equal(dllDiagnostics.filter(item => item.level === 'error').length, 0, dllDiagnostics.map(item => item.message).join('\n'));
+  assert.equal(resolveDllBoundaryType('单精度小数型')?.abi, 'float');
+  assert.equal(resolveDllBoundaryType('单精度小数型')?.cpp, 'float');
+  assert.equal(resolveDllBoundaryPointerType('单精度小数型'), 'float*');
+  assert.equal(DLL_STRUCT_FIELD_TYPE_MAP['单精度小数型'], 'float');
+  // 合成虚拟模块走同一 ABI 契约：binding 类型为 float，清单校验接受。
+  const virtualModule = createProjectDllDeclarationModule(parsed.program.dllLibraries || [], 'some-project');
+  assert.ok(virtualModule);
+  assert.equal(virtualModule.manifest.bindings?.commands?.[0]?.returnType, 'float');
+  assert.equal(virtualModule.manifest.bindings?.commands?.[0]?.parameters?.[0]?.type, 'float');
+
+  // 头文件声明与调用点一致：无别名声明中文名；带别名声明真实导出名 HalfF（否则英文别名命令 C3861）。
+  const header = generateProjectDllDeclarationHeader(parsed.program.dllLibraries || []);
+  assert.match(header, /__declspec\(dllimport\) float __cdecl 取比例\(float 输入值, float\* 输出值\);/u);
+  assert.match(header, /__declspec\(dllimport\) float __cdecl HalfF\(float 输入值\);/u);
+  assert.doesNotMatch(header, /__declspec\(dllimport\) float __cdecl 半值\(/u);
+  // def 物化一律输出真实导出名；「中文名 = 导出名」重命名符号会让别名命令 LNK2019。
+  const defLines = buildProjectDllDefLines('MathF', 'mathf.dll', ['HalfF'], [{ commandName: '半值', exportName: 'HalfF' }]);
+  assert.deepEqual(defLines, ['LIBRARY mathf', 'EXPORTS', '    HalfF']);
+
+  // 新手补全：float 别名改指单精度小数型，double 保持双精度，小数型不再是 float。
+  const catalog = buildBeginnerTypeCompletionCatalog(LING_CPP_TYPES);
+  assert.equal(resolveBeginnerTypeAlias(catalog, 'float'), '单精度小数型');
+  assert.equal(resolveBeginnerTypeAlias(catalog, 'double'), '双精度小数型');
+  assert.equal(resolveBeginnerTypeAlias(catalog, '小数型'), '小数型');
+});
+
 test('Project DLL command declarations parse parameter notes and public markers', () => {
   const source = [
     'DLL命令库 AdvancedMathDll',
@@ -5328,6 +5520,118 @@ test('Project DLL command declarations parse parameter notes and public markers'
   assert.equal(commands[1].isPublic, false);
   const diagnostics = getProjectDllCommandsDiagnostics(source, 'src/项目DLL命令.lcpp');
   assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
+});
+
+test('项目 DLL 命令声明编辑器的库文件名逐行独立，不随同库其它命令联动', () => {
+  const editorPath = resolve(process.cwd(), 'src/components/ProjectDllCommandsEditor.tsx');
+  const editorSource = readFileSync(editorPath, 'utf8');
+  // 草稿必须按「行」区分：按「库」区分时同库多条命令共用一个键，改一行的库文件名会让整库的行一起显示该名字。
+  assert.match(editorSource, /const draftKey = `\$\{libraryIndex\}::\$\{commandIndex\}::\$\{command\.name\}`/u);
+  assert.doesNotMatch(editorSource, /const draftKey = `\$\{libraryIndex\}::\$\{library\.name\}`/u);
+  // 提交后统一清空草稿：移动命令会让行下标位移，残留草稿会落到别的命令上。
+  assert.match(editorSource, /setLibraryDrafts\(\{\}\);/u);
+  // 新建库的架构占位路径按库名生成，不再一律写「示例.dll」。
+  assert.match(editorSource, /archFiles: archFilesForLibrary\(trimmed\)/u);
+  assert.match(editorSource, /function archFilesForLibrary\(name: string\)/u);
+  // 顶部库名必须说明它作用于整个库（本库全部命令的库文件名一起更新）。
+  assert.match(editorSource, /改名后本库全部命令下方的「库文件名」一起更新/u);
+});
+
+test('项目 DLL 命令声明编辑器的右键菜单动作带上下文执行', () => {
+  const editorSource = readFileSync(resolve(process.cwd(), 'src', 'components', 'ProjectDllCommandsEditor.tsx'), 'utf8');
+  // 三个视图命令以 when: 'workspace.open' 注册；菜单解析与执行必须用同一份上下文，
+  // 否则菜单显示可用、点击却按「当前上下文中不可用」抛错（历史缺陷：右键三项点了没反应）。
+  assert.match(editorSource, /const DLL_COMMANDS_EDITOR_MENU_CONTEXT: CommandContext = \{ 'workspace\.open': true \};/u);
+  assert.match(editorSource, /executeCommand\(item\.command\.id, DLL_COMMANDS_EDITOR_MENU_CONTEXT\)/u);
+  assert.doesNotMatch(editorSource, /executeCommand\(item\.command\.id\)/u);
+  assert.match(editorSource, /resolveMenu\(\s*LINGCPP_DLL_COMMANDS_CONTEXT_MENU,\s*DLL_COMMANDS_EDITOR_MENU_CONTEXT,/u);
+  // 命令执行失败必须回显到编辑器提示区，不能再被 void 静默吞掉。
+  assert.match(editorSource, /\.catch\(error => setFeedback\(/u);
+});
+
+test('项目 DLL 命令声明序列化保留别名与调用约定顺序', () => {
+  const source = [
+    '包 项目DLL命令',
+    'DLL命令库 user32',
+    '  系统 = 真',
+    '  整数型 提示音(整数型 类型) = MessageBeep',
+    '  整数型 取系统度量(整数型 索引) = GetSystemMetrics',
+    '  整数型 IsDebuggerPresent()',
+    '结束DLL命令库',
+    'DLL命令库 AdvancedMathDll',
+    '  x64 = "dll/x64/AdvancedMathDll.dll"',
+    '  整数型 加法(整数型 甲) = real_add stdcall',
+    '结束DLL命令库',
+    ''
+  ].join('\n');
+  const once = serializeProjectDllCommandLibraries('项目DLL命令', parseLingCpp(source).program.dllLibraries);
+  // 历史缺陷：序列化漏写 `= 导出名`，结构化编辑器任意一次编辑都会静默删除别名，
+  // 让「系统 = 真」的中文命令退化成找不到标识符（C3861）。
+  assert.match(once, /整数型 提示音\(整数型 类型\) = MessageBeep/u);
+  assert.match(once, /整数型 取系统度量\(整数型 索引\) = GetSystemMetrics/u);
+  assert.match(once, /整数型 IsDebuggerPresent\(\)/u);
+  // 别名必须写在调用约定之前，否则解析器认不出（语法：命令名(参数) = 导出名 [cdecl|stdcall]）。
+  assert.match(once, /整数型 加法\(整数型 甲\) = real_add stdcall/u);
+  assert.equal(serializeProjectDllCommandLibraries('项目DLL命令', parseLingCpp(once).program.dllLibraries), once, '序列化必须幂等');
+});
+
+test('系统 DLL 的中文命令缺少真实导出名时给出阻断诊断', () => {
+  const broken = [
+    '包 项目DLL命令',
+    'DLL命令库 user32',
+    '  系统 = 真',
+    '  整数型 提示音(整数型 类型)',
+    '  整数型 IsDebuggerPresent()',
+    '结束DLL命令库',
+    ''
+  ].join('\n');
+  const diagnostics = getProjectDllCommandsDiagnostics(broken, 'src/项目DLL命令.lcpp');
+  assert.ok(
+    diagnostics.some(item => item.level === 'error' && item.message.includes('系统 DLL 命令「提示音」缺少真实导出名')),
+    '中文系统 DLL 命令缺别名必须报错：' + diagnostics.map(item => item.message).join(' / ')
+  );
+  assert.ok(
+    !diagnostics.some(item => item.message.includes('IsDebuggerPresent')),
+    '纯 ASCII 命令名按 Windows SDK 既有声明使用，不应报错'
+  );
+
+  const fixed = broken.replace('整数型 提示音(整数型 类型)', '整数型 提示音(整数型 类型) = MessageBeep');
+  assert.deepEqual(
+    getProjectDllCommandsDiagnostics(fixed, 'src/项目DLL命令.lcpp').filter(item => item.level === 'error'),
+    []
+  );
+
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'system-alias-test',
+    name: '系统 DLL 别名测试',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '系统 DLL 别名测试',
+      width: 480, height: 240, background: '#202028', description: '测试窗口', controls: []
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    activeWindowId: 'main-window',
+    lingCppSources: [
+      { filePath: 'src/项目DLL命令.lcpp', sourceCode: broken },
+      {
+        filePath: 'src/MainWindow.lcpp',
+        sourceCode: ['类 MainWindow : 窗口', '公开', '  事件 _MainWindow_创建完毕()', '    调试输出(提示音(48))', '  结束', '结束类', ''].join('\n')
+      }
+    ],
+    enabledModules: [{
+      manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic')!,
+      installPath: 'builtin://lingbuilder.win32.basic',
+      isBuiltin: true,
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    }]
+  });
+  assert.ok(
+    generated.blockingDiagnostics.some(item => item.includes('缺少真实导出名')),
+    '生成阶段必须阻断而不是交给编译器报 C3861：' + generated.blockingDiagnostics.join(' / ')
+  );
 });
 
 test('Project DLL command declarations round-trip notes and visibility through serialization', () => {
@@ -5368,7 +5672,7 @@ test('Project DLL command declarations round-trip notes and visibility through s
   assert.equal(secondPass, serialized);
 });
 
-test('Project DLL command declarations serialize a single paste-ready command snippet', () => {
+test('Project DLL commands copy as bare declaration lines and paste back into a library', () => {
   const source = [
     'DLL命令库 AdvancedMathDll',
     '  Win32 = "dll/Win32/AdvancedMathDll.dll"',
@@ -5380,22 +5684,59 @@ test('Project DLL command declarations serialize a single paste-ready command sn
   const parsed = parseLingCpp(source);
   const library = parsed.program.dllLibraries[0];
   assert.ok(library);
-  const snippet = serializeSingleDllCommand(library.name, library.isSystem === true, library.commands[0], library.archFiles);
-  assert.match(snippet, /^DLL命令库 AdvancedMathDll\n/u);
-  assert.match(snippet, /Win32 = "dll\/Win32\/AdvancedMathDll\.dll"/u);
-  assert.match(snippet, /x64 = "dll\/x64\/AdvancedMathDll\.dll"/u);
-  assert.match(snippet, /整数型 加法计算\(整数型 被加数 \/\/ 第一个加数, 整数型 加数\)/u);
-  assert.match(snippet, /备注: 调用 DLL 计算两个整数之和。/u);
-  assert.match(snippet, /结束DLL命令库\n?$/u);
+  const snippet = serializeDllCommandSnippet(library.commands[0]);
+  // 「复制此命令」只给命令自身：不带库头/架构路径/包行，整库导出由「复制全部声明」负责。
+  assert.equal(snippet, '整数型 加法计算(整数型 被加数 // 第一个加数, 整数型 加数)\n备注: 调用 DLL 计算两个整数之和。\n');
+  assert.doesNotMatch(snippet, /DLL命令库/u);
   assert.doesNotMatch(snippet, /^包 /mu);
-  const reparsed = parseLingCpp(snippet);
-  assert.equal(reparsed.program.diagnostics.filter(item => item.level === 'error').length, 0, reparsed.program.diagnostics.map(item => item.message).join('\n'));
-  const pasted = reparsed.program.dllLibraries[0];
-  assert.equal(pasted?.name, 'AdvancedMathDll');
-  assert.equal(pasted?.commands.length, 1);
-  assert.equal(pasted?.commands[0].name, '加法计算');
-  assert.equal(pasted?.commands[0].remark, '调用 DLL 计算两个整数之和。');
-  assert.equal(pasted?.commands[0].parameters[0].note, '第一个加数');
+  const fromBare = parseDllDeclarationSnippet(snippet);
+  assert.equal(fromBare.bare, true, '裸声明行必须按「并入当前库」处理');
+  assert.equal(fromBare.libraries.length, 1);
+  assert.equal(fromBare.libraries[0].commands.length, 1);
+  assert.equal(fromBare.libraries[0].commands[0].name, '加法计算');
+  assert.equal(fromBare.libraries[0].commands[0].remark, '调用 DLL 计算两个整数之和。');
+  assert.equal(fromBare.libraries[0].commands[0].parameters[0].note, '第一个加数');
+  const fromWhole = parseDllDeclarationSnippet(source);
+  assert.equal(fromWhole.bare, false, '整库片段不得被当成裸声明片段');
+  assert.equal(fromWhole.libraries[0].name, 'AdvancedMathDll');
+  assert.equal(parseDllDeclarationSnippet('这是一段普通中文说明，没有声明。').libraries.length, 0);
+});
+
+test('Project DLL serialization never writes nameless commands back as unparseable lines', () => {
+  const source = [
+    'DLL命令库 AdvancedMathDll',
+    '  Win32 = "dll/Win32/AdvancedMathDll.dll"',
+    '  x64 = "dll/x64/AdvancedMathDll.dll"',
+    '  整数型 加法计算(整数型 甲)',
+    '结束DLL命令库'
+  ].join('\n');
+  const library = parseLingCpp(source).program.dllLibraries[0];
+  assert.ok(library);
+  const nameless = { ...library.commands[0], name: '', parameters: [] };
+  const serialized = serializeProjectDllCommandLibraries('项目DLL命令', [{ ...library, commands: [...library.commands, nameless] }]);
+  assert.ok(!/^\s*整数型\s*\(/mu.test(serialized), `不得写出空名死行：\n${serialized}`);
+  // 写回的源码再解析必须与模型里的有名命令一致，不能出现「表格有、文件没有」的两套真相。
+  const reparsed = parseLingCpp(serialized).program.dllLibraries[0];
+  assert.deepEqual(reparsed?.commands.map(command => command.name), ['加法计算']);
+});
+
+test('Project DLL virtual module registers English export names as completion aliases', () => {
+  const source = [
+    'DLL命令库 MathF',
+    '  单精度小数型 半值(单精度小数型 输入值) = HalfF',
+    '  单精度小数型 加倍(单精度小数型 输入值) = HalfF',
+    '  整数型 计数()',
+    '  整数型 Shared()',
+    '  整数型 撞名(整数型 甲) = Shared',
+    '结束DLL命令库'
+  ].join('\n');
+  const installed = createProjectDllDeclarationModule(parseLingCpp(source).program.dllLibraries, 'alias-demo');
+  const commands = installed?.manifest.contributes?.commands || [];
+  const aliasesOf = (name: string) => commands.find(item => item.name === name)?.aliases;
+  assert.deepEqual(aliasesOf('半值'), ['HalfF'], '英文导出名登记为别名，敲 HalfF 能筛出「半值」');
+  assert.equal(aliasesOf('加倍'), undefined, '与其它命令别名冲突时不登记');
+  assert.equal(aliasesOf('计数'), undefined, '没有导出别名时不登记');
+  assert.equal(aliasesOf('撞名'), undefined, '别名与模块内其它命令名冲突时不登记');
 });
 
 test('Project DLL declarations synthesize a virtual module consumed by generation', () => {
@@ -5421,4 +5762,32 @@ test('Project DLL declarations synthesize a virtual module consumed by generatio
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.match(cpp, /#include "modules\/lingbuilder\.project\.dll\/include\/ProjectDllCommands\.h"/u);
   assert.match(cpp, /加法计算\(1, 2\)/u);
+});
+
+test('模块命令中文别名提供独立补全条目，按别名上屏且规范名并存', () => {
+  const shellManifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.system.shell');
+  assert.ok(shellManifest, '缺少系统外壳模块内置清单');
+  const shellModule: InstalledModule = {
+    isInstalled: true,
+    installPath: 'builtin://lingbuilder.system.shell',
+    isBuiltin: true,
+    isEnabledForProject: true,
+    diagnostics: [],
+    manifest: shellManifest!
+  };
+  const moduleContext = { enabledModules: [shellModule], availableModules: [shellModule] };
+
+  const byChineseQuery = getLingCppCompletions({ source: '取运', line: 1, column: 3 }, moduleContext);
+  const aliasItem = byChineseQuery.find(item => item.label === '取运行目录');
+  assert.ok(aliasItem, '中文别名应有独立补全条目');
+  assert.equal(aliasItem!.insertText, '取运行目录()');
+  assert.ok(aliasItem!.detail?.includes('系统_取运行目录 的别名'), '别名条目应注明规范名');
+  assert.ok(byChineseQuery.some(item => item.label === '系统_取运行目录'), '规范名补全条目应并存');
+  const aliasIndex = byChineseQuery.findIndex(item => item.label === '取运行目录');
+  const canonicalIndex = byChineseQuery.findIndex(item => item.label === '系统_取运行目录');
+  assert.ok(aliasIndex >= 0 && aliasIndex < canonicalIndex, '别名检索时别名条目应排在规范名之前');
+
+  const byPinyinQuery = getLingCppCompletions({ source: 'qyx', line: 1, column: 4 }, moduleContext);
+  assert.ok(byPinyinQuery.some(item => item.label === '取运行目录'), '拼音检索应命中别名条目');
+  assert.ok(byPinyinQuery.some(item => item.label === '系统_取运行目录'), '拼音检索应命中规范名条目');
 });

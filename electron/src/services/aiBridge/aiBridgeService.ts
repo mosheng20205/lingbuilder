@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { applyWorkspaceEditToFiles, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
@@ -40,6 +41,7 @@ import type { TextFileFormat } from '../files/types';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
 import { createProjectDllDeclarationModuleFromSources, getProjectDllCommandsDiagnostics, isProjectDllCommandsFilePath } from '../lingCpp/projectDllCommandService';
 import { materializeProjectDllDeclarationModules } from '../modules/projectDllMaterializeService';
+import { getEmbeddedResourceSpecsForBuild } from '../windowDesigner/embeddedResourceMigration';
 import { parseLingCpp } from '../lingCpp/parser';
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { createDesignerAssetService } from '../windowDesigner/designerAssetService';
@@ -68,6 +70,7 @@ import {
   AiBridgeLingCppDiagnosticsRequest,
   AiBridgeModuleInstallPreviewRequest,
   AiBridgeModuleInstallRequest,
+  AiBridgeModuleInfoRequest,
   AiBridgeModulePackRequest,
   AiBridgeModuleScaffoldRequest,
   AiBridgeModuleValidateRequest,
@@ -78,6 +81,9 @@ import {
   AiBridgeServerOptions,
   AiBridgeTreeEntry
 } from './types';
+import type { ModuleCommandBinding, ModuleCommandContribution } from '../modules/types';
+import { describeModuleBindingParameterType } from '../modules/bindingValueType';
+import { REQUIRE_ADMINISTRATOR_LINK_ARGS } from '../windowDesigner/windowsSystemLibraries';
 
 const IGNORED_DIRS = new Set([
   '.git',
@@ -153,7 +159,7 @@ export interface AiBridgeCompileResult {
 }
 
 export type AiBridgeProcessManager = Pick<ManagedProcessService, 'start' | 'stop' | 'stopAll'>
-  & Partial<Pick<ManagedProcessService, 'waitForExit'>>;
+  & Partial<Pick<ManagedProcessService, 'waitForExit' | 'getStatus'>>;
 
 export interface AiBridgeServiceDependencies {
   managedProcessService?: AiBridgeProcessManager;
@@ -168,7 +174,8 @@ export interface AiBridgeServiceDependencies {
     modulePlan?: ModuleNativeDependencyPlan,
     resourcePath?: string,
     signal?: AbortSignal,
-    outputType?: 'exe' | 'dll'
+    outputType?: 'exe' | 'dll',
+    requireAdministrator?: boolean
   ) => Promise<AiBridgeCompileResult>;
   assertModuleAccess?: (moduleIds: readonly string[]) => void;
   buildPipelineService?: BuildPipelineService;
@@ -197,6 +204,8 @@ export class AiBridgeService {
   private readonly fbroVipKey: string;
   private runAdmissionClosed = false;
   private shuttingDown = false;
+  /** 最近一次受控运行的 run.log 路径（进程退出后 status 消失，仍可读日志）。 */
+  private readonly lastRunLogPaths = new Map<string, string>();
 
   constructor(
     private readonly options: AiBridgeServerOptions,
@@ -373,6 +382,8 @@ export class AiBridgeService {
       filePath: normalizeFilePath(request.filePath),
       sourceCode: normalizeLineEndings(sourceCode),
       instruction: request.instruction || '',
+      // 外部 AI 自带完整文件草稿（无 planner）时允许纯源码提案；系统 AI planner 路径保持严格。
+      designerEditPolicy: planner ? 'strict' : 'caller-draft',
       selection: request.selection,
       workspaceFiles: await this.resolveEditWorkspaceFiles(request),
       moduleContext: await this.getModuleContext(request.projectId),
@@ -385,7 +396,22 @@ export class AiBridgeService {
     const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: request.files, designerProject: request.updatedDesignerProject };
     if (draft.designerProject) await this.assertDesignerProjectRegistered(draft.designerProject.id);
     const proposal = proposeLingCppEdit(context, draft);
-    return { ok: true, proposal };
+    // 响应瘦身：草稿全文不回传（服务端已留存，apply 只需 proposalId）。
+    return {
+      ok: true,
+      proposal: {
+        id: proposal.id,
+        title: proposal.title,
+        summary: proposal.summary,
+        createdAt: proposal.createdAt,
+        designerChanged: Boolean(proposal.designerProject),
+        changes: proposal.changes.map(change => ({
+          filePath: change.filePath,
+          startLine: change.range.startLine,
+          endLine: change.range.endLine
+        }))
+      }
+    };
   }
 
   async applyEdit(request: AiBridgeEditApplyRequest): Promise<{ ok: true } & AiBridgeEditApplyResult> {
@@ -412,7 +438,13 @@ export class AiBridgeService {
       if (proposal.designerProjectOriginal && JSON.stringify(currentDesignerProject) !== JSON.stringify(proposal.designerProjectOriginal)) {
         throw new Error('窗口设计器模型在 AI 提案生成后已发生变化，请重新生成提案。');
       }
-      validateDesignerProjectEdit(proposal.designerProjectOriginal, currentDesignerProject);
+      // 与服务端 apply 一致：复用提案生成时校验通过的允许类型集合，
+      // 避免模块贡献控件（如 FBroBrowser）在应用阶段被默认集合误拒。
+      validateDesignerProjectEdit(proposal.designerProjectOriginal, currentDesignerProject, {
+        allowedControlTypes: proposal.designerAllowedControlTypes
+          ? new Set(proposal.designerAllowedControlTypes)
+          : undefined
+      });
       const designerPath = await this.resolveWritablePath(projectRef.designerPath);
       const format = await this.readExistingTextFileFormat(designerPath);
       await fs.mkdir(path.dirname(designerPath), { recursive: true });
@@ -455,7 +487,12 @@ export class AiBridgeService {
     }
 
     rejectWorkspaceEdit(request.proposalId);
-    return { ok: true, proposal, appliedFiles: persistedFiles, ...(appliedDesignerProject ? { designerProject: appliedDesignerProject } : {}) };
+    return {
+      ok: true,
+      appliedFiles: persistedFiles.map(file => ({ filePath: file.filePath, bytes: Buffer.byteLength(file.sourceCode, 'utf8') })),
+      ...(appliedDesignerProject ? { designerProjectId: appliedDesignerProject.id } : {}),
+      message: `已应用 ${persistedFiles.length} 个文件的修改${appliedDesignerProject ? '，窗口设计器布局已同步更新' : ''}。`
+    };
   }
 
   async listModules(projectId = 'lingbuilder-ui-project') {
@@ -465,12 +502,96 @@ export class AiBridgeService {
       this.moduleService.getHistory()
     ]);
     this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
+    const enabledIds = new Set(enabledModules.map(module => module.manifest.id));
+    // 完整 manifest（new_emoji 一家就有 4000+ 条命令、6MB+ JSON）绝不整体返回；
+    // 未启用模块只用一行紧凑字符串列出（id + 名称 + 版本 + 命令数），
+    // 外部 AI 需要命令签名时用 lingbuilder.module.info 按 moduleId 单查。
+    const summarize = (module: (typeof availableModules)[number]) => ({
+      id: module.manifest.id,
+      name: module.manifest.name,
+      version: module.manifest.version,
+      commandCount: (module.manifest.contributes?.commands || []).length,
+      docs: (module.manifest.contributes?.docs || []).slice(0, 3).map(doc => doc.path),
+      diagnostics: module.diagnostics
+    });
+    const describeCompact = (module: (typeof availableModules)[number]) => {
+      const suffix = module.diagnostics.length > 0 ? ' · 诊断异常' : '';
+      return `${module.manifest.id} · ${module.manifest.name} v${module.manifest.version} · ${(module.manifest.contributes?.commands || []).length} 命令${suffix}`;
+    };
+    const recentHistory = history.slice(0, 5);
     return {
       ok: true,
-      availableModules,
-      enabledModules,
-      history,
-      summary: describeLingCppModuleContextForAi({ availableModules, enabledModules })
+      totalCount: availableModules.length,
+      enabledCount: enabledModules.length,
+      availableModules: availableModules
+        .filter(module => !enabledIds.has(module.manifest.id))
+        .map(describeCompact),
+      enabledModules: enabledModules.map(summarize),
+      history: recentHistory,
+      historyTruncated: history.length > recentHistory.length,
+      hint: 'enabledModules 为已启用模块摘要；availableModules 为未启用模块的一行摘要（含模块 ID）。需要某个模块的完整命令签名、参数说明和示例时，调用 lingbuilder.module.info 传 moduleId 单查。'
+    };
+  }
+
+  async getModuleInfo(request: AiBridgeModuleInfoRequest) {
+    const moduleId = String(request.moduleId || '').trim();
+    if (!moduleId) throw new Error('必须提供要查询的 moduleId，例如 lingbuilder.database.sqlite。');
+    const projectId = request.projectId?.trim() || 'lingbuilder-ui-project';
+    const availableModules = await this.moduleService.scanInstalledModules(projectId);
+    const found = availableModules.find(module => module.manifest.id.toLowerCase() === moduleId.toLowerCase());
+    if (!found) {
+      const candidates = availableModules
+        .map(module => module.manifest.id)
+        .filter(id => id.toLowerCase().includes(moduleId.toLowerCase()))
+        .slice(0, 8);
+      throw new Error(`未找到模块「${moduleId}」。${candidates.length ? `相近模块：${candidates.join('、')}。` : '请先用 lingbuilder.modules.list 查看可用模块。'}`);
+    }
+    const manifest = found.manifest;
+    const query = request.query?.trim().toLowerCase() || '';
+    const commands = (manifest.contributes?.commands || [])
+      .filter(command => command.visibility !== 'internal')
+      .filter(command => request.includeAdvanced === true || command.visibility !== 'advanced')
+      .filter(command => !query
+        || command.name.toLowerCase().includes(query)
+        || (command.description || '').toLowerCase().includes(query))
+      .map(command => {
+        const binding = manifest.bindings?.commands?.find(item => item.command === command.name);
+        return {
+          name: command.name,
+          signature: command.signature,
+          returnType: command.returnType,
+          returnDescription: command.returnDescription,
+          description: command.description,
+          visibility: command.visibility,
+          parameters: parseModuleCommandParameterDocs(command, binding),
+          example: command.insertText || command.signature
+        };
+      });
+    const MAX_COMMANDS = 500;
+    const truncated = commands.length > MAX_COMMANDS;
+    return {
+      ok: true,
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      description: manifest.description,
+      category: manifest.category,
+      tags: manifest.tags,
+      isBuiltin: found.isBuiltin === true,
+      enabled: found.isEnabledForProject === true,
+      installPath: found.installPath,
+      diagnostics: found.diagnostics,
+      targets: (manifest.targets || []).map(target => ({
+        id: target.id, platform: target.platform, arch: target.arch, toolchain: target.toolchain
+      })),
+      types: (manifest.contributes?.types || []).map(type => ({ name: type.name, description: type.description })),
+      docs: (manifest.contributes?.docs || []).map(doc => ({ title: doc.title, path: doc.path })),
+      commandsTotal: (manifest.contributes?.commands || []).length,
+      commandsMatched: commands.length,
+      commandsTruncated: truncated,
+      commands: truncated ? commands.slice(0, MAX_COMMANDS) : commands,
+      ...(truncated ? { truncationHint: `命令数超过 ${MAX_COMMANDS}，已截断；请用 query 参数按命令名过滤后分批查询。` } : {}),
+      hint: '参数类型为 controlRef 的参数必须传裸控件名（不带引号）；类型为 handler 的处理器参数必须传 &处理器名。'
     };
   }
 
@@ -655,7 +776,19 @@ export class AiBridgeService {
     try {
       const result = await this.projectCreationService.create(request);
       await this.permissions.audit({ operation: 'write', action: 'project.create', ok: true, target: result.project.id });
-      return { ok: true as const, applied: true as const, preview, result };
+      // 响应瘦身：已应用时不重复返回 preview，文件只留元数据（完整内容已落盘，可用 file.read 读取），
+      // 否则外部 AI 每次创建项目都要吞下双份模板全文。
+      const slimResult = {
+        template: result.template,
+        project: result.project,
+        ...(result.designerProject ? { designerProject: result.designerProject } : {}),
+        modules: result.modules,
+        navigation: result.navigation,
+        receipt: result.receipt,
+        files: result.files.map(file => ({ relativePath: file.relativePath, kind: file.kind, bytes: file.bytes })),
+        message: result.message
+      };
+      return { ok: true as const, applied: true as const, result: slimResult };
     } catch (error) {
       await this.auditFailure('write', 'project.create', preview.project.id, error);
       throw error;
@@ -690,6 +823,18 @@ export class AiBridgeService {
     }
   }
 
+  /** 与 IDE F5 同口径：读取解决方案项目记录的 requireAdministrator，决定生成的 exe 是否请求管理员权限（UAC）。 */
+  private async resolveProjectRequireAdministrator(projectId: string): Promise<boolean> {
+    try {
+      const solution = await this.solutionService.getSolution();
+      const record = solution.projects.find(item => item.id === projectId);
+      return record?.buildProperties?.requireAdministrator === true;
+    } catch {
+      // 解决方案尚未建立时按 asInvoker 处理。
+      return false;
+    }
+  }
+
   async nativePreview(request: AiBridgeNativeRequest) {
     const projectId = request.project.id || 'lingbuilder-ui-project';
     const [enabledModules, lingCppSources] = await Promise.all([
@@ -706,7 +851,8 @@ export class AiBridgeService {
       lingCppSourceFilePath: request.lingCppSourceFilePath,
       lingCppSources,
       enabledModules,
-      outputKind: previewOutputKind
+      outputKind: previewOutputKind,
+      requireAdministrator: await this.resolveProjectRequireAdministrator(projectId)
     });
     const projectRef = await this.resolveAssetProject(request.project);
     const compiler = await this.compilerDetector();
@@ -738,7 +884,6 @@ export class AiBridgeService {
       blockingDiagnostics: generatedProject.blockingDiagnostics,
       selectedWindow: generatedProject.selectedWindow,
       enabledModules,
-      sourceMap: generatedProject.sourceMap,
       logs: [...codeGeneratorResult.logs, ...(designerMismatchWarning ? [designerMismatchWarning] : [])],
       codeGenerators: {
         fingerprint: codeGeneratorResult.fingerprint,
@@ -803,7 +948,8 @@ export class AiBridgeService {
           ...codeGeneratorResult.artifacts
             .filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime')
             .map(artifact => normalizeFilePath(artifact.relativePath))
-        ]
+        ],
+        requireAdministrator: await this.resolveProjectRequireAdministrator(request.project.id || 'window-preview')
       });
       await this.permissions.audit({ operation: 'write', action: 'native.export', ok: true, target: exportDir });
       return {
@@ -882,16 +1028,104 @@ export class AiBridgeService {
     }
   }
 
-  async waitForRun(projectId: string) {
-    const normalizedProjectId = sanitizeFilename((projectId || 'window-preview').trim());
-    if (!this.managedProcessService.waitForExit) {
+  /** 停止单个项目的受控运行进程；停止操作不新增任何写入或执行，只回收 Bridge 自己启动的进程，所有权限模式都可用。 */
+  async stopRun(projectId?: string) {
+    const rawProjectId = String(projectId || '').trim();
+    if (!rawProjectId) throw new Error('必须提供要停止运行的项目 ID（project.create 返回的 project.id）。');
+    const normalizedProjectId = sanitizeFilename(rawProjectId);
+    this.projectBuildCoordinator.cancel(normalizedProjectId, 'user');
+    const stopped = await this.managedProcessService.stop(normalizedProjectId);
+    await this.permissions.audit({ operation: 'execute', action: 'build.stop', ok: stopped.stopped || !stopped.found, target: normalizedProjectId });
+    return stopped;
+  }
+
+  async waitForRun(projectId?: string, timeoutSeconds?: number) {
+    const rawProjectId = String(projectId || '').trim();
+    if (!rawProjectId) throw new Error('必须提供要等待的项目 ID（project.create 返回的 project.id）。');
+    const normalizedProjectId = sanitizeFilename(rawProjectId);
+    const requestedSeconds = Number(timeoutSeconds);
+    const timeoutMs = Number.isFinite(requestedSeconds) && requestedSeconds > 0
+      ? Math.min(Math.trunc(requestedSeconds), 600) * 1000
+      : 30_000;
+    const status = this.managedProcessService.getStatus
+      ? this.managedProcessService.getStatus(normalizedProjectId)
+      : null;
+    if (!status) {
       return {
         projectId: normalizedProjectId,
         found: false,
-        message: `项目“${normalizedProjectId}”的进程管理器不支持等待运行结束。`
+        message: `项目“${normalizedProjectId}”当前没有受控运行进程。`
       };
     }
-    return await this.managedProcessService.waitForExit(normalizedProjectId);
+    if (!this.managedProcessService.waitForExit) {
+      return { projectId: normalizedProjectId, found: true, running: true, status, message: '当前进程管理器不支持等待运行结束。' };
+    }
+    const exit = await Promise.race([
+      this.managedProcessService.waitForExit(normalizedProjectId).then(result => ({ result })),
+      new Promise<{ result?: undefined }>(resolve => {
+        const timer = setTimeout(() => resolve({}), timeoutMs);
+        timer.unref?.();
+      })
+    ]);
+    if (!exit.result) {
+      return {
+        projectId: normalizedProjectId,
+        found: true,
+        running: true,
+        pid: status.pid,
+        message: `等待超时（${Math.round(timeoutMs / 1000)} 秒）：项目“${normalizedProjectId}”的运行进程仍在运行（PID ${status.pid}）。可用 lingbuilder.run.log 查看输出，或 lingbuilder.build.stop 停止。`
+      };
+    }
+    return { projectId: normalizedProjectId, ...exit.result };
+  }
+
+  async readRunLog(projectId?: string, tailLines?: number) {
+    const rawProjectId = String(projectId || '').trim();
+    if (!rawProjectId) throw new Error('必须提供要读取运行日志的项目 ID（project.create 返回的 project.id）。');
+    const normalizedProjectId = sanitizeFilename(rawProjectId);
+    const status = this.managedProcessService.getStatus
+      ? this.managedProcessService.getStatus(normalizedProjectId)
+      : null;
+    const logFilePath = status?.logFilePath || this.lastRunLogPaths.get(normalizedProjectId);
+    if (!logFilePath) {
+      return {
+        projectId: normalizedProjectId,
+        ok: false,
+        logFilePath: undefined,
+        content: '',
+        message: `项目“${normalizedProjectId}”还没有受控运行记录；先用 lingbuilder.build.run（run=true）启动一次。`
+      };
+    }
+    let content = '';
+    try {
+      content = await fs.readFile(logFilePath, 'utf8');
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        return {
+          projectId: normalizedProjectId,
+          ok: true,
+          logFilePath,
+          content: '',
+          running: Boolean(status),
+          message: '运行日志文件尚未生成（GUI 程序通常没有控制台输出）。'
+        };
+      }
+      throw error;
+    }
+    const requestedTail = Number(tailLines);
+    const tail = Number.isFinite(requestedTail) && requestedTail > 0 ? Math.min(Math.trunc(requestedTail), 1000) : 200;
+    const lines = content.split(/\r?\n/);
+    const truncated = lines.length > tail;
+    const visibleLines = truncated ? lines.slice(-tail) : lines;
+    return {
+      projectId: normalizedProjectId,
+      ok: true,
+      logFilePath,
+      running: Boolean(status),
+      totalLines: lines.length,
+      truncated,
+      content: visibleLines.join('\n')
+    };
   }
 
   private async resolveLingCppProjectSources(
@@ -958,6 +1192,8 @@ export class AiBridgeService {
     // 输出形态来自解决方案项目记录（windows-console / buildProperties.outputType）；
     // 必须在生成前解析：DLL 模式生成 DllMain + “公开”子程序导出包装，控制台模式生成 wmain + “启动()”入口。
     const outputKind = await this.resolveProjectOutputKind(buildLease.projectId);
+    // 与 IDE F5 同口径：requireAdministrator 提前解析，供 VS 工程导出与直编链接参数共用。
+    const requireAdministrator = await this.resolveProjectRequireAdministrator(buildLease.projectId);
     const outputType: 'exe' | 'dll' = outputKind === 'dynamic-library' ? 'dll' : 'exe';
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
@@ -965,7 +1201,8 @@ export class AiBridgeService {
       lingCppSourceFilePath: request.lingCppSourceFilePath,
       lingCppSources,
       enabledModules,
-      outputKind
+      outputKind,
+      requireAdministrator: await this.resolveProjectRequireAdministrator(buildLease.projectId)
     });
     if (generatedProject.blockingDiagnostics.length > 0) {
       throw new Error(`LCPP 项目源码存在阻止构建的错误：\n${generatedProject.blockingDiagnostics.join('\n')}`);
@@ -1015,9 +1252,10 @@ export class AiBridgeService {
     // These directories contain only reproducible build products. Recreate
     // them so disabled modules cannot leave stale DLLs, libs or sources in a
     // later build (for example after switching away from new_emoji).
+    // objDir 例外：保留作为编译缓存目录（按源码内容+编译参数指纹复用 obj），
+    // 陈旧 obj 由编译阶段按本次编译清单清理，禁用模块不会留下参与链接的产物。
     await Promise.all([
       fs.rm(binDir, { recursive: true, force: true }),
-      fs.rm(objDir, { recursive: true, force: true }),
       fs.rm(path.join(buildDir, 'modules'), { recursive: true, force: true }),
       fs.rm(path.join(sourceDir, 'modules'), { recursive: true, force: true }),
       fs.rm(path.join(exportDir, 'modules'), { recursive: true, force: true })
@@ -1080,15 +1318,14 @@ export class AiBridgeService {
         binDir,
         objDir,
         exportDir,
-        sourceMap: generatedProject.sourceMap,
-        logs: [...preBuildLogs, `代码生成阶段失败：${reason}`]
+          logs: [...preBuildLogs, `代码生成阶段失败：${reason}`]
       };
       await this.permissions.audit({ operation: 'execute', action: 'build.run', ok: false, target: buildDir, details: result.stage });
       return result;
     }
     const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [buildDir, binDir, exportDir]);
-    const executableIcon = await this.windowsExecutableIconService.materialize(projectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir]);
+    const executableIcon = await this.windowsExecutableIconService.materialize(projectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir], { embeddedResourceSpecs: getEmbeddedResourceSpecsForBuild(request.project) });
     const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
     const buildContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -1106,9 +1343,10 @@ export class AiBridgeService {
       preferredTargetId
     });
     // 项目级 DLL 命令声明物化：声明头 + 按实际导出表生成导入库 + DLL 拷到 exe 目录。
+    const projectDllBuildNotes: string[] = [];
     if (projectDllLibraries.length > 0) {
       const projectDllSourceRoot = path.resolve(this.workspaceRoot, projectRef.sourceRoot || 'src');
-      const { blocking: projectDllBlocking, libFiles: projectDllLibFiles } = await materializeProjectDllDeclarationModules({
+      const { blocking: projectDllBlocking, libFiles: projectDllLibFiles, notes: projectDllNotes } = await materializeProjectDllDeclarationModules({
         dllLibraries: projectDllLibraries,
         sourceRootAbsolute: projectDllSourceRoot,
         buildDir,
@@ -1120,6 +1358,7 @@ export class AiBridgeService {
       });
       moduleNativePlan.blockingDiagnostics.push(...projectDllBlocking);
       moduleNativePlan.libFiles.push(...projectDllLibFiles);
+      projectDllBuildNotes.push(...projectDllNotes);
     }
     if (moduleNativePlan.blockingDiagnostics.length > 0) {
       const result = {
@@ -1131,8 +1370,7 @@ export class AiBridgeService {
         binDir,
         objDir,
         exportDir,
-        sourceMap: generatedProject.sourceMap,
-        logs: [...preBuildLogs, ...generatedProject.diagnostics, ...moduleNativePlan.diagnostics, '原生依赖未准备完整，已阻止编译和运行。']
+          logs: [...preBuildLogs, ...generatedProject.diagnostics, ...moduleNativePlan.diagnostics, '原生依赖未准备完整，已阻止编译和运行。']
       };
       await this.permissions.audit({ operation: 'execute', action: 'build.run', ok: false, target: buildDir, details: result.stage });
       return result;
@@ -1162,7 +1400,8 @@ export class AiBridgeService {
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       projectKind: outputKind,
       fbroRuntimeFromBuildBin: true,
-      executableBaseName: executableNameParts.baseName
+      executableBaseName: executableNameParts.baseName,
+      requireAdministrator
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
@@ -1173,7 +1412,8 @@ export class AiBridgeService {
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       projectKind: outputKind,
-      executableBaseName: executableNameParts.baseName
+      executableBaseName: executableNameParts.baseName,
+      requireAdministrator
     });
     if (buildLease.isCancelled()) {
       return await this.createCancelledBuildResult(
@@ -1192,6 +1432,7 @@ export class AiBridgeService {
       `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
       ...generatedProject.diagnostics,
       ...codeGeneratorResult.logs,
+      ...projectDllBuildNotes,
       ...moduleNativePlan.diagnostics
     ];
 
@@ -1207,8 +1448,7 @@ export class AiBridgeService {
         files: [...generatedProject.files, ...generatedCodegenFiles].map(file => path.join(sourceDir, file.relativePath)),
         visualStudioProject: buildVisualStudioProject,
         exportVisualStudioProject: exportVisualStudioProjectResult,
-        sourceMap: generatedProject.sourceMap,
-        logs: [
+          logs: [
           ...baseLogs,
           '未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。'
         ]
@@ -1274,7 +1514,7 @@ export class AiBridgeService {
         baseLogs.push(`new_emoji 运行时 DLL 内嵌失败（回退为同目录加载）：${error?.message || error}`);
       }
     }
-    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, executableResourcePath, buildLease.signal, outputType);
+    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, executableResourcePath, buildLease.signal, outputType, requireAdministrator);
     const logs = [
       ...baseLogs,
       `exe 输出目录：${binDir}`,
@@ -1298,8 +1538,7 @@ export class AiBridgeService {
         exportDir,
         visualStudioProject: buildVisualStudioProject,
         exportVisualStudioProject: exportVisualStudioProjectResult,
-        sourceMap: generatedProject.sourceMap,
-        logs
+          logs
       };
       await this.permissions.audit({ operation: 'execute', action: 'build.run', ok: false, target: buildDir, details: result.stage });
       return result;
@@ -1322,6 +1561,7 @@ export class AiBridgeService {
     if (request.run !== false && outputType !== 'dll') {
       try {
         const logFile = path.join(buildDir, 'run.log');
+        this.lastRunLogPaths.set(managedProjectId, logFile);
         const started = await this.managedProcessService.start(managedProjectId, exePath, {
           cwd: binDir,
           env: {
@@ -1365,8 +1605,7 @@ export class AiBridgeService {
           exportDir,
           visualStudioProject: buildVisualStudioProject,
           exportVisualStudioProject: exportVisualStudioProjectResult,
-          sourceMap: generatedProject.sourceMap,
-          logs: failedLogs
+              logs: failedLogs
         };
       }
     }
@@ -1390,7 +1629,6 @@ export class AiBridgeService {
       exportDir,
       visualStudioProject: buildVisualStudioProject,
       exportVisualStudioProject: exportVisualStudioProjectResult,
-      sourceMap: generatedProject.sourceMap,
       logs
     };
   }
@@ -1546,18 +1784,40 @@ export class AiBridgeService {
     return { availableModules, enabledModules: mergedEnabled };
   }
 
+  /** 解析提案的工作区基准内容：显式传入时原样采用（未匹配文件由提案校验报错）；
+   *  缺省时按 draft 文件清单自动读盘（磁盘上不存在的路径按新建空文件处理）。 */
   private async resolveEditWorkspaceFiles(request: AiBridgeEditProposeRequest): Promise<LingCppWorkspaceFile[]> {
-    if (Array.isArray(request.workspaceFiles) && request.workspaceFiles.length > 0) {
+    if (Array.isArray(request.workspaceFiles)) {
       return request.workspaceFiles.map(file => ({
         ...file,
         filePath: normalizeFilePath(file.filePath),
         sourceCode: normalizeLineEndings(file.sourceCode)
       }));
     }
-    return [{
-      filePath: normalizeFilePath(request.filePath),
-      sourceCode: typeof request.sourceCode === 'string' ? normalizeLineEndings(request.sourceCode) : (await this.readFile(request.filePath)).content
-    }];
+    const targetPaths: string[] = [];
+    for (const filePath of [request.filePath, ...(request.files || []).map(file => file.filePath)]) {
+      if (!filePath) continue;
+      const normalized = normalizeFilePath(filePath);
+      if (targetPaths.some(existing => existing.toLocaleLowerCase() === normalized.toLocaleLowerCase())) continue;
+      targetPaths.push(normalized);
+    }
+    // 每个目标文件都从磁盘补读；外部 AI 因此可以不再手工回传 workspaceFiles。
+    const MAX_AUTO_READ_FILES = 8;
+    if (targetPaths.length > MAX_AUTO_READ_FILES) {
+      throw new Error(`一次提案最多处理 ${MAX_AUTO_READ_FILES} 个文件；请拆分提案后分批提交。`);
+    }
+    const resolved: LingCppWorkspaceFile[] = [];
+    for (const filePath of targetPaths) {
+      try {
+        const content = await this.readFile(filePath);
+        resolved.push({ filePath, sourceCode: normalizeLineEndings(content.content) });
+      } catch (error: any) {
+        if (error?.code !== 'ENOENT') throw error;
+        // 磁盘上不存在：按新建文件处理，基准内容为空；应用阶段仍受写入白名单与权限门禁约束。
+        resolved.push({ filePath, sourceCode: '' });
+      }
+    }
+    return resolved;
   }
 
   private async resolveApplyWorkspaceFiles(request: AiBridgeEditApplyRequest): Promise<LingCppWorkspaceFile[]> {
@@ -1568,14 +1828,21 @@ export class AiBridgeService {
         sourceCode: normalizeLineEndings(file.sourceCode)
       }));
     }
-    const proposal = getWorkspaceEditProposal(request.proposalId);
+    const proposal = request.proposalId ? getWorkspaceEditProposal(request.proposalId) : undefined;
     if (!proposal?.changes.length) return [];
-    return await Promise.all(proposal.changes.map(async (change, index) => ({
-      filePath: change.filePath,
-      sourceCode: index === 0 && typeof request.sourceCode === 'string'
-        ? normalizeLineEndings(request.sourceCode)
-        : (await this.readFile(change.filePath)).content
-    })));
+    return await Promise.all(proposal.changes.map(async (change, index) => {
+      if (index === 0 && typeof request.sourceCode === 'string') {
+        return { filePath: change.filePath, sourceCode: normalizeLineEndings(request.sourceCode) };
+      }
+      try {
+        const content = await this.readFile(change.filePath);
+        return { filePath: change.filePath, sourceCode: normalizeLineEndings(content.content) };
+      } catch (error: any) {
+        if (error?.code !== 'ENOENT') throw error;
+        // 提案生成时基准内容为空的文件按新建文件应用。
+        return { filePath: change.filePath, sourceCode: '' };
+      }
+    }));
   }
 
   private async readDirectoryTree(directory: string, depth: number, budget: { nodes: number }): Promise<AiBridgeTreeEntry[]> {
@@ -1700,6 +1967,28 @@ export class AiBridgeService {
   }
 }
 
+/** 从命令 signature 与 binding 提取逐参数中文说明；供 lingbuilder.module.info 返回。 */
+function parseModuleCommandParameterDocs(command: ModuleCommandContribution, binding?: ModuleCommandBinding): Array<{ name: string; type: string; description: string }> {
+  const signature = command.signature || '';
+  const match = signature.match(/^[^(（]+[（(](.*)[）)]/u);
+  if (!match || !match[1].trim()) return [];
+  return match[1]
+    .split(/[，,]/u)
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map((part, index) => {
+      const [name, type] = part.split(/[:：]/u).map(value => value.trim());
+      const bindingParameter = binding?.parameters?.[index];
+      return {
+        name: bindingParameter?.name || name || part,
+        type: bindingParameter?.type
+          ? describeModuleBindingParameterType(bindingParameter)
+          : type || '参数',
+        description: bindingParameter?.description || command.description || '模块尚未提供这个参数的详细说明。'
+      };
+    });
+}
+
 async function detectCompiler(): Promise<AiBridgeCompilerInfo | null> {
   try {
     await execFileAsync('where.exe', ['cl'], { timeout: 4000, windowsHide: true });
@@ -1798,7 +2087,8 @@ async function compileWin32Preview(
   modulePlan?: ModuleNativeDependencyPlan,
   resourcePath?: string,
   signal?: AbortSignal,
-  outputType: 'exe' | 'dll' = 'exe'
+  outputType: 'exe' | 'dll' = 'exe',
+  requireAdministrator = false
 ): Promise<AiBridgeCompileResult> {
   const buildDynamicLibrary = outputType === 'dll';
   if (buildDynamicLibrary && compiler.kind !== 'msvc') {
@@ -1849,7 +2139,7 @@ async function compileWin32Preview(
     ? ['delayimp.lib', '/link', '/DELAYLOAD:new_emoji.dll']
     : [];
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, newEmojiDelayLoadLinkArgs, signal, buildDynamicLibrary);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, newEmojiDelayLoadLinkArgs, signal, buildDynamicLibrary, requireAdministrator);
   }
 
   const commandArgs = compiler.kind === 'msvc'
@@ -1876,7 +2166,9 @@ async function compileWin32Preview(
         // 清单内嵌为 RT_MANIFEST（与 Visual Studio 工程默认行为一致）：
         // exe 目录不再出现外置 .exe.manifest，支持真正的单文件分发。
         '/link',
-        '/MANIFEST:EMBED'
+        '/MANIFEST:EMBED',
+        // requireAdministrator：项目 buildProperties 要求时请求 UAC 提权（与 VS 导出工程一致）。
+        ...(requireAdministrator ? [...REQUIRE_ADMINISTRATOR_LINK_ARGS] : [])
       ]
     : [
         '-municode',
@@ -1967,28 +2259,74 @@ async function compileMsvcPreviewWithModules(
   resourceLogs: string[],
   newEmojiDelayLoadLinkArgs: string[],
   signal?: AbortSignal,
-  buildDynamicLibrary = false
+  buildDynamicLibrary = false,
+  requireAdministrator = false
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
-  const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? 'main' : `module_${index}`}.obj`));
-  const compileCommands = sources.map((source, index) => [
-    '/nologo',
-    '/EHsc',
+  // 编译输入指纹：编译器 + 目标架构 + 语言标准 + CRT + 宏 + 包含目录。
+  // 头文件内容变化不参与指纹（与 make-less 缓存同等取舍）；模块升级时会连源头码
+  // 一起更换，指纹必然变化，不会复用陈旧 obj。
+  const fingerprint = [
+    compiler.kind,
+    compiler.arch || '',
+    compiler.command,
+    compiler.setupBatch || '',
     `/std:c++${requiredCppStandard}`,
-    '/utf-8',
+    useDynamicCrt ? '/MD' : '/MT',
+    buildDynamicLibrary ? '/LD' : '',
     ...extraDefineArgs,
-    ...(useDynamicCrt ? ['/MD'] : []),
-    '/DUNICODE',
-    '/D_UNICODE',
-    ...includeArgs,
-    '/c',
-    source,
-    '/Fo:' + objectFiles[index]
-  ]);
+    ...includeArgs
+  ].join('\u0000');
+  // obj 名按源码路径哈希稳定命名：源码列表顺序变化不会错误复用旧 obj。
+  const compilePlans = sources.map(source => {
+    const isMain = source === sourcePath;
+    const hash12 = crypto.createHash('sha256').update(normalizeFilePath(source).toLocaleLowerCase()).digest('hex').slice(0, 12);
+    const objectFile = path.join(objDir, isMain ? 'main.obj' : `module_${hash12}.obj`);
+    return { source, objectFile, sidecarFile: `${objectFile}.inputs`, isMain };
+  });
+
+  // 清理已不在本次编译清单中的陈旧 obj/指纹（例如禁用模块后），保持与
+  // “禁用模块不得在后续构建中留下陈旧产物”的既有约定一致。
+  const keepObjects = new Set(compilePlans.flatMap(plan => [plan.objectFile.toLowerCase(), plan.sidecarFile.toLowerCase()]));
+  try {
+    const existingObjs = (await fs.readdir(objDir)).filter(name => /\.obj(?:\.inputs)?$/iu.test(name));
+    await Promise.all(existingObjs
+      .filter(name => !keepObjects.has(path.join(objDir, name).toLowerCase()))
+      .map(name => fs.rm(path.join(objDir, name), { force: true })));
+  } catch {
+    // 目录尚未创建等清理失败不阻断构建；编译阶段会正常覆盖产物。
+  }
+
+  const compileCommands: Array<{ source: string; objectFile: string; sidecarFile: string; expectedKey: string }> = [];
+  let reusedCount = 0;
+  for (const plan of compilePlans) {
+    const sourceHash = crypto.createHash('sha256').update(await fs.readFile(plan.source)).digest('hex');
+    const expectedKey = crypto.createHash('sha256').update(`${fingerprint}\u0000${plan.source}\u0000${sourceHash}`).digest('hex');
+    let cached = false;
+    try {
+      const [recordedKey, objectStat] = await Promise.all([
+        fs.readFile(plan.sidecarFile, 'utf8').then(content => content.trim()),
+        fs.stat(plan.objectFile)
+      ]);
+      cached = Boolean(objectStat.size) && recordedKey === expectedKey;
+    } catch {
+      cached = false;
+    }
+    if (cached) {
+      reusedCount += 1;
+      continue;
+    }
+    compileCommands.push({ source: plan.source, objectFile: plan.objectFile, sidecarFile: plan.sidecarFile, expectedKey });
+  }
+  const cacheLogs = reusedCount > 0
+    ? [`编译缓存：${reusedCount}/${sources.length} 个源文件未变化，已复用上次 obj。`]
+    : [];
+
+  const objectsToLink = compilePlans.map(plan => plan.objectFile);
   const linkArgs = [
     '/nologo',
     ...(buildDynamicLibrary ? ['/DLL'] : []),
-    ...objectFiles,
+    ...objectsToLink,
     '/Fe:' + exePath,
     'user32.lib',
     'gdi32.lib',
@@ -2002,20 +2340,39 @@ async function compileMsvcPreviewWithModules(
     // 且 /MANIFEST:EMBED 落在 /link 外被 cl 以 D9002 静默忽略。
     ...(newEmojiDelayLoadLinkArgs.length > 0
       ? [...newEmojiDelayLoadLinkArgs, '/MANIFEST:EMBED']
-      : ['/link', '/MANIFEST:EMBED'])
+      : ['/link', '/MANIFEST:EMBED']),
+    ...(requireAdministrator ? [...REQUIRE_ADMINISTRATOR_LINK_ARGS] : [])
   ];
 
   try {
     const outputs: string[] = [];
-    for (const args of compileCommands) {
+    for (const { source, objectFile, sidecarFile, expectedKey } of compileCommands) {
+      const args = [
+        '/nologo',
+        '/EHsc',
+        `/std:c++${requiredCppStandard}`,
+        '/utf-8',
+        ...extraDefineArgs,
+        ...(useDynamicCrt ? ['/MD'] : []),
+        '/DUNICODE',
+        '/D_UNICODE',
+        ...includeArgs,
+        '/c',
+        source,
+        '/Fo:' + objectFile
+      ];
       const result = await runMsvcCommand(compiler, args, cwd, signal);
+      // 指纹必须只在编译成功后落盘：否则失败编译会留下「旧 obj + 新指纹」，
+      // 下次构建误命中缓存、把陈旧 obj 链接进产物。
+      await fs.writeFile(sidecarFile, `${expectedKey}\n`, 'utf8').catch(() => undefined);
       if (result.stdout?.trim()) outputs.push(`stdout:\n${result.stdout.trim()}`);
       if (result.stderr?.trim()) outputs.push(`stderr:\n${result.stderr.trim()}`);
     }
+    // 源文件有变化时才需要链接；全部命中缓存且 exe 仍在时也要重链接（exe 每轮构建前会被删除）。
     const linkResult = await runMsvcCommand(compiler, linkArgs, cwd, signal);
     if (linkResult.stdout?.trim()) outputs.push(`link stdout:\n${linkResult.stdout.trim()}`);
     if (linkResult.stderr?.trim()) outputs.push(`link stderr:\n${linkResult.stderr.trim()}`);
-    return { ok: true, logs: ['编译成功。', ...resourceLogs, ...outputs] };
+    return { ok: true, logs: ['编译成功。', ...cacheLogs, ...resourceLogs, ...outputs] };
   } catch (error: any) {
     return {
       ok: false,

@@ -127,6 +127,12 @@ declare global {
           token?: string;
           approvedYolo?: boolean;
         }) => Promise<LingBuilderAiBridgeSnapshot>;
+        loadStartSettings: () => Promise<{
+          port: number;
+          permission: LingBuilderAiBridgePermission;
+          lifecycle: LingBuilderAiBridgeLifecycle;
+          token: string;
+        } | null>;
         stop: () => Promise<LingBuilderAiBridgeSnapshot>;
         rotateToken: () => Promise<LingBuilderAiBridgeSnapshot>;
         revealToken: () => Promise<string>;
@@ -181,6 +187,8 @@ declare global {
         selectAnimation: () => Promise<{ canceled: boolean; filePath?: string }>;
         selectVideo: () => Promise<{ canceled: boolean; filePath?: string }>;
         selectIcon: () => Promise<{ canceled: boolean; filePath?: string }>;
+        selectEmbeddedFiles: () => Promise<{ canceled: boolean; filePaths?: string[]; error?: string }>;
+        selectEmbeddedFolder: () => Promise<{ canceled: boolean; directoryPath?: string; error?: string }>;
       };
       credentials?: {
         getAiApiKey: () => Promise<string>;

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import lingBuilderIcon from '../../image/lingbuilder-ide-icon-v1.png';
 import {
   FolderCode,
@@ -67,6 +67,7 @@ import BottomPanel from './components/BottomPanel';
 import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
 import ProjectBuildPathsDialog, { type ProjectBuildPathsDialogValue } from './components/ProjectBuildPathsDialog';
+import EmbeddedResourcesDialog from './components/EmbeddedResourcesDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';
@@ -153,7 +154,12 @@ import {
   WINDOW_DESIGNER_DIRTY_STATE_CHANGED,
   WINDOW_DESIGNER_PROJECT_UPDATED
 } from './services/windowDesigner/windowDesignerService';
+import {
+  hasLingCppEventHandler,
+  selectControlEventTargetFile
+} from './services/windowDesigner/controlEventTargetFile';
 import type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';
+import type { LingEmbeddedResource } from './services/windowDesigner/types';
 import {
   formatControlEventParameters,
   type OpenControlEventCodeDetail,
@@ -207,11 +213,11 @@ import type { BuildArchitecture, BuildConfiguration, BuildMode } from './service
 import { closeEditorGroupTab, collapseEditorGroups, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
-import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
+import { parseLingCpp } from './services/lingCpp/parser';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';
 import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';
-import { EMPTY_PROJECT_DLL_COMMANDS_SOURCE, isProjectDllCommandsFilePath, PROJECT_DLL_COMMANDS_FILE_NAME } from './services/lingCpp/projectDllCommandService';
+import { createProjectDllDeclarationModuleFromSources, EMPTY_PROJECT_DLL_COMMANDS_SOURCE, isProjectDllCommandsFilePath, PROJECT_DLL_COMMANDS_FILE_NAME, PROJECT_DLL_MODULE_ID } from './services/lingCpp/projectDllCommandService';
 import { executeProjectDataTypeCommand } from './services/lingCpp/projectDataTypeCommandService';
 import { createProjectConstantRenameProposal, findProjectConstantReferences } from './services/lingCpp/projectConstantReferenceService';
 import { findFunctionLibraryReferences, isFunctionLibrarySource, renameFunctionLibraryAcrossSources } from './services/lingCpp/functionLibraryService';
@@ -458,22 +464,6 @@ const ensureLingCppControlEventHandler = (content: string, detail: OpenControlEv
 
   const nextBlock = createLingCppControlEventBlock({ ...detail, controlName, eventName, handlerName });
   return `${content.replace(/\s*结束类\s*$/g, '').trimEnd()}\n\n${nextBlock}\n结束类`;
-};
-
-const hasLingCppEventHandler = (content: string, handlerName: string) => {
-  const trimmedHandlerName = handlerName.trim();
-  if (!trimmedHandlerName) return false;
-
-  const handlerPattern = new RegExp(`(^|\\n)\\s*事件\\s+${escapeRegExp(trimmedHandlerName)}\\s*[（(]`);
-  if (handlerPattern.test(content)) return true;
-
-  try {
-    const parsed = parseLingCpp(content);
-    const method = findLingCppMethod(parsed.program, trimmedHandlerName);
-    return method?.kind === 'event';
-  } catch {
-    return false;
-  }
 };
 
 /** 比较两组已安装模块列表是否内容一致（顺序敏感，按 id@version + 安装路径）。 */
@@ -1265,6 +1255,8 @@ export default function App() {
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [projectBuildPathsState, setProjectBuildPathsState] = useState<{ projectId: string; projectName: string; initialValue: ProjectBuildPathsDialogValue } | null>(null);
+  // 「配置项目内嵌资源」对话框：在解决方案资源管理器里直接编辑清单，不切到窗口设计器。
+  const [embeddedResourcesDialog, setEmbeddedResourcesDialog] = useState<{ projectId: string; projectName: string } | null>(null);
   const [projectBuildPathsBusy, setProjectBuildPathsBusy] = useState(false);
   const [projectBuildPathsError, setProjectBuildPathsError] = useState<string>('');
   const [showEnvironmentRepairCenter, setShowEnvironmentRepairCenter] = useState(false);
@@ -1364,7 +1356,7 @@ export default function App() {
   const [autoSaveDelay, setAutoSaveDelay] = useState(1200);
   const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
   const [pendingDesignerEventEdit, setPendingDesignerEventEdit] = useState<PendingDesignerEventEdit | null>(null);
-  const [moduleContext, setModuleContext] = useState<LingCppModuleContext>({
+  const [serverModuleContext, setServerModuleContext] = useState<LingCppModuleContext>({
     enabledModules: [],
     availableModules: [],
     showAdvancedApi: window.localStorage.getItem('lingbuilder.modules.showAdvancedApi') === 'true'
@@ -1391,7 +1383,7 @@ export default function App() {
     const enabledModules = declaredModule ? [...enabledModulesBase, declaredModule] : enabledModulesBase;
     // 模块列表内容未变化时保持引用稳定：moduleContext 是语言诊断、补全等重计算
     // useMemo 的依赖项，设计器每次提交后都换新引用会让这些计算重复执行并卡住主线程。
-    setModuleContext(previous => (
+    setServerModuleContext(previous => (
       areInstalledModuleListsEquivalent(previous.availableModules, availableModules)
         && areInstalledModuleListsEquivalent(previous.enabledModules, enabledModules)
         ? previous
@@ -1402,11 +1394,36 @@ export default function App() {
   useEffect(() => {
     const updateVisibility = (event: Event) => {
       const value = (event as CustomEvent<{ showAdvancedApi?: boolean }>).detail?.showAdvancedApi === true;
-      setModuleContext(previous => ({ ...previous, showAdvancedApi: value }));
+      setServerModuleContext(previous => ({ ...previous, showAdvancedApi: value }));
     };
     window.addEventListener('lingbuilder-module-api-visibility-changed', updateVisibility);
     return () => window.removeEventListener('lingbuilder-module-api-visibility-changed', updateVisibility);
   }, []);
+
+  // 项目级 DLL 命令声明：声明文件在编辑器中打开期间，以当前缓冲区实时合成虚拟模块，
+  // 新增命令/参数后补全、参数提示与诊断即时生效，无需重启 IDE 或触发模块刷新。
+  const activeProjectSourceRoot = solution.projects.find(project => project.id === activeProjectId)?.sourceRoot
+    ?.replace(/\\/gu, '/').replace(/\/+$/u, '') || '';
+  const dllCommandsBufferFile = files.find(file => {
+    const normalizedPath = String(file.path || '').replace(/\\/gu, '/');
+    return normalizedPath === `${activeProjectSourceRoot}/${PROJECT_DLL_COMMANDS_FILE_NAME}`;
+  });
+  const liveProjectDllModule = useMemo(() => {
+    if (!dllCommandsBufferFile) return undefined;
+    const sourceCode = String(dllCommandsBufferFile.translatedContent || dllCommandsBufferFile.originalContent || '');
+    if (!sourceCode.trim()) return undefined;
+    return createProjectDllDeclarationModuleFromSources([{ filePath: dllCommandsBufferFile.path, sourceCode }], activeProjectId);
+  }, [activeProjectId, dllCommandsBufferFile]);
+  const moduleContext = useMemo<LingCppModuleContext>(() => {
+    // 声明文件未打开时沿用服务端磁盘快照（进入工作台/设计器保存/模块变更时刷新）；
+    // 已打开则以缓冲区为准：清空声明即同步移除虚拟模块，不会复活磁盘上的旧声明。
+    if (!dllCommandsBufferFile) return serverModuleContext;
+    const enabledWithoutDeclared = serverModuleContext.enabledModules.filter(module => module.manifest?.id !== PROJECT_DLL_MODULE_ID);
+    return {
+      ...serverModuleContext,
+      enabledModules: liveProjectDllModule ? [...enabledWithoutDeclared, liveProjectDllModule] : enabledWithoutDeclared
+    };
+  }, [dllCommandsBufferFile, liveProjectDllModule, serverModuleContext]);
 
   const refreshSolution = useCallback(async () => {
     try {
@@ -1430,7 +1447,7 @@ export default function App() {
       'loading'
     ));
     setEditorState(createInactiveTextEditorStatus('loading-project'));
-    setModuleContext(previous => ({ ...previous, availableModules: [], enabledModules: [] }));
+    setServerModuleContext(previous => ({ ...previous, availableModules: [], enabledModules: [] }));
     setProblems([]);
     setCompilerProblems([]);
     setQualityProblems([]);
@@ -1911,7 +1928,12 @@ export default function App() {
     setShowBottomPanel(true);
   }, []);
 
+  const commandHintRef = useRef<CommandHintContent | null>(null);
   const handleShowCommandHint = useCallback((hint: CommandHintContent | null) => {
+    // 新手编辑器在每次按键/指针同步时都会回调一次命令提示；同值写入仍会让 App 重渲，
+    // 而一次重渲会连带重建整个结构化画布（实测 ~50ms 级），所以这里必须同值短路。
+    if (Object.is(commandHintRef.current, hint)) return;
+    commandHintRef.current = hint;
     setCommandHint(hint);
     if (!hint) return;
     setModuleHint(null);
@@ -2851,25 +2873,28 @@ void DisplayStatus() {
 
       const currentFiles = filesRef.current;
       const targetSourceName = getLingWindowSourceFileName(detail.windowFileName, detail.windowClassName);
-      // 优先找"已声明该处理器"的中文源码文件：窗口类名与源码文件名不对应时（如外部导入工程），
-      // 不能回退到第一个 .lcpp（可能是无关功能库），否则会跳错文件甚至把事件桩写进功能库。
+      // 选文件优先级见 controlEventTargetFile：先「声明了类 <窗口类名> 的文件」（本窗口自己的源码），
+      // 再退到「声明了同名处理器的文件」，最后才是惯例文件名。处理器名（创建完毕 等）跨窗口必然重名，
+      // 旧顺序（处理器优先）会把 `组件总览六标签页` 工程跳到无关的 `MainWindow.lcpp`。
       const lingCppFiles = currentFiles.filter(file => file.language === 'lingcpp' || file.path.endsWith('.lcpp'));
-      const handlerOwnerFile = lingCppFiles.find(file => hasLingCppEventHandler(getCurrentFileContent(file), handlerName));
-      // 桩尚未生成时，优先落进"声明了该窗口类"的文件，其次才是惯例文件名。
-      const windowClassPattern = detail.windowClassName
-        ? new RegExp(`^\\s*类\\s*${detail.windowClassName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?:\\s|[:：]|$)`, 'm')
-        : undefined;
-      const windowClassFile = windowClassPattern
-        ? lingCppFiles.find(file => windowClassPattern.test(getCurrentFileContent(file)))
-        : undefined;
-
+      const targetQuery = {
+        windowClassName: detail.windowClassName,
+        windowFileName: detail.windowFileName,
+        handlerName
+      };
       const findFileByPath = (candidatePath: string) => {
         const normalized = candidatePath.replace(/\\/gu, '/').toLowerCase();
         return lingCppFiles.find(file => file.path.replace(/\\/gu, '/').toLowerCase() === normalized)
           || lingCppFiles.find(file => file.path.replace(/\\/gu, '/').toLowerCase().endsWith(normalized));
       };
 
-      let targetFile = handlerOwnerFile || windowClassFile;
+      const selectedInMemory = selectControlEventTargetFile(
+        lingCppFiles.map(file => ({ path: file.path, name: file.name, content: getCurrentFileContent(file) })),
+        targetQuery
+      );
+      let targetFile: CppFile | undefined = selectedInMemory
+        ? lingCppFiles.find(file => file.path === selectedInMemory.path)
+        : undefined;
       if (!targetFile) {
         // 懒加载工作区里未打开的文件在内存中可能还没有内容：从磁盘读全部项目源码后再找一次。
         const projectId = activeSolutionProject?.id || '';
@@ -2879,14 +2904,18 @@ void DisplayStatus() {
             const data = await response.json();
             const diskFiles: Record<string, string> = data?.ok && data.files ? data.files : {};
             const entries = Object.entries(diskFiles).filter(([filePath]) => filePath.toLowerCase().endsWith('.lcpp'));
-            const diskHandlerFile = entries.find(([, content]) => hasLingCppEventHandler(String(content), handlerName));
-            const diskWindowClassFile = windowClassPattern
-              ? entries.find(([, content]) => windowClassPattern.test(String(content)))
-              : undefined;
-            const diskOwner = diskHandlerFile || diskWindowClassFile;
-            if (diskOwner) {
-              const ownerPath = String(diskOwner[0]);
-              targetFile = findFileByPath(ownerPath) || {
+            const diskTarget = selectControlEventTargetFile(
+              entries.map(([filePath, content]) => ({
+                path: filePath,
+                name: filePath.split('/').pop() || filePath,
+                content: String(content)
+              })),
+              targetQuery
+            );
+            if (diskTarget) {
+              const ownerPath = String(diskTarget.path);
+              const existing = findFileByPath(ownerPath);
+              targetFile = existing ?? {
                 path: ownerPath,
                 name: ownerPath.split('/').pop() || ownerPath,
                 language: 'lingcpp',
@@ -2895,7 +2924,7 @@ void DisplayStatus() {
                 savedEncoding: 'utf8',
                 savedEol: 'lf',
                 formatModified: false,
-                originalContent: String(diskOwner[1]),
+                originalContent: String(diskTarget.content),
                 translatedContent: '',
                 strings: [],
                 isModified: false
@@ -4989,6 +5018,33 @@ void DisplayStatus() {
     });
   }, [buildConfiguration, solution]);
 
+  /**
+   * 「配置项目内嵌资源」对话框：清单属于项目设计器模型（window-designer.json 顶层 embeddedResources），
+   * 因此保存必须走设计器状态通道（saveWindowDesignerState，带通知），与 AI 应用设计器提案同一条路径，
+   * 这样已挂载的设计器会同步到新清单，脏标记与后续 Ctrl+S 落盘也保持一致。
+   */
+  const openEmbeddedResourcesDialog = useCallback((projectId?: string) => {
+    const targetId = projectId || activeProjectIdRef.current;
+    const project = solution.projects.find(item => item.id === targetId);
+    if (!project) return;
+    setEmbeddedResourcesDialog({ projectId: project.id, projectName: project.name });
+  }, [solution.projects]);
+
+  const handleSaveEmbeddedResources = useCallback(async (resources: LingEmbeddedResource[]) => {
+    const projectId = embeddedResourcesDialog?.projectId;
+    if (!projectId) return;
+    const currentState = readWindowDesignerState(projectId);
+    const nextState = saveWindowDesignerState({
+      ...currentState,
+      project: { ...currentState.project, embeddedResources: resources }
+    });
+    setWindowDesignerState(nextState);
+    const nextDirty = JSON.stringify(nextState.project) !== designerSavedSnapshotRef.current;
+    designerDirtyRef.current = nextDirty;
+    setDesignerDirty(nextDirty);
+    appendEditorTransactionLog(`【内嵌资源】已更新 ${resources.length} 条内嵌资源，保存项目后写入 window-designer.json。`);
+  }, [appendEditorTransactionLog, embeddedResourcesDialog?.projectId]);
+
   const handleSaveProjectBuildPaths = useCallback(async (value: ProjectBuildPathsDialogValue) => {
     if (!projectBuildPathsState) return;
     setProjectBuildPathsBusy(true);
@@ -5367,6 +5423,7 @@ void DisplayStatus() {
     showCommands: openCommandPalette,
     openSettings: openSettingsDialog,
     configureProjectBuildPaths: (projectId?: unknown) => openProjectBuildPathsDialog(typeof projectId === 'string' ? projectId : undefined),
+    configureProjectEmbeddedResources: (projectId?: unknown) => openEmbeddedResourcesDialog(typeof projectId === 'string' ? projectId : undefined),
     findInFiles: () => openWorkspaceSearch('search'),
     replaceInFiles: () => openWorkspaceSearch('replace'),
     openWorkspace: handleOpenWorkspace,
@@ -5470,6 +5527,30 @@ void DisplayStatus() {
         ? selectAndImportDesignerImage(projectId)
         : Promise.resolve<DesignerImageImportResult>({ ok: false, error: '当前解决方案中没有可添加资源的项目。' });
     },
+    copyEmbeddedResourceName: async (payload?: unknown) => {
+      const name = typeof (payload as { name?: unknown })?.name === 'string' ? String((payload as { name: string }).name).trim() : '';
+      if (!name) return false;
+      await navigator.clipboard.writeText(name);
+      appendEditorTransactionLog(`【内嵌资源】已复制逻辑名：${name}（可直接贴进 资源_取文本 / 资源_取字节集 等命令）`);
+      return true;
+    },
+    copyEmbeddedResourceSource: async (payload?: unknown) => {
+      const file = typeof (payload as { file?: unknown })?.file === 'string' ? String((payload as { file: string }).file).trim() : '';
+      if (!file) return false;
+      await navigator.clipboard.writeText(file);
+      appendEditorTransactionLog(`【内嵌资源】已复制源文件路径：${file}`);
+      return true;
+    },
+    openEmbeddedResourceSource: async (payload?: unknown) => {
+      const file = typeof (payload as { file?: unknown })?.file === 'string' ? String((payload as { file: string }).file).trim() : '';
+      if (!file) return false;
+      const target = filesRef.current.find(candidate => candidate.path === file);
+      if (!target) {
+        appendEditorTransactionLog(`【内嵌资源】源文件 ${file} 不是文本文件，无法在编辑器中打开；可在「内嵌资源」组里查看或改用「配置项目内嵌资源」。`);
+        return false;
+      }
+      return handleSelectFile(target);
+    },
     copyProjectResourcePath: async (requestedPath?: unknown) => {
       const relativePath = typeof requestedPath === 'string' ? requestedPath.trim() : '';
       if (!relativePath) return false;
@@ -5508,7 +5589,7 @@ void DisplayStatus() {
     'workbench.workspaceSearchOpen': Boolean(workspaceSearchMode),
     'editor.multipleGroups': editorGroupLayout.groups.length > 1,
     'workbench.blockingDialogOpen': blockingDialogOpen,
-    'workbench.modalOpen': showCommandPalette || showSettingsDialog || Boolean(projectBuildPathsState) || blockingDialogOpen,
+    'workbench.modalOpen': showCommandPalette || showSettingsDialog || Boolean(projectBuildPathsState) || Boolean(embeddedResourcesDialog) || blockingDialogOpen,
     'operation.saving': isSaving,
     'operation.building': isBuilding,
     'operation.busy': Boolean(editorOperationRef.current) || projectFilesLoading,
@@ -5550,6 +5631,46 @@ void DisplayStatus() {
         when: '!workbench.commandPaletteOpen && !workbench.settingsOpen && !workbench.blockingDialogOpen',
         order: 2,
         handler: () => workbenchCommandHandlersRef.current.openSettings()
+      },
+      {
+        id: 'workbench.action.project.configureEmbeddedResources',
+        title: '配置项目内嵌资源',
+        aliases: ['Configure Embedded Resources', 'embedded resources', '内嵌资源', '资源内嵌'],
+        category: '项目',
+        description: '编辑项目内嵌资源清单：构建期以 RCDATA 打进 EXE，运行期用 资源_* 命令按逻辑名读取。',
+        when: '!workbench.modalOpen',
+        order: 4,
+        handler: () => workbenchCommandHandlersRef.current.configureProjectEmbeddedResources()
+      },
+      {
+        id: 'workbench.action.project.copyEmbeddedResourceName',
+        title: '内嵌资源：复制逻辑名',
+        aliases: ['Copy Embedded Resource Name', 'copy resource name', '复制资源名'],
+        category: '项目',
+        description: '复制内嵌资源的逻辑名（运行期 资源_* 命令按它读取）。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 5,
+        handler: (_context, payload) => workbenchCommandHandlersRef.current.copyEmbeddedResourceName(payload)
+      },
+      {
+        id: 'workbench.action.project.copyEmbeddedResourceSource',
+        title: '内嵌资源：复制源文件路径',
+        aliases: ['Copy Embedded Resource Source Path', 'copy resource source', '复制资源源文件路径'],
+        category: '项目',
+        description: '复制内嵌资源源文件的工作区相对路径。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 6,
+        handler: (_context, payload) => workbenchCommandHandlersRef.current.copyEmbeddedResourceSource(payload)
+      },
+      {
+        id: 'workbench.action.project.openEmbeddedResourceSource',
+        title: '内嵌资源：打开源文件',
+        aliases: ['Open Embedded Resource Source', 'open resource source', '打开资源源文件'],
+        category: '项目',
+        description: '在主编辑器里打开内嵌资源的源文件（仅文本类素材）。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 7,
+        handler: (_context, payload) => workbenchCommandHandlersRef.current.openEmbeddedResourceSource(payload)
       },
       {
         id: 'workbench.action.configureProjectBuildPaths',
@@ -7325,6 +7446,7 @@ void DisplayStatus() {
           onToggleMultiStartupProject={handleToggleMultiStartupProject}
           onConfigureExternalProject={handleConfigureExternalProject}
           onConfigureBuildPaths={projectId => openProjectBuildPathsDialog(projectId)}
+          onConfigureEmbeddedResources={projectId => { void executeWorkbenchCommand('workbench.action.project.configureEmbeddedResources', projectId); }}
           onDeleteProject={handleDeleteSolutionProject}
           onSolutionCommand={async (command, projectId) => { await handleSolutionBuildCommand(command, projectId); }}
           onCloseSolution={() => { void executeWorkbenchCommand('workbench.action.files.closeSolution'); }}
@@ -7749,6 +7871,19 @@ void DisplayStatus() {
         configuration={buildConfiguration.mode}
         onConfirm={handleSaveProjectBuildPaths}
         onClose={() => setProjectBuildPathsState(null)}
+      />
+
+      <EmbeddedResourcesDialog
+        open={Boolean(embeddedResourcesDialog)}
+        isDarkMode={isDarkMode}
+        moduleEnabled={moduleContext.enabledModules.some(module => module.manifest?.id === 'lingbuilder.resource.embed')}
+        projectId={embeddedResourcesDialog?.projectId || ''}
+        projectName={embeddedResourcesDialog?.projectName || ''}
+        resources={embeddedResourcesDialog
+          ? (readWindowDesignerState(embeddedResourcesDialog.projectId).project.embeddedResources || [])
+          : []}
+        onConfirm={handleSaveEmbeddedResources}
+        onClose={() => setEmbeddedResourcesDialog(null)}
       />
 
       <EnvironmentRepairCenter

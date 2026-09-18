@@ -20,6 +20,8 @@ export interface SolutionProject {
     executableName?: string;
     /** 项目产物类型：exe（缺省）生成应用程序；dll 生成动态库 + 导入库并导出「公开」子程序；DLL 项目不支持 F5 生成并运行。 */
     outputType?: 'exe' | 'dll';
+    /** 传真时生成的 exe 启动时请求管理员权限（UAC requireAdministrator）；缺省假＝asInvoker。与服务端 ExternalProjectProperties 一致。 */
+    requireAdministrator?: boolean;
   };
   solutionFolderId?: string;
 }

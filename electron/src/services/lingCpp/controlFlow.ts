@@ -12,9 +12,38 @@ export interface LingCppControlFlowLine {
   branchKind?: 'elseif' | 'else' | 'case' | 'default' | 'catch' | 'finally';
 }
 
+/** 关键字清单是编译期固定集合，正则只编译一次；此前每行最多新建 ~30 个 RegExp，
+ *  在结构化编辑里「每敲一个键 → 重渲可见代码块 → 逐行解析」会把主线程直接吃掉
+ *  （2026-09-17 实测：输入延迟 ~600ms/键，热点全在 controlFlow.ts）。 */
+const callPatternCache = new Map<string, RegExp>();
+const escapeKeyword = (keyword: string) => keyword.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+const callPattern = (keywords: string[]): RegExp => {
+  const key = keywords.join('\u0000');
+  let pattern = callPatternCache.get(key);
+  if (!pattern) {
+    const escaped = keywords.map(escapeKeyword).join('|');
+    pattern = new RegExp(`^(${escaped})(?:\\s*[（(](.*)[）)])?\\s*;?$`, 'u');
+    callPatternCache.set(key, pattern);
+  }
+  return pattern;
+};
+
+/** 行首词（中文关键字或英文标识符），用于在跑正则之前快速排除普通代码行。 */
+const leadingWordPattern = /^[\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa50-9A-Za-z_]*/u;
+
+/** 与下方 parseLingCppControlFlowLine 的判定表保持一致的候选关键字集合。 */
+const LING_CPP_CONTROL_KEYWORDS = new Set<string>([
+  '判断循环首', '判断循环尾', '循环判断首', '循环判断尾',
+  '计次循环首', '计次循环尾', '变量循环首', '变量循环尾',
+  '枚举循环首', '枚举循环尾', '循环结束', '循环',
+  '如果真结束', '如果结束', '否则如果', '否则', '如果真', '如果',
+  '选择结束', '判断结束', '分支', '情况', '默认', '选择', '判断',
+  '尝试结束', '捕获', '最终', '尝试',
+  '跳出循环', '到循环尾', '继续循环', '抛出'
+]);
+
 const call = (text: string, keywords: string[]): { keyword: string; expression?: string; arguments: string[] } | undefined => {
-  const escaped = keywords.map(keyword => keyword.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|');
-  const match = text.match(new RegExp(`^(${escaped})(?:\\s*[（(](.*)[）)])?\\s*;?$`, 'u'));
+  const match = text.match(callPattern(keywords));
   if (!match) return undefined;
   const expression = match[2]?.trim();
   return {
@@ -27,6 +56,10 @@ const call = (text: string, keywords: string[]): { keyword: string; expression?:
 export function parseLingCppControlFlowLine(line: string): LingCppControlFlowLine | undefined {
   const text = line.trim();
   if (!text || text.startsWith('//') || text.startsWith('@')) return undefined;
+
+  // 快速排除：行首词不是任何控制流关键字时，连正则都不用跑（普通代码行占绝大多数）。
+  const leadingWord = text.match(leadingWordPattern)?.[0];
+  if (leadingWord && !LING_CPP_CONTROL_KEYWORDS.has(leadingWord)) return undefined;
 
   let parsed = call(text, ['判断循环首']);
   if (parsed) return { ...parsed, family: 'loop', role: 'start', loopKind: 'while' };

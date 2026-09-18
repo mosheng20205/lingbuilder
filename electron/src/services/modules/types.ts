@@ -332,6 +332,8 @@ export type ModuleBindingValueType =
   | 'int'
   | 'longLong'
   | 'double'
+  /** C++ float（单精度）；跨 DLL 边界按 4 字节 float 传参，与 double 区分。 */
+  | 'float'
   | 'bool'
   | 'wideString'
   | 'utf8String'
@@ -378,6 +380,11 @@ export interface ModuleCommandBindingParameter {
   handlerSignature?: ModuleHandlerSignatureContract;
   /** 项目 DLL 命令声明：POD 参数按指针传址（输出参数），调用点自动取 `&实参`。 */
   byRef?: boolean;
+  /**
+   * 项目 DLL 命令声明：结构体参数。调用端以长整数型句柄传入（结构体由自动生成的
+   * 创建/销毁/取/置命令管理），生成 C++ 时调用点自动加 `(结构名 *)` 强转。
+   */
+  cppStructName?: string;
   /** 可选参数只能出现在参数列表尾部。 */
   optional?: boolean;
   /** 可选参数省略时使用的确定性默认值；null 表示“未设置”。 */
@@ -501,6 +508,8 @@ export interface LingBuilderProjectModules {
   schemaVersion: 1;
   enabledModuleIds: string[];
   pinnedVersions: Record<string, string>;
+  /** 用户显式禁用过的默认启用内置模块；默认启用补齐时跳过这些 ID（只补缺不覆盖用户选择）。 */
+  optOutDefaultModuleIds?: string[];
 }
 
 export interface ModuleInstallPreview {

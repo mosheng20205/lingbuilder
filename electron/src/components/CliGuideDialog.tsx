@@ -138,6 +138,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const [configCopied, setConfigCopied] = useState(false);
   const [logsCopied, setLogsCopied] = useState(false);
   const logsRef = useRef<HTMLPreElement>(null);
+  const bridgeRef = useRef<BridgeSnapshot>(EMPTY_BRIDGE);
 
   const desktopApi = window.lingBuilder?.aiBridge;
   const running = bridge.state === 'running';
@@ -147,6 +148,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     if (!desktopApi) throw new Error('AI Bridge 连接中心仅在 LingBuilder 桌面版中可用。');
     const result = await desktopApi.status() as BridgeSnapshot;
     setBridge(result);
+    bridgeRef.current = result;
     if (result.state !== 'stopped' && result.state !== 'error') {
       setPort(result.port); setPermission(result.permission); setLifecycle(result.lifecycle);
     }
@@ -217,10 +219,20 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     setError('');
     const unsubscribe = desktopApi?.onStatusChanged(snapshot => {
       setBridge(snapshot as BridgeSnapshot);
+      bridgeRef.current = snapshot as BridgeSnapshot;
       setStatusProbe(current => current.phase === 'loading' ? { phase: 'ready' } : current);
     });
     if (desktopApi) {
       void loadBridgeStatus(); void refreshClients(); void refreshCodexDesktop(); void inspectCli();
+      void desktopApi.loadStartSettings?.().then(saved => {
+        if (!saved) return;
+        // 运行中的 Bridge 以快照为准；仅停止态回填上次成功启动的设置（含自定义 Token）。
+        if (bridgeRef.current.state === 'running') return;
+        setPort(saved.port);
+        setPermission(saved.permission);
+        setLifecycle(saved.lifecycle);
+        setCustomToken(saved.token || '');
+      }).catch(() => undefined);
     }
     return () => {
       cancelAnimationFrame(frame); unsubscribe?.();
@@ -537,13 +549,13 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
           </div>}
 
           {activeTab === 'advanced' && <div className="grid gap-4 lg:grid-cols-2">
-            <SectionCard title="Bridge 启动设置" description={running ? 'Bridge 运行时设置已锁定；停止后可以修改。' : '这些设置只应用于下一次启动。'} cardClass={card} isDarkMode={isDarkMode}>
+            <SectionCard title="Bridge 启动设置" description={running ? 'Bridge 运行时设置已锁定；停止后可以修改。' : '已记住上次成功启动的设置，下次打开自动填入。'} cardClass={card} isDarkMode={isDarkMode}>
               <fieldset disabled={running || transitioning || Boolean(busyAction)} className="space-y-4 disabled:opacity-60">
                 <label className="block text-[11px] font-medium">监听端口<input type="number" min={1024} max={65535} value={port} onChange={event => setPort(Number(event.target.value))} aria-invalid={portInvalid} className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${portInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${portInvalid ? 'text-rose-400' : muted}`}>{portInvalid ? '端口必须在 1024–65535 之间。' : '仅监听 127.0.0.1；端口冲突时会明确报错。'}</span></label>
                 <div><div className="text-[11px] font-medium">权限模式</div><div className="mt-2 grid gap-2 sm:grid-cols-3">{(['readonly', 'preview', 'yolo'] as BridgePermission[]).map(value => <label key={value} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded border px-3 text-[11px] ${permission === value ? 'border-cyan-500 bg-cyan-500/10' : 'border-current/15'}`}><input type="radio" name="bridge-permission" value={value} checked={permission === value} onChange={() => { setPermission(value); if (value !== 'yolo') setApprovedYolo(false); }} className="accent-cyan-500" /><span className="font-semibold">{PERMISSION_LABELS[value]}</span><span className={`font-mono text-[10px] ${muted}`}>{value}</span>{value === 'preview' && <span className="text-cyan-500">推荐</span>}</label>)}</div></div>
                 {permission === 'yolo' && <label className="flex cursor-pointer items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-400"><input type="checkbox" checked={approvedYolo} onChange={event => setApprovedYolo(event.target.checked)} className="mt-1 accent-amber-500" /><span>我确认：可信的本机 AI 可以自动写入文件、导出并执行 LingBuilder 受控构建；仍不开放任意 shell。</span></label>}
                 <label className="block text-[11px] font-medium">生命周期<select value={lifecycle} onChange={event => setLifecycle(event.target.value as BridgeLifecycle)} className={`mt-1 min-h-11 w-full rounded border px-3 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field}`}><option value="workspace">关闭或切换工作区时停止（推荐）</option><option value="ide">IDE 退出时停止</option></select></label>
-                <label className="block text-[11px] font-medium">自定义 Token（可选）<input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field}`} /><span className={`mt-1 block text-[10px] font-normal ${muted}`}>不会持久化；要求 24–256 个不含空白的字符。</span></label>
+                <label className="block text-[11px] font-medium">自定义 Token（可选）<input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field}`} /><span className={`mt-1 block text-[10px] font-normal ${muted}`}>启动成功后自动保存到本机加密存储，下次打开自动回填；清空则每次生成临时 Token。要求 24–256 个不含空白的字符。</span></label>
               </fieldset>
             </SectionCard>
             <SectionCard title="连接配置" description="供不在快捷客户端列表中的 MCP 或 HTTP 客户端使用。" cardClass={card} isDarkMode={isDarkMode}>

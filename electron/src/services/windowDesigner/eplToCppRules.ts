@@ -91,8 +91,8 @@ export function parseEplControlMethodCallRule(expression: string): EplControlMet
 
 export function splitEplBinaryExpression(expression: string): { left: string; operator: string; right: string } | undefined {
   const precedenceGroups = [
-    ['||'],
-    ['&&'],
+    ['||', '或'],
+    ['&&', '且'],
     // 中文条件表达式使用单个“=”表示相等判断；保持双等号优先匹配；不等号支持 <> 与 ≠。
     ['==', '!=', '<>', '>=', '<=', '>', '<', '='],
     ['+', '-'],
@@ -126,7 +126,14 @@ export function splitEplBinaryExpression(expression: string): { left: string; op
       }
       if (depth !== 0) continue;
 
-      const operator = operators.find(candidate => expression.startsWith(candidate, index));
+      const operator = operators.find(candidate => {
+        if (!expression.startsWith(candidate, index)) return false;
+        if (/^[\x20-\x7E]+$/.test(candidate)) return true;
+        // 中文运算符（或/且）必须独立成词：前后都不能是标识符字符，避免拆断「或者标志」这类名字。
+        const before = index > 0 ? expression[index - 1] : '';
+        const after = expression[index + candidate.length] || '';
+        return !/[\p{L}\p{N}_]/u.test(before) && !/[\p{L}\p{N}_]/u.test(after);
+      });
       if (!operator) continue;
       const left = expression.slice(0, index).trim();
       const right = expression.slice(index + operator.length).trim();

@@ -385,6 +385,7 @@
 - 安装预览临时目录：系统临时目录 `lingbuilder-module-previews`
 - 生成输出：`generated/cpp/<projectId>/module-dependencies.txt`、`generated/cpp/<projectId>/<projectId>.sln`、`generated/cpp/<projectId>/<projectId>.vcxproj`
 - LCPP 源码分享包：`.lcpppkg` 会保存每个项目的 `project-modules.json`，并把已启用第三方模块及无命令/无 target 的 SDK 资产模块隔离复制到包内工作区 `.lingbuilder/modules/`；导入不会修改接收者其他工作区的模块安装状态。
+- 默认启用模块补齐（2026-09-18 起）：`ModuleService.readProjectModules` 在读取层为所有非 DLL 项目「只补缺不覆盖」地补上 `DEFAULT_ENABLED_MODULE_IDS`（当前为 `lingbuilder.advanced.process-memory`，并按 BUILTIN 清单自动带上其内置依赖 `lingbuilder.std.buffer`），新项目、旧工作区升级与 CLI 无头构建同时生效；磁盘文件不因补齐而改写。用户显式禁用默认模块时把 ID 持久化到 `project-modules.json` 的可选字段 `optOutDefaultModuleIds`（依赖模块跟随主模块记录），重新启用即清除；`planEnableModulesForProject` 写回时保留该字段。修改补齐语义必须同步 `tests/modules.test.ts` 的默认启用/opt-out 用例与本文。
 
 所有模块 JSON 必须使用 UTF-8 读写。遇到旧文件乱码时，只报告诊断，不要凭终端乱码重写中文文案。
 
@@ -509,6 +510,7 @@ lingbuilder.module.json
 - 新增表达式翻译支持嵌套模块调用，例如 `调试输出(文本_转大写("LingBuilder"))` 会把内层文本参数和 binding 一并确定性翻译为宽字符串 C++。
 - 内置纯系统模块统一补齐 `windows-msvc-win32` 与 `windows-msvc-x64` target；外部 `.lbmod` 仍必须显式提供各架构产物，不允许自动假设二进制兼容。
 - 高风险模块使用 `lingbuilder.advanced.*` 独立 ID，默认不启用；受控内存模块只访问自身登记内存，CPU 指令模块不执行用户机器码，驱动模块不负责安装或提权。
+- 内存加载 DLL（`lingbuilder.advanced.memorydll`，2026-09-17）：把 DLL 字节手工 PE 映射到内存（不落盘），与「项目 DLL 命令声明 · 加载方式 = 内存」组成免落盘分发链路；模块只接受 `字节集` 参数、不暴露裸地址分配接口，声明的内嵌模块禁止手工卸载。已知边界（C++ 异常不派发、SEH 仅 x64、卸载只注销不释放）见 `docs/modules/memorydll/README.md`。
 - 双架构 smoke 工程位于 `.lingbuilder-build/standard-library-smoke-20260723/`，用于同时启用除 EdgeView 外的内置模块并执行 Visual Studio Release 编译。
 
 ## New_Emoji Tabs 外部 HWND 子宿主（2026-07-29）

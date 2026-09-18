@@ -166,7 +166,10 @@ function buildEditMessages(request: AiEditRequest): AiMessage[] {
   const designerInstruction = requiresDesignerProject
     ? '本次需求涉及设计器，designerProject 为必填字段。必须返回当前模型的完整修改后对象，逐项保留所有未修改的窗口、控件、资源、属性和稳定 ID；不能返回 patch、片段或只返回发生变化的控件。'
     : '本次需求不需要修改设计器模型，可以省略 designerProject。';
-  return [...request.messages, { role: 'user', content: `修改要求：${request.instruction}\n\n仅返回 JSON，不要使用 Markdown 代码块：{"files":[{"filePath":"允许的路径","updatedSource":"完整文件"}],"designerProject":{"id":"项目 ID","name":"项目名称","windows":[{"id":"窗口 ID","controls":[{"id":"控件 ID","x":0,"y":0,"width":100,"height":24}]}],"resources":[]}\n\n${designerInstruction}\n设计器项目 ID、窗口 ID、控件 ID 和事件绑定名必须保持稳定；源码和设计器必须描述同一个最终界面。\n\n${request.designerProject ? `--- DESIGNER PROJECT\n${JSON.stringify(request.designerProject)}\n` : ''}${request.files.map(file => `--- FILE ${file.filePath}\n${file.content}`).join('\n\n')}` }];
+  const designerTypeDiscipline = request.designerProject
+    ? '\ncontrols[].type 必须逐字使用 LingBuilder 规则手册「设计器控件类型清单」中的英文标识（区分大小写）；例如编辑框必须写 TextBox，不能写 Edit、Input 或输入框。清单中没有所需控件类型时，选择最接近的合法类型实现，禁止自造类型名。'
+    : '';
+  return [...request.messages, { role: 'user', content: `修改要求：${request.instruction}\n\n仅返回 JSON，不要使用 Markdown 代码块：{"files":[{"filePath":"允许的路径","updatedSource":"完整文件"}],"designerProject":{"id":"项目 ID","name":"项目名称","windows":[{"id":"窗口 ID","controls":[{"id":"控件 ID","type":"TextBox","name":"控件名","content":"文本","x":0,"y":0,"width":100,"height":24}]}],"resources":[]}\n\n${designerInstruction}${designerTypeDiscipline}\n设计器项目 ID、窗口 ID、控件 ID 和事件绑定名必须保持稳定；源码和设计器必须描述同一个最终界面。\n\n${request.designerProject ? `--- DESIGNER PROJECT\n${JSON.stringify(request.designerProject)}\n` : ''}${request.files.map(file => `--- FILE ${file.filePath}\n${file.content}`).join('\n\n')}` }];
 }
 
 export function parseEditDraft(

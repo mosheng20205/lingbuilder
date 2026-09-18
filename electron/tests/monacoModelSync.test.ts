@@ -97,3 +97,66 @@ test('entering canonical LingCpp clears stale native undo even when text already
   assert.equal(setValueCalls, 1);
   assert.deepEqual(nativeUndo, []);
 });
+
+test('canonical LingCpp sync preserves caret across authoritative replacement', () => {
+  let value = 'old value';
+  const setPositions: Array<{ lineNumber: number; column: number }> = [];
+  const setSelections: Array<{ selectionStartLineNumber: number; selectionStartColumn: number; positionLineNumber: number; positionColumn: number }> = [];
+  const result = synchronizeMonacoModelValue({
+    getValue: () => value,
+    setValue: next => {
+      value = next;
+    },
+    getOffsetAt: () => 5,
+    getPositionAt: offset => ({ lineNumber: 2, column: offset + 1 })
+  }, {
+    getSelection: () => ({
+      selectionStartLineNumber: 2,
+      selectionStartColumn: 6,
+      positionLineNumber: 2,
+      positionColumn: 6
+    }),
+    setPosition: position => setPositions.push(position),
+    setSelection: selection => setSelections.push(selection)
+  }, 'brand new content', {
+    authoritative: true,
+    readOnly: false
+  });
+
+  assert.equal(result, 'authoritative');
+  assert.equal(value, 'brand new content');
+  assert.deepEqual(setPositions, [{ lineNumber: 2, column: 6 }]);
+  assert.deepEqual(setSelections, []);
+});
+
+test('canonical LingCpp sync restores a collapsed multi-offset selection', () => {
+  let value = 'old value';
+  const setSelections: Array<{ selectionStartLineNumber: number; selectionStartColumn: number; positionLineNumber: number; positionColumn: number }> = [];
+  synchronizeMonacoModelValue({
+    getValue: () => value,
+    setValue: next => {
+      value = next;
+    },
+    getOffsetAt: position => position.column - 1,
+    getPositionAt: offset => ({ lineNumber: 1, column: offset + 1 })
+  }, {
+    getSelection: () => ({
+      selectionStartLineNumber: 1,
+      selectionStartColumn: 1,
+      positionLineNumber: 1,
+      positionColumn: 9
+    }),
+    setSelection: selection => setSelections.push(selection)
+  }, 'brand new content', {
+    authoritative: true,
+    readOnly: false
+  });
+
+  assert.equal(value, 'brand new content');
+  assert.deepEqual(setSelections, [{
+    selectionStartLineNumber: 1,
+    selectionStartColumn: 1,
+    positionLineNumber: 1,
+    positionColumn: 9
+  }]);
+});

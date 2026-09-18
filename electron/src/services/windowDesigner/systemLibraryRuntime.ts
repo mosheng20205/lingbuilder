@@ -127,6 +127,17 @@ int 系统_取处理器数量() { SYSTEM_INFO info = {}; GetNativeSystemInfo(&in
 long long 系统_取内存总量MB() { MEMORYSTATUSEX info = {}; info.dwLength = sizeof(info); return GlobalMemoryStatusEx(&info) ? static_cast<long long>(info.ullTotalPhys / 1024 / 1024) : -1; }
 long long 系统_取内存可用MB() { MEMORYSTATUSEX info = {}; info.dwLength = sizeof(info); return GlobalMemoryStatusEx(&info) ? static_cast<long long>(info.ullAvailPhys / 1024 / 1024) : -1; }
 const wchar_t* 系统_取环境变量(const wchar_t* name) { DWORD size = GetEnvironmentVariableW(name, nullptr, 0); if (!size) return LB_ReturnText(L""); std::vector<wchar_t> buffer(size); return GetEnvironmentVariableW(name, buffer.data(), size) ? LB_ReturnText(buffer.data()) : LB_ReturnText(L""); }
+// 管理员自检：AllocateAndInitializeSid + CheckTokenMembership（不用已废弃的 IsUserAnAdmin）。
+// 未提权时读取受保护进程会得到 ERROR_ACCESS_DENIED，调用方应据此区分"没权限"与"没有值"。
+bool 系统_是否管理员() {
+    BOOL isAdmin = FALSE;
+    PSID administratorsGroup = nullptr;
+    SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
+    if (!AllocateAndInitializeSid(&ntAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &administratorsGroup)) return false;
+    const BOOL checked = CheckTokenMembership(nullptr, administratorsGroup, &isAdmin);
+    FreeSid(administratorsGroup);
+    return checked == TRUE && isAdmin == TRUE;
+}
 `;
 
 const DISK_RUNTIME = String.raw`
@@ -965,6 +976,7 @@ bool 系统_清空回收站() {
 `;
 
 const PROCESS_RUNTIME = String.raw`
+#include <tlhelp32.h>
 static bool LB_StartProcess(const wchar_t* commandLine, const wchar_t* workingDirectory, PROCESS_INFORMATION& process) {
     std::wstring command = LB_Wide(commandLine); if (command.empty()) return false; std::vector<wchar_t> mutableCommand(command.begin(), command.end()); mutableCommand.push_back(L'\0');
     STARTUPINFOW startup = {}; startup.cb = sizeof(startup); process = {}; return CreateProcessW(nullptr, mutableCommand.data(), nullptr, nullptr, FALSE, 0, nullptr, workingDirectory && workingDirectory[0] ? workingDirectory : nullptr, &startup, &process) == TRUE;
@@ -1033,6 +1045,45 @@ int 程序_上次执行退出码() { return g_lbProcessLastExitCode; }
 int 进程_取当前ID() { return static_cast<int>(GetCurrentProcessId()); }
 bool 进程_是否运行(int processId) { if (processId <= 0) return false; HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, static_cast<DWORD>(processId)); if (!process) return false; const bool running = WaitForSingleObject(process, 0) == WAIT_TIMEOUT; CloseHandle(process); return running; }
 bool 进程_终止(int processId, int exitCode) { if (processId <= 0 || static_cast<DWORD>(processId) == GetCurrentProcessId()) return false; HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(processId)); if (!process) return false; const bool success = TerminateProcess(process, static_cast<UINT>(exitCode)) == TRUE; CloseHandle(process); return success; }
+
+// 按 exe 名枚举进程 ID：Toolhelp 快照 + 不区分大小写比较；同名多实例全部返回。
+// 结果数组元素是十进制 PID 文本，调用前先清空；进程名可带可不带 .exe 后缀，按完整名匹配。
+static std::wstring LB_ProcessNormalizeName(const wchar_t* name) {
+    std::wstring value = LB_Wide(name);
+    const size_t lastDot = value.find_last_of(L'.');
+    if (lastDot != std::wstring::npos) {
+        std::wstring extension = value.substr(lastDot);
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::towlower);
+        if (extension == L".exe") value = value.substr(0, lastDot);
+    }
+    std::transform(value.begin(), value.end(), value.begin(), ::towlower);
+    return value;
+}
+int 进程_按名称取ID列表(const wchar_t* processName, std::vector<std::wstring>& out) {
+    out.clear();
+    const std::wstring wanted = LB_ProcessNormalizeName(processName);
+    if (wanted.empty()) return 0;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (LB_ProcessNormalizeName(entry.szExeFile) == wanted) out.push_back(std::to_wstring(static_cast<long long>(entry.th32ProcessID)));
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return static_cast<int>(out.size());
+}
+const wchar_t* 进程_按名称取ID列表JSON(const wchar_t* processName) {
+    std::vector<std::wstring> ids;
+    const int count = 进程_按名称取ID列表(processName, ids);
+    if (count == 0) return LB_ReturnText(L"[]");
+    std::wstring json = L"[";
+    for (size_t index = 0; index < ids.size(); ++index) { if (index) json += L","; json += L"\"" + ids[index] + L"\""; }
+    json += L"]";
+    return LB_ReturnText(std::move(json));
+}
 `;
 
 const KEYBOARD_RUNTIME = String.raw`

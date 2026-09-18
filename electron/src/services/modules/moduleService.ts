@@ -25,6 +25,10 @@ const MODULE_SOURCES_FILE = 'module-sources.json';
 const MODULE_HISTORY_FILE = 'module-history.json';
 const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 const BASIC_MODULE_ID = 'lingbuilder.win32.basic';
+// 新项目默认启用的内置模块（基础模块之外的增量）：
+// 旧工作区/旧项目在读取层“只补缺不覆盖”地补上（参照 DesktopWorkspaceService.ensureBundledModules 语义），
+// 用户显式禁用过的 ID 记录在 project-modules.json 的 optOutDefaultModuleIds，不会被再次自动打开。
+const DEFAULT_ENABLED_MODULE_IDS = ['lingbuilder.advanced.process-memory'];
 // These resources belong to a project and must never be exposed as installable
 // modules. Keeping the filter here also migrates older project refs in memory.
 const PROJECT_RESOURCE_MODULE_IDS = new Set(['lingbuilder.browser.doubao-downloader']);
@@ -160,7 +164,8 @@ export class ModuleService {
     const nextRefs: LingBuilderProjectModules = {
       schemaVersion: refs.schemaVersion,
       enabledModuleIds: [...refs.enabledModuleIds],
-      pinnedVersions: { ...refs.pinnedVersions }
+      pinnedVersions: { ...refs.pinnedVersions },
+      ...(refs.optOutDefaultModuleIds ? { optOutDefaultModuleIds: [...refs.optOutDefaultModuleIds] } : {})
     };
     const requestedModuleIds = [...new Set(moduleIds)];
     const orderedModuleIds = resolveModuleDependencyOrder(requestedModuleIds, installedById);
@@ -179,6 +184,10 @@ export class ModuleService {
       addedModuleIds.push(moduleId);
     }
     assertNoModuleCompatibilityConflicts(modules, nextRefs.enabledModuleIds);
+    // 显式启用的模块如果此前被记为“默认模块已禁用”，这里一并清除该记录。
+    if (nextRefs.optOutDefaultModuleIds?.length) {
+      nextRefs.optOutDefaultModuleIds = nextRefs.optOutDefaultModuleIds.filter(moduleId => !nextRefs.enabledModuleIds.includes(moduleId));
+    }
     return {
       projectId,
       targetPath: this.projectModulesPath(projectId),
@@ -240,6 +249,13 @@ export class ModuleService {
     const removed = new Set(plan.removedModuleIds);
     refs.enabledModuleIds = refs.enabledModuleIds.filter(id => !removed.has(id));
     plan.removedModuleIds.forEach(id => delete refs.pinnedVersions[id]);
+    // 默认启用模块被显式禁用后要记入 opt-out，否则下次读取会被自动补回。
+    // 级联连带移除的默认模块同样记录，保证依赖关系不被“补缺”逻辑重新拼回来。
+    const optOut = new Set(refs.optOutDefaultModuleIds || []);
+    for (const removedModuleId of plan.removedModuleIds) {
+      if (DEFAULT_ENABLED_MODULE_IDS.includes(removedModuleId)) optOut.add(removedModuleId);
+    }
+    refs.optOutDefaultModuleIds = [...optOut];
     await this.writeProjectModules(projectId, refs);
     for (const removedModuleId of plan.removedModuleIds) {
       await this.appendHistory({
@@ -462,6 +478,28 @@ export class ModuleService {
     refs.enabledModuleIds = refs.enabledModuleIds.filter(moduleId => !PROJECT_RESOURCE_MODULE_IDS.has(moduleId));
     if (!isWindowsDll && !refs.enabledModuleIds.includes(BASIC_MODULE_ID)) refs.enabledModuleIds.unshift(BASIC_MODULE_ID);
     refs.pinnedVersions ||= {};
+    // 默认启用模块补齐：只补缺不覆盖；被用户显式禁用过的默认模块跳过，
+    // 但其内置依赖跟随主模块一起补齐（如 进程内存模块 依赖 缓冲区模块），保证生成的 C++ 运行时完整。
+    if (!isWindowsDll) {
+      const optOut = new Set(refs.optOutDefaultModuleIds || []);
+      const ensureModuleIds = new Set<string>();
+      for (const moduleId of DEFAULT_ENABLED_MODULE_IDS) {
+        if (optOut.has(moduleId)) continue;
+        ensureModuleIds.add(moduleId);
+        const manifest = BUILTIN_MODULES.find(item => item.id === moduleId);
+        for (const dependency of manifest?.dependencies || []) {
+          if (BUILTIN_MODULES.some(item => item.id === dependency.moduleId)) ensureModuleIds.add(dependency.moduleId);
+        }
+      }
+      for (const moduleId of ensureModuleIds) {
+        if (!refs.enabledModuleIds.includes(moduleId)) refs.enabledModuleIds.push(moduleId);
+        refs.pinnedVersions[moduleId] ||= BUILTIN_MODULES.find(item => item.id === moduleId)?.version || '1.0.0';
+      }
+      // 已启用的 ID 视为未禁用：清理过期 opt-out，避免“启用后仍被记为禁用”的矛盾状态。
+      if (refs.optOutDefaultModuleIds?.length) {
+        refs.optOutDefaultModuleIds = refs.optOutDefaultModuleIds.filter(moduleId => !refs.enabledModuleIds.includes(moduleId));
+      }
+    }
     for (const moduleId of PROJECT_RESOURCE_MODULE_IDS) delete refs.pinnedVersions[moduleId];
     if (!isWindowsDll) refs.pinnedVersions[BASIC_MODULE_ID] ||= '1.0.0';
     return refs;

@@ -29,6 +29,7 @@ import {
   migrateLegacyNewEmojiTableProperties,
   normalizeDataGridModel
 } from './dataGridModel';
+import { hasLegacyEmbeddedFiles, migrateLegacyEmbeddedFiles } from './embeddedResourceMigration';
 
 export const WINDOW_DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
 const WINDOW_DESIGNER_SELECTION_KEY_SUFFIX = '.selection.v1';
@@ -729,8 +730,13 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
   const cachedProject = normalizedProjectCache.get(sourceProject);
   if (cachedProject) return resolveNormalizedWindowDesignerState(cachedProject, state);
 
-  let projectChanged = sourceProject.schemaVersion !== 2 || !Array.isArray(sourceProject.resources);
-  const normalizedWindows = sourceProject.windows.map(window => {
+  // 旧「窗口内嵌文件」清单在这里迁移到项目级内嵌资源（启动释放），随后按常规流程归一化。
+  const legacyEmbeddedMigration = hasLegacyEmbeddedFiles(sourceProject)
+    ? migrateLegacyEmbeddedFiles(sourceProject as LingWindowProject)
+    : undefined;
+  const migratedProject = legacyEmbeddedMigration ? legacyEmbeddedMigration.project : sourceProject;
+  let projectChanged = legacyEmbeddedMigration !== undefined || migratedProject.schemaVersion !== 2 || !Array.isArray(migratedProject.resources);
+  const normalizedWindows = migratedProject.windows.map(window => {
     const menuFont = normalizeControlFont({
       fontFamily: window.menuFontFamily,
       fontSize: window.menuFontSize ?? 11,
@@ -846,7 +852,9 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       controls
     };
   });
-  const project = projectChanged ? { ...sourceProject, schemaVersion: 2 as const, resources: sourceProject.resources || [], windows: normalizedWindows } : sourceProject;
+  const project = projectChanged
+    ? { ...migratedProject, schemaVersion: 2 as const, resources: migratedProject.resources || [], windows: normalizedWindows }
+    : sourceProject;
   normalizedProjectCache.set(sourceProject, project);
   if (project !== sourceProject) normalizedProjectCache.set(project, project);
   return resolveNormalizedWindowDesignerState(project, state);

@@ -87,7 +87,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     });
     await client.connect(transport);
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 19);
+    assert.equal(tools.tools.length, 23);
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.project.create'));
     for (const moduleName of ['lingbuilder.module.scaffold', 'lingbuilder.module.writeFiles', 'lingbuilder.module.validate', 'lingbuilder.module.pack', 'lingbuilder.module.installPreview', 'lingbuilder.module.install']) {
@@ -100,6 +100,12 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.ok(moduleInstallRequired.includes('previewId') && moduleInstallRequired.includes('projectId'), 'module.install 必须要求 previewId 与 projectId');
     const projectCreateTool = tools.tools.find(tool => tool.name === 'lingbuilder.project.create');
     assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('new-emoji-fbro-browser-shell'));
+    assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('sqlite-crud-window'));
+    assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.module.info'), '缺少 lingbuilder.module.info 工具');
+    assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.build.stop'), '缺少 lingbuilder.build.stop 工具');
+    assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.run.wait'), '缺少 lingbuilder.run.wait 工具');
+    assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.run.log'), '缺少 lingbuilder.run.log 工具');
+    assert.ok(String(client.getInstructions() || '').includes('lingbuilder.project.create'), 'MCP 服务器必须提供窗口应用工作流 instructions');
     const editTool = tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose');
     const editProperties = (editTool?.inputSchema as any)?.properties || {};
     assert.ok(editProperties.workspaceFiles, 'MCP edit.propose must accept current multi-file contents');
@@ -352,7 +358,9 @@ test('AI Bridge project creation inherits the workspace module manifest when omi
   const saved = JSON.parse(await fs.readFile(projectModulePath, 'utf8')) as { enabledModuleIds: string[] };
   assert.ok(saved.enabledModuleIds.includes('lingbuilder.win32.common-controls'));
   const modules = await writeService.listModules('inherit-modules');
-  assert.ok(modules.enabledModules.some(module => module.manifest.id === 'lingbuilder.win32.common-controls'));
+  assert.ok(modules.enabledModules.some(module => module.id === 'lingbuilder.win32.common-controls'));
+  assert.ok(modules.availableModules.every(module => typeof module === 'string'), '未启用模块必须是一行紧凑摘要');
+  assert.ok(String(modules.hint).includes('lingbuilder.module.info'));
 
   const undone = await writeService.undoProjectCreate(created.result!.receipt.receiptId, true);
   assert.equal(undone.projectId, 'inherit-modules');
@@ -1445,7 +1453,206 @@ test('AI Bridge diagnostics and modules use LingCpp module context', async () =>
   const modules = await service.listModules();
   assert.equal(modules.ok, true);
   assert.ok(Array.isArray(modules.availableModules));
-  assert.equal(typeof modules.summary, 'string');
+});
+
+test('AI Bridge modules.list returns slim summaries and module.info returns full command docs', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    const list = await service.listModules();
+    assert.equal(list.ok, true);
+    assert.ok(list.availableModules.length > 0);
+    assert.ok(list.availableModules.every(module => typeof module === 'string'),
+      '未启用模块只能是一行紧凑摘要，完整 manifest 会撑爆外部 AI 上下文');
+    assert.ok(list.enabledModules.every(module => typeof module.commandCount === 'number' && !('manifest' in module)));
+    assert.ok(String(list.hint).includes('lingbuilder.module.info'));
+
+    const info = await service.getModuleInfo({ moduleId: 'lingbuilder.database.sqlite' });
+    assert.equal(info.ok, true);
+    assert.equal(info.id, 'lingbuilder.database.sqlite');
+    const openCommand = info.commands.find(command => command.name === 'SQLite_打开连接');
+    assert.ok(openCommand, 'module.info 必须返回 SQLite_打开连接 的完整说明');
+    assert.match(openCommand.signature, /数据库路径/u);
+    assert.ok(openCommand.parameters.length >= 3);
+    assert.ok(openCommand.parameters.every(parameter => parameter.description.length > 0));
+
+    const filtered = await service.getModuleInfo({ moduleId: 'lingbuilder.database.sqlite', query: '绑定' });
+    assert.ok(filtered.commands.length > 0);
+    assert.ok(filtered.commands.length < info.commands.length);
+    assert.ok(filtered.commands.every(command => command.name.includes('绑定') || command.description.includes('绑定')));
+
+    await assert.rejects(
+      service.getModuleInfo({ moduleId: '' }),
+      /必须提供要查询的 moduleId/u
+    );
+    await assert.rejects(
+      service.getModuleInfo({ moduleId: 'lingbuilder.not.exists' }),
+      /未找到模块/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge sqlite-crud template creates a complete project with clean diagnostics', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'sqlite-crud-token'));
+  try {
+    const created = await service.createProject({
+      name: '会员管理',
+      projectId: 'member-crud',
+      templateId: 'sqlite-crud-window',
+      openInWorkbench: false,
+      approved: true
+    });
+    assert.equal(created.applied, true);
+    const designer = created.result?.designerProject;
+    assert.ok(designer, 'sqlite-crud-window 必须返回设计器模型');
+    const controls = designer.windows[0].controls;
+    assert.ok(controls.some(control => control.type === 'ListView' && control.name === '会员列表'));
+    assert.ok(controls.some(control => control.name === '新增按钮' && control.events?.Click === '_新增按钮_被单击'));
+    const savedModules = JSON.parse(await fs.readFile(
+      path.join(workspaceRoot, '.lingbuilder', 'projects', 'member-crud', 'project-modules.json'), 'utf8'
+    )) as { enabledModuleIds: string[] };
+    assert.ok(savedModules.enabledModuleIds.includes('lingbuilder.database.sqlite'));
+
+    const sourcePath = created.result!.navigation.filePath;
+    assert.equal(sourcePath, 'src/member-crud/MainWindow.lcpp');
+    const sourceOnDisk = await fs.readFile(path.join(workspaceRoot, 'src', 'member-crud', 'MainWindow.lcpp'), 'utf8');
+    assert.match(sourceOnDisk, /SQLite_打开连接/u);
+    assert.match(sourceOnDisk, /列表视图_添加行/u);
+
+    const diagnostics = await service.getLingCppDiagnostics({ filePath: sourcePath, projectId: 'member-crud' });
+    const errors = diagnostics.diagnostics.filter(diagnostic => diagnostic.level === 'error');
+    assert.equal(errors.length, 0, `模板源码不应有错误诊断：${JSON.stringify(diagnostics.diagnostics)}`);
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge edit.propose auto-reads workspace files and supports creating new files', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'auto-workspace-token'));
+  try {
+    await fs.mkdir(path.join(workspaceRoot, 'src', 'auto-edit'), { recursive: true });
+    const existingRelative = 'src/auto-edit/MainWindow.lcpp';
+    const existingSource = '类 MainWindow\n    事件 创建完毕()\n        调试输出("起点")\n    结束\n结束类\n';
+    await fs.writeFile(path.join(workspaceRoot, existingRelative), existingSource, 'utf8');
+
+    // 不传 workspaceFiles：服务端自动读盘；新文件按空基准创建。
+    const newFileRelative = 'src/auto-edit/会员数据类型.lcpp';
+    const proposal = await service.proposeEdit({
+      filePath: existingRelative,
+      instruction: '新增数据类型文件并调整主源码',
+      files: [
+        { filePath: existingRelative, updatedSource: `${existingSource}// 已由 AI 更新\n` },
+        { filePath: newFileRelative, updatedSource: '版本 1\n\n类型 会员信息\n' }
+      ]
+    });
+    const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+    assert.equal(applied.ok, true);
+    const newFileOnDisk = await fs.readFile(path.join(workspaceRoot, newFileRelative), 'utf8');
+    assert.match(newFileOnDisk, /会员信息/u);
+    const existingOnDisk = await fs.readFile(path.join(workspaceRoot, existingRelative), 'utf8');
+    assert.match(existingOnDisk, /已由 AI 更新/u);
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge edit.propose rejects draft files without a workspace baseline instead of dropping them', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    await fs.mkdir(path.join(workspaceRoot, 'src'), { recursive: true });
+    await fs.writeFile(path.join(workspaceRoot, 'src', 'main.lcpp'), '类 Main\n结束类\n', 'utf8');
+    await assert.rejects(
+      service.proposeEdit({
+        filePath: 'src/main.lcpp',
+        instruction: '尝试修改一个未提供基准的文件',
+        workspaceFiles: [{ filePath: 'src/main.lcpp', sourceCode: '类 Main\n结束类\n' }],
+        files: [{ filePath: 'src/other.lcpp', updatedSource: '类 Other\n结束类\n' }]
+      }),
+      /没有对应的当前工作区内容/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge external-AI proposals stay source-only even with layout keywords in the instruction', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    await fs.mkdir(path.join(workspaceRoot, 'src'), { recursive: true });
+    const source = [
+      '类 Main',
+      '    事件 创建完毕()',
+      '        调试输出("起点")',
+      '    结束',
+      '结束类'
+    ].join('\n');
+    await fs.writeFile(path.join(workspaceRoot, 'src', 'main.lcpp'), source, 'utf8');
+    // 指令包含「控件」等布局词，但外部 AI 只改源码：不得被「涉及布局但缺设计器模型」误拦。
+    const proposal = await service.proposeEdit({
+      filePath: 'src/main.lcpp',
+      instruction: '修复控件引用文案并补充调试输出',
+      files: [{ filePath: 'src/main.lcpp', updatedSource: `${source}// 控件引用说明已补充\n` }]
+    });
+    assert.ok(proposal.proposal.id);
+    assert.equal(proposal.proposal.designerChanged, false);
+    const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+    assert.equal(applied.ok, true);
+    assert.equal(applied.appliedFiles.length, 1);
+    assert.ok(applied.appliedFiles[0].bytes > 0, 'apply 响应携带文件元数据');
+    assert.match(applied.message || '', /已应用/u);
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge run control tools respond gracefully without a running process', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    const stopped = await service.stopRun('no-such-project');
+    assert.equal(stopped.found, false);
+    const waited = await service.waitForRun('no-such-project', 1);
+    assert.equal(waited.found, false);
+    const log = await service.readRunLog('no-such-project');
+    assert.equal(log.ok, false);
+    assert.match(log.message, /还没有受控运行记录/u);
+    await assert.rejects(
+      service.stopRun(''),
+      /必须提供要停止运行的项目 ID/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge diagnostics point external AI to the module that provides an unknown type', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    const sourceCode = [
+      '类 Main',
+      '    事件 创建完毕()',
+      '        局部 SQLite连接 数据库 = 0',
+      '    结束',
+      '结束类'
+    ].join('\n');
+    const result = await service.getLingCppDiagnostics({
+      filePath: 'src/main.lcpp',
+      sourceCode
+    });
+    const unknown = result.diagnostics.find(d => d.level === 'error' && d.message.includes('使用了未知类型') && d.message.includes('SQLite连接'));
+    assert.ok(unknown, '未知类型必须报错');
+    assert.match(unknown.suggestion, /lingbuilder\.database\.sqlite/u, '建议必须指明提供该类型的模块 ID');
+    assert.match(unknown.suggestion, /project-modules\.json/u, '建议必须给出启用路径');
+  } finally {
+    await service.shutdown();
+  }
 });
 
 test('AI Bridge diagnostics preserve typed runtime control reference errors', async () => {

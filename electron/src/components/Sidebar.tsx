@@ -71,7 +71,8 @@ import { isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalServi
 import { isProjectDllCommandsFilePath } from '../services/lingCpp/projectDllCommandService';
 import type { CommandService } from '../services/commands/commandService';
 import { getMenuService } from '../services/menus/menuService';
-import { SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../services/menus/types';
+import { SOLUTION_EMBEDDED_RESOURCE_CONTEXT_MENU, SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../services/menus/types';
+import { isEmbeddedResourceSourceOpenable } from '../services/windowDesigner/embeddedResourceActions';
 import {
   MOVE_PROJECT_TO_SOLUTION_FOLDER_COMMAND,
   RENAME_SOLUTION_PROJECT_COMMAND,
@@ -96,6 +97,8 @@ type SolutionContextMenu =
   | { x: number; y: number; target: 'solution' }
   | { x: number; y: number; target: 'project'; project: SolutionProject };
 type ResourceContextMenu = { x: number; y: number; resource: DesignerImageResource };
+/** 内嵌资源条目右键菜单：携带逻辑名与源文件，供命令直接使用。 */
+type EmbeddedResourceContextMenu = { x: number; y: number; name: string; file: string };
 type ResourcePreview = { projectId: string; resource: DesignerImageResource };
 type SolutionTreeItem =
   | { kind: 'folder'; folder: SolutionFolder }
@@ -200,6 +203,7 @@ interface SidebarProps {
   onToggleMultiStartupProject?: (projectId: string) => void | Promise<void>;
   onConfigureExternalProject?: (projectId: string) => void | Promise<void>;
   onConfigureBuildPaths?: (projectId: string) => void | Promise<void>;
+  onConfigureEmbeddedResources?: (projectId: string) => void | Promise<void>;
   onDeleteProject?: (projectId: string, deleteFiles: boolean) => void | Promise<void>;
   onSolutionCommand?: (command: 'build' | 'clean' | 'rebuild', projectId?: string) => void | Promise<void>;
   onCloseSolution?: () => void | Promise<void>;
@@ -253,6 +257,7 @@ export default function Sidebar({
   onToggleMultiStartupProject,
   onConfigureExternalProject,
   onConfigureBuildPaths,
+  onConfigureEmbeddedResources,
   onDeleteProject,
   onSolutionCommand,
   onCloseSolution,
@@ -283,6 +288,7 @@ export default function Sidebar({
   const [moduleContextMenu, setModuleContextMenu] = useState<ModuleContextMenu | null>(null);
   const [solutionContextMenu, setSolutionContextMenu] = useState<SolutionContextMenu | null>(null);
   const [resourceContextMenu, setResourceContextMenu] = useState<ResourceContextMenu | null>(null);
+  const [embeddedResourceContextMenu, setEmbeddedResourceContextMenu] = useState<EmbeddedResourceContextMenu | null>(null);
   const [resourcePreview, setResourcePreview] = useState<ResourcePreview | null>(null);
   const [designerState, setDesignerState] = useState(() => readWindowDesignerState());
 
@@ -293,6 +299,7 @@ export default function Sidebar({
       setModuleContextMenu(null);
       setSolutionContextMenu(null);
       setResourceContextMenu(null);
+      setEmbeddedResourceContextMenu(null);
     };
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
@@ -312,6 +319,7 @@ export default function Sidebar({
   }, [commandService]);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
   const [isFunctionLibraryOpen, setIsFunctionLibraryOpen] = useState(true);
+  const [isEmbeddedResourcesOpen, setIsEmbeddedResourcesOpen] = useState(true);
   const [isWindowsOpen, setIsWindowsOpen] = useState(true);
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   const [isProjectModulesOpen, setIsProjectModulesOpen] = useState(true);
@@ -363,14 +371,20 @@ export default function Sidebar({
   );
   const srcFiles = files.filter(f => f.path.startsWith('src/') && includesSearch(f.name, f.path));
   const functionLibraryFiles = files.filter(file => file.language === 'lingcpp' && includesSearch(file.name, file.path) && isFunctionLibrarySource(file.translatedContent || file.originalContent));
+  const designerStateMatchesActiveProject = designerState.project.id === activeSolutionProjectId;
+  // 项目级内嵌资源清单：与设计器「窗口属性 → 项目 / 内嵌资源」面板消费同一份模型数据。
+  const activeEmbeddedResources = designerStateMatchesActiveProject ? designerState.project.embeddedResources || [] : [];
+  const embeddedResourceSourcePaths = new Set(activeEmbeddedResources.map(resource => resource.file));
+  const projectEmbeddedResources = activeEmbeddedResources.filter(resource => includesSearch(resource.name, resource.file));
   const regularSrcFiles = srcFiles.filter(file =>
     !functionLibraryFiles.includes(file)
     // 项目固定结构文件（项目全局变量/项目数据类型/项目DLL命令）由解决方案树顶部的固定入口展示，不在 src 目录下重复列出。
     && !isProjectGlobalsFilePath(file.path)
     && !isProjectDataTypesFilePath(file.path)
-    && !isProjectDllCommandsFilePath(file.path));
+    && !isProjectDllCommandsFilePath(file.path)
+    // 已声明为内嵌资源的源文件由「内嵌资源」组统一展示（同一文件不在两处重复出现）。
+    && !embeddedResourceSourcePaths.has(file.path));
   const configFiles = files.filter(f => f.path.startsWith('config/') && includesSearch(f.name, f.path));
-  const designerStateMatchesActiveProject = designerState.project.id === activeSolutionProjectId;
   const designerWindows = (designerStateMatchesActiveProject ? designerState.project.windows : []).filter(windowModel => includesSearch(
     windowModel.title,
     windowModel.fileName,
@@ -1410,6 +1424,62 @@ export default function Sidebar({
     );
   };
 
+  /**
+   * 内嵌资源条目右键菜单：菜单项一律来自 MenuService 贡献（solution/embeddedResource/context），
+   * 动作经 CommandService 执行 —— 复制逻辑名（写 资源_* 调用最常用）、复制源文件路径、打开源文件、打开配置对话框。
+   */
+  const renderEmbeddedResourceContextMenu = () => {
+    if (!embeddedResourceContextMenu) return null;
+    const { name, file } = embeddedResourceContextMenu;
+    const sourceFile = files.find(candidate => candidate.path === file);
+    const context = {
+      'workspace.open': Boolean(solution),
+      'embeddedResource.name': name,
+      'embeddedResource.file': file,
+      // 只按扩展名判断（文件列表异步加载，用它判断会让「打开源文件」一闪一没）；命令侧对未加载的文本文件仍有中文兜底。
+      'embeddedResource.openable': isEmbeddedResourceSourceOpenable(file)
+    };
+    const items = getMenuService(commandService).resolveMenu(SOLUTION_EMBEDDED_RESOURCE_CONTEXT_MENU, context, { includeDisabled: true });
+    if (items.length === 0) return null;
+    return (
+      <div
+        style={{ top: `${embeddedResourceContextMenu.y}px`, left: `${embeddedResourceContextMenu.x}px` }}
+        className={`fixed z-[9999] min-w-[210px] py-1 rounded shadow-lg border text-xs select-none font-sans ${
+          isDarkMode ? 'bg-[#252526] border-[#454545] text-slate-200' : 'bg-white border-slate-250 text-slate-800'
+        }`}
+        onClick={() => setEmbeddedResourceContextMenu(null)}
+      >
+        <div className={`px-3 py-1 text-[10px] font-mono ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{name}</div>
+        {items.map(item => item.kind === 'separator' ? (
+          <div key={item.id} className="my-1 h-[1px] bg-slate-700/20 dark:bg-slate-700/50" />
+        ) : item.kind === 'command' ? (
+          <div
+            key={item.id}
+            title={item.command.description}
+            className={`flex items-center gap-2 px-3 py-1.5 transition-colors ${
+              item.command.enabled ? 'cursor-pointer hover:bg-blue-500 hover:text-white' : 'cursor-not-allowed opacity-50'
+            }`}
+            onClick={() => {
+              if (!item.command.enabled) return;
+              setEmbeddedResourceContextMenu(null);
+              void commandService.executeCommand(item.command.id, context, { name, file })
+                .then(ok => {
+                  if (ok === false) triggerError('内嵌资源命令未执行完成，详见输出面板。');
+                })
+                .catch((error: unknown) => triggerError(error instanceof Error ? error.message : '内嵌资源命令执行失败。'));
+            }}
+          >
+            {item.command.id.endsWith('copyEmbeddedResourceName') ? <Copy className="w-3.5 h-3.5 text-sky-400" />
+              : item.command.id.endsWith('copyEmbeddedResourceSource') ? <Copy className="w-3.5 h-3.5 text-emerald-400" />
+              : item.command.id.endsWith('openEmbeddedResourceSource') ? <FileText className="w-3.5 h-3.5 text-blue-400" />
+              : <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />}
+            <span className="truncate">{item.command.title}</span>
+          </div>
+        ) : null)}
+      </div>
+    );
+  };
+
   const renderResourceContextMenu = () => {
     if (!resourceContextMenu) return null;
     const resource = resourceContextMenu.resource;
@@ -2176,6 +2246,82 @@ export default function Sidebar({
                         )}
                       </div>}
 
+                      {/* Project embedded resources group */}
+                      {isProjectOpen && <div className="pl-6 mt-1.5">
+                        <div
+                          onClick={() => setIsEmbeddedResourcesOpen(!isEmbeddedResourcesOpen)}
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                            isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                          title="构建期以 RCDATA 打进 EXE 的项目内嵌资源（跨窗口共享），运行期用 资源_* 命令按逻辑名读取"
+                        >
+                          {isEmbeddedResourcesOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          <Package className="w-4 h-4 text-amber-500" />
+                          <span className="truncate">内嵌资源</span>
+                          <span className={`ml-auto text-[9px] px-1 rounded border ${
+                            isDarkMode ? 'border-amber-500/20 text-amber-300 bg-amber-500/5' : 'border-amber-200 text-amber-700 bg-amber-50'
+                          }`}>
+                            {projectEmbeddedResources.length}
+                          </span>
+                        </div>
+                        {isEmbeddedResourcesOpen && (
+                          <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
+                            <button
+                              onClick={() => void onConfigureEmbeddedResources?.(project.id)}
+                              disabled={!designerStateMatchesActiveProject}
+                              className={`w-[calc(100%-4px)] ml-1 mb-1 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-sans text-left cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                isDarkMode
+                                  ? 'text-amber-300 hover:text-amber-100 hover:bg-amber-500/10 border border-amber-500/20'
+                                  : 'text-amber-700 hover:text-amber-900 hover:bg-amber-50 border border-amber-200'
+                              }`}
+                              title="打开窗口设计器的内嵌资源面板：添加文件/文件夹、改逻辑名、勾选启动释放"
+                            >
+                              <SlidersHorizontal className="w-3.5 h-3.5" />
+                              <span className="truncate">配置项目内嵌资源</span>
+                            </button>
+                            {projectEmbeddedResources.length === 0 ? (
+                              <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">
+                                {designerStateMatchesActiveProject
+                                  ? (normalizedFileSearch ? '未找到匹配资源' : '暂无内嵌资源，点上方「配置项目内嵌资源」添加')
+                                  : '正在载入当前项目资源…'}
+                              </div>
+                            ) : (
+                              projectEmbeddedResources.map(resource => {
+                                const sourceFile = files.find(candidate => candidate.path === resource.file);
+                                return (
+                                  <div
+                                    key={resource.name}
+                                    onClick={() => { if (sourceFile) onSelectFile(sourceFile); else void onConfigureEmbeddedResources?.(project.id); }}
+                                    onContextMenu={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      setContextMenu(null);
+                                      setWindowContextMenu(null);
+                                      setModuleContextMenu(null);
+                                      setSolutionContextMenu(null);
+                                      setResourceContextMenu(null);
+                                      setEmbeddedResourceContextMenu({ x: event.clientX, y: event.clientY, name: resource.name, file: resource.file });
+                                    }}
+                                    className={`group w-full flex items-center gap-2 py-1.5 px-3 pl-7 text-[13px] cursor-pointer transition-colors font-sans ${
+                                      isDarkMode ? 'text-[#CCCCCC] hover:bg-[#2A2D2E] hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                                    }`}
+                                    title={`逻辑名：${resource.name}\n源文件：${resource.file}${resource.extract === true ? '\n启动释放：程序启动时释放到 %TEMP%\\lingbuilder-embedded\\<工程 ID>\\' : ''}\n${sourceFile ? '单击打开源文件' : '源文件不是文本文件：单击打开内嵌资源配置对话框'}`}
+                                  >
+                                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${resource.extract === true ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                                    <span className="min-w-0 flex-1 truncate">{resource.name}</span>
+                                    {resource.extract === true && (
+                                      <span className={`shrink-0 rounded px-1 text-[9px] ${
+                                        isDarkMode ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
+                                      }`}>启动释放</span>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>}
+
                       {/* Project function libraries */}
                       {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
@@ -2562,6 +2708,7 @@ export default function Sidebar({
       {renderWindowContextMenu()}
       {renderSolutionContextMenu()}
       {renderResourceContextMenu()}
+      {renderEmbeddedResourceContextMenu()}
       {renderModuleContextMenu()}
       {resourcePreview && (
         <ImageResourcePreviewDialog

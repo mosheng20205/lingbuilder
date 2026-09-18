@@ -138,9 +138,10 @@ export interface AiBridgeProjectTemplatesResponse {
 }
 
 export interface AiBridgeEditApplyResult {
-  proposal: WorkspaceEditProposal;
-  appliedFiles: Array<{ filePath: string; sourceCode: string; absolutePath?: string }>;
-  designerProject?: LingWindowProject;
+  /** 已应用文件的元数据；文件完整内容以工作区磁盘为准，不随响应回传。 */
+  appliedFiles: Array<{ filePath: string; bytes: number }>;
+  designerProjectId?: string;
+  message?: string;
 }
 
 export interface AiBridgeModuleScaffoldRequest {
@@ -176,5 +177,26 @@ export interface AiBridgeModuleInstallRequest {
   projectId?: string;
   enableForProject?: boolean;
   approved?: boolean;
+}
+
+export interface AiBridgeModuleInfoRequest {
+  moduleId?: string;
+  projectId?: string;
+  query?: string;
+  includeAdvanced?: boolean;
+}
+
+export interface AiBridgeBuildStopRequest {
+  projectId?: string;
+}
+
+export interface AiBridgeRunWaitRequest {
+  projectId?: string;
+  timeoutSeconds?: number;
+}
+
+export interface AiBridgeRunLogRequest {
+  projectId?: string;
+  tailLines?: number;
 }
 

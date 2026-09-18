@@ -24,6 +24,7 @@ const RETURN_LABELS: Record<ModuleBindingValueType, string> = {
   int: '整数型',
   longLong: '长整数型',
   double: '双精度小数型',
+  float: '单精度小数型',
   bool: '逻辑型',
   wideString: '文本型',
   utf8String: '文本型',

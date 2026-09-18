@@ -132,6 +132,15 @@ export function getLingCppControlReferences(
   filePath?: string
 ): LingCppControlReference[] {
   if (!moduleContext) return [];
+  let byKey = controlReferencesCache.get(moduleContext);
+  if (!byKey) {
+    byKey = new Map();
+    controlReferencesCache.set(moduleContext, byKey);
+  }
+  const cacheKey = `${filePath || ''}\u0000${source}`;
+  const cached = byKey.get(cacheKey);
+  if (cached && cached.project === project) return cached.references;
+
   const bindings = buildBindingIndex(moduleContext);
   const lineStarts = getLineStarts(source);
   const parsed = parseLingCpp(source);
@@ -146,7 +155,7 @@ export function getLingCppControlReferences(
       ? getLingCppControlSymbols(project, source, filePath, 'currentWindow', moduleContext, sourceClassNames)
       : []
   };
-  return parseInvocations(source).flatMap(invocation => {
+  const references = parseInvocations(source).flatMap(invocation => {
     const resolvedBinding = bindings.get(normalizeIdentifier(invocation.name));
     if (!resolvedBinding) return [];
     return (resolvedBinding.binding.parameters || []).flatMap((parameter, parameterIndex) => {
@@ -166,6 +175,13 @@ export function getLingCppControlReferences(
       )];
     });
   });
+  byKey.set(cacheKey, { project, references });
+  while (byKey.size > CONTROL_REFERENCES_CACHE_LIMIT) {
+    const oldest = byKey.keys().next().value;
+    if (oldest === undefined) break;
+    byKey.delete(oldest);
+  }
+  return references;
 }
 
 export function getLingCppControlReferenceAtPosition(
@@ -519,7 +535,17 @@ function describeControlKind(kind: string): string {
   return kind;
 }
 
+/** 绑定索引按 moduleContext 引用缓存：new_emoji 单模块就有 8000+ 条命令，重建一次是滚动卡顿的主因。 */
+const bindingIndexCache = new WeakMap<LingCppModuleContext, Map<string, ResolvedBinding>>();
+
+/** 控件引用解析结果缓存：键为「设计器模型引用 + moduleContext 引用 + 文件 + 源码」，
+ *  Monaco 的 provider 会在滚动/可见区变化时反复查询同一份未改动源码。 */
+const controlReferencesCache = new WeakMap<LingCppModuleContext, Map<string, { project?: LingWindowProject; references: LingCppControlReference[] }>>();
+const CONTROL_REFERENCES_CACHE_LIMIT = 6;
+
 function buildBindingIndex(moduleContext: LingCppModuleContext): Map<string, ResolvedBinding> {
+  const cached = bindingIndexCache.get(moduleContext);
+  if (cached) return cached;
   const result = new Map<string, ResolvedBinding>();
   (moduleContext.enabledModules || []).filter(module => module.diagnostics.length === 0).forEach(module => {
     const commands = module.manifest.contributes?.commands || [];
@@ -530,6 +556,7 @@ function buildBindingIndex(moduleContext: LingCppModuleContext): Map<string, Res
       });
     });
   });
+  bindingIndexCache.set(moduleContext, result);
   return result;
 }
 

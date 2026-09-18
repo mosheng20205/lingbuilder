@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 2,
+  "id": "memory-dll-demo",
+  "name": "内存加载DLL演示",
+  "windows": [
+    {
+      "id": "memory-dll-demo-window",
+      "fileName": "MemoryDllDemo.xml",
+      "className": "内存演示窗口",
+      "title": "内存加载 DLL 演示（内嵌不落盘）",
+      "width": 620,
+      "height": 260,
+      "background": "#1E1E24",
+      "description": "声明 加载方式 = 内存 的第三方 DLL：DLL 以资源内嵌进 EXE，运行期手工映射到内存并调用导出函数。",
+      "events": {
+        "Loaded": "_内存演示窗口_创建完毕"
+      },
+      "controls": [
+        {
+          "id": "result-label",
+          "type": "Label",
+          "name": "结果标签",
+          "content": "就绪：等待内存加载演示 DLL",
+          "x": 20,
+          "y": 40,
+          "width": 570,
+          "height": 30,
+          "fontSize": 14,
+          "background": "transparent",
+          "foreground": "#4FC3F7",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "resizable": true,
+      "maximizable": true,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
+    }
+  ],
+  "resources": []
+}

@@ -63,7 +63,7 @@ export interface CreateSolutionProjectRequest {
   projectDirectory?: string;
 }
 
-export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'new-emoji-fbro-browser-shell' | 'windows-dll' | 'windows-console';
+export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'sqlite-crud-window' | 'new-emoji-fbro-browser-shell' | 'windows-dll' | 'windows-console';
 
 export interface SolutionProjectTemplate {
   id: SolutionProjectTemplateId;
@@ -99,6 +99,17 @@ export const SOLUTION_PROJECT_TEMPLATES: readonly SolutionProjectTemplate[] = [
     name: '你好 LingBuilder',
     description: '创建包含标题、按钮和中文单击事件的最小可运行 Win32 示例。',
     kind: 'windows-ui'
+  },
+  {
+    id: 'sqlite-crud-window',
+    name: 'SQLite 会员管理（增删改查）',
+    description: '创建「表单输入 + 列表视图 + SQLite 数据库」的完整增删改查示例：数据存入 members.db，支持新增、修改、删除和刷新。',
+    kind: 'windows-ui',
+    moduleIds: [
+      'lingbuilder.win32.basic',
+      'lingbuilder.win32.common-controls',
+      'lingbuilder.database.sqlite'
+    ]
   },
   {
     id: 'new-emoji-fbro-browser-shell',
@@ -899,6 +910,173 @@ function applyConsoleTemplateWindow(designerProject: LingWindowProject, projectN
   consoleWindow.controls = [];
 }
 
+/**
+ * SQLite 会员管理模板：表单输入 + 列表视图 + 增删改查。
+ * 写法红线：带命令调用的局部变量一律先声明后赋值（生成器会把带初始化的局部变量
+ * 提升到方法最前，直接初始化会脱离时序）；文本拼接不内联进调用参数（C2664），
+ * 统一走 格式化文本。
+ */
+function createSqliteCrudTemplateSource(className: string): string {
+  return [
+    '包 会员管理示例',
+    '使用 Win32窗口基础模块',
+    '使用 通用控件模块',
+    '使用 SQLite 数据库模块',
+    '',
+    `类 ${className} : 窗口`,
+    '公开',
+    '  SQLite连接 数据库',
+    '',
+    '  事件 创建完毕()',
+    '    数据库 = SQLite_打开连接("members.db", 0, 5000)',
+    '    如果 (数据库 == 0)',
+    '      控件_设置文本(状态标签, 格式化文本("打开数据库失败：{}", SQLite_取错误()))',
+    '    否则',
+    '      SQLite_执行于(数据库, "CREATE TABLE IF NOT EXISTS members(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT NOT NULL DEFAULT \'\', points INTEGER NOT NULL DEFAULT 0)")',
+    '      重建会员列表()',
+    '      控件_设置文本(状态标签, "数据库已就绪：新增、修改、删除都会立即写入 members.db")',
+    '    如果结束',
+    '  结束',
+    '',
+    '  事件 _新增按钮_被单击()',
+    '    局部 文本型 姓名',
+    '    姓名 = 控件_取文本(姓名框)',
+    '    如果 (姓名 == "")',
+    '      信息框("请先输入姓名再新增。", 64, "提示")',
+    '    否则',
+    '      局部 SQLite语句 插入语句',
+    '      插入语句 = SQLite_准备(数据库, "INSERT INTO members(name, phone, points) VALUES(?1, ?2, ?3)")',
+    '      如果 (插入语句 == 0)',
+    '        控件_设置文本(状态标签, 格式化文本("新增失败：{}", SQLite_取错误()))',
+    '      否则',
+    '        局部 文本型 电话',
+    '        电话 = 控件_取文本(电话框)',
+    '        局部 文本型 积分文本',
+    '        积分文本 = 控件_取文本(积分框)',
+    '        SQLite_绑定文本(插入语句, 1, 姓名)',
+    '        SQLite_绑定文本(插入语句, 2, 电话)',
+    '        SQLite_绑定整数(插入语句, 3, 到整数(积分文本))',
+    '        如果 (SQLite_语句步进(插入语句) == 0)',
+    '          控件_设置文本(姓名框, "")',
+    '          控件_设置文本(电话框, "")',
+    '          控件_设置文本(积分框, "0")',
+    '          重建会员列表()',
+    '          控件_设置文本(状态标签, 格式化文本("已新增会员：{}", 姓名))',
+    '        否则',
+    '          控件_设置文本(状态标签, 格式化文本("新增失败：{}", SQLite_取错误()))',
+    '        如果结束',
+    '        SQLite_语句释放(插入语句)',
+    '      如果结束',
+    '    如果结束',
+    '  结束',
+    '',
+    '  事件 _修改按钮_被单击()',
+    '    局部 整数型 选中行',
+    '    选中行 = 列表视图_取下一个选中行(会员列表, -1)',
+    '    如果 (选中行 < 0)',
+    '      信息框("请先在右侧列表中选中要修改的会员。", 64, "提示")',
+    '    否则',
+    '      局部 文本型 编号文本',
+    '      编号文本 = 列表视图_取单元格(会员列表, 选中行, 0)',
+    '      局部 文本型 姓名',
+    '      姓名 = 控件_取文本(姓名框)',
+    '      如果 (姓名 == "")',
+    '        信息框("姓名不能为空，无法修改。", 64, "提示")',
+    '      否则',
+    '        局部 SQLite语句 更新语句',
+    '        更新语句 = SQLite_准备(数据库, "UPDATE members SET name = ?1, phone = ?2, points = ?3 WHERE id = ?4")',
+    '        如果 (更新语句 == 0)',
+    '          控件_设置文本(状态标签, 格式化文本("修改失败：{}", SQLite_取错误()))',
+    '        否则',
+    '          局部 文本型 电话',
+    '          电话 = 控件_取文本(电话框)',
+    '          局部 文本型 积分文本',
+    '          积分文本 = 控件_取文本(积分框)',
+    '          SQLite_绑定文本(更新语句, 1, 姓名)',
+    '          SQLite_绑定文本(更新语句, 2, 电话)',
+    '          SQLite_绑定整数(更新语句, 3, 到整数(积分文本))',
+    '          SQLite_绑定文本(更新语句, 4, 编号文本)',
+    '          如果 (SQLite_语句步进(更新语句) == 0)',
+    '            重建会员列表()',
+    '            控件_设置文本(状态标签, 格式化文本("已修改会员编号 {}：{}", 编号文本, 姓名))',
+    '          否则',
+    '            控件_设置文本(状态标签, 格式化文本("修改失败：{}", SQLite_取错误()))',
+    '          如果结束',
+    '          SQLite_语句释放(更新语句)',
+    '        如果结束',
+    '      如果结束',
+    '    如果结束',
+    '  结束',
+    '',
+    '  事件 _删除按钮_被单击()',
+    '    局部 整数型 选中行',
+    '    选中行 = 列表视图_取下一个选中行(会员列表, -1)',
+    '    如果 (选中行 < 0)',
+    '      信息框("请先在右侧列表中选中要删除的会员。", 64, "提示")',
+    '    否则',
+    '      局部 文本型 编号文本',
+    '      编号文本 = 列表视图_取单元格(会员列表, 选中行, 0)',
+    '      局部 文本型 姓名',
+    '      姓名 = 列表视图_取单元格(会员列表, 选中行, 1)',
+    '      局部 SQLite语句 删除语句',
+    '      删除语句 = SQLite_准备(数据库, "DELETE FROM members WHERE id = ?1")',
+    '      如果 (删除语句 == 0)',
+    '        控件_设置文本(状态标签, 格式化文本("删除失败：{}", SQLite_取错误()))',
+    '      否则',
+    '        SQLite_绑定文本(删除语句, 1, 编号文本)',
+    '        如果 (SQLite_语句步进(删除语句) == 0)',
+    '          重建会员列表()',
+    '          控件_设置文本(状态标签, 格式化文本("已删除会员：{}", 姓名))',
+    '        否则',
+    '          控件_设置文本(状态标签, 格式化文本("删除失败：{}", SQLite_取错误()))',
+    '        如果结束',
+    '        SQLite_语句释放(删除语句)',
+    '      如果结束',
+    '    如果结束',
+    '  结束',
+    '',
+    '  事件 _刷新按钮_被单击()',
+    '    如果 (数据库 == 0)',
+    '      信息框("数据库尚未打开，无法刷新。", 64, "提示")',
+    '    否则',
+    '      重建会员列表()',
+    '      控件_设置文本(状态标签, "已重新加载全部会员。")',
+    '    如果结束',
+    '  结束',
+    '',
+    '  空 重建会员列表()',
+    '    控件_清空项目(会员列表)',
+    '    如果 (数据库 == 0)',
+    '      控件_设置文本(状态标签, "数据库尚未打开。")',
+    '    否则',
+    '      局部 SQLite语句 查询',
+    '      查询 = SQLite_准备(数据库, "SELECT id, name, phone, points FROM members ORDER BY id")',
+    '      如果 (查询 == 0)',
+    '        控件_设置文本(状态标签, 格式化文本("查询失败：{}", SQLite_取错误()))',
+    '      否则',
+    '        局部 整数型 步进结果',
+    '        步进结果 = SQLite_语句步进(查询)',
+    '        判断循环首 (步进结果 == 1)',
+    '          局部 文本型 编号',
+    '          编号 = SQLite_取列文本(查询, 0)',
+    '          局部 文本型 姓名',
+    '          姓名 = SQLite_取列文本(查询, 1)',
+    '          局部 文本型 电话',
+    '          电话 = SQLite_取列文本(查询, 2)',
+    '          局部 整数型 积分',
+    '          积分 = SQLite_取列整数(查询, 3)',
+    '          列表视图_添加行(会员列表, 列表视图_创建行(编号, 姓名, 电话, 积分))',
+    '          步进结果 = SQLite_语句步进(查询)',
+    '        判断循环尾 ()',
+    '        SQLite_语句释放(查询)',
+    '      如果结束',
+    '    如果结束',
+    '  结束',
+    '结束类',
+    ''
+  ].join('\n');
+}
+
 function createConsoleTemplateLingCppSource(): string {
   return [
     '包 控制台程序',
@@ -957,9 +1135,11 @@ function createDesignerProject(
         } : {}),
         controls: templateId === 'hello-window'
           ? createHelloWindowControls()
-          : browserShell
-            ? createNewEmojiFbroBrowserShellControls()
-            : []
+          : templateId === 'sqlite-crud-window'
+            ? createSqliteCrudWindowControls()
+            : browserShell
+              ? createNewEmojiFbroBrowserShellControls()
+              : []
       }
     ]
   };
@@ -967,6 +1147,7 @@ function createDesignerProject(
 
 function createTemplateLingCppSource(className: string, templateId: SolutionProjectTemplateId): string {
   if (templateId === 'new-emoji-fbro-browser-shell') return createNewEmojiFbroBrowserShellSource(className);
+  if (templateId === 'sqlite-crud-window') return createSqliteCrudTemplateSource(className);
   if (templateId === 'hello-window') {
     return [
       `类 ${className}`,
@@ -1214,6 +1395,80 @@ function createHelloWindowControls(): LingWindowProject['windows'][number]['cont
       width: 140, height: 38, x: 48, y: 120, fontSize: 13,
       background: '#2563eb', foreground: '#ffffff', isEnabled: true, visibility: 'Visible',
       events: { Click: '_问候按钮_被单击' }
+    }
+  ];
+}
+
+/** SQLite 会员管理模板的控件布局：左侧表单输入，右侧列表视图，底部状态提示。 */
+function createSqliteCrudWindowControls(): LingWindowProject['windows'][number]['controls'] {
+  const formField = (
+    id: string,
+    type: 'Label' | 'TextBox',
+    name: string,
+    content: string,
+    x: number,
+    y: number,
+    width: number
+  ) => ({
+    id,
+    type,
+    name,
+    content,
+    width,
+    height: type === 'TextBox' ? 32 : 24,
+    x,
+    y,
+    fontSize: 13,
+    background: type === 'TextBox' ? '#0f172a' : 'transparent',
+    foreground: type === 'TextBox' ? '#f8fafc' : '#cbd5f5',
+    isEnabled: true,
+    visibility: 'Visible' as const
+  });
+  const actionButton = (id: string, name: string, content: string, x: number, y: number, background: string) => ({
+    id,
+    type: 'Button' as const,
+    name,
+    content,
+    width: 96,
+    height: 36,
+    x,
+    y,
+    fontSize: 13,
+    background,
+    foreground: '#ffffff',
+    isEnabled: true,
+    visibility: 'Visible' as const,
+    events: { Click: `_${name}_被单击` }
+  });
+  return [
+    formField('crud-name-label', 'Label', '姓名标签', '姓名：', 24, 28, 52),
+    formField('crud-name-box', 'TextBox', '姓名框', '', 84, 24, 180),
+    formField('crud-phone-label', 'Label', '电话标签', '电话：', 24, 68, 52),
+    formField('crud-phone-box', 'TextBox', '电话框', '', 84, 64, 180),
+    formField('crud-points-label', 'Label', '积分标签', '积分：', 24, 108, 52),
+    formField('crud-points-box', 'TextBox', '积分框', '0', 84, 104, 180),
+    actionButton('crud-add-button', '新增按钮', '新增', 24, 232, '#2563eb'),
+    actionButton('crud-update-button', '修改按钮', '修改', 132, 232, '#0f766e'),
+    actionButton('crud-delete-button', '删除按钮', '删除', 240, 232, '#b91c1c'),
+    actionButton('crud-refresh-button', '刷新按钮', '刷新', 24, 280, '#475569'),
+    {
+      id: 'crud-member-list', type: 'ListView', name: '会员列表', content: '',
+      width: 600, height: 380, x: 288, y: 24, fontSize: 13,
+      background: '#0f172a', foreground: '#f8fafc', isEnabled: true, visibility: 'Visible',
+      properties: {
+        columns: [
+          { title: '编号', width: 60, image: -1, alignment: 'right' },
+          { title: '姓名', width: 150, image: -1, alignment: 'left' },
+          { title: '电话', width: 190, image: -1, alignment: 'left' },
+          { title: '积分', width: 100, image: -1, alignment: 'right' }
+        ],
+        items: []
+      }
+    },
+    {
+      id: 'crud-status-label', type: 'Label', name: '状态标签', content: '就绪：SQLite 数据库文件 members.db 与程序同目录',
+      width: 600, height: 24, x: 288, y: 420, fontSize: 12,
+      background: 'transparent', foreground: '#94a3b8', isEnabled: true, visibility: 'Visible'
     }
   ];
 }
@@ -1519,7 +1774,9 @@ async function collectTextFiles(
     }
     const relativePath = path.relative(workspaceRoot, targetPath).replace(/\\/g, '/');
     if (isProjectBuildArtifactRelativePath(relativePath)) continue;
-    if (!/\.(cpp|h|rc|ini|lcpp|e|xml|json)$/i.test(entry.name)) continue;
+    // 文本类扩展名白名单：txt/csv/md 让「内嵌资源」里的文本素材在解决方案树里可见、可打开编辑
+    // （二进制资源如 png/zip 仍不进文本模型，由项目的「内嵌资源」组展示）。
+    if (!/\.(cpp|h|rc|ini|lcpp|e|xml|json|txt|csv|md)$/i.test(entry.name)) continue;
     files[relativePath] = decodeTextFile(await fs.readFile(targetPath));
   }
 }

@@ -22,9 +22,32 @@ export interface LingCppRuntimeControlVariable {
 /** 运行时控件变量查找所需的最小方法形状，便于复用一次解析结果。 */
 export type RuntimeControlMethodCandidate = Pick<LingCppMethod, 'line' | 'endLine' | 'parameters' | 'locals'>;
 
-export function getLingCppRuntimeControlTypes(moduleContext?: LingCppModuleContext): LingCppRuntimeControlType[] {
+/** 运行时控件类型目录按 moduleContext 引用缓存：模块上下文在 App 里保持引用稳定，
+ *  而语言诊断/补全会对每个局部变量、参数、控件引用反复查询，重建目录是 O(控件数) 的热点。 */
+interface LingCppRuntimeControlTypeCatalog {
+  types: LingCppRuntimeControlType[];
+  /** 归一化后的 lingCppType 集合，用于 isLingCppRuntimeControlType 的 O(1) 判定。 */
+  typeNames: Set<string>;
+}
+const runtimeControlTypeCatalogCache = new WeakMap<LingCppModuleContext, LingCppRuntimeControlTypeCatalog>();
+const EMPTY_RUNTIME_CONTROL_CATALOG: LingCppRuntimeControlTypeCatalog = { types: [], typeNames: new Set<string>() };
+
+function getRuntimeControlTypeCatalog(moduleContext?: LingCppModuleContext): LingCppRuntimeControlTypeCatalog {
+  if (!moduleContext) return EMPTY_RUNTIME_CONTROL_CATALOG;
+  const cached = runtimeControlTypeCatalogCache.get(moduleContext);
+  if (cached) return cached;
+  const types = collectLingCppRuntimeControlTypes(moduleContext);
+  const catalog: LingCppRuntimeControlTypeCatalog = {
+    types,
+    typeNames: new Set(types.map(item => normalizeIdentifier(item.contract.lingCppType)))
+  };
+  runtimeControlTypeCatalogCache.set(moduleContext, catalog);
+  return catalog;
+}
+
+function collectLingCppRuntimeControlTypes(moduleContext: LingCppModuleContext): LingCppRuntimeControlType[] {
   const result: LingCppRuntimeControlType[] = [];
-  for (const module of moduleContext?.enabledModules || []) {
+  for (const module of moduleContext.enabledModules || []) {
     for (const control of module.manifest.contributes?.designerControls || []) {
       if (!control.runtimeControl) continue;
       result.push({ moduleId: module.manifest.id, designerType: control.namespacedType || control.type, contract: control.runtimeControl });
@@ -33,12 +56,21 @@ export function getLingCppRuntimeControlTypes(moduleContext?: LingCppModuleConte
   return result;
 }
 
+export function getLingCppRuntimeControlTypes(moduleContext?: LingCppModuleContext): LingCppRuntimeControlType[] {
+  return getRuntimeControlTypeCatalog(moduleContext).types;
+}
+
 export function getLingCppRuntimeControlTypeNames(moduleContext?: LingCppModuleContext): Set<string> {
-  return new Set(getLingCppRuntimeControlTypes(moduleContext).map(item => normalizeIdentifier(item.contract.lingCppType)));
+  return getRuntimeControlTypeCatalog(moduleContext).typeNames;
 }
 
 export function isLingCppRuntimeControlType(type: string | undefined, moduleContext?: LingCppModuleContext): boolean {
-  return Boolean(type && getLingCppRuntimeControlTypeNames(moduleContext).has(normalizeIdentifier(type.replace(/\[\]$/u, ''))));
+  if (!type || !moduleContext) return false;
+  // 类型名含 `[]` 后缀时需要去掉再比较，其余情况直接命中集合，避免每次都做正则替换。
+  const normalized = type.endsWith('[]')
+    ? normalizeIdentifier(type.replace(/\[\]$/u, ''))
+    : normalizeIdentifier(type);
+  return getRuntimeControlTypeCatalog(moduleContext).typeNames.has(normalized);
 }
 
 export function isRuntimeControlTypeCompatibleWithParameter(

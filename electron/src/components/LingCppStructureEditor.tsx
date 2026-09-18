@@ -14,7 +14,13 @@ interface LingCppStructureEditorProps {
   children: React.ReactNode;
   onRevealLine: (line: number) => void;
   onGenerateMissingEvent?: (row: LingCppStructuredReadingRow) => void;
+  /** 大文件护栏：一键切到专业模式。未提供时不显示提示。 */
+  onSwitchToProfessional?: () => void;
 }
+
+/** 超过任一门限即提示改用专业模式（新手画布即使窗口化，超大文件仍不如纯文本编辑器流畅）。 */
+const LARGE_FILE_ROW_THRESHOLD = 400;
+const LARGE_FILE_STRUCTURE_THRESHOLD = 120;
 
 type OutlineGroup = {
   id: string;
@@ -100,9 +106,12 @@ export default function LingCppStructureEditor({
   isDarkMode,
   children,
   onRevealLine,
-  onGenerateMissingEvent
+  onGenerateMissingEvent,
+  onSwitchToProfessional
 }: LingCppStructureEditorProps) {
   const [outlineQuery, setOutlineQuery] = useState('');
+  const [largeFileHintDismissed, setLargeFileHintDismissed] = useState(false);
+  const isLargeFile = sourceLineCount > LARGE_FILE_ROW_THRESHOLD || rows.length > LARGE_FILE_STRUCTURE_THRESHOLD;
   const outlineGroups = useMemo(() => buildOutlineGroups(rows, outlineQuery), [outlineQuery, rows]);
   const visibleOutlineCount = outlineGroups.reduce((total, group) => total + group.rows.length, 0);
   const classCount = rows.filter(row => row.group === 'class').length || structureNodes.filter(node => node.kind === 'class').length;
@@ -145,6 +154,39 @@ export default function LingCppStructureEditor({
         {error && (
           <div className={`shrink-0 border-b px-3 py-2 text-[11px] ${isDarkMode ? 'border-[#2d2d34] bg-rose-950/20 text-rose-200' : 'border-rose-100 bg-rose-50 text-rose-700'}`}>
             {error}
+          </div>
+        )}
+
+        {isLargeFile && !largeFileHintDismissed && onSwitchToProfessional && (
+          <div
+            role="status"
+            className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5 text-[11px] ${
+              isDarkMode ? 'border-amber-500/25 bg-amber-500/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'
+            }`}
+          >
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0">
+              这个文件较大（共 {sourceLineCount} 行 / {rows.length} 个结构项），新手模式已按视口渲染但仍以表格为主。建议改用专业模式编辑。
+            </span>
+            <button
+              type="button"
+              onClick={onSwitchToProfessional}
+              className={`ml-auto shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold ${
+                isDarkMode ? 'border-amber-400/40 text-amber-100 hover:bg-amber-400/15' : 'border-amber-300 text-amber-900 hover:bg-amber-100'
+              }`}
+            >
+              切到专业模式
+            </button>
+            <button
+              type="button"
+              aria-label="不再提示"
+              onClick={() => setLargeFileHintDismissed(true)}
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
+                isDarkMode ? 'text-amber-200/70 hover:bg-amber-400/15' : 'text-amber-800/70 hover:bg-amber-100'
+              }`}
+            >
+              知道了
+            </button>
           </div>
         )}
 

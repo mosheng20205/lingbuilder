@@ -1,0 +1,7 @@
+包 单精度浮点验证
+
+DLL命令库 MathF
+  Win32 = "dll/x64/mathf.dll"
+  x64 = "dll/x64/mathf.dll"
+  单精度小数型 半值(单精度小数型 输入值) = HalfF
+结束DLL命令库

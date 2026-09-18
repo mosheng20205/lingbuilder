@@ -1,6 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { LingBuilderSolutionProject } from '../solution/solutionService';
+import {
+  EMBEDDED_RESOURCE_MAX_FILE_BYTES,
+  isEmbeddableResourceSourceFile,
+  isEmbeddedResourceLogicalName
+} from './embeddedResourceService';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.ico']);
 const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
@@ -8,10 +13,39 @@ const MAX_ANIMATION_BYTES = 200 * 1024 * 1024;
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.wmv', '.avi', '.mov', '.m4v']);
 const MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 
+/**
+ * 内嵌资源在项目源码根下的默认导入目录。
+ * 注意与 embeddedResourceService 的 EMBEDDED_RESOURCE_DIRECTORY 区分：那个是构建目录内的 rc 归档目录，
+ * 这里是项目源码里的源文件目录（默认 <项目源码根>/resources/）。
+ */
+export const EMBEDDED_RESOURCE_SOURCE_DIRECTORY = 'resources';
+/** 一次「选择文件…」最多导入的文件数，避免误选整屏文件。 */
+export const EMBEDDED_RESOURCE_IMPORT_FILE_LIMIT = 64;
+/** 一次「选择文件夹…」递归展开的文件数上限（与内嵌站点扫描同口径）。 */
+export const EMBEDDED_RESOURCE_IMPORT_FOLDER_FILE_LIMIT = 512;
+
 export interface ImportedDesignerImage {
   relativePath: string;
   fileName: string;
   size: number;
+}
+
+/** 已复制进项目、可直接写回 embeddedResources 的一条内嵌资源。 */
+export interface ImportedEmbeddedResource {
+  /** 逻辑名（默认 = 相对源码根的项目内相对路径，如 resources/logo.png）。 */
+  name: string;
+  /** 工作区内相对源路径（如 src/resources/logo.png）。 */
+  file: string;
+  size: number;
+}
+
+export interface EmbeddedResourceImportResult {
+  entries: ImportedEmbeddedResource[];
+  /** 被跳过的文件与中文原因（超限、无扩展名、名字不合法等）。 */
+  skipped: Array<{ path: string; reason: string }>;
+  /** 需要提示用户的非阻断说明（重命名、同名合并等）。 */
+  notes: string[];
+  totalBytes: number;
 }
 
 export class DesignerAssetService {
@@ -114,6 +148,215 @@ export class DesignerAssetService {
 
     await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
     return { relativePath: path.posix.join(assetRoot, fileName), fileName, size: sourceStat.size };
+  }
+
+  /**
+   * 「选择文件…」：把任意本机文件复制进 <项目源码根>/resources/（重名自动去冲突）并回到可写回
+   * embeddedResources 的逻辑名。逻辑名相对源码根，因此与设计器模型里声明的逻辑名口径一致。
+   */
+  async importEmbeddedResourceFiles(
+    project: LingBuilderSolutionProject,
+    sourcePaths: readonly string[]
+  ): Promise<EmbeddedResourceImportResult> {
+    const requested = [...new Set((sourcePaths || []).map(item => String(item || '').trim()).filter(Boolean))];
+    if (requested.length === 0) throw new Error('没有选择任何文件。');
+    if (requested.length > EMBEDDED_RESOURCE_IMPORT_FILE_LIMIT) {
+      throw new Error(`一次最多导入 ${EMBEDDED_RESOURCE_IMPORT_FILE_LIMIT} 个文件（当前选择了 ${requested.length} 个）。`);
+    }
+    const result = createEmptyEmbeddedImportResult();
+    const projectRoot = this.getProjectResourceRoot(project);
+    // 同一批里后出现的同名文件按去冲突规则改名，而不是静默覆盖。
+    const reserved = new Set<string>();
+    for (const requestedPath of requested) {
+      const absolute = await this.resolveImportSourceFile(requestedPath);
+      const stat = await fs.stat(absolute);
+      const reason = validateEmbeddableSource(path.basename(absolute), stat.size);
+      if (reason) {
+        result.skipped.push({ path: requestedPath, reason });
+        continue;
+      }
+      const extension = path.extname(absolute);
+      const baseName = sanitizeEmbeddedResourceSegment(path.parse(absolute).name);
+      const target = await this.copyIntoProject({
+        source: absolute,
+        projectRoot,
+        directorySegments: [],
+        baseName,
+        extension,
+        reserved,
+        result
+      });
+      if (!target) continue;
+      if (target.fileName.replace(/\\/gu, '/') !== path.basename(absolute)) {
+        result.notes.push(`已重命名：${path.basename(absolute)} → ${target.fileName}`);
+      }
+      result.entries.push({
+        name: path.posix.join(EMBEDDED_RESOURCE_SOURCE_DIRECTORY, target.fileName),
+        file: target.relativePath,
+        size: stat.size
+      });
+      result.totalBytes += stat.size;
+    }
+    return result;
+  }
+
+  /**
+   * 「选择文件夹…」：递归展开文件夹（≤512 个文件、跳过符号链接），按目录结构复制进
+   * <项目源码根>/resources/<文件夹名>/…，逻辑名保留文件夹内的相对路径。
+   */
+  async importEmbeddedResourceFolder(
+    project: LingBuilderSolutionProject,
+    requestedDirectory: string
+  ): Promise<EmbeddedResourceImportResult> {
+    const absolute = await this.resolveImportSourceDirectory(requestedDirectory);
+    const folderName = sanitizeEmbeddedResourceSegment(path.basename(absolute));
+    const files = await collectImportFiles(absolute);
+    const result = createEmptyEmbeddedImportResult();
+    if (files.length === 0) throw new Error('选择的文件夹里没有文件。');
+    if (files.length > EMBEDDED_RESOURCE_IMPORT_FOLDER_FILE_LIMIT) {
+      throw new Error(`文件夹里的文件超过上限（最多 ${EMBEDDED_RESOURCE_IMPORT_FOLDER_FILE_LIMIT} 个，当前 ${files.length} 个）；请分次导入。`);
+    }
+    const projectRoot = this.getProjectResourceRoot(project);
+    const reserved = new Set<string>();
+    for (const relativeFile of files) {
+      const absoluteFile = path.join(absolute, relativeFile.split('/').join(path.sep));
+      const stat = await fs.stat(absoluteFile).catch(() => null);
+      if (!stat || !stat.isFile()) continue;
+      const displayPath = `${path.basename(absolute)}/${relativeFile}`;
+      const reason = validateEmbeddableSource(displayPath, stat.size);
+      if (reason) {
+        result.skipped.push({ path: displayPath, reason });
+        continue;
+      }
+      const segments = relativeFile.split('/');
+      const target = await this.copyIntoProject({
+        source: absoluteFile,
+        projectRoot,
+        directorySegments: [folderName, ...segments.slice(0, -1).map(segment => sanitizeEmbeddedResourceSegment(segment))],
+        baseName: sanitizeEmbeddedResourceSegment(path.parse(segments.at(-1) || '').name),
+        extension: path.extname(relativeFile),
+        reserved,
+        result
+      });
+      if (!target) continue;
+      const fileName = target.fileName.replace(/\\/gu, '/');
+      if (fileName !== `${folderName}/${relativeFile}`) {
+        result.notes.push(`已重命名：${folderName}/${relativeFile} → ${fileName}`);
+      }
+      result.entries.push({
+        name: path.posix.join(EMBEDDED_RESOURCE_SOURCE_DIRECTORY, fileName),
+        file: target.relativePath,
+        size: stat.size
+      });
+      result.totalBytes += stat.size;
+    }
+    return result;
+  }
+
+  /**
+   * 「扫描目录…」：递归列出工作区内一个目录里可直接内嵌的文件（工作区相对路径）。
+   * 只读，不复制；逻辑名直接取工作区相对路径原样，因此不受源码根影响。
+   */
+  async scanEmbeddedResourceDirectory(directory: string): Promise<{ files: string[]; skipped: Array<{ path: string; reason: string }> }> {
+    const normalized = normalizeRelativePath(String(directory || ''));
+    const root = path.resolve(this.workspaceRoot);
+    const target = this.resolveWorkspacePath(normalized);
+    const stat = await fs.stat(target).catch(() => null);
+    if (!stat || !stat.isDirectory()) throw new Error(`目录不存在：${normalized}`);
+    const collected: string[] = [];
+    await collectWorkspaceFiles(root, target, collected);
+    const files: string[] = [];
+    const skipped: Array<{ path: string; reason: string }> = [];
+    for (const file of collected.sort((left, right) => left.localeCompare(right))) {
+      const stat = await fs.stat(this.resolveWorkspacePath(file)).catch(() => null);
+      if (!stat?.isFile()) continue;
+      const reason = validateEmbeddableSource(file, stat.size);
+      if (reason) {
+        skipped.push({ path: file, reason });
+        continue;
+      }
+      if (!isEmbeddedResourceLogicalName(file)) {
+        skipped.push({ path: file, reason: '逻辑名包含不支持的字符，请先重命名文件' });
+        continue;
+      }
+      files.push(file);
+    }
+    return { files, skipped };
+  }
+
+  /** 项目源码根下的内嵌资源目录（工作区相对路径，如 src/resources）。 */
+  getProjectResourceRoot(project: LingBuilderSolutionProject): string {
+    const sourceRoot = String(project.sourceRoot || '').trim().replace(/\\/gu, '/').replace(/^\.\/+/u, '').replace(/\/+$/u, '');
+    return sourceRoot && sourceRoot !== '.' ? path.posix.join(sourceRoot, EMBEDDED_RESOURCE_SOURCE_DIRECTORY) : EMBEDDED_RESOURCE_SOURCE_DIRECTORY;
+  }
+
+  private async resolveImportSourceFile(requestedPath: string): Promise<string> {
+    const raw = String(requestedPath || '').trim();
+    if (!raw) throw new Error('内嵌资源源文件路径为空。');
+    const absolute = await fs.realpath(path.resolve(raw)).catch(() => '');
+    if (!absolute) throw new Error(`内嵌资源源文件不存在：${raw}`);
+    const stat = await fs.stat(absolute);
+    if (!stat.isFile()) throw new Error(`内嵌资源源文件不是普通文件：${raw}`);
+    return absolute;
+  }
+
+  private async resolveImportSourceDirectory(requestedPath: string): Promise<string> {
+    const raw = String(requestedPath || '').trim();
+    if (!raw) throw new Error('内嵌资源文件夹路径为空。');
+    const absolute = await fs.realpath(path.resolve(raw)).catch(() => '');
+    if (!absolute) throw new Error(`内嵌资源文件夹不存在：${raw}`);
+    if (path.resolve(absolute) === path.resolve(this.workspaceRoot)) {
+      throw new Error('不允许把整个工作区目录导入为内嵌资源；请选择具体子目录。');
+    }
+    const stat = await fs.stat(absolute);
+    if (!stat.isDirectory()) throw new Error(`内嵌资源文件夹不是目录：${raw}`);
+    return absolute;
+  }
+
+  /**
+   * 复制到项目内：目标已存在且内容一致时复用，否则追加 -2、-3… 后缀（不覆盖用户已有文件）。
+   * 返回工作区内相对路径与最终文件名（相对 projectRoot，正斜杠）。
+   */
+  private async copyIntoProject(options: {
+    source: string;
+    projectRoot: string;
+    directorySegments: string[];
+    baseName: string;
+    extension: string;
+    reserved: Set<string>;
+    result: EmbeddedResourceImportResult;
+  }): Promise<{ relativePath: string; fileName: string } | undefined> {
+    const { source, projectRoot, directorySegments, baseName, extension, reserved, result } = options;
+    const root = this.resolveWorkspacePath(projectRoot);
+    const targetDirectory = path.join(root, ...directorySegments);
+    if (!isWithin(path.resolve(this.workspaceRoot), targetDirectory)) throw new Error('内嵌资源复制目标越出工作区。');
+    await fs.mkdir(targetDirectory, { recursive: true });
+    // 返回的 fileName 相对 projectRoot（调用方再拼 projectRoot 得到逻辑名）。
+    const relativeFileNameOf = (fileName: string) => path.posix.join(...directorySegments, fileName);
+    for (let suffix = 1; suffix <= 200; suffix += 1) {
+      const fileName = suffix === 1 ? `${baseName}${extension}` : `${baseName}-${suffix}${extension}`;
+      const logicalName = relativeFileNameOf(fileName);
+      // 兜底守卫：任何情况下都不能把生成器无法表示的逻辑名写回项目。
+      if (!isEmbeddedResourceLogicalName(logicalName)) {
+        result.skipped.push({ path: `${baseName}${extension}`, reason: '无法生成合法的内嵌资源逻辑名' });
+        return undefined;
+      }
+      const candidate = path.join(targetDirectory, fileName);
+      if (!reserved.has(relativeFileNameOf(fileName).toLowerCase())) {
+        const existing = await fs.stat(candidate).catch(() => null);
+        if (!existing) {
+          await fs.copyFile(source, candidate);
+          reserved.add(relativeFileNameOf(fileName).toLowerCase());
+          return { relativePath: workspaceRelativePath(this.workspaceRoot, candidate), fileName: relativeFileNameOf(fileName) };
+        }
+        if (existing.isFile() && await filesEqual(source, candidate)) {
+          reserved.add(relativeFileNameOf(fileName).toLowerCase());
+          return { relativePath: workspaceRelativePath(this.workspaceRoot, candidate), fileName: relativeFileNameOf(fileName) };
+        }
+      }
+    }
+    result.skipped.push({ path: baseName, reason: '同名文件过多，无法自动去冲突，请先手工改名' });
+    return undefined;
   }
 
   async readImage(project: LingBuilderSolutionProject, relativePath: string): Promise<{ bytes: Buffer; mimeType: string }> {
@@ -222,6 +465,71 @@ function imageMimeType(filePath: string): string {
     case '.ico': return 'image/x-icon';
     default: return 'application/octet-stream';
   }
+}
+
+function createEmptyEmbeddedImportResult(): EmbeddedResourceImportResult {
+  return { entries: [], skipped: [], notes: [], totalBytes: 0 };
+}
+
+/** 单个文件能否作为内嵌资源：必须有扩展名、大小在单文件上限内（size 省略时只查扩展名）。 */
+function validateEmbeddableSource(displayPath: string, size?: number): string {
+  const normalized = displayPath.replace(/\\/gu, '/');
+  if (!isEmbeddableResourceSourceFile(normalized)) return '没有扩展名，无法作为内嵌资源（rc 需要按扩展名归档）';
+  if (size !== undefined && size > EMBEDDED_RESOURCE_MAX_FILE_BYTES) {
+    return `超过单文件上限 ${Math.floor(EMBEDDED_RESOURCE_MAX_FILE_BYTES / 1024 / 1024)}MB`;
+  }
+  return '';
+}
+
+/**
+ * 逻辑名片段归一化：只保留内嵌资源逻辑名允许的字符（与服务端/生成器同一份字符集），
+ * 非法字符替换成连字符，因此源文件叫什么都能导入；发生改写时会作为说明回给用户。
+ */
+function sanitizeEmbeddedResourceSegment(value: string): string {
+  const cleaned = String(value || '')
+    .replace(/[^\p{L}\p{N}_$@()\[\] {}#+.,-]+/gu, '-')
+    .replace(/^[. ]+|[. ]+$/gu, '')
+    .slice(0, 120);
+  return cleaned || 'file';
+}
+
+/** 递归展开待导入文件夹（≤512 个文件，跳过符号链接），返回文件夹内相对路径（正斜杠）。 */
+async function collectImportFiles(directory: string, limit = EMBEDDED_RESOURCE_IMPORT_FOLDER_FILE_LIMIT): Promise<string[]> {
+  const files: string[] = [];
+  const walk = async (current: string, prefix: string): Promise<void> => {
+    if (files.length > limit) return;
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(path.join(current, entry.name), relative);
+      } else if (entry.isFile()) {
+        files.push(relative);
+        if (files.length > limit) return;
+      }
+    }
+  };
+  await walk(directory, '');
+  return files.sort((left, right) => left.localeCompare(right));
+}
+
+/** 只读扫描工作区内目录（≤512 个文件，跳过符号链接），返回工作区相对路径。 */
+async function collectWorkspaceFiles(root: string, directory: string, result: string[], limit = EMBEDDED_RESOURCE_IMPORT_FOLDER_FILE_LIMIT): Promise<void> {
+  if (result.length >= limit) return;
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue;
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await collectWorkspaceFiles(root, absolute, result, limit);
+    } else if (entry.isFile()) {
+      result.push(workspaceRelativePath(root, absolute));
+      if (result.length >= limit) return;
+    }
+  }
+}
+
+function workspaceRelativePath(root: string, absolute: string): string {
+  return path.relative(path.resolve(root), path.resolve(absolute)).replace(/\\/gu, '/');
 }
 
 async function collectFiles(directory: string): Promise<string[]> {

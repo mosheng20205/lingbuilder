@@ -6,7 +6,7 @@ import { LingCppConstant, LingCppDiagnostic, LingCppGlobalVariable, LingCppProje
 
 export const PROJECT_GLOBALS_FILE_NAME = '项目全局变量.lcpp';
 export const EMPTY_PROJECT_GLOBALS_SOURCE = '// 项目级常量与全局变量：可在当前项目的全部 .lcpp 源码中直接使用。\n';
-export const PROJECT_CONSTANT_TYPES = ['文本型', '整数型', '长整数型', '小数型', '双精度小数型', '逻辑型'] as const;
+export const PROJECT_CONSTANT_TYPES = ['文本型', '整数型', '长整数型', '小数型', '单精度小数型', '双精度小数型', '逻辑型'] as const;
 
 export function isProjectGlobalsFilePath(filePath: string | undefined): boolean {
   if (!filePath) return false;

@@ -121,8 +121,9 @@ export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContex
 export function getLingCppModuleCompletionItems(moduleContext?: LingCppModuleContext): LingCppCompletionCatalogItem[] {
   return getEnabledLingCppModuleContributions(moduleContext).flatMap(module => {
     const manifest = module.manifest;
-    const commands: LingCppCompletionCatalogItem[] = (manifest.contributes?.commands || [])
-      .filter(command => command.visibility !== 'internal' && (command.visibility !== 'advanced' || moduleContext?.showAdvancedApi === true))
+    const visibleCommands = (manifest.contributes?.commands || [])
+      .filter(command => command.visibility !== 'internal' && (command.visibility !== 'advanced' || moduleContext?.showAdvancedApi === true));
+    const commands: LingCppCompletionCatalogItem[] = visibleCommands
       .map(command => createLingCppCatalogItem({
       label: command.name,
       kind: 'function',
@@ -137,6 +138,30 @@ export function getLingCppModuleCompletionItems(moduleContext?: LingCppModuleCon
       sortRank: 20,
       isSnippet: Boolean(command.insertText?.includes('$'))
     }));
+    // 中文别名（易语言同名写法等）作为独立补全条目：用户按别名检索时应能直接
+    // 上屏别名；生成 C++ 仍统一解析为规范名。CEF3 的英文导出名等非中文别名
+    // 只作检索键，不进补全列表。
+    const chineseAliasPattern = /[\u3400-\u9fff]/u;
+    const aliasCommands: LingCppCompletionCatalogItem[] = visibleCommands
+      .flatMap(command => (command.aliases || [])
+        .filter(alias => alias !== command.name && chineseAliasPattern.test(alias))
+        .map(alias => {
+          const insertText = command.insertText || command.signature || `${command.name}($1)`;
+          return createLingCppCatalogItem({
+            label: alias,
+            kind: 'function',
+            insertText: insertText.includes(command.name) ? insertText.replace(command.name, alias) : `${alias}()`,
+            detail: `${manifest.name} · ${command.name} 的别名`,
+            signature: command.signature?.includes(command.name) ? command.signature.replace(command.name, alias) : command.signature,
+            returnType: command.returnType,
+            documentation: `${command.description}\n「${alias}」是 ${command.name} 的稳定别名，两种写法等价。`,
+            aliases: [command.name],
+            category: 'module',
+            source: 'module',
+            sortRank: 20,
+            isSnippet: Boolean(insertText.includes('$'))
+          });
+        }));
     const types: LingCppCompletionCatalogItem[] = (manifest.contributes?.types || []).map(type => createLingCppCatalogItem({
       label: type.name,
       kind: 'type',
@@ -158,7 +183,7 @@ export function getLingCppModuleCompletionItems(moduleContext?: LingCppModuleCon
       sortRank: 20,
       isSnippet: true
     }));
-    return [...commands, ...types, ...snippets];
+    return [...commands, ...aliasCommands, ...types, ...snippets];
   });
 }
 

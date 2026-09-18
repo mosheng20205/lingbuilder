@@ -53,6 +53,23 @@ test('拒绝重名、非法字段类型、对象默认值和直接或间接循�
   assert.match(messages, /不允许的类型/u);
 });
 
+test('文件头注释不作为首个数据类型说明，说明往返与删除均保留头注释', () => {
+  const headerLine = '// 项目自定义数据类型：文件级说明';
+  const headerSource = [headerLine, '数据类型 订单', '结束数据类型'].join('\n');
+  assert.equal(createProjectTypeContext(typePath, headerSource).dataTypes[0]?.note, undefined);
+  const added = applyLingCppAstEdit(headerSource, { kind: 'update-data-type', dataTypeName: '订单', note: '采购订单记录' });
+  assert.equal(added.success, true);
+  assert.equal(added.sourceCode.split('\n')[0], headerLine);
+  assert.equal(createProjectTypeContext(typePath, added.sourceCode).dataTypes[0]?.note, '采购订单记录');
+  const cleared = applyLingCppAstEdit(added.sourceCode, { kind: 'update-data-type', dataTypeName: '订单', note: '' });
+  assert.equal(cleared.success, true);
+  assert.equal(cleared.sourceCode.split('\n')[0], headerLine);
+  assert.equal(createProjectTypeContext(typePath, cleared.sourceCode).dataTypes[0]?.note, undefined);
+  const removed = applyLingCppAstEdit(added.sourceCode, { kind: 'delete-data-type', dataTypeName: '订单' });
+  assert.equal(removed.success, true);
+  assert.ok(removed.sourceCode.includes(headerLine));
+});
+
 test('AST 编辑支持新增、更新、排序和删除类型字段', () => {
   const added = applyLingCppAstEdit('', { kind: 'add-data-type', dataType: { name: '订单' } });
   assert.equal(added.success, true);

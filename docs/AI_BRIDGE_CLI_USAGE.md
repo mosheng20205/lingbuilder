@@ -209,13 +209,17 @@ stdio 形式（客户端自动拉起，无需 Token）：
 | `lingbuilder.file.read` | 读取工作区文本文件。 |
 | `lingbuilder.file.search` | 搜索工作区文本。 |
 | `lingbuilder.lingcpp.diagnostics` | 获取 `.lcpp` 诊断；传 `projectId` 自动加载工作区设计器模型校验控件引用，响应带 `designerContext` 说明校验覆盖范围。 |
-| `lingbuilder.edit.propose` | 生成编辑提案。 |
+| `lingbuilder.edit.propose` | 生成编辑提案；`workspaceFiles` 可省略（服务端自动读取工作区当前内容，磁盘不存在的路径按新建文件处理）。 |
 | `lingbuilder.edit.apply` | 应用编辑提案。 |
 | `lingbuilder.project.templates` | 列出项目模板。 |
-| `lingbuilder.project.create` | 预览或创建项目，并初始化设计器模型和项目级模块引用。 |
+| `lingbuilder.project.create` | 预览或创建项目，并初始化设计器模型和项目级模块引用；`sqlite-crud-window` 模板可直接创建「表单+列表视图+SQLite 增删改查」完整示例。 |
 | `lingbuilder.project.create.undo` | 撤销尚未被修改的 AI 创建项目。 |
 | `lingbuilder.build.run` | 执行受控构建/运行。构建目录与生成源码目录跟随项目/工作区自定义模板（见 `buildPathService.ts`），缺省 `.lingbuilder-build/<项目>/<平台>/<配置>` 与 `generated/cpp/<项目>`。 |
-| `lingbuilder.modules.list` | 查看模块上下文。 |
+| `lingbuilder.modules.list` | 按摘要列出模块与项目启用模块（只含命令数、文档路径等概要，避免超长响应）。 |
+| `lingbuilder.module.info` | 查询单个模块的完整命令签名、逐参数中文说明、返回值、示例和文档路径；`query` 过滤、`includeAdvanced` 展开高级命令。 |
+| `lingbuilder.build.stop` | 停止指定项目的受控运行进程（只影响 AI Bridge 自己启动的进程）。 |
+| `lingbuilder.run.wait` | 等待受控运行进程退出并返回退出码；超时默认 30 秒、上限 600 秒。 |
+| `lingbuilder.run.log` | 读取最近一次受控运行的控制台输出，`tailLines` 只取末尾 N 行；进程退出后仍可读。 |
 | `lingbuilder.native.preview` | 预览 C++ 工程。 |
 | `lingbuilder.native.export` | 导出 C++ 工程。 |
 | `lingbuilder.module.scaffold` | 在 `.lingbuilder/module-build` 下创建模块骨架（manifest v2 + C++ 模板），受权限模式控制。 |

@@ -10,6 +10,8 @@ import {
   LingCppDiagnostic,
   LingCppDllCommand,
   LingCppDllLibrary,
+  LingCppDllStruct,
+  LingCppDllStructField,
   LingCppGlobalVariable,
   LingCppFunctionLibrary,
   LingCppLocalVariable,
@@ -157,6 +159,7 @@ export const LING_CPP_TYPES = [
   '长整数型',
   '逻辑型',
   '小数型',
+  '单精度小数型',
   '双精度小数型',
   '字节集',
   '对象',
@@ -175,8 +178,12 @@ const TYPE_EXPRESSION_SOURCE = `${TYPE_NAME_SOURCE}(?:\\[\\]|［］)?`;
 const CLASS_RE = /^类\s+([\w\u4e00-\u9fa5]+)(?:\s*[:：]\s*(?:公开|私有|保护)?\s*([\w\u4e00-\u9fa5]+))?/;
 const FUNCTION_LIBRARY_RE = new RegExp(`^功能库\\s+(${TYPE_NAME_SOURCE})$`, 'u');
 const DLL_LIBRARY_RE = new RegExp(`^DLL命令库\\s+(${TYPE_NAME_SOURCE})$`, 'u');
+const DLL_STRUCT_RE = new RegExp(`^结构体\\s+(${TYPE_NAME_SOURCE})(?:\\s*=\\s*(${TYPE_NAME_SOURCE}))?$`, 'u');
+const DLL_SDK_HEADER_RE = /^头文件\s*=\s*([A-Za-z0-9_][A-Za-z0-9_./]*)$/u;
+const DLL_STRUCT_FIELD_RE = new RegExp(`^(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*\\[\\s*(\\d+)\\s*\\])?(?:\\s*//\\s*(.*))?$`, 'u');
 const DLL_ARCH_RE = /^(Win32|x64)\s*=\s*["“]([^"”]+)["”]$/u;
 const DLL_SYSTEM_RE = /^系统\s*=\s*真$/u;
+const DLL_LOAD_MODE_RE = /^加载方式\s*[=＝]\s*(内存|内存加载|文件|落盘)$/u;
 const DLL_PUBLIC_RE = /^公开\s*=\s*(真|假)$/u;
 const DLL_REMARK_RE = /^备注\s*[:：]?\s*(.+)$/u;
 const DLL_COMMAND_RE = new RegExp(`^(空|${TYPE_EXPRESSION_SOURCE})\\s+(${TYPE_NAME_SOURCE})\\s*[（(]([^）)]*)[）)](?:\\s*=\\s*(${TYPE_NAME_SOURCE}))?(?:\\s+(cdecl|stdcall))?$`, 'u');
@@ -226,6 +233,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
   let currentFunctionLibraryNode: LingCppAstNode | null = null;
   let currentDllLibrary: LingCppDllLibrary | null = null;
   let currentDllLibraryNode: LingCppAstNode | null = null;
+  let currentDllStruct: LingCppDllStruct | null = null;
   const astNodes: LingCppAstNode[] = [];
   const rootNode = createAstNode('program', '源文件', 1, lines[0] || '', undefined, {
     range: createDocumentRange(lines)
@@ -279,6 +287,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
     setNodeEndRange(currentDllLibraryNode, lines, safeEndLine);
     currentDllLibrary = null;
     currentDllLibraryNode = null;
+    currentDllStruct = null;
   };
 
   lines.forEach((line, index) => {
@@ -326,7 +335,9 @@ export function parseLingCpp(source: string): LingCppParseResult {
         name: dllLibraryMatch[1],
         line: lineNumber,
         archFiles: [],
-        commands: []
+        commands: [],
+        structs: [],
+        sdkHeaders: []
       };
       currentDllLibraryNode = pushNode(createAstNode('dll-library', currentDllLibrary.name, lineNumber, line, rootNode.id, {
         detail: '项目 DLL 命令库'
@@ -339,14 +350,81 @@ export function parseLingCpp(source: string): LingCppParseResult {
         diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的结束DLL命令库。', '请删除该行，或在前面添加 DLL命令库 声明。'));
         return;
       }
+      if (currentDllStruct) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentDllStruct.name} 缺少 结束结构体。`, '请在结构体字段后添加一行 `结束结构体`。'));
+      }
       closeCurrentDllLibrary(lineNumber);
       return;
     }
     if (currentDllLibrary) {
+      const dllSdkHeaderMatch = trimmed.match(DLL_SDK_HEADER_RE);
+      if (dllSdkHeaderMatch) {
+        const headerName = (dllSdkHeaderMatch[1] || '').trim();
+        if (currentDllLibrary.sdkHeaders.includes(headerName)) return;
+        currentDllLibrary.sdkHeaders.push(headerName);
+        pushNode(createAstNode('dll-arch', `头文件 = ${headerName}`, lineNumber, line, currentDllLibraryNode?.id, {
+          detail: '生成 C++ 时额外引入的 SDK 头文件'
+        }), currentDllLibraryNode);
+        return;
+      }
+      const dllStructMatch = !currentDllStruct ? trimmed.match(DLL_STRUCT_RE) : null;
+      if (dllStructMatch) {
+        const structName = dllStructMatch[1] || '';
+        const aliasTypeName = (dllStructMatch[2] || '').trim() || undefined;
+        if (currentDllLibrary.structs.some(item => item.name === structName)) {
+          diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${structName} 重复声明。`, '结构体名在库内必须唯一。'));
+          return;
+        }
+        currentDllStruct = { name: structName, line: lineNumber, fields: [] };
+        if (aliasTypeName) currentDllStruct.aliasTypeName = aliasTypeName;
+        currentDllLibrary.structs.push(currentDllStruct);
+        pushNode(createAstNode('dll-struct', structName, lineNumber, line, currentDllLibraryNode?.id, {
+          detail: aliasTypeName ? `结构体别名：${structName} = ${aliasTypeName}` : 'DLL 结构体'
+        }), currentDllLibraryNode);
+        return;
+      }
+      if (currentDllStruct) {
+        if (trimmed === '结束结构体') {
+          if (currentDllStruct.fields.length === 0) {
+            diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentDllStruct.name} 没有任何字段。`, '请在 结构体 与 结束结构体 之间声明字段，例如 `整数型 dwSize`。'));
+          }
+          currentDllStruct = null;
+          return;
+        }
+        const structFieldMatch = trimmed.match(DLL_STRUCT_FIELD_RE);
+        if (structFieldMatch) {
+          const fieldType = structFieldMatch[1] || '';
+          const fieldName = structFieldMatch[2] || '';
+          const arrayLengthText = structFieldMatch[3] || '';
+          if (currentDllStruct.fields.some(item => item.name === fieldName)) {
+            diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentDllStruct.name} 的字段 ${fieldName} 重复声明。`, '字段名在结构体内必须唯一。'));
+            return;
+          }
+          const field: LingCppDllStructField = { name: fieldName, type: fieldType, line: lineNumber };
+          if (arrayLengthText) field.arrayLength = Number.parseInt(arrayLengthText, 10);
+          const noteText = (structFieldMatch[4] || '').trim();
+          if (noteText) field.note = noteText;
+          currentDllStruct.fields.push(field);
+          pushNode(createAstNode('dll-struct-field', fieldName, lineNumber, line, currentDllLibraryNode?.id, {
+            detail: `${fieldType}${field.arrayLength !== undefined ? `[${field.arrayLength}]` : ''} ${fieldName}`
+          }), currentDllLibraryNode);
+          return;
+        }
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '无法识别的结构体字段行。', '格式：`类型 字段名`、定长文本 `文本型 字段名[260]`，用 `结束结构体` 收尾。'));
+        return;
+      }
       if (DLL_SYSTEM_RE.test(trimmed)) {
         currentDllLibrary.isSystem = true;
         pushNode(createAstNode('dll-arch', '系统 = 真', lineNumber, line, currentDllLibraryNode?.id, {
           detail: '系统 DLL（免分发）'
+        }), currentDllLibraryNode);
+        return;
+      }
+      if (DLL_LOAD_MODE_RE.test(trimmed)) {
+        const memory = /内存/u.test(trimmed.match(DLL_LOAD_MODE_RE)?.[1] || '');
+        currentDllLibrary.memoryLoad = memory;
+        pushNode(createAstNode('dll-arch', trimmed, lineNumber, line, currentDllLibraryNode?.id, {
+          detail: memory ? '内存加载（不落盘）' : '同目录加载'
         }), currentDllLibraryNode);
         return;
       }

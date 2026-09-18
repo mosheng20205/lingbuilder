@@ -79,6 +79,20 @@
       "type": "windows-console",
       "sourceRoot": "examples/mail-transport-demo/src",
       "references": []
+    },
+    {
+      "id": "emoji-tabs-gallery",
+      "name": "组件总览六标签页",
+      "type": "visual-cpp",
+      "sourceRoot": "AI 视频自主生产/进阶方案/组件总览六标签页/src",
+      "references": []
+    },
+    {
+      "id": "process-memory-scan-demo",
+      "name": "进程内存扫描演示",
+      "type": "windows-console",
+      "sourceRoot": "examples/process-memory-scan-demo/src",
+      "references": []
     }
   ]
 }

@@ -32,7 +32,7 @@ const decimal = (name: string, description: string) => p(name, 'double', descrip
 const string = (name: string, description: string) => p(name, 'wideString', description);
 
 const returnTypeMap: Record<DataGridBindingReturnType, UiReturnType> = {
-  int: '整数型', longLong: '长整数型', double: '小数型', bool: '逻辑型', wideString: '文本型',
+  int: '整数型', longLong: '长整数型', double: '小数型', float: '小数型', bool: '逻辑型', wideString: '文本型',
   void: '逻辑型', utf8String: '文本型', controlRef: '长整数型', handler: '长整数型', lingValue: '长整数型', handle: '长整数型', bytes: '字节集', raw: '长整数型'
 };
 const sample = (parameter: Parameter, placeholder: number) => {

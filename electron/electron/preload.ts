@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   aiBridge: {
     status: () => ipcRenderer.invoke('ai-bridge:status'),
     start: (request: unknown) => ipcRenderer.invoke('ai-bridge:start', request),
+    loadStartSettings: () => ipcRenderer.invoke('ai-bridge:start-settings:load'),
     stop: () => ipcRenderer.invoke('ai-bridge:stop'),
     rotateToken: () => ipcRenderer.invoke('ai-bridge:rotate-token'),
     revealToken: () => ipcRenderer.invoke('ai-bridge:reveal-token'),
@@ -101,6 +102,8 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     selectAnimation: () => ipcRenderer.invoke('designer-assets:select-animation'),
     selectVideo: () => ipcRenderer.invoke('designer-assets:select-video'),
     selectIcon: () => ipcRenderer.invoke('designer-assets:select-icon'),
+    selectEmbeddedFiles: () => ipcRenderer.invoke('designer-assets:select-embedded-files'),
+    selectEmbeddedFolder: () => ipcRenderer.invoke('designer-assets:select-embedded-folder'),
   },
   credentials: {
     getAiApiKey: () => ipcRenderer.invoke('credentials:ai:get'),

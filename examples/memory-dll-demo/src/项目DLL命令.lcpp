@@ -1,0 +1,26 @@
+包 项目DLL命令
+
+// 「加载方式 = 内存」：DLL 以 RCDATA 内嵌进 EXE，运行期手工 PE 映射到内存，
+// 导出函数在首次调用时按名解析；exe 同目录不会出现该 DLL。
+// 前置条件：项目已在「项目模块」中启用「内存加载DLL模块」（lingbuilder.advanced.memorydll）。
+// DLL 必须与目标程序位数一致且未加壳；不要在内存加载的 DLL 里依赖 C++ 异常。
+
+DLL命令库 MemoryDemo
+  x64 = "dll/x64/memory_demo.dll"
+  Win32 = "dll/Win32/memory_demo.dll"
+  加载方式 = 内存
+
+  整数型 内存演示_加法(整数型 甲, 整数型 乙) = memo_add
+  备注: 内存 DLL 的整数加法
+  整数型 内存演示_除法(整数型 甲, 整数型 乙) = memo_divide
+  整数型 内存演示_入口计数() = memo_entry_count
+  整数型 内存演示_文本长度(文本型 文本) = memo_text_length
+  文本型 内存演示_取文本(文本型 前缀) = memo_make_text
+  整数型 内存演示_静态计数() = memo_static_counter
+  整数型 内存演示_自路径(整数型 占位) = memo_self_path
+结束DLL命令库
+
+DLL命令库 user32
+  系统 = 真
+  整数型 提示音(整数型 类型) = MessageBeep
+结束DLL命令库

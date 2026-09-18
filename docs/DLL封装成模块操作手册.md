@@ -163,3 +163,4 @@ LingBuilder 中文项目可以把「公开」子程序导出为 DLL 函数，再
 - DLL 项目内调用会创建窗口/依赖消息循环的命令没有运行环境（无消息泵）；动态库定位为纯逻辑库。
 - 跨 DLL 传 `std::wstring` 要求两侧同为 MSVC 同 CRT（/MD）；不要把 VS 版本差异很大的 DLL/EXE 混用。
 - 欢迎页「Windows 平台 DLL 开发」的 `windows-dll` 模板项目（C ABI + .def 手工维护）与本文的中文项目 `outputType: "dll"` 是两条独立路径，不要混用。
+- 需要「DLL 不落盘、随 EXE 单文件分发」时用第三条路径：项目 DLL 命令声明加一行 `加载方式 = 内存`（DLL 以 RCDATA 内嵌进 EXE，运行期手工 PE 映射），需启用「内存加载DLL模块」；限制与完整示例见 `electron/docs/modules/memorydll/README.md` 与 `examples/memory-dll-demo/README.md`。封装成 .lbmod 模块的第三方 DLL 目前仍走同目录加载。

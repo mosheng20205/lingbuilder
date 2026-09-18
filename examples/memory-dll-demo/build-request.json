@@ -1,0 +1,92 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "memory-dll-demo",
+    "name": "内存加载DLL演示",
+    "windows": [
+      {
+        "id": "memory-dll-demo-window",
+        "fileName": "MemoryDllDemo.xml",
+        "className": "内存演示窗口",
+        "title": "内存加载 DLL 演示（内嵌不落盘）",
+        "width": 620,
+        "height": 260,
+        "background": "#1E1E24",
+        "description": "声明 加载方式 = 内存 的第三方 DLL：DLL 以资源内嵌进 EXE，运行期手工映射到内存并调用导出函数。",
+        "events": {
+          "Loaded": "_内存演示窗口_创建完毕"
+        },
+        "controls": [
+          {
+            "id": "result-label",
+            "type": "Label",
+            "name": "结果标签",
+            "content": "就绪：等待内存加载演示 DLL",
+            "x": 20,
+            "y": 40,
+            "width": 570,
+            "height": 30,
+            "fontSize": 14,
+            "background": "transparent",
+            "foreground": "#4FC3F7",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "staticStyle": "text",
+              "textAlign": "left",
+              "imageSource": "",
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          }
+        ],
+        "titleBarBackground": "#2D2D30",
+        "titleBarForeground": "#CBD5E1",
+        "menuBackground": "#ffffff",
+        "menuForeground": "#000000",
+        "menuFontFamily": "Microsoft YaHei UI",
+        "menuFontSize": 11,
+        "menuFontBold": false,
+        "menuFontItalic": false,
+        "menuFontUnderline": false,
+        "cornerStyle": "rounded",
+        "iconStyle": "lingbuilder",
+        "borderStyle": "normal-resizable",
+        "borderlessDraggable": false,
+        "resizable": true,
+        "maximizable": true,
+        "windowFrame": {
+          "preset": "system",
+          "flags": 0,
+          "resizeBorder": {
+            "left": 6,
+            "top": 6,
+            "right": 6,
+            "bottom": 6
+          },
+          "cornerRadius": 10
+        }
+      }
+    ],
+    "resources": []
+  },
+  "activeWindowId": "memory-dll-demo-window",
+  "lingCppSourceFilePath": "examples/memory-dll-demo/src/内嵌DLL内存加载演示.lcpp",
+  "run": false,
+  "approved": true,
+  "lingCppSourceCode": "包 内存加载DLL演示\n使用 Win32窗口基础模块\n使用 文件目录模块\n使用 内存加载DLL模块\n\n类 内存演示窗口 : 窗口\n公开\n  事件 _内存演示窗口_创建完毕()\n    局部 整数型 加法结果 = 0\n    局部 整数型 除零结果 = 0\n    局部 整数型 入口计数 = 0\n    局部 整数型 文本长度 = 0\n    局部 整数型 静态计数 = 0\n    局部 整数型 自路径结果 = 0\n    局部 文本型 组合文本 = \"\"\n    局部 文本型 诊断文本 = \"\"\n    局部 逻辑型 写入成功 = 假\n\n    加法结果 = 内存演示_加法(2, 3)\n    除零结果 = 内存演示_除法(7, 0)\n    入口计数 = 内存演示_入口计数()\n    文本长度 = 内存演示_文本长度(\"灵码LingBuilder\")\n    组合文本 = 内存演示_取文本(\"内存加载\")\n    静态计数 = 内存演示_静态计数() + 内存演示_静态计数()\n    自路径结果 = 内存演示_自路径(0)\n    诊断文本 = 内存DLL_取错误信息()\n\n    控件_设置文本(结果标签, 格式化文本(\"加法={}，除零={}，入口={}，长度={}，文本={}\", 加法结果, 除零结果, 入口计数, 文本长度, 组合文本))\n    写入成功 = 文件_写入文本(\"T:/electron/lingbuilder/.lingbuilder/memory-dll-demo-result.txt\", 格式化文本(\"加法={}，除零={}，入口={}，长度={}，静态={}，自路径={}，文本={}，错误={}\", 加法结果, 除零结果, 入口计数, 文本长度, 静态计数, 自路径结果, 组合文本, 诊断文本))\n    调试输出(格式化文本(\"结果写入={}，内存加载错误信息={}\", 写入成功, 诊断文本))\n    结束()\n  结束\n结束类\n",
+  "lingCppSources": [
+    {
+      "filePath": "examples/memory-dll-demo/src/项目DLL命令.lcpp",
+      "sourceCode": "包 项目DLL命令\n\n// 「加载方式 = 内存」：DLL 以 RCDATA 内嵌进 EXE，运行期手工 PE 映射到内存，\n// 导出函数在首次调用时按名解析；exe 同目录不会出现该 DLL。\n// 前置条件：项目已在「项目模块」中启用「内存加载DLL模块」（lingbuilder.advanced.memorydll）。\n// DLL 必须与目标程序位数一致且未加壳；不要在内存加载的 DLL 里依赖 C++ 异常。\n\nDLL命令库 MemoryDemo\n  x64 = \"dll/x64/memory_demo.dll\"\n  Win32 = \"dll/Win32/memory_demo.dll\"\n  加载方式 = 内存\n\n  整数型 内存演示_加法(整数型 甲, 整数型 乙) = memo_add\n  备注: 内存 DLL 的整数加法\n  整数型 内存演示_除法(整数型 甲, 整数型 乙) = memo_divide\n  整数型 内存演示_入口计数() = memo_entry_count\n  整数型 内存演示_文本长度(文本型 文本) = memo_text_length\n  文本型 内存演示_取文本(文本型 前缀) = memo_make_text\n  整数型 内存演示_静态计数() = memo_static_counter\n  整数型 内存演示_自路径(整数型 占位) = memo_self_path\n结束DLL命令库\n\nDLL命令库 user32\n  系统 = 真\n  整数型 提示音(整数型 类型) = MessageBeep\n结束DLL命令库\n"
+    },
+    {
+      "filePath": "examples/memory-dll-demo/src/内嵌DLL内存加载演示.lcpp",
+      "sourceCode": "包 内存加载DLL演示\n使用 Win32窗口基础模块\n使用 文件目录模块\n使用 内存加载DLL模块\n\n类 内存演示窗口 : 窗口\n公开\n  事件 _内存演示窗口_创建完毕()\n    局部 整数型 加法结果 = 0\n    局部 整数型 除零结果 = 0\n    局部 整数型 入口计数 = 0\n    局部 整数型 文本长度 = 0\n    局部 整数型 静态计数 = 0\n    局部 整数型 自路径结果 = 0\n    局部 文本型 组合文本 = \"\"\n    局部 文本型 诊断文本 = \"\"\n    局部 逻辑型 写入成功 = 假\n\n    加法结果 = 内存演示_加法(2, 3)\n    除零结果 = 内存演示_除法(7, 0)\n    入口计数 = 内存演示_入口计数()\n    文本长度 = 内存演示_文本长度(\"灵码LingBuilder\")\n    组合文本 = 内存演示_取文本(\"内存加载\")\n    静态计数 = 内存演示_静态计数() + 内存演示_静态计数()\n    自路径结果 = 内存演示_自路径(0)\n    诊断文本 = 内存DLL_取错误信息()\n\n    控件_设置文本(结果标签, 格式化文本(\"加法={}，除零={}，入口={}，长度={}，文本={}\", 加法结果, 除零结果, 入口计数, 文本长度, 组合文本))\n    写入成功 = 文件_写入文本(\"T:/electron/lingbuilder/.lingbuilder/memory-dll-demo-result.txt\", 格式化文本(\"加法={}，除零={}，入口={}，长度={}，静态={}，自路径={}，文本={}，错误={}\", 加法结果, 除零结果, 入口计数, 文本长度, 静态计数, 自路径结果, 组合文本, 诊断文本))\n    调试输出(格式化文本(\"结果写入={}，内存加载错误信息={}\", 写入成功, 诊断文本))\n    结束()\n  结束\n结束类\n"
+    }
+  ]
+}

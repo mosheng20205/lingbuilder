@@ -18,11 +18,19 @@ const comObjectArg = 'COM_创建对象、COM_取OCX对象、COM_取对象属性 
 const comNameArg = '组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。';
 const zipPathArg = 'ZIP 文件路径，不能包含双引号、回车或换行，否则直接判为非法参数。';
 const pipeNameArg = '自定义管道或互斥体名称，不要包含反斜杠；运行时会自动加上 LingBuilder 前缀。';
-function command(name: string, parameters: Parameter[], returnType: ModuleBindingValueType, description: string): StandardCommandSpec {
+function command(name: string, parameters: Parameter[], returnType: ModuleBindingValueType, description: string, example?: string, options?: { insertText?: string }): StandardCommandSpec {
   const args = parameters.map((parameter, index) => parameter.type === 'controlRef' || parameter.type === 'handler'
     ? createModuleBindingSnippetArgument(parameter, index)
     : parameter.type === 'wideString' ? `"$${index + 1}"` : parameter.type === 'bool' ? '假' : '0');
-  return { name, signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`, description, insertText: `${name}(${args.join(', ')})`, parameters, returnType };
+  return {
+    name,
+    signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`,
+    description,
+    insertText: options?.insertText || `${name}(${args.join(', ')})`,
+    parameters,
+    returnType,
+    example
+  };
 }
 
 const archive = createStandardModule({ id: 'lingbuilder.archive', name: 'ZIP压缩模块', category: '系统', description: '通过 Windows 自带 tar.exe 的受控参数封装创建、解压和列出 ZIP，不开放任意命令行。', tags: ['压缩', 'ZIP'], commands: [
@@ -84,17 +92,112 @@ const memory = createStandardModule({ id: 'lingbuilder.advanced.memory', name: '
   command('内存_释放', [{ name: '内存句柄', type: 'handle', description: memHandleArg}], 'bool', '释放受控内存块。')
 ] });
 
+const memoryDll = createStandardModule({
+  id: 'lingbuilder.advanced.memorydll',
+  name: '内存加载DLL模块',
+  category: '系统',
+  description: '把 DLL 字节数据在内存中手工完成 PE 映射并解析导出函数，全程不向磁盘释放 DLL 文件；只支持与程序位数一致、未加壳的 Windows PE，依赖的系统 DLL 仍由 Windows 加载器从系统目录加载。',
+  tags: ['高级', 'DLL', '内存', '风险'],
+  docs: [{ title: '内存加载DLL模块使用说明', path: 'docs/modules/memorydll/README.md' }],
+  commands: [
+    {
+      name: '内存DLL_加载',
+      signature: '内存DLL_加载(数据, 虚拟名, [虚拟目录], [过文件校验], [不执行入口])',
+      description: '把 DLL 字节数据手工映射到内存并按需执行入口函数，返回模块地址（0 表示失败）；全程不创建磁盘文件，同一虚拟名重复调用直接返回已加载的模块地址。',
+      insertText: '内存DLL_加载($1, "$2")',
+      parameters: [
+        { name: '数据', type: 'bytes', description: 'DLL 文件的完整字节集；可用 缓冲区_从文件("路径") 配合 缓冲区_到字节集 读入，或由项目 DLL 命令声明的内嵌资源提供。DLL 必须与程序位数一致且未加壳。' },
+        { name: '虚拟名', type: 'wideString', description: '模块自称的库文件名，例如 "sqlite3.dll"；重复加载判断与错误提示都使用该名字。' },
+        { name: '虚拟目录', type: 'wideString', optional: true, defaultValue: '', description: '可选，缺省空文本表示运行目录；只作为模块来源信息记录，不参与寻址。' },
+        { name: '过文件校验', type: 'bool', optional: true, defaultValue: false, description: '可选，缺省假；传真时额外校验节区数据完整性与导出表结构，并识别常见加壳段名，遇到加壳 DLL 直接返回失败。' },
+        { name: '不执行入口', type: 'bool', optional: true, defaultValue: false, description: '可选，缺省假；传真时不调用 DLL 的入口函数（DllMain 的 DLL_PROCESS_ATTACH），适用于入口会重复初始化全局状态的 DLL。' }
+      ],
+      returnType: 'longLong',
+      example: '局部 长整数型 模块地址\n模块地址 = 内存DLL_加载(缓冲区_到字节集(缓冲区), "sqlite3.dll")'
+    },
+    {
+      name: '内存DLL_取函数地址',
+      signature: '内存DLL_取函数地址(模块地址, 函数名)',
+      description: '在已内存加载的模块中按导出名取函数地址，返回 0 表示未找到；地址可传给其它接收函数指针的原生命令，中文代码不能直接调用裸地址。',
+      insertText: '内存DLL_取函数地址($1, "$2")',
+      parameters: [
+        { name: '模块地址', type: 'longLong', description: '内存DLL_加载 返回的模块地址；为 0 或模块已卸载时返回 0。' },
+        { name: '函数名', type: 'wideString', description: 'DLL 导出表中的原始函数名（ASCII），不是中文命令名；转发导出会自动跟随到目标 DLL。' }
+      ],
+      returnType: 'longLong',
+      example: '函数地址 = 内存DLL_取函数地址(模块地址, "sqlite3_libversion_number")'
+    },
+    {
+      name: '内存DLL_取函数序号地址',
+      signature: '内存DLL_取函数序号地址(模块地址, 序号)',
+      description: '按导出序号取函数地址，适用于只按序号导出的 DLL；返回 0 表示序号不存在。',
+      insertText: '内存DLL_取函数序号地址($1, $2)',
+      parameters: [
+        { name: '模块地址', type: 'longLong', description: '内存DLL_加载 返回的模块地址；为 0 或模块已卸载时返回 0。' },
+        { name: '序号', type: 'int', description: 'PE 导出表中的序号（含导出表基址偏移），1 到 65535；越界返回 0。' }
+      ],
+      returnType: 'longLong',
+      example: '函数地址 = 内存DLL_取函数序号地址(模块地址, 1)'
+    },
+    {
+      name: '内存DLL_取模块大小',
+      signature: '内存DLL_取模块大小(模块地址)',
+      description: '返回内存模块的映像大小（字节），模块地址无效时返回 0。',
+      insertText: '内存DLL_取模块大小($1)',
+      parameters: [{ name: '模块地址', type: 'longLong', description: '内存DLL_加载 返回的模块地址；只统计本次映射占用的映像字节数，不含依赖 DLL。' }],
+      returnType: 'int',
+      example: '映像大小 = 内存DLL_取模块大小(模块地址)'
+    },
+    {
+      name: '内存DLL_已加载',
+      signature: '内存DLL_已加载(模块地址)',
+      description: '判断模块地址是否仍是已加载的内存模块；模块已卸载或地址无效时返回假。',
+      insertText: '内存DLL_已加载($1)',
+      parameters: [{ name: '模块地址', type: 'longLong', description: '要检查的模块地址；已卸载或从未加载过的地址返回假。' }],
+      returnType: 'bool'
+    },
+    {
+      name: '内存DLL_卸载',
+      signature: '内存DLL_卸载(模块地址)',
+      description: '注销内存模块（不调用入口函数的分离通知，也不释放映像内存）；注销后 取函数地址/已加载 都返回失败，同一虚拟名可以重新加载。',
+      insertText: '内存DLL_卸载($1)',
+      parameters: [{ name: '模块地址', type: 'longLong', description: '内存DLL_加载 返回的模块地址；声明内嵌加载的模块返回假并给出中文原因。映像内存保留到进程退出：静态 CRT 登记的线程局部存储回调仍指向该映像，强行释放会让进程退出时崩溃。' }],
+      returnType: 'bool'
+    },
+    {
+      name: '内存DLL_取错误信息',
+      signature: '内存DLL_取错误信息()',
+      description: '返回最近一次内存加载操作的中文错误原因，例如位数不符、加壳、依赖缺失或导出不存在。',
+      insertText: '内存DLL_取错误信息()',
+      parameters: [],
+      returnType: 'wideString',
+      example: '调试输出(内存DLL_取错误信息())'
+    }
+  ]
+});
+
 const hook = createStandardModule({ id: 'lingbuilder.advanced.hook', name: '键盘Hook模块', category: '系统', description: '提供当前桌面低级键盘 Hook 状态读取；不支持注入或修改其他进程。', tags: ['高级', 'Hook', '风险'], commands: [
   command('键盘钩子_启动', [], 'bool', '启动 WH_KEYBOARD_LL 钩子。'), command('键盘钩子_取最后键码', [], 'int', '读取最近键盘消息虚拟键码。'),
   command('键盘钩子_取消息数量', [], 'longLong', '读取钩子收到的消息数量。'), command('键盘钩子_停止', [], 'void', '卸载键盘钩子。')
 ] });
 
-const processMemory = createStandardModule({ id: 'lingbuilder.advanced.process-memory', name: '进程内存模块', category: '系统', description: '显式打开目标进程并读写 32 位整数；属于高风险模块，不默认启用。', tags: ['高级', '进程内存', '风险'], commands: [
-  command('进程内存_打开', [{ name: '进程ID', type: 'int', description: '目标进程 ID；句柄按需申请查询、读取和写入权限，受保护进程通常打开失败。'}, { name: '允许写入', type: 'bool', description: '传真时额外申请写入权限，是 进程内存_写整数 生效的前提。'}], 'handle', '打开目标进程句柄。'),
+const processMemoryHandleArg = '进程内存_打开 返回的进程句柄；为 0 表示打开失败或句柄无效，读写不会生效，可用 进程内存_取错误码/取错误 查看原因。';
+const processMemory = {
+  ...createStandardModule({ id: 'lingbuilder.advanced.process-memory', name: '进程内存模块', version: '1.1.0', category: '系统', description: '显式打开目标进程，读写整数与字节集、枚举已提交内存区域并做字节集特征扫描；打开失败时区分"拒绝访问（需要管理员）"等中文错误。属于高风险模块，默认随新项目启用，可按项目禁用。', tags: ['高级', '进程内存', '风险', '扫描'], docs: [{ title: '进程内存模块使用说明', path: 'docs/modules/advanced/process-memory.md' }], commands: [
+  command('进程内存_打开', [{ name: '进程ID', type: 'int', description: '目标进程 ID；句柄按需申请查询、读取和写入权限，受保护进程通常打开失败并可用 进程内存_取错误码 区分原因。'}, { name: '允许写入', type: 'bool', description: '传真时额外申请写入权限，是 进程内存_写整数 生效的前提。'}], 'handle', '打开目标进程句柄；失败返回 0，错误码与中文原因可用 进程内存_取错误码/取错误 读取。'),
   command('进程内存_读整数', [{ name: '进程句柄', type: 'handle', description: procHandleArg}, { name: '地址', type: 'longLong', description: '目标进程内的字节地址，该处必须存在可读的 4 个字节。'}, { name: '默认值', type: 'int', description: '读取失败时返回的兜底整数。'}], 'int', '读取目标地址 32 位整数。'),
   command('进程内存_写整数', [{ name: '进程句柄', type: 'handle', description: `${procHandleArg}打开时未允许写入则必定失败。`}, { name: '地址', type: 'longLong', description: '目标进程内的字节地址，该处必须可写满 4 个字节。'}, { name: '数值', type: 'int', description: '要写入的 32 位整数值。'}], 'bool', '写入目标地址 32 位整数。'),
+  command('进程内存_读字节集', [{ name: '进程句柄', type: 'handle', description: processMemoryHandleArg}, { name: '地址', type: 'longLong', description: '目标进程内的起始字节地址；地址必须落在用户态范围（0 到 0x00007FFFFFFFFFFF）内，否则返回空字节集。'}, { name: '长度', type: 'int', description: '要读取的字节数，1 到 67108864（64MB 上限）；目标区域只有部分可读时返回可读前缀并用 进程内存_取错误码 报告 299。'}], 'bytes', '按地址从目标进程批量读取字节集；句柄、长度或地址非法，以及完全读不到时返回空字节集。'),
+  command('进程内存_读到缓冲区', [{ name: '进程句柄', type: 'handle', description: processMemoryHandleArg}, { name: '地址', type: 'longLong', description: '目标进程内的起始字节地址，范围约束同 进程内存_读字节集。'}, { name: '长度', type: 'int', description: '要读取的字节数，1 到 67108864；读取失败或结果为空时返回 0。'}], 'longLong', '读取目标进程内存并直接装入 缓冲区模块 的缓冲区，返回缓冲区句柄；本模块依赖 lingbuilder.std.buffer，启用时自动带上。'),
+  command('进程内存_枚举区域JSON', [{ name: '进程句柄', type: 'handle', description: processMemoryHandleArg}, { name: '只列已提交可读区域', type: 'bool', description: '传假时列出全部内存区域（含保留、空闲），传真时只返回 MEM_COMMIT 且页保护可读（排除 PAGE_GUARD/PAGE_NOACCESS）的区域。'}], 'wideString', '用 VirtualQueryEx 枚举目标进程内存区域，返回 JSON 数组，每个元素含 baseAddress/regionSize/state/protect/type（十进制数值）。'),
+  command('进程内存_扫描字节集', [{ name: '进程句柄', type: 'handle', description: processMemoryHandleArg}, { name: '特征字节集', type: 'bytes', description: '要搜索的字节序列，不能为空；命中跨 8MB 分块边界由运行时用重叠区自动补齐，无需手工分块。'}, { name: '最大命中数', type: 'int', description: '找到足够命中即提前返回，1 到 1000000；超出范围按错误处理返回 0。'}, { name: '结果数组', type: 'array', description: '接收命中地址的长整数型数组变量（元素是十进制地址），调用前会先清空原有内容；命中按地址升序去重。'}], 'int', '在目标进程已提交可读内存中扫描特征字节集（内部自动分块读取），返回命中数量；需要管理员权限的进程要先以管理员身份运行。', '局部 长整数型 命中[]\n进程内存_扫描字节集(句柄, 特征, 100, 命中)', { insertText: '进程内存_扫描字节集($1, $2, 100, $3)' }),
+  command('进程内存_扫描字节集JSON', [{ name: '进程句柄', type: 'handle', description: processMemoryHandleArg}, { name: '特征字节集', type: 'bytes', description: '要搜索的字节序列，不能为空。'}, { name: '最大命中数', type: 'int', description: '命中数上限，1 到 1000000；超出范围返回空文本。'}], 'wideString', '同 进程内存_扫描字节集，但把升序去重后的命中地址返回为 JSON 数组文本（如 [819200, 991232]），可直接落盘；失败返回空文本。'),
+  command('进程内存_取错误码', [], 'int', '返回本线程最近一次进程内存操作的 Win32 错误码：5=拒绝访问（通常需要管理员）、87=参数无效、299=部分读取成功；0 表示成功或尚未执行操作。'),
+  command('进程内存_取错误', [], 'wideString', '返回最近一次进程内存操作的中文错误说明（含"需要以管理员身份运行"等指引）；没有错误时返回空文本。'),
   command('进程内存_关闭', [{ name: '进程句柄', type: 'handle', description: '进程内存_打开 返回的进程句柄；传 0 直接返回假。'}], 'bool', '关闭目标进程句柄。')
-] });
+] }),
+  dependencies: [{ moduleId: 'lingbuilder.std.buffer', minimumVersion: '1.0.0' }]
+};
 
 const comHandlerParameter: ModuleCommandBindingParameter & { description: string } = {
   name: '处理器',
@@ -156,4 +259,4 @@ const driver = createStandardModule({ id: 'lingbuilder.advanced.driver', name: '
   command('设备_取错误码', [], 'int', '返回最近设备操作 Win32 错误码。')
 ] });
 
-export const PLATFORM_ADVANCED_MODULES: LingBuilderModuleManifest[] = [archive, mail, ipc, menu, tray, accessibility, memory, hook, processMemory, com, assembly, driver];
+export const PLATFORM_ADVANCED_MODULES: LingBuilderModuleManifest[] = [archive, mail, ipc, menu, tray, accessibility, memory, memoryDll, hook, processMemory, com, assembly, driver];

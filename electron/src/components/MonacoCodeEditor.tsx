@@ -98,6 +98,7 @@ export interface MonacoCodeEditorHandle {
   undo: () => Promise<boolean>;
   redo: () => Promise<boolean>;
   replaceValueAuthoritatively: (value: string) => boolean;
+  insertSnippet: (text: string, placeholderOffset?: number, placeholderLength?: number) => boolean;
   focus: () => boolean;
   captureViewState: () => boolean;
 }
@@ -330,6 +331,10 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
   };
   const boundContextRef = useRef<typeof activeContextRef.current | null>(null);
   const nativeHistoryContextRef = useRef<string | null>(null);
+  // 本编辑器最近通过 onChange 发出的值。App 状态提交有延迟，延迟到达的旧 prop
+  // 只是回声；若此时做 authoritative setValue 会回退用户刚输入的字符并把光标
+  // 复位到第 1 行，因此 bindCurrentModel 用这份记录识别并跳过回声同步。
+  const emittedValuesRef = useRef<string[]>([]);
   const adapterRef = useRef(new MonacoTextModelAdapter<WorkbenchTextModel>());
   const [fetchedModuleContext, setFetchedModuleContext] = useState<LingCppModuleContext | undefined>();
   const [debugBreakpointLines, setDebugBreakpointLines] = useState<number[]>([]);
@@ -422,15 +427,23 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       || previousBoundContext?.surface !== context.surface;
 
     const nativeHistoryContext = `${context.modelId}:${context.language}`;
-    const syncResult = synchronizeMonacoModelValue(model, editor, context.sourceCode, {
-      // LingCpp has one canonical per-file history shared with beginner mode.
-      // A retained Monaco model must not create a second undo entry when it is
-      // rebound to a canonical snapshot produced outside the Monaco surface.
-      authoritative: context.language === 'lingcpp',
-      readOnly: context.readOnly,
-      resetNativeHistory: context.language === 'lingcpp'
-        && nativeHistoryContextRef.current !== nativeHistoryContext
-    });
+    const isStaleSelfEcho = previousBoundContext !== null
+      && previousBoundContext.modelId === context.modelId
+      && emittedValuesRef.current.includes(context.sourceCode);
+    if (previousBoundContext === null || previousBoundContext.modelId !== context.modelId) {
+      emittedValuesRef.current = [];
+    }
+    const syncResult = isStaleSelfEcho
+      ? 'unchanged'
+      : synchronizeMonacoModelValue(model, editor, context.sourceCode, {
+        // LingCpp has one canonical per-file history shared with beginner mode.
+        // A retained Monaco model must not create a second undo entry when it is
+        // rebound to a canonical snapshot produced outside the Monaco surface.
+        authoritative: context.language === 'lingcpp',
+        readOnly: context.readOnly,
+        resetNativeHistory: context.language === 'lingcpp'
+          && nativeHistoryContextRef.current !== nativeHistoryContext
+      });
     if (syncResult !== 'unavailable') nativeHistoryContextRef.current = nativeHistoryContext;
 
     if (!workbenchTextModelService.attachModelIfCurrent(context.token, model)) return false;
@@ -471,6 +484,52 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       emitEditorState();
       return true;
     },
+    insertSnippet: (text: string, placeholderOffset?: number, placeholderLength?: number) => {
+      const context = activeContextRef.current;
+      if (context.readOnly || !bindCurrentModel()) return false;
+      const editor = editorRef.current;
+      const model = editor?.getModel?.();
+      if (!editor || !model || model.isDisposed?.()) return false;
+      const selection = editor.getSelection?.() || null;
+      const anchorPosition = selection
+        ? {
+          lineNumber: selection.selectionStartLineNumber || 1,
+          column: selection.selectionStartColumn || 1
+        }
+        : editor.getPosition?.();
+      if (!anchorPosition) return false;
+      const applied = editor.executeEdits?.('lingbuilder.snippet', [{
+        range: selection || {
+          startLineNumber: anchorPosition.lineNumber,
+          startColumn: anchorPosition.column,
+          endLineNumber: anchorPosition.lineNumber,
+          endColumn: anchorPosition.column
+        },
+        text,
+        forceMoveMarkers: true
+      }]);
+      if (applied === false) return false;
+      if (placeholderOffset !== undefined && placeholderLength && placeholderLength > 0
+        && model.getOffsetAt && model.getPositionAt) {
+        try {
+          const baseOffset = model.getOffsetAt(anchorPosition);
+          const anchor = model.getPositionAt(baseOffset + placeholderOffset);
+          const active = model.getPositionAt(baseOffset + placeholderOffset + placeholderLength);
+          if (anchor && active) {
+            editor.setSelection?.({
+              selectionStartLineNumber: anchor.lineNumber,
+              selectionStartColumn: anchor.column,
+              positionLineNumber: active.lineNumber,
+              positionColumn: active.column
+            });
+          }
+        } catch {
+          // 占位定位失败时保留插入后的默认光标位置。
+        }
+      }
+      editor.focus?.();
+      return true;
+    },
     focus: () => {
       if (!editorRef.current) return false;
       editorRef.current.focus?.();
@@ -507,6 +566,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       window.cancelAnimationFrame(stateFrameRef.current);
       stateFrameRef.current = null;
     }
+    emittedValuesRef.current = [];
     cppFilePathRegistry.release(cppFilePathOwnerRef.current);
     boundContextRef.current = null;
   }, [captureBoundViewState]);
@@ -1428,11 +1488,19 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         language={mapWorkbenchLanguageToMonaco(language)}
         theme={isDarkMode ? 'epl-dark' : 'epl-light'}
         onMount={handleEditorDidMount}
-        onChange={(value, event) => onChange(value || '', {
-          isUndoing: event.isUndoing,
-          isRedoing: event.isRedoing,
-          isFlush: event.isFlush
-        })}
+        onChange={(value, event) => {
+          const nextValue = value || '';
+          const emittedTrail = emittedValuesRef.current;
+          if (emittedTrail[emittedTrail.length - 1] !== nextValue) {
+            emittedTrail.push(nextValue);
+            if (emittedTrail.length > 8) emittedTrail.shift();
+          }
+          onChange(nextValue, {
+            isUndoing: event.isUndoing,
+            isRedoing: event.isRedoing,
+            isFlush: event.isFlush
+          });
+        }}
         saveViewState={false}
         keepCurrentModel
         options={{

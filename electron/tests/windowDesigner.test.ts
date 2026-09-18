@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
 import HeaderDesignerPreview from '../src/components/HeaderDesignerPreview';
 import TabControlDesignerPreview from '../src/components/TabControlDesignerPreview';
+import { selectControlEventTargetFile } from '../src/services/windowDesigner/controlEventTargetFile';
 import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog';
 import ToolbarButtonsDialog from '../src/components/ToolbarButtonsDialog';
 import StatusBarPartsDialog from '../src/components/StatusBarPartsDialog';
@@ -422,6 +423,40 @@ test('调试输出支持英文逗号分隔的任意数量异构参数', () => {
   assert.match(cpp, /调试输出\(L"当前选择项", 控件_取选择项\(L"列表框_tab"\), true, 3\);/u);
   assert.match(cpp, /template <typename\.\.\. Args> void 调试输出\(const Args&\.\.\. args\)/u);
   assert.match(cpp, /if \(!first\) output \+= L", ";/u);
+});
+
+test('单精度小数型生成 C++ float 并补字面量 f 后缀，小数型/双精度小数型保持 double', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'single-precision-float-type',
+    name: '单精度浮点类型',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const mainSource = [
+    '类 主窗口',
+    '    单精度小数型 成员比例 = 1.5',
+    '    单精度小数型 取比例(单精度小数型 输入值)',
+    '        局部 单精度小数型 局部值 = 2.5',
+    '        局部 小数型 双精度值 = 3.5',
+    '        局部 双精度小数型 显式双精度 = 4.5',
+    '        返回 局部值 + 输入值',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSources: [
+      { filePath: 'src/MainWindow.lcpp', sourceCode: mainSource },
+      { filePath: 'src/项目全局变量.lcpp', sourceCode: '常量 单精度小数型 比例 = 0.5' }
+    ]
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /inline constexpr float 比例 = 0\.5f;/u);
+  assert.match(cpp, /float 成员比例 = 1\.5f;/u);
+  assert.match(cpp, /float 取比例\(float 输入值/u);
+  assert.match(cpp, /float 局部值 = 2\.5f;/u);
+  assert.match(cpp, /double 双精度值 = 3\.5;/u);
+  assert.match(cpp, /double 显式双精度 = 4\.5;/u);
 });
 
 test('空窗口使用与 ControlSpec 同步的类型安全占位项', () => {
@@ -5252,4 +5287,62 @@ test('native 生成器：固定边框与旧项目迁移', () => {
   const legacyCpp = legacy.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
   // 序列化锚定断言（前导 underline 布尔 + 四值 + 行尾）：迁移为 normal-fixed 后 resizable 派生 false，maximizable 默认 true，编号 2，拖动默认 false
   assert.ok(legacyCpp.includes('false, false, true, 2, false }'));
+});
+
+test('精简设计器模型缺少控件颜色字段时也能生成（手写/AI 生成模型口径）', () => {
+  // 回归：generateControlSpec 里两处直接 toColorRef(control.background/foreground) 曾让
+  // 不带颜色字段的手写或 AI 生成模型整次生成 TypeError 崩掉（CLI/AI Bridge 与示例工程共用同一生成器）。
+  const project = {
+    schemaVersion: 2 as const,
+    id: 'compact-control-model',
+    name: '精简控件模型',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口',
+      width: 640, height: 480, background: '#202028', description: '缺少控件颜色字段',
+      // 从 JSON 手写/由 AI 生成的精简模型不会带 fontSize/background/foreground/isEnabled/visibility。
+      controls: [
+        { id: 'label-1', name: '状态标签', type: 'Label', x: 16, y: 12, width: 300, height: 24, content: '就绪' },
+        { id: 'button-1', name: '按钮1', type: 'Button', x: 16, y: 48, width: 120, height: 32, content: '确定', events: { Click: '_按钮1_被单击' } }
+      ] as unknown as LingControl[]
+    }]
+  } satisfies LingWindowProject;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口\n结束类\n' })
+    .files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /L"状态标签"/u);
+  // 背景缺省回落到窗口背景，前景缺省回落黑色 —— 不再抛异常。
+  assert.match(cpp, /RGB\(32, 32, 40\), false, RGB\(0, 0, 0\)/u);
+});
+
+test('事件代码定位优先选「声明窗口类的文件」，同名处理器散落多文件也不会跳错', () => {
+  // 回归（2026-09-17 实测）：组件总览六标签页 工程里 MainWindow.lcpp 与 组件总览六标签页.lcpp
+  // 都声明了 事件 创建完毕，而窗口类 演示窗口 只在后者中声明；旧顺序（处理器优先）会跳到
+  // 无关的 MainWindow.lcpp。
+  const candidates = [
+    { path: 'src/MainWindow.lcpp', name: 'MainWindow.lcpp', content: '类 其它窗口\n结束类\n\n事件 创建完毕()\n结束\n' },
+    { path: 'src/组件总览六标签页.lcpp', name: '组件总览六标签页.lcpp', content: '类 演示窗口\n结束类\n\n事件 创建完毕()\n结束\n' },
+    { path: 'src/功能库/演示页切换.lcpp', name: '演示页切换.lcpp', content: '功能库 演示页切换\n结束功能库\n' }
+  ];
+  const picked = selectControlEventTargetFile(candidates, {
+    windowClassName: '演示窗口',
+    windowFileName: 'MainWindow.xml',
+    handlerName: '创建完毕'
+  });
+  assert.equal(picked?.path, 'src/组件总览六标签页.lcpp');
+});
+
+test('事件代码定位在缺少窗口类声明时退回「声明处理器的文件」，再退惯例文件名', () => {
+  const handlerOnly = selectControlEventTargetFile([
+    { path: 'src/MainWindow.lcpp', name: 'MainWindow.lcpp', content: '类 其它窗口\n结束类\n' },
+    { path: 'src/外部导入.lcpp', name: '外部导入.lcpp', content: '类 导入窗口\n结束类\n\n事件 创建完毕()\n结束\n' }
+  ], { windowClassName: '导入窗口', windowFileName: 'MainWindow.xml', handlerName: '创建完毕' });
+  assert.equal(handlerOnly?.path, 'src/外部导入.lcpp');
+
+  // 类名与源码文件名不对应、也没有任何文件声明该处理器时，退到 <窗口类名>.lcpp。
+  const conventional = selectControlEventTargetFile([
+    { path: 'src/MainWindow.lcpp', name: 'MainWindow.lcpp', content: '类 其它窗口\n结束类\n' },
+    { path: 'src/主窗口.lcpp', name: '主窗口.lcpp', content: '包 主窗口\n' }
+  ], { windowClassName: '主窗口', windowFileName: 'MainWindow.xml', handlerName: '创建完毕' });
+  assert.equal(conventional?.path, 'src/主窗口.lcpp');
+
+  assert.equal(selectControlEventTargetFile([], { windowClassName: '主窗口', handlerName: '创建完毕' }), undefined);
 });

@@ -81,7 +81,7 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
     const constant = program.constants.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(edit.constantName));
     if (!constant) throw new Error(`未找到项目常量：${edit.constantName}`);
     const index = lineIndex(constant.line);
-    const removeFrom = isNoteLine(next[index - 1] || '') ? index - 1 : index;
+    const removeFrom = index - 1 > 0 && isNoteLine(next[index - 1] || '') ? index - 1 : index;
     next.splice(removeFrom, removeFrom === index ? 1 : 2);
     return next;
   }
@@ -109,7 +109,7 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
     const global = program.globals.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(edit.globalName));
     if (!global) throw new Error(`未找到项目全局变量：${edit.globalName}`);
     const index = lineIndex(global.line);
-    const removeFrom = isNoteLine(next[index - 1] || '') ? index - 1 : index;
+    const removeFrom = index - 1 > 0 && isNoteLine(next[index - 1] || '') ? index - 1 : index;
     next.splice(removeFrom, removeFrom === index ? 1 : 2);
     return next;
   }
@@ -382,7 +382,7 @@ function insertDataField(
 
 function removeDataTypeBlock(lines: string[], dataType: LingCppDataType): void {
   const startIndex = lineIndex(dataType.line);
-  const start = isNoteLine(lines[startIndex - 1] || '') ? startIndex - 1 : startIndex;
+  const start = startIndex - 1 > 0 && isNoteLine(lines[startIndex - 1] || '') ? startIndex - 1 : startIndex;
   const end = lineIndex(dataType.endLine || dataType.line);
   lines.splice(start, end - start + 1);
 }
@@ -725,13 +725,15 @@ function replaceOrInsertNote(lines: string[], lineNumber: number, note: string):
   const index = lineIndex(lineNumber);
   const targetLine = lines[index] || '';
   const previousLine = lines[index - 1] || '';
+  // 首行注释是文件级说明，不得被类型/字段的说明覆盖或删除，只能在声明上方另插说明行。
+  const previousIsNote = index - 1 > 0 && isNoteLine(previousLine);
   const trimmedNote = note.trim();
   if (!trimmedNote) {
     if (isNoteLine(targetLine)) {
       lines.splice(index, 1);
       return;
     }
-    if (isNoteLine(previousLine)) {
+    if (previousIsNote) {
       lines.splice(index - 1, 1);
     }
     return;
@@ -741,7 +743,7 @@ function replaceOrInsertNote(lines: string[], lineNumber: number, note: string):
     lines[index] = noteLine;
     return;
   }
-  if (isNoteLine(previousLine)) {
+  if (previousIsNote) {
     lines[index - 1] = `${indentOf(previousLine)}// ${trimmedNote}`;
     return;
   }

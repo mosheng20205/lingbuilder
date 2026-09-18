@@ -7,6 +7,7 @@ import type { LingBuilderSolutionProject } from '../solution/solutionService';
 import { decodeCompilerOutput } from '../tasks/compilerOutputEncoding';
 import type { DesignerAssetService } from './designerAssetService';
 import type { LingWindowModel } from './types';
+import { EMBEDDED_RESOURCE_MAX_FILE_BYTES, EMBEDDED_RESOURCE_TOTAL_WARN_BYTES, type EmbeddedResourceSpec } from './embeddedResourceService';
 
 export const WINDOWS_EXECUTABLE_RESOURCE_FILE = 'lingbuilder-app.rc';
 export const WINDOWS_EXECUTABLE_ICON_FILE = 'resources/lingbuilder-app.ico';
@@ -194,12 +195,22 @@ export function getWindowEmbeddedSiteHost(window: LingWindowModel): string {
   return (window.embeddedSite?.host || WINDOWS_EMBEDDED_SITE_DEFAULT_HOST).trim().toLowerCase();
 }
 
-export function generateWindowsExecutableResourceFile(window: LingWindowModel): { relativePath: string; content: string } | undefined {
+/**
+ * 生成 EXE 的 rc 资源文件。
+ * `extraResourceLines` 用于项目 DLL 命令声明的「加载方式 = 内存」条目（2201 起资源号）：
+ * 这些行由调用方按声明顺序生成，本函数只负责与图标/内嵌文件一起写进同一个 rc。
+ */
+export function generateWindowsExecutableResourceFile(
+  window: LingWindowModel,
+  extraResourceLines: readonly string[] = []
+): { relativePath: string; content: string } | undefined {
   const iconStyle = window.iconStyle || 'lingbuilder';
   const iconEnabled = iconStyle === 'lingbuilder' || (iconStyle === 'custom' && Boolean(getSafeCustomWindowIconPath(window)));
-  const embeddedSpecs = iconEnabled ? getWindowEmbeddedResourceSpecs(window) : [];
+  // 内嵌文件与窗口图标是否显示无关：图标选「不显示」时也必须照常生成 RCDATA 行，
+  // 否则声明的内嵌文件会被静默丢弃（rc 里没有资源，运行期才缺文件）。
+  const embeddedSpecs = getWindowEmbeddedResourceSpecs(window);
   const siteSpecs = getWindowEmbeddedSiteResourceSpecs(window);
-  if (!iconEnabled && siteSpecs.length === 0) return undefined;
+  if (!iconEnabled && embeddedSpecs.length === 0 && siteSpecs.length === 0 && extraResourceLines.length === 0) return undefined;
   const lines: string[] = [];
   if (iconEnabled) {
     lines.push(
@@ -215,6 +226,10 @@ export function generateWindowsExecutableResourceFile(window: LingWindowModel): 
   for (const site of siteSpecs) {
     lines.push(`#define ID_RCDATA_LINGBUILDER_SITE_${site.resourceId} ${site.resourceId}`);
     lines.push(`ID_RCDATA_LINGBUILDER_SITE_${site.resourceId} RCDATA "${site.resourceFileName}"`);
+  }
+  if (extraResourceLines.length > 0) {
+    lines.push('', '// 项目 DLL 命令声明：加载方式 = 内存（运行期手工映射，不落盘）');
+    lines.push(...extraResourceLines);
   }
   lines.push('');
   return {
@@ -233,13 +248,17 @@ export class WindowsExecutableIconService {
   async materialize(
     project: LingBuilderSolutionProject,
     window: LingWindowModel,
-    destinationRoots: readonly string[]
+    destinationRoots: readonly string[],
+    options: { embeddedResourceSpecs?: readonly EmbeddedResourceSpec[] } = {}
   ): Promise<WindowsExecutableIconMaterialization> {
+    // 内嵌资源属于设计器模型（项目级），本服务拿到的是解决方案项目，所以规格由调用方传入。
+    const embeddedResourceSpecs = options.embeddedResourceSpecs ? [...options.embeddedResourceSpecs] : [];
     const resourceFile = generateWindowsExecutableResourceFile(window);
+    const embeddedSpecs = getWindowEmbeddedResourceSpecs(window);
     const iconStyle = window.iconStyle || 'lingbuilder';
     const iconEnabled = iconStyle === 'lingbuilder' || (iconStyle === 'custom' && Boolean(getSafeCustomWindowIconPath(window)));
     const siteSpecs = getWindowEmbeddedSiteResourceSpecs(window);
-    if (!resourceFile && siteSpecs.length === 0) {
+    if (!resourceFile && embeddedSpecs.length === 0 && siteSpecs.length === 0 && embeddedResourceSpecs.length === 0) {
       await this.removeStaleIcons(destinationRoots);
       return { files: [], fingerprint: 'none', source: 'none' };
     }
@@ -253,7 +272,6 @@ export class WindowsExecutableIconService {
       : Buffer.alloc(0);
     if (iconEnabled) validateIco(bytes, customIconPath || 'LingBuilder 默认窗口图标');
 
-    const embeddedSpecs = iconEnabled ? getWindowEmbeddedResourceSpecs(window) : [];
     const embeddedBytes = await Promise.all(embeddedSpecs.map(async spec => {
       const resolved = this.resolveWorkspacePath(spec.sourceFile);
       const stat = await fs.stat(resolved).catch(() => null);
@@ -271,7 +289,23 @@ export class WindowsExecutableIconService {
       return fs.readFile(resolved);
     }));
 
-    const fingerprintInput = Buffer.concat([bytes, ...embeddedBytes, ...siteBytes]);
+    // 项目级内嵌资源：源文件先复制成 ASCII 归档名再进 rc，彻底避开 rc.exe 对中文路径/资源名的编码坑。
+    const projectResourceSpecs = embeddedResourceSpecs;
+    const projectResourceBytes = await Promise.all(projectResourceSpecs.map(async (spec: EmbeddedResourceSpec) => {
+      const resolved = this.resolveWorkspacePath(spec.file);
+      const stat = await fs.stat(resolved).catch(() => null);
+      if (!stat || !stat.isFile()) throw new Error(`内嵌资源不存在：${spec.file}（逻辑名 ${spec.name}）`);
+      if (stat.size > EMBEDDED_RESOURCE_MAX_FILE_BYTES) {
+        throw new Error(`内嵌资源超过 ${Math.floor(EMBEDDED_RESOURCE_MAX_FILE_BYTES / 1024 / 1024)}MB 上限：${spec.file}`);
+      }
+      return fs.readFile(resolved);
+    }));
+    const projectResourceTotal = projectResourceBytes.reduce((total, buffer) => total + buffer.byteLength, 0);
+    if (projectResourceTotal > EMBEDDED_RESOURCE_TOTAL_WARN_BYTES) {
+      console.warn(`内嵌资源总量 ${(projectResourceTotal / 1024 / 1024).toFixed(1)}MB，会显著增大 EXE 体积。`);
+    }
+
+    const fingerprintInput = Buffer.concat([bytes, ...embeddedBytes, ...siteBytes, ...projectResourceBytes]);
     const files: string[] = [];
     for (const destinationRoot of [...new Set(destinationRoots.map(root => path.resolve(root)))]) {
       if (iconEnabled) {
@@ -287,6 +321,12 @@ export class WindowsExecutableIconService {
         await fs.mkdir(path.dirname(embeddedTarget), { recursive: true });
         await fs.writeFile(embeddedTarget, embeddedBytes[index]);
         files.push(embeddedTarget);
+      }
+      for (let index = 0; index < projectResourceSpecs.length; index += 1) {
+        const resourceTarget = resolveWithin(destinationRoot, projectResourceSpecs[index].resourceFileName);
+        await fs.mkdir(path.dirname(resourceTarget), { recursive: true });
+        await fs.writeFile(resourceTarget, projectResourceBytes[index]);
+        files.push(resourceTarget);
       }
       for (let index = 0; index < siteSpecs.length; index += 1) {
         const siteTarget = resolveWithin(destinationRoot, siteSpecs[index].resourceFileName);

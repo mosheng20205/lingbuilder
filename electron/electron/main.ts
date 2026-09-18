@@ -23,6 +23,7 @@ import { checkLatestVersion, type VersionCheckResult } from './versionCheckServi
 import { UpdateDownloadService } from './updateDownloadService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
+import { readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
 import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
 import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
@@ -241,6 +242,28 @@ async function inspectInstalledCli() {
       });
     }
   });
+}
+
+/** 内嵌资源选择：逐个 realpath 归一化并确认是普通文件（拒绝断链符号链接与目录）。 */
+async function resolvePickedFiles(filePaths: readonly string[]): Promise<string[]> {
+  const resolved: string[] = [];
+  for (const filePath of filePaths.slice(0, 64)) {
+    const real = await fs.realpath(path.resolve(String(filePath))).catch(() => '');
+    if (!real) throw new Error(`选择的文件不存在或无法访问：${path.basename(String(filePath))}`);
+    const stat = await fs.stat(real);
+    if (!stat.isFile()) throw new Error(`选择的路径不是普通文件：${path.basename(real)}`);
+    resolved.push(real);
+  }
+  return resolved;
+}
+
+/** 内嵌资源选择：realpath 归一化并确认是目录，供「选择文件夹…」递归展开。 */
+async function resolvePickedDirectory(directoryPath: string): Promise<string> {
+  const real = await fs.realpath(path.resolve(String(directoryPath))).catch(() => '');
+  if (!real) throw new Error('选择的文件夹不存在或无法访问。');
+  const stat = await fs.stat(real);
+  if (!stat.isDirectory()) throw new Error('选择的路径不是文件夹。');
+  return real;
 }
 
 function credentialPath(): string { return path.join(app.getPath('userData'), 'credentials', 'ai-api-key.bin'); }
@@ -867,14 +890,32 @@ function registerIpcHandlers(): void {
     const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
     const permission = String(value.permission || 'preview') as ManagedAiBridgePermission;
     if (permission === 'yolo' && value.approvedYolo !== true) throw new Error('启用 yolo 前必须确认外部 AI 可自动写入并执行受控构建。');
-    return await aiBridgeManager.start({
+    const port = typeof value.port === 'number' ? value.port : Number(value.port || 17860);
+    const lifecycle = String(value.lifecycle || 'workspace') as ManagedAiBridgeLifecycle;
+    const token = typeof value.token === 'string' ? value.token : undefined;
+    const snapshot = await aiBridgeManager.start({
       workspaceRoot: getShellWorkspaceRoot(),
-      port: typeof value.port === 'number' ? value.port : Number(value.port || 17860),
+      port,
       permission,
-      lifecycle: String(value.lifecycle || 'workspace') as ManagedAiBridgeLifecycle,
-      token: typeof value.token === 'string' ? value.token : undefined,
+      lifecycle,
+      token,
       moduleAccessState: Buffer.from(JSON.stringify(await readModulePermitCache()), 'utf8').toString('base64url')
     });
+    // 记住上次成功启动的设置（含自定义 Token，safeStorage 加密），下次打开连接中心自动回填。
+    try {
+      await writeAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), {
+        port: snapshot.port || port,
+        permission,
+        lifecycle,
+        token: token || ''
+      }, safeStorage);
+    } catch {
+      // 设置保存失败不阻断启动；下次仍可用临时值。
+    }
+    return snapshot;
+  });
+  ipcMain.handle('ai-bridge:start-settings:load', async () => {
+    return await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage) ?? null;
   });
   ipcMain.handle('ai-bridge:stop', async () => await aiBridgeManager.stop('用户停止'));
   ipcMain.handle('ai-bridge:rotate-token', async () => await aiBridgeManager.rotateToken());
@@ -1174,6 +1215,42 @@ function registerIpcHandlers(): void {
     return result.canceled || !result.filePaths[0]
       ? { canceled: true }
       : { canceled: false, filePath: result.filePaths[0] };
+  });
+  // 内嵌资源：只负责弹出本机选择框并把选中的路径做 realpath 归一化；
+  // 复制进工作区、大小与逻辑名校验统一由 renderer 本地服务（/api/window-designer/embedded-resources/import）完成，
+  // renderer 不直接接触 fs，主进程也不猜测工作区/项目目录结构。
+  ipcMain.handle('designer-assets:select-embedded-files', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择要内嵌的资源文件',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '所有文件', extensions: ['*'] }]
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true, filePaths: [] as string[] };
+    try {
+      return { canceled: false, filePaths: await resolvePickedFiles(result.filePaths) };
+    } catch (error) {
+      return { canceled: false, filePaths: [] as string[], error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('designer-assets:select-embedded-folder', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择要内嵌的资源文件夹',
+      properties: ['openDirectory']
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return { canceled: true };
+    try {
+      return { canceled: false, directoryPath: await resolvePickedDirectory(result.filePaths[0]) };
+    } catch (error) {
+      return { canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
   ipcMain.handle('credentials:ai:get', () => readAiCredential());
   ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));

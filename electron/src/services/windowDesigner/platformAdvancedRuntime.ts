@@ -1,5 +1,6 @@
 import { InstalledModule } from '../modules/types';
 import { COM_RUNTIME, generateComWindowMethods, generateComWndProcCase } from './comRuntime';
+import { MEMORY_DLL_MODULE_ID, MEMORY_DLL_RUNTIME } from './memoryDllRuntime';
 
 export { generateComWindowMethods, generateComWndProcCase };
 
@@ -211,7 +212,151 @@ int 键盘钩子_取最后键码() { return g_lbLastKey.load(); } long long 键�
 `;
 
 const PROCESS_MEMORY_RUNTIME = String.raw`
-long long 进程内存_打开(int processId, bool writable) { DWORD access = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | (writable ? PROCESS_VM_WRITE | PROCESS_VM_OPERATION : 0); return reinterpret_cast<long long>(OpenProcess(access, FALSE, static_cast<DWORD>(processId))); }
+#pragma comment(lib, "advapi32.lib")
+static thread_local DWORD g_lbProcessMemoryError = 0; static thread_local std::wstring g_lbProcessMemoryErrorText;
+static void LB_ProcessMemorySetError(DWORD error, const std::wstring& text) { g_lbProcessMemoryError = error; g_lbProcessMemoryErrorText = text; }
+static void LB_ProcessMemoryClearError() { g_lbProcessMemoryError = 0; g_lbProcessMemoryErrorText.clear(); }
+int 进程内存_取错误码() { return static_cast<int>(g_lbProcessMemoryError); }
+const wchar_t* 进程内存_取错误() { return LB_ReturnText(g_lbProcessMemoryErrorText); }
+static const unsigned long long LB_PROCESS_MEMORY_MAX_ADDRESS = 0x00007FFFFFFFFFFFULL;
+static const int LB_PROCESS_MEMORY_MAX_READ_BYTES = 64 * 1024 * 1024;
+static std::wstring LB_ProcessMemoryOpenErrorText(DWORD error) {
+    if (error == ERROR_ACCESS_DENIED) return L"打开进程失败：拒绝访问（错误码 5）。读取系统进程或其它用户的进程需要以管理员身份运行本程序，可先调用 系统_是否管理员 自检。";
+    if (error == ERROR_INVALID_PARAMETER) return L"打开进程失败：参数无效（错误码 87）。";
+    return L"打开进程失败：Win32 错误码 " + std::to_wstring(static_cast<unsigned long long>(error)) + L"。";
+}
+long long 进程内存_打开(int processId, bool writable) {
+    LB_ProcessMemoryClearError();
+    if (processId <= 0) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"打开进程失败：进程 ID 必须大于 0。"); return 0; }
+    DWORD access = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | (writable ? PROCESS_VM_WRITE | PROCESS_VM_OPERATION : 0);
+    HANDLE handle = OpenProcess(access, FALSE, static_cast<DWORD>(processId));
+    if (!handle) { DWORD error = GetLastError(); LB_ProcessMemorySetError(error, LB_ProcessMemoryOpenErrorText(error)); return 0; }
+    return reinterpret_cast<long long>(handle);
+}
+static std::wstring LB_ProcessMemoryReadErrorText(DWORD error) {
+    if (error == ERROR_ACCESS_DENIED) return L"读取目标进程内存失败：拒绝访问（错误码 5）。需要以管理员身份运行本程序。";
+    if (error == ERROR_PARTIAL_COPY) return L"读取目标进程内存失败：目标区域只有部分字节可读（错误码 299），请先用 进程内存_枚举区域JSON 确认地址已提交且可读。";
+    return L"读取目标进程内存失败：Win32 错误码 " + std::to_wstring(static_cast<unsigned long long>(error)) + L"。";
+}
+// 统一的边界校验 + 整块读取：失败返回空字节集并把 Win32 错误码与中文说明留给 取错误码/取错误。
+static std::vector<unsigned char> LB_ProcessMemoryReadBytes(long long process, long long address, int length) {
+    std::vector<unsigned char> out;
+    if (!process) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"进程句柄无效：句柄只能来自 进程内存_打开，传 0 不会执行任何读取。"); return out; }
+    if (length <= 0 || length > LB_PROCESS_MEMORY_MAX_READ_BYTES) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"读取长度无效：单次读取必须是 1 到 67108864 字节（64MB 上限），更长内容请分块读取。"); return out; }
+    const unsigned long long start = static_cast<unsigned long long>(address);
+    if (address <= 0 || start > LB_PROCESS_MEMORY_MAX_ADDRESS || static_cast<unsigned long long>(length) > LB_PROCESS_MEMORY_MAX_ADDRESS - start) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"地址超出用户态范围：读取区间必须落在 0 到 0x00007FFFFFFFFFFF 之间。"); return out; }
+    out.resize(static_cast<size_t>(length));
+    // 出参必须用 SIZE_T 而不是 size_t：32 位 MSVC 下 size_t=unsigned int、SIZE_T=unsigned long，
+    // 宽度相同但类型不同，size_t* 传不进 ReadProcessMemory 的 SIZE_T*（x64 下两者同型才会侥幸编译）。
+    SIZE_T read = 0;
+    if (!ReadProcessMemory(reinterpret_cast<HANDLE>(process), reinterpret_cast<const void*>(start), out.data(), static_cast<SIZE_T>(length), &read) || read != static_cast<SIZE_T>(length)) {
+        const DWORD error = GetLastError() == 0 ? ERROR_PARTIAL_COPY : GetLastError();
+        out.resize(read);
+        LB_ProcessMemorySetError(ERROR_PARTIAL_COPY, read > 0
+            ? L"目标区域只有部分字节可读，已返回可读前缀（错误码 299）。"
+            : LB_ProcessMemoryReadErrorText(error));
+        return out;
+    }
+    return out;
+}
+std::vector<unsigned char> 进程内存_读字节集(long long process, long long address, int length) { return LB_ProcessMemoryReadBytes(process, address, length); }
+long long 进程内存_读到缓冲区(long long process, long long address, int length) {
+    std::vector<unsigned char> bytes = LB_ProcessMemoryReadBytes(process, address, length);
+    if (bytes.empty()) return 0;
+    return 缓冲区_从字节集(bytes);
+}
+static bool LB_ProcessMemoryProtectReadable(DWORD protect) {
+    if (protect & PAGE_GUARD) return false;
+    const DWORD base = protect & 0xFF;
+    return base == PAGE_READONLY || base == PAGE_READWRITE || base == PAGE_WRITECOPY
+        || base == PAGE_EXECUTE_READ || base == PAGE_EXECUTE_READWRITE || base == PAGE_EXECUTE_WRITECOPY;
+}
+static std::wstring LB_ProcessMemoryJsonNumber(unsigned long long value) { return std::to_wstring(value); }
+// VirtualQueryEx 步进枚举：RegionSize 为 0 或越过用户态上界即终止，绝不无界循环。
+static std::wstring LB_ProcessMemoryEnumerateRegions(long long process, bool committedReadableOnly) {
+    if (!process) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"进程句柄无效：句柄只能来自 进程内存_打开。"); return L""; }
+    std::wstring json = L"[";
+    bool first = true;
+    unsigned long long address = 0;
+    while (address <= LB_PROCESS_MEMORY_MAX_ADDRESS) {
+        MEMORY_BASIC_INFORMATION info = {};
+        if (!VirtualQueryEx(reinterpret_cast<HANDLE>(process), reinterpret_cast<const void*>(address), &info, sizeof(info))) break;
+        if (info.RegionSize == 0) break;
+        const bool readableCommitted = info.State == MEM_COMMIT && LB_ProcessMemoryProtectReadable(info.Protect);
+        if (!committedReadableOnly || readableCommitted) {
+            if (!first) json += L",";
+            first = false;
+            json += L"{\"baseAddress\":" + LB_ProcessMemoryJsonNumber(static_cast<unsigned long long>(reinterpret_cast<unsigned long long>(info.BaseAddress)));
+            json += L",\"regionSize\":" + LB_ProcessMemoryJsonNumber(static_cast<unsigned long long>(info.RegionSize));
+            json += L",\"state\":" + LB_ProcessMemoryJsonNumber(static_cast<unsigned long long>(info.State));
+            json += L",\"protect\":" + LB_ProcessMemoryJsonNumber(static_cast<unsigned long long>(info.Protect));
+            json += L",\"type\":" + LB_ProcessMemoryJsonNumber(static_cast<unsigned long long>(info.Type)) + L"}";
+        }
+        address += info.RegionSize;
+    }
+    json += L"]";
+    return json;
+}
+const wchar_t* 进程内存_枚举区域JSON(long long process, bool committedReadableOnly) {
+    LB_ProcessMemoryClearError();
+    const std::wstring json = LB_ProcessMemoryEnumerateRegions(process, committedReadableOnly);
+    if (json.empty()) return LB_ReturnText(L"");
+    return LB_ReturnText(std::move(json));
+}
+// 分块扫描：单区 ≤32MB 整读；更大区域按 8MB 分块并携带 max(1KB, 特征长度-1) 重叠，
+// 防止命中正好跨块被截断；命中地址按升序去重，达到最大命中数即提前收工。
+static long long LB_ProcessMemoryScan(long long process, const std::vector<unsigned char>& pattern, int maxHits, std::vector<long long>& out) {
+    out.clear();
+    if (!process) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"进程句柄无效：句柄只能来自 进程内存_打开。"); return 0; }
+    if (pattern.empty()) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"特征字节集为空：请先构造要搜索的字节序列。"); return 0; }
+    if (maxHits <= 0 || maxHits > 1000000) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"最大命中数无效：必须是 1 到 1000000 之间的整数。"); return 0; }
+    const size_t chunkSize = 8u * 1024 * 1024;
+    const size_t overlap = (std::max)(static_cast<size_t>(1024), pattern.size() - 1);
+    const size_t maxWholeRegion = 32u * 1024 * 1024;
+    unsigned long long address = 0;
+    long long hits = 0;
+    while (address <= LB_PROCESS_MEMORY_MAX_ADDRESS && hits < maxHits) {
+        MEMORY_BASIC_INFORMATION info = {};
+        if (!VirtualQueryEx(reinterpret_cast<HANDLE>(process), reinterpret_cast<const void*>(address), &info, sizeof(info))) break;
+        if (info.RegionSize == 0) break;
+        const unsigned long long regionStart = static_cast<unsigned long long>(reinterpret_cast<unsigned long long>(info.BaseAddress));
+        const unsigned long long regionSize = static_cast<unsigned long long>(info.RegionSize);
+        if (info.State == MEM_COMMIT && LB_ProcessMemoryProtectReadable(info.Protect) && regionStart + regionSize <= LB_PROCESS_MEMORY_MAX_ADDRESS) {
+            std::vector<unsigned char> carry;
+            for (unsigned long long offset = 0; offset < regionSize && hits < maxHits;) {
+                const size_t blockBytes = static_cast<size_t>((std::min)(regionSize - offset, regionSize <= maxWholeRegion ? regionSize : static_cast<unsigned long long>(chunkSize)));
+                const unsigned long long blockStart = regionStart + offset;
+                std::vector<unsigned char> buffer(carry.size() + blockBytes, 0);
+                std::copy(carry.begin(), carry.end(), buffer.begin());
+                SIZE_T read = 0;
+                if (!ReadProcessMemory(reinterpret_cast<HANDLE>(process), reinterpret_cast<const void*>(blockStart), buffer.data() + carry.size(), blockBytes, &read)) break;
+                buffer.resize(carry.size() + read);
+                if (buffer.size() >= pattern.size()) {
+                    for (auto match = std::search(buffer.begin(), buffer.end(), pattern.begin(), pattern.end()); match != buffer.end() && hits < maxHits; match = std::search(match + 1, buffer.end(), pattern.begin(), pattern.end())) {
+                        const long long hitAddress = static_cast<long long>(blockStart - carry.size() + static_cast<unsigned long long>(match - buffer.begin()));
+                        if (out.empty() || out.back() != hitAddress) { out.push_back(hitAddress); ++hits; }
+                    }
+                }
+                if (regionSize <= maxWholeRegion) break;
+                carry.assign(buffer.end() - static_cast<std::ptrdiff_t>((std::min)(overlap, buffer.size())), buffer.end());
+                offset += blockBytes;
+            }
+        }
+        address = regionStart + regionSize;
+    }
+    return hits;
+}
+long long 进程内存_扫描字节集(long long process, const std::vector<unsigned char>& pattern, int maxHits, std::vector<long long>& out) { return LB_ProcessMemoryScan(process, pattern, maxHits, out); }
+const wchar_t* 进程内存_扫描字节集JSON(long long process, const std::vector<unsigned char>& pattern, int maxHits) {
+    LB_ProcessMemoryClearError();
+    std::vector<long long> hits;
+    const long long count = LB_ProcessMemoryScan(process, pattern, maxHits, hits);
+    if (count == 0 && g_lbProcessMemoryError != 0) return LB_ReturnText(L"");
+    std::wstring json = L"[";
+    for (size_t index = 0; index < hits.size(); ++index) { if (index) json += L","; json += LB_ProcessMemoryJsonNumber(static_cast<unsigned long long>(hits[index])); }
+    json += L"]";
+    return LB_ReturnText(std::move(json));
+}
 int 进程内存_读整数(long long process, long long address, int fallback) { int value = fallback; SIZE_T read = 0; return ReadProcessMemory(reinterpret_cast<HANDLE>(process), reinterpret_cast<const void*>(address), &value, sizeof(value), &read) && read == sizeof(value) ? value : fallback; }
 bool 进程内存_写整数(long long process, long long address, int value) { SIZE_T written = 0; return WriteProcessMemory(reinterpret_cast<HANDLE>(process), reinterpret_cast<void*>(address), &value, sizeof(value), &written) && written == sizeof(value); }
 bool 进程内存_关闭(long long process) { return process && CloseHandle(reinterpret_cast<HANDLE>(process)) == TRUE; }
@@ -236,7 +381,8 @@ int 设备_取错误码() { return static_cast<int>(g_lbDeviceError); }
 const RUNTIMES: Record<string, string> = {
   'lingbuilder.archive': ARCHIVE_RUNTIME, 'lingbuilder.net.mail': SMTP_RUNTIME, 'lingbuilder.ipc': IPC_RUNTIME,
   'lingbuilder.win32.menu': MENU_RUNTIME, 'lingbuilder.win32.tray': TRAY_RUNTIME, 'lingbuilder.win32.accessibility': ACCESSIBILITY_RUNTIME,
-  'lingbuilder.advanced.memory': MEMORY_RUNTIME, 'lingbuilder.advanced.hook': HOOK_RUNTIME,
+  'lingbuilder.advanced.memory': MEMORY_RUNTIME, [MEMORY_DLL_MODULE_ID]: MEMORY_DLL_RUNTIME,
+  'lingbuilder.advanced.hook': HOOK_RUNTIME,
   'lingbuilder.advanced.process-memory': PROCESS_MEMORY_RUNTIME, 'lingbuilder.advanced.com': COM_RUNTIME,
   'lingbuilder.advanced.assembly': ASSEMBLY_RUNTIME, 'lingbuilder.advanced.driver': DRIVER_RUNTIME
 };

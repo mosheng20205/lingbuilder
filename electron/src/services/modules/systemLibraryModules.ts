@@ -38,7 +38,7 @@ function command(
   returnType: ModuleBindingValueType,
   description: string,
   example?: string,
-  options?: { insertText?: string; returnLabel?: string }
+  options?: { insertText?: string; returnLabel?: string; aliases?: string[] }
 ): StandardCommandSpec {
   const placeholders = parameters.map((parameter, index) => parameter.type === 'controlRef' || parameter.type === 'handler'
     ? createModuleBindingSnippetArgument(parameter, index)
@@ -51,6 +51,7 @@ function command(
     parameters,
     returnType,
     returnLabel: options?.returnLabel,
+    ...(options?.aliases?.length ? { aliases: [...options.aliases] } : {}),
     example
   };
 }
@@ -216,7 +217,8 @@ const systemInfo = createStandardModule({
     command('系统_取处理器数量', [], 'int', '返回系统逻辑处理器数量。'),
     command('系统_取内存总量MB', [], 'longLong', '返回物理内存总量，单位 MB。'),
     command('系统_取内存可用MB', [], 'longLong', '返回当前可用物理内存，单位 MB。'),
-    command('系统_取环境变量', [{ name: '名称', type: 'wideString', description: '环境变量名称，Windows 下不区分大小写；变量不存在时返回空文本。'}], 'wideString', '读取当前进程可见的环境变量。')
+    command('系统_取环境变量', [{ name: '名称', type: 'wideString', description: '环境变量名称，Windows 下不区分大小写；变量不存在时返回空文本。'}], 'wideString', '读取当前进程可见的环境变量。'),
+    command('系统_是否管理员', [], 'bool', '判断当前进程是否以管理员组身份运行（AllocateAndInitializeSid + CheckTokenMembership）。读取系统进程内存、关机等受保护操作前建议先自检，避免把“没权限”误判为“没有数据”。', '系统_是否管理员()')
   ]
 });
 
@@ -255,7 +257,7 @@ const shell = createStandardModule({
   commands: [
     command('系统_打开', [{ name: '目标', type: 'wideString', description: '要打开的文件、目录或网址文本，交给系统默认程序处理；返回假表示 ShellExecute 未成功启动。'}], 'bool', '使用系统默认程序打开文件、目录或网址。', '系统_打开("https://example.com")'),
     command('系统_定位文件', [{ name: '路径', type: 'wideString', description: '要在资源管理器窗口中选中并显示的文件路径。'}], 'bool', '在资源管理器中选中指定文件。'),
-    command('系统_取运行目录', [], 'wideString', '返回当前运行 exe 所在目录，不带尾部反斜杠。', '系统_取运行目录()'),
+    command('系统_取运行目录', [], 'wideString', '返回当前运行 exe 所在目录，不带尾部反斜杠。', '系统_取运行目录()', { aliases: ['取运行目录'] }),
     command('系统_取临时目录', [], 'wideString', '返回当前用户临时目录。'),
     command('系统_取桌面目录', [], 'wideString', '返回当前用户桌面目录。'),
     command('系统_取文档目录', [], 'wideString', '返回当前用户文档目录。'),
@@ -269,13 +271,15 @@ const shell = createStandardModule({
 
 const process = createStandardModule({
   id: 'lingbuilder.process', name: '进程管理模块', category: '系统',
-  description: '提供受控的程序启动、等待、进程状态和显式进程终止能力。', tags: ['进程', '程序'],
+  description: '提供受控的程序启动、等待、进程状态、按名称枚举进程 ID 和显式进程终止能力。', tags: ['进程', '程序'],
   commands: [
     command('程序_启动', [{ name: '命令行', type: 'wideString', description: commandLineArg}, { name: '工作目录', type: 'wideString', description: workDirArg}], 'int', '启动程序并返回进程 ID，失败返回 0。'),
     command('程序_启动并等待', [{ name: '命令行', type: 'wideString', description: commandLineArg}, { name: '工作目录', type: 'wideString', description: workDirArg}, { name: '超时毫秒', type: 'int', description: '等待进程退出的最长毫秒数；小于 0 表示一直等待。超时或启动失败返回 -1；在界面事件里等待会卡住界面。'}], 'int', '启动程序并等待，返回退出码；超时或失败返回 -1。'),
     command('进程_取当前ID', [], 'int', '返回当前进程 ID。'),
     command('进程_是否运行', [{ name: '进程ID', type: 'int', description: '要检查的进程 ID，必须大于 0；进程已退出或无权打开时返回假。'}], 'bool', '判断指定进程是否仍在运行。'),
     command('进程_终止', [{ name: '进程ID', type: 'int', description: '要终止的进程 ID，必须大于 0 且不能等于当前进程自身。'}, { name: '退出码', type: 'int', description: '强制写入被终止进程的退出码。'}], 'bool', '显式终止指定进程；不能用于当前进程。'),
+    command('进程_按名称取ID列表', [{ name: '进程名', type: 'wideString', description: '要匹配的可执行文件名（如 "explorer.exe"），不区分大小写，按完整文件名匹配而非子串；空文本直接返回 0。'}, { name: '结果数组', type: 'array', description: '接收十进制进程 ID 文本的数组变量（如 "4321"），调用前会先清空原有内容；同名多实例进程全部返回，可用 到整数 转回整数。'}], 'int', '按 exe 名称枚举匹配进程的 ID 列表，返回命中数量。', '局部 文本型 名单[]\n进程_按名称取ID列表("explorer.exe", 名单)', { insertText: '进程_按名称取ID列表("$1", $2)' }),
+    command('进程_按名称取ID列表JSON', [{ name: '进程名', type: 'wideString', description: '要匹配的可执行文件名，不区分大小写，允许带或不带 .exe 后缀；空文本返回空数组 JSON "[]"。'}], 'wideString', '按 exe 名称枚举进程 ID 并返回 JSON 数组文本（如 ["4321","890"]），可直接落盘或交给 JSON 模块解析。', '进程_按名称取ID列表JSON("explorer.exe")'),
     command('程序_执行并取输出', [{ name: '命令行', type: 'wideString', description: '要执行的完整命令行，例如 cmd /c ping 127.0.0.1；输出与错误回显合并读回，中文按系统 OEM 代码页解码。'}, { name: '超时毫秒', type: 'int', optional: true, defaultValue: 30000, description: '最长等待毫秒数，超时强制结束子进程并返回已捕获的输出；小于 0 表示无限等待，省略默认 30000。'}], 'wideString', '执行命令行并等待结束，把标准输出与错误输出合并读回为文本；命令无法启动返回空文本，用 程序_上次执行退出码 查询退出码。', '程序_执行并取输出("cmd /c echo 你好")'),
     command('程序_上次执行退出码', [], 'int', '返回本线程上一次 程序_执行并取输出 的子进程退出码；尚未执行过或命令无法启动返回 -1。')
   ]

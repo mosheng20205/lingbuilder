@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, ClipboardPaste, Copy, FileUp, Plus, Search, Trash2, X } from 'lucide-react';
 import type { CommandService } from '../services/commands/commandService';
+import type { CommandContext } from '../services/commands/types';
 import { getMenuService } from '../services/menus/menuService';
 import { LINGCPP_DLL_COMMANDS_CONTEXT_MENU } from '../services/menus/types';
 import {
@@ -9,9 +10,10 @@ import {
 import {
   PROJECT_DLL_COMMANDS_FILE_NAME,
   getProjectDllCommandsDiagnostics,
+  parseDllDeclarationSnippet,
   parseDllHeaderDeclarations,
-  serializeProjectDllCommandLibraries,
-  serializeSingleDllCommand
+  serializeDllCommandSnippet,
+  serializeProjectDllCommandLibraries
 } from '../services/lingCpp/projectDllCommandService';
 import { parseLingCpp } from '../services/lingCpp/parser';
 import { getLingCppCommentTokenColor } from '../services/lingCpp/semanticTheme';
@@ -48,13 +50,39 @@ function packageNameOf(sourceCode: string): string {
   return match?.[1]?.trim() || '项目DLL命令';
 }
 
+/**
+ * 编辑器右键菜单解析与命令执行共用的上下文。
+ * 三个视图命令注册时声明了 when: 'workspace.open'，解析菜单和 executeCommand 必须用同一份上下文，
+ * 否则会出现「菜单项可用、点下去却按不可用抛错」的不一致。
+ */
+const DLL_COMMANDS_EDITOR_MENU_CONTEXT: CommandContext = { 'workspace.open': true };
+
+/** 新建库时的架构 DLL 占位路径：按库名生成，避免所有新库都写「示例.dll」。 */
+function archFilesForLibrary(name: string): LingCppDllArchitectureFile[] {
+  const label = name.trim() || '示例';
+  return [
+    { arch: 'Win32', relativePath: `dll/Win32/${label}.dll`, line: 0 },
+    { arch: 'x64', relativePath: `dll/x64/${label}.dll`, line: 0 }
+  ];
+}
+
 function createEmptyLibrary(): LingCppDllLibrary {
   return {
     name: '',
     line: 0,
     archFiles: PLACEHOLDER_ARCH_FILES.map(file => ({ ...file })),
-    commands: []
+    commands: [],
+    structs: [],
+    sdkHeaders: []
   };
+}
+
+/** 「添加命令」的占位命令名：取全文件不冲突的 `新命令N`，避免空名序列化成解析器不认的死行。 */
+function nextCommandName(libraries: LingCppDllLibrary[]): string {
+  const used = new Set(libraries.flatMap(library => library.commands.map(command => command.name)));
+  let index = 1;
+  while (used.has(`新命令${index}`)) index += 1;
+  return `新命令${index}`;
 }
 
 function parseLibraries(sourceCode: string): LingCppDllLibrary[] {
@@ -109,6 +137,8 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   /** 卡片「库文件名」的输入草稿（onBlur/回车时提交移动）。 */
   const [libraryDrafts, setLibraryDrafts] = useState<Record<string, string>>({});
+  /** 「添加命令」后待定位的卡片（库索引::命令索引），渲染完成后滚动并聚焦命令名。 */
+  const [focusRequest, setFocusRequest] = useState<string | null>(null);
 
   const packageName = packageNameOf(sourceCode);
   const header = libraries[0];
@@ -157,7 +187,9 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
   actionsRef.current = {
     onSearch: () => {
       setCollapsedKeys(new Set());
-      document.getElementById('dll-commands-search-input')?.focus();
+      const searchInput = document.getElementById('dll-commands-search-input') as HTMLInputElement | null;
+      searchInput?.focus();
+      searchInput?.select();
     },
     onExpandAll: () => setCollapsedKeys(new Set()),
     onCollapseAll: () => setCollapsedKeys(new Set(libraries.flatMap(library => library.commands.map(command => collapsedKeyOf(library, command)))))
@@ -200,7 +232,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
     onChange(serializeProjectDllCommandLibraries(packageName, resolveForSerialize(nextLibraries)));
   };
 
-  const updateHeader = (patch: Partial<Pick<LingCppDllLibrary, 'name' | 'isSystem' | 'archFiles'>>) => {
+  const updateHeader = (patch: Partial<Pick<LingCppDllLibrary, 'name' | 'isSystem' | 'memoryLoad' | 'archFiles'>>) => {
     applyModel(libraries.map((library, index) => index === 0 ? { ...library, ...patch } : library));
   };
 
@@ -213,7 +245,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
     if (!moved) return;
     let targetIndex = next.findIndex(library => library.name === trimmed);
     if (targetIndex < 0) {
-      next.splice(libraryIndex + 1, 0, { name: trimmed, line: 0, archFiles: PLACEHOLDER_ARCH_FILES.map(file => ({ ...file })), commands: [] });
+      next.splice(libraryIndex + 1, 0, { name: trimmed, line: 0, archFiles: archFilesForLibrary(trimmed), commands: [], structs: [], sdkHeaders: [] });
       targetIndex = libraryIndex + 1;
     }
     next[targetIndex].commands.push({ ...moved, line: next[targetIndex].commands.length + 1 });
@@ -243,14 +275,27 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
 
   const addCommand = () => {
     const command: LingCppDllCommand = {
-      name: '',
+      name: nextCommandName(libraries),
       returnType: '整数型',
       parameters: [{ name: '参数1', type: '整数型' }],
       callingConvention: 'cdecl',
       line: (header?.commands.length || 0) + 1
     };
+    // 搜索中新增的空名命令会被过滤掉，先清空搜索保证新卡片可见。
+    setSearchText('');
+    setFocusRequest(`0::${header?.commands.length || 0}`);
     applyModel(libraries.map((library, index) => index === 0 ? { ...library, commands: [...library.commands, command] } : library));
   };
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    setFocusRequest(null);
+    const card = document.querySelector(`[data-dll-command-card="${focusRequest}"]`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const nameInput = card.querySelector('[data-dll-command-name-input]') as HTMLInputElement | null;
+    nameInput?.focus({ preventScroll: true });
+  }, [focusRequest]);
 
   const removeCommand = (libraryIndex: number, commandIndex: number) => {
     applyModel(libraries.map((library, index) => {
@@ -269,11 +314,11 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
     setFeedback(`已从头文件导入 ${imported.length} 条声明，请核对参数与返回类型。`);
   };
 
-  const copyCommand = async (library: LingCppDllLibrary, command: LingCppDllCommand) => {
-    const text = serializeSingleDllCommand(library.name || '示例DLL', library.isSystem === true, command, library.archFiles);
+  const copyCommand = async (command: LingCppDllCommand) => {
+    const text = serializeDllCommandSnippet(command);
     try {
       await copyTextWithFallback(text);
-      setFeedback(`已复制命令「${command.name || '未命名'}」的声明片段，可粘贴到其他项目的 ${PROJECT_DLL_COMMANDS_FILE_NAME} 中。`);
+      setFeedback(`已复制命令「${command.name}」的声明行，粘贴到其他项目的 ${PROJECT_DLL_COMMANDS_FILE_NAME} 时会并入当前 DLL 命令库。`);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : '复制失败，请重试。');
     }
@@ -301,12 +346,17 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
       setFeedback('剪贴板为空，没有可粘贴的 DLL 命令声明。');
       return;
     }
-    const incoming = (parseLingCpp(text).program.dllLibraries || []).filter(library => library.commands.length > 0);
-    if (incoming.length === 0) {
-      setFeedback('剪贴板内容中没有识别到 DLL 命令声明（需要 DLL命令库 … 结束DLL命令库 片段）。');
+    const parsedSnippet = parseDllDeclarationSnippet(text);
+    if (parsedSnippet.libraries.length === 0) {
+      setFeedback('剪贴板内容中没有识别到 DLL 命令声明：支持「DLL命令库 … 结束DLL命令库」整库片段，也支持「复制此命令」产出的单条声明行。');
       return;
     }
     const next = libraries.map(library => ({ ...library, archFiles: [...library.archFiles], commands: [...library.commands] }));
+    // 裸声明片段不带库信息：改写成当前第一个库的名字，让命令并入现有库而不是凭空多出一个临时库。
+    const incoming = parsedSnippet.bare
+      ? [{ ...parsedSnippet.libraries[0], name: next[0]?.name || '示例DLL' }]
+      : parsedSnippet.libraries;
+    const droppedStructCount = parsedSnippet.bare ? parsedSnippet.libraries[0].structs.length : 0;
     const added: string[] = [];
     const skipped: string[] = [];
     const newLibraries: string[] = [];
@@ -349,6 +399,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
     const parts = [`已粘贴 ${added.length} 条命令`];
     if (newLibraries.length) parts.push(`新增命令库：${newLibraries.join('、')}`);
     if (skipped.length) parts.push(`跳过重复命令：${skipped.join('、')}`);
+    if (droppedStructCount) parts.push(`裸片段中的 ${droppedStructCount} 个结构体未粘贴，请改用「复制全部声明」整库粘贴`);
     setFeedback(`${parts.join('；')}。`);
   };
 
@@ -365,7 +416,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
 
   return (
     <div
-      className="flex h-full flex-col gap-3 overflow-auto p-4"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-auto p-4"
       style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}
       onContextMenu={event => {
         if (readOnly || !commandService) return;
@@ -379,6 +430,10 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
           声明项目自带 DLL 的导出函数为中文命令（无需封装 .lbmod 模块）。DLL 文件按相对路径放在项目内，
           构建时自动生成导入库并把 DLL 复制到 exe 同目录。命令名可用中文，导出函数名可留空表示与命令名一致。
         </div>
+        <div className={`mt-1 ${isDarkMode ? 'text-sky-300' : 'text-sky-700'}`}>
+          勾选「内存加载」后：DLL 会以资源内嵌进 EXE，运行期手工映射到内存（不落盘、exe 旁不再出现该 DLL），
+          需要在「项目模块」里启用「内存加载DLL模块」；DLL 必须与目标位数一致且不得加壳。
+        </div>
       </div>
 
       <div className={`rounded border p-3 text-xs ${surface}`}>
@@ -386,6 +441,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
           <label className="flex flex-col gap-1">
             <span>DLL 文件名（不含 .dll，即声明库标识）</span>
             <input className={`w-56 ${input}`} value={header?.name || ''} readOnly={readOnly}
+              title="这里是整个库的名字：改名后本库全部命令下方的「库文件名」一起更新，其它库不受影响；只改某条命令的所属库请改那一条的「库文件名」"
               onChange={event => updateHeader({ name: event.target.value.trim() })} placeholder="AdvancedMathDll" />
           </label>
           {archEditorFiles.map(file => (
@@ -403,6 +459,11 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
             <input type="checkbox" checked={header?.isSystem === true} disabled={readOnly}
               onChange={event => updateHeader({ isSystem: event.target.checked || undefined })} />
             <span>系统 DLL（user32/gdi32 等，免分发）</span>
+          </label>
+          <label className="flex items-center gap-2 pb-1">
+            <input type="checkbox" checked={header?.memoryLoad === true} disabled={readOnly || header?.isSystem === true}
+              onChange={event => updateHeader({ memoryLoad: event.target.checked || undefined })} />
+            <span>内存加载（内嵌进 EXE，不落盘）</span>
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -427,6 +488,35 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
           </div>
         )}
       </div>
+
+      {(header?.structs?.length || 0) > 0 && (
+        <div className="space-y-2">
+          {(header?.structs || []).map(structItem => (
+            <div key={`struct-${structItem.name}`} className={`border p-3 text-xs ${surface}`}>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <span className="min-w-0 font-semibold" style={{ color: typeColor }}>
+                  结构体 {structItem.name}{structItem.aliasTypeName ? ` = ${structItem.aliasTypeName}` : ''}
+                </span>
+                <span className="shrink-0 opacity-60">只读 · 通过文本或 AI 编辑</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5">
+                {structItem.fields.map(field => (
+                  <div key={field.name} className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="shrink-0 whitespace-nowrap font-mono" style={{ color: typeColor }}>{field.type}</span>
+                    <span className="shrink-0 whitespace-nowrap" style={{ color: commandNameColor }}>
+                      {field.name}{field.arrayLength !== undefined ? `[${field.arrayLength}]` : ''}
+                    </span>
+                    {field.note && <span className="max-w-[18rem] min-w-0 truncate opacity-60" title={field.note}>{field.note}</span>}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 opacity-60">
+                命令端用法：{structItem.name}_创建() 创建句柄、{structItem.name}_取字段 / _置字段 访问成员、{structItem.name}_销毁() 释放、{structItem.name}_取大小() 供 dwSize 类字段赋值。
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-semibold">
@@ -457,7 +547,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
           const collapseKey = collapsedKeyOf(library, command);
           const isCollapsed = collapsedKeys.has(collapseKey) && !normalizedSearch;
           return (
-            <div key={`block-${libraryIndex}-${commandIndex}`} className={`border text-xs ${surface}`}>
+            <div key={`block-${libraryIndex}-${commandIndex}`} data-dll-command-card={`${libraryIndex}::${commandIndex}`} className={`border text-xs ${surface}`}>
               <div className={`grid items-center ${line}`} style={gridStyle}>
                 <div className={thCell}>Dll命令名</div>
                 <div className={`${thCell} border-l ${line}`}>返回值类型</div>
@@ -474,7 +564,15 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
                   </button>
                   <div className="min-w-0 flex-1">
                     <input className={cellInput} style={{ color: commandNameColor }} value={command.name} readOnly={readOnly}
-                      onChange={event => updateCommand(libraryIndex, commandIndex, { name: event.target.value.trim() })}
+                      data-dll-command-name-input=""
+                      onChange={event => {
+                        const nextName = event.target.value.trim();
+                        if (!nextName) {
+                          setFeedback('命令名不能为空；要删掉整条命令请用卡片右下「删除此命令」。');
+                          return;
+                        }
+                        updateCommand(libraryIndex, commandIndex, { name: nextName });
+                      }}
                       placeholder="如：加法计算" />
                   </div>
                 </div>
@@ -502,15 +600,13 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
               <div className={`flex h-8 items-center gap-2 border-t px-2 ${line}`}>
                 <span className={rowLabel}>库文件名:</span>
                 {(() => {
-                  const draftKey = `${libraryIndex}::${library.name}`;
+                  // 草稿按「行」区分，不能按「库」：同库多条命令共用一个键时，一行的输入会让整库的行一起显示该库名。
+                  const draftKey = `${libraryIndex}::${commandIndex}::${command.name}`;
                   const draftValue = libraryDrafts[draftKey] ?? library.name;
                   const commit = () => {
                     const draft = libraryDrafts[draftKey];
-                    setLibraryDrafts(previous => {
-                      const next = { ...previous };
-                      delete next[draftKey];
-                      return next;
-                    });
+                    // 移动会让行下标整体位移，提交后统一清空草稿，避免残留草稿落到别的命令上。
+                    setLibraryDrafts({});
                     if (draft !== undefined) moveCommandToLibrary(libraryIndex, commandIndex, draft);
                   };
                   return (
@@ -526,6 +622,11 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
                 {library.isSystem === true && (
                   <span className={`rounded-sm border px-1 py-px text-[10px] ${isDarkMode ? 'border-emerald-700/60 text-emerald-400' : 'border-emerald-500 text-emerald-600'}`}>
                     系统 DLL · 免分发
+                  </span>
+                )}
+                {library.memoryLoad === true && library.isSystem !== true && (
+                  <span className={`rounded-sm border px-1 py-px text-[10px] ${isDarkMode ? 'border-sky-700/60 text-sky-300' : 'border-sky-500 text-sky-700'}`}>
+                    内存加载 · 不落盘
                   </span>
                 )}
                 <span className="ml-auto flex items-center gap-1">
@@ -586,13 +687,16 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
                   <div className="flex h-8 items-center px-2 opacity-50 col-span-5">无参数</div>
                 </div>
               )}
+              </>)}
               <div className={`flex h-9 items-center justify-between border-t px-2 ${line}`}>
-                <button className={miniButton} disabled={readOnly}
-                  onClick={() => updateCommand(libraryIndex, commandIndex, { parameters: [...command.parameters, { name: `参数${command.parameters.length + 1}`, type: '整数型' }] })}>
-                  <Plus className="h-3 w-3" />添加参数
-                </button>
-                <div className="flex gap-1.5">
-                  <button className={miniButton} disabled={readOnly} onClick={() => { void copyCommand(library, command); }}>
+                {!isCollapsed && (
+                  <button className={miniButton} disabled={readOnly}
+                    onClick={() => updateCommand(libraryIndex, commandIndex, { parameters: [...command.parameters, { name: `参数${command.parameters.length + 1}`, type: '整数型' }] })}>
+                    <Plus className="h-3 w-3" />添加参数
+                  </button>
+                )}
+                <div className="ml-auto flex gap-1.5">
+                  <button className={miniButton} disabled={readOnly} onClick={() => { void copyCommand(command); }}>
                     <Copy className="h-3 w-3" />复制此命令
                   </button>
                   <button className={miniButton} disabled={readOnly} onClick={() => removeCommand(libraryIndex, commandIndex)}>
@@ -600,7 +704,6 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
                   </button>
                 </div>
               </div>
-              </>)}
             </div>
           );
         })}
@@ -629,7 +732,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
           {(() => {
             const items = getMenuService(commandService).resolveMenu(
               LINGCPP_DLL_COMMANDS_CONTEXT_MENU,
-              { 'workspace.open': true },
+              DLL_COMMANDS_EDITOR_MENU_CONTEXT,
               { includeDisabled: true }
             );
             const left = Math.min(contextMenu.x, window.innerWidth - 220);
@@ -653,7 +756,13 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
                     }`}
                     onClick={event => {
                       event.stopPropagation();
-                      if (item.command.enabled) void commandService.executeCommand(item.command.id);
+                      // 三个视图命令都以 when: 'workspace.open' 注册，执行时必须传同一份上下文：
+                      // 不传会按空上下文判定为「当前上下文中不可用」抛出，被 void 吞掉后表现为点了没反应。
+                      if (item.command.enabled) {
+                        void commandService
+                          .executeCommand(item.command.id, DLL_COMMANDS_EDITOR_MENU_CONTEXT)
+                          .catch(error => setFeedback(error instanceof Error ? error.message : '命令执行失败。'));
+                      }
                       setContextMenu(null);
                     }}
                   >

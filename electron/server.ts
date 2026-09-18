@@ -21,16 +21,19 @@ import {
 import { generateLingCppNativeWin32Project } from "./src/services/windowDesigner/lingCppWin32Project";
 import { writeGeneratedProjectFiles } from "./src/services/windowDesigner/generatedProjectFileService";
 import { exportVisualStudioProject } from "./src/services/windowDesigner/visualStudioProjectExporter";
-import { createWindowsMsvcLinkLibraries } from "./src/services/windowDesigner/windowsSystemLibraries";
+import { createWindowsMsvcLinkLibraries, REQUIRE_ADMINISTRATOR_LINK_ARGS } from "./src/services/windowDesigner/windowsSystemLibraries";
 import { LingWindowProject } from "./src/services/windowDesigner/types";
 import {
   applyWorkspaceEdit,
   applyWorkspaceEditToFiles,
   areDesignerProjectsEquivalent,
   createDesignerBeautificationFallback,
+  describeAllowedDesignerControlTypes,
   isDesignerBeautificationInstruction,
+  getAllowedDesignerControlTypes,
   getWorkspaceEditProposal,
   isDesignerEditInstruction,
+  normalizeDesignerControlTypes,
   proposeLingCppEdit,
   rejectWorkspaceEdit,
   validateDesignerProjectEdit
@@ -113,6 +116,7 @@ import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, ty
 import { resolveExecutableNameParts } from "./src/services/solution/externalProjectService";
 import { isProjectDllCommandsFilePath, createProjectDllDeclarationModuleFromSources } from "./src/services/lingCpp/projectDllCommandService";
 import { materializeProjectDllDeclarationModules } from "./src/services/modules/projectDllMaterializeService";
+import { getEmbeddedResourceSpecsForBuild } from "./src/services/windowDesigner/embeddedResourceMigration";
 import { resolveProjectBuildDirectories, setActiveWorkspaceBuildExcludeDirs } from "./src/services/tasks/buildPathService";
 import { ClangdService } from "./src/services/lsp/clangdService";
 import { LspWorkspaceEditService } from "./src/services/lsp/lspWorkspaceEditService";
@@ -2060,6 +2064,39 @@ app.get("/api/window-designer/embedded-site/scan", async (req, res) => {
   }
 });
 
+// 内嵌资源「选择文件…/选择文件夹…」：把本机文件（或整个文件夹，递归展开）复制进
+// <项目源码根>/resources/ 并回传可直接写回 embeddedResources 的逻辑名。
+app.post("/api/window-designer/embedded-resources/import", async (req, res) => {
+  const { projectId, sourcePaths, directory } = req.body as { projectId?: string; sourcePaths?: string[]; directory?: string };
+  if (!isNonEmptyString(projectId)) return res.status(400).json({ ok: false, error: "缺少 projectId。" });
+  const requestedFiles = Array.isArray(sourcePaths) ? sourcePaths.filter(item => isNonEmptyString(item)) : [];
+  const requestedDirectory = typeof directory === "string" ? directory.trim() : "";
+  if (requestedFiles.length === 0 && !requestedDirectory) {
+    return res.status(400).json({ ok: false, error: "缺少要导入的文件或文件夹路径。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
+    const result = requestedFiles.length > 0
+      ? await designerAssetService.importEmbeddedResourceFiles(projectRef, requestedFiles)
+      : await designerAssetService.importEmbeddedResourceFolder(projectRef, requestedDirectory);
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "内嵌资源导入失败。" });
+  }
+});
+
+// 内嵌资源「扫描目录」：递归列出工作区内一个目录里可直接内嵌的文件（只读，不复制）。
+app.get("/api/window-designer/embedded-resources/scan", async (req, res) => {
+  const directory = String(req.query.dir || "");
+  try {
+    const result = await designerAssetService.scanEmbeddedResourceDirectory(directory);
+    res.json({ ok: true, files: result.files, skipped: result.skipped });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "内嵌资源目录扫描失败。" });
+  }
+});
+
 app.post("/api/window-designer/edge-control-preview", async (req, res) => {
   const { project, windowId, controlId } = req.body as { project?: LingWindowProject; windowId?: string; controlId?: string };
   if (!project || !isNonEmptyString(project.id) || !isNonEmptyString(windowId) || !isNonEmptyString(controlId)) {
@@ -2679,6 +2716,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     let routeConsoleMode = false;
     let routeExecutableName: string | undefined;
     let routeSourceRoot = "src";
+    let routeRequireAdministrator = false;
     try {
       const solutionForOutputType = await getSolutionService().getSolution();
       const recordForOutputType = solutionForOutputType.projects.find(item => item.id === projectId);
@@ -2686,6 +2724,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       routeConsoleMode = recordForOutputType?.type === "windows-console";
       routeExecutableName = recordForOutputType?.buildProperties?.executableName;
       routeSourceRoot = recordForOutputType?.sourceRoot || "src";
+      routeRequireAdministrator = recordForOutputType?.buildProperties?.requireAdministrator === true;
     } catch {
       // 解决方案尚未建立时按 EXE 模式构建。
     }
@@ -2702,7 +2741,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       lingCppSourceFilePath,
       lingCppSources: await resolveLingCppProjectSources(projectId, lingCppSources),
       enabledModules,
-      outputKind: routeOutputKind
+      outputKind: routeOutputKind,
+      requireAdministrator: routeRequireAdministrator
     });
     assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
     const repoRoot = getRepoWorkspaceRoot();
@@ -2763,7 +2803,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     }
     const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
-    const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir]);
+    const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir], { embeddedResourceSpecs: getEmbeddedResourceSpecsForBuild(project) });
     const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
     const buildContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -2831,7 +2871,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       projectKind: routeOutputKind,
-      fbroRuntimeFromBuildBin: true
+      fbroRuntimeFromBuildBin: true,
+      requireAdministrator: routeRequireAdministrator
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
@@ -2841,7 +2882,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
-      projectKind: routeOutputKind
+      projectKind: routeOutputKind,
+      requireAdministrator: routeRequireAdministrator
     });
 
     if (buildLease.isCancelled()) {
@@ -2882,7 +2924,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
       ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
       : undefined;
-    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, undefined, routeOutputType);
+    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, undefined, routeOutputType, routeRequireAdministrator);
     const compilerDiagnostics = mapCompilerDiagnostics(
       parseCompilerDiagnostics(compileResult.logs.join("\n"), compiler.kind === "clang++" ? "clang" : compiler.kind === "g++" ? "gcc" : "msvc"),
       generatedProject.sourceMap,
@@ -3266,6 +3308,7 @@ async function runControlledWindowDesignerBuild(options: {
   let consoleMode = false;
   let outputExecutableName: string | undefined;
   let projectSourceRootForDll = "src";
+  let requireAdministrator = false;
   let projectDllLibraries: import("./src/services/lingCpp/types").LingCppDllLibrary[] = [];
   try {
     const solutionForOutputType = await getSolutionService().getSolution();
@@ -3274,6 +3317,7 @@ async function runControlledWindowDesignerBuild(options: {
     consoleMode = recordForOutputType?.type === "windows-console";
     outputExecutableName = recordForOutputType?.buildProperties?.executableName;
     projectSourceRootForDll = recordForOutputType?.sourceRoot || "src";
+    requireAdministrator = recordForOutputType?.buildProperties?.requireAdministrator === true;
   } catch {
     // 解决方案尚未建立时按 EXE 模式构建。
   }
@@ -3295,7 +3339,8 @@ async function runControlledWindowDesignerBuild(options: {
     lingCppSourceFilePath,
     lingCppSources: lingCppSources?.length ? lingCppSources : await resolveLingCppProjectSources(projectId),
     enabledModules,
-    outputKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application"
+    outputKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
+    requireAdministrator
   });
   assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
   const repoRoot = getRepoWorkspaceRoot();
@@ -3357,7 +3402,7 @@ async function runControlledWindowDesignerBuild(options: {
   }
   const generatedCodegenFiles = codeGeneratorResult.textFiles;
   const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
-  const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir]);
+  const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir, sourceDir], { embeddedResourceSpecs: getEmbeddedResourceSpecsForBuild(project) });
   const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
   const buildContentFiles = copiedBuildContent
     .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -3424,7 +3469,8 @@ async function runControlledWindowDesignerBuild(options: {
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
     requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
     projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
-    fbroRuntimeFromBuildBin: true
+    fbroRuntimeFromBuildBin: true,
+    requireAdministrator
   });
   const exportVisualStudioProjectResult = await exportVisualStudioProject({
     projectDir: exportDir,
@@ -3434,7 +3480,8 @@ async function runControlledWindowDesignerBuild(options: {
     contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
     requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
-    projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application"
+    projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
+    requireAdministrator
   });
 
   const incrementalKey = `${projectId}:${buildConfiguration.mode}:${buildConfiguration.architecture}`;
@@ -3450,7 +3497,9 @@ async function runControlledWindowDesignerBuild(options: {
     },
     executableIcon: executableIcon.fingerprint,
     enabledModules,
-    buildConfiguration
+    buildConfiguration,
+    // UAC 提权级别只影响链接参数，不影响生成源码；必须进指纹，否则翻转后增量命中会跳过重链接。
+    requireAdministrator
   });
   if (incremental && !run && await incrementalBuildService.isFresh(incrementalKey, incrementalFingerprint)) {
     return {
@@ -3501,7 +3550,7 @@ async function runControlledWindowDesignerBuild(options: {
   const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
     ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
     : undefined;
-  const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, buildLease.signal, outputType);
+  const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, buildLease.signal, outputType, requireAdministrator);
   if (buildLease.isCancelled()) {
     return createCancelledBuildResult(buildLease, [...preBuildLogs, ...compileResult.logs, "编译子进程已终止并完成取消清理。"]);
   }
@@ -4393,7 +4442,13 @@ app.post("/api/lingcpp/edit/apply", async (req, res) => {
       if (JSON.stringify(designerProject) !== JSON.stringify(proposal.designerProjectOriginal)) {
         return res.status(409).json({ ok: false, error: "窗口设计器模型在提案生成后已发生变化，请重新生成提案。" });
       }
-      validateDesignerProjectEdit(proposal.designerProjectOriginal, designerProject);
+      // 应用侧复用提案生成时校验通过的允许类型集合：模块贡献的控件类型
+      // （如 FBroBrowser）在提案阶段合法，应用阶段不得被默认集合误拒。
+      validateDesignerProjectEdit(proposal.designerProjectOriginal, designerProject, {
+        allowedControlTypes: proposal.designerAllowedControlTypes
+          ? new Set(proposal.designerAllowedControlTypes)
+          : undefined
+      });
     }
     const sanitizedWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
     const effectiveWorkspaceFiles = sanitizedWorkspaceFiles.length > 0
@@ -4560,7 +4615,8 @@ async function compileWin32Preview(
   buildConfiguration: BuildConfiguration = { schemaVersion: 1, mode: "Debug", architecture: "Win32" },
   resourcePath?: string,
   signal?: AbortSignal,
-  outputType: "exe" | "dll" = "exe"
+  outputType: "exe" | "dll" = "exe",
+  requireAdministrator = false
 ): Promise<{ ok: boolean; logs: string[] }> {
   const buildDynamicLibrary = outputType === "dll";
   if (buildDynamicLibrary && compiler.kind !== "msvc") {
@@ -4612,7 +4668,7 @@ async function compileWin32Preview(
     msvcBuildFlags.push("/MD");
   }
   if (compiler.kind === "msvc" && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, msvcLinkLibraries, buildConfiguration, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, signal, buildDynamicLibrary);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, msvcLinkLibraries, buildConfiguration, requiredCppStandard, useDynamicCrt, extraDefineArgs, resourceOutputPath, resourceLogs, signal, buildDynamicLibrary, requireAdministrator);
   }
 
   const commandArgs = compiler.kind === "msvc"
@@ -4632,7 +4688,13 @@ async function compileWin32Preview(
         "/Fe:" + exePath,
         ...msvcLinkLibraries,
         ...(resourceOutputPath ? [resourceOutputPath] : []),
-        ...(buildConfiguration.mode === "Debug" ? ["/link", "/DEBUG", "/INCREMENTAL:NO"] : [])
+        // /link 区段只允许开启一次：Debug 已带 /link 时 UAC 参数直接并入该区段。
+        ...(buildConfiguration.mode === "Debug"
+          ? ["/link", "/DEBUG", "/INCREMENTAL:NO", "/MANIFEST:EMBED"]
+          : []),
+        ...(requireAdministrator && compiler.kind === "msvc"
+          ? [...(buildConfiguration.mode === "Debug" ? [] : ["/link"]), "/MANIFEST:EMBED", ...REQUIRE_ADMINISTRATOR_LINK_ARGS]
+          : [])
       ]
     : [
         "-municode",
@@ -4726,7 +4788,8 @@ async function compileMsvcPreviewWithModules(
   resourceOutputPath: string | undefined,
   resourceLogs: string[],
   signal?: AbortSignal,
-  buildDynamicLibrary = false
+  buildDynamicLibrary = false,
+  requireAdministrator = false
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
   const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? "main" : `module_${index}`}.obj`));
@@ -4757,7 +4820,8 @@ async function compileMsvcPreviewWithModules(
     "/Fe:" + exePath,
     ...linkLibraries,
     ...(resourceOutputPath ? [resourceOutputPath] : []),
-    ...(buildConfiguration.mode === "Debug" ? ["/DEBUG", "/INCREMENTAL:NO"] : [])
+    ...(buildConfiguration.mode === "Debug" ? ["/DEBUG", "/INCREMENTAL:NO"] : []),
+    ...(requireAdministrator ? ["/MANIFEST:EMBED", ...REQUIRE_ADMINISTRATOR_LINK_ARGS] : [])
   ];
 
   try {
@@ -4901,7 +4965,7 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
 9. 如果用户需求涉及窗口、控件或布局，必须同时返回 designerProject 字段，并返回修改后的完整设计器模型；不涉及设计器时省略该字段。当前请求${requiresDesignerProject ? "涉及" : "不涉及"}设计器：${requiresDesignerProject ? "designerProject 是必填字段，必须逐项复制当前模型并只修改用户要求的内容，不能返回 patch、片段或省略未修改窗口/控件。" : "可以省略 designerProject。"}
 10. 设计器模型中的项目 ID、窗口 ID、控件 ID、事件绑定名保持稳定，不得删除未被明确要求删除的窗口或控件。
 11. 进度条的 content 必须是数字文本，并与 properties.value 保持完全一致；控件引用必须使用当前模型中的真实名称。
-12. designerProject 只能是 JSON 对象，不能包含脚本、函数、Markdown 或工作区路径。
+12. designerProject 只能是 JSON 对象，不能包含脚本、函数、Markdown 或工作区路径。designerProject 中每个控件的 type 必须逐字使用下方「合法控件类型清单」中的英文标识（区分大小写），禁止自造同义词或中英混写；例如编辑框必须写 TextBox，不能写 Edit、Input 或 输入框。清单中没有所需控件类型时，选择最接近的合法类型实现，并在 explanation 中说明局限。
 13. explanation 用中文简要说明源码和设计器分别被改了什么、为什么。
 14. ${designerChangeRequirement}`;
   const systemPrompt = attachLingBuilderAiRulebook(baseSystemPrompt, await getLingBuilderAiRulebook());
@@ -4920,6 +4984,9 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
     context.designerProject
       ? `当前完整窗口设计器模型（如需修改界面，必须完整返回修改后的 designerProject）：\n<<<DESIGNER_PROJECT\n${JSON.stringify(context.designerProject)}\nDESIGNER_PROJECT`
       : "当前请求没有窗口设计器模型。",
+    context.designerProject
+      ? `合法控件类型清单（designerProject 中控件的 type 只能逐字使用以下英文标识，区分大小写）：\n${describeAllowedDesignerControlTypes(context)}`
+      : "",
     `本次允许编辑的工作区文件如下（只可改这些文件）：
 ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCode}`).join("\n\n")}`
   ].filter(Boolean).join("\n\n");
@@ -4954,7 +5021,14 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
     "schemaVersion": 2,
     "id": "必须保持当前项目 ID",
     "name": "必须保持当前项目名称",
-    "windows": [],
+    "windows": [
+      {
+        "id": "保持现有窗口 ID；新增窗口才使用新唯一 ID",
+        "controls": [
+          { "id": "唯一控件 ID", "type": "必须来自合法控件类型清单，例如 TextBox", "name": "唯一控件名", "content": "显示或输入的文本", "x": 24, "y": 24, "width": 160, "height": 34, "events": {} }
+        ]
+      }
+    ],
     "resources": []
   }`
     : "";
@@ -5040,6 +5114,45 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
         files: fallbackFiles,
         designerProject: createDesignerBeautificationFallback(context.designerProject!)
       };
+    }
+  }
+
+  if (context.designerProject && draft.designerProject) {
+    // 设计器草稿先在生成侧预校验：类型等校验失败时带着具体中文错误向模型
+    // 纠正一次，避免整份提案到 proposeLingCppEdit 才被一次性拒绝。
+    const allowedDesignerTypes = getAllowedDesignerControlTypes(context);
+    const designerValidationOptions = {
+      allowDeletion: /删除|移除|去掉|清除/u.test(context.instruction),
+      allowedControlTypes: allowedDesignerTypes
+    };
+    const assertDesignerDraftValid = (candidate: LingCppEditDraft): void => {
+      normalizeDesignerControlTypes(candidate.designerProject!, allowedDesignerTypes);
+      validateDesignerProjectEdit(context.designerProject, candidate.designerProject, designerValidationOptions);
+    };
+    let designerValidationError = "";
+    try {
+      assertDesignerDraftValid(draft);
+    } catch (error: any) {
+      designerValidationError = error?.message || String(error);
+    }
+    if (designerValidationError) {
+      try {
+        const corrected = await requestDraft(`上一次回答的设计器模型未通过本地校验：${designerValidationError}
+请重新生成完整 JSON：控件的 type 必须逐字使用「合法控件类型清单」中的英文标识（区分大小写；编辑框必须写 TextBox，不能写 Edit、Input 或输入框），归一化不了的未知类型必须整体替换为清单中最接近的合法控件；同时保留所有稳定 ID、名称、事件绑定和未修改的窗口/控件，其余修改要求保持不变。`);
+        if (corrected.designerProject) {
+          assertDesignerDraftValid(corrected);
+          // 纠正草稿若未携带有效文件改动，则保留原草稿的文件部分，
+          // 只采纳通过校验的设计器模型。
+          draft = {
+            ...corrected,
+            files: hasUsableFiles(corrected) ? corrected.files : draft.files,
+            designerProject: corrected.designerProject
+          };
+        }
+      } catch {
+        // 纠正请求失败或纠正后仍不合法时保留原草稿，
+        // 由 proposeLingCppEdit 抛出确定性的中文校验错误。
+      }
     }
   }
 

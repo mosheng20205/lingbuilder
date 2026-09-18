@@ -9,6 +9,7 @@ import {
   WorkspaceEditRange
 } from './types';
 import type { LingWindowProject } from '../windowDesigner/types';
+import type { LingCppModuleContext } from '../modules/types';
 import { WIN32_CONTROL_DEFINITIONS } from '../windowDesigner/win32ControlRegistry';
 
 const PROPOSAL_TTL_MS = 30 * 60_000;
@@ -32,10 +33,16 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
     ];
   }
 
+  const allowedDesignerControlTypes = getAllowedDesignerControlTypes(context);
+  if (draft.designerProject) {
+    // 模型常把「编辑框」写成 Edit/Input 等同义词；先做一次保守归一化，
+    // 归一化不掉的未知类型仍由 validateDesignerProjectEdit 中文阻断。
+    normalizeDesignerControlTypes(draft.designerProject, allowedDesignerControlTypes);
+  }
   let designerProject = draft.designerProject
     ? validateDesignerProjectEdit(context.designerProject, draft.designerProject, {
       allowDeletion: /删除|移除|去掉|清除/u.test(context.instruction),
-      allowedControlTypes: getAllowedDesignerControlTypes(context)
+      allowedControlTypes: allowedDesignerControlTypes
     })
     : undefined;
   if (context.projectId && context.designerProject && context.designerProject.id !== context.projectId) {
@@ -44,7 +51,8 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
   if (context.projectId && designerProject && designerProject.id !== context.projectId) {
     throw new Error(`AI 返回了项目 ${designerProject.id} 的设计器模型，但当前项目是 ${context.projectId}；已阻止跨项目应用。`);
   }
-  if (context.designerProject && isDesignerEditInstruction(context.instruction) && !designerProject) {
+  const strictDesignerEdit = context.designerEditPolicy !== 'caller-draft';
+  if (strictDesignerEdit && context.designerProject && isDesignerEditInstruction(context.instruction) && !designerProject) {
     if (isDesignerBeautificationInstruction(context.instruction)) {
       // 宽泛的视觉请求必须始终产出可预览的布局提案，即使模型没有返回
       // designerProject（例如未配置 API Key 或系统 AI 草稿不完整）。
@@ -57,7 +65,7 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
       throw new Error('本次需求涉及窗口或控件布局，但 AI 未返回完整设计器模型；为避免源码与界面不一致，提案未创建。');
     }
   }
-  if (context.designerProject && designerProject && isDesignerEditInstruction(context.instruction)
+  if (strictDesignerEdit && context.designerProject && designerProject && isDesignerEditInstruction(context.instruction)
     && areDesignerProjectsEquivalent(designerProject, context.designerProject)) {
     if (isDesignerBeautificationInstruction(context.instruction)) {
       designerProject = validateDesignerProjectEdit(
@@ -79,7 +87,8 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
     changes,
     ...(designerProject ? {
       designerProject,
-      designerProjectOriginal: cloneDesignerProject(context.designerProject)
+      designerProjectOriginal: cloneDesignerProject(context.designerProject),
+      designerAllowedControlTypes: [...allowedDesignerControlTypes]
     } : {})
   };
 
@@ -165,9 +174,9 @@ function getDefaultAllowedDesignerControlTypes(): Set<string> {
   return new Set([...CONTROL_TYPES, ...LEGACY_COMPATIBLE_CONTROL_TYPES]);
 }
 
-function getAllowedDesignerControlTypes(context: LingCppEditContext): Set<string> {
+export function getAllowedDesignerControlTypes(context?: { moduleContext?: LingCppModuleContext | null }): Set<string> {
   const types = getDefaultAllowedDesignerControlTypes();
-  for (const module of context.moduleContext?.enabledModules || []) {
+  for (const module of context?.moduleContext?.enabledModules || []) {
     for (const control of module.manifest.contributes?.designerControls || []) {
       types.add(control.type);
       if (control.previewType) types.add(control.previewType);
@@ -175,6 +184,183 @@ function getAllowedDesignerControlTypes(context: LingCppEditContext): Set<string
     }
   }
   return types;
+}
+
+/**
+ * 供 AI 提示词使用的合法控件类型清单：规范标识 + 中文标签，并追加启用模块
+ * 贡献的控件类型。模型据此才能把「编辑框」正确写成 TextBox 而不是 Edit。
+ */
+export function describeAllowedDesignerControlTypes(context?: { moduleContext?: LingCppModuleContext | null }): string {
+  const parts = WIN32_CONTROL_DEFINITIONS.map(definition => `${definition.type}（${definition.label}）`);
+  const seen = new Set(WIN32_CONTROL_DEFINITIONS.map(definition => definition.type));
+  for (const module of context?.moduleContext?.enabledModules || []) {
+    const moduleName = module.manifest.name || module.manifest.id;
+    for (const control of module.manifest.contributes?.designerControls || []) {
+      for (const type of [control.type, control.previewType, control.namespacedType]) {
+        if (type && !seen.has(type)) {
+          seen.add(type);
+          parts.push(`${type}（${moduleName} ${control.label || ''}）`);
+        }
+      }
+    }
+  }
+  return parts.join('、');
+}
+
+/**
+ * 常见模型幻觉控件类型别名 → 注册表规范类型。映射键为 trim + 小写后的
+ * type 字面值；只做保守的精确映射，且目标类型必须仍在当前允许集合内才
+ * 生效。映射不到的值原样保留，由 validateDesignerProjectEdit 给出中文
+ * 阻断诊断，不会静默猜测。
+ */
+const DESIGNER_CONTROL_TYPE_ALIASES: Record<string, string> = {
+  // 编辑框族：模型最容易照搬 Win32 原生类名 EDIT 或自造 Input 同义词
+  edit: 'TextBox',
+  editbox: 'TextBox',
+  edit_box: 'TextBox',
+  input: 'TextBox',
+  inputbox: 'TextBox',
+  textinput: 'TextBox',
+  textfield: 'TextBox',
+  textarea: 'TextBox',
+  '编辑框': 'TextBox',
+  '文本框': 'TextBox',
+  '输入框': 'TextBox',
+  '输入': 'TextBox',
+  // 其余内置控件的常见大小写与同义变体
+  button: 'Button',
+  btn: 'Button',
+  pushbutton: 'Button',
+  '按钮': 'Button',
+  label: 'Label',
+  static: 'Label',
+  statictext: 'Label',
+  '标签': 'Label',
+  '静态文本': 'Label',
+  '文本标签': 'Label',
+  checkbox: 'CheckBox',
+  check: 'CheckBox',
+  '复选框': 'CheckBox',
+  '勾选框': 'CheckBox',
+  radio: 'RadioButton',
+  radiobox: 'RadioButton',
+  '单选框': 'RadioButton',
+  '单选按钮': 'RadioButton',
+  combobox: 'ComboBox',
+  combo: 'ComboBox',
+  dropdown: 'ComboBox',
+  dropdownlist: 'ComboBox',
+  '组合框': 'ComboBox',
+  '下拉框': 'ComboBox',
+  '下拉列表': 'ComboBox',
+  listbox: 'ListBox',
+  '列表框': 'ListBox',
+  listview: 'ListView',
+  '列表视图': 'ListView',
+  treeview: 'TreeView',
+  tree: 'TreeView',
+  '树形视图': 'TreeView',
+  '树型框': 'TreeView',
+  tabcontrol: 'TabControl',
+  tab: 'TabControl',
+  tabs: 'TabControl',
+  '选项卡': 'TabControl',
+  groupbox: 'GroupBox',
+  group: 'GroupBox',
+  frame: 'GroupBox',
+  '分组框': 'GroupBox',
+  progressbar: 'ProgressBar',
+  progress: 'ProgressBar',
+  '进度条': 'ProgressBar',
+  image: 'Image',
+  picture: 'Image',
+  picturebox: 'Image',
+  '图片框': 'Image',
+  animatedimage: 'AnimatedImage',
+  gif: 'AnimatedImage',
+  '动态图像': 'AnimatedImage',
+  '动态图像控件': 'AnimatedImage',
+  scrollbar: 'ScrollBar',
+  '滚动条': 'ScrollBar',
+  flatscrollbar: 'FlatScrollBar',
+  datetimepicker: 'DateTimePicker',
+  datepicker: 'DateTimePicker',
+  '日期时间选择器': 'DateTimePicker',
+  monthcalendar: 'MonthCalendar',
+  calendar: 'MonthCalendar',
+  '月历': 'MonthCalendar',
+  '日历': 'MonthCalendar',
+  colorpicker: 'ColorPicker',
+  '颜色选择器': 'ColorPicker',
+  trackbar: 'TrackBar',
+  slider: 'TrackBar',
+  '滑块': 'TrackBar',
+  '滑动条': 'TrackBar',
+  updown: 'UpDown',
+  spinner: 'UpDown',
+  '数值调节器': 'UpDown',
+  '微调框': 'UpDown',
+  hotkey: 'HotKey',
+  '热键输入框': 'HotKey',
+  '热键': 'HotKey',
+  ipaddress: 'IPAddress',
+  'ip地址框': 'IPAddress',
+  toolbar: 'ToolBar',
+  '工具栏': 'ToolBar',
+  statusbar: 'StatusBar',
+  '状态栏': 'StatusBar',
+  tooltip: 'ToolTip',
+  '工具提示': 'ToolTip',
+  filedialog: 'FileDialog',
+  '文件对话框': 'FileDialog',
+  contextmenu: 'ContextMenu',
+  '上下文菜单': 'ContextMenu',
+  '右键菜单': 'ContextMenu',
+  popupmenu: 'PopupMenu',
+  '弹出菜单': 'PopupMenu',
+  imagelist: 'ImageList',
+  '图像列表': 'ImageList',
+  richedit: 'RichEdit',
+  richtext: 'RichEdit',
+  richtextbox: 'RichEdit',
+  '富文本框': 'RichEdit',
+  animation: 'Animation',
+  '动画控件': 'Animation',
+  videoplayer: 'VideoPlayer',
+  '视频播放器': 'VideoPlayer',
+  datagrid: 'DataGrid',
+  '数据表格': 'DataGrid',
+  edgebrowser: 'EdgeBrowser',
+  cefbrowser: 'CefBrowser',
+  fbrobrowser: 'FBroBrowser'
+};
+
+// 规范标识自身的小写变体（textbox → TextBox、radiobutton → RadioButton）自动自映射。
+for (const type of CONTROL_TYPES) {
+  const lower = type.toLowerCase();
+  if (lower !== type && !(lower in DESIGNER_CONTROL_TYPE_ALIASES)) {
+    DESIGNER_CONTROL_TYPE_ALIASES[lower] = type;
+  }
+}
+
+/**
+ * 就地把候选设计器模型中的控件类型别名归一化为注册表规范标识。
+ * 只有当前值不在允许集合内、且映射目标在允许集合内时才改写；
+ * 返回改写的控件数量，便于调用方记录或提示。
+ */
+export function normalizeDesignerControlTypes(project: LingWindowProject, allowedTypes: ReadonlySet<string>): number {
+  let renamed = 0;
+  for (const window of project?.windows || []) {
+    for (const control of window?.controls || []) {
+      if (!control || typeof control.type !== 'string' || allowedTypes.has(control.type)) continue;
+      const canonical = DESIGNER_CONTROL_TYPE_ALIASES[control.type.trim().toLowerCase()];
+      if (canonical && canonical !== control.type && allowedTypes.has(canonical)) {
+        (control as { type: string }).type = canonical;
+        renamed += 1;
+      }
+    }
+  }
+  return renamed;
 }
 
 function validateFiniteNonNegative(value: unknown, label: string): void {
@@ -335,25 +521,25 @@ export function applyWorkspaceEditToFiles(
   proposal: WorkspaceEditProposal
 ): AppliedWorkspaceFile[] {
   const sourceMap = new Map<string, string>(
-    workspaceFiles.map(file => [normalizeFilePath(file.filePath), normalizeLineEndings(file.sourceCode)])
+    workspaceFiles.map(file => [normalizeFilePath(file.filePath).toLocaleLowerCase(), normalizeLineEndings(file.sourceCode)])
   );
 
   proposal.changes.forEach(change => {
     const normalizedPath = normalizeFilePath(change.filePath);
-    const currentSource = sourceMap.get(normalizedPath) || '';
+    const currentSource = sourceMap.get(normalizedPath.toLocaleLowerCase()) || '';
     const currentText = getTextForRange(currentSource, change.range);
     if (currentText !== change.originalText) {
       throw new Error(`文件 ${change.filePath} 在 AI 提案生成后已发生变化，请重新生成提案。`);
     }
     const nextSource = replaceRange(currentSource, change.range, change.newText);
-    sourceMap.set(normalizedPath, nextSource);
+    sourceMap.set(normalizedPath.toLocaleLowerCase(), nextSource);
   });
 
   const result: AppliedWorkspaceFile[] = [];
   proposal.changes.forEach(change => {
     const normalizedPath = normalizeFilePath(change.filePath);
-    const nextSource = sourceMap.get(normalizedPath);
-    if (typeof nextSource === 'string' && !result.some(file => normalizeFilePath(file.filePath) === normalizedPath)) {
+    const nextSource = sourceMap.get(normalizedPath.toLocaleLowerCase());
+    if (typeof nextSource === 'string' && !result.some(file => normalizeFilePath(file.filePath).toLocaleLowerCase() === normalizedPath.toLocaleLowerCase())) {
       result.push({
         filePath: change.filePath,
         sourceCode: nextSource
@@ -434,8 +620,13 @@ function createChangeForDraftFile(
   workspaceFiles: LingCppWorkspaceFile[],
   context: LingCppEditContext
 ): WorkspaceEditChange | undefined {
-  const matchingFile = workspaceFiles.find(file => normalizeFilePath(file.filePath) === normalizeFilePath(fileDraft.filePath));
-  if (!matchingFile) return undefined;
+  // 匹配按 Windows 路径大小写不敏感比较；匹配不到直接报错，绝不静默丢弃——
+  // 静默丢弃会让 AI 以为编辑已生效，反复构建却看不到变化。
+  const matchingFile = workspaceFiles.find(file => normalizeFilePath(file.filePath).toLocaleLowerCase() === normalizeFilePath(fileDraft.filePath).toLocaleLowerCase());
+  if (!matchingFile) {
+    const known = workspaceFiles.map(file => file.filePath).join('、');
+    throw new Error(`编辑草稿的文件 ${fileDraft.filePath} 没有对应的当前工作区内容，提案已拒绝。${known ? `可编辑的文件：${known}。` : ''}请在 files 中只提交提供过当前内容的文件，或省略 workspaceFiles 让服务端自动读取磁盘内容。`);
+  }
 
   const originalSource = normalizeLineEndings(matchingFile.sourceCode);
   const updatedSource = normalizeLineEndings(fileDraft.updatedSource);

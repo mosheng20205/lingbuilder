@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "stage": "build",
+  "buildDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug",
+  "sourceDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\src",
+  "binDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\bin",
+  "objDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\obj",
+  "exePath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\bin\\LingBuilderPreview.exe",
+  "compiler": {
+    "kind": "msvc",
+    "command": "cl",
+    "setupBatch": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat",
+    "arch": "x64"
+  },
+  "exportDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo",
+  "visualStudioProject": {
+    "projectName": "process-scan-demo",
+    "solutionPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\process-scan-demo.sln",
+    "projectPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\process-scan-demo.vcxproj",
+    "filtersPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\process-scan-demo.vcxproj.filters",
+    "files": [
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\process-scan-demo.sln",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\process-scan-demo.vcxproj",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\process-scan-demo.vcxproj.filters"
+    ]
+  },
+  "exportVisualStudioProject": {
+    "projectName": "process-scan-demo",
+    "solutionPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo\\process-scan-demo.sln",
+    "projectPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo\\process-scan-demo.vcxproj",
+    "filtersPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo\\process-scan-demo.vcxproj.filters",
+    "files": [
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo\\process-scan-demo.sln",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo\\process-scan-demo.vcxproj",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo\\process-scan-demo.vcxproj.filters"
+    ]
+  },
+  "logs": [
+    "警告：传入的窗口设计器模型与磁盘版本（.lingbuilder/window-designer.json）不一致，生成结果可能与 IDE 设计器脱节；请重新读取最新设计器模型后重试，或先通过 lingbuilder.edit.apply 同步磁盘。",
+    "AI Bridge 已生成 Win32 C++ 工程：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug",
+    "C++ 源码目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\src",
+    "可复制生成目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo",
+    "Visual Studio 解决方案：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\process-scan-demo.sln",
+    "可复制 Visual Studio 解决方案：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\generated\\cpp\\process-scan-demo\\process-scan-demo.sln",
+    "exe 输出目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\bin",
+    "中间文件目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\进程内存扫描演示\\.lingbuilder-build\\process-scan-demo\\Win32\\Debug\\obj",
+    "编译器：msvc (cl)",
+    "编译成功。",
+    "已编译 EXE 图标资源：lingbuilder-app.rc",
+    "stdout:\nmain.cpp"
+  ]
+}

@@ -363,12 +363,17 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 模块静音族（+2 命令 +1 参数），无控件参数。
       // 基线 2026-09-17 再追加写回（待办收尾批次）：新增 lingbuilder.net.pop3 邮件接收模块
       //（18 命令 28 参数）与 lingbuilder.net.imap IMAP邮件接收模块（15 命令 23 参数），无控件参数。
-      modules: 96,
-      commands: 3615,
-      parameters: 6264,
+      // 基线 2026-09-17 内存加载批次：新增 lingbuilder.advanced.memorydll 内存加载DLL模块
+      //（7 命令 12 参数），无控件参数。
+      // 基线 2026-09-17 内嵌资源批次：新增 lingbuilder.resource.embed 内嵌资源模块（8 命令 7 参数），无控件参数。
+      // 基线 2026-09-18 写回（进程内存扫描批次）：进程管理模块进程枚举族（+2 命令 +3 参数）、
+      // 进程内存模块 1.1.0 扫描族（+7 命令 +12 参数）、系统信息模块管理员自检（+1 命令），无控件参数。
+      modules: 98,
+      commands: 3640,
+      parameters: 6301,
       controlReferences: 1303,
-      commandDigest: '6e5f4014',
-      parameterDigest: 'e9d79928'
+      commandDigest: '3a0ab8bb',
+      parameterDigest: '1753ef17'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -501,7 +506,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
   // 2026-09-16 写回 54→55：项目 DLL 命令声明功能新增 projectDllMaterializeService.ts（已重新确认全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 55, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 56, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -782,12 +787,15 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     commandDigest: audit.commandDigest,
     parameterDigest: audit.parameterDigest
   }, {
-      modules: 101,
-      commands: 7632,
-      parameters: 18385,
+      // 基线 2026-09-18 写回（进程内存扫描批次）：BUILTIN + 本机 5 份磁盘模块清单
+      //（cef3.sdk / fbro.sdk / new_emoji.ui / demo.mathdll / demo.projectdll）实算；
+      // 内置部分 98/3640/6301（见上一用例），磁盘部分含并行会话装入的 demo 模块两份。
+      modules: 103,
+      commands: 7657,
+      parameters: 18422,
       controlReferences: 5061,
-      commandDigest: '07070607',
-      parameterDigest: 'f95e32c4'
+      commandDigest: '7a01207c',
+      parameterDigest: '945b01db'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -1749,7 +1757,7 @@ test('Excel 表格模块 1.0 提供创建/打开双模式、单元格级读写�
   assert.match(mainCpp, /Excel_写一行\(报表, L"A1", L"姓名\t销量", L"\t"\)/u);
 });
 test('平台扩展和高风险模块保持独立启用并具有确定性运行时', () => {
-  assert.equal(PLATFORM_ADVANCED_MODULES.length, 12);
+  assert.equal(PLATFORM_ADVANCED_MODULES.length, 13);
   for (const manifest of PLATFORM_ADVANCED_MODULES) {
     assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
     assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
@@ -1757,7 +1765,77 @@ test('平台扩展和高风险模块保持独立启用并具有确定性运行�
   const enabledModules: InstalledModule[] = PLATFORM_ADVANCED_MODULES.map(manifest => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        IPC_关闭()', '        键盘钩子_停止()', '        COM_关闭(0)', '    结束', '结束类'].join('\n'), enabledModules });
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
-  ['压缩_ZIP创建', 'SMTP_发送普通邮件', 'IPC_创建管道服务端', '菜单_创建', '托盘_添加', '辅助_取名称', '内存_申请', '键盘钩子_启动', '进程内存_打开', 'COM_创建对象', 'CPU_取厂商', '设备_打开'].forEach(name => assert.ok(mainCpp.includes(name), `缺少 ${name} C++ 运行时`));
+  ['压缩_ZIP创建', 'SMTP_发送普通邮件', 'IPC_创建管道服务端', '菜单_创建', '托盘_添加', '辅助_取名称', '内存_申请', '内存DLL_加载', '内存DLL_取函数地址', '内存DLL_卸载', '键盘钩子_启动', '进程内存_打开', 'COM_创建对象', 'CPU_取厂商', '设备_打开'].forEach(name => assert.ok(mainCpp.includes(name), `缺少 ${name} C++ 运行时`));
+});
+
+test('进程内存扫描族命令登记清单与 binding，并生成真实运行时符号', () => {
+  const manifest = PLATFORM_ADVANCED_MODULES.find(item => item.id === 'lingbuilder.advanced.process-memory');
+  assert.ok(manifest);
+  assert.equal(manifest.version, '1.1.0');
+  assert.ok(manifest.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.std.buffer'), '进程内存模块必须声明缓冲区模块依赖');
+  assert.ok(!manifest.description.includes('不默认启用'), '模块描述必须与默认启用语义一致');
+  const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
+  ['进程内存_打开', '进程内存_读整数', '进程内存_写整数', '进程内存_读字节集', '进程内存_读到缓冲区', '进程内存_枚举区域JSON', '进程内存_扫描字节集', '进程内存_扫描字节集JSON', '进程内存_取错误码', '进程内存_取错误', '进程内存_关闭'].forEach(name => {
+    assert.ok(commandNames.has(name), `缺少命令 ${name}`);
+  });
+  const scan = manifest.bindings?.commands?.find(binding => binding.command === '进程内存_扫描字节集');
+  assert.ok(scan, '进程内存_扫描字节集 必须有 binding');
+  assert.equal(scan?.parameters?.[1]?.type, 'bytes', '特征字节集参数必须是字节集类型');
+  assert.equal(scan?.parameters?.[3]?.type, 'array', '结果数组参数必须是数组类型');
+  const readBytes = manifest.bindings?.commands?.find(binding => binding.command === '进程内存_读字节集');
+  assert.equal(readBytes?.returnType, 'bytes', '读字节集 返回字节集');
+
+  const processModule = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.process');
+  assert.ok(processModule);
+  const processCommands = new Set(processModule.contributes?.commands?.map(command => command.name));
+  ['进程_按名称取ID列表', '进程_按名称取ID列表JSON'].forEach(name => {
+    assert.ok(processCommands.has(name), `进程管理模块缺少命令 ${name}`);
+  });
+  const systemInfo = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.system.info');
+  assert.ok(systemInfo?.contributes?.commands?.some(command => command.name === '系统_是否管理员'), '系统信息模块缺少 系统_是否管理员');
+
+  const enabledModules: InstalledModule[] = [processModule, systemInfo, ...PLATFORM_ADVANCED_MODULES.filter(item => item.id === 'lingbuilder.advanced.process-memory' || item.id === 'lingbuilder.std.buffer')]
+    .map(m => ({ manifest: m, installPath: `builtin://${m.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 文本型 名单[]',
+      '        进程_按名称取ID列表("explorer.exe", 名单)',
+      '        局部 文本型 JSON名单',
+      '        JSON名单 = 进程_按名称取ID列表JSON("explorer.exe")',
+      '        调试输出(系统_是否管理员())',
+      '        调试输出(进程内存_取错误())',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  ['CreateToolhelp32Snapshot', '进程_按名称取ID列表', '进程_按名称取ID列表JSON', '系统_是否管理员', 'AllocateAndInitializeSid', 'CheckTokenMembership', '进程内存_读字节集', '进程内存_读到缓冲区', 'VirtualQueryEx', '进程内存_枚举区域JSON', '进程内存_扫描字节集', '进程内存_扫描字节集JSON', '进程内存_取错误码', '进程内存_取错误', 'ReadProcessMemory', '缓冲区_从字节集'].forEach(name => assert.ok(mainCpp.includes(name), `生成运行时缺少 ${name}`));
+});
+
+test('requireAdministrator 通过导出工程 UAC 节与直编链接参数生效，缺省保持 asInvoker', async () => {
+  const { createVisualStudioProjectExportContent } = await import('../src/services/windowDesigner/visualStudioProjectExporter');
+  const { REQUIRE_ADMINISTRATOR_LINK_ARGS } = await import('../src/services/windowDesigner/windowsSystemLibraries');
+
+  assert.deepEqual([...REQUIRE_ADMINISTRATOR_LINK_ARGS], ["/MANIFESTUAC:level='requireAdministrator'"], '直编链接参数必须请求 requireAdministrator 提权级别');
+
+  const baseOptions: import('../src/services/windowDesigner/visualStudioProjectExporter').VisualStudioProjectExportOptions = {
+    projectDir: 'unused',
+    projectId: 'uac-demo',
+    generatedFiles: [],
+    enabledModules: [],
+    platformToolset: 'v143'
+  };
+  const withUac = createVisualStudioProjectExportContent({ ...baseOptions, requireAdministrator: true });
+  const withUacVcxproj = withUac.files.find(file => file.relativePath.endsWith('.vcxproj'))?.content || '';
+  assert.match(withUacVcxproj, /<UACExecutionLevel>RequireAdministrator<\/UACExecutionLevel>/u);
+  assert.match(withUacVcxproj, /<EnableUAC>true<\/EnableUAC>/u);
+
+  const withoutUac = createVisualStudioProjectExportContent({ ...baseOptions });
+  const withoutUacVcxproj = withoutUac.files.find(file => file.relativePath.endsWith('.vcxproj'))?.content || '';
+  assert.ok(!withoutUacVcxproj.includes('UACExecutionLevel'), '缺省导出不得写入 UAC 节（保持 asInvoker 历史行为）');
 });
 
 test('COM 自动化模块 2.0 提供句柄制创建、免注册、OCX 宿主、事件挂接与接口信息', () => {
@@ -1825,17 +1903,38 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   }
 });
 
-test('module service defaults ordinary projects to Win32 basic module only', async () => {
+test('module service defaults ordinary projects to basic, process-memory and its buffer dependency', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-defaults-'));
   const service = createModuleService(root);
 
   const enabledModules = await service.getEnabledProjectModules('fresh-win32-project');
-  assert.deepEqual(enabledModules.map(module => module.manifest.id), ['lingbuilder.win32.basic']);
+  assert.deepEqual(
+    new Set(enabledModules.map(module => module.manifest.id)),
+    new Set(['lingbuilder.win32.basic', 'lingbuilder.advanced.process-memory', 'lingbuilder.std.buffer'])
+  );
 
   await assert.rejects(
     () => service.disableModuleForProject('fresh-win32-project', 'lingbuilder.win32.basic'),
     /不能禁用/
   );
+});
+
+test('default-enabled process-memory module can be opted out and re-enabled per project', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-optout-'));
+  await writeSolutionFixture(root, ['project-a']);
+  const service = createModuleService(root);
+
+  await service.disableModuleForProject('project-a', 'lingbuilder.advanced.process-memory');
+  const afterDisable = new Set((await service.getEnabledProjectModules('project-a')).map(module => module.manifest.id));
+  assert.ok(!afterDisable.has('lingbuilder.advanced.process-memory'), '显式禁用后默认补齐不得再把进程内存模块加回来');
+  assert.ok(afterDisable.has('lingbuilder.std.buffer'), '缓冲区模块是独立依赖，禁用主模块后仍保留');
+
+  const refsOnDisk = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'projects', 'project-a', 'project-modules.json'), 'utf8'));
+  assert.ok(refsOnDisk.optOutDefaultModuleIds.includes('lingbuilder.advanced.process-memory'), 'opt-out 必须持久化到 project-modules.json');
+
+  await service.enableModuleForProject('project-a', 'lingbuilder.advanced.process-memory');
+  const afterEnable = new Set((await service.getEnabledProjectModules('project-a')).map(module => module.manifest.id));
+  assert.ok(afterEnable.has('lingbuilder.advanced.process-memory') && afterEnable.has('lingbuilder.std.buffer'), '重新启用后进程内存模块连同缓冲区依赖一起生效');
 });
 
 test('Win32基础模块贡献窗口事件上下文命令和确定性绑定', () => {
@@ -1922,9 +2021,12 @@ test('existing solution projects without a manifest inherit the workspace module
   const service = createModuleService(root);
   const enabled = await service.getEnabledProjectModules('project-a');
   assert.ok(enabled.some(module => module.manifest.id === 'lingbuilder.win32.common-controls'));
+  // 继承工作区选择之外，默认启用补齐还会追加 进程内存模块（含其依赖 缓冲区模块）。
   assert.deepEqual(await service.getProjectModuleIds('project-a'), [
     'lingbuilder.win32.basic',
-    'lingbuilder.win32.common-controls'
+    'lingbuilder.win32.common-controls',
+    'lingbuilder.advanced.process-memory',
+    'lingbuilder.std.buffer'
   ]);
 });
 

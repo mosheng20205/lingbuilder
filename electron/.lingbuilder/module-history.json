@@ -1,5 +1,16 @@
 [
   {
+    "id": "module-history-1789653712784-a32b3c",
+    "time": "2026-09-17T14:01:52.784Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.system.shell",
+    "moduleName": "系统外壳模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 系统外壳模块",
+    "details": "项目 emoji 已引用 lingbuilder.system.shell@1.0.0。"
+  },
+  {
     "id": "module-history-1789403614455-f6a548",
     "time": "2026-09-14T16:33:34.456Z",
     "action": "export",

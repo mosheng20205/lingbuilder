@@ -5,6 +5,7 @@ export const DESIGNER_CANVAS_CONTEXT_MENU = 'designer/canvas/context';
 export const DESIGNER_RESOURCE_CONTEXT_MENU = 'designer/resource/context';
 export const SOLUTION_EXPLORER_CONTEXT_MENU = 'solution/explorer/context';
 export const SOLUTION_PROJECT_CONTEXT_MENU = 'solution/project/context';
+export const SOLUTION_EMBEDDED_RESOURCE_CONTEXT_MENU = 'solution/embeddedResource/context';
 export const LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU = 'lingcpp/control-reference/context';
 export const LINGCPP_BEGINNER_CONTEXT_MENU = 'lingcpp/beginner/context';
 export const LINGCPP_DLL_COMMANDS_CONTEXT_MENU = 'lingcpp/dll-commands/context';

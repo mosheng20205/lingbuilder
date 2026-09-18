@@ -25,6 +25,12 @@ export interface ExternalProjectProperties {
   executableName?: string;
   /** 可选：项目产物类型；exe（缺省，向后兼容）生成应用程序，dll 生成动态库 + 导入库，并导出源码中的“公开”子程序。 */
   outputType?: 'exe' | 'dll';
+  /**
+   * 可选：生成的 exe 启动时请求管理员权限（UAC requestedExecutionLevel=requireAdministrator）。
+   * 缺省假＝asInvoker，与历史项目行为一致；实现方式是生成源码内的 /manifestuac 链接指示，
+   * IDE 内编译与 Visual Studio 导出工程共用同一份 main.cpp，两条链路行为一致。
+   */
+  requireAdministrator?: boolean;
 }
 export interface ImportedExternalProject {
   id: string; name: string; type: ExternalProjectKind; projectFile: string; sourceRoot: string; configRoot: string;
@@ -309,6 +315,7 @@ export function resolveExecutableNameParts(value: unknown, outputType: 'exe' | '
 export function validateProperties(value: ExternalProjectProperties): void {
   if (!value || !['Debug', 'Release'].includes(value.configuration) || !['Win32', 'x64'].includes(value.architecture)) throw new Error('外部工程配置无效。');
   if (value.outputType !== undefined && value.outputType !== 'exe' && value.outputType !== 'dll') throw new Error('项目输出类型无效：只支持 exe 或 dll。');
+  if (value.requireAdministrator !== undefined && typeof value.requireAdministrator !== 'boolean') throw new Error('项目管理员权限设置无效：requireAdministrator 只能是 true 或 false。');
   if (!Array.isArray(value.additionalArguments) || value.additionalArguments.some(argument => typeof argument !== 'string' || argument.length > 200 || /[\r\n\0]/u.test(argument))) throw new Error('外部工程附加参数无效。');
   if (value.buildDirectory !== undefined) {
     if (typeof value.buildDirectory !== 'string') throw new Error('项目构建目录模板无效。');

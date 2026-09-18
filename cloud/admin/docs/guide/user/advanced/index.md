@@ -13,6 +13,7 @@ title: 进阶主题
 | 章节 | 说明 |
 |---|---|
 | [外部 API 调用](/guide/user/advanced/external-apis) | 通过 `network-http` 模块调用 RESTful 接口 |
+| [内嵌资源（打进 EXE）](/guide/user/advanced/embedded-resource) | 把图片、文本、zip、DLL 字节打进单文件 exe |
 | [性能优化](/guide/user/advanced/performance) | 界面卡顿、内存、构建优化 |
 
 ## 技术参考（迁移自 doc/）

@@ -100,7 +100,7 @@ export interface LingWindowEmbeddedFileSpec {
 /**
  * 内嵌站点：把一组网页静态文件（dist 产物）以 RCDATA 资源编入 EXE，
  * 运行时经 WebView2 WebResourceRequested 从内存直接服务，不向磁盘释放任何文件。
- * 与 embeddedFiles（释放到 %TEMP%）互不影响，可同时使用。
+ * 与项目级内嵌资源（embeddedResources，可声明启动释放）互不影响，可同时使用。
  */
 export interface LingWindowEmbeddedSite {
   /** 工作区内相对文件清单（如 "www/index.html"）；全部必须位于 entry 所在目录内，最多 64 个。 */
@@ -127,7 +127,10 @@ export interface LingWindowModel {
   iconStyle?: LingWindowIconStyle;
   /** 自定义窗口图标的工作区相对路径；仅在 iconStyle 为 custom 时使用。 */
   iconPath?: string;
-  /** 随 EXE 编译为 RCDATA 资源、启动时自动释放到「%TEMP%\lingbuilder-embedded\<工程ID>\」的文件（工作区相对路径）。 */
+  /**
+   * 已弃用：请改用项目级 `embeddedResources`（`extract: true` 即启动释放到「%TEMP%\lingbuilder-embedded\<工程ID>\」）。
+   * 读取与生成时会自动迁移并给出中文弃用诊断，迁移后本字段被移除。
+   */
   embeddedFiles?: LingWindowEmbeddedFileSpec[];
   /** 内嵌站点：网页静态文件编入 EXE 资源并从内存服务，运行期零文件释放。 */
   embeddedSite?: LingWindowEmbeddedSite;
@@ -246,12 +249,27 @@ export interface LingMenuResource {
 
 export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingMenuResource;
 
+/**
+ * 项目级内嵌资源：构建期把任意格式文件以 RCDATA 打进 EXE，运行期用「资源_*」命令按逻辑名读取。
+ * 逻辑名 = 工作区内相对路径原样（如 assets/logo.png），跨窗口共享。
+ */
+export interface LingEmbeddedResource {
+  /** 逻辑名（工作区内相对路径，正斜杠）。运行期按它读取。 */
+  name: string;
+  /** 源文件（工作区内相对路径）。 */
+  file: string;
+  /** 真时进程启动（wWinMain）就把资源释放到 %TEMP%\lingbuilder-embedded\<工程ID>\ 下，供只接受磁盘路径的 API 使用。 */
+  extract?: boolean;
+}
+
 export interface LingWindowProject {
   schemaVersion?: 2;
   id: string;
   name: string;
   windows: LingWindowModel[];
   resources?: LingDesignerResource[];
+  /** 项目级内嵌资源（资源号 2301 起，与内嵌文件 2001+/站点 2101+/项目 DLL 2201+ 段互不冲突）。 */
+  embeddedResources?: LingEmbeddedResource[];
 }
 
 export interface LingDesignerEventInfo {

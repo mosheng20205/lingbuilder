@@ -50,6 +50,12 @@ export interface VisualStudioProjectExportOptions {
   platformToolset?: string;
   /** 可选：vcxproj TargetName（决定 VS 构建产物 exe 名，不含 .exe 后缀）；缺省沿用 projectName。 */
   executableBaseName?: string;
+  /**
+   * 可选：传真时在 vcxproj Link 节写入 UACExecutionLevel=RequireAdministrator，
+   * 使 Visual Studio 构建的 exe 启动时请求管理员权限；缺省不写入＝asInvoker，与历史导出一致。
+   * IDE 内直编链路通过 compileWin32Preview 的 /MANIFESTUAC 链接参数保持同一行为。
+   */
+  requireAdministrator?: boolean;
 }
 
 const WINDOWS_GUID = '8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942';
@@ -126,6 +132,7 @@ export function createVisualStudioProjectExportContent(
           fbroRuntimeFromBuildBin: options.fbroRuntimeFromBuildBin,
           contentFiles,
           requiredCppStandard: options.requiredCppStandard ?? (hasCryptoSdk ? 20 : undefined),
+          requireAdministrator: options.requireAdministrator,
           requiresDynamicCrt: (options.requiresDynamicCrt ?? hasCryptoSdk) || hasOpenCv || options.projectKind === 'dynamic-library',
           extraPreprocessorDefinitions: usesProtobufSdk(options.enabledModules) ? ['PROTOBUF_USE_DLLS', 'ABSL_CONSUME_DLL'] : [],
           projectKind: options.projectKind || 'application',
@@ -310,6 +317,8 @@ function generateVcxproj(options: {
   projectKind: 'application' | 'dynamic-library' | 'console-application';
   definitionFile?: string;
   x64Only?: boolean;
+  /** 真＝vcxproj 四配置写入 EnableUAC + RequireAdministrator；缺省假＝asInvoker。 */
+  requireAdministrator?: boolean;
 }): string {
   const includeDirectories = options.includeDirs.map(toWindowsPath).join(';');
   const additionalIncludeDirectories = includeDirectories
@@ -345,6 +354,9 @@ function generateVcxproj(options: {
     : '_DEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)';
   const configurationType = options.projectKind === 'dynamic-library' ? 'DynamicLibrary' : 'Application';
   const subSystem = options.projectKind === 'console-application' ? 'Console' : 'Windows';
+  const uacSettings = options.requireAdministrator
+    ? ' <EnableUAC>true</EnableUAC><UACExecutionLevel>RequireAdministrator</UACExecutionLevel>'
+    : '';
   const definitionFile = options.definitionFile
     ? `\n      <ModuleDefinitionFile>${xmlEscape(toWindowsPath(options.definitionFile))}</ModuleDefinitionFile>`
     : '';
@@ -417,7 +429,7 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <SubSystem>${subSystem}</SubSystem>
+      <SubSystem>${subSystem}</SubSystem>${uacSettings}
       ${definitionFile}
       <AdditionalDependencies>${xmlEscape(additionalDependencies)};%(AdditionalDependencies)</AdditionalDependencies>
     </Link>${postBuild}
@@ -435,15 +447,15 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <SubSystem>${subSystem}</SubSystem>
+      <SubSystem>${subSystem}</SubSystem>${uacSettings}
       ${definitionFile}
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>${xmlEscape(additionalDependencies)};%(AdditionalDependencies)</AdditionalDependencies>
     </Link>${postBuild}
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${definitionFile}<AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${definitionFile}<EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
 ${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('ResourceCompile', options.resourceFiles)}${generateFileItems('None', options.noneFiles)}
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

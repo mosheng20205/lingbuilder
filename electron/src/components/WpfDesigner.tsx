@@ -101,6 +101,7 @@ import {
   LingControl,
   LingControlType,
   LingDesignerResource,
+  LingEmbeddedResource,
   LingFileDialogResource,
   LingImageListResource,
   LingMenuResource,
@@ -115,6 +116,9 @@ import {
   LingWindowProject
 } from '../services/windowDesigner/types';
 import { parseMenuBarItems } from '../services/windowDesigner/menuBarItemsModel';
+import EmbeddedResourceEditor from './EmbeddedResourceEditor';
+import { EMBEDDED_RESOURCE_MODULE_ID } from '../services/windowDesigner/embeddedResourceService';
+import { appendEmbeddedResources, describeEmbeddedResourceImport, describeEmbeddedResourceScan } from '../services/windowDesigner/embeddedResourceActions';
 import {
   getCreatableWin32ControlDefinitions,
   getWin32ControlDefinition,
@@ -161,7 +165,19 @@ import {
   type ListViewEditableRow
 } from '../services/windowDesigner/listViewCollectionModel';
 import { flattenTreeViewNodes, normalizeTreeViewNodes } from '../services/windowDesigner/treeViewCollectionModel';
-import { getDesignerImagePreviewSource, scanEmbeddedSiteDirectory, selectAndImportDesignerAnimation, selectAndImportDesignerGif, selectAndImportDesignerIcon, selectAndImportDesignerImage, selectAndImportDesignerVideo } from '../services/windowDesigner/designerAssetClient';
+import {
+  enableEmbeddedResourceModule,
+  getDesignerImagePreviewSource,
+  scanEmbeddedResourceDirectory,
+  scanEmbeddedSiteDirectory,
+  selectAndImportDesignerAnimation,
+  selectAndImportDesignerGif,
+  selectAndImportDesignerIcon,
+  selectAndImportDesignerImage,
+  selectAndImportDesignerVideo,
+  selectAndImportEmbeddedResourceFiles,
+  selectAndImportEmbeddedResourceFolder
+} from '../services/windowDesigner/designerAssetClient';
 import {
   getNewEmojiThemePreview,
   isNewEmojiDesignerControlSupported,
@@ -1453,6 +1469,45 @@ export default function WpfDesigner({
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId })
   }); }, [projectId]);
 
+  /**
+   * 内嵌资源面板动作。清单本身是纯模型编辑（面板/对话框直接 onChange），
+   * 这里只处理需要工作区/本机能力的动作：复制导入、目录扫描、启用模块 —— 全部经命令系统执行。
+   * 增改口径（去重、中文说明）与「配置项目内嵌资源」对话框共用 embeddedResourceActions.ts。
+   */
+  const appendEmbeddedResourceEntries = useCallback((entries: LingEmbeddedResource[]) => {
+    const appended = appendEmbeddedResources(currentProjectRef.current.embeddedResources || [], entries);
+    if (appended.resources.length !== (currentProjectRef.current.embeddedResources || []).length) {
+      setProject(previous => ({ ...previous, embeddedResources: appended.resources }));
+    }
+    return appended;
+  }, []);
+  const addEmbeddedResourceFiles = useCallback(async () => {
+    const result = await selectAndImportEmbeddedResourceFiles(projectId);
+    if (result.canceled) return '已取消选择。';
+    if (!result.ok) throw new Error(result.error || '内嵌资源导入失败。');
+    return describeEmbeddedResourceImport(result, appendEmbeddedResourceEntries(result.entries || []));
+  }, [appendEmbeddedResourceEntries, projectId]);
+  const addEmbeddedResourceFolder = useCallback(async () => {
+    const result = await selectAndImportEmbeddedResourceFolder(projectId);
+    if (result.canceled) return '已取消选择。';
+    if (!result.ok) throw new Error(result.error || '内嵌资源文件夹导入失败。');
+    return describeEmbeddedResourceImport(result, appendEmbeddedResourceEntries(result.entries || []));
+  }, [appendEmbeddedResourceEntries, projectId]);
+  const addEmbeddedResourceDirectory = useCallback(async (directory: string) => {
+    const target = String(directory || '').trim();
+    if (!target) throw new Error('请先填写工作区内目录（如 assets）。');
+    const result = await scanEmbeddedResourceDirectory(target);
+    // 扫描不复制文件，逻辑名直接取工作区相对路径原样。
+    const appended = appendEmbeddedResourceEntries(result.files.map(file => ({ name: file, file })));
+    return describeEmbeddedResourceScan(target, appended, result.skipped);
+  }, [appendEmbeddedResourceEntries]);
+  const enableEmbeddedResourceModuleForProject = useCallback(async () => {
+    const result = await enableEmbeddedResourceModule(projectId);
+    if (!result.ok) throw new Error(result.error || '内嵌资源模块启用失败。');
+    await refreshDesignerModules(projectId);
+    return ['已启用「内嵌资源模块」', ...(result.messages || [])].join('；') + '。';
+  }, [projectId, refreshDesignerModules]);
+
   useEffect(() => {
     if (project.id !== projectId) return;
     if (suppressNextProjectPublishRef.current) {
@@ -1891,26 +1946,27 @@ export default function WpfDesigner({
 
   const handleCanvasDoubleClick = (event: React.MouseEvent) => {
     const target = event.target as HTMLElement;
-    const isBackground = target === canvasRef.current;
-    const isTitleBar = target.closest('.canvas-title-bar');
-    
-    if (isBackground || isTitleBar) {
-      const handlerName = activeWindow.events?.Loaded?.trim()
-        || getWindowEventHandlerName(activeWindow.className, 'Loaded');
-      const detail = {
-        controlId: activeWindow.id,
-        controlName: activeWindow.className,
-        controlContent: activeWindow.title,
-        controlType: 'Grid',
-        eventName: 'Loaded',
-        handlerName,
-        windowFileName: activeWindow.fileName,
-        windowClassName: activeWindow.className,
-        windowTitle: activeWindow.title
-      };
-      window.dispatchEvent(new CustomEvent('open-control-event-code', { detail }));
-      addLog(`> [${new Date().toLocaleTimeString()}] 【事件代码】已定位窗体自身创建完毕事件：${handlerName}`);
-    }
+    // 双击窗口（背景 / 标题栏 / 预览底层）都视为「打开本窗口的创建完毕事件代码」——
+    // 这是设计器里最常用的「双击进事件」手势，2026-09-17 曾一度收窄到只认标题栏，结果窗口主体
+    // 双击完全没反应（主体占画布绝大部分），2026-09-18 恢复。
+    // 只有落在设计器控件上时才让给控件自己的双击行为，避免抢掉控件的事件入口。
+    if (target.closest('[data-designer-control-id]')) return;
+
+    const handlerName = activeWindow.events?.Loaded?.trim()
+      || getWindowEventHandlerName(activeWindow.className, 'Loaded');
+    const detail = {
+      controlId: activeWindow.id,
+      controlName: activeWindow.className,
+      controlContent: activeWindow.title,
+      controlType: 'Grid',
+      eventName: 'Loaded',
+      handlerName,
+      windowFileName: activeWindow.fileName,
+      windowClassName: activeWindow.className,
+      windowTitle: activeWindow.title
+    };
+    window.dispatchEvent(new CustomEvent('open-control-event-code', { detail }));
+    addLog(`> [${new Date().toLocaleTimeString()}] 【事件代码】已定位窗体自身创建完毕事件：${handlerName}`);
   };
 
   const handleAddWindow = async () => {
@@ -2659,7 +2715,11 @@ export default function WpfDesigner({
     selectParent: selectParentControl,
     selectChildren: selectDirectChildren,
     moveToRoot: () => handleReparentControls(getSelectedPersistedIds()),
-    previewEdgeControl: previewSelectedEdgeControl
+    previewEdgeControl: previewSelectedEdgeControl,
+    addEmbeddedResourceFiles,
+    addEmbeddedResourceFolder,
+    addEmbeddedResourceDirectory,
+    enableEmbeddedResourceModule: enableEmbeddedResourceModuleForProject
   };
 
   useEffect(() => {
@@ -2686,7 +2746,11 @@ export default function WpfDesigner({
       selectParent: () => designerActionsRef.current?.selectParent(),
       selectChildren: () => designerActionsRef.current?.selectChildren(),
       moveToRoot: () => designerActionsRef.current?.moveToRoot(),
-      previewEdgeControl: async () => designerActionsRef.current?.previewEdgeControl()
+      previewEdgeControl: async () => designerActionsRef.current?.previewEdgeControl(),
+      addEmbeddedResourceFiles: async () => String(await designerActionsRef.current?.addEmbeddedResourceFiles()),
+      addEmbeddedResourceFolder: async () => String(await designerActionsRef.current?.addEmbeddedResourceFolder()),
+      addEmbeddedResourceDirectory: async directory => String(await designerActionsRef.current?.addEmbeddedResourceDirectory(directory)),
+      enableEmbeddedResourceModule: async () => String(await designerActionsRef.current?.enableEmbeddedResourceModule())
     };
     const registration = activeDesignerCommandTargetService.register(target);
     activeDesignerCommandTargetService.activate(target.id);
@@ -2704,6 +2768,12 @@ export default function WpfDesigner({
     } catch (error) {
       addLog(`> 【设计器命令】${error instanceof Error ? error.message : String(error)}`);
     }
+  };
+
+  /** 与 executeDesignerCommand 同一链路，但不吞异常：面板需要把中文失败原因回显给用户。 */
+  const executeDesignerCommandOrThrow = async (commandId: string, ...args: unknown[]): Promise<unknown> => {
+    activeDesignerCommandTargetService.activate(`${projectId}:${designerInstanceId}`);
+    return designerCommandService.executeCommand(commandId, designerContextRef.current, ...args);
   };
 
   const executeContextMenuItem = async (item: ResolvedMenuCommandItem) => {
@@ -3157,6 +3227,7 @@ export default function WpfDesigner({
               ref={canvasRef}
               id="wpf-design-canvas"
               onDoubleClick={handleCanvasDoubleClick}
+              title="双击窗口空白处或标题栏：定位本窗口的「创建完毕」事件代码"
               onContextMenu={openCanvasContextMenu}
               onPointerDownCapture={() => activeDesignerCommandTargetService.activate(`${projectId}:${designerInstanceId}`)}
               className="absolute left-0 top-0 shadow-2xl border-2 border-slate-700/60 overflow-hidden shrink-0 select-none"
@@ -3203,6 +3274,7 @@ export default function WpfDesigner({
             />
             {canvasBorder.hasCaption && (
             <div
+              title="双击标题栏或窗口空白处：定位本窗口的「创建完毕」事件代码"
               className={`${canvasBorder.captionKind === 'thin' ? 'h-5' /* thin=DESIGNER_THIN_TITLE_BAR_HEIGHT(20px) */ : 'h-7'} flex items-center justify-between px-3 border-b border-black/25 select-none canvas-title-bar`}
               style={{
                 backgroundColor: useNewEmojiDesigner
@@ -3595,6 +3667,10 @@ export default function WpfDesigner({
                     window={activeWindow}
                     isDarkMode={isDarkMode}
                     newEmojiAvailable={newEmojiModuleEnabled}
+                    embeddedResources={project.embeddedResources || []}
+                    embeddedResourceModuleEnabled={enabledDesignerModules.has(EMBEDDED_RESOURCE_MODULE_ID)}
+                    onEmbeddedResourcesChange={resources => setProject(previous => ({ ...previous, embeddedResources: resources }))}
+                    runDesignerCommand={executeDesignerCommandOrThrow}
                     onChange={fields => {
                       if (fields.designerBackend === 'new-emoji') {
                         void ensureDesignerModuleAccess(true)
@@ -5232,16 +5308,27 @@ function WindowProperties({
   window,
   isDarkMode,
   newEmojiAvailable,
+  embeddedResources,
+  embeddedResourceModuleEnabled,
+  onEmbeddedResourcesChange,
+  runDesignerCommand,
   onChange
 }: {
   projectId: string;
   window: LingWindowModel;
   isDarkMode: boolean;
   newEmojiAvailable: boolean;
+  /** 项目级内嵌资源清单（跨窗口共享，保存在 window-designer.json 顶层）。 */
+  embeddedResources: LingEmbeddedResource[];
+  embeddedResourceModuleEnabled: boolean;
+  onEmbeddedResourcesChange: (resources: LingEmbeddedResource[]) => void;
+  runDesignerCommand: (commandId: string, ...args: unknown[]) => Promise<unknown>;
   onChange: (fields: Partial<LingWindowModel>) => void;
 }) {
   const [isSelectingIcon, setIsSelectingIcon] = useState(false);
   const [iconStatus, setIconStatus] = useState('');
+  // 面板默认展开与否只在挂载时决定：删掉最后一条资源不应该把面板收起来。
+  const [embeddedResourcePanelOpen] = useState(() => embeddedResources.length > 0);
   const [siteDraft, setSiteDraft] = useState<EmbeddedSiteDraft>(() => draftFromEmbeddedSite(window.embeddedSite));
   const [siteScanDirectory, setSiteScanDirectory] = useState(() => getEmbeddedSiteEntryDirectory(window.embeddedSite?.entry || '').replace(/\/$/u, ''));
   const [siteScanning, setSiteScanning] = useState(false);
@@ -5572,6 +5659,18 @@ function WindowProperties({
             </PropertyRow>
           </>
         )}
+      </PropertyGroup>
+      <PropertyGroup title="项目 / 内嵌资源（跨窗口共享）" isDarkMode={isDarkMode} defaultOpen={embeddedResourcePanelOpen}>
+          <EmbeddedResourceEditor
+            resources={embeddedResources}
+            isDarkMode={isDarkMode}
+            moduleEnabled={embeddedResourceModuleEnabled}
+            onChange={onEmbeddedResourcesChange}
+            onSelectFiles={async () => String(await runDesignerCommand('designer.embeddedResources.addFiles'))}
+            onSelectFolder={async () => String(await runDesignerCommand('designer.embeddedResources.addFolder'))}
+            onScanDirectory={async directory => String(await runDesignerCommand('designer.embeddedResources.addDirectory', directory))}
+          onEnableModule={async () => String(await runDesignerCommand('designer.embeddedResources.enableModule'))}
+        />
       </PropertyGroup>
       {migrateDesignerBackend(window.designerBackend, newEmojiAvailable) === 'new-emoji' && (
         <PropertyGroup title="当前窗口 / 原生框架" isDarkMode={isDarkMode}>

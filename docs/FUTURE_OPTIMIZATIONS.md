@@ -1,5 +1,19 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-09-18 追加）：**项目 DLL 命令声明编辑器数据/交互缺陷批量修复 + 结构体卡片排版重构（用户实测反馈）**。① **空名命令静默丢失**：`serializeDllCommandLines` 对空名产出 `整数型 ()` 这类解析器不认的死行，写回即整条消失（往返探针实测：清空「累加值」的名字会连带参数与 `= AccumulateF` 别名一起从文件里丢掉，表现为「加了不存在、删了又回来」）。修法=「添加命令」生成全文件不冲突的占位名 `新命令N`；命令名输入清空被拒绝并提示改用「删除此命令」；序列化端跳过无名字命令兜底。空名行在源码侧本就由解析器报「无法识别的 DLL 命令声明行」，因此不再另加模型层不可达诊断。② **「复制此命令」职责与文案不符**：新增 `serializeDllCommandSnippet`（只输出该命令自身声明行 + `备注:`/`公开 = 假`）替换整库包裹版 `serializeSingleDllCommand`（已删除），并新增 `parseDllDeclarationSnippet` 让「粘贴声明」两种格式都认——裸片段包进临时库解析后并入当前第一个库（不凭空造库），裸片段含结构体时明确提示未粘贴并指向「复制全部声明」。③ **折叠态没有删除入口**：底部操作行整块被 `!isCollapsed` 包住，改为常驻显示，仅「添加参数」随折叠隐藏。④ **结构体卡片字段清单排版**（用户红框反馈）：固定 `repeat(auto-fill, minmax(220px, 1fr))` 网格造成中文类型断字（「整数/型」「文本型/[260]」）与末行空轨道，改流式 `flex flex-wrap` + 类型/字段名 `whitespace-nowrap` + 备注 `max-w-[18rem] truncate` 带 `title`，数组长度改随字段名（`szExeFile[260]`）；同批给 `ProjectDllCommandsEditor`/`ProjectDataTypeEditor`/`ProjectGlobalVariableEditor` 根容器补 `min-w-0 flex-1`，修掉纵向滚动条出现在编辑区中部。⑤ **英文导出名放开为补全别名**：`createProjectDllDeclarationModule` 给 `contributes.commands` 补 `aliases: [exportName]`（与模块内命令名或其它别名冲突时不登记，命令名优先），使新手/Monaco 敲 `HalfF` 能筛出「半值」，上屏中文主名、生成 C++ 恒为真实导出名（非中文别名按补全目录规则只作检索键、不单独成条）。测试：`tests/lingcpp.test.ts` DLL 组 8/8（新增裸片段复制+粘贴、空名不落死行、别名登记与冲突不登记三条，改写原整库包裹片段用例）。同步：`LingBuilder AI 规则手册.md` 三条（复制/粘贴职责边界、命令名不得为空、英文导出名别名）、官网 `cloud/admin/docs/guide/user/modules/dll-module.md` §5（顺带把过时的「补充导入库」描述更正为内联转发函数）。**后续可做**：表格模型仍只在组件挂载时解析一次、不与 `sourceCode` 回流（用户批复本批不动），AI 改文件/撤销重做/文本模式手改后需重开标签才反映到表格，根治方案是带草稿保护的单向同步；`tests/projectDataTypesUi.test.tsx` 对 `用户信息 新字段类型` 草稿行的断言已被同日「添加字段移头部」重构淘汰（本机 lingcpp 套件 6 条失败中 5 条为记录在案的既有基线，该条属重构遗留过期断言，待并行会话收尾）。
+
+- 已完成（2026-09-18 追加）：**AI Bridge MCP 全链真机实测循环（自启 IDE + 外部 AI 模拟客户端驱动 MCP 写项目，发现即修直到摩擦点清零）**。方法：dev renderer + electron 真启动 IDE，另起与托管 Bridge 同一入口的 `ai-server`，用 MCP SDK 客户端仅凭 `instructions`+工具描述走「模板→建项目→诊断→构建→运行→run.wait/run.log/build.stop→迭代提案（加搜索按钮）→错误控件引用」全流程，记录每步耗时/响应体量/失败点。实测发现并修复：① `edit.propose` 指令含「控件/窗口/布局」等布局词但只改源码时被「涉及布局但缺设计器模型」误拦（修控件引用 typo 都会被拒）——`LingCppEditContext.designerEditPolicy` 新增 `caller-draft` 档：外部 AI 自带完整草稿（无 planner）允许纯源码提案，系统 AI planner 路径保持严格拒绝；② `project.create` 批准响应 54KB（preview/result 双份模板全文）→ 瘦身为 11.5KB（文件只留元数据）；③ `build.run`/`native.*` 响应 ~40KB → 3.7KB（去 sourceMap）；④ `modules.list` 54KB → 约 10KB（未启用模块改一行紧凑字符串、enabledModules 保留结构化摘要、去重复 summary）；⑤ `edit.propose` 17.9KB → 478B、`edit.apply` 41KB → 344B（只回提案 ID/变更位置/文件元数据）；⑥ 未知类型诊断（如 `SQLite连接`）补齐「由哪个模块提供 + 改 project-modules.json 启用 + module.info 查命令」的闭环提示；⑦ 模块公开类型按 manifest `cppType` 归入基础类别（`buildModuleTypeCategories`），`局部 SQLite连接 数据库 = 0` 哨兵初始化不再误报类型不兼容；⑧ sqlite-crud 模板「刷新按钮与新增按钮坐标重叠」修复为两行布局。最终全链 PASS、摩擦点计数 0，单轮迭代响应总量 ~112KB → ~18KB；「建项目漏启用模块→事后经 project-modules.json 提案补开→诊断清零」闭环验证通过。回归：aiBridge 套件 44/45（1 失败为并行改动在途既有用例）、test:lingcpp 224/227（3 失败为并行域既有项）、lint/build 通过。新增回归用例：纯源码提案不受布局词误拦、未知类型诊断指明模块来源。
+
+- 已完成（2026-09-18）：**AI Bridge MCP 写「会员增删改」窗口程序效率治理（外部用户反馈写很久写不完的六项根因）**。根因与修复：① `modules.list` 原样返回全部已装模块完整 manifest（new_emoji 一家 4011 条命令、6.5MB JSON），一次调用即可撑爆外部 AI 上下文——`listModules` 改为只返回摘要（id/名称/版本/命令数/文档路径/启用状态/最近 20 条历史），新增 `lingbuilder.module.info` 按 moduleId 单查完整命令签名、逐参数中文说明、示例、公开类型与文档路径（`query` 过滤、`includeAdvanced` 展开 advanced、超 500 条截断并提示）。② MCP Server 无 instructions、无工作流引导——`createProtocolServer` 在 InitializeResult 下发中文 `MCP_INSTRUCTIONS`（模板→create→edit.propose/apply→diagnostics→build.run→run.wait/run.log/build.stop 标准链路 + controlRef 裸名、`&处理器`、`approved=true` 等红线），stdio 与共享 HTTP 两个传输共用。③ `edit.propose` 静默丢文件陷阱（`files[]` 中 filePath 未出现在 `workspaceFiles[]` 的草稿被丢弃、全部未匹配时退化成「追加 AI 编辑建议注释」的假编辑）——`resolveEditWorkspaceFiles` 在 `workspaceFiles` 缺省时按 `files[]` 清单自动读盘（磁盘不存在的路径按新建空文件处理，上限 8 文件），显式传入时保持原语义但 `createChangeForDraftFile` 对未匹配文件直接中文报错不再静默丢弃；`applyWorkspaceEditToFiles`/提案匹配改大小写不敏感；`resolveApplyWorkspaceFiles` 对 ENOENT 按新建文件应用（原先新文件创建在 apply 阶段必然失败）。④ 模板缺口——`project.create` 新增 `sqlite-crud-window` 模板（姓名/电话/积分表单 + 4 按钮 + ListView + 状态标签设计器布局，模板默认启用 win32.basic/common-controls/sqlite 三模块；`.lcpp` 含建库、参数化新增/修改/删除、刷新重载的完整增删改查，遵守「命令调用局部变量先声明后赋值」「`信息框` 三参完整形态」「拼接走 `格式化文本`」红线）。⑤ 运行期盲区（19 个工具无停止/等待/输出）——新增 `lingbuilder.build.stop`（只停 Bridge 受控进程、全权限模式可用、同时取消在途构建租约）、`lingbuilder.run.wait`（等退出拿退出码，超时默认 30s 上限 600s）、`lingbuilder.run.log`（读最近一次受控运行输出，`tailLines` 取尾，进程退出后仍可读，路径经 `lastRunLogPaths` 登记）。⑥ 每轮全量重编——`compileMsvcPreviewWithModules` 引入 obj 缓存：obj 按源码路径哈希稳定命名（不再按索引），源码内容 + 编译器/架构/语言标准/CRT/宏/包含目录指纹 sidecar（`.inputs`）一致即跳过重编，指纹只在编译成功后落盘（失败编译不得留下「旧 obj+新指纹」误命中），`objDir` 不再每轮清空、按本次编译清单清理陈旧 obj，禁用模块不留参与链接的产物。测试：`tests/aiBridge.test.ts` 工具数 19→23，新增 5 用例（modules.list 瘦身+module.info、sqlite-crud 模板创建+设计器+磁盘模块清单+诊断零错误、workspaceFiles 自动读盘+新文件创建、未匹配草稿拒绝、运行观测工具无进程优雅响应）；模板经 CLI create→build 真机 MSVC 编译链接通过（8.5s），exe 同目录 sqlite3.dll 落包、启动 4 秒存活、`members.db` 自动建库验证通过；二次构建在 objDir 保留语义下无回归。`npm run lint`、`npm run build` 通过。遗留：obj 缓存对「带模块源码工程」（如 protobuf/new_emoji 桥源码）的复用率提升需在下次打包前用真实模块工程定向复验；`hello-window` 模板的 `信息框(文本)` 单参调用会命中 C2661（类成员重载无默认参数），属既有潜伏问题，本批以三参完整形态绕开、未改生成器（生成器区域有并行改动在途）。
+
+- 已完成（2026-09-18）：**AI 设计器提案控件类型幻觉根治——类型清单入提示词、别名归一化、校验失败自动纠正、apply 侧允许类型快照**。背景：用户让 AI 助手「写一个会员登录系统（登录窗口+会员窗口）」时，模型把编辑框写成 `type: "Edit"`（规范标识是 `TextBox`，`EDIT` 只是 Win32 原生类名），`validateDesignerProjectEdit` 按设计拒绝未知类型，整份提案被一次性拒绝并把校验错误原样冒泡成聊天错误。四层修复：① **提示词枚举**——BYOK 编辑提示词（`server.ts planLingCppEditWithGemini`）在存在 `designerProject` 时注入 `describeAllowedDesignerControlTypes(context)`（44 个内置控件规范标识+中文标签，追加启用模块贡献类型），系统提示词第 12 条明确「type 必须逐字使用清单标识，编辑框必须写 TextBox」，JSON 示例补带 `type` 的控件样例；云端系统 AI `buildEditMessages`（`cloud/api/src/ai/ai.service.ts`）同步补类型纪律句与示例 `type` 字段（云端靠规则手册注入生效，规则手册已补同款清单条目）。② **别名归一化**——`aiEditService.ts` 新增 `DESIGNER_CONTROL_TYPE_ALIASES` + `normalizeDesignerControlTypes`：`proposeLingCppEdit` 校验前把 `Edit/输入框/编辑框/textbox` 等保守精确映射为规范标识（仅当目标类型在当前允许集合内才生效，含规范标识自身小写变体自映射），归一化不掉的未知类型仍走中文阻断，BYOK/系统 AI 草稿/AI Bridge MCP 三条提案通道共用。③ **自动纠正**——BYOK 生成侧对设计器草稿先预校验，失败时携带中文错误向模型纠正重试一次（纠正草稿未带有效文件时保留原草稿文件部分），仍失败才落到确定性校验错误。④ **apply 快照**——`WorkspaceEditProposal` 新增 `designerAllowedControlTypes`，提案生成时快照校验通过的允许类型集合；`/api/lingcpp/edit/apply` 与 AI Bridge `applyEdit` 复用同一集合，修掉「模块贡献控件（如 FBroBrowser 之外的模块类型）提案阶段合法、应用阶段被默认集合误拒」的潜伏缺陷。测试：`tests/lingcpp.test.ts` 新增 4 用例（别名归一化复刻登录系统场景、归一化不触碰允许集合内与无法识别类型、类型清单描述含规范标识/中文标签/模块贡献类型、apply 复用快照集合通过模块控件校验）。回归：`npm run lint`、`npm run build` 通过；`test:lingcpp` 本机既有基线失败（TabControl 徽标断言、ZIP 中央目录缺本机归档、更新徽标断言、模块门禁审计份数等）与本次改动无关、定向复验全绿。规则手册已同步（设计器控件 `type` 合法标识清单条目）；云端提示词改动需随下次 cloud/api 部署生效。
+
+- 已完成（2026-09-17）：**项目级内嵌资源收尾——设计器面板、旧「窗口内嵌文件」迁移、官网文档与命令入账**。上一批已落地核心链路（`embeddedResources` → RCDATA 2301 起 → 8 条 `资源_*` 命令，见当日更新记录），本批补齐三件事：① **设计器面板**：窗口属性新增「项目 / 内嵌资源（跨窗口共享）」组（`electron/src/components/EmbeddedResourceEditor.tsx`），列出逻辑名/源文件/启动释放并支持增删改，含「选择文件…」「选择文件夹…」「扫描目录」与未启用模块时的**一键启用**入口；面板只做渲染与命令分发，四个动作全部注册为设计器命令（`designer.embeddedResources.addFiles/addFolder/addDirectory/enableModule`，`designerCommandTargetService.ts`），在用的 `command()` 助手补上参数透传。受控通道：主进程新增 `designer-assets:select-embedded-files`（多选）/`select-embedded-folder`（目录）两个 IPC（realpath + 普通文件/目录校验，`resolvePickedFiles/resolvePickedDirectory`），preload 与 `electron-api.d.ts` 同步；复制进工作区、大小/扩展名与逻辑名校验收敛到 `POST /api/window-designer/embedded-resources/import`（`DesignerAssetService.importEmbeddedResourceFiles/importEmbeddedResourceFolder`，默认落到 `<项目源码根>/resources/`，同名不同内容自动 `-2` 去冲突、内容相同复用，非法字符片段归一化为连字符并回报改名说明，无扩展名/超 256MB 跳过并给出中文原因），另有 `GET /api/window-designer/embedded-resources/scan` 只读扫描工作区目录（复用内嵌站点同一套 ≤512 文件、跳符号链接的遍历）。② **旧链路迁移与耦合缺陷修复**：新增 `embeddedResourceMigration.ts`，把窗口级 `embeddedFiles: [{file, extractName?}]` 迁成 `extract: true` 的项目级内嵌资源（释放路径不变，仍是 `%TEMP%\lingbuilder-embedded\<工程ID>\<释放名>`），迁移幂等、同名冲突阻断；接入设计器归一化（`normalizeWindowDesignerState`）与生成器入口（`generateLingCppNativeWin32Project` 参数改 `inputProject` 后统一迁移），弃用说明只提示不阻断、冲突进 blocking。修掉「窗口图标选不显示 → 声明的内嵌文件被静默丢弃」：`windowsExecutableIconService` 的 rc 行与字节物化都不再以 `iconEnabled` 为门（`generateWindowsExecutableResourceFile`/`materialize`），旧释放函数 `LingBuilder_释放内嵌资源文件()` 与 `getWindowEmbeddedResourceEntries` 删除，改由运行期新增的 `LB_EmbeddedResourceReleaseExtracted()` 在 `wWinMain` 启动释放（两条生成模板各自调用点已替换）。构建管线三处 `materialize(..., { embeddedResourceSpecs })` 改走新助手 `getEmbeddedResourceSpecsForBuild()`——必须先迁移再取规格，否则 rc 引用 2301 段归档名、物化却只写旧 2001 段，rc.exe 会直接报找不到文件。③ **文档与入账**：官网文档中心新增《内嵌资源（把文件打进 EXE）》（`cloud/admin/docs/guide/user/advanced/embedded-resource.md`，含场景/清单写法/8 命令表/完整示例/限制与旧字段迁移说明，侧边栏与进阶索引已挂）；模块 README 补面板入口与迁移口径；规则手册更新为项目级内嵌资源 + 旧 `embeddedFiles` 弃用条（并移除「内嵌依赖图标」的过时描述）；`npm run module:web-sync` 入账 8 条内嵌资源命令 + 7 条内存加载 DLL 命令（凭据走 `LINGBUILDER_ADMIN_EMAIL/PASSWORD/MFA_CODE`）。验证：新增 `scripts/smoke-embedded-resource-native.ts`（`npm run smoke:embedded-resource-native`）真实 MSVC x64 构建 + 运行 exe，断言 rc 2301-2303 三行齐全且无图标行、程序内 `资源_*` 四类读取结果 `1|45|1|1|1|1`、启动释放的 zip 与迁移来的 `legacy.bin` 字节与源文件一致、未声明 extract 的文本资源零落盘——**该场景同时覆盖图标「不显示」+ 旧字段迁移两项回归**；`tests/embeddedResource.test.ts` 6 用例（新增导入去冲突/文件夹相对路径/迁移幂等与冲突/图标解耦 + 面板命令门禁），`tests/menuService.test.ts` 新增命令路由用例；lint/build 全绿，`windowDesigner`（161 项，7 项既有环境失败：缺 `.lingbuilder/projects` 演示工程 fixture）与 `modules`（136 项，4 项既有基线失败）均与 stash 复验一致。后续可做：面板拖动排序、按文件夹合并显示、导入时自动排除命中的构建产物目录（`.lingbuilder-build`/`generated`）。
+
+- 已完成（2026-09-17 追加）：**内嵌资源示例工程与解决方案资源管理器入口**。① 进阶方案新增 `AI 视频自主生产/进阶方案/内嵌资源演示/`：8 条命令全覆盖（按钮→命令→日志逐条对应）、5 个资源（含中文逻辑名、中文子目录、`extract` 启动释放）、`verify-embed-resource.ps1` 无头验收 9 按钮 0 失败、真机 F5 与截图齐备；README 记录两条实测 `.lcpp` 红线（拼接不能作命令实参 C2664、`系统_取临时目录()` 返回指针不能直接拼接 C2110）。② 用户反馈「左侧看不到内嵌资源」：根因是文本文件白名单不含 txt/csv（源文件不进文件模型）+ 内嵌资源只有设计器面板入口。落地为项目节点新增「内嵌资源」组（逻辑名 + 启动释放徽标 + 「配置项目内嵌资源」入口，经 `designerNavigationService` 新增 `kind: 'embeddedResource'` 定位并高亮设计器面板）、已声明资源从 src 列表去重、文本白名单补 `txt|csv|md`（可直接打开编辑并被工作区搜索索引）。③ 生成器健壮性：`toColorRef` 接受 undefined（手写/AI 生成的精简设计器模型此前会以 `reading 'trim'` 崩掉整次生成），新增回归用例。④ 「配置项目内嵌资源」按用户反馈改为**独立配置对话框**（`EmbeddedResourcesDialog.tsx` + 命令 `workbench.action.project.configureEmbeddedResources`，保存走 `saveWindowDesignerState` 与 AI 应用提案同一通道；增改口径抽取为 `embeddedResourceActions.ts` 供面板与对话框共用），不再切走编辑器视图；上一版为「跳设计器高亮」加的导航 kind 已删除。⑤ 内嵌资源条目新增右键菜单（`solution/embeddedResource/context`：打开源文件 / 复制逻辑名 / 复制源文件路径 / 配置项目内嵌资源，菜单经 MenuService、动作经 CommandService），「能否打开源文件」按扩展名判断以避免异步文件列表造成的菜单项闪烁。
+
+待办：`lingbuilder project diagnose` 子命令在本机对任何工作区都报「路径不能为空或包含非法字符」（`project build` 正常），待定位修复；内嵌资源组暂未接右键菜单（MenuService）与拖放添加。
+
 - 已完成（2026-09-16 下午）：**F5 生成崩溃「Cannot read properties of undefined (reading 'byRef')」双修复**。根因一：0.7.1 打包版（09-15 20:50）内置的生成器在 `translateModuleCallArguments` 读 `parameter.byRef === true` 无空值保护，`parameter` 在「实参数量超过 binding 声明且无 variadic」时为 undefined，SQLite 全功能演示的 3 实参 `格式化文本(...)` 调用触发 TypeError → 生成请求 HTTP 500；源码侧 09-15 深夜已改为 `parameter?.byRef`（附空安全注释），仅安装包未携带。根因二：`格式化文本`/`列表视图_创建行`/`列表视图_创建行集合` 三条命令的可变参形参只有「可继续传入任意数量」的描述、未标 `variadic: true`（清单校验要求 variadic 形参必须是 `lingValue` 类型且位于末位），本次按规范补标 `variadic: true` 并从 `raw` 切换为 `lingValue`（生成端两者同样透传表达式，C++ 输出不变；C++ 运行时本就是 `template <typename... Args>` 变参模板）。门禁写回：参数摘要 `de563e74`→`a2df62a9`（commands 计数/摘要不变）；`modules.test.ts` 的格式化文本类型断言同步为 `lingValue + variadic`；controlRef 源文件门禁 54→55 已写回（`projectDllMaterializeService.ts` 入列，全量扫描 0 违规）。验证：lint 全绿；`modules/lingcpp/windowDesigner/buildPipeline` 473 项 457 过（16 失败全为既有基线：lingcpp 5 条 HEAD 红 + 4 条环境项 + 7 条缺 `.lingbuilder/projects` 演示工程 ENOENT）；重建 cli.cjs 后对崩溃同款工程 `AI 视频自主生产/基础篇加餐/20 SQLite数据库模块` 跑 `project build --request` 无头构建，`ok:true`、编译成功出 exe。**教训**：打包版 IDE 的 F5 走安装包内 bundle，源码修了不重打包用户侧永远在旧代码上跑；排查时先 `grep` 安装目录 `app.asar` 区分「源码已修」还是「运行代码未修」。
 
 - 已完成（2026-09-16）：**易语言支持库迁移批次——文件流/枚举/日期时间/文本/数学/字节集 66 条命令入账**。按《易语言支持库采集与IDE封装分析汇报》4.1.1 高优先级 24 条与 4.2 五个补全方向全量落地：`lingbuilder.fs.core` 1.1.0 新增句柄式文件流族 23 条（文件_打开/关闭/关闭全部/移动读写位置/移到文件首/移到文件尾/读入字节集/写出字节集/读入文本/写出文本/读入一行/写文本行/读入数据/写出数据/是否在文件尾/取读写位置/取长度/插入字节集/插入文本/插入文本行/删除数据/锁定/解锁）+ 枚举族 2 条（文件_枚举/目录_枚举），运行时为 CreateFileW 句柄注册表（每流互斥锁），锁族走 LockFile/UnlockFile；登记新名义类型 `文件号`。`lingbuilder.std.datetime` 1.1.0 新增日期时间族 17 条，名义类型 `日期时间` = 64 位位打包本地年月日时分秒（year<<26|month<<22|day<<17|hour<<12|minute<<6|second，0=无效哨兵），公历换算用 days_from_civil/civil_from_days，全部本地时区。std.text +6（取左边/取右边/码点转字符/取码点/删首空白/删尾空白）、std.math +11（取整/绝对取整/四舍五入/取符号/正余正反切/自然对数/反对数/置随机种子，种子与随机整数共用线程本地 mt19937）、std.bytes +7（字节集_从文本/重复/分割 + 数值_到十六进制/八进制文本与反向解析）。工厂 `createStandardModule` 新增 `returnLabel` 支持（contributes 返回类型标签与 binding ABI 类型分离）。门禁：审计 89 模块/3469 命令/6090 参数/1303 控件参数、摘要 `a5dfdb55`/`de563e74` 已写回 tests/modules.test.ts；封装清单 89/3469 与五个模块行已同步；audit-param-descriptions 缺失 0；lint/build 全绿。e2e：`examples/yl-migration-file-datetime-demo/`（build-request 内嵌源码 + verify.mjs 62 项断言）经 CLI 无头构建 + exe 落盘探针 `yl-verification-report.txt` 全部 ALL-PASS（63 行），覆盖文件流读写回一致、插入/删除数据、锁定解锁、递归枚举、变参 写出数据/读入数据 打包读回、日期时间分量/增减/间隔/解析、四批全部新命令。**踩坑记录**：① `LB_WriteDataValue` 的 `const wchar_t*` 重载里 `value ? value : L""` 仍是 `const wchar_t*`，无限递归调用自身导致栈溢出（exe 静默停在写出数据），必须显式构造 `std::wstring` 分派到文本重载；② 名义类型（文件号/日期时间）不接受 `= 0` 字面量初始化（语义检查阻断「整数型 不能初始化 文件号」），句柄族声明必须用裸声明 `局部 文件号 号` 两段式；③ `std::filesystem::path` 没有 `is_directory` 成员（自由函数）；④ 变参 binding 的 C++ 形参顺序必须与清单参数顺序逐位一致（字节集_分割 数组出参在 数目 之前）；⑤ `字节集` 数组在 .lcpp 声明为 `局部 字节集 分段[]`（标签「字节集」无「型」后缀），`std::vector<std::vector<unsigned char>>&` 出参实机可用；⑥ 易语言「零
@@ -1604,3 +1618,209 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
 - 封装清单计数行 + 逐模块行；module:web-sync（凭据走环境变量）；规则手册与更新记录同步。
 
 - 已完成（2026-09-17）：**AI Bridge 无头构建 new_emoji 单文件内嵌回归修复**。`compileMsvcPreviewWithModules` 的 linkArgs 只把 `newEmojiDelayLoadLinkArgs`（delayimp.lib + /link + /DELAYLOAD:new_emoji.dll）当非空开关用、从未展开进链接命令，且该分支下 `/MANIFEST:EMBED` 落在 `/link` 区段外被 cl 以 D9002 静默忽略——new_emoji.dll 退回硬导入，EXE 单独分发（目录无 DLL）加载期即 0xC0000135，RCDATA 内嵌与延迟解压钩子全部失效（09-13 落地的单文件能力被后续清单内嵌改造回归，bin 目录常驻 DLL 掩盖了问题）。修复为 delay 参数真实展开并入同一段 `/link`（`...newEmojiDelayLoadLinkArgs, '/MANIFEST:EMBED'`）。验证：重建 cli.cjs 后 emoji 六标签页工程无头构建链接日志不再出现 D9002；单 exe 拷入干净目录运行 5 秒存活 Responding=True，自动释放 new_emoji.dll（2,790,400 字节逐字节一致）并正常渲染；`lint` 全绿，aiBridge/buildPipeline/windowDesigner/modules 四套件 351 项 340 过（11 失败全为在案环境基线：modules 4 环境项 + windowDesigner 7 缺 `.lingbuilder/projects` 演示工程 fixture）。
+
+# 2026-09-17 内存加载 DLL（不落盘）交付与后续优化
+
+## 已交付
+
+- 新内置模块 `lingbuilder.advanced.memorydll`（内存加载DLL模块，7 命令、双架构 target、随模块文档）：`内存DLL_加载/取函数地址/取函数序号地址/取模块大小/已加载/卸载/取错误信息`。运行期 `memoryDllRuntime.ts` 实现手工 PE 映射：节区拷贝 → 基址重定位 → 导入表填充 → TLS 槽位分配（`TlsAlloc` + 回写 `AddressOfIndex` + 按模板块初始化当前线程）→ x64 异常表注册（`RtlAddFunctionTable`）→ 入口函数调用，按节属性落权限。
+- 项目 DLL 命令声明新增 `加载方式 = 内存`：DLL 以 RCDATA 内嵌进 EXE（资源号 2201 起，≤8 个、单个 ≤32MB），生成惰性解析包装（名字取自绑定 `runtimeName`＝导出名），不生成导入库、不复制 DLL 到 exe 目录；未启用模块 / 系统 DLL 混用 / 位数不符 / 加壳 / 超限一律构建期中文阻断。
+- 编辑器（项目 DLL 命令声明卡片）新增「内存加载（内嵌进 EXE，不落盘）」勾选项与「内存加载 · 不落盘」徽标；`examples/memory-dll-demo/` 提供演示 DLL 源码 + 构建脚本 + 声明 + 项目源码 + 无头构建请求。
+- 验证：`electron/scripts/smoke-memory-dll-native.ts` 三场景全过——声明内嵌 Win32 / 声明内嵌 x64（内嵌资源 + DllMain 入口计数 + 宽字符 + 静态变量 + 无 C++ 异常），命令直用 x64（加载/取地址/序号/大小/已加载/卸载/位数不符诊断/空数据）；三个场景 exe 目录内 **DLL 数量为 0**，证明全程不落盘。
+
+## 已知限制（实现边界，勿把它当缺陷反复排查）
+
+1. **MSVC C++ 异常（`throw/catch`）在手工映射模块内不被派发**：x64 下会以未处理异常终止进程（实测：同一 `wrap` 函数内的 throw/catch 亦不生效）。`__try/__except`（SEH）在 x64 可用，在 Win32（WOW64）不可用。参考实现 MemoryModule（易语言内存加载 DLL 同源）根本不注册异常表，本实现已优于该参考；要支持 C++ 异常的 DLL 请用「同目录加载」。
+2. **卸载只注销、不释放映像**：静态 CRT 会向系统登记 FLS/TLS 回调，释放已映射代码会让进程退出时回调落到已回收内存（实测 0xC0000409/AV）。因此 `内存DLL_卸载` 只从注册表移除并注销异常表；如需真正回收内存，需要在卸载前清空该模块登记的 FLS/TLS 回调（当前无法枚举模块自身登记的 FLS 索引）。
+3. **TLS 槽位不回收**：每个内存模块占一个进程 TLS 槽位（上限约 1088），卸载不释放槽位；位数一致性由构建期 + 运行期双重校验。
+
+## 后续可做
+
+- 由工作线程调用内存加载 DLL 时，线程局部数据（`__declspec(thread)`）不保证可用（新线程没有初始化模板块）。可考虑在模块加载后对已知线程批量 `TlsSetValue`，或提供「禁止在工作线程调用内存模块」的诊断。
+- 内存加载 DLL 目前不进入 AI Bridge 的模块能力清单快照（`lingbuilder.modules.list` 只列模块，不列单项声明）；如需外部 AI 感知「本项目哪些库是内存加载」，可在 MCP 的 workspace 描述里补一行摘要。
+- 官网「命令查找」页需重跑 `cd electron && npm run module:web-sync` 把 7 条新命令入账（需管理员凭据，本次未推送生产）。
+
+# 2026-09-17 功能库拆分大源码（组件总览六标签页）与生成器顺序修复
+
+## 已交付
+
+- `AI 视频自主生产/进阶方案/组件总览六标签页` 的主源码从 5159 行拆到 727 行（92 个演示页按六个分类
+  拆进 6 个功能库文件 + 1 个「演示页切换」功能库），`generate_source.py` 同时产出拆分后的 `src/*.lcpp`
+  与多源码集合 `build-request.json`（`lingCppSources`，11 个源码文件）。
+- 生成器修复：new_emoji 后端的**功能库定义**必须生成在全部 new_emoji 命令包装之后（宽字符包装如
+  `NE标签页_设置标签项` 定义较晚），否则功能库内调用会 C3861；**声明**保留在早期位置，保证运行期事件
+  分发生成的调用点可见。回归用例见 `tests/functionLibraries.test.ts`。
+- 工程侧新增 `make-baseline.py`：按「拆分前单文件布局」重建对照工程，用于 A/B 对比外观是否零变化。
+
+## 功能库使用边界（写 .lcpp 前必读，与实现一致）
+
+1. 一个 `.lcpp` 文件只能声明一个功能库；同一文件里不能出现类、项目变量/常量、数据类型。
+2. 功能库内**不能出现 `&处理器`**：窗口事件处理器绑定必须在窗口类里完成。需要页面内控件绑定时，
+   在窗口类里用 `通过标记文本获取NE按钮/NE链接(...)` 找回控件再绑定（本项目 6 条演示绑定即如此迁移）。
+3. 功能库内部调用必须写全 `功能库名.功能名(...)`；文件名应与功能库名一致（否则告警）。
+4. 功能库参数可直接声明为 `NE容器`/`NE面板` 等运行时控件类型，并作为 `控件_创建NE*` 的父级实参使用
+   （生成器按运行时控件引用处理）；`当前窗口` 在功能库内同样可用（映射到全局 `g_newEmojiWindow`）。
+
+## 顺序陷阱（生成器局部变量提升 × 功能库调用）
+
+- 生成器会把「`局部 X = 表达式`」带初始化的局部变量**提升到方法最前**（含函数调用）。当被调用的东西
+  （控件）是由功能库调用创建时，查找会早于创建执行，引用退化为 0（stableId 0）。
+- 危害示例：`NE_EU_SetElementVisible(当前窗口, <未解析引用>, 0)` 等价于 `EU_SetElementVisible(hwnd, 0, 0)`，
+  会把**整个窗口内容**隐藏（实测整窗全黑，且进程仍 Responding，极易误判为渲染问题）。
+- 规避：凡依赖功能库创建结果的初始化，一律「先声明后赋值」：
+  `局部 NE面板 IN00` + `IN00 = 通过标记文本获取NE面板("页_...")`。
+- 同类顺序问题还包括控件创建顺序：拆分后六个功能库的调用顺序必须与拆分前源码一致（本项目为
+  选择媒体 → 基础布局 → 表单输入 → 数据展示 → 图表导航 → 反馈流程），否则同坐标页面叠放的 z 序会变。
+
+## 后续可做
+
+- 生成器可考虑在“带初始化声明被提升”这件事上给出**显式诊断**（例如该初始化引用了运行时控件查找时提示
+  「可能早于功能库创建执行，建议改为先声明后赋值」），减少同类踩坑。
+- 功能库目前不支持 `&处理器` 参数、默认参数、成员状态；若后续放开，需要同步语言服务诊断、C++ 生成、
+  模块文档与 `LingBuilder AI 规则手册.md`。
+- 多源码无头构建依赖工作区解决方案登记（`resolveLingCppProjectSources` 需要解析项目源码目录）；
+  后续可考虑允许 `lingCppSources` 在未登记项目时按请求内路径直接校验，减少工程脚本的登记副作用。
+
+## 2026-09-17 语言诊断性能热点（已修，留档）
+
+- 大模块（new_emoji 4011 命令）下打开/切文件曾同步阻塞 1.5~3.5 s。已修两处：
+  「模块绑定 × 逐行」的全量正则重扫改为单趟调用索引 `getSourceInvocationIndex(source)`（按命令名查询，6 条 LRU 缓存）；
+  `isLingCppRuntimeControlType` 的运行时控件类型集合改为按 `moduleContext` 缓存（WeakMap）。
+- 新增模块诊断时请沿用**单趟索引 + 按名查询**的写法，不要再对「每个绑定 × 每行」新建 RegExp；
+  新增运行时控件类型查询请走 `getLingCppRuntimeControlTypes/TypeNames`（已缓存），不要自己遍历 `designerControls`。
+- 后续可做：对 `getLingCppProblems` 结果按 (源码, moduleContext, 设计器模型引用) 做一次记忆化，
+  减少在多个文件间来回切换时的重复计算；以及给 App 里基于 `activeFile.translatedContent` 的问题面板计算加
+  `startTransition`/防抖，避免连续输入时每键 200+ ms 的主线程占用。
+
+## 2026-09-17 新手模式输入/点击响应（待拍板，未动码）
+
+- 现象：新手结构化编辑器里打字/点击卡顿、光标不跟手。已修的大头是语言诊断热点（见上一条）与工程本地模块清单缺失
+  （无模块时 263 条误报诊断会随每次交互重渲染）。仍剩一档：每次输入都会同步重算
+  `buildLingCppLanguageContext`（≈265~330 ms）+ 结构化行/大纲/可读块（≈40 ms 各一次），且 App 的问题面板与
+  Monaco 标记各自再算一遍诊断。
+- 可选方案（按推荐度）：
+  1. **延后重计算**：新手编辑器对重派生值使用 `useDeferredValue(source)`（输入/光标走紧急更新，表格与大纲稍后更新约一帧），
+     App 的问题面板计算用 `startTransition` 降级为过渡更新；
+  2. **共享一次计算**：为 `getLingCppProblems` / `getLingCppSemanticDiagnostics` 增加按
+     （源码, moduleContext, 设计器模型引用, 工程符号引用）记忆化的小 LRU，让问题面板、Monaco 标记、新手表格共用一份结果；
+  3. **输入期降载**：连续输入（如 150 ms 内）只做标记化，诊断延后到停顿后执行。
+- 影响面：方案 1/3 改变新手模式的刷新时序（表现是"上屏即写、标记稍后"），属于 UI 行为改动，需用户拍板后再动码。
+
+## 2026-09-17 新手结构化编辑器打开大文件卡死（根因更正 + 已实施）
+
+> 本节先前的判断（「阻塞在渲染/布局层，DOM 过大把主线程压死」）**已被实测推翻**，以下是更正与落地记录。
+
+- 更正依据（打包版 0.7.4 + CDP，真实配置副本，`组件总览六标签页.lcpp`：728 行 / 279 结构行 / 260 块）：
+  新手画布打开后滚轮 20 次只增加 6 ms 布局、`Runtime.evaluate` 往返稳定 1 ms；`Profiler` 采不到 Blink 的
+  style/layout/paint，所以「JS 采样全 idle」只能排除 JS 死循环，不能推出「被布局压死」。
+- 真实原因：**任何交互都全量重建整棵结构画布**。悬浮换行实测 1276~1330 ms/次，一分钟烧掉 55 s ScriptDuration；
+  打字同样每键全量重渲。`DiffViewer` 单组件 1.1 万行、57 个 useState、全仓仅 `WpfDesigner` 用过一处 `React.memo`，
+  悬浮/当前行/草稿/折叠状态全在顶层。
+- 已实施的六项（2026-09-17 完成，打包复测见下）：
+  1. **块级窗口化**：新增 `electron/src/components/beginner/BeginnerVirtualCanvas.tsx`（`@tanstack/react-virtual`），
+     只挂载视口附近的块，其余用高度占位；块数 ≤30 时保持全量渲染，小文件行为不变。
+  2. **块内容按 revision 记忆化**：父级无关重渲不再重建整棵画布；悬浮/当前行只挂到对应 `targetKey` 的块。
+  3. **草稿去抖 + 结构指纹**：连续输入只写 ref，400 ms 空闲且「行数/缩进/控制流关键字」变化才同步 state；
+     代码 textarea 改 `defaultValue`，外部改写用外部版本号重挂载。
+  4. **同值 setState 短路**：`beginnerCompletionState` / `beginnerAutoLocalTypeState` 用镜像 ref 守卫
+     （React 对「函数式更新返回同值」仍会安排渲染）；`App.handleShowCommandHint` 同值短路。
+  5. **光标/状态栏发布合并**：一次 rAF + `startTransition`，输入事件优先渲染。
+  6. **`controlFlow.ts` 正则缓存 + 行首词快速排除**（此前每行最多新建约 30 个 `RegExp`）。
+- 打包版复测（`electron/release/win-unpacked` + `cdp-measure-packaged.mjs`）：打开 3832 ms → **582 ms**；
+  DOM 54,133 → **1,630** 节点（260 → 15 个挂载块）；悬浮 1300 ms → **0~1 ms**；打字 600~1300 ms → **2~13 ms**；
+  点击 → **1~13 ms**；滚轮 → **0~2 ms**；跳转到行正常（先滚入目标块再定位）。
+- 仍需注意的边界：
+  - 小文件（≤30 块）走非窗口化路径，行为与改动前一致；窗口化阈值与估算高度在 `BeginnerVirtualCanvas` 内。
+  - 依赖 `data-beginner-canvas-item` / `data-beginner-virtualized` / `data-structured-line` 的自动化脚本
+    （录屏、CDP 探针）需先滚动让目标块进入视口，`revealLingCppLine` 已内置「先滚入再定位」的重试。
+  - 剩余可做：把状态栏光标状态移出 `App`（改由独立 store + `useSyncExternalStore` 提供给状态栏），
+    可进一步消除打字期间的过渡渲染；`tests/lingcpp.test.ts` 的 5 项失败为改动前既有，与本次无关。
+
+## 2026-09-17 设计器双击跳错源码文件（已修）
+
+- 现象：窗口设计器里双击后跳到 `src/MainWindow.lcpp`，而不是窗口自己所在的源码文件。
+- 原因两条：① `WpfDesigner.handleCanvasDoubleClick` 把「画布空白处」和「画布标题栏」的双击
+  都当「打开创建完毕事件代码」，空白处极易误触；② `App.handleOpenControlEventCode` 先按
+  「谁声明了同名处理器」选文件，而 `创建完毕` 这类处理器名跨窗口必然重名，同名文件里先命中的
+  未必是本窗口的源码。
+- 已修：选文件优先级收敛到 `electron/src/services/windowDesigner/controlEventTargetFile.ts`
+  （声明 `类 <窗口类名>` 的文件 → 声明处理器的文件 → 惯例文件名）。
+- **双击触发区口径（2026-09-18 更正）**：双击**窗口主体 / 标题栏 / 预览底层**都应触发「打开创建完毕
+  事件代码」——这是设计器里最常用的「双击进事件」手势。曾一度收窄到只认 `.canvas-title-bar`，
+  结果窗口主体双击完全没反应（主体占画布绝大部分）；现在只在双击落在
+  `[data-designer-control-id]`（设计器控件）上时让给控件自己的双击行为。
+- 边界（勿回退）：新增「打开事件代码」入口时，必须继续走 `selectControlEventTargetFile`，
+  不要各写一套「找第一个声明了处理器的文件」；`hasLingCppEventHandler` 已收进该服务。
+  收窄双击触发区前先想想「窗口主体」是不是主要点击区域。
+- 回归：`tests/windowDesigner.test.ts` 的两条新用例 + `.lingbuilder/fl-split-probe/cdp-verify-eventtarget.mjs`。
+
+
+## 2026-09-18 进程内存扫描族、默认启用模块与 UAC 提权（已落地，含遗留）
+
+- **已落地**：`lingbuilder.advanced.process-memory` 1.1.0（读字节集/读到缓冲区/枚举区域JSON/
+  扫描字节集（数组与 JSON 双出口）/取错误码/取错误，运行时 32MB 整读 + 8MB 分块 +
+  max(1KB, 特征长-1) 重叠，命中升序去重）；`lingbuilder.process` 进程枚举两条；
+  `lingbuilder.system.info` 系统_是否管理员。模块默认启用走 `ModuleService.readProjectModules`
+  读取层补缺（`DEFAULT_ENABLED_MODULE_IDS` + 内置依赖展开 + `optOutDefaultModuleIds` 持久化），
+  新项目/旧工作区/CLI 三路同生效。UAC：`buildProperties.requireAdministrator` → 直编
+  `/MANIFESTUAC:level='requireAdministrator'`（`REQUIRE_ADMINISTRATOR_LINK_ARGS`）+
+  VS 导出工程 `<UACExecutionLevel>RequireAdministrator</UACExecutionLevel>`；增量指纹已含该字段。
+  实机验收见 `更新记录/2026-09-18.md` 与 `examples/process-memory-scan-demo/`。
+- **实测坑（勿回退）**：`#pragma comment(linker, "/manifestuac:...")` 编译链接全绿但清单仍是
+  asInvoker——MSVC 仅支持 pragma 传 manifestdependency；UAC 必须在编译/链接调用点显式传参，
+  不能塞进生成的 main.cpp。`/MANIFESTUAC:level='requireAdministrator'` 不带外层双引号即可
+  正确链接（已实测），避免 cmd 包装层的引号转义问题。
+- **遗留（低优先级）**：
+  - 控制台模块 `控制台_输出/输出行` 用 `WriteConsoleW`，stdout 重定向到文件/管道时静默无效
+    （既有实现）；自动化验收需以落盘文件为准，或后续为重定向场景回退 `WriteFile`。
+  - `requireAdministrator` 当前只能改 solution.json 的 buildProperties（与 outputType 同载体）；
+    项目设置 UI 尚无该开关，后续可在「构建目录…」对话框加一个复选框。
+  - `native.preview` 预览编译不传 UAC 参数（预览产物不运行，无影响）；若未来预览产物也要运行，
+    需把 `requireAdministrator` 接进该路径。
+  - `requireAdministrator` 对 `outputType: "dll"` 项目无提权语义（DLL 清单不影响启动提权），
+    生成器未做阻断；后续可给中文提示。
+  - 扫描命令 `std::search(match+1)` 逐命中推进在最坏情形（超长重复模式）O(n·m)；当前
+    最大命中数兜底可接受，后续可换 Two-Way/Boyer-Moore。
+
+
+## 2026-09-18 单精度小数型（float）与项目 DLL 边界放行（已落地）
+
+- **新增基础类型 `单精度小数型`**（= C++ `float`，32 位单精度）：补齐语言层与 `双精度小数型`（= double）
+  的区分。`小数型` 保持 double 语义不变（存量项目/教程/官网文档兼容），易语言用户注意易语言
+  `小数型` 是单精度，本项目不是。`float` 英文别名改指 `单精度小数型`（此前指向 `小数型`，用户写
+  float 得到 double 的误导已消除）。
+- 登记面：LING_CPP_TYPES、ModuleBindingValueType + manifest BINDING_VALUE_TYPES（第三方 .lbmod
+  现在可声明 float 参数/返回）、四处穷举标签表、新手补全/默认初值、eplStructuredEditor、
+  项目数据类型字段白名单、项目常量类型白名单、toCppType、线程可拷贝类型正则、
+  getUnknownDeclaredTypeDiagnostics（经 LING_CPP_TYPES 自动覆盖）。
+- **float 字面量 f 后缀**：float 声明的实数初值（成员/局部/全局/常量/数据类型字段）确定性补 `f`
+  （`float x = 1.0f;`），避免 MSVC C4305 截断告警；`defaultReturnStatement` float 返回 `0.0f`。
+- **项目 DLL 命令声明放行 float**：DLL_BOUNDARY_TYPE_MAP / DLL_STRUCT_FIELD_TYPE_MAP /
+  传址指针（float*）/ 导出表扫描反向映射（float → 单精度小数型）/ 诊断文案同步。
+- **顺带修复两个既有潜伏缺陷（真机构建时暴露）**：
+  1. 非系统 DLL 带别名命令（`= ExportName`）的 dllimport 头文件声明误用中文命令名，而调用点经
+     binding.runtimeName 调真实导出名 → 任何「第三方 DLL + 英文导出别名」都会 C3861。现头文件
+     `declaredName = exportName || name` 与调用点对齐。
+  2. 物化 .def 此前输出「中文名 = 导出名」重命名符号，导入库里只有中文名符号，导出名符号不存在
+     → 同样 LNK2019。现 def 一律输出真实导出名（与头文件/调用点三方对齐）。
+- 真机验收（独立临时工作区）：cl 编译 x64 float 导出 DLL（HalfF）→ CLI build 链路全程绿、
+  编译零告警 → exe 运行 `单精度结果=0.5`（float ABI 数值精确，double 旧路径会乱数）→
+  `float 输入值 = 1.0f;` 落进生成源码。
+- 回归：`tests/lingcpp.test.ts`（单精度登记/边界放行/头文件别名/def 断言）+
+  `tests/windowDesigner.test.ts`（float 生成与 f 后缀）+ `tests/projectDataTypesUi.test.tsx`
+  （类型卡片清单加新类型）。
+- **遗留（低优先级）**：官网 data-types/quickstart 文档已更新源文件，尚未走 VitePress 构建 +
+  ssh_put 部署上线；下次官网文档发版一并生效。
+
+## 2026-09-18 运行时 C++ 片段的 32 位可移植性红线（F5 实测，已修）
+
+- 内置模块运行时片段给 Win32 API 的**传出参数**必须使用 `SIZE_T` / `DWORD` 等 Win32 别名，
+  禁用 `size_t`：32 位 MSVC 下 `size_t`=`unsigned int`、`SIZE_T`=`unsigned long`，宽度相同但
+  类型不同（`size_t*` → `SIZE_T*` 报 C2664）；x64 下两者同型，CLI 无头构建（默认 x64 工具链）
+  全绿会掩盖该错误。已修：进程内存运行时 ReadProcessMemory 两处出参（platformAdvancedRuntime.ts）。
+- 验收纪律：涉及生成 C++ 的改动必须覆盖 Debug|Win32（vcvars32，即 IDE F5 默认工具链）与
+  x64 两条工具链；只跑 CLI 默认架构不算验收。可按 F5 命令行在 ASCII 临时目录重放
+  （含中文路径的 .cmd 会被 cmd 按 GBK 误读，不能直接内嵌工作区路径）。
+- 连带：server.ts 直编单源分支 Debug 配置已补 `/MANIFEST:EMBED`，且
+  `requireAdministrator` 注入 UAC 参数的所有配置同时内嵌清单（此前 F5 产物清单为外置
+  `.exe.manifest` 侧车，UAC 随侧车才生效）；非管理员 + Release 历史行为不变。

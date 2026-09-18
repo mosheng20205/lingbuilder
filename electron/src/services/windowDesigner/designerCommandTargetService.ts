@@ -25,6 +25,14 @@ export interface DesignerCommandTarget {
   selectChildren(): void;
   moveToRoot(): void;
   previewEdgeControl(): Promise<void>;
+  /** 内嵌资源面板：选择文件并复制进项目（返回中文结果说明）。 */
+  addEmbeddedResourceFiles(): Promise<string>;
+  /** 内嵌资源面板：选择文件夹递归展开并复制进项目（返回中文结果说明）。 */
+  addEmbeddedResourceFolder(): Promise<string>;
+  /** 内嵌资源面板：扫描工作区内已有目录（不复制），逻辑名取工作区相对路径。 */
+  addEmbeddedResourceDirectory(directory: string): Promise<string>;
+  /** 内嵌资源面板：一键启用「内嵌资源模块」。 */
+  enableEmbeddedResourceModule(): Promise<string>;
 }
 
 class ActiveDesignerCommandTargetService {
@@ -84,6 +92,11 @@ export function acquireDesignerCommands(commands: CommandService, menus: MenuSer
     command('designer.action.selectChildren', '选择直接子控件', [], enabled('designer.hasChildren'), target => target.selectChildren()),
     command('designer.action.moveToRoot', '移至窗口根级', [], enabled('designer.canMoveToRoot'), target => target.moveToRoot()),
     command('designer.edgeview.previewControl', '运行此 Edge 控件预览', [], context => enabled('designer.hasSelection')(context) && context['designer.control.type'] === 'EdgeBrowser', target => target.previewEdgeControl()),
+    // 内嵌资源面板动作：文件选择/文件夹复制/目录扫描/模块启用都经命令系统执行，面板按钮只负责分发命令。
+    command('designer.embeddedResources.addFiles', '内嵌资源：选择文件…', [], enabled('designer.active'), target => target.addEmbeddedResourceFiles()),
+    command('designer.embeddedResources.addFolder', '内嵌资源：选择文件夹…', [], enabled('designer.active'), target => target.addEmbeddedResourceFolder()),
+    command('designer.embeddedResources.addDirectory', '内嵌资源：扫描工作区目录', [], enabled('designer.active'), (target, directory) => target.addEmbeddedResourceDirectory(String(directory ?? ''))),
+    command('designer.embeddedResources.enableModule', '内嵌资源：启用内嵌资源模块', [], enabled('designer.active'), target => target.enableEmbeddedResourceModule()),
     ...layoutCommands()
   ]);
   const submenuRegistration = menus.registerSubmenus([
@@ -141,12 +154,12 @@ function command(
   title: string,
   keybindings: readonly string[],
   enabled: (context: CommandContext) => boolean,
-  run: (target: DesignerCommandTarget) => unknown
+  run: (target: DesignerCommandTarget, ...args: unknown[]) => unknown
 ) {
   return {
     id, title, category: '设计器', keybindings,
     when: 'designer.active', enabled,
-    handler: () => run(activeDesignerCommandTargetService.require())
+    handler: (_context: CommandContext, ...args: unknown[]) => run(activeDesignerCommandTargetService.require(), ...args)
   };
 }
 

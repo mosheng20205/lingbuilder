@@ -17,7 +17,7 @@ test('新手项目数据类型编辑器提供类型卡片、字段表格、空�
   const typeLabels = buildBeginnerTypeCompletionCatalog([...SAFE_DATA_FIELD_TYPES, '用户信息'])
     .filter(item => item.label !== '空')
     .map(item => item.label);
-  assert.deepEqual(typeLabels, ['文本型', '整数型', '长整数型', '逻辑型', '小数型', '双精度小数型', '字节型', '字节集', '用户信息']);
+  assert.deepEqual(typeLabels, ['文本型', '整数型', '长整数型', '逻辑型', '小数型', '单精度小数型', '双精度小数型', '字节型', '字节集', '用户信息']);
   assert.equal((markup.match(/role="combobox"/gu) || []).length, 3);
   assert.match(markup, /aria-label="用户信息\.姓名 字段类型"/u);
   assert.match(markup, /aria-label="用户信息 新字段类型"/u);

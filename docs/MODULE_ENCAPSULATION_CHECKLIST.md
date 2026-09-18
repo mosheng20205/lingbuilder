@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-09-16
+更新时间：2026-09-18
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **96 个内置模块、3615 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **98 个内置模块、3640 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -41,11 +41,11 @@ JSON 数据模块 2.0 提供受管 `JSON值`、严格 RFC 8259 解析与创建�
 | 已封装 | `lingbuilder.fs.path` | 路径处理模块 | 7 |
 | 已封装 | `lingbuilder.config.ini` | INI 配置模块 | 6 |
 | 已封装 | `lingbuilder.config.registry` | 用户注册表模块 | 6 |
-| 已封装 | `lingbuilder.system.info` | 系统信息模块 | 7 |
+| 已封装 | `lingbuilder.system.info` | 系统信息模块 | 8 |
 | 已完整封装（只读信息） | `lingbuilder.system.disk` | 磁盘信息模块 | 28 |
 | 已完整封装 | `lingbuilder.system.clipboard` | 剪贴板模块 | 10 |
 | 已封装 | `lingbuilder.system.shell` | 系统外壳模块 | 6 |
-| 已封装 | `lingbuilder.process` | 进程管理模块 | 7 |
+| 已封装 | `lingbuilder.process` | 进程管理模块 | 9 |
 | 已封装 | `lingbuilder.ipc` | 进程通信模块 | 8 |
 | 已封装 | `lingbuilder.archive` | ZIP 压缩模块 | 4 |
 
@@ -131,13 +131,15 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 状态 | 模块 ID | 名称 | 命令数 | 边界 |
 |---|---|---|---:|---|
 | 已封装 | `lingbuilder.advanced.memory` | 受控内存模块 | 6 | 只能访问模块登记的本进程内存块 |
+| 已封装 | `lingbuilder.advanced.memorydll` | 内存加载DLL模块 | 7 | DLL 字节手工 PE 映射到内存（不落盘），配合「项目 DLL 命令声明 · 加载方式 = 内存」使用 |
+| 已封装 | `lingbuilder.resource.embed` | 内嵌资源模块 | 8 | 任意格式文件构建期打进 EXE，运行期按逻辑名取字节集/文本（不落盘） |
 | 已封装 | `lingbuilder.advanced.hook` | 键盘 Hook 模块 | 4 | 只读取低级键盘状态，不注入代码 |
-| 已封装 | `lingbuilder.advanced.process-memory` | 进程内存模块 | 4 | 显式启用、显式 PID 和句柄 |
+| 已封装（1.1.0 扫描族） | `lingbuilder.advanced.process-memory` | 进程内存模块 | 11 | 显式 PID 和句柄；字节集读取、区域枚举与特征扫描；默认随新项目启用（可按项目禁用，依赖缓冲区模块） |
 | 已封装（2.0.0 句柄制） | `lingbuilder.advanced.com` | COM 自动化模块 | 27 | 注册/免注册创建 IDispatch、OCX 窗口宿主、事件挂接映射、类型化属性与带参方法、接口信息；纯 C++ 双架构 |
 | 已封装 | `lingbuilder.advanced.assembly` | CPU 指令能力模块 | 5 | 只提供 CPUID 和受控位运算，不执行机器码 |
 | 已封装 | `lingbuilder.advanced.driver` | 设备驱动通信模块 | 4 | 不安装驱动、不提权，只打开显式设备路径 |
 
-这些模块不得加入普通项目默认引用，也不得由 AI 在未说明风险时自动启用。
+这些模块中，除 进程内存模块（`lingbuilder.advanced.process-memory`）已按产品决策默认随新项目启用（旧项目在读取层补齐，用户可按项目禁用并记录 opt-out）外，其余不得加入普通项目默认引用，也不得由 AI 在未说明风险时自动启用。
 
 ## 已有模块（保留并补齐双架构 target）
 

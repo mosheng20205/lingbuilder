@@ -27,8 +27,14 @@ import {
   acquireLingCppControlReferenceCommands,
   REVEAL_LINGCPP_CONTROL_COMMAND
 } from '../src/services/lingCpp/controlReferenceCommands';
+import {
+  acquireLingCppDllCommandsEditorCommands,
+  COLLAPSE_ALL_DLL_COMMANDS_COMMAND,
+  EXPAND_ALL_DLL_COMMANDS_COMMAND,
+  SEARCH_DLL_COMMANDS_COMMAND
+} from '../src/services/lingCpp/dllCommandsEditorCommands';
 import { getMenuService } from '../src/services/menus/menuService';
-import { LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU } from '../src/services/menus/types';
+import { LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU, LINGCPP_DLL_COMMANDS_CONTEXT_MENU } from '../src/services/menus/types';
 import {
   clearDesignerNavigationRequests,
   completeDesignerNavigation,
@@ -172,7 +178,9 @@ test('EdgeView preview command is visible only for an EdgeBrowser selection and 
     id: 'edge-preview-test', getContext: () => ({}), openDefaultEvent: noop, openProperties: noop,
     copy: async () => undefined, cut: async () => undefined, paste: async () => undefined, duplicate: async () => undefined,
     deleteSelection: noop, deleteResource: noop, selectAll: noop, applyLayout: noop, reorder: noop, setLocked: noop,
-    selectParent: noop, selectChildren: noop, moveToRoot: noop, previewEdgeControl: async () => { previewed += 1; }
+    selectParent: noop, selectChildren: noop, moveToRoot: noop, previewEdgeControl: async () => { previewed += 1; },
+    addEmbeddedResourceFiles: async () => '', addEmbeddedResourceFolder: async () => '',
+    addEmbeddedResourceDirectory: async () => '', enableEmbeddedResourceModule: async () => ''
   });
   const edgeContext = { 'designer.active': true, 'designer.hasSelection': true, 'designer.control.type': 'EdgeBrowser' };
   const buttonContext = { ...edgeContext, 'designer.control.type': 'Button' };
@@ -182,6 +190,34 @@ test('EdgeView preview command is visible only for an EdgeBrowser selection and 
   assert.ok(edgeMenu.some(item => item.kind === 'command' && item.command.id === 'designer.edgeview.previewControl' && item.command.enabled));
   await commands.executeCommand('designer.edgeview.previewControl', edgeContext);
   assert.equal(previewed, 1);
+  targetRegistration.dispose();
+  commandRegistration.dispose();
+});
+
+test('embedded resource panel actions run through the designer command service with arguments', async () => {
+  const commands = createCommandService();
+  const menus = new MenuService(commands);
+  const commandRegistration = acquireDesignerCommands(commands, menus);
+  const calls: string[] = [];
+  const noop = () => undefined;
+  const targetRegistration = activeDesignerCommandTargetService.register({
+    id: 'embedded-resource-test', getContext: () => ({}), openDefaultEvent: noop, openProperties: noop,
+    copy: async () => undefined, cut: async () => undefined, paste: async () => undefined, duplicate: async () => undefined,
+    deleteSelection: noop, deleteResource: noop, selectAll: noop, applyLayout: noop, reorder: noop, setLocked: noop,
+    selectParent: noop, selectChildren: noop, moveToRoot: noop, previewEdgeControl: async () => undefined,
+    addEmbeddedResourceFiles: async () => { calls.push('files'); return '已选择文件。'; },
+    addEmbeddedResourceFolder: async () => { calls.push('folder'); return '已选择文件夹。'; },
+    addEmbeddedResourceDirectory: async directory => { calls.push(`scan:${directory}`); return '已扫描目录。'; },
+    enableEmbeddedResourceModule: async () => { calls.push('module'); return '已启用模块。'; }
+  });
+  const context = { 'designer.active': true };
+  const disabled = commands.getCommandState('designer.embeddedResources.addFiles', { 'designer.active': false });
+  assert.equal(disabled.enabled, false);
+  assert.equal(await commands.executeCommand('designer.embeddedResources.addFiles', context), '已选择文件。');
+  assert.equal(await commands.executeCommand('designer.embeddedResources.addFolder', context), '已选择文件夹。');
+  assert.equal(await commands.executeCommand('designer.embeddedResources.addDirectory', context, 'assets'), '已扫描目录。');
+  assert.equal(await commands.executeCommand('designer.embeddedResources.enableModule', context), '已启用模块。');
+  assert.deepEqual(calls, ['files', 'folder', 'scan:assets', 'module']);
   targetRegistration.dispose();
   commandRegistration.dispose();
 });
@@ -285,4 +321,33 @@ test('LingCpp beginner creation commands expose shortcuts, execute through MenuS
   assert.equal(commands.hasCommand(CUT_BEGINNER_SUBPROGRAM_COMMAND), false);
   assert.equal(commands.hasCommand(COPY_BEGINNER_SUBPROGRAM_COMMAND), false);
   assert.equal(commands.hasCommand(PASTE_BEGINNER_SUBPROGRAM_COMMAND), false);
+});
+
+test('项目 DLL 命令声明编辑器右键菜单的三个视图动作在 workspace.open 上下文下可执行', async () => {
+  const commands = createCommandService();
+  const actions: string[] = [];
+  const registration = acquireLingCppDllCommandsEditorCommands(commands, {
+    onSearch: () => actions.push('search'),
+    onExpandAll: () => actions.push('expandAll'),
+    onCollapseAll: () => actions.push('collapseAll')
+  });
+  const menus = getMenuService(commands);
+  try {
+    const items = menus.resolveMenu(LINGCPP_DLL_COMMANDS_CONTEXT_MENU, { 'workspace.open': true }, { includeDisabled: true });
+    assert.deepEqual(
+      items.map(item => (item.kind === 'command' ? item.command.id : item.kind)),
+      [SEARCH_DLL_COMMANDS_COMMAND, EXPAND_ALL_DLL_COMMANDS_COMMAND, COLLAPSE_ALL_DLL_COMMANDS_COMMAND]
+    );
+    // 历史缺陷：菜单按 workspace.open 解析为可用，点击却以空上下文执行 → 按「当前上下文中不可用」抛错被吞掉，表现为点了没反应。
+    await assert.rejects(commands.executeCommand(SEARCH_DLL_COMMANDS_COMMAND), /不可用/u);
+    for (const item of items) {
+      if (item.kind !== 'command') continue;
+      await commands.executeCommand(item.command.id, { 'workspace.open': true });
+    }
+    assert.deepEqual(actions, ['search', 'expandAll', 'collapseAll']);
+  } finally {
+    registration.dispose();
+  }
+  assert.deepEqual(menus.resolveMenu(LINGCPP_DLL_COMMANDS_CONTEXT_MENU, { 'workspace.open': true }, { includeDisabled: true }), []);
+  assert.equal(commands.hasCommand(SEARCH_DLL_COMMANDS_COMMAND), false);
 });

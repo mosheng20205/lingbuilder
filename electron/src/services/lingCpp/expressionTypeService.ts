@@ -12,7 +12,7 @@ const MODULE_VALUE_TYPE_ALIASES: Record<string, string> = {
   integer: '整数型',
   longlong: '长整数型',
   double: '双精度小数型',
-  float: '小数型',
+  float: '单精度小数型',
   bool: '逻辑型',
   boolean: '逻辑型',
   widestring: '文本型',
@@ -127,20 +127,36 @@ function resolveProjectFieldPathType(
   return currentType;
 }
 
-export function areLingCppTypesCompatible(expected: string, actual: string): boolean {
+/**
+ * 模块公开类型的 C++ 表示归类（类型名 → integer/decimal/bool/text）。
+ * 模块句柄类型（如 SQLite连接 的 cppType=long long）允许用 0 做哨兵初始化、
+ * 与整数互比；不提供时按独立类别处理（与旧行为一致）。
+ */
+export type LingCppModuleTypeCategories = ReadonlyMap<string, string>;
+
+export function areLingCppTypesCompatible(
+  expected: string,
+  actual: string,
+  moduleTypeCategories?: LingCppModuleTypeCategories
+): boolean {
   const expectedIsArray = isLingCppArrayParameterType(expected);
   const actualIsArray = isLingCppArrayParameterType(actual);
   // 数组和标量之间没有隐式转换，元素类型也不做整数到小数的放宽：std::vector<int> 与 std::vector<double> 是两种类型。
   if (expectedIsArray || actualIsArray) {
     return expectedIsArray && actualIsArray
-      && lingCppTypeCategory(getLingCppParameterElementType(expected)) === lingCppTypeCategory(getLingCppParameterElementType(actual));
+      && lingCppTypeCategory(getLingCppParameterElementType(expected), moduleTypeCategories) === lingCppTypeCategory(getLingCppParameterElementType(actual), moduleTypeCategories);
   }
-  const expectedCategory = lingCppTypeCategory(expected);
-  const actualCategory = lingCppTypeCategory(actual);
+  const expectedCategory = lingCppTypeCategory(expected, moduleTypeCategories);
+  const actualCategory = lingCppTypeCategory(actual, moduleTypeCategories);
   return expectedCategory === actualCategory || (expectedCategory === 'decimal' && actualCategory === 'integer');
 }
 
-function lingCppTypeCategory(type: string): string {
+function lingCppTypeCategory(type: string, moduleTypeCategories?: LingCppModuleTypeCategories): string {
+  const bare = type.replace(/(?:\[\]|［］)$/u, '');
+  if (moduleTypeCategories) {
+    const mapped = moduleTypeCategories.get(normalizeIdentifier(bare));
+    if (mapped) return mapped;
+  }
   if (/文本|字符串/u.test(type)) return 'text';
   if (/字节集/u.test(type)) return 'bytes';
   if (/逻辑|布尔/u.test(type)) return 'bool';

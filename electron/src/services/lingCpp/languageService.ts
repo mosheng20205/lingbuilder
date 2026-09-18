@@ -54,7 +54,7 @@ import {
   WINDOW_EVENT_DEFINITIONS
 } from '../windowDesigner/windowEventRegistry';
 import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
-import { areLingCppTypesCompatible, inferLingCppExpressionType } from './expressionTypeService';
+import { areLingCppTypesCompatible, inferLingCppExpressionType, type LingCppModuleTypeCategories } from './expressionTypeService';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from './parameterTypeService';
 import { parseLingCppControlFlowLine } from './controlFlow';
 import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
@@ -2602,6 +2602,26 @@ function getBlockDiagnostics(source: string): LingCppDiagnostic[] {
   return diagnostics;
 }
 
+
+/** 模块公开类型按 cppType 归入基础类别：句柄/整数类允许 0 哨兵初始化与整数互比。 */
+function buildModuleTypeCategories(moduleContext?: LingCppModuleContext): LingCppModuleTypeCategories {
+  const categories = new Map<string, string>();
+  for (const module of moduleContext?.enabledModules || []) {
+    for (const type of module.manifest.contributes?.types || []) {
+      const cpp = (type.cppType || '').toLowerCase();
+      let category: string | undefined;
+      if (/(?:long long|long|int|unsigned)/.test(cpp)) category = 'integer';
+      else if (/(?:double|float)/.test(cpp)) category = 'decimal';
+      else if (/bool/.test(cpp)) category = 'bool';
+      else if (/wstring|wchar_t\*/.test(cpp)) category = 'text';
+      if (category && !categories.has(normalizeIdentifier(type.name))) {
+        categories.set(normalizeIdentifier(type.name), category);
+      }
+    }
+  }
+  return categories;
+}
+
 function getUnknownDeclaredTypeDiagnostics(
   program: LingCppProgram,
   moduleContext?: LingCppModuleContext,
@@ -2616,10 +2636,25 @@ function getUnknownDeclaredTypeDiagnostics(
     '空', '无'
   ]);
   const diagnostics: LingCppDiagnostic[] = [];
+  // 未启用模块的贡献类型索引：报错时直接告知由哪个模块提供、如何启用，
+  // 外部 AI 不必再全库检索类型来源。
+  const availableModuleTypeOwners = new Map<string, { moduleId: string; moduleName: string }>();
+  for (const module of moduleContext?.availableModules || []) {
+    for (const type of module.manifest.contributes?.types || []) {
+      const key = normalizeIdentifier(type.name);
+      if (!availableModuleTypeOwners.has(key)) {
+        availableModuleTypeOwners.set(key, { moduleId: module.manifest.id, moduleName: module.manifest.name });
+      }
+    }
+  }
   const check = (type: string, name: string, line: number, position: string) => {
     const itemType = type.replace(/(?:\[\]|［］)$/u, '');
     if (known.has(normalizeIdentifier(itemType)) || /控件|窗体/u.test(itemType)) return;
-    diagnostics.push(createDiagnostic('error', line, `${type} ${name}`, `${position} ${name} 使用了未知类型 ${type}。`, '请选择内置类型、已启用模块类型或项目自定义数据类型。'));
+    const owner = availableModuleTypeOwners.get(normalizeIdentifier(itemType));
+    const suggestion = owner
+      ? `类型 ${itemType} 由已安装模块「${owner.moduleName}」（${owner.moduleId}）提供：在编辑提案中把该模块追加进 .lingbuilder/projects/<项目ID>/project-modules.json 的 enabledModuleIds（或创建项目时通过 enabledModuleIds 指定），即可用 lingbuilder.module.info 查询该模块命令后直接使用。`
+      : '请选择内置类型、已启用模块类型或项目自定义数据类型。';
+    diagnostics.push(createDiagnostic('error', line, `${type} ${name}`, `${position} ${name} 使用了未知类型 ${type}。`, suggestion));
   };
   program.globals.forEach(global => check(global.type, global.name, global.line, '项目全局变量'));
   program.classes.forEach(cls => {
@@ -2646,6 +2681,7 @@ function getVariableDiagnostics(
   projectTypes?: LingCppProjectTypeContext,
   designerControlNames: ReadonlySet<string> = new Set()
 ): LingCppDiagnostic[] {
+  const moduleTypeCategories = buildModuleTypeCategories(moduleContext);
   const diagnostics: LingCppDiagnostic[] = [];
   const globalTypes = projectSymbolTypes(constants, globals);
   const constantNames = new Set(constants.map(constant => normalizeIdentifier(constant.name)));
@@ -2692,7 +2728,7 @@ function getVariableDiagnostics(
           ));
           const declaredType = local.isArray ? `${local.type}[]` : local.type;
           const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext, new Map(), projectTypes);
-          if (actualType && !areLingCppTypesCompatible(declaredType, actualType)) {
+          if (actualType && !areLingCppTypesCompatible(declaredType, actualType, moduleTypeCategories)) {
             diagnostics.push({
               id: `lingcpp-local-initializer-type-${method.name}-${local.name}-${local.line}`,
               line: local.line,
@@ -2714,7 +2750,7 @@ function getVariableDiagnostics(
         const returnValue = statement.text.trim().match(/^返回(?:\s+|[（(])(.+?)[）)]?\s*;?$/u)?.[1]?.trim();
         if (returnValue) {
           const actualReturnType = inferLingCppExpressionType(returnValue, scopeTypes, moduleContext, new Map(), projectTypes);
-          if (actualReturnType && !areLingCppTypesCompatible(method.returnType, actualReturnType)) {
+          if (actualReturnType && !areLingCppTypesCompatible(method.returnType, actualReturnType, moduleTypeCategories)) {
             diagnostics.push(createDiagnostic(
               'error', statement.line, statement.text,
               `子程序 ${method.name} 必须返回 ${method.returnType}，不能返回 ${actualReturnType}。`,
@@ -2768,7 +2804,7 @@ function getVariableDiagnostics(
           return;
         }
         const actualType = inferLingCppExpressionType(assignment[2] || '', scopeTypes, moduleContext, new Map(), projectTypes);
-        if (actualType && !areLingCppTypesCompatible(targetType, actualType)) {
+        if (actualType && !areLingCppTypesCompatible(targetType, actualType, moduleTypeCategories)) {
           diagnostics.push({
             id: `lingcpp-assignment-type-${method.name}-${targetName}-${statement.line}`,
             line: statement.line,
@@ -3085,7 +3121,7 @@ function requireThreadHandler(
 function isThreadCopyableType(type: string, opaqueTypes: Set<string>, structuredTypes: Set<string>): boolean {
   const normalized = type.trim().replace(/(?:\[\]|［］)$/u, '');
   const key = normalizeIdentifier(normalized);
-  if (/^(?:文本型|文本|字符串|字符串型|整数型|整数|长整数型|长整数|小数型|小数|双精度|双精度型|双精度小数型|逻辑型|逻辑|布尔型|布尔|字节型|字节|字节集)$/u.test(normalized)) return true;
+  if (/^(?:文本型|文本|字符串|字符串型|整数型|整数|长整数型|长整数|小数型|小数|单精度小数型|单精度小数|双精度|双精度型|双精度小数型|逻辑型|逻辑|布尔型|布尔|字节型|字节|字节集)$/u.test(normalized)) return true;
   if (/^(?:线程任务|线程任务状态|线程池|线程互斥锁|线程原子整数|线程同步事件|线程信号量)$/u.test(normalized)) return true;
   if (structuredTypes.has(key)) return true;
   if (opaqueTypes.has(key) || /(?:控件|窗体|窗口|句柄|指针|引用|&|\*)/u.test(normalized)) return false;
@@ -3103,81 +3139,95 @@ function isThreadWorkerHandler(source: string, handlerName: string, bindings: Mo
 
 function getModuleHandlerDiagnostics(source: string, program: LingCppProgram, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
-  const lines = splitLines(source);
   const handlers = new Map<string, LingCppMethod[]>();
   [...program.classes.flatMap(cls => cls.methods), ...program.functionLibraries.flatMap(library => library.methods)].forEach(method => {
     const key = normalizeIdentifier(method.name);
     handlers.set(key, [...(handlers.get(key) || []), method]);
   });
+  const bindingsByCommand = new Map<string, Array<{ binding: ModuleCommandBinding; handlerIndexes: number[] }>>();
   getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
     (module.manifest.bindings?.commands || []).forEach(binding => {
       if (binding.invocation?.kind === 'managedTask') return;
       const handlerIndexes = (binding.parameters || []).map((parameter, index) => parameter.type === 'handler' ? index : -1).filter(index => index >= 0);
       if (handlerIndexes.length === 0) return;
       const aliases = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [];
-      [binding.command, ...aliases].forEach(commandName => lines.forEach((line, lineIndex) => {
-        if (isLingCppCommentLine(line.trim())) return;
-        extractCommandInvocationArguments(line, commandName).forEach(args => handlerIndexes.forEach(index => {
-          const value = args[index]?.trim();
-          const parameter = binding.parameters?.[index];
-          if (!value && parameter?.optional) return;
-          const signature = parameter?.handlerSignature;
-          if (signature) {
-            const reference = value?.match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
-            const legacy = parseStringLiteralArgument(value);
-            if (!reference) {
-              diagnostics.push({
-                id: `lingcpp-handler-reference-${binding.command}-${lineIndex + 1}-${index}`,
-                line: lineIndex + 1,
-                level: 'error',
-                message: `命令 ${binding.command} 的处理器必须使用 &处理器名 引用语法。`,
-                codeSnippet: line,
-                suggestion: legacy ? `请改为 &${legacy}。` : '请引用当前类中签名匹配的事件或方法。'
-              });
-              return;
-            }
-            const candidates = handlers.get(normalizeIdentifier(reference)) || [];
-            if (candidates.length === 0) {
-              diagnostics.push({
-                id: `lingcpp-handler-missing-${binding.command}-${lineIndex + 1}-${index}`,
-                line: lineIndex + 1,
-                level: 'error',
-                message: `命令 ${binding.command} 引用的处理器 ${reference} 不存在。`,
-                codeSnippet: line,
-                suggestion: `请在当前类中声明 ${signature.returnType} ${reference}(${signature.parameterTypes.join(', ')})。`
-              });
-              return;
-            }
-            const matches = candidates.some(handler => {
-              if (handler.parameters.length !== signature.parameterTypes.length) return false;
-              if (!handler.parameters.every((item, parameterIndex) => areLingCppTypesCompatible(signature.parameterTypes[parameterIndex] || '', item.type))) return false;
-              return isVoidType(signature.returnType)
-                ? isVoidType(handler.returnType)
-                : areLingCppTypesCompatible(signature.returnType, handler.returnType || '空');
-            });
-            if (!matches) diagnostics.push({
-              id: `lingcpp-handler-signature-${binding.command}-${lineIndex + 1}-${index}`,
-              line: lineIndex + 1,
+      [binding.command, ...aliases].forEach(commandName => {
+        const entries = bindingsByCommand.get(commandName);
+        const entry = { binding, handlerIndexes };
+        if (entries) entries.push(entry);
+        else bindingsByCommand.set(commandName, [entry]);
+      });
+    });
+  });
+  if (bindingsByCommand.size === 0) return diagnostics;
+
+  // 单趟调用索引 + 按命令名查询：避免「绑定数 × 行数」的全文重扫（大模块下是打开文件卡顿的主因）。
+  const invocationIndex = getSourceInvocationIndex(source);
+  bindingsByCommand.forEach((entries, commandName) => {
+    const invocations = invocationIndex.get(commandName);
+    if (!invocations) return;
+    entries.forEach(({ binding, handlerIndexes }) => invocations.forEach(invocation => {
+      const line = invocation.lineText;
+      handlerIndexes.forEach(index => {
+        const value = invocation.args[index]?.trim();
+        const parameter = binding.parameters?.[index];
+        if (!value && parameter?.optional) return;
+        const signature = parameter?.handlerSignature;
+        if (signature) {
+          const reference = value?.match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
+          const legacy = parseStringLiteralArgument(value);
+          if (!reference) {
+            diagnostics.push({
+              id: `lingcpp-handler-reference-${binding.command}-${invocation.line}-${index}`,
+              line: invocation.line,
               level: 'error',
-              message: `命令 ${binding.command} 的处理器 ${reference} 签名不匹配。`,
+              message: `命令 ${binding.command} 的处理器必须使用 &处理器名 引用语法。`,
               codeSnippet: line,
-              suggestion: `处理器必须声明为 ${signature.returnType} ${reference}(${signature.parameterTypes.join(', ')})。`
+              suggestion: legacy ? `请改为 &${legacy}。` : '请引用当前类中签名匹配的事件或方法。'
             });
             return;
           }
-          const legacy = parseStringLiteralArgument(value);
-          if (!legacy || value?.startsWith('&')) return;
-          diagnostics.push({
-            id: `lingcpp-handler-reference-migration-${binding.command}-${lineIndex + 1}-${index}`,
-            line: lineIndex + 1,
-            level: 'warning',
-            message: `命令 ${binding.command} 的处理器字符串写法仅用于旧项目兼容。`,
-            codeSnippet: line,
-            suggestion: `请改为 &${legacy}，以便补全、诊断、跳转、重命名和 C++ 生成统一识别处理器引用。`
+          const candidates = handlers.get(normalizeIdentifier(reference)) || [];
+          if (candidates.length === 0) {
+            diagnostics.push({
+              id: `lingcpp-handler-missing-${binding.command}-${invocation.line}-${index}`,
+              line: invocation.line,
+              level: 'error',
+              message: `命令 ${binding.command} 引用的处理器 ${reference} 不存在。`,
+              codeSnippet: line,
+              suggestion: `请在当前类中声明 ${signature.returnType} ${reference}(${signature.parameterTypes.join(', ')})。`
+            });
+            return;
+          }
+          const matches = candidates.some(handler => {
+            if (handler.parameters.length !== signature.parameterTypes.length) return false;
+            if (!handler.parameters.every((item, parameterIndex) => areLingCppTypesCompatible(signature.parameterTypes[parameterIndex] || '', item.type))) return false;
+            return isVoidType(signature.returnType)
+              ? isVoidType(handler.returnType)
+              : areLingCppTypesCompatible(signature.returnType, handler.returnType || '空');
           });
-        }));
-      }));
-    });
+          if (!matches) diagnostics.push({
+            id: `lingcpp-handler-signature-${binding.command}-${invocation.line}-${index}`,
+            line: invocation.line,
+            level: 'error',
+            message: `命令 ${binding.command} 的处理器 ${reference} 签名不匹配。`,
+            codeSnippet: line,
+            suggestion: `处理器必须声明为 ${signature.returnType} ${reference}(${signature.parameterTypes.join(', ')})。`
+          });
+          return;
+        }
+        const legacy = parseStringLiteralArgument(value);
+        if (!legacy || value?.startsWith('&')) return;
+        diagnostics.push({
+          id: `lingcpp-handler-reference-migration-${binding.command}-${invocation.line}-${index}`,
+          line: invocation.line,
+          level: 'warning',
+          message: `命令 ${binding.command} 的处理器字符串写法仅用于旧项目兼容。`,
+          codeSnippet: line,
+          suggestion: `请改为 &${legacy}，以便补全、诊断、跳转、重命名和 C++ 生成统一识别处理器引用。`
+        });
+      });
+    }));
   });
   return diagnostics;
 }
@@ -3186,7 +3236,7 @@ function getModuleHandlerDiagnostics(source: string, program: LingCppProgram, mo
  * 宽字符指针，直接传入必然 MSVC C2664 编译失败。编辑期给出阻断诊断并提示改用高层命令。 */
 function getModuleRawParameterDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
-  const lines = splitLines(source);
+  const rawBindings: Array<{ name: string; binding: ModuleCommandBinding; rawIndexes: number[] }> = [];
   getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
     (module.manifest.bindings?.commands || []).forEach(binding => {
       const rawIndexes = (binding.parameters || [])
@@ -3194,24 +3244,31 @@ function getModuleRawParameterDiagnostics(source: string, moduleContext?: LingCp
         .filter(index => index >= 0);
       if (rawIndexes.length === 0) return;
       const aliases = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [];
-      [binding.command, ...aliases].forEach(commandName => lines.forEach((line, lineIndex) => {
-        if (isLingCppCommentLine(line.trim())) return;
-        extractCommandInvocationArguments(line, commandName).forEach(args => rawIndexes.forEach(index => {
-          const value = args[index]?.trim();
-          const parameter = binding.parameters?.[index];
-          if (!value && parameter?.optional) return;
-          if (parseStringLiteralArgument(value)) {
-            diagnostics.push({
-              id: `lingcpp-raw-bytes-argument-${binding.command}-${lineIndex + 1}-${index}`,
-              line: lineIndex + 1,
-              level: 'error',
-              message: `命令 ${binding.command} 的参数 ${parameter?.name || `第 ${index + 1} 个`} 是 UTF-8 字节指针，不能直接传字符串（生成 C++ 无法编译）。`,
-              codeSnippet: line,
-              suggestion: '请改用模块提供的宽字符高层命令（如 NE表格_/NE富列表_/NE菜单_/NE徽标_/NE_显示消息框 系列）；底层 NE_EU_* 命令仅用于句柄与数值类高级调用。'
-            });
-          }
-        }));
-      }));
+      [binding.command, ...aliases].forEach(name => rawBindings.push({ name, binding, rawIndexes }));
+    });
+  });
+  if (rawBindings.length === 0) return diagnostics;
+
+  // 与处理器诊断同理：单趟调用索引 + 按命令名查询，避免「绑定数 × 行数」的全文重扫。
+  const invocationIndex = getSourceInvocationIndex(source);
+  rawBindings.forEach(({ name, binding, rawIndexes }) => {
+    const invocations = invocationIndex.get(name);
+    if (!invocations) return;
+    invocations.forEach(invocation => {
+      rawIndexes.forEach(index => {
+        const value = invocation.args[index]?.trim();
+        const parameter = binding.parameters?.[index];
+        if (!value && parameter?.optional) return;
+        if (!parseStringLiteralArgument(value)) return;
+        diagnostics.push({
+          id: `lingcpp-raw-bytes-argument-${binding.command}-${invocation.line}-${index}`,
+          line: invocation.line,
+          level: 'error',
+          message: `命令 ${binding.command} 的参数 ${parameter?.name || `第 ${index + 1} 个`} 是 UTF-8 字节指针，不能直接传字符串（生成 C++ 无法编译）。`,
+          codeSnippet: invocation.lineText,
+          suggestion: '请改用模块提供的宽字符高层命令（如 NE表格_/NE富列表_/NE菜单_/NE徽标_/NE_显示消息框 系列）；底层 NE_EU_* 命令仅用于句柄与数值类高级调用。'
+        });
+      });
     });
   });
   return diagnostics;
@@ -3224,22 +3281,160 @@ function containsCommandInvocation(line: string, commandName: string): boolean {
   return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}\\s*[（(]`, 'u').test(line);
 }
 
+interface LingCppLineInvocation {
+  name: string;
+  start: number;
+  end: number;
+  args: string[];
+}
+
+interface LingCppSourceInvocation {
+  name: string;
+  /** 1 基行号。 */
+  line: number;
+  /** 所在行原文，用于诊断 codeSnippet。 */
+  lineText: string;
+  args: string[];
+}
+
+const IDENTIFIER_CHARACTER_RE = /[\p{L}\p{N}_]/u;
+
+/** 单行调用扫描：识别 `名称(` 并配对括号（字符串字面量内的括号不参与配对）。
+ *  同名嵌套只保留最外层，与「逐命令正则匹配后跳过实参」的语义一致。 */
+function collectLineInvocations(line: string): LingCppLineInvocation[] {
+  const found: LingCppLineInvocation[] = [];
+  const length = line.length;
+  let cursor = 0;
+  while (cursor < length) {
+    const character = line[cursor] || '';
+    if (character === '"' || character === '“') {
+      const quote = character;
+      cursor += 1;
+      while (cursor < length) {
+        const current = line[cursor] || '';
+        if (quote === '"' && current === '\\') {
+          cursor += 2;
+          continue;
+        }
+        cursor += 1;
+        if (current === quote || (quote === '“' && current === '”')) break;
+      }
+      continue;
+    }
+    if (!/[\p{L}_]/u.test(character)) {
+      cursor += 1;
+      continue;
+    }
+    const nameStart = cursor;
+    cursor += 1;
+    while (cursor < length && IDENTIFIER_CHARACTER_RE.test(line[cursor] || '')) cursor += 1;
+    const name = line.slice(nameStart, cursor);
+    let openIndex = cursor;
+    while (openIndex < length && /\s/u.test(line[openIndex] || '')) openIndex += 1;
+    const open = line[openIndex];
+    if (open !== '(' && open !== '（') continue;
+    const closing = open === '（' ? '）' : ')';
+    let depth = 1;
+    let scan = openIndex + 1;
+    let quote: string | null = null;
+    while (scan < length) {
+      const current = line[scan] || '';
+      if (quote) {
+        if (quote === '"' && current === '\\') {
+          scan += 2;
+          continue;
+        }
+        scan += 1;
+        if (current === quote || (quote === '“' && current === '”')) quote = null;
+        continue;
+      }
+      if (current === '"' || current === '“') {
+        quote = current;
+        scan += 1;
+        continue;
+      }
+      if (current === open) depth += 1;
+      else if (current === closing) {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+      scan += 1;
+    }
+    if (depth !== 0) {
+      cursor = openIndex + 1;
+      continue;
+    }
+    found.push({ name, start: nameStart, end: scan, args: splitModuleCallArguments(line.slice(openIndex + 1, scan)) });
+    // 继续扫描实参内部以记录嵌套调用；同名嵌套会在下面被过滤掉。
+    cursor = openIndex + 1;
+  }
+
+  if (found.length <= 1) return found;
+  const kept: LingCppLineInvocation[] = [];
+  const rangesByName = new Map<string, Array<{ start: number; end: number }>>();
+  found
+    .slice()
+    .sort((left, right) => left.start - right.start || right.end - left.end)
+    .forEach(invocation => {
+      const ranges = rangesByName.get(invocation.name) || [];
+      if (ranges.some(range => invocation.start > range.start && invocation.end <= range.end)) return;
+      ranges.push({ start: invocation.start, end: invocation.end });
+      rangesByName.set(invocation.name, ranges);
+      kept.push(invocation);
+    });
+  return kept;
+}
+
+const INVOCATION_INDEX_CACHE_LIMIT = 6;
+const invocationIndexCache = new Map<string, Map<string, LingCppSourceInvocation[]>>();
+
+/** 全文件单趟调用索引：命令名 → 调用位置与实参。
+ *  模块绑定动辄上千条，逐命令反复全文扫描（绑定数 × 行数）是编辑器打开大文件卡顿的主因，
+ *  这里统一扫描一次后按命令名查询。 */
+function getSourceInvocationIndex(source: string): Map<string, LingCppSourceInvocation[]> {
+  const cached = invocationIndexCache.get(source);
+  if (cached) return cached;
+  const index = new Map<string, LingCppSourceInvocation[]>();
+  splitLines(source).forEach((line, lineIndex) => {
+    if (!line.includes('(') && !line.includes('（')) return;
+    if (isLingCppCommentLine(line.trim())) return;
+    collectLineInvocations(line).forEach(invocation => {
+      const entry: LingCppSourceInvocation = { name: invocation.name, line: lineIndex + 1, lineText: line, args: invocation.args };
+      const list = index.get(invocation.name);
+      if (list) list.push(entry);
+      else index.set(invocation.name, [entry]);
+    });
+  });
+  if (invocationIndexCache.size >= INVOCATION_INDEX_CACHE_LIMIT) {
+    const oldest = invocationIndexCache.keys().next().value;
+    if (oldest !== undefined) invocationIndexCache.delete(oldest);
+  }
+  invocationIndexCache.set(source, index);
+  return index;
+}
+
 function collectModuleCallbackHandlerNames(source: string, moduleContext?: LingCppModuleContext): Set<string> {
   const handlers = new Set<string>();
+  const callbackBindings: Array<{ name: string; callbackParameterIndexes: number[] }> = [];
   getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
     (module.manifest.bindings?.commands || []).forEach(binding => {
       const callbackParameterIndexes = (binding.parameters || [])
         .map((parameter, index) => isModuleCallbackParameter(parameter.name, parameter.description) ? index : -1)
         .filter(index => index >= 0);
       if (callbackParameterIndexes.length === 0) return;
-
       const aliases = (module.manifest.contributes?.commands || [])
         .find(command => command.name === binding.command)?.aliases || [];
-      [binding.command, ...aliases].flatMap(commandName => extractCommandInvocationArguments(source, commandName)).forEach(args => {
-        callbackParameterIndexes.forEach(index => {
-          const handlerName = parseModuleHandlerArgument(args[index]);
-          if (handlerName) handlers.add(normalizeIdentifier(handlerName));
-        });
+      [binding.command, ...aliases].forEach(name => callbackBindings.push({ name, callbackParameterIndexes }));
+    });
+  });
+  if (callbackBindings.length === 0) return handlers;
+
+  const index = getSourceInvocationIndex(source);
+  callbackBindings.forEach(({ name, callbackParameterIndexes }) => {
+    (index.get(name) || []).forEach(invocation => {
+      callbackParameterIndexes.forEach(parameterIndex => {
+        const handlerName = parseModuleHandlerArgument(invocation.args[parameterIndex]);
+        if (handlerName) handlers.add(normalizeIdentifier(handlerName));
       });
     });
   });

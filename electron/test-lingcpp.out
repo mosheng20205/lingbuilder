@@ -1,0 +1,778 @@
+
+> lingbuilder-electron@0.7.4 pretest:lingcpp
+> npm run build:extension-host && node --import tsx --test tests/projectFilePersistence.test.ts tests/taskService.test.ts tests/lsp.test.ts tests/editorGroupLayout.test.ts tests/buildConfiguration.test.ts tests/buildPathService.test.ts tests/externalProject.test.ts tests/compilerDiagnostic.test.ts tests/incrementalBuild.test.ts tests/ptyTerminal.test.ts tests/terminalPanel.test.tsx tests/dapConnection.test.ts tests/nativeDebug.test.ts tests/debugUi.test.ts tests/debugInspector.test.ts tests/gitService.test.ts tests/gitRemote.test.ts tests/sourceControlPanel.test.tsx tests/testExplorerService.test.ts tests/nodeTestDebug.test.ts tests/testExplorerUi.test.tsx tests/qualityService.test.ts tests/qualityUi.test.tsx tests/extensionService.test.ts tests/extensionUi.test.tsx tests/dependencyService.test.ts tests/dependencyUi.test.tsx tests/sdkDependencyService.test.ts tests/sdkCatalogRemote.test.ts tests/sdkDependencyUi.test.tsx tests/updateUi.test.tsx tests/designerOperations.test.ts tests/menuService.test.ts tests/designerClipboard.test.ts tests/designerExtensionEdit.test.ts tests/rcResourceService.test.ts tests/designerProfessionalUi.test.tsx tests/performanceService.test.ts tests/performanceUi.test.tsx tests/publishingService.test.ts tests/publishingUi.test.tsx tests/aiWorkspaceIndex.test.ts tests/aiSecurityAccessibility.test.tsx tests/settingsSync.test.ts tests/settingsSyncUi.test.tsx
+
+
+> lingbuilder-electron@0.7.4 build:extension-host
+> esbuild src/services/extensions/extensionHostProcess.ts --bundle --platform=node --format=cjs --sourcemap --outfile=dist/extension-host.cjs
+
+
+  dist\extension-host.cjs      5.9kb
+  dist\extension-host.cjs.map  8.3kb
+
+Done in 3ms
+✔ AI credentials use Electron safeStorage and are removed from localStorage persistence (7.65ms)
+✔ FBro VIP Key is user-managed, encrypted and only injected into controlled runtime processes (3.8032ms)
+✔ AI index and chat expose cancellation, keyboard names and live accessible states (2.0402ms)
+✔ AI workspace index persists bounded searchable source metadata and skips generated content (23.6742ms)
+✔ AI workspace indexing supports cancellation and does not publish a partial snapshot (8.536ms)
+✔ build configuration persists every Debug/Release and Win32/x64 combination atomically (18.5833ms)
+✔ CEF3 module automatically selects and persists its supported x64 architecture (7.474ms)
+✔ FBro module automatically selects the MSVC x64 target (0.4925ms)
+✔ OpenCV module initializes an imported workspace with its required x64 target (7.4796ms)
+✔ build configuration changes compiler flags, output paths, and module target IDs (0.3675ms)
+✔ 缺省模板与历史 .lingbuilder-build/<项目>/<平台>/<配置> 布局逐字节一致 (1.7894ms)
+✔ 宏按大小写不敏感替换并支持 $(ProjectName) (0.4313ms)
+✔ 模板校验拒绝绝对路径、..、非法字符和保留目录名 (1.1911ms)
+✔ 构建目录与生成源码目录必须都在工作区内且互不嵌套 (0.7032ms)
+✔ 项目模板覆盖工作区默认，空值回退到下一层 (0.3967ms)
+✔ 构建配置接受并规范化目录模板，读取旧配置仍返回缺省结构 (0.5902ms)
+✔ 排除目录登记供搜索与索引遍历器共享 (1.9327ms)
+✔ 自定义目录解析落盘可用且清理保留生成源码目录 (19.8702ms)
+✔ compiler output keeps UTF-8 and falls back to the Chinese Windows code page (0.7804ms)
+✔ compiler diagnostics parse MSVC, GCC, Clang and linker formats with severity and codes (1.8098ms)
+✔ compiler diagnostics map the narrowest generated range back to LingCpp source lines (0.4031ms)
+✔ unmapped and unrelated compiler output degrade safely without fabricated locations (0.1644ms)
+✔ DAP connection parses fragmented responses/events and correlates requests (9.2067ms)
+✔ DAP connection rejects failed, timed out and closed requests (29.0561ms)
+✔ DAP connection answers adapter requests and reports malformed frames (2.2372ms)
+✔ debug inspector exposes real threads, stack frames, scopes, variable expansion and watch evaluation (5.6482ms)
+✔ bottom panel no longer contains simulated WPF locals or fake debugger ports (1.0027ms)
+✔ workbench exposes native debug start, continue, step and stop controls with Chinese status (6.5547ms)
+✔ F5 switches from build output to runtime debug logs only after a successful launch (10.0808ms)
+✔ Monaco uses the glyph margin for ordinary and Shift conditional breakpoint gestures (1.5803ms)
+✔ dependency service discovers three manifests, restores with fixed online/offline contracts and reports cache (54.3833ms)
+✔ dependency service detects version conflicts and rejects restore, invalid triplets and missing manifests (20.56ms)
+✔ dependency panel exposes manifests, restore, offline cache and conflicts (7.9814ms)
+✔ clipboard keeps a copied container subtree and adapts only its root to a Tab slot (4.6931ms)
+✔ clipboard records fragments from different parents and converts roots to flow order (0.6047ms)
+✔ single-child adapter rejects an occupied target atomically (0.4232ms)
+✔ clipboard serialization rejects corrupted data (1.7682ms)
+✔ paste clears only conflicting non-empty tags in the target window (0.5295ms)
+✔ designer extension edits are revision checked and atomic (2.0749ms)
+✔ designer extension cannot move locked controls or update forbidden fields (0.4945ms)
+✔ designer multi-selection aligns, sizes, distributes and nudges controls deterministically (2.3606ms)
+✔ layout and nudge validation throws stay outside setState updaters (React 19 swallows eager updater errors and rethrows during render, unmounting the tree) (1.9837ms)
+✔ designer history supports bounded undo/redo and clears redo after a new edit (0.5785ms)
+✔ designer history restores control tags through undo and redo (0.2261ms)
+✔ moving a container translates every descendant exactly once (0.327ms)
+✔ Rebar automatically binds direct children and preserves configured band settings (0.4698ms)
+✔ Rebar add-band action binds the next child or returns actionable Chinese guidance (0.2554ms)
+✔ designer UI exposes multi-select, align/distribute, undo/redo and keyboard nudge (8.9713ms)
+✔ designer hotkey property captures supported key combinations without triggering workbench shortcuts (2.1968ms)
+✔ module enum properties explicitly open the native picker and expose accessible labels (1.9674ms)
+✔ generic designer preview does not retain its placeholder fill for transparent controls (1.4798ms)
+✔ text box preview applies horizontal text alignment in real time (3.5199ms)
+✔ designer window surface and hierarchy root select window properties (1.8252ms)
+✔ designer layout hierarchy supports drag reparenting onto containers and the window root (1.652ms)
+✔ designer tab page hierarchy nodes can independently collapse their controls (1.4234ms)
+✔ designer exposes the complete categorized window event registry instead of a Grid fallback (1.8302ms)
+✔ designer event cards open existing handlers or create missing bindings with one click (7.3988ms)
+✔ designer state is isolated by project identity across unmounts and project switches (8.0514ms)
+✔ designer reports model-only edits as dirty without treating selection as a model edit (1.4269ms)
+✔ designer uses menu-aware content coordinates and keeps source identity read-only (1.484ms)
+✔ beginner editor navigation and variable form remain safe without a duplicate guidance sidebar (3.9671ms)
+✔ workbench keeps split-editor ownership and designer persistence in the shared save lifecycle (1.6774ms)
+✔ native import and source reveal wait for mode changes and publish compiler diagnostics (3.9354ms)
+✔ bottom panel keeps tabs horizontally reachable on narrow workbench widths (0.64ms)
+✔ RC editor exposes load, editable entries, save and conflict errors (0.5135ms)
+✔ designer exposes an ImageList resource editor and resource-backed control selector (1.5201ms)
+✔ image source property exposes a desktop picker and project-relative preview (1.5537ms)
+✔ solution project context menu imports image resources through the command service (2.7915ms)
+✔ designer uses structured collection editors instead of JSON array textareas (1.7646ms)
+✔ TabControl pages use a dedicated responsive dialog instead of inline property cards (2.1141ms)
+✔ Toolbar button collection uses a dedicated responsive dialog instead of inline property cards (1.92ms)
+✔ TreeView collection dialog manages roots, children, hierarchy and node order (0.6921ms)
+✔ designer renders ListView columns and rows through a dedicated live preview (1.5517ms)
+✔ designer renders TreeView nodes with a native-color live preview (4.3377ms)
+✖ designer renders TabControl with a Win32-style tab strip and page surface (4.8894ms)
+✔ ListView collection dialog supports spreadsheet cells, batch paste and responsive row cards (247.4276ms)
+✔ Header column collection reuses the responsive column dialog instead of inline property cards (1.963ms)
+✔ designer exposes FileDialog as a selectable control with properties and events (2.0089ms)
+✔ designer exposes ContextMenu and PopupMenu as editable non-visual controls (1.213ms)
+✔ designer exposes persisted native window appearance instead of fixed chrome (1.7492ms)
+✔ designer toolbox exposes searchable accessible control groups (1.6221ms)
+✔ designer pointer interactions cannot remain active after the primary mouse button is released (1.4093ms)
+✔ designer control resize previews at animation-frame cadence and commits the project only on finish (1.2623ms)
+✔ editor groups split, select, move, close tabs and collapse empty groups deterministically (2.3067ms)
+✔ editor layout restore filters missing files, deduplicates tabs, bounds groups, and recovers corrupt state (0.3793ms)
+✔ collapsing editor groups restores one group without losing secondary tabs (0.5058ms)
+✔ independent Extension Host activates, contributes, enforces permissions and recovers from crash (441.1738ms)
+✔ extension scan reports invalid manifests without starting them (144.7412ms)
+✔ extension panel exposes host state, enablement and generic contribution points (5.4485ms)
+✔ server builds a dedicated extension host artifact and shuts it down (1.8067ms)
+✔ external project inspection recognizes CMake and MSBuild metadata inside the workspace (19.5345ms)
+✔ external CMake and MSBuild properties materially change controlled build commands (18.1691ms)
+✔ Windows DLL builds require both the DLL and import library artifacts (23.6651ms)
+✔ external builds forward cancellation to every controlled child process (8.0408ms)
+✔ resolveExecutableNameParts normalizes, defaults and rejects illegal names (0.7007ms)
+✔ validateProperties accepts requireAdministrator boolean and rejects other types (0.1579ms)
+✔ validateProperties accepts an optional executableName and rejects illegal values (0.152ms)
+✔ Git service synchronizes a bare remote and completes merge/rebase conflict lifecycles (3498.9257ms)
+✔ pull request provider receives a bounded GitHub repository contract and reports failures (461.8774ms)
+✔ Git service stages, unstages, commits, branches, reads history and blame in a real repository (1265.7164ms)
+✔ Git service rejects workspace escapes, invalid branch names, empty commits and invalid ranges (242.3849ms)
+✔ Git service initializes an unborn repository, previews staged and working diffs, discards changes and manages remotes (1153.0734ms)
+✔ Git service scopes status and path operations to a nested workspace (408.158ms)
+✔ Git service manages stashes end to end with validation (1298.488ms)
+✔ Git service creates, lists and deletes lightweight and annotated tags (437.9639ms)
+✔ Git service diff returns original and modified contents for side-by-side rendering (655.9583ms)
+✔ Git service stages and unstages everything including unborn repositories via bulk operations (697.5316ms)
+✔ Git service bulk stage and unstage respect a nested workspace scope (432.3818ms)
+✔ incremental cache hits only for identical inputs with every output present (20.6584ms)
+✔ incremental cache persists, invalidates selected entries, and rejects outside outputs (7.8968ms)
+✔ dependency scheduler creates parallel batches while preserving prerequisites (1.2201ms)
+✔ JSON-RPC connection parses fragmented frames, correlates responses, and sends cancellation (2.7716ms)
+✔ clangd session initializes, syncs versions, forwards diagnostics, and shuts down (15.3251ms)
+✔ clangd restarts after a crash, reopens documents, and falls back when unavailable (20.6193ms)
+✔ clangd reports unavailable instead of crashing when spawn emits an async ENOENT error (0.7426ms)
+✔ LSP browser adapter maps positions, completions, hover markup, and location links (20.823ms)
+✔ Monaco clangd path registry follows A.cpp to B.cpp switches and file renames (0.2575ms)
+✔ LSP workspace edit previews and atomically applies cross-file UTF-16 edits (17.8409ms)
+✔ LSP workspace edit rejects overlap, path escape, and stale previews without overwriting disk (7.3218ms)
+✔ MenuService resolves commands, groups, submenus and dynamic disposal (3.3836ms)
+✔ MenuService hides missing commands and diagnoses submenu cycles (0.4703ms)
+✔ MenuService rejects non-serializable or oversized arguments (0.4714ms)
+✔ 控件引用右键菜单通过 CommandService 路由，并在设计器挂载前保留稳定 ID 导航请求 (0.9363ms)
+✔ solution explorer folder and project actions use MenuService and unregister cleanly (0.4344ms)
+✔ module v2 validates declarative menus and container layouts (1.7071ms)
+✔ EdgeView preview command is visible only for an EdgeBrowser selection and invokes the active designer (2.4672ms)
+✔ embedded resource panel actions run through the designer command service with arguments (1.2449ms)
+✔ LingCpp beginner creation commands expose shortcuts, execute through MenuService and unregister cleanly (1.4697ms)
+✔ 项目 DLL 命令声明编辑器右键菜单的三个视图动作在 workspace.open 上下文下可执行 (0.8945ms)
+✔ native debug service configures verified ordinary/conditional breakpoints and controls stopped threads (18.693ms)
+✔ advanced debug supports attach, dump, remote, registers, memory and disassembly (8.8424ms)
+✔ native debug service rejects path escapes, invalid conditions and control while running (10.8086ms)
+✔ LingCpp breakpoints map to the narrowest generated C++ range and retain conditions (1.0715ms)
+✔ Node test debug adapter starts Inspector paused, continues and terminates (830.6765ms)
+✔ performance service imports CPU profiles and summarizes memory and I/O samples (10.557ms)
+✔ performance collection samples a workspace process and supports cancellation (2353.4713ms)
+✔ performance UI exposes collection, cancellation, CPU profile import and empty state (5.0189ms)
+✔ own save watcher echo preserves edits made while the request is in flight (0.9415ms)
+✔ completed or failed saves cannot suppress a later real external rollback (0.186ms)
+✔ rejects stale versions without modifying files (11.4353ms)
+✔ atomically writes a complete batch (10.6627ms)
+✔ replaces existing files when rename rejects an existing destination (7.1364ms)
+✔ initial versions use exact disk bytes when decoded text normalizes mixed line endings (36.0978ms)
+✔ disk version reads reject paths outside the workspace (1.7854ms)
+✔ rolls earlier replacements back when a later rename fails (8.2647ms)
+✔ hot exit recovery is atomic, restorable, discardable, and path-safe (4.9005ms)
+✔ PTY service supports multiple sessions, input, resize, buffered recovery, exit and close (13.5823ms)
+✔ PTY service rejects cwd escape and invalid environment or input (4.6751ms)
+✔ real PTY runs an interactive command in an isolated smoke process (3542.0479ms)
+✔ missing publish configuration is an expected optional state (6.7597ms)
+✔ publishing creates hashed artifacts and atomically replaces the previous output (48.397ms)
+✔ publishing rolls back old output when signing fails and verifies fixed signtool arguments (8.9923ms)
+✔ remote WSL, container and SSH plans use one bounded agent contract without shell strings (0.6023ms)
+✔ publishing panel exposes configuration, empty, publish, signature and remote target states (4.5466ms)
+✔ quality service parses LCOV, Istanbul, SARIF, ASan and UBSan into one bounded model (8.9405ms)
+✔ quality service runs real Node V8 coverage and imports workspace reports (447.9621ms)
+✔ quality panel exposes real coverage and report import with diagnostics (4.7523ms)
+✔ Monaco renders covered and uncovered lines and App aggregates quality diagnostics (1.4981ms)
+✔ RC parser finds menu/dialog/control/string resources and preserves unknown UTF-16 CRLF content (13.3327ms)
+✔ RC parser leaves unsupported syntax untouched and rejects missing edit keys (4.1114ms)
+✔ 信任锚文件只允许硬编码常量，不允许环境变量或配置文件覆盖公钥 (4.8176ms)
+✔ verifyAndMergeCatalog 验签通过后锚定字段取内置值、可更新字段取远端值 (1.862ms)
+✔ verifyAndMergeCatalog 拒绝被篡改的 payload (0.5499ms)
+✔ verifyAndMergeCatalog 拒绝锚定字段与内置清单不一致的清单 (0.9485ms)
+✔ verifyAndMergeCatalog 拒绝资源 id 集合缺失或多余 (0.9043ms)
+✔ verifyAndMergeCatalog 拒绝低于已接受 sequence 的清单（防回滚） (0.6274ms)
+✔ verifyAndMergeCatalog 拒绝未知 keyId、非 https 下载地址与非法 sha256 (0.9078ms)
+✔ compareCatalogAnchoredFields 收集全部锚定漂移而不是抛出第一个错误 (0.7347ms)
+✔ 发布门禁脚本存在且失败时输出中文诊断并以非零退出 (1.812ms)
+✔ SDK 面板与客户端暴露清单来源与 sequence (1.035ms)
+✔ sequence 状态文件读写往返，损坏或缺失时视为未接受 (3.8593ms)
+✔ resolveSdkCatalogEndpoint 未配置时返回 null，显式 URL 或 online 模式返回地址 (0.1938ms)
+✔ fetchRemoteCatalog 返回信封，HTTP 错误与非法 JSON 报中文错误 (33.3828ms)
+✔ SdkDependencyService 接入远端清单：成功换源、失败回退内置并在 overview 暴露来源 (42.3403ms)
+✔ sdk-catalog:export 生成的导入载荷符合远端契约（criticalFiles 为相对路径字符串数组） (4.1598ms)
+✔ Windows SDK 目录重命名遇到瞬时 EPERM 会重试后成功 (1.1809ms)
+✔ SDK 资源清单固定使用 HTTPS、精确大小和 SHA-256 (0.8864ms)
+✔ SDK 下载使用 aria2c 多连接、分段和断点续传参数 (0.1913ms)
+✔ SDK 下载在解析到代理时给 aria2c 附加 --all-proxy (0.1584ms)
+✔ SDK 代理地址规范化并拒绝 aria2c 不支持的方案 (0.359ms)
+✔ SDK 环境变量代理解析按 HTTPS_PROXY、ALL_PROXY 顺序生效 (0.2064ms)
+✔ Windows 系统代理 ProxyServer 支持整体与按协议格式 (0.1965ms)
+✔ Windows 注册表系统代理仅在启用时解析 (0.4683ms)
+✔ SDK 下载代理优先使用环境变量，其次 Windows 系统代理 (0.2535ms)
+✔ SDK 直链预检对网络失败和预检超时不致命 (1012.0189ms)
+✔ SDK 直链预检阻断重定向和大小不匹配并放行一致直链 (11.5015ms)
+✔ SDK 直链预检保留外部取消信号 (0.3653ms)
+✔ SDK 下载失败文案中文化并保留原始信息 (0.8742ms)
+✔ aria2c 退出码给出中文原因 (0.0619ms)
+✔ SDK 下载卡住时给出网络与代理提示并在恢复后清除 (0.1083ms)
+✔ 完整归档通过 SHA-256 后立即继续，不被 aria2c 退出阻塞 (5.6663ms)
+✔ aria2c 在已验证归档后不退出也不会阻塞 SDK 安装 (2.3633ms)
+✔ 平铺 SDK ZIP 可安全归一化为模块目录 (30.9057ms)
+✔ 已取消的下载信号会立即终止 aria2c 并等待退出 (11.1314ms)
+✔ aria2c 非零退出时仍等待正在进行的 SHA-256 校验 (17.634ms)
+✔ FBro runtime 的受控最小体积不会超过已签名归档中的 libcef.dll (0.1849ms)
+✖ 实际上传 ZIP 的中央目录与受控资源清单一致 (0.9388ms)
+✔ 普通 Win32 不触发 SDK 门禁，FBro 项目返回结构化缺失依赖 (7.9644ms)
+✔ SDK 下载通过校验和原子安装后可从共享缓存识别 (23.8815ms)
+✔ SDK SHA-256 不匹配时拒绝安装且保留失败状态 (27.4166ms)
+✔ SDK 安装对话框提供确认、进度、取消、重试和共享缓存说明 (4.9752ms)
+✔ 统一请求包装器只在 SDK 安装成功后重放一次原请求 (23.7528ms)
+✔ 同一安装流程会合并并发请求后到达的 SDK 依赖 (1.71ms)
+✔ settings sync exports, previews and imports settings without credentials (28.5482ms)
+✔ settings sync rolls earlier writes back if a later target replacement fails (13.7353ms)
+✔ settings sync UI requires preview confirmation and exposes accessible status (5.8794ms)
+✔ source control panel exposes staging, commit, branch, history and blame actions (6.392ms)
+✔ source control panel completes diff, discard, repository initialization, remote management and refresh flows (1.2381ms)
+✔ sidebar renders the real source control panel instead of a status-only badge (1.2753ms)
+✔ Git changes view separates working and staged files and exposes a command entry (2.1485ms)
+✔ source control panel exposes stash, tag, history pagination and side-by-side diff features (1.5022ms)
+✔ source control panel surfaces remote address entry and bulk staging actions in the changes view (0.8942ms)
+✔ solution explorer visually groups projects apart from their child nodes (0.8872ms)
+✔ task service queues the same group, streams progress/logs, and preserves order (6.266ms)
+✔ task service cancels queued and running work without starting cancelled queue entries (0.9874ms)
+✔ task service isolates groups, reports failures, enforces monotonic progress, and bounds logs (5.714ms)
+✔ terminal panel exposes accessible host, session actions, input, resize and event recovery contracts (5.1149ms)
+✔ test explorer discovers and runs real Node TypeScript tests with pass, fail and skip results (445.1183ms)
+✔ test explorer compiles, discovers and runs real C++ tests through CTest JSON v1 (7420.1686ms)
+✔ test discovery bounds output and rejects stale ids (1.1955ms)
+✔ test explorer UI exposes discovery, filters, run, debug and structured results (5.0475ms)
+✔ bottom panel has a reachable tests tab (0.7064ms)
+✔ bottom panel keeps only operational workbench tabs and hides code mapping for LingCpp (2.3893ms)
+✔ 更新对话框覆盖发现、下载进度、校验、安装与失败重试的完整状态机 (3.9648ms)
+✔ 主进程注册更新 IPC、进度广播与残留清理，且下载入口使用主进程缓存 (1.2139ms)
+✔ 检查更新结果携带官网回退与安装包直链，App 命令描述指向应用内更新 (1.8048ms)
+✖ 标题栏升级徽标：静默检查驱动徽标与悬浮更新说明，点击接入应用内更新 (3.1585ms)
+ℹ tests 227
+ℹ suites 0
+ℹ pass 224
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10621.4121
+
+✖ failing tests:
+
+test at tests\designerProfessionalUi.test.tsx:1:20014
+✖ designer renders TabControl with a Win32-style tab strip and page surface (4.8894ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /justifyContent: headerTextJustifyContent/u. Input:
+  
+  "import React from 'react';\r\n" +
+    "import type { LingControl } from '../services/windowDesigner/types';\r\n" +
+    'import {\r\n' +
+    '  getSelectedTabPage,\r\n' +
+    '  getTabControlPages,\r\n' +
+    '  isNewEmojiTabsControl,\r\n' +
+    '  isTabControlHeaderHidden\r\n' +
+    "} from '../services/windowDesigner/tabControlModel';\r\n" +
+    "import { getControlFontCssStyle } from '../services/windowDesigner/controlFont';\r\n" +
+    '\r\n' +
+    'export interface TabControlDesignerPreviewProps {\r\n' +
+    '  control: LingControl;\r\n' +
+    '  onSelectPage?: (pageId: string) => void;\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'function mixHexColor(source: string, target: string, targetPercent: number): string {\r\n' +
+    "  const normalize = (value: string) => /^#[0-9a-f]{6}$/iu.test(value) ? value.slice(1) : 'ffffff';\r\n" +
+    '  const from = normalize(source);\r\n' +
+    '  const to = normalize(target);\r\n' +
+    '  const ratio = Math.max(0, Math.min(100, targetPercent)) / 100;\r\n' +
+    '  const channel = (offset: number) => Math.round(\r\n' +
+    '    Number.parseInt(from.slice(offset, offset + 2), 16) * (1 - ratio)\r\n' +
+    '      + Number.parseInt(to.slice(offset, offset + 2), 16) * ratio\r\n' +
+    "  ).toString(16).padStart(2, '0');\r\n" +
+    '  return `#${channel(0)}${channel(2)}${channel(4)}`;\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    "const CHROME_HEADER_BACKGROUND = '#202124';\r\n" +
+    "const CHROME_ACTIVE_BACKGROUND = '#292A2D';\r\n" +
+    "const CHROME_ACTIVE_TEXT = '#E8EAED';\r\n" +
+    "const CHROME_INACTIVE_TEXT = '#9AA0A6';\r\n" +
+    '\r\n' +
+    '/**\r\n' +
+    ' * new_emoji Tabs / Win32 TabControl 的设计器画布预览。\r\n' +
+    ' * new_emoji 分支需要与原生库视觉对齐：标签样式（线条/卡片/边框卡片）、表头四向、\r\n' +
+    ' * 表头对齐、逐项禁用/固定/加载中/静音/提醒徽标、关闭 ×、新增 + 与浏览器（Chrome）模式；\r\n' +
+    ' * 这些样式不渲染会让设计器画布与 F5 运行结果明显不一致。\r\n' +
+    ' */\r\n' +
+    'export default function TabControlDesignerPreview({ control, onSelectPage }: TabControlDesignerPreviewProps) {\r\n' +
+    '  const tabs = getTabControlPages(control);\r\n' +
+    '  const selectedPage = getSelectedTabPage(control) || tabs[0];\r\n' +
+    '  const newEmojiTabs = isNewEmojiTabsControl(control);\r\n' +
+    '  const properties = control.properties || {};\r\n' +
+    '  const fontSize = Math.max(9, control.fontSize);\r\n' +
+    "  const background = control.background === 'transparent'\r\n" +
+    "    ? newEmojiTabs ? '#242941' : '#ffffff'\r\n" +
+    '    : control.background;\r\n' +
+    '  const foreground = control.foreground;\r\n' +
+    "  const headerBackground = mixHexColor(background, '#000000', 8);\r\n" +
+    "  const selectedBackground = mixHexColor(background, '#ffffff', 7);\r\n" +
+    '  const inactiveForeground = mixHexColor(foreground, background, 30);\r\n' +
+    '  const borderColor = mixHexColor(background, foreground, 18);\r\n' +
+    "  const headerAlign = String(properties.headerAlign ?? '0');\r\n" +
+    "  const stripJustify = headerAlign === '1' ? 'center' : headerAlign === '2' ? 'flex-end' : 'flex-start';\r\n" +
+    '  const fontStyle = getControlFontCssStyle(control);\r\n' +
+    '  const hideHeader = isTabControlHeaderHidden(control);\r\n' +
+    '\r\n' +
+    '  // 表头位置与子内容偏移公式必须与 getControlTabContentOffset 保持一致（0 上/1 右/2 下/3 左）。\r\n' +
+    '  const position = newEmojiTabs ? Math.max(0, Math.min(3, Number(properties.position ?? 0) || 0)) : 0;\r\n' +
+    '  const verticalHeader = position === 1 || position === 3;\r\n' +
+    '  const headerFirst = position === 0 || position === 3;\r\n' +
+    '  const tabType = Math.max(0, Math.min(2, Number(properties.tabType ?? 0) || 0));\r\n' +
+    '  const chromeMode = newEmojiTabs && properties.chromeMode === true;\r\n' +
+    '  const addable = newEmojiTabs && properties.addable === true;\r\n' +
+    '  const chromeMetrics = {\r\n' +
+    '    minWidth: Math.max(24, Number(properties.chromeMinWidth ?? 96) || 0),\r\n' +
+    '    maxWidth: Math.max(48, Number(properties.chromeMaxWidth ?? 220) || 0),\r\n' +
+    '    pinnedWidth: Math.max(24, Number(properties.chromePinnedWidth ?? 46) || 0),\r\n' +
+    '    tabHeight: Math.max(20, Number(properties.chromeTabHeight ?? 32) || 0),\r\n' +
+    '    newButton: properties.newButtonVisible !== false\r\n' +
+    '  };\r\n' +
+    '  const horizontalHeaderHeight = chromeMode\r\n' +
+    '    ? chromeMetrics.tabHeight\r\n' +
+    '    : Math.max(38, Math.min(52, control.height * 0.28));\r\n' +
+    '  const verticalHeaderWidth = Math.max(120, Math.min(190, control.width * 0.32));\r\n' +
+    '  const headerSize = verticalHeader\r\n' +
+    '    ? { width: `${verticalHeaderWidth}px` }\r\n' +
+    '    : { height: `${horizontalHeaderHeight}px` };\r\n' +
+    '  // 激活指示线/卡片接缝都朝向内容区一侧。\r\n' +
+    "  const accentSide = position === 1 ? 'inset 2px 0' : position === 2 ? 'inset 0 2px' : position === 3 ? 'inset -2px 0' : 'inset 0 -2px';\r\n" +
+    '  const contentBorderSides = {\r\n' +
+    '    borderTopWidth: position === 0 ? 0 : 1,\r\n' +
+    '    borderRightWidth: position === 1 ? 0 : 1,\r\n' +
+    '    borderBottomWidth: position === 2 ? 0 : 1,\r\n' +
+    '    borderLeftWidth: position === 3 ? 0 : 1\r\n' +
+    '  };\r\n' +
+    '\r\n' +
+    '  const chromeTextColor = (selected: boolean) => selected ? CHROME_ACTIVE_TEXT : CHROME_INACTIVE_TEXT;\r\n' +
+    '\r\n' +
+    '  const renderTabButton = (tab: (typeof tabs)[number], index: number) => {\r\n' +
+    '    const selected = tab.id === selectedPage.id;\r\n' +
+    '    const disabled = tab.disabled === true;\r\n' +
+    '    const states: string[] = [];\r\n' +
+    "    if (tab.pinned) states.push('📌');\r\n" +
+    "    if (tab.loading) states.push('⟳');\r\n" +
+    "    if (tab.muted) states.push('🔇');\r\n" +
+    '\r\n' +
+    '    if (chromeMode) {\r\n' +
+    '      const width = tab.pinned\r\n' +
+    '        ? chromeMetrics.pinnedWidth\r\n' +
+    '        : Math.max(chromeMetrics.minWidth, Math.min(chromeMetrics.maxWidth, control.width / Math.max(1, tabs.length)));\r\n' +
+    '      return (\r\n' +
+    '        <button\r\n' +
+    '          type="button"\r\n' +
+    '          key={tab.id}\r\n' +
+    '          role="tab"\r\n' +
+    '          aria-selected={selected}\r\n' +
+    '          aria-disabled={disabled || undefined}\r\n' +
+    "          className={`pointer-events-auto flex h-[calc(100%-2px)] min-w-0 items-center gap-1.5 self-end rounded-t-lg px-2 text-[10px] ${disabled ? 'opacity-45' : ''}`}\r\n" +
+    '          style={{\r\n' +
+    '            width: `${width}px`,\r\n' +
+    "            flex: '0 0 auto',\r\n" +
+    "            backgroundColor: selected ? CHROME_ACTIVE_BACKGROUND : 'transparent',\r\n" +
+    '            color: chromeTextColor(selected)\r\n' +
+    '          }}\r\n' +
+    '          onMouseDown={event => event.stopPropagation()}\r\n' +
+    '          onClick={event => {\r\n' +
+    '            event.stopPropagation();\r\n' +
+    '            if (!disabled) onSelectPage?.(tab.id);\r\n' +
+    '          }}\r\n' +
+    '        >\r\n' +
+    `          <span className="shrink-0">{tab.icon ? <span className="mr-0.5">{tab.icon}</span> : '🌐'}</span>\r\n` +
+    '          {states.map(mark => <span key={mark} className="shrink-0 text-[9px]">{mark}</span>)}\r\n' +
+    '          <span className="min-w-0 flex-1 truncate">{tab.title}</span>\r\n' +
+    '          {tab.alerting ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" /> : null}\r\n' +
+    '          {tab.closable !== false ? <span className="shrink-0 opacity-75">×</span> : null}\r\n' +
+    '        </button>\r\n' +
+    '      );\r\n' +
+    '    }\r\n' +
+    '\r\n' +
+    '    const extent = newEmojiTabs && tabs.length > 0\r\n' +
+    '      ? Math.max(72, Math.min(152, control.width / tabs.length))\r\n' +
+    '      : undefined;\r\n' +
+    '    const cardStyle = newEmojiTabs && tabType === 1\r\n' +
+    '      ? {\r\n' +
+    '          border: `1px solid ${borderColor}`,\r\n' +
+    '          borderBottom: selected ? `1px solid ${background}` : `1px solid ${borderColor}`,\r\n' +
+    "          borderRadius: '6px 6px 0 0',\r\n" +
+    "          backgroundColor: selected ? selectedBackground : 'transparent',\r\n" +
+    '          marginRight: undefined,\r\n' +
+    "          marginBottom: '-1px'\r\n" +
+    '        }\r\n' +
+    '      : newEmojiTabs && tabType === 2\r\n' +
+    '        ? {\r\n' +
+    "            border: `1px solid ${selected ? borderColor : 'transparent'}`,\r\n" +
+    '            borderBottom: undefined,\r\n' +
+    '            borderRadius: 6,\r\n' +
+    "            backgroundColor: selected ? selectedBackground : 'transparent',\r\n" +
+    '            marginRight: 2,\r\n' +
+    '            marginBottom: undefined\r\n' +
+    '          }\r\n' +
+    '        : {\r\n' +
+    '            border: undefined,\r\n' +
+    '            borderBottom: undefined,\r\n' +
+    '            borderRadius: undefined,\r\n' +
+    '            backgroundColor: selected ? selectedBackground : headerBackground,\r\n' +
+    '            marginRight: undefined,\r\n' +
+    '            marginBottom: undefined\r\n' +
+    '          };\r\n' +
+    '    return (\r\n' +
+    '      <button\r\n' +
+    '        type="button"\r\n' +
+    '        key={tab.id}\r\n' +
+    '        role="tab"\r\n' +
+    '        aria-selected={selected}\r\n' +
+    '        aria-disabled={disabled || undefined}\r\n' +
+    "        className={`pointer-events-auto relative flex min-w-0 max-w-[220px] shrink-0 items-center truncate border-0 px-3 ${disabled ? 'opacity-45' : ''}`}\r\n" +
+    '        style={{\r\n' +
+    "          height: verticalHeader ? 'auto' : `${horizontalHeaderHeight}px`,\r\n" +
+    '          minHeight: verticalHeader ? `${Math.max(36, horizontalHeaderHeight * 0.8)}px` : undefined,\r\n' +
+    '          width: verticalHeader ? `${verticalHeaderWidth - 8}px` : extent === undefined ? undefined : `${extent}px`,\r\n' +
+    "          justifyContent: 'center',\r\n" +
+    '          color: selected ? foreground : inactiveForeground,\r\n' +
+    '          backgroundColor: cardStyle.backgroundColor,\r\n' +
+    '          boxShadow: tabType === 0 && selected ? `${accentSide} #f59e0b` : undefined,\r\n' +
+    '          border: cardStyle.border,\r\n' +
+    '          borderBottom: cardStyle.borderBottom,\r\n' +
+    '          borderRadius: cardStyle.borderRadius,\r\n' +
+    '          marginBottom: cardStyle.marginBottom,\r\n' +
+    '          marginRight: cardStyle.marginRight\r\n' +
+    '        }}\r\n' +
+    '        onMouseDown={event => event.stopPropagation()}\r\n' +
+    '        onClick={event => {\r\n' +
+    '          event.stopPropagation();\r\n' +
+    '          if (!disabled) onSelectPage?.(tab.id);\r\n' +
+    '        }}\r\n' +
+    '      >\r\n' +
+    '        {newEmojiTabs && tab.icon ? <span className="mr-1 shrink-0">{tab.icon}</span> : null}\r\n' +
+    '        {newEmojiTabs && states.map(mark => <span key={mark} className="mr-1 shrink-0 text-[9px]">{mark}</span>)}\r\n' +
+    '        <span className="truncate">{tab.title}</span>\r\n' +
+    '        {newEmojiTabs && tab.alerting ? <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" /> : null}\r\n' +
+    '        {newEmojiTabs && tab.closable !== false ? <span className="ml-1.5 shrink-0 opacity-60">×</span> : null}\r\n' +
+    '      </button>\r\n' +
+    '    );\r\n' +
+    '  };\r\n' +
+    '\r\n' +
+    '  const addButton = (addable || (chromeMode && chromeMetrics.newButton)) && (\r\n' +
+    '    <span\r\n' +
+    '      aria-hidden="true"\r\n' +
+    "      className={`shrink-0 select-none px-2 text-sm leading-none opacity-70 ${verticalHeader ? 'py-1 text-center' : 'self-center'}`}\r\n" +
+    '    >\r\n' +
+    '      +\r\n' +
+    '    </span>\r\n' +
+    '  );\r\n' +
+    '\r\n' +
+    '  const header = !hideHeader ? (\r\n' +
+    '    <div\r\n' +
+    '      role="tablist"\r\n' +
+    '      data-tab-header-align={newEmojiTabs ? headerAlign : undefined}\r\n' +
+    "      className={`relative z-10 flex shrink-0 overflow-hidden ${verticalHeader ? 'flex-col' : 'flex-row items-stretch'}`}\r\n" +
+    '      style={{\r\n' +
+    '        ...headerSize,\r\n' +
+    '        backgroundColor: chromeMode ? CHROME_HEADER_BACKGROUND : headerBackground,\r\n' +
+    '        justifyContent: !chromeMode ? stripJustify : undefined,\r\n' +
+    "        ...(verticalHeader ? { alignItems: 'stretch' } : chromeMode ? { alignItems: 'flex-end' } : {})\r\n" +
+    '  '... 1522 more characters
+  
+      at TestContext.<anonymous> (T:\electron\lingbuilder\electron\tests\designerProfessionalUi.test.tsx:338:10)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'import React from \'react\';\r\nimport type { LingControl } from \'../services/windowDesigner/types\';\r\nimport {\r\n  getSelectedTabPage,\r\n  getTabControlPages,\r\n  isNewEmojiTabsControl,\r\n  isTabControlHeaderHidden\r\n} from \'../services/windowDesigner/tabControlModel\';\r\nimport { getControlFontCssStyle } from \'../services/windowDesigner/controlFont\';\r\n\r\nexport interface TabControlDesignerPreviewProps {\r\n  control: LingControl;\r\n  onSelectPage?: (pageId: string) => void;\r\n}\r\n\r\nfunction mixHexColor(source: string, target: string, targetPercent: number): string {\r\n  const normalize = (value: string) => /^#[0-9a-f]{6}$/iu.test(value) ? value.slice(1) : \'ffffff\';\r\n  const from = normalize(source);\r\n  const to = normalize(target);\r\n  const ratio = Math.max(0, Math.min(100, targetPercent)) / 100;\r\n  const channel = (offset: number) => Math.round(\r\n    Number.parseInt(from.slice(offset, offset + 2), 16) * (1 - ratio)\r\n      + Number.parseInt(to.slice(offset, offset + 2), 16) * ratio\r\n  ).toString(16).padStart(2, \'0\');\r\n  return `#${channel(0)}${channel(2)}${channel(4)}`;\r\n}\r\n\r\nconst CHROME_HEADER_BACKGROUND = \'#202124\';\r\nconst CHROME_ACTIVE_BACKGROUND = \'#292A2D\';\r\nconst CHROME_ACTIVE_TEXT = \'#E8EAED\';\r\nconst CHROME_INACTIVE_TEXT = \'#9AA0A6\';\r\n\r\n/**\r\n * new_emoji Tabs / Win32 TabControl 的设计器画布预览。\r\n * new_emoji 分支需要与原生库视觉对齐：标签样式（线条/卡片/边框卡片）、表头四向、\r\n * 表头对齐、逐项禁用/固定/加载中/静音/提醒徽标、关闭 ×、新增 + 与浏览器（Chrome）模式；\r\n * 这些样式不渲染会让设计器画布与 F5 运行结果明显不一致。\r\n */\r\nexport default function TabControlDesignerPreview({ control, onSelectPage }: TabControlDesignerPreviewProps) {\r\n  const tabs = getTabControlPages(control);\r\n  const selectedPage = getSelectedTabPage(control) || tabs[0];\r\n  const newEmojiTabs = isNewEmojiTabsControl(control);\r\n  const properties = control.properties || {};\r\n  const fontSize = Math.max(9, control.fontSize);\r\n  const background = control.background === \'transparent\'\r\n    ? newEmojiTabs ? \'#242941\' : \'#ffffff\'\r\n    : control.background;\r\n  const foreground = control.foreground;\r\n  const headerBackground = mixHexColor(background, \'#000000\', 8);\r\n  const selectedBackground = mixHexColor(background, \'#ffffff\', 7);\r\n  const inactiveForeground = mixHexColor(foreground, background, 30);\r\n  const borderColor = mixHexColor(background, foreground, 18);\r\n  const headerAlign = String(properties.headerAlign ?? \'0\');\r\n  const stripJustify = headerAlign === \'1\' ? \'center\' : headerAlign === \'2\' ? \'flex-end\' : \'flex-start\';\r\n  const fontStyle = getControlFontCssStyle(control);\r\n  const hideHeader = isTabControlHeaderHidden(control);\r\n\r\n  // 表头位置与子内容偏移公式必须与 getControlTabContentOffset 保持一致（0 上/1 右/2 下/3 左）。\r\n  const position = newEmojiTabs ? Math.max(0, Math.min(3, Number(properties.position ?? 0) || 0)) : 0;\r\n  const verticalHeader = position === 1 || position === 3;\r\n  const headerFirst = position === 0 || position === 3;\r\n  const tabType = Math.max(0, Math.min(2, Number(properties.tabType ?? 0) || 0));\r\n  const chromeMode = newEmojiTabs && properties.chromeMode === true;\r\n  const addable = newEmojiTabs && properties.addable === true;\r\n  const chromeMetrics = {\r\n    minWidth: Math.max(24, Number(properties.chromeMinWidth ?? 96) || 0),\r\n    maxWidth: Math.max(48, Number(properties.chromeMaxWidth ?? 220) || 0),\r\n    pinnedWidth: Math.max(24, Number(properties.chromePinnedWidth ?? 46) || 0),\r\n    tabHeight: Math.max(20, Number(properties.chromeTabHeight ?? 32) || 0),\r\n    newButton: properties.newButtonVisible !== false\r\n  };\r\n  const horizontalHeaderHeight = chromeMode\r\n    ? chromeMetrics.tabHeight\r\n    : Math.max(38, Math.min(52, control.height * 0.28));\r\n  const verticalHeaderWidth = Math.max(120, Math.min(190, control.width * 0.32));\r\n  const headerSize = verticalHeader\r\n    ? { width: `${verticalHeaderWidth}px` }\r\n    : { height: `${horizontalHeaderHeight}px` };\r\n  // 激活指示线/卡片接缝都朝向内容区一侧。\r\n  const accentSide = position === 1 ? \'inset 2px 0\' : position === 2 ? \'inset 0 2px\' : position === 3 ? \'inset -2px 0\' : \'inset 0 -2px\';\r\n  const contentBorderSides = {\r\n    borderTopWidth: position === 0 ? 0 : 1,\r\n    borderRightWidth: position === 1 ? 0 : 1,\r\n    borderBottomWidth: position === 2 ? 0 : 1,\r\n    borderLeftWidth: position === 3 ? 0 : 1\r\n  };\r\n\r\n  const chromeTextColor = (selected: boolean) => selected ? CHROME_ACTIVE_TEXT : CHROME_INACTIVE_TEXT;\r\n\r\n  const renderTabButton = (tab: (typeof tabs)[number], index: number) => {\r\n    const selected = tab.id === selectedPage.id;\r\n    const disabled = tab.disabled === true;\r\n    const states: string[] = [];\r\n    if (tab.pinned) states.push(\'📌\');\r\n    if (tab.loading) states.push(\'⟳\');\r\n    if (tab.muted) states.push(\'🔇\');\r\n\r\n    if (chromeMode) {\r\n      const width = tab.pinned\r\n        ? chromeMetrics.pinnedWidth\r\n        : Math.max(chromeMetrics.minWidth, Math.min(chromeMetrics.maxWidth, control.width / Math.max(1, tabs.length)));\r\n      return (\r\n        <button\r\n          type="button"\r\n          key={tab.id}\r\n          role="tab"\r\n          aria-selected={selected}\r\n          aria-disabled={disabled || undefined}\r\n          className={`pointer-events-auto flex h-[calc(100%-2px)] min-w-0 items-center gap-1.5 self-end rounded-t-lg px-2 text-[10px] ${disabled ? \'opacity-45\' : \'\'}`}\r\n          style={{\r\n            width: `${width}px`,\r\n            flex: \'0 0 auto\',\r\n            backgroundColor: selected ? CHROME_ACTIVE_BACKGROUND : \'transparent\',\r\n            color: chromeTextColor(selected)\r\n          }}\r\n          onMouseDown={event => event.stopPropagation()}\r\n          onClick={event => {\r\n            event.stopPropagation();\r\n            if (!disabled) onSelectPage?.(tab.id);\r\n          }}\r\n        >\r\n          <span className="shrink-0">{tab.icon ? <span className="mr-0.5">{tab.icon}</span> : \'🌐\'}</span>\r\n          {states.map(mark => <span key={mark} className="shrink-0 text-[9px]">{mark}</span>)}\r\n          <span className="min-w-0 flex-1 truncate">{tab.title}</span>\r\n          {tab.alerting ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" /> : null}\r\n          {tab.closable !== false ? <span className="shrink-0 opacity-75">×</span> : null}\r\n        </button>\r\n      );\r\n    }\r\n\r\n    const extent = newEmojiTabs && tabs.length > 0\r\n      ? Math.max(72, Math.min(152, control.width / tabs.length))\r\n      : undefined;\r\n    const cardStyle = newEmojiTabs && tabType === 1\r\n      ? {\r\n          border: `1px solid ${borderColor}`,\r\n          borderBottom: selected ? `1px solid ${background}` : `1px solid ${borderColor}`,\r\n          borderRadius: \'6px 6px 0 0\',\r\n          backgroundColor: selected ? selectedBackground : \'transparent\',\r\n          marginRight: undefined,\r\n          marginBottom: \'-1px\'\r\n        }\r\n      : newEmojiTabs && tabType === 2\r\n        ? {\r\n            border: `1px solid ${selected ? borderColor : \'transparent\'}`,\r\n            borderBottom: undefined,\r\n            borderRadius: 6,\r\n            backgroundColor: selected ? selectedBackground : \'transparent\',\r\n            marginRight: 2,\r\n            marginBottom: undefined\r\n          }\r\n        : {\r\n            border: undefined,\r\n            borderBottom: undefined,\r\n            borderRadius: undefined,\r\n            backgroundColor: selected ? selectedBackground : headerBackground,\r\n            marginRight: undefined,\r\n            marginBottom: undefined\r\n          };\r\n    return (\r\n      <button\r\n        type="button"\r\n        key={tab.id}\r\n        role="tab"\r\n        aria-selected={selected}\r\n        aria-disabled={disabled || undefined}\r\n        className={`pointer-events-auto relative flex min-w-0 max-w-[220px] shrink-0 items-center truncate border-0 px-3 ${disabled ? \'opacity-45\' : \'\'}`}\r\n        style={{\r\n          height: verticalHeader ? \'auto\' : `${horizontalHeaderHeight}px`,\r\n          minHeight: verticalHeader ? `${Math.max(36, horizontalHeaderHeight * 0.8)}px` : undefined,\r\n          width: verticalHeader ? `${verticalHeaderWidth - 8}px` : extent === undefined ? undefined : `${extent}px`,\r\n          justifyContent: \'center\',\r\n          color: selected ? foreground : inactiveForeground,\r\n          backgroundColor: cardStyle.backgroundColor,\r\n          boxShadow: tabType === 0 && selected ? `${accentSide} #f59e0b` : undefined,\r\n          border: cardStyle.border,\r\n          borderBottom: cardStyle.borderBottom,\r\n          borderRadius: cardStyle.borderRadius,\r\n          marginBottom: cardStyle.marginBottom,\r\n          marginRight: cardStyle.marginRight\r\n        }}\r\n        onMouseDown={event => event.stopPropagation()}\r\n        onClick={event => {\r\n          event.stopPropagation();\r\n          if (!disabled) onSelectPage?.(tab.id);\r\n        }}\r\n      >\r\n        {newEmojiTabs && tab.icon ? <span className="mr-1 shrink-0">{tab.icon}</span> : null}\r\n        {newEmojiTabs && states.map(mark => <span key={mark} className="mr-1 shrink-0 text-[9px]">{mark}</span>)}\r\n        <span className="truncate">{tab.title}</span>\r\n        {newEmojiTabs && tab.alerting ? <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" /> : null}\r\n        {newEmojiTabs && tab.closable !== false ? <span className="ml-1.5 shrink-0 opacity-60">×</span> : null}\r\n      </button>\r\n    );\r\n  };\r\n\r\n  const addButton = (addable || (chromeMode && chromeMetrics.newButton)) && (\r\n    <span\r\n      aria-hidden="true"\r\n      className={`shrink-0 select-none px-2 text-sm leading-none opacity-70 ${verticalHeader ? \'py-1 text-center\' : \'self-center\'}`}\r\n    >\r\n      +\r\n    </span>\r\n  );\r\n\r\n  const header = !hideHeader ? (\r\n    <div\r\n      role="tablist"\r\n      data-tab-header-align={newEmojiTabs ? headerAlign : undefined}\r\n      className={`relative z-10 flex shrink-0 overflow-hidden ${verticalHeader ? \'flex-col\' : \'flex-row items-stretch\'}`}\r\n      style={{\r\n        ...headerSize,\r\n        backgroundColor: chromeMode ? CHROME_HEADER_BACKGROUND : headerBackground,\r\n        justifyContent: !chromeMode ? stripJustify : undefined,\r\n        ...(verticalHeader ? { alignItems: \'stretch\' } : chromeMode ? { alignItems: \'flex-end\' } : {})\r\n  '... 1522 more characters,
+    expected: /justifyContent: headerTextJustifyContent/u,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests\sdkDependencyService.test.ts:2:3325
+✖ 实际上传 ZIP 的中央目录与受控资源清单一致 (0.9388ms)
+  Error: ENOENT: no such file or directory, stat 'T:\electron\lingbuilder\output\cloud-sdk-packages-2026-08-13\lingbuilder-cef3-sdk-150.0.14-chromium-150.0.7871.129-bridge4-r2-windows-x64.zip'
+      at async Object.stat (node:internal/fs/promises:1743:18)
+      at async inspectZipArchive (T:\electron\lingbuilder\electron\src\services\sdkDependencies\sdkDependencyService.ts:1064:16)
+      at async TestContext.<anonymous> (T:\electron\lingbuilder\electron\tests\sdkDependencyService.test.ts:339:23)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    errno: -4058,
+    code: 'ENOENT',
+    syscall: 'stat',
+    path: 'T:\\electron\\lingbuilder\\output\\cloud-sdk-packages-2026-08-13\\lingbuilder-cef3-sdk-150.0.14-chromium-150.0.7871.129-bridge4-r2-windows-x64.zip'
+  }
+
+test at tests\updateUi.test.tsx:1:3520
+✖ 标题栏升级徽标：静默检查驱动徽标与悬浮更新说明，点击接入应用内更新 (3.1585ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /发现新版本 v\{updateBadgePayload\.latestVersion/u. Input:
+  
+  "import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';\r\n" +
+    "import lingBuilderIcon from '../../image/lingbuilder-ide-icon-v1.png';\r\n" +
+    'import {\r\n' +
+    '  FolderCode,\r\n' +
+    '  Layers,\r\n' +
+    '  Terminal,\r\n' +
+    '  Sun,\r\n' +
+    '  Moon,\r\n' +
+    '  Upload,\r\n' +
+    '  Play,\r\n' +
+    '  Square,\r\n' +
+    '  CheckCircle,\r\n' +
+    '  HelpCircle,\r\n' +
+    '  FileUp,\r\n' +
+    '  Cpu,\r\n' +
+    '  RefreshCw,\r\n' +
+    '  X,\r\n' +
+    '  ChevronLeft,\r\n' +
+    '  ChevronRight,\r\n' +
+    '  Hammer,\r\n' +
+    '  Code,\r\n' +
+    '  Sparkles,\r\n' +
+    '  FolderPlus,\r\n' +
+    '  FolderOpen,\r\n' +
+    '  Save,\r\n' +
+    '  Undo2,\r\n' +
+    '  Redo2,\r\n' +
+    '  Copy,\r\n' +
+    '  ClipboardPaste,\r\n' +
+    '  ShieldCheck,\r\n' +
+    '  Minus,\r\n' +
+    '  Maximize2,\r\n' +
+    '  Minimize2,\r\n' +
+    '  ChevronUp,\r\n' +
+    '  ChevronDown,\r\n' +
+    '  Command as CommandIcon,\r\n' +
+    '  Settings as SettingsIcon,\r\n' +
+    '  Search,\r\n' +
+    '  Bug,\r\n' +
+    '  Columns2,\r\n' +
+    '  Rows2,\r\n' +
+    '  MoveRight\r\n' +
+    "} from 'lucide-react';\r\n" +
+    '\r\n' +
+    'import {\r\n' +
+    '  AppliedWorkspaceFile,\r\n' +
+    '  BottomPanelTabType,\r\n' +
+    '  CommandHintContent,\r\n' +
+    '  CppFile,\r\n' +
+    '  ExtractedString,\r\n' +
+    '  GlossaryTerm,\r\n' +
+    '  ProblemItem,\r\n' +
+    '  DiffResult,\r\n' +
+    '  SourceControlStatus,\r\n' +
+    '  WorkspaceEditProposal\r\n' +
+    "} from './types';\r\n" +
+    "import { initialFiles, defaultGlossary, localTranslations } from './data/templates';\r\n" +
+    "import { computeDiff } from './utils/diff';\r\n" +
+    '\r\n' +
+    '// Components\r\n' +
+    "import Sidebar from './components/Sidebar';\r\n" +
+    "import DiffViewer, { DiffViewerHandle } from './components/DiffViewer';\r\n" +
+    "import MonacoCodeEditor from './components/MonacoCodeEditor';\r\n" +
+    "import type { MonacoCodeEditorHandle, MonacoEditorState } from './components/MonacoCodeEditor';\r\n" +
+    "import AiAssistant from './components/AiAssistant';\r\n" +
+    "import BottomPanel from './components/BottomPanel';\r\n" +
+    "import CommandPalette from './components/CommandPalette';\r\n" +
+    "import SettingsDialog from './components/SettingsDialog';\r\n" +
+    "import ProjectBuildPathsDialog, { type ProjectBuildPathsDialogValue } from './components/ProjectBuildPathsDialog';\r\n" +
+    "import EmbeddedResourcesDialog from './components/EmbeddedResourcesDialog';\r\n" +
+    "import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';\r\n" +
+    "import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';\r\n" +
+    "import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';\r\n" +
+    "import CliGuideDialog from './components/CliGuideDialog';\r\n" +
+    "import AboutDialog from './components/AboutDialog';\r\n" +
+    "import UpdateDialog, { type UpdateDialogInfo } from './components/UpdateDialog';\r\n" +
+    "import HelpCenterDialog from './components/HelpCenterDialog';\r\n" +
+    "import SponsorDialog from './components/SponsorDialog';\r\n" +
+    "import ProjectNameDialog from './components/ProjectNameDialog';\r\n" +
+    "import RecentWorkspacesDialog from './components/RecentWorkspacesDialog';\r\n" +
+    "import WorkbenchConfirmDialog from './components/WorkbenchConfirmDialog';\r\n" +
+    'import {\r\n' +
+    '  cancelWorkbenchDialog,\r\n' +
+    '  getActiveWorkbenchDialog,\r\n' +
+    '  requestWorkbenchAlert,\r\n' +
+    '  requestWorkbenchConfirm,\r\n' +
+    '  requestWorkbenchPrompt,\r\n' +
+    '  settleWorkbenchDialog,\r\n' +
+    '  subscribeWorkbenchDialog,\r\n' +
+    '  type WorkbenchDialogRequest\r\n' +
+    "} from './services/workbench/workbenchConfirmService';\r\n" +
+    "import WelcomePage from './components/WelcomePage';\r\n" +
+    "import TextFileStatusControls from './components/TextFileStatusControls';\r\n" +
+    "import EditorPositionStatus from './components/EditorPositionStatus';\r\n" +
+    'import {\r\n' +
+    '  DIFF_VIEW_MODE_CHANGE_EVENT,\r\n' +
+    '  type DiffViewMode\r\n' +
+    "} from './services/editor/diffViewMode';\r\n" +
+    'import {\r\n' +
+    '  TEXT_FILE_ENCODINGS,\r\n' +
+    '  TEXT_FILE_EOLS,\r\n' +
+    '  type TextFileEncoding,\r\n' +
+    '  type TextFileEol,\r\n' +
+    '  type TextFileFormat\r\n' +
+    "} from './services/files/types';\r\n" +
+    'import {\r\n' +
+    '  getCurrentFileContent,\r\n' +
+    '  isEditorFileDirty,\r\n' +
+    '  updateEditorFileContent\r\n' +
+    "} from './services/files/editorFileState';\r\n" +
+    'import {\r\n' +
+    '  isWorkspaceSaveEcho,\r\n' +
+    '  type WorkspaceSaveEchoSnapshot\r\n' +
+    "} from './services/files/workspaceSaveEchoService';\r\n" +
+    'import {\r\n' +
+    '  createCommandService,\r\n' +
+    '  createKeybindingService,\r\n' +
+    '  createCommandPaletteContext,\r\n' +
+    '  isSafeGlobalKeybinding,\r\n' +
+    '  isSuccessfulCommandResult,\r\n' +
+    '  normalizeKeybinding,\r\n' +
+    '  WORKBENCH_DEFAULT_KEYBINDINGS,\r\n' +
+    '  type CommandContext,\r\n' +
+    '  type CommandPresentation,\r\n' +
+    '  type RegisteredCommand\r\n' +
+    "} from './services/commands';\r\n" +
+    'import type {\r\n' +
+    '  ConfigurationTarget,\r\n' +
+    '  ConfigurationValue,\r\n' +
+    '  WorkbenchConfigurationKey,\r\n' +
+    '  WorkbenchConfigurationSnapshot\r\n' +
+    "} from './services/configuration';\r\n" +
+    "import { getWorkbenchConfigurationMutationTarget } from './services/configuration';\r\n" +
+    'import {\r\n' +
+    '  LEGACY_EDITOR_EXPERIENCE_MODE_KEY,\r\n' +
+    '  LEGACY_EDITOR_FONT_SIZE_KEY,\r\n' +
+    '  planLegacyWorkbenchConfigurationMigration\r\n' +
+    "} from './services/configuration/legacyWorkbenchConfiguration';\r\n" +
+    "import { runGuardedConfigurationUpdate } from './services/configuration/configurationUpdateGuard';\r\n" +
+    'import {\r\n' +
+    '  requestWindowDesignerLingCppSource,\r\n' +
+    '  WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST,\r\n' +
+    '  WINDOW_DESIGNER_BUILD_RUN_STATE,\r\n' +
+    '  WindowDesignerLingCppSourceRequestDetail,\r\n' +
+    '  WindowDesignerBuildRunStateDetail\r\n' +
+    "} from './services/windowDesigner/windowDesignerCommands';\r\n" +
+    'import {\r\n' +
+    '  getEplEventSuffix,\r\n' +
+    '  getLingWindowSourceFileName,\r\n' +
+    '  getLingWindowSourceFilePath,\r\n' +
+    '  readWindowDesignerState,\r\n' +
+    '  saveWindowDesignerState,\r\n' +
+    '  PersistedWindowDesignerState,\r\n' +
+    '  WINDOW_DESIGNER_DIRTY_STATE_CHANGED,\r\n' +
+    '  WINDOW_DESIGNER_PROJECT_UPDATED\r\n' +
+    "} from './services/windowDesigner/windowDesignerService';\r\n" +
+    'import {\r\n' +
+    '  hasLingCppEventHandler,\r\n' +
+    '  selectControlEventTargetFile\r\n' +
+    "} from './services/windowDesigner/controlEventTargetFile';\r\n" +
+    "import type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';\r\n" +
+    "import type { LingEmbeddedResource } from './services/windowDesigner/types';\r\n" +
+    'import {\r\n' +
+    '  formatControlEventParameters,\r\n' +
+    '  type OpenControlEventCodeDetail,\r\n' +
+    '  upgradeLegacyControlEventHandlerSignature\r\n' +
+    "} from './services/windowDesigner/controlEventCodeService';\r\n" +
+    'import {\r\n' +
+    '  selectAndImportDesignerImage,\r\n' +
+    '  type DesignerImageImportResult\r\n' +
+    "} from './services/windowDesigner/designerAssetClient';\r\n" +
+    "import { sourceControlService, type SourceControlMutation } from './services/lingCpp/sourceControlService';\r\n" +
+    "import { applyProjectFileDelete, applyProjectFileRename } from './services/workspace/projectFileState';\r\n" +
+    'import {\r\n' +
+    '  applyWorkspaceReplace,\r\n' +
+    '  previewWorkspaceReplace,\r\n' +
+    '  queryWorkspace,\r\n' +
+    '  rollbackWorkspaceReplace\r\n' +
+    "} from './services/workspace/workspaceSearchClient';\r\n" +
+    'import {\r\n' +
+    '  createWorkspaceSearchRevealDetail,\r\n' +
+    '  findWorkspaceSearchProject,\r\n' +
+    '  refreshWorkspaceSearchEditorFiles\r\n' +
+    "} from './services/workspace/workspaceSearchEditorState';\r\n" +
+    'import {\r\n' +
+    '  createProjectFileLoadState,\r\n' +
+    '  getProjectFileEditorAvailability,\r\n' +
+    '  hasUsableProjectFilePayload,\r\n' +
+    '  isProjectFileLoadPending\r\n' +
+    "} from './services/workspace/projectFileLoadState';\r\n" +
+    'import {\r\n' +
+    '  createProjectMutationOwner,\r\n' +
+    '  isProjectMutationOwnerCurrent,\r\n' +
+    '  type ProjectMutationOwner\r\n' +
+    "} from './services/workspace/projectMutationOwner';\r\n" +
+    'import type {\r\n' +
+    '  WorkspaceReplaceApplyRequest,\r\n' +
+    '  WorkspaceReplaceApplyResponse,\r\n' +
+    '  WorkspaceReplacePreviewRequest,\r\n' +
+    '  WorkspaceReplacePreviewResponse,\r\n' +
+    '  WorkspaceReplaceRollbackRequest,\r\n' +
+    '  WorkspaceReplaceRollbackResponse,\r\n' +
+    '  WorkspaceSearchMatch,\r\n' +
+    '  WorkspaceSearchQueryRequest,\r\n' +
+    '  WorkspaceSearchQueryResponse\r\n' +
+    "} from './services/workspace/workspaceSearchTypes';\r\n" +
+    "import { formatEnvironmentCheckOutput } from './services/tasks/environmentCheckPresentation';\r\n" +
+    "import { createEnvironmentCheckRequestGate } from './services/tasks/environmentCheckRequestGate';\r\n" +
+    "import { fetchWithSdkDependencies } from './services/sdkDependencies/sdkDependencyClient';\r\n" +
+    "import type { TaskSnapshot } from './services/tasks/taskService';\r\n" +
+    "import type { ClangdStatus } from './services/lsp/clangdService';\r\n" +
+    "import type { BuildArchitecture, BuildConfiguration, BuildMode } from './services/tasks/buildConfigurationService';\r\n" +
+    "import { closeEditorGroupTab, collapseEditorGroups, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';\r\n" +
+    "import { getLingCppProblems } from './services/lingCpp/languageService';\r\n" +
+    "import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';\r\n" +
+    "import { parseLingCpp } from './services/lingCpp/parser';\r\n" +
+    "import { EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';\r\n" +
+    "import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';\r\n" +
+    "import { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';\r\n" +
+    "import { createProjectDllDeclarationModuleFromSources, EMPTY_PROJECT_DLL_COMMANDS_SOURCE, isProjectDllCommandsFilePath, PROJECT_DLL_COMMANDS_FILE_NAME, PROJECT_DLL_MODULE_ID } from './services/lingCpp/projectDllCommandService';\r\n" +
+    "import { executeProjectDataTypeCommand } from './services/lingCpp/projectDataTypeCommandService';\r\n" +
+    "import { createProjectConstantRenameProposal, findProjectConstantReferences } from './services/lingCpp/projectConstantReferenceService';\r\n" +
+    "import { findFunctionLibraryReferences, isFunctionLibrarySource, renameFunctionLibraryAcrossSources } from './services/lingCpp/functionLibraryService';\r\n" +
+    "import type { LingCppAstEdit } from './services/lingCpp/types';\r\n" +
+    "import { InstalledModule, LingCppModuleContext, ModuleHintContent } from './services/modules/types';\r\n" +
+    'import {\r\n' +
+    '  DEFAULT_SOLUTION,\r\n' +
+    '  SolutionModel,\r\n' +
+    '  buildSolution,\r\n' +
+    '  cleanSolution,\r\n' +
+    '  configureSolutionProject,\r\n' +
+    '  createSolutionFolder,\r\n' +
+    '  importSolutionProject,\r\n' +
+    '  createSolutionProject,\r\n' +
+    '  deleteSolutionProject,\r\n' +
+    '  fetchSolution,\r\n' +
+    '  getSolutionProjectDirectory,\r\n' +
+    '  moveSolutionProject,\r\n' +
+    '  renameSolutionProject,\r\n' +
+    '  rebuildSolution,\r\n' +
+    '  setStartupProject,\r\n' +
+    '  type SolutionCommandResult\r\n' +
+    "} from './services/solution/solutionClient';\r\n" +
+    'import {\r\n' +
+    '  CREATE_SOLUTION_FOLDER_COMMAND,\r\n' +
+    '  MOVE_PROJECT_TO_SOLUTION_FOLDER_COMMAND,\r\n' +
+    '  RENAME_SOLUTION_PROJECT_COMMAND\r\n' +
+    "} from './services/solution/solutionExplorerMenu';\r\n" +
+    'import {\r\n' +
+    '  createInactiveTextEditorStatus,\r\n' +
+    '  disposeWorkbenchTextModelsForSource,\r\n' +
+    '  getEditorHistoryPresentation,\r\n' +
+    '  renameWorkbenchTextModelsForSource,\r\n' +
+    '  TextModelIdentity,\r\n' +
+    '  workbenchTextModelService\r\n' +
+    "} from './services/textModel';\r\n" +
+    "import { LINGBUILDER_DISPLAY_VERSION, LINGBUILDER_OFFICIAL_SITE_URL } from './services/product/productInfo';\r\n" +
+    '\r\n' +
+    'c'... 388653 more characters
+  
+      at TestContext.<anonymous> (T:\electron\lingbuilder\electron\tests\updateUi.test.tsx:78:10)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: "import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';\r\nimport lingBuilderIcon from '../../image/lingbuilder-ide-icon-v1.png';\r\nimport {\r\n  FolderCode,\r\n  Layers,\r\n  Terminal,\r\n  Sun,\r\n  Moon,\r\n  Upload,\r\n  Play,\r\n  Square,\r\n  CheckCircle,\r\n  HelpCircle,\r\n  FileUp,\r\n  Cpu,\r\n  RefreshCw,\r\n  X,\r\n  ChevronLeft,\r\n  ChevronRight,\r\n  Hammer,\r\n  Code,\r\n  Sparkles,\r\n  FolderPlus,\r\n  FolderOpen,\r\n  Save,\r\n  Undo2,\r\n  Redo2,\r\n  Copy,\r\n  ClipboardPaste,\r\n  ShieldCheck,\r\n  Minus,\r\n  Maximize2,\r\n  Minimize2,\r\n  ChevronUp,\r\n  ChevronDown,\r\n  Command as CommandIcon,\r\n  Settings as SettingsIcon,\r\n  Search,\r\n  Bug,\r\n  Columns2,\r\n  Rows2,\r\n  MoveRight\r\n} from 'lucide-react';\r\n\r\nimport {\r\n  AppliedWorkspaceFile,\r\n  BottomPanelTabType,\r\n  CommandHintContent,\r\n  CppFile,\r\n  ExtractedString,\r\n  GlossaryTerm,\r\n  ProblemItem,\r\n  DiffResult,\r\n  SourceControlStatus,\r\n  WorkspaceEditProposal\r\n} from './types';\r\nimport { initialFiles, defaultGlossary, localTranslations } from './data/templates';\r\nimport { computeDiff } from './utils/diff';\r\n\r\n// Components\r\nimport Sidebar from './components/Sidebar';\r\nimport DiffViewer, { DiffViewerHandle } from './components/DiffViewer';\r\nimport MonacoCodeEditor from './components/MonacoCodeEditor';\r\nimport type { MonacoCodeEditorHandle, MonacoEditorState } from './components/MonacoCodeEditor';\r\nimport AiAssistant from './components/AiAssistant';\r\nimport BottomPanel from './components/BottomPanel';\r\nimport CommandPalette from './components/CommandPalette';\r\nimport SettingsDialog from './components/SettingsDialog';\r\nimport ProjectBuildPathsDialog, { type ProjectBuildPathsDialogValue } from './components/ProjectBuildPathsDialog';\r\nimport EmbeddedResourcesDialog from './components/EmbeddedResourcesDialog';\r\nimport WorkspaceSearchDialog from './components/WorkspaceSearchDialog';\r\nimport EnvironmentRepairCenter from './components/EnvironmentRepairCenter';\r\nimport SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';\r\nimport CliGuideDialog from './components/CliGuideDialog';\r\nimport AboutDialog from './components/AboutDialog';\r\nimport UpdateDialog, { type UpdateDialogInfo } from './components/UpdateDialog';\r\nimport HelpCenterDialog from './components/HelpCenterDialog';\r\nimport SponsorDialog from './components/SponsorDialog';\r\nimport ProjectNameDialog from './components/ProjectNameDialog';\r\nimport RecentWorkspacesDialog from './components/RecentWorkspacesDialog';\r\nimport WorkbenchConfirmDialog from './components/WorkbenchConfirmDialog';\r\nimport {\r\n  cancelWorkbenchDialog,\r\n  getActiveWorkbenchDialog,\r\n  requestWorkbenchAlert,\r\n  requestWorkbenchConfirm,\r\n  requestWorkbenchPrompt,\r\n  settleWorkbenchDialog,\r\n  subscribeWorkbenchDialog,\r\n  type WorkbenchDialogRequest\r\n} from './services/workbench/workbenchConfirmService';\r\nimport WelcomePage from './components/WelcomePage';\r\nimport TextFileStatusControls from './components/TextFileStatusControls';\r\nimport EditorPositionStatus from './components/EditorPositionStatus';\r\nimport {\r\n  DIFF_VIEW_MODE_CHANGE_EVENT,\r\n  type DiffViewMode\r\n} from './services/editor/diffViewMode';\r\nimport {\r\n  TEXT_FILE_ENCODINGS,\r\n  TEXT_FILE_EOLS,\r\n  type TextFileEncoding,\r\n  type TextFileEol,\r\n  type TextFileFormat\r\n} from './services/files/types';\r\nimport {\r\n  getCurrentFileContent,\r\n  isEditorFileDirty,\r\n  updateEditorFileContent\r\n} from './services/files/editorFileState';\r\nimport {\r\n  isWorkspaceSaveEcho,\r\n  type WorkspaceSaveEchoSnapshot\r\n} from './services/files/workspaceSaveEchoService';\r\nimport {\r\n  createCommandService,\r\n  createKeybindingService,\r\n  createCommandPaletteContext,\r\n  isSafeGlobalKeybinding,\r\n  isSuccessfulCommandResult,\r\n  normalizeKeybinding,\r\n  WORKBENCH_DEFAULT_KEYBINDINGS,\r\n  type CommandContext,\r\n  type CommandPresentation,\r\n  type RegisteredCommand\r\n} from './services/commands';\r\nimport type {\r\n  ConfigurationTarget,\r\n  ConfigurationValue,\r\n  WorkbenchConfigurationKey,\r\n  WorkbenchConfigurationSnapshot\r\n} from './services/configuration';\r\nimport { getWorkbenchConfigurationMutationTarget } from './services/configuration';\r\nimport {\r\n  LEGACY_EDITOR_EXPERIENCE_MODE_KEY,\r\n  LEGACY_EDITOR_FONT_SIZE_KEY,\r\n  planLegacyWorkbenchConfigurationMigration\r\n} from './services/configuration/legacyWorkbenchConfiguration';\r\nimport { runGuardedConfigurationUpdate } from './services/configuration/configurationUpdateGuard';\r\nimport {\r\n  requestWindowDesignerLingCppSource,\r\n  WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST,\r\n  WINDOW_DESIGNER_BUILD_RUN_STATE,\r\n  WindowDesignerLingCppSourceRequestDetail,\r\n  WindowDesignerBuildRunStateDetail\r\n} from './services/windowDesigner/windowDesignerCommands';\r\nimport {\r\n  getEplEventSuffix,\r\n  getLingWindowSourceFileName,\r\n  getLingWindowSourceFilePath,\r\n  readWindowDesignerState,\r\n  saveWindowDesignerState,\r\n  PersistedWindowDesignerState,\r\n  WINDOW_DESIGNER_DIRTY_STATE_CHANGED,\r\n  WINDOW_DESIGNER_PROJECT_UPDATED\r\n} from './services/windowDesigner/windowDesignerService';\r\nimport {\r\n  hasLingCppEventHandler,\r\n  selectControlEventTargetFile\r\n} from './services/windowDesigner/controlEventTargetFile';\r\nimport type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';\r\nimport type { LingEmbeddedResource } from './services/windowDesigner/types';\r\nimport {\r\n  formatControlEventParameters,\r\n  type OpenControlEventCodeDetail,\r\n  upgradeLegacyControlEventHandlerSignature\r\n} from './services/windowDesigner/controlEventCodeService';\r\nimport {\r\n  selectAndImportDesignerImage,\r\n  type DesignerImageImportResult\r\n} from './services/windowDesigner/designerAssetClient';\r\nimport { sourceControlService, type SourceControlMutation } from './services/lingCpp/sourceControlService';\r\nimport { applyProjectFileDelete, applyProjectFileRename } from './services/workspace/projectFileState';\r\nimport {\r\n  applyWorkspaceReplace,\r\n  previewWorkspaceReplace,\r\n  queryWorkspace,\r\n  rollbackWorkspaceReplace\r\n} from './services/workspace/workspaceSearchClient';\r\nimport {\r\n  createWorkspaceSearchRevealDetail,\r\n  findWorkspaceSearchProject,\r\n  refreshWorkspaceSearchEditorFiles\r\n} from './services/workspace/workspaceSearchEditorState';\r\nimport {\r\n  createProjectFileLoadState,\r\n  getProjectFileEditorAvailability,\r\n  hasUsableProjectFilePayload,\r\n  isProjectFileLoadPending\r\n} from './services/workspace/projectFileLoadState';\r\nimport {\r\n  createProjectMutationOwner,\r\n  isProjectMutationOwnerCurrent,\r\n  type ProjectMutationOwner\r\n} from './services/workspace/projectMutationOwner';\r\nimport type {\r\n  WorkspaceReplaceApplyRequest,\r\n  WorkspaceReplaceApplyResponse,\r\n  WorkspaceReplacePreviewRequest,\r\n  WorkspaceReplacePreviewResponse,\r\n  WorkspaceReplaceRollbackRequest,\r\n  WorkspaceReplaceRollbackResponse,\r\n  WorkspaceSearchMatch,\r\n  WorkspaceSearchQueryRequest,\r\n  WorkspaceSearchQueryResponse\r\n} from './services/workspace/workspaceSearchTypes';\r\nimport { formatEnvironmentCheckOutput } from './services/tasks/environmentCheckPresentation';\r\nimport { createEnvironmentCheckRequestGate } from './services/tasks/environmentCheckRequestGate';\r\nimport { fetchWithSdkDependencies } from './services/sdkDependencies/sdkDependencyClient';\r\nimport type { TaskSnapshot } from './services/tasks/taskService';\r\nimport type { ClangdStatus } from './services/lsp/clangdService';\r\nimport type { BuildArchitecture, BuildConfiguration, BuildMode } from './services/tasks/buildConfigurationService';\r\nimport { closeEditorGroupTab, collapseEditorGroups, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';\r\nimport { getLingCppProblems } from './services/lingCpp/languageService';\r\nimport { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';\r\nimport { parseLingCpp } from './services/lingCpp/parser';\r\nimport { EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';\r\nimport { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';\r\nimport { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';\r\nimport { createProjectDllDeclarationModuleFromSources, EMPTY_PROJECT_DLL_COMMANDS_SOURCE, isProjectDllCommandsFilePath, PROJECT_DLL_COMMANDS_FILE_NAME, PROJECT_DLL_MODULE_ID } from './services/lingCpp/projectDllCommandService';\r\nimport { executeProjectDataTypeCommand } from './services/lingCpp/projectDataTypeCommandService';\r\nimport { createProjectConstantRenameProposal, findProjectConstantReferences } from './services/lingCpp/projectConstantReferenceService';\r\nimport { findFunctionLibraryReferences, isFunctionLibrarySource, renameFunctionLibraryAcrossSources } from './services/lingCpp/functionLibraryService';\r\nimport type { LingCppAstEdit } from './services/lingCpp/types';\r\nimport { InstalledModule, LingCppModuleContext, ModuleHintContent } from './services/modules/types';\r\nimport {\r\n  DEFAULT_SOLUTION,\r\n  SolutionModel,\r\n  buildSolution,\r\n  cleanSolution,\r\n  configureSolutionProject,\r\n  createSolutionFolder,\r\n  importSolutionProject,\r\n  createSolutionProject,\r\n  deleteSolutionProject,\r\n  fetchSolution,\r\n  getSolutionProjectDirectory,\r\n  moveSolutionProject,\r\n  renameSolutionProject,\r\n  rebuildSolution,\r\n  setStartupProject,\r\n  type SolutionCommandResult\r\n} from './services/solution/solutionClient';\r\nimport {\r\n  CREATE_SOLUTION_FOLDER_COMMAND,\r\n  MOVE_PROJECT_TO_SOLUTION_FOLDER_COMMAND,\r\n  RENAME_SOLUTION_PROJECT_COMMAND\r\n} from './services/solution/solutionExplorerMenu';\r\nimport {\r\n  createInactiveTextEditorStatus,\r\n  disposeWorkbenchTextModelsForSource,\r\n  getEditorHistoryPresentation,\r\n  renameWorkbenchTextModelsForSource,\r\n  TextModelIdentity,\r\n  workbenchTextModelService\r\n} from './services/textModel';\r\nimport { LINGBUILDER_DISPLAY_VERSION, LINGBUILDER_OFFICIAL_SITE_URL } from './services/product/productInfo';\r\n\r\nc"... 388653 more characters,
+    expected: /发现新版本 v\{updateBadgePayload\.latestVersion/u,
+    operator: 'match',
+    diff: 'simple'
+  }
+npm error Lifecycle script `test:lingcpp` failed with error:
+npm error code 1
+npm error path T:\electron\lingbuilder\electron
+npm error workspace lingbuilder-electron@0.7.4
+npm error location T:\electron\lingbuilder\electron
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c npm run build:extension-host && node --import tsx --test tests/projectFilePersistence.test.ts tests/taskService.test.ts tests/lsp.test.ts tests/editorGroupLayout.test.ts tests/buildConfiguration.test.ts tests/buildPathService.test.ts tests/externalProject.test.ts tests/compilerDiagnostic.test.ts tests/incrementalBuild.test.ts tests/ptyTerminal.test.ts tests/terminalPanel.test.tsx tests/dapConnection.test.ts tests/nativeDebug.test.ts tests/debugUi.test.ts tests/debugInspector.test.ts tests/gitService.test.ts tests/gitRemote.test.ts tests/sourceControlPanel.test.tsx tests/testExplorerService.test.ts tests/nodeTestDebug.test.ts tests/testExplorerUi.test.tsx tests/qualityService.test.ts tests/qualityUi.test.tsx tests/extensionService.test.ts tests/extensionUi.test.tsx tests/dependencyService.test.ts tests/dependencyUi.test.tsx tests/sdkDependencyService.test.ts tests/sdkCatalogRemote.test.ts tests/sdkDependencyUi.test.tsx tests/updateUi.test.tsx tests/designerOperations.test.ts tests/menuService.test.ts tests/designerClipboard.test.ts tests/designerExtensionEdit.test.ts tests/rcResourceService.test.ts tests/designerProfessionalUi.test.tsx tests/performanceService.test.ts tests/performanceUi.test.tsx tests/publishingService.test.ts tests/publishingUi.test.tsx tests/aiWorkspaceIndex.test.ts tests/aiSecurityAccessibility.test.tsx tests/settingsSync.test.ts tests/settingsSyncUi.test.tsx

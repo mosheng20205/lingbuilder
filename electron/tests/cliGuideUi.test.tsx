@@ -31,6 +31,25 @@ test('AI Bridge center exposes one-click lifecycle, clients, shared MCP, CLI, pe
   assert.match(source, /event\.key === 'Tab'/u);
 });
 
+test('AI Bridge center remembers last successful start settings including the custom token', async () => {
+  const [componentSource, mainSource, preloadSource, dtsSource] = await Promise.all([
+    fs.readFile(path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '../electron/main.ts'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '../electron/preload.ts'), 'utf8'),
+    fs.readFile(path.resolve(import.meta.dirname, '../src/electron-api.d.ts'), 'utf8')
+  ]);
+  // 组件：打开连接中心时回填上次启动设置（运行中快照优先）。
+  assert.match(componentSource, /loadStartSettings/u);
+  assert.match(componentSource, /已记住上次成功启动的设置/u);
+  assert.match(componentSource, /启动成功后自动保存到本机加密存储/u);
+  assert.match(componentSource, /bridgeRef\.current\.state === 'running'/u);
+  // 主进程：start 成功后写设置（safeStorage 加密），并提供独立 load IPC。
+  assert.match(mainSource, /writeAiBridgeStartSettings/u);
+  assert.match(mainSource, /ai-bridge:start-settings:load/u);
+  assert.match(preloadSource, /loadStartSettings: \(\) => ipcRenderer\.invoke\('ai-bridge:start-settings:load'\)/u);
+  assert.match(dtsSource, /loadStartSettings/u);
+});
+
 test('workbench and packaged desktop expose the managed Bridge center through discoverable entries and IPC', async () => {
   const [appSource, mainSource, preloadSource, packageSource] = await Promise.all([
     fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8'),

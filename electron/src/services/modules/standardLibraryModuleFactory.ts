@@ -25,6 +25,8 @@ export interface StandardCommandSpec {
   insertText: string;
   /** 逐参数中文说明是硬性契约：新手模式命令提示面板直接读取该字段。 */
   parameters?: StandardCommandParameter[];
+  /** 稳定调用别名（如易语言同名命令）；参与补全、诊断与 binding 解析，生成 C++ 恒用主名称。 */
+  aliases?: string[];
   /** binding 层的 C++ ABI 类型（longLong 等）；决定生成代码的实参/返回类型。 */
   returnType: string;
   /** .lcpp 侧返回类型标签（如 文件号、日期时间）；缺省按 returnType 查标准标签表。 */
@@ -51,6 +53,7 @@ export interface StandardModuleSpec {
 const RETURN_TYPE_LABELS: Record<ModuleBindingValueType, string> = {
   ...MODULE_BINDING_TYPE_LABELS,
   double: '双精度小数型',
+  float: '单精度小数型',
   utf8String: '文本型',
   handle: '长整数型',
   raw: '原生类型'
@@ -84,6 +87,7 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
         signature: command.signature,
         description: command.description,
         insertText: command.insertText,
+        ...(command.aliases?.length ? { aliases: [...command.aliases] } : {}),
         returnType: command.returnLabel || RETURN_TYPE_LABELS[command.returnType as ModuleBindingValueType] || command.returnType,
         returnDescription: command.returnDescription,
         category: command.category,

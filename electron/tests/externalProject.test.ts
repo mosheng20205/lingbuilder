@@ -83,6 +83,12 @@ test('resolveExecutableNameParts normalizes, defaults and rejects illegal names'
   assert.throws(() => resolveExecutableNameParts(':'.repeat(65)), /不合法/u);
 });
 
+test('validateProperties accepts requireAdministrator boolean and rejects other types', () => {
+  validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], requireAdministrator: true });
+  validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], requireAdministrator: false });
+  assert.throws(() => validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], requireAdministrator: 'yes' as unknown as boolean }), /requireAdministrator/u);
+});
+
 test('validateProperties accepts an optional executableName and rejects illegal values', () => {
   validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: '灵集应用市场' });
   validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: '' });

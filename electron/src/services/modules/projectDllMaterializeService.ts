@@ -1,9 +1,42 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { PROJECT_DLL_MODULE_ID, buildProjectDllDefLines, collectProjectDllDeclaredExports, generateProjectDllDeclarationHeader } from '../lingCpp/projectDllCommandService';
+import {
+  PROJECT_DLL_MEMORY_MAX_FILE_BYTES,
+  PROJECT_DLL_MODULE_ID,
+  buildProjectDllDefLines,
+  collectProjectDllDeclaredExports,
+  generateProjectDllDeclarationHeader,
+  getProjectDllMemoryLibrarySpecs
+} from '../lingCpp/projectDllCommandService';
 import type { LingCppDllLibrary } from '../lingCpp/types';
 import { detectLatestMsvcPlatformToolset } from '../windowDesigner/msvcPlatformToolset';
+
+/** PE 文件 Machine 字段取值（COFF 头偏移 0x04）。 */
+const PE_MACHINE_I386 = 0x014c;
+const PE_MACHINE_AMD64 = 0x8664;
+
+/**
+ * 读取 PE 的 Machine 字段；不是有效 PE 时返回 null。
+ * 内存加载要求 DLL 位数与目标程序一致，构建期先按该字段阻断，避免运行期才失败。
+ */
+export function readPeMachine(buffer: Buffer): number | null {
+  try {
+    if (buffer.length < 0x40 || buffer.readUInt16LE(0) !== 0x5a4d) return null;
+    const peOffset = buffer.readUInt32LE(0x3c);
+    if (peOffset <= 0 || peOffset + 6 > buffer.length || buffer.readUInt32LE(peOffset) !== 0x00004550) return null;
+    return buffer.readUInt16LE(peOffset + 4);
+  } catch {
+    return null;
+  }
+}
+
+function describePeMachine(machine: number | null): string {
+  if (machine === PE_MACHINE_I386) return '32 位（x86）';
+  if (machine === PE_MACHINE_AMD64) return '64 位（x64）';
+  if (machine === null) return '无法识别的 PE 架构';
+  return `未知架构（0x${machine.toString(16)}）`;
+}
 
 /**
  * 枚举 PE 导出表的全部导出名（latin1 读取，即 DLL 导出表原始字节）。
@@ -78,6 +111,8 @@ export interface ProjectDllMaterializeResult {
   blocking: string[];
   /** 需要追加进 plan.libFiles 的导入库绝对路径（系统 DLL 时为系统导入库名）。 */
   libFiles: string[];
+  /** 构建日志（内存加载的内嵌资源写入情况等），由调用方并入构建输出。 */
+  notes: string[];
 }
 
 async function locateMsvcLibExecutable(): Promise<string | null> {
@@ -123,8 +158,13 @@ async function runLibExecutable(libExecutable: string, args: string[], cwd: stri
 export async function materializeProjectDllDeclarationModules(options: ProjectDllMaterializeOptions): Promise<ProjectDllMaterializeResult> {
   const blocking: string[] = [];
   const libFiles: string[] = [];
+  const notes: string[] = [];
   const { dllLibraries } = options;
-  if (!dllLibraries.some(library => library.commands.length > 0)) return { blocking, libFiles };
+  if (!dllLibraries.some(library => library.commands.length > 0)) return { blocking, libFiles, notes };
+
+  const memorySpecByLibrary = new Map(
+    getProjectDllMemoryLibrarySpecs(dllLibraries).map(spec => [spec.libraryName, spec])
+  );
 
   const header = generateProjectDllDeclarationHeader(dllLibraries);
   const headerTargets = [
@@ -190,6 +230,29 @@ export async function materializeProjectDllDeclarationModules(options: ProjectDl
       blocking.push(`DLL「${library.name}」未导出命令对应的函数 ${item.exportName}；请确认 DLL 版本与声明一致。`);
     });
 
+    const memorySpec = memorySpecByLibrary.get(library.name);
+    if (memorySpec) {
+      // 加载方式 = 内存：不生成导入库、不把 DLL 复制到 exe 目录，只把当前目标架构的字节写成
+      // 内嵌资源（rc 引用），运行期由 内存DLL_* 运行时手工映射；exe 同目录不会出现该 DLL。
+      const machine = readPeMachine(dllBuffer);
+      const expectedMachine = options.machine === 'X64' ? PE_MACHINE_AMD64 : PE_MACHINE_I386;
+      if (machine !== expectedMachine) {
+        blocking.push(`DLL「${library.name}」是${describePeMachine(machine)}，与本次${options.machine === 'X64' ? '64 位' : '32 位'}构建不一致；内存加载要求 DLL 与程序位数一致。请更换 ${archFile.relativePath} 或改用对应架构的 DLL。`);
+        continue;
+      }
+      if (dllBuffer.length > PROJECT_DLL_MEMORY_MAX_FILE_BYTES) {
+        blocking.push(`DLL「${library.name}」体积 ${(dllBuffer.length / 1024 / 1024).toFixed(1)}MB 超过内嵌上限 32MB（${archFile.relativePath}）。`);
+        continue;
+      }
+      for (const targetRoot of [options.sourceDir, options.exportDir]) {
+        const target = path.resolve(targetRoot, ...memorySpec.resourceFileName.split('/'));
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.copyFile(dllAbsolute, target);
+      }
+      notes.push(`已内嵌内存加载 DLL（${archDir}，资源号 ${memorySpec.resourceId}）：${path.basename(archFile.relativePath)} → 不复制到 exe 目录`);
+      continue;
+    }
+
     const libExecutable = await locateMsvcLibExecutable();
     if (!libExecutable) {
       blocking.push('项目 DLL 命令声明需要 MSVC 的 lib.exe 生成导入库；未检测到 Visual Studio C++ 工具集，请安装后重试。');
@@ -221,5 +284,5 @@ export async function materializeProjectDllDeclarationModules(options: ProjectDl
     await fs.copyFile(libPath, path.join(exportModuleRoot, `${library.name}.lib`));
     await fs.copyFile(defPath, path.join(exportModuleRoot, `${library.name}.def`));
   }
-  return { blocking, libFiles };
+  return { blocking, libFiles, notes };
 }

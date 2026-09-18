@@ -10,7 +10,8 @@ export const BEGINNER_TYPE_ALIASES: Record<string, string[]> = {
   整数型: ['int', 'integer', 'number', 'zhengshu', 'zs', '数字'],
   长整数型: ['long', 'long long', 'int64', 'longint', 'changzhengshu', 'czs'],
   逻辑型: ['bool', 'boolean', 'logic', 'luoji', 'lj', '布尔'],
-  小数型: ['float', 'decimal', 'number', 'xiaoshu', 'xs'],
+  小数型: ['decimal', 'number', 'xiaoshu', 'xs'],
+  单精度小数型: ['float', 'danjingdu', 'djxs'],
   双精度小数型: ['double', 'shuangjingdu', 'sjd'],
   字节型: ['byte', 'uint8', 'zijie', 'zj'],
   对象: ['object', 'obj', 'any', 'duixiang', 'dx'],
@@ -82,6 +83,7 @@ export const BEGINNER_TYPE_DEFAULT_INITIAL_VALUES: Record<string, string> = {
   长整数型: '0',
   字节型: '0',
   小数型: '0',
+  单精度小数型: '0',
   双精度小数型: '0',
   逻辑型: '假'
 };

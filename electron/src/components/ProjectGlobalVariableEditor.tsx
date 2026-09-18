@@ -287,7 +287,7 @@ export default function ProjectGlobalVariableEditor({
 
   return (
     <div
-      className={`flex h-full min-h-0 flex-col ${isDarkMode ? 'bg-[#18181e] text-slate-200' : 'bg-white text-slate-800'}`}
+      className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${isDarkMode ? 'bg-[#18181e] text-slate-200' : 'bg-white text-slate-800'}`}
       style={{ '--lingcpp-comment-color': getLingCppCommentTokenColor(isDarkMode) } as React.CSSProperties}
     >
       <div className={`border-b px-4 py-3 ${rowBorder}`}>

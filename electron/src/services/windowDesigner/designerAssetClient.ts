@@ -1,3 +1,5 @@
+import { EMBEDDED_RESOURCE_MODULE_ID } from './embeddedResourceService';
+
 export interface DesignerImageImportResult {
   ok: boolean;
   canceled?: boolean;
@@ -9,6 +11,24 @@ export interface DesignerImageResource {
   relativePath: string;
   fileName: string;
   size: number;
+}
+
+export interface EmbeddedResourceImportEntry {
+  /** 写回项目模型的逻辑名（相对源码根，如 resources/logo.png）。 */
+  name: string;
+  /** 工作区内相对源路径。 */
+  file: string;
+  size: number;
+}
+
+export interface EmbeddedResourceImportResult {
+  ok: boolean;
+  canceled?: boolean;
+  entries?: EmbeddedResourceImportEntry[];
+  skipped?: Array<{ path: string; reason: string }>;
+  notes?: string[];
+  totalBytes?: number;
+  error?: string;
 }
 
 export async function listDesignerImageResources(projectId: string): Promise<DesignerImageResource[]> {
@@ -131,6 +151,64 @@ export async function selectAndImportDesignerVideo(projectId: string): Promise<D
   const result = await response.json() as DesignerImageImportResult;
   if (!response.ok || !result.ok) return { ok: false, error: result.error || '视频复制到项目失败。' };
   return result;
+}
+
+/**
+ * 「选择文件…」：本机多选后复制进 <项目源码根>/resources/。
+ * 桌面版经 designer-assets 受控 IPC 取路径，复制与校验统一由工作区本地服务完成（renderer 不碰 fs）。
+ */
+export async function selectAndImportEmbeddedResourceFiles(projectId: string): Promise<EmbeddedResourceImportResult> {
+  const selection = await window.lingBuilder?.designerAssets?.selectEmbeddedFiles();
+  if (!selection) return { ok: false, error: '本机文件选择仅在 LingBuilder 桌面版中可用。' };
+  if (selection.error) return { ok: false, error: selection.error };
+  if (selection.canceled || !selection.filePaths?.length) return { ok: false, canceled: true };
+  return importEmbeddedResources(projectId, { sourcePaths: selection.filePaths });
+}
+
+/** 「选择文件夹…」：本机选目录后按目录结构复制进 <项目源码根>/resources/<文件夹名>/。 */
+export async function selectAndImportEmbeddedResourceFolder(projectId: string): Promise<EmbeddedResourceImportResult> {
+  const selection = await window.lingBuilder?.designerAssets?.selectEmbeddedFolder();
+  if (!selection) return { ok: false, error: '本机文件夹选择仅在 LingBuilder 桌面版中可用。' };
+  if (selection.error) return { ok: false, error: selection.error };
+  if (selection.canceled || !selection.directoryPath) return { ok: false, canceled: true };
+  return importEmbeddedResources(projectId, { directory: selection.directoryPath });
+}
+
+async function importEmbeddedResources(
+  projectId: string,
+  payload: { sourcePaths?: string[]; directory?: string }
+): Promise<EmbeddedResourceImportResult> {
+  const response = await fetch('/api/window-designer/embedded-resources/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, ...payload })
+  });
+  const result = await response.json() as EmbeddedResourceImportResult;
+  if (!response.ok || !result.ok) return { ok: false, error: result.error || '内嵌资源复制到项目失败。' };
+  return result;
+}
+
+/** 「扫描目录…」：读取工作区内已有目录，不复制；逻辑名直接取工作区相对路径。 */
+export async function scanEmbeddedResourceDirectory(directory: string): Promise<{ files: string[]; skipped: Array<{ path: string; reason: string }> }> {
+  const query = new URLSearchParams({ dir: directory });
+  const response = await fetch(`/api/window-designer/embedded-resources/scan?${query.toString()}`, { cache: 'no-store' });
+  const result = await response.json() as { ok?: boolean; files?: string[]; skipped?: Array<{ path: string; reason: string }>; error?: string };
+  if (!response.ok || !result.ok || !Array.isArray(result.files)) {
+    throw new Error(result.error || '内嵌资源目录扫描失败。');
+  }
+  return { files: result.files, skipped: Array.isArray(result.skipped) ? result.skipped : [] };
+}
+
+/** 「启用内嵌资源模块」：走项目模块启用链路，成功后设计器需要刷新模块状态。 */
+export async function enableEmbeddedResourceModule(projectId: string): Promise<{ ok: boolean; error?: string; messages?: string[] }> {
+  const response = await fetch('/api/modules/project/enable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, moduleId: EMBEDDED_RESOURCE_MODULE_ID })
+  });
+  const result = await response.json() as { ok?: boolean; error?: string; messages?: string[] };
+  if (!response.ok || !result.ok) return { ok: false, error: result.error || '内嵌资源模块启用失败。' };
+  return { ok: true, messages: Array.isArray(result.messages) ? result.messages : [] };
 }
 
 export async function selectAndImportDesignerIcon(projectId: string): Promise<DesignerImageImportResult> {

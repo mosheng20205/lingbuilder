@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react';
 import { applyWorkspaceEditToFiles, createWorkspaceEditChangeFromRewrite } from '../services/lingCpp/aiEditService';
-import { buildBeginnerTypeCompletionCatalog, resolveBeginnerTypeAlias } from '../services/lingCpp/beginnerTypeCompletion';
+import { buildBeginnerTypeCompletionCatalog } from '../services/lingCpp/beginnerTypeCompletion';
+import { getLingCppCommentTokenColor } from '../services/lingCpp/semanticTheme';
 import { executeProjectDataTypeCommand, ProjectDataTypeCommandId } from '../services/lingCpp/projectDataTypeCommandService';
 import {
   SAFE_DATA_FIELD_TYPES,
@@ -27,9 +28,7 @@ interface ProjectDataTypeEditorProps {
   onProjectSourcesChange?: (sources: Array<{ filePath: string; sourceCode: string }>) => void;
 }
 
-interface FieldDraft { name: string; type: string; initialValue: string; isArray: boolean; note: string }
 interface PendingRefactor { proposal: WorkspaceEditProposal; successMessage: string }
-const EMPTY_FIELD: FieldDraft = { name: '', type: '文本型', initialValue: '', isArray: false, note: '' };
 
 export default function ProjectDataTypeEditor(props: ProjectDataTypeEditorProps) {
   const { sourceCode, filePath, moduleContext, projectSources = [], projectClassNames = [], isDarkMode, readOnly, onChange, onProjectSourcesChange } = props;
@@ -37,15 +36,30 @@ export default function ProjectDataTypeEditor(props: ProjectDataTypeEditorProps)
   const diagnostics = useMemo(() => getProjectDataTypeDiagnostics(sourceCode, filePath, moduleContext, projectClassNames), [sourceCode, filePath, moduleContext, projectClassNames]);
   const [newTypeName, setNewTypeName] = useState('');
   const [newTypeNote, setNewTypeNote] = useState('');
-  const [fieldDrafts, setFieldDrafts] = useState<Record<string, FieldDraft>>({});
+  const [pendingFocusField, setPendingFocusField] = useState<{ dataTypeName: string; fieldName: string } | null>(null);
+  const fieldNameInputs = useRef(new Map<string, HTMLInputElement>());
   const [feedback, setFeedback] = useState('');
   const [pendingRefactor, setPendingRefactor] = useState<PendingRefactor | null>(null);
+
+  useEffect(() => {
+    if (!pendingFocusField) return;
+    const target = fieldNameInputs.current.get(fieldKey(pendingFocusField.dataTypeName, pendingFocusField.fieldName));
+    if (target) {
+      target.focus();
+      target.select();
+      setPendingFocusField(null);
+    }
+  }, [pendingFocusField, sourceCode]);
   const typeNames = context.dataTypes.map(item => item.name);
   const typeCatalog = buildBeginnerTypeCompletionCatalog([...SAFE_DATA_FIELD_TYPES, ...typeNames])
     .filter(item => item.label !== '空');
   const surface = isDarkMode ? 'border-[#34343e] bg-[#17181d] text-slate-200' : 'border-slate-200 bg-white text-slate-800';
   const input = `h-7 rounded border px-2 text-xs outline-none ${isDarkMode ? 'border-[#3b3d46] bg-[#101116] text-slate-100' : 'border-slate-300 bg-white'}`;
   const button = `inline-flex h-7 items-center gap-1 rounded border px-2 text-xs ${isDarkMode ? 'border-[#41434d] bg-[#24262d] hover:bg-[#30323a]' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'}`;
+  // 与项目DLL命令页一致的表格流单元格：静态无边框，悬停淡边框、聚焦蓝色边框；字号由使用处指定避免冲突。
+  const flowCell = `h-8 w-full rounded-none border border-transparent bg-transparent px-2 outline-none transition-colors ${isDarkMode ? 'text-slate-100 placeholder:text-slate-500 hover:border-[#3f414b] focus:border-sky-600' : 'text-slate-800 placeholder:text-slate-400 hover:border-slate-300 focus:border-sky-600'}`;
+  const typeNameColor = isDarkMode ? '#e5c07b' : '#8a6d1a';
+  const typeNoteColor = getLingCppCommentTokenColor(isDarkMode);
 
   const applyEdit = (commandId: ProjectDataTypeCommandId, edit: LingCppAstEdit) => {
     const result = executeProjectDataTypeCommand(commandId, sourceCode, edit);
@@ -111,8 +125,8 @@ export default function ProjectDataTypeEditor(props: ProjectDataTypeEditorProps)
     applyEdit('lingcpp.dataField.delete', { kind: 'delete-data-field', dataTypeName: dataType.name, fieldName: field.name });
   };
 
-  return <div className={`h-full overflow-auto p-4 ${isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'}`}>
-    <div className="mx-auto max-w-6xl space-y-3">
+  return <div className={`h-full min-w-0 flex-1 overflow-auto p-4 ${isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'}`}>
+    <div className="space-y-3">
       <div className={`rounded border p-3 ${surface}`}>
         <div className="text-sm font-semibold">项目自定义数据类型</div>
         <div className="mt-1 text-xs opacity-70">值类型会生成标准 C++ struct，可用于局部、程序集、全局、参数、返回值和数组。</div>
@@ -147,37 +161,43 @@ export default function ProjectDataTypeEditor(props: ProjectDataTypeEditorProps)
       {context.dataTypes.length === 0 && <div className={`rounded border p-8 text-center text-sm opacity-70 ${surface}`}>暂无自定义数据类型。填写名称后点击“新增类型”。</div>}
 
       {context.dataTypes.map((dataType, typeIndex) => {
-        const draft = fieldDrafts[dataType.name] || EMPTY_FIELD;
         return <section key={`${dataType.name}-${dataType.line}`} className={`rounded border ${surface}`}>
-          <header className="flex flex-wrap items-center gap-2 border-b border-current/10 p-3">
-            <input className={`${input} w-48 font-semibold`} defaultValue={dataType.name} onBlur={event => renameType(dataType, event.target.value)} disabled={readOnly} aria-label={`数据类型 ${dataType.name} 名称`} />
-            <span className="text-[11px] opacity-60">{dataType.fields.length} 个字段</span>
-            <div className="ml-auto flex gap-1">
-              <button className={button} disabled={readOnly || typeIndex === 0} onClick={() => applyEdit('lingcpp.dataType.move', { kind: 'move-data-type', dataTypeName: dataType.name, direction: 'up' })}><ArrowUp className="h-3.5 w-3.5" /></button>
-              <button className={button} disabled={readOnly || typeIndex === context.dataTypes.length - 1} onClick={() => applyEdit('lingcpp.dataType.move', { kind: 'move-data-type', dataTypeName: dataType.name, direction: 'down' })}><ArrowDown className="h-3.5 w-3.5" /></button>
-              <button className={button} disabled={readOnly} onClick={() => deleteType(dataType)}><Trash2 className="h-3.5 w-3.5" />删除类型</button>
+          <header className="border-b border-current/10 p-3">
+            <div className="flex items-end gap-3">
+              <div className="w-64 shrink-0">
+                <div className="mb-1 text-[11px] opacity-60">类型名称</div>
+                <input className={`${flowCell} w-full text-sm font-semibold`} style={{ color: typeNameColor }} defaultValue={dataType.name} onBlur={event => renameType(dataType, event.target.value)} disabled={readOnly} aria-label={`数据类型 ${dataType.name} 名称`} />
+              </div>
+              <div className="min-w-40 flex-1">
+                <div className="mb-1 text-[11px] opacity-60">说明（可选）</div>
+                <input className={`${flowCell} w-full text-xs`} style={{ color: typeNoteColor }} defaultValue={dataType.note || ''} placeholder="填写该类型的用途说明" onBlur={event => { const next = event.target.value.trim(); if (next === (dataType.note || '').trim()) return; applyEdit('lingcpp.dataType.update', { kind: 'update-data-type', dataTypeName: dataType.name, note: next }); }} disabled={readOnly} aria-label={`数据类型 ${dataType.name} 说明`} />
+              </div>
+              <div className="flex shrink-0 items-center gap-1 pb-0.5">
+                <span className="mr-1 text-[11px] opacity-60">{dataType.fields.length} 个字段</span>
+                <button className={button} disabled={readOnly} onClick={() => {
+                  const fieldName = nextFieldName(dataType.fields.map(field => field.name));
+                  setPendingFocusField({ dataTypeName: dataType.name, fieldName });
+                  applyEdit('lingcpp.dataField.add', { kind: 'add-data-field', dataTypeName: dataType.name, field: { name: fieldName, type: '文本型' } });
+                }}><Plus className="h-3.5 w-3.5" />添加字段</button>
+                <button className={button} disabled={readOnly || typeIndex === 0} onClick={() => applyEdit('lingcpp.dataType.move', { kind: 'move-data-type', dataTypeName: dataType.name, direction: 'up' })}><ArrowUp className="h-3.5 w-3.5" /></button>
+                <button className={button} disabled={readOnly || typeIndex === context.dataTypes.length - 1} onClick={() => applyEdit('lingcpp.dataType.move', { kind: 'move-data-type', dataTypeName: dataType.name, direction: 'down' })}><ArrowDown className="h-3.5 w-3.5" /></button>
+                <button className={button} disabled={readOnly} onClick={() => deleteType(dataType)}><Trash2 className="h-3.5 w-3.5" />删除类型</button>
+              </div>
             </div>
           </header>
           <div className="overflow-x-auto p-3">
             <table className="w-full min-w-[780px] border-collapse text-xs">
               <thead><tr className="text-left opacity-65"><th className="pb-2">字段名</th><th>类型</th><th>数组</th><th>默认值</th><th>说明</th><th className="w-28">操作</th></tr></thead>
               <tbody>
+                {dataType.fields.length === 0 && <tr className="border-t border-current/10"><td colSpan={6} className="py-3 text-center text-[11px] opacity-60">暂无字段，点击右上方“添加字段”开始。</td></tr>}
                 {dataType.fields.map((field, fieldIndex) => <tr key={`${field.name}-${field.line}`} className="border-t border-current/10">
-                  <td className="py-1.5 pr-2"><input className={`${input} w-full`} defaultValue={field.name} onBlur={event => renameField(dataType, field, event.target.value)} disabled={readOnly} /></td>
+                  <td className="py-1.5 pr-2"><input className={`${input} w-full`} defaultValue={field.name} ref={el => { const key = fieldKey(dataType.name, field.name); if (el) fieldNameInputs.current.set(key, el); else fieldNameInputs.current.delete(key); }} onBlur={event => renameField(dataType, field, event.target.value)} disabled={readOnly} /></td>
                   <td className="pr-2"><SearchableTypeSelect value={field.type} items={typeCatalog} inputClassName={`${input} w-full`} isDarkMode={isDarkMode} disabled={readOnly} ariaLabel={`${dataType.name}.${field.name} 字段类型`} onCommit={value => value !== field.type && applyEdit('lingcpp.dataField.update', { kind: 'update-data-field', dataTypeName: dataType.name, fieldName: field.name, type: value })} /></td>
                   <td className="pr-2 text-center"><input type="checkbox" checked={Boolean(field.isArray)} onChange={event => applyEdit('lingcpp.dataField.update', { kind: 'update-data-field', dataTypeName: dataType.name, fieldName: field.name, isArray: event.target.checked, initialValue: event.target.checked ? '' : field.initialValue })} disabled={readOnly} /></td>
                   <td className="pr-2"><input className={`${input} w-full`} defaultValue={field.initialValue || ''} onBlur={event => applyEdit('lingcpp.dataField.update', { kind: 'update-data-field', dataTypeName: dataType.name, fieldName: field.name, initialValue: event.target.value })} disabled={readOnly || field.isArray} /></td>
                   <td className="pr-2"><input className={`${input} w-full`} defaultValue={field.note || ''} onBlur={event => applyEdit('lingcpp.dataField.update', { kind: 'update-data-field', dataTypeName: dataType.name, fieldName: field.name, note: event.target.value })} disabled={readOnly} /></td>
                   <td><div className="flex gap-1"><button className={button} disabled={readOnly || fieldIndex === 0} onClick={() => applyEdit('lingcpp.dataField.move', { kind: 'move-data-field', dataTypeName: dataType.name, fieldName: field.name, direction: 'up' })}><ArrowUp className="h-3 w-3" /></button><button className={button} disabled={readOnly || fieldIndex === dataType.fields.length - 1} onClick={() => applyEdit('lingcpp.dataField.move', { kind: 'move-data-field', dataTypeName: dataType.name, fieldName: field.name, direction: 'down' })}><ArrowDown className="h-3 w-3" /></button><button className={button} disabled={readOnly} onClick={() => deleteField(dataType, field)}><Trash2 className="h-3 w-3" /></button></div></td>
                 </tr>)}
-                <tr className="border-t border-current/10">
-                  <td className="pt-2 pr-2"><input className={`${input} w-full`} value={draft.name} onChange={event => setFieldDrafts(current => ({ ...current, [dataType.name]: { ...draft, name: event.target.value } }))} placeholder="新字段" disabled={readOnly} /></td>
-                  <td className="pt-2 pr-2"><SearchableTypeSelect value={draft.type} items={typeCatalog} inputClassName={`${input} w-full`} isDarkMode={isDarkMode} disabled={readOnly} ariaLabel={`${dataType.name} 新字段类型`} onValueChange={value => setFieldDrafts(current => ({ ...current, [dataType.name]: { ...draft, type: value } }))} /></td>
-                  <td className="pt-2 pr-2 text-center"><input type="checkbox" checked={draft.isArray} onChange={event => setFieldDrafts(current => ({ ...current, [dataType.name]: { ...draft, isArray: event.target.checked, initialValue: event.target.checked ? '' : draft.initialValue } }))} disabled={readOnly} /></td>
-                  <td className="pt-2 pr-2"><input className={`${input} w-full`} value={draft.initialValue} onChange={event => setFieldDrafts(current => ({ ...current, [dataType.name]: { ...draft, initialValue: event.target.value } }))} disabled={readOnly || draft.isArray} /></td>
-                  <td className="pt-2 pr-2"><input className={`${input} w-full`} value={draft.note} onChange={event => setFieldDrafts(current => ({ ...current, [dataType.name]: { ...draft, note: event.target.value } }))} disabled={readOnly} /></td>
-                  <td className="pt-2"><button className={button} disabled={readOnly || !draft.name.trim()} onClick={() => { applyEdit('lingcpp.dataField.add', { kind: 'add-data-field', dataTypeName: dataType.name, field: { ...draft, type: resolveBeginnerTypeAlias(typeCatalog, draft.type), note: draft.note || undefined } }); setFieldDrafts(current => ({ ...current, [dataType.name]: EMPTY_FIELD })); }}><Plus className="h-3.5 w-3.5" />添加</button></td>
-                </tr>
               </tbody>
             </table>
           </div>
@@ -186,6 +206,17 @@ export default function ProjectDataTypeEditor(props: ProjectDataTypeEditorProps)
       <div className="flex items-center gap-2 text-[11px] opacity-60"><Search className="h-3.5 w-3.5" />改名会先确认跨文件更新；仍被引用的类型或字段不能删除。</div>
     </div>
   </div>;
+}
+
+function fieldKey(dataTypeName: string, fieldName: string): string {
+  return `${dataTypeName}\u0000${fieldName}`;
+}
+
+function nextFieldName(existingNames: string[]): string {
+  const used = new Set(existingNames);
+  let index = 1;
+  while (used.has(`字段${index}`)) index += 1;
+  return `字段${index}`;
 }
 
 function ensureTypeSource(files: LingCppWorkspaceFile[], filePath: string, sourceCode: string): LingCppWorkspaceFile[] {

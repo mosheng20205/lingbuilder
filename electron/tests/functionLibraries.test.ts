@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -166,4 +168,54 @@ test('依赖资源遇到相同定义时复用，遇到不同定义时阻止覆�
   assert.deepEqual(conflicted.conflicts.map(item => item.name), ['订单', '当前订单']);
   assert.equal(conflicted.dataTypesSource, undefined);
   assert.equal(conflicted.globalsSource, undefined);
+});
+
+test('new_emoji 后端的功能库声明在前、定义排在命令包装之后', async () => {
+  // 回归：功能库内部可以调用任意 new_emoji 命令包装（含较晚生成的宽字符包装），
+  // 因此定义必须排在命令包装之后，而声明要留在前面供运行期事件分发生成的调用使用。
+  const workspaceRoot = path.resolve('..');
+  const manifestPath = path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const enabledModules: InstalledModule[] = [{
+    manifest,
+    installPath: 'builtin://lingbuilder.new_emoji.ui',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }];
+  const project: LingWindowProject = {
+    id: 'library-new-emoji-demo',
+    name: '功能库 new_emoji 演示',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '演示窗口', title: '功能库 new_emoji 演示',
+      description: '功能库调用 new_emoji 命令包装', width: 1280, height: 800, background: '#181825',
+      designerBackend: 'new-emoji', controls: []
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules,
+    lingCppSources: [
+      {
+        filePath: 'src/功能库/卡片页.lcpp',
+        sourceCode: '功能库 卡片页\n公开:\n  空 建卡片(NE面板 父容器)\n    局部 NE标签页 演示标签页 = 控件_创建NE标签页(父容器, 24, 24, 620, 36, "预览|代码", "MK001", 1)\n    NE标签页_设置标签项(演示标签页, "预览|代码")\n  结束\n结束功能库\n'
+      },
+      {
+        filePath: 'src/演示窗口.lcpp',
+        sourceCode: '类 演示窗口 : 窗口\n  事件 创建完毕()\n    局部 NE容器 根容器 = 控件_创建NE容器(当前窗口, 0, 0, 1200, 700, "MKROOT", "根容器", 1)\n    卡片页.建卡片(根容器)\n  结束\n结束类\n'
+      }
+    ]
+  });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const declarationIndex = cpp.indexOf('static void LBFL_卡片页_建卡片(LingControlRef 父容器);');
+  const definitionIndex = cpp.indexOf('static void LBFL_卡片页_建卡片(LingControlRef 父容器) {');
+  const wrapperDefinitionIndex = cpp.indexOf('static bool NE标签页_设置标签项(const wchar_t* controlName');
+  const callIndex = cpp.indexOf('LBFL_卡片页_建卡片(根容器);');
+  assert.ok(declarationIndex >= 0, '功能库应生成前置声明');
+  assert.ok(definitionIndex >= 0, '功能库应生成定义');
+  assert.ok(wrapperDefinitionIndex >= 0, 'new_emoji 宽字符包装应生成定义');
+  assert.ok(callIndex >= 0, '窗口类应生成功能库调用');
+  assert.ok(declarationIndex < wrapperDefinitionIndex, '功能库声明必须早于命令包装，事件分发才能调用');
+  assert.ok(definitionIndex > wrapperDefinitionIndex, '功能库定义必须晚于命令包装，否则包装不可见（C3861）');
 });

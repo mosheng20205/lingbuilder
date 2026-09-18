@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "float-verify-solution",
+  "name": "float 验证",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "float-type-verify",
+  "startupProjectIds": [
+    "float-type-verify"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "float-type-verify",
+      "name": "单精度浮点验证",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

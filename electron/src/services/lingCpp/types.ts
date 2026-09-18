@@ -156,6 +156,8 @@ export type LingCppAstNodeKind =
   | 'dll-library'
   | 'dll-command'
   | 'dll-arch'
+  | 'dll-struct'
+  | 'dll-struct-field'
   | 'class'
   | 'access'
   | 'member'
@@ -251,6 +253,8 @@ export interface WorkspaceEditProposal {
   designerProject?: LingWindowProject;
   /** 生成提案时的设计器快照，用于应用前检测外部修改。 */
   designerProjectOriginal?: LingWindowProject;
+  /** 提案生成时校验通过的允许控件类型集合；应用侧复用同一集合，避免模块贡献类型被默认集合误拒。 */
+  designerAllowedControlTypes?: string[];
 }
 
 export interface LingCppWorkspaceFile {
@@ -284,6 +288,28 @@ export interface LingCppDllArchitectureFile {
   line: number;
 }
 
+/** 项目 DLL 命令库结构体字段：类型支持 整数型/长整数型/小数型/逻辑型/字节型/指针整数/文本型[定长]。 */
+export interface LingCppDllStructField {
+  name: string;
+  type: string;
+  /** 文本型字段必须给定宽字符数组长度（如 szExeFile[260] 的 260）；其余类型不支持。 */
+  arrayLength?: number;
+  note?: string;
+  line: number;
+}
+
+/** 项目 DLL 命令库结构体：命令结构体参数按指针传递，调用端以长整数型句柄 + 自动取/置命令操作。 */
+export interface LingCppDllStruct {
+  name: string;
+  line: number;
+  /**
+   * 别名写法「结构体 名称 = 真实SDK类型名」：不生成结构体定义，C++ 侧直接使用 SDK 真实类型
+   * （需配合「头文件 = xxx.h」引入 SDK 头文件）。系统 DLL 命令的结构体参数必须用别名写法。
+   */
+  aliasTypeName?: string;
+  fields: LingCppDllStructField[];
+}
+
 /** 项目 DLL 命令库单条导出声明：命令名默认即 DLL 导出函数名，可用 `= 导出名` 指定不同导出名。 */
 export interface LingCppDllCommand {
   name: string;
@@ -306,8 +332,17 @@ export interface LingCppDllLibrary {
   endLine?: number;
   /** 系统 DLL（user32/gdi32 等）：免分发、不复制、不生成导入库，链接系统导入库。 */
   isSystem?: boolean;
+  /**
+   * 加载方式 = 内存：DLL 以 RCDATA 内嵌进 EXE 并手工映射到内存（不落盘、不生成导入库），
+   * 导出函数在首次调用时按名解析；需要启用 lingbuilder.advanced.memorydll 模块。
+   */
+  memoryLoad?: boolean;
   archFiles: LingCppDllArchitectureFile[];
   commands: LingCppDllCommand[];
+  /** 库内声明的结构体（结构体块），供结构体参数与自动取/置命令使用。 */
+  structs: LingCppDllStruct[];
+  /** 头文件 = xxx.h：生成 C++ 时额外 #include 的 SDK 头文件（如 tlhelp32.h）。 */
+  sdkHeaders: string[];
 }
 
 export interface LingCppProjectDllCommandContext {
@@ -327,6 +362,12 @@ export interface LingCppEditContext {
   filePath: string;
   sourceCode: string;
   instruction: string;
+  /**
+   * 设计器联动严格度：strict（缺省，系统 AI planner 路径）在指令涉及布局词但
+   * 草稿缺设计器模型时拒绝；caller-draft（外部 AI 自带完整文件草稿的 MCP/REST
+   * 路径）允许纯源码提案，避免「修控件引用 typo 被布局词误拦」。
+   */
+  designerEditPolicy?: 'strict' | 'caller-draft';
   /** 当前活动解决方案项目 ID；用于阻止跨项目设计器模型混用。 */
   projectId?: string;
   selection?: WorkspaceEditRange;

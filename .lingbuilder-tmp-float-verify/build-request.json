@@ -1,0 +1,27 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "float-type-verify",
+    "name": "单精度浮点验证",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "Main.xml",
+        "className": "主窗口",
+        "title": "float 验证",
+        "width": 480,
+        "height": 360,
+        "background": "#1E1E24",
+        "description": "",
+        "events": {
+          "Loaded": "_主窗口_创建完毕"
+        },
+        "controls": [
+          { "id": "label-1", "type": "Label", "name": "结果标签", "content": "就绪", "x": 16, "y": 16, "width": 440, "height": 26, "fontSize": 13, "background": "transparent", "foreground": "#FFFFFF", "isEnabled": true, "visibility": "Visible" }
+        ]
+      }
+    ]
+  },
+  "activeWindowId": "main-window",
+  "approved": true
+}
