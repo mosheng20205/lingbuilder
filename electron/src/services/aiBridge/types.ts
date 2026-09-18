@@ -84,7 +84,14 @@ export interface AiBridgeEditProposeRequest {
   selection?: WorkspaceEditRange;
   workspaceFiles?: LingCppWorkspaceFile[];
   aiConfig?: AiConnectionConfig;
-  files?: Array<{ filePath: string; updatedSource: string }>;
+  files?: Array<{
+    filePath: string;
+    updatedSource?: string;
+    /** 按行数组（不含行尾换行符），服务端以 \n 拼接为完整内容；换行无需 JSON 转义。 */
+    updatedLines?: string[];
+    /** 行级增量替换（1 起、含端点），服务端基于磁盘当前内容应用。 */
+    edits?: Array<{ startLine: number; endLine?: number; newText: string }>;
+  }>;
   designerProject?: LingWindowProject;
   updatedDesignerProject?: LingWindowProject;
 }
@@ -98,7 +105,9 @@ export interface AiBridgeEditApplyRequest {
 }
 
 export interface AiBridgeBuildRunRequest {
-  project: LingWindowProject;
+  project?: LingWindowProject;
+  /** project 缺省时按该 ID 读取磁盘设计器模型（项目必须已在解决方案注册）。 */
+  projectId?: string;
   activeWindowId?: string;
   lingCppSourceCode?: string;
   lingCppSourceFilePath?: string;
@@ -108,7 +117,9 @@ export interface AiBridgeBuildRunRequest {
 }
 
 export interface AiBridgeNativeRequest {
-  project: LingWindowProject;
+  project?: LingWindowProject;
+  /** project 缺省时按该 ID 读取磁盘设计器模型（项目必须已在解决方案注册）。 */
+  projectId?: string;
   activeWindowId?: string;
   lingCppSourceCode?: string;
   lingCppSourceFilePath?: string;

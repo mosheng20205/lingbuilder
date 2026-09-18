@@ -113,7 +113,9 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     const diagnosticsTool = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
     assert.ok((diagnosticsTool?.inputSchema as any)?.properties?.designerProject, 'MCP diagnostics must accept the designer model');
     const buildTool = tools.tools.find(tool => tool.name === 'lingbuilder.build.run');
-    assert.match(String((buildTool?.description || '')), /designerProject/u);
+    assert.match(String((buildTool?.description || '')), /推荐只传 projectId/u);
+    assert.match(String((buildTool?.description || '')), /磁盘设计器模型/u);
+    assert.ok((buildTool?.inputSchema as any)?.properties?.projectId, 'MCP build.run 必须接受 projectId');
     const result = await client.callTool({ name: 'lingbuilder.file.read', arguments: { filePath: 'README.md' } });
     assert.match(JSON.stringify(result), /LingBuilder MCP shared transport/u);
     const statusResponse = await fetch(`${endpoint}/status`, { headers: { Authorization: 'Bearer shared-mcp-secret-token' } });
@@ -1856,6 +1858,168 @@ test('AI Bridge native preview warns when the passed designer model diverges fro
   assert.equal(result.ok, true);
   assert.ok(result.logs.some(line => line.includes('不一致')), JSON.stringify(result.logs));
   assert.ok(result.logs.some(line => line.includes('updatedDesignerProject') || line.includes('重新读取')), JSON.stringify(result.logs));
+});
+
+test('AI Bridge designer comparisons are key-order insensitive and drift detection uses the disk baseline', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/demo/Main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  const designerProject = createDesignerFallbackProject('demo', '键序测试项目');
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(designerProject, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '键序测试项目' });
+
+  // 深度打乱键序（含嵌套对象）但内容等价：磁盘文件按原顺序写入，caller 模型按乱序键传入。
+  const shuffleKeys = <T extends object>(value: T): T => {
+    if (Array.isArray(value)) return value.map(item => (item && typeof item === 'object' ? shuffleKeys(item as object) : item)) as unknown as T;
+    const keys = Object.keys(value).reverse();
+    return Object.fromEntries(keys.map(key => [key, (value as Record<string, unknown>)[key]])) as T;
+  };
+  const shuffledCallerModel = shuffleKeys(JSON.parse(JSON.stringify(designerProject)));
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const nextDesignerProject = shuffleKeys(JSON.parse(JSON.stringify(designerProject)));
+  nextDesignerProject.windows[0].controls[0].content = '75';
+  (nextDesignerProject.windows[0].controls[0] as { properties?: Record<string, unknown> }).properties!.value = 75;
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '把加载进度改为 75%，同时更新窗口布局模型',
+    designerProject: shuffledCallerModel as LingWindowProject,
+    updatedDesignerProject: nextDesignerProject as LingWindowProject,
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 键序等价\n` }]
+  });
+  // 旧实现（JSON.stringify 顺序敏感）在这里必然抛「与磁盘版本不一致」；深比较后必须放行。
+  const applied = await service.applyEdit({
+    proposalId: proposal.proposal.id,
+    approved: true,
+    designerProject: shuffleKeys(JSON.parse(JSON.stringify(designerProject))) as LingWindowProject
+  });
+  assert.equal(applied.ok, true);
+  assert.equal(JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8')).windows[0].controls[0].properties.value, 75);
+  await service.shutdown();
+});
+
+test('AI Bridge edit.propose supports updatedLines and line-range edits with inline size guard', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/inc/Main.lcpp';
+  const lines = ['类 Main', '    事件 创建完毕()', '        调试输出("起点")', '    结束', '结束类'];
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), `${lines.join('\n')}\n`, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'incremental-token'));
+  try {
+    // updatedLines：整文件按行数组，无需 \n 转义。
+    const byLines = await service.proposeEdit({
+      filePath: sourcePath,
+      instruction: '按行数组重写源码',
+      files: [{ filePath: sourcePath, updatedLines: [...lines, '// 按行追加'] }]
+    });
+    await service.applyEdit({ proposalId: byLines.proposal.id, approved: true });
+    // updatedLines 按 \n 拼接、不额外追加行尾换行；需要尾随换行时由调用方以空行结尾表达。
+    assert.equal(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), [...lines, '// 按行追加'].join('\n'));
+
+    // edits：行级增量替换（第 3 行替换为两行）。
+    const byEdits = await service.proposeEdit({
+      filePath: sourcePath,
+      instruction: '替换调试输出行',
+      files: [{ filePath: sourcePath, edits: [{ startLine: 3, endLine: 3, newText: '        调试输出("第一行")\n        调试输出("第二行")' }] }]
+    });
+    await service.applyEdit({ proposalId: byEdits.proposal.id, approved: true });
+    const afterEdit = await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8');
+    assert.match(afterEdit, /第一行[\s\S]*第二行/u);
+    assert.match(afterEdit, /按行追加/u);
+
+    // 三选一约束与体积护栏。
+    await assert.rejects(
+      () => service.proposeEdit({ filePath: sourcePath, instruction: '缺内容', files: [{ filePath: sourcePath }] }),
+      /必须且只能提供 updatedSource、updatedLines、edits 之一/u
+    );
+    await assert.rejects(
+      () => service.proposeEdit({ filePath: sourcePath, instruction: '超大内联', files: [{ filePath: sourcePath, updatedSource: '甲'.repeat(200_000) }] }),
+      /256 KB 内联上限；请改用 updatedLines/u
+    );
+    await assert.rejects(
+      () => service.proposeEdit({ filePath: sourcePath, instruction: '越界增量', files: [{ filePath: sourcePath, edits: [{ startLine: 999, newText: 'x' }] }] }),
+      /超出当前文件行数/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge rejects non-object designer model shapes with a guiding schema error', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    await fs.mkdir(path.join(workspaceRoot, 'src'), { recursive: true });
+    await fs.writeFile(path.join(workspaceRoot, 'src', 'main.lcpp'), '类 Main\n结束类\n', 'utf8');
+    await assert.rejects(
+      () => service.proposeEdit({
+        filePath: 'src/main.lcpp',
+        instruction: '尝试把设计器模型作为字符串传入',
+        designerProject: JSON.stringify(createDesignerFallbackProject('demo', '字符串模型')) as unknown as LingWindowProject,
+        files: [{ filePath: 'src/main.lcpp', updatedSource: '类 Main\n结束类\n// x\n' }]
+      }),
+      /designerProject 必须是 JSON object，收到 string/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge build and preview tools resolve the designer model from projectId and fail with guidance when both inputs are missing', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'project-id-preview';
+  const designerProject = createDesignerFallbackProject(projectId, '按 ID 预览');
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(designerProject, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '按 ID 预览' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const preview = await service.nativePreview({ projectId });
+  assert.equal(preview.ok, true);
+  assert.equal(preview.logs.some(line => line.includes('不一致')), false, JSON.stringify(preview.logs));
+
+  await assert.rejects(() => service.nativePreview({}), /需要 project（完整设计器模型）或 projectId/u);
+  await assert.rejects(() => service.buildRun({}), /需要 project（完整设计器模型）或 projectId/u);
+  await assert.rejects(() => service.nativePreview({ projectId: 'ghost' }), /未在解决方案/u);
+  await service.shutdown();
+});
+
+test('AI Bridge designer deletion guard error tells the caller how to unlock deletion', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/del/Main.lcpp';
+  const projectId = 'del-guard';
+  const designerProject = createDesignerFallbackProject(projectId, '删除守卫');
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), '类 Main\n结束类\n', 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(designerProject, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '删除守卫' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    const removed = JSON.parse(JSON.stringify(designerProject)) as LingWindowProject;
+    removed.windows[0].controls = [];
+    await assert.rejects(
+      () => service.proposeEdit({
+        filePath: sourcePath,
+        projectId,
+        instruction: '调整窗口布局',
+        updatedDesignerProject: removed,
+        files: [{ filePath: sourcePath, updatedSource: '类 Main\n结束类\n// x\n' }]
+      }),
+      /请在 instruction 中明确写出「删除\/移除\/去掉\/清除」/u
+    );
+  } finally {
+    await service.shutdown();
+  }
 });
 
 test('AI Bridge native export writes Visual Studio project files', async () => {

@@ -31,23 +31,32 @@ test('AI Bridge center exposes one-click lifecycle, clients, shared MCP, CLI, pe
   assert.match(source, /event\.key === 'Tab'/u);
 });
 
-test('AI Bridge center remembers last successful start settings including the custom token', async () => {
+test('AI Bridge center persists settings on edit in stopped state without clobbering the running snapshot', async () => {
   const [componentSource, mainSource, preloadSource, dtsSource] = await Promise.all([
     fs.readFile(path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'), 'utf8'),
     fs.readFile(path.resolve(import.meta.dirname, '../electron/main.ts'), 'utf8'),
     fs.readFile(path.resolve(import.meta.dirname, '../electron/preload.ts'), 'utf8'),
     fs.readFile(path.resolve(import.meta.dirname, '../src/electron-api.d.ts'), 'utf8')
   ]);
-  // 组件：打开连接中心时回填上次启动设置（运行中快照优先）。
+  // 组件：打开连接中心时回填上次设置（运行中快照优先），停止态编辑防抖自动保存。
   assert.match(componentSource, /loadStartSettings/u);
-  assert.match(componentSource, /已记住上次成功启动的设置/u);
-  assert.match(componentSource, /启动成功后自动保存到本机加密存储/u);
+  assert.match(componentSource, /停止态修改后自动保存到本机加密存储/u);
+  assert.match(componentSource, /saveStartSettings/u);
   assert.match(componentSource, /bridgeRef\.current\.state === 'running'/u);
-  // 主进程：start 成功后写设置（safeStorage 加密），并提供独立 load IPC。
+  // 权限选择只触发桌面客户端重新检测，不得连带回滚启动设置（effect 解耦）。
+  assert.match(componentSource, /\}, \[desktopApi, inspectCli, loadBridgeStatus, open, refreshClients\]\);/u);
+  assert.match(componentSource, /\}, \[desktopApi, open, refreshCodexDesktop\]\);/u);
+  // 生命周期下拉在接线前属假设置，已从 UI 移除（内部固定 workspace）。
+  assert.doesNotMatch(componentSource, /生命周期<select/u);
+  // 主进程：start 成功后仍写设置并暴露独立 load/save IPC，保存失败回传 settingsError。
   assert.match(mainSource, /writeAiBridgeStartSettings/u);
   assert.match(mainSource, /ai-bridge:start-settings:load/u);
+  assert.match(mainSource, /ai-bridge:start-settings:save/u);
+  assert.match(mainSource, /settingsError/u);
   assert.match(preloadSource, /loadStartSettings: \(\) => ipcRenderer\.invoke\('ai-bridge:start-settings:load'\)/u);
+  assert.match(preloadSource, /saveStartSettings: \(settings: unknown\) => ipcRenderer\.invoke\('ai-bridge:start-settings:save', settings\)/u);
   assert.match(dtsSource, /loadStartSettings/u);
+  assert.match(dtsSource, /saveStartSettings/u);
 });
 
 test('workbench and packaged desktop expose the managed Bridge center through discoverable entries and IPC', async () => {
@@ -59,6 +68,7 @@ test('workbench and packaged desktop expose the managed Bridge center through di
   ]);
   assert.match(appSource, /workbench\.action\.help\.openCliGuide/u);
   assert.match(appSource, /AI Bridge 连接中心\.\.\./u);
+  assert.match(appSource, /AiBridgeTitleBarBadge/u);
   assert.match(mainSource, /docs:open-cli-manual/u);
   assert.match(mainSource, /cli:inspect/u);
   assert.match(mainSource, /ai-bridge:start/u);

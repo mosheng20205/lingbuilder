@@ -282,7 +282,9 @@ http://127.0.0.1:3001/
 - ChatGPT/Codex Windows 桌面客户端是独立接入面，不按 `codex` PATH 判断。`CodexDesktopIntegrationService` 检测 `OpenAI.Codex` MSIX 包和 `ChatGPT` 进程，在当前工作区 `.codex/config.toml` 管理 `mcp_servers.lingbuilder_desktop` 段，并通过 `--mcp --stdio-only` 让 Codex 直接拉起当前安装包内的 CLI。该模式不监听端口、不使用或持久化 Token；配置晚于桌面进程启动时必须显示重启提示。
 - 桌面 MCP 配置必须保留用户其他 TOML 内容；遇到非 LingBuilder 托管的同名服务必须先显示冲突并获得替换确认。安装路径或权限变化时显示“需要更新”，移除操作只能删除 LingBuilder 托管段。
 - 连接中心检测 Codex CLI、Claude Code、Gemini CLI，并由主进程创建带临时环境变量的 IDE PTY。Codex 使用会话级配置覆盖；Claude Code 与 Gemini CLI 的托管 JSON 只包含环境变量占位符，不保存 Token，也不修改客户端全局配置。
-- 状态页展示当前端口、权限、生命周期、MCP/HTTP 地址、已连接客户端、最近工具调用和脱敏进程日志。`readonly`、`preview`、`yolo` 权限语义不变，启用 `yolo` 必须二次确认。
+- 高级设置（端口/权限/自定义 Token）在 **Bridge 停止态编辑即防抖自动持久化**（`ai-bridge:start-settings:save` → userData，Token 用 safeStorage 加密、绝不落明文），启动成功后再写一次；持久化失败经 `settingsError` 红条明示。「生命周期」下拉因主进程未消费已移除（内部固定 `workspace`）。自定义 Token 统一要求 24–256 个可见 ASCII 字符，字段带实时中文校验提示。
+- 状态页展示当前端口、权限、MCP/HTTP 地址、已连接客户端、最近工具调用和脱敏进程日志。`readonly`、`preview`、`yolo` 权限语义不变，启用 `yolo` 必须二次确认（会话内确认，不持久化）。Bridge 启动失败会转述 CLI 子进程的中文诊断（如端口占用），不再只报退出码；一次瞬时状态刷新失败的红条在下次刷新成功后自动清除。运行中提供「重启 Bridge」；使用自定义 Token 启动时「重新生成 Token」禁用并提示改走停止→修改→重启。
+- 标题栏常驻 `AiBridgeTitleBarBadge`：Bridge 运行中显示 `Bridge :端口 · 客户端数`，点击直接打开连接中心；关闭连接中心后运行状态依然可见。
 - Bridge 只能监听回环地址。切换工作区或退出 IDE 必须停止受管 Bridge，不能让旧工作区服务残留；关闭连接中心本身不会停止 Bridge。
 
 ## Windows 打包与安装版冒烟
@@ -433,6 +435,8 @@ MCP 模式使用 stdio JSON-RPC，暴露工具包括：
 - `lingbuilder.module.install`
 
 `modules.list`（2026-09-18 起）只返回模块摘要（id、名称、版本、命令数、文档路径、启用状态）并附 `lingbuilder.module.info` 提示；完整 manifest（部分模块有数千条命令、体积达数 MB）不再随列表返回，外部 AI 需要命令签名/参数说明时用 `module.info` 按 moduleId 查询（`query` 按命令名或描述过滤、`includeAdvanced` 展开高级命令、超过 500 条自动截断）。`edit.propose` 的 `workspaceFiles` 可省略：服务端按 `files[]` 清单自动读取工作区当前内容，磁盘上不存在的路径按新建空文件处理；显式传入 `workspaceFiles` 时，未提供基准的草稿文件会被拒绝（不再静默丢弃）。外部 AI 自带草稿的提案允许纯源码修改，即使指令里出现「控件/窗口/布局」等词也不会被设计器联动校验误拦（严格模式仅用于系统 AI planner 路径）。响应体量已按外部 AI 上下文优化：`project.create` 批准后只回文件元数据，`build.run` 不回传 sourceMap，`edit.propose`/`edit.apply` 只回提案 ID、变更位置和文件元数据——单轮「提案→应用→诊断→构建」的响应总量从约 112KB 降到约 18KB。MCP Server 在 InitializeResult 中下发中文 `instructions`，引导外部 AI 按「模板 → 创建 → 提案编辑 → 诊断 → 构建运行 → 运行期观测」的标准工作流操作。
+
+外部 AI 传输脆弱性修复（2026-09-18 起，针对真实会话中 `tool input is invalid JSON` 与「键序不同即假失败」的结构性根因）：`edit.propose` 的 `files[]` 每项在 `updatedSource`（全量）/ `updatedLines`（按行数组，换行零转义）/ `edits`（行级增量，`startLine`/`endLine` 从 1 起含端点、基于磁盘当前内容、区间不得重叠）三选一，单文件内联全量上限 256 KB、超限返回指导改用增量形态的中文错误；`build.run`/`native.preview`/`native.export` 支持只传 `projectId`（服务端经 `resolveNativeDesignerProject` 读取已注册项目的磁盘设计器模型，一次构建从重发全量模型缩为 `{ projectId, run: true }`）。设计器模型一致性比较（apply 双守卫与构建漂移警告）全部改为 `areDesignerProjectsEquivalent` 键顺序不敏感深比较，caller 显式传 `designerProject` 时漂移基准改取磁盘快照；`designerProject`/`updatedDesignerProject`/`project` 收到字符串等非法形态在入口返回「必须是 JSON object，收到 string」级中文 schema 错误；删除守卫错误信息补充解锁方式（在 instruction 写明删除关键词）。`MCP_INSTRUCTIONS` 与三个工具描述已同步新契约（引导语不改则模型行为不变）。
 
 设计器上下文语义（2026-09-12 起）：
 

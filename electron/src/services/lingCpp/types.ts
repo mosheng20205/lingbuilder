@@ -375,6 +375,12 @@ export interface LingCppEditContext {
   moduleContext?: LingCppModuleContext;
   aiConfig?: AiConnectionConfig;
   designerProject?: LingWindowProject;
+  /**
+   * 提案生成时磁盘上的设计器快照（仅 AI Bridge 外部 AI 路径在 caller 显式传入
+   * designerProject 时填充）。apply 阶段的「提案后漂移检测」以它为基准；
+   * 缺省时退回 designerProject（系统 AI planner 路径两者一致）。
+   */
+  designerProjectDiskBaseline?: LingWindowProject;
 }
 
 export interface LingCppEditDraftFile {

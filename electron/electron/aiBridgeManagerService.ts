@@ -135,6 +135,7 @@ export class AiBridgeManagerService {
 
     let stdoutBuffer = '';
     let stderrBuffer = '';
+    let lastStderrLine = '';
     let resolveReady!: (value: { origin: string; port: number }) => void;
     let rejectReady!: (reason: Error) => void;
     const ready = new Promise<{ origin: string; port: number }>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
@@ -150,6 +151,7 @@ export class AiBridgeManagerService {
       if (source === 'stdout') stdoutBuffer = lines.pop() || ''; else stderrBuffer = lines.pop() || '';
       for (const line of lines) {
         if (!line.trim()) continue;
+        if (source === 'stderr') lastStderrLine = line.trim();
         this.appendLog(line.trim());
         if (!line.startsWith(READY_PREFIX)) continue;
         try {
@@ -167,10 +169,11 @@ export class AiBridgeManagerService {
     child.once('exit', code => {
       if (this.process !== child) return;
       this.process = null;
-      settleReady(new Error(`AI Bridge 在启动完成前退出，退出码 ${code ?? '未知'}。`));
+      const exitDetail = lastStderrLine || `退出码 ${code ?? '未知'}`;
+      settleReady(new Error(`AI Bridge 在启动完成前退出：${exitDetail}`));
       if (this.stopExpected) return;
       this.token = '';
-      this.snapshotValue = { ...this.snapshotValue, state: 'error', pid: null, tokenAvailable: false, tokenMasked: '', activeClients: 0, clients: [], error: `AI Bridge 进程意外退出，退出码 ${code ?? '未知'}。` };
+      this.snapshotValue = { ...this.snapshotValue, state: 'error', pid: null, tokenAvailable: false, tokenMasked: '', activeClients: 0, clients: [], error: `AI Bridge 进程意外退出：${exitDetail}` };
       this.emit();
     });
 
@@ -236,6 +239,7 @@ export class AiBridgeManagerService {
       if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : `HTTP ${response.status}`);
       this.snapshotValue = {
         ...this.snapshotValue,
+        error: '',
         activeClients: Number.isInteger(result.activeClients) ? result.activeClients as number : 0,
         clients: Array.isArray(result.clients) ? result.clients.slice(0, 50) as ManagedAiBridgeClient[] : [],
         recentActivity: Array.isArray(result.recentActivity) ? result.recentActivity.slice(0, 100) as ManagedAiBridgeActivity[] : []
@@ -284,7 +288,10 @@ function validatePermission(value: string): ManagedAiBridgePermission {
 function validateToken(value?: string): string {
   const token = value?.trim() || '';
   if (!token) return '';
-  if (token.length < 24 || token.length > 256 || /[\s\0]/u.test(token)) throw new Error('自定义 Token 必须为 24 至 256 个不含空白的字符。');
+  // 与 aiBridgeStartSettings.normalizeAiBridgeStartSettings 保持同一口径，避免「能启动但无法持久化」。
+  if (token.length < 24 || token.length > 256 || /[^\x21-\x7e]/u.test(token)) {
+    throw new Error('自定义 Token 必须为 24 至 256 个不含空白的可见 ASCII 字符。');
+  }
   return token;
 }
 

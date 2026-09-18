@@ -38,7 +38,7 @@ export function normalizeAiBridgeStartSettings(input: unknown): AiBridgeStartSet
   const port = Number(value.port);
   const permission = String(value.permission || '') as ManagedAiBridgePermission;
   const lifecycle = String(value.lifecycle || '') as ManagedAiBridgeLifecycle;
-  if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return undefined;
   if (!PERMISSIONS.includes(permission)) return undefined;
   if (!LIFECYCLE_VALUES.includes(lifecycle)) return undefined;
   const token = typeof value.token === 'string' ? value.token : '';

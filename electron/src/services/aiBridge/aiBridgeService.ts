@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { applyWorkspaceEditToFiles, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
+import { applyWorkspaceEditToFiles, areDesignerProjectsEquivalent, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
@@ -378,6 +378,12 @@ export class AiBridgeService {
       ? request.sourceCode
       : (await this.readFile(request.filePath)).content;
     const designerContext = await this.resolveDesignerContext(request.designerProject, request.projectId);
+    if (request.updatedDesignerProject !== undefined) assertDesignerProjectShape(request.updatedDesignerProject, 'updatedDesignerProject');
+    const workspaceFiles = await this.resolveEditWorkspaceFiles(request);
+    const proposedFiles = await this.normalizeProposedFiles(request, workspaceFiles);
+    const designerProjectDiskBaseline = designerContext.source === 'caller'
+      ? await this.readDesignerDiskBaselineFor(designerContext.project, request.projectId)
+      : undefined;
     const context: LingCppEditContext = {
       filePath: normalizeFilePath(request.filePath),
       sourceCode: normalizeLineEndings(sourceCode),
@@ -385,15 +391,16 @@ export class AiBridgeService {
       // 外部 AI 自带完整文件草稿（无 planner）时允许纯源码提案；系统 AI planner 路径保持严格。
       designerEditPolicy: planner ? 'strict' : 'caller-draft',
       selection: request.selection,
-      workspaceFiles: await this.resolveEditWorkspaceFiles(request),
+      workspaceFiles,
       moduleContext: await this.getModuleContext(request.projectId),
       aiConfig: request.aiConfig,
-      designerProject: designerContext.source === 'none' ? undefined : designerContext.project
+      designerProject: designerContext.source === 'none' ? undefined : designerContext.project,
+      designerProjectDiskBaseline
     };
-    if (!planner && !request.files?.length) {
+    if (!planner && !proposedFiles?.length) {
       throw new Error('当前独立 AI Bridge 未配置系统 AI planner；请由外部 AI 提供 files 完整文件草稿后再创建提案。');
     }
-    const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: request.files, designerProject: request.updatedDesignerProject };
+    const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: proposedFiles, designerProject: request.updatedDesignerProject };
     if (draft.designerProject) await this.assertDesignerProjectRegistered(draft.designerProject.id);
     const proposal = proposeLingCppEdit(context, draft);
     // 响应瘦身：草稿全文不回传（服务端已留存，apply 只需 proposalId）。
@@ -432,10 +439,13 @@ export class AiBridgeService {
       // an assertion of what it observed, never an authority that can bypass
       // external edits made after the proposal was created.
       const currentDesignerProject = await this.solutionService.readDesignerProject(projectRef);
-      if (request.designerProject && JSON.stringify(request.designerProject) !== JSON.stringify(currentDesignerProject)) {
-        throw new Error('提交应用的窗口设计器模型与磁盘版本不一致，请重新读取并生成提案。');
+      if (request.designerProject !== undefined) {
+        assertDesignerProjectShape(request.designerProject, 'designerProject');
+        if (!areDesignerProjectsEquivalent(request.designerProject, currentDesignerProject)) {
+          throw new Error('提交应用的窗口设计器模型与磁盘版本不一致，请重新读取并生成提案。');
+        }
       }
-      if (proposal.designerProjectOriginal && JSON.stringify(currentDesignerProject) !== JSON.stringify(proposal.designerProjectOriginal)) {
+      if (proposal.designerProjectOriginal && !areDesignerProjectsEquivalent(currentDesignerProject, proposal.designerProjectOriginal)) {
         throw new Error('窗口设计器模型在 AI 提案生成后已发生变化，请重新生成提案。');
       }
       // 与服务端 apply 一致：复用提案生成时校验通过的允许类型集合，
@@ -835,7 +845,34 @@ export class AiBridgeService {
     }
   }
 
+  /**
+   * 构建/预览/导出的设计器模型解析：显式传入完整 project 优先；缺省按 projectId 读取磁盘快照。
+   * 外部 AI 因此不必每次重发全量模型——磁盘模型即 IDE 设计器的权威状态。
+   */
+  private async resolveNativeDesignerProject(
+    request: { project?: LingWindowProject; projectId?: string },
+    toolLabel: string
+  ): Promise<LingWindowProject> {
+    if (request.project !== undefined) {
+      assertDesignerProjectShape(request.project, 'project');
+      return request.project;
+    }
+    const projectId = typeof request.projectId === 'string' ? request.projectId.trim() : '';
+    if (!projectId) {
+      throw new Error(`${toolLabel} 需要 project（完整设计器模型）或 projectId（按已注册项目读取磁盘模型）二者之一；推荐只传 projectId。`);
+    }
+    const solution = await this.solutionService.getSolution();
+    const projectRef = solution.projects.find(item => item.id === projectId);
+    if (!projectRef) throw new Error(`项目“${projectId}”未在解决方案（.lingbuilder/solution.json）中注册，无法读取磁盘设计器模型。`);
+    const snapshot = await this.solutionService.readDesignerProjectSnapshot(projectRef);
+    if (!snapshot.persisted) {
+      throw new Error(`项目“${projectId}”的磁盘设计器模型缺失或无效（${projectRef.designerPath}）；请先通过 edit.apply 同步布局或重新创建项目。`);
+    }
+    return snapshot.project;
+  }
+
   async nativePreview(request: AiBridgeNativeRequest) {
+    request.project = await this.resolveNativeDesignerProject(request, 'lingbuilder.native.preview');
     const projectId = request.project.id || 'lingbuilder-ui-project';
     const [enabledModules, lingCppSources] = await Promise.all([
       this.moduleService.getEnabledProjectModules(projectId),
@@ -894,6 +931,7 @@ export class AiBridgeService {
   }
 
   async nativeExport(request: AiBridgeNativeRequest) {
+    request.project = await this.resolveNativeDesignerProject(request, 'lingbuilder.native.export');
     await this.requireWriteWithAudit('native.export', request.project?.id, request.approved);
     try {
       const preview = await this.nativePreview(request);
@@ -971,8 +1009,10 @@ export class AiBridgeService {
   }
 
   async buildRun(request: AiBridgeBuildRunRequest) {
-    const projectId = sanitizeFilename((request.project.id || 'window-preview').trim());
+    // captureAdmission 必须保持在第一个 await 之前：跨入口停止代次竞态检测依赖这个同步前缀。
+    const projectId = sanitizeFilename((request.project?.id || request.projectId || 'window-preview').trim());
     const buildAdmission = this.projectBuildCoordinator.captureAdmission(projectId);
+    request.project = await this.resolveNativeDesignerProject(request, 'lingbuilder.build.run');
     await this.requireExecuteWithAudit('build.run', request.project?.id, request.approved);
     if (this.runAdmissionClosed || this.shuttingDown) {
       return await this.createCancelledBuildResult(
@@ -1639,7 +1679,10 @@ export class AiBridgeService {
     designerProject: LingWindowProject | undefined,
     projectId?: string
   ): Promise<AiBridgeDesignerContextResolution> {
-    if (designerProject) return { source: 'caller', project: designerProject };
+    if (designerProject !== undefined) {
+      assertDesignerProjectShape(designerProject, 'designerProject');
+      return { source: 'caller', project: designerProject };
+    }
     if (!projectId) return { source: 'none', reason: 'missing-project-id' };
     const solution = await this.solutionService.getSolution();
     const projectRef = solution.projects.find(item => item.id === projectId);
@@ -1726,7 +1769,7 @@ export class AiBridgeService {
       if (!projectRef) return undefined;
       const snapshot = await this.solutionService.readDesignerProjectSnapshot(projectRef);
       if (!snapshot.persisted) return undefined;
-      if (JSON.stringify(snapshot.project) === JSON.stringify(project)) return undefined;
+      if (areDesignerProjectsEquivalent(snapshot.project, project)) return undefined;
       return `警告：传入的窗口设计器模型与磁盘版本（${projectRef.designerPath}）不一致，生成结果可能与 IDE 设计器脱节；请重新读取最新设计器模型后重试，或先通过 lingbuilder.edit.apply 同步磁盘。`;
     } catch {
       return undefined;
@@ -1782,6 +1825,56 @@ export class AiBridgeService {
     const projectDllModule = createProjectDllDeclarationModuleFromSources(sources, projectId);
     const mergedEnabled = projectDllModule ? [...enabledModules, projectDllModule] : enabledModules;
     return { availableModules, enabledModules: mergedEnabled };
+  }
+
+  /**
+   * files[] 归一化：updatedSource（全量）、updatedLines（按行）、edits（行级增量）三选一，
+   * 统一转成完整 updatedSource 再进入提案管线；增量形态把换行从 JSON 转义中解放出来。
+   */
+  private async normalizeProposedFiles(
+    request: AiBridgeEditProposeRequest,
+    workspaceFiles: LingCppWorkspaceFile[]
+  ): Promise<Array<{ filePath: string; updatedSource: string }> | undefined> {
+    if (!request.files?.length) return undefined;
+    const MAX_INLINE_SOURCE_BYTES = 256 * 1024;
+    return request.files.map(file => {
+      if (!file || typeof file !== 'object' || !file.filePath) throw new Error('files[] 每项必须包含 filePath。');
+      const filePath = normalizeFilePath(file.filePath);
+      const provided = [file.updatedSource !== undefined, Array.isArray(file.updatedLines), Array.isArray(file.edits)].filter(Boolean).length;
+      if (provided !== 1) {
+        throw new Error(`${filePath} 的 files[] 项必须且只能提供 updatedSource、updatedLines、edits 之一。`);
+      }
+      if (file.updatedSource !== undefined) {
+        if (typeof file.updatedSource !== 'string') throw new Error(`${filePath} 的 updatedSource 必须是字符串。`);
+        const bytes = Buffer.byteLength(file.updatedSource, 'utf8');
+        if (bytes > MAX_INLINE_SOURCE_BYTES) {
+          throw new Error(`${filePath} 的 updatedSource 约 ${Math.round(bytes / 1024)} KB，超过 ${MAX_INLINE_SOURCE_BYTES / 1024} KB 内联上限；请改用 updatedLines（按行数组，换行无需转义）或 edits（行级增量替换）。`);
+        }
+        return { filePath, updatedSource: normalizeLineEndings(file.updatedSource) };
+      }
+      if (Array.isArray(file.updatedLines)) {
+        if (!file.updatedLines.every(line => typeof line === 'string')) throw new Error(`${filePath} 的 updatedLines 每一项都必须是字符串（不含行尾换行符）。`);
+        return { filePath, updatedSource: file.updatedLines.join('\n') };
+      }
+      const current = workspaceFiles.find(item => normalizeFilePath(item.filePath).toLocaleLowerCase() === filePath.toLocaleLowerCase());
+      if (!current) throw new Error(`${filePath} 使用 edits 增量编辑，但未能解析到其当前内容作为基准；请确认文件已存在于工作区。`);
+      return { filePath, updatedSource: applyLineEdits(current.sourceCode, file.edits!, filePath) };
+    });
+  }
+
+  /** caller 显式传入设计器模型时读取其磁盘快照，作为 apply 阶段「提案后漂移检测」的基准；无磁盘模型时返回 undefined。 */
+  private async readDesignerDiskBaselineFor(designerProject: LingWindowProject, requestProjectId?: string): Promise<LingWindowProject | undefined> {
+    try {
+      const baselineId = typeof designerProject?.id === 'string' && designerProject.id ? designerProject.id : requestProjectId;
+      if (!baselineId) return undefined;
+      const solution = await this.solutionService.getSolution();
+      const projectRef = solution.projects.find(item => item.id === baselineId);
+      if (!projectRef) return undefined;
+      const snapshot = await this.solutionService.readDesignerProjectSnapshot(projectRef);
+      return snapshot.persisted ? snapshot.project : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /** 解析提案的工作区基准内容：显式传入时原样采用（未匹配文件由提案校验报错）；
@@ -2426,6 +2519,48 @@ function normalizeLineEndings(value: string): string {
 
 function normalizeFilePath(value: string): string {
   return value.replace(/\\/g, '/').trim();
+}
+
+/** 设计器模型必须是 JSON object；字符串形态多为二次 JSON.stringify 所致，须在入口给出可指导的中文错误。 */
+function assertDesignerProjectShape(value: unknown, label: string): asserts value is object {
+  if (value === null || value === undefined) return;
+  if (Array.isArray(value) || typeof value !== 'object') {
+    const received = Array.isArray(value) ? 'array' : typeof value;
+    throw new Error(`${label} 必须是 JSON object，收到 ${received}。（常见误因：把设计器模型二次 JSON.stringify 后作为字符串传入；请直接传对象或省略该参数由服务端按 projectId 自动读取。）`);
+  }
+}
+
+/** 行级增量替换：行号 1 起、含端点；endLine 缺省等于 startLine；空 newText 表示删除该区间。 */
+function applyLineEdits(
+  currentContent: string,
+  edits: Array<{ startLine: number; endLine?: number; newText: string }>,
+  filePath: string
+): string {
+  const lines = currentContent.split('\n');
+  const normalized = edits.map((edit, index) => {
+    if (!edit || typeof edit !== 'object') throw new Error(`${filePath} 的 edits[${index}] 不是对象。`);
+    const startLine = Number(edit.startLine);
+    const endLine = edit.endLine === undefined ? startLine : Number(edit.endLine);
+    if (!Number.isInteger(startLine) || startLine < 1) throw new Error(`${filePath} 的 edits[${index}].startLine 必须是从 1 开始的整数。`);
+    if (!Number.isInteger(endLine) || endLine < startLine) throw new Error(`${filePath} 的 edits[${index}].endLine 必须不小于 startLine。`);
+    if (typeof edit.newText !== 'string') throw new Error(`${filePath} 的 edits[${index}].newText 必须是字符串。`);
+    if (startLine > lines.length + 1 || endLine > lines.length) {
+      throw new Error(`${filePath} 的 edits[${index}] 行区间 ${startLine}-${endLine} 超出当前文件行数（${lines.length}）。`);
+    }
+    return { startLine, endLine, newText: edit.newText };
+  });
+  for (let i = 1; i < normalized.length; i += 1) {
+    if (normalized[i].startLine <= normalized[i - 1].endLine &&
+        normalized[i - 1].startLine <= normalized[i].endLine) {
+      throw new Error(`${filePath} 的 edits 行区间存在重叠，请按顺序拆分为不重叠区间。`);
+    }
+  }
+  // 降序应用，避免先替换导致后续行号漂移。
+  for (const edit of [...normalized].sort((a, b) => b.startLine - a.startLine)) {
+    const replacement = edit.newText === '' ? [] : edit.newText.split('\n');
+    lines.splice(edit.startLine - 1, edit.endLine - edit.startLine + 1, ...replacement);
+  }
+  return lines.join('\n');
 }
 
 function sanitizeFilename(value: string): string {

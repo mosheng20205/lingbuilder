@@ -53,6 +53,8 @@ interface BridgeSnapshot {
   recentActivity: Array<{ id: string; timestamp: string; clientId: string; kind: 'connected' | 'disconnected' | 'tool'; tool?: string; ok: boolean; durationMs?: number; message: string }>;
   logs: string[];
   error: string;
+  /** 仅启动返回：启动成功但设置未能持久化时的中文原因。 */
+  settingsError?: string;
 }
 
 interface ExternalClient {
@@ -129,9 +131,9 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const [cliProbe, setCliProbe] = useState<ProbeState>({ phase: 'loading' });
   const [port, setPort] = useState(17860);
   const [permission, setPermission] = useState<BridgePermission>('preview');
-  const [lifecycle, setLifecycle] = useState<BridgeLifecycle>('workspace');
   const [customToken, setCustomToken] = useState('');
   const [approvedYolo, setApprovedYolo] = useState(false);
+  const [tokenIsCustom, setTokenIsCustom] = useState(false);
   const [busyAction, setBusyAction] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState<{ text: string; duration: number } | null>(null);
@@ -139,6 +141,8 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const [logsCopied, setLogsCopied] = useState(false);
   const logsRef = useRef<HTMLPreElement>(null);
   const bridgeRef = useRef<BridgeSnapshot>(EMPTY_BRIDGE);
+  const settingsReadyRef = useRef(false);
+  const lastSavedSettingsRef = useRef<{ port: number; permission: BridgePermission; token: string } | null>(null);
 
   const desktopApi = window.lingBuilder?.aiBridge;
   const running = bridge.state === 'running';
@@ -150,7 +154,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     setBridge(result);
     bridgeRef.current = result;
     if (result.state !== 'stopped' && result.state !== 'error') {
-      setPort(result.port); setPermission(result.permission); setLifecycle(result.lifecycle);
+      setPort(result.port); setPermission(result.permission);
     }
     return result;
   }, [desktopApi]);
@@ -217,28 +221,59 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frame = requestAnimationFrame(() => closeButtonRef.current?.focus());
     setError('');
+    settingsReadyRef.current = false;
     const unsubscribe = desktopApi?.onStatusChanged(snapshot => {
       setBridge(snapshot as BridgeSnapshot);
       bridgeRef.current = snapshot as BridgeSnapshot;
       setStatusProbe(current => current.phase === 'loading' ? { phase: 'ready' } : current);
     });
     if (desktopApi) {
-      void loadBridgeStatus(); void refreshClients(); void refreshCodexDesktop(); void inspectCli();
+      void loadBridgeStatus(); void inspectCli(); void refreshClients();
       void desktopApi.loadStartSettings?.().then(saved => {
+        settingsReadyRef.current = true;
         if (!saved) return;
-        // 运行中的 Bridge 以快照为准；仅停止态回填上次成功启动的设置（含自定义 Token）。
+        // 运行中的 Bridge 以快照为准；仅停止态回填上次保存的设置（含自定义 Token）。
         if (bridgeRef.current.state === 'running') return;
         setPort(saved.port);
         setPermission(saved.permission);
-        setLifecycle(saved.lifecycle);
         setCustomToken(saved.token || '');
-      }).catch(() => undefined);
+        lastSavedSettingsRef.current = { port: saved.port, permission: saved.permission, token: saved.token || '' };
+      }).catch(() => { settingsReadyRef.current = true; });
     }
     return () => {
       cancelAnimationFrame(frame); unsubscribe?.();
       previousFocusRef.current?.focus(); previousFocusRef.current = null;
     };
-  }, [desktopApi, inspectCli, loadBridgeStatus, open, refreshClients, refreshCodexDesktop]);
+  }, [desktopApi, inspectCli, loadBridgeStatus, open, refreshClients]);
+
+  // 桌面客户端检测跟随权限选择（期望配置块随权限变化），但不得触发上面的启动设置回填。
+  useEffect(() => {
+    if (!open || !desktopApi) return;
+    void refreshCodexDesktop();
+  }, [desktopApi, open, refreshCodexDesktop]);
+
+  // 停止态编辑即防抖持久化；无效端口/Token 不落盘，由字段内联提示引导修正。
+  useEffect(() => {
+    if (!open || !desktopApi?.saveStartSettings) return undefined;
+    if (running || transitioning || !settingsReadyRef.current) return undefined;
+    if (!isPortValid(port)) return undefined;
+    const token = customToken.trim();
+    if (token && !isTokenValid(token)) return undefined;
+    const pending = { port, permission, token };
+    const saved = lastSavedSettingsRef.current;
+    if (saved && saved.port === pending.port && saved.permission === pending.permission && saved.token === pending.token) return undefined;
+    const timer = window.setTimeout(() => {
+      void desktopApi.saveStartSettings!({ ...pending, lifecycle: 'workspace' }).then(result => {
+        if (result.ok) {
+          lastSavedSettingsRef.current = pending;
+          setNotice({ text: '启动设置已保存到本机加密存储。', duration: 2_000 });
+        } else {
+          setError(`启动设置保存失败：${result.error || '未知原因'}`);
+        }
+      }).catch(() => undefined);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [customToken, desktopApi, open, permission, port, running, transitioning]);
 
   useEffect(() => {
     if (!open || !running) return undefined;
@@ -261,7 +296,9 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
 
   useEffect(() => {
     const element = logsRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
+    if (!element) return;
+    // 用户向上翻阅时不打断；仅接近底部才跟随新日志滚动。
+    if (element.scrollHeight - element.scrollTop - element.clientHeight < 48) element.scrollTop = element.scrollHeight;
   }, [bridge.logs]);
 
   const mcpConfig = useMemo(() => JSON.stringify({
@@ -297,11 +334,27 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
 
   const startBridge = async (): Promise<BridgeSnapshot | undefined> => await runAction('start', async () => {
     if (!desktopApi) throw new Error('当前环境无法启动 AI Bridge。');
-    if (permission === 'yolo' && !approvedYolo) throw new Error('请选择确认框后才能启用 yolo。');
-    const result = await desktopApi.start({ port, permission, lifecycle, token: customToken || undefined, approvedYolo }) as BridgeSnapshot;
-    setBridge(result); setCustomToken(''); showNotice('AI Bridge 已启动，可以连接外部 AI。');
+    if (permission === 'yolo' && !approvedYolo) throw new Error('请先勾选 yolo 确认框后再启动。');
+    const token = customToken.trim();
+    const result = await desktopApi.start({ port, permission, lifecycle: 'workspace', token: token || undefined, approvedYolo }) as BridgeSnapshot;
+    setBridge(result); setTokenIsCustom(Boolean(token));
+    if (result.settingsError) setError(`AI Bridge 已启动，但设置未能保存到本机加密存储：${result.settingsError}`);
+    showNotice('AI Bridge 已启动，可以连接外部 AI。');
     return result;
   });
+
+  const restartBridge = async () => { await runAction('restart', async () => {
+    if (!desktopApi) throw new Error('当前环境无法重启 AI Bridge。');
+    if (bridge.activeClients > 0 && !await requestWorkbenchConfirm({
+      title: '重启 AI Bridge',
+      description: `当前有 ${bridge.activeClients} 个客户端正在使用 Bridge，重启会断开全部连接并需要重新连接。确定重启吗？`,
+      confirmLabel: '重启 Bridge',
+      cancelLabel: '取消'
+    })) return;
+    setBridge(await desktopApi.stop() as BridgeSnapshot);
+    const started = await startBridge();
+    if (started) showNotice('AI Bridge 已按当前设置重启。');
+  }); };
 
   const stopBridge = async () => { await runAction('stop', async () => {
     if (!desktopApi) throw new Error('当前环境无法停止 AI Bridge。');
@@ -311,7 +364,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
       confirmLabel: '停止 Bridge',
       cancelLabel: '取消'
     })) return;
-    const result = await desktopApi.stop() as BridgeSnapshot; setBridge(result); showNotice('AI Bridge 已停止，所有客户端连接已断开。', 6_000);
+    const result = await desktopApi.stop() as BridgeSnapshot; setBridge(result); setTokenIsCustom(false); showNotice('AI Bridge 已停止，所有客户端连接已断开。', 6_000);
   }); };
 
   const connectClient = async (client: ExternalClient) => { await runAction(`client:${client.id}`, async () => {
@@ -372,6 +425,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     if (!desktopApi) throw new Error('当前环境无法重新生成 Token。');
     if (!await requestWorkbenchConfirm({ title: '重新生成 Token', description: '重新生成后旧 Token 立即失效，已连接的客户端会全部断开并需要重新连接。确定继续吗？', confirmLabel: '重新生成', cancelLabel: '取消' })) return;
     setBridge(await desktopApi.rotateToken() as BridgeSnapshot);
+    setTokenIsCustom(false);
     showNotice('Token 已重新生成，旧客户端连接已失效。', 6_000);
   }); };
 
@@ -427,7 +481,9 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     );
   }
 
-  const portInvalid = !Number.isInteger(port) || port < 1024 || port > 65535;
+  const portInvalid = !isPortValid(port);
+  const trimmedToken = customToken.trim();
+  const tokenInvalid = trimmedToken !== '' && !isTokenValid(trimmedToken);
   const bridgeTitle = statusProbe.phase === 'loading' ? '正在获取 Bridge 状态…'
     : statusProbe.phase === 'error' ? '无法获取 Bridge 状态'
     : running ? 'Bridge 正在运行'
@@ -436,14 +492,14 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const bridgeDescription = statusProbe.phase === 'loading' ? '正在与 LingBuilder 桌面服务通信…'
     : statusProbe.phase === 'error' ? (statusProbe.message || '获取 Bridge 状态失败，请重试。')
     : running ? bridge.workspaceRoot
-    : `当前配置：${PERMISSION_LABELS[permission]}（${permission}）权限 · 端口 ${port} · ${lifecycle === 'workspace' ? '关闭工作区时自动停止' : 'IDE 退出时停止'}。`;
+    : `当前配置：${PERMISSION_LABELS[permission]}（${permission}）权限 · 端口 ${port}。`;
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-2 sm:p-5">
       <section
         ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId}
         className={`flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-lg border shadow-2xl sm:max-h-[92vh] ${surface}`}
-        onKeyDown={event => { if (event.key === 'Escape') onClose(); if (event.key === 'Tab') trapFocus(event, dialogRef.current); }}
+        onKeyDown={event => { if (event.key === 'Escape' && !busyAction) onClose(); if (event.key === 'Tab') trapFocus(event, dialogRef.current); }}
       >
         <header className={`flex items-start justify-between gap-4 border-b px-4 py-3 ${isDarkMode ? 'border-[#35353d]' : 'border-slate-200'}`}>
           <div className="min-w-0">
@@ -476,13 +532,13 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
                 </div>
                 {statusProbe.phase === 'loading' ? <button type="button" disabled className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-cyan-600 px-5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"><LoaderCircle className="h-4 w-4 animate-spin" />获取状态中…</button>
                   : statusProbe.phase === 'error' ? <button type="button" onClick={() => void loadBridgeStatus()} disabled={Boolean(busyAction)} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border border-current/20 px-4 text-xs font-semibold hover:bg-slate-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"><RefreshCw className="h-4 w-4" />重试获取状态</button>
-                  : running ? <button type="button" onClick={() => void stopBridge()} disabled={Boolean(busyAction)} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border border-rose-500/50 px-4 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500 disabled:opacity-50"><Square className="h-4 w-4" />停止 Bridge</button>
-                  : <button type="button" onClick={() => void startBridge()} disabled={Boolean(busyAction) || transitioning || portInvalid} title={portInvalid ? '请先修正监听端口' : undefined} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-cyan-600 px-5 text-xs font-semibold text-white hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50">{busyAction === 'start' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}启动 AI Bridge</button>}
+                  : running ? <div className="flex shrink-0 gap-2"><button type="button" onClick={() => void restartBridge()} disabled={Boolean(busyAction) || transitioning} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border border-current/20 px-4 text-xs font-semibold hover:bg-slate-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"><RefreshCw className="h-4 w-4" />重启 Bridge</button><button type="button" onClick={() => void stopBridge()} disabled={Boolean(busyAction) || transitioning} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border border-rose-500/50 px-4 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500 disabled:opacity-50"><Square className="h-4 w-4" />停止 Bridge</button></div>
+                  : <button type="button" onClick={() => void startBridge()} disabled={Boolean(busyAction) || transitioning || portInvalid || tokenInvalid} title={portInvalid ? '请先修正监听端口' : tokenInvalid ? '请先修正自定义 Token（24–256 个不含空白的可见 ASCII 字符）' : undefined} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-cyan-600 px-5 text-xs font-semibold text-white hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50">{busyAction === 'start' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}启动 AI Bridge</button>}
               </div>
               {running && <div className="mt-4 grid gap-2 border-t border-current/10 pt-4 sm:grid-cols-2">
                 <EndpointRow icon={<Link2 className="h-4 w-4" />} label="MCP（推荐）" value={bridge.mcpUrl} onCopy={() => copyText(bridge.mcpUrl)} isDarkMode={isDarkMode} />
                 <EndpointRow icon={<Cable className="h-4 w-4" />} label="HTTP API" value={bridge.httpUrl} onCopy={() => copyText(bridge.httpUrl)} isDarkMode={isDarkMode} />
-                <EndpointRow icon={<KeyRound className="h-4 w-4" />} label="临时 Token" value={bridge.tokenMasked} onCopy={() => void copyToken()} isDarkMode={isDarkMode} />
+                <EndpointRow icon={<KeyRound className="h-4 w-4" />} label={tokenIsCustom ? '自定义 Token' : '临时 Token'} value={bridge.tokenMasked} onCopy={() => void copyToken()} isDarkMode={isDarkMode} />
                 <div className="flex min-h-12 items-center gap-3 rounded border border-current/10 px-3"><Users className="h-4 w-4 text-cyan-500" /><div><div className={`text-[10px] ${muted}`}>已连接客户端</div><div className="text-xs font-semibold tabular-nums">{bridge.activeClients}</div></div></div>
               </div>}
             </section>
@@ -549,18 +605,18 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
           </div>}
 
           {activeTab === 'advanced' && <div className="grid gap-4 lg:grid-cols-2">
-            <SectionCard title="Bridge 启动设置" description={running ? 'Bridge 运行时设置已锁定；停止后可以修改。' : '已记住上次成功启动的设置，下次打开自动填入。'} cardClass={card} isDarkMode={isDarkMode}>
+            <SectionCard title="Bridge 启动设置" description={running ? 'Bridge 运行时设置已锁定；停止后可以修改。' : '停止态修改后自动保存到本机加密存储（safeStorage 加密），下次打开自动填入。'} cardClass={card} isDarkMode={isDarkMode}>
               <fieldset disabled={running || transitioning || Boolean(busyAction)} className="space-y-4 disabled:opacity-60">
-                <label className="block text-[11px] font-medium">监听端口<input type="number" min={1024} max={65535} value={port} onChange={event => setPort(Number(event.target.value))} aria-invalid={portInvalid} className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${portInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${portInvalid ? 'text-rose-400' : muted}`}>{portInvalid ? '端口必须在 1024–65535 之间。' : '仅监听 127.0.0.1；端口冲突时会明确报错。'}</span></label>
+                <label className="block text-[11px] font-medium">监听端口<input type="number" min={1024} max={65535} value={Number.isInteger(port) ? port : ''} onChange={event => setPort(event.target.value === '' ? Number.NaN : Number(event.target.value))} aria-invalid={portInvalid} className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${portInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${portInvalid ? 'text-rose-400' : muted}`}>{portInvalid ? '端口必须是 1024–65535 之间的整数。' : '仅监听 127.0.0.1；端口冲突时会明确报错。'}</span></label>
                 <div><div className="text-[11px] font-medium">权限模式</div><div className="mt-2 grid gap-2 sm:grid-cols-3">{(['readonly', 'preview', 'yolo'] as BridgePermission[]).map(value => <label key={value} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded border px-3 text-[11px] ${permission === value ? 'border-cyan-500 bg-cyan-500/10' : 'border-current/15'}`}><input type="radio" name="bridge-permission" value={value} checked={permission === value} onChange={() => { setPermission(value); if (value !== 'yolo') setApprovedYolo(false); }} className="accent-cyan-500" /><span className="font-semibold">{PERMISSION_LABELS[value]}</span><span className={`font-mono text-[10px] ${muted}`}>{value}</span>{value === 'preview' && <span className="text-cyan-500">推荐</span>}</label>)}</div></div>
                 {permission === 'yolo' && <label className="flex cursor-pointer items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-400"><input type="checkbox" checked={approvedYolo} onChange={event => setApprovedYolo(event.target.checked)} className="mt-1 accent-amber-500" /><span>我确认：可信的本机 AI 可以自动写入文件、导出并执行 LingBuilder 受控构建；仍不开放任意 shell。</span></label>}
-                <label className="block text-[11px] font-medium">生命周期<select value={lifecycle} onChange={event => setLifecycle(event.target.value as BridgeLifecycle)} className={`mt-1 min-h-11 w-full rounded border px-3 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field}`}><option value="workspace">关闭或切换工作区时停止（推荐）</option><option value="ide">IDE 退出时停止</option></select></label>
-                <label className="block text-[11px] font-medium">自定义 Token（可选）<input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field}`} /><span className={`mt-1 block text-[10px] font-normal ${muted}`}>启动成功后自动保存到本机加密存储，下次打开自动回填；清空则每次生成临时 Token。要求 24–256 个不含空白的字符。</span></label>
+                <label className="block text-[11px] font-medium">自定义 Token（可选）<input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} aria-invalid={tokenInvalid} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${tokenInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${tokenInvalid ? 'text-rose-400' : muted}`}>{tokenInvalid ? '自定义 Token 必须是 24–256 个不含空白的可见 ASCII 字符（不能含中文或空格）。' : '停止态修改即时保存到本机加密存储；清空则每次启动生成临时 Token。要求 24–256 个不含空白的可见 ASCII 字符。'}</span></label>
               </fieldset>
             </SectionCard>
             <SectionCard title="连接配置" description="供不在快捷客户端列表中的 MCP 或 HTTP 客户端使用。" cardClass={card} isDarkMode={isDarkMode}>
               <div className={`relative rounded border ${code}`}><pre className="max-h-72 overflow-auto p-3 pr-12 text-[10px] leading-5"><code>{mcpConfig}</code></pre><button type="button" onClick={() => void copyConfig()} className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded border border-cyan-400/30 bg-black/20 hover:bg-cyan-500/15 focus:outline-none focus:ring-2 focus:ring-cyan-500" aria-label="复制通用 MCP 配置">{configCopied ? <Check className="h-4 w-4 text-emerald-500" /> : <Clipboard className="h-4 w-4" />}</button></div>
-              {running && <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void copyToken()} className="min-h-11 rounded border border-current/20 text-[11px] hover:bg-slate-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500"><KeyRound className="mr-1 inline h-3.5 w-3.5" />复制临时 Token</button><button type="button" onClick={() => void rotateToken()} disabled={Boolean(busyAction)} className="min-h-11 rounded border border-amber-500/40 text-[11px] text-amber-400 hover:bg-amber-500/10 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"><RefreshCw className="mr-1 inline h-3.5 w-3.5" />重新生成 Token</button></div>}
+              {running && <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void copyToken()} className="min-h-11 rounded border border-current/20 text-[11px] hover:bg-slate-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500"><KeyRound className="mr-1 inline h-3.5 w-3.5" />{tokenIsCustom ? '复制 Token' : '复制临时 Token'}</button><button type="button" onClick={() => void rotateToken()} disabled={Boolean(busyAction) || tokenIsCustom} title={tokenIsCustom ? '当前运行使用自定义 Token；如需更换请先停止 Bridge，在左侧修改后重新启动。' : undefined} className="min-h-11 rounded border border-amber-500/40 text-[11px] text-amber-400 hover:bg-amber-500/10 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-50"><RefreshCw className="mr-1 inline h-3.5 w-3.5" />重新生成 Token</button></div>}
+              {running && tokenIsCustom && <div className={`mt-2 text-[10px] ${muted}`}>当前运行使用自定义 Token；「重新生成 Token」仅对临时 Token 开放，更换自定义 Token 请停止后在左侧修改并重新启动。</div>}
               <div className={`mt-3 text-[11px] leading-5 ${muted}`}>HTTP API 保留用于自研客户端、脚本和 CI；外部 AI CLI 优先使用共享 MCP Streamable HTTP。完整接口和 curl 示例仍见 CLI 手册。</div>
             </SectionCard>
             <SectionCard title="权限边界" description="所有传输方式复用相同的服务和审计规则。" cardClass={`${card} lg:col-span-2`} isDarkMode={isDarkMode}>
@@ -693,7 +749,11 @@ function EmptyState({ icon, text, isDarkMode }: { icon: React.ReactNode; text: s
 function formatTime(value: string): string { try { return new Date(value).toLocaleString('zh-CN', { hour12: false }); } catch { return value; } }
 function errorMessage(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason || '操作失败。'); }
 
-const PROBE_TIMEOUT_MS = 8_000;
+// 与主进程 validatePort / normalizeAiBridgeStartSettings 同一口径，避免「能启动但记不住」或反之。
+function isPortValid(value: number): boolean { return Number.isInteger(value) && value >= 1024 && value <= 65535; }
+function isTokenValid(value: string): boolean { return value.length >= 24 && value.length <= 256 && !/[^\x21-\x7e]/u.test(value); }
+
+const PROBE_TIMEOUT_MS = 15_000;
 async function withProbeTimeout<T>(task: Promise<T>, label: string): Promise<T> {
   return await new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(`${label}超时，请重试。`)), PROBE_TIMEOUT_MS);

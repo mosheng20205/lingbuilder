@@ -75,7 +75,7 @@ test('标题栏升级徽标：静默检查驱动徽标与悬浮更新说明，�
   assert.match(appSource, /setUpdateCheckState\(createUpdateDialogInfo\(updateBadgePayload\)\)/u);
   // 徽标与悬浮面板渲染在标题栏：排除窗口拖拽区，悬浮面板展示版本号与更新说明。
   assert.match(appSource, /window-no-drag relative flex shrink-0 items-center/u);
-  assert.match(appSource, /发现新版本 v\{updateBadgePayload\.latestVersion/u);
+  assert.match(appSource, /发现新版本 v'\}\{updateBadgePayload\.latestVersion/u);
   assert.match(appSource, /\{updateBadgePayload\.releaseNotes \|\|/u);
   // 启动静默检查保留首启弹窗，并增加周期复查只刷新徽标。
   assert.match(appSource, /runSilentUpdateCheck\(true\), 5000\)/u);

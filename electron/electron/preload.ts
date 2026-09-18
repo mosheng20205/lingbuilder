@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     status: () => ipcRenderer.invoke('ai-bridge:status'),
     start: (request: unknown) => ipcRenderer.invoke('ai-bridge:start', request),
     loadStartSettings: () => ipcRenderer.invoke('ai-bridge:start-settings:load'),
+    saveStartSettings: (settings: unknown) => ipcRenderer.invoke('ai-bridge:start-settings:save', settings),
     stop: () => ipcRenderer.invoke('ai-bridge:stop'),
     rotateToken: () => ipcRenderer.invoke('ai-bridge:rotate-token'),
     revealToken: () => ipcRenderer.invoke('ai-bridge:reveal-token'),

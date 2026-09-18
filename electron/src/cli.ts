@@ -93,9 +93,19 @@ async function main(): Promise<void> {
   app.use('/api/ai-bridge', createAiBridgeRouter(service, token));
   const server = http.createServer(app);
 
-  await new Promise<void>(resolve => {
-    server.listen(port, host, resolve);
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(port, host, () => { server.off('error', reject); resolve(); });
+    });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    console.error(code === 'EADDRINUSE'
+      ? `AI Bridge 监听失败：端口 ${port} 已被占用，请更换监听端口，或关闭占用该端口的程序（包括上次残留的 AI Bridge 进程）。`
+      : `AI Bridge 监听失败：${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+    return;
+  }
 
   const address = server.address();
   const actualPort = typeof address === 'object' && address ? address.port : port;

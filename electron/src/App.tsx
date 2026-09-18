@@ -72,6 +72,7 @@ import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';
 import CliGuideDialog from './components/CliGuideDialog';
+import AiBridgeTitleBarBadge from './components/AiBridgeTitleBarBadge';
 import AboutDialog from './components/AboutDialog';
 import UpdateDialog, { type UpdateDialogInfo } from './components/UpdateDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
@@ -466,10 +467,10 @@ const ensureLingCppControlEventHandler = (content: string, detail: OpenControlEv
   return `${content.replace(/\s*结束类\s*$/g, '').trimEnd()}\n\n${nextBlock}\n结束类`;
 };
 
-/** 比较两组已安装模块列表是否内容一致（顺序敏感，按 id@version + 安装路径）。 */
+/** 比较两组已安装模块列表是否内容一致（顺序敏感，按 id@version + 安装路径 + 清单哈希 + 开发源链接态）。 */
 const areInstalledModuleListsEquivalent = (left: InstalledModule[] | undefined, right: InstalledModule[]) => {
   if (!Array.isArray(left) || left.length !== right.length) return false;
-  const signatureOf = (module: InstalledModule) => `${module.manifest.id}@${module.manifest.version}:${module.installPath}`;
+  const signatureOf = (module: InstalledModule) => `${module.manifest.id}@${module.manifest.version}:${module.installPath}:${module.sha256 || ''}:${module.isDevLink ? 'dev' : ''}`;
   return left.every((module, index) => signatureOf(module) === signatureOf(right[index]));
 };
 
@@ -6652,6 +6653,7 @@ void DisplayStatus() {
             <div className="truncate text-[#007ACC] font-bold tracking-wide">
               C++ LocMaster (LingBuilder) <span className="text-cyan-400/80">{LINGBUILDER_DISPLAY_VERSION}</span>
             </div>
+            <AiBridgeTitleBarBadge onOpen={() => setShowCliGuide(true)} isDarkMode={isDarkMode} />
             {updateBadgePayload && (
               <div
                 className="window-no-drag relative flex shrink-0 items-center"

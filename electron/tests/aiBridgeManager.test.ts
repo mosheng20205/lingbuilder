@@ -53,6 +53,38 @@ test('IDE-managed AI Bridge controls lifecycle, redacts token, and refreshes sha
   assert.throws(() => manager.revealToken(), /尚未运行/u);
 });
 
+test('startup failure relays the CLI stderr diagnosis and non-ASCII custom tokens are rejected upfront', async t => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-managed-bridge-'));
+  t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }));
+  const cliEntryPath = path.join(workspaceRoot, 'cli.cjs');
+  await fs.writeFile(cliEntryPath, '', 'utf8');
+  const failingSpawn = ((() => {
+    const child = new EventEmitter() as any;
+    child.pid = 4322; child.exitCode = null; child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.kill = () => { child.exitCode = 1; queueMicrotask(() => child.emit('exit', 1)); return true; };
+    queueMicrotask(() => {
+      child.stderr.write('AI Bridge 监听失败：端口 17860 已被占用，请更换监听端口。\n');
+      queueMicrotask(() => child.emit('exit', 1));
+    });
+    return child;
+  }) as unknown) as typeof spawn;
+  const manager = new AiBridgeManagerService({
+    runtimeExecutable: 'electron.exe', cliEntryPath, spawnProcess: failingSpawn,
+    fetcher: (async () => new Response('{}', { status: 500 })) as typeof fetch,
+    environment: { ...process.env }
+  });
+  await assert.rejects(
+    () => manager.start({ workspaceRoot, port: 17860, permission: 'preview', lifecycle: 'workspace' }),
+    /端口 17860 已被占用/u
+  );
+
+  // 与 aiBridgeStartSettings.normalizeAiBridgeStartSettings 同口径：非 ASCII Token 启动前即拒绝，杜绝「能启动但记不住」。
+  await assert.rejects(
+    () => manager.start({ workspaceRoot, port: 17861, permission: 'preview', lifecycle: 'workspace', token: '自定义口令-包含中文字符-0123456789ab' }),
+    /可见 ASCII/u
+  );
+});
+
 test('external AI launch plans keep tokens in terminal environment and avoid persistent user configuration', async t => {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-client-'));
   t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }));

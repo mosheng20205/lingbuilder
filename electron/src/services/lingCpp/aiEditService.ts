@@ -87,7 +87,7 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
     changes,
     ...(designerProject ? {
       designerProject,
-      designerProjectOriginal: cloneDesignerProject(context.designerProject),
+      designerProjectOriginal: cloneDesignerProject(context.designerProjectDiskBaseline ?? context.designerProject),
       designerAllowedControlTypes: [...allowedDesignerControlTypes]
     } : {})
   };
@@ -149,7 +149,7 @@ export function validateDesignerProjectEdit(
     if (!options.allowDeletion && originalWindows.has(window.id)) {
       const nextControlIds = new Set(window.controls.map(control => control.id));
       const removed = originalControls.find(control => !nextControlIds.has(control.id));
-      if (removed) throw new Error(`AI 提案删除了现有控件 ${removed.name}；请明确提出删除需求后重试。`);
+      if (removed) throw new Error(`AI 提案删除了现有控件 ${removed.name}。如确需删除，请在 instruction 中明确写出「删除/移除/去掉/清除」等删除字样后重新生成提案。`);
     }
   }
   if (!options.allowDeletion && original) {

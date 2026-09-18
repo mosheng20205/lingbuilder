@@ -62,6 +62,7 @@ test('AI Bridge start settings fall back to plain storage and reject invalid val
   assert.equal(unavailable?.token, '');
 
   assert.equal(normalizeAiBridgeStartSettings({ port: 70000, permission: 'preview', lifecycle: 'workspace', token: '' }), undefined);
+  assert.equal(normalizeAiBridgeStartSettings({ port: 80, permission: 'preview', lifecycle: 'workspace', token: '' }), undefined);
   assert.equal(normalizeAiBridgeStartSettings({ port: 17860, permission: 'guest', lifecycle: 'workspace', token: '' }), undefined);
   assert.equal(normalizeAiBridgeStartSettings({ port: 17860, permission: 'preview', lifecycle: 'workspace', token: 'short' }), undefined);
   assert.equal(await readAiBridgeStartSettings(path.join(userDataDir, 'missing.json'), safeStorage), undefined);

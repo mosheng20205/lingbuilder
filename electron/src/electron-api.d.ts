@@ -53,6 +53,8 @@ interface LingBuilderAiBridgeSnapshot {
   recentActivity: Array<{ id: string; timestamp: string; clientId: string; kind: 'connected' | 'disconnected' | 'tool'; tool?: string; ok: boolean; durationMs?: number; message: string }>;
   logs: string[];
   error: string;
+  /** 仅 ai-bridge:start 返回：启动成功但设置未能持久化时的中文原因。 */
+  settingsError?: string;
 }
 
 declare global {
@@ -133,6 +135,12 @@ declare global {
           lifecycle: LingBuilderAiBridgeLifecycle;
           token: string;
         } | null>;
+        saveStartSettings: (settings: {
+          port: number;
+          permission: LingBuilderAiBridgePermission;
+          lifecycle: LingBuilderAiBridgeLifecycle;
+          token: string;
+        }) => Promise<{ ok: boolean; error?: string }>;
         stop: () => Promise<LingBuilderAiBridgeSnapshot>;
         rotateToken: () => Promise<LingBuilderAiBridgeSnapshot>;
         revealToken: () => Promise<string>;

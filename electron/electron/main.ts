@@ -23,7 +23,7 @@ import { checkLatestVersion, type VersionCheckResult } from './versionCheckServi
 import { UpdateDownloadService } from './updateDownloadService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
-import { readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
+import { normalizeAiBridgeStartSettings, readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
 import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
 import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
@@ -902,6 +902,7 @@ function registerIpcHandlers(): void {
       moduleAccessState: Buffer.from(JSON.stringify(await readModulePermitCache()), 'utf8').toString('base64url')
     });
     // 记住上次成功启动的设置（含自定义 Token，safeStorage 加密），下次打开连接中心自动回填。
+    let settingsError = '';
     try {
       await writeAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), {
         port: snapshot.port || port,
@@ -909,13 +910,24 @@ function registerIpcHandlers(): void {
         lifecycle,
         token: token || ''
       }, safeStorage);
-    } catch {
-      // 设置保存失败不阻断启动；下次仍可用临时值。
+    } catch (reason) {
+      // 设置保存失败不阻断启动，但必须让用户可见（否则会出现「启动成功却记不住」）。
+      settingsError = reason instanceof Error ? reason.message : String(reason);
     }
-    return snapshot;
+    return settingsError ? { ...snapshot, settingsError } : snapshot;
   });
   ipcMain.handle('ai-bridge:start-settings:load', async () => {
     return await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage) ?? null;
+  });
+  ipcMain.handle('ai-bridge:start-settings:save', async (_event, settings: unknown) => {
+    const normalized = normalizeAiBridgeStartSettings(settings);
+    if (!normalized) return { ok: false, error: '设置无效：端口需为 1024–65535，权限与生命周期取内置枚举，Token 需 24–256 个不含空白的可见 ASCII 字符。' };
+    try {
+      await writeAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), normalized, safeStorage);
+      return { ok: true };
+    } catch (reason) {
+      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
+    }
   });
   ipcMain.handle('ai-bridge:stop', async () => await aiBridgeManager.stop('用户停止'));
   ipcMain.handle('ai-bridge:rotate-token', async () => await aiBridgeManager.rotateToken());
