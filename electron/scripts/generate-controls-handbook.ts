@@ -339,7 +339,7 @@ function basicOverview(sortOrder: number): HandbookArticle {
     '',
     '```lcpp',
     '.子程序 开始按钮_被单击',
-    '    信息框("你好，LingBuilder！")',
+    '    信息框("你好，LingBuilder！", 64, "提示")',
     '结束',
     '```',
     '',

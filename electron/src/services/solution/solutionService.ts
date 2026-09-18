@@ -1156,7 +1156,7 @@ function createTemplateLingCppSource(className: string, templateId: SolutionProj
       '    结束',
       '',
       '    事件 _问候按钮_被单击()',
-      '        信息框("你好，LingBuilder！")',
+      '        信息框("你好，LingBuilder！", 64, "提示")',
       '    结束',
       '结束类',
       ''
