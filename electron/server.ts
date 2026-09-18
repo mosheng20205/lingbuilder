@@ -25,7 +25,6 @@ import { createWindowsMsvcLinkLibraries, REQUIRE_ADMINISTRATOR_LINK_ARGS } from 
 import { LingWindowProject } from "./src/services/windowDesigner/types";
 import {
   applyWorkspaceEdit,
-  applyWorkspaceEditToFiles,
   areDesignerProjectsEquivalent,
   createDesignerBeautificationFallback,
   describeAllowedDesignerControlTypes,
@@ -34,7 +33,6 @@ import {
   getWorkspaceEditProposal,
   isDesignerEditInstruction,
   normalizeDesignerControlTypes,
-  proposeLingCppEdit,
   rejectWorkspaceEdit,
   validateDesignerProjectEdit
 } from "./src/services/lingCpp/aiEditService";
@@ -55,7 +53,6 @@ import {
   readModuleDocumentation
 } from "./src/services/modules/moduleDocumentationService";
 import { ModuleAccessService } from "./src/services/modules/moduleAccessService";
-import { LingCppModuleContext } from "./src/services/modules/types";
 import { describeLingCppModuleContextForAi } from "./src/services/modules/moduleContextAdapters";
 import {
   exportModuleNativeDependencies,
@@ -777,47 +774,45 @@ async function toSafeHttpPackagePath(value: string | undefined): Promise<string 
   }
 }
 
+const aiBridgeServiceOptions: AiBridgeServerOptions = {
+  workspaceRoot: getRepoWorkspaceRoot(),
+  host: serverRuntimeConfig.host,
+  port: serverRuntimeConfig.port,
+  token: serverRuntimeConfig.aiBridgeToken,
+  permission: 'preview',
+  allowRemote: false,
+  enableMcp: false
+};
+const aiBridgeServiceDependencies = {
+  managedProcessService,
+  projectBuildCoordinator,
+  buildPipelineService,
+  assertModuleAccess
+};
+/**
+ * AI 面板编辑链（/api/lingcpp/edit/*）专用实例：permission 固定 yolo——面板是本地受信 UI，
+ * 提案预览 + 用户确认就是它的批准环节；关键是让面板与 AI Bridge 共享同一套
+ * propose/apply 实现（控件门禁、深比较、审计、编码保留），只维护一条链。
+ */
+const panelAiBridgeService = new AiBridgeService(
+  { ...aiBridgeServiceOptions, permission: 'yolo' },
+  aiBridgeServiceDependencies
+);
 if (serverRuntimeConfig.aiBridgeEnabled) {
-  const aiBridgeOptions: AiBridgeServerOptions = {
-    workspaceRoot: getRepoWorkspaceRoot(),
-    host: serverRuntimeConfig.host,
-    port: serverRuntimeConfig.port,
-    token: serverRuntimeConfig.aiBridgeToken,
-    permission: getAiBridgePermissionMode(),
-    allowRemote: false,
-    enableMcp: false
-  };
-  const aiBridgeService = new AiBridgeService(aiBridgeOptions, {
-    managedProcessService,
-    projectBuildCoordinator,
-    buildPipelineService,
-    assertModuleAccess
-  });
+  const aiBridgeService = new AiBridgeService(
+    { ...aiBridgeServiceOptions, permission: getAiBridgePermissionMode() },
+    aiBridgeServiceDependencies
+  );
+  // 不再全局注入 planner：内嵌 Bridge 与独立 lingbuilder ai-server 行为一致，
+  // 外部 AI 的 files[] 草稿直接生效；系统 AI planner 由面板路由显式传入。
   app.use(
     "/api/ai-bridge",
-    createAiBridgeRouter(aiBridgeService, serverRuntimeConfig.aiBridgeToken, planLingCppEditWithGemini)
+    createAiBridgeRouter(aiBridgeService, serverRuntimeConfig.aiBridgeToken)
   );
 } else {
   app.use("/api/ai-bridge", (_req, res) => {
     res.status(404).json({ ok: false, error: "内嵌 AI Bridge 未启用；请使用 lingbuilder ai-server 显式启动。" });
   });
-}
-
-async function resolveLingCppEditModuleContext(
-  projectId?: string,
-  fallbackContext?: LingCppModuleContext
-): Promise<LingCppModuleContext | undefined> {
-  const effectiveProjectId = projectId || "lingbuilder-ui-project";
-  try {
-    const service = getModuleService();
-    const [availableModules, enabledModules] = await Promise.all([
-      service.scanInstalledModules(effectiveProjectId),
-      service.getEnabledProjectModules(effectiveProjectId)
-    ]);
-    return { availableModules, enabledModules };
-  } catch {
-    return fallbackContext;
-  }
 }
 
 // API: Health Check
@@ -4314,15 +4309,14 @@ async function sourceControlAction(res: express.Response, action: () => Promise<
 
 app.post("/api/lingcpp/edit/propose", async (req, res) => {
   try {
-    const { filePath, sourceCode, instruction, selection, workspaceFiles, projectId, moduleContext, aiConfig, designerProject } = req.body as {
+    const { filePath, sourceCode, instruction, selection, workspaceFiles, projectId, aiConfig, designerProject } = req.body as {
     filePath?: string;
     sourceCode?: string;
     instruction?: string;
     projectId?: string;
-    moduleContext?: LingCppModuleContext;
-    aiConfig?: AiConnectionConfig;
     selection?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
     workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
+    aiConfig?: AiConnectionConfig;
     designerProject?: LingWindowProject;
     };
 
@@ -4330,32 +4324,34 @@ app.post("/api/lingcpp/edit/propose", async (req, res) => {
       return res.status(400).json({ ok: false, error: "缺少 filePath 或 sourceCode" });
     }
 
-    const context: LingCppEditContext = {
-      filePath,
-      sourceCode,
-      instruction: instruction || "",
-      projectId,
-      selection,
-      workspaceFiles: sanitizeWorkspaceFiles(workspaceFiles),
-      moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext),
-      aiConfig,
-      designerProject
+    // 编辑提案统一走 AiBridgeService（与 AI Bridge 同一实现：磁盘基准、深比较、门禁、审计）。
+    // planner 失败降级语义保留：Gemini 失败时用本地安全草稿，下游校验错误不被掩盖根因（502）。
+    let aiFailureReason: string | undefined;
+    const planner = async (context: LingCppEditContext): Promise<LingCppEditDraft> => {
+      try {
+        return await planLingCppEditWithGemini(context);
+      } catch (error: any) {
+        aiFailureReason = error?.message || String(error);
+        return {
+          summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
+          explanation: `Gemini 编辑提案生成失败，已降级为本地安全提案：${aiFailureReason}`
+        };
+      }
     };
 
-    let draft: LingCppEditDraft | undefined;
-    let aiFailureReason: string | undefined;
     try {
-      draft = await planLingCppEditWithGemini(context);
-    } catch (error: any) {
-      aiFailureReason = error?.message || String(error);
-      draft = {
-        summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
-        explanation: `Gemini 编辑提案生成失败，已降级为本地安全提案：${aiFailureReason}`
-      };
-    }
-
-    try {
-      const proposal = proposeLingCppEdit(context, draft);
+      const result = await panelAiBridgeService.proposeEdit({
+        filePath,
+        sourceCode,
+        instruction: instruction || "",
+        projectId,
+        selection,
+        workspaceFiles: sanitizeWorkspaceFiles(workspaceFiles),
+        aiConfig,
+        designerProject
+      }, planner);
+      const proposal = getWorkspaceEditProposal(result.proposal.id);
+      if (!proposal) throw new Error("提案未持久化，请重试。");
       return res.json({ ok: true, proposal });
     } catch (error: any) {
       // AI 请求本身失败（如未配置 API Key、网络不通）时，不能让“未返回完整设计器模型”
@@ -4373,12 +4369,11 @@ app.post("/api/lingcpp/edit/propose", async (req, res) => {
 
 app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
   try {
-    const { filePath, sourceCode, instruction, workspaceFiles, files, projectId, moduleContext, designerProject, currentDesignerProject } = req.body as {
+    const { filePath, sourceCode, instruction, workspaceFiles, files, projectId, designerProject, currentDesignerProject } = req.body as {
     filePath?: string;
     sourceCode?: string;
     instruction?: string;
     projectId?: string;
-    moduleContext?: LingCppModuleContext;
     workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
     files?: Array<{ filePath: string; updatedSource: string }>;
     designerProject?: LingWindowProject;
@@ -4401,14 +4396,15 @@ app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
         return res.status(400).json({ ok: false, error: `系统 AI 返回的 ${file.filePath} 未通过 LingCpp 类结构校验。` });
       }
     }
-    const context: LingCppEditContext = {
+    // 云端 edit_draft 也收口到 AiBridgeService：以固定 planner 返回云端草稿，保持系统 AI 的 strict 设计器联动策略与统一校验/审计链。
+    const result = await panelAiBridgeService.proposeEdit({
       filePath: normalizeFilePath(filePath), sourceCode, instruction: instruction || "系统 AI 编辑", projectId,
       workspaceFiles: safeWorkspaceFiles,
-      moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext),
       designerProject: currentDesignerProject
-    };
-    const proposal = proposeLingCppEdit(context, { summary: instruction || "系统 AI 编辑提案", explanation: "系统 AI 已返回完整文件草稿；该草稿经过本地路径与 LingCpp 结构校验，仍需预览确认后才能应用。", files: safeDraftFiles, designerProject });
-    return res.json({ ok: true, proposal });
+    }, async () => ({ summary: instruction || "系统 AI 编辑提案", explanation: "系统 AI 已返回完整文件草稿；该草稿经过本地路径与 LingCpp 结构校验，仍需预览确认后才能应用。", files: safeDraftFiles, designerProject }));
+    const createdProposal = getWorkspaceEditProposal(result.proposal.id);
+    if (!createdProposal) throw new Error("提案未持久化，请重试。");
+    return res.json({ ok: true, proposal: createdProposal });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "系统 AI 编辑草稿校验失败。";
     return res.status(422).json({ ok: false, error: message });
@@ -4439,16 +4435,7 @@ app.post("/api/lingcpp/edit/apply", async (req, res) => {
       if (projectId && designerProject.id !== projectId) {
         return res.status(409).json({ ok: false, error: `当前设计器模型属于项目 ${designerProject.id}，当前项目是 ${projectId}；请重新载入项目后再应用。` });
       }
-      if (JSON.stringify(designerProject) !== JSON.stringify(proposal.designerProjectOriginal)) {
-        return res.status(409).json({ ok: false, error: "窗口设计器模型在提案生成后已发生变化，请重新生成提案。" });
-      }
-      // 应用侧复用提案生成时校验通过的允许类型集合：模块贡献的控件类型
-      // （如 FBroBrowser）在提案阶段合法，应用阶段不得被默认集合误拒。
-      validateDesignerProjectEdit(proposal.designerProjectOriginal, designerProject, {
-        allowedControlTypes: proposal.designerAllowedControlTypes
-          ? new Set(proposal.designerAllowedControlTypes)
-          : undefined
-      });
+      // 漂移检测与布局校验交给 AiBridgeService.applyEdit：磁盘基准 + 键序不敏感深比较 + 控件门禁 + 审计。
     }
     const sanitizedWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
     const effectiveWorkspaceFiles = sanitizedWorkspaceFiles.length > 0
@@ -4461,11 +4448,21 @@ app.post("/api/lingcpp/edit/apply", async (req, res) => {
     if (effectiveWorkspaceFiles.length === 0) {
       return res.status(400).json({ ok: false, error: "缺少可应用的 workspaceFiles 或 sourceCode" });
     }
-    const appliedFiles = applyWorkspaceEditToFiles(effectiveWorkspaceFiles, proposal);
-    const nextSourceCode = proposal.changes[0]
-      ? (appliedFiles.find(file => normalizeFilePath(file.filePath) === normalizeFilePath(proposal.changes[0].filePath))?.sourceCode || sourceCode || "")
+    await panelAiBridgeService.applyEdit({
+      proposalId,
+      workspaceFiles: effectiveWorkspaceFiles,
+      designerProject,
+      approved: true
+    });
+    // applyEdit 已原子写盘（含设计器 JSON、编码/EOL 保留）；回读最终内容维持面板既有响应契约。
+    const appliedFiles = await Promise.all(proposal.changes.map(async change => {
+      const absolutePath = path.resolve(getRepoWorkspaceRoot(), change.filePath);
+      return { filePath: change.filePath, sourceCode: decodeTextFile(await fs.readFile(absolutePath)).content };
+    }));
+    const firstChangePath = proposal.changes[0] ? normalizeFilePath(proposal.changes[0].filePath) : "";
+    const nextSourceCode = firstChangePath
+      ? (appliedFiles.find(file => normalizeFilePath(file.filePath) === firstChangePath)?.sourceCode || sourceCode || "")
       : (sourceCode || "");
-    rejectWorkspaceEdit(proposalId);
     return res.json({ ok: true, proposal, nextSourceCode, appliedFiles, ...(proposal.designerProject ? { designerProject: proposal.designerProject } : {}) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "应用 AI 编辑提案失败。";
