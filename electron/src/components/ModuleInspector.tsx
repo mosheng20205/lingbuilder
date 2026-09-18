@@ -1158,11 +1158,18 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
             {commerceProducts.map(product => {
               const installed = installedModules.find(item => item.manifest.id === product.moduleId);
               const offer = product.offers?.[0];
+              const marketEntry = marketModules.find(item => item.id === product.moduleId);
+              const installedVersion = installed?.manifest.version || '';
+              const latestVersion = typeof marketEntry?.version === 'string' ? marketEntry.version : '';
+              const hasUpdate = Boolean(installed && installedVersion && latestVersion && compareModuleVersion(latestVersion, installedVersion) > 0);
               return <div key={product.moduleId} className={`rounded border p-2.5 text-xs ${borderSubtleClass}`}>
                 <div className="flex flex-wrap items-center gap-2"><strong>{product.name}</strong><span className="text-[10px] text-slate-400">{product.moduleId}</span>{product.access?.allowed && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">账号已授权</span>}</div>
                 <div className="mt-1 text-[11px] leading-4 text-slate-400">{product.description}</div>
+                {installed && <div className="mt-1 text-[10px] text-slate-400">已安装 v{installedVersion}{hasUpdate ? `，最新版本 v${latestVersion}` : ''}</div>}
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  {product.access?.allowed ? <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className={`col-span-2 h-8 rounded bg-sky-600 text-white inline-flex items-center justify-center gap-1.5 hover:bg-sky-500 ${actionButtonClass}`}><Download size={14}/>{installed ? '下载更新并预览安装' : '下载并预览安装'}</button> : <>
+                  {product.access?.allowed ? (installed && !hasUpdate
+                    ? <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className={`col-span-2 h-8 rounded border text-[11px] inline-flex items-center justify-center gap-1.5 ${isDarkMode ? 'border-slate-500/40 text-slate-300 hover:bg-slate-500/10' : 'border-slate-300 text-slate-700 hover:bg-slate-500/10'} ${actionButtonClass}`} title={`当前已是最新版本 v${installedVersion}；如需覆盖重装可重新下载`}><Download size={14}/>重新下载安装</button>
+                    : <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className={`col-span-2 h-8 rounded bg-sky-600 text-white inline-flex items-center justify-center gap-1.5 hover:bg-sky-500 ${actionButtonClass}`}><Download size={14}/>{installed && hasUpdate ? `下载更新 v${installedVersion} → v${latestVersion} 并预览安装` : '下载并预览安装'}</button>) : <>
                     <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'wechat')} className={`h-8 rounded border text-xs inline-flex items-center justify-center gap-1 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10' : 'border-emerald-500/50 text-emerald-700 hover:bg-emerald-500/10'} ${actionButtonClass}`}>微信支付{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
                     <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'alipay')} className={`h-8 rounded border text-xs inline-flex items-center justify-center gap-1 ${isDarkMode ? 'border-sky-500/40 text-sky-300 hover:bg-sky-500/10' : 'border-sky-500/50 text-sky-700 hover:bg-sky-500/10'} ${actionButtonClass}`}>支付宝{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
                   </>}
@@ -1900,5 +1907,21 @@ function isAllowedWorkspacePath(value: string, allowedRoot?: string): boolean {
   if (parts.some(part => !part || part === '..')) return false;
   if (!allowedRoot) return true;
   return normalized === allowedRoot || normalized.startsWith(`${allowedRoot}/`);
+}
+
+/** 与 moduleService.compareModuleVersions 同口径：数字段逐级比较，预发布版本低于同号正式版。 */
+function compareModuleVersion(left: string, right: string): number {
+  const numericParts = (value: string) => value.split('-', 1)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const leftParts = numericParts(left);
+  const rightParts = numericParts(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (difference !== 0) return difference < 0 ? -1 : 1;
+  }
+  const leftPrerelease = left.includes('-');
+  const rightPrerelease = right.includes('-');
+  if (leftPrerelease === rightPrerelease) return 0;
+  return leftPrerelease ? -1 : 1;
 }
 

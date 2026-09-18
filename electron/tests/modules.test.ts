@@ -6856,6 +6856,11 @@ test('module manager interface action opens the viewport-level public informatio
   assert.match(inspectorSource, /onInspect=\{\(\) => inspectModule\(module\.manifest\.id\)\}/);
   assert.match(inspectorSource, /<ModulePublicInfoDialog/);
   assert.doesNotMatch(inspectorSource, /<ModuleDetailPanel/);
+  // 收费模块卡按钮必须按版本比较分支：已安装且无更新时不得宣称「下载更新」（内置模块误导 bug，2026-09-18）。
+  assert.match(inspectorSource, /重新下载安装/);
+  assert.match(inspectorSource, /下载更新 v\$\{installedVersion\} → v\$\{latestVersion\} 并预览安装/);
+  assert.match(inspectorSource, /已安装 v\{installedVersion\}/);
+  assert.doesNotMatch(inspectorSource, /installed \? '下载更新并预览安装'/);
   assert.match(dialogSource, /createPortal\(/);
   assert.match(dialogSource, /aria-modal="true"/);
   assert.match(dialogSource, /模块公开信息 - \{manifest\.name\}/);
