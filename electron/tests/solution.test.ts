@@ -8,6 +8,34 @@ import { createSolutionService, DEFAULT_PROJECT_ID, SOLUTION_PROJECT_TEMPLATES }
 import { getSolutionProjectDirectory } from '../src/services/solution/solutionClient';
 import { normalizeStartupProjects, topologicalProjectOrder } from '../src/services/solution/projectDependencyGraph';
 
+test('nested project file enumeration is isolated by project ownership (no duplicate lcpp/config in tree)', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  await service.getSolution();
+  const created = await service.createProject({ name: '内嵌项目' });
+  const nested = created.solution.projects.find(project => project.id !== DEFAULT_PROJECT_ID)!;
+  assert.ok(nested.sourceRoot.startsWith('src/'), '新项目默认落在 src/<id>，与默认项目 src 嵌套');
+  const defaultProject = created.solution.projects.find(project => project.id === DEFAULT_PROJECT_ID)!;
+  // 别家固定文件（模拟外部 AI 为内嵌项目写入的四件套）
+  for (const name of ['MainWindow.lcpp', '项目全局变量.lcpp', '项目DLL命令.lcpp']) {
+    await fs.writeFile(path.join(root, nested.sourceRoot, name), `类 ${name} 内嵌项目\n结束类\n`, 'utf8');
+  }
+  await fs.mkdir(path.join(root, nested.configRoot), { recursive: true });
+  await fs.writeFile(path.join(root, nested.configRoot, 'config.ini'), '[内嵌]\n', 'utf8');
+
+  const defaultFiles = await service.readProjectFiles(defaultProject);
+  const defaultKeys = Object.keys(defaultFiles);
+  assert.ok(defaultKeys.some(key => key.startsWith('src/') && !key.startsWith(`${nested.sourceRoot}/`)), '默认项目仍应看到自己的 src 文件');
+  assert.equal(defaultKeys.some(key => key.startsWith(`${nested.sourceRoot}/`)), false, '默认项目不得吸入内嵌项目的 .lcpp（解决方案树重复文件根因）');
+  assert.equal(defaultKeys.some(key => key.startsWith(`${nested.configRoot}/`)), false, '默认项目不得吸入内嵌项目的 config 文件');
+
+  const nestedFiles = await service.readProjectFiles(nested);
+  const nestedKeys = Object.keys(nestedFiles);
+  assert.ok(nestedKeys.some(key => key === `${nested.sourceRoot}/MainWindow.lcpp`), '内嵌项目应看到自己的文件');
+  assert.equal(nestedKeys.some(key => key === 'src/MainWindow.lcpp'), false, '内嵌项目不应看到默认项目根文件');
+  assert.ok(nestedKeys.some(key => key === `${nested.configRoot}/config.ini`));
+});
+
 test('solution service creates a default solution for an empty workspace', async () => {
   const root = await createTempWorkspace();
   const service = createSolutionService(root);

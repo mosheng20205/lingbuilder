@@ -106,6 +106,16 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.run.wait'), '缺少 lingbuilder.run.wait 工具');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.run.log'), '缺少 lingbuilder.run.log 工具');
     assert.ok(String(client.getInstructions() || '').includes('lingbuilder.project.create'), 'MCP 服务器必须提供窗口应用工作流 instructions');
+    assert.match(String(client.getInstructions() || ''), /功能库/u, 'instructions 必须引导外部 AI 按功能库拆分代码，避免单文件大杂烩');
+    assert.match(String(client.getInstructions() || ''), /designerInventory/u, 'instructions 必须告知外部 AI 组件表来自 designerInventory');
+    assert.match(String(client.getInstructions() || ''), /codeOrganization/u, 'instructions 必须告知外部 AI 拆分时机以 codeOrganization 为准');
+    assert.match(String(client.getInstructions() || ''), /功能代码/u, 'instructions 必须把“功能代码/功能性代码”口语映射为功能库');
+    assert.match(String(client.getInstructions() || ''), /lingcpp-designer-controls-empty/u, 'instructions 必须告知“看不到任何组件”的根因诊断');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /功能代码/u, 'edit.propose 必须声明功能代码=功能库文件，避免降级成本地函数');
+    const diagnosticsToolMeta = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
+    assert.match(String(diagnosticsToolMeta?.description || ''), /designerInventory/u, 'diagnostics 工具描述必须声明组件表视图');
+    assert.match(String(diagnosticsToolMeta?.description || ''), /codeOrganization/u, 'diagnostics 工具描述必须声明代码组织视图');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /designerInventory/u, 'edit.propose 必须引导外部 AI 先查组件表再写控件引用');
     const editTool = tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose');
     const editProperties = (editTool?.inputSchema as any)?.properties || {};
     assert.ok(editProperties.workspaceFiles, 'MCP edit.propose must accept current multi-file contents');
@@ -1413,6 +1423,56 @@ test('AI Bridge rejects a designer model changed after proposal creation', async
   await service.shutdown();
 });
 
+test('AI Bridge gates apply and preview when source references controls missing from the designer model', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'gate-project';
+  const sourcePath = 'src/gate-project/Main.lcpp';
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  const emptyModel = createDesignerFallbackProject(projectId, '门禁项目');
+  emptyModel.windows[0].controls = [];
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), CONTROL_REF_SOURCE, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(emptyModel, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '门禁项目' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'control-gate-token'));
+  try {
+    // propose 保持宽松（caller-draft 允许纯源码草稿）
+    const sourceOnly = await service.proposeEdit({
+      filePath: sourcePath, projectId, instruction: '调整输出文案',
+      files: [{ filePath: sourcePath, updatedSource: `${CONTROL_REF_SOURCE}// 门禁验证\n` }]
+    });
+    assert.ok(sourceOnly.proposal.id);
+    // apply 被控件引用门禁阻断，并给出 updatedDesignerProject 修复路径
+    await assert.rejects(
+      () => service.applyEdit({ proposalId: sourceOnly.proposal.id, approved: true }),
+      /lingbuilder\.edit\.apply 被阻止[\s\S]*不存在的控件[\s\S]*updatedDesignerProject/u
+    );
+    // native.preview 同口径阻断
+    await assert.rejects(
+      () => service.nativePreview({ projectId }),
+      /lingbuilder\.native\.preview 被阻止[\s\S]*输出结果/u
+    );
+    // 带 updatedDesignerProject 补齐控件后：提案 + 应用成功，磁盘模型含控件
+    const withControl = createDesignerFallbackProject(projectId, '门禁项目');
+    const fixed = await service.proposeEdit({
+      filePath: sourcePath, projectId, instruction: '补齐控件并调整布局',
+      updatedDesignerProject: withControl,
+      files: [{ filePath: sourcePath, updatedSource: CONTROL_REF_SOURCE }]
+    });
+    const applied = await service.applyEdit({ proposalId: fixed.proposal.id, approved: true });
+    assert.equal(applied.ok, true);
+    const persisted = JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'));
+    assert.equal(persisted.windows[0].controls.some((control: { name: string }) => control.name === '输出结果'), true);
+    // 补齐后预览不再被门禁阻断
+    const preview = await service.nativePreview({ projectId });
+    assert.equal(preview.ok, true);
+  } finally {
+    await service.shutdown();
+  }
+});
+
 test('AI Bridge reads and applies edits without corrupting UTF-16 or CRLF files', async () => {
   const workspaceRoot = await createTempWorkspace();
   const sourcePath = 'src/编码测试.lcpp';
@@ -1802,6 +1862,153 @@ test('AI Bridge diagnostics fall back to the workspace designer model by project
     false,
     JSON.stringify(result.diagnostics)
   );
+});
+
+test('AI Bridge diagnostics return the designer control inventory and code organization report', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'inventory-project';
+  const sourceRoot = `src/${projectId}`;
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  const model = createDesignerFallbackProject(projectId, '组件清单项目');
+  model.windows[0].controls = [
+    ...model.windows[0].controls,
+    { ...model.windows[0].controls[0], id: 'btn-hidden', name: '隐藏按钮', content: '看不见', visibility: 'Collapsed' }
+  ];
+  model.resources = [{ id: 'img-1', type: 'ImageList', name: '图标列表', imageWidth: 16, imageHeight: 16, images: [] }];
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(model, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '组件清单项目' });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'main.lcpp'), CONTROL_REF_SOURCE, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/main.lcpp`, sourceCode: CONTROL_REF_SOURCE });
+  await service.shutdown();
+
+  const inventory = result.designerInventory;
+  assert.ok(inventory, '窗口项目诊断必须返回 designerInventory');
+  assert.equal(inventory.source, 'workspace');
+  assert.equal(inventory.windowCount, 1);
+  assert.equal(inventory.controlCount, 2);
+  const window = inventory.windows[0];
+  assert.equal(window.className, 'MainWindow');
+  assert.deepEqual(window.controls.map(control => control.name), ['输出结果', '隐藏按钮']);
+  assert.equal(window.controls[0].type, 'Button');
+  assert.equal(window.controls[0].visible, true);
+  assert.equal(window.hiddenControlCount, 1, 'Collapsed 控件必须被计入，供外部 AI 回答「组件为什么没显示」');
+  assert.ok(window.sourceEventHandlers.includes('创建完毕'), '源码事件处理器必须与窗口类对齐返回');
+  assert.ok(inventory.nonVisualResources.some(resource => resource.name === '图标列表' && resource.type === 'ImageList'));
+  assert.match(inventory.summary, /1 个 visibility=Collapsed/u);
+
+  const organization = result.codeOrganization;
+  assert.equal(organization.windowProject, true);
+  const mainFile = organization.files.find(file => file.filePath === `${sourceRoot}/main.lcpp`);
+  assert.equal(mainFile?.kind, 'window-main');
+  assert.ok((mainFile?.lineCount ?? 0) >= 4);
+  assert.deepEqual(organization.functionLibraries, []);
+});
+
+test('AI Bridge diagnostics name the empty designer model as the reason no components show', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'empty-canvas-project';
+  const sourceRoot = `src/${projectId}`;
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  const emptyModel = createDesignerFallbackProject(projectId, '画布空白项目');
+  emptyModel.windows[0].controls = [];
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(emptyModel, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '画布空白项目' });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  const plainSource = '类 MainWindow\n    事件 创建完毕()\n        调试输出("启动")\n    结束\n结束类\n';
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'main.lcpp'), plainSource, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/main.lcpp`, sourceCode: plainSource });
+
+  const empty = result.diagnostics.find(diagnostic => diagnostic.id === 'lingcpp-designer-controls-empty');
+  assert.ok(empty, `模型有窗口但 0 控件必须点名根因：${JSON.stringify(result.diagnostics)}`);
+  assert.equal(empty.level, 'warning', '只给 warning，不得阻断构建');
+  assert.match(empty.message, /画布是空白/u);
+  assert.match(empty.suggestion, /updatedDesignerProject/u);
+  assert.match(result.designerInventory.summary, /没有任何组件/u);
+  assert.equal(result.designerInventory.windows[0].controlCount, 0);
+  await service.shutdown();
+
+  // 有控件的模型不得出现该诊断（上一用例已覆盖 inventory 内容）
+  const filledRoot = await createTempWorkspace();
+  const filledService = new AiBridgeService(createOptions(filledRoot, 'preview'));
+  const filledPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  await fs.mkdir(path.dirname(path.join(filledRoot, filledPath)), { recursive: true });
+  await fs.writeFile(path.join(filledRoot, filledPath), `${JSON.stringify(createDesignerFallbackProject(projectId, '画布空白项目'), null, 2)}\n`, 'utf8');
+  await registerSolutionProject(filledRoot, { id: projectId, name: '画布空白项目' });
+  const filledResult = await filledService.getLingCppDiagnostics({ projectId, filePath: 'src/main.lcpp', sourceCode: plainSource });
+  assert.equal(
+    filledResult.diagnostics.some(diagnostic => diagnostic.id === 'lingcpp-designer-controls-empty'),
+    false,
+    JSON.stringify(filledResult.diagnostics)
+  );
+  await filledService.shutdown();
+});
+
+test('AI Bridge diagnostics prescribe a function-library split for oversized single window files', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'oversized-project';
+  const sourceRoot = `src/${projectId}`;
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(createDesignerFallbackProject(projectId, '超大单文件项目'), null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '超大单文件项目' });
+  const padding = Array.from({ length: 320 }, (_unused, index) => `        // 说明 ${index}`).join('\n');
+  const oversizedSource = `类 MainWindow\n    事件 创建完毕()\n${padding}\n    结束\n结束类\n`;
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'MainWindow.lcpp'), oversizedSource, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/MainWindow.lcpp`, sourceCode: oversizedSource });
+  await service.shutdown();
+
+  const suggestion = result.diagnostics.find(diagnostic => diagnostic.id === 'lingcpp-code-organization-split-suggestion');
+  assert.ok(suggestion, `超大单文件必须给出拆分处方：${JSON.stringify(result.diagnostics)}`);
+  assert.equal(suggestion.level, 'info', '未超重的拆分建议只能是 info，不得阻断构建');
+  assert.match(suggestion.message, /功能库/u);
+  assert.match(suggestion.suggestion, /结束功能库/u);
+  assert.match(suggestion.suggestion, /功能库 文本工具/u, '处方必须给可粘贴的功能库骨架');
+  assert.match(suggestion.suggestion, /公开:/u, '骨架必须标出公开段（跨文件限定调用只暴露公开功能）');
+  assert.ok(suggestion.suggestion.includes(`${sourceRoot}/`), '处方应给出与本项目源码目录一致的目标文件路径');
+  assert.match(suggestion.message, /功能代码/u, '处方必须把用户的“功能代码”口语映射到功能库术语');
+  assert.equal(result.codeOrganization.largestFile?.kind, 'window-main');
+  assert.ok((result.codeOrganization.largestFile?.lineCount ?? 0) >= 300);
+});
+
+test('AI Bridge diagnostics keep code organization silent for small and non-window projects', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'small-project';
+  const sourceRoot = `src/${projectId}`;
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(createDesignerFallbackProject(projectId, '小项目'), null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '小项目' });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'main.lcpp'), CONTROL_REF_SOURCE, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const small = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/main.lcpp`, sourceCode: CONTROL_REF_SOURCE });
+  assert.equal(
+    small.diagnostics.some(diagnostic => diagnostic.id === 'lingcpp-code-organization-split-suggestion'),
+    false,
+    JSON.stringify(small.diagnostics)
+  );
+  assert.match(small.codeOrganization.summary, /尚未需要拆分/u);
+
+  const outside = await service.getLingCppDiagnostics({ projectId: 'not-registered', filePath: 'src/other/main.lcpp', sourceCode: CONTROL_REF_SOURCE });
+  assert.equal(outside.designerInventory, undefined, '未注册项目没有设计器上下文，不得伪造组件表');
+  assert.equal(outside.codeOrganization.windowProject, false);
+  assert.equal(
+    outside.diagnostics.some(diagnostic => diagnostic.id === 'lingcpp-code-organization-split-suggestion'),
+    false,
+    '非窗口项目不得施加功能库拆分建议'
+  );
+  await service.shutdown();
 });
 
 test('AI Bridge diagnostics surface a missing workspace designer model and keep honest control errors', async () => {

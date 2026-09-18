@@ -7,7 +7,7 @@ import { applyWorkspaceEditToFiles, areDesignerProjectsEquivalent, getWorkspaceE
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
-import { createProjectFunctionContext } from '../lingCpp/functionLibraryService';
+import { createFunctionLibraryTemplate, createProjectFunctionContext } from '../lingCpp/functionLibraryService';
 import { LingCppDiagnostic, LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
@@ -42,7 +42,7 @@ import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin3
 import { createProjectDllDeclarationModuleFromSources, getProjectDllCommandsDiagnostics, isProjectDllCommandsFilePath } from '../lingCpp/projectDllCommandService';
 import { materializeProjectDllDeclarationModules } from '../modules/projectDllMaterializeService';
 import { getEmbeddedResourceSpecsForBuild } from '../windowDesigner/embeddedResourceMigration';
-import { parseLingCpp } from '../lingCpp/parser';
+import { normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { createDesignerAssetService } from '../windowDesigner/designerAssetService';
 import { LingWindowProject } from '../windowDesigner/types';
@@ -62,7 +62,11 @@ import { resolveSdkCacheRoot } from '../sdkDependencies/sdkDependencyCatalog';
 import { AiBridgePermissionService } from './permissionService';
 import {
   AiBridgeBuildRunRequest,
+  AiBridgeCodeOrganizationInfo,
   AiBridgeDesignerContextInfo,
+  AiBridgeDesignerInventory,
+  AiBridgeDesignerControlItem,
+  AiBridgeDesignerWindowInfo,
   AiBridgeEditApplyRequest,
   AiBridgeEditApplyResult,
   AiBridgeEditProposeRequest,
@@ -363,12 +367,21 @@ export class AiBridgeService {
     );
     const designerNotices = this.createDesignerContextDiagnostics(designerContext);
     if (designerNotices.length > 0) diagnostics.unshift(...designerNotices);
+    const designerInventory = this.describeDesignerInventory(designerContext, effectiveSources);
+    const codeOrganization = this.describeCodeOrganization({
+      windowProject: designerContext.source !== 'none',
+      sources: effectiveSources,
+      functionLibraries: projectFunctions.libraries
+    });
+    diagnostics.push(...this.createCodeOrganizationDiagnostics(codeOrganization, request.filePath));
     if (dllCommandSource) diagnostics.unshift(...getProjectDllCommandsDiagnostics(dllCommandSource.sourceCode, dllCommandSource.filePath));
     return {
       ok: true,
       filePath: normalizeFilePath(request.filePath),
       diagnostics,
       designerContext: this.describeDesignerContext(designerContext),
+      designerInventory,
+      codeOrganization,
       moduleContextSummary: describeLingCppModuleContextForAi(moduleContext)
     };
   }
@@ -428,6 +441,10 @@ export class AiBridgeService {
     await this.requireWriteWithAudit('edit.apply', request.proposalId, request.approved);
     const workspaceFiles = await this.resolveApplyWorkspaceFiles(request);
     const appliedFiles = applyWorkspaceEditToFiles(workspaceFiles, proposal);
+    const gateContext = await this.resolveWindowProjectForApply(proposal, appliedFiles);
+    if (gateContext) {
+      await this.assertControlReferencesInDesigner({ ...gateContext, actionLabel: 'lingbuilder.edit.apply' });
+    }
     const persistedFiles: Array<{ filePath: string; sourceCode: string; absolutePath: string }> = [];
     const staged: Array<{ file: typeof appliedFiles[number]; absolutePath: string; temporaryPath: string; original?: Buffer }> = [];
     let appliedDesignerProject = proposal.designerProject;
@@ -846,6 +863,84 @@ export class AiBridgeService {
   }
 
   /**
+   * 控件引用门禁（apply/build 共用）：窗口项目的最终源码引用了设计器模型不存在的控件
+   * （controlRef 缺失/歧义/越界/带引号等 error 级诊断）时阻断，杜绝「源码有控件、设计器没有」
+   * 导致 IDE 画布空白、生成 exe 无控件的脱节状态。
+   */
+  private async assertControlReferencesInDesigner(request: {
+    projectId: string;
+    designerProject: LingWindowProject | undefined;
+    sources: Array<{ filePath: string; sourceCode: string }>;
+    actionLabel: string;
+  }): Promise<void> {
+    if (!request.designerProject) return;
+    const normalized = request.sources.map(source => ({ filePath: normalizeFilePath(source.filePath), sourceCode: source.sourceCode }));
+    const moduleContext = await this.getModuleContext(request.projectId);
+    const globalSource = normalized.find(source => isProjectGlobalsFilePath(source.filePath));
+    const typeSource = normalized.find(source => isProjectDataTypesFilePath(source.filePath));
+    const projectGlobals = globalSource ? createProjectGlobalContext(globalSource.filePath, globalSource.sourceCode) : undefined;
+    const projectTypes = typeSource ? createProjectTypeContext(typeSource.filePath, typeSource.sourceCode) : undefined;
+    const projectFunctions = createProjectFunctionContext(normalized.map(source => ({ ...source, language: 'lingcpp' as const })));
+    const problems: string[] = [];
+    for (const source of normalized) {
+      if (!source.filePath.toLocaleLowerCase().endsWith('.lcpp')) continue;
+      if (isProjectGlobalsFilePath(source.filePath) || isProjectDataTypesFilePath(source.filePath) || isProjectDllCommandsFilePath(source.filePath)) continue;
+      const diagnostics = getLingCppSemanticDiagnostics(
+        source.sourceCode, request.designerProject, source.filePath,
+        moduleContext, projectGlobals, projectTypes, projectFunctions,
+        { suppressDesignerControlDiagnostics: false }
+      );
+      for (const diagnostic of diagnostics) {
+        if (diagnostic.level === 'error' && diagnostic.id.startsWith('lingcpp-control-reference-')) problems.push(`${source.filePath}:${diagnostic.line} ${diagnostic.message}`);
+      }
+    }
+    if (problems.length > 0) {
+      throw new Error(`${request.actionLabel} 被阻止：源码引用了窗口设计器模型中不存在的控件：\n${[...new Set(problems)].slice(0, 12).join('\n')}\n修复方式：在 edit.propose 提案中携带 updatedDesignerProject（包含这些控件的完整设计器模型），经 edit.apply 同步布局到磁盘后再重试；若这些引用本就不该存在，请删除相关代码后重新提案。`);
+    }
+  }
+
+  /** edit.apply 门禁上下文：按提案模型 ID 或变更 .lcpp 的 sourceRoot 最长前缀解析窗口项目，并合并「磁盘 + 提案后」最终源码。解析不出窗口项目则跳过门禁。 */
+  private async resolveWindowProjectForApply(
+    proposal: NonNullable<ReturnType<typeof getWorkspaceEditProposal>>,
+    appliedFiles: Array<{ filePath: string; sourceCode: string }>
+  ): Promise<{ projectId: string; designerProject: LingWindowProject; sources: Array<{ filePath: string; sourceCode: string }> } | undefined> {
+    try {
+      const solution = await this.solutionService.getSolution();
+      const directId = typeof proposal.designerProject?.id === 'string' ? proposal.designerProject.id : '';
+      let projectRef = directId ? solution.projects.find(item => item.id === directId) : undefined;
+      if (!projectRef) {
+        const firstSource = appliedFiles.find(file => file.filePath.toLocaleLowerCase().endsWith('.lcpp'));
+        if (firstSource) {
+          const filePath = normalizeFilePath(firstSource.filePath);
+          let bestLength = -1;
+          for (const candidate of solution.projects) {
+            const root = normalizeFilePath(candidate.sourceRoot || '');
+            if (!root || root === '.') continue;
+            if ((filePath === root || filePath.startsWith(`${root}/`)) && root.length > bestLength) { projectRef = candidate; bestLength = root.length; }
+          }
+        }
+      }
+      if (!projectRef) return undefined;
+      const snapshot = await this.solutionService.readDesignerProjectSnapshot(projectRef);
+      const designerProject = (proposal.designerProject as LingWindowProject | undefined) ?? (snapshot.persisted ? snapshot.project : undefined);
+      if (!designerProject) return undefined;
+      const diskFiles = await this.solutionService.readProjectFiles(projectRef);
+      const overrides = new Map(appliedFiles.map(file => [normalizeFilePath(file.filePath).toLocaleLowerCase(), file.sourceCode]));
+      const sources = Object.entries(diskFiles).map(([filePath, sourceCode]) => ({
+        filePath: normalizeFilePath(filePath),
+        sourceCode: String(overrides.get(normalizeFilePath(filePath).toLocaleLowerCase()) ?? sourceCode ?? '')
+      }));
+      for (const file of appliedFiles) {
+        const filePath = normalizeFilePath(file.filePath);
+        if (!sources.some(source => source.filePath === filePath)) sources.push({ filePath, sourceCode: file.sourceCode });
+      }
+      return { projectId: projectRef.id, designerProject, sources };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * 构建/预览/导出的设计器模型解析：显式传入完整 project 优先；缺省按 projectId 读取磁盘快照。
    * 外部 AI 因此不必每次重发全量模型——磁盘模型即 IDE 设计器的权威状态。
    */
@@ -878,6 +973,7 @@ export class AiBridgeService {
       this.moduleService.getEnabledProjectModules(projectId),
       this.resolveLingCppProjectSources(projectId, request.lingCppSources)
     ]);
+    await this.assertControlReferencesInDesigner({ projectId, designerProject: request.project, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
     this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
     // 与 executeBuildRun 同口径：预览产物跟随解决方案项目记录的输出形态（窗口应用缺省 / dll / 控制台）。
@@ -1020,6 +1116,12 @@ export class AiBridgeService {
         this.shuttingDown ? 'AI Bridge 正在关闭。' : 'AI Bridge 正在停止受控运行任务。'
       );
     }
+    await this.assertControlReferencesInDesigner({
+      projectId: request.project.id || projectId,
+      designerProject: request.project,
+      sources: await this.resolveLingCppProjectSources(request.project.id || projectId, request.lingCppSources),
+      actionLabel: 'lingbuilder.build.run'
+    });
 
     let buildLease: ProjectBuildLease | undefined;
     let preBuildLogs: string[] = [];
@@ -1693,17 +1795,19 @@ export class AiBridgeService {
 
   /** 设计器上下文不足以做控件校验时，给外部 AI 的根因说明（warning 级，附修复路径）。 */
   private createDesignerContextDiagnostics(context: AiBridgeDesignerContextResolution): LingCppDiagnostic[] {
-    if (context.source === 'caller') return [];
+    if (context.source === 'caller') return this.createEmptyDesignerModelDiagnostics(context.project);
     if (context.source === 'workspace') {
-      if (context.persisted) return [];
-      return [{
-        id: 'lingcpp-designer-model-missing',
-        line: 1,
-        level: 'warning',
-        message: `项目“${context.project.id}”的设计器模型文件缺失或无效（${context.designerPath}）：本轮控件引用按空窗口模型校验，可能产生“找不到控件”诊断。`,
-        codeSnippet: '',
-        suggestion: '请通过 lingbuilder.edit.apply 携带 updatedDesignerProject 重建设计器模型，或使用 lingbuilder.project.create 重新创建项目。'
-      }];
+      if (!context.persisted) {
+        return [{
+          id: 'lingcpp-designer-model-missing',
+          line: 1,
+          level: 'warning',
+          message: `项目“${context.project.id}”的设计器模型文件缺失或无效（${context.designerPath}）：本轮控件引用按空窗口模型校验，可能产生“找不到控件”诊断。`,
+          codeSnippet: '',
+          suggestion: '请通过 lingbuilder.edit.apply 携带 updatedDesignerProject 重建设计器模型，或使用 lingbuilder.project.create 重新创建项目。'
+        }];
+      }
+      return this.createEmptyDesignerModelDiagnostics(context.project);
     }
     const message = context.reason === 'project-not-found'
       ? `未提供窗口设计器模型，且项目“${context.projectId}”不在当前解决方案中：控件引用与设计器事件绑定本轮未校验。`
@@ -1715,6 +1819,21 @@ export class AiBridgeService {
       message,
       codeSnippet: '',
       suggestion: '请传 designerProject 提供完整设计器模型；对解决方案中的已注册项目，可只传 projectId 由工作区设计器模型自动补齐。'
+    }];
+  }
+
+  /** 模型已加载却一个控件都没有：这就是「IDE 画布空白、exe 里没有组件」的根因，必须点名并给修复路径。 */
+  private createEmptyDesignerModelDiagnostics(project: LingWindowProject): LingCppDiagnostic[] {
+    if (project.windows.length === 0) return [];
+    const totalControls = project.windows.reduce((total, window) => total + window.controls.length, 0);
+    if (totalControls > 0) return [];
+    return [{
+      id: 'lingcpp-designer-controls-empty',
+      line: 1,
+      level: 'warning',
+      message: `项目“${project.id}”的设计器模型里没有任何控件（${project.windows.length} 个窗口的 controls 全为空）：因此 IDE 界面设计器画布是空白的，构建出的 exe 窗口里也不会出现任何组件。这不是显示问题，而是控件从未进入设计器模型——只写 .lcpp 源码不会产生界面。`,
+      codeSnippet: '',
+      suggestion: '在 lingbuilder.edit.propose 里携带 updatedDesignerProject（完整设计器模型对象，windows[].controls 补齐目标控件，type 用规范英文标识如 Button/TextBox/ListView，每项都要带 content），经 edit.apply 落盘后再构建；需要控件显示出来还要保证 visibility 不为 Collapsed。'
     }];
   }
 
@@ -1739,6 +1858,192 @@ export class AiBridgeService {
       controlReferencesChecked: false,
       summary: '未提供设计器模型，控件引用与设计器事件绑定未校验。'
     };
+  }
+
+  private static readonly DESIGNER_INVENTORY_MAX_CONTROLS_PER_WINDOW = 160;
+  private static readonly CODE_ORGANIZATION_MAX_FILES = 40;
+  private static readonly CODE_ORGANIZATION_SPLIT_LINES = 300;
+  private static readonly CODE_ORGANIZATION_HEAVY_LINES = 800;
+
+  /**
+   * 设计器组件清单：把已解析的设计器模型导出为「窗口 → 控件（名称/类型/内容/位置/可见性/事件绑定）」
+   * 的权威表，外部 AI 一次 diagnostics 调用即可回答「我的窗口里到底有哪些组件、为什么没显示」，
+   * 不需要猜 window-designer.json 路径或从源码反推。
+   */
+  private describeDesignerInventory(
+    context: AiBridgeDesignerContextResolution,
+    sources: Array<{ filePath: string; sourceCode: string }>
+  ): AiBridgeDesignerInventory | undefined {
+    if (context.source === 'none') return undefined;
+    const project = context.project;
+    const handlersByClass = new Map<string, string[]>();
+    for (const source of sources.slice(0, AiBridgeService.CODE_ORGANIZATION_MAX_FILES)) {
+      if (!source.filePath.toLocaleLowerCase().endsWith('.lcpp')) continue;
+      let parsed;
+      try {
+        parsed = parseLingCpp(source.sourceCode);
+      } catch {
+        continue;
+      }
+      for (const classDecl of parsed.program.classes) {
+        const key = normalizeIdentifier(classDecl.name);
+        const handlers = classDecl.methods.filter(method => method.kind === 'event').map(method => method.name);
+        handlersByClass.set(key, [...(handlersByClass.get(key) ?? []), ...handlers]);
+      }
+    }
+    const controlNameById = new Map<string, string>(
+      project.windows.flatMap(window => window.controls.map(control => [control.id, control.name] as [string, string]))
+    );
+    const maxPerWindow = AiBridgeService.DESIGNER_INVENTORY_MAX_CONTROLS_PER_WINDOW;
+    let hiddenTotal = 0;
+    const windows: AiBridgeDesignerWindowInfo[] = project.windows.map(window => {
+      const hiddenCount = window.controls.filter(control => control.visibility === 'Collapsed').length;
+      hiddenTotal += hiddenCount;
+      return {
+        id: window.id,
+        fileName: window.fileName,
+        className: window.className,
+        title: window.title,
+        ...(window.designerBackend ? { designerBackend: window.designerBackend } : {}),
+        width: window.width,
+        height: window.height,
+        controlCount: window.controls.length,
+        hiddenControlCount: hiddenCount,
+        sourceEventHandlers: handlersByClass.get(normalizeIdentifier(window.className)) ?? [],
+        truncated: window.controls.length > maxPerWindow,
+        controls: window.controls.slice(0, maxPerWindow).map(control => {
+          const item: AiBridgeDesignerControlItem = {
+            name: control.name,
+            type: control.designerType || control.type,
+            x: control.x,
+            y: control.y,
+            width: control.width,
+            height: control.height,
+            visible: control.visibility !== 'Collapsed',
+            enabled: control.isEnabled !== false,
+            eventBindings: { ...(control.events ?? {}) }
+          };
+          const content = typeof control.content === 'string' ? control.content.trim() : '';
+          if (content) item.content = content.length > 80 ? `${content.slice(0, 80)}…` : content;
+          const parentName = control.parentId ? controlNameById.get(control.parentId) : undefined;
+          if (parentName) item.parentName = parentName;
+          return item;
+        })
+      };
+    });
+    const controlCount = windows.reduce((total, window) => total + window.controlCount, 0);
+    const summary = windows.length === 0
+      ? '设计器模型没有任何窗口。'
+      : controlCount === 0
+        ? `设计器有 ${windows.length} 个窗口但**没有任何组件**：这正是 IDE 画布空白、exe 窗口里没有控件的直接原因（只写 .lcpp 源码不会产生界面）。请在 edit.propose 携带 updatedDesignerProject 补齐控件后 apply 落盘，再构建。`
+        : `设计器共 ${windows.length} 个窗口、${controlCount} 个组件${hiddenTotal > 0 ? `，其中 ${hiddenTotal} 个 visibility=Collapsed（画布与运行时都不显示）` : ''}。控件必须存在于本清单才会出现在 IDE 画布和生成的 exe 里；补齐或隐藏控件请在 edit.propose 携带 updatedDesignerProject。`;
+    const designerPath = context.source === 'workspace' ? context.designerPath : undefined;
+    return {
+      source: context.source,
+      ...(designerPath ? { designerPath } : {}),
+      windowCount: windows.length,
+      controlCount,
+      windows,
+      nonVisualResources: (project.resources ?? []).map(resource => ({
+        name: String((resource as { name?: unknown }).name ?? ''),
+        type: String((resource as { type?: unknown }).type ?? '')
+      })),
+      summary
+    };
+  }
+
+  /**
+   * 代码组织度量：统计项目内每个 .lcpp 的行数与角色（窗口主体/功能库/固定文件），并给出中文处方。
+   * 配合 MCP_INSTRUCTIONS 第 7 条，把「别把整个项目堆进单个 MainWindow.lcpp」从引导语
+   * 变成外部 AI 每次诊断都能拿到的可执行指标。
+   */
+  private describeCodeOrganization(request: {
+    windowProject: boolean;
+    sources: Array<{ filePath: string; sourceCode: string }>;
+    functionLibraries: Array<{ name: string; filePath: string; methods: Array<{ name: string; access?: string }> }>;
+  }): AiBridgeCodeOrganizationInfo {
+    type FileMetric = AiBridgeCodeOrganizationInfo['files'][number];
+    const files: FileMetric[] = request.sources
+      .filter(source => source.filePath.toLocaleLowerCase().endsWith('.lcpp'))
+      .map((source): FileMetric => {
+        const normalized = normalizeFilePath(source.filePath);
+        let functionLibraryCount = 0;
+        let classNames: string[] = [];
+        try {
+          const parsed = parseLingCpp(source.sourceCode);
+          functionLibraryCount = parsed.program.functionLibraries.length;
+          classNames = parsed.program.classes.map(classDecl => classDecl.name);
+        } catch {
+          // 语法问题由常规诊断负责，这里只做角色归类。
+        }
+        const kind: FileMetric['kind'] = isProjectGlobalsFilePath(normalized) || isProjectDataTypesFilePath(normalized) || isProjectDllCommandsFilePath(normalized)
+          ? 'fixed'
+          : functionLibraryCount > 0
+            ? 'function-library'
+            : classNames.length > 0
+              ? 'window-main'
+              : 'other';
+        return {
+          filePath: normalized,
+          lineCount: source.sourceCode === '' ? 0 : source.sourceCode.split(/\r?\n/u).length,
+          kind,
+          functionLibraryCount,
+          classNames
+        };
+      })
+      .filter(file => file.kind !== 'fixed')
+      .sort((left, right) => right.lineCount - left.lineCount);
+    const capped = files.slice(0, AiBridgeService.CODE_ORGANIZATION_MAX_FILES);
+    const largestFile = capped[0];
+    const functionLibraries = request.functionLibraries.map(library => ({
+      name: library.name,
+      filePath: normalizeFilePath(library.filePath),
+      publicMethods: library.methods.filter(method => method.access !== '私有' && method.access !== '保护').map(method => method.name)
+    }));
+    const splitLines = AiBridgeService.CODE_ORGANIZATION_SPLIT_LINES;
+    const heavyLines = AiBridgeService.CODE_ORGANIZATION_HEAVY_LINES;
+    let summary: string;
+    if (!request.windowProject) {
+      summary = '非窗口项目：不适用功能库拆分建议。';
+    } else if (functionLibraries.length === 0 && largestFile && largestFile.lineCount >= splitLines) {
+      summary = `全部逻辑集中在 ${largestFile.filePath}（${largestFile.lineCount} 行）且项目没有任何功能库：功能库（用户口中的“功能代码/功能性代码/公共代码”就是指它）是独立 .lcpp 文件里的“功能库 名称 … 结束功能库”块，不是把代码改写成更多本地函数——请新建一个文件一个功能库，按分类把可复用逻辑与大批量 @ 内嵌 C++ 下沉进去，跨文件用 库名.功能(...) 限定调用，窗口主 .lcpp 只保留事件处理器与程序主体。`;
+    } else if (largestFile && largestFile.lineCount >= heavyLines) {
+      summary = `${largestFile.filePath} 已达 ${largestFile.lineCount} 行：继续按分类新增功能库文件（“功能库 名称 … 结束功能库”，即“功能代码”文件）并迁移逻辑，避免单文件持续膨胀。`;
+    } else if (functionLibraries.length > 0) {
+      summary = `代码组织良好：项目已有 ${functionLibraries.length} 个功能库，最大 .lcpp 为 ${largestFile?.lineCount ?? 0} 行；新增“功能代码”请继续落到对应功能库文件。`;
+    } else {
+      summary = `当前最大 .lcpp 为 ${largestFile?.lineCount ?? 0} 行，尚未需要拆分；新增可复用逻辑（“功能代码”）时优先放进独立功能库文件（“功能库 名称 … 结束功能库”），不要继续追加进窗口主 .lcpp。`;
+    }
+    return {
+      windowProject: request.windowProject,
+      files: capped,
+      functionLibraries,
+      ...(largestFile ? { largestFile } : {}),
+      summary
+    };
+  }
+
+  /** 代码组织处方诊断：info/warning 级，绝不阻断构建。 */
+  private createCodeOrganizationDiagnostics(organization: AiBridgeCodeOrganizationInfo, filePath: string): LingCppDiagnostic[] {
+    if (!organization.windowProject) return [];
+    const oversized = organization.files.filter(file => file.lineCount >= AiBridgeService.CODE_ORGANIZATION_HEAVY_LINES);
+    const needsSplit = organization.functionLibraries.length === 0
+      && (organization.largestFile?.lineCount ?? 0) >= AiBridgeService.CODE_ORGANIZATION_SPLIT_LINES;
+    if (!needsSplit && oversized.length === 0) return [];
+    const current = organization.files.find(file => file.filePath === normalizeFilePath(filePath));
+    const currentDirectory = current ? path.posix.dirname(current.filePath) : path.posix.dirname(normalizeFilePath(filePath));
+    const libraryDirectory = currentDirectory === '.' ? 'src' : currentDirectory;
+    const message = needsSplit
+      ? `代码组织：${organization.summary}`
+      : `代码组织：${oversized.map(file => `${file.filePath}（${file.lineCount} 行）`).join('、')} 体量过大。${organization.summary}`;
+    return [{
+      id: 'lingcpp-code-organization-split-suggestion',
+      line: Math.max(1, current?.lineCount ?? 1),
+      level: needsSplit && oversized.length === 0 ? 'info' : 'warning',
+      message,
+      codeSnippet: '',
+      suggestion: `新建一个功能库文件（文件名即功能库名，例如 ${libraryDirectory}/文本工具.lcpp），照下面的骨架写（公开段可被其他文件限定调用，私有段只能库内调用），把可复用命令与 @ 内嵌 C++ 从窗口主文件迁进去，调用处改为 文本工具.功能名(...)；窗口主 .lcpp 只保留事件处理器与程序主体。\n${createFunctionLibraryTemplate('文本工具')}`
+    }];
   }
 
   /** 设计器模型与项目数据只允许写入解决方案中已注册的项目，封堵“文件落盘但 IDE 看不到项目”的幻影项目。 */

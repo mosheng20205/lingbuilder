@@ -76,6 +76,73 @@ export interface AiBridgeDesignerContextInfo {
   summary: string;
 }
 
+/** 设计器控件清单项：外部 AI 据此知道项目里真实存在哪些组件、是否可见、绑定了哪些事件。 */
+export interface AiBridgeDesignerControlItem {
+  name: string;
+  type: string;
+  /** 控件显示文本（超长截断）。 */
+  content?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  visible: boolean;
+  enabled: boolean;
+  /** 设计器模型上的事件绑定：事件名 → 处理器名。 */
+  eventBindings: Record<string, string>;
+  /** 父控件名（容器内控件）。 */
+  parentName?: string;
+}
+
+export interface AiBridgeDesignerWindowInfo {
+  id: string;
+  fileName: string;
+  className: string;
+  title: string;
+  designerBackend?: string;
+  width: number;
+  height: number;
+  controlCount: number;
+  /** visibility=Collapsed 的控件数——「组件没显示出来」先看这里。 */
+  hiddenControlCount: number;
+  /** 源码中同名窗口类里声明的事件处理器名（判断绑定是否真的接上）。 */
+  sourceEventHandlers: string[];
+  controls: AiBridgeDesignerControlItem[];
+  /** controls 超过上限被截断时为 true。 */
+  truncated: boolean;
+}
+
+export interface AiBridgeDesignerInventory {
+  /** 清单来源的设计器模型（caller=调用方传入模型，workspace=磁盘模型）。 */
+  source: 'caller' | 'workspace';
+  designerPath?: string;
+  windowCount: number;
+  controlCount: number;
+  windows: AiBridgeDesignerWindowInfo[];
+  /** 非可视资源（文件对话框、图像列表、菜单等）。 */
+  nonVisualResources: Array<{ name: string; type: string }>;
+  summary: string;
+}
+
+export interface AiBridgeCodeOrganizationFileInfo {
+  filePath: string;
+  lineCount: number;
+  /** window-main=窗口类主体；function-library=功能库；fixed=固定项目文件；other=其它。 */
+  kind: 'window-main' | 'function-library' | 'fixed' | 'other';
+  functionLibraryCount: number;
+  classNames: string[];
+}
+
+export interface AiBridgeCodeOrganizationInfo {
+  /** false 表示非窗口项目（DLL/控制台/未注册），不施加功能库拆分建议。 */
+  windowProject: boolean;
+  files: AiBridgeCodeOrganizationFileInfo[];
+  functionLibraries: Array<{ name: string; filePath: string; publicMethods: string[] }>;
+  largestFile?: AiBridgeCodeOrganizationFileInfo;
+  /** 中文处方：是否需要把逻辑下沉到功能库。 */
+  summary: string;
+}
+
 export interface AiBridgeEditProposeRequest {
   filePath: string;
   sourceCode?: string;

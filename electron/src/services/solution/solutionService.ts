@@ -570,9 +570,28 @@ export class SolutionService {
     const files: Record<string, TextFileSnapshot> = {};
     const sourceRoot = this.resolveWorkspacePath(project.sourceRoot);
     const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(sourceRoot);
-    await collectTextFiles(this.workspaceRoot, sourceRoot, files, nestedWorkspacePlan);
-    await collectTextFiles(this.workspaceRoot, this.resolveWorkspacePath(project.configRoot), files);
+    const foreignRoots = await this.foreignProjectRoots(project);
+    await collectTextFiles(this.workspaceRoot, sourceRoot, files, nestedWorkspacePlan, foreignRoots);
+    await collectTextFiles(this.workspaceRoot, this.resolveWorkspacePath(project.configRoot), files, undefined, foreignRoots);
     return files;
+  }
+
+  /**
+   * 项目文件归属隔离：新建项目默认落在 `src/<id>`、`config/<id>`，嵌套在默认项目 `src`/`config` 内部。
+   * 枚举任一项目文件时必须剪掉其他项目归属的根目录，否则解决方案树出现重复 MainWindow.lcpp/config.ini，
+   * 构建源码集合与项目上下文也会吸入别家同名固定文件（重复类定义、DLL 命令冲突）。
+   */
+  private async foreignProjectRoots(project: LingBuilderSolutionProject): Promise<string[]> {
+    const solution = await this.getSolution();
+    const normalize = (value: string | undefined) => normalizeWorkspaceRelative(value).replace(/\/+$/u, '').toLowerCase();
+    const ownRoots = [normalize(project.sourceRoot), normalize(project.configRoot)].filter(root => root && root !== '.');
+    const foreign = solution.projects
+      .filter(other => other.id !== project.id)
+      .flatMap(other => [normalize(other.sourceRoot), normalize(other.configRoot)])
+      .filter(root => root && root !== '.')
+      // 只剪「严格位于本项目根之下」的别家根；别家根是本项目根的祖先/相等时不动（默认 src 嵌套 src/<id> 的常态）。
+      .filter(root => ownRoots.some(own => root.startsWith(`${own}/`)));
+    return [...new Set(foreign)];
   }
 
   async cleanProjects(projectIds?: string[]): Promise<CleanSolutionResult> {
@@ -1758,10 +1777,15 @@ async function collectTextFiles(
   workspaceRoot: string,
   directory: string,
   files: Record<string, TextFileSnapshot>,
-  nestedWorkspacePlan?: NestedWorkspaceArtifactPlan
+  nestedWorkspacePlan?: NestedWorkspaceArtifactPlan,
+  foreignRoots?: readonly string[]
 ): Promise<void> {
   if (nestedWorkspacePlan && isNestedWorkspaceArtifactPath(directory, nestedWorkspacePlan)) return;
   const relativeDirectory = path.relative(workspaceRoot, directory).replace(/\\/g, '/');
+  if (foreignRoots?.length) {
+    const lowered = relativeDirectory.toLowerCase();
+    if (foreignRoots.some(root => lowered === root || lowered.startsWith(`${root}/`))) return;
+  }
   if (isProjectBuildArtifactRelativePath(relativeDirectory)) return;
   if (!(await exists(directory))) return;
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -1769,7 +1793,7 @@ async function collectTextFiles(
     if (entry.isSymbolicLink()) continue;
     const targetPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      await collectTextFiles(workspaceRoot, targetPath, files, nestedWorkspacePlan);
+      await collectTextFiles(workspaceRoot, targetPath, files, nestedWorkspacePlan, foreignRoots);
       continue;
     }
     const relativePath = path.relative(workspaceRoot, targetPath).replace(/\\/g, '/');
@@ -1788,6 +1812,11 @@ async function exists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** 项目相对根目录规范化：反斜杠→斜杠、去 ./ 与前导 /、trim。 */
+function normalizeWorkspaceRelative(value: string | undefined): string {
+  return String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/^\/+/u, '');
 }
 
 function safeSegment(value: string): string {

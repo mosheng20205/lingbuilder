@@ -149,12 +149,13 @@ export class ProjectCreationService {
       }
       await writeReceipt(this.workspaceRoot, receipt);
 
+      const nestingNote = describeNestedProjectRoots(created.solution, created.project);
       return {
         ...preview,
         applied: true,
         receipt,
         solution: created.solution,
-        message: `已创建项目“${created.project.name}”，可继续通过 AI 编辑、诊断和构建。`
+        message: `已创建项目“${created.project.name}”，可继续通过 AI 编辑、诊断和构建。${nestingNote}`
       };
     } catch (error) {
       if (createdProject) {
@@ -370,4 +371,20 @@ function resolveWorkspacePath(workspaceRoot: string, relativePath: string): stri
 
 export function createProjectCreationService(workspaceRoot: string, dependencies?: { solutionService?: SolutionService; moduleService?: ModuleService }): ProjectCreationService {
   return new ProjectCreationService(workspaceRoot, dependencies);
+}
+
+/** 新项目目录嵌套在既有项目 sourceRoot/configRoot 内时（默认 src 与 src/<id> 的常态），提示归属已自动隔离。 */
+function describeNestedProjectRoots(
+  solution: { projects: LingBuilderSolutionProject[] },
+  created: LingBuilderSolutionProject
+): string {
+  const normalize = (value: string | undefined) => String(value || '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const createdRoots = [normalize(created.sourceRoot), normalize(created.configRoot)].filter(root => root && root !== '.');
+  const hosts = solution.projects.filter(project => project.id !== created.id).flatMap(project => {
+    const roots = [normalize(project.sourceRoot), normalize(project.configRoot)].filter(root => root && root !== '.');
+    return createdRoots.some(child => roots.some(parent => child !== parent && child.startsWith(`${parent}/`))) ? [project.name || project.id] : [];
+  });
+  return hosts.length
+    ? `注意：新项目目录嵌套在项目「${[...new Set(hosts)].join('、')}」的目录内；IDE 已按项目归属自动隔离文件视图与构建源码集合，无需手工规避。`
+    : '';
 }
