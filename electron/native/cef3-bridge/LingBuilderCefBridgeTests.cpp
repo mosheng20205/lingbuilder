@@ -10459,6 +10459,100 @@ int wmain() {
   assert(LB_CEF3_RenderHandlerSubscribeViewRect(headless, 0) == LB_CEF3_OK);
   assert(LB_CEF3_SetEventCallbackV4(headless, nullptr, nullptr) == LB_CEF3_OK);
 
+  // 视口读写与出帧计数：中文命令 CEF3无头_设置视口/取视口JSON/取渲染帧数 的桥层落点。
+  LB_CEF3_BROWSER_CONFIG_V4 viewport_config = headless_config;
+  viewport_config.user_token = 770005;
+  viewport_config.profile_key = L"test-headless-viewport";
+  const int viewport_created_before = g_browser_created_events.load();
+  const auto osr_for_viewport = LB_CEF3_BrowserCreateWindowless(&viewport_config);
+  assert(osr_for_viewport != 0);
+  const auto viewport_created_deadline = GetTickCount64() + 30000;
+  while (g_browser_created_events.load() < viewport_created_before + 1
+      && GetTickCount64() < viewport_created_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_browser_created_events.load() >= viewport_created_before + 1);
+
+  uint32_t osr_view_width = 0;
+  uint32_t osr_view_height = 0;
+  assert(LB_CEF3_BrowserGetOsrViewport(
+      osr_for_viewport, &osr_view_width, &osr_view_height) == LB_CEF3_OK);
+  assert(osr_view_width == static_cast<uint32_t>(viewport_config.osr_width));
+  assert(osr_view_height == static_cast<uint32_t>(viewport_config.osr_height));
+
+  // 订阅必须先于设置视口：断言「设置导出自己就让 CEF 重查 GetViewRect」，
+  // 而不是靠外部再补一次 NotifyScreenInfoChanged 才生效。
+  assert(LB_CEF3_SetEventCallbackV4(
+      osr_for_viewport, TestEventCallbackV4, nullptr) == LB_CEF3_OK);
+  assert(LB_CEF3_RenderHandlerSubscribeViewRect(osr_for_viewport, 1) == LB_CEF3_OK);
+  assert(LB_CEF3_BrowserSetOsrViewport(osr_for_viewport, 800, 600) == LB_CEF3_OK);
+  assert(LB_CEF3_BrowserGetOsrViewport(
+      osr_for_viewport, &osr_view_width, &osr_view_height) == LB_CEF3_OK);
+  assert(osr_view_width == 800);
+  assert(osr_view_height == 600);
+  const std::wstring resized_view_rect_size = L"\"width\":800,\"height\":600";
+  const auto resized_view_rect_deadline = GetTickCount64() + 15000;
+  while (g_last_osr_view_rect_fields.find(resized_view_rect_size)
+          == std::wstring::npos
+      && GetTickCount64() < resized_view_rect_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_last_osr_view_rect_fields.find(resized_view_rect_size)
+      != std::wstring::npos);
+  assert(LB_CEF3_RenderHandlerSubscribeViewRect(osr_for_viewport, 0) == LB_CEF3_OK);
+  assert(LB_CEF3_SetEventCallbackV4(osr_for_viewport, nullptr, nullptr) == LB_CEF3_OK);
+
+  // 0 宽高会让 CEF 拿到 0×0 视图矩形，必须在入口拒掉而不是静默夹到 1。
+  assert(LB_CEF3_BrowserSetOsrViewport(osr_for_viewport, 0, 600)
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_BrowserSetOsrViewport(osr_for_viewport, 800, 0)
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  std::array<wchar_t, 256> viewport_error{};
+  size_t viewport_error_required = 0;
+  LB_CEF3_GetLastError(
+      viewport_error.data(), viewport_error.size(), &viewport_error_required);
+  assert(std::wstring(viewport_error.data()) == L"无头浏览器视口宽高必须为正整数");
+  assert(LB_CEF3_BrowserGetOsrViewport(osr_for_viewport, nullptr, &osr_view_height)
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_BrowserGetOsrPaintCount(osr_for_viewport, nullptr)
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+
+  // 不订阅 on_paint 也必须累计帧数：证明渲染在跑，只是不外发像素。
+  uint64_t paint_count = 0;
+  const auto paint_count_deadline = GetTickCount64() + 15000;
+  while (paint_count == 0 && GetTickCount64() < paint_count_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+    assert(LB_CEF3_BrowserGetOsrPaintCount(
+        osr_for_viewport, &paint_count) == LB_CEF3_OK);
+  }
+  assert(paint_count >= 1);
+
+  // 普通窗口浏览器调用 OSR 专用导出必须给中文诊断并返回 NOT_SUPPORTED。
+  assert(LB_CEF3_BrowserGetOsrPaintCount(browser_a, &paint_count)
+      == LB_CEF3_ERROR_NOT_SUPPORTED);
+  LB_CEF3_GetLastError(
+      viewport_error.data(), viewport_error.size(), &viewport_error_required);
+  assert(std::wstring(viewport_error.data()) == L"该导出仅适用于无窗口OSR浏览器");
+  assert(LB_CEF3_BrowserGetOsrViewport(browser_a, &osr_view_width, &osr_view_height)
+      == LB_CEF3_ERROR_NOT_SUPPORTED);
+  assert(LB_CEF3_BrowserSetOsrViewport(browser_a, 800, 600)
+      == LB_CEF3_ERROR_NOT_SUPPORTED);
+
+  const auto viewport_closed_before = g_browser_closed_events.load();
+  assert(LB_CEF3_BrowserClose(osr_for_viewport, 1) == LB_CEF3_OK);
+  const auto viewport_close_deadline = GetTickCount64() + 10000;
+  while (g_browser_closed_events.load() == viewport_closed_before
+      && GetTickCount64() < viewport_close_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_browser_closed_events.load() > viewport_closed_before);
+  assert(LB_CEF3_HandleRelease(osr_for_viewport) == LB_CEF3_OK);
+  ++expected_browser_closed_events;
+
   // 缺 WINDOWLESS 标志必须被拒，绝不静默退化成窗口浏览器。
   LB_CEF3_BROWSER_CONFIG_V4 missing_flag = headless_config;
   missing_flag.flags = LB_CEF3_BROWSER_JAVASCRIPT;
@@ -10520,6 +10614,14 @@ int wmain() {
       L"\"width\":" + std::to_wstring(LB_CEF3_DEFAULT_OSR_WIDTH)
       + L",\"height\":" + std::to_wstring(LB_CEF3_DEFAULT_OSR_HEIGHT))
       != std::wstring::npos);
+  // 未显式设置视口时 getter 必须走与 GetViewRect 同一条三级链，
+  // 直接读裸字段会报 0×0（宿主跟随/回落型浏览器是常态形态）。
+  uint32_t legacy_view_width = 0;
+  uint32_t legacy_view_height = 0;
+  assert(LB_CEF3_BrowserGetOsrViewport(
+      legacy, &legacy_view_width, &legacy_view_height) == LB_CEF3_OK);
+  assert(legacy_view_width == LB_CEF3_DEFAULT_OSR_WIDTH);
+  assert(legacy_view_height == LB_CEF3_DEFAULT_OSR_HEIGHT);
   assert(LB_CEF3_RenderHandlerSubscribeViewRect(legacy, 0) == LB_CEF3_OK);
   assert(LB_CEF3_SetEventCallbackV4(legacy, nullptr, nullptr) == LB_CEF3_OK);
   const auto legacy_closed_before = g_browser_closed_events.load();

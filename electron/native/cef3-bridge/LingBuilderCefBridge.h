@@ -902,6 +902,18 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserSetWindowlessFrameRate(
     LB_CEF3_HANDLE browser, int32_t frame_rate);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserInvalidate(
     LB_CEF3_HANDLE browser, int32_t paint_element_type);
+/* OSR 视口读写与出帧计数：只对 LB_CEF3_BROWSER_WINDOWLESS 浏览器有效，窗口浏览器
+   一律返回 LB_CEF3_ERROR_NOT_SUPPORTED 并给中文诊断。SetOsrViewport 写入选定视口后
+   触发 NotifyScreenInfoChanged + Invalidate(PET_VIEW)，让 CEF 立刻重查 GetViewRect；
+   GetOsrViewport 与 GetViewRect 共用同一条解析链（显式视口 -> 宿主窗口客户区 ->
+   LB_CEF3_DEFAULT_OSR_*），因此未显式设置时报告的是 CEF 实际在用的尺寸而非 0×0。
+   帧数只统计已交付的像素帧，不携带像素，也不代表宿主已取走帧内容。 */
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserSetOsrViewport(
+    LB_CEF3_HANDLE browser, uint32_t width, uint32_t height);
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetOsrViewport(
+    LB_CEF3_HANDLE browser, uint32_t* width, uint32_t* height);
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetOsrPaintCount(
+    LB_CEF3_HANDLE browser, uint64_t* paint_count);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserSendExternalBeginFrame(
     LB_CEF3_HANDLE browser);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserImeCommitText(

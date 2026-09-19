@@ -3393,6 +3393,36 @@ void ApplyManagedRect(
   rect = candidate;
 }
 
+// OSR 视口解析的唯一出口：显式视口 -> 宿主窗口客户区 -> LB_CEF3_DEFAULT_OSR_*。
+// GetViewRect 与 LB_CEF3_BrowserGetOsrViewport 必须共用本函数，否则「桥报给中文命令的
+// 视口」会和「CEF 实际渲染用的视口」分叉。后两级回落不写回 osr_view_*，否则一次回落
+// 就把视口钉死、不再跟随宿主；任何一级结果都至少为 1，绝不给 CEF 0×0。
+void ResolveOsrViewportSize(
+    const std::shared_ptr<BrowserState>& state, int& width, int& height) {
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    width = state->osr_view_width;
+    height = state->osr_view_height;
+  }
+  if (width > 0 && height > 0) return;
+  HWND parent = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    parent = state->parent;
+  }
+  width = 0;
+  height = 0;
+  RECT client_rect{};
+  if (parent && IsWindow(parent) && GetClientRect(parent, &client_rect)) {
+    width = std::max<int>(1, static_cast<int>(client_rect.right - client_rect.left));
+    height = std::max<int>(1, static_cast<int>(client_rect.bottom - client_rect.top));
+  }
+  if (width <= 0 || height <= 0) {
+    width = LB_CEF3_DEFAULT_OSR_WIDTH;
+    height = LB_CEF3_DEFAULT_OSR_HEIGHT;
+  }
+}
+
 std::wstring ContextMenuParamsJson(CefRefPtr<CefFrame> frame,
                                    CefRefPtr<CefContextMenuParams> params,
                                    CefRefPtr<CefMenuModel> model) {
@@ -9032,30 +9062,7 @@ class BridgeClient final : public CefClient,
   void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& rect) override {
     int width = 0;
     int height = 0;
-    {
-      std::lock_guard<std::mutex> lock(state_->mutex);
-      width = state_->osr_view_width;
-      height = state_->osr_view_height;
-    }
-    if (width <= 0 || height <= 0) {
-      // 视口未显式设置：宿主窗口有效时每次跟随其客户区（与放开前的旧行为一致），
-      // 真无头（parent 为空或已销毁）才回落到默认常量。
-      // 这两级回落结果都不写回 osr_view_*，否则一次回落就把视口钉死、不再跟随宿主。
-      HWND parent = nullptr;
-      {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        parent = state_->parent;
-      }
-      RECT client_rect{};
-      if (parent && IsWindow(parent) && GetClientRect(parent, &client_rect)) {
-        width = std::max<int>(1, static_cast<int>(client_rect.right - client_rect.left));
-        height = std::max<int>(1, static_cast<int>(client_rect.bottom - client_rect.top));
-      }
-      if (width <= 0 || height <= 0) {
-        width = LB_CEF3_DEFAULT_OSR_WIDTH;
-        height = LB_CEF3_DEFAULT_OSR_HEIGHT;
-      }
-    }
+    ResolveOsrViewportSize(state_, width, height);
     rect = CefRect(0, 0, width, height);
     bool managed_rect_applied = false;
     if (IsRenderHandlerSubscriptionEnabled(state_, kRenderHandlerViewRect)) {
@@ -23281,6 +23288,82 @@ int LB_CEF3_CALL LB_CEF3_BrowserInvalidate(
   return InvokeBrowserHostOnUi(browser, [&](CefRefPtr<CefBrowserHost> host) {
     host->Invalidate(static_cast<CefBrowserHost::PaintElementType>(paint_element_type));
   });
+}
+
+// OSR 专用导出的共用入口检查：句柄无效给 INVALID_HANDLE，窗口浏览器给
+// NOT_SUPPORTED + 中文诊断，绝不静默按窗口浏览器语义执行。
+namespace {
+int RequireWindowlessOsrBrowser(
+    LB_CEF3_HANDLE browser, std::shared_ptr<BrowserState>& state) {
+  int status = LB_CEF3_OK;
+  state = GetBrowserState(browser, status);
+  if (!state) return status;
+  bool windowless = false;
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    windowless = state->windowless;
+  }
+  if (!windowless) {
+    state.reset();
+    return Fail(LB_CEF3_ERROR_NOT_SUPPORTED, L"该导出仅适用于无窗口OSR浏览器");
+  }
+  return LB_CEF3_OK;
+}
+}  // namespace
+
+int LB_CEF3_CALL LB_CEF3_BrowserSetOsrViewport(
+    LB_CEF3_HANDLE browser, uint32_t width, uint32_t height) {
+  std::shared_ptr<BrowserState> state;
+  const int check = RequireWindowlessOsrBrowser(browser, state);
+  if (check != LB_CEF3_OK) return check;
+  if (width == 0 || height == 0) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"无头浏览器视口宽高必须为正整数");
+  }
+  if (width > INT32_MAX || height > INT32_MAX) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"无头浏览器视口宽高超出可表达范围");
+  }
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    if (state->closed) {
+      return Fail(LB_CEF3_ERROR_OPERATION_FAILED, L"浏览器已经关闭，无法设置无头视口");
+    }
+    state->osr_view_width = static_cast<int>(width);
+    state->osr_view_height = static_cast<int>(height);
+  }
+  // 视口已经落库，宿主重查询失败只影响本帧刷新时机，不回滚权威视口。
+  return InvokeBrowserHostOnUi(browser, [](CefRefPtr<CefBrowserHost> host) {
+    host->NotifyScreenInfoChanged();
+    host->Invalidate(PET_VIEW);
+  });
+}
+
+int LB_CEF3_CALL LB_CEF3_BrowserGetOsrViewport(
+    LB_CEF3_HANDLE browser, uint32_t* width, uint32_t* height) {
+  std::shared_ptr<BrowserState> state;
+  const int check = RequireWindowlessOsrBrowser(browser, state);
+  if (check != LB_CEF3_OK) return check;
+  if (!width || !height) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"无头浏览器视口输出参数不能为空");
+  }
+  int resolved_width = 0;
+  int resolved_height = 0;
+  ResolveOsrViewportSize(state, resolved_width, resolved_height);
+  *width = static_cast<uint32_t>(resolved_width);
+  *height = static_cast<uint32_t>(resolved_height);
+  return LB_CEF3_OK;
+}
+
+int LB_CEF3_CALL LB_CEF3_BrowserGetOsrPaintCount(
+    LB_CEF3_HANDLE browser, uint64_t* paint_count) {
+  std::shared_ptr<BrowserState> state;
+  const int check = RequireWindowlessOsrBrowser(browser, state);
+  if (check != LB_CEF3_OK) return check;
+  if (!paint_count) {
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"无头浏览器帧数输出参数不能为空");
+  }
+  std::lock_guard<std::mutex> lock(state->mutex);
+  *paint_count = state->osr_paint_count;
+  return LB_CEF3_OK;
 }
 
 int LB_CEF3_CALL LB_CEF3_BrowserSendExternalBeginFrame(LB_CEF3_HANDLE browser) {
