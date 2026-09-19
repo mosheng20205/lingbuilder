@@ -9,7 +9,7 @@ export type LingControlType =
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
   | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'
-  | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser' | 'FBroBrowser';
+  | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser' | 'FBroBrowser' | 'EdgeViewHeadlessBrowser';
 
 export interface LingEventBinding {
   [eventName: string]: string;
@@ -247,7 +247,31 @@ export interface LingMenuResource {
   items: LingMenuResourceItem[];
 }
 
-export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingMenuResource;
+export interface LingEdgeViewHeadlessResource {
+  id: string;
+  type: 'EdgeViewHeadlessBrowser';
+  name: string;
+  /** 仅用于设计器画布内占位的水平坐标，不生成运行时控件。 */
+  designerX?: number;
+  /** 仅用于设计器画布内占位的垂直坐标，不生成运行时控件。 */
+  designerY?: number;
+  /** 组件所属窗口；无头实例在该窗口创建期创建并随窗口销毁关闭。 */
+  ownerWindowId: string;
+  /** EdgeView 实例编号（正整数，项目内唯一）；导航实例/执行JS实例/绑定事件等按它寻址。 */
+  instanceId: number;
+  /** 启动地址；留空按 about:blank 创建。 */
+  url: string;
+  /** 独立缓存目录；留空共享默认 Profile。 */
+  cacheDir: string;
+  /** 创建期 User-Agent；留空不设置。 */
+  userAgent: string;
+  /** 独立代理地址（http:// 或 socks5://）；留空回落全局代理。 */
+  proxyServer: string;
+  /** 真=窗口创建期自动创建无头实例；假=只声明组件，由代码显式调用 EdgeView_创建无头实例。 */
+  autoStart: boolean;
+}
+
+export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingMenuResource | LingEdgeViewHeadlessResource;
 
 /**
  * 项目级内嵌资源：构建期把任意格式文件以 RCDATA 打进 EXE，运行期用「资源_*」命令按逻辑名读取。

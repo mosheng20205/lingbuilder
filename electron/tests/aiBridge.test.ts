@@ -111,6 +111,8 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /codeOrganization/u, 'instructions 必须告知外部 AI 拆分时机以 codeOrganization 为准');
     assert.match(String(client.getInstructions() || ''), /功能代码/u, 'instructions 必须把“功能代码/功能性代码”口语映射为功能库');
     assert.match(String(client.getInstructions() || ''), /lingcpp-designer-controls-empty/u, 'instructions 必须告知“看不到任何组件”的根因诊断');
+    assert.match(String(client.getInstructions() || ''), /EdgeView_创建无头实例/u, 'instructions 必须告知 EdgeView 隐窗伪无头形态与截图边界');
+    assert.match(String(client.getInstructions() || ''), /CDP_启动浏览器/u, 'instructions 必须告知 CDP 真无头形态与回收/错误读取口径');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /功能代码/u, 'edit.propose 必须声明功能代码=功能库文件，避免降级成本地函数');
     const diagnosticsToolMeta = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
     assert.match(String(diagnosticsToolMeta?.description || ''), /designerInventory/u, 'diagnostics 工具描述必须声明组件表视图');

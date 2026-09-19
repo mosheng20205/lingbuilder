@@ -114,7 +114,7 @@ function generate(enabledModules: InstalledModule[], designerBackend?: 'new-emoj
 
 test('CDP 客户端模块清单、文档与命令完整性', async () => {
   assert.equal(validateModuleManifest(CDP_CLIENT_MODULE).diagnostics.length, 0);
-  assert.equal(CDP_CLIENT_COMMAND_SPECS.length, 144);
+  assert.equal(CDP_CLIENT_COMMAND_SPECS.length, 148);
   assert.equal(CDP_CLIENT_MODULE.version, '3.0.0');
   assert.deepEqual(
     CDP_CLIENT_MODULE.bindings?.commands?.map(item => item.command),

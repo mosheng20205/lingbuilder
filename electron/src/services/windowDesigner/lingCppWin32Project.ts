@@ -1,4 +1,4 @@
-import { LingControl, LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import { createProjectDllDeclarationModule, buildProjectDllMemoryResourceLines, collectProjectDllMissingSystemAliasDiagnostics, getProjectDllMemoryLibrarySpecs } from '../lingCpp/projectDllCommandService';
@@ -378,6 +378,11 @@ export function generateLingCppNativeWin32Project(
     ? ['当前窗口使用 new_emoji 后端，但项目尚未启用 lingbuilder.new_emoji.ui 模块。']
     : [];
   const backendCommandDiagnostics = getUiBackendCommandDiagnostics(selectedBackendId, aggregate.program, enabledModules);
+  // EdgeView 无头资源提示：控制台不创建设计器窗口，组件不会被自动实例化，改走代码命令。
+  const edgeViewHeadlessConsoleDiagnostics = outputKind === 'console-application' && (effectiveProject.resources
+    ?.some(resource => resource.type === 'EdgeViewHeadlessBrowser') || false)
+    ? ['控制台项目不创建设计器窗口，「EdgeView无头浏览器」组件不会自动启动；请在“启动”子程序里调用 EdgeView_创建无头实例(实例编号, 地址, 独立缓存目录)（或代理版），并用 EdgeView_等待事件/EdgeView_泵消息 等待结果。']
+    : [];
   // 控制台模块命令只能在控制台程序中使用；窗口应用中给出阻断诊断。
   const consoleOnlyCommandDiagnostics: string[] = [];
   if (outputKind !== 'console-application') {
@@ -519,6 +524,7 @@ export function generateLingCppNativeWin32Project(
       ...sourceClassMismatchDiagnostic,
       ...moduleConflictDiagnostics,
       ...fbroCefCompatibilityDiagnostics,
+      ...edgeViewHeadlessConsoleDiagnostics,
       ...moduleTargetDiagnostics,
       ...missingControlModuleDiagnostics,
       ...(usesNewEmojiDesigner ? getNewEmojiUnsupportedControlDiagnostics(selectedWindow) : []),
@@ -9098,6 +9104,16 @@ function validateDesignerResources(project: LingWindowProject): string[] {
       if (resource.triggerControlId && !owner?.controls.some(control => control.id === resource.triggerControlId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的打开触发控件“${resource.triggerControlId}”。`);
       if (resource.dropTargetId && resource.dropTargetId !== resource.ownerWindowId && !owner?.controls.some(control => control.id === resource.dropTargetId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的拖放目标“${resource.dropTargetId}”。`);
       if (resource.allowDrop && !resource.dropTargetId) diagnostics.push(`文件对话框“${resource.name}”已允许拖拽，但尚未绑定拖放目标。`);
+    } else if (resource.type === 'EdgeViewHeadlessBrowser') {
+      const owner = project.windows.find(window => window.id === resource.ownerWindowId);
+      if (!owner) diagnostics.push(`EdgeView无头浏览器“${resource.name}”引用了不存在的所属窗口“${resource.ownerWindowId}”。`);
+      if (!resource.name.trim()) diagnostics.push('EdgeView无头浏览器的组件名不能为空。');
+      else if (resources.some(other => other !== resource && other.name === resource.name)) diagnostics.push(`EdgeView无头浏览器组件名“${resource.name}”与其他组件重复。`);
+      if (!Number.isInteger(resource.instanceId) || resource.instanceId <= 0) diagnostics.push(`EdgeView无头浏览器“${resource.name}”的实例编号必须是正整数，实例命令按它寻址。`);
+      else {
+        const duplicated = resources.some(other => other !== resource && other.type === 'EdgeViewHeadlessBrowser' && other.instanceId === resource.instanceId);
+        if (duplicated) diagnostics.push(`EdgeView无头浏览器“${resource.name}”的实例编号 ${resource.instanceId} 与其他无头组件重复，EdgeView 实例命令将无法区分。`);
+      }
     } else if (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') {
       const owner = project.windows.find(window => window.id === resource.ownerWindowId);
       if (!owner) diagnostics.push(`${resource.type === 'ContextMenu' ? '上下文菜单' : '弹出菜单'}“${resource.name}”引用了不存在的所属窗口“${resource.ownerWindowId}”。`);
@@ -9648,11 +9664,15 @@ int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
     LingBuilder_EnsureConsoleRuntimeInitialized();
     ${classCppName}& consoleApp = ${singletonName}();
+    // 无头宿主泵窗口：hwnd_ 指向 2×2 离屏工具窗口后，CDP/HTTP/WS/线程完成处理器
+    // 等 PostMessage 派发链路与「EdgeView_泵消息/等待事件」配合即可在控制台使用；
+    // 泵窗口登记的是窗口型线程 owner，完成处理器需泵后才排空。
+    if (!consoleApp.LingBuilder_确保无头泵窗口()) {
 #ifdef LINGBUILDER_THREADING_MODULE
-    // 控制台没有窗口 owner：绑定无通知 owner 后任务族/线程池族可用；
-    // 完成处理器不会被排空，控制台程序应以「线程_提交 + 线程_等待」取结果。
-    consoleApp.LingBuilder_RegisterHeadlessThreadOwner();
+        // 泵窗口创建失败时退回无通知 owner：任务族/线程池族仍可用，完成处理器不会被排空。
+        consoleApp.LingBuilder_RegisterHeadlessThreadOwner();
 #endif
+    }
     ${startup.entry.returnType === '整数型' && startupMethod ? `return consoleApp.${toCppIdentifier(startupMethod.name)}();` : `consoleApp.${toCppIdentifier(startupMethod?.name || '启动')}();\n    return 0;`}
 }`;
 }
@@ -9676,6 +9696,7 @@ function generateMainCpp(
   const imageListSpecs = generateImageListSpecs(project);
   const propertySheetSpecs = generatePropertySheetSpecs(project);
   const fileDialogSpecs = generateFileDialogSpecs(project);
+  const edgeViewHeadlessSpecs = generateEdgeViewHeadlessSpecs(project);
   const menuResourceSpecs = generateMenuResourceSpecs(project);
   const windowSpecs = project.windows
     .map((window, index) => generateWindowSpec(window, index, program))
@@ -10234,6 +10255,10 @@ struct PropertySheetPageContext {
     const wchar_t* title; const wchar_t* content; const wchar_t* resourceId;
     void* eventOwner; void (*applied)(void*, const wchar_t*);
     void* pageOwner; void (*initialize)(void*, HWND);
+};
+struct EdgeViewHeadlessSpec {
+    const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
+    int instanceId; const wchar_t* url; const wchar_t* cacheDir; const wchar_t* userAgent; const wchar_t* proxyServer; bool autoStart;
 };
 
 enum ControlFlags : unsigned int {
@@ -11076,6 +11101,7 @@ static bool LingCefHasDevTools(CefRefPtr<CefBrowser> browser) {
 ${imageListSpecs}
 ${propertySheetSpecs}
 ${fileDialogSpecs}
+${edgeViewHeadlessSpecs}
 ${menuResourceSpecs}
 
 ${controlArrays}
@@ -11749,6 +11775,8 @@ protected:
     bool closingEventActive_ = false;
     bool closingCancelled_ = false;
     bool fbroClosePending_ = false;
+    bool pumpWindowMode_ = false;
+    bool isPumpWindow_ = false;
     bool keyboardEventActive_ = false;
     bool keyboardHandled_ = false;
     bool closedDispatched_ = false;
@@ -11839,6 +11867,7 @@ ${webSocketServerWindowField}
         HWND host = nullptr;
         bool ownsHost = false;
         bool isPopup = false;
+        bool headless = false;
         std::wstring title;
         std::wstring userAgent;
         std::wstring cacheDirectory;
@@ -11981,7 +12010,7 @@ ${webSocketServerWindowField}
     bool fbroInitialized_ = false;
 ${fbroBrowserManagerRuntime.members}
 
-    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
+    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); EdgeView_创建无头资源(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
     virtual void WarnUnboundControlEvents() {}
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
@@ -12606,11 +12635,7 @@ ${edgeViewEventIdCases}
         return EdgeView_创建弹窗浏览器代理(instanceId, title, width, height, address, cacheDirectory, userAgent, L"");
     }
 
-    int EdgeView_创建弹窗浏览器代理(int instanceId, const wchar_t* title, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent, const wchar_t* proxyServer) {
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
-        if (instanceId <= 0) { 调试输出(L"EdgeView 创建失败：弹窗实例编号必须为正整数。"); return 0; }
-        if (width <= 0 || height <= 0) { 调试输出(L"EdgeView 创建失败：弹窗宽高必须大于零。"); return 0; }
-        EdgeView_关闭实例(instanceId);
+    bool EdgeView_确保弹窗窗口类() {
         WNDCLASSEXW windowClass = {};
         windowClass.cbSize = sizeof(windowClass);
         windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -12619,24 +12644,90 @@ ${edgeViewEventIdCases}
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         windowClass.lpszClassName = L"LingBuilderEdgeViewPopup";
-        if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) { 调试输出(L"EdgeView 创建失败：无法注册弹窗窗口类。"); return 0; }
-        const DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+        if (RegisterClassExW(&windowClass) || GetLastError() == ERROR_CLASS_ALREADY_EXISTS) return true;
+        调试输出(L"EdgeView 创建失败：无法注册弹窗窗口类。");
+        return false;
+    }
+
+    int EdgeView_创建弹窗浏览器代理(int instanceId, const wchar_t* title, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent, const wchar_t* proxyServer) {
+        return EdgeView_创建弹窗内部(instanceId, title, width, height, address, cacheDirectory, userAgent, proxyServer, true);
+    }
+
+    int EdgeView_创建弹窗浏览器初始隐藏(int instanceId, const wchar_t* title, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent) {
+        return EdgeView_创建弹窗内部(instanceId, title, width, height, address, cacheDirectory, userAgent, L"", false);
+    }
+
+    int EdgeView_创建弹窗浏览器初始隐藏代理(int instanceId, const wchar_t* title, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent, const wchar_t* proxyServer) {
+        return EdgeView_创建弹窗内部(instanceId, title, width, height, address, cacheDirectory, userAgent, proxyServer, false);
+    }
+
+    int EdgeView_创建弹窗内部(int instanceId, const wchar_t* title, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent, const wchar_t* proxyServer, bool revealHost) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (instanceId <= 0) { 调试输出(L"EdgeView 创建失败：弹窗实例编号必须为正整数。"); return 0; }
+        if (width <= 0 || height <= 0) { 调试输出(L"EdgeView 创建失败：弹窗宽高必须大于零。"); return 0; }
+        EdgeView_关闭实例(instanceId);
+        if (!EdgeView_确保弹窗窗口类()) return 0;
+        const DWORD style = WS_OVERLAPPEDWINDOW | (revealHost ? WS_VISIBLE : 0);
         RECT windowRect = { 0, 0, width, height };
         AdjustWindowRect(&windowRect, style, FALSE);
-        HWND host = CreateWindowExW(WS_EX_APPWINDOW, windowClass.lpszClassName, (title && title[0]) ? title : L"EdgeView", style,
+        HWND host = CreateWindowExW(WS_EX_APPWINDOW, L"LingBuilderEdgeViewPopup", (title && title[0]) ? title : L"EdgeView", style,
             CW_USEDEFAULT, CW_USEDEFAULT, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top,
             hwnd_, nullptr, g_instance, this);
         if (!host) { 调试输出(L"EdgeView 创建失败：无法创建顶层弹窗窗口。"); return 0; }
         // 弹窗代理优先用本命令传入的独立代理；空文本回落到 EdgeView_设置全局代理，与创建实例/创建实例代理同一语义。
         const std::wstring popupProxy = (proxyServer && proxyServer[0]) ? std::wstring(proxyServer) : edgeViewGlobalProxy_;
-        if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, popupProxy.c_str(), nullptr, nullptr, false, nullptr, userAgent)) { DestroyWindow(host); return 0; }
+        if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, popupProxy.c_str(), nullptr, nullptr, false, nullptr, userAgent, revealHost)) { DestroyWindow(host); return 0; }
         EdgeViewInstance* created = EdgeView_查找(instanceId);
         if (created) { created->isPopup = true; created->title = title ? title : L""; }
         return 1;
 #else
-        (void)instanceId; (void)title; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)userAgent; (void)proxyServer;
+        (void)instanceId; (void)title; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)userAgent; (void)proxyServer; (void)revealHost;
         调试输出(L"EdgeView 不可用：构建环境缺少 WebView2.h，请恢复 Microsoft.Web.WebView2 SDK。");
         return 0;
+#endif
+    }
+
+    int EdgeView_创建无头实例(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory) {
+        return EdgeView_创建无头实例代理(instanceId, address, cacheDirectory, L"", L"");
+    }
+
+    // 无头实例：WebView2 官方无头 API 不存在（控制器必须挂 HWND），这里挂一个从不调用
+    // ShowWindow 的离屏 WS_POPUP 工具窗口；实例编号命令与事件全部照常可用，
+    // 页面在无窗口宿主内保持布局与脚本执行（rAF/可见性相关行为按隐藏页节流）。
+    int EdgeView_创建无头实例代理(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent, const wchar_t* proxyServer) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (instanceId <= 0) { 调试输出(L"EdgeView 创建失败：无头实例编号必须为正整数。"); return 0; }
+        EdgeView_关闭实例(instanceId);
+        if (!EdgeView_确保弹窗窗口类()) return 0;
+        // 宿主保留真实尺寸（默认 1280×720 客户区），保证控制器 bounds 非空、页面布局正常。
+        const UINT hostDpi = hwnd_ ? GetDpiForWindow(hwnd_) : dpi_;
+        const UINT effectiveHostDpi = hostDpi ? hostDpi : 96;
+        const RECT windowRect = { 0, 0, ScaleForDpi(1280, effectiveHostDpi), ScaleForDpi(720, effectiveHostDpi) };
+        HWND host = CreateWindowExW(WS_EX_TOOLWINDOW, L"LingBuilderEdgeViewPopup", L"EdgeView 无头宿主", WS_POPUP,
+            -32000, -32000, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top,
+            nullptr, nullptr, g_instance, this);
+        if (!host) { 调试输出(L"EdgeView 创建失败：无法创建无头宿主窗口。"); return 0; }
+        const std::wstring headlessProxy = (proxyServer && proxyServer[0]) ? std::wstring(proxyServer) : edgeViewGlobalProxy_;
+        if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, headlessProxy.c_str(), nullptr, nullptr, false, nullptr, userAgent, false, true)) { DestroyWindow(host); return 0; }
+        return 1;
+#else
+        (void)instanceId; (void)address; (void)cacheDirectory; (void)userAgent; (void)proxyServer;
+        调试输出(L"EdgeView 不可用：构建环境缺少 WebView2.h，请恢复 Microsoft.Web.WebView2 SDK。");
+        return 0;
+#endif
+    }
+
+    // 「EdgeView无头浏览器」设计器资源：owner 窗口创建期按实例编号建立无头实例；
+    // autoStart=假的组件只登记不创建，由代码显式调用 EdgeView_创建无头实例。
+    void EdgeView_创建无头资源() {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        for (int index = 0; index < g_edgeViewHeadlessBrowserCount; ++index) {
+            const EdgeViewHeadlessSpec& spec = g_edgeViewHeadlessBrowsers[index];
+            if (spec.ownerWindowIndex != spec_.index || !spec.autoStart) continue;
+            if (!EdgeView_查找(spec.instanceId))
+                EdgeView_创建无头实例代理(spec.instanceId, spec.url && spec.url[0] ? spec.url : L"about:blank",
+                    spec.cacheDir, spec.userAgent, spec.proxyServer);
+        }
 #endif
     }
 
@@ -12663,6 +12754,7 @@ ${edgeViewEventIdCases}
                 {L"缓存目录", instance->cacheDirectory},
                 {L"代理", instance->proxyServer},
                 {L"是否弹窗", EdgeView_布尔值(instance->isPopup)},
+                {L"是否无头", EdgeView_布尔值(instance->headless)},
                 {L"是否有效", EdgeView_布尔值(!instance->closed && instance->host && IsWindow(instance->host))}
             });
         }
@@ -12778,6 +12870,27 @@ ${edgeViewEventIdCases}
     int EdgeView_等待事件控件(const wchar_t* controlName, const wchar_t* eventName, int timeoutMilliseconds) {
         EdgeViewInstance* instance = EdgeView_查找控件(controlName);
         return instance ? EdgeView_等待事件(instance->id, eventName, timeoutMilliseconds) : 0;
+    }
+
+    // 通用消息泵：控制台/无头场景驱动 WebView2 回调、线程完成处理器与 CDP/HTTP/WS
+    // 派发消息。等待毫秒=0 只清队列不等待；返回处理掉的消息数。遇 WM_QUIT 立即返回。
+    int EdgeView_泵消息(int waitMilliseconds) {
+        int processed = 0;
+        MSG message = {};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message); DispatchMessageW(&message); ++processed;
+            if (message.message == WM_QUIT) return processed;
+        }
+        if (waitMilliseconds <= 0) return processed;
+        DWORD started = GetTickCount();
+        while (GetTickCount() - started < static_cast<DWORD>(waitMilliseconds)) {
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&message); DispatchMessageW(&message); ++processed;
+                if (message.message == WM_QUIT) return processed;
+            }
+        }
+        return processed;
     }
 
     int EdgeView_导航实例(int instanceId, const wchar_t* address) {
@@ -12925,7 +13038,7 @@ ${edgeViewEventIdCases}
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
     int EdgeView_创建核心(int instanceId, HWND host, bool ownsHost, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer,
         const wchar_t* language = nullptr, const wchar_t* profileName = nullptr, bool inPrivate = false, const wchar_t* creationOptionsKey = nullptr,
-        const wchar_t* userAgent = nullptr) {
+        const wchar_t* userAgent = nullptr, bool revealHost = true, bool headless = false) {
         if (!EdgeView_代理有效(proxyServer)) {
             调试输出(L"EdgeView 创建失败：代理地址无效。");
             return 0;
@@ -12935,6 +13048,7 @@ ${edgeViewEventIdCases}
         auto createEnvironment = &CreateCoreWebView2EnvironmentWithOptions;
         auto instance = std::make_shared<EdgeViewInstance>();
         instance->id = instanceId; instance->host = host; instance->ownsHost = ownsHost;
+        instance->headless = headless;
         instance->userAgent = userAgent ? userAgent : L"";
         instance->cacheDirectory = cacheDirectory ? cacheDirectory : L"";
         instance->proxyServer = proxyServer ? proxyServer : L"";
@@ -12947,22 +13061,24 @@ ${edgeViewEventIdCases}
         struct EdgeViewCreateContext { bool completed = false; HRESULT result = E_FAIL; unsigned long long generation = 0; };
         auto context = std::make_shared<EdgeViewCreateContext>(); context->generation = instance->generation;
         auto environmentCallback = Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-            [this, instance, context, createProfileName, inPrivate, creationOptions, useControllerOptions](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+            [this, instance, context, createProfileName, inPrivate, creationOptions, useControllerOptions, revealHost](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
                 context->result = result;
                 if (instance->closed || instance->generation != context->generation || FAILED(result) || !environment) { context->completed = true; return S_OK; }
                 instance->environment = environment;
                 auto controllerCallback = Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                    [this, instance, context](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+                    [this, instance, context, revealHost](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
                         context->result = result;
                         if (!instance->closed && instance->generation == context->generation && SUCCEEDED(result) && controller) {
                             instance->controller = controller; controller->get_CoreWebView2(&instance->webView);
                             if (!instance->userAgent.empty() && instance->webView) { Microsoft::WRL::ComPtr<ICoreWebView2Settings> uaSettings; Microsoft::WRL::ComPtr<ICoreWebView2Settings2> uaSettings2; if (SUCCEEDED(instance->webView->get_Settings(&uaSettings)) && uaSettings && SUCCEEDED(uaSettings.As(&uaSettings2)) && uaSettings2) uaSettings2->put_UserAgent(instance->userAgent.c_str()); }
                             controller->put_IsVisible(TRUE);
                             EdgeView_调整大小(*instance); EdgeView_注册事件(*instance);
-                            ShowWindow(instance->host, SW_SHOW);
-                            SetWindowPos(instance->host, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-                            InvalidateRect(instance->host, nullptr, TRUE);
-                            UpdateWindow(instance->host);
+                            if (revealHost) {
+                                ShowWindow(instance->host, SW_SHOW);
+                                SetWindowPos(instance->host, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                                InvalidateRect(instance->host, nullptr, TRUE);
+                                UpdateWindow(instance->host);
+                            }
                         }
                         context->completed = true; return S_OK;
                     });
@@ -13040,7 +13156,8 @@ ${edgeViewEventIdCases}
         GetClientRect(instance.host, &bounds);
         instance.controller->put_Bounds(bounds);
         instance.controller->NotifyParentWindowPositionChanged();
-        instance.controller->put_IsVisible(IsWindowVisible(instance.host) ? TRUE : FALSE);
+        // 无头实例宿主永远不可见，但控制器必须保持可见以维持页面布局与脚本执行。
+        instance.controller->put_IsVisible(instance.headless ? TRUE : (IsWindowVisible(instance.host) ? TRUE : FALSE));
     }
     void EdgeView_调整全部大小() { for (auto& item : edgeViews_) EdgeView_调整大小(*item.second); }
     void EdgeView_随窗口调整设计器控件() {
@@ -20426,6 +20543,34 @@ ${generateFbroVipIndividualRuntime(false)}
         if (hwnd_) PostMessageW(hwnd_, WM_CLOSE, 0, 0);
     }
 
+public:
+    // 无头宿主泵窗口：控制台/无界面程序创建 2×2 离屏工具窗口并把 hwnd_ 指向它，
+    // 使线程完成处理器、CDP/HTTP/WS/网页异步等 PostMessage 派发链路全部可用。
+    // 窗口过程与主窗口共用（WM_CREATE 内按 pumpWindowMode_ 跳过控件与事件副作用）。
+    // 返回值：true=泵窗口就绪（含已存在主窗口的情况）。
+    bool LingBuilder_确保无头泵窗口() {
+        if (hwnd_) return true;
+        WNDCLASSEXW windowClass = {};
+        windowClass.cbSize = sizeof(WNDCLASSEXW);
+        windowClass.lpfnWndProc = LingWindowBase::WindowProc;
+        windowClass.hInstance = g_instance;
+        windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        windowClass.hbrBackground = nullptr;
+        windowClass.lpszClassName = L"LingBuilderConsolePumpWindow";
+        if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
+        pumpWindowMode_ = true;
+        HWND pump = CreateWindowExW(WS_EX_TOOLWINDOW, L"LingBuilderConsolePumpWindow", L"LingBuilder 无头宿主", WS_POPUP,
+            -32000, -32000, 2, 2, nullptr, nullptr, g_instance, this);
+        pumpWindowMode_ = false;
+        if (!pump) { hwnd_ = nullptr; return false; }
+        hwnd_ = pump;
+        const UINT actualDpi = GetDpiForWindow(pump);
+        if (actualDpi) dpi_ = actualDpi;
+        return true;
+    }
+
+protected:
+
 #ifdef LINGBUILDER_THREADING_MODULE
     template<class Work> long long 线程_提交(Work&& work) { return LingThreadProjectRuntime::Instance().Submit(threadOwnerToken_, 0, std::forward<Work>(work)); }
     template<class Work, class Complete> long long 线程_提交完成(Work&& work, Complete&& complete) { return LingThreadProjectRuntime::Instance().SubmitComplete(threadOwnerToken_, 0, std::forward<Work>(work), std::forward<Complete>(complete)); }
@@ -25536,6 +25681,14 @@ ${comWndProcCase}
             break;
         }
         case WM_CREATE: {
+            if (pumpWindowMode_) {
+                // 无头泵窗口：只登记线程 owner，不建控件、不发“创建完毕”、不计入打开窗口数。
+                isPumpWindow_ = true;
+#ifdef LINGBUILDER_THREADING_MODULE
+                threadOwnerToken_ = LingThreadRegisterWindowOwner(hwnd_);
+#endif
+                return 0;
+            }
             windowBrush_ = CreateSolidBrush(spec_.background);
             ++g_openWindowCount;
 #ifdef LINGBUILDER_THREADING_MODULE
@@ -25557,6 +25710,11 @@ ${comWndProcCase}
             OnWindowCreated();
             return 0;
         case WM_CLOSE:
+            if (isPumpWindow_) {
+                // 无头泵窗口的“结束”语义：直接请求退出消息循环，不派发窗口事件。
+                PostQuitMessage(0);
+                return 0;
+            }
             closingEventActive_ = true;
             closingCancelled_ = false;
             DispatchWindowEvent(L"Closing");
@@ -25929,6 +26087,7 @@ ${comWndProcCase}
             return 1;
         }
         case WM_DESTROY:
+            if (isPumpWindow_) return 0;
 #ifdef LINGBUILDER_THREADING_MODULE
             if (threadOwnerToken_ != 0) {
                 LingThreadProjectRuntime::Instance().ShutdownOwner(threadOwnerToken_);
@@ -25977,7 +26136,8 @@ public:
         LRESULT result = self->OnMessage(message, wParam, lParam);
         if (message == WM_NCDESTROY) {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-            delete self;
+            if (self->isPumpWindow_) self->hwnd_ = nullptr;
+            else delete self;
         }
         return result;
     }
@@ -28527,6 +28687,17 @@ function generateFileDialogSpecs(project: LingWindowProject): string {
   return rows.length > 0
     ? `static FileDialogSpec g_fileDialogs[] = {\n${rows.join(',\n')}\n};\nstatic const int g_fileDialogCount = ${rows.length};`
     : 'static FileDialogSpec g_fileDialogs[] = { { L"", L"", -1, 0, 0, false, false, L"", L"" } };\nstatic const int g_fileDialogCount = 0;';
+}
+
+function generateEdgeViewHeadlessSpecs(project: LingWindowProject): string {
+  const resources = (project.resources || []).filter((resource): resource is LingEdgeViewHeadlessResource => resource.type === 'EdgeViewHeadlessBrowser');
+  const rows = resources.map(resource => {
+    const ownerWindowIndex = project.windows.findIndex(window => window.id === resource.ownerWindowId);
+    return `    { L"${escapeWideString(resource.id)}", L"${escapeWideString(resource.name)}", ${ownerWindowIndex}, ${Number.isInteger(resource.instanceId) && resource.instanceId > 0 ? resource.instanceId : 0}, L"${escapeWideString(resource.url || '')}", L"${escapeWideString(resource.cacheDir || '')}", L"${escapeWideString(resource.userAgent || '')}", L"${escapeWideString(resource.proxyServer || '')}", ${resource.autoStart === false ? 'false' : 'true'} }`;
+  });
+  return rows.length > 0
+    ? `static EdgeViewHeadlessSpec g_edgeViewHeadlessBrowsers[] = {\n${rows.join(',\n')}\n};\nstatic const int g_edgeViewHeadlessBrowserCount = ${rows.length};`
+    : 'static EdgeViewHeadlessSpec g_edgeViewHeadlessBrowsers[] = { { L"", L"", -1, 0, L"", L"", L"", L"", false } };\nstatic const int g_edgeViewHeadlessBrowserCount = 0;';
 }
 
 function generateMenuResourceSpecs(project: LingWindowProject): string {

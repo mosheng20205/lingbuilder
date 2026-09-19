@@ -147,6 +147,20 @@ const specs: CdpClientCommandSpec[] = [
     insertText: 'CDP_连接远程("${1:http://远程主机:9222}", &${2:连接就绪})'
   },
   {
+    name: 'CDP_启动浏览器', signature: 'CDP_启动浏览器(启动参数JSON, 就绪处理器)', description: '启动本机无头浏览器（自动查找 msedge/chrome，以 --headless=new --remote-debugging-port=0 --user-data-dir=临时独立目录 创建独立进程），等待 DevToolsActivePort 写出实际端口后自动建立 CDP 连接并返回受管连接 ID；就绪结果通过就绪处理器通知。参数 JSON 可含「可执行文件、用户数据目录、额外参数、起始地址、等待超时毫秒」，传空用全默认。返回值为 0 时用 CDP_取最后错误 读中文失败原因。停止请用 CDP_停止浏览器；进程退出会自动回收未停止的浏览器。控制台程序可直接用（无头派发依赖入口泵窗口 + EdgeView_泵消息 或线程等待轮询）。',
+    parameters: [parameter('启动参数JSON', 'wideString', 'JSON 对象文本，字段均可缺省：可执行文件（msedge.exe/chrome.exe 绝对路径）、用户数据目录（父目录，缺省用系统临时目录）、额外参数（追加到命令行末尾的开关文本）、起始地址（默认 about:blank）、等待超时毫秒（2000~60000，默认 15000）。'), handlerParameter('就绪处理器', '必须使用 &处理器名；CDP 连接就绪或失败时在 UI 线程执行，用 CDP_取当前事件类型 判断结果。')],
+    returnType: 'CDP连接', returnLabel: 'CDP连接', category: '连接',
+    insertText: 'CDP_启动浏览器("", &${1:连接就绪})'
+  },
+  {
+    name: 'CDP_停止浏览器', signature: 'CDP_停止浏览器(连接)', description: '优雅停止 CDP_启动浏览器 建立的无头浏览器：先发送 Browser.close，最多等待 3 秒进程退出，超时强制终止；随后断开连接并清理其独立用户数据目录。只对本机启动的浏览器有效，外部连接请用 CDP_断开连接。',
+    parameters: [parameter('连接', 'CDP连接')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
+  },
+  {
+    name: 'CDP_停止全部浏览器', signature: 'CDP_停止全部浏览器()', description: '停止并回收当前进程内全部由 CDP_启动浏览器 建立的无头浏览器，返回回收数量；未启动时返回 0。',
+    parameters: [], returnType: 'int', returnLabel: '整数型', category: '连接'
+  },
+  {
     name: 'CDP_断开连接', signature: 'CDP_断开连接(连接)', description: '断开并释放受管连接及其全部页面会话、元素引用和未完成回调。',
     parameters: [parameter('连接', 'CDP连接')], returnType: 'bool', returnLabel: '逻辑型', category: '连接'
   },
@@ -719,6 +733,7 @@ const specs: CdpClientCommandSpec[] = [
     ['CDP_取当前事件文本', 'wideString', '文本型', '返回当前事件的结果文本、错误说明或 JSON 数据快照；拦截事件返回请求头 JSON。'],
     ['CDP_取当前事件详情', 'wideString', '文本型', '返回当前事件的补充信息，例如控制台级别、拦截阶段（请求/响应）、对话框类型或下载编号。'],
     ['CDP_取当前错误', 'wideString', '文本型', '返回当前事件的中文错误说明；无错误返回空文本。'],
+    ['CDP_取最后错误', 'wideString', '文本型', '返回最近一次同步失败的中文原因（CDP_启动浏览器/CDP_连接/CDP_停止浏览器 返回 0 后立即读取）；异步错误请用 CDP_取当前错误。'],
     ['CDP_取当前网络网址', 'wideString', '文本型', '返回当前网络事件或拦截事件的请求网址。'],
     ['CDP_取当前网络方法', 'wideString', '文本型', '返回当前网络事件或拦截事件的 HTTP 方法。'],
     ['CDP_取当前网络编号', 'wideString', '文本型', '返回当前网络事件或拦截事件的请求编号，供 CDP_取网络响应体 使用。'],

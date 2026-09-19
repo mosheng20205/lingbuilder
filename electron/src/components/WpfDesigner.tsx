@@ -103,6 +103,7 @@ import {
   LingDesignerResource,
   LingEmbeddedResource,
   LingFileDialogResource,
+  LingEdgeViewHeadlessResource,
   LingImageListResource,
   LingMenuResource,
   LingMenuResourceItem,
@@ -302,7 +303,8 @@ export const CREATABLE_DESIGNER_CONTROL_TYPES: LingControlType[] = [
   ...getCreatableWin32ControlDefinitions().filter(definition => definition.isVisual !== false).map(definition => definition.type as LingControlType),
   'FileDialog',
   'ContextMenu',
-  'PopupMenu'
+  'PopupMenu',
+  'EdgeViewHeadlessBrowser'
 ];
 
 const CONTROL_LABELS: Record<string, string> = Object.fromEntries([
@@ -335,6 +337,7 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   Upload: <Upload className="w-3.5 h-3.5 text-sky-400" />,
   DragUpload: <FileUp className="w-3.5 h-3.5 text-fuchsia-400" />,
   FileDialog: <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />,
+  EdgeViewHeadlessBrowser: <Globe className="w-3.5 h-3.5 text-cyan-400" />,
   ContextMenu: <Menu className="w-3.5 h-3.5 text-amber-400" />,
   PopupMenu: <Menu className="w-3.5 h-3.5 text-orange-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
@@ -700,6 +703,16 @@ export default function WpfDesigner({
   const selectedMenuResource = useMemo(
     () => activeMenuResources.find(resource => resource.id === selectedResourceId) || null,
     [activeMenuResources, selectedResourceId]
+  );
+  const activeEdgeViewHeadlessBrowsers = useMemo(
+    () => (project.resources || []).filter((resource): resource is LingEdgeViewHeadlessResource => (
+      resource.type === 'EdgeViewHeadlessBrowser' && resource.ownerWindowId === activeWindow.id
+    )),
+    [activeWindow.id, project.resources]
+  );
+  const selectedEdgeViewHeadless = useMemo(
+    () => activeEdgeViewHeadlessBrowsers.find(resource => resource.id === selectedResourceId) || null,
+    [activeEdgeViewHeadlessBrowsers, selectedResourceId]
   );
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -2110,6 +2123,33 @@ export default function WpfDesigner({
       setSelectedResourceId(resource.id);
       setActiveInspectorTab('properties');
       addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}；请绑定打开触发控件和拖放目标。`);
+      return;
+    }
+    if (type === 'EdgeViewHeadlessBrowser') {
+      const existing = (project.resources || []).filter((resource): resource is LingEdgeViewHeadlessResource => resource.type === 'EdgeViewHeadlessBrowser');
+      let suffix = existing.length + 1;
+      while ((project.resources || []).some(resource => resource.id === `edgeview-headless-${suffix}`)) suffix += 1;
+      let instanceId = 1;
+      while (existing.some(resource => resource.instanceId === instanceId)) instanceId += 1;
+      const resource: LingEdgeViewHeadlessResource = {
+        id: `edgeview-headless-${suffix}`,
+        type: 'EdgeViewHeadlessBrowser',
+        name: `EdgeView无头浏览器${suffix}`,
+        designerX: 15 + ((suffix - 1) % 4) * 145,
+        designerY: Math.max(0, activeWindow.height - windowContentOffset - 105),
+        ownerWindowId: activeWindow.id,
+        instanceId,
+        url: 'https://www.baidu.com',
+        cacheDir: `.edgeview/headless-${instanceId}`,
+        userAgent: '',
+        proxyServer: '',
+        autoStart: true
+      };
+      setProject(previous => ({ ...previous, resources: [...(previous.resources || []), resource] }));
+      selectOnlyControl(null);
+      setSelectedResourceId(resource.id);
+      setActiveInspectorTab('properties');
+      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}（实例编号 ${instanceId}）；窗口创建期自动建立无头实例，代码按实例编号寻址。`);
       return;
     }
     if (type === 'ContextMenu' || type === 'PopupMenu') {
@@ -3546,6 +3586,52 @@ export default function WpfDesigner({
                 </div>
               );
             })}
+            {activeEdgeViewHeadlessBrowsers.map((resource, index) => {
+              const position = getDisplayedResourcePosition(resource, { x: resource.designerX ?? 15 + (index % 4) * 145, y: resource.designerY ?? 0 });
+              const selected = selectedResourceId === resource.id;
+              return (
+                <div
+                  key={resource.id}
+                  ref={registerDesignerNavigationTarget('resource', resource.id)}
+                  data-designer-resource-id={resource.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`EdgeView无头浏览器占位：${resource.name}`}
+                  aria-pressed={selected}
+                  onContextMenu={event => openResourceContextMenu(event, resource.id)}
+                  onClick={event => {
+                    event.stopPropagation();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  className={`absolute z-30 flex cursor-pointer items-center gap-2 rounded border border-dashed px-2 shadow-md select-none ${
+                    selected
+                      ? 'border-cyan-300 bg-cyan-500/25 ring-2 ring-cyan-400'
+                      : isDarkMode
+                        ? 'border-cyan-500/70 bg-[#122b33] hover:bg-cyan-500/20'
+                        : 'border-cyan-600 bg-cyan-50 hover:bg-cyan-100'
+                  }`}
+                  style={{ left: `${position.x}px`, top: `${position.y + windowContentOffset}px`, width: '135px', height: '42px' }}
+                  title={`设计期非可视组件：窗口创建期自动建立无头 EdgeView 实例（实例编号 ${resource.instanceId}），命令按 EdgeView_导航实例/执行JS实例/绑定事件 的实例编号寻址`}
+                >
+                  <Globe className="h-4 w-4 shrink-0 text-cyan-400" aria-hidden="true" />
+                  <span className="min-w-0 leading-tight">
+                    <span className={`block truncate text-[10px] font-semibold ${isDarkMode ? 'text-cyan-100' : 'text-cyan-900'}`}>{resource.name}</span>
+                    <span className={`block text-[8px] ${isDarkMode ? 'text-cyan-300/75' : 'text-cyan-700'}`}>EdgeView无头 · 实例{resource.instanceId}</span>
+                  </span>
+                </div>
+              );
+            })}
             </div>
             <div
               ref={canvasResizePreviewRef}
@@ -3613,7 +3699,23 @@ export default function WpfDesigner({
 
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {activeInspectorTab === 'properties' && (
-              selectedFileDialog ? (
+              selectedEdgeViewHeadless ? (
+                <EdgeViewHeadlessProperties
+                  resource={selectedEdgeViewHeadless}
+                  windows={project.windows}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedEdgeViewHeadless.id && resource.type === 'EdgeViewHeadlessBrowser'
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                  onDelete={() => {
+                    setProject(previous => ({ ...previous, resources: (previous.resources || []).filter(resource => resource.id !== selectedEdgeViewHeadless.id) }));
+                    setSelectedResourceId(null);
+                  }}
+                />
+              ) : selectedFileDialog ? (
                 <FileDialogProperties
                   resource={selectedFileDialog}
                   windows={project.windows}
@@ -3706,7 +3808,9 @@ export default function WpfDesigner({
             )}
 
             {activeInspectorTab === 'events' && (
-              selectedFileDialog ? (
+              selectedEdgeViewHeadless ? (
+                <EdgeViewHeadlessEvents resource={selectedEdgeViewHeadless} isDarkMode={isDarkMode} />
+              ) : selectedFileDialog ? (
                 <FileDialogEvents
                   resource={selectedFileDialog}
                   windowModel={activeWindow}
@@ -5816,6 +5920,62 @@ function FileDialogFilterEditor({ value, isDarkMode, onChange }: { value: string
           <div className="leading-4 text-slate-500">兼容格式：<code>图片|*.png;*.jpg</code>，通常无需手动修改。</div>
         </div>
       </details>
+    </div>
+  );
+}
+
+function EdgeViewHeadlessProperties({
+  resource,
+  windows,
+  isDarkMode,
+  onChange,
+  onDelete
+}: {
+  resource: LingEdgeViewHeadlessResource;
+  windows: LingWindowModel[];
+  isDarkMode: boolean;
+  onChange: (fields: Partial<LingEdgeViewHeadlessResource>) => void;
+  onDelete: () => void;
+}) {
+  const inputClass = `w-full rounded border px-1.5 py-1 text-[10px] ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`;
+  return (
+    <div className="space-y-3" aria-label={`EdgeView无头浏览器属性：${resource.name}`}>
+      <div className={`flex items-center gap-2 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}>
+        <Globe className="h-4 w-4 text-cyan-500" />
+        <span className="font-semibold">EdgeView无头浏览器：{resource.name}</span>
+        <span className="ml-auto rounded border border-cyan-500/30 px-1.5 py-0.5 text-[8px] text-cyan-500">隐窗宿主</span>
+      </div>
+      <PropertyGroup title="外观与位置" isDarkMode={isDarkMode}>
+        <PropertyRow label="名称" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器组件名称" value={resource.name} onChange={event => onChange({ name: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="左" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器左坐标" type="number" min={0} value={resource.designerX ?? 0} onChange={event => onChange({ designerX: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="顶" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器顶坐标" type="number" min={0} value={resource.designerY ?? 0} onChange={event => onChange({ designerY: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+      </PropertyGroup>
+      <PropertyGroup title="无头实例" isDarkMode={isDarkMode}>
+        <PropertyRow label="所属窗口" isDarkMode={isDarkMode}><select aria-label="EdgeView无头浏览器所属窗口" value={resource.ownerWindowId} onChange={event => onChange({ ownerWindowId: event.target.value })} className={inputClass}>{windows.map(window => <option key={window.id} value={window.id}>{window.title}</option>)}</select></PropertyRow>
+        <PropertyRow label="实例编号" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器实例编号" type="number" min={1} value={resource.instanceId} onChange={event => onChange({ instanceId: Math.max(1, Math.trunc(Number(event.target.value) || 1)) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="打开地址" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器打开地址" value={resource.url} onChange={event => onChange({ url: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="缓存目录" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器缓存目录" value={resource.cacheDir} placeholder="留空共享默认 Profile" onChange={event => onChange({ cacheDir: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="User-Agent" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器用户代理" value={resource.userAgent} placeholder="留空不设置" onChange={event => onChange({ userAgent: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="独立代理" isDarkMode={isDarkMode}><input aria-label="EdgeView无头浏览器独立代理地址" value={resource.proxyServer} placeholder="http://127.0.0.1:7890（留空回落全局代理）" onChange={event => onChange({ proxyServer: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="自动启动" isDarkMode={isDarkMode}><span className="flex items-center gap-1 text-[10px]"><input aria-label="EdgeView无头浏览器窗口创建期自动启动" type="checkbox" checked={resource.autoStart} onChange={event => onChange({ autoStart: event.target.checked })} />窗口创建期自动建立无头实例</span></PropertyRow>
+      </PropertyGroup>
+      <div className="text-[9px] leading-4 text-slate-500">WebView2 控制器必须挂窗口：本组件用从不可见的离屏宿主承载浏览器，任务栏与界面零显示。代码按实例编号寻址：<code>EdgeView_导航实例({resource.instanceId}, "...")</code>、<code>EdgeView_执行JS实例({resource.instanceId}, "...")</code>。截图类需求请改用 CDP 模块 CDP_启动浏览器（真无头独立进程）。</div>
+      <button type="button" onClick={onDelete} className="flex w-full items-center justify-center gap-1 rounded border border-red-500/30 py-1.5 text-[10px] text-red-400 hover:bg-red-500/10"><Trash2 className="h-3 w-3" />删除EdgeView无头浏览器</button>
+    </div>
+  );
+}
+
+function EdgeViewHeadlessEvents({ resource, isDarkMode }: { resource: LingEdgeViewHeadlessResource; isDarkMode: boolean }) {
+  return (
+    <div className="space-y-2 p-1 text-[10px] leading-5" aria-label={`EdgeView无头浏览器事件说明：${resource.name}`}>
+      <div className={`font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>事件在代码中按实例编号绑定</div>
+      <div className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>
+        与弹窗/区域实例同一套事件体系，在窗口「创建完毕」之后调用：<br />
+        EdgeView_绑定事件({resource.instanceId}, "导航完成", &amp;导航完成)<br />
+        EdgeView_等待事件({resource.instanceId}, "导航完成", 15000)<br />
+        处理器内用 EdgeView_取最近事件实例({resource.instanceId}) / EdgeView_取事件数据实例({resource.instanceId}) 读取数据。
+      </div>
+      <div className={isDarkMode ? 'text-slate-500' : 'text-slate-500'}>完整事件清单见模块文档《EdgeView 浏览器模块 API》。</div>
     </div>
   );
 }

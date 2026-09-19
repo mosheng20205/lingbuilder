@@ -376,6 +376,7 @@ public:
         CloseConnection(connection, true);
         ReleaseConnectionPages(connectionId, false);
         ReleaseConnectionStage3State(connectionId);
+        TerminateLaunch(connectionId);
         { std::lock_guard<std::mutex> lock(connectionsMutex_); connections_.erase(connectionId); }
         return true;
     }
@@ -395,6 +396,235 @@ public:
         if (!connection) return L"无效连接";
         std::lock_guard<std::mutex> lock(connection->mutex);
         return connection->state;
+    }
+
+    // 最近一次同步失败的中文原因（启动/连接/停止等命令返回 0/false 后立即读取；异步错误在事件里）。
+    std::wstring LastError() const {
+        std::lock_guard<std::mutex> lock(errorMutex_);
+        return lastError_;
+    }
+
+    // ===== 本机无头浏览器：CDP_启动浏览器 spawn msedge/chrome --headless=new 并自动连接 =====
+    // 真无头（零窗口）：浏览器是独立进程，截图/PDF/网络拦截全部真实可用；与 WebView2
+    // 进程内实例互不相干。DevToolsActivePort 文件（用户数据目录根）第一行即实际端口。
+    struct LaunchSession {
+        HANDLE process = nullptr;
+        std::wstring userDataDir;
+    };
+
+    static bool LaunchFileExists(const std::wstring& path) {
+        const DWORD attributes = GetFileAttributesW(path.c_str());
+        return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+    }
+
+    static bool ReadAppPathExecutable(const wchar_t* exeName, std::wstring& out) {
+        const HKEY roots[] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER };
+        const REGSAM views[] = { KEY_WOW64_64KEY, KEY_WOW64_32KEY };
+        const std::wstring subkey = std::wstring(L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\") + exeName;
+        for (HKEY root : roots) {
+            for (REGSAM view : views) {
+                HKEY key = nullptr;
+                if (RegOpenKeyExW(root, subkey.c_str(), 0, KEY_READ | view, &key) != ERROR_SUCCESS) continue;
+                wchar_t buffer[1024] = {}; DWORD size = sizeof(buffer); DWORD type = 0;
+                const LONG result = RegQueryValueExW(key, nullptr, nullptr, &type, reinterpret_cast<BYTE*>(buffer), &size);
+                RegCloseKey(key);
+                if (result == ERROR_SUCCESS && (type == REG_SZ || type == REG_EXPAND_SZ) && size > 4) {
+                    wchar_t expanded[1024] = {};
+                    const DWORD expandedLength = ExpandEnvironmentStringsW(buffer, expanded, 1024);
+                    out = (expandedLength > 0 && expandedLength <= 1024) ? expanded : buffer;
+                    while (!out.empty() && out.front() == L'"') out.erase(out.begin());
+                    while (!out.empty() && out.back() == L'"') out.pop_back();
+                    if (LaunchFileExists(out)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    std::wstring FindBrowserExecutable() {
+        std::wstring candidate;
+        if (ReadAppPathExecutable(L"msedge.exe", candidate)) return candidate;
+        if (ReadAppPathExecutable(L"chrome.exe", candidate)) return candidate;
+        const wchar_t* dirVariables[] = { L"ProgramFiles(x86)", L"ProgramW6432", L"ProgramFiles", L"LocalAppData" };
+        const wchar_t* relativePaths[] = { L"\\Microsoft\\Edge\\Application\\msedge.exe", L"\\Google\\Chrome\\Application\\chrome.exe" };
+        for (const wchar_t* variable : dirVariables) {
+            wchar_t base[1024] = {};
+            if (GetEnvironmentVariableW(variable, base, 1024) == 0) continue;
+            for (const wchar_t* relative : relativePaths) {
+                std::wstring path = std::wstring(base) + relative;
+                if (LaunchFileExists(path)) return path;
+            }
+        }
+        return L"";
+    }
+
+    static bool LaunchFieldText(const LingCdpJson::ValuePtr& root, const wchar_t* name, std::wstring& out) {
+        const LingCdpJson::ValuePtr value = root ? root->Find(name) : nullptr;
+        if (!value) return false;
+        if (value->kind == LingCdpJson::Value::Kind::String) { out = value->text; return true; }
+        return false;
+    }
+
+    static void LaunchRemoveDirectoryTree(const std::wstring& rootPath) {
+        if (rootPath.empty()) return;
+        std::vector<std::wstring> stack{ rootPath };
+        std::vector<std::wstring> directories{ rootPath };
+        while (!stack.empty()) {
+            const std::wstring current = stack.back(); stack.pop_back();
+            WIN32_FIND_DATAW find = {};
+            HANDLE handle = FindFirstFileW((current + L"\\*").c_str(), &find);
+            if (handle == INVALID_HANDLE_VALUE) continue;
+            do {
+                const std::wstring name = find.cFileName;
+                if (name == L"." || name == L"..") continue;
+                const std::wstring child = current + L"\\" + name;
+                if (find.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { directories.push_back(child); stack.push_back(child); }
+                else { SetFileAttributesW(child.c_str(), FILE_ATTRIBUTE_NORMAL); DeleteFileW(child.c_str()); }
+            } while (FindNextFileW(handle, &find));
+            FindClose(handle);
+        }
+        for (auto it = directories.rbegin(); it != directories.rend(); ++it) RemoveDirectoryW(it->c_str());
+    }
+
+    long long LaunchBrowser(const wchar_t* optionsJson, const wchar_t* readyHandler) {
+        std::wstring executable;
+        std::wstring userDataDir;
+        std::wstring additionalArguments;
+        std::wstring startUrl = L"about:blank";
+        DWORD waitTimeout = 15000;
+        if (optionsJson && optionsJson[0]) {
+            std::string utf8;
+            if (!LingCdpJson::WideToUtf8(optionsJson, utf8)) return Fail(L"CDP 启动浏览器：参数 JSON 无法编码为 UTF-8。");
+            std::wstring parseError;
+            const LingCdpJson::ValuePtr root = LingCdpJson::Parser::Parse(utf8.data(), utf8.size(), parseError);
+            if (!root || root->kind != LingCdpJson::Value::Kind::Object) return Fail(L"CDP 启动浏览器：参数必须是 JSON 对象。" + parseError);
+            LaunchFieldText(root, L"可执行文件", executable);
+            LaunchFieldText(root, L"用户数据目录", userDataDir);
+            LaunchFieldText(root, L"额外参数", additionalArguments);
+            std::wstring urlField;
+            if (LaunchFieldText(root, L"起始地址", urlField) && !urlField.empty()) startUrl = urlField;
+            const LingCdpJson::ValuePtr timeout = root->Find(L"等待超时毫秒");
+            if (timeout && timeout->kind == LingCdpJson::Value::Kind::Number) {
+                long long value = static_cast<long long>(timeout->number);
+                if (value < 2000) value = 2000;
+                if (value > 60000) value = 60000;
+                waitTimeout = static_cast<DWORD>(value);
+            }
+        }
+        if (!executable.empty() && !LaunchFileExists(executable)) return Fail(L"CDP 启动浏览器：可执行文件不存在：" + executable);
+        if (executable.empty()) {
+            executable = FindBrowserExecutable();
+            if (executable.empty()) return Fail(L"CDP 启动浏览器：本机未找到 msedge.exe 或 chrome.exe；请在参数里指定「可执行文件」绝对路径。");
+        }
+        if (startUrl.find(L'"') != std::wstring::npos) return Fail(L"CDP 启动浏览器：起始地址不能包含双引号。");
+        wchar_t tempRoot[1024] = {};
+        const DWORD tempLength = GetTempPathW(1024, tempRoot);
+        if (tempLength == 0 || tempLength >= 1024) return Fail(L"CDP 启动浏览器：无法取得临时目录路径。");
+        std::wstring baseDir = tempRoot;
+        if (!baseDir.empty() && baseDir.back() != L'\\') baseDir += L"\\";
+        if (!userDataDir.empty()) {
+            if (userDataDir.find(L'"') != std::wstring::npos) return Fail(L"CDP 启动浏览器：用户数据目录不能包含双引号。");
+            baseDir = userDataDir;
+            if (!baseDir.empty() && baseDir.back() == L'\\') baseDir.pop_back();
+        }
+        const std::wstring profileDir = baseDir + L"\\lingbuilder-cdp-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(nextLaunchSeed_.fetch_add(1));
+        if (!CreateDirectoryW(profileDir.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
+            return Fail(L"CDP 启动浏览器：无法创建用户数据目录：" + profileDir);
+        std::wstring commandLine = L"\"" + executable + L"\" --headless=new --remote-debugging-port=0 --disable-gpu --no-first-run --no-default-browser-check --disable-sync --metrics-recording-only --user-data-dir=\"" + profileDir + L"\"";
+        if (!additionalArguments.empty()) commandLine += L" " + additionalArguments;
+        if (!startUrl.empty()) commandLine += L" " + startUrl;
+        std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
+        mutableCommand.push_back(L'\0');
+        STARTUPINFOW startup = {}; startup.cb = sizeof(startup);
+        PROCESS_INFORMATION processInfo = {};
+        if (!CreateProcessW(executable.c_str(), mutableCommand.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, nullptr, nullptr, &startup, &processInfo)) {
+            LaunchRemoveDirectoryTree(profileDir);
+            return Fail(L"CDP 启动浏览器：进程创建失败，错误码 " + std::to_wstring(GetLastError()));
+        }
+        CloseHandle(processInfo.hThread);
+        const std::wstring portFile = profileDir + L"\\DevToolsActivePort";
+        std::wstring portText;
+        const DWORD started = GetTickCount();
+        for (;;) {
+            HANDLE file = CreateFileW(portFile.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (file != INVALID_HANDLE_VALUE) {
+                char buffer[64] = {}; DWORD read = 0;
+                if (ReadFile(file, buffer, 32, &read, nullptr) && read > 0) {
+                    CloseHandle(file);
+                    std::wstring wide;
+                    for (DWORD index = 0; index < read; ++index) wide += static_cast<wchar_t>(static_cast<unsigned char>(buffer[index]));
+                    const size_t lineEnd = wide.find_first_of(L"\r\n");
+                    portText = wide.substr(0, lineEnd == std::wstring::npos ? wide.size() : lineEnd);
+                    bool numeric = !portText.empty();
+                    for (wchar_t digit : portText) if (digit < L'0' || digit > L'9') numeric = false;
+                    if (numeric) break;
+                    portText.clear();
+                } else {
+                    CloseHandle(file);
+                }
+            }
+            if (WaitForSingleObject(processInfo.hProcess, 0) == WAIT_OBJECT_0) {
+                DWORD exitCode = 0; GetExitCodeProcess(processInfo.hProcess, &exitCode);
+                CloseHandle(processInfo.hProcess);
+                LaunchRemoveDirectoryTree(profileDir);
+                return Fail(L"CDP 启动浏览器：浏览器进程在写出调试端口前退出，退出码 " + std::to_wstring(exitCode));
+            }
+            if (GetTickCount() - started >= waitTimeout) {
+                TerminateProcess(processInfo.hProcess, 0);
+                WaitForSingleObject(processInfo.hProcess, 2000);
+                CloseHandle(processInfo.hProcess);
+                LaunchRemoveDirectoryTree(profileDir);
+                return Fail(L"CDP 启动浏览器：等待 DevToolsActivePort 超时（端口可能不可用或浏览器拒绝无头启动）。");
+            }
+            Sleep(50);
+        }
+        const std::wstring debugUrl = L"http://127.0.0.1:" + portText;
+        const long long connectionId = Connect(debugUrl.c_str(), readyHandler, false);
+        if (connectionId <= 0) {
+            TerminateProcess(processInfo.hProcess, 0);
+            WaitForSingleObject(processInfo.hProcess, 2000);
+            CloseHandle(processInfo.hProcess);
+            LaunchRemoveDirectoryTree(profileDir);
+            return Fail(L"CDP 启动浏览器：浏览器已启动但连接建立失败。");
+        }
+        LaunchSession session; session.process = processInfo.hProcess; session.userDataDir = profileDir;
+        { std::lock_guard<std::mutex> lock(launchesMutex_); launches_[connectionId] = session; }
+        return connectionId;
+    }
+
+    bool StopBrowser(long long connectionId) {
+        HANDLE process = nullptr;
+        bool launched = false;
+        { std::lock_guard<std::mutex> lock(launchesMutex_); auto it = launches_.find(connectionId); if (it != launches_.end()) { launched = true; process = it->second.process; } }
+        if (!launched) return Fail(L"CDP 停止浏览器：该连接不是本机启动的浏览器；外部连接请用 CDP_断开连接。");
+        const std::shared_ptr<Connection> connection = FindConnection(connectionId);
+        if (connection && connection->connected.load())
+            SendCommand(connection, L"Browser.close", L"{}", PendingKind::Internal, L"", L"", L"");
+        if (process) {
+            DWORD waited = 0;
+            while (waited < 3000 && WaitForSingleObject(process, 100) == WAIT_TIMEOUT) waited += 100;
+        }
+        return Disconnect(connectionId);
+    }
+
+    int StopAllBrowsers() {
+        std::vector<long long> ids;
+        { std::lock_guard<std::mutex> lock(launchesMutex_); for (const auto& pair : launches_) ids.push_back(pair.first); }
+        for (long long id : ids) StopBrowser(id);
+        return static_cast<int>(ids.size());
+    }
+
+    void TerminateLaunch(long long connectionId) {
+        LaunchSession session;
+        bool found = false;
+        { std::lock_guard<std::mutex> lock(launchesMutex_); auto it = launches_.find(connectionId); if (it != launches_.end()) { session = it->second; launches_.erase(it); found = true; } }
+        if (!found) return;
+        if (session.process) {
+            if (WaitForSingleObject(session.process, 0) != WAIT_OBJECT_0) TerminateProcess(session.process, 0);
+            WaitForSingleObject(session.process, 2000);
+            CloseHandle(session.process);
+        }
+        LaunchRemoveDirectoryTree(session.userDataDir);
     }
 
     std::wstring BrowserVersion(long long connectionId) {
@@ -1441,6 +1671,19 @@ public:
         { std::lock_guard<std::mutex> lock(interceptsMutex_); intercepts_.clear(); }
         ReleaseAllStage3State();
         { std::lock_guard<std::mutex> lock(eventsMutex_); events_.clear(); currentEventStack_.clear(); }
+        std::vector<LaunchSession> pendingLaunches;
+        {
+            std::lock_guard<std::mutex> lock(launchesMutex_);
+            for (auto& pair : launches_) pendingLaunches.push_back(pair.second);
+            launches_.clear();
+        }
+        // 进程退出前回收本机启动的无头浏览器，禁止留下 msedge --headless 孤儿进程。
+        for (auto& session : pendingLaunches) {
+            if (!session.process) continue;
+            if (WaitForSingleObject(session.process, 0) != WAIT_OBJECT_0) TerminateProcess(session.process, 0);
+            WaitForSingleObject(session.process, 2000);
+            CloseHandle(session.process);
+        }
     }
 
 private:
@@ -3659,6 +3902,9 @@ private:
     std::map<long long, std::shared_ptr<Event>> events_;
     std::vector<std::shared_ptr<Event>> currentEventStack_;
     std::wstring lastError_;
+    std::mutex launchesMutex_;
+    std::map<long long, LaunchSession> launches_;
+    std::atomic<long long> nextLaunchSeed_{ 1 };
     std::atomic<long long> nextConnectionId_{1};
     std::atomic<long long> nextPageId_{1};
     std::atomic<long long> nextElementId_{1};
@@ -3685,6 +3931,9 @@ private:
 const CDP_CLIENT_WINDOW_METHODS = String.raw`
     long long CDP_连接(const wchar_t* address, const wchar_t* handler) { return cdpClientRuntime_.Connect(address, handler, false); }
     long long CDP_连接远程(const wchar_t* address, const wchar_t* handler) { return cdpClientRuntime_.Connect(address, handler, true); }
+    long long CDP_启动浏览器(const wchar_t* optionsJson, const wchar_t* handler) { return cdpClientRuntime_.LaunchBrowser(optionsJson, handler); }
+    bool CDP_停止浏览器(long long connection) { return cdpClientRuntime_.StopBrowser(connection); }
+    int CDP_停止全部浏览器() { return cdpClientRuntime_.StopAllBrowsers(); }
     bool CDP_断开连接(long long connection) { return cdpClientRuntime_.Disconnect(connection); }
     int CDP_取连接数量() { return cdpClientRuntime_.ConnectionCount(); }
     bool CDP_是否已连接(long long connection) { return cdpClientRuntime_.IsConnected(connection); }
@@ -3735,6 +3984,7 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     const wchar_t* CDP_取当前事件文本() { cdpClientReturnText_ = cdpClientRuntime_.CurrentText(); return cdpClientReturnText_.c_str(); }
     const wchar_t* CDP_取当前事件详情() { cdpClientReturnText_ = cdpClientRuntime_.CurrentDetail(); return cdpClientReturnText_.c_str(); }
     const wchar_t* CDP_取当前错误() { cdpClientReturnText_ = cdpClientRuntime_.CurrentError(); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取最后错误() { cdpClientReturnText_ = cdpClientRuntime_.LastError(); return cdpClientReturnText_.c_str(); }
     const wchar_t* CDP_取当前网络网址() { cdpClientReturnText_ = cdpClientRuntime_.CurrentNetUrl(); return cdpClientReturnText_.c_str(); }
     const wchar_t* CDP_取当前网络方法() { cdpClientReturnText_ = cdpClientRuntime_.CurrentNetMethod(); return cdpClientReturnText_.c_str(); }
     const wchar_t* CDP_取当前网络编号() { cdpClientReturnText_ = cdpClientRuntime_.CurrentNetRequestId(); return cdpClientReturnText_.c_str(); }
