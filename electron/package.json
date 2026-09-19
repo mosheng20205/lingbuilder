@@ -87,6 +87,7 @@
     "smoke:http-server-native": "tsx scripts/smoke-http-server-native.ts",
     "bench:http-server-native": "tsx scripts/bench-http-server-native.ts",
     "smoke:http-client-native": "tsx scripts/smoke-http-client-native.ts",
+    "smoke:cef3-headless-native": "tsx scripts/smoke-cef3-headless-native.ts",
     "smoke:cdp-native": "tsx scripts/smoke-cdp-native.ts",
     "smoke:aria2-native": "tsx scripts/smoke-aria2-native.ts",
     "smoke:keyboard-native": "tsx scripts/smoke-keyboard-native.ts",

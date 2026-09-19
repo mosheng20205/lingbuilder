@@ -223,6 +223,39 @@ test('headless descriptions state the reviewed runtime semantics', () => {
   assert.match(create, /windowless/);
 });
 
+test('headless wait gates on browser-object readiness, not on IsLoading alone', () => {
+  const code = generatedConsoleMain();
+  // 根因回归：桥把创建投递到 CEF UI 线程，浏览器对象没建好时 LB_CEF3_BrowserIsLoading 也返回 0，
+  // 只轮询加载状态会让等待瞬间成功，后续取标题/执行JS 全读到空文本（真机冒烟退出码 14）。
+  const readiness = memberBody(code, 'int CEF3_浏览器对象已就绪(CefBrowserInstance* instance)');
+  assert.match(readiness, /LB_CEF3_BrowserIsValid\(/, '就绪判定必须正向问 CEF 的 IsValid');
+  assert.doesNotMatch(readiness, /BrowserIsLoading/, '就绪判定不得复用「未加载中」当「已创建」');
+  const wait = memberBody(code, HEADLESS_RUNTIME_SIGNATURES['CEF3无头_等待加载完成']);
+  const readyAt = wait.indexOf('CEF3_浏览器对象已就绪(');
+  const documentAt = wait.indexOf('CEF3_页面已有文档(');
+  const loadingAt = wait.indexOf('CEF3_是否加载中_按实例(');
+  assert.ok(readyAt >= 0, '等待加载完成必须先等浏览器对象就绪');
+  assert.ok(documentAt > readyAt, '就绪之后必须再确认主文档已提交');
+  assert.ok(loadingAt > readyAt, '加载状态轮询必须排在就绪判定之后');
+  // 桥句柄从 0xCEF3000000000001 起发，每个合法句柄按 int64 看都是负数：
+  // 句柄转换只要出现 > 0 判定，整条 CEF3框架_*/CEF3填表_*/CEF3DOM_* 链就会恒失败（真机实测）。
+  const frameCast = memberBody(code, 'static LB_CEF3_HANDLE CEF3_框架句柄(long long frameHandle)');
+  assert.match(frameCast, /frameHandle != 0/, 'CEF3_框架句柄 只能判 0');
+  assert.doesNotMatch(frameCast, /frameHandle > 0/, 'CEF3_框架句柄 不得按正数过滤句柄（合法句柄恒为负）');
+  // 主框架挑选必须显式比 1：桥在句柄解析失败时返回负数错误码，真值判断会把失败当命中。
+  assert.match(memberBody(code, 'long long CEF3_取主框架_按实例(CefBrowserInstance* instance)'), /LB_CEF3_FrameIsMain\(frame\) == 1/);
+  // 命令说明要把「负数句柄」和「两段等待」讲给外部 AI。
+  assert.match(contributionOf('CEF3无头_取主框架')!.description, /!= 0/);
+  assert.match(contributionOf('CEF3无头_取浏览器句柄')!.description, /!= 0/);
+  // 两段各有中文诊断，且共用同一个总超时（不得退化成无界等待）。
+  assert.match(wait, /浏览器在给定毫秒数内仍未创建完成/);
+  assert.match(wait, /页面在给定毫秒数内仍未加载结束/);
+  assert.equal((wait.match(/GetTickCount64\(\) - started >= static_cast<ULONGLONG>\(deadline\)/g) ?? []).length, 2);
+  // 命令说明必须把这条红线讲给外部 AI：是否加载中 返回 0 不等于浏览器已建好。
+  assert.match(contributionOf('CEF3无头_是否加载中')!.description, /尚未创建|还没创建|不能.*判据/);
+  assert.match(contributionOf('CEF3无头_等待加载完成')!.description, /主文档已提交/);
+});
+
 test('every headless runtime wrapper exists in generated C++ and resolves by instance number', () => {
   const code = generatedConsoleMain();
   for (const [command, signature] of Object.entries(HEADLESS_RUNTIME_SIGNATURES)) {
@@ -302,6 +335,11 @@ test('headless viewport and frame counters go through the OSR bridge exports', (
     /CEF3_桥接错误文本\(\)/,
     'CEF3_拼接桥接原因 必须转述桥给出的中文最后错误'
   );
+  // 读最后错误只允许一次带缓冲调用：空缓冲探长度会把 g_last_error 覆盖成「输出缓冲区不足」，
+  // 真实中文原因就再也读不到（真机冒烟曾把 Frame 读取失败误诊成缓冲区问题）。
+  const errorText = memberBody(code, 'static std::wstring CEF3_桥接错误文本(');
+  assert.equal((errorText.match(/LB_CEF3_GetLastError\(/g) ?? []).length, 1, 'CEF3_桥接错误文本 只允许单次读取最近错误');
+  assert.doesNotMatch(errorText, /LB_CEF3_GetLastError\(nullptr/, '不得用空缓冲探测最近错误长度');
   // 设置视口：写入选定视口后宿主重查失败时，回读确认视口已生效仍算成功。
   const setViewport = memberBody(code, HEADLESS_RUNTIME_SIGNATURES['CEF3无头_设置视口']);
   assert.match(setViewport, /视口已写入，但刷新未确认/);

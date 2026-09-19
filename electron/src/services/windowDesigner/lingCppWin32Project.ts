@@ -16659,12 +16659,14 @@ ${generateFbroVipIndividualRuntime(false)}
 
     // 失败原因一律转述 CEF 桥自己写下的中文诊断（线程局部最近错误），不得凭空编造第三种说法，
     // 也不得只报负数错误码；桥没有给出文本时返回空串，由调用方保留自己的中文兜底说明。
+    // 口径红线：这里必须一次调用带够缓冲。先传空缓冲「探长度」走的也是通用 CopyWide 写回路径，
+    // 它会把最近错误本身覆盖成「输出缓冲区不足」，真实原因永远读不到（真机曾因此把 Frame 读取
+    // 失败诊断成缓冲区问题）。FBro 侧同一口径：固定大缓冲、单次读取。
     static std::wstring CEF3_桥接错误文本() {
+        std::vector<wchar_t> text(4096, static_cast<wchar_t>(0));
         size_t required = 0;
-        LB_CEF3_GetLastError(nullptr, 0, &required);
-        if (required == 0) return L"";
-        std::vector<wchar_t> text(required, static_cast<wchar_t>(0));
-        return LB_CEF3_GetLastError(text.data(), text.size(), &required) == LB_CEF3_OK ? std::wstring(text.data()) : L"";
+        return LB_CEF3_GetLastError(text.data(), text.size(), &required) == LB_CEF3_OK
+            ? std::wstring(text.data()) : L"";
     }
 
     static std::wstring CEF3_拼接桥接原因(const std::wstring& message) {
@@ -16746,6 +16748,35 @@ ${generateFbroVipIndividualRuntime(false)}
         return instance && instance->bridgeHandle && LB_CEF3_BrowserIsLoading(instance->bridgeHandle) > 0 ? 1 : 0;
 #else
         return instance && instance->browser && instance->browser->IsLoading() ? 1 : 0;
+#endif
+#else
+        (void)instance; return 0;
+#endif
+    }
+
+    // CEF 浏览器对象是否真的建好了。桥的创建是投递到 CEF UI 线程后异步完成的，句柄有效不代表浏览器
+    // 已存在，而 LB_CEF3_BrowserIsLoading 在对象缺失时同样返回 0——「未加载中」与「尚未创建」根本
+    // 无法区分，所以只能正向确认：桥轨道问 CEF 的 IsValid，无桥轨道问实例自己持有的浏览器。
+    int CEF3_浏览器对象已就绪(CefBrowserInstance* instance) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->bridgeHandle && LB_CEF3_BrowserIsValid(instance->bridgeHandle) == 1 ? 1 : 0;
+#else
+        return instance && instance->created && instance->browser ? 1 : 0;
+#endif
+#else
+        (void)instance; return 0;
+#endif
+    }
+
+    // 主文档是否已提交：浏览器建好与导航真正开始之间还有一拍，那一拍 IsLoading 也是 0，
+    // 所以「加载完毕」必须同时要求 CEF 已经有文档；桥的负数错误码一律按「没有文档」处理。
+    int CEF3_页面已有文档(CefBrowserInstance* instance) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->bridgeHandle && LB_CEF3_BrowserHasDocument(instance->bridgeHandle) == 1 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->HasDocument() ? 1 : 0;
 #endif
 #else
         (void)instance; return 0;
@@ -16837,7 +16868,9 @@ ${generateFbroVipIndividualRuntime(false)}
         for (const auto& identifier : values) {
             LB_CEF3_HANDLE frame = 0;
             if (LB_CEF3_BrowserGetFrameByIdentifier(browser, identifier.c_str(), &frame) == LB_CEF3_OK && frame) {
-                if (LB_CEF3_FrameIsMain(frame)) return static_cast<long long>(frame);
+                // 必须显式比 1：桥在句柄解析失败时返回的是负数错误码，真值判断会把「取框架失败」
+                // 当成「这就是主框架」，把一个解析不出来的句柄交给调用方。
+                if (LB_CEF3_FrameIsMain(frame) == 1) return static_cast<long long>(frame);
                 LB_CEF3_HandleRelease(frame);
             }
         }
@@ -16938,14 +16971,27 @@ ${generateFbroVipIndividualRuntime(false)}
         CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
         if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 等待失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
         const int deadline = timeoutMilliseconds > 0 ? timeoutMilliseconds : 30000;
-        // 控制台项目派发不了事件处理器，等待只能是轮询：每 50 毫秒问一次 CEF 的加载中状态，
-        // 不依赖消息泵、消息循环或无头泵窗口；到 deadline 就带中文诊断返回，绝不无界等待。
-        for (int elapsed = 0; elapsed < deadline; elapsed += 50) {
-            if (!CEF3_是否加载中_按实例(instance)) return 1;
+        const ULONGLONG started = GetTickCount64();
+        // 两段等待共用同一个总超时，控制台项目派发不了事件处理器，只能轮询：
+        // 第一段先等 CEF 真的把浏览器建出来（创建是异步投递到 CEF UI 线程的，见
+        // CEF3_浏览器对象已就绪）；第二段等「主文档已提交 且 不在加载中」——浏览器建好与
+        // 导航真正开始之间还有一拍，只问 IsLoading 会把这一拍读成「加载完毕」，
+        // 于是后面的取标题/执行JS 全拿到空值（真机两轮分别栽在这两处）。
+        while (!CEF3_浏览器对象已就绪(instance)) {
+            if (GetTickCount64() - started >= static_cast<ULONGLONG>(deadline)) {
+                调试输出(L"CEF3 等待加载完成超时：浏览器在给定毫秒数内仍未创建完成（用 CEF3无头_取事件JSON 看桥接层原因）。");
+                return 0;
+            }
+            Sleep(20);
+        }
+        while (!CEF3_页面已有文档(instance) || CEF3_是否加载中_按实例(instance)) {
+            if (GetTickCount64() - started >= static_cast<ULONGLONG>(deadline)) {
+                调试输出(L"CEF3 等待加载完成超时：页面在给定毫秒数内仍未加载结束（导航失败或尚未提交文档，原因见 CEF3无头_取事件JSON）。");
+                return 0;
+            }
             Sleep(50);
         }
-        调试输出(L"CEF3 等待加载完成超时：页面在给定毫秒数内仍未加载结束。");
-        return 0;
+        return 1;
     }
 
     std::wstring CEF3无头_取标题(int instanceId) {
@@ -16989,12 +17035,22 @@ ${generateFbroVipIndividualRuntime(false)}
         if (!frame) { 调试输出(L"CEF3 取页面内容失败：页面尚未产生主框架，先等 CEF3无头_等待加载完成 再取。"); return L""; }
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         const long long taskId = textMode ? CEF3框架_取文本异步(frame) : CEF3框架_取源码异步(frame);
+        if (!taskId) {
+            调试输出(CEF3_拼接桥接原因(textMode
+                ? L"CEF3 取页面文本失败：文本读取任务未建立（主框架句柄已失效）"
+                : L"CEF3 取页面源码失败：源码读取任务未建立（主框架句柄已失效）").c_str());
+            LB_CEF3_HandleRelease(static_cast<LB_CEF3_HANDLE>(frame));
+            return L"";
+        }
         const int deadline = timeoutMilliseconds > 0 ? timeoutMilliseconds : 30000;
         const std::wstring result = CEF3_任务等待文本(static_cast<LB_CEF3_TASK_HANDLE>(taskId),
             static_cast<unsigned long long>(deadline), 50,
             textMode ? L"CEF3 取页面文本超时：给定毫秒数内未取得页面文本。"
                      : L"CEF3 取页面源码超时：给定毫秒数内未取得页面源码。");
-        if (result.empty()) 调试输出(L"CEF3 取页面内容失败：任务未建立或结果为空文本（页面可能还没有内容）。");
+        // 框架句柄由本次调用内部申请（不像 CEF3无头_取主框架 那样交给用户），用完必须自己释放，
+        // 否则每次取页面内容都会在桥的句柄表里漏注册一条。
+        LB_CEF3_HandleRelease(static_cast<LB_CEF3_HANDLE>(frame));
+        if (result.empty()) 调试输出(L"CEF3 取页面内容失败：读取任务返回空文本（页面可能还没有内容）。");
         return result;
 #else
         调试输出(L"CEF3 取页面内容失败：当前构建未启用 CEF3 桥。");
@@ -17111,7 +17167,10 @@ ${generateFbroVipIndividualRuntime(false)}
     }
 
     static LB_CEF3_HANDLE CEF3_框架句柄(long long frameHandle) {
-        return frameHandle > 0 ? static_cast<LB_CEF3_HANDLE>(frameHandle) : 0;
+        // 只能判 0，绝不能判正负：桥的句柄从 0xCEF3000000000001 起发，全部落在 int64 负数区，
+        // 用 > 0 过滤会把每一个合法框架句柄都当成无效句柄（真机表现为 CEF3框架_取源码异步 恒返回 0）。
+        // .lcpp 侧的 长整数型 与 LB_CEF3_HANDLE 是按位往回的同一 64 位值，负数不是错误。
+        return frameHandle != 0 ? static_cast<LB_CEF3_HANDLE>(frameHandle) : 0;
     }
 
     LB_CEF3_HANDLE CEF3_框架浏览器句柄(const wchar_t* controlName) {
