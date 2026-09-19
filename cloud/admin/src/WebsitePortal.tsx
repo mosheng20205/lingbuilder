@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Github, Heart, History, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowUp, Blocks, BookOpen, Bot, CheckCircle2, ChevronRight, Copy, Download, ExternalLink, FileCode2, Github, Heart, History, Maximize2, MessageCircle, PackageOpen, Search, X } from 'lucide-react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import sponsorQr from '../../../image/sponsor-qr-alipay-wechat.png';
 import { CLOUD_API, fetchWebsiteBootstrap, fetchWebsiteUpdates, type WebsiteBootstrap, type WebsiteCommand, type WebsiteDemo, type WebsiteGuide, type WebsiteSponsor, type WebsiteUpdateEntry } from './websiteApi';
@@ -38,8 +38,22 @@ export function WebsitePortal() {
       {path === '/sponsors' && <SponsorsPage content={content} error={error}/>}
       {path === '/updates' && <UpdatesPage/>}
     </main>
+    <BackToTop/>
     <WebsiteFooter/>
   </div>;
+}
+
+/** 全站悬浮「返回顶部」：页面滚过首屏后才出现。 */
+export function BackToTop() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 600);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  if (!visible) return null;
+  return <button className="website-back-to-top" type="button" aria-label="返回顶部" title="返回顶部" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><ArrowUp size={18}/></button>;
 }
 
 function WebsiteHeader({ activePath }: { activePath: string }) {
@@ -118,11 +132,54 @@ function DownloadsPage({ content, error }: PageProps) {
   return <><PageHero kicker="WINDOWS DOWNLOADS" title="选择可用镜像，下载同一个版本" description="版本、提取码和镜像状态由官方后台统一维护。" icon={Download}/><section className="website-section"><div className="website-shell resource-stack">{error && <LoadNotice text={error}/>} {!content && !error && <LoadNotice text="正在加载下载版本…"/>}{content?.downloads.map(release => <article className="download-release" key={release.id}><header><div><span>{release.channel === 'stable' ? '稳定版' : '预览版'} · {release.platform} {release.architecture}</span><h2>{release.title}</h2><p>{release.summary}</p></div><strong>v{release.version}</strong></header><div className="release-info"><p><b>环境要求</b>{release.minimumRequirements || '请查看版本说明'}</p><p><b>更新说明</b>{release.releaseNotes || '暂无更新说明'}</p>{release.sha256 && <p><b>SHA-256</b><code>{release.sha256}</code></p>}</div><div className="mirror-grid">{release.mirrors.map(mirror => <a key={mirror.id} href={mirror.url} target="_blank" rel="noreferrer"><Download/><span><strong>{mirror.label}</strong><small>{mirror.accessCode ? `提取码：${mirror.accessCode}` : '无需提取码'}</small></span><ExternalLink/></a>)}</div></article>)}</div></section></>;
 }
 
+/** 控件手册分组：分类名去掉后端前缀（如 Win32）后归为「基础控件 / 高级控件 / 浏览器控件」。 */
+function controlGuideGroups(guides: WebsiteGuide[]) {
+  const groups = new Map<string, WebsiteGuide[]>();
+  for (const guide of guides) {
+    const name = guide.category.replace(/^[A-Za-z0-9]+\s+/u, '') || '其他';
+    groups.set(name, [...(groups.get(name) || []), guide]);
+  }
+  return Array.from(groups, ([name, items]) => ({ name, items: items.sort((a, b) => a.sortOrder - b.sortOrder) }))
+    .sort((a, b) => a.items[0].sortOrder - b.items[0].sortOrder);
+}
+
+/** 折叠状态只落盘「收起的分组名」；读不到时返回 null，由默认规则决定展开哪一组。 */
+const CONTROL_GROUP_STORAGE_KEY = 'lingbuilder.website.control-groups-collapsed';
+
+function readCollapsedGroups(): string[] | null {
+  try {
+    const raw = window.localStorage.getItem(CONTROL_GROUP_STORAGE_KEY);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : null;
+  } catch { return null; }
+}
+
 function ControlsPage({ content, error }: PageProps) {
   const guides = content?.guides.filter(item => item.kind === 'CONTROL') || [];
   const [selectedSlug, setSelectedSlug] = useState('');
   const selected = guides.find(item => item.slug === selectedSlug) || guides[0];
-  return <><PageHero kicker="CONTROL HANDBOOK" title="基础与高级控件使用手册" description="从设计器属性、事件绑定到中文命令和原生运行结果。" icon={Blocks}/><section className="website-section"><div className="website-shell guide-layout"><aside>{guides.map(guide => <button className={selected?.id === guide.id ? 'active' : ''} key={guide.id} onClick={() => setSelectedSlug(guide.slug)}><span>{guide.category}</span><strong>{guide.title}</strong><small>{guide.summary}</small></button>)}</aside><div className="guide-content">{selected ? <GuideArticle guide={selected}/> : <LoadNotice text={error || '正在加载控件手册…'}/>}</div></div></section></>;
+  const groups = useMemo(() => controlGuideGroups(guides), [guides]);
+  const [collapsedGroups, setCollapsedGroups] = useState<string[] | null>(readCollapsedGroups);
+  const articleRef = useRef<HTMLDivElement>(null);
+  const activeGroup = groups.find(group => group.items.some(item => item.id === selected?.id));
+  /** 从未落盘时按「只展开选中项所在分组」；落过盘则完全听用户的。 */
+  const isCollapsed = (name: string) => collapsedGroups ? collapsedGroups.includes(name) : name !== activeGroup?.name;
+  const writeCollapsed = (names: string[]) => {
+    setCollapsedGroups(names);
+    try { window.localStorage.setItem(CONTROL_GROUP_STORAGE_KEY, JSON.stringify(names)); } catch { /* 隐私模式下写不进只丢记忆，折叠照常生效 */ }
+  };
+  const toggleGroup = (name: string) => writeCollapsed(groups.map(group => group.name)
+    .filter(groupName => groupName === name ? !isCollapsed(groupName) : isCollapsed(groupName)));
+  const openGuide = (slug: string) => {
+    setSelectedSlug(slug);
+    articleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  return <><PageHero kicker="CONTROL HANDBOOK" title="基础与高级控件使用手册" description="从设计器属性、事件绑定到中文命令和原生运行结果。" icon={Blocks}/><section className="website-section"><div className="website-shell guide-layout"><aside>{groups.map((group, index) => {
+    const collapsed = isCollapsed(group.name);
+    const listId = `control-guide-group-${index}`;
+    return <div className="guide-group" key={group.name}><h3><button type="button" className="guide-group-toggle" aria-expanded={!collapsed} aria-controls={listId} onClick={() => toggleGroup(group.name)}><ChevronRight size={13}/><span>{group.name}</span><small>{group.items.length}</small></button></h3>{!collapsed && <div className="guide-group-items" id={listId}>{group.items.map(guide => <button className={selected?.id === guide.id ? 'active' : ''} key={guide.id} onClick={() => openGuide(guide.slug)}><strong>{guide.title}</strong><small>{guide.summary}</small></button>)}</div>}</div>;
+  })}</aside><div className="guide-content" ref={articleRef}>{selected ? <GuideArticle guide={selected}/> : <LoadNotice text={error || '正在加载控件手册…'}/>}</div></div></section></>;
 }
 
 function SingleGuidePage({ content, kind, kicker, fallbackTitle, error }: PageProps & { kind: string; kicker: string; fallbackTitle: string }) {

@@ -2,7 +2,7 @@ import { ArrowRight, BookOpen, Boxes, Braces, CheckCircle2, Code2, Download, Git
 import { useState } from 'react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import { WEBSITE_NAV_ITEMS, isDocsSectionItem } from './websiteNav';
-import { GITHUB_REPO_URL } from './WebsitePortal';
+import { BackToTop, GITHUB_REPO_URL } from './WebsitePortal';
 import { WebsiteThemeToggle } from './websiteTheme';
 import './home.css';
 
@@ -60,5 +60,6 @@ export function HomePage() {
     </main>
 
     <footer className="blog-footer"><div className="blog-container footer-inner"><div><a className="blog-brand" href="#top"><img src={brandIcon} alt="" /><span><strong>灵码</strong><small>LINGBUILDER 技术文档</small></span></a><p>个人技术博客，记录中文集成开发环境的开发过程。</p></div><div className="footer-links"><a href="/community">官方交流群</a><a href="/docs">文档</a><a href="/downloads">下载</a><a href="/updates">更新记录</a><a href="/sponsors">赞助列表</a><a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">GitHub 仓库</a></div><div className="icp"><span>鄂ICP备18003834号-7</span><small>本站仅用于个人技术沉淀与代码片段分享，不涉及论坛、电商及收费服务。</small></div></div></footer>
+    <BackToTop/>
   </div>;
 }
