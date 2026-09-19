@@ -10,6 +10,17 @@ import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp
 import { createFunctionLibraryTemplate, createProjectFunctionContext } from '../lingCpp/functionLibraryService';
 import { LingCppDiagnostic, LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
+import {
+  DESIGNER_CONTROL_DETAIL_MAX,
+  DESIGNER_CONTROL_SUMMARY_MAX,
+  DEMO_EXAMPLE_MAX_COMMANDS,
+  buildDesignerControlDetails,
+  buildDesignerControlSummaries,
+  collectUiExamples,
+  loadDemoCorpus,
+  matchUiExample,
+  readUiExampleContent
+} from './moduleUiViews';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
 import { AI_MODULE_MANIFEST_FILE } from '../modules/aiModuleImportParser';
 import { createModuleTemplate, importAiModuleFiles, validateModuleDirectory } from '../modules/moduleSdkService';
@@ -575,27 +586,50 @@ export class AiBridgeService {
     }
     const manifest = found.manifest;
     const query = request.query?.trim().toLowerCase() || '';
-    const commands = (manifest.contributes?.commands || [])
+    const filteredCommands = (manifest.contributes?.commands || [])
       .filter(command => command.visibility !== 'internal')
       .filter(command => request.includeAdvanced === true || command.visibility !== 'advanced')
       .filter(command => !query
         || command.name.toLowerCase().includes(query)
-        || (command.description || '').toLowerCase().includes(query))
-      .map(command => {
-        const binding = manifest.bindings?.commands?.find(item => item.command === command.name);
-        return {
-          name: command.name,
-          signature: command.signature,
-          returnType: command.returnType,
-          returnDescription: command.returnDescription,
-          description: command.description,
-          visibility: command.visibility,
-          parameters: parseModuleCommandParameterDocs(command, binding),
-          example: command.insertText || command.signature
-        };
-      });
+        || (command.description || '').toLowerCase().includes(query));
+    // 真实调用示例只在结果集有限时逐条附带：整模块全量查询时它会白白撑爆响应。
+    const demoCorpus = await loadDemoCorpus(this.workspaceRoot, manifest.id);
+    const withDemoExamples = filteredCommands.length <= DEMO_EXAMPLE_MAX_COMMANDS;
+    const commands = filteredCommands.map(command => {
+      const binding = manifest.bindings?.commands?.find(item => item.command === command.name);
+      return {
+        name: command.name,
+        signature: command.signature,
+        returnType: command.returnType,
+        returnDescription: command.returnDescription,
+        description: command.description,
+        visibility: command.visibility,
+        parameters: parseModuleCommandParameterDocs(command, binding),
+        example: command.insertText || command.signature,
+        // 未命中演示语料时不下发空字段，避免外部 AI 把 null 当成「该命令不可用」。
+        ...(withDemoExamples && demoCorpus?.invocations.has(command.name)
+          ? { demoExample: demoCorpus.invocations.get(command.name) }
+          : {})
+      };
+    });
     const MAX_COMMANDS = 500;
     const truncated = commands.length > MAX_COMMANDS;
+    const designerControls = buildDesignerControlSummaries(manifest);
+    const uiExamples = await collectUiExamples(found, this.workspaceRoot);
+    const exampleFilter = request.example?.trim() || '';
+    const matchedExample = exampleFilter ? matchUiExample(uiExamples, exampleFilter) : undefined;
+    if (exampleFilter && !matchedExample) {
+      throw new Error(`未找到匹配「${exampleFilter}」的示例。可用示例：${uiExamples.map(example => example.title).join('、') || '该模块暂无登记示例。'}`);
+    }
+    const exampleContent = matchedExample
+      ? await readUiExampleContent(found, this.workspaceRoot, matchedExample)
+      : null;
+    const controlFilter = request.control?.trim() || '';
+    const controlDetails = controlFilter ? buildDesignerControlDetails(manifest, controlFilter) : null;
+    if (controlFilter && controlDetails && controlDetails.matched === 0) {
+      const available = designerControls.slice(0, 12).map(control => control.label).join('、');
+      throw new Error(`设计器控件中没有任何项匹配「${controlFilter}」。该模块控件示例：${available}${designerControls.length > 12 ? `…（共 ${designerControls.length} 个）` : ''}。`);
+    }
     return {
       ok: true,
       id: manifest.id,
@@ -612,13 +646,67 @@ export class AiBridgeService {
         id: target.id, platform: target.platform, arch: target.arch, toolchain: target.toolchain
       })),
       types: (manifest.contributes?.types || []).map(type => ({ name: type.name, description: type.description })),
+      constants: (manifest.contributes?.constants || []).map(constant => ({
+        name: `#${constant.name}`,
+        type: constant.type,
+        value: constant.value,
+        description: constant.description,
+        level: constant.level === 'advanced' ? 'advanced' : 'basic'
+      })),
       docs: (manifest.contributes?.docs || []).map(doc => ({ title: doc.title, path: doc.path })),
+      designerControls: designerControls.slice(0, DESIGNER_CONTROL_SUMMARY_MAX),
+      designerControlsTotal: designerControls.length,
+      ...(designerControls.length > DESIGNER_CONTROL_SUMMARY_MAX
+        ? { designerControlsHint: `控件数超过 ${DESIGNER_CONTROL_SUMMARY_MAX}，概览已截断；用 control 参数按控件类型或中文名过滤可拿到完整属性、事件与代码创建契约。` }
+        : {}),
+      ...(controlDetails ? {
+        designerControlMatched: controlDetails.matched,
+        designerControlDetails: controlDetails.details,
+        ...(controlDetails.matched > DESIGNER_CONTROL_DETAIL_MAX
+          ? { designerControlDetailHint: `匹配 ${controlDetails.matched} 个控件，详情只返回前 ${DESIGNER_CONTROL_DETAIL_MAX} 个；请收窄 control 过滤词。` }
+          : {})
+      } : {}),
+      uiExamples: uiExamples.map(example => ({
+        title: example.title,
+        path: example.path,
+        source: example.source,
+        scenario: example.scenario || example.description,
+        commands: (example.commands || []).slice(0, 16),
+        notes: example.notes
+      })),
+      ...(matchedExample && exampleContent ? {
+        uiExample: {
+          title: matchedExample.title,
+          path: matchedExample.path,
+          source: matchedExample.source,
+          absolutePath: exampleContent.absolutePath,
+          truncated: exampleContent.truncated,
+          content: exampleContent.content
+        }
+      } : {}),
+      ...(demoCorpus ? {
+        demoProject: {
+          projectId: demoCorpus.projectId,
+          commandCount: demoCorpus.commandCount,
+          generatedAt: demoCorpus.generatedAt,
+          groupCount: demoCorpus.groupCount,
+          sourceRoot: demoCorpus.sourceRoot,
+          designerModelPath: demoCorpus.projectId ? `.lingbuilder/projects/${demoCorpus.projectId}/window-designer.json` : '',
+          sourcePackage: demoCorpus.packageName,
+          stale: demoCorpus.commandCount !== (manifest.contributes?.commands || []).length,
+          hint: '该模块的全量逐命令演示项目，demoExample 取自其中。未附带 demoExample 只表示语料未覆盖该命令（语料过期或命令较新），不代表命令不可用；需要刷新时执行 npm run module:demos -w lingbuilder-electron。要成段可读源码用 lingbuilder.file.read 读 <sourceRoot>/MainWindow.lcpp（文件很大，按需读取）。'
+        }
+      } : {}),
       commandsTotal: (manifest.contributes?.commands || []).length,
-      commandsMatched: commands.length,
-      commandsTruncated: truncated,
-      commands: truncated ? commands.slice(0, MAX_COMMANDS) : commands,
-      ...(truncated ? { truncationHint: `命令数超过 ${MAX_COMMANDS}，已截断；请用 query 参数按命令名过滤后分批查询。` } : {}),
-      hint: '参数类型为 controlRef 的参数必须传裸控件名（不带引号）；类型为 handler 的处理器参数必须传 &处理器名。'
+      // 只查界面视图时不回命令表：500 条命令文档就有 ~350KB，会把外部 AI 上下文直接占满。
+      commandsMatched: controlFilter || exampleFilter ? 0 : commands.length,
+      commandsTruncated: !controlFilter && !exampleFilter && truncated,
+      commands: controlFilter || exampleFilter ? [] : (truncated ? commands.slice(0, MAX_COMMANDS) : commands),
+      ...(controlFilter || exampleFilter
+        ? { commandsSkippedHint: '本次按 control/example 查询界面视图，未返回命令表（命令文档体量很大）；需要命令请用 query 单独查询。' }
+        : {}),
+      ...(truncated && !controlFilter && !exampleFilter ? { truncationHint: `命令数超过 ${MAX_COMMANDS}，已截断；请用 query 参数按命令名过滤后分批查询。` } : {}),
+      hint: '参数类型为 controlRef 的参数必须传裸控件名（不带引号）；类型为 handler 的处理器参数必须传 &处理器名；constants 为模块公开常量，源码中必须用 #常量名 引用（不带引号）。designerControls 是该模块贡献到设计器的控件概览（含代码创建命令与类型）；要某个控件的完整属性/事件/布局契约就传 control，要成段可用源码就传 example（按标题或序号命中 uiExamples 里的示例正文）。'
     };
   }
 

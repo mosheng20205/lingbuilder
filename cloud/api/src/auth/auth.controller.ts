@@ -20,7 +20,7 @@ export class AuthController {
   @Public() @Post('login') login(@Body() body: any, @Ip() ip: string, @Headers('user-agent') userAgent = '') { return this.auth.login(String(body.email || ''), String(body.password || ''), String(body.deviceName || 'LingBuilder IDE'), ip, userAgent, String(body.mfaCode || '')); }
   @Public() @Post('refresh') refresh(@Body() body: any, @Ip() ip: string, @Headers('user-agent') userAgent = '') { return this.auth.refresh(String(body.refreshToken || ''), ip, userAgent); }
   @Public() @Post('logout') logout(@Body() body: any) { return this.auth.logout(String(body.refreshToken || '')); }
-  @Public() @Post('password/forgot') forgot(@Body() body: any) { return this.auth.forgotPassword(String(body.email || '')); }
+  @Public() @Post('password/forgot') forgot(@Body() body: any, @Ip() ip: string) { return this.auth.forgotPassword(String(body.email || ''), ip); }
   @Public() @Post('password/reset') reset(@Body() body: any) { return this.auth.resetPassword(String(body.token || ''), String(body.password || '')); }
   @Post('password/change') change(@CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.auth.changePassword(user.id, String(body.currentPassword || ''), String(body.newPassword || '')); }
   @Public() @Post('token/refresh') tokenRefresh(@Body() body: any) { return this.auth.refresh(String(body.refreshToken || ''), '', '') };

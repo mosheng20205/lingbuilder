@@ -2,10 +2,18 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import QRCode from 'qrcode';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
 import { readPreferredCloudModelAlias, writePreferredCloudModelAlias } from '../services/ai/cloudModelPreference';
+import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
+import { requestCloudAccountRecharge } from '../services/workbench/cloudAccountRechargeService';
+import {
+  getCloudAccountSessionState,
+  refreshCloudAccountSession,
+  signOutCloudAccount,
+  subscribeCloudAccountSession,
+  type CloudAccountSessionState
+} from '../services/workbench/cloudAccountSessionStore';
 import type { LingWindowProject } from '../services/windowDesigner/types';
 import type { ProjectMutationOwner } from '../services/workspace/projectMutationOwner';
 import {
@@ -244,64 +252,25 @@ export default function AiAssistant({
     const stored = aiConnectionSession.getMode() || loadAiMode();
     return stored === 'system' && !window.lingBuilder?.cloudAccount ? 'byok' : stored;
   });
-  const [cloudSession, setCloudSession] = useState<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>({ authenticated: false });
+  const [cloudSession, setCloudSession] = useState<CloudAccountSessionState>(getCloudAccountSessionState);
   const [cloudModels, setCloudModels] = useState<Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }>>([]);
   const [cloudModelAlias, setCloudModelAlias] = useState(() => readPreferredCloudModelAlias());
-  const [rechargePanelOpen, setRechargePanelOpen] = useState(false);
-  const [rechargePackages, setRechargePackages] = useState<Array<{ id: string; name: string; points: string; amountMinor: string; currency: string }>>([]);
-  const [rechargeBusy, setRechargeBusy] = useState(false);
-  const [rechargeMessage, setRechargeMessage] = useState('');
-  const [rechargeQr, setRechargeQr] = useState<{ orderId: string; points: string; packageName: string; dataUrl: string; expiresAt: string; status: string; mode: 'qr' | 'browser' } | null>(null);
-  useEffect(() => {
-    if (!rechargeQr || rechargeQr.status !== 'pending') return;
-    const orderId = rechargeQr.orderId;
-    let active = true;
-    const timer = setInterval(async () => {
-      try {
-        const result = await window.lingBuilder?.cloudAccount?.rechargeOrder(orderId);
-        if (!active || !result?.order) return;
-        if (result.order.status === 'paid') {
-          setRechargeQr(current => (current && current.orderId === orderId ? { ...current, status: 'paid' } : current));
-          const balance = await window.lingBuilder?.cloudAccount?.balance();
-          if (balance?.balance) setCloudSession(current => ({ ...current, balance: balance.balance }));
-        } else if (['expired', 'cancelled', 'refunded'].includes(result.order.status)) {
-          setRechargeQr(current => (current && current.orderId === orderId ? { ...current, status: result.order.status } : current));
-        }
-      } catch { /* 轮询期间的瞬时错误忽略，等待下一轮 */ }
-    }, 3000);
-    return () => { active = false; clearInterval(timer); };
-  }, [rechargeQr]);
-  const toggleRechargePanel = async () => {
-    const next = !rechargePanelOpen;
-    setRechargePanelOpen(next);
-    setRechargeMessage('');
-    if (next && !rechargePackages.length) {
-      try {
-        const result = await window.lingBuilder?.cloudAccount?.rechargePackages();
-        if (result?.packages) setRechargePackages(result.packages);
-      } catch (error) { setRechargeMessage(error instanceof Error ? error.message : String(error)); }
-    }
+  // 登录态与点数一律来自 cloudAccountSessionStore，面板不再自持一份会话副本。
+  useEffect(() => subscribeCloudAccountSession(() => setCloudSession(getCloudAccountSessionState())), []);
+  const loadCloudModels = async () => {
+    const cloudAccount = window.lingBuilder?.cloudAccount;
+    if (!cloudAccount) return;
+    const result = await cloudAccount.models().catch(() => null);
+    const modelList = result?.models || [];
+    setCloudModels(modelList);
+    setCloudModelAlias(current => {
+      const aliases = modelList.map(model => model.alias);
+      if (current && aliases.includes(current)) return current;
+      const preferred = readPreferredCloudModelAlias();
+      if (preferred && aliases.includes(preferred)) return preferred;
+      return aliases[0] || '';
+    });
   };
-  const startRecharge = async (packageId: string) => {
-    if (!window.lingBuilder?.cloudAccount?.createRechargeOrder) { setRechargeMessage('当前客户端版本不支持在线充值。'); return; }
-    setRechargeBusy(true); setRechargeMessage('');
-    try {
-      const result = await window.lingBuilder.cloudAccount.createRechargeOrder({ packageId, provider: 'alipay', idempotencyKey: crypto.randomUUID() });
-      if (!result?.order?.paymentUrl) throw new Error('支付渠道未返回付款地址。');
-      if (result.order.paymentForm) {
-        const openError = await window.lingBuilder?.payments?.openPage(result.order.paymentUrl);
-        if (openError) throw new Error(openError);
-        setRechargeQr({ orderId: result.order.id, points: result.order.points, packageName: result.order.packageName, dataUrl: '', expiresAt: result.order.expiresAt, status: 'pending', mode: 'browser' });
-      } else {
-        const dataUrl = await QRCode.toDataURL(result.order.paymentUrl, { width: 320, margin: 2, errorCorrectionLevel: 'M' });
-        setRechargeQr({ orderId: result.order.id, points: result.order.points, packageName: result.order.packageName, dataUrl, expiresAt: result.order.expiresAt, status: 'pending', mode: 'qr' });
-      }
-    } catch (error) { setRechargeMessage(error instanceof Error ? error.message : String(error)); } finally { setRechargeBusy(false); }
-  };
-  const [accountEmail, setAccountEmail] = useState('');
-  const [accountPassword, setAccountPassword] = useState('');
-  const [accountBusy, setAccountBusy] = useState(false);
-  const [accountMessage, setAccountMessage] = useState('');
   const [aiConfig, setAiConfig] = useState<AiConnectionConfig>(loadAiConfig);
   const [isAiCredentialReady, setIsAiCredentialReady] = useState(
     () => !window.lingBuilder?.credentials
@@ -755,21 +724,9 @@ export default function AiAssistant({
     const cloudAccount = window.lingBuilder?.cloudAccount;
     if (!cloudAccount) return;
     let active = true;
-    void cloudAccount.session().then(async session => {
-      if (!active) return;
-      setCloudSession(session);
-      if (!session.authenticated) return;
-      const result = await window.lingBuilder!.cloudAccount!.models();
-      if (!active) return;
-      setCloudModels(result.models || []);
-      setCloudModelAlias(current => {
-            const aliases = (result.models || []).map(model => model.alias);
-            if (current && aliases.includes(current)) return current;
-            const preferred = readPreferredCloudModelAlias();
-            if (preferred && aliases.includes(preferred)) return preferred;
-            return aliases[0] || '';
-          });
-    }).catch(error => { if (active) setCloudSession({ authenticated: false, error: error instanceof Error ? error.message : String(error) }); });
+    void refreshCloudAccountSession().then(session => {
+      if (active && session.authenticated) void loadCloudModels();
+    });
     const unsubscribe = window.lingBuilder?.cloudAi?.onEvent((requestKey, event) => {
       if (requestKey !== cloudRequestRef.current) return;
       if (event.type === 'delta' && event.text) {
@@ -810,7 +767,7 @@ export default function AiAssistant({
       }
       if (event.type === 'usage') {
         updateChatHistory(previous => [...previous, createChatMessage('ai', `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, { contextExcluded: true })]);
-        void window.lingBuilder?.cloudAccount?.balance().then(value => setCloudSession(current => ({ ...current, balance: value.balance })));
+        void refreshCloudAccountSession();
       }
       if (event.type === 'completed' || event.type === 'error') {
         if (event.type === 'completed') {
@@ -832,22 +789,13 @@ export default function AiAssistant({
     };
   }, []);
 
-  const handleCloudAccount = async (action: 'login' | 'register') => {
-    if (!window.lingBuilder?.cloudAccount) {
-      setAccountMessage('当前运行环境不支持系统 AI 账号，请使用自定义 API 模式。');
-      return;
-    }
-    setAccountBusy(true); setAccountMessage('');
-    try {
-      if (action === 'register') {
-        await window.lingBuilder.cloudAccount.register({ email: accountEmail, password: accountPassword });
-        setAccountMessage('注册成功，请在邮箱中完成验证后登录。');
-      } else {
-        const session = await window.lingBuilder.cloudAccount.login({ email: accountEmail, password: accountPassword });
-        setCloudSession(session); const result = await window.lingBuilder.cloudAccount.models(); setCloudModels(result.models || []); setCloudModelAlias(() => { const aliases = (result.models || []).map(model => model.alias); const preferred = readPreferredCloudModelAlias(); return preferred && aliases.includes(preferred) ? preferred : aliases[0] || ''; }); setAccountPassword('');
-      }
-    } catch (error) { setAccountMessage(error instanceof Error ? error.message : String(error)); }
-    finally { setAccountBusy(false); }
+  // 登录/注册/找回密码统一走顶层账号对话框（全 IDE 唯一表单），面板只负责刷新模型列表。
+  const openAccountDialog = async (initialMode: 'login' | 'register' | 'reset') => {
+    if (!window.lingBuilder?.cloudAccount) return;
+    const result = await requestCloudAccountLogin({ initialMode });
+    if (!result.authenticated) return;
+    await refreshCloudAccountSession();
+    void loadCloudModels();
   };
 
   // Handle one-click AI translation
@@ -1259,31 +1207,18 @@ export default function AiAssistant({
           {aiMode === 'system' && isAiConfigExpanded && (
             <div className={`space-y-2 rounded border p-2.5 ${isDarkMode ? 'border-violet-500/20 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>
               {cloudSession.authenticated ? <>
-                <div className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate text-slate-400">{cloudSession.email}</span><button type="button" aria-label="退出系统 AI 账号" className="flex min-h-7 items-center gap-1 text-rose-400" onClick={() => void window.lingBuilder?.cloudAccount?.logout().then(() => setCloudSession({ authenticated: false }))}><LogOut className="h-3 w-3"/>退出</button></div>
+                <div className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate text-slate-400">{cloudSession.email}</span><button type="button" aria-label="退出系统 AI 账号" className="flex min-h-7 items-center gap-1 text-rose-400" onClick={() => void signOutCloudAccount()}><LogOut className="h-3 w-3"/>退出</button></div>
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-2 rounded bg-black/10 px-2 py-1.5 text-[10px]"><Coins className="h-3.5 w-3.5 text-amber-400"/><span>可用点数</span><strong className="ml-auto tabular-nums">{cloudSession.balance?.available || '0'}</strong></div>
-                  <button type="button" aria-label="打开点数充值" onClick={() => void toggleRechargePanel()} className="min-h-7 rounded bg-amber-500/90 px-2 text-[10px] font-semibold text-white hover:bg-amber-500">充值</button>
+                  <button type="button" aria-label="打开点数充值" onClick={() => void requestCloudAccountRecharge()} className="min-h-7 rounded bg-amber-500/90 px-2 text-[10px] font-semibold text-white hover:bg-amber-500">充值</button>
                 </div>
-                {rechargePanelOpen && (
-                  <div className="space-y-1.5 rounded border border-amber-500/20 bg-amber-500/5 p-2">
-                    {rechargePackages.length === 0 && !rechargeMessage && <div className="text-[10px] text-slate-400">正在加载充值套餐…</div>}
-                    {rechargePackages.map(pack => (
-                      <div key={pack.id} className="flex items-center gap-2 rounded bg-black/10 px-2 py-1.5 text-[10px]">
-                        <span className="flex-1">{pack.name} · {Number(pack.points).toLocaleString('zh-CN')} 点数</span>
-                        <span className="font-semibold text-amber-400">¥{(Number(pack.amountMinor) / 100).toFixed(0)}</span>
-                        <button type="button" disabled={rechargeBusy} onClick={() => void startRecharge(pack.id)} className="min-h-6 rounded bg-blue-600 px-2 font-semibold text-white disabled:opacity-50">支付宝</button>
-                      </div>
-                    ))}
-                    {rechargeMessage && <div role="status" className="text-[10px] text-rose-400">{rechargeMessage}</div>}
-                  </div>
-                )}
                 <label className="block text-[10px] text-slate-500" htmlFor="system-ai-model">系统模型</label>
                 <select id="system-ai-model" value={cloudModelAlias} onChange={event => { setCloudModelAlias(event.target.value); writePreferredCloudModelAlias(event.target.value); }} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}>{cloudModels.map(model => <option key={model.alias} value={model.alias}>{model.displayName}</option>)}</select>
               </> : <>
-                <label className="block text-[10px] text-slate-500" htmlFor="system-ai-email">账号邮箱</label><input id="system-ai-email" type="email" autoComplete="username" value={accountEmail} onChange={event => setAccountEmail(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'}`}/>
-                <label className="block text-[10px] text-slate-500" htmlFor="system-ai-password">密码</label><input id="system-ai-password" type="password" autoComplete="current-password" value={accountPassword} onChange={event => setAccountPassword(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'}`}/>
-                <div className="grid grid-cols-2 gap-2"><button type="button" disabled={accountBusy} onClick={() => void handleCloudAccount('login')} className="min-h-9 rounded bg-violet-600 text-[10px] font-semibold text-white disabled:opacity-50">登录</button><button type="button" disabled={accountBusy} onClick={() => void handleCloudAccount('register')} className="min-h-9 rounded border border-violet-500/40 text-[10px] text-violet-400 disabled:opacity-50">注册</button></div>
-                {accountMessage && <div role="status" className="text-[10px] text-amber-400">{accountMessage}</div>}
+                <p className={`text-[10px] leading-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>系统 AI 按点数计费，需先登录 LingBuilder 账号；同一账号也用于收费模块权益与体验计划。</p>
+                <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => void openAccountDialog('login')} className="min-h-9 rounded bg-violet-600 text-[10px] font-semibold text-white">登录</button><button type="button" onClick={() => void openAccountDialog('register')} className="min-h-9 rounded border border-violet-500/40 text-[10px] text-violet-400">注册</button></div>
+                <button type="button" onClick={() => void openAccountDialog('reset')} className={`text-left text-[10px] underline-offset-2 hover:underline cursor-pointer ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>忘记密码？通过邮箱重置</button>
+                {cloudSession.error && <div role="status" className="text-[10px] text-amber-400">{cloudSession.error}</div>}
               </>}
             </div>
           )}
@@ -1579,24 +1514,6 @@ export default function AiAssistant({
           </button>
         </form>
       </div>
-      {rechargeQr && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="充值支付二维码">
-          <div className={`w-[22rem] max-w-full rounded-lg border p-4 ${isDarkMode ? 'border-slate-700 bg-[#1c1c22] text-slate-100' : 'border-slate-200 bg-white text-slate-800'}`}>
-            <div className="flex items-center justify-between"><div className="text-sm font-semibold">支付宝充值 · {rechargeQr.packageName}</div><button type="button" aria-label="关闭充值二维码" onClick={() => setRechargeQr(null)} className="rounded p-1 hover:bg-white/10"><X size={17}/></button></div>
-            {rechargeQr.status === 'paid' ? (
-              <div className="py-8 text-center text-sm text-emerald-400">充值成功！{Number(rechargeQr.points).toLocaleString('zh-CN')} 点数已到账。</div>
-            ) : rechargeQr.status === 'pending' ? rechargeQr.mode === 'browser' ? (<>
-              <p className={`mt-3 text-xs leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>已在系统浏览器中打开支付宝收银台，请在浏览器内完成付款；支付成功后此窗口会自动刷新余额。订单有效至 {new Date(rechargeQr.expiresAt).toLocaleTimeString()}。</p>
-              <p className={`mt-2 text-[11px] leading-5 ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>若浏览器未自动打开，请关闭此窗口后重新点击套餐旁的“支付宝”按钮。</p>
-            </>) : (<>
-              <img src={rechargeQr.dataUrl} alt="支付宝充值二维码" className="mx-auto mt-4 w-72 max-w-full rounded bg-white p-2"/>
-              <p className={`mt-3 text-xs leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>请使用支付宝扫描二维码完成充值，支付成功后此页面会自动刷新余额。订单有效至 {new Date(rechargeQr.expiresAt).toLocaleTimeString()}。</p>
-            </>) : (
-              <div className="py-8 text-center text-sm text-amber-400">订单已结束（{rechargeQr.status}），请关闭后重新发起充值。</div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

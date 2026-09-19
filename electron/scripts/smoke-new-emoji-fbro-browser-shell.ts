@@ -17,7 +17,22 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 const projectId = 'new-emoji-fbro-browser-shell-smoke';
 const buildDirectory = path.join(repoRoot, '.lingbuilder-build', 'new-emoji-fbro-browser-shell-native-smoke');
-const msbuild = 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe';
+let msbuild = 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe';
+
+/** 用 vswhere 解析实际安装的 MSBuild（本机可能是 VS2022/2026 等），失败回落到默认路径。 */
+async function resolveMsbuild(): Promise<void> {
+  const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
+  try {
+    const installation = (await execFileAsync(vswhere, ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true })).stdout.trim();
+    if (installation) {
+      const resolved = path.join(installation, 'MSBuild', 'Current', 'Bin', 'MSBuild.exe');
+      await fs.access(resolved);
+      msbuild = resolved;
+    }
+  } catch {
+    /* 保留默认路径，交由后续 fs.access 报错 */
+  }
+}
 const delay = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 interface RuntimeProcess {
@@ -85,6 +100,7 @@ async function installed(id: string): Promise<InstalledModule> {
 
 async function main() {
   assertBuildDirectory();
+  await resolveMsbuild();
   await fs.access(msbuild);
   const fixture = await startFixtureServer();
   let runtime: ReturnType<typeof spawn> | undefined;

@@ -226,3 +226,92 @@ test('模块公开记录与数组进入语言服务、项目嵌套和 C++ 生成
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
   assert.equal(generated.sourceMap.some(entry => entry.symbolName === '模块用户'), false, '模块公开类型不能伪装成项目数据类型源码映射');
 });
+
+test('模块常量 contributes.constants 进入语言服务并以 #常量 物化为编译期常量', () => {
+  const makeModule = (id: string, name: string, constants: unknown[]): InstalledModule => ({
+    manifest: {
+      schemaVersion: 2,
+      id,
+      name,
+      version: '1.0.0',
+      category: '其他',
+      description: '公开常量。',
+      contributes: { constants } as InstalledModule['manifest']['contributes']
+    },
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  });
+  const constantsModule = makeModule('com.example.constants', '常量模块', [
+    { name: '键盘1', type: '整数型', value: 49, description: '数字键 1 的虚拟键码。' },
+    { name: '模块标题', type: '文本型', value: '常量模块', description: '模块标题。' },
+    { name: '启用日志', type: '逻辑型', value: true, description: '默认启用日志。' },
+    { name: '隐藏常量', type: '整数型', value: 7, description: '高级常量。', level: 'advanced' }
+  ]);
+  const moduleContext = { availableModules: [constantsModule], enabledModules: [constantsModule] };
+  const source = [
+    '类 主窗口',
+    '  事件 创建完毕()',
+    '    局部 整数型 键码',
+    '    键码 = #键盘1 + 1',
+    '    调试输出(#模块标题)',
+    '    调试输出(#不存在常量)',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const languageContext = buildLingCppLanguageContext(source, undefined, moduleContext, 'src/demo/主窗口.lcpp');
+  assert.equal(
+    languageContext.diagnostics.filter(item => item.level === 'error' && !item.message.includes('#不存在常量')).length,
+    0,
+    languageContext.diagnostics.filter(item => item.level === 'error').map(item => item.message).join('\n')
+  );
+  assert.ok(languageContext.diagnostics.some(item => item.message.includes('常量 #不存在常量 不存在')));
+  const completion = getLingCppCompletionItems(
+    { source, line: 4, column: '    键码 = #'.length + 1, triggerText: '模块' },
+    languageContext
+  );
+  assert.ok(completion.some(item => item.label === '#键盘1' && item.insertText === '键盘1' && item.detail.includes('模块常量')));
+  assert.ok(completion.some(item => item.label === '#模块标题'));
+  assert.equal(completion.some(item => item.label === '#隐藏常量'), false, 'advanced 常量默认不进补全');
+  assert.equal(completion.every(item => item.label.startsWith('#')), true);
+
+  const project: LingWindowProject = {
+    id: 'module-constants',
+    name: '模块常量',
+    windows: [{ id: 'main', fileName: '主窗口.xml', className: '主窗口', title: '主窗口', description: '', width: 640, height: 480, background: '#fff', controls: [] }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [constantsModule],
+    lingCppSources: [{ filePath: 'src/demo/主窗口.lcpp', sourceCode: source.replace('    调试输出(#不存在常量)\n', '') }]
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /inline constexpr int 键盘1 = 49;/u);
+  assert.match(cpp, /inline const std::wstring 模块标题 = L"常量模块";/u);
+  assert.match(cpp, /inline constexpr bool 启用日志 = true;/u);
+  assert.match(cpp, /键码 = 键盘1\+1;/u);
+  assert.match(cpp, /调试输出\(模块标题\);/u);
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+
+  // 工程常量同名遮蔽：只物化项目常量一份。
+  const shadowed = generateLingCppNativeWin32Project(project, {
+    enabledModules: [constantsModule],
+    lingCppSources: [
+      { filePath: 'src/demo/项目全局变量.lcpp', sourceCode: '常量 整数型 键盘1 = 99\n' },
+      { filePath: 'src/demo/主窗口.lcpp', sourceCode: source.replace('    调试输出(#不存在常量)\n', '') }
+    ]
+  });
+  const shadowedCpp = shadowed.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(shadowedCpp, /inline constexpr int 键盘1 = 99;/u);
+  assert.equal(/inline constexpr int 键盘1 = 49;/u.test(shadowedCpp), false, '遮蔽时不得同时物化两份同名常量');
+
+  // 跨模块同名常量：构建前中文阻断。
+  const conflicting = generateLingCppNativeWin32Project(project, {
+    enabledModules: [constantsModule, makeModule('com.example.constants-b', '常量模块B', [
+      { name: '键盘1', type: '整数型', value: 49, description: '与 A 模块冲突。' }
+    ])]
+    , lingCppSources: [{ filePath: 'src/demo/主窗口.lcpp', sourceCode: source.replace('    调试输出(#不存在常量)\n', '') }]
+  });
+  assert.ok(conflicting.blockingDiagnostics.some(message => message.includes('重复公开常量 键盘1')), conflicting.blockingDiagnostics.join('\n'));
+});

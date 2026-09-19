@@ -1,0 +1,42 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "edgeview-multi-store-popup-demo",
+    "name": "EdgeView 多店铺独立弹窗演示",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "多店铺弹窗窗体.xml",
+        "className": "多店铺弹窗窗体",
+        "title": "多店铺浏览器登录态验证宿主",
+        "width": 620,
+        "height": 220,
+        "background": "#111827",
+        "description": "浏览器全部以独立顶层弹窗打开，本窗口仅作宿主；演示多店铺 Cookie/缓存隔离。",
+        "events": { "Loaded": "_多店铺弹窗窗体_创建完毕" },
+        "controls": [
+          {
+            "id": "hint-label",
+            "type": "Label",
+            "name": "提示标签",
+            "content": "每个店铺的 Edge 浏览器都是独立弹窗（任务栏可见、可单独缩放）；关闭本窗口会连带关闭全部弹窗。",
+            "x": 20,
+            "y": 24,
+            "width": 580,
+            "height": 150,
+            "background": "#111827",
+            "foreground": "#E2E8F0",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "properties": {}
+          }
+        ],
+        "resources": []
+      }
+    ]
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceFilePath": "src/多店铺弹窗窗体.lcpp",
+  "run": false,
+  "approved": true
+}

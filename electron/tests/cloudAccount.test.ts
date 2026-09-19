@@ -28,6 +28,58 @@ test('收费模块授权失败只向界面返回可操作的中文错误', () =>
   assert.doesNotMatch(inspector, /项目模块状态更新失败：\$\{error instanceof Error/u);
 });
 
+test('启用收费模块未登录时弹出全局登录框并在登录后自动继续授权', () => {
+  const inspector = fs.readFileSync(new URL('../src/components/ModuleInspector.tsx', import.meta.url), 'utf8');
+  const loginService = fs.readFileSync(new URL('../src/services/workbench/cloudAccountLoginService.ts', import.meta.url), 'utf8');
+  const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  // 门禁收敛为 ensurePaidModuleAccess：先查 session，未登录弹全局登录框，取消则中止启用。
+  assert.match(inspector, /const ensurePaidModuleAccess = async \(module: InstalledModule\)/u);
+  assert.match(inspector, /await cloudModules\.session\(\)\.catch\(\(\) => null\)/u);
+  assert.match(inspector, /if \(!session\?\.authenticated\) \{\s*const login = await requestCloudAccountLogin/u);
+  assert.match(inspector, /已取消登录，未启用/u);
+  // 登录成功后同一次点击流程内自动重跑授权并继续启用（不再有旧的纯 throw 状态文字门禁）。
+  assert.match(inspector, /正在校验「\$\{module\.manifest\.name\}」授权/u);
+  assert.match(inspector, /if \(!enabled && isPaidModule\(module\.manifest\.id\) && !await ensurePaidModuleAccess\(module\)\) return;/u);
+  assert.doesNotMatch(inspector, /if \(!authorization\?\.status\?\.allowed\) throw new Error\(authorization\?\.status\?\.reason/u);
+  // 已登录但无权益时给出购买引导而不是只写状态文字。
+  assert.match(inspector, /需要模块授权/u);
+  assert.match(inspector, /去购买/u);
+  // 登录弹窗服务与顶层挂载齐备。
+  assert.match(loginService, /export function requestCloudAccountLogin/u);
+  assert.match(app, /<CloudAccountLoginDialog/u);
+  assert.match(app, /subscribeCloudAccountLoginDialog\(setCloudAccountLoginDialog\)/u);
+});
+
+test('忘记密码走弹窗两步重置且云端 forgot 有 IP 限流', () => {
+  const main = fs.readFileSync(new URL('../electron/main.ts', import.meta.url), 'utf8');
+  const preload = fs.readFileSync(new URL('../electron/preload.ts', import.meta.url), 'utf8');
+  const cloud = fs.readFileSync(new URL('../electron/cloudAccountService.ts', import.meta.url), 'utf8');
+  const apiTypes = fs.readFileSync(new URL('../src/electron-api.d.ts', import.meta.url), 'utf8');
+  const dialog = fs.readFileSync(new URL('../src/components/CloudAccountLoginDialog.tsx', import.meta.url), 'utf8');
+  const assistant = fs.readFileSync(new URL('../src/components/AiAssistant.tsx', import.meta.url), 'utf8');
+  assert.match(cloud, /forgotPassword[\s\S]*\/v1\/auth\/password\/forgot/u);
+  assert.match(cloud, /resetPassword[\s\S]*\/v1\/auth\/password\/reset/u);
+  assert.match(main, /ipcMain\.handle\('cloud-account:forgot-password'/u);
+  assert.match(main, /ipcMain\.handle\('cloud-account:reset-password'/u);
+  assert.match(preload, /forgotPassword: \(value: \{ email: string \}\)/u);
+  assert.match(preload, /resetPassword: \(value: \{ token: string; password: string \}\)/u);
+  assert.match(apiTypes, /forgotPassword: \(value: \{ email: string \}\) => Promise<\{ ok: boolean \}>/u);
+  // 两步重置在同一弹窗内完成：邮箱 → 令牌+新密码（本地校验与云端规则一致）→ 回登录态。
+  assert.match(dialog, /发送重置邮件/u);
+  assert.match(dialog, /重置令牌/u);
+  assert.match(dialog, /密码需要 10 至 128 位，并同时包含字母和数字/u);
+  assert.match(dialog, /密码已重置/u);
+  assert.match(dialog, /忘记密码？/u);
+  // AI 助手面板登录区不再自带表单，登录/注册/忘记密码全部复用同一个顶层对话框服务。
+  assert.match(assistant, /const openAccountDialog = async \(initialMode: 'login' \| 'register' \| 'reset'\)/u);
+  assert.match(assistant, /await requestCloudAccountLogin\(\{ initialMode \}\)/u);
+  assert.match(assistant, /openAccountDialog\('reset'\)/u);
+  assert.match(assistant, /忘记密码？通过邮箱重置/u);
+  // 云端 forgot 必须有 IP 限流且防枚举恒 ok。
+  const cloudService = fs.readFileSync(new URL('../../cloud/api/src/auth/auth.service.ts', import.meta.url), 'utf8');
+  assert.match(cloudService, /auth:forgot:\$\{ip \|\| 'unknown'\}`, 20, 900\)/u);
+});
+
 test('AI 模块导入失败结果提供复制完整错误详情的入口', () => {
   const inspector = fs.readFileSync(new URL('../src/components/ModuleInspector.tsx', import.meta.url), 'utf8');
   assert.match(inspector, /aria-label="复制 AI 模块错误详情"/u);
@@ -61,7 +113,10 @@ test('收费模块只经登录后的受保护接口下载并完成签名与摘�
   assert.match(cloud, /SHA-256/u);
   assert.match(controller, /modules\/artifacts\/:artifactId\/download/u);
   assert.doesNotMatch(controller, /module-store\/catalog/u);
-  assert.ok(moduleResource.filter.includes('!lingbuilder.new_emoji.ui/**/*'));
+  // new_emoji.ui 必须随安装包内置（排除仅限 cef3/fbro 两个大体积 SDK），漏包会让用户启用外壳时报缺依赖。
+  assert.ok(!moduleResource.filter.some((item: string) => item.includes('new_emoji')), 'lingbuilder.new_emoji.ui 不得被 extraResources 排除');
+  assert.ok(moduleResource.filter.includes('!lingbuilder.cef3.sdk/**/*'));
+  assert.ok(moduleResource.filter.includes('!lingbuilder.fbro.sdk/**/*'));
 });
 
 test('安装包必须明确选择公网 HTTPS 或离线云端模式', () => {

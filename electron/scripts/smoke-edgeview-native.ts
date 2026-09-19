@@ -51,6 +51,19 @@ async function main() {
     '    结束',
     '    事件 根级浏览器_脚本完成()',
     '        调试输出(EdgeView任务_取结果(EdgeView任务_取当前任务ID()))',
+    '        局部 文本型 Cookie列表',
+    '        局部 整数型 注入条数',
+    '        Cookie列表 = """',
+'[{"name":"lb_smoke_batch","value":"1","domain":"example.com","path":"/","expires":4102444800,"secure":false,"httpOnly":false,"sameSite":1},{"name":"lb_smoke_missing_domain","value":"2"}]',
+'"""',
+    '        注入条数 = EdgeView会话_批量置Cookie(根级浏览器, Cookie列表)',
+    '        调试输出("批量置Cookie 成功条数（期望 1）")',
+    '        调试输出(到文本(注入条数))',
+    '        EdgeView会话_置Cookie带属性(根级浏览器, "lb_smoke_attr", "2", "example.com", "/", 4102444800, 假, 真, 1)',
+    '        EdgeView会话_取Cookie异步(根级浏览器, "https://example.com", &根级浏览器_Cookie读取完成)',
+    '    结束',
+    '    事件 根级浏览器_Cookie读取完成()',
+    '        调试输出(EdgeView任务_取结果(EdgeView任务_取当前任务ID()))',
     '    结束',
     '结束类'
   ].join('\n');
@@ -65,6 +78,13 @@ async function main() {
   }
   const dependencyDiagnostics = await exportModuleNativeDependencies(enabledModules, projectDir);
   if (dependencyDiagnostics.length) throw new Error(dependencyDiagnostics.join('\n'));
+  // 冒烟链不经过 F5 的 WindowsExecutableIconService，rc 引用的默认窗口图标在这里按构建链同款补齐。
+  if (generated.files.some(file => file.relativePath === 'lingbuilder-app.rc') && !generated.files.some(file => file.relativePath === 'resources/lingbuilder-app.ico')) {
+    const bundledIcon = path.resolve(repoRoot, 'image', 'lingbuilder-ide-icon-v2.ico');
+    const iconTarget = path.join(projectDir, 'resources', 'lingbuilder-app.ico');
+    await fs.mkdir(path.dirname(iconTarget), { recursive: true });
+    await fs.copyFile(bundledIcon, iconTarget);
+  }
   const exported = await exportVisualStudioProject({ projectDir, projectId: project.id, generatedFiles: generated.files, enabledModules });
   const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
   const installation = (await execFileAsync(vswhere, ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true })).stdout.trim();

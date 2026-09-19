@@ -26,7 +26,8 @@ async function main() {
     builtin('lingbuilder.crypto.hash'),
     builtin('lingbuilder.crypto.password'),
     builtin('lingbuilder.crypto.symmetric'),
-    builtin('lingbuilder.crypto.asymmetric')
+    builtin('lingbuilder.crypto.asymmetric'),
+    builtin('lingbuilder.crypto.windows')
   ];
   const project: LingWindowProject = {
     schemaVersion: 2,
@@ -107,8 +108,40 @@ async function main() {
     '        @ std::wstring elgamalPrivate = 非对称_ElGamal生成私钥(2048); std::wstring elgamalPublic = 非对称_ElGamal取公钥(elgamalPrivate.c_str());',
     '        @ std::wstring elgamalCipher = 非对称_ElGamal加密(L"ElGamal中文", elgamalPublic.c_str());',
     '        @ check(!elgamalCipher.empty() && std::wstring(非对称_ElGamal解密(elgamalCipher.c_str(), elgamalPrivate.c_str())) == L"ElGamal中文", "ElGamal");',
+    '        @ auto hexBytes = [](const wchar_t* hex) { std::vector<unsigned char> out; auto digit = [](wchar_t c) { return static_cast<unsigned int>(c <= L\'9\' ? c - L\'0\' : ((c | 0x20) - L\'a\' + 10)); }; for (size_t index = 0; hex[index] && hex[index + 1]; index += 2) out.push_back(static_cast<unsigned char>((digit(hex[index]) << 4) | digit(hex[index + 1]))); return out; };',
+    '        @ auto bytesHex = [](const std::vector<unsigned char>& bytes) { return std::wstring(LB_CryptoHexEncode(bytes.data(), bytes.size())); };',
+    '        @ auto zeros = [](size_t count) { return std::vector<unsigned char>(count, 0); };',
+    '        @ auto ascii = [](const char* text) { std::vector<unsigned char> out; while (*text) out.push_back(static_cast<unsigned char>(*text++)); return out; };',
+    '        @ std::vector<unsigned char> rawKey(32, 0x21), rawKey16(16, 0x21), rawNonce(12, 0x07), rawPlain; const std::string rawAadText = LB_WideToUtf8(L"context"); std::vector<unsigned char> rawAad(rawAadText.begin(), rawAadText.end());',
+    '        @ for (int index = 0; index < 200; ++index) rawPlain.push_back(static_cast<unsigned char>(index));',
+    '        @ check(bytesHex(对称_AES128GCM加密裸(zeros(16), zeros(12), zeros(0), zeros(0))) == L"58E2FCCEFA7E3061367F1D57A4E7455A", "RAW-AES128-GCM-NIST-TC1");',
+    '        @ check(bytesHex(对称_AES128GCM加密裸(zeros(16), zeros(12), zeros(16), zeros(0))) == L"0388DACE60B6A392F328C2B971B2FE78AB6E47D42CEC13BDF53A67B21257BDDF", "RAW-AES128-GCM-NIST-TC2");',
+    '        @ check(对称_AES128GCM解密裸(zeros(16), zeros(12), hexBytes(L"0388DACE60B6A392F328C2B971B2FE78AB6E47D42CEC13BDF53A67B21257BDDF"), zeros(0)) == zeros(16), "RAW-AES128-GCM-NIST-TC2-DECRYPT");',
+    '        @ check(bytesHex(对称_AES256GCM加密裸(rawKey, rawNonce, rawPlain, rawAad)) == L"57A78A5A340AD8DCBD33CFFEB1F972BA4F59634139D8BDAD729C65FE529D0914B277AF84092059E0E97C2C71CC9E710742BD3F734DA1084E43E6B5133D4C1BAF14498930B5A2F7F53A122C2F1159349101884EFBC51E51ACD6BC411B04E829D8BA06AA1B5460159C8C6427F5664D3682289F0B257757044FD2347DDFC0CC91512A9FF616B5A718FE43B71EC7B3DB8822D724CE5C2B53DEDF7F45CBFA8365322A2213F9E49609308B12DA89D70097E9FF1519F8D239B23C9FE07704CC0B760AFA0E9B332A27F493179B34D0746359FFCE77B0FFEAC34C05AD", "RAW-AES256-GCM-CROSSCHECK");',
+    '        @ check(bytesHex(对称_AES128GCM加密裸(rawKey16, rawNonce, rawPlain, rawAad)) == L"CEA98F1D4B91101DA12494324D8581302C8E4CAC319AD7B14C01078B2569EF5657304ACA5951FE79D2205754C2BE5BA40C518056C83E45C4D4F2165D469BAC16B15D7CFDA3E86B6C7BC06EC7340E574201F0D3FC8C245FEF766745DCD88CF288BC2DDB0BB656321D81EAE43C0335D0D27530380E105AF7948C703AAB9E5EEC9B3AFC82FDCEB6F92C379A4775B988D5D74BC3173FF887158F184C17870F78199D644BC687788829EBC091C44A3D9D6063CAB23B061B5E8097B51F14E0F1385E940DC4282A16B3B57D019CACE169059B821CFF94BE857F2106", "RAW-AES128-GCM-CROSSCHECK");',
+    '        @ std::vector<unsigned char> rawCipher = 对称_AES256GCM加密裸(rawKey, rawNonce, rawPlain, rawAad);',
+    '        @ check(rawCipher.size() == rawPlain.size() + 16, "RAW-AES256-OUTPUT-SIZE");',
+    '        @ check(对称_AES256GCM解密裸(rawKey, rawNonce, rawCipher, rawAad) == rawPlain, "RAW-AES256-ROUNDTRIP");',
+    '        @ check(对称_AES256GCM解密裸(rawKey, rawNonce, rawCipher, zeros(0)).empty() && !std::wstring(对称_取错误()).empty(), "RAW-AES256-WRONG-AAD");',
+    '        @ { auto tampered = rawCipher; tampered[0] = static_cast<unsigned char>(tampered[0] ^ 0xFF); check(对称_AES256GCM解密裸(rawKey, rawNonce, tampered, rawAad).empty(), "RAW-AES256-TAMPERED"); }',
+    '        @ check(对称_AES256GCM解密裸(zeros(32), rawNonce, rawCipher, rawAad).empty(), "RAW-AES256-WRONG-KEY");',
+    '        @ std::vector<unsigned char> chromiumValue; const auto versionTag = ascii("v10"); chromiumValue.insert(chromiumValue.end(), versionTag.begin(), versionTag.end()); chromiumValue.insert(chromiumValue.end(), rawNonce.begin(), rawNonce.end()); chromiumValue.insert(chromiumValue.end(), rawCipher.begin(), rawCipher.end());',
+    '        @ const std::vector<unsigned char> nonceSlice(chromiumValue.begin() + 3, chromiumValue.begin() + 15); const std::vector<unsigned char> bodySlice(chromiumValue.begin() + 15, chromiumValue.end());',
+    '        @ check(对称_AES256GCM解密裸(rawKey, nonceSlice, bodySlice, rawAad) == rawPlain, "RAW-CHROMIUM-ENCRYPTED-VALUE");',
+    '        @ check(对称_AES128GCM解密裸(rawKey16, rawNonce, 对称_AES128GCM加密裸(rawKey16, rawNonce, rawPlain, rawAad), rawAad) == rawPlain, "RAW-AES128-ROUNDTRIP");',
+    '        @ check(对称_AES256GCM加密裸(zeros(31), rawNonce, rawPlain, rawAad).empty() && std::wstring(对称_取错误()).find(L"32") != std::wstring::npos, "RAW-KEY-LENGTH-REJECTED");',
+    '        @ check(对称_AES256GCM加密裸(rawKey, zeros(11), rawPlain, rawAad).empty() && std::wstring(对称_取错误()).find(L"12") != std::wstring::npos, "RAW-NONCE-LENGTH-REJECTED");',
+    '        @ check(对称_AES256GCM解密裸(rawKey, rawNonce, zeros(15), rawAad).empty(), "RAW-SHORT-CIPHER-REJECTED");',
+    '        @ std::vector<unsigned char> dpapiKey;',
+    '        @ for (int index = 0; index < 32; ++index) dpapiKey.push_back(static_cast<unsigned char>(index * 7 + 3));',
+    '        @ const std::vector<unsigned char> dpapiCipher = 数据保护_加密字节集(dpapiKey);',
+    '        @ check(!dpapiCipher.empty() && 数据保护_解密字节集(dpapiCipher) == dpapiKey, "DPAPI-BYTES-ROUNDTRIP");',
+    '        @ std::vector<unsigned char> chromiumEncryptedKey = ascii("DPAPI"); chromiumEncryptedKey.insert(chromiumEncryptedKey.end(), dpapiCipher.begin(), dpapiCipher.end());',
+    '        @ check(数据保护_解密字节集(chromiumEncryptedKey) == dpapiKey, "DPAPI-BYTES-PREFIX-AUTOSTRIP");',
+    '        @ check(数据保护_解密字节集(zeros(40)).empty() && !std::wstring(数据保护_取错误()).empty(), "DPAPI-BYTES-GARBAGE");',
+    '        @ check(数据保护_加密字节集(zeros(0)).empty() && !std::wstring(数据保护_取错误()).empty(), "DPAPI-BYTES-EMPTY-REJECTED");',
     '        @ std::ofstream report("crypto-native-smoke.txt", std::ios::binary | std::ios::trunc);',
-    '        @ if (failures.empty()) report << "OK\\n"; else { report << "FAIL\\n"; for (const auto& failure : failures) report << failure << "\\n"; report << LB_WideToUtf8(密码_取错误()) << "\\n" << LB_WideToUtf8(对称_取错误()) << "\\n" << LB_WideToUtf8(非对称_取错误()) << "\\n"; }',
+    '        @ if (failures.empty()) report << "OK\\n"; else { report << "FAIL\\n"; for (const auto& failure : failures) report << failure << "\\n"; report << LB_WideToUtf8(密码_取错误()) << "\\n" << LB_WideToUtf8(对称_取错误()) << "\\n" << LB_WideToUtf8(非对称_取错误()) << "\\n" << LB_WideToUtf8(数据保护_取错误()) << "\\n"; }',
     '        @ report.close();',
     '        @ ExitProcess(failures.empty() ? 0 : 2);',
     '    结束',
@@ -128,6 +161,8 @@ async function main() {
   }
   const dependencyDiagnostics = await exportModuleNativeDependencies(enabledModules, projectDir);
   if (dependencyDiagnostics.length) throw new Error(dependencyDiagnostics.join('\n'));
+  await fs.mkdir(path.join(projectDir, 'resources'), { recursive: true });
+  await fs.copyFile(path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v1.ico'), path.join(projectDir, 'resources', 'lingbuilder-app.ico'));
   const exported = await exportVisualStudioProject({ projectDir, projectId: project.id, generatedFiles: generated.files, enabledModules });
   const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
   const installation = (await execFileAsync(vswhere, ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true })).stdout.trim();

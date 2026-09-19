@@ -9,8 +9,8 @@
       "package": "Microsoft.Web.WebView2",
       "methodCount": 919,
       "summary": {
-        "implemented-public": 317,
-        "implemented-internal": 511,
+        "implemented-public": 325,
+        "implemented-internal": 503,
         "excluded": 91,
         "pending": 0
       },
@@ -5278,12 +5278,12 @@
           "signature": "ICoreWebView2Cookie.Expires",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_IsHttpOnly.5c2082408a3a",
@@ -5295,12 +5295,12 @@
           "signature": "ICoreWebView2Cookie.IsHttpOnly",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_IsSecure.b905107c8238",
@@ -5312,12 +5312,12 @@
           "signature": "ICoreWebView2Cookie.IsSecure",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_IsSession.bbf137fb4acb",
@@ -5331,10 +5331,10 @@
           "minimumRuntimeMajor": 141,
           "status": "implemented-internal",
           "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "adapterId": "native-call.ICoreWebView2Cookie.get_IsSession",
+          "runtimeSymbol": "ICoreWebView2Cookie->get_IsSession",
+          "testId": "edgeview.native-call.ICoreWebView2Cookie.get_IsSession",
+          "reason": "该成员由生成运行时中的显式接口调用内部消费，不向中文源码暴露 COM 对象。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_Name.48ddf79f86a9",
@@ -5380,12 +5380,12 @@
           "signature": "ICoreWebView2Cookie.SameSite",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_Value.bc7a3ce636cd",
@@ -5414,12 +5414,12 @@
           "signature": "ICoreWebView2Cookie.Expires",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_IsHttpOnly.71cba13fee36",
@@ -5431,12 +5431,12 @@
           "signature": "ICoreWebView2Cookie.IsHttpOnly",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_IsSecure.9acdbb2c9e0b",
@@ -5448,12 +5448,12 @@
           "signature": "ICoreWebView2Cookie.IsSecure",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_SameSite.2fb70f0aa925",
@@ -5465,12 +5465,12 @@
           "signature": "ICoreWebView2Cookie.SameSite",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_Value.ed59585919f8",
@@ -15647,8 +15647,8 @@
       "package": "Microsoft.Web.WebView2",
       "methodCount": 995,
       "summary": {
-        "implemented-public": 330,
-        "implemented-internal": 565,
+        "implemented-public": 338,
+        "implemented-internal": 557,
         "excluded": 100,
         "pending": 0
       },
@@ -20984,12 +20984,12 @@
           "signature": "ICoreWebView2Cookie.Expires",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_IsHttpOnly.5c2082408a3a",
@@ -21001,12 +21001,12 @@
           "signature": "ICoreWebView2Cookie.IsHttpOnly",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_IsSecure.b905107c8238",
@@ -21018,12 +21018,12 @@
           "signature": "ICoreWebView2Cookie.IsSecure",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_IsSession.bbf137fb4acb",
@@ -21037,10 +21037,10 @@
           "minimumRuntimeMajor": 150,
           "status": "implemented-internal",
           "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "adapterId": "native-call.ICoreWebView2Cookie.get_IsSession",
+          "runtimeSymbol": "ICoreWebView2Cookie->get_IsSession",
+          "testId": "edgeview.native-call.ICoreWebView2Cookie.get_IsSession",
+          "reason": "该成员由生成运行时中的显式接口调用内部消费，不向中文源码暴露 COM 对象。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_Name.48ddf79f86a9",
@@ -21086,12 +21086,12 @@
           "signature": "ICoreWebView2Cookie.SameSite",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.get_Value.bc7a3ce636cd",
@@ -21120,12 +21120,12 @@
           "signature": "ICoreWebView2Cookie.Expires",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_IsHttpOnly.71cba13fee36",
@@ -21137,12 +21137,12 @@
           "signature": "ICoreWebView2Cookie.IsHttpOnly",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_IsSecure.9acdbb2c9e0b",
@@ -21154,12 +21154,12 @@
           "signature": "ICoreWebView2Cookie.IsSecure",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_SameSite.2fb70f0aa925",
@@ -21171,12 +21171,12 @@
           "signature": "ICoreWebView2Cookie.SameSite",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "session.cookie-json",
-          "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-          "testId": "edgeview.adapter.session.cookie-json",
-          "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView会话_置Cookie带属性",
+          "adapterId": "command.EdgeView会话_置Cookie带属性",
+          "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+          "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2Cookie.put_Value.ed59585919f8",
@@ -32576,8 +32576,8 @@
     "runtimeMajor": 150,
     "methodCount": 995,
     "summary": {
-      "implemented-public": 330,
-      "implemented-internal": 565,
+      "implemented-public": 338,
+      "implemented-internal": 557,
       "excluded": 100,
       "pending": 0
     }
@@ -32665,7 +32665,7 @@
       "webview2.ICoreWebView2SharedWorkerManager.remove_SharedWorkerCreated.257c60d8d185"
     ]
   },
-  "commandCount": 235,
+  "commandCount": 237,
   "runtimeSymbolCheck": {
     "checkedFiles": [
       "electron/src/services/windowDesigner/edgeViewRuntime.ts",
@@ -38012,12 +38012,12 @@
       "signature": "ICoreWebView2Cookie.Expires",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.get_IsHttpOnly.5c2082408a3a",
@@ -38029,12 +38029,12 @@
       "signature": "ICoreWebView2Cookie.IsHttpOnly",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.get_IsSecure.b905107c8238",
@@ -38046,12 +38046,12 @@
       "signature": "ICoreWebView2Cookie.IsSecure",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.get_IsSession.bbf137fb4acb",
@@ -38065,10 +38065,10 @@
       "minimumRuntimeMajor": 150,
       "status": "implemented-internal",
       "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "adapterId": "native-call.ICoreWebView2Cookie.get_IsSession",
+      "runtimeSymbol": "ICoreWebView2Cookie->get_IsSession",
+      "testId": "edgeview.native-call.ICoreWebView2Cookie.get_IsSession",
+      "reason": "该成员由生成运行时中的显式接口调用内部消费，不向中文源码暴露 COM 对象。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.get_Name.48ddf79f86a9",
@@ -38114,12 +38114,12 @@
       "signature": "ICoreWebView2Cookie.SameSite",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.get_Value.bc7a3ce636cd",
@@ -38148,12 +38148,12 @@
       "signature": "ICoreWebView2Cookie.Expires",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.put_IsHttpOnly.71cba13fee36",
@@ -38165,12 +38165,12 @@
       "signature": "ICoreWebView2Cookie.IsHttpOnly",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.put_IsSecure.9acdbb2c9e0b",
@@ -38182,12 +38182,12 @@
       "signature": "ICoreWebView2Cookie.IsSecure",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.put_SameSite.2fb70f0aa925",
@@ -38199,12 +38199,12 @@
       "signature": "ICoreWebView2Cookie.SameSite",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "session.cookie-json",
-      "runtimeSymbol": "EdgeView会话_取Cookie异步 + CreateCookie",
-      "testId": "edgeview.adapter.session.cookie-json",
-      "reason": "Cookie 对象由类型化命令和 JSON 列表内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView会话_置Cookie带属性",
+      "adapterId": "command.EdgeView会话_置Cookie带属性",
+      "runtimeSymbol": "EdgeView会话_置Cookie带属性",
+      "testId": "edgeview.command.EdgeView会话_置Cookie带属性",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2Cookie.put_Value.ed59585919f8",

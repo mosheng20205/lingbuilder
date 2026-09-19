@@ -60,6 +60,7 @@ import { parseLingCppControlFlowLine } from './controlFlow';
 import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
 import { getProjectDataTypeDiagnostics, getProjectDataTypeNames, resolveProjectFieldPathType } from './projectDataTypeService';
 import { createEffectiveLingCppTypeContext, getEnabledModuleStructuredTypeDiagnostics } from '../modules/modulePublicTypeService';
+import { findModuleConstantOwner, getEnabledModuleConstantDiagnostics, getModuleConstants } from '../modules/moduleConstantService';
 import { getFunctionLibraryCompletionItems, getFunctionLibraryDiagnostics } from './functionLibraryService';
 import {
   getLingCppControlReferenceAtPosition,
@@ -292,6 +293,9 @@ export function getLingCppSemanticDiagnostics(
   getEnabledModuleStructuredTypeDiagnostics(moduleContext).forEach(message => diagnostics.push(createDiagnostic(
     'error', 1, '', message, '请禁用其中一个冲突模块，或让模块作者修改公开类型名称。'
   )));
+  getEnabledModuleConstantDiagnostics(moduleContext).forEach(message => diagnostics.push(createDiagnostic(
+    'error', 1, '', message, '请禁用其中一个冲突模块，或让模块作者为常量名加模块前缀。'
+  )));
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
   diagnostics.push(...getModuleHandlerDiagnostics(source, parsed.program, moduleContext));
   diagnostics.push(...getModuleRawParameterDiagnostics(source, moduleContext));
@@ -299,6 +303,7 @@ export function getLingCppSemanticDiagnostics(
     options?.suppressDesignerControlDiagnostics ? { skipUnresolvedDesignerReferences: true } : undefined));
   const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
+  diagnostics.push(...getConstantReferenceDiagnostics(source, effectiveConstants, moduleContext));
   diagnostics.push(...getThreadingDiagnostics(source, parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getArrayCommandDiagnostics(parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getVariableDiagnostics([
@@ -428,6 +433,15 @@ export function getLingCppCompletionItems(
       sourceLines.length
     ).has(context.line)) return [];
   }
+  // # 前缀触发常量专用补全：光标前缀形如 `#` 或 `#部分名` 时只出常量清单，
+  // 且 # 已在源码中，上屏只补裸名，避免 ## 重复前缀。
+  {
+    const triggerLineText = context.source.split(/\r?\n/u)[context.line - 1] || '';
+    const triggerPrefix = triggerLineText.slice(0, Math.max(0, context.column - 1));
+    if (!triggerLineText.trimStart().startsWith('@') && /#([\p{L}_][\p{L}\p{N}_]*)?$/u.test(triggerPrefix) && !isInsideQuotedOrCommentText(triggerPrefix)) {
+      return dedupeLingCppCompletionItems(getLingCppConstantCompletionItems(languageContext, { bareInsertText: true }), context.triggerText);
+    }
+  }
   const controlReferenceCompletion = getLingCppControlReferenceCompletion(
     context.source,
     context.line,
@@ -529,6 +543,8 @@ export function getLingCppHover(
       ].join('\n\n')
     };
   }
+  const constantHover = getLingCppConstantReferenceAtPosition(context.source, context.line, context.column, languageContext);
+  if (constantHover) return constantHover;
   const nodes = languageContext.symbolIndex.byLine[context.line] || [];
   const structuralNode = nodes.find(item => item.kind !== 'program' && item.kind !== 'statement');
   if (structuralNode) {
@@ -664,6 +680,162 @@ function getProjectFieldCompletionItems(
   }));
 }
 
+/** 常量值 → 中文展示文本（悬停与补全文档共用）。 */
+function formatLingCppConstantValue(value: number | string | boolean): string {
+  if (typeof value === 'boolean') return value ? '真' : '假';
+  if (typeof value === 'string') return `"${value}"`;
+  return String(value);
+}
+
+/** 判断行前缀是否处于未闭合字符串或注释内（# 触发补全前的一级防护）。 */
+function isInsideQuotedOrCommentText(prefix: string): boolean {
+  const trimmedStart = prefix.trimStart();
+  if (trimmedStart.startsWith('//') || trimmedStart.startsWith("'") || trimmedStart.startsWith('注释 ')) return true;
+  let quote: '"' | '“' | null = null;
+  for (let index = 0; index < prefix.length; index += 1) {
+    const character = prefix[index] || '';
+    if (quote === '"' && character === '\\') { index += 1; continue; }
+    if (!quote && (character === '"' || character === '“')) { quote = character; continue; }
+    if (quote === '"' && character === '"') quote = null;
+    else if (quote === '“' && character === '”') quote = null;
+  }
+  return quote !== null;
+}
+
+/**
+ * `#常量名` 引用诊断：# 前缀强制按常量解析。
+ * 未知常量、赋值只读常量都会给出中文错误；已安装但未启用模块的常量会提示启用路径。
+ */
+function getConstantReferenceDiagnostics(
+  source: string,
+  projectConstants: LingCppConstant[],
+  moduleContext?: LingCppModuleContext
+): LingCppDiagnostic[] {
+  const lines = splitLines(source);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
+  const knownNames = new Set<string>([
+    ...projectConstants.map(constant => normalizeIdentifier(constant.name)),
+    ...getModuleConstants(moduleContext?.enabledModules || []).map(constant => normalizeIdentifier(constant.name))
+  ]);
+  const diagnostics: LingCppDiagnostic[] = [];
+  lines.forEach((lineText, index) => {
+    const lineNumber = index + 1;
+    if (opaqueLines.has(lineNumber)) return;
+    const trimmed = lineText.trimStart();
+    // @ 内嵌 C++ 行逐字透传：其中的 #include/#define 不是常量引用，不得诊断。
+    if (!trimmed || trimmed.startsWith('@') || trimmed.startsWith('//') || trimmed.startsWith("'") || trimmed.startsWith('注释 ')) return;
+    const masked = lineText.replace(/"(?:\\.|[^"\\])*"|“[^”]*”/gu, match => ' '.repeat(match.length));
+    for (const match of masked.matchAll(/#([\p{L}_][\p{L}\p{N}_]*)/gu)) {
+      const name = match[1] || '';
+      const after = masked.slice((match.index || 0) + match[0].length).trimStart();
+      if (/^[=＝](?!=)/u.test(after)) {
+        diagnostics.push(createDiagnostic('error', lineNumber, lineText.trim(), `常量 #${name} 是只读值，不能重新赋值。`, '请改用局部变量或项目全局变量保存运行时变化的值。'));
+        continue;
+      }
+      if (knownNames.has(normalizeIdentifier(name))) continue;
+      const owner = findModuleConstantOwner(name, [...(moduleContext?.enabledModules || []), ...(moduleContext?.availableModules || [])]);
+      diagnostics.push({
+        id: `lingcpp-constant-reference-unknown-${normalizeIdentifier(name)}-${lineNumber}`,
+        line: lineNumber,
+        level: 'error',
+        message: `常量 #${name} 不存在。`,
+        codeSnippet: lineText.trim(),
+        suggestion: owner
+          ? `该常量由模块 ${owner.moduleName}（${owner.moduleId}）提供，请在模块管理中启用该模块后重试。`
+          : '请检查常量名拼写，或先在项目常量表中定义该常量。'
+      });
+    }
+  });
+  return diagnostics;
+}
+
+/** 常量补全清单（项目常量 + 启用模块常量），统一以 #name 规范形态上屏。 */
+export function getLingCppConstantCompletionItems(
+  languageContext: LingCppLanguageContext,
+  options?: { bareInsertText?: boolean }
+): LingCppCompletionCatalogItem[] {
+  const bare = options?.bareInsertText === true;
+  const insertFor = (name: string) => (bare ? name : `#${name}`);
+  const globalsFilePath = languageContext.projectGlobals?.filePath || languageContext.filePath || '项目全局变量.lcpp';
+  const projectItems = (languageContext.projectGlobals?.constants || languageContext.program.constants)
+    .map(constant => createLingCppCatalogItem({
+      label: `#${constant.name}`,
+      kind: 'type',
+      insertText: insertFor(constant.name),
+      detail: `项目常量 · ${constant.type}`,
+      documentation: `项目常量：#${constant.name}\n类型：${constant.type}\n值：${constant.initialValue}\n文件：${globalsFilePath}`,
+      aliases: [constant.name, '常量'],
+      category: 'symbol',
+      source: 'symbol',
+      sortRank: 0
+    }));
+  const showAdvanced = languageContext.moduleContext?.showAdvancedApi === true;
+  const moduleItems = getModuleConstants(languageContext.moduleContext?.enabledModules || [])
+    .filter(constant => showAdvanced || constant.level !== 'advanced')
+    .map(constant => createLingCppCatalogItem({
+      label: `#${constant.name}`,
+      kind: 'type',
+      insertText: insertFor(constant.name),
+      detail: `模块常量 · ${constant.moduleName}`,
+      documentation: `模块常量：#${constant.name}\n类型：${constant.type}\n值：${formatLingCppConstantValue(constant.value)}\n来源模块：${constant.moduleName}（${constant.moduleId}）\n说明：${constant.description}`,
+      aliases: [constant.name, constant.moduleName, constant.moduleId, '常量'],
+      category: 'symbol',
+      source: 'symbol',
+      sortRank: 0
+    }));
+  return [...projectItems, ...moduleItems];
+}
+
+/** 光标是否落在某个 #常量名 引用上（含 # 前缀），返回悬停信息。 */
+export function getLingCppConstantReferenceAtPosition(
+  source: string,
+  lineNumber: number,
+  columnNumber: number,
+  languageContext: LingCppLanguageContext
+): LingCppHover | undefined {
+  const line = splitLines(source)[lineNumber - 1];
+  if (line === undefined) return undefined;
+  const offset = Math.max(0, Math.min(line.length, columnNumber - 1));
+  for (const match of line.matchAll(/#([\p{L}_][\p{L}\p{N}_]*)/gu)) {
+    const start = match.index || 0;
+    const end = start + match[0].length;
+    if (offset < start || offset > end) continue;
+    const name = match[1] || '';
+    const normalized = normalizeIdentifier(name);
+    const projectConstant = (languageContext.projectGlobals?.constants || languageContext.program.constants)
+      .find(constant => normalizeIdentifier(constant.name) === normalized);
+    if (projectConstant) {
+      return {
+        line: lineNumber,
+        column: columnNumber,
+        range: { startLine: lineNumber, startColumn: start + 1, endLine: lineNumber, endColumn: end + 1 },
+        contents: [
+          `**#${projectConstant.name}**`,
+          `项目常量 · 类型：${projectConstant.type || '未标注'} · 值：${projectConstant.initialValue}`,
+          '只读编译期常量；来源文件：项目全局变量表。'
+        ].join('\n\n')
+      };
+    }
+    const moduleConstant = getModuleConstants(languageContext.moduleContext?.enabledModules || [])
+      .find(constant => normalizeIdentifier(constant.name) === normalized);
+    if (moduleConstant) {
+      return {
+        line: lineNumber,
+        column: columnNumber,
+        range: { startLine: lineNumber, startColumn: start + 1, endLine: lineNumber, endColumn: end + 1 },
+        contents: [
+          `**#${moduleConstant.name}**`,
+          `模块常量 · 类型：${moduleConstant.type} · 值：${formatLingCppConstantValue(moduleConstant.value)}`,
+          `来源模块：${moduleConstant.moduleName}（${moduleConstant.moduleId}）`,
+          moduleConstant.description
+        ].join('\n\n')
+      };
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
 function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext, line: number): LingCppCompletionCatalogItem[] {
   const activeMethodNode = [
     ...languageContext.symbolIndex.methods,
@@ -690,17 +862,7 @@ function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext
       sortRank: 0,
       isSnippet: node.kind === 'method' || node.kind === 'event'
     }));
-  const constantItems = (languageContext.projectGlobals?.constants || languageContext.program.constants)
-    .map(constant => createLingCppCatalogItem({
-      label: constant.name,
-      kind: 'type',
-      insertText: constant.name,
-      detail: `项目常量 · ${constant.type}`,
-      documentation: `项目常量：${constant.name}\n类型：${constant.type}\n值：${constant.initialValue}\n文件：${languageContext.projectGlobals?.filePath || languageContext.filePath || '项目全局变量.lcpp'}`,
-      category: 'symbol',
-      source: 'symbol',
-      sortRank: 0
-    }));
+  const constantItems = getLingCppConstantCompletionItems(languageContext);
   const globalItems = (languageContext.projectGlobals?.globals || languageContext.program.globals)
     .map(global => createLingCppCatalogItem({
       label: global.name,

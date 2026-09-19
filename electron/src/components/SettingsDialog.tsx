@@ -1,6 +1,14 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Keyboard, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Keyboard, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
+import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
+import { requestCloudAccountRecharge } from '../services/workbench/cloudAccountRechargeService';
+import {
+  getCloudAccountSessionState,
+  refreshCloudAccountSession,
+  signOutCloudAccount,
+  subscribeCloudAccountSession
+} from '../services/workbench/cloudAccountSessionStore';
 
 import type { RegisteredCommand } from '../services/commands';
 import {
@@ -29,7 +37,7 @@ interface SettingsDialogProps {
   onReload: () => Promise<void>;
 }
 
-const CATEGORIES = ['编辑器', '工作台', '更新', '浏览器凭据', '键盘快捷键'] as const;
+const CATEGORIES = ['编辑器', '工作台', '账号', '更新', '浏览器凭据', '键盘快捷键'] as const;
 type SettingsCategory = typeof CATEGORIES[number];
 
 export default function SettingsDialog({
@@ -210,6 +218,8 @@ export default function SettingsDialog({
           </div>
           {category === '浏览器凭据' ? (
             <span className={`inline-flex h-8 items-center gap-1.5 rounded border px-2 text-[11px] ${field}`}><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />当前 Windows 用户</span>
+          ) : category === '账号' ? (
+            <span className={`inline-flex h-8 items-center gap-1.5 rounded border px-2 text-[11px] ${field}`}><UserRound className="h-3.5 w-3.5 text-violet-400" />账号状态保存在登录凭据中</span>
           ) : category === '更新' ? (
             <span className={`inline-flex h-8 items-center gap-1.5 rounded border px-2 text-[11px] ${field}`}>本机用户设置</span>
           ) : (
@@ -263,7 +273,7 @@ export default function SettingsDialog({
                 aria-current={category === item ? 'page' : undefined}
                 className={`mb-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${category === item ? isDarkMode ? 'bg-[#094771] text-white' : 'bg-sky-100 text-sky-950' : isDarkMode ? 'hover:bg-[#303030]' : 'hover:bg-slate-200'}`}
               >
-                {item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : item === '浏览器凭据' ? <KeyRound className="h-4 w-4" aria-hidden="true" /> : item === '更新' ? <RefreshCw className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
+                {item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : item === '浏览器凭据' ? <KeyRound className="h-4 w-4" aria-hidden="true" /> : item === '更新' ? <RefreshCw className="h-4 w-4" aria-hidden="true" /> : item === '账号' ? <UserRound className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
                 {item}
               </button>
             ))}
@@ -283,7 +293,7 @@ export default function SettingsDialog({
               </div>
             ))}
 
-            {!loading && category !== '键盘快捷键' && category !== '浏览器凭据' && category !== '更新' && (
+            {!loading && category !== '键盘快捷键' && category !== '浏览器凭据' && category !== '更新' && category !== '账号' && (
               <div className="space-y-3">
                 {visibleSettings.length === 0 ? (
                   <div className={`py-12 text-center text-xs ${muted}`}>没有匹配的设置。</div>
@@ -317,6 +327,10 @@ export default function SettingsDialog({
                 onUpdate={onUpdate}
                 onReset={onReset}
               />
+            )}
+
+            {!loading && category === '账号' && (
+              <AccountSettings isDarkMode={isDarkMode} fieldClass={field} mutedClass={muted} />
             )}
 
             {!loading && category === '键盘快捷键' && (
@@ -486,6 +500,9 @@ function UpdatesSetting({
             </p>
             {betaMessage && <p role="status" className={`mt-2 text-[11px] leading-5 ${betaMessage.includes('失败') ? isDarkMode ? 'text-rose-300' : 'text-rose-700' : mutedClass}`}>{betaMessage}</p>}
             <div className="mt-3 flex flex-wrap gap-2">
+              {entitlement?.authenticated === false && (
+                <button type="button" onClick={() => void requestCloudAccountLogin({ description: '登录后可申请加入体验计划并接收预览版更新。' })} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600">登录 LingBuilder 账号</button>
+              )}
               {entitlement && !entitlement.enrolled && entitlement.authenticated !== false && applicationStatus !== 'PENDING' && (
                 <button type="button" disabled={busy} onClick={() => void applyForBetaProgram()} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50">{applicationStatus === 'REJECTED' || applicationStatus === 'CANCELLED' ? '重新申请' : '申请加入体验计划'}</button>
               )}
@@ -526,6 +543,58 @@ function UpdatesSetting({
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * 设置 → 账号：登录态、点数与登录/注册/充值/退出入口。
+ *
+ * 表单一律走顶层 cloudAccountLoginService / cloudAccountRechargeService，本页只呈现状态，
+ * 不再复制一份邮箱密码输入，避免与标题栏、AI 面板的登录态漂移。
+ */
+function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: boolean; fieldClass: string; mutedClass: string }) {
+  const [session, setSession] = useState(getCloudAccountSessionState);
+  useEffect(() => subscribeCloudAccountSession(() => setSession(getCloudAccountSessionState())), []);
+  useEffect(() => { void refreshCloudAccountSession(); }, []);
+
+  const actionClass = `rounded border px-3 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${fieldClass}`;
+
+  return (
+    <section aria-label="LingBuilder 账号" className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
+      <h3 className="text-sm font-semibold">LingBuilder 账号</h3>
+      <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>
+        同一账号用于系统 AI 点数、收费模块权益与体验计划；本地编辑、构建与 Visual Studio 工程导出无需登录。
+      </p>
+
+      {session.authenticated ? (
+        <>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="flex items-center gap-1.5" title={session.email}>
+              <UserRound className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" />
+              <span className="max-w-[22rem] truncate">{session.email}</span>
+            </span>
+            <span>可用点数 <strong className="tabular-nums">{session.balance?.available || '0'}</strong></span>
+            {session.balance?.reserved && session.balance.reserved !== '0' && (
+              <span className={mutedClass}>冻结 <strong className="tabular-nums">{session.balance.reserved}</strong></span>
+            )}
+          </div>
+          {session.error && <p role="alert" className={`mt-2 text-[11px] ${isDarkMode ? 'text-rose-300' : 'text-rose-700'}`}>{session.error}</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void requestCloudAccountRecharge()} className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500">充值点数</button>
+            <button type="button" onClick={() => void signOutCloudAccount()} className={actionClass}>退出登录</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className={`mt-3 text-xs ${mutedClass}`}>{session.error || '当前未登录 LingBuilder 账号。'}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void requestCloudAccountLogin({ initialMode: 'login' })} className="rounded bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500">登录</button>
+            <button type="button" onClick={() => void requestCloudAccountLogin({ initialMode: 'register' })} className={actionClass}>注册账号</button>
+            <button type="button" onClick={() => void requestCloudAccountLogin({ initialMode: 'reset' })} className={actionClass}>忘记密码</button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

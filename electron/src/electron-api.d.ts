@@ -86,6 +86,13 @@ declare global {
       community?: {
         openQQGroup: () => Promise<string>;
       };
+      logs?: {
+        /** 在系统文件管理器中打开诊断日志目录；'' 表示成功。 */
+        reveal: () => Promise<string>;
+        export: () => Promise<{ ok: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+        delete: () => Promise<{ ok: boolean; canceled?: boolean; deleted?: number; error?: string }>;
+        report: (entry: { level?: 'info' | 'warn' | 'error'; category?: string; message: string }) => void;
+      };
       workspace?: {
         getCurrent: () => Promise<string>;
         open: () => Promise<{
@@ -209,6 +216,8 @@ declare global {
       cloudAccount?: {
         register: (value: { email: string; password: string }) => Promise<{ ok: boolean; verificationRequired: boolean }>;
         verifyEmail: (token: string) => Promise<{ ok: boolean }>;
+        forgotPassword: (value: { email: string }) => Promise<{ ok: boolean }>;
+        resetPassword: (value: { token: string; password: string }) => Promise<{ ok: boolean }>;
         login: (value: { email: string; password: string }) => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string } }>;
         logout: () => Promise<{ ok: boolean }>;
         session: () => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>;

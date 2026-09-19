@@ -273,6 +273,32 @@ LB_AEAD_WRAPPERS(TwofishGCM, "Twofish/GCM", "TWOFISH-GCM", 32)
 LB_AEAD_WRAPPERS(SerpentGCM, "Serpent/GCM", "SERPENT-GCM", 32)
 #undef LB_AEAD_WRAPPERS
 
+// 裸 AEAD：随机数由调用方提供、输出 密文 || 标签，不写任何自描述头，也不做 Base64/UTF-8/十六进制转换；
+// 用于兼容 Chromium encrypted_value 等外部密文格式。需要模块自描述封装时改用同名的非 裸 命令。
+static std::vector<uint8_t> LB_SymmetricRawAead(bool encrypt, const char* botanName, size_t requiredKeyBytes, const char* label, const std::vector<uint8_t>& key, const std::vector<uint8_t>& nonce, const std::vector<uint8_t>& input, const std::vector<uint8_t>& aad) {
+    g_lbSymmetricError.clear(); const std::wstring prefix = LB_Utf8ToWide(label);
+    if (key.size() != requiredKeyBytes) { g_lbSymmetricError = prefix + L" 裸密钥必须恰好 " + std::to_wstring(requiredKeyBytes) + L" 字节。"; return {}; }
+    if (nonce.size() != 12) { g_lbSymmetricError = prefix + L" 裸随机数必须恰好 12 字节，且由调用方从密文里自行拆出。"; return {}; }
+    if (!encrypt && input.size() < 16) { g_lbSymmetricError = prefix + L" 裸密文与标签合计不足 16 字节认证标签。"; return {}; }
+    botan_cipher_t cipher = nullptr; size_t outputLength = 0, written = 0, consumed = 0; std::vector<uint8_t> output;
+    int result = botan_cipher_init(&cipher, botanName, encrypt ? BOTAN_CIPHER_INIT_FLAG_ENCRYPT : BOTAN_CIPHER_INIT_FLAG_DECRYPT);
+    if (result == 0) result = botan_cipher_set_key(cipher, key.data(), key.size());
+    if (result == 0) result = botan_cipher_set_associated_data(cipher, aad.empty() ? nullptr : aad.data(), aad.size());
+    if (result == 0) result = botan_cipher_start(cipher, nonce.data(), nonce.size());
+    if (result == 0) result = botan_cipher_output_length(cipher, input.size(), &outputLength);
+    if (result == 0) { output.assign((std::max)(outputLength, static_cast<size_t>(64)) + 64, 0); result = botan_cipher_update(cipher, BOTAN_CIPHER_UPDATE_FLAG_FINAL, output.data(), output.size(), &written, input.data(), input.size(), &consumed); }
+    if (cipher) botan_cipher_destroy(cipher);
+    if (result != 0 || consumed != input.size()) { g_lbSymmetricError = LB_CryptoErrorText(encrypt ? (std::string(label) + " 裸加密失败").c_str() : (std::string(label) + " 裸解密或认证标签校验失败").c_str(), result); return {}; }
+    output.resize(written); return output;
+}
+
+#define LB_RAW_AEAD_WRAPPERS(suffix, botanName, keyBytes, label) \
+std::vector<uint8_t> 对称_##suffix##加密裸(const std::vector<uint8_t>& key, const std::vector<uint8_t>& nonce, const std::vector<uint8_t>& plain, const std::vector<uint8_t>& aad) { return LB_SymmetricRawAead(true, botanName, keyBytes, label, key, nonce, plain, aad); } \
+std::vector<uint8_t> 对称_##suffix##解密裸(const std::vector<uint8_t>& key, const std::vector<uint8_t>& nonce, const std::vector<uint8_t>& cipher, const std::vector<uint8_t>& aad) { return LB_SymmetricRawAead(false, botanName, keyBytes, label, key, nonce, cipher, aad); }
+LB_RAW_AEAD_WRAPPERS(AES256GCM, "AES-256/GCM", 32, "AES-256-GCM")
+LB_RAW_AEAD_WRAPPERS(AES128GCM, "AES-128/GCM", 16, "AES-128-GCM")
+#undef LB_RAW_AEAD_WRAPPERS
+
 #define LB_LEGACY_WRAPPERS(suffix, botanName, envelopeName, keyBytes) \
 const wchar_t* 对称_##suffix##加密(const wchar_t* plain, const wchar_t* key) { return LB_SymmetricEncrypt(botanName, envelopeName, keyBytes, false, plain, key, L""); } \
 const wchar_t* 对称_##suffix##解密(const wchar_t* cipher, const wchar_t* key) { return LB_SymmetricDecrypt(botanName, envelopeName, keyBytes, false, cipher, key, L""); }

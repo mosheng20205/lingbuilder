@@ -1,0 +1,57 @@
+包 EdgeView多店铺弹窗演示
+使用 Win32窗口基础模块
+使用 EdgeView浏览器模块
+
+// 多店铺登录态验证演示：浏览器以「独立顶层弹窗」打开（不内嵌本宿主窗口），
+// 每个店铺一个实例编号 + 独立缓存目录（Cookie/存储隔离），首次导航前设 UA，
+// 用 CookieManager 注入 HttpOnly Cookie（禁止 document.cookie），再导航并异步回读校验。
+// 演示只用占位 Cookie 值；真实验证请换成本机导出的合法值，切勿把凭据写进源码/日志/分享包。
+类 多店铺弹窗窗体 : 公开 窗口
+    构造()
+    结束
+
+    事件 _多店铺弹窗窗体_创建完毕()
+        局部 整数型 打开A
+        局部 整数型 打开B
+        局部 文本型 用户代理
+        局部 文本型 CookieA
+        局部 文本型 CookieB
+        局部 文本型 实例清单
+        用户代理 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36 LingBuilderDemo/1.0"
+        // 实例编号 1、2 各对应一个店铺；独立缓存目录是店铺间隔离的唯一手段
+        打开A = EdgeView_创建弹窗浏览器(1, "店铺 A", 1000, 720, "about:blank", ".edgeview/store-a", 用户代理)
+        打开B = EdgeView_创建弹窗浏览器(2, "店铺 B", 1000, 720, "about:blank", ".edgeview/store-b", 用户代理)
+        调试输出("已打开店铺弹窗数（期望 2）：")
+        调试输出(到文本(打开A + 打开B))
+        CookieA = """
+[{"name":"DEMO_SESSION","value":"store-a-placeholder","domain":"example.com","path":"/","secure":true,"httpOnly":true,"sameSite":1}]
+"""
+        CookieB = """
+[{"name":"DEMO_SESSION","value":"store-b-placeholder","domain":"example.com","path":"/","secure":true,"httpOnly":true,"sameSite":1}]
+"""
+        如果 (打开A == 1)
+            // 先注入 HttpOnly 登录 Cookie，再导航，首个请求即携带登录态
+            EdgeView会话_批量置Cookie实例(1, CookieA)
+            EdgeView_导航实例(1, "https://example.com")
+            EdgeView会话_取Cookie实例异步(1, "https://example.com", &读取店铺A完成)
+        如果结束
+        如果 (打开B == 1)
+            EdgeView会话_批量置Cookie实例(2, CookieB)
+            EdgeView_导航实例(2, "https://example.com")
+            EdgeView会话_取Cookie实例异步(2, "https://example.com", &读取店铺B完成)
+        如果结束
+        实例清单 = EdgeView_枚举实例JSON()
+        调试输出("当前实例清单（实例编号/标题/地址/缓存目录/是否弹窗/是否有效）：")
+        调试输出(实例清单)
+    结束
+
+    事件 读取店铺A完成()
+        调试输出("店铺A Cookie 回读（注意 httpOnly=true）：")
+        调试输出(EdgeView任务_取结果(EdgeView任务_取当前任务ID()))
+    结束
+
+    事件 读取店铺B完成()
+        调试输出("店铺B Cookie 回读（注意 httpOnly=true）：")
+        调试输出(EdgeView任务_取结果(EdgeView任务_取当前任务ID()))
+    结束
+结束类

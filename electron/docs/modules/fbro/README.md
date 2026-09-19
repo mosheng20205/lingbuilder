@@ -325,7 +325,7 @@
 | 76 | `FBro_取附加信息JSON` | `FBro_取附加信息JSON(控件名)` | 文本型 | 常用 | `LB_FBro_GetBrowserExtraInfoJson` | 返回浏览器创建期附加信息字典的 UTF-16 JSON；未设置时返回 {}。 |
 | 77 | `FBro_后台创建` | `FBro_后台创建(地址, 缓存目录, 附加信息JSON)` | 整数型 | 常用 | `LB_FBro_CreateBackground` | 创建无窗口承载的后台浏览器实例并返回实例句柄；事件照常分发，可用 FBro事件_* 与句柄命令操作。附加信息 JSON 传空跳过。 |
 | 78 | `FBro_取启动命令行` | `FBro_取启动命令行()` | 文本型 | 常用 | `LB_FBro_GetStartupCommandLine` | 返回初始化时按控件启动开关构建的官方命令行文本；未启用任何开关时为空。 |
-| 79 | `FBro_启用JS扩展` | `FBro_启用JS扩展(查询函数名, 取消函数名)` | 整数型 | 常用 | `LB_FBro_EnableJsQuery` | 启用页面调用原生函数通道：页面执行 查询函数名(请求文本) 触发“JS扩展调用”事件，用 FBro事件_继续 回传 {"success":true,"result":"..."} 或 {"success":false,"error":"..."}。必须在首个浏览器创建前调用。 |
+| 79 | `FBro_启用JS扩展` | `FBro_启用JS扩展(查询函数名, 取消函数名)` | 整数型 | 常用 | `LB_FBro_EnableJsQuery` | 注册页面调用原生函数通道，可多次调用注册多条通道（如 cefQuery 与 cefQuerytest），全部通道共用同一个 OnQuery 处理器。页面执行 查询函数名(请求文本) 触发 OnQuery 事件：用 FBro_取事件字段 读 request，用 FBro事件_完成延续 回传 {"success":true,"result":"..."} 或 {"success":false,"error":"..."}。必须在首个浏览器初始化前调用；窗口程序建议改用 FBroBrowser 控件属性 jsQueryFunctions（格式 cefQuery,cefQueryCancel;cefQuerytest,cefQueryCanceltest）在生成期自动注册。 |
 | 80 | `浏览器管理器_初始化` | `浏览器管理器_初始化(页面选项卡, 实例列表, 工作区键)` | 整数型 | 常用 | - | 绑定普通 Win32 隐藏表头选项卡和列表框，恢复独立实例并为每个实例启动一个 FBro Host。 |
 | 81 | `浏览器管理器_绑定地址栏` | `浏览器管理器_绑定地址栏(地址控件)` | 逻辑型 | 常用 | - | 绑定当前窗口文本框；网页地址事件和实例切换会直接同步真实当前地址。 |
 | 82 | `浏览器管理器_绑定下载视图` | `浏览器管理器_绑定下载视图(详情控件, 进度条)` | 逻辑型 | 常用 | - | 绑定只读文本框或标签及原生进度条；下载事件到达和实例切换时实时显示当前实例的文件、目录、百分比与完成状态。 |
@@ -371,7 +371,7 @@
 |---:|---|---|---|---|---|---|
 | 1 | `FBro_取事件数据` | `FBro_取事件数据(控件名)` | 文本型 | 常用 | `LB_FBro_GetLastEventData` | 取得当前处理中的事件主数据。 |
 | 2 | `FBro_取事件字段` | `FBro_取事件字段(控件名, 字段名)` | 文本型 | 常用 | `LB_FBro_GetEventField` | 从 UTF-16 JSON 事件包读取结构化字段。 |
-| 3 | `FBro_设置事件结果` | `FBro_设置事件结果(控件名, 动作)` | 整数型 | 常用 | `LB_FBro_SetEventResult` | 设置同步事件动作；未设置时使用事件目录默认动作。 |
+| 3 | `FBro_设置事件结果` | `FBro_设置事件结果(控件名, 动作)` | 整数型 | 常用 | `LB_FBro_SetEventResult` | 设置同步事件动作；未设置时使用事件清单默认动作。 |
 | 4 | `FBro_设置事件返回文本` | `FBro_设置事件返回文本(控件名, 文本)` | 整数型 | 常用 | `LB_FBro_SetEventResultText` | 设置同步事件返回文本。 |
 | 5 | `FBro_设置事件响应JSON` | `FBro_设置事件响应JSON(控件名, 响应JSON)` | 整数型 | 常用 | `LB_FBro_SetEventResponseJson` | 设置 C ABI v3 事件结构化响应；回调返回后 Bridge 会立即复制。 |
 | 6 | `FBro_取事件对象` | `FBro_取事件对象(控件名)` | 长整数型 | 高级 | `LB_FBro_GetLastEventObject` | 取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。 |

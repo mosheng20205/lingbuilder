@@ -10,6 +10,8 @@ export const LINGBUILDER_DOCS_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/docs`;
 export const LINGBUILDER_VIDEO_TUTORIALS_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/docs/guide/videos/`;
 export const LINGBUILDER_COMMANDS_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/commands`;
 export const LINGBUILDER_AI_GUIDE_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/docs/guide/ai/`;
+export const LINGBUILDER_UPDATES_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/updates`;
+export const LINGBUILDER_SPONSORS_URL = `${LINGBUILDER_OFFICIAL_SITE_URL}/sponsors`;
 export const LINGBUILDER_GITHUB_URL = 'https://github.com/mosheng20205/lingbuilder';
 
 export interface LingBuilderReleaseNoteSection {

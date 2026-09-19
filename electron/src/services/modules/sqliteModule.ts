@@ -59,15 +59,15 @@ export const SQLITE_BUNDLED_RUNTIME_SHA256 = {
 const sqliteStandardModule = createStandardModule({
   id: SQLITE_MODULE_ID,
   name: 'SQLite 数据库模块',
-  version: '2.2.0',
+  version: '2.3.0',
   category: '数据库',
-  description: '面向生产项目的 SQLite 动态桥接：多连接、参数化预编译语句、强类型字段、事务、WAL、备份、SQLCipher/RC4 等多算法加密与完整错误诊断。',
-  tags: ['数据库', 'SQLite', '事务', '预编译语句', 'WAL', '备份', 'SQLCipher', '加密'],
+  description: '面向生产项目的 SQLite 动态桥接：多连接、参数化预编译语句、强类型字段、事务、WAL、备份、SQLCipher/RC4 等多算法加密、随模块内置的 csv 虚拟表（把 CSV 文件当表直连查询与入库）与完整错误诊断。',
+  tags: ['数据库', 'SQLite', '事务', '预编译语句', 'WAL', '备份', 'SQLCipher', '加密', '虚拟表', 'CSV', '导入'],
   types: [
     { name: 'SQLite连接', description: '进程内不复用的受管 SQLite 连接 ID；不暴露 sqlite3 指针。', cppType: 'long long' },
     { name: 'SQLite语句', description: '归属于单个连接的受管预编译语句 ID；不暴露 sqlite3_stmt 指针。', cppType: 'long long' }
   ],
-  docs: [{ title: 'SQLite 数据库模块 2.2 使用说明', path: 'docs/modules/sqlite/README.md' }],
+  docs: [{ title: 'SQLite 数据库模块 2.3 使用说明', path: 'docs/modules/sqlite/README.md' }],
   snippets: [
     {
       label: 'SQLite 参数化事务',
@@ -104,6 +104,27 @@ const sqliteStandardModule = createStandardModule({
         '    调试输出(SQLite_取错误())',
         '结束'
       ].join('\n')
+    },
+    {
+      label: 'CSV 虚拟表直连入库',
+      description: '不装额外扩展：用随模块内置的 csv 虚拟表把 CSV 文件当表查询，再 INSERT ... SELECT 入库。',
+      insertText: [
+        '局部 SQLite连接 数据库 = SQLite_打开连接("data/app.db", 0, 5000)',
+        '如果 (数据库 != 0)',
+        '    调试输出(SQLite_取虚拟表支持(数据库))',
+        '    SQLite_执行于(数据库, "CREATE TABLE IF NOT EXISTS 员工(工号 INTEGER PRIMARY KEY, 姓名 TEXT, 入职日期 TEXT)")',
+        '    如果 (SQLite_执行于(数据库, "CREATE VIRTUAL TABLE 导入_员工 USING csv(filename=\'$1\', schema=\'(工号 INTEGER, 姓名 TEXT, 入职日期 TEXT)\', header=1, encoding=\'AUTO\')"))',
+        '        如果 (SQLite_开始事务(数据库, 1))',
+        '            SQLite_执行于(数据库, "INSERT OR IGNORE INTO 员工(工号, 姓名, 入职日期) SELECT 工号, 姓名, 入职日期 FROM 导入_员工")',
+        '            SQLite_提交事务(数据库)',
+        '        如果结束',
+        '        SQLite_执行于(数据库, "DROP TABLE 导入_员工")',
+        '    否则',
+        '        调试输出(SQLite_取错误())',
+        '    如果结束',
+        '    SQLite_关闭连接(数据库)',
+        '如果结束'
+      ].join('\n')
     }
   ],
   commands: [
@@ -116,6 +137,9 @@ const sqliteStandardModule = createStandardModule({
     sqliteCommand('SQLite_取运行库版本', [], 'wideString', '返回当前已加载 SQLite 运行库的版本号。', { category: '运行库' }),
     sqliteCommand('SQLite_运行库线程安全', [], 'bool', '返回运行库编译时是否启用了 SQLite 线程安全支持。', { category: '运行库' }),
     sqliteCommand('SQLite_运行库是否支持加密', [], 'bool', '检查当前运行库是否提供 sqlite3_key 加密导出（LingBuilder 随附运行库或 SQLCipher 兼容运行库）；不支持时加密打开命令会直接失败。', { category: '运行库' }),
+    sqliteCommand('SQLite_取虚拟表支持', [connection()], 'wideString', '返回该连接可用的虚拟表模块名，当前为 "csv"；返回空文本表示运行库缺少虚拟表导出，CREATE VIRTUAL TABLE ... USING csv(...) 会报 no such module。', {
+      category: '运行库', example: 'SQLite_取虚拟表支持(数据库)'
+    }),
     sqliteCommand('SQLite_设置加密算法', [
       { name: '算法', type: 'wideString', description: 'sqlcipher（默认，SQLCipher 4 参数）、sqlcipher3（SQLCipher 3 兼容）、rc4（老版 wxSQLite3/RC4 格式）、aes128、aes256、chacha20；传空恢复默认 sqlcipher。' }
     ], 'bool', '设置下一次 SQLite_打开加密库 / SQLite_打开加密连接 使用的加密算法（进程级，对之后每次加密打开都生效，默认 sqlcipher）；未知算法返回假并记录中文错误。', {

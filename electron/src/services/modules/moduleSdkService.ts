@@ -371,6 +371,7 @@ function buildTemplateManifest(options: ModuleInitOptions): LingBuilderModuleMan
     tags: ['模板', options.template],
     contributes: {
       commands: [command],
+      constants: [{ name: '示例常量', type: '整数型', value: 1, description: '模块模板示例常量；.lcpp 源码中用 #示例常量 引用。' }],
       docs: [{ title: '使用说明', path: 'docs/usage.md' }],
       examples: [{ title: '最小示例', path: 'examples/最小示例.lcpp' }]
     },

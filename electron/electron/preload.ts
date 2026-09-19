@@ -27,6 +27,12 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   community: {
     openQQGroup: () => ipcRenderer.invoke('community:open-qq-group'),
   },
+  logs: {
+    reveal: () => ipcRenderer.invoke('logs:reveal'),
+    export: () => ipcRenderer.invoke('logs:export'),
+    delete: () => ipcRenderer.invoke('logs:delete'),
+    report: (entry: { level?: 'info' | 'warn' | 'error'; category?: string; message: string }) => ipcRenderer.send('diagnostic:report', entry),
+  },
   workspace: {
     getCurrent: () => ipcRenderer.invoke('workspace:get-current'),
     open: () => ipcRenderer.invoke('workspace:open'),
@@ -117,6 +123,8 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   cloudAccount: {
     register: (value: { email: string; password: string }) => ipcRenderer.invoke('cloud-account:register', value),
     verifyEmail: (token: string) => ipcRenderer.invoke('cloud-account:verify-email', token),
+    forgotPassword: (value: { email: string }) => ipcRenderer.invoke('cloud-account:forgot-password', value),
+    resetPassword: (value: { token: string; password: string }) => ipcRenderer.invoke('cloud-account:reset-password', value),
     login: (value: { email: string; password: string }) => ipcRenderer.invoke('cloud-account:login', value),
     logout: () => ipcRenderer.invoke('cloud-account:logout'),
     session: () => ipcRenderer.invoke('cloud-account:session'),

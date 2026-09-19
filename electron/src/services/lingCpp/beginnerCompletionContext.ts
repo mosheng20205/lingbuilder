@@ -8,6 +8,8 @@ export interface BeginnerCompletionContext {
   isNumericLiteral: boolean;
   isInsideString: boolean;
   isInsideComment: boolean;
+  /** 光标前缀以 # 结尾（#常量引用输入中）：此时补全列表只出常量。 */
+  isConstantReference: boolean;
   parenDepth: number;
   isWindowTargetContext: boolean;
   isWindowPlacementContext: boolean;
@@ -90,6 +92,7 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
       isNumericLiteral: false,
       isInsideString: true,
       isInsideComment: false,
+      isConstantReference: false,
       parenDepth: 0,
       isWindowTargetContext: false,
       isWindowPlacementContext: false
@@ -109,6 +112,7 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
     isCommandStart: beforeToken.trim().length === 0,
     isAssignmentValue,
     isNumericLiteral: /^[0-9]/u.test(token),
+    isConstantReference: syntax.isInsideString || syntax.isInsideComment || linePrefix.trimStart().startsWith('@') ? false : /#$/u.test(beforeToken),
     isWindowTargetContext,
     isWindowPlacementContext,
     ...syntax
@@ -118,6 +122,8 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
 export function shouldShowBeginnerCompletion(context: BeginnerCompletionContext, includeAll: boolean): boolean {
   if (context.isWindowTargetContext || context.isWindowPlacementContext) return true;
   if (context.isInsideString || context.isInsideComment) return false;
+  // 刚敲下 # 时 token 为空，也必须立即弹出常量清单（易语言习惯）。
+  if (context.isConstantReference) return true;
   if (includeAll) return context.isBlankLine || context.token.length > 0;
 
   // 正在输入数字字面量（如 数值=0 的 0）时不需要补全：

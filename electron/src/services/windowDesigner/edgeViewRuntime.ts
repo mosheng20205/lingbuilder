@@ -356,6 +356,8 @@ ${settingsWrappers()}
 
     int EdgeView设置_置用户代理(const wchar_t* controlName, const wchar_t* userAgent) { auto settings = EdgeView设置_取设置(controlName); Microsoft::WRL::ComPtr<ICoreWebView2Settings2> settings2; return settings && SUCCEEDED(settings.As(&settings2)) && settings2 && SUCCEEDED(settings2->put_UserAgent(userAgent ? userAgent : L"")) ? 1 : 0; }
     std::wstring EdgeView设置_取用户代理(const wchar_t* controlName) { auto settings = EdgeView设置_取设置(controlName); Microsoft::WRL::ComPtr<ICoreWebView2Settings2> settings2; LPWSTR value = nullptr; if (settings && SUCCEEDED(settings.As(&settings2)) && settings2) settings2->get_UserAgent(&value); return EdgeView_接管字符串(value); }
+    int EdgeView设置_置用户代理实例(int instanceId, const wchar_t* userAgent) { auto* instance = EdgeView_查找(instanceId); if (!instance || !instance->webView) return 0; Microsoft::WRL::ComPtr<ICoreWebView2Settings> settings; Microsoft::WRL::ComPtr<ICoreWebView2Settings2> settings2; if (FAILED(instance->webView->get_Settings(&settings)) || !settings || FAILED(settings.As(&settings2)) || !settings2) return 0; instance->userAgent = userAgent ? userAgent : L""; return SUCCEEDED(settings2->put_UserAgent(userAgent ? userAgent : L"")) ? 1 : 0; }
+    std::wstring EdgeView设置_取用户代理实例(int instanceId) { auto* instance = EdgeView_查找(instanceId); Microsoft::WRL::ComPtr<ICoreWebView2Settings> settings; Microsoft::WRL::ComPtr<ICoreWebView2Settings2> settings2; LPWSTR value = nullptr; if (instance && instance->webView && SUCCEEDED(instance->webView->get_Settings(&settings)) && settings && SUCCEEDED(settings.As(&settings2)) && settings2) settings2->get_UserAgent(&value); return EdgeView_接管字符串(value); }
     int EdgeView设置_置缩放(const wchar_t* controlName, double zoom) { auto* instance = EdgeView_查找控件(controlName); return instance && instance->controller && zoom > 0 && SUCCEEDED(instance->controller->put_ZoomFactor(zoom)) ? 1 : 0; }
     double EdgeView设置_取缩放(const wchar_t* controlName) { auto* instance = EdgeView_查找控件(controlName); double value = 0; if (instance && instance->controller) instance->controller->get_ZoomFactor(&value); return value; }
     int EdgeView设置_置静音(const wchar_t* controlName, bool muted) { auto* instance = EdgeView_查找控件(controlName); Microsoft::WRL::ComPtr<ICoreWebView2_8> webView8; return instance && instance->webView && SUCCEEDED(instance->webView.As(&webView8)) && webView8 && SUCCEEDED(webView8->put_IsMuted(muted ? TRUE : FALSE)) ? 1 : 0; }
@@ -384,10 +386,156 @@ ${settingsWrappers()}
     bool EdgeView会话_取Profile(const wchar_t* controlName, Microsoft::WRL::ComPtr<ICoreWebView2Profile>& profile) { auto* instance = EdgeView_查找控件(controlName); Microsoft::WRL::ComPtr<ICoreWebView2_13> webView13; return instance && instance->webView && SUCCEEDED(instance->webView.As(&webView13)) && webView13 && SUCCEEDED(webView13->get_Profile(&profile)) && profile; }
     std::wstring EdgeView会话_取ProfileJSON(const wchar_t* controlName) { Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile; if (!EdgeView会话_取Profile(controlName, profile)) return L"{}"; LPWSTR name = nullptr, path = nullptr, download = nullptr; BOOL privateMode = FALSE; profile->get_ProfileName(&name); profile->get_ProfilePath(&path); profile->get_IsInPrivateModeEnabled(&privateMode); profile->get_DefaultDownloadFolderPath(&download); return EdgeView_事件数据({{L"name", EdgeView_接管字符串(name)}, {L"path", EdgeView_接管字符串(path)}, {L"inPrivate", EdgeView_布尔值(privateMode)}, {L"downloadFolder", EdgeView_接管字符串(download)}}); }
     Microsoft::WRL::ComPtr<ICoreWebView2CookieManager> EdgeView会话_取Cookie管理器(const wchar_t* controlName) { Microsoft::WRL::ComPtr<ICoreWebView2CookieManager> manager; Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile; Microsoft::WRL::ComPtr<ICoreWebView2Profile5> profile5; if (EdgeView会话_取Profile(controlName, profile) && SUCCEEDED(profile.As(&profile5)) && profile5) profile5->get_CookieManager(&manager); if (manager) return manager; auto* instance = EdgeView_查找控件(controlName); Microsoft::WRL::ComPtr<ICoreWebView2_2> webView2; if (instance && instance->webView && SUCCEEDED(instance->webView.As(&webView2)) && webView2) webView2->get_CookieManager(&manager); return manager; }
-    long long EdgeView会话_取Cookie异步(const wchar_t* controlName, const wchar_t* uri, const wchar_t* handler) { auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); auto manager = EdgeView会话_取Cookie管理器(controlName); if (!task) return 0; if (!manager) { EdgeView任务_完成(task, E_NOINTERFACE, L""); return task->id; } HRESULT started = manager->GetCookies(uri ? uri : L"", Microsoft::WRL::Callback<ICoreWebView2GetCookiesCompletedHandler>([this, task](HRESULT error, ICoreWebView2CookieList* list) -> HRESULT { std::wstring json = L"["; UINT32 count = 0; if (SUCCEEDED(error) && list) list->get_Count(&count); for (UINT32 index = 0; index < count; ++index) { Microsoft::WRL::ComPtr<ICoreWebView2Cookie> cookie; list->GetValueAtIndex(index, &cookie); LPWSTR name = nullptr, value = nullptr, domain = nullptr, path = nullptr; if (cookie) { cookie->get_Name(&name); cookie->get_Value(&value); cookie->get_Domain(&domain); cookie->get_Path(&path); } if (index) json += L","; json += EdgeView_事件数据({{L"name", EdgeView_接管字符串(name)}, {L"value", EdgeView_接管字符串(value)}, {L"domain", EdgeView_接管字符串(domain)}, {L"path", EdgeView_接管字符串(path)}}); } json += L"]"; EdgeView任务_完成(task, error, json.c_str()); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }
+    long long EdgeView会话_取Cookie异步(const wchar_t* controlName, const wchar_t* uri, const wchar_t* handler) { auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); auto manager = EdgeView会话_取Cookie管理器(controlName); if (!task) return 0; if (!manager) { EdgeView任务_完成(task, E_NOINTERFACE, L""); return task->id; } HRESULT started = manager->GetCookies(uri ? uri : L"", Microsoft::WRL::Callback<ICoreWebView2GetCookiesCompletedHandler>([this, task](HRESULT error, ICoreWebView2CookieList* list) -> HRESULT { std::wstring json = L"["; UINT32 count = 0; if (SUCCEEDED(error) && list) list->get_Count(&count); for (UINT32 index = 0; index < count; ++index) { Microsoft::WRL::ComPtr<ICoreWebView2Cookie> cookie; list->GetValueAtIndex(index, &cookie); LPWSTR name = nullptr, value = nullptr, domain = nullptr, path = nullptr; double expires = -1; BOOL secure = FALSE, httpOnly = FALSE, session = TRUE; COREWEBVIEW2_COOKIE_SAME_SITE_KIND sameSiteMode = COREWEBVIEW2_COOKIE_SAME_SITE_KIND_LAX; if (cookie) { cookie->get_Name(&name); cookie->get_Value(&value); cookie->get_Domain(&domain); cookie->get_Path(&path); cookie->get_Expires(&expires); cookie->get_IsSecure(&secure); cookie->get_IsHttpOnly(&httpOnly); cookie->get_IsSession(&session); cookie->get_SameSite(&sameSiteMode); } if (index) json += L","; json += EdgeView_事件数据({{L"name", EdgeView_接管字符串(name)}, {L"value", EdgeView_接管字符串(value)}, {L"domain", EdgeView_接管字符串(domain)}, {L"path", EdgeView_接管字符串(path)}, {L"expires", std::to_wstring(expires)}, {L"secure", EdgeView_布尔值(secure)}, {L"httpOnly", EdgeView_布尔值(httpOnly)}, {L"isSession", EdgeView_布尔值(session)}, {L"sameSite", EdgeView_数值(static_cast<int>(sameSiteMode))}}); } json += L"]"; EdgeView任务_完成(task, error, json.c_str()); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }
     int EdgeView会话_置Cookie(const wchar_t* controlName, const wchar_t* name, const wchar_t* value, const wchar_t* domain, const wchar_t* path) { auto manager = EdgeView会话_取Cookie管理器(controlName); Microsoft::WRL::ComPtr<ICoreWebView2Cookie> cookie; return manager && name && domain && SUCCEEDED(manager->CreateCookie(name, value ? value : L"", domain, path ? path : L"/", &cookie)) && cookie && SUCCEEDED(manager->AddOrUpdateCookie(cookie.Get())) ? 1 : 0; }
     int EdgeView会话_删除Cookie(const wchar_t* controlName, const wchar_t* name, const wchar_t* domain, const wchar_t* path) { auto manager = EdgeView会话_取Cookie管理器(controlName); return manager && name && domain && SUCCEEDED(manager->DeleteCookiesWithDomainAndPath(name, domain, path ? path : L"/")) ? 1 : 0; }
     int EdgeView会话_删除全部Cookie(const wchar_t* controlName) { auto manager = EdgeView会话_取Cookie管理器(controlName); return manager && SUCCEEDED(manager->DeleteAllCookies()) ? 1 : 0; }
+    Microsoft::WRL::ComPtr<ICoreWebView2CookieManager> EdgeView会话_取Cookie管理器实例(int instanceId) { auto* instance = EdgeView_查找(instanceId); Microsoft::WRL::ComPtr<ICoreWebView2CookieManager> manager; if (!instance || !instance->webView) return manager; Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile; Microsoft::WRL::ComPtr<ICoreWebView2_13> webView13; Microsoft::WRL::ComPtr<ICoreWebView2Profile5> profile5; if (SUCCEEDED(instance->webView.As(&webView13)) && webView13 && SUCCEEDED(webView13->get_Profile(&profile)) && profile && SUCCEEDED(profile.As(&profile5)) && profile5) profile5->get_CookieManager(&manager); if (manager) return manager; Microsoft::WRL::ComPtr<ICoreWebView2_2> webView2; if (SUCCEEDED(instance->webView.As(&webView2)) && webView2) webView2->get_CookieManager(&manager); return manager; }
+    int EdgeView会话_删除全部Cookie实例(int instanceId) { auto manager = EdgeView会话_取Cookie管理器实例(instanceId); return manager && SUCCEEDED(manager->DeleteAllCookies()) ? 1 : 0; }
+    int EdgeView会话_批量置Cookie实例(int instanceId, const wchar_t* json) { auto manager = EdgeView会话_取Cookie管理器实例(instanceId); if (!manager || !json || !json[0]) { 调试输出(L"EdgeView会话_批量置Cookie实例：Cookie列表JSON 为空或 Cookie 管理器不可用。"); return 0; } std::wstring text(json); size_t position = 0; EdgeViewJSON节点 root; if (!EdgeViewJSON_解析值(text, position, root, 0) || root.type != 5) { 调试输出(L"EdgeView会话_批量置Cookie实例：JSON 解析失败，顶层必须是 Cookie 对象数组。"); return 0; } int applied = 0; for (const auto& element : root.elements) { if (element.type != 4) continue; if (EdgeViewCookie_应用(manager, EdgeViewCookie_读取规格(element))) ++applied; } return applied; }
+    int EdgeView会话_置Cookie带属性实例(int instanceId, const wchar_t* name, const wchar_t* value, const wchar_t* domain, const wchar_t* path, double expires, bool secure, bool httpOnly, int sameSite) { auto manager = EdgeView会话_取Cookie管理器实例(instanceId); EdgeViewCookie规格 spec; spec.name = name ? name : L""; spec.value = value ? value : L""; spec.domain = domain ? domain : L""; spec.path = path ? path : L""; spec.hasExpires = true; spec.expires = expires; spec.hasSecure = true; spec.secure = secure; spec.hasHttpOnly = true; spec.httpOnly = httpOnly; spec.hasSameSite = sameSite >= 0 && sameSite <= 2; spec.sameSite = spec.hasSameSite ? sameSite : 0; return EdgeViewCookie_应用(manager, spec) ? 1 : 0; }
+    long long EdgeView会话_取Cookie实例异步(int instanceId, const wchar_t* uri, const wchar_t* handler) { auto* instance = EdgeView_查找(instanceId); auto manager = EdgeView会话_取Cookie管理器实例(instanceId); auto task = EdgeView任务_新建(instance, handler); if (!task) return 0; if (!manager) { EdgeView任务_完成(task, E_NOINTERFACE, L""); return task->id; } HRESULT started = manager->GetCookies(uri ? uri : L"", Microsoft::WRL::Callback<ICoreWebView2GetCookiesCompletedHandler>([this, task](HRESULT error, ICoreWebView2CookieList* list) -> HRESULT { std::wstring json = L"["; UINT32 count = 0; if (SUCCEEDED(error) && list) list->get_Count(&count); for (UINT32 index = 0; index < count; ++index) { Microsoft::WRL::ComPtr<ICoreWebView2Cookie> cookie; list->GetValueAtIndex(index, &cookie); LPWSTR name = nullptr, value = nullptr, domain = nullptr, path = nullptr; double expires = -1; BOOL secure = FALSE, httpOnly = FALSE, session = TRUE; COREWEBVIEW2_COOKIE_SAME_SITE_KIND sameSiteMode = COREWEBVIEW2_COOKIE_SAME_SITE_KIND_LAX; if (cookie) { cookie->get_Name(&name); cookie->get_Value(&value); cookie->get_Domain(&domain); cookie->get_Path(&path); cookie->get_Expires(&expires); cookie->get_IsSecure(&secure); cookie->get_IsHttpOnly(&httpOnly); cookie->get_IsSession(&session); cookie->get_SameSite(&sameSiteMode); } if (index) json += L","; json += EdgeView_事件数据({{L"name", EdgeView_接管字符串(name)}, {L"value", EdgeView_接管字符串(value)}, {L"domain", EdgeView_接管字符串(domain)}, {L"path", EdgeView_接管字符串(path)}, {L"expires", std::to_wstring(expires)}, {L"secure", EdgeView_布尔值(secure)}, {L"httpOnly", EdgeView_布尔值(httpOnly)}, {L"isSession", EdgeView_布尔值(session)}, {L"sameSite", EdgeView_数值(static_cast<int>(sameSiteMode))}}); } json += L"]"; EdgeView任务_完成(task, error, json.c_str()); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }
+    long long EdgeView会话_清理全部浏览数据实例异步(int instanceId, const wchar_t* handler) { auto* instance = EdgeView_查找(instanceId); auto task = EdgeView任务_新建(instance, handler); Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile; Microsoft::WRL::ComPtr<ICoreWebView2Profile2> profile2; Microsoft::WRL::ComPtr<ICoreWebView2_13> webView13; if (!task) return 0; if (!instance || !instance->webView || FAILED(instance->webView.As(&webView13)) || !webView13 || FAILED(webView13->get_Profile(&profile)) || !profile || FAILED(profile.As(&profile2)) || !profile2) { EdgeView任务_完成(task, E_NOINTERFACE, L""); return task->id; } HRESULT started = profile2->ClearBrowsingDataAll(Microsoft::WRL::Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>([this, task](HRESULT error) -> HRESULT { EdgeView任务_完成(task, error, L"true"); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }
+    struct EdgeViewCookie规格 {
+        std::wstring name, value, domain, path;
+        bool hasExpires = false; double expires = -1.0;
+        bool hasSecure = false; bool secure = false;
+        bool hasHttpOnly = false; bool httpOnly = false;
+        bool hasSameSite = false; int sameSite = 0;
+    };
+    struct EdgeViewJSON节点 {
+        // 类型：0 null、1 字符串、2 数值、3 布尔、4 对象、5 数组。
+        int type = 0;
+        std::wstring text; double number = 0; bool boolean = false;
+        std::vector<std::pair<std::wstring, EdgeViewJSON节点>> members;
+        std::vector<EdgeViewJSON节点> elements;
+    };
+    static void EdgeViewJSON_跳过空白(const std::wstring& json, size_t& position) { while (position < json.size() && (json[position] == L' ' || json[position] == L'\t' || json[position] == L'\r' || json[position] == L'\n')) ++position; }
+    static bool EdgeViewJSON_读字符串(const std::wstring& json, size_t& position, std::wstring& result) {
+        if (position >= json.size() || json[position] != L'"') return false;
+        ++position; result.clear();
+        while (position < json.size()) {
+            wchar_t character = json[position++];
+            if (character == L'"') return true;
+            if (character != L'\\') { result.push_back(character); continue; }
+            if (position >= json.size()) return false;
+            wchar_t escape = json[position++];
+            if (escape == L'"' || escape == L'\\' || escape == L'/') result.push_back(escape);
+            else if (escape == L'n') result.push_back(L'\n');
+            else if (escape == L'r') result.push_back(L'\r');
+            else if (escape == L't') result.push_back(L'\t');
+            else if (escape == L'b') result.push_back(L'\b');
+            else if (escape == L'f') result.push_back(L'\f');
+            else if (escape == L'u') {
+                if (position + 4 > json.size()) return false;
+                int value = 0;
+                for (int digit = 0; digit < 4; ++digit) {
+                    wchar_t unit = json[position++];
+                    int base = unit >= L'0' && unit <= L'9' ? unit - L'0' : unit >= L'a' && unit <= L'f' ? unit - L'a' + 10 : unit >= L'A' && unit <= L'F' ? unit - L'A' + 10 : -1;
+                    if (base < 0) return false;
+                    value = value * 16 + base;
+                }
+                result.push_back(static_cast<wchar_t>(value));
+            }
+            else return false;
+        }
+        return false;
+    }
+    static bool EdgeViewJSON_读数值(const std::wstring& json, size_t& position, double& result) {
+        size_t start = position;
+        if (position < json.size() && (json[position] == L'-' || json[position] == L'+')) ++position;
+        while (position < json.size() && (iswdigit(json[position]) || json[position] == L'.' || json[position] == L'e' || json[position] == L'E' || json[position] == L'-' || json[position] == L'+')) ++position;
+        if (position == start) return false;
+        result = wcstod(json.substr(start, position - start).c_str(), nullptr);
+        return true;
+    }
+    static bool EdgeViewJSON_解析值(const std::wstring& json, size_t& position, EdgeViewJSON节点& node, int depth) {
+        if (depth > 12) return false;
+        EdgeViewJSON_跳过空白(json, position);
+        if (position >= json.size()) return false;
+        wchar_t head = json[position];
+        if (head == L'"') { node.type = 1; return EdgeViewJSON_读字符串(json, position, node.text); }
+        if (head == L'[') {
+            node.type = 5; ++position; EdgeViewJSON_跳过空白(json, position);
+            if (position < json.size() && json[position] == L']') { ++position; return true; }
+            while (position < json.size()) {
+                EdgeViewJSON节点 element;
+                if (!EdgeViewJSON_解析值(json, position, element, depth + 1)) return false;
+                node.elements.push_back(std::move(element));
+                EdgeViewJSON_跳过空白(json, position);
+                if (position < json.size() && json[position] == L',') { ++position; continue; }
+                if (position < json.size() && json[position] == L']') { ++position; return true; }
+                return false;
+            }
+            return false;
+        }
+        if (head == L'{') {
+            node.type = 4; ++position; EdgeViewJSON_跳过空白(json, position);
+            if (position < json.size() && json[position] == L'}') { ++position; return true; }
+            while (position < json.size()) {
+                std::wstring key;
+                EdgeViewJSON_跳过空白(json, position);
+                if (!EdgeViewJSON_读字符串(json, position, key)) return false;
+                EdgeViewJSON_跳过空白(json, position);
+                if (position >= json.size() || json[position] != L':') return false;
+                ++position;
+                EdgeViewJSON节点 value;
+                if (!EdgeViewJSON_解析值(json, position, value, depth + 1)) return false;
+                node.members.emplace_back(std::move(key), std::move(value));
+                EdgeViewJSON_跳过空白(json, position);
+                if (position < json.size() && json[position] == L',') { ++position; continue; }
+                if (position < json.size() && json[position] == L'}') { ++position; return true; }
+                return false;
+            }
+            return false;
+        }
+        if (json.compare(position, 4, L"true") == 0) { node.type = 3; node.boolean = true; position += 4; return true; }
+        if (json.compare(position, 5, L"false") == 0) { node.type = 3; node.boolean = false; position += 5; return true; }
+        if (json.compare(position, 4, L"null") == 0) { node.type = 0; position += 4; return true; }
+        node.type = 2; return EdgeViewJSON_读数值(json, position, node.number);
+    }
+    static const EdgeViewJSON节点* EdgeViewJSON_取成员(const EdgeViewJSON节点& node, const wchar_t* key) { if (node.type != 4) return nullptr; for (const auto& member : node.members) { if (member.first == key) return &member.second; } return nullptr; }
+    static bool EdgeViewCookie_应用(const Microsoft::WRL::ComPtr<ICoreWebView2CookieManager>& manager, const EdgeViewCookie规格& spec) {
+        if (!manager || spec.name.empty() || spec.domain.empty()) return false;
+        Microsoft::WRL::ComPtr<ICoreWebView2Cookie> cookie;
+        if (FAILED(manager->CreateCookie(spec.name.c_str(), spec.value.c_str(), spec.domain.c_str(), spec.path.empty() ? L"/" : spec.path.c_str(), &cookie)) || !cookie) return false;
+        if (spec.hasExpires) cookie->put_Expires(spec.expires);
+        if (spec.hasSecure) cookie->put_IsSecure(spec.secure ? TRUE : FALSE);
+        if (spec.hasHttpOnly) cookie->put_IsHttpOnly(spec.httpOnly ? TRUE : FALSE);
+        if (spec.hasSameSite) cookie->put_SameSite(static_cast<COREWEBVIEW2_COOKIE_SAME_SITE_KIND>(spec.sameSite));
+        return SUCCEEDED(manager->AddOrUpdateCookie(cookie.Get()));
+    }
+    static EdgeViewCookie规格 EdgeViewCookie_读取规格(const EdgeViewJSON节点& element) {
+        EdgeViewCookie规格 spec; const EdgeViewJSON节点* field = nullptr;
+        if ((field = EdgeViewJSON_取成员(element, L"name")) && field->type == 1) spec.name = field->text;
+        if ((field = EdgeViewJSON_取成员(element, L"value")) && field->type == 1) spec.value = field->text;
+        if ((field = EdgeViewJSON_取成员(element, L"domain")) && field->type == 1) spec.domain = field->text;
+        if ((field = EdgeViewJSON_取成员(element, L"path")) && field->type == 1) spec.path = field->text;
+        if ((field = EdgeViewJSON_取成员(element, L"expires")) && field->type == 2) { spec.hasExpires = true; spec.expires = field->number; }
+        if ((field = EdgeViewJSON_取成员(element, L"secure")) && field->type == 3) { spec.hasSecure = true; spec.secure = field->boolean; }
+        if ((field = EdgeViewJSON_取成员(element, L"httpOnly")) && field->type == 3) { spec.hasHttpOnly = true; spec.httpOnly = field->boolean; }
+        if ((field = EdgeViewJSON_取成员(element, L"sameSite")) && field->type == 2 && field->number >= 0 && field->number <= 2) { spec.hasSameSite = true; spec.sameSite = static_cast<int>(field->number); }
+        return spec;
+    }
+    int EdgeView会话_置Cookie带属性(const wchar_t* controlName, const wchar_t* name, const wchar_t* value, const wchar_t* domain, const wchar_t* path, double expires, bool secure, bool httpOnly, int sameSite) {
+        auto manager = EdgeView会话_取Cookie管理器(controlName);
+        EdgeViewCookie规格 spec;
+        spec.name = name ? name : L""; spec.value = value ? value : L""; spec.domain = domain ? domain : L""; spec.path = path ? path : L"";
+        spec.hasExpires = true; spec.expires = expires;
+        spec.hasSecure = true; spec.secure = secure;
+        spec.hasHttpOnly = true; spec.httpOnly = httpOnly;
+        spec.hasSameSite = sameSite >= 0 && sameSite <= 2; spec.sameSite = spec.hasSameSite ? sameSite : 0;
+        return EdgeViewCookie_应用(manager, spec) ? 1 : 0;
+    }
+    int EdgeView会话_批量置Cookie(const wchar_t* controlName, const wchar_t* json) {
+        auto manager = EdgeView会话_取Cookie管理器(controlName);
+        if (!manager || !json || !json[0]) { 调试输出(L"EdgeView会话_批量置Cookie：Cookie列表JSON 为空或 Cookie 管理器不可用。"); return 0; }
+        std::wstring text(json); size_t position = 0; EdgeViewJSON节点 root;
+        if (!EdgeViewJSON_解析值(text, position, root, 0) || root.type != 5) { 调试输出(L"EdgeView会话_批量置Cookie：JSON 解析失败，顶层必须是 Cookie 对象数组。"); return 0; }
+        int applied = 0;
+        for (const auto& element : root.elements) { if (element.type != 4) continue; if (EdgeViewCookie_应用(manager, EdgeViewCookie_读取规格(element))) ++applied; }
+        return applied;
+    }
     long long EdgeView会话_清理浏览数据异步(const wchar_t* controlName, long long kinds, const wchar_t* handler) { auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile; Microsoft::WRL::ComPtr<ICoreWebView2Profile2> profile2; if (!task) return 0; if (!EdgeView会话_取Profile(controlName, profile) || FAILED(profile.As(&profile2)) || !profile2) { EdgeView任务_完成(task, E_NOINTERFACE, L""); return task->id; } HRESULT started = profile2->ClearBrowsingData(static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(kinds), Microsoft::WRL::Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>([this, task](HRESULT error) -> HRESULT { EdgeView任务_完成(task, error, L"true"); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }
     long long EdgeView会话_清理全部浏览数据异步(const wchar_t* controlName, const wchar_t* handler) { auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile; Microsoft::WRL::ComPtr<ICoreWebView2Profile2> profile2; if (!task) return 0; if (!EdgeView会话_取Profile(controlName, profile) || FAILED(profile.As(&profile2)) || !profile2) { EdgeView任务_完成(task, E_NOINTERFACE, L""); return task->id; } HRESULT started = profile2->ClearBrowsingDataAll(Microsoft::WRL::Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>([this, task](HRESULT error) -> HRESULT { EdgeView任务_完成(task, error, L"true"); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }
     long long EdgeView会话_按时间清理浏览数据异步(const wchar_t* controlName, long long kinds, double startTime, double endTime, const wchar_t* handler) { auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile; Microsoft::WRL::ComPtr<ICoreWebView2Profile2> profile2; if (!task) return 0; if (startTime > endTime || !EdgeView会话_取Profile(controlName, profile) || FAILED(profile.As(&profile2)) || !profile2) { EdgeView任务_完成(task, E_INVALIDARG, L""); return task->id; } HRESULT started = profile2->ClearBrowsingDataInTimeRange(static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(kinds), startTime, endTime, Microsoft::WRL::Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>([this, task](HRESULT error) -> HRESULT { EdgeView任务_完成(task, error, L"true"); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }

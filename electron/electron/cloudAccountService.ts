@@ -11,6 +11,10 @@ export class CloudAccountService {
   async initialize() { this.refreshToken = await this.readRefresh(); if (this.refreshToken) await this.refresh().catch(() => this.clear()); }
   async register(email: string, password: string) { return await this.publicRequest('/v1/auth/register', { email, password }); }
   async verifyEmail(token: string) { return await this.publicRequest('/v1/auth/verify-email', { token }); }
+  /** 找回密码第 1 步：云端按邮箱发送重置令牌（30 分钟有效）；无论邮箱是否存在都返回 ok。 */
+  async forgotPassword(email: string) { return await this.publicRequest('/v1/auth/password/forgot', { email }); }
+  /** 找回密码第 2 步：凭邮件令牌设置新密码；成功后云端吊销全部登录会话。 */
+  async resetPassword(token: string, password: string) { return await this.publicRequest('/v1/auth/password/reset', { token, password }); }
   async login(email: string, password: string) { const value = await this.publicRequest('/v1/auth/login', { email, password, deviceName: 'LingBuilder IDE' }); await this.acceptTokens(value, email); return await this.snapshot(); }
   async logout() { if (this.refreshToken) await this.publicRequest('/v1/auth/logout', { refreshToken: this.refreshToken }).catch(() => undefined); await this.clear(); return { ok: true }; }
   async snapshot(): Promise<CloudSessionSnapshot> {

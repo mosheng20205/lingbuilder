@@ -1,4 +1,4 @@
-import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
+import { LingBuilderModuleManifest, ModuleCommandValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
 import { SQLITE_MODULE } from './sqliteModule';
@@ -12,12 +12,15 @@ export const CRYPTO_SDK_MODULE_IDS = [
   'lingbuilder.crypto.asymmetric'
 ] as const;
 
-type Parameter = { name: string; type: ModuleBindingValueType; description: string };
-type CommandOptions = Pick<StandardCommandSpec, 'example' | 'returnDescription' | 'visibility'>;
+type Parameter = { name: string; type: ModuleCommandValueType; description: string; optional?: boolean; defaultValue?: string | number | boolean };
+type CommandOptions = Pick<StandardCommandSpec, 'category' | 'example' | 'returnDescription' | 'visibility'>;
 
 // 以下说明按 dataMediaRuntime.ts 与 cryptoRuntime.ts 的实际实现核实，重复语义提取为共享常量。
 const csvFieldArg = '要写入 CSV 单元格的原始文本；含逗号、双引号、回车或换行时会自动加外层引号，内部引号翻倍。';
-const csvLineArg = '待解析的一行 CSV 文本；按引号识别字段，不跨行解析多行记录。';
+const csvLineArg = '待解析的一行 CSV 文本；按引号识别字段，不跨行解析多行记录，含换行的字段请改用 CSV_打开文件 或 CSV_解析文本。';
+const csvEncodingArg = '文件编码名称，忽略大小写与空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030，传 AUTO 按「BOM → 严格 UTF-8 → GB18030」自动识别。省略等价于 AUTO。';
+const csvDelimiterArg = '字段分隔符，取首字符生效；支持半角逗号、分号、竖线、制表符（写 "\\t" 或真实制表符）和全角逗号。省略按半角逗号。';
+const csvHeaderArg = '传真表示第一条记录是表头行，列名取自表头，缺名列按 列N 补齐；传假时全部记录都算数据，列名统一为 列N。';
 const imagePathArg = '图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。';
 const targetImageArg = '输出图片路径；保存格式按扩展名识别 png、jpg、jpeg、bmp、gif、tif、tiff，无法识别时按 PNG 保存。';
 const iconFileArg = '含图标的 EXE、DLL 或 ICO 文件路径。';
@@ -35,22 +38,89 @@ const privatePemArg = 'PKCS#8 格式的 PEM 私钥文本；必须与算法和位
 const publicPemArg = 'X.509 格式的 PEM 公钥文本；算法必须与密钥类型一致，解析失败返回空文本并记录中文错误。';
 const base64CipherArg = '对应 加密命令 返回的 Base64 密文文本；被改动或密钥不匹配时解密失败返回空文本。';
 const base64SignatureArg = '对应 签名命令 返回的 Base64 签名文本；被改动时验签返回假。';
-function command(name: string, parameters: Parameter[], returnType: ModuleBindingValueType, description: string, options: CommandOptions | string = {}): StandardCommandSpec {
-  const args = parameters.map((parameter, index) => parameter.type === 'controlRef' || parameter.type === 'handler'
+// 裸 AEAD 变体：全部走字节集，随机数由调用方提供，密文不含任何自描述头，用于兼容 Chromium 等外部格式。
+const rawKeyArg = (bytes: string) => `必须恰好 ${bytes} 字节的原始密钥字节集；不要用 对称_生成密钥 的十六进制文本，需要时先 字节集_十六进制解码。`;
+const rawNonceArg = '必须恰好 12 字节的随机数字节集，由调用方提供，命令不会自动生成或写入头部；长度不符直接返回空字节集。';
+const rawAadArg = '参与认证但不加密的附加数据字节集；不需要附加数据时传空字节集。';
+const rawCipherArg = () => `密文与认证标签连成一体的字节集，形如 密文 || 标签(16 字节)，即同名 加密裸 命令的原始返回值；Chromium 的 encrypted_value 需先去掉 3 字节 "v10" 头和 12 字节随机数再传入。长度不足 16 字节时返回空字节集。`;
+const rawEncryptTail = (displayName: string) => `使用 ${displayName} 加密原始字节集，返回 密文 || 标签(16 字节) 的裸格式；不含算法名、不自动加随机数，也不做 UTF-8 或 Base64 转换。需要自描述封装时改用同名的非 裸 命令。`;
+const rawDecryptTail = (displayName: string, keyBytes: string) => `使用 ${displayName} 解密 ${keyBytes} 字节密钥保护的裸 密文 || 标签(16 字节)，返回原始明文字节集；标签校验失败、长度不符或密钥字节数不对都返回空字节集，用 对称_取错误 查看原因。`;
+const rawEncryptExample = (suffix: string) => `局部 字节集 密文与标签\n密文与标签 = 对称_${suffix}GCM加密裸(密钥, 随机数, 明文字节集, 空附加数据)`;
+function command(name: string, parameters: Parameter[], returnType: ModuleCommandValueType, description: string, options: CommandOptions | string = {}): StandardCommandSpec {
+  const args = parameters.map((parameter, index) => parameter.type === 'controlRef' || parameter.type === 'handler' || parameter.type === 'bytes'
     ? createModuleBindingSnippetArgument(parameter, index)
     : parameter.type === 'wideString' || parameter.type === 'utf8String' ? `"$${index + 1}"` : parameter.type === 'bool' ? '假' : '0');
   const normalizedOptions = typeof options === 'string' ? { example: options } : options;
   return { name, signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`, description, insertText: `${name}(${args.join(', ')})`, parameters, returnType, ...normalizedOptions };
 }
 
+const csvTable = (description = '由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。'): Parameter => ({
+  name: '表格',
+  type: '表格数据',
+  description
+});
+const csvRow: Parameter = { name: '行号', type: 'int', description: '数据行号，从 1 起；不含表头行，越界返回空值并用 数据表_取错误 查看原因。' };
+const csvColumn: Parameter = { name: '列号', type: 'int', description: '列号，从 1 起；越界返回空值并用 数据表_取错误 查看原因。' };
+
 const csv = createStandardModule({
-  id: 'lingbuilder.data.csv', name: 'CSV数据模块', category: '其他', description: '提供 RFC 4180 风格的 CSV 字段转义、行生成和字段读取。', tags: ['数据', 'CSV'],
+  id: 'lingbuilder.data.csv',
+  name: 'CSV数据模块',
+  version: '1.1.0',
+  category: '其他',
+  description: 'RFC 4180 风格 CSV：字段转义与行生成、按文件整体读取、记录级解析（支持引号内换行、双写引号、CRLF/CR/LF、自定义分隔符、空行跳过）与 UTF-8/GBK/GB18030/UTF-16/UTF-32 编码自动识别；解析结果用 表格数据 快照按行列读取。',
+  tags: ['数据', 'CSV', '表格', '导入', '编码'],
+  types: [
+    { name: '表格数据', description: '进程内不复用的受管表格快照 ID；不暴露内部字符串数组指针。', cppType: 'long long' }
+  ],
+  docs: [{ title: 'CSV 数据模块 1.1 使用说明', path: 'docs/modules/csv/README.md' }],
+  snippets: [
+    {
+      label: 'CSV 读取表格快照',
+      description: '按文件读取 CSV（中文文件用 GBK 或 AUTO），逐行逐列读取并释放的骨架。',
+      insertText: [
+        '局部 表格数据 表 = CSV_打开文件("$1", "AUTO")',
+        '如果 (表 != 0)',
+        '    局部 整数型 行数 = 数据表_行数(表)',
+        '    局部 整数型 列数 = 数据表_列数(表)',
+        '    局部 整数型 类型 = 数据表_单元格类型(表, 1, 1)',
+        '    调试输出(数据表_列名(表, 1))',
+        '    调试输出(数据表_取文本(表, 1, 1))',
+        '    数据表_关闭(表)',
+        '否则',
+        '    调试输出(数据表_取错误())',
+        '如果结束'
+      ].join('\n')
+    }
+  ],
   commands: [
     command('CSV_转义字段', [{ name: '字段', type: 'wideString', description: csvFieldArg}], 'wideString', '按需添加双引号并转义字段。'),
     command('CSV_生成两列', [{ name: '第一列', type: 'wideString', description: csvFieldArg}, { name: '第二列', type: 'wideString', description: csvFieldArg}], 'wideString', '生成包含两个字段的一行 CSV。'),
     command('CSV_生成三列', [{ name: '第一列', type: 'wideString', description: csvFieldArg}, { name: '第二列', type: 'wideString', description: csvFieldArg}, { name: '第三列', type: 'wideString', description: csvFieldArg}], 'wideString', '生成包含三个字段的一行 CSV。'),
     command('CSV_字段数量', [{ name: '行文本', type: 'wideString', description: csvLineArg}], 'int', '解析一行 CSV 并返回字段数。'),
-    command('CSV_取字段', [{ name: '行文本', type: 'wideString', description: csvLineArg}, { name: '索引', type: 'int', description: '字段序号，从 0 起；越界返回空文本。'}], 'wideString', '按从 0 开始索引读取字段。')
+    command('CSV_取字段', [{ name: '行文本', type: 'wideString', description: csvLineArg}, { name: '索引', type: 'int', description: '字段序号，从 0 起；越界返回空文本。'}], 'wideString', '按从 0 开始索引读取字段。'),
+    // ---------- 文件级与记录级读取 ----------
+    command('CSV_打开文件', [
+      { name: '文件路径', type: 'wideString', description: '要读取的 CSV 文件完整路径；打不开时返回 0，原因见 数据表_取错误。' },
+      { name: '编码名称', type: 'wideString', optional: true, defaultValue: 'AUTO', description: csvEncodingArg },
+      { name: '分隔符', type: 'wideString', optional: true, defaultValue: ',', description: csvDelimiterArg },
+      { name: '含表头', type: 'bool', optional: true, defaultValue: true, description: csvHeaderArg }
+    ], '表格数据', '按整个文件读取 CSV 并返回 表格数据 快照；引号内的换行属于字段内容，不会被当成换行。', '局部 表格数据 表\n表 = CSV_打开文件("员工.csv")\n如果 (表 != 0)\n    调试输出(数据表_取文本(表, 1, 1))\n    数据表_关闭(表)\n如果结束'),
+    command('CSV_解析文本', [
+      { name: 'CSV文本', type: 'wideString', description: '已经含全部记录的 CSV 文本，可以跨多行；通常来自 文件_读取文本。' },
+      { name: '分隔符', type: 'wideString', optional: true, defaultValue: ',', description: csvDelimiterArg },
+      { name: '含表头', type: 'bool', optional: true, defaultValue: true, description: csvHeaderArg }
+    ], '表格数据', '把多行 CSV 文本解析成 表格数据 快照；用于内容已在内存里的场景。'),
+    command('数据表_取错误', [], 'wideString', '返回当前线程最近一次表格操作失败的中文说明；每次进入 数据表_ 或 CSV_ 命令时清空。', { category: '诊断' }),
+    command('数据表_行数', [csvTable()], 'int', '返回数据行数量，不含表头行；句柄无效返回 0。'),
+    command('数据表_列数', [csvTable()], 'int', '返回列数量，取所有记录的最大宽度；句柄无效返回 0。'),
+    command('数据表_列名', [csvTable(), { name: '列号', type: 'int', description: '列号，从 1 起；越界返回空文本。' }], 'wideString', '返回指定列的名称；无表头或表头缺名时为 列N。'),
+    command('数据表_取文本', [csvTable(), csvRow, csvColumn], 'wideString', '按行列读取单元格文本；越界返回空文本。'),
+    command('数据表_单元格类型', [csvTable(), csvRow, csvColumn], 'int', '返回单元格内容形态：0=空，1=整数，2=小数，3=布尔，4=文本；用于决定建表列类型与绑定哪个取值命令。'),
+    command('数据表_取整数', [csvTable(), csvRow, csvColumn], 'longLong', '把单元格按 64 位整数读取；内容不是整数时返回 0 并记录中文错误。'),
+    command('数据表_取小数', [csvTable(), csvRow, csvColumn], 'double', '把单元格按双精度小数读取；内容不是小数时返回 0 并记录中文错误。'),
+    command('数据表_取布尔', [csvTable(), csvRow, csvColumn], 'bool', '把单元格读取为逻辑值：TRUE/真/1/YES/是 为真，FALSE/假/0/NO/否 为假，其它内容按假。'),
+    command('数据表_单元格为空', [csvTable(), csvRow, csvColumn], 'bool', '判断单元格是否为空文本或越界；越界同样返回真。'),
+    command('数据表_关闭', [csvTable('由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照；关闭后句柄立即失效。')], 'bool', '释放表格快照；句柄不存在或重复关闭返回假。')
   ]
 });
 
@@ -114,7 +184,7 @@ const symmetricAlgorithms: readonly SymmetricSpec[] = [
 ];
 
 const symmetric = createStandardModule({
-  id: 'lingbuilder.crypto.symmetric', name: '对称加密模块', category: '系统', description: '提供认证加密、传统分组加密和兼容流加密；密钥统一使用严格十六进制文本，密文使用带算法和随机数的自描述封装。', tags: ['安全', 'AES-GCM', 'ChaCha20', 'SM4', '对称加密'],
+  id: 'lingbuilder.crypto.symmetric', name: '对称加密模块', category: '系统', description: '提供认证加密、传统分组加密和兼容流加密；普通命令密钥使用严格十六进制文本、密文使用带算法和随机数的自描述封装，带 裸 后缀的 AES-GCM 命令密钥/随机数/密文全部使用字节集且不含自描述头，用于兼容 Chromium 等外部密文格式。', tags: ['安全', 'AES-GCM', 'ChaCha20', 'SM4', '对称加密'],
   commands: [
     command('对称_生成密钥', [{ name: '字节数', type: 'int', description: '密钥字节数，范围 1～1024。' }], 'wideString', '使用系统密码学随机源生成大写十六进制密钥。', { example: '对称_生成密钥(32)' }),
     ...symmetricAlgorithms.flatMap(([suffix, displayName, authenticated, keyBytes, legacy]) => {
@@ -125,6 +195,10 @@ const symmetric = createStandardModule({
         command(`对称_${suffix}解密`, [{ name: '自描述密文', type: 'wideString', description: selfCipherArg }, { name: '密钥十六进制', type: 'wideString', description: `必须恰好为 ${keyBytes} 字节的十六进制密钥。` }, ...extra], 'wideString', `解密 ${displayName} 自描述密文。认证或格式失败时返回空文本并记录错误。${warning}`, { visibility: legacy ? 'advanced' : 'default' })
       ];
     }),
+    command('对称_AES256GCM加密裸', [{ name: '密钥', type: 'bytes', description: rawKeyArg('32') }, { name: '随机数', type: 'bytes', description: rawNonceArg }, { name: '明文', type: 'bytes', description: '要加密的原始字节集，原样参与运算，不做 UTF-8 转换；空字节集只输出 16 字节标签。' }, { name: '附加数据', type: 'bytes', description: rawAadArg }], 'bytes', rawEncryptTail('AES-256-GCM'), { example: rawEncryptExample('AES256') }),
+    command('对称_AES256GCM解密裸', [{ name: '密钥', type: 'bytes', description: rawKeyArg('32') }, { name: '随机数', type: 'bytes', description: rawNonceArg }, { name: '密文与标签', type: 'bytes', description: rawCipherArg() }, { name: '附加数据', type: 'bytes', description: rawAadArg }], 'bytes', rawDecryptTail('AES-256-GCM', '32'), { example: '局部 字节集 明文\n明文 = 对称_AES256GCM解密裸(密钥, 随机数, 密文与标签, 空附加数据)' }),
+    command('对称_AES128GCM加密裸', [{ name: '密钥', type: 'bytes', description: rawKeyArg('16') }, { name: '随机数', type: 'bytes', description: rawNonceArg }, { name: '明文', type: 'bytes', description: '要加密的原始字节集，原样参与运算，不做 UTF-8 转换；空字节集只输出 16 字节标签。' }, { name: '附加数据', type: 'bytes', description: rawAadArg }], 'bytes', rawEncryptTail('AES-128-GCM'), { example: rawEncryptExample('AES128') }),
+    command('对称_AES128GCM解密裸', [{ name: '密钥', type: 'bytes', description: rawKeyArg('16') }, { name: '随机数', type: 'bytes', description: rawNonceArg }, { name: '密文与标签', type: 'bytes', description: rawCipherArg() }, { name: '附加数据', type: 'bytes', description: rawAadArg }], 'bytes', rawDecryptTail('AES-128-GCM', '16'), { example: '局部 字节集 明文\n明文 = 对称_AES128GCM解密裸(密钥, 随机数, 密文与标签, 空附加数据)' }),
     command('对称_RC2CBC加密', [{ name: '明文', type: 'wideString', description: '按 UTF-8 编码的明文。' }, { name: '密钥十六进制', type: 'wideString', description: '必须恰好为 16 字节的十六进制密钥。' }], 'wideString', '使用 Windows CryptoAPI RC2-128/CBC 加密并返回自描述密文。该算法仅用于兼容旧数据，新项目不要使用。', { visibility: 'advanced' }),
     command('对称_RC2CBC解密', [{ name: '自描述密文', type: 'wideString', description: selfCipherArg }, { name: '密钥十六进制', type: 'wideString', description: '必须恰好为 16 字节的十六进制密钥。' }], 'wideString', '解密 RC2-128/CBC 自描述密文。该算法仅用于兼容旧数据，新项目不要使用。', { visibility: 'advanced' }),
     command('对称_取错误', [], 'wideString', '读取最近一次对称加密或解密失败的中文错误。')
@@ -165,12 +239,14 @@ const asymmetric = createStandardModule({
 });
 
 const crypto = createStandardModule({
-  id: 'lingbuilder.crypto.windows', name: 'Windows数据保护模块', category: '系统', description: '使用当前 Windows 用户的 DPAPI 保护和还原文本，不暴露密钥。', tags: ['安全', 'DPAPI'],
+  id: 'lingbuilder.crypto.windows', name: 'Windows数据保护模块', category: '系统', description: '使用当前 Windows 用户的 DPAPI 保护文本和原始字节集，不暴露密钥。', tags: ['安全', 'DPAPI'],
   commands: [
     command('数据保护_加密文本', [{ name: '文本', type: 'wideString', description: '要保护的文本，按 UTF-8 加密后返回 Base64；密文只能在本机当前 Windows 用户下解开。'}], 'wideString', '使用当前用户 DPAPI 加密 UTF-8 文本并返回 Base64。'),
     command('数据保护_解密文本', [{ name: 'Base64密文', type: 'wideString', description: '数据保护_加密文本 返回的 Base64 密文，必须是 4 的倍数长度的合法 Base64；跨用户或跨机器解密会失败并返回空文本。'}], 'wideString', '解密当前用户 DPAPI Base64 密文。'),
+    command('数据保护_加密字节集', [{ name: '数据', type: 'bytes', description: '要保护的原始字节集，内容原样送入 DPAPI，不做 Base64 也不做 UTF-8 解释；适合随机密钥等非文本二进制数据。空字节集返回空字节集。'}], 'bytes', '使用当前用户 DPAPI 加密原始字节集，返回未经 Base64 包装的密文字节集。', { example: '数据保护_加密字节集(密钥字节集)' }),
+    command('数据保护_解密字节集', [{ name: '密文', type: 'bytes', description: 'DPAPI 原始密文字节集，不需要 Base64。开头若为 ASCII "DPAPI" 5 字节（Chromium Local State 中 os_crypt.encrypted_key 去掉 Base64 后的形态），会自动剥离再解密；跨用户、跨机器或密文被改动时返回空字节集。'}], 'bytes', '解密 DPAPI 原始密文字节集并返回原始明文字节集，不做 UTF-8 解释；自动剥离 Chromium 的 "DPAPI" 前缀。二进制密钥必须用本命令，不要用 数据保护_解密文本。', { example: '局部 字节集 主密钥\n主密钥 = 数据保护_解密字节集(去前缀密文)' }),
     command('数据保护_机器级加密文本', [{ name: '文本', type: 'wideString', description: '要保护的文本，按 UTF-8 用本机范围 DPAPI 加密；同机任意用户可解，仅限非个人敏感数据。'}], 'wideString', '使用本机范围 DPAPI 加密文本。'),
-    command('数据保护_取错误', [], 'wideString', '返回最近数据保护错误。')
+    command('数据保护_取错误', [], 'wideString', '返回最近一次文本或字节集数据保护命令的中文错误。')
   ]
 });
 

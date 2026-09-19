@@ -29,6 +29,7 @@ import {
   getModulePublicTypeKind,
   getModuleRecordDataTypes
 } from '../modules/modulePublicTypeService';
+import { getEnabledModuleConstantDiagnostics, getModuleConstants, type LingCppModuleConstant } from '../modules/moduleConstantService';
 import { parseLingCppControlFlowLine } from '../lingCpp/controlFlow';
 import { parseLingCppTextBlockStatement } from '../lingCpp/textBlock';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from '../lingCpp/parameterTypeService';
@@ -44,6 +45,7 @@ import { BUILTIN_LIBRARY_COMMON_RUNTIME, generateStandardLibraryRuntime } from '
 import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
+import { generateSharedTableRuntime } from './tabularSourceRuntime';
 import { generateComWindowMethods, generateComWndProcCase, generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { MEMORY_DLL_MODULE_ID, MEMORY_DLL_REQUIRED_MODULE_HINT } from './memoryDllRuntime';
 import { buildEmbeddedResourceRcLines, getEmbeddedResourceSpecs, getEmbeddedResourceSpecsOrEmpty, validateEmbeddedResources } from './embeddedResourceService';
@@ -622,6 +624,10 @@ function aggregateLingCppProjectSources(
   const globalNames = new Set<string>();
   const moduleRecordTypes = getModuleRecordDataTypes(enabledModules);
   getEnabledModuleStructuredTypeDiagnostics({ enabledModules }).forEach(message => {
+    diagnostics.push(message);
+    blockingDiagnostics.push(message);
+  });
+  getEnabledModuleConstantDiagnostics({ enabledModules }).forEach(message => {
     diagnostics.push(message);
     blockingDiagnostics.push(message);
   });
@@ -2208,6 +2214,7 @@ function generateNewEmojiMainCpp(
   const httpClientGlobalMethodDeclarations = generateHttpClientGlobalMethodDeclarations(enabledModules);
   const httpClientGlobalMethods = generateHttpClientGlobalMethods(enabledModules);
   const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const sharedTableRuntime = generateSharedTableRuntime(enabledModules.map(module => module.manifest.id));
   const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
   const httpServerGlobalMethods = generateHttpServerGlobalMethods(enabledModules);
   const webSocketClientRuntime = generateWebSocketClientRuntime(enabledModules);
@@ -2941,6 +2948,8 @@ using LB_FBRO_HANDLE = UINT_PTR;
 #endif
 
 ${builtinLibraryCommonRuntime}
+
+${sharedTableRuntime}
 
 ${projectDataTypesDefinition}
 
@@ -6205,9 +6214,9 @@ static long long FBro框架_遍历DOM(long long frame, int maxDepth, int maxNode
     wchar_t error[1024] = {};
     if (task) LB_FBro_TaskGetError(task, error, 1024);
     LB_FBro_TaskRelease(task);
-    if (!completed || error[0]) { 调试输出(std::wstring(L"FBro框架_遍历DOM失败：") + (error[0] ? error : L"任务未在时限内完成").c_str()); return 0; }
+    if (!completed || error[0]) { 调试输出((std::wstring(L"FBro框架_遍历DOM失败：") + (error[0] ? std::wstring(error) : std::wstring(L"任务未在时限内完成"))).c_str()); return 0; }
     const wchar_t* marker = wcsstr(value, L"\"snapshot\":");
-    if (!marker) { 调试输出(std::wstring(L"FBro框架_遍历DOM返回异常：") + value).c_str(); return 0; }
+    if (!marker) { 调试输出((std::wstring(L"FBro框架_遍历DOM返回异常：") + value).c_str()); return 0; }
     return static_cast<long long>(wcstoll(marker + 11, nullptr, 10));
 #else
     (void)frame; (void)maxDepth; (void)maxNodes; return 0;
@@ -6223,7 +6232,7 @@ static int FBro遍历_按路径设属性(long long frame, const wchar_t* pathJso
     wchar_t error[1024] = {};
     if (task) LB_FBro_TaskGetError(task, error, 1024);
     LB_FBro_TaskRelease(task);
-    if (!completed || error[0]) { 调试输出(std::wstring(L"FBro遍历_按路径设属性失败：") + (error[0] ? error : L"任务未在时限内完成").c_str()); return 0; }
+    if (!completed || error[0]) { 调试输出((std::wstring(L"FBro遍历_按路径设属性失败：") + (error[0] ? std::wstring(error) : std::wstring(L"任务未在时限内完成"))).c_str()); return 0; }
     return result[0] == L'1' ? 1 : 0;
 #else
     (void)frame; (void)pathJson; (void)name; (void)value; return 0;
@@ -6239,7 +6248,7 @@ static int FBro遍历_按路径赋值(long long frame, const wchar_t* pathJson, 
     wchar_t error[1024] = {};
     if (task) LB_FBro_TaskGetError(task, error, 1024);
     LB_FBro_TaskRelease(task);
-    if (!completed || error[0]) { 调试输出(std::wstring(L"FBro遍历_按路径赋值失败：") + (error[0] ? error : L"任务未在时限内完成").c_str()); return 0; }
+    if (!completed || error[0]) { 调试输出((std::wstring(L"FBro遍历_按路径赋值失败：") + (error[0] ? std::wstring(error) : std::wstring(L"任务未在时限内完成"))).c_str()); return 0; }
     return result[0] == L'1' ? 1 : 0;
 #else
     (void)frame; (void)pathJson; (void)value; return 0;
@@ -6254,9 +6263,9 @@ static long long FBro会话_创建上下文(const wchar_t* settingsJson) {
     wchar_t contextError[1024] = {};
     if (task) LB_FBro_TaskGetError(task, contextError, 1024);
     LB_FBro_TaskRelease(task);
-    if (contextError[0]) { 调试输出(std::wstring(L"FBro会话_创建上下文失败：") + contextError).c_str(); return 0; }
+    if (contextError[0]) { 调试输出((std::wstring(L"FBro会话_创建上下文失败：") + contextError).c_str()); return 0; }
     const wchar_t* marker = wcsstr(value, L"\"context\":");
-    if (!marker) { 调试输出(std::wstring(L"FBro会话_创建上下文返回异常：") + value).c_str(); return 0; }
+    if (!marker) { 调试输出((std::wstring(L"FBro会话_创建上下文返回异常：") + value).c_str()); return 0; }
     return static_cast<long long>(wcstoll(marker + 10, nullptr, 10));
 #else
     (void)settingsJson; return 0;
@@ -6681,6 +6690,9 @@ static bool 浏览器外壳_选择列表键(const std::wstring& selectedKeysJson
 static bool 浏览器外壳_新建标签页(const std::wstring& stableId, const std::wstring& address, const std::wstring& title);
 static bool 浏览器外壳_新建独立实例(const std::wstring& stableId, const std::wstring& address,
                                          const std::wstring& title, const std::wstring& profileDirectory);
+static bool 浏览器外壳_新建独立实例代理(const std::wstring& stableId, const std::wstring& address,
+                                         const std::wstring& title, const std::wstring& profileDirectory,
+                                         const std::wstring& proxyServer, const std::wstring& userAgent);
 static bool 浏览器外壳_关闭标签页(const std::wstring& stableId);
 static bool 浏览器外壳_关闭实例(const std::wstring& stableId);
 static bool 浏览器外壳_重新打开实例(const std::wstring& stableId);
@@ -6781,8 +6793,9 @@ static bool 浏览器外壳_新建标签页(const std::wstring& stableId, const 
     return true;
 }
 
-static bool 浏览器外壳_新建独立实例(const std::wstring& stableId, const std::wstring& address,
-                                         const std::wstring& title, const std::wstring& profileDirectory) {
+static bool 浏览器外壳_新建独立实例内部(const std::wstring& stableId, const std::wstring& address,
+                                         const std::wstring& title, const std::wstring& profileDirectory,
+                                         const std::wstring& proxyServer, const std::wstring& userAgent) {
     if (stableId.empty() || g_newEmojiFbroShell.viewportElementId <= 0 || LB_NE_FindBrowserShellTab(stableId.c_str())) return false;
     const std::filesystem::path requestedProfile(profileDirectory);
     const std::wstring resolvedProfile = (g_newEmojiFbroShell.persistenceEnabled
@@ -6803,6 +6816,8 @@ static bool 浏览器外壳_新建独立实例(const std::wstring& stableId, con
     browser.createdAt = LB_NE_BrowserShellTimestamp();
     browser.flags = 7U;
     browser.processMode = LING_FBRO_PROCESS_EMBEDDED;
+    browser.proxyServer = proxyServer;
+    browser.userAgent = userAgent;
     browser.shellManaged = true;
     browser.companionHost = true;
     browser.configuredVisible = true;
@@ -6827,6 +6842,17 @@ static bool 浏览器外壳_新建独立实例(const std::wstring& stableId, con
         createdBrowser->url, createdBrowser->title, true);
     LB_NE_SaveBrowserShellState();
     return true;
+}
+
+static bool 浏览器外壳_新建独立实例(const std::wstring& stableId, const std::wstring& address,
+                                         const std::wstring& title, const std::wstring& profileDirectory) {
+    return 浏览器外壳_新建独立实例内部(stableId, address, title, profileDirectory, L"", L"");
+}
+
+static bool 浏览器外壳_新建独立实例代理(const std::wstring& stableId, const std::wstring& address,
+                                         const std::wstring& title, const std::wstring& profileDirectory,
+                                         const std::wstring& proxyServer, const std::wstring& userAgent) {
+    return 浏览器外壳_新建独立实例内部(stableId, address, title, profileDirectory, proxyServer, userAgent);
 }
 
 static bool LB_NE_SaveBrowserShellState() {
@@ -7318,7 +7344,14 @@ static bool 浏览器外壳_设置实例Cookie(const std::wstring& stableId, con
                     {{"url", lingbuilder_fbro_process_detail::JsonUtf8(targetAddress)}}));
         }
     }
-    bool setAny = false;
+    // 解析 Set-Cookie 语义：把 HttpOnly / Secure / Domain / Path 作为属性透传给 host（host setCookie 已读 httpOnly/secure/domain/path）。
+    // 无属性时保持旧行为（domain 空、path "/"、secure 按 https、httpOnly 假），完全向后兼容。
+    bool httpOnlyFlag = false;
+    bool secureFlag = false;
+    bool secureExplicit = false;
+    std::wstring attrDomain;
+    std::wstring attrPath;
+    std::vector<std::pair<std::wstring, std::wstring>> cookies;
     size_t start = 0;
     while (start <= source.size()) {
         const size_t end = source.find(L';', start);
@@ -7326,37 +7359,52 @@ static bool 浏览器外壳_设置实例Cookie(const std::wstring& stableId, con
             end == std::wstring::npos ? std::wstring::npos : end - start));
         if (!part.empty()) {
             const size_t equals = part.find(L'=');
-            if (equals == std::wstring::npos) {
-                browser->lastError = L"Cookie 文本格式错误，应使用“名称=值”，多个 Cookie 用分号分隔。";
-                return false;
-            }
-            const std::wstring name = LB_NE_TrimBrowserShellText(part.substr(0, equals));
-            const std::wstring value = LB_NE_TrimBrowserShellText(part.substr(equals + 1));
-            std::wstring loweredName = name;
-            std::transform(loweredName.begin(), loweredName.end(), loweredName.begin(), [](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
-            const bool attribute = loweredName == L"domain" || loweredName == L"path" || loweredName == L"expires"
-                || loweredName == L"max-age" || loweredName == L"samesite";
-            if (!attribute) {
+            std::wstring head = equals == std::wstring::npos ? part : LB_NE_TrimBrowserShellText(part.substr(0, equals));
+            std::wstring loweredHead = head;
+            std::transform(loweredHead.begin(), loweredHead.end(), loweredHead.begin(), [](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
+            if (loweredHead == L"httponly" || loweredHead == L"http-only") {
+                httpOnlyFlag = true;
+            } else if (loweredHead == L"secure") {
+                secureFlag = true; secureExplicit = true;
+            } else if (loweredHead == L"domain" && equals != std::wstring::npos) {
+                attrDomain = LB_NE_TrimBrowserShellText(part.substr(equals + 1));
+            } else if (loweredHead == L"path" && equals != std::wstring::npos) {
+                attrPath = LB_NE_TrimBrowserShellText(part.substr(equals + 1));
+            } else if (loweredHead == L"samesite" || loweredHead == L"expires" || loweredHead == L"max-age") {
+                // host setCookie 不接收 SameSite/Expires/Max-Age，忽略属性不影响注入。
+            } else {
+                if (equals == std::wstring::npos) {
+                    browser->lastError = L"Cookie 文本格式错误，应使用“名称=值”，多个 Cookie 用分号分隔。";
+                    return false;
+                }
+                const std::wstring name = LB_NE_TrimBrowserShellText(part.substr(0, equals));
+                const std::wstring value = LB_NE_TrimBrowserShellText(part.substr(equals + 1));
                 if (name.empty()) {
                     browser->lastError = L"Cookie 名称不能为空。";
                     return false;
                 }
-                const bool secure = targetAddress.size() >= 8
-                    && _wcsnicmp(targetAddress.c_str(), L"https://", 8) == 0;
-                if (LB_NE_FbroProcessBool(browser, L"setCookie", {
-                        {"url", lingbuilder_fbro_process_detail::JsonUtf8(targetAddress)},
-                        {"name", lingbuilder_fbro_process_detail::JsonUtf8(name)},
-                        {"value", lingbuilder_fbro_process_detail::JsonUtf8(value)},
-                        {"domain", ""}, {"path", "/"}, {"secure", secure}, {"httpOnly", false}
-                    }) <= 0) {
-                    if (browser->lastError.empty()) browser->lastError = L"FBro Cookie API 返回失败。";
-                    return false;
-                }
-                setAny = true;
+                cookies.emplace_back(name, value);
             }
         }
         if (end == std::wstring::npos) break;
         start = end + 1;
+    }
+    const bool httpsTarget = targetAddress.size() >= 8 && _wcsnicmp(targetAddress.c_str(), L"https://", 8) == 0;
+    const bool secureFinal = secureExplicit ? secureFlag : httpsTarget;
+    bool setAny = false;
+    for (const auto& cookie : cookies) {
+        if (LB_NE_FbroProcessBool(browser, L"setCookie", {
+                {"url", lingbuilder_fbro_process_detail::JsonUtf8(targetAddress)},
+                {"name", lingbuilder_fbro_process_detail::JsonUtf8(cookie.first)},
+                {"value", lingbuilder_fbro_process_detail::JsonUtf8(cookie.second)},
+                {"domain", lingbuilder_fbro_process_detail::JsonUtf8(attrDomain)},
+                {"path", lingbuilder_fbro_process_detail::JsonUtf8(attrPath.empty() ? L"/" : attrPath)},
+                {"secure", secureFinal}, {"httpOnly", httpOnlyFlag}
+            }) <= 0) {
+            if (browser->lastError.empty()) browser->lastError = L"FBro Cookie API 返回失败。";
+            return false;
+        }
+        setAny = true;
     }
     if (!setAny) {
         browser->lastError = L"Cookie 文本中没有可置入的名称和值。";
@@ -9542,6 +9590,7 @@ function generateMainCpp(
   const comCleanupLine = comWindowMethods ? '        COM_关闭全部();' : '';
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
   const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const sharedTableRuntime = generateSharedTableRuntime(enabledModules.map(module => module.manifest.id));
   const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
   const httpClientWindowMethods = generateHttpClientWindowMethods(enabledModules);
   const httpClientConstructorInitializer = httpClientRuntime
@@ -11345,6 +11394,8 @@ static void ResolveWindowPlacement(
 
 ${builtinLibraryCommonRuntime}
 
+${sharedTableRuntime}
+
 ${projectDataTypesDefinition}
 
 ${builtinLibraryRuntime}
@@ -11656,6 +11707,9 @@ ${webSocketServerWindowField}
         bool closed = false;
         HWND host = nullptr;
         bool ownsHost = false;
+        bool isPopup = false;
+        std::wstring title;
+        std::wstring userAgent;
         std::wstring cacheDirectory;
         std::wstring proxyServer;
         std::wstring lastEvent;
@@ -12388,6 +12442,153 @@ ${edgeViewEventIdCases}
 #endif
     }
 
+    static LRESULT CALLBACK EdgeView弹窗窗口过程(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+        if (message == WM_NCCREATE) {
+            CREATESTRUCTW* createStruct = reinterpret_cast<CREATESTRUCTW*>(lParam);
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
+            return DefWindowProcW(hwnd, message, wParam, lParam);
+        }
+        if (!self) return DefWindowProcW(hwnd, message, wParam, lParam);
+        switch (message) {
+            case WM_SIZE: self->EdgeView_宿主调整(hwnd); return 0;
+            case WM_GETMINMAXINFO: return DefWindowProcW(hwnd, message, wParam, lParam);
+            case WM_CLOSE: self->EdgeView_宿主关闭(hwnd); return 0;
+            case WM_DESTROY: return 0;
+            default: return DefWindowProcW(hwnd, message, wParam, lParam);
+        }
+    }
+
+    EdgeViewInstance* EdgeView_按宿主查找(HWND host) {
+        if (!host) return nullptr;
+        for (auto& item : edgeViews_) if (item.second->host == host) return item.second.get();
+        return nullptr;
+    }
+    void EdgeView_宿主调整(HWND host) { EdgeViewInstance* instance = EdgeView_按宿主查找(host); if (instance) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeView_调整大小(*instance);
+#endif
+    } }
+    void EdgeView_宿主关闭(HWND host) { EdgeViewInstance* instance = EdgeView_按宿主查找(host); if (instance) EdgeView_关闭实例(instance->id); }
+
+    int EdgeView_创建弹窗浏览器(int instanceId, const wchar_t* title, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent) {
+        return EdgeView_创建弹窗浏览器代理(instanceId, title, width, height, address, cacheDirectory, userAgent, L"");
+    }
+
+    int EdgeView_创建弹窗浏览器代理(int instanceId, const wchar_t* title, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent, const wchar_t* proxyServer) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (instanceId <= 0) { 调试输出(L"EdgeView 创建失败：弹窗实例编号必须为正整数。"); return 0; }
+        if (width <= 0 || height <= 0) { 调试输出(L"EdgeView 创建失败：弹窗宽高必须大于零。"); return 0; }
+        EdgeView_关闭实例(instanceId);
+        WNDCLASSEXW windowClass = {};
+        windowClass.cbSize = sizeof(windowClass);
+        windowClass.style = CS_HREDRAW | CS_VREDRAW;
+        windowClass.lpfnWndProc = EdgeView弹窗窗口过程;
+        windowClass.hInstance = g_instance;
+        windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        windowClass.lpszClassName = L"LingBuilderEdgeViewPopup";
+        if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) { 调试输出(L"EdgeView 创建失败：无法注册弹窗窗口类。"); return 0; }
+        const DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+        RECT windowRect = { 0, 0, width, height };
+        AdjustWindowRect(&windowRect, style, FALSE);
+        HWND host = CreateWindowExW(WS_EX_APPWINDOW, windowClass.lpszClassName, (title && title[0]) ? title : L"EdgeView", style,
+            CW_USEDEFAULT, CW_USEDEFAULT, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top,
+            hwnd_, nullptr, g_instance, this);
+        if (!host) { 调试输出(L"EdgeView 创建失败：无法创建顶层弹窗窗口。"); return 0; }
+        // 弹窗代理优先用本命令传入的独立代理；空文本回落到 EdgeView_设置全局代理，与创建实例/创建实例代理同一语义。
+        const std::wstring popupProxy = (proxyServer && proxyServer[0]) ? std::wstring(proxyServer) : edgeViewGlobalProxy_;
+        if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, popupProxy.c_str(), nullptr, nullptr, false, nullptr, userAgent)) { DestroyWindow(host); return 0; }
+        EdgeViewInstance* created = EdgeView_查找(instanceId);
+        if (created) { created->isPopup = true; created->title = title ? title : L""; }
+        return 1;
+#else
+        (void)instanceId; (void)title; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)userAgent; (void)proxyServer;
+        调试输出(L"EdgeView 不可用：构建环境缺少 WebView2.h，请恢复 Microsoft.Web.WebView2 SDK。");
+        return 0;
+#endif
+    }
+
+    int EdgeView_关闭全部实例() {
+        std::vector<int> instanceIds;
+        for (const auto& item : edgeViews_) instanceIds.push_back(item.first);
+        for (int instanceId : instanceIds) EdgeView_关闭实例(instanceId);
+        return static_cast<int>(instanceIds.size());
+    }
+
+    std::wstring EdgeView_枚举实例JSON() {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        std::wstring json = L"["; bool first = true;
+        for (const auto& item : edgeViews_) {
+            EdgeViewInstance* instance = item.second.get();
+            std::wstring address;
+            if (instance->webView) address = EdgeView_当前地址(instance->webView.Get());
+            if (!first) json += L",";
+            first = false;
+            json += EdgeView_事件数据({
+                {L"实例编号", EdgeView_数值(instance->id)},
+                {L"窗口标题", instance->title},
+                {L"地址", address},
+                {L"缓存目录", instance->cacheDirectory},
+                {L"代理", instance->proxyServer},
+                {L"是否弹窗", EdgeView_布尔值(instance->isPopup)},
+                {L"是否有效", EdgeView_布尔值(!instance->closed && instance->host && IsWindow(instance->host))}
+            });
+        }
+        json += L"]";
+        return json;
+#else
+        return L"[]";
+#endif
+    }
+
+    int EdgeView_置实例可见(int instanceId, bool visible) {
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance) return 0;
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (instance->controller) instance->controller->put_IsVisible(visible ? TRUE : FALSE);
+#endif
+        if (instance->host && IsWindow(instance->host)) ShowWindow(instance->host, visible ? SW_SHOW : SW_HIDE);
+        return 1;
+    }
+
+    int EdgeView_置实例大小(int instanceId, int width, int height) {
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance || width <= 0 || height <= 0) return 0;
+        if (instance->isPopup && instance->host && IsWindow(instance->host)) {
+            RECT windowRect = { 0, 0, width, height };
+            AdjustWindowRect(&windowRect, static_cast<DWORD>(GetWindowLongW(instance->host, GWL_STYLE)), FALSE);
+            SetWindowPos(instance->host, nullptr, 0, 0, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top, SWP_NOMOVE | SWP_NOZORDER);
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+            EdgeView_调整大小(*instance);
+#endif
+            return 1;
+        }
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (instance->controller) { RECT bounds = { 0, 0, width, height }; return SUCCEEDED(instance->controller->put_Bounds(bounds)) ? 1 : 0; }
+#endif
+        return 0;
+    }
+
+    std::wstring EdgeView_取实例大小JSON(int instanceId) {
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance || !instance->host || !IsWindow(instance->host)) return L"{}";
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        RECT client = {}; GetClientRect(instance->host, &client);
+        return EdgeView_事件数据({{L"宽", EdgeView_数值(client.right)}, {L"高", EdgeView_数值(client.bottom)}});
+#else
+        return L"{}";
+#endif
+    }
+
+    int EdgeView_置实例标题(int instanceId, const wchar_t* title) {
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance) return 0;
+        instance->title = title ? title : L"";
+        if (instance->host && IsWindow(instance->host)) SetWindowTextW(instance->host, instance->title.c_str());
+        return 1;
+    }
+
     bool EdgeView_代理有效(const wchar_t* proxyServer) const {
         if (!proxyServer || !proxyServer[0]) return true;
         std::wstring value(proxyServer);
@@ -12592,7 +12793,8 @@ ${edgeViewEventIdCases}
 
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
     int EdgeView_创建核心(int instanceId, HWND host, bool ownsHost, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer,
-        const wchar_t* language = nullptr, const wchar_t* profileName = nullptr, bool inPrivate = false, const wchar_t* creationOptionsKey = nullptr) {
+        const wchar_t* language = nullptr, const wchar_t* profileName = nullptr, bool inPrivate = false, const wchar_t* creationOptionsKey = nullptr,
+        const wchar_t* userAgent = nullptr) {
         if (!EdgeView_代理有效(proxyServer)) {
             调试输出(L"EdgeView 创建失败：代理地址无效。");
             return 0;
@@ -12602,6 +12804,7 @@ ${edgeViewEventIdCases}
         auto createEnvironment = &CreateCoreWebView2EnvironmentWithOptions;
         auto instance = std::make_shared<EdgeViewInstance>();
         instance->id = instanceId; instance->host = host; instance->ownsHost = ownsHost;
+        instance->userAgent = userAgent ? userAgent : L"";
         instance->cacheDirectory = cacheDirectory ? cacheDirectory : L"";
         instance->proxyServer = proxyServer ? proxyServer : L"";
         const std::wstring createLanguage = language ? language : L"";
@@ -12622,6 +12825,7 @@ ${edgeViewEventIdCases}
                         context->result = result;
                         if (!instance->closed && instance->generation == context->generation && SUCCEEDED(result) && controller) {
                             instance->controller = controller; controller->get_CoreWebView2(&instance->webView);
+                            if (!instance->userAgent.empty() && instance->webView) { Microsoft::WRL::ComPtr<ICoreWebView2Settings> uaSettings; Microsoft::WRL::ComPtr<ICoreWebView2Settings2> uaSettings2; if (SUCCEEDED(instance->webView->get_Settings(&uaSettings)) && uaSettings && SUCCEEDED(uaSettings.As(&uaSettings2)) && uaSettings2) uaSettings2->put_UserAgent(instance->userAgent.c_str()); }
                             controller->put_IsVisible(TRUE);
                             EdgeView_调整大小(*instance); EdgeView_注册事件(*instance);
                             ShowWindow(instance->host, SW_SHOW);
@@ -14827,6 +15031,16 @@ ${generateFbroVipIndividualRuntime(false)}
             activeInstance->activeEventSubject = packet->subject;
             activeInstance->activeEventContext = packet->event_name
                 && std::wcscmp(packet->event_name, L"资源响应已接收") == 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+            // 实例级用户代理：CEF 无 per-browser settings，官方范式是在「资源加载前」事件里
+            // 改写请求头 User-Agent（packet->subject 即桥 RegisterRequest 出的活请求句柄，
+            // 宿主回调内在 Continue 之前 SetHeaderByName，本次请求即带该 UA），逐实例隔离。
+            if (!activeInstance->userAgent.empty() && packet->subject && packet->event_name
+                && std::wcscmp(owner->CEF3_归一化Bridge事件名(packet->event_name), L"资源加载前") == 0) {
+                LB_CEF3_RequestSetHeaderByName(static_cast<LB_CEF3_HANDLE>(packet->subject),
+                    L"User-Agent", activeInstance->userAgent.c_str(), 1);
+            }
+#endif
         }
         LB_CEF3_EVENT_PACKET_V3 adapted = {};
         adapted.struct_size = sizeof(adapted);
@@ -15386,6 +15600,114 @@ ${generateFbroVipIndividualRuntime(false)}
         return CEF3_打开原生UI浏览器(controlName, address.c_str());
     }
 
+    // 设计器无关的运行时实例编号：把弹窗实例登记进 cefBrowsers_，用 1000000+实例编号 与设计器 controlId 空间隔离，
+    // 使 CEF3_枚举实例JSON / CEF3_关闭全部实例 自动覆盖弹窗，且事件按 user_token 路由到本实例。
+    static const int CEF3_运行时弹窗编号偏移 = 1000000;
+
+    int CEF3_创建弹窗浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (instanceId <= 0) { 调试输出(L"CEF3 创建弹窗失败：实例编号必须为正整数。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!CEF3_初始化()) return 0;
+        const int runtimeId = CEF3_运行时弹窗编号偏移 + instanceId;
+        auto old = cefBrowsers_.find(runtimeId);
+        if (old != cefBrowsers_.end()) {
+            if (old->second->bridgeHandle) { LB_CEF3_BrowserClose(old->second->bridgeHandle, 1); LB_CEF3_HandleRelease(old->second->bridgeHandle); }
+            cefBrowsers_.erase(old);
+        }
+        auto instance = std::make_unique<CefBrowserInstance>();
+        instance->controlId = runtimeId;
+        instance->url = address ? address : L"";
+        instance->cacheDirectory = cacheDirectory ? cacheDirectory : (L"cef3-popup-" + std::to_wstring(instanceId));
+        instance->proxyMode = (proxyServer && proxyServer[0]) ? L"fixed_servers" : L"system";
+        instance->proxyServer = proxyServer ? proxyServer : L"";
+        instance->enableJs = true; instance->enableDevTools = true; instance->loadImages = true;
+        LB_CEF3_BROWSER_CONFIG_V3 bridgeConfig = {};
+        bridgeConfig.struct_size = sizeof(bridgeConfig);
+        bridgeConfig.abi_version = LB_CEF3_ABI_VERSION_V3;
+        bridgeConfig.parent_window = 0;
+        bridgeConfig.user_token = static_cast<uint64_t>(runtimeId);
+        bridgeConfig.flags = LB_CEF3_BROWSER_CHROME_RUNTIME | LB_CEF3_BROWSER_JAVASCRIPT | LB_CEF3_BROWSER_IMAGES | LB_CEF3_BROWSER_DEVTOOLS;
+        bridgeConfig.initial_url = (address && address[0]) ? address : L"about:blank";
+        bridgeConfig.profile_key = instance->cacheDirectory.c_str();
+        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
+        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
+        bridgeConfig.event_user_data = this;
+        LB_CEF3_HANDLE handle = LB_CEF3_BrowserCreateChrome(&bridgeConfig);
+        if (!handle) { 调试输出(L"CEF3 创建弹窗失败：Chrome Runtime 顶层窗口创建失败（检查 CEF3 桥与运行时）。"); return 0; }
+        instance->bridgeHandle = handle;
+        instance->created = true; instance->bridgeReady = true;
+        instance->currentUrl = bridgeConfig.initial_url ? bridgeConfig.initial_url : L"";
+        cefBrowsers_[runtimeId] = std::move(instance);
+        return 1;
+#else
+        (void)address; (void)cacheDirectory; (void)proxyServer;
+        调试输出(L"CEF3 创建弹窗失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+#else
+        (void)instanceId; (void)address; (void)cacheDirectory; (void)proxyServer;
+        调试输出(L"CEF3 不可用：构建环境缺少 CEF3 SDK。");
+        return 0;
+#endif
+    }
+
+    int CEF3_创建区域(int instanceId, int left, int top, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (instanceId <= 0 || width <= 0 || height <= 0) { 调试输出(L"CEF3 创建区域失败：实例编号与宽高必须为正整数。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!CEF3_初始化()) return 0;
+        const int runtimeId = CEF3_运行时弹窗编号偏移 + instanceId;
+        auto old = cefBrowsers_.find(runtimeId);
+        if (old != cefBrowsers_.end()) {
+            if (old->second->bridgeHandle) { LB_CEF3_BrowserClose(old->second->bridgeHandle, 1); LB_CEF3_HandleRelease(old->second->bridgeHandle); }
+            if (old->second->host && IsWindow(old->second->host)) DestroyWindow(old->second->host);
+            cefBrowsers_.erase(old);
+        }
+        HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+            left, top, width, height, hwnd_, nullptr, g_instance, nullptr);
+        if (!host) { 调试输出(L"CEF3 创建区域失败：无法创建浏览器承载组件。"); return 0; }
+        auto instance = std::make_unique<CefBrowserInstance>();
+        instance->controlId = runtimeId; instance->host = host;
+        instance->url = address ? address : L"";
+        instance->cacheDirectory = cacheDirectory ? cacheDirectory : (L"cef3-region-" + std::to_wstring(instanceId));
+        instance->proxyMode = (proxyServer && proxyServer[0]) ? L"fixed_servers" : L"system";
+        instance->proxyServer = proxyServer ? proxyServer : L"";
+        instance->enableJs = true; instance->enableDevTools = true; instance->loadImages = true;
+        LB_CEF3_BROWSER_CONFIG_V3 bridgeConfig = {};
+        bridgeConfig.struct_size = sizeof(bridgeConfig);
+        bridgeConfig.abi_version = LB_CEF3_ABI_VERSION_V3;
+        bridgeConfig.parent_window = reinterpret_cast<uint64_t>(host);
+        bridgeConfig.user_token = static_cast<uint64_t>(runtimeId);
+        bridgeConfig.flags = LB_CEF3_BROWSER_JAVASCRIPT | LB_CEF3_BROWSER_IMAGES | LB_CEF3_BROWSER_DEVTOOLS;
+        bridgeConfig.initial_url = (address && address[0]) ? address : L"about:blank";
+        bridgeConfig.profile_key = instance->cacheDirectory.c_str();
+        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
+        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
+        bridgeConfig.event_user_data = this;
+        CefBrowserInstance* stored = instance.get();
+        LB_CEF3_HANDLE handle = LB_CEF3_BrowserCreate(&bridgeConfig);
+        if (!handle) { if (host && IsWindow(host)) DestroyWindow(host); 调试输出(L"CEF3 创建区域失败：浏览器创建请求失败。"); return 0; }
+        stored->bridgeHandle = handle; stored->created = true; stored->bridgeReady = true;
+        stored->currentUrl = bridgeConfig.initial_url ? bridgeConfig.initial_url : L"";
+        cefBrowsers_[runtimeId] = std::move(instance);
+        LB_CEF3_SetEventCallbackV4(handle, &LingWindowBase::CEF3_Bridge事件回调V4, this);
+        CEF3_补齐Bridge订阅(*stored);
+        return 1;
+#else
+        (void)left; (void)top; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)proxyServer;
+        调试输出(L"CEF3 创建区域失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+#else
+        (void)instanceId; (void)left; (void)top; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)proxyServer;
+        调试输出(L"CEF3 不可用：构建环境缺少 CEF3 SDK。");
+        return 0;
+#endif
+    }
+
     std::wstring CEF3_执行JS(const wchar_t* controlName, const wchar_t* script) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
@@ -15717,6 +16039,65 @@ ${generateFbroVipIndividualRuntime(false)}
         return instance ? static_cast<long long>(LB_CEF3_BrowserGetRequestContext(instance->bridgeHandle)) : 0;
 #else
         (void)controlName; return 0;
+#endif
+    }
+
+    // 设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 用的实例编号）的上下文句柄入口：
+    // 拿到句柄后可直接复用全部 CEF3会话_*（Cookie 设置/遍历/删除、清缓存、首选项）句柄版命令。
+    long long CEF3会话_取上下文实例(int instanceId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        auto found = cefBrowsers_.find(CEF3_运行时弹窗编号偏移 + instanceId);
+        if (found == cefBrowsers_.end() || !found->second->bridgeHandle) { 调试输出(L"CEF3 取上下文失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        return static_cast<long long>(LB_CEF3_BrowserGetRequestContext(found->second->bridgeHandle));
+#else
+        (void)instanceId;
+        调试输出(L"CEF3 取上下文失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
+    // 实例级用户代理：CEF 无 per-browser/per-context UA，官方范式是在「资源加载前」事件里
+    // 改写请求头 User-Agent（见 CEF3_Bridge事件回调V4）。置非空 UA 时点亮 BeforeResourceLoad
+    // 订阅位（订阅为 0 时桥根本不调该回调），置空则清除该实例的覆盖。
+    int CEF3_设置用户代理(const wchar_t* controlName, const wchar_t* userAgent) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 设置用户代理失败：浏览器控件不存在或尚未创建。"); return 0; }
+        instance->userAgent = userAgent ? userAgent : L"";
+        if (!instance->userAgent.empty()) LB_CEF3_ResourceRequestHandlerSubscribeBeforeResourceLoad(instance->bridgeHandle, 1);
+        return 1;
+#else
+        (void)controlName; (void)userAgent; 调试输出(L"CEF3 设置用户代理失败：当前构建未启用 CEF3 桥。"); return 0;
+#endif
+    }
+
+    int CEF3_设置实例用户代理(int instanceId, const wchar_t* userAgent) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        auto found = cefBrowsers_.find(CEF3_运行时弹窗编号偏移 + instanceId);
+        if (found == cefBrowsers_.end() || !found->second->bridgeHandle) { 调试输出(L"CEF3 设置实例用户代理失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        found->second->userAgent = userAgent ? userAgent : L"";
+        if (!found->second->userAgent.empty()) LB_CEF3_ResourceRequestHandlerSubscribeBeforeResourceLoad(found->second->bridgeHandle, 1);
+        return 1;
+#else
+        (void)instanceId; (void)userAgent; 调试输出(L"CEF3 设置实例用户代理失败：当前构建未启用 CEF3 桥。"); return 0;
+#endif
+    }
+
+    std::wstring CEF3_取用户代理(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? instance->userAgent : L"";
+#else
+        (void)controlName; return L"";
+#endif
+    }
+
+    std::wstring CEF3_取实例用户代理(int instanceId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        auto found = cefBrowsers_.find(CEF3_运行时弹窗编号偏移 + instanceId);
+        return found != cefBrowsers_.end() && found->second ? found->second->userAgent : L"";
+#else
+        (void)instanceId; return L"";
 #endif
     }
 
@@ -19363,6 +19744,43 @@ ${generateFbroVipIndividualRuntime(false)}
         }
         cefBrowsers_.clear();
 #endif
+    }
+
+    int CEF3_关闭全部实例() {
+        const int count = static_cast<int>(cefBrowsers_.size());
+        CEF3_关闭全部();
+        return count;
+    }
+
+    std::wstring CEF3_枚举实例JSON() {
+        auto cef3JsonEscape = [](const std::wstring& value) {
+            std::wstring output;
+            for (wchar_t ch : value) {
+                if (ch == 0x22) { output += wchar_t(0x5C); output += wchar_t(0x22); }
+                else if (ch == 0x5C) { output += wchar_t(0x5C); output += wchar_t(0x5C); }
+                else if (ch == 0x0A) { output += wchar_t(0x5C); output += wchar_t(0x6E); }
+                else if (ch == 0x0D) { output += wchar_t(0x5C); output += wchar_t(0x72); }
+                else if (ch == 0x09) { output += wchar_t(0x5C); output += wchar_t(0x74); }
+                else output.push_back(ch);
+            }
+            return output;
+        };
+        std::wstring json = L"[";
+        const std::wstring q(1, wchar_t(0x22));
+        bool first = true;
+        for (const auto& item : cefBrowsers_) {
+            const CefBrowserInstance& instance = *item.second;
+            if (!first) json += L",";
+            first = false;
+            const std::wstring address = instance.currentUrl.empty() ? instance.url : instance.currentUrl;
+            json += L"{" + q + L"controlId" + q + L":" + std::to_wstring(instance.controlId)
+                + L"," + q + L"地址" + q + L":" + q + cef3JsonEscape(address) + q
+                + L"," + q + L"标题" + q + L":" + q + cef3JsonEscape(instance.currentTitle) + q
+                + L"," + q + L"缓存目录" + q + L":" + q + cef3JsonEscape(instance.cacheDirectory) + q
+                + L"," + q + L"代理" + q + L":" + q + cef3JsonEscape(instance.proxyServer) + q + L"}";
+        }
+        json += L"]";
+        return json;
     }
 
 #if LINGBUILDER_CEF3_AVAILABLE
@@ -26927,9 +27345,27 @@ function formatCppVariableDeclaration(
   return `${prefix}${cppType}${constantSuffix} ${toCppIdentifier(variable.name)}${initializer};`;
 }
 
+/** 模块公开常量 → 编译期常量声明；文本型用 inline const wstring，其余 inline constexpr。 */
+function formatModuleConstantDeclaration(constant: LingCppModuleConstant, enabledModules: InstalledModule[]): string {
+  const cppType = toCppType(constant.type, 'variable', enabledModules);
+  const literal = constant.type === '文本型'
+    ? `L"${escapeWideString(String(constant.value))}"`
+    : constant.type === '逻辑型'
+      ? (Boolean(constant.value) ? 'true' : 'false')
+      : String(constant.value);
+  const prefix = cppType === 'std::wstring' ? 'inline const ' : 'inline constexpr ';
+  return `${prefix}${cppType} ${toCppIdentifier(constant.name)} = ${formatCppInitializerValue(cppType, literal)};`;
+}
+
 function generateProjectGlobalsDefinition(program: LingCppProgram, enabledModules: InstalledModule[]): string {
-  if (program.constants.length === 0 && program.globals.length === 0) return '';
+  // 模块常量与项目常量同处一个命名空间：同名时项目常量遮蔽模块常量，只物化一份。
+  const projectConstantKeys = new Set(program.constants.map(constant => normalizeIdentifier(constant.name)));
+  const moduleConstantDeclarations = getModuleConstants(enabledModules)
+    .filter(constant => !projectConstantKeys.has(normalizeIdentifier(constant.name)))
+    .map(constant => `    ${formatModuleConstantDeclaration(constant, enabledModules)}`);
+  if (program.constants.length === 0 && program.globals.length === 0 && moduleConstantDeclarations.length === 0) return '';
   const declarations = [
+    ...moduleConstantDeclarations,
     ...program.constants.map(constant => {
       const cppType = toCppType(constant.type, 'variable', enabledModules, program.dataTypes);
       const prefix = cppType === 'std::wstring' ? 'inline const ' : 'inline constexpr ';
@@ -27653,6 +28089,9 @@ function translateLingCppExpression(
   if (quoted) return `L"${escapeWideString(interpretLingCppStringEscapes(quoted[1] || ''))}"`;
   const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
   if (chineseQuoted) return `L"${escapeWideString(interpretLingCppStringEscapes(chineseQuoted[1] || ''))}"`;
+  // #常量名 引用：剥掉 # 前缀映射到编译期常量标识符（项目常量或模块常量物化结果）。
+  const constantReference = trimmed.match(/^#([\p{L}_][\p{L}\p{N}_]*)$/u);
+  if (constantReference) return toCppIdentifier(constantReference[1] || '');
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
   if (trimmed.startsWith('!') && !trimmed.startsWith('!=')) {

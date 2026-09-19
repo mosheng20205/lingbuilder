@@ -9,6 +9,8 @@ import { getConfig } from './config.js';
 
 async function bootstrap() {
   const config = getConfig(); const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: true, rawBody: true });
+  // 生产链路只有本机宝塔 nginx → docker 桥一跳；仅信任回环/私网代理，@Ip() 才能取到真实客户端且公网伪造 XFF 不生效。
+  app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']);
   app.useBodyParser('json', { limit: '5mb' });
   app.enableCors({ origin: (requestOrigin, callback) => {
     if (!requestOrigin || config.corsOrigins.includes(requestOrigin)) return callback(null, true);

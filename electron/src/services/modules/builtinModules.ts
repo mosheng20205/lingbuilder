@@ -405,7 +405,15 @@ const BUILTIN_PARAM_DOCS: ParamDocTable = {
   包含过期: '真=导入时包含已过期的 Cookie。',
   新索引: '标签页新位置下标，从 0 起。',
   代理: '实例代理地址，空文本表示直连。',
-  指纹JSON: '指纹配置 JSON 文本。'
+  指纹JSON: '指纹配置 JSON 文本。',
+  窗口标题: '独立顶层弹窗窗口的标题栏文本，便于人工识别店铺。',
+  用户代理: '要使用的 User-Agent 字符串；需在首次导航前生效，建议建弹窗时直接传入。',
+  Cookie列表JSON: 'Cookie JSON 数组文本，每项为含 name/value/domain/path 的对象，可选 expires（UTC 秒）、secure、httpOnly、sameSite（0 None、1 Lax、2 Strict）；None 必须同时 secure=true。',
+  域: 'Cookie 生效域名，如 mms.example.com；Cookie 管理器要求非空。',
+  过期时间: 'Cookie 过期时间（UTC 秒数）；会话 Cookie 传 -1，早于当前时间的过期值会被 WebView2 拒绝写入。',
+  安全: '真=Secure Cookie（仅 HTTPS 发送），传 1/0。',
+  仅HTTP: '真=HttpOnly Cookie（禁止 document.cookie 读写），传 1/0。',
+  同源策略: 'Cookie SameSite 级别：0 None、1 Lax、2 Strict。'
 };
 
 function describeBuiltinParameter(command: string, parameter: ModuleCommandBindingParameter): ModuleCommandBindingParameter {
@@ -808,7 +816,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.edgeview',
     name: 'EdgeView 浏览器模块',
-    version: '1.2.0',
+    version: '1.5.0',
     minLingBuilderVersion: '0.2.7',
     category: '界面',
     description: '基于 Microsoft Edge WebView2，把浏览器嵌入任意 Win32 窗口组件句柄，并提供导航、网页消息、浏览器事件和 JavaScript 返回值。',
@@ -855,12 +863,27 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView_关闭控件', signature: 'EdgeView_关闭控件(控件名)', description: '关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。', insertText: 'EdgeView_关闭控件($1)', returnType: '空' }
         ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, &处理器名)', description: `按控件名绑定 WebView2 完整事件清单中的中文事件；当前清单共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定控件事件($1, "导航完成", &$2)', returnType: '整数型' }
         ,{ name: 'EdgeView_监听开发者工具事件控件', signature: 'EdgeView_监听开发者工具事件控件(控件名, 协议事件名)', description: '按设计器控件名监听 Chromium DevTools Protocol 事件。', insertText: 'EdgeView_监听开发者工具事件控件($1, "Console.messageAdded")', returnType: '整数型' }
+        ,{ name: 'EdgeView_创建弹窗浏览器', signature: 'EdgeView_创建弹窗浏览器(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理)', description: '创建独立顶层浏览器弹窗（任务栏可见、可独立拖动缩放、页面随窗口自适应），用指定独立缓存目录实现店铺间 Cookie/存储隔离，并在首次导航前应用 User-Agent。实例编号供 导航实例/关闭实例/绑定事件/等待事件/执行JS实例/会话命令 复用；关闭主窗口会连带关闭全部弹窗。代理沿用 EdgeView_设置全局代理；要每个弹窗各走独立代理 IP 请用 EdgeView_创建弹窗浏览器代理。成功返回 1。', insertText: 'EdgeView_创建弹窗浏览器(1, "浏览器", 1000, 720, "https://example.com", ".edgeview/cache-1", "")', returnType: '整数型' }
+        ,{ name: 'EdgeView_创建弹窗浏览器代理', signature: 'EdgeView_创建弹窗浏览器代理(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理, 代理地址)', description: '创建带独立代理的顶层浏览器弹窗：代理地址非空时该弹窗用专属 HTTP/HTTPS/SOCKS5 代理（配合不同独立缓存目录=独立浏览器进程，实现每店铺独立出口 IP）；代理地址为空时回落到 EdgeView_设置全局代理，与创建实例/创建实例代理同一语义。', insertText: 'EdgeView_创建弹窗浏览器代理(1, "浏览器", 1000, 720, "https://example.com", ".edgeview/cache-1", "", "http://127.0.0.1:7890")', returnType: '整数型' }
+        ,{ name: 'EdgeView_关闭全部实例', signature: 'EdgeView_关闭全部实例()', description: '关闭当前全部 EdgeView 实例（弹窗、区域、控件实例一并释放）并返回关闭数量。', insertText: 'EdgeView_关闭全部实例()', returnType: '整数型' }
+        ,{ name: 'EdgeView_枚举实例JSON', signature: 'EdgeView_枚举实例JSON()', description: '返回当前全部 EdgeView 实例的 JSON 数组，每项含 实例编号/窗口标题/地址/缓存目录/代理/是否弹窗/是否有效，供调用方自省与列表展示。', insertText: 'EdgeView_枚举实例JSON()', returnType: '文本型' }
+        ,{ name: 'EdgeView_置实例可见', signature: 'EdgeView_置实例可见(实例编号, 可见)', description: '按实例编号显示或隐藏：弹窗实例连带顶层窗口显隐，区域/控件实例调整控制器可见性。', insertText: 'EdgeView_置实例可见(1, 1)', returnType: '整数型' }
+        ,{ name: 'EdgeView_置实例大小', signature: 'EdgeView_置实例大小(实例编号, 宽, 高)', description: '按实例编号设置浏览器尺寸；弹窗实例调整顶层窗口客户区并自适应，区域/控件实例设置控制器边界。', insertText: 'EdgeView_置实例大小(1, 1200, 800)', returnType: '整数型' }
+        ,{ name: 'EdgeView_取实例大小JSON', signature: 'EdgeView_取实例大小JSON(实例编号)', description: '按实例编号返回当前客户区尺寸 JSON：{"宽":..,"高":..}。', insertText: 'EdgeView_取实例大小JSON(1)', returnType: '文本型' }
+        ,{ name: 'EdgeView_置实例标题', signature: 'EdgeView_置实例标题(实例编号, 标题)', description: '按实例编号设置弹窗顶层窗口标题，便于人工识别店铺。', insertText: 'EdgeView_置实例标题(1, "店铺B")', returnType: '整数型' }
+        ,{ name: 'EdgeView设置_置用户代理实例', signature: 'EdgeView设置_置用户代理实例(实例编号, 用户代理)', description: '按实例编号设置 User-Agent；建议用 EdgeView_创建弹窗浏览器 的 用户代理 参数在首次导航前设定，运行时再改首个请求已带旧 UA。', insertText: 'EdgeView设置_置用户代理实例(1, "Mozilla/5.0")', returnType: '整数型' }
+        ,{ name: 'EdgeView设置_取用户代理实例', signature: 'EdgeView设置_取用户代理实例(实例编号)', description: '按实例编号读取当前 User-Agent。', insertText: 'EdgeView设置_取用户代理实例(1)', returnType: '文本型' }
+        ,{ name: 'EdgeView会话_批量置Cookie实例', signature: 'EdgeView会话_批量置Cookie实例(实例编号, Cookie列表JSON)', description: '按实例编号批量注入 Cookie，返回成功条数。Cookie列表JSON 为含 name/value/domain/path 的数组，可带 expires（UTC 秒，会话 Cookie 用 -1 或省略）、secure、httpOnly、sameSite（0 None/1 Lax/2 Strict，None 必须同时 secure）。这是注入 HttpOnly Cookie 的正确方式，禁止用 JavaScript document.cookie。', insertText: 'EdgeView会话_批量置Cookie实例(1, "[]")', returnType: '整数型' }
+        ,{ name: 'EdgeView会话_置Cookie带属性实例', signature: 'EdgeView会话_置Cookie带属性实例(实例编号, 名称, 值, 域, 路径, 过期时间, 安全, 仅HTTP, 同源策略)', description: '按实例编号创建或更新带完整属性的 Cookie；过期时间为 UTC 秒（会话 Cookie 传 -1），安全/仅HTTP 传 1/0，同源策略 0 None/1 Lax/2 Strict。', insertText: 'EdgeView会话_置Cookie带属性实例(1, "PASS_ID", "值", "example.com", "/", -1, 1, 1, 1)', returnType: '整数型' }
+        ,{ name: 'EdgeView会话_删除全部Cookie实例', signature: 'EdgeView会话_删除全部Cookie实例(实例编号)', description: '按实例编号删除该实例 Profile 的全部 Cookie。', insertText: 'EdgeView会话_删除全部Cookie实例(1)', returnType: '整数型' }
+        ,{ name: 'EdgeView会话_取Cookie实例异步', signature: 'EdgeView会话_取Cookie实例异步(实例编号, 地址, &完成处理器)', description: '按实例编号异步读取指定地址的 Cookie 列表 JSON，完成后在 完成处理器 里用 EdgeView任务_取结果 取值，可校验 httpOnly 标志是否回读成功。', insertText: 'EdgeView会话_取Cookie实例异步(1, "https://example.com", &$1)', returnType: '长整数型' }
+        ,{ name: 'EdgeView会话_清理全部浏览数据实例异步', signature: 'EdgeView会话_清理全部浏览数据实例异步(实例编号, &完成处理器)', description: '按实例编号异步清理该实例 Profile 的全部浏览数据。', insertText: 'EdgeView会话_清理全部浏览数据实例异步(1, &$1)', returnType: '长整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
       snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }],
       docs: [
         { title: 'EdgeView 事件参考', path: 'docs/modules/edgeview/README.md' },
-        { title: 'EdgeView 完整 API 参考（272 条）', path: 'docs/modules/edgeview/API.md' }
+        { title: 'EdgeView 完整 API 参考（289 条）', path: 'docs/modules/edgeview/API.md' }
       ]
     },
     targets: [
@@ -906,13 +929,28 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ,{ command: 'EdgeView_关闭控件', runtimeName: 'EdgeView_关闭控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' }
       ,{ command: 'EdgeView_绑定控件事件', runtimeName: 'EdgeView_绑定控件事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'handler', description: '新代码必须使用 &处理器名；旧字符串写法仅兼容迁移。' }], returnType: 'int', encoding: 'wide' }
       ,{ command: 'EdgeView_监听开发者工具事件控件', runtimeName: 'EdgeView_监听开发者工具事件控件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '协议事件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_创建弹窗浏览器', runtimeName: 'EdgeView_创建弹窗浏览器', parameters: [{ name: '实例编号', type: 'int' }, { name: '窗口标题', type: 'wideString' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_创建弹窗浏览器代理', runtimeName: 'EdgeView_创建弹窗浏览器代理', parameters: [{ name: '实例编号', type: 'int' }, { name: '窗口标题', type: 'wideString' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '用户代理', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_关闭全部实例', runtimeName: 'EdgeView_关闭全部实例', parameters: [], returnType: 'int' }
+      ,{ command: 'EdgeView_枚举实例JSON', runtimeName: 'EdgeView_枚举实例JSON', parameters: [], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_置实例可见', runtimeName: 'EdgeView_置实例可见', parameters: [{ name: '实例编号', type: 'int' }, { name: '可见', type: 'bool' }], returnType: 'int' }
+      ,{ command: 'EdgeView_置实例大小', runtimeName: 'EdgeView_置实例大小', parameters: [{ name: '实例编号', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }], returnType: 'int' }
+      ,{ command: 'EdgeView_取实例大小JSON', runtimeName: 'EdgeView_取实例大小JSON', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_置实例标题', runtimeName: 'EdgeView_置实例标题', parameters: [{ name: '实例编号', type: 'int' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView设置_置用户代理实例', runtimeName: 'EdgeView设置_置用户代理实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView设置_取用户代理实例', runtimeName: 'EdgeView设置_取用户代理实例', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView会话_批量置Cookie实例', runtimeName: 'EdgeView会话_批量置Cookie实例', parameters: [{ name: '实例编号', type: 'int' }, { name: 'Cookie列表JSON', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView会话_置Cookie带属性实例', runtimeName: 'EdgeView会话_置Cookie带属性实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '名称', type: 'wideString' }, { name: '值', type: 'wideString' }, { name: '域', type: 'wideString' }, { name: '路径', type: 'wideString' }, { name: '过期时间', type: 'double' }, { name: '安全', type: 'bool' }, { name: '仅HTTP', type: 'bool' }, { name: '同源策略', type: 'int' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView会话_删除全部Cookie实例', runtimeName: 'EdgeView会话_删除全部Cookie实例', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'int' }
+      ,{ command: 'EdgeView会话_取Cookie实例异步', runtimeName: 'EdgeView会话_取Cookie实例异步', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '完成处理器', type: 'handler', description: '新代码必须使用 &处理器名。' }], returnType: 'longLong', encoding: 'wide' }
+      ,{ command: 'EdgeView会话_清理全部浏览数据实例异步', runtimeName: 'EdgeView会话_清理全部浏览数据实例异步', parameters: [{ name: '实例编号', type: 'int' }, { name: '完成处理器', type: 'handler', description: '新代码必须使用 &处理器名。' }], returnType: 'longLong', encoding: 'wide' }
     ] }
   },
   {
     schemaVersion: 2,
     id: 'lingbuilder.cef3.browser',
     name: 'CEF3浏览器模块',
-    version: '3.0.0-alpha.3',
+    version: '3.0.0-alpha.4',
     category: '界面',
     description: '基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。',
     author: 'LingBuilder',
@@ -925,6 +963,15 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_取命令资源ID', aliases: ['cef_id_for_command_id_name'], signature: 'CEF3_取命令资源ID(名称)', description: '按当前 CEF/Chromium 版本把 IDC 命令名称转换为数值 ID；未知名称返回 -1。', insertText: 'CEF3_取命令资源ID("IDC_BACK")', returnType: '整数型', visibility: 'advanced' },
         { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航($1, "https://www.baidu.com")', returnType: '整数型' },
         { name: 'CEF3_打开原生UI浏览器', signature: 'CEF3_打开原生UI浏览器(控件名, 地址)', description: '使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。', insertText: 'CEF3_打开原生UI浏览器($1, "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'CEF3_创建弹窗浏览器', signature: 'CEF3_创建弹窗浏览器(实例编号, 地址, 独立缓存目录, 代理地址)', description: '不依赖设计器控件，用 CEF Chrome Runtime 凭空创建独立顶层浏览器弹窗：不同 实例编号 + 不同 独立缓存目录（独立 profile）实现店铺间 Cookie/缓存隔离，代理地址非空即该弹窗独立出口 IP。实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭；实例级 UA 用 CEF3_设置实例用户代理 设置。', insertText: 'CEF3_创建弹窗浏览器(1, "https://www.example.com", ".cef3/store-a", "")', returnType: '整数型' },
+        { name: 'CEF3_创建区域', signature: 'CEF3_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)', description: '不依赖设计器控件，在当前窗口指定矩形区域创建独立 CEF3 浏览器实例（运行时自建承载子窗口 + 独立 profile 缓存目录 + 可选独立代理），用于动态数量的内嵌多浏览器；实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭。', insertText: 'CEF3_创建区域(1, 10, 10, 480, 500, "https://www.example.com", ".cef3/store-a", "")', returnType: '整数型' },
+        { name: 'CEF3会话_取上下文实例', signature: 'CEF3会话_取上下文实例(实例编号)', description: '取得设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 的实例编号）的 RequestContext 受管句柄，随后即可用全部句柄版 CEF3会话_* 命令（Cookie 设置/遍历/删除、清缓存、首选项）对该弹窗/区域实例操作；实例不存在或未创建返回 0，用完用 CEF3会话_释放上下文 释放。', insertText: '局部 长整数型 上下文 = CEF3会话_取上下文实例(1)', returnType: '长整数型' },
+        { name: 'CEF3_设置用户代理', signature: 'CEF3_设置用户代理(控件名, 用户代理)', description: '为指定 CEF3 浏览器控件实例设置独立用户代理（UA）。CEF 无 per-browser settings，本命令在「资源加载前」事件里改写请求头 User-Agent，逐实例隔离；用户代理置空则清除覆盖。', insertText: 'CEF3_设置用户代理(浏览器1, "Mozilla/5.0 (store-A)")', returnType: '整数型' },
+        { name: 'CEF3_设置实例用户代理', signature: 'CEF3_设置实例用户代理(实例编号, 用户代理)', description: '为设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 的实例编号）设置独立用户代理，实现多店铺弹窗/区域各自不同 UA；置空清除覆盖，实例不存在返回 0。', insertText: 'CEF3_设置实例用户代理(1, "Mozilla/5.0 (store-A)")', returnType: '整数型' },
+        { name: 'CEF3_取用户代理', signature: 'CEF3_取用户代理(控件名)', description: '读取指定 CEF3 浏览器控件实例当前设置的独立用户代理，未设置返回空文本。', insertText: 'CEF3_取用户代理(浏览器1)', returnType: '文本型' },
+        { name: 'CEF3_取实例用户代理', signature: 'CEF3_取实例用户代理(实例编号)', description: '读取设计器无关实例（弹窗/区域实例编号）当前设置的独立用户代理，未设置或实例不存在返回空文本。', insertText: 'CEF3_取实例用户代理(1)', returnType: '文本型' },
+        { name: 'CEF3_关闭全部实例', signature: 'CEF3_关闭全部实例()', description: '关闭当前全部 CEF3 浏览器实例（含内嵌控件与独立顶层弹窗）并释放受管句柄，返回关闭数量。', insertText: 'CEF3_关闭全部实例()', returnType: '整数型' },
+        { name: 'CEF3_枚举实例JSON', signature: 'CEF3_枚举实例JSON()', description: '返回当前全部 CEF3 实例的 JSON 数组，每项含 controlId/地址/标题/缓存目录/代理，供调用方自省与多实例列表展示。', insertText: 'CEF3_枚举实例JSON()', returnType: '文本型' },
         { name: 'CEF3_执行JS', aliases: ['Runtime.evaluate'], signature: 'CEF3_执行JS(控件名, 脚本)', description: '通过 DevTools Runtime.evaluate 执行 JavaScript，最多等待 5 秒并返回 JSON 结果；新代码优先使用异步任务接口。', insertText: 'CEF3_执行JS($1, "document.title")', returnType: '文本型' },
         { name: 'CEF3_后退', signature: 'CEF3_后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。', insertText: 'CEF3_后退($1)', returnType: '整数型' },
         { name: 'CEF3_前进', signature: 'CEF3_前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。', insertText: 'CEF3_前进($1)', returnType: '整数型' },
@@ -1023,6 +1070,15 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_取命令资源ID', runtimeName: 'CEF3_取命令资源ID', parameters: [{ name: '名称', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_取命令资源ID("IDC_BACK")' },
       { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航(浏览器1, "https://www.baidu.com")' },
       { command: 'CEF3_打开原生UI浏览器', runtimeName: 'CEF3_打开原生UI浏览器', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_打开原生UI浏览器(浏览器1, "https://www.baidu.com")' },
+      { command: 'CEF3_创建弹窗浏览器', runtimeName: 'CEF3_创建弹窗浏览器', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_创建区域', runtimeName: 'CEF3_创建区域', parameters: [{ name: '实例编号', type: 'int' }, { name: '左', type: 'int' }, { name: '顶', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3会话_取上下文实例', runtimeName: 'CEF3会话_取上下文实例', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'longLong', encoding: 'wide' },
+      { command: 'CEF3_设置用户代理', runtimeName: 'CEF3_设置用户代理', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_设置用户代理(浏览器1, "Mozilla/5.0 (store-A)")' },
+      { command: 'CEF3_设置实例用户代理', runtimeName: 'CEF3_设置实例用户代理', parameters: [{ name: '实例编号', type: 'int' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_取用户代理', runtimeName: 'CEF3_取用户代理', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide', example: 'CEF3_取用户代理(浏览器1)' },
+      { command: 'CEF3_取实例用户代理', runtimeName: 'CEF3_取实例用户代理', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_关闭全部实例', runtimeName: 'CEF3_关闭全部实例', parameters: [], returnType: 'int' },
+      { command: 'CEF3_枚举实例JSON', runtimeName: 'CEF3_枚举实例JSON', parameters: [], returnType: 'wideString', encoding: 'wide' },
       { command: 'CEF3_执行JS', runtimeName: 'CEF3_执行JS', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide', example: 'CEF3_执行JS(浏览器1, "document.title")' },
       { command: 'CEF3_后退', runtimeName: 'CEF3_后退', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_前进', runtimeName: 'CEF3_前进', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
@@ -1236,7 +1292,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     targets: [{
       id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
       includeDirs: ['include'], headers: ['include/LingBuilderFbroBridge.h', 'include/LingBuilderFbroProcessRuntime.hpp'],
-      libs: ['modules/lingbuilder.fbro.browser/lib/x64/LingBuilderFbroBridge.lib'],
+      libs: ['lib/x64/LingBuilderFbroBridge.lib'],
       runtimeFiles: ['bin/x64/LingBuilderFbroBridge.dll'], defines: ['LINGBUILDER_FBRO_MODULE']
     }],
     bindings: { commands: [
@@ -1370,7 +1426,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.new_emoji.fbro-shell',
     name: 'new_emoji FBro 浏览器外壳',
-    version: '1.2.0',
+    version: '1.3.0',
     minLingBuilderVersion: '0.3.0',
     category: '界面',
     description: '在 new_emoji 浏览器框架窗口中按稳定 ID 管理 FBro x64 独立会话、RichList、原生 HWND 和隔离 Profile。',
@@ -1388,6 +1444,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '浏览器外壳_销毁', signature: '浏览器外壳_销毁()', description: '关闭全部受管标签页和 FBro 子宿主。', insertText: '浏览器外壳_销毁()', returnType: '空' },
         { name: '浏览器外壳_新建标签页', signature: '浏览器外壳_新建标签页(稳定ID, 地址, 标题)', description: '创建稳定 ID 对应的独立 FBro 句柄和宿主 HWND。', insertText: '浏览器外壳_新建标签页("$1", "$2", "$3")', returnType: '逻辑型' },
         { name: '浏览器外壳_新建独立实例', signature: '浏览器外壳_新建独立实例(稳定ID, 地址, 标题, 缓存目录)', description: '动态创建一个独立 Host 进程、独立 WebSocket 会话、独立 Profile 和伴随 HWND；没有固定数量上限。', insertText: '浏览器外壳_新建独立实例("$1", "$2", "$3", "$4")', returnType: '逻辑型' },
+        { name: '浏览器外壳_新建独立实例代理', signature: '浏览器外壳_新建独立实例代理(稳定ID, 地址, 标题, 缓存目录, 代理地址, 用户代理)', description: '动态创建带独立代理和 User-Agent 的独立实例：代理地址非空即该店铺独立出口 IP（独立 Host 进程天然隔离），用户代理在进程启动前写入 config；空值分别回落直连与 FBro 默认 UA。多店铺独立代理/UA 验证首选。', insertText: '浏览器外壳_新建独立实例代理("$1", "$2", "$3", "$4", "http://127.0.0.1:7890", "Mozilla/5.0")', returnType: '逻辑型' },
         { name: '浏览器外壳_启用实例持久化', signature: '浏览器外壳_启用实例持久化(工作台键)', description: '从 LocalAppData 中的 UTF-8 原子 JSON 恢复稳定 ID、名称、顺序、地址和独立 Profile；返回恢复数量，损坏时返回 -1。', insertText: '浏览器外壳_启用实例持久化("$1")', returnType: '整数型' },
         { name: '浏览器外壳_取持久化诊断', signature: '浏览器外壳_取持久化诊断()', description: '返回配置恢复或原子写入的中文诊断，不包含 Cookie。', insertText: '浏览器外壳_取持久化诊断()', returnType: '文本型' },
         { name: '浏览器外壳_重命名实例', signature: '浏览器外壳_重命名实例(稳定ID, 新名称)', description: '修改显示名称并立即持久化，不改变稳定 ID 或缓存路径。', insertText: '浏览器外壳_重命名实例("$1", "$2")', returnType: '逻辑型' },
@@ -1465,6 +1522,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: '浏览器外壳_销毁', runtimeName: '浏览器外壳_销毁', parameters: [], returnType: 'void' },
       { command: '浏览器外壳_新建标签页', runtimeName: '浏览器外壳_新建标签页', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '标题', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
       { command: '浏览器外壳_新建独立实例', runtimeName: '浏览器外壳_新建独立实例', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '标题', type: 'wideString' }, { name: '缓存目录', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+      { command: '浏览器外壳_新建独立实例代理', runtimeName: '浏览器外壳_新建独立实例代理', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '标题', type: 'wideString' }, { name: '缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }, { name: '用户代理', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
       { command: '浏览器外壳_启用实例持久化', runtimeName: '浏览器外壳_启用实例持久化', parameters: [{ name: '工作台键', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: '浏览器外壳_取持久化诊断', runtimeName: '浏览器外壳_取持久化诊断', parameters: [], returnType: 'wideString' },
       { command: '浏览器外壳_重命名实例', runtimeName: '浏览器外壳_重命名实例', parameters: [{ name: '稳定ID', type: 'wideString' }, { name: '新名称', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },

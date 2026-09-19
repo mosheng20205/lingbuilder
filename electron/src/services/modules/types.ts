@@ -160,6 +160,19 @@ export interface ModuleTypeContribution {
   elementType?: string;
 }
 
+/** 模块公开常量允许的基础类型；字节集等复合类型暂不开放。 */
+export type ModuleConstantValueType = '整数型' | '长整数型' | '字节型' | '小数型' | '双精度小数型' | '文本型' | '逻辑型';
+
+export interface ModuleConstantContribution {
+  name: string;
+  type: ModuleConstantValueType;
+  /** 纯字面量：数值类型填 JSON number，文本型填 string，逻辑型填 boolean。 */
+  value: number | string | boolean;
+  description: string;
+  /** 与命令一致的可见性分级；advanced 常量只在用户显式开启后进入补全。 */
+  level?: 'basic' | 'advanced';
+}
+
 export interface ModuleSnippetContribution {
   label: string;
   insertText: string;
@@ -461,6 +474,8 @@ export interface LingBuilderModuleManifest {
     menus?: ModuleMenuContribution[];
     submenus?: ModuleSubmenuContribution[];
     types?: ModuleTypeContribution[];
+    /** 模块公开常量；源码中以 #常量名 引用，生成期物化为编译期常量。 */
+    constants?: ModuleConstantContribution[];
     snippets?: ModuleSnippetContribution[];
     designerControls?: ModuleDesignerControlContribution[];
     docs?: ModuleDocContribution[];
@@ -483,7 +498,22 @@ export interface InstalledModule {
   diagnostics: string[];
   /** 项目级 DLL 命令声明合成的虚拟模块：无安装目录，由物化服务单独处理，模块管理 UI 不展示。 */
   isProjectDeclaration?: boolean;
+  /** 开发源链接模块：installPath 指向工作区内开发源目录，源改动即时生效，无需重新打包安装。 */
+  isDevLink?: boolean;
   sha256?: string;
+}
+
+/** 开发源链接条目：moduleId → 工作区内模块源目录（正斜杠相对路径）。 */
+export interface ModuleDevLink {
+  moduleId: string;
+  /** 工作区相对路径（正斜杠），指向包含 lingbuilder.module.json 的模块源目录。 */
+  sourcePath: string;
+  linkedAt: string;
+}
+
+export interface ModuleDevLinkRegistry {
+  schemaVersion: 1;
+  links: Record<string, ModuleDevLink>;
 }
 
 export type ModuleHintKind = '类型' | '命令接口' | '设计器控件' | 'C++ 依赖';
@@ -561,7 +591,7 @@ export interface MarketModule {
 export interface ModuleHistoryEntry {
   id: string;
   time: string;
-  action: 'install' | 'uninstall' | 'enable' | 'disable' | 'export' | 'rollback' | 'preview-failed';
+  action: 'install' | 'uninstall' | 'enable' | 'disable' | 'export' | 'rollback' | 'preview-failed' | 'link' | 'unlink';
   moduleId?: string;
   moduleName?: string;
   version?: string;

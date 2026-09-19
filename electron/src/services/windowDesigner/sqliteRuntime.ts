@@ -1,3 +1,4 @@
+// csv 虚拟表复用表格内核的记录扫描与编码解码；内核由 lingCppWin32Project 装配层按启用模块统一铺设一次。
 export const SQLITE_RUNTIME = String.raw`
 struct sqlite3;
 struct sqlite3_stmt;
@@ -75,6 +76,12 @@ using FnDbReadonly = int(*)(sqlite3*, const char*);
 using FnLibversion = const char*(*)();
 using FnThreadsafe = int(*)();
 using FnKey = int(*)(sqlite3*, const char*, int);
+using sqlite3_uint64 = unsigned long long;
+using FnCreateModule = int(*)(sqlite3*, const char*, const void*, void*);
+using FnDeclareVtab = int(*)(sqlite3*, const char*);
+using FnMalloc64 = void*(*)(sqlite3_int64);
+using FnMprintf = char*(*)(const char*, ...);
+using FnResultText = void(*)(sqlite3_stmt*, const char*, int, void(*)(void*));
 
 static HMODULE module = nullptr;
 static std::mutex moduleMutex;
@@ -116,6 +123,12 @@ static FnTotalChanges64 total_changes64 = nullptr;
 static FnBindBlob64 bind_blob64 = nullptr;
 static FnSystemErrno system_errno = nullptr;
 static FnErrstr errstr = nullptr;
+// 虚拟表能力所需的可选导出：老运行库缺少时只关闭 csv 虚拟表，不影响普通 SQL。
+static FnCreateModule create_module = nullptr;
+static FnDeclareVtab declare_vtab = nullptr;
+static FnMalloc64 malloc64 = nullptr;
+static FnMprintf mprintf = nullptr;
+static FnResultText result_text = nullptr;
 static FnKey key = nullptr;
 
 struct Connection {
@@ -176,6 +189,11 @@ static void ResetFunctions() {
     bind_blob64 = nullptr;
     system_errno = nullptr;
     errstr = nullptr;
+    create_module = nullptr;
+    declare_vtab = nullptr;
+    malloc64 = nullptr;
+    mprintf = nullptr;
+    result_text = nullptr;
     key = nullptr;
 }
 
@@ -203,6 +221,11 @@ static bool LoadLibraryUnlocked(const wchar_t* path) {
     system_errno = reinterpret_cast<FnSystemErrno>(GetProcAddress(module, "sqlite3_system_errno"));
     errstr = reinterpret_cast<FnErrstr>(GetProcAddress(module, "sqlite3_errstr"));
     key = reinterpret_cast<FnKey>(GetProcAddress(module, "sqlite3_key"));
+    create_module = reinterpret_cast<FnCreateModule>(GetProcAddress(module, "sqlite3_create_module"));
+    declare_vtab = reinterpret_cast<FnDeclareVtab>(GetProcAddress(module, "sqlite3_declare_vtab"));
+    malloc64 = reinterpret_cast<FnMalloc64>(GetProcAddress(module, "sqlite3_malloc64"));
+    mprintf = reinterpret_cast<FnMprintf>(GetProcAddress(module, "sqlite3_mprintf"));
+    result_text = reinterpret_cast<FnResultText>(GetProcAddress(module, "sqlite3_result_text"));
     if (!valid) {
         UnloadLibraryUnlocked();
         return Fail(L"加载 SQLite 运行库", L"运行库缺少模块 2.0 所需的标准 SQLite 导出，请升级官方 sqlite3.dll");
@@ -274,6 +297,362 @@ static std::wstring QuoteIdentifier(const wchar_t* value) {
     output += L"\"";
     return output;
 }
+
+// ---------- csv 虚拟表：把 CSV 文件当表直连查询 ----------
+// 边界约束：SQLite 会在回调之外用 sqlite3_free 释放 vtab、cursor 和 zErrMsg，
+// 因此这三块内存必须来自运行库分配器；本模块自己的 C++ 对象只挂在 impl 指针上，
+// 由我们在 xDisconnect/xClose 里 delete，绝不跨边界互相释放。
+struct sqlite3_value;
+
+struct sqlite3_vtab {
+    const struct sqlite3_module* pModule;
+    int nRef;
+    char* zErrMsg;
+};
+
+struct sqlite3_vtab_cursor {
+    sqlite3_vtab* pVtab;
+};
+
+struct sqlite3_index_constraint { void* pTerm; unsigned char op; unsigned char usable; int iTermOffset; };
+struct sqlite3_index_orderby { int iColumn; unsigned char desc; };
+struct sqlite3_index_constraint_usage { int argvIndex; unsigned char omit; };
+
+struct sqlite3_index_info {
+    int nConstraint;
+    sqlite3_index_constraint* aConstraint;
+    int nOrderBy;
+    sqlite3_index_orderby* aOrderBy;
+    sqlite3_index_constraint_usage* aConstraintUsage;
+    int idxNum;
+    char* idxStr;
+    int needToFreeIdxStr;
+    int orderByConsumed;
+    double estimatedCost;
+    sqlite3_int64 estimatedRows;
+    int idxFlags;
+    sqlite3_uint64 colUsed;
+};
+
+struct sqlite3_module {
+    int iVersion;
+    int (*xCreate)(sqlite3*, void*, int, const char* const*, sqlite3_vtab**, char**);
+    int (*xConnect)(sqlite3*, void*, int, const char* const*, sqlite3_vtab**, char**);
+    int (*xBestIndex)(sqlite3_vtab*, sqlite3_index_info*);
+    int (*xDisconnect)(sqlite3_vtab*);
+    int (*xDestroy)(sqlite3_vtab*);
+    int (*xOpen)(sqlite3_vtab*, sqlite3_vtab_cursor**);
+    int (*xClose)(sqlite3_vtab_cursor*);
+    int (*xFilter)(sqlite3_vtab_cursor*, int, const char*, int, sqlite3_value**);
+    int (*xNext)(sqlite3_vtab_cursor*);
+    int (*xEof)(sqlite3_vtab_cursor*);
+    int (*xColumn)(sqlite3_vtab_cursor*, sqlite3_stmt*, int);
+    int (*xRowid)(sqlite3_vtab_cursor*, sqlite3_int64*);
+    int (*xUpdate)(sqlite3_vtab*, int, sqlite3_value**, sqlite3_int64*);
+    int (*xBegin)(sqlite3_vtab*);
+    int (*xSync)(sqlite3_vtab*);
+    int (*xCommit)(sqlite3_vtab*);
+    int (*xRollback)(sqlite3_vtab*);
+    void* (*xFindMethod)(sqlite3_vtab*, const char*, void**);
+    int (*xRename)(sqlite3_vtab*, const char*, const char*);
+    int (*xSavepoint)(sqlite3_vtab*, int);
+    int (*xRollbackTo)(sqlite3_vtab*, int);
+    int (*xShadowName)(const char*);
+};
+
+struct LB_CsvSource {
+    std::wstring text;
+    std::vector<std::wstring> names;
+    size_t columnCount = 1;
+    size_t dataStart = 0;
+    wchar_t delimiter = L',';
+};
+
+struct LB_CsvTableImpl { std::shared_ptr<LB_CsvSource> source; };
+struct LB_CsvVtabObject { sqlite3_vtab base; void* impl; };
+struct LB_CsvCursorObject { sqlite3_vtab_cursor base; void* impl; };
+
+struct LB_CsvCursorImpl {
+    std::shared_ptr<LB_CsvSource> source;
+    size_t position = 0;
+    std::vector<std::wstring> fields;
+    long long rowId = 0;
+    bool finished = true;
+
+    void Advance() {
+        fields.clear();
+        finished = true;
+        if (!source) return;
+        std::vector<std::wstring> record;
+        if (!LB_CsvNextRecord(source->text, position, source->delimiter, record)) return;
+        record.resize(source->columnCount);
+        fields.swap(record);
+        ++rowId;
+        finished = false;
+    }
+    void Restart() { position = source ? source->dataStart : 0; rowId = 0; Advance(); }
+};
+
+static std::wstring LB_TrimWide(const std::wstring& value) {
+    size_t begin = 0;
+    size_t end = value.size();
+    while (begin < end && iswspace(value[begin])) ++begin;
+    while (end > begin && iswspace(value[end - 1])) --end;
+    return value.substr(begin, end - begin);
+}
+
+static std::wstring LB_UpperNoSpace(const std::wstring& value) {
+    std::wstring result;
+    for (wchar_t ch : value) { if (iswspace(ch)) continue; result.push_back(static_cast<wchar_t>(towupper(ch))); }
+    return result;
+}
+
+// 模块参数值可以是裸文本、单引号或双引号包裹（内部同名引号翻倍转义）。
+static std::wstring LB_VtabUnquote(const std::wstring& raw) {
+    const std::wstring value = LB_TrimWide(raw);
+    if (value.size() < 2) return value;
+    const wchar_t quote = value.front();
+    if ((quote != L'\'' && quote != L'"') || value.back() != quote) return value;
+    std::wstring result;
+    for (size_t index = 1; index + 1 < value.size(); ++index) {
+        if (value[index] == quote && index + 2 < value.size() && value[index + 1] == quote) { result.push_back(quote); ++index; continue; }
+        result.push_back(value[index]);
+    }
+    return result;
+}
+
+static std::wstring LB_VtabQuoteIdentifier(const std::wstring& name) {
+    std::wstring result = L"\"";
+    for (wchar_t ch : name) { if (ch == L'"') result.push_back(L'"'); result.push_back(ch); }
+    result.push_back(L'"');
+    return result;
+}
+
+// 按顶层逗号切分（引号内与括号内的逗号不算分隔），用于解析 schema 参数。
+static std::vector<std::wstring> LB_VtabSplitSchema(const std::wstring& raw) {
+    const std::wstring value = LB_TrimWide(raw);
+    std::vector<std::wstring> parts;
+    std::wstring current;
+    int depth = 0;
+    wchar_t quote = 0;
+    const size_t begin = value.find(L'(') == 0 ? 1 : 0;
+    const size_t end = value.size() - (value.size() > begin && value.back() == L')' ? 1 : 0);
+    for (size_t index = begin; index < end; ++index) {
+        const wchar_t ch = value[index];
+        if (quote) {
+            current.push_back(ch);
+            if (ch == quote) quote = 0;
+            continue;
+        }
+        if (ch == L'"' || ch == L'\'' || ch == L'[') { quote = ch == L'[' ? L']' : ch; current.push_back(ch); continue; }
+        if (ch == L'(') { ++depth; current.push_back(ch); continue; }
+        if (ch == L')' && depth > 0) { --depth; current.push_back(ch); continue; }
+        if (ch == L',' && depth == 0) { parts.push_back(current); current.clear(); continue; }
+        current.push_back(ch);
+    }
+    parts.push_back(current);
+    return parts;
+}
+
+static std::wstring LB_VtabIdentifier(const std::wstring& token) {
+    std::wstring value = LB_TrimWide(token);
+    const size_t space = value.find_first_of(L" \t");
+    std::wstring name = space == std::wstring::npos ? value : value.substr(0, space);
+    name = LB_VtabUnquote(name);
+    return name;
+}
+
+static std::wstring LB_VtabColumnType(const std::wstring& token) {
+    const std::wstring value = LB_TrimWide(token);
+    const size_t space = value.find_first_of(L" \t");
+    if (space == std::wstring::npos) return L"TEXT";
+    const std::wstring type = LB_TrimWide(value.substr(space + 1));
+    return type.empty() ? L"TEXT" : type;
+}
+
+static int LB_VtabError(sqlite3* database, char** error, const std::wstring& message) {
+    (void)database;
+    if (error && mprintf) *error = mprintf("%s", LB_WideToUtf8(message.c_str()).c_str());
+    return Error;
+}
+
+static int CsvVtabConnect(sqlite3* database, void*, int argc, const char* const* argv, sqlite3_vtab** result, char** error) {
+    std::wstring file;
+    std::wstring schema;
+    std::wstring encoding = L"AUTO";
+    std::wstring delimiterText = L",";
+    bool hasHeader = true;
+    for (int index = 3; index < argc; ++index) {
+        const std::wstring argument = LB_Utf8ToWide(argv[index]);
+        const size_t equals = argument.find(L'=');
+        if (equals == std::wstring::npos) {
+            return LB_VtabError(database, error, L"csv 虚拟表参数必须写成 键=值，例如 USING csv(filename=\"员工.csv\")；不支持的参数：" + argument);
+        }
+        const std::wstring key = LB_UpperNoSpace(argument.substr(0, equals));
+        const std::wstring value = LB_VtabUnquote(argument.substr(equals + 1));
+        if (key == L"FILENAME") file = value;
+        else if (key == L"SCHEMA") schema = value;
+        else if (key == L"ENCODING") encoding = value;
+        else if (key == L"DELIMITER") delimiterText = value;
+        else if (key == L"HEADER") hasHeader = !(value == L"0" || value.empty() || LB_UpperNoSpace(value) == L"FALSE");
+        else return LB_VtabError(database, error, L"csv 虚拟表不支持参数 " + argument + L"；可用 filename、schema、encoding、delimiter、header。");
+    }
+    if (file.empty()) return LB_VtabError(database, error, L"csv 虚拟表缺少 filename 参数，例如 USING csv(filename=\"员工.csv\")。");
+    if (!declare_vtab || !malloc64) return LB_VtabError(database, error, L"当前 SQLite 运行库缺少虚拟表导出，无法使用 csv 虚拟表；请升级运行库。");
+
+    auto source = std::make_shared<LB_CsvSource>();
+    source->delimiter = LB_CsvDelimiter(delimiterText.c_str());
+    std::wstring decodeError;
+    if (!LB_DecodeFileText(file.c_str(), encoding.c_str(), source->text, decodeError)) {
+        return LB_VtabError(database, error, L"csv 虚拟表 " + decodeError);
+    }
+
+    std::vector<std::wstring> types;
+    if (!schema.empty()) {
+        for (const auto& token : LB_VtabSplitSchema(schema)) {
+            if (LB_TrimWide(token).empty()) continue;
+            source->names.push_back(LB_VtabIdentifier(token));
+            types.push_back(LB_VtabColumnType(token));
+        }
+    }
+    size_t probe = 0;
+    std::vector<std::wstring> first;
+    const bool hasFirst = LB_CsvNextRecord(source->text, probe, source->delimiter, first);
+    if (hasHeader && hasFirst) source->dataStart = probe;
+    if (source->names.empty()) {
+        if (hasFirst) {
+            if (hasHeader) source->names = first;
+            else for (size_t index = 0; index < first.size(); ++index) source->names.push_back(L"列" + std::to_wstring(index + 1));
+        }
+    }
+    source->columnCount = !source->names.empty() ? source->names.size() : (hasFirst ? first.size() : 0);
+    if (source->columnCount == 0) { source->columnCount = 1; source->names = { L"column1" }; }
+    if (types.size() < source->columnCount) types.resize(source->columnCount, L"TEXT");
+    source->names.resize(source->columnCount);
+    for (size_t index = 0; index < source->columnCount; ++index) {
+        if (source->names[index].empty()) source->names[index] = L"列" + std::to_wstring(index + 1);
+    }
+
+    std::string declaration = "CREATE TABLE x(";
+    for (size_t index = 0; index < source->columnCount; ++index) {
+        if (index) declaration += ",";
+        declaration += LB_WideToUtf8(LB_VtabQuoteIdentifier(source->names[index]).c_str());
+        declaration += " ";
+        declaration += LB_WideToUtf8(types[index].c_str());
+    }
+    declaration += ")";
+    if (declare_vtab(database, declaration.c_str()) != Ok) {
+        const char* message = errmsg ? errmsg(database) : nullptr;
+        return LB_VtabError(database, error, std::wstring(L"csv 虚拟表列声明失败：") + (message ? LB_Utf8ToWide(message) : L"SQLite 未提供错误详情"));
+    }
+
+    auto* object = static_cast<LB_CsvVtabObject*>(malloc64(static_cast<sqlite3_int64>(sizeof(LB_CsvVtabObject))));
+    if (!object) return LB_VtabError(database, error, L"csv 虚拟表内存分配失败。");
+    std::memset(object, 0, sizeof(LB_CsvVtabObject));
+    object->impl = new LB_CsvTableImpl{ source };
+    *result = &object->base;
+    return Ok;
+}
+
+// base 是容器的首个成员（偏移 0），因此按地址 reinterpret_cast；这不是继承关系，static_cast 非法。
+static LB_CsvTableImpl* CsvTableImpl(sqlite3_vtab* table) {
+    return table ? static_cast<LB_CsvTableImpl*>(reinterpret_cast<LB_CsvVtabObject*>(table)->impl) : nullptr;
+}
+
+static LB_CsvCursorImpl* CsvCursorImpl(sqlite3_vtab_cursor* cursor) {
+    return cursor ? static_cast<LB_CsvCursorImpl*>(reinterpret_cast<LB_CsvCursorObject*>(cursor)->impl) : nullptr;
+}
+
+static int CsvVtabDisconnect(sqlite3_vtab* table) {
+    // 只销毁我们 new 出来的对象；base 内存由 SQLite 负责 sqlite3_free。
+    delete CsvTableImpl(table);
+    return Ok;
+}
+
+static int CsvVtabBestIndex(sqlite3_vtab*, sqlite3_index_info* info) {
+    if (!info) return Ok;
+    for (int index = 0; index < info->nConstraint; ++index) {
+        info->aConstraintUsage[index].argvIndex = 0;
+        info->aConstraintUsage[index].omit = 0;
+    }
+    info->idxNum = 0;
+    info->idxStr = nullptr;
+    info->needToFreeIdxStr = 0;
+    info->orderByConsumed = 0;
+    info->estimatedCost = 100000.0;
+    info->estimatedRows = 100000;
+    info->colUsed = static_cast<sqlite3_uint64>(-1);
+    return Ok;
+}
+
+static int CsvVtabOpen(sqlite3_vtab* table, sqlite3_vtab_cursor** result) {
+    auto* impl = CsvTableImpl(table);
+    if (!impl || !malloc64) return Error;
+    auto* object = static_cast<LB_CsvCursorObject*>(malloc64(static_cast<sqlite3_int64>(sizeof(LB_CsvCursorObject))));
+    if (!object) return Error;
+    std::memset(object, 0, sizeof(LB_CsvCursorObject));
+    object->base.pVtab = table;
+    object->impl = new LB_CsvCursorImpl{ impl->source };
+    *result = &object->base;
+    return Ok;
+}
+
+static int CsvVtabClose(sqlite3_vtab_cursor* cursor) {
+    delete CsvCursorImpl(cursor);
+    return Ok;
+}
+
+static int CsvVtabFilter(sqlite3_vtab_cursor* cursor, int, const char*, int, sqlite3_value**) {
+    auto* impl = CsvCursorImpl(cursor);
+    if (!impl) return Error;
+    impl->Restart();
+    return Ok;
+}
+
+static int CsvVtabNext(sqlite3_vtab_cursor* cursor) {
+    auto* impl = CsvCursorImpl(cursor);
+    if (!impl) return Error;
+    impl->Advance();
+    return Ok;
+}
+
+static int CsvVtabEof(sqlite3_vtab_cursor* cursor) {
+    const auto* impl = CsvCursorImpl(cursor);
+    return !impl || impl->finished ? 1 : 0;
+}
+
+// 一律按文本投递，数值/日期列由 declare_vtab 声明的类型亲和自动换算；空字段是空文本，需要 NULL 用 NULLIF(列,'')。
+static int CsvVtabColumn(sqlite3_vtab_cursor* cursor, sqlite3_stmt* statement, int column) {
+    auto* impl = CsvCursorImpl(cursor);
+    if (!impl || !result_text) return Error;
+    if (column < 0 || static_cast<size_t>(column) >= impl->fields.size()) return Error;
+    const std::string utf8 = LB_WideToUtf8(impl->fields[static_cast<size_t>(column)].c_str());
+    result_text(statement, utf8.c_str(), static_cast<int>(utf8.size()), Transient);
+    return Ok;
+}
+
+static int CsvVtabRowid(sqlite3_vtab_cursor* cursor, sqlite3_int64* result) {
+    const auto* impl = CsvCursorImpl(cursor);
+    if (!impl || !result) return Error;
+    *result = impl->rowId;
+    return Ok;
+}
+
+static const sqlite3_module CsvVtabModule = {
+    1,
+    CsvVtabConnect, CsvVtabConnect, CsvVtabBestIndex, CsvVtabDisconnect, CsvVtabDisconnect,
+    CsvVtabOpen, CsvVtabClose, CsvVtabFilter, CsvVtabNext, CsvVtabEof, CsvVtabColumn, CsvVtabRowid,
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+};
+
+// 注册失败只关闭 csv 虚拟表能力，不影响普通 SQL，因此返回假而不让打开连接失败。
+static bool RegisterCsvVirtualTable(sqlite3* database) {
+    if (!create_module || !declare_vtab || !malloc64 || !result_text) return false;
+    return create_module(database, "csv", &CsvVtabModule, nullptr) == Ok;
+}
+
+// 最近一次打开连接时 csv 虚拟表是否注册成功；SQLite_取虚拟表支持 直接读它。
+static bool csvVirtualTablesReady = false;
 
 static long long OpenConnection(const wchar_t* path, int mode, int waitMilliseconds, const wchar_t* password = nullptr, const wchar_t* operation = L"打开 SQLite 连接") {
     std::unique_lock<std::mutex> registryLock(registryMutex);
@@ -349,6 +728,8 @@ static long long OpenConnection(const wchar_t* path, int mode, int waitMilliseco
         close_v2(database);
         return 0;
     }
+    // 虚拟表注册失败只降级 csv 直连能力，普通 SQL 必须照常可用，因此不阻断打开连接。
+    csvVirtualTablesReady = RegisterCsvVirtualTable(database);
     auto connectionValue = std::make_shared<Connection>();
     connectionValue->id = nextConnectionId.fetch_add(1);
     connectionValue->database = database;
@@ -482,6 +863,17 @@ bool SQLite_运行库是否支持加密() {
     using namespace LingBuilderSqlite;
     std::lock_guard<std::mutex> lock(moduleMutex);
     return LoadLibraryUnlocked(L"") && key != nullptr;
+}
+
+const wchar_t* SQLite_取虚拟表支持(long long connectionId) {
+    using namespace LingBuilderSqlite;
+    std::lock_guard<std::mutex> lock(registryMutex);
+    const auto found = connections.find(connectionId);
+    if (connectionId <= 0 || found == connections.end() || !found->second->database) {
+        Fail(L"查询 SQLite 虚拟表支持", L"连接无效或已经关闭", Misuse);
+        return LB_ReturnText(L"");
+    }
+    return LB_ReturnText(csvVirtualTablesReady ? L"csv" : L"");
 }
 
 bool SQLite_设置加密算法(const wchar_t* algorithm) {

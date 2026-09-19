@@ -2,7 +2,7 @@
 
 更新时间：2026-09-18
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **98 个内置模块、3640 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **98 个内置模块、3692 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -17,7 +17,7 @@
  已封装 | `lingbuilder.std.text` | 文本处理模块 | 24 |
 | 已封装 | `lingbuilder.std.array` | 数组操作模块 | 13 |
  已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 25 |
-| 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 30 |
+| 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 32 |
 | 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 18 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 22 |
 | 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 10 |
@@ -78,7 +78,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 | 已封装 | `lingbuilder.net.udp` | UDP 通信模块 | 7 |
 | 已封装 | `lingbuilder.net.dns` | DNS 与 IP 模块 | 5 |
 | 已封装 | `lingbuilder.net.url` | URL 解析模块 | 6 |
-| 已封装 | `lingbuilder.net.cookie` | Cookie 文本模块 | 5 |
+| 已封装 | `lingbuilder.net.cookie` | Cookie 文本模块 | 8 |
 | 已封装 | `lingbuilder.net.ftp` | FTP 客户端模块 | 7 |
 | 已封装（普通 SMTP） | `lingbuilder.net.mail` | SMTP 邮件模块 | 2 |
 | 已完整封装 | `lingbuilder.web.http` | 网页访问模块 1.1.1（易语言风格 网页_访问_对象 / 网页_异步访问，内置运行时） | 12 |
@@ -90,15 +90,15 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已封装 | `lingbuilder.data.csv` | CSV 数据模块 | 5 |
+| 已封装 | `lingbuilder.data.csv` | CSV数据模块 | 18 |
 | 已封装 | `lingbuilder.data.protobuf` | Protocol Buffers 模块 | 9 |
 | 已封装 | `lingbuilder.crypto.hash` | 哈希摘要模块 | 15 |
 | 已封装 | `lingbuilder.crypto.password` | 密码哈希与派生模块 | 9 |
-| 已封装 | `lingbuilder.crypto.symmetric` | 对称加密模块 | 26 |
+| 已封装 | `lingbuilder.crypto.symmetric` | 对称加密模块 | 30 |
 | 已封装 | `lingbuilder.crypto.asymmetric` | 非对称加密模块 | 27 |
-| 已封装 | `lingbuilder.crypto.windows` | Windows 数据保护模块 | 4 |
+| 已封装 | `lingbuilder.crypto.windows` | Windows 数据保护模块 | 6 |
 | 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 | 8 |
-| 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.2 | 72 |
+| 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.3 | 73 |
 | 已完整封装（动态运行库） | `lingbuilder.database.mysql` | MySQL 数据库模块 1.0 | 43 |
 | 已完整封装（动态运行库） | `lingbuilder.data.excel` | Excel 表格模块 1.0 | 45 |
 
@@ -147,7 +147,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 |---|---|---|---:|
 | 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 206 |
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 550 |
-| 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 271 |
+| 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 274 |
 | 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
 | 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |
 | 3.0预览 | `lingbuilder.cef3.objects` | CEF3受管对象、Menu、证书与导航历史模块 | 183 |

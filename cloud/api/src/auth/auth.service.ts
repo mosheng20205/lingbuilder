@@ -88,8 +88,8 @@ export class AuthService {
   }
 
   async logout(refreshToken: string) { await this.prisma.authSession.updateMany({ where: { refreshTokenHash: hashOpaqueToken(refreshToken) }, data: { revokedAt: new Date() } }); return { ok: true }; }
-  async forgotPassword(emailValue: string) {
-    const email = this.normalizeEmail(emailValue); const user = await this.prisma.user.findUnique({ where: { email } });
+  async forgotPassword(emailValue: string, ip = '') {
+    const email = this.normalizeEmail(emailValue); await this.redis.rateLimit(`auth:forgot:${ip || 'unknown'}`, 20, 900); const user = await this.prisma.user.findUnique({ where: { email } });
     if (user) { const token = randomToken(); await this.prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash: hashOpaqueToken(token), expiresAt: new Date(Date.now() + 30 * 60_000) } }); await this.sendMail(email, '重置 LingBuilder 密码', `重置令牌：${token}`); }
     return { ok: true };
   }

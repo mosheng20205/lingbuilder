@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "lingbuilder.new_emoji.ui",
+  "backend": "new-emoji",
+  "source": "从本仓库已实机验收的 new_emoji 示例源码提炼（.lingbuilder/ne-examples-stage 与组件总览画廊），每条配方保持单窗口、可直接复制为项目主 .lcpp。",
+  "recipes": [
+    {
+      "id": "window-skeleton",
+      "title": "窗口骨架与代码创建控件",
+      "file": "01-窗口骨架与代码创建控件.lcpp",
+      "scenario": "整窗界面都在源码里用 控件_创建NE* 创建，不写设计器布局；需要跨事件按标记文本重新取控件引用。",
+      "controls": ["Text", "Button"],
+      "commands": ["控件_创建NE文本", "控件_创建NE按钮", "通过标记文本获取NE文本", "通过标记文本获取NE按钮", "NE按钮_绑定被点击", "控件_设置文本", "控件_设置可见", "NE_EU_SetButtonVariant"],
+      "notes": [
+        "窗口项目模型：designerBackend=\"new-emoji\"、controls=[]、events={\"Loaded\":\"创建完毕\"}。",
+        "显示与消息循环由生成器负责，源码里不要调用 NE_运行消息循环。",
+        "局部控件变量不跨事件存活；跨事件必须用 通过标记文本获取NE*（或标记整数）重新解析。",
+        "独立一行「结束」是块结束标记，绝不能写成 结束()（会退出程序）。"
+      ]
+    },
+    {
+      "id": "input-form",
+      "title": "录入表单与校验",
+      "file": "02-录入表单与校验.lcpp",
+      "scenario": "姓名/选项/数量/勾选的录入面板，提交后回填结果并弹消息框确认。",
+      "controls": ["Input", "Select", "InputNumber", "Checkbox", "Button", "Text"],
+      "commands": ["控件_创建NE输入框", "控件_创建NE选择器", "控件_创建NE数字输入框", "控件_创建NE复选框", "NE选择器_设置选项", "控件_设置选择项", "控件_取文本", "控件_取数值", "控件_取选择项", "控件_取勾选", "NE_显示消息框", "到文本"],
+      "notes": [
+        "读写控件统一走通用命令 控件_取文本/控件_设置文本/控件_取数值/控件_取勾选/控件_取选择项。",
+        "选择器选项用竖线分隔；索引从 0 开始。",
+        "到文本(逻辑型) 生成「真」/「假」；数值校验用 如果 (数量 <= 0)。",
+        "消息框处理器参数必须写显式中文类型：(整数型 消息框编号, 整数型 结果)。"
+      ]
+    },
+    {
+      "id": "table-crud",
+      "title": "表格增删改与双击编辑",
+      "file": "03-表格增删改与双击编辑.lcpp",
+      "scenario": "订单/账号/资料列表：定义列、批量写行、追加与删除、开关双击编辑、回收单元格编辑结果。",
+      "controls": ["Table", "Button", "Text"],
+      "commands": ["控件_创建NE表格", "NE表格_设置列", "NE表格_设置行数据", "NE表格_添加行", "NE_EU_GetTableRowCount", "NE_EU_DeleteTableRow", "NE_EU_ClearTableRows", "NE_EU_SetTableDoubleClickEdit", "NE表格_绑定单元格编辑"],
+      "notes": [
+        "列与行都是「制表符分隔的 key=value」协议；源码里的 \\t 会被解释成真实制表符。",
+        "追加行建议带稳定 key，便于后续按键更新或选中。",
+        "单元格编辑处理器签名：(整数型 行号, 整数型 列号, 整数型 动作, 文本型 文本)。"
+      ]
+    },
+    {
+      "id": "richlist-virtual",
+      "title": "富列表模板与虚拟数据源",
+      "file": "04-富列表模板与虚拟数据源.lcpp",
+      "scenario": "自定义行内布局的任务/会话/商品列表，并扩展到十万行级虚拟滚动。",
+      "controls": ["RichList", "Button"],
+      "commands": ["控件_创建NE富列表", "NE富列表_设置模板", "NE富列表_设置条目", "NE富列表_设置选中键", "NE富列表_更新条目", "NE富列表_绑定选择变化", "NE富列表_绑定项目点击", "NE_EU_SetRichListVirtualItemCount", "NE富列表_绑定虚拟数据源", "NE富列表_设置虚拟行数据"],
+      "notes": [
+        "模板与条目的 JSON 用中文引号 “ ” 包裹整串，内部保留英文双引号。",
+        "大数据量必须走 绑定虚拟数据源 + 设置虚拟行数据，逐条添加行会卡死界面线程。",
+        "设置模板/条目返回整数状态码，建议 调试输出 出来便于定位 JSON 错误。"
+      ]
+    },
+    {
+      "id": "popup-menu",
+      "title": "弹出菜单与消息框回调",
+      "file": "05-弹出菜单与消息框回调.lcpp",
+      "scenario": "左侧导航或右键菜单，配合确认弹窗与状态回写。",
+      "controls": ["Menu", "Button", "Text"],
+      "commands": ["控件_创建NE菜单", "NE菜单_设置项目", "NE菜单_设置项目图标", "NE菜单_设置项目快捷键", "NE菜单_绑定菜单命令", "NE菜单_绑定右键菜单", "NE菜单_投递项目", "NE_显示消息框"],
+      "notes": [
+        "菜单项用换行分隔，前缀 > 表示下一级子菜单；整串用中文引号包裹。",
+        "菜单命令处理器签名：(整数型 项目索引, 文本型 菜单路径, 文本型 命令)。",
+        "消息框结果值：1 确认、2 取消或关闭。"
+      ]
+    },
+    {
+      "id": "frameless-shell",
+      "title": "无边框外壳与自绘标题栏",
+      "file": "06-无边框外壳与自绘标题栏.lcpp",
+      "scenario": "浏览器外壳、应用商店壳、需要自绘标题栏与标签页的工具窗口。",
+      "controls": ["AddressBar", "IconButton", "Tabs", "Menu", "Button"],
+      "commands": ["NE_设置窗口缩放边框", "NE_设置窗口拖拽区", "控件_创建NE地址栏", "NE地址栏_设置安全状态", "NE地址栏_绑定提交回调", "控件_创建NE图标按钮", "NE_设置元素窗口命令", "控件_创建NE标签页", "NE标签页_设置标签项", "NE标签页_绑定选择变化", "NE_EU_SetElementPopup", "NE_EU_SetPopupOpen"],
+      "notes": [
+        "缩放边框与拖拽区要在 创建完毕 开头先设，再放标题栏控件。",
+        "最小化/最大化/关闭用 NE_设置元素窗口命令(窗口, 按钮, 命令编号) 交给原生窗口过程，不要自己发消息。",
+        "标签页选择变化处理器签名：(整数型 选中索引, 整数型 项目数量, 整数型 动作)。",
+        "标签页禁用/图标等分页属性走设计器 itemsEx 协议，不要手写元素 ID。"
+      ]
+    },
+    {
+      "id": "designer-model-controls",
+      "title": "设计器模型控件与成员语法",
+      "file": "07-设计器模型控件与成员语法.lcpp",
+      "scenario": "控件由窗口设计器模型（updatedDesignerProject）承载，源码只做联动与读写。",
+      "controls": ["Input", "Button", "Text"],
+      "commands": ["调试输出", "NE_显示消息框"],
+      "notes": [
+        "模型里控件 designerType 用命名空间形态：lingbuilder.new_emoji.ui/Input、/Button、/Text。",
+        "控件的稳定中文名就是源码符号，`.内容` 读写文本，等价 控件_取文本/控件_设置文本。",
+        "设计器事件处理器命名为 _控件名_事件中文名（按钮是 _控件名_被点击，输入框是 _控件名_文本变化）。",
+        "源码引用了模型里不存在的控件会被构建门禁阻断；补控件要同时传 updatedDesignerProject 再 apply。",
+        "控件清单、属性与事件以 lingbuilder.module.info 传 control 过滤后的 designerControlDetails 为准，不要凭猜测编造。"
+      ]
+    }
+  ]
+}

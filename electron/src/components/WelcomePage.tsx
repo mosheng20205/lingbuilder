@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -13,6 +13,7 @@ import {
   Minus,
   RotateCcw,
   Search,
+  UserRound,
   X
 } from 'lucide-react';
 import lingBuilderIcon from '../../../image/lingbuilder-ide-icon-v1.png';
@@ -22,10 +23,19 @@ import {
   LINGBUILDER_DISPLAY_VERSION,
   LINGBUILDER_DOCS_URL,
   LINGBUILDER_GITHUB_URL,
+  LINGBUILDER_SPONSORS_URL,
+  LINGBUILDER_UPDATES_URL,
   LINGBUILDER_VIDEO_TUTORIALS_URL
 } from '../services/product/productInfo';
 import ProjectTypeDialog from './ProjectTypeDialog';
 import RecentWorkspacesDialog, { workspaceLabel } from './RecentWorkspacesDialog';
+import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
+import { requestCloudAccountRecharge } from '../services/workbench/cloudAccountRechargeService';
+import {
+  getCloudAccountSessionState,
+  signOutCloudAccount,
+  subscribeCloudAccountSession
+} from '../services/workbench/cloudAccountSessionStore';
 
 export interface WelcomePageProps {
   isDarkMode: boolean;
@@ -44,13 +54,15 @@ export interface WelcomePageProps {
   onOpenCliGuide: () => void;
 }
 
-/** 欢迎页底部官网导航：文案与路径对齐官网导航（cloud/admin/src/websiteNav.ts）。 */
-const WELCOME_SITE_LINKS: ReadonlyArray<{ label: string; url: string }> = [
-  { label: '使用手册', url: LINGBUILDER_DOCS_URL },
-  { label: '视频教程', url: LINGBUILDER_VIDEO_TUTORIALS_URL },
-  { label: '命令查找', url: LINGBUILDER_COMMANDS_URL },
-  { label: 'AI 教程', url: LINGBUILDER_AI_GUIDE_URL },
-  { label: 'GitHub 开源地址', url: LINGBUILDER_GITHUB_URL }
+/** 欢迎页底部官网导航：文案与路径对齐官网导航（cloud/admin/src/websiteNav.ts）；icon 为纯装饰 emoji，不进无障碍名称。 */
+const WELCOME_SITE_LINKS: ReadonlyArray<{ label: string; url: string; icon: string }> = [
+  { label: '使用手册', url: LINGBUILDER_DOCS_URL, icon: '\u{1F4D8}' },
+  { label: '视频教程', url: LINGBUILDER_VIDEO_TUTORIALS_URL, icon: '\u{1F3AC}' },
+  { label: '命令查找', url: LINGBUILDER_COMMANDS_URL, icon: '\u{1F50D}' },
+  { label: 'AI 教程', url: LINGBUILDER_AI_GUIDE_URL, icon: '\u{1F916}' },
+  { label: '更新记录', url: LINGBUILDER_UPDATES_URL, icon: '\u{1F4DD}' },
+  { label: '赞助列表', url: LINGBUILDER_SPONSORS_URL, icon: '\u2764\uFE0F' },
+  { label: 'GitHub 开源地址', url: LINGBUILDER_GITHUB_URL, icon: '\u{1F419}' }
 ];
 
 export default function WelcomePage({
@@ -72,6 +84,8 @@ export default function WelcomePage({
   const [showProjectTypeDialog, setShowProjectTypeDialog] = useState(false);
   const [workspaceQuery, setWorkspaceQuery] = useState('');
   const [showAllWorkspacesDialog, setShowAllWorkspacesDialog] = useState(false);
+  const [accountSession, setAccountSession] = useState(getCloudAccountSessionState);
+  useEffect(() => subscribeCloudAccountSession(() => setAccountSession(getCloudAccountSessionState())), []);
   const surface = isDarkMode ? 'bg-[#1e1e1e] text-[#d4d4d4]' : 'bg-[#f7f8fa] text-slate-800';
   const titleBar = isDarkMode
     ? 'bg-[#323233] text-slate-200 border-[#2b2b2b]'
@@ -280,12 +294,58 @@ export default function WelcomePage({
                   key={link.url}
                   title={link.url}
                   onClick={() => window.open(link.url, '_blank', 'noopener,noreferrer')}
-                  className="cursor-pointer transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
+                  className="flex cursor-pointer items-center gap-1 transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
                 >
+                  <span aria-hidden="true">{link.icon}</span>
                   {link.label}
                 </button>
               ))}
             </nav>
+            {window.lingBuilder?.cloudAccount && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {accountSession.authenticated ? (
+                  <>
+                    <span className="flex items-center gap-1.5" title={accountSession.email}>
+                      <UserRound className="h-3 w-3" aria-hidden="true" />
+                      <span className="max-w-[16rem] truncate">{accountSession.email}</span>
+                      <span className="opacity-70">· {accountSession.balance?.available || '0'} 点</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void requestCloudAccountRecharge()}
+                      className="cursor-pointer items-center gap-1 transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
+                    >
+                      充值点数
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void signOutCloudAccount()}
+                      className="cursor-pointer items-center gap-1 transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
+                    >
+                      退出
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void requestCloudAccountLogin({ initialMode: 'login', description: '登录后可使用系统 AI、购买或启用收费模块；还没有账号可点「注册新账号」。' })}
+                      className="flex cursor-pointer items-center gap-1 transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
+                    >
+                      <UserRound className="h-3 w-3" aria-hidden="true" />
+                      登录账号
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void requestCloudAccountLogin({ initialMode: 'register' })}
+                      className="cursor-pointer items-center gap-1 transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
+                    >
+                      注册账号
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />本地模式</span>
           </footer>
         </div>

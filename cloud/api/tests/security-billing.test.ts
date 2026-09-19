@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BillingService } from '../src/billing/billing.service.js';
+import { AuthService } from '../src/auth/auth.service.js';
 import { AiController } from '../src/ai/ai.controller.js';
 import { AiService, DEFAULT_EDIT_OUTPUT_TOKENS, resolveOutputBudget } from '../src/ai/ai.service.js';
 import { estimateCancellationUsage } from '../src/ai/usage-estimator.js';
@@ -88,4 +89,18 @@ test('AI controller rejects duplicate idempotency before committing SSE headers'
   const response = new Proxy({}, { get() { responseTouched = true; return () => response; } });
   await assert.rejects(() => controller.chat({ id: 'u1', email: 'u@example.com', mfa: false }, 'duplicate', { modelAlias: 'standard', rulebookVersion: 'test', messages: [{ role: 'user', content: 'hi' }] }, response as never), error => error === conflict);
   assert.equal(responseTouched, false);
+});
+
+test('forgot password rate limits by IP and never leaks account existence', async () => {
+  const calls: Array<{ key: string; limit: number; window: number }> = [];
+  const auth = new AuthService(
+    { user: { findUnique: async () => null } } as never,
+    {} as never,
+    {} as never,
+    { rateLimit: async (key: string, limit: number, window: number) => { calls.push({ key, limit, window }); } } as never,
+    {} as never,
+  );
+  const result = await auth.forgotPassword(' Someone@Example.com ', '203.0.113.9');
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(calls, [{ key: 'auth:forgot:203.0.113.9', limit: 20, window: 900 }]);
 });

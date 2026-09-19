@@ -1,9 +1,9 @@
-# SQLite 数据库模块 2.2
+# SQLite 数据库模块 2.3
 
 模块 ID：`lingbuilder.database.sqlite`  
-模块版本：`2.2.0`  
+模块版本：`2.3.0`  
 目标：Windows / MSVC / Win32 与 x64  
-运行库：LingBuilder 随附 SQLite3MultipleCiphers 运行库（SQLCipher 兼容），或用户自备的官方 `sqlite3.dll`；DLL 架构必须与生成程序一致
+运行库：LingBuilder 随附 SQLite3MultipleCiphers 运行库（SQLCipher 兼容），或用户自备的官方 `sqlite3.dll`；DLL 架构必须与生成程序一致。`csv` 虚拟表需要运行库导出 `sqlite3_create_module`、`sqlite3_declare_vtab`、`sqlite3_malloc64`、`sqlite3_mprintf`、`sqlite3_result_text`（官方与随附运行库都提供）；缺少时普通 SQL 照常可用，仅虚拟表不可用
 
 ## 定位与商用边界
 
@@ -81,6 +81,27 @@ SQLite 本身属于 public domain，但生产发布仍应固定 SQLite 版本和
 - 密钥以 UTF-8 编码传给运行库；SQLCipher 会用密钥派生页密钥，密码本身不落盘。忘记密码即无法恢复数据，请自行做好密钥托管。
 - WAL、事务、预编译语句、完整性检查等其余命令对加密连接与明文连接行为一致。注意：`SQLite_备份到文件` 的备份目标由运行库以无密钥方式打开，与加密源不兼容（SQLCipher 会拒绝），因此**不能**对加密库使用在线备份；如需迁移加密库，请使用 SQLCipher 工具（如 `sqlcipher_export`）或同密钥打开的两个连接间复制。
 
+## CSV 虚拟表直连（把 CSV 文件当表查）
+
+启用本模块即可使用 `csv` 虚拟表，不需要加载任何扩展，也不需要先导库再查询：
+
+```sql
+CREATE VIRTUAL TABLE 导入_员工 USING csv(filename='员工.csv',
+    schema='(工号 INTEGER, 姓名 TEXT, 备注 TEXT)', header=1, encoding='AUTO');
+INSERT INTO 员工(工号, 姓名, 备注) SELECT 工号, 姓名, 备注 FROM 导入_员工;
+DROP TABLE 导入_员工;
+```
+
+- 参数：`filename`（必填）、`schema`（列名与列类型，可省）、`header`（缺省 `1`）、`delimiter`（缺省半角逗号，取首字符生效）、`encoding`（缺省 `AUTO`）。值可用单引号包裹。
+- `header=1` 时表头行**不会**作为数据行返回；`schema` 省略时用表头行当列名（`header=0` 时用 `列N`），列宽取首条记录。
+- 记录解析与 CSV 数据模块共用同一份内核：引号内的换行属于字段内容、双写引号转义、CRLF/CR/LF 混用、空行跳过；`AUTO` 的编码识别同样是「BOM → 严格 UTF-8 → GB18030」。
+- 单元格一律按文本投递，落库形态由 `schema` 声明的列亲和决定（`INTEGER`/`REAL` 自动换算，无法换算的保留文本）。空单元格是空文本，需要 NULL 用 `NULLIF(列,'')`。
+- 只读虚拟表：对虚拟表本身 `INSERT`/`UPDATE`/`DELETE` 会被 SQLite 拒绝，写库请 `INSERT INTO 目标表 SELECT ... FROM 虚拟表`。
+- `CREATE VIRTUAL TABLE` 的定义会持久化在数据库里，下次打开按原 `filename` 重新读取；文件移动或改名后访问该表会失败，需要 `DROP` 后重建。
+- 扫描从文件解码后的文本按需逐行推进，但整文件会以宽字符驻留一份内存；超大文件建议先分片或改用 CSV 模块逐段处理。
+- 能力自查：`SQLite_取虚拟表支持(连接)` 返回 `csv`；运行库缺少虚拟表相关导出时返回空文本，此时普通 SQL 不受影响，只有关闭的虚拟表能力。
+- 参数写错（例如漏掉 `filename`）会直接拿到中文诊断（`csv 虚拟表缺少 filename 参数…`），不会只剩一句 `no such module`。
+
 ## 推荐完整示例
 
 ```text
@@ -148,6 +169,7 @@ SQLite 本身属于 public domain，但生产发布仍应固定 SQLite 版本和
 | `SQLite_取运行库版本()` | 文本型 | 返回实际 DLL 版本 |
 | `SQLite_运行库线程安全()` | 逻辑型 | 检查 SQLite 编译时线程安全开关 |
 | `SQLite_运行库是否支持加密()` | 逻辑型 | 检查运行库是否提供 `sqlite3_key` 加密导出 |
+| `SQLite_取虚拟表支持(连接)` | 文本型 | 返回该连接可用的虚拟表模块名（`csv`）；空文本表示运行库缺少虚拟表导出 |
 | `SQLite_设置加密算法(算法)` | 逻辑型 | 设置下一次加密打开使用的算法（默认 sqlcipher） |
 | `SQLite_探测加密算法(路径, 密码)` | 文本型 | 只读探测加密算法，返回命中的算法名 |
 | `SQLite_打开连接(路径, 模式, 忙等待毫秒)` | SQLite连接 | 打开独立 FULLMUTEX 连接 |

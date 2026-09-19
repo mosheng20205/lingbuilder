@@ -41,6 +41,23 @@ export function getLingCppCommentTokenColor(isDarkMode: boolean): string {
     : LINGCPP_COMMENT_TOKEN_COLORS.light;
 }
 
+/**
+ * `#常量名` 引用令牌颜色（项目常量与模块常量共用）。
+ *
+ * 深色值取自易语言常量紫（#BE56BE）；新手结构化编辑器、Monaco 与 Diff 视图
+ * 必须消费同一令牌色，切换编辑器模式时同一常量行不得变色。
+ */
+export const LINGCPP_CONSTANT_TOKEN_COLORS: LingCppSemanticTokenColors = {
+  dark: '#BE56BE',
+  light: '#8E458E'
+};
+
+export function getLingCppConstantTokenColor(isDarkMode: boolean): string {
+  return isDarkMode
+    ? LINGCPP_CONSTANT_TOKEN_COLORS.dark
+    : LINGCPP_CONSTANT_TOKEN_COLORS.light;
+}
+
 export function createLingCppControlReferenceEditorCss(): string[] {
   const colors = LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS;
   return [

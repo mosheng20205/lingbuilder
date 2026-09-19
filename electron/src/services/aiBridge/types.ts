@@ -262,6 +262,10 @@ export interface AiBridgeModuleInfoRequest {
   projectId?: string;
   query?: string;
   includeAdvanced?: boolean;
+  /** 按设计器控件类型/中文名过滤，返回该控件的完整属性、事件与代码创建契约。 */
+  control?: string;
+  /** 按示例标题、路径或序号命中 uiExamples 中的示例并返回其正文。 */
+  example?: string;
 }
 
 export interface AiBridgeBuildStopRequest {

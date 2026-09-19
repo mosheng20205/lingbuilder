@@ -68,7 +68,7 @@ const fsCore = createStandardModule({
   commands: [
     command('文件_是否存在', [{ name: '路径', type: 'wideString', description: '要判断的 Unicode 路径；只有普通文件返回真，目录、不存在或非法路径都返回假。'}], 'bool', '判断指定路径是否为普通文件。', '文件_是否存在("配置.json")'),
     command('目录_是否存在', [{ name: '路径', type: 'wideString', description: '要判断的 Unicode 路径；只有真实目录返回真，文件和不存在路径返回假。'}], 'bool', '判断指定路径是否为目录。'),
-    command('文件_读取文本', [{ name: '路径', type: 'wideString', description: '要读取的文件路径；打不开时返回空文本。整文件按 UTF-8 严格解码，开头的 UTF-8 BOM 自动剥离，不做其它编码猜测。'}], 'wideString', '按 UTF-8 读取完整文本；失败返回空文本。'),
+    command('文件_读取文本', [{ name: '路径', type: 'wideString', description: '要读取的文件路径；打不开时返回空文本。'}, { name: '编码名称', type: 'wideString', optional: true, defaultValue: 'UTF-8', description: '省略或传 "UTF-8" 时按 UTF-8 严格解码（开头 BOM 自动剥离，不做其它编码猜测），解码失败返回空文本；GBK 等中文文件必须显式传 GBK、GB18030 或 ANSI，也可传 AUTO 按「BOM → 严格 UTF-8 → GB18030」三级自动识别。'}], 'wideString', '按指定编码读取完整文本，缺省 UTF-8；失败返回空文本。'),
     command('文件_写入文本', [{ name: '路径', type: 'wideString', description: writePathArg}, { name: '内容', type: 'wideString', description: utf8ContentArg}], 'bool', '按 UTF-8 覆盖写入文本文件。'),
     command('文件_追加文本', [{ name: '路径', type: 'wideString', description: '要追加的文件路径；所在目录必须已存在，文件不存在时会自动新建。'}, { name: '内容', type: 'wideString', description: '追加到文件末尾的文本，按 UTF-8 编码且不附加 BOM。'}], 'bool', '按 UTF-8 向文件末尾追加文本。'),
     command('文件_复制', [{ name: '来源', type: 'wideString', description: '要复制的源文件路径，必须是已存在的普通文件。'}, { name: '目标', type: 'wideString', description: '复制得到的目标路径。'}, { name: '允许覆盖', type: 'bool', description: overwriteArg}], 'bool', '复制文件并可选择是否覆盖。'),

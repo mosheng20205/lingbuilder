@@ -12,6 +12,8 @@ import {
   LingBuilderProjectModules,
   MarketModule,
   MarketSource,
+  ModuleDevLink,
+  ModuleDevLinkRegistry,
   ModuleHistoryEntry,
   ModuleInstallPreview,
   ModuleInstallResult
@@ -23,6 +25,7 @@ const PROJECT_MODULES_FILE = 'project-modules.json';
 const MODULE_MANIFEST_FILE = 'lingbuilder.module.json';
 const MODULE_SOURCES_FILE = 'module-sources.json';
 const MODULE_HISTORY_FILE = 'module-history.json';
+const MODULE_LINKS_FILE = 'module-links.json';
 const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 const BASIC_MODULE_ID = 'lingbuilder.win32.basic';
 // 新项目默认启用的内置模块（基础模块之外的增量）：
@@ -69,48 +72,103 @@ export class ModuleService {
       diagnostics: []
     }));
 
+    const links = await this.readModuleDevLinks();
+    const linkedModuleIds = new Set(Object.keys(links));
+
     const installRoot = this.installedModulesDir();
     const entries = await safeReadDir(installRoot);
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (PROJECT_RESOURCE_MODULE_IDS.has(entry.name)) continue;
+      if (linkedModuleIds.has(entry.name)) continue;
       const installPath = path.join(installRoot, entry.name);
-      const manifestPath = path.join(installPath, MODULE_MANIFEST_FILE);
+      const loaded = await this.loadInstalledModuleFromDir(installPath, entry.name, projectRefs.enabledModuleIds);
+      // 链接优先：目录名与清单 ID 不一致时（如手工改名的目录），清单 ID 命中链接表也要跳过。
+      if (loaded.manifest && linkedModuleIds.has(loaded.manifest.id)) continue;
+      modules.push(loaded);
+    }
+
+    // 开发源链接模块：installPath 直接指向工作区内源目录，改动即时生效，不落真实符号链接。
+    for (const link of Object.values(links)) {
+      const sourceDir = this.resolveDevLinkDir(link);
+      const manifestPath = path.join(sourceDir, MODULE_MANIFEST_FILE);
       try {
         const raw = await fs.readFile(manifestPath, 'utf8');
         const parsed = JSON.parse(raw);
         const validation = validateModuleManifest(parsed);
         if (!validation.manifest) {
           modules.push({
-            manifest: createInvalidManifest(entry.name),
-            installPath,
+            manifest: createInvalidManifest(link.moduleId),
+            installPath: sourceDir,
             isInstalled: true,
             isEnabledForProject: false,
-            diagnostics: validation.diagnostics
+            isDevLink: true,
+            diagnostics: [...validation.diagnostics, `开发源清单校验未通过：${link.sourcePath}`]
           });
           continue;
         }
-        const contentDiagnostics = await validateModuleManifestContents(installPath, validation.manifest);
+        const contentDiagnostics = await validateModuleManifestContents(sourceDir, validation.manifest);
         modules.push({
           manifest: validation.manifest,
-          installPath,
+          installPath: sourceDir,
           isInstalled: true,
           isEnabledForProject: projectRefs.enabledModuleIds.includes(validation.manifest.id),
+          isDevLink: true,
           diagnostics: [...validation.diagnostics, ...contentDiagnostics],
-          sha256: await hashDirectoryManifest(installPath)
+          sha256: await hashDirectoryManifest(sourceDir)
         });
       } catch (error) {
         modules.push({
-          manifest: createInvalidManifest(entry.name),
-          installPath,
+          manifest: createInvalidManifest(link.moduleId),
+          installPath: sourceDir,
           isInstalled: true,
           isEnabledForProject: false,
-          diagnostics: [`模块清单读取失败：${errorMessage(error)}`]
+          isDevLink: true,
+          diagnostics: [`开发源目录不可用（${link.sourcePath}）：${errorMessage(error)}`]
         });
       }
     }
 
     return modules.sort((a, b) => Number(Boolean(b.isBuiltin)) - Number(Boolean(a.isBuiltin)) || a.manifest.name.localeCompare(b.manifest.name, 'zh-CN'));
+  }
+
+  private async loadInstalledModuleFromDir(
+    installPath: string,
+    fallbackId: string,
+    enabledModuleIds: readonly string[]
+  ): Promise<InstalledModule> {
+    const manifestPath = path.join(installPath, MODULE_MANIFEST_FILE);
+    try {
+      const raw = await fs.readFile(manifestPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      const validation = validateModuleManifest(parsed);
+      if (!validation.manifest) {
+        return {
+          manifest: createInvalidManifest(fallbackId),
+          installPath,
+          isInstalled: true,
+          isEnabledForProject: false,
+          diagnostics: validation.diagnostics
+        };
+      }
+      const contentDiagnostics = await validateModuleManifestContents(installPath, validation.manifest);
+      return {
+        manifest: validation.manifest,
+        installPath,
+        isInstalled: true,
+        isEnabledForProject: enabledModuleIds.includes(validation.manifest.id),
+        diagnostics: [...validation.diagnostics, ...contentDiagnostics],
+        sha256: await hashDirectoryManifest(installPath)
+      };
+    } catch (error) {
+      return {
+        manifest: createInvalidManifest(fallbackId),
+        installPath,
+        isInstalled: true,
+        isEnabledForProject: false,
+        diagnostics: [`模块清单读取失败：${errorMessage(error)}`]
+      };
+    }
   }
 
   async getEnabledProjectModules(projectId = DEFAULT_PROJECT_ID): Promise<InstalledModule[]> {
@@ -337,6 +395,11 @@ export class ModuleService {
     const preview = previewCache.get(previewId);
     if (!preview || !preview.manifest || !preview.canInstall) throw new Error('安装预览不存在或未通过校验。');
     if (BUILTIN_MODULES.some(module => module.id === preview.manifest?.id)) throw new Error('不能覆盖内置模块。');
+    const devLinks = await this.readModuleDevLinks();
+    const existingLink = devLinks[preview.manifest.id];
+    if (existingLink) {
+      throw new Error(`模块 ${preview.manifest.id} 已链接开发源（${existingLink.sourcePath}），扫描以开发源为准；请先在模块管理中取消链接后再安装。`);
+    }
     const contentDiagnostics = await validateModuleManifestContents(preview.unpackedPath, preview.manifest);
     if (contentDiagnostics.length > 0) {
       preview.canInstall = false;
@@ -376,6 +439,21 @@ export class ModuleService {
 
   async uninstallModule(moduleId: string): Promise<void> {
     if (BUILTIN_MODULES.some(module => module.id === moduleId)) throw new Error('内置模块不能卸载。');
+    const devLinks = await this.readModuleDevLinks();
+    if (devLinks[moduleId]) {
+      // 链接模块的「卸载」只断链并清理项目引用，绝不触碰用户开发源目录。
+      delete devLinks[moduleId];
+      await this.writeModuleDevLinks(devLinks);
+      const cleanedLinkedRefs = await this.removeModuleFromAllProjects(moduleId);
+      await this.appendHistory({
+        action: 'unlink',
+        moduleId,
+        status: 'success',
+        summary: `已取消模块开发源链接 ${moduleId}`,
+        details: `开发源目录文件未删除；已清理 ${cleanedLinkedRefs} 个项目引用。`
+      });
+      return;
+    }
     const installPath = path.join(this.installedModulesDir(), moduleId);
     const snapshotPath = await this.snapshotIfExists(installPath, moduleId);
     await fs.rm(installPath, { recursive: true, force: true });
@@ -389,6 +467,96 @@ export class ModuleService {
       summary: `已卸载模块 ${moduleId}`,
       details: `模块文件已移除，已清理 ${cleanedProjectReferences} 个项目引用。`,
       snapshotPath
+    });
+  }
+
+  /** 已登记的开发源链接（moduleId → 链接条目）。 */
+  async listModuleDevLinks(): Promise<ModuleDevLink[]> {
+    return Object.values(await this.readModuleDevLinks());
+  }
+
+  /**
+   * 把模块开发源目录链接进当前工作区：源目录保持在原位（不改文件、不建符号链接），
+   * 扫描器按登记表把 installPath 指向源目录，改源码后重新构建即拿到最新文件。
+   * sourcePath 必须是工作区相对路径（如 `.lingbuilder/module-build/<id>`）。
+   */
+  async linkModuleDevSource(sourcePath: string): Promise<{ link: ModuleDevLink; module: InstalledModule }> {
+    const normalized = (sourcePath || '').trim().replace(/\\/gu, '/');
+    if (!normalized) throw new Error('缺少开发源目录路径。');
+    if (path.posix.isAbsolute(normalized) || /^[a-zA-Z]:/u.test(normalized)) {
+      throw new Error('开发源链接只接受工作区相对路径。');
+    }
+    const collapsed = path.posix.normalize(normalized).replace(/^\.\//u, '');
+    if (collapsed === '..' || collapsed.startsWith('../')) {
+      throw new Error('路径越界：开发源必须位于当前 LingBuilder 工作区内。');
+    }
+    const sourceDir = path.resolve(this.workspaceRoot, ...collapsed.split('/'));
+    const workspacePrefix = path.resolve(this.workspaceRoot) + path.sep;
+    if (!sourceDir.startsWith(workspacePrefix)) {
+      throw new Error('路径越界：开发源必须位于当前 LingBuilder 工作区内。');
+    }
+    const installRoot = path.resolve(this.installedModulesDir());
+    if (sourceDir === installRoot || sourceDir.startsWith(installRoot + path.sep)) {
+      throw new Error('开发源不能指向已安装模块目录（.lingbuilder/modules）；请指向模块源码工程目录。');
+    }
+    const stat = await fs.stat(sourceDir).catch(() => undefined);
+    if (!stat?.isDirectory()) throw new Error(`开发源目录不存在或不是目录：${collapsed}`);
+    let manifest: LingBuilderModuleManifest;
+    try {
+      const parsed = JSON.parse(await fs.readFile(path.join(sourceDir, MODULE_MANIFEST_FILE), 'utf8'));
+      const validation = validateModuleManifest(parsed);
+      if (!validation.manifest) {
+        throw new Error(validation.diagnostics[0] || '清单不符合 manifest v2 规范。');
+      }
+      manifest = validation.manifest;
+    } catch (error) {
+      throw new Error(`开发源缺少有效的 ${MODULE_MANIFEST_FILE}（${collapsed}）：${errorMessage(error)}`);
+    }
+    if (BUILTIN_MODULES.some(module => module.id === manifest.id)) {
+      throw new Error(`内置模块不能作为开发源链接：${manifest.id}`);
+    }
+    if (PROJECT_RESOURCE_MODULE_IDS.has(manifest.id)) {
+      throw new Error(`“${manifest.id}”是项目资源，不能作为开发源链接。`);
+    }
+    const links = await this.readModuleDevLinks();
+    const existing = links[manifest.id];
+    if (existing && existing.sourcePath !== collapsed) {
+      throw new Error(`模块 ${manifest.id} 已链接到其他开发源（${existing.sourcePath}）；请先取消原链接。`);
+    }
+    const link: ModuleDevLink = {
+      moduleId: manifest.id,
+      sourcePath: collapsed,
+      linkedAt: existing?.linkedAt || new Date().toISOString()
+    };
+    links[link.moduleId] = link;
+    await this.writeModuleDevLinks(links);
+    await this.appendHistory({
+      action: 'link',
+      moduleId: link.moduleId,
+      moduleName: manifest.name,
+      version: manifest.version,
+      status: 'success',
+      summary: `${existing ? '已更新' : '已链接'}模块开发源 ${manifest.name}`,
+      details: `开发源：${collapsed}；该模块的补全、诊断与构建物化将直接消费源目录，无需重新打包安装。`
+    });
+    const modules = await this.scanInstalledModules();
+    const module = modules.find(item => item.manifest.id === link.moduleId);
+    if (!module) throw new Error('开发源链接后模块扫描失败，请检查清单内容。');
+    return { link, module };
+  }
+
+  /** 取消开发源链接：只移除登记表条目，不删除开发源与已安装目录中的任何文件。 */
+  async unlinkModuleDevSource(moduleId: string): Promise<void> {
+    const links = await this.readModuleDevLinks();
+    if (!links[moduleId]) throw new Error(`模块 ${moduleId} 没有开发源链接。`);
+    delete links[moduleId];
+    await this.writeModuleDevLinks(links);
+    await this.appendHistory({
+      action: 'unlink',
+      moduleId,
+      status: 'success',
+      summary: `已取消模块开发源链接 ${moduleId}`,
+      details: '开发源目录文件未改动。'
     });
   }
 
@@ -671,6 +839,32 @@ export class ModuleService {
 
   private historyPath(): string {
     return path.join(this.lingBuilderDir(), MODULE_HISTORY_FILE);
+  }
+
+  private moduleLinksPath(): string {
+    return path.join(this.lingBuilderDir(), MODULE_LINKS_FILE);
+  }
+
+  private async readModuleDevLinks(): Promise<Record<string, ModuleDevLink>> {
+    const registry = await readJsonFile<ModuleDevLinkRegistry>(this.moduleLinksPath(), { schemaVersion: 1, links: {} });
+    const links: Record<string, ModuleDevLink> = {};
+    for (const [key, value] of Object.entries(registry?.links || {})) {
+      const moduleId = typeof value?.moduleId === 'string' && value.moduleId ? value.moduleId : key;
+      if (!moduleId || typeof value?.sourcePath !== 'string' || !value.sourcePath) continue;
+      if (BUILTIN_MODULES.some(module => module.id === moduleId)) continue;
+      links[moduleId] = { moduleId, sourcePath: value.sourcePath, linkedAt: String(value.linkedAt || '') };
+    }
+    return links;
+  }
+
+  private async writeModuleDevLinks(links: Record<string, ModuleDevLink>): Promise<void> {
+    await fs.mkdir(this.lingBuilderDir(), { recursive: true });
+    const registry: ModuleDevLinkRegistry = { schemaVersion: 1, links };
+    await fs.writeFile(this.moduleLinksPath(), `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+  }
+
+  private resolveDevLinkDir(link: ModuleDevLink): string {
+    return path.resolve(this.workspaceRoot, ...link.sourcePath.replace(/\\/gu, '/').split('/').filter(Boolean));
   }
 }
 

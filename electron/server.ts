@@ -1755,6 +1755,30 @@ app.post("/api/modules/package/export", async (req, res) => {
   }
 });
 
+app.post("/api/modules/developer/link", async (req, res) => {
+  try {
+    const { sourcePath } = req.body as { sourcePath?: string };
+    if (!sourcePath) return res.status(400).json({ ok: false, error: "缺少 sourcePath" });
+    const relativePath = normalizeWorkspaceRelativePath(sourcePath);
+    await resolveExistingModulePath(relativePath);
+    const { link, module } = await getModuleService().linkModuleDevSource(relativePath);
+    res.json({ ok: true, link, module });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块开发源链接失败" });
+  }
+});
+
+app.post("/api/modules/developer/unlink", async (req, res) => {
+  try {
+    const { moduleId } = req.body as { moduleId?: string };
+    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    await getModuleService().unlinkModuleDevSource(moduleId);
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "取消模块开发源链接失败" });
+  }
+});
+
 app.post("/api/modules/uninstall", async (req, res) => {
   try {
     const { moduleId } = req.body as { moduleId?: string };

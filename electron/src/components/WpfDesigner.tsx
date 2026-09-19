@@ -3903,7 +3903,11 @@ function DesignerControlToolbox({
                     </button>;
                   }) : group.controlTypes.length === 0 ? (
                     <div className="px-2 py-2 text-[10px] leading-relaxed text-slate-500">
-                      {isNewEmojiGroup && !groupAvailable ? '请先在当前项目中启用 New_Emoji 模块。' : '此分组暂无可用控件。'}
+                      {isNewEmojiGroup && !groupAvailable
+                        ? '请先在当前项目中启用 New_Emoji 模块。'
+                        : isNewEmojiGroup && !useNewEmojiDesigner
+                          ? '当前窗口使用 Win32 后端，请在窗口属性将「设计后端」切换为 new_emoji。'
+                          : '此分组暂无可用控件。'}
                     </div>
                   ) : group.controlTypes.map(type => {
                     const definition = getWin32ControlDefinition(type);

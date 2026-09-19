@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "edgeview-multi-store-popup-demo",
+  "name": "EdgeView 多店铺独立弹窗演示",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "edgeview-multi-store-popup-demo",
+  "startupProjectIds": [
+    "edgeview-multi-store-popup-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "edgeview-multi-store-popup-demo",
+      "name": "EdgeView 多店铺独立弹窗演示",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

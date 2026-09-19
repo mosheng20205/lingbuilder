@@ -11,6 +11,7 @@ import {
 } from './types';
 import { normalizeControlReferenceCallSnippet, normalizeControlReferenceSnippet } from './bindingValueType';
 import { validateModuleTypeContributions } from './modulePublicTypeService';
+import { validateModuleConstantContributions } from './moduleConstantService';
 
 const CATEGORIES: LingBuilderModuleCategory[] = ['界面', '系统', '网络', '数据库', '图像', 'AI', '构建', '其他'];
 const MODULE_ID_RE = /^[a-z0-9][a-z0-9._-]{2,80}$/;
@@ -96,6 +97,7 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
 
   validateMenuContributions(contributes?.menus, contributes?.submenus, diagnostics);
   validateModuleTypeContributions(contributes?.types, diagnostics);
+  validateModuleConstantContributions(contributes?.constants, diagnostics);
 
   if (contributes?.designerControls !== undefined) {
     if (!Array.isArray(contributes.designerControls)) diagnostics.push('contributes.designerControls 必须是数组。');
@@ -594,12 +596,13 @@ function validateStrictAiModuleRequirements(contributes: any, raw: Record<string
   const commands = Array.isArray(contributes?.commands) ? contributes.commands : [];
   const types = Array.isArray(contributes?.types) ? contributes.types : [];
   const designerControls = Array.isArray(contributes?.designerControls) ? contributes.designerControls : [];
+  const constants = Array.isArray(contributes?.constants) ? contributes.constants : [];
   const codeGenerators = Array.isArray(raw.build?.codeGenerators) ? raw.build.codeGenerators : [];
 
   if (docs.length === 0) diagnostics.push('AI 模块至少声明一份文档，并在导入内容中提供非空文件。');
   if (examples.length === 0) diagnostics.push('AI 模块至少声明一个示例，并在导入内容中提供非空 .lcpp 文件。');
-  if (commands.length + types.length + designerControls.length + codeGenerators.length === 0) {
-    diagnostics.push('AI 模块至少需要一个可用贡献：contributes.commands、types、designerControls 或 build.codeGenerators。');
+  if (commands.length + types.length + designerControls.length + constants.length + codeGenerators.length === 0) {
+    diagnostics.push('AI 模块至少需要一个可用贡献：contributes.commands、types、designerControls、constants 或 build.codeGenerators。');
   }
 }
 

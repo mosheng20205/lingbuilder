@@ -597,8 +597,6 @@ int 数值_八进制解析(const wchar_t* text) { int out = 0; LB_ParseRadixText
 const ENCODING_RUNTIME = String.raw`
 static const char* LB_Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-enum class LB_EncodingKind { Unknown, Utf8, Utf16Le, Utf16Be, Utf32Le, Utf32Be, Ansi, Gbk, Gb2312, Gb18030 };
-
 static bool LB_EncodingHexToBytes(const wchar_t* hex, std::vector<unsigned char>& bytes) {
     const std::wstring value = LB_Wide(hex);
     if (value.size() % 2 != 0) return false;
@@ -624,232 +622,6 @@ static std::wstring LB_EncodingBytesToHex(const std::vector<unsigned char>& byte
     return result;
 }
 
-static std::wstring LB_NormalizeEncodingName(const wchar_t* name) {
-    std::wstring result;
-    for (wchar_t ch : LB_Wide(name)) {
-        if (ch == L'-' || ch == L'_' || iswspace(ch)) continue;
-        result.push_back(static_cast<wchar_t>(towupper(ch)));
-    }
-    return result;
-}
-
-static LB_EncodingKind LB_ParseEncodingKind(const wchar_t* name) {
-    const std::wstring value = LB_NormalizeEncodingName(name);
-    if (value == L"UTF8") return LB_EncodingKind::Utf8;
-    if (value == L"UTF16LE" || value == L"UNICODE") return LB_EncodingKind::Utf16Le;
-    if (value == L"UTF16BE") return LB_EncodingKind::Utf16Be;
-    if (value == L"UTF32LE") return LB_EncodingKind::Utf32Le;
-    if (value == L"UTF32BE") return LB_EncodingKind::Utf32Be;
-    if (value == L"ANSI" || value == L"ACP" || value == L"SYSTEM") return LB_EncodingKind::Ansi;
-    if (value == L"GBK" || value == L"CP936") return LB_EncodingKind::Gbk;
-    if (value == L"GB2312") return LB_EncodingKind::Gb2312;
-    if (value == L"GB18030" || value == L"CP54936") return LB_EncodingKind::Gb18030;
-    return LB_EncodingKind::Unknown;
-}
-
-static const wchar_t* LB_EncodingKindName(LB_EncodingKind kind) {
-    switch (kind) {
-        case LB_EncodingKind::Utf8: return L"UTF-8";
-        case LB_EncodingKind::Utf16Le: return L"UTF-16LE";
-        case LB_EncodingKind::Utf16Be: return L"UTF-16BE";
-        case LB_EncodingKind::Utf32Le: return L"UTF-32LE";
-        case LB_EncodingKind::Utf32Be: return L"UTF-32BE";
-        case LB_EncodingKind::Ansi: return L"ANSI";
-        case LB_EncodingKind::Gbk: return L"GBK";
-        case LB_EncodingKind::Gb2312: return L"GB2312";
-        case LB_EncodingKind::Gb18030: return L"GB18030";
-        default: return L"";
-    }
-}
-
-static LB_EncodingKind LB_DetectBomKind(const std::vector<unsigned char>& bytes, size_t* bomSize = nullptr) {
-    LB_EncodingKind kind = LB_EncodingKind::Unknown;
-    size_t size = 0;
-    if (bytes.size() >= 4 && bytes[0] == 0xff && bytes[1] == 0xfe && bytes[2] == 0x00 && bytes[3] == 0x00) { kind = LB_EncodingKind::Utf32Le; size = 4; }
-    else if (bytes.size() >= 4 && bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0xfe && bytes[3] == 0xff) { kind = LB_EncodingKind::Utf32Be; size = 4; }
-    else if (bytes.size() >= 3 && bytes[0] == 0xef && bytes[1] == 0xbb && bytes[2] == 0xbf) { kind = LB_EncodingKind::Utf8; size = 3; }
-    else if (bytes.size() >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe) { kind = LB_EncodingKind::Utf16Le; size = 2; }
-    else if (bytes.size() >= 2 && bytes[0] == 0xfe && bytes[1] == 0xff) { kind = LB_EncodingKind::Utf16Be; size = 2; }
-    if (bomSize) *bomSize = size;
-    return kind;
-}
-
-static std::vector<unsigned char> LB_BomBytes(LB_EncodingKind kind) {
-    switch (kind) {
-        case LB_EncodingKind::Utf8: return { 0xef, 0xbb, 0xbf };
-        case LB_EncodingKind::Utf16Le: return { 0xff, 0xfe };
-        case LB_EncodingKind::Utf16Be: return { 0xfe, 0xff };
-        case LB_EncodingKind::Utf32Le: return { 0xff, 0xfe, 0x00, 0x00 };
-        case LB_EncodingKind::Utf32Be: return { 0x00, 0x00, 0xfe, 0xff };
-        default: return {};
-    }
-}
-
-static bool LB_WideToCodePoints(const wchar_t* text, std::vector<uint32_t>& points) {
-    const std::wstring value = LB_Wide(text);
-    points.clear();
-    points.reserve(value.size());
-    for (size_t index = 0; index < value.size(); ++index) {
-        const uint32_t first = static_cast<uint16_t>(value[index]);
-        if (first >= 0xd800 && first <= 0xdbff) {
-            if (index + 1 >= value.size()) return false;
-            const uint32_t second = static_cast<uint16_t>(value[++index]);
-            if (second < 0xdc00 || second > 0xdfff) return false;
-            points.push_back(0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00));
-        } else {
-            if (first >= 0xdc00 && first <= 0xdfff) return false;
-            points.push_back(first);
-        }
-    }
-    return true;
-}
-
-static bool LB_CodePointsToWide(const std::vector<uint32_t>& points, std::wstring& text) {
-    text.clear();
-    for (uint32_t point : points) {
-        if (point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff)) { text.clear(); return false; }
-        if (point <= 0xffff) text.push_back(static_cast<wchar_t>(point));
-        else {
-            point -= 0x10000;
-            text.push_back(static_cast<wchar_t>(0xd800 + (point >> 10)));
-            text.push_back(static_cast<wchar_t>(0xdc00 + (point & 0x3ff)));
-        }
-    }
-    return true;
-}
-
-static bool LB_IsGb2312Bytes(const std::vector<unsigned char>& bytes) {
-    for (size_t index = 0; index < bytes.size();) {
-        if (bytes[index] <= 0x7f) { ++index; continue; }
-        if (index + 1 >= bytes.size() || bytes[index] < 0xa1 || bytes[index] > 0xf7 || bytes[index + 1] < 0xa1 || bytes[index + 1] > 0xfe) return false;
-        index += 2;
-    }
-    return true;
-}
-
-static bool LB_WideToCodePage(const wchar_t* text, UINT requestedCodePage, std::vector<unsigned char>& bytes) {
-    const std::wstring value = LB_Wide(text);
-    bytes.clear();
-    if (value.empty()) return true;
-    const UINT codePage = requestedCodePage == CP_ACP ? GetACP() : requestedCodePage;
-    const bool strictUnicodeCodePage = codePage == CP_UTF8 || codePage == 54936;
-    const DWORD flags = strictUnicodeCodePage ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
-    BOOL usedDefault = FALSE;
-    BOOL* usedDefaultPointer = strictUnicodeCodePage ? nullptr : &usedDefault;
-    const int size = WideCharToMultiByte(codePage, flags, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, usedDefaultPointer);
-    if (size <= 0 || usedDefault) return false;
-    bytes.resize(static_cast<size_t>(size));
-    if (WideCharToMultiByte(codePage, flags, value.data(), static_cast<int>(value.size()), reinterpret_cast<char*>(bytes.data()), size, nullptr, usedDefaultPointer) != size || usedDefault) {
-        bytes.clear(); return false;
-    }
-    return true;
-}
-
-static bool LB_CodePageToWide(const std::vector<unsigned char>& bytes, UINT requestedCodePage, std::wstring& text) {
-    text.clear();
-    if (bytes.empty()) return true;
-    const UINT codePage = requestedCodePage == CP_ACP ? GetACP() : requestedCodePage;
-    const DWORD flags = codePage == CP_UTF8 || codePage == 54936 ? MB_ERR_INVALID_CHARS : 0;
-    const int size = MultiByteToWideChar(codePage, flags, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), nullptr, 0);
-    if (size <= 0) return false;
-    text.resize(static_cast<size_t>(size));
-    if (MultiByteToWideChar(codePage, flags, reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), text.data(), size) != size) {
-        text.clear(); return false;
-    }
-    return true;
-}
-
-static bool LB_EncodeTextBytes(const wchar_t* text, LB_EncodingKind kind, std::vector<unsigned char>& bytes) {
-    bytes.clear();
-    if (kind == LB_EncodingKind::Utf8) return LB_WideToCodePage(text, CP_UTF8, bytes);
-    if (kind == LB_EncodingKind::Ansi) return LB_WideToCodePage(text, CP_ACP, bytes);
-    if (kind == LB_EncodingKind::Gbk || kind == LB_EncodingKind::Gb2312) {
-        if (!LB_WideToCodePage(text, 936, bytes)) return false;
-        if (kind == LB_EncodingKind::Gb2312 && !LB_IsGb2312Bytes(bytes)) { bytes.clear(); return false; }
-        return true;
-    }
-    if (kind == LB_EncodingKind::Gb18030) return LB_WideToCodePage(text, 54936, bytes);
-
-    std::vector<uint32_t> points;
-    if (!LB_WideToCodePoints(text, points)) return false;
-    if (kind == LB_EncodingKind::Utf16Le || kind == LB_EncodingKind::Utf16Be) {
-        const bool little = kind == LB_EncodingKind::Utf16Le;
-        const std::wstring value = LB_Wide(text);
-        bytes.reserve(value.size() * 2);
-        for (wchar_t character : value) {
-            const uint16_t unit = static_cast<uint16_t>(character);
-            const unsigned char low = static_cast<unsigned char>(unit & 0xff);
-            const unsigned char high = static_cast<unsigned char>((unit >> 8) & 0xff);
-            bytes.push_back(little ? low : high); bytes.push_back(little ? high : low);
-        }
-        return true;
-    }
-    if (kind == LB_EncodingKind::Utf32Le || kind == LB_EncodingKind::Utf32Be) {
-        const bool little = kind == LB_EncodingKind::Utf32Le;
-        bytes.reserve(points.size() * 4);
-        for (uint32_t point : points) {
-            const unsigned char a = static_cast<unsigned char>(point & 0xff);
-            const unsigned char b = static_cast<unsigned char>((point >> 8) & 0xff);
-            const unsigned char c = static_cast<unsigned char>((point >> 16) & 0xff);
-            const unsigned char d = static_cast<unsigned char>((point >> 24) & 0xff);
-            if (little) bytes.insert(bytes.end(), { a, b, c, d });
-            else bytes.insert(bytes.end(), { d, c, b, a });
-        }
-        return true;
-    }
-    return false;
-}
-
-static bool LB_DecodeTextBytes(std::vector<unsigned char> bytes, LB_EncodingKind kind, std::wstring& text) {
-    text.clear();
-    size_t bomSize = 0;
-    if (LB_DetectBomKind(bytes, &bomSize) == kind && bomSize > 0) bytes.erase(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(bomSize));
-    if (kind == LB_EncodingKind::Utf8) return LB_CodePageToWide(bytes, CP_UTF8, text);
-    if (kind == LB_EncodingKind::Ansi) return LB_CodePageToWide(bytes, CP_ACP, text);
-    if (kind == LB_EncodingKind::Gbk || kind == LB_EncodingKind::Gb2312) {
-        if (kind == LB_EncodingKind::Gb2312 && !LB_IsGb2312Bytes(bytes)) return false;
-        return LB_CodePageToWide(bytes, 936, text);
-    }
-    if (kind == LB_EncodingKind::Gb18030) return LB_CodePageToWide(bytes, 54936, text);
-    if (kind == LB_EncodingKind::Utf16Le || kind == LB_EncodingKind::Utf16Be) {
-        if (bytes.size() % 2 != 0) return false;
-        const bool little = kind == LB_EncodingKind::Utf16Le;
-        std::vector<uint32_t> points;
-        for (size_t index = 0; index < bytes.size(); index += 2) {
-            const uint16_t unit = little
-                ? static_cast<uint16_t>(bytes[index] | (static_cast<uint16_t>(bytes[index + 1]) << 8))
-                : static_cast<uint16_t>((static_cast<uint16_t>(bytes[index]) << 8) | bytes[index + 1]);
-            if (unit >= 0xd800 && unit <= 0xdbff) {
-                if (index + 3 >= bytes.size()) return false;
-                index += 2;
-                const uint16_t second = little
-                    ? static_cast<uint16_t>(bytes[index] | (static_cast<uint16_t>(bytes[index + 1]) << 8))
-                    : static_cast<uint16_t>((static_cast<uint16_t>(bytes[index]) << 8) | bytes[index + 1]);
-                if (second < 0xdc00 || second > 0xdfff) return false;
-                points.push_back(0x10000 + ((unit - 0xd800) << 10) + (second - 0xdc00));
-            } else {
-                if (unit >= 0xdc00 && unit <= 0xdfff) return false;
-                points.push_back(unit);
-            }
-        }
-        return LB_CodePointsToWide(points, text);
-    }
-    if (kind == LB_EncodingKind::Utf32Le || kind == LB_EncodingKind::Utf32Be) {
-        if (bytes.size() % 4 != 0) return false;
-        const bool little = kind == LB_EncodingKind::Utf32Le;
-        std::vector<uint32_t> points;
-        points.reserve(bytes.size() / 4);
-        for (size_t index = 0; index < bytes.size(); index += 4) {
-            const uint32_t point = little
-                ? static_cast<uint32_t>(bytes[index]) | (static_cast<uint32_t>(bytes[index + 1]) << 8) | (static_cast<uint32_t>(bytes[index + 2]) << 16) | (static_cast<uint32_t>(bytes[index + 3]) << 24)
-                : (static_cast<uint32_t>(bytes[index]) << 24) | (static_cast<uint32_t>(bytes[index + 1]) << 16) | (static_cast<uint32_t>(bytes[index + 2]) << 8) | static_cast<uint32_t>(bytes[index + 3]);
-            points.push_back(point);
-        }
-        return LB_CodePointsToWide(points, text);
-    }
-    return false;
-}
-
 static const wchar_t* LB_EncodingTextToHex(const wchar_t* text, LB_EncodingKind kind) {
     std::vector<unsigned char> bytes;
     return LB_EncodeTextBytes(text, kind, bytes) ? LB_ReturnText(LB_EncodingBytesToHex(bytes)) : LB_ReturnText(L"");
@@ -858,6 +630,21 @@ static const wchar_t* LB_EncodingTextToHex(const wchar_t* text, LB_EncodingKind 
 static const wchar_t* LB_EncodingHexToText(const wchar_t* hex, LB_EncodingKind kind) {
     std::vector<unsigned char> bytes; std::wstring text;
     return LB_EncodingHexToBytes(hex, bytes) && LB_DecodeTextBytes(std::move(bytes), kind, text) ? LB_ReturnText(std::move(text)) : LB_ReturnText(L"");
+}
+
+const wchar_t* 编码_字节集转文本(const std::vector<unsigned char>& bytes, const wchar_t* encoding) {
+    LB_EncodingKind kind = LB_EncodingKind::Unknown;
+    if (!LB_ResolveEncodingKind(encoding, bytes, kind)) return LB_ReturnText(L"");
+    std::wstring text;
+    return LB_DecodeTextBytes(bytes, kind, text) ? LB_ReturnText(std::move(text)) : LB_ReturnText(L"");
+}
+
+std::vector<unsigned char> 编码_文本转字节集(const wchar_t* text, const wchar_t* encoding) {
+    std::vector<unsigned char> bytes;
+    const LB_EncodingKind kind = LB_ParseEncodingKind(encoding);
+    if (kind == LB_EncodingKind::Unknown || kind == LB_EncodingKind::Auto) return bytes;
+    if (!LB_EncodeTextBytes(text, kind, bytes)) bytes.clear();
+    return bytes;
 }
 
 const wchar_t* 编码_文本转UTF8(const wchar_t* text) { return LB_EncodingTextToHex(text, LB_EncodingKind::Utf8); }

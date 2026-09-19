@@ -1,15 +1,15 @@
 import { InstalledModule } from '../modules/types';
 
+// 编码名称解析与解码由装配层统一铺设的共享内核提供；缺省 UTF-8 保持历史严格解码语义。
 const FILE_RUNTIME = String.raw`
 bool 文件_是否存在(const wchar_t* path) { std::error_code error; return std::filesystem::is_regular_file(std::filesystem::path(LB_Wide(path)), error); }
 bool 目录_是否存在(const wchar_t* path) { std::error_code error; return std::filesystem::is_directory(std::filesystem::path(LB_Wide(path)), error); }
 
-const wchar_t* 文件_读取文本(const wchar_t* path) {
-    std::ifstream stream(std::filesystem::path(LB_Wide(path)), std::ios::binary);
-    if (!stream) return LB_ReturnText(L"");
-    std::string bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xef && static_cast<unsigned char>(bytes[1]) == 0xbb && static_cast<unsigned char>(bytes[2]) == 0xbf) bytes.erase(0, 3);
-    return LB_ReturnText(LB_Utf8ToWide(bytes));
+const wchar_t* 文件_读取文本(const wchar_t* path, const wchar_t* encoding = L"UTF-8") {
+    std::wstring text;
+    std::wstring error;
+    if (!LB_DecodeFileText(path, encoding, text, error)) return LB_ReturnText(L"");
+    return LB_ReturnText(std::move(text));
 }
 
 static bool LB_WriteUtf8File(const wchar_t* path, const wchar_t* content, bool append) {

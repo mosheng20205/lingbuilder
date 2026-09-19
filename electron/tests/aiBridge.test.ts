@@ -1556,6 +1556,93 @@ test('AI Bridge modules.list returns slim summaries and module.info returns full
   }
 });
 
+/** module.info 的界面开发视图子集；只声明本用例关心的字段。 */
+interface ModuleInfoUiViews {
+  designerControlsTotal: number;
+  designerControls: Array<{
+    namespacedType: string;
+    createCommand?: string;
+    lingCppType?: string;
+    propertyCount: number;
+  }>;
+  designerControlMatched: number;
+  designerControlDetails: Array<{
+    type: string;
+    events: Array<{ handlerPattern: string }>;
+    properties: Array<{ key: string }>;
+    codeCreation: { createCommand: string };
+  }>;
+  commands: Array<Record<string, unknown>>;
+  demoProject: { commandCount: number; sourceRoot: string; generatedAt: string; stale: boolean };
+  uiExamples: Array<{ title: string }>;
+  uiExample: { title: string; content: string; truncated: boolean };
+}
+
+test('lingbuilder.module.info exposes designer control palette, demo invocations and ui recipes', async () => {
+  // 需要真实工作区：控件调色板取自已安装模块清单，配方与逐命令真实调用取自 examples/ 语料。
+  const service = new AiBridgeService(createOptions(path.resolve('..'), 'readonly', 'module-info-token'));
+  try {
+    const table = await service.getModuleInfo({
+      moduleId: 'lingbuilder.new_emoji.ui',
+      query: 'NE表格_设置列'
+    }) as unknown as ModuleInfoUiViews;
+    assert.ok(table.designerControlsTotal >= 90, 'new_emoji 必须返回整套控件概览');
+    assert.ok(table.designerControls.length <= 120, '控件概览必须守住响应体量红线');
+    const tableEntry = table.designerControls.find(item => item.namespacedType === 'lingbuilder.new_emoji.ui/Table');
+    assert.ok(tableEntry);
+    assert.equal(tableEntry.createCommand, '控件_创建NE表格');
+    assert.equal(tableEntry.lingCppType, 'NE表格');
+    assert.equal(tableEntry.propertyCount > 10, true);
+    // 演示语料（2026-08-07，3784 命令）早于该命令入账：不得伪造示例，只按缺失处理并由 demoProject 说明新鲜度。
+    assert.equal(table.commands.some(command => command.name === 'NE表格_设置列'), true);
+    assert.equal('demoExample' in table.commands[0], false);
+    assert.equal(table.demoProject.stale, true);
+    assert.match(table.demoProject.generatedAt, /^\d{4}-\d{2}-\d{2}$/u);
+    assert.ok(table.demoProject.commandCount > 3000);
+    assert.ok(table.demoProject.sourceRoot.includes('examples/module-demos'));
+    assert.ok(table.uiExamples.some(item => item.title === '表格增删改与双击编辑'));
+
+    const window = await service.getModuleInfo({
+      moduleId: 'lingbuilder.new_emoji.ui',
+      query: 'NE_创建窗口'
+    }) as unknown as ModuleInfoUiViews;
+    const createdWindow = window.commands.find(command => command.name === 'NE_创建窗口');
+    assert.ok(createdWindow);
+    assert.equal(String(createdWindow.demoExample).startsWith('NE_创建窗口('), true,
+      'demoExample 必须是演示语料里的真实调用行，参数顺序可直接照抄');
+
+    const button = await service.getModuleInfo({
+      moduleId: 'lingbuilder.new_emoji.ui',
+      control: '按钮'
+    }) as unknown as ModuleInfoUiViews;
+    assert.equal(button.designerControlMatched >= 1, true);
+    const buttonDetail = button.designerControlDetails.find(item => item.type === 'Button');
+    assert.ok(buttonDetail, 'control 过滤必须返回按钮控件的完整契约');
+    assert.ok(buttonDetail.events.some(event => event.handlerPattern === '_{controlName}_被点击'));
+    assert.equal(buttonDetail.codeCreation.createCommand, '控件_创建NE按钮');
+    assert.ok(buttonDetail.properties.some(property => property.key === 'variant'));
+
+    const recipe = await service.getModuleInfo({
+      moduleId: 'lingbuilder.new_emoji.ui',
+      example: '窗口骨架'
+    }) as unknown as ModuleInfoUiViews;
+    assert.equal(recipe.uiExample.title, '窗口骨架与代码创建控件');
+    assert.match(recipe.uiExample.content, /控件_创建NE文本/u);
+    assert.equal(recipe.uiExample.truncated, false);
+
+    await assert.rejects(
+      service.getModuleInfo({ moduleId: 'lingbuilder.new_emoji.ui', control: '不存在的控件' }),
+      /设计器控件中没有任何项匹配/u
+    );
+    await assert.rejects(
+      service.getModuleInfo({ moduleId: 'lingbuilder.new_emoji.ui', example: '不存在的配方' }),
+      /未找到匹配/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
 test('AI Bridge sqlite-crud template creates a complete project with clean diagnostics', async () => {
   const workspaceRoot = await createTempWorkspace();
   const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'sqlite-crud-token'));

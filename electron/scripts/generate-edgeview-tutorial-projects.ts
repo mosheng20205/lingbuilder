@@ -188,7 +188,7 @@ async function writeEpisode(item: Episode) {
   const model = { schemaVersion: 2, id: item.id, name: item.name, resources: [], windows: [{ id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: item.title, width: 1100, height: 760, background: '#111827', designerBackend: 'win32', openPlacement: 'center', events: { Loaded: '_MainWindow_创建完毕' }, controls }] };
   const solution = { schemaVersion: 2, id: item.id + '-solution', name: item.name, startupProjectId: item.id, startupProjectIds: [item.id], projects: [{ type: 'visual-cpp', id: item.id, name: item.name, sourceRoot: 'src', configRoot: 'config', designerPath: '.lingbuilder/projects/' + item.id + '/window-designer.json', isDefault: true, references: [] }] };
   const extraModules = item.extraModules ?? [];
-  const pinnedVersions: Record<string, string> = { 'lingbuilder.win32.basic': '1.0.0', 'lingbuilder.edgeview': '1.2.0' };
+  const pinnedVersions: Record<string, string> = { 'lingbuilder.win32.basic': '1.0.0', 'lingbuilder.edgeview': '1.5.0' };
   for (const moduleId of extraModules) pinnedVersions[moduleId] = '1.0.0';
   const modules = { schemaVersion: 1, enabledModuleIds: ['lingbuilder.win32.basic', 'lingbuilder.edgeview', ...extraModules], pinnedVersions };
   await fs.writeFile(path.join(dir, '.lingbuilder', 'solution.json'), JSON.stringify(solution, null, 2) + '\n', 'utf8');

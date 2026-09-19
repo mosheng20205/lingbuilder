@@ -153,6 +153,214 @@ bool Cookie_是否存在(const wchar_t* cookies, const wchar_t* name) { const st
 const wchar_t* Cookie_设置(const wchar_t* cookies, const wchar_t* name, const wchar_t* value) { auto items = LB_ParseCookies(cookies); const std::wstring expected = LB_Wide(name); bool found = false; for (auto& item : items) if (item.first == expected) { item.second = LB_Wide(value); found = true; } if (!found) items.emplace_back(expected, LB_Wide(value)); return LB_ReturnText(LB_SerializeCookies(items)); }
 const wchar_t* Cookie_删除(const wchar_t* cookies, const wchar_t* name) { auto items = LB_ParseCookies(cookies); const std::wstring expected = LB_Wide(name); items.erase(std::remove_if(items.begin(), items.end(), [&](const auto& item) { return item.first == expected; }), items.end()); return LB_ReturnText(LB_SerializeCookies(items)); }
 const wchar_t* Cookie_生成响应项(const wchar_t* name, const wchar_t* value, const wchar_t* path, int maxAge) { std::wstring result = LB_Wide(name) + L"=" + LB_Wide(value); if (path && path[0]) result += L"; Path=" + LB_Wide(path); if (maxAge >= 0) result += L"; Max-Age=" + std::to_wstring(maxAge); result += L"; HttpOnly; SameSite=Lax"; return LB_ReturnText(std::move(result)); }
+
+// —— Cookie 记录集导出 ——
+// 这里只放一个认扁平对象的严格 JSON 读取器：Cookie 模块本身零依赖、零额外链接库，
+// 不为此引入 data.json 运行时。值只接受字符串/数字/逻辑/null，嵌套对象与数组一律判为格式错误。
+struct LB_CookieField { std::wstring kind; std::wstring text; };
+struct LB_CookieRow { std::vector<std::pair<std::wstring, LB_CookieField>> members; };
+static std::wstring g_lbCookieError;
+const wchar_t* Cookie_取错误() { return LB_ReturnText(g_lbCookieError); }
+static bool LB_CookieFail(const wchar_t* message) { g_lbCookieError = message; return false; }
+
+static void LB_CookieSkipWs(const std::wstring& text, size_t& at) { while (at < text.size() && (text[at] == L' ' || text[at] == L'\t' || text[at] == L'\n' || text[at] == L'\r')) ++at; }
+static bool LB_CookieHexValue(wchar_t value, int& output) { if (value >= L'0' && value <= L'9') output = value - L'0'; else if (value >= L'a' && value <= L'f') output = value - L'a' + 10; else if (value >= L'A' && value <= L'F') output = value - L'A' + 10; else return false; return true; }
+static bool LB_CookieReadStringBody(const std::wstring& text, size_t& at, std::wstring& output) {
+    if (at >= text.size() || text[at] != L'"') { LB_CookieFail(L"Cookie 数组 JSON 语法错误：期望双引号字符串。"); return false; }
+    ++at;
+    while (at < text.size()) {
+        const wchar_t ch = text[at++];
+        if (ch == L'"') return true;
+        if (ch != L'\\') { output.push_back(ch); continue; }
+        if (at >= text.size()) break;
+        const wchar_t escape = text[at++];
+        if (escape == L'u') {
+            unsigned int codeUnit = 0;
+            for (int index = 0; index < 4; ++index) { int digit = 0; if (at >= text.size() || !LB_CookieHexValue(text[at++], digit)) { LB_CookieFail(L"Cookie 数组 JSON 语法错误：\\u 转义不完整。"); return false; } codeUnit = (codeUnit << 4) | static_cast<unsigned int>(digit); }
+            if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF && at + 1 < text.size() && text[at] == L'\\' && text[at + 1] == L'u') {
+                size_t probe = at + 2; unsigned int low = 0; bool paired = true;
+                for (int index = 0; index < 4; ++index) { int digit = 0; if (probe >= text.size() || !LB_CookieHexValue(text[probe++], digit)) { paired = false; break; } low = (low << 4) | static_cast<unsigned int>(digit); }
+                if (paired && low >= 0xDC00 && low <= 0xDFFF) { at = probe; output.push_back(static_cast<wchar_t>(codeUnit)); output.push_back(static_cast<wchar_t>(low)); continue; }
+            }
+            output.push_back(static_cast<wchar_t>(codeUnit)); continue;
+        }
+        switch (escape) { case L'n': output.push_back(L'\n'); break; case L't': output.push_back(L'\t'); break; case L'r': output.push_back(L'\r'); break; case L'b': output.push_back(L'\b'); break; case L'f': output.push_back(L'\f'); break; default: output.push_back(escape); }
+    }
+    LB_CookieFail(L"Cookie 数组 JSON 语法错误：字符串没有结束双引号。"); return false;
+}
+static bool LB_CookieReadValue(const std::wstring& text, size_t& at, LB_CookieField& field) {
+    LB_CookieSkipWs(text, at);
+    if (at >= text.size()) { LB_CookieFail(L"Cookie 数组 JSON 语法错误：字段值缺失。"); return false; }
+    const wchar_t head = text[at];
+    if (head == L'"') { std::wstring value; if (!LB_CookieReadStringBody(text, at, value)) return false; field = { L"string", std::move(value) }; return true; }
+    if (head == L'{' || head == L'[') { LB_CookieFail(L"Cookie 记录只支持扁平字段，值不能是对象或数组。"); return false; }
+    const size_t start = at;
+    while (at < text.size() && text[at] != L',' && text[at] != L'}' && text[at] != L']' && !iswspace(text[at])) ++at;
+    const std::wstring literal = text.substr(start, at - start);
+    if (literal == L"true" || literal == L"false" || literal == L"null") { field = { literal, L"" }; return true; }
+    bool numeric = !literal.empty();
+    for (size_t index = 0; index < literal.size() && numeric; ++index) { const wchar_t ch = literal[index]; numeric = (ch >= L'0' && ch <= L'9') || ch == L'-' || ch == L'+' || ch == L'.' || ch == L'e' || ch == L'E'; }
+    if (!numeric) { LB_CookieFail(L"Cookie 数组 JSON 语法错误：字段值既不是字符串、数字、逻辑值也不是 null。"); return false; }
+    field = { L"number", literal }; return true;
+}
+static bool LB_CookieReadRow(const std::wstring& text, size_t& at, LB_CookieRow& row) {
+    LB_CookieSkipWs(text, at);
+    if (at >= text.size() || text[at] != L'{') { LB_CookieFail(L"Cookie 数组 JSON 语法错误：每个记录必须是对象。"); return false; }
+    ++at; LB_CookieSkipWs(text, at);
+    if (at < text.size() && text[at] == L'}') { ++at; return true; }
+    while (true) {
+        LB_CookieSkipWs(text, at);
+        std::wstring key; if (!LB_CookieReadStringBody(text, at, key)) return false;
+        LB_CookieSkipWs(text, at);
+        if (at >= text.size() || text[at] != L':') { LB_CookieFail(L"Cookie 数组 JSON 语法错误：键后缺少冒号。"); return false; }
+        ++at;
+        LB_CookieField field; if (!LB_CookieReadValue(text, at, field)) return false;
+        row.members.emplace_back(std::move(key), std::move(field));
+        LB_CookieSkipWs(text, at);
+        if (at < text.size() && text[at] == L',') { ++at; continue; }
+        if (at < text.size() && text[at] == L'}') { ++at; return true; }
+        LB_CookieFail(L"Cookie 数组 JSON 语法错误：对象成员后必须是逗号或右花括号。"); return false;
+    }
+}
+static bool LB_CookieReadRows(const std::wstring& text, std::vector<LB_CookieRow>& rows) {
+    size_t at = 0; LB_CookieSkipWs(text, at);
+    if (at >= text.size()) { LB_CookieFail(L"Cookie 数组 JSON 为空文本。"); return false; }
+    if (text[at] == L'{') return LB_CookieReadRow(text, at, rows.emplace_back());
+    if (text[at] != L'[') { LB_CookieFail(L"Cookie 数组 JSON 必须以左方括号开头，或直接给单个对象。"); return false; }
+    ++at; LB_CookieSkipWs(text, at);
+    if (at < text.size() && text[at] == L']') return true;
+    while (true) {
+        LB_CookieRow row; if (!LB_CookieReadRow(text, at, row)) return false;
+        rows.push_back(std::move(row));
+        LB_CookieSkipWs(text, at);
+        if (at < text.size() && text[at] == L',') { ++at; continue; }
+        if (at < text.size() && text[at] == L']') return true;
+        LB_CookieFail(L"Cookie 数组 JSON 语法错误：数组元素后必须是逗号或右方括号。"); return false;
+    }
+}
+static const LB_CookieField* LB_CookieFind(const LB_CookieRow& row, std::initializer_list<const wchar_t*> names) {
+    for (const wchar_t* name : names) for (const auto& member : row.members) if (member.first == name) return &member.second;
+    return nullptr;
+}
+static std::wstring LB_CookieText(const LB_CookieRow& row, std::initializer_list<const wchar_t*> names, const std::wstring& fallback) {
+    const auto* field = LB_CookieFind(row, names);
+    if (!field || field->kind == L"null") return fallback;
+    return field->kind == L"string" ? field->text : (field->kind == L"number" ? field->text : fallback);
+}
+static bool LB_CookieFlag(const LB_CookieRow& row, std::initializer_list<const wchar_t*> names, bool fallback) {
+    const auto* field = LB_CookieFind(row, names);
+    if (!field || field->kind == L"null") return fallback;
+    if (field->kind == L"true") return true;
+    if (field->kind == L"false") return false;
+    if (field->kind == L"number") return field->text.find_first_of(L"123456789") != std::wstring::npos;
+    return field->text == L"1" || field->text == L"true" || field->text == L"TRUE";
+}
+static bool LB_CookieFlagPresent(const LB_CookieRow& row, std::initializer_list<const wchar_t*> names) { const auto* field = LB_CookieFind(row, names); return field && field->kind != L"null"; }
+static std::wstring LB_CookieJsonString(const std::wstring& value) {
+    std::wstring result = L"\"";
+    for (size_t index = 0; index < value.size(); ++index) {
+        const wchar_t ch = value[index];
+        switch (ch) { case L'"': result += L"\\\""; break; case L'\\': result += L"\\\\"; break; case L'\n': result += L"\\n"; break; case L'\r': result += L"\\r"; break; case L'\t': result += L"\\t"; break; default:
+            if (ch < 0x20) { result += L"\\u"; static const wchar_t digits[] = L"0123456789abcdef"; const unsigned int code = static_cast<unsigned int>(ch); result += digits[(code >> 12) & 15]; result += digits[(code >> 8) & 15]; result += digits[(code >> 4) & 15]; result += digits[code & 15]; } else result.push_back(ch);
+        }
+    }
+    return result + L"\"";
+}
+// 只解析「可选负号 + 十进制整数」，遇到小数点或指数即停止；没有数字或溢出返回回退值。
+static long long LB_CookieInteger(const std::wstring& text, long long fallback) {
+    size_t index = 0; bool negative = false;
+    if (index < text.size() && (text[index] == L'-' || text[index] == L'+')) { negative = text[index] == L'-'; ++index; }
+    long long value = 0; bool digits = false;
+    for (; index < text.size(); ++index) {
+        const wchar_t ch = text[index];
+        if (ch < L'0' || ch > L'9') break;
+        digits = true;
+        if (value > (std::numeric_limits<long long>::max)() / 10 - 1) return fallback;
+        value = value * 10 + (ch - L'0');
+    }
+    if (!digits) return fallback;
+    return negative ? -value : value;
+}
+// Chromium 的 expires_utc 是自 1601-01-01 起的微秒；用整数换算避免双精度丢掉小数秒。
+static bool LB_CookieExpiry(const LB_CookieRow& row, bool& session, std::wstring& secondsText) {
+    session = false; secondsText = L"0";
+    if (LB_CookieFlag(row, { L"session" }, false)) return true;
+    const auto* legacy = LB_CookieFind(row, { L"expirationDate" });
+    if (legacy && legacy->kind == L"number" && legacy->text.find_first_of(L"123456789") != std::wstring::npos) { secondsText = legacy->text; return true; }
+    const auto* chromium = LB_CookieFind(row, { L"expires_utc" });
+    if (chromium && chromium->kind == L"number") {
+        static const long long epochDelta = 11644473600000000LL;
+        const long long micros = LB_CookieInteger(chromium->text, 0);
+        if (micros > epochDelta) {
+            const long long total = micros - epochDelta;
+            const long long whole = total / 1000000LL, fraction = total % 1000000LL;
+            secondsText = std::to_wstring(whole);
+            if (fraction) { std::wstring digits = std::to_wstring(fraction); digits.insert(0, 6 - digits.size(), L'0'); while (!digits.empty() && digits.back() == L'0') digits.pop_back(); secondsText += L"." + digits; }
+            return true;
+        }
+    }
+    session = true; return true;
+}
+static std::wstring LB_CookieSameSite(const LB_CookieRow& row) {
+    const auto* field = LB_CookieFind(row, { L"sameSite", L"samesite" });
+    if (!field || field->kind == L"null") return L"null";
+    if (field->kind == L"string") return field->text.empty() ? L"null" : LB_CookieJsonString(field->text);
+    if (field->kind != L"number") return L"null";
+    switch (LB_CookieInteger(field->text, -1)) { case 0: return L"\"no_restriction\""; case 1: return L"\"lax\""; case 2: return L"\"strict\""; default: return L"null"; }
+}
+static bool LB_CookieRowFields(const LB_CookieRow& row, std::wstring& domain, std::wstring& name, std::wstring& value, std::wstring& path) {
+    domain = LB_CookieText(row, { L"domain", L"host_key", L"host" }, L"");
+    name = LB_CookieText(row, { L"name", L"key" }, L"");
+    if (domain.empty()) return LB_CookieFail(L"Cookie 记录缺少域名字段（domain / host_key / host）。");
+    if (name.empty()) return LB_CookieFail(L"Cookie 记录缺少名称字段（name）。");
+    value = LB_CookieText(row, { L"value" }, L"");
+    path = LB_CookieText(row, { L"path" }, L"/");
+    return true;
+}
+const wchar_t* Cookie_导出Netscape(const wchar_t* jsonArray) {
+    g_lbCookieError.clear();
+    std::vector<LB_CookieRow> rows; if (!LB_CookieReadRows(LB_Wide(jsonArray), rows)) return LB_ReturnText(L"");
+    std::wstring result = L"# Netscape HTTP Cookie File\n# https://curl.se/docs/http-cookies.html\n# This file was generated by LingBuilder! Edit at your own risk.\n\n";
+    for (const auto& row : rows) {
+        std::wstring domain, name, value, path; if (!LB_CookieRowFields(row, domain, name, value, path)) return LB_ReturnText(L"");
+        bool session = false; std::wstring seconds; if (!LB_CookieExpiry(row, session, seconds)) return LB_ReturnText(L"");
+        const size_t dot = seconds.find(L'.'); std::wstring whole = dot == std::wstring::npos ? seconds : seconds.substr(0, dot);
+        if (whole.empty() || whole == L"-") whole = L"0";
+        const bool secure = LB_CookieFlag(row, { L"secure", L"is_secure" }, false);
+        const bool httpOnly = LB_CookieFlag(row, { L"httpOnly", L"is_httponly" }, false);
+        // includeSubDomains 列由域名前导点决定；会话 Cookie 的过期列固定写 0，与 curl / MozillaCookieJar 一致。
+        result += (httpOnly ? L"#HttpOnly_" : L"") + domain + L"\t" + (domain.front() == L'.' ? L"TRUE" : L"FALSE") + L"\t" + path + L"\t" + (secure ? L"TRUE" : L"FALSE") + L"\t" + (session ? L"0" : whole) + L"\t" + name + L"\t" + value + L"\n";
+    }
+    return LB_ReturnText(std::move(result));
+}
+const wchar_t* Cookie_导出EditThisCookieJSON(const wchar_t* jsonArray) {
+    g_lbCookieError.clear();
+    std::vector<LB_CookieRow> rows; if (!LB_CookieReadRows(LB_Wide(jsonArray), rows)) return LB_ReturnText(L"");
+    std::wstring result = L"[\n";
+    for (size_t index = 0; index < rows.size(); ++index) {
+        const auto& row = rows[index];
+        std::wstring domain, name, value, path; if (!LB_CookieRowFields(row, domain, name, value, path)) return LB_ReturnText(L"");
+        bool session = false; std::wstring seconds; if (!LB_CookieExpiry(row, session, seconds)) return LB_ReturnText(L"");
+        const bool secure = LB_CookieFlag(row, { L"secure", L"is_secure" }, false);
+        const bool httpOnly = LB_CookieFlag(row, { L"httpOnly", L"is_httponly" }, false);
+        const bool hostOnly = LB_CookieFlagPresent(row, { L"hostOnly" }) ? LB_CookieFlag(row, { L"hostOnly" }, false) : domain.front() != L'.';
+        // 键序固定为 EditThisCookie 的字母序；会话 Cookie 省略 expirationDate，storeId 是 Firefox 专有字段恒为 null。
+        std::wstring item = L"  {\n";
+        item += L"    \"domain\": " + LB_CookieJsonString(domain) + L",\n";
+        if (!session) item += L"    \"expirationDate\": " + seconds + L",\n";
+        item += L"    \"hostOnly\": " + std::wstring(hostOnly ? L"true" : L"false") + L",\n";
+        item += L"    \"httpOnly\": " + std::wstring(httpOnly ? L"true" : L"false") + L",\n";
+        item += L"    \"name\": " + LB_CookieJsonString(name) + L",\n";
+        item += L"    \"path\": " + LB_CookieJsonString(path) + L",\n";
+        item += L"    \"sameSite\": " + LB_CookieSameSite(row) + L",\n";
+        item += L"    \"secure\": " + std::wstring(secure ? L"true" : L"false") + L",\n";
+        item += L"    \"session\": " + std::wstring(session ? L"true" : L"false") + L",\n";
+        item += L"    \"storeId\": null,\n";
+        item += L"    \"value\": " + LB_CookieJsonString(value) + L"\n  }";
+        result += item + (index + 1 < rows.size() ? L",\n" : L"\n");
+    }
+    return LB_ReturnText(result + L"]");
+}
 `;
 
 const FTP_RUNTIME = String.raw`

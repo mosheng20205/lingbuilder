@@ -75,6 +75,22 @@ EdgeView 基于 Microsoft Edge WebView2，把完整的 Edge 浏览器嵌入你�
 
 模块详情中的接口清单是当前版本的完整命令来源；仓库内还提供一份可复制的完整演示清单：`examples/module-demos/lingbuilder.edgeview/src/README.md`。
 
+## 多店铺独立弹窗与 Cookie 隔离（1.4.0 起）
+
+需要「浏览器是**独立顶层弹窗**（不内嵌程序窗口）、多个店铺之间 Cookie/缓存互相隔离」的场景（如多账号登录态验证），走**实例编号 API**，不引用设计器控件名：
+
+| 命令 | 说明 |
+|---|---|
+| `EdgeView_创建弹窗浏览器(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理)` | 凭空创建独立顶层浏览器弹窗（任务栏可见、可拖动缩放、页面随窗口自适应），`独立缓存目录` 逐店不同即完成 Cookie/存储隔离，`用户代理` 在首次导航前生效 |
+| `EdgeView会话_批量置Cookie实例(实例编号, Cookie列表JSON)` | 按实例编号批量注入 Cookie，**支持 `HttpOnly` / `Secure` / `sameSite`**（返回成功条数）；注入 `HttpOnly` 只能走这条，**禁止用 JS `document.cookie`** |
+| `EdgeView会话_取Cookie实例异步(实例编号, 地址, &完成处理器)` | 按实例编号异步读回 Cookie（结果含 `httpOnly/secure/expires/sameSite`），用于校验登录态 |
+| `EdgeView设置_置用户代理实例(实例编号, 用户代理)` | 按实例编号改 UA（建议仍用创建弹窗的参数在首次导航前设好） |
+| `EdgeView_关闭全部实例()` | 一次性关闭全部实例并返回数量；关闭主窗口也会连带关闭全部弹窗，不留 `msedgewebview2.exe` 残留 |
+| `EdgeView_枚举实例JSON()` | 返回 `[{实例编号,窗口标题,地址,缓存目录,代理,是否弹窗,是否有效}]`，用于「已开店铺不重复开、只切前后台」 |
+| `EdgeView_置实例可见 / 置实例大小 / 取实例大小JSON / 置实例标题` | 按实例编号控制弹窗显隐、尺寸、标题 |
+
+典型写法：连续 `创建弹窗浏览器(1, "店铺A", …, ".edgeview/a", UA)`、`创建弹窗浏览器(2, "店铺B", …, ".edgeview/b", UA)`，再对各实例 `批量置Cookie实例` 灌入该店铺导出的 `HttpOnly` Cookie，然后 `导航实例` 到目标域。Cookie 列表 JSON 键名用 WebView2 驼峰 `name/value/domain/path` + 可选 `expires`（UTC 秒，会话 Cookie 用 `-1` 或省略）`/secure/httpOnly/sameSite`（0 None、1 Lax、2 Strict，None 必须同时 secure）；过去的过期时间会被 WebView2 拒绝写入。
+
 ## 内嵌站点：把网页打包成单个 exe（零释放）
 
 「内嵌站点」可以把一个纯前端项目的构建产物（Vite / React / Vue 打包出的静态文件）**直接编进 EXE**：浏览器对页面的所有请求都在进程内从内存应答，运行期不会向磁盘（包括 %TEMP%）释放任何 HTML/JS/CSS 文件。配合 WebView2 Loader 静态链接，最终交付物就是**一个 exe 文件**，双击即可运行（无需安装任何东西，目标机保留系统自带的 WebView2 Runtime 即可）。

@@ -5,6 +5,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  powerMonitor,
   screen,
   session,
   safeStorage,
@@ -36,6 +37,7 @@ import {
   resolveProjectSourcePackagePath
 } from './lcppSourcePackageService';
 import { findLbmodArgument, isLbmodPath, MODULE_INSTALL_EVENT } from './modulePackageIntakeService';
+import { DiagnosticLogService, type DiagnosticLogLevel } from './diagnosticLogService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
 const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
@@ -73,6 +75,17 @@ let workspaceService: DesktopWorkspaceService;
 let aiBridgeManager: AiBridgeManagerService;
 let moduleInfoWindow: ModuleInfoWindowService;
 const rendererConfirmedClose = new WeakSet<BrowserWindow>();
+
+/** 黑屏取证诊断日志（userData/logs），仅记录生命周期事件，不写用户代码内容。 */
+let diagnosticLog: DiagnosticLogService | null = null;
+
+function logDiagnostic(level: DiagnosticLogLevel, category: string, message: string): void {
+  diagnosticLog?.append(level, category, message);
+}
+
+function getDiagnosticLogDirectory(): string {
+  return path.join(app.getPath('userData'), 'logs');
+}
 
 function getFocusedWindow() {
   return BrowserWindow.getFocusedWindow() || mainWindow;
@@ -351,12 +364,16 @@ async function startManagedRendererServer(workspaceRoot: string): Promise<Server
 
   child.stderr?.on('data', chunk => {
     const message = String(chunk).trim();
-    if (message) console.error(`[local-service] ${message}`);
+    if (message) {
+      console.error(`[local-service] ${message}`);
+      logDiagnostic('warn', 'local-service', message.slice(0, 300));
+    }
   });
   child.on('exit', code => {
     if (rendererServer === child) rendererServer = null;
     if (!intentionallyStoppedServers.has(child) && !isQuitting) {
       console.error(`LingBuilder local service exited unexpectedly with code ${code}.`);
+      logDiagnostic('error', 'local-service', `本地服务意外退出，退出码 ${code}。`);
       dialog.showErrorBox('LingBuilder 本地服务已停止', '本地 API 服务意外退出，请重新启动 LingBuilder。');
     }
   });
@@ -389,6 +406,7 @@ async function startManagedRendererServer(workspaceRoot: string): Promise<Server
             return;
           }
           rendererReadyInfo = ready;
+          logDiagnostic('info', 'local-service', `本地服务已启动（pid ${ready.pid}，监听 ${ready.origin}）。`);
           finish(undefined, ready);
         } catch (error) {
           finish(error instanceof Error ? error : new Error(String(error)));
@@ -439,6 +457,7 @@ function isProcessAlive(pid: number): boolean {
 function shutdownAndExit(code: number): Promise<void> {
   if (shutdownPromise) return shutdownPromise;
   isQuitting = true;
+  logDiagnostic('info', 'app', `LingBuilder 正在退出（退出码 ${code}）。`);
   shutdownPromise = (async () => {
     let exitCode = code;
     try {
@@ -488,6 +507,53 @@ async function requestRendererApi(apiPath: string, init: RequestInit): Promise<u
   return result;
 }
 
+/** 渲染进程崩溃重载防循环：60 秒窗口内连续崩溃达到 3 次后停止自动重载，只留日志。 */
+const rendererCrashTimestamps: number[] = [];
+let rendererConsoleErrorTimestamps: number[] = [];
+
+function attachDiagnosticHandlers(window: BrowserWindow): void {
+  const contents = window.webContents;
+  contents.on('render-process-gone', (_event, details) => {
+    const now = Date.now();
+    while (rendererCrashTimestamps.length && now - rendererCrashTimestamps[0] > 60_000) rendererCrashTimestamps.shift();
+    rendererCrashTimestamps.push(now);
+    const repeated = rendererCrashTimestamps.length >= 3;
+    logDiagnostic('error', 'renderer', `渲染进程意外退出：原因 ${details.reason}，退出码 ${details.exitCode}${repeated ? '（60 秒内第 3 次，已停止自动重载）' : ''}。`);
+    if (!repeated && !window.isDestroyed()) {
+      void dialog.showMessageBox(window, {
+        type: 'warning',
+        title: 'LingBuilder 界面无响应',
+        message: '界面进程意外崩溃，正在自动恢复。',
+        detail: '若反复黑屏，请通过「帮助 → 导出本地日志…」把日志发给开发者分析。',
+        buttons: ['知道了'],
+        defaultId: 0,
+        noLink: true
+      }).catch(() => undefined);
+      setTimeout(() => { if (!window.isDestroyed()) window.webContents.reload(); }, 1_000);
+    }
+  });
+  contents.on('unresponsive', () => logDiagnostic('warn', 'renderer', '渲染进程无响应（可能被系统挂起或高负载）。'));
+  contents.on('responsive', () => logDiagnostic('info', 'renderer', '渲染进程恢复响应。'));
+  contents.on('did-fail-load', (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
+    logDiagnostic('error', 'renderer', `页面加载失败：${errorDescription}（错误码 ${errorCode}，URL ${validatedUrl}，主框架 ${isMainFrame ? '是' : '否'}）。`);
+  });
+  contents.on('did-finish-load', () => logDiagnostic('info', 'renderer', '页面加载完成。'));
+  contents.on('console-message', (_event, ...args: unknown[]) => {
+    // 新 Electron 运行时传 MessageDetails 对象，旧签名是位置参数（level 0-3：verbose/info/warning/error），两种都要兼容。
+    const [second, third, fourth, fifth] = args as any[];
+    const details = typeof second === 'object' && second
+      ? second
+      : { level: second, message: third, lineNumber: fourth, source: fifth };
+    if (Number(details?.level) !== 3) return;
+    const now = Date.now();
+    rendererConsoleErrorTimestamps = rendererConsoleErrorTimestamps.filter(t => now - t < 60_000);
+    if (rendererConsoleErrorTimestamps.length >= 30) return;
+    rendererConsoleErrorTimestamps.push(now);
+    const source = String(details.sourceUrl || details.source || '未知');
+    logDiagnostic('error', 'renderer-console', `${details.message}（来源 ${source}:${details.lineNumber ?? 0}）`);
+  });
+}
+
 async function createMainWindow(): Promise<void> {
   showWelcomeOnNextRendererLoad = !startupOpenedAssociatedWorkspace;
   const smokeTest = process.argv.includes('--smoke-test');
@@ -531,6 +597,7 @@ async function createMainWindow(): Promise<void> {
     event.preventDefault();
     mainWindow.webContents.send('window:close-requested');
   });
+  attachDiagnosticHandlers(mainWindow);
 
   if (smokeTest) await writePackagedSmokeProgress('load-url:start');
   await mainWindow.loadURL(rendererOrigin);
@@ -803,6 +870,50 @@ function registerIpcHandlers(): void {
     } catch (error) {
       return `无法打开交流QQ群链接：${error instanceof Error ? error.message : String(error)}`;
     }
+  });
+  ipcMain.handle('logs:reveal', async () => shell.openPath(getDiagnosticLogDirectory()));
+  ipcMain.handle('logs:export', async () => {
+    const owner = getFocusedWindow();
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const options: Electron.SaveDialogOptions = {
+      title: '导出本地诊断日志',
+      defaultPath: path.join(app.getPath('downloads'), `LingBuilder诊断日志-${stamp}.log`),
+      filters: [{ name: '日志文件', extensions: ['log'] }]
+    };
+    const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    try {
+      diagnosticLog?.exportBundle(result.filePath);
+      logDiagnostic('info', 'logs', `诊断日志已导出：${result.filePath}`);
+      return { ok: true, filePath: result.filePath };
+    } catch (error) {
+      return { ok: false, error: `导出日志失败：${error instanceof Error ? error.message : String(error)}` };
+    }
+  });
+  ipcMain.handle('logs:delete', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.MessageBoxOptions = {
+      type: 'warning',
+      title: '删除本地日志',
+      message: '确定要删除全部本地诊断日志吗？',
+      detail: '将清空 userData/logs 下的全部诊断日志文件，不影响设置、工作区和项目文件。',
+      buttons: ['删除', '取消'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true
+    };
+    const choice = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+    if (choice.response !== 0) return { ok: false, canceled: true };
+    const deleted = diagnosticLog?.deleteAllLogs() ?? 0;
+    logDiagnostic('info', 'logs', `用户已删除本地日志（${deleted} 个文件）。`);
+    return { ok: true, deleted };
+  });
+  ipcMain.on('diagnostic:report', (_event, payload: unknown) => {
+    const entry = (payload || {}) as { level?: unknown; category?: unknown; message?: unknown };
+    const level = entry.level === 'error' || entry.level === 'warn' ? entry.level : 'info';
+    const category = String(entry.category || 'renderer').slice(0, 40);
+    const message = String(entry.message || '').slice(0, 1000);
+    if (message) logDiagnostic(level, category, message);
   });
   ipcMain.handle('shell:reveal-workspace-path', async (_event, targetPath: string) => {
     try {
@@ -1272,6 +1383,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('credentials:fbro-vip:delete', async () => { await writeFbroVipCredential(''); publishFbroVipCredential(startupFbroVipKey); return { configured: Boolean(startupFbroVipKey), source: startupFbroVipKey ? 'environment' as const : 'none' as const }; });
   ipcMain.handle('cloud-account:register', (_event, value: any) => cloudAccountService.register(String(value?.email || ''), String(value?.password || '')));
   ipcMain.handle('cloud-account:verify-email', (_event, token: string) => cloudAccountService.verifyEmail(String(token || '')));
+  ipcMain.handle('cloud-account:forgot-password', (_event, value: any) => cloudAccountService.forgotPassword(String(value?.email || '')));
+  ipcMain.handle('cloud-account:reset-password', (_event, value: any) => cloudAccountService.resetPassword(String(value?.token || ''), String(value?.password || '')));
   ipcMain.handle('cloud-account:login', (_event, value: any) => cloudAccountService.login(String(value?.email || ''), String(value?.password || '')));
   ipcMain.handle('cloud-account:logout', async () => { const result = await cloudAccountService.logout(); await writeModulePermitCache([]); await requestRendererApi('/api/module-access/clear', { method: 'POST', body: '{}' }).catch(() => undefined); if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('账号已退出，正在撤销收费模块授权'); return result; });
   ipcMain.handle('cloud-account:session', () => cloudAccountService.snapshot());
@@ -1394,6 +1507,32 @@ function intersects(area: Electron.Rectangle, bounds: { x: number; y: number; wi
     && bounds.y < area.y + area.height && bounds.y + bounds.height > area.y;
 }
 
+/** 进程级崩溃/电源事件取证 + 60 秒内存采样，全部只写诊断日志不打扰用户。 */
+function attachAppDiagnosticListeners(): void {
+  app.on('child-process-gone', (_event, details) => {
+    logDiagnostic('error', 'app', `子进程意外退出：类型 ${details.type}，原因 ${details.reason}，退出码 ${details.exitCode}，名称 ${details.name || '未知'}。`);
+  });
+  powerMonitor.on('suspend', () => logDiagnostic('info', 'power', '系统进入挂起/休眠。'));
+  powerMonitor.on('resume', () => logDiagnostic('info', 'power', '系统从挂起/休眠恢复。'));
+  powerMonitor.on('unlock-screen', () => logDiagnostic('info', 'power', '屏幕解锁。'));
+  setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || !diagnosticLog) return;
+    try {
+      const parts = app.getAppMetrics().slice(0, 10).map(metric => `${metric.type}=${Math.round(metric.memory.workingSetSize / 1024)}MB`);
+      diagnosticLog.info('memory', `进程内存：${parts.join(' ')}`);
+    } catch {
+      // 采样失败静默跳过。
+    }
+  }, 60_000);
+  process.on('uncaughtException', error => {
+    logDiagnostic('error', 'main-process', `主进程未捕获异常：${(error instanceof Error ? error.stack || error.message : String(error)).slice(0, 500)}`);
+    console.error(error);
+  });
+  process.on('unhandledRejection', reason => {
+    logDiagnostic('error', 'main-process', `主进程未处理的 Promise 拒绝：${String(reason instanceof Error ? reason.stack || reason.message : reason).slice(0, 500)}`);
+  });
+}
+
 if (process.platform === 'win32') app.setAppUserModelId('cn.lingbuilder.ide');
 
 // 录制/多实例隔离：设置 LINGBUILDER_REC_USER_DATA 后使用独立 userData，
@@ -1444,6 +1583,9 @@ if (!singleInstanceLock) {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+  diagnosticLog = new DiagnosticLogService(getDiagnosticLogDirectory());
+  logDiagnostic('info', 'app', `LingBuilder ${app.getVersion()} 启动（${process.platform} ${process.arch}，${app.isPackaged ? '安装版' : '开发版'}）。`);
+  attachAppDiagnosticListeners();
   void updateDownloadService.cleanupAbandoned();
   const smokeDocumentsPath = process.argv.includes('--smoke-test')
     ? getArgumentValue(process.argv, '--smoke-documents-dir')
@@ -1517,6 +1659,7 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) void createMainWindow();
   });
 }).catch(async error => {
+  logDiagnostic('error', 'app', `启动失败：${error instanceof Error ? error.stack || error.message : String(error)}`);
   dialog.showErrorBox('LingBuilder 启动失败', error instanceof Error ? error.message : String(error));
   await shutdownAndExit(1);
 });

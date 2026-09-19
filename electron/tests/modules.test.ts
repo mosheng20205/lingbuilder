@@ -368,12 +368,43 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-17 内嵌资源批次：新增 lingbuilder.resource.embed 内嵌资源模块（8 命令 7 参数），无控件参数。
       // 基线 2026-09-18 写回（进程内存扫描批次）：进程管理模块进程枚举族（+2 命令 +3 参数）、
       // 进程内存模块 1.1.0 扫描族（+7 命令 +12 参数）、系统信息模块管理员自检（+1 命令），无控件参数。
+      // 基线 2026-09-18 再写回（Chromium 密文能力补缺批次）：Windows数据保护模块 +2 命令
+      //（数据保护_加密字节集/解密字节集，各 1 参数，解密自动剥离 Chromium 的 "DPAPI" 前缀）、
+      // 对称加密模块 +4 条裸 AEAD 命令（AES-256/AES-128-GCM 加密裸与解密裸，各 4 参数，
+      // 密钥/随机数/密文全走字节集且无自描述头）、Cookie文本模块 +3 命令（导出 Netscape 与
+      // EditThisCookie JSON 各 1 参数 + Cookie_取错误），合计 +9 命令 +20 参数，无控件参数。
+      // 基线 2026-09-18 再写回（CSV 表格导入与按编码读取批次）：CSV 数据模块 1.1.0 +13 命令
+      //（CSV_打开文件 4 参数、CSV_解析文本 3 参数、数据表_行数/列数/列名/取文本/单元格类型/
+      // 取整数/取小数/取布尔/单元格为空/关闭 共 23 参数、数据表_取错误 0 参数）合计 +30 参数，
+      // 新登记名义类型 表格数据（long long 句柄）；SQLite 模块 2.3.0 内置 csv 虚拟表并新增
+      // SQLite_取虚拟表支持（+1 命令 +1 参数）；编码转换模块 +2 命令（编码_字节集转文本 /
+      // 编码_文本转字节集，各 2 参数）；文件目录模块 文件_读取文本 补可选 编码名称 参数（+1 参数）。
+      // 合计 +16 命令 +36 参数，无控件参数，模块数不变。
+      // 基线 2026-09-18 再写回（EdgeView Cookie 注入批次）：lingbuilder.edgeview 1.3.0
+      // 新增 EdgeView会话_置Cookie带属性（9 参数）与 EdgeView会话_批量置Cookie（2 参数），
+      // 合计 +2 命令 +11 参数，控件参数 +2（两条命令首参均为 EdgeBrowser controlRef）。
+      // 基线 2026-09-19 再写回（EdgeView 多店铺弹窗批次）：lingbuilder.edgeview 1.4.0
+      // 新增 14 条实例编号寻址命令（创建弹窗浏览器/关闭全部实例/枚举实例JSON/置实例可见/
+      // 置实例大小/取实例大小JSON/置实例标题/置用户代理实例/取用户代理实例/批量置Cookie实例/
+      // 置Cookie带属性实例/删除全部Cookie实例/取Cookie实例异步/清理全部浏览数据实例异步），
+      // 合计 +14 命令 +35 参数，无控件参数（全部走 实例编号 整数寻址）。
+      // 基线 2026-09-19 再写回（EdgeView 弹窗独立代理）：lingbuilder.edgeview 1.5.0
+      // 新增 EdgeView_创建弹窗浏览器代理（8 参数，末参 代理地址），合计 +1 命令 +8 参数。
+      // 基线 2026-09-19 再写回（FBro shell 多店铺能力对齐批次）：lingbuilder.new_emoji.fbro-shell 1.3.0
+      // 新增 浏览器外壳_新建独立实例代理（6 参数：稳定ID/地址/标题/缓存目录/代理地址/用户代理）；
+      // 浏览器外壳_设置实例Cookie 透传 HttpOnly/Secure/Domain/Path（签名不变）。合计 +1 命令 +6 参数。
+      // 基线 2026-09-19 再写回（CEF3 枚举/关闭全部公开化）：lingbuilder.cef3.browser
+      // 新增 CEF3_枚举实例JSON 与 CEF3_关闭全部实例（各 0 参数，复用现有 cefBrowsers_/CEF3_关闭全部）。合计 +2 命令。
+      // 基线 2026-09-19 再写回（CEF3 设计器无关弹窗）：新增 CEF3_创建弹窗浏览器（4 参数，走 BrowserCreateChrome + 独立 profile + 每实例代理）。合计 +1 命令 +4 参数。
+      // 基线 2026-09-19 再写回（CEF3 内嵌区域动态）：新增 CEF3_创建区域（8 参数，运行时自建 WS_CHILD 承载 + 独立 profile + 每实例代理）。合计 +1 命令 +8 参数。
+      // 基线 2026-09-19 再写回（CEF3 实例版会话句柄）：新增 CEF3会话_取上下文实例（1 参数，按实例编号取 RequestContext 句柄，解锁弹窗/区域的句柄版 CEF3会话_* 命令）。合计 +1 命令 +1 参数。
+      // 基线 2026-09-19 再写回（CEF3 实例级 UA，纯运行时改「资源加载前」请求头 User-Agent）：新增 CEF3_设置用户代理/取用户代理（各 controlRef+UA）与 CEF3_设置实例用户代理/取实例用户代理（各 实例编号+UA）。合计 +4 命令 +6 参数 +2 controlRef。
       modules: 98,
-      commands: 3640,
-      parameters: 6301,
-      controlReferences: 1303,
-      commandDigest: '3a0ab8bb',
-      parameterDigest: '1753ef17'
+      commands: 3692,
+      parameters: 6436,
+      controlReferences: 1307,
+      commandDigest: '2f3922fa',
+      parameterDigest: '4c44e37e'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -506,7 +537,8 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
   // 2026-09-16 写回 54→55：项目 DLL 命令声明功能新增 projectDllMaterializeService.ts（已重新确认全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 56, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-09-18 写回 56→57：模块公开常量功能新增 moduleConstantService.ts（已重新确认全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 57, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1429,6 +1461,14 @@ test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.match(mainCpp, /const wchar_t\* DNS_解析首个地址/u);
   assert.match(mainCpp, /static LB_UrlParts LB_ParseUrl/u);
   assert.match(mainCpp, /const wchar_t\* Cookie_设置/u);
+  for (const commandName of ['Cookie_导出Netscape', 'Cookie_导出EditThisCookieJSON', 'Cookie_取错误']) {
+    const cookieManifest = NETWORK_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.net.cookie')!;
+    assert.ok(cookieManifest.contributes?.commands?.some(command => command.name === commandName), `Cookie 清单缺少 ${commandName}`);
+    assert.ok(cookieManifest.bindings?.commands?.some(binding => binding.command === commandName && binding.runtimeName === commandName), `Cookie binding 缺少 ${commandName}`);
+    assert.match(mainCpp, new RegExp(`const wchar_t\\* ${commandName}\\(`, 'u'), `Cookie 生成运行时缺少 ${commandName}`);
+  }
+  assert.match(mainCpp, /static bool LB_CookieReadRows/u);
+  assert.match(mainCpp, /# Netscape HTTP Cookie File/u);
   assert.match(mainCpp, /bool FTP_连接\(const wchar_t\* host/u);
   assert.match(mainCpp, /HTTP客户端_GET\(L"https:\/\/example\.com"\);/u);
 });
@@ -1452,6 +1492,19 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   assert.match(mainCpp, /LB_AEAD_WRAPPERS\(AES256GCM/u);
   assert.match(mainCpp, /const wchar_t\* 非对称_RSA生成私钥/u);
   assert.match(mainCpp, /const wchar_t\* 数据保护_加密文本/u);
+  for (const runtimeSymbol of [
+    'std::vector<unsigned char> 数据保护_加密字节集',
+    'std::vector<unsigned char> 数据保护_解密字节集',
+    'static std::vector<uint8_t> LB_SymmetricRawAead',
+    'LB_RAW_AEAD_WRAPPERS(AES256GCM, "AES-256/GCM", 32, "AES-256-GCM")',
+    'LB_RAW_AEAD_WRAPPERS(AES128GCM, "AES-128/GCM", 16, "AES-128-GCM")'
+  ]) {
+    assert.ok(mainCpp.includes(runtimeSymbol), `加密运行时缺少 ${runtimeSymbol}`);
+  }
+  // 裸 AEAD 与 DPAPI 字节集都必须字节进字节出，不能夹带 UTF-8 文本转换，否则二进制密钥会被破坏。
+  const rawAeadBody = mainCpp.slice(mainCpp.indexOf('static std::vector<uint8_t> LB_SymmetricRawAead'), mainCpp.indexOf('#define LB_LEGACY_WRAPPERS'));
+  assert.ok(!rawAeadBody.includes('LB_WideToUtf8'), '裸 AEAD 运行时不得把明文或密文按 UTF-8 文本转换');
+  assert.ok(rawAeadBody.includes('return LB_SymmetricRawAead(true') && rawAeadBody.includes('return LB_SymmetricRawAead(false'), 'AES-256/AES-128 裸加解密必须成对复用同一实现');
   assert.match(mainCpp, /bool ODBC_连接/u);
   assert.match(mainCpp, /bool SQLite_加载运行库/u);
   assert.match(mainCpp, /long long MySQL_连接/u);
@@ -1465,12 +1518,107 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   assert.match(mainCpp, /bool 音频_播放WAV/u);
 });
 
-test('SQLite 2.2 提供多连接、参数化查询、事务、WAL、备份、多算法加密和完整错误闭环', () => {
+test('CSV 1.1 记录级解析与按编码读取：跨行引号字段、GBK 自动识别与表格快照句柄', () => {
+  const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.data.csv')!;
+  const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
+  const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
+  assert.equal(manifest.version, '1.1.0');
+  assert.equal(commandNames.length, 18);
+  assert.deepEqual(bindingNames, commandNames, 'CSV 命令必须成对进入 contributes 与 bindings');
+  assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [['表格数据', 'long long']]);
+  assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/csv/README.md');
+  for (const required of ['CSV_打开文件', 'CSV_解析文本', '数据表_行数', '数据表_列数', '数据表_列名', '数据表_取文本', '数据表_单元格类型', '数据表_取整数', '数据表_取小数', '数据表_取布尔', '数据表_单元格为空', '数据表_关闭', '数据表_取错误']) {
+    assert.ok(commandNames.includes(required), `CSV 1.1 缺少 ${required}`);
+  }
+
+  const openFile = manifest.bindings?.commands?.find(binding => binding.command === 'CSV_打开文件');
+  assert.deepEqual(openFile?.parameters?.map(parameter => [parameter.name, parameter.type]), [
+    ['文件路径', 'wideString'], ['编码名称', 'wideString'], ['分隔符', 'wideString'], ['含表头', 'bool']
+  ]);
+  assert.ok(openFile?.parameters?.[0]?.optional !== true, '文件路径必须必填');
+  assert.deepEqual(openFile?.parameters?.slice(1)?.map(parameter => parameter.optional), [true, true, true], '可选参数必须位于尾部');
+  assert.equal(openFile?.returnType, '表格数据');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === '数据表_行数')?.returnType, 'int');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === '数据表_关闭')?.returnType, 'bool');
+
+  // 文件与字节集编码入口：缺省 UTF-8 语义不变，中文编码走同一份内核。
+  const fsCore = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.fs.core')!;
+  const readFileBinding = fsCore?.bindings?.commands?.find(binding => binding.command === '文件_读取文本');
+  assert.deepEqual(readFileBinding?.parameters?.map(parameter => [parameter.name, parameter.type, parameter.optional === true]), [
+    ['路径', 'wideString', false], ['编码名称', 'wideString', true]
+  ]);
+  const encoding = STANDARD_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.std.encoding')!;
+  const bytesToText = encoding.bindings?.commands?.find(binding => binding.command === '编码_字节集转文本');
+  assert.deepEqual(bytesToText?.parameters?.map(parameter => parameter.type), ['bytes', 'wideString']);
+  assert.equal(encoding.bindings?.commands?.find(binding => binding.command === '编码_文本转字节集')?.returnType, 'bytes');
+
+  const sqliteManifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.database.sqlite')!;
+  const enabledModules: InstalledModule[] = [manifest, sqliteManifest].map(item => ({
+    manifest: item, installPath: `builtin://${item.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 表格数据 表 = CSV_打开文件("员工.csv", "GBK")',
+      '        如果 (表 != 0)',
+      '            调试输出(数据表_列名(表, 1))',
+      '            调试输出(数据表_取文本(表, 1, 2))',
+      '            数据表_关闭(表)',
+      '        否则',
+      '            调试输出(数据表_取错误())',
+      '        如果结束',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  assert.deepEqual(generated.blockingDiagnostics, [], '表格数据 名义类型必须通过语义检查');
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(mainCpp, /CSV_打开文件\(L"员工\.csv", L"GBK"\);/u);
+  assert.match(mainCpp, /数据表_列名\(表, 1\)/u);
+  for (const symbol of [
+    'static bool LB_CsvScanRecord', 'static bool LB_CsvNextRecord', 'static std::vector<std::vector<std::wstring>> LB_CsvParseRecords',
+    'static LB_EncodingKind LB_AutoDetectEncodingKind', 'static bool LB_DecodeFileText',
+    'long long CSV_打开文件(const wchar_t* path, const wchar_t* encoding = L"AUTO", const wchar_t* delimiter = L",", bool hasHeader = true)',
+    'const wchar_t* 数据表_取文本', 'bool 数据表_关闭'
+  ]) {
+    assert.ok(mainCpp.includes(symbol), `CSV 运行时缺少 ${symbol}`);
+  }
+  // CSV 与 SQLite 同时启用：记录扫描器与编码内核各只有一份，虚拟表复用同一实现。
+  assert.equal((mainCpp.match(/#define LB_TABULAR_SOURCE_RUNTIME_INCLUDED/gu) || []).length, 1, '表格内核被重复铺设');
+  assert.equal((mainCpp.match(/#define LB_TEXT_CODECS_RUNTIME_INCLUDED/gu) || []).length, 1, '文本编解码内核被重复铺设');
+  assert.ok(mainCpp.includes('create_module(database, "csv", &CsvVtabModule, nullptr)'), 'CSV 模块启用时 csv 虚拟表必须仍可用');
+
+  // 使用骨架必须真的能编译：占位符填好后逐条塞进窗口事件再生成一次。
+  const snippetSources: Array<{ label: string; snippet?: { insertText: string }; expect: string }> = [
+    { label: 'CSV 表格快照骨架', snippet: (manifest.contributes?.snippets || []).find(item => item.label === 'CSV 读取表格快照'), expect: '数据表_列名' },
+    { label: 'CSV 虚拟表入库骨架', snippet: (sqliteManifest.contributes?.snippets || []).find(item => item.label === 'CSV 虚拟表直连入库'), expect: 'CREATE VIRTUAL TABLE 导入_员工 USING csv' }
+  ];
+  for (const { label, snippet, expect } of snippetSources) {
+    assert.ok(snippet, `缺少 ${label}`);
+    const body = (snippet!.insertText || '')
+      .replace(/\$1/gu, '员工.csv')
+      .split('\n')
+      .map(line => `    ${line}`);
+    const snippetGenerated = generateLingCppNativeWin32Project(sampleProject, {
+      lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', ...body, '    结束', '结束类'].join('\n'),
+      enabledModules: [manifest, sqliteManifest].map(item => ({
+        manifest: item, installPath: `builtin://${item.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+      }))
+    });
+    assert.deepEqual(snippetGenerated.blockingDiagnostics, [], `${label} 必须无阻断诊断`);
+    const snippetCpp = snippetGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+    assert.ok(snippetCpp.includes(expect), `${label} 必须生成 ${expect}`);
+  }
+});
+
+test('SQLite 2.3 提供多连接、参数化查询、事务、WAL、备份、多算法加密、csv 虚拟表和完整错误闭环', () => {
   const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.database.sqlite')!;
   const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
   const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
-  assert.equal(manifest.version, '2.2.0');
-  assert.equal(commandNames.length, 72);
+  assert.equal(manifest.version, '2.3.0');
+  assert.equal(commandNames.length, 73);
   assert.deepEqual(bindingNames, commandNames);
   assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [
     ['SQLite连接', 'long long'],
@@ -1506,6 +1654,13 @@ test('SQLite 2.2 提供多连接、参数化查询、事务、WAL、备份、多
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开连接')?.returnType, 'SQLite连接');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_打开加密连接')?.returnType, 'SQLite连接');
   assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/sqlite/README.md');
+  assert.equal(manifest.contributes?.docs?.[0]?.title, 'SQLite 数据库模块 2.3 使用说明');
+  assert.ok(commandNames.includes('SQLite_取虚拟表支持'), 'SQLite 2.3 必须暴露虚拟表能力自查命令');
+  assert.deepEqual(
+    manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_取虚拟表支持')?.parameters?.map(parameter => parameter.type),
+    ['SQLite连接']
+  );
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'SQLite_取虚拟表支持')?.returnType, 'wideString');
 
   const enabledModules: InstalledModule[] = [{
     manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
@@ -1535,6 +1690,24 @@ test('SQLite 2.2 提供多连接、参数化查询、事务、WAL、备份、多
   }
   assert.match(mainCpp, /SQLite_打开连接\(L"data\/app\.db", 0, 5000\)/u);
   assert.match(mainCpp, /SQLite_绑定文本\(查询, 1, L"中文"\)/u);
+
+  // csv 虚拟表随 SQLite 模块铺设：虚拟表 ABI 结构、参数解析与注册调用都要真实生成。
+  for (const vtabSymbol of [
+    'struct sqlite3_vtab', 'struct sqlite3_module', 'static const sqlite3_module CsvVtabModule',
+    'static int CsvVtabConnect', 'declare_vtab(database, declaration.c_str())',
+    'create_module(database, "csv", &CsvVtabModule, nullptr)',
+    'const wchar_t* SQLite_取虚拟表支持'
+  ]) {
+    assert.ok(mainCpp.includes(vtabSymbol), `SQLite csv 虚拟表缺少 ${vtabSymbol}`);
+  }
+  const openConnectionBody = mainCpp.slice(mainCpp.indexOf('static long long OpenConnection'), mainCpp.indexOf('bool SQLite_加载运行库'));
+  assert.ok(openConnectionBody.includes('csvVirtualTablesReady = RegisterCsvVirtualTable(database)'), 'csv 虚拟表必须在打开连接时注册');
+  assert.ok(
+    openConnectionBody.indexOf('busy_timeout(database, waitMilliseconds)') < openConnectionBody.indexOf('RegisterCsvVirtualTable(database)'),
+    '虚拟表注册必须晚于忙等待设置，失败连接不参与注册'
+  );
+  assert.equal((mainCpp.match(/#define LB_TEXT_CODECS_RUNTIME_INCLUDED/gu) || []).length, 1, '文本编解码内核必须只铺设一份');
+  assert.equal((mainCpp.match(/static bool LB_CsvNextRecord/gu) || []).length, 1, 'CSV 记录扫描器必须只铺设一份');
 
   const encryptedGenerated = generateLingCppNativeWin32Project(sampleProject, {
     lingCppSourceCode: [
@@ -1896,7 +2069,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   const commandCount = BUILTIN_MODULES.reduce((total, manifest) => total + (manifest.contributes?.commands?.length ?? 0), 0);
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
-  assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 30/u);
+  assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
   assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 206/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
@@ -2603,6 +2776,119 @@ test('uninstall removes module references from every solution project', async ()
     assert.ok(!saved.enabledModuleIds.includes(moduleId));
     assert.equal(saved.pinnedVersions[moduleId], undefined);
   }
+});
+
+test('链接模块开发源后扫描指向源目录，源改动免重装即时生效，取消链接后移除', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-devlink-'));
+  await writeSolutionFixture(root, ['lingbuilder-ui-project']);
+  const sourceDir = path.join(root, '.lingbuilder', 'module-build', 'dev-src');
+  const manifest = {
+    schemaVersion: 2,
+    id: 'com.example.devlink',
+    name: '开发源模块',
+    version: '1.0.0',
+    category: '其他',
+    description: '开发源链接测试。'
+  };
+  await writeFixture(path.join(sourceDir, 'lingbuilder.module.json'), JSON.stringify(manifest, null, 2));
+
+  const service = createModuleService(root);
+  const { link, module } = await service.linkModuleDevSource('.lingbuilder/module-build/dev-src');
+  assert.equal(link.moduleId, 'com.example.devlink');
+  assert.equal(link.sourcePath, '.lingbuilder/module-build/dev-src');
+  assert.ok(module.isDevLink);
+  assert.equal(module.installPath, path.resolve(sourceDir));
+  // 链接不落地 .lingbuilder/modules：磁盘上不产生安装目录。
+  await assert.rejects(fs.access(path.join(root, '.lingbuilder', 'modules', 'com.example.devlink')));
+
+  // 改源目录清单版本 → 重新扫描即拿到新版本（无需重新打包安装）。
+  await writeFixture(path.join(sourceDir, 'lingbuilder.module.json'), JSON.stringify({ ...manifest, version: '1.0.1' }, null, 2));
+  const rescanned = (await service.scanInstalledModules()).find(item => item.manifest.id === 'com.example.devlink');
+  assert.equal(rescanned?.manifest.version, '1.0.1');
+  assert.ok(rescanned?.isDevLink);
+
+  await service.unlinkModuleDevSource('com.example.devlink');
+  const afterUnlink = (await service.scanInstalledModules()).find(item => item.manifest.id === 'com.example.devlink');
+  assert.equal(afterUnlink, undefined);
+  // 取消链接绝不删除开发源文件。
+  assert.ok(await fs.readFile(path.join(sourceDir, 'lingbuilder.module.json'), 'utf8'));
+});
+
+test('开发源链接拒绝绝对路径、越界、安装目录、缺失清单与内置 ID', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-devlink-guard-'));
+  await writeSolutionFixture(root, ['lingbuilder-ui-project']);
+  const service = createModuleService(root);
+
+  await assert.rejects(() => service.linkModuleDevSource('C:/Windows'), /工作区相对路径/);
+  await assert.rejects(() => service.linkModuleDevSource('../outside'), /工作区/);
+  await assert.rejects(() => service.linkModuleDevSource('.lingbuilder/modules/com.x'), /不能指向已安装模块目录/);
+  await assert.rejects(() => service.linkModuleDevSource('.lingbuilder/module-build/missing'), /不存在或不是目录/);
+
+  await fs.mkdir(path.join(root, '.lingbuilder', 'module-build', 'empty-src'), { recursive: true });
+  await assert.rejects(() => service.linkModuleDevSource('.lingbuilder/module-build/empty-src'), /缺少有效/);
+
+  await writeFixture(
+    path.join(root, '.lingbuilder', 'module-build', 'builtin-src', 'lingbuilder.module.json'),
+    JSON.stringify({ schemaVersion: 2, id: 'lingbuilder.win32.basic', name: '伪装内置', version: '1.0.0', category: '其他', description: '内置 ID 拒绝测试。' }, null, 2)
+  );
+  await assert.rejects(() => service.linkModuleDevSource('.lingbuilder/module-build/builtin-src'), /内置模块/);
+});
+
+test('已链接开发源的模块：安装包被拒绝安装，卸载只断链不删源', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-devlink-install-'));
+  await writeSolutionFixture(root, ['lingbuilder-ui-project']);
+  const service = createModuleService(root);
+  const devDir = path.join(root, '.lingbuilder', 'module-build', 'devlink-src');
+  const manifest = {
+    schemaVersion: 2,
+    id: 'com.example.devlink2',
+    name: '开发源模块二',
+    version: '1.0.0',
+    category: '其他',
+    description: '安装守卫与卸载断链测试。'
+  };
+  await writeFixture(path.join(devDir, 'lingbuilder.module.json'), JSON.stringify(manifest, null, 2));
+  await service.linkModuleDevSource('.lingbuilder/module-build/devlink-src');
+
+  // 同 ID 新包正常预览，但安装被开发源链接守卫拒绝。
+  const packageDir = path.join(root, 'package-src');
+  await writeFixture(path.join(packageDir, 'lingbuilder.module.json'), JSON.stringify({ ...manifest, version: '2.0.0' }, null, 2));
+  const packagePath = path.join(root, 'devlink2.lbmod');
+  await createLbmodArchive(packageDir, packagePath);
+  const preview = await service.previewPackageInstall(packagePath);
+  assert.equal(preview.canInstall, true);
+  await assert.rejects(() => service.installPackage(preview.previewId), /已链接开发源/);
+
+  // 「卸载」链接模块 = 断链：源目录文件必须原样保留。
+  await service.uninstallModule('com.example.devlink2');
+  assert.ok(await fs.readFile(path.join(devDir, 'lingbuilder.module.json'), 'utf8'));
+  const afterUninstall = (await service.scanInstalledModules()).find(item => item.manifest.id === 'com.example.devlink2');
+  assert.equal(afterUninstall, undefined);
+});
+
+test('开发源链接优先于同 ID 已安装目录，扫描不产生重复条目', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-devlink-shadow-'));
+  await writeSolutionFixture(root, ['lingbuilder-ui-project']);
+  const installedManifest = {
+    schemaVersion: 2,
+    id: 'com.example.devlink3',
+    name: '已安装旧版',
+    version: '9.9.9',
+    category: '其他',
+    description: '被开发源链接遮蔽的安装目录。'
+  };
+  await writeFixture(path.join(root, '.lingbuilder', 'modules', 'com.example.devlink3', 'lingbuilder.module.json'), JSON.stringify(installedManifest, null, 2));
+  await writeFixture(
+    path.join(root, '.lingbuilder', 'module-build', 'devlink3-src', 'lingbuilder.module.json'),
+    JSON.stringify({ ...installedManifest, name: '开发源新版', version: '0.1.0' }, null, 2)
+  );
+
+  const service = createModuleService(root);
+  await service.linkModuleDevSource('.lingbuilder/module-build/devlink3-src');
+  const matched = (await service.scanInstalledModules()).filter(item => item.manifest.id === 'com.example.devlink3');
+  assert.equal(matched.length, 1);
+  assert.equal(matched[0].manifest.version, '0.1.0');
+  assert.ok(matched[0].isDevLink);
 });
 
 test('module validation, preview and pack reject missing declared files', async () => {
@@ -3532,7 +3818,8 @@ test('CEF3 user documentation covers the unified event catalog and every public 
   // 2026-09-12 写回：CEF3 JS 交互新增「查询请求（OnQuery）/ 查询已取消（OnQueryCanceled）」
   // 两个事件条目与 CEF3_启用JS扩展 / CEF3_查询应答 / CEF3_查询应答失败 三条公开命令。
   assert.equal(CEF3_BROWSER_EVENTS.length, 98);
-  assert.equal(publicCommands.length, 402);
+  // 2026-09-19 再写回：CEF3 多店铺能力对齐新增 CEF3_创建弹窗浏览器 / CEF3_创建区域 / CEF3_枚举实例JSON / CEF3_关闭全部实例 / CEF3会话_取上下文实例 / CEF3_设置用户代理 / CEF3_设置实例用户代理 / CEF3_取用户代理 / CEF3_取实例用户代理（9 条公开命令）。
+  assert.equal(publicCommands.length, 411);
   const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
   assert.equal(threadEntries.length, 5);
   assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
@@ -3714,7 +4001,7 @@ test('EdgeView 安全 API 目录、binding、处理器补全和运行时符号�
   assert.deepEqual(validateEdgeViewApiCatalog(), []);
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
   assert.ok(manifest);
-  assert.equal(manifest.version, '1.2.0');
+  assert.equal(manifest.version, '1.5.0');
   assert.equal(manifest.minLingBuilderVersion, '0.2.7');
   const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
   const bindings = new Map(manifest.bindings?.commands?.map(binding => [binding.command, binding]));
@@ -3729,6 +4016,125 @@ test('EdgeView 安全 API 目录、binding、处理器补全和运行时符号�
   assert.ok(!modern.some(item => item.id.includes('handler-reference-migration')));
   const legacy = getLingCppSemanticDiagnostics('EdgeView_绑定控件事件("浏览器1", "导航完成", "浏览器1_导航完成")', undefined, undefined, { enabledModules: [module], availableModules: [module] });
   assert.ok(legacy.some(item => item.id.includes('handler-reference-migration') && item.suggestion?.includes('&浏览器1_导航完成')));
+});
+
+test('EdgeView 1.4.0 多店铺弹窗与实例编号寻址命令进入清单、绑定与生成 C++', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+  assert.ok(manifest);
+  const contributions = new Set(manifest.contributes?.commands?.map(command => command.name));
+  const bindings = new Map(manifest.bindings?.commands?.map(binding => [binding.command, binding]));
+  const newCommands = [
+    'EdgeView_创建弹窗浏览器', 'EdgeView_创建弹窗浏览器代理', 'EdgeView_关闭全部实例', 'EdgeView_枚举实例JSON',
+    'EdgeView_置实例可见', 'EdgeView_置实例大小', 'EdgeView_取实例大小JSON', 'EdgeView_置实例标题',
+    'EdgeView设置_置用户代理实例', 'EdgeView设置_取用户代理实例',
+    'EdgeView会话_批量置Cookie实例', 'EdgeView会话_置Cookie带属性实例', 'EdgeView会话_删除全部Cookie实例',
+    'EdgeView会话_取Cookie实例异步', 'EdgeView会话_清理全部浏览数据实例异步'
+  ];
+  for (const name of newCommands) {
+    assert.ok(contributions.has(name), `缺少 contribution：${name}`);
+    assert.ok(bindings.has(name), `缺少 binding：${name}`);
+  }
+  // 实例编号寻址命令首参必须是 int（实例编号），不得是 controlRef。
+  for (const name of newCommands) {
+    const first = bindings.get(name)?.parameters?.[0];
+    if (first && first.name === '实例编号') assert.equal(first.type, 'int', `${name} 实例编号 应为 int`);
+  }
+  assert.equal(bindings.get('EdgeView会话_取Cookie实例异步')?.parameters?.at(-1)?.type, 'handler');
+  // 弹窗代理变体末参必须是 代理地址（wideString），实现每店铺独立出口 IP。
+  assert.equal(bindings.get('EdgeView_创建弹窗浏览器代理')?.parameters?.at(-1)?.name, '代理地址');
+  assert.equal(bindings.get('EdgeView_创建弹窗浏览器代理')?.parameters?.at(-1)?.type, 'wideString');
+  const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const completions = getLingCppCompletions({ source: 'EdgeView_创建弹窗', line: 1, column: 15 }, { enabledModules: [module], availableModules: [module] });
+  assert.ok(completions.some(item => item.label === 'EdgeView_创建弹窗浏览器'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_创建弹窗浏览器代理'));
+  assert.ok(completions.some(item => item.label === 'EdgeView会话_批量置Cookie实例'));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [module],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '  事件 _MainWindow_创建完毕()',
+      '    EdgeView_创建弹窗浏览器(1, "StoreA", 1000, 720, "https://example.com", ".edgeview/cache-1", "Mozilla/5.0")',
+      '    EdgeView_创建弹窗浏览器代理(2, "StoreB", 1000, 720, "https://example.org", ".edgeview/cache-2", "Mozilla/5.0", "http://127.0.0.1:7890")',
+      '    EdgeView会话_批量置Cookie实例(1, "[{\\"name\\":\\"PASS_ID\\",\\"value\\":\\"v\\",\\"domain\\":\\"example.com\\",\\"path\\":\\"/\\",\\"secure\\":true,\\"httpOnly\\":true,\\"sameSite\\":1}]")',
+      '    EdgeView设置_置用户代理实例(1, "Mozilla/5.0 Test")',
+      '    EdgeView_置实例可见(1, 0)',
+      '    EdgeView_置实例大小(1, 1200, 800)',
+      '    EdgeView_置实例标题(1, "StoreB")',
+      '    EdgeView_关闭全部实例()',
+      '  结束',
+      '结束类'
+    ].join('\n')
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('int EdgeView_创建弹窗浏览器(int instanceId'), '缺少 创建弹窗浏览器 运行时定义');
+  assert.ok(mainCpp.includes('int EdgeView_创建弹窗浏览器代理(int instanceId'), '缺少 创建弹窗浏览器代理 运行时定义');
+  assert.ok(mainCpp.includes('L"LingBuilderEdgeViewPopup"'), '缺少弹窗窗口类名');
+  assert.ok(mainCpp.includes('WS_EX_APPWINDOW'), '弹窗顶层窗口缺少 WS_EX_APPWINDOW');
+  assert.ok(mainCpp.includes('EdgeView弹窗窗口过程'), '缺少弹窗窗口过程');
+  assert.ok(mainCpp.includes('uaSettings2->put_UserAgent'), '创建弹窗未按实例应用 UA');
+  assert.ok(mainCpp.includes('popupProxy'), '弹窗未按实例参数应用独立代理');
+  assert.ok(mainCpp.includes('int EdgeView会话_批量置Cookie实例(int instanceId'), '缺少 批量置Cookie实例 运行时定义');
+  assert.ok(mainCpp.includes('int EdgeView设置_置用户代理实例(int instanceId'), '缺少 置用户代理实例 运行时定义');
+  assert.ok(mainCpp.includes('std::wstring EdgeView_枚举实例JSON'), '缺少 枚举实例JSON 运行时定义');
+  assert.ok(mainCpp.includes('int EdgeView_关闭全部实例'), '缺少 关闭全部实例 运行时定义');
+  assert.ok(mainCpp.includes('int EdgeView_置实例可见(int instanceId'), '缺少 置实例可见 运行时定义');
+  // 生成调用点应为宽字符实参 + 实例编号整数。
+  assert.ok(mainCpp.includes('EdgeView_创建弹窗浏览器(1, L"StoreA", 1000, 720, L"https://example.com", L".edgeview/cache-1", L"Mozilla/5.0");'));
+  assert.ok(mainCpp.includes('EdgeView_创建弹窗浏览器代理(2, L"StoreB", 1000, 720, L"https://example.org", L".edgeview/cache-2", L"Mozilla/5.0", L"http://127.0.0.1:7890");'));
+  assert.ok(mainCpp.includes('EdgeView_关闭全部实例();'));
+});
+
+test('CEF3 与 FBro 多店铺能力：弹窗/枚举/关闭全部/实例代理进入清单、绑定与生成 C++', () => {
+  const cef3 = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  const shell = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.new_emoji.fbro-shell');
+  assert.ok(cef3 && shell);
+  const cef3Names = new Set(cef3!.contributes?.commands?.map(command => command.name));
+  const cef3Bindings = new Map(cef3!.bindings?.commands?.map(binding => [binding.command, binding]));
+  for (const name of ['CEF3_创建弹窗浏览器', 'CEF3_创建区域', 'CEF3_枚举实例JSON', 'CEF3_关闭全部实例', 'CEF3会话_取上下文实例', 'CEF3_设置用户代理', 'CEF3_设置实例用户代理', 'CEF3_取用户代理', 'CEF3_取实例用户代理']) {
+    assert.ok(cef3Names.has(name), `CEF3 缺少 contribution：${name}`);
+    assert.ok(cef3Bindings.has(name), `CEF3 缺少 binding：${name}`);
+  }
+  // 弹窗首参为整数实例编号（非 controlRef）。
+  assert.equal(cef3Bindings.get('CEF3_创建弹窗浏览器')?.parameters?.[0]?.type, 'int');
+  // 实例版会话句柄：首参为整数实例编号、返回长整数型（RequestContext 受管句柄）。
+  assert.equal(cef3Bindings.get('CEF3会话_取上下文实例')?.parameters?.[0]?.type, 'int');
+  assert.equal(cef3Bindings.get('CEF3会话_取上下文实例')?.returnType, 'longLong');
+  // 实例级 UA：控件版首参 controlRef、实例版首参 int，均以 wideString 承载 UA。
+  assert.deepEqual(cef3Bindings.get('CEF3_设置用户代理')?.parameters?.map(p => p.type), ['controlRef', 'wideString']);
+  assert.deepEqual(cef3Bindings.get('CEF3_设置实例用户代理')?.parameters?.map(p => p.type), ['int', 'wideString']);
+  const shellNames = new Set(shell!.contributes?.commands?.map(command => command.name));
+  const shellBindings = new Map(shell!.bindings?.commands?.map(binding => [binding.command, binding]));
+  assert.ok(shellNames.has('浏览器外壳_新建独立实例代理') && shellBindings.has('浏览器外壳_新建独立实例代理'), 'FBro shell 缺少 新建独立实例代理');
+  assert.equal(shellBindings.get('浏览器外壳_新建独立实例代理')?.parameters?.[4]?.name, '代理地址');
+  assert.equal(shellBindings.get('浏览器外壳_新建独立实例代理')?.parameters?.[5]?.name, '用户代理');
+  // 生成 C++ 校验：CEF3 弹窗走 Chrome Runtime、枚举/关闭全部符号存在、宽字符调用点正确。
+  const cef3Module: InstalledModule = { manifest: cef3!, installPath: 'builtin://lingbuilder.cef3.browser', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [cef3Module],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '  事件 _MainWindow_创建完毕()',
+      '    CEF3_创建弹窗浏览器(1, "https://example.com", ".cef3/store-a", "http://127.0.0.1:7890")',
+      '    CEF3会话_取上下文实例(1)',
+      '    CEF3_枚举实例JSON()',
+      '    CEF3_关闭全部实例()',
+      '  结束',
+      '结束类'
+    ].join('\n')
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('int CEF3_创建弹窗浏览器(int instanceId'), '缺少 CEF3_创建弹窗浏览器 运行时定义');
+  assert.ok(mainCpp.includes('LB_CEF3_BrowserCreateChrome'), 'CEF3 弹窗未走 Chrome Runtime');
+  assert.ok(mainCpp.includes('std::wstring CEF3_枚举实例JSON'), '缺少 CEF3_枚举实例JSON 运行时定义');
+  assert.ok(mainCpp.includes('int CEF3_关闭全部实例'), '缺少 CEF3_关闭全部实例 运行时定义');
+  assert.ok(mainCpp.includes('long long CEF3会话_取上下文实例(int instanceId'), '缺少 CEF3会话_取上下文实例 运行时定义');
+  assert.ok(mainCpp.includes('CEF3会话_取上下文实例(1);'), 'CEF3 实例版会话句柄调用点缺失');
+  assert.ok(mainCpp.includes('int CEF3_设置实例用户代理(int instanceId, const wchar_t* userAgent'), '缺少 CEF3_设置实例用户代理 运行时定义');
+  assert.ok(mainCpp.includes('LB_CEF3_ResourceRequestHandlerSubscribeBeforeResourceLoad'), 'CEF3 实例级 UA 未点亮资源加载前订阅');
+  assert.ok(mainCpp.includes('LB_CEF3_RequestSetHeaderByName'), 'CEF3 事件回调缺少逐实例 User-Agent 请求头改写');
+  assert.ok(mainCpp.includes('activeInstance->userAgent.c_str(), 1)'), 'CEF3 事件回调未按实例改写 UA 头');
+  assert.ok(mainCpp.includes('L"User-Agent"'), 'CEF3 UA 改写目标头名缺失');
+  assert.ok(mainCpp.includes('CEF3_创建弹窗浏览器(1, L"https://example.com", L".cef3/store-a", L"http://127.0.0.1:7890");'), 'CEF3 弹窗宽字符调用点不符');
 });
 
 test('EdgeView 导出路径、响应正文时效、回调内同步等待与控件级等待事件保持统一契约', () => {
@@ -4570,7 +4976,7 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_发送触摸事件')?.parameters?.map(parameter => parameter.type),
     ['controlRef', 'int', 'double', 'double', 'double', 'double', 'double', 'double', 'int', 'longLong', 'int']);
   assert.equal(manifest.compatibility?.conflicts?.length || 0, 0);
-  assert.equal(manifest.version, '3.0.0-alpha.3');
+  assert.equal(manifest.version, '3.0.0-alpha.4');
   assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
   assert.ok(manifest.targets?.[0]?.libs?.some(item => item.endsWith('LingBuilderCefBridge.lib')));
   assert.ok(!manifest.targets?.[0]?.libs?.some(item => item.endsWith('libcef.lib')));
@@ -7061,4 +7467,41 @@ test('按钮常规命名事件未绑定时生成启动警告', async () => {
   const generatedWired = generateLingCppNativeWin32Project(wired, { lingCppSourceCode: source, enabledModules: [] });
   const cppWired = generatedWired.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.doesNotMatch(cppWired, /WarnUnboundControlEvents\(\) override/);
+});
+
+test('contributes.constants 清单门禁：命名、类型、字面量与重复校验', () => {
+  const base = { schemaVersion: 2 as const, id: 'com.example.const', name: '常量门禁', version: '1.0.0', category: '其他' as const, description: '常量门禁测试。' };
+  const valid = validateModuleManifest({
+    ...base,
+    contributes: { constants: [
+      { name: '键盘1', type: '整数型', value: 49, description: '虚拟键码。' },
+      { name: '标题', type: '文本型', value: '示例', description: '标题文本。' },
+      { name: '启用', type: '逻辑型', value: false, description: '开关。' },
+      { name: '比率', type: '小数型', value: 1.5, description: '比率。' },
+      { name: '高级常量', type: '整数型', value: 2, description: 'advanced 常量。', level: 'advanced' }
+    ] }
+  });
+  assert.equal(valid.diagnostics.length, 0, valid.diagnostics.join('\n'));
+
+  const invalid = validateModuleManifest({
+    ...base,
+    contributes: { constants: [
+      { name: '1错误', type: '整数型', value: 1, description: '数字开头。' },
+      { name: '错类型', type: '字节集', value: 1, description: '不允许的类型。' },
+      { name: '错字面量', type: '整数型', value: 'abc', description: '字面量类型不符。' },
+      { name: '错逻辑字面量', type: '逻辑型', value: '真', description: '必须 true/false。' },
+      { name: '键盘1', type: '整数型', value: 2, description: '与第一条重复。' },
+      { name: '缺说明', type: '整数型', value: 1, description: '' },
+      { name: '坏级别', type: '整数型', value: 1, description: 'x', level: 'internal' },
+      { name: '键盘1', type: '整数型', value: 50, description: '与第 5 条重复。' }
+    ] }
+  });
+  const joined = invalid.diagnostics.join('\n');
+  assert.match(joined, /constants\[0\]\.name 必须是有效的 LingCpp 常量名称/u);
+  assert.match(joined, /constants\[1\]\.type 只允许/u);
+  assert.match(joined, /错字面量 的 value 必须是整数/u);
+  assert.match(joined, /错逻辑字面量 的 value 必须是 true 或 false/u);
+  assert.match(joined, /模块常量名称重复：键盘1/u);
+  assert.match(joined, /constants\[5\]\.description 必须是非空中文说明/u);
+  assert.match(joined, /constants\[6\]\.level 只允许 basic 或 advanced/u);
 });

@@ -5,7 +5,7 @@
  * This enables token-level syntax highlighting similar to Visual Studio.
  */
 
-import { LINGCPP_COMMENT_TOKEN_COLORS } from './lingCpp/semanticTheme';
+import { LINGCPP_COMMENT_TOKEN_COLORS, LINGCPP_CONSTANT_TOKEN_COLORS } from './lingCpp/semanticTheme';
 
 // ── Token Types ──────────────────────────────────────────────────────────────
 
@@ -19,6 +19,7 @@ export type EplTokenKind =
   | 'variable'    // 已声明的变量名
   | 'function'    // 子程序名 / 函数调用
   | 'boolean'     // 真 / 假
+  | 'constant'    // #常量名 引用（项目常量 / 模块常量）
   | 'identifier'  // 其他标识符
   | 'whitespace'  // 空白
   | 'dot'         // 前导点号 (用于 .子程序 等)
@@ -214,6 +215,15 @@ export function tokenizeEplStatement(
       continue;
     }
 
+    // Constant reference: #常量名（整体着色，含 # 前缀；# 后必须是合法标识符起始字符）
+    if (ch === '#' && i + 1 < len && isIdentChar(text[i + 1]) && !isDigit(text[i + 1])) {
+      const start = i;
+      i++; // skip '#'
+      while (i < len && isIdentChar(text[i])) i++;
+      tokens.push({ kind: 'constant', text: text.slice(start, i), start });
+      continue;
+    }
+
     // Operators: = + - * / < > ! & | ^ ~ # @
     if ('=+-*/<>!&|^~#@'.includes(ch)) {
       const start = i;
@@ -277,6 +287,7 @@ export interface EplTokenColorTheme {
   variable: string;
   function: string;
   boolean: string;
+  constant: string;
   identifier: string;
   whitespace: string;
   dot: string;
@@ -297,6 +308,7 @@ export const EPL_TOKEN_COLORS_DARK: EplTokenColorTheme = {
   variable:   '#9df59c',  // 与局部变量声明表的绿色标记保持一致
   function:   '#dcdcaa',  // VS yellow for functions
   boolean:    '#569cd6',  // VS blue for boolean literals
+  constant:   LINGCPP_CONSTANT_TOKEN_COLORS.dark,  // #常量名 引用紫（与 Monaco/新手共用同一令牌色）
   identifier: '#d4d4d4',  // VS default text color
   whitespace: 'transparent',
   dot:        '#d4d4d4',
@@ -317,6 +329,7 @@ export const EPL_TOKEN_COLORS_LIGHT: EplTokenColorTheme = {
   variable:   '#047857',  // 与局部变量声明表的绿色标记保持一致
   function:   '#795e26',  // VS dark yellow
   boolean:    '#0000ff',  // Blue
+  constant:   LINGCPP_CONSTANT_TOKEN_COLORS.light,  // #常量名 引用紫（浅色主题加深保证可读）
   identifier: '#000000',  // Black
   whitespace: 'transparent',
   dot:        '#000000',

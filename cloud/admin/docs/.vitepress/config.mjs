@@ -52,9 +52,11 @@ export default defineConfig({
             { text: '用 AI 生成模块', link: '/guide/user/modules/ai-module-dev' },
             { text: '调用 C++ DLL', link: '/guide/user/modules/dll-module' },
             { text: '依赖冲突检测', link: '/guide/user/modules/module-conflicts' },
+            { text: '模块公开常量', link: '/guide/user/modules/module-constants' },
             { text: 'EdgeView 浏览器模块', link: '/guide/user/modules/edgeview' },
             { text: 'CEF3 浏览器模块', link: '/guide/user/modules/cef3' },
             { text: 'FBro 指纹浏览器模块', link: '/guide/user/modules/fbro' },
+            { text: 'new_emoji 原生界面库模块', link: '/guide/user/modules/new-emoji' },
           ],
         },
         {

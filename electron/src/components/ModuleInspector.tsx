@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
+import { requestWorkbenchAlert, requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
+import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
 import QRCode from 'qrcode';
 import {
   Archive,
@@ -14,6 +15,7 @@ import {
   Inbox,
   Info,
   Layers,
+  Link2,
   Loader2,
   LockKeyhole,
   Package,
@@ -139,6 +141,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [isLoading, setIsLoading] = useState(false);
   const [statusText, setStatusText] = useState('等待扫描模块。');
   const [packagePath, setPackagePath] = useState('');
+  const [devSourcePath, setDevSourcePath] = useState('');
   const [exportModuleDir, setExportModuleDir] = useState('');
   const [exportTargetPath, setExportTargetPath] = useState('');
   const [developerOutDir, setDeveloperOutDir] = useState('');
@@ -390,18 +393,57 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     }
   };
 
+  const isPaidModule = (moduleId: string) =>
+    moduleId === 'lingbuilder.new_emoji.ui' || commerceProducts.some(product => product.moduleId === moduleId);
+
+  /** 收费模块启用前的授权门禁：未登录弹登录框（成功即继续），无权益给购买引导；返回 false 表示中止启用。 */
+  const ensurePaidModuleAccess = async (module: InstalledModule): Promise<boolean> => {
+    const cloudModules = window.lingBuilder?.cloudAccount;
+    if (!cloudModules?.authorizeModule) {
+      setStatusText('收费模块必须在 LingBuilder 桌面端登录后使用。');
+      return false;
+    }
+    const session = await cloudModules.session().catch(() => null);
+    if (!session?.authenticated) {
+      const login = await requestCloudAccountLogin({
+        description: `启用「${module.manifest.name}」需要先登录 LingBuilder 账号；模块购买与限时免费活动也依赖账号权益。`
+      });
+      if (!login.authenticated) {
+        setStatusText(`已取消登录，未启用「${module.manifest.name}」。登录后可再次点击启用。`);
+        return false;
+      }
+      setStatusText(`已登录 ${login.email || 'LingBuilder 账号'}，正在校验「${module.manifest.name}」授权…`);
+    }
+    const authorization = await cloudModules.authorizeModule(module.manifest.id);
+    if (!authorization?.ok) throw new Error((authorization as { error?: string })?.error || '模块授权检查失败，请稍后重试。');
+    if (!authorization?.status?.allowed) {
+      const reason = authorization?.status?.reason || '当前账号没有该模块的有效权益。';
+      const offer = commerceProducts.find(product => product.moduleId === module.manifest.id)?.offers?.[0];
+      if (offer) {
+        const purchaseConfirmed = await requestWorkbenchConfirm({
+          title: '需要模块授权',
+          description: `${reason}\n\n是否立即创建微信支付订单（${offer.name || '标准授权'} ¥${(Number(offer.priceMinor) / 100).toFixed(2)}）？付款完成后回到本页重新点击启用。`,
+          confirmLabel: '去购买',
+          cancelLabel: '稍后再说'
+        });
+        if (purchaseConfirmed) await purchaseModule(module.manifest.id, 'wechat');
+      } else {
+        await requestWorkbenchAlert({
+          title: '需要模块授权',
+          description: `${reason}\n\n该模块暂未配置在线购买渠道，请在“本地模块”列表该模块条目下查看授权说明，或联系模块作者获取权益。`
+        });
+      }
+      return false;
+    }
+    return true;
+  };
+
   const toggleProjectModule = async (module: InstalledModule) => {
     const enabled = Boolean(module.isEnabledForProject);
     const endpoint = enabled ? '/api/modules/project/disable' : '/api/modules/project/enable';
     setIsLoading(true);
     try {
-      if (!enabled && (module.manifest.id === 'lingbuilder.new_emoji.ui' || commerceProducts.some(product => product.moduleId === module.manifest.id))) {
-        const cloudModules = window.lingBuilder?.cloudAccount;
-        if (!cloudModules?.authorizeModule) throw new Error('收费模块必须在 LingBuilder 桌面端登录后使用。');
-        const authorization = await cloudModules.authorizeModule(module.manifest.id);
-        if (!authorization?.ok) throw new Error((authorization as { error?: string })?.error || '模块授权检查失败，请稍后重试。');
-        if (!authorization?.status?.allowed) throw new Error(authorization?.status?.reason || '当前账号没有该模块的有效权益。');
-      }
+      if (!enabled && isPaidModule(module.manifest.id) && !await ensurePaidModuleAccess(module)) return;
       const planResponse = await fetch('/api/modules/project/change-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -546,6 +588,54 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       await refresh();
     } catch (error) {
       setStatusText(`模块卸载失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const linkDevSource = async () => {
+    const sourcePath = devSourcePath.trim();
+    if (!isAllowedWorkspacePath(sourcePath)) {
+      setStatusText('开发源目录必须是工作区内相对路径，例如 .lingbuilder/module-build/my.module。');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/modules/developer/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourcePath })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || '模块开发源链接失败');
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已链接开发源 ${result.link.moduleId} → ${result.link.sourcePath}。`);
+      setStatusText(`已链接开发源 ${result.link.moduleId}。源目录改动后补全、诊断与 F5 构建即时生效，无需重新打包安装。`);
+      setDevSourcePath('');
+      dispatchModulesChanged(projectId, result.link.moduleId, 'workspace');
+      await refresh();
+    } catch (error) {
+      setStatusText(`开发源链接失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const unlinkDevSource = async (module: InstalledModule) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/modules/developer/unlink', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleId: module.manifest.id })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || '取消开发源链接失败');
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已取消开发源链接 ${module.manifest.id}（源目录文件未改动）。`);
+      setStatusText(`已取消 ${module.manifest.id} 的开发源链接。`);
+      dispatchModulesChanged(projectId, module.manifest.id, 'workspace');
+      await refresh();
+    } catch (error) {
+      setStatusText(`取消开发源链接失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
     }
@@ -1198,12 +1288,36 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
                   toggleLabel={familyState && !familyState.standardEnabled && familyState.anyFeatureEnabled ? '补全启用' : undefined}
                   onToggle={() => familyState ? toggleModuleFamily(familyState) : toggleProjectModule(module)}
                   onUninstall={() => uninstallModule(module)}
+                  onUnlinkDevSource={() => unlinkDevSource(module)}
                   onInspect={() => inspectModule(module.manifest.id)}
                   commerce={commerceProducts.find(product => product.moduleId === module.manifest.id)}
                   onPurchase={provider => purchaseModule(module.manifest.id, provider)}
                 />
               );
             })}
+          </div>
+          <div className={`border-t p-3 space-y-2 ${borderSubtleClass}`} role="group" aria-label="链接模块开发源">
+            <p className={`text-[11px] leading-4 ${subtleClass}`}>
+              链接开发源（自建模块开发期）：填入工作区内模块源码目录（如 <code>.lingbuilder/module-build/my.module</code>）后，该模块的补全、诊断与 F5 构建直接消费源目录——改完清单或重编 DLL 即生效，无需重新打包安装；分发给他人的正式版仍走 .lbmod 安装。
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={devSourcePath}
+                onChange={event => setDevSourcePath(event.target.value)}
+                placeholder=".lingbuilder/module-build/my.module"
+                className={`min-w-0 flex-1 rounded border px-2 py-1.5 text-xs outline-none ${inputClass}`}
+                aria-label="开发源目录（工作区相对路径）"
+              />
+              <button
+                type="button"
+                onClick={() => void linkDevSource()}
+                disabled={isLoading || !devSourcePath.trim()}
+                className={`h-8 shrink-0 rounded border border-amber-500/40 px-3 text-xs text-amber-300 inline-flex items-center gap-1.5 transition-colors hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40 ${actionButtonClass}`}
+              >
+                <Link2 size={14} aria-hidden="true" />
+                链接开发源
+              </button>
+            </div>
           </div>
         </CollapsibleSection>
 
@@ -1798,7 +1912,7 @@ function DeveloperStep({ step, title, desc, isDarkMode, children }: {
   );
 }
 
-function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onInspect, commerce, onPurchase }: {
+function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onUnlinkDevSource, onInspect, commerce, onPurchase }: {
   key?: React.Key;
   module: InstalledModule;
   isDarkMode: boolean;
@@ -1809,6 +1923,7 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
   toggleLabel?: string;
   onToggle: () => void;
   onUninstall: () => void;
+  onUnlinkDevSource: () => void;
   onInspect: () => void;
   commerce?: any;
   onPurchase: (provider: 'wechat'|'alipay') => void;
@@ -1834,6 +1949,7 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
           <span className="min-w-0 break-words text-sm font-semibold leading-5">{manifest.name}</span>
           <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${categoryBadgeClass}`}>{manifest.category}</span>
           {module.isBuiltin && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${builtinBadgeClass}`}>内置</span>}
+          {module.isDevLink && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`} title={module.installPath}>开发源 · 实时生效</span>}
           {(statusLabel || isEnabled) && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${statusBadgeClass}`}>{statusLabel || '项目已引用'}</span>}
           {commerce && <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${commerceBadgeClass}`}><LockKeyhole size={10} className="mr-1 inline" aria-hidden="true" />{commerce.access?.allowed ? '账号已授权' : commerce.freeWindow ? '限时免费' : `¥${((Number(commerce.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>}
         </div>
@@ -1857,10 +1973,17 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
           {isBasicModule || !isEnabled ? <Check size={14} /> : <X size={14} />}
           {isBasicModule ? '基础' : toggleLabel || (isEnabled ? '禁用' : '启用')}
         </button>
-        <button onClick={onUninstall} disabled={module.isBuiltin} className={`h-8 min-w-0 flex-1 px-1.5 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-red-500/10 ${isDarkMode ? 'hover:text-red-100' : 'hover:text-red-700'} disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap`}>
-          <Trash2 size={14} />
-          卸载
-        </button>
+        {module.isDevLink ? (
+          <button onClick={onUnlinkDevSource} title="只移除开发源链接，不删除源目录文件" className={`h-8 min-w-0 flex-1 px-1.5 rounded border border-amber-500/40 text-amber-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-amber-500/10 ${isDarkMode ? 'hover:text-amber-100' : 'hover:text-amber-700'} whitespace-nowrap`}>
+            <Link2 size={14} />
+            取消链接
+          </button>
+        ) : (
+          <button onClick={onUninstall} disabled={module.isBuiltin} className={`h-8 min-w-0 flex-1 px-1.5 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-red-500/10 ${isDarkMode ? 'hover:text-red-100' : 'hover:text-red-700'} disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap`}>
+            <Trash2 size={14} />
+            卸载
+          </button>
+        )}
       </div>
       {commerce && !commerce.access?.allowed && Array.isArray(commerce.offers) && commerce.offers.length > 0 && (
         <div className="grid grid-cols-2 gap-2" aria-label="购买模块授权">

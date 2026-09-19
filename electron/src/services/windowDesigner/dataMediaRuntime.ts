@@ -4,15 +4,17 @@ import { OPENCV_RUNTIME } from './opencvRuntime';
 import { SQLITE_RUNTIME } from './sqliteRuntime';
 import { MYSQL_RUNTIME } from './mysqlRuntime';
 import { EXCEL_RUNTIME } from './excelRuntime';
+import { TABULAR_SNAPSHOT_COMMANDS } from './tabularSourceRuntime';
 
-const CSV_RUNTIME = String.raw`
+const CSV_RUNTIME = TABULAR_SNAPSHOT_COMMANDS + String.raw`
 static std::wstring LB_CsvEscape(const std::wstring& field) { if (field.find_first_of(L",\"\r\n") == std::wstring::npos) return field; std::wstring escaped = field; LB_ReplaceAll(escaped, L"\"", L"\"\""); return L"\"" + escaped + L"\""; }
-static std::vector<std::wstring> LB_CsvParse(const wchar_t* line) { std::vector<std::wstring> result; std::wstring current; bool quoted = false; const std::wstring value = LB_Wide(line); for (size_t index = 0; index < value.size(); ++index) { wchar_t ch = value[index]; if (quoted) { if (ch == L'\"' && index + 1 < value.size() && value[index + 1] == L'\"') { current.push_back(L'\"'); ++index; } else if (ch == L'\"') quoted = false; else current.push_back(ch); } else if (ch == L'\"' && current.empty()) quoted = true; else if (ch == L',') { result.push_back(current); current.clear(); } else current.push_back(ch); } result.push_back(current); return result; }
+// 行级命令复用同一份记录扫描器；空文本按一个空字段返回，与历史行为一致。
+static std::vector<std::wstring> LB_CsvParseLine(const std::wstring& line) { if (line.empty()) return { std::wstring() }; auto records = LB_CsvParseRecords(line, L','); return records.empty() ? std::vector<std::wstring>{ std::wstring() } : records.front(); }
 const wchar_t* CSV_转义字段(const wchar_t* field) { return LB_ReturnText(LB_CsvEscape(LB_Wide(field))); }
 const wchar_t* CSV_生成两列(const wchar_t* first, const wchar_t* second) { return LB_ReturnText(LB_CsvEscape(LB_Wide(first)) + L"," + LB_CsvEscape(LB_Wide(second))); }
 const wchar_t* CSV_生成三列(const wchar_t* first, const wchar_t* second, const wchar_t* third) { return LB_ReturnText(LB_CsvEscape(LB_Wide(first)) + L"," + LB_CsvEscape(LB_Wide(second)) + L"," + LB_CsvEscape(LB_Wide(third))); }
-int CSV_字段数量(const wchar_t* line) { return static_cast<int>(LB_CsvParse(line).size()); }
-const wchar_t* CSV_取字段(const wchar_t* line, int index) { auto fields = LB_CsvParse(line); return index >= 0 && static_cast<size_t>(index) < fields.size() ? LB_ReturnText(fields[static_cast<size_t>(index)]) : LB_ReturnText(L""); }
+int CSV_字段数量(const wchar_t* line) { return static_cast<int>(LB_CsvParseLine(LB_Wide(line)).size()); }
+const wchar_t* CSV_取字段(const wchar_t* line, int index) { auto fields = LB_CsvParseLine(LB_Wide(line)); return index >= 0 && static_cast<size_t>(index) < fields.size() ? LB_ReturnText(fields[static_cast<size_t>(index)]) : LB_ReturnText(L""); }
 `;
 
 const CRYPTO_RUNTIME = String.raw`
@@ -26,6 +28,35 @@ static const wchar_t* LB_ProtectText(const wchar_t* text, DWORD flags) { g_lbPro
 const wchar_t* 数据保护_加密文本(const wchar_t* text) { return LB_ProtectText(text, 0); }
 const wchar_t* 数据保护_机器级加密文本(const wchar_t* text) { return LB_ProtectText(text, CRYPTPROTECT_LOCAL_MACHINE); }
 const wchar_t* 数据保护_解密文本(const wchar_t* encoded) { g_lbProtectError.clear(); std::vector<unsigned char> bytes; if (!LB_Base64DecodeBytes(LB_WideToUtf8(encoded), bytes)) { g_lbProtectError = L"DPAPI 密文不是有效 Base64。"; return LB_ReturnText(L""); } DATA_BLOB input = { static_cast<DWORD>(bytes.size()), bytes.data() }, output = {}; if (!CryptUnprotectData(&input, nullptr, nullptr, nullptr, nullptr, 0, &output)) { g_lbProtectError = L"DPAPI 解密失败，错误码 " + std::to_wstring(GetLastError()); return LB_ReturnText(L""); } std::string plain(reinterpret_cast<char*>(output.pbData), output.cbData); LocalFree(output.pbData); return LB_ReturnText(LB_Utf8ToWide(plain)); }
+
+// 字节集形态：二进制密钥不是合法 UTF-8，绝不能走上面的文本通道，必须原样进出。
+static std::vector<unsigned char> LB_ProtectBytes(const std::vector<unsigned char>& bytes, DWORD flags) {
+    g_lbProtectError.clear();
+    if (bytes.empty()) { g_lbProtectError = L"DPAPI 加密失败：输入字节集为空。"; return {}; }
+    DATA_BLOB input = { static_cast<DWORD>(bytes.size()), reinterpret_cast<BYTE*>(const_cast<unsigned char*>(bytes.data())) }, output = {};
+    if (!CryptProtectData(&input, L"LingBuilder", nullptr, nullptr, nullptr, flags, &output)) { g_lbProtectError = L"DPAPI 加密失败，错误码 " + std::to_wstring(GetLastError()); return {}; }
+    std::vector<unsigned char> result(output.pbData, output.pbData + output.cbData);
+    LocalFree(output.pbData);
+    return result;
+}
+std::vector<unsigned char> 数据保护_加密字节集(const std::vector<unsigned char>& bytes) { return LB_ProtectBytes(bytes, 0); }
+// Chromium 的 encrypted_key 去掉 Base64 后以 ASCII "DPAPI" 开头，该前缀不属于 DPAPI blob 本体，这里统一剥离。
+static bool LB_IsDpapiPrefixed(const std::vector<unsigned char>& bytes) {
+    const char marker[] = "DPAPI";
+    return bytes.size() >= 5 && std::equal(std::begin(marker), std::end(marker) - 1, bytes.begin());
+}
+std::vector<unsigned char> 数据保护_解密字节集(const std::vector<unsigned char>& encoded) {
+    g_lbProtectError.clear();
+    if (encoded.empty()) { g_lbProtectError = L"DPAPI 解密失败：输入字节集为空。"; return {}; }
+    const size_t offset = LB_IsDpapiPrefixed(encoded) ? 5 : 0;
+    if (offset >= encoded.size()) { g_lbProtectError = L"DPAPI 密文只有 \"DPAPI\" 前缀，没有实际密文。"; return {}; }
+    std::vector<unsigned char> blob(encoded.begin() + static_cast<std::ptrdiff_t>(offset), encoded.end());
+    DATA_BLOB input = { static_cast<DWORD>(blob.size()), blob.data() }, output = {};
+    if (!CryptUnprotectData(&input, nullptr, nullptr, nullptr, nullptr, 0, &output)) { g_lbProtectError = L"DPAPI 解密失败，错误码 " + std::to_wstring(GetLastError()); return {}; }
+    std::vector<unsigned char> plain(output.pbData, output.pbData + output.cbData);
+    LocalFree(output.pbData);
+    return plain;
+}
 `;
 
 const ODBC_RUNTIME = String.raw`

@@ -218,8 +218,26 @@ export class DesktopWorkspaceService {
       : undefined;
     if (!source || !await isDirectory(source)) return;
     const target = path.join(workspacePath, '.lingbuilder', 'modules');
+    const linkedModuleIds = new Set<string>();
     try {
-      await copyMissingFiles(source, target);
+      const parsed = JSON.parse(await fs.readFile(path.join(workspacePath, '.lingbuilder', 'module-links.json'), 'utf8')) as {
+        links?: Record<string, unknown>;
+      };
+      for (const moduleId of Object.keys(parsed?.links || {})) linkedModuleIds.add(moduleId);
+    } catch {
+      // 无链接登记表时按原语义全量铺设。
+    }
+    try {
+      if (linkedModuleIds.size === 0) {
+        await copyMissingFiles(source, target);
+        return;
+      }
+      // 已链接开发源的模块不铺随包副本：磁盘上不留一份“看起来生效其实是旧版”的影子目录。
+      const entries = await fs.readdir(source, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isSymbolicLink() || linkedModuleIds.has(entry.name)) continue;
+        await copyMissingFiles(path.join(source, entry.name), path.join(target, entry.name));
+      }
     } catch (error) {
       console.warn(`铺设随包模块失败（可在模块面板手动安装）：${error instanceof Error ? error.message : String(error)}`);
     }

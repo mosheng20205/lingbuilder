@@ -47,6 +47,9 @@ title: 模块市场
 3. 确认后等待下载安装完成，状态变为 **已安装**。
 4. 新模块提供的控件会进入设计器左侧的 **控件** 面板，中文命令会进入编辑器补全；项目还需启用该模块才会参与构建，详见 [安装与管理模块](/guide/user/modules/install-module)。
 
+> [!IMPORTANT]
+> **new_emoji 界面库** 安装并在项目中启用后，控件面板会出现 **New_Emoji 控件** 分组；但要往窗口里添加这些控件，还必须选中该窗口（不选中控件即显示窗口属性），把 **当前窗口 / 布局** 里的 **设计后端** 切换为 **new_emoji 模块**。窗口已有控件时后端锁定不能切换，需新建窗口再选后端。控件一览与用法详见 [new_emoji 原生界面库模块](/guide/user/modules/new-emoji)，后端切换见 [窗口设计器](/guide/user/window-designer)。
+
 ## 下一步
 
 - 了解模块安装细节：[安装与管理模块](/guide/user/modules/install-module)

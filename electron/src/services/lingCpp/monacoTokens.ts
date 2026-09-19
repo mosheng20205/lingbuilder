@@ -59,6 +59,8 @@ export function createLingCppMonarchLanguage(moduleContext?: LingCppModuleContex
             '@default': 'identifier'
           }
         }],
+        // #常量名 引用（项目常量/模块常量）整体一个 token；@ 内嵌 C++ 行不经过本规则（先进入 nativeCpp 状态）。
+        [/#([a-zA-Z\u4e00-\u9fa5_][a-zA-Z0-9\u4e00-\u9fa5_]*)/, 'constant'],
         [/^\s*(包|使用|类|公开|私有|保护|构造|析构|事件|结束类)\b/, 'tag'],
         { include: '@whitespace' },
         [/[{}()\[\]]/, '@brackets'],

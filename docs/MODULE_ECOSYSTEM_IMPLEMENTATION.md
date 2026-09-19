@@ -380,6 +380,7 @@
 - 跨项目粘贴 `.lcpp` 功能库时，`ModuleService.planEnableModulesForProject` 只生成经过安装与清单校验的模块引用计划，不直接写盘；复制服务把该计划与功能库、项目数据类型、项目常量/全局变量合并到同一个 `ProjectFilePersistenceService.writeAll` 事务，成功后再记录模块历史。禁止在源码事务之前逐个调用 `enableModuleForProject`，否则失败时会留下半完成项目引用。
 - AI 创建项目时同样必须复用 `ModuleService.planEnableModulesForNewProject` 解析请求模块、递归依赖、安装状态和 Permit；省略 `enabledModuleIds` 时先读取默认项目清单作为请求，显式空数组才表示仅基础模块。创建服务只能把返回的项目级 `project-modules.json` 写入计划交给统一项目文件事务，禁止由 AI Bridge、MCP、CLI 或 React 组件直接拼接/修改模块 JSON。创建预览阶段不得写盘，确认落盘后才记录模块历史；失败时必须回滚源码、设计器模型、配置和模块引用，不能留下半完成项目。已加入解决方案但缺少旧项目级清单的项目可暂时继承默认清单，后续以项目级文件为准。
 - 模块市场源：`.lingbuilder/module-sources.json`
+- 开发源链接登记表（2026-09-18 起）：`.lingbuilder/module-links.json`，`{ schemaVersion:1, links:{ <moduleId>: { moduleId, sourcePath(工作区相对), linkedAt } } }`；被链接模块的 `installPath` 由扫描器解析为源目录绝对路径，不落真实符号链接（见「模块开发源链接」节）。
 - 模块操作历史：`.lingbuilder/module-history.json`
 - 卸载/升级快照：`.lingbuilder/module-snapshots/`
 - 安装预览临时目录：系统临时目录 `lingbuilder-module-previews`
@@ -409,6 +410,8 @@
 - `POST /api/modules/ai-generate`（BYOK 一键生成模块：规范注入 → `generateAiText` → `aiModuleImportParser` 解析 → `importAiModuleFiles` 导入；系统 AI 通道由 renderer 经 `cloudAi` IPC 编排后复用 import-ai-files）
 - `POST /api/modules/developer/migrate-cpp`
 - `POST /api/modules/developer/market-index`
+- `POST /api/modules/developer/link`（链接模块开发源，`sourcePath` 工作区相对）
+- `POST /api/modules/developer/unlink`（取消开发源链接，只移除登记不删源）
 - `GET /api/sdk-dependencies/status`
 - `POST /api/sdk-dependencies/install`
 - `POST /api/sdk-dependencies/cancel`
@@ -500,6 +503,10 @@ lingbuilder.module.json
 - 新增 API 只接受文本、数字、JSON、明确文件路径和受管任务/下载 ID；CompositionController、PointerInfo、AutomationProvider、任意 Host Object 注入、裸 COM/指针和内存地址继续明确排除。异步操作统一返回任务 ID，并通过 `&处理器名` 在所属窗口线程完成；实例关闭或重建会增加 generation、取消任务并拒绝迟到回调。
 - 设计器继续只绘制安全占位。统一命令 `designer.edgeview.previewControl` 会生成只含当前 Edge 控件、不执行项目用户代码的独立 Win32 临时项目，通过 MSVC 和受管进程启动；再次预览、停止或切换项目会回收旧进程。
 - 2026-09-15 起 EdgeView 两个 MSVC target 以 `WebView2LoaderStatic.lib` 静态链接（`libs: ['ole32.lib', 'lib/<arch>/WebView2LoaderStatic.lib']`，由 `materializeEdgeViewSdk` 从固定版本 NuGet 包物化），不再声明 `runtimeFiles`（WebView2Loader.dll 不随 exe 部署）；生成器同步改为直接调用 Loader 入口，F5/CLI 链接统一 `/MANIFEST:EMBED`。窗口模型 `embeddedSite` 可把网页静态文件编入 EXE 并由生成运行时经 `WebResourceRequested` 内存服务（零释放），详见 `LingBuilder AI 规则手册.md` EdgeView 节。
+- 2026-09-18 起模块升级到 `1.3.0`：`edgeViewApiCatalog.ts` 会话族新增 `EdgeView会话_置Cookie带属性`（首参 EdgeBrowser controlRef + 名称/值/域/路径 + 过期时间 double + 安全/仅HTTP bool + 同源策略 int，映射 `ICoreWebView2Cookie` 的 Expires/IsSecure/IsHttpOnly/SameSite）与 `EdgeView会话_批量置Cookie`（JSON 数组批量注入、返回成功条数，键名 `name/value/domain/path` + 可选 `expires/secure/httpOnly/sameSite`，与 `EdgeView会话_取Cookie异步` 输出互相兼容）；`EdgeView会话_取Cookie异步` 每条 Cookie 附带 `expires/secure/httpOnly/isSession/sameSite` 元数据。运行时解析用生成模板内置限深 JSON 解析器，不向 `.lcpp` 暴露 COM 对象。安全 API 235→237、总命令 272→274；覆盖清单 8 个 `ICoreWebView2Cookie` 成员由内部适配转为公开实现（public 330→338、internal 565→557、pending 0），`module:edgeview-coverage:complete` 与 `module:edgeview-api-docs` 已重跑写回。新命令为默认可见性，`lingbuilder.modules.list` / `lingbuilder.module.info`（AI Bridge MCP）直接可读到完整签名与参数说明。
+- 2026-09-19 起模块升级到 `1.4.0`（多店铺独立弹窗 + 实例编号寻址批次）：新增 14 条**实例编号寻址**中文命令（首参 `实例编号` 为 `int`、非 `controlRef`，不参与设计器控件存在性门禁；控件版命令保持原样不动）。① 独立顶层窗口：`EdgeView_创建弹窗浏览器(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理)`——生成运行时新建 `WS_OVERLAPPEDWINDOW | WS_VISIBLE` + `WS_EX_APPWINDOW`、无 `WS_CHILD` 的真顶层 HWND（独立窗口类 `LingBuilderEdgeViewPopup` + 专用 WndProc，`WM_SIZE`→`EdgeView_调整大小`、`WM_CLOSE`→`EdgeView_关闭实例`），任务栏可见、可独立拖动缩放、页面自适应；主窗口 `WM_DESTROY`→`EdgeView_关闭()` 连带销毁全部弹窗（`ownsHost=true`），不留 `msedgewebview2.exe` 残留。② 实例版 Cookie/会话：`EdgeView会话_批量置Cookie实例 / 置Cookie带属性实例 / 删除全部Cookie实例 / 取Cookie实例异步(…&完成处理器) / 清理全部浏览数据实例异步(…&完成处理器)`，经 `EdgeView_查找(实例编号)` 解析 `EdgeViewInstance*` 后复用同一 CookieManager/Profile/任务主体，支持注入 `HttpOnly` Cookie（禁止 `document.cookie`）。③ 实例级 UA：`EdgeView设置_置用户代理实例 / 取用户代理实例`，且 `创建弹窗浏览器` 的 `用户代理` 参数在建环境回调内、首次 `Navigate` 之前经 `ICoreWebView2Settings2::put_UserAgent` 应用。④ 实例生命周期：`EdgeView_关闭全部实例()`（返回关闭数量）、`EdgeView_枚举实例JSON()`（`edgeViews_` 导出 `[{实例编号,窗口标题,地址,缓存目录,代理,是否弹窗,是否有效}]`）、`EdgeView_置实例可见 / 置实例大小 / 取实例大小JSON / 置实例标题`（弹窗改顶层窗口显隐/尺寸/标题，区域/控件改控制器边界）。`EdgeViewInstance` 结构增加 `isPopup / title / userAgent` 字段。总命令 274→288（安全 API 237 + 基础/实例 51，全部 `builtinModules.ts` 手写贡献 + `bindings.commands` 一一对应），`edgeViewApiCoverage.generated.json` 安全目录计数不变（新命令为手写实例命令、不在安全目录内）。`npm run module:edgeview-api-docs` 重生成 API.md；`electron/tests/modules.test.ts` 新增「EdgeView 1.4.0 多店铺弹窗与实例编号寻址命令」用例覆盖清单/绑定/生成 C++ 符号与宽字符调用点，`modules.test.ts` 全局清单指纹回填为 commands 3681 / parameters 6403 / commandDigest c35d56ce / parameterDigest e5daeafd（controlReferences 1305 不变）。MCP 消费：这些命令是清单里的普通模块命令，`lingbuilder.module.info(lingbuilder.edgeview)` 自动返回完整签名与参数说明，外部 AI 经 `edit.propose/apply`+`build.run` 直接生成含弹窗的多店铺程序——**无需为每条能力另立 MCP 工具**。
+- 2026-09-19 起 `lingbuilder.edgeview` 升级到 `1.5.0`（弹窗独立代理补丁）：新增 `EdgeView_创建弹窗浏览器代理(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理, 代理地址)`——代理地址非空即该弹窗专属 HTTP/HTTPS/SOCKS5 代理（`--proxy-server=` 随该实例 `CreateCoreWebView2EnvironmentWithOptions` 注入），配合不同 `独立缓存目录`（不同 WebView2 环境=独立浏览器进程）实现**每店铺独立出口 IP**；空代理回落 `EdgeView_设置全局代理`。原 `EdgeView_创建弹窗浏览器` 改为委托代理变体传空代理（行为不变，仍走全局代理）。总命令 288→289（基础/实例 51→52）。`generate-edgeview-api-doc.ts` 阈值 288→289、README/教程 pin 同步 `1.5.0`；`tests/modules.test.ts` 全局清单指纹回填 commands 3682 / parameters 6411 / commandDigest 9e017d2d / parameterDigest 5b8ac0ca（controlReferences 1305 不变），并在「EdgeView 1.4.0 多店铺弹窗」用例覆盖代理变体清单/绑定/生成 C++（`popupProxy` 回退逻辑与 8 参宽字符调用点）。纯 TS 改动，不涉及 WebView2/桥重编。
+- 2026-09-19 三内核多店铺能力对齐（`lingbuilder.cef3.browser` 3.0.0-alpha.4、`lingbuilder.new_emoji.fbro-shell` 1.3.0）：CEF3 新增设计器无关的 `CEF3_创建弹窗浏览器(实例编号, 地址, 独立缓存目录, 代理地址)`（`LB_CEF3_BrowserCreateChrome` Chrome Runtime 顶层窗 + 独立 profile + 每实例代理）、`CEF3_创建区域(实例编号, 左,顶,宽,高, 地址, 独立缓存目录, 代理地址)`（运行时自建 WS_CHILD 承载内嵌多实例）、公开 `CEF3_枚举实例JSON()` 与 `CEF3_关闭全部实例()`（包装原私有 `CEF3_关闭全部()`）；弹窗/区域实例登记进 `cefBrowsers_`（合成 controlId=1000000+实例编号，与设计器控件空间隔离，事件按 user_token 路由），故枚举/关闭全部自动覆盖。**CEF3 per-browser UA（实例级 UA）已落地，纯运行时、无需重编桥**：新增 `CEF3_设置用户代理(控件名, 用户代理)` / `CEF3_设置实例用户代理(实例编号, 用户代理)` / `CEF3_取用户代理` / `CEF3_取实例用户代理`——置非空 UA 点亮 `LB_CEF3_ResourceRequestHandlerSubscribeBeforeResourceLoad`，运行时在「资源加载前」事件里对桥 `RegisterRequest` 出的活请求句柄 `packet->subject` 调 `LB_CEF3_RequestSetHeaderByName(..,"User-Agent",..,1)` 逐实例改写请求头（CEF 无 per-browser settings，请求头改写即官方范式）。另公开 `CEF3会话_取上下文实例(实例编号)` 让弹窗/区域复用全部句柄版 `CEF3会话_*` Cookie/会话命令。FBro 侧 `浏览器外壳_设置实例Cookie` 透传 `HttpOnly/Secure/Domain/Path`（host `LingBuilderFbroProcessRuntime.hpp:1342` 已支持，无属性向后兼容），新增 `浏览器外壳_新建独立实例代理(稳定ID,地址,标题,缓存目录,代理地址,用户代理)`（内部抽 `…新建独立实例内部`，start 时写 `config.userAgent/proxyServer`）。附带修复：`smoke-new-emoji-fbro-browser-shell.ts` MSBuild 路径改 vswhere 解析；修正 `FBro框架_遍历DOM/遍历_按路径设属性/按路径赋值/会话_创建上下文` 5 处 `调试输出(...).c_str()` 括号错位（C2228/C2672，曾使任何 new_emoji FBro shell 工程编不过）。全局清单指纹 commands 3692 / parameters 6436 / controlReferences 1307 / commandDigest 2f3922fa / parameterDigest 4c44e37e；`MODULE_ENCAPSULATION_CHECKLIST.md` 计数与 CEF3 文档用例 publicCommands 411 同步。CEF3/FBro/EdgeView 清单+绑定+生成 C++ 回归用例绿；**CEF3 真机原生构建 + 运行冒烟已 PASS**（真实 MSVC + `lingbuilder.cef3.sdk` CEF 150 SDK + LingBuilderCefBridge.lib，编译调用 弹窗/区域/实例UA/取上下文实例/枚举/关闭全部 的工程 `ok:true`、exe 启动后 CEF 进程树存活 >8s）——该真机编译暴露并修复了 `CEF3_枚举实例JSON` 手写转义/拼接把 `L'\n'`/`\"` 写进 TS 模板字面量被吞成真实换行/引号的生成器缺陷（改 `wchar_t(0x5C)`/`0x22` 无斜杠写法）。FBro 原生 exe 早前卡在 `LNK1181`——已查明并非环境而是 `lingbuilder.fbro.browser` target.libs 自带 `modules/<id>/` 前缀、被 VS 导出器 `getModuleLibFiles` 再前置一次成双段路径（模块 target.libs 约定应为模块根相对，如 `lib/x64/...lib`，与 `new_emoji.ui`/`runtimeFiles` 同）；改正后 FBro 浏览器外壳工程编译零 C++ 错误 + 成功链接 + exe 启动真实创建伴随宿主窗口与 Chromium 子窗口（其外壳顶栏 DPI 几何冒烟断言是 new_emoji 布局另一议题，不属多店铺能力）。
 
 ## 分类内置模块库（2026-07）
 
@@ -704,3 +711,52 @@ Win32 AnimatedImage 使用控件自绘双缓冲呈现 GIF，运行时不再通�
 
 新增的 `EdgeView_确保父目录` 逐级 `CreateDirectoryW`，避免目标目录不存在导致的静默失败；
 `EdgeView_报告事件决策窗口缺失` 负责在离开同步事件窗口调用决策接口时输出中文说明。
+
+## 模块开发源链接 dev-link（2026-09-18）
+
+自建模块开发期免重装机制：`ModuleService.linkModuleDevSource` 把模块源码工程目录登记进工作区级 `.lingbuilder/module-links.json`，**不落真实符号链接**（扫描器 `entry.isDirectory()` 会丢弃 symlink 目录、`fs.rm(recursive)` 对 junction 有穿透删除开发源的风险、`.lcpppkg` 导出与 HTTP 路径策略均显式拒绝 symlink，登记表方案一并规避且为 macOS 预留兼容）。
+
+实现契约：
+
+- `scanInstalledModules` 是唯一收口：链接模块按登记表解析 `installPath` 为源目录绝对路径并标记 `isDevLink: true`；下游（`nativeDependencyService` F5 物化、模块文档读取、补全/诊断上下文、new_emoji DLL 定位）全部经 `installPath` 透传，免费生效。同 ID 已安装真实目录被链接遮蔽，扫描不产生重复条目。
+- 链接守卫：源路径必须工作区相对且不越界、不得指向 `.lingbuilder/modules`、清单必须为有效 v2 且 ID 非内置/非项目资源；`installPackage` 对已链接 ID 拒绝安装（防止影子安装目录），`uninstallModule` 对链接模块只断链 + 清项目引用，**绝不删除开发源文件**。历史动作新增 `link`/`unlink`。
+- 编辑器即时刷新：`App.tsx` 的模块列表引用比较签名纳入 `sha256`（清单内容哈希）与 `isDevLink`，开发源清单改动（新增命令等）会穿透 renderer 触发 `LingCppModuleContext` 刷新；DLL 重编不涉及清单，构建侧每次从安装解析现取文件、服务端无缓存。
+- `DesktopWorkspaceService.ensureBundledModules` 铺设随包模块时跳过已链接 ID，磁盘不留旧版影子目录。
+- 已知边界：`nativeDependencyService` 中 crypto/opencv/cef3/fbro 的 `modules/<id>/sdk` 候选硬拼链不消费 `installPath`，SDK 类模块暂不支持开发源链接（这些模块也不该被个人开发版顶替）；`.lcpppkg` 导出与 AI Bridge MCP 的 `module.install` 不感知链接态（分发语义仍走安装包）。
+- 入口：模块检查器「本地模块」区「链接开发源」输入行（`POST /api/modules/developer/link` / `unlink`）；链接模块行显示「开发源 · 实时生效」徽标并以「取消链接」替代「卸载」。
+- 回归：`tests/modules.test.ts` 四条 devlink 用例（扫描指向源目录+免重装即时生效、link 安全守卫矩阵、安装拒绝+卸载断链不删源、链接遮蔽同 ID 安装目录）。
+
+## 模块公开常量与 `#常量` 引用（2026-09-18）
+
+manifest v2 新增 `contributes.constants[]`，模块可像易语言模块常量表一样对外封装命名常量（如 `键盘1`、`模块名`）；`.lcpp` 源码以 `#常量名` 引用，生成期确定性物化为 C++ 编译期常量。
+
+- 契约：`ModuleConstantContribution = { name, type, value, description, level? }`；`type` 限基础类型（整数型/长整数型/字节型/小数型/双精度小数型/文本型/逻辑型），`value` 为与类型匹配的纯 JSON 字面量，`level` 复用命令的 basic/advanced 可见性语义。校验在 `manifest.ts` 的 `validateModuleConstantContributions`（`moduleConstantService.ts`），命名非法、类型外、字面量不匹配、模块内重名全部中文诊断阻断。
+- 单一收集服务：`moduleConstantService.ts` 提供 `getModuleConstants(enabledModules)`、`getEnabledModuleConstantDiagnostics`（跨启用模块同名硬冲突，与结构化公开类型同口径阻断）、`findModuleConstantOwner`（未启用模块常量的启用路径诊断）；语言服务、新手补全、C++ 生成、`lingbuilder.module.info` 全部消费这一出口，禁止另写第二套常量解析。
+- `#` 语法语义：`#常量名` 强制按常量解析（未知常量、对常量赋值 → error 级 `lingcpp-constant-reference-*` 诊断，构建门禁自然覆盖）；裸名继续兼容旧源码中项目常量引用。字符串、注释、多行文本块与 `@` 内嵌 C++ 行（`#include` 等）内的 `#` 不是常量引用。新手模式敲 `#` 立即呼出常量专用补全（项目常量 + 启用模块常量，上屏不带重复 `#`）；`#常量` 独立语义令牌着色（`LINGCPP_CONSTANT_TOKEN_COLORS`，深色取易语言常量紫 #BE56BE），新手画布、Monaco monarch 与主题规则共用同一令牌色。
+- 生成：`generateProjectGlobalsDefinition` 把启用模块常量与项目常量一起物化进 `LingBuilderProjectGlobals` 命名空间（数值 `inline constexpr`、文本 `inline const std::wstring`、逻辑 `true/false`）；项目常量同名遮蔽模块常量（只物化一份），跨模块同名在聚合阶段阻断；`translateLingCppExpression` 剥 `#` 映射到 `toCppIdentifier` 结果，导出工程可独立在 Visual Studio 编译。
+- 模块骨架 `createModuleTemplate` 的 manifest 自带 `constants` 示例；`lingbuilder.module.info` 返回 `constants[]`（name 带 `#` 形态），MCP 指令第 3 条声明该契约。
+- 一期边界（后续扩展见 `docs/FUTURE_OPTIMIZATIONS.md`）：新手「项目常量表」不显示模块常量分组；opaque/句柄型模块常量、表达式初值、常量重命名跨模块同步未开放。
+- 回归：`tests/modules.test.ts` contributes.constants 清单门禁用例；`tests/projectDataTypes.test.ts` 模块常量全链用例（语言服务解析/补全/诊断、生成物化、遮蔽、跨模块阻断）；`tests/lingcpp.test.ts` 项目常量用例扩展 `#` 触发补全、只读/未知诊断、重命名保留前缀断言。
+
+## 大能力模块的界面开发视图与配方语料（2026-09-19）
+
+new_emoji 这类「4000+ 命令 / 93 个设计器控件」的模块，外部 AI 经 MCP 写界面时找不到落点是历史高频失败。本轮不新增工具，而是把事实来源补进 `lingbuilder.module.info`（实现只在 `electron/src/services/aiBridge/moduleUiViews.ts` 一处，视图为**只读**，不参与任何门禁）。
+
+- **控件调色板 `designerControls`**。模块清单 `contributes.designerControls[]` 此前对 MCP 完全不可见（new_emoji 的 93 个控件对外只有一张 `Panel`/`Text` 都查不到的空表），AI 只能猜 `type`、属性名和事件处理器命名，猜错就被控件引用门禁阻断。现在默认返回概览（`type`/`namespacedType`/中文 `label`/`category`/`backend`/是否容器/是否可视/`lingCppType`/代码创建命令 `控件_创建NE*`/`parentKinds`/属性与事件数量/内容属性），上限 `DESIGNER_CONTROL_SUMMARY_MAX = 120` 守住响应体量；传 `control`（英文类型或中文名片段）才展开 `designerControlDetails`——完整属性表（含枚举 `options` 与 `defaultValue`）、事件与 `handlerPattern`、`defaultProps`、容器 `layout` 协议、`codeCreation`（代码创建参数与 `role`、`通过标记文本/整数获取NE*`、`控件_是否有效`），单次上限 `DESIGNER_CONTROL_DETAIL_MAX = 6`。过滤词无匹配时给中文报错并列出前 12 个控件名，不允许返回空表让 AI 以为「该模块没有控件」。
+- **逐命令真实调用 `demoExample`**。`npm run module:demos -w lingbuilder-electron` 生成的 `examples/module-demos/<moduleId>/src/模块命令清单.json` 里每条命令都带 `demoInvocation`（真实调用行，参数顺序、引号与 `&处理器` 写法可直接照抄），比清单里的 `insertText` 占位符可靠。语料按 `path + mtime + size` 缓存、限制 24MB，只在结果集 ≤ `DEMO_EXAMPLE_MAX_COMMANDS = 400` 时附带（整模块全量查询不附带，避免撑爆上下文）；**未命中语料时不下发该字段**，禁止拿占位符冒充真实调用。同时返回 `demoProject`（演示项目 ID、`sourceRoot`、`generatedAt`、`groupCount`、`.lcpppkg` 包名、`stale`），`stale` 表示语料命令数与当前清单不一致——当前 new_emoji 语料停在 3784 命令而清单已 4011 条，`NE表格_设置列` 等后续命令就没有 `demoExample`，AI 据此判断新鲜度而不是放弃命令，需要时重跑 `module:demos` 刷新语料。
+- **界面配方 `uiExamples` / `uiExample`**。两个来源合并成同一份索引：模块包 `contributes.examples[]`（随 `.lbmod` 分发，打包版用户也能拿到）与工作区 `examples/ui-recipes/<moduleId>/recipes.json`（`file`/`title`/`scenario`/`controls`/`commands`/`notes`，约定见 `examples/ui-recipes/README.md`）。传 `example`（标题、路径或序号）返回该配方正文，超 `UI_EXAMPLE_MAX_CHARS = 24000` 截断并给 `absolutePath`；无匹配时中文报错并列出可用标题。
+- **与穷举演示语料的分工**。`examples/module-demos/` 是脚本按 binding 逐条生成的（new_emoji 单文件 19118 行、参数全是 `1,1,1,1`），用来查命令与参数顺序，**不是写法范本**；配方是人工从已实机验收的源码（`.lingbuilder/ne-examples-stage/01..13`、组件总览画廊）提炼的惯用写法，单窗口、≤90 行、可整文件当新项目主源码。首批 7 条 new_emoji 配方覆盖：窗口骨架与代码创建控件、录入表单与校验、表格增删改与双击编辑、富列表模板与虚拟数据源、弹出菜单与消息框回调、无边框外壳与自绘标题栏、设计器模型控件与成员语法。
+- **new_emoji 两条合法路径必须写进配方要点**：① 模型零控件 + `控件_创建NE*` 代码创建（`controls: []`、`events: {"Loaded":"创建完毕"}`，跨事件用 `通过标记文本获取NE*` 重取引用）；② 模型控件 + `控件名.内容` 成员语法与 `_控件名_事件中文名` 处理器。两者都由生成器负责显示与消息循环，源码不得写 `NE_运行消息循环`，也不得把块结束 `结束` 写成 `结束()`。
+- **回归**：`tests/aiBridge.test.ts`（概览字段与上限、`control` 详情含 `handlerPattern`/`codeCreation`、`demoExample` 命中真实调用、语料过期时不伪造、`example` 取回正文、无匹配中文报错）；`tests/uiRecipes.test.ts`（配方齐备与行数上限、红线模式扫描、`commands` 声明必须出现在正文、逐条走 `.lcpp` 语义诊断且要求零 error——配方 01–06 用零控件模型、07 用带控件的 new-emoji 设计器模型）。
+- **已知边界**：`examples/` 不随 IDE 安装包分发，打包版工作区取不到 `ui-recipes` 与 `module-demos` 语料（后续改走模块包 `contributes.examples[]` 或随包铺设，见 `docs/FUTURE_OPTIMIZATIONS.md`）。
+
+## CSV 表格导入、编码统一内核与 SQLite csv 虚拟表（2026-09-18）
+
+补齐两处长期缺口：CSV 只能逐行解析且中文（GBK）文件读不进来；没有把 CSV 直接当表查的直连方案。
+
+- **唯一内核**。`electron/src/services/windowDesigner/textCodecsRuntime.ts`（`TEXT_CODECS_RUNTIME`）收编原先散在编码运行时里的编码名称解析、BOM 检测、代码页编解码与文件解码，并补 `AUTO` 自动识别（固定三级：**BOM → 严格 UTF-8 → GB18030 兜底**，不做启发式猜测）；`tabularSourceRuntime.ts`（`TABULAR_SOURCE_RUNTIME` / `TABULAR_SNAPSHOT_COMMANDS`）提供 RFC 4180 记录级解析（引号内换行属于字段内容、双写引号、CRLF/CR/LF 混用、分隔符取首字符、空行跳过）与 `表格数据` 快照句柄。编码模块、文件读取、CSV 模块和 SQLite 虚拟表全部复用这两段，禁止再写第二套。
+- **装配层单点铺设**。共享内核不再由各个模块运行时字符串前缀拼接（实测会在同一编译单元里出现两份定义），改由 `generateSharedTableRuntime(enabledModuleIds)` 在 `lingCppWin32Project.ts` 的两处 main.cpp 模板里按启用模块铺设一次；新增消费方只需把模块 ID 登记进 `SHARED_TABLE_CHUNKS.requires`。
+- **命令面**。`lingbuilder.data.csv` 1.0.0 → 1.1.0（5 → 18 条）：新增 `CSV_打开文件`、`CSV_解析文本` 与 `数据表_行数/列数/列名/取文本/单元格类型/取整数/取小数/取布尔/单元格为空/关闭/取错误`，登记名义类型 `表格数据`（`long long`）；原 5 条行级命令名称与语义不变，描述改指新入口。可选参数在运行时以 **C++ 默认实参**承载（生成器不会为省略的实参补值）。
+- **编码入口补齐**。`lingbuilder.std.encoding` 30 → 32 条：`编码_字节集转文本`（支持 `AUTO`）与 `编码_文本转字节集` 让中文转码不再必须经十六进制文本中介；`lingbuilder.fs.core` 的 `文件_读取文本` 增加可选 `编码名称`（缺省 `UTF-8`，历史严格解码语义逐字保持，GBK 文件此前实际无入口）。
+- **csv 虚拟表**。`lingbuilder.database.sqlite` 2.2.0 → 2.3.0（72 → 73 条）：`CREATE VIRTUAL TABLE t USING csv(filename=..., schema=..., header=1, delimiter=',', encoding='AUTO')` 可 `SELECT`/`JOIN`/`INSERT INTO 目标 SELECT`，随模块内置、零额外 DLL、无加载扩展链路。实现要点：vtab/cursor/`zErrMsg` 必须用运行库分配器（SQLite 在回调外 `sqlite3_free`），模块侧 C++ 对象只挂 `impl` 指针并由 `xDisconnect`/`xClose` 释放；ABI 结构逐字段对齐官方布局，向下取回用首成员偏移 0 的 `reinterpret_cast`；`sqlite3_create_module`/`declare_vtab`/`malloc64`/`mprintf`/`result_text` 按**可选导出**解析，缺少时只关闭虚拟表能力、普通 SQL 打开连接不受影响，能力状态经新增命令 `SQLite_取虚拟表支持(连接)` 可见；参数错误给中文诊断（不再是 `no such module` 英文）。表头行不得作为数据行返回（该缺陷曾被 `ORDER BY` 排序掩盖成“多一行 + datatype mismatch”）。
+- **验收**。`cd electron && npm run smoke:csv-sqlite-native`：Win32/x64 双架构 MSVC Release 编译 + exe 逐项自检（GBK 自动识别、UTF-8 BOM、跨行引号字段、空行跳过、分号分隔、无表头列名、单元格类型判定、失效句柄诊断、`文件_读取文本` 三种编码口径、字节集转码往返、虚拟表行数与表头不计入、SELECT/JOIN/`INSERT...SELECT`/列类型亲和/中文诊断）。构建与运行失败都会把逐项断言名与 SQLite 原始错误写进报告，不再只报退出码。
