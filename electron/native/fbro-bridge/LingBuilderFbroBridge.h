@@ -649,7 +649,9 @@ LB_FBRO_API int __stdcall LB_FBro_ResponseDeleteHeaderMap(LB_FBRO_OBJECT_HANDLE 
 /** 启用页面调原生 JS 扩展（必须在首个浏览器创建前调用）。 */
 LB_FBRO_API int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function,
                                                 const wchar_t* cancel_function);
-/** 启动命令行开关：必须在 LB_FBro_Initialize* 之前调用。 */
+/** 启动命令行开关：必须在 LB_FBro_Initialize* 之前调用。
+ *  支持键：disableGpu、disableGpuCache、disableGpuBlockList、enableMediaStream、
+ *  enableSpeechInput、enableAutoplay、headless（进程级无头，启用后所有浏览器无窗口渲染）。 */
 LB_FBRO_API int __stdcall LB_FBro_SetStartupSwitches(const wchar_t* switches_json);
 LB_FBRO_API int __stdcall LB_FBro_GetStartupCommandLine(wchar_t* result, size_t capacity);
 /** 后台创建：无窗口承载，事件仍正常分发。 */

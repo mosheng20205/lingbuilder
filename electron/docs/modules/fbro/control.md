@@ -33,6 +33,15 @@ FBro_导航(浏览器1, "https://example.com")
 
 独立模式为每个实例分配独立 Profile、回环 WebSocket、Token、日志目录和 CDP 端口。不要手工复用这些运行时目录或端口。
 
+## 无头浏览器（headless）
+
+无头模式是 CEF **进程级**启动命令行开关（官方 `FBroHsCommandLine_EnableHeadless`），只在程序初始化前烘焙一次，运行期没有任何命令可以开关它；启用后本进程所有进程内浏览器都不再渲染窗口内容。FBro 模块族提供两条声明入口：
+
+- 可视化：工具箱「非可视」分类的 **FBro无头浏览器** 组件（`FBroHeadlessBrowser` 设计器资源）。属性为打开地址、独立缓存目录与附加信息 JSON；构建时自动烘焙 `headless` 开关，属主窗口创建期以 `LB_FBro_CreateBackground` 建立后台实例，代码按组件名使用全部 `FBro_*` 浏览器命令，事件用 `FBro_绑定事件(无头浏览器1, "LoadEnd", &处理器)` 绑定。
+- 代码（含控制台项目）：`.lcpp` 中**字面**写一行 `FBro_启用无头模式()`（调用点只查询烘焙结果），再用 `FBro_后台创建(地址, 缓存目录, 附加信息JSON)` 取实例句柄，配合句柄命令族同步驱动：`FBro_实例导航`、`FBro_实例等待加载超时`、`FBro_实例执行JS`（如 `document.title`）、`FBro_实例是否存活`、`FBro_实例关闭`。控制台没有消息泵，事件处理器不会触发，取数一律走同步族。
+
+红线（生成前中文阻断）：同一项目里无头声明与**进程内**可见 FBroBrowser 控件互斥（独立进程模式不受影响）；`FBro无头浏览器` 资源只属于标准 Win32 后端窗口，new_emoji 后端与控制台项目不得携带该资源。真机验收脚本：`cd electron && npm run smoke:fbro-headless`。
+
 ## CDP 调试端口
 
 两种宿主模式都能用 `FBro_取调试端口(控件名)` 取得本机回环 CDP 调试端口，供 CDP 模块连接：

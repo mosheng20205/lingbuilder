@@ -3152,14 +3152,52 @@ void NotifyExtensionContext(CefRefPtr<CefRequestContext> request_context,
   }
 }
 
+namespace {
+
+/** 生成器烘焙的开关 JSON 形态受控（{"key":true,...}），纯字符串判定，避免 CEF 值 API 在初始化前未注册包装而 FATAL。 */
+bool SwitchJsonEnabled(const std::wstring& json, const wchar_t* key) {
+  const std::wstring needle = std::wstring(L"\"") + key + L"\"";
+  size_t pos = json.find(needle);
+  while (pos != std::wstring::npos) {
+    pos += needle.size();
+    while (pos < json.size() && (json[pos] == L' ' || json[pos] == L'\t')) ++pos;
+    if (pos < json.size() && json[pos] == L':') {
+      ++pos;
+      while (pos < json.size() && (json[pos] == L' ' || json[pos] == L'\t')) ++pos;
+      if (json.compare(pos, 4, L"true") == 0) return true;
+    }
+    pos = json.find(needle, pos);
+  }
+  return false;
+}
+
+/** 把烘焙的启动开关应用到给定的 CEF 命令行对象（权威时机为 OnBeforeCommandLineProcessing）。 */
+void ApplyStartupSwitchesTo(const std::wstring& json, CefRefPtr<CefCommandLine> command_line) {
+  if (SwitchJsonEnabled(json, L"disableGpu")) FBroHsCommandLine_DisableGpu(command_line);
+  if (SwitchJsonEnabled(json, L"disableGpuCache")) FBroHsCommandLine_DisableGpuCache(command_line);
+  if (SwitchJsonEnabled(json, L"disableGpuBlockList")) FBroHsCommandLine_DisableGpuBlockList(command_line);
+  if (SwitchJsonEnabled(json, L"enableMediaStream")) FBroHsCommandLine_EnableMediaStream(command_line);
+  if (SwitchJsonEnabled(json, L"enableSpeechInput")) FBroHsCommandLine_EnableSpeechInput(command_line);
+  if (SwitchJsonEnabled(json, L"enableAutoplay")) FBroHsCommandLine_EnableAutoplayPoliey(command_line);
+  // headless 是 CEF 进程级开关：启用后本进程所有浏览器均无窗口渲染，不得与可见 FBro 控件混用。
+  if (SwitchJsonEnabled(json, L"headless")) FBroHsCommandLine_EnableHeadless(command_line);
+}
+
+}  // namespace
+
 class BridgeInitEvent final : public FBroHsInitEvent {
  public:
   BridgeInitEvent() { type_ = InitEventType; }
   static void* operator new(size_t size) { return FBroMallocManger_New(size); }
   static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
-  void OnBeforeCommandLineProcessing(const CefString&,
+  void OnBeforeCommandLineProcessing(const CefString& process_type,
                                      CefRefPtr<CefCommandLine> command_line) override {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    // 启动开关只对浏览器进程生效一次（子进程回调只用于透传）；此处是官方唯一可写时机。
+    if (command_line && process_type.empty() && !g_startup_switches_json.empty()) {
+      ApplyStartupSwitchesTo(g_startup_switches_json, command_line);
+      g_startup_command_line = FromFbroString(FBroHsCommandLine_GetString(command_line));
+    }
     if (command_line && g_extension_plus_requested) {
       command_line->AppendSwitch("enable-chrome-runtime");
     }
@@ -4948,30 +4986,6 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   return LB_FBro_InitializeEx(&options);
 }
 
-namespace {
-
-/** 把生成器烘焙的启动开关 JSON 追加到官方全局命令行；只能在 CEF 初始化前调用一次。 */
-void ApplyStartupCommandLineSwitches() {
-  if (g_startup_switches_json.empty()) return;
-  auto parsed = CefParseJSON(CefString(g_startup_switches_json), JSON_PARSER_RFC);
-  if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) {
-    g_startup_command_line = L"";
-    return;
-  }
-  auto dict = parsed->GetDictionary();
-  auto command_line = FBroHsCommandLine_GetGlobalCommandLine();
-  if (!command_line) return;
-  if (dict->GetBool("disableGpu") == true) FBroHsCommandLine_DisableGpu(command_line);
-  if (dict->GetBool("disableGpuCache") == true) FBroHsCommandLine_DisableGpuCache(command_line);
-  if (dict->GetBool("disableGpuBlockList") == true) FBroHsCommandLine_DisableGpuBlockList(command_line);
-  if (dict->GetBool("enableMediaStream") == true) FBroHsCommandLine_EnableMediaStream(command_line);
-  if (dict->GetBool("enableSpeechInput") == true) FBroHsCommandLine_EnableSpeechInput(command_line);
-  if (dict->GetBool("enableAutoplay") == true) FBroHsCommandLine_EnableAutoplayPoliey(command_line);
-  g_startup_command_line = FromFbroString(FBroHsCommandLine_GetString(command_line));
-}
-
-}  // namespace
-
 int __stdcall LB_FBro_SetStartupSwitches(const wchar_t* switches_json) {
   g_startup_switches_json = switches_json ? switches_json : L"";
   return LB_FBRO_OK;
@@ -5112,8 +5126,8 @@ int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options)
   g_init_event = new BridgeInitEvent();
   g_vip_event = new BridgeVipEvent();
   FBroSetVipEvent(g_vip_event);
-  // 启动开关必须在 CEF 初始化前追加到全局命令行。
-  ApplyStartupCommandLineSwitches();
+  // 启动开关不在此处应用：GetGlobalCommandLine 在 CefInitialize 前是空对象，
+  // 官方唯一可写时机是 BridgeInitEvent::OnBeforeCommandLineProcessing（InitPro 内部回调）。
   if (!FBroHsInitPro(&settings, g_init_event, 1024)) {
     SecureClearPendingLicenseCredential();
     g_init_event = nullptr;
