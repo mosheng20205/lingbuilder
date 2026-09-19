@@ -255,6 +255,17 @@ function normalizeBuiltinControlReferences(manifest: LingBuilderModuleManifest):
   };
 }
 
+// CEF3 真无头（CEF 官方 windowless / OSR）中文命令面：17 条命令一律以「实例编号」为首参寻址，
+// 不接收 controlRef、不创建任何窗口。清单（contributes.commands）、binding 与运行时包装三处必须成对，
+// 本常量是这三处的共同名单来源，新增无头命令只改这里与下面两段表。
+const CEF3_HEADLESS_COMMAND_NAMES = [
+  'CEF3_创建无头浏览器', 'CEF3无头_是否已创建', 'CEF3无头_设置视口', 'CEF3无头_取视口JSON',
+  'CEF3无头_取渲染帧数', 'CEF3无头_导航', 'CEF3无头_是否加载中', 'CEF3无头_等待加载完成',
+  'CEF3无头_取标题', 'CEF3无头_取地址', 'CEF3无头_取主框架', 'CEF3无头_取浏览器句柄',
+  'CEF3无头_执行JS', 'CEF3无头_取页面文本', 'CEF3无头_取页面源码', 'CEF3无头_取事件JSON',
+  'CEF3无头_关闭'
+];
+
 const BUILTIN_PARAM_DOCS: ParamDocTable = {
   内容: '对话框正文或要写入的文本内容。',
   标题: '对话框或窗口标题文本。',
@@ -321,6 +332,29 @@ const BUILTIN_PARAM_DOCS: ParamDocTable = {
   质量: 'JPEG 压缩质量 0~100；png 忽略。',
   父组件句柄: '承载 EdgeView 的父窗口或组件 HWND；传 0 嵌入当前窗口。',
   实例编号: 'EdgeView 实例的正整数编号；后续命令按它指定实例。',
+  视口宽: 'OSR 无头浏览器的页面视口宽度（CSS 像素），必须是正整数，传 0 或负数直接创建/设置失败；它决定页面布局宽度与媒体查询结果，默认 1280。',
+  视口高: 'OSR 无头浏览器的页面视口高度（CSS 像素），必须是正整数，传 0 或负数直接创建/设置失败；无头实例不产生窗口，该值只影响页面布局与渲染尺寸，默认 720。',
+  // CEF3 无头（OSR）命令全部按实例编号寻址，而上面的全局「实例编号」是 EdgeView 口径，
+  // 必须逐条按无头语义覆盖（同时把「不是控件名、不加引号」写进参数说明，堵住 controlRef 误用）。
+  ...Object.fromEntries(CEF3_HEADLESS_COMMAND_NAMES.map(command => [`${command}::实例编号`,
+    'CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。'])),
+  // 无头命令的阻塞等待一律显式带超时（CEF 侧没有任务等待导出，只能轮询），口径逐条写清超时后返回什么。
+  'CEF3无头_等待加载完成::超时毫秒': '最长等待毫秒数；传 0 或负数按默认 30000，超时返回 0 并给中文诊断，绝不无限等待。',
+  'CEF3无头_取页面文本::超时毫秒': '最长等待毫秒数；传 0 或负数按默认 30000，超时返回空文本并给中文诊断。',
+  'CEF3无头_取页面源码::超时毫秒': '最长等待毫秒数；传 0 或负数按默认 30000，超时返回空文本并给中文诊断。',
+  // CEF3 全局代理与代理认证（与 EdgeView/FBro 同口径补齐）；凭据参数的红线必须写在参数级。
+  'CEF3_设置全局代理::代理地址': '全局代理地址，格式 "scheme://host:port"（如 "http://127.0.0.1:7890"、"socks5://127.0.0.1:1080"）；空文本清除全局代理。只影响之后新建实例，不得把用户名密码拼进地址（Chromium 不支持）。',
+  'CEF3_设置全局代理::用户名': '全局代理认证用户名；代理不要求认证时空文本。绝不回显在 取全局代理 结果里。',
+  'CEF3_设置全局代理::密码': '全局代理认证密码；代理不要求认证时空文本。只驻留生成 exe 进程内存，任何取代理命令都不回显。',
+  'CEF3_取实例代理::实例编号': 'CEF3 设计器无关实例的正整数编号（创建弹窗浏览器 / 创建区域 / 创建无头浏览器 的首参），写裸数字不加引号；返回实例自带代理，为空时显示全局代理回落值。',
+  'CEF3_设置代理认证::代理地址': '该控件要使用的代理地址，格式 "scheme://host:port"；非空时必须在控件创建前调用（与 CEF3_设置代理 同一时机），空文本表示不改现有代理、只设置凭据。凭据不得拼进地址。',
+  'CEF3_设置代理认证::用户名': '代理认证用户名；代理不要求认证时空文本。',
+  'CEF3_设置代理认证::密码': '代理认证密码；只驻留进程内存并自动应答代理认证，任何命令都不回显。',
+  'CEF3_设置实例代理认证::实例编号': 'CEF3 设计器无关实例的正整数编号（创建弹窗浏览器 / 创建区域 / 创建无头浏览器 的首参），写裸数字不加引号；实例不存在返回 0 并给中文诊断。',
+  'CEF3_设置实例代理认证::代理地址': '期望匹配的代理地址，仅用于校验提示：实例代理以创建时参数为准，本参数与现值不一致时不改代理只更新凭据；空文本表示只设凭据。',
+  'CEF3_设置实例代理认证::用户名': '该实例的代理认证用户名；代理不要求认证时空文本。',
+  'CEF3_设置实例代理认证::密码': '该实例的代理认证密码；只驻留进程内存并自动应答代理认证，任何命令都不回显。',
+  实例句柄: 'FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。',
   地址: '完整 URL 或本地文件路径。',
   独立缓存目录: '实例专用缓存目录（相对工作目录或绝对路径）；相同目录共享会话数据。',
   代理地址: '代理地址，如 "http://127.0.0.1:7890" 或 "socks5://127.0.0.1:1080"。',
@@ -333,6 +367,13 @@ const BUILTIN_PARAM_DOCS: ParamDocTable = {
   顶: '顶边界 Y 坐标（像素或 DIP，视命令而定）。',
   宽: '宽度（像素或 DIP，视命令而定）。',
   高: '高度（像素或 DIP，视命令而定）。',
+  // EdgeView 几何命令运行时统一按逻辑坐标（DIP）接收并按窗口 DPI 缩放（与 win32.basic 控件口径一致），显式声明口径避免「像素或 DIP」歧义。
+  ...Object.fromEntries(['EdgeView_创建弹窗浏览器', 'EdgeView_创建弹窗浏览器代理', 'EdgeView_创建弹窗浏览器初始隐藏', 'EdgeView_创建弹窗浏览器初始隐藏代理', 'EdgeView_创建区域', 'EdgeView_创建区域代理', 'EdgeView_置实例大小'].flatMap(command => Object.entries({
+    左: '左边界 X 坐标（逻辑坐标/DIP，运行时按窗口 DPI 缩放）。',
+    顶: '顶边界 Y 坐标（逻辑坐标/DIP，运行时按窗口 DPI 缩放）。',
+    宽: '宽度（逻辑坐标/DIP，运行时按窗口 DPI 缩放）。',
+    高: '高度（逻辑坐标/DIP，运行时按窗口 DPI 缩放）。'
+  }).map(([name, description]) => [`${command}::${name}`, description]))),
   键: '崩溃报告键名。',
   'CEF3_取命令资源ID::名称': '命令资源名，如 "IDC_BACK"。',
   相对路径: '资源相对路径（相对生成的资源目录）。',
@@ -461,6 +502,21 @@ function normalizeBuiltinControlParameter(
     : moduleId.startsWith('lingbuilder.fbro') ? ['FBroBrowser']
       : moduleId === 'lingbuilder.edgeview' ? ['EdgeBrowser']
         : undefined;
+  // FBro 模块族（browser/events 等）命令的控件名参数同时接受可视 FBroBrowser 控件与「FBro无头浏览器」设计器资源。
+  // fbroModules 的 api() 会预置 controlTypes ['FBroBrowser'] 与缺省 kinds ['visual']，此处按「仅可视 FBroBrowser」识别并扩类。
+  const fbroVisualOnlyKinds = !parameter.controlKinds?.length
+    || (parameter.controlKinds.length === 1 && parameter.controlKinds[0] === 'visual');
+  const fbroBrowserOnlyTypes = !parameter.controlTypes?.length
+    || (parameter.controlTypes.length === 1 && parameter.controlTypes[0] === 'FBroBrowser');
+  if (moduleId.startsWith('lingbuilder.fbro') && fbroVisualOnlyKinds && fbroBrowserOnlyTypes) {
+    return normalizeControlReferenceParameter({
+      ...converted,
+      controlTypes: ['FBroBrowser', 'FBroHeadlessBrowser'],
+      controlKinds: ['visual', 'resource'],
+      // 旧的「仅可视控件」描述必须清空重生成，避免与实际 kinds 契约不一致。
+      description: undefined
+    });
+  }
   const commandTypes = command.startsWith('颜色选择器_') ? ['ColorPicker']
     : command.startsWith('列表视图_') ? ['ListView']
       : command.startsWith('表格_') ? ['DataGrid']
@@ -817,7 +873,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.edgeview',
     name: 'EdgeView 浏览器模块',
-    version: '1.5.0',
+    version: '1.5.1',
     minLingBuilderVersion: '0.2.7',
     category: '界面',
     description: '基于 Microsoft Edge WebView2，把浏览器嵌入任意 Win32 窗口组件句柄，并提供导航、网页消息、浏览器事件和 JavaScript 返回值。',
@@ -886,7 +942,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView会话_清理全部浏览数据实例异步', signature: 'EdgeView会话_清理全部浏览数据实例异步(实例编号, &完成处理器)', description: '按实例编号异步清理该实例 Profile 的全部浏览数据。', insertText: 'EdgeView会话_清理全部浏览数据实例异步(1, &$1)', returnType: '长整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
-      snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }],
+      snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }, { label: 'EdgeView 动态内嵌多店铺区域', insertText: 'EdgeView_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".edgeview/store-a")\nEdgeView_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".edgeview/store-b")\n调试输出(EdgeView_枚举实例JSON())\nEdgeView_关闭全部实例()', description: '在窗口客户区两个矩形各内嵌一个独立 EdgeView 实例（各自独立缓存目录=独立浏览器进程），EdgeView_枚举实例JSON 枚举、EdgeView_关闭全部实例 回收；每店铺独立出口 IP 用 EdgeView_创建区域代理。' }],
       docs: [
         { title: 'EdgeView 事件参考', path: 'docs/modules/edgeview/README.md' },
         { title: 'EdgeView 完整 API 参考（289 条）', path: 'docs/modules/edgeview/API.md' }
@@ -961,7 +1017,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.cef3.browser',
     name: 'CEF3浏览器模块',
-    version: '3.0.0-alpha.4',
+    version: '3.0.0-alpha.5',
     category: '界面',
     description: '基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。',
     author: 'LingBuilder',
@@ -975,6 +1031,23 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航($1, "https://www.baidu.com")', returnType: '整数型' },
         { name: 'CEF3_打开原生UI浏览器', signature: 'CEF3_打开原生UI浏览器(控件名, 地址)', description: '使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。', insertText: 'CEF3_打开原生UI浏览器($1, "https://www.baidu.com")', returnType: '整数型' },
         { name: 'CEF3_创建弹窗浏览器', signature: 'CEF3_创建弹窗浏览器(实例编号, 地址, 独立缓存目录, 代理地址)', description: '不依赖设计器控件，用 CEF Chrome Runtime 凭空创建独立顶层浏览器弹窗：不同 实例编号 + 不同 独立缓存目录（独立 profile）实现店铺间 Cookie/缓存隔离，代理地址非空即该弹窗独立出口 IP。实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭；实例级 UA 用 CEF3_设置实例用户代理 设置。', insertText: 'CEF3_创建弹窗浏览器(1, "https://www.example.com", ".cef3/store-a", "")', returnType: '整数型' },
+        { name: 'CEF3_创建无头浏览器', signature: 'CEF3_创建无头浏览器(实例编号, 地址, 独立缓存目录, 代理地址, 视口宽, 视口高)', description: '用 CEF 官方无窗口渲染（OSR）创建不产生任何窗口的浏览器实例，控制台项目可直接调用：地址传空为 about:blank，独立缓存目录传空用默认 cef3-headless-<实例编号>，代理地址非空即该实例独立出口 IP，视口默认 1280×720（宽高传非正数直接失败）。实例登记进运行时表，可被 CEF3_枚举实例JSON 列出（mode 为 windowless）、由 CEF3_关闭全部实例 统一关闭。一期无画面输出，取内容用 CEF3无头_取页面文本 / CEF3无头_执行JS；截图未开放，禁止用创建可见窗口再隐藏的方式冒充无头。', insertText: 'CEF3_创建无头浏览器(1, "https://www.example.com", ".cef3/headless-1", "", 1280, 720)', returnType: '整数型' },
+        { name: 'CEF3无头_是否已创建', signature: 'CEF3无头_是否已创建(实例编号)', description: '按实例编号查询无头浏览器实例是否仍存在且已创建：返回 1 已创建，0 表示实例不存在或已关闭。无头实例没有宿主窗口、派发不了中文事件处理器，创建结果只能靠本命令与 CEF3无头_取视口JSON 回读，不要凭假设往下走。', insertText: 'CEF3无头_是否已创建(1)', returnType: '整数型' },
+        { name: 'CEF3无头_设置视口', signature: 'CEF3无头_设置视口(实例编号, 视口宽, 视口高)', description: '修改无头浏览器实例的渲染视口（CSS 像素），宽高必须为正整数；写入成功后向 CEF 请求重查视口并立即重绘，决定后续布局宽度与媒体查询结果。返回 1 表示视口已生效。两条口径必须知道：一、写入与刷新是两步，宿主刷新请求未确认时视口其实已经写入，此时本命令仍返回 1 并给出中文诊断「视口已写入，但刷新未确认」，不得按失败处理；二、设定值不是永久权威，出帧后 CEF 会把实际渲染尺寸回写，读取当前尺寸一律用 CEF3无头_取视口JSON。', insertText: 'CEF3无头_设置视口(1, 1024, 640)', returnType: '整数型' },
+        { name: 'CEF3无头_取视口JSON', signature: 'CEF3无头_取视口JSON(实例编号)', description: '读取无头浏览器实例当前生效的视口，返回 {"width":…,"height":…,"paintCount":…}。这里的宽高是 CEF 的实际渲染尺寸，不是设定值的回显：每次出帧 CEF 会把该帧真实尺寸回写进存储视口，因此读到的可能不等于 CEF3无头_设置视口 刚传入的数字，判断布局尺寸只能以此为准。paintCount 是已交付像素帧计数，不代表宿主已取走帧内容。实例不存在或该实例不是无窗口 OSR 浏览器时返回空文本，并原样转述 CEF3 桥给出的中文原因。', insertText: '调试输出(CEF3无头_取视口JSON(1))', returnType: '文本型' },
+        { name: 'CEF3无头_取渲染帧数', signature: 'CEF3无头_取渲染帧数(实例编号)', description: '返回无头浏览器实例至今交付的 OSR 像素帧数量（长整数）。一期不外发像素内容，本计数是唯一可用的「确实在无窗口渲染」证据：大于 0 说明页面已出帧，长期为 0 说明页面没出帧（未加载、被阻塞或视口无效）。实例不存在或该实例不是无窗口 OSR 浏览器返回 0 并转述桥的中文原因。', insertText: '局部 长整数型 帧数 = CEF3无头_取渲染帧数(1)', returnType: '长整数型' },
+        { name: 'CEF3无头_导航', signature: 'CEF3无头_导航(实例编号, 地址)', description: '让指定实例编号的无头浏览器导航到 HTTP/HTTPS 或本地文件地址；不依赖设计器控件、不依赖消息泵，桥句柄尚未就绪时自动排队并在「浏览器创建完成」时补发。成功返回 1，地址为空文本或实例不存在返回 0。', insertText: 'CEF3无头_导航(1, "https://www.example.com")', returnType: '整数型' },
+        { name: 'CEF3无头_是否加载中', signature: 'CEF3无头_是否加载中(实例编号)', description: '该无头浏览器正在加载网页时返回 1，否则 0；实例不存在返回 0。无头实例派发不了事件处理器，加载进度只能靠本命令与 CEF3无头_等待加载完成 轮询。', insertText: 'CEF3无头_是否加载中(1)', returnType: '整数型' },
+        { name: 'CEF3无头_等待加载完成', signature: 'CEF3无头_等待加载完成(实例编号, 超时毫秒)', description: '阻塞等待该无头实例加载结束：每 50 毫秒轮询一次 CEF 的加载中状态，因此完全不依赖消息泵、消息循环或无头泵窗口，控制台项目可直接调用。超时毫秒传 0 或负数按默认 30000；超时返回 0 并给出中文诊断，绝不无限等待。加载已完成返回 1，实例不存在返回 0。', insertText: 'CEF3无头_等待加载完成(1, 15000)', returnType: '整数型' },
+        { name: 'CEF3无头_取标题', signature: 'CEF3无头_取标题(实例编号)', description: '返回无头浏览器当前页面标题，与控件版 CEF3_取标题 复用同一份运行时实现，只是按实例编号寻址、不需要设计器控件。实例不存在或页面尚未产生标题返回空文本。', insertText: '局部 文本型 标题 = CEF3无头_取标题(1)', returnType: '文本型' },
+        { name: 'CEF3无头_取地址', signature: 'CEF3无头_取地址(实例编号)', description: '返回无头浏览器当前页面地址，与控件版 CEF3_取地址 复用同一份运行时实现，按实例编号寻址。实例不存在返回空文本。导航后立刻读取可能仍是旧地址，先等 CEF3无头_等待加载完成。', insertText: '局部 文本型 地址 = CEF3无头_取地址(1)', returnType: '文本型' },
+        { name: 'CEF3无头_取主框架', signature: 'CEF3无头_取主框架(实例编号)', description: '取得无头浏览器实例的主框架受管句柄（实例编号寻址，不需要设计器控件）；随后全部句柄版命令零改动可用：CEF3框架_执行JS、CEF3框架_取源码异步、CEF3框架_取文本异步、CEF3填表_点击元素/赋值/置选择项、CEF3DOM_*。这是页面内容与表单操作的唯一入口，不要拿它当 OSR 帧命令的句柄。页面尚未产生框架或实例不存在返回 0。', insertText: '局部 长整数型 框架 = CEF3无头_取主框架(1)', returnType: '长整数型' },
+        { name: 'CEF3无头_取浏览器句柄', signature: 'CEF3无头_取浏览器句柄(实例编号)', description: '取得无头浏览器实例的受管浏览器句柄（实例编号寻址），供浏览器级 OSR 命令使用：CEF3OSR_请求重绘、CEF3OSR_设置窗口外帧率、CEF3OSR_取窗口外帧率、CEF3离屏_订阅像素帧、CEF3离屏_订阅视图矩形。句柄由运行时托管，用户侧不得释放，实例关闭后失效返回 0；取页面内容请改用 CEF3无头_取主框架，不要用本句柄拼第二套内容链路。', insertText: '局部 长整数型 句柄 = CEF3无头_取浏览器句柄(1)', returnType: '长整数型' },
+        { name: 'CEF3无头_执行JS', signature: 'CEF3无头_执行JS(实例编号, 脚本)', description: '在无头浏览器实例里执行 JavaScript 并返回 JSON 结果文本，与控件版 CEF3_执行JS 复用同一份 DevTools Runtime.evaluate 实现与最多 5 秒超时口径，只是按实例编号寻址、不需要设计器控件。实例不存在或浏览器尚未创建返回空文本并给中文诊断。填表与 DOM 批量操作请走 CEF3无头_取主框架 再接句柄版命令，不要为无头实例另造第二套页面链路。', insertText: '调试输出(CEF3无头_执行JS(1, "document.title"))', returnType: '文本型' },
+        { name: 'CEF3无头_取页面文本', signature: 'CEF3无头_取页面文本(实例编号, 超时毫秒)', description: '同步取该无头实例主框架的可见纯文本：内部按 CEF3框架_取文本异步 发起任务后每 50 毫秒轮询任务状态（CEF 侧没有任务等待导出），因此不依赖消息泵，控制台可直接用。超时毫秒传 0 或负数按默认 30000；超时、实例不存在或页面还没有主框架都返回空文本并给中文诊断。只要文本判断时优先用本命令，需要 HTML 结构再用 CEF3无头_取页面源码。', insertText: '调试输出(CEF3无头_取页面文本(1, 15000))', returnType: '文本型' },
+        { name: 'CEF3无头_取页面源码', signature: 'CEF3无头_取页面源码(实例编号, 超时毫秒)', description: '同步取该无头实例主框架的完整 HTML 源码，等待方式与超时口径同 CEF3无头_取页面文本（CEF3框架_取源码异步 + 50 毫秒轮询，默认超时 30000 毫秒）。源码可能很大，取回后先按需截取再输出日志；超时或实例/框架不存在返回空文本并给中文诊断。', insertText: '调试输出(CEF3无头_取页面源码(1, 15000))', returnType: '文本型' },
+        { name: 'CEF3无头_取事件JSON', signature: 'CEF3无头_取事件JSON(实例编号)', description: '返回该无头实例缓冲的 CEF 事件 JSON 数组，每项含 事件名 与 字段。无头实例没有宿主窗口，控件版事件派发会因缺少宿主直接丢弃，所以事件被写进实例内的有界环形缓冲：上限 200 条，超限丢最旧，本命令只读不清空。给无头实例绑定中文事件处理器无效，只能靠本命令轮询取事件。实例不存在返回空文本。', insertText: '调试输出(CEF3无头_取事件JSON(1))', returnType: '文本型' },
+        { name: 'CEF3无头_关闭', signature: 'CEF3无头_关闭(实例编号)', description: '按实例编号关闭无头浏览器并释放其受管桥句柄（含由它派生的弹窗别名句柄），返回 1 表示已关闭，0 表示实例不存在。关闭后同一实例编号可以再次 CEF3_创建无头浏览器。进程退出时运行时会统一回收全部无头实例，正常流程不必逐个调用。', insertText: 'CEF3无头_关闭(1)', returnType: '整数型' },
         { name: 'CEF3_创建区域', signature: 'CEF3_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)', description: '不依赖设计器控件，在当前窗口指定矩形区域创建独立 CEF3 浏览器实例（运行时自建承载子窗口 + 独立 profile 缓存目录 + 可选独立代理），用于动态数量的内嵌多浏览器；实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭。', insertText: 'CEF3_创建区域(1, 10, 10, 480, 500, "https://www.example.com", ".cef3/store-a", "")', returnType: '整数型' },
         { name: 'CEF3会话_取上下文实例', signature: 'CEF3会话_取上下文实例(实例编号)', description: '取得设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 的实例编号）的 RequestContext 受管句柄，随后即可用全部句柄版 CEF3会话_* 命令（Cookie 设置/遍历/删除、清缓存、首选项）对该弹窗/区域实例操作；实例不存在或未创建返回 0，用完用 CEF3会话_释放上下文 释放。', insertText: '局部 长整数型 上下文 = CEF3会话_取上下文实例(1)', returnType: '长整数型' },
         { name: 'CEF3_设置用户代理', signature: 'CEF3_设置用户代理(控件名, 用户代理)', description: '为指定 CEF3 浏览器控件实例设置独立用户代理（UA）。CEF 无 per-browser settings，本命令在「资源加载前」事件里改写请求头 User-Agent，逐实例隔离；用户代理置空则清除覆盖。', insertText: 'CEF3_设置用户代理(浏览器1, "Mozilla/5.0 (store-A)")', returnType: '整数型' },
@@ -993,6 +1066,12 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_取资源地址', signature: 'CEF3_取资源地址(相对路径)', description: '把相对路径解析为随程序一起部署在 exe 同级 assets 目录下的文件地址，返回已按 UTF-8 转义的 file:/// URL，用于加载本地测试页，避免在源码里写死机器特定绝对路径。传入盘符绝对路径、UNC 路径或已带协议的完整地址时原样返回，可重复套用。地址形参是宽字符串指针，因此结果必须先赋给文本型局部变量再传给 CEF3_导航，不能直接内联嵌套。', insertText: '局部 文本型 地址 = CEF3_取资源地址("index.html")\nCEF3_导航($1, 地址)', returnType: '文本型' },
         { name: 'CEF3_设置缓存目录', aliases: ['CefRequestContext::CreateContext'], signature: 'CEF3_设置缓存目录(控件名, 目录)', description: '设置实例独立 RequestContext 的缓存目录标识；实际目录被安全映射到全局 root_cache_path 的直接子目录。需在创建前设置。', insertText: 'CEF3_设置缓存目录($1, "cache-2")', returnType: '整数型' },
         { name: 'CEF3_设置代理', aliases: ['CefPreferenceManager::SetPreference'], signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为实例独立 RequestContext 设置 HTTP/HTTPS/SOCKS5 代理；空文本使用直连。需在创建前设置。', insertText: 'CEF3_设置代理($1, "http://127.0.0.1:7890")', returnType: '整数型' },
+        { name: 'CEF3_设置全局代理', signature: 'CEF3_设置全局代理(代理地址, 用户名, 密码)', description: '设置之后新建 CEF3 实例（控件 / 弹窗 / 区域 / 无头）默认使用的 HTTP/HTTPS/SOCKS5 全局代理与代理认证；实例创建时自带代理优先，传空给 CEF3_设置代理 的显式直连不参与回落，已创建实例不受影响。用户名/密码传空文本表示该代理无需认证；Chromium 不支持把凭据写进代理地址，带认证的代理必须用本命令或 CEF3_设置代理认证 的凭据参数。代理地址为空文本时等价于 CEF3_清除全局代理。成功返回 1。', insertText: 'CEF3_设置全局代理("http://127.0.0.1:7890", "", "")', returnType: '整数型' },
+        { name: 'CEF3_清除全局代理', signature: 'CEF3_清除全局代理()', description: '清除 CEF3 全局代理与其认证凭据，之后新建实例回到各自的代理设置；已创建实例不变。成功返回 1。', insertText: 'CEF3_清除全局代理()', returnType: '整数型' },
+        { name: 'CEF3_取全局代理', signature: 'CEF3_取全局代理()', description: '返回当前 CEF3 全局代理地址；未设置返回空文本。认证密码一律不回显。', insertText: '调试输出(CEF3_取全局代理())', returnType: '文本型' },
+        { name: 'CEF3_取实例代理', signature: 'CEF3_取实例代理(实例编号)', description: '按实例编号返回设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 / CEF3_创建无头浏览器）实际采用的代理地址：实例自带代理优先，未设置时显示全局代理回落值；返回空文本表示该实例按系统代理或直接连接。实例不存在返回空文本并给中文诊断。', insertText: '调试输出(CEF3_取实例代理(1))', returnType: '文本型' },
+        { name: 'CEF3_设置代理认证', signature: 'CEF3_设置代理认证(控件名, 代理地址, 用户名, 密码)', description: '为 CEF3 浏览器控件同时设置代理与代理认证凭据；代理地址非空时须在控件创建前调用（与 CEF3_设置代理 同一时机），已创建时本命令只更新凭据并给中文提示。凭据在页面请求遭遇代理认证时由运行时自动应答，用户侧无需绑定「身份验证请求」事件；密码不回显。代理地址传空文本表示保留该控件现有代理、只设置凭据。成功返回 1。', insertText: 'CEF3_设置代理认证(浏览器1, "http://127.0.0.1:7890", "user", "pass")', returnType: '整数型' },
+        { name: 'CEF3_设置实例代理认证', signature: 'CEF3_设置实例代理认证(实例编号, 代理地址, 用户名, 密码)', description: '按实例编号为设计器无关实例（弹窗 / 区域 / 无头）设置代理认证凭据；代理以创建时参数为准，本命令传入的代理地址与现值不一致时只提示不改代理。凭据在遭遇代理认证时自动应答，建议在创建后、首次导航前立刻设置，晚设可能导致此前请求先收到认证失败。代理地址传空文本表示不改现值只设凭据；密码不回显。成功返回 1，实例不存在返回 0。', insertText: 'CEF3_设置实例代理认证(1, "", "user", "pass")', returnType: '整数型' },
         { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建($1)', returnType: '整数型' },
         { name: 'CEF3_执行消息循环工作', aliases: ['cef_do_message_loop_work'], signature: 'CEF3_执行消息循环工作()', description: '在 CEF 消息循环模式下执行一次非阻塞消息循环工作；Bridge 会安全调度到 CEF UI 线程。', insertText: 'CEF3_执行消息循环工作()', returnType: '空', visibility: 'advanced' },
         { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭($1)', returnType: '空' },
@@ -1005,7 +1084,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_设置事件结果', signature: 'CEF3_设置事件结果(控件名, 结果)', description: '设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。', insertText: 'CEF3_设置事件结果($1, 1)', returnType: '整数型' },
         { name: 'CEF3_设置事件返回文本', signature: 'CEF3_设置事件返回文本(控件名, 文本)', description: '设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。', insertText: 'CEF3_设置事件返回文本($1, "$2")', returnType: '整数型' },
         { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器)', description: `绑定 CEF3 浏览器事件清单（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。`, insertText: 'CEF3_绑定事件($1, "加载完成", &$2)', returnType: '整数型' },
-        { name: 'CEF3_启用JS扩展', signature: 'CEF3_启用JS扩展(控件名, 查询函数名, 取消函数名)', description: '启用页面调用原生的 JS 交互（cefQuery）通道：页面通过 window.查询函数名({request, onSuccess, onFailure}) 发起查询，原生通过「查询请求」事件接收并用 CEF3_查询应答 / CEF3_查询应答失败 应答。通道必须在 CEF 初始化之前配置——请优先使用 CEF3 浏览器控件的 jsQueryFunctions 属性（格式“查询函数名,取消函数名”），本命令仅在初始化前调用有效，初始化后调用返回 0。CEF3 每个程序只支持一条查询通道，同名重复调用按幂等成功处理。', insertText: 'CEF3_启用JS扩展($1, "cefQuery", "cefQueryCancel")', returnType: '整数型' },
+        { name: 'CEF3_启用JS扩展', signature: 'CEF3_启用JS扩展(控件名, 查询函数名, 取消函数名)', description: '启用页面调用原生的 JS 交互（cefQuery）通道：页面通过 window.查询函数名({request, onSuccess, onFailure}) 发起查询，原生通过「查询请求」事件接收并用 CEF3_查询应答 / CEF3_查询应答失败 应答。通道必须在 CEF 初始化之前配置——请优先使用 CEF3 浏览器控件的 jsQueryFunctions 属性（格式“查询函数名,取消函数名”），本命令仅在初始化前调用有效，初始化后调用返回 0。一个程序可注册多条通道（各通道的查询函数名互不重复），同名重复调用按幂等成功处理；「查询请求」事件的 channelIndex 字段标明来源通道序号（0 起）。', insertText: 'CEF3_启用JS扩展($1, "cefQuery", "cefQueryCancel")', returnType: '整数型' },
         { name: 'CEF3_查询应答', signature: 'CEF3_查询应答(控件名, 查询ID, 结果文本)', description: '应答「查询请求」事件：查询ID 从事件字段 queryId 读取（数字文本，原样传回），结果文本回传给页面 onSuccess。每条查询只能应答一次；未应答的查询 120 秒后自动对页面回错误码 -4。', insertText: 'CEF3_查询应答($1, CEF3_取事件字段($1, "queryId"), "完成")', returnType: '整数型' },
         { name: 'CEF3_查询应答失败', signature: 'CEF3_查询应答失败(控件名, 查询ID, 错误码, 错误文本)', description: '以失败结果应答「查询请求」事件：错误码与错误文本回传给页面 onFailure（错误码 0 视为 -1）。每条查询只能应答一次。', insertText: 'CEF3_查询应答失败($1, CEF3_取事件字段($1, "queryId"), -1, "没有数据")', returnType: '整数型' },
         { name: 'CEF3_是否可后退', signature: 'CEF3_是否可后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回 1。', insertText: 'CEF3_是否可后退($1)', returnType: '整数型' },
@@ -1051,7 +1130,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_是否静音', aliases: ['is_audio_muted'], signature: 'CEF3_是否静音(控件名)', description: '指定 CEF3 浏览器控件的音频已静音时返回 1。', insertText: 'CEF3_是否静音($1)', returnType: '整数型' }
       ],
       types: [{ name: 'CEF3浏览器', description: '由 LingBuilderCefBridge 管理的 CEF 150 浏览器句柄。', cppType: 'LB_CEF3_HANDLE' }],
-      snippets: [{ label: 'CEF3 浏览器导航与 JS 返回值', insertText: 'CEF3_导航(浏览器1, "https://www.baidu.com")\n调试输出(CEF3_执行JS(浏览器1, "document.title"))\n调试输出(CEF3_取最近事件(浏览器1))', description: '在 CEF3 浏览器控件中导航，并读取网页标题与最近事件。' }],
+      snippets: [{ label: 'CEF3 浏览器导航与 JS 返回值', insertText: 'CEF3_导航(浏览器1, "https://www.baidu.com")\n调试输出(CEF3_执行JS(浏览器1, "document.title"))\n调试输出(CEF3_取最近事件(浏览器1))', description: '在 CEF3 浏览器控件中导航，并读取网页标题与最近事件。' }, { label: 'CEF3 动态内嵌多店铺区域', insertText: 'CEF3_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".cef3/store-a", "")\nCEF3_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".cef3/store-b", "http://127.0.0.1:7890")\nCEF3_设置实例用户代理(1, "Mozilla/5.0 (store-A)")\n调试输出(CEF3_枚举实例JSON())\nCEF3_关闭全部实例()', description: '不依赖设计器控件，在窗口客户区两个矩形各内嵌一个独立 CEF3 实例（各自独立缓存/代理），用 CEF3_设置实例用户代理 设请求头级各异 UA，CEF3_枚举实例JSON 枚举、CEF3_关闭全部实例 回收。' }, { label: 'CEF3 多店铺独立出口 IP（全局代理 + 实例代理 + 代理认证）', insertText: 'CEF3_设置全局代理("http://127.0.0.1:7890", "globalUser", "globalPass")\nCEF3_创建弹窗浏览器(1, "https://www.example.com", ".cef3/store-a", "")\nCEF3_创建区域(2, 10, 60, 600, 500, "https://www.example.com", ".cef3/store-b", "http://127.0.0.1:7891")\nCEF3_设置实例代理认证(2, "http://127.0.0.1:7891", "storeBUser", "storeBPass")\n调试输出(CEF3_取实例代理(1))\n调试输出(CEF3_取实例代理(2))', description: 'store-a 弹窗不带代理、自动回落全局代理与全局凭据；store-b 区域自带代理并用 CEF3_设置实例代理认证 提供独立凭据（遭遇代理认证时由运行时自动应答，务必在创建后、首次导航前设置）；CEF3_取实例代理 回读各实例实际生效的代理，密码不回显。' }],
       docs: [
         { title: 'CEF3 模块说明', path: 'README.md' },
         { title: 'CEF3 事件与接口参考', path: 'docs/modules/cef3/README.md' },
@@ -1082,6 +1161,23 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航(浏览器1, "https://www.baidu.com")' },
       { command: 'CEF3_打开原生UI浏览器', runtimeName: 'CEF3_打开原生UI浏览器', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_打开原生UI浏览器(浏览器1, "https://www.baidu.com")' },
       { command: 'CEF3_创建弹窗浏览器', runtimeName: 'CEF3_创建弹窗浏览器', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_创建无头浏览器', runtimeName: 'CEF3_创建无头浏览器', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }, { name: '视口宽', type: 'int' }, { name: '视口高', type: 'int' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3无头_是否已创建', runtimeName: 'CEF3无头_是否已创建', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'int' },
+      { command: 'CEF3无头_设置视口', runtimeName: 'CEF3无头_设置视口', parameters: [{ name: '实例编号', type: 'int' }, { name: '视口宽', type: 'int' }, { name: '视口高', type: 'int' }], returnType: 'int' },
+      { command: 'CEF3无头_取视口JSON', runtimeName: 'CEF3无头_取视口JSON', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3无头_取渲染帧数', runtimeName: 'CEF3无头_取渲染帧数', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'longLong' },
+      { command: 'CEF3无头_导航', runtimeName: 'CEF3无头_导航', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3无头_是否加载中', runtimeName: 'CEF3无头_是否加载中', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'int' },
+      { command: 'CEF3无头_等待加载完成', runtimeName: 'CEF3无头_等待加载完成', parameters: [{ name: '实例编号', type: 'int' }, { name: '超时毫秒', type: 'int' }], returnType: 'int' },
+      { command: 'CEF3无头_取标题', runtimeName: 'CEF3无头_取标题', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3无头_取地址', runtimeName: 'CEF3无头_取地址', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3无头_取主框架', runtimeName: 'CEF3无头_取主框架', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'longLong' },
+      { command: 'CEF3无头_取浏览器句柄', runtimeName: 'CEF3无头_取浏览器句柄', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'longLong' },
+      { command: 'CEF3无头_执行JS', runtimeName: 'CEF3无头_执行JS', parameters: [{ name: '实例编号', type: 'int' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3无头_取页面文本', runtimeName: 'CEF3无头_取页面文本', parameters: [{ name: '实例编号', type: 'int' }, { name: '超时毫秒', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3无头_取页面源码', runtimeName: 'CEF3无头_取页面源码', parameters: [{ name: '实例编号', type: 'int' }, { name: '超时毫秒', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3无头_取事件JSON', runtimeName: 'CEF3无头_取事件JSON', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3无头_关闭', runtimeName: 'CEF3无头_关闭', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'int' },
       { command: 'CEF3_创建区域', runtimeName: 'CEF3_创建区域', parameters: [{ name: '实例编号', type: 'int' }, { name: '左', type: 'int' }, { name: '顶', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3会话_取上下文实例', runtimeName: 'CEF3会话_取上下文实例', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'longLong', encoding: 'wide' },
       { command: 'CEF3_设置用户代理', runtimeName: 'CEF3_设置用户代理', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_设置用户代理(浏览器1, "Mozilla/5.0 (store-A)")' },
@@ -1100,6 +1196,12 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_取资源地址', runtimeName: 'CEF3_取资源地址', parameters: [{ name: '相对路径', type: 'wideString' }], returnType: 'wideString', encoding: 'wide', example: '局部 文本型 地址 = CEF3_取资源地址("index.html")\nCEF3_导航(浏览器1, 地址)' },
       { command: 'CEF3_设置缓存目录', runtimeName: 'CEF3_设置缓存目录', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_设置代理', runtimeName: 'CEF3_设置代理', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_设置全局代理', runtimeName: 'CEF3_设置全局代理', parameters: [{ name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_清除全局代理', runtimeName: 'CEF3_清除全局代理', parameters: [], returnType: 'int' },
+      { command: 'CEF3_取全局代理', runtimeName: 'CEF3_取全局代理', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_取实例代理', runtimeName: 'CEF3_取实例代理', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_设置代理认证', runtimeName: 'CEF3_设置代理认证', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_设置实例代理认证', runtimeName: 'CEF3_设置实例代理认证', parameters: [{ name: '实例编号', type: 'int' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_创建', runtimeName: 'CEF3_创建', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_执行消息循环工作', runtimeName: 'LB_CEF3_DoMessageLoopWork', parameters: [], returnType: 'void' },
       { command: 'CEF3_关闭', runtimeName: 'CEF3_关闭', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
@@ -1167,7 +1269,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.fbro.browser',
     name: 'FBro指纹浏览器模块',
-    version: '2.8.0',
+    version: '2.9.0',
     category: '界面',
     description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。',
     author: 'LingBuilder',
@@ -1253,6 +1355,16 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'FBro_取附加信息JSON', aliases: ['LB_FBro_GetBrowserExtraInfoJson'], signature: 'FBro_取附加信息JSON(控件名)', description: '返回浏览器创建期附加信息字典的 UTF-16 JSON；未设置时返回 {}。', insertText: 'FBro_取附加信息JSON($1)', returnType: '文本型' },
         { name: 'FBro_后台创建', aliases: ['LB_FBro_CreateBackground'], signature: 'FBro_后台创建(地址, 缓存目录, 附加信息JSON)', description: '创建无窗口承载的后台浏览器实例并返回实例句柄；事件照常分发，可用 FBro事件_* 与句柄命令操作。附加信息 JSON 传空跳过。', insertText: 'FBro_后台创建("https://www.baidu.com", "", "")', returnType: '整数型' },
         { name: 'FBro_取启动命令行', aliases: ['LB_FBro_GetStartupCommandLine'], signature: 'FBro_取启动命令行()', description: '返回初始化时按控件启动开关构建的官方命令行文本；未启用任何开关时为空。', insertText: 'FBro_取启动命令行()', returnType: '文本型' },
+        { name: 'FBro_设置启动开关JSON', aliases: ['LB_FBro_SetStartupSwitches'], signature: 'FBro_设置启动开关JSON(开关JSON)', description: '声明进程级 CEF 启动命令行开关：开关只在浏览器初始化前的 OnBeforeCommandLineProcessing 应用一次，因此本命令必须写成调用处的字面 JSON 文本，生成器把它烘焙进初始化代码（与 FBro_启用无头模式 同范式）；运行期调用不改变进程状态，返回 1 表示本次声明已烘焙生效、0 表示未烘焙。可用键（值只能是 true/false）：disableGpu、disableGpuCache、disableGpuBlockList、enableMediaStream、enableSpeechInput、enableAutoplay、headless、enableCrossFrame（官方跨域模式，跨框架/跨域操作）、disableProxy；白名单外的键或非法 JSON 会在生成前中文阻断，禁止借本命令传任意 Chromium 开关。设计器 FBroBrowser 控件的同名启动开关属性是同一份配置的图形入口，两者冲突时以本命令的字面声明为准。作用范围红线：9 个键**仅进程内模式生效**（独立进程 Host 由零参数启动、开关未透传），且开关是进程级的——放开后本进程所有进程内实例都受影响，跨域只在受控内网或自有页面使用；跨内核选型见「跨域/同源策略放开三内核选型」：CEF3 有逐条跨域白名单命令，EdgeView 用创建期属性/环境变量开关。', insertText: 'FBro_设置启动开关JSON("{\\"enableCrossFrame\\":true}")', returnType: '整数型' },
+        { name: 'FBro_启用无头模式', aliases: [], signature: 'FBro_启用无头模式()', description: '声明本程序以无头模式启动：该开关是 CEF 进程级启动命令行开关，生成器在生成期烘焙进初始化代码（必须在 CEF 初始化前生效，运行期调用点不改变进程状态），返回 1 表示已烘焙无头模式、0 表示未启用。无头模式下本进程所有进程内浏览器均无窗口渲染，禁止与可见 FBroBrowser 控件混用；无窗口创建浏览器请用 FBro_后台创建。', insertText: 'FBro_启用无头模式()', returnType: '整数型' },
+        { name: 'FBro_实例导航', signature: 'FBro_实例导航(实例句柄, 地址)', description: '让 FBro_后台创建 返回的后台实例句柄直接导航，返回桥接成功码；不依赖控件名与消息泵，控制台无头场景可用。', insertText: 'FBro_实例导航($1, "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'FBro_实例等待加载超时', signature: 'FBro_实例等待加载超时(实例句柄, 超时毫秒)', description: '轮询等待后台实例加载完成，成功返回 1、超时或句柄无效返回 0；控制台等无消息循环场景同样可用，超时上限 600000 毫秒。', insertText: 'FBro_实例等待加载超时($1, 15000)', returnType: '整数型' },
+        { name: 'FBro_实例执行JS', signature: 'FBro_实例执行JS(实例句柄, 脚本)', description: '在后台实例句柄上同步执行 JavaScript 并返回 UTF-16 结果文本；建议先 FBro_实例等待加载超时 再取 document.title、location.href 等。', insertText: 'FBro_实例执行JS($1, "document.title")', returnType: '文本型' },
+        { name: 'FBro_实例是否存活', signature: 'FBro_实例是否存活(实例句柄)', description: '返回后台实例句柄是否仍存活；已关闭或句柄无效返回 0。', insertText: 'FBro_实例是否存活($1)', returnType: '整数型' },
+        { name: 'FBro_实例关闭', signature: 'FBro_实例关闭(实例句柄)', description: '关闭并销毁 FBro_后台创建 建立的后台实例；这是进程内最后一个浏览器时桥接层会随之收尾。', insertText: 'FBro_实例关闭($1)', returnType: '整数型' },
+        { name: 'FBro_实例绑定事件', signature: 'FBro_实例绑定事件(实例句柄, 事件名, &处理器)', description: '窗口程序为后台实例句柄绑定中文事件处理器（事件经属窗消息泵派发）；控制台程序没有消息泵，处理器不会触发，请改用 FBro_实例等待加载超时 与 FBro_实例执行JS 同步读取。', insertText: 'FBro_实例绑定事件($1, "LoadEnd", &$2)', returnType: '整数型' },
+        { name: 'FBro_实例取最近事件', signature: 'FBro_实例取最近事件(实例句柄)', description: '返回后台实例句柄最近一次已派发事件的事件名；无事件记录返回空文本。', insertText: 'FBro_实例取最近事件($1)', returnType: '文本型' },
+        { name: 'FBro_实例取事件数据', signature: 'FBro_实例取事件数据(实例句柄)', description: '返回后台实例句柄最近一次事件的 data 文本（标题、地址、错误说明等随事件而定）；无事件记录返回空文本。', insertText: 'FBro_实例取事件数据($1)', returnType: '文本型' },
         { name: 'FBro_启用JS扩展', aliases: ['LB_FBro_EnableJsQuery'], signature: 'FBro_启用JS扩展(查询函数名, 取消函数名)', description: '注册页面调用原生函数通道，可多次调用注册多条通道（如 cefQuery 与 cefQuerytest），全部通道共用同一个 OnQuery 处理器。页面执行 查询函数名(请求文本) 触发 OnQuery 事件：用 FBro_取事件字段 读 request，用 FBro事件_完成延续 回传 {"success":true,"result":"..."} 或 {"success":false,"error":"..."}。必须在首个浏览器初始化前调用；窗口程序建议改用 FBroBrowser 控件属性 jsQueryFunctions（格式 cefQuery,cefQueryCancel;cefQuerytest,cefQueryCanceltest）在生成期自动注册。', insertText: 'FBro_启用JS扩展("cefQuery", "cefQueryCancel")', returnType: '整数型' },
         { name: '浏览器管理器_初始化', signature: '浏览器管理器_初始化(页面选项卡, 实例列表, 工作区键)', description: '绑定普通 Win32 隐藏表头选项卡和列表框，恢复独立实例并为每个实例启动一个 FBro Host。', insertText: '浏览器管理器_初始化($1, $2, "$3")', returnType: '整数型' },
         { name: '浏览器管理器_绑定地址栏', signature: '浏览器管理器_绑定地址栏(地址控件)', description: '绑定当前窗口文本框；网页地址事件和实例切换会直接同步真实当前地址。', insertText: '浏览器管理器_绑定地址栏($1)', returnType: '逻辑型' },
@@ -1295,7 +1407,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'FBro_关闭全部区域', signature: 'FBro_关闭全部区域()', description: '关闭并销毁全部由 FBro_创建区域 建出的动态内嵌区域实例，返回关闭数量。', insertText: 'FBro_关闭全部区域()', returnType: '整数型' }
       ],
       types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
-      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }],
+      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }, { label: 'FBro 无头后台抓取（控制台/窗口通用）', insertText: 'FBro_启用无头模式()\n局部 长整数型 实例\n实例 = FBro_后台创建("https://www.baidu.com", "", "")\n调试输出("加载完成=", FBro_实例等待加载超时(实例, 15000))\n调试输出("标题=", FBro_实例执行JS(实例, "document.title"))\nFBro_实例关闭(实例)', description: '声明进程级无头模式后用后台实例句柄同步抓取页面（控制台无消息泵时的标准取数链路）；无头模式与进程内可见 FBroBrowser 控件互斥，设计器场景改用「FBro无头浏览器」组件。' }, { label: 'FBro 跨域前置开关与命令行回读', insertText: 'FBro_设置启动开关JSON("{\\"enableCrossFrame\\":true}")\nFBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://example.com")\n调试输出("命令行=", FBro_取启动命令行())', description: '跨源 iframe 读取前置：开关文本必须是调用处的字面 JSON（生成期烘焙进初始化，仅进程内模式生效），放开后本进程所有进程内实例都不再受同源限制，只在受控内网或自有页面使用；用 FBro_取启动命令行 回读实际生效命令行做正反对照，取值/填表走 FBro框架_* 与 FBro填表_*。' }, { label: 'FBro 动态内嵌多店铺区域', insertText: 'FBro_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".fbro-region/store-a", "", "")\nFBro_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".fbro-region/store-b", "http://127.0.0.1:7890", "")\n调试输出(FBro_取区域实例JSON())\nFBro_关闭全部区域()', description: '在普通 Win32 窗口客户区两个矩形各内嵌一个独立进程 FBro 浏览器（各自独立缓存/代理，不依赖 new_emoji），用 FBro_取区域实例JSON 枚举、FBro_关闭全部区域 回收。注意：用户代理参数只改 navigator.userAgent，不改出站 HTTP 头。' }],
       docs: [
         { title: 'FBro 事件与接口参考', path: 'docs/modules/fbro/README.md' },
         { title: 'FBro SDK 安装与环境检查', path: 'docs/modules/fbro/installation.md' },
@@ -1388,6 +1500,16 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'FBro_取附加信息JSON', runtimeName: 'FBro_取附加信息JSON', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'FBro_后台创建', runtimeName: 'FBro_后台创建', parameters: [{ name: '地址', type: 'wideString' }, { name: '缓存目录', type: 'wideString' }, { name: '附加信息JSON', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_取启动命令行', runtimeName: 'FBro_取启动命令行', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_设置启动开关JSON', runtimeName: 'FBro_设置启动开关JSON', parameters: [{ name: '开关JSON', type: 'wideString', description: '单层 JSON 文本，键限启动开关白名单、值只能是 true 或 false，例如 {"enableCrossFrame":true}；必须是调用处的字面文本，生成期烘焙进初始化。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_启用无头模式', runtimeName: 'FBro_启用无头模式', parameters: [], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_实例导航', runtimeName: 'FBro_实例导航', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_实例等待加载超时', runtimeName: 'FBro_实例等待加载超时', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '超时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_实例执行JS', runtimeName: 'FBro_实例执行JS', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_实例是否存活', runtimeName: 'FBro_实例是否存活', parameters: [{ name: '实例句柄', type: 'longLong' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_实例关闭', runtimeName: 'FBro_实例关闭', parameters: [{ name: '实例句柄', type: 'longLong' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_实例绑定事件', runtimeName: 'FBro_实例绑定事件', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_实例取最近事件', runtimeName: 'FBro_实例取最近事件', parameters: [{ name: '实例句柄', type: 'longLong' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_实例取事件数据', runtimeName: 'FBro_实例取事件数据', parameters: [{ name: '实例句柄', type: 'longLong' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'FBro_启用JS扩展', runtimeName: 'FBro_启用JS扩展', parameters: [{ name: '查询函数名', type: 'wideString' }, { name: '取消函数名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: '浏览器管理器_初始化', runtimeName: '浏览器管理器_初始化', parameters: [
         { name: '页面选项卡', type: 'controlRef', controlTypes: ['TabControl'], controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'nativeHandle' },
@@ -1609,3 +1731,29 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   HTTP_SERVER_MODULE,
   WEBSOCKET_SERVER_MODULE
 ].map(normalizeBuiltinControlReferences).map(ensureBuiltinX64Target).map(assertBuiltinParameterDescriptions);
+
+/**
+ * 无头命令成对门禁（加载期抛错，与参数说明门禁同一口径）：
+ * CEF3_HEADLESS_COMMAND_NAMES 的每条命令必须同时出现在 lingbuilder.cef3.browser 的
+ * contributes.commands 与 bindings.commands 里，首参必须是整数型「实例编号」，
+ * 任何参数都不得是 controlRef（无头实例没有控件宿主）。只登记一半会让补全给出
+ * 调用不上的命令、或让生成器产出清单里查不到的中文命令，二者都只能在运行期暴露。
+ */
+(() => {
+  const headless = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  const declared = new Set((headless?.contributes?.commands ?? []).map(item => item.name));
+  const bindings = headless?.bindings?.commands ?? [];
+  const problems: string[] = [];
+  for (const name of CEF3_HEADLESS_COMMAND_NAMES) {
+    if (!declared.has(name)) problems.push(`${name} 缺 contributes.commands 声明`);
+    const binding = bindings.find(item => item.command === name);
+    if (!binding) { problems.push(`${name} 缺 bindings.commands 映射`); continue; }
+    if (binding.parameters?.[0]?.name !== '实例编号' || binding.parameters[0].type !== 'int') {
+      problems.push(`${name} 的首参必须是整数型 实例编号`);
+    }
+    for (const parameter of binding.parameters ?? []) {
+      if (parameter.type === 'controlRef') problems.push(`${name} 的 ${parameter.name} 不得是 controlRef`);
+    }
+  }
+  if (problems.length) throw new Error(`CEF3 无头命令清单与绑定不成对或寻址口径不符：${problems.join('；')}`);
+})();

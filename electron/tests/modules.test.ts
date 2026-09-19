@@ -403,12 +403,26 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-19 再写回（FBro win32 动态内嵌区域，不依赖 new_emoji）：lingbuilder.fbro.browser 2.8.0
       // 新增 FBro_创建区域（9 参数：实例编号/左/顶/宽/高 int + 地址/缓存目录/代理地址/用户代理 wideString）、
       // FBro_取区域实例JSON（0 参数）、FBro_关闭全部区域（0 参数）。合计 +3 命令 +9 参数，无控件参数。
+      // 基线 2026-09-19 再写回（HTTP 客户端 2.1.0 Cookie 注入族）：lingbuilder.net.http-client 新增
+      // HTTP客户端_置Cookie（5 参数）、HTTP客户端_请求置Cookie（2 参数）、HTTP客户端_取CookieJSON（1 参数）、
+      // HTTP客户端_删除全部Cookie（1 参数）。合计 +4 命令 +9 参数，无控件参数；写回值按 HEAD+本批改动的隔离快照实算。
+      // 基线 2026-09-19 再写回（三浏览器内核填表/跨域/框架能力补齐）：CEF3 automation 子模块
+      // 新增 CEF3框架_* 25 条与 CEF3填表_*（写入族）12 条、CEF3平台_* 跨域白名单 3 条；
+      // EdgeView 新增 EdgeView填表_* 22 条与创建选项附加参数/跨域开关 4 条。控件参数新增
+      // 按 controlRef 声明的浏览器控件名；EdgeView创建选项_置/取附加参数 的
+      // 「附加浏览器启动参数」是 Chromium 命令行开关文本，进文本参数白名单。
+      // 基线 2026-09-20 再写回（FBro 启动开关批次4）：lingbuilder.fbro.browser 2.9.0 新增
+      // FBro_设置启动开关JSON（1 参数「开关JSON」，文本参数、非控件引用）与 FBroBrowser
+      // 「启用跨域模式/禁用代理」两个创建期属性；合计 +1 命令 +1 参数，控件引用数不变。
+      // 基线 2026-09-20 再写回（CEF3 无头浏览器 Task 6）：lingbuilder.cef3.browser 新增
+      // CEF3_创建无头浏览器 与 16 条 CEF3无头_* 实例编号命令（共 +17 命令、+29 参数）；
+      // 全部按「实例编号:int」寻址，不引入新的 controlRef，故控件引用计数不变。
       modules: 98,
-      commands: 3697,
-      parameters: 6454,
-      controlReferences: 1307,
-      commandDigest: 'b4f4cc58',
-      parameterDigest: 'dcf37715'
+      commands: 3806,
+      parameters: 6752,
+      controlReferences: 1340,
+      commandDigest: '82aa36af',
+      parameterDigest: 'df89bb47'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -2256,7 +2270,7 @@ test('FBro browser 2.5 keeps 2.1 submodules compatible with the v3 event core', 
     'lingbuilder.fbro.network',
     'lingbuilder.fbro.vip'
   ]));
-  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.8.0');
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.9.0');
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module => module.version === '2.1.0'));
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module =>
     module.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.fbro.browser'
@@ -2271,7 +2285,8 @@ test('FBro module family exposes one manager entry and atomically enables the st
   const family = getFbroFamilyModules(installed);
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
-  assert.equal(countModuleCommands(family), 679);
+  // 基线 2026-09-20 写回：FBro 批次4 新增 FBro_设置启动开关JSON（跨域/禁用代理等 9 键白名单）。
+  assert.equal(countModuleCommands(family), 692);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -3735,6 +3750,13 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(mainCpp.includes('#define LINGBUILDER_EDGEVIEW_MODULE'));
   assert.ok(mainCpp.includes('int EdgeView_创建实例(int instanceId'));
   assert.ok(mainCpp.includes('int EdgeView_创建区域(int instanceId'));
+  // C-2：EdgeView 区域/弹窗/实例尺寸按逻辑坐标（DIP）随窗口 DPI 缩放，不得把请求值直接当物理像素。
+  assert.ok(mainCpp.includes('ScaleForDpi(x, dpi_), ScaleForDpi(y, dpi_), ScaleForDpi(width, dpi_), ScaleForDpi(height, dpi_), hwnd_'));
+  assert.ok(mainCpp.includes('const UINT effectivePopupDpi = popupDpi ? popupDpi : dpi_;'));
+  assert.ok(mainCpp.includes('AdjustWindowRectForDpiValue(&windowRect, style, FALSE, 0, effectivePopupDpi);'));
+  assert.ok(mainCpp.includes('RECT windowRect = { 0, 0, ScaleForDpi(width, effectivePopupDpi), ScaleForDpi(height, effectivePopupDpi) };'));
+  assert.ok(mainCpp.includes('RECT bounds = { 0, 0, ScaleForDpi(width, effectiveDpi), ScaleForDpi(height, effectiveDpi) };'));
+  assert.equal(mainCpp.includes('RECT windowRect = { 0, 0, width, height };'), false);
   assert.ok(mainCpp.includes('std::map<int, std::shared_ptr<EdgeViewInstance>> edgeViews_'));
   assert.ok(mainCpp.includes('std::shared_ptr<EdgeViewTaskState> EdgeView任务_新建'));
   assert.ok(mainCpp.includes('控件已经关闭或重建，已拒绝迟到回调'));
@@ -3831,7 +3853,10 @@ test('CEF3 user documentation covers the unified event catalog and every public 
   // 两个事件条目与 CEF3_启用JS扩展 / CEF3_查询应答 / CEF3_查询应答失败 三条公开命令。
   assert.equal(CEF3_BROWSER_EVENTS.length, 98);
   // 2026-09-19 再写回：CEF3 多店铺能力对齐新增 CEF3_创建弹窗浏览器 / CEF3_创建区域 / CEF3_枚举实例JSON / CEF3_关闭全部实例 / CEF3会话_取上下文实例 / CEF3_设置用户代理 / CEF3_设置实例用户代理 / CEF3_取用户代理 / CEF3_取实例用户代理（9 条公开命令）。
-  assert.equal(publicCommands.length, 411);
+  // 2026-09-19 再写回：三内核填表/框架能力补齐给 CEF3 新增 CEF3框架_* 25 条、
+  // CEF3填表_*（写入族）12 条、CEF3平台_* 跨域白名单 3 条，公开命令 411 → 451；
+  // CEF3 无头浏览器（Task 6）再公开 17 条实例编号命令，451 → 468。
+  assert.equal(publicCommands.length, 468);
   const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
   assert.equal(threadEntries.length, 5);
   assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
@@ -3989,7 +4014,8 @@ test('FBro user documentation covers public events, classified slots and public 
   assert.equal(FBRO_EVENT_CATALOG.length, 174);
   assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
   assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 102);
-  assert.equal(publicCommands.length, 673);
+  // 基线 2026-09-20 写回：FBro 批次4 公开命令 682 → 683（新增 FBro_设置启动开关JSON）。
+  assert.equal(publicCommands.length, 683);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(
@@ -4489,14 +4515,29 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
 
   const httpCommands = httpManifest.contributes?.commands || [];
   const httpBindings = httpManifest.bindings?.commands || [];
-  assert.equal(httpManifest.version, '2.0.0');
-  assert.equal(HTTP_SERVER_COMMAND_SPECS.length, 48);
-  assert.equal(httpCommands.length, 48);
-  assert.equal(httpBindings.length, 48);
+  assert.equal(httpManifest.version, '2.1.0');
+  assert.equal(HTTP_SERVER_COMMAND_SPECS.length, 51);
+  assert.equal(httpCommands.length, 51);
+  assert.equal(httpBindings.length, 51);
   assert.deepEqual(new Set(httpCommands.map(item => item.name)), new Set(httpBindings.map(item => item.command)));
   assert.deepEqual(httpManifest.contributes?.types?.map(item => item.name), ['HTTP服务端', 'HTTP请求']);
-  assert.deepEqual(httpManifest.contributes?.docs, [{ title: 'HTTP 服务端模块 2.0 使用说明', path: 'docs/modules/http-server/README.md' }]);
+  assert.deepEqual(httpManifest.contributes?.docs, [{ title: 'HTTP 服务端模块使用说明', path: 'docs/modules/http-server/README.md' }]);
   assert.ok((await fs.readFile(path.join(process.cwd(), 'docs', 'modules', 'http-server', 'README.md'), 'utf8')).trim().length > 0);
+  // 静态路由与连接轮转：binding 参数形状与生成落点
+  const staticRouteBinding = httpBindings.find(item => item.command === 'HTTP_添加静态路由');
+  assert.deepEqual(staticRouteBinding?.parameters?.map(item => item.name), ['服务端', '方法', '路径模式', '响应内容', '内容类型']);
+  assert.equal(staticRouteBinding?.returnType, 'bool');
+  assert.equal(staticRouteBinding?.encoding, 'wide');
+  const staticFileBinding = httpBindings.find(item => item.command === 'HTTP_添加静态文件路由');
+  assert.deepEqual(staticFileBinding?.parameters?.map(item => item.name), ['服务端', '方法', '路径模式', '文件路径', '下载名称', '内容类型']);
+  const rotationBinding = httpBindings.find(item => item.command === 'HTTP_设置连接轮转');
+  assert.deepEqual(rotationBinding?.parameters?.map(item => item.type), ['HTTP服务端', 'int']);
+  assert.equal(rotationBinding?.encoding, 'raw');
+  for (const command of ['HTTP_添加静态路由', 'HTTP_添加静态文件路由', 'HTTP_设置连接轮转']) {
+    const spec = HTTP_SERVER_COMMAND_SPECS.find(item => item.name === command);
+    assert.ok(spec, `缺少命令规格：${command}`);
+    assert.ok(spec!.parameters.every(item => item.description.trim().length > 0), `${command} 参数说明不齐备`);
+  }
   ['HTTP_绑定请求处理器', 'HTTP_添加路由'].forEach(command => {
     const handler = httpBindings.find(item => item.command === command)?.parameters?.find(item => item.type === 'handler');
     assert.deepEqual(handler?.handlerSignature, { parameterTypes: [], returnType: '空' });
@@ -4531,6 +4572,9 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
       '        HTTP_配置服务(HTTP服务, "127.0.0.1", 8080, 4, 256)',
       '        HTTP_设置请求限制(HTTP服务, 64, 16, 30000)',
       '        HTTP_添加路由(HTTP服务, "GET", "/api/health", &处理健康检查)',
+      '        HTTP_添加静态路由(HTTP服务, "GET", "/api/data", "{\\"ok\\":1}", "application/json; charset=utf-8")',
+      '        HTTP_添加静态文件路由(HTTP服务, "GET", "/page", "site/index.html", "page.html", "text/html; charset=utf-8")',
+      '        HTTP_设置连接轮转(HTTP服务, 500)',
       '        HTTP_绑定请求处理器(HTTP服务, &处理未匹配请求)',
       '        HTTP_启动(HTTP服务)',
       '        局部 WebSocket服务端 服务 = WSS_创建服务()',
@@ -4577,6 +4621,9 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
   assert.ok(mainCpp.includes('bool WSS_配置服务(long long server'));
   assert.ok(mainCpp.includes('HTTP_配置服务(HTTP服务, L"127.0.0.1", 8080, 4, 256);'));
   assert.ok(mainCpp.includes('HTTP_添加路由(HTTP服务, L"GET", L"/api/health", L"处理健康检查");'));
+  assert.ok(mainCpp.includes('HTTP_添加静态路由(HTTP服务, L"GET", L"/api/data", L"{\\"ok\\":1}", L"application/json; charset=utf-8");'));
+  assert.ok(mainCpp.includes('HTTP_添加静态文件路由(HTTP服务, L"GET", L"/page", L"site/index.html", L"page.html", L"text/html; charset=utf-8");'));
+  assert.ok(mainCpp.includes('HTTP_设置连接轮转(HTTP服务, 500);'));
   assert.ok(mainCpp.includes('HTTP_发送JSON(请求, L"{\\"ok\\":true}", 200);'));
   assert.ok(mainCpp.includes('WSS_配置服务(服务, L"127.0.0.1", 18080, 128);'));
   assert.ok(mainCpp.includes('WSS_绑定消息处理器(服务, L"收到消息");'));
@@ -5288,6 +5335,165 @@ test('CEF3_取资源地址 同时登记清单与 binding，并在生成的 C++ �
   assert.match(cpp, /CEF3_导航\(L"浏览器1", LingCppWideArg\(地址\)\);/);
 });
 
+test('CEF3框架_* 命令族登记清单与 binding，并在生成的 C++ 里有真实运行时实现', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.automation');
+  assert.ok(manifest);
+
+  const contributed = (manifest.contributes?.commands || []).filter(item => item.name.startsWith('CEF3框架_'));
+  const bound = (manifest.bindings?.commands || []).filter(item => item.command.startsWith('CEF3框架_'));
+  assert.ok(contributed.length >= 25, 'CEF3框架_* 必须成套公开，不得只补若干条');
+  assert.deepEqual(
+    contributed.map(item => item.name).sort(),
+    bound.map(item => item.command).sort(),
+    '每条 CEF3框架_* 都必须有确定性 binding，否则后端命令契约会阻断生成'
+  );
+  const controlNameCommands = ['CEF3框架_取主框架', 'CEF3框架_取焦点框架', 'CEF3框架_按标识取框架', 'CEF3框架_按名称取框架',
+    'CEF3框架_取框架数量', 'CEF3框架_取标识列表JSON', 'CEF3框架_取名称列表JSON'];
+  for (const name of controlNameCommands) {
+    const binding = bound.find(item => item.command === name);
+    assert.equal(binding?.parameters?.[0]?.type, 'controlRef', `${name} 的控件参数必须是 controlRef`);
+  }
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.automation',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3自动化模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    局部 长整数型 主框架 = CEF3框架_取主框架(浏览器1)\n    局部 长整数型 子框架 = CEF3框架_按名称取框架(浏览器1, "login")\n    CEF3框架_执行JS(子框架, "document.title = \\"改过的标题\\";", "", 1)\n    CEF3框架_载入地址(主框架, "https://example.com")\n    CEF3框架_释放(子框架)\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // 契约声称支持就必须有真实运行时符号：每个包装都必须落到 LB_CEF3_* 桥导出。
+  assert.match(cpp, /long long CEF3框架_取主框架\(const wchar_t\* controlName\)/);
+  assert.match(cpp, /long long CEF3框架_按名称取框架\(const wchar_t\* controlName, const std::wstring& name\)/);
+  assert.match(cpp, /int CEF3框架_执行JS\(long long frameHandle, const std::wstring& code, const std::wstring& scriptUrl, int startLine\)/);
+  assert.match(cpp, /LB_CEF3_BrowserGetFrameByName/);
+  assert.match(cpp, /LB_CEF3_BrowserGetFrameIdentifiers/);
+  assert.match(cpp, /LB_CEF3_FrameExecuteJavaScript/);
+  assert.match(cpp, /LB_CEF3_FrameIsMain/);
+  assert.match(cpp, /CEF3_框架文本列表转JSON/);
+  // 主框架没有专用桥导出，必须由标识枚举 + 主框架判定推导，不能伪造句柄。
+  assert.match(cpp, /if \(LB_CEF3_FrameIsMain\(frame\)\) return static_cast<long long>\(frame\);/);
+  // 调用点：控件名走宽字符、框架句柄走整数。
+  assert.match(cpp, /CEF3框架_按名称取框架\((L"浏览器1", L"login"\));/);
+});
+
+test('CEF3填表_写入命令族登记清单与 binding，并生成按帧执行的真实运行时', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.automation');
+  assert.ok(manifest);
+
+  const writeCommands = ['点击元素', '滚动到元素', '聚焦元素', '赋值',
+    '置选择框', '置选择项', '置内文本', '置外文本',
+    '置内代码', '置外代码', '置属性', '触发事件']
+    .map(suffix => 'CEF3填表_' + suffix);
+
+  const contributed = (manifest.contributes?.commands || []).filter(item => item.name.startsWith('CEF3填表_'));
+  const bound = (manifest.bindings?.commands || []).filter(item => item.command.startsWith('CEF3填表_'));
+  assert.deepEqual(contributed.map(item => item.name).sort(), writeCommands.slice().sort(),
+    '当前框架桥只支持主帧带结果求值，填表族只能先入账写类命令，不得登记无法真实工作的读取命令');
+  assert.deepEqual(contributed.map(item => item.name).sort(), bound.map(item => item.command).sort());
+  assert.ok(contributed.every(item => item.visibility !== 'advanced'), '填表命令面向业务用户，必须进常规补全');
+
+  const assign = bound.find(item => item.command === 'CEF3填表_赋值');
+  assert.deepEqual(assign?.parameters?.map(parameter => parameter.type),
+    ['longLong', 'wideString', 'int', 'wideString']);
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.automation',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3自动化模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    局部 长整数型 主框架 = CEF3框架_取主框架(浏览器1)\n    CEF3填表_赋值(主框架, "input[name=user]", 0, "张三")\n    CEF3填表_置选择框(主框架, "#agree", 0, 真)\n    CEF3填表_触发事件(主框架, "input#kw", 0, "keydown", 13)\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // 忘记调用帧句柄就等于只改了主帧：写入必须落到 LB_CEF3_FrameExecuteJavaScript。
+  assert.match(cpp, /CEF3填表_赋值\(long long frameHandle, const std::wstring& selector, int index, const std::wstring& value\)/);
+  assert.ok(cpp.includes("CEF3_填表_执行(frameHandle, L\"setValue\", selector, index, value, L\"\");"), "填表写入必须经共享派发器落到目标框架");
+  assert.ok(cpp.includes("CEF3_填表_执行(frameHandle, L\"dispatchEvent\", selector, index, eventName, std::to_wstring(keyCode));"), "合成事件必须转发事件名与按键代码");
+  assert.match(cpp, /LB_CEF3_FrameExecuteJavaScript\(frame, call\.c_str\(\), L"", 1\)/);
+  // 助手脚本必须是可调用函数且转义安全（不得把真实换行塞进 C 字面量）。
+  assert.match(cpp, /static const wchar_t\* CEF3_填表助手脚本\(\)/);
+  assert.match(cpp, /function lbTianBiao\(op, selector, index, a, b\)/);
+  assert.ok(!/CEF3_填表助手脚本\(\) \{[\s\S]{0,400}?\n\s+var list;/.test(cpp),
+    '助手脚本里的换行必须转义为 \\n，不能出现跨行 C 字符串');
+  assert.match(cpp, /CEF3填表_赋值\(主框架, L"input\[name=user\]", 0, L"张三"\);/);
+});
+
+test('CEF3 跨域白名单三条命令登记清单、binding 与生成期运行时', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.platform');
+  assert.ok(manifest);
+  for (const name of ['CEF3平台_添加跨域白名单', 'CEF3平台_删除跨域白名单', 'CEF3平台_清空跨域白名单']) {
+    const contributed = manifest.contributes?.commands?.find(item => item.name === name);
+    assert.ok(contributed, `${name} 必须登记到 contributes.commands`);
+    assert.equal(contributed.visibility, 'advanced', `${name} 属于安全策略类命令，默认不进常规补全`);
+    const binding = manifest.bindings?.commands?.find(item => item.command === name);
+    assert.ok(binding, `${name} 必须有确定性 binding`);
+  }
+  const addBinding = manifest.bindings?.commands?.find(item => item.command === 'CEF3平台_添加跨域白名单');
+  assert.deepEqual(
+    addBinding?.parameters?.map(parameter => parameter.type),
+    ['wideString', 'wideString', 'wideString', 'bool']
+  );
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.platform',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3平台工具模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3平台_添加跨域白名单("https://a.example.com", "https", "b.example.com", 1)\n    CEF3平台_清空跨域白名单()\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /int CEF3平台_添加跨域白名单\(const wchar_t\* sourceOrigin, const wchar_t\* targetProtocol,/);
+  assert.match(cpp, /LB_CEF3_AddCrossOriginWhitelistEntry/);
+  assert.match(cpp, /LB_CEF3_ClearCrossOriginWhitelist/);
+});
+
 test('CEF3_读资源响应正文 生成事件上下文约束和 Bridge 调用', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
   assert.ok(manifest);
@@ -5370,6 +5576,33 @@ test('CEF3 JS 交互：cefQuery 通道初始化前注册、查询事件派发与
     cpp.indexOf('LB_CEF3_EnableJsQuery(queryName.c_str(), cancelName.c_str())')
       < cpp.indexOf('LB_CEF3_Initialize(&bridgeConfig)'),
     'JS 交互通道注册必须出现在 LB_CEF3_Initialize 之前');
+  // 多通道：属性里多条通道以 ';' 分隔，跨控件重名通道只注册一次。
+  const multiChannelProject: LingWindowProject = {
+    ...project,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible',
+        properties: { url: 'about:blank', jsQueryFunctions: 'cefQuery,cefQueryCancel;secondQuery,secondQueryCancel' },
+        events: {}
+      }, {
+        id: 'cef2', type: 'CefBrowser', name: '浏览器2', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible',
+        properties: { url: 'about:blank', jsQueryFunctions: 'secondQuery,secondQueryCancel;thirdQuery' },
+        events: {}
+      }]
+    }]
+  };
+  const multiCpp = generateLingCppNativeWin32Project(
+    multiChannelProject, { lingCppSourceCode: source, enabledModules: [module] }
+  ).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(multiCpp, /jsQueryFunctions \+= records\[0\]\[4\];/);
+  assert.match(multiCpp, /std::vector<std::wstring> registeredChannels;/);
+  assert.match(multiCpp, /if \(registered == queryName\) \{ duplicate = true; break; \}/);
+
   // 应答命令生成成员函数并调用真实桥导出。
   assert.match(cpp, /int CEF3_查询应答\(const wchar_t\* controlName, const wchar_t\* queryId, const wchar_t\* resultText\)/);
   assert.match(cpp, /int CEF3_查询应答失败\(const wchar_t\* controlName, const wchar_t\* queryId, int errorCode, const wchar_t\* errorText\)/);
@@ -5384,6 +5617,11 @@ test('CEF3 JS 交互：cefQuery 通道初始化前注册、查询事件派发与
   assert.match(bridgeSource, /int LB_CEF3_CALL LB_CEF3_JsQueryRespond/);
   assert.match(bridgeSource, /CefMessageRouterRendererSide::Create/);
   assert.match(bridgeSource, /CefMessageRouterBrowserSide::Handler/);
+  // 多通道：通道配置是向量、命令行用 ';' 串联，对外查询ID 由桥全局递增分配（不重号）。
+  assert.match(bridgeSource, /std::vector<JsQueryChannelConfig> g_js_query_channels;/);
+  assert.match(bridgeSource, /kJsQueryChannelSeparator/);
+  assert.match(bridgeSource, /g_js_query_sequence\.fetch_add\(1\)/);
+  assert.match(bridgeSource, /\\"channelIndex\\"/);
   // 查询事件经受管通道派发，且取消通知派发「查询已取消」。
   assert.match(bridgeSource, /L"查询请求"/);
   assert.match(bridgeSource, /OnQueryCanceled/);
@@ -6157,7 +6395,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.7.0', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.9.0', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -6266,7 +6504,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.7.0',
+      bridgeVersion: '2.9.0',
       files: fbroFiles
     })),
     writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),

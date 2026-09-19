@@ -2,7 +2,7 @@
 
 更新时间：2026-09-18
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **98 个内置模块、3697 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **98 个内置模块、3806 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -169,7 +169,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已封装 | `lingbuilder.new_emoji.fbro-shell` | new_emoji FBro x64 多标签浏览器外壳模块 | 50 |
  已有 | `lingbuilder.threading` | 多线程模块 | 66 |
 | 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
-| 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.0（受管多连接 HTTP/1.1、路由与完整请求/响应） | 48 |
+| 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.1（受管多连接 HTTP/1.1、动态/静态路由、连接轮转与完整请求/响应） | 51 |
 | 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |
 
 除 EdgeView 原本已有 x64 target 外，其余仅声明 Win32 的内置系统模块现在会从同一份内置 manifest 自动生成等价 x64 target。外部 `.lbmod` 不使用此自动补齐规则，仍必须自行提供精确架构产物。

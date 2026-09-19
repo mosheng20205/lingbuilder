@@ -1,4 +1,4 @@
-import { LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import { createProjectDllDeclarationModule, buildProjectDllMemoryResourceLines, collectProjectDllMissingSystemAliasDiagnostics, getProjectDllMemoryLibrarySpecs } from '../lingCpp/projectDllCommandService';
@@ -31,7 +31,7 @@ import {
 } from '../modules/modulePublicTypeService';
 import { getEnabledModuleConstantDiagnostics, getModuleConstants, type LingCppModuleConstant } from '../modules/moduleConstantService';
 import { parseLingCppControlFlowLine } from '../lingCpp/controlFlow';
-import { parseLingCppTextBlockStatement } from '../lingCpp/textBlock';
+import { parseLingCppTextBlockStatement, scanLingCppTextBlockRanges, collectLingCppTextBlockOpaqueLines } from '../lingCpp/textBlock';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from '../lingCpp/parameterTypeService';
 import { createProjectGlobalContext, getProjectGlobalDiagnostics, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, getProjectDataTypeDiagnostics, isProjectDataTypesFilePath, sortProjectDataTypes } from '../lingCpp/projectDataTypeService';
@@ -378,6 +378,34 @@ export function generateLingCppNativeWin32Project(
     ? ['当前窗口使用 new_emoji 后端，但项目尚未启用 lingbuilder.new_emoji.ui 模块。']
     : [];
   const backendCommandDiagnostics = getUiBackendCommandDiagnostics(selectedBackendId, aggregate.program, enabledModules);
+  // FBro 无头模式门禁：headless 是 CEF 进程级启动命令行开关，与同进程可见浏览器互斥，
+  // 且只有标准 Win32 后端的生成管线实现无头资源创建；控制台不创建设计器窗口。
+  const fbroBrowserModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  const fbroHeadlessResources = effectiveProject.resources
+    ?.filter((resource): resource is LingFbroHeadlessResource => resource.type === 'FBroHeadlessBrowser') || [];
+  const fbroHeadlessRequested = fbroBrowserModuleEnabled && (
+    fbroHeadlessResources.length > 0 || programRequestsFbroHeadless(aggregate.program.source)
+  );
+  const fbroVisibleControlNames = effectiveProject.windows.flatMap(window => window.controls
+    .filter(control => control.type === 'FBroBrowser'
+      // 进程级 headless 只影响本进程的进程内 CEF；独立进程模式浏览器渲染在 Host 进程，不受影响。
+      && (!control.properties?.processMode || control.properties.processMode === 'in-process'))
+    .map(control => `${window.title || window.className}「${control.name}」`));
+  const fbroHeadlessConflictDiagnostics: string[] = [];
+  // FBro 启动开关的 .lcpp 字面声明（FBro_设置启动开关JSON）：JSON 形态或键不合规必须
+  // 生成前阻断，不能静默丢掉用户声明的开关——那等于把「勾了没生效」留给运行时去猜。
+  const fbroStartupSwitchProblems = fbroBrowserModuleEnabled
+    ? programFbroStartupSwitchDeclarations(aggregate.program.source).problems
+    : [];
+  if (fbroHeadlessRequested && usesNewEmojiDesigner) {
+    fbroHeadlessConflictDiagnostics.push('FBro 无头模式目前仅支持标准 Win32 后端：请把该窗口的设计后端切回普通 Win32，或移除「FBro无头浏览器」组件与 FBro_启用无头模式() 调用。');
+  }
+  if (fbroHeadlessRequested && outputKind === 'console-application' && fbroHeadlessResources.length > 0) {
+    fbroHeadlessConflictDiagnostics.push('控制台项目不创建设计器窗口，「FBro无头浏览器」资源不会被实例化；请在“启动”子程序里调用 FBro_启用无头模式()，并用 FBro_后台创建(地址, 缓存目录, 附加信息JSON) 建立后台浏览器。');
+  }
+  if (fbroHeadlessRequested && fbroVisibleControlNames.length > 0 && outputKind !== 'console-application') {
+    fbroHeadlessConflictDiagnostics.push(`FBro 无头模式与可见 FBroBrowser 控件进程级互斥：无头开关生效后本进程所有进程内浏览器都不再渲染窗口内容。项目同时声明了无头模式并存在可见控件 ${fbroVisibleControlNames.join('、')}；请删除 FBro_启用无头模式() 调用与「FBro无头浏览器」组件，或把需要界面的浏览器改为独立进程模式并移除无头声明。`);
+  }
   // EdgeView 无头资源提示：控制台不创建设计器窗口，组件不会被自动实例化，改走代码命令。
   const edgeViewHeadlessConsoleDiagnostics = outputKind === 'console-application' && (effectiveProject.resources
     ?.some(resource => resource.type === 'EdgeViewHeadlessBrowser') || false)
@@ -524,6 +552,8 @@ export function generateLingCppNativeWin32Project(
       ...sourceClassMismatchDiagnostic,
       ...moduleConflictDiagnostics,
       ...fbroCefCompatibilityDiagnostics,
+      ...fbroHeadlessConflictDiagnostics,
+      ...fbroStartupSwitchProblems,
       ...edgeViewHeadlessConsoleDiagnostics,
       ...moduleTargetDiagnostics,
       ...missingControlModuleDiagnostics,
@@ -547,7 +577,7 @@ export function generateLingCppNativeWin32Project(
       ...embeddedResourceWarnings,
       ...embeddedResourceBlockingDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics],
     sourceMap,
     files: [
       {
@@ -966,20 +996,190 @@ ${body}${returnLine}
 // 常量（与独立进程 Host 的 flag 16 语义一致）；端口为进程级全局，重复调用不再重复预留。
 type FbroStartupSwitchWindow = { controls: Array<{ type: string; properties?: Record<string, unknown> }> };
 
-/** 收集项目内 FBroBrowser 控件勾选的启动开关；无任何开关时返回空串。 */
-function collectFbroStartupSwitchesJson(windows: FbroStartupSwitchWindow[]): string {
+/**
+ * FBro 进程内启动开关白名单（与桥内 kStartupSwitchKeys 一一对应，`tests/modules.test.ts`
+ * 有双向漂移门禁）。headless 不在这里：它由「FBro无头浏览器」资源或 .lcpp 字面
+ * FBro_启用无头模式() 决定，且与可见进程内控件互斥，见 fbroHeadlessConflictDiagnostics。
+ */
+export const FBRO_STARTUP_SWITCH_KEYS = ['disableGpu', 'disableGpuCache', 'disableGpuBlockList',
+  'enableMediaStream', 'enableSpeechInput', 'enableAutoplay', 'enableCrossFrame', 'disableProxy'] as const;
+export type FbroStartupSwitchKey = typeof FBRO_STARTUP_SWITCH_KEYS[number];
+
+/** 收集项目内启动开关：属性勾选为基准，.lcpp 字面声明同键覆盖（可把属性项显式关掉）。 */
+function collectFbroStartupSwitchesJson(windows: FbroStartupSwitchWindow[], headlessBaked = false,
+  declaredSwitches: Partial<Record<FbroStartupSwitchKey, boolean>> = {}): string {
   const switches: Record<string, boolean> = {};
   for (const window of windows) {
     for (const control of window.controls) {
       if (control.type !== 'FBroBrowser') continue;
       const properties = control.properties || {};
-      for (const key of ['disableGpu', 'disableGpuCache', 'disableGpuBlockList',
-        'enableMediaStream', 'enableSpeechInput', 'enableAutoplay'] as const) {
+      for (const key of FBRO_STARTUP_SWITCH_KEYS) {
         if (properties[key] === true) switches[key] = true;
       }
     }
   }
+  if (headlessBaked) switches.headless = true;
+  for (const key of FBRO_STARTUP_SWITCH_KEYS) {
+    if (typeof declaredSwitches[key] === 'boolean') switches[key] = declaredSwitches[key];
+  }
   return Object.keys(switches).length ? JSON.stringify(switches) : '';
+}
+
+/**
+ * 扫描 .lcpp 里 `FBro_设置启动开关JSON("…")` 的字面声明并按键并入烘焙。
+ * 启动开关是 CEF 进程级命令行开关，只在 OnBeforeCommandLineProcessing 读取一次，
+ * 运行期调用改变不了任何进程状态，所以这里把源码里的字面量提升到初始化之前烘焙
+ *（与 FBro_启用无头模式 同一范式）。字符串遮蔽只用于判定「命令名不在字符串/注释里」，
+ * 载荷仍按原行同偏移取出（遮蔽按等长空格替换，位置守恒）。
+ * JSON 形态或键不合规一律进生成前中文阻断，禁止静默丢掉用户声明的开关。
+ */
+function programFbroStartupSwitchDeclarations(source: string): {
+  switches: Partial<Record<FbroStartupSwitchKey, boolean>>;
+  problems: string[];
+} {
+  const switches: Partial<Record<FbroStartupSwitchKey, boolean>> = {};
+  const problems: string[] = [];
+  const lines = source.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
+  const allowedKeys = new Set<string>([...FBRO_STARTUP_SWITCH_KEYS, 'headless']);
+  lines.forEach((line, index) => {
+    const lineNo = index + 1;
+    if (opaqueLines.has(lineNo)) return;
+    const code = line.replace(/\/\/.*$/u, '');
+    if (code.trimStart().startsWith('@')) return;
+    let cursor = 0;
+    for (;;) {
+      const openQuote = findFbroStartupSwitchCall(code, cursor);
+      if (openQuote < 0) break;
+      const closing = findLingCppStringLiteralEnd(code, openQuote);
+      if (closing < 0) {
+        problems.push(`第 ${lineNo} 行：FBro_设置启动开关JSON 的开关文本没有闭合引号。`);
+        break;
+      }
+      cursor = closing + 1;
+      const jsonText = decodeLingCppStringBody(code.slice(openQuote + 1, closing));
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch {
+        problems.push(`第 ${lineNo} 行：FBro_设置启动开关JSON 的开关文本不是合法 JSON；形态必须是 {"键":true|false}。`);
+        continue;
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        problems.push(`第 ${lineNo} 行：FBro_设置启动开关JSON 只接受单层 JSON 对象 {"键":true|false}。`);
+        continue;
+      }
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (!allowedKeys.has(key)) {
+          problems.push(`第 ${lineNo} 行：FBro 启动开关「${key}」不在白名单内；可用开关：${[...allowedKeys].join('、')}。`);
+          continue;
+        }
+        if (typeof value !== 'boolean') {
+          problems.push(`第 ${lineNo} 行：FBro 启动开关「${key}」的值必须是 true 或 false。`);
+          continue;
+        }
+        switches[key as FbroStartupSwitchKey] = value;
+      }
+    }
+  });
+  return { switches, problems };
+}
+
+/** 解释 .lcpp 字符串体：单趟扫描处理 \" \\ \n \r \t，其余反斜杠原样保留。 */
+function decodeLingCppStringBody(body: string): string {
+  let result = '';
+  for (let index = 0; index < body.length; ++index) {
+    const char = body[index];
+    if (char !== '\\') { result += char; continue; }
+    const next = body[index + 1];
+    if (next === undefined) { result += char; continue; }
+    index += 1;
+    if (next === 'n') result += '\n';
+    else if (next === 'r') result += '\r';
+    else if (next === 't') result += '\t';
+    else result += next;
+  }
+  return result;
+}
+
+/**
+ * 在剔掉行注释后的代码里找 `FBro_设置启动开关JSON(` 后面那个字符串字面量的起始引号，
+ * 单趟扫描自己跳过字符串（不复用等长遮蔽：遮蔽的状态机在嵌套引号/转义下会与真实
+ * 字符串边界脱节，把被字符串包住的命令名当成真调用）。找不到返回 -1。
+ */
+function findFbroStartupSwitchCall(code: string, from: number): number {
+  const commandName = 'FBro_设置启动开关JSON';
+  for (let index = from; index < code.length; ++index) {
+    const char = code[index];
+    if (char === '"' || char === '“') {
+      const end = findLingCppStringLiteralEnd(code, index);
+      if (end < 0) return -1;
+      index = end;
+      continue;
+    }
+    if (!code.startsWith(commandName, index)) continue;
+    const before = index === 0 ? '' : code[index - 1];
+    if (/[0-9A-Za-z_$]/u.test(before)) continue;
+    const rest = code.slice(index + commandName.length);
+    const openQuote = /^\s*\(\s*["“]/u.exec(rest);
+    if (!openQuote) continue;
+    return index + commandName.length + openQuote[0].length - 1;
+  }
+  return -1;
+}
+
+/** 从引号起始位置找到同风格结束引号（支持 \\ 转义与中文引号），找不到返回 -1。 */
+function findLingCppStringLiteralEnd(text: string, openIndex: number): number {
+  const open = text[openIndex];
+  const close = open === '“' ? '”' : open;
+  for (let index = openIndex + 1; index < text.length; ++index) {
+    const char = text[index];
+    if (char === '\\') { index += 1; continue; }
+    if (char === close) return index;
+    if (char === '\n' || char === '\r') return -1;
+  }
+  return -1;
+}
+
+/** 项目内是否存在「FBro无头浏览器」设计器资源（Win32 后端生成期创建后台实例并烘焙 headless 开关）。 */
+function projectHasFbroHeadlessResources(project: LingWindowProject): boolean {
+  return (project.resources || []).some(resource => resource.type === 'FBroHeadlessBrowser');
+}
+
+/**
+ * 扫描 .lcpp 源码中的字面调用 `FBro_启用无头模式()`：与 collectEdgeViewApiUsage 同口径
+ * 跳过 @ 内嵌 C++ 行、字符串/注释与多行文本块不透明行。字面存在即生成期烘焙进程级
+ * 无头开关（运行期调用点只查询烘焙结果，不改变进程状态）。
+ */
+function programRequestsFbroHeadless(source: string): boolean {
+  const lines = source.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
+  const invocation = /(^|[^0-9A-Za-z_])FBro_启用无头模式\s*\(\s*\)(?![0-9A-Za-z_])/u;
+  return lines.some((line, index) => {
+    if (opaqueLines.has(index + 1)) return false;
+    const withoutComment = line.replace(/\/\/.*$/u, '');
+    if (withoutComment.trimStart().startsWith('@')) return false;
+    return invocation.test(maskLingCppStringLiterals(withoutComment));
+  });
+}
+
+/** 把双引号字符串内容替换为空格，保留引号占位，防止扫描命中字符串内的命令名。 */
+function maskLingCppStringLiterals(line: string): string {
+  let inString = false;
+  let escaped = false;
+  let result = '';
+  for (const char of line) {
+    if (inString) {
+      if (escaped) { escaped = false; result += ' '; continue; }
+      if (char === '\\') { escaped = true; result += ' '; continue; }
+      if (char === '"') { inString = false; result += '"'; continue; }
+      result += ' ';
+      continue;
+    }
+    if (char === '"') { inString = true; }
+    result += char;
+  }
+  return result;
 }
 
 /** 收集项目内进程内 FBroBrowser 控件声明的 JS 交互（cefQuery）通道，格式
@@ -998,7 +1198,7 @@ function collectFbroJsQueryFunctions(windows: FbroStartupSwitchWindow[]): string
   return '';
 }
 
-function generateFbroInProcessInitSnippet(reserveDebuggingPort: boolean, startupSwitchesJson = '', jsQueryFunctions = ''): string {
+function generateFbroInProcessInitSnippet(reserveDebuggingPort: boolean, startupSwitchesJson = '', jsQueryFunctions = '', headlessBaked = false): string {
     // 与火山 FBrowser_JS交互_注册 一致：支持注册多条通道，每条一次 LB_FBro_EnableJsQuery。
     const jsQueryRegistration = jsQueryFunctions.split(';').map(pair => pair.trim()).filter(Boolean).map(pair => {
         const [queryName = '', cancelName = ''] = pair.split(',').map(name => name.trim());
@@ -1009,6 +1209,8 @@ function generateFbroInProcessInitSnippet(reserveDebuggingPort: boolean, startup
           `    // FBroHsQueryFunctions 注册的通道不再生效，.lcpp 里再调用也来不及。\n`
         : '';
     return `static int g_lingFbroInProcessDebuggingPort = 0;
+static const bool g_lingFbroHeadlessBaked = ${headlessBaked ? 'true' : 'false'};
+static const bool g_lingFbroStartupSwitchesBaked = ${startupSwitchesJson ? 'true' : 'false'};
 static bool g_lingFbroInProcessInitialized = false;
 static bool LB_FBroInitializeInProcess(const std::wstring& runtimeDirectory) {
 #if LINGBUILDER_FBRO_AVAILABLE || LINGBUILDER_NE_FBRO_AVAILABLE
@@ -3357,7 +3559,7 @@ ${newEmojiRuntimeControlCpp}
 
 ${newEmojiRuntimeEventCpp.declarations}
 
-${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson([window]), collectFbroJsQueryFunctions([window])) : ''}
+${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson([window], false, programFbroStartupSwitchDeclarations(program.source).switches), collectFbroJsQueryFunctions([window])) : ''}
 
 struct LingCppTextValue : std::wstring {
     using std::wstring::wstring;
@@ -5428,10 +5630,86 @@ static int FBro_取运行时样式(const wchar_t* name) {
 }
 static int FBro_后台创建(const wchar_t* url, const wchar_t* profile, const wchar_t* extraJson) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (!LB_NE_InitializeFbro()) return 0;
     return static_cast<int>(LB_FBro_CreateBackground(url, profile, extraJson, nullptr, nullptr));
 #else
     (void)url; (void)profile; (void)extraJson; return 0;
 #endif
+}
+// new_emoji 后端不支持 FBro 无头模式（入口生成诊断已阻断字面调用与无头资源）；
+// 这里只提供翻译目标，保证语句翻译器始终有可解析的同名运行时函数。
+static int FBro_启用无头模式() {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return g_lingFbroHeadlessBaked ? 1 : 0;
+#else
+    return 0;
+#endif
+}
+// new_emoji 后端同样只查询生成期烘焙结果：启动开关在初始化前一次性应用。
+static int FBro_设置启动开关JSON(const wchar_t* switchesJson) {
+    (void)switchesJson;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return g_lingFbroStartupSwitchesBaked ? 1 : 0;
+#else
+    return 0;
+#endif
+}
+// 后台实例句柄命令族：同步命令直连桥句柄；事件绑定/读取需要窗口消息泵，
+// new_emoji 后端没有 LingWindowBase 事件窗口，因此事件族固定返回未支持（0/空文本）。
+static int FBro_实例导航(long long instanceId, const wchar_t* address) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return instanceId > 0 && address ? LB_FBro_Navigate(static_cast<LB_FBRO_HANDLE>(instanceId), address) : 0;
+#else
+    (void)instanceId; (void)address; return 0;
+#endif
+}
+static std::wstring FBro_实例执行JS(long long instanceId, const wchar_t* script) {
+    wchar_t result[8192] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+    if (handle && script && LB_FBro_ExecuteJs(handle, script, result, 8192) > 0) return result;
+#else
+    (void)instanceId; (void)script;
+#endif
+    return L"";
+}
+static int FBro_实例等待加载超时(long long instanceId, int timeoutMilliseconds) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+    if (!handle) return 0;
+    const int budget = (std::max)(0, (std::min)(timeoutMilliseconds, 600000));
+    for (int elapsed = 0; elapsed <= budget; elapsed += 25) {
+        if (!LB_FBro_IsLoading(handle)) return 1;
+        Sleep(25);
+    }
+    return LB_FBro_IsLoading(handle) ? 0 : 1;
+#else
+    (void)instanceId; (void)timeoutMilliseconds; return 0;
+#endif
+}
+static int FBro_实例是否存活(long long instanceId) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return instanceId > 0 ? LB_FBro_IsInstanceAlive(static_cast<LB_FBRO_HANDLE>(instanceId)) : 0;
+#else
+    (void)instanceId; return 0;
+#endif
+}
+static void FBro_实例关闭(long long instanceId) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+    if (handle) LB_FBro_Close(handle);
+#else
+    (void)instanceId;
+#endif
+}
+static int FBro_实例绑定事件(long long instanceId, const wchar_t* eventName, const wchar_t* handler) {
+    (void)instanceId; (void)eventName; (void)handler; return 0;
+}
+static std::wstring FBro_实例取最近事件(long long instanceId) {
+    (void)instanceId; return L"";
+}
+static std::wstring FBro_实例取事件数据(long long instanceId) {
+    (void)instanceId; return L"";
 }
 static std::wstring FBro_取SDK版本JSON() {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
@@ -9070,6 +9348,16 @@ function resolveNativeWindowForSource(
   return project.windows.find(window => window.id === options.activeWindowId) || project.windows[0];
 }
 
+/** 轻量 JSON 对象判定：只做 JSON.parse 与对象形态检查，不深校验内容。 */
+function isLikelyJsonObject(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text);
+    return Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
+
 function validateDesignerResources(project: LingWindowProject): string[] {
   const diagnostics: string[] = [];
   const resources = project.resources || [];
@@ -9104,6 +9392,16 @@ function validateDesignerResources(project: LingWindowProject): string[] {
       if (resource.triggerControlId && !owner?.controls.some(control => control.id === resource.triggerControlId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的打开触发控件“${resource.triggerControlId}”。`);
       if (resource.dropTargetId && resource.dropTargetId !== resource.ownerWindowId && !owner?.controls.some(control => control.id === resource.dropTargetId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的拖放目标“${resource.dropTargetId}”。`);
       if (resource.allowDrop && !resource.dropTargetId) diagnostics.push(`文件对话框“${resource.name}”已允许拖拽，但尚未绑定拖放目标。`);
+    } else if (resource.type === 'FBroHeadlessBrowser') {
+      const owner = project.windows.find(window => window.id === resource.ownerWindowId);
+      if (!owner) diagnostics.push(`FBro无头浏览器“${resource.name}”引用了不存在的所属窗口“${resource.ownerWindowId}”。`);
+      if (!resource.name.trim()) diagnostics.push('FBro无头浏览器的组件名不能为空，代码按组件名寻址该后台实例。');
+      else {
+        const duplicated = project.windows.some(window => window.controls.some(control => control.name === resource.name))
+          || resources.some(other => other !== resource && other.name === resource.name);
+        if (duplicated) diagnostics.push(`FBro无头浏览器组件名“${resource.name}”与现有控件或其他组件重复，FBro_* 命令将无法唯一解析该后台实例。`);
+      }
+      if (resource.extraInfoJson.trim() && !isLikelyJsonObject(resource.extraInfoJson)) diagnostics.push(`FBro无头浏览器“${resource.name}”的附加信息 JSON 不是合法 JSON 对象，创建时将被桥接层拒绝。`);
     } else if (resource.type === 'EdgeViewHeadlessBrowser') {
       const owner = project.windows.find(window => window.id === resource.ownerWindowId);
       if (!owner) diagnostics.push(`EdgeView无头浏览器“${resource.name}”引用了不存在的所属窗口“${resource.ownerWindowId}”。`);
@@ -9675,6 +9973,12 @@ int main(int argc, char* argv[]) {
     (void)argv;
     const int cefSubprocessExitCode = lingbuilder_cef3_子进程守卫();
     if (cefSubprocessExitCode >= 0) return cefSubprocessExitCode;
+#if LINGBUILDER_FBRO_AVAILABLE
+    // FBro use_self_subprocess 架构下 CEF 子进程（--type=renderer 等）会以同一 exe 再次启动：
+    // 必须先由官方守卫承接，否则子进程会重新执行“启动”子程序，形成自举循环。
+    const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
+    if (fbroSubprocessExitCode != LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED) return fbroSubprocessExitCode;
+#endif
     SetConsoleOutputCP(CP_UTF8);
     LingBuilder_EnsureConsoleRuntimeInitialized();
     ${classCppName}& consoleApp = ${singletonName}();
@@ -9720,6 +10024,7 @@ function generateMainCpp(
   const imageListSpecs = generateImageListSpecs(project);
   const propertySheetSpecs = generatePropertySheetSpecs(project);
   const fileDialogSpecs = generateFileDialogSpecs(project);
+  const fbroHeadlessSpecs = generateFbroHeadlessSpecs(project);
   const edgeViewHeadlessSpecs = generateEdgeViewHeadlessSpecs(project);
   const menuResourceSpecs = generateMenuResourceSpecs(project);
   const windowSpecs = project.windows
@@ -9735,6 +10040,15 @@ function generateMainCpp(
   const edgeViewModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview');
   const embeddedSiteRuntimeSection = edgeViewModuleEnabled ? generateEmbeddedSiteRuntimeMembers(selectedWindow) : '';
   const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  // 无头模式是 CEF 进程级启动开关：设计器资源或 .lcpp 字面调用 FBro_启用无头模式() 任一命中
+  // 即在生成期烘焙 headless；与可见 FBroBrowser 控件共存由入口阻断诊断拦截。
+  const fbroHeadlessBaked = fbroModuleEnabled && (
+    projectHasFbroHeadlessResources(project) || programRequestsFbroHeadless(program.source)
+  );
+  // .lcpp 字面 FBro_设置启动开关JSON("…") 在生成期并入烘焙（运行期调用点只查询烘焙结果）。
+  const fbroDeclaredStartupSwitches = fbroModuleEnabled
+    ? programFbroStartupSwitchDeclarations(program.source).switches
+    : {};
   const embeddedSiteFbroSection = fbroModuleEnabled ? generateEmbeddedSiteFbroMembers(selectedWindow) : '';
   const fbroBrowserManagerRuntime = generateFbroBrowserManagerRuntime(fbroModuleEnabled);
   const fbroInProcessEnabled = fbroModuleEnabled && project.windows.some(window => window.controls.some(control =>
@@ -10275,14 +10589,18 @@ struct MenuResourceSpec {
     const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
     int targetControlId; bool contextMenu; const wchar_t* items;
 };
-struct PropertySheetPageContext {
-    const wchar_t* title; const wchar_t* content; const wchar_t* resourceId;
-    void* eventOwner; void (*applied)(void*, const wchar_t*);
-    void* pageOwner; void (*initialize)(void*, HWND);
+struct FbroHeadlessSpec {
+    const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
+    const wchar_t* url; const wchar_t* profileDirectory; const wchar_t* extraInfoJson;
 };
 struct EdgeViewHeadlessSpec {
     const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
     int instanceId; const wchar_t* url; const wchar_t* cacheDir; const wchar_t* userAgent; const wchar_t* proxyServer; bool autoStart;
+};
+struct PropertySheetPageContext {
+    const wchar_t* title; const wchar_t* content; const wchar_t* resourceId;
+    void* eventOwner; void (*applied)(void*, const wchar_t*);
+    void* pageOwner; void (*initialize)(void*, HWND);
 };
 
 enum ControlFlags : unsigned int {
@@ -11125,6 +11443,7 @@ static bool LingCefHasDevTools(CefRefPtr<CefBrowser> browser) {
 ${imageListSpecs}
 ${propertySheetSpecs}
 ${fileDialogSpecs}
+${fbroHeadlessSpecs}
 ${edgeViewHeadlessSpecs}
 ${menuResourceSpecs}
 
@@ -11595,7 +11914,7 @@ ${webSocketServerRuntime}
 
 ${fbroProcessRuntime}
 
-${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson(project.windows), collectFbroJsQueryFunctions(project.windows)) : ''}
+${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson(project.windows, fbroHeadlessBaked, fbroDeclaredStartupSwitches), collectFbroJsQueryFunctions(project.windows), fbroHeadlessBaked) : ''}
 
 ${projectGlobalsDefinition}
 
@@ -11980,6 +12299,8 @@ ${webSocketServerWindowField}
         std::wstring scriptLocale;
         int defaultBackgroundArgb = static_cast<int>(0xFFFFFFFFu);
         bool allowHostInputProcessing = false;
+        std::wstring additionalBrowserArguments;
+        bool disableWebSecurity = false;
         std::vector<EdgeViewCustomSchemeSpec> customSchemes;
     };
     std::map<int, std::shared_ptr<EdgeViewInstance>> edgeViews_;
@@ -11997,6 +12318,9 @@ ${webSocketServerWindowField}
         std::wstring effectiveCacheDirectory;
         std::wstring proxyMode = L"system";
         std::wstring proxyServer;
+        // 代理认证凭据只在桥「身份验证请求」(isProxy) 事件里自动应答用，绝不回显给命令返回值。
+        std::wstring proxyUser;
+        std::wstring proxyPassword;
         std::wstring userAgent;
         std::wstring lastEvent;
         std::wstring lastEventData;
@@ -12021,6 +12345,11 @@ ${webSocketServerWindowField}
         bool canGoBack = false;
         bool canGoForward = false;
         bool isLoading = false;
+        // 无头（OSR）实例的事件缓冲：没有宿主窗口就派发不了中文事件处理器，桥回调把事件按序
+        // 序列化进这里有界队列（上限见 CEF3_无头事件上限，超限丢最旧），由 CEF3无头_取事件JSON 读取。
+        // 放在 CEF3 总开关之外：无头命令包装本身无条件生成，非 CEF3 构建里它只是恒空。
+        std::deque<std::wstring> headlessEvents;
+        std::mutex headlessEventsMutex;
         std::map<std::wstring, std::wstring> handlers;
 #if LINGBUILDER_CEF3_AVAILABLE
         CefRefPtr<CefBrowser> browser;
@@ -12035,10 +12364,15 @@ ${webSocketServerWindowField}
 #endif
     long long nextCefTaskId_ = 1;
     std::wstring cefRootCachePath_;
+    // CEF3 全局代理：只影响之后新建实例（控件/弹窗/区域/无头统一回落），已创建实例不变——与 EdgeView 全局代理同口径。
+    std::wstring cef3GlobalProxy_;
+    std::wstring cef3GlobalProxyUser_;
+    std::wstring cef3GlobalProxyPassword_;
     bool cefInitialized_ = false;
 
     struct FbroBrowserInstance {
         int controlId = 0;
+        std::wstring resourceName;
         HWND host = nullptr;
         LB_FBRO_HANDLE handle = 0;
         std::wstring processInstanceId;
@@ -12078,7 +12412,7 @@ ${webSocketServerWindowField}
     bool fbroInitialized_ = false;
 ${fbroBrowserManagerRuntime.members}
 
-    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); EdgeView_创建无头资源(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
+    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
     virtual void WarnUnboundControlEvents() {}
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
@@ -12568,6 +12902,8 @@ ${edgeViewEventIdCases}
             creationOptions.scrollBarStyle = edgeProperties.size() > 25 && edgeProperties[25] == L"fluent-overlay" ? 1 : 0;
             creationOptions.scriptLocale = edgeProperties.size() > 26 ? edgeProperties[26] : L"";
             creationOptions.allowHostInputProcessing = creationEnabled(27, false);
+            creationOptions.disableWebSecurity = creationEnabled(28, false);
+            creationOptions.additionalBrowserArguments = edgeProperties.size() > 29 ? edgeProperties[29] : L"";
             if (edgeProperties.size() > 11 && edgeProperties[11].size() == 7 && edgeProperties[11][0] == L'#') creationOptions.defaultBackgroundArgb = static_cast<int>(0xFF000000ul | wcstoul(edgeProperties[11].c_str() + 1, nullptr, 16));
             if (!EdgeView_创建核心(control.id, runtime->hwnd, false, control.data, cacheDirectory.c_str(), proxyServer.c_str(), language, profileName, inPrivate, control.name)) continue;
             EdgeViewInstance* instance = EdgeView_查找(control.id);
@@ -12646,7 +12982,7 @@ ${edgeViewEventIdCases}
         if (width <= 0 || height <= 0) { 调试输出(L"EdgeView 创建失败：区域宽高必须大于零。"); return 0; }
         EdgeView_关闭实例(instanceId);
         HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-            x, y, width, height, hwnd_, nullptr, g_instance, nullptr);
+            ScaleForDpi(x, dpi_), ScaleForDpi(y, dpi_), ScaleForDpi(width, dpi_), ScaleForDpi(height, dpi_), hwnd_, nullptr, g_instance, nullptr);
         if (!host) { 调试输出(L"EdgeView 创建失败：无法创建浏览器承载组件。"); return 0; }
         if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, edgeViewGlobalProxy_.c_str())) { DestroyWindow(host); return 0; }
         return 1;
@@ -12661,7 +12997,7 @@ ${edgeViewEventIdCases}
         if (width <= 0 || height <= 0) return 0;
         EdgeView_关闭实例(instanceId);
         HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-            x, y, width, height, hwnd_, nullptr, g_instance, nullptr);
+            ScaleForDpi(x, dpi_), ScaleForDpi(y, dpi_), ScaleForDpi(width, dpi_), ScaleForDpi(height, dpi_), hwnd_, nullptr, g_instance, nullptr);
         if (!host) return 0;
         if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, proxyServer)) { DestroyWindow(host); return 0; }
         return 1;
@@ -12736,8 +13072,11 @@ ${edgeViewEventIdCases}
         EdgeView_关闭实例(instanceId);
         if (!EdgeView_确保弹窗窗口类()) return 0;
         const DWORD style = WS_OVERLAPPEDWINDOW | (revealHost ? WS_VISIBLE : 0);
-        RECT windowRect = { 0, 0, width, height };
-        AdjustWindowRect(&windowRect, style, FALSE);
+        // 宽高按逻辑坐标（DIP）接收，与设计器控件口径一致：先随宿主窗口 DPI 放大，再按该 DPI 计算非客户区。
+        const UINT popupDpi = hwnd_ ? GetDpiForWindow(hwnd_) : 0;
+        const UINT effectivePopupDpi = popupDpi ? popupDpi : dpi_;
+        RECT windowRect = { 0, 0, ScaleForDpi(width, effectivePopupDpi), ScaleForDpi(height, effectivePopupDpi) };
+        AdjustWindowRectForDpiValue(&windowRect, style, FALSE, 0, effectivePopupDpi);
         HWND host = CreateWindowExW(WS_EX_APPWINDOW, L"LingBuilderEdgeViewPopup", (title && title[0]) ? title : L"EdgeView", style,
             CW_USEDEFAULT, CW_USEDEFAULT, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top,
             hwnd_, nullptr, g_instance, this);
@@ -12760,14 +13099,14 @@ ${edgeViewEventIdCases}
     }
 
     // 无头实例：WebView2 官方无头 API 不存在（控制器必须挂 HWND），这里挂一个从不调用
-    // ShowWindow 的离屏 WS_POPUP 工具窗口；实例编号命令与事件全部照常可用，
+    // ShowWindow 的离屏 WS_POPUP 工具窗口；289 条实例编号命令与事件全部照常可用，
     // 页面在无窗口宿主内保持布局与脚本执行（rAF/可见性相关行为按隐藏页节流）。
     int EdgeView_创建无头实例代理(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* userAgent, const wchar_t* proxyServer) {
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
         if (instanceId <= 0) { 调试输出(L"EdgeView 创建失败：无头实例编号必须为正整数。"); return 0; }
         EdgeView_关闭实例(instanceId);
         if (!EdgeView_确保弹窗窗口类()) return 0;
-        // 宿主保留真实尺寸（默认 1280×720 客户区），保证控制器 bounds 非空、页面布局正常。
+        // 宿主保留真实尺寸（默认 1280×720 DIP 客户区），保证控制器 bounds 非空、页面布局正常。
         const UINT hostDpi = hwnd_ ? GetDpiForWindow(hwnd_) : dpi_;
         const UINT effectiveHostDpi = hostDpi ? hostDpi : 96;
         const RECT windowRect = { 0, 0, ScaleForDpi(1280, effectiveHostDpi), ScaleForDpi(720, effectiveHostDpi) };
@@ -12847,8 +13186,10 @@ ${edgeViewEventIdCases}
         EdgeViewInstance* instance = EdgeView_查找(instanceId);
         if (!instance || width <= 0 || height <= 0) return 0;
         if (instance->isPopup && instance->host && IsWindow(instance->host)) {
-            RECT windowRect = { 0, 0, width, height };
-            AdjustWindowRect(&windowRect, static_cast<DWORD>(GetWindowLongW(instance->host, GWL_STYLE)), FALSE);
+            const UINT popupDpi = GetDpiForWindow(instance->host);
+            const UINT effectivePopupDpi = popupDpi ? popupDpi : dpi_;
+            RECT windowRect = { 0, 0, ScaleForDpi(width, effectivePopupDpi), ScaleForDpi(height, effectivePopupDpi) };
+            AdjustWindowRectForDpiValue(&windowRect, static_cast<DWORD>(GetWindowLongW(instance->host, GWL_STYLE)), FALSE, 0, effectivePopupDpi);
             SetWindowPos(instance->host, nullptr, 0, 0, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top, SWP_NOMOVE | SWP_NOZORDER);
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_调整大小(*instance);
@@ -12856,7 +13197,12 @@ ${edgeViewEventIdCases}
             return 1;
         }
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
-        if (instance->controller) { RECT bounds = { 0, 0, width, height }; return SUCCEEDED(instance->controller->put_Bounds(bounds)) ? 1 : 0; }
+        if (instance->controller) {
+            const UINT instanceDpi = (instance->host && IsWindow(instance->host)) ? GetDpiForWindow(instance->host) : 0;
+            const UINT effectiveDpi = instanceDpi ? instanceDpi : dpi_;
+            RECT bounds = { 0, 0, ScaleForDpi(width, effectiveDpi), ScaleForDpi(height, effectiveDpi) };
+            return SUCCEEDED(instance->controller->put_Bounds(bounds)) ? 1 : 0;
+        }
 #endif
         return 0;
     }
@@ -13172,9 +13518,21 @@ ${edgeViewEventIdCases}
         Microsoft::WRL::ComPtr<CoreWebView2EnvironmentOptions> environmentOptions;
         environmentOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
         if (environmentOptions) {
-            if (!raw->proxyServer.empty()) {
-                std::wstring arguments = L"--proxy-server=" + raw->proxyServer;
-                environmentOptions->put_AdditionalBrowserArguments(arguments.c_str());
+            std::wstring launchArguments;
+            if (!raw->proxyServer.empty()) launchArguments += L"--proxy-server=" + raw->proxyServer;
+            if (!creationOptions.additionalBrowserArguments.empty()) {
+                if (!launchArguments.empty()) launchArguments += L" ";
+                launchArguments += creationOptions.additionalBrowserArguments;
+            }
+            if (creationOptions.disableWebSecurity) {
+                if (!launchArguments.empty()) launchArguments += L" ";
+                launchArguments += L"--disable-web-security --disable-features=IsolateOrigins,site-per-process";
+            }
+            if (!launchArguments.empty()) {
+                environmentOptions->put_AdditionalBrowserArguments(launchArguments.c_str());
+                // Restricted switches survive only through the loader environment
+                // variable, and only when set before the first environment creation.
+                SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", launchArguments.c_str());
             }
             if (!createLanguage.empty()) environmentOptions->put_Language(createLanguage.c_str());
             environmentOptions->put_ExclusiveUserDataFolderAccess(creationOptions.exclusiveUserDataFolderAccess ? TRUE : FALSE);
@@ -13543,6 +13901,10 @@ ${fbroBrowserManagerRuntime.methods}
     FbroBrowserInstance* FBro_查找实例(const wchar_t* controlName) {
         if (!controlName) return nullptr;
         for (auto& item : fbroBrowsers_) {
+            if (!item.second->resourceName.empty()) {
+                if (TextEquals(item.second->resourceName.c_str(), controlName)) return item.second.get();
+                continue;
+            }
             const ControlSpec* control = FindControl(item.second->controlId);
             if (control && TextEquals(control->name, controlName)) return item.second.get();
         }
@@ -13761,6 +14123,61 @@ ${fbroBrowserManagerRuntime.methods}
         return created > 0 ? 1 : 0;
 #else
         (void)controlName; return 0;
+#endif
+    }
+
+    // 「FBro无头浏览器」设计器资源：headless 开关已由生成期烘焙进初始化命令行，
+    // 这里只负责在 owner 窗口创建期建立后台实例并挂接与可视控件相同的事件派发。
+    void FBro_创建无头资源() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        for (int index = 0; index < g_fbroHeadlessBrowserCount; ++index) {
+            const FbroHeadlessSpec& spec = g_fbroHeadlessBrowsers[index];
+            if (spec.ownerWindowIndex != spec_.index) continue;
+            const int syntheticId = -(index + 1);
+            if (fbroBrowsers_.count(syntheticId)) continue;
+            FbroBrowserInstance* instance = FBro_确保实例(syntheticId);
+            instance->resourceName = spec.name;
+            instance->url = spec.url && spec.url[0] ? spec.url : L"about:blank";
+            instance->profileDirectory = spec.profileDirectory ? spec.profileDirectory : L"";
+            if (!FBro_初始化()) {
+                instance->lastError = L"FBro 进程内初始化失败，无头浏览器未创建。";
+                continue;
+            }
+            LB_FBRO_HANDLE handle = LB_FBro_CreateBackground(instance->url.c_str(),
+                instance->profileDirectory.empty() ? nullptr : instance->profileDirectory.c_str(),
+                spec.extraInfoJson && spec.extraInfoJson[0] ? spec.extraInfoJson : nullptr,
+                FBro_桥接事件, this);
+            if (!handle) {
+                instance->lastError = L"创建 FBro 无头后台实例失败：LB_FBro_CreateBackground 返回 0（进程可能未就绪或缓存目录无效）。";
+                continue;
+            }
+            instance->handle = handle;
+            LB_FBro_SetEventCallbackV2(handle, FBro_桥接事件V2, this);
+            LB_FBro_SetEventCallbackV3(handle, FBro_桥接事件V3, this);
+        }
+#endif
+    }
+
+    int FBro_启用无头模式() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return g_lingFbroHeadlessBaked ? 1 : 0;
+#else
+        return 0;
+#endif
+    }
+
+    // 启动开关是 CEF 进程级命令行开关，只在 OnBeforeCommandLineProcessing 被读取一次。
+    // 源码里的字面量调用已在生成期并入初始化烘焙（同 FBro_启用无头模式 范式），运行期
+    // 调用改变不了进程状态；返回 0 表示本次声明没有进入烘焙（参数不是字面文本、写在
+    // @ 行或被遮蔽、FBro 模块未启用或后端不支持），此时给出中文诊断而不是静默失败。
+    int FBro_设置启动开关JSON(const wchar_t* switchesJson) {
+        (void)switchesJson;
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (g_lingFbroStartupSwitchesBaked) return 1;
+        调试输出(L"FBro 启动开关未生效：参数必须是写在调用处的字面 JSON 文本（如 {\\\"enableCrossFrame\\\":true}），开关在程序启动前烘焙，运行期调用不会改变进程状态。");
+        return 0;
+#else
+        return 0;
 #endif
     }
 
@@ -14000,6 +14417,8 @@ ${fbroBrowserManagerRuntime.methods}
     }
     int FBro_后台创建(const wchar_t* url, const wchar_t* profile, const wchar_t* extraJson) {
 #if LINGBUILDER_FBRO_AVAILABLE
+        // 控制台/无窗口场景没有 OnWindowCreated 初始化时机：后台创建自带一次性初始化。
+        if (!FBro_初始化()) return 0;
         return static_cast<int>(LB_FBro_CreateBackground(url, profile, extraJson, nullptr, nullptr));
 #else
         (void)url; (void)profile; (void)extraJson; return 0;
@@ -14506,6 +14925,7 @@ ${embeddedSiteFbroSection}
     std::wstring FBro_实例取事件数据(long long instanceId) {
         const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
         for (auto& item : fbroBrowsers_) {
+            if (item.second->handle == handle && handle) return item.second->lastEventData;
             auto found = item.second->chromeUiInstances.find(handle);
             if (found != item.second->chromeUiInstances.end()) return found->second.lastEventData;
         }
@@ -14517,6 +14937,7 @@ ${embeddedSiteFbroSection}
     std::wstring FBro_实例取最近事件(long long instanceId) {
         const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
         for (auto& item : fbroBrowsers_) {
+            if (item.second->handle == handle && handle) return item.second->lastEvent;
             auto found = item.second->chromeUiInstances.find(handle);
             if (found != item.second->chromeUiInstances.end()) return found->second.lastEvent;
         }
@@ -14526,11 +14947,49 @@ ${embeddedSiteFbroSection}
         if (!eventName || !*eventName || !handler || !*handler) return 0;
         const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
         for (auto& item : fbroBrowsers_) {
+            if (item.second->handle == handle && handle) {
+                item.second->handlers[eventName] = handler;
+#if LINGBUILDER_FBRO_AVAILABLE
+                LB_FBro_SetEventSubscription(handle, eventName, 1);
+#endif
+                return 1;
+            }
             auto found = item.second->chromeUiInstances.find(handle);
             if (found == item.second->chromeUiInstances.end()) continue;
             found->second.handlers[eventName] = handler; return 1;
         }
         return 0;
+    }
+    std::wstring FBro_实例执行JS(long long instanceId, const wchar_t* script) {
+        wchar_t result[8192] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+        if (handle && script && LB_FBro_ExecuteJs(handle, script, result, 8192) > 0) return result;
+#else
+        (void)instanceId; (void)script;
+#endif
+        return L"";
+    }
+    int FBro_实例等待加载超时(long long instanceId, int timeoutMilliseconds) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+        if (!handle) return 0;
+        const int budget = (std::max)(0, (std::min)(timeoutMilliseconds, 600000));
+        for (int elapsed = 0; elapsed <= budget; elapsed += 25) {
+            if (!LB_FBro_IsLoading(handle)) return 1;
+            Sleep(25);
+        }
+        return LB_FBro_IsLoading(handle) ? 0 : 1;
+#else
+        (void)instanceId; (void)timeoutMilliseconds; return 0;
+#endif
+    }
+    int FBro_实例是否存活(long long instanceId) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instanceId > 0 ? LB_FBro_IsInstanceAlive(static_cast<LB_FBRO_HANDLE>(instanceId)) : 0;
+#else
+        (void)instanceId; return 0;
+#endif
     }
     void FBro_实例关闭(long long instanceId) {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -15570,6 +16029,41 @@ ${generateFbroVipIndividualRuntime(false)}
             }
         }
         auto fields = CEF3_解析Bridge事件字段(fieldsJson);
+        // 代理认证自动应答：桥「身份验证请求」携带 isProxy 时，实例自身凭据优先；实例没有自带代理
+        // 且配置了全局凭据时用全局凭据（整进程共用一个出口代理的场景）；两处都没有才走下面的常规
+        // 派发/默认动作路径。放在无头缓冲分支之前，保证无头实例的代理认证同样能被应答。
+        if (TextEquals(eventName, L"身份验证请求") && fields.count(L"isProxy") && fields[L"isProxy"] == L"true") {
+            const bool hasInstanceCredentials = !instance.proxyUser.empty() || !instance.proxyPassword.empty();
+            const bool useGlobalCredentials = !hasInstanceCredentials && instance.proxyServer.empty()
+                && (!cef3GlobalProxyUser_.empty() || !cef3GlobalProxyPassword_.empty());
+            if (hasInstanceCredentials || useGlobalCredentials) {
+                const std::wstring& credUser = hasInstanceCredentials ? instance.proxyUser : cef3GlobalProxyUser_;
+                const std::wstring& credPassword = hasInstanceCredentials ? instance.proxyPassword : cef3GlobalProxyPassword_;
+                const wchar_t quote = static_cast<wchar_t>(34);
+                std::wstring payload = L"{";
+                payload += quote; payload += L"username"; payload += quote; payload += L":"; payload += quote;
+                payload += CEF3_框架转义JSON文本(credUser); payload += quote; payload += L",";
+                payload += quote; payload += L"password"; payload += quote; payload += L":"; payload += quote;
+                payload += CEF3_框架转义JSON文本(credPassword); payload += quote; payload += L"}";
+                instance.eventResultText = payload;
+                if (response) {
+                    response->action = 1;
+                    response->response_json = instance.eventResultText.c_str();
+                }
+                return;
+            }
+        }
+        // 无头键段（2000000+）实例没有宿主窗口：CEF3_发送事件 与 CEF3_投递事件 都会因 hwnd_ 判空
+        // 直接丢弃事件，绑定中文事件处理器对它也无效。这里改为把事件写进实例自己的有界缓冲，
+        // 由 CEF3无头_取事件JSON 轮询读取；上面已更新的 isLoading / bridgeReady / 排队导航照常生效。
+        if (controlId >= CEF3_运行时无头编号偏移 && controlId < CEF3_运行时无头编号偏移 + 1000000) {
+            CEF3_记录无头事件(instance, eventName, fieldsJson, (packet.flags & 1u) != 0);
+            if (response) {
+                response->action = 0;
+                response->response_json = nullptr;
+            }
+            return;
+        }
         if ((packet.flags & 1u) != 0) {
             LingCefEventPacket eventPacket;
             eventPacket.controlId = controlId;
@@ -15633,27 +16127,49 @@ ${generateFbroVipIndividualRuntime(false)}
         CreateDirectoryW(cefRootCachePath_.c_str(), nullptr);
         std::wstring globalUserAgent;
         std::wstring jsQueryFunctions;
-        for (int i = 0; i < spec_.controlCount && (globalUserAgent.empty() || jsQueryFunctions.empty()); ++i) {
+        for (int i = 0; i < spec_.controlCount; ++i) {
             const ControlSpec& control = spec_.controls[i];
             if (!IsType(control, L"CefBrowser") || !control.data2 || !control.data2[0]) continue;
             auto records = DecodeControlRecords(control.data2, 5);
             if (records.empty()) records = DecodeControlRecords(control.data2, 4);
             if (records.empty()) continue;
             if (globalUserAgent.empty() && records[0].size() > 1 && !records[0][1].empty()) globalUserAgent = records[0][1];
-            if (jsQueryFunctions.empty() && records[0].size() > 4 && !records[0][4].empty()) jsQueryFunctions = records[0][4];
+            if (records[0].size() > 4 && !records[0][4].empty()) {
+                if (!jsQueryFunctions.empty()) jsQueryFunctions += L";";
+                jsQueryFunctions += records[0][4];
+            }
         }
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         if (!jsQueryFunctions.empty()) {
             // JS 交互（cefQuery）通道必须在 LB_CEF3_Initialize 之前注册：查询函数名
             // 经 CefMessageRouterConfig 在渲染进程 OnWebKitInitialized 时注入 window，
             // 初始化完成后再注册的通道不会生效，运行期调用 CEF3_启用JS扩展 也会失败。
-            const size_t separator = jsQueryFunctions.find(L',');
-            std::wstring queryName = separator == std::wstring::npos ? jsQueryFunctions : jsQueryFunctions.substr(0, separator);
-            std::wstring cancelName = separator == std::wstring::npos ? L"" : jsQueryFunctions.substr(separator + 1);
-            const size_t cancelEnd = cancelName.find(L';');
-            if (cancelEnd != std::wstring::npos) cancelName = cancelName.substr(0, cancelEnd);
-            if (LB_CEF3_EnableJsQuery(queryName.c_str(), cancelName.c_str()) != LB_CEF3_OK) {
-                调试输出(L"CEF3 JS交互通道注册失败：每个程序只支持一条查询通道，且必须在初始化前配置。");
+            // 属性里可配多条通道（"查询名,取消名" 以 ';' 分隔），跨控件同名通道只注册一次。
+            std::vector<std::wstring> registeredChannels;
+            size_t cursor = 0;
+            while (cursor < jsQueryFunctions.size()) {
+                const size_t channelEnd = jsQueryFunctions.find(L';', cursor);
+                std::wstring pair = channelEnd == std::wstring::npos
+                    ? jsQueryFunctions.substr(cursor)
+                    : jsQueryFunctions.substr(cursor, channelEnd - cursor);
+                cursor = channelEnd == std::wstring::npos ? jsQueryFunctions.size() : channelEnd + 1;
+                const size_t separator = pair.find(L',');
+                std::wstring queryName = separator == std::wstring::npos ? pair : pair.substr(0, separator);
+                std::wstring cancelName = separator == std::wstring::npos ? L"" : pair.substr(separator + 1);
+                const auto trimSpaces = [](std::wstring& text) {
+                    while (!text.empty() && (text.front() == 32 || (text.front() >= 9 && text.front() <= 13))) text.erase(text.begin());
+                    while (!text.empty() && (text.back() == 32 || (text.back() >= 9 && text.back() <= 13))) text.pop_back();
+                };
+                trimSpaces(queryName);
+                trimSpaces(cancelName);
+                if (queryName.empty()) continue;
+                bool duplicate = false;
+                for (const auto& registered : registeredChannels) if (registered == queryName) { duplicate = true; break; }
+                if (duplicate) continue;
+                registeredChannels.push_back(queryName);
+                if (LB_CEF3_EnableJsQuery(queryName.c_str(), cancelName.c_str()) != LB_CEF3_OK) {
+                    调试输出(L"CEF3 JS交互通道注册失败：" + queryName + L"：函数名须为合法标识符且不重复，通道必须在初始化前配置。");
+                }
             }
         }
         LB_CEF3_INITIALIZE_CONFIG_V3 bridgeConfig = {};
@@ -15708,12 +16224,15 @@ ${generateFbroVipIndividualRuntime(false)}
         CefRequestContextSettings contextSettings = {};
         contextSettings.size = sizeof(contextSettings);
         CefString(&contextSettings.cache_path).FromWString(CEF3_准备实例缓存目录(instance));
-        std::wstring mode = instance.proxyMode == L"custom" && !instance.proxyServer.empty()
-            ? L"fixed_servers" : instance.proxyMode == L"none" || (instance.proxyMode == L"custom" && instance.proxyServer.empty())
+        // 全局代理回落：仅限「从未显式设置过代理」的实例；CEF3_设置代理 传空文本是显式直连（none），不得被覆盖。
+        const bool useGlobalProxy = instance.proxyMode != L"none" && instance.proxyServer.empty() && !cef3GlobalProxy_.empty();
+        const std::wstring proxyServer = useGlobalProxy ? cef3GlobalProxy_ : instance.proxyServer;
+        std::wstring mode = (instance.proxyMode == L"custom" || useGlobalProxy) && !proxyServer.empty()
+            ? L"fixed_servers" : instance.proxyMode == L"none" || (instance.proxyMode == L"custom" && proxyServer.empty())
                 ? L"direct" : L"system";
         auto initState = std::make_shared<LingCefRequestContextInitState>();
         CefRefPtr<CefRequestContextHandler> initHandler = new LingCefRequestContextInitHandler(
-            initState, mode, instance.proxyServer);
+            initState, mode, proxyServer);
         instance.requestContext = CefRequestContext::CreateContext(contextSettings, initHandler);
         if (!instance.requestContext) { 调试输出(L"CEF3创建独立RequestContext失败。"); return false; }
         // 初始化回调由 CEF UI 线程异步触发；不能在创建浏览器前同步等待。
@@ -15721,6 +16240,16 @@ ${generateFbroVipIndividualRuntime(false)}
         return true;
     }
 #endif
+
+    // 创建期代理解析：实例自带代理优先；从未显式设置过代理的实例回落到 CEF3_设置全局代理。
+    // 指针指向的都是长期字符串（实例成员或全局成员），在桥创建调用返回前始终有效；
+    // custom 会被桥规范化为 fixed_servers。CEF3_设置代理 传空文本 = 显式直连（none），不参与回落。
+    template <class Cef3BridgeConfig>
+    void CEF3_应用代理配置(const CefBrowserInstance& instance, Cef3BridgeConfig& config) {
+        const bool useGlobal = instance.proxyMode != L"none" && instance.proxyServer.empty() && !cef3GlobalProxy_.empty();
+        config.proxy_mode = useGlobal ? L"custom" : instance.proxyMode.c_str();
+        config.proxy_server = useGlobal ? cef3GlobalProxy_.c_str() : instance.proxyServer.c_str();
+    }
 
     int CEF3_创建(const wchar_t* controlName) {
         bool hasTarget = false;
@@ -15771,8 +16300,7 @@ ${generateFbroVipIndividualRuntime(false)}
         std::wstring profileKey = instance->cacheDirectory.empty() ? (control.name ? control.name : L"") : instance->cacheDirectory;
         bridgeConfig.initial_url = initialUrl.c_str();
         bridgeConfig.profile_key = profileKey.c_str();
-        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
-        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        CEF3_应用代理配置(*instance, bridgeConfig);
         bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
         bridgeConfig.event_user_data = this;
         instance->bridgeHandle = LB_CEF3_BrowserCreate(&bridgeConfig);
@@ -15828,6 +16356,8 @@ ${generateFbroVipIndividualRuntime(false)}
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
         if (!instance) { 调试输出(L"CEF3 导航失败：找不到浏览器控件。"); return 0; }
+        // 只有控件版才有「未创建就用设计器属性现场创建」这条兜底；无头实例本来就没有控件宿主，
+        // 兜底之后的排队/直发时序全部交给核心 CEF3_导航_按实例，与 CEF3无头_导航 共用同一份实现。
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         if (!address || !address[0]) return 0;
         if (!instance->created || !instance->bridgeHandle) {
@@ -15835,24 +16365,14 @@ ${generateFbroVipIndividualRuntime(false)}
             if (control) { instance->url = address; return CEF3_创建单个(*control); }
             return 0;
         }
-        if (!instance->bridgeReady) {
-            instance->pendingNavigation = address;
-            return 1;
-        }
-        const int result = LB_CEF3_BrowserLoadUrl(instance->bridgeHandle, address);
-        if (result == LB_CEF3_OK) instance->currentUrl = address;
-        return result == LB_CEF3_OK ? 1 : 0;
 #else
         if (!instance->created || !instance->browser) {
             const ControlSpec* control = FindControl(instance->controlId);
             if (control) { instance->url = address ? address : L""; return CEF3_创建单个(*control); }
             return 0;
         }
-        if (!address || !address[0]) return 0;
-        instance->browser->GetMainFrame()->LoadURL(address);
-        instance->currentUrl = address;
-        return 1;
 #endif
+        return CEF3_导航_按实例(instance, address);
 #else
         (void)controlName; (void)address; return 0;
 #endif
@@ -15879,8 +16399,7 @@ ${generateFbroVipIndividualRuntime(false)}
             | (instance->enableDevTools ? LB_CEF3_BROWSER_DEVTOOLS : 0);
         bridgeConfig.initial_url = url.c_str();
         bridgeConfig.profile_key = instance->cacheDirectory.c_str();
-        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
-        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        CEF3_应用代理配置(*instance, bridgeConfig);
         bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
         bridgeConfig.event_user_data = this;
         LB_CEF3_HANDLE popupHandle = LB_CEF3_BrowserCreateChrome(&bridgeConfig);
@@ -15965,8 +16484,7 @@ ${generateFbroVipIndividualRuntime(false)}
         bridgeConfig.flags = LB_CEF3_BROWSER_WINDOWLESS | LB_CEF3_BROWSER_JAVASCRIPT | LB_CEF3_BROWSER_IMAGES;
         bridgeConfig.initial_url = (address && address[0]) ? address : L"about:blank";
         bridgeConfig.profile_key = instance->cacheDirectory.c_str();
-        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
-        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        CEF3_应用代理配置(*instance, bridgeConfig);
         // osr_width/osr_height 同时为正数才是权威视口；桥内 OnPaint 会把实际出帧尺寸回写进
         // 存储视口，因此后续读到的「视口」是 CEF 的有效渲染尺寸，不保证等于这里传入的值。
         bridgeConfig.osr_width = static_cast<uint32_t>(viewWidth);
@@ -16036,8 +16554,7 @@ ${generateFbroVipIndividualRuntime(false)}
         bridgeConfig.flags = LB_CEF3_BROWSER_CHROME_RUNTIME | LB_CEF3_BROWSER_JAVASCRIPT | LB_CEF3_BROWSER_IMAGES | LB_CEF3_BROWSER_DEVTOOLS;
         bridgeConfig.initial_url = (address && address[0]) ? address : L"about:blank";
         bridgeConfig.profile_key = instance->cacheDirectory.c_str();
-        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
-        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        CEF3_应用代理配置(*instance, bridgeConfig);
         bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
         bridgeConfig.event_user_data = this;
         LB_CEF3_HANDLE handle = LB_CEF3_BrowserCreateChrome(&bridgeConfig);
@@ -16089,8 +16606,7 @@ ${generateFbroVipIndividualRuntime(false)}
         bridgeConfig.flags = LB_CEF3_BROWSER_JAVASCRIPT | LB_CEF3_BROWSER_IMAGES | LB_CEF3_BROWSER_DEVTOOLS;
         bridgeConfig.initial_url = (address && address[0]) ? address : L"about:blank";
         bridgeConfig.profile_key = instance->cacheDirectory.c_str();
-        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
-        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        CEF3_应用代理配置(*instance, bridgeConfig);
         bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
         bridgeConfig.event_user_data = this;
         CefBrowserInstance* stored = instance.get();
@@ -16114,26 +16630,82 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
     }
 
-    std::wstring CEF3_执行JS(const wchar_t* controlName, const wchar_t* script) {
-#if LINGBUILDER_CEF3_AVAILABLE
-        CefBrowserInstance* instance = CEF3_查找实例(controlName);
-        if (!instance || !instance->created || !script) return L"";
+    // ===== CEF3 真无头（OSR）命令运行时：按实例编号解析，一律复用控件路径抽出的同一份核心 =====
+    // 这一段每个中文命令包装只做三件事：查无头实例、调下面的 *_按实例 核心、给中文诊断。
+    // JS 求值、任务轮询、导航、取标题、取地址、加载中判断、句柄释放、主框架解析都只有核心里一份实现，
+    // 禁止在这里复制第二套。无头实例没有宿主窗口：这里不得读取或创建任何窗口句柄，也不得依赖消息泵——
+    // 需要等待的命令一律显式超时 + 有界轮询，任何路径都不会无界阻塞。
+
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
-        LB_CEF3_TASK_HANDLE task = LB_CEF3_BrowserEvaluateJavaScript(instance->bridgeHandle, script);
+    // CEF 桥没有任务等待导出（只有 FBro 桥提供 TaskWait），所以全部异步任务共用这一份轮询核心：
+    // 到点前每 pollMilliseconds 毫秒查一次状态，成功取结果、失败取错误、仍在跑就取消并按超时文本返回。
+    // 轮询间隔做成参数是为了让控件版 CEF3_执行JS 保持它原来的 10 毫秒手感，无头取文本/取源码用 50 毫秒。
+    static std::wstring CEF3_任务等待文本(LB_CEF3_TASK_HANDLE task, unsigned long long timeoutMilliseconds, int pollMilliseconds, const wchar_t* timeoutText) {
         if (!task) return L"";
-        const ULONGLONG deadline = GetTickCount64() + 5000;
+        const ULONGLONG deadline = GetTickCount64() + timeoutMilliseconds;
         int status = LB_CEF3_TaskGetStatus(task);
         while ((status == LB_CEF3_TASK_PENDING || status == LB_CEF3_TASK_RUNNING) && GetTickCount64() < deadline) {
-            Sleep(10);
+            Sleep(pollMilliseconds);
             status = LB_CEF3_TaskGetStatus(task);
         }
         std::wstring value = status == LB_CEF3_TASK_SUCCEEDED
             ? CEF3_Bridge读取文本(task, LB_CEF3_TaskGetResult)
             : status == LB_CEF3_TASK_FAILED ? CEF3_Bridge读取文本(task, LB_CEF3_TaskGetError)
-            : L"CEF3 JavaScript执行超过5秒。";
+            : std::wstring(timeoutText ? timeoutText : L"CEF3 任务等待超时。");
         if (status == LB_CEF3_TASK_PENDING || status == LB_CEF3_TASK_RUNNING) LB_CEF3_TaskCancel(task);
         LB_CEF3_TaskRelease(task);
         return value;
+    }
+
+    // 失败原因一律转述 CEF 桥自己写下的中文诊断（线程局部最近错误），不得凭空编造第三种说法，
+    // 也不得只报负数错误码；桥没有给出文本时返回空串，由调用方保留自己的中文兜底说明。
+    static std::wstring CEF3_桥接错误文本() {
+        size_t required = 0;
+        LB_CEF3_GetLastError(nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> text(required, static_cast<wchar_t>(0));
+        return LB_CEF3_GetLastError(text.data(), text.size(), &required) == LB_CEF3_OK ? std::wstring(text.data()) : L"";
+    }
+
+    static std::wstring CEF3_拼接桥接原因(const std::wstring& message) {
+        const std::wstring reason = CEF3_桥接错误文本();
+        return reason.empty() ? message : message + L"：" + reason;
+    }
+#endif
+
+    // 导航核心：控件版与无头版共用。桥句柄未就绪时写排队导航，由「浏览器创建完成」事件补发，
+    // 这条时序是 CEF 把创建投递到 UI 线程造成的，两种寻址方式都没有例外。
+    int CEF3_导航_按实例(CefBrowserInstance* instance, const wchar_t* address) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (!instance) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!address || !address[0]) return 0;
+        if (!instance->created || !instance->bridgeHandle) return 0;
+        if (!instance->bridgeReady) {
+            instance->pendingNavigation = address;
+            return 1;
+        }
+        const int result = LB_CEF3_BrowserLoadUrl(instance->bridgeHandle, address);
+        if (result == LB_CEF3_OK) instance->currentUrl = address;
+        return result == LB_CEF3_OK ? 1 : 0;
+#else
+        if (!instance->created || !instance->browser) return 0;
+        if (!address || !address[0]) return 0;
+        instance->browser->GetMainFrame()->LoadURL(address);
+        instance->currentUrl = address;
+        return 1;
+#endif
+#else
+        (void)instance; (void)address; return 0;
+#endif
+    }
+
+    std::wstring CEF3_执行JS_按实例(CefBrowserInstance* instance, const wchar_t* script) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (!instance || !instance->created || !script) return L"";
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_TASK_HANDLE task = LB_CEF3_BrowserEvaluateJavaScript(instance->bridgeHandle, script);
+        return CEF3_任务等待文本(task, 5000, 10, L"CEF3 JavaScript执行超过5秒。");
 #else
         if (!instance->browser) return L"";
         auto state = std::make_shared<LingCefAsyncState>();
@@ -16148,8 +16720,327 @@ ${generateFbroVipIndividualRuntime(false)}
         return state->status == 2 ? state->result : state->error;
 #endif
 #else
-        (void)controlName; (void)script; return L"";
+        (void)instance; (void)script; return L"";
 #endif
+    }
+
+    std::wstring CEF3_取标题_按实例(CefBrowserInstance* instance) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetTitle) : L"";
+#else
+        return instance ? instance->currentTitle : L"";
+#endif
+    }
+
+    std::wstring CEF3_取地址_按实例(CefBrowserInstance* instance) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetUrl) : L"";
+#else
+        return instance ? instance->currentUrl : L"";
+#endif
+    }
+
+    int CEF3_是否加载中_按实例(CefBrowserInstance* instance) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->bridgeHandle && LB_CEF3_BrowserIsLoading(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && instance->browser && instance->browser->IsLoading() ? 1 : 0;
+#endif
+#else
+        (void)instance; return 0;
+#endif
+    }
+
+    // 释放一个实例占用的全部受管桥句柄（含它派生出的弹窗别名句柄）。CEF3_关闭、CEF3无头_关闭
+    // 与无头键段回收共用这一份实现，调用方负责把自己那边的 map 条目摘掉。
+    static void CEF3_释放实例桥接资源(CefBrowserInstance& instance) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        for (auto popup : instance.bridgePopupHandles) {
+            LB_CEF3_BrowserClose(popup, 1);
+            LB_CEF3_HandleRelease(popup);
+        }
+        instance.bridgePopupHandles.clear();
+        if (instance.bridgeHandle) {
+            LB_CEF3_BrowserClose(instance.bridgeHandle, 1);
+            LB_CEF3_HandleRelease(instance.bridgeHandle);
+            instance.bridgeHandle = 0;
+        }
+#else
+        for (auto& popup : instance.popupBrowsers) {
+            if (popup && popup->GetHost()) popup->GetHost()->CloseBrowser(true);
+        }
+        instance.popupBrowsers.clear();
+        if (instance.browser) instance.browser->GetHost()->CloseBrowser(true);
+#endif
+#else
+        (void)instance;
+#endif
+        instance.created = false;
+        instance.bridgeReady = false;
+    }
+
+    // 无头事件的有界环形缓冲。无头实例没有宿主窗口，CEF3_发送事件 / CEF3_投递事件 都会因缺少
+    // 窗口句柄直接丢弃事件，所以事件只能在桥回调线程里序列化进实例自己的队列，等
+    // CEF3无头_取事件JSON 轮询读取；派发中文事件处理器对无头实例无效这一点已写进命令说明。
+    // 守卫必须与桥回调里的调用点同轨（总开关或桥任一为真）：只用桥的工程里 CEF3_处理Bridge事件 会调用
+    // 本函数，若只挂总开关就会编出悬空调用（C3861）。
+#if LINGBUILDER_CEF3_AVAILABLE || LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+    static constexpr size_t CEF3_无头事件上限 = 200;
+
+    static void CEF3_记录无头事件(CefBrowserInstance& instance, const wchar_t* eventName, const wchar_t* fieldsJson, bool synchronous) {
+        const std::wstring name = eventName ? eventName : L"";
+        std::wstring fields = fieldsJson ? fieldsJson : L"{}";
+        // 单条事件的字段文本按 4000 个 UTF-16 代码单元截断；截断点若落在代理对中间就退掉一位，
+        // 免得把孤立高位代理写进 JSON。是否截断单独成字段，消费侧据此判断要不要换更窄的取法。
+        bool truncated = false;
+        const size_t fieldLimit = 4000;
+        if (fields.size() > fieldLimit) {
+            fields.resize(fieldLimit);
+            const unsigned short tail = static_cast<unsigned short>(fields.back());
+            if (tail >= 0xD800 && tail <= 0xDBFF) fields.pop_back();
+            truncated = true;
+        }
+        const std::wstring q(1, static_cast<wchar_t>(0x22));
+        std::wstring record = L"{" + q + L"事件名" + q + L":" + q + CEF3_框架转义JSON文本(name) + q
+            + L"," + q + L"同步" + q + L":" + std::to_wstring(synchronous ? 1 : 0)
+            + L"," + q + L"截断" + q + L":" + std::to_wstring(truncated ? 1 : 0)
+            + L"," + q + L"字段" + q + L":" + q + CEF3_框架转义JSON文本(fields) + q + L"}";
+        std::lock_guard<std::mutex> lock(instance.headlessEventsMutex);
+        if (instance.headlessEvents.size() >= CEF3_无头事件上限) instance.headlessEvents.pop_front();
+        instance.headlessEvents.push_back(std::move(record));
+    }
+#endif
+
+    // 无头实例的浏览器句柄出口（供句柄版命令复用）：只认已创建且句柄有效的实例。
+    // 返回类型是桥的受管句柄，因此必须与 CEF3_框架句柄 同挂在 CEF3 总开关内。
+#if LINGBUILDER_CEF3_AVAILABLE
+    static LB_CEF3_HANDLE CEF3_框架实例句柄(CefBrowserInstance* instance) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->created ? instance->bridgeHandle : 0;
+#else
+        (void)instance;
+        return 0;
+#endif
+    }
+#endif
+
+    // 主框架解析核心：遍历浏览器框架标识取回主框架受管句柄，控件版与无头版共用同一份实现。
+    long long CEF3_取主框架_按实例(CefBrowserInstance* instance) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto browser = CEF3_框架实例句柄(instance);
+        if (!browser) return 0;
+        LB_CEF3_HANDLE identifiers = 0;
+        if (LB_CEF3_BrowserGetFrameIdentifiers(browser, &identifiers) != LB_CEF3_OK || !identifiers) return 0;
+        const auto values = CEF3_框架读取句柄文本列表(identifiers);
+        for (const auto& identifier : values) {
+            LB_CEF3_HANDLE frame = 0;
+            if (LB_CEF3_BrowserGetFrameByIdentifier(browser, identifier.c_str(), &frame) == LB_CEF3_OK && frame) {
+                if (LB_CEF3_FrameIsMain(frame)) return static_cast<long long>(frame);
+                LB_CEF3_HandleRelease(frame);
+            }
+        }
+        return 0;
+#else
+        (void)instance; return 0;
+#endif
+    }
+
+    int CEF3无头_是否已创建(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 无头实例不存在或已关闭：该实例编号没有对应浏览器。"); return 0; }
+        return instance->created ? 1 : 0;
+    }
+
+    int CEF3无头_设置视口(int instanceId, int viewWidth, int viewHeight) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 设置视口失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        if (viewWidth <= 0 || viewHeight <= 0) { 调试输出(L"CEF3 设置视口失败：视口宽高必须为正整数（默认 1280×720）。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const int status = LB_CEF3_BrowserSetOsrViewport(instance->bridgeHandle,
+            static_cast<uint32_t>(viewWidth), static_cast<uint32_t>(viewHeight));
+        if (status == LB_CEF3_OK) return 1;
+        // 桥把「写入选定视口」和「通知宿主重查」分成两步，只有第二步可能失败，所以拿到失败码
+        // 并不等于视口没写进去。这里回读一次：尺寸已经是刚请求的值，说明写入生效、只是刷新没确认，
+        // 按「视口已写入，但刷新未确认」提示并仍返回成功；回读不是该值才算真失败。
+        uint32_t appliedWidth = 0;
+        uint32_t appliedHeight = 0;
+        const bool written = LB_CEF3_BrowserGetOsrViewport(instance->bridgeHandle, &appliedWidth, &appliedHeight) == LB_CEF3_OK
+            && appliedWidth == static_cast<uint32_t>(viewWidth) && appliedHeight == static_cast<uint32_t>(viewHeight);
+        if (written) { 调试输出(CEF3_拼接桥接原因(L"CEF3 设置视口：视口已写入，但刷新未确认").c_str()); return 1; }
+        调试输出(CEF3_拼接桥接原因(L"CEF3 设置视口失败：桥接层未接受该视口").c_str());
+        return 0;
+#else
+        调试输出(L"CEF3 设置视口失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
+    std::wstring CEF3无头_取视口JSON(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 取视口失败：该实例编号不存在或浏览器尚未创建。"); return L""; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        uint32_t width = 0;
+        uint32_t height = 0;
+        if (LB_CEF3_BrowserGetOsrViewport(instance->bridgeHandle, &width, &height) != LB_CEF3_OK) {
+            调试输出(CEF3_拼接桥接原因(L"CEF3 取视口失败").c_str());
+            return L"";
+        }
+        uint64_t paintCount = 0;
+        if (LB_CEF3_BrowserGetOsrPaintCount(instance->bridgeHandle, &paintCount) != LB_CEF3_OK) paintCount = 0;
+        // 这里的宽高是 CEF 的实际渲染尺寸：桥在每次出帧时把该帧真实尺寸回写进存储视口，
+        // 因此它不保证等于 CEF3无头_设置视口 刚传入的值，只能当作页面当前生效的布局尺寸读。
+        const std::wstring q(1, static_cast<wchar_t>(0x22));
+        return L"{" + q + L"width" + q + L":" + std::to_wstring(width)
+            + L"," + q + L"height" + q + L":" + std::to_wstring(height)
+            + L"," + q + L"paintCount" + q + L":" + std::to_wstring(paintCount) + L"}";
+#else
+        调试输出(L"CEF3 取视口失败：当前构建未启用 CEF3 桥。");
+        return L"";
+#endif
+    }
+
+    long long CEF3无头_取渲染帧数(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 取渲染帧数失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        uint64_t paintCount = 0;
+        if (LB_CEF3_BrowserGetOsrPaintCount(instance->bridgeHandle, &paintCount) != LB_CEF3_OK) {
+            调试输出(CEF3_拼接桥接原因(L"CEF3 取渲染帧数失败").c_str());
+            return 0;
+        }
+        return static_cast<long long>(paintCount);
+#else
+        调试输出(L"CEF3 取渲染帧数失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
+    int CEF3无头_导航(int instanceId, const wchar_t* address) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 无头导航失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        if (!address || !address[0]) { 调试输出(L"CEF3 无头导航失败：地址不能为空文本。"); return 0; }
+        if (!CEF3_导航_按实例(instance, address)) {
+            调试输出(L"CEF3 无头导航失败：桥接层拒绝了本次导航（地址非法或浏览器已关闭）。");
+            return 0;
+        }
+        return 1;
+    }
+
+    int CEF3无头_是否加载中(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 无头实例不存在或已关闭：该实例编号没有对应浏览器。"); return 0; }
+        return CEF3_是否加载中_按实例(instance);
+    }
+
+    int CEF3无头_等待加载完成(int instanceId, int timeoutMilliseconds) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 等待失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        const int deadline = timeoutMilliseconds > 0 ? timeoutMilliseconds : 30000;
+        // 控制台项目派发不了事件处理器，等待只能是轮询：每 50 毫秒问一次 CEF 的加载中状态，
+        // 不依赖消息泵、消息循环或无头泵窗口；到 deadline 就带中文诊断返回，绝不无界等待。
+        for (int elapsed = 0; elapsed < deadline; elapsed += 50) {
+            if (!CEF3_是否加载中_按实例(instance)) return 1;
+            Sleep(50);
+        }
+        调试输出(L"CEF3 等待加载完成超时：页面在给定毫秒数内仍未加载结束。");
+        return 0;
+    }
+
+    std::wstring CEF3无头_取标题(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 取标题失败：该实例编号不存在或浏览器尚未创建。"); return L""; }
+        return CEF3_取标题_按实例(instance);
+    }
+
+    std::wstring CEF3无头_取地址(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 取地址失败：该实例编号不存在或浏览器尚未创建。"); return L""; }
+        return CEF3_取地址_按实例(instance);
+    }
+
+    long long CEF3无头_取主框架(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 取主框架失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        const long long frame = CEF3_取主框架_按实例(instance);
+        if (!frame) 调试输出(L"CEF3 取主框架失败：页面尚未产生主框架，先等 CEF3无头_等待加载完成 再取。");
+        return frame;
+    }
+
+    long long CEF3无头_取浏览器句柄(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 取浏览器句柄失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        // 句柄由运行时托管：交给浏览器级 OSR 命令用，用户侧不得释放；实例关闭后本命令自然返回 0。
+        return static_cast<long long>(instance->bridgeHandle);
+    }
+
+    std::wstring CEF3无头_执行JS(int instanceId, const wchar_t* script) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 执行JS失败：该实例编号不存在或浏览器尚未创建。"); return L""; }
+        const std::wstring result = CEF3_执行JS_按实例(instance, script);
+        if (result.empty()) 调试输出(L"CEF3 执行JS失败：脚本无返回结果（页面未就绪、脚本为空或桥接层拒绝）。");
+        return result;
+    }
+
+    // 取页面文本/源码 = 主框架句柄 + 既有异步任务命令 + 同一份轮询核心，不另起第二套取源实现。
+    std::wstring CEF3_无头取框架文本(CefBrowserInstance* instance, int timeoutMilliseconds, bool textMode) {
+        const long long frame = CEF3_取主框架_按实例(instance);
+        if (!frame) { 调试输出(L"CEF3 取页面内容失败：页面尚未产生主框架，先等 CEF3无头_等待加载完成 再取。"); return L""; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const long long taskId = textMode ? CEF3框架_取文本异步(frame) : CEF3框架_取源码异步(frame);
+        const int deadline = timeoutMilliseconds > 0 ? timeoutMilliseconds : 30000;
+        const std::wstring result = CEF3_任务等待文本(static_cast<LB_CEF3_TASK_HANDLE>(taskId),
+            static_cast<unsigned long long>(deadline), 50,
+            textMode ? L"CEF3 取页面文本超时：给定毫秒数内未取得页面文本。"
+                     : L"CEF3 取页面源码超时：给定毫秒数内未取得页面源码。");
+        if (result.empty()) 调试输出(L"CEF3 取页面内容失败：任务未建立或结果为空文本（页面可能还没有内容）。");
+        return result;
+#else
+        调试输出(L"CEF3 取页面内容失败：当前构建未启用 CEF3 桥。");
+        return L"";
+#endif
+    }
+
+    std::wstring CEF3无头_取页面文本(int instanceId, int timeoutMilliseconds) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 取页面文本失败：该实例编号不存在或浏览器尚未创建。"); return L""; }
+        return CEF3_无头取框架文本(instance, timeoutMilliseconds, true);
+    }
+
+    std::wstring CEF3无头_取页面源码(int instanceId, int timeoutMilliseconds) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 取页面源码失败：该实例编号不存在或浏览器尚未创建。"); return L""; }
+        return CEF3_无头取框架文本(instance, timeoutMilliseconds, false);
+    }
+
+    std::wstring CEF3无头_取事件JSON(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 取事件JSON失败：该实例编号不存在或浏览器尚未创建。"); return L"[]"; }
+        // 只读快照：不清空缓冲，同一实例连续两次读取的结果是「至今为止」的同一批事件（上限 200 条，超限丢最旧）。
+        std::lock_guard<std::mutex> lock(instance->headlessEventsMutex);
+        std::wstring json = L"[";
+        bool first = true;
+        for (const auto& record : instance->headlessEvents) {
+            if (!first) json += L",";
+            first = false;
+            json += record;
+        }
+        json += L"]";
+        return json;
+    }
+
+    int CEF3无头_关闭(int instanceId) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 关闭无头实例失败：该实例编号不存在或已关闭。"); return 0; }
+        CEF3_释放实例桥接资源(*instance);
+        cefBrowsers_.erase(CEF3_运行时无头编号偏移 + instanceId);
+        return 1;
+    }
+
+    std::wstring CEF3_执行JS(const wchar_t* controlName, const wchar_t* script) {
+        // 控件版只做「查控件实例 + 调核心」；无头版 CEF3无头_执行JS 调的是同一个 CEF3_执行JS_按实例。
+        return CEF3_执行JS_按实例(CEF3_查找实例(controlName), script);
     }
 
     long long CEF3自动化_执行JS异步(const wchar_t* controlName, const wchar_t* script) {
@@ -16170,6 +17061,415 @@ ${generateFbroVipIndividualRuntime(false)}
         (void)controlName; (void)script; return 0;
 #endif
     }
+
+// 转义辅助是纯字符串处理，无任何 CAPI/桥依赖；无头事件缓冲只用它，而只用桥（CEF3_AVAILABLE=0 且
+// LINGBUILDER_CEF3_BRIDGE_AVAILABLE=1）的工程同样要能编译，所以它的守卫必须覆盖两条轨道。
+#if LINGBUILDER_CEF3_AVAILABLE || LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+    static std::wstring CEF3_框架转义JSON文本(const std::wstring& value) {
+        std::wstring output;
+        for (wchar_t ch : value) {
+            if (ch == static_cast<wchar_t>(92)) { output += L"\\\\"; }
+            else if (ch == static_cast<wchar_t>(34)) { output += L"\\\\"; output += static_cast<wchar_t>(34); }
+            else if (ch == static_cast<wchar_t>(10)) { output += L"\\\\n"; }
+            else if (ch == static_cast<wchar_t>(13)) { output += L"\\\\r"; }
+            else if (ch == static_cast<wchar_t>(9)) { output += L"\\\\t"; }
+            else if (ch < static_cast<wchar_t>(32)) {
+                unsigned short code = static_cast<unsigned short>(ch);
+                const wchar_t digits[] = L"0123456789abcdef";
+                output += L"\\\\u00";
+                output += static_cast<wchar_t>(digits[(code >> 4) & 15]);
+                output += static_cast<wchar_t>(digits[code & 15]);
+            } else { output += ch; }
+        }
+        return output;
+    }
+#endif
+
+#if LINGBUILDER_CEF3_AVAILABLE
+    static std::wstring CEF3_框架文本列表转JSON(const std::vector<std::wstring>& values) {
+        std::wstring result = L"[";
+        for (size_t index = 0; index < values.size(); ++index) {
+            if (index) result += L",";
+            result += static_cast<wchar_t>(34);
+            result += CEF3_框架转义JSON文本(values[index]);
+            result += static_cast<wchar_t>(34);
+        }
+        result += L"]";
+        return result;
+    }
+
+    static std::vector<std::wstring> CEF3_框架读取句柄文本列表(LB_CEF3_HANDLE list) {
+        std::vector<std::wstring> result;
+        const int64_t size = list ? LB_CEF3_ListGetSize(list) : 0;
+        for (int64_t index = 0; index < size; ++index) {
+            const auto value = LB_CEF3_ListGetValue(list, static_cast<uint64_t>(index));
+            result.push_back(CEF3_Bridge读取文本(value, LB_CEF3_ValueGetString));
+            if (value) LB_CEF3_ValueRelease(value);
+        }
+        if (list) LB_CEF3_ListRelease(list);
+        return result;
+    }
+
+    static LB_CEF3_HANDLE CEF3_框架句柄(long long frameHandle) {
+        return frameHandle > 0 ? static_cast<LB_CEF3_HANDLE>(frameHandle) : 0;
+    }
+
+    LB_CEF3_HANDLE CEF3_框架浏览器句柄(const wchar_t* controlName) {
+        return CEF3_框架实例句柄(CEF3_查找实例(controlName));
+    }
+
+    long long CEF3框架_取主框架(const wchar_t* controlName) {
+        // 控件版只做「查控件实例 + 调核心」；CEF3无头_取主框架 调同一个 CEF3_取主框架_按实例，
+        // 两条寻址路线拿到的框架句柄形状完全一致，后续句柄版命令无需区分来源。
+        return CEF3_取主框架_按实例(CEF3_查找实例(controlName));
+    }
+
+    long long CEF3框架_取焦点框架(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto browser = CEF3_框架浏览器句柄(controlName);
+        LB_CEF3_HANDLE frame = 0;
+        return browser && LB_CEF3_BrowserGetFocusedFrame(browser, &frame) == LB_CEF3_OK
+            ? static_cast<long long>(frame) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    long long CEF3框架_按标识取框架(const wchar_t* controlName, const std::wstring& identifier) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto browser = CEF3_框架浏览器句柄(controlName);
+        LB_CEF3_HANDLE frame = 0;
+        return browser && LB_CEF3_BrowserGetFrameByIdentifier(browser, identifier.c_str(), &frame) == LB_CEF3_OK
+            ? static_cast<long long>(frame) : 0;
+#else
+        (void)controlName; (void)identifier; return 0;
+#endif
+    }
+
+    long long CEF3框架_按名称取框架(const wchar_t* controlName, const std::wstring& name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto browser = CEF3_框架浏览器句柄(controlName);
+        LB_CEF3_HANDLE frame = 0;
+        return browser && LB_CEF3_BrowserGetFrameByName(browser, name.c_str(), &frame) == LB_CEF3_OK
+            ? static_cast<long long>(frame) : 0;
+#else
+        (void)controlName; (void)name; return 0;
+#endif
+    }
+
+    long long CEF3框架_取框架数量(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto browser = CEF3_框架浏览器句柄(controlName);
+        int64_t count = 0;
+        return browser && LB_CEF3_BrowserGetFrameCount(browser, &count) == LB_CEF3_OK
+            ? static_cast<long long>(count) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    std::wstring CEF3框架_取标识列表JSON(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto browser = CEF3_框架浏览器句柄(controlName);
+        if (!browser) return L"[]";
+        LB_CEF3_HANDLE identifiers = 0;
+        if (LB_CEF3_BrowserGetFrameIdentifiers(browser, &identifiers) != LB_CEF3_OK || !identifiers) return L"[]";
+        return CEF3_框架文本列表转JSON(CEF3_框架读取句柄文本列表(identifiers));
+#else
+        (void)controlName; return L"[]";
+#endif
+    }
+
+    std::wstring CEF3框架_取名称列表JSON(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto browser = CEF3_框架浏览器句柄(controlName);
+        if (!browser) return L"[]";
+        LB_CEF3_HANDLE names = 0;
+        if (LB_CEF3_BrowserGetFrameNames(browser, &names) != LB_CEF3_OK || !names) return L"[]";
+        return CEF3_框架文本列表转JSON(CEF3_框架读取句柄文本列表(names));
+#else
+        (void)controlName; return L"[]";
+#endif
+    }
+
+    int CEF3框架_是否有效(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame && LB_CEF3_FrameIsValid(frame) ? 1 : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_是否主框架(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame && LB_CEF3_FrameIsMain(frame) ? 1 : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_是否焦点框架(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame && LB_CEF3_FrameIsFocused(frame) ? 1 : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    std::wstring CEF3框架_取地址(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(CEF3_框架句柄(frameHandle), LB_CEF3_FrameGetUrl);
+#else
+        (void)frameHandle; return L"";
+#endif
+    }
+
+    std::wstring CEF3框架_取名称(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(CEF3_框架句柄(frameHandle), LB_CEF3_FrameGetName);
+#else
+        (void)frameHandle; return L"";
+#endif
+    }
+
+    std::wstring CEF3框架_取标识(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(CEF3_框架句柄(frameHandle), LB_CEF3_FrameGetIdentifier);
+#else
+        (void)frameHandle; return L"";
+#endif
+    }
+
+    long long CEF3框架_取父框架(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        LB_CEF3_HANDLE parent = 0;
+        return frame && LB_CEF3_FrameGetParent(frame, &parent) == LB_CEF3_OK
+            ? static_cast<long long>(parent) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_载入地址(long long frameHandle, const std::wstring& url) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FrameLoadUrl(frame, url.c_str()) : 0;
+#else
+        (void)frameHandle; (void)url; return 0;
+#endif
+    }
+
+    int CEF3框架_执行JS(long long frameHandle, const std::wstring& code, const std::wstring& scriptUrl, int startLine) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FrameExecuteJavaScript(frame, code.c_str(), scriptUrl.c_str(), startLine) : 0;
+#else
+        (void)frameHandle; (void)code; (void)scriptUrl; (void)startLine; return 0;
+#endif
+    }
+
+    long long CEF3框架_取源码异步(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? static_cast<long long>(LB_CEF3_FrameGetSource(frame)) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    long long CEF3框架_取文本异步(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? static_cast<long long>(LB_CEF3_FrameGetText(frame)) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_撤销(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FrameUndo(frame) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_重做(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FrameRedo(frame) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_剪切(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FrameCut(frame) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_复制(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FrameCopy(frame) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_粘贴(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FramePaste(frame) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_全选(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame ? LB_CEF3_FrameSelectAll(frame) : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    int CEF3框架_释放(long long frameHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        return frame && LB_CEF3_HandleRelease(frame) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)frameHandle; return 0;
+#endif
+    }
+
+    static const wchar_t* CEF3_填表助手脚本() {
+        return L"function lbTianBiao(op, selector, index, a, b) {\\n  var list;\\n  try { list = document.querySelect"
+            L"orAll(selector); } catch (e) { return; }\\n  var el = (index >= 0 && index < list.length) ? list[ind"
+            L"ex] : null;\\n  if (!el) return;\\n  function fire(name) {\\n    try {\\n      if (name === 'keydown"
+            L"' || name === 'keyup') {\\n        el.dispatchEvent(new KeyboardEvent(name, { bubbles: true, cancela"
+            L"ble: true, keyCode: (b | 0) }));\\n      } else if (name === 'mousedown' || name === 'mouseup' || na"
+            L"me === 'mousemove' || name === 'click') {\\n        el.dispatchEvent(new MouseEvent(name, { bubbles:"
+            L" true, cancelable: true, view: window }));\\n      } else {\\n        el.dispatchEvent(new Event(nam"
+            L"e, { bubbles: true, cancelable: true }));\\n      }\\n    } catch (e) { }\\n  }\\n  function focusAn"
+            L"dFire(name) { try { el.focus(); } catch (e) { } fire(name); }\\n  if (op === 'click') { try { el.cli"
+            L"ck(); } catch (e) { fire('click'); } }\\n  else if (op === 'scrollIntoView') { try { el.scrollIntoVi"
+            L"ew({ block: a === '1' ? 'start' : 'end', inline: 'nearest' }); } catch (e) { } }\\n  else if (op ==="
+            L" 'setFocus') { try { if (a === '1') { el.focus(); } else { el.blur(); } } catch (e) { } }\\n  else i"
+            L"f (op === 'setValue') {\\n    try {\\n      if (typeof el.value === 'string') { el.value = a; } else"
+            L" { el.textContent = a; }\\n      focusAndFire('input'); focusAndFire('change');\\n    } catch (e) { "
+            L"}\\n  }\\n  else if (op === 'setChecked') { try { el.checked = (a === '1'); focusAndFire('change'); "
+            L"} catch (e) { } }\\n  else if (op === 'setSelected') { try { el.selectedIndex = (b | 0); focusAndFir"
+            L"e('change'); } catch (e) { } }\\n  else if (op === 'setInnerText') { try { el.innerText = a; } catch"
+            L" (e) { try { el.textContent = a; } catch (e2) { } } }\\n  else if (op === 'setOuterText') { try { el"
+            L".outerText = a; } catch (e) { try { el.textContent = a; } catch (e2) { } } }\\n  else if (op === 'se"
+            L"tInnerHTML') { try { el.innerHTML = a; } catch (e) { } }\\n  else if (op === 'setOuterHTML') { try {"
+            L" el.outerHTML = a; } catch (e) { } }\\n  else if (op === 'setAttribute') { try { el.setAttribute(b, "
+            L"a); } catch (e) { } }\\n  else if (op === 'dispatchEvent') { fire(a); }\\n}\\n";
+    }
+
+    static std::wstring CEF3_填表拼接字面量(const std::wstring& value) {
+        // 无反斜杠写法：本文件的模板字面量会解释转义序列，直接写带转义符的字面量会落成真实控制字符并产出非法 C++。
+        std::wstring output;
+        for (wchar_t ch : value) {
+            if (ch == static_cast<wchar_t>(92)) { output.push_back(static_cast<wchar_t>(92)); output.push_back(static_cast<wchar_t>(92)); }
+            else if (ch == static_cast<wchar_t>(39)) { output.push_back(static_cast<wchar_t>(92)); output.push_back(static_cast<wchar_t>(39)); }
+            else if (ch == static_cast<wchar_t>(10)) { output.push_back(static_cast<wchar_t>(92)); output.push_back(static_cast<wchar_t>(110)); }
+            else if (ch == static_cast<wchar_t>(13)) { output.push_back(static_cast<wchar_t>(92)); output.push_back(static_cast<wchar_t>(114)); }
+            else if (ch == static_cast<wchar_t>(9)) { output.push_back(static_cast<wchar_t>(92)); output.push_back(static_cast<wchar_t>(116)); }
+            else { output.push_back(ch); }
+        }
+        return output;
+    }
+
+    static int CEF3_填表_执行(long long frameHandle, const wchar_t* op, const std::wstring& selector,
+                                   int index, const std::wstring& a, const std::wstring& b) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const auto frame = CEF3_框架句柄(frameHandle);
+        if (!frame) return 0;
+        const std::wstring call = std::wstring(CEF3_填表助手脚本())
+            + L"(0," + CEF3_填表拼接字面量(op)
+            + L"," + CEF3_填表拼接字面量(selector)
+            + L"," + std::to_wstring(index < 0 ? 0 : index)
+            + L"," + CEF3_填表拼接字面量(a)
+            + L"," + CEF3_填表拼接字面量(b) + L");";
+        return LB_CEF3_FrameExecuteJavaScript(frame, call.c_str(), L"", 1) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)frameHandle; (void)op; (void)selector; (void)index; (void)a; (void)b;
+        return 0;
+#endif
+    }
+
+
+    int CEF3填表_点击元素(long long frameHandle, const std::wstring& selector, int index) {
+        return CEF3_填表_执行(frameHandle, L"click", selector, index, L"", L"");
+    }
+
+
+    int CEF3填表_滚动到元素(long long frameHandle, const std::wstring& selector, int index, bool toTop) {
+        return CEF3_填表_执行(frameHandle, L"scrollIntoView", selector, index, (toTop ? L"1" : L"0"), L"");
+    }
+
+
+    int CEF3填表_聚焦元素(long long frameHandle, const std::wstring& selector, int index, bool focus) {
+        return CEF3_填表_执行(frameHandle, L"setFocus", selector, index, (focus ? L"1" : L"0"), L"");
+    }
+
+
+    int CEF3填表_赋值(long long frameHandle, const std::wstring& selector, int index, const std::wstring& value) {
+        return CEF3_填表_执行(frameHandle, L"setValue", selector, index, value, L"");
+    }
+
+
+    int CEF3填表_置选择框(long long frameHandle, const std::wstring& selector, int index, bool check) {
+        return CEF3_填表_执行(frameHandle, L"setChecked", selector, index, (check ? L"1" : L"0"), L"");
+    }
+
+
+    int CEF3填表_置选择项(long long frameHandle, const std::wstring& selector, int index, int selectIndex) {
+        return CEF3_填表_执行(frameHandle, L"setSelected", selector, index, L"", std::to_wstring(selectIndex));
+    }
+
+
+    int CEF3填表_置内文本(long long frameHandle, const std::wstring& selector, int index, const std::wstring& text) {
+        return CEF3_填表_执行(frameHandle, L"setInnerText", selector, index, text, L"");
+    }
+
+
+    int CEF3填表_置外文本(long long frameHandle, const std::wstring& selector, int index, const std::wstring& text) {
+        return CEF3_填表_执行(frameHandle, L"setOuterText", selector, index, text, L"");
+    }
+
+
+    int CEF3填表_置内代码(long long frameHandle, const std::wstring& selector, int index, const std::wstring& html) {
+        return CEF3_填表_执行(frameHandle, L"setInnerHTML", selector, index, html, L"");
+    }
+
+
+    int CEF3填表_置外代码(long long frameHandle, const std::wstring& selector, int index, const std::wstring& html) {
+        return CEF3_填表_执行(frameHandle, L"setOuterHTML", selector, index, html, L"");
+    }
+
+
+    int CEF3填表_置属性(long long frameHandle, const std::wstring& selector, int index, const std::wstring& name, const std::wstring& value) {
+        return CEF3_填表_执行(frameHandle, L"setAttribute", selector, index, value, name);
+    }
+
+
+    int CEF3填表_触发事件(long long frameHandle, const std::wstring& selector, int index, const std::wstring& eventName, int keyCode) {
+        return CEF3_填表_执行(frameHandle, L"dispatchEvent", selector, index, eventName, std::to_wstring(keyCode));
+    }
+#endif
 
     long long CEF3Hook_注册脚本(const wchar_t* controlName, const wchar_t* name, const wchar_t* script,
                                  const wchar_t* urlPattern, bool allFrames, bool executeExistingContexts) {
@@ -16368,21 +17668,11 @@ ${generateFbroVipIndividualRuntime(false)}
     }
 
     std::wstring CEF3_取标题(const wchar_t* controlName) {
-        CefBrowserInstance* instance = CEF3_查找实例(controlName);
-#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
-        return instance ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetTitle) : L"";
-#else
-        return instance ? instance->currentTitle : L"";
-#endif
+        return CEF3_取标题_按实例(CEF3_查找实例(controlName));
     }
 
     std::wstring CEF3_取地址(const wchar_t* controlName) {
-        CefBrowserInstance* instance = CEF3_查找实例(controlName);
-#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
-        return instance ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetUrl) : L"";
-#else
-        return instance ? instance->currentUrl : L"";
-#endif
+        return CEF3_取地址_按实例(CEF3_查找实例(controlName));
     }
 
     std::wstring CEF3_取资源地址(const wchar_t* relativePath) {
@@ -16414,6 +17704,69 @@ ${generateFbroVipIndividualRuntime(false)}
         if (instance->created) { 调试输出(L"CEF3 设置代理需在创建前调用。"); return 0; }
         instance->proxyServer = proxy ? proxy : L"";
         instance->proxyMode = instance->proxyServer.empty() ? L"none" : L"custom";
+        return 1;
+    }
+
+    // 设计器无关实例编号的统一入口：弹窗/区域共用 1000000+ 段，无头实例用 2000000+ 段；未命中返回空指针。
+    CefBrowserInstance* CEF3_按实例编号查实例(int instanceId) {
+        if (instanceId <= 0) return nullptr;
+        auto popup = cefBrowsers_.find(CEF3_运行时弹窗编号偏移 + instanceId);
+        if (popup != cefBrowsers_.end()) return popup->second.get();
+        auto headless = cefBrowsers_.find(CEF3_运行时无头编号偏移 + instanceId);
+        return headless == cefBrowsers_.end() ? nullptr : headless->second.get();
+    }
+
+    // ===== CEF3 全局代理与代理认证（与 EdgeView/FBro 同口径补齐） =====
+    // 全局代理只影响之后新建实例（控件/弹窗/区域/无头创建时未自带代理即回落），已创建实例不变；
+    // 显式直连（CEF3_设置代理 传空）不参与回落。代理认证经桥「身份验证请求」(isProxy) 事件自动应答
+    // （见 CEF3_处理Bridge事件）；Chromium 不支持把凭据写进代理地址，fixed_servers 只接受 scheme://host:port。
+    // 凭据只驻留生成 exe 的进程内存，取全局代理/取实例代理一律不回显密码。
+    int CEF3_设置全局代理(const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
+        cef3GlobalProxy_ = proxy ? proxy : L"";
+        cef3GlobalProxyUser_ = user ? user : L"";
+        cef3GlobalProxyPassword_ = password ? password : L"";
+        if (cef3GlobalProxy_.empty() && (!cef3GlobalProxyUser_.empty() || !cef3GlobalProxyPassword_.empty())) {
+            cef3GlobalProxyUser_.clear();
+            cef3GlobalProxyPassword_.clear();
+            调试输出(L"CEF3 设置全局代理：代理地址为空文本，认证凭据已一并清除。");
+        }
+        return 1;
+    }
+
+    int CEF3_清除全局代理() {
+        cef3GlobalProxy_.clear();
+        cef3GlobalProxyUser_.clear();
+        cef3GlobalProxyPassword_.clear();
+        return 1;
+    }
+
+    std::wstring CEF3_取全局代理() const { return cef3GlobalProxy_; }
+
+    std::wstring CEF3_取实例代理(int instanceId) {
+        CefBrowserInstance* instance = CEF3_按实例编号查实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 取实例代理失败：该实例编号不存在（弹窗/区域/无头按编号寻址）。"); return L""; }
+        return instance->proxyServer.empty() ? cef3GlobalProxy_ : instance->proxyServer;
+    }
+
+    int CEF3_设置代理认证(const wchar_t* controlName, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) { 调试输出(L"CEF3 设置代理认证失败：浏览器控件不存在。"); return 0; }
+        if (proxy && proxy[0]) {
+            if (instance->created) 调试输出(L"CEF3 设置代理认证：控件已创建，代理地址不可再改（需创建前设置），本次只更新认证凭据。");
+            else { instance->proxyServer = proxy; instance->proxyMode = L"custom"; }
+        }
+        instance->proxyUser = user ? user : L"";
+        instance->proxyPassword = password ? password : L"";
+        return 1;
+    }
+
+    int CEF3_设置实例代理认证(int instanceId, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
+        CefBrowserInstance* instance = CEF3_按实例编号查实例(instanceId);
+        if (!instance) { 调试输出(L"CEF3 设置实例代理认证失败：该实例编号不存在（弹窗/区域/无头按编号寻址）。"); return 0; }
+        if (proxy && proxy[0] && !instance->proxyServer.empty() && instance->proxyServer != proxy)
+            调试输出(L"CEF3 设置实例代理认证：实例代理以创建时参数为准，传入地址与现值不一致，仅更新认证凭据。");
+        instance->proxyUser = user ? user : L"";
+        instance->proxyPassword = password ? password : L"";
         return 1;
     }
 
@@ -19095,24 +20448,9 @@ ${generateFbroVipIndividualRuntime(false)}
             const ControlSpec* control = FindControl(it->second->controlId);
             bool match = !controlName || !controlName[0] || (control && TextEquals(control->name, controlName));
             if (match) {
-#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
-                for (auto popup : it->second->bridgePopupHandles) {
-                    LB_CEF3_BrowserClose(popup, 1);
-                    LB_CEF3_HandleRelease(popup);
-                }
-                it->second->bridgePopupHandles.clear();
-                if (it->second->bridgeHandle) {
-                    LB_CEF3_BrowserClose(it->second->bridgeHandle, 1);
-                    LB_CEF3_HandleRelease(it->second->bridgeHandle);
-                    it->second->bridgeHandle = 0;
-                }
-#else
-                for (auto& popup : it->second->popupBrowsers) {
-                    if (popup && popup->GetHost()) popup->GetHost()->CloseBrowser(true);
-                }
-                it->second->popupBrowsers.clear();
-                if (it->second->browser) it->second->browser->GetHost()->CloseBrowser(true);
-#endif
+                // 释放一律走共享核心：桥句柄、弹窗句柄与 CAPI 浏览器各自关闭+释放的配对只在
+                // CEF3_释放实例桥接资源 里存在一份，控件版与无头版不得各写一遍。
+                CEF3_释放实例桥接资源(*it->second);
                 it = cefBrowsers_.erase(it);
             } else ++it;
         }
@@ -19369,17 +20707,10 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
     }
 
+    // 分支判定全部收在 CEF3_是否加载中_按实例 内（含非 CEF3 构建返回 0），控件版与无头版只做查实例+调核心，
+    // 这样同一条判断在两种 outputKind 与三种宏组合下只会有一份实现。
     int CEF3_是否加载中(const wchar_t* controlName) {
-#if LINGBUILDER_CEF3_AVAILABLE
-        CefBrowserInstance* instance = CEF3_查找实例(controlName);
-#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
-        return instance && LB_CEF3_BrowserIsLoading(instance->bridgeHandle) > 0 ? 1 : 0;
-#else
-        return instance && instance->browser && instance->browser->IsLoading() ? 1 : 0;
-#endif
-#else
-        (void)controlName; return 0;
-#endif
+        return CEF3_是否加载中_按实例(CEF3_查找实例(controlName));
     }
 
     int CEF3_是否有文档(const wchar_t* controlName) {
@@ -28455,7 +29786,14 @@ function translateModuleCallArguments(
       if (parameter?.byRef === true && parameterType !== 'wideString' && parameterType !== 'controlRef' && parameterType !== 'handler') {
         return `&(${translated})`;
       }
-      if (parameterType === 'wideString' && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) {
+      // wideString 形参（const wchar_t* ABI）统一包装：裸标识符、控件成员文本表达式与调用形态实参
+      // （功能库函数/模块命令/拼接结果）都经 LingCppWideArg 归一；非文本返回值的调用本就是类型错误，
+      // 由语言服务参数类型诊断负责，不在此处放行。
+      if (parameterType === 'wideString' && (
+        /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())
+        || parseCallStatement(argument.trim()) !== undefined
+        || isDefinitelyWideStringExpression(argument, enabledModules, translationContext)
+      )) {
         return `LingCppWideArg(${translated})`;
       }
       if (parameterType !== 'handler') return translated;
@@ -28602,6 +29940,14 @@ function translateLingCppExpression(
       const comparisonOperator = translateComparisonOperator(binaryExpression.operator);
       return `std::wstring(LingCppWideArg(${left}))${comparisonOperator}LingCppWideArg(${right})`;
     }
+    // const wchar_t* + const wchar_t* 是指针加法（C2110）：两侧都产出宽字符指针时用 LingCppWideArg 归一再拼接。
+    if (
+      binaryExpression.operator === '+'
+      && producesWideStringPointer(binaryExpression.left, enabledModules, translationContext)
+      && producesWideStringPointer(binaryExpression.right, enabledModules, translationContext)
+    ) {
+      return `(std::wstring(LingCppWideArg(${left})) + LingCppWideArg(${right}))`;
+    }
     return `${left}${translateComparisonOperator(binaryExpression.operator)}${right}`;
   }
   const controlTextProperty = parseEplControlMemberRule(trimmed);
@@ -28659,6 +30005,28 @@ function isDefinitelyWideStringExpression(
   const binding = findModuleCommandBinding(call.name, enabledModules);
   if (binding?.returnType === 'wideString') return true;
   // 数组成员型命令没有固定返回类型，文本性由本次调用的数组实参决定。
+  if (binding?.returnType !== 'arrayElement') return false;
+  const arrayParameterIndex = (binding.parameters || []).findIndex(parameter => parameter.type === 'array');
+  if (arrayParameterIndex < 0) return false;
+  const arrayArgument = splitCallArguments(call.argumentsText)[arrayParameterIndex]?.trim();
+  return Boolean(arrayArgument && translationContext.wideStringArrayVariables.has(normalizeIdentifier(arrayArgument)));
+}
+
+/** 该表达式的生成结果是否为 const wchar_t* 裸指针（区别于 std::wstring 对象）：指针+指针会编译成指针加法。 */
+function producesWideStringPointer(
+  expression: string,
+  enabledModules: InstalledModule[],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): boolean {
+  const trimmed = expression.trim();
+  if (/^"(?:\\.|[^"\\])*"$/u.test(trimmed)) return true;
+  if (/^“[\s\S]*”$/u.test(trimmed)) return true;
+  const parenthesized = unwrapParenthesizedExpression(trimmed);
+  if (parenthesized !== undefined) return producesWideStringPointer(parenthesized, enabledModules, translationContext);
+  const call = parseCallStatement(trimmed);
+  if (!call) return false;
+  const binding = findModuleCommandBinding(call.name, enabledModules);
+  if (binding?.returnType === 'wideString') return true;
   if (binding?.returnType !== 'arrayElement') return false;
   const arrayParameterIndex = (binding.parameters || []).findIndex(parameter => parameter.type === 'array');
   if (arrayParameterIndex < 0) return false;
@@ -28878,6 +30246,18 @@ function generateFileDialogSpecs(project: LingWindowProject): string {
   return rows.length > 0
     ? `static FileDialogSpec g_fileDialogs[] = {\n${rows.join(',\n')}\n};\nstatic const int g_fileDialogCount = ${rows.length};`
     : 'static FileDialogSpec g_fileDialogs[] = { { L"", L"", -1, 0, 0, false, false, L"", L"" } };\nstatic const int g_fileDialogCount = 0;';
+}
+
+/** 「FBro无头浏览器」设计器资源表：owner 窗口创建期以 LB_FBro_CreateBackground 建后台实例。 */
+function generateFbroHeadlessSpecs(project: LingWindowProject): string {
+  const resources = (project.resources || []).filter((resource): resource is LingFbroHeadlessResource => resource.type === 'FBroHeadlessBrowser');
+  const rows = resources.map(resource => {
+    const ownerWindowIndex = project.windows.findIndex(window => window.id === resource.ownerWindowId);
+    return `    { L"${escapeWideString(resource.id)}", L"${escapeWideString(resource.name)}", ${ownerWindowIndex}, L"${escapeWideString(resource.url)}", L"${escapeWideString(resource.cacheDir || '')}", L"${escapeWideString(resource.extraInfoJson || '')}" }`;
+  });
+  return rows.length > 0
+    ? `static FbroHeadlessSpec g_fbroHeadlessBrowsers[] = {\n${rows.join(',\n')}\n};\nstatic const int g_fbroHeadlessBrowserCount = ${rows.length};`
+    : 'static FbroHeadlessSpec g_fbroHeadlessBrowsers[] = { { L"", L"", -1, L"", L"", L"" } };\nstatic const int g_fbroHeadlessBrowserCount = 0;';
 }
 
 function generateEdgeViewHeadlessSpecs(project: LingWindowProject): string {
@@ -29305,7 +30685,9 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
       String(typeof properties.releaseChannels === 'number' ? properties.releaseChannels : 15),
       typeof properties.scrollBarStyle === 'string' ? properties.scrollBarStyle : 'default',
       typeof properties.scriptLocale === 'string' ? properties.scriptLocale : '',
-      boolText(properties.allowHostInputProcessing, false)
+      boolText(properties.allowHostInputProcessing, false),
+      boolText(properties.disableWebSecurity, false),
+      typeof properties.additionalBrowserArguments === 'string' ? properties.additionalBrowserArguments : ''
     ])];
   }
   const scalar = properties.imageSource ?? properties.gifSource ?? properties.aviSource ?? properties.videoSource ?? properties.url ?? properties.address ?? properties.hotKey
