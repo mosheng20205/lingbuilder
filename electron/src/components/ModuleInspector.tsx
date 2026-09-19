@@ -1941,54 +1941,81 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
   const capabilityCount = (manifest.contributes?.commands?.length || 0)
     + (manifest.contributes?.types?.length || 0)
     + (manifest.contributes?.designerControls?.length || 0);
+  const hasDiagnostics = module.diagnostics.length > 0;
+  const [expanded, setExpanded] = useState(hasDiagnostics);
+  const description = descriptionOverride || manifest.description;
+  const capabilityTextFinal = capabilityText || `能力 ${capabilityCount} 项`;
+  const rowHoverBgClass = isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-500/5';
+  const compactButtonBase = 'h-6 w-6 shrink-0 rounded border text-xs inline-flex items-center justify-center cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-40';
+
+  const toggleExpanded = () => setExpanded(value => !value);
 
   return (
-    <div className="min-w-0 p-3 flex flex-col gap-3">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="min-w-0 break-words text-sm font-semibold leading-5">{manifest.name}</span>
+    <div className="min-w-0 p-2 flex flex-col gap-1">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`模块 ${manifest.name}，${expanded ? '收起' : '展开'}详情`}
+        onClick={toggleExpanded}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleExpanded();
+          }
+        }}
+        className={`min-w-0 cursor-pointer select-none rounded outline-none focus-visible:ring-1 focus-visible:ring-sky-500/60 ${rowHoverBgClass}`}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <ChevronRight size={12} className={`shrink-0 opacity-60 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+          <span className="min-w-0 truncate text-[13px] font-semibold leading-5" title={manifest.name}>{manifest.name}</span>
           <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${categoryBadgeClass}`}>{manifest.category}</span>
           {module.isBuiltin && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${builtinBadgeClass}`}>内置</span>}
-          {module.isDevLink && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`} title={module.installPath}>开发源 · 实时生效</span>}
-          {(statusLabel || isEnabled) && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${statusBadgeClass}`}>{statusLabel || '项目已引用'}</span>}
-          {commerce && <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${commerceBadgeClass}`}><LockKeyhole size={10} className="mr-1 inline" aria-hidden="true" />{commerce.access?.allowed ? '账号已授权' : commerce.freeWindow ? '限时免费' : `¥${((Number(commerce.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>}
+          {module.isDevLink && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`} title={`开发源 · 实时生效\n${module.installPath}`}>开发源</span>}
+          {(statusLabel || isEnabled) && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${statusBadgeClass}`}>{statusLabel || '已引用'}</span>}
+          {commerce && <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${commerceBadgeClass}`}><LockKeyhole size={10} className="mr-1 inline" aria-hidden="true" />{commerce.access?.allowed ? '已授权' : commerce.freeWindow ? '限时免费' : `¥${((Number(commerce.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>}
+          <span className="ml-auto shrink-0 flex items-center gap-1" onClick={event => event.stopPropagation()}>
+            <button onClick={onInspect} title="查看接口" aria-label={`查看 ${manifest.name} 接口`} className={`${compactButtonBase} border-violet-500/40 text-violet-300 hover:bg-violet-500/10 ${rowHoverTextClass}`}>
+              <Search size={12} />
+            </button>
+            <button
+              onClick={onToggle}
+              disabled={isBasicModule}
+              title={isBasicModule ? 'Win32窗口基础模块是普通项目的默认基础能力，不能禁用。' : toggleLabel || (isEnabled ? '禁用' : '启用')}
+              aria-label={`${isEnabled && !isBasicModule ? '禁用' : '启用'} ${manifest.name}`}
+              className={`${compactButtonBase} border-sky-500/40 text-sky-300 hover:bg-sky-500/10 ${rowHoverTextClass}`}
+            >
+              {isBasicModule || !isEnabled ? <Check size={12} /> : <X size={12} />}
+            </button>
+            {module.isDevLink ? (
+              <button onClick={onUnlinkDevSource} title="取消链接开发源（只移除链接，不删除源目录文件）" aria-label={`取消链接 ${manifest.name}`} className={`${compactButtonBase} border-amber-500/40 text-amber-300 hover:bg-amber-500/10 ${isDarkMode ? 'hover:text-amber-100' : 'hover:text-amber-700'}`}>
+                <Link2 size={12} />
+              </button>
+            ) : (
+              <button onClick={onUninstall} disabled={module.isBuiltin} title={module.isBuiltin ? '内置模块不能卸载。' : '卸载'} aria-label={`卸载 ${manifest.name}`} className={`${compactButtonBase} border-red-500/40 text-red-300 hover:bg-red-500/10 ${isDarkMode ? 'hover:text-red-100' : 'hover:text-red-700'}`}>
+                <Trash2 size={12} />
+              </button>
+            )}
+          </span>
         </div>
-        <div className={`mt-1 break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id} · {manifest.version} · {capabilityText || `能力 ${capabilityCount} 项`}</div>
-        <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{descriptionOverride || manifest.description}</div>
-        {module.diagnostics.length > 0 && (
-          <div className={`mt-2 text-[11px] whitespace-pre-wrap ${diagnosticsClass}`}>{module.diagnostics.join('\n')}</div>
-        )}
+        <div className="flex items-center gap-2 min-w-0 pl-[18px]">
+          <span className={`min-w-0 truncate text-[11px] leading-4 ${subtleClass}`} title={description}>{description}</span>
+          <span className={`ml-auto shrink-0 whitespace-nowrap text-[10px] leading-4 ${subtleClass}`}>{manifest.version} · {capabilityTextFinal}</span>
+        </div>
       </div>
-      <div className="flex gap-2">
-        <button onClick={onInspect} className={`h-8 min-w-0 flex-1 px-1.5 rounded border border-violet-500/40 text-violet-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-violet-500/10 ${rowHoverTextClass} whitespace-nowrap`}>
-          <Search size={14} />
-          接口
-        </button>
-        <button
-          onClick={onToggle}
-          disabled={isBasicModule}
-          title={isBasicModule ? 'Win32窗口基础模块是普通项目的默认基础能力，不能禁用。' : undefined}
-          className={`h-8 min-w-0 flex-1 px-1.5 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-sky-500/10 ${rowHoverTextClass} disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap`}
-        >
-          {isBasicModule || !isEnabled ? <Check size={14} /> : <X size={14} />}
-          {isBasicModule ? '基础' : toggleLabel || (isEnabled ? '禁用' : '启用')}
-        </button>
-        {module.isDevLink ? (
-          <button onClick={onUnlinkDevSource} title="只移除开发源链接，不删除源目录文件" className={`h-8 min-w-0 flex-1 px-1.5 rounded border border-amber-500/40 text-amber-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-amber-500/10 ${isDarkMode ? 'hover:text-amber-100' : 'hover:text-amber-700'} whitespace-nowrap`}>
-            <Link2 size={14} />
-            取消链接
-          </button>
-        ) : (
-          <button onClick={onUninstall} disabled={module.isBuiltin} className={`h-8 min-w-0 flex-1 px-1.5 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-red-500/10 ${isDarkMode ? 'hover:text-red-100' : 'hover:text-red-700'} disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap`}>
-            <Trash2 size={14} />
-            卸载
-          </button>
-        )}
-      </div>
-      {commerce && !commerce.access?.allowed && Array.isArray(commerce.offers) && commerce.offers.length > 0 && (
-        <div className="grid grid-cols-2 gap-2" aria-label="购买模块授权">
-          <button type="button" onClick={() => onPurchase('wechat')} className={`h-8 rounded border px-2 text-xs ${isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'} hover:bg-emerald-500/10 cursor-pointer transition-colors`}>微信支付</button>
-          <button type="button" onClick={() => onPurchase('alipay')} className={`h-8 rounded border px-2 text-xs ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 cursor-pointer transition-colors`}>支付宝</button>
+      {expanded && (
+        <div className="min-w-0 pl-[18px] flex flex-col gap-1.5">
+          <div className={`break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id}</div>
+          <div className={`break-words text-xs leading-5 ${subtleClass}`}>{description}</div>
+          {hasDiagnostics && (
+            <div className={`text-[11px] whitespace-pre-wrap ${diagnosticsClass}`}>{module.diagnostics.join('\n')}</div>
+          )}
+          {commerce && !commerce.access?.allowed && Array.isArray(commerce.offers) && commerce.offers.length > 0 && (
+            <div className="grid grid-cols-2 gap-2" aria-label="购买模块授权">
+              <button type="button" onClick={() => onPurchase('wechat')} className={`h-7 rounded border px-2 text-[11px] ${isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'} hover:bg-emerald-500/10 cursor-pointer transition-colors`}>微信支付</button>
+              <button type="button" onClick={() => onPurchase('alipay')} className={`h-7 rounded border px-2 text-[11px] ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 cursor-pointer transition-colors`}>支付宝</button>
+            </div>
+          )}
         </div>
       )}
     </div>
