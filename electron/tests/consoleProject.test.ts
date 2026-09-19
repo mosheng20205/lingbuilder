@@ -39,6 +39,25 @@ function createConsoleDesignerProject(className = '程序'): LingWindowProject {
   };
 }
 
+test('console entry guards the CEF subprocess before running the program body', () => {
+  const generated = generateLingCppNativeWin32Project(createConsoleDesignerProject(), {
+    lingCppSourceCode: CONSOLE_SOURCE,
+    outputKind: 'console-application'
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // 守卫必须早于程序体，且先于运行时初始化（子进程只需返回退出码）。
+  const guard = mainCpp.indexOf('lingbuilder_cef3_子进程守卫');
+  const body = mainCpp.indexOf('consoleApp.启动()');
+  assert.ok(guard >= 0, '缺少 CEF3 子进程守卫');
+  assert.ok(body >= 0);
+  assert.ok(guard < body, 'CEF3 子进程守卫必须在启动() 之前');
+  assert.match(mainCpp, /cefExitCode >= 0/u);
+  // 退出必须回收 CEF，否则无头实例与子进程残留。
+  assert.ok(mainCpp.indexOf('consoleApp.LingBuilder_CEF3_退出回收()') > body, '退出回收必须在启动() 之后');
+});
+
 test('console application output generates a wmain entry that calls the 启动 method', () => {
   const generated = generateLingCppNativeWin32Project(createConsoleDesignerProject(), {
     lingCppSourceCode: CONSOLE_SOURCE,

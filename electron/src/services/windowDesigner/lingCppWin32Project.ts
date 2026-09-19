@@ -9654,6 +9654,18 @@ static ${classCppName}& ${singletonName}() {
     return *instance;
 }
 
+// CEF 子进程守卫：CEF 会以同一个 exe 再次拉起 --type=renderer 等子进程，子进程里必须
+// 只执行 CefExecuteProcess 并直接带着退出码返回，绝不能继续跑用户的“启动”子程序。
+// 放在运行时初始化与程序体之前；非 CEF3 项目里 LINGBUILDER_CEF3_BRIDGE_AVAILABLE 恒为 0，
+// 该函数只剩 return -1，产物行为与改动前完全一致。
+static int lingbuilder_cef3_子进程守卫() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+    const int cefExitCode = LB_CEF3_ExecuteSubProcess(reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr)));
+    if (cefExitCode >= 0) return cefExitCode;
+#endif
+    return -1;
+}
+
 #ifdef _WIN32
 int wmain(int argc, wchar_t* argv[]) {
 #else
@@ -9661,6 +9673,8 @@ int main(int argc, char* argv[]) {
 #endif
     (void)argc;
     (void)argv;
+    const int cefSubprocessExitCode = lingbuilder_cef3_子进程守卫();
+    if (cefSubprocessExitCode >= 0) return cefSubprocessExitCode;
     SetConsoleOutputCP(CP_UTF8);
     LingBuilder_EnsureConsoleRuntimeInitialized();
     ${classCppName}& consoleApp = ${singletonName}();
@@ -9673,7 +9687,17 @@ int main(int argc, char* argv[]) {
         consoleApp.LingBuilder_RegisterHeadlessThreadOwner();
 #endif
     }
-    ${startup.entry.returnType === '整数型' && startupMethod ? `return consoleApp.${toCppIdentifier(startupMethod.name)}();` : `consoleApp.${toCppIdentifier(startupMethod?.name || '启动')}();\n    return 0;`}
+    // 退出统一经 LingWindowBase::LingBuilder_CEF3_退出回收 回收 CEF（含无头实例），再返回退出码。
+    // “空 启动()”形态把调用与 return 0; 收进同一个立即调用的 lambda：语句形状保持
+    // 「consoleApp.启动(); 换行 return 0;」不变，退出回收仍在程序体之后执行。
+    const int lingbuilder_退出码 = [&consoleApp]() {
+${startup.entry.returnType === '整数型' && startupMethod
+    ? `        return consoleApp.${toCppIdentifier(startupMethod.name)}();`
+    : `        consoleApp.${toCppIdentifier(startupMethod?.name || '启动')}();
+        return 0;`}
+    }();
+    consoleApp.LingBuilder_CEF3_退出回收();
+    return lingbuilder_退出码;
 }`;
 }
 
@@ -20000,6 +20024,18 @@ ${generateFbroVipIndividualRuntime(false)}
         return count;
     }
 
+public:
+    // 进程退出前由入口调用的 CEF3 回收口（窗口入口与控制台入口共用同一口径）。
+    // 必须是 LingWindowBase 成员而不是自由函数：回收要访问本实例的 cefBrowsers_。
+    // 非 CEF3 项目里宏为 0，函数体为空，不引入任何新的未声明符号。
+    void LingBuilder_CEF3_退出回收() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_Shutdown();
+#endif
+    }
+
+protected:
+
     std::wstring CEF3_枚举实例JSON() {
         auto cef3JsonEscape = [](const std::wstring& value) {
             std::wstring output;
@@ -26731,6 +26767,11 @@ ${fbroInProcessEnabled ? '        LB_FBro_Shutdown();' : ''}
     if (SUCCEEDED(mediaFoundationResult)) MFShutdown();
     if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+    // 与控制台入口同一退出回收口径：仍存活的窗口实例先回收自身 CEF 资源
+    // （实例在 WM_NCDESTROY 已随窗口销毁时 IsWindow/ userdata 双双落空，不参与回收）。
+    LingWindowBase* cef3ExitOwner = (startWindow && IsWindow(startWindow)) ? LingWindowBase::FromMessageWindow(startWindow) : nullptr;
+    if (cef3ExitOwner) cef3ExitOwner->LingBuilder_CEF3_退出回收();
+    // 进程级兜底关闭：桥内按初始化标志幂等，实例已回收时重复调用直接返回。
     LB_CEF3_Shutdown();
 #elif LINGBUILDER_CEF3_AVAILABLE
     CefShutdown();
