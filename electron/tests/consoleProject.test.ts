@@ -48,14 +48,31 @@ test('console entry guards the CEF subprocess before running the program body', 
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
 
   // 守卫必须早于程序体，且先于运行时初始化（子进程只需返回退出码）。
-  const guard = mainCpp.indexOf('lingbuilder_cef3_子进程守卫');
-  const body = mainCpp.indexOf('consoleApp.启动()');
-  assert.ok(guard >= 0, '缺少 CEF3 子进程守卫');
-  assert.ok(body >= 0);
-  assert.ok(guard < body, 'CEF3 子进程守卫必须在启动() 之前');
+  // 这里必须锁「调用」而不是函数定义：定义总出现在文件更前面，只锁定义的话把调用
+  // 挪到 consoleApp.启动() 之后照样通过，而那种错序正是子进程重跑程序体的事故形态。
+  // 同理必须先切出 wmain 入口体再比对——LingBuilder_EnsureConsoleRuntimeInitialized 的
+  // 定义就在 wmain 之前，全文 indexOf 会先命中定义，把真实顺序读反。
+  const entryStart = mainCpp.indexOf('int wmain(int argc, wchar_t* argv[]) {');
+  assert.ok(entryStart >= 0, '缺少 wmain 入口');
+  const entry = mainCpp.slice(entryStart);
+  const guardCall = entry.indexOf('const int cefSubprocessExitCode = lingbuilder_cef3_子进程守卫();');
+  const body = entry.indexOf('consoleApp.启动()');
+  const consoleCodePage = entry.indexOf('SetConsoleOutputCP(CP_UTF8)');
+  const runtimeInit = entry.indexOf('LingBuilder_EnsureConsoleRuntimeInitialized();');
+  assert.ok(guardCall >= 0, '缺少 CEF3 子进程守卫调用');
+  assert.ok(body >= 0 && consoleCodePage >= 0 && runtimeInit >= 0);
+  assert.ok(guardCall < body, 'CEF3 子进程守卫必须在启动() 之前');
+  assert.ok(guardCall < consoleCodePage && guardCall < runtimeInit,
+    'CEF3 子进程守卫必须先于 SetConsoleOutputCP 与 LingBuilder_EnsureConsoleRuntimeInitialized');
   assert.match(mainCpp, /cefExitCode >= 0/u);
   // 退出必须回收 CEF，否则无头实例与子进程残留。
-  assert.ok(mainCpp.indexOf('consoleApp.LingBuilder_CEF3_退出回收()') > body, '退出回收必须在启动() 之后');
+  assert.ok(entry.indexOf('consoleApp.LingBuilder_CEF3_退出回收()') > body, '退出回收必须在启动() 之后');
+  // 控制台项目里退出回收是唯一的逐实例回收钩子（泵窗口 WM_DESTROY 早退、单例不 delete），
+  // 且顺序不可颠倒：先关无头实例的浏览器句柄，再关进程级 CEF 运行时。
+  const recycle = mainCpp.match(/void LingBuilder_CEF3_退出回收\(\)[\s\S]*?\n {4}\}/u)![0];
+  const closeLine = recycle.indexOf('LingBuilder_CEF3_关闭全部无头实例()');
+  const shutdownLine = recycle.indexOf('LB_CEF3_Shutdown()');
+  assert.ok(closeLine >= 0 && shutdownLine > closeLine, '必须先关无头实例再关 CEF');
 });
 
 test('console application output generates a wmain entry that calls the 启动 method', () => {

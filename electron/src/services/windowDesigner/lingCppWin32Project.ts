@@ -11611,6 +11611,7 @@ public:
           dpi_(96),
           socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${cdpClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer} {
         controlLifetimeState_->owner = this;
+        LingBuilder_登记存活实例(this);
     }
 
     // 全局热键（线程热键）转发入口：由消息循环在收到 WM_HOTKEY 时调用。
@@ -11624,6 +11625,8 @@ public:
 ${functionLibraryMethods}
 
     virtual ~LingWindowBase() {
+        // 先摘登记：登记在册即代表对象仍可被入口链路安全解引用，析构一开始就必须失效。
+        LingBuilder_注销存活实例(this);
         if (controlLifetimeState_) controlLifetimeState_->owner = nullptr;
 #ifdef LINGBUILDER_THREADING_MODULE
         if (threadOwnerToken_ != 0) {
@@ -11736,6 +11739,43 @@ ${comCleanupLine}
 
     void ReleasePropertyPage() {
         DestroyControls(); hwnd_ = nullptr;
+    }
+
+    // 存活实例登记表：入口按 HWND 反查宿主实例时，HWND 值可能在窗口 WM_NCDESTROY 之后被系统
+    // 回收给别的窗口，那时 GWLP_USERDATA 读到的是别人的对象指针，直接解引用就是未定义行为。
+    // 构造/析构在这里登记与注销，退出链路只认登记表里确实存活的实例——无头实例回收
+    // （LingBuilder_CEF3_关闭全部无头实例）要解引用 this 访问 cefBrowsers_，必须过这道校验。
+    static std::vector<LingWindowBase*>& LingBuilder_存活实例表() {
+        static std::vector<LingWindowBase*> items;
+        return items;
+    }
+
+    static std::mutex& LingBuilder_存活实例锁() {
+        static std::mutex lock;
+        return lock;
+    }
+
+    static void LingBuilder_登记存活实例(LingWindowBase* instance) {
+        std::lock_guard<std::mutex> guard(LingBuilder_存活实例锁());
+        LingBuilder_存活实例表().push_back(instance);
+    }
+
+    static void LingBuilder_注销存活实例(LingWindowBase* instance) {
+        std::lock_guard<std::mutex> guard(LingBuilder_存活实例锁());
+        auto& items = LingBuilder_存活实例表();
+        for (auto it = items.begin(); it != items.end(); ++it) {
+            if (*it == instance) { items.erase(it); break; }
+        }
+    }
+
+    // 未登记（含 HWND 回收后读到的野指针、已析构实例的残留值）一律返回空指针。
+    static LingWindowBase* LingBuilder_取存活实例(const LingWindowBase* candidate) {
+        if (!candidate) return nullptr;
+        std::lock_guard<std::mutex> guard(LingBuilder_存活实例锁());
+        for (auto* item : LingBuilder_存活实例表()) {
+            if (reinterpret_cast<const LingWindowBase*>(item) == candidate) return item;
+        }
+        return nullptr;
     }
 
     static LingWindowBase* FromMessageWindow(HWND messageWindow) {
@@ -15875,6 +15915,96 @@ ${generateFbroVipIndividualRuntime(false)}
     // 设计器无关的运行时实例编号：把弹窗实例登记进 cefBrowsers_，用 1000000+实例编号 与设计器 controlId 空间隔离，
     // 使 CEF3_枚举实例JSON / CEF3_关闭全部实例 自动覆盖弹窗，且事件按 user_token 路由到本实例。
     static const int CEF3_运行时弹窗编号偏移 = 1000000;
+
+    // 真无头（OSR）实例编号段：2000000+实例编号，与弹窗段 1000000+、设计器 controlId 天然错开，
+    // 因此 CEF3_枚举实例JSON / CEF3_关闭全部 / CEF3_关闭全部实例 自动覆盖无头实例。
+    static const int CEF3_运行时无头编号偏移 = 2000000;
+
+    CefBrowserInstance* CEF3_查找无头实例(int instanceId) {
+        if (instanceId <= 0) return nullptr;
+        auto found = cefBrowsers_.find(CEF3_运行时无头编号偏移 + instanceId);
+        return found == cefBrowsers_.end() ? nullptr : found->second.get();
+    }
+
+    // CEF 官方 windowless（OSR）渲染：parent_window 固定 0，桥内不为浏览器创建任何宿主/承载窗口。
+    // 注意：控制台入口的「无头泵窗口」让 hwnd_ 在非窗口项目里也不再为 0，这里绝不允许取 hwnd_ 当父窗口，
+    // 也不允许再为本实例创建或附加任何窗口（隐窗宿主不是真无头，用户口径要求的是 CEF 官方 OSR 渲染）。
+    int CEF3_创建无头浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory,
+                             const wchar_t* proxyServer, int viewWidth, int viewHeight) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (instanceId <= 0) { 调试输出(L"CEF3 创建无头浏览器失败：实例编号必须为正整数。"); return 0; }
+        if (viewWidth <= 0 || viewHeight <= 0) {
+            调试输出(L"CEF3 创建无头浏览器失败：视口宽高必须为正整数（默认 1280×720）。");
+            return 0;
+        }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!CEF3_初始化()) return 0;
+        const int runtimeId = CEF3_运行时无头编号偏移 + instanceId;
+        auto old = cefBrowsers_.find(runtimeId);
+        if (old != cefBrowsers_.end()) {
+            if (old->second->bridgeHandle) { LB_CEF3_BrowserClose(old->second->bridgeHandle, 1); LB_CEF3_HandleRelease(old->second->bridgeHandle); }
+            cefBrowsers_.erase(old);
+        }
+        auto instance = std::make_unique<CefBrowserInstance>();
+        instance->controlId = runtimeId;
+        instance->url = address ? address : L"";
+        instance->cacheDirectory = cacheDirectory && cacheDirectory[0]
+            ? cacheDirectory : (L"cef3-headless-" + std::to_wstring(instanceId));
+        instance->proxyMode = (proxyServer && proxyServer[0]) ? L"fixed_servers" : L"system";
+        instance->proxyServer = proxyServer ? proxyServer : L"";
+        instance->enableJs = true; instance->enableDevTools = false; instance->loadImages = true;
+        LB_CEF3_BROWSER_CONFIG_V4 bridgeConfig = {};
+        bridgeConfig.struct_size = sizeof(bridgeConfig);
+        bridgeConfig.abi_version = LB_CEF3_ABI_VERSION_V4;
+        bridgeConfig.parent_window = 0;              // 真无头：不为浏览器创建任何窗口
+        bridgeConfig.user_token = static_cast<uint64_t>(runtimeId);
+        bridgeConfig.flags = LB_CEF3_BROWSER_WINDOWLESS | LB_CEF3_BROWSER_JAVASCRIPT | LB_CEF3_BROWSER_IMAGES;
+        bridgeConfig.initial_url = (address && address[0]) ? address : L"about:blank";
+        bridgeConfig.profile_key = instance->cacheDirectory.c_str();
+        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
+        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        // osr_width/osr_height 同时为正数才是权威视口；桥内 OnPaint 会把实际出帧尺寸回写进
+        // 存储视口，因此后续读到的「视口」是 CEF 的有效渲染尺寸，不保证等于这里传入的值。
+        bridgeConfig.osr_width = static_cast<uint32_t>(viewWidth);
+        bridgeConfig.osr_height = static_cast<uint32_t>(viewHeight);
+        bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
+        bridgeConfig.event_user_data = this;
+        LB_CEF3_HANDLE handle = LB_CEF3_BrowserCreateWindowless(&bridgeConfig);
+        if (!handle) { 调试输出(L"CEF3 创建无头浏览器失败：OSR 浏览器创建失败（检查 CEF3 桥与运行时）。"); return 0; }
+        instance->bridgeHandle = handle;
+        instance->created = true; instance->bridgeReady = true;
+        instance->currentUrl = bridgeConfig.initial_url ? bridgeConfig.initial_url : L"";
+        cefBrowsers_[runtimeId] = std::move(instance);
+        调试输出(L"CEF3 无头浏览器已创建（OSR 渲染，不创建窗口，一期不提供截图）。");
+        return 1;
+#else
+        (void)instanceId; (void)address; (void)cacheDirectory; (void)proxyServer; (void)viewWidth; (void)viewHeight;
+        调试输出(L"CEF3 创建无头浏览器失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+#else
+        (void)instanceId; (void)address; (void)cacheDirectory; (void)proxyServer; (void)viewWidth; (void)viewHeight;
+        调试输出(L"CEF3 不可用：构建环境缺少 CEF3 SDK。");
+        return 0;
+#endif
+    }
+
+    // 无头实例的按实例编号回收口：控制台项目里这是唯一的逐实例出口（泵窗口 WM_DESTROY 直接 early return，
+    // 单例也从不 delete，实例级 CEF3_关闭全部() 永远不会触发），因此必须由 LingBuilder_CEF3_退出回收 调用。
+    void LingBuilder_CEF3_关闭全部无头实例() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        for (auto it = cefBrowsers_.begin(); it != cefBrowsers_.end();) {
+            if (it->first < CEF3_运行时无头编号偏移 || it->first >= CEF3_运行时无头编号偏移 + 1000000) { ++it; continue; }
+            if (it->second && it->second->bridgeHandle) {
+                LB_CEF3_BrowserClose(it->second->bridgeHandle, 1);
+                LB_CEF3_HandleRelease(it->second->bridgeHandle);
+                it->second->bridgeHandle = 0;
+                it->second->created = false;
+            }
+            it = cefBrowsers_.erase(it);
+        }
+#endif
+    }
 
     int CEF3_创建弹窗浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
 #if LINGBUILDER_CEF3_AVAILABLE
@@ -20020,6 +20150,9 @@ ${generateFbroVipIndividualRuntime(false)}
 
     int CEF3_关闭全部实例() {
         const int count = static_cast<int>(cefBrowsers_.size());
+        // 无头键段（2000000+）与弹窗键段同在 cefBrowsers_ 里，先走无头专用回收把 OSR 句柄
+        // 与 map 条目一并摘掉，剩余条目再交给 CEF3_关闭全部()，两条路径都不漏实例。
+        LingBuilder_CEF3_关闭全部无头实例();
         CEF3_关闭全部();
         return count;
     }
@@ -20028,8 +20161,11 @@ public:
     // 进程退出前由入口调用的 CEF3 回收口（窗口入口与控制台入口共用同一口径）。
     // 必须是 LingWindowBase 成员而不是自由函数：回收要访问本实例的 cefBrowsers_。
     // 非 CEF3 项目里宏为 0，函数体为空，不引入任何新的未声明符号。
+    // 顺序不可颠倒：先逐实例关无头浏览器（BrowserClose/HandleRelease 仍要求 CEF 运行时存活），
+    // 再执行进程级 CEF 关闭；反序会让无头实例的关闭落在已卸载的运行时上。
     void LingBuilder_CEF3_退出回收() {
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LingBuilder_CEF3_关闭全部无头实例();
         LB_CEF3_Shutdown();
 #endif
     }
@@ -20057,7 +20193,13 @@ protected:
             if (!first) json += L",";
             first = false;
             const std::wstring address = instance.currentUrl.empty() ? instance.url : instance.currentUrl;
+            // 创建形态按键段判定：无头段 2000000+；弹窗与区域同用 1000000+ 段，
+            // 区域实例必有承载窗口 host，弹窗没有；其余是设计器控件（controlId 即控件 id）。
+            const wchar_t* mode = L"control";
+            if (instance.controlId >= CEF3_运行时无头编号偏移) mode = L"windowless";
+            else if (instance.controlId >= CEF3_运行时弹窗编号偏移) mode = instance.host ? L"region" : L"chrome-popup";
             json += L"{" + q + L"controlId" + q + L":" + std::to_wstring(instance.controlId)
+                + L"," + q + L"mode" + q + L":" + q + mode + q
                 + L"," + q + L"地址" + q + L":" + q + cef3JsonEscape(address) + q
                 + L"," + q + L"标题" + q + L":" + q + cef3JsonEscape(instance.currentTitle) + q
                 + L"," + q + L"缓存目录" + q + L":" + q + cef3JsonEscape(instance.cacheDirectory) + q
@@ -26769,7 +26911,11 @@ ${fbroInProcessEnabled ? '        LB_FBro_Shutdown();' : ''}
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
     // 与控制台入口同一退出回收口径：仍存活的窗口实例先回收自身 CEF 资源
     // （实例在 WM_NCDESTROY 已随窗口销毁时 IsWindow/ userdata 双双落空，不参与回收）。
-    LingWindowBase* cef3ExitOwner = (startWindow && IsWindow(startWindow)) ? LingWindowBase::FromMessageWindow(startWindow) : nullptr;
+    // 存活登记校验不可省：HWND 值可能在窗口销毁后被系统回收给别的窗口，那时 IsWindow 仍为真、
+    // GWLP_USERDATA 却指向别人的对象，而退出回收会解引用 this（关闭本实例的无头 CEF3 实例）。
+    LingWindowBase* cef3ExitOwner = (startWindow && IsWindow(startWindow))
+        ? LingWindowBase::LingBuilder_取存活实例(LingWindowBase::FromMessageWindow(startWindow))
+        : nullptr;
     if (cef3ExitOwner) cef3ExitOwner->LingBuilder_CEF3_退出回收();
     // 进程级兜底关闭：桥内按初始化标志幂等，实例已回收时重复调用直接返回。
     LB_CEF3_Shutdown();
