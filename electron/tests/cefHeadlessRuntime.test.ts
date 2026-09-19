@@ -59,9 +59,21 @@ test('headless runtime never creates an HWND', () => {
   const end = code.indexOf('int CEF3_创建弹窗浏览器');
   assert.ok(start >= 0 && end > start);
   const headlessBody = code.slice(start, end);
-  for (const banned of ['CreateWindowExW', 'RegisterClassExW', 'ShowWindow', 'SetWindowPos', 'LB_CEF3_BrowserCreateChrome']) {
+  // 先跑禁止令牌：命中即说明无头创建里混进了窗口或句柄转换。
+  // hwnd_ 与 reinterpret_cast 必须在列——控制台/窗口入口都有隐藏的无头泵窗口 HWND，
+  // 把 bridgeConfig.parent_window = reinterpret_cast<uint64_t>(hwnd_) 写进这里
+  // 就是「隐窗伪装真无头」，正是本红线要拦的那个回归。
+  for (const banned of [
+    'CreateWindowExW', 'RegisterClassExW', 'ShowWindow', 'SetWindowPos',
+    'LB_CEF3_BrowserCreateChrome', 'hwnd_', 'parent_window = reinterpret_cast', 'reinterpret_cast'
+  ]) {
     assert.ok(!headlessBody.includes(banned), `无头创建路径不得出现 ${banned}`);
   }
+  // 正向断言同样只针对无头函数体切片：parent_window = 0; 这行文本在弹窗创建路径里
+  // 同样存在（CEF3_创建弹窗浏览器），整份文件匹配等于恒真、抓不住任何回归。
+  assert.match(headlessBody, /bridgeConfig\.parent_window = 0;/);
+  assert.match(headlessBody, /LB_CEF3_BrowserCreateWindowless\(&bridgeConfig\)/);
+  assert.match(headlessBody, /LB_CEF3_BROWSER_WINDOWLESS/);
 });
 
 test('headless instances are addressed by instance number and released on shutdown', () => {
