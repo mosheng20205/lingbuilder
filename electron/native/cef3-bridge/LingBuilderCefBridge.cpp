@@ -983,8 +983,10 @@ struct BrowserState {
   HWND parent = nullptr;
   uint32_t flags = 0;
   bool windowless = false;
-  int osr_view_width = 1;
-  int osr_view_height = 1;
+  // 0 表示「未设置视口」：GetViewRect 会依次回落到宿主窗口客户区与默认常量。
+  // 非 0 才是权威视口（V4 配置、订阅方下发的矩形或上一次 OnPaint 的实际帧尺寸）。
+  int osr_view_width = 0;
+  int osr_view_height = 0;
   uint64_t osr_paint_count = 0;
   std::wstring title;
   std::wstring url;
@@ -9036,26 +9038,26 @@ class BridgeClient final : public CefClient,
       height = state_->osr_view_height;
     }
     if (width <= 0 || height <= 0) {
+      // 视口未显式设置：宿主窗口有效时每次跟随其客户区（与放开前的旧行为一致），
+      // 真无头（parent 为空或已销毁）才回落到默认常量。
+      // 这两级回落结果都不写回 osr_view_*，否则一次回落就把视口钉死、不再跟随宿主。
       HWND parent = nullptr;
       {
         std::lock_guard<std::mutex> lock(state_->mutex);
         parent = state_->parent;
       }
       RECT client_rect{};
-      if (parent && IsWindow(parent)) GetClientRect(parent, &client_rect);
-      width = std::max<int>(1, static_cast<int>(client_rect.right - client_rect.left));
-      height = std::max<int>(1, static_cast<int>(client_rect.bottom - client_rect.top));
-    }
-    if (width <= 0 || height <= 0) {
-      width = LB_CEF3_DEFAULT_OSR_WIDTH;
-      height = LB_CEF3_DEFAULT_OSR_HEIGHT;
-    }
-    {
-      std::lock_guard<std::mutex> lock(state_->mutex);
-      state_->osr_view_width = width;
-      state_->osr_view_height = height;
+      if (parent && IsWindow(parent) && GetClientRect(parent, &client_rect)) {
+        width = std::max<int>(1, static_cast<int>(client_rect.right - client_rect.left));
+        height = std::max<int>(1, static_cast<int>(client_rect.bottom - client_rect.top));
+      }
+      if (width <= 0 || height <= 0) {
+        width = LB_CEF3_DEFAULT_OSR_WIDTH;
+        height = LB_CEF3_DEFAULT_OSR_HEIGHT;
+      }
     }
     rect = CefRect(0, 0, width, height);
+    bool managed_rect_applied = false;
     if (IsRenderHandlerSubscriptionEnabled(state_, kRenderHandlerViewRect)) {
       const auto response = EmitNotificationEventV4(
           state_, L"cef_render_handler_t", L"get_view_rect",
@@ -9066,9 +9068,11 @@ class BridgeClient final : public CefClient,
           0, true);
       if (response.action == 1 || response.action == 3) {
         ApplyManagedRect(ParseEventResponse(response.response_json), rect, true);
+        managed_rect_applied = true;
       }
     }
-    {
+    if (managed_rect_applied) {
+      // 只有订阅方显式下发的矩形才升级为权威视口。
       std::lock_guard<std::mutex> lock(state_->mutex);
       state_->osr_view_width = rect.width;
       state_->osr_view_height = rect.height;
@@ -11664,13 +11668,15 @@ std::wstring NormalizeProfileKey(const wchar_t* value, uint64_t user_token) {
 LB_CEF3_HANDLE CreateBrowserHandle(const LB_CEF3_BROWSER_CONFIG_V4* config, bool chrome_runtime) {
   if (!g_cef_initialized.load()) { Fail(LB_CEF3_ERROR_OPERATION_FAILED, L"CEF3尚未初始化"); return 0; }
   if (!config) { Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效"); return 0; }
+  const bool declares_v4 = config->abi_version == LB_CEF3_ABI_VERSION_V4;
   const bool viewport_present =
-      config->abi_version == LB_CEF3_ABI_VERSION_V4
-      && config->struct_size >= sizeof(LB_CEF3_BROWSER_CONFIG_V4);
+      declares_v4 && config->struct_size >= sizeof(LB_CEF3_BROWSER_CONFIG_V4);
   if (config->struct_size < sizeof(LB_CEF3_BROWSER_CONFIG_V3)
       || (config->abi_version != LB_CEF3_ABI_VERSION_V3 && !viewport_present)) {
+    // 诊断口径：声明 V4 的配置（含 struct_size 未覆盖 osr_width/osr_height 的截断配置）
+    // 一律给无头专用中文诊断；其余（长度不足 V3、ABI 既非 V3 也非 V4）给通用诊断。
     Fail(LB_CEF3_ERROR_INVALID_ARGUMENT,
-         viewport_present ? L"无头浏览器配置版本无效" : L"浏览器配置版本无效");
+         declares_v4 ? L"无头浏览器配置版本无效" : L"浏览器配置版本无效");
     return 0;
   }
   const bool windowless = (config->flags & LB_CEF3_BROWSER_WINDOWLESS) != 0;
@@ -11685,10 +11691,13 @@ LB_CEF3_HANDLE CreateBrowserHandle(const LB_CEF3_BROWSER_CONFIG_V4* config, bool
   state->parent = reinterpret_cast<HWND>(static_cast<uintptr_t>(config->parent_window));
   state->flags = config->flags;
   state->windowless = windowless;
-  state->osr_view_width = viewport_present && config->osr_width > 0
-      ? static_cast<int>(config->osr_width) : LB_CEF3_DEFAULT_OSR_WIDTH;
-  state->osr_view_height = viewport_present && config->osr_height > 0
-      ? static_cast<int>(config->osr_height) : LB_CEF3_DEFAULT_OSR_HEIGHT;
+  // 只有配置真正携带（且声明长度覆盖）一对正的视口尺寸才写入；否则保持 0=未设置，
+  // 让 GetViewRect 继续走「宿主客户区 → 默认常量」两级回落。
+  // 注意：视口一旦被写入（这里、订阅方下发的矩形或首次 OnPaint 回写）即为权威值。
+  if (viewport_present && config->osr_width > 0 && config->osr_height > 0) {
+    state->osr_view_width = static_cast<int>(config->osr_width);
+    state->osr_view_height = static_cast<int>(config->osr_height);
+  }
   state->event_callback = config->event_callback;
   state->event_user_data = config->event_user_data;
   state->url = config->initial_url && *config->initial_url ? config->initial_url : L"about:blank";
@@ -21859,7 +21868,9 @@ int LB_CEF3_CALL LB_CEF3_Shutdown(void) {
 static LB_CEF3_BROWSER_CONFIG_V4 WidenBrowserConfigV3(
     const LB_CEF3_BROWSER_CONFIG_V3* config) {
   LB_CEF3_BROWSER_CONFIG_V4 widened = {};
-  widened.struct_size = sizeof(LB_CEF3_BROWSER_CONFIG_V4);
+  // 保留调用方自己声明的结构体长度：CreateBrowserHandle 的 V3 长度门禁必须继续有效，
+  // 不得因为加宽成 V4 形状就接受调用方未声明的尾部字段。尾部字段固定为 0=未设置视口。
+  widened.struct_size = config->struct_size;
   widened.abi_version = config->abi_version;
   widened.parent_window = config->parent_window;
   widened.user_token = config->user_token;
@@ -21875,12 +21886,22 @@ static LB_CEF3_BROWSER_CONFIG_V4 WidenBrowserConfigV3(
 
 LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreate(const LB_CEF3_BROWSER_CONFIG_V3* config) {
   if (!config) { Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效"); return 0; }
+  // 加宽会逐字段读取 V3 结构体，因此必须先在导出层守住调用方声明的长度，
+  // 不能等到 CreateBrowserHandle 才拒绝（那时尾部字段已经被读过一次）。
+  if (config->struct_size < sizeof(LB_CEF3_BROWSER_CONFIG_V3)) {
+    Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效");
+    return 0;
+  }
   const LB_CEF3_BROWSER_CONFIG_V4 widened = WidenBrowserConfigV3(config);
   return CreateBrowserHandle(&widened, /*chrome_runtime=*/false);
 }
 
 LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreateChrome(const LB_CEF3_BROWSER_CONFIG_V3* config) {
   if (!config) { Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效"); return 0; }
+  if (config->struct_size < sizeof(LB_CEF3_BROWSER_CONFIG_V3)) {
+    Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效");
+    return 0;
+  }
   const LB_CEF3_BROWSER_CONFIG_V4 widened = WidenBrowserConfigV3(config);
   return CreateBrowserHandle(&widened, /*chrome_runtime=*/true);
 }

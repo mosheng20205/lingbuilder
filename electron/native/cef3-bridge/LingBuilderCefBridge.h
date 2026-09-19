@@ -297,7 +297,9 @@ typedef struct LB_CEF3_BROWSER_CONFIG_V3 {
 } LB_CEF3_BROWSER_CONFIG_V3;
 
 /* 真无头（OSR）浏览器创建配置：V3 全字段 + 显式视口尺寸。
-   osr_width/osr_height 为 0 时回落到 LB_CEF3_DEFAULT_OSR_*。 */
+   osr_width/osr_height 必须同时为正数才作为权威视口；否则视为未设置，
+   GetViewRect 依次回落到宿主窗口客户区（parent 为有效窗口时）与 LB_CEF3_DEFAULT_OSR_*。
+   abi_version 为 V4 但 struct_size 未覆盖这两个尾部字段时，创建直接中文报错拒绝。 */
 #define LB_CEF3_DEFAULT_OSR_WIDTH 1280
 #define LB_CEF3_DEFAULT_OSR_HEIGHT 720
 
@@ -674,7 +676,10 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserHostCreateBrowserSync(
 LB_CEF3_API LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreate(const LB_CEF3_BROWSER_CONFIG_V3* config);
 LB_CEF3_API LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreateChrome(const LB_CEF3_BROWSER_CONFIG_V3* config);
 /* 创建真无头浏览器：必须带 LB_CEF3_BROWSER_WINDOWLESS，全进程不为其创建任何 HWND。
-   parent_window 允许为 0；视口尺寸取 osr_width/osr_height。 */
+   parent_window 允许为 0；视口取 osr_width/osr_height，二者未同时为正数时视为未设置，
+   由 GetViewRect 回落到宿主窗口客户区（parent 有效时）或 LB_CEF3_DEFAULT_OSR_*。
+   旧导出 LB_CEF3_BrowserCreate / LB_CEF3_BrowserCreateChrome 仍收 V3 配置，
+   无尾部视口字段，OSR 浏览器继续按宿主窗口客户区取尺寸（行为与加宽前一致）。 */
 LB_CEF3_API LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreateWindowless(
     const LB_CEF3_BROWSER_CONFIG_V4* config);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserClose(LB_CEF3_HANDLE browser, int force_close);

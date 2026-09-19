@@ -264,6 +264,10 @@ std::atomic<int> g_v4_resource_handler_legacy_read_events{0};
 std::atomic<int> g_v4_resource_handler_cancel_events{0};
 std::atomic<int> g_v4_render_handler_events{0};
 std::atomic<int> g_v4_paint_events{0};
+std::atomic<int> g_v4_view_rect_events{0};
+/* 最近一次「OSR视图矩形请求」的 fields_json；先赋值再递增 g_v4_view_rect_events，
+   读侧以计数器作为可见性屏障（CEF UI 线程写、测试线程读）。 */
+std::wstring g_last_osr_view_rect_fields;
 std::atomic<int> g_v4_frame_handler_events{0};
 std::atomic<int> g_v4_accessibility_handler_events{0};
 std::atomic<int> g_v4_browser_view_created_events{0};
@@ -642,6 +646,10 @@ void LB_CEF3_CALL TestEventCallbackV4(const LB_CEF3_EVENT_PACKET_V4* packet,
       assert(byte_count > 0);
       assert(fields.find(L"\"dirtyRects\":[") != std::wstring::npos);
       ++g_v4_paint_events;
+    }
+    if (event_name == L"OSR视图矩形请求") {
+      g_last_osr_view_rect_fields = fields;
+      ++g_v4_view_rect_events;
     }
     ++g_v4_render_handler_events;
     return;
@@ -10428,6 +10436,29 @@ int wmain() {
   assert(LB_CEF3_BrowserGetWindowlessFrameRate(
       headless, &headless_windowless_flag) == LB_CEF3_OK);
 
+  // V4 视口必须真的被 GetViewRect 采用：订阅视图矩形事件后触发一次重查，
+  // 断言上报尺寸 = 配置里的 osr_width/osr_height（既不是 1×1，也不是默认常量）。
+  assert(LB_CEF3_SetEventCallbackV4(
+      headless, TestEventCallbackV4, nullptr) == LB_CEF3_OK);
+  assert(LB_CEF3_RenderHandlerSubscribeViewRect(headless, 1) == LB_CEF3_OK);
+  const int headless_view_rect_events_before = g_v4_view_rect_events.load();
+  assert(LB_CEF3_BrowserNotifyScreenInfoChanged(headless) == LB_CEF3_OK);
+  assert(LB_CEF3_BrowserResize(headless) == LB_CEF3_OK);
+  const auto headless_view_rect_deadline = GetTickCount64() + 15000;
+  while (g_v4_view_rect_events.load() <= headless_view_rect_events_before
+      && GetTickCount64() < headless_view_rect_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_v4_view_rect_events.load() > headless_view_rect_events_before);
+  const std::wstring headless_view_rect_fields = g_last_osr_view_rect_fields;
+  assert(headless_view_rect_fields.find(
+      L"\"width\":" + std::to_wstring(headless_config.osr_width)
+      + L",\"height\":" + std::to_wstring(headless_config.osr_height))
+      != std::wstring::npos);
+  assert(LB_CEF3_RenderHandlerSubscribeViewRect(headless, 0) == LB_CEF3_OK);
+  assert(LB_CEF3_SetEventCallbackV4(headless, nullptr, nullptr) == LB_CEF3_OK);
+
   // 缺 WINDOWLESS 标志必须被拒，绝不静默退化成窗口浏览器。
   LB_CEF3_BROWSER_CONFIG_V4 missing_flag = headless_config;
   missing_flag.flags = LB_CEF3_BROWSER_JAVASCRIPT;
@@ -10470,6 +10501,27 @@ int wmain() {
     Sleep(10);
   }
   assert(g_browser_created_events.load() >= legacy_created_before + 1);
+  // 配置未给出视口 + parent_window = 0：既不能塌成 1×1，也不能被创建期写死的默认值钉住，
+  // 必须走 GetViewRect 的第三级回落 = LB_CEF3_DEFAULT_OSR_WIDTH/HEIGHT。
+  assert(LB_CEF3_SetEventCallbackV4(
+      legacy, TestEventCallbackV4, nullptr) == LB_CEF3_OK);
+  assert(LB_CEF3_RenderHandlerSubscribeViewRect(legacy, 1) == LB_CEF3_OK);
+  const int legacy_view_rect_events_before = g_v4_view_rect_events.load();
+  assert(LB_CEF3_BrowserNotifyScreenInfoChanged(legacy) == LB_CEF3_OK);
+  const auto legacy_view_rect_deadline = GetTickCount64() + 15000;
+  while (g_v4_view_rect_events.load() <= legacy_view_rect_events_before
+      && GetTickCount64() < legacy_view_rect_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_v4_view_rect_events.load() > legacy_view_rect_events_before);
+  const std::wstring legacy_view_rect_fields = g_last_osr_view_rect_fields;
+  assert(legacy_view_rect_fields.find(
+      L"\"width\":" + std::to_wstring(LB_CEF3_DEFAULT_OSR_WIDTH)
+      + L",\"height\":" + std::to_wstring(LB_CEF3_DEFAULT_OSR_HEIGHT))
+      != std::wstring::npos);
+  assert(LB_CEF3_RenderHandlerSubscribeViewRect(legacy, 0) == LB_CEF3_OK);
+  assert(LB_CEF3_SetEventCallbackV4(legacy, nullptr, nullptr) == LB_CEF3_OK);
   const auto legacy_closed_before = g_browser_closed_events.load();
   assert(LB_CEF3_BrowserClose(legacy, 1) == LB_CEF3_OK);
   const auto legacy_close_deadline = GetTickCount64() + 10000;
@@ -10489,6 +10541,36 @@ int wmain() {
   windowed_no_parent.user_token = 770003;
   windowed_no_parent.flags = LB_CEF3_BROWSER_JAVASCRIPT;
   assert(LB_CEF3_BrowserCreate(&windowed_no_parent) == 0);
+
+  // V3 调用方自己声明的结构体长度必须继续是门禁：V3→V4 加宽转发不得抹掉它。
+  std::array<wchar_t, 256> headless_error{};
+  size_t headless_error_required = 0;
+  LB_CEF3_BROWSER_CONFIG_V3 truncated_v3 = {};
+  truncated_v3.struct_size = sizeof(uint32_t) * 2;
+  truncated_v3.abi_version = LB_CEF3_ABI_VERSION_V3;
+  truncated_v3.user_token = 770004;
+  truncated_v3.flags = LB_CEF3_BROWSER_WINDOWLESS | LB_CEF3_BROWSER_JAVASCRIPT;
+  assert(LB_CEF3_BrowserCreate(&truncated_v3) == 0);
+  LB_CEF3_GetLastError(
+      headless_error.data(), headless_error.size(), &headless_error_required);
+  assert(std::wstring(headless_error.data()) == L"浏览器配置版本无效");
+  assert(LB_CEF3_BrowserCreateChrome(&truncated_v3) == 0);
+
+  // 尾部字段守卫：空配置必须被拒，且给无头专用中文诊断。
+  assert(LB_CEF3_BrowserCreateWindowless(nullptr) == 0);
+  LB_CEF3_GetLastError(
+      headless_error.data(), headless_error.size(), &headless_error_required);
+  assert(std::wstring(headless_error.data()) == L"无头浏览器配置不能为空");
+
+  // V4 声明但结构体长度不足以覆盖 osr_width/osr_height：必须显式拒绝，
+  // 绝不能去读调用方未声明的尾部偏移。
+  LB_CEF3_BROWSER_CONFIG_V4 truncated_v4 = headless_config;
+  truncated_v4.struct_size = sizeof(LB_CEF3_BROWSER_CONFIG_V3);
+  truncated_v4.profile_key = L"test-headless-truncated-v4";
+  assert(LB_CEF3_BrowserCreateWindowless(&truncated_v4) == 0);
+  LB_CEF3_GetLastError(
+      headless_error.data(), headless_error.size(), &headless_error_required);
+  assert(std::wstring(headless_error.data()) == L"无头浏览器配置版本无效");
 
   LB_CEF3_ARGUMENT_V4 focus_argument{};
   focus_argument.struct_size = sizeof(focus_argument);
