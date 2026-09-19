@@ -3,13 +3,11 @@ import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmS
 import {
   Activity,
   AlertTriangle,
-  BookOpen,
   Bot,
   Cable,
   Check,
   CheckCircle2,
   Clipboard,
-  ExternalLink,
   KeyRound,
   Link2,
   LoaderCircle,
@@ -27,20 +25,47 @@ import {
   XCircle
 } from 'lucide-react';
 
-type CenterTab = 'connect' | 'activity' | 'cli' | 'advanced';
+type CenterTab = 'connect' | 'activity';
 type BridgePermission = 'readonly' | 'preview' | 'yolo';
-type BridgeLifecycle = 'workspace' | 'ide';
 type BridgeState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
 type ProbePhase = 'loading' | 'ready' | 'error';
 interface ProbeState { phase: ProbePhase; message?: string; }
 type ClientId = 'codex' | 'claude' | 'gemini' | 'generic';
 type CodexDesktopState = 'not-installed' | 'not-configured' | 'configured' | 'restart-required' | 'repair-required' | 'conflict' | 'error';
 
+/** 本机授权代理状态（主进程 LocalAuthorizationService.snapshot 的渲染端镜像）。 */
+interface LocalAuthSnapshot {
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  discoveryPath: string;
+  exchanges: number;
+  lastError: string;
+}
+
+/** 灵码 Skill 正文取物状态（主进程 SkillKitService 的渲染端镜像）。 */
+interface SkillKitStatus {
+  ok: boolean;
+  source: 'remote' | 'cache' | 'bundled';
+  id: string;
+  version: string;
+  sequence: number;
+  minIdeVersion: string;
+  entrypointPath: string;
+  installPrompt: string;
+  fileCount: number;
+  checkedAt: string;
+  problem: string;
+}
+
+const SKILL_KIT_SOURCE_LABELS: Record<SkillKitStatus['source'], string> = {
+  remote: '官网最新版', cache: '本机已缓存', bundled: '安装包内置'
+};
+
 interface BridgeSnapshot {
   state: BridgeState;
   workspaceRoot: string;
   permission: BridgePermission;
-  lifecycle: BridgeLifecycle;
   port: number;
   httpUrl: string;
   mcpUrl: string;
@@ -79,15 +104,6 @@ interface CodexDesktopStatus {
   managed: boolean;
 }
 
-interface CliIntegrationStatus {
-  state: 'ready' | 'path-missing' | 'launcher-missing' | 'check-failed' | 'development';
-  launcherPath: string;
-  launcherExists: boolean;
-  pathConfigured: boolean;
-  version: string | null;
-  detail: string;
-}
-
 interface CliGuideDialogProps {
   open: boolean;
   isDarkMode: boolean;
@@ -96,18 +112,10 @@ interface CliGuideDialogProps {
 }
 
 const EMPTY_BRIDGE: BridgeSnapshot = {
-  state: 'stopped', workspaceRoot: '', permission: 'preview', lifecycle: 'workspace', port: 17860,
+  state: 'stopped', workspaceRoot: '', permission: 'preview', port: 17860,
   httpUrl: '', mcpUrl: '', startedAt: null, pid: null, tokenMasked: '', tokenAvailable: false,
   activeClients: 0, clients: [], recentActivity: [], logs: [], error: ''
 };
-
-const QUICK_COMMANDS = [
-  ['查看帮助', 'lingbuilder --help', '列出所有 CLI 子命令与参数。'],
-  ['检查环境', 'lingbuilder doctor --json', '检查运行时、编译器和工作区状态。'],
-  ['登录系统 AI', 'lingbuilder auth login', '通过浏览器完成设备登录。'],
-  ['检查工作区', 'lingbuilder workspace inspect --workspace . --json', '输出当前工作区文件树。'],
-  ['构建项目', 'lingbuilder project build --workspace . --request build-request.json --yes', '使用受控请求生成并构建项目。']
-] as const;
 
 const PERMISSION_LABELS: Record<BridgePermission, string> = {
   readonly: '只读',
@@ -124,15 +132,17 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const [bridge, setBridge] = useState<BridgeSnapshot>(EMPTY_BRIDGE);
   const [clients, setClients] = useState<ExternalClient[]>([]);
   const [codexDesktop, setCodexDesktop] = useState<CodexDesktopStatus | null>(null);
-  const [cliStatus, setCliStatus] = useState<CliIntegrationStatus | null>(null);
   const [statusProbe, setStatusProbe] = useState<ProbeState>({ phase: 'loading' });
   const [clientsProbe, setClientsProbe] = useState<ProbeState>({ phase: 'loading' });
   const [codexProbe, setCodexProbe] = useState<ProbeState>({ phase: 'loading' });
-  const [cliProbe, setCliProbe] = useState<ProbeState>({ phase: 'loading' });
   const [port, setPort] = useState(17860);
   const [permission, setPermission] = useState<BridgePermission>('preview');
   const [customToken, setCustomToken] = useState('');
   const [approvedYolo, setApprovedYolo] = useState(false);
+  const [externalModuleAccess, setExternalModuleAccess] = useState(false);
+  const [localAuth, setLocalAuth] = useState<LocalAuthSnapshot | null>(null);
+  const [skillKit, setSkillKit] = useState<SkillKitStatus | null>(null);
+  const [skillKitBusy, setSkillKitBusy] = useState(false);
   const [tokenIsCustom, setTokenIsCustom] = useState(false);
   const [busyAction, setBusyAction] = useState('');
   const [error, setError] = useState('');
@@ -142,7 +152,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const logsRef = useRef<HTMLPreElement>(null);
   const bridgeRef = useRef<BridgeSnapshot>(EMPTY_BRIDGE);
   const settingsReadyRef = useRef(false);
-  const lastSavedSettingsRef = useRef<{ port: number; permission: BridgePermission; token: string } | null>(null);
+  const lastSavedSettingsRef = useRef<{ port: number; permission: BridgePermission; token: string; externalModuleAccess: boolean } | null>(null);
 
   const desktopApi = window.lingBuilder?.aiBridge;
   const running = bridge.state === 'running';
@@ -199,22 +209,22 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     }
   }, [desktopApi, permission]);
 
-  const inspectCli = useCallback(async () => {
-    const inspector = window.lingBuilder?.cli?.inspect;
-    if (!inspector) {
-      setCliStatus(null);
-      setCliProbe({ phase: 'error', message: '当前 LingBuilder 版本未提供 CLI 状态检测。' });
-      return;
-    }
-    setCliProbe({ phase: 'loading' });
+  const skillKitApi = window.lingBuilder?.skillKit;
+  const loadSkillKit = useCallback(async (checkUpdate: boolean) => {
+    if (!skillKitApi) { setSkillKit(null); return; }
+    setSkillKitBusy(true);
     try {
-      setCliStatus(await withProbeTimeout(inspector(), '检查 CLI') as CliIntegrationStatus);
-      setCliProbe({ phase: 'ready' });
-    }
-    catch (reason) {
-      setCliProbe({ phase: 'error', message: errorMessage(reason) });
-    }
-  }, []);
+      const value = checkUpdate ? await skillKitApi.checkUpdate() : await skillKitApi.status();
+      setSkillKit(value as SkillKitStatus | null);
+      if (value?.ok) {
+        setNotice(checkUpdate ? { text: `灵码 Skill 正文已更新到 ${value.version}（${SKILL_KIT_SOURCE_LABELS[value.source]}）。`, duration: 2_600 } : null);
+      } else if (value?.problem) {
+        setError(`灵码 Skill 正文：${value.problem}`);
+      }
+    } catch (reason) {
+      setError(`灵码 Skill 正文检查失败：${errorMessage(reason)}`);
+    } finally { setSkillKitBusy(false); }
+  }, [skillKitApi]);
 
   useEffect(() => {
     if (!open) return;
@@ -228,23 +238,28 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
       setStatusProbe(current => current.phase === 'loading' ? { phase: 'ready' } : current);
     });
     if (desktopApi) {
-      void loadBridgeStatus(); void inspectCli(); void refreshClients();
-      void desktopApi.loadStartSettings?.().then(saved => {
+      void loadBridgeStatus(); void refreshClients(); void loadSkillKit(false);
+      void desktopApi.loadStartSettings?.().then(result => {
         settingsReadyRef.current = true;
+        setLocalAuth(result?.localAuthorization ?? null);
+        const saved = result?.settings;
         if (!saved) return;
+        setExternalModuleAccess(saved.externalModuleAccess === true);
         // 运行中的 Bridge 以快照为准；仅停止态回填上次保存的设置（含自定义 Token）。
         if (bridgeRef.current.state === 'running') return;
         setPort(saved.port);
         setPermission(saved.permission);
         setCustomToken(saved.token || '');
-        lastSavedSettingsRef.current = { port: saved.port, permission: saved.permission, token: saved.token || '' };
+        lastSavedSettingsRef.current = {
+          port: saved.port, permission: saved.permission, token: saved.token || '', externalModuleAccess: saved.externalModuleAccess === true
+        };
       }).catch(() => { settingsReadyRef.current = true; });
     }
     return () => {
       cancelAnimationFrame(frame); unsubscribe?.();
       previousFocusRef.current?.focus(); previousFocusRef.current = null;
     };
-  }, [desktopApi, inspectCli, loadBridgeStatus, open, refreshClients]);
+  }, [desktopApi, loadBridgeStatus, loadSkillKit, open, refreshClients]);
 
   // 桌面客户端检测跟随权限选择（期望配置块随权限变化），但不得触发上面的启动设置回填。
   useEffect(() => {
@@ -259,11 +274,13 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     if (!isPortValid(port)) return undefined;
     const token = customToken.trim();
     if (token && !isTokenValid(token)) return undefined;
-    const pending = { port, permission, token };
+    const pending = { port, permission, token, externalModuleAccess };
     const saved = lastSavedSettingsRef.current;
-    if (saved && saved.port === pending.port && saved.permission === pending.permission && saved.token === pending.token) return undefined;
+    if (saved && saved.port === pending.port && saved.permission === pending.permission && saved.token === pending.token
+      && saved.externalModuleAccess === pending.externalModuleAccess) return undefined;
     const timer = window.setTimeout(() => {
       void desktopApi.saveStartSettings!({ ...pending, lifecycle: 'workspace' }).then(result => {
+        setLocalAuth(result.localAuthorization ?? null);
         if (result.ok) {
           lastSavedSettingsRef.current = pending;
           setNotice({ text: '启动设置已保存到本机加密存储。', duration: 2_000 });
@@ -273,7 +290,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
       }).catch(() => undefined);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [customToken, desktopApi, open, permission, port, running, transitioning]);
+  }, [customToken, desktopApi, externalModuleAccess, open, permission, port, running, transitioning]);
 
   useEffect(() => {
     if (!open || !running) return undefined;
@@ -325,7 +342,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const handleTabKeyDown = (event: React.KeyboardEvent, id: CenterTab) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
-    const ids: CenterTab[] = ['connect', 'activity', 'cli', 'advanced'];
+    const ids: CenterTab[] = ['connect', 'activity'];
     const index = ids.indexOf(id);
     const next = event.key === 'ArrowRight' ? (index + 1) % ids.length : (index - 1 + ids.length) % ids.length;
     setActiveTab(ids[next]);
@@ -514,7 +531,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
         </header>
 
         <nav className={`flex shrink-0 overflow-x-auto border-b px-2 ${isDarkMode ? 'border-[#35353d]' : 'border-slate-200'}`} aria-label="AI Bridge 功能分类" role="tablist">
-          {([['connect', '连接'], ['activity', '客户端与活动'], ['cli', 'CLI 与自动化'], ['advanced', '高级设置']] as Array<[CenterTab, string]>).map(([id, label]) => (
+          {([['connect', '连接'], ['activity', '客户端与活动']] as Array<[CenterTab, string]>).map(([id, label]) => (
             <button key={id} type="button" role="tab" id={`${titleId}-tab-${id}`} aria-controls={`${titleId}-panel`} aria-selected={activeTab === id} onClick={() => setActiveTab(id)} onKeyDown={event => handleTabKeyDown(event, id)} className={`min-h-11 shrink-0 border-b-2 px-4 text-[11px] font-medium focus:outline-none focus:ring-2 focus:ring-inset focus:ring-cyan-500 ${activeTab === id ? 'border-cyan-500 text-cyan-500' : `border-transparent ${muted} hover:text-cyan-500`}`}>{label}{id === 'activity' && bridge.activeClients > 0 && <span className="ml-1.5 inline-flex min-w-4 items-center justify-center rounded bg-cyan-500/15 px-1 text-[10px] font-medium tabular-nums text-cyan-500">{bridge.activeClients}</span>}</button>
           ))}
         </nav>
@@ -528,7 +545,6 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
                 <div className="min-w-0">
                   <div className="flex items-center gap-2"><Radio className={`h-5 w-5 ${running ? 'text-emerald-500' : 'text-slate-500'}`} /><h3 id="bridge-control-title" className="text-sm font-semibold">{bridgeTitle}</h3></div>
                   <p className={`mt-1 break-all text-[11px] leading-5 ${muted}`}>{bridgeDescription}</p>
-                  {statusProbe.phase === 'ready' && !running && !transitioning && <button type="button" onClick={() => setActiveTab('advanced')} className="mt-0.5 text-[11px] text-cyan-500 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-cyan-500">调整启动设置（权限、端口、Token）</button>}
                 </div>
                 {statusProbe.phase === 'loading' ? <button type="button" disabled className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded bg-cyan-600 px-5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"><LoaderCircle className="h-4 w-4 animate-spin" />获取状态中…</button>
                   : statusProbe.phase === 'error' ? <button type="button" onClick={() => void loadBridgeStatus()} disabled={Boolean(busyAction)} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border border-current/20 px-4 text-xs font-semibold hover:bg-slate-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"><RefreshCw className="h-4 w-4" />重试获取状态</button>
@@ -541,6 +557,20 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
                 <EndpointRow icon={<KeyRound className="h-4 w-4" />} label={tokenIsCustom ? '自定义 Token' : '临时 Token'} value={bridge.tokenMasked} onCopy={() => void copyToken()} isDarkMode={isDarkMode} />
                 <div className="flex min-h-12 items-center gap-3 rounded border border-current/10 px-3"><Users className="h-4 w-4 text-cyan-500" /><div><div className={`text-[10px] ${muted}`}>已连接客户端</div><div className="text-xs font-semibold tabular-nums">{bridge.activeClients}</div></div></div>
               </div>}
+              {!running && statusProbe.phase === 'ready' && <fieldset disabled={transitioning || Boolean(busyAction)} className="mt-4 space-y-4 border-t border-current/10 pt-4 disabled:opacity-60">
+                <div><h4 className="text-xs font-semibold">Bridge 启动设置</h4><p className={`mt-1 text-[11px] leading-5 ${muted}`}>停止态修改后自动保存到本机加密存储（safeStorage 加密），下次打开自动填入。</p></div>
+                <label className="block text-[11px] font-medium">监听端口<input type="number" min={1024} max={65535} value={Number.isInteger(port) ? port : ''} onChange={event => setPort(event.target.value === '' ? Number.NaN : Number(event.target.value))} aria-invalid={portInvalid} className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${portInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${portInvalid ? 'text-rose-400' : muted}`}>{portInvalid ? '端口必须是 1024–65535 之间的整数。' : '仅监听 127.0.0.1；端口冲突时会明确报错。'}</span></label>
+                <div><div className="text-[11px] font-medium">权限模式</div><div className="mt-2 grid gap-2 sm:grid-cols-3">{(['readonly', 'preview', 'yolo'] as BridgePermission[]).map(value => <label key={value} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded border px-3 text-[11px] ${permission === value ? 'border-cyan-500 bg-cyan-500/10' : 'border-current/15'}`}><input type="radio" name="bridge-permission" value={value} checked={permission === value} onChange={() => { setPermission(value); if (value !== 'yolo') setApprovedYolo(false); }} className="accent-cyan-500" /><span className="font-semibold">{PERMISSION_LABELS[value]}</span><span className={`font-mono text-[10px] ${muted}`}>{value}</span>{value === 'preview' && <span className="text-cyan-500">推荐</span>}</label>)}</div></div>
+                {permission === 'yolo' && <label className="flex cursor-pointer items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-400"><input type="checkbox" checked={approvedYolo} onChange={event => setApprovedYolo(event.target.checked)} className="mt-1 accent-amber-500" /><span>我确认：可信的本机 AI 可以自动写入文件、导出并执行 LingBuilder 受控构建；仍不开放任意 shell。</span></label>}
+                <label className={`flex items-start gap-2 rounded border p-3 text-[11px] leading-5 ${externalModuleAccess ? 'border-cyan-500/40 bg-cyan-500/10' : 'border-current/15'}`}>
+                  <input type="checkbox" checked={externalModuleAccess} disabled={running || transitioning} onChange={event => setExternalModuleAccess(event.target.checked)} className="mt-1 accent-cyan-500" />
+                  <span>
+                    <span className="font-semibold">允许外部 AI 客户端使用本机授权</span>
+                    <span className={`mt-1 block ${muted}`}>开启后，由 ChatGPT/Codex/Claude/Gemini 自动拉起的 AI Bridge 宿主可向本机 LingBuilder 换取模块授权与浏览器凭据；只监听回环、凭据不落盘不进日志，IDE 退出即撤销。关闭时外部 AI 只能使用免费模块。</span>
+                    <span className="mt-1 block font-mono text-[10px] text-cyan-500">{externalModuleAccess ? (localAuth?.running ? `代理监听 127.0.0.1:${localAuth.port}，已完成 ${localAuth.exchanges} 次换取。` : '保存后自动启动代理（运行中的 Bridge 需先停止）。') : (running || transitioning ? '需先停止 AI Bridge 才能修改本开关。' : '未开启。')}</span>
+                  </span>
+                </label>
+              </fieldset>}
             </section>
 
             <section>
@@ -561,16 +591,44 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
 
             <section>
               <div className="mb-2 flex items-end justify-between gap-3"><div><h3 className="text-sm font-semibold">连接外部 AI CLI</h3><p className={`mt-1 text-[11px] ${muted}`}>点击一次即可启动 Bridge、注入临时凭据并在 IDE 终端打开客户端。</p></div><button type="button" onClick={() => void refreshClients()} className="flex min-h-9 items-center gap-1 rounded px-2 text-[11px] text-cyan-500 hover:bg-cyan-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500"><RefreshCw className="h-3.5 w-3.5" />重新检测</button></div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {clients.map(client => <ClientCard key={client.id} client={client} busy={busyAction === `client:${client.id}`} disabled={Boolean(busyAction) || transitioning} isDarkMode={isDarkMode} onConnect={() => void connectClient(client)} />)}
+              <div className="space-y-2">
+                {clients.map(client => <ClientRow key={client.id} client={client} busy={busyAction === `client:${client.id}`} disabled={Boolean(busyAction) || transitioning} isDarkMode={isDarkMode} onConnect={() => void connectClient(client)} />)}
                 {clientsProbe.phase === 'error' && !clients.length && <ProbeErrorCard message={clientsProbe.message} retryLabel="重新检测外部 AI CLI" onRetry={() => void refreshClients()} />}
                 {clientsProbe.phase !== 'error' && !clients.length && (clientsProbe.phase === 'loading'
-                  ? <div role="status" className={`col-span-full rounded border p-4 text-[11px] ${card}`}><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />正在检测外部 AI CLI…</div>
-                  : <div className={`col-span-full rounded border p-4 text-[11px] ${card}`}>未检测到外部 AI CLI。安装 Codex CLI、Claude Code 或 Gemini CLI 后点击“重新检测”。</div>)}
+                  ? <div role="status" className={`rounded border p-4 text-[11px] ${card}`}><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />正在检测外部 AI CLI…</div>
+                  : <div className={`rounded border p-4 text-[11px] ${card}`}>未检测到外部 AI CLI。安装 Codex CLI、Claude Code 或 Gemini CLI 后点击“重新检测”。</div>)}
               </div>
             </section>
 
             <div className="flex items-start gap-2 rounded border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] leading-5"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500" /><span>桌面客户端使用当前项目的 STDIO MCP，不保存 Token、不监听网络端口；CLI 客户端的 Token 只注入新建终端环境。两种方式都受 LingBuilder 工作区边界和权限模式限制。</span></div>
+
+            <details className={`rounded-lg border p-4 ${card}`}>
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500 [&::-webkit-details-marker]:hidden"><Settings2 className="h-4 w-4 shrink-0 text-cyan-500" aria-hidden="true" />手动连接（高级）<span className={`ml-auto text-right text-[11px] font-normal ${muted}`}>自定义 Token · 通用 MCP 配置 · 灵码 Skill 正文</span></summary>
+              <div className="mt-3 space-y-5">
+                <fieldset disabled={running || transitioning || Boolean(busyAction)} className="space-y-4 disabled:opacity-60">
+                  <label className="block text-[11px] font-medium">自定义 Token（可选）<input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} aria-invalid={tokenInvalid} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${tokenInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${tokenInvalid ? 'text-rose-400' : muted}`}>{tokenInvalid ? '自定义 Token 必须是 24–256 个不含空白的可见 ASCII 字符（不能含中文或空格）。' : '停止态修改即时保存到本机加密存储；清空则每次启动生成临时 Token。要求 24–256 个不含空白的可见 ASCII 字符。'}</span></label>
+                </fieldset>
+                <section>
+                  <h4 className="text-xs font-semibold">连接配置</h4><p className={`mb-2 mt-1 text-[11px] leading-5 ${muted}`}>供不在快捷客户端列表中的 MCP 或 HTTP 客户端使用。</p>
+                  <div className={`relative rounded border ${code}`}><pre className="max-h-72 overflow-auto p-3 pr-12 text-[10px] leading-5"><code>{mcpConfig}</code></pre><button type="button" onClick={() => void copyConfig()} className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded border border-cyan-400/30 bg-black/20 hover:bg-cyan-500/15 focus:outline-none focus:ring-2 focus:ring-cyan-500" aria-label="复制通用 MCP 配置">{configCopied ? <Check className="h-4 w-4 text-emerald-500" /> : <Clipboard className="h-4 w-4" />}</button></div>
+                  {running && <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void copyToken()} className="min-h-11 rounded border border-current/20 text-[11px] hover:bg-slate-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500"><KeyRound className="mr-1 inline h-3.5 w-3.5" />{tokenIsCustom ? '复制 Token' : '复制临时 Token'}</button><button type="button" onClick={() => void rotateToken()} disabled={Boolean(busyAction) || tokenIsCustom} title={tokenIsCustom ? '当前运行使用自定义 Token；如需更换请先停止 Bridge，在本区修改后重新启动。' : undefined} className="min-h-11 rounded border border-amber-500/40 text-[11px] text-amber-400 hover:bg-amber-500/10 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-50"><RefreshCw className="mr-1 inline h-3.5 w-3.5" />重新生成 Token</button></div>}
+                  {running && tokenIsCustom && <div className={`mt-2 text-[10px] ${muted}`}>当前运行使用自定义 Token；「重新生成 Token」仅对临时 Token 开放，更换自定义 Token 请停止后在本区修改并重新启动。</div>}
+                  <div className={`mt-3 text-[11px] leading-5 ${muted}`}>HTTP API 保留用于自研客户端、脚本和 CI；外部 AI CLI 优先使用共享 MCP Streamable HTTP。完整接口和 curl 示例仍见 CLI 手册。</div>
+                </section>
+                {skillKitApi && <section>
+                  <h4 className="text-xs font-semibold">灵码 Skill 正文</h4><p className={`mb-2 mt-1 text-[11px] leading-5 ${muted}`}>给外部 AI 客户端阅读的接入指引。安装包内置一份离线快照；联网时以官网后台发布的最新版为准，取不到会自动回退，不阻断使用。</p>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className={`rounded border px-2 py-1 ${skillKit?.source === 'bundled' ? 'border-current/20' : 'border-cyan-500/40 text-cyan-500'}`}>{skillKit ? SKILL_KIT_SOURCE_LABELS[skillKit.source] : '读取中'}</span>
+                    <span className={`font-mono ${muted}`}>{skillKit ? `v${skillKit.version || '—'} · sequence ${skillKit.sequence} · ${skillKit.fileCount} 个文件` : '—'}</span>
+                    <button type="button" className="min-h-11 rounded border border-current/15 px-3 hover:border-cyan-500/40" disabled={skillKitBusy} onClick={() => void loadSkillKit(false)}>刷新状态</button>
+                    <button type="button" className="min-h-11 rounded border border-cyan-500/40 px-3 text-cyan-500 hover:bg-cyan-500/10" disabled={skillKitBusy} onClick={() => void loadSkillKit(true)}>{skillKitBusy ? '正在检查…' : '检查更新'}</button>
+                    <button type="button" className="min-h-11 rounded border border-current/15 px-3 hover:border-cyan-500/40" disabled={!skillKit?.installPrompt} onClick={() => void copyText(skillKit.installPrompt)}>复制安装指令</button>
+                  </div>
+                  {skillKit?.entrypointPath && <p className={`mt-2 break-all font-mono text-[10px] ${muted}`}>{skillKit.entrypointPath}</p>}
+                  {skillKit?.problem && <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-5 text-amber-400">{skillKit.problem}</p>}
+                </section>}
+              </div>
+            </details>
           </div>}
 
           {activeTab === 'activity' && <div className="grid gap-4 lg:grid-cols-2">
@@ -585,42 +643,6 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
                 <button type="button" onClick={() => void copyLogs()} disabled={!bridge.logs.length} className="flex min-h-11 items-center gap-1 rounded px-2 text-[11px] hover:bg-cyan-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-40" aria-live="polite">{logsCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Clipboard className="h-3.5 w-3.5" />}{logsCopied ? '已复制' : '复制日志'}</button>
               </div>
               <pre ref={logsRef} className={`max-h-56 overflow-auto rounded border p-3 text-[10px] leading-5 ${code}`}><code>{bridge.logs.length ? bridge.logs.join('\n') : '尚无运行日志。'}</code></pre>
-            </SectionCard>
-          </div>}
-
-          {activeTab === 'cli' && <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <SectionCard title="CLI 安装状态" description="CLI 继续服务脚本、CI 和高级自动化。" cardClass={card} isDarkMode={isDarkMode}>
-              {cliProbe.phase === 'error' ? <div className="flex items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] leading-5 text-amber-500"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{cliProbe.message || '检测 CLI 状态失败，请点击下方“重新检查 CLI”。'}</span></div>
-                : cliStatus ? <div className="space-y-2">
-                <StatusRow label="CLI 启动器" ready={cliStatus.launcherExists} detail={cliStatus.launcherExists ? '已找到' : '缺失'} />
-                <StatusRow label="当前用户 PATH" ready={cliStatus.pathConfigured} detail={cliStatus.pathConfigured ? '已配置' : '未配置'} />
-                <StatusRow label="版本自检" ready={Boolean(cliStatus.version)} detail={cliStatus.version || '未通过'} />
-                <p className={`pt-2 text-[11px] leading-4 ${muted}`}>{cliStatus.detail}</p>
-              </div> : <LoaderCircle className="h-4 w-4 animate-spin" />}
-              <div className="mt-3 grid gap-2"><button type="button" onClick={() => void inspectCli()} className="min-h-11 rounded border border-current/20 text-[11px] hover:bg-slate-500/10">重新检查 CLI</button><button type="button" onClick={() => void openManual()} className="flex min-h-11 items-center justify-center gap-2 rounded border border-current/20 text-[11px] hover:bg-slate-500/10"><BookOpen className="h-4 w-4" />打开完整手册<ExternalLink className="h-3 w-3" /></button></div>
-            </SectionCard>
-            <SectionCard title="常用 CLI 命令" description="Bridge 连接不替代 CLI；这些命令适合终端、脚本和 CI。" cardClass={card} isDarkMode={isDarkMode}>
-              <div className="space-y-2">{QUICK_COMMANDS.map(([label, command, description]) => <CommandRow key={command} label={label} command={command} description={description} codeClass={code} isDarkMode={isDarkMode} onCopy={copyText} />)}</div>
-            </SectionCard>
-          </div>}
-
-          {activeTab === 'advanced' && <div className="grid gap-4 lg:grid-cols-2">
-            <SectionCard title="Bridge 启动设置" description={running ? 'Bridge 运行时设置已锁定；停止后可以修改。' : '停止态修改后自动保存到本机加密存储（safeStorage 加密），下次打开自动填入。'} cardClass={card} isDarkMode={isDarkMode}>
-              <fieldset disabled={running || transitioning || Boolean(busyAction)} className="space-y-4 disabled:opacity-60">
-                <label className="block text-[11px] font-medium">监听端口<input type="number" min={1024} max={65535} value={Number.isInteger(port) ? port : ''} onChange={event => setPort(event.target.value === '' ? Number.NaN : Number(event.target.value))} aria-invalid={portInvalid} className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${portInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${portInvalid ? 'text-rose-400' : muted}`}>{portInvalid ? '端口必须是 1024–65535 之间的整数。' : '仅监听 127.0.0.1；端口冲突时会明确报错。'}</span></label>
-                <div><div className="text-[11px] font-medium">权限模式</div><div className="mt-2 grid gap-2 sm:grid-cols-3">{(['readonly', 'preview', 'yolo'] as BridgePermission[]).map(value => <label key={value} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded border px-3 text-[11px] ${permission === value ? 'border-cyan-500 bg-cyan-500/10' : 'border-current/15'}`}><input type="radio" name="bridge-permission" value={value} checked={permission === value} onChange={() => { setPermission(value); if (value !== 'yolo') setApprovedYolo(false); }} className="accent-cyan-500" /><span className="font-semibold">{PERMISSION_LABELS[value]}</span><span className={`font-mono text-[10px] ${muted}`}>{value}</span>{value === 'preview' && <span className="text-cyan-500">推荐</span>}</label>)}</div></div>
-                {permission === 'yolo' && <label className="flex cursor-pointer items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-400"><input type="checkbox" checked={approvedYolo} onChange={event => setApprovedYolo(event.target.checked)} className="mt-1 accent-amber-500" /><span>我确认：可信的本机 AI 可以自动写入文件、导出并执行 LingBuilder 受控构建；仍不开放任意 shell。</span></label>}
-                <label className="block text-[11px] font-medium">自定义 Token（可选）<input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} aria-invalid={tokenInvalid} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${tokenInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${tokenInvalid ? 'text-rose-400' : muted}`}>{tokenInvalid ? '自定义 Token 必须是 24–256 个不含空白的可见 ASCII 字符（不能含中文或空格）。' : '停止态修改即时保存到本机加密存储；清空则每次启动生成临时 Token。要求 24–256 个不含空白的可见 ASCII 字符。'}</span></label>
-              </fieldset>
-            </SectionCard>
-            <SectionCard title="连接配置" description="供不在快捷客户端列表中的 MCP 或 HTTP 客户端使用。" cardClass={card} isDarkMode={isDarkMode}>
-              <div className={`relative rounded border ${code}`}><pre className="max-h-72 overflow-auto p-3 pr-12 text-[10px] leading-5"><code>{mcpConfig}</code></pre><button type="button" onClick={() => void copyConfig()} className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded border border-cyan-400/30 bg-black/20 hover:bg-cyan-500/15 focus:outline-none focus:ring-2 focus:ring-cyan-500" aria-label="复制通用 MCP 配置">{configCopied ? <Check className="h-4 w-4 text-emerald-500" /> : <Clipboard className="h-4 w-4" />}</button></div>
-              {running && <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void copyToken()} className="min-h-11 rounded border border-current/20 text-[11px] hover:bg-slate-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500"><KeyRound className="mr-1 inline h-3.5 w-3.5" />{tokenIsCustom ? '复制 Token' : '复制临时 Token'}</button><button type="button" onClick={() => void rotateToken()} disabled={Boolean(busyAction) || tokenIsCustom} title={tokenIsCustom ? '当前运行使用自定义 Token；如需更换请先停止 Bridge，在左侧修改后重新启动。' : undefined} className="min-h-11 rounded border border-amber-500/40 text-[11px] text-amber-400 hover:bg-amber-500/10 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-50"><RefreshCw className="mr-1 inline h-3.5 w-3.5" />重新生成 Token</button></div>}
-              {running && tokenIsCustom && <div className={`mt-2 text-[10px] ${muted}`}>当前运行使用自定义 Token；「重新生成 Token」仅对临时 Token 开放，更换自定义 Token 请停止后在左侧修改并重新启动。</div>}
-              <div className={`mt-3 text-[11px] leading-5 ${muted}`}>HTTP API 保留用于自研客户端、脚本和 CI；外部 AI CLI 优先使用共享 MCP Streamable HTTP。完整接口和 curl 示例仍见 CLI 手册。</div>
-            </SectionCard>
-            <SectionCard title="权限边界" description="所有传输方式复用相同的服务和审计规则。" cardClass={`${card} lg:col-span-2`} isDarkMode={isDarkMode}>
-              <div className="grid gap-2 sm:grid-cols-3"><PermissionCard name="readonly" isDarkMode={isDarkMode} text="读取、搜索、诊断和生成预览；禁止写入与执行。" /><PermissionCard name="preview" isDarkMode={isDarkMode} text="默认模式；写入、导出和构建必须得到明确批准。" recommended /><PermissionCard name="yolo" isDarkMode={isDarkMode} text="可信自动化可执行受控能力；仍禁止任意 shell 和工作区逃逸。" /></div>
             </SectionCard>
           </div>}
         </main>
@@ -673,11 +695,6 @@ function CodexDesktopCard({ status, busy, disabled, isDarkMode, onConfigure, onO
         {status.managed && <button type="button" onClick={onRemove} disabled={disabled} className={`flex min-h-11 items-center justify-center rounded px-3 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'} hover:bg-rose-500/10 hover:text-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-500 sm:col-span-2`}>移除当前工作区 MCP 配置</button>}
       </div>
     </div>
-    <div className="mt-4 grid gap-2 border-t border-current/10 pt-4 sm:grid-cols-3">
-      <StatusRow label="桌面客户端" ready={status.installed} detail={status.installed ? (status.running ? '运行中' : '已安装') : '未安装'} />
-      <StatusRow label="项目 MCP" ready={status.configured} detail={status.configured ? '已配置' : status.state === 'conflict' ? '存在冲突' : '未配置'} />
-      <StatusRow label="配置加载" ready={status.configured && !status.restartRequired} detail={status.restartRequired ? '需要重启' : status.configured ? '可用' : '等待配置'} />
-    </div>
     {status.restartRequired && <div className="mt-3 flex items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>桌面客户端启动时间早于配置写入时间。请先完全退出 ChatGPT/Codex（包括后台进程），重新打开后在当前工作区新建任务，再点击“重新检测”。</span></div>}
   </article>;
 }
@@ -696,12 +713,16 @@ function CodexDesktopBadge({ status, isDarkMode }: { status: CodexDesktopStatus;
   return <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${config[1]}`}>{config[0]}</span>;
 }
 
-function ClientCard({ client, busy, disabled, isDarkMode, onConnect }: { client: ExternalClient; busy: boolean; disabled: boolean; isDarkMode: boolean; onConnect: () => void }) {
-  return <article className={`flex min-h-44 flex-col rounded-lg border p-3 ${isDarkMode ? 'border-[#35353d] bg-[#24242b]' : 'border-slate-200 bg-slate-50'}`}>
-    <div className="flex items-start justify-between gap-2"><div className="flex h-9 w-9 items-center justify-center rounded bg-cyan-500/10 text-cyan-500">{client.id === 'generic' ? <TerminalSquare className="h-5 w-5" /> : <Bot className="h-5 w-5" />}</div>{client.installed ? <span className="flex items-center gap-1 text-[10px] text-emerald-500"><CheckCircle2 className="h-3 w-3" />可用</span> : <span className="flex items-center gap-1 text-[10px] text-amber-500"><AlertTriangle className="h-3 w-3" />未安装</span>}</div>
-    <h4 className="mt-3 text-xs font-semibold">{client.label}</h4><p className={`mt-1 flex-1 text-[11px] leading-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{client.detail}</p>
-    <button type="button" onClick={onConnect} disabled={disabled || !client.installed} className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded border border-cyan-500/40 text-xs font-semibold text-cyan-500 hover:bg-cyan-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:border-current/10 disabled:text-slate-500 disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{client.id === 'generic' ? '打开 Bridge 终端' : '连接并打开'}</button>
-  </article>;
+function ClientRow({ client, busy, disabled, isDarkMode, onConnect }: { client: ExternalClient; busy: boolean; disabled: boolean; isDarkMode: boolean; onConnect: () => void }) {
+  const muted = isDarkMode ? 'text-slate-400' : 'text-slate-600';
+  return <div className="flex items-center gap-3 rounded-lg border border-current/10 p-2.5">
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-cyan-500/10 text-cyan-500">{client.id === 'generic' ? <TerminalSquare className="h-5 w-5" /> : <Bot className="h-5 w-5" />}</div>
+    <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">{client.label}{client.installed ? <span className="flex items-center gap-1 text-[10px] font-normal text-emerald-500"><CheckCircle2 className="h-3 w-3" />可用</span> : <span className="flex items-center gap-1 text-[10px] font-normal text-amber-500"><AlertTriangle className="h-3 w-3" />未安装</span>}</div>
+      <div className={`truncate text-[11px] ${muted}`} title={client.detail}>{client.detail}</div>
+    </div>
+    <button type="button" onClick={onConnect} disabled={disabled || !client.installed || busy} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border border-cyan-500/40 px-3 text-xs font-semibold text-cyan-500 hover:bg-cyan-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:border-current/10 disabled:text-slate-500 disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{client.id === 'generic' ? '打开 Bridge 终端' : '连接并打开'}</button>
+  </div>;
 }
 
 function SectionCard({ title, description, cardClass, isDarkMode, children }: { title: string; description: string; cardClass: string; isDarkMode: boolean; children: React.ReactNode }) {
@@ -716,24 +737,6 @@ function EndpointRow({ icon, label, value, onCopy, isDarkMode }: { icon: React.R
     window.setTimeout(() => setCopied(false), 1500);
   };
   return <div className="flex min-h-12 min-w-0 items-center gap-3 rounded border border-current/10 px-3"><span className="shrink-0 text-cyan-500">{icon}</span><div className="min-w-0 flex-1"><div className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{label}</div><div className="truncate font-mono text-[10px]" title={value}>{value}</div></div><button type="button" onClick={() => void handleCopy()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:bg-cyan-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500" aria-label={copied ? `已复制${label}` : `复制${label}`}>{copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Clipboard className="h-3.5 w-3.5" />}</button></div>;
-}
-
-function CommandRow({ label, command, description, codeClass, isDarkMode, onCopy }: { label: string; command: string; description: string; codeClass: string; isDarkMode: boolean; onCopy: (value: string) => void | Promise<void> }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    await onCopy(command);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  };
-  return <article className="rounded border border-current/10 p-3"><div className="flex items-start justify-between gap-3"><div><h4 className="text-xs font-medium">{label}</h4><p className={`mt-0.5 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{description}</p></div><button type="button" onClick={() => void handleCopy()} className="flex min-h-11 shrink-0 items-center gap-1 rounded px-2 text-[11px] hover:bg-cyan-500/10 focus:outline-none focus:ring-2 focus:ring-cyan-500" aria-live="polite">{copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Clipboard className="h-3.5 w-3.5" />}{copied ? '已复制' : '复制'}</button></div><pre className={`mt-2 overflow-x-auto rounded border px-3 py-2 text-[10px] ${codeClass}`}><code>{command}</code></pre></article>;
-}
-
-function PermissionCard({ name, text, recommended = false, isDarkMode }: { name: BridgePermission; text: string; recommended?: boolean; isDarkMode: boolean }) {
-  return <div className={`rounded border p-3 ${recommended ? 'border-cyan-500/50 bg-cyan-500/10' : 'border-current/10'}`}><div className="text-xs font-semibold">{PERMISSION_LABELS[name]}<span className={`ml-2 font-mono text-[10px] font-normal ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{name}</span>{recommended && <span className="ml-2 text-[10px] font-normal text-cyan-500">推荐</span>}</div><p className={`mt-1 text-[11px] leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{text}</p></div>;
-}
-
-function StatusRow({ label, ready, detail }: { label: string; ready: boolean; detail: string }) {
-  return <div className="flex items-center gap-2 text-[11px]">{ready ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <XCircle className="h-3.5 w-3.5 text-amber-500" />}<span className="flex-1">{label}</span><span className={ready ? 'text-emerald-500' : 'text-amber-500'}>{detail}</span></div>;
 }
 
 function BridgeStateBadge({ state, isDarkMode }: { state: BridgeState; isDarkMode: boolean }) {

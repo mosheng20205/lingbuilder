@@ -289,7 +289,7 @@ http://127.0.0.1:3001/
 - ChatGPT/Codex Windows 桌面客户端是独立接入面，不按 `codex` PATH 判断。`CodexDesktopIntegrationService` 检测 `OpenAI.Codex` MSIX 包和 `ChatGPT` 进程，在当前工作区 `.codex/config.toml` 管理 `mcp_servers.lingbuilder_desktop` 段，并通过 `--mcp --stdio-only` 让 Codex 直接拉起当前安装包内的 CLI。该模式不监听端口、不使用或持久化 Token；配置晚于桌面进程启动时必须显示重启提示。
 - 桌面 MCP 配置必须保留用户其他 TOML 内容；遇到非 LingBuilder 托管的同名服务必须先显示冲突并获得替换确认。安装路径或权限变化时显示“需要更新”，移除操作只能删除 LingBuilder 托管段。
 - 连接中心检测 Codex CLI、Claude Code、Gemini CLI，并由主进程创建带临时环境变量的 IDE PTY。Codex 使用会话级配置覆盖；Claude Code 与 Gemini CLI 的托管 JSON 只包含环境变量占位符，不保存 Token，也不修改客户端全局配置。
-- 高级设置（端口/权限/自定义 Token）在 **Bridge 停止态编辑即防抖自动持久化**（`ai-bridge:start-settings:save` → userData，Token 用 safeStorage 加密、绝不落明文），启动成功后再写一次；持久化失败经 `settingsError` 红条明示。「生命周期」下拉因主进程未消费已移除（内部固定 `workspace`）。自定义 Token 统一要求 24–256 个可见 ASCII 字符，字段带实时中文校验提示。
+- 连接中心精简为「连接 / 客户端与活动」两个页签：Bridge 启动设置（端口/权限/本机授权）直接内嵌在连接页的 Bridge 卡片停止态下方；自定义 Token、通用 MCP 连接配置与灵码 Skill 正文收进「手动连接（高级）」折叠区；原「CLI 与自动化」页签与「权限边界」说明卡已移除（CLI 命令与手册入口保留在底部「完整手册」）。启动设置在 **Bridge 停止态编辑即防抖自动持久化**（`ai-bridge:start-settings:save` → userData，Token 用 safeStorage 加密、绝不落明文），启动成功后再写一次；持久化失败经 `settingsError` 红条明示。「生命周期」下拉因主进程未消费已移除（内部固定 `workspace`）。自定义 Token 统一要求 24–256 个可见 ASCII 字符，字段带实时中文校验提示。
 - 状态页展示当前端口、权限、MCP/HTTP 地址、已连接客户端、最近工具调用和脱敏进程日志。`readonly`、`preview`、`yolo` 权限语义不变，启用 `yolo` 必须二次确认（会话内确认，不持久化）。Bridge 启动失败会转述 CLI 子进程的中文诊断（如端口占用），不再只报退出码；一次瞬时状态刷新失败的红条在下次刷新成功后自动清除。运行中提供「重启 Bridge」；使用自定义 Token 启动时「重新生成 Token」禁用并提示改走停止→修改→重启。
 - 标题栏常驻 `AiBridgeTitleBarBadge`：Bridge 运行中显示 `Bridge :端口 · 客户端数`，点击直接打开连接中心；关闭连接中心后运行状态依然可见。
 - Bridge 只能监听回环地址。切换工作区或退出 IDE 必须停止受管 Bridge，不能让旧工作区服务残留；关闭连接中心本身不会停止 Bridge。

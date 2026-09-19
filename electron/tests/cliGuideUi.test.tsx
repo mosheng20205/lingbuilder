@@ -19,7 +19,7 @@ test('AI Bridge center exposes one-click lifecycle, clients, shared MCP, CLI, pe
   assert.match(source, /MCP（推荐）/u);
   assert.match(source, /已连接客户端/u);
   assert.match(source, /工具调用活动/u);
-  assert.match(source, /lingbuilder doctor --json/u);
+  assert.match(source, /手动连接（高级）/u);
   assert.match(source, /mcpServers/u);
   assert.match(source, /readonly/u);
   assert.match(source, /preview/u);
@@ -44,7 +44,9 @@ test('AI Bridge center persists settings on edit in stopped state without clobbe
   assert.match(componentSource, /saveStartSettings/u);
   assert.match(componentSource, /bridgeRef\.current\.state === 'running'/u);
   // 权限选择只触发桌面客户端重新检测，不得连带回滚启动设置（effect 解耦）。
-  assert.match(componentSource, /\}, \[desktopApi, inspectCli, loadBridgeStatus, open, refreshClients\]\);/u);
+  // bootstrap effect 允许带 loadSkillKit（打开时读一次正文状态），但绝不能依赖 refreshCodexDesktop。
+  assert.match(componentSource, /\}, \[desktopApi, loadBridgeStatus, loadSkillKit, open, refreshClients\]\);/u);
+  assert.doesNotMatch(componentSource, /\}, \[[^\]]*loadBridgeStatus[^\]]*refreshCodexDesktop[^\]]*\]\);/u);
   assert.match(componentSource, /\}, \[desktopApi, open, refreshCodexDesktop\]\);/u);
   // 生命周期下拉在接线前属假设置，已从 UI 移除（内部固定 workspace）。
   assert.doesNotMatch(componentSource, /生命周期<select/u);
@@ -57,6 +59,17 @@ test('AI Bridge center persists settings on edit in stopped state without clobbe
   assert.match(preloadSource, /saveStartSettings: \(settings: unknown\) => ipcRenderer\.invoke\('ai-bridge:start-settings:save', settings\)/u);
   assert.match(dtsSource, /loadStartSettings/u);
   assert.match(dtsSource, /saveStartSettings/u);
+  // 本机授权代理与灵码 Skill 正文取物：主进程 IPC + preload 白名单 + 类型声明三处齐备。
+  assert.match(mainSource, /ai-bridge:local-auth-status/u);
+  assert.match(mainSource, /skill-kit:status/u);
+  assert.match(mainSource, /skill-kit:check-update/u);
+  assert.match(preloadSource, /localAuthStatus: \(\) => ipcRenderer\.invoke\('ai-bridge:local-auth-status'\)/u);
+  assert.match(preloadSource, /status: \(\) => ipcRenderer\.invoke\('skill-kit:status'\)/u);
+  assert.match(preloadSource, /checkUpdate: \(\) => ipcRenderer\.invoke\('skill-kit:check-update'\)/u);
+  assert.match(dtsSource, /skillKit\?:/u);
+  assert.match(dtsSource, /LingBuilderSkillKitStatus/u);
+  assert.match(componentSource, /允许外部 AI 客户端使用本机授权/u);
+  assert.match(componentSource, /灵码 Skill 正文/u);
 });
 
 test('workbench and packaged desktop expose the managed Bridge center through discoverable entries and IPC', async () => {
@@ -112,7 +125,7 @@ test('AI Bridge center permissions are Chinese-labeled, destructive actions conf
   assert.match(source, /只读/u);
   assert.match(source, /预览确认/u);
   assert.match(source, /全自动/u);
-  assert.match(source, /调整启动设置（权限、端口、Token）/u);
+  assert.match(source, /Bridge 启动设置/u);
   assert.match(source, /当前配置：\$\{PERMISSION_LABELS\[permission\]\}/u);
   assert.match(source, /停止 AI Bridge/u);
   assert.match(source, /断开全部连接并中断进行中的 AI 操作/u);
