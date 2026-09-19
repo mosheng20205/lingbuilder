@@ -80,6 +80,29 @@ import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
 import RecentWorkspacesDialog from './components/RecentWorkspacesDialog';
 import WorkbenchConfirmDialog from './components/WorkbenchConfirmDialog';
+import CloudAccountLoginDialog from './components/CloudAccountLoginDialog';
+import CloudAccountRechargeDialog from './components/CloudAccountRechargeDialog';
+import CloudAccountTitleBarEntry from './components/CloudAccountTitleBarEntry';
+import {
+  cancelCloudAccountLoginDialog,
+  getActiveCloudAccountLoginDialog,
+  requestCloudAccountLogin,
+  settleCloudAccountLoginDialog,
+  subscribeCloudAccountLoginDialog,
+  type CloudAccountLoginRequest
+} from './services/workbench/cloudAccountLoginService';
+import {
+  getActiveCloudAccountRechargeDialog,
+  requestCloudAccountRecharge,
+  settleCloudAccountRechargeDialog,
+  subscribeCloudAccountRechargeDialog,
+  type CloudAccountRechargeRequest
+} from './services/workbench/cloudAccountRechargeService';
+import {
+  getCloudAccountSessionState,
+  signOutCloudAccount,
+  subscribeCloudAccountSession
+} from './services/workbench/cloudAccountSessionStore';
 import {
   cancelWorkbenchDialog,
   getActiveWorkbenchDialog,
@@ -1281,6 +1304,15 @@ export default function App() {
   // 工作台内非阻塞确认/提示/输入对话框：替代 window.confirm/alert/prompt，避免原生对话框冻结整个工作台输入。
   const [workbenchDialog, setWorkbenchDialog] = useState<WorkbenchDialogRequest | null>(() => getActiveWorkbenchDialog());
   useEffect(() => subscribeWorkbenchDialog(setWorkbenchDialog), []);
+  // LingBuilder 账号登录弹窗：标题栏、欢迎页、设置页、收费模块门禁与 AI 面板共用这一个入口。
+  const [cloudAccountLoginDialog, setCloudAccountLoginDialog] = useState<CloudAccountLoginRequest | null>(() => getActiveCloudAccountLoginDialog());
+  useEffect(() => subscribeCloudAccountLoginDialog(setCloudAccountLoginDialog), []);
+  // 点数充值弹窗：套餐、下单与到账轮询只在 CloudAccountRechargeDialog 内实现一次。
+  const [cloudAccountRechargeDialog, setCloudAccountRechargeDialog] = useState<CloudAccountRechargeRequest | null>(() => getActiveCloudAccountRechargeDialog());
+  useEffect(() => subscribeCloudAccountRechargeDialog(setCloudAccountRechargeDialog), []);
+  // 帮助菜单与标题栏共用同一份账号会话，避免菜单文案与实际登录态不一致。
+  const [cloudAccountSession, setCloudAccountSession] = useState(getCloudAccountSessionState);
+  useEffect(() => subscribeCloudAccountSession(() => setCloudAccountSession(getCloudAccountSessionState())), []);
   const pendingWorkspaceSearchRevealRef = useRef<WorkspaceSearchMatch | null>(null);
   const pendingAiWorkbenchNavigationRef = useRef<{
     requestId: string;
@@ -1564,32 +1596,37 @@ export default function App() {
       return;
     }
 
-    const sourceCode = activeFile.translatedContent || activeFile.originalContent || '';
-    const nextProblems = getLingCppProblems(
-      sourceCode,
-      activeProjectHasWindowDesigner ? windowDesignerState.project : undefined,
-      activeFile.path,
-      moduleContext
-    ).map(problem => {
-      const beginner = adaptProblemForBeginner(problem);
-      return {
-        id: problem.id,
-        filePath: problem.filePath,
-        line: problem.line,
-        level: problem.level,
-        message: editorExperienceMode === 'beginner' ? beginner.audienceText : problem.message,
-        codeSnippet: problem.codeSnippet,
-        suggestion: editorExperienceMode === 'beginner' ? beginner.beginnerActionLabel : problem.suggestion,
-        actionLabel: editorExperienceMode === 'beginner' ? beginner.beginnerActionLabel : problem.actionLabel,
-        actionKind: problem.actionKind,
-        audienceText: beginner.audienceText,
-        beginnerActionLabel: beginner.beginnerActionLabel,
-        severityForBeginner: beginner.severityForBeginner,
-        canIgnore: beginner.canIgnore,
-        locationKind: problem.locationKind
-      };
-    });
-    setProblems(nextProblems);
+    // 全量语义诊断（大文件优化后仍 ~200ms+/次）按 300ms 去抖：
+    // 专业模式每个键都改 translatedContent，同步重算会把输入拖到每键数百毫秒。
+    const timer = window.setTimeout(() => {
+      const sourceCode = activeFile.translatedContent || activeFile.originalContent || '';
+      const nextProblems = getLingCppProblems(
+        sourceCode,
+        activeProjectHasWindowDesigner ? windowDesignerState.project : undefined,
+        activeFile.path,
+        moduleContext
+      ).map(problem => {
+        const beginner = adaptProblemForBeginner(problem);
+        return {
+          id: problem.id,
+          filePath: problem.filePath,
+          line: problem.line,
+          level: problem.level,
+          message: editorExperienceMode === 'beginner' ? beginner.audienceText : problem.message,
+          codeSnippet: problem.codeSnippet,
+          suggestion: editorExperienceMode === 'beginner' ? beginner.beginnerActionLabel : problem.suggestion,
+          actionLabel: editorExperienceMode === 'beginner' ? beginner.beginnerActionLabel : problem.actionLabel,
+          actionKind: problem.actionKind,
+          audienceText: beginner.audienceText,
+          beginnerActionLabel: beginner.beginnerActionLabel,
+          severityForBeginner: beginner.severityForBeginner,
+          canIgnore: beginner.canIgnore,
+          locationKind: problem.locationKind
+        };
+      });
+      setProblems(nextProblems);
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, activeProjectHasWindowDesigner, editorExperienceMode, moduleContext, windowDesignerState.project]);
 
   const setEditorExperienceMode = useCallback(async (mode: EditorExperienceMode): Promise<boolean> => {
@@ -3332,6 +3369,7 @@ void DisplayStatus() {
       window.clearTimeout(timeout);
       // 项目切换/重新载入时，若用户尚未答复恢复确认，按取消结算，避免悬挂对话框与悬挂 Promise。
       cancelWorkbenchDialog();
+      cancelCloudAccountLoginDialog();
     };
   }, [activeProjectHasWindowDesigner, activeProjectId, hasEnteredWorkbench, projectFileReloadToken]);
 
@@ -5450,6 +5488,11 @@ void DisplayStatus() {
     environmentCheck: handleEnvCheck,
     environmentRepair: () => { setShowEnvironmentRepairCenter(true); return true; },
     openCliGuide: () => { setShowCliGuide(true); return true; },
+    openAccountLogin: () => { void requestCloudAccountLogin({ initialMode: 'login' }); return true; },
+    openAccountRegister: () => { void requestCloudAccountLogin({ initialMode: 'register' }); return true; },
+    openAccountResetPassword: () => { void requestCloudAccountLogin({ initialMode: 'reset' }); return true; },
+    openAccountLogout: () => { void signOutCloudAccount(); return true; },
+    openAccountRecharge: () => { void requestCloudAccountRecharge(); return true; },
     openHelpCenter: () => { setShowHelpCenter(true); return true; },
     openSponsor: () => { setShowSponsorDialog(true); return true; },
     openQQGroup: async () => {
@@ -6070,6 +6113,56 @@ void DisplayStatus() {
         handler: () => workbenchCommandHandlersRef.current.openCliGuide()
       },
       {
+        id: 'workbench.action.account.login',
+        title: '账号：登录 LingBuilder 账号',
+        aliases: ['Login LingBuilder Account', 'Sign In', 'Cloud Account'],
+        category: '账号',
+        description: '登录 LingBuilder 云端账号；系统 AI 点数、收费模块权益与体验计划都绑定该账号。',
+        when: '!workbench.modalOpen',
+        order: 31,
+        handler: () => workbenchCommandHandlersRef.current.openAccountLogin()
+      },
+      {
+        id: 'workbench.action.account.register',
+        title: '账号：注册 LingBuilder 账号',
+        aliases: ['Register LingBuilder Account', 'Sign Up', 'Create Account'],
+        category: '账号',
+        description: '注册 LingBuilder 云端账号，注册后需在邮箱中完成验证。',
+        when: '!workbench.modalOpen',
+        order: 32,
+        handler: () => workbenchCommandHandlersRef.current.openAccountRegister()
+      },
+      {
+        id: 'workbench.action.account.resetPassword',
+        title: '账号：通过邮箱重置密码',
+        aliases: ['Reset LingBuilder Password', 'Forgot Password'],
+        category: '账号',
+        description: '向注册邮箱发送重置令牌并设置新密码；重置后所有设备的登录状态都会注销。',
+        when: '!workbench.modalOpen',
+        order: 33,
+        handler: () => workbenchCommandHandlersRef.current.openAccountResetPassword()
+      },
+      {
+        id: 'workbench.action.account.recharge',
+        title: '账号：充值系统 AI 点数',
+        aliases: ['Recharge Credits', 'Buy Points', 'Top Up'],
+        category: '账号',
+        description: '打开点数充值窗口，选择套餐后通过支付宝付款，到账自动刷新余额。',
+        when: '!workbench.modalOpen',
+        order: 34,
+        handler: () => workbenchCommandHandlersRef.current.openAccountRecharge()
+      },
+      {
+        id: 'workbench.action.account.logout',
+        title: '账号：退出 LingBuilder 账号',
+        aliases: ['Sign Out', 'Logout LingBuilder Account'],
+        category: '账号',
+        description: '退出当前云端账号；本地编辑、构建与导出功能不受影响。',
+        when: '!workbench.modalOpen',
+        order: 35,
+        handler: () => workbenchCommandHandlersRef.current.openAccountLogout()
+      },
+      {
         id: 'workbench.action.help.openHelpCenter',
         title: '帮助：打开帮助中心与更新日志',
         aliases: ['Open Help Center', 'Release Notes', 'Changelog'],
@@ -6118,6 +6211,70 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 37,
         handler: () => workbenchCommandHandlersRef.current.checkForUpdates()
+      },
+      {
+        id: 'workbench.action.help.revealLogs',
+        title: '帮助：打开本地日志目录',
+        aliases: ['Open Local Logs', 'Diagnostic Logs', 'Open Log Folder'],
+        category: '帮助',
+        description: '在系统文件管理器中打开 LingBuilder 本地诊断日志目录，用于排查黑屏、崩溃等问题。',
+        when: '!workbench.modalOpen',
+        order: 38,
+        handler: async () => {
+          const logsApi = window.lingBuilder?.logs;
+          const message = !logsApi
+            ? '> 【本地日志】诊断日志仅在 LingBuilder 桌面版中可用。'
+            : await logsApi.reveal().then(error => error
+              ? `> 【本地日志】打开日志目录失败：${error}`
+              : '> 【本地日志】已在文件管理器中打开诊断日志目录。');
+          window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message } }));
+        }
+      },
+      {
+        id: 'workbench.action.help.exportLogs',
+        title: '帮助：导出本地日志',
+        aliases: ['Export Local Logs', 'Save Diagnostic Logs'],
+        category: '帮助',
+        description: '把近 7 天诊断日志合并导出为单个文件，便于发送给开发者分析黑屏、崩溃等问题；日志不包含项目代码内容。',
+        when: '!workbench.modalOpen',
+        order: 39,
+        handler: async () => {
+          const logsApi = window.lingBuilder?.logs;
+          if (!logsApi) {
+            window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message: '> 【本地日志】诊断日志仅在 LingBuilder 桌面版中可用。' } }));
+            return;
+          }
+          const result = await logsApi.export();
+          const message = result.ok
+            ? `> 【本地日志】诊断日志已导出到：${result.filePath}`
+            : result.canceled
+              ? '> 【本地日志】已取消导出。'
+              : `> 【本地日志】${result.error || '导出失败。'}`;
+          window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message } }));
+        }
+      },
+      {
+        id: 'workbench.action.help.deleteLogs',
+        title: '帮助：删除本地日志',
+        aliases: ['Delete Local Logs', 'Clear Diagnostic Logs'],
+        category: '帮助',
+        description: '删除全部本地诊断日志文件（弹出确认后执行），不影响设置、工作区和项目文件。',
+        when: '!workbench.modalOpen',
+        order: 40,
+        handler: async () => {
+          const logsApi = window.lingBuilder?.logs;
+          if (!logsApi) {
+            window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message: '> 【本地日志】诊断日志仅在 LingBuilder 桌面版中可用。' } }));
+            return;
+          }
+          const result = await logsApi.delete();
+          const message = result.ok
+            ? `> 【本地日志】已删除 ${result.deleted ?? 0} 个本地日志文件。`
+            : result.canceled
+              ? '> 【本地日志】已取消删除。'
+              : `> 【本地日志】${result.error || '删除失败。'}`;
+          window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message } }));
+        }
       },
       {
         id: 'workbench.action.git.openChanges',
@@ -6551,6 +6708,28 @@ void DisplayStatus() {
     );
   }
 
+  // 账号登录/充值对话框在欢迎页与工作台区都要挂载：欢迎页是冷启动用户的第一屏，
+  // 只挂在工作台里会让「登录/注册」入口在首屏点了没反应。
+  const cloudAccountDialogs = (
+    <>
+      <CloudAccountLoginDialog
+        key={cloudAccountLoginDialog?.id ?? 'closed'}
+        open={Boolean(cloudAccountLoginDialog)}
+        title={cloudAccountLoginDialog?.title}
+        description={cloudAccountLoginDialog?.description}
+        initialMode={cloudAccountLoginDialog?.initialMode}
+        isDarkMode={isDarkMode}
+        onResult={settleCloudAccountLoginDialog}
+      />
+      <CloudAccountRechargeDialog
+        key={cloudAccountRechargeDialog?.id ?? 'closed'}
+        open={Boolean(cloudAccountRechargeDialog)}
+        isDarkMode={isDarkMode}
+        onResult={settleCloudAccountRechargeDialog}
+      />
+    </>
+  );
+
   if (showWelcomePage) {
     return (
       <div className="relative h-screen w-screen">
@@ -6583,6 +6762,7 @@ void DisplayStatus() {
             void executeWorkbenchCommand('workbench.action.help.openCliGuide');
           }}
         />
+        {cloudAccountDialogs}
         <UpdateDialog
           open={Boolean(updateCheckState)}
           info={updateCheckState}
@@ -6696,6 +6876,7 @@ void DisplayStatus() {
                 )}
               </div>
             )}
+            <CloudAccountTitleBarEntry isDarkMode={isDarkMode} />
           </div>
           <div
             onDoubleClick={e => e.stopPropagation()}
@@ -6987,6 +7168,44 @@ void DisplayStatus() {
                     <span>交流QQ群</span>
                     <span className="opacity-50 text-[10px]">QQ</span>
                   </button>
+                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                  {cloudAccountSession.authenticated ? (
+                    <>
+                      <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.recharge'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                        <span>充值系统 AI 点数</span>
+                        <span className="opacity-50 text-[10px]">{cloudAccountSession.balance?.available || '0'} 点</span>
+                      </button>
+                      <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.logout'); }} className={`px-3 py-1.5 text-left flex items-center justify-between gap-3 text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                        <span>退出 LingBuilder 账号</span>
+                        <span className="min-w-0 truncate opacity-50 text-[10px]">{cloudAccountSession.email}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.login'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                        <span>登录 LingBuilder 账号</span>
+                        <span className="opacity-50 text-[10px]">系统 AI</span>
+                      </button>
+                      <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.register'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                        <span>注册 LingBuilder 账号</span>
+                        <span className="opacity-50 text-[10px]">需邮箱验证</span>
+                      </button>
+                    </>
+                  )}
+                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.revealLogs'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>打开本地日志目录</span>
+                    <span className="opacity-50 text-[10px]">诊断</span>
+                  </button>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.exportLogs'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>导出本地日志…</span>
+                    <span className="opacity-50 text-[10px]">反馈</span>
+                  </button>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.deleteLogs'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>删除本地日志</span>
+                    <span className="opacity-50 text-[10px]">清理</span>
+                  </button>
+                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { 
                     setShowBottomPanel(true);
                     setActiveTabInBottom('output');
@@ -7820,6 +8039,8 @@ void DisplayStatus() {
         isDarkMode={isDarkMode}
         onResult={settleWorkbenchDialog}
       />
+
+      {cloudAccountDialogs}
 
       <ProjectNameDialog
         open={Boolean(solutionNameOperation)}

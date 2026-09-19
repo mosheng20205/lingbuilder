@@ -138,7 +138,10 @@ test('beginner editor navigation and variable form remain safe without a duplica
   assert.doesNotMatch(source, /新手工作台/u);
   assert.doesNotMatch(source, /renderBeginnerSummaryStrip/u);
   assert.doesNotMatch(source, /renderBeginnerPanel/u);
-  assert.match(source, /className=\{`absolute z-30/u);
+  // 补全面板渲染在画布内容层浮层（z-[90]，高于带 transform 的虚拟化块），不再进块。
+  assert.match(source, /className=\{`absolute z-\[90\] w-\[280px\]/u);
+  assert.match(source, /renderHoistedBeginnerCompletionPanel\(\)/u);
+  assert.match(source, /overlay=\{\(/u);
   assert.match(source, /onWheel=\{handleEditorFontWheel\}/u);
   assert.match(source, /wrap="off"/u);
   assert.match(source, /data-beginner-code-highlight/u);

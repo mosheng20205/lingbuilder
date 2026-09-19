@@ -73,6 +73,7 @@ import {
   buildLingCppControlReferenceSemanticTokenData,
   createLingCppControlReferenceEditorCss,
   LINGCPP_COMMENT_TOKEN_COLORS,
+  LINGCPP_CONSTANT_TOKEN_COLORS,
   LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN,
   LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS
 } from '../services/lingCpp/semanticTheme';
@@ -853,7 +854,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       });
 
       monaco.languages.registerCompletionItemProvider('lingcpp', {
-        triggerCharacters: ['_', ' ', '(', '"', '“', '.'],
+        triggerCharacters: ['_', ' ', '(', '"', '“', '.', '#'],
         provideCompletionItems: (model: any, position: any) => {
           const word = model.getWordUntilPosition(position);
           const range = {
@@ -1309,6 +1310,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         { token: 'string', foreground: 'ce9178' },
         { token: 'number', foreground: 'b5cea8' }
         ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.dark.slice(1), fontStyle: 'bold' }
+        ,{ token: 'constant', foreground: LINGCPP_CONSTANT_TOKEN_COLORS.dark.slice(1) }
       ],
       colors: {
         'editor.background': '#1e1e24',
@@ -1334,6 +1336,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         { token: 'string', foreground: 'a31515' },
         { token: 'number', foreground: '098658' }
         ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.light.slice(1), fontStyle: 'bold' }
+        ,{ token: 'constant', foreground: LINGCPP_CONSTANT_TOKEN_COLORS.light.slice(1) }
       ],
       colors: {
         'editor.background': '#ffffff',
@@ -1413,51 +1416,59 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       return;
     }
 
-    const markers = getLingCppSemanticDiagnostics(sourceCode, designerProject, filePath, moduleContext, projectGlobals, projectTypes, createProjectFunctionContext((projectSources || []).map(item => ({ ...item, language: 'lingcpp' })))).map(diagnostic => {
-      const line = Math.max(1, Math.min(diagnostic.line, model.getLineCount()));
-      return {
-        severity: toMonacoMarkerSeverity(diagnostic.level, monaco),
-        startLineNumber: diagnostic.range?.startLine || line,
-        startColumn: diagnostic.range?.startColumn || 1,
-        endLineNumber: diagnostic.range?.endLine || line,
-        endColumn: diagnostic.range?.endColumn || Math.max(2, model.getLineMaxColumn(line)),
-        message: `${diagnostic.message}\n${diagnostic.suggestion}`,
-        code: diagnostic.id
-      };
-    });
+    // 语义诊断 + 设计器绑定 + 全部装饰是全量同步重算（大文件 ~200ms+/次），
+    // 与 App 的问题面板各跑一遍；这里同样按 300ms 去抖，连续输入先上屏，停顿后一次算完。
+    // 上面的 snapshot 赋值必须保持同步：补全/悬停等 provider 闭包实时读取它们。
+    const timer = window.setTimeout(() => {
+      if (monacoRef.current !== monaco || editorRef.current !== editor || model.isDisposed?.() || editor.getModel?.() !== model) return;
 
-    monaco.editor.setModelMarkers(model, 'lingcpp', markers);
+      const markers = getLingCppSemanticDiagnostics(sourceCode, designerProject, filePath, moduleContext, projectGlobals, projectTypes, createProjectFunctionContext((projectSources || []).map(item => ({ ...item, language: 'lingcpp' })))).map(diagnostic => {
+        const line = Math.max(1, Math.min(diagnostic.line, model.getLineCount()));
+        return {
+          severity: toMonacoMarkerSeverity(diagnostic.level, monaco),
+          startLineNumber: diagnostic.range?.startLine || line,
+          startColumn: diagnostic.range?.startColumn || 1,
+          endLineNumber: diagnostic.range?.endLine || line,
+          endColumn: diagnostic.range?.endColumn || Math.max(2, model.getLineMaxColumn(line)),
+          message: `${diagnostic.message}\n${diagnostic.suggestion}`,
+          code: diagnostic.id
+        };
+      });
 
-    const bindings = getLingCppDesignerBindings(sourceCode, designerProject, filePath, moduleContext);
-    const bindingDecorations = bindings.map(binding => ({
-      range: new monaco.Range(Math.max(1, binding.line), 1, Math.max(1, binding.line), 1),
-      options: {
-        isWholeLine: false,
-        glyphMarginClassName: glyphClassForBinding(binding.status),
-        glyphMarginHoverMessage: { value: `**${binding.displayText || binding.message}**\n\n${binding.detailText || binding.suggestion}` }
-      }
-    }));
+      monaco.editor.setModelMarkers(model, 'lingcpp', markers);
 
-    const structureDecorations = buildStructureLabelDecorations(
-      monaco,
-      sourceCode,
-      designerProject,
-      filePath,
-      readingMode,
-      moduleContext
-    );
+      const bindings = getLingCppDesignerBindings(sourceCode, designerProject, filePath, moduleContext);
+      const bindingDecorations = bindings.map(binding => ({
+        range: new monaco.Range(Math.max(1, binding.line), 1, Math.max(1, binding.line), 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: glyphClassForBinding(binding.status),
+          glyphMarginHoverMessage: { value: `**${binding.displayText || binding.message}**\n\n${binding.detailText || binding.suggestion}` }
+        }
+      }));
 
-    const readingDecorations = readingMode === 'off' ? [] : buildReadingDecorations(
-      monaco,
-      sourceCode,
-      designerProject,
-      filePath,
-      readingMode,
-      moduleContext,
-      focusedBlockId
-    );
+      const structureDecorations = buildStructureLabelDecorations(
+        monaco,
+        sourceCode,
+        designerProject,
+        filePath,
+        readingMode,
+        moduleContext
+      );
 
-    decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, [...bindingDecorations, ...structureDecorations, ...readingDecorations]);
+      const readingDecorations = readingMode === 'off' ? [] : buildReadingDecorations(
+        monaco,
+        sourceCode,
+        designerProject,
+        filePath,
+        readingMode,
+        moduleContext,
+        focusedBlockId
+      );
+
+      decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, [...bindingDecorations, ...structureDecorations, ...readingDecorations]);
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [sourceCode, language, designerProject, filePath, onRevealDesignerBinding, onRevealControlReference, onRenameControlReference, moduleContext, projectGlobals, projectTypes, projectSources, readingMode, focusedBlockId]);
 
   useEffect(() => {

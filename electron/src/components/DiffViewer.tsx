@@ -107,7 +107,7 @@ import {
   filterBeginnerTypeCompletions,
   resolveBeginnerTypeAlias
 } from '../services/lingCpp/beginnerTypeCompletion';
-import { createBeginnerVariableCompletion } from '../services/lingCpp/beginnerVariableCompletion';
+import { createBeginnerConstantCompletion, createBeginnerVariableCompletion } from '../services/lingCpp/beginnerVariableCompletion';
 import { buildChineseCompletionSearchAliases } from '../services/lingCpp/completionSearchAliases';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import { EditorExperienceMode } from '../services/lingCpp/beginnerService';
@@ -129,6 +129,7 @@ import {
 } from '../services/lingCpp/beginnerSyntaxPresentation';
 import { getLingCppModuleCommandNames } from '../services/lingCpp/monacoTokens';
 import { LingCppModuleContext } from '../services/modules/types';
+import { getModuleConstants } from '../services/modules/moduleConstantService';
 import {
   getLingCppControlReferenceAtPosition,
   getLingCppControlReferences,
@@ -137,6 +138,7 @@ import {
 } from '../services/lingCpp/controlReferenceService';
 import {
   getLingCppCommentTokenColor,
+  getLingCppConstantTokenColor,
   getLingCppControlReferenceTokenColor
 } from '../services/lingCpp/semanticTheme';
 import {
@@ -383,9 +385,11 @@ interface BeginnerCodeCompletion {
   detail: string;
   insertText: string;
   aliases: string[];
-  kind: '命令' | '流程' | '代码' | '变量' | '子程序' | '类型' | '窗口' | '位置';
+  kind: '命令' | '流程' | '代码' | '变量' | '常量' | '子程序' | '类型' | '窗口' | '位置';
   cursorOffset?: number;
   selectLength?: number;
+  /** 预计算的小写检索值（label + 别名）：补全过滤每个键都跑，避免重复 toLowerCase。 */
+  searchValues?: string[];
 }
 
 interface BeginnerCompletionState {
@@ -395,6 +399,10 @@ interface BeginnerCompletionState {
   items: BeginnerCodeCompletion[];
   selectedIndex: number;
   position: BeginnerCompletionPosition;
+  /** 面板渲染在画布内容层（不在块内），记录目标与 textarea 定位键用于回查与上屏。 */
+  target: BeginnerCodeTarget;
+  segmentContext?: BeginnerCodeSegmentContext;
+  viewKey: string;
 }
 
 interface BeginnerCompletionPosition {
@@ -413,6 +421,10 @@ interface BeginnerAutoLocalTypeState {
   items: string[];
   selectedIndex: number;
   position: BeginnerCompletionPosition;
+  /** 同 BeginnerCompletionState：面板出块后需要目标与 textarea 定位键。 */
+  target: BeginnerCodeTarget;
+  segmentContext?: BeginnerCodeSegmentContext;
+  viewKey: string;
 }
 
 interface BeginnerContextMenuState {
@@ -897,19 +909,45 @@ const scrollElementInsideBeginnerEditor = (
   }
 };
 
+/** 按 data-text-model-view-key 回查当前挂载的代码 textarea（重挂后旧引用失效）。 */
+const findBeginnerCodeTextareaByViewKey = (viewKey: string): HTMLTextAreaElement | null => {
+  if (!viewKey) return null;
+  const fresh = document.querySelector<HTMLTextAreaElement>(
+    `textarea[data-text-model-view-key="${CSS.escape(viewKey)}"]`
+  );
+  return fresh instanceof HTMLTextAreaElement && fresh.isConnected ? fresh : null;
+};
+
+/**
+ * 把闭包里捕获的 textarea 解析成当前仍挂载的节点。
+ * 回车/Tab/注释/补全上屏等路径会用 rAF 延迟恢复光标；若期间该编辑器因 key 变化重挂，
+ * 闭包引用指向已卸载节点，直接 setSelectionRange 会静默丢光标，这里按定位键找回新节点。
+ */
+const resolveBeginnerCodeTextarea = (input: HTMLTextAreaElement): HTMLTextAreaElement | null =>
+  input.isConnected ? input : findBeginnerCodeTextareaByViewKey(input.dataset.textModelViewKey || '');
+
 const getBeginnerCompletionPanelPosition = (
   input: HTMLTextAreaElement,
   token: string,
   itemCount: number
 ): BeginnerCompletionPosition => {
-  const root = input.closest('[data-beginner-editor-root]');
+  // 面板渲染在画布内容层（z-[90] 浮层），坐标必须落在内容坐标系；
+  // 虚拟化/非虚拟化两种模式下内容层都是滚动根的直接子节点。找不到时回退编辑块根。
+  const scrollRoot = input.closest('[data-beginner-structure-scroll]');
+  const canvasContent = scrollRoot instanceof HTMLElement
+    ? scrollRoot.querySelector(':scope > [data-beginner-canvas-content]')
+    : null;
+  const root = canvasContent instanceof HTMLElement
+    ? canvasContent
+    : (input.closest('[data-beginner-editor-root]') instanceof HTMLElement
+      ? input.closest('[data-beginner-editor-root]')
+      : null);
   if (!(root instanceof HTMLElement)) {
     return { top: 34, left: 60, maxListHeight: 190, placement: 'below' };
   }
 
   const rootRect = root.getBoundingClientRect();
   const inputRect = input.getBoundingClientRect();
-  const scrollRoot = input.closest('[data-beginner-structure-scroll]');
   const boundaryRect = scrollRoot instanceof HTMLElement
     ? scrollRoot.getBoundingClientRect()
     : { top: 0, bottom: window.innerHeight };
@@ -956,6 +994,11 @@ const getBeginnerCompletionPanelPosition = (
   };
 };
 
+const withBeginnerCompletionSearchValues = (item: BeginnerCodeCompletion): BeginnerCodeCompletion => ({
+  ...item,
+  searchValues: [item.label, ...item.aliases].map(value => value.toLowerCase())
+});
+
 const filterBeginnerCodeCompletions = (
   token: string,
   includeAll = false,
@@ -967,7 +1010,7 @@ const filterBeginnerCodeCompletions = (
 
   return items
     .map(item => {
-      const values = [item.label, ...item.aliases].map(value => value.toLowerCase());
+      const values = item.searchValues || [item.label, ...item.aliases].map(value => value.toLowerCase());
       const exactMatch = values.some(value => value === normalizedToken);
       const startsWithMatch = values.some(value => value.startsWith(normalizedToken));
       const includesMatch = values.some(value => value.includes(normalizedToken));
@@ -1647,6 +1690,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const beginnerDraftSignaturesRef = useRef<Record<string, string>>({});
   /** 外部（非连续输入）改写草稿的版本号，用于让 code textarea 重新挂载并刷新内容。 */
   const beginnerDraftExternalRevisionRef = useRef<Record<string, number>>({});
+  /**
+   * 新手补全目录缓存（按输入指纹失效）。启用 new_emoji 等大模块时目录可达数千条，
+   * 而光标同步/补全状态每个键都会重渲 DiffViewer；不缓存则每次重建 Map + 检索别名，
+   * 是新手模式输入卡顿的主要来源之一。
+   */
+  const beginnerCompletionCatalogCacheRef = useRef<{
+    fingerprint: string;
+    windowTargetItems: BeginnerCodeCompletion[];
+    items: BeginnerCodeCompletion[];
+    perTargetItems: Map<string, BeginnerCodeCompletion[]>;
+  } | null>(null);
   const beginnerCodeSegmentLineCountsRef = useRef<Record<string, Record<string, number>>>({});
   const beginnerLocalStatementAnchorsRef = useRef<Record<string, Record<string, number>>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
@@ -4980,7 +5034,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         </div>
       );
     };
-    const windowTargetCompletionItems = buildBeginnerWindowTargetCompletions(designerProject);
     const defaultCodeArgument = (parameter: LingCppParameter) => {
       const defaultValue = parameter.defaultValue?.trim();
       if (defaultValue) return defaultValue;
@@ -4990,64 +5043,117 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if (/整数|长整数/u.test(parameter.type)) return '0';
       return parameter.name || parameter.type || '参数';
     };
-    const beginnerCodeCompletionItems = Array.from(
-      new Map([
-        ...BEGINNER_CODE_COMPLETIONS,
-        ...beginnerModuleCodeCompletions,
-        ...beginnerDesignerControlCompletions,
-        ...(projectGlobals?.constants || []).map(constant => createBeginnerVariableCompletion({
-          name: constant.name,
-          type: constant.type,
-          scope: '项目常量',
-          aliases: ['常量', constant.initialValue]
-        })),
-        ...(projectGlobals?.globals || []).map(global => createBeginnerVariableCompletion({
-          name: global.name,
-          type: global.type,
-          scope: '项目全局变量'
-        })),
-        ...memberRows.map(row => createBeginnerVariableCompletion({
-          name: row.targetName || row.name,
-          type: row.type,
-          scope: '程序集变量',
-          aliases: [row.name]
-        })),
-        ...codeTargets
-          .filter(target => target.method.kind === 'method')
-          .map(target => ({
-            label: functionCallName(target),
-            detail: `${target.method.returnType || '空'} 子程序调用`,
-            insertText: `${functionCallName(target)}(${target.method.parameters.map(defaultCodeArgument).join(', ')})`,
-            aliases: Array.from(new Set([
-              target.method.name,
-              '子程序', '功能', '调用',
-              ...buildChineseCompletionSearchAliases(functionCallName(target)),
-              ...buildChineseCompletionSearchAliases(target.method.name)
-            ])),
-            kind: '子程序' as BeginnerCodeCompletion['kind']
-          })),
-        ...typeSuggestions.map(type => ({
-          label: type,
-          detail: '类型名称',
-          insertText: type,
-          aliases: [type, '类型'],
-          kind: '类型' as BeginnerCodeCompletion['kind']
-        }))
-      ].map(item => [`${item.label}:${item.insertText}`, item]))
-        .values()
-    );
-    const getBeginnerCodeCompletionItems = (target: BeginnerCodeTarget) => Array.from(
-      new Map([
-        ...beginnerCodeCompletionItems,
-        ...(target.method.locals || []).map(local => createBeginnerVariableCompletion({
-          name: local.name,
-          type: local.type,
-          scope: local.isConstant ? '局部常量' : '局部变量',
-          ownerName: target.method.name
-        }))
-      ].map(item => [`${item.label}:${item.insertText}`, item]))
-        .values()
-    );
+    // 目录输入指纹：模块清单/常量/项目全局/程序集成员/子程序签名（含局部变量名与类型）/类型表/设计器窗口。
+    // 输入未变时（连续输入、光标同步、补全状态变化）直接复用缓存目录，不重建数千条的 Map。
+    const completionCatalogFingerprint = [
+      beginnerModuleCodeCompletions.length,
+      beginnerDesignerControlCompletions.length,
+      moduleContext?.showAdvancedApi === true ? 'adv' : '',
+      (moduleContext?.enabledModules || []).map(module => `${module.manifest.id}@${module.manifest.version ?? ''}`).join(','),
+      (projectGlobals?.constants || []).map(constant => `${constant.name}=${constant.initialValue}`).join(','),
+      (projectGlobals?.globals || []).map(global => `${global.name}:${global.type}`).join(','),
+      memberRows.map(row => `${row.targetName || row.name}:${row.type || ''}`).join(','),
+      codeTargets.map(target => `${target.className}.${target.method.kind}.${target.method.name}(${target.method.parameters.map(parameter => parameter.type).join('/')})=${target.method.returnType || '空'}:locals=${(target.method.locals || []).map(local => `${local.name}:${local.type}`).join('/')}`).join(','),
+      typeSuggestions.join(','),
+      (designerProject?.windows || []).map(window => `${window.className || ''}|${window.title || ''}|${window.fileName || ''}`).join(',')
+    ].join('\u0002');
+    const cachedCompletionCatalog = beginnerCompletionCatalogCacheRef.current;
+    const completionCatalog = cachedCompletionCatalog && cachedCompletionCatalog.fingerprint === completionCatalogFingerprint
+      ? cachedCompletionCatalog
+      : (() => {
+          // 启用模块的同名命令优先：内置条目（如 调试输出）在模块也提供同名命令时退位，
+          // 避免补全面板出现两条同名命令（用户拍板：去掉上面的内置版，保留带真实签名的模块版）。
+          const moduleCommandLabels = new Set(beginnerModuleCodeCompletions.map(item => item.label));
+          const builtinCompletions = beginnerModuleCodeCompletions.length > 0
+            ? BEGINNER_CODE_COMPLETIONS.filter(item => !moduleCommandLabels.has(item.label))
+            : BEGINNER_CODE_COMPLETIONS;
+          const catalog = {
+            fingerprint: completionCatalogFingerprint,
+            windowTargetItems: buildBeginnerWindowTargetCompletions(designerProject)
+              .map(withBeginnerCompletionSearchValues),
+            items: Array.from(
+              new Map([
+                ...builtinCompletions,
+                ...beginnerModuleCodeCompletions,
+                ...beginnerDesignerControlCompletions,
+                ...getModuleConstants(moduleContext?.enabledModules || [])
+                  .filter(constant => moduleContext?.showAdvancedApi === true || constant.level !== 'advanced')
+                  .map(constant => createBeginnerConstantCompletion({
+                    name: constant.name,
+                    type: constant.type,
+                    origin: '模块常量',
+                    value: typeof constant.value === 'boolean' ? (constant.value ? '真' : '假') : String(constant.value),
+                    moduleName: constant.moduleName,
+                    aliases: [constant.moduleId, constant.description]
+                  })),
+                ...(projectGlobals?.constants || []).map(constant => createBeginnerConstantCompletion({
+                  name: constant.name,
+                  type: constant.type,
+                  origin: '项目常量',
+                  value: constant.initialValue
+                })),
+                ...(projectGlobals?.globals || []).map(global => createBeginnerVariableCompletion({
+                  name: global.name,
+                  type: global.type,
+                  scope: '项目全局变量'
+                })),
+                ...memberRows.map(row => createBeginnerVariableCompletion({
+                  name: row.targetName || row.name,
+                  type: row.type,
+                  scope: '程序集变量',
+                  aliases: [row.name]
+                })),
+                ...codeTargets
+                  .filter(target => target.method.kind === 'method')
+                  .map(target => ({
+                    label: functionCallName(target),
+                    detail: `${target.method.returnType || '空'} 子程序调用`,
+                    insertText: `${functionCallName(target)}(${target.method.parameters.map(defaultCodeArgument).join(', ')})`,
+                    aliases: Array.from(new Set([
+                      target.method.name,
+                      '子程序', '功能', '调用',
+                      ...buildChineseCompletionSearchAliases(functionCallName(target)),
+                      ...buildChineseCompletionSearchAliases(target.method.name)
+                    ])),
+                    kind: '子程序' as BeginnerCodeCompletion['kind']
+                  })),
+                ...typeSuggestions.map(type => ({
+                  label: type,
+                  detail: '类型名称',
+                  insertText: type,
+                  aliases: [type, '类型'],
+                  kind: '类型' as BeginnerCodeCompletion['kind']
+                }))
+              ].map(item => [`${item.label}:${item.insertText}`, item]))
+                .values()
+            ).map(withBeginnerCompletionSearchValues),
+            perTargetItems: new Map<string, BeginnerCodeCompletion[]>()
+          };
+          beginnerCompletionCatalogCacheRef.current = catalog;
+          return catalog;
+        })();
+    const windowTargetCompletionItems = completionCatalog.windowTargetItems;
+    const beginnerCodeCompletionItems = completionCatalog.items;
+    const getBeginnerCodeCompletionItems = (target: BeginnerCodeTarget) => {
+      // 「目录 + 该目标局部变量」的合并结果按目标缓存：每次击键的补全过滤都要拿这份清单。
+      const targetKey = codeTargetKey(target);
+      const cached = completionCatalog.perTargetItems.get(targetKey);
+      if (cached) return cached;
+      const merged = Array.from(
+        new Map([
+          ...beginnerCodeCompletionItems,
+          ...(target.method.locals || []).map(local => withBeginnerCompletionSearchValues(createBeginnerVariableCompletion({
+            name: local.name,
+            type: local.type,
+            scope: local.isConstant ? '局部常量' : '局部变量',
+            ownerName: target.method.name
+          })))
+        ].map(item => [`${item.label}:${item.insertText}`, item]))
+          .values()
+      );
+      completionCatalog.perTargetItems.set(targetKey, merged);
+      return merged;
+    };
     const cancelBeginnerDraftSync = () => {
       if (beginnerDraftSyncTimerRef.current !== null) {
         window.clearTimeout(beginnerDraftSyncTimerRef.current);
@@ -5224,12 +5330,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         return;
       }
       const token = context.token;
+      // # 触发：只出常量清单，且 # 已在源码中，上屏剥掉前缀避免 ##。
       const sourceItems = context.isWindowTargetContext
         ? windowTargetCompletionItems
         : context.isWindowPlacementContext
           ? BEGINNER_WINDOW_PLACEMENT_COMPLETIONS
-          : getBeginnerCodeCompletionItems(target);
-      const items = filterBeginnerCodeCompletions(token, includeAll || context.isWindowTargetContext || context.isWindowPlacementContext, sourceItems);
+          : context.isConstantReference
+            ? getBeginnerCodeCompletionItems(target)
+              .filter(item => item.insertText.startsWith('#'))
+              .map(item => ({ ...item, insertText: item.insertText.slice(1) }))
+            : getBeginnerCodeCompletionItems(target);
+      const items = filterBeginnerCodeCompletions(token, includeAll || context.isWindowTargetContext || context.isWindowPlacementContext || context.isConstantReference, sourceItems);
       if (items.length === 0) {
         setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
         return;
@@ -5240,7 +5351,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         token,
         items,
         selectedIndex: 0,
-        position: getBeginnerCompletionPanelPosition(input, token, items.length)
+        position: getBeginnerCompletionPanelPosition(input, token, items.length),
+        target,
+        segmentContext,
+        viewKey: input.dataset.textModelViewKey || ''
       });
     };
     const closeBeginnerCompletion = (target?: BeginnerCodeTarget) => {
@@ -5324,11 +5438,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const nextSelectionEnd = mapRawOffsetToFormatted(rawNextCursor + selectLength);
 
       input.value = nextValue;
-      if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue);
-      else updateBeginnerCodeDraft(target, nextValue);
+      // 已直接写入 DOM 的改写走 defer：立即同步会自增外部修订号（参与 textarea key）
+      // 触发重挂，随后 rAF 对旧节点恢复光标会静默失效。
+      if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue, { defer: true });
+      else updateBeginnerCodeDraft(target, nextValue, { defer: true });
       input.focus();
       window.requestAnimationFrame(() => {
-        input.setSelectionRange(nextCursor, nextSelectionEnd);
+        const fresh = resolveBeginnerCodeTextarea(input);
+        if (!fresh) return;
+        fresh.focus();
+        fresh.setSelectionRange(nextCursor, nextSelectionEnd);
+        captureBeginnerTextareaView(fresh);
       });
       closeBeginnerCompletion(target);
     };
@@ -5650,7 +5770,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         subtitle,
         items,
         selectedIndex: preferredType ? Math.max(0, items.indexOf(preferredType)) : 0,
-        position: getBeginnerCompletionPanelPosition(input, variableName, items.length)
+        position: getBeginnerCompletionPanelPosition(input, variableName, items.length),
+        target,
+        segmentContext,
+        viewKey: input.dataset.textModelViewKey || ''
       });
       return true;
     };
@@ -5724,13 +5847,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const input = event.currentTarget;
       const targetKey = codeTargetKey(target);
       const segmentId = segmentContext?.segment.id || 'all';
-      const activeCompletion = beginnerCompletionState?.targetKey === targetKey
-        && beginnerCompletionState.segmentId === segmentId
-        ? beginnerCompletionState
+      // 必须读镜像 ref 而不是渲染闭包里的 state：textarea 位于按 revision 记忆化的块内，
+      // 补全面板已出块、补全状态不再进 blockRevision，闭包里的 state 可能是旧值，
+      // 会让 Enter/方向键在补全打开时走错分支（回车变换行、选中项不动）。
+      const liveCompletionState = beginnerCompletionStateRef.current;
+      const liveAutoLocalTypeState = beginnerAutoLocalTypeStateRef.current;
+      const activeCompletion = liveCompletionState?.targetKey === targetKey
+        && liveCompletionState.segmentId === segmentId
+        ? liveCompletionState
         : null;
-      const activeAutoLocalType = beginnerAutoLocalTypeState?.targetKey === targetKey
-        && beginnerAutoLocalTypeState.segmentId === segmentContext?.segment.id
-        ? beginnerAutoLocalTypeState
+      const activeAutoLocalType = liveAutoLocalTypeState?.targetKey === targetKey
+        && liveAutoLocalTypeState.segmentId === segmentContext?.segment.id
+        ? liveAutoLocalTypeState
         : null;
 
       if (activeAutoLocalType) {
@@ -5805,13 +5933,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const result = toggleBeginnerLineComment(input.value, input.selectionStart, input.selectionEnd);
         if (result.value === input.value) return;
         input.value = result.value;
-        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, result.value);
-        else updateBeginnerCodeDraft(target, result.value);
+        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, result.value, { defer: true });
+        else updateBeginnerCodeDraft(target, result.value, { defer: true });
         window.requestAnimationFrame(() => {
-          input.focus();
-          input.setSelectionRange(result.selectionStart, result.selectionEnd);
-          captureBeginnerTextareaView(input);
-          updateBeginnerCommandHint(target, input);
+          const fresh = resolveBeginnerCodeTextarea(input);
+          if (!fresh) return;
+          fresh.focus();
+          fresh.setSelectionRange(result.selectionStart, result.selectionEnd);
+          captureBeginnerTextareaView(fresh);
+          updateBeginnerCommandHint(target, fresh);
         });
         return;
       }
@@ -5859,14 +5989,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const indent = getBeginnerNextLineIndentation(formatted.value, start);
         const nextValue = `${formatted.value.slice(0, start)}\n${indent}${formatted.value.slice(end)}`;
         input.value = nextValue;
-        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue);
-        else updateBeginnerCodeDraft(target, nextValue);
+        // 换行已直接写入 DOM；立即同步草稿会重挂 textarea，让下面的光标恢复落在旧节点上。
+        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue, { defer: true });
+        else updateBeginnerCodeDraft(target, nextValue, { defer: true });
         window.requestAnimationFrame(() => {
           const nextCursor = start + indent.length + 1;
-          input.focus();
-          input.setSelectionRange(nextCursor, nextCursor);
-          captureBeginnerTextareaView(input);
-          updateBeginnerCommandHint(target, input);
+          const fresh = resolveBeginnerCodeTextarea(input);
+          if (!fresh) return;
+          fresh.focus();
+          fresh.setSelectionRange(nextCursor, nextCursor);
+          captureBeginnerTextareaView(fresh);
+          updateBeginnerCommandHint(target, fresh);
         });
         return;
       }
@@ -5881,30 +6014,32 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const end = input.selectionEnd;
         const nextValue = `${input.value.slice(0, start)}    ${input.value.slice(end)}`;
         input.value = nextValue;
-        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue);
-        else updateBeginnerCodeDraft(target, nextValue);
+        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue, { defer: true });
+        else updateBeginnerCodeDraft(target, nextValue, { defer: true });
         window.requestAnimationFrame(() => {
-          input.selectionStart = input.selectionEnd = start + 4;
+          const fresh = resolveBeginnerCodeTextarea(input);
+          if (!fresh) return;
+          fresh.focus();
+          fresh.selectionStart = fresh.selectionEnd = start + 4;
+          captureBeginnerTextareaView(fresh);
         });
       }
     };
-    const renderBeginnerCompletionPanel = (
-      target: BeginnerCodeTarget,
-      segmentContext?: BeginnerCodeSegmentContext
-    ) => {
-      const targetKey = codeTargetKey(target);
-      const segmentId = segmentContext?.segment.id || 'all';
-      const state = beginnerCompletionState?.targetKey === targetKey
-        && beginnerCompletionState.segmentId === segmentId
-        ? beginnerCompletionState
-        : null;
+    /**
+     * 补全面板渲染在画布内容层浮层（BeginnerVirtualCanvas overlay），不再进入任何结构块：
+     * 虚拟化块包装器带 transform（独立层叠上下文），块内 z-30 面板会被后续块盖住；
+     * 且面板入块要求把补全状态写进 blockRevision，会让每个键全量重渲可见块。
+     * 点击上屏通过 state.viewKey 回查当前挂载的 textarea。
+     */
+    const renderHoistedBeginnerCompletionPanel = () => {
+      const state = beginnerCompletionState;
       if (!state || state.items.length === 0) return null;
 
       return (
         <div
-          className={`absolute z-30 w-[280px] overflow-hidden rounded border shadow-xl ${
+          className={`absolute z-[90] w-[280px] overflow-hidden rounded border shadow-xl ${
           isDarkMode ? 'border-[#343746] bg-[#191b22] text-slate-100 shadow-black/35' : 'border-slate-200 bg-white text-slate-900 shadow-slate-300/50'
-        } ${state.position.placement === 'above' ? 'origin-bottom-left' : 'origin-top-left'}`}
+          } ${state.position.placement === 'above' ? 'origin-bottom-left' : 'origin-top-left'}`}
           style={{ left: state.position.left, top: state.position.top }}
         >
           <div className={`flex items-center justify-between border-b px-2 py-1 text-[10px] ${
@@ -5920,8 +6055,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 type="button"
                 onMouseDown={event => {
                   event.preventDefault();
-                  const editor = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('textarea');
-                  if (editor instanceof HTMLTextAreaElement) applyBeginnerCompletion(target, editor, item, segmentContext);
+                  const editor = findBeginnerCodeTextareaByViewKey(state.viewKey);
+                  if (editor) applyBeginnerCompletion(state.target, editor, item, state.segmentContext);
                 }}
                 className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] ${
                   index === state.selectedIndex
@@ -5942,23 +6077,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         </div>
       );
     };
-    const renderBeginnerAutoLocalTypePanel = (
-      target: BeginnerCodeTarget,
-      segmentContext?: BeginnerCodeSegmentContext
-    ) => {
-      const targetKey = codeTargetKey(target);
-      const state = beginnerAutoLocalTypeState?.targetKey === targetKey
-        && beginnerAutoLocalTypeState.segmentId === segmentContext?.segment.id
-        ? beginnerAutoLocalTypeState
-        : null;
-      if (!state || !segmentContext || state.items.length === 0) return null;
+    const renderHoistedBeginnerAutoLocalTypePanel = () => {
+      const state = beginnerAutoLocalTypeState;
+      if (!state || state.items.length === 0) return null;
 
       return (
         <div
-          className={`absolute left-2 z-40 w-[calc(100%_-_16px)] max-w-[280px] overflow-hidden rounded border shadow-xl ${
+          className={`absolute left-2 z-[90] w-[calc(100%_-_16px)] max-w-[280px] overflow-hidden rounded border shadow-xl ${
             isDarkMode ? 'border-amber-400/30 bg-[#191b22] text-slate-100 shadow-black/35' : 'border-amber-300 bg-white text-slate-900 shadow-slate-300/50'
           } ${state.position.placement === 'above' ? 'origin-bottom-left' : 'origin-top-left'}`}
-          style={{ top: state.position.top }}
+          style={{ top: state.position.top, left: state.position.left }}
           role="listbox"
           aria-label={`选择局部变量 ${state.variableName} 的类型`}
         >
@@ -5979,9 +6107,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 aria-selected={index === state.selectedIndex}
                 onMouseDown={event => {
                   event.preventDefault();
-                  const editor = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('textarea');
-                  if (editor instanceof HTMLTextAreaElement) {
-                    commitBeginnerAutoLocal(target, editor, segmentContext, state.variableName, type);
+                  const editor = findBeginnerCodeTextareaByViewKey(state.viewKey);
+                  if (editor) {
+                    commitBeginnerAutoLocal(state.target, editor, state.segmentContext!, state.variableName, type);
                   }
                 }}
                 className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] ${
@@ -7494,7 +7622,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               />
             </div>
           </div>
-          {renderBeginnerCompletionPanel(target)}
         </div>
       );
     };
@@ -8184,6 +8311,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         literal: isDarkMode ? 'text-[#b5cea8]' : 'text-emerald-700',
         'module-command': isDarkMode ? 'text-[#22d3ee]' : 'text-[#006a7a]',
         'control-reference': '',
+        constant: '',
         local: isDarkMode ? 'text-[#9df59c]' : 'text-[#047857]',
         member: isDarkMode ? 'text-amber-200' : 'text-amber-800',
         procedure: isDarkMode ? 'text-cyan-200' : 'text-cyan-800',
@@ -8203,7 +8331,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           className={className}
           style={{
             ...BEGINNER_CODE_OVERLAY_TOKEN_STYLE,
-            ...(kind === 'control-reference' ? { color: getLingCppControlReferenceTokenColor(isDarkMode), fontWeight: 600 } : {})
+            ...(kind === 'control-reference' ? { color: getLingCppControlReferenceTokenColor(isDarkMode), fontWeight: 600 } : {}),
+            ...(kind === 'constant' ? { color: getLingCppConstantTokenColor(isDarkMode) } : {})
           }}
         >
           {token}
@@ -9711,8 +9840,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               }`}
             />
           </div>
-          {renderBeginnerCompletionPanel(target, segmentContext)}
-          {renderBeginnerAutoLocalTypePanel(target, segmentContext)}
         </section>
       );
     };
@@ -9745,10 +9872,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       expandedBeginnerCommand || '',
       expandedBeginnerEventTargetKey || '',
       expandedBeginnerFunctionTargetKey || '',
-      beginnerCompletionState
-        ? `${beginnerCompletionState.targetKey}:${beginnerCompletionState.segmentId}:${beginnerCompletionState.token}:${beginnerCompletionState.items.length}:${beginnerCompletionState.selectedIndex}:${beginnerCompletionState.position?.top ?? ''}:${beginnerCompletionState.position?.left ?? ''}:${beginnerCompletionState.position?.placement ?? ''}`
-        : '',
-      beginnerAutoLocalTypeState ? `${beginnerAutoLocalTypeState.targetKey}:${beginnerAutoLocalTypeState.variableName}:${beginnerAutoLocalTypeState.expression}:${beginnerAutoLocalTypeState.selectedIndex}` : '',
+      // 补全面板/自动局部类型面板已提升到画布 overlay（不在任何块内），
+      // 其状态不再进入 blockRevision：否则补全打开期间每个键都会全量重渲可见块。
       beginnerTypeCompletionState ? `${beginnerTypeCompletionState.inputKey}:${beginnerTypeCompletionState.value}` : '',
       Object.keys(beginnerCommandArgumentDrafts).join(','),
       beginnerContextMenu ? `${beginnerContextMenu.className}:${beginnerContextMenu.methodName}` : '',
@@ -9758,6 +9883,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     /**
      * 悬浮/当前行只会影响「所属块」的折叠按钮显隐，因此只把这份状态挂到对应 targetKey 的块上：
      * 鼠标划过时只有那一两个块重渲，而不是视口内所有块（实测从 60~90ms 降到 10ms 级）。
+     * 补全/自动局部面板虽然已提升到画布层，但正在输入的块需要跟着刷新：
+     * 块内的语法高亮覆盖层（textarea 文本透明，可见文字全靠覆盖层）与 textarea 事件闭包
+     * 都在块内；无此切片时补全打开期间覆盖层会滞后一拍、闭包读到旧草稿。
+     * 草稿长度切片（|d:）覆盖「无补全」的逐键输入：字符串内打空格这类行内改动
+     * 不改结构指纹，400ms 延迟同步不会触发；没有它，空格会「看得见地没反应」，
+     * 直到下一次结构变化才把积压内容一次性补显。
      */
     const interactionSliceFor = (targetKey?: string) => {
       if (!targetKey) return '';
@@ -9767,7 +9898,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const active = activeBeginnerFlowLine?.targetKey === targetKey
         ? `${activeBeginnerFlowLine.segmentId}:${activeBeginnerFlowLine.line}`
         : '';
-      return `|h:${hovered}|a:${active}`;
+      const completion = beginnerCompletionState?.targetKey === targetKey
+        ? `${beginnerCompletionState.segmentId}:${beginnerCompletionState.token}:${beginnerCompletionState.selectedIndex}:${beginnerCompletionState.items.length}`
+        : '';
+      const autoLocal = beginnerAutoLocalTypeState?.targetKey === targetKey
+        ? `${beginnerAutoLocalTypeState.variableName}:${beginnerAutoLocalTypeState.selectedIndex}`
+        : '';
+      const draft = beginnerCodeDraftsRef.current[targetKey];
+      const draftLength = draft !== undefined ? String(draft.length) : '';
+      return `|h:${hovered}|a:${active}|c:${completion}|l:${autoLocal}|d:${draftLength}`;
     };
     const pushCanvasItem = (
       key: string,
@@ -10245,6 +10384,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         onKeyDown={handleBeginnerCreationShortcut}
         onScroll={saveBeginnerViewState}
         onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
+        overlay={(
+          <>
+            {renderHoistedBeginnerCompletionPanel()}
+            {renderHoistedBeginnerAutoLocalTypePanel()}
+          </>
+        )}
         footer={canvasItems.length > 0 ? (
           <div aria-hidden="true" className="h-[50vh] min-h-[160px] max-h-[360px]" data-beginner-scroll-tail />
         ) : null}

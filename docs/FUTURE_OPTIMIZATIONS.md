@@ -1,5 +1,9 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-09-19）：**大能力模块的界面开发视图接入 MCP + new_emoji 界面配方语料**。`lingbuilder.module.info` 新增三个只读视图（工具数仍 23，实现集中在 `electron/src/services/aiBridge/moduleUiViews.ts`）：`designerControls`/`control` 详情（模块 `contributes.designerControls[]` 的控件清单、属性表含枚举 options、事件 `handlerPattern`、`defaultProps`、容器 `layout` 与代码创建契约，此前对 AI 完全不可见）、`demoExample`（逐命令附带 `examples/module-demos/` 语料里的真实调用行，缓存 + 结果集 ≤400 才附带，未命中不伪造）与 `demoProject`（演示项目定位与新鲜度）、`uiExamples`/`example`（可复制界面配方索引与正文）。首批 7 条 new_emoji 配方落 `examples/ui-recipes/lingbuilder.new_emoji.ui/`，从已实机验收源码提炼，固化「模型零控件 + `控件_创建NE*`」与「模型控件 + `.内容` 成员语法」两条合法路径。测试：`tests/uiRecipes.test.ts`（齐备/行数上限/红线扫描/`commands` 与正文一致/逐条 `.lcpp` 语义诊断零 error）接入 `test:lingcpp`，`tests/aiBridge.test.ts` 补视图回归。**待办（本轮刻意未做）**：① 配方与演示语料都在仓库 `examples/` 下，而 `examples/` 不在 electron-builder 的 `files`/`extraResources` 清单内，**打包版工作区取不到**，外部 AI 在打包版仍只能拿到模块 `contributes.examples[]` 声明的示例——二期应把 new_emoji 配方改由模块包携带（`generate-new-emoji-module.cjs` 复制进 `docs/examples/` 并登记 `contributes.examples[]`，随 default-workspace 与 `ensureBundledModules` 补铺），这与「模块封装要简单、示例随模块走」一致，优先选它；② `examples/module-demos/` 全量停在 2026-08-29（new_emoji 3784 命令 vs 当前清单 4011），`NE表格_设置列` 等后续命令因此无 `demoExample`，已用 `demoProject.stale` 显式暴露而不是伪造，重跑 `npm run module:demos -w lingbuilder-electron` 可让 `stale` 归假（会成批改 `exports/` 源码包与根解决方案，属预期）；③ 只有 new_emoji 有人工配方，CEF3/EdgeView/FBro/SQLite/HTTP 服务端等模块的写法仍散在 `AI 视频自主生产/` 教程工程，应按同一约定补 `examples/ui-recipes/<moduleId>/` 并把「已验收源码 → 配方」写进模块交付清单；④ `lingbuilder.win32.basic`/`common-controls` 的 `contributes.designerControls` 属性表与 `win32ControlRegistry` 尚无对齐门禁，两侧漂移时 AI 拿到的属性表会与画布属性面板不一致（可复用 `tests/windowControlCompleteness.test.ts` 的断言面）。⑤ **整模块默认概览响应仍 ~356KB**（实测 MCP Streamable HTTP，2026-09-19）：带 `control`/`example` 的界面查询已改为不回命令表（控件详情 377KB→82KB），但只给 `moduleId` 时仍会返回 500 条命令文档（约 350KB），外部 AI 第一次探模块就可能吃掉大半个上下文。后续应按视图分档：默认只回元信息 + 控件概览 + 配方索引 + 命令计数，命令表必须显式 `query`（或新增 `includeCommands`）才展开，并对单条命令的参数文档做字段白名单裁剪；改动需同步 `module.info` 工具描述、`MCP_INSTRUCTIONS` 第 3 条与 `tests/aiBridge.test.ts` 体量断言。详见 `AGENTS.md`「大能力模块界面开发视图与配方语料」、`docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md` 同名节、`examples/ui-recipes/README.md`。
+
+- 已完成（2026-09-18）：**CSV 表格导入、编码统一内核与 SQLite `csv` 虚拟表直连**。补齐两处缺口：CSV 只能逐行解析且 GBK 文件无读取入口；没有把 CSV 直接当表查的直连方案。落地：`textCodecsRuntime.ts`（编码名称解析/BOM/代码页编解码 + `AUTO`=BOM→严格 UTF-8→GB18030，从编码运行时里收编为唯一实现）与 `tabularSourceRuntime.ts`（RFC 4180 记录级解析 + `表格数据` 快照句柄），共享内核改由 `generateSharedTableRuntime` 在装配层按启用模块**单点铺设**（先前按模块前缀拼接会在同一编译单元出现两份定义）；`lingbuilder.data.csv` 1.1.0（5→18 条）、`lingbuilder.std.encoding` +2 条字节集直转、`文件_读取文本` 增可选 `编码名称`、`lingbuilder.database.sqlite` 2.3.0 内置只读 `csv` 虚拟表（vtab/cursor/`zErrMsg` 全用运行库分配器，模块对象挂 `impl` 指针，虚拟表导出按可选解析、缺少只降级并经 `SQLite_取虚拟表支持` 可见，参数错误给中文诊断）。踩坑：① 可选参数必须靠运行时 C++ 默认实参落地，生成器不会补省略实参（C2660）；② 表头行未从数据起点跳过时，`ORDER BY` 会把表头排到最后，表现为“多一行 + datatype mismatch”而不是直观报错；③ `如果` 条件必须加括号、`如果/否则` 必须以 `如果结束` 收尾，否则模块骨架插入即被结构检查阻断。验收：`npm run smoke:csv-sqlite-native`（Win32/x64 双架构编译 + exe 逐项断言报告）。待办（本批刻意未做）：xlsx 虚拟表与 `Excel_工作表转表格` 需先在 `LingBuilderExcel.dll` 增“按区域取单元格数组”的导出（现有 `ReadRegion` 用分隔符拼文本，单元格含该分隔符会有歧义），故 Excel 侧本轮不改命令面、不重建 DLL；`文件_写入文本/追加文本` 仍只按 UTF-8 落盘，按编码写出未开放；虚拟表/快照都把整文件解码进内存（宽字符约两倍体积），数十万行以上需改流式解码或分片；`数据_导入CSV到表` 这类一键导入薄壳未做（当前 `INSERT ... SELECT` 一行即可）；Excel/SQLite 既有 snippets 里的 `如果 ... 否则 ... 结束`（缺括号、以 `结束` 收尾）是历史写法，插入后会被结构检查报错，需后续单独批次统一修正并补断言。
+
 - 已完成（2026-09-18 追加）：**项目 DLL 命令声明编辑器数据/交互缺陷批量修复 + 结构体卡片排版重构（用户实测反馈）**。① **空名命令静默丢失**：`serializeDllCommandLines` 对空名产出 `整数型 ()` 这类解析器不认的死行，写回即整条消失（往返探针实测：清空「累加值」的名字会连带参数与 `= AccumulateF` 别名一起从文件里丢掉，表现为「加了不存在、删了又回来」）。修法=「添加命令」生成全文件不冲突的占位名 `新命令N`；命令名输入清空被拒绝并提示改用「删除此命令」；序列化端跳过无名字命令兜底。空名行在源码侧本就由解析器报「无法识别的 DLL 命令声明行」，因此不再另加模型层不可达诊断。② **「复制此命令」职责与文案不符**：新增 `serializeDllCommandSnippet`（只输出该命令自身声明行 + `备注:`/`公开 = 假`）替换整库包裹版 `serializeSingleDllCommand`（已删除），并新增 `parseDllDeclarationSnippet` 让「粘贴声明」两种格式都认——裸片段包进临时库解析后并入当前第一个库（不凭空造库），裸片段含结构体时明确提示未粘贴并指向「复制全部声明」。③ **折叠态没有删除入口**：底部操作行整块被 `!isCollapsed` 包住，改为常驻显示，仅「添加参数」随折叠隐藏。④ **结构体卡片字段清单排版**（用户红框反馈）：固定 `repeat(auto-fill, minmax(220px, 1fr))` 网格造成中文类型断字（「整数/型」「文本型/[260]」）与末行空轨道，改流式 `flex flex-wrap` + 类型/字段名 `whitespace-nowrap` + 备注 `max-w-[18rem] truncate` 带 `title`，数组长度改随字段名（`szExeFile[260]`）；同批给 `ProjectDllCommandsEditor`/`ProjectDataTypeEditor`/`ProjectGlobalVariableEditor` 根容器补 `min-w-0 flex-1`，修掉纵向滚动条出现在编辑区中部。⑤ **英文导出名放开为补全别名**：`createProjectDllDeclarationModule` 给 `contributes.commands` 补 `aliases: [exportName]`（与模块内命令名或其它别名冲突时不登记，命令名优先），使新手/Monaco 敲 `HalfF` 能筛出「半值」，上屏中文主名、生成 C++ 恒为真实导出名（非中文别名按补全目录规则只作检索键、不单独成条）。测试：`tests/lingcpp.test.ts` DLL 组 8/8（新增裸片段复制+粘贴、空名不落死行、别名登记与冲突不登记三条，改写原整库包裹片段用例）。同步：`LingBuilder AI 规则手册.md` 三条（复制/粘贴职责边界、命令名不得为空、英文导出名别名）、官网 `cloud/admin/docs/guide/user/modules/dll-module.md` §5（顺带把过时的「补充导入库」描述更正为内联转发函数）。**后续可做**：表格模型仍只在组件挂载时解析一次、不与 `sourceCode` 回流（用户批复本批不动），AI 改文件/撤销重做/文本模式手改后需重开标签才反映到表格，根治方案是带草稿保护的单向同步；`tests/projectDataTypesUi.test.tsx` 对 `用户信息 新字段类型` 草稿行的断言已被同日「添加字段移头部」重构淘汰（本机 lingcpp 套件 6 条失败中 5 条为记录在案的既有基线，该条属重构遗留过期断言，待并行会话收尾）。
 
 - 已完成（2026-09-18 追加）：**AI Bridge MCP 全链真机实测循环（自启 IDE + 外部 AI 模拟客户端驱动 MCP 写项目，发现即修直到摩擦点清零）**。方法：dev renderer + electron 真启动 IDE，另起与托管 Bridge 同一入口的 `ai-server`，用 MCP SDK 客户端仅凭 `instructions`+工具描述走「模板→建项目→诊断→构建→运行→run.wait/run.log/build.stop→迭代提案（加搜索按钮）→错误控件引用」全流程，记录每步耗时/响应体量/失败点。实测发现并修复：① `edit.propose` 指令含「控件/窗口/布局」等布局词但只改源码时被「涉及布局但缺设计器模型」误拦（修控件引用 typo 都会被拒）——`LingCppEditContext.designerEditPolicy` 新增 `caller-draft` 档：外部 AI 自带完整草稿（无 planner）允许纯源码提案，系统 AI planner 路径保持严格拒绝；② `project.create` 批准响应 54KB（preview/result 双份模板全文）→ 瘦身为 11.5KB（文件只留元数据）；③ `build.run`/`native.*` 响应 ~40KB → 3.7KB（去 sourceMap）；④ `modules.list` 54KB → 约 10KB（未启用模块改一行紧凑字符串、enabledModules 保留结构化摘要、去重复 summary）；⑤ `edit.propose` 17.9KB → 478B、`edit.apply` 41KB → 344B（只回提案 ID/变更位置/文件元数据）；⑥ 未知类型诊断（如 `SQLite连接`）补齐「由哪个模块提供 + 改 project-modules.json 启用 + module.info 查命令」的闭环提示；⑦ 模块公开类型按 manifest `cppType` 归入基础类别（`buildModuleTypeCategories`），`局部 SQLite连接 数据库 = 0` 哨兵初始化不再误报类型不兼容；⑧ sqlite-crud 模板「刷新按钮与新增按钮坐标重叠」修复为两行布局。最终全链 PASS、摩擦点计数 0，单轮迭代响应总量 ~112KB → ~18KB；「建项目漏启用模块→事后经 project-modules.json 提案补开→诊断清零」闭环验证通过。回归：aiBridge 套件 44/45（1 失败为并行改动在途既有用例）、test:lingcpp 224/227（3 失败为并行域既有项）、lint/build 通过。新增回归用例：纯源码提案不受布局词误拦、未知类型诊断指明模块来源。
@@ -1692,19 +1696,23 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
   减少在多个文件间来回切换时的重复计算；以及给 App 里基于 `activeFile.translatedContent` 的问题面板计算加
   `startTransition`/防抖，避免连续输入时每键 200+ ms 的主线程占用。
 
-## 2026-09-17 新手模式输入/点击响应（待拍板，未动码）
+## 2026-09-17 新手模式输入/点击响应（2026-09-19 已实施去抖 + 目录缓存）
 
 - 现象：新手结构化编辑器里打字/点击卡顿、光标不跟手。已修的大头是语言诊断热点（见上一条）与工程本地模块清单缺失
   （无模块时 263 条误报诊断会随每次交互重渲染）。仍剩一档：每次输入都会同步重算
   `buildLingCppLanguageContext`（≈265~330 ms）+ 结构化行/大纲/可读块（≈40 ms 各一次），且 App 的问题面板与
   Monaco 标记各自再算一遍诊断。
-- 可选方案（按推荐度）：
-  1. **延后重计算**：新手编辑器对重派生值使用 `useDeferredValue(source)`（输入/光标走紧急更新，表格与大纲稍后更新约一帧），
-     App 的问题面板计算用 `startTransition` 降级为过渡更新；
-  2. **共享一次计算**：为 `getLingCppProblems` / `getLingCppSemanticDiagnostics` 增加按
-     （源码, moduleContext, 设计器模型引用, 工程符号引用）记忆化的小 LRU，让问题面板、Monaco 标记、新手表格共用一份结果；
-  3. **输入期降载**：连续输入（如 150 ms 内）只做标记化，诊断延后到停顿后执行。
-- 影响面：方案 1/3 改变新手模式的刷新时序（表现是"上屏即写、标记稍后"），属于 UI 行为改动，需用户拍板后再动码。
+- 2026-09-19 已落地（用户反馈新手/专业模式均卡 + 补全遮挡 + 回车丢光标，四根因一并修复）：
+  1. App 问题面板 effect 与 Monaco 标记/装饰 effect 各加 300ms 去抖（原方案 1/3 的输入期降载变体）；
+  2. 新手补全目录（4000+ 模块命令）按输入指纹 ref 缓存 + `searchValues` 预计算 + 按目标缓存合并结果；
+  3. 补全面板与自动局部类型面板从结构块内提升到画布内容层浮层（`BeginnerVirtualCanvas` overlay 槽，z-[90]），
+     一并解决「虚拟化块 transform 层叠上下文把块内 z-30 面板盖住」的遮挡缺陷，并把补全状态移出 blockRevision，
+     消灭补全打开期间每键全块重渲；
+  4. 回车/Tab/Ctrl+//补全上屏四条直接改写 DOM 的路径改 `{defer:true}` + rAF 内按 `data-text-model-view-key`
+     回查节点恢复光标，修复「立即同步草稿 → key 变化重挂 textarea → rAF 对旧节点设光标失效」的丢光标缺陷。
+- 剩余可做（原方案 2，暂缓）：为 `getLingCppProblems` / `getLingCppSemanticDiagnostics` 增加按
+  （源码, moduleContext, 设计器模型引用, 工程符号引用）记忆化的小 LRU，让问题面板与 Monaco 标记共用一份结果，
+  消灭停顿后的双跑；若去抖后仍有可感卡顿再实施。
 
 ## 2026-09-17 新手结构化编辑器打开大文件卡死（根因更正 + 已实施）
 
@@ -1824,3 +1832,17 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
 - 连带：server.ts 直编单源分支 Debug 配置已补 `/MANIFEST:EMBED`，且
   `requireAdministrator` 注入 UAC 参数的所有配置同时内嵌清单（此前 F5 产物清单为外置
   `.exe.manifest` 侧车，UAC 随侧车才生效）；非管理员 + Release 历史行为不变。
+
+## 2026-09-18 云端认证限流按代理 IP 共享计数（已修复）
+
+- ~~现状：生产链路 宝塔 nginx → api 容器，Nest `@Ip()` 取到的是 Docker 网关 `172.19.0.1`，`auth:forgot/login/register:<ip>` 限流实际全用户共享一个计数桶（forgot 已部署验证；login/register 同隐患）。~~
+- **2026-09-18 同日已修复**：`cloud/api/src/main.ts` 启用 `app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal'])`（api 仅绑 127.0.0.1:17900，前置 nginx 已带 `proxy_add_x_forwarded_for`，无需改反代）。生产验证：连发 21 次 forgot → 20×201+429，Redis 键为真实公网出口 IP；伪造 `X-Forwarded-For: 8.8.8.8` 的请求仍按真实 IP 计数（返回 429、不产生 8.8.8.8 键），伪造不生效。login/register 限流同步获得 per-IP 精度。
+
+## 2026-09-18 模块公开常量与 #常量 引用（一期已落地，含遗留）
+
+- 已落地：manifest v2 `contributes.constants[]`（基础类型纯字面量、basic/advanced 分级）、`#常量名` 强制常量解析（未知/赋值中文阻断诊断）、新手 `#` 触发常量补全、易语言常量紫令牌着色（新手画布 + Monaco 共用 `LINGCPP_CONSTANT_TOKEN_COLORS`）、悬停/重命名兼容双形态、生成期与项目常量同命名空间物化 `inline constexpr`（项目遮蔽模块、跨模块同名阻断）、`lingbuilder.module.info` 返回 `constants[]`、模块骨架模板示例常量。实现契约见 `docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md`「模块公开常量」节。
+- 遗留（二期候选，均未动码）：
+  1. 新手模式「项目常量表」增加只读「模块常量」分组（当前只能从补全/悬停/模块详情感知；分组必须只读、不得参与常量表增删改与重命名写路径）。
+  2. opaque/句柄型模块常量（如模块公开的默认超时、原生常量句柄）与表达式初值（当前仅纯字面量）。
+  3. 裸名引用模块常量的兼容策略收紧：当前裸名不解析模块常量（生成期因同命名空间物化而“碰巧可编译”），诊断层未对「裸名命中模块常量」给迁移提示；如要强制 `#` 形态需先出快速修复再收门禁，避免存量示例突然变红。
+  4. 模块常量进官网「命令查找」/模块详情文档管线（websiteCommandReference 目前只派生命令，不携带常量清单）。

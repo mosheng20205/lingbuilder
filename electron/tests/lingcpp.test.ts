@@ -114,6 +114,7 @@ import { classifyLingCppPresentationCode } from '../src/services/lingCpp/beginne
 import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCppArrayParameterType } from '../src/services/lingCpp/parameterTypeService';
 import {
   buildLingCppControlReferenceSemanticTokenData,
+  LINGCPP_CONSTANT_TOKEN_COLORS,
   LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN,
   LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS
 } from '../src/services/lingCpp/semanticTheme';
@@ -721,7 +722,36 @@ test('LingCpp project constants parse, validate, complete, rename and remain rea
     { source, line: 3, column: 15, triggerText: '软件' },
     buildLingCppLanguageContext(source, undefined, undefined, sourcePath, projectGlobals)
   );
-  assert.ok(completions.some(item => item.label === '软件名称' && item.detail.includes('项目常量')));
+  assert.ok(completions.some(item => item.label === '#软件名称' && item.detail.includes('项目常量')));
+
+  // #常量 引用：解析合法、只读保护、未知报错，且不影响既有裸名引用。
+  const hashSource = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 创建完毕()',
+    '        调试输出(#软件名称)',
+    '        #最大重试次数 = 4',
+    '        调试输出(#不存在的常量)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const hashDiagnostics = getLingCppSemanticDiagnostics(hashSource, undefined, sourcePath, undefined, projectGlobals);
+  assert.ok(hashDiagnostics.some(diagnostic => diagnostic.message.includes('常量 #最大重试次数 是只读值')));
+  assert.ok(hashDiagnostics.some(diagnostic => diagnostic.message.includes('常量 #不存在的常量 不存在')));
+  assert.equal(hashDiagnostics.filter(diagnostic => diagnostic.level === 'error' && diagnostic.message.includes('#软件名称')).length, 0);
+  const hashTriggerSource = ['类 MainWindow : 公开 窗体', '    事件 创建完毕()', '        调试输出(#)', '    结束', '结束类'].join('\n');
+  const hashItems = getLingCppCompletionItems(
+    { source: hashTriggerSource, line: 3, column: '        调试输出(#)'.indexOf('#') + 2, triggerText: '' },
+    buildLingCppLanguageContext(hashTriggerSource, undefined, undefined, sourcePath, projectGlobals)
+  );
+  assert.ok(hashItems.some(item => item.label === '#软件名称' && item.insertText === '软件名称'));
+  assert.equal(hashItems.every(item => item.label.startsWith('#')), true, '常量补全列表只允许出现常量项');
+  assert.equal(getProjectConstantNameAtCursor('调试输出(#软件名称)', '调试输出(#软件'.length + 1, ['软件名称']), '软件名称');
+  const hashRenameFiles = [
+    { filePath: symbolPath, sourceCode: symbolSource, language: 'lingcpp' as const },
+    { filePath: 'src/HashRef.lcpp', sourceCode: '调试输出(#软件名称)', language: 'lingcpp' as const }
+  ];
+  const hashApplied = applyWorkspaceEditToFiles(hashRenameFiles, createProjectConstantRenameProposal(hashRenameFiles, symbolPath, '软件名称', '产品名称'));
+  assert.ok(hashApplied.some(file => file.sourceCode.includes('调试输出(#产品名称)')), '# 前缀引用重命名后必须保留 #');
 
   const added = applyLingCppAstEdit(symbolSource, { kind: 'add-constant', constant: { name: '超时时间', type: '整数型', initialValue: '30' } });
   assert.equal(added.success, true);
@@ -3582,7 +3612,9 @@ test('beginner editor exposes method-scoped local declarations with variable and
   assert.match(source, /event\.key === 'Enter' \|\| event\.key === 'Tab'/u);
   assert.match(source, /onMouseDown=\{event =>/u);
   assert.match(source, /const segmentId = segmentContext\?\.segment\.id \|\| 'all'/u);
-  assert.match(source, /beginnerCompletionState\.segmentId === segmentId/u);
+  // 补全状态必须经镜像 ref 读取（textarea 位于按 revision 记忆化的块内，闭包 state 可能过期）。
+  assert.match(source, /beginnerCompletionStateRef\.current/u);
+  assert.match(source, /liveCompletionState\.segmentId === segmentId/u);
   assert.match(source, /getBeginnerLocalInsertShortcutKind\(event\)/u);
   assert.match(source, /localInsertShortcutKind === 'constant'/u);
   assert.match(source, /focus\(\{ preventScroll: true \}\)/u);
@@ -5790,4 +5822,31 @@ test('模块命令中文别名提供独立补全条目，按别名上屏且规�
   const byPinyinQuery = getLingCppCompletions({ source: 'qyx', line: 1, column: 4 }, moduleContext);
   assert.ok(byPinyinQuery.some(item => item.label === '取运行目录'), '拼音检索应命中别名条目');
   assert.ok(byPinyinQuery.some(item => item.label === '系统_取运行目录'), '拼音检索应命中规范名条目');
+});
+
+test('新手模式 # 触发常量补全上下文与常量令牌着色', () => {
+  const empty = '        调试输出(#';
+  const emptyContext = getBeginnerCompletionContext(empty, empty.length);
+  assert.equal(emptyContext.isConstantReference, true);
+  assert.equal(shouldShowBeginnerCompletion(emptyContext, false), true, '刚敲 # 时 token 为空也必须弹出常量清单');
+  const typed = '        调试输出(#键盘';
+  const typedContext = getBeginnerCompletionContext(typed, typed.length);
+  assert.equal(typedContext.isConstantReference, true);
+  assert.equal(typedContext.token, '键盘');
+  const inString = '        调试输出("版本 #';
+  assert.equal(getBeginnerCompletionContext(inString, inString.length).isConstantReference, false, '字符串内的 # 不触发常量补全');
+  const nativeLine = '@#include <windows.h>';
+  assert.equal(getBeginnerCompletionContext(nativeLine, nativeLine.length).isConstantReference, false, '@ 内嵌 C++ 行的 # 不触发常量补全');
+
+  const statementTokens = tokenizeEplStatement('调试输出("x:" + #模块名)');
+  assert.equal(statementTokens.find(token => token.kind === 'constant')?.text, '#模块名');
+  assert.equal(EPL_TOKEN_COLORS_DARK.constant, LINGCPP_CONSTANT_TOKEN_COLORS.dark, '新手正文与 Monaco 必须共用同一常量令牌色');
+
+  const presentationTokens = classifyLingCppPresentationCode('调试输出(#模块名)', {
+    isNativeCpp: false,
+    moduleCommands: new Set(),
+    knownMembers: new Set(),
+    knownProcedures: new Set()
+  });
+  assert.equal(presentationTokens.find(token => token.text === '#模块名')?.kind, 'constant');
 });

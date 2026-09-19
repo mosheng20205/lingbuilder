@@ -66,6 +66,13 @@ interface BeginnerVirtualCanvasProps {
   children?: React.ReactNode;
   /** 固定渲染在块列表之后的内容（滚动尾部留白等）。 */
   footer?: React.ReactNode;
+  /**
+   * 渲染在画布内容层之上的浮层（补全面板等）。
+   * 必须放在内容坐标系定位的 `data-beginner-canvas-content` 容器内且 z-index 高于块：
+   * 虚拟化块包装器带 transform（独立层叠上下文），块内浮层会被后续块盖住，
+   * 同时块内浮层还要求把自身状态写进 blockRevision，导致每键全块重渲。
+   */
+  overlay?: React.ReactNode;
 }
 
 export default function BeginnerVirtualCanvas({
@@ -81,7 +88,8 @@ export default function BeginnerVirtualCanvas({
   onFocusCapture,
   onPointerDownCapture,
   children,
-  footer
+  footer,
+  overlay
 }: BeginnerVirtualCanvasProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const virtualize = items.length > virtualizeThreshold;
@@ -144,12 +152,15 @@ export default function BeginnerVirtualCanvas({
     return (
       <div {...containerProps}>
         {children}
-        <div className="min-w-0">
-          {items.map(item => (
-            <div key={item.key} data-beginner-canvas-item={item.key}>
-              <CanvasItemSurface item={item} />
-            </div>
-          ))}
+        <div className="relative min-w-0" data-beginner-canvas-content>
+          <div className="min-w-0">
+            {items.map(item => (
+              <div key={item.key} data-beginner-canvas-item={item.key}>
+                <CanvasItemSurface item={item} />
+              </div>
+            ))}
+          </div>
+          {overlay}
         </div>
         {footer}
       </div>
@@ -161,6 +172,7 @@ export default function BeginnerVirtualCanvas({
       {children}
       <div
         data-beginner-virtualized="true"
+        data-beginner-canvas-content
         style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}
       >
         {virtualizer.getVirtualItems().map(virtualItem => {
@@ -185,6 +197,7 @@ export default function BeginnerVirtualCanvas({
             </div>
           );
         })}
+        {overlay}
       </div>
       {footer}
     </div>
