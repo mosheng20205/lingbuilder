@@ -399,12 +399,13 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-19 再写回（CEF3 内嵌区域动态）：新增 CEF3_创建区域（8 参数，运行时自建 WS_CHILD 承载 + 独立 profile + 每实例代理）。合计 +1 命令 +8 参数。
       // 基线 2026-09-19 再写回（CEF3 实例版会话句柄）：新增 CEF3会话_取上下文实例（1 参数，按实例编号取 RequestContext 句柄，解锁弹窗/区域的句柄版 CEF3会话_* 命令）。合计 +1 命令 +1 参数。
       // 基线 2026-09-19 再写回（CEF3 实例级 UA，纯运行时改「资源加载前」请求头 User-Agent）：新增 CEF3_设置用户代理/取用户代理（各 controlRef+UA）与 CEF3_设置实例用户代理/取实例用户代理（各 实例编号+UA）。合计 +4 命令 +6 参数 +2 controlRef。
+      // 基线 2026-09-19 再写回（FBro 内嵌区域动态，复用已出货 EMBEDDED 跨进程路径）：新增 浏览器外壳_新建内嵌实例区域（9 参数）与 浏览器外壳_取内嵌区域实例JSON（0 参数）。合计 +2 命令 +9 参数。
       modules: 98,
-      commands: 3692,
-      parameters: 6436,
+      commands: 3694,
+      parameters: 6445,
       controlReferences: 1307,
-      commandDigest: '2f3922fa',
-      parameterDigest: '4c44e37e'
+      commandDigest: '73ff26f9',
+      parameterDigest: 'b8780e80'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -4107,6 +4108,11 @@ test('CEF3 与 FBro 多店铺能力：弹窗/枚举/关闭全部/实例代理进
   assert.ok(shellNames.has('浏览器外壳_新建独立实例代理') && shellBindings.has('浏览器外壳_新建独立实例代理'), 'FBro shell 缺少 新建独立实例代理');
   assert.equal(shellBindings.get('浏览器外壳_新建独立实例代理')?.parameters?.[4]?.name, '代理地址');
   assert.equal(shellBindings.get('浏览器外壳_新建独立实例代理')?.parameters?.[5]?.name, '用户代理');
+  // FBro 内嵌区域动态（与 EdgeView/CEF3 创建区域同口径）：命令入清单+绑定，参数首为稳定ID、坐标 int。
+  assert.ok(shellNames.has('浏览器外壳_新建内嵌实例区域') && shellBindings.has('浏览器外壳_新建内嵌实例区域'), 'FBro shell 缺少 新建内嵌实例区域');
+  assert.ok(shellNames.has('浏览器外壳_取内嵌区域实例JSON') && shellBindings.has('浏览器外壳_取内嵌区域实例JSON'), 'FBro shell 缺少 取内嵌区域实例JSON');
+  assert.deepEqual(shellBindings.get('浏览器外壳_新建内嵌实例区域')?.parameters?.map(p => p.type),
+    ['wideString', 'int', 'int', 'int', 'int', 'wideString', 'wideString', 'wideString', 'wideString']);
   // 生成 C++ 校验：CEF3 弹窗走 Chrome Runtime、枚举/关闭全部符号存在、宽字符调用点正确。
   const cef3Module: InstalledModule = { manifest: cef3!, installPath: 'builtin://lingbuilder.cef3.browser', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
   const generated = generateLingCppNativeWin32Project(sampleProject, {

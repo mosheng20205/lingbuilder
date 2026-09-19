@@ -4683,6 +4683,11 @@ struct LB_NE_FbroBrowserInstance {
     bool shellSessionOpen = false;
     bool companionHost = false;
     bool configuredVisible = true;
+    bool regionEmbedded = false;
+    int regionX = 0;
+    int regionY = 0;
+    int regionWidth = 0;
+    int regionHeight = 0;
     int requestedViewportWidth = 0;
     int requestedViewportHeight = 0;
 };
@@ -4817,6 +4822,7 @@ static void LB_NE_UpdateFbroTabVisibility(int elementId, int activeIndex);
 static void LB_NE_OnBrowserShellEvent(LB_NE_FbroBrowserInstance& browser, int eventCode);
 static void LB_NE_UpdateBrowserShellBounds();
 static void LB_NE_UpdateBrowserShellVisibility();
+static void LB_NE_UpdateBrowserShellRegionBounds();
 
 static bool LB_NE_IsBrowserShellStateEvent(int eventCode) {
     return eventCode == LB_FBRO_EVENT_CREATED
@@ -6552,13 +6558,14 @@ static bool LB_NE_ShouldShowBrowserShellHost(const LB_NE_FbroBrowserInstance& br
 }
 
 static void LB_NE_UpdateBrowserShellBounds() {
+    LB_NE_UpdateBrowserShellRegionBounds();
     if (!g_newEmojiWindow || g_newEmojiFbroShell.viewportElementId <= 0) return;
     int x = 0, y = 0, width = 0, height = 0;
     if (!LB_NE_GetElementWindowBounds(g_newEmojiFbroShell.viewportElementId, &x, &y, &width, &height)) return;
     const UINT dpi = GetDpiForWindow(g_newEmojiWindow);
     const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
     for (auto& browser : g_newEmojiFbroBrowsers) {
-        if (!browser.shellManaged || !browser.host || !IsWindow(browser.host)) continue;
+        if (!browser.shellManaged || !browser.host || !IsWindow(browser.host) || browser.regionEmbedded) continue;
         POINT origin{scale(x), scale(y)};
         if (browser.companionHost && !ClientToScreen(g_newEmojiWindow, &origin)) continue;
         const int browserWidth = browser.requestedViewportWidth > 0
@@ -6583,11 +6590,12 @@ static void LB_NE_UpdateBrowserShellBounds() {
 }
 
 static void LB_NE_UpdateBrowserShellVisibility() {
+    LB_NE_UpdateBrowserShellRegionBounds();
     if (g_newEmojiFbroShell.selectedTabId.empty() && !g_newEmojiFbroShell.tabOrder.empty()) {
         g_newEmojiFbroShell.selectedTabId = g_newEmojiFbroShell.tabOrder.front();
     }
     for (auto& browser : g_newEmojiFbroBrowsers) {
-        if (!browser.shellManaged || !browser.host) continue;
+        if (!browser.shellManaged || !browser.host || browser.regionEmbedded) continue;
         const bool visible = LB_NE_ShouldShowBrowserShellHost(browser);
         ShowWindow(browser.host, visible ? SW_SHOW : SW_HIDE);
         if (visible) {
@@ -6853,6 +6861,129 @@ static bool 浏览器外壳_新建独立实例代理(const std::wstring& stableI
                                          const std::wstring& title, const std::wstring& profileDirectory,
                                          const std::wstring& proxyServer, const std::wstring& userAgent) {
     return 浏览器外壳_新建独立实例内部(stableId, address, title, profileDirectory, proxyServer, userAgent);
+}
+
+// 内嵌到宿主窗口指定矩形的 FBro 实例（动态数量、可同屏共存）：复用已出货的
+// LING_FBRO_PROCESS_EMBEDDED 跨进程内嵌路径，把独立进程浏览器作为 WS_CHILD 挂到本进程
+// 在该矩形新建的 child 承载窗上，不进入多标签视口状态机（regionEmbedded 令 tab 循环跳过）。
+static HWND LB_NE_CreateBrowserShellRegionHost(int x, int y, int width, int height) {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return nullptr;
+    const UINT dpi = GetDpiForWindow(g_newEmojiWindow);
+    const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
+    return CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+        scale(x), scale(y), (std::max)(1, scale(width)), (std::max)(1, scale(height)),
+        g_newEmojiWindow, nullptr, GetModuleHandleW(nullptr), nullptr);
+}
+
+static void LB_NE_UpdateBrowserShellRegionBounds() {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return;
+    const UINT dpi = GetDpiForWindow(g_newEmojiWindow);
+    const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
+    const bool windowReady = IsWindowVisible(g_newEmojiWindow) && !IsIconic(g_newEmojiWindow);
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (!browser.regionEmbedded || !browser.host || !IsWindow(browser.host)) continue;
+        SetWindowPos(browser.host, nullptr, scale(browser.regionX), scale(browser.regionY),
+            (std::max)(1, scale(browser.regionWidth)), (std::max)(1, scale(browser.regionHeight)),
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        const bool show = browser.configuredVisible && browser.shellSessionOpen && windowReady;
+        ShowWindow(browser.host, show ? SW_SHOWNOACTIVATE : SW_HIDE);
+        if (show && LB_NE_IsFbroProcess(&browser)
+            && LingFbroProcessController::Instance().State(browser.processInstanceId) == L"就绪") {
+            LB_NE_FbroProcessNotify(&browser, L"resize", {{"width", (std::max)(1, scale(browser.regionWidth))},
+                {"height", (std::max)(1, scale(browser.regionHeight))}});
+        }
+    }
+}
+
+static bool 浏览器外壳_新建内嵌实例区域(const std::wstring& stableId, int left, int top, int width, int height,
+                                         const std::wstring& address, const std::wstring& profileDirectory,
+                                         const std::wstring& proxyServer, const std::wstring& userAgent) {
+    if (stableId.empty() || !g_newEmojiWindow || width <= 0 || height <= 0) { 调试输出(L"FBro 内嵌区域实例创建失败：稳定ID 为空或尺寸非法。"); return false; }
+    if (LB_NE_FindBrowserShellTab(stableId.c_str())) { 调试输出(L"FBro 内嵌区域实例创建失败：稳定ID 已存在。"); return false; }
+    const std::filesystem::path requestedProfile(profileDirectory);
+    const std::wstring resolvedProfile = (g_newEmojiFbroShell.persistenceEnabled
+        && (profileDirectory.empty() || requestedProfile.is_relative()))
+        ? LB_NE_BrowserShellProfilePath(stableId).wstring()
+        : (profileDirectory.empty() ? L".fbro-profiles/region-" + stableId : profileDirectory);
+    for (const auto& existing : g_newEmojiFbroBrowsers) {
+        if (existing.shellManaged && !existing.profileDirectory.empty()
+            && _wcsicmp(existing.profileDirectory.c_str(), resolvedProfile.c_str()) == 0) { 调试输出(L"FBro 内嵌区域实例创建失败：缓存目录已被其它实例占用。"); return false; }
+    }
+    HWND host = LB_NE_CreateBrowserShellRegionHost(left, top, width, height);
+    if (!host) { 调试输出(L"FBro 内嵌区域实例创建失败：无法创建承载子窗口。"); return false; }
+    SetWindowTextW(host, stableId.c_str());
+    LB_NE_FbroBrowserInstance browser;
+    browser.name = L"__lingbuilder_browser_region_shell__" + stableId;
+    browser.processInstanceId = L"new-emoji-region:" + std::to_wstring(reinterpret_cast<uintptr_t>(g_newEmojiWindow)) + L":" + stableId;
+    browser.stableTabId = stableId;
+    browser.title = stableId;
+    browser.url = address.empty() ? LB_NE_BROWSER_SHELL_DEFAULT_URL : address;
+    browser.profileDirectory = resolvedProfile;
+    browser.createdAt = LB_NE_BrowserShellTimestamp();
+    browser.flags = 7U;
+    browser.processMode = LING_FBRO_PROCESS_EMBEDDED;
+    browser.proxyServer = proxyServer;
+    browser.userAgent = userAgent;
+    browser.host = host;
+    browser.shellManaged = true;
+    browser.regionEmbedded = true;
+    browser.companionHost = false;
+    browser.configuredVisible = true;
+    browser.regionX = left;
+    browser.regionY = top;
+    browser.regionWidth = width;
+    browser.regionHeight = height;
+    browser.requestedViewportWidth = width;
+    browser.requestedViewportHeight = height;
+    g_newEmojiFbroBrowsers.push_back(std::move(browser));
+    LB_NE_FbroBrowserInstance* created = LB_NE_FindBrowserShellTab(stableId.c_str());
+    if (!created) return false;
+    RECT bounds{};
+    GetClientRect(host, &bounds);
+    LingFbroProcessConfig config;
+    config.instanceId = created->processInstanceId;
+    config.eventWindow = g_newEmojiWindow;
+    config.hostWindow = host;
+    config.mode = LING_FBRO_PROCESS_EMBEDDED;
+    config.width = (std::max)(1L, bounds.right - bounds.left);
+    config.height = (std::max)(1L, bounds.bottom - bounds.top);
+    config.visible = true;
+    config.url = created->url;
+    config.profileDirectory = created->profileDirectory;
+    config.userAgent = created->userAgent;
+    config.proxyServer = created->proxyServer;
+    config.fingerprintJson = created->fingerprintJson;
+    config.flags = created->flags;
+    if (LingFbroProcessController::Instance().Start(config, false) <= 0) {
+        调试输出((std::wstring(L"FBro 内嵌区域实例创建失败：") + LingFbroProcessController::Instance().LastError(created->processInstanceId)).c_str());
+        DestroyWindow(host);
+        g_newEmojiFbroBrowsers.erase(std::remove_if(g_newEmojiFbroBrowsers.begin(), g_newEmojiFbroBrowsers.end(),
+            [&](const auto& item) { return item.stableTabId == stableId && item.regionEmbedded; }), g_newEmojiFbroBrowsers.end());
+        return false;
+    }
+    created->loading = true;
+    created->shellSessionOpen = true;
+    LB_NE_UpdateBrowserShellRegionBounds();
+    return true;
+}
+
+static std::wstring 浏览器外壳_取内嵌区域实例JSON() {
+    LingFbroProcessController::Json items = LingFbroProcessController::Json::array();
+    for (const auto& browser : g_newEmojiFbroBrowsers) {
+        if (!browser.regionEmbedded) continue;
+        LingFbroProcessController::Json item = LingFbroProcessController::Json::object();
+        item["稳定ID"] = lingbuilder_fbro_process_detail::JsonUtf8(browser.stableTabId);
+        item["地址"] = lingbuilder_fbro_process_detail::JsonUtf8(browser.url);
+        item["标题"] = lingbuilder_fbro_process_detail::JsonUtf8(browser.title);
+        item["左"] = browser.regionX;
+        item["顶"] = browser.regionY;
+        item["宽"] = browser.regionWidth;
+        item["高"] = browser.regionHeight;
+        item["状态"] = lingbuilder_fbro_process_detail::JsonUtf8(LingFbroProcessController::Instance().State(browser.processInstanceId));
+        item["是否有效"] = browser.host && IsWindow(browser.host);
+        items.push_back(item);
+    }
+    return lingbuilder_fbro_process_detail::JsonText(items);
 }
 
 static bool LB_NE_SaveBrowserShellState() {
