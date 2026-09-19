@@ -1,7 +1,7 @@
 <!-- 此文件由 electron/scripts/generate-cef3-fbro-event-docs.ts 生成。请修改 FBro 事件目录或模块 manifest 后运行 npm run module:fbro-docs。 -->
 # FBro 模块事件与接口参考
 
-本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 670 条面向用户的中文接口。
+本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 673 条面向用户的中文接口。
 
 ## 快速使用
 
@@ -229,7 +229,7 @@
 
 | 模块 | 模块 ID | 用户接口数 |
 |---|---|---:|
-| FBro指纹浏览器模块 | `lingbuilder.fbro.browser` | 115 |
+| FBro指纹浏览器模块 | `lingbuilder.fbro.browser` | 118 |
 | FBro事件模块 | `lingbuilder.fbro.events` | 13 |
 | FBro会话模块 | `lingbuilder.fbro.session` | 14 |
 | FBro传输模块 | `lingbuilder.fbro.transfer` | 22 |
@@ -238,12 +238,12 @@
 | FBro高级网络模块 | `lingbuilder.fbro.network` | 18 |
 | FBro VIP 指纹模块 | `lingbuilder.fbro.vip` | 189 |
 
-以下 670 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
+以下 673 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
 
 
 ### 1. FBro指纹浏览器模块
 
-通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。 模块 ID：`lingbuilder.fbro.browser`；本节共 115 条用户接口。
+通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。 模块 ID：`lingbuilder.fbro.browser`；本节共 118 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
@@ -362,6 +362,9 @@
 | 113 | `浏览器管理器_取实例数量` | `浏览器管理器_取实例数量()` | 整数型 | 常用 | - | 返回当前实例数量。 |
 | 114 | `浏览器管理器_取实例顺序JSON` | `浏览器管理器_取实例顺序JSON()` | 文本型 | 常用 | - | 返回稳定 ID 顺序 JSON。 |
 | 115 | `浏览器管理器_取运行快照JSON` | `浏览器管理器_取运行快照JSON()` | 文本型 | 常用 | - | 返回不含 Cookie 的 ID、Profile、页面 HWND、PID 和插件状态诊断快照。 |
+| 116 | `FBro_创建区域` | `FBro_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 缓存目录, 代理地址, 用户代理)` | 整数型 | 常用 | - | 在普通 Win32 宿主窗口客户区的指定矩形内动态内嵌一个独立进程 FBro 浏览器（不依赖 new_emoji），每个实例编号拥有独立 Profile/缓存/代理/UA，可多次调用创建任意数量区域。返回 1 表示成功、0 表示失败。实例编号需唯一；左/顶/宽/高为逻辑坐标（按 DPI 自动缩放）；缓存目录留空时自动按编号派生；代理地址与用户代理留空表示使用默认。 |
+| 117 | `FBro_取区域实例JSON` | `FBro_取区域实例JSON()` | 文本型 | 常用 | - | 返回由 FBro_创建区域 建出的全部动态内嵌区域实例的紧凑 JSON（实例编号、地址、矩形与运行状态），用于枚举当前内嵌浏览器。 |
+| 118 | `FBro_关闭全部区域` | `FBro_关闭全部区域()` | 整数型 | 常用 | - | 关闭并销毁全部由 FBro_创建区域 建出的动态内嵌区域实例，返回关闭数量。 |
 
 ### 2. FBro事件模块
 
@@ -982,5 +985,5 @@
 - 模块清单：`electron/src/services/modules/builtinModules.ts`、`electron/src/services/modules/fbroModules.ts`、`electron/src/services/modules/fbroVipApiCatalog.ts`
 - 原生 Bridge：`electron/native/fbro-bridge/`
 
-类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：670。
+类方法事件槽位：174；唯一事件签名：158；公开事件：102；Bridge 托管：63；内部事件：8；不适用：1；模块数：8；用户接口数：673。
 

@@ -69,6 +69,21 @@ export function generateFbroBrowserManagerRuntime(enabled: boolean): FbroBrowser
         std::wstring selectedId;
         std::vector<BrowserManagerInstance> instances;
     } browserManager_;
+    struct FbroRegionInstance {
+        int id = 0;
+        HWND host = nullptr;
+        std::wstring processInstanceId;
+        std::wstring url;
+        std::wstring profileDirectory;
+        std::wstring proxyServer;
+        std::wstring userAgent;
+        int x = 0;
+        int y = 0;
+        int width = 0;
+        int height = 0;
+        bool started = false;
+    };
+    std::vector<FbroRegionInstance> fbroRegions_;
 `,
     methods: String.raw`
     // ================= Win32 多实例独立浏览器管理器 =================
@@ -750,6 +765,109 @@ export function generateFbroBrowserManagerRuntime(enabled: boolean): FbroBrowser
         return browserManager_.initialized && 浏览器管理器_新增内部(L"", name, address, L"");
     }
 
+    // 纯 Win32 动态内嵌区域（不依赖 new_emoji）：在宿主窗口客户区指定矩形新建 WS_CHILD 承载子窗，
+    // 复用已出货的 LING_FBRO_PROCESS_EMBEDDED 跨进程内嵌路径把独立进程浏览器作为其子窗挂入。
+    int FBro_创建区域(int instanceId, int left, int top, int width, int height,
+                      const wchar_t* address, const wchar_t* cacheDirectory,
+                      const wchar_t* proxyServer, const wchar_t* userAgent) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (!hwnd_ || width <= 0 || height <= 0) { 调试输出(L"FBro 创建区域失败：窗口未就绪或尺寸非法。"); return 0; }
+        for (const auto& existing : fbroRegions_) if (existing.id == instanceId) { 调试输出(L"FBro 创建区域失败：该实例编号已存在。"); return 0; }
+        const UINT dpi = GetDpiForWindow(hwnd_);
+        const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
+        HWND host = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+            scale(left), scale(top), (std::max)(1, scale(width)), (std::max)(1, scale(height)),
+            hwnd_, nullptr, g_instance, nullptr);
+        if (!host) { 调试输出(L"FBro 创建区域失败：无法创建承载子窗口。"); return 0; }
+        FbroRegionInstance region;
+        region.id = instanceId; region.host = host;
+        region.x = left; region.y = top; region.width = width; region.height = height;
+        region.processInstanceId = L"win32-region:" + std::to_wstring(reinterpret_cast<uintptr_t>(hwnd_)) + L":" + std::to_wstring(instanceId);
+        region.url = address ? address : L"";
+        region.proxyServer = proxyServer ? proxyServer : L"";
+        region.userAgent = userAgent ? userAgent : L"";
+        region.profileDirectory = (cacheDirectory && cacheDirectory[0]) ? cacheDirectory : (L".fbro-region-" + std::to_wstring(instanceId));
+        std::error_code directoryError;
+        std::filesystem::create_directories(region.profileDirectory, directoryError);
+        RECT bounds{}; GetClientRect(host, &bounds);
+        LingFbroProcessConfig config;
+        config.instanceId = region.processInstanceId;
+        config.eventWindow = hwnd_;
+        config.hostWindow = host;
+        config.mode = LING_FBRO_PROCESS_EMBEDDED;
+        config.width = (std::max)(1L, bounds.right - bounds.left);
+        config.height = (std::max)(1L, bounds.bottom - bounds.top);
+        config.visible = true;
+        config.url = region.url.empty() ? L"about:blank" : region.url;
+        config.profileDirectory = region.profileDirectory;
+        config.userAgent = region.userAgent;
+        config.proxyServer = region.proxyServer;
+        config.flags = 7U;
+        if (LingFbroProcessController::Instance().Start(config, false) <= 0) {
+            调试输出((std::wstring(L"FBro 创建区域失败：") + LingFbroProcessController::Instance().LastError(region.processInstanceId)).c_str());
+            DestroyWindow(host);
+            return 0;
+        }
+        region.started = true;
+        fbroRegions_.push_back(std::move(region));
+        ShowWindow(host, SW_SHOWNOACTIVATE);
+        return 1;
+#else
+        (void)instanceId; (void)left; (void)top; (void)width; (void)height;
+        (void)address; (void)cacheDirectory; (void)proxyServer; (void)userAgent;
+        调试输出(L"FBro 创建区域失败：当前构建未启用 FBro 独立进程运行时。"); return 0;
+#endif
+    }
+
+    void FBro_调整区域实例() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (!hwnd_) return;
+        const UINT dpi = GetDpiForWindow(hwnd_);
+        const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
+        for (auto& region : fbroRegions_) {
+            if (!region.host || !IsWindow(region.host)) continue;
+            const int w = (std::max)(1, scale(region.width));
+            const int h = (std::max)(1, scale(region.height));
+            SetWindowPos(region.host, nullptr, scale(region.x), scale(region.y), w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+            if (region.started && LingFbroProcessController::Instance().State(region.processInstanceId) == L"就绪") {
+                LingFbroProcessController::Instance().Notify(region.processInstanceId, L"resize",
+                    LingFbroProcessController::Json{{"width", w}, {"height", h}});
+            }
+        }
+#endif
+    }
+
+    std::wstring FBro_取区域实例JSON() {
+        LingFbroProcessController::Json items = LingFbroProcessController::Json::array();
+        for (const auto& region : fbroRegions_) {
+            LingFbroProcessController::Json item = LingFbroProcessController::Json::object();
+            item["实例编号"] = region.id;
+            item["地址"] = lingbuilder_fbro_process_detail::JsonUtf8(region.url);
+            item["左"] = region.x;
+            item["顶"] = region.y;
+            item["宽"] = region.width;
+            item["高"] = region.height;
+            item["状态"] = lingbuilder_fbro_process_detail::JsonUtf8(LingFbroProcessController::Instance().State(region.processInstanceId));
+            item["是否有效"] = region.host && IsWindow(region.host);
+            items.push_back(item);
+        }
+        return lingbuilder_fbro_process_detail::JsonText(items);
+    }
+
+    int FBro_关闭全部区域() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        const int count = static_cast<int>(fbroRegions_.size());
+        for (auto& region : fbroRegions_) {
+            if (region.started) LingFbroProcessController::Instance().Close(region.processInstanceId);
+            if (region.host && IsWindow(region.host)) DestroyWindow(region.host);
+        }
+        fbroRegions_.clear();
+        return count;
+#else
+        return 0;
+#endif
+    }
+
     bool 浏览器管理器_切换索引(int index) {
         if (index < 0 || index >= static_cast<int>(browserManager_.instances.size())) return false;
         浏览器管理器_显示索引(index, true);
@@ -1249,6 +1367,7 @@ export function generateFbroBrowserManagerRuntime(enabled: boolean): FbroBrowser
     }
 
     void 浏览器管理器_调整页面() {
+        FBro_调整区域实例();
         if (!browserManager_.initialized) return;
         RuntimeControl* tab = 浏览器管理器_标签控件();
         if (!tab || !tab->hwnd) return;

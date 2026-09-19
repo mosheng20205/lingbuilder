@@ -400,12 +400,15 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-19 再写回（CEF3 实例版会话句柄）：新增 CEF3会话_取上下文实例（1 参数，按实例编号取 RequestContext 句柄，解锁弹窗/区域的句柄版 CEF3会话_* 命令）。合计 +1 命令 +1 参数。
       // 基线 2026-09-19 再写回（CEF3 实例级 UA，纯运行时改「资源加载前」请求头 User-Agent）：新增 CEF3_设置用户代理/取用户代理（各 controlRef+UA）与 CEF3_设置实例用户代理/取实例用户代理（各 实例编号+UA）。合计 +4 命令 +6 参数 +2 controlRef。
       // 基线 2026-09-19 再写回（FBro 内嵌区域动态，复用已出货 EMBEDDED 跨进程路径）：新增 浏览器外壳_新建内嵌实例区域（9 参数）与 浏览器外壳_取内嵌区域实例JSON（0 参数）。合计 +2 命令 +9 参数。
+      // 基线 2026-09-19 再写回（FBro win32 动态内嵌区域，不依赖 new_emoji）：lingbuilder.fbro.browser 2.8.0
+      // 新增 FBro_创建区域（9 参数：实例编号/左/顶/宽/高 int + 地址/缓存目录/代理地址/用户代理 wideString）、
+      // FBro_取区域实例JSON（0 参数）、FBro_关闭全部区域（0 参数）。合计 +3 命令 +9 参数，无控件参数。
       modules: 98,
-      commands: 3694,
-      parameters: 6445,
+      commands: 3697,
+      parameters: 6454,
       controlReferences: 1307,
-      commandDigest: '73ff26f9',
-      parameterDigest: 'b8780e80'
+      commandDigest: 'b4f4cc58',
+      parameterDigest: 'dcf37715'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -2253,7 +2256,7 @@ test('FBro browser 2.5 keeps 2.1 submodules compatible with the v3 event core', 
     'lingbuilder.fbro.network',
     'lingbuilder.fbro.vip'
   ]));
-  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.7.0');
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.8.0');
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module => module.version === '2.1.0'));
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module =>
     module.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.fbro.browser'
@@ -3978,7 +3981,7 @@ test('FBro user documentation covers public events, classified slots and public 
   assert.equal(FBRO_EVENT_CATALOG.length, 174);
   assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
   assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 102);
-  assert.equal(publicCommands.length, 670);
+  assert.equal(publicCommands.length, 673);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(

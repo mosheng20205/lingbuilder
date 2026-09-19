@@ -1156,7 +1156,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.fbro.browser',
     name: 'FBro指纹浏览器模块',
-    version: '2.7.0',
+    version: '2.8.0',
     category: '界面',
     description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。',
     author: 'LingBuilder',
@@ -1278,7 +1278,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '浏览器管理器_取当前页面句柄', signature: '浏览器管理器_取当前页面句柄()', description: '返回当前实例独立页面 HWND，仅用于诊断生命周期。', insertText: '浏览器管理器_取当前页面句柄()', returnType: '长整数型' },
         { name: '浏览器管理器_取实例数量', signature: '浏览器管理器_取实例数量()', description: '返回当前实例数量。', insertText: '浏览器管理器_取实例数量()', returnType: '整数型' },
         { name: '浏览器管理器_取实例顺序JSON', signature: '浏览器管理器_取实例顺序JSON()', description: '返回稳定 ID 顺序 JSON。', insertText: '浏览器管理器_取实例顺序JSON()', returnType: '文本型' },
-        { name: '浏览器管理器_取运行快照JSON', signature: '浏览器管理器_取运行快照JSON()', description: '返回不含 Cookie 的 ID、Profile、页面 HWND、PID 和插件状态诊断快照。', insertText: '浏览器管理器_取运行快照JSON()', returnType: '文本型' }
+        { name: '浏览器管理器_取运行快照JSON', signature: '浏览器管理器_取运行快照JSON()', description: '返回不含 Cookie 的 ID、Profile、页面 HWND、PID 和插件状态诊断快照。', insertText: '浏览器管理器_取运行快照JSON()', returnType: '文本型' },
+        { name: 'FBro_创建区域', signature: 'FBro_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 缓存目录, 代理地址, 用户代理)', description: '在普通 Win32 宿主窗口客户区的指定矩形内动态内嵌一个独立进程 FBro 浏览器（不依赖 new_emoji），每个实例编号拥有独立 Profile/缓存/代理/UA，可多次调用创建任意数量区域。返回 1 表示成功、0 表示失败。实例编号需唯一；左/顶/宽/高为逻辑坐标（按 DPI 自动缩放）；缓存目录留空时自动按编号派生；代理地址与用户代理留空表示使用默认。', insertText: 'FBro_创建区域($1, $2, $3, $4, $5, "https://www.baidu.com", "", "", "")', returnType: '整数型' },
+        { name: 'FBro_取区域实例JSON', signature: 'FBro_取区域实例JSON()', description: '返回由 FBro_创建区域 建出的全部动态内嵌区域实例的紧凑 JSON（实例编号、地址、矩形与运行状态），用于枚举当前内嵌浏览器。', insertText: 'FBro_取区域实例JSON()', returnType: '文本型' },
+        { name: 'FBro_关闭全部区域', signature: 'FBro_关闭全部区域()', description: '关闭并销毁全部由 FBro_创建区域 建出的动态内嵌区域实例，返回关闭数量。', insertText: 'FBro_关闭全部区域()', returnType: '整数型' }
       ],
       types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
       snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }],
@@ -1419,7 +1422,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: '浏览器管理器_取当前页面句柄', runtimeName: '浏览器管理器_取当前页面句柄', parameters: [], returnType: 'longLong', encoding: 'wide' },
       { command: '浏览器管理器_取实例数量', runtimeName: '浏览器管理器_取实例数量', parameters: [], returnType: 'int', encoding: 'wide' },
       { command: '浏览器管理器_取实例顺序JSON', runtimeName: '浏览器管理器_取实例顺序JSON', parameters: [], returnType: 'wideString', encoding: 'wide' },
-      { command: '浏览器管理器_取运行快照JSON', runtimeName: '浏览器管理器_取运行快照JSON', parameters: [], returnType: 'wideString', encoding: 'wide' }
+      { command: '浏览器管理器_取运行快照JSON', runtimeName: '浏览器管理器_取运行快照JSON', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_创建区域', runtimeName: 'FBro_创建区域', parameters: [{ name: '实例编号', type: 'int', description: '区域实例唯一编号，重复编号会拒绝创建。' }, { name: '左', type: 'int', description: '承载矩形相对宿主窗口客户区的逻辑横坐标，按 DPI 自动缩放。' }, { name: '顶', type: 'int', description: '承载矩形相对宿主窗口客户区的逻辑纵坐标，按 DPI 自动缩放。' }, { name: '宽', type: 'int', description: '承载矩形逻辑宽度，必须大于 0。' }, { name: '高', type: 'int', description: '承载矩形逻辑高度，必须大于 0。' }, { name: '地址', type: 'wideString', description: '初始导航地址，留空按 about:blank。' }, { name: '缓存目录', type: 'wideString', description: '独立 Profile/缓存目录，留空按实例编号自动派生。' }, { name: '代理地址', type: 'wideString', description: '该实例独立代理，留空表示不使用代理。' }, { name: '用户代理', type: 'wideString', description: '该实例独立 UA，留空表示使用默认。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取区域实例JSON', runtimeName: 'FBro_取区域实例JSON', parameters: [], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_关闭全部区域', runtimeName: 'FBro_关闭全部区域', parameters: [], returnType: 'int', encoding: 'wide' }
     ] }
   },
   {
