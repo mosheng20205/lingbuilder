@@ -9,6 +9,8 @@
   用于查参数顺序与命令是否存在，不作为写法范本。
 - `examples/ui-recipes/`：人工从**已实机编译验收过**的示例源码里提炼的**惯用写法**，单窗口、不超过 90 行，可直接当新项目主源码。
 
+与组件卡的分工：配方讲「怎么组合成一个能跑的窗口」；单个控件的完整契约（属性表、枚举取值、事件与处理器命名、代码创建参数）看 `lingbuilder.module.info` 传 `control` 返回的组件卡，new_emoji 的卡片由 `cd electron && npm run module:new-emoji-cards` 从清单生成，人工只维护红线段。
+
 ## 目录约定
 
 ```text

@@ -1564,13 +1564,18 @@ interface ModuleInfoUiViews {
     createCommand?: string;
     lingCppType?: string;
     propertyCount: number;
+    documentation?: string;
+    nativeDocumentation?: string;
   }>;
+  componentGuide?: { path: string; nativePath: string; absolutePath: string; truncated: boolean; content: string };
   designerControlMatched: number;
   designerControlDetails: Array<{
     type: string;
     events: Array<{ handlerPattern: string }>;
     properties: Array<{ key: string }>;
     codeCreation: { createCommand: string };
+    documentation?: string;
+    nativeDocumentation?: string;
   }>;
   commands: Array<Record<string, unknown>>;
   demoProject: { commandCount: number; sourceRoot: string; generatedAt: string; stale: boolean };
@@ -1621,6 +1626,33 @@ test('lingbuilder.module.info exposes designer control palette, demo invocations
     assert.ok(buttonDetail.events.some(event => event.handlerPattern === '_{controlName}_被点击'));
     assert.equal(buttonDetail.codeCreation.createCommand, '控件_创建NE按钮');
     assert.ok(buttonDetail.properties.some(property => property.key === 'variant'));
+
+    // 组件卡：概览带路径，唯一命中时直接回正文，多个命中时不批量塞内容。
+    const panelEntry = tableEntry;
+    assert.match(String(panelEntry.documentation || ''), /^lingbuilder-components\/.+\.md$/u);
+    assert.match(String(panelEntry.nativeDocumentation || ''), /^components\/.+\.md$/u);
+    assert.equal(button.designerControlMatched, 2, '按钮 应同时命中 Button 与 IconButton');
+    assert.equal(button.componentGuide, undefined, '命中多个控件时不得内联组件卡正文');
+
+    const single = await service.getModuleInfo({
+      moduleId: 'lingbuilder.new_emoji.ui',
+      control: 'NE按钮'
+    }) as unknown as ModuleInfoUiViews;
+    assert.equal(single.designerControlMatched, 1);
+    assert.ok(single.componentGuide, 'control 唯一命中时必须回组件卡正文');
+    assert.match(single.componentGuide!.content, /控件_创建NE按钮/u);
+    assert.match(single.componentGuide!.content, /惯用要点与红线/u);
+    assert.equal(single.componentGuide!.truncated, false);
+    assert.equal(single.componentGuide!.path, 'lingbuilder-components/button.md');
+    assert.match(single.componentGuide!.nativePath, /^components\/button\.md$/u);
+
+    const multi = await service.getModuleInfo({
+      moduleId: 'lingbuilder.new_emoji.ui',
+      control: 'NE'
+    }) as unknown as ModuleInfoUiViews;
+    assert.equal(multi.designerControlMatched > 1, true);
+    assert.equal(multi.componentGuide, undefined, '命中多个控件时不得把多份组件卡内联进响应');
+    assert.ok(multi.designerControlDetails.every(item => typeof item.documentation === 'string' && item.documentation.length > 0));
 
     const recipe = await service.getModuleInfo({
       moduleId: 'lingbuilder.new_emoji.ui',

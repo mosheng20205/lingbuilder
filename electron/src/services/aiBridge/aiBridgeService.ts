@@ -17,6 +17,8 @@ import {
   buildDesignerControlDetails,
   buildDesignerControlSummaries,
   collectUiExamples,
+  loadComponentGuides,
+  readComponentGuide,
   loadDemoCorpus,
   matchUiExample,
   readUiExampleContent
@@ -614,7 +616,8 @@ export class AiBridgeService {
     });
     const MAX_COMMANDS = 500;
     const truncated = commands.length > MAX_COMMANDS;
-    const designerControls = buildDesignerControlSummaries(manifest);
+    const componentGuides = await loadComponentGuides(found);
+    const designerControls = buildDesignerControlSummaries(manifest, componentGuides);
     const uiExamples = await collectUiExamples(found, this.workspaceRoot);
     const exampleFilter = request.example?.trim() || '';
     const matchedExample = exampleFilter ? matchUiExample(uiExamples, exampleFilter) : undefined;
@@ -625,7 +628,11 @@ export class AiBridgeService {
       ? await readUiExampleContent(found, this.workspaceRoot, matchedExample)
       : null;
     const controlFilter = request.control?.trim() || '';
-    const controlDetails = controlFilter ? buildDesignerControlDetails(manifest, controlFilter) : null;
+    const controlDetails = controlFilter ? buildDesignerControlDetails(manifest, controlFilter, componentGuides) : null;
+    const singleControl = controlDetails && controlDetails.matched === 1 ? controlDetails.details[0] : undefined;
+    const controlGuide = singleControl?.documentation
+      ? await readComponentGuide(found, singleControl.documentation)
+      : null;
     if (controlFilter && controlDetails && controlDetails.matched === 0) {
       const available = designerControls.slice(0, 12).map(control => control.label).join('、');
       throw new Error(`设计器控件中没有任何项匹配「${controlFilter}」。该模块控件示例：${available}${designerControls.length > 12 ? `…（共 ${designerControls.length} 个）` : ''}。`);
@@ -654,7 +661,8 @@ export class AiBridgeService {
         level: constant.level === 'advanced' ? 'advanced' : 'basic'
       })),
       docs: (manifest.contributes?.docs || []).map(doc => ({ title: doc.title, path: doc.path })),
-      designerControls: designerControls.slice(0, DESIGNER_CONTROL_SUMMARY_MAX),
+      // control 已锁定具体控件时不再重复回整套概览（概览单项就有 ~20KB）。
+      designerControls: controlFilter ? [] : designerControls.slice(0, DESIGNER_CONTROL_SUMMARY_MAX),
       designerControlsTotal: designerControls.length,
       ...(designerControls.length > DESIGNER_CONTROL_SUMMARY_MAX
         ? { designerControlsHint: `控件数超过 ${DESIGNER_CONTROL_SUMMARY_MAX}，概览已截断；用 control 参数按控件类型或中文名过滤可拿到完整属性、事件与代码创建契约。` }
@@ -665,6 +673,15 @@ export class AiBridgeService {
         ...(controlDetails.matched > DESIGNER_CONTROL_DETAIL_MAX
           ? { designerControlDetailHint: `匹配 ${controlDetails.matched} 个控件，详情只返回前 ${DESIGNER_CONTROL_DETAIL_MAX} 个；请收窄 control 过滤词。` }
           : {})
+      } : {}),
+      ...(controlGuide ? {
+        componentGuide: {
+          path: singleControl?.documentation || '',
+          nativePath: singleControl?.nativeDocumentation || '',
+          absolutePath: controlGuide.absolutePath,
+          truncated: controlGuide.truncated,
+          content: controlGuide.content
+        }
       } : {}),
       uiExamples: uiExamples.map(example => ({
         title: example.title,

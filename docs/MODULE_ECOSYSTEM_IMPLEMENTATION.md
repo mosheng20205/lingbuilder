@@ -738,6 +738,20 @@ manifest v2 新增 `contributes.constants[]`，模块可像易语言模块常量
 - 一期边界（后续扩展见 `docs/FUTURE_OPTIMIZATIONS.md`）：新手「项目常量表」不显示模块常量分组；opaque/句柄型模块常量、表达式初值、常量重命名跨模块同步未开放。
 - 回归：`tests/modules.test.ts` contributes.constants 清单门禁用例；`tests/projectDataTypes.test.ts` 模块常量全链用例（语言服务解析/补全/诊断、生成物化、遮蔽、跨模块阻断）；`tests/lingcpp.test.ts` 项目常量用例扩展 `#` 触发补全、只读/未知诊断、重命名保留前缀断言。
 
+## new_emoji 组件卡与随包组件文档（2026-09-19）
+
+补齐 MCP 界面视图的最后一层：控件级文档。此前包内 `docs/lingbuilder-designer-catalog.json` 给 93 个组件都声明了 `documentation: docs/components/<slug>.md`，**一个文件都没随包分发**——`contributes.docs[]` 只登记 4 份，所以既有清单门禁查不出这类悬空引用。
+
+- **两条来源，各司其职**。`docs/components/<slug>.md` = 上游 new_emoji 自带组件文档（`EU_*` 导出表、状态读回、Python 示例），由 `generate-new-emoji-module.cjs` 的 `copyComponentDocs` 整目录拷进包；`docs/lingbuilder-components/<slug>.md` + `index.json` = LingBuilder 中文契约卡，由 `electron/scripts/generate-new-emoji-component-cards.ts`（npm `module:new-emoji-cards`）**从 `contributes.designerControls` + `bindings` 确定性生成**，打包脚本经 `generateComponentCards` 走同一个 `--module-root` 入口复现，两边都在 `--check` 下可校验。
+- **卡片内容**：后端/预览类型/是否容器/是否可视、代码创建命令与参数顺序、`lingCppType`、标记查找与 `控件_是否有效`、`designerType`、完整属性表（含枚举取值与默认值）、`defaultProps`、容器 `layout` 协议、事件与 `handlerPattern`（含处理器参数中文类型）、本控件命令族（上限 40 条，超出提示用 `query`）、一段可直接粘贴的 `lcpp` 骨架，以及「惯用要点与红线」。
+- **人工只写红线段**：overlay 位于 `electron/docs/modules/new-emoji/component-cards/<Type>.md`，只允许写经验证的行为约束与惯用片段；没有 overlay 的卡片必须显式打 `待补`，禁止静默留空或凭记忆补写。红线段里出现的每个命令名都由 `tests/newEmojiComponentCards.test.ts` 与模块清单交叉比对，不存在的命令名直接失败——这是防止「示例里编命令」的硬门禁。
+- **slug 必须取自 catalog**：`ListBox → listbox.md`、`SelectV2 → selectv2.md` 与 kebab-case 推导不一致，脚本以 catalog 的 `documentation` 文件名为准，`index.json` 同时给出 `documentation`（契约卡）与 `nativeDocumentation`（上游 API 文档）两条路径。
+- **MCP 消费**：`moduleUiViews.loadComponentGuides/readComponentGuide` 读 `index.json`；控件概览与详情都带两条路径，`control` 唯一命中时内联 `componentGuide`（`COMPONENT_GUIDE_MAX_CHARS = 8000` 截断并给 `absolutePath`），命中多个只给路径；带 `control`/`example` 时跳过 `commands` 与整套概览，实测单控件响应 377KB → 105KB → 46KB。
+- **进度与后续**：20/93 已写红线（首批覆盖表单、表格/列表、菜单/标签页、容器、图片/进度/徽标/图标按钮），其余 73 张按 `COMPONENT_CARDS_PLAN.md`（gitignore 跟进文档）分组推进；同一套生成器可复用到 CEF3/EdgeView/FBro/Win32 内置控件（输入换成各自 `contributes.designerControls`）。
+- **随包文档入口**：卡片目录额外输出 `README.md`（每个控件一行：契约卡、上游 API 文档、红线是否已补），并登记进 `contributes.docs[]`，使模块详情页能直接打开；93 张单卡不逐一登记（会淹没文档列表），单卡正文由 MCP `control` 唯一命中时内联。
+- **重打包验证与两个真实缺陷**：真机跑 `generate-new-emoji-module.cjs`（含 `--install` 与 `--check`）时修掉自己接线的缺陷——`execFileAsync(tsxCli, …)` 把 `.mjs` 当可执行文件传入，Windows 下直接 `spawn EFTYPE`，必须改成 `execFileAsync(process.execPath, [tsxCli, …])`；另一个是既存缺陷——`readModuleDocumentation` 只认 `contributes.docs[]`，而模块详情页把 `contributes.examples[]` 也列为可打开项，导致 aria2/CEF3/fbro-shell/OpenCV/Protobuf/两个 DLL 演示的「示例」全部报「未在公开文档中声明」，现在两者同为单一出口（dev 端实测 CEF3/aria2 示例已能打开）。最终 `--check` 通过：`module-build`、已安装目录与 `.lbmod`（207 项：93 契约卡 + 索引 + 97 上游文档）三者逐字节一致；用重打包后的模块跑真实 MSVC 构建（new_emoji 圆角演示）退出 0、无 error C/LNK。
+- **回归**：`tests/newEmojiComponentCards.test.ts`（93 张齐备、与清单 label/创建命令/中文类型/红线段落一致、catalog 引用零悬空、overlay 命令名真实存在、`--module-root` 二次生成字节幂等）；`tests/aiBridge.test.ts` 补唯一命中回正文、多命中不内联、概览按过滤跳过三处断言。
+
 ## 大能力模块的界面开发视图与配方语料（2026-09-19）
 
 new_emoji 这类「4000+ 命令 / 93 个设计器控件」的模块，外部 AI 经 MCP 写界面时找不到落点是历史高频失败。本轮不新增工具，而是把事实来源补进 `lingbuilder.module.info`（实现只在 `electron/src/services/aiBridge/moduleUiViews.ts` 一处，视图为**只读**，不参与任何门禁）。

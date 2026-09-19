@@ -46,6 +46,9 @@ async function main() {
     await writeText(path.join(generatedRoot, 'docs', 'lingbuilder-designer-catalog.json'), designerCatalogSource.endsWith('\n') ? designerCatalogSource : `${designerCatalogSource}\n`);
     await copyFile(path.join(sourceRoot, 'docs', 'components', 'rich-list.md'), path.join(generatedRoot, 'docs', 'rich-list.md'));
     await copyFile(path.join(sourceRoot, 'docs', 'components', 'window-frame.md'), path.join(generatedRoot, 'docs', 'window-frame.md'));
+
+    await copyComponentDocs(path.join(sourceRoot, 'docs', 'components'), path.join(generatedRoot, 'docs', 'components'));
+    await generateComponentCards(repoRoot, scriptDir, generatedRoot);
     await writeText(path.join(generatedRoot, 'docs', 'new_emoji-api.json'), JSON.stringify({
       source: 'new_emoji upstream headers and AI manifests',
       exportCount: exports.length,
@@ -426,6 +429,7 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
         }
       ],
       docs: [
+        { title: '组件契约卡索引', path: 'docs/lingbuilder-components/README.md' },
         { title: 'new_emoji API 索引', path: 'docs/new_emoji-api.json' },
         { title: 'RichList 富列表', path: 'docs/rich-list.md' },
         { title: '窗口框架与浏览器外壳', path: 'docs/window-frame.md' },
@@ -2747,6 +2751,26 @@ async function readJson(filePath, fallback) {
   } catch {
     return fallback;
   }
+}
+
+
+async function copyComponentDocs(sourceDir, targetDir) {
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  await fs.mkdir(targetDir, { recursive: true });
+  let copied = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+    await copyFile(path.join(sourceDir, entry.name), path.join(targetDir, entry.name));
+    copied += 1;
+  }
+  return copied;
+}
+
+async function generateComponentCards(repoRoot, scriptDir, moduleRoot) {
+  const tsxCli = path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const cardScript = path.join(scriptDir, 'generate-new-emoji-component-cards.ts');
+  if (!require('node:fs').existsSync(tsxCli)) throw new Error('tsx CLI missing; cannot generate component cards.');
+  await execFileAsync(process.execPath, [tsxCli, cardScript, '--module-root', moduleRoot], { cwd: scriptDir, maxBuffer: 32 * 1024 * 1024 });
 }
 
 async function writeText(filePath, content) {

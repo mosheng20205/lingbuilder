@@ -3174,17 +3174,25 @@ test('module documentation service reads only declared UTF-8 files inside the in
       version: '1.0.0',
       category: '其他',
       description: '验证模块文档受限读取。',
-      contributes: { docs: [{ title: '使用说明', path: documentPath }] }
+      contributes: {
+        docs: [{ title: '使用说明', path: documentPath }],
+        examples: [{ title: '最小示例', path: 'examples/最小示例.lcpp', description: '验证示例也可在模块详情打开。' }]
+      }
     },
     installPath,
     isInstalled: true,
     diagnostics: []
   };
+  await writeFixture(path.join(installPath, 'examples/最小示例.lcpp'), '包 最小示例\n');
 
   const document = await readModuleDocumentation(module, documentPath, { workspaceRoot: root });
   assert.equal(document.title, '使用说明');
   assert.equal(document.format, 'markdown');
   assert.match(document.content, /这是模块文档/u);
+  // 模块详情页把 contributes.examples 一并列为可打开项，读取端必须同样认它（历史缺陷：全部报「未声明」）。
+  const example = await readModuleDocumentation(module, 'examples/最小示例.lcpp', { workspaceRoot: root });
+  assert.equal(example.title, '最小示例');
+  assert.match(example.content, /包 最小示例/u);
   await assert.rejects(
     () => readModuleDocumentation(module, 'docs/private.md', { workspaceRoot: root }),
     (error: unknown) => error instanceof ModuleDocumentationError

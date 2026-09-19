@@ -168,3 +168,4 @@ examples/array-operations-demo/src/.lingbuilder/projects/
 /make_cover.ps1
 /make_original_cover.py
 .tmp-installer-check-*/
+COMPONENT_CARDS_PLAN.md

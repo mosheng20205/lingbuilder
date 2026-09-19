@@ -20,6 +20,63 @@ const DEMO_CATALOG_FILE_NAME = '模块命令清单.json';
 const DEMO_CATALOG_MAX_BYTES = 24 * 1024 * 1024;
 const DEMO_EXAMPLE_MAX_CHARS = 320;
 const UI_RECIPE_ROOT = 'examples/ui-recipes';
+const COMPONENT_GUIDE_INDEX = path.join('docs', 'lingbuilder-components', 'index.json');
+/** 单张组件卡内联上限；命中多个控件时只给路径，不批量塞正文。 */
+export const COMPONENT_GUIDE_MAX_CHARS = 8000;
+
+export interface ComponentGuideEntry {
+  documentation: string;
+  nativeDocumentation: string;
+  hasHumanNotes: boolean;
+}
+
+let componentGuideCache: { key: string; entries: Record<string, ComponentGuideEntry> } | null = null;
+
+/** 组件卡索引（模块包内 docs/lingbuilder-components/index.json）；未生成组件卡的模块返回空表。 */
+export async function loadComponentGuides(module: InstalledModule): Promise<Record<string, ComponentGuideEntry>> {
+  if (!path.isAbsolute(module.installPath)) return {};
+  const indexPath = path.resolve(module.installPath, COMPONENT_GUIDE_INDEX);
+  let stat;
+  try {
+    stat = await fs.stat(indexPath);
+  } catch {
+    return {};
+  }
+  const cacheKey = `${indexPath}|${stat.mtimeMs}|${stat.size}`;
+  if (componentGuideCache?.key === cacheKey) return componentGuideCache.entries;
+  let entries: Record<string, ComponentGuideEntry> = {};
+  try {
+    const index = JSON.parse(await fs.readFile(indexPath, 'utf8')) as {
+      controls?: Array<{ type?: string; documentation?: string; nativeDocumentation?: string; hasHumanNotes?: boolean }>;
+    };
+    entries = Object.fromEntries((index.controls || [])
+      .filter(item => item.type && item.documentation)
+      .map(item => [String(item.type), {
+        documentation: String(item.documentation),
+        nativeDocumentation: String(item.nativeDocumentation || ''),
+        hasHumanNotes: item.hasHumanNotes === true
+      }]));
+  } catch {
+    entries = {};
+  }
+  componentGuideCache = { key: cacheKey, entries };
+  return entries;
+}
+
+export async function readComponentGuide(module: InstalledModule, documentationPath: string):
+  Promise<{ content: string; truncated: boolean; absolutePath: string } | null> {
+  const resolved = await resolveInsideRoot(path.resolve(module.installPath, 'docs'), documentationPath.replace(/^docs\//u, ''));
+  if (!resolved) return null;
+  const bytes = await fs.readFile(resolved);
+  let content: string;
+  try {
+    content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+  const truncated = content.length > COMPONENT_GUIDE_MAX_CHARS;
+  return { content: truncated ? content.slice(0, COMPONENT_GUIDE_MAX_CHARS) : content, truncated, absolutePath: resolved };
+}
 
 export interface DesignerControlSummary {
   type: string;
@@ -120,8 +177,12 @@ function controlNames(control: ModuleDesignerControlContribution): string[] {
     .map(item => item.toLowerCase());
 }
 
-export function buildDesignerControlSummaries(manifest: LingBuilderModuleManifest): DesignerControlSummary[] {
+export function buildDesignerControlSummaries(
+  manifest: LingBuilderModuleManifest,
+  guides: Record<string, ComponentGuideEntry> = {}
+): Array<DesignerControlSummary & ComponentGuideEntry> {
   return (manifest.contributes?.designerControls || []).map(control => ({
+    ...((guides[control.type] || {}) as ComponentGuideEntry),
     type: control.type,
     namespacedType: control.namespacedType || `${manifest.id}/${control.type}`,
     label: control.label,
@@ -140,14 +201,16 @@ export function buildDesignerControlSummaries(manifest: LingBuilderModuleManifes
 
 export function buildDesignerControlDetails(
   manifest: LingBuilderModuleManifest,
-  filter: string
-): { details: DesignerControlDetail[]; matched: number } {
+  filter: string,
+  guides: Record<string, ComponentGuideEntry> = {}
+): { details: Array<DesignerControlDetail & ComponentGuideEntry>; matched: number } {
   const needle = normalizeFilter(filter);
   const controls = (manifest.contributes?.designerControls || []).filter(control => !needle
     || controlNames(control).some(name => name.includes(needle)));
   return {
     matched: controls.length,
     details: controls.slice(0, DESIGNER_CONTROL_DETAIL_MAX).map(control => ({
+      ...((guides[control.type] || {}) as ComponentGuideEntry),
       type: control.type,
       namespacedType: control.namespacedType || `${manifest.id}/${control.type}`,
       label: control.label,

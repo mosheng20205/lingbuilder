@@ -49,7 +49,11 @@ export async function readModuleDocumentation(
   options: ModuleDocumentationReadOptions
 ): Promise<ModuleDocumentContent> {
   const normalizedPath = normalizeDocumentPath(requestedPath);
+  // docs 与 examples 是同一套「已声明的包内文本资源」：模块详情页把两者都列为可打开项，
+  // 读取端必须一起认，否则 declares examples 的模块点「示例」必然报「未声明」。
   const document = (module.manifest.contributes?.docs || []).find(item => (
+    normalizeDocumentPath(item.path) === normalizedPath
+  )) || (module.manifest.contributes?.examples || []).find(item => (
     normalizeDocumentPath(item.path) === normalizedPath
   ));
   if (!document) {
