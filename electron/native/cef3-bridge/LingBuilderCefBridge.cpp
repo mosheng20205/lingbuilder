@@ -23330,7 +23330,11 @@ int LB_CEF3_CALL LB_CEF3_BrowserSetOsrViewport(
     state->osr_view_width = static_cast<int>(width);
     state->osr_view_height = static_cast<int>(height);
   }
-  // 视口已经落库，宿主重查询失败只影响本帧刷新时机，不回滚权威视口。
+  // 写入即生效：宿主重查询失败只影响本帧刷新时机，这里不撤销已经写入的视口，也不回填旧值。
+  // 但「设定值永久权威」并不成立：OnPaint 会把 osr_view_width/osr_view_height 覆盖为该帧的
+  // 实际尺寸，设定瞬间仍在途的旧尺寸帧可以后到并改写这两个字段。因此
+  // LB_CEF3_BrowserGetOsrViewport 报告的是 CEF 实际渲染尺寸，出帧后可能不等于本函数刚写入
+  // 的值；上层中文命令（取视口JSON）必须按「实际渲染尺寸」口径向用户说明，不得当作设定回显。
   return InvokeBrowserHostOnUi(browser, [](CefRefPtr<CefBrowserHost> host) {
     host->NotifyScreenInfoChanged();
     host->Invalidate(PET_VIEW);

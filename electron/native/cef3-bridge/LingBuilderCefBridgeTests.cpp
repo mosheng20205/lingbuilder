@@ -10486,6 +10486,10 @@ int wmain() {
   assert(LB_CEF3_SetEventCallbackV4(
       osr_for_viewport, TestEventCallbackV4, nullptr) == LB_CEF3_OK);
   assert(LB_CEF3_RenderHandlerSubscribeViewRect(osr_for_viewport, 1) == LB_CEF3_OK);
+  // 计数器快照必须在「设置视口」之前取：读侧一律以 g_v4_view_rect_events 判断有没有新事件，
+  // 循环里绝不碰 g_last_osr_view_rect_fields（该 std::wstring 由 CEF UI 线程赋值，
+  // 并发读其内部缓冲区是未定义行为），只在循环结束后拷贝一次并对副本断言。
+  const int resized_view_rect_events_before = g_v4_view_rect_events.load();
   assert(LB_CEF3_BrowserSetOsrViewport(osr_for_viewport, 800, 600) == LB_CEF3_OK);
   assert(LB_CEF3_BrowserGetOsrViewport(
       osr_for_viewport, &osr_view_width, &osr_view_height) == LB_CEF3_OK);
@@ -10493,13 +10497,14 @@ int wmain() {
   assert(osr_view_height == 600);
   const std::wstring resized_view_rect_size = L"\"width\":800,\"height\":600";
   const auto resized_view_rect_deadline = GetTickCount64() + 15000;
-  while (g_last_osr_view_rect_fields.find(resized_view_rect_size)
-          == std::wstring::npos
+  while (g_v4_view_rect_events.load() <= resized_view_rect_events_before
       && GetTickCount64() < resized_view_rect_deadline) {
     PumpHostMessages();
     Sleep(10);
   }
-  assert(g_last_osr_view_rect_fields.find(resized_view_rect_size)
+  assert(g_v4_view_rect_events.load() > resized_view_rect_events_before);
+  const std::wstring resized_view_rect_fields = g_last_osr_view_rect_fields;
+  assert(resized_view_rect_fields.find(resized_view_rect_size)
       != std::wstring::npos);
   assert(LB_CEF3_RenderHandlerSubscribeViewRect(osr_for_viewport, 0) == LB_CEF3_OK);
   assert(LB_CEF3_SetEventCallbackV4(osr_for_viewport, nullptr, nullptr) == LB_CEF3_OK);
@@ -10529,6 +10534,21 @@ int wmain() {
         osr_for_viewport, &paint_count) == LB_CEF3_OK);
   }
   assert(paint_count >= 1);
+
+  // 出帧之后再读一次视口：OnPaint 会把存储视口覆盖为该帧的实际尺寸，因此
+  // LB_CEF3_BrowserGetOsrViewport 报告的是 CEF 实际渲染尺寸，不保证仍等于刚才设定的值
+  // （设定前已在途的旧尺寸帧可能后到并改写）。这里的副本断言钉住可观察到的事实：
+  // 尺寸恒为正，且当前固定视口路径实测不漂移；取视口JSON 必须按「实际渲染尺寸」口径文档化。
+  uint32_t painted_view_width = 0;
+  uint32_t painted_view_height = 0;
+  assert(LB_CEF3_BrowserGetOsrViewport(
+      osr_for_viewport, &painted_view_width, &painted_view_height) == LB_CEF3_OK);
+  std::fprintf(stderr,
+      "CEF3 test checkpoint: osr-viewport-after-paint %ux%u paint_count=%llu\n",
+      painted_view_width, painted_view_height,
+      static_cast<unsigned long long>(paint_count));
+  assert(painted_view_width >= 1 && painted_view_height >= 1);
+  assert(painted_view_width == 800 && painted_view_height == 600);
 
   // 普通窗口浏览器调用 OSR 专用导出必须给中文诊断并返回 NOT_SUPPORTED。
   assert(LB_CEF3_BrowserGetOsrPaintCount(browser_a, &paint_count)
