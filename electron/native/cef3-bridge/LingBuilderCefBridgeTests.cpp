@@ -10402,6 +10402,94 @@ int wmain() {
   assert(DestroyWindow(host_osr) != 0);
   ++expected_browser_closed_events;
 
+  // 真无头：parent_window = 0 必须创建成功，且视口取自 V4 配置而不是塌成 1×1。
+  LB_CEF3_BROWSER_CONFIG_V4 headless_config = {};
+  headless_config.struct_size = sizeof(LB_CEF3_BROWSER_CONFIG_V4);
+  headless_config.abi_version = LB_CEF3_ABI_VERSION_V4;
+  headless_config.parent_window = 0;
+  headless_config.user_token = 770001;
+  headless_config.flags = LB_CEF3_BROWSER_WINDOWLESS | LB_CEF3_BROWSER_JAVASCRIPT | LB_CEF3_BROWSER_IMAGES;
+  headless_config.initial_url = L"about:blank";
+  headless_config.profile_key = L"test-headless-create";
+  headless_config.osr_width = 1024;
+  headless_config.osr_height = 640;
+  const int headless_created_before = g_browser_created_events.load();
+  const auto headless = LB_CEF3_BrowserCreateWindowless(&headless_config);
+  assert(headless != 0);
+  const auto headless_created_deadline = GetTickCount64() + 30000;
+  while (g_browser_created_events.load() < headless_created_before + 1
+      && GetTickCount64() < headless_created_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_browser_created_events.load() >= headless_created_before + 1);
+  assert(LB_CEF3_BrowserIsWindowRenderingDisabled(headless) == 1);
+  int32_t headless_windowless_flag = 0;
+  assert(LB_CEF3_BrowserGetWindowlessFrameRate(
+      headless, &headless_windowless_flag) == LB_CEF3_OK);
+
+  // 缺 WINDOWLESS 标志必须被拒，绝不静默退化成窗口浏览器。
+  LB_CEF3_BROWSER_CONFIG_V4 missing_flag = headless_config;
+  missing_flag.flags = LB_CEF3_BROWSER_JAVASCRIPT;
+  missing_flag.profile_key = L"test-headless-missing-flag";
+  assert(LB_CEF3_BrowserCreateWindowless(&missing_flag) == 0);
+
+  // Chrome Runtime + windowless 仍然不支持。
+  LB_CEF3_BROWSER_CONFIG_V4 chrome_windowless = headless_config;
+  chrome_windowless.flags |= LB_CEF3_BROWSER_CHROME_RUNTIME;
+  chrome_windowless.profile_key = L"test-headless-chrome";
+  assert(LB_CEF3_BrowserCreateWindowless(&chrome_windowless) == 0);
+
+  const auto headless_closed_before = g_browser_closed_events.load();
+  assert(LB_CEF3_BrowserClose(headless, 1) == LB_CEF3_OK);
+  const auto headless_close_deadline = GetTickCount64() + 10000;
+  while (g_browser_closed_events.load() == headless_closed_before
+      && GetTickCount64() < headless_close_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_browser_closed_events.load() > headless_closed_before);
+  assert(LB_CEF3_HandleRelease(headless) == LB_CEF3_OK);
+  ++expected_browser_closed_events;
+
+  // V3 配置 + parent_window = 0 + WINDOWLESS 走 BrowserCreate：允许创建，视口回落到默认常量。
+  LB_CEF3_BROWSER_CONFIG_V3 legacy_windowless = {};
+  legacy_windowless.struct_size = sizeof(LB_CEF3_BROWSER_CONFIG_V3);
+  legacy_windowless.abi_version = LB_CEF3_ABI_VERSION_V3;
+  legacy_windowless.parent_window = 0;
+  legacy_windowless.user_token = 770002;
+  legacy_windowless.flags = LB_CEF3_BROWSER_WINDOWLESS | LB_CEF3_BROWSER_JAVASCRIPT;
+  legacy_windowless.profile_key = L"test-headless-v3-default-viewport";
+  const int legacy_created_before = g_browser_created_events.load();
+  const auto legacy = LB_CEF3_BrowserCreate(&legacy_windowless);
+  assert(legacy != 0);
+  const auto legacy_created_deadline = GetTickCount64() + 30000;
+  while (g_browser_created_events.load() < legacy_created_before + 1
+      && GetTickCount64() < legacy_created_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_browser_created_events.load() >= legacy_created_before + 1);
+  const auto legacy_closed_before = g_browser_closed_events.load();
+  assert(LB_CEF3_BrowserClose(legacy, 1) == LB_CEF3_OK);
+  const auto legacy_close_deadline = GetTickCount64() + 10000;
+  while (g_browser_closed_events.load() == legacy_closed_before
+      && GetTickCount64() < legacy_close_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_browser_closed_events.load() > legacy_closed_before);
+  assert(LB_CEF3_HandleRelease(legacy) == LB_CEF3_OK);
+  ++expected_browser_closed_events;
+
+  // 非 windowless 且无 parent：保持原阻断。
+  LB_CEF3_BROWSER_CONFIG_V3 windowed_no_parent = {};
+  windowed_no_parent.struct_size = sizeof(windowed_no_parent);
+  windowed_no_parent.abi_version = LB_CEF3_ABI_VERSION_V3;
+  windowed_no_parent.user_token = 770003;
+  windowed_no_parent.flags = LB_CEF3_BROWSER_JAVASCRIPT;
+  assert(LB_CEF3_BrowserCreate(&windowed_no_parent) == 0);
+
   LB_CEF3_ARGUMENT_V4 focus_argument{};
   focus_argument.struct_size = sizeof(focus_argument);
   focus_argument.value_kind = LB_CEF3_VALUE_V4_BOOLEAN;

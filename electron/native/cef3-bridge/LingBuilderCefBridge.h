@@ -296,6 +296,27 @@ typedef struct LB_CEF3_BROWSER_CONFIG_V3 {
   void* event_user_data;
 } LB_CEF3_BROWSER_CONFIG_V3;
 
+/* 真无头（OSR）浏览器创建配置：V3 全字段 + 显式视口尺寸。
+   osr_width/osr_height 为 0 时回落到 LB_CEF3_DEFAULT_OSR_*。 */
+#define LB_CEF3_DEFAULT_OSR_WIDTH 1280
+#define LB_CEF3_DEFAULT_OSR_HEIGHT 720
+
+typedef struct LB_CEF3_BROWSER_CONFIG_V4 {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  uint64_t parent_window;
+  uint64_t user_token;
+  uint32_t flags;
+  const wchar_t* initial_url;
+  const wchar_t* profile_key;
+  const wchar_t* proxy_mode;
+  const wchar_t* proxy_server;
+  LB_CEF3_EVENT_CALLBACK_V3 event_callback;
+  void* event_user_data;
+  uint32_t osr_width;
+  uint32_t osr_height;
+} LB_CEF3_BROWSER_CONFIG_V4;
+
 typedef struct LB_CEF3_BROWSER_VIEW_CONFIG_V3 {
   uint32_t struct_size;
   uint32_t abi_version;
@@ -652,6 +673,10 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserHostCreateBrowserSync(
 
 LB_CEF3_API LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreate(const LB_CEF3_BROWSER_CONFIG_V3* config);
 LB_CEF3_API LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreateChrome(const LB_CEF3_BROWSER_CONFIG_V3* config);
+/* 创建真无头浏览器：必须带 LB_CEF3_BROWSER_WINDOWLESS，全进程不为其创建任何 HWND。
+   parent_window 允许为 0；视口尺寸取 osr_width/osr_height。 */
+LB_CEF3_API LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreateWindowless(
+    const LB_CEF3_BROWSER_CONFIG_V4* config);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserClose(LB_CEF3_HANDLE browser, int force_close);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserTryClose(LB_CEF3_HANDLE browser);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserNotifyMoveOrResizeStarted(LB_CEF3_HANDLE browser);

@@ -9028,15 +9028,28 @@ class BridgeClient final : public CefClient,
   }
 
   void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& rect) override {
-    HWND parent = nullptr;
+    int width = 0;
+    int height = 0;
     {
       std::lock_guard<std::mutex> lock(state_->mutex);
-      parent = state_->parent;
+      width = state_->osr_view_width;
+      height = state_->osr_view_height;
     }
-    RECT client_rect{};
-    if (parent && IsWindow(parent)) GetClientRect(parent, &client_rect);
-    const int width = std::max<int>(1, static_cast<int>(client_rect.right - client_rect.left));
-    const int height = std::max<int>(1, static_cast<int>(client_rect.bottom - client_rect.top));
+    if (width <= 0 || height <= 0) {
+      HWND parent = nullptr;
+      {
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        parent = state_->parent;
+      }
+      RECT client_rect{};
+      if (parent && IsWindow(parent)) GetClientRect(parent, &client_rect);
+      width = std::max<int>(1, static_cast<int>(client_rect.right - client_rect.left));
+      height = std::max<int>(1, static_cast<int>(client_rect.bottom - client_rect.top));
+    }
+    if (width <= 0 || height <= 0) {
+      width = LB_CEF3_DEFAULT_OSR_WIDTH;
+      height = LB_CEF3_DEFAULT_OSR_HEIGHT;
+    }
     {
       std::lock_guard<std::mutex> lock(state_->mutex);
       state_->osr_view_width = width;
@@ -11648,17 +11661,23 @@ std::wstring NormalizeProfileKey(const wchar_t* value, uint64_t user_token) {
   return L"profile-" + std::to_wstring(user_token) + L"-" + std::to_wstring(static_cast<unsigned long long>(digest));
 }
 
-LB_CEF3_HANDLE CreateBrowserHandle(const LB_CEF3_BROWSER_CONFIG_V3* config, bool chrome_runtime) {
+LB_CEF3_HANDLE CreateBrowserHandle(const LB_CEF3_BROWSER_CONFIG_V4* config, bool chrome_runtime) {
   if (!g_cef_initialized.load()) { Fail(LB_CEF3_ERROR_OPERATION_FAILED, L"CEF3尚未初始化"); return 0; }
-  if (!config || config->struct_size < sizeof(LB_CEF3_BROWSER_CONFIG_V3)
-      || config->abi_version != LB_CEF3_ABI_VERSION_V3) {
-    Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效"); return 0;
+  if (!config) { Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效"); return 0; }
+  const bool viewport_present =
+      config->abi_version == LB_CEF3_ABI_VERSION_V4
+      && config->struct_size >= sizeof(LB_CEF3_BROWSER_CONFIG_V4);
+  if (config->struct_size < sizeof(LB_CEF3_BROWSER_CONFIG_V3)
+      || (config->abi_version != LB_CEF3_ABI_VERSION_V3 && !viewport_present)) {
+    Fail(LB_CEF3_ERROR_INVALID_ARGUMENT,
+         viewport_present ? L"无头浏览器配置版本无效" : L"浏览器配置版本无效");
+    return 0;
   }
   const bool windowless = (config->flags & LB_CEF3_BROWSER_WINDOWLESS) != 0;
   if (chrome_runtime && windowless) {
     Fail(LB_CEF3_ERROR_NOT_SUPPORTED, L"Chrome Runtime 浏览器不支持无窗口/OSR 创建"); return 0;
   }
-  if (!chrome_runtime && config->parent_window == 0) {
+  if (!chrome_runtime && !windowless && config->parent_window == 0) {
     Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"内嵌浏览器必须提供独立宿主HWND"); return 0;
   }
   auto state = std::make_shared<BrowserState>();
@@ -11666,6 +11685,10 @@ LB_CEF3_HANDLE CreateBrowserHandle(const LB_CEF3_BROWSER_CONFIG_V3* config, bool
   state->parent = reinterpret_cast<HWND>(static_cast<uintptr_t>(config->parent_window));
   state->flags = config->flags;
   state->windowless = windowless;
+  state->osr_view_width = viewport_present && config->osr_width > 0
+      ? static_cast<int>(config->osr_width) : LB_CEF3_DEFAULT_OSR_WIDTH;
+  state->osr_view_height = viewport_present && config->osr_height > 0
+      ? static_cast<int>(config->osr_height) : LB_CEF3_DEFAULT_OSR_HEIGHT;
   state->event_callback = config->event_callback;
   state->event_user_data = config->event_user_data;
   state->url = config->initial_url && *config->initial_url ? config->initial_url : L"about:blank";
@@ -21833,12 +21856,45 @@ int LB_CEF3_CALL LB_CEF3_Shutdown(void) {
   return LB_CEF3_OK;
 }
 
+static LB_CEF3_BROWSER_CONFIG_V4 WidenBrowserConfigV3(
+    const LB_CEF3_BROWSER_CONFIG_V3* config) {
+  LB_CEF3_BROWSER_CONFIG_V4 widened = {};
+  widened.struct_size = sizeof(LB_CEF3_BROWSER_CONFIG_V4);
+  widened.abi_version = config->abi_version;
+  widened.parent_window = config->parent_window;
+  widened.user_token = config->user_token;
+  widened.flags = config->flags;
+  widened.initial_url = config->initial_url;
+  widened.profile_key = config->profile_key;
+  widened.proxy_mode = config->proxy_mode;
+  widened.proxy_server = config->proxy_server;
+  widened.event_callback = config->event_callback;
+  widened.event_user_data = config->event_user_data;
+  return widened;
+}
+
 LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreate(const LB_CEF3_BROWSER_CONFIG_V3* config) {
-  return CreateBrowserHandle(config, false);
+  if (!config) { Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效"); return 0; }
+  const LB_CEF3_BROWSER_CONFIG_V4 widened = WidenBrowserConfigV3(config);
+  return CreateBrowserHandle(&widened, /*chrome_runtime=*/false);
 }
 
 LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreateChrome(const LB_CEF3_BROWSER_CONFIG_V3* config) {
-  return CreateBrowserHandle(config, true);
+  if (!config) { Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"浏览器配置版本无效"); return 0; }
+  const LB_CEF3_BROWSER_CONFIG_V4 widened = WidenBrowserConfigV3(config);
+  return CreateBrowserHandle(&widened, /*chrome_runtime=*/true);
+}
+
+LB_CEF3_HANDLE LB_CEF3_CALL LB_CEF3_BrowserCreateWindowless(
+    const LB_CEF3_BROWSER_CONFIG_V4* config) {
+  if (!config) { Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"无头浏览器配置不能为空"); return 0; }
+  if ((config->flags & LB_CEF3_BROWSER_WINDOWLESS) == 0) {
+    Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"无头浏览器创建必须指定 WINDOWLESS 标志"); return 0;
+  }
+  if (config->flags & LB_CEF3_BROWSER_CHROME_RUNTIME) {
+    Fail(LB_CEF3_ERROR_NOT_SUPPORTED, L"Chrome Runtime 浏览器不支持无窗口/OSR 创建"); return 0;
+  }
+  return CreateBrowserHandle(config, /*chrome_runtime=*/false);
 }
 
 int LB_CEF3_CALL LB_CEF3_BrowserClose(LB_CEF3_HANDLE browser, int force_close) {
