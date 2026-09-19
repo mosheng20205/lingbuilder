@@ -166,6 +166,8 @@ interface AiAssistantProps {
     appliedFiles: AppliedWorkspaceFile[],
     owner?: ProjectMutationOwner
   ) => boolean | void | Promise<boolean | void>;
+  /** 服务端写盘前的项目上下文预检；返回空串放行，否则为中文拒绝原因（面板不得发起 /edit/apply）。 */
+  precheckApplyWorkspaceEdit?: () => string;
   commandService?: CommandService;
   isDarkMode?: boolean;
 }
@@ -244,6 +246,7 @@ export default function AiAssistant({
   designerProject,
   workspaceFiles,
   onApplyWorkspaceEdit,
+  precheckApplyWorkspaceEdit,
   commandService,
   isDarkMode = true
 }: AiAssistantProps) {
@@ -1075,6 +1078,14 @@ export default function AiAssistant({
 
   const handleApplyProposal = async () => {
     if (!editProposal || !onApplyWorkspaceEdit) return;
+    const precheckBlock = precheckApplyWorkspaceEdit ? precheckApplyWorkspaceEdit() : '';
+    if (precheckBlock) {
+      updateChatHistory(prev => [
+        ...prev,
+        createChatMessage('ai', `应用编辑提案失败：${precheckBlock}`, { contextExcluded: true })
+      ]);
+      return;
+    }
     try {
       const response = await fetch('/api/lingcpp/edit/apply', {
         method: 'POST',
@@ -1092,8 +1103,17 @@ export default function AiAssistant({
         throw new Error(data.error || `应用提案失败（HTTP ${response.status}）。`);
       }
       const appliedFiles = (data.appliedFiles || []) as AppliedWorkspaceFile[];
-      if (await onApplyWorkspaceEdit(editProposal, appliedFiles, projectMutationOwner) === false) {
-        throw new Error('项目上下文已变化，未应用该提案；请重新读取当前文件和设计器模型后再试。');
+      // 不传渲染期捕获的 projectMutationOwner 快照：提案期间切换过项目会让它过期，
+      // 严格相等会把刚完成的写入误拒成僵尸卡。由 App 在调用时刻新鲜捕获。
+      if (await onApplyWorkspaceEdit(editProposal, appliedFiles) === false) {
+        // 服务端此刻已原子写盘成功，只是编辑器内存状态未同步——不得谎报「应用失败」。
+        const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
+        updateChatHistory(prev => [
+          ...prev,
+          createChatMessage('ai', `提案已写回磁盘：${changedFileList}；但编辑器内存状态未同步（项目上下文切换中）。请重新打开该文件查看最新内容，输出面板已记录拒因。`, { contextExcluded: true })
+        ]);
+        setEditProposal(null);
+        return;
       }
       const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
       updateChatHistory(prev => [

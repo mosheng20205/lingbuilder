@@ -238,6 +238,7 @@ import { closeEditorGroupTab, collapseEditorGroups, moveEditorTab, restoreEditor
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
 import { parseLingCpp } from './services/lingCpp/parser';
+import { areDesignerProjectsEquivalent } from './services/lingCpp/aiEditService';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';
 import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';
@@ -2735,7 +2736,18 @@ void DisplayStatus() {
     appliedFiles: AppliedWorkspaceFile[],
     requestOwner: ProjectMutationOwner = captureProjectMutationOwner()
   ): Promise<boolean> => {
-    if (!isCurrentProjectMutationOwner(requestOwner) || !appliedFiles.length) return false;
+    // 写盘后的守卫只比对项目身份，不再比对 loadGeneration：服务端 applyEdit 已原子写盘，
+    // 文件监视器随之重载会推进代次号，严格相等会把“本次写入自己”误拒（UI 报失败但磁盘已改）。
+    // 内容一致性与跨项目漂移由服务端 applyEdit 的磁盘双重比对兜底。
+    if (
+      !appliedFiles.length ||
+      !projectFilesReadyRef.current ||
+      requestOwner.projectId !== activeProjectIdRef.current ||
+      requestOwner.projectId !== loadedProjectIdRef.current
+    ) {
+      appendEditorTransactionLog(`【AI 编辑】编辑器同步被拒：提案项目=${requestOwner.projectId}，当前项目=${activeProjectIdRef.current}，已载入项目=${loadedProjectIdRef.current || '（无）'}，文件就绪=${projectFilesReadyRef.current ? '是' : '否'}；磁盘内容以服务端写入为准。`);
+      return false;
+    }
 
     if (proposal.designerProject) {
       if (!activeProjectHasWindowDesigner || proposal.designerProject.id !== activeProjectId) {
@@ -2757,7 +2769,10 @@ void DisplayStatus() {
       return {
         ...file,
         translatedContent: nextContent,
-        isModified: nextContent !== file.originalContent
+        // 服务端 applyEdit 已原子写盘：新内容即磁盘内容，文件应视为干净。
+        // 若仍标脏，自动保存会拿推进前的 baseVersion 撞 409，循环弹「检测到外部修改」。
+        originalContent: nextContent,
+        isModified: false
       };
     });
 
@@ -2772,10 +2787,10 @@ void DisplayStatus() {
         savedEncoding: 'utf8',
         savedEol: 'lf',
         formatModified: false,
-        originalContent: '',
+        originalContent: appliedFile.sourceCode,
         translatedContent: appliedFile.sourceCode,
         strings: [],
-        isModified: true
+        isModified: false
       });
     });
 
@@ -2799,24 +2814,13 @@ void DisplayStatus() {
       diffViewerRef.current?.applyExternalSourceCode(activeNextSource);
     }
 
-    if (proposal.designerProject && activeProjectHasWindowDesigner) {
-      const currentDesignerState = readWindowDesignerState(activeProjectId);
-      const nextDesignerState = saveWindowDesignerState({
-        ...currentDesignerState,
-        project: proposal.designerProject
-      });
-      setWindowDesignerState(nextDesignerState);
-      const nextDesignerDirty = JSON.stringify(nextDesignerState.project) !== designerSavedSnapshotRef.current;
-      designerDirtyRef.current = nextDesignerDirty;
-      setDesignerDirty(nextDesignerDirty);
-    }
-    const saved = await saveWorkspaceCoreRef.current('AI 编辑应用后保存', false);
-    if (!saved) {
-      appendEditorTransactionLog('【AI 编辑】已更新当前窗口内存状态，但磁盘保存失败；请检查输出面板后重试保存。');
-      return false;
-    }
+    // 自面板编辑链收口（PANEL-A）起，服务端 applyEdit 已原子写盘：源码、设计器 JSON 与
+    // 文件版本全部推进。渲染层严禁再补一次 saveWorkspace——那会拿写入前的旧 baseVersion
+    // 与旧设计器快照撞 409，循环弹「检测到外部修改」。改为重载磁盘权威状态。
+    setProjectFileReloadToken(token => token + 1);
+    appendEditorTransactionLog('【AI 编辑】提案已由服务端写回磁盘，正在重新载入最新项目文件与设计器模型。');
     return true;
-  }, [activeProjectHasWindowDesigner, activeProjectId, appendEditorTransactionLog, captureProjectMutationOwner, isCurrentProjectMutationOwner]);
+  }, [activeProjectId, appendEditorTransactionLog, captureProjectMutationOwner]);
 
   const handleConfirmDesignerEventEdit = useCallback(async () => {
     if (!pendingDesignerEventEdit) return;
@@ -3904,7 +3908,7 @@ void DisplayStatus() {
           const local = flushState.files.find(file => file.path === filePath);
           return local && getCurrentFileContent(local) !== payload.files[filePath];
         });
-        if (payload.designerProject && savedDesignerSnapshot !== JSON.stringify(payload.designerProject)) {
+        if (payload.designerProject && designerProject && !areDesignerProjectsEquivalent(designerProject, payload.designerProject)) {
           conflictingPaths.push(payload.designerPath || activeSolutionProject.designerPath);
         }
         const reloadDisk = await requestWorkbenchConfirm({
@@ -6806,6 +6810,13 @@ void DisplayStatus() {
         language: file.language
       }))}
       onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
+      precheckApplyWorkspaceEdit={() => {
+        if (isCurrentProjectMutationOwner(captureProjectMutationOwner())) return '';
+        if (!projectFilesReadyRef.current || !loadedProjectIdRef.current) {
+          return '项目文件正在载入，尚未就绪；请等左下角状态变为「已就绪」后重新点击「应用提案」。';
+        }
+        return '项目上下文已变化（当前项目与设计器模型不一致），未应用该提案；请重新读取当前文件和设计器模型后再试。';
+      }}
       commandService={commandServiceRef.current}
       isDarkMode={isDarkMode}
     />
