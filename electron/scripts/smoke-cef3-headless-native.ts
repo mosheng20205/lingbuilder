@@ -349,7 +349,13 @@ async function main(): Promise<void> {
     for (const extra of lcppFiles.slice(1)) await fs.rm(path.join(projectSourceDir, extra), { force: true });
 
     const built = await service.buildRun({ projectId, run: false, approved: true } as never);
-    if (built?.ok === false) throw new Error(`build.run 失败：${JSON.stringify(built).slice(0, 2000)}`);
+    if (built?.ok === false) {
+      // 构建失败必须把编译器原话带回来：只报「stage: compile」等于让下一轮从零猜。
+      const logs = Object.entries(built)
+        .filter(([, value]) => typeof value === 'string' && /error|警告|C\d{4}|LNK\d{3,}/u.test(value as string))
+        .map(([key, value]) => `${key}: ${value}`);
+      throw new Error(`build.run 失败（stage=${(built as { stage?: string }).stage}）：\n${(logs.join('\n') || JSON.stringify(built)).slice(0, 12000)}`);
+    }
     executable = await findExecutable();
 
     const child = spawn(executable, [], { cwd: path.dirname(executable), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });

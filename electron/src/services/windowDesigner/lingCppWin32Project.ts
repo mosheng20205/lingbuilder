@@ -1,4 +1,4 @@
-import { LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { LingCefHeadlessResource, LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import { createProjectDllDeclarationModule, buildProjectDllMemoryResourceLines, collectProjectDllMissingSystemAliasDiagnostics, getProjectDllMemoryLibrarySpecs } from '../lingCpp/projectDllCommandService';
@@ -452,6 +452,7 @@ export function generateLingCppNativeWin32Project(
     return [`窗口“${window.title}”中的控件“${control.name}”需要启用模块 ${definition.moduleId}；控件已保留，未静默降级。`];
   }));
   const resourceDiagnostics = validateDesignerResources(project);
+  const cefHeadlessResourceDiagnostics = validateCefHeadlessResources(effectiveProject);
   const newEmojiControlReferenceDiagnostics = usesNewEmojiDesigner
     ? validateNewEmojiDesignerControlReferences(selectedWindow, enabledModules)
     : [];
@@ -577,7 +578,7 @@ export function generateLingCppNativeWin32Project(
       ...embeddedResourceWarnings,
       ...embeddedResourceBlockingDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics, ...cefHeadlessResourceDiagnostics],
     sourceMap,
     files: [
       {
@@ -9358,6 +9359,43 @@ function isLikelyJsonObject(text: string): boolean {
   }
 }
 
+/**
+ * 「CEF3无头浏览器」设计器资源的项目级校验，全部按阻断处理：
+ * 实例编号是运行时 cefBrowsers_ 的唯一键、视口决定 OSR 渲染尺寸、缓存目录决定独立 Profile，
+ * 任一项含糊都会导致 exe 里实例不可达或行为与设计器不一致，所以不放行到 warnings。
+ * 编号唯一性只在 CEF3 无头族内判定（与 EdgeView/FBro 各自独立编号，跨引擎不共号空间）。
+ */
+function validateCefHeadlessResources(project: LingWindowProject): string[] {
+  const diagnostics: string[] = [];
+  const resources = project.resources || [];
+  const headless = resources.filter((resource): resource is LingCefHeadlessResource => resource.type === 'CefHeadlessBrowser');
+  for (const resource of headless) {
+    if (!project.windows.some(window => window.id === resource.ownerWindowId)) {
+      diagnostics.push(`CEF3无头浏览器“${resource.name}”引用了不存在的所属窗口“${resource.ownerWindowId}”。`);
+    }
+    if (!resource.name.trim()) diagnostics.push('CEF3无头浏览器的组件名不能为空。');
+    else if (resources.some(other => other !== resource && other.name === resource.name)) {
+      diagnostics.push(`CEF3无头浏览器组件名“${resource.name}”与现有控件或其他组件重复，控件引用与实例编号将无法对应。`);
+    }
+    if (!Number.isInteger(resource.instanceId) || resource.instanceId <= 0) {
+      diagnostics.push(`CEF3无头浏览器“${resource.name}”的实例编号必须是正整数，CEF3无头_* 命令按它寻址。`);
+    } else if (headless.some(other => other !== resource && other.instanceId === resource.instanceId)) {
+      diagnostics.push(`CEF3无头浏览器“${resource.name}”的实例编号 ${resource.instanceId} 与项目内其他无头组件重复，CEF3无头_* 命令将无法区分该实例。`);
+    }
+    if (!Number.isInteger(resource.viewWidth) || resource.viewWidth <= 0 || !Number.isInteger(resource.viewHeight) || resource.viewHeight <= 0) {
+      diagnostics.push(`CEF3无头浏览器“${resource.name}”的视口宽高必须是正整数（默认 1280×720），OSR 渲染尺寸与页面布局由它决定。`);
+    }
+    const cacheDir = (resource.cacheDir || '').trim();
+    if (cacheDir) {
+      const normalized = cacheDir.replace(/\\/g, '/');
+      if (/^(?:[a-zA-Z]:\/|\/)/.test(normalized) || normalized.split('/').includes('..')) {
+        diagnostics.push(`CEF3无头浏览器“${resource.name}”的独立缓存目录“${cacheDir}”不安全，仅允许工作区内相对路径（留空按 cef3-headless-<实例编号>）。`);
+      }
+    }
+  }
+  return diagnostics;
+}
+
 function validateDesignerResources(project: LingWindowProject): string[] {
   const diagnostics: string[] = [];
   const resources = project.resources || [];
@@ -9991,6 +10029,9 @@ int main(int argc, char* argv[]) {
         consoleApp.LingBuilder_RegisterHeadlessThreadOwner();
 #endif
     }
+    // 设计器「CEF3无头浏览器」资源：控制台没有「窗口创建完毕」事件，自动启动在这里做，
+    // 用户“启动”子程序里按实例编号的 CEF3无头_* 命令即可直接用（与窗口项目 OnWindowCreated 同语义）。
+    consoleApp.LingBuilder_CEF3_创建无头资源();
     // 退出统一经 LingWindowBase::LingBuilder_CEF3_退出回收 回收 CEF（含无头实例），再返回退出码。
     // “空 启动()”形态把调用与 return 0; 收进同一个立即调用的 lambda：语句形状保持
     // 「consoleApp.启动(); 换行 return 0;」不变，退出回收仍在程序体之后执行。
@@ -10026,6 +10067,7 @@ function generateMainCpp(
   const fileDialogSpecs = generateFileDialogSpecs(project);
   const fbroHeadlessSpecs = generateFbroHeadlessSpecs(project);
   const edgeViewHeadlessSpecs = generateEdgeViewHeadlessSpecs(project);
+  const cefHeadlessSpecs = generateCefHeadlessSpecs(project);
   const menuResourceSpecs = generateMenuResourceSpecs(project);
   const windowSpecs = project.windows
     .map((window, index) => generateWindowSpec(window, index, program))
@@ -10596,6 +10638,11 @@ struct FbroHeadlessSpec {
 struct EdgeViewHeadlessSpec {
     const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
     int instanceId; const wchar_t* url; const wchar_t* cacheDir; const wchar_t* userAgent; const wchar_t* proxyServer; bool autoStart;
+};
+// 「CEF3无头浏览器」设计器资源：走 CEF 官方 windowless/OSR，不创建任何窗口；视口宽高决定页面布局尺寸。
+struct CefHeadlessSpec {
+    const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
+    int instanceId; const wchar_t* url; const wchar_t* cacheDir; const wchar_t* proxyServer; int viewWidth; int viewHeight; bool autoStart;
 };
 struct PropertySheetPageContext {
     const wchar_t* title; const wchar_t* content; const wchar_t* resourceId;
@@ -11445,6 +11492,7 @@ ${propertySheetSpecs}
 ${fileDialogSpecs}
 ${fbroHeadlessSpecs}
 ${edgeViewHeadlessSpecs}
+${cefHeadlessSpecs}
 ${menuResourceSpecs}
 
 ${controlArrays}
@@ -12412,7 +12460,7 @@ ${webSocketServerWindowField}
     bool fbroInitialized_ = false;
 ${fbroBrowserManagerRuntime.members}
 
-    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
+    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); LingBuilder_CEF3_创建无头资源(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
     virtual void WarnUnboundControlEvents() {}
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
@@ -16522,6 +16570,19 @@ ${generateFbroVipIndividualRuntime(false)}
             it = cefBrowsers_.erase(it);
         }
 #endif
+    }
+
+    // 「CEF3无头浏览器」设计器资源：所属窗口创建期（控制台项目在 wmain 里）按实例编号建立 OSR 实例。
+    // 必须按 ownerWindowIndex 过滤——无头实例登记在该窗口的 cefBrowsers_ 里，别的窗口按编号取不到；
+    // autoStart=假的组件只登记不创建，由代码显式调用 CEF3_创建无头浏览器。
+    void LingBuilder_CEF3_创建无头资源() {
+        for (int index = 0; index < g_cefHeadlessBrowserCount; ++index) {
+            const CefHeadlessSpec& spec = g_cefHeadlessBrowsers[index];
+            if (spec.ownerWindowIndex != spec_.index || !spec.autoStart) continue;
+            if (CEF3_查找无头实例(spec.instanceId)) continue;
+            CEF3_创建无头浏览器(spec.instanceId, spec.url && spec.url[0] ? spec.url : L"about:blank",
+                spec.cacheDir, spec.proxyServer, spec.viewWidth, spec.viewHeight);
+        }
     }
 
     int CEF3_创建弹窗浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
@@ -30354,6 +30415,19 @@ function generateEdgeViewHeadlessSpecs(project: LingWindowProject): string {
   return rows.length > 0
     ? `static EdgeViewHeadlessSpec g_edgeViewHeadlessBrowsers[] = {\n${rows.join(',\n')}\n};\nstatic const int g_edgeViewHeadlessBrowserCount = ${rows.length};`
     : 'static EdgeViewHeadlessSpec g_edgeViewHeadlessBrowsers[] = { { L"", L"", -1, 0, L"", L"", L"", L"", false } };\nstatic const int g_edgeViewHeadlessBrowserCount = 0;';
+}
+
+/** 「CEF3无头浏览器」设计器资源表：所属窗口创建期按实例编号建立 CEF 官方 OSR 无头实例。 */
+function generateCefHeadlessSpecs(project: LingWindowProject): string {
+  const resources = (project.resources || []).filter((resource): resource is LingCefHeadlessResource => resource.type === 'CefHeadlessBrowser');
+  const rows = resources.map(resource => {
+    const ownerWindowIndex = project.windows.findIndex(window => window.id === resource.ownerWindowId);
+    const positive = (value: number) => Number.isInteger(value) && value > 0 ? value : 0;
+    return `    { L"${escapeWideString(resource.id)}", L"${escapeWideString(resource.name)}", ${ownerWindowIndex}, ${positive(resource.instanceId)}, L"${escapeWideString(resource.url || '')}", L"${escapeWideString(resource.cacheDir || '')}", L"${escapeWideString(resource.proxyServer || '')}", ${positive(resource.viewWidth) || 1280}, ${positive(resource.viewHeight) || 720}, ${resource.autoStart === false ? 'false' : 'true'} }`;
+  });
+  return rows.length > 0
+    ? `static CefHeadlessSpec g_cefHeadlessBrowsers[] = {\n${rows.join(',\n')}\n};\nstatic const int g_cefHeadlessBrowserCount = ${rows.length};`
+    : 'static CefHeadlessSpec g_cefHeadlessBrowsers[] = { { L"", L"", -1, 0, L"", L"", L"", 1280, 720, false } };\nstatic const int g_cefHeadlessBrowserCount = 0;';
 }
 
 function generateMenuResourceSpecs(project: LingWindowProject): string {

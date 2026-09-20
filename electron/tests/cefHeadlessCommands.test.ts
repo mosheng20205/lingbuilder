@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { InstalledModule } from '../src/services/modules/types';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { getLingCppControlReferenceDiagnostics } from '../src/services/lingCpp/controlReferenceService';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 
 // CEF3 真无头（CEF 官方 windowless / OSR）中文命令面：17 条命令全部按「实例编号」寻址，
@@ -127,6 +128,40 @@ function memberBody(code: string, signature: string): string {
   assert.ok(end > 0, `${signature} 的函数体不完整`);
   return rest.slice(0, end);
 }
+
+test('headless component passed as a control reference gets a named replacement diagnostic', () => {
+  const basic: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin://lingbuilder.win32.basic',
+    isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  };
+  const target = consoleProject();
+  target.resources = [{
+    id: 'cefheadless-main', type: 'CefHeadlessBrowser', name: 'CEF3无头浏览器1',
+    ownerWindowId: 'main-window', instanceId: 3, url: '', cacheDir: '', proxyServer: '',
+    viewWidth: 1280, viewHeight: 720, autoStart: true
+  } as never];
+  const context = { enabledModules: [basic], availableModules: [basic] };
+  const diagnostics = getLingCppControlReferenceDiagnostics(
+    '类 程序 : 公开 窗体\n事件 创建完毕()\n    控件_设置文本(CEF3无头浏览器1, "完成")\n结束\n结束类',
+    target, context, 'src/MainWindow.lcpp'
+  );
+  const hit = diagnostics.find(item => String(item.id).includes('control-reference-headless-resource'));
+  assert.ok(hit, `缺少无头组件指名诊断：${JSON.stringify(diagnostics.map(item => item.id))}`);
+  assert.equal(hit!.level, 'error');
+  assert.match(hit!.message, /不是控件/);
+  assert.match((hit as { suggestion?: string }).suggestion || '', /CEF3无头_取页面文本\(3/, '指名替代必须给出实例编号写法');
+  // 真控件仍走原有解析，不得被新分支误伤。
+  const windowWithControl = consoleProject();
+  windowWithControl.windows[0].controls = [{
+    id: 'label-1', type: 'Label', name: '操作结果', content: '', x: 10, y: 10, width: 160, height: 28,
+    fontSize: 13, background: '#202020', foreground: '#ffffff', isEnabled: true, visibility: 'Visible', events: {}
+  }];
+  assert.deepEqual(getLingCppControlReferenceDiagnostics(
+    '类 程序 : 公开 窗体\n事件 创建完毕()\n    控件_设置文本(操作结果, "完成")\n结束\n结束类',
+    windowWithControl, context, 'src/MainWindow.lcpp'
+  ), []);
+});
 
 test('headless commands are declared in both contributes and bindings', () => {
   assert.equal(HEADLESS_COMMANDS.length, 17);

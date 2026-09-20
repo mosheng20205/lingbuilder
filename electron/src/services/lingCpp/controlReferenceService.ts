@@ -1,5 +1,5 @@
 import type { LingCppModuleContext, ModuleCommandBinding, ModuleCommandBindingParameter } from '../modules/types';
-import type { LingControl, LingDesignerResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
+import type { LingCefHeadlessResource, LingControl, LingDesignerResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
 import { normalizeIdentifier, parseLingCpp } from './parser';
 import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
@@ -229,6 +229,13 @@ export function getLingCppControlReferenceDiagnostics(
       },
       codeSnippet: reference.rawText
     };
+    // 「CEF3无头浏览器」设计器资源不是控件：按名解析时可能落到 missing（资源不在当前作用域符号表）
+    // 或 incompatible-kind（在符号表里但 objectKind 非控件），两种都必须给指名替代写法，
+    // 否则用户只看到「找不到控件 / 种类不能用于参数」，不知道无头实例其实按实例编号寻址。
+    const referencedName = reference.name || reference.rawText;
+    const headlessResource = project?.resources?.find((resource): resource is LingCefHeadlessResource => (
+      resource.type === 'CefHeadlessBrowser' && resource.name === referencedName
+    ));
     if (reference.quoted) diagnostics.push({
       id: `lingcpp-control-reference-quoted-${reference.range.startOffset}`,
       ...base,
@@ -238,13 +245,25 @@ export function getLingCppControlReferenceDiagnostics(
         ? `请去掉双引号，改为 ${reference.name}。`
         : '请先从控件补全中选择可解析的设计器对象；只有目标唯一且兼容时才能安全移除引号。'
     });
-    if (reference.status === 'missing') diagnostics.push({
-      id: `lingcpp-control-reference-missing-${reference.range.startOffset}`,
-      ...base,
-      level: 'error' as const,
-      message: `找不到控件“${reference.name || reference.rawText}”。`,
-      suggestion: '请从当前窗口控件补全中选择控件，或检查源码关联的设计器窗口。'
-    });
+    if (reference.status === 'missing') {
+      // 设计器「CEF3无头浏览器」是非可视资源，不是控件、也没有 controlRef：
+      // 把它当控件名传进来时必须指名替代写法，否则用户只会看到「找不到控件」而不知道改用实例编号。
+      if (headlessResource) {
+        diagnostics.push({
+          id: `lingcpp-control-reference-headless-resource-${reference.range.startOffset}`,
+          ...base,
+          level: 'error' as const,
+          message: `“${reference.name}”是「CEF3无头浏览器」非可视组件，不是控件，不能作为控件引用传入。`,
+          suggestion: `无头实例按实例编号寻址：请改用 CEF3无头_取页面文本(${headlessResource.instanceId}, 15000)、CEF3无头_执行JS(${headlessResource.instanceId}, "...") 等命令；控件引用只接受窗口里的可见控件。`
+        });
+      } else diagnostics.push({
+        id: `lingcpp-control-reference-missing-${reference.range.startOffset}`,
+        ...base,
+        level: 'error' as const,
+        message: `找不到控件“${reference.name || reference.rawText}”。`,
+        suggestion: '请从当前窗口控件补全中选择控件，或检查源码关联的设计器窗口。'
+      });
+    }
     else if (reference.status === 'ambiguous') diagnostics.push({
       id: `lingcpp-control-reference-ambiguous-${reference.range.startOffset}`,
       ...base,
@@ -259,7 +278,13 @@ export function getLingCppControlReferenceDiagnostics(
       message: `控件“${reference.name}”不属于当前源码关联的窗口。`,
       suggestion: `该参数作用域是“当前窗口”，但目标位于：${reference.candidates.map(item => item.windowName).join('、')}。请改用当前窗口控件，或由模块作者把确需跨窗口的参数声明为 project 作用域。`
     });
-    else if (reference.status === 'incompatible-kind') diagnostics.push({
+    else if (reference.status === 'incompatible-kind') diagnostics.push(headlessResource ? {
+      id: `lingcpp-control-reference-headless-resource-${reference.range.startOffset}`,
+      ...base,
+      level: 'error' as const,
+      message: `“${reference.name}”是「CEF3无头浏览器」非可视组件，不是控件，不能作为控件引用传入。`,
+      suggestion: `无头实例按实例编号寻址：请改用 CEF3无头_取页面文本(${headlessResource.instanceId}, 15000)、CEF3无头_执行JS(${headlessResource.instanceId}, "...") 等命令；控件引用只接受窗口里的可见控件。`
+    } : {
       id: `lingcpp-control-reference-kind-${reference.range.startOffset}`,
       ...base,
       level: 'error' as const,

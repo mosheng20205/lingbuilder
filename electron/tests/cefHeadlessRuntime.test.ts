@@ -43,6 +43,72 @@ export function mainCpp(): string {
   return generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
 }
 
+test('headless designer resource generates a spec table with owner-window auto-create', () => {
+  const withResource = project();
+  withResource.resources = [headlessResource()];
+  const generated = generateLingCppNativeWin32Project(withResource, {
+    lingCppSourceCode: SOURCE, outputKind: 'console-application'
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const code = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(code, /struct CefHeadlessSpec \{/);
+  assert.match(code, /static CefHeadlessSpec g_cefHeadlessBrowsers\[\] = \{/);
+  assert.match(code, /\{ L"cefheadless-main", L"CEF3无头浏览器1", 0, 3, L"https:\/\/example\.com", L"\.cef3\/headless-a", L"", 1024, 640, true \}/);
+  assert.match(code, /static const int g_cefHeadlessBrowserCount = 1;/);
+  // 空表哨兵行：与其他资源表同法，计数为 0 时仍要能编译。
+  assert.match(mainCpp(), /static const int g_cefHeadlessBrowserCount = 0;/);
+  // 自动创建必须是 LingWindowBase 成员（CEF3_创建无头浏览器 是成员函数），并按所属窗口过滤：
+  // 无头实例登记在该窗口的 cefBrowsers_ 里，别的窗口按编号取不到，所以归属必须唯一。
+  const autoCreate = code.slice(code.indexOf('void LingBuilder_CEF3_创建无头资源() {'));
+  const autoCreateBody = autoCreate.slice(0, autoCreate.indexOf('\n    }'));
+  assert.match(autoCreateBody, /spec\.ownerWindowIndex != spec_\.index \|\| !spec\.autoStart\) continue;/);
+  assert.match(autoCreateBody, /CEF3_查找无头实例\(spec\.instanceId\)/);
+  assert.match(autoCreateBody, /CEF3_创建无头浏览器\(spec\.instanceId, spec\.url/, '必须用表里的实例编号与地址创建');
+  assert.match(autoCreateBody, /spec\.cacheDir, spec\.proxyServer, spec\.viewWidth, spec\.viewHeight\)/);
+  // 控制台入口在 启动() 之前自动创建（窗口路径挂在窗口创建完毕）。
+  assert.match(code, /consoleApp\.LingBuilder_CEF3_创建无头资源\(\);/);
+  assert.ok(code.indexOf('consoleApp.LingBuilder_CEF3_创建无头资源();') < code.indexOf('consoleApp.启动'),
+    '控制台自动创建必须排在程序体之前');
+});
+
+test('invalid headless declarations are blocked before generation', () => {
+  const join = (resources: unknown[]) => {
+    const target = project();
+    target.resources = resources as never;
+    return generateLingCppNativeWin32Project(target, { lingCppSourceCode: SOURCE, outputKind: 'console-application' }).blockingDiagnostics.join('\n');
+  };
+  const duplicated = join([headlessResource({ id: 'a', name: '无头A' }), headlessResource({ id: 'b', name: '无头B' })]);
+  assert.match(duplicated, /实例编号 3.*重复/, '同引擎重复实例编号必须中文阻断');
+  // 编号唯一性只在 CEF3 无头族内判定：跨引擎共号会让两套无头组件互相占用编号。
+  assert.ok(!/EdgeView/.test(duplicated), '不得把其他引擎的无头组件算进 CEF3 编号冲突');
+  const invalid = join([headlessResource({ instanceId: 0, viewWidth: 0, viewHeight: -1, cacheDir: 'C:/Windows/tmp' })]);
+  assert.match(invalid, /实例编号必须是正整数/);
+  assert.match(invalid, /视口/);
+  assert.match(invalid, /不安全|相对路径/);
+  const missingOwner = join([headlessResource({ ownerWindowId: 'nope' })]);
+  assert.match(missingOwner, /不存在的所属窗口/);
+});
+
+// 设计器「CEF3无头浏览器」资源的持久化字段（与 EdgeView 无头组件同口径命名）。
+function headlessResource(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'cefheadless-main',
+    type: 'CefHeadlessBrowser' as const,
+    name: 'CEF3无头浏览器1',
+    designerX: 60,
+    designerY: 660,
+    ownerWindowId: 'main-window',
+    instanceId: 3,
+    url: 'https://example.com',
+    cacheDir: '.cef3/headless-a',
+    proxyServer: '',
+    viewWidth: 1024,
+    viewHeight: 640,
+    autoStart: true,
+    ...overrides
+  };
+}
+
 test('headless creation goes through the windowless bridge export', () => {
   const code = mainCpp();
   assert.match(code, /static const int CEF3_运行时无头编号偏移 = 2000000;/);
