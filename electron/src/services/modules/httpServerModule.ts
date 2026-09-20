@@ -64,9 +64,24 @@ const specs: HttpServerCommandSpec[] = [
     returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_绑定请求处理器($1, &$2)'
   },
   {
-    name: 'HTTP_添加路由', signature: 'HTTP_添加路由(服务端, 方法, 路径模式, &处理器)', description: '添加方法和路径路由；支持精确路径、末尾 /* 前缀匹配及方法 *。',
+    name: 'HTTP_添加路由', signature: 'HTTP_添加路由(服务端, 方法, 路径模式, &处理器)', description: '添加方法和路径路由；支持精确路径、末尾 /* 前缀匹配及方法 *；HEAD 请求未显式登记 HEAD 路由时自动回落匹配 GET 路由并返回无正文响应。',
     parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', 'HTTP 方法文本，大小写不敏感（自动转大写），如 GET、POST；* 表示匹配任意方法。'), parameter('路径模式', 'wideString', '必须以 / 开头的路径，如 /api/health；支持精确匹配和末尾 /* 前缀通配（/api/* 匹配 /api/users，不匹配 /api）。'), parameter('处理器', 'handler', '必须使用 &处理器名；处理器必须无参数。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_添加路由($1, "GET", "/api/health", &$2)'
+  },
+  {
+    name: 'HTTP_添加静态路由', signature: 'HTTP_添加静态路由(服务端, 方法, 路径模式, 响应内容, 内容类型)', description: '注册工作线程直接回应的固定内容路由（JSON/文本/HTML）；命中后不进入请求处理器、不占用 UI 线程，是高吞吐固定响应的首选；与 HTTP_添加路由 同方法同路径时后注册者整体覆盖。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', 'HTTP 方法文本，大小写不敏感（自动转大写），如 GET、HEAD；* 表示匹配任意方法。'), parameter('路径模式', 'wideString', '必须以 / 开头的路径，如 /api/data；支持精确匹配和末尾 /* 前缀通配（/static/* 匹配 /static/a.css）。'), parameter('响应内容', 'wideString', '固定响应正文文本，注册时确定并按 UTF-8 发送；需要变更时重新注册同方法同路径即可覆盖。'), parameter('内容类型', 'wideString', '响应 Content-Type，如 "application/json; charset=utf-8"；空文本时按 text/plain; charset=utf-8 处理。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_添加静态路由($1, "GET", "/api/data", "{\\"ok\\":true}", "application/json; charset=utf-8")'
+  },
+  {
+    name: 'HTTP_添加静态文件路由', signature: 'HTTP_添加静态文件路由(服务端, 方法, 路径模式, 文件路径, 下载名称, 内容类型)', description: '注册工作线程直接分块发送磁盘文件的路由（页面、图片、附件下载）；不占用 UI 线程；每次请求读取当前文件内容，文件不存在时该请求返回 404。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', 'HTTP 方法文本，大小写不敏感（自动转大写），通常 GET；* 表示匹配任意方法。'), parameter('路径模式', 'wideString', '必须以 / 开头的路径，如 /index.html 或 /static/*；支持精确匹配和末尾 /* 前缀通配。'), parameter('文件路径', 'wideString', '要发送的本机文件绝对路径（文本型）；前缀通配路由下所有命中路径都返回该文件。'), parameter('下载名称', 'wideString', '非空时附带 Content-Disposition 附件下载名（支持中文，自动按 RFC 5987 编码）；空文本表示内联展示不触发下载。'), parameter('内容类型', 'wideString', '响应 Content-Type，如 "text/html; charset=utf-8"；空文本时按 application/octet-stream 处理。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_添加静态文件路由($1, "GET", "/page", "C:\\\\site\\\\index.html", "", "text/html; charset=utf-8")'
+  },
+  {
+    name: 'HTTP_设置连接轮转', signature: 'HTTP_设置连接轮转(服务端, 请求数)', description: '设置单个 Keep-Alive 连接被强制关闭前最多处理的请求数，默认 100；运行中可修改，对后续请求立即生效。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('请求数', 'int', '每个连接的轮转请求数，1 到 1000000；调大可减少持续负载下的重连开销，调小可提升大量并发连接间的处理公平性；1 表示每个请求后立即关闭连接。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '服务', insertText: 'HTTP_设置连接轮转($1, 500)'
   },
   {
     name: 'HTTP_清空路由', signature: 'HTTP_清空路由(服务端)', description: '清空服务端的全部显式路由，不影响默认请求处理器。',
@@ -272,11 +287,11 @@ export const HTTP_SERVER_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: 'lingbuilder.http.server',
   name: 'HTTP 服务端模块',
-  version: '2.0.0',
+  version: '2.1.0',
   category: '网络',
-  description: '提供受管 HTTP/1.1 服务端、后台多连接处理、路由、完整请求读取、可配置响应、资源限制和运行状态。',
+  description: '提供受管 HTTP/1.1 服务端、后台多连接处理、路由（含工作线程直回的静态路由）、完整请求读取、可配置响应、资源限制、连接轮转和运行状态。',
   author: 'LingBuilder',
-  tags: ['内置', '网络', 'HTTP', '服务端', 'HTTP/1.1', '路由', '受管并发'],
+  tags: ['内置', '网络', 'HTTP', '服务端', 'HTTP/1.1', '路由', '静态路由', '受管并发'],
   contributes: {
     commands: specs.map(contribution),
     types: [
@@ -293,9 +308,14 @@ export const HTTP_SERVER_MODULE: LingBuilderModuleManifest = {
         label: 'HTTP 请求处理器',
         insertText: '空 处理健康检查()\n    HTTP请求 请求 = HTTP_取当前请求()\n    HTTP_设置响应头(请求, "Cache-Control", "no-store")\n    HTTP_发送JSON(请求, "{\\"ok\\":true}", 200)',
         description: '在 UI 线程读取当前请求并发送 JSON 响应。'
+      },
+      {
+        label: 'HTTP 静态路由高吞吐服务',
+        insertText: 'HTTP服务端 服务 = HTTP_创建服务()\nHTTP_配置服务(服务, "127.0.0.1", 8080, 8, 256)\nHTTP_设置连接轮转(服务, 1000)\nHTTP_添加静态路由(服务, "GET", "/api/data", "{\\"ok\\":true}", "application/json; charset=utf-8")\nHTTP_添加静态文件路由(服务, "GET", "/page", "C:\\\\site\\\\index.html", "", "text/html; charset=utf-8")\nHTTP_添加路由(服务, "GET", "/api/time", &处理时间)\nHTTP_启动(服务)',
+        description: '固定内容走静态路由由工作线程直回（不占 UI 线程），仅按请求计算的内容用动态处理器。'
       }
     ],
-    docs: [{ title: 'HTTP 服务端模块 2.0 使用说明', path: 'docs/modules/http-server/README.md' }]
+    docs: [{ title: 'HTTP 服务端模块使用说明', path: 'docs/modules/http-server/README.md' }]
   },
   targets: [{
     id: 'windows-msvc-win32',

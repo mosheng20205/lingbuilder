@@ -134,3 +134,96 @@ test('new_emoji 后端声明无头模式时给出仅支持标准 Win32 后端的
     '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出(FBro_启用无头模式())\n    结束\n结束类');
   assert.ok(generated.blockingDiagnostics.some(item => item.includes('仅支持标准 Win32 后端')));
 });
+
+/** 只留一个可见 FBroBrowser 控件的项目骨架：不带无头资源，避免与本批开关断言互相干扰。 */
+function fbroSwitchProject(properties: Record<string, unknown>): LingWindowProject {
+  const project = makeProject(true);
+  project.resources = [];
+  project.windows[0].controls[0].properties = { ...properties } as
+    LingWindowProject['windows'][number]['controls'][number]['properties'];
+  return project;
+}
+
+test('FBroBrowser 新增启动开关属性进入生成期烘焙命令行', () => {
+  const { cpp } = generatedMain(fbroSwitchProject({ enableCrossFrame: true, disableProxy: true }),
+    '类 MainWindow\n    事件 _MainWindow_创建完毕()\n    结束\n结束类');
+  assert.match(cpp, /static const bool g_lingFbroStartupSwitchesBaked = true;/u);
+  assert.ok(cpp.includes('LB_FBro_SetStartupSwitches(L"{\\"enableCrossFrame\\":true,\\"disableProxy\\":true}"'),
+    '两个新开关必须按白名单键名烘焙进初始化前的启动开关登记');
+});
+
+test('FBro_设置启动开关JSON 字面声明在生成期并入烘焙，同键以代码声明为准', () => {
+  const source = '类 MainWindow\n    事件 _MainWindow_创建完毕()\n'
+    + '        调试输出(FBro_设置启动开关JSON("{\\"disableGpu\\":true,\\"enableCrossFrame\\":false}"))\n'
+    + '    结束\n结束类';
+  const { generated, cpp } = generatedMain(fbroSwitchProject({ disableGpu: true }), source);
+  assert.equal(generated.blockingDiagnostics.filter(item => item.includes('启动开关')).length, 0);
+  assert.ok(cpp.includes('LB_FBro_SetStartupSwitches(L"{\\"disableGpu\\":true,\\"enableCrossFrame\\":false}"'),
+    '代码字面声明必须并入烘焙，且同键覆盖属性勾选（可把属性项显式关掉）');
+  assert.match(cpp, /static const bool g_lingFbroStartupSwitchesBaked = true;/u);
+  assert.match(cpp, /int FBro_设置启动开关JSON\(const wchar_t\* switchesJson\)/u);
+});
+
+test('FBro 启动开关白名单外键与非法 JSON 在生成前中文阻断', () => {
+  const cases: Array<[string, string]> = [
+    ['{\\"noSandbox\\":true}', '不在白名单内'],
+    ['{\\"disableGpu\\":\\"yes\\"}', '必须是 true 或 false'],
+    ['{disableGpu:true}', '不是合法 JSON'],
+    ['[\\"disableGpu\\"]', '只接受单层 JSON 对象']
+  ];
+  for (const [literal, expected] of cases) {
+    const source = '类 MainWindow\n    事件 _MainWindow_创建完毕()\n'
+      + `        调试输出(FBro_设置启动开关JSON("${literal}"))\n`
+      + '    结束\n结束类';
+    const { generated } = generatedMain(fbroSwitchProject({}), source);
+    assert.ok(generated.blockingDiagnostics.some(item => item.includes(expected)),
+      `开关文本 ${literal} 必须给出含「${expected}」的生成前阻断诊断`);
+  }
+});
+
+test('字符串与注释里的 FBro_设置启动开关JSON 不触发烘焙', () => {
+  const source = '类 MainWindow\n    事件 _MainWindow_创建完毕()\n'
+    + '        // 调试输出(FBro_设置启动开关JSON("{\\"disableGpu\\":true}"))\n'
+    + '        调试输出("FBro_设置启动开关JSON(\\"{\u005c\\"disableGpu\\":true\u005c\\"}")")\n'
+    + '    结束\n结束类';
+  const { generated, cpp } = generatedMain(fbroSwitchProject({}), source);
+  assert.equal(generated.blockingDiagnostics.filter(item => item.includes('启动开关')).length, 0);
+  const bakedLine = cpp.split(String.fromCharCode(10)).find(line => line.includes('LB_FBro_SetStartupSwitches')) || '';
+  assert.equal(bakedLine, '', '被注释与被字符串遮蔽的命令名不得进入启动开关烘焙');
+  assert.match(cpp, /static const bool g_lingFbroStartupSwitchesBaked = false;/u);
+});
+
+test('FBro 启动开关白名单与桥内 kStartupSwitchKeys 不漂移', async () => {
+  const { FBRO_STARTUP_SWITCH_KEYS } = await import('../src/services/windowDesigner/lingCppWin32Project');
+  const fs = await import('node:fs/promises');
+  const bridgeSource = await fs.readFile(new URL('../native/fbro-bridge/LingBuilderFbroBridge.cpp', import.meta.url), 'utf8');
+  const block = bridgeSource.slice(
+    bridgeSource.indexOf('kStartupSwitchKeys[]'),
+    bridgeSource.indexOf('ValidateStartupSwitchJson'));
+  const bridgeKeys = [...block.matchAll(/L"([A-Za-z]+)"/gu)].map(match => match[1]);
+  assert.deepEqual(bridgeKeys.sort(),
+    [...FBRO_STARTUP_SWITCH_KEYS, 'headless'].sort(),
+    '桥内白名单与生成器白名单必须一一对应：新增开关要同时改两处');
+
+  // 应用函数只能调官方语义化包装：出现裸 AppendSwitch 就等于把不受控的进程级命令行开放出去。
+  const apply = bridgeSource.slice(bridgeSource.indexOf('void ApplyStartupSwitchesTo'),
+    bridgeSource.indexOf('const wchar_t* const kStartupSwitchKeys[]'));
+  assert.ok(apply.includes('FBroHsCommandLine_EnableCrossFrame(command_line)'), '跨域必须走官方 EnableCrossFrame');
+  assert.ok(apply.includes('FBroHsCommandLine_DisableProxy(command_line)'), '禁用代理必须走官方 DisableProxy');
+  assert.ok(!/AppendSwitch|AppendSwitchWithValue/u.test(apply),
+    '启动开关应用函数不得拼裸命令行开关（否则白名单形同虚设）');
+  for (const key of [...FBRO_STARTUP_SWITCH_KEYS, 'headless']) {
+    assert.ok(apply.includes(`SwitchJsonEnabled(json, L"${key}")`), `应用函数必须处理开关 ${key}`);
+  }
+
+  // 导出侧守卫：初始化后拒绝、非白名单 JSON 拒绝、写入必须在 g_mutex 之下（OnBeforeCommandLineProcessing 持同一把锁读）。
+  const exportStart = bridgeSource.indexOf('int __stdcall LB_FBro_SetStartupSwitches');
+  assert.ok(exportStart > 0, '缺少 LB_FBro_SetStartupSwitches 导出');
+  const exportBody = bridgeSource.slice(exportStart, bridgeSource.indexOf('int __stdcall LB_FBro_GetStartupCommandLine'));
+  assert.equal(exportBody.match(/if \(g_initialized\) return LB_FBRO_ERROR_OPERATION_FAILED;/gu).length, 2,
+    '空文本与非空文本两条路径都必须在已初始化后拒绝');
+  assert.ok(exportBody.includes('if (!ValidateStartupSwitchJson(json)) return LB_FBRO_ERROR_INVALID_ARGUMENT;'),
+    '白名单校验必须在导出内完成');
+  assert.ok(exportBody.indexOf('std::lock_guard<std::recursive_mutex> lock(g_mutex)') < exportBody.indexOf('g_startup_switches_json = json;'),
+    '写入 g_startup_switches_json 必须先持 g_mutex');
+});

@@ -83,7 +83,7 @@ title: 模块常量与 #常量 引用
 - `name` 由中文、字母、数字、下划线组成，不能以数字开头，声明时不带 `#`。
 - 常量必须同步写入模块中文文档（`contributes.docs[]`），说明取值含义和配合哪些命令使用。
 
-完整的清单字段与校验门禁以随 IDE 分发的《模块开发手册》「公开常量」一节为准；封装流程可参考站内「[用 AI 生成模块](/guide/user/modules/ai-module-dev)」与「[调用 C++ DLL](/guide/user/modules/dll-module)」两篇。
+完整的清单字段与校验门禁以随 IDE 分发的《模块开发手册》「公开常量」一节为准；模块工程从零创建或从 `.lbmod` 解开可参考站内「[新建与打开模块](/guide/user/modules/create-module)」，封装流程另见「[用 AI 生成模块](/guide/user/modules/ai-module-dev)」与「[调用 C++ DLL](/guide/user/modules/dll-module)」。
 
 ## 7. 生成与导出行为
 

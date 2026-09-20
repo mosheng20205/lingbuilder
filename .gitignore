@@ -163,6 +163,8 @@ examples/array-operations-demo/src/.lingbuilder/projects/
 
 /.video-work/
 /.work/
+.lingbuilder-tmp-*/
+.zcode-scratch/
 /.ting-renderer-env.cmd
 /cover_generator.ps1
 /make_cover.ps1

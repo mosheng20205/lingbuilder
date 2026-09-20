@@ -1847,6 +1847,35 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
   3. 裸名引用模块常量的兼容策略收紧：当前裸名不解析模块常量（生成期因同命名空间物化而“碰巧可编译”），诊断层未对「裸名命中模块常量」给迁移提示；如要强制 `#` 形态需先出快速修复再收门禁，避免存量示例突然变红。
   4. 模块常量进官网「命令查找」/模块详情文档管线（websiteCommandReference 目前只派生命令，不携带常量清单）。
 
+## 2026-09-19 灵码 Skill 分发与本机授权代理（P0 已落地，含遗留）
+
+- 已落地（P0）：AI Bridge stdio 通道稳定性验收脚本 `npm run smoke:ai-bridge-stdio`（打包宿主握手 389ms、EOF 自退、父进程被杀不残留、并发无串扰、含真实 MSVC 构建全程 stdout 纯净、建项目→改码→诊断→构建→运行链跑通）；硬链接改名探测证明 node 模式 stdio 宿主不独占 `app.asar`，据此否决 225MB 改名宿主副本；`codexDesktopIntegrationService.validateHostExecutable` 拒绝启动器脚本作宿主；本机回环授权代理 `LocalAuthorizationService` + CLI 侧 `localAuthorizationClient`（默认关闭、连接中心显式勾选、凭据不落盘不进日志、fail-closed）；灵码 Skill 离线快照 `electron/skill-kit/` 随包 + `verify:skill-kit-release` / `verify:skill-kit-installer` 并入打包链 + `tests/skillKit.test.ts` 漂移门禁。方案全文见 `docs/灵码Skill分发与官网更新方案.md`。
+- 遗留（未动码）：
+  1. P1 独立开源 Skill 仓库（Apache-2.0）：**只放清单 schema、发现器与校验脚本、测试与 CI、README；`SKILL.md` 中文正文与配置模板措辞不进开源仓**（留在 IDE 仓库快照 + 官网签名清单下发，自编译者拿到的是空骨架）。同步方向单向：IDE 快照 → 开源仓 schema/测试。
+  2. P2 云端 `skill-catalog`（`cloud/api/src/website/` 控制器/服务/迁移 + `SkillCatalogAdmin.tsx` + `skill-catalog:check` 门禁），复用 SDK 清单的 Ed25519 签名与 `sequence` 防回滚；信任锚随 IDE 发版钉入，未发新锚 IDE 前不得切签发密钥。
+  3. P3 轻窗口（按需 `BrowserWindow`，复用 `moduleInfoWindowService` 范式，不做常驻管理器、不加托盘）：远端有更新必须取最新版，取不到才回退包内快照并在复制指令里标注版本来源；「一键复制指令」文案来自 `manifest.installPromptTemplate`（`{skillPath}` 替换为绝对路径）；广告位仅静态横幅+信息卡，拉取失败渲染空白占位，**不得参与任何能力判定**。
+  4. 本机授权代理已在 dev 真机端到端验收（2026-09-19：UI 勾选 → 代理起 `127.0.0.1:62402` → 外部 stdio 宿主换取 `module-access`+`fbro-vip` 两条日志 → 取消勾选后端口 `ECONNREFUSED` 且发现文件删除）。遗留：打包版走默认 `%APPDATA%\LingBuilder` 候选路径的真机一次（本轮为隔离单实例锁用了 `LINGBUILDER_REC_USER_DATA`）。收费模块 Permit 仍由既有权益门禁判定，代理只搬运已授权结果，不得在代理内放宽校验。
+  5. `examples/module-demos`、`examples/ui-recipes` 依旧不随包分发（既有边界），打包版工作区取不到语料；skill-kit 已解决自身随包问题，但界面配方要不要随包尚未定。
+
+## HTTP 服务端模块后续优化（2026-09-19）
+
+2026-09-19 首次并发压测建立基线并落地 2.1：静态路由（工作线程直回、不占 UI 线程）+ `HTTP_设置连接轮转`（单连接强制关闭前最大请求数可配）+ HEAD 自动回落匹配 GET 路由。动态路由实测吞吐上限约 2.7 万 req/s（瓶颈为 UI 线程逐请求消息派发），静态路由版见当天更新记录。遗留方向：
+
+1. **后台处理器路由（方案 B，需全套契约再立项）**：新增 `HTTP_添加后台路由` 让动态处理器直接在工作线程执行，突破 UI 线程派发上限。前置设计：处理器禁碰控件的静态诊断（controlRef/设计器引用在后台路由必须 error 级阻断）、跨线程 `HTTP请求` 生命周期审计、UI 回写复用 `WM_LINGBUILDER_THREAD_UI_UPDATE` 排空范式、模块 manifest/binding/补全/文档/测试全链，以及规则手册与官网文档同步。不得先加命令再补门禁。
+2. **UI 派发批量化（方案 C，本轮评估后缓做）**：动态路由当前每请求一次 `PostMessage` + 条件变量等待；可改为待处理队列 + 单条消息整批排空（照线程模块 generation 计数）。实测收益预计仅 1.5~2 倍且要改 `WM_LINGBUILDER_HTTP_SERVER_REQUEST` wParam 契约（涉及普通 Win32 与 new_emoji 两套模板），在静态路由已覆盖高吞吐场景的前提下优先级低于方案 B。
+3. **压测语料随包**：`bench:http-server-native` 依赖仓库内脚本与 MSVC；打包版用户无法复现压测口径，如需对外承诺数字应把压测方法与结果固化进官网文档而非要求用户自跑。
+
+## FBro 无头浏览器（2026-09-19 落地，含后续项）
+
+一期已落地：设计器「FBro无头浏览器」非可视资源、`.lcpp` 字面 `FBro_启用无头模式()` 烘焙、`FBro_实例*` 句柄命令族同步驱动（控制台可用）、进程内可见控件互斥门禁、bridgeVersion 2.8.0。启动开关的应用时机已从「InitializeEx 前写 GetGlobalCommandLine（实测是空对象，开关静默丢失）」纠正为 `BridgeInitEvent::OnBeforeCommandLineProcessing` 官方可写回调（`process_type` 为空即浏览器进程时一次性应用），同时修复了 6 个既有 GPU/媒体流等开关从未真正到达 CEF 的存量缺陷。
+
+后续待办：
+
+1. **SDK 归档与线上清单发布（现为 2.9.0）**：`module:fbro-sdk` 重打 `lingbuilder-fbro-sdk-135.0.21.2.9.0-windows-x64.zip` 归档 → 上传直链 → 管理后台「SDK 下载源」发布新 sequence → `npm run sdk-catalog:check` 门禁；`sdkDependencyCatalog`/`verify-fbro-release*` 的归档名与 SHA 同步（`sdkDependencyCatalog` 目前仍钉 2.7.0，即 2.8.0 起就没发布过）。发布前从远端拉旧桥的工作区构建会被 runtime manifest 门禁拦住（fail-closed 属预期）。
+2. **独立进程模式无头**：`independent-*` 控件由 Host 进程自持命令行，`--headless` 未透传 LingBuilderFbroHost；需要 Host 侧启动参数管道与互斥口径重定义（当前门禁按「仅进程内控件互斥」放行独立进程控件，若 Host 也支持无头需同步收紧）。
+3. **控制台事件泵**：控制台已有 2×2 离屏工具窗口泵（EdgeView_泵消息 同法），但 `FBro_实例绑定事件` 的后台实例事件派发尚未在控制台真机验收；如要支持，需把 BridgeInitEvent 回调的 PostMessage 目标与控制台单例窗口对齐并补 smoke。
+4. **启动开关回归**：6 个旧开关（disableGpu/GpuCache/GpuBlockList/MediaStream/SpeechInput/Autoplay）的组合行为仍未逐键回读；跨域与禁用代理三组已在 2026-09-20 用 `npm run smoke:fbro-startup-switches` 真机钉死（见下节后续 2）。
+
 ## EdgeView / CDP 无头浏览器与控制台泵底座（2026-09-19 方案 C 落地，含后续项）
 
 一期已落地：`EdgeView_创建无头实例(代理)`（离屏 WS_POPUP 隐窗宿主，实例编号命令全复用）、`EdgeView_泵消息`、`EdgeView_创建弹窗浏览器初始隐藏(代理)`、`EdgeView_枚举实例JSON` 增「是否无头」、设计器非可视组件「EdgeView无头浏览器」、CDP `启动浏览器/停止浏览器/停止全部浏览器/取最后错误`（真无头独立 msedge/chrome 进程，DevToolsActivePort 自动解析、优雅退出+目录回收+进程退出兜底清理）、控制台入口无头泵窗口（线程/CDP/HTTP/WS/网页异步完成处理器经泵派发）。真机验收：控制台演示全链退出码 0、CDP 全页截图落盘；回归 `tests/edgeViewHeadless.test.ts`。
@@ -1857,6 +1886,39 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
 2. **EdgeView 无头形态取页面图像**：隐窗宿主不渲染像素，截图/PDF 一律引导到 CDP 真无头。若必须在 WebView2 内出图，需评估 Composition/离屏路线（官方仍要求 HWND，无真 headless API），立项前先维持「CDP 出图」口径。
 3. **无头实例首导航 webErrorStatus=9**：创建后立即 `EdgeView_导航实例` 时首个 about:blank 导航会被中止（演示实测第二条导航 200 正常）。可把「先等 `浏览器创建完成` 或失败自动重试一次」写进命令描述/生成侧helper，避免外部 AI 把中止误判为失败。
 4. **控制台泵便利性**：完成处理器现需显式 `EdgeView_泵消息`/等待事件轮询排空；可评估 `线程_等待` 内部顺带泵窗口消息（改动线程模块等待语义，需与「永不排空」旧契约一起重审），以及把 `FBro_实例绑定事件` 的后台实例事件也接到泵窗口（见上节 FBro 后续 3）。
+
+## CEF3 cefQuery 多通道与填表读取（2026-09-19 桥侧落地，含后续项）
+
+- 已落地（本次）：CEF3 桥的 JS 交互通道由「每程序一条」改为**追加式多通道**（向量配置 + 命令行 `名,取消名;…` 编码 + 每通道独立 renderer/browser router 全量扇出），并把**对外查询ID 改为桥全局递增分配**（`g_js_query_sequence`，CEF 原生 `query_id` 仅留反查表给 `OnQueryCanceled`），「查询请求/查询已取消」事件新增 `channelIndex`。这是 CEF3 填表**读取**类命令此前无法入账的唯一结构性障碍：生成期内部读取通道会占掉用户 `jsQueryFunctions` 属性。`LB_CEF3_JsQueryRespond` 签名与 ABI 未变，老工程无需改码。IDE 侧生成期已改为遍历全部 CefBrowser 控件、按 `;` 拆条、跨控件按查询名去重逐条注册，设计器弹窗解除单通道限制。
+- 后续 1（**只剩对外发布**）：本机已装 SDK 已更新——`node scripts/build-cef3-bridge.cjs --install` 已把新 DLL/`.lib`/头文件覆盖进 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk/bridge/x64/`，且与 `.lingbuilder-build/cef3-bridge/Release/` 逐字节一致（DLL/`.lib`/头文件三件 SHA-256 前缀分别 `0870df0a`/`517bf667`/`43f3ce19`，头文件与 `electron/native/cef3-bridge/LingBuilderCefBridge.h` 同源）。**仍待办**：重打 SDK 归档并换后台直链 + `npm run sdk-catalog:check` 门禁；归档与直链属对外发布动作，需用户单独授权，未发布前打包版/旧 IDE 的按需下载源仍是单通道桥。
+- 后续 2：CEF3 填表读取 9 条（`CEF3填表_取文本/取内文本/…`）按 A3-2 落地——生成期注册一条内部通道（与用户通道共存），页面回包用「请求ID 信封」在 `CEF3_处理事件包` 里按 `request` 前缀派发（**不要按 `channelIndex` 匹配**，内部通道的序号取决于用户先注册了几条）。读取与写入的差别只在能否拿回返回值：写入族已可纯 `FrameExecuteJavaScript` 落地，读取族必须走这条通道。
+- 后续 3：`OnQueryCanceled` 语义已收紧为「仅在查询仍挂起时派发」（反查不到说明宿主已应答，此时发 `queryId=0` 会把宿主引到别的挂起查询）。如后续要求「页面主动取消也要无条件通知宿主」，需要另开一个带 CEF 原生 id 的事件字段，不得回退成透传。
+- 构建门禁坑（已修，记录避免复发）：`scripts/build-cef3-bridge.cjs` 先跑「媒体路由通知」模式，该模式用 `TerminateProcess` 硬退出，会留下 2 个重入同一 exe 的 CEF 子进程；紧接着的全量运行被残留进程抢占缓存目录后**静默早退**（日志只到 `CEF3 test checkpoint: execute-subprocess=-1`，无任何断言文本，实测背靠背 100% 复现、等 8 秒即绿）。现已在两跑之间 `waitForOrphanTestProcesses()` 轮询 `tasklist` 等其退出——**只等待不 `taskkill`**，因为并行会话可能同时在跑同名 exe。
+- 存量脆弱断言（非本改动回归，另一会话已在 2026-09-12 条目记过同款）：`LingBuilderCefBridgeTests.cpp` 受管资源异步读取分支在 `std::thread(...).detach()` 里对 continuation 调 `LB_CEF3_InvokeV4` 的断言，在浏览器关闭屏障附近约半数概率失败（`CEF3 native test assertion failed: LB_CEF3_InvokeV4(&call, &result) == LB_CEF3_OK`）。`npm run module:cef3-bridge` 遇红先看该行号：若是它，重跑即可；排查时手动连跑同一 exe 两三次看是否时有时无，别把它判成自己改坏的。
+- 生成器 C++ 新红线：`LB_CEF3_HANDLE` 是**整型 typedef**，成员函数里不得用 `nullptr` 赋它或作三目返回（C2446/C2440），一律写 `0`；类内辅助函数一旦声明 `static` 就不得再调用非静态成员（如 `CEF3_查找实例`，C2352）。这两类 TS 测试与 `npm run build` 全绿，只有真机 MSVC 才暴露。
+
+## FBro 启动开关批次4：跨域与禁用代理（2026-09-20 落地，含后续项）
+
+一期已落地（bridgeVersion / `lingbuilder.fbro.browser` 同步 2.8.0 → **2.9.0**）：
+
+- 官方语义化开关入桥：`ApplyStartupSwitchesTo` 新增 `enableCrossFrame` → `FBroHsCommandLine_EnableCrossFrame`、`disableProxy` → `FBroHsCommandLine_DisableProxy`。**不再猜 `--disable-web-security` 拼法**：真机回读钉死官方 EnableCrossFrame 实际写入 `--disable-web-security --disable-site-isolation-trials`，DisableProxy 写入 `--no-proxy-server`。
+- 白名单单点化：桥内 `kStartupSwitchKeys`（9 键）+ `ValidateStartupSwitchJson`（受控形态 `{"键":true|false}` 单层对象，逐字符扫描，不用 CEF 值 API），`LB_FBro_SetStartupSwitches` 现在**非白名单键/非法形态直接返回 `LB_FBRO_ERROR_INVALID_ARGUMENT`、已初始化返回 `LB_FBRO_ERROR_OPERATION_FAILED`、写入置于 `g_mutex` 之下**（修掉与 `OnBeforeCommandLineProcessing` 持锁读之间的数据竞争）。`EnableSingleProcess` 刻意不开放（官方注释「仅调试模式有效」，会破坏独立进程宿主与实例寻址契约）。应用函数只调官方包装，出现裸 `AppendSwitch` 即视为白名单形同虚设（有测试钉住）。
+- `.lcpp` 通道：新命令 `FBro_设置启动开关JSON(开关JSON)` 与 `FBro_启用无头模式` 同范式——**字面量在生成期烘焙、运行期调用点只查询烘焙结果**（返回 1=本次声明已进初始化前登记，0=未烘焙并打中文诊断）；FBroBrowser 新增两个创建期属性「启用跨域模式 / 禁用代理」。同键冲突时**代码字面声明覆盖属性勾选**（可把属性项显式关成 false）。生成期扫描用自写的单趟字符串跳过器定位调用，不复用等长遮蔽（遮蔽状态机在嵌套引号/转义下会与真实字符串边界脱节，实测把被字符串包住的命令名误判为真调用）；JSON 非法或键不在白名单 → **生成前中文阻断**，不允许「勾了/写了却没生效」静默通过。
+- 双向漂移门禁：`tests/fbroHeadless.test.ts` 比对桥 `kStartupSwitchKeys` 与生成器 `FBRO_STARTUP_SWITCH_KEYS`，并断言官方包装调用、初始化后拒绝、锁内写入；新增 5 条生成期用例（属性烘焙、字面并入与优先级、四类非法形态、注释/字符串不触发）。
+- 真机验收（`cd electron && npm run smoke:fbro-startup-switches`）：两个本地 HTTP 端口构成两个源，父页 iframe 引另一端口子页并在 iframe onload 里探测 `contentDocument.title`；三组独立构建逐键归因——只声明 `enableCrossFrame` ⇒ 命令行含两个跨域开关且**真的读回跨源子页标题** `CROSS_OK:FBRO-CROSS-CHILD-TITLE`；只声明 `disableProxy` ⇒ 命令行只有 `--no-proxy-server`、跨源读回 `CROSS_NULL`；对照组 ⇒ 命令行按契约为空、跨源读回 `CROSS_NULL`。因此「跨域放开来自 enableCrossFrame」是功能证据，不是「命令行里出现了字符串」。
+
+后续待办：
+
+1. **独立进程模式仍收不到任何启动开关**（本批按 3a 只做边界声明）：生成期只在**进程内**初始化片段调 `LB_FBro_SetStartupSwitches`，而 `LingBuilderFbroProcessRuntime::Launch()` 启动 Host 时命令行零参数、只传 `LINGBUILDER_FBRO_*` 环境变量，所以 9 个开关（含跨域）对 `independent-*` 模式一律无效；属性与命令描述已写死「仅进程内模式生效」。要做全模式统一（3b）需要：Host 侧新增 `LINGBUILDER_FBRO_STARTUP_SWITCHES` 环境变量 → Host 分支在自身 `LB_FBro_InitializeEx` 前登记，并重新定义「无头/跨域与可见控件」的互斥口径（Host 是独立进程，放开只影响该 Host）。改动集中在 `LingBuilderFbroProcessRuntime.hpp` 与生成器 Host 分支，均在仓库内可控，但要真机跑 独立进程 冒烟（`smoke:fbro-process-native` 同法）才能收口。
+2. **6 个旧开关的组合回归**：本批新冒烟钉住了 enableCrossFrame/disableProxy/baseline 三组；`disableGpu/disableGpuCache/disableGpuBlockList/enableMediaStream/enableSpeechInput/enableAutoplay` 在 cf799fb 新时机下的组合行为仍建议在 `smoke:fbro-startup-switches` 里各加一组「声明→回读命令行」用例（同 harness，逐键 hasTokens/lacksTokens 断言），并把结果写进 `docs/modules/fbro` 的开关表。
+3. **`FBro_设置启动开关JSON` 的字面量限制需外部 AI 明确**：命令参数必须是调用处字面文本（不接受变量/拼接/运行期决定），`MCP_INSTRUCTIONS` 与 `module.info` 的 FBro 命令表当前只带描述文本；若外部 AI 仍生成 `FBro_设置启动开关JSON(变量)`，返回值 0 加中文诊断是可接受的失败，但应在 snippet 层给出可粘贴范本（与 HTTP 静态路由同法）后再推四层同步。
+
+
+## CEF3 代理能力（2026-09-20 全局代理落地，代理认证立为后续项）
+
+- 已落地：`CEF3_设置全局代理(代理地址)` / `CEF3_清除全局代理()` / `CEF3_取全局代理()` / `CEF3_取实例代理(实例编号)`，与 EdgeView 全局代理同口径：只影响之后新建实例（控件/弹窗/区域/无头统一在 `CEF3_应用代理配置` 回落），显式直连（`CEF3_设置代理` 传空）不参与回落。真机验收：控制台工程 + 本机双转发代理桩（原点拒绝非中继标记请求），全局回落/实例自带/回读/清除全绿。
+- **代理认证（用户名/密码）后续项（桥内回环认证中继）**。真机二分实验已证伪两条官方通道：① CEF 150 不把代理 407 挑战投递给 `CefRequestHandler::GetAuthCredentials`（桥入口 fprintf 探针 0 命中，而测试代理侧确有发出挑战）；② 在 `OnBeforeResourceLoad` 用 `CefRequest::SetHeaderByName` 注入 `Proxy-Authorization` 会被 network service 静默吞掉整个请求（启用即桩侧零流量，注释即恢复）。唯一可靠路线：桥内置 127.0.0.1 随机端口「认证中继代理」——实例的 fixed_servers 改指中继，中继带凭据连上游（支持明文转发与 CONNECT 隧道，HTTPS 站点同样可用）；凭据只驻留桥进程内存，中继只听回环、按浏览器实例隔离上游凭据。落地时需同步恢复 `CEF3_设置代理认证` / `CEF3_设置实例代理认证` 两条命令（本批已按用户裁定从清单移除，脉络信息见 2026-09-20 更新记录与桥 `OnBeforeResourceLoad` 注释），并重新登记 CEF3 SDK 归档 SHA（桥 DLL 再次变更）。
+- 无头实例体验缺口（遗给 CEF3 无头批次会话，非代理功能）：`CEF3_创建无头浏览器` 在创建时即置 `bridgeReady=true`，「浏览器创建完成」事件里的排队导航补发分支永远跳过，且创建后立即导航会被桥以「浏览器已关闭」拒接（需先 Sleep 或轮询）；`CEF3_无头_等待加载完成` 在导航已发但未开始 loading 前会误判完成；无头实例的标题读取存在早读窗口（本批验收中网络层已 200 但取标题仍 about:blank）。
 ## CEF3 无头浏览器（官方 OSR）批次后续项（2026-09-20）
 
 主线已落地（提交 44e34d5..53f0591，Task 1-11）：桥 V4 无窗口创建与视口链、`CEF3_创建无头浏览器` + `CEF3无头_*` 17 条命令族、设计器「CEF3无头浏览器」非可视组件、生成期 `CefHeadlessSpec` 表与校验、控制台/窗口双真机冒烟（`npm run smoke:cef3-headless-native`）、`lingbuilder.cef3.osr` 5 条按句柄寻址的 OSR 命令；外部 AI 消费层四层同步（`MCP_INSTRUCTIONS` 第 3 条第四形态、snippet「CEF3 无头抓取（控制台项目）」、规则手册外部 AI 节「CEF3 无头浏览器（OSR）」条）同日完成。上文「CEF3 代理能力」节末尾记录的无头体验缺口（创建后立即导航被桥拒绝、`CEF3无头_等待加载完成` 误判、标题早读）已由 f78a956 / 33fd9ff 结构修掉（排队导航补发 + 两段轮询 + 就绪确认自带补发），排查时勿再按旧结论走。

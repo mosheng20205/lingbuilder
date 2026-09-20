@@ -98,17 +98,53 @@ public:
         std::wstring routePattern = pattern ? pattern : L"";
         std::wstring routeHandler = handler ? handler : L"";
         std::lock_guard<std::mutex> lock(server->mutex);
-        if (routeMethod.empty() || routePattern.empty() || routeHandler.empty()) return ServerFail(server, L"HTTP 路由的方法、路径和处理器不能为空。");
-        if (routeMethod != L"*" && !IsMethodToken(routeMethod)) return ServerFail(server, L"HTTP 路由方法包含非法字符。");
-        if (routePattern[0] != L'/') return ServerFail(server, L"HTTP 路由路径必须以 / 开头。");
-        if (routePattern.find(L'*') != std::wstring::npos && (routePattern.size() < 2 || routePattern.substr(routePattern.size() - 2) != L"/*")) {
-            return ServerFail(server, L"HTTP 路由仅支持末尾 /* 前缀通配符。");
-        }
-        auto found = std::find_if(server->routes.begin(), server->routes.end(), [&](const Route& route) {
-            return route.method == routeMethod && route.pattern == routePattern;
-        });
-        if (found != server->routes.end()) found->handler = routeHandler;
-        else server->routes.push_back({ routeMethod, routePattern, routeHandler });
+        if (routeHandler.empty()) return ServerFail(server, L"HTTP 路由的方法、路径和处理器不能为空。");
+        const wchar_t* keyError = RouteKeyError(routeMethod, routePattern);
+        if (keyError) return ServerFail(server, keyError);
+        UpsertRoute(server, { routeMethod, routePattern, routeHandler, nullptr });
+        return true;
+    }
+
+    bool AddStaticRoute(long long id, const wchar_t* method, const wchar_t* pattern, const wchar_t* content, const wchar_t* contentType) {
+        auto server = FindServer(id);
+        if (!server) return Fail(L"HTTP 服务端句柄无效。");
+        std::wstring routeMethod = Upper(method ? method : L"");
+        std::wstring routePattern = pattern ? pattern : L"";
+        std::lock_guard<std::mutex> lock(server->mutex);
+        const wchar_t* keyError = RouteKeyError(routeMethod, routePattern);
+        if (keyError) return ServerFail(server, keyError);
+        auto response = std::make_shared<StaticResponse>();
+        response->body = LB_WideToUtf8(content ? content : L"");
+        response->contentType = contentType && contentType[0] ? contentType : L"text/plain; charset=utf-8";
+        UpsertRoute(server, { routeMethod, routePattern, L"", response });
+        return true;
+    }
+
+    bool AddStaticFileRoute(long long id, const wchar_t* method, const wchar_t* pattern, const wchar_t* filePath, const wchar_t* downloadName, const wchar_t* contentType) {
+        auto server = FindServer(id);
+        if (!server) return Fail(L"HTTP 服务端句柄无效。");
+        std::wstring routeMethod = Upper(method ? method : L"");
+        std::wstring routePattern = pattern ? pattern : L"";
+        std::wstring routeFile = filePath ? filePath : L"";
+        std::lock_guard<std::mutex> lock(server->mutex);
+        const wchar_t* keyError = RouteKeyError(routeMethod, routePattern);
+        if (keyError) return ServerFail(server, keyError);
+        if (routeFile.empty()) return ServerFail(server, L"HTTP 静态文件路由的文件路径不能为空。");
+        auto response = std::make_shared<StaticResponse>();
+        response->filePath = routeFile;
+        response->contentType = contentType && contentType[0] ? contentType : L"application/octet-stream";
+        std::wstring safe = downloadName ? downloadName : L"";
+        safe.erase(std::remove_if(safe.begin(), safe.end(), [](wchar_t ch) { return ch == L'\r' || ch == L'\n' || ch == L'"'; }), safe.end());
+        response->downloadName = safe;
+        UpsertRoute(server, { routeMethod, routePattern, L"", response });
+        return true;
+    }
+
+    bool SetRotation(long long id, long long requests) {
+        auto server = FindServer(id);
+        if (!server) return Fail(L"HTTP 服务端句柄无效。");
+        if (requests < 1 || requests > 1000000) return ServerFail(server, L"HTTP 连接轮转请求数必须在 1 到 1000000 之间。");
+        server->rotationLimit.store(requests);
         return true;
     }
 
@@ -374,12 +410,13 @@ private:
         std::map<std::wstring, std::wstring> headers; std::string body; bool keepAlive = false, completed = false, aborted = false, dispatching = false;
         Response response; mutable std::mutex mutex; std::condition_variable changed;
     };
-    struct Route { std::wstring method, pattern, handler; };
+    struct StaticResponse { int status = 200; std::string body; std::wstring filePath, contentType = L"text/plain; charset=utf-8", downloadName; };
+    struct Route { std::wstring method, pattern, handler; std::shared_ptr<StaticResponse> staticResponse; };
     struct Connection { SOCKET socket = INVALID_SOCKET; std::wstring address; int port = 0; };
     struct Server {
         long long id = 0; std::wstring address = L"127.0.0.1", defaultHandler, lastError; int configuredPort = 0, actualPort = 0, workerCount = 4, queueLimit = 256, timeoutMs = 30000;
         size_t maxHeaderBytes = 64 * 1024, maxBodyBytes = 16 * 1024 * 1024; bool allowExternal = false, legacy = false;
-        std::vector<Route> routes; std::atomic<bool> running{false}, stopping{false}; std::atomic<int> activeConnections{0}; std::atomic<long long> totalRequests{0};
+        std::vector<Route> routes; std::atomic<bool> running{false}, stopping{false}; std::atomic<int> activeConnections{0}; std::atomic<long long> totalRequests{0}; std::atomic<long long> rotationLimit{100};
         SOCKET listenSocket = INVALID_SOCKET; std::thread acceptThread; std::vector<std::thread> workers; std::deque<Connection> queue; std::set<SOCKET> activeSockets;
         std::deque<long long> legacyRequests; mutable std::mutex mutex, lifecycleMutex; std::condition_variable queueChanged, legacyChanged;
     };
@@ -467,13 +504,23 @@ private:
     void HandleConnection(const std::shared_ptr<Server>& server, Connection& connection) {
         int timeout = server->timeoutMs; setsockopt(connection.socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout)); setsockopt(connection.socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
         std::string pending;
-        for (int requestIndex = 0; requestIndex < 100 && server->running.load(); ++requestIndex) {
+        for (long long requestIndex = 0; server->running.load(); ++requestIndex) {
+            const bool allowKeepAlive = requestIndex + 1 < server->rotationLimit.load();
             auto request = std::make_shared<Request>(); request->id = nextRequestId_.fetch_add(1); request->serverId = server->id; request->clientAddress = connection.address; request->clientPort = connection.port;
             int parseStatus = ParseRequest(connection.socket, pending, server, *request);
             if (parseStatus == 0) break;
             if (parseStatus != 200) { SendSimpleError(connection.socket, parseStatus, Reason(parseStatus)); break; }
-            request->handler = MatchHandler(server, request->method, request->path);
+            Route route = MatchRoute(server, request->method, request->path);
+            request->handler = route.handler;
             server->totalRequests.fetch_add(1);
+            if (route.staticResponse) {
+                const StaticResponse& value = *route.staticResponse;
+                request->response.status = value.status; request->response.body = value.body;
+                request->response.filePath = value.filePath; request->response.contentType = value.contentType;
+                if (!value.downloadName.empty()) request->response.headers.push_back({ L"Content-Disposition", L"attachment; filename*=UTF-8''" + UrlEncode(value.downloadName) });
+                if (!SendResponse(connection.socket, *request, allowKeepAlive)) break;
+                continue;
+            }
             { std::lock_guard<std::mutex> lock(mutex_); requests_[request->id] = request; }
             bool delivered = false;
             if (server->legacy) {
@@ -488,7 +535,7 @@ private:
                 while (request->dispatching && !server->stopping.load()) request->changed.wait(lock);
                 if (server->stopping.load() && !request->completed) { request->aborted = true; request->completed = true; }
             }
-            bool keepAlive = SendResponse(connection.socket, *request, requestIndex < 99);
+            bool keepAlive = SendResponse(connection.socket, *request, allowKeepAlive);
             { std::lock_guard<std::mutex> lock(mutex_); requests_.erase(request->id); }
             if (!keepAlive) break;
         }
@@ -592,16 +639,35 @@ private:
         return keepAlive;
     }
 
-    std::wstring MatchHandler(const std::shared_ptr<Server>& server, const std::wstring& method, const std::wstring& path) const {
+    static const wchar_t* RouteKeyError(const std::wstring& routeMethod, const std::wstring& routePattern) {
+        if (routeMethod.empty() || routePattern.empty()) return L"HTTP 路由的方法与路径不能为空。";
+        if (routeMethod != L"*" && !IsMethodToken(routeMethod)) return L"HTTP 路由方法包含非法字符。";
+        if (routePattern.empty() || routePattern[0] != L'/') return L"HTTP 路由路径必须以 / 开头。";
+        if (routePattern.find(L'*') != std::wstring::npos && (routePattern.size() < 2 || routePattern.substr(routePattern.size() - 2) != L"/*")) return L"HTTP 路由仅支持末尾 /* 前缀通配符。";
+        return nullptr;
+    }
+    void UpsertRoute(const std::shared_ptr<Server>& server, Route route) {
+        auto found = std::find_if(server->routes.begin(), server->routes.end(), [&](const Route& item) { return item.method == route.method && item.pattern == route.pattern; });
+        if (found != server->routes.end()) *found = std::move(route);
+        else server->routes.push_back(std::move(route));
+    }
+
+    Route MatchRoute(const std::shared_ptr<Server>& server, const std::wstring& method, const std::wstring& path) const {
         std::lock_guard<std::mutex> lock(server->mutex);
+        Route route;
+        if (TryMatchRoute(server, method, path, route)) return route;
+        if (method == L"HEAD" && TryMatchRoute(server, L"GET", path, route)) return route;
+        Route fallback; fallback.handler = server->defaultHandler; return fallback;
+    }
+    static bool TryMatchRoute(const std::shared_ptr<Server>& server, const std::wstring& method, const std::wstring& path, Route& output) {
         for (const auto& route : server->routes) {
             if (route.method != L"*" && route.method != method) continue;
-            if (route.pattern == path) return route.handler;
+            if (route.pattern == path) { output = route; return true; }
             if (route.pattern.size() >= 2 && route.pattern.substr(route.pattern.size() - 2) == L"/*") {
-                std::wstring prefix = route.pattern.substr(0, route.pattern.size() - 1); if (path.rfind(prefix, 0) == 0) return route.handler;
+                std::wstring prefix = route.pattern.substr(0, route.pattern.size() - 1); if (path.rfind(prefix, 0) == 0) { output = route; return true; }
             }
         }
-        return server->defaultHandler;
+        return false;
     }
     bool StopServer(const std::shared_ptr<Server>& server) {
         std::lock_guard<std::mutex> lifecycle(server->lifecycleMutex);
@@ -662,6 +728,9 @@ const HTTP_SERVER_WINDOW_METHODS = String.raw`
     bool HTTP_允许外部监听(long long server, bool allowed) { return httpServerRuntime_.AllowExternal(server, allowed); }
     bool HTTP_绑定请求处理器(long long server, const wchar_t* handler) { return httpServerRuntime_.BindHandler(server, handler); }
     bool HTTP_添加路由(long long server, const wchar_t* method, const wchar_t* path, const wchar_t* handler) { return httpServerRuntime_.AddRoute(server, method, path, handler); }
+    bool HTTP_添加静态路由(long long server, const wchar_t* method, const wchar_t* path, const wchar_t* content, const wchar_t* contentType) { return httpServerRuntime_.AddStaticRoute(server, method, path, content, contentType); }
+    bool HTTP_添加静态文件路由(long long server, const wchar_t* method, const wchar_t* path, const wchar_t* filePath, const wchar_t* downloadName, const wchar_t* contentType) { return httpServerRuntime_.AddStaticFileRoute(server, method, path, filePath, downloadName, contentType); }
+    bool HTTP_设置连接轮转(long long server, long long requests) { return httpServerRuntime_.SetRotation(server, requests); }
     bool HTTP_清空路由(long long server) { return httpServerRuntime_.ClearRoutes(server); }
     bool HTTP_启动(long long server) { return httpServerRuntime_.Start(server); }
     bool HTTP_停止(long long server) { return httpServerRuntime_.Stop(server); }

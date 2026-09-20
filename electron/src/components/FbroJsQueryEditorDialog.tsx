@@ -48,15 +48,15 @@ function validateChannels(channels: FbroJsQueryChannel[]): string[] {
 export default function FbroJsQueryEditorDialog({ control, isDarkMode, mode = 'fbro', onSave, onClose }: {
   control: { name: string; properties?: Record<string, unknown> };
   isDarkMode: boolean;
-  /** fbro：多通道编辑；cef3：严格单通道（CEF3 桥每程序只支持一条查询通道）。 */
+  /** 后端差异只体现在文案与默认取消函数名上：fbro 与 cef3 都支持多条查询通道。 */
   mode?: 'fbro' | 'cef3';
   onSave: (properties: { jsQueryFunctions: string }) => void;
   onClose: () => void;
 }) {
-  const single = mode === 'cef3';
+  const cef3 = mode === 'cef3';
   const [channels, setChannels] = useState<FbroJsQueryChannel[]>(() => {
     const parsed = parseFbroJsQueryChannels(control.properties?.jsQueryFunctions);
-    if (parsed.length) return (single ? parsed.slice(0, 1) : parsed).map(channel => ({ ...channel }));
+    if (parsed.length) return parsed.map(channel => ({ ...channel }));
     return [{ query: 'cefQuery', cancel: 'cefQueryCancel' }];
   });
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -95,9 +95,9 @@ export default function FbroJsQueryEditorDialog({ control, isDarkMode, mode = 'f
         <section className="min-w-0 space-y-3 overflow-auto p-4">
           <div className={`rounded-lg border px-3 py-2 text-[11px] leading-5 ${isDarkMode ? 'border-cyan-900/60 bg-cyan-950/20 text-slate-300' : 'border-cyan-200 bg-cyan-50 text-slate-600'}`}>
             <strong className={isDarkMode ? 'text-cyan-300' : 'text-cyan-700'}>填写说明：</strong>
-            {single ? <>
+            {cef3 ? <>
               查询函数名是页面里 <code className="font-mono">window.函数名({'{'}request, onSuccess, onFailure{'}'})</code> 调用原生的入口；取消函数名对应 <code className="font-mono">window.函数名(查询ID)</code>，留空时桥使用默认 <code className="font-mono">cefQueryCancel</code>。
-              通道在生成程序时于 <code className="font-mono">CEF3_初始化</code> 前置自动注册（运行期注册无效）。<strong>CEF3 桥每个程序只支持一条查询通道</strong>，页面要区分业务请在 request 载荷里自带标记；多个 CEF3 浏览器控件共享该通道，事件按控件绑定分发。
+              通道在生成程序时于 <code className="font-mono">CEF3_初始化</code> 前置自动注册（运行期注册无效）。<strong>可配置多条通道</strong>，每条通道对应页面上一个独立的查询函数，「查询请求」事件的 <code className="font-mono">channelIndex</code> 字段标明来源通道（0 起）；多个 CEF3 浏览器控件共享同一组通道，事件按控件绑定分发。
             </> : <>
               查询函数名是页面里 <code className="font-mono">window.函数名({'{'}request, onSuccess, onFailure{'}'})</code> 调用原生的入口；取消函数名对应 <code className="font-mono">window.函数名(查询ID)</code>，留空时桥使用默认 <code className="font-mono">lingQueryCancel</code>。
               通道在生成程序时于浏览器初始化前自动注册（运行期注册无效）；全部通道共用同一个 OnQuery 处理器，处理器无法区分来源通道。
@@ -107,30 +107,30 @@ export default function FbroJsQueryEditorDialog({ control, isDarkMode, mode = 'f
             <span>序号</span>
             <span title="页面通过 window.该函数名({...}) 调用原生，必须是有唯一合法的 JavaScript 标识符。">查询函数名</span>
             <span title="页面通过 window.该函数名(查询ID) 取消持久查询；留空使用桥默认取消函数。">取消函数名（可留空）</span>
-            {!single && <span className="text-right">顺序 / 删除</span>}
+            {<span className="text-right">顺序 / 删除</span>}
           </div>
           {channels.map((channel, index) => <div key={index} className={`rounded-lg border p-3 ${isDarkMode ? 'border-[#3b3b44]' : 'border-slate-200'}`}>
-            <div className={`grid grid-cols-1 gap-2 ${single ? 'sm:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)]' : 'sm:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_auto]'}`}>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_auto]">
               <label className="min-w-0"><span className="mb-1 block text-[10px] text-slate-500 sm:hidden">序号</span><span className="block h-8 leading-8 text-center font-mono text-xs text-slate-500">{index + 1}</span></label>
               <label className="min-w-0"><span className="mb-1 block text-[10px] text-slate-500 sm:hidden">查询函数名</span><input aria-label={`第 ${index + 1} 条查询函数名`} title="页面通过 window.该函数名({request, onSuccess, onFailure}) 调用原生；必须唯一且为合法 JavaScript 标识符。" value={channel.query} placeholder="如 cefQuery" onChange={event => updateChannel(index, { query: event.target.value })} className={`${inputClass} w-full font-mono`} /></label>
               <label className="min-w-0"><span className="mb-1 block text-[10px] text-slate-500 sm:hidden">取消函数名（可留空）</span><input aria-label={`第 ${index + 1} 条取消函数名`} title="页面通过 window.该函数名(查询ID) 取消持久查询；留空使用桥默认取消函数。" value={channel.cancel} placeholder="如 cefQueryCancel" onChange={event => updateChannel(index, { cancel: event.target.value })} className={`${inputClass} w-full font-mono`} /></label>
-              {!single && <div className="min-w-0"><span className="mb-1 block text-[10px] text-slate-500 sm:hidden">顺序 / 删除</span><div className="flex gap-1"><button type="button" aria-label={`上移第 ${index + 1} 条通道`} className={buttonClass} disabled={index === 0} onClick={() => moveChannel(index, index - 1)}><ArrowUp className="h-3 w-3" /></button><button type="button" aria-label={`下移第 ${index + 1} 条通道`} className={buttonClass} disabled={index === channels.length - 1} onClick={() => moveChannel(index, index + 1)}><ArrowDown className="h-3 w-3" /></button><button type="button" aria-label={`删除第 ${index + 1} 条通道`} className={`${buttonClass} text-red-400`} onClick={() => setChannels(current => current.filter((_, row) => row !== index))}><Trash2 className="h-3 w-3" /></button></div></div>}
+              {<div className="min-w-0"><span className="mb-1 block text-[10px] text-slate-500 sm:hidden">顺序 / 删除</span><div className="flex gap-1"><button type="button" aria-label={`上移第 ${index + 1} 条通道`} className={buttonClass} disabled={index === 0} onClick={() => moveChannel(index, index - 1)}><ArrowUp className="h-3 w-3" /></button><button type="button" aria-label={`下移第 ${index + 1} 条通道`} className={buttonClass} disabled={index === channels.length - 1} onClick={() => moveChannel(index, index + 1)}><ArrowDown className="h-3 w-3" /></button><button type="button" aria-label={`删除第 ${index + 1} 条通道`} className={`${buttonClass} text-red-400`} onClick={() => setChannels(current => current.filter((_, row) => row !== index))}><Trash2 className="h-3 w-3" /></button></div></div>}
             </div>
           </div>)}
-          {!single && <button type="button" className={`${buttonClass} border-emerald-500/40 text-emerald-500`} onClick={() => setChannels(current => [...current, { query: '', cancel: '' }])}><Plus className="h-3 w-3" />新增通道</button>}
+          {<button type="button" className={`${buttonClass} border-emerald-500/40 text-emerald-500`} onClick={() => setChannels(current => [...current, { query: '', cancel: '' }])}><Plus className="h-3 w-3" />新增通道</button>}
         </section>
         <aside className={`border-t p-4 lg:border-l lg:border-t-0 ${isDarkMode ? 'border-[#3a3a42]' : 'border-slate-200'}`}>
           <div className="mb-2 text-xs font-semibold">实时预览</div>
           <div className="mb-3 text-[10px] font-semibold text-slate-500">生成期注册（自动烘焙进生成程序）</div>
-          {single ? <pre className={`overflow-auto rounded border p-2 font-mono text-[10px] leading-5 ${isDarkMode ? 'border-[#3b3b44] bg-[#17171c] text-emerald-300' : 'border-slate-200 bg-slate-50 text-emerald-700'}`}>{channels.filter(channel => channel.query.trim()).map(channel => `CEF3_初始化 前置自动执行： LB_CEF3_EnableJsQuery(L"${channel.query.trim()}", L"${channel.cancel.trim()}")`).join('\n') || '（未配置通道）'}</pre>
+          {cef3 ? <pre className={`overflow-auto rounded border p-2 font-mono text-[10px] leading-5 ${isDarkMode ? 'border-[#3b3b44] bg-[#17171c] text-emerald-300' : 'border-slate-200 bg-slate-50 text-emerald-700'}`}>{channels.filter(channel => channel.query.trim()).map(channel => `CEF3_初始化 前置自动执行： LB_CEF3_EnableJsQuery(L"${channel.query.trim()}", L"${channel.cancel.trim()}")`).join('\n') || '（未配置通道）'}</pre>
             : <pre className={`overflow-auto rounded border p-2 font-mono text-[10px] leading-5 ${isDarkMode ? 'border-[#3b3b44] bg-[#17171c] text-emerald-300' : 'border-slate-200 bg-slate-50 text-emerald-700'}`}>{channels.filter(channel => channel.query.trim()).map(channel => `LB_FBro_EnableJsQuery("${channel.query.trim()}", "${channel.cancel.trim()}")`).join('\n') || '（未配置通道）'}</pre>}
           <div className="mb-2 mt-3 text-[10px] font-semibold text-slate-500">页面调用（写进你的 HTML/JS）</div>
           <pre className={`overflow-auto rounded border p-2 font-mono text-[10px] leading-5 ${isDarkMode ? 'border-[#3b3b44] bg-[#17171c] text-sky-300' : 'border-slate-200 bg-slate-50 text-sky-700'}`}>{channels.filter(channel => channel.query.trim()).map(channel => {
-            const cancel = channel.cancel.trim() || (single ? 'cefQueryCancel（默认）' : 'lingQueryCancel（默认）');
+            const cancel = channel.cancel.trim() || (cef3 ? 'cefQueryCancel（默认）' : 'lingQueryCancel（默认）');
             return `window.${channel.query.trim()}({ request: "文本", persistent: false,\n  onSuccess: 应答 => {...}, onFailure: (代码, 错误) => {...} })\nwindow.${cancel}(查询ID)`;
           }).join('\n\n') || '（未配置通道）'}</pre>
-          {single
-            ? <p className="mt-3 text-[10px] leading-4 text-slate-500">原生侧在「查询请求」事件处理器里用 CEF3_取事件字段 读取 queryId / request，再用 CEF3_查询应答 或 CEF3_查询应答失败 应答；结果回传到对应查询的 onSuccess / onFailure。每条查询只能应答一次，120 秒未应答自动回 -4。</p>
+          {cef3
+            ? <p className="mt-3 text-[10px] leading-4 text-slate-500">原生侧在「查询请求」事件处理器里用 CEF3_取事件字段 读取 queryId / channelIndex / request，再用 CEF3_查询应答 或 CEF3_查询应答失败 应答；结果回传到对应查询的 onSuccess / onFailure。每条查询只能应答一次，120 秒未应答自动回 -4。</p>
             : <p className="mt-3 text-[10px] leading-4 text-slate-500">原生侧在 OnQuery 事件处理器里用 FBro_取事件字段 读取 request，再用 FBro事件_完成延续 应答；结果回传到对应查询的 onSuccess / onFailure。</p>}
         </aside>
       </main>

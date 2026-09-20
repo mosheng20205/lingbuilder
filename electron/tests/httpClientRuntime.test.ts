@@ -56,6 +56,13 @@ const source = [
   '    事件 _MainWindow_创建完毕()',
   '        局部 HTTP客户端 客户端 = HTTP客户端_创建客户端()',
   '        HTTP客户端_设置自动解压(客户端, true)',
+  '        HTTP客户端_置Cookie(客户端, "PASS_ID", "v1", ".example.com", "/")',
+  '        HTTP客户端请求 带Cookie请求 = HTTP客户端_创建请求(客户端, "GET", "https://example.com/api")',
+  '        HTTP客户端_请求置Cookie(带Cookie请求, "PASS_ID=v1")',
+  '        HTTP客户端_开始请求(带Cookie请求)',
+  '        文本型 清单 = HTTP客户端_取CookieJSON(客户端)',
+  '        调试输出(清单)',
+  '        HTTP客户端_删除全部Cookie(客户端)',
   '        HTTP客户端请求 请求 = HTTP客户端_GET异步(客户端, "https://example.com", &请求完成)',
   '    结束',
   '    事件 请求完成()',
@@ -78,7 +85,7 @@ function generate(enabledModules: InstalledModule[], designerBackend?: 'new-emoj
 
 test('HTTP 客户端模块清单、文档和旧兼容入口保持完整', async () => {
   assert.equal(validateModuleManifest(HTTP_CLIENT_MODULE).diagnostics.length, 0);
-  assert.equal(HTTP_CLIENT_COMMAND_SPECS.length, 74);
+  assert.equal(HTTP_CLIENT_COMMAND_SPECS.length, 78);
   assert.deepEqual(
     HTTP_CLIENT_MODULE.bindings?.commands?.map(item => item.command),
     HTTP_CLIENT_MODULE.contributes?.commands?.map(item => item.name)
@@ -86,10 +93,14 @@ test('HTTP 客户端模块清单、文档和旧兼容入口保持完整', async 
   for (const name of ['HTTP客户端_请求', 'HTTP客户端_GET', 'HTTP客户端_POST', 'HTTP客户端_取状态码', 'HTTP客户端_取响应文本', 'HTTP客户端_取错误', 'HTTP客户端_清空状态']) {
     assert.ok(HTTP_CLIENT_COMMAND_SPECS.some(item => item.name === name), `缺少旧兼容入口 ${name}`);
   }
+  for (const name of ['HTTP客户端_置Cookie', 'HTTP客户端_请求置Cookie', 'HTTP客户端_取CookieJSON', 'HTTP客户端_删除全部Cookie']) {
+    assert.ok(HTTP_CLIENT_COMMAND_SPECS.some(item => item.name === name), `缺少 Cookie 注入命令 ${name}`);
+  }
   const documentationPath = path.resolve(process.cwd(), 'docs/modules/http-client/README.md');
   const documentation = await fs.readFile(documentationPath, 'utf8');
   assert.ok(documentation.includes('HTTP客户端_GET异步'));
   assert.ok(documentation.includes('WinHTTP'));
+  assert.ok(documentation.includes('HTTP客户端_请求置Cookie'));
 });
 
 test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理器引用', () => {
@@ -110,6 +121,14 @@ test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理�
   assert.ok(mainCpp.includes('case WM_LINGBUILDER_HTTP_CLIENT_EVENT:'));
   assert.ok(mainCpp.includes('bool HTTP客户端_执行同步(long long request)'));
   assert.ok(mainCpp.includes('bool HTTP客户端_请求(const wchar_t* method'));
+  assert.ok(mainCpp.includes('bool HTTP客户端_置Cookie(long long client, const wchar_t* name, const wchar_t* value, const wchar_t* domain, const wchar_t* path)'));
+  assert.ok(mainCpp.includes('bool HTTP客户端_请求置Cookie(long long request, const wchar_t* cookie)'));
+  assert.ok(mainCpp.includes('HTTP客户端_置Cookie(客户端, L"PASS_ID", L"v1", L".example.com", L"/")'));
+  assert.ok(mainCpp.includes('HTTP客户端_请求置Cookie(带Cookie请求, L"PASS_ID=v1")'));
+  assert.ok(mainCpp.includes('request.cookieOverride = text'));
+  assert.ok(mainCpp.includes('headers += L"Cookie: " + requestCookie + L"\\r\\n"'));
+  assert.ok(mainCpp.includes('DWORD disableCookies = WINHTTP_DISABLE_COOKIES'));
+  assert.ok(mainCpp.includes('ManualCookieDomainMatches(host, item.domain)'));
   assert.ok(mainCpp.includes('if (callback == L"请求完成")'));
   assert.ok(mainCpp.includes('HTTP客户端_GET异步(客户端, L"https://example.com", L"请求完成")'));
 });

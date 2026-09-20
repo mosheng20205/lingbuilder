@@ -585,8 +585,10 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ContinuationReleaseV4(LB_CEF3_CONTINUATION_
 
 /* JS 交互（cefQuery）通道。注册必须在 LB_CEF3_Initialize 之前完成：查询函数名
    随 CefMessageRouterConfig 在渲染进程 OnWebKitInitialized 时注入 window，
-   CEF 初始化后注册的通道对新创建的浏览器不生效。CEF3 每进程只支持一条查询
-   通道；同名重复注册按幂等成功处理，异名注册返回失败。 */
+   CEF 初始化后注册的通道不生效。一个程序可注册多条通道（上限 16 条），下标即
+   「查询请求」事件 channelIndex 字段的通道号；每条通道的查询名与取消名都必须是
+   合法 JS 标识符且跨通道互不重复，完全相同的重复注册按幂等成功处理，冲突返回
+   失败。对外查询ID 由桥全局递增分配（多条通道的 CEF query_id 会互相重号）。 */
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_EnableJsQuery(
     const wchar_t* query_function, const wchar_t* cancel_function);
 /* 按查询 ID 应答页面查询：success 非 0 时以 result_text 调用 onSuccess，
@@ -1033,6 +1035,7 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetTitle(LB_CEF3_HANDLE browser, wch
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetUrl(LB_CEF3_HANDLE browser, wchar_t* result, size_t capacity, size_t* required);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetProfilePath(LB_CEF3_HANDLE browser, wchar_t* result, size_t capacity, size_t* required);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetProxy(LB_CEF3_HANDLE browser, wchar_t* result, size_t capacity, size_t* required);
+
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserIsAudioMuted(LB_CEF3_HANDLE browser);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserSetAudioMuted(LB_CEF3_HANDLE browser, int muted);
 LB_CEF3_API LB_CEF3_TASK_HANDLE LB_CEF3_CALL LB_CEF3_BrowserEvaluateJavaScript(LB_CEF3_HANDLE browser, const wchar_t* script);

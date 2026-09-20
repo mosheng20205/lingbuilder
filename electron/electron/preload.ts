@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     start: (request: unknown) => ipcRenderer.invoke('ai-bridge:start', request),
     loadStartSettings: () => ipcRenderer.invoke('ai-bridge:start-settings:load'),
     saveStartSettings: (settings: unknown) => ipcRenderer.invoke('ai-bridge:start-settings:save', settings),
+    localAuthStatus: () => ipcRenderer.invoke('ai-bridge:local-auth-status'),
     stop: () => ipcRenderer.invoke('ai-bridge:stop'),
     rotateToken: () => ipcRenderer.invoke('ai-bridge:rotate-token'),
     revealToken: () => ipcRenderer.invoke('ai-bridge:reveal-token'),
@@ -75,6 +76,10 @@ contextBridge.exposeInMainWorld('lingBuilder', {
       ipcRenderer.on('ai-bridge:status-changed', handler);
       return () => ipcRenderer.removeListener('ai-bridge:status-changed', handler);
     },
+  },
+  skillKit: {
+    status: () => ipcRenderer.invoke('skill-kit:status'),
+    checkUpdate: () => ipcRenderer.invoke('skill-kit:check-update'),
   },
   modules: {
     importPackage: (sourcePath: string) => ipcRenderer.invoke('modules:import-package', sourcePath),

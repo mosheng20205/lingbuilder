@@ -34,7 +34,7 @@ const parameter = (
 // 以下说明按 src/services/windowDesigner/httpClientRuntime.ts 的实际校验逻辑核实，重复语义提取为共享常量。
 const clientArg = 'HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。';
 const requestArg = 'HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。';
-const headerNameArg = '请求头名称，长度 1 到 256 的合法 token 且不含控制字符；Host、Content-Length、Connection、Transfer-Encoding、Cookie 和 Set-Cookie 由运行时管理，不能手工设置。';
+const headerNameArg = '请求头名称，长度 1 到 256 的合法 token 且不含控制字符；Host、Content-Length、Connection、Transfer-Encoding、Cookie 和 Set-Cookie 由运行时管理，不能手工设置；提交 Cookie 必须改用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。';
 const headerValueArg = '请求头值，不得包含 CR、LF 或其它控制字符。';
 const requestUrlArg = '完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。';
 const bodyContentTypeArg = '请求正文的 Content-Type 文本；文本正文留空时按 text/plain; charset=utf-8 发送。';
@@ -97,8 +97,27 @@ const specs: HttpClientCommandSpec[] = [
     parameters: [...client, parameter('启用', 'bool', '传真由 WinHTTP 自动解压 gzip 与 deflate 响应，默认启用。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
   },
   {
-    name: 'HTTP客户端_设置Cookie', signature: 'HTTP客户端_设置Cookie(客户端, 启用)', description: '启用或关闭该受管客户端会话内的 Cookie 接收和回送；默认启用且不与浏览器共享。',
-    parameters: [...client, parameter('启用', 'bool', '传真在该受管客户端会话内自动接收和回送 Cookie，默认启用，不与浏览器共享。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
+    name: 'HTTP客户端_设置Cookie', signature: 'HTTP客户端_设置Cookie(客户端, 启用)', description: '启用或关闭 WinHTTP 自动 Cookie 罐（接收 Set-Cookie 并对后续请求自动回送）；默认启用且不与浏览器共享。注意这只是自动罐开关，手工注入已有 Cookie 用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。',
+    parameters: [...client, parameter('启用', 'bool', '传真启用自动接收和回送 Cookie 的会话罐，默认启用，不与浏览器共享；传假整体关闭自动 Cookie 行为。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
+  },
+  {
+    name: 'HTTP客户端_置Cookie', signature: 'HTTP客户端_置Cookie(客户端, 名称, 值, 域, 路径)', description: '向客户端手工注入一条 Cookie，随后续匹配的请求提交；同名同域同路径覆盖旧值；与 WinHTTP 自动罐独立保存。',
+    parameters: [...client,
+      parameter('名称', 'wideString', 'Cookie 名称，不能为空，不能包含等号或控制字符。'),
+      parameter('值', 'wideString', 'Cookie 值，不得包含 CR、LF 等控制字符；允许空值。'),
+      parameter('域', 'wideString', '生效域名；空文本匹配任意主机，前导点（如 .example.com）匹配该域及其子域，否则匹配精确主机或其子域。'),
+      parameter('路径', 'wideString', '生效路径前缀；空文本按 /，仅当请求路径与该前缀按 Cookie 路径规则匹配时回送。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '客户端',
+    insertText: 'HTTP客户端_置Cookie($1, "PASS_ID", "$2", ".example.com", "/")',
+    example: 'HTTP客户端_置Cookie(客户端, "PASS_ID", "windows_1-abc", ".example.com", "/")'
+  },
+  {
+    name: 'HTTP客户端_取CookieJSON', signature: 'HTTP客户端_取CookieJSON(客户端)', description: '以 JSON 数组返回该客户端手工注入的 Cookie 列表（每项含 name、value、domain、path）；不包含 WinHTTP 自动罐内容。',
+    parameters: client, returnType: 'wideString', returnLabel: '文本型', category: '客户端'
+  },
+  {
+    name: 'HTTP客户端_删除全部Cookie', signature: 'HTTP客户端_删除全部Cookie(客户端)', description: '清空该客户端全部手工注入的 Cookie；不影响 WinHTTP 自动罐，销毁客户端时两者都会清除。',
+    parameters: client, returnType: 'bool', returnLabel: '逻辑型', category: '客户端'
   },
   {
     name: 'HTTP客户端_设置默认请求头', signature: 'HTTP客户端_设置默认请求头(客户端, 名称, 值)', description: '设置或替换客户端默认请求头，拒绝非法名称、CR/LF 注入和受运行时管理的头。',
@@ -152,6 +171,13 @@ const specs: HttpClientCommandSpec[] = [
   {
     name: 'HTTP客户端_清空请求头', signature: 'HTTP客户端_清空请求头(请求)', description: '在请求启动前清空请求级请求头，不影响客户端默认头。',
     parameters: request, returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+  },
+  {
+    name: 'HTTP客户端_请求置Cookie', signature: 'HTTP客户端_请求置Cookie(请求, Cookie)', description: '为单个请求指定完整 Cookie 请求头内容（如 name1=value1; name2=value2），用于把外部取得的已有 Cookie 原样提交；设置后该请求（含重定向）关闭自动罐回送，只发这份手工 Cookie；空文本恢复默认行为。',
+    parameters: [...request, parameter('Cookie', 'wideString', '完整 Cookie 头内容，形如 name1=value1; name2=value2，不得包含 CR、LF 等控制字符；空文本清除并恢复默认 Cookie 行为。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '请求',
+    insertText: 'HTTP客户端_请求置Cookie($1, "$2")',
+    example: 'HTTP客户端_请求置Cookie(请求, "PASS_ID=windows_1-abc; user-extend-session=abc")'
   },
   {
     name: 'HTTP客户端_设置文本正文', signature: 'HTTP客户端_设置文本正文(请求, 正文, 内容类型)', description: '把文本编码为 UTF-8 请求正文并设置 Content-Type。',
@@ -326,7 +352,7 @@ export const HTTP_CLIENT_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: 'lingbuilder.net.http-client',
   name: 'HTTP 客户端模块',
-  version: '2.0.0',
+  version: '2.1.0',
   minLingBuilderVersion: '0.2.8',
   category: '网络',
   description: '提供受管 WinHTTP HTTP/HTTPS 客户端、多请求并发、后台完成事件、代理与身份验证、TLS 证书策略、重定向、Cookie、压缩、文本/二进制/文件上传下载、资源限制和运行统计。',
@@ -349,9 +375,14 @@ export const HTTP_CLIENT_MODULE: LingBuilderModuleManifest = {
         label: 'HTTP 客户端完成处理器',
         insertText: '空 请求完成()\n    HTTP客户端请求 请求 = HTTP客户端_取当前请求()\n    如果 (HTTP客户端_请求是否成功(请求))\n        调试输出(HTTP客户端_取响应文本编码(请求, "auto"))\n    否则\n        调试输出(HTTP客户端_取请求错误(请求))\n    如果结束\n结束',
         description: '在 UI 线程读取不可变响应快照并处理错误。'
+      },
+      {
+        label: 'HTTP 客户端 Cookie 注入（2.1）',
+        insertText: 'HTTP客户端 客户端 = HTTP客户端_创建客户端()\nHTTP客户端请求 请求 = HTTP客户端_创建请求(客户端, "GET", "https://example.com/api")\nHTTP客户端_请求置Cookie(请求, "PASS_ID=windows_1-abc; user-extend-session=xyz")\nHTTP客户端_绑定完成处理器(请求, &请求完成)\nHTTP客户端_开始请求(请求)',
+        description: '把外部取得的已有 Cookie 原样提交：按请求整体注入用 请求置Cookie（该请求含重定向只发这份手工 Cookie，自动罐回送同时关闭）；按域/路径长期回送改用 HTTP客户端_置Cookie(客户端, 名称, 值, 域, 路径)。设置请求头 拒绝 Cookie 头，不得用请求头方式提交。'
       }
     ],
-    docs: [{ title: 'HTTP 客户端模块 2.0 使用说明', path: 'docs/modules/http-client/README.md' }]
+    docs: [{ title: 'HTTP 客户端模块 2.1 使用说明', path: 'docs/modules/http-client/README.md' }]
   },
   targets: [
     {

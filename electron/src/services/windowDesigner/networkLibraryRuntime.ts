@@ -284,7 +284,7 @@ static long long LB_CookieInteger(const std::wstring& text, long long fallback) 
 // Chromium 的 expires_utc 是自 1601-01-01 起的微秒；用整数换算避免双精度丢掉小数秒。
 static bool LB_CookieExpiry(const LB_CookieRow& row, bool& session, std::wstring& secondsText) {
     session = false; secondsText = L"0";
-    if (LB_CookieFlag(row, { L"session" }, false)) return true;
+    if (LB_CookieFlag(row, { L"session" }, false)) { session = true; return true; }
     const auto* legacy = LB_CookieFind(row, { L"expirationDate" });
     if (legacy && legacy->kind == L"number" && legacy->text.find_first_of(L"123456789") != std::wstring::npos) { secondsText = legacy->text; return true; }
     const auto* chromium = LB_CookieFind(row, { L"expires_utc" });

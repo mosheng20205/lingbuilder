@@ -506,10 +506,19 @@ void LB_CEF3_CALL TestEventCallbackV4(const LB_CEF3_EVENT_PACKET_V4* packet,
     const wchar_t* query_id = wcsstr(fields.c_str(), L"\"queryId\":\"");
     assert(query_id != nullptr);
     query_id += wcslen(L"\"queryId\":\"");
+    // 多条通道各自的 CEF query_id 都从 1 起计数，桥必须给出不重号的对外查询ID，
+    // 并用 channelIndex 标明来源通道（本用例注册了 0/1 两条通道）。
+    static const wchar_t channel_marker[] = L"\"channelIndex\":\"";
+    const wchar_t* channel_position = wcsstr(fields.c_str(), channel_marker);
+    assert(channel_position != nullptr);
+    const wchar_t channel_digit = channel_position == nullptr
+        ? L'?' : channel_position[wcslen(channel_marker)];
+    assert(channel_digit == L'0' || channel_digit == L'1');
     ++g_js_query_events;
     // 「jsquery-cancel-me」留给页面取消，验证「查询已取消」派发；其余直接应答。
     if (fields.find(L"jsquery-cancel-me") == std::wstring::npos) {
-      assert(LB_CEF3_JsQueryRespond(packet->browser, query_id, 1, L"jsquery-pong", 0, L"")
+      const std::wstring pong = std::wstring(L"jsquery-pong-") + channel_digit;
+      assert(LB_CEF3_JsQueryRespond(packet->browser, query_id, 1, pong.c_str(), 0, L"")
           == LB_CEF3_OK);
     }
     return;
@@ -1787,6 +1796,24 @@ int wmain() {
   // 并验证初始化后的重复/异名注册与无 pending 应答都会被拒绝。
   assert(LB_CEF3_EnableJsQuery(L"cefQuery", L"cefQueryCancel") == LB_CEF3_OK);
   assert(LB_CEF3_EnableJsQuery(L"cefQuery", L"cefQueryCancel") == LB_CEF3_OK);
+  // 多通道：第二条通道按注册顺序独立登记（通道号 1 起）。
+  assert(LB_CEF3_EnableJsQuery(L"secondQuery", L"secondQueryCancel") == LB_CEF3_OK);
+  // 同一查询名改绑取消名、取消名跨通道占用，都会让渲染进程拿不到合法路由，必须拒绝。
+  assert(LB_CEF3_EnableJsQuery(L"cefQuery", L"otherCancel")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_EnableJsQuery(L"thirdQuery", L"cefQueryCancel")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  // 函数名要成为 window 上的合法 JS 标识符，并且不能包含命令行开关的编码字符。
+  assert(LB_CEF3_EnableJsQuery(L"1bad", L"cefQueryCancel")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_EnableJsQuery(L"bad;name", L"cefQueryCancel")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_EnableJsQuery(L"bad,name", L"cefQueryCancel")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_EnableJsQuery(L"has space", L"cefQueryCancel")
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  // 两个名字都留空回落到默认查询名/取消名，与首条通道一致时按幂等成功处理。
+  assert(LB_CEF3_EnableJsQuery(L"", L"") == LB_CEF3_OK);
   assert(LB_CEF3_Initialize(&config) == LB_CEF3_OK);
   std::fprintf(stderr, "CEF3 test checkpoint: initialized\n");
   std::fflush(stderr);
@@ -9743,11 +9770,52 @@ int wmain() {
   assert(g_js_dialog_events.load() >= 1);
   assert(g_dialog_closed_events.load() >= 1);
   // JS 交互（cefQuery）回环：页面发起查询 → 桥派发「查询请求」→ 事件回调应答 →
-  // onSuccess 写结果；第二个查询留给页面主动取消，验证「查询已取消」派发。
+  // onSuccess 写结果。本进程在初始化前注册了 cefQuery 与 secondQuery 两条通道。
   // 生成模板对每个浏览器都注册 per-browser V4 回调（真实运行时形态），这里同构。
   assert(LB_CEF3_SetEventCallbackV4(browser_a, TestEventCallbackV4, nullptr)
       == LB_CEF3_OK);
-  assert(g_js_query_events.load() == 0);
+  g_js_query_events.store(0);
+  // 两条通道各发一次查询：验证 window.cefQuery 与 window.secondQuery 同时注入渲染进程、
+  // 跨通道重号的 CEF query_id 不会串台（对外查询ID 由桥全局分配），且宿主按 channelIndex
+  // 应答后页面 onSuccess 收到的正是各自通道的回包。
+  const auto fire_queries = LB_CEF3_BrowserEvaluateJavaScript(browser_a,
+      L"window.cefQuery({request:'chan-A',persistent:false,"
+      L"onSuccess:function(r){globalThis.__chanA=r},"
+      L"onFailure:function(c,m){globalThis.__chanA='fail:'+m}});"
+      L"window.secondQuery({request:'chan-B',persistent:false,"
+      L"onSuccess:function(r){globalThis.__chanB=r},"
+      L"onFailure:function(c,m){globalThis.__chanB='fail:'+m}});'fired'");
+  assert(fire_queries != 0);
+  const auto fire_status = WaitTask(fire_queries);
+  const auto fire_result = TaskResult(fire_queries);
+  assert(LB_CEF3_TaskRelease(fire_queries) == LB_CEF3_OK);
+  assert(fire_status == LB_CEF3_TASK_SUCCEEDED);
+  assert(fire_result.find(L"fired") != std::wstring::npos);
+  const auto query_deadline = GetTickCount64() + 15000;
+  while (g_js_query_events.load() < 2 && GetTickCount64() < query_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_js_query_events.load() >= 2);
+  std::wstring channel_replies;
+  const auto reply_deadline = GetTickCount64() + 15000;
+  while (GetTickCount64() < reply_deadline) {
+    const auto read_replies = LB_CEF3_BrowserEvaluateJavaScript(
+        browser_a, L"[globalThis.__chanA||'',globalThis.__chanB||''].join('|')");
+    assert(read_replies != 0);
+    if (WaitTask(read_replies) == LB_CEF3_TASK_SUCCEEDED) {
+      channel_replies = TaskResult(read_replies);
+    }
+    assert(LB_CEF3_TaskRelease(read_replies) == LB_CEF3_OK);
+    if (channel_replies.find(L"jsquery-pong-0") != std::wstring::npos
+        && channel_replies.find(L"jsquery-pong-1") != std::wstring::npos) break;
+    PumpHostMessages();
+    Sleep(20);
+  }
+  assert(channel_replies.find(L"jsquery-pong-0") != std::wstring::npos);
+  assert(channel_replies.find(L"jsquery-pong-1") != std::wstring::npos);
+  std::fprintf(stderr, "CEF3 test checkpoint: js-query-two-channels\n");
+  std::fflush(stderr);
   // 注销 per-browser V4 回调，恢复既有测试的事件通道状态：
   // 否则后续 native-test 导航的「资源加载前」受管事件会挂到超时。
   assert(LB_CEF3_SetEventCallbackV4(browser_a, nullptr, nullptr) == LB_CEF3_OK);

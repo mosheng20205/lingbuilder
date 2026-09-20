@@ -47,6 +47,11 @@ async function main() {
     '        @ check(etc(datedRow.c_str()).find(L"\\"expirationDate\\": 1792311694.206754") != std::wstring::npos, "EDITTHIS-EXPIRATION-DATE");',
     '        @ const std::wstring editThisDated = etc(datedRow.c_str());',
     '        @ check(editThisDated.find(L"\\"hostOnly\\": false") != std::wstring::npos && editThisDated.find(L"\\"sameSite\\": \\"lax\\"") != std::wstring::npos && editThisDated.find(L"\\"session\\": false") != std::wstring::npos, "EDITTHIS-HOSTONLY-AND-SAMESITE");',
+    // 显式 session 标志（无 expirationDate）：曾命中 LB_CookieExpiry 提前 return 缺赋值的分支，导出成 session:false + expirationDate:0。
+    '        @ const std::wstring explicitSessionRow = L"[{\\"domain\\":\\"mms.pinduoduo.com\\",\\"name\\":\\"PASS_ID\\",\\"value\\":\\"abc\\",\\"path\\":\\"/\\",\\"secure\\":true,\\"httpOnly\\":true,\\"session\\":true}]";',
+    '        @ const std::wstring explicitSessionJson = etc(explicitSessionRow.c_str());',
+    '        @ check(explicitSessionJson.find(L"\\"session\\": true") != std::wstring::npos && explicitSessionJson.find(L"\\"expirationDate\\"") == std::wstring::npos, "EDITTHIS-EXPLICIT-SESSION-FLAG");',
+    '        @ check(net(explicitSessionRow.c_str()).find(L"#HttpOnly_mms.pinduoduo.com\\tFALSE\\t/\\tTRUE\\t0\\tPASS_ID\\tabc\\n") != std::wstring::npos, "NETSCAPE-EXPLICIT-SESSION-FLAG");',
     // 浏览器扩展键名形态 + sameSite 字符串透传 + 引号/反斜杠转义。
     '        @ const std::wstring browserRow = L"[{\\"domain\\":\\"a.example.org\\",\\"name\\":\\"Q\\",\\"value\\":\\"x\\\\\\"y\\\\\\\\z\\",\\"path\\":\\"/\\",\\"expirationDate\\":1800000000.5,\\"hostOnly\\":true,\\"httpOnly\\":false,\\"secure\\":true,\\"sameSite\\":\\"strict\\"}]";',
     '        @ const std::wstring browserJson = etc(browserRow.c_str());',

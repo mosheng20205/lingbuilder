@@ -8,6 +8,9 @@ import { exportModuleNativeDependencies } from '../src/services/modules/nativeDe
 import type { InstalledModule } from '../src/services/modules/types';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
+import { createDesignerAssetService } from '../src/services/windowDesigner/designerAssetService';
+import { createWindowsExecutableIconService } from '../src/services/windowDesigner/windowsExecutableIconService';
+import type { LingBuilderSolutionProject } from '../src/services/solution/solutionService';
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
 
 const execFileAsync = promisify(execFile);
@@ -120,7 +123,7 @@ async function main(): Promise<void> {
     ok: true,
     win32,
     newEmoji,
-    checks: ['keep-alive', 'query-form-decoding', 'path-plus', 'request-header', 'post-content-length', 'post-chunked', 'utf8-json', 'cookie', 'binary', 'file', 'redirect', 'empty-204', '404', '413', 'host-validation', 'request-target-validation', 'percent-validation', 'utf8-percent-validation', 'expectation-validation', 'shutdown']
+    checks: ['keep-alive', 'query-form-decoding', 'path-plus', 'request-header', 'static-route', 'static-prefix', 'static-head', 'static-file', 'static-missing-404', 'connection-rotation', 'post-content-length', 'post-chunked', 'utf8-json', 'cookie', 'binary', 'file', 'redirect', 'empty-204', '404', '413', 'host-validation', 'request-target-validation', 'percent-validation', 'utf8-percent-validation', 'expectation-validation', 'shutdown']
   }, null, 2));
 }
 
@@ -175,6 +178,13 @@ async function buildAndSmoke(options: {
   }
   const dependencyDiagnostics = await exportModuleNativeDependencies(enabledModules, options.projectDir);
   if (dependencyDiagnostics.length) throw new Error(dependencyDiagnostics.join('\n'));
+  const solutionProject: LingBuilderSolutionProject = {
+    id: project.id, name: project.name, type: 'visual-cpp', sourceRoot: 'src', configRoot: 'config',
+    designerPath: `.lingbuilder/projects/${project.id}/window-designer.json`, isDefault: true
+  };
+  // standalone 生成项目必须先物化 exe 图标（与 F5 同一服务），否则 rc.exe 报 RC2135。
+  await createWindowsExecutableIconService(options.projectDir, createDesignerAssetService(options.projectDir))
+    .materialize(solutionProject, generated.selectedWindow, [options.projectDir]);
   const exported = await exportVisualStudioProject({ projectDir: options.projectDir, projectId: project.id, generatedFiles: generated.files, enabledModules });
   for (const platform of options.platforms) {
     await execFileAsync(options.msbuild, [exported.solutionPath, '/m', '/t:Build', '/p:Configuration=Release', `/p:Platform=${platform}`, '/v:minimal'], {
@@ -215,6 +225,11 @@ function createHttpSource(port: number, fixturePath: string): string {
     `        HTTP_配置服务(服务, "127.0.0.1", ${port}, 4, 64)`,
     '        HTTP_设置请求限制(服务, 64, 1, 5000)',
     '        HTTP_添加路由(服务, "GET", "/health", &健康检查)',
+    `        HTTP_添加静态路由(服务, "GET", "/static/data", "{\\"ok\\":true,\\"source\\":\\"static\\"}", "application/json; charset=utf-8")`,
+    '        HTTP_添加静态路由(服务, "GET", "/static/prefix/*", "prefix-hit", "text/plain; charset=utf-8")',
+    `        HTTP_添加静态文件路由(服务, "GET", "/static/file", "${fixturePath.replaceAll('\\', '/')}", "静态文件.txt", "text/plain; charset=utf-8")`,
+    `        HTTP_添加静态文件路由(服务, "GET", "/static/missing", "${fixturePath.replaceAll('\\', '/')}.gone", "", "text/plain; charset=utf-8")`,
+    '        HTTP_设置连接轮转(服务, 100)',
     '        HTTP_添加路由(服务, "GET", "/query", &查询参数)',
     '        HTTP_添加路由(服务, "GET", "/header", &读取请求头)',
     '        HTTP_添加路由(服务, "GET", "/path+plus", &读取路径)',
@@ -284,6 +299,45 @@ async function runHttpProtocolChecks(port: number): Promise<void> {
     assertResponse(await keepAlive.request([requestHead('GET', '/header', port, { 'X-Ling-Test': 'header-ok', Connection: 'close' })]), 200, 'header-ok');
   } finally {
     keepAlive.destroy();
+  }
+
+  const staticBody = '{"ok":true,"source":"static"}';
+  const staticConn = new RawHttpConnection(port);
+  await staticConn.connect();
+  try {
+    const staticResponse = await staticConn.request([requestHead('GET', '/static/data', port, { Connection: 'keep-alive' })]);
+    assertResponse(staticResponse, 200, staticBody);
+    if (staticResponse.headers.get('content-type')?.[0] !== 'application/json; charset=utf-8') throw new Error('静态路由响应 Content-Type 不正确。');
+    assertResponse(await staticConn.request([requestHead('GET', '/static/prefix/deep/path', port, { Connection: 'close' })]), 200, 'prefix-hit');
+  } finally {
+    staticConn.destroy();
+  }
+
+  const head = await headOneShot(port, '/static/data');
+  if (head.status !== 200 || head.headers.get('content-length')?.[0] !== String(Buffer.byteLength(staticBody))) throw new Error('HEAD 静态路由应返回 200 与真实 Content-Length。');
+
+  const headDynamic = await headOneShot(port, '/health');
+  if (headDynamic.status !== 200) throw new Error('HEAD 应回落匹配 GET 动态路由并返回 200。');
+
+  const staticFile = await oneShot(port, 'GET', '/static/file');
+  assertResponse(staticFile, 200, 'LingBuilder HTTP 文件响应\n');
+  if (!staticFile.headers.get('content-disposition')?.[0]?.includes("filename*=UTF-8''")) throw new Error('静态文件路由缺少 RFC 5987 下载名称。');
+
+  const staticMissing = await oneShot(port, 'GET', '/static/missing');
+  if (staticMissing.status !== 404 || staticMissing.body.toString('utf8') !== 'File Not Found') throw new Error('静态文件路由在文件缺失时应返回 404 File Not Found。');
+
+  const rotation = new RawHttpConnection(port);
+  await rotation.connect();
+  try {
+    for (let index = 1; index <= 100; index += 1) {
+      const response = await rotation.request([requestHead('GET', '/static/data', port, { Connection: 'keep-alive' })]);
+      assertResponse(response, 200, staticBody);
+      const closing = response.headers.get('connection')?.[0] === 'close';
+      if (index < 100 && closing) throw new Error(`连接轮转口径错误：第 ${index} 个请求就返回了 Connection: close。`);
+      if (index === 100 && !closing) throw new Error('连接轮转口径错误：第 100 个请求应返回 Connection: close。');
+    }
+  } finally {
+    rotation.destroy();
   }
 
   const contentLengthBody = Buffer.from('正文 Content-Length', 'utf8');
@@ -362,6 +416,26 @@ async function oneShot(port: number, method: string, target: string): Promise<Ht
   } finally {
     connection.destroy();
   }
+}
+
+async function headOneShot(port: number, target: string): Promise<{ status: number; headers: Map<string, string[]> }> {
+  const socket = net.connect({ host: '127.0.0.1', port });
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    socket.on('data', chunk => chunks.push(chunk));
+    socket.once('close', resolve);
+    socket.once('error', reject);
+    socket.write(requestHead('HEAD', target, port, { Connection: 'close' }));
+  });
+  const headerText = Buffer.concat(chunks).toString('latin1').split('\r\n\r\n')[0] ?? '';
+  const lines = headerText.split('\r\n');
+  const status = Number(lines.shift()?.match(/^HTTP\/1\.[01]\s+(\d{3})\b/u)?.[1] || 0);
+  const headers = new Map<string, string[]>();
+  for (const line of lines) {
+    const colon = line.indexOf(':');
+    if (colon > 0) headers.set(line.slice(0, colon).trim().toLowerCase(), [line.slice(colon + 1).trim()]);
+  }
+  return { status, headers };
 }
 
 async function rawOneShot(port: number, request: string): Promise<HttpResponse> {

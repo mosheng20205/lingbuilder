@@ -9,6 +9,8 @@ export interface AiBridgeStartSettings {
   lifecycle: ManagedAiBridgeLifecycle;
   /** 自定义 Token；空串表示未设置（每次启动生成临时 Token）。 */
   token: string;
+  /** 是否允许本机外部 AI 客户端的 stdio 宿主向 IDE 换取模块授权与浏览器凭据；默认关闭。 */
+  externalModuleAccess: boolean;
 }
 
 export interface AiBridgeSafeStorageLike {
@@ -22,6 +24,7 @@ interface StoredStartSettings {
   port: number;
   permission: ManagedAiBridgePermission;
   lifecycle: ManagedAiBridgeLifecycle;
+  externalModuleAccess?: boolean;
   token?: { encoding: 'safeStorage' | 'plain'; value: string };
 }
 
@@ -43,7 +46,7 @@ export function normalizeAiBridgeStartSettings(input: unknown): AiBridgeStartSet
   if (!LIFECYCLE_VALUES.includes(lifecycle)) return undefined;
   const token = typeof value.token === 'string' ? value.token : '';
   if (/[^\x21-\x7e]/u.test(token) || token.length > 256 || (token.length > 0 && token.length < 24)) return undefined;
-  return { port, permission, lifecycle, token };
+  return { port, permission, lifecycle, token, externalModuleAccess: value.externalModuleAccess === true };
 }
 
 export async function readAiBridgeStartSettings(
@@ -67,7 +70,13 @@ export async function readAiBridgeStartSettings(
           ? parsed.token.value
           : '';
     }
-    return normalizeAiBridgeStartSettings({ port: parsed.port, permission: parsed.permission, lifecycle: parsed.lifecycle, token });
+    return normalizeAiBridgeStartSettings({
+      port: parsed.port,
+      permission: parsed.permission,
+      lifecycle: parsed.lifecycle,
+      externalModuleAccess: parsed.externalModuleAccess === true,
+      token
+    });
   } catch {
     return undefined;
   }
@@ -91,6 +100,7 @@ export async function writeAiBridgeStartSettings(
     port: normalized.port,
     permission: normalized.permission,
     lifecycle: normalized.lifecycle,
+    externalModuleAccess: normalized.externalModuleAccess,
     ...(storedToken ? { token: storedToken } : {})
   };
   await fs.mkdir(path.dirname(filePath), { recursive: true });

@@ -20,7 +20,7 @@ import {
 } from '../sdkDependencies/sdkDependencyCatalog';
 
 const FBRO_SDK_VERSION = '135.0.21';
-const FBRO_BRIDGE_VERSION = '2.7.0';
+const FBRO_BRIDGE_VERSION = '2.9.0';
 const FBRO_V3_HEADER_MARKERS = [
   'LB_FBRO_ABI_VERSION_V3',
   'LB_FBRO_EVENT_PACKET_V3',

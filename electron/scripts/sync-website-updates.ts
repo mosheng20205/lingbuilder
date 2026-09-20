@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-interface UpdateItem { category: string; text: string }
+interface UpdateItem { category: string; text: string; image?: { url: string; caption: string } }
 interface UpdateEntry { date: string; items: UpdateItem[] }
 
 const args = process.argv.slice(2);
@@ -27,6 +27,7 @@ const CATEGORIES = ['新功能', '问题修复', '新模块', '体验优化', '�
 const MAX_DATES = 400;
 const MAX_ITEMS_PER_DATE = 40;
 const MAX_TEXT_LENGTH = 600;
+const UPDATE_IMAGE_URL_PATTERN = /^\/update-assets\/[A-Za-z0-9._~-]+\.(?:png|jpe?g|webp)$/u;
 
 const email = process.env.LINGBUILDER_ADMIN_EMAIL || '';
 const password = process.env.LINGBUILDER_ADMIN_PASSWORD || '';
@@ -61,6 +62,11 @@ function readLocalFile(): UpdateEntry[] {
       if (!text) fail(`${date} 存在空条目。`);
       if (text.length > MAX_TEXT_LENGTH) fail(`${date} 存在超过 ${MAX_TEXT_LENGTH} 字的条目，请拆分或精简。`);
       if (!CATEGORIES.includes(String(item?.category || ''))) fail(`${date} 存在无效分类「${item?.category || '（空）'}」，只允许：${CATEGORIES.join('、')}。`);
+      if (item?.image) {
+        const url = String(item.image.url || '');
+        if (!UPDATE_IMAGE_URL_PATTERN.test(url)) fail(`${date} 的图片地址无效：${url || '（空）'}，仅允许 /update-assets/ 目录下的 .png/.jpg/.jpeg/.webp 静态文件（与云端校验同口径）。`);
+        if (String(item.image.caption || '').length > 120) fail(`${date} 的图片说明超过 120 字。`);
+      }
     }
   }
   return updates as UpdateEntry[];

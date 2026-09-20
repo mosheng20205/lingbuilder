@@ -3181,6 +3181,63 @@ void ApplyStartupSwitchesTo(const std::wstring& json, CefRefPtr<CefCommandLine> 
   if (SwitchJsonEnabled(json, L"enableAutoplay")) FBroHsCommandLine_EnableAutoplayPoliey(command_line);
   // headless 是 CEF 进程级开关：启用后本进程所有浏览器均无窗口渲染，不得与可见 FBro 控件混用。
   if (SwitchJsonEnabled(json, L"headless")) FBroHsCommandLine_EnableHeadless(command_line);
+  // 跨域/禁用代理走官方语义化包装，不得自拼 --disable-web-security 之类裸开关猜拼法。
+  if (SwitchJsonEnabled(json, L"enableCrossFrame")) FBroHsCommandLine_EnableCrossFrame(command_line);
+  if (SwitchJsonEnabled(json, L"disableProxy")) FBroHsCommandLine_DisableProxy(command_line);
+}
+
+// 启动开关白名单：只有这里列出的键会被应用到命令行，其余一律拒绝（不得借 JSON 通道
+// 传任意 Chromium 开关，那等于开放不受控的进程级命令行）。EnableSingleProcess 故意
+// 不开放：官方注释「仅调试模式下有效」，它会破坏独立进程宿主与实例寻址契约。
+const wchar_t* const kStartupSwitchKeys[] = {
+  L"disableGpu", L"disableGpuCache", L"disableGpuBlockList",
+  L"enableMediaStream", L"enableSpeechInput", L"enableAutoplay",
+  L"headless", L"enableCrossFrame", L"disableProxy"
+};
+
+/**
+ * 校验受控形态的开关 JSON：`{"键":true|false,...}` 单层对象。
+ * 返回 false 表示形态非法或含未知键；解析刻意不用 CEF 值 API（初始化前包装层未就绪）。
+ */
+bool ValidateStartupSwitchJson(const std::wstring& json) {
+  size_t cursor = 0;
+  const auto skip_spaces = [&json, &cursor]() {
+    while (cursor < json.size() && (json[cursor] == L' ' || json[cursor] == L'\t'
+        || json[cursor] == 10 || json[cursor] == 13)) ++cursor;
+  };
+  skip_spaces();
+  if (cursor >= json.size() || json[cursor] != L'{') return false;
+  ++cursor;
+  skip_spaces();
+  if (cursor < json.size() && json[cursor] == L'}') ++cursor;
+  while (cursor < json.size()) {
+    skip_spaces();
+    if (json[cursor] != L'"') return false;
+    ++cursor;
+    const size_t key_end = json.find(L'"', cursor);
+    if (key_end == std::wstring::npos) return false;
+    const std::wstring key = json.substr(cursor, key_end - cursor);
+    if (key.empty() || key.find(L'\\') != std::wstring::npos) return false;
+    bool known = false;
+    for (const wchar_t* candidate : kStartupSwitchKeys) {
+      if (key == candidate) { known = true; break; }
+    }
+    if (!known) return false;
+    cursor = key_end + 1;
+    skip_spaces();
+    if (cursor >= json.size() || json[cursor] != L':') return false;
+    ++cursor;
+    skip_spaces();
+    if (json.compare(cursor, 4, L"true") == 0) cursor += 4;
+    else if (json.compare(cursor, 5, L"false") == 0) cursor += 5;
+    else return false;
+    skip_spaces();
+    if (cursor < json.size() && json[cursor] == L',') { ++cursor; continue; }
+    if (cursor < json.size() && json[cursor] == L'}') { ++cursor; break; }
+    return false;
+  }
+  skip_spaces();
+  return cursor == json.size();
 }
 
 }  // namespace
@@ -4987,7 +5044,19 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
 }
 
 int __stdcall LB_FBro_SetStartupSwitches(const wchar_t* switches_json) {
-  g_startup_switches_json = switches_json ? switches_json : L"";
+  const std::wstring json = switches_json ? switches_json : L"";
+  if (json.empty()) {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (g_initialized) return LB_FBRO_ERROR_OPERATION_FAILED;
+    g_startup_switches_json.clear();
+    return LB_FBRO_OK;
+  }
+  // 白名单与形态在桥内单点校验：生成期烘焙与 .lcpp 运行期调用共用这一个出口。
+  if (!ValidateStartupSwitchJson(json)) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  // 启动开关只在 OnBeforeCommandLineProcessing 被读取一次，初始化之后再登记不会生效。
+  if (g_initialized) return LB_FBRO_ERROR_OPERATION_FAILED;
+  g_startup_switches_json = json;
   return LB_FBRO_OK;
 }
 

@@ -26,7 +26,7 @@ test('AI Bridge start settings persist across reloads with safeStorage-encrypted
   const safeStorage = createFakeSafeStorage();
 
   await writeAiBridgeStartSettings(filePath, {
-    port: 17860, permission: 'yolo', lifecycle: 'workspace', token: 'my-custom-token-0123456789abcdef'
+    port: 17860, permission: 'yolo', lifecycle: 'workspace', token: 'my-custom-token-0123456789abcdef', externalModuleAccess: true
   }, safeStorage);
 
   // 落盘内容里绝不出现明文 Token。
@@ -36,8 +36,14 @@ test('AI Bridge start settings persist across reloads with safeStorage-encrypted
 
   const loaded = await readAiBridgeStartSettings(filePath, safeStorage);
   assert.deepEqual(loaded, {
-    port: 17860, permission: 'yolo', lifecycle: 'workspace', token: 'my-custom-token-0123456789abcdef'
+    port: 17860, permission: 'yolo', lifecycle: 'workspace', token: 'my-custom-token-0123456789abcdef', externalModuleAccess: true
   });
+
+  // 老版本设置文件没有该字段：必须按关闭处理，而不是 undefined 或抛错。
+  const legacy = JSON.parse(raw) as Record<string, unknown>;
+  delete legacy.externalModuleAccess;
+  await fs.writeFile(filePath, JSON.stringify(legacy), 'utf8');
+  assert.equal((await readAiBridgeStartSettings(filePath, safeStorage))?.externalModuleAccess, false);
 });
 
 test('AI Bridge start settings fall back to plain storage and reject invalid values', async t => {
@@ -47,7 +53,7 @@ test('AI Bridge start settings fall back to plain storage and reject invalid val
   const safeStorage = createFakeSafeStorage(false);
 
   await writeAiBridgeStartSettings(filePath, {
-    port: 17861, permission: 'preview', lifecycle: 'workspace', token: 'plain-fallback-token-0123456789'
+    port: 17861, permission: 'preview', lifecycle: 'workspace', token: 'plain-fallback-token-0123456789', externalModuleAccess: false
   }, safeStorage);
   const raw = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.equal(raw.token.encoding, 'plain');
@@ -56,7 +62,7 @@ test('AI Bridge start settings fall back to plain storage and reject invalid val
 
   // 加密标记但本机加密不可用：解不出即视为未设置，而不是抛错。
   await writeAiBridgeStartSettings(filePath, {
-    port: 17861, permission: 'readonly', lifecycle: 'workspace', token: 'encrypted-token-0123456789abcd'
+    port: 17861, permission: 'readonly', lifecycle: 'workspace', token: 'encrypted-token-0123456789abcd', externalModuleAccess: false
   }, createFakeSafeStorage(true));
   const unavailable = await readAiBridgeStartSettings(filePath, createFakeSafeStorage(false));
   assert.equal(unavailable?.token, '');

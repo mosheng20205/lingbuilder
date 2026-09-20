@@ -49,6 +49,7 @@ export default defineConfig({
             { text: '导入 C++ 工程', link: '/guide/user/import-cpp-project' },
             { text: '模块市场', link: '/guide/user/modules/marketplace' },
             { text: '安装与管理模块', link: '/guide/user/modules/install-module' },
+            { text: '新建与打开模块', link: '/guide/user/modules/create-module' },
             { text: '用 AI 生成模块', link: '/guide/user/modules/ai-module-dev' },
             { text: '调用 C++ DLL', link: '/guide/user/modules/dll-module' },
             { text: '依赖冲突检测', link: '/guide/user/modules/module-conflicts' },

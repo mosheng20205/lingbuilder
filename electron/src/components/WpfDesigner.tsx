@@ -710,6 +710,16 @@ export default function WpfDesigner({
     () => activeMenuResources.find(resource => resource.id === selectedResourceId) || null,
     [activeMenuResources, selectedResourceId]
   );
+  const activeFbroHeadlessBrowsers = useMemo(
+    () => (project.resources || []).filter((resource): resource is LingFbroHeadlessResource => (
+      resource.type === 'FBroHeadlessBrowser' && resource.ownerWindowId === activeWindow.id
+    )),
+    [activeWindow.id, project.resources]
+  );
+  const selectedFbroHeadless = useMemo(
+    () => activeFbroHeadlessBrowsers.find(resource => resource.id === selectedResourceId) || null,
+    [activeFbroHeadlessBrowsers, selectedResourceId]
+  );
   const activeEdgeViewHeadlessBrowsers = useMemo(
     () => (project.resources || []).filter((resource): resource is LingEdgeViewHeadlessResource => (
       resource.type === 'EdgeViewHeadlessBrowser' && resource.ownerWindowId === activeWindow.id
@@ -2141,6 +2151,54 @@ export default function WpfDesigner({
       addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}；请绑定打开触发控件和拖放目标。`);
       return;
     }
+    if (type === 'ContextMenu' || type === 'PopupMenu') {
+      const existing = (project.resources || []).filter((resource): resource is LingMenuResource => resource.type === type);
+      const prefix = type === 'ContextMenu' ? 'context-menu' : 'popup-menu';
+      const label = type === 'ContextMenu' ? '上下文菜单' : '弹出菜单';
+      let suffix = existing.length + 1;
+      while ((project.resources || []).some(resource => resource.id === `${prefix}-${suffix}`)) suffix += 1;
+      const resource: LingMenuResource = {
+        id: `${prefix}-${suffix}`,
+        type,
+        name: `${label}${suffix}`,
+        designerX: 15 + (((activeFileDialogs.length + activeMenuResources.length) % 4) * 145),
+        designerY: Math.max(0, activeWindow.height - windowContentOffset - 55),
+        ownerWindowId: activeWindow.id,
+        targetControlId: type === 'ContextMenu' ? activeWindow.id : '',
+        items: [
+          { id: 'item-1', label: '菜单项 1', enabled: true },
+          { id: 'item-2', label: '菜单项 2', enabled: true }
+        ]
+      };
+      setProject(previous => ({ ...previous, resources: [...(previous.resources || []), resource] }));
+      selectOnlyControl(null);
+      setSelectedResourceId(resource.id);
+      setActiveInspectorTab('properties');
+      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}。`);
+      return;
+    }
+    if (type === 'FBroHeadlessBrowser') {
+      const existing = (project.resources || []).filter((resource): resource is LingFbroHeadlessResource => resource.type === 'FBroHeadlessBrowser');
+      let suffix = existing.length + 1;
+      while ((project.resources || []).some(resource => resource.id === `fbro-headless-${suffix}`)) suffix += 1;
+      const resource: LingFbroHeadlessResource = {
+        id: `fbro-headless-${suffix}`,
+        type: 'FBroHeadlessBrowser',
+        name: `无头浏览器${suffix}`,
+        designerX: 15 + (((activeFileDialogs.length + activeMenuResources.length) % 4) * 145),
+        designerY: Math.max(0, activeWindow.height - windowContentOffset - 55),
+        ownerWindowId: activeWindow.id,
+        url: 'https://www.baidu.com',
+        cacheDir: '',
+        extraInfoJson: ''
+      };
+      setProject(previous => ({ ...previous, resources: [...(previous.resources || []), resource] }));
+      selectOnlyControl(null);
+      setSelectedResourceId(resource.id);
+      setActiveInspectorTab('properties');
+      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}；无头模式是进程级开关，构建时将与可见 FBro 控件互斥校验。`);
+      return;
+    }
     if (type === 'EdgeViewHeadlessBrowser') {
       const existing = (project.resources || []).filter((resource): resource is LingEdgeViewHeadlessResource => resource.type === 'EdgeViewHeadlessBrowser');
       let suffix = existing.length + 1;
@@ -2571,6 +2629,37 @@ export default function WpfDesigner({
       finishPointerInteraction();
     }
     const position = getFileDialogDesignerPosition(resource, index);
+    setSelectedControlId(null);
+    setSelectedControlIds([]);
+    setSelectedResourceId(resource.id);
+    setActiveInspectorTab('properties');
+    setDraggingResourceId(resource.id);
+    setResourceDragOffset({
+      x: event.clientX - position.x * canvasScale,
+      y: event.clientY - position.y * canvasScale
+    });
+  };
+
+  const getFbroHeadlessDesignerPosition = (resource: LingFbroHeadlessResource, index: number) => ({
+    x: resource.designerX ?? 15 + (((activeFileDialogs.length + activeMenuResources.length + index) % 4) * 145),
+    y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor((activeFileDialogs.length + activeMenuResources.length + index) / 4) * 50))
+  });
+
+  const handleFbroHeadlessMouseDown = (event: React.MouseEvent, resource: LingFbroHeadlessResource, index: number) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (
+      isDragging
+      || isResizing
+      || draggingResourceId
+      || controlInteractionPreviewRef.current
+      || windowInteractionPreviewRef.current
+      || resourceInteractionPreviewRef.current
+    ) {
+      finishPointerInteraction();
+    }
+    const position = getFbroHeadlessDesignerPosition(resource, index);
     setSelectedControlId(null);
     setSelectedControlIds([]);
     setSelectedResourceId(resource.id);
@@ -3606,6 +3695,53 @@ export default function WpfDesigner({
                 </div>
               );
             })}
+            {activeFbroHeadlessBrowsers.map((resource, index) => {
+              const position = getDisplayedResourcePosition(resource, getFbroHeadlessDesignerPosition(resource, index));
+              const selected = selectedResourceId === resource.id;
+              return (
+                <div
+                  key={resource.id}
+                  ref={registerDesignerNavigationTarget('resource', resource.id)}
+                  data-designer-resource-id={resource.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`FBro无头浏览器占位：${resource.name}`}
+                  aria-pressed={selected}
+                  onContextMenu={event => openResourceContextMenu(event, resource.id)}
+                  onMouseDown={event => handleFbroHeadlessMouseDown(event, resource, index)}
+                  onClick={event => {
+                    event.stopPropagation();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  className={`absolute z-30 flex cursor-move items-center gap-2 rounded border border-dashed px-2 shadow-md select-none ${
+                    selected
+                      ? 'border-sky-300 bg-sky-500/25 ring-2 ring-sky-400'
+                      : isDarkMode
+                        ? 'border-sky-500/70 bg-[#122b3a] hover:bg-sky-500/20'
+                        : 'border-sky-600 bg-sky-50 hover:bg-sky-100'
+                  }`}
+                  style={{ left: `${position.x}px`, top: `${position.y + windowContentOffset}px`, width: '135px', height: '42px' }}
+                  title="设计期非可视组件：窗口创建时以后台实例方式无窗口打开地址，事件用 FBro_绑定事件 按组件名绑定"
+                >
+                  <Fingerprint className="h-4 w-4 shrink-0 text-sky-400" aria-hidden="true" />
+                  <span className="min-w-0 leading-tight">
+                    <span className={`block truncate text-[10px] font-semibold ${isDarkMode ? 'text-sky-100' : 'text-sky-900'}`}>{resource.name}</span>
+                    <span className={`block text-[8px] ${isDarkMode ? 'text-sky-300/75' : 'text-sky-700'}`}>FBro无头浏览器 · 非可视</span>
+                  </span>
+                </div>
+              );
+            })}
             {activeEdgeViewHeadlessBrowsers.map((resource, index) => {
               const position = getDisplayedResourcePosition(resource, { x: resource.designerX ?? 15 + (index % 4) * 145, y: resource.designerY ?? 0 });
               const selected = selectedResourceId === resource.id;
@@ -3794,6 +3930,22 @@ export default function WpfDesigner({
                   }))}
                   onDelete={() => {
                     setProject(previous => ({ ...previous, resources: (previous.resources || []).filter(resource => resource.id !== selectedEdgeViewHeadless.id) }));
+                    setSelectedResourceId(null);
+                  }}
+                />
+              ) : selectedFbroHeadless ? (
+                <FBroHeadlessProperties
+                  resource={selectedFbroHeadless}
+                  windows={project.windows}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedFbroHeadless.id && resource.type === 'FBroHeadlessBrowser'
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                  onDelete={() => {
+                    setProject(previous => ({ ...previous, resources: (previous.resources || []).filter(resource => resource.id !== selectedFbroHeadless.id) }));
                     setSelectedResourceId(null);
                   }}
                 />
@@ -6006,6 +6158,59 @@ function FileDialogFilterEditor({ value, isDarkMode, onChange }: { value: string
           <div className="leading-4 text-slate-500">兼容格式：<code>图片|*.png;*.jpg</code>，通常无需手动修改。</div>
         </div>
       </details>
+    </div>
+  );
+}
+
+function FBroHeadlessProperties({
+  resource,
+  windows,
+  isDarkMode,
+  onChange,
+  onDelete
+}: {
+  resource: LingFbroHeadlessResource;
+  windows: LingWindowModel[];
+  isDarkMode: boolean;
+  onChange: (fields: Partial<LingFbroHeadlessResource>) => void;
+  onDelete: () => void;
+}) {
+  const inputClass = `w-full rounded border px-1.5 py-1 text-[10px] ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`;
+  return (
+    <div className="space-y-3" aria-label={`FBro无头浏览器属性：${resource.name}`}>
+      <div className={`flex items-center gap-2 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}>
+        <Fingerprint className="h-4 w-4 text-sky-500" />
+        <span className="font-semibold">FBro无头浏览器：{resource.name}</span>
+        <span className="ml-auto rounded border border-sky-500/30 px-1.5 py-0.5 text-[8px] text-sky-500">进程级无头</span>
+      </div>
+      <PropertyGroup title="外观与位置" isDarkMode={isDarkMode}>
+        <PropertyRow label="名称" isDarkMode={isDarkMode}><input aria-label="FBro无头浏览器组件名称" value={resource.name} onChange={event => onChange({ name: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="左" isDarkMode={isDarkMode}><input aria-label="FBro无头浏览器左坐标" type="number" min={0} value={resource.designerX ?? 0} onChange={event => onChange({ designerX: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="顶" isDarkMode={isDarkMode}><input aria-label="FBro无头浏览器顶坐标" type="number" min={0} value={resource.designerY ?? 0} onChange={event => onChange({ designerY: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+      </PropertyGroup>
+      <PropertyGroup title="后台浏览器" isDarkMode={isDarkMode}>
+        <PropertyRow label="所属窗口" isDarkMode={isDarkMode}><select aria-label="FBro无头浏览器所属窗口" value={resource.ownerWindowId} onChange={event => onChange({ ownerWindowId: event.target.value })} className={inputClass}>{windows.map(window => <option key={window.id} value={window.id}>{window.title}</option>)}</select></PropertyRow>
+        <PropertyRow label="打开地址" isDarkMode={isDarkMode}><input aria-label="FBro无头浏览器打开地址" value={resource.url} onChange={event => onChange({ url: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="缓存目录" isDarkMode={isDarkMode}><input aria-label="FBro无头浏览器缓存目录" value={resource.cacheDir} placeholder="留空由桥接层派生" onChange={event => onChange({ cacheDir: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="附加信息" isDarkMode={isDarkMode}><textarea aria-label="FBro无头浏览器附加信息JSON" value={resource.extraInfoJson} placeholder='{"flag":"..."} 留空跳过' rows={3} onChange={event => onChange({ extraInfoJson: event.target.value })} className={inputClass} /></PropertyRow>
+      </PropertyGroup>
+      <div className="text-[9px] leading-4 text-slate-500">无头模式是进程级启动开关：本组件会让生成的 exe 以 headless 命令行启动，进程内不再渲染任何可见 FBro 浏览器（构建时强制校验）。代码里按组件名操作：<code>FBro_导航({resource.name}, "...")</code>。</div>
+      <button type="button" onClick={onDelete} className="flex w-full items-center justify-center gap-1 rounded border border-red-500/30 py-1.5 text-[10px] text-red-400 hover:bg-red-500/10"><Trash2 className="h-3 w-3" />删除FBro无头浏览器</button>
+    </div>
+  );
+}
+
+function FBroHeadlessEvents({ resource, isDarkMode }: { resource: LingFbroHeadlessResource; isDarkMode: boolean }) {
+  return (
+    <div className="space-y-2 p-1 text-[10px] leading-5" aria-label={`FBro无头浏览器事件说明：${resource.name}`}>
+      <div className={`font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>事件在代码中按组件名绑定</div>
+      <div className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>
+        与可视 FBro 控件同一套事件体系，在窗口「创建完毕」处理器里调用：<br />
+        FBro_绑定事件({resource.name}, "TitleChanged", &amp;标题变化)<br />
+        FBro_绑定事件({resource.name}, "LoadEnd", &amp;加载完成)<br />
+        处理器内用 FBro_取事件字段({resource.name}, "字段名") 读取数据。
+      </div>
+      <div className={isDarkMode ? 'text-slate-500' : 'text-slate-500'}>完整事件清单见模块文档《FBro 事件与接口参考》。</div>
     </div>
   );
 }

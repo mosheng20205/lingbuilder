@@ -93,6 +93,13 @@
       "type": "windows-console",
       "sourceRoot": "examples/process-memory-scan-demo/src",
       "references": []
+    },
+    {
+      "id": "cef3-window-probe",
+      "name": "窗口探针",
+      "type": "visual-cpp",
+      "sourceRoot": "src/cef3-window-probe",
+      "references": []
     }
   ]
 }

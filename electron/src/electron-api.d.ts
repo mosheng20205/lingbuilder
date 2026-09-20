@@ -2,7 +2,30 @@ export {};
 
 type LingBuilderAiBridgePermission = 'readonly' | 'preview' | 'yolo';
 type LingBuilderAiBridgeLifecycle = 'workspace' | 'ide';
+/** 本机授权代理状态：外部 AI 客户端的 stdio 宿主凭据换取通道。 */
+type LingBuilderLocalAuthorizationSnapshot = {
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  discoveryPath: string;
+  exchanges: number;
+  lastError: string;
+};
 type LingBuilderAiBridgeState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
+/** 灵码 Skill 正文取物状态：remote=官网最新版，cache=本机已校验缓存，bundled=安装包内置快照。 */
+type LingBuilderSkillKitStatus = {
+  ok: boolean;
+  source: 'remote' | 'cache' | 'bundled';
+  id: string;
+  version: string;
+  sequence: number;
+  minIdeVersion: string;
+  entrypointPath: string;
+  installPrompt: string;
+  fileCount: number;
+  checkedAt: string;
+  problem: string;
+};
 type LingBuilderExternalAiClientId = 'codex' | 'claude' | 'gemini' | 'generic';
 
 interface AppUpdateProgressSnapshot {
@@ -137,17 +160,27 @@ declare global {
           approvedYolo?: boolean;
         }) => Promise<LingBuilderAiBridgeSnapshot>;
         loadStartSettings: () => Promise<{
-          port: number;
-          permission: LingBuilderAiBridgePermission;
-          lifecycle: LingBuilderAiBridgeLifecycle;
-          token: string;
+          settings: {
+            port: number;
+            permission: LingBuilderAiBridgePermission;
+            lifecycle: LingBuilderAiBridgeLifecycle;
+            token: string;
+            externalModuleAccess: boolean;
+          } | null;
+          localAuthorization: LingBuilderLocalAuthorizationSnapshot | null;
         } | null>;
         saveStartSettings: (settings: {
           port: number;
           permission: LingBuilderAiBridgePermission;
           lifecycle: LingBuilderAiBridgeLifecycle;
           token: string;
-        }) => Promise<{ ok: boolean; error?: string }>;
+          externalModuleAccess?: boolean;
+        }) => Promise<{
+          ok: boolean;
+          error?: string;
+          localAuthorization?: LingBuilderLocalAuthorizationSnapshot | null;
+        }>;
+        localAuthStatus?: () => Promise<LingBuilderLocalAuthorizationSnapshot | null>;
         stop: () => Promise<LingBuilderAiBridgeSnapshot>;
         rotateToken: () => Promise<LingBuilderAiBridgeSnapshot>;
         revealToken: () => Promise<string>;
@@ -169,6 +202,10 @@ declare global {
         openCodexDesktop: () => Promise<LingBuilderCodexDesktopStatus>;
         launchClient: (clientId: LingBuilderExternalAiClientId) => Promise<{ ok: boolean; sessionId: string; detail: string }>;
         onStatusChanged: (listener: (snapshot: LingBuilderAiBridgeSnapshot) => void) => () => void;
+      };
+      skillKit?: {
+        status: () => Promise<LingBuilderSkillKitStatus | null>;
+        checkUpdate: () => Promise<LingBuilderSkillKitStatus | null>;
       };
       modules?: {
         importPackage: (sourcePath: string) => Promise<{ ok: boolean; relativePath?: string; error?: string }>;

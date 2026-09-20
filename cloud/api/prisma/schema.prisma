@@ -668,6 +668,19 @@ model SdkCatalogRelease {
   createdAt DateTime @default(now())
 }
 
+// 灵码 Skill 清单：整条 payload 由生产 Ed25519 签名，sequence 单调递增防回滚。
+// 正文（SKILL.md 等）不进开源仓，只由这里签名下发；IDE 联网取最新，取不到回退包内快照。
+model SkillCatalogRelease {
+  id        String   @id @default(cuid())
+  sequence  Int      @unique
+  payload   String
+  keyId     String
+  signature String
+  note      String?
+  createdBy String
+  createdAt DateTime @default(now())
+}
+
 // 体验计划名单：一个账号一条记录，决定该账号登录的客户端能否收到 preview 渠道更新。
 model BetaProgramMember {
   id             String    @id @default(uuid())

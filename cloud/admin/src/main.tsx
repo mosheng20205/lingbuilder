@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, FlaskConical, Gauge, Globe2, HardDriveDownload, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, Search, ShieldCheck, ShieldAlert, Users, X } from 'lucide-react';
+import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, FlaskConical, Gauge, Globe2, HardDriveDownload, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, ScrollText, Search, ShieldCheck, ShieldAlert, Users, X } from 'lucide-react';
 import './styles.css';
 import './mfa.css';
 import { initWebsiteRouteTheme } from './websiteTheme';
@@ -9,6 +9,7 @@ import { SystemAiProviderAdmin } from './SystemAiProviderAdmin';
 import { PUBLIC_WEBSITE_PATHS, WebsitePortal } from './WebsitePortal';
 import { WebsiteContentAdmin } from './WebsiteContentAdmin';
 import { SdkCatalogAdmin } from './SdkCatalogAdmin';
+import { SkillCatalogAdmin } from './SkillCatalogAdmin';
 import { ModuleCommerceAdmin } from './ModuleCommerceAdmin';
 import { PromotionAdmin } from './PromotionAdmin';
 import { ModelRouteAdmin } from './ModelRouteAdmin';
@@ -16,9 +17,9 @@ import { UsersAdmin } from './UsersAdmin';
 import { BetaProgramAdmin } from './BetaProgramAdmin';
 
 const API = import.meta.env.VITE_CLOUD_API_URL || 'http://127.0.0.1:17900';
-type Page = 'overview'|'site'|'sdkcatalog'|'users'|'beta'|'credits'|'promotions'|'modules'|'providers'|'models'|'usage'|'audit';
+type Page = 'overview'|'site'|'sdkcatalog'|'skillcatalog'|'users'|'beta'|'credits'|'promotions'|'modules'|'providers'|'models'|'usage'|'audit';
 const NAV: Array<{id:Page;label:string;icon:React.ComponentType<{size?:number}>}> = [
-  {id:'overview',label:'运营总览',icon:Gauge},{id:'site',label:'官网内容',icon:Globe2},{id:'sdkcatalog',label:'SDK 下载源',icon:HardDriveDownload},{id:'users',label:'用户账号',icon:Users},{id:'beta',label:'体验计划',icon:FlaskConical},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'系统 AI 供应商',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
+  {id:'overview',label:'运营总览',icon:Gauge},{id:'site',label:'官网内容',icon:Globe2},{id:'sdkcatalog',label:'SDK 下载源',icon:HardDriveDownload},{id:'skillcatalog',label:'灵码 Skill 发布',icon:ScrollText},{id:'users',label:'用户账号',icon:Users},{id:'beta',label:'体验计划',icon:FlaskConical},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'系统 AI 供应商',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
 ];
 
 type AdminTokens={access:string;refresh:string};
@@ -55,7 +56,7 @@ function App(){
   const applySessionFailure=()=>{clearTokens();setTokens({access:'',refresh:''})};
   const ensureFreshAccessToken=async()=>{const exp=getTokenExpAt(tokenRef.access);if(!tokenRef.access||!exp||exp-Date.now()>=60_000)return;try{await refreshSession()}catch(reason){if((reason as {status?:number}).status===401){applySessionFailure();throw reason}}};
   const request=async(path:string,init:RequestInit={},retried=false)=>{await ensureFreshAccessToken();const binary=typeof Blob!=='undefined'&&init.body instanceof Blob;const response=await fetch(`${API}${path}`,{...init,headers:{...(binary?{}:{'content-type':'application/json'}),authorization:`Bearer ${tokenRef.access}`,...init.headers}});const text=await response.text();const value=text?(()=>{try{return JSON.parse(text)}catch{return {message:text}}})():{};if(!response.ok){const message=value.message||'请求失败';if(!retried&&tokenRef.refresh&&message.includes('令牌无效或已过期')){try{await refreshSession()}catch(reason){if((reason as {status?:number}).status===401)applySessionFailure();throw reason instanceof Error?reason:new Error('令牌续期失败，请重试。')}return request(path,init,true)}throw new Error(message)}return value};
-  const load=async()=>{if(!tokens.access)return;setBusy(true);setError('');try{const route=page==='models'?'model-routes':page==='providers'?'system-ai/providers':page==='sdkcatalog'?'site/sdk-catalog/history':page==='beta'?'beta-program':page;setData(await request(`/v1/admin/${route}`))}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}};
+  const load=async()=>{if(!tokens.access)return;setBusy(true);setError('');try{const route=page==='models'?'model-routes':page==='providers'?'system-ai/providers':page==='sdkcatalog'?'site/sdk-catalog/history':page==='skillcatalog'?'site/skill-catalog/history':page==='beta'?'beta-program':page;setData(await request(`/v1/admin/${route}`))}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}};
   useEffect(()=>{void load()},[page,tokens.access]);
   useEffect(()=>{if(tokens.access)void request('/v1/me').then(value=>{setNeedsMfa(Boolean(value.user?.role&&!value.user?.mfa));setRole(String(value.user?.role||''))}).catch(()=>undefined)},[tokens.access]);
   useEffect(()=>{if(!tokens.refresh)return;const timer=window.setInterval(()=>{const exp=getTokenExpAt(tokenRef.access);if(tokenRef.access&&exp&&exp-Date.now()<90_000){void refreshSession().catch(reason=>{if((reason as {status?:number}).status===401)applySessionFailure()})}},30_000);return()=>window.clearInterval(timer)},[tokens.refresh]);
@@ -83,6 +84,7 @@ function PageContent({page,data,request,reload,role}:{page:Page;data:any;request
  if(page==='overview'){const d=data||{};return <><div className="metric-grid"><Metric label="注册用户" value={d.users||0} note="全部账号"/><Metric label="AI 请求" value={d.requests||0} note="累计请求"/><Metric label="可用模型" value={d.models||0} note="逻辑模型"/><Metric label="供应通道" value={d.providers||0} note="健康通道"/></div><section className="panel"><div className="panel-head"><div><span className="eyebrow">运行状态</span><h2>系统 AI 服务</h2></div><span className="status ok">运行正常</span></div><div className="health-grid"><Health title="零保留策略" detail="提示词与源码不写入数据库"/><Health title="点数账本" detail="冻结、结算和退款使用事务"/><Health title="模型路由" detail="IDE 只访问逻辑模型别名"/></div></section></>}
  if(page==='site')return <WebsiteContentAdmin data={data} request={request} reload={reload}/>;
  if(page==='sdkcatalog')return <SdkCatalogAdmin data={data} request={request} reload={reload} role={role}/>;
+ if(page==='skillcatalog')return <SkillCatalogAdmin data={data} request={request} reload={reload} role={role}/>;
  if(page==='users')return <UsersAdmin data={data} request={request} reload={reload}/>;
  if(page==='beta')return <BetaProgramAdmin data={data} request={request} reload={reload} role={role}/>;
  if(page==='credits')return <><ActionForm title="人工点数调整" description="每次调整都会写入不可变账本和管理员审计。" fields={[['userId','用户 ID 或邮箱','text'],['points','调整点数（可为负数）','number'],['reason','调整原因','text']]} onSubmit={async value=>{await request('/v1/admin/credits/adjust',{method:'POST',body:JSON.stringify(value)});await reload()}}/><DataTable title="最近点数流水" rows={(data?.ledger||[]).map((row:any)=>({...row,userEmail:row.user?.email??'—',kindLabel:({SIGNUP_GIFT:'注册赠送',ADMIN_ADJUSTMENT:'人工调账',RECHARGE:'充值',RESERVE:'冻结',RELEASE:'释放',CHARGE:'AI 消耗',REFUND:'退款'} as any)[row.kind]??row.kind,at:row.createdAt?new Date(row.createdAt).toLocaleString('zh-CN'):''}))} columns={[['at','时间'],['userEmail','用户'],['kindLabel','类型'],['availableDelta','变动点数'],['balanceAfter','变动后余额'],['reason','原因']]} empty="尚无点数流水"/></>;

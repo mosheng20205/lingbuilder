@@ -649,9 +649,14 @@ LB_FBRO_API int __stdcall LB_FBro_ResponseDeleteHeaderMap(LB_FBRO_OBJECT_HANDLE 
 /** 启用页面调原生 JS 扩展（必须在首个浏览器创建前调用）。 */
 LB_FBRO_API int __stdcall LB_FBro_EnableJsQuery(const wchar_t* query_function,
                                                 const wchar_t* cancel_function);
-/** 启动命令行开关：必须在 LB_FBro_Initialize* 之前调用。
- *  支持键：disableGpu、disableGpuCache、disableGpuBlockList、enableMediaStream、
- *  enableSpeechInput、enableAutoplay、headless（进程级无头，启用后所有浏览器无窗口渲染）。 */
+/** 启动命令行开关：必须在 LB_FBro_Initialize* 之前调用，初始化之后返回
+ *  LB_FBRO_ERROR_OPERATION_FAILED（开关只在 OnBeforeCommandLineProcessing 读取一次）。
+ *  受控形态 {"键":true|false,...} 单层对象，键白名单：disableGpu、disableGpuCache、
+ *  disableGpuBlockList、enableMediaStream、enableSpeechInput、enableAutoplay、
+ *  headless（进程级无头，启用后所有浏览器无窗口渲染）、enableCrossFrame（官方跨域模式，
+ *  跨框架操作）、disableProxy。形态非法或含白名单外键返回 LB_FBRO_ERROR_INVALID_ARGUMENT；
+ *  不得借本通道传任意 Chromium 开关。EnableSingleProcess 刻意不开放（仅调试模式有效，
+ *  会破坏独立进程宿主与实例寻址契约）。 */
 LB_FBRO_API int __stdcall LB_FBro_SetStartupSwitches(const wchar_t* switches_json);
 LB_FBRO_API int __stdcall LB_FBro_GetStartupCommandLine(wchar_t* result, size_t capacity);
 /** 后台创建：无窗口承载，事件仍正常分发。 */

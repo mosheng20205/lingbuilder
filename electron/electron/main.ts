@@ -25,6 +25,8 @@ import { UpdateDownloadService } from './updateDownloadService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
 import { normalizeAiBridgeStartSettings, readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
+import { LocalAuthorizationService, type LocalAuthorizationSnapshot } from './localAuthorizationService';
+import { SkillKitService, resolveBundledSkillKitRoot } from './skillKit/skillKitService';
 import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
 import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
@@ -73,6 +75,7 @@ let shutdownPromise: Promise<void> | null = null;
 let pendingModulePackagePath: string | undefined;
 let workspaceService: DesktopWorkspaceService;
 let aiBridgeManager: AiBridgeManagerService;
+let localAuthorization: LocalAuthorizationService | null = null;
 let moduleInfoWindow: ModuleInfoWindowService;
 const rendererConfirmedClose = new WeakSet<BrowserWindow>();
 
@@ -288,6 +291,52 @@ async function readFbroVipCredential(): Promise<string> { try { if (!safeStorage
 async function writeFbroVipCredential(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全凭据存储。'); const file = fbroVipCredentialPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
 async function resolveFbroVipCredential(): Promise<{ value: string; source: 'secure-storage' | 'environment' | 'none' }> { const stored = await readFbroVipCredential(); if (stored) return { value: stored, source: 'secure-storage' }; if (startupFbroVipKey) return { value: startupFbroVipKey, source: 'environment' }; return { value: '', source: 'none' }; }
 function publishFbroVipCredential(value: string): void { rendererServer?.postMessage({ type: 'lingbuilder:fbro-vip-key', value }); aiBridgeManager?.setFbroVipKey(value); }
+/**
+ * 本机授权代理：仅在用户于「AI Bridge 连接中心」显式开启后监听回环端口，
+ * 供外部 AI 客户端自动拉起的 stdio 宿主换取模块 Permit 与浏览器凭据。
+ */
+async function syncLocalAuthorizationService(): Promise<LocalAuthorizationSnapshot | null> {
+  const settings = await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage);
+  if (settings?.externalModuleAccess !== true) {
+    if (localAuthorization) {
+      await localAuthorization.stop();
+      localAuthorization = null;
+    }
+    return null;
+  }
+  if (!localAuthorization) {
+    localAuthorization = new LocalAuthorizationService({
+      userDataDir: app.getPath('userData'),
+      enabled: true,
+      readModulePermitCache,
+      resolveFbroVipKey: async () => (await resolveFbroVipCredential()).value,
+      log: message => logDiagnostic('info', 'ai-bridge', message)
+    });
+  }
+  try {
+    return await localAuthorization.start();
+  } catch (error) {
+    logDiagnostic('error', 'ai-bridge', `本机授权代理启动失败：${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+let skillKit: SkillKitService | null = null;
+/** 灵码 Skill 正文取物：安装包内置快照兜底，联网时以云端签名清单为最新。 */
+function skillKitService(): SkillKitService {
+  if (!skillKit) {
+    skillKit = new SkillKitService({
+      userDataDir: app.getPath('userData'),
+      bundledRoot: resolveBundledSkillKitRoot({
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        electronRoot: path.join(repoRoot(), 'electron')
+      }),
+      ideVersion: app.getVersion(),
+      environment: process.env
+    });
+  }
+  return skillKit;
+}
 function cloudRefreshPath(): string { return path.join(app.getPath('userData'), 'credentials', 'cloud-refresh-token.bin'); }
 async function readCloudRefresh(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(await fs.readFile(cloudRefreshPath())); } catch { return ''; } }
 async function writeCloudRefresh(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全账号凭据存储。'); const file = cloudRefreshPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
@@ -462,6 +511,14 @@ function shutdownAndExit(code: number): Promise<void> {
     let exitCode = code;
     try {
       await aiBridgeManager?.stop('LingBuilder 正在退出');
+    } catch (error) {
+      exitCode = 1;
+      console.error(error);
+    }
+    try {
+      // 退出必须撤掉本机授权代理并删除发现文件，避免陈旧端口被后来者误用。
+      await localAuthorization?.stop();
+      localAuthorization = null;
     } catch (error) {
       exitCode = 1;
       console.error(error);
@@ -1015,11 +1072,14 @@ function registerIpcHandlers(): void {
     // 记住上次成功启动的设置（含自定义 Token，safeStorage 加密），下次打开连接中心自动回填。
     let settingsError = '';
     try {
+      const persisted = await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage);
       await writeAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), {
         port: snapshot.port || port,
         permission,
         lifecycle,
-        token: token || ''
+        token: token || '',
+        // 外部 AI 授权开关独立于启动动作，必须原样保留，否则一次启动就把用户设置抹平。
+        externalModuleAccess: persisted?.externalModuleAccess === true
       }, safeStorage);
     } catch (reason) {
       // 设置保存失败不阻断启动，但必须让用户可见（否则会出现「启动成功却记不住」）。
@@ -1028,14 +1088,20 @@ function registerIpcHandlers(): void {
     return settingsError ? { ...snapshot, settingsError } : snapshot;
   });
   ipcMain.handle('ai-bridge:start-settings:load', async () => {
-    return await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage) ?? null;
+    const settings = await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage) ?? null;
+    return { settings, localAuthorization: localAuthorization?.snapshot() ?? null };
   });
+  ipcMain.handle('ai-bridge:local-auth-status', async () => localAuthorization?.snapshot() ?? null);
+  ipcMain.handle('skill-kit:status', async () => await skillKitService().snapshot());
+  ipcMain.handle('skill-kit:check-update', async () => await skillKitService().checkForUpdates());
   ipcMain.handle('ai-bridge:start-settings:save', async (_event, settings: unknown) => {
     const normalized = normalizeAiBridgeStartSettings(settings);
     if (!normalized) return { ok: false, error: '设置无效：端口需为 1024–65535，权限与生命周期取内置枚举，Token 需 24–256 个不含空白的可见 ASCII 字符。' };
     try {
       await writeAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), normalized, safeStorage);
-      return { ok: true };
+      // 外部 AI 授权开关立即生效：开启即监听回环端口并写发现文件，关闭即停监听并清理。
+      const localAuth = await syncLocalAuthorizationService();
+      return { ok: true, localAuthorization: localAuth };
     } catch (reason) {
       return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
     }
@@ -1623,6 +1689,8 @@ app.whenReady().then(async () => {
   aiBridgeManager.subscribe(snapshot => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai-bridge:status-changed', snapshot);
   });
+  // 外部 AI 授权开关是持久化设置，IDE 启动即按上次选择恢复监听状态。
+  await syncLocalAuthorizationService();
 
   const managedDevelopmentServer = !app.isPackaged && process.argv.includes('--managed-dev-server');
   if (app.isPackaged || managedDevelopmentServer) {

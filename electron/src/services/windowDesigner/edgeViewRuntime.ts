@@ -331,6 +331,10 @@ ${settingsWrappers()}
     EdgeViewCreationOptions* EdgeView创建选项_取状态(const wchar_t* controlName) { if (!controlName || !controlName[0]) return nullptr; return &edgeViewCreationOptions_[controlName]; }
     int EdgeView创建选项_置独占用户目录(const wchar_t* name, bool value) { auto* state = EdgeView创建选项_取状态(name); if (!state) return 0; state->exclusiveUserDataFolderAccess = value; return 1; }
     int EdgeView创建选项_取独占用户目录(const wchar_t* name) { auto* state = EdgeView创建选项_取状态(name); return state && state->exclusiveUserDataFolderAccess ? 1 : 0; }
+    int EdgeView创建选项_置附加参数(const wchar_t* name, const std::wstring& arguments) { auto* state = EdgeView创建选项_取状态(name); if (!state) return 0; state->additionalBrowserArguments = arguments; return 1; }
+    std::wstring EdgeView创建选项_取附加参数(const wchar_t* name) { auto* state = EdgeView创建选项_取状态(name); return state ? state->additionalBrowserArguments : std::wstring(); }
+    int EdgeView创建选项_置跨域限制关闭(const wchar_t* name, bool value) { auto* state = EdgeView创建选项_取状态(name); if (!state) return 0; state->disableWebSecurity = value; return 1; }
+    int EdgeView创建选项_取跨域限制关闭(const wchar_t* name) { auto* state = EdgeView创建选项_取状态(name); return state && state->disableWebSecurity ? 1 : 0; }
     int EdgeView创建选项_置自定义崩溃报告(const wchar_t* name, bool value) { auto* state = EdgeView创建选项_取状态(name); if (!state) return 0; state->customCrashReporting = value; return 1; }
     int EdgeView创建选项_取自定义崩溃报告(const wchar_t* name) { auto* state = EdgeView创建选项_取状态(name); return state && state->customCrashReporting ? 1 : 0; }
     int EdgeView创建选项_置跟踪保护(const wchar_t* name, bool value) { auto* state = EdgeView创建选项_取状态(name); if (!state) return 0; state->trackingPrevention = value; return 1; }
@@ -674,6 +678,136 @@ ${printSettingsWrappers()}
     long long EdgeView资源_读响应正文异步(const wchar_t* controlName, long long responseId, long long maximum, const wchar_t* handler) { auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); auto response = EdgeView对象_取接口<ICoreWebView2WebResourceResponseView>(controlName, responseId, L"WebResourceResponseView"); if (!task) return 0; if (!response) { EdgeView任务_完成(task, E_INVALIDARG, L""); EdgeView任务_补充说明(task, EdgeView_说明响应正文时效().c_str()); return task->id; } if (maximum < 0 || maximum > 4LL * 1024LL * 1024LL) { EdgeView任务_完成(task, E_INVALIDARG, L""); return task->id; } HRESULT started = response->GetContent(Microsoft::WRL::Callback<ICoreWebView2WebResourceResponseViewGetContentCompletedHandler>([this, task, maximum](HRESULT error, IStream* stream) -> HRESULT { std::wstring hex; static const wchar_t digits[] = L"0123456789ABCDEF"; long long total = 0; BYTE buffer[8192]; ULONG read = 0; if (SUCCEEDED(error) && stream) { while (total < maximum && SUCCEEDED(stream->Read(buffer, static_cast<ULONG>(std::min<long long>(sizeof(buffer), maximum - total)), &read)) && read > 0) { hex.reserve(hex.size() + static_cast<size_t>(read) * 2); for (ULONG index = 0; index < read; ++index) { hex.push_back(digits[(buffer[index] >> 4) & 15]); hex.push_back(digits[buffer[index] & 15]); } total += read; } } std::wstring json = EdgeView_事件数据({{L"byteCount", EdgeView_数值(total)}, {L"hex", hex}}); EdgeView任务_完成(task, error, json.c_str()); EdgeView任务_补充说明(task, EdgeView_说明响应正文时效().c_str()); return S_OK; }).Get()); if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id; }
     static std::wstring EdgeView_说明响应正文时效() { return L"响应正文必须在 Web资源响应收到 处理器执行期间交给本命令；处理器返回后 WebView2 会释放该响应的正文内容，稍后再读会得到 WebView2 异步操作失败。"; }
     int EdgeView资源_设置事件响应文本(const wchar_t* controlName, int status, const wchar_t* reason, const wchar_t* headers, const wchar_t* body) { auto* instance = EdgeView_查找控件(controlName); if (!instance || !instance->eventDecisionActive || status < 100 || status > 599 || (body && wcslen(body) > 4 * 1024 * 1024)) return 0; instance->eventFields[L"responseStatus"] = EdgeView_数值(status); instance->eventFields[L"responseReason"] = reason ? reason : L""; instance->eventFields[L"responseHeaders"] = headers ? headers : L""; instance->eventFields[L"responseBody"] = body ? body : L""; instance->eventAction = 1; return 1; }
+
+    static const wchar_t* EdgeView_填表助手脚本() {
+        return L"function lbTianBiao(op, selector, index, a, b) {\n  var list;\n  try { list = document.querySelectorAll(select"
+            L"or); } catch (e) { return '{\"ok\":false,\"reason\":\"bad-selector\"}'; }\n  var el = (index >= 0 && index < l"
+            L"ist.length) ? list[index] : null;\n  function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : 0; "
+            L"}\n  function out(v) { return JSON.stringify({ ok: true, value: v === undefined ? null : v }); }\n  function f"
+            L"ire(name) {\n    if (!el) return;\n    try {\n      if (name === 'keydown' || name === 'keyup') {\n        el."
+            L"dispatchEvent(new KeyboardEvent(name, { bubbles: true, cancelable: true, keyCode: (b | 0) }));\n      } else i"
+            L"f (name === 'mousedown' || name === 'mouseup' || name === 'mousemove' || name === 'click') {\n        el.dispa"
+            L"tchEvent(new MouseEvent(name, { bubbles: true, cancelable: true, view: window }));\n      } else {\n        el"
+            L".dispatchEvent(new Event(name, { bubbles: true, cancelable: true }));\n      }\n    } catch (e) { }\n  }\n  fu"
+            L"nction focusAndFire(name) { try { el.focus(); } catch (e) { } fire(name); }\n  if (op === 'click') { if (!el) "
+            L"return out(false); try { el.click(); } catch (e) { fire('click'); } return out(true); }\n  if (op === 'scrollI"
+            L"ntoView') { if (el) { try { el.scrollIntoView({ block: a === '1' ? 'start' : 'end', inline: 'nearest' }); } ca"
+            L"tch (e) { } } return out(true); }\n  if (op === 'setFocus') { if (el) { try { if (a === '1') { el.focus(); } e"
+            L"lse { el.blur(); } } catch (e) { } } return out(true); }\n  if (op === 'setValue') {\n    if (!el) return out("
+            L"false);\n    try {\n      if (typeof el.value === 'string') { el.value = a; } else { el.textContent = a; }\n  "
+            L"    focusAndFire('input'); focusAndFire('change');\n    } catch (e) { }\n    return out(true);\n  }\n  if (op "
+            L"=== 'setChecked') { if (el) { try { el.checked = (a === '1'); focusAndFire('change'); } catch (e) { } } return"
+            L" out(!!(el && el.checked)); }\n  if (op === 'setSelected') { if (el) { try { el.selectedIndex = (b | 0); focus"
+            L"AndFire('change'); } catch (e) { } } return out(el ? el.selectedIndex : -1); }\n  if (op === 'setInnerText') {"
+            L" if (el) { try { el.innerText = a; } catch (e) { try { el.textContent = a; } catch (e2) { } } } return out(tru"
+            L"e); }\n  if (op === 'setOuterText') { if (el) { try { el.outerText = a; } catch (e) { try { el.textContent = a"
+            L"; } catch (e2) { } } } return out(true); }\n  if (op === 'setInnerHTML') { if (el) { try { el.innerHTML = a; }"
+            L" catch (e) { } } return out(true); }\n  if (op === 'setOuterHTML') { if (el) { try { el.outerHTML = a; } catch"
+            L" (e) { } } return out(true); }\n  if (op === 'setAttribute') { if (el) { try { el.setAttribute(b, a); } catch "
+            L"(e) { } } return out(true); }\n  if (op === 'dispatchEvent') { if (el) fire(a); return out(true); }\n  if (op "
+            L"=== 'getValue') { return out(el ? (typeof el.value === 'string' ? el.value : el.textContent) : null); }\n  if "
+            L"(op === 'getChecked') { return out(el ? !!el.checked : null); }\n  if (op === 'getSelected') { return out(el ?"
+            L" num(el.selectedIndex) : null); }\n  if (op === 'getInnerText') { return out(el ? el.innerText : null); }\n  i"
+            L"f (op === 'getOuterText') { return out(el ? el.outerText : null); }\n  if (op === 'getInnerHTML') { return out"
+            L"(el ? el.innerHTML : null); }\n  if (op === 'getOuterHTML') { return out(el ? el.outerHTML : null); }\n  if (o"
+            L"p === 'getAttribute') { return out(el ? el.getAttribute(b) : null); }\n  if (op === 'hasElement') { return out"
+            L"(!!el); }\n  if (op === 'getPoint') {\n    if (!el) return out(null);\n    var r = el.getBoundingClientRect();"
+            L"\n    return out({ x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round"
+            L"(r.height) });\n  }\n  return '{\"ok\":false,\"reason\":\"unknown-op\"}';\n}\n";
+    }
+
+    static std::wstring EdgeView_填表拼接字面量(const std::wstring& value) {
+        std::wstring output;
+        for (wchar_t ch : value) {
+            if (ch == static_cast<wchar_t>(92)) { output += L"\\"; }
+            else if (ch == static_cast<wchar_t>(39)) { output += L"\'"; }
+            else if (ch == static_cast<wchar_t>(10)) { output += L"\n"; }
+            else if (ch == static_cast<wchar_t>(13)) { output += L"\r"; }
+            else if (ch == static_cast<wchar_t>(9)) { output += L"\t"; }
+            else { output += ch; }
+        }
+        return output;
+    }
+
+    long long EdgeView_填表执行(const wchar_t* controlName, long long frameId, const wchar_t* op,
+                                   const std::wstring& selector, int index,
+                                   const std::wstring& a, const std::wstring& b, const wchar_t* handler) {
+        const std::wstring call = std::wstring(L"(function(){return ")
+            + EdgeView_填表助手脚本() + L"})();"
+            + L"(" + EdgeView_填表拼接字面量(op)
+            + L"," + EdgeView_填表拼接字面量(selector)
+            + L"," + std::to_wstring(index < 0 ? 0 : index)
+            + L"," + EdgeView_填表拼接字面量(a)
+            + L"," + EdgeView_填表拼接字面量(b) + L");";
+        return EdgeView框架_执行脚本异步(controlName, frameId, call.c_str(), handler);
+    }
+
+    long long EdgeView填表_点击元素(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"click", 选择器, 序号, L"", L"", L"");
+    }
+    long long EdgeView填表_滚动到元素(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, bool toTop) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"scrollIntoView", 选择器, 序号, (toTop ? L"1" : L"0"), L"", L"");
+    }
+    long long EdgeView填表_聚焦元素(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, bool focus) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setFocus", 选择器, 序号, (focus ? L"1" : L"0"), L"", L"");
+    }
+    long long EdgeView填表_赋值(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& value) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setValue", 选择器, 序号, value, L"", L"");
+    }
+    long long EdgeView填表_置选择框(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, bool check) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setChecked", 选择器, 序号, (check ? L"1" : L"0"), L"", L"");
+    }
+    long long EdgeView填表_置选择项(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, int selectIndex) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setSelected", 选择器, 序号, L"", std::to_wstring(selectIndex), L"");
+    }
+    long long EdgeView填表_置内文本(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& text) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setInnerText", 选择器, 序号, text, L"", L"");
+    }
+    long long EdgeView填表_置外文本(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& text) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setOuterText", 选择器, 序号, text, L"", L"");
+    }
+    long long EdgeView填表_置内代码(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& html) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setInnerHTML", 选择器, 序号, html, L"", L"");
+    }
+    long long EdgeView填表_置外代码(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& html) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setOuterHTML", 选择器, 序号, html, L"", L"");
+    }
+    long long EdgeView填表_置属性(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& name, const std::wstring& value) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"setAttribute", 选择器, 序号, value, name, L"");
+    }
+    long long EdgeView填表_触发事件(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& eventName, int keyCode) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"dispatchEvent", 选择器, 序号, eventName, std::to_wstring(keyCode), L"");
+    }
+    long long EdgeView填表_取值(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getValue", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取选择框(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getChecked", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取选择项(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getSelected", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取内文本(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getInnerText", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取外文本(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getOuterText", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取内代码(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getInnerHTML", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取外代码(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getOuterHTML", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取属性(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const std::wstring& name, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getAttribute", 选择器, 序号, L"", name, handler);
+    }
+    long long EdgeView填表_元素是否存在(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"hasElement", 选择器, 序号, L"", L"", handler);
+    }
+    long long EdgeView填表_取坐标(const wchar_t* 控件名, long long 框架_句柄, const std::wstring& 选择器, int 序号, const wchar_t* handler) {
+        return EdgeView_填表执行(控件名, 框架_句柄, L"getPoint", 选择器, 序号, L"", L"", handler);
+    }
 
     std::wstring EdgeView框架_枚举JSON(const wchar_t* controlName) {
         auto* instance = EdgeView_查找控件(controlName); if (!instance) return L"[]"; std::wstring json = L"["; bool first = true;

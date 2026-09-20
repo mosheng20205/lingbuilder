@@ -9,8 +9,8 @@
       "package": "Microsoft.Web.WebView2",
       "methodCount": 919,
       "summary": {
-        "implemented-public": 325,
-        "implemented-internal": 503,
+        "implemented-public": 327,
+        "implemented-internal": 501,
         "excluded": 91,
         "pending": 0
       },
@@ -6961,12 +6961,12 @@
           "signature": "ICoreWebView2EnvironmentOptions.AdditionalBrowserArguments",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "settings.typed-options",
-          "runtimeSymbol": "EdgeView设置_ + EdgeView打印_",
-          "testId": "edgeview.adapter.settings.typed-options",
-          "reason": "设置对象由类型化 getter/setter 或设置 JSON 适配器内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView创建选项_取附加参数",
+          "adapterId": "command.EdgeView创建选项_取附加参数",
+          "runtimeSymbol": "EdgeView创建选项_取附加参数",
+          "testId": "edgeview.command.EdgeView创建选项_取附加参数",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2EnvironmentOptions.get_AllowSingleSignOnUsingOSPrimaryAccount.6d49bdede552",
@@ -7029,12 +7029,12 @@
           "signature": "ICoreWebView2EnvironmentOptions.AdditionalBrowserArguments",
           "minimumSdk": "1.0.3537.50",
           "minimumRuntimeMajor": 141,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "native-call.ICoreWebView2EnvironmentOptions.put_AdditionalBrowserArguments",
-          "runtimeSymbol": "ICoreWebView2EnvironmentOptions->put_AdditionalBrowserArguments",
-          "testId": "edgeview.native-call.ICoreWebView2EnvironmentOptions.put_AdditionalBrowserArguments",
-          "reason": "该成员由生成运行时中的显式接口调用内部消费，不向中文源码暴露 COM 对象。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView创建选项_置附加参数",
+          "adapterId": "command.EdgeView创建选项_置附加参数",
+          "runtimeSymbol": "EdgeView创建选项_置附加参数",
+          "testId": "edgeview.command.EdgeView创建选项_置附加参数",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2EnvironmentOptions.put_AllowSingleSignOnUsingOSPrimaryAccount.01e2d4435eaf",
@@ -15647,8 +15647,8 @@
       "package": "Microsoft.Web.WebView2",
       "methodCount": 995,
       "summary": {
-        "implemented-public": 338,
-        "implemented-internal": 557,
+        "implemented-public": 340,
+        "implemented-internal": 555,
         "excluded": 100,
         "pending": 0
       },
@@ -23041,12 +23041,12 @@
           "signature": "ICoreWebView2EnvironmentOptions.AdditionalBrowserArguments",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "settings.typed-options",
-          "runtimeSymbol": "EdgeView设置_ + EdgeView打印_",
-          "testId": "edgeview.adapter.settings.typed-options",
-          "reason": "设置对象由类型化 getter/setter 或设置 JSON 适配器内部消费。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView创建选项_取附加参数",
+          "adapterId": "command.EdgeView创建选项_取附加参数",
+          "runtimeSymbol": "EdgeView创建选项_取附加参数",
+          "testId": "edgeview.command.EdgeView创建选项_取附加参数",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2EnvironmentOptions.get_AllowSingleSignOnUsingOSPrimaryAccount.6d49bdede552",
@@ -23109,12 +23109,12 @@
           "signature": "ICoreWebView2EnvironmentOptions.AdditionalBrowserArguments",
           "minimumSdk": "1.0.4078.44",
           "minimumRuntimeMajor": 150,
-          "status": "implemented-internal",
-          "chineseCommand": null,
-          "adapterId": "native-call.ICoreWebView2EnvironmentOptions.put_AdditionalBrowserArguments",
-          "runtimeSymbol": "ICoreWebView2EnvironmentOptions->put_AdditionalBrowserArguments",
-          "testId": "edgeview.native-call.ICoreWebView2EnvironmentOptions.put_AdditionalBrowserArguments",
-          "reason": "该成员由生成运行时中的显式接口调用内部消费，不向中文源码暴露 COM 对象。"
+          "status": "implemented-public",
+          "chineseCommand": "EdgeView创建选项_置附加参数",
+          "adapterId": "command.EdgeView创建选项_置附加参数",
+          "runtimeSymbol": "EdgeView创建选项_置附加参数",
+          "testId": "edgeview.command.EdgeView创建选项_置附加参数",
+          "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
         },
         {
           "id": "webview2.ICoreWebView2EnvironmentOptions.put_AllowSingleSignOnUsingOSPrimaryAccount.01e2d4435eaf",
@@ -32576,8 +32576,8 @@
     "runtimeMajor": 150,
     "methodCount": 995,
     "summary": {
-      "implemented-public": 338,
-      "implemented-internal": 557,
+      "implemented-public": 340,
+      "implemented-internal": 555,
       "excluded": 100,
       "pending": 0
     }
@@ -32665,7 +32665,7 @@
       "webview2.ICoreWebView2SharedWorkerManager.remove_SharedWorkerCreated.257c60d8d185"
     ]
   },
-  "commandCount": 237,
+  "commandCount": 263,
   "runtimeSymbolCheck": {
     "checkedFiles": [
       "electron/src/services/windowDesigner/edgeViewRuntime.ts",
@@ -40069,12 +40069,12 @@
       "signature": "ICoreWebView2EnvironmentOptions.AdditionalBrowserArguments",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "settings.typed-options",
-      "runtimeSymbol": "EdgeView设置_ + EdgeView打印_",
-      "testId": "edgeview.adapter.settings.typed-options",
-      "reason": "设置对象由类型化 getter/setter 或设置 JSON 适配器内部消费。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView创建选项_取附加参数",
+      "adapterId": "command.EdgeView创建选项_取附加参数",
+      "runtimeSymbol": "EdgeView创建选项_取附加参数",
+      "testId": "edgeview.command.EdgeView创建选项_取附加参数",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2EnvironmentOptions.get_AllowSingleSignOnUsingOSPrimaryAccount.6d49bdede552",
@@ -40137,12 +40137,12 @@
       "signature": "ICoreWebView2EnvironmentOptions.AdditionalBrowserArguments",
       "minimumSdk": "1.0.4078.44",
       "minimumRuntimeMajor": 150,
-      "status": "implemented-internal",
-      "chineseCommand": null,
-      "adapterId": "native-call.ICoreWebView2EnvironmentOptions.put_AdditionalBrowserArguments",
-      "runtimeSymbol": "ICoreWebView2EnvironmentOptions->put_AdditionalBrowserArguments",
-      "testId": "edgeview.native-call.ICoreWebView2EnvironmentOptions.put_AdditionalBrowserArguments",
-      "reason": "该成员由生成运行时中的显式接口调用内部消费，不向中文源码暴露 COM 对象。"
+      "status": "implemented-public",
+      "chineseCommand": "EdgeView创建选项_置附加参数",
+      "adapterId": "command.EdgeView创建选项_置附加参数",
+      "runtimeSymbol": "EdgeView创建选项_置附加参数",
+      "testId": "edgeview.command.EdgeView创建选项_置附加参数",
+      "reason": "集中式目录声明了类型化中文命令，且运行时符号检查已通过。"
     },
     {
       "id": "webview2.ICoreWebView2EnvironmentOptions.put_AllowSingleSignOnUsingOSPrimaryAccount.01e2d4435eaf",

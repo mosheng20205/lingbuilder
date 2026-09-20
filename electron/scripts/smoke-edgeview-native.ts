@@ -47,6 +47,13 @@ async function main() {
   const source = [
     '类 MainWindow',
     '    事件 _MainWindow_创建完毕()',
+    '        @ int dpiPopup = EdgeView_创建弹窗浏览器(900, L"EdgeView DPI popup", 400, 300, L"about:blank", L".edgeview/dpi-smoke", L"");',
+    '        @ EdgeViewInstance* dpiInstance = EdgeView_查找(900);',
+    '        @ RECT dpiClient = { 0, 0, 0, 0 }; UINT dpiUsed = 96;',
+    '        @ if (dpiInstance && dpiInstance->host && IsWindow(dpiInstance->host)) { GetClientRect(dpiInstance->host, &dpiClient); const UINT wDpi = GetDpiForWindow(dpiInstance->host); if (wDpi) dpiUsed = wDpi; }',
+    '        @ std::ofstream dpiReport("edgeview-dpi-smoke.txt", std::ios::binary | std::ios::trunc);',
+    '        @ dpiReport << (dpiPopup == 1 ? 1 : 0) << " " << dpiClient.right << " " << dpiClient.bottom << " " << dpiUsed << "\\n";',
+    '        @ dpiReport.close();',
     '        EdgeView脚本_文档预注入异步(根级浏览器, "document.body.innerHTML=\'LingBuilder EdgeView smoke\'", &根级浏览器_脚本完成)',
     '    结束',
     '    事件 根级浏览器_脚本完成()',
@@ -98,8 +105,16 @@ async function main() {
     const child = spawn(executable, [], { cwd: path.dirname(executable), windowsHide: true, stdio: 'ignore' });
     await new Promise(resolve => setTimeout(resolve, 5000));
     if (child.exitCode !== null) throw new Error(`EdgeView ${platform} 冒烟程序提前退出，代码 ${child.exitCode}。`);
+    // C-2 行为断言：弹窗宽高按逻辑坐标（DIP）接收，客户区尺寸必须等于请求值按窗口 DPI 放大（±1px）。
+    const dpiReportRaw = await fs.readFile(path.join(path.dirname(executable), 'edgeview-dpi-smoke.txt'), 'utf8');
+    const [popupOk, clientWidth, clientHeight, windowDpi] = dpiReportRaw.trim().split(/\s+/u).map(Number);
+    if (popupOk !== 1) throw new Error(`EdgeView ${platform} 弹窗创建失败（edgeview-dpi-smoke.txt：${dpiReportRaw.trim()}）。`);
+    for (const [label, actual, logical] of [['宽', clientWidth, 400], ['高', clientHeight, 300]] as const) {
+      const expected = Math.round(logical * windowDpi / 96);
+      if (Math.abs(actual - expected) > 1) throw new Error(`EdgeView ${platform} 弹窗 DPI 缩放异常：${label} 实际 ${actual}，期望 ${expected}（逻辑 ${logical} @ ${windowDpi}dpi）。`);
+    }
     child.kill();
-    results.push({ platform, executable, survivedMilliseconds: 5000 });
+    results.push({ platform, executable, survivedMilliseconds: 5000, popup: { clientWidth, clientHeight, windowDpi } });
   }
   console.log(JSON.stringify({ ok: true, projectDir, results }, null, 2));
 }

@@ -5850,3 +5850,36 @@ test('新手模式 # 触发常量补全上下文与常量令牌着色', () => {
   });
   assert.equal(presentationTokens.find(token => token.text === '#模块名')?.kind, 'constant');
 });
+
+test('wideString 形参实参与指针文本拼接统一经 LingCppWideArg 归一', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.net.http-client', 'lingbuilder.std.array'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!, installPath: `builtin://${id}`, isBuiltin: true,
+    isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }));
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    事件 创建完毕()',
+    '        局部 文本型 名单[]',
+    '        局部 文本型 显示',
+    '        局部 HTTP客户端 客户端',
+    '        局部 HTTP客户端请求 请求',
+    '        客户端 = HTTP客户端_创建客户端()',
+    '        请求 = HTTP客户端_创建请求(客户端, "GET", "https://example.com")',
+    '        数组_加入成员(名单, "甲")',
+    '        数组_加入成员(名单, "乙")',
+    '        显示 = 数组_取成员(名单, 0) + "（" + 数组_取成员(名单, 1) + "）"',
+    '        HTTP客户端_设置文本正文(请求, 数组_取成员(名单, 1), "text/plain; charset=utf-8")',
+    '        HTTP客户端_设置文本正文(请求, 显示, "text/plain; charset=utf-8")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: modules });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // D-2：const wchar_t* + const wchar_t* 不再吐成指针加法（C2110）。
+  assert.ok(cpp.includes('(std::wstring(LingCppWideArg(数组_取成员(名单, 0))) + LingCppWideArg(L"（"))'), '数组成员与字面量拼接必须先经 LingCppWideArg 归一');
+  assert.equal(cpp.includes('数组_取成员(名单, 0)+L"（"'), false);
+  // D-1：调用形态实参（此前只有裸标识符会被包装）与裸变量一样统一包装。
+  assert.ok(cpp.includes('HTTP客户端_设置文本正文(请求, LingCppWideArg(数组_取成员(名单, 1)), L"text/plain; charset=utf-8")'), 'wideString 形参的调用实参必须包装');
+  assert.ok(cpp.includes('HTTP客户端_设置文本正文(请求, LingCppWideArg(显示), L"text/plain; charset=utf-8")'), '裸变量包装行为保持不变');
+});

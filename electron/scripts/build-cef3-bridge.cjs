@@ -44,6 +44,7 @@ async function main() {
     killSignal: 'SIGKILL',
     env: { ...testEnvironment, LB_CEF3_TEST_MEDIA_ROUTER_NOTIFY: '1' }
   });
+  await waitForOrphanTestProcesses('LingBuilderCefBridgeTests.exe');
   await execFileAsync(testExecutable, [], {
     cwd: path.join(buildRoot, 'Release'),
     windowsHide: true,
@@ -74,6 +75,25 @@ async function main() {
   };
   await fs.writeFile(path.join(outputRoot, 'VERSION.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
   console.log(`CEF3 Bridge built and tested: ${outputRoot}`);
+}
+
+// 媒体路由通知模式的用例会用 TerminateProcess 硬退出，重入同一 exe 的 CEF 子进程
+// 还要几秒才收尾；紧接着跑全量用例时这些残留进程会占住缓存目录把第二次运行打断，
+// 因此必须先等它们退出（只等待不杀进程：并行会话可能也在跑同一个 exe）。
+async function waitForOrphanTestProcesses(imageName, timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { stdout } = await execFileAsync(
+      'tasklist', ['/FI', `IMAGENAME eq ${imageName}`, '/NH', '/FO', 'CSV'],
+      { windowsHide: true, maxBuffer: 1024 * 1024 }
+    );
+    const alive = stdout.split('\n').filter(line => line.includes(`"${imageName}"`)).length;
+    if (!alive) return;
+    if (Date.now() >= deadline) {
+      throw new Error(`等待 ${imageName} 残留子进程退出超时（${timeoutMs / 1000} 秒），全量自测无法开始。`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
 }
 
 async function stageTestRuntime(sdkRoot, outputRoot) {

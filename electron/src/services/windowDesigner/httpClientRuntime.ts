@@ -129,6 +129,26 @@ public:
     bool SetDecompression(long long id, bool enabled) { return UpdateClient(id, [&](Client& client) { client.autoDecompression = enabled; return true; }); }
     bool SetCookies(long long id, bool enabled) { return UpdateClient(id, [&](Client& client) { client.cookiesEnabled = enabled; return true; }); }
 
+    bool SetManualCookie(long long id, const wchar_t* name, const wchar_t* value, const wchar_t* domain, const wchar_t* path) {
+        return UpdateClient(id, [&](Client& client) {
+            const std::wstring n = name ? name : L""; const std::wstring v = value ? value : L""; const std::wstring d = domain ? domain : L""; const std::wstring p = path && path[0] ? path : L"/";
+            if (n.empty() || n.find(L'=') != std::wstring::npos || ContainsControl(n) || ContainsControl(v) || ContainsControl(d) || ContainsControl(p)) return ClientFail(client, L"HTTP 手工 Cookie 无效：名称不能为空且不能包含等号，名称、值、域和路径不得包含控制字符。");
+            for (auto& item : client.manualCookies) { if (item.name == n && Lower(item.domain) == Lower(d) && item.path == p) { item.value = v; return true; } }
+            client.manualCookies.push_back({ n, v, d, p }); return true;
+        });
+    }
+    bool ClearManualCookies(long long id) { return UpdateClient(id, [&](Client& client) { client.manualCookies.clear(); return true; }); }
+    std::wstring ManualCookiesJson(long long id) const {
+        auto client = FindClient(id); if (!client) return L"[]";
+        std::lock_guard<std::mutex> lock(client->mutex);
+        std::wstring result = L"["; bool first = true;
+        for (const auto& item : client->manualCookies) { if (!first) result += L","; first = false; result += L"{\"name\":\"" + EscapeJson(item.name) + L"\",\"value\":\"" + EscapeJson(item.value) + L"\",\"domain\":\"" + EscapeJson(item.domain) + L"\",\"path\":\"" + EscapeJson(item.path) + L"\"}"; }
+        return result + L"]";
+    }
+    bool SetRequestCookie(long long id, const wchar_t* cookie) {
+        return UpdateRequest(id, [&](Request& request) { const std::wstring text = cookie ? cookie : L""; if (ContainsControl(text)) return RequestFailUnlocked(request, L"HTTP 请求 Cookie 不能包含 CR、LF 或其它控制字符。", ERROR_INVALID_DATA); request.cookieOverride = text; return true; });
+    }
+
     bool SetClientHeader(long long id, const wchar_t* name, const wchar_t* value, bool append) {
         return UpdateClient(id, [&](Client& client) { return SetHeaderList(client.defaultHeaders, name, value, append, L"客户端"); });
     }
@@ -267,13 +287,14 @@ public:
     }
 
 private:
+    struct ManualCookie { std::wstring name, value, domain, path; };
     struct Client {
         long long id = 0; mutable std::mutex mutex; std::wstring userAgent = L"LingBuilder HTTP/2.0"; int resolveTimeoutMs = 10000; int connectTimeoutMs = 15000; int sendTimeoutMs = 30000; int receiveTimeoutMs = 30000;
         size_t maxHeaderBytes = 64 * 1024; size_t maxBodyBytes = 64 * 1024 * 1024; size_t maxUploadBytes = 64 * 1024 * 1024; int maxRedirects = 10; bool allowRedirects = true; bool allowHttpsDowngrade = false; int proxyMode = 0; std::wstring proxy, proxyBypass, serverUser, serverPassword, proxyUser, proxyPassword, certificatePin; bool verifyCertificate = true; bool allowSelfSigned = false; bool autoDecompression = true; bool cookiesEnabled = true;
-        std::vector<std::pair<std::wstring, std::wstring>> defaultHeaders; std::atomic<int> activeCount{0}; std::atomic<long long> totalCount{0}; std::wstring lastError; HINTERNET session = nullptr;
+        std::vector<std::pair<std::wstring, std::wstring>> defaultHeaders; std::vector<ManualCookie> manualCookies; std::atomic<int> activeCount{0}; std::atomic<long long> totalCount{0}; std::wstring lastError; HINTERNET session = nullptr;
     };
     struct Request {
-        long long id = 0, clientId = 0; mutable std::mutex mutex; std::condition_variable changed; std::wstring method, url, state = L"未开始", handler, error, statusText, protocol, finalUrl, headersText, headersJson, responsePath, contentType, certificateSha256, bodyMime = L"application/octet-stream"; std::vector<std::pair<std::wstring, std::wstring>> headers, headerItems; std::vector<unsigned char> body, response; std::wstring uploadPath; bool responseAllowOverwrite = false, async = false, completed = false, cancelled = false; int statusCode = 0, systemError = 0; std::atomic<long long> responseSize{0}; std::atomic<long long> uploadedBytes{0}, downloadedBytes{0}, durationMs{0}; std::chrono::steady_clock::time_point startedAt; std::thread worker; std::atomic<bool> cancelRequested{false}; std::mutex handlesMutex; HINTERNET connection = nullptr, request = nullptr;
+        long long id = 0, clientId = 0; mutable std::mutex mutex; std::condition_variable changed; std::wstring method, url, state = L"未开始", handler, error, statusText, protocol, finalUrl, headersText, headersJson, responsePath, contentType, certificateSha256, bodyMime = L"application/octet-stream", cookieOverride; std::vector<std::pair<std::wstring, std::wstring>> headers, headerItems; std::vector<unsigned char> body, response; std::wstring uploadPath; bool responseAllowOverwrite = false, async = false, completed = false, cancelled = false; int statusCode = 0, systemError = 0; std::atomic<long long> responseSize{0}; std::atomic<long long> uploadedBytes{0}, downloadedBytes{0}, durationMs{0}; std::chrono::steady_clock::time_point startedAt; std::thread worker; std::atomic<bool> cancelRequested{false}; std::mutex handlesMutex; HINTERNET connection = nullptr, request = nullptr;
     };
     struct Event { long long requestId = 0; std::wstring handler; };
 
@@ -286,6 +307,20 @@ private:
     static bool ValidUrl(const std::wstring& url) { URL_COMPONENTSW parts = {}; parts.dwStructSize = sizeof(parts); parts.dwSchemeLength = static_cast<DWORD>(-1); parts.dwHostNameLength = static_cast<DWORD>(-1); parts.dwUrlPathLength = static_cast<DWORD>(-1); return !url.empty() && WinHttpCrackUrl(url.c_str(), 0, 0, &parts) && (parts.nScheme == INTERNET_SCHEME_HTTP || parts.nScheme == INTERNET_SCHEME_HTTPS) && parts.dwHostNameLength > 0; }
     static std::wstring NormalizeFingerprint(const std::wstring& value) { std::wstring result; for (wchar_t ch : value) if (ch != L':' && !iswspace(ch)) result.push_back(static_cast<wchar_t>(towupper(ch))); return result; }
     static bool IsManagedHeader(const std::wstring& name) { const std::wstring lower = Lower(name); return lower == L"host" || lower == L"content-length" || lower == L"connection" || lower == L"transfer-encoding" || lower == L"cookie" || lower == L"set-cookie"; }
+    // 手工 Cookie 域的匹配：空域匹配任意主机；前导点匹配该域及其子域；其余按精确主机或子域匹配（RFC 6265 风格）。
+    static bool ManualCookieDomainMatches(const std::wstring& host, const std::wstring& domain) {
+        if (domain.empty()) return true;
+        const std::wstring h = Lower(host), d = Lower(domain);
+        if (d.front() == L'.') return h == d.substr(1) || (h.size() > d.size() && h.compare(h.size() - d.size(), d.size(), d) == 0);
+        return h == d || (h.size() > d.size() + 1 && h.compare(h.size() - d.size() - 1, d.size() + 1, L"." + d) == 0);
+    }
+    static bool ManualCookiePathMatches(const std::wstring& urlPath, const std::wstring& cookiePath) {
+        if (cookiePath.empty() || cookiePath == L"/") return true;
+        if (urlPath.empty() || urlPath.front() != L'/') return false;
+        if (urlPath.size() < cookiePath.size()) return false;
+        if (urlPath.compare(0, cookiePath.size(), cookiePath) != 0) return false;
+        return cookiePath.back() == L'/' || urlPath.size() == cookiePath.size() || urlPath[cookiePath.size()] == L'/';
+    }
     static bool ValidHeaderName(const std::wstring& name) { return !name.empty() && name.size() <= 256 && !ContainsControl(name) && std::all_of(name.begin(), name.end(), [](wchar_t ch) { return iswalnum(ch) || ch == L'!' || ch == L'#' || ch == L'$' || ch == L'%' || ch == L'&' || ch == L'\'' || ch == L'*' || ch == L'+' || ch == L'-' || ch == L'.' || ch == L'^' || ch == L'_' || ch == static_cast<wchar_t>(96) || ch == L'|' || ch == L'~'; }); }
     static bool SetHeaderList(std::vector<std::pair<std::wstring, std::wstring>>& list, const wchar_t* rawName, const wchar_t* rawValue, bool append, const wchar_t* scope) {
         const std::wstring name = rawName ? rawName : L""; const std::wstring value = rawValue ? rawValue : L"";
@@ -321,7 +356,7 @@ private:
         return true;
     }
     void CloseClientSession(const std::shared_ptr<Client>& client) { std::lock_guard<std::mutex> lock(client->mutex); if (client->session) { WinHttpCloseHandle(client->session); client->session = nullptr; } }
-    static void ClearSensitiveClientState(const std::shared_ptr<Client>& client) { std::lock_guard<std::mutex> lock(client->mutex); client->serverPassword.clear(); client->proxyPassword.clear(); }
+    static void ClearSensitiveClientState(const std::shared_ptr<Client>& client) { std::lock_guard<std::mutex> lock(client->mutex); client->serverPassword.clear(); client->proxyPassword.clear(); client->manualCookies.clear(); }
     void JoinRequest(const std::shared_ptr<Request>& request) { if (request->worker.joinable() && request->worker.get_id() != std::this_thread::get_id()) request->worker.join(); }
     bool CancelRequest(const std::shared_ptr<Request>& request) { std::lock_guard<std::mutex> lock(request->mutex); if (request->completed || request->state == L"未开始") return false; request->cancelRequested.store(true); request->cancelled = true; request->state = L"取消中"; { std::lock_guard<std::mutex> handleLock(request->handlesMutex); if (request->request) WinHttpCloseHandle(request->request); request->request = nullptr; } return true; }
 
@@ -334,7 +369,8 @@ private:
         HINTERNET session = nullptr; if (!EnsureSession(client, session)) { RequestFail(*request, L"HTTP 会话创建失败。", GetLastError()); return; }
         URL_COMPONENTSW parts = {}; parts.dwStructSize = sizeof(parts); parts.dwSchemeLength = static_cast<DWORD>(-1); parts.dwHostNameLength = static_cast<DWORD>(-1); parts.dwUrlPathLength = static_cast<DWORD>(-1); parts.dwExtraInfoLength = static_cast<DWORD>(-1);
         if (!WinHttpCrackUrl(request->url.c_str(), 0, 0, &parts) || (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS)) { RequestFail(*request, L"HTTP 地址解析失败。", GetLastError()); return; }
-        const std::wstring host(parts.lpszHostName, parts.dwHostNameLength); std::wstring path = parts.dwUrlPathLength ? std::wstring(parts.lpszUrlPath, parts.dwUrlPathLength) : L"/"; if (parts.dwExtraInfoLength) path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+        const std::wstring host(parts.lpszHostName, parts.dwHostNameLength); std::wstring path = parts.dwUrlPathLength ? std::wstring(parts.lpszUrlPath, parts.dwUrlPathLength) : L"/"; const std::wstring urlPath = path; if (parts.dwExtraInfoLength) path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+        std::wstring requestCookie; { std::lock_guard<std::mutex> lock(request->mutex); requestCookie = request->cookieOverride; }
         HINTERNET connection = WinHttpConnect(session, host.c_str(), parts.nPort, 0); if (!connection) { RequestFail(*request, L"HTTP 主机连接失败。", GetLastError()); return; }
         HINTERNET nativeRequest = WinHttpOpenRequest(connection, request->method.c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0); if (!nativeRequest) { WinHttpCloseHandle(connection); RequestFail(*request, L"HTTP 请求创建失败。", GetLastError()); return; }
         { std::lock_guard<std::mutex> lock(request->handlesMutex); request->connection = connection; request->request = nativeRequest; }
@@ -343,9 +379,11 @@ private:
         DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_DEFAULT;
         DWORD decompression = 0;
         size_t maxUploadBytes = 0;
+        std::wstring jarCookie;
         {
             std::lock_guard<std::mutex> lock(client->mutex);
             for (const auto& item : client->defaultHeaders) headers += item.first + L": " + item.second + L"\r\n";
+            if (requestCookie.empty()) for (const auto& item : client->manualCookies) { if (ManualCookieDomainMatches(host, item.domain) && ManualCookiePathMatches(urlPath, item.path)) { if (!jarCookie.empty()) jarCookie += L"; "; jarCookie += item.name + L"=" + item.value; } }
             certificatePin = client->certificatePin;
             redirectPolicy = !client->allowRedirects ? WINHTTP_OPTION_REDIRECT_POLICY_NEVER : (client->allowHttpsDowngrade ? WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS : WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP);
             decompression = client->autoDecompression ? WINHTTP_DECOMPRESSION_FLAG_ALL : 0;
@@ -360,6 +398,12 @@ private:
         if (!WinHttpSetOption(nativeRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy))) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 重定向策略设置失败。", GetLastError()); return; }
         if (!WinHttpSetOption(nativeRequest, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression))) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 自动解压策略设置失败。", GetLastError()); return; }
         { std::lock_guard<std::mutex> lock(request->mutex); for (const auto& item : request->headers) headers += item.first + L": " + item.second + L"\r\n"; if (!request->bodyMime.empty() && (!request->body.empty() || !request->uploadPath.empty())) headers += L"Content-Type: " + request->bodyMime + L"\r\n"; }
+        if (requestCookie.empty()) requestCookie = jarCookie;
+        if (!requestCookie.empty()) {
+            headers += L"Cookie: " + requestCookie + L"\r\n";
+            // 手工 Cookie 与自动罐不混发：本请求（含重定向）关闭 WinHTTP 自动 Cookie 回送，避免双 Cookie 头。
+            DWORD disableCookies = WINHTTP_DISABLE_COOKIES; WinHttpSetOption(nativeRequest, WINHTTP_OPTION_DISABLE_FEATURE, &disableCookies, sizeof(disableCookies));
+        }
         const std::vector<unsigned char> body = request->body; std::wstring uploadPath; { std::lock_guard<std::mutex> lock(request->mutex); uploadPath = request->uploadPath; }
         std::ifstream upload; std::uintmax_t uploadSize = 0; if (!uploadPath.empty()) { std::error_code error; uploadSize = std::filesystem::file_size(std::filesystem::path(uploadPath), error); if (error || uploadSize > maxUploadBytes || uploadSize > (std::numeric_limits<DWORD>::max)()) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 上传文件不存在或超过资源限制。", ERROR_FILE_TOO_LARGE); return; } upload.open(std::filesystem::path(uploadPath), std::ios::binary); if (!upload) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 上传文件打开失败。", GetLastError()); return; } }
         if (body.size() > maxUploadBytes || body.size() > (std::numeric_limits<DWORD>::max)()) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 请求正文超过上传资源限制或 WinHTTP 单次发送上限。", ERROR_FILE_TOO_LARGE); return; }
@@ -540,6 +584,9 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     bool HTTP客户端_设置证书固定(long long client, const wchar_t* fingerprint) { return httpClientRuntime_.SetCertificatePin(client, fingerprint); }
     bool HTTP客户端_设置自动解压(long long client, bool enabled) { return httpClientRuntime_.SetDecompression(client, enabled); }
     bool HTTP客户端_设置Cookie(long long client, bool enabled) { return httpClientRuntime_.SetCookies(client, enabled); }
+    bool HTTP客户端_置Cookie(long long client, const wchar_t* name, const wchar_t* value, const wchar_t* domain, const wchar_t* path) { return httpClientRuntime_.SetManualCookie(client, name, value, domain, path); }
+    const wchar_t* HTTP客户端_取CookieJSON(long long client) { httpClientReturnText_ = httpClientRuntime_.ManualCookiesJson(client); return httpClientReturnText_.c_str(); }
+    bool HTTP客户端_删除全部Cookie(long long client) { return httpClientRuntime_.ClearManualCookies(client); }
     bool HTTP客户端_设置默认请求头(long long client, const wchar_t* name, const wchar_t* value) { return httpClientRuntime_.SetClientHeader(client, name, value, false); }
     bool HTTP客户端_添加默认请求头(long long client, const wchar_t* name, const wchar_t* value) { return httpClientRuntime_.SetClientHeader(client, name, value, true); }
     bool HTTP客户端_删除默认请求头(long long client, const wchar_t* name) { return httpClientRuntime_.DeleteClientHeader(client, name); }
@@ -553,6 +600,7 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     bool HTTP客户端_添加请求头(long long request, const wchar_t* name, const wchar_t* value) { return httpClientRuntime_.SetRequestHeader(request, name, value, true); }
     bool HTTP客户端_删除请求头(long long request, const wchar_t* name) { return httpClientRuntime_.DeleteRequestHeader(request, name); }
     bool HTTP客户端_清空请求头(long long request) { return httpClientRuntime_.ClearRequestHeaders(request); }
+    bool HTTP客户端_请求置Cookie(long long request, const wchar_t* cookie) { return httpClientRuntime_.SetRequestCookie(request, cookie); }
     bool HTTP客户端_设置文本正文(long long request, const wchar_t* body, const wchar_t* contentType) { return httpClientRuntime_.SetTextBody(request, body, contentType); }
     bool HTTP客户端_设置JSON正文(long long request, const wchar_t* body) { return httpClientRuntime_.SetJsonBody(request, body); }
     bool HTTP客户端_设置二进制正文(long long request, const std::vector<unsigned char>& body, const wchar_t* contentType) { return httpClientRuntime_.SetBinaryBody(request, body, contentType); }

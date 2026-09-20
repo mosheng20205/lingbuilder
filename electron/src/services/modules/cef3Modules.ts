@@ -34,7 +34,7 @@ function api(
   return {
     command: {
       name,
-      aliases: [officialAlias],
+      aliases: officialAlias.trim() ? [officialAlias] : [],
       signature: `${name}(${normalizedParameters.map(parameter => parameter.name).join(', ')})`,
       description,
       insertText: normalizedExample || `${name}(${argumentText})`,
@@ -186,7 +186,24 @@ const CEF3_AUTOMATION_PARAM_DOCS: ParamDocTable = {
   Hook句柄: 'CEF3Hook_注册脚本 返回的受管 Hook 句柄。',
   请求ID: '页面 LingBuilder调用宿主 请求的唯一 ID，取自对应事件字段。',
   是否成功: '真=页面 Promise 按 resolve 完成，假=按 reject 拒绝。',
-  返回文本: '返回给页面的结果文本。'
+  返回文本: '返回给页面的结果文本。',
+  框架句柄: 'CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。',
+  标识: '框架的 CEF 官方字符串标识，取自 CEF3框架_取标识列表JSON 或 CEF3框架_取标识；不是 iframe 的 name 属性。',
+  地址: '要载入的完整 URL（含协议）。',
+  脚本地址: '模拟脚本来源 URL，仅用于报错定位信息；可传空文本。',
+  起始行: '配合脚本地址定位行号的起始行，一般传 1。'
+,  选择器: 'CSS 选择器文本，如 "#submit" 或 "input[name=q]"；匹配多个元素时用序号选择。',
+  序号: '同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。',
+  值: '要写入的文本内容。',
+  是否选中: '真=勾选，假=取消勾选。',
+  选项序号: '下拉框 option 下标，从 0 起。',
+  文本: '要写入的纯文本内容。',
+  代码文本: '要写入的 HTML 片段文本。',
+  属性名: '要设置的 HTML 属性名，如 "href"。',
+  事件名: '要合成的 DOM 事件名，如 click、dblclick、keydown、change、input。',
+  按键代码: '键盘类事件的虚拟键码，回车传 13。'
+,  滚到顶部: '真=滚动后贴顶对齐，假=尽量贴底对齐。',
+  是否聚焦: '真=赋予输入焦点，假=移除输入焦点。'
 };
 
 const CEF3_DEVTOOLS_PARAM_DOCS: ParamDocTable = {
@@ -235,7 +252,11 @@ const CEF3_PLATFORM_PARAM_DOCS: ParamDocTable = {
   参数数组: 'UTF-16 文本数组；首项必须是程序名。',
   命令行文本: 'GetCommandLineW 格式的完整命令行文本。',
   程序: '可执行程序路径或名称。',
-  包装器: '前置包装命令文本，如 "gdb --args"。'
+  包装器: '前置包装命令文本，如 "gdb --args"。',
+  源站点: '放行规则的来源站点，必须含协议且不带路径，如 "https://a.example.com"。',
+  目标协议: '被访问资源使用的协议，如 "https" 或 "http"（不带 ://）。',
+  目标域名: '被访问资源的域名，如 "b.example.com"（不含协议与路径）。',
+  允许目标子域: '真=同时放行目标域名的全部子域；必须与添加时传的值一致才能删除对应规则。'
 };
 
 const eventEntries = [
@@ -528,8 +549,44 @@ const automationEntries = [
   api('CEF3Hook_回复页面消息', 'LB_CEF3_JsHookReply', [
     { name: '控件名', type: 'controlRef' }, { name: '请求ID', type: 'longLong' },
     { name: '是否成功', type: 'bool' }, { name: '返回文本', type: 'wideString' }
-  ], 'int', '回复页面 LingBuilder调用宿主(name, payload) 产生的Promise请求。', { visibility: 'advanced' })
-];
+  ], 'int', '回复页面 LingBuilder调用宿主(name, payload) 产生的Promise请求。', { visibility: 'advanced' }),
+  api('CEF3框架_取主框架', 'CefBrowser::GetMainFrame', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得浏览器主框架的受管句柄；内部按框架标识枚举并用主框架判定筛选，页面尚未产生任何框架时返回0。', { visibility: 'advanced' }),
+  api('CEF3框架_取焦点框架', 'CefBrowser::GetFocusedFrame', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得当前焦点所在框架的受管句柄；无焦点框架时返回0。', { visibility: 'advanced' }),
+  api('CEF3框架_按标识取框架', 'CefBrowser::GetFrameByIdentifier', [{ name: '控件名', type: 'controlRef' }, { name: '标识', type: 'wideString' }], 'longLong', '按CEF官方字符串标识取得框架受管句柄；标识可从 CEF3框架_取标识列表JSON 获得，不存在时返回0。', { visibility: 'advanced' }),
+  api('CEF3框架_按名称取框架', 'CefBrowser::GetFrameByName', [{ name: '控件名', type: 'controlRef' }, { name: '名称', type: 'wideString' }], 'longLong', '按框架名称（iframe 的 name 属性）取得框架受管句柄；同名多个时由CEF决定，未命中返回0。', { visibility: 'advanced' }),
+  api('CEF3框架_取框架数量', 'CefBrowser::GetFrameCount', [{ name: '控件名', type: 'controlRef' }], 'longLong', '返回浏览器当前持有的框架总数（含主框架与全部 iframe）。', { visibility: 'advanced' }),
+  api('CEF3框架_取标识列表JSON', 'CefBrowser::GetFrameIdentifiers', [{ name: '控件名', type: 'controlRef' }], 'wideString', '返回全部框架官方标识的 UTF-16 JSON 字符串数组；无框架时返回 []。', { visibility: 'advanced' }),
+  api('CEF3框架_取名称列表JSON', 'CefBrowser::GetFrameNames', [{ name: '控件名', type: 'controlRef' }], 'wideString', '返回全部框架名称的 UTF-16 JSON 字符串数组；未命名框架对应空文本。', { visibility: 'advanced' }),
+  api('CEF3框架_是否有效', 'CefFrame::IsValid', [{ name: '框架句柄', type: 'longLong' }], 'int', '判断受管框架句柄是否仍然有效；框架被销毁或句柄已释放返回0。', { visibility: 'advanced' }),
+  api('CEF3框架_是否主框架', 'CefFrame::IsMain', [{ name: '框架句柄', type: 'longLong' }], 'int', '判断该框架是否为浏览器主框架。', { visibility: 'advanced' }),
+  api('CEF3框架_是否焦点框架', 'CefFrame::IsFocused', [{ name: '框架句柄', type: 'longLong' }], 'int', '判断该框架当前是否拥有输入焦点。', { visibility: 'advanced' }),
+  api('CEF3框架_取地址', 'CefFrame::GetURL', [{ name: '框架句柄', type: 'longLong' }], 'wideString', '取得该框架当前加载的地址。', { visibility: 'advanced' }),
+  api('CEF3框架_取名称', 'CefFrame::GetName', [{ name: '框架句柄', type: 'longLong' }], 'wideString', '取得该框架名称；未命名返回空文本。', { visibility: 'advanced' }),
+  api('CEF3框架_取标识', 'CefFrame::GetIdentifier', [{ name: '框架句柄', type: 'longLong' }], 'wideString', '取得该框架的CEF官方字符串标识。', { visibility: 'advanced' }),
+  api('CEF3框架_取父框架', 'CefFrame::GetParent', [{ name: '框架句柄', type: 'longLong' }], 'longLong', '取得上层框架的受管句柄；主框架没有父框架，返回0。', { visibility: 'advanced' }),
+  api('CEF3框架_载入地址', 'CefFrame::LoadURL', [{ name: '框架句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }], 'int', '只让该框架载入指定地址，不影响同页面其它框架；主框架等价于整页导航。', { visibility: 'advanced' }),
+  api('CEF3框架_执行JS', 'CefFrame::ExecuteJavaScript', [{ name: '框架句柄', type: 'longLong' }, { name: '脚本', type: 'wideString' }, { name: '脚本地址', type: 'wideString' }, { name: '起始行', type: 'int' }], 'int', '在指定框架内执行 JavaScript，不等待返回值；脚本地址与起始行只用于报错定位，可传空文本和1。要读取表达式结果请用 CEF3自动化_执行JS异步 或填表读取命令。', { visibility: 'advanced', example: 'CEF3框架_执行JS(框架句柄, "document.title = \\"改过的标题\\";", "", 1)' }),
+  api('CEF3框架_取源码异步', 'CefFrame::GetSource', [{ name: '框架句柄', type: 'longLong' }], 'longLong', '异步取得该框架完整 HTML 源码，返回受管任务句柄；用 CEF3任务_等待 后用 CEF3任务_取结果 读取。', { visibility: 'advanced' }),
+  api('CEF3框架_取文本异步', 'CefFrame::GetText', [{ name: '框架句柄', type: 'longLong' }], 'longLong', '异步取得该框架可见文本，返回受管任务句柄；读取方式同 CEF3框架_取源码异步。', { visibility: 'advanced' }),
+  api('CEF3框架_撤销', 'CefFrame::Undo', [{ name: '框架句柄', type: 'longLong' }], 'int', '在该框架的可编辑区域执行撤销。', { visibility: 'advanced' }),
+  api('CEF3框架_重做', 'CefFrame::Redo', [{ name: '框架句柄', type: 'longLong' }], 'int', '在该框架的可编辑区域执行重做。', { visibility: 'advanced' }),
+  api('CEF3框架_剪切', 'CefFrame::Cut', [{ name: '框架句柄', type: 'longLong' }], 'int', '剪切该框架的当前选区。', { visibility: 'advanced' }),
+  api('CEF3框架_复制', 'CefFrame::Copy', [{ name: '框架句柄', type: 'longLong' }], 'int', '复制该框架的当前选区到剪贴板。', { visibility: 'advanced' }),
+  api('CEF3框架_粘贴', 'CefFrame::Paste', [{ name: '框架句柄', type: 'longLong' }], 'int', '把剪贴板内容粘贴进该框架。', { visibility: 'advanced' }),
+  api('CEF3框架_全选', 'CefFrame::SelectAll', [{ name: '框架句柄', type: 'longLong' }], 'int', '全选该框架内容。', { visibility: 'advanced' }),
+  api('CEF3框架_释放', 'LB_CEF3_HandleRelease', [{ name: '框架句柄', type: 'longLong' }], 'int', '释放取框架命令返回的受管句柄；同一句柄重复释放返回0。', { visibility: 'advanced' }),
+  api('CEF3填表_点击元素', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }], 'int', '按 CSS 选择器点击第序号个匹配元素（序号从 0 起，传 -1 取首个）；优先调用元素自身的 click，失败时回退为合成 click 事件。', { visibility: 'default' }),
+  api('CEF3填表_滚动到元素', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '滚到顶部', type: 'bool' }], 'int', '把匹配元素滚动到可视区域；滚到顶部为真时贴顶对齐，否则尽量贴底。', { visibility: 'default' }),
+  api('CEF3填表_聚焦元素', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '是否聚焦', type: 'bool' }], 'int', '设置或移除匹配元素的输入焦点。', { visibility: 'default' }),
+  api('CEF3填表_赋值', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '值', type: 'wideString' }], 'int', '给匹配元素写入表单值：具备 value 的控件写 value，其它元素写 textContent，并主动补发 input 与 change 事件，避免页面监听不到。', { visibility: 'default' }),
+  api('CEF3填表_置选择框', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '是否选中', type: 'bool' }], 'int', '设置复选框/单选框的勾选状态，并补发 change 事件。', { visibility: 'default' }),
+  api('CEF3填表_置选择项', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '选项序号', type: 'int' }], 'int', '把匹配下拉框选中第选项序号个 option（从 0 起），并补发 change 事件。', { visibility: 'default' }),
+  api('CEF3填表_置内文本', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '文本', type: 'wideString' }], 'int', '设置匹配元素的 innerText；不支持时降级为 textContent。', { visibility: 'default' }),
+  api('CEF3填表_置外文本', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '文本', type: 'wideString' }], 'int', '设置匹配元素的 outerText；不支持时降级为 textContent。', { visibility: 'default' }),
+  api('CEF3填表_置内代码', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '代码文本', type: 'wideString' }], 'int', '设置匹配元素的 innerHTML，可写入标签结构。', { visibility: 'default' }),
+  api('CEF3填表_置外代码', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '代码文本', type: 'wideString' }], 'int', '设置匹配元素的 outerHTML（含元素自身标签），会替换原元素。', { visibility: 'default' }),
+  api('CEF3填表_置属性', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '属性名', type: 'wideString' }, { name: '值', type: 'wideString' }], 'int', '给匹配元素设置指定 HTML 属性。', { visibility: 'default' }),
+  api('CEF3填表_触发事件', '', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }, { name: '事件名', type: 'wideString' }, { name: '按键代码', type: 'int' }], 'int', '在匹配元素上合成 DOM 事件；事件名如 click、dblclick、keydown、change、input，键盘类事件的按键代码回车传 13。', { visibility: 'default' }),];
 
 const devtoolsEntries = [
   api('CEF3开发工具_打开', 'CefBrowserHost::ShowDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '打开指定实例的开发者工具；设计器禁止开发者工具时返回0。'),
@@ -594,6 +651,9 @@ const platformEntries = [
   api('CEF3平台_组件更新器取组件数组', 'CefComponentUpdater::GetComponents', [{ name: '组件更新器句柄', type: 'longLong' }], 'CEF3组件数组', '返回组件快照数组JSON；每项包含ID、名称、版本和状态，不暴露CEF原生指针。', { visibility: 'advanced' }),
   api('CEF3平台_组件更新器更新', 'CefComponentUpdater::Update', [{ name: '组件更新器句柄', type: 'longLong' }, { name: '组件ID', type: 'wideString' }, { name: '优先级', type: 'int' }], 'longLong', '异步触发组件按需更新；优先级0为后台，1为前台，返回受管任务句柄。', { visibility: 'advanced' }),
   api('CEF3平台_设置启动命令开关', 'CefApp::OnBeforeCommandLineProcessing', [{ name: '进程类型', type: 'wideString' }, { name: '开关名', type: 'wideString' }, { name: '开关值', type: 'wideString' }], 'int', '在CEF初始化前登记启动命令开关；进程类型为空时应用到浏览器及全部子进程，初始化时由OnBeforeCommandLineProcessing安全写入。', { visibility: 'advanced' }),
+  api('CEF3平台_添加跨域白名单', 'cef_add_cross_origin_whitelist_entry', [{ name: '源站点', type: 'wideString' }, { name: '目标协议', type: 'wideString' }, { name: '目标域名', type: 'wideString' }, { name: '允许目标子域', type: 'bool' }], 'int', '把一条跨域访问放行规则加入CEF全局跨域白名单，例如允许 https://a.example.com 以 https 协议访问 b.example.com；成功返回1。白名单是全局的，影响进程内全部浏览器实例，且必须在浏览器已初始化后调用。', { visibility: 'advanced', example: 'CEF3平台_添加跨域白名单("https://a.example.com", "https", "b.example.com", 1)' }),
+  api('CEF3平台_删除跨域白名单', 'cef_remove_cross_origin_whitelist_entry', [{ name: '源站点', type: 'wideString' }, { name: '目标协议', type: 'wideString' }, { name: '目标域名', type: 'wideString' }, { name: '允许目标子域', type: 'bool' }], 'int', '按添加时使用的同一组参数从CEF全局跨域白名单移除一条放行规则；参数不完全一致时移除失败。', { visibility: 'advanced' }),
+  api('CEF3平台_清空跨域白名单', 'cef_clear_cross_origin_whitelist', [], 'int', '清空CEF全局跨域白名单的全部放行规则，恢复到只允许同源访问。', { visibility: 'advanced' }),
   api('CEF3平台_创建可等待事件', 'cef_waitable_event_create', [{ name: '自动重置', type: 'bool' }, { name: '初始已触发', type: 'bool' }], 'longLong', '创建线程同步用的受管等待事件；等待操作不得在CEF UI或IO线程阻塞。', { visibility: 'advanced' }),
   api('CEF3平台_可等待事件重置', 'CefWaitableEvent::Reset', [{ name: '事件句柄', type: 'longLong' }], 'int', '将受管等待事件置为未触发状态。', { visibility: 'advanced' }),
   api('CEF3平台_可等待事件触发', 'CefWaitableEvent::Signal', [{ name: '事件句柄', type: 'longLong' }], 'int', '将受管等待事件置为已触发状态，并唤醒等待线程。', { visibility: 'advanced' }),

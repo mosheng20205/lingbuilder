@@ -12366,9 +12366,6 @@ ${webSocketServerWindowField}
         std::wstring effectiveCacheDirectory;
         std::wstring proxyMode = L"system";
         std::wstring proxyServer;
-        // 代理认证凭据只在桥「身份验证请求」(isProxy) 事件里自动应答用，绝不回显给命令返回值。
-        std::wstring proxyUser;
-        std::wstring proxyPassword;
         std::wstring userAgent;
         std::wstring lastEvent;
         std::wstring lastEventData;
@@ -12414,8 +12411,6 @@ ${webSocketServerWindowField}
     std::wstring cefRootCachePath_;
     // CEF3 全局代理：只影响之后新建实例（控件/弹窗/区域/无头统一回落），已创建实例不变——与 EdgeView 全局代理同口径。
     std::wstring cef3GlobalProxy_;
-    std::wstring cef3GlobalProxyUser_;
-    std::wstring cef3GlobalProxyPassword_;
     bool cefInitialized_ = false;
 
     struct FbroBrowserInstance {
@@ -16071,30 +16066,6 @@ ${generateFbroVipIndividualRuntime(false)}
         // 事件没赶上（登记晚于事件）时由 CEF3_浏览器对象已就绪 在使用点兜底补发。
         if (TextEquals(eventName, L"浏览器创建完成")) CEF3_补发排队导航(instance);
         auto fields = CEF3_解析Bridge事件字段(fieldsJson);
-        // 代理认证自动应答：桥「身份验证请求」携带 isProxy 时，实例自身凭据优先；实例没有自带代理
-        // 且配置了全局凭据时用全局凭据（整进程共用一个出口代理的场景）；两处都没有才走下面的常规
-        // 派发/默认动作路径。放在无头缓冲分支之前，保证无头实例的代理认证同样能被应答。
-        if (TextEquals(eventName, L"身份验证请求") && fields.count(L"isProxy") && fields[L"isProxy"] == L"true") {
-            const bool hasInstanceCredentials = !instance.proxyUser.empty() || !instance.proxyPassword.empty();
-            const bool useGlobalCredentials = !hasInstanceCredentials && instance.proxyServer.empty()
-                && (!cef3GlobalProxyUser_.empty() || !cef3GlobalProxyPassword_.empty());
-            if (hasInstanceCredentials || useGlobalCredentials) {
-                const std::wstring& credUser = hasInstanceCredentials ? instance.proxyUser : cef3GlobalProxyUser_;
-                const std::wstring& credPassword = hasInstanceCredentials ? instance.proxyPassword : cef3GlobalProxyPassword_;
-                const wchar_t quote = static_cast<wchar_t>(34);
-                std::wstring payload = L"{";
-                payload += quote; payload += L"username"; payload += quote; payload += L":"; payload += quote;
-                payload += CEF3_框架转义JSON文本(credUser); payload += quote; payload += L",";
-                payload += quote; payload += L"password"; payload += quote; payload += L":"; payload += quote;
-                payload += CEF3_框架转义JSON文本(credPassword); payload += quote; payload += L"}";
-                instance.eventResultText = payload;
-                if (response) {
-                    response->action = 1;
-                    response->response_json = instance.eventResultText.c_str();
-                }
-                return;
-            }
-        }
         // 无头键段（2000000+）实例没有宿主窗口：CEF3_发送事件 与 CEF3_投递事件 都会因 hwnd_ 判空
         // 直接丢弃事件，绑定中文事件处理器对它也无效。这里改为把事件写进实例自己的有界缓冲，
         // 由 CEF3无头_取事件JSON 轮询读取；上面已更新的 isLoading / bridgeReady / 排队导航照常生效。
@@ -17954,27 +17925,21 @@ ${generateFbroVipIndividualRuntime(false)}
         return headless == cefBrowsers_.end() ? nullptr : headless->second.get();
     }
 
-    // ===== CEF3 全局代理与代理认证（与 EdgeView/FBro 同口径补齐） =====
+    // ===== CEF3 全局代理（与 EdgeView 同口径补齐） =====
     // 全局代理只影响之后新建实例（控件/弹窗/区域/无头创建时未自带代理即回落），已创建实例不变；
-    // 显式直连（CEF3_设置代理 传空）不参与回落。代理认证经桥「身份验证请求」(isProxy) 事件自动应答
-    // （见 CEF3_处理Bridge事件）；Chromium 不支持把凭据写进代理地址，fixed_servers 只接受 scheme://host:port。
-    // 凭据只驻留生成 exe 的进程内存，取全局代理/取实例代理一律不回显密码。
-    int CEF3_设置全局代理(const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
+    // 显式直连（CEF3_设置代理 传空）不参与回落。
+    // 带认证的代理当前不被支持（2026-09-20 真机二分结论：CEF 150 既不把代理 407 投递给
+    // CefRequestHandler::GetAuthCredentials，资源级注入 Proxy-Authorization 又会被 network service
+    // 静默吞掉请求）；需要代理认证请改用 FBro（FBro会话_设置代理认证）或 EdgeView，
+    // 桥内回环认证中继方案见 docs/FUTURE_OPTIMIZATIONS.md。fixed_servers 只接受 scheme://host:port，
+    // 禁止把用户名密码拼进代理地址。
+    int CEF3_设置全局代理(const wchar_t* proxy) {
         cef3GlobalProxy_ = proxy ? proxy : L"";
-        cef3GlobalProxyUser_ = user ? user : L"";
-        cef3GlobalProxyPassword_ = password ? password : L"";
-        if (cef3GlobalProxy_.empty() && (!cef3GlobalProxyUser_.empty() || !cef3GlobalProxyPassword_.empty())) {
-            cef3GlobalProxyUser_.clear();
-            cef3GlobalProxyPassword_.clear();
-            调试输出(L"CEF3 设置全局代理：代理地址为空文本，认证凭据已一并清除。");
-        }
         return 1;
     }
 
     int CEF3_清除全局代理() {
         cef3GlobalProxy_.clear();
-        cef3GlobalProxyUser_.clear();
-        cef3GlobalProxyPassword_.clear();
         return 1;
     }
 
@@ -17984,28 +17949,6 @@ ${generateFbroVipIndividualRuntime(false)}
         CefBrowserInstance* instance = CEF3_按实例编号查实例(instanceId);
         if (!instance) { 调试输出(L"CEF3 取实例代理失败：该实例编号不存在（弹窗/区域/无头按编号寻址）。"); return L""; }
         return instance->proxyServer.empty() ? cef3GlobalProxy_ : instance->proxyServer;
-    }
-
-    int CEF3_设置代理认证(const wchar_t* controlName, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
-        CefBrowserInstance* instance = CEF3_查找实例(controlName);
-        if (!instance) { 调试输出(L"CEF3 设置代理认证失败：浏览器控件不存在。"); return 0; }
-        if (proxy && proxy[0]) {
-            if (instance->created) 调试输出(L"CEF3 设置代理认证：控件已创建，代理地址不可再改（需创建前设置），本次只更新认证凭据。");
-            else { instance->proxyServer = proxy; instance->proxyMode = L"custom"; }
-        }
-        instance->proxyUser = user ? user : L"";
-        instance->proxyPassword = password ? password : L"";
-        return 1;
-    }
-
-    int CEF3_设置实例代理认证(int instanceId, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
-        CefBrowserInstance* instance = CEF3_按实例编号查实例(instanceId);
-        if (!instance) { 调试输出(L"CEF3 设置实例代理认证失败：该实例编号不存在（弹窗/区域/无头按编号寻址）。"); return 0; }
-        if (proxy && proxy[0] && !instance->proxyServer.empty() && instance->proxyServer != proxy)
-            调试输出(L"CEF3 设置实例代理认证：实例代理以创建时参数为准，传入地址与现值不一致，仅更新认证凭据。");
-        instance->proxyUser = user ? user : L"";
-        instance->proxyPassword = password ? password : L"";
-        return 1;
     }
 
     std::wstring CEF3会话_取缓存目录(const wchar_t* controlName) {

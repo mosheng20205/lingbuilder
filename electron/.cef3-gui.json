@@ -1,0 +1,53 @@
+{
+  "ok": false,
+  "stage": "compile",
+  "buildDir": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug",
+  "sourceDir": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src",
+  "binDir": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\bin",
+  "objDir": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\obj",
+  "exePath": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\bin\\LingBuilderPreview.exe",
+  "compiler": {
+    "kind": "msvc",
+    "command": "cl",
+    "setupBatch": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat",
+    "arch": "x64"
+  },
+  "exportDir": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation",
+  "visualStudioProject": {
+    "projectName": "cef3-ep04-session-isolation",
+    "solutionPath": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\cef3-ep04-session-isolation.sln",
+    "projectPath": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\cef3-ep04-session-isolation.vcxproj",
+    "filtersPath": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\cef3-ep04-session-isolation.vcxproj.filters",
+    "files": [
+      "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\cef3-ep04-session-isolation.sln",
+      "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\cef3-ep04-session-isolation.vcxproj",
+      "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\cef3-ep04-session-isolation.vcxproj.filters"
+    ]
+  },
+  "exportVisualStudioProject": {
+    "projectName": "cef3-ep04-session-isolation",
+    "solutionPath": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation\\cef3-ep04-session-isolation.sln",
+    "projectPath": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation\\cef3-ep04-session-isolation.vcxproj",
+    "filtersPath": "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation\\cef3-ep04-session-isolation.vcxproj.filters",
+    "files": [
+      "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation\\cef3-ep04-session-isolation.sln",
+      "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation\\cef3-ep04-session-isolation.vcxproj",
+      "T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation\\cef3-ep04-session-isolation.vcxproj.filters"
+    ]
+  },
+  "logs": [
+    "警告：传入的窗口设计器模型与磁盘版本（.lingbuilder/window-designer.json）不一致，生成结果可能与 IDE 设计器脱节；请重新读取最新设计器模型后重试，或先通过 lingbuilder.edit.apply 同步磁盘。",
+    "AI Bridge 已生成 Win32 C++ 工程：T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug",
+    "C++ 源码目录：T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src",
+    "可复制生成目录：T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation",
+    "Visual Studio 解决方案：T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\cef3-ep04-session-isolation.sln",
+    "可复制 Visual Studio 解决方案：T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\generated\\cpp\\cef3-ep04-session-isolation\\cef3-ep04-session-isolation.sln",
+    "exe 输出目录：T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\bin",
+    "中间文件目录：T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\obj",
+    "编译器：msvc (cl)",
+    "已复制模块运行时文件：LingBuilderCefBridge.dll",
+    "编译失败。",
+    "stdout:\nmain.cpp\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(9748): error C2001: 字符串字面量中的换行符\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19948): error C2504: “LingWindowBase”: 未定义基类\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19956): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchWindowEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19961): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchDesignerResourceEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19964): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchAsyncWebEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19972): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchHttpClientEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19980): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchAria2ProgressEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19988): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchWebSocketServerEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(19996): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchWebSocketClientEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(20004): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchCdpClientEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(20012): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchLingEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(20020): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchEdgeViewEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(20028): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchCefBrowserEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(20036): error C3668: “LingWindowBase::CEF3会话隔离窗体::DispatchFbroBrowserEvent”: 包含重写说明符“override”的方法没有重写任何基类方法\r\nT:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp(2024): fatal error C1075: “{”: 未找到匹配令牌",
+    "错误：Command failed: cmd.exe /d /c call \"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" >nul && cl \"/nologo\" \"/EHsc\" \"/std:c++20\" \"/utf-8\" \"/MD\" \"/DUNICODE\" \"/D_UNICODE\" \"/I\" \"T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\modules\\lingbuilder.cef3.browser\\include\" \"/I\" \"T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\modules\\lingbuilder.cef3.browser\" \"T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\src\\main.cpp\" \"/Fo:T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\obj\\main.obj\" \"/Fe:T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\bin\\LingBuilderPreview.exe\" \"user32.lib\" \"gdi32.lib\" \"comctl32.lib\" \"ole32.lib\" \"T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\obj\\lingbuilder-app.res\" \"T:\\electron\\lingbuilder\\.tmp-cef3-gui\\cef3-region-demo\\.lingbuilder-build\\cef3-ep04-session-isolation\\x64\\Debug\\modules\\lingbuilder.cef3.browser\\lib\\x64\\LingBuilderCefBridge.lib\" \"/link\" \"/MANIFEST:EMBED\"\n"
+  ]
+}

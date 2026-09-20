@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'path';
 import { AiBridgeService } from './services/aiBridge/aiBridgeService';
 import { createAiBridgeRouter } from './services/aiBridge/httpRoutes';
+import { requestLocalAuthorization } from './services/aiBridge/localAuthorizationClient';
 import { createAiBridgeMcpHttpGateway, startAiBridgeMcpServer } from './services/aiBridge/mcpServer';
 import { AiBridgePermissionMode, AiBridgeServerOptions } from './services/aiBridge/types';
 import { CloudCliClient } from './services/cloud/cloudCliClient';
@@ -69,6 +70,21 @@ async function main(): Promise<void> {
     allowRemote,
     enableMcp: enableMcpStdio || enableMcpHttp
   };
+
+  // 外部 AI 客户端自动拉起的 stdio 宿主没有 IDE 注入的授权环境，向正在运行的 IDE 主进程换取；
+  // 换不到一律保持 fail-closed（收费模块继续被权益门禁拒绝），不得静默放行。
+  if (permission !== 'readonly') {
+    if (!process.env.LINGBUILDER_MODULE_ACCESS_STATE) {
+      const exchange = await requestLocalAuthorization('module-access');
+      if (exchange.ok) process.env.LINGBUILDER_MODULE_ACCESS_STATE = exchange.value;
+      else console.error(`AI Bridge 未取到本机模块授权：${exchange.message}`);
+    }
+    if (!process.env.LINGBUILDER_FBRO_VIP_KEY) {
+      const exchange = await requestLocalAuthorization('fbro-vip');
+      // AiBridgeService 构造时读取该环境变量并立即从进程中清除。
+      if (exchange.ok) process.env.LINGBUILDER_FBRO_VIP_KEY = exchange.value;
+    }
+  }
 
   const moduleAccess = new ModuleAccessService();
   const encodedModuleAccess = process.env.LINGBUILDER_MODULE_ACCESS_STATE;

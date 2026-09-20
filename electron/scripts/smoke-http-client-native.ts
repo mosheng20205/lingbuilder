@@ -26,6 +26,11 @@ async function main(): Promise<void> {
   const msbuild = await findMsBuild();
   const port = await reserveAvailablePort();
   const server = http.createServer((request, response) => {
+    if (request.url === '/whoami' && request.method === 'GET') {
+      response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      response.end(String(request.headers.cookie ?? ''));
+      return;
+    }
     if (request.url === '/echo' && request.method === 'POST') {
       const chunks: Buffer[] = [];
       request.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
@@ -53,7 +58,7 @@ async function main(): Promise<void> {
       backend: 'win32',
       projectDir: win32ProjectDir,
       projectId: 'http-client-native-smoke',
-      enabledModules: [builtin('lingbuilder.net.http-client')],
+      enabledModules: [builtin('lingbuilder.net.http-client'), builtin('lingbuilder.std.array')],
       platforms: ['Win32', 'x64'],
       port,
       msbuild
@@ -66,7 +71,8 @@ async function main(): Promise<void> {
       projectId: 'http-client-new-emoji-native-smoke',
       enabledModules: [
         { manifest: newEmojiManifest, installPath: path.dirname(newEmojiManifestPath), isInstalled: true, isEnabledForProject: true, diagnostics: [] },
-        builtin('lingbuilder.net.http-client')
+        builtin('lingbuilder.net.http-client'),
+        builtin('lingbuilder.std.array')
       ],
       platforms: ['x64'],
       port,
@@ -123,6 +129,8 @@ async function buildAndRun(options: {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.content, 'utf8');
   }
+  await fs.mkdir(path.join(options.projectDir, 'resources'), { recursive: true });
+  await fs.copyFile(path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v1.ico'), path.join(options.projectDir, 'resources', 'lingbuilder-app.ico'));
   const dependencyDiagnostics = await exportModuleNativeDependencies(options.enabledModules, options.projectDir);
   if (dependencyDiagnostics.length) throw new Error(dependencyDiagnostics.join('\n'));
   const exported = await exportVisualStudioProject({ projectDir: options.projectDir, projectId: project.id, generatedFiles: generated.files, enabledModules: options.enabledModules });
@@ -158,6 +166,22 @@ function createSource(port: number): string {
     '        @ ok = ok && upload != 0 && HTTP客户端_设置文本正文(upload, L"LingBuilder upload", L"text/plain; charset=utf-8") && HTTP客户端_执行同步(upload) && HTTP客户端_取响应状态码(upload) == 200;',
     '        @ ok = ok && HTTP客户端_取上传字节数(upload) == 18 && std::wstring(HTTP客户端_取响应文本编码(upload, L"UTF-8")) == L"LingBuilder upload";',
     '        @ HTTP客户端_销毁请求(upload);',
+    `        @ long long ck = HTTP客户端_创建请求(client, L"GET", L"http://127.0.0.1:${port}/whoami");`,
+    '        @ ok = ok && ck != 0 && HTTP客户端_请求置Cookie(ck, L"PASS_ID=smoke-1") && HTTP客户端_执行同步(ck);',
+    '        @ ok = ok && std::wstring(HTTP客户端_取响应文本编码(ck, L"UTF-8")) == L"PASS_ID=smoke-1";',
+    '        @ HTTP客户端_销毁请求(ck);',
+    '        @ ok = ok && HTTP客户端_置Cookie(client, L"a", L"1", L"", L"/") && HTTP客户端_置Cookie(client, L"b", L"2", L"other.test", L"/");',
+    `        @ long long jar = HTTP客户端_创建请求(client, L"GET", L"http://127.0.0.1:${port}/whoami");`,
+    '        @ ok = ok && jar != 0 && HTTP客户端_执行同步(jar) && std::wstring(HTTP客户端_取响应文本编码(jar, L"UTF-8")) == L"a=1";',
+    '        @ ok = ok && std::wstring(HTTP客户端_取CookieJSON(client)).find(L"\\"name\\":\\"a\\"") != std::wstring::npos;',
+    '        @ ok = ok && HTTP客户端_删除全部Cookie(client) && std::wstring(HTTP客户端_取CookieJSON(client)) == L"[]";',
+    '        @ HTTP客户端_销毁请求(jar);',
+    // D-1/D-2 编译探针：调用形态实参与指针文本拼接必须经 LingCppWideArg 归一后生成可编译 C++（运行结果不参与 ok 判定）。
+    '        局部 文本型 名单[]',
+    '        局部 文本型 拼接演示',
+    '        数组_加入成员(名单, "甲")',
+    '        拼接演示 = 数组_取成员(名单, 0) + HTTP客户端_取内容类型(request)',
+    '        HTTP客户端_设置文本正文(request, HTTP客户端_取请求地址(request), "text/plain; charset=utf-8")',
     '        @ HTTP客户端_销毁请求(request); HTTP客户端_销毁客户端(client);',
     '        @ ExitProcess(ok ? 0 : 2);',
     '    结束',

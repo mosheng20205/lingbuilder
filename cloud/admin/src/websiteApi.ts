@@ -6,7 +6,7 @@ export interface WebsiteGuide { id: string; slug: string; title: string; summary
 export interface WebsiteDemo { id: string; slug: string; title: string; summary: string; category: string; difficulty: string; lingBuilderVersion: string; modules: string[]; prerequisites: string; sourceLinks: Array<{label: string; url: string}>; screenshotUrl: string; videoUrl: string; license: string; publicationStatus: string; sortOrder: number }
 export interface WebsiteGroup { id: string; name: string; qqNumber: string; groupType: string; joinUrl: string; qrCodeUrl: string; description: string; statusText: string; enabled: boolean; sortOrder: number }
 export interface WebsiteSponsor { id: string; qqNumber: string; amountCents: number; sponsoredAt: string; enabled: boolean; createdAt: string; updatedAt: string }
-export interface WebsiteUpdateItem { category: string; text: string }
+export interface WebsiteUpdateItem { category: string; text: string; image?: { url: string; caption: string } }
 export interface WebsiteUpdateEntry { date: string; items: WebsiteUpdateItem[] }
 export interface WebsiteCommand { id: string; stableKey: string; name: string; aliases: string[]; summary: string; kind: string; category: string; moduleId?: string; moduleName?: string; signature: string; returnType: string; returnDescription: string; parameters: Array<{name?: string; type?: string; description?: string}>; examples: string[]; supportedBackends: string[]; minimumVersion: string; lifecycle: string; source: string; sourceVersion: string; publicationStatus: string }
 export interface WebsiteBootstrap { ok: true; downloads: WebsiteDownload[]; guides: WebsiteGuide[]; demos: WebsiteDemo[]; groups: WebsiteGroup[]; sponsors: WebsiteSponsor[] }

@@ -114,6 +114,7 @@ export class CodexDesktopIntegrationService {
 
   async configure(request: ConfigureCodexDesktopRequest = {}): Promise<CodexDesktopIntegrationStatus> {
     const permission = validatePermission(request.permission || 'preview');
+    validateHostExecutable(this.options.runtimeExecutable);
     const before = await this.inspect(permission);
     if (!before.installed) throw new Error('未检测到 ChatGPT/Codex Windows 桌面客户端。');
     const source = await fs.readFile(before.configPath, 'utf8').catch(error => {
@@ -263,6 +264,18 @@ async function validateWorkspace(value: string): Promise<string> {
 function validatePermission(value: string): 'readonly' | 'preview' | 'yolo' {
   if (value === 'readonly' || value === 'preview' || value === 'yolo') return value;
   throw new Error('不支持的 AI Bridge 权限模式。');
+}
+
+/**
+ * MCP 宿主必须以 ELECTRON_RUN_AS_NODE 直连主程序 exe。经 lingbuilder.cmd 拉起会复活 GUI 进程，
+ * 那才是锁死 app.asar、让安装器半更新的源头（见 installer/installer.nsh 自愈四件套）。
+ */
+function validateHostExecutable(executablePath: string): void {
+  const normalized = String(executablePath || '').trim().toLowerCase();
+  if (!normalized) throw new Error('AI Bridge MCP 宿主路径为空。');
+  if (/\.(cmd|bat|ps1|vbs)$/u.test(normalized) || normalized.endsWith('lingbuilder.cmd')) {
+    throw new Error(`AI Bridge MCP 宿主必须直连 LingBuilder 主程序 exe，禁止使用启动器脚本：${executablePath}`);
+  }
 }
 
 async function atomicWrite(filePath: string, value: string): Promise<void> {

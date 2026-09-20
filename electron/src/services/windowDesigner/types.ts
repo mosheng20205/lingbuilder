@@ -247,6 +247,24 @@ export interface LingMenuResource {
   items: LingMenuResourceItem[];
 }
 
+export interface LingFbroHeadlessResource {
+  id: string;
+  type: 'FBroHeadlessBrowser';
+  name: string;
+  /** 仅用于设计器画布内占位的水平坐标，不生成运行时控件。 */
+  designerX?: number;
+  /** 仅用于设计器画布内占位的垂直坐标，不生成运行时控件。 */
+  designerY?: number;
+  /** 组件所属窗口；无头浏览器在该窗口创建期以后台实例方式创建并随窗口销毁关闭。 */
+  ownerWindowId: string;
+  /** 启动地址；留空按 about:blank 创建。 */
+  url: string;
+  /** 独立缓存目录；留空由生成器按组件稳定 ID 派生。 */
+  cacheDir: string;
+  /** 创建期附加信息 JSON（FBro extra info 字典文本）；留空跳过。 */
+  extraInfoJson: string;
+}
+
 export interface LingEdgeViewHeadlessResource {
   id: string;
   type: 'EdgeViewHeadlessBrowser';

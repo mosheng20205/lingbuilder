@@ -29,13 +29,15 @@ import { BetaProgramAdminController, BetaProgramController } from './beta-progra
 import { BetaProgramService } from './beta-program/beta-program.service.js';
 import { SdkCatalogAdminController, SdkCatalogController } from './website/sdk-catalog.controller.js';
 import { SdkCatalogService } from './website/sdk-catalog.service.js';
+import { SkillCatalogAdminController, SkillCatalogController } from './website/skill-catalog.controller.js';
+import { SkillCatalogService } from './website/skill-catalog.service.js';
 import { ModuleArtifactService } from './modules/module-artifact.service.js';
 import { CreditRechargeService } from './billing/credit-recharge.service.js';
 import { CreditRechargeController } from './billing/credit-recharge.controller.js';
 
 @Module({
   imports: [JwtModule.register({ global: true, secret: getConfig().jwtSecret, signOptions: { issuer: 'lingbuilder-cloud', audience: 'lingbuilder-clients' }, verifyOptions: { issuer: 'lingbuilder-cloud', audience: 'lingbuilder-clients' } })],
-  controllers: [HealthController, AuthController, MeController, AiController, UsageController, AdminController, ModuleCommerceController, PaymentsController, CreditRechargeController, ModuleAdminController, WebsiteContentController, WebsiteContentAdminController, SdkCatalogController, SdkCatalogAdminController, BetaProgramController, BetaProgramAdminController],
-  providers: [PrismaService, RedisService, SecretVaultService, BillingService, PromotionService, AuthService, ProviderService, RulebookService, SystemAiProviderService, AiService, PaymentProviderService, ModuleCommerceService, ModuleArtifactService, WebsiteContentService, SdkCatalogService, CreditRechargeService, BetaProgramService, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_FILTER, useClass: CloudExceptionFilter }]
+  controllers: [HealthController, AuthController, MeController, AiController, UsageController, AdminController, ModuleCommerceController, PaymentsController, CreditRechargeController, ModuleAdminController, WebsiteContentController, WebsiteContentAdminController, SdkCatalogController, SdkCatalogAdminController, SkillCatalogController, SkillCatalogAdminController, BetaProgramController, BetaProgramAdminController],
+  providers: [PrismaService, RedisService, SecretVaultService, BillingService, PromotionService, AuthService, ProviderService, RulebookService, SystemAiProviderService, AiService, PaymentProviderService, ModuleCommerceService, ModuleArtifactService, WebsiteContentService, SdkCatalogService, SkillCatalogService, CreditRechargeService, BetaProgramService, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_FILTER, useClass: CloudExceptionFilter }]
 })
 export class AppModule {}

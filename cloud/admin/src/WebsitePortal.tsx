@@ -437,6 +437,7 @@ function UpdatesPage() {
   const [error, setError] = useState('');
   const [category, setCategory] = useState('');
   const [visibleDays, setVisibleDays] = useState(UPDATES_VISIBLE_DAYS_STEP);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     fetchWebsiteUpdates(controller.signal).then(value => setUpdates(value)).catch(reason => {
@@ -474,7 +475,13 @@ function UpdatesPage() {
               <h2 className="update-date">{formatUpdateDate(entry.date)}</h2>
               <ul>{entry.items.map((item, index) => {
                 const meta = UPDATE_CATEGORY_META[item.category] || { icon: '•', className: 'misc' };
-                return <li key={index}><em className={`update-tag update-tag-${meta.className}`}>{meta.icon} {item.category}</em><span>{item.text}</span></li>;
+                return <li key={index} className="update-item">
+                  <div className="update-item-line"><em className={`update-tag update-tag-${meta.className}`}>{meta.icon} {item.category}</em><span>{item.text}</span></div>
+                  {item.image && <button type="button" className="update-image-card" onClick={() => setLightbox({ src: item.image!.url, alt: item.image!.caption })} aria-label={`查看图片：${item.image.caption}`}>
+                    <img src={item.image.url} alt={item.image.caption} loading="lazy"/>
+                    <span className="update-image-caption"><Maximize2 size={14}/> {item.image.caption}（点击查看大图）</span>
+                  </button>}
+                </li>;
               })}</ul>
             </article>)}</div>
           : <div className="website-empty">{updates.length ? '该分类下暂时没有更新记录。' : '还没有发布更新记录。'}</div>}
@@ -484,6 +491,7 @@ function UpdatesPage() {
         </div>}
       </>}
     </div></section>
+    {lightbox && <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)}/>}
   </>;
 }
 

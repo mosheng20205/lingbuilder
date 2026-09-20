@@ -126,7 +126,15 @@ export class WebsiteContentService {
       if (merged.has(date)) throw validation(`日期重复：${date}。`);
       const items = arrayOfRecords(row.items)
         .slice(0, 40)
-        .map(item => ({ category: clean(item.category, 20), text: clean(item.text, 600) }))
+        .map(item => {
+          const normalized: WebsiteUpdateItem = { category: clean(item.category, 20), text: clean(item.text, 600) };
+          if (isRecord(item.image)) {
+            const url = clean(item.image.url, 300);
+            if (!UPDATE_IMAGE_URL_PATTERN.test(url)) throw validation(`${date} 的图片地址无效：${url || '（空）'}，仅允许 /update-assets/ 目录下的 .png/.jpg/.jpeg/.webp 静态文件。`);
+            normalized.image = { url, caption: clean(item.image.caption, 120) || '查看图片' };
+          }
+          return normalized;
+        })
         .filter(item => item.text);
       if (!items.length) throw validation(`${date} 至少需要一条更新内容。`);
       for (const item of items) {
@@ -532,14 +540,27 @@ function isValidUpdateDate(date: string) {
   return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-function parseUpdateItems(itemsJson: string): Array<{ category: string; text: string }> {
+function parseUpdateItems(itemsJson: string): WebsiteUpdateItem[] {
   try {
     const value: unknown = JSON.parse(itemsJson);
     if (!Array.isArray(value)) return [];
     return value.filter(isRecord)
-      .map(item => ({ category: clean(item.category, 20), text: clean(item.text, 600) }))
+      .map(item => {
+        const entry: WebsiteUpdateItem = { category: clean(item.category, 20), text: clean(item.text, 600) };
+        if (isRecord(item.image)) {
+          const url = clean(item.image.url, 300);
+          if (UPDATE_IMAGE_URL_PATTERN.test(url)) entry.image = { url, caption: clean(item.image.caption, 120) || '查看图片' };
+        }
+        return entry;
+      })
       .filter(item => item.text);
   } catch {
     return [];
   }
 }
+
+export interface WebsiteUpdateItem { category: string; text: string; image?: { url: string; caption: string } }
+
+// 更新记录配图只允许同源 /update-assets/ 静态前缀（admin 容器 nginx html/update-assets 目录），杜绝外链注入。
+// 前缀不能叫 /updates：SPA 路由 /updates 会被 nginx try_files 命中该目录返回 403。
+const UPDATE_IMAGE_URL_PATTERN = /^\/update-assets\/[A-Za-z0-9._~-]+\.(?:png|jpe?g|webp)$/u;

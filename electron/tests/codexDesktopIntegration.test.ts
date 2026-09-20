@@ -57,6 +57,23 @@ test('Codex desktop integration writes a project-scoped token-free stdio MCP con
   assert.doesNotMatch(await fs.readFile(removed.configPath, 'utf8'), /lingbuilder_desktop/u);
 });
 
+test('Codex desktop integration refuses to wire the MCP host through the launcher script', async t => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-codex-launcher-'));
+  t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }));
+  const launcher = path.join(workspaceRoot, 'lingbuilder.cmd');
+  await fs.writeFile(launcher, '@echo off\r\n', 'utf8');
+  const service = new CodexDesktopIntegrationService({
+    workspaceRoot,
+    runtimeExecutable: launcher,
+    cliEntryPath: path.join(workspaceRoot, 'resources', 'app.asar', 'dist', 'cli.cjs'),
+    detectInstallation: async () => INSTALLED,
+    launchApp: async () => undefined
+  });
+
+  await assert.rejects(() => service.configure({ permission: 'preview' }), /禁止使用启动器脚本/u);
+  await assert.rejects(() => fs.access(path.join(workspaceRoot, '.codex', 'config.toml')));
+});
+
 test('Codex desktop integration reports conflicts and only replaces them after explicit approval', async t => {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-codex-conflict-'));
   t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }));

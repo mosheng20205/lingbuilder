@@ -67,7 +67,9 @@ const TEXT_PARAMETER_ALLOWLIST = new Map<string, string>([
   ['lingbuilder.cef3.platform/CEF3平台_组件更新器更新/1/组件ID', 'Chromium 组件更新服务的字符串组件 ID，不是设计器组件。'],
   ['lingbuilder.advanced.com/COM_创建对象免注册/1/组件DLL路径', '免注册 COM 组件的 DLL 文件路径，不是设计器组件。'],
   ['lingbuilder.advanced.com/COM_注册组件/0/组件DLL路径', '待注册组件的 DLL 文件路径，不是设计器组件。'],
-  ['lingbuilder.advanced.com/COM_注销组件/0/组件DLL路径', '待注销组件的 DLL 文件路径，不是设计器组件。']
+  ['lingbuilder.advanced.com/COM_注销组件/0/组件DLL路径', '待注销组件的 DLL 文件路径，不是设计器组件。'],
+  ['lingbuilder.edgeview/EdgeView创建选项_置附加参数/1/附加浏览器启动参数', 'Chromium 命令行开关文本，不是设计器浏览器控件。'],
+  ['lingbuilder.edgeview/EdgeView创建选项_取附加参数/0/附加浏览器启动参数', 'Chromium 命令行开关文本，不是设计器浏览器控件。']
 ]);
 
 const SUPPORTED_RUNTIME_REPRESENTATIONS = new Set<ModuleControlRuntimeRepresentation>([

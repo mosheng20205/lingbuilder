@@ -366,6 +366,30 @@ test('public updates return entries ordered by date descending with parsed items
   assert.deepEqual(result.updates[1].items, []);
 });
 
+test('update sync accepts same-origin images, rejects foreign urls and public reads pass images through', async () => {
+  const upserts: any[] = [];
+  const service = new WebsiteContentService(updatesPrisma([], upserts, [], []) as any);
+  const image = { url: '/update-assets/http-server-bench-compare-2026-09-19.png', caption: '压测对比图：优化前 2.0 与优化后 2.1' };
+  await service.syncUpdates({ updates: [{ date: '2026-09-19', items: [
+    { category: '体验优化', text: '带图条目', image },
+    { category: '体验优化', text: '无图条目' }
+  ] }] }, updatesActor);
+  const stored = JSON.parse(upserts[0].create.itemsJson);
+  assert.deepEqual(stored[0], { category: '体验优化', text: '带图条目', image: { url: image.url, caption: image.caption } });
+  assert.deepEqual(stored[1], { category: '体验优化', text: '无图条目' });
+  await assert.rejects(() => service.syncUpdates({ updates: [{ date: '2026-09-20', items: [{ category: '体验优化', text: 'x', image: { url: 'https://evil.example/a.png', caption: '外链' } }] }] }, updatesActor), /图片地址无效/u);
+  await assert.rejects(() => service.syncUpdates({ updates: [{ date: '2026-09-21', items: [{ category: '体验优化', text: 'x', image: { url: '/update-assets/../secret.png', caption: '穿越' } }] }] }, updatesActor), /图片地址无效/u);
+  const publicService = new WebsiteContentService({
+    websiteUpdateEntry: { findMany: async () => [{ date: '2026-09-19', itemsJson: JSON.stringify([
+      { category: '体验优化', text: 'a', image: { url: '/update-assets/ok.png', caption: '图' } },
+      { category: '体验优化', text: 'b', image: { url: 'http://evil/x.png', caption: '坏' } }
+    ]) }] }
+  } as any);
+  const passed = await publicService.publicUpdates();
+  assert.deepEqual(passed.updates[0].items[0].image, { url: '/update-assets/ok.png', caption: '图' });
+  assert.equal(passed.updates[0].items[1].image, undefined);
+});
+
 test('update endpoints exist with the expected visibility and role gates', () => {
   const source = requireSource('../src/website/website-content.controller.ts');
   assert.match(source, /@Get\('updates'\) updates\(\)/u);
