@@ -207,10 +207,13 @@ export class DesktopWorkspaceService {
 
   /**
    * 把安装包随附的 default-workspace 模块（当前为 lingbuilder.new_emoji.ui 等）
-   * 补铺进工作区。与工具链铺设同语义：只补缺失文件、绝不覆盖用户已有内容；
-   * 每次打开工作区都补一次，升级安装后老工作区也能拿到新增随包模块。开发态
-   * 没有 default-workspace 时自动跳过。失败不阻断打开工作区——模块面板刷新
-   * 后仍可手动安装。
+   * 同步进工作区。随包模块是 IDE 托管的版本化内容，不是用户内容：清单损坏、
+   * 版本低于随包副本、或与随包副本同版本但内容漂移时，整个模块目录以随包为准
+   * 重建；清单缺失（半成品目录）等其余情况保持「只补缺失文件」不动用户已有
+   * 内容。已链接开发源的模块不参与同步。每次打开工作区都执行，升级安装后老
+   * 工作区自动拿到新模块，也能自愈历史遗留的旧清单（例如 cb 回调参数仍为 raw
+   * 的 pre-2.0 生成物，会被新版清单校验整卡拒绝）。开发态没有 default-workspace
+   * 时自动跳过。失败不阻断打开工作区——模块面板仍有「修复重装」入口。
    */
   async ensureBundledModules(workspacePath: string): Promise<void> {
     const source = this.options.defaultWorkspaceSource
@@ -225,21 +228,35 @@ export class DesktopWorkspaceService {
       };
       for (const moduleId of Object.keys(parsed?.links || {})) linkedModuleIds.add(moduleId);
     } catch {
-      // 无链接登记表时按原语义全量铺设。
+      // 无链接登记表时按目录逐一同步。
     }
+    let entries;
     try {
-      if (linkedModuleIds.size === 0) {
-        await copyMissingFiles(source, target);
-        return;
-      }
-      // 已链接开发源的模块不铺随包副本：磁盘上不留一份“看起来生效其实是旧版”的影子目录。
-      const entries = await fs.readdir(source, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isSymbolicLink() || linkedModuleIds.has(entry.name)) continue;
-        await copyMissingFiles(path.join(source, entry.name), path.join(target, entry.name));
-      }
+      entries = await fs.readdir(source, { withFileTypes: true });
     } catch (error) {
-      console.warn(`铺设随包模块失败（可在模块面板手动安装）：${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`读取随包模块目录失败：${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink() || linkedModuleIds.has(entry.name)) continue;
+      const sourceDir = path.join(source, entry.name);
+      const targetDir = path.join(target, entry.name);
+      try {
+        if (!entry.isDirectory()) {
+          // 目录外的零散文件保持旧的只补缺语义。
+          if (!await pathExists(targetDir)) {
+            await fs.mkdir(path.dirname(targetDir), { recursive: true });
+            await fs.copyFile(sourceDir, targetDir);
+          }
+          continue;
+        }
+        if (await shouldReplaceBundledModuleDir(sourceDir, targetDir)) {
+          await fs.rm(targetDir, { recursive: true, force: true });
+        }
+        await copyMissingFiles(sourceDir, targetDir);
+      } catch (error) {
+        console.warn(`同步随包模块 ${entry.name} 失败（可在模块面板修复重装）：${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
@@ -324,6 +341,62 @@ export function getArgumentValue(argv: string[], name: string): string | undefin
     if (value?.startsWith(inlinePrefix)) return value.slice(inlinePrefix.length);
   }
   return undefined;
+}
+
+/** 模块包 v2 固定清单文件名；与 src/services/modules 的 MODULE_MANIFEST_FILE 保持同一取值。 */
+const BUNDLED_MODULE_MANIFEST_FILE = 'lingbuilder.module.json';
+
+/**
+ * 判定随包模块目录是否需要整体以随包副本重建。判定只依据清单（主进程不允许
+ * 依赖 src 的校验器，用「与随包清单逐字节一致 / 版本号比较」代替结构校验）：
+ * - 随包清单自身缺失或损坏 → 不替换，保持旧的只补缺语义。
+ * - 工作区清单缺失 → 不替换，只补缺（半成品目录沿用历史语义，绝不覆盖已有文件）。
+ * - 工作区清单与随包清单逐字节一致 → 不动。
+ * - 工作区清单不是合法 JSON / 缺版本号 → 重建（自愈损坏清单）。
+ * - 工作区版本高于随包 → 不动（用户手动装过更新版，不降级）。
+ * - 其余（同版本内容漂移、工作区更旧）→ 重建。
+ */
+async function shouldReplaceBundledModuleDir(bundledDir: string, workspaceDir: string): Promise<boolean> {
+  const bundledRaw = await readTextIfPossible(path.join(bundledDir, BUNDLED_MODULE_MANIFEST_FILE));
+  if (bundledRaw === undefined) return false;
+  const bundledVersion = parseManifestVersion(bundledRaw);
+  if (bundledVersion === undefined) return false;
+  const workspaceRaw = await readTextIfPossible(path.join(workspaceDir, BUNDLED_MODULE_MANIFEST_FILE));
+  if (workspaceRaw === undefined) return false;
+  if (workspaceRaw === bundledRaw) return false;
+  const workspaceVersion = parseManifestVersion(workspaceRaw);
+  if (workspaceVersion === undefined) return true;
+  return compareModuleVersions(workspaceVersion, bundledVersion) <= 0;
+}
+
+async function readTextIfPossible(filePath: string): Promise<string | undefined> {
+  try {
+    return await fs.readFile(filePath, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+function parseManifestVersion(raw: string): string | undefined {
+  try {
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    return typeof parsed?.version === 'string' && parsed.version.trim() ? parsed.version.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 点分数字版本号比较；非数字段按 0 处理，仅服务于随包模块的新旧判定。 */
+function compareModuleVersions(a: string, b: string): number {
+  const segmentsA = a.split('.').map(part => Number.parseInt(part, 10));
+  const segmentsB = b.split('.').map(part => Number.parseInt(part, 10));
+  const length = Math.max(segmentsA.length, segmentsB.length);
+  for (let index = 0; index < length; index++) {
+    const valueA = Number.isFinite(segmentsA[index]) ? segmentsA[index] : 0;
+    const valueB = Number.isFinite(segmentsB[index]) ? segmentsB[index] : 0;
+    if (valueA !== valueB) return valueA < valueB ? -1 : 1;
+  }
+  return 0;
 }
 
 async function copyMissingFiles(sourceRoot: string, targetRoot: string): Promise<void> {

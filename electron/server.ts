@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { pathToFileURL } from "url";
 import fs from "fs/promises";
-import { watch as watchFiles } from "fs";
+import { watch as watchFiles, existsSync } from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import dotenv from "dotenv";
@@ -718,8 +718,20 @@ function getRepoWorkspaceRoot() {
   return serverRuntimeConfig.workspaceRoot;
 }
 
+/**
+ * 安装包随附的 default-workspace 根目录（含 .lingbuilder/modules 随包模块副本）。
+ * 打包态由主进程经 LINGBUILDER_RESOURCE_ROOT 传入 resources 目录；开发态没有
+ * default-workspace 时返回 undefined，模块面板不出现「修复重装」入口。
+ */
+function getBundledWorkspaceSource(): string | undefined {
+  const resourceRoot = String(process.env.LINGBUILDER_RESOURCE_ROOT || "").trim();
+  if (!resourceRoot) return undefined;
+  const candidate = path.join(resourceRoot, "default-workspace");
+  return existsSync(path.join(candidate, ".lingbuilder", "modules")) ? candidate : undefined;
+}
+
 function getModuleService() {
-  return createModuleService(getRepoWorkspaceRoot());
+  return createModuleService(getRepoWorkspaceRoot(), { bundledWorkspaceSource: getBundledWorkspaceSource() });
 }
 
 function assertModuleAccess(moduleIds: readonly string[]): void {
@@ -1913,6 +1925,17 @@ app.post("/api/modules/uninstall", async (req, res) => {
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "卸载模块失败" });
+  }
+});
+
+app.post("/api/modules/repair-bundled", async (req, res) => {
+  try {
+    const { moduleId } = req.body as { moduleId?: string };
+    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    const result = await getModuleService().repairBundledModule(moduleId);
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "修复重装失败" });
   }
 });
 

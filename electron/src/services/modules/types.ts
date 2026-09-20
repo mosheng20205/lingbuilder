@@ -494,6 +494,8 @@ export interface InstalledModule {
   isProjectDeclaration?: boolean;
   /** 开发源链接模块：installPath 指向工作区内开发源目录，源改动即时生效，无需重新打包安装。 */
   isDevLink?: boolean;
+  /** 清单无法读取或校验未通过，且安装包随包副本里有同 ID 可用模块：模块面板据此提供「修复重装」。 */
+  bundledRepairable?: boolean;
   sha256?: string;
 }
 
@@ -585,7 +587,7 @@ export interface MarketModule {
 export interface ModuleHistoryEntry {
   id: string;
   time: string;
-  action: 'install' | 'uninstall' | 'enable' | 'disable' | 'export' | 'rollback' | 'preview-failed' | 'link' | 'unlink';
+  action: 'install' | 'uninstall' | 'enable' | 'disable' | 'export' | 'rollback' | 'preview-failed' | 'link' | 'unlink' | 'repair';
   moduleId?: string;
   moduleName?: string;
   version?: string;

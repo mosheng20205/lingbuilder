@@ -593,6 +593,28 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     }
   };
 
+  /** 清单损坏/校验未通过时的一键自愈：用安装包随包副本整体重建该模块目录。 */
+  const repairBundledModule = async (module: InstalledModule) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/modules/repair-bundled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleId: module.manifest.id })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || '修复重装失败');
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已用随包副本修复重装 ${result.moduleName || module.manifest.name}@${result.version || ''}。`);
+      setStatusText(`已用随包副本修复重装「${result.moduleName || module.manifest.name}」；模块索引已刷新。`);
+      dispatchModulesChanged(projectId, module.manifest.id, 'workspace');
+      await refresh();
+    } catch (error) {
+      setStatusText(`修复重装失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const linkDevSource = async () => {
     const sourcePath = devSourcePath.trim();
     if (!isAllowedWorkspacePath(sourcePath)) {
@@ -1289,6 +1311,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
                   onToggle={() => familyState ? toggleModuleFamily(familyState) : toggleProjectModule(module)}
                   onUninstall={() => uninstallModule(module)}
                   onUnlinkDevSource={() => unlinkDevSource(module)}
+                  onRepair={() => repairBundledModule(module)}
                   onInspect={() => inspectModule(module.manifest.id)}
                   commerce={commerceProducts.find(product => product.moduleId === module.manifest.id)}
                   onPurchase={provider => purchaseModule(module.manifest.id, provider)}
@@ -1912,7 +1935,7 @@ function DeveloperStep({ step, title, desc, isDarkMode, children }: {
   );
 }
 
-function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onUnlinkDevSource, onInspect, commerce, onPurchase }: {
+function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onUnlinkDevSource, onRepair, onInspect, commerce, onPurchase }: {
   key?: React.Key;
   module: InstalledModule;
   isDarkMode: boolean;
@@ -1924,6 +1947,7 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
   onToggle: () => void;
   onUninstall: () => void;
   onUnlinkDevSource: () => void;
+  onRepair: () => void;
   onInspect: () => void;
   commerce?: any;
   onPurchase: (provider: 'wechat'|'alipay') => void;
@@ -2009,6 +2033,18 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
           <div className={`break-words text-xs leading-5 ${subtleClass}`}>{description}</div>
           {hasDiagnostics && (
             <div className={`text-[11px] whitespace-pre-wrap ${diagnosticsClass}`}>{module.diagnostics.join('\n')}</div>
+          )}
+          {hasDiagnostics && module.bundledRepairable && (
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={onRepair}
+                className={`self-start h-7 rounded border px-2 text-[11px] ${isDarkMode ? 'border-amber-500/40 text-amber-300' : 'border-amber-500/50 text-amber-700'} hover:bg-amber-500/10 cursor-pointer transition-colors`}
+              >
+                修复重装
+              </button>
+              <span className={`text-[10px] leading-4 ${subtleClass}`}>用安装包随附的模块副本整体重建本模块目录，修复清单损坏或版本过旧导致的加载失败。</span>
+            </div>
           )}
           {commerce && !commerce.access?.allowed && Array.isArray(commerce.offers) && commerce.offers.length > 0 && (
             <div className="grid grid-cols-2 gap-2" aria-label="购买模块授权">

@@ -345,3 +345,83 @@ test('bundled default-workspace modules are provisioned into existing workspaces
   assert.ok(await exists(path.join(installed, 'lingbuilder.module.json')));
   assert.equal(await fs.readFile(path.join(installed, 'bin', 'x64', 'new_emoji.dll'), 'utf8'), 'user-dll');
 });
+
+test('bundled modules replace stale or broken workspace copies but never downgrade newer ones', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-upgrade-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const defaultWorkspaceSource = path.join(root, 'resources', 'default-workspace');
+  const modulesSource = path.join(defaultWorkspaceSource, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  const bundledManifest = '{"id":"lingbuilder.new_emoji.ui","version":"2.0.0","fixed":true}';
+  await fs.mkdir(path.join(modulesSource, 'bin'), { recursive: true });
+  await fs.writeFile(path.join(modulesSource, 'lingbuilder.module.json'), bundledManifest, 'utf8');
+  await fs.writeFile(path.join(modulesSource, 'bin', 'new_emoji.dll'), 'bundled-dll', 'utf8');
+
+  // 场景一：同版本但内容漂移（历史旧生成器把 cb 回调写成 raw 的清单）→ 以随包为准整体重建。
+  const staleWorkspace = path.join(root, '旧清单工作区');
+  const staleModule = path.join(staleWorkspace, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  await fs.mkdir(path.join(staleModule, 'bin'), { recursive: true });
+  await fs.writeFile(path.join(staleModule, 'lingbuilder.module.json'), '{"id":"lingbuilder.new_emoji.ui","version":"2.0.0"}', 'utf8');
+  await fs.writeFile(path.join(staleModule, 'bin', 'new_emoji.dll'), 'stale-dll', 'utf8');
+  await fs.writeFile(path.join(staleModule, '旧文件.txt'), '将被清除', 'utf8');
+
+  await new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', staleWorkspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData'),
+    defaultWorkspaceSource
+  }).resolveInitialWorkspace();
+
+  assert.equal(await fs.readFile(path.join(staleModule, 'lingbuilder.module.json'), 'utf8'), bundledManifest);
+  assert.equal(await fs.readFile(path.join(staleModule, 'bin', 'new_emoji.dll'), 'utf8'), 'bundled-dll');
+  assert.equal(await exists(path.join(staleModule, '旧文件.txt')), false);
+
+  // 场景二：工作区版本更新（用户手动装过新版）→ 不降级，内容原样保留。
+  const newerWorkspace = path.join(root, '更新版工作区');
+  const newerModule = path.join(newerWorkspace, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  await fs.mkdir(newerModule, { recursive: true });
+  await fs.writeFile(path.join(newerModule, 'lingbuilder.module.json'), '{"id":"lingbuilder.new_emoji.ui","version":"2.1.0"}', 'utf8');
+  await fs.writeFile(path.join(newerModule, '自定义文件.txt'), '用户新版', 'utf8');
+
+  await new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', newerWorkspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData'),
+    defaultWorkspaceSource
+  }).resolveInitialWorkspace();
+
+  assert.equal(await fs.readFile(path.join(newerModule, 'lingbuilder.module.json'), 'utf8'), '{"id":"lingbuilder.new_emoji.ui","version":"2.1.0"}');
+  assert.equal(await fs.readFile(path.join(newerModule, '自定义文件.txt'), 'utf8'), '用户新版');
+
+  // 场景三：清单损坏（非法 JSON）→ 自愈重建；随包清单自身缺失 → 保持旧的只补缺语义。
+  const brokenWorkspace = path.join(root, '损坏清单工作区');
+  const brokenModule = path.join(brokenWorkspace, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  await fs.mkdir(brokenModule, { recursive: true });
+  await fs.writeFile(path.join(brokenModule, 'lingbuilder.module.json'), '{"id":截断损坏', 'utf8');
+  await fs.writeFile(path.join(brokenModule, '遗留文件.txt'), '待清除', 'utf8');
+
+  await new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', brokenWorkspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData'),
+    defaultWorkspaceSource
+  }).resolveInitialWorkspace();
+
+  assert.equal(await fs.readFile(path.join(brokenModule, 'lingbuilder.module.json'), 'utf8'), bundledManifest);
+  assert.equal(await exists(path.join(brokenModule, '遗留文件.txt')), false);
+
+  const noManifestSource = path.join(root, 'resources', 'default-workspace-2', '.lingbuilder', 'modules', 'lingbuilder.other.module');
+  await fs.mkdir(noManifestSource, { recursive: true });
+  const untouchedWorkspace = path.join(root, '无随包清单工作区');
+  const untouchedModule = path.join(untouchedWorkspace, '.lingbuilder', 'modules', 'lingbuilder.other.module');
+  await fs.mkdir(untouchedModule, { recursive: true });
+  await fs.writeFile(path.join(untouchedModule, '用户数据.txt'), '保留', 'utf8');
+
+  await new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', untouchedWorkspace],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData'),
+    defaultWorkspaceSource: path.join(root, 'resources', 'default-workspace-2')
+  }).resolveInitialWorkspace();
+
+  assert.equal(await fs.readFile(path.join(untouchedModule, '用户数据.txt'), 'utf8'), '保留');
+});

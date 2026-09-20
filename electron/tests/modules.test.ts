@@ -7776,3 +7776,66 @@ test('contributes.constants 清单门禁：命名、类型、字面量与重复�
   assert.match(joined, /constants\[5\]\.description 必须是非空中文说明/u);
   assert.match(joined, /constants\[6\]\.level 只允许 basic 或 advanced/u);
 });
+
+test('清单损坏模块给出 bundledRepairable 标记，修复重装用随包副本整体重建', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-repair-'));
+  const bundledSource = path.join(root, 'resources', 'default-workspace');
+  const bundledDir = path.join(bundledSource, '.lingbuilder', 'modules', 'com.example.broken');
+  const bundledManifest = { schemaVersion: 2, id: 'com.example.broken', name: '随包修复模块', version: '2.0.0', category: '其他', description: '安装包随附副本。' };
+  await writeFixture(path.join(bundledDir, 'lingbuilder.module.json'), JSON.stringify(bundledManifest, null, 2));
+  await writeFixture(path.join(bundledDir, 'bin', 'native.dll'), 'bundled-dll');
+
+  // 工作区残留损坏清单 + 陈旧文件（对应老工作区旧版 new_emoji 清单被新校验整卡拒绝的场景）。
+  const installedDir = path.join(root, '.lingbuilder', 'modules', 'com.example.broken');
+  await writeFixture(path.join(installedDir, 'lingbuilder.module.json'), '{"id":截断损坏');
+  await writeFixture(path.join(installedDir, 'bin', 'native.dll'), 'stale-dll');
+  await writeFixture(path.join(installedDir, 'stale-extra.txt'), '陈旧残留');
+
+  const service = createModuleService(root, { bundledWorkspaceSource: bundledSource });
+  const broken = (await service.scanInstalledModules()).find(module => module.manifest.id === 'com.example.broken');
+  assert.ok(broken, '损坏清单也应出现在模块列表');
+  assert.equal(broken.manifest.version, '0.0.0');
+  assert.ok(broken.diagnostics.length > 0);
+  assert.equal(broken.bundledRepairable, true, '随包副本存在同 ID 可用模块时应给出修复标记');
+
+  const repaired = await service.repairBundledModule('com.example.broken');
+  assert.equal(repaired.moduleName, '随包修复模块');
+  assert.equal(repaired.version, '2.0.0');
+  const after = (await service.scanInstalledModules()).find(module => module.manifest.id === 'com.example.broken');
+  assert.equal(after?.manifest.version, '2.0.0');
+  assert.equal(after?.bundledRepairable, undefined, '修复成功后不再出现修复标记');
+  assert.equal(await fs.readFile(path.join(installedDir, 'bin', 'native.dll'), 'utf8'), 'bundled-dll');
+  assert.equal(await fs.access(path.join(installedDir, 'stale-extra.txt')).then(() => true, () => false), false, '陈旧残留必须随整体重建清除');
+
+  const history = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'module-history.json'), 'utf8'));
+  assert.ok(Array.isArray(history), '模块历史是数组');
+  assert.ok(history.some((entry: any) => entry.action === 'repair' && entry.moduleId === 'com.example.broken'), '修复重装必须写历史');
+});
+
+test('修复重装拒绝：无随包副本、随包清单损坏、路径穿越、开发源链接与内置模块', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-repair-guard-'));
+  const bundledSource = path.join(root, 'resources', 'default-workspace');
+  const brokenBundledDir = path.join(bundledSource, '.lingbuilder', 'modules', 'com.example.nomanifest');
+  await writeFixture(path.join(brokenBundledDir, 'lingbuilder.module.json'), '{"schemaVersion":2,"id":"com.example.nomanifest"}');
+  const service = createModuleService(root, { bundledWorkspaceSource: bundledSource });
+
+  await assert.rejects(() => service.repairBundledModule('com.example.unknown'), /没有随包副本/);
+  await assert.rejects(() => service.repairBundledModule('../evil'), /没有随包副本|随包副本不可用/);
+  await assert.rejects(() => service.repairBundledModule('com.example.nomanifest'), /随包副本不可用|不符合 manifest v2/u);
+  await assert.rejects(() => service.repairBundledModule('lingbuilder.win32.basic'), /内置模块无需修复/);
+
+  // 无随包源配置（开发态）时同样拒绝，且损坏清单的 bundledRepairable 标记为 false。
+  const plainService = createModuleService(root);
+  await assert.rejects(() => plainService.repairBundledModule('com.example.nomanifest'), /没有随包副本/);
+  const scanned = (await plainService.scanInstalledModules()).find(module => module.manifest.id === 'com.example.nomanifest');
+  assert.equal(scanned?.bundledRepairable, undefined, '未配置随包源时不得给出修复标记');
+
+  // 已链接开发源的模块：先断链才允许修复重装。
+  const linkedSource = path.join(root, '.lingbuilder', 'module-build', 'linked-src');
+  await writeFixture(
+    path.join(linkedSource, 'lingbuilder.module.json'),
+    JSON.stringify({ schemaVersion: 2, id: 'com.example.linked', name: '链接模块', version: '1.0.0', category: '其他', description: '开发源链接。' }, null, 2)
+  );
+  await service.linkModuleDevSource('.lingbuilder/module-build/linked-src');
+  await assert.rejects(() => service.repairBundledModule('com.example.linked'), /取消开发源链接/);
+});

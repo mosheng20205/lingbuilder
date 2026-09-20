@@ -59,8 +59,17 @@ export interface ProjectModuleDisablePlan {
   dependentModuleIds: string[];
 }
 
+export interface ModuleServiceOptions {
+  /**
+   * 安装包随附的 default-workspace 根目录（打包后为 resources/default-workspace）。
+   * 提供后：扫描结果对「清单无法读取或校验未通过」的模块给出 bundledRepairable 标记，
+   * 且 repairBundledModule 可用该副本整体修复重装；缺省时两者都不可用。
+   */
+  bundledWorkspaceSource?: string;
+}
+
 export class ModuleService {
-  constructor(private readonly workspaceRoot: string) {}
+  constructor(private readonly workspaceRoot: string, private readonly options: ModuleServiceOptions = {}) {}
 
   async scanInstalledModules(projectId = DEFAULT_PROJECT_ID): Promise<InstalledModule[]> {
     await this.ensureModuleDirs();
@@ -150,6 +159,7 @@ export class ModuleService {
           installPath,
           isInstalled: true,
           isEnabledForProject: false,
+          bundledRepairable: await this.bundledModuleRepairable(fallbackId),
           diagnostics: validation.diagnostics
         };
       }
@@ -168,6 +178,7 @@ export class ModuleService {
         installPath,
         isInstalled: true,
         isEnabledForProject: false,
+        bundledRepairable: await this.bundledModuleRepairable(fallbackId),
         diagnostics: [`模块清单读取失败：${errorMessage(error)}`]
       };
     }
@@ -470,6 +481,67 @@ export class ModuleService {
       details: `模块文件已移除，已清理 ${cleanedProjectReferences} 个项目引用。`,
       snapshotPath
     });
+  }
+
+  /** 随包副本目录（default-workspace/.lingbuilder/modules/<moduleId>）；未配置随包源或 ID 非法时返回 undefined。 */
+  private bundledModuleDir(moduleId: string): string | undefined {
+    const bundledSource = this.options.bundledWorkspaceSource;
+    if (!bundledSource) return undefined;
+    if (!/^[a-zA-Z0-9._-]{1,160}$/u.test(moduleId)) return undefined;
+    return path.join(bundledSource, '.lingbuilder', 'modules', moduleId);
+  }
+
+  /** 随包源里是否存在同 ID 且清单校验通过的副本；决定模块面板「修复重装」入口是否可见。 */
+  private async bundledModuleRepairable(moduleId: string): Promise<boolean> {
+    const bundledDir = this.bundledModuleDir(moduleId);
+    if (!bundledDir) return false;
+    try {
+      const parsed = JSON.parse(await fs.readFile(path.join(bundledDir, MODULE_MANIFEST_FILE), 'utf8'));
+      return Boolean(validateModuleManifest(parsed).manifest);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 用安装包随附副本整体修复重装一个已安装模块：清单损坏或校验未通过（例如老工作区
+   * 残留旧版 new_emoji 清单）时的一键自愈入口。只接受随包源里清单校验通过且 ID 一致的
+   * 模块；内置模块与已链接开发源的模块拒绝；替换前按卸载同款语义留快照，替换后返回
+   * 刷新后的完整扫描结果。
+   */
+  async repairBundledModule(moduleId: string): Promise<{ moduleId: string; moduleName: string; version: string; modules: InstalledModule[] }> {
+    if (BUILTIN_MODULES.some(module => module.id === moduleId)) throw new Error('内置模块无需修复重装。');
+    const devLinks = await this.readModuleDevLinks();
+    if (devLinks[moduleId]) throw new Error('该模块已链接开发源；请先取消开发源链接再修复重装。');
+    const bundledDir = this.bundledModuleDir(moduleId);
+    if (!bundledDir || !(await fs.stat(bundledDir).catch(() => undefined))?.isDirectory()) {
+      throw new Error('该模块没有随包副本，无法修复重装；请重新安装模块包。');
+    }
+    let manifest: LingBuilderModuleManifest;
+    try {
+      const parsed = JSON.parse(await fs.readFile(path.join(bundledDir, MODULE_MANIFEST_FILE), 'utf8'));
+      const validation = validateModuleManifest(parsed);
+      if (!validation.manifest) throw new Error(validation.diagnostics[0] || '清单不符合 manifest v2 规范。');
+      manifest = validation.manifest;
+    } catch (error) {
+      throw new Error(`随包副本不可用：${errorMessage(error)}`);
+    }
+    if (manifest.id !== moduleId) throw new Error(`随包副本模块 ID 不匹配：期望 ${moduleId}，实际 ${manifest.id}。`);
+    const installPath = path.join(this.installedModulesDir(), moduleId);
+    const snapshotPath = await this.snapshotIfExists(installPath, moduleId);
+    await fs.rm(installPath, { recursive: true, force: true });
+    await copyDirectory(bundledDir, installPath);
+    await this.appendHistory({
+      action: 'repair',
+      moduleId,
+      moduleName: manifest.name,
+      version: manifest.version,
+      status: 'success',
+      summary: `已用随包副本修复重装模块 ${manifest.name}`,
+      details: `清单版本 ${manifest.version}；安装目录已按随包副本整体重建。`,
+      snapshotPath
+    });
+    return { moduleId, moduleName: manifest.name, version: manifest.version, modules: await this.scanInstalledModules() };
   }
 
   /** 已登记的开发源链接（moduleId → 链接条目）。 */
@@ -1024,8 +1096,8 @@ function compareModuleVersions(left: string, right: string): number {
   return leftPrerelease ? -1 : 1;
 }
 
-export function createModuleService(workspaceRoot: string): ModuleService {
-  return new ModuleService(workspaceRoot);
+export function createModuleService(workspaceRoot: string, options: ModuleServiceOptions = {}): ModuleService {
+  return new ModuleService(workspaceRoot, options);
 }
 
 function normalizeMarketModules(raw: any, source: MarketSource, installedById: Map<string, string>): MarketModule[] {
