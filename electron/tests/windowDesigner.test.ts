@@ -369,6 +369,26 @@ test('控件工具箱按注册模块分为基础、高级、浏览器和 New_Emo
   assert.ok(newEmojiGroups.find(group => group.id === 'basic')?.controlTypes.includes('ComboBox'));
 });
 
+test('CEF3无头浏览器是可在设计器创建的非可视资源，并与 CefBrowser 同落浏览器组', () => {
+  assert.ok(CREATABLE_DESIGNER_CONTROL_TYPES.includes('CefHeadlessBrowser'));
+  const definition = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'CefHeadlessBrowser');
+  assert.ok(definition, '注册表缺少 CefHeadlessBrowser');
+  assert.equal(definition!.isVisual, false);
+  assert.equal(definition!.category, '非可视');
+  assert.equal(definition!.moduleId, 'lingbuilder.cef3.browser');
+  assert.deepEqual(definition!.events, [], '一期不派发事件，不得声明事件');
+  // 持久化字段名与 EdgeView 无头组件同口径（instanceId / autoStart / proxyServer），
+  // 视口宽高是 CEF OSR 专有；两个引擎的编号口径不一致会让用户在同一项目里面对两套惯例。
+  assert.deepEqual(
+    definition!.properties.map(item => item.key),
+    ['ownerWindowId', 'instanceId', 'url', 'cacheDir', 'proxyServer', 'viewWidth', 'viewHeight', 'autoStart']
+  );
+  const browserGroup = createControlToolboxGroups(CREATABLE_DESIGNER_CONTROL_TYPES, false)
+    .find(group => group.id === 'browser');
+  assert.ok(browserGroup?.controlTypes.includes('CefBrowser'));
+  assert.ok(browserGroup?.controlTypes.includes('CefHeadlessBrowser'), '无头组件必须与 CefBrowser 同组，不得新建分组');
+});
+
 test('控件工具箱的未启用提示使用中文分组名而非内部模块 ID', () => {
   assert.equal(
     getControlToolboxModuleDisabledMessage('lingbuilder.win32.common-controls'),

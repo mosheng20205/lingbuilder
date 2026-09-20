@@ -9,7 +9,7 @@ export type LingControlType =
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
   | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'
-  | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser' | 'FBroBrowser' | 'EdgeViewHeadlessBrowser';
+  | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser' | 'FBroBrowser' | 'FBroHeadlessBrowser' | 'EdgeViewHeadlessBrowser' | 'CefHeadlessBrowser';
 
 export interface LingEventBinding {
   [eventName: string]: string;
@@ -271,7 +271,38 @@ export interface LingEdgeViewHeadlessResource {
   autoStart: boolean;
 }
 
-export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingMenuResource | LingEdgeViewHeadlessResource;
+/**
+ * CEF3 无头浏览器（CEF 官方无窗口渲染 / OSR）：运行期不创建任何窗口，也没有画面或截图。
+ * 与 EdgeView 无头组件不同：EdgeView 用「从不可见的离屏宿主」承载 WebView2（隐窗伪无头），
+ * 本资源走 CEF windowless 真无头，控制台项目（无消息泵）同样可用。
+ */
+export interface LingCefHeadlessResource {
+  id: string;
+  type: 'CefHeadlessBrowser';
+  name: string;
+  /** 仅用于设计器画布内占位的水平坐标，不生成运行时控件。 */
+  designerX?: number;
+  /** 仅用于设计器画布内占位的垂直坐标，不生成运行时控件。 */
+  designerY?: number;
+  /** 组件所属窗口；无头实例在该窗口创建期创建并随窗口销毁关闭。 */
+  ownerWindowId: string;
+  /** CEF3 无头实例编号（正整数，CEF3 引擎内唯一，运行时键为 2000000 + 该值）；CEF3无头_* 命令按它寻址。 */
+  instanceId: number;
+  /** 启动地址；留空按 about:blank 创建。 */
+  url: string;
+  /** 独立缓存目录；留空由生成器按实例编号派生 cef3-headless-<编号>。 */
+  cacheDir: string;
+  /** 独立代理地址；非空即该实例独立出口 IP，留空回落全局代理。 */
+  proxyServer: string;
+  /** OSR 渲染视口宽（CSS 像素），决定页面布局宽度与媒体查询结果。 */
+  viewWidth: number;
+  /** OSR 渲染视口高（CSS 像素）。 */
+  viewHeight: number;
+  /** 真=窗口创建期自动创建无头实例；假=只声明组件，由代码显式调用 CEF3_创建无头浏览器。 */
+  autoStart: boolean;
+}
+
+export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingMenuResource | LingFbroHeadlessResource | LingEdgeViewHeadlessResource | LingCefHeadlessResource;
 
 /**
  * 项目级内嵌资源：构建期把任意格式文件以 RCDATA 打进 EXE，运行期用「资源_*」命令按逻辑名读取。

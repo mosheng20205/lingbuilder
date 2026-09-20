@@ -104,6 +104,8 @@ import {
   LingEmbeddedResource,
   LingFileDialogResource,
   LingEdgeViewHeadlessResource,
+  LingCefHeadlessResource,
+  LingFbroHeadlessResource,
   LingImageListResource,
   LingMenuResource,
   LingMenuResourceItem,
@@ -304,7 +306,9 @@ export const CREATABLE_DESIGNER_CONTROL_TYPES: LingControlType[] = [
   'FileDialog',
   'ContextMenu',
   'PopupMenu',
-  'EdgeViewHeadlessBrowser'
+  'FBroHeadlessBrowser',
+  'EdgeViewHeadlessBrowser',
+  'CefHeadlessBrowser'
 ];
 
 const CONTROL_LABELS: Record<string, string> = Object.fromEntries([
@@ -337,7 +341,9 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   Upload: <Upload className="w-3.5 h-3.5 text-sky-400" />,
   DragUpload: <FileUp className="w-3.5 h-3.5 text-fuchsia-400" />,
   FileDialog: <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />,
+  FBroHeadlessBrowser: <Fingerprint className="w-3.5 h-3.5 text-sky-400" />,
   EdgeViewHeadlessBrowser: <Globe className="w-3.5 h-3.5 text-cyan-400" />,
+  CefHeadlessBrowser: <Globe className="w-3.5 h-3.5 text-blue-400" />,
   ContextMenu: <Menu className="w-3.5 h-3.5 text-amber-400" />,
   PopupMenu: <Menu className="w-3.5 h-3.5 text-orange-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
@@ -713,6 +719,16 @@ export default function WpfDesigner({
   const selectedEdgeViewHeadless = useMemo(
     () => activeEdgeViewHeadlessBrowsers.find(resource => resource.id === selectedResourceId) || null,
     [activeEdgeViewHeadlessBrowsers, selectedResourceId]
+  );
+  const activeCefHeadlessBrowsers = useMemo(
+    () => (project.resources || []).filter((resource): resource is LingCefHeadlessResource => (
+      resource.type === 'CefHeadlessBrowser' && resource.ownerWindowId === activeWindow.id
+    )),
+    [activeWindow.id, project.resources]
+  );
+  const selectedCefHeadless = useMemo(
+    () => activeCefHeadlessBrowsers.find(resource => resource.id === selectedResourceId) || null,
+    [activeCefHeadlessBrowsers, selectedResourceId]
   );
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -2152,30 +2168,34 @@ export default function WpfDesigner({
       addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}（实例编号 ${instanceId}）；窗口创建期自动建立无头实例，代码按实例编号寻址。`);
       return;
     }
-    if (type === 'ContextMenu' || type === 'PopupMenu') {
-      const existing = (project.resources || []).filter((resource): resource is LingMenuResource => resource.type === type);
-      const prefix = type === 'ContextMenu' ? 'context-menu' : 'popup-menu';
-      const label = type === 'ContextMenu' ? '上下文菜单' : '弹出菜单';
+    if (type === 'CefHeadlessBrowser') {
+      const existing = (project.resources || []).filter((resource): resource is LingCefHeadlessResource => resource.type === 'CefHeadlessBrowser');
       let suffix = existing.length + 1;
-      while ((project.resources || []).some(resource => resource.id === `${prefix}-${suffix}`)) suffix += 1;
-      const resource: LingMenuResource = {
-        id: `${prefix}-${suffix}`,
-        type,
-        name: `${label}${suffix}`,
-        designerX: 15 + (((activeFileDialogs.length + activeMenuResources.length) % 4) * 145),
-        designerY: Math.max(0, activeWindow.height - windowContentOffset - 55),
+      while ((project.resources || []).some(resource => resource.id === `cef-headless-${suffix}`)) suffix += 1;
+      // 实例编号在 CEF3 无头族内项目级唯一（运行时键 2000000+编号）；与 EdgeView/FBro 各自的编号互不占用，
+      // 但重复编号会在生成期被构建门禁中文阻断，所以这里取第一个空号而不是让用户自己撞。
+      let instanceId = 1;
+      while (existing.some(resource => resource.instanceId === instanceId)) instanceId += 1;
+      const resource: LingCefHeadlessResource = {
+        id: `cef-headless-${suffix}`,
+        type: 'CefHeadlessBrowser',
+        name: `CEF3无头浏览器${suffix}`,
+        designerX: 15 + ((suffix - 1) % 4) * 145,
+        designerY: Math.max(0, activeWindow.height - windowContentOffset - 105),
         ownerWindowId: activeWindow.id,
-        targetControlId: type === 'ContextMenu' ? activeWindow.id : '',
-        items: [
-          { id: 'item-1', label: '菜单项 1', enabled: true },
-          { id: 'item-2', label: '菜单项 2', enabled: true }
-        ]
+        instanceId,
+        url: 'https://www.baidu.com',
+        cacheDir: `.cef3/headless-${instanceId}`,
+        proxyServer: '',
+        viewWidth: 1280,
+        viewHeight: 720,
+        autoStart: true
       };
       setProject(previous => ({ ...previous, resources: [...(previous.resources || []), resource] }));
       selectOnlyControl(null);
       setSelectedResourceId(resource.id);
       setActiveInspectorTab('properties');
-      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}。`);
+      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}（实例编号 ${instanceId}）；走 CEF 官方无窗口渲染，不创建任何窗口，代码按 CEF3无头_*(实例编号) 寻址。`);
       return;
     }
     const stableDesignerType = moduleControl?.namespacedType || (moduleControl ? `${NEW_EMOJI_MODULE_ID}/${moduleControl.type}` : undefined);
@@ -3632,6 +3652,52 @@ export default function WpfDesigner({
                 </div>
               );
             })}
+            {activeCefHeadlessBrowsers.map((resource, index) => {
+              const position = getDisplayedResourcePosition(resource, { x: resource.designerX ?? 15 + (index % 4) * 145, y: resource.designerY ?? 0 });
+              const selected = selectedResourceId === resource.id;
+              return (
+                <div
+                  key={resource.id}
+                  ref={registerDesignerNavigationTarget('resource', resource.id)}
+                  data-designer-resource-id={resource.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`CEF3无头浏览器占位：${resource.name}`}
+                  aria-pressed={selected}
+                  onContextMenu={event => openResourceContextMenu(event, resource.id)}
+                  onClick={event => {
+                    event.stopPropagation();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  className={`absolute z-30 flex cursor-pointer items-center gap-2 rounded border border-dashed px-2 shadow-md select-none ${
+                    selected
+                      ? 'border-blue-300 bg-blue-500/25 ring-2 ring-blue-400'
+                      : isDarkMode
+                        ? 'border-blue-500/70 bg-[#122033] hover:bg-blue-500/20'
+                        : 'border-blue-600 bg-blue-50 hover:bg-blue-100'
+                  }`}
+                  style={{ left: `${position.x}px`, top: `${position.y + windowContentOffset}px`, width: '135px', height: '42px' }}
+                  title={`设计期非可视组件：走 CEF 官方无窗口渲染（OSR），不创建任何窗口也没有画面（实例编号 ${resource.instanceId}），命令按 CEF3无头_取页面文本/执行JS 的实例编号寻址`}
+                >
+                  <Globe className="h-4 w-4 shrink-0 text-blue-400" aria-hidden="true" />
+                  <span className="min-w-0 leading-tight">
+                    <span className={`block truncate text-[10px] font-semibold ${isDarkMode ? 'text-blue-100' : 'text-blue-900'}`}>{resource.name}</span>
+                    <span className={`block text-[8px] ${isDarkMode ? 'text-blue-300/75' : 'text-blue-700'}`}>CEF3无头 · 实例{resource.instanceId}</span>
+                  </span>
+                </div>
+              );
+            })}
             </div>
             <div
               ref={canvasResizePreviewRef}
@@ -3699,7 +3765,23 @@ export default function WpfDesigner({
 
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {activeInspectorTab === 'properties' && (
-              selectedEdgeViewHeadless ? (
+              selectedCefHeadless ? (
+                <CefHeadlessProperties
+                  resource={selectedCefHeadless}
+                  windows={project.windows}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedCefHeadless.id && resource.type === 'CefHeadlessBrowser'
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                  onDelete={() => {
+                    setProject(previous => ({ ...previous, resources: (previous.resources || []).filter(resource => resource.id !== selectedCefHeadless.id) }));
+                    setSelectedResourceId(null);
+                  }}
+                />
+              ) : selectedEdgeViewHeadless ? (
                 <EdgeViewHeadlessProperties
                   resource={selectedEdgeViewHeadless}
                   windows={project.windows}
@@ -3808,8 +3890,12 @@ export default function WpfDesigner({
             )}
 
             {activeInspectorTab === 'events' && (
-              selectedEdgeViewHeadless ? (
+              selectedCefHeadless ? (
+                <CefHeadlessEvents resource={selectedCefHeadless} isDarkMode={isDarkMode} />
+              ) : selectedEdgeViewHeadless ? (
                 <EdgeViewHeadlessEvents resource={selectedEdgeViewHeadless} isDarkMode={isDarkMode} />
+              ) : selectedFbroHeadless ? (
+                <FBroHeadlessEvents resource={selectedFbroHeadless} isDarkMode={isDarkMode} />
               ) : selectedFileDialog ? (
                 <FileDialogEvents
                   resource={selectedFileDialog}
@@ -5976,6 +6062,66 @@ function EdgeViewHeadlessEvents({ resource, isDarkMode }: { resource: LingEdgeVi
         处理器内用 EdgeView_取最近事件实例({resource.instanceId}) / EdgeView_取事件数据实例({resource.instanceId}) 读取数据。
       </div>
       <div className={isDarkMode ? 'text-slate-500' : 'text-slate-500'}>完整事件清单见模块文档《EdgeView 浏览器模块 API》。</div>
+    </div>
+  );
+}
+
+function CefHeadlessProperties({
+  resource,
+  windows,
+  isDarkMode,
+  onChange,
+  onDelete
+}: {
+  resource: LingCefHeadlessResource;
+  windows: LingWindowModel[];
+  isDarkMode: boolean;
+  onChange: (fields: Partial<LingCefHeadlessResource>) => void;
+  onDelete: () => void;
+}) {
+  const inputClass = `w-full rounded border px-1.5 py-1 text-[10px] ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`;
+  return (
+    <div className="space-y-3" aria-label={`CEF3无头浏览器属性：${resource.name}`}>
+      <div className={`flex items-center gap-2 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}>
+        <Globe className="h-4 w-4 text-blue-500" />
+        <span className="font-semibold">CEF3无头浏览器：{resource.name}</span>
+        <span className="ml-auto rounded border border-blue-500/30 px-1.5 py-0.5 text-[8px] text-blue-500">官方 OSR 真无头</span>
+      </div>
+      <PropertyGroup title="外观与位置" isDarkMode={isDarkMode}>
+        <PropertyRow label="名称" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器组件名称" value={resource.name} onChange={event => onChange({ name: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="左" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器左坐标" type="number" min={0} value={resource.designerX ?? 0} onChange={event => onChange({ designerX: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="顶" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器顶坐标" type="number" min={0} value={resource.designerY ?? 0} onChange={event => onChange({ designerY: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+      </PropertyGroup>
+      <PropertyGroup title="无头实例" isDarkMode={isDarkMode}>
+        <PropertyRow label="所属窗口" isDarkMode={isDarkMode}><select aria-label="CEF3无头浏览器所属窗口" value={resource.ownerWindowId} onChange={event => onChange({ ownerWindowId: event.target.value })} className={inputClass}>{windows.map(window => <option key={window.id} value={window.id}>{window.title}</option>)}</select></PropertyRow>
+        <PropertyRow label="实例编号" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器实例编号" type="number" min={1} value={resource.instanceId} onChange={event => onChange({ instanceId: Math.max(1, Math.trunc(Number(event.target.value) || 1)) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="打开地址" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器打开地址" value={resource.url} onChange={event => onChange({ url: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="缓存目录" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器缓存目录" value={resource.cacheDir} placeholder="留空按 cef3-headless-编号" onChange={event => onChange({ cacheDir: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="独立代理" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器独立代理地址" value={resource.proxyServer} placeholder="http://127.0.0.1:7890（留空回落全局代理）" onChange={event => onChange({ proxyServer: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="视口宽" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器视口宽" type="number" min={1} value={resource.viewWidth} onChange={event => onChange({ viewWidth: Math.max(1, Math.trunc(Number(event.target.value) || 1)) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="视口高" isDarkMode={isDarkMode}><input aria-label="CEF3无头浏览器视口高" type="number" min={1} value={resource.viewHeight} onChange={event => onChange({ viewHeight: Math.max(1, Math.trunc(Number(event.target.value) || 1)) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="自动启动" isDarkMode={isDarkMode}><span className="flex items-center gap-1 text-[10px]"><input aria-label="CEF3无头浏览器窗口创建期自动启动" type="checkbox" checked={resource.autoStart} onChange={event => onChange({ autoStart: event.target.checked })} />窗口创建期自动建立无头实例</span></PropertyRow>
+      </PropertyGroup>
+      <div className="text-[9px] leading-4 text-slate-500">走 CEF 官方无窗口渲染（OSR）：不创建任何窗口，任务栏与界面零显示，控制台项目同样可用。视口宽高决定页面布局宽度与媒体查询结果，出帧后可用 <code>CEF3无头_取视口JSON({resource.instanceId})</code> 回读实际渲染尺寸。</div>
+      <p aria-label="无头浏览器说明" className="text-[9px] leading-4 text-amber-500/90">无头实例走 CEF 官方无窗口渲染，不创建任何窗口，也没有画面或截图。取内容用 <code>CEF3无头_取页面文本({resource.instanceId}, 15000)</code> / <code>CEF3无头_执行JS({resource.instanceId}, "...")</code>；一期不派发事件，先 <code>CEF3无头_等待加载完成({resource.instanceId}, 15000)</code> 再取内容，事件用 <code>CEF3无头_取事件JSON({resource.instanceId})</code> 轮询。</p>
+      <button type="button" onClick={onDelete} className="flex w-full items-center justify-center gap-1 rounded border border-red-500/30 py-1.5 text-[10px] text-red-400 hover:bg-red-500/10"><Trash2 className="h-3 w-3" />删除CEF3无头浏览器</button>
+    </div>
+  );
+}
+
+function CefHeadlessEvents({ resource, isDarkMode }: { resource: LingCefHeadlessResource; isDarkMode: boolean }) {
+  return (
+    <div className="space-y-2 p-1 text-[10px] leading-5" aria-label={`CEF3无头浏览器事件说明：${resource.name}`}>
+      <div className={`font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>一期不派发中文事件处理器</div>
+      <div className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>
+        无头实例没有宿主窗口，控件版事件派发会因缺少宿主直接丢弃，所以绑定 &amp;处理器 对它无效。<br />
+        改用轮询：<br />
+        CEF3无头_等待加载完成({resource.instanceId}, 15000)<br />
+        调试输出(CEF3无头_取事件JSON({resource.instanceId}))
+        <br />
+        事件缓冲上限 200 条、只读不清空，超限丢最旧。
+      </div>
+      <div className={isDarkMode ? 'text-slate-500' : 'text-slate-500'}>需要事件驱动请改用可见的 CEF3浏览器控件，或窗口创建后用代码创建的实例配合轮询。</div>
     </div>
   );
 }

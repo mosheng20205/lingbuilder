@@ -72,6 +72,10 @@ test('高级非可视资源清单使用实际持久化属性键', () => {
   assert.deepEqual(propertyKeys('ContextMenu'), ['ownerWindowId', 'targetControlId', 'items']);
   assert.deepEqual(propertyKeys('PopupMenu'), ['ownerWindowId', 'items']);
   assert.deepEqual(propertyKeys('PropertySheet'), ['title', 'pages']);
+  // CEF3 无头资源的持久化键必须与 EdgeView 无头同口径（instanceId / proxyServer / autoStart），
+  // 视口宽高是 CEF OSR 专有；改名或漏键会让生成期与已保存项目对不上。
+  assert.deepEqual(propertyKeys('CefHeadlessBrowser'), ['ownerWindowId', 'instanceId', 'url', 'cacheDir', 'proxyServer', 'viewWidth', 'viewHeight', 'autoStart']);
+  assert.deepEqual(getEventsForType('CefHeadlessBrowser'), [], '一期不派发事件，不得声明事件');
   assert.equal(getEventsForType('PropertySheet')[0]?.name, 'Applied');
 });
 
