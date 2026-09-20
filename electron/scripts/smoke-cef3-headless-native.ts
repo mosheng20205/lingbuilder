@@ -24,47 +24,57 @@ const electronRoot = path.join(repoRoot, 'electron');
 const projectId = 'cef3-headless-console-smoke';
 const psProbe = path.join(repoRoot, '.lingbuilder-build', `${projectId}-window-probe.ps1`);
 const pageFile = path.join(repoRoot, '.lingbuilder-build', `${projectId}-page.html`);
+const firstPageFile = path.join(repoRoot, '.lingbuilder-build', `${projectId}-page-first.html`);
 
 const MARKERS = [
   '标题已取到', 'JS已取到', '源码已取到', '文本已取到', '帧数已确认',
-  '视口已确认', '句柄已确认', '事件已轮询', '无头冒烟全部通过'
+  '视口已确认', '句柄已确认', '事件已轮询', '导航已补发', '无头冒烟全部通过'
 ] as const;
 
 // 冒烟页面刻意用本地文件而不是第三方站点：外部页面随时可能改版、变慢或被墙，
 // 那会把「无头链路是否可用」测成网络可达性测试。本地页面内容固定，因此标题和
 // DOM 断言都能取精确值（不再是「非空」这种弱断言）。
+// 两个页面是为了验「创建后立刻导航」这条链：创建用 first 页，随后马上导航到 target 页；
+// 只有排队导航被真正补发，读到的标题才是 target 页的标题（bridgeReady 被预置时这里会读到 first 页）。
 const PAGE_TITLE = 'LingBuilderCef3Headless';
 const PAGE_MARKER_TEXT = 'headless-osr-probe';
-const PAGE_HTML = [
+const FIRST_PAGE_TITLE = 'LingBuilderCef3HeadlessFirst';
+const pageHtml = (title: string, marker: string): string => [
   '<!doctype html>',
   '<html><head><meta charset="utf-8">',
-  `<title>${PAGE_TITLE}</title>`,
+  `<title>${title}</title>`,
   '</head><body>',
-  `<p id="probe">${PAGE_MARKER_TEXT}</p>`,
+  `<p id="probe">${marker}</p>`,
   '</body></html>',
   ''
 ].join('\n');
-// 页面标题与正文都是固定 ASCII：断言可以直接取精确值。
-// 执行JS 返回的是 DevTools 结果信封（形如 {"result":{…}}），格式属于桥的实现细节，
-// 因此这里只断言「拿到非空结果」，把精确断言留给标题与 取页面文本 的正文。
+const PAGE_HTML = pageHtml(PAGE_TITLE, PAGE_MARKER_TEXT);
+const FIRST_PAGE_HTML = pageHtml(FIRST_PAGE_TITLE, 'headless-osr-first');
+// 一条表达式同时验标题和 DOM：返回固定数字，避免依赖执行JS 结果的 JSON 引号形态。
 const PAGE_JS_PROBE = `document.title === '${PAGE_TITLE}' && document.getElementById('probe').textContent === '${PAGE_MARKER_TEXT}' ? 42 : 0`;
 
 // 断言全部编进 .lcpp：任何一步不成立就用非 0 退出码结束并打印中文原因，
 // 脚本侧只断言「退出码 0 + 全部标记 + 无可见顶层窗口」，不去解析数字。
-function headlessSource(pageUrl: string): string {
+function headlessSource(firstUrl: string, targetUrl: string): string {
   return [
   '包 无头冒烟',
   '',
   '类 程序',
   '公开',
   '  整数型 启动()',
-  `    如果真 (CEF3_创建无头浏览器(1, "${pageUrl}", ".cef3/smoke-headless", "", 1024, 640) == 0)`,
+  `    如果真 (CEF3_创建无头浏览器(1, "${firstUrl}", ".cef3/smoke-headless", "", 1024, 640) == 0)`,
   '      调试输出("创建无头浏览器失败")',
   '      返回 (11)',
   '    如果真结束',
   '    如果真 (CEF3无头_是否已创建(1) == 0)',
   '      调试输出("无头实例未登记")',
   '      返回 (12)',
+  '    如果真结束',
+  '    调试输出("事件创建后=" + CEF3无头_取事件JSON(1))',
+  // 创建返回后立刻导航：此刻 CEF 侧多半还没建好浏览器，本次导航必须走排队补发。
+  `    如果真 (CEF3无头_导航(1, "${targetUrl}") == 0)`,
+  '      调试输出("创建后立刻导航被拒")',
+  '      返回 (24)',
   '    如果真结束',
   '    如果真 (CEF3无头_等待加载完成(1, 25000) == 0)',
   '      调试输出("等待加载完成超时")',
@@ -78,6 +88,7 @@ function headlessSource(pageUrl: string): string {
   '      调试输出("事件=" + CEF3无头_取事件JSON(1))',
   '      返回 (14)',
   '    如果真结束',
+  '    调试输出("导航已补发")',
   '    调试输出("标题已取到")',
   '    局部 文本型 脚本结果',
   `    脚本结果 = CEF3无头_执行JS(1, "${PAGE_JS_PROBE}")`,
@@ -208,7 +219,7 @@ function staticSourceChecks(): void {
   });
   const generated = generateLingCppNativeWin32Project(project, {
     activeWindowId: 'main-window',
-    lingCppSourceCode: headlessSource(fileUrl(pageFile)),
+    lingCppSourceCode: headlessSource(fileUrl(firstPageFile), fileUrl(pageFile)),
     lingCppSourceFilePath: 'src/MainWindow.lcpp',
     outputKind: 'console-application',
     enabledModules: installed
@@ -286,7 +297,9 @@ async function resetSmokeProject(keepForDebug: boolean): Promise<void> {
     path.join(repoRoot, 'src', projectId),
     path.join(repoRoot, 'config', projectId),
     path.join(repoRoot, '.lingbuilder', 'projects', projectId),
-    path.join(repoRoot, '.lingbuilder-build', projectId)
+    path.join(repoRoot, '.lingbuilder-build', projectId),
+    pageFile,
+    firstPageFile
   ]) {
     await fs.rm(target, { recursive: true, force: true });
   }
@@ -304,6 +317,7 @@ async function main(): Promise<void> {
   await fs.mkdir(path.dirname(psProbe), { recursive: true });
   await fs.writeFile(psProbe, WINDOWS_PROBE, 'utf8');
   await fs.writeFile(pageFile, PAGE_HTML, 'utf8');
+  await fs.writeFile(firstPageFile, FIRST_PAGE_HTML, 'utf8');
 
   const service = new AiBridgeService({
     workspaceRoot: repoRoot,
@@ -331,7 +345,7 @@ async function main(): Promise<void> {
     const projectSourceDir = path.join(repoRoot, 'src', projectId);
     const lcppFiles = (await fs.readdir(projectSourceDir)).filter(name => name.toLowerCase().endsWith('.lcpp'));
     if (!lcppFiles.length) throw new Error(`控制台模板没有生成 .lcpp 源码：${projectSourceDir}`);
-    await fs.writeFile(path.join(projectSourceDir, lcppFiles[0]), headlessSource(fileUrl(pageFile)), 'utf8');
+    await fs.writeFile(path.join(projectSourceDir, lcppFiles[0]), headlessSource(fileUrl(firstPageFile), fileUrl(pageFile)), 'utf8');
     for (const extra of lcppFiles.slice(1)) await fs.rm(path.join(projectSourceDir, extra), { force: true });
 
     const built = await service.buildRun({ projectId, run: false, approved: true } as never);
@@ -356,13 +370,12 @@ async function main(): Promise<void> {
   if (windows.length) throw new Error(`无头运行期出现可见顶层窗口：${JSON.stringify(windows)}\n${stdout}`);
   // 全绿才清理；失败时保留项目与构建产物，便于直接复看生成的 main.cpp 与 exe。
   await resetSmokeProject(false);
-  await fs.rm(pageFile, { force: true });
 
   console.log(JSON.stringify({
     ok: true,
     executable,
     exitCode,
-    checks: [...MARKERS, '无可见顶层窗口探针', '无头创建路径零 HWND 静态扫描', 'wmain 子进程守卫存在', '等待加载完成先等浏览器对象就绪'],
+    checks: [...MARKERS, '无可见顶层窗口探针', '无头创建路径零 HWND 静态扫描', 'wmain 子进程守卫存在', '等待加载完成先等浏览器对象就绪', '创建后立刻导航经排队补发'],
     output: stdout.trim().split(/\r?\n/u).filter(line => line.trim()).slice(0, 14)
   }, null, 2));
 }

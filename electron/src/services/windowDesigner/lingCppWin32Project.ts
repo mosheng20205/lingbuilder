@@ -16019,15 +16019,9 @@ ${generateFbroVipIndividualRuntime(false)}
         if (TextEquals(eventName, L"加载状态改变")) instance.isLoading = std::wcsstr(fieldsJson, L"\\\"loading\\\":true") != nullptr;
         // 桥接层把 CefBrowserHost::CreateBrowser 投递到 CEF UI 线程执行，LB_CEF3_BrowserCreate 立刻返回句柄，
         // 但此刻 state->browser 仍为空，LB_CEF3_BrowserLoadUrl 会以「CEF3浏览器尚未创建完成」失败。
-        // 桥接层在发出本事件前已写入 state_->browser，所以这里是补发排队导航的最早安全时机。
-        if (TextEquals(eventName, L"浏览器创建完成") && !instance.bridgeReady) {
-            instance.bridgeReady = true;
-            if (!instance.pendingNavigation.empty()) {
-                const std::wstring target = instance.pendingNavigation;
-                instance.pendingNavigation.clear();
-                if (LB_CEF3_BrowserLoadUrl(instance.bridgeHandle, target.c_str()) == LB_CEF3_OK) instance.currentUrl = target;
-            }
-        }
+        // 桥接层在发出本事件前已写入 state_->browser，所以这里是补发排队导航的最早安全时机；
+        // 事件没赶上（登记晚于事件）时由 CEF3_浏览器对象已就绪 在使用点兜底补发。
+        if (TextEquals(eventName, L"浏览器创建完成")) CEF3_补发排队导航(instance);
         auto fields = CEF3_解析Bridge事件字段(fieldsJson);
         // 代理认证自动应答：桥「身份验证请求」携带 isProxy 时，实例自身凭据优先；实例没有自带代理
         // 且配置了全局凭据时用全局凭据（整进程共用一个出口代理的场景）；两处都没有才走下面的常规
@@ -16494,7 +16488,9 @@ ${generateFbroVipIndividualRuntime(false)}
         LB_CEF3_HANDLE handle = LB_CEF3_BrowserCreateWindowless(&bridgeConfig);
         if (!handle) { 调试输出(L"CEF3 创建无头浏览器失败：OSR 浏览器创建失败（检查 CEF3 桥与运行时）。"); return 0; }
         instance->bridgeHandle = handle;
-        instance->created = true; instance->bridgeReady = true;
+        // 只登记 created，不得预置 bridgeReady：此刻 CEF 侧浏览器还没建出来，预置会把
+        // CEF3_导航_按实例 的排队补发变成死路（创建后立刻导航必然以「尚未创建完成」失败）。
+        instance->created = true;
         instance->currentUrl = bridgeConfig.initial_url ? bridgeConfig.initial_url : L"";
         cefBrowsers_[runtimeId] = std::move(instance);
         调试输出(L"CEF3 无头浏览器已创建（OSR 渲染，不创建窗口，一期不提供截图）。");
@@ -16560,7 +16556,7 @@ ${generateFbroVipIndividualRuntime(false)}
         LB_CEF3_HANDLE handle = LB_CEF3_BrowserCreateChrome(&bridgeConfig);
         if (!handle) { 调试输出(L"CEF3 创建弹窗失败：Chrome Runtime 顶层窗口创建失败（检查 CEF3 桥与运行时）。"); return 0; }
         instance->bridgeHandle = handle;
-        instance->created = true; instance->bridgeReady = true;
+        instance->created = true;   // 同无头路径：bridgeReady 只能由「已就绪」确认或创建完成事件置位
         instance->currentUrl = bridgeConfig.initial_url ? bridgeConfig.initial_url : L"";
         cefBrowsers_[runtimeId] = std::move(instance);
         return 1;
@@ -16612,7 +16608,7 @@ ${generateFbroVipIndividualRuntime(false)}
         CefBrowserInstance* stored = instance.get();
         LB_CEF3_HANDLE handle = LB_CEF3_BrowserCreate(&bridgeConfig);
         if (!handle) { if (host && IsWindow(host)) DestroyWindow(host); 调试输出(L"CEF3 创建区域失败：浏览器创建请求失败。"); return 0; }
-        stored->bridgeHandle = handle; stored->created = true; stored->bridgeReady = true;
+        stored->bridgeHandle = handle; stored->created = true;
         stored->currentUrl = bridgeConfig.initial_url ? bridgeConfig.initial_url : L"";
         cefBrowsers_[runtimeId] = std::move(instance);
         LB_CEF3_SetEventCallbackV4(handle, &LingWindowBase::CEF3_Bridge事件回调V4, this);
@@ -16675,15 +16671,38 @@ ${generateFbroVipIndividualRuntime(false)}
     }
 #endif
 
-    // 导航核心：控件版与无头版共用。桥句柄未就绪时写排队导航，由「浏览器创建完成」事件补发，
-    // 这条时序是 CEF 把创建投递到 UI 线程造成的，两种寻址方式都没有例外。
+    // 排队导航的唯一补发口：桥的创建是投递到 CEF UI 线程的，浏览器对象真正建好之前 LB_CEF3_BrowserLoadUrl
+    // 会以「CEF3浏览器尚未创建完成」失败，所以未就绪时只把目标写进 pendingNavigation，谁先确认「已就绪」
+    // 谁调用本函数补发。「浏览器创建完成」事件与无头等待的就绪轮询共用这一份实现：无头实例派发不了
+    // 中文事件处理器、控制台也没有消息泵，只靠事件边沿会把刚排队的导航静默丢掉。置位与清空都在同一处，
+    // 重复调用无害（队列已空即直接返回）。
+    void CEF3_补发排队导航(CefBrowserInstance& instance) {
+        instance.bridgeReady = true;
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (instance.pendingNavigation.empty()) return;
+        const std::wstring target = instance.pendingNavigation;
+        instance.pendingNavigation.clear();
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!instance.bridgeHandle) return;
+        if (LB_CEF3_BrowserLoadUrl(instance.bridgeHandle, target.c_str()) == LB_CEF3_OK) instance.currentUrl = target;
+#else
+        if (!instance.browser) return;
+        instance.browser->GetMainFrame()->LoadURL(target);
+        instance.currentUrl = target;
+#endif
+#endif
+    }
+
+    // 导航核心：控件版与无头版共用。桥句柄未就绪时写排队导航，由 CEF3_补发排队导航 补发
+    // （事件与就绪轮询两条到达路径），这条时序是 CEF 把创建投递到 UI 线程造成的，两种寻址方式都没有例外。
     int CEF3_导航_按实例(CefBrowserInstance* instance, const wchar_t* address) {
 #if LINGBUILDER_CEF3_AVAILABLE
         if (!instance) return 0;
-#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         if (!address || !address[0]) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         if (!instance->created || !instance->bridgeHandle) return 0;
-        if (!instance->bridgeReady) {
+        // 就绪判定自带补发：CEF 已建好就直接下发，还没建好只记一次排队目标。
+        if (!CEF3_浏览器对象已就绪(instance)) {
             instance->pendingNavigation = address;
             return 1;
         }
@@ -16691,8 +16710,11 @@ ${generateFbroVipIndividualRuntime(false)}
         if (result == LB_CEF3_OK) instance->currentUrl = address;
         return result == LB_CEF3_OK ? 1 : 0;
 #else
-        if (!instance->created || !instance->browser) return 0;
-        if (!address || !address[0]) return 0;
+        if (!instance->created) return 0;
+        if (!CEF3_浏览器对象已就绪(instance)) {
+            instance->pendingNavigation = address;
+            return 1;
+        }
         instance->browser->GetMainFrame()->LoadURL(address);
         instance->currentUrl = address;
         return 1;
@@ -16757,13 +16779,17 @@ ${generateFbroVipIndividualRuntime(false)}
     // CEF 浏览器对象是否真的建好了。桥的创建是投递到 CEF UI 线程后异步完成的，句柄有效不代表浏览器
     // 已存在，而 LB_CEF3_BrowserIsLoading 在对象缺失时同样返回 0——「未加载中」与「尚未创建」根本
     // 无法区分，所以只能正向确认：桥轨道问 CEF 的 IsValid，无桥轨道问实例自己持有的浏览器。
+    // 本函数带一处必要的副作用：确认已就绪就把 bridgeReady 对齐并补发排队导航，这样「事件先到还是
+    // 登记先到」都不影响结果——事件只是加速器，就绪真相由使用点自己问出来。
     int CEF3_浏览器对象已就绪(CefBrowserInstance* instance) {
 #if LINGBUILDER_CEF3_AVAILABLE
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
-        return instance && instance->bridgeHandle && LB_CEF3_BrowserIsValid(instance->bridgeHandle) == 1 ? 1 : 0;
+        if (!instance || !instance->bridgeHandle || LB_CEF3_BrowserIsValid(instance->bridgeHandle) != 1) return 0;
 #else
-        return instance && instance->created && instance->browser ? 1 : 0;
+        if (!instance || !instance->created || !instance->browser) return 0;
 #endif
+        if (!instance->bridgeReady) CEF3_补发排队导航(*instance);
+        return 1;
 #else
         (void)instance; return 0;
 #endif

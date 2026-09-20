@@ -256,6 +256,32 @@ test('headless wait gates on browser-object readiness, not on IsLoading alone', 
   assert.match(contributionOf('CEF3无头_等待加载完成')!.description, /主文档已提交/);
 });
 
+test('queued navigation is flushed from one place and does not depend on the event edge alone', () => {
+  const code = generatedConsoleMain();
+  // 排队补发只允许一份实现：置位 + 下发 + 清空都在 CEF3_补发排队导航 里，事件与就绪轮询都调它。
+  const flush = memberBody(code, 'void CEF3_补发排队导航(CefBrowserInstance& instance)');
+  assert.match(flush, /instance\.bridgeReady = true;/);
+  assert.match(flush, /instance\.pendingNavigation\.clear\(\);/);
+  assert.equal((code.match(/pendingNavigation\.clear\(\)/g) ?? []).length, 1, '排队导航补发必须收口成一份实现');
+  // 创建点不得预置 bridgeReady（预置会让排队分支永不生效，创建后立刻导航必然失败）。
+  const create = memberBody(code, 'int CEF3_创建无头浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory,');
+  assert.doesNotMatch(create, /bridgeReady = true/, '无头创建不得预置 bridgeReady');
+  assert.match(create, /instance->created = true;/);
+  for (const signature of [
+    'int CEF3_创建弹窗浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer)',
+    'int CEF3_创建区域(int instanceId, int left, int top, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer)'
+  ]) {
+    assert.doesNotMatch(memberBody(code, signature), /bridgeReady = true/, `${signature.split('(')[0]} 不得预置 bridgeReady`);
+  }
+  // 就绪判定自带补发：事件先到/登记先到都能收敛，导航走同一个就绪出口。
+  assert.match(memberBody(code, 'int CEF3_浏览器对象已就绪(CefBrowserInstance* instance)'), /CEF3_补发排队导航\(\*instance\)/);
+  assert.match(memberBody(code, 'int CEF3_导航_按实例(CefBrowserInstance* instance, const wchar_t* address)'), /CEF3_浏览器对象已就绪\(instance\)/);
+  assert.match(
+    memberBody(code, 'void CEF3_处理Bridge事件(const LB_CEF3_EVENT_PACKET_V3& packet, LB_CEF3_EVENT_RESPONSE_V3* response) {'),
+    /浏览器创建完成.*CEF3_补发排队导航\(instance\);/
+  );
+});
+
 test('every headless runtime wrapper exists in generated C++ and resolves by instance number', () => {
   const code = generatedConsoleMain();
   for (const [command, signature] of Object.entries(HEADLESS_RUNTIME_SIGNATURES)) {
