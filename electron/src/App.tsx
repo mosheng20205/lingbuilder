@@ -78,6 +78,7 @@ import UpdateDialog, { type UpdateDialogInfo } from './components/UpdateDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
 import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
+import ProjectTypeDialog from './components/ProjectTypeDialog';
 import RecentWorkspacesDialog from './components/RecentWorkspacesDialog';
 import WorkbenchConfirmDialog from './components/WorkbenchConfirmDialog';
 import CloudAccountLoginDialog from './components/CloudAccountLoginDialog';
@@ -1287,6 +1288,7 @@ export default function App() {
   const [showEnvironmentRepairCenter, setShowEnvironmentRepairCenter] = useState(false);
   const [showCliGuide, setShowCliGuide] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
+  const [showProjectTypeDialog, setShowProjectTypeDialog] = useState(false);
   const [createProjectName, setCreateProjectName] = useState('');
   const [createProjectTemplateId, setCreateProjectTemplateId] = useState<'blank-window' | 'windows-dll' | 'windows-console'>('blank-window');
   const [createSolutionName, setCreateSolutionName] = useState('');
@@ -4592,6 +4594,16 @@ void DisplayStatus() {
     }).catch(() => undefined);
   }, [solution.name, solution.projects.length]);
 
+  // 工作台内的「新建项目」与欢迎页同链路：先选项目类型，再进名称对话框。
+  const openProjectTypeDialog = useCallback(() => {
+    setShowProjectTypeDialog(true);
+  }, []);
+
+  const handleProjectTypeSelected = useCallback((projectType: 'windows-ui' | 'windows-dll' | 'windows-console') => {
+    setShowProjectTypeDialog(false);
+    openCreateSolutionProjectDialog(projectType);
+  }, [openCreateSolutionProjectDialog]);
+
   const handleCreateSolutionProject = useCallback(async (
     name: string,
     templateId: 'blank-window' | 'windows-dll' | 'windows-console' = createProjectTemplateId,
@@ -5554,7 +5566,7 @@ void DisplayStatus() {
     togglePanel: toggleBottomPanelVisibility,
     toggleAiPanel: toggleAiPanelVisibility,
     toggleTheme: toggleWorkbenchTheme,
-    createProject: openCreateSolutionProjectDialog,
+    createProject: openProjectTypeDialog,
     createSolutionFolder: handleCreateSolutionFolder,
     moveProjectToSolutionFolder: (requestedProjectId?: unknown, requestedFolderId?: unknown) => {
       const projectId = typeof requestedProjectId === 'string' ? requestedProjectId.trim() : '';
@@ -5621,6 +5633,7 @@ void DisplayStatus() {
     || showSponsorDialog
     || showCustomModal
     || showCreateProjectDialog
+    || showProjectTypeDialog
     || Boolean(solutionNameOperation)
     || showEnvironmentRepairCenter
     || showCliGuide
@@ -6903,7 +6916,7 @@ void DisplayStatus() {
               </span>
               {activeDropdown === 'file' && (
                 <div className={`absolute left-0 top-6 w-48 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-                  <button onClick={() => { openCreateSolutionProjectDialog(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { setShowProjectTypeDialog(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>新建项目</span>
                   </button>
                   <button onClick={() => { void handleToolbarAction('open'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -7672,7 +7685,7 @@ void DisplayStatus() {
           onExecuteCommand={executeWorkbenchCommand}
           activeProjectId={activeProjectId}
           onRefreshSolution={refreshSolution}
-          onCreateProject={openCreateSolutionProjectDialog}
+          onCreateProject={openProjectTypeDialog}
           onSetStartupProject={handleSetStartupProject}
           onConfigureProjectReferences={handleConfigureProjectReferences}
           onToggleMultiStartupProject={handleToggleMultiStartupProject}
@@ -7993,6 +8006,15 @@ void DisplayStatus() {
         onRollback={handleWorkspaceReplaceRollback}
         onReveal={match => { void handleWorkspaceSearchReveal(match); }}
         onSaveBeforeReplace={() => handleSaveWorkspace('工作区替换前保存')}
+      />
+
+      <ProjectTypeDialog
+        open={showProjectTypeDialog}
+        isDarkMode={isDarkMode}
+        onSelectWindowsUi={() => handleProjectTypeSelected('windows-ui')}
+        onSelectWindowsDll={() => handleProjectTypeSelected('windows-dll')}
+        onSelectWindowsConsole={() => handleProjectTypeSelected('windows-console')}
+        onClose={() => setShowProjectTypeDialog(false)}
       />
 
       <ProjectNameDialog
