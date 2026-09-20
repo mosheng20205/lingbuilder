@@ -17095,6 +17095,84 @@ ${generateFbroVipIndividualRuntime(false)}
         return static_cast<long long>(instance->bridgeHandle);
     }
 
+    // CEF 官方 OSR 浏览器级命令（按 CEF3无头_取浏览器句柄 的受管句柄寻址）。
+    // 红线：受管句柄基址按 int64 看恒为负数，判有效只能比 != 0，写 > 0 会把每个合法句柄判成无效。
+    int CEF3OSR_请求重绘(long long browserHandle, int paintElementType) {
+        if (browserHandle == 0) { 调试输出(L"CEF3 请求重绘失败：浏览器句柄为空，先用 CEF3无头_取浏览器句柄 取当前句柄。"); return 0; }
+        if (paintElementType != 0 && paintElementType != 1) { 调试输出(L"CEF3 请求重绘失败：元素类型只接受 0（视图）或 1（弹窗）。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (LB_CEF3_BrowserInvalidate(static_cast<LB_CEF3_HANDLE>(browserHandle), static_cast<int32_t>(paintElementType)) != LB_CEF3_OK) {
+            调试输出(CEF3_拼接桥接原因(L"CEF3 请求重绘失败").c_str());
+            return 0;
+        }
+        return 1;
+#else
+        调试输出(L"CEF3 请求重绘失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
+    int CEF3OSR_设置窗口外帧率(long long browserHandle, int frameRate) {
+        if (browserHandle == 0) { 调试输出(L"CEF3 设置窗口外帧率失败：浏览器句柄为空，先用 CEF3无头_取浏览器句柄 取当前句柄。"); return 0; }
+        if (frameRate < 0) { 调试输出(L"CEF3 设置窗口外帧率失败：帧率不能为负数，0 表示不限制。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (LB_CEF3_BrowserSetWindowlessFrameRate(static_cast<LB_CEF3_HANDLE>(browserHandle), static_cast<int32_t>(frameRate)) != LB_CEF3_OK) {
+            调试输出(CEF3_拼接桥接原因(L"CEF3 设置窗口外帧率失败").c_str());
+            return 0;
+        }
+        return 1;
+#else
+        调试输出(L"CEF3 设置窗口外帧率失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
+    // 帧率 0 是合法值（不限制），所以读失败必须用 -1 区分，不能返回 0。
+    int CEF3OSR_取窗口外帧率(long long browserHandle) {
+        if (browserHandle == 0) { 调试输出(L"CEF3 取窗口外帧率失败：浏览器句柄为空，先用 CEF3无头_取浏览器句柄 取当前句柄。"); return -1; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        int32_t frameRate = 0;
+        if (LB_CEF3_BrowserGetWindowlessFrameRate(static_cast<LB_CEF3_HANDLE>(browserHandle), &frameRate) != LB_CEF3_OK) {
+            调试输出(CEF3_拼接桥接原因(L"CEF3 取窗口外帧率失败").c_str());
+            return -1;
+        }
+        return static_cast<int>(frameRate);
+#else
+        调试输出(L"CEF3 取窗口外帧率失败：当前构建未启用 CEF3 桥。");
+        return -1;
+#endif
+    }
+
+    // 一期只点亮/关闭订阅位，帧内容不通过中文命令层外发；出帧证据用 CEF3无头_取渲染帧数。
+    int CEF3离屏_订阅像素帧(long long browserHandle, bool enabled) {
+        if (browserHandle == 0) { 调试输出(L"CEF3 订阅像素帧失败：浏览器句柄为空，先用 CEF3无头_取浏览器句柄 取当前句柄。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (LB_CEF3_RenderHandlerSubscribePaint(static_cast<LB_CEF3_HANDLE>(browserHandle), enabled ? 1 : 0) != LB_CEF3_OK) {
+            调试输出(CEF3_拼接桥接原因(L"CEF3 订阅像素帧失败").c_str());
+            return 0;
+        }
+        if (enabled) 调试输出(L"CEF3 像素帧订阅已点亮：一期不外发帧内容，出帧进度请用 CEF3无头_取渲染帧数。");
+        return 1;
+#else
+        调试输出(L"CEF3 订阅像素帧失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
+    int CEF3离屏_订阅视图矩形(long long browserHandle, bool enabled) {
+        if (browserHandle == 0) { 调试输出(L"CEF3 订阅视图矩形失败：浏览器句柄为空，先用 CEF3无头_取浏览器句柄 取当前句柄。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (LB_CEF3_RenderHandlerSubscribeViewRect(static_cast<LB_CEF3_HANDLE>(browserHandle), enabled ? 1 : 0) != LB_CEF3_OK) {
+            调试输出(CEF3_拼接桥接原因(L"CEF3 订阅视图矩形失败").c_str());
+            return 0;
+        }
+        return 1;
+#else
+        调试输出(L"CEF3 订阅视图矩形失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
     std::wstring CEF3无头_执行JS(int instanceId, const wchar_t* script) {
         CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
         if (!instance) { 调试输出(L"CEF3 执行JS失败：该实例编号不存在或浏览器尚未创建。"); return L""; }

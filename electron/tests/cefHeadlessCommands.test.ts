@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { CEF3_MODULE_FAMILY } from '../src/services/modules/moduleFamilies';
 import { InstalledModule } from '../src/services/modules/types';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { getLingCppControlReferenceDiagnostics } from '../src/services/lingCpp/controlReferenceService';
@@ -103,6 +104,37 @@ const consoleProject = (): LingWindowProject => ({
 const cef3BrowserModule: InstalledModule = {
   manifest: browser,
   installPath: 'builtin://lingbuilder.cef3.browser',
+  isBuiltin: true,
+  isInstalled: true,
+  isEnabledForProject: true,
+  diagnostics: []
+};
+
+// OSR 命令全部按句柄寻址，因此调用范式是「先取无头实例句柄，再逐条传给 CEF3OSR_*/CEF3离屏_*」。
+const OSR_SOURCE = [
+  '包 无头渲染演示',
+  '',
+  '类 程序',
+  '公开',
+  '  整数型 启动()',
+  '    局部 长整数型 句柄',
+  '    CEF3_创建无头浏览器(1, "https://www.example.com", "", "", 1280, 720)',
+  '    句柄 = CEF3无头_取浏览器句柄(1)',
+  '    CEF3OSR_设置窗口外帧率(句柄, 30)',
+  '    调试输出(CEF3OSR_取窗口外帧率(句柄))',
+  '    CEF3OSR_请求重绘(句柄, 0)',
+  '    CEF3离屏_订阅像素帧(句柄, 真)',
+  '    CEF3离屏_订阅视图矩形(句柄, 真)',
+  '    CEF3无头_关闭(1)',
+  '    返回 (0)',
+  '  结束',
+  '结束类',
+  ''
+].join('\n');
+
+const cef3OsrModule: InstalledModule = {
+  manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.osr') ?? browser,
+  installPath: 'builtin://lingbuilder.cef3.osr',
   isBuiltin: true,
   isInstalled: true,
   isEnabledForProject: true,
@@ -431,4 +463,126 @@ test('headless commands translate into real generated calls without unknown-comm
   assert.match(code, /CEF3无头_设置视口\(1, 1024, 640\);/);
   assert.match(code, /CEF3无头_取主框架\(1\);/);
   assert.match(code, /CEF3无头_执行JS\(1, L"document\.title"\)/);
+});
+
+// ── Task 10：lingbuilder.cef3.osr —— CEF 官方 OSR 接口首批（按浏览器句柄寻址） ──
+// 命令名与 scripts/generate-cef3-api-coverage.cjs 的权威映射表逐字一致，改名必须两处同改。
+const OSR_COMMANDS: Record<string, {
+  parameters: Array<[string, 'longLong' | 'int' | 'bool']>;
+  runtime: string;
+  bridgeExport: string;
+}> = {
+  'CEF3OSR_请求重绘': {
+    parameters: [['浏览器句柄', 'longLong'], ['元素类型', 'int']],
+    runtime: 'int CEF3OSR_请求重绘(long long browserHandle, int paintElementType)',
+    bridgeExport: 'LB_CEF3_BrowserInvalidate'
+  },
+  'CEF3OSR_设置窗口外帧率': {
+    parameters: [['浏览器句柄', 'longLong'], ['帧率', 'int']],
+    runtime: 'int CEF3OSR_设置窗口外帧率(long long browserHandle, int frameRate)',
+    bridgeExport: 'LB_CEF3_BrowserSetWindowlessFrameRate'
+  },
+  'CEF3OSR_取窗口外帧率': {
+    parameters: [['浏览器句柄', 'longLong']],
+    runtime: 'int CEF3OSR_取窗口外帧率(long long browserHandle)',
+    bridgeExport: 'LB_CEF3_BrowserGetWindowlessFrameRate'
+  },
+  'CEF3离屏_订阅像素帧': {
+    parameters: [['浏览器句柄', 'longLong'], ['是否订阅', 'bool']],
+    runtime: 'int CEF3离屏_订阅像素帧(long long browserHandle, bool enabled)',
+    bridgeExport: 'LB_CEF3_RenderHandlerSubscribePaint'
+  },
+  'CEF3离屏_订阅视图矩形': {
+    parameters: [['浏览器句柄', 'longLong'], ['是否订阅', 'bool']],
+    runtime: 'int CEF3离屏_订阅视图矩形(long long browserHandle, bool enabled)',
+    bridgeExport: 'LB_CEF3_RenderHandlerSubscribeViewRect'
+  }
+};
+
+const osrModule = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.osr');
+
+function generatedOsrMain(): string {
+  const generated = generateLingCppNativeWin32Project(consoleProject(), {
+    lingCppSourceCode: OSR_SOURCE,
+    outputKind: 'console-application',
+    enabledModules: [cef3BrowserModule, cef3OsrModule]
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  return generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+}
+
+test('cef3 osr module exposes the headless-relevant official interfaces', () => {
+  assert.ok(osrModule, '缺少 lingbuilder.cef3.osr 模块');
+  // 版本必须与其余 CEF3 子模块同源（同一个 CEF3_ALPHA_VERSION）：子模块之间互相声明依赖，单独漂一个版本号会让依赖下限失真。
+  assert.equal(osrModule!.version, BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.events')!.version,
+    'osr 版本必须与其他 CEF3 子模块一致');
+  assert.deepEqual(osrModule!.targets.map(item => item.id), ['windows-msvc-x64']);
+  assert.deepEqual(osrModule!.dependencies?.map(item => item.moduleId), ['lingbuilder.cef3.browser']);
+  const declared = osrModule!.contributes!.commands!.map(item => item.name);
+  for (const name of Object.keys(OSR_COMMANDS)) {
+    assert.ok(declared.includes(name), `缺少命令 ${name}`);
+  }
+  assert.equal(declared.length, Object.keys(OSR_COMMANDS).length, '首批只登记无头链路真正需要的 5 条');
+  assert.equal(osrModule!.contributes!.commands!.length, osrModule!.bindings!.commands!.length, 'contributes 与 bindings 条数必须一致');
+  for (const [name, shape] of Object.entries(OSR_COMMANDS)) {
+    const contribution = osrModule!.contributes!.commands!.find(item => item.name === name)!;
+    const binding = osrModule!.bindings!.commands!.find(item => item.command === name)!;
+    assert.equal(contribution.visibility, 'advanced', `${name} 属于高级命令，不得进默认补全`);
+    assert.deepEqual(binding.parameters.map(item => [item.name, item.type]), shape.parameters, `${name} 参数序必须与运行时无参序一致`);
+    assert.equal(binding.runtimeName, name, `${name} binding 必须指向中文运行时代码`);
+    for (const parameter of binding.parameters) {
+      assert.ok((parameter.description || '').trim(), `${name}::${parameter.name} 缺少中文参数说明`);
+    }
+    // 句柄红线：桥句柄按 int64 看恒为负数，说明里必须写清「!= 0」，否则外部 AI 会写 > 0。
+    assert.match(binding.parameters[0].description || '', /CEF3无头_取浏览器句柄/u, `${name}::浏览器句柄 必须说明取句柄入口`);
+    assert.match(binding.parameters[0].description || '', /!= 0/u, `${name}::浏览器句柄 必须给出 != 0 判据`);
+  }
+  assert.match(declared.includes('CEF3离屏_订阅像素帧')
+    ? osrModule!.contributes!.commands!.find(item => item.name === 'CEF3离屏_订阅像素帧')!.description!
+    : '', /一期不外发帧内容/u, '像素帧订阅必须写明取不到画面，防止对外承诺截图');
+});
+
+test('cef3 osr module is registered in the CEF3 family as an advanced feature', () => {
+  const feature = CEF3_MODULE_FAMILY.features.find(item => item.moduleId === 'lingbuilder.cef3.osr');
+  assert.ok(feature, 'CEF3 模块家族缺少无头渲染入口');
+  assert.equal(feature!.tier, 'advanced', 'OSR 官方接口必须单独确认启用，不随主模块一键启用');
+});
+
+test('cef3 osr commands have real runtime implementations that call the bridge exports', () => {
+  const code = generatedOsrMain();
+  for (const [name, shape] of Object.entries(OSR_COMMANDS)) {
+    const body = memberBody(code, shape.runtime);
+    // 只调真实桥导出，禁止在生成器里另起一套 CEF CAPI 直连。
+    assert.ok(body.includes(`${shape.bridgeExport}(`), `${name} 必须调用 ${shape.bridgeExport}`);
+    assert.match(body, /browserHandle == 0/, `${name} 必须先判空句柄`);
+    assert.doesNotMatch(body, /browserHandle > 0|browserHandle >= 0/, `${name} 不得用正数判句柄有效（受管句柄为负数）`);
+    // 启用 CEF3 浏览器模块时生成器会把宏分支静态收敛掉，这里必须落到真实现，而不是「未启用桥」的兜底。
+    assert.doesNotMatch(body, /当前构建未启用 CEF3 桥/u, `${name} 在桥可用形态下不得保留兜底分支`);
+  }
+  // 订阅像素帧的运行时诊断也必须重复「帧内容不外发」，否则用户从 exe 侧得到相反预期。
+  assert.match(memberBody(code, OSR_COMMANDS['CEF3离屏_订阅像素帧'].runtime), /一期不外发帧内容/u);
+
+  // 未启用 CEF3 浏览器模块时不做宏收敛，5 条命令都必须保留桥可用性守卫与中文兜底（否则无桥构建链接不过）。
+  const unguarded = generateLingCppNativeWin32Project(consoleProject(), {
+    lingCppSourceCode: '包 无桥校验\n\n类 程序\n公开\n  整数型 启动()\n    调试输出(\"x\")\n    返回 (0)\n  结束\n结束类\n',
+    outputKind: 'console-application',
+    enabledModules: []
+  });
+  const bridgeOptional = unguarded.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  for (const shape of Object.values(OSR_COMMANDS)) {
+    const start = bridgeOptional.indexOf(shape.runtime);
+    assert.ok(start >= 0, `未启用模块的生成结果同样缺少 ${shape.runtime}`);
+    const body = bridgeOptional.slice(start, start + 1200);
+    assert.match(body, /#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE/, `${shape.runtime} 必须带桥可用性守卫`);
+    assert.match(body, /#else[\s\S]*当前构建未启用 CEF3 桥/u, `${shape.runtime} 必须有中文兜底分支`);
+  }
+});
+
+test('cef3 osr commands translate into real generated calls', () => {
+  const code = generatedOsrMain();
+  assert.match(code, /CEF3OSR_设置窗口外帧率\(句柄, 30\);/u);
+  assert.match(code, /CEF3OSR_取窗口外帧率\(句柄\)/u);
+  assert.match(code, /CEF3OSR_请求重绘\(句柄, 0\);/u);
+  assert.match(code, /CEF3离屏_订阅像素帧\(句柄, true\)/u);
+  assert.match(code, /CEF3离屏_订阅视图矩形\(句柄, true\)/u);
 });

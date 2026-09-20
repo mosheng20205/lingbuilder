@@ -142,6 +142,12 @@ export const CEF3_MODULE_FAMILY: ModuleFamilyDefinition = {
       tier: 'advanced'
     },
     {
+      moduleId: 'lingbuilder.cef3.osr',
+      label: '无头渲染',
+      description: 'CEF 官方无窗口渲染（OSR）的重绘、帧率与回调订阅，配合无头浏览器实例使用。',
+      tier: 'advanced'
+    },
+    {
       moduleId: 'lingbuilder.cef3.platform',
       label: '平台',
       description: 'CEF 版本、Chrome 实验信息和平台工具能力。',

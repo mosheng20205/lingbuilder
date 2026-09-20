@@ -661,6 +661,25 @@ const platformTypes: ModuleTypeContribution[] = [
   , { name: 'CEF3组件数组', kind: 'array', elementType: 'CEF3组件记录', description: '组件更新器返回的组件快照数组。' }
 ];
 
+const CEF3_OSR_PARAM_DOCS: ParamDocTable = {
+  // 单一来源说明：OSR 命令只吃浏览器句柄，取句柄入口和「判有效只用 != 0」必须写在参数上，
+  // 否则外部 AI 会把桥句柄（按 int64 恒为负数）当正数校验，整条链在真机上直接判无效。
+  浏览器句柄: '取自「CEF3无头_取浏览器句柄(实例编号)」的受管浏览器句柄，仅对无窗口/OSR 浏览器有意义；句柄由运行时托管，不得手动释放，实例关闭后失效。句柄是 64 位受管值、在 .lcpp 里通常显示为负数，判断有效只用「!= 0」。取页面内容请改用 CEF3无头_取主框架 的框架句柄链路。',
+  元素类型: '重绘范围：0=视图（PET_VIEW），1=弹窗（PET_POPUP）；其余取值命令直接拒绝。',
+  帧率: '无窗口浏览器的绘制帧率（每秒帧数）；传 0 表示不限制、由 CEF 自行决定，负数直接拒绝。',
+  是否订阅: '真=点亮该 OSR 回调的订阅位，假=关闭。点亮只表示桥开始记录该回调，不代表中文命令层能取到回调内容。'
+};
+
+// 首批只登记无头链路真正需要的 5 条：重绘、帧率读写、两个 OSR 回调订阅位。
+// 命令名与 scripts/generate-cef3-api-coverage.cjs 的权威映射表逐字一致，改名必须两处同改。
+const osrEntries = [
+  api('CEF3OSR_请求重绘', 'CefBrowserHost::Invalidate', [{ name: '浏览器句柄', type: 'longLong' }, { name: '元素类型', type: 'int' }], 'int', '请求无窗口浏览器按元素类型重新绘制（0 视图、1 弹窗）；改完视口或页面状态后调用，促使 CEF 立刻重查 GetViewRect 并出一帧。成功返回 1，句柄为空、元素类型非法或桥接层拒绝返回 0 并给中文诊断。', { visibility: 'advanced' }),
+  api('CEF3OSR_设置窗口外帧率', 'CefBrowserHost::SetWindowlessFrameRate', [{ name: '浏览器句柄', type: 'longLong' }, { name: '帧率', type: 'int' }], 'int', '设置无窗口浏览器的绘制帧率；0 表示不限制、由 CEF 自行决定。返回 1 表示桥接层已接受。', { visibility: 'advanced' }),
+  api('CEF3OSR_取窗口外帧率', 'CefBrowserHost::GetWindowlessFrameRate', [{ name: '浏览器句柄', type: 'longLong' }], 'int', '读取无窗口浏览器当前的绘制帧率；0 表示不限制。读取失败返回 -1 并给中文诊断，不得把 -1 当成「帧率为 0」。', { visibility: 'advanced' }),
+  api('CEF3离屏_订阅像素帧', 'cef_render_handler_t.on_paint', [{ name: '浏览器句柄', type: 'longLong' }, { name: '是否订阅', type: 'bool' }], 'int', '点亮或关闭 OSR 像素帧回调的订阅位。一期不外发帧内容（中文命令层拿不到像素，也不产出截图），置真只用于确认渲染管线在跑——出帧证据请用 CEF3无头_取渲染帧数。不得据此向用户承诺可取到画面或截图。', { visibility: 'advanced' }),
+  api('CEF3离屏_订阅视图矩形', 'cef_render_handler_t.get_view_rect', [{ name: '浏览器句柄', type: 'longLong' }, { name: '是否订阅', type: 'bool' }], 'int', '点亮或关闭 OSR 视口询问的订阅位；置真后 CEF 每次询问视口都会走回调，优先级高于 CEF3无头_设置视口 的固定视口。一期同样不外发回调内容。', { visibility: 'advanced' })
+];
+
 export const CEF3_SUBMODULES: LingBuilderModuleManifest[] = [
   module('lingbuilder.cef3.events', 'CEF3事件模块', '界面', '提供浏览器事件数据、同步决策和处理器引用绑定。', withParamDocs(CEF3_EVENT_PARAM_DOCS, eventEntries)),
   module('lingbuilder.cef3.objects', 'CEF3受管对象模块', '系统', '提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。', withParamDocs(CEF3_OBJECTS_PARAM_DOCS, objectEntries)),
@@ -670,5 +689,6 @@ export const CEF3_SUBMODULES: LingBuilderModuleManifest[] = [
   module('lingbuilder.cef3.automation', 'CEF3自动化模块', '系统', '提供异步JavaScript任务及后续DOM/V8能力。', withParamDocs(CEF3_AUTOMATION_PARAM_DOCS, automationEntries), true),
   module('lingbuilder.cef3.devtools', 'CEF3开发者工具模块', '系统', '提供受设计器策略控制的DevTools入口。', withParamDocs(CEF3_DEVTOOLS_PARAM_DOCS, devtoolsEntries)),
   module('lingbuilder.cef3.views', 'CEF3视图模块', '界面', '提供Chrome Runtime独立窗口入口。', withParamDocs(CEF3_VIEWS_PARAM_DOCS, viewsEntries)),
+  module('lingbuilder.cef3.osr', 'CEF3无头渲染模块', '界面', '提供 CEF 官方无窗口渲染（OSR）的重绘、帧率与回调订阅入口；无头浏览器实例配合 CEF3无头_* 命令使用，全部按浏览器句柄寻址。', withParamDocs(CEF3_OSR_PARAM_DOCS, osrEntries)),
   module('lingbuilder.cef3.platform', 'CEF3平台工具模块', '系统', '提供CEF版本与平台工具能力。', withParamDocs(CEF3_PLATFORM_PARAM_DOCS, platformEntries), false, platformTypes)
 ];
