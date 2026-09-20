@@ -16572,19 +16572,6 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
     }
 
-    // 「CEF3无头浏览器」设计器资源：所属窗口创建期（控制台项目在 wmain 里）按实例编号建立 OSR 实例。
-    // 必须按 ownerWindowIndex 过滤——无头实例登记在该窗口的 cefBrowsers_ 里，别的窗口按编号取不到；
-    // autoStart=假的组件只登记不创建，由代码显式调用 CEF3_创建无头浏览器。
-    void LingBuilder_CEF3_创建无头资源() {
-        for (int index = 0; index < g_cefHeadlessBrowserCount; ++index) {
-            const CefHeadlessSpec& spec = g_cefHeadlessBrowsers[index];
-            if (spec.ownerWindowIndex != spec_.index || !spec.autoStart) continue;
-            if (CEF3_查找无头实例(spec.instanceId)) continue;
-            CEF3_创建无头浏览器(spec.instanceId, spec.url && spec.url[0] ? spec.url : L"about:blank",
-                spec.cacheDir, spec.proxyServer, spec.viewWidth, spec.viewHeight);
-        }
-    }
-
     int CEF3_创建弹窗浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
 #if LINGBUILDER_CEF3_AVAILABLE
         if (instanceId <= 0) { 调试输出(L"CEF3 创建弹窗失败：实例编号必须为正整数。"); return 0; }
@@ -21649,6 +21636,21 @@ public:
         LingBuilder_CEF3_关闭全部无头实例();
         LB_CEF3_Shutdown();
 #endif
+    }
+
+    // 「CEF3无头浏览器」设计器资源：所属窗口创建期（控制台项目在 wmain 里）按实例编号建立 OSR 实例。
+    // 必须按 ownerWindowIndex 过滤——无头实例登记在该窗口的 cefBrowsers_ 里，别的窗口按编号取不到；
+    // autoStart=假的组件只登记不创建，由代码显式调用 CEF3_创建无头浏览器。
+    // 与 LingBuilder_CEF3_退出回收 同在 public 段：控制台入口是自由函数 wmain，protected 成员它调不到
+    // （真机 error C2248），窗口入口则经 OnWindowCreated 虚函数调用。
+    void LingBuilder_CEF3_创建无头资源() {
+        for (int index = 0; index < g_cefHeadlessBrowserCount; ++index) {
+            const CefHeadlessSpec& spec = g_cefHeadlessBrowsers[index];
+            if (spec.ownerWindowIndex != spec_.index || !spec.autoStart) continue;
+            if (CEF3_查找无头实例(spec.instanceId)) continue;
+            CEF3_创建无头浏览器(spec.instanceId, spec.url && spec.url[0] ? spec.url : L"about:blank",
+                spec.cacheDir, spec.proxyServer, spec.viewWidth, spec.viewHeight);
+        }
     }
 
 protected:
