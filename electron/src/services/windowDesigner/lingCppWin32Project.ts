@@ -17024,6 +17024,33 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
     }
 
+    // OSR 首帧比「加载完成」更晚到（真机实测：窗口项目里等待加载完成刚返回时帧数仍为 0，
+    // 约半秒后才交付第一帧），所以「页面确实渲染出来了」必须单独带超时地等，
+    // 不能读一次 CEF3无头_取渲染帧数 就判定失败。等待期间周期性请求一次视图重绘：
+    // 无窗口浏览器没有宿主可见性变化来催帧，重绘请求是把管线叫醒的唯一手段。
+    int CEF3无头_等待出帧(int instanceId, int timeoutMilliseconds) {
+        CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
+        if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 等待出帧失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        const int deadline = timeoutMilliseconds > 0 ? timeoutMilliseconds : 10000;
+        const ULONGLONG started = GetTickCount64();
+        uint64_t paintCount = 0;
+        for (;;) {
+            if (LB_CEF3_BrowserGetOsrPaintCount(instance->bridgeHandle, &paintCount) == LB_CEF3_OK && paintCount >= 1) return 1;
+            if (GetTickCount64() - started >= static_cast<ULONGLONG>(deadline)) {
+                调试输出(CEF3_拼接桥接原因(
+                    (std::wstring(L"CEF3 等待出帧超时：给定毫秒内没有交付任何一帧（当前帧数=") + std::to_wstring(paintCount) + L"）").c_str()));
+                return 0;
+            }
+            if (GetTickCount64() - started >= 500) LB_CEF3_BrowserInvalidate(instance->bridgeHandle, 0);
+            Sleep(50);
+        }
+#else
+        调试输出(L"CEF3 等待出帧失败：当前构建未启用 CEF3 桥。");
+        return 0;
+#endif
+    }
+
     int CEF3无头_导航(int instanceId, const wchar_t* address) {
         CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
         if (!instance) { 调试输出(L"CEF3 无头导航失败：该实例编号不存在或浏览器尚未创建。"); return 0; }

@@ -1,0 +1,76 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "cef3-headless-demo",
+    "name": "CEF3 无头抓取示例",
+    "resources": [
+      {
+        "id": "cef-headless-1",
+        "type": "CefHeadlessBrowser",
+        "name": "无头抓取1",
+        "designerX": 260,
+        "designerY": 24,
+        "ownerWindowId": "main-window",
+        "instanceId": 1,
+        "url": "https://www.example.com",
+        "cacheDir": ".cef3/headless-demo",
+        "proxyServer": "",
+        "viewWidth": 1024,
+        "viewHeight": 640,
+        "autoStart": true
+      }
+    ],
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "MainWindow.xml",
+        "className": "MainWindow",
+        "title": "CEF3 无头抓取示例",
+        "width": 620,
+        "height": 220,
+        "background": "#1f2937",
+        "description": "演示设计器放置「CEF3无头浏览器」非可视组件：窗口创建期自动起一个不产生任何窗口的 OSR 浏览器，按实例编号取标题、正文、源码与出帧证据。",
+        "designerBackend": "win32",
+        "controls": [
+          {
+            "id": "button-1",
+            "type": "Button",
+            "name": "抓取按钮",
+            "content": "抓取",
+            "x": 24,
+            "y": 24,
+            "width": 220,
+            "height": 36,
+            "fontSize": 14,
+            "background": "#2d3748",
+            "foreground": "#ffffff",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_抓取按钮_被单击"
+            }
+          },
+          {
+            "id": "result-label",
+            "type": "Label",
+            "name": "结果标签",
+            "content": "等待抓取",
+            "x": 24,
+            "y": 76,
+            "width": 560,
+            "height": 28,
+            "fontSize": 13,
+            "background": "transparent",
+            "foreground": "#4FC3F7",
+            "isEnabled": true,
+            "visibility": "Visible"
+          }
+        ]
+      }
+    ]
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceFilePath": "src/无头抓取示例.lcpp",
+  "run": true,
+  "approved": true
+}

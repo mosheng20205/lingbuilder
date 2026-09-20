@@ -255,12 +255,12 @@ function normalizeBuiltinControlReferences(manifest: LingBuilderModuleManifest):
   };
 }
 
-// CEF3 真无头（CEF 官方 windowless / OSR）中文命令面：17 条命令一律以「实例编号」为首参寻址，
+// CEF3 真无头（CEF 官方 windowless / OSR）中文命令面：18 条命令一律以「实例编号」为首参寻址，
 // 不接收 controlRef、不创建任何窗口。清单（contributes.commands）、binding 与运行时包装三处必须成对，
 // 本常量是这三处的共同名单来源，新增无头命令只改这里与下面两段表。
 const CEF3_HEADLESS_COMMAND_NAMES = [
   'CEF3_创建无头浏览器', 'CEF3无头_是否已创建', 'CEF3无头_设置视口', 'CEF3无头_取视口JSON',
-  'CEF3无头_取渲染帧数', 'CEF3无头_导航', 'CEF3无头_是否加载中', 'CEF3无头_等待加载完成',
+  'CEF3无头_取渲染帧数', 'CEF3无头_等待出帧', 'CEF3无头_导航', 'CEF3无头_是否加载中', 'CEF3无头_等待加载完成',
   'CEF3无头_取标题', 'CEF3无头_取地址', 'CEF3无头_取主框架', 'CEF3无头_取浏览器句柄',
   'CEF3无头_执行JS', 'CEF3无头_取页面文本', 'CEF3无头_取页面源码', 'CEF3无头_取事件JSON',
   'CEF3无头_关闭'
@@ -340,6 +340,7 @@ const BUILTIN_PARAM_DOCS: ParamDocTable = {
     'CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。'])),
   // 无头命令的阻塞等待一律显式带超时（CEF 侧没有任务等待导出，只能轮询），口径逐条写清超时后返回什么。
   'CEF3无头_等待加载完成::超时毫秒': '最长等待毫秒数；传 0 或负数按默认 30000，超时返回 0 并给中文诊断，绝不无限等待。',
+  'CEF3无头_等待出帧::超时毫秒': '最长等待毫秒数；传 0 或负数按默认 10000，超时返回 0 并给含当前帧数的中文诊断，绝不无限等待。',
   'CEF3无头_取页面文本::超时毫秒': '最长等待毫秒数；传 0 或负数按默认 30000，超时返回空文本并给中文诊断。',
   'CEF3无头_取页面源码::超时毫秒': '最长等待毫秒数；传 0 或负数按默认 30000，超时返回空文本并给中文诊断。',
   // CEF3 全局代理与代理认证（与 EdgeView/FBro 同口径补齐）；凭据参数的红线必须写在参数级。
@@ -1036,6 +1037,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3无头_设置视口', signature: 'CEF3无头_设置视口(实例编号, 视口宽, 视口高)', description: '修改无头浏览器实例的渲染视口（CSS 像素），宽高必须为正整数；写入成功后向 CEF 请求重查视口并立即重绘，决定后续布局宽度与媒体查询结果。返回 1 表示视口已生效。两条口径必须知道：一、写入与刷新是两步，宿主刷新请求未确认时视口其实已经写入，此时本命令仍返回 1 并给出中文诊断「视口已写入，但刷新未确认」，不得按失败处理；二、设定值不是永久权威，出帧后 CEF 会把实际渲染尺寸回写，读取当前尺寸一律用 CEF3无头_取视口JSON。', insertText: 'CEF3无头_设置视口(1, 1024, 640)', returnType: '整数型' },
         { name: 'CEF3无头_取视口JSON', signature: 'CEF3无头_取视口JSON(实例编号)', description: '读取无头浏览器实例当前生效的视口，返回 {"width":…,"height":…,"paintCount":…}。这里的宽高是 CEF 的实际渲染尺寸，不是设定值的回显：每次出帧 CEF 会把该帧真实尺寸回写进存储视口，因此读到的可能不等于 CEF3无头_设置视口 刚传入的数字，判断布局尺寸只能以此为准。paintCount 是已交付像素帧计数，不代表宿主已取走帧内容。实例不存在或该实例不是无窗口 OSR 浏览器时返回空文本，并原样转述 CEF3 桥给出的中文原因。', insertText: '调试输出(CEF3无头_取视口JSON(1))', returnType: '文本型' },
         { name: 'CEF3无头_取渲染帧数', signature: 'CEF3无头_取渲染帧数(实例编号)', description: '返回无头浏览器实例至今交付的 OSR 像素帧数量（长整数）。一期不外发像素内容，本计数是唯一可用的「确实在无窗口渲染」证据：大于 0 说明页面已出帧，长期为 0 说明页面没出帧（未加载、被阻塞或视口无效）。实例不存在或该实例不是无窗口 OSR 浏览器返回 0 并转述桥的中文原因。', insertText: '局部 长整数型 帧数 = CEF3无头_取渲染帧数(1)', returnType: '长整数型' },
+        { name: 'CEF3无头_等待出帧', signature: 'CEF3无头_等待出帧(实例编号, 超时毫秒)', description: '带超时地等该无头实例交付第一帧 OSR 像素，出帧返回 1。为什么必须单独等：CEF 的「加载完成」与「首帧交付」是两件事——真机实测窗口项目里 CEF3无头_等待加载完成 刚返回时 CEF3无头_取渲染帧数 仍然是 0，约半秒后才交付第一帧，只读一次就把「没出帧」当结论是错的。等待期间每过 500 毫秒周期性请求一次视图重绘：无窗口浏览器没有宿主可见性变化来催帧，重绘请求是把渲染管线叫醒的唯一手段。超时毫秒传 0 或负数按默认 10000；超时或实例不存在返回 0 并给含当前帧数的中文诊断，绝不无限等待。一期不外发帧内容，本命令只证明「确实在无窗口渲染」，不是截图能力。', insertText: 'CEF3无头_等待出帧(1, 8000)', returnType: '整数型' },
         { name: 'CEF3无头_导航', signature: 'CEF3无头_导航(实例编号, 地址)', description: '让指定实例编号的无头浏览器导航到 HTTP/HTTPS 或本地文件地址；不依赖设计器控件、不依赖消息泵。桥的创建是异步的，CEF 侧浏览器尚未建好时本次导航只登记为排队目标，由「浏览器创建完成」事件或下一次就绪确认（CEF3无头_等待加载完成 / 再次导航）补发，因此创建后立刻导航不会失败也不会静默丢失。成功或已排队返回 1，地址为空文本或实例不存在返回 0。', insertText: 'CEF3无头_导航(1, "https://www.example.com")', returnType: '整数型' },
         { name: 'CEF3无头_是否加载中', signature: 'CEF3无头_是否加载中(实例编号)', description: '该无头浏览器正在加载网页时返回 1，否则 0；实例不存在返回 0。红线：桥的浏览器创建是异步投递到 CEF UI 线程的，创建尚未完成时本命令同样返回 0，因此 0 只表示「此刻没在加载」，绝不能当作「浏览器已建好」或「加载已结束」的判据。无头实例派发不了事件处理器，加载进度只能靠本命令与 CEF3无头_等待加载完成 轮询。', insertText: 'CEF3无头_是否加载中(1)', returnType: '整数型' },
         { name: 'CEF3无头_等待加载完成', signature: 'CEF3无头_等待加载完成(实例编号, 超时毫秒)', description: '无头实例读取标题、执行JS、取页面内容之前的必用前置命令，两段轮询共用同一个总超时：第一段每 20 毫秒轮询确认 CEF 真的把浏览器对象建出来（创建是异步投递到 CEF UI 线程的）；第二段每 50 毫秒轮询确认「主文档已提交 且 不在加载中」。为什么必须两段并且要问主文档：浏览器对象没建好时「是否加载中」返回 0，建好与导航真正开始之间那一拍它同样返回 0，只轮询加载状态会把这两种「还没开始」都误判成「已加载完」，导致后续命令读到空文本。全程不依赖消息泵、消息循环或无头泵窗口，控制台项目可直接调用。超时毫秒传 0 或负数按默认 30000；超时返回 0 并按阶段给出中文诊断（创建未完成 / 加载未结束），绝不无限等待。实例不存在返回 0。', insertText: 'CEF3无头_等待加载完成(1, 15000)', returnType: '整数型' },
@@ -1166,6 +1168,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3无头_设置视口', runtimeName: 'CEF3无头_设置视口', parameters: [{ name: '实例编号', type: 'int' }, { name: '视口宽', type: 'int' }, { name: '视口高', type: 'int' }], returnType: 'int' },
       { command: 'CEF3无头_取视口JSON', runtimeName: 'CEF3无头_取视口JSON', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'CEF3无头_取渲染帧数', runtimeName: 'CEF3无头_取渲染帧数', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'longLong' },
+      { command: 'CEF3无头_等待出帧', runtimeName: 'CEF3无头_等待出帧', parameters: [{ name: '实例编号', type: 'int' }, { name: '超时毫秒', type: 'int' }], returnType: 'int' },
       { command: 'CEF3无头_导航', runtimeName: 'CEF3无头_导航', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3无头_是否加载中', runtimeName: 'CEF3无头_是否加载中', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'int' },
       { command: 'CEF3无头_等待加载完成', runtimeName: 'CEF3无头_等待加载完成', parameters: [{ name: '实例编号', type: 'int' }, { name: '超时毫秒', type: 'int' }], returnType: 'int' },

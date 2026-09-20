@@ -8,11 +8,11 @@ import { generateLingCppNativeWin32Project } from '../src/services/windowDesigne
 import { getLingCppControlReferenceDiagnostics } from '../src/services/lingCpp/controlReferenceService';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 
-// CEF3 真无头（CEF 官方 windowless / OSR）中文命令面：17 条命令全部按「实例编号」寻址，
+// CEF3 真无头（CEF 官方 windowless / OSR）中文命令面：18 条命令全部按「实例编号」寻址，
 // 不产生任何窗口，也不接受 controlRef。清单与 binding 必须成对（AGENTS 模块生态规则）。
 const HEADLESS_COMMANDS = [
   'CEF3_创建无头浏览器', 'CEF3无头_是否已创建', 'CEF3无头_设置视口', 'CEF3无头_取视口JSON',
-  'CEF3无头_取渲染帧数', 'CEF3无头_导航', 'CEF3无头_是否加载中', 'CEF3无头_等待加载完成',
+  'CEF3无头_取渲染帧数', 'CEF3无头_等待出帧', 'CEF3无头_导航', 'CEF3无头_是否加载中', 'CEF3无头_等待加载完成',
   'CEF3无头_取标题', 'CEF3无头_取地址', 'CEF3无头_取主框架', 'CEF3无头_取浏览器句柄',
   'CEF3无头_执行JS', 'CEF3无头_取页面文本', 'CEF3无头_取页面源码', 'CEF3无头_取事件JSON',
   'CEF3无头_关闭'
@@ -25,6 +25,7 @@ const HEADLESS_SIGNATURES: Record<string, { parameters: Array<[string, string]>;
   'CEF3无头_设置视口': { parameters: [['实例编号', 'int'], ['视口宽', 'int'], ['视口高', 'int']], abi: 'int', ling: '整数型' },
   'CEF3无头_取视口JSON': { parameters: [['实例编号', 'int']], abi: 'wideString', ling: '文本型' },
   'CEF3无头_取渲染帧数': { parameters: [['实例编号', 'int']], abi: 'longLong', ling: '长整数型' },
+  'CEF3无头_等待出帧': { parameters: [['实例编号', 'int'], ['超时毫秒', 'int']], abi: 'int', ling: '整数型' },
   'CEF3无头_导航': { parameters: [['实例编号', 'int'], ['地址', 'wideString']], abi: 'int', ling: '整数型' },
   'CEF3无头_是否加载中': { parameters: [['实例编号', 'int']], abi: 'int', ling: '整数型' },
   'CEF3无头_等待加载完成': { parameters: [['实例编号', 'int'], ['超时毫秒', 'int']], abi: 'int', ling: '整数型' },
@@ -45,6 +46,7 @@ const HEADLESS_RUNTIME_SIGNATURES: Record<string, string> = {
   'CEF3无头_设置视口': 'int CEF3无头_设置视口(int instanceId, int viewWidth, int viewHeight)',
   'CEF3无头_取视口JSON': 'std::wstring CEF3无头_取视口JSON(int instanceId)',
   'CEF3无头_取渲染帧数': 'long long CEF3无头_取渲染帧数(int instanceId)',
+  'CEF3无头_等待出帧': 'int CEF3无头_等待出帧(int instanceId, int timeoutMilliseconds)',
   'CEF3无头_导航': 'int CEF3无头_导航(int instanceId, const wchar_t* address)',
   'CEF3无头_是否加载中': 'int CEF3无头_是否加载中(int instanceId)',
   'CEF3无头_等待加载完成': 'int CEF3无头_等待加载完成(int instanceId, int timeoutMilliseconds)',
@@ -64,7 +66,7 @@ const contributionOf = (name: string) => browser.contributes!.commands!.find(ite
 const bindingOf = (name: string) => browser.bindings!.commands!.find(item => item.command === name);
 
 // 无头命令的运行时与「无 HWND」红线同属 LingWindowBase 无条件生成的 CEF3 运行时段；
-// 这里额外用一份「真调用」源码验证 17 条命令的调用翻译（启用 CEF3 浏览器模块）。
+// 这里额外用一份「真调用」源码验证 18 条命令的调用翻译（启用 CEF3 浏览器模块）。
 const CONSOLE_SOURCE = [
   '包 无头演示',
   '使用 CEF3浏览器模块',
@@ -81,6 +83,7 @@ const CONSOLE_SOURCE = [
   '    标题 = CEF3无头_取标题(1)',
   '    调试输出(CEF3无头_执行JS(1, "document.title"))',
   '    调试输出(CEF3无头_取视口JSON(1), CEF3无头_取渲染帧数(1), CEF3无头_取事件JSON(1))',
+  '    调试输出(CEF3无头_等待出帧(1, 8000))',
   '    CEF3无头_设置视口(1, 1024, 640)',
   '    CEF3无头_关闭(1)',
   '    返回 (0)',
@@ -196,7 +199,7 @@ test('headless component passed as a control reference gets a named replacement 
 });
 
 test('headless commands are declared in both contributes and bindings', () => {
-  assert.equal(HEADLESS_COMMANDS.length, 17);
+  assert.equal(HEADLESS_COMMANDS.length, 18);
   const declared = new Set(browser.contributes!.commands!.map(item => item.name));
   const bound = new Set(browser.bindings!.commands!.map(item => item.command));
   for (const name of HEADLESS_COMMANDS) {
@@ -585,4 +588,17 @@ test('cef3 osr commands translate into real generated calls', () => {
   assert.match(code, /CEF3OSR_请求重绘\(句柄, 0\);/u);
   assert.match(code, /CEF3离屏_订阅像素帧\(句柄, true\)/u);
   assert.match(code, /CEF3离屏_订阅视图矩形\(句柄, true\)/u);
+});
+
+// 首帧交付晚于「加载完成」（真机实测窗口项目约半秒），所以等待出帧必须自带超时，
+// 并且等待期间要主动请求重绘 —— 无窗口浏览器没有宿主可见性变化来催帧。
+test('the first-frame wait is bounded and kicks the render pipeline', () => {
+  const code = generatedConsoleMain();
+  const body = memberBody(code, HEADLESS_RUNTIME_SIGNATURES['CEF3无头_等待出帧']);
+  assert.match(body, /LB_CEF3_BrowserGetOsrPaintCount\(/);
+  assert.match(body, /LB_CEF3_BrowserInvalidate\(/, '等待期间必须周期性请求重绘');
+  assert.match(body, /timeoutMilliseconds > 0 \? timeoutMilliseconds : 10000/);
+  assert.equal((body.match(/GetTickCount64\(\) - started >=/g) ?? []).length, 2, '一次超时判定 + 一次重绘节流判定');
+  assert.match(body, /当前帧数=/);
+  assert.match(code, /调试输出\(CEF3无头_等待出帧\(1, 8000\)\);/);
 });
