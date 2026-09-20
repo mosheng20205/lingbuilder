@@ -95,6 +95,10 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     }
     const scaffoldTool = tools.tools.find(tool => tool.name === 'lingbuilder.module.scaffold');
     assert.ok((scaffoldTool?.inputSchema as any)?.properties?.id, 'module.scaffold 必须要求模块 ID');
+    // 模块创作通道与欢迎页「新建模块」对称（2026-09-20）：MCP 骨架同样支持分类与说明写进清单。
+    assert.ok((scaffoldTool?.inputSchema as any)?.properties?.category, 'module.scaffold 必须支持可选 category');
+    assert.ok((scaffoldTool?.inputSchema as any)?.properties?.description, 'module.scaffold 必须支持可选 description');
+    assert.match(String(scaffoldTool?.description || ''), /欢迎页/u, 'module.scaffold 描述必须说明与欢迎页新建模块同源');
     const moduleInstallTool = tools.tools.find(tool => tool.name === 'lingbuilder.module.install');
     const moduleInstallRequired = (moduleInstallTool?.inputSchema as any)?.required || [];
     assert.ok(moduleInstallRequired.includes('previewId') && moduleInstallRequired.includes('projectId'), 'module.install 必须要求 previewId 与 projectId');
@@ -111,6 +115,11 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /codeOrganization/u, 'instructions 必须告知外部 AI 拆分时机以 codeOrganization 为准');
     assert.match(String(client.getInstructions() || ''), /功能代码/u, 'instructions 必须把“功能代码/功能性代码”口语映射为功能库');
     assert.match(String(client.getInstructions() || ''), /lingcpp-designer-controls-empty/u, 'instructions 必须告知“看不到任何组件”的根因诊断');
+    assert.match(String(client.getInstructions() || ''), /FBro_启用无头模式/u, 'instructions 必须告知 FBro 无头开关为生成期烘焙且运行期不可切换');
+    assert.match(String(client.getInstructions() || ''), /FBro_实例等待加载超时/u, 'instructions 必须给出控制台无消息泵时的同步句柄命令族口径');
+    assert.match(String(client.getInstructions() || ''), /module\.scaffold/u, 'instructions 必须告知外部 AI 模块创作入口与六步链');
+    assert.match(String(client.getInstructions() || ''), /module-build/u, 'instructions 必须说明欢迎页新建/打开的模块以开发源形式位于 module-build');
+    assert.match(String(client.getInstructions() || ''), /无需重新打包安装/u, 'instructions 必须说明开发源模块改动即时生效、不要建议重复安装');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建无头实例/u, 'instructions 必须告知 EdgeView 隐窗伪无头形态与截图边界');
     assert.match(String(client.getInstructions() || ''), /CDP_启动浏览器/u, 'instructions 必须告知 CDP 真无头形态与回收/错误读取口径');
     assert.match(String(client.getInstructions() || ''), /CEF3_创建无头浏览器/u, 'instructions 必须给出 CEF3 官方 OSR 第四形态的创建签名');
@@ -118,6 +127,21 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /不创建任何窗口/u, 'instructions 必须声明 CEF3 无头不创建任何窗口（官方 OSR）');
     assert.match(String(client.getInstructions() || ''), /截图未开放/u, 'instructions 必须声明 CEF3 无头一期截图未开放');
     assert.doesNotMatch(String(client.getInstructions() || ''), /隐藏窗口|移出桌面|后台窗口/u, 'instructions 禁止出现「建真窗口再藏」类话术');
+    assert.match(String(client.getInstructions() || ''), /#常量名/u, 'instructions 必须告知模块公开常量用 #常量名 引用（contributes.constants 消费链）');
+    assert.match(String(client.getInstructions() || ''), /FBro_创建区域/u, 'instructions 必须给出三内核动态内嵌区域选型（FBro_创建区域 走普通 Win32 模块，不依赖 new_emoji）');
+    assert.match(String(client.getInstructions() || ''), /CEF3_创建区域/u, 'instructions 必须列出 CEF3_创建区域 内嵌选型');
+    assert.match(String(client.getInstructions() || ''), /EdgeView_创建区域/u, 'instructions 必须列出 EdgeView_创建区域 内嵌选型');
+    assert.match(String(client.getInstructions() || ''), /navigator.userAgent/u, 'instructions 必须写明 EdgeView/FBro 区域 UA 只改 navigator.userAgent、不改出站 HTTP 头的红线');
+    assert.match(String(client.getInstructions() || ''), /FBroHsCommandLine_EnableCrossFrame/u, 'instructions 必须写明 FBro 跨域走官方包装，不得手写 Chromium 开关拼串');
+    assert.match(String(client.getInstructions() || ''), /disable-site-isolation-trials/u, 'instructions 必须带 enableCrossFrame 实测写入的开关，作为真机回读口径');
+    assert.match(String(client.getInstructions() || ''), /仅进程内模式生效/u, 'instructions 必须声明 FBro 启动开关仅进程内模式生效');
+    assert.match(String(client.getInstructions() || ''), /CEF3平台_添加跨域白名单/u, 'instructions 必须给出 CEF3 逐条跨域白名单命令（不存在全局关闭安全命令）');
+    assert.match(String(client.getInstructions() || ''), /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/u, 'instructions 必须写明 EdgeView 安全类开关要走环境变量通道才生效');
+    assert.match(String(client.getInstructions() || ''), /channelIndex/u, 'instructions 必须告知 CEF3 cefQuery 已多通道且事件带 channelIndex');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.module.info')?.description || ''), /公开常量/u, 'module.info 工具描述必须声明返回模块公开常量 constants[]');
+    assert.match(String(client.getInstructions() || ''), /HTTP_添加静态路由/u, 'instructions 必须引导外部 AI 服务端项目优先静态路由');
+    assert.match(String(client.getInstructions() || ''), /HTTP_设置连接轮转/u, 'instructions 必须告知外部 AI 连接轮转可配（高负载放宽强制关闭阈值）');
+    assert.match(String(client.getInstructions() || ''), /HTTP客户端_请求置Cookie/u, 'instructions 必须告知外部 AI http-client 2.1 的 Cookie 注入口（区别于自动罐开关）');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /功能代码/u, 'edit.propose 必须声明功能代码=功能库文件，避免降级成本地函数');
     const diagnosticsToolMeta = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
     assert.match(String(diagnosticsToolMeta?.description || ''), /designerInventory/u, 'diagnostics 工具描述必须声明组件表视图');
@@ -261,6 +285,20 @@ test('AI Bridge 模块工具支持生成→写入→校验→打包→预览→�
     const scaffold = await service.scaffoldModule({ id: 'bridge.e2e.module', name: '桥接测试模块', approved: true });
     assert.equal(scaffold.ok, true);
     assert.equal(scaffold.manifest.id, 'bridge.e2e.module');
+    // 分类/说明必须真的写进清单（与欢迎页新建模块同口径）。
+    const scaffoldStyled = await service.scaffoldModule({
+      id: 'bridge.e2e.styled',
+      name: '风格化模块',
+      category: '网络',
+      description: '带分类与说明的桥接模块。',
+      approved: true
+    });
+    assert.equal(scaffoldStyled.manifest.category, '网络');
+    assert.equal(scaffoldStyled.manifest.description, '带分类与说明的桥接模块。');
+    await assert.rejects(
+      () => service.scaffoldModule({ id: 'bridge.e2e.badcat', category: '游戏', approved: true }),
+      /模块分类只允许/u
+    );
 
     const written = await service.writeModuleFiles({
       files: [
@@ -2287,6 +2325,50 @@ test('AI Bridge edit.propose supports updatedLines and line-range edits with inl
     await assert.rejects(
       () => service.proposeEdit({ filePath: sourcePath, instruction: '越界增量', files: [{ filePath: sourcePath, edits: [{ startLine: 999, newText: 'x' }] }] }),
       /超出当前文件行数/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge edits overlap detection sorts intervals before comparing and names the conflicting pair', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/sort/Main.lcpp';
+  const lines = Array.from({ length: 25 }, (_, index) => `line-${index + 1}`);
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), `${lines.join('\n')}\n`, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'overlap-token'));
+  try {
+    // 乱序但不重叠：排序后仍按降序应用，替换结果与顺序无关。
+    const ok = await service.proposeEdit({
+      filePath: sourcePath,
+      instruction: '乱序提交不重叠区间',
+      files: [{ filePath: sourcePath, edits: [
+        { startLine: 20, endLine: 22, newText: 'line-20-new' },
+        { startLine: 2, newText: 'line-2-new' },
+        { startLine: 8, endLine: 9, newText: 'line-8-new' }
+      ] }]
+    });
+    await service.applyEdit({ proposalId: ok.proposal.id, approved: true });
+    const after = (await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8')).split('\n');
+    assert.equal(after[1], 'line-2-new');
+    assert.equal(after[7], 'line-8-new');
+    assert.equal(after[18], 'line-20-new');
+    assert.equal(after[19], 'line-23');
+
+    // 交错重叠 [1-8, 20-22, 3-5]（当前文件 22 行）：旧实现按调用方顺序只比较相邻对会漏检，降序应用时静默错位替换。
+    await assert.rejects(
+      () => service.proposeEdit({
+        filePath: sourcePath,
+        instruction: '交错重叠区间必须被检出',
+        files: [{ filePath: sourcePath, edits: [
+          { startLine: 1, endLine: 8, newText: 'a' },
+          { startLine: 20, endLine: 22, newText: 'b' },
+          { startLine: 3, endLine: 5, newText: 'c' }
+        ] }]
+      }),
+      /edits 行区间存在重叠（1-8 与 3-5）/u
     );
   } finally {
     await service.shutdown();

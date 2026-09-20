@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { LingBuilderModuleManifest, ModuleCommandContribution, ModuleCommandBinding, ModuleBindingValueType, ModuleControlReferenceKind, ModuleControlReferenceScope, ModuleControlRuntimeRepresentation } from './types';
+import { LINGBUILDER_MODULE_CATEGORIES, LingBuilderModuleCategory, LingBuilderModuleManifest, ModuleCommandContribution, ModuleCommandBinding, ModuleBindingValueType, ModuleControlReferenceKind, ModuleControlReferenceScope, ModuleControlRuntimeRepresentation } from './types';
 import { validateModuleManifest, validateModuleManifestContents, type ModuleValidationOptions } from './manifest';
 import { createModuleBindingSnippetArgument, normalizeControlReferenceCallSnippet } from './bindingValueType';
 
@@ -12,6 +12,8 @@ export interface ModuleInitOptions {
   outDir: string;
   id?: string;
   name?: string;
+  category?: string;
+  description?: string;
 }
 
 export interface ModuleCppMigrationConfig {
@@ -360,13 +362,20 @@ function buildTemplateManifest(options: ModuleInitOptions): LingBuilderModuleMan
     insertText: '示例命令()',
     returnType: '整数型'
   };
+  const templateCategory: LingBuilderModuleCategory = options.template.includes('ui')
+    ? '界面'
+    : options.template.includes('cpp') || options.template.includes('dll') ? '系统' : '其他';
+  const requestedCategory = options.category?.trim();
+  const category = requestedCategory && (LINGBUILDER_MODULE_CATEGORIES as readonly string[]).includes(requestedCategory)
+    ? requestedCategory as LingBuilderModuleCategory
+    : templateCategory;
   return {
     schemaVersion: 2,
     id,
     name,
     version: '1.0.0',
-    category: options.template.includes('ui') ? '界面' : options.template.includes('cpp') || options.template.includes('dll') ? '系统' : '其他',
-    description: '由 LingBuilder 模块 SDK 创建的模块模板。',
+    category,
+    description: options.description?.trim() || '由 LingBuilder 模块 SDK 创建的模块模板。',
     author: 'LingBuilder Module Author',
     tags: ['模板', options.template],
     contributes: {

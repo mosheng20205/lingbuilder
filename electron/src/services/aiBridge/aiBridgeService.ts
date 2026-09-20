@@ -98,7 +98,7 @@ import {
   AiBridgeServerOptions,
   AiBridgeTreeEntry
 } from './types';
-import type { ModuleCommandBinding, ModuleCommandContribution } from '../modules/types';
+import { LINGBUILDER_MODULE_CATEGORIES, type ModuleCommandBinding, type ModuleCommandContribution } from '../modules/types';
 import { describeModuleBindingParameterType } from '../modules/bindingValueType';
 import { REQUIRE_ADMINISTRATOR_LINK_ARGS } from '../windowDesigner/windowsSystemLibraries';
 
@@ -764,6 +764,10 @@ export class AiBridgeService {
     const moduleId = typeof request.id === 'string' ? request.id.trim() : '';
     if (!moduleId) throw new Error('缺少模块 ID（id）。');
     if (!/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(moduleId)) throw new Error('模块 ID 只能使用小写字母、数字、点、下划线和中划线（3~81 位，字母或数字开头）。');
+    const category = typeof request.category === 'string' ? request.category.trim() : '';
+    if (category && !(LINGBUILDER_MODULE_CATEGORIES as readonly string[]).includes(category)) {
+      throw new Error(`模块分类只允许：${LINGBUILDER_MODULE_CATEGORIES.join('、')}。`);
+    }
     await this.requireWriteWithAudit('module.scaffold', `.lingbuilder/module-build/${moduleId}`, request.approved);
     const outDirRelative = request.outDir?.trim() || `.lingbuilder/module-build/${moduleId}`;
     const outDir = await this.resolveModuleAreaWriteDirectory(outDirRelative, 'module-build');
@@ -771,7 +775,9 @@ export class AiBridgeService {
       template: request.template?.trim() || 'cpp-source',
       outDir,
       id: moduleId,
-      name: request.name?.trim() || undefined
+      name: request.name?.trim() || undefined,
+      category: category || undefined,
+      description: typeof request.description === 'string' ? request.description.trim() || undefined : undefined
     });
     await this.permissions.audit({ operation: 'write', action: 'module.scaffold', ok: true, target: outDirRelative });
     return { ok: true as const, manifest, outDir: outDirRelative.replace(/\\/gu, '/') };
@@ -2959,10 +2965,12 @@ function applyLineEdits(
     }
     return { startLine, endLine, newText: edit.newText };
   });
-  for (let i = 1; i < normalized.length; i += 1) {
-    if (normalized[i].startLine <= normalized[i - 1].endLine &&
-        normalized[i - 1].startLine <= normalized[i].endLine) {
-      throw new Error(`${filePath} 的 edits 行区间存在重叠，请按顺序拆分为不重叠区间。`);
+  // 先按 startLine 排序再逐对比较：交错提交（如 [1-8, 20-25, 3-5]）若按调用方顺序只比相邻对会漏检，
+  // 而降序应用会把未检出的重叠区间变成静默错位替换。
+  const ordered = [...normalized].sort((a, b) => a.startLine - b.startLine || a.endLine - b.endLine);
+  for (let i = 1; i < ordered.length; i += 1) {
+    if (ordered[i].startLine <= ordered[i - 1].endLine) {
+      throw new Error(`${filePath} 的 edits 行区间存在重叠（${ordered[i - 1].startLine}-${ordered[i - 1].endLine} 与 ${ordered[i].startLine}-${ordered[i].endLine}），请按顺序拆分为不重叠区间。`);
     }
   }
   // 降序应用，避免先替换导致后续行号漂移。

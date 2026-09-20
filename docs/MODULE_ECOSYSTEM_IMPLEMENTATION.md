@@ -412,6 +412,8 @@
 - `POST /api/modules/developer/market-index`
 - `POST /api/modules/developer/link`（链接模块开发源，`sourcePath` 工作区相对）
 - `POST /api/modules/developer/unlink`（取消开发源链接，只移除登记不删源）
+- `POST /api/modules/developer/create`（欢迎页「新建模块」：`createModuleTemplate` 生成 `.lingbuilder/module-build/<id>` 骨架并自动登记开发源；2026-09-20 起）
+- `POST /api/modules/developer/open-package`（欢迎页「打开模块包」：`.lbmod` 解开为 module-build 下可编辑源码并登记开发源，不安装、拒绝覆盖既有目录；2026-09-20 起）
 - `GET /api/sdk-dependencies/status`
 - `POST /api/sdk-dependencies/install`
 - `POST /api/sdk-dependencies/cancel`
@@ -469,7 +471,7 @@ lingbuilder.module.json
 ## HTTP / WebSocket 服务端内置网络模块
 
 - `lingbuilder.http.server` 和 `lingbuilder.websocket.server` 是内置 v2 网络服务端模块，项目启用后分别提供本地 HTTP 服务端和 WebSocket 服务端能力。
-- HTTP 服务端 `2.0.0` 从 `electron/src/services/modules/httpServerModule.ts` 的单一目录生成 48 条 contribution/binding，并公开 `HTTP服务端`、`HTTP请求` 两个受管类型。新代码使用创建/配置/资源限制/路由/处理器/启动停止、完整请求读取、文本/JSON/二进制/文件/Cookie/重定向响应和统计 API；旧 5 条阻塞命令仅作为 `advanced` 迁移入口。
+- HTTP 服务端 `2.1.0` 从 `electron/src/services/modules/httpServerModule.ts` 的单一目录生成 51 条 contribution/binding，并公开 `HTTP服务端`、`HTTP请求` 两个受管类型。新代码使用创建/配置/资源限制/路由/处理器/启动停止、完整请求读取、文本/JSON/二进制/文件/Cookie/重定向响应和统计 API；`HTTP_添加静态路由` / `HTTP_添加静态文件路由` 命中后由工作线程直回、不进 UI 线程（HEAD 未显式登记时自动回落匹配 GET 路由），`HTTP_设置连接轮转` 可配单连接强制关闭前的最大请求数（默认 100）；旧 5 条阻塞命令仅作为 `advanced` 迁移入口。
 - HTTP 运行时位于 `electron/src/services/windowDesigner/httpServerRuntime.ts`，使用后台 accept、1–64 工作线程和有界连接队列，支持 IPv4/IPv6、动态端口、HTTP/1.0/1.1、keep-alive、Content-Length/chunked、HEAD、请求限制、响应头注入防护和确定性停止回收。请求通过窗口消息回到所属 UI 线程；普通 Win32 与 New_Emoji 复用同一运行时和 binding。
 - HTTP 的处理器 binding 必须声明 `type: handler` 和 `handlerSignature`；当前请求/路由处理器契约为 `parameterTypes: []`、`returnType: 空`。语言服务必须阻断字符串处理器、缺失处理器和签名不匹配，生成器继续把 `&处理器名` 确定性转换为后端回调名称。
 - HTTP 模块按监听目标解析后的实际 IPv4/IPv6 地址默认禁止非回环绑定，必须显式调用 `HTTP_允许外部监听`；请求目标的百分号编码及其 UTF-8 解码结果必须严格校验。模块定位是商业可用的嵌入式 HTTP/1.1 服务端，不内置 TLS/HTTP2/身份认证；公网 HTTPS 由反向代理或网关提供。正式文档位于 `electron/docs/modules/http-server/README.md`，变更必须运行 `npm run smoke:http-server-native`，真实编译普通 Win32 的 Win32/x64 与 New_Emoji x64 并完成协议检查。
@@ -597,6 +599,10 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 
 内置 Win32 容器也必须登记正式布局：`lingbuilder.win32.basic/GroupBox` 使用 `absolute` + `win32.groupbox.absolute`，`lingbuilder.win32.common-controls/TabControl` 使用 `slots` + `win32.tab.slots`。这些声明与 `DesignerContainerLayoutRegistry` 的适配器 ID 必须一致，设计器不得再为它们输出“未声明 layout”的兼容警告。
 > 2026-07-28 补充：FBro SDK 查找必须从任意深度的 `.lingbuilder-build/<project>/<arch>/<mode>` 向上定位工作区，不能用固定两级父目录推导。缺少 SDK、桥接文件、清单或运行时校验失败属于 `blockingDiagnostics`，F5、原生构建和 AI Bridge 必须在编译前停止，禁止依靠 `__has_include` 编译空白占位浏览器后仍报告成功。F5 中间 VS 工程从已校验的 `bin` 增量物化运行时；`generated/cpp` 可复制工程必须携带 78 项完整 runtime、清单和脚本。生成的 C++ 必须用 `L"\\\\/"` 同时识别 Windows 反斜杠和正斜杠，否则缓存根目录会被错误拼到 exe 文件名之后并导致 CEF 子进程失败。
+
+> 2026-09-19 补充：FBro 无头浏览器与启动开关应用时机。设计器新增非可视资源「FBro无头浏览器」（`FBroHeadlessBrowser`，项目级 `resources`，按组件名走 controlRef 寻址）；`.lcpp` 字面 `FBro_启用无头模式()` 在生成期烘焙 `headless` 启动开关（字符串/注释/`@` 行不触发，运行期调用点仅查询烘焙常量）；`FBro_实例导航/等待加载超时/执行JS/是否存活/关闭/绑定事件/取最近事件/取事件数据` 为后台实例句柄命令族（控制台同步取数路径，无消息泵不得依赖事件处理器）。**桥层关键纠正**：启动开关此前在 `LB_FBro_InitializeEx` 内 `FBroHsInitPro` 之前写 `FBroHsCommandLine_GetGlobalCommandLine()`——该对象在 CefInitialize 前为空，6 个既有 GPU/媒体流开关从未真正到达 CEF（且 `CefParseJSON` 在初始化前触发 `CefValue version -1` FATAL）；现统一改在 `BridgeInitEvent::OnBeforeCommandLineProcessing`（浏览器进程 `process_type` 为空时）应用并回填 `LB_FBro_取启动命令行` 文本，开关 JSON 改纯字符串解析。bridgeVersion 2.8.0。门禁与验收：`electron/tests/fbroHeadless.test.ts`、`npm run smoke:fbro-headless`。遗留项见 `docs/FUTURE_OPTIMIZATIONS.md`「FBro 无头浏览器」节。
+
+> 2026-09-20 补充：FBro 启动开关批次 4（跨域与禁用代理）。`FBRO_STARTUP_SWITCH_KEYS` 白名单从 7 键扩到 9 键，新增 `enableCrossFrame`（启用跨域模式）与 `disableProxy`（禁用代理），两侧各设计器属性、`.lcpp` 命令与文档同口径。跨域**必须走官方包装** `FBroHsCommandLine_EnableCrossFrame`，禁用代理走 `FBroHsCommandLine_DisableProxy`，桥内不得手写猜想的 Chromium 开关拼串（`ApplyStartupSwitchesTo` 内出现 `AppendSwitch` 即视为回归，测试有断言）。新增中文命令 `FBro_设置启动开关JSON(开关JSON)`（别名 `LB_FBro_SetStartupSwitches`）：生成期扫描 `.lcpp` 字面量按键并入烘焙，同键覆盖属性勾选（可把属性项显式关掉）；白名单与单层 `{"键":true|false}` 形态在桥内 `ValidateStartupSwitchJson` 单点校验，生成侧对非法 JSON、白名单外键、非布尔值给出**生成前中文阻断**，禁止静默丢掉用户声明；`LB_FBro_SetStartupSwitches` 在 `g_initialized` 后一律返回 `LB_FBRO_ERROR_OPERATION_FAILED`（启动开关只在 `OnBeforeCommandLineProcessing` 读一次）。字符串遮蔽改为自带单趟跳串扫描（`findFbroStartupSwitchCall`），旧的等长遮蔽在嵌套引号下会把字符串内的命令名误判为真调用。模块 `lingbuilder.fbro.browser` 升到 2.9.0，新增「FBro 跨域前置开关与命令行回读」snippet。边界：9 个开关**仅进程内模式生效**（独立进程 Host 由零参数启动，开关未透传），属性与命令描述写死该口径；全模式统一需 Host 侧启动参数管道，见 `docs/FUTURE_OPTIMIZATIONS.md`「FBro 启动开关批次 4」。门禁与验收：`electron/tests/fbroHeadless.test.ts`（含桥/生成器白名单双向漂移与官方包装断言）、`npm run smoke:fbro-startup-switches`（两源 HTTP + iframe 跨域标题回读，按开关逐键归因命令行）。
 
 ## DataGrid v1 实现约束（2026-07-30）
 
@@ -735,6 +741,7 @@ manifest v2 新增 `contributes.constants[]`，模块可像易语言模块常量
 - `#` 语法语义：`#常量名` 强制按常量解析（未知常量、对常量赋值 → error 级 `lingcpp-constant-reference-*` 诊断，构建门禁自然覆盖）；裸名继续兼容旧源码中项目常量引用。字符串、注释、多行文本块与 `@` 内嵌 C++ 行（`#include` 等）内的 `#` 不是常量引用。新手模式敲 `#` 立即呼出常量专用补全（项目常量 + 启用模块常量，上屏不带重复 `#`）；`#常量` 独立语义令牌着色（`LINGCPP_CONSTANT_TOKEN_COLORS`，深色取易语言常量紫 #BE56BE），新手画布、Monaco monarch 与主题规则共用同一令牌色。
 - 生成：`generateProjectGlobalsDefinition` 把启用模块常量与项目常量一起物化进 `LingBuilderProjectGlobals` 命名空间（数值 `inline constexpr`、文本 `inline const std::wstring`、逻辑 `true/false`）；项目常量同名遮蔽模块常量（只物化一份），跨模块同名在聚合阶段阻断；`translateLingCppExpression` 剥 `#` 映射到 `toCppIdentifier` 结果，导出工程可独立在 Visual Studio 编译。
 - 模块骨架 `createModuleTemplate` 的 manifest 自带 `constants` 示例；`lingbuilder.module.info` 返回 `constants[]`（name 带 `#` 形态），MCP 指令第 3 条声明该契约。
+- 「模块公开信息」弹窗（2026-09-20 起）：`ModulePublicInfoDialog.collectPublicInfoItems` 把 `contributes.constants` 渲染为独立「常量」分组——树节点显示常量名与 `#名称 = 值` 形态，详情含类型、值（文本带引号、逻辑型 真/假）、源码引用与 advanced 级别标记，并纳入概览表、搜索与「共 N 项公开能力」计数；纯常量模块不再出现分组全 0、只剩文档一条的情况。同日补「示例」分组：`contributes.examples[]` 与文档共用 `ModuleDocumentPreview` 预览链路（服务端 `readModuleDocumentation` 本就同时认 docs/examples），随包示例源码在 IDE 里首次有可点入口。回归断言在 `tests/modules.test.ts` 弹窗源码用例。
 - 一期边界（后续扩展见 `docs/FUTURE_OPTIMIZATIONS.md`）：新手「项目常量表」不显示模块常量分组；opaque/句柄型模块常量、表达式初值、常量重命名跨模块同步未开放。
 - 回归：`tests/modules.test.ts` contributes.constants 清单门禁用例；`tests/projectDataTypes.test.ts` 模块常量全链用例（语言服务解析/补全/诊断、生成物化、遮蔽、跨模块阻断）；`tests/lingcpp.test.ts` 项目常量用例扩展 `#` 触发补全、只读/未知诊断、重命名保留前缀断言。
 

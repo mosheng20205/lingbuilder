@@ -6,8 +6,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BUILTIN_MODULES } from './builtinModules';
 import { validateModuleManifest, validateModuleManifestContents, validateModuleRelativePath, type ModuleValidationOptions } from './manifest';
+import { createModuleTemplate } from './moduleSdkService';
 import {
   InstalledModule,
+  LINGBUILDER_MODULE_CATEGORIES,
   LingBuilderModuleManifest,
   LingBuilderProjectModules,
   MarketModule,
@@ -558,6 +560,92 @@ export class ModuleService {
       summary: `已取消模块开发源链接 ${moduleId}`,
       details: '开发源目录文件未改动。'
     });
+  }
+
+  /** 欢迎页「新建模块」：在 .lingbuilder/module-build/<id> 生成 manifest v2 骨架并自动登记为开发源。 */
+  async createModuleSource(options: {
+    id?: string;
+    name?: string;
+    category?: string;
+    description?: string;
+    template?: string;
+  }): Promise<{ moduleId: string; sourceDir: string; sourcePath: string; manifest: LingBuilderModuleManifest; diagnostics: string[] }> {
+    const moduleId = (options.id || '').trim();
+    if (!/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(moduleId)) {
+      throw new Error('模块 ID 只能使用小写字母、数字、点、下划线和中划线（3~81 位，字母或数字开头）。');
+    }
+    const category = options.category?.trim();
+    if (category && !(LINGBUILDER_MODULE_CATEGORIES as readonly string[]).includes(category)) {
+      throw new Error(`模块分类只允许：${LINGBUILDER_MODULE_CATEGORIES.join('、')}。`);
+    }
+    const template = options.template?.trim() || 'cpp-source';
+    const targetDir = path.join(this.lingBuilderDir(), 'module-build', moduleId);
+    const targetExists = await fs.stat(targetDir).then(() => true).catch(() => false);
+    if (targetExists) {
+      throw new Error(`目标目录已存在：.lingbuilder/module-build/${moduleId}。请换一个模块 ID，或先删除/改名旧目录。`);
+    }
+    const manifest = await createModuleTemplate({
+      template,
+      outDir: targetDir,
+      id: moduleId,
+      name: options.name?.trim() || undefined,
+      category: options.category?.trim() || undefined,
+      description: options.description?.trim() || undefined
+    });
+    const diagnostics = await validateModuleManifestContents(targetDir, manifest);
+    const relativePath = `.lingbuilder/module-build/${moduleId}`;
+    const { link } = await this.linkModuleDevSource(relativePath);
+    return { moduleId, sourceDir: targetDir, sourcePath: link.sourcePath, manifest, diagnostics };
+  }
+
+  /** 欢迎页「打开模块包」：把 .lbmod 解开为 .lingbuilder/module-build/<id> 下的可编辑源码并登记开发源（不安装）。 */
+  async openModulePackageAsSource(packagePath: string): Promise<{ moduleId: string; sourceDir: string; sourcePath: string; manifest: LingBuilderModuleManifest; diagnostics: string[] }> {
+    await this.ensureModuleDirs();
+    const normalizedPackagePath = path.resolve(packagePath);
+    const stat = await fs.stat(normalizedPackagePath).catch(() => undefined);
+    if (!stat?.isFile()) throw new Error(`模块包文件不存在：${normalizedPackagePath}`);
+    if (stat.size > MAX_PACKAGE_BYTES) throw new Error('模块包超过 1GB 限制。');
+    if (!normalizedPackagePath.toLowerCase().endsWith('.lbmod')) throw new Error('模块包扩展名必须是 .lbmod。');
+
+    const tempId = `open-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const tempDir = path.join(this.previewsDir(), tempId);
+    await fs.mkdir(tempDir, { recursive: true });
+    try {
+      try {
+        await expandArchive(normalizedPackagePath, tempDir);
+      } catch (error) {
+        throw new Error(`模块包解压失败，文件可能损坏：${errorMessage(error)}`);
+      }
+      const files = await collectFiles(tempDir);
+      if (files.some(file => !validateModuleRelativePath(file.relativePath))) {
+        throw new Error('模块包中包含不安全路径，已拒绝打开。');
+      }
+      let manifest: LingBuilderModuleManifest;
+      try {
+        const validation = validateModuleManifest(JSON.parse(await fs.readFile(path.join(tempDir, MODULE_MANIFEST_FILE), 'utf8')));
+        if (!validation.manifest) {
+          throw new Error(validation.diagnostics.join('；') || '清单不符合 manifest v2 规范。');
+        }
+        manifest = validation.manifest;
+      } catch (error) {
+        throw new Error(`模块包缺少有效的 ${MODULE_MANIFEST_FILE}：${errorMessage(error)}`);
+      }
+      const moduleId = manifest.id;
+      if (BUILTIN_MODULES.some(item => item.id === moduleId)) throw new Error(`内置模块不能作为开发源打开：${moduleId}`);
+      if (PROJECT_RESOURCE_MODULE_IDS.has(moduleId)) throw new Error(`「${moduleId}」是项目资源，不能作为开发源打开。`);
+      const targetDir = path.join(this.lingBuilderDir(), 'module-build', moduleId);
+      const targetExists = await fs.stat(targetDir).then(() => true).catch(() => false);
+      if (targetExists) {
+        throw new Error(`目标目录已存在：.lingbuilder/module-build/${moduleId}。如需重新打开，请先删除或改名旧目录。`);
+      }
+      await fs.mkdir(path.dirname(targetDir), { recursive: true });
+      await copyDirectory(tempDir, targetDir);
+      const diagnostics = await validateModuleManifestContents(targetDir, manifest);
+      const { link } = await this.linkModuleDevSource(`.lingbuilder/module-build/${moduleId}`);
+      return { moduleId, sourceDir: targetDir, sourcePath: link.sourcePath, manifest, diagnostics };
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   }
 
   async listMarketModules(sourceId?: string): Promise<MarketModule[]> {

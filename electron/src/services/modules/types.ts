@@ -1,12 +1,6 @@
-export type LingBuilderModuleCategory =
-  | '界面'
-  | '系统'
-  | '网络'
-  | '数据库'
-  | '图像'
-  | 'AI'
-  | '构建'
-  | '其他';
+export const LINGBUILDER_MODULE_CATEGORIES = ['界面', '系统', '网络', '数据库', '图像', 'AI', '构建', '其他'] as const;
+
+export type LingBuilderModuleCategory = (typeof LINGBUILDER_MODULE_CATEGORIES)[number];
 
 export interface ModuleCommandContribution {
   name: string;

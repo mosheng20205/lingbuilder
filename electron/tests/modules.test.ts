@@ -417,12 +417,16 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-20 再写回（CEF3 无头浏览器 Task 6）：lingbuilder.cef3.browser 新增
       // CEF3_创建无头浏览器 与 16 条 CEF3无头_* 实例编号命令（共 +17 命令、+29 参数）；
       // 全部按「实例编号:int」寻址，不引入新的 controlRef，故控件引用计数不变。
-      modules: 98,
-      commands: 3806,
-      parameters: 6752,
+      // 基线 2026-09-20 再写回（CEF3 代理缺口补齐）：新增 CEF3_设置全局代理/清除全局代理/取全局代理/
+      // 取实例代理 共 +4 命令、+2 参数；代理认证两条因 CEF 150 不投递代理 407（真机二分）本轮不登记。
+      // 基线 2026-09-20 再写回（lingbuilder.cef3.osr 首批）：新增 1 模块、5 条按浏览器句柄寻址的 OSR 命令、+9 参数；另补 CEF3无头_等待出帧 +1 命令、+2 参数；
+      // 句柄是 longLong 而非 controlRef，控件引用计数同样不变。
+      modules: 99,
+      commands: 3816,
+      parameters: 6765,
       controlReferences: 1340,
-      commandDigest: '82aa36af',
-      parameterDigest: 'df89bb47'
+      commandDigest: '13dcb3f0',
+      parameterDigest: 'c9aff182'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -3855,8 +3859,10 @@ test('CEF3 user documentation covers the unified event catalog and every public 
   // 2026-09-19 再写回：CEF3 多店铺能力对齐新增 CEF3_创建弹窗浏览器 / CEF3_创建区域 / CEF3_枚举实例JSON / CEF3_关闭全部实例 / CEF3会话_取上下文实例 / CEF3_设置用户代理 / CEF3_设置实例用户代理 / CEF3_取用户代理 / CEF3_取实例用户代理（9 条公开命令）。
   // 2026-09-19 再写回：三内核填表/框架能力补齐给 CEF3 新增 CEF3框架_* 25 条、
   // CEF3填表_*（写入族）12 条、CEF3平台_* 跨域白名单 3 条，公开命令 411 → 451；
-  // CEF3 无头浏览器（Task 6）再公开 17 条实例编号命令，451 → 468。
-  assert.equal(publicCommands.length, 468);
+  // CEF3 无头浏览器（Task 6）再公开 17 条实例编号命令，451 → 468；
+  // CEF3 代理缺口补齐再公开 6 条（全局代理三件 + 代理认证两件 + 取实例代理），468 → 472。
+  // 2026-09-20 再写回：lingbuilder.cef3.osr 首批 5 条按句柄寻址的 OSR 命令（重绘/帧率读写/两个订阅位），472 → 478。
+  assert.equal(publicCommands.length, 478);
   const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
   assert.equal(threadEntries.length, 5);
   assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
@@ -5040,7 +5046,7 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_发送触摸事件')?.parameters?.map(parameter => parameter.type),
     ['controlRef', 'int', 'double', 'double', 'double', 'double', 'double', 'double', 'int', 'longLong', 'int']);
   assert.equal(manifest.compatibility?.conflicts?.length || 0, 0);
-  assert.equal(manifest.version, '3.0.0-alpha.4');
+  assert.equal(manifest.version, '3.0.0-alpha.5');
   assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
   assert.ok(manifest.targets?.[0]?.libs?.some(item => item.endsWith('LingBuilderCefBridge.lib')));
   assert.ok(!manifest.targets?.[0]?.libs?.some(item => item.endsWith('libcef.lib')));
@@ -5388,7 +5394,8 @@ test('CEF3框架_* 命令族登记清单与 binding，并在生成的 C++ 里有
   assert.match(cpp, /LB_CEF3_FrameIsMain/);
   assert.match(cpp, /CEF3_框架文本列表转JSON/);
   // 主框架没有专用桥导出，必须由标识枚举 + 主框架判定推导，不能伪造句柄。
-  assert.match(cpp, /if \(LB_CEF3_FrameIsMain\(frame\)\) return static_cast<long long>\(frame\);/);
+  // 判定必须显式比 1：LB_CEF3_FrameIsMain 在句柄解析失败时返回负数错误码，真值判断会把失败当命中。
+  assert.match(cpp, /if \(LB_CEF3_FrameIsMain\(frame\) == 1\) return static_cast<long long>\(frame\);/);
   // 调用点：控件名走宽字符、框架句柄走整数。
   assert.match(cpp, /CEF3框架_按名称取框架\((L"浏览器1", L"login"\));/);
 });
@@ -7540,6 +7547,15 @@ test('module manager interface action opens the viewport-level public informatio
   assert.match(dialogSource, /公开记录/);
   assert.match(dialogSource, /公开数组/);
   assert.match(dialogSource, /字段 · \$\{field\.name\}/);
+  // 模块公开常量必须在弹窗可见（2026-09-20）：contributes.constants 收集、常量分组与 #名称 引用形态。
+  assert.match(dialogSource, /contributes\.constants \|\| \[\]/);
+  assert.match(dialogSource, /groupId: 'constants'/);
+  assert.match(dialogSource, /declaration: `#\$\{constant\.name\} = \$\{valueText\}`/);
+  assert.match(dialogSource, /\{ id: 'constants', label: '常量' \}/);
+  // 模块随包示例必须在弹窗可打开（2026-09-20）：examples 分组与文档共用同一预览链路。
+  assert.match(dialogSource, /contributes\.examples \|\| \[\]/);
+  assert.match(dialogSource, /\{ id: 'examples', label: '示例' \}/);
+  assert.match(dialogSource, /item\.groupId === 'docs' \|\| item\.groupId === 'examples'/);
   assert.match(dialogSource, /<ModuleDocumentPreview/);
   assert.match(documentPreviewSource, /ReactMarkdown/);
   assert.match(documentPreviewSource, /正在读取模块文档/);

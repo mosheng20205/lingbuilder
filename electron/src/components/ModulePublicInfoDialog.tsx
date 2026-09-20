@@ -9,6 +9,7 @@ import {
   Copy,
   FileCode,
   FileText,
+  Hash,
   Info,
   Monitor,
   Package,
@@ -21,8 +22,8 @@ import { normalizeModulePublicInfoSearchText } from '../services/modules/moduleP
 import { formatModulePublicType, formatModulePublicTypeSource, getModulePublicTypeKind } from '../services/modules/modulePublicTypeService';
 import type { InstalledModule, ModuleTargetContribution } from '../services/modules/types';
 
-type PublicGroupId = 'types' | 'commands' | 'controls' | 'snippets' | 'dependencies' | 'docs';
-type PublicItemKind = '类型/类' | '命令接口' | '设计器控件' | '代码片段' | 'C++ 依赖' | '文档';
+type PublicGroupId = 'types' | 'constants' | 'commands' | 'controls' | 'snippets' | 'dependencies' | 'docs' | 'examples';
+type PublicItemKind = '类型/类' | '常量' | '命令接口' | '设计器控件' | '代码片段' | 'C++ 依赖' | '文档' | '示例';
 
 interface PublicInfoItem {
   id: string;
@@ -70,11 +71,13 @@ export default function ModulePublicInfoDialog({
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<PublicGroupId, boolean>>({
     types: true,
+    constants: true,
     commands: true,
     controls: true,
     snippets: false,
     dependencies: false,
-    docs: false
+    docs: false,
+    examples: false
   });
   const [expandedFeatures, setExpandedFeatures] = useState<Record<string, boolean>>(() => Object.fromEntries(
     (familyFeatures || []).map((feature, index) => [feature.moduleId, index === 0])
@@ -109,6 +112,7 @@ export default function ModulePublicInfoDialog({
   const groups = getPublicInfoGroups(visibleItems);
   const overviewItems = visibleItems.filter(item => (
     item.groupId === 'types'
+    || item.groupId === 'constants'
     || item.groupId === 'commands'
     || item.groupId === 'controls'
     || item.groupId === 'snippets'
@@ -151,11 +155,13 @@ export default function ModulePublicInfoDialog({
     if (!normalizedSearch) return;
     setExpandedGroups({
       types: true,
+      constants: true,
       commands: true,
       controls: true,
       snippets: true,
       dependencies: true,
-      docs: true
+      docs: true,
+      examples: true
     });
     setExpandedFeatures(Object.fromEntries((familyFeatures || []).map(feature => [feature.moduleId, true])));
   }, [familyFeatures, normalizedSearch]);
@@ -312,11 +318,11 @@ export default function ModulePublicInfoDialog({
             {selectedItem ? (
               <PublicInfoDetail
                 item={selectedItem}
-                documentItems={allItems.filter(item => item.groupId === 'docs')}
+                documentItems={allItems.filter(item => item.groupId === 'docs' || item.groupId === 'examples')}
                 isDarkMode={isDarkMode}
                 onOpenDocument={(moduleId, documentPath) => {
                   const target = allItems.find(item => (
-                    item.groupId === 'docs'
+                    (item.groupId === 'docs' || item.groupId === 'examples')
                     && item.sourceModuleId === moduleId
                     && item.declaration === documentPath
                   ));
@@ -340,7 +346,7 @@ export default function ModulePublicInfoDialog({
                 <ModulePublicOverview
                   items={overviewItems}
                   dependencyItems={visibleItems.filter(item => item.groupId === 'dependencies')}
-                  docItems={visibleItems.filter(item => item.groupId === 'docs')}
+                  docItems={visibleItems.filter(item => item.groupId === 'docs' || item.groupId === 'examples')}
                   isDarkMode={isDarkMode}
                 />
               </div>
@@ -699,7 +705,7 @@ function ModulePublicOverview({
       </InfoSection>
 
       {(dependencyItems.length > 0 || docItems.length > 0) && (
-        <InfoSection title="C++ 依赖与文档" isDarkMode={isDarkMode}>
+        <InfoSection title="C++ 依赖、文档与示例" isDarkMode={isDarkMode}>
           <PublicInfoTable
             headers={['分类', '路径/内容', '公开', '备注']}
             rows={[...dependencyItems, ...docItems].map(item => [item.kind, item.declaration, '✓', item.description])}
@@ -722,7 +728,7 @@ function PublicInfoDetail({
   isDarkMode: boolean;
   onOpenDocument: (moduleId: string, documentPath: string) => void;
 }) {
-  if (item.groupId === 'docs') {
+  if (item.groupId === 'docs' || item.groupId === 'examples') {
     return (
       <React.Suspense fallback={(
         <div className={`flex min-h-56 items-center justify-center rounded border text-sm ${isDarkMode ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-500'}`} role="status">
@@ -871,6 +877,29 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
       ]
     }));
   }
+  for (const constant of contributes.constants || []) {
+    const valueText = typeof constant.value === 'string'
+      ? `"${constant.value}"`
+      : typeof constant.value === 'boolean'
+        ? (constant.value ? '真' : '假')
+        : String(constant.value);
+    items.push(createItem({
+      id: `${manifest.id}:constant:${constant.name}`,
+      sourceModuleId: manifest.id,
+      groupId: 'constants',
+      kind: '常量',
+      name: constant.name,
+      declaration: `#${constant.name} = ${valueText}`,
+      description: constant.description,
+      copyText: `#${constant.name}`,
+      fields: [
+        { label: '类型', value: constant.type },
+        { label: '值', value: valueText },
+        { label: '源码引用', value: `#${constant.name}` },
+        ...(constant.level === 'advanced' ? [{ label: '级别', value: '高级（需在设置开启显示高级 API 才进补全）' }] : [])
+      ]
+    }));
+  }
   for (const command of contributes.commands || []) {
     const binding = bindings.find(candidate => candidate.command === command.name);
     items.push(createItem({
@@ -954,6 +983,18 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
       copyText: doc.path
     }));
   }
+  for (const example of contributes.examples || []) {
+    items.push(createItem({
+      id: `${manifest.id}:example:${example.path}`,
+      sourceModuleId: manifest.id,
+      groupId: 'examples',
+      kind: '示例',
+      name: example.title,
+      declaration: example.path,
+      description: example.description || '模块随包示例源码，可直接查看引用写法。',
+      copyText: example.path
+    }));
+  }
   return items;
 }
 
@@ -995,11 +1036,13 @@ function collectTargetDependencies(targets: ModuleTargetContribution[]) {
 function getPublicInfoGroups(items: PublicInfoItem[]) {
   const definitions: Array<{ id: PublicGroupId; label: string }> = [
     { id: 'types', label: '类型/类' },
+    { id: 'constants', label: '常量' },
     { id: 'commands', label: '命令接口' },
     { id: 'controls', label: '设计器控件' },
     { id: 'snippets', label: '代码片段' },
     { id: 'dependencies', label: 'C++ 依赖' },
-    { id: 'docs', label: '文档' }
+    { id: 'docs', label: '文档' },
+    { id: 'examples', label: '示例' }
   ];
   return definitions.map(group => ({
     ...group,
@@ -1010,11 +1053,13 @@ function getPublicInfoGroups(items: PublicInfoItem[]) {
 function getGroupIcon(groupId: PublicGroupId) {
   switch (groupId) {
     case 'types': return <BookOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />;
+    case 'constants': return <Hash className="h-3.5 w-3.5 shrink-0 text-purple-400" />;
     case 'commands': return <Wrench className="h-3.5 w-3.5 shrink-0 text-cyan-400" />;
     case 'controls': return <Monitor className="h-3.5 w-3.5 shrink-0 text-violet-300" />;
     case 'snippets': return <Code2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />;
     case 'dependencies': return <FileCode className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
     case 'docs': return <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />;
+    case 'examples': return <Code2 className="h-3.5 w-3.5 shrink-0 text-lime-300" />;
     default: return <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
   }
 }

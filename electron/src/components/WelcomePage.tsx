@@ -11,6 +11,7 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  Package,
   RotateCcw,
   Search,
   UserRound,
@@ -28,6 +29,7 @@ import {
   LINGBUILDER_VIDEO_TUTORIALS_URL
 } from '../services/product/productInfo';
 import ProjectTypeDialog from './ProjectTypeDialog';
+import CreateModuleDialog from './CreateModuleDialog';
 import RecentWorkspacesDialog, { workspaceLabel } from './RecentWorkspacesDialog';
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
 import { requestCloudAccountRecharge } from '../services/workbench/cloudAccountRechargeService';
@@ -82,6 +84,7 @@ export default function WelcomePage({
   onOpenCliGuide
 }: WelcomePageProps) {
   const [showProjectTypeDialog, setShowProjectTypeDialog] = useState(false);
+  const [showCreateModuleDialog, setShowCreateModuleDialog] = useState(false);
   const [workspaceQuery, setWorkspaceQuery] = useState('');
   const [showAllWorkspacesDialog, setShowAllWorkspacesDialog] = useState(false);
   const [accountSession, setAccountSession] = useState(getCloudAccountSessionState);
@@ -165,6 +168,14 @@ export default function WelcomePage({
                 >
                   <FolderOpen className="h-4 w-4" />
                   打开工作区
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModuleDialog(true)}
+                  className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/60 ${isDarkMode ? 'border-[#4a4a54] bg-[#292930] text-slate-100 hover:border-blue-400/70 hover:bg-[#30303a]' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50'}`}
+                >
+                  <Package className="h-4 w-4" />
+                  新建模块
                 </button>
               </div>
 
@@ -380,6 +391,12 @@ export default function WelcomePage({
           onCreateProject('windows-console');
         }}
         onClose={() => setShowProjectTypeDialog(false)}
+      />
+
+      <CreateModuleDialog
+        open={showCreateModuleDialog}
+        isDarkMode={isDarkMode}
+        onClose={() => setShowCreateModuleDialog(false)}
       />
     </div>
   );

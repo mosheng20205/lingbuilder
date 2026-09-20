@@ -1768,6 +1768,35 @@ app.post("/api/modules/developer/link", async (req, res) => {
   }
 });
 
+// 欢迎页「新建模块」：在 .lingbuilder/module-build/<id> 生成骨架并自动登记开发源。
+app.post("/api/modules/developer/create", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = await getModuleService().createModuleSource({
+      id: typeof body.id === "string" ? body.id : undefined,
+      name: typeof body.name === "string" ? body.name : undefined,
+      category: typeof body.category === "string" ? body.category : undefined,
+      description: typeof body.description === "string" ? body.description : undefined,
+      template: typeof body.template === "string" ? body.template : undefined
+    });
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块创建失败" });
+  }
+});
+
+// 欢迎页「打开模块包」：把 .lbmod 解开为 .lingbuilder/module-build 下的可编辑源码并登记开发源（不安装）。
+app.post("/api/modules/developer/open-package", async (req, res) => {
+  try {
+    const { packagePath } = req.body as { packagePath?: string };
+    if (!packagePath) return res.status(400).json({ ok: false, error: "缺少 packagePath" });
+    const result = await getModuleService().openModulePackageAsSource(packagePath);
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块包打开失败" });
+  }
+});
+
 app.post("/api/modules/developer/unlink", async (req, res) => {
   try {
     const { moduleId } = req.body as { moduleId?: string };

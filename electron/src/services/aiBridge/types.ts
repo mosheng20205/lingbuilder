@@ -225,6 +225,8 @@ export interface AiBridgeEditApplyResult {
 export interface AiBridgeModuleScaffoldRequest {
   id?: string;
   name?: string;
+  category?: string;
+  description?: string;
   template?: string;
   outDir?: string;
   approved?: boolean;
