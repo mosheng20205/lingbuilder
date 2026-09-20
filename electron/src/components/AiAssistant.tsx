@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2, Copy } from 'lucide-react';
+import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2, Copy, Eye, EyeOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
@@ -66,6 +66,16 @@ const AI_MODEL_PRESETS = [
   { id: 'kimi-k2', label: 'Kimi - K2', baseUrl: 'https://api.moonshot.cn/v1', modelName: 'kimi-k2-0711-preview', provider: 'openai' },
   { id: 'kimi-latest', label: 'Kimi - Latest', baseUrl: 'https://api.moonshot.cn/v1', modelName: 'moonshot-v1-auto', provider: 'openai' }
 ] as const;
+
+// 自定义模型可选的接口协议；value 与 AiConnectionConfig.provider 及服务端协议分派一一对应。
+const AI_PROVIDER_OPTIONS = [
+  { value: 'openai', label: 'OpenAI Compatible' },
+  { value: 'anthropic', label: 'Anthropic Compatible' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'gemini', label: 'Google Gemini' }
+] as const;
+
+type AiProviderOption = (typeof AI_PROVIDER_OPTIONS)[number]['value'];
 
 function loadAiConfig(): AiConnectionConfig {
   try {
@@ -281,6 +291,16 @@ export default function AiAssistant({
   const [isTranslating, setIsTranslating] = useState(false);
   const [translationProgress, setTranslationProgress] = useState(0);
   const [isAiConfigExpanded, setIsAiConfigExpanded] = useState(true);
+  // 自定义 API 自动检测：配置变更去抖后真实 ping 一次供应商，内联展示结果；成功等同连接成功（不写聊天气泡）。
+  const [autoCheckState, setAutoCheckState] = useState<{ status: 'checking' | 'ok' | 'fail'; message: string } | null>(null);
+  const autoCheckGenerationRef = useRef(0);
+  const lastAutoCheckSignatureRef = useRef<string | null>(null);
+  const autoCheckConfigEditedRef = useRef(false);
+  // 密钥明文切换与「获取模型列表」：列表仅在地址/密钥/协议变更时失效，模型名编辑不清空。
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [modelFetchError, setModelFetchError] = useState('');
   const [isConnectingAi, setIsConnectingAi] = useState(false);
   const [aiConnectedSignature, setAiConnectedSignature] = useState<string | null>(
     () => aiConnectionSession.getConnectedSignature()
@@ -348,6 +368,8 @@ export default function AiAssistant({
   const confirmActionRef = useRef<{ kind: 'remove' | 'clear'; conversationId?: string; expiresAt: number } | null>(null);
   const confirmActionTimerRef = useRef<number | undefined>(undefined);
   const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
+  const effectiveProvider: AiProviderOption = aiConfig.provider || DEFAULT_AI_CONFIG.provider;
+  const isCustomPreset = (aiConfig.presetId || 'custom') === 'custom';
   const aiConnectionSignature = [
     aiConfig.provider || DEFAULT_AI_CONFIG.provider,
     aiConfig.baseUrl.trim(),
@@ -564,11 +586,43 @@ export default function AiAssistant({
 
   const updateAiConfig = (patch: Partial<AiConnectionConfig>) => {
     aiConnectionSession.clear();
+    autoCheckConfigEditedRef.current = true;
+    if ('provider' in patch || 'baseUrl' in patch || 'apiKey' in patch) {
+      setModelOptions([]);
+      setModelFetchError('');
+    }
     setAiConnectedSignature(null);
     setAiConfig(current => ({
       ...current,
       ...patch
     }));
+  };
+
+  const handleFetchModels = async () => {
+    if (isFetchingModels) return;
+    setIsFetchingModels(true);
+    setModelFetchError('');
+    try {
+      const response = await fetch('/api/ai/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiConfig: { ...aiConfig, modelName: effectiveModelName } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.details || data.error || '获取模型列表失败');
+      }
+      const models: string[] = Array.isArray(data.models) ? data.models.filter((item: unknown) => typeof item === 'string') : [];
+      if (!models.length) {
+        throw new Error('服务端未返回任何可用模型');
+      }
+      setModelOptions(models);
+    } catch (error: any) {
+      setModelOptions([]);
+      setModelFetchError(String(error?.message || '获取模型列表失败').slice(0, 200));
+    } finally {
+      setIsFetchingModels(false);
+    }
   };
 
   const handleAiModeChange = (mode: AiConnectionMode) => {
@@ -579,7 +633,7 @@ export default function AiAssistant({
   const handlePresetChange = (presetId: string) => {
     const preset = AI_MODEL_PRESETS.find(item => item.id === presetId);
     if (!preset || preset.id === 'custom') {
-      updateAiConfig({ presetId, provider: 'openai' });
+      updateAiConfig({ presetId });
       return;
     }
     updateAiConfig({
@@ -592,6 +646,8 @@ export default function AiAssistant({
 
   const handleConnectAi = async () => {
     setIsConnectingAi(true);
+    lastAutoCheckSignatureRef.current = aiConnectionSignature;
+    setAutoCheckState(null);
     try {
       const response = await fetch('/api/ai/connect', {
         method: 'POST',
@@ -683,6 +739,41 @@ export default function AiAssistant({
       // AI settings remain usable for the current session even if storage fails.
     }
   }, [aiConfig, aiMode, effectiveModelName, isAiCredentialReady]);
+
+  useEffect(() => {
+    if (aiMode !== 'byok') return;
+    if (!autoCheckConfigEditedRef.current) return;
+    if (!aiConfig.apiKey.trim() || !effectiveModelName) return;
+    if (lastAutoCheckSignatureRef.current === aiConnectionSignature) return;
+    const generation = ++autoCheckGenerationRef.current;
+    const requestConfig = { ...aiConfig, modelName: effectiveModelName };
+    const timer = window.setTimeout(async () => {
+      // 手动「连接到 AI」已覆盖当前签名时跳过，避免重复 ping 供应商。
+      if (lastAutoCheckSignatureRef.current === aiConnectionSignature) return;
+      lastAutoCheckSignatureRef.current = aiConnectionSignature;
+      setAutoCheckState({ status: 'checking', message: '' });
+      try {
+        const response = await fetch('/api/ai/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aiConfig: requestConfig })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (generation !== autoCheckGenerationRef.current) return;
+        if (!response.ok || data.ok === false) {
+          setAutoCheckState({ status: 'fail', message: String(data.details || data.error || 'AI 连接失败').slice(0, 200) });
+          return;
+        }
+        setAutoCheckState({ status: 'ok', message: effectiveModelName });
+        aiConnectionSession.markConnected(aiConnectionSignature);
+        setAiConnectedSignature(aiConnectionSignature);
+      } catch (error: any) {
+        if (generation !== autoCheckGenerationRef.current) return;
+        setAutoCheckState({ status: 'fail', message: String(error?.message || 'AI 连接失败').slice(0, 200) });
+      }
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [aiConnectionSignature, aiMode, aiConfig, effectiveModelName]);
 
   useEffect(() => {
     try {
@@ -1244,44 +1335,105 @@ export default function AiAssistant({
           )}
           {aiMode === 'byok' && isAiConfigExpanded && (
             <>
-              <select
-                value={aiConfig.presetId || 'custom'}
-                onChange={event => handlePresetChange(event.target.value)}
-                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 cursor-pointer ${
-                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
-                }`}
-              >
-                {AI_MODEL_PRESETS.map(preset => (
-                  <option key={preset.id} value={preset.id} className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={aiConfig.baseUrl}
-                onChange={event => updateAiConfig({ baseUrl: event.target.value, presetId: 'custom' })}
-                placeholder="Base URL，选择常用模型后自动填充"
-                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
-                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
-                }`}
-              />
-              <input
-                value={aiConfig.apiKey}
-                onChange={event => updateAiConfig({ apiKey: event.target.value })}
-                placeholder="API Key，留空使用服务端环境变量"
-                type="password"
-                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
-                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
-                }`}
-              />
-              <input
-                value={aiConfig.modelName}
-                onChange={event => updateAiConfig({ modelName: event.target.value, presetId: 'custom' })}
-                placeholder="Model Name，选择常用模型后自动填充"
-                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
-                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
-                }`}
-              />
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>预设</span>
+                <select
+                  value={aiConfig.presetId || 'custom'}
+                  onChange={event => handlePresetChange(event.target.value)}
+                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 cursor-pointer ${
+                    isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
+                  }`}
+                >
+                  {AI_MODEL_PRESETS.map(preset => (
+                    <option key={preset.id} value={preset.id} className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>接口协议</span>
+                <select
+                  value={effectiveProvider}
+                  onChange={event => updateAiConfig({ provider: event.target.value as AiProviderOption })}
+                  disabled={!isCustomPreset}
+                  title={isCustomPreset ? '自定义模型的调用协议' : '内置预设使用固定协议，选择「自定义模型」后可切换'}
+                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
+                    isCustomPreset ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
+                  } ${isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'}`}
+                >
+                  {AI_PROVIDER_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value} className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>API 地址</span>
+                <input
+                  value={aiConfig.baseUrl}
+                  onChange={event => updateAiConfig({ baseUrl: event.target.value, presetId: 'custom' })}
+                  placeholder="https://api.openai.com/v1"
+                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
+                    isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
+                  }`}
+                />
+              </div>
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>密钥</span>
+                <div className="relative">
+                  <input
+                    value={aiConfig.apiKey}
+                    onChange={event => updateAiConfig({ apiKey: event.target.value })}
+                    placeholder="留空使用服务端环境变量"
+                    type={showApiKey ? 'text' : 'password'}
+                    className={`w-full border rounded px-2.5 py-1.5 pr-9 text-xs focus:outline-none focus:border-purple-500 ${
+                      isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(value => !value)}
+                    title={showApiKey ? '隐藏密钥' : '显示密钥'}
+                    aria-label={showApiKey ? '隐藏密钥' : '显示密钥'}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                  >
+                    {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>模型 ID</span>
+                  <button
+                    type="button"
+                    onClick={handleFetchModels}
+                    disabled={isFetchingModels || !aiConfig.apiKey.trim()}
+                    title="从服务商拉取当前密钥可用的模型列表"
+                    className="text-[11px] text-purple-500 hover:text-purple-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    {isFetchingModels ? '获取中…' : '获取模型列表'}
+                  </button>
+                </div>
+                <input
+                  value={aiConfig.modelName}
+                  onChange={event => updateAiConfig({ modelName: event.target.value, presetId: 'custom' })}
+                  placeholder="选择常用模型后自动填充，也可手动输入"
+                  list="ai-byok-model-options"
+                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
+                    isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
+                  }`}
+                />
+                <datalist id="ai-byok-model-options">
+                  {modelOptions.map(option => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+                {modelFetchError && (
+                  <div className={`mt-1 text-[11px] leading-4 break-all ${isDarkMode ? 'text-rose-400' : 'text-rose-600'}`}>获取失败：{modelFetchError}</div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={handleConnectAi}
@@ -1309,6 +1461,24 @@ export default function AiAssistant({
                   </>
                 )}
               </button>
+              {autoCheckState && (
+                <div
+                  role="status"
+                  className={`text-[11px] leading-4 break-all ${
+                    autoCheckState.status === 'checking'
+                      ? 'text-slate-500'
+                      : autoCheckState.status === 'ok'
+                        ? isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
+                        : isDarkMode ? 'text-rose-400' : 'text-rose-600'
+                  }`}
+                >
+                  {autoCheckState.status === 'checking'
+                    ? '正在自动检测接口可用性…'
+                    : autoCheckState.status === 'ok'
+                      ? `接口可用：${autoCheckState.message || effectiveModelName}`
+                      : `接口不可用：${autoCheckState.message || '请检查 Base URL、API Key 和 Model Name'}`}
+                </div>
+              )}
             </>
           )}
         </div>

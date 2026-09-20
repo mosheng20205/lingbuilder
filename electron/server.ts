@@ -418,6 +418,33 @@ function resolveAiConnectionConfig(config?: AiConnectionConfig): Required<AiConn
   };
 }
 
+// 连接测试的硬上限：挂起不响应的中转端点不能让「正在连接 AI...」无限转圈。
+const AI_CONNECT_TIMEOUT_MS = 10_000;
+
+function withAiConnectTimeout<T>(task: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`连接测试超时：${AI_CONNECT_TIMEOUT_MS / 1000} 秒内未收到响应，请检查 Base URL 是否可达`)),
+      AI_CONNECT_TIMEOUT_MS
+    );
+    task.then(
+      value => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timer);
+        // fetch 的 AbortSignal.timeout 与本计时器同刻触发且常先注册完成，这里把超时类错误统一规范成中文诊断。
+        if (error instanceof Error && (error.name === "TimeoutError" || /aborted due to timeout/iu.test(error.message))) {
+          reject(new Error(`连接测试超时：${AI_CONNECT_TIMEOUT_MS / 1000} 秒内未收到响应，请检查 Base URL 是否可达`));
+          return;
+        }
+        reject(error);
+      }
+    );
+  });
+}
+
 function joinBaseUrl(baseUrl: string, pathName: string): string {
   return `${baseUrl.replace(/\/+$/u, "")}/${pathName.replace(/^\/+/u, "")}`;
 }
@@ -517,6 +544,7 @@ async function testAiConnection(config: Required<AiConnectionConfig>): Promise<s
   if (config.provider === "anthropic") {
     const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.anthropic.com/v1", "/messages"), {
       method: "POST",
+      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
       headers: {
         "content-type": "application/json",
         "x-api-key": config.apiKey,
@@ -536,6 +564,7 @@ async function testAiConnection(config: Required<AiConnectionConfig>): Promise<s
   if (config.provider === "deepseek") {
     const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.deepseek.com", "/chat/completions"), {
       method: "POST",
+      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
       headers: {
         "authorization": `Bearer ${config.apiKey}`,
         "content-type": "application/json"
@@ -556,6 +585,7 @@ async function testAiConnection(config: Required<AiConnectionConfig>): Promise<s
   if (config.provider === "openai") {
     const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.openai.com/v1", "/chat/completions"), {
       method: "POST",
+      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
       headers: {
         "authorization": `Bearer ${config.apiKey}`,
         "content-type": "application/json"
@@ -582,6 +612,51 @@ async function testAiConnection(config: Required<AiConnectionConfig>): Promise<s
     }
   });
   return response.text || "";
+}
+
+// 「获取模型列表」的单次返回上限：防超大 provider 列表撑爆侧栏面板。
+const AI_MODELS_LIST_MAX = 200;
+
+async function listAiModels(config: Required<AiConnectionConfig>): Promise<string[]> {
+  if (config.provider === "anthropic") {
+    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.anthropic.com/v1", "/models"), {
+      method: "GET",
+      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
+      headers: {
+        "x-api-key": config.apiKey,
+        "anthropic-version": "2023-06-01"
+      }
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { data?: Array<{ id?: string }> };
+    return (data.data || []).map(item => item.id || "").filter(Boolean);
+  }
+
+  if (config.provider === "deepseek" || config.provider === "openai") {
+    const defaultBaseUrl = config.provider === "deepseek" ? "https://api.deepseek.com" : "https://api.openai.com/v1";
+    const response = await fetch(joinBaseUrl(config.baseUrl || defaultBaseUrl, "/models"), {
+      method: "GET",
+      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
+      headers: {
+        "authorization": `Bearer ${config.apiKey}`
+      }
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { data?: Array<{ id?: string }> };
+    return (data.data || []).map(item => item.id || "").filter(Boolean);
+  }
+
+  const ai = getGeminiClient(config);
+  const pager = await ai.models.list();
+  const models: string[] = [];
+  for await (const model of pager) {
+    // 仅保留支持 generateContent 的模型；字段缺失的 provider 形态（自建兼容端点）全部保留。
+    if (model.supportedActions && !model.supportedActions.includes("generateContent")) continue;
+    const name = (model.name || "").replace(/^models\//u, "");
+    if (name) models.push(name);
+    if (models.length >= AI_MODELS_LIST_MAX) break;
+  }
+  return models;
 }
 
 function getGeminiClient(config?: AiConnectionConfig): GoogleGenAI {
@@ -974,7 +1049,7 @@ app.post("/api/ai/connect", async (req, res) => {
   }
 
   try {
-    const reply = await testAiConnection(resolvedAiConfig);
+    const reply = await withAiConnectTimeout(testAiConnection(resolvedAiConfig));
     res.json({
       ok: true,
       modelName: resolvedAiConfig.modelName,
@@ -986,6 +1061,28 @@ app.post("/api/ai/connect", async (req, res) => {
     res.status(500).json({
       ok: false,
       error: "AI 连接失败",
+      details: error?.message || String(error)
+    });
+  }
+});
+
+app.post("/api/ai/models", async (req, res) => {
+  const { aiConfig } = req.body as { aiConfig?: AiConnectionConfig };
+  const resolvedAiConfig = resolveAiConnectionConfig(aiConfig);
+  if (!resolvedAiConfig.apiKey) {
+    return res.status(400).json({ ok: false, error: "缺少 API Key" });
+  }
+
+  try {
+    const models = await withAiConnectTimeout(listAiModels(resolvedAiConfig));
+    const unique = [...new Set(models)]
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, AI_MODELS_LIST_MAX);
+    res.json({ ok: true, models: unique });
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: "获取模型列表失败",
       details: error?.message || String(error)
     });
   }
