@@ -324,3 +324,44 @@ Map**——直接把面板接上去必然「未找到编辑提案」。交接实
 `tests/lingcpp.test.ts`「值为 undefined 的键与键缺失视为同一模型」钉住序列化语义。
 改这两条中任何一条都会让外部 AI 布局提案重新变成 100% 假失败。
 
+## 面板模型通道配置与模块链例外（2026-09-22）
+
+### 模型通道只能由 IDE 代配
+
+dsh 的 provider 配置分三层：`~/.dsh/settings.yaml`（可热重载）、`~/.dsh/.credentials.yaml`（0600）、
+以及 `process.env`（优先级最高）。SDK 线协议的 `initialize` 字段只有
+`cwd/provider/model/reasoningEffort/maxTokens`——**传不了 Base URL 与 API Key**，也没有 `dsh config`
+一类非交互子命令。因此面板「本机 Agent」的模型通道由 IDE 在启动子进程时注入：
+
+- 端点与模型名写进 profile overlay 的 provider 行：官方通道改 `llm-deepseek`，自定义 OpenAI 兼容
+  网关激活 `llm-pi-ai` 的 `lingbuilder-custom` 路由。profile patch 对某一行是**整体替换 config**，
+  所以 `buildAgentProviderPatchLines` 必须重述该行全部键，漏一个就退回 dsh 默认值。
+- 密钥只进子进程环境变量（`DEEPSEEK_API_KEY` / `LINGBUILDER_AGENT_API_KEY`），由 safeStorage 加密
+  保存在 `<userData>/credentials/agent-provider-settings.json`；overlay 文件、日志与项目里永不得出现密钥。
+  本机钥匙串不可用时只记 `apiKeyUnavailable` 标记并提示，既不静默丢失也不退回明文。
+- 「获取模型列表」与「测试连通」由主进程代调本地 `/api/ai/models`、`/api/ai/connect`（dsh 侧无此能力）。
+  渲染层拿到的读回值密钥恒为空串，`mergeAgentProviderKey` 保证「留空 = 沿用已存密钥」。
+- 改完配置必须重启 dsh 子进程才生效（overlay 与环境变量都是启动期决定的），入口是 `agent-runtime:restart`。
+
+回归：`tests/agentRuntime.test.ts` 的 provider 用例组（校验中文修法、overlay 含端点且绝不含密钥、
+启动计划只注入环境、读写往返与钥匙串不可用分支、留空沿用密钥）。
+
+### 模块封装链对 Agent 开放，项目侧仍遮蔽
+
+`AGENT_MASKED_TOOLS` 只覆盖用户项目侧（`edit.apply / build.run / native.preview / native.export /
+project.create / project.create.undo`）。模块链 `module.scaffold → writeFiles → validate → pack →
+installPreview → install` 对 Agent 可用：它只写 `.lingbuilder/module-build` 与
+`.lingbuilder/module-packages` 两个暂存目录，路径白名单与 200 文件/1MB/10MB 限额照旧，安装仍需
+installPreview 预览 ID 与收费权益门禁。**把模块命令接进用户项目源码时仍然只能 `edit.propose` + 用户确认**，
+这条口径写在 `AGENT_TOOLSET_NOTICE` 里，改边界必须同步该文案与 `tests/aiBridge.test.ts` 的可见/遮蔽断言
+（真机 stdio 握手复验：可见工具 17/23）。
+
+## 汉化翻译功能移除（2026-09-22）
+
+`POST /api/translate` 与「一键智能汉化」「批量 AI 翻译」「术语规范同步」「导入翻译实例」「翻译风格切换」
+及本地词典预填译文、`GlossaryPanel`、`defaultGlossary`/`GlossaryTerm` 一并下线。**`/api/reconstruct` 与
+`triggerReconstruction` 必须保留**——它是字符串表编辑回填 C++ 的引擎，手动改译文同样依赖它。
+字符串提取表、逐条手动编辑、构建运行链路不受影响；云端账号体系（点数、充值、模块权益、体验计划、
+更新渠道）与本次移除无关，继续全界面常驻。
+
+

@@ -117,6 +117,17 @@ OpenAI-compatible 思考模型会分别解析推理增量和最终回答；聊�
 
 模块一键生成等结构化输出场景可在请求中携带 `thinking: 'disabled'`：网关会对上游供应商显式关闭思考过程，避免推理文本挤占输出预算；配合按模型配置的输出预算（模型级 `maxOutputTokens` 已开至 DeepSeek 上限 393216 tokens）保证完整模块不被截断。聊天回复因 `length` 被截断时会收到中文截断提示；正文与思考均为空时收到明确的中文错误而不是空白回复。点数预冻结按有界输出估算（16,384）计算，结算按供应商实际用量补收或退还。
 
+### 本机 Agent：内嵌 DeepSeek Harness 运行时
+
+AI 面板的「本机 Agent」引擎把开源的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（下称 dsh）作为规划与工具循环宿主，LingBuilder 负责其余一切：工作区、诊断、提案、确认、写盘与构建。
+
+- **能力边界**：dsh 子进程只能看到 LingBuilder 的 AI Bridge MCP 工具，且使用 `--mcp-toolset agent` 工具集——用户项目侧的 `edit.apply / build.run / native.preview / native.export / project.create` 对它不可见，项目源码与设计器模型的改动一律以 `edit.propose` 提案回到面板，由用户点「应用提案」后由 IDE 代执行；dsh 自带的本地文件与 shell 工具行整行禁用。模块封装链（scaffold → writeFiles → validate → pack → installPreview → install）例外可用，因为它只写 `.lingbuilder/module-build` 与 `.lingbuilder/module-packages` 两个暂存目录，安装仍受预览 ID 与权益门禁约束。
+- **模型通道在面板里配**：支持 DeepSeek 官方 API Key，也支持自定义 OpenAI 兼容网关（Base URL + API Key + 模型名，可一键拉取模型列表与测试连通）。端点与模型名写进 dsh 的 profile overlay，密钥只经加密存储与子进程环境变量注入，绝不写入 overlay 文件、日志或项目。
+- **随包携带**：安装包默认带上 dsh 所需的真实 Node 与 dsh 发行包（`resources/node`、`resources/dsh`），并裁剪与内嵌场景无关的体积包；准备失败只降级为中文诊断，不影响 IDE 其余功能。
+- **计费**：本引擎不消耗 LingBuilder 云端点数，模型费用由你在 dsh/网关侧的账号承担。
+
+> **致谢**：本机 Agent 引擎完全构建在 DeepSeek 开源的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 之上——插件化的工具面、profile 机制与 SDK 线协议让这个引擎能在 LingBuilder 里以受控方式落地。感谢 DeepSeek 团队将其开源。
+
 ## ⌨️ CLI
 
 Windows 安装向导默认将 LingBuilder 安装目录加入当前用户 PATH；安装后重新打开终端即可使用，无需另外安装 Node.js。安装时可取消该选项，卸载时会清理 LingBuilder 的 PATH 项。
@@ -156,6 +167,7 @@ npm run build
 | [KEYBOARD_SHORTCUTS.md](docs/KEYBOARD_SHORTCUTS.md) | 全部快捷键及适用范围 |
 | [AI_BRIDGE_CLI_USAGE.md](docs/AI_BRIDGE_CLI_USAGE.md) | AI Bridge 与 CLI 完整手册 |
 | [MODULE_ECOSYSTEM_IMPLEMENTATION.md](docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md) | 模块生态实现细节与验收基线 |
+| [AI编辑链统一架构.md](docs/AI编辑链统一架构.md) | AI 面板与 AI Bridge 的统一编辑事务、内嵌 Agent 引擎与工具遮蔽边界 |
 | [electron/README.md](electron/README.md) | Electron 端详细说明与更新记录 |
 | [FUTURE_OPTIMIZATIONS.md](docs/FUTURE_OPTIMIZATIONS.md) | 后期优化事项与技术债记录 |
 | [cloud/admin/docs/](cloud/admin/docs/index.md) | 用户文档站（VitePress）源码 |
