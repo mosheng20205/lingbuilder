@@ -734,7 +734,7 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - 工作区文件访问以真实路径为准；读取不得越过工作区，文件树与搜索不得跟随符号链接或 Windows junction，写入新文件时也必须拒绝链接路径链。
 - `readonly`、`preview`、`yolo` 的含义不变；`preview` 的写入、导出和构建必须显式批准，`yolo` 仍只允许 LingBuilder 的受控工具，不得生成或要求开放任意 shell。
 - MCP 工具集分两档（2026-09-22）：`ai-server --mcp --mcp-toolset full`（缺省，外部 AI 客户端）暴露全部 23 个工具；`--mcp-toolset agent` 供 **AI 面板内嵌 Agent 运行时**（DeepSeek Harness）使用，从 `tools/list` 与调用面上摘掉 `edit.apply / build.run / native.preview / native.export / project.create / project.create.undo / module.writeFiles / module.pack / module.install`，点名调用返回中文拒绝。原因：权限模式不构成边界——preview 下模型自己传 `approved=true` 一样能落盘——所以内嵌引擎只能生成 `edit.propose` 提案，落盘与构建由面板在用户确认后代执行。生成 AI 走 agent 工具集时不得再尝试调用被遮蔽工具，也不得建议用户「让 AI 自己构建」。
-- 内嵌 Agent 的提案交接（2026-09-22 P2）：内嵌运行时与 IDE 本地服务是两个进程，`edit.propose` 生成的提案经工作区 `.lingbuilder/agent-proposals/<proposalId>.json` 交给面板（30 分钟过期、应用成功即删除、面板只读该目录不写）。AI 面板因此新增第三个引擎页签「本机 Agent」：它只产出需求分析与编辑提案，界面仍走同一套差异预览 +「应用提案」/「拒绝提案」；不得为它另建第二条写入路径，也不得把它的提案当系统 AI 计费请求（该引擎走本机 dsh 的 provider 配置，不吃云端点数）。
+- 内嵌 Agent 的提案交接（2026-09-22 P2）：内嵌运行时与 IDE 本地服务是两个进程，`edit.propose` 生成的提案经工作区 `.lingbuilder/agent-proposals/<proposalId>.json` 交给面板（提案 ID 必须过固定正则、30 分钟过期、最多 20 条）。**应用成功与用户「拒绝提案」两条路径都必须立即删除对应交接文件**，过期只是兜底——否则被拒的源码草稿仍以「最新未应用提案」回到面板。面板只读该目录，除这两条删除路径外不得写入。AI 面板因此新增第三个引擎页签「本机 Agent」：它只产出需求分析与编辑提案，界面仍走同一套差异预览 +「应用提案」/「拒绝提案」；不得为它另建第二条写入路径，也不得把它的提案当系统 AI 计费请求（该引擎走本机 dsh 的 provider 配置，不吃云端点数）。面板必须常驻显示该运行时的状态（未启动/启动中/待命/执行中/停止中/启动失败 + Node 版本、模型、PID）并把本轮 MCP 工具调用逐条可视化，同时标注「写盘与构建不在此列」；启动失败要原样透出中文诊断，不得降级成一条聊天文本。dsh 宿主必须是真实 Node（`^22.19 || >=24`，Electron 当 Node 会整棵 ESM 插件树导入失败），安装包默认随包携带 Node 与 dsh（`resources/node`、`resources/dsh`），准备失败只降级为占位目录并给中文诊断，不阻断打包。
 - 路径越界、链接绕过、权限拒绝和失败写入必须进入 `.lingbuilder/ai-bridge-log.jsonl` 审计记录。
 # 原生调试与源码映射
 
