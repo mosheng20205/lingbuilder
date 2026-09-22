@@ -91,7 +91,10 @@ export function dshBinCandidates(options: AgentRuntimeProfileOptions = {}): stri
   const override = String(environment.LINGBUILDER_DSH_BIN || options.dshBinOverride || '').trim();
   if (override) candidates.push(override);
   const resources = String(options.resourcesPath || process.resourcesPath || '').trim();
-  if (resources) candidates.push(path.join(resources, 'dsh', 'bin.js'));
+  if (resources) {
+    candidates.push(path.join(resources, 'dsh', 'bin.js'));
+    candidates.push(path.join(resources, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'));
+  }
   const globalRoot = String(options.globalNodeModules || '').trim();
   if (globalRoot) candidates.push(path.join(globalRoot, '@deepseek-ai', 'dsh', 'lib', 'bin.js'));
   const home = String(options.homeDirectory || (environment as any).USERPROFILE || (environment as any).HOME || '').trim();

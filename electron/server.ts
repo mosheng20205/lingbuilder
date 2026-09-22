@@ -36,7 +36,7 @@ import {
   rejectWorkspaceEdit,
   validateDesignerProjectEdit
 } from "./src/services/lingCpp/aiEditService";
-import { readAgentProposal, readLatestAgentProposal } from "./src/services/lingCpp/agentProposalStore";
+import { deleteAgentProposal, readAgentProposal, readLatestAgentProposal } from "./src/services/lingCpp/agentProposalStore";
 import { getDesignerControlCommandCompletions, getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageService";
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from "./src/services/lingCpp/projectGlobalService";
 import { createProjectTypeContext, isProjectDataTypesFilePath } from "./src/services/lingCpp/projectDataTypeService";
@@ -4668,7 +4668,11 @@ app.post("/api/lingcpp/edit/reject", async (req, res) => {
   if (!proposalId) {
     return res.status(400).json({ ok: false, error: "缺少 proposalId" });
   }
-  res.json({ ok: rejectWorkspaceEdit(proposalId) });
+  const removed = rejectWorkspaceEdit(proposalId);
+  // 内嵌 Agent 的提案在交接目录里另有一份：拒绝必须同时删除，不能靠 30 分钟过期兜底，
+  // 否则用户以为作废了的源码草稿仍留在工作区里。
+  const handoffRemoved = await deleteAgentProposal(getRepoWorkspaceRoot(), proposalId).catch(() => false);
+  res.json({ ok: removed || handoffRemoved, ...(handoffRemoved ? { handoffRemoved: true } : {}) });
 });
 
 app.get("/api/window-designer/debug-logs", async (req, res) => {

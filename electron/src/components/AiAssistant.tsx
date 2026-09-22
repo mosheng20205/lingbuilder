@@ -1016,6 +1016,45 @@ export default function AiAssistant({
   // 本机 Agent 引擎（内嵌 DeepSeek Harness）：跨轮复用的会话与已接手的提案 ID。
   const agentSessionRef = useRef('');
   const handledAgentProposalsRef = useRef<Set<string>>(new Set());
+  /** 本轮工具调用轨迹：只活在内存里，随会话切换丢弃（不写进会话存储，避免把工具结果正文持久化）。 */
+  const [agentSteps, setAgentSteps] = useState<Array<{ callId: string; tool: string; done: boolean }>>([]);
+  const [agentRuntimeStatus, setAgentRuntimeStatus] = useState<{
+    state: string; nodeVersion: string; model: string; problem: string; pid: number | null;
+  } | null>(null);
+  const [agentStepsExpanded, setAgentStepsExpanded] = useState(true);
+
+  useEffect(() => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime) return undefined;
+    void runtime.status().then(snapshot => { if (snapshot) setAgentRuntimeStatus(snapshot); }).catch(() => undefined);
+    const offStatus = runtime.onStatusChanged(snapshot => setAgentRuntimeStatus(snapshot));
+    const offEvent = runtime.onEvent(({ event }) => {
+      const data = (event.data || {}) as { callId?: string; name?: string };
+      if (event.type === 'tool/call' && data.callId) {
+        const callId = data.callId;
+        const tool = String(data.name || '').replace(/^mcp__lingbuilder__lingbuilder_/u, '').replace(/_[0-9a-f]{12}$/u, '');
+        setAgentSteps(previous => (previous.some(step => step.callId === callId) ? previous : [...previous, { callId, tool, done: false }]));
+        return;
+      }
+      if (event.type === 'tool/result' && data.callId) {
+        const callId = String(data.callId);
+        setAgentSteps(previous => previous.map(step => (step.callId === callId ? { ...step, done: true } : step)));
+      }
+    });
+    return () => { offStatus(); offEvent(); };
+  }, []);
+
+  const startAgentRuntime = async () => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime) return;
+    const result = await runtime.start({});
+    if (!result.ok) pushAgentNotice(`内嵌 Agent 启动失败：${result.error || '未知原因'}`);
+  };
+
+  const stopAgentRuntime = async () => {
+    await window.lingBuilder?.agentRuntime?.stop();
+    setAgentSteps([]);
+  };
 
   const pushAgentNotice = (text: string) => updateChatHistory(previous => [...previous, createChatMessage('ai', text, { contextExcluded: true })]);
 
@@ -1039,6 +1078,8 @@ export default function AiAssistant({
       }
       pushAgentNotice(`内嵌 Agent 已启动（Node ${started.snapshot?.nodeVersion || '未知版本'}，模型 ${started.snapshot?.model || '未知模型'}）。它只能生成提案，落盘与构建由你确认后执行。`);
     }
+    setAgentSteps([]);
+    setAgentStepsExpanded(true);
     const turn = await runtime.prompt({ prompt: instruction, sessionId: agentSessionRef.current || undefined });
     if (!turn.ok) {
       pushAgentNotice(`本轮失败：${turn.error || '内嵌 Agent 未返回结果'}`);
@@ -1439,6 +1480,24 @@ export default function AiAssistant({
               <button type="button" role="tab" aria-selected={aiMode === 'agent'} onClick={() => handleAiModeChange('agent')} disabled={!window.lingBuilder?.agentRuntime} title={window.lingBuilder?.agentRuntime ? '使用本机内嵌 Agent 运行时（DeepSeek Harness，经 LingBuilder MCP 干活；写盘与构建由你确认后代执行）' : '本机 Agent 只在 LingBuilder 桌面版可用'} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${aiMode === 'agent' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}><Brain className="h-3 w-3"/>本机 Agent</button>
             </div>
           )}
+          {aiMode === 'agent' && isAiConfigExpanded && (
+            <div className={`flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] ${isDarkMode ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50'}`}>
+              <span className={`inline-flex min-h-5 items-center gap-1 rounded px-1.5 font-semibold ${agentRuntimeStatus?.state === 'failed' ? 'bg-rose-600 text-white' : agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy' ? 'bg-emerald-600 text-white' : 'bg-slate-500/20 text-slate-500'}`}>
+                <Brain className="h-3 w-3" />
+                {{ stopped: '未启动', starting: '启动中', running: '待命', busy: '执行中', stopping: '停止中', failed: '启动失败' }[agentRuntimeStatus?.state || 'stopped'] || agentRuntimeStatus?.state}
+              </span>
+              <span className="truncate text-slate-400">
+                {agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy'
+                  ? `Node ${agentRuntimeStatus.nodeVersion || '?'} · ${agentRuntimeStatus.model || '?'} · PID ${agentRuntimeStatus.pid ?? '?'}`
+                  : (agentRuntimeStatus?.problem || '内嵌 DeepSeek Harness 运行时，经 LingBuilder MCP 干活；写盘与构建由你确认后代执行。')}
+              </span>
+              {agentRuntimeStatus?.state === 'stopped' || agentRuntimeStatus?.state === 'failed' ? (
+                <button type="button" onClick={() => void startAgentRuntime()} className="ml-auto min-h-6 shrink-0 rounded bg-emerald-600 px-2 font-semibold text-white hover:bg-emerald-500">启动</button>
+              ) : (
+                <button type="button" onClick={() => void stopAgentRuntime()} className="ml-auto min-h-6 shrink-0 rounded bg-slate-500/20 px-2 font-semibold text-slate-500 hover:bg-slate-500/30">停止</button>
+              )}
+            </div>
+          )}
           {aiMode === 'system' && isAiConfigExpanded && (
             <div className={`space-y-2 rounded border p-2.5 ${isDarkMode ? 'border-violet-500/20 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>
               {cloudSession.authenticated ? <>
@@ -1668,6 +1727,30 @@ export default function AiAssistant({
       <div className="flex-1 flex flex-col min-h-0">
         {/* Chat History scroll panel */}
         <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
+          {aiMode === 'agent' && agentSteps.length > 0 && (
+            <div className={`rounded border p-2 text-[10px] ${isDarkMode ? 'border-[#2a3240] bg-[#11131a]' : 'border-slate-200 bg-slate-50'}`}>
+              <button
+                type="button"
+                className="flex w-full items-center gap-1 font-semibold text-emerald-400"
+                aria-expanded={agentStepsExpanded}
+                onClick={() => setAgentStepsExpanded(value => !value)}
+              >
+                {agentStepsExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                <span>本轮 LingBuilder 工具调用（{agentSteps.filter(step => step.done).length}/{agentSteps.length}）</span>
+              </button>
+              {agentStepsExpanded && (
+                <ol className="mt-1.5 space-y-1">
+                  {agentSteps.map(step => (
+                    <li key={step.callId} className="flex items-center gap-1.5 font-mono">
+                      <span className={step.done ? 'text-emerald-500' : 'animate-pulse text-amber-400'}>{step.done ? '✓' : '●'}</span>
+                      <span className="truncate text-slate-400">{step.tool}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <div className="mt-1.5 text-[9px] text-slate-500">写盘与构建不在此列：提案需你在下方确认后由 IDE 代执行。</div>
+            </div>
+          )}
           {chatHistory.map((msg, idx) => {
             const isAiMessageCollapsible = msg.sender === 'ai' && collapsibleMessageIds.has(msg.id);
             const isAiMessageCollapsed = isAiMessageCollapsible && !expandedMessageIds.has(msg.id);

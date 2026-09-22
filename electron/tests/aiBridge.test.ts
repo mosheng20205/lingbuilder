@@ -12,7 +12,7 @@ import { AiBridgeService, type AiBridgeProcessManager } from '../src/services/ai
 import { createProjectBuildCoordinator } from '../src/services/tasks/projectBuildCoordinator';
 import { createAiBridgeRouter } from '../src/services/aiBridge/httpRoutes';
 import { createAiBridgeMcpHttpGateway, createAiBridgeMcpProtocolServer, AGENT_MASKED_TOOLS } from '../src/services/aiBridge/mcpServer';
-import { isPersistableProposalId, persistAgentProposal, readAgentProposal } from '../src/services/lingCpp/agentProposalStore';
+import { deleteAgentProposal, isPersistableProposalId, persistAgentProposal, readAgentProposal } from '../src/services/lingCpp/agentProposalStore';
 import { getWorkspaceEditProposal } from '../src/services/lingCpp/aiEditService';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { AiBridgeServerOptions } from '../src/services/aiBridge/types';
@@ -264,7 +264,25 @@ test('交接目录只接受合法提案 ID，拒绝任何路径形态', async ()
     assert.equal(isPersistableProposalId(bad), false, `${bad} 不得作为提案 ID`);
     await assert.rejects(() => persistAgentProposal(workspaceRoot, { id: bad } as never), /提案 ID 无效/u);
     assert.equal(await readAgentProposal(workspaceRoot, bad), undefined);
+    assert.equal(await deleteAgentProposal(workspaceRoot, bad), false, '非法 ID 的删除必须直接返回 false，不得触达文件系统');
   }
+});
+
+test('拒绝提案要立刻清掉交接目录里的草稿，不靠过期兜底', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const proposalId = 'lingcpp-edit-22222222-3333-4444-5555-666666666666';
+  assert.equal(await deleteAgentProposal(workspaceRoot, proposalId), false, '不存在时不得谎报删除成功');
+  await persistAgentProposal(workspaceRoot, {
+    id: proposalId,
+    title: 't',
+    summary: 's',
+    createdAt: new Date().toISOString(),
+    explanation: 'e',
+    changes: []
+  });
+  assert.notEqual(await readAgentProposal(workspaceRoot, proposalId), undefined);
+  assert.equal(await deleteAgentProposal(workspaceRoot, proposalId), true);
+  assert.equal(await readAgentProposal(workspaceRoot, proposalId), undefined);
 });
 
 function createModuleToolManifest(id: string): Record<string, unknown> {

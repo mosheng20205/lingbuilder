@@ -160,6 +160,8 @@ test('Node 宿主与 dsh 入口候选顺序：环境变量 → 随包 → 系统
   });
   assert.equal(dshCandidates[0], 'D:\\dsh\\bin.js');
   assert.equal(dshCandidates[1], path.join('R:\\resources', 'dsh', 'bin.js'));
+  assert.equal(dshCandidates[2], path.join('R:\\resources', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'),
+    '随包 npm 安装形态（prepare-agent-runtime 产出的目录结构）必须在候选里');
   assert.ok(dshCandidates.some(item => item.includes('npm')));
   assert.ok(dshCandidates.some(item => item.includes('.dsh')));
 });
@@ -218,4 +220,32 @@ test('lastAssistantText 只取正文文本，忽略 reasoning 与工具块', () 
     { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '第二段' }, { type: 'tool-call', name: 'x' }] } } }
   ]), '第二段');
   assert.equal(lastAssistantText([]), '');
+});
+
+test('随包 Agent 运行时：打包链携带 node/dsh 并裁剪无关体积包', async () => {
+  const electronRoot = path.resolve(import.meta.dirname, '..');
+  const pkg = JSON.parse(await fs.readFile(path.join(electronRoot, 'package.json'), 'utf8')) as {
+    scripts: Record<string, string>;
+    build?: { extraResources?: Array<{ from: string; to: string }> };
+  };
+  const extra = pkg.build?.extraResources ?? [];
+  const resource = (to: string) => extra.find(entry => entry.to === to);
+  // 解析器只认 resources/node 与 resources/dsh，打包链必须原样带上这三项，否则安装版永远降级。
+  assert.equal(resource('node')?.from, 'agent-runtime/node');
+  assert.equal(resource('dsh')?.from, 'agent-runtime/dsh');
+  assert.equal(resource('agent-runtime.json')?.from, 'agent-runtime/agent-runtime.json');
+  for (const script of ['package:win', 'package:dir']) {
+    assert.match(pkg.scripts[script] ?? '', /prepare:agent-runtime/u);
+    assert.match(pkg.scripts[script] ?? '', /verify:agent-runtime:unpacked/u);
+  }
+
+  const prepareSource = await fs.readFile(path.join(electronRoot, 'scripts', 'prepare-agent-runtime.cjs'), 'utf8');
+  // dsh 树里唯一撑体积的是 LibreOffice 原生包（≈325MB），内嵌场景永不使用，必须裁剪。
+  assert.match(prepareSource, /libreoffice-kit-win32-x64/u);
+  // 随包是默认形态，且下载失败只能降级为占位目录，不得把内嵌 Agent 变成出包的硬依赖。
+  assert.match(prepareSource, /LINGBUILDER_AGENT_RUNTIME_BUNDLE !== '0'/u);
+  assert.match(prepareSource, /writeStubManifest\(problem\)/u);
+
+  const verifySource = await fs.readFile(path.join(electronRoot, 'scripts', 'verify-agent-runtime-package.cjs'), 'utf8');
+  assert.match(verifySource, /--version/u);
 });

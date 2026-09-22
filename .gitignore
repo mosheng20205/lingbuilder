@@ -171,3 +171,6 @@ examples/array-operations-demo/src/.lingbuilder/projects/
 /make_original_cover.py
 .tmp-installer-check-*/
 COMPONENT_CARDS_PLAN.md
+
+# 内嵌 Agent 运行时随包内容（Node 与 dsh），由 scripts/prepare-agent-runtime.cjs 生成
+agent-runtime/

@@ -61,9 +61,17 @@ export async function readAgentProposal(workspaceRoot: string, proposalId: strin
   return payload.proposal;
 }
 
-export async function deleteAgentProposal(workspaceRoot: string, proposalId: string): Promise<void> {
-  if (!isPersistableProposalId(proposalId)) return;
-  await fs.rm(proposalFile(workspaceRoot, proposalId), { force: true });
+/** 删除交接文件；返回是否真的删掉了一份（面板「拒绝提案」要据此如实播报）。 */
+export async function deleteAgentProposal(workspaceRoot: string, proposalId: string): Promise<boolean> {
+  if (!isPersistableProposalId(proposalId)) return false;
+  const target = proposalFile(workspaceRoot, proposalId);
+  try {
+    await fs.access(target);
+  } catch {
+    return false;
+  }
+  await fs.rm(target, { force: true });
+  return true;
 }
 
 /** 面板在一轮 Agent 对话结束后取回最新一条未应用的提案，用于复用现有预览/应用 UI。 */

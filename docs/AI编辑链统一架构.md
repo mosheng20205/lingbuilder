@@ -280,3 +280,28 @@ Map**——直接把面板接上去必然「未找到编辑提案」。交接实
 真机验收口径（改任一环节都要复跑）：agent 的工具序列必须是
 `workspace_list → file_read → edit_propose`；提案落盘前源文件不变；由**另一进程**的
 `AiBridgeService.applyEdit` 按 ID 成功应用；交接目录随后清空；被遮蔽工具零调用。
+
+### 面板可视性与随包运行时（2026-09-22 P2 收尾）
+
+- **逐条工具卡片**：`AiAssistant.tsx` 订阅 `agent-runtime:event`，`tool/call` 追加步骤、
+  `tool/result` 标记完成，聊天区顶部折叠卡显示「本轮 LingBuilder 工具调用（done/total）」。
+  步骤状态**故意不进会话 store**（不持久化），避免把一次性执行痕迹混进历史记录；卡片必须显式
+  标注「写盘与构建不在此列」，否则用户会以为 agent 已经改过文件。工具名展示前去掉
+  `mcp__lingbuilder__lingbuilder_` 前缀与 12 位哈希后缀。
+- **运行时状态指示**：`aiMode === 'agent'` 时在聊天区上方渲染常驻状态行，直接消费
+  `agent-runtime:status` 快照（未启动/启动中/待命/执行中/停止中/启动失败 + Node 版本、模型、PID），
+  启停按钮调同一 IPC；启动失败必须显示 `snapshot.problem` 原文，禁止再降级成一条聊天文本。
+- **拒绝即时清理**：`/api/lingcpp/edit/reject` 在 `rejectWorkspaceEdit` 之后必须同步删交接目录
+  对应文件（`deleteAgentProposal` 返回 boolean，`ok = removed || handoffRemoved`）。30 分钟过期
+  只是兜底，不能当清理机制——否则被拒提案仍以「最新未应用提案」出现在下一次面板刷新里。
+- **随包运行时**：`scripts/prepare-agent-runtime.cjs` 默认随包（`LINGBUILDER_AGENT_RUNTIME_BUNDLE=0`
+  才关闭），产物 `electron/agent-runtime/{node,dsh,agent-runtime.json}` 经 extraResources 落进
+  `resources/{node,dsh,agent-runtime.json}`，正是解析器 `resourcesPath` 候选的打包形态。下载或安装
+  失败**只降级为占位目录并在 manifest 记 `problem`**，绝不阻断出包——内嵌 Agent 是增强能力。
+- **体积裁剪**：dsh 树里 `dsh-office-to-pdf → libreoffice-kit → 平台原生包` 单独占 325MB，
+  内嵌场景永不使用；prepare 脚本装后删除并在 manifest 记 `dsh.pruned`，门禁核对「记为已裁剪的包
+  必须真的不在包里」。裁剪后随包增量为 Node 101.8MB + dsh 225.6MB。`libreoffice-kit` 的原生包是
+  转换时才惰性解析，删掉不影响插件树导入（已真机复验）。
+- **门禁 `verify:agent-runtime`**：source/unpacked 两模式除了核对文件与 manifest 一致，都必须
+  **用随包 `node.exe` 真跑一次 `dsh --version`**（Electron 当 Node 起不来，只查文件在不在不足以证明可用）。
+
