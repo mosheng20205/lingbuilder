@@ -11,6 +11,7 @@ import {
 import type { LingWindowProject } from '../windowDesigner/types';
 import type { LingCppModuleContext } from '../modules/types';
 import { WIN32_CONTROL_DEFINITIONS } from '../windowDesigner/win32ControlRegistry';
+import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissionBlock } from './controlReferenceAdmission';
 
 const PROPOSAL_TTL_MS = 30 * 60_000;
 const MAX_PROPOSALS = 100;
@@ -52,30 +53,44 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
     throw new Error(`AI 返回了项目 ${designerProject.id} 的设计器模型，但当前项目是 ${context.projectId}；已阻止跨项目应用。`);
   }
   const strictDesignerEdit = context.designerEditPolicy !== 'caller-draft';
-  if (strictDesignerEdit && context.designerProject && isDesignerEditInstruction(context.instruction) && !designerProject) {
-    if (isDesignerBeautificationInstruction(context.instruction)) {
+  const currentDesignerProject = context.designerProject;
+  if (strictDesignerEdit && currentDesignerProject && isDesignerEditInstruction(context.instruction)) {
+    // 真实防线只有一条：提案落盘后的源码是否引用了设计器模型里不存在的控件
+    // （与 apply/build 共用 collectControlReferenceAdmissionProblems）。指令关键词只决定要不要
+    // 做这次检查，不再决定提案能否创建——「给按钮加点击计数」这类纯行为需求同样命中
+    // 「按钮/窗口」词，旧的关键词口径会把它们整批误拒。
+    const problems = collectControlReferenceAdmissionProblems({
+      designerProject: designerProject || currentDesignerProject,
+      sources: resolveProposalSources(workspaceFiles, changes),
+      moduleContext: context.moduleContext
+    });
+    if (problems.length > 0) {
+      throw new Error(formatControlReferenceAdmissionBlock('AI 编辑提案', problems));
+    }
+    const unchangedModel = !designerProject || areDesignerProjectsEquivalent(designerProject, currentDesignerProject);
+    if (isDesignerBeautificationInstruction(context.instruction) && unchangedModel) {
       // 宽泛的视觉请求必须始终产出可预览的布局提案，即使模型没有返回
       // designerProject（例如未配置 API Key 或系统 AI 草稿不完整）。
       designerProject = validateDesignerProjectEdit(
-        context.designerProject,
-        createDesignerBeautificationFallback(context.designerProject),
+        currentDesignerProject,
+        createDesignerBeautificationFallback(currentDesignerProject),
         { allowedControlTypes: getAllowedDesignerControlTypes(context) }
       );
-    } else {
-      throw new Error('本次需求涉及窗口或控件布局，但 AI 未返回完整设计器模型；为避免源码与界面不一致，提案未创建。');
+    } else if (designerProject && unchangedModel) {
+      // 模型没有产生任何布局变化：按纯源码提案受理，丢弃等价模型。
+      designerProject = undefined;
     }
   }
-  if (strictDesignerEdit && context.designerProject && designerProject && isDesignerEditInstruction(context.instruction)
-    && areDesignerProjectsEquivalent(designerProject, context.designerProject)) {
-    if (isDesignerBeautificationInstruction(context.instruction)) {
-      designerProject = validateDesignerProjectEdit(
-        context.designerProject,
-        createDesignerBeautificationFallback(context.designerProject),
-        { allowedControlTypes: getAllowedDesignerControlTypes(context) }
-      );
-    } else {
-      throw new Error('AI 返回的设计器模型与当前模型完全相同，未产生可应用的布局变化；请明确要调整的颜色、间距、尺寸或控件位置后重试。');
-    }
+  // 有设计器上下文、需求命中窗口/控件词，但最终没有布局变化：如实记录，界面必须播报
+  // 「界面未变」，否则用户会以为 AI 已经改好界面（这是「应用成功但画布没动」的困惑来源）。
+  const designerUnchanged = strictDesignerEdit
+    && Boolean(currentDesignerProject)
+    && isDesignerEditInstruction(context.instruction)
+    && !designerProject;
+  const sourceChanged = changes.some(change => change.originalText !== change.newText);
+  if (explicitDraftFiles && !sourceChanged && !designerProject) {
+    // AI 显式给了草稿却内容与磁盘一致、布局也没动：不给出一份「应用了个寂寞」的空提案。
+    throw new Error('AI 未产生任何实际改动：源码与窗口设计器布局都和当前内容一致。请把需求说得更具体（点名要改的控件、行为或属性）后重新生成提案。');
   }
 
   const proposal: WorkspaceEditProposal = {
@@ -688,6 +703,24 @@ function resolveWorkspaceFiles(context: LingCppEditContext): LingCppWorkspaceFil
     });
   });
   return [...deduped.values()];
+}
+
+/** 按 apply 的同一顺序把提案变更套回工作区源码，得到「落盘后」的真实内容供控件门禁检查。 */
+function resolveProposalSources(
+  workspaceFiles: LingCppWorkspaceFile[],
+  changes: WorkspaceEditChange[]
+): Array<{ filePath: string; sourceCode: string }> {
+  const byPath = new Map<string, { filePath: string; sourceCode: string }>();
+  workspaceFiles.forEach(file => {
+    byPath.set(normalizeFilePath(file.filePath).toLocaleLowerCase(), { filePath: file.filePath, sourceCode: file.sourceCode });
+  });
+  changes.forEach(change => {
+    const key = normalizeFilePath(change.filePath).toLocaleLowerCase();
+    const current = byPath.get(key);
+    if (!current) return;
+    byPath.set(key, { filePath: current.filePath, sourceCode: replaceRange(current.sourceCode, change.range, change.newText) });
+  });
+  return [...byPath.values()];
 }
 
 function getTextForRange(sourceCode: string, range: WorkspaceEditRange): string {

@@ -4653,6 +4653,180 @@ test('AI 布局请求统一识别“美化界面”并要求完整设计器模�
   assert.equal(sourceOnlyProposal.designerProject, undefined);
 });
 
+test('AI 纯行为需求不再被设计器关键词误拒（等价模型与缺模型两种形态）', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const designerProject: LingWindowProject = {
+    id: 'click-count', name: '点击计数', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: [{
+        id: 'btn-1', type: 'Button', name: '按钮1', content: '点我一下',
+        width: 120, height: 36, x: 24, y: 24, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        events: { Click: '_按钮1_被单击' }
+      }]
+    }]
+  };
+  // 只引用模型里真实存在的控件：这类需求本就不需要布局变化。
+  const behaviorSource = [
+    '类 MainWindow',
+    '    事件 _按钮1_被单击()',
+    '        控件_设置文本(按钮1, "已点击")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const context = {
+    projectId: designerProject.id,
+    filePath: 'src/MainWindow.lcpp',
+    sourceCode: '旧源码',
+    instruction: '给按钮1加上点击计数：加一个整数型变量记录点击次数，每次点击加一，并把窗口标题改成已点击 N 次。',
+    designerProject,
+    moduleContext
+  };
+
+  // AI 原样回传设计器模型：过去在这里抛「模型与当前完全相同」，现在按纯源码提案受理。
+  const sameModelProposal = proposeLingCppEdit(context, {
+    updatedSource: behaviorSource,
+    designerProject: JSON.parse(JSON.stringify(designerProject))
+  });
+  assert.equal(sameModelProposal.designerProject, undefined);
+  assert.equal(sameModelProposal.changes.length, 1);
+
+  // AI 完全没带设计器模型：过去抛「未返回完整设计器模型」，现在同样受理源码改动。
+  const noModelProposal = proposeLingCppEdit(context, { updatedSource: behaviorSource });
+  assert.equal(noModelProposal.designerProject, undefined);
+  assert.equal(noModelProposal.changes.length, 1);
+});
+
+test('AI 提案源码引用设计器模型不存在的控件时仍按同一门禁中文阻断', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const designerProject: LingWindowProject = {
+    id: 'ghost-control', name: '幽灵控件', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: []
+    }]
+  };
+
+  assert.throws(
+    () => proposeLingCppEdit(
+      {
+        projectId: designerProject.id,
+        filePath: 'src/MainWindow.lcpp',
+        sourceCode: '旧源码',
+        instruction: '在窗口里给按钮1加上点击计数',
+        designerProject,
+        moduleContext
+      },
+      {
+        updatedSource: [
+          '类 MainWindow',
+          '    事件 _按钮1_被单击()',
+          '        控件_设置文本(按钮1, "已点击")',
+          '    结束',
+          '结束类'
+        ].join('\n')
+      }
+    ),
+    /源码引用了窗口设计器模型中不存在的控件/u
+  );
+});
+
+test('AI 纯布局提案只提交设计器改动，不再往源码注入占位注释', () => {
+  const original: LingWindowProject = {
+    id: 'layout-only', name: '纯布局提案', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: [{
+        id: 'btn-1', type: 'Button', name: '按钮1', content: '点我一下',
+        width: 120, height: 36, x: 24, y: 24, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+      }]
+    }]
+  };
+  const moved: LingWindowProject = {
+    ...original,
+    windows: [{ ...original.windows[0], controls: [{ ...original.windows[0].controls[0], x: 496, y: 360 }] }]
+  };
+
+  const proposal = proposeLingCppEdit(
+    {
+      projectId: original.id,
+      filePath: 'src/MainWindow.lcpp',
+      sourceCode: '类 MainWindow\n结束类',
+      instruction: '把按钮1移动到窗口右下角',
+      designerProject: original
+    },
+    { files: [], designerProject: moved, summary: '移动按钮1' }
+  );
+
+  assert.equal(proposal.changes.length, 0);
+  assert.ok(proposal.designerProject);
+  assert.equal(proposal.designerUnchanged, undefined);
+  assert.equal(JSON.stringify(proposal).includes('AI 编辑建议'), false);
+});
+
+test('AI 草稿没有任何真实改动时明确拒绝，不给出可应用的空提案', () => {
+  assert.throws(
+    () => proposeLingCppEdit(
+      {
+        filePath: 'src/MainWindow.lcpp',
+        sourceCode: '类 MainWindow\n结束类',
+        instruction: '把按钮1移动到窗口右下角'
+      },
+      {
+        files: [{ filePath: 'src/MainWindow.lcpp', updatedSource: '类 MainWindow\n结束类' }],
+        summary: '移动按钮1'
+      }
+    ),
+    /未产生任何实际改动/u
+  );
+});
+
+test('AI 为布局需求回传等价设计器模型时按纯源码受理并明示界面未变', () => {
+  const original: LingWindowProject = {
+    id: 'layout-unchanged', name: '等价模型', windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 420, background: '#ffffff', description: '', controls: [{
+        id: 'btn-1', type: 'Button', name: '按钮1', content: '点我一下',
+        width: 120, height: 36, x: 24, y: 24, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+      }]
+    }]
+  };
+
+  const proposal = proposeLingCppEdit(
+    {
+      projectId: original.id,
+      filePath: 'src/MainWindow.lcpp',
+      sourceCode: '类 MainWindow\n结束类',
+      instruction: '把按钮1移动到窗口右下角',
+      designerProject: original
+    },
+    {
+      files: [{ filePath: 'src/MainWindow.lcpp', updatedSource: '类 MainWindow\n    事件 _按钮1_被单击()\n    结束\n结束类' }],
+      designerProject: JSON.parse(JSON.stringify(original))
+    }
+  );
+
+  assert.equal(proposal.designerProject, undefined);
+  assert.equal(proposal.designerUnchanged, true);
+  assert.equal(proposal.changes.length, 1);
+});
+
 test('AI 美化界面原样返回时的本地视觉方案保留布局身份与事件', () => {
   const original: LingWindowProject = {
     id: 'ai-designer-beautification', name: '视觉美化回退', windows: [{

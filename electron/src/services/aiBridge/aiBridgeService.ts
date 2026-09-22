@@ -5,10 +5,12 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { applyWorkspaceEditToFiles, areDesignerProjectsEquivalent, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
+import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissionBlock } from '../lingCpp/controlReferenceAdmission';
+import { deleteAgentProposal, persistAgentProposal, readAgentProposal } from '../lingCpp/agentProposalStore';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
 import { createFunctionLibraryTemplate, createProjectFunctionContext } from '../lingCpp/functionLibraryService';
-import { LingCppDiagnostic, LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile } from '../lingCpp/types';
+import { LingCppDiagnostic, LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile, WorkspaceEditProposal } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
 import {
   DESIGNER_CONTROL_DETAIL_MAX,
@@ -985,28 +987,14 @@ export class AiBridgeService {
     actionLabel: string;
   }): Promise<void> {
     if (!request.designerProject) return;
-    const normalized = request.sources.map(source => ({ filePath: normalizeFilePath(source.filePath), sourceCode: source.sourceCode }));
     const moduleContext = await this.getModuleContext(request.projectId);
-    const globalSource = normalized.find(source => isProjectGlobalsFilePath(source.filePath));
-    const typeSource = normalized.find(source => isProjectDataTypesFilePath(source.filePath));
-    const projectGlobals = globalSource ? createProjectGlobalContext(globalSource.filePath, globalSource.sourceCode) : undefined;
-    const projectTypes = typeSource ? createProjectTypeContext(typeSource.filePath, typeSource.sourceCode) : undefined;
-    const projectFunctions = createProjectFunctionContext(normalized.map(source => ({ ...source, language: 'lingcpp' as const })));
-    const problems: string[] = [];
-    for (const source of normalized) {
-      if (!source.filePath.toLocaleLowerCase().endsWith('.lcpp')) continue;
-      if (isProjectGlobalsFilePath(source.filePath) || isProjectDataTypesFilePath(source.filePath) || isProjectDllCommandsFilePath(source.filePath)) continue;
-      const diagnostics = getLingCppSemanticDiagnostics(
-        source.sourceCode, request.designerProject, source.filePath,
-        moduleContext, projectGlobals, projectTypes, projectFunctions,
-        { suppressDesignerControlDiagnostics: false }
-      );
-      for (const diagnostic of diagnostics) {
-        if (diagnostic.level === 'error' && diagnostic.id.startsWith('lingcpp-control-reference-')) problems.push(`${source.filePath}:${diagnostic.line} ${diagnostic.message}`);
-      }
-    }
+    const problems = collectControlReferenceAdmissionProblems({
+      designerProject: request.designerProject,
+      sources: request.sources,
+      moduleContext
+    });
     if (problems.length > 0) {
-      throw new Error(`${request.actionLabel} 被阻止：源码引用了窗口设计器模型中不存在的控件：\n${[...new Set(problems)].slice(0, 12).join('\n')}\n修复方式：在 edit.propose 提案中携带 updatedDesignerProject（包含这些控件的完整设计器模型），经 edit.apply 同步布局到磁盘后再重试；若这些引用本就不该存在，请删除相关代码后重新提案。`);
+      throw new Error(formatControlReferenceAdmissionBlock(request.actionLabel, problems));
     }
   }
 
