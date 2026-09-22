@@ -305,3 +305,22 @@ Map**——直接把面板接上去必然「未找到编辑提案」。交接实
 - **门禁 `verify:agent-runtime`**：source/unpacked 两模式除了核对文件与 manifest 一致，都必须
   **用随包 `node.exe` 真跑一次 `dsh --version`**（Electron 当 Node 起不来，只查文件在不在不足以证明可用）。
 
+### apply 客户端一致性守卫的两条硬规则（2026-09-22 真机根治）
+
+面板「应用提案」的 `designerCallerBaseline` 守卫曾把**每一条**外部 AI / 内嵌 Agent 的布局提案
+判成「提案生成后画布又被修改」（真机 CDP 复现，非偶发）。两条独立缺陷叠在一起：
+
+1. **比较必须在画布归一化域内**。面板提交的 `designerProject` 来自 `readWindowDesignerState`
+   → 必然过 `normalizeWindowDesignerState`（补 `fontFamily`/`events`/`properties`/窗口边框等派生默认值）；
+   而 MCP 子进程没有画布视图，提案基准只能取磁盘原始模型。两侧不同域深比较必然不等。
+   唯一出口是 `areCanvasDesignerProjectsEquivalent`（把两侧都折算到归一化域再比），
+   `applyEdit` 的这条守卫必须用它；空窗口模型不折算（归一化会回退成默认项目，反而掩盖真实差异）。
+2. **`undefined` 值的键必须等于「键缺失」**。设计器模型只以 JSON 落盘，`undefined` 在往返中必然消失；
+   `stableSerializeDesignerProject` 早先按 `Object.keys` 全量序列化，而归一化器会补出
+   `events: undefined` 这类空键，于是内容完全等价的模型被判为漂移。序列化必须过滤 `undefined` 值键，
+   但**不得**放宽成忽略字段（真实差异如 `x: 20` vs `x: undefined` 仍必须判不等）。
+
+回归锚点：`tests/aiBridge.test.ts`「外部 AI 的布局提案 + 归一化画布 apply」端到端跑唯一 apply 链；
+`tests/lingcpp.test.ts`「值为 undefined 的键与键缺失视为同一模型」钉住序列化语义。
+改这两条中任何一条都会让外部 AI 布局提案重新变成 100% 假失败。
+

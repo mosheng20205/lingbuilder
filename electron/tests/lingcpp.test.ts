@@ -6057,3 +6057,21 @@ test('wideString 形参实参与指针文本拼接统一经 LingCppWideArg 归�
   assert.ok(cpp.includes('HTTP客户端_设置文本正文(请求, LingCppWideArg(数组_取成员(名单, 1)), L"text/plain; charset=utf-8")'), 'wideString 形参的调用实参必须包装');
   assert.ok(cpp.includes('HTTP客户端_设置文本正文(请求, LingCppWideArg(显示), L"text/plain; charset=utf-8")'), '裸变量包装行为保持不变');
 });
+
+test('设计器等价比较把「值为 undefined 的键」与「键缺失」视为同一模型', () => {
+  // 设计器模型只以 JSON 落盘，undefined 值在往返中必然消失；把两者判为不同会让
+  // 归一化器补出的 `events: undefined` 之类空键把内容完全等价的模型报成「画布又被修改」。
+  assert.equal(areDesignerProjectsEquivalent(
+    { id: 'demo', windows: [{ id: 'w', controls: [{ name: '按钮', events: undefined, content: 'x' }] }] },
+    { id: 'demo', windows: [{ id: 'w', controls: [{ name: '按钮', content: 'x' }] }] }
+  ), true);
+  // 真实差异仍必须判不等，不能把这条规则放宽成「忽略字段」。
+  assert.equal(areDesignerProjectsEquivalent(
+    { id: 'demo', windows: [{ id: 'w', controls: [{ name: '按钮', content: 'x' }] }] },
+    { id: 'demo', windows: [{ id: 'w', controls: [{ name: '按钮', content: 'y' }] }] }
+  ), false);
+  assert.equal(areDesignerProjectsEquivalent(
+    { id: 'demo', windows: [{ id: 'w', controls: [{ name: '按钮', x: 20 }] }] },
+    { id: 'demo', windows: [{ id: 'w', controls: [{ name: '按钮', x: undefined }] }] }
+  ), false);
+});

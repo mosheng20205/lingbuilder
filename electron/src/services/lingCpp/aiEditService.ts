@@ -11,6 +11,7 @@ import {
 import type { LingWindowProject } from '../windowDesigner/types';
 import type { LingCppModuleContext } from '../modules/types';
 import { WIN32_CONTROL_DEFINITIONS } from '../windowDesigner/win32ControlRegistry';
+import { normalizeWindowDesignerState } from '../windowDesigner/windowDesignerService';
 import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissionBlock } from './controlReferenceAdmission';
 
 const PROPOSAL_TTL_MS = 30 * 60_000;
@@ -400,12 +401,19 @@ function cloneDesignerProject(project: LingWindowProject): LingWindowProject {
   return JSON.parse(JSON.stringify(project)) as LingWindowProject;
 }
 
+/**
+ * 设计器模型只以 JSON 落盘，`undefined` 值的键在往返中必然消失，所以「键缺失」与
+ * 「键存在但值为 undefined」必须是同一个模型——归一化器会补出 `events: undefined` 这类键，
+ * 早先实现把两者判为不同，导致内容完全等价的模型被报成「画布又被修改」。
+ */
 function stableSerializeDesignerProject(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(item => stableSerializeDesignerProject(item)).join(',')}]`;
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value as Record<string, unknown>).sort().map(key => (
-      `${JSON.stringify(key)}:${stableSerializeDesignerProject((value as Record<string, unknown>)[key])}`
-    )).join(',')}}`;
+    return `{${Object.keys(value as Record<string, unknown>).sort()
+      .filter(key => (value as Record<string, unknown>)[key] !== undefined)
+      .map(key => (
+        `${JSON.stringify(key)}:${stableSerializeDesignerProject((value as Record<string, unknown>)[key])}`
+      )).join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -416,6 +424,25 @@ function stableSerializeDesignerProject(value: unknown): string {
  */
 export function areDesignerProjectsEquivalent(left: unknown, right: unknown): boolean {
   return stableSerializeDesignerProject(left) === stableSerializeDesignerProject(right);
+}
+
+/**
+ * 画布域等价比较：面板提交的模型必然经过 `normalizeWindowDesignerState`（补齐 fontFamily /
+ * events / properties 等派生默认值），而外部 AI 与内嵌 Agent 的 MCP 子进程没有画布视图，
+ * 提案基准只能取磁盘原始模型。两侧不归一到同一域就深比较，会把每一条外部 AI 布局提案
+ * 结构性判成「提案生成后画布又被修改」（真机复现的假失败）。
+ */
+export function areCanvasDesignerProjectsEquivalent(left: unknown, right: unknown): boolean {
+  return areDesignerProjectsEquivalent(toCanvasDomainDesignerProject(left), toCanvasDomainDesignerProject(right));
+}
+
+/** 归一化对空窗口模型会回退成默认项目，所以只对「有窗口的模型」折算，其余原样返回。 */
+function toCanvasDomainDesignerProject(value: unknown): unknown {
+  const project = value as Partial<LingWindowProject> | undefined;
+  if (!project || typeof project !== 'object' || !Array.isArray(project.windows) || project.windows.length === 0) {
+    return value;
+  }
+  return normalizeWindowDesignerState({ project: project as LingWindowProject }).project;
 }
 
 /**

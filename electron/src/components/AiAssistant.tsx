@@ -242,6 +242,18 @@ const WELCOME_MESSAGE: Message = {
   createdAt: ''
 };
 
+/**
+ * dsh 的 tool/call 把 callId 放在 data 顶层，tool/result 却只放在
+ * `data.message.source.callId` / `content[].toolCallId` 里；只认顶层会让每次调用都停在未完成态。
+ */
+export function agentToolEventCallId(data: Record<string, unknown> | undefined): string {
+  const message = data?.message as { source?: { callId?: unknown }; content?: Array<{ toolCallId?: unknown }> } | undefined;
+  const direct = [data?.callId, message?.source?.callId].find(value => typeof value === 'string' && value);
+  if (typeof direct === 'string') return direct;
+  const nested = message?.content?.find(item => typeof item?.toolCallId === 'string' && item.toolCallId);
+  return typeof nested?.toolCallId === 'string' ? nested.toolCallId : '';
+}
+
 export default function AiAssistant({
   strings,
   glossary,
@@ -1029,15 +1041,17 @@ export default function AiAssistant({
     void runtime.status().then(snapshot => { if (snapshot) setAgentRuntimeStatus(snapshot); }).catch(() => undefined);
     const offStatus = runtime.onStatusChanged(snapshot => setAgentRuntimeStatus(snapshot));
     const offEvent = runtime.onEvent(({ event }) => {
-      const data = (event.data || {}) as { callId?: string; name?: string };
-      if (event.type === 'tool/call' && data.callId) {
-        const callId = data.callId;
+      const data = (event.data || {}) as Record<string, unknown>;
+      if (event.type === 'tool/call') {
+        const callId = agentToolEventCallId(data);
+        if (!callId) return;
         const tool = String(data.name || '').replace(/^mcp__lingbuilder__lingbuilder_/u, '').replace(/_[0-9a-f]{12}$/u, '');
         setAgentSteps(previous => (previous.some(step => step.callId === callId) ? previous : [...previous, { callId, tool, done: false }]));
         return;
       }
-      if (event.type === 'tool/result' && data.callId) {
-        const callId = String(data.callId);
+      if (event.type === 'tool/result') {
+        const callId = agentToolEventCallId(data);
+        if (!callId) return;
         setAgentSteps(previous => previous.map(step => (step.callId === callId ? { ...step, done: true } : step)));
       }
     });

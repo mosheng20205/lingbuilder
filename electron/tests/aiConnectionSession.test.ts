@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 import { AiConnectionSessionService, aiConnectionSession } from '../src/services/ai/aiConnectionSessionService';
-import { getAiWorkspaceFilesForEdit, isLikelyCodeEditInstruction, isLikelyDesignerEditInstruction } from '../src/components/AiAssistant';
+import { agentToolEventCallId, getAiWorkspaceFilesForEdit, isLikelyCodeEditInstruction, isLikelyDesignerEditInstruction } from '../src/components/AiAssistant';
 
 test('AI connection verification survives an assistant panel remount within the renderer session', () => {
   const signature = 'deepseek|https://api.deepseek.com|test-key|deepseek-v4-flash';
@@ -82,4 +82,15 @@ test('layout intent and bounded AI context remain independent from the active fi
   assert.equal(files[0].sourceCode, 'current');
   assert.equal(isLikelyCodeEditInstruction('1+1'), false);
   assert.equal(isLikelyCodeEditInstruction('请修复这个编译错误'), true);
+});
+
+
+test('工具调用卡片必须认得 dsh 的 tool/result callId 位置', () => {
+  // tool/call：顶层 callId
+  assert.equal(agentToolEventCallId({ callId: 'call_00_ET_abc', name: 'mcp__lingbuilder__lingbuilder_file_read_123456789abc' }), 'call_00_ET_abc');
+  // tool/result：真实形态把 id 藏在 message.source.callId 与 content[].toolCallId，顶层没有 callId。
+  // 只认顶层会让所有步骤停在未完成态（真机截图里「本轮工具调用 0/4」就是这个）。
+  assert.equal(agentToolEventCallId({ message: { source: { kind: 'tool', callId: 'call_00_ET_abc' }, content: [] } }), 'call_00_ET_abc');
+  assert.equal(agentToolEventCallId({ message: { content: [{ type: 'tool-result', toolCallId: 'call_01_XY_def' }] } }), 'call_01_XY_def');
+  assert.equal(agentToolEventCallId({}), '');
 });

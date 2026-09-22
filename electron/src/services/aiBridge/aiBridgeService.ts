@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { applyWorkspaceEditToFiles, areDesignerProjectsEquivalent, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
+import { applyWorkspaceEditToFiles, areCanvasDesignerProjectsEquivalent, areDesignerProjectsEquivalent, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissionBlock } from '../lingCpp/controlReferenceAdmission';
 import { deleteAgentProposal, persistAgentProposal, readAgentProposal } from '../lingCpp/agentProposalStore';
@@ -478,8 +478,14 @@ export class AiBridgeService {
       const currentDesignerProject = await this.solutionService.readDesignerProject(projectRef);
       if (request.designerProject !== undefined) {
         assertDesignerProjectShape(request.designerProject, 'designerProject');
-        if (!areDesignerProjectsEquivalent(request.designerProject, currentDesignerProject)) {
-          throw new Error('提交应用的窗口设计器模型与磁盘版本不一致，请重新读取并生成提案。');
+        // 客户端一致性守卫：比对基准是「提案生成时 planner 看到的模型」（designerCallerBaseline，
+        // 面板画布/外部调用方视图），而不是磁盘——面板画布通常尚未落盘，与磁盘比对会对
+        // 「只在画布上设计过」的项目结构性失败。磁盘被外部修改的漂移由下方 designerProjectOriginal 守卫负责。
+        // 比较必须折算到画布归一化域：外部 AI / 内嵌 Agent 的基准是磁盘原始模型，面板提交的却是
+        // normalizeWindowDesignerState 之后的画布，直接深比较会把每一条外部 AI 布局提案误判为画布漂移。
+        const clientBaseline = proposal.designerCallerBaseline ?? proposal.designerProjectOriginal;
+        if (clientBaseline && !areCanvasDesignerProjectsEquivalent(request.designerProject, clientBaseline)) {
+          throw new Error('提交应用的窗口设计器模型与提案生成时的画布模型不一致（提案生成后画布可能又被修改），请重新生成提案。');
         }
       }
       if (proposal.designerProjectOriginal && !areDesignerProjectsEquivalent(currentDesignerProject, proposal.designerProjectOriginal)) {

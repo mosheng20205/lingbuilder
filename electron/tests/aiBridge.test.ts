@@ -13,7 +13,7 @@ import { createProjectBuildCoordinator } from '../src/services/tasks/projectBuil
 import { createAiBridgeRouter } from '../src/services/aiBridge/httpRoutes';
 import { createAiBridgeMcpHttpGateway, createAiBridgeMcpProtocolServer, AGENT_MASKED_TOOLS } from '../src/services/aiBridge/mcpServer';
 import { deleteAgentProposal, isPersistableProposalId, persistAgentProposal, readAgentProposal } from '../src/services/lingCpp/agentProposalStore';
-import { getWorkspaceEditProposal } from '../src/services/lingCpp/aiEditService';
+import { areDesignerProjectsEquivalent, getWorkspaceEditProposal } from '../src/services/lingCpp/aiEditService';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { AiBridgeServerOptions } from '../src/services/aiBridge/types';
 import {
@@ -23,6 +23,7 @@ import {
 import { WorkspacePathPolicy } from '../src/services/workspace/workspacePathPolicy';
 import { decodeTextFile, encodeTextFile } from '../src/services/files/textFileService';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
+import { normalizeWindowDesignerState } from '../src/services/windowDesigner/windowDesignerService';
 
 test('AI Bridge HTTP rejects missing or invalid token', async () => {
   const workspaceRoot = await createTempWorkspace();
@@ -1522,6 +1523,67 @@ test('AI Bridge applies source and validated designer model atomically', async (
   const persisted = JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'));
   assert.equal(persisted.windows[0].controls[0].properties.value, 75);
   assert.equal(persisted.windows[0].controls[0].content, '75');
+  await service.shutdown();
+});
+
+test('AI Bridge 应用外部 AI 的布局提案时，面板画布的归一化模型不得被判为漂移', async () => {
+  // 内嵌 Agent / 外部 AI 的 MCP 子进程没有画布视图：提案的 caller 基准只能取磁盘模型，
+  // 而面板 apply 提交的永远是归一化后的画布模型（多出 fontFamily/events/properties 等派生默认值）。
+  // 两者不同域 → 旧实现把每一条外部 AI 布局提案都判成「画布又被修改」，结构性假失败。
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/demo/Main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  const diskDesignerProject: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '外部 AI 布局项目',
+    resources: [],
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 900, height: 560,
+      background: '#ffffff', description: '', controls: [{
+        id: 'greet', type: 'Button', name: '问候按钮', content: '显示问候', width: 140, height: 38,
+        x: 48, y: 120, fontSize: 12, background: '#2563eb', foreground: '#ffffff', isEnabled: true, visibility: 'Visible'
+      }]
+    }]
+  };
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(diskDesignerProject, null, 2) + '\n', 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '外部 AI 布局项目' });
+
+  const movedDesignerProject = JSON.parse(JSON.stringify(diskDesignerProject));
+  movedDesignerProject.windows[0].controls[0].x = 736;
+  movedDesignerProject.windows[0].controls[0].y = 498;
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  // 不带 designerProject：与 `--mcp-toolset agent` 的 stdio 宿主完全同形（caller 只有磁盘视图）。
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '把问候按钮移动到窗口右下角',
+    updatedDesignerProject: movedDesignerProject,
+    files: [{ filePath: sourcePath, updatedSource: sourceCode }]
+  });
+  assert.ok(proposal.proposal.designerChanged, '纯布局提案必须带设计器改动');
+
+  // 面板画布：同一份磁盘模型经 normalizeWindowDesignerState 归一化后的形态。
+  const canvasDesignerProject = normalizeWindowDesignerState({ project: diskDesignerProject }).project;
+  assert.ok(
+    !areDesignerProjectsEquivalent(canvasDesignerProject, diskDesignerProject),
+    '前提：归一化画布与磁盘原始模型按深比较确实不等（否则本用例测不到该缺陷）'
+  );
+
+  const applied = await service.applyEdit({
+    proposalId: proposal.proposal.id,
+    approved: true,
+    designerProject: canvasDesignerProject
+  });
+  assert.equal(applied.ok, true);
+  const persisted = JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'));
+  assert.equal(persisted.windows[0].controls[0].x, 736);
+  assert.equal(persisted.windows[0].controls[0].y, 498);
   await service.shutdown();
 });
 
