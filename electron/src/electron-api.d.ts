@@ -80,6 +80,23 @@ interface LingBuilderAiBridgeSnapshot {
   settingsError?: string;
 }
 
+/** 面板内嵌 Agent 运行时（DeepSeek Harness）状态：只驱动规划与工具循环，不直接写盘。 */
+interface LingBuilderAgentRuntimeSnapshot {
+  state: 'stopped' | 'starting' | 'running' | 'busy' | 'stopping' | 'failed';
+  workspaceRoot: string;
+  nodePath: string;
+  nodeVersion: string;
+  dshBinPath: string;
+  pid: number | null;
+  sessionId: string;
+  provider: string;
+  model: string;
+  maskedToolRows: number;
+  problem: string;
+  logs: string[];
+  lastTurnEvents: number;
+}
+
 declare global {
   interface Window {
     lingBuilder?: {
@@ -202,6 +219,25 @@ declare global {
         openCodexDesktop: () => Promise<LingBuilderCodexDesktopStatus>;
         launchClient: (clientId: LingBuilderExternalAiClientId) => Promise<{ ok: boolean; sessionId: string; detail: string }>;
         onStatusChanged: (listener: (snapshot: LingBuilderAiBridgeSnapshot) => void) => () => void;
+      };
+      agentRuntime?: {
+        status: () => Promise<LingBuilderAgentRuntimeSnapshot>;
+        start: (request: {
+          provider?: string;
+          model?: string;
+          maxTokens?: number;
+          reasoningEffort?: string;
+        }) => Promise<{ ok: boolean; snapshot?: LingBuilderAgentRuntimeSnapshot; error?: string }>;
+        prompt: (request: { prompt: string; sessionId?: string }) => Promise<{
+          ok: boolean;
+          sessionId?: string;
+          finalText?: string;
+          events?: Array<Record<string, unknown>>;
+          error?: string;
+        }>;
+        stop: () => Promise<{ ok: boolean; snapshot?: LingBuilderAgentRuntimeSnapshot; error?: string }>;
+        onStatusChanged: (listener: (snapshot: LingBuilderAgentRuntimeSnapshot) => void) => () => void;
+        onEvent: (listener: (payload: { sessionId: string; event: Record<string, unknown> }) => void) => () => void;
       };
       skillKit?: {
         status: () => Promise<LingBuilderSkillKitStatus | null>;

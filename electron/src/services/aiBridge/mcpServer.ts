@@ -93,14 +93,59 @@ export interface AiBridgeMcpHttpGateway {
 
 type ObserveActivity = (activity: Omit<AiBridgeMcpActivity, 'id' | 'timestamp'>) => void;
 
-function createProtocolServer(service: AiBridgeService, observe?: ObserveActivity, clientId = 'stdio'): Server {
+/** MCP 工具集：full 是外部 AI 客户端的完整面，agent 是面板内嵌运行时的受限面。 */
+export type AiBridgeMcpToolset = 'full' | 'agent';
+
+/**
+ * 内嵌 Agent 会话一律不暴露的写盘与执行工具。权限模式管不住它们：preview 下
+ * 模型自己传 approved=true 就能落盘，所以「可预览、可确认、可撤销」只能靠把这
+ * 些工具从可见面上摘掉、由 IDE 面板在用户点「应用提案」后代执行来保证。
+ */
+export const AGENT_MASKED_TOOLS: ReadonlySet<string> = new Set([
+  'lingbuilder.edit.apply',
+  'lingbuilder.build.run',
+  'lingbuilder.native.preview',
+  'lingbuilder.native.export',
+  'lingbuilder.project.create',
+  'lingbuilder.project.create.undo',
+  'lingbuilder.module.writeFiles',
+  'lingbuilder.module.pack',
+  'lingbuilder.module.install'
+]);
+
+/** agent 工具集下追加到 instructions 的口径说明，避免模型按完整工作流空转。 */
+export const AGENT_TOOLSET_NOTICE = [
+  '【本会话为 LingBuilder 面板内嵌 Agent 工具集】写盘与执行类工具（edit.apply / build.run / native.preview / native.export / project.create / project.create.undo / module.writeFiles / module.pack / module.install）在本会话不可用，也无需你调用：',
+  '你负责读现状、诊断与生成 edit.propose 提案；提案由 LingBuilder 面板展示给用户，用户点「应用提案」后由 IDE 代为落盘、构建和运行。',
+  '因此工作流调整为：lingcpp.diagnostics 读现状 → module.info 查命令契约 → edit.propose 生成提案（必须带完整改动，涉及布局时带 updatedDesignerProject）→ 在回复里说明预期变化并等待用户在界面确认。',
+  '不要为了「验证能编译」而反复尝试调用被遮蔽的工具；需要构建反馈时，明确告诉用户请在面板点击应用提案后再继续。'
+].join('\n');
+
+function createProtocolServer(
+  service: AiBridgeService,
+  observe?: ObserveActivity,
+  clientId = 'stdio',
+  toolset: AiBridgeMcpToolset = 'full'
+): Server {
   const server = new Server(
     { name: 'lingbuilder-ai-bridge', version: '0.6.6' },
-    { capabilities: { tools: {} }, instructions: MCP_INSTRUCTIONS }
+    {
+      capabilities: { tools: {} },
+      instructions: toolset === 'agent' ? `${MCP_INSTRUCTIONS}\n${AGENT_TOOLSET_NOTICE}` : MCP_INSTRUCTIONS
+    }
   );
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+  const visibleTools = toolset === 'agent' ? TOOLS.filter(tool => !AGENT_MASKED_TOOLS.has(tool.name)) : TOOLS;
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: visibleTools }));
   server.setRequestHandler(CallToolRequestSchema, async request => {
     const startedAt = Date.now();
+    if (toolset === 'agent' && AGENT_MASKED_TOOLS.has(request.params.name)) {
+      const message = `内嵌 Agent 会话不提供「${request.params.name}」：写入与构建由 LingBuilder 面板在用户确认提案后代执行，请生成 edit.propose 提案并等待用户确认。`;
+      observe?.({
+        transport: 'streamable-http', clientId, kind: 'tool', tool: request.params.name, ok: false,
+        durationMs: Date.now() - startedAt, message
+      });
+      return { isError: true, content: [{ type: 'text' as const, text: message }] };
+    }
     try {
       const result = await callTool(service, request.params.name, request.params.arguments || {});
       observe?.({
@@ -120,8 +165,16 @@ function createProtocolServer(service: AiBridgeService, observe?: ObserveActivit
   return server;
 }
 
-export function startAiBridgeMcpServer(service: AiBridgeService): void {
-  const server = createProtocolServer(service);
+/**
+ * 协议服务器工厂：stdio 宿主与测试都用它拿到指定工具集的服务端实例。
+ * 内嵌 Agent 运行时必须传 'agent'，否则模型可以自己传 approved=true 绕过面板确认。
+ */
+export function createAiBridgeMcpProtocolServer(service: AiBridgeService, toolset: AiBridgeMcpToolset = 'full'): Server {
+  return createProtocolServer(service, undefined, 'stdio', toolset);
+}
+
+export function startAiBridgeMcpServer(service: AiBridgeService, toolset: AiBridgeMcpToolset = 'full'): void {
+  const server = createProtocolServer(service, undefined, 'stdio', toolset);
   void server.connect(new StdioServerTransport()).catch(error => {
     process.stderr.write(`LingBuilder MCP 启动失败：${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;

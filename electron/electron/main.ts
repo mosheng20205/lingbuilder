@@ -18,12 +18,14 @@ import fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { diskBuildDiffersFromRunning, readBuildMetaFile, resolveBuildMetaPath } from './buildIdentity';
 import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
 import { checkLatestVersion, type VersionCheckResult } from './versionCheckService';
 import { UpdateDownloadService } from './updateDownloadService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
+import { AgentRuntimeService } from './agentRuntime/agentRuntimeService';
 import { normalizeAiBridgeStartSettings, readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
 import { LocalAuthorizationService, type LocalAuthorizationSnapshot } from './localAuthorizationService';
 import { SkillKitService, resolveBundledSkillKitRoot } from './skillKit/skillKitService';
@@ -75,6 +77,7 @@ let shutdownPromise: Promise<void> | null = null;
 let pendingModulePackagePath: string | undefined;
 let workspaceService: DesktopWorkspaceService;
 let aiBridgeManager: AiBridgeManagerService;
+let agentRuntime: AgentRuntimeService;
 let localAuthorization: LocalAuthorizationService | null = null;
 let moduleInfoWindow: ModuleInfoWindowService;
 const rendererConfirmedClose = new WeakSet<BrowserWindow>();
@@ -1110,6 +1113,41 @@ function registerIpcHandlers(): void {
   ipcMain.handle('ai-bridge:rotate-token', async () => await aiBridgeManager.rotateToken());
   ipcMain.handle('ai-bridge:reveal-token', async () => aiBridgeManager.revealToken());
   ipcMain.handle('ai-bridge:clients', async () => await detectExternalAiClients());
+  ipcMain.handle('agent-runtime:status', async () => agentRuntime?.snapshot());
+  ipcMain.handle('agent-runtime:start', async (_event, request: unknown) => {
+    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
+    try {
+      const snapshot = await agentRuntime.start({
+        workspaceRoot: getShellWorkspaceRoot(),
+        provider: typeof value.provider === 'string' ? value.provider : undefined,
+        model: typeof value.model === 'string' ? value.model : undefined,
+        maxTokens: typeof value.maxTokens === 'number' ? value.maxTokens : undefined,
+        reasoningEffort: typeof value.reasoningEffort === 'string' ? value.reasoningEffort : undefined
+      });
+      return { ok: true, snapshot };
+    } catch (reason) {
+      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
+    }
+  });
+  ipcMain.handle('agent-runtime:prompt', async (_event, request: unknown) => {
+    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
+    try {
+      const result = await agentRuntime.prompt(
+        typeof value.prompt === 'string' ? value.prompt : '',
+        typeof value.sessionId === 'string' ? value.sessionId : undefined
+      );
+      return { ok: true, ...result };
+    } catch (reason) {
+      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
+    }
+  });
+  ipcMain.handle('agent-runtime:stop', async () => {
+    try {
+      return { ok: true, snapshot: await agentRuntime.stop() };
+    } catch (reason) {
+      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
+    }
+  });
   ipcMain.handle('ai-bridge:codex-desktop-status', async (_event, permission?: ManagedAiBridgePermission) => (
     await codexDesktopIntegration().inspect(permission || 'preview')
   ));
@@ -1688,6 +1726,20 @@ app.whenReady().then(async () => {
   aiBridgeManager.setFbroVipKey((await resolveFbroVipCredential()).value);
   aiBridgeManager.subscribe(snapshot => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai-bridge:status-changed', snapshot);
+  });
+  // 面板内嵌 Agent 运行时（DeepSeek Harness）：只作为规划/工具循环引擎，
+  // 写盘与构建由面板在用户确认提案后经 AiBridgeService 代执行。
+  agentRuntime = new AgentRuntimeService({
+    bridgeCommand: process.execPath,
+    cliEntryPath: cliEntryPath(),
+    profileDirectory: path.join(app.getPath('userData'), 'agent-runtime'),
+    environment: process.env
+  });
+  agentRuntime.subscribe(snapshot => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('agent-runtime:status-changed', snapshot);
+  });
+  agentRuntime.onEvent(payload => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('agent-runtime:event', payload);
   });
   // 外部 AI 授权开关是持久化设置，IDE 启动即按上次选择恢复监听状态。
   await syncLocalAuthorizationService();

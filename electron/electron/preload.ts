@@ -77,6 +77,22 @@ contextBridge.exposeInMainWorld('lingBuilder', {
       return () => ipcRenderer.removeListener('ai-bridge:status-changed', handler);
     },
   },
+  agentRuntime: {
+    status: () => ipcRenderer.invoke('agent-runtime:status'),
+    start: (request: unknown) => ipcRenderer.invoke('agent-runtime:start', request),
+    prompt: (request: unknown) => ipcRenderer.invoke('agent-runtime:prompt', request),
+    stop: () => ipcRenderer.invoke('agent-runtime:stop'),
+    onStatusChanged: (listener: (snapshot: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, snapshot: unknown) => listener(snapshot);
+      ipcRenderer.on('agent-runtime:status-changed', handler);
+      return () => ipcRenderer.removeListener('agent-runtime:status-changed', handler);
+    },
+    onEvent: (listener: (payload: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload);
+      ipcRenderer.on('agent-runtime:event', handler);
+      return () => ipcRenderer.removeListener('agent-runtime:event', handler);
+    },
+  },
   skillKit: {
     status: () => ipcRenderer.invoke('skill-kit:status'),
     checkUpdate: () => ipcRenderer.invoke('skill-kit:check-update'),

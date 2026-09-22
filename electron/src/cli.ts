@@ -48,7 +48,12 @@ async function main(): Promise<void> {
   const allowRemote = false;
   const enableMcpStdio = args.mcp === 'true' || args.mcp === true;
   const stdioOnly = args['stdio-only'] === 'true' || args['stdio-only'] === true;
+  const mcpToolset = parseMcpToolset(getStringArg(args['mcp-toolset']) || 'full');
   const enableMcpHttp = !stdioOnly && args['no-mcp-http'] !== true && args['no-mcp-http'] !== 'true';
+
+  if (mcpToolset !== 'full' && !enableMcpStdio) {
+    throw new Error('--mcp-toolset 只对 stdio MCP 生效，必须与 --mcp 一起使用。');
+  }
 
   if (stdioOnly && !enableMcpStdio) {
     throw new Error('--stdio-only 必须与 --mcp 一起使用。');
@@ -92,14 +97,20 @@ async function main(): Promise<void> {
     const authorizations = JSON.parse(Buffer.from(encodedModuleAccess, 'base64url').toString('utf8'));
     if (Array.isArray(authorizations)) authorizations.forEach(authorization => moduleAccess.sync(authorization));
   }
+  const moduleAccessGate = createModuleAccessGate({
+    authorizer: moduleAccess,
+    bootstrap: moduleAccessBootstrap,
+    bootstrapMessage: moduleAccessBootstrapMessage,
+    log: message => console.error(message)
+  });
   const service = new AiBridgeService(options, {
-    assertModuleAccess: moduleIds => moduleIds.forEach(moduleId => moduleAccess.assertAccess(moduleId))
+    assertModuleAccess: moduleIds => moduleAccessGate.assert(moduleIds)
   });
   if (stdioOnly) {
     installAiBridgeStdioShutdownHandlers(service);
-    console.error(`LINGBUILDER_AI_BRIDGE_READY ${JSON.stringify({ host: 'stdio', port: 0, origin: 'stdio', workspaceRoot, permission, mcpHttp: false, mcpStdio: true })}`);
-    console.error(`LingBuilder AI Bridge MCP stdio 已启动；工作区：${workspaceRoot}；权限：${permission}`);
-    startAiBridgeMcpServer(service);
+    console.error(`LINGBUILDER_AI_BRIDGE_READY ${JSON.stringify({ host: 'stdio', port: 0, origin: 'stdio', workspaceRoot, permission, mcpHttp: false, mcpStdio: true, mcpToolset })}`);
+    console.error(`LingBuilder AI Bridge MCP stdio 已启动；工作区：${workspaceRoot}；权限：${permission}；工具集：${mcpToolset}`);
+    startAiBridgeMcpServer(service, mcpToolset);
     return;
   }
   const app = express();
@@ -136,7 +147,7 @@ async function main(): Promise<void> {
   if (enableMcpHttp) log(`MCP Streamable HTTP: ${origin}/api/ai-bridge/mcp`);
 
   if (enableMcpStdio) {
-    startAiBridgeMcpServer(service);
+    startAiBridgeMcpServer(service, mcpToolset);
   }
 }
 
@@ -471,6 +482,11 @@ function parsePermission(value: string): AiBridgePermissionMode {
   throw new Error('无效权限模式，请使用 readonly、preview 或 yolo。');
 }
 
+function parseMcpToolset(value: string): AiBridgeMcpToolset {
+  if (value === 'full' || value === 'agent') return value;
+  throw new Error('无效 MCP 工具集，请使用 full 或 agent。');
+}
+
 function printUsage(): void {
   console.log(`Usage:
   lingbuilder --help | --version
@@ -482,7 +498,7 @@ function printUsage(): void {
   lingbuilder project templates [--workspace <path>] [--json]
   lingbuilder project create|diagnose|export|build|run|stop --request <file.json> [--workspace <path>] [--arch win32|x64] [--yes] [--json]
   lingbuilder project undo-create --request <receipt.json> --workspace <path> --yes [--json]
-  lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp] [--no-mcp-http] [--stdio-only]
+  lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp] [--no-mcp-http] [--stdio-only] [--mcp-toolset full|agent]
   lingbuilder module init --template cpp-source --out <dir> [--id <id>] [--name <name>]
   lingbuilder module validate <dir|file.lbmod>
   lingbuilder module pack <dir> --out <file.lbmod>
@@ -498,7 +514,10 @@ Permissions:
 MCP:
   默认启用带 Bearer Token 的 Streamable HTTP 端点 /api/ai-bridge/mcp
   --mcp 额外启用兼容旧客户端的 stdio MCP；--no-mcp-http 可关闭共享 HTTP MCP
-  --mcp --stdio-only 只启动 stdio MCP，供 ChatGPT/Codex 桌面客户端直接拉起，不监听端口也不需要 Token`);
+  --mcp --stdio-only 只启动 stdio MCP，供 ChatGPT/Codex 桌面客户端直接拉起，不监听端口也不需要 Token
+  --mcp-toolset agent 把写盘与执行类工具（edit.apply / build.run / native.* / project.create* / module.writeFiles|pack|install）
+    从 stdio MCP 的 tools/list 与调用面上摘掉，供 LingBuilder 面板内嵌 Agent 运行时使用：
+    模型只生成 edit.propose 提案，落盘与构建由 IDE 在用户点「应用提案」后代执行`);
 }
 
 main().catch(error => {
