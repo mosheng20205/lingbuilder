@@ -1,4 +1,9 @@
-export type AiConnectionMode = 'system' | 'byok';
+/**
+ * 面板请求通道：system = 云端系统 AI（点数计费），byok = 用户自备供应商 Key，
+ * agent = 本机内嵌 Agent 运行时（DeepSeek Harness，经 AI Bridge MCP 干活，
+ * 写盘与构建由面板在用户确认提案后代执行）。
+ */
+export type AiConnectionMode = 'system' | 'byok' | 'agent';
 
 export class AiConnectionSessionService {
   private connectedSignature: string | null = null;

@@ -431,6 +431,11 @@ export class AiBridgeService {
     const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: proposedFiles, designerProject: request.updatedDesignerProject };
     if (draft.designerProject) await this.assertDesignerProjectRegistered(draft.designerProject.id);
     const proposal = proposeLingCppEdit(context, draft);
+    if (this.options.agentProposalHandoff) {
+      // 内嵌 Agent 的 MCP 子进程与 IDE 本地服务是两个进程，进程内提案 store 不共享：
+      // 落工作区交接目录后，面板才能按同一 proposalId 取回并在用户确认后代执行 apply。
+      await persistAgentProposal(this.workspaceRoot, proposal);
+    }
     // 响应瘦身：草稿全文不回传（服务端已留存，apply 只需 proposalId）。
     return {
       ok: true,
@@ -450,7 +455,7 @@ export class AiBridgeService {
   }
 
   async applyEdit(request: AiBridgeEditApplyRequest): Promise<{ ok: true } & AiBridgeEditApplyResult> {
-    const proposal = request.proposalId ? getWorkspaceEditProposal(request.proposalId) : undefined;
+    const proposal = await this.resolveEditProposal(request.proposalId);
     if (!proposal) throw new Error('未找到编辑提案。');
 
     await this.requireWriteWithAudit('edit.apply', request.proposalId, request.approved);
@@ -529,11 +534,19 @@ export class AiBridgeService {
     }
 
     rejectWorkspaceEdit(request.proposalId);
+    if (this.options.agentProposalHandoff) {
+      // 交接目录里只留未应用的提案：一旦落盘成功立即删除，避免源码草稿长期驻留工作区。
+      await deleteAgentProposal(this.workspaceRoot, request.proposalId).catch(() => undefined);
+    }
     return {
       ok: true,
       appliedFiles: persistedFiles.map(file => ({ filePath: file.filePath, bytes: Buffer.byteLength(file.sourceCode, 'utf8') })),
       ...(appliedDesignerProject ? { designerProjectId: appliedDesignerProject.id } : {}),
-      message: `已应用 ${persistedFiles.length} 个文件的修改${appliedDesignerProject ? '，窗口设计器布局已同步更新' : ''}。`
+      message: persistedFiles.length > 0
+        ? `已应用 ${persistedFiles.length} 个文件的修改${appliedDesignerProject ? '，窗口设计器布局已同步更新' : ''}。`
+        : appliedDesignerProject
+          ? '窗口设计器布局已同步更新（本次源码未改动）。'
+          : 'AI 提案未产生任何文件改动。',
     };
   }
 
@@ -2317,6 +2330,16 @@ export class AiBridgeService {
     return resolved;
   }
 
+  /**
+   * 按 ID 取提案：先查本进程内存 store，未命中再查工作区交接目录
+   * （内嵌 Agent 在另一进程生成提案）。agentProposalHandoff 关闭时绝不读盘。
+   */
+  private async resolveEditProposal(proposalId: string | undefined): Promise<WorkspaceEditProposal | undefined> {
+    if (!proposalId) return undefined;
+    return getWorkspaceEditProposal(proposalId)
+      || (this.options.agentProposalHandoff ? await readAgentProposal(this.workspaceRoot, proposalId) : undefined);
+  }
+
   private async resolveApplyWorkspaceFiles(request: AiBridgeEditApplyRequest): Promise<LingCppWorkspaceFile[]> {
     if (Array.isArray(request.workspaceFiles) && request.workspaceFiles.length > 0) {
       return request.workspaceFiles.map(file => ({
@@ -2325,7 +2348,7 @@ export class AiBridgeService {
         sourceCode: normalizeLineEndings(file.sourceCode)
       }));
     }
-    const proposal = request.proposalId ? getWorkspaceEditProposal(request.proposalId) : undefined;
+    const proposal = await this.resolveEditProposal(request.proposalId);
     if (!proposal?.changes.length) return [];
     return await Promise.all(proposal.changes.map(async (change, index) => {
       if (index === 0 && typeof request.sourceCode === 'string') {

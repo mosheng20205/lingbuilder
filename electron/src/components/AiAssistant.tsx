@@ -954,12 +954,135 @@ export default function AiAssistant({
     }
   };
 
+  // 聊天面板内直接驱动「AI 生成模块」共享流：多阶段生成 → 契约解析 → 导入 module-build。
+  // 与模块面板共用 aiModuleGenerationFlow 唯一实现；结果以聊天消息汇报，不进入编辑提案链。
+  const runModuleGenerationInChat = async (requirement: string) => {
+    const channel: 'system' | 'byok' = aiMode === 'system' ? 'system' : 'byok';
+    const statusId = `module-gen-${Date.now()}`;
+    const upsertStatus = (text: string) => updateChatHistory(previous => {
+      const existing = previous.find(message => message.id === statusId);
+      if (existing) return previous.map(message => message.id === statusId ? { ...message, text } : message);
+      return [...previous, { ...createChatMessage('ai', text, { id: statusId }), contextExcluded: true }];
+    }, true);
+    try {
+      upsertStatus(channel === 'system'
+        ? '正在按《LingBuilder 模块 AI 开发规范》生成模块（清单 → 文件 → 导入），请稍候……'
+        : '正在通过自定义 API 生成模块并导入 module-build，请稍候……');
+      let outcome: AiModuleGenerationOutcome;
+      try {
+        outcome = await runAiModuleGeneration(requirement, channel, {
+          onStage: (_stage, message) => upsertStatus(message),
+          onRequestKey: key => { moduleGenerationRequestRef.current = key; }
+        }, { ...aiConfig, modelName: effectiveModelName });
+      } catch (error) {
+        outcome = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      if (stopRequestedRef.current) return;
+      if (!outcome.ok || !outcome.imported) {
+        updateChatHistory(previous => [...previous, createChatMessage('ai', `AI 模块生成失败：${outcome.error || '未知错误'}${outcome.rawOutput ? '\n\n可打开「模块 → 开发工具 → AI 生成模块」的手动模式，把 AI 原始回复粘贴进文本框完成导入。' : ''}`)]);
+        return;
+      }
+      const imported = outcome.imported;
+      const summaryLines = [
+        `已${imported.overwrittenExisting ? '重新生成并覆盖导入' : '生成并导入'}模块「${imported.moduleName}」（${imported.moduleId}）到 ${imported.outDir}，共 ${imported.fileCount} 个文件。`,
+        imported.diagnostics.length > 0 ? `导入校验未完全通过：${imported.diagnostics.join('；')}` : '导入后校验通过。',
+        '下一步：打开「模块」页 → 开发工具 →「模块包制作」，校验并导出 .lbmod 后安装启用；在项目里启用模块后即可调用其中文命令。'
+      ];
+      updateChatHistory(previous => [...previous, createChatMessage('ai', summaryLines.filter(Boolean).join('\n'))]);
+    } finally {
+      moduleGenerationRequestRef.current = null;
+      setIsAiResponding(false);
+    }
+  };
+
+  // BYOK 发送前解析凭据 Key（2026-09-22 编辑提案链 401 根治的一环）：
+  // aiConfig.apiKey 在挂载时由凭据库异步回填，编辑提案/聊天若赶在回填前发出，
+  // 会带着空 Key 打服务端——旧版服务端会用启动时固化的 GEMINI_* 环境变量旧值顶替，
+  // 造成「Key 尾缀与当前一致却被上游 401」的假象。这里在每次发送前保证 Key 已从
+  // 凭据库取到最新值；仍取不到就直接给中文错误，不发注定失败的请求。
+  const resolveByokAiConfig = async (): Promise<AiConnectionConfig> => {
+    let apiKey = aiConfig.apiKey;
+    if (!apiKey.trim() && window.lingBuilder?.credentials) {
+      try {
+        apiKey = (await window.lingBuilder.credentials.getAiApiKey()) || '';
+      } catch {
+        apiKey = '';
+      }
+      if (apiKey) setAiConfig(current => ({ ...current, apiKey }));
+    }
+    return { ...aiConfig, apiKey, modelName: effectiveModelName };
+  };
+
+  // 本机 Agent 引擎（内嵌 DeepSeek Harness）：跨轮复用的会话与已接手的提案 ID。
+  const agentSessionRef = useRef('');
+  const handledAgentProposalsRef = useRef<Set<string>>(new Set());
+
+  const pushAgentNotice = (text: string) => updateChatHistory(previous => [...previous, createChatMessage('ai', text, { contextExcluded: true })]);
+
+  /**
+   * 把需求整体交给内嵌运行时。它只能经 AI Bridge MCP 的 agent 工具集干活
+   * （写盘与构建类工具对它不可见），生成的提案由工作区交接目录回到本面板，
+   * 预览与落盘仍复用现有唯一 apply 事务——这里绝不直接改文件。
+   */
+  const runAgentTurn = async (instruction: string) => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime) {
+      pushAgentNotice('本机 Agent 引擎只在 LingBuilder 桌面版可用（需要 IDE 主进程托管内嵌运行时）。');
+      return;
+    }
+    const status = await runtime.status();
+    if (status && status.state !== 'running' && status.state !== 'busy') {
+      const started = await runtime.start({});
+      if (!started.ok) {
+        pushAgentNotice(`内嵌 Agent 启动失败：${started.error || '未知原因'}`);
+        return;
+      }
+      pushAgentNotice(`内嵌 Agent 已启动（Node ${started.snapshot?.nodeVersion || '未知版本'}，模型 ${started.snapshot?.model || '未知模型'}）。它只能生成提案，落盘与构建由你确认后执行。`);
+    }
+    const turn = await runtime.prompt({ prompt: instruction, sessionId: agentSessionRef.current || undefined });
+    if (!turn.ok) {
+      pushAgentNotice(`本轮失败：${turn.error || '内嵌 Agent 未返回结果'}`);
+      return;
+    }
+    if (turn.sessionId) agentSessionRef.current = turn.sessionId;
+    const toolCalls = (turn.events || []).filter(event => event.type === 'tool/call').length;
+    pushAgentNotice(turn.finalText?.trim() || `（本轮调用了 ${toolCalls} 个 LingBuilder 工具，没有留下文字说明）`);
+    try {
+      const fetched = await fetch('/api/lingcpp/edit/agent-proposal').then(response => response.json());
+      const proposal = fetched?.proposal;
+      if (proposal?.id && !handledAgentProposalsRef.current.has(proposal.id)) {
+        handledAgentProposalsRef.current.add(proposal.id);
+        setEditProposal(proposal);
+        pushAgentNotice(`已生成可预览的编辑提案：${proposal.summary || proposal.id}。请在上方差异预览后点击「应用提案」。`);
+      }
+    } catch {
+      pushAgentNotice('未读取到内嵌 Agent 的提案交接内容（/api/lingcpp/edit/agent-proposal 不可用）。');
+    }
+  };
+
   // Conversational translation query
   const submitChatMessage = async () => {
     if (isAiResponding) return;
     if (!chatInput.trim()) return;
 
     const userMsg: Message = createChatMessage('user', chatInput);
+    // 纯问答先判掉：既不进模块生成流，也不进编辑提案链。
+    const askingOnlyInstruction = isLikelyAskingOnlyInstruction(userMsg.text);
+
+    // 本机 Agent 引擎：整轮交给内嵌运行时，不走系统 AI / BYOK 的本地 planner 链。
+    if (aiMode === 'agent') {
+      updateChatHistory(prev => [...prev, userMsg]);
+      setChatInput('');
+      setIsAiResponding(true);
+      try {
+        await runAgentTurn(userMsg.text);
+      } catch (error) {
+        pushAgentNotice(`内嵌 Agent 出错：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setIsAiResponding(false);
+      }
+      return;
+    }
 
     updateChatHistory(prev => [...prev, userMsg]);
     setChatInput('');
@@ -1313,6 +1436,7 @@ export default function AiAssistant({
             <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${isDarkMode ? 'border-[#343442] bg-[#18181c]' : 'border-slate-200 bg-slate-100'}`} role="tablist" aria-label="AI 使用模式">
               <button type="button" role="tab" aria-selected={aiMode === 'system'} onClick={() => handleAiModeChange('system')} disabled={!isCloudAccountAvailable} title={isCloudAccountAvailable ? '使用 LingBuilder 云端系统 AI' : '系统 AI 需要在 LingBuilder 桌面版中使用'} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${aiMode === 'system' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}><Cloud className="h-3 w-3"/>系统 AI</button>
               <button type="button" role="tab" aria-selected={aiMode === 'byok'} onClick={() => handleAiModeChange('byok')} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'byok' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><KeyRound className="h-3 w-3"/>自定义 API</button>
+              <button type="button" role="tab" aria-selected={aiMode === 'agent'} onClick={() => handleAiModeChange('agent')} disabled={!window.lingBuilder?.agentRuntime} title={window.lingBuilder?.agentRuntime ? '使用本机内嵌 Agent 运行时（DeepSeek Harness，经 LingBuilder MCP 干活；写盘与构建由你确认后代执行）' : '本机 Agent 只在 LingBuilder 桌面版可用'} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${aiMode === 'agent' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}><Brain className="h-3 w-3"/>本机 Agent</button>
             </div>
           )}
           {aiMode === 'system' && isAiConfigExpanded && (

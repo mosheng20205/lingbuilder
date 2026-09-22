@@ -733,6 +733,8 @@ WebSocket 2.0 支持多客户端、文本/二进制、分片、Ping/Pong、关�
 - 连接中心启动外部 AI 时，只能把 token 注入对应 IDE PTY 的进程环境；客户端配置文件只能引用 `LINGBUILDER_AI_BRIDGE_TOKEN` 等环境变量，不得保存实际值。renderer 常规状态不得包含完整 token。
 - 工作区文件访问以真实路径为准；读取不得越过工作区，文件树与搜索不得跟随符号链接或 Windows junction，写入新文件时也必须拒绝链接路径链。
 - `readonly`、`preview`、`yolo` 的含义不变；`preview` 的写入、导出和构建必须显式批准，`yolo` 仍只允许 LingBuilder 的受控工具，不得生成或要求开放任意 shell。
+- MCP 工具集分两档（2026-09-22）：`ai-server --mcp --mcp-toolset full`（缺省，外部 AI 客户端）暴露全部 23 个工具；`--mcp-toolset agent` 供 **AI 面板内嵌 Agent 运行时**（DeepSeek Harness）使用，从 `tools/list` 与调用面上摘掉 `edit.apply / build.run / native.preview / native.export / project.create / project.create.undo / module.writeFiles / module.pack / module.install`，点名调用返回中文拒绝。原因：权限模式不构成边界——preview 下模型自己传 `approved=true` 一样能落盘——所以内嵌引擎只能生成 `edit.propose` 提案，落盘与构建由面板在用户确认后代执行。生成 AI 走 agent 工具集时不得再尝试调用被遮蔽工具，也不得建议用户「让 AI 自己构建」。
+- 内嵌 Agent 的提案交接（2026-09-22 P2）：内嵌运行时与 IDE 本地服务是两个进程，`edit.propose` 生成的提案经工作区 `.lingbuilder/agent-proposals/<proposalId>.json` 交给面板（30 分钟过期、应用成功即删除、面板只读该目录不写）。AI 面板因此新增第三个引擎页签「本机 Agent」：它只产出需求分析与编辑提案，界面仍走同一套差异预览 +「应用提案」/「拒绝提案」；不得为它另建第二条写入路径，也不得把它的提案当系统 AI 计费请求（该引擎走本机 dsh 的 provider 配置，不吃云端点数）。
 - 路径越界、链接绕过、权限拒绝和失败写入必须进入 `.lingbuilder/ai-bridge-log.jsonl` 审计记录。
 # 原生调试与源码映射
 

@@ -36,7 +36,8 @@ import {
   rejectWorkspaceEdit,
   validateDesignerProjectEdit
 } from "./src/services/lingCpp/aiEditService";
-import { getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageService";
+import { readAgentProposal, readLatestAgentProposal } from "./src/services/lingCpp/agentProposalStore";
+import { getDesignerControlCommandCompletions, getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageService";
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from "./src/services/lingCpp/projectGlobalService";
 import { createProjectTypeContext, isProjectDataTypesFilePath } from "./src/services/lingCpp/projectDataTypeService";
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath, isProjectBuildArtifactRelativePath } from "./src/services/solution/nestedWorkspaceGuard";
@@ -880,11 +881,16 @@ const aiBridgeServiceDependencies = {
  * AI 面板编辑链（/api/lingcpp/edit/*）专用实例：permission 固定 yolo——面板是本地受信 UI，
  * 提案预览 + 用户确认就是它的批准环节；关键是让面板与 AI Bridge 共享同一套
  * propose/apply 实现（控件门禁、深比较、审计、编码保留），只维护一条链。
+ * 工作区切换时必须重建：AiBridgeService 在构造期快照 workspaceRoot 并派生全部子服务，
+ * 单例复用会让提案/应用继续读写切换前的旧工作区（写新工作区、读旧工作区的精神分裂根因）。
  */
-const panelAiBridgeService = new AiBridgeService(
-  { ...aiBridgeServiceOptions, permission: 'yolo' },
+const createPanelAiBridgeService = () => new AiBridgeService(
+  // agentProposalHandoff：面板要能按 proposalId 读回内嵌 Agent（另一进程）生成的提案，
+  // 用户点「应用提案」后仍由本实例唯一 apply 事务落盘（门禁/审计/编码保留不复制第二套）。
+  { ...aiBridgeServiceOptions, workspaceRoot: getRepoWorkspaceRoot(), permission: 'yolo', agentProposalHandoff: true },
   aiBridgeServiceDependencies
 );
+let panelAiBridgeService = createPanelAiBridgeService();
 if (serverRuntimeConfig.aiBridgeEnabled) {
   const aiBridgeService = new AiBridgeService(
     { ...aiBridgeServiceOptions, permission: getAiBridgePermissionMode() },
@@ -4581,6 +4587,20 @@ app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "系统 AI 编辑草稿校验失败。";
     return res.status(422).json({ ok: false, error: message });
+  }
+});
+
+/**
+ * 面板「本机 Agent」引擎在一轮对话结束后取回最新一条未应用的提案。
+ * 提案由内嵌 Agent 的 MCP 子进程生成并经工作区交接目录落盘，这里只读不回写；
+ * 真正落盘仍走 /api/lingcpp/edit/apply 的唯一 apply 事务。
+ */
+app.get("/api/lingcpp/edit/agent-proposal", async (_req, res) => {
+  try {
+    const proposal = await readLatestAgentProposal(getRepoWorkspaceRoot());
+    return res.json({ ok: true, ...(proposal ? { proposal } : {}) });
+  } catch (error: unknown) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "读取内嵌 Agent 提案失败" });
   }
 });
 

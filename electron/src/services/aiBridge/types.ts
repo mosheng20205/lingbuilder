@@ -18,6 +18,9 @@ export interface AiBridgeServerOptions {
   permission: AiBridgePermissionMode;
   allowRemote: boolean;
   enableMcp: boolean;
+  /** 内嵌 Agent 交接：提案落工作区 `.lingbuilder/agent-proposals/`，
+   *  让面板（另一进程）能按同一 ID 取回并代执行 apply。外部 AI 客户端不需要。 */
+  agentProposalHandoff?: boolean;
   /** 显式指定 MSVC 目标架构；省略时按本机探测结果（通常是 x64）。
    *  32 位 OCX / DLL 只能被 32 位程序加载，构建这类示例时必须显式传 win32。 */
   arch?: 'win32' | 'x64';

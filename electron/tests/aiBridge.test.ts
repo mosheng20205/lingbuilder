@@ -11,7 +11,10 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { AiBridgeService, type AiBridgeProcessManager } from '../src/services/aiBridge/aiBridgeService';
 import { createProjectBuildCoordinator } from '../src/services/tasks/projectBuildCoordinator';
 import { createAiBridgeRouter } from '../src/services/aiBridge/httpRoutes';
-import { createAiBridgeMcpHttpGateway } from '../src/services/aiBridge/mcpServer';
+import { createAiBridgeMcpHttpGateway, createAiBridgeMcpProtocolServer, AGENT_MASKED_TOOLS } from '../src/services/aiBridge/mcpServer';
+import { isPersistableProposalId, persistAgentProposal, readAgentProposal } from '../src/services/lingCpp/agentProposalStore';
+import { getWorkspaceEditProposal } from '../src/services/lingCpp/aiEditService';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { AiBridgeServerOptions } from '../src/services/aiBridge/types';
 import {
   isServerSessionAuthorized,
@@ -172,6 +175,95 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     await gateway.close();
     await server.close();
     await service.shutdown();
+  }
+});
+
+test('AI Bridge agent toolset hides write/execute tools so only the panel can apply and build', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'agent-toolset-token'));
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  const server = createAiBridgeMcpProtocolServer(service, 'agent');
+  await server.connect(serverTransport);
+  const client = new Client({ name: 'lingbuilder-agent-toolset-test', version: '1.0.0' }, { capabilities: {} });
+  await client.connect(clientTransport);
+
+  const tools = await client.listTools();
+  const names = tools.tools.map(tool => tool.name);
+  assert.equal(names.length, 23 - AGENT_MASKED_TOOLS.size, 'agent 工具集必须恰好摘掉遮蔽清单里的工具');
+  for (const masked of ['lingbuilder.edit.apply', 'lingbuilder.build.run', 'lingbuilder.native.export', 'lingbuilder.native.preview', 'lingbuilder.project.create', 'lingbuilder.project.create.undo', 'lingbuilder.module.writeFiles', 'lingbuilder.module.pack', 'lingbuilder.module.install']) {
+    assert.ok(!names.includes(masked), `${masked} 不得出现在内嵌 Agent 工具集`);
+  }
+  for (const kept of ['lingbuilder.edit.propose', 'lingbuilder.lingcpp.diagnostics', 'lingbuilder.module.info', 'lingbuilder.file.read', 'lingbuilder.workspace.list']) {
+    assert.ok(names.includes(kept), `${kept} 必须保留给内嵌 Agent`);
+  }
+
+  const instructions = String(client.getInstructions() || '');
+  assert.match(instructions, /内嵌 Agent 工具集/u, 'agent 工具集必须改写工作流口径，否则模型会按完整链空转');
+  assert.match(instructions, /用户确认/u, 'instructions 必须写明落盘由用户在面板确认后代执行');
+  assert.match(instructions, /窗口_取自身句柄/u, 'agent 工具集仍必须携带完整 LingBuilder 规则条款');
+
+  // 遮蔽不是只藏列表：直接点名调用也必须中文拒绝，绝不能落到 callTool 去写盘。
+  const denied = await client.callTool({ name: 'lingbuilder.edit.apply', arguments: { proposalId: 'not-exist', approved: true } });
+  assert.equal(denied.isError, true, '被遮蔽工具的直接调用必须报错');
+  assert.match(JSON.stringify(denied), /由 LingBuilder 面板在用户确认提案后代执行/u, '拒绝原因必须是中文可指导文案');
+  const deniedBuild = await client.callTool({ name: 'lingbuilder.build.run', arguments: { projectId: 'x', approved: true } });
+  assert.equal(deniedBuild.isError, true, 'build.run 同样不得被内嵌 Agent 直接触发');
+
+  await client.close();
+  await service.shutdown();
+
+  // 默认 full 工具集（外部 AI 客户端 / HTTP MCP）不受影响。
+  const fullService = new AiBridgeService(createOptions(workspaceRoot, 'preview', 'full-toolset-token'));
+  const [fullServerTransport, fullClientTransport] = InMemoryTransport.createLinkedPair();
+  const fullServer = createAiBridgeMcpProtocolServer(fullService);
+  await fullServer.connect(fullServerTransport);
+  const fullClient = new Client({ name: 'lingbuilder-full-toolset-test', version: '1.0.0' }, { capabilities: {} });
+  await fullClient.connect(fullClientTransport);
+  assert.equal((await fullClient.listTools()).tools.length, 23, 'full 工具集必须仍是 23 个');
+  await fullClient.close();
+  await fullService.shutdown();
+});
+
+test('内嵌 Agent 提案经工作区交接目录被面板实例按同一 ID 取回并落盘', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const relativePath = 'src/handoff/MainWindow.lcpp';
+  await fs.mkdir(path.join(workspaceRoot, 'src', 'handoff'), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, relativePath), '旧内容\n', 'utf8');
+  const service = new AiBridgeService({
+    ...createOptions(workspaceRoot, 'preview', 'handoff-token'),
+    agentProposalHandoff: true
+  });
+  const proposal = {
+    id: 'lingcpp-edit-11111111-2222-3333-4444-555555555555',
+    title: 'AI 中文 C++ 编辑预览',
+    summary: '交接测试',
+    createdAt: new Date().toISOString(),
+    explanation: '由另一进程的 Agent 运行时生成',
+    changes: [{
+      filePath: relativePath,
+      range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 },
+      originalText: '旧内容',
+      newText: '新内容'
+    }]
+  };
+  await persistAgentProposal(workspaceRoot, proposal);
+  // 模拟「提案在别的进程里」：本进程内存 store 必须没有它，apply 仍要成功。
+  assert.equal(getWorkspaceEditProposal(proposal.id), undefined);
+
+  const result = await service.applyEdit({ proposalId: proposal.id, approved: true });
+  assert.equal(result.ok, true);
+  assert.equal((await fs.readFile(path.join(workspaceRoot, relativePath), 'utf8')).trim(), '新内容');
+  assert.equal(await readAgentProposal(workspaceRoot, proposal.id), undefined, '应用成功后必须删除交接文件，不留源码草稿');
+  await service.shutdown();
+});
+
+test('交接目录只接受合法提案 ID，拒绝任何路径形态', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  assert.equal(isPersistableProposalId('lingcpp-edit-11111111-2222-3333-4444-555555555555'), true);
+  for (const bad of ['../../evil', 'lingcpp-edit-x', 'lingcpp-edit-11111111111111111111111111111111', '']) {
+    assert.equal(isPersistableProposalId(bad), false, `${bad} 不得作为提案 ID`);
+    await assert.rejects(() => persistAgentProposal(workspaceRoot, { id: bad } as never), /提案 ID 无效/u);
+    assert.equal(await readAgentProposal(workspaceRoot, bad), undefined);
   }
 });
 
