@@ -8,6 +8,7 @@ import {
   type DshRuntimeResolution
 } from './agentRuntimeProfile';
 import { HarnessSdkClient, runHarnessTurn, type HarnessInitializeParams } from './harnessSdkClient';
+import { agentProviderRuntimeModel, agentProviderRuntimeName, type AgentProviderSettings } from './agentProviderSettings';
 
 export type AgentRuntimeState = 'stopped' | 'starting' | 'running' | 'busy' | 'stopping' | 'failed';
 
@@ -56,6 +57,11 @@ export interface AgentRuntimeOptions {
   globalNodeModules?: string;
   spawnProcess?: typeof spawn;
   profileOverrides?: Partial<AgentRuntimeProfileOptions>;
+  /**
+   * 面板配置的模型通道（DeepSeek 官方 / 自定义 OpenAI 兼容网关）。用取值函数而不是快照传入：
+   * 用户可能在运行时不重启的情况下改配置，下一次 start 必须读到最新值。
+   */
+  providerSettings?: () => AgentProviderSettings | undefined;
 }
 
 const MAX_LOGS = 120;
@@ -115,11 +121,12 @@ export class AgentRuntimeService {
     if (!workspaceRoot || workspaceRoot === path.parse(workspaceRoot).root) {
       throw new Error('内嵌 Agent 需要有效的工作区路径。');
     }
+    const providerSettings = this.options.providerSettings?.();
 
     this.snapshotValue = {
       ...emptySnapshot(), state: 'starting', workspaceRoot,
-      provider: String(request.provider || 'deepseek-official'),
-      model: String(request.model || 'deepseek-v4-flash'),
+      provider: String(request.provider || agentProviderRuntimeName(providerSettings)),
+      model: String(request.model || agentProviderRuntimeModel(providerSettings)),
       logs: ['正在解析内嵌 Agent 运行时依赖…']
     };
     this.emit();
@@ -146,9 +153,11 @@ export class AgentRuntimeService {
       resolution: this.resolution,
       profileDirectory: this.options.profileDirectory,
       dshHome: this.options.dshHome,
-      environment: profileOptions.environment
+      environment: profileOptions.environment,
+      providerSettings
     });
     if (!plan.ok || !plan.plan) return this.fail(plan.problem || '内嵌 Agent 启动计划生成失败。');
+    this.pushLog(`模型通道：${this.snapshotValue.provider} / ${this.snapshotValue.model}`);
 
     const initializeParams: Partial<HarnessInitializeParams> = {
       provider: this.snapshotValue.provider,
@@ -249,6 +258,13 @@ export class AgentRuntimeService {
     this.snapshotValue = { ...this.snapshotValue, state: 'stopped', pid: null, logs: [...this.snapshotValue.logs, '内嵌 Agent 运行时已停止。'].slice(-MAX_LOGS) };
     this.emit();
     return cloneSnapshot(this.snapshotValue);
+  }
+
+  /** 改完模型配置后一键生效：先停旧进程（overlay 与注入的环境变量都是启动期决定的），再按新配置启动。 */
+  async restart(request: AgentRuntimeStartRequest): Promise<AgentRuntimeSnapshot> {
+    const workspaceRoot = path.resolve(String(request.workspaceRoot || this.snapshotValue.workspaceRoot || '').trim());
+    await this.stop().catch(() => undefined);
+    return this.start({ ...request, workspaceRoot });
   }
 
   /** 窗口退出/切换工作区必须回收子进程，否则残留 dsh 进程与它的 MCP 子进程。 */

@@ -26,6 +26,15 @@ import { UpdateDownloadService } from './updateDownloadService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
 import { AgentRuntimeService } from './agentRuntime/agentRuntimeService';
+import {
+  defaultAgentProviderSettings,
+  mergeAgentProviderKey,
+  normalizeAgentProviderSettings,
+  readAgentProviderSettings,
+  resolveAgentProviderSettingsPath,
+  writeAgentProviderSettings,
+  type AgentProviderSettings
+} from './agentRuntime/agentProviderSettings';
 import { normalizeAiBridgeStartSettings, readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
 import { LocalAuthorizationService, type LocalAuthorizationSnapshot } from './localAuthorizationService';
 import { SkillKitService, resolveBundledSkillKitRoot } from './skillKit/skillKitService';
@@ -78,6 +87,12 @@ let pendingModulePackagePath: string | undefined;
 let workspaceService: DesktopWorkspaceService;
 let aiBridgeManager: AiBridgeManagerService;
 let agentRuntime: AgentRuntimeService;
+/**
+ * 面板「本机 Agent」的模型通道配置缓存。密钥只留在主进程：渲染层拿到的永远是掩码视图，
+ * 拉模型列表与测连通也由主进程代调本地服务（见 agent-runtime:list-models / test-provider）。
+ */
+let agentProviderCache: AgentProviderSettings = defaultAgentProviderSettings();
+let agentProviderKeyUnavailable = false;
 let localAuthorization: LocalAuthorizationService | null = null;
 let moduleInfoWindow: ModuleInfoWindowService;
 const rendererConfirmedClose = new WeakSet<BrowserWindow>();
@@ -562,8 +577,12 @@ async function requestRendererApi(apiPath: string, init: RequestInit): Promise<u
       ...(init.headers || {})
     }
   });
-  const result = await response.json().catch(() => ({})) as { error?: unknown };
-  if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : `LingBuilder 本地服务请求失败：HTTP ${response.status}`);
+  const result = await response.json().catch(() => ({})) as { error?: unknown; details?: unknown };
+  if (!response.ok) {
+    const reason = typeof result.error === 'string' ? result.error : `LingBuilder 本地服务请求失败：HTTP ${response.status}`;
+    // 上游错误细节（fetch failed / 401 / 超时）必须一起报出来，否则面板只剩「AI 连接失败」四个字。
+    throw new Error(typeof result.details === 'string' && result.details ? `${reason}：${result.details}` : reason);
+  }
   return result;
 }
 
@@ -1144,6 +1163,67 @@ function registerIpcHandlers(): void {
   ipcMain.handle('agent-runtime:stop', async () => {
     try {
       return { ok: true, snapshot: await agentRuntime.stop() };
+    } catch (reason) {
+      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
+    }
+  });
+  // 模型通道配置：密钥只进主进程，渲染层拿到的永远是掩码视图（hasApiKey + 空串）。
+  ipcMain.handle('agent-runtime:get-provider-settings', async () => ({
+    ok: true,
+    settings: { ...agentProviderCache, apiKey: '' },
+    hasApiKey: Boolean(agentProviderCache.apiKey),
+    keyUnavailable: agentProviderKeyUnavailable
+  }));
+  ipcMain.handle('agent-runtime:set-provider-settings', async (_event, request: unknown) => {
+    const normalized = normalizeAgentProviderSettings(request);
+    if (!normalized.settings) return { ok: false, error: normalized.problem || '模型配置无效。' };
+    const settings = mergeAgentProviderKey(
+      normalized.settings, agentProviderCache,
+      (request as Record<string, unknown> | undefined)?.clearApiKey === true);
+    try {
+      const written = await writeAgentProviderSettings(
+        resolveAgentProviderSettingsPath(app.getPath('userData')), settings, safeStorage);
+      agentProviderCache = settings;
+      agentProviderKeyUnavailable = false;
+      return {
+        ok: true,
+        settings: { ...agentProviderCache, apiKey: '' },
+        hasApiKey: Boolean(agentProviderCache.apiKey),
+        problem: written.problem
+      };
+    } catch (reason) {
+      return { ok: false, error: `保存模型配置失败：${reason instanceof Error ? reason.message : String(reason)}` };
+    }
+  });
+  ipcMain.handle('agent-runtime:restart', async () => {
+    try {
+      const snapshot = await agentRuntime.restart({ workspaceRoot: getShellWorkspaceRoot() });
+      return { ok: true, snapshot };
+    } catch (reason) {
+      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
+    }
+  });
+  // 拉模型列表 / 测连通由主进程代调本地服务：避免把已保存的密钥下发到渲染层再回传。
+  ipcMain.handle('agent-runtime:probe-provider', async (_event, request: unknown) => {
+    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
+    const draft = normalizeAgentProviderSettings({
+      kind: value.kind, baseUrl: value.baseUrl, model: value.model, protocol: value.protocol,
+      // 渲染层留空表示沿用已保存的密钥，不重新下发一份。
+      apiKey: typeof value.apiKey === 'string' && value.apiKey.trim() ? value.apiKey : agentProviderCache.apiKey
+    });
+    if (!draft.settings) return { ok: false, error: draft.problem || '模型配置无效。' };
+    const settings = draft.settings;
+    const custom = settings.kind === 'custom-openai';
+    const aiConfig = {
+      provider: custom ? 'openai' : 'deepseek',
+      baseUrl: settings.baseUrl || (custom ? '' : 'https://api.deepseek.com'),
+      apiKey: settings.apiKey,
+      modelName: settings.model || (custom ? '' : 'deepseek-v4-flash')
+    };
+    const endpoint = value.action === 'models' ? '/api/ai/models' : '/api/ai/connect';
+    try {
+      const result = await requestRendererApi(endpoint, { method: 'POST', body: JSON.stringify({ aiConfig }) });
+      return { ok: true, result };
     } catch (reason) {
       return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
     }
@@ -1729,11 +1809,15 @@ app.whenReady().then(async () => {
   });
   // 面板内嵌 Agent 运行时（DeepSeek Harness）：只作为规划/工具循环引擎，
   // 写盘与构建由面板在用户确认提案后经 AiBridgeService 代执行。
+  const providerLoaded = await readAgentProviderSettings(resolveAgentProviderSettingsPath(app.getPath('userData')), safeStorage);
+  agentProviderCache = providerLoaded.settings;
+  agentProviderKeyUnavailable = providerLoaded.keyUnavailable;
   agentRuntime = new AgentRuntimeService({
     bridgeCommand: process.execPath,
     cliEntryPath: cliEntryPath(),
     profileDirectory: path.join(app.getPath('userData'), 'agent-runtime'),
-    environment: process.env
+    environment: process.env,
+    providerSettings: () => agentProviderCache
   });
   agentRuntime.subscribe(snapshot => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('agent-runtime:status-changed', snapshot);

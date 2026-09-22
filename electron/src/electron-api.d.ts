@@ -97,6 +97,24 @@ interface LingBuilderAgentRuntimeSnapshot {
   lastTurnEvents: number;
 }
 
+interface LingBuilderAgentProviderSettings {
+  kind: 'deepseek-official' | 'custom-openai';
+  /** 主进程永不下发已保存的密钥，读到的恒为空串；留空表示沿用已保存的那份。 */
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  protocol?: 'messages' | 'chat-completions';
+}
+
+interface LingBuilderAgentProviderView {
+  ok: boolean;
+  settings?: LingBuilderAgentProviderSettings;
+  hasApiKey?: boolean;
+  keyUnavailable?: boolean;
+  problem?: string;
+  error?: string;
+}
+
 declare global {
   interface Window {
     lingBuilder?: {
@@ -236,6 +254,17 @@ declare global {
           error?: string;
         }>;
         stop: () => Promise<{ ok: boolean; snapshot?: LingBuilderAgentRuntimeSnapshot; error?: string }>;
+        getProviderSettings: () => Promise<LingBuilderAgentProviderView>;
+        setProviderSettings: (settings: LingBuilderAgentProviderSettings) => Promise<LingBuilderAgentProviderView>;
+        restart: () => Promise<{ ok: boolean; snapshot?: LingBuilderAgentRuntimeSnapshot; error?: string }>;
+        probeProvider: (request: {
+          action: 'models' | 'connect';
+          kind: LingBuilderAgentProviderSettings['kind'];
+          baseUrl?: string;
+          model?: string;
+          apiKey?: string;
+          protocol?: LingBuilderAgentProviderSettings['protocol'];
+        }) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
         onStatusChanged: (listener: (snapshot: LingBuilderAgentRuntimeSnapshot) => void) => () => void;
         onEvent: (listener: (payload: { sessionId: string; event: Record<string, unknown> }) => void) => () => void;
       };

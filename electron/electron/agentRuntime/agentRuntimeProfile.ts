@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { agentProviderEnvironment, buildAgentProviderPatchLines, type AgentProviderSettings } from './agentProviderSettings';
+
 /** dsh 要求 Node ^22.19.0 || >=24.0.0；低于此版本整棵插件树会加载失败。 */
 export const MIN_NODE_MAJOR = 22;
 export const MIN_NODE_MINOR = 19;
@@ -184,7 +186,9 @@ export function buildAgentProfilePatchYaml(request: {
   bridgeArgs: string[];
   bridgeCwd: string;
   bridgeEnv?: Record<string, string>;
+  providerSettings?: AgentProviderSettings;
 }): string {
+  const providerLines = buildAgentProviderPatchLines(request.providerSettings);
   const lines: string[] = [
     '# LingBuilder 面板内嵌 Agent 运行时 profile overlay（由 IDE 自动生成，请勿手工编辑）。',
     '# 只暴露 lingbuilder MCP（agent 工具集：写盘与构建由 IDE 代执行），并禁用全部本地工具。',
@@ -235,6 +239,7 @@ export async function createAgentLaunchPlan(request: {
   profileDirectory: string;
   dshHome?: string;
   environment?: NodeJS.ProcessEnv;
+  providerSettings?: AgentProviderSettings;
 }): Promise<{ ok: boolean; plan?: AgentLaunchPlan; problem?: string }> {
   if (!request.resolution.ok || !request.resolution.nodePath || !request.resolution.dshBinPath) {
     return { ok: false, problem: request.resolution.problem || '内嵌 Agent 运行时依赖未就绪。' };
@@ -253,10 +258,11 @@ export async function createAgentLaunchPlan(request: {
       'agent'
     ],
     bridgeCwd: path.dirname(path.dirname(request.cliEntryPath)),
-    bridgeEnv: request.bridgeEnv
+    bridgeEnv: request.bridgeEnv,
+    providerSettings: request.providerSettings
   });
   const patchPath = await writeAgentProfilePatch(request.profileDirectory, patchYaml);
-  const environment = { ...(request.environment || process.env) };
+  const environment = { ...(request.environment || process.env), ...agentProviderEnvironment(request.providerSettings) };
   if (request.dshHome) environment.DSH_HOME = request.dshHome;
   return {
     ok: true,

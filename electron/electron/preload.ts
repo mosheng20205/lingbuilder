@@ -82,6 +82,10 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     start: (request: unknown) => ipcRenderer.invoke('agent-runtime:start', request),
     prompt: (request: unknown) => ipcRenderer.invoke('agent-runtime:prompt', request),
     stop: () => ipcRenderer.invoke('agent-runtime:stop'),
+    getProviderSettings: () => ipcRenderer.invoke('agent-runtime:get-provider-settings'),
+    setProviderSettings: (request: unknown) => ipcRenderer.invoke('agent-runtime:set-provider-settings', request),
+    restart: (request?: unknown) => ipcRenderer.invoke('agent-runtime:restart', request),
+    probeProvider: (request: unknown) => ipcRenderer.invoke('agent-runtime:probe-provider', request),
     onStatusChanged: (listener: (snapshot: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, snapshot: unknown) => listener(snapshot);
       ipcRenderer.on('agent-runtime:status-changed', handler);

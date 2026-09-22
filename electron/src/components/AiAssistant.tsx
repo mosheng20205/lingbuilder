@@ -23,8 +23,38 @@ import {
 import type { AiConversationStore } from '../services/ai/aiConversationService';
 import { MAX_REASONING_CHARS } from '../services/ai/aiConversationService';
 import type { CommandService } from '../services/commands/commandService';
+import {
+  runAiModuleGeneration,
+  type AiModuleGenerationOutcome
+} from '../services/modules/aiModuleGenerationFlow';
+import { deriveAiNewFileAllowance, type AiNewFileAllowance } from '../services/ai/aiEditFileScope';
 
 const AI_CONFIG_STORAGE_KEY = 'lingbuilder.aiConnectionConfig.v1';
+
+/** 面板里「本机 Agent」模型通道的表单形态（与主进程 AgentProviderSettings 字段一致）。 */
+type AgentProviderForm = {
+  kind: 'deepseek-official' | 'custom-openai';
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  protocol: 'messages' | 'chat-completions';
+};
+
+function defaultAgentProviderForm(): AgentProviderForm {
+  return { kind: 'deepseek-official', baseUrl: '', model: '', apiKey: '', protocol: 'messages' };
+}
+
+/** IPC 返回值形态；catch 分支必须带同样的可选字段，否则联合类型会丢属性。 */
+type AgentProviderView = {
+  ok: boolean;
+  settings?: { kind: AgentProviderForm['kind']; baseUrl: string; model: string; apiKey: string; protocol?: 'messages' | 'chat-completions' };
+  hasApiKey?: boolean;
+  keyUnavailable?: boolean;
+  problem?: string;
+  error?: string;
+};
+type AgentRuntimeView = { ok: boolean; snapshot?: { provider?: string; model?: string }; error?: string };
+type AgentProbeView = { ok: boolean; result?: unknown; error?: string };
 
 interface AiConnectionConfig {
   baseUrl: string;
@@ -1001,6 +1031,97 @@ export default function AiAssistant({
     setAgentSteps([]);
   };
 
+  /**
+   * 本机 Agent 的模型通道配置。密钥只存主进程（safeStorage），渲染层拿到的读回值恒为空串，
+   * 留空即表示沿用已保存的那份；拉模型列表与测连通也由主进程代调本地服务，密钥不回传。
+   */
+  const [agentProvider, setAgentProvider] = useState<AgentProviderForm>(defaultAgentProviderForm);
+  const [agentProviderSaved, setAgentProviderSaved] = useState({ hasApiKey: false, keyUnavailable: false });
+  const [agentProviderBusy, setAgentProviderBusy] = useState<'' | 'save' | 'models' | 'connect' | 'restart'>('');
+  const [agentProviderMessage, setAgentProviderMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [agentProviderModels, setAgentProviderModels] = useState<string[]>([]);
+
+  useEffect(() => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime?.getProviderSettings) return;
+    void runtime.getProviderSettings().then(view => {
+      const settings = view?.settings;
+      if (!view?.ok || !settings) return;
+      setAgentProvider(previous => ({
+        ...previous,
+        kind: settings.kind,
+        baseUrl: settings.baseUrl || '',
+        model: settings.model || '',
+        protocol: settings.protocol || 'messages'
+      }));
+      setAgentProviderSaved({ hasApiKey: Boolean(view.hasApiKey), keyUnavailable: Boolean(view.keyUnavailable) });
+    }).catch(() => undefined);
+  }, []);
+
+  const updateAgentProvider = (patch: Partial<AgentProviderForm>) => {
+    setAgentProvider(previous => ({ ...previous, ...patch }));
+    if (patch.baseUrl !== undefined || patch.kind !== undefined) setAgentProviderModels([]);
+    setAgentProviderMessage(null);
+  };
+
+  const agentProviderPayload = () => ({ ...agentProvider, apiKey: agentProvider.apiKey.trim() });
+
+  const saveAgentProvider = async () => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime?.setProviderSettings) return;
+    setAgentProviderBusy('save');
+    const result: AgentProviderView = await runtime.setProviderSettings(agentProviderPayload())
+      .catch((error): AgentProviderView => ({ ok: false, error: String(error?.message || error) }));
+    setAgentProviderBusy('');
+    if (!result.ok || !result.settings) {
+      setAgentProviderMessage({ tone: 'error', text: result.error || '模型配置保存失败。' });
+      return;
+    }
+    setAgentProviderSaved({ hasApiKey: Boolean(result.hasApiKey), keyUnavailable: false });
+    setAgentProvider(previous => ({ ...previous, apiKey: '' }));
+    const running = agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy';
+    setAgentProviderMessage({
+      tone: 'ok',
+      text: result.problem || (running ? '已保存。当前运行中的 Agent 仍在使用旧配置，点「重启生效」切换。' : '已保存，下次启动运行时生效。')
+    });
+  };
+
+  const restartAgentProviderRuntime = async () => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime?.restart) return;
+    setAgentProviderBusy('restart');
+    const result: AgentRuntimeView = await runtime.restart()
+      .catch((error): AgentRuntimeView => ({ ok: false, error: String(error?.message || error) }));
+    setAgentProviderBusy('');
+    setAgentProviderMessage(result.ok
+      ? { tone: 'ok', text: `已按新配置重启运行时（${result.snapshot?.provider || ''} / ${result.snapshot?.model || ''}）。` }
+      : { tone: 'error', text: result.error || '运行时重启失败。' });
+  };
+
+  const probeAgentProvider = async (action: 'models' | 'connect') => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime?.probeProvider) return;
+    setAgentProviderBusy(action);
+    const result: AgentProbeView = await runtime.probeProvider({ action, ...agentProviderPayload() })
+      .catch((error): AgentProbeView => ({ ok: false, error: String(error?.message || error) }));
+    setAgentProviderBusy('');
+    const payload = result.result as { models?: string[]; reply?: string; error?: string; details?: string } | undefined;
+    if (action === 'models') {
+      if (result.ok && Array.isArray(payload?.models)) {
+        setAgentProviderModels(payload.models);
+        setAgentProviderMessage(payload.models.length
+          ? { tone: 'ok', text: `已获取 ${payload.models.length} 个模型，点击填入模型名。` }
+          : { tone: 'error', text: '该地址未返回任何模型，请确认 Base URL 是否为 OpenAI 兼容的 /v1 端点。' });
+      } else {
+        setAgentProviderMessage({ tone: 'error', text: String(payload?.details || payload?.error || result.error || '获取模型列表失败。') });
+      }
+      return;
+    }
+    setAgentProviderMessage(result.ok
+      ? { tone: 'ok', text: `连通正常：${payload?.reply || '模型已应答'}（模型 ${agentProvider.model || '默认'}）` }
+      : { tone: 'error', text: String(payload?.details || payload?.error || result.error || '连接失败。') });
+  };
+
   const pushAgentNotice = (text: string) => updateChatHistory(previous => [...previous, createChatMessage('ai', text, { contextExcluded: true })]);
 
   /**
@@ -1442,6 +1563,122 @@ export default function AiAssistant({
                 <button type="button" onClick={() => void stopAgentRuntime()} className="ml-auto min-h-6 shrink-0 rounded bg-slate-500/20 px-2 font-semibold text-slate-500 hover:bg-slate-500/30">停止</button>
               )}
             </div>
+            <div className="mt-2 space-y-2">
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>模型通道</span>
+                <select
+                  value={agentProvider.kind}
+                  onChange={event => updateAgentProvider({ kind: event.target.value as AgentProviderForm['kind'] })}
+                  className={`w-full min-h-7 cursor-pointer border rounded px-2 py-1 text-[11px] focus:outline-none focus:border-emerald-500 ${isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'}`}
+                >
+                  <option value="deepseek-official">DeepSeek 官方（推荐，与本机 Agent 默认一致）</option>
+                  <option value="custom-openai">自定义 API（OpenAI 兼容网关）</option>
+                </select>
+              </div>
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>API 地址</span>
+                <input
+                  value={agentProvider.baseUrl}
+                  onChange={event => updateAgentProvider({ baseUrl: event.target.value })}
+                  placeholder={agentProvider.kind === 'custom-openai' ? 'https://你的网关/v1' : '留空使用 https://api.deepseek.com'}
+                  className={`w-full border rounded px-2 py-1 text-[11px] focus:outline-none focus:border-emerald-500 ${isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'}`}
+                />
+              </div>
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                  API Key{agentProviderSaved.hasApiKey && !agentProvider.apiKey ? '（已保存，留空则不修改）' : ''}
+                </span>
+                <input
+                  type="password"
+                  value={agentProvider.apiKey}
+                  onChange={event => updateAgentProvider({ apiKey: event.target.value })}
+                  placeholder={agentProviderSaved.hasApiKey ? '已保存 ••••••••' : 'sk-…'}
+                  className={`w-full border rounded px-2 py-1 text-[11px] focus:outline-none focus:border-emerald-500 ${isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'}`}
+                />
+                {agentProviderSaved.keyUnavailable && (
+                  <p className="mt-0.5 text-[10px] text-amber-500">本机系统凭据存储不可用，已保存的密钥读不出来；重新填写并保存可修复。</p>
+                )}
+              </div>
+              <div>
+                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>模型名</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    value={agentProvider.model}
+                    onChange={event => updateAgentProvider({ model: event.target.value })}
+                    placeholder={agentProvider.kind === 'custom-openai' ? '先点右侧「模型」自动填' : 'deepseek-v4-flash'}
+                    className={`min-w-0 flex-1 border rounded px-2 py-1 text-[11px] focus:outline-none focus:border-emerald-500 ${isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void probeAgentProvider('models')}
+                    disabled={Boolean(agentProviderBusy) || agentProviderBusy === 'models'}
+                    title="按当前地址与密钥拉取模型列表（OpenAI 兼容 GET /models）"
+                    className={`min-h-6 shrink-0 rounded px-2 text-[10px] font-semibold ${isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'} disabled:opacity-50`}
+                  >{agentProviderBusy === 'models' ? '获取中…' : '模型'}</button>
+                </div>
+                {agentProviderModels.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                    {agentProviderModels.slice(0, 60).map(model => (
+                      <button
+                        key={model}
+                        type="button"
+                        onClick={() => updateAgentProvider({ model })}
+                        className={`rounded border px-1.5 py-0.5 text-[10px] ${model === agentProvider.model ? 'border-emerald-500 text-emerald-500' : isDarkMode ? 'border-[#2d2d34] text-slate-400 hover:text-slate-200' : 'border-slate-300 text-slate-500 hover:text-slate-800'}`}
+                      >{model}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {agentProvider.kind === 'deepseek-official' && (
+                <div>
+                  <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>接口协议</span>
+                  <select
+                    value={agentProvider.protocol}
+                    onChange={event => updateAgentProvider({ protocol: event.target.value as AgentProviderForm['protocol'] })}
+                    className={`w-full min-h-7 cursor-pointer border rounded px-2 py-1 text-[11px] focus:outline-none focus:border-emerald-500 ${isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'}`}
+                  >
+                    <option value="messages">messages（Anthropic 风格，DeepSeek 官方默认）</option>
+                    <option value="chat-completions">chat-completions（OpenAI 风格）</option>
+                  </select>
+                </div>
+              )}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void saveAgentProvider()}
+                  disabled={Boolean(agentProviderBusy)}
+                  className="min-h-6 rounded bg-emerald-600 px-2 text-[10px] font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+                >{agentProviderBusy === 'save' ? '保存中…' : '保存配置'}</button>
+                <button
+                  type="button"
+                  onClick={() => void probeAgentProvider('connect')}
+                  disabled={Boolean(agentProviderBusy)}
+                  className={`min-h-6 rounded px-2 text-[10px] font-semibold ${isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'} disabled:opacity-50`}
+                >{agentProviderBusy === 'connect' ? '测试中…' : '测试连通'}</button>
+                {(agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy') && (
+                  <button
+                    type="button"
+                    onClick={() => void restartAgentProviderRuntime()}
+                    disabled={Boolean(agentProviderBusy)}
+                    className={`min-h-6 rounded px-2 text-[10px] font-semibold ${isDarkMode ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'} disabled:opacity-50`}
+                  >{agentProviderBusy === 'restart' ? '重启中…' : '重启生效'}</button>
+                )}
+              </div>
+              {agentProviderMessage && (
+                <p className={`text-[10px] leading-relaxed ${agentProviderMessage.tone === 'ok' ? 'text-emerald-500' : 'text-rose-500'}`}>{agentProviderMessage.text}</p>
+              )}
+              <p className={`text-[10px] leading-relaxed ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                配置由 LingBuilder 加密保存在本机，只注入内嵌 Agent 子进程，不会写入日志或随项目分发。
+                运行时由 <span className="font-mono">DeepSeek Harness</span> 提供 ·{' '}
+                <a
+                  href="https://github.com/deepseek-ai/deepseek-harness"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline decoration-dotted hover:text-emerald-500"
+                >官方仓库</a>
+              </p>
+            </div>
+            </>
           )}
           {aiMode === 'system' && isAiConfigExpanded && (
             <div className={`space-y-2 rounded border p-2.5 ${isDarkMode ? 'border-violet-500/20 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>

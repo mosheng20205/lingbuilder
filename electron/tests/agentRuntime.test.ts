@@ -249,3 +249,115 @@ test('随包 Agent 运行时：打包链携带 node/dsh 并裁剪无关体积包
   const verifySource = await fs.readFile(path.join(electronRoot, 'scripts', 'verify-agent-runtime-package.cjs'), 'utf8');
   assert.match(verifySource, /--version/u);
 });
+
+// ---------- 面板 Provider 配置（第 4 条） ----------
+
+const fakeSafeStorage = (available = true) => ({
+  isEncryptionAvailable: () => available,
+  encryptString: (value: string) => Buffer.from(`enc:${value}`, 'utf8'),
+  decryptString: (buffer: Buffer) => buffer.toString('utf8').replace(/^enc:/u, '')
+});
+
+test('provider 配置校验：非法地址、非 ASCII 密钥与缺 Base URL 都给中文修法', async () => {
+  const { normalizeAgentProviderSettings } = await import('../electron/agentRuntime/agentProviderSettings');
+  assert.match(normalizeAgentProviderSettings({ kind: 'custom-openai', baseUrl: '' }).problem || '', /必须填写 Base URL/u);
+  assert.match(normalizeAgentProviderSettings({ kind: 'deepseek-official', baseUrl: 'ftp://x' }).problem || '', /http\/https/u);
+  assert.match(normalizeAgentProviderSettings({ kind: 'deepseek-official', apiKey: '短' }).problem || '', /可见 ASCII/u);
+  assert.match(normalizeAgentProviderSettings({ kind: '不存在', apiKey: '' }).problem || '', /未知的模型通道/u);
+  const ok = normalizeAgentProviderSettings({ kind: 'custom-openai', baseUrl: 'https://gw.example/v1', model: 'm1', apiKey: 'sk-abcdef123456' });
+  assert.equal(ok.settings?.kind, 'custom-openai');
+});
+
+test('provider overlay 写端点与模型名，密钥绝不进 overlay 文件', async () => {
+  const { buildAgentProfilePatchYaml } = await import('../electron/agentRuntime/agentRuntimeProfile');
+  const base = {
+    workspaceRoot: 'W:\ws', bridgeCommand: 'C:\node.exe', bridgeArgs: ['cli.cjs'],
+    bridgeCwd: 'W:\electron', bridgeEnv: { ELECTRON_RUN_AS_NODE: '1' }
+  };
+  const official = buildAgentProfilePatchYaml({
+    ...base,
+    providerSettings: { kind: 'deepseek-official', apiKey: 'sk-secret-official', baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-flash', protocol: 'chat-completions' }
+  });
+  assert.match(official, /- id: llm-deepseek/u);
+  assert.match(official, /apiKeyEnv: DEEPSEEK_API_KEY/u);
+  assert.match(official, /baseURL: 'https:\/\/api\.deepseek\.com'/u);
+  assert.match(official, /protocol: chat-completions/u);
+  assert.match(official, /- id: 'deepseek-v4-flash'/u);
+  assert.doesNotMatch(official, /sk-secret-official/u, 'overlay 落在 userData，绝不能含密钥');
+
+  const custom = buildAgentProfilePatchYaml({
+    ...base,
+    providerSettings: { kind: 'custom-openai', apiKey: 'sk-secret-custom', baseUrl: 'https://gw.example/v1', model: 'acme-1', protocol: 'messages' }
+  });
+  assert.match(custom, /- id: llm-pi-ai/u);
+  assert.match(custom, /lingbuilder-custom:/u);
+  assert.match(custom, /api: openai-completions/u);
+  assert.match(custom, /apiKeyEnv: LINGBUILDER_AGENT_API_KEY/u);
+  assert.match(custom, /- id: 'acme-1'/u);
+  assert.doesNotMatch(custom, /sk-secret-custom/u);
+
+  // 未配置（沿用本机 dsh 凭据）时不得凭空插入 provider 行，保持 overlay 与旧形态一致。
+  const untouched = buildAgentProfilePatchYaml(base);
+  assert.doesNotMatch(untouched, /llm-deepseek|llm-pi-ai/u);
+});
+
+test('启动计划把密钥只注入子进程环境，provider/model 缺省按通道推导', async () => {
+  const { createAgentLaunchPlan } = await import('../electron/agentRuntime/agentRuntimeProfile');
+  const { agentProviderRuntimeName, agentProviderRuntimeModel, agentProviderEnvironment } = await import('../electron/agentRuntime/agentProviderSettings');
+  const profileDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-agent-provider-'));
+  const plan = await createAgentLaunchPlan({
+    workspaceRoot: 'W:\ws',
+    cliEntryPath: 'W:\electron\dist\cli.cjs',
+    bridgeCommand: 'C:\node.exe',
+    bridgeEnv: { ELECTRON_RUN_AS_NODE: '1' },
+    resolution: { ok: true, nodePath: 'C:\node.exe', nodeVersion: 'v24.0.0', dshBinPath: 'C:\dsh\bin.js' },
+    profileDirectory,
+    environment: { PATH: '' },
+    providerSettings: { kind: 'custom-openai', apiKey: 'sk-plan-secret', baseUrl: 'https://gw.example/v1', model: 'acme-1', protocol: 'messages' }
+  });
+  assert.equal(plan.ok, true);
+  assert.equal(plan.plan?.env.LINGBUILDER_AGENT_API_KEY, 'sk-plan-secret');
+  const written = await fs.readFile(plan.plan!.patchPath, 'utf8');
+  assert.doesNotMatch(written, /sk-plan-secret/u, '落盘 overlay 不得含密钥');
+  assert.equal(agentProviderRuntimeName({ kind: 'custom-openai', apiKey: '', baseUrl: '', model: '', protocol: 'messages' }), 'lingbuilder-custom');
+  assert.equal(agentProviderRuntimeModel(undefined), 'deepseek-v4-flash');
+  assert.deepEqual(agentProviderEnvironment({ kind: 'deepseek-official', apiKey: '', baseUrl: '', model: '', protocol: 'messages' }), {});
+  await fs.rm(profileDirectory, { recursive: true, force: true });
+});
+
+test('provider 配置读写往返：密钥走 safeStorage，不可用时不落明文并如实报告', async () => {
+  const module = await import('../electron/agentRuntime/agentProviderSettings');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-agent-settings-'));
+  const file = path.join(directory, 'agent-provider.json');
+  const written = await module.writeAgentProviderSettings(file, {
+    kind: 'custom-openai', apiKey: 'sk-roundtrip-123', baseUrl: 'https://gw.example/v1', model: 'm1', protocol: 'messages'
+  }, fakeSafeStorage());
+  assert.equal(written.ok, true);
+  assert.equal(written.problem, undefined);
+  const onDisk = await fs.readFile(file, 'utf8');
+  assert.doesNotMatch(onDisk, /sk-roundtrip-123/u, '磁盘上不得出现明文密钥');
+  const loaded = await module.readAgentProviderSettings(file, fakeSafeStorage());
+  assert.equal(loaded.settings.apiKey, 'sk-roundtrip-123');
+  assert.equal(loaded.settings.baseUrl, 'https://gw.example/v1');
+
+  // 钥匙串不可用：保存其余字段并给出中文说明；读回时标记 keyUnavailable 而不是退回明文。
+  const degraded = await module.writeAgentProviderSettings(file, {
+    kind: 'deepseek-official', apiKey: 'sk-no-keychain', baseUrl: '', model: '', protocol: 'messages'
+  }, fakeSafeStorage(false));
+  assert.match(degraded.problem || '', /系统凭据存储不可用/u);
+  assert.doesNotMatch(await fs.readFile(file, 'utf8'), /sk-no-keychain/u);
+  const reload = await module.readAgentProviderSettings(file, fakeSafeStorage(false));
+  assert.equal(reload.keyUnavailable, true);
+  assert.equal(reload.settings.apiKey, '');
+  await fs.rm(directory, { recursive: true, force: true });
+});
+
+test('密钥留空保存沿用已存的那份，显式 clearApiKey 才作废', async () => {
+  const { mergeAgentProviderKey } = await import('../electron/agentRuntime/agentProviderSettings');
+  const saved = { kind: 'custom-openai' as const, apiKey: 'sk-already-saved', baseUrl: 'https://gw/v1', model: 'm', protocol: 'messages' as const };
+  const blank = { kind: 'custom-openai' as const, apiKey: '', baseUrl: 'https://gw2/v1', model: 'm2', protocol: 'messages' as const };
+  assert.equal(mergeAgentProviderKey(blank, saved).apiKey, 'sk-already-saved', '留空不得擦掉已存密钥');
+  assert.equal(mergeAgentProviderKey({ ...blank, apiKey: 'sk-new' }, saved).apiKey, 'sk-new');
+  assert.equal(mergeAgentProviderKey(blank, saved, true).apiKey, '', '显式清除才作废');
+  assert.equal(mergeAgentProviderKey(blank, undefined).apiKey, '');
+});
