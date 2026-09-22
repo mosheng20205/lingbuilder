@@ -104,6 +104,7 @@ export default defineConfig({
             { text: 'AI 对话式改代码', link: '/guide/ai/chat' },
             { text: 'AI Bridge 连接配置', link: '/guide/ai/bridge-config' },
             { text: 'MCP 工具协议', link: '/guide/ai/mcp' },
+            { text: '灵码 Skill 使用', link: '/guide/ai/skill' },
             { text: 'AI 构建与运行', link: '/guide/ai/build-run' },
             { text: '代码补全', link: '/guide/ai/completion' },
             { text: '代码诊断', link: '/guide/ai/review' },

@@ -13,6 +13,7 @@ import { ARIA2_MODULE_ID, ARIA2_RUNTIME_FILES } from './aria2Module';
 import { SQLITE_MODULE_ID, SQLITE_BUNDLED_RUNTIME_SHA256 } from './sqliteModule';
 import { MYSQL_MODULE_ID, MYSQL_BUNDLED_RUNTIME_SHA256 } from './mysqlModule';
 import { EXCEL_MODULE_ID, EXCEL_BUNDLED_RUNTIME_SHA256 } from './excelModule';
+import { SUNNYNET_MODULE_ID } from './sunnyNetModule';
 import {
   getSdkDependencyResource,
   getSdkRootCandidates,
@@ -125,6 +126,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(EXCEL_MODULE_ID)) {
     await materializeExcelRuntime(layout, plan);
+  }
+
+  if (enabledIds.has(SUNNYNET_MODULE_ID)) {
+    await materializeSunnyNetSdk(layout, plan);
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
@@ -1210,6 +1215,77 @@ async function materializeCryptoSdk(
   } catch (error) {
     addBlockingDiagnostic(plan, `准备密码学 SDK 失败：${errorMessage(error)}`);
   }
+}
+
+interface SunnyNetSdkManifest {
+  schemaVersion: number;
+  sdkVersion?: string;
+  build?: string;
+  files: Array<{ path: string; size: number; sha256: string }>;
+}
+
+async function materializeSunnyNetSdk(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  plan.requiresMsvc = true;
+  if (process.platform !== 'win32') {
+    addBlockingDiagnostic(plan, '网络中间件模块当前只提供 Windows 的 SDK。');
+    return;
+  }
+  const sdkRoot = await findSunnyNetSdkRoot(layout);
+  if (!sdkRoot) {
+    addBlockingDiagnostic(plan, '网络中间件模块缺少 lingbuilder.sunnynet.sdk。请在“模块管理”中安装网络中间件 SDK（按需下载），或运行“cd electron && npm run module:sunnynet-sdk -- --source <SunnyNet SDK windows 目录> --install”。');
+    return;
+  }
+  let manifest: SunnyNetSdkManifest;
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(sdkRoot, 'runtime-manifest.json'), 'utf8')) as SunnyNetSdkManifest;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `网络中间件 SDK 清单读取失败：${errorMessage(error)}`);
+    return;
+  }
+  if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.files) || manifest.files.length === 0) {
+    addBlockingDiagnostic(plan, '网络中间件 SDK 清单格式无效。');
+    return;
+  }
+  for (const entry of manifest.files) {
+    const relative = normalizeRelativePath(entry.path || '');
+    if (!validateModuleRelativePath(relative) || !Number.isSafeInteger(entry.size) || entry.size < 0 || !/^[a-f0-9]{64}$/i.test(entry.sha256 || '')) {
+      addBlockingDiagnostic(plan, `网络中间件 SDK 清单包含无效文件记录：${entry.path || '未知路径'}`);
+      return;
+    }
+    if (!await fileMatchesManifest(path.join(sdkRoot, relative), entry)) {
+      addBlockingDiagnostic(plan, `网络中间件 SDK 文件缺失或哈希不一致：${relative}`);
+      return;
+    }
+  }
+  const architecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'Win32';
+  const runtimeSourceName = architecture === 'x64' ? 'SunnyNet64.dll' : 'SunnyNet.dll';
+  try {
+    const runtimeSource = path.join(sdkRoot, 'bin', architecture, runtimeSourceName);
+    await fs.mkdir(layout.binDir, { recursive: true });
+    const runtimeTarget = path.join(layout.binDir, runtimeSourceName);
+    await copyFileAtomicallyIfDifferent(runtimeSource, runtimeTarget);
+    plan.runtimeFiles.push(runtimeTarget);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `准备网络中间件 SDK 失败：${errorMessage(error)}`);
+  }
+}
+
+async function findSunnyNetSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {
+  const workspaceRoot = inferWorkspaceRootFromBuildDir(layout.buildDir);
+  const candidates = getSdkRootCandidates(getSdkDependencyResource('sunnynet'), {
+    workspaceRoot,
+    cacheRoot: resolveSdkCacheRoot(),
+    resourcesPath: process.resourcesPath
+  });
+  for (const candidate of candidates) {
+    if (await pathExists(path.join(candidate.root, 'runtime-manifest.json')) &&
+        await pathExists(path.join(candidate.root, 'bin', 'Win32', 'SunnyNet.dll')) &&
+        await pathExists(path.join(candidate.root, 'bin', 'x64', 'SunnyNet64.dll'))) return candidate.root;
+  }
+  return null;
 }
 
 async function findCryptoSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {

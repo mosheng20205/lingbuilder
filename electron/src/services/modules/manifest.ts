@@ -782,8 +782,26 @@ function looksLikeByteSequence(...values: unknown[]): boolean {
 function validateManagedInvocation(binding: any, bindingIndex: number, diagnostics: string[]): void {
   const invocation = binding?.invocation;
   if (invocation === undefined) return;
-  if (!invocation || typeof invocation !== 'object' || invocation.kind !== 'managedTask') {
-    diagnostics.push(`bindings.commands[${bindingIndex}].invocation.kind 必须为 managedTask。`);
+  if (!invocation || typeof invocation !== 'object') {
+    diagnostics.push(`bindings.commands[${bindingIndex}].invocation 必须是对象。`);
+    return;
+  }
+  if (invocation.kind === 'delayedCall') {
+    const parameters = Array.isArray(binding.parameters) ? binding.parameters : [];
+    [['delayParameterIndex', 'int'], ['handlerParameterIndex', 'handler']].forEach(([key, expectedType]) => {
+      const value = invocation[key];
+      if (!Number.isInteger(value) || value < 0 || value >= parameters.length) {
+        diagnostics.push(`命令 ${binding.command} 的 ${key} 不是有效参数索引。`);
+        return;
+      }
+      if (parameters[value]?.type !== expectedType) {
+        diagnostics.push(`命令 ${binding.command} 的 ${key} 必须指向 ${expectedType} 参数。`);
+      }
+    });
+    return;
+  }
+  if (invocation.kind !== 'managedTask') {
+    diagnostics.push(`bindings.commands[${bindingIndex}].invocation.kind 必须为 managedTask 或 delayedCall。`);
     return;
   }
   if (!['submit', 'synchronized'].includes(invocation.operation)) {

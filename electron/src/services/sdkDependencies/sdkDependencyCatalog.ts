@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 
-export type SdkDependencyId = 'cef3' | 'fbro';
+export type SdkDependencyId = 'cef3' | 'fbro' | 'sunnynet';
 
 export interface SdkDependencyResource {
   id: SdkDependencyId;
@@ -28,12 +28,12 @@ export const SDK_DEPENDENCY_RESOURCES: readonly SdkDependencyResource[] = [
     version: '150.0.14+g7c1aa68+chromium-150.0.7871.129',
     sdkVersion: '150.0.14',
     platform: 'windows-x64',
-    archiveName: 'lingbuilder-cef3-sdk-150.0.14-chromium-150.0.7871.129-bridge4-r2-windows-x64.zip',
-    downloadUrl: 'https://msimgimg.xyz/uploads/lingbuilder-cef3-sdk-150.0.14-chromium-150.0.7871.129-bridge4-r2-windows-x64.zip',
-    archiveBytes: 199_352_435,
-    expandedBytes: 473_607_459,
+    archiveName: 'lingbuilder-cef3-sdk-150.0.14-chromium-150.0.7871.129-bridge4-4-3-windows-x64.zip',
+    downloadUrl: 'https://msimgimg.xyz/uploads/lingbuilder-cef3-sdk-150.0.14-chromium-150.0.7871.129-bridge4-4-3-windows-x64.zip',
+    archiveBytes: 199_070_568,
+    expandedBytes: 473_679_244,
     fileCount: 536,
-    sha256: '85c06f7c4fd61e491a3898176a06455e2a7c2f1638ee8fca304fef4167efe4ac',
+    sha256: '24b1255883e751e4fc77a7666c8f5467026a9fa3dd1f72b87c556af4df41b4b6',
     requiredModuleIds: ['lingbuilder.cef3.browser'],
     criticalFiles: [
       { relativePath: 'include/cef_app.h', minimumBytes: 5_000 },
@@ -49,15 +49,15 @@ export const SDK_DEPENDENCY_RESOURCES: readonly SdkDependencyResource[] = [
     id: 'fbro',
     moduleId: 'lingbuilder.fbro.sdk',
     name: 'FBro 环境 SDK',
-    version: '135.0.21.2.7.0',
+    version: '135.0.21.2.9.1',
     sdkVersion: '135.0.21',
     platform: 'windows-x64',
-    archiveName: 'lingbuilder-fbro-sdk-135.0.21.2.7.0-windows-x64.zip',
-    downloadUrl: 'https://msimgimg.xyz/uploads/lingbuilder-fbro-sdk-135.0.21.2.7.0-windows-x64.zip',
-    archiveBytes: 296_673_302,
-    expandedBytes: 673_877_982,
+    archiveName: 'lingbuilder-fbro-sdk-135.0.21.2.9.1-windows-x64.zip',
+    downloadUrl: 'https://msimgimg.xyz/uploads/lingbuilder-fbro-sdk-135.0.21.2.9.1-windows-x64.zip',
+    archiveBytes: 230_359_730,
+    expandedBytes: 674_086_775,
     fileCount: 473,
-    sha256: '873211bd9a8d080b4f291512f501190eb2479529485c2c0d4da864061c8c3723',
+    sha256: '49d29381463ad03df6aa8bfd0cb21302af96ed2999a21f40b36a03f4d18df53b',
     requiredModuleIds: ['lingbuilder.fbro.browser'],
     criticalFiles: [
       { relativePath: 'runtime-manifest.json', minimumBytes: 5_000 },
@@ -67,6 +67,26 @@ export const SDK_DEPENDENCY_RESOURCES: readonly SdkDependencyResource[] = [
       { relativePath: 'official/include/FBroInit.h', minimumBytes: 1_000 },
       { relativePath: 'official/lib64/FBrowserCEF3lib.lib', minimumBytes: 1_000 },
       { relativePath: 'runtime/x64/libcef.dll', minimumBytes: 230 * 1024 * 1024 }
+    ]
+  },
+  {
+    id: 'sunnynet',
+    moduleId: 'lingbuilder.sunnynet.sdk',
+    name: '网络中间件 SDK',
+    version: '1.5.1',
+    sdkVersion: '1.5.1',
+    platform: 'windows-x64',
+    archiveName: 'lingbuilder-sunnynet-sdk-1.5.1-windows-x64.zip',
+    downloadUrl: 'https://lingbuilder.com/update-assets/sdk/lingbuilder-sunnynet-sdk-1.5.1-windows-x64.zip',
+    archiveBytes: 31_070_540,
+    expandedBytes: 84_071_967,
+    fileCount: 5,
+    sha256: '6c5c9ff45907457c33e8394c7f9288e36ac24c862592cd5e8f176a8081efeb3c',
+    requiredModuleIds: ['lingbuilder.sunnynet'],
+    criticalFiles: [
+      { relativePath: 'runtime-manifest.json', minimumBytes: 300 },
+      { relativePath: 'bin/Win32/SunnyNet.dll', minimumBytes: 40_000_000 },
+      { relativePath: 'bin/x64/SunnyNet64.dll', minimumBytes: 40_000_000 }
     ]
   }
 ] as const;
@@ -111,7 +131,11 @@ export function getSdkRootCandidates(
   const environment = options.environment || process.env;
   const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : '';
   const cacheRoot = options.cacheRoot || resolveSdkCacheRoot(environment);
-  const explicit = resource.id === 'cef3' ? environment.CEF3_SDK_ROOT : environment.FBRO_SDK_ROOT;
+  const explicit = resource.id === 'cef3'
+    ? environment.CEF3_SDK_ROOT
+    : resource.id === 'fbro'
+      ? environment.FBRO_SDK_ROOT
+      : environment.LINGBUILDER_SUNNYNET_SDK_ROOT;
   const candidates: Array<{ root: string; source: 'environment' | 'workspace' | 'managed-cache' | 'packaged' | 'legacy' }> = [];
   if (explicit) candidates.push({ root: path.resolve(explicit), source: 'environment' });
   if (workspaceRoot) {

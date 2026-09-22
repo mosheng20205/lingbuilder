@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { EPISODES } from './fbro-tutorial/projects.ts';
+import { EPISODES, filterEpisodes } from './fbro-tutorial/projects.ts';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
@@ -34,11 +34,24 @@ const PLAN: Record<string, { alive: number; wait: number; buttons: string[] }> =
   'fbro-ep08-cdp': { alive: 14, wait: 150, buttons: ['打开测试页', '读取调试端口', '连接 CDP', '读取页面标题', '查询并点击按钮', '断开并清理'] },
   'fbro-ep09-form': { alive: 16, wait: 150, buttons: ['打开测试表单', '连接 CDP', '填写姓名', '选择城市与联系方式', '勾选并提交', '读取提交结果'] },
   'fbro-ep10-transfer': { alive: 14, wait: 150, buttons: ['打开测试页', '下载测试文件', '截图到文件', '生成 PDF'] },
-  'fbro-ep11-workbench': { alive: 16, wait: 150, buttons: ['打开测试页', '新增工作区', '连接 CDP 并取标题', 'CDP 点击测试按钮', '下载测试文件'] }
+  'fbro-ep11-workbench': { alive: 16, wait: 150, buttons: ['打开测试页', '新增工作区', '连接 CDP 并取标题', 'CDP 点击测试按钮', '下载测试文件'] },
+  'fbro-ep18-contextmenu': { alive: 10, wait: 150, buttons: ['打开测试页', '模拟页面右键'] },
+  'fbro-ep19-downloads': { alive: 12, wait: 150, buttons: ['打开测试页', '开始下载', '取消下载', '清理演示产物'] },
+  'fbro-ep20-values': { alive: 6, wait: 150, buttons: ['构建与读取', '值包装与比较', '缓冲与流', '清理演示文件'] },
+  'fbro-ep21-request': { alive: 10, wait: 150, buttons: ['构造POST并载入框架', '异步发起GET请求', '发送进程消息'] },
+  'fbro-ep22-response': { alive: 10, wait: 150, buttons: ['打开测试页', '切换只看主文档'] },
+  'fbro-ep23-cert': { alive: 12, wait: 150, buttons: ['读取当前证书', '证书链与PEM'] },
+  'fbro-ep24-formpro': { alive: 10, wait: 150, buttons: ['打开测试表单', '基础控件读写', '富文本与代码', '属性读写', '存在坐标滚动', '触发事件'] },
+  'fbro-ep25-cookieproxy': { alive: 12, wait: 150, buttons: ['打开演示页', '异步写入Cookie', '回读与删除', '代理故障演示', '恢复直连'] },
+  'fbro-ep26-image': { alive: 12, wait: 150, buttons: ['打开测试页', '生成源图像', '下载图像并读信息', '导出PNG与JPEG', '位图缓冲', '清理演示产物'] },
+  'fbro-ep27-frame': { alive: 10, wait: 150, buttons: ['打开测试页', '枚举框架', '编辑命令链', '跨框架执行JS'] },
+  'fbro-ep28-wsclient': { alive: 12, wait: 150, buttons: ['打开测试页'] },
+  'fbro-ep29-switches': { alive: 10, wait: 150, buttons: ['打开测试页', '查看启动命令行', '跨框架填表', '缩放演示'] },
+  'fbro-ep30-extension': { alive: 12, wait: 150, buttons: ['启用扩展增强', '加载演示扩展', '打开测试页'] }
 };
 
 /** 每集之间的静默时间：等系统释放 CEF 句柄，避免相邻两次运行互相干扰。 */
-const SETTLE_MS = 20000;
+const SETTLE_MS = 30000;
 
 interface SmokeResult {
   raw: string;
@@ -192,12 +205,20 @@ if (await exists(buildReportPath)) {
   console.warn('未找到 .tmp-fbro-verify/build-report.json，报告的构建段将标记为待执行。');
 }
 
-const targets = EPISODES.filter(item => !only || item.id === only);
+const targets = filterEpisodes(EPISODES, only || undefined);
 const summary: Array<{ id: string; pass: boolean }> = [];
 
 for (const [index, episode] of targets.entries()) {
   const workspace = path.join(collectionRoot, episode.dir, '示例项目', episode.id);
-  const binDir = path.join(workspace, '.lingbuilder-build', episode.id, 'bin');
+  // 新版 CLI 构建布局为 <id>/x64/Release/bin，旧布局为 <id>/bin，两种都兼容。
+  const binCandidates = [
+    path.join(workspace, '.lingbuilder-build', episode.id, 'bin'),
+    path.join(workspace, '.lingbuilder-build', episode.id, 'x64', 'Release', 'bin')
+  ];
+  let binDir = binCandidates[0]!;
+  for (const candidate of binCandidates) {
+    if (await exists(path.join(candidate, 'LingBuilderPreview.exe'))) { binDir = candidate; break; }
+  }
   const build = buildReport.find(item => item.projectId === episode.id);
 
   let smoke: SmokeResult | undefined;

@@ -1,5 +1,38 @@
 [
   {
+    "id": "module-history-1789996275694-ae0838",
+    "time": "2026-09-21T13:11:15.694Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.new_emoji.ui",
+    "moduleName": "new_emoji 原生界面库",
+    "version": "2.0.0",
+    "status": "success",
+    "summary": "随功能库复制启用模块 new_emoji 原生界面库",
+    "details": "项目 emoji-2 已引用 lingbuilder.new_emoji.ui@2.0.0。"
+  },
+  {
+    "id": "module-history-1789991245665-93119c",
+    "time": "2026-09-21T11:47:25.665Z",
+    "action": "export",
+    "moduleId": "demo.math",
+    "moduleName": "演示数学",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 演示数学",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\lb-ep12-rerecord\\.lingbuilder\\module-packages\\demo-math.lbmod\nSHA256：3c59d7b384fa1e7bbe44a7df2a54df8b1a35f6abecf8571ea8bbad8435fdf2f8"
+  },
+  {
+    "id": "module-history-1789922840050-e8f899",
+    "time": "2026-09-20T16:47:20.050Z",
+    "action": "export",
+    "moduleId": "lingbuilder.demo.textkit",
+    "moduleName": "文本工具箱",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 文本工具箱",
+    "details": "导出路径：T:\\electron\\lingbuilder\\.tmp-textkit-verify-ws\\文本工具箱.lbmod\nSHA256：14c2af7e19ab8d23096fa582ce7237f2506cfcac95b451eea8fcc6416a42ce24"
+  },
+  {
     "id": "module-history-1789653712784-a32b3c",
     "time": "2026-09-17T14:01:52.784Z",
     "action": "enable",

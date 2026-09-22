@@ -1,0 +1,203 @@
+node_modules/
+build/
+dist/
+dist-electron/
+.lingbuilder-build/
+electron/scratch/
+electron/release/
+electron/release-*/
+electron/installer/cloud-release.json
+**/*.exe
+**/*.dll
+**/*.pdb
+**/*.ilk
+**/*.obj
+**/*.lib
+**/*.pak
+**/app.asar
+coverage/
+.DS_Store
+.vs/
+*.log
+.env*
+!.env.example
+!.env.production.example
+**/node_modules/
+**/build/
+!electron/src/services/build/
+!electron/src/services/build/**
+**/dist/
+**/dist-electron/
+**/coverage/
+LingBuilder/bin/
+LingBuilder/obj/
+google/
+assets/.aistudio/
+本地磁盘/
+.qoder/
+更新记录/
+
+# CEF3 SDK 和模块二进制
+.lingbuilder/cef3-sdk/
+.lingbuilder/module-packages/
+.lingbuilder/module-build/
+.lingbuilder/module-snapshots/
+.lingbuilder/modules/
+.lingbuilder/cache/
+.lingbuilder/website-command-manifests.json
+
+# Electron 构建产物
+electron/release-final/
+electron/release-20260725/
+
+# 大型媒体和模型文件
+videos/lingbuilder-douyin-promo/renders/
+videos/lingbuilder-douyin-promo/.media/models/
+videos/lingbuilder-douyin-promo/.media/audio/voice-backup-kokoro/
+videos/lingbuilder-douyin-promo/.hyperframes/backup/
+assets/lingbuilder-4/*.mp4
+assets/lingbuilder-4/*.avi
+
+# 导出压缩包
+exports/
+output/
+
+# 生成的大型 zip
+generated/cpp/*/Visual Studio*.zip
+
+# 大型二进制产物
+*.pdb
+main.obj
+vc140.pdb
+
+# 部署脚本（含服务器/支付密钥，禁止入库）
+.deploy/
+
+# 在线版打包 staging 快照（体积巨大，不入库）
+electron-online-staging*/
+
+# ===== 开源仓库清理（本地状态/构建产物/生产部署信息，不应公开） =====
+# 本地 IDE / 开发工具状态
+.lingbuilder/
+.lingbuilder-smoke/
+.lingbuilder-dev-logs/
+.superpowers/
+.agents/
+.cache/
+.codex/
+.zcode
+config/
+ai-bridge-threading-test/
+
+# 构建与生成产物（含第三方浏览器缓存/二进制）
+generated/
+.e-read-output/
+
+# 生产 / 部署敏感资产
+scripts/deploy-*
+compose.production.yaml
+生产环境部署与调试手册.md
+生产环境Docker部署方案.md
+website/docs-dist/
+cloud/admin/docs/docs-dist.zip
+cloud/admin/docs/.vitepress/cache/
+
+# 第三方二进制与专有字体
+electron/third_party/
+videos/**/*.ttf
+
+# 营销/宣传素材与第三方浏览器扩展（不入库）
+website/
+发布素材/
+宣传素材/
+assets/**/doubao-downloader/
+
+# 本地 agent 说明（不发布）
+AGENTS.md
+
+# 本地 AI 工具状态（不入库）
+.workbuddy-ai/
+
+# 本地构建验证产物（不入库）
+/.b2.json
+/.b3.json
+
+# 视频制作临时脚本（硬编码本机路径，不入库）
+electron/scripts/tmp-*.py
+
+# AI 视频自主生产素材（不入库）
+AI 视频自主生产/
+
+# 模块作者工作副本（根级 modules/，与源码目录 electron/src/services/modules/ 无关）
+# 必须锚定根目录并保留尾部斜杠，否则会误伤 src/services/modules/ 等源码目录。
+/modules/
+
+# CEF3 教程示例项目的 ASCII 暂存构建目录（npm run tutorial:cef3:build 生成）
+.tmp-cef3-verify/
+
+# FBro 教程示例项目的构建与验证输出（npm run tutorial:fbro:build / verify 生成）
+.tmp-fbro-verify/
+
+# 数组操作示例项目：解决方案、模块清单、设计器和项目配置必须入库，
+# 否则克隆后示例打不开。上面的 .lingbuilder/ 与 config/ 是针对工作区
+# 本地状态的清理规则，这里按路径精确豁免，不影响其它目录。
+!examples/array-operations-demo/src/.lingbuilder/
+!examples/array-operations-demo/src/.lingbuilder/**
+!examples/array-operations-demo/src/config/
+!examples/array-operations-demo/src/config/**
+# 运行 CLI 构建后产生的本地日志/历史不入库。
+examples/array-operations-demo/src/.lingbuilder/*.jsonl
+examples/array-operations-demo/src/.lingbuilder/*.log
+examples/array-operations-demo/src/.lingbuilder/module-history.json
+examples/array-operations-demo/src/.lingbuilder/modules/
+examples/array-operations-demo/src/.lingbuilder/module-snapshots/
+examples/array-operations-demo/src/.lingbuilder/projects/
+
+# 本地调试截图与视频制作临时产物（不入库）
+/*.png
+/_inspect_*/
+/.tmp-*
+# 论坛/文档配图的原始采集现场（CDP 脚本写死本机绝对路径且含大量重复帧）：
+# 只保留 docs/images/ 下人工挑选命名的成品，采集现场不入库。
+/.forum-post-shots/
+
+/.video-work/
+/.work/
+.lingbuilder-tmp-*/
+.zcode-scratch/
+/.ting-renderer-env.cmd
+/cover_generator.ps1
+/make_cover.ps1
+/make_original_cover.py
+.tmp-installer-check-*/
+COMPONENT_CARDS_PLAN.md
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

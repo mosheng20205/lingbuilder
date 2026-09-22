@@ -26,6 +26,15 @@
       "configRoot": "config/emoji",
       "designerPath": ".lingbuilder/projects/emoji/window-designer.json",
       "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "emoji-2",
+      "name": "emoji富文本框",
+      "sourceRoot": "src/emoji-2",
+      "configRoot": "config/emoji-2",
+      "designerPath": ".lingbuilder/projects/emoji-2/window-designer.json",
+      "references": []
     }
   ]
 }

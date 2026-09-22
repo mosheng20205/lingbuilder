@@ -48,8 +48,22 @@ function signPayload(payload: string, signingKey: string = privateKey.export({ t
   return cryptoSign(null, Buffer.from(`${SDK_CATALOG_SIGNATURE_PREFIX}${payload}`, 'utf8'), signingKey).toString('base64');
 }
 
+// 2026-09-21 写回：内置清单新增 sunnynet 后，所有远端清单夹具必须携带该资源，
+// 否则 verifyAndMergeCatalog 会按「资源 ID 集合与内置清单不一致」整条拒绝。
+const sunnynetResource = () => remoteResource({
+  id: 'sunnynet', moduleId: 'lingbuilder.sunnynet.sdk', name: '网络中间件 SDK',
+  requiredModuleIds: ['lingbuilder.sunnynet'],
+  criticalFiles: builtin[2].criticalFiles.map(file => file.relativePath),
+  archiveName: 'lingbuilder-sunnynet-sdk-new.zip',
+  downloadUrl: 'https://lingbuilder.com/update-assets/sdk/lingbuilder-sunnynet-sdk-new.zip',
+  archiveBytes: 31_070_540, sha256: 'c'.repeat(64), fileCount: 5, expandedBytes: 84_071_967,
+  version: '1.5.2', sdkVersion: '1.5.1'
+});
+
 function buildManifest(sequence: number, resources: unknown[], payloadOverrides: Record<string, unknown> = {}): { manifest: SdkCatalogManifestEnvelope; payload: string } {
-  const payload = JSON.stringify({ schemaVersion: 1, sequence, resources, ...payloadOverrides });
+  const list = [...resources];
+  if (!list.some(item => (item as { id?: string }).id === 'sunnynet')) list.push(sunnynetResource());
+  const payload = JSON.stringify({ schemaVersion: 1, sequence, resources: list, ...payloadOverrides });
   return { payload, manifest: { payload, keyId, signature: signPayload(payload), publishedAt: '2026-09-01T00:00:00.000Z' } };
 }
 
@@ -117,7 +131,7 @@ test('verifyAndMergeCatalog 拒绝未知 keyId、非 https 下载地址与非法
 });
 
 test('compareCatalogAnchoredFields 收集全部锚定漂移而不是抛出第一个错误', () => {
-  const full = [remoteResource(), fbroResource()];
+  const full = [remoteResource(), fbroResource(), sunnynetResource()];
   assert.deepEqual(compareCatalogAnchoredFields(builtin, full), []);
   const drifted = compareCatalogAnchoredFields(builtin, [
     remoteResource({ moduleId: 'lingbuilder.other', criticalFiles: ['Release/libcef.dll'] }),
@@ -252,7 +266,7 @@ test('sdk-catalog:export 生成的导入载荷符合远端契约（criticalFiles
   const payloadText = buildSdkCatalogImportPayload();
   const parsed = JSON.parse(payloadText) as { resources: Array<Record<string, unknown>> };
   assert.ok(Array.isArray(parsed.resources));
-  assert.deepEqual(parsed.resources.map(item => item.id), ['cef3', 'fbro']);
+  assert.deepEqual(parsed.resources.map(item => item.id), ['cef3', 'fbro', 'sunnynet']);
   const builtin = (await import('../src/services/sdkDependencies/sdkDependencyCatalog')).SDK_DEPENDENCY_RESOURCES;
   parsed.resources.forEach((resource, index) => {
     assert.deepEqual(resource.criticalFiles, builtin[index].criticalFiles.map(file => file.relativePath));

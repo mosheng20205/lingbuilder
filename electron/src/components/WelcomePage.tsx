@@ -29,6 +29,7 @@ import {
   LINGBUILDER_VIDEO_TUTORIALS_URL
 } from '../services/product/productInfo';
 import ProjectTypeDialog from './ProjectTypeDialog';
+import BuildStampLabel from './BuildStampLabel';
 import CreateModuleDialog from './CreateModuleDialog';
 import RecentWorkspacesDialog, { workspaceLabel } from './RecentWorkspacesDialog';
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
@@ -118,6 +119,7 @@ export default function WelcomePage({
           />
           <span className="truncate font-bold tracking-wide text-[#007acc]">
             LingBuilder <span className="font-normal text-cyan-400/80">{LINGBUILDER_DISPLAY_VERSION}</span>
+            <BuildStampLabel />
           </span>
         </div>
         <div className="window-no-drag flex h-full items-stretch">

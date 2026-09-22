@@ -109,6 +109,7 @@
 
 > 2026-08-01 补充：`lingbuilder.input.keyboard@2.0.0` 现由 `keyboardApiCatalog.ts` 统一维护 31 条命令，按全局状态、键码转换、前台 `SendInput`、指定 HWND 后台 `PostMessageW` 和 1.x 兼容入口分类。每条 contribution 均明确标注前台/后台、焦点语义和实体键盘影响。前台组合键使用批量输入并在失败时尝试释放修饰键；后台命令只投递消息，不抢焦点、不改变物理键状态且允许目标忽略。模块不公开 `BlockInput`、低级键盘钩子或隐藏按键记录。Win32/x64 原生验收使用 `npm run smoke:keyboard-native`，不会向用户桌面注入按键。
 
+> 2026-09-21 补充：新增内置 `lingbuilder.cron` 定时任务模块（1.0.0，29 条 `cron_定时_` 命令、`定时任务` opaque 类型）。实现三件套：`cronModule.ts`（命令/绑定/贡献，handler 参数带 `handlerSignature` 契约，语言服务据此校验 `&处理器` 引用）、`cronRuntime.ts`（生成式 C++ 运行时：确定性 cron 表达式解析器 + 调度核心 + Win32 适配，按启用注入）、`lingCppWin32Project.ts` 接线（窗口类成员命令、`WM_LINGBUILDER_CRON_UI_UPDATE` 派发、`LINGBUILDER_CRON_TIMER_ID` 定时器、`wWinMain` 守护参数分支）。三路径语义：处理器型到点回调在注册窗口 UI 线程；提交线程型工作处理器在后台线程（语言服务 error 阻断其中 UI/controlRef 调用，与多线程模块工作处理器同口径）；crontab 表命令型经 `cmd.exe /c` 执行外部命令并捕获输出。系统级 crontab 表 `%APPDATA%\LingBuilder\cron\crontab.txt`；守护经跨进程命名互斥体保证同表单进程持有；开机自启写当前用户 Run 键（`--lingbuilder-cron-daemon`）。MAILTO 依赖真实 SMTP 账号（Windows 无本机 MTA），复用 platformAdvanced SMTP 传输技术（AUTH LOGIN + UTF-8 主题 + 点透传），命令任务失败/有输出时发信。模块文档 `electron/docs/modules/cron/README.md`；回归 `tests/cronModule.test.ts`（清单契约、运行时注入、生成器派发与守护接线、未启用剔除）。
 > 2026-08-01 补充：`lingbuilder.threading@2.0.0` 已升级为项目级受管并发模块，由 `threadingModule.ts` 单一目录生成 54 条命令和 7 个公开类型。manifest v2 新增受校验的 `lingValue` 末尾可变参数与 `managedTask` invocation 元数据；语言服务校验任意多参数深拷贝、工作/进度/完成签名和线程安全边界，生成器输出类型化 C++17 lambda。项目运行时统一管理默认/自定义有界线程池、十万任务上限、窗口 owner、协作取消、80ms 进度合并、互斥锁、原子整数、事件和信号量；Win32 `PostMessageW` 只承担 UI dispatcher 通知。旧 9 条演示命令不兼容删除并提供阻断迁移诊断，禁止裸线程、裸句柄、强杀、挂起/恢复、DLL 注入和跨线程 `controlRef`。
 
 > 2026-08-01 补充：模块公开信息中的 `contributes.docs[]` 已接通 IDE 内文档阅读器。选中文档后通过 `/api/modules/document` 读取并渲染 Markdown，普通 UTF-8 文本以源码形式预览；读取服务只接受当前模块清单已声明的相对路径，并以真实路径校验阻止目录越界和符号链接逃逸。单份文档上限为 1 MB，原始 HTML、未声明相对链接和远程图片不会直接执行或加载；内置模块文档从受控工作区资产或打包资源根解析。`lingbuilder.threading` 已登记随包中文说明，作为内置资源文档参考实现。
@@ -282,8 +283,10 @@
   - 校验模块清单、模块 ID、贡献项和 C++ 相对路径安全。
 - `electron/src/services/modules/moduleService.ts`
   - 负责扫描、项目启用/禁用、`.lbmod` 预览、安装、卸载、市场索引、导出模块包和操作历史。
-- `electron/src/services/modules/aiModuleGeneration.ts`
-  - 一键生成模块的提示词组装与需求描述校验（系统 AI 与 BYOK 双通道共用）。
+- `electron/src/services/modules/aiModuleGenerationFlow.ts`
+  - 手动粘贴导入的唯一受控出口（`importAiModuleFilesToWorkspace`）。历史上承载系统 AI / BYOK 双通道
+    提示词组装与三阶段生成的 `aiModuleGeneration.ts`、`collectSystemAiModuleOutput`、
+    `POST /api/modules/ai-generate` 已于 2026-09-22 随 AI 面板引擎收敛为本机 Agent 一并删除。
 - `electron/src/services/modules/aiModuleImportParser.ts`
   - 解析 AI 回复中的「### 文件：相对路径」多文件输出，供手动导入与一键生成共用。
 - `electron/src/services/modules/nativeDependencyService.ts`
@@ -409,7 +412,7 @@
 - `POST /api/modules/developer/template`
 - `POST /api/modules/developer/validate`
 - `POST /api/modules/developer/import-ai-files`
-- `POST /api/modules/ai-generate`（BYOK 一键生成模块：规范注入 → `generateAiText` → `aiModuleImportParser` 解析 → `importAiModuleFiles` 导入；系统 AI 通道由 renderer 经 `cloudAi` IPC 编排后复用 import-ai-files）
+- （已移除）`POST /api/modules/ai-generate`：2026-09-22 随「自定义 API 生成模块」通道下线。面板引擎已收敛为本机 Agent —— 模块需求经 AI 助手面板交给内嵌运行时，用 `module.scaffold / writeFiles / validate` 直接写 module-build；手动粘贴导入仍走 `import-ai-files`。
 - `POST /api/modules/developer/migrate-cpp`
 - `POST /api/modules/developer/market-index`
 - `POST /api/modules/developer/link`（链接模块开发源，`sourcePath` 工作区相对）
@@ -429,7 +432,7 @@ AI Bridge 另暴露 6 个模块 MCP 工具（stdio 与 Streamable HTTP 共用同
 - 左侧活动栏“模块”页：进入完整模块管理器。
 - 解决方案资源管理器项目节点下“模块”组：显示当前项目启用模块，并提供“配置项目所使用模块”按钮。
 - `.lbmod` 可拖入模块页，也可手动填写工作区相对路径或本机绝对路径后点击“预览安装”。桌面版对绝对路径（手输、拖入、文件选择）统一走主进程导入：校验 `.lbmod`、普通文件和 100MB 上限后复制到 `.lingbuilder/module-packages` 再走同一预览确认流程；网页版仍只接受工作区内相对路径。
-- 「AI 生成模块」页提供三个入口：一键生成（系统 AI / 自定义 API 双通道）、AI Bridge MCP 模块工具（供外部 AI 端到端生成-校验-打包-安装）、手动复制粘贴（降级）。见 `electron/src/components/ModuleInspector.tsx`、`electron/src/services/modules/aiModuleGeneration.ts`、`electron/src/services/aiBridge/aiBridgeService.ts`。
+- 「AI 生成模块」页提供三个入口：交给本机 Agent（2026-09-22 起的面板唯一引擎；需求经 `src/services/ai/agentRequestBus.ts` 交给 AI 助手侧栏内嵌的 DeepSeek Harness，由它用 `module.scaffold → writeFiles → validate` 写 `.lingbuilder/module-build`）、AI Bridge MCP 模块工具（供外部 AI 端到端生成-校验-打包-安装）、手动复制粘贴（降级）。见 `electron/src/components/ModuleInspector.tsx`、`electron/src/services/ai/agentRequestBus.ts`、`electron/src/services/aiBridge/aiBridgeService.ts`。历史上的「一键生成（系统 AI / 自定义 API 双通道）」已随面板引擎收敛删除。
 - 安装预览必须显示模块名、版本、SHA256、文件数量、升级状态和安全检查结果；用户确认后才安装。
 
 ## 与 Monaco 和生成器的关系
@@ -481,6 +484,14 @@ lingbuilder.module.json
 - WebSocket 运行时是后台非阻塞 `WSAPoll` reactor，支持多客户端、文本/二进制、分片与跨帧 UTF-8、Ping/Pong、Close、掩码/RSV/opcode/长度校验、Origin/路径/子协议、握手/消息/发送队列上限和超时。事件通过窗口消息回到所属 UI 线程；普通 Win32 与 New_Emoji 复用同一运行时和 binding。
 - WebSocket 服务端声明 Windows/MSVC Win32 与 x64 target，链接 `ws2_32.lib` 和 `advapi32.lib`。模块只提供 `ws://`，公网 TLS 应由反向代理或网关终止。默认禁止非回环监听，必须显式调用 `WSS_允许外部监听`。
 - 正式文档位于 `electron/docs/modules/websocket-server/README.md`。模块变更必须运行 `npm run smoke:websocket-server-native`，真实编译普通 Win32 的 Win32/x64 与 New_Emoji x64，并验证握手、Origin、子协议、多客户端、分片、二进制、Ping/Pong、掩码和关闭握手。
+
+## 网络中间件内置模块（SunnyNet，2026-09-21）
+
+- `lingbuilder.sunnynet@1.0.0` 是内置 v2 网络模块（`electron/src/services/modules/sunnyNetModule.ts`），基于第三方开源库 SunnyNet v1.5.1（标准 MIT，版权「秦天」，DLL 内嵌版本串 `2026-09-16`），公开 `网络中间件`、`网络证书管理器` 两个受管句柄类型与 63 条 `网络中间件_` 命令（生命周期 7、证书 7、事件绑定 4、当前事件上下文 12、HTTP 请求 9、HTTP 响应 9、连接收发 6、进程代理 7、系统代理 2）与 5 个公开常量（`#HTTP事件_请求/响应`、`#进程代理_模式_*`）。
+- 运行时位于 `electron/src/services/windowDesigner/sunnyNetRuntime.ts`（`WM_APP+0x5A`），`LoadLibrary("SunnyNet.dll"/"SunnyNet64.dll")` + `GetProcAddress` 纯动态绑定（无 .lib）；底层事件回调发生在 Go 运行时线程，桥接跳板把事件打包入队后经注入的 notify 回调 `PostMessageW` 回 UI 线程，处理器未及时处理（30 秒）则按原样放行；事件派发复用「处理器名字符串 → 生成 if/else」机制（处理器契约 `parameterTypes: []`、`returnType: 空`），HTTP 请求/响应共用一个事件处理器，用 `网络中间件_取当前事件类型()` 区分。
+- SDK 模块 `lingbuilder.sunnynet.sdk`（x86 41MB / x64 43MB）**不随 IDE 安装包分发**，走按需下载（发布通道待授权）；本地由 `npm run module:sunnynet-sdk -- --source <[Full]SDK windows 目录> --install` 组装（SHA-256 钉扎进 runtime-manifest.json，构建期 `nativeDependencyService.materializeSunnyNetSdk` 逐文件校验并复制对应位数 DLL 到 exe 目录，缺失给中文阻断诊断；环境变量 `LINGBUILDER_SUNNYNET_SDK_ROOT` 可覆盖）。
+- 系统级操作全部带中文确认弹窗（桥接内 `MessageBoxW`，默认焦点「否」）：`网络中间件_安装根证书`（已安装时静默返回真；本地计算机库需管理员）、`网络中间件_加载进程代理驱动`（管理员 + 内核驱动）；**`网络中间件_重启计算机并完成驱动卸载` 点击「是」后立即重启系统**——这是底层 `UnDrive` 的官方设计（源码注释明示），不是缺陷。不重启清理走 `网络中间件_卸载进程代理文件`（sc stop/delete + 驱动文件移入临时目录）。已加载驱动的中间件 `网络中间件_销毁` 会跳过底层 `SunnyNetClose`（规避 Go 侧 `close of closed channel` 双关崩溃，官方 demo 同样会踩）并改为清理驱动文件后释放。
+- 正式文档位于 `electron/docs/modules/sunnynet/README.md`；真机验收基线：`examples/sunnynet-demo/`（CLI x64 编译 + 运行经代理抓取请求/响应双事件写日志 PASS）。已知边界：`CancelIEProxy` 导出名大小写敏感（Go 侧为 `CancelIEProxy`）；`使用 网络中间件模块` 行不自动启用模块，必须写 `.lingbuilder/projects/<项目ID>/project-modules.json`。
 
 ## CDP 客户端模块（2026-08）
 
@@ -792,3 +803,24 @@ CEF3 无头/OSR 批次（提交 44e34d5..53f0591，Task 1-11）落地的模块�
 - **实例登记表编号口径（AI 与生成器必须一致）**：CEF3 设计器无关实例统一登记进所属窗口对象的 `cefBrowsers_` 运行时表，合成 controlId = **1000000+实例编号 = 弹窗/区域实例（`CEF3_创建弹窗浏览器` / `CEF3_创建区域`）**，**2000000+实例编号 = 无头实例（`CEF3_创建无头浏览器`）**；无头实例另入生成期 `CefHeadlessSpec` 表（`g_cefHeadlessBrowsers`，按 ownerWindowIndex 过滤查找）。实例编号唯一性是 **CEF3 引擎内项目级**（CEF3 无头族内唯一），不与 EdgeView/FBro 共号空间——三引擎各自独立取号，跨引擎重复不报错，同引擎重复在生成期中文阻断（窗口项目经 `validateCefHeadlessResources` 进 blockingDiagnostics）。
 - **行为门禁边界**：无头命令全部按实例编号/句柄寻址、首参是整数不是 `controlRef`，不参与设计器控件存在性门禁；`build.run` 的控件引用门禁对「只有无头资源、画布无控件」的窗口/控制台项目不误伤（源码引用不存在的无头控件名时给 controlRef 指名替代诊断，给出真实编号写法）。控制台项目 `wmain` 守卫之后、`启动()` 之前自动调用 `LingBuilder_CEF3_创建无头资源()`；窗口项目挂在 `OnWindowCreated` 链。控制台形态的实例级 teardown 唯一钩子是 `LingBuilder_CEF3_退出回收()`（先关全部无头实例再 `LB_CEF3_Shutdown`）。
 - **文档与消费层**：`electron/docs/modules/cef3/README.md` 由 `npm run module:cef3-docs` 重生成；外部 AI 消费层（`MCP_INSTRUCTIONS` 第 3 条第四形态、`lingbuilder.module.info`、snippet「CEF3 无头抓取（控制台项目）」、`LingBuilder AI 规则手册.md` 外部 AI 节「CEF3 无头浏览器（OSR）」条）按「模块能力更新必须同步 MCP 通道」常设规则同步。
+
+## 不冻结界面的等待与定时命令（2026-09-21）
+
+`lingbuilder.win32.basic` 新增三类能力，全部在界面线程触发、等待期间持续泵送界面消息，事件处理器里不再需要为「等一会儿」引入工作线程：
+
+- `延时(等待毫秒)`：同步等待，内部 `MsgWaitForMultipleObjectsEx` + `PeekMessageW` 循环持续派发本线程消息（易语言 `延时`/`程序_延时` 语义）；等待期间窗口不冻结、控件可点击，事件处理器会重入执行，WM_QUIT 到来时补投并提前返回。
+- `延迟调用(等待毫秒, &处理器)`：一次性延迟调用。binding 声明 `invocation: { kind: "delayedCall", delayParameterIndex, handlerParameterIndex }`（`ModuleDelayedCallInvocation`，`manifest.ts` 校验两个索引必须分别指向 int 与 handler 参数），生成器把 `&处理器` 展开为 `SetTimer` + 一次性 lambda（用户 timer ID 段 `0x4C480000..0x4C48FFFF`，与内部 `0x4C46`、动画帧 `0x4C47xxxx` 隔离），到期在界面线程调用处理器后销毁计时器；窗口销毁后不再触发。
+- 「时钟」非可视设计器组件（registry `nonVisual` 条目，module `lingbuilder.win32.basic`，无 createCommand/lingCppType，不进运行时控件契约计数）：属性 `periodMilliseconds`（0=不计时）与 `startEnabled`，事件 `Elapsed`（周期到期，处理器经 `DispatchDesignerResourceEvent` 分发，持久化为资源字段 `periodHandler`）；命令族 `时钟_启动/时钟_停止/时钟_置周期/时钟_取周期/时钟_是否已启动`，`时钟_置周期(组件, 0)` 表示停止计时（易语言时钟周期语义）。运行时 `ClockSpec` 资源表 + `0x4C4A0000` 段 WM_TIMER，`startEnabled` 的时钟在 `OnWindowCreated` 自动启动。控制台/动态库输出不创建设计器窗口，时钟不会触发，生成器直接中文阻断并引导改用 `延迟调用`/多线程命令。
+
+新增命令使内置命令计数 3879 → 3915（同窗口并行批次的 `lingbuilder.cron` 定时调度模块亦计入），`tests/modules.test.ts` 审计基线与 `docs/MODULE_ENCAPSULATION_CHECKLIST.md` 计数行已同步写回；MCP instructions 第 13 条与 `LingBuilder AI 规则手册.md`（模块命令调用规则节、外部 AI 节）同步该口径，`tests/aiBridge.test.ts` 有 instructions 关键词断言，改动措辞必须四处同步。
+
+## new_emoji 属性面板结构化数据编辑器（2026-09-21）
+
+new_emoji 数据类控件属性在属性面板不再直接暴露原始 JSON/分隔符串，改为结构化编辑器接管；实现唯一出口：
+
+- `electron/src/services/windowDesigner/newEmojiDataFormats.ts`：格式契约（解析/序列化与上游 `element_richlist.cpp`/`element_treeview.cpp`/`exports.cpp` 逐字段对齐）+ 编辑器规格注册表（按 `lingbuilder.new_emoji.ui/` 前缀 + 控件后缀 + 属性键匹配）。
+- `electron/src/components/NewEmojiRichListEditorDialog.tsx`（行模板/项目数据/默认选中三页签）、`NewEmojiTreeDataEditorDialog.tsx`（扁平层级树编辑，同步写 treeDataJson 与 items 两份属性）、`NewEmojiLinesPropertyEditor.tsx`（行分隔多列小表格，溢出回退原始文本框）。
+- 面板接线：`WpfDesigner.tsx` 的 `ModuleControlProperties`（对话框锚点按钮，接管属性从搜索过滤中豁免以保住入口）与 `ControlPropertyField` 的 stringList 分支。
+- 覆盖范围：RichList（模板 JSON/项目 JSON/选中 Key JSON 三属性收敛为「编辑列表数据」）；Tree/TreeSelect（树数据 JSON + 树节点收敛为「编辑树数据」）；Descriptions/Collapse/Timeline/Tour/LineChart/BarChart/DonutChart/ListBox 高级项目的行分隔属性换多列小表格（Descriptions 运行时按冒号拆分，编辑器写 `标签：内容` 并兼容读 TAB 历史数据）。
+
+红线：结构化编辑器必须读写设计器模型的既有存储格式（stringList 内单条 JSON 串 / 每行一条分隔文本），设计器模型、`.lcpp` 代码生成与画布预览三条链路零迁移；新增同类属性时在 `newEmojiDataFormats.ts` 注册规格，禁止在面板里按控件散落 if 分支；RichList 行模板 `rowHeight` 必填（24~4096，上游 `set_template_json` 直接拒绝缺失）、树序列化层级跳级必须规整（上游 `serialize_node` 会静默丢跳级节点）、字段值中的 `|`/`\t` 必须净化（运行时按字符集拆分）；旧数据字段数超出已知格式时必须回退原始文本编辑器而不是截断。`tests/newEmojiPropertyEditors.test.tsx` 守卫格式往返与清单一致性（清单属性改名会打破测试），改格式必须同步该测试。

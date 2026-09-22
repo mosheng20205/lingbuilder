@@ -28,12 +28,27 @@ export interface AiChatRequest {
   thinking?: 'disabled';
   rulebookVersion: string;
 }
+/** 系统 AI 编辑链的「允许新建文件」白名单；缺省时只能修改已有文件。
+ *  安全边界：白名单只决定哪些新路径可进入提案，写盘安全仍由 IDE 侧
+ *  WorkspacePathPolicy + 可写扩展名白名单在应用阶段强制。 */
+export interface AiNewFileAllowance {
+  /** 显式允许新建的相对路径（不带盘符、不允许 .. 上跳）。 */
+  paths?: string[];
+  /** 允许在其中新建文件的目录（相对工作区）。 */
+  directories?: string[];
+  /** 目录许可下允许的文件扩展名（含点、小写）。 */
+  extensions?: string[];
+  /** 新建文件数量上限（1–10，缺省 5）。 */
+  maxCount?: number;
+}
 export interface AiEditRequest extends AiChatRequest {
   activeFilePath: string;
   instruction: string;
   files: AiContextFile[];
   /** 当前完整窗口设计器模型；仅窗口项目编辑请求使用。 */
   designerProject?: Record<string, unknown>;
+  /** 允许 AI 新建文件的白名单；由客户端声明，云端据此放行新路径并写入提示词。 */
+  newFiles?: AiNewFileAllowance;
 }
 
 export interface UsageReceipt {
@@ -215,7 +230,7 @@ export interface SdkCatalogHistoryEntry { id: string; sequence: number; keyId: s
 export type CloudErrorCode =
   | 'VALIDATION_FAILED' | 'NOT_FOUND' | 'AUTH_REQUIRED' | 'AUTH_INVALID' | 'EMAIL_NOT_VERIFIED'
   | 'FORBIDDEN' | 'MFA_REQUIRED' | 'RATE_LIMITED' | 'INSUFFICIENT_CREDITS'
-  | 'IDEMPOTENCY_CONFLICT' | 'MODEL_UNAVAILABLE' | 'PROVIDER_FAILED' | 'EDIT_DRAFT_TRUNCATED'
+  | 'IDEMPOTENCY_CONFLICT' | 'MODEL_UNAVAILABLE' | 'PROVIDER_FAILED' | 'EDIT_DRAFT_TRUNCATED' | 'EDIT_DRAFT_INVALID'
   | 'REQUEST_CANCELLED' | 'FILE_CONFLICT' | 'INTERNAL_ERROR'
   | 'MODULE_LOGIN_REQUIRED' | 'MODULE_PAYMENT_REQUIRED' | 'MODULE_ENTITLEMENT_EXPIRED'
   | 'MODULE_FREE_WINDOW_ENDED' | 'MODULE_ACCESS_UNAVAILABLE' | 'MODULE_PERMIT_INVALID';

@@ -410,6 +410,16 @@ export interface ModuleManagedTaskInvocation {
   completionParameterIndex?: number;
 }
 
+/**
+ * 「延迟调用」式命令：到期回调经 WM_TIMER 在界面线程触发，等待期间不冻结界面。
+ * 生成器把处理器参数展开为 SetTimer + 一次性 lambda，不经过线程运行时。
+ */
+export interface ModuleDelayedCallInvocation {
+  kind: 'delayedCall';
+  delayParameterIndex: number;
+  handlerParameterIndex: number;
+}
+
 export interface ModuleCommandBinding {
   command: string;
   runtimeName: string;
@@ -420,7 +430,7 @@ export interface ModuleCommandBinding {
   example?: string;
   description?: string;
   /** 由语言服务和生成器共同校验并展开的受管处理器调用。 */
-  invocation?: ModuleManagedTaskInvocation;
+  invocation?: ModuleManagedTaskInvocation | ModuleDelayedCallInvocation;
 }
 
 export interface ModuleBindingsContribution {

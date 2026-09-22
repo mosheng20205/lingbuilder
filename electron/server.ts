@@ -6,7 +6,16 @@ import { watch as watchFiles, existsSync } from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
+import {
+  AI_MODELS_LIST_MAX,
+  generateAiChat,
+  generateAiText,
+  listAiModels,
+  resolveAiConnectionConfig,
+  testAiConnection,
+  withAiConnectTimeout
+} from "./src/services/ai/aiProviderService";
 import { ExtractedString } from "./src/types";
 import { normalizeIdentifier, parseLingCpp } from "./src/services/lingCpp/parser";
 import {
@@ -67,8 +76,6 @@ import {
   migrateCppModule,
   validateModuleDirectory
 } from "./src/services/modules/moduleSdkService";
-import { buildModuleGenerationMessages, sanitizeModuleRequirement } from "./src/services/modules/aiModuleGeneration";
-import { parseAiModuleOutputText } from "./src/services/modules/aiModuleImportParser";
 import { AiBridgeService } from "./src/services/aiBridge/aiBridgeService";
 import { createAiBridgeRouter } from "./src/services/aiBridge/httpRoutes";
 import { AiBridgePermissionMode, AiBridgeServerOptions } from "./src/services/aiBridge/types";
@@ -92,7 +99,7 @@ import { QualityService } from "./src/services/quality/qualityService";
 import { ExtensionService } from "./src/services/extensions/extensionService";
 import { DependencyService } from "./src/services/dependencies/dependencyService";
 import { RcResourceService } from "./src/services/windowDesigner/rcResourceService";
-import { createDesignerAssetService } from "./src/services/windowDesigner/designerAssetService";
+import { createDesignerAssetService, findDesignerImageReferences } from "./src/services/windowDesigner/designerAssetService";
 import {
   compileWindowsExecutableResource,
   createWindowsExecutableIconService,
@@ -102,6 +109,7 @@ import {
 import { PerformanceService } from "./src/services/performance/performanceService";
 import { PublishingService } from "./src/services/publishing/publishingService";
 import { WorkspaceIndexService } from "./src/services/ai/workspaceIndexService";
+import { isPathAllowedByNewFileAllowance, parseAiNewFileAllowance } from "./src/services/ai/aiEditFileScope";
 import {
   AiConversationService,
   AiConversationStoreError
@@ -116,6 +124,7 @@ import { isProjectDllCommandsFilePath, createProjectDllDeclarationModuleFromSour
 import { materializeProjectDllDeclarationModules } from "./src/services/modules/projectDllMaterializeService";
 import { getEmbeddedResourceSpecsForBuild } from "./src/services/windowDesigner/embeddedResourceMigration";
 import { resolveProjectBuildDirectories, setActiveWorkspaceBuildExcludeDirs } from "./src/services/tasks/buildPathService";
+import { describeBuildOutputDirectory, resolveBuildOutputKind } from "./src/services/tasks/buildOutputLabel";
 import { ClangdService } from "./src/services/lsp/clangdService";
 import { LspWorkspaceEditService } from "./src/services/lsp/lspWorkspaceEditService";
 import { checkDevelopmentEnvironment } from "./src/services/tasks/environmentCheckService";
@@ -140,6 +149,7 @@ import { mapCompilerDiagnostics, parseCompilerDiagnostics } from "./src/services
 import { decodeCompilerOutput } from "./src/services/tasks/compilerOutputEncoding";
 import { dependencyBuildBatches, IncrementalBuildService } from "./src/services/tasks/incrementalBuildService";
 import { PtyTerminalService } from "./src/services/terminal/ptyTerminalService";
+import { attachTerminalWebSocketServer, createTerminalWebSocketTicket, type TerminalWebSocketBridge } from "./src/services/terminal/terminalWebSocketBridge";
 import { NativeDebugService } from "./src/services/debug/nativeDebugService";
 import type { LingCppNativeSourceMapEntry } from "./src/services/lingCpp/types";
 import { mapSourceBreakpointsForDebug } from "./src/services/debug/sourceBreakpointMapper";
@@ -252,6 +262,7 @@ const sdkDependencyService = new SdkDependencyService({
 let buildConfigurationService = new BuildConfigurationService(serverRuntimeConfig.workspaceRoot);
 let incrementalBuildService = new IncrementalBuildService(serverRuntimeConfig.workspaceRoot);
 let ptyTerminalService = new PtyTerminalService(serverRuntimeConfig.workspaceRoot);
+let terminalWorkspaceBridge: TerminalWebSocketBridge | null = null;
 let nativeDebugService = new NativeDebugService(serverRuntimeConfig.workspaceRoot);
 let gitService = new GitService(serverRuntimeConfig.workspaceRoot);
 let testExplorerService = new TestExplorerService(serverRuntimeConfig.workspaceRoot);
@@ -347,6 +358,7 @@ async function switchWorkspaceRuntime(requestedPath: unknown): Promise<{ workspa
     buildConfigurationService = new BuildConfigurationService(candidateWorkspace);
     incrementalBuildService = new IncrementalBuildService(candidateWorkspace);
     ptyTerminalService = new PtyTerminalService(candidateWorkspace);
+    terminalWorkspaceBridge?.resync();
     nativeDebugService = new NativeDebugService(candidateWorkspace);
     gitService = new GitService(candidateWorkspace);
     testExplorerService = new TestExplorerService(candidateWorkspace);
@@ -373,6 +385,8 @@ async function switchWorkspaceRuntime(requestedPath: unknown): Promise<{ workspa
     });
     workbenchConfigurationInitialization = workbenchConfigurationService.initialize();
     solutionServiceCache = null;
+    // AI 面板编辑链必须跟随新工作区重建：否则提案/应用继续落在切换前的旧工作区。
+    panelAiBridgeService = createPanelAiBridgeService();
     workspaceRuntimeVersion += 1;
     await workbenchConfigurationInitialization;
     void refreshWorkspaceBuildExcludeDirs();
@@ -410,46 +424,6 @@ function getSolutionService() {
   return solutionServiceCache;
 }
 
-function resolveAiConnectionConfig(config?: AiConnectionConfig): Required<AiConnectionConfig> {
-  return {
-    baseUrl: (config?.baseUrl || process.env.GEMINI_BASE_URL || "").trim(),
-    apiKey: (config?.apiKey || process.env.GEMINI_API_KEY || "").trim(),
-    modelName: (config?.modelName || process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash").trim(),
-    provider: config?.provider || "gemini"
-  };
-}
-
-// 连接测试的硬上限：挂起不响应的中转端点不能让「正在连接 AI...」无限转圈。
-const AI_CONNECT_TIMEOUT_MS = 10_000;
-
-function withAiConnectTimeout<T>(task: Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`连接测试超时：${AI_CONNECT_TIMEOUT_MS / 1000} 秒内未收到响应，请检查 Base URL 是否可达`)),
-      AI_CONNECT_TIMEOUT_MS
-    );
-    task.then(
-      value => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      error => {
-        clearTimeout(timer);
-        // fetch 的 AbortSignal.timeout 与本计时器同刻触发且常先注册完成，这里把超时类错误统一规范成中文诊断。
-        if (error instanceof Error && (error.name === "TimeoutError" || /aborted due to timeout/iu.test(error.message))) {
-          reject(new Error(`连接测试超时：${AI_CONNECT_TIMEOUT_MS / 1000} 秒内未收到响应，请检查 Base URL 是否可达`));
-          return;
-        }
-        reject(error);
-      }
-    );
-  });
-}
-
-function joinBaseUrl(baseUrl: string, pathName: string): string {
-  return `${baseUrl.replace(/\/+$/u, "")}/${pathName.replace(/^\/+/u, "")}`;
-}
-
 function extractJsonPayload(text: string, fallback: string): string {
   const cleaned = text
     .trim()
@@ -468,209 +442,6 @@ function extractJsonPayload(text: string, fallback: string): string {
   const endArray = cleaned.lastIndexOf("]");
   const end = Math.max(endObject, endArray);
   return end >= start ? cleaned.slice(start, end + 1) : cleaned;
-}
-
-async function generateAiText(options: {
-  config: Required<AiConnectionConfig>;
-  systemPrompt: string;
-  prompt: string;
-  temperature?: number;
-  maxTokens?: number;
-  geminiResponseSchema?: any;
-  geminiResponseMimeType?: string;
-}): Promise<string> {
-  const { config, systemPrompt, prompt, temperature = 0.2, maxTokens = 4096 } = options;
-
-  if (config.provider === "anthropic") {
-    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.anthropic.com/v1", "/messages"), {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": config.apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: config.modelName,
-        system: systemPrompt,
-        max_tokens: maxTokens,
-        temperature,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { content?: Array<{ type?: string; text?: string }> };
-    return data.content?.map(item => item.text || "").join("") || "";
-  }
-
-  if (config.provider === "deepseek" || config.provider === "openai") {
-    const defaultBaseUrl = config.provider === "deepseek" ? "https://api.deepseek.com" : "https://api.openai.com/v1";
-    const response = await fetch(joinBaseUrl(config.baseUrl || defaultBaseUrl, "/chat/completions"), {
-      method: "POST",
-      headers: {
-        "authorization": `Bearer ${config.apiKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: config.modelName,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt }
-        ],
-        max_tokens: maxTokens,
-        temperature,
-        ...(config.provider === "deepseek" ? { thinking: { type: "disabled" } } : {})
-      })
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    return data.choices?.[0]?.message?.content || "";
-  }
-
-  const ai = getGeminiClient(config);
-  const response = await ai.models.generateContent({
-    model: config.modelName,
-    contents: prompt,
-    config: {
-      systemInstruction: systemPrompt,
-      temperature,
-      maxOutputTokens: maxTokens,
-      ...(options.geminiResponseMimeType ? { responseMimeType: options.geminiResponseMimeType } : {}),
-      ...(options.geminiResponseSchema ? { responseSchema: options.geminiResponseSchema } : {})
-    }
-  });
-  return response.text || "";
-}
-
-async function testAiConnection(config: Required<AiConnectionConfig>): Promise<string> {
-  if (config.provider === "anthropic") {
-    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.anthropic.com/v1", "/messages"), {
-      method: "POST",
-      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": config.apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: config.modelName,
-        max_tokens: 8,
-        messages: [{ role: "user", content: "ping" }]
-      })
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { content?: Array<{ text?: string }> };
-    return data.content?.map(item => item.text || "").join("") || "";
-  }
-
-  if (config.provider === "deepseek") {
-    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.deepseek.com", "/chat/completions"), {
-      method: "POST",
-      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
-      headers: {
-        "authorization": `Bearer ${config.apiKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: config.modelName,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 16,
-        temperature: 0,
-        thinking: { type: "disabled" }
-      })
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    return data.choices?.[0]?.message?.content || "";
-  }
-
-  if (config.provider === "openai") {
-    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.openai.com/v1", "/chat/completions"), {
-      method: "POST",
-      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
-      headers: {
-        "authorization": `Bearer ${config.apiKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: config.modelName,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 8,
-        temperature: 0
-      })
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    return data.choices?.[0]?.message?.content || "";
-  }
-
-  const ai = getGeminiClient(config);
-  const response = await ai.models.generateContent({
-    model: config.modelName,
-    contents: "ping",
-    config: {
-      temperature: 0,
-      maxOutputTokens: 8
-    }
-  });
-  return response.text || "";
-}
-
-// 「获取模型列表」的单次返回上限：防超大 provider 列表撑爆侧栏面板。
-const AI_MODELS_LIST_MAX = 200;
-
-async function listAiModels(config: Required<AiConnectionConfig>): Promise<string[]> {
-  if (config.provider === "anthropic") {
-    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.anthropic.com/v1", "/models"), {
-      method: "GET",
-      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
-      headers: {
-        "x-api-key": config.apiKey,
-        "anthropic-version": "2023-06-01"
-      }
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { data?: Array<{ id?: string }> };
-    return (data.data || []).map(item => item.id || "").filter(Boolean);
-  }
-
-  if (config.provider === "deepseek" || config.provider === "openai") {
-    const defaultBaseUrl = config.provider === "deepseek" ? "https://api.deepseek.com" : "https://api.openai.com/v1";
-    const response = await fetch(joinBaseUrl(config.baseUrl || defaultBaseUrl, "/models"), {
-      method: "GET",
-      signal: AbortSignal.timeout(AI_CONNECT_TIMEOUT_MS),
-      headers: {
-        "authorization": `Bearer ${config.apiKey}`
-      }
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { data?: Array<{ id?: string }> };
-    return (data.data || []).map(item => item.id || "").filter(Boolean);
-  }
-
-  const ai = getGeminiClient(config);
-  const pager = await ai.models.list();
-  const models: string[] = [];
-  for await (const model of pager) {
-    // 仅保留支持 generateContent 的模型；字段缺失的 provider 形态（自建兼容端点）全部保留。
-    if (model.supportedActions && !model.supportedActions.includes("generateContent")) continue;
-    const name = (model.name || "").replace(/^models\//u, "");
-    if (name) models.push(name);
-    if (models.length >= AI_MODELS_LIST_MAX) break;
-  }
-  return models;
-}
-
-function getGeminiClient(config?: AiConnectionConfig): GoogleGenAI {
-  const resolved = resolveAiConnectionConfig(config);
-  return new GoogleGenAI({
-    apiKey: resolved.apiKey,
-    httpOptions: {
-      ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {}),
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
-    }
-  });
 }
 
 const app = express();
@@ -1101,6 +872,128 @@ app.post("/api/ai/models", async (req, res) => {
     res.status(500).json({
       ok: false,
       error: "获取模型列表失败",
+      details: error?.message || String(error)
+    });
+  }
+});
+
+// BYOK 聊天链路的边界（2026-09-20 收口）：多轮 messages 由本端点组装 system
+// 后交给 aiProviderService.generateAiChat，请求体校验与限幅只在这一处；
+// 禁止把聊天 prompt 当作翻译条目塞进任何批量翻译接口（该接口已随汉化翻译功能一并移除）。
+const AI_CHAT_MAX_MESSAGES = 64;
+const AI_CHAT_MAX_MESSAGE_CHARS = 32_000;
+const AI_CHAT_ACTIVE_FILE_EXCERPT_CHARS = 8_000;
+
+interface AiChatRequestMessage {
+  role?: string;
+  content?: string;
+}
+
+interface AiChatActiveFile {
+  filePath?: string;
+  language?: string;
+  excerpt?: string;
+}
+
+function buildAiChatSystemPrompt(activeFile?: AiChatActiveFile): string {
+  const lines = [
+    "你是 LingBuilder 中文 IDE 内置的 AI 编程助手，面向中文开发者（含易语言 / C++ 背景）。",
+    "始终使用简体中文回答；语气专业、直接、克制，适合工具界面。",
+    "涉及代码时用 Markdown 代码块返回完整可拷贝内容；不确定的内容要明确说明，不要编造不存在的 API。",
+    "涉及 .lcpp 中文代码、模块命令或窗口设计器时，严格遵守下方 LingBuilder 规则手册。"
+  ];
+  const filePath = activeFile?.filePath?.trim();
+  const excerpt = typeof activeFile?.excerpt === "string" ? activeFile.excerpt : "";
+  if (filePath || excerpt.trim()) {
+    const language = activeFile?.language?.trim();
+    lines.push(
+      "",
+      `用户当前正在编辑的文件：${filePath || "（未知路径）"}${language ? `（语言：${language}）` : ""}`,
+      excerpt.trim()
+        ? "文件内容节选（可能被截断，仅供参考，不要复述原文）：\n```\n" + excerpt.slice(0, AI_CHAT_ACTIVE_FILE_EXCERPT_CHARS) + "\n```"
+        : "（当前文件内容为空。）"
+    );
+  }
+  return lines.join("\n");
+}
+
+app.post("/api/ai/chat", async (req, res) => {
+  const { messages, aiConfig, activeFile, stream } = req.body as {
+    messages?: AiChatRequestMessage[];
+    aiConfig?: AiConnectionConfig;
+    activeFile?: AiChatActiveFile;
+    stream?: boolean;
+  };
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ ok: false, error: "缺少聊天消息列表。" });
+  }
+  if (messages.length > AI_CHAT_MAX_MESSAGES) {
+    return res.status(400).json({ ok: false, error: `聊天消息过多（最多 ${AI_CHAT_MAX_MESSAGES} 条），请新建会话后重试。` });
+  }
+  const normalizedMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+  for (const message of messages) {
+    const role = message?.role;
+    const content = typeof message?.content === "string" ? message.content : "";
+    if ((role !== "user" && role !== "assistant") || !content.trim()) {
+      return res.status(400).json({ ok: false, error: "聊天消息格式无效：role 必须是 user 或 assistant，且内容不能为空。" });
+    }
+    normalizedMessages.push({ role, content: content.slice(0, AI_CHAT_MAX_MESSAGE_CHARS) });
+  }
+  const resolvedAiConfig = resolveAiConnectionConfig(aiConfig);
+  if (!resolvedAiConfig.apiKey) {
+    return res.status(400).json({ ok: false, error: "缺少 API Key，请先在 AI 对接设置中配置。" });
+  }
+
+  let systemPrompt: string;
+  try {
+    systemPrompt = attachLingBuilderAiRulebook(buildAiChatSystemPrompt(activeFile), await getLingBuilderAiRulebook());
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error?.message || "LingBuilder 规则手册读取失败。" });
+  }
+
+  if (stream) {
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    const upstream = new AbortController();
+    req.on("close", () => upstream.abort());
+    const send = (payload: Record<string, unknown>) => {
+      if (res.writableEnded) return;
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+    try {
+      const reply = await generateAiChat({
+        config: resolvedAiConfig,
+        systemPrompt,
+        messages: normalizedMessages,
+        signal: upstream.signal,
+        stream: {
+          onDelta: delta => send({ delta }),
+          onReasoning: reasoning => send({ reasoning })
+        }
+      });
+      send({ ok: true, reply });
+    } catch (error: any) {
+      if (upstream.signal.aborted || res.writableEnded) {
+        res.end();
+        return;
+      }
+      send({ ok: false, error: error?.message || "AI 聊天请求失败。" });
+    } finally {
+      res.end();
+    }
+    return;
+  }
+
+  try {
+    const reply = await generateAiChat({ config: resolvedAiConfig, systemPrompt, messages: normalizedMessages });
+    res.json({ ok: true, reply });
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: "AI 聊天请求失败",
       details: error?.message || String(error)
     });
   }
@@ -1596,41 +1489,63 @@ app.delete("/api/solution/projects/:projectId", async (req, res) => {
 });
 
 app.post("/api/solution/clean", async (req, res) => {
+  let createdTaskId: string | undefined;
   try {
     const { projectId } = req.body as { projectId?: string };
+    let cleanProjectLabel = projectId || "";
+    try {
+      const solutionForTitle = await getSolutionService().getSolution();
+      if (projectId) {
+        cleanProjectLabel = solutionForTitle.projects.find(project => project.id === projectId)?.name || projectId;
+      }
+    } catch {
+      // 标题取不到中文名时回退项目 id，不阻断清理任务。
+    }
     const task = taskService.enqueue({
-      type: "solution.clean", title: projectId ? `清理项目 ${projectId}` : "清理解决方案", group: `build:${projectId || "solution"}`,
+      type: "solution.clean", title: projectId ? `清理项目 ${cleanProjectLabel}` : "清理解决方案", group: `build:${projectId || "solution"}`,
       run: async context => {
         context.report(10, "开始清理构建产物。");
         const result = await getSolutionService().cleanProjects(projectId ? [projectId] : undefined);
         result.logs.forEach(line => context.log(line)); context.report(100); return result;
       }
     });
+    createdTaskId = task.id;
     res.json({ ...await task.result, taskId: task.id });
   } catch (error: any) {
-    res.status(500).json({ ok: false, error: error?.message || "清理解决方案失败" });
+    const failureBody: Record<string, unknown> = { ok: false, error: error?.message || "清理解决方案失败" };
+    if (createdTaskId) failureBody.taskId = createdTaskId;
+    res.status(500).json(failureBody);
   }
 });
 
 app.post("/api/solution/build", async (req, res) => {
+  let createdTaskId: string | undefined;
   try {
     const { projectId, run = false } = req.body as { projectId?: string; run?: boolean };
     const admission = projectBuildCoordinator.captureGlobalAdmission();
-    const task = enqueueSolutionBuildTask({ projectId, run, admission, rebuild: false });
+    const task = await enqueueSolutionBuildTask({ projectId, run, admission, rebuild: false });
+    createdTaskId = task.id;
     res.json({ ...await task.result, taskId: task.id });
   } catch (error: any) {
-    res.status(500).json({ ok: false, stage: "server", error: error?.message || "生成解决方案失败" });
+    // 任务已创建时 taskId 必须随失败响应回传：日志行已进任务通道，前端据此不再重复播报。
+    const failureBody: Record<string, unknown> = { ok: false, stage: "server", error: error?.message || "生成解决方案失败" };
+    if (createdTaskId) failureBody.taskId = createdTaskId;
+    res.status(500).json(failureBody);
   }
 });
 
 app.post("/api/solution/rebuild", async (req, res) => {
+  let createdTaskId: string | undefined;
   try {
     const { projectId, run = false } = req.body as { projectId?: string; run?: boolean };
     const admission = projectBuildCoordinator.captureGlobalAdmission();
-    const task = enqueueSolutionBuildTask({ projectId, run, admission, rebuild: true });
+    const task = await enqueueSolutionBuildTask({ projectId, run, admission, rebuild: true });
+    createdTaskId = task.id;
     res.json({ ...await task.result, taskId: task.id });
   } catch (error: any) {
-    res.status(500).json({ ok: false, stage: "server", error: error?.message || "重新生成解决方案失败" });
+    const failureBody: Record<string, unknown> = { ok: false, stage: "server", error: error?.message || "重新生成解决方案失败" };
+    if (createdTaskId) failureBody.taskId = createdTaskId;
+    res.status(500).json(failureBody);
   }
 });
 
@@ -1666,16 +1581,13 @@ app.post("/api/terminal/sessions/:sessionId/resize", (req, res) => {
   try { res.json({ ok: true, session: ptyTerminalService.resize(req.params.sessionId, req.body?.cols, req.body?.rows) }); }
   catch (error: any) { res.status(400).json({ ok: false, error: error?.message || "调整终端大小失败。" }); }
 });
+app.post("/api/terminal/ws-ticket", (_req, res) => {
+  try { res.json({ ok: true, ticket: createTerminalWebSocketTicket() }); }
+  catch (error: any) { res.status(500).json({ ok: false, error: error?.message || "终端通道票据发放失败。" }); }
+});
 app.delete("/api/terminal/sessions/:sessionId", (req, res) => {
   if (!ptyTerminalService.close(req.params.sessionId)) return res.status(404).json({ ok: false, error: "终端会话不存在。" });
   res.json({ ok: true });
-});
-app.get("/api/terminal/events", (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream"); res.setHeader("Cache-Control", "no-cache"); res.flushHeaders();
-  ptyTerminalService.list().forEach(session => res.write(`event: terminal\ndata: ${JSON.stringify({ kind: "snapshot", session })}\n\n`));
-  const unsubscribe = ptyTerminalService.subscribe(event => res.write(`event: terminal\ndata: ${JSON.stringify(event)}\n\n`));
-  const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 20_000);
-  req.on("close", () => { clearInterval(heartbeat); unsubscribe(); });
 });
 
 app.get("/api/debug/session", (_req, res) => res.json({ ok: true, session: nativeDebugService.getSnapshot() }));
@@ -2023,84 +1935,6 @@ app.post("/api/modules/developer/import-ai-files", async (req, res) => {
   }
 });
 
-app.post("/api/modules/ai-generate", async (req, res) => {
-  try {
-    const body = (req.body || {}) as { requirement?: unknown; outDir?: string; aiConfig?: AiConnectionConfig };
-    const requirement = sanitizeModuleRequirement(body.requirement);
-    if (!requirement.ok) {
-      return res.status(400).json({ ok: false, error: requirement.error || "模块需求描述无效。" });
-    }
-    const config = resolveAiConnectionConfig(body.aiConfig);
-    if (!config.apiKey) {
-      return res.status(400).json({ ok: false, error: "尚未配置自定义 API Key；请先在 AI 面板完成连接，或登录系统 AI 使用一键生成。" });
-    }
-    let moduleSpec = "";
-    try {
-      moduleSpec = await fs.readFile(serverRuntimeConfig.aiModuleSpecPath, "utf8");
-    } catch {
-      return res.status(500).json({ ok: false, error: `无法读取 AI 模块开发规范文档（${serverRuntimeConfig.aiModuleSpecPath}），请检查安装完整性。` });
-    }
-    if (moduleSpec.trim().length < 1000) {
-      return res.status(500).json({ ok: false, error: "AI 模块开发规范文档内容异常，请检查安装完整性。" });
-    }
-    const rulebook = await getLingBuilderAiRulebook();
-    const messages = buildModuleGenerationMessages(requirement.text, moduleSpec);
-    const rawOutput = await generateAiText({
-      config,
-      systemPrompt: attachLingBuilderAiRulebook(messages.systemPrompt, rulebook),
-      prompt: messages.userPrompt,
-      temperature: 0.2,
-      // DeepSeek 官方 API 的 max_tokens 上限为 8192，超出会被上游直接拒绝。
-      maxTokens: 8192
-    });
-    const parsed = parseAiModuleOutputText(rawOutput);
-    if (parsed.files.length === 0) {
-      return res.status(502).json({
-        ok: false,
-        error: "AI 没有输出可导入的模块文件；请重试，或在手动模式中粘贴 AI 原始回复后导入。",
-        diagnostics: parsed.diagnostics,
-        rawOutput: rawOutput.slice(0, 120000)
-      });
-    }
-    const manifestEntry = parsed.files.find(file => file.path.replace(/\\/gu, "/").replace(/^\.\//u, "") === "lingbuilder.module.json");
-    let moduleId = "";
-    if (manifestEntry) {
-      try {
-        moduleId = String(JSON.parse(manifestEntry.content.replace(/^\uFEFF/u, ""))?.id || "").trim();
-      } catch {
-        return res.status(502).json({ ok: false, error: "AI 输出的 lingbuilder.module.json 不是合法 JSON，无法确定模块 ID；请重试。", rawOutput: rawOutput.slice(0, 120000) });
-      }
-    }
-    if (!moduleId || !/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(moduleId)) {
-      return res.status(502).json({ ok: false, error: "AI 输出缺少 lingbuilder.module.json 或模块 ID 不合法；请重试。", rawOutput: rawOutput.slice(0, 120000) });
-    }
-    const targetRelativeDir = body.outDir && body.outDir.trim()
-      ? body.outDir.trim()
-      : `.lingbuilder/module-build/${moduleId}`;
-    const resolvedOutDir = await resolveModuleWriteDirectory(targetRelativeDir, ".lingbuilder/module-build");
-    const result = await importAiModuleFiles(parsed.files, resolvedOutDir);
-    res.json({
-      ok: true,
-      result: {
-        moduleId: result.manifest.id,
-        moduleName: result.manifest.name,
-        outDir: targetRelativeDir.replace(/\\/gu, "/"),
-        fileCount: result.writtenFiles.length,
-        overwrittenExisting: result.overwrittenExisting === true,
-        diagnostics: result.diagnostics
-      },
-      rawOutput: rawOutput.slice(0, 120000)
-    });
-  } catch (error: any) {
-    const message = error?.message || String(error);
-    res.status(error?.status || 502).json({
-      ok: false,
-      error: `AI 模块生成失败：${message}`,
-      details: "请先在 AI 面板确认 Base URL、API Key 与模型可用；也可以改用手动复制粘贴流程。"
-    });
-  }
-});
-
 app.post("/api/modules/developer/validate", async (req, res) => {
   try {
     const { modulePath } = req.body as { modulePath?: string };
@@ -2224,6 +2058,36 @@ app.get("/api/window-designer/assets/content", async (req, res) => {
     res.send(image.bytes);
   } catch (error: any) {
     res.status(404).send(error?.message || "图片资源不存在。");
+  }
+});
+
+// 删除项目图片资源：删除前先扫设计器模型与项目源码引用，仍有引用时必须 confirmed=true 才真正删。
+app.post("/api/window-designer/assets/delete", async (req, res) => {
+  const { projectId, relativePath, confirmed } = req.body as { projectId?: string; relativePath?: string; confirmed?: boolean };
+  if (!isNonEmptyString(projectId) || !isNonEmptyString(relativePath)) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId 或图片资源路径。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
+    const [designerProject, sourceFiles] = await Promise.all([
+      solutionService.readDesignerProject(projectRef).catch(() => null),
+      solutionService.readProjectFileSnapshots(projectRef)
+    ]);
+    const scan = findDesignerImageReferences({ designerProject, sourceFiles, relativePath: relativePath.trim() });
+    if (scan.hits.length > 0 && confirmed !== true) {
+      return res.status(409).json({
+        ok: false,
+        requiresConfirmation: true,
+        references: scan.hits,
+        truncated: scan.truncated,
+        error: "图片资源仍被以下位置引用，确认后才会删除。"
+      });
+    }
+    await designerAssetService.deleteProjectImage(projectRef, relativePath.trim());
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "图片资源删除失败。" });
   }
 });
 
@@ -3029,7 +2893,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       `可复制生成目录：${exportDir}`,
       `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
       `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
-      `exe 输出目录：${binDir}`,
+      `${describeBuildOutputDirectory(resolveBuildOutputKind(routeOutputType, routeConsoleMode))}：${binDir}`,
       `中间文件目录：${objDir}`,
       `当前窗口：${generatedProject.selectedWindow.title}`,
       `编译器：${compiler.kind} (${compiler.command})`,
@@ -3148,12 +3012,22 @@ app.post("/api/window-designer/build-run", async (req, res) => {
   }
 });
 
-function enqueueSolutionBuildTask(options: {
+async function enqueueSolutionBuildTask(options: {
   projectId?: string; run: boolean; admission: ProjectBuildAdmission; rebuild: boolean;
 }) {
+  // 任务标题带中文项目名：任务日志经 [标题] 前缀进输出面板，不能用英文项目 id 播报。
+  let projectLabel = options.projectId || "";
+  try {
+    const solutionForTitle = await getSolutionService().getSolution();
+    if (options.projectId) {
+      projectLabel = solutionForTitle.projects.find(project => project.id === options.projectId)?.name || options.projectId;
+    }
+  } catch {
+    // 标题取不到中文名时回退项目 id，不阻断构建任务。
+  }
   const title = options.rebuild
-    ? (options.projectId ? `重新生成项目 ${options.projectId}` : "重新生成解决方案")
-    : (options.projectId ? `生成项目 ${options.projectId}` : "生成解决方案");
+    ? (options.projectId ? `重新生成项目 ${projectLabel}` : "重新生成解决方案")
+    : (options.projectId ? `生成项目 ${projectLabel}` : "生成解决方案");
   return taskService.enqueue({
     type: options.rebuild ? "solution.rebuild" : "solution.build",
     title,
@@ -3266,7 +3140,7 @@ async function buildSolutionProjects(options: {  projectId?: string;
           } catch { /* 保持原值 */ }
         }
         const externalLogs = [
-          ...(projectRef.type === "windows-dll" ? [`DLL 输出目录：${externalResult.outputDir}`, ...(externalResult.artifacts || []).map(file => `产物：${file}`)] : []),
+          ...(projectRef.type === "windows-dll" ? [`${describeBuildOutputDirectory("dynamic-library")}：${externalResult.outputDir}`, ...(externalResult.artifacts || []).map(file => `产物：${file}`)] : []),
           externalResult.stdout,
           externalResult.stderr
         ].filter(Boolean);
@@ -3658,7 +3532,7 @@ async function runControlledWindowDesignerBuild(options: {
     `可复制生成目录：${exportDir}`,
     `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
     `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
-    `exe 输出目录：${binDir}`,
+    `${describeBuildOutputDirectory(resolveBuildOutputKind(outputType, consoleMode))}：${binDir}`,
     `中间文件目录：${objDir}`,
     `当前窗口：${generatedProject.selectedWindow.title}`,
     `编译器：${compiler.kind} (${compiler.command})`,
@@ -4465,7 +4339,7 @@ app.post("/api/lingcpp/edit/propose", async (req, res) => {
 
 app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
   try {
-    const { filePath, sourceCode, instruction, workspaceFiles, files, projectId, designerProject, currentDesignerProject } = req.body as {
+    const { filePath, sourceCode, instruction, workspaceFiles, files, projectId, designerProject, currentDesignerProject, newFiles } = req.body as {
     filePath?: string;
     sourceCode?: string;
     instruction?: string;
@@ -4474,17 +4348,48 @@ app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
     files?: Array<{ filePath: string; updatedSource: string }>;
     designerProject?: LingWindowProject;
     currentDesignerProject?: LingWindowProject;
+    newFiles?: unknown;
     };
     if (!filePath || typeof sourceCode !== "string" || !Array.isArray(files)) {
       return res.status(400).json({ ok: false, error: "系统 AI 编辑草稿缺少必要字段。" });
     }
     const safeWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
+    // 新建文件白名单：只放行客户端显式声明过的路径；写盘安全仍由 AiBridgeService
+    // 的 WorkspacePathPolicy + 可写扩展名白名单在应用阶段强制。
+    const newFileCheck = parseAiNewFileAllowance(newFiles);
+    if (!newFileCheck.ok) return res.status(400).json({ ok: false, error: newFileCheck.error || "newFiles 白名单无效。" });
+    const newFileAllowance = newFileCheck.allowance || {};
     const allowedPaths = new Set([filePath, ...safeWorkspaceFiles.map(file => file.filePath)].map(normalizeFilePath));
+    const isDraftPathAllowed = (rawPath: string) => {
+      const normalized = normalizeFilePath(rawPath);
+      if (allowedPaths.has(normalized)) return true;
+      return newFileAllowance !== undefined && isPathAllowedByNewFileAllowance(normalized, newFileAllowance);
+    };
     const safeDraftFiles = files
       .filter(file => file && typeof file.filePath === "string" && typeof file.updatedSource === "string")
-      .filter(file => allowedPaths.has(normalizeFilePath(file.filePath)))
-      .slice(0, 5);
-    if (!safeDraftFiles.length) return res.status(400).json({ ok: false, error: "系统 AI 未返回允许范围内的文件修改。" });
+      .filter(file => isDraftPathAllowed(file.filePath))
+      .slice(0, 8);
+    // 只改界面、源码不动的系统 AI 草稿是合法形态：files 为空但设计器模型确实变化时必须放行，
+    // 否则云端已经接受的布局改动会在这条本地路由被打回，用户看到「未返回文件修改」。
+    const designerOnlyDraft = !safeDraftFiles.length
+      && Boolean(designerProject && currentDesignerProject && !areDesignerProjectsEquivalent(designerProject, currentDesignerProject));
+    if (!safeDraftFiles.length && !designerOnlyDraft) {
+      return res.status(400).json({ ok: false, error: "系统 AI 未返回允许范围内的文件修改。" });
+    }
+    // 新建文件：合成空基准条目让提案校验接受全新路径（与 AiBridgeService 磁盘缺省读盘的
+    // 「不存在按新建空文件处理」语义一致）；应用阶段仍会做路径策略与扩展名校验。
+    const existingKeys = new Set(safeWorkspaceFiles.map(file => normalizeFilePath(file.filePath).toLocaleLowerCase()));
+    const newDraftFiles = safeDraftFiles.filter(file => {
+      const normalized = normalizeFilePath(file.filePath);
+      return !existingKeys.has(normalized.toLocaleLowerCase()) && isPathAllowedByNewFileAllowance(normalized, newFileAllowance);
+    });
+    if (newFileAllowance && newDraftFiles.length > (newFileAllowance.maxCount ?? 5)) {
+      return res.status(400).json({ ok: false, error: `系统 AI 返回了 ${newDraftFiles.length} 个新建文件，超出本次白名单上限 ${newFileAllowance.maxCount ?? 5} 个。` });
+    }
+    const expandedWorkspaceFiles = [
+      ...safeWorkspaceFiles,
+      ...newDraftFiles.map(file => ({ filePath: normalizeFilePath(file.filePath), sourceCode: "" }))
+    ];
     for (const file of safeDraftFiles) {
       if (!file.filePath.endsWith(".lcpp")) continue;
       const original = safeWorkspaceFiles.find(item => normalizeFilePath(item.filePath) === normalizeFilePath(file.filePath));
@@ -4495,7 +4400,7 @@ app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
     // 云端 edit_draft 也收口到 AiBridgeService：以固定 planner 返回云端草稿，保持系统 AI 的 strict 设计器联动策略与统一校验/审计链。
     const result = await panelAiBridgeService.proposeEdit({
       filePath: normalizeFilePath(filePath), sourceCode, instruction: instruction || "系统 AI 编辑", projectId,
-      workspaceFiles: safeWorkspaceFiles,
+      workspaceFiles: expandedWorkspaceFiles,
       designerProject: currentDesignerProject
     }, async () => ({ summary: instruction || "系统 AI 编辑提案", explanation: "系统 AI 已返回完整文件草稿；该草稿经过本地路径与 LingCpp 结构校验，仍需预览确认后才能应用。", files: safeDraftFiles, designerProject }));
     const createdProposal = getWorkspaceEditProposal(result.proposal.id);
@@ -4533,7 +4438,8 @@ app.post("/api/lingcpp/edit/apply", async (req, res) => {
     if (!proposalId) {
       return res.status(400).json({ ok: false, error: "缺少 proposalId" });
     }
-    const proposal = getWorkspaceEditProposal(proposalId);
+    // 内嵌 Agent 的提案在另一个进程里生成：进程内 store 未命中时按 ID 读工作区交接目录。
+    const proposal = getWorkspaceEditProposal(proposalId) || await readAgentProposal(getRepoWorkspaceRoot(), proposalId);
     if (!proposal) {
       return res.status(404).json({ ok: false, error: "未找到编辑提案" });
     }
@@ -4763,7 +4669,7 @@ async function compileWin32Preview(
     if (error instanceof WindowsExecutableResourceCompileError) {
       return { ok: false, logs: error.logs };
     }
-    return { ok: false, logs: ["EXE 图标资源编译失败。", error instanceof Error ? error.message : String(error)] };
+    return { ok: false, logs: ["资源脚本编译失败。", error instanceof Error ? error.message : String(error)] };
   }
 
   const objectPath = path.join(objDir, "main.obj");
@@ -5008,6 +4914,32 @@ function sanitizeFilename(value: string): string {
   return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 80) || "window-preview";
 }
 
+/**
+ * 面板 planner 提示词的「涉及控件运行时命令清单」：把当前设计器模型里出现的
+ * 控件类型对应的规范命令（含控件裸名的完整形态与参数示例）喂给模型，
+ * 防止其臆造「控件名.方法(...)」成员调用写法（源码不支持，会以「找不到功能库」阻断构建）。
+ */
+function describeInvolvedDesignerControlCommands(designerProject: LingWindowProject): string {
+  const controls = (designerProject.windows || []).flatMap(window => window.controls || []);
+  if (!controls.length) return "";
+  const seenTypes = new Set<string>();
+  const sections: string[] = [];
+  for (const control of controls) {
+    if (seenTypes.has(control.type)) continue;
+    seenTypes.add(control.type);
+    if (seenTypes.size > 8) break;
+    const commands = getDesignerControlCommandCompletions(control);
+    if (!commands.length) continue;
+    const capped = commands.slice(0, 24);
+    const lines = capped.map(item => `- ${item.insertText}：${item.description}`);
+    sections.push(
+      `控件「${control.name}」（类型 ${control.type}）可用运行时命令（规范形态，第一个参数是控件裸名；共 ${commands.length} 条，仅列前 ${capped.length} 条）：\n${lines.join("\n")}`
+    );
+  }
+  if (!sections.length) return "";
+  return `涉及控件类型的运行时命令清单。操作设计器控件必须使用这些规范命令（第一个参数是控件裸名）；禁止使用「控件名.方法(...)」成员调用写法——源码不支持该写法，会以「找不到功能库」阻断构建：\n${sections.join("\n")}`;
+}
+
 async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<LingCppEditDraft> {
   const resolvedAiConfig = resolveAiConnectionConfig(context.aiConfig);
   if (!resolvedAiConfig.apiKey) {
@@ -5052,14 +4984,19 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
     .join("\n") || "无";
   const selectedText = context.selection ? getTextForRange(sourceCode, context.selection) : "";
   const moduleContextPrompt = describeLingCppModuleContextForAi(context.moduleContext);
-  const requiresDesignerProject = Boolean(
-    context.designerProject && isDesignerEditInstruction(context.instruction)
-  );
-  const requiresDesignerBeautification = requiresDesignerProject
-    && isDesignerBeautificationInstruction(context.instruction);
+  const hasDesignerContext = Boolean(context.designerProject);
+  const designerLayoutRequested = hasDesignerContext && isDesignerEditInstruction(context.instruction);
+  // 是否「必须」回传设计器模型不再由指令关键词决定（2026-09-22 收口）：旧口径把
+  // 「按钮/窗口/显示/移动」命中即设成 schema 必填并强制纠正重试，既误拒「给按钮1加上
+  // 点击计数」这类纯行为需求，又逼模型为凑出布局变化去乱改颜色与位置。真实防线只有
+  // 一条——提案落盘后的源码是否引用了模型里不存在的控件（controlReferenceAdmission）。
+  // 例外仍是宽泛美化请求：它本就必须产出一份可预览的布局提案。
+  const requiresDesignerProject = designerLayoutRequested && isDesignerBeautificationInstruction(context.instruction);
+  const requiresDesignerBeautification = requiresDesignerProject;
   const designerChangeRequirement = requiresDesignerBeautification
     ? '本次是宽泛的界面美化请求：designerProject 必须产生至少三项肉眼可见的属性变化，例如窗口/标题栏颜色、控件位置或尺寸、控件颜色、字号、字体粗细、按钮圆角或控件间距。禁止仅复制、复述或重新排序当前模型。保留所有项目/窗口/控件 ID、名称和事件绑定。'
-    : '只要用户需求涉及窗口、控件或布局，就必须在 designerProject 中反映实际可应用的属性变化；禁止仅复制、复述或重新排序当前模型。';
+    : '只有用户确实要求改动界面外观或布局时才返回 designerProject；只改运行行为（计数、判断、提示、数据处理）时省略该字段，禁止为了凑出布局变化而改动无关控件的颜色、位置或尺寸。';
+
 
   const baseSystemPrompt = `你是 LingBuilder 的中文 C++（.lcpp）重写代理。
 你的任务是根据用户要求修改一个或多个已提供的工作区文件，并返回“仅包含发生变化文件”的完整重写结果。
@@ -5073,7 +5010,7 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
 6. 只返回确实发生变化的文件；如果无需修改某个文件，就不要把它放进 files 数组。
 7. 可以直接使用当前项目“已启用模块”提供的命令、类型和片段；不要静默调用未启用模块的命令。
 8. 如果用户要求使用未启用模块，先在 explanation 中说明需要启用该模块，再给出不破坏当前代码的最小修改。
-9. 如果用户需求涉及窗口、控件或布局，必须同时返回 designerProject 字段，并返回修改后的完整设计器模型；不涉及设计器时省略该字段。当前请求${requiresDesignerProject ? "涉及" : "不涉及"}设计器：${requiresDesignerProject ? "designerProject 是必填字段，必须逐项复制当前模型并只修改用户要求的内容，不能返回 patch、片段或省略未修改窗口/控件。" : "可以省略 designerProject。"}
+9. 需要改动界面外观或布局时，必须同时返回 designerProject 字段（修改后的完整设计器模型）；只改运行行为时省略该字段。当前请求${designerLayoutRequested ? "涉及窗口/控件：" + (requiresDesignerProject ? "designerProject 是必填字段，必须逐项复制当前模型并只修改用户要求的内容，不能返回 patch、片段或省略未修改窗口/控件。" : "若本次确实要改布局，designerProject 必须完整回显并只改用户要求的内容；若只改行为则省略该字段，禁止制造无关的外观变化。") : "不涉及设计器：可以省略 designerProject。"}
 10. 设计器模型中的项目 ID、窗口 ID、控件 ID、事件绑定名保持稳定，不得删除未被明确要求删除的窗口或控件。
 11. 进度条的 content 必须是数字文本，并与 properties.value 保持完全一致；控件引用必须使用当前模型中的真实名称。
 12. designerProject 只能是 JSON 对象，不能包含脚本、函数、Markdown 或工作区路径。designerProject 中每个控件的 type 必须逐字使用下方「合法控件类型清单」中的英文标识（区分大小写），禁止自造同义词或中英混写；例如编辑框必须写 TextBox，不能写 Edit、Input 或 输入框。清单中没有所需控件类型时，选择最接近的合法类型实现，并在 explanation 中说明局限。
@@ -5097,6 +5034,9 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
       : "当前请求没有窗口设计器模型。",
     context.designerProject
       ? `合法控件类型清单（designerProject 中控件的 type 只能逐字使用以下英文标识，区分大小写）：\n${describeAllowedDesignerControlTypes(context)}`
+      : "",
+    context.designerProject
+      ? describeInvolvedDesignerControlCommands(context.designerProject)
       : "",
     `本次允许编辑的工作区文件如下（只可改这些文件）：
 ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCode}`).join("\n\n")}`
@@ -5126,7 +5066,7 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
     required: ["summary", "explanation", "files", ...(requiresDesignerProject ? ["designerProject"] : [])]
   };
 
-  const designerProjectExample = requiresDesignerProject
+  const designerProjectExample = hasDesignerContext
     ? `,
   "designerProject": {
     "schemaVersion": 2,
@@ -5163,9 +5103,9 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
       systemPrompt,
       prompt: correction ? `${jsonPrompt}\n\n${correction}` : jsonPrompt,
       temperature: correction ? 0.35 : 0.2,
-      // 大型窗口设计器模型通常远大于普通源码文件；布局请求必须预留完整
+      // 大型窗口设计器模型通常远大于普通源码文件；带设计器上下文的请求必须预留完整
       // JSON 的输出空间，否则模型会在 designerProject 中途截断。
-      maxTokens: requiresDesignerProject ? 32000 : 12000,
+      maxTokens: hasDesignerContext ? 32000 : 12000,
       geminiResponseMimeType: "application/json",
       geminiResponseSchema: schema
     });
@@ -5200,11 +5140,8 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
       draft = await requestDraft(`上一次回答没有给出可应用的设计器变化：${draft.designerProject
         ? '返回的 designerProject 与当前模型完全相同。'
         : '缺少 designerProject。'}
-请重新生成完整 JSON。必须保留所有稳定 ID、名称、事件绑定和未修改对象，但要返回真实变化后的完整 designerProject。${requiresDesignerBeautification
-        ? '这是界面美化请求，至少调整三项可见属性（颜色、间距、位置、尺寸、字体或按钮圆角），不能只重排 JSON 字段。'
-        : '请把用户要求落实为真实的窗口、控件或布局属性变化。'}`);
+请重新生成完整 JSON。必须保留所有稳定 ID、名称、事件绑定和未修改对象，但要返回真实变化后的完整 designerProject。这是界面美化请求，至少调整三项可见属性（颜色、间距、位置、尺寸、字体或按钮圆角），不能只重排 JSON 字段。`);
     } catch (error: any) {
-      if (!requiresDesignerBeautification) throw error;
       draft = {
         ...originalDraft,
         explanation: `${originalDraft.explanation?.trim() || 'AI 未返回实际布局变化。'} 纠正请求失败：${error?.message || '未知错误'}，已降级为保守的本地视觉美化方案。`,
@@ -5285,7 +5222,16 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
     .filter(file => promptFileMap.has(normalizeFilePath(file.filePath)) && file.updatedSource.trim());
 
   if (validDraftFiles.length === 0) {
-    throw new Error("AI 未返回有效的多文件编辑结果");
+    // 只改界面、源码不动是合法形态（例如「把按钮移到右下角」）：设计器模型确实变化时
+    // 必须放行纯布局提案，否则这份改动会在生成侧被丢掉，用户看到「应用成功」但画布不动。
+    const designerOnlyChange = Boolean(
+      context.designerProject
+      && draft.designerProject
+      && !areDesignerProjectsEquivalent(draft.designerProject, context.designerProject)
+    );
+    if (!designerOnlyChange) {
+      throw new Error("AI 未返回有效的多文件编辑结果");
+    }
   }
 
   const diagnosticsNotes: string[] = [];
@@ -5557,7 +5503,26 @@ export async function startServer(): Promise<ServerReadyInfo> {
         watch: {
           // UI 冒烟/环境探针的临时目录（.tmp-harness、.tmp-ide-userdata 等）会持续改写
           // 被锁定的 Chromium 缓存/Cookie 文件；vite watcher 对其 watch 会抛 EBUSY。
-          ignored: ["**/.lingbuilder-build/**", "**/.tmp-*/**"]
+          //
+          // 开发服务的 workspaceRoot 常被用户指到 IDE 源码目录自身（electron/）：此时
+          // 工作区文件写入（AI 应用/保存/F5 产物写 .lcpp/.cpp/.json/.lingbuilder 等）
+          // 会被 vite 当成前端源码变更触发整页 reload，整个应用重挂载退回欢迎页。
+          // 下列模式是 IDE 写出的项目/产物文件，永远不是前端模块，对 watcher 屏蔽；
+          // IDE 自身前端源码（.tsx/.ts/.css）不在屏蔽范围，HMR 不受影响。
+          ignored: [
+            "**/.lingbuilder/**",
+            "**/.lingbuilder-build/**",
+            "**/.tmp-*/**",
+            "**/generated/**",
+            "**/exports/**",
+            "**/*.lcpp",
+            "**/*.cpp",
+            "**/*.h",
+            "**/*.hpp",
+            "**/*.rc",
+            "**/*.def",
+            "**/*.generated.json"
+          ]
         }
       },
       appType: "spa",
@@ -5578,6 +5543,14 @@ export async function startServer(): Promise<ServerReadyInfo> {
   }
 
   const server = app.listen(serverRuntimeConfig.port, serverRuntimeConfig.host);
+  // 适配器委托到可变量：工作区切换重建 PtyTerminalService 后，终端 WS 通道自动跟随新实例
+  terminalWorkspaceBridge = attachTerminalWebSocketServer(server, {
+    list: () => ptyTerminalService.list(),
+    subscribe: listener => ptyTerminalService.subscribe(listener),
+    write: (id, data) => ptyTerminalService.write(id, data),
+    resize: (id, cols, rows) => ptyTerminalService.resize(id, cols, rows),
+    close: id => ptyTerminalService.close(id)
+  });
   void refreshWorkspaceBuildExcludeDirs();
   await new Promise<void>((resolve, reject) => {
     server.once("listening", resolve);

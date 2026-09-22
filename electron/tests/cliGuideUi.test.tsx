@@ -43,6 +43,14 @@ test('AI Bridge center persists settings on edit in stopped state without clobbe
   assert.match(componentSource, /停止态修改后自动保存到本机加密存储/u);
   assert.match(componentSource, /saveStartSettings/u);
   assert.match(componentSource, /bridgeRef\.current\.state === 'running'/u);
+  // 保存状态在 Token 字段旁内联徽标呈现（正在保存…/已保存到本机加密存储），失败回错误横幅，底部一次性 toast 已移除。
+  assert.match(componentSource, /settingsSaveState/u);
+  assert.match(componentSource, /正在保存…/u);
+  assert.match(componentSource, /已保存到本机加密存储/u);
+  assert.doesNotMatch(componentSource, /启动设置已保存到本机加密存储/u);
+  // 「打开 Bridge 终端」附近必须讲清 ${LINGBUILDER_AI_BRIDGE_TOKEN} 占位符的生效条件（仅该终端启动的客户端）。
+  assert.match(componentSource, /LINGBUILDER_AI_BRIDGE_TOKEN 环境变量/u);
+  assert.match(componentSource, /\$\{LINGBUILDER_AI_BRIDGE_TOKEN\} 占位符完成鉴权/u);
   // 权限选择只触发桌面客户端重新检测，不得连带回滚启动设置（effect 解耦）。
   // bootstrap effect 允许带 loadSkillKit（打开时读一次正文状态），但绝不能依赖 refreshCodexDesktop。
   assert.match(componentSource, /\}, \[desktopApi, loadBridgeStatus, loadSkillKit, open, refreshClients\]\);/u);

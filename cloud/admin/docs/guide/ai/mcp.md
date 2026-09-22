@@ -30,23 +30,29 @@ AI Bridge 支持两种 MCP 传输方式，两者复用同一套工具与权限�
 补充说明：
 
 - 使用 `--no-mcp-http` 参数可关闭 Streamable HTTP，仅保留 STDIO。
-- 所有请求必须携带 `Authorization: Bearer <token>`。Token 由 IDE 或启动命令生成，只保存在内存中，不会写入磁盘。
+- 所有请求必须携带 `Authorization: Bearer <token>`。Token 由 IDE 生成，运行时只保存在内存中；配置里写 `${LINGBUILDER_AI_BRIDGE_TOKEN}` 占位符即可由从 Bridge 终端启动的客户端自动展开（详见 [AI Bridge 连接配置](/guide/ai/bridge-config)）。
 
 ## 3. 已暴露的 MCP 工具
+
+AI Bridge 当前对外暴露 **23 个 MCP 工具**：
 
 | 工具名 | 说明 |
 |---|---|
 | `lingbuilder.workspace.list` | 列出 LingBuilder 工作区文件树 |
 | `lingbuilder.file.read` | 读取工作区内允许类型的文本文件 |
 | `lingbuilder.file.search` | 在工作区内执行受控文本搜索 |
-| `lingbuilder.lingcpp.diagnostics` | 返回 `.lcpp` 解析与语义诊断；传入完整设计器模型时可校验控件引用与事件绑定 |
-| `lingbuilder.edit.propose` | 根据外部 AI 提供的**完整文件草稿**生成可预览修改提案；多文件编辑需传入全部目标文件的当前内容 |
-| `lingbuilder.edit.apply` | 应用已有的 WorkspaceEdit 提案，受权限模式控制 |
+| `lingbuilder.lingcpp.diagnostics` | 返回 `.lcpp` 解析与语义诊断，并附带设计器组件清单与代码组织建议等只读视图 |
+| `lingbuilder.edit.propose` | 根据外部 AI 提供的文件草稿生成可预览修改提案；支持整文件、按行数组、行级增量三种提交形态，服务端可自动读取工作区当前内容 |
+| `lingbuilder.edit.apply` | 应用已有的修改提案，受权限模式控制 |
 | `lingbuilder.project.templates` | 列出可用于 AI 新建项目的受控中文项目模板 |
 | `lingbuilder.project.create` | 预览或创建项目；不传 `approved=true` 时只返回预览不落盘 |
 | `lingbuilder.project.create.undo` | 撤销尚未被用户修改的 AI 项目创建事务 |
-| `lingbuilder.build.run` | 执行受控构建/运行请求，需传入完整设计器模型 |
-| `lingbuilder.modules.list` | 列出模块与指定项目的模块上下文 |
+| `lingbuilder.build.run` | 执行受控构建/运行请求；传 `projectId` 即可复用磁盘上已注册的项目，也可传完整设计器模型 |
+| `lingbuilder.modules.list` | 列出已安装模块的摘要（ID、版本、命令数、文档路径） |
+| `lingbuilder.module.info` | 查询单个模块的完整命令签名、参数说明、示例与设计器控件视图，是外部 AI 界面开发的事实来源 |
+| `lingbuilder.build.stop` | 停止 Bridge 自己启动的受控构建/运行进程 |
+| `lingbuilder.run.wait` | 等待受控运行结束，可带超时 |
+| `lingbuilder.run.log` | 读取最近一次受控运行的输出，进程退出后仍可读 |
 | `lingbuilder.native.preview` | 预览生成的 C++ 工程文件（写入受控临时目录） |
 | `lingbuilder.native.export` | 导出 C++ 工程，受权限模式控制 |
 | `lingbuilder.module.scaffold` | 在 `.lingbuilder/module-build` 下创建 `.lbmod` 模块项目骨架（manifest v2 + C++ 源码模板） |
@@ -57,7 +63,11 @@ AI Bridge 支持两种 MCP 传输方式，两者复用同一套工具与权限�
 | `lingbuilder.module.install` | 按 `previewId` 安装模块包并可启用到指定项目；收费模块仍受权益门禁 |
 
 > [!NOTE]
-> 编辑类工具接收的是**完整文件草稿**而不是 diff 片段；构建、预览与导出类工具需要传入 `project.create` 返回的完整设计器模型，不能只传项目 ID。
+> - `edit.propose` 的每个文件草稿在 **updatedSource（整文件）/ updatedLines（按行数组）/ edits（行级增量）** 三种形态中三选一；不传工作区文件快照时服务端会自动读取磁盘当前内容。
+> - `build.run` / `native.preview` / `native.export` 支持 **`project` 与 `projectId` 二选一**，推荐只传 `projectId`（服务端读取磁盘上已注册的项目模型），避免在上下文里搬运完整设计器模型。
+> - 窗口项目的 `.lcpp` 若引用了设计器中不存在的控件，`edit.apply` 与构建会被中文诊断阻断，并给出补齐设计器模型的修复路径。
+
+标准工作流为：`project.templates` 选模板 → `project.create` 创建 → `edit.propose` / `edit.apply` 修改 → `lingcpp.diagnostics` 检查 → `build.run` 构建 → `run.wait` / `run.log` 观察运行 → 必要时 `build.stop` 停止。
 
 ### 模块生成工具链
 
@@ -105,13 +115,14 @@ curl -X POST http://127.0.0.1:17860/api/ai-bridge/mcp \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
-Claude Code、Codex CLI 与 Gemini CLI 的免手写配置，可直接在 AI Bridge 连接中心生成。
+Claude Code、Codex CLI 与 Gemini CLI 的免手写配置，可直接在 AI Bridge 连接中心生成；其他客户端可复制连接中心的「连接配置」JSON，其中 `${LINGBUILDER_AI_BRIDGE_TOKEN}` 占位符由从 Bridge 终端启动的客户端自动展开。
 
 ## 6. 常见问题
 
 ### 连接被拒绝（401）
 
-- Token 不匹配。请从 AI Bridge 连接中心复制当前会话的最新 Token。
+- Token 不匹配。留空自定义 Token 时，每次重启 Bridge 都会更换临时 Token，需重开 Bridge 终端或重新连接。
+- 直接双击打开的客户端读不到 `${LINGBUILDER_AI_BRIDGE_TOKEN}` 占位符，展开为空——改从 Bridge 终端启动，或填写自定义 Token（见 [AI Bridge 连接配置](/guide/ai/bridge-config)）。
 - Bridge 未启动或端口不一致。
 
 ### 返回 406 Not Acceptable

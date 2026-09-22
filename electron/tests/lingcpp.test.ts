@@ -95,7 +95,7 @@ import { generateLingCppNativeWin32Project } from '../src/services/windowDesigne
 import { ExternalProjectProperties, resolveExecutableNameParts, validateProperties } from '../src/services/solution/externalProjectService';
 import { buildProjectDllDefLines, createProjectDllCommandContext, createProjectDllDeclarationModule, DLL_STRUCT_FIELD_TYPE_MAP, generateProjectDllDeclarationHeader, getProjectDllCommandsDiagnostics, parseDllDeclarationSnippet, resolveDllBoundaryPointerType, resolveDllBoundaryType, serializeDllCommandSnippet, serializeProjectDllCommandLibraries } from '../src/services/lingCpp/projectDllCommandService';
 import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
-import { LingWindowProject } from '../src/services/windowDesigner/types';
+import { LingClockResource, LingWindowProject } from '../src/services/windowDesigner/types';
 import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
 import { InstalledModule } from '../src/services/modules/types';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
@@ -1237,6 +1237,30 @@ test('新手编辑器为设计器组件名生成全拼和首字母补全别名',
   assert.ok(command?.pinyin?.includes('qran.sznr'));
 });
 
+test('设计器控件命令补全插入裸控件名，不用双引号包裹 controlRef', () => {
+  const designerProject = {
+    schemaVersion: 2 as const,
+    id: 'designer-bare-controlref-completion',
+    name: '设计器裸控件名补全',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 800, height: 600, background: '#ffffff', description: '', controls: [{
+        id: 'confirm-button', type: 'Button', name: '确认按钮', content: '确定',
+        width: 120, height: 32, x: 20, y: 20, fontSize: 12,
+        background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible' as const
+      }]
+    }]
+  } as LingWindowProject;
+  const source = '类 MainWindow : 公开 窗体\n    事件 _主窗口_创建完毕()\n    结束\n结束类';
+  const completions = getLingCppDesignerControlCompletions(source, designerProject);
+  const setContent = completions.find(item => item.label === '确认按钮.设置内容');
+
+  assert.equal(setContent?.insertText, '控件_设置文本(确认按钮, "$1")');
+  completions.forEach(item => {
+    assert.doesNotMatch(item.insertText, /\("确认按钮/u, `${item.label} 的插入文本把控件名包进了双引号`);
+  });
+});
+
 test('未启用模块的同名命令不应产生模块未引用误报', () => {
   const enabledModule: InstalledModule = {
     isInstalled: true,
@@ -2317,6 +2341,110 @@ test('LingCpp designer bindings recognize non-visual file dialog resource events
   const hints = getLingCppDesignerBindings(source, project, 'src/MainWindow.lcpp');
   assert.ok(hints.some(hint => hint.status === 'bound' && hint.controlId === 'file-dialog-1' && hint.eventName === 'FilesSelected'));
   assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
+});
+
+test('LingCpp designer bindings recognize clock resource period events', () => {
+  const source = `类 MainWindow
+    事件 _时钟1_周期到期()
+        调试输出("周期到期")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'clock-binding-project',
+    name: '时钟绑定',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: []
+    }],
+    resources: [{
+      id: 'clock-1', type: 'Clock', name: '时钟1', ownerWindowId: 'main-window',
+      periodMilliseconds: 1000, startEnabled: true, periodHandler: '_时钟1_周期到期'
+    }]
+  };
+
+  const hints = getLingCppDesignerBindings(source, project, 'src/MainWindow.lcpp');
+  assert.ok(hints.some(hint => hint.status === 'bound' && hint.controlId === 'clock-1' && hint.eventName === 'Elapsed'));
+  assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
+});
+
+test('Win32 生成延时、延迟调用与时钟组件的不冻结界面运行时', () => {
+  const basic = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  const modules: InstalledModule[] = [{
+    manifest: basic, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  const source = `类 MainWindow
+    事件 _MainWindow_创建完毕()
+        延时(500)
+        延迟调用(1000, &延迟完成后)
+        时钟_启动(时钟1)
+        调试输出(时钟_取周期(时钟1), 时钟_是否已启动(时钟1))
+    结束
+    事件 _时钟1_周期到期()
+        调试输出("周期到期")
+    结束
+    空 延迟完成后()
+        调试输出("延迟完成")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'clock-delay-project',
+    name: '延时定时',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: []
+    }],
+    resources: [{
+      id: 'clock-1', type: 'Clock', name: '时钟1', ownerWindowId: 'main-window',
+      periodMilliseconds: 500, startEnabled: true, periodHandler: '_时钟1_周期到期'
+    }]
+  };
+
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  // 延时：泵消息等待实现存在，调用按原样落进创建完毕。
+  assert.match(mainCpp, /MsgWaitForMultipleObjectsEx\(0, nullptr, wait, QS_ALLINPUT, MWMO_INPUTAVAILABLE\)/u);
+  assert.match(mainCpp, /延时\(500\);/u);
+  // 延迟调用：delayedCall 绑定生成一次性 WM_TIMER lambda，在界面线程调用处理器。
+  assert.match(mainCpp, /延迟调用\(1000, \[this\]\(\) \{ this->延迟完成后\(\); \}\);/u);
+  assert.match(mainCpp, /template<class Callback> bool 延迟调用\(int milliseconds, Callback&& callback\)/u);
+  assert.match(mainCpp, /bool HandleDelayedCallTimer\(UINT_PTR timerId\)/u);
+  // 时钟：资源规格表 + WM_TIMER 分发 + 周期到期事件绑定到用户处理器 + 自动启动。
+  assert.match(mainCpp, /static ClockSpec g_clocks\[\] = \{\s*\{ L"clock-1", L"时钟1", 0, 500u, true \}/u);
+  assert.match(mainCpp, /bool HandleClockTimer\(UINT_PTR timerId\)/u);
+  assert.match(mainCpp, /if \(TextEquals\(resourceId, L"clock-1"\) && TextEquals\(eventName, L"Elapsed"\)\) \{ 时钟1_周期到期\(\); return; \}/u);
+  assert.match(mainCpp, /时钟_启动默认组件\(\);/u);
+});
+
+test('控制台项目使用时钟组件必须生成前阻断并给出中文诊断', () => {
+  const basic = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  const modules: InstalledModule[] = [{
+    manifest: basic, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  const source = `类 MainWindow
+    事件 _MainWindow_创建完毕()
+        调试输出("启动")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'clock-console-project',
+    name: '控制台时钟',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: []
+    }],
+    resources: [{
+      id: 'clock-1', type: 'Clock', name: '时钟1', ownerWindowId: 'main-window',
+      periodMilliseconds: 1000, startEnabled: true
+    }]
+  };
+
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: source,
+    enabledModules: modules,
+    outputKind: 'console-application'
+  });
+  assert.ok(generated.blockingDiagnostics.some(message => message.includes('「时钟」组件只能在窗口程序中计时')), '控制台 + 时钟必须阻断');
 });
 
 test('LingCpp designer bindings recognize non-visual menu item events by stable item id', () => {

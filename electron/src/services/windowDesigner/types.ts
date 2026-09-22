@@ -9,6 +9,7 @@ export type LingControlType =
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
   | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'
+  | 'Clock'
   | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser' | 'FBroBrowser' | 'FBroHeadlessBrowser' | 'EdgeViewHeadlessBrowser' | 'CefHeadlessBrowser';
 
 export interface LingEventBinding {
@@ -225,6 +226,28 @@ export interface LingFileDialogResource {
   cancelledHandler?: string;
 }
 
+/**
+ * 「时钟」非可视组件：基于 WM_TIMER 的周期定时器，等待不冻结界面。
+ * periodMilliseconds 为 0 表示默认不计时，由 时钟_启动/时钟_置周期 在代码中控制。
+ */
+export interface LingClockResource {
+  id: string;
+  type: 'Clock';
+  name: string;
+  /** 仅用于设计器画布内占位的水平坐标，不生成运行时控件。 */
+  designerX?: number;
+  /** 仅用于设计器画布内占位的垂直坐标，不生成运行时控件。 */
+  designerY?: number;
+  /** 时钟归属窗口；时钟计时器挂在该窗口上，随窗口销毁停止。 */
+  ownerWindowId: string;
+  /** 周期毫秒；0 表示创建后不自动计时。 */
+  periodMilliseconds: number;
+  /** 真=窗口创建后自动开始计时；假=只声明组件，由 时钟_启动 显式启动。 */
+  startEnabled: boolean;
+  /** 周期到期事件处理器；设计器事件面板绑定，默认名 _<组件名>_周期到期。 */
+  periodHandler?: string;
+}
+
 export interface LingMenuResourceItem {
   /** 稳定项目 ID；显示文字改变后事件绑定仍保持不变。 */
   id: string;
@@ -320,7 +343,7 @@ export interface LingCefHeadlessResource {
   autoStart: boolean;
 }
 
-export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingMenuResource | LingFbroHeadlessResource | LingEdgeViewHeadlessResource | LingCefHeadlessResource;
+export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingClockResource | LingMenuResource | LingFbroHeadlessResource | LingEdgeViewHeadlessResource | LingCefHeadlessResource;
 
 /**
  * 项目级内嵌资源：构建期把任意格式文件以 RCDATA 打进 EXE，运行期用「资源_*」命令按逻辑名读取。

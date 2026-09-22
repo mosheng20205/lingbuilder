@@ -116,6 +116,11 @@ export interface WorkspaceEditProposal {
   changes: WorkspaceEditChange[];
   designerProject?: import('./services/windowDesigner/types').LingWindowProject;
   designerProjectOriginal?: import('./services/windowDesigner/types').LingWindowProject;
+  /** 提案生成时 planner 实际看到的设计器模型（画布/调用方模型）。面板画布通常只存在内存、
+   *  尚未落盘，apply 的客户端一致性守卫必须与它比对；磁盘漂移由 designerProjectOriginal 守卫负责。 */
+  designerCallerBaseline?: import('./services/windowDesigner/types').LingWindowProject;
+  /** 需求命中窗口/控件词但 AI 最终没有产生布局变化：界面必须如实播报「布局未变化」。 */
+  designerUnchanged?: boolean;
 }
 
 export interface WorkspaceFileSnapshot {

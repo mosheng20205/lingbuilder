@@ -21,19 +21,14 @@ const proposalStore = new Map<string, { proposal: WorkspaceEditProposal; expires
 export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEditDraft = {}): WorkspaceEditProposal {
   const now = new Date().toISOString();
   const workspaceFiles = resolveWorkspaceFiles(context);
-  const draftFiles = resolveDraftFiles(context, draft);
+  const explicitDraftFiles = resolveExplicitDraftFiles(context, draft);
+  const draftFiles: LingCppEditDraftFile[] = explicitDraftFiles ?? [{
+    filePath: context.filePath,
+    updatedSource: buildLocalUpdatedSource({ ...context, sourceCode: normalizeLineEndings(context.sourceCode) })
+  }];
   let changes = draftFiles
     .map(fileDraft => createChangeForDraftFile(fileDraft, workspaceFiles, context))
     .filter((change): change is WorkspaceEditChange => Boolean(change));
-
-  if (changes.length === 0) {
-    const sourceCode = normalizeLineEndings(context.sourceCode);
-    const fallbackRange = context.selection || createFullDocumentRange(sourceCode);
-    const updatedSource = buildLocalUpdatedSource({ ...context, sourceCode });
-    changes = [
-      createWorkspaceEditChangeFromRewrite(context.filePath, sourceCode, updatedSource, fallbackRange)
-    ];
-  }
 
   const allowedDesignerControlTypes = getAllowedDesignerControlTypes(context);
   if (draft.designerProject) {
@@ -104,8 +99,12 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
     ...(designerProject ? {
       designerProject,
       designerProjectOriginal: cloneDesignerProject(context.designerProjectDiskBaseline ?? context.designerProject),
+      // planner 实际看到的画布/调用方模型：apply 阶段「客户端模型一致性守卫」的比对基准。
+      // 面板画布通常尚未落盘，客户端守卫不能拿提交的画布模型与磁盘比对（必然失败）。
+      ...(context.designerProject ? { designerCallerBaseline: cloneDesignerProject(context.designerProject) } : {}),
       designerAllowedControlTypes: [...allowedDesignerControlTypes]
-    } : {})
+    } : {}),
+    ...(designerUnchanged ? { designerUnchanged: true } : {})
   };
 
   purgeExpiredProposals();
@@ -329,6 +328,9 @@ const DESIGNER_CONTROL_TYPE_ALIASES: Record<string, string> = {
   '工具提示': 'ToolTip',
   filedialog: 'FileDialog',
   '文件对话框': 'FileDialog',
+  clock: 'Clock',
+  '时钟': 'Clock',
+  '定时器': 'Clock',
   contextmenu: 'ContextMenu',
   '上下文菜单': 'ContextMenu',
   '右键菜单': 'ContextMenu',
@@ -679,8 +681,13 @@ function createChangeForDraftFile(
   return createWorkspaceEditChangeFromRewrite(fileDraft.filePath, originalSource, updatedSource, fallbackRange);
 }
 
-function resolveDraftFiles(context: LingCppEditContext, draft: LingCppEditDraft): LingCppEditDraftFile[] {
-  if (Array.isArray(draft.files) && draft.files.length > 0) {
+/**
+ * AI 是否显式给出了文件草稿。`files: []` 是合法形态（只改设计器布局、源码不动），
+ * 必须与「完全没给草稿」区分开——后者是 planner 失败的本地降级，才允许生成注释草稿；
+ * 前者若再注入占位注释，就等于把一份纯布局提案伪装成源码改动。
+ */
+function resolveExplicitDraftFiles(context: LingCppEditContext, draft: LingCppEditDraft): LingCppEditDraftFile[] | undefined {
+  if (Array.isArray(draft.files)) {
     return dedupeDraftFiles(draft.files);
   }
 
@@ -691,13 +698,7 @@ function resolveDraftFiles(context: LingCppEditContext, draft: LingCppEditDraft)
     }];
   }
 
-  return [{
-    filePath: context.filePath,
-    updatedSource: buildLocalUpdatedSource({
-      ...context,
-      sourceCode: normalizeLineEndings(context.sourceCode)
-    })
-  }];
+  return undefined;
 }
 
 function dedupeDraftFiles(files: LingCppEditDraftFile[]): LingCppEditDraftFile[] {

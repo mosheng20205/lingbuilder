@@ -41,6 +41,46 @@ export async function listDesignerImageResources(projectId: string): Promise<Des
   return result.resources;
 }
 
+/** 一处图片资源引用：designer = 窗口设计器模型；source = 项目源码文件。 */
+export interface DesignerImageReferenceInfo {
+  source: 'designer' | 'source';
+  location: string;
+  detail: string;
+}
+
+export type DesignerImageDeleteResult =
+  | { status: 'deleted' }
+  | { status: 'needs-confirmation'; references: DesignerImageReferenceInfo[]; truncated: number }
+  | { status: 'error'; error: string };
+
+/**
+ * 删除项目图片资源。首次调用 confirmed=false：仍有引用时服务端返回 needs-confirmation
+ * 与引用清单，由用户在确认弹窗里二次确认后再以 confirmed=true 重发。
+ */
+export async function deleteDesignerImageResource(projectId: string, relativePath: string, confirmed: boolean): Promise<DesignerImageDeleteResult> {
+  let response: Response;
+  let result: { ok?: boolean; requiresConfirmation?: boolean; references?: DesignerImageReferenceInfo[]; truncated?: number; error?: string };
+  try {
+    response = await fetch('/api/window-designer/assets/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, relativePath, confirmed })
+    });
+    result = await response.json() as typeof result;
+  } catch (error) {
+    return { status: 'error', error: error instanceof Error ? error.message : '图片资源删除请求失败。' };
+  }
+  if (result.requiresConfirmation) {
+    return {
+      status: 'needs-confirmation',
+      references: Array.isArray(result.references) ? result.references : [],
+      truncated: typeof result.truncated === 'number' ? result.truncated : 0
+    };
+  }
+  if (!response.ok || !result.ok) return { status: 'error', error: result.error || '图片资源删除失败。' };
+  return { status: 'deleted' };
+}
+
 /** 内嵌站点「扫描目录」：递归列出工作区内一个目录的全部文件（工作区相对路径）。 */
 export async function scanEmbeddedSiteDirectory(directory: string): Promise<string[]> {
   const query = new URLSearchParams({ dir: directory });

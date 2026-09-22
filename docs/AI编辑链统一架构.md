@@ -19,7 +19,7 @@ IDE AI 面板与外部 AI（MCP / REST / CLI）的**编辑事务与校验**已�
 |---|---|
 | 路径校验 | `WorkspacePathPolicy` 限定 `--workspace` 内 + 写入白名单文本文件，符号链接拒绝 |
 | 提案形态 | `files[]` 三选一：`updatedSource`（全量，≤256KB）/ `updatedLines` / `edits`（行级增量） |
-| 设计器一致性 | `areDesignerProjectsEquivalent` 键序不敏感深比较；漂移基准取磁盘快照（`designerProjectDiskBaseline`），禁止 `JSON.stringify` 相等比较 |
+| 设计器一致性 | `areDesignerProjectsEquivalent` 键序不敏感深比较，禁止 `JSON.stringify` 相等比较；漂移检测双守卫（2026-09-21 修正）：**客户端一致性守卫**比对「提案生成时 planner 实际看到的模型」（`proposal.designerCallerBaseline`，面板画布/调用方视图——面板画布通常尚未落盘，与磁盘比对会对「只在画布上设计过」的项目结构性失败），**磁盘漂移守卫**比对 `designerProjectOriginal`（磁盘快照，`designerProjectDiskBaseline`）与应用时的最新磁盘，两道缺一不可、基准不可混用 |
 | 控件引用门禁 | `edit.apply` 与 `build.run`/`native.preview`/`native.export` 对窗口项目最终源码校验 controlRef，缺失控件中文阻断（`lingcpp-control-reference-*`） |
 | 幻影项目封堵 | 拒绝向未注册的 `.lingbuilder/projects/<id>/` 与裸 `window-designer.json` 写入 |
 | 编码/EOL 保留 | `decodeTextFile`/写回保持原文件编码与换行风格 |
@@ -78,7 +78,7 @@ IDE AI 面板（/api/lingcpp/edit/propose|from-system-draft|apply）
   一致时中文拒绝（`AI 未产生任何实际改动…`），不再产出一份点了「应用提案」却什么都没变的空提案；
   `files: []` 也不再触发本地占位注释降级（占位注释只保留给 planner 完全没给草稿的本地安全提案）。
   回归锚点：`tests/lingcpp.test.ts`（纯布局提案 / 无改动拒绝 / 等价模型明示）、
-  `tests/aiConnectionSession.test.ts`（问答路由 / 播报出口 / planner 与云端贯通）、
+  `tests/aiAgentPanel.test.ts`（播报出口 / planner 与云端贯通；面板侧问答路由判定已随引擎收敛删除）、
   `cloud/api/tests/ai-edit.test.ts`（关键词不再阻断 / 纯布局放行 / 大小写与新建额度）。
 
 ## 仍然各自保留的部分（不算重复实现）
@@ -155,7 +155,8 @@ IDE AI 面板（/api/lingcpp/edit/propose|from-system-draft|apply）
 验证锚点：`tests/aiProviderChat.test.ts` 新增两条——「请求体 Key 优先，环境变量
 旧 Key 不顶替」（断言上游收到的 Authorization 就是请求体 Key）与「显式配置缺 Key
 不回落环境变量」（断言 mock provider 零请求、提案本地降级、聊天报缺 Key）；
-`tests/aiConnectionSession.test.ts` 钉住「加上/加个」路由与不放宽面。真机
+`tests/aiAgentPanel.test.ts` 曾钉住「加上/加个」路由与不放宽面（该判定层已于 2026-09-22 随
+面板引擎收敛删除）。真机
 （dev 3001 + electron 9222，DeepSeek 真端点）：提案卡片出现且「应用提案」
 写回 `src/MainWindow.lcpp` 与设计器模型，全程无 401。
 
@@ -199,8 +200,8 @@ IDE AI 面板（/api/lingcpp/edit/propose|from-system-draft|apply）
    1200 字符写入容器日志；`parseEditDraft` 错误信息区分「模型没给文件草稿」与
    「给了但路径全部被白名单过滤」（后者点名被拒路径并提示 newFiles 声明方式）。
 
-回归：`tests/aiConnectionSession.test.ts`（词边界/模块意图/白名单推导匹配）、
-`tests/aiModuleGenerationFlow.test.ts`（清单登记比对/契约解析）、
+回归：`tests/aiAgentPanel.test.ts`（旧通道物理删除 / 事件总线交接 / 白名单校验匹配）、
+`tests/aiModuleGenerationFlow.test.ts`（共享流不再携带模型通道 / 契约解析）、
 `cloud/api/tests/ai-edit.test.ts`（newFiles 放行/拒绝消息/形状校验）。
 
 ## 设计器 apply 客户端守卫基准修正（2026-09-21）
@@ -273,7 +274,8 @@ Map**——直接把面板接上去必然「未找到编辑提案」。交接实
   报「文件在 AI 提案生成后已发生变化」的假漂移。
 - `server.ts` 新增只读 `GET /api/lingcpp/edit/agent-proposal`（取最新未应用提案），
   `/api/lingcpp/edit/apply` 按 ID 回退读盘。
-- 面板 `AiConnectionMode` 增加 `'agent'`（第三个页签「本机 Agent」）。`runAgentTurn`
+- 面板 AI 引擎自 2026-09-22 起**只剩「本机 Agent」一个**（原 `AiConnectionMode` 三页签与系统 AI /
+  自定义 API 通道已物理删除，见下文「面板引擎收敛」条）。`runAgentTurn`
   只提交需求并展示提案（`setEditProposal`），落盘仍由现有 `handleApplyProposal` 走唯一
   apply 事务；**渲染层不得出现任何直接写文件的分支**。
 
@@ -288,7 +290,7 @@ Map**——直接把面板接上去必然「未找到编辑提案」。交接实
   步骤状态**故意不进会话 store**（不持久化），避免把一次性执行痕迹混进历史记录；卡片必须显式
   标注「写盘与构建不在此列」，否则用户会以为 agent 已经改过文件。工具名展示前去掉
   `mcp__lingbuilder__lingbuilder_` 前缀与 12 位哈希后缀。
-- **运行时状态指示**：`aiMode === 'agent'` 时在聊天区上方渲染常驻状态行，直接消费
+- **运行时状态指示**：常驻状态行渲染在聊天区上方（面板只有一个引擎，不再按 `aiMode` 判定），直接消费
   `agent-runtime:status` 快照（未启动/启动中/待命/执行中/停止中/启动失败 + Node 版本、模型、PID），
   启停按钮调同一 IPC；启动失败必须显示 `snapshot.problem` 原文，禁止再降级成一条聊天文本。
 - **拒绝即时清理**：`/api/lingcpp/edit/reject` 在 `rejectWorkspaceEdit` 之后必须同步删交接目录
@@ -365,3 +367,47 @@ installPreview 预览 ID 与收费权益门禁。**把模块命令接进用户�
 更新渠道）与本次移除无关，继续全界面常驻。
 
 
+
+## AI 面板引擎收敛为本机 Agent 单通道（2026-09-22）
+
+用户验收时提出：面板里「系统 AI / 自定义 API / 本机 Agent」三个引擎并存让人困惑，且系统 AI 与
+自定义 API 的能力已被本机 Agent 覆盖。经拍板后**两条旧通道在面板侧物理删除**（不是隐藏页签）。
+
+**删除范围（渲染层）**：`AiAssistant.tsx` 的 `aiMode` 三态与页签、系统 AI 登录/模型选择卡、
+BYOK 预设与协议表单、自动连通检测、模型列表拉取、`cloudAi` 事件订阅（含 `edit_draft` →
+`/api/lingcpp/edit/from-system-draft` 这条面板驱动链）、BYOK 聊天 `POST /api/ai/chat`、BYOK 编辑
+`/api/lingcpp/edit/propose`、聊天内模块生成流 `runModuleGenerationInChat`，以及面板侧意图判定
+谓词（`isLikelyDesignerEditInstruction` / `isLikelyCodeEditInstruction` / `isLikelyAskingOnlyInstruction`
+/ `isLikelyModuleGenerationInstruction`）和 `getAiWorkspaceFilesForEdit`；`src/services/ai/
+aiConnectionSessionService.ts`（面板重挂时的连接态缓存）随之下线。面板现在只做一件事：把这句话
+交给内嵌运行时（`runChatTurn → runAgentTurn`），取回提案走唯一 apply。
+
+**为什么不保留意图判定**：那套谓词的存在理由是「面板自己决定走聊天还是编辑提案」；引擎收敛后
+分类由模型自己做（它看得见 `workspace.list`/`file.read`/`edit.propose`，会自行选择），面板再猜一次
+只会把「给按钮加点击计数」这类需求误判成问答或误拒。历史上因英文关键词缺词边界把「生成模块」
+误路由进编辑链（`demo_add`）的坑，随整个判定层删除而不再可能复发。
+
+**保留部分（明确不动）**：
+- 本地服务与云端能力：`/api/ai/chat`、`/api/ai/connect`、`/api/ai/models`、
+  `/api/lingcpp/edit/propose|from-system-draft`、`panelAiBridgeService`、`aiProviderService` 四协议
+  实现、云端系统 AI 网关与点数计费全部原样保留——CLI、外部宿主与打包冒烟测试仍会调用；
+  `/api/ai/models` 与 `/api/ai/connect` 还是面板「模型通道」表单的探测通道（主进程代调，密钥不回传）。
+- 账号与点数 UI **整体移出面板**（用户 2026-09-22 追加要求：面板用不到账号系统，登录注册块太占位）：
+  面板不再出现登录/注册/忘记密码/点数/充值，`cloudAccount*` 的导入与 state 全部摘掉；这些入口由标题栏
+  `CloudAccountTitleBarEntry`、设置「账号」分类、欢迎页与帮助菜单命令出口继续常驻（表单仍只有一份）。
+- 提案预览 / Diff / 应用 / 拒绝 / 控件引用门禁 / 交接目录清理：一字未改。
+
+**模块「AI 生成模块」改挂本机 Agent**：面板不再自带模型通道，改为经
+`src/services/ai/agentRequestBus.ts` 投递需求。链路是「模块面板 → `requestAiAgentTurn` →
+App 监听（展开 AI 助手侧栏并存 `pendingAgentRequest`）→ `AiAssistant` 经 `agentRequest` prop
+起唯一一轮 Agent 会话」。关键约束：**侧栏收起时 `AiAssistant` 根本没挂载**，事件直接派发会被丢弃，
+所以需求必须先落工作台 state，消费后按自增 id 认领清除。`aiModuleGenerationFlow.ts` 只剩手动粘贴
+导入的受控出口 `importAiModuleFilesToWorkspace`，`aiModuleGeneration.ts`（提示词组装）与服务端
+`POST /api/modules/ai-generate` 一并删除；Agent 侧模块封装链工具已解禁（见「内嵌 Agent」节），
+由它自己 `module.scaffold → writeFiles → validate` 写 module-build。
+
+**回归口径**：`tests/aiAgentPanel.test.ts`（取代 `tests/aiConnectionSession.test.ts`）钉住三件事——
+旧通道标识在 `AiAssistant.tsx` 里一个都不许剩（枚举字符串逐个 `!includes`）、需求交接只有事件总线
+一条通道且由工作台展开侧栏、模块面板不再自带生成状态；`tests/aiModuleGenerationFlow.test.ts` 钉住
+共享流不再携带模型通道且服务端不再暴露 `/api/modules/ai-generate`。账号入口齐备性仍由
+`tests/cloudAccountEntry.test.tsx` 把守。

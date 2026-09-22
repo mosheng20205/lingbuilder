@@ -4,97 +4,83 @@ title: AI Bridge 连接配置
 
 # AI Bridge 连接配置
 
-> [🕒 预计 20 分钟] | 难度：入门 | 关联功能：AI 聊天助手、MCP 工具、外部 AI 客户端
+> [🕒 预计 20 分钟] | 难度：入门 | 关联功能：AI 对话式改代码、MCP 工具协议、灵码 Skill
 
-![AI Bridge 连接中心界面](./assets/mcp-settings-ui.png)
+![AI Bridge 连接中心：Bridge 状态与启动设置](./assets/bridge-center-connect.png)
 
-## 1. 什么是 AI Bridge
+## 1. AI Bridge 是什么
 
-**AI Bridge** 是 LingBuilder 内置的模型服务连接中心，用于统一管理多个 AI 模型服务商的连接配置。通过 AI Bridge，用户可以：
+**AI Bridge** 是 LingBuilder 内置的本地受控服务：把当前工作区的读取、编辑、构建、模块等能力，以 **MCP（Model Context Protocol）** 和 HTTP 接口安全地开放给外部 AI 客户端（ChatGPT/Codex 桌面版、Codex CLI、Claude Code、Gemini CLI 等），让 AI 直接在你的项目上干活。
 
-- 添加多个模型供应商（DeepSeek、OpenAI、Anthropic、本地 Ollama 等）
-- 在 **AI 聊天助手** 等 AI 功能中一键切换所使用的模型服务
-- 精细化控制 AI 功能的权限范围（读文件、改文件、执行命令等)
-- 支持 **MCP（Model Context Protocol）** 协议，让外部 AI 客户端（如 Claude Code、Codex CLI、Gemini CLI）连接 LingBuilder 工作区
-- 同时支持 **STDIO** 和 **Streamable HTTP** 两种 MCP 传输方式
+- 仅监听 `127.0.0.1`，外网无法访问；
+- 所有访问都受 **工作区边界**（只能访问当前工作区内的文件）和 **权限模式**（只读/预览确认/全自动）双重约束；
+- Token 只保存在本机（运行时在内存、自定义 Token 经系统加密存储），绝不写入云端，也绝不写入外部客户端的全局配置文件。
 
-AI Bridge 默认监听 `127.0.0.1:17860`，仅限本机访问，确保工作区数据安全。
+> [!NOTE]
+> 给 AI 助手配置模型供应商（DeepSeek、OpenAI、Anthropic 等 API Key）不在连接中心：请使用 AI 面板中的 **系统 AI**（登录 LingBuilder 账号，按点数计费）或 **自定义 API**（BYOK，自带 Key）入口。
 
-## 2. 打开 AI Bridge 连接中心
+## 2. 打开连接中心
 
-1. 在 LingBuilder 主窗口顶部菜单栏，点击 **帮助(H)** > **AI Bridge 连接中心...**。
-2. 打开 **AI Bridge 连接中心** 窗口，界面分为以下区域：
+主窗口顶部菜单栏点击 **帮助(H)** > **AI Bridge 连接中心...**。窗口分为两个页签：
 
-| 区域 | 说明 |
+| 页签 | 内容 |
 |---|---|
-| **服务列表** | 已添加的模型服务连接，可设为默认、编辑或删除 |
-| **默认服务** | 当前 AI 功能默认使用的模型连接 |
-| **权限模式** | AI 工具可执行操作的范围设定 |
-| **MCP 设置** | 启用/配置 MCP 协议，支持外部 AI 客户端接入 |
-| **Bridge 状态** | 显示当前 AI Bridge 运行状态、端口和 Token 信息 |
+| **连接** | Bridge 状态与启动、Bridge 启动设置、ChatGPT/Codex 桌面客户端、连接外部 AI CLI、手动连接（高级） |
+| **客户端与活动** | 已连接客户端、工具调用活动、运行日志 |
 
-> [!TIP]
-> AI Bridge 使用一次性 Token 进行身份验证，每次启动时自动生成。Token 仅保存在内存中，不会写入磁盘。
+工作台标题栏右侧有常驻的 **Bridge 徽标**，实时显示运行状态（端口与客户端数），点击即可打开连接中心，不必翻菜单。
 
-## 3. 配置模型服务连接
+## 3. 启动 Bridge 与启动设置
 
-在 AI Bridge 连接中心中，点击 **添加服务** 来配置新的模型供应商：
+在「连接」页签顶部点击 **启动 AI Bridge** 即可启动。运行中会显示 MCP 与 HTTP API 端点、掩码后的 Token（可复制）和已连接客户端数，并提供 **重启 Bridge** / **停止 Bridge** 按钮。
 
-### 供应商类型
+启动前可在下方 **Bridge 启动设置** 中调整：
 
-| 类型 | 说明 |
+| 设置 | 说明 |
 |---|---|
-| **DeepSeek** | 使用 DeepSeek 官方模型服务（v4-flash / v4-pro） |
-| **OpenAI 兼容** | 支持 OpenAI 或任何 OpenAI 兼容接口的模型服务 |
-| **Anthropic 风格** | 支持 Anthropic API 格式的模型服务 |
-| **本地服务** | 连接本机启动的模型推理服务（如 Ollama、LM Studio） |
+| **监听端口** | 默认 `17860`，仅监听 `127.0.0.1`；端口冲突时会明确报错，改一个空闲端口即可 |
+| **权限模式** | 只读（readonly）/ 预览确认（preview，推荐）/ 全自动（yolo），见下表 |
+| **允许外部 AI 客户端使用本机授权** | 默认关闭。开启后，由外部 AI 客户端自动拉起的 Bridge 宿主可向本机 LingBuilder 换取收费模块授权等凭据；只监听回环、凭据不落盘不进日志，IDE 退出即撤销 |
 
-### 连接参数
+权限模式：
 
-| 字段 | 说明 |
-|---|---|
-| **名称** | 为此连接命名，如"生产环境 DeepSeek" |
-| **Base URL** | 服务端点地址，如 `https://api.deepseek.com` |
-| **API Key** | 供应商发放的访问密钥 |
-| **模型名称** | 默认调用的模型标识，如 `deepseek-v4-pro` |
-
-填写完成后，点击 **测试连接** 确认连接成功，然后点击 **保存**。
-
-> [!TIP]
-> DeepSeek 端点参考：OpenAI 格式 `https://api.deepseek.com`；Anthropic 格式 `https://api.deepseek.com/anthropic`。完整参数见 [DeepSeek 集成参考](/guide/ai/deepseek-integration)。
-
-## 4. 设定默认服务
-
-1. 在服务列表中找到需要设为默认的连接。
-2. 点击该行右侧的 **设为默认** 按钮。
-3. 列表顶部会显示 **默认** 标记，此后所有 AI 功能默认使用该连接。
-
-## 5. 权限模式设定
-
-AI Bridge 支持为 AI 工具调用设定 **权限模式**，控制 AI 可以执行的操作范围：
-
-| 模式 | 说明 | 适合场景 |
-|---|---|---|
-| **只读模式（readonly）** | AI 仅可读取项目文件，不可修改 | 代码审查、问答 |
-| **预览模式（preview）** | AI 可修改文件，但写入、构建和导出需要显式确认 | 日常辅助编程、安全检查 |
-| **yolo 模式（yolo）** | AI 可读写项目文件、执行受控构建命令，但仍在受控工具范围内 | 高级自动化、批量重构 |
-
-在 AI Bridge 连接中心底部的 **权限模式** 下拉框中选择所需模式，点击 **保存** 生效。
+| 模式 | 文件工具 | 编辑/构建/导出 | 适合场景 |
+|---|---|---|---|
+| **只读（readonly）** | 仅可读 | 全部不可用 | 代码审查、问答 |
+| **预览确认（preview）** | 可读 | 写操作生成预览提案，必须显式确认才落盘 | 日常辅助编程（推荐） |
+| **全自动（yolo）** | 可读写 | 直接执行受控工具，仍不能运行任意系统命令 | 高级自动化、批量重构 |
 
 > [!WARNING]
-> **yolo 模式** 下 AI 的写操作会直接作用于项目文件，并可直接执行受控构建/运行工具（仍不能执行任意系统命令）。请仅在可信项目中开启 yolo 模式，并关注 AI 的每次文件修改提示。
+> yolo 模式下 AI 的写操作会直接作用于项目文件。请仅在受信任的项目中开启，并关注每次变更内容。
 
-## 6. MCP 协议配置
+**启动设置会自动保存**：Bridge 停止时修改端口、权限或 Token，输入停顿约 1 秒后自动持久化到本机加密存储（系统级 safeStorage 加密，不落明文），下次打开连接中心自动填入。字段旁会实时显示保存状态——「正在保存…」转为绿勾「已保存到本机加密存储」；无效输入不会落盘，并有红字提示引导修正。
 
-MCP（Model Context Protocol）是连接 AI 模型与外部工具的标准协议。LingBuilder 的 AI Bridge 支持两种 MCP 传输方式：
+## 4. 连接外部 AI 客户端
 
-### 6.1 Streamable HTTP（默认）
+![连接外部 AI CLI 与通用终端](./assets/bridge-center-clients-cli.png)
 
-AI Bridge 默认在 `/api/ai-bridge/mcp` 端点提供 Streamable HTTP MCP 服务。外部 AI 客户端只需配置该端点即可连接。
+### 4.1 快捷客户端（推荐）
 
-**端点地址**：`http://127.0.0.1:17860/api/ai-bridge/mcp`
+连接中心会自动检测本机已安装的 **Claude Code**、**Codex CLI**、**Gemini CLI**。点击对应客户端的 **连接并打开**，一次完成：启动 Bridge → 注入本次会话凭据 → 在 IDE 终端中打开客户端。Token 只注入新建终端的环境变量，不修改这些工具的用户全局配置。
 
-**配置示例（Claude Code）**：
+未安装的客户端会标注「未安装」；安装后点击 **重新检测** 即可识别。
+
+### 4.2 通用终端与 Token 占位符
+
+点击 **打开 Bridge 终端** 会打开一个已注入 Bridge 地址和当前 Token 的 PowerShell。LingBuilder 手动连接配置中的 `Bearer ${LINGBUILDER_AI_BRIDGE_TOKEN}` 是**环境变量占位符**，由客户端在启动时展开：
+
+- **从 Bridge 终端（或快捷客户端终端）启动**的客户端进程带有 `LINGBUILDER_AI_BRIDGE_TOKEN` 变量，占位符自动展开为真实 Token，无需任何手工替换；
+- **直接双击打开**的客户端进程读不到该变量，占位符展开为空，请求会返回 401。这类使用场景请改用自定义 Token（见下节），并把真实 Token 值写入客户端配置。
+
+### 4.3 ChatGPT / Codex 桌面客户端
+
+连接中心提供 **ChatGPT / Codex 桌面版** 专用接入：为当前工作区安装项目级 MCP 配置（写入工作区 `.codex/config.toml`，已有的同名配置会先备份保留），桌面客户端即可直接使用本地工具服务，无需 Codex CLI、端口或 Token。配置写入后需**完全退出并重新打开**桌面客户端（含后台进程）才能生效。
+
+### 4.4 手动连接（其他 MCP / HTTP 客户端）
+
+![手动连接：自定义 Token、通用 MCP 配置与灵码 Skill](./assets/bridge-center-manual-config.png)
+
+不在快捷客户端列表中的 MCP 或 HTTP 客户端，展开 **手动连接（高级）** 区域，复制 **连接配置** 中的 JSON 到客户端即可：
 
 ```json
 {
@@ -103,110 +89,63 @@ AI Bridge 默认在 `/api/ai-bridge/mcp` 端点提供 Streamable HTTP MCP 服务
       "type": "http",
       "url": "http://127.0.0.1:17860/api/ai-bridge/mcp",
       "headers": {
-        "Authorization": "Bearer <your-bridge-token>"
+        "Authorization": "Bearer ${LINGBUILDER_AI_BRIDGE_TOKEN}"
       }
     }
   }
 }
 ```
 
-### 6.2 STDIO 模式
+JSON 中的 `${LINGBUILDER_AI_BRIDGE_TOKEN}` 占位符语义见 4.2 节。HTTP API（`/api/ai-bridge`）保留给自研客户端、脚本和 CI 使用；外部 AI CLI 优先使用共享 MCP Streamable HTTP。
 
-如需传统 STDIO MCP，可在启动 AI Bridge 时附加 `--mcp` 参数：
+## 5. Token：临时与自定义
 
-```bash
-lingbuilder ai-server --workspace . --port 17860 --mcp
-```
+「自定义 Token（可选）」留空或填写，行为如下：
 
-STDIO 模式下，MCP 服务通过标准输入输出与 AI 客户端通信。
-
-### 6.3 MCP 工具概览
-
-AI Bridge 当前对外暴露 **19 个 MCP 工具**，按用途分为五类：
-
-| 类别 | 工具 | 用途 |
+| | 留空（默认） | 填写自定义 Token |
 |---|---|---|
-| 工作区读取 | `workspace.list` / `file.read` / `file.search` | 列出文件树、读取文本文件、受控搜索 |
-| 编辑提案 | `edit.propose` / `edit.apply` / `lingcpp.diagnostics` | 提交完整文件草稿、应用提案、构建前中文诊断 |
-| 项目创建 | `project.templates` / `project.create` / `project.create.undo` | 列出模板、预览或落盘创建项目、撤销创建事务 |
-| 构建与导出 | `build.run` / `native.preview` / `native.export` | **编译并运行项目**、预览生成的 C++、导出 Visual Studio 工程 |
-| 模块生成 | `module.scaffold` / `module.writeFiles` / `module.validate` / `module.pack` / `module.installPreview` / `module.install` | 端到端生成并安装 `.lbmod` 模块 |
+| Token 值 | 每次启动 Bridge 自动生成高强度临时 Token | 使用你填写的固定值 |
+| 跨重启 | 每次都变，旧客户端需重新连接 | 保持不变 |
+| 存储 | 仅主进程内存 | safeStorage 加密保存到本机，绝不落明文 |
+| 适合场景 | 临时试用、一次性会话 | 固定客户端长期使用 |
 
-每个工具的参数约束、权限要求与调用顺序见 [MCP 工具协议](/guide/ai/mcp)；AI 编译与运行项目的完整流程见 [AI 构建与运行](/guide/ai/build-run)。
+自定义 Token 要求 24–256 个不含空白的可见 ASCII 字符。填写后同样自动保存（见第 3 节），无需保存按钮。
 
-> [!NOTE]
-> MCP 工具的具体可用范围受当前 **权限模式** 限制。例如，只读模式下写入、构建和运行类工具不可用。
+## 6. 灵码 Skill 正文
 
-## 7. 外部 AI 客户端接入
+连接中心底部展示 **灵码 Skill 正文** 的分发状态（安装包内置离线快照、版本与 sequence、是否为最新），并提供 **刷新状态**、**检查更新** 与 **复制安装指令** 三个操作。灵码 Skill 是给外部 AI 客户端自动阅读的接入指引，详见 [灵码 Skill 使用](/guide/ai/skill)。
 
-AI Bridge 支持接入主流外部 AI 客户端，让它们通过 MCP 协议与 LingBuilder 工作区交互。
+## 7. 客户端与活动页签
 
-### 7.1 支持的客户端
+![客户端与活动页签](./assets/bridge-center-activity.png)
 
-| 客户端 | 接入方式 |
-|---|---|
-| **Claude Code** | 通过 MCP 配置连接，使用 Streamable HTTP |
-| **Codex CLI** | 通过会话级配置覆盖，自动检测连接计划 |
-| **Gemini CLI** | 通过 MCP 配置连接，使用托管环境变量 |
-
-### 7.2 自动检测连接计划
-
-LingBuilder 会自动检测已安装的 AI 客户端，并为每个客户端生成只对当前 IDE 终端会话有效的连接计划：
-
-1. 打开 **AI Bridge 连接中心**。
-2. 在 **外部客户端** 区域，查看已检测到的客户端列表。
-3. 点击 **生成连接计划**，获取该客户端的连接配置命令。
-4. 在对应的 AI 客户端终端中执行生成的命令即可完成连接。
-
-![外部 AI 客户端连接配置](./assets/mcp-entry-path.png)
-
-> [!WARNING]
-> Bridge Token 仅保存在主进程内存中，通过环境变量传递给受控终端。不会写入客户端的全局配置文件。
-
-## 8. 测试 AI 功能
-
-配置完成后，打开 **AI 聊天** 面板，输入一条测试指令验证：
-
-> "用一段话说明当前窗口的功能"
-
-如果返回了正常回答，说明 AI Bridge 配置已生效。
+- **已连接客户端**：共享 MCP HTTP 允许多个客户端同时连接，这里列出每个客户端的标识与最后活动时间。
+- **工具调用活动**：只记录工具名、结果和耗时，**不记录文件正文或提示词**，最多保留最近 30 条。
+- **运行日志**：Bridge 运行日志，Token 在进入日志前自动隐藏，可一键复制用于排查。
 
 ## 常见问题
 
-### 连接测试失败
+### 客户端连接返回 401
 
-- 确认 **Base URL** 不含多余空格或尾部斜杠
-- 确认 **API Key** 未过期，且当前网络可访问该服务端点
-- 部分服务要求指定 **模型名称** 才能测试，请确认已填写正确模型标识
-- 检查 AI Bridge 是否正在运行：访问 `http://127.0.0.1:17860/api/ai-bridge/health`
+- Token 不匹配：临时 Token 每次启动都会更换，重启 Bridge 后需要重新打开 Bridge 终端或重连客户端；
+- 直接双击打开的客户端读不到 `${LINGBUILDER_AI_BRIDGE_TOKEN}` 占位符（见 4.2 节）：改从 Bridge 终端启动，或填写自定义 Token 并把真实值写入客户端配置；
+- Bridge 未启动或端口不一致。
 
-### MCP 连接失败
+### 端口冲突
 
-- 确认 AI Bridge 已启用 MCP 功能（默认启用）
-- 确认 Token 已正确配置在请求头中
-- 检查 `--mcp` 参数是否已启用（STDIO 模式需要）
-- 确认外部 AI 客户端与 AI Bridge 版本兼容
+启动时报端口占用，关闭占用该端口的进程，或在 Bridge 启动设置中改用其他端口（1024–65535）。
 
-### 外部 AI 客户端无法连接
+### 切换工作区后 AI 连不上
 
-- 确认 AI Bridge 正在运行且监听在 `127.0.0.1:17860`
-- 确认客户端使用的 MCP 端点地址正确
-- 重新生成连接计划，并确认 Token 未过期
-- 切换工作区后需要重新连接
+Bridge 绑定打开它时的工作区，切换工作区后受管 Bridge 会停止。重新在连接中心启动即可。
 
-### 权限模式无法修改
+### 客户端一直显示「未安装」
 
-- 确认当前用户具有管理员权限
-- 某些安全策略可能限制了权限模式的更改范围
-- 尝试重新启动 AI Bridge 后重试
-
-### 需要删除连接
-
-在 **AI Bridge 连接中心** 服务列表中点击目标连接右侧的 **删除** 按钮，确认后即可移除。
+确认对应 CLI 已安装并在 PATH 中；安装完成后点击连接中心的 **重新检测**。
 
 ## 下一步
 
-- 使用 AI Bridge 进行对话编程：[AI 对话式改代码](/guide/ai/chat)
+- 了解 AI 能调用哪些工具：[MCP 工具协议](/guide/ai/mcp)
 - 让 AI 编译并运行项目：[AI 构建与运行](/guide/ai/build-run)
-- 了解 MCP 工具协议的详细用法：[MCP 工具协议](/guide/ai/mcp)
-- 浏览 DeepSeek 模型接入说明：[DeepSeek 集成参考](/guide/ai/deepseek-integration)
+- 给外部 AI 客户端安装灵码 Skill：[灵码 Skill 使用](/guide/ai/skill)
+- 用 AI 对话式修改代码：[AI 对话式改代码](/guide/ai/chat)

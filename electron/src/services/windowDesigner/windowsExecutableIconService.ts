@@ -196,7 +196,7 @@ export function getWindowEmbeddedSiteHost(window: LingWindowModel): string {
 }
 
 /**
- * 生成 EXE 的 rc 资源文件。
+ * 生成产物（exe/控制台/DLL）的 rc 资源文件。
  * `extraResourceLines` 用于项目 DLL 命令声明的「加载方式 = 内存」条目（2201 起资源号）：
  * 这些行由调用方按声明顺序生成，本函数只负责与图标/内嵌文件一起写进同一个 rc。
  */
@@ -302,7 +302,7 @@ export class WindowsExecutableIconService {
     }));
     const projectResourceTotal = projectResourceBytes.reduce((total, buffer) => total + buffer.byteLength, 0);
     if (projectResourceTotal > EMBEDDED_RESOURCE_TOTAL_WARN_BYTES) {
-      console.warn(`内嵌资源总量 ${(projectResourceTotal / 1024 / 1024).toFixed(1)}MB，会显著增大 EXE 体积。`);
+      console.warn(`内嵌资源总量 ${(projectResourceTotal / 1024 / 1024).toFixed(1)}MB，会显著增大产物体积。`);
     }
 
     const fingerprintInput = Buffer.concat([bytes, ...embeddedBytes, ...siteBytes, ...projectResourceBytes]);
@@ -405,7 +405,7 @@ export class WindowsExecutableIconService {
         // Try the next development or packaged resource location.
       }
     }
-    throw new Error('LingBuilder 默认窗口图标资源缺失，已阻止生成无图标的 EXE。请修复安装资源后重试。');
+    throw new Error('LingBuilder 默认窗口图标资源缺失，已阻止生成无图标的产物。请修复安装资源后重试。');
   }
 
   private async removeStaleIcons(destinationRoots: readonly string[]): Promise<void> {
@@ -444,8 +444,8 @@ export async function compileWindowsExecutableResource(options: {
       ...(requiresIcon ? [fs.access(iconPath)] : []),
       ...rcReferencedFiles.map(file => fs.access(file))]);
   } catch (error) {
-    const message = `EXE 图标资源不完整：${error instanceof Error ? error.message : String(error)}`;
-    throw new WindowsExecutableResourceCompileError(message, ['EXE 图标资源编译失败。', message]);
+    const message = `资源脚本不完整：${error instanceof Error ? error.message : String(error)}`;
+    throw new WindowsExecutableResourceCompileError(message, ['资源脚本编译失败。', message]);
   }
 
   const isMsvc = options.compiler.kind === 'msvc';
@@ -466,7 +466,7 @@ export async function compileWindowsExecutableResource(options: {
     return {
       outputPath,
       logs: [
-        `已编译 EXE 图标资源：${path.basename(resourcePath)}`,
+        `已编译资源脚本：${path.basename(resourcePath)}`,
         result.stdout.trim() ? `resource stdout:\n${result.stdout.trim()}` : '',
         result.stderr.trim() ? `resource stderr:\n${result.stderr.trim()}` : ''
       ].filter(Boolean)
@@ -476,7 +476,7 @@ export async function compileWindowsExecutableResource(options: {
       ? '请确认 Visual Studio Build Tools 已安装 Windows SDK Resource Compiler (rc.exe)。'
       : '请确认 MinGW windres 与当前 C++ 编译器位于同一工具链。';
     const logs = [
-      'EXE 图标资源编译失败。',
+      '资源脚本编译失败。',
       error.stdout?.trim() ? `resource stdout:\n${error.stdout.trim()}` : '',
       error.stderr?.trim() ? `resource stderr:\n${error.stderr.trim()}` : '',
       error.message ? `错误：${error.message}` : '',
@@ -507,7 +507,7 @@ function resolveWithin(root: string, relativePath: string): string {
   const target = path.resolve(root, relativePath);
   const relative = path.relative(root, target);
   if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error(`EXE 图标资源目标路径不安全：${relativePath}`);
+    throw new Error(`资源脚本目标路径不安全：${relativePath}`);
   }
   return target;
 }

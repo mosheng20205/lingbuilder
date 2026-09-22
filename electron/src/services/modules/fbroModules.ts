@@ -278,7 +278,7 @@ const eventEntries = [
   api('FBro_设置事件响应JSON', 'LB_FBro_SetEventResponseJson', [{ name: '控件名', type: 'controlRef' }, { name: '响应JSON', type: 'wideString' }], 'int', '设置 C ABI v3 事件结构化响应；回调返回后 Bridge 会立即复制。'),
   api('FBro_取事件对象', 'LB_FBro_GetLastEventObject', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。', { visibility: 'advanced' }),
   api('FBro_取事件延续', 'LB_FBro_GetLastEventContinuation', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得当前延迟决策事件的受管延续句柄；只允许传给完成或取消命令。', { visibility: 'advanced' }),
-  api('FBro_取事件对象字段', 'LB_FBro_GetEventObjectField', [{ name: '控件名', type: 'controlRef' }, { name: '字段名', type: 'wideString' }], 'wideString', '读取事件包中复制后的对象字段或受管句柄字段。', { visibility: 'advanced' }),
+  api('FBro_取事件对象字段', 'LB_FBro_GetEventObjectField', [{ name: '控件名', type: 'controlRef' }, { name: '字段名', type: 'wideString' }], 'longLong', '读取事件包中复制后的对象字段或受管句柄字段（64 位句柄值，右键菜单/下载/响应/WS 客户端句柄都经此取得）。', { visibility: 'advanced' }),
   api('FBro事件_完成延续', 'LB_FBro_CompleteEventContinuation', [{ name: '延续句柄', type: 'longLong' }, { name: '响应JSON', type: 'wideString' }], 'int', '完成认证、权限、查询或下载等延迟决策；重复完成返回稳定错误码。', { visibility: 'advanced' }),
   api('FBro事件_取消延续', 'LB_FBro_CancelEventContinuation', [{ name: '延续句柄', type: 'longLong' }], 'int', '取消尚未完成的受管事件延续。', { visibility: 'advanced' }),
   api('FBro_设置事件采样率', 'LB_FBro_SetEventSamplingRate', [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '每秒次数', type: 'int' }], 'int', '按浏览器和事件设置高频事件采样率；零表示暂停投递。'),

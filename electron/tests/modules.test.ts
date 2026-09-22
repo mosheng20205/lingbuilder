@@ -56,7 +56,7 @@ import {
   getBeginnerModuleCodeCompletions,
   getBeginnerModuleCommandHints
 } from '../src/services/modules/moduleContextAdapters';
-import { InstalledModule } from '../src/services/modules/types';
+import { InstalledModule, ModuleManagedTaskInvocation } from '../src/services/modules/types';
 import { EDGEVIEW_WEBVIEW2_SDK_VERSION, exportModuleNativeDependencies, inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies, peExportProbe } from '../src/services/modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
@@ -301,6 +301,8 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // （组件DLL路径、注册/注销组件路径），并补充 COM_注册组件/COM_注销组件/
       // COM_取组件路径 三条命令（对齐易语言动态注册/卸载例程）。
       // 再增删内置命令或其参数、改写命令描述时必须同步这两个摘要，否则覆盖面会无声缩小。
+      // 基线 2026-09-21 写回：新增 lingbuilder.cron 定时任务模块（29 命令 32 参数，无 controlRef），
+      // 并入并行会话漂移后的实算值（摘要 af91b1df/3345afe6）。
       // 基线 2026-09-10 写回：FBro 浏览器模块新增输入注入 5 命令（发送鼠标单击/移动/滚轮、
       // 发送按键、发送触摸事件），命令 +5、参数 +38、控件参数 +5。
       // 追加 2026-09-10 批次 2：FBro 填表补齐 16 命令（选择框/选择项/内外文本/内外代码/
@@ -575,7 +577,10 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   }
   // 2026-09-16 写回 54→55：项目 DLL 命令声明功能新增 projectDllMaterializeService.ts（已重新确认全量字面量扫描 0 违规）。
   // 2026-09-18 写回 56→57：模块公开常量功能新增 moduleConstantService.ts（已重新确认全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 57, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-09-21 写回 57→60：网络中间件功能新增 sunnyNetModule.ts，并行会话新增 moduleDetailView.ts、
+  // modulePublicInfo.ts（已重新确认全量字面量扫描 0 违规）。
+  // 2026-09-21 写回 60→61：新增 lingbuilder.cron 定时任务模块 cronModule.ts（已重新确认全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 61, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1480,6 +1485,42 @@ test('Win32 基础模块提供可变参数占位符文本格式化命令', () =>
   assert.equal(binding?.returnType, 'wideString');
 });
 
+test('Win32 基础模块提供不冻结界面的延时、延迟调用与时钟族命令', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+  const names = manifest.contributes?.commands?.map(command => command.name) || [];
+  for (const name of ['延时', '延迟调用', '时钟_启动', '时钟_停止', '时钟_置周期', '时钟_取周期', '时钟_是否已启动']) {
+    assert.ok(names.includes(name), `${name} 应登记进内置命令补全`);
+  }
+  const delayContribution = manifest.contributes?.commands?.find(command => command.name === '延时');
+  assert.match(delayContribution?.description || '', /泵送本线程消息队列.*不冻结/u);
+  const delayBinding = manifest.bindings?.commands?.find(binding => binding.command === '延迟调用');
+  assert.deepEqual(delayBinding?.parameters?.map(parameter => parameter.type), ['int', 'handler']);
+  assert.deepEqual(delayBinding?.parameters?.[1]?.handlerSignature, { parameterTypes: [], returnType: '空' });
+  assert.deepEqual(delayBinding?.invocation, { kind: 'delayedCall', delayParameterIndex: 0, handlerParameterIndex: 1 });
+  // delayedCall 绑定契约门禁：索引必须指向对应类型参数，写错必须在校验期报中文诊断。
+  const brokenDelay = structuredClone(manifest);
+  const brokenDelayBinding = brokenDelay.bindings?.commands?.find(binding => binding.command === '延迟调用');
+  (brokenDelayBinding!.invocation as { delayParameterIndex: number }).delayParameterIndex = 1;
+  assert.ok(validateModuleManifest(brokenDelay).diagnostics.some(message => message.includes('delayParameterIndex 必须指向 int 参数')));
+  const clockCommands = manifest.bindings?.commands?.filter(binding => binding.command.startsWith('时钟_')) || [];
+  assert.equal(clockCommands.length, 5);
+  for (const binding of clockCommands) {
+    const componentParameter = binding.parameters?.[0];
+    assert.equal(componentParameter?.type, 'controlRef', `${binding.command} 组件名必须是 controlRef`);
+    assert.deepEqual(componentParameter?.controlTypes, ['Clock']);
+    assert.deepEqual(componentParameter?.controlKinds, ['resource']);
+    assert.equal(componentParameter?.scope, 'project');
+  }
+  // 「时钟」非可视设计器控件贡献：周期毫秒/自动计时属性 + 周期到期事件。
+  const clockControl = manifest.contributes?.designerControls?.find(control => control.type === 'Clock');
+  assert.ok(clockControl, 'win32.basic 应贡献「时钟」设计器控件');
+  assert.equal(clockControl?.label, '时钟');
+  assert.equal(clockControl?.isVisual, false);
+  assert.deepEqual(clockControl?.defaultProps, { content: '时钟', width: 0, height: 0 });
+  assert.deepEqual(clockControl?.events?.map(event => [event.name, event.label]), [['Elapsed', '周期到期']]);
+});
+
 test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
     'lingbuilder.net.http-client', 'lingbuilder.cdp.client', 'lingbuilder.web.http', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
@@ -2114,7 +2155,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 206/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 216/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
@@ -4245,6 +4286,12 @@ test('EdgeView 导出路径、响应正文时效、回调内同步等待与控�
   // 响应正文只在 Web资源响应收到 处理器执行期间可读，失败必须给中文约束说明。
   assert.match(runtime, /EdgeView_说明响应正文时效/u);
   assert.match(runtime, /必须在 Web资源响应收到 处理器执行期间/u);
+  // WebView2 Runtime 版本不足的两条提示（命令不可用 / 启动被阻止）必须自带官方离线安装包下载地址。
+  assert.match(runtime, /版本不足；v1 最低需要 141，v2 完整能力需要 150。";\s*\n\s*message \+= LINGBUILDER_EDGEVIEW_RUNTIME_DOWNLOAD_HINT;/u);
+  assert.match(runtime, /启动被阻止：源码使用的 API 至少需要 WebView2 Runtime "; message \+= std::to_wstring\(LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR\); message \+= L"，当前 Runtime 为 "; message \+= major > 0 \? std::to_wstring\(major\) : L"未知"; message \+= L"。"; message \+= LINGBUILDER_EDGEVIEW_RUNTIME_DOWNLOAD_HINT;/u);
+  assert.match(runtime, /https:\/\/go\.microsoft\.com\/fwlink\/p\/\?LinkId=2124701/u);
+  assert.match(runtime, /https:\/\/developer\.microsoft\.com\/microsoft-edge\/webview2/u);
+  assert.equal((runtime.match(/LINGBUILDER_EDGEVIEW_RUNTIME_DOWNLOAD_HINT/gu) || []).length, 3, '下载地址常量定义一次，命令不可用与启动被阻止两处提示都要消费');
 
   const module: InstalledModule = {
     manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
@@ -4383,7 +4430,7 @@ test('built-in threading module contributes managed task commands and C++ runtim
 
   const invalidWorkerIndex = structuredClone(manifest);
   const invalidWorkerBinding = invalidWorkerIndex.bindings?.commands?.find(binding => binding.command === '线程_提交');
-  invalidWorkerBinding!.invocation!.workerParameterIndex = 1;
+  (invalidWorkerBinding!.invocation! as ModuleManagedTaskInvocation).workerParameterIndex = 1;
   assert.ok(validateModuleManifest(invalidWorkerIndex).diagnostics.some(message => message.includes('workerParameterIndex 必须指向 handler 参数')));
 
   const misplacedVariadic = structuredClone(manifest);
@@ -5485,6 +5532,17 @@ test('CEF3填表_写入命令族登记清单与 binding，并生成按帧执行�
   assert.match(cpp, /function lbTianBiao\(op, selector, index, a, b\)/);
   assert.ok(!/CEF3_填表助手脚本\(\) \{[\s\S]{0,400}?\n\s+var list;/.test(cpp),
     '助手脚本里的换行必须转义为 \\n，不能出现跨行 C 字符串');
+  // 调用串必须是单条表达式：IIFE 返回助手函数后紧跟实参括号，字符串实参包单引号。
+  // （2026-09-22 修复：旧拼装 "(0,setValue,#username,…)" 把声明和调用落成两条语句，
+  // 逗号表达式不会调用助手，且 # 选择器裸插成非法 JS 令整段脚本 SyntaxError，
+  // 12 条填表命令全部空转仍返回成功，ep15 填表演练真机暴露。）
+  assert.ok(cpp.includes('std::wstring(L"(function(){return ")'),
+    '填表调用必须用 IIFE 包成单条调用表达式，禁止脚本声明与调用分离');
+  assert.ok(cpp.includes('+ CEF3_填表助手脚本() + L"})()"'),
+    'IIFE 必须返回助手函数，紧跟实参括号完成调用');
+  assert.ok(cpp.includes(`+ L"('" + CEF3_填表拼接字面量(op)`),
+    '字符串实参必须包单引号成 JS 字符串，禁止裸插标识符');
+  assert.ok(!cpp.includes('L"(0,"'), '不得再出现 0 占位的逗号表达式伪调用');
   assert.match(cpp, /CEF3填表_赋值\(主框架, L"input\[name=user\]", 0, L"张三"\);/);
 });
 
@@ -7545,60 +7603,78 @@ test('new_emoji bridge template keeps UTF-8 buffers alive for native controls', 
   assert.doesNotMatch(script, /std::vector<unsigned char> bytes\(static_cast<size_t>\(needed - 1\)\)/);
 });
 
-test('module manager interface action opens the viewport-level public information dialog', async () => {
+test('module manager opens the viewport-level module detail page shared by the standalone window', async () => {
   const inspectorSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleInspector.tsx'), 'utf8');
-  const dialogSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModulePublicInfoDialog.tsx'), 'utf8');
+  const detailPageSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleDetailPage.tsx'), 'utf8');
+  const publicInfoSource = await fs.readFile(path.join(process.cwd(), 'src', 'services', 'modules', 'modulePublicInfo.ts'), 'utf8');
   const documentPreviewSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleDocumentPreview.tsx'), 'utf8');
   const serverSource = await fs.readFile(path.join(process.cwd(), 'server.ts'), 'utf8');
   const sidebarSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'), 'utf8');
+  const diffViewerSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
+  const infoWindowSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleInfoWindow.tsx'), 'utf8');
 
-  assert.match(inspectorSource, /onInspect=\{\(\) => inspectModule\(module\.manifest\.id\)\}/);
-  assert.match(inspectorSource, /<ModulePublicInfoDialog/);
-  assert.doesNotMatch(inspectorSource, /<ModuleDetailPanel/);
+  // 侧栏模块行点击 → 主区「模块详情」页签（openModuleDetailView 事件），两套旧弹窗退役：
+  // 模块管理页弹窗与 Sidebar 内联弹窗都由统一的 ModuleDetailPage 取代（嵌入 + standalone 双模式）。
+  assert.match(inspectorSource, /onOpen=\{\(\) => openModuleDetail\(module\.manifest\.id\)\}/u);
+  assert.match(inspectorSource, /openModuleDetailView\(moduleId\)/u);
+  assert.doesNotMatch(inspectorSource, /ModulePublicInfoDialog/u);
+  assert.doesNotMatch(sidebarSource, /export function ModuleInfoDialog/u);
+  // 详情页动作请求回到 ModuleInspector 单一出口执行（启停/购买/修复的收费门禁不复制第二份）。
+  assert.match(inspectorSource, /MODULE_DETAIL_ACTION_EVENT/u);
+  assert.match(detailPageSource, /requestModuleDetailAction\(\{ type: 'toggle', moduleId: featureModule\.manifest\.id \}\)/u);
   // 收费模块卡按钮必须按版本比较分支：已安装且无更新时不得宣称「下载更新」（内置模块误导 bug，2026-09-18）。
-  assert.match(inspectorSource, /重新下载安装/);
-  assert.match(inspectorSource, /下载更新 v\$\{installedVersion\} → v\$\{latestVersion\} 并预览安装/);
-  assert.match(inspectorSource, /已安装 v\{installedVersion\}/);
-  assert.doesNotMatch(inspectorSource, /installed \? '下载更新并预览安装'/);
-  assert.match(dialogSource, /createPortal\(/);
-  assert.match(dialogSource, /aria-modal="true"/);
-  assert.match(dialogSource, /模块公开信息 - \{manifest\.name\}/);
-  assert.match(dialogSource, /if \(event\.key === 'Escape'\)/);
-  assert.match(dialogSource, /if \(event\.target === event\.currentTarget\) onClose\(\)/);
-  assert.match(inspectorSource, /isModuleHiddenByFamily/);
-  assert.match(inspectorSource, /moduleIds: standardModuleIds/);
-  assert.match(inspectorSource, /内部依赖和只读 SDK 已自动收起/);
-  assert.match(dialogSource, /\{family\?\.displayName \|\| '模块'\} 功能范围/);
-  assert.match(dialogSource, /禁用\$\{feature\.label\}/);
-  assert.match(dialogSource, /启用\$\{feature\.label\}/);
-  assert.doesNotMatch(dialogSource, /启用高级功能/);
-  assert.match(dialogSource, /功能分类/);
-  assert.match(dialogSource, /function ModuleFamilyFeatureTreeGroup/);
-  assert.match(dialogSource, /const commandItems = items\.filter\(item => item\.groupId === 'commands'\)/);
-  assert.match(dialogSource, /公开记录/);
-  assert.match(dialogSource, /公开数组/);
-  assert.match(dialogSource, /字段 · \$\{field\.name\}/);
-  // 模块公开常量必须在弹窗可见（2026-09-20）：contributes.constants 收集、常量分组与 #名称 引用形态。
-  assert.match(dialogSource, /contributes\.constants \|\| \[\]/);
-  assert.match(dialogSource, /groupId: 'constants'/);
-  assert.match(dialogSource, /declaration: `#\$\{constant\.name\} = \$\{valueText\}`/);
-  assert.match(dialogSource, /\{ id: 'constants', label: '常量' \}/);
-  // 模块随包示例必须在弹窗可打开（2026-09-20）：examples 分组与文档共用同一预览链路。
-  assert.match(dialogSource, /contributes\.examples \|\| \[\]/);
-  assert.match(dialogSource, /\{ id: 'examples', label: '示例' \}/);
-  assert.match(dialogSource, /item\.groupId === 'docs' \|\| item\.groupId === 'examples'/);
-  assert.match(dialogSource, /<ModuleDocumentPreview/);
-  assert.match(documentPreviewSource, /ReactMarkdown/);
-  assert.match(documentPreviewSource, /正在读取模块文档/);
-  assert.match(documentPreviewSource, /无法预览模块文档/);
-  assert.match(serverSource, /app\.get\("\/api\/modules\/document"/);
-  assert.match(serverSource, /readModuleDocumentation/);
-  assert.match(dialogSource, /<PublicInfoTreeItem/);
-  assert.match(dialogSource, /\{!isFamilyView && groups\.map\(group => \(/);
-  assert.match(dialogSource, /其他公开信息/);
-  assert.match(dialogSource, /条接口命令/);
-  assert.match(sidebarSource, /visibleProjectModules = projectModules\.filter\(module => !isModuleHiddenByFamily/);
-  assert.match(sidebarSource, /getModuleFamilySearchText\(definition, modules\)/);
+  assert.match(inspectorSource, /重新下载安装/u);
+  assert.match(inspectorSource, /下载更新 v\$\{installedVersion\} → v\$\{latestVersion\} 并预览安装/u);
+  assert.match(inspectorSource, /已安装 v\{installedVersion\}/u);
+  assert.doesNotMatch(inspectorSource, /installed \? '下载更新并预览安装'/u);
+  assert.match(inspectorSource, /isModuleHiddenByFamily/u);
+  assert.match(inspectorSource, /moduleIds: standardModuleIds/u);
+  assert.match(inspectorSource, /内部依赖和只读 SDK 已自动收起/u);
+  // 公开信息收集是确定性数据层（modulePublicInfo 服务）：类型/常量/命令/控件/依赖/文档/示例统一拍平。
+  assert.match(publicInfoSource, /公开记录/u);
+  assert.match(publicInfoSource, /公开数组/u);
+  assert.match(publicInfoSource, /字段 · \$\{field\.name\}/u);
+  assert.match(publicInfoSource, /declaration: `#\$\{constant\.name\} = \$\{valueText\}`/u);
+  assert.match(publicInfoSource, /contributes\.constants \|\| \[\]/u);
+  assert.match(publicInfoSource, /groupId: 'constants'/u);
+  assert.match(publicInfoSource, /\{ id: 'constants', label: '常量' \}/u);
+  assert.match(publicInfoSource, /contributes\.examples \|\| \[\]/u);
+  assert.match(publicInfoSource, /\{ id: 'examples', label: '示例' \}/u);
+  // 详情页必须保留家族功能域面板、接口树与文档预览（与旧弹窗同一交互能力）。
+  assert.match(detailPageSource, /\{family\?\.displayName \|\| '模块'\} 功能范围/u);
+  assert.match(detailPageSource, /禁用\$\{feature\.label\}/u);
+  assert.match(detailPageSource, /启用\$\{feature\.label\}/u);
+  assert.doesNotMatch(detailPageSource, /启用高级功能/u);
+  assert.match(detailPageSource, /功能分类/u);
+  assert.match(detailPageSource, /function ModuleFamilyFeatureTreeGroup/u);
+  assert.match(detailPageSource, /const commandItems = items\.filter\(item => item\.groupId === 'commands'\)/u);
+  assert.match(detailPageSource, /其他公开信息/u);
+  assert.match(detailPageSource, /条接口命令/u);
+  assert.match(detailPageSource, /item\.groupId === 'docs' \|\| item\.groupId === 'examples'/u);
+  assert.match(detailPageSource, /<ModuleDocumentPreview/u);
+  // 独立信息窗口（第二入口）复用同一组件：只读 standalone 模式，Esc 关闭。
+  assert.match(detailPageSource, /if \(event\.key === 'Escape'\)/u);
+  assert.match(infoWindowSource, /<ModuleDetailPage/u);
+  assert.match(infoWindowSource, /standaloneModule=\{module\}/u);
+  // 主区页签承载：DiffViewer 监听打开事件并渲染模块详情页。
+  assert.match(diffViewerSource, /MODULE_DETAIL_OPEN_EVENT/u);
+  assert.match(diffViewerSource, /<ModuleDetailPage/u);
+  // 浏览模块列表时主区不显示编辑器/设计器：侧栏广播激活状态，DiffViewer 渲染占位页。
+  assert.match(sidebarSource, /setModulePageActive\(activeTab === 'outline'\)/u);
+  assert.match(diffViewerSource, /MODULE_PAGE_ACTIVE_EVENT/u);
+  assert.match(diffViewerSource, /function ModulePageEmptyState/u);
+  assert.match(documentPreviewSource, /ReactMarkdown/u);
+  assert.match(documentPreviewSource, /正在读取模块文档/u);
+  assert.match(documentPreviewSource, /无法预览模块文档/u);
+  assert.match(serverSource, /app\.get\("\/api\/modules\/document"/u);
+  assert.match(serverSource, /readModuleDocumentation/u);
+  assert.match(detailPageSource, /<PublicInfoTreeItem/u);
+  assert.match(detailPageSource, /!isFamilyView && groups\.map\(group => \(/u);
+  assert.match(sidebarSource, /visibleProjectModules = projectModules\.filter\(module => !isModuleHiddenByFamily/u);
+  assert.match(sidebarSource, /getModuleFamilySearchText\(definition, modules\)/u);
+  // 「查看完整接口说明」按钮直接拉起独立模块信息窗口（与右键「查看模块信息」同一通道，2026-09-20）。
+  assert.match(sidebarSource, /查看完整接口说明/u);
+  assert.match(sidebarSource, /modules\?\.openInfo\(module\)/u);
 });
 
 function createTestModule(): InstalledModule {
@@ -7734,7 +7810,7 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-test('按钮常规命名事件未绑定时生成启动警告', async () => {
+test('源码常规命名控件事件自动接线，无需设计器绑定', async () => {
   const project: LingWindowProject = {
     ...sampleProject,
     windows: [{
@@ -7759,16 +7835,105 @@ test('按钮常规命名事件未绑定时生成启动警告', async () => {
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
   assert.deepEqual(generated.blockingDiagnostics, []);
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
-  assert.match(cpp, /WarnUnboundControlEvents\(\) override/);
-  assert.match(cpp, /未绑定 Click 事件/);
-  assert.match(cpp, /WarnUnboundControlEvents\(\);/);
+  // 常规命名事件自动并入控件事件派发表（设计器未绑定也生效）
+  assert.match(cpp, /Click=_清除按钮_被单击/u);
+  assert.match(cpp, /handler == L"_清除按钮_被单击"/u);
+  // 自动接线落地后不再生成「设计器未绑定 Click」启动警告
+  assert.doesNotMatch(cpp, /WarnUnboundControlEvents\(\) override/);
 
-  // 已在设计器绑定 Click 时不产生警告
+  // 设计器显式绑定仍优先，且不产生重复条目
   const wired = JSON.parse(JSON.stringify(project));
   wired.windows[0].controls[0].events = { Click: '_清除按钮_被单击' };
   const generatedWired = generateLingCppNativeWin32Project(wired, { lingCppSourceCode: source, enabledModules: [] });
   const cppWired = generatedWired.files.find(file => file.relativePath === 'main.cpp')?.content || '';
-  assert.doesNotMatch(cppWired, /WarnUnboundControlEvents\(\) override/);
+  assert.equal(cppWired.split('Click=_清除按钮_被单击').length - 1, 1);
+});
+
+test('列表框常规命名选择项被改变事件自动接线（外部用户复现场景）', async () => {
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      events: {},
+      controls: [
+        {
+          id: 'sidebar-list', type: 'ListBox', name: '列表框1', content: '', x: 8, y: 40,
+          width: 160, height: 240, background: '#0F172A', foreground: '#E2E8F0', fontSize: 12,
+          isEnabled: true, visibility: 'Visible', properties: {}, events: {}
+        },
+        {
+          id: 'content-group', type: 'GroupBox', name: '分组框1', content: '分组', x: 180, y: 40,
+          width: 440, height: 400, background: '#202020', foreground: '#E2E8F0', fontSize: 12,
+          isEnabled: true, visibility: 'Visible', properties: {}, events: {}
+        }
+      ]
+    }]
+  };
+  const source = `包 测试
+类 MainWindow : 窗口
+公开
+  事件 _MainWindow_创建完毕()
+  结束
+  事件 _列表框1_选择项被改变()
+    调试输出("选择项变化")
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // 列表框的 SelectionChanged 事件即使设计器未绑定，也会派发到源码常规命名处理器
+  assert.match(cpp, /SelectionChanged=_列表框1_选择项被改变/u);
+  assert.match(cpp, /handler == L"_列表框1_选择项被改变"/u);
+});
+
+test('裸「创建完毕」事件经类名等价解析接线到窗口 Loaded', async () => {
+  const project: LingWindowProject = { ...sampleProject };
+  const source = `包 测试
+类 MainWindow : 窗口
+公开
+  事件 创建完毕()
+    调试输出("窗口创建完毕")
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // findLingCppMethod 的类名前缀等价规则把裸「创建完毕」解析为 _类名_创建完毕 处理器，
+  // 窗口 Loaded 必须接线到它，事件体在别名方法下生成而不是死代码。
+  assert.match(cpp, /Loaded=_MainWindow_创建完毕/u);
+  assert.match(cpp, /handler == L"_MainWindow_创建完毕"/u);
+  assert.match(cpp, /void MainWindow_创建完毕\(\)/u);
+});
+
+test('自绘按钮运行期文本镜像进生成的运行时', async () => {
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      events: {},
+      controls: [{
+        id: 'version-btn', type: 'Button', name: '按钮_版本检测', content: '检测更新', x: 10, y: 10,
+        width: 140, height: 32, background: '#333', foreground: '#fff', fontSize: 12,
+        isEnabled: true, visibility: 'Visible', properties: {}, events: {}
+      }]
+    }]
+  };
+  const source = `包 测试
+类 MainWindow : 窗口
+公开
+  事件 _MainWindow_创建完毕()
+    控件_设置文本(按钮_版本检测, "Ver 20260921A01")
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // 控件_设置文本正确翻译为 SetWindowTextW（控件名为不带引号的 controlRef 形态）
+  assert.match(cpp, /SetWindowTextW/u);
+  // 自绘 BUTTON 家族在 WM_SETTEXT 镜像覆盖文本并强制重绘，PaintOwnerButton 消费覆盖文本
+  assert.match(cpp, /自绘 BUTTON 家族的可见标题/u);
+  assert.match(cpp, /runtime->hasOverrideText = true;/u);
+  assert.match(cpp, /const wchar_t\* displayText = runtime->hasOverrideText/u);
 });
 
 test('contributes.constants 清单门禁：命名、类型、字面量与重复校验', () => {

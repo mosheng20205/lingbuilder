@@ -63,6 +63,7 @@ export function formatEditorPositionStatus(state: Pick<TextEditorStatus, 'line' 
 
 function historyUnavailableReason(state: TextEditorStatus, action: '撤销' | '重做'): string {
   if (state.readOnly) return `当前界面为只读，不能${action}`;
+  if (state.surface === 'designer') return `界面设计没有可${action}的设计操作`;
   if (state.surface === 'beginner') return `新手结构输入框暂无可由工作台${action}的编辑`;
   return `当前文件没有可${action}的编辑`;
 }

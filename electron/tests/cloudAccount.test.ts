@@ -10,8 +10,12 @@ test('system AI account tokens stay in Electron safeStorage and streaming is can
   assert.match(main, /cloud-refresh-token\.bin/u);
   assert.doesNotMatch(assistant, /localStorage.*refresh/iu);
   assert.match(cloud, /AbortController/u);
-  assert.match(assistant, /系统 AI/u);
-  assert.match(assistant, /可用点数/u);
+  // 2026-09-22：AI 面板引擎收敛为本机 Agent（自带模型通道，不消耗云端点数），面板内不再有任何账号/点数 UI；
+  // 账号与点数入口改由标题栏与欢迎页常驻承担。
+  assert.doesNotMatch(assistant, /\u767b\u5f55|\u6ce8\u518c|\u53ef\u7528\u70b9\u6570|cloudAccountSessionStore/u);
+  const titleBar = fs.readFileSync(new URL('../src/components/CloudAccountTitleBarEntry.tsx', import.meta.url), 'utf8');
+  assert.match(titleBar, /\u767b\u5f55/u);
+  assert.match(titleBar, /subscribeCloudAccountSession|getCloudAccountSessionState/u);
 });
 
 test('收费模块授权失败只向界面返回可操作的中文错误', () => {
@@ -57,6 +61,7 @@ test('忘记密码走弹窗两步重置且云端 forgot 有 IP 限流', () => {
   const apiTypes = fs.readFileSync(new URL('../src/electron-api.d.ts', import.meta.url), 'utf8');
   const dialog = fs.readFileSync(new URL('../src/components/CloudAccountLoginDialog.tsx', import.meta.url), 'utf8');
   const assistant = fs.readFileSync(new URL('../src/components/AiAssistant.tsx', import.meta.url), 'utf8');
+  const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(cloud, /forgotPassword[\s\S]*\/v1\/auth\/password\/forgot/u);
   assert.match(cloud, /resetPassword[\s\S]*\/v1\/auth\/password\/reset/u);
   assert.match(main, /ipcMain\.handle\('cloud-account:forgot-password'/u);
@@ -70,11 +75,12 @@ test('忘记密码走弹窗两步重置且云端 forgot 有 IP 限流', () => {
   assert.match(dialog, /密码需要 10 至 128 位，并同时包含字母和数字/u);
   assert.match(dialog, /密码已重置/u);
   assert.match(dialog, /忘记密码？/u);
-  // AI 助手面板登录区不再自带表单，登录/注册/忘记密码全部复用同一个顶层对话框服务。
-  assert.match(assistant, /const openAccountDialog = async \(initialMode: 'login' \| 'register' \| 'reset'\)/u);
-  assert.match(assistant, /await requestCloudAccountLogin\(\{ initialMode \}\)/u);
-  assert.match(assistant, /openAccountDialog\('reset'\)/u);
-  assert.match(assistant, /忘记密码？通过邮箱重置/u);
+  // 2026-09-22：AI 面板不再承载账号入口，登录/注册/忘记密码改由设置「账号」分类与命令出口复用同一个顶层对话框。
+  const settings = fs.readFileSync(new URL('../src/components/SettingsDialog.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(assistant, /requestCloudAccountLogin|openAccountDialog/u);
+  assert.match(settings, /requestCloudAccountLogin\(\{ initialMode: 'reset' \}\)/u);
+  assert.match(settings, /requestCloudAccountLogin\(\{ initialMode: 'register' \}\)/u);
+  assert.match(app, /requestCloudAccountLogin\(\{ initialMode: 'reset' \}\)/u);
   // 云端 forgot 必须有 IP 限流且防枚举恒 ok。
   const cloudService = fs.readFileSync(new URL('../../cloud/api/src/auth/auth.service.ts', import.meta.url), 'utf8');
   assert.match(cloudService, /auth:forgot:\$\{ip \|\| 'unknown'\}`, 20, 900\)/u);
@@ -91,8 +97,22 @@ test('AI 模块导入失败结果提供复制完整错误详情的入口', () =>
   assert.match(inspector, /const canImportAiFiles = parsedAiFiles\.files\.length > 0[\s\S]+?parsedAiFiles\.diagnostics\.length === 0/u);
   assert.match(inspector, /const importSucceeded = diagnostics.length === 0/u);
   assert.match(inspector, /AI 模块导入未通过：/u);
-  assert.match(inspector, /typeof payload\.moduleId !== 'string'/u);
-  assert.match(inspector, /typeof item === 'string'/u);
+  // 导入结果结构与诊断校验收口到 aiModuleGenerationFlow（聊天面板与模块面板共用唯一实现）。
+  const moduleFlow = fs.readFileSync(new URL('../src/services/modules/aiModuleGenerationFlow.ts', import.meta.url), 'utf8');
+  assert.match(moduleFlow, /typeof imported\.moduleId !== 'string'/u);
+  assert.match(moduleFlow, /typeof item === 'string'/u);
+});
+
+test('AI 面板编辑链随工作区切换重建并在提示词中携带控件运行时命令清单', () => {
+  const server = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  // 工作区切换必须重建面板 AI 服务：AiBridgeService 在构造期快照 workspaceRoot，
+  // 单例复用会让提案/应用继续读写切换前的旧工作区（写读分裂、应用后画布无变化）。
+  assert.match(server, /panelAiBridgeService = createPanelAiBridgeService\(\)/u);
+  assert.match(server, /panelAiBridgeService = createPanelAiBridgeService\(\);[\s\S]{0,400}workspaceRuntimeVersion \+= 1/u);
+  // planner 提示词必须携带涉及控件的规范运行时命令清单并禁止成员调用写法
+  // （数据表格1.添加行 这类写法不被源码支持，会以「找不到功能库」阻断构建）。
+  assert.match(server, /describeInvolvedDesignerControlCommands\(context\.designerProject\)/u);
+  assert.match(server, /禁止使用「控件名\.方法\(\.\.\.\)」成员调用写法/u);
 });
 
 test('AI 模块手动校验和导出入口继续使用严格完整性门禁', () => {

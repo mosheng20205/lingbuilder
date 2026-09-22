@@ -206,9 +206,16 @@ export function buildAgentProfilePatchYaml(request: {
     ...Object.entries(request.bridgeEnv || {}).map(([key, value]) => `          ${key}: ${yamlSingleQuote(value)}`),
     '        toolCallTimeoutMs: 900000',
     '        failOnStartupError: true',
-    '',
-    '# 本地工具全部整行禁用：任何写入都必须经 AiBridgeService 的提案事务。'
+    ''
   ];
+  if (providerLines.length) {
+    lines.push(
+      '# 模型通道：端点与模型名写在这里，API Key 只经子进程环境变量注入（本文件不得出现密钥）。',
+      ...providerLines,
+      ''
+    );
+  }
+  lines.push('# 本地工具全部整行禁用：任何写入都必须经 AiBridgeService 的提案事务。');
   for (const row of MASKED_DSH_TOOL_ROWS) {
     lines.push(`- id: ${row}`, '  disabled: true');
   }

@@ -17,7 +17,15 @@ const EPISODE_DIRS = [
   '06 获取网页资源响应',
   '07 资源加载生命周期',
   '08 下载打印查找',
-  '09 JavaScript DevTools 异步任务'
+  '09 JavaScript DevTools 异步任务',
+  '14 无头浏览器抓取',
+  '15 自动填表',
+  '16 网页框架操作',
+  '17 多实例与多店铺',
+  '18 Cookie与会话管理',
+  '19 模拟输入与用户代理',
+  '20 弹窗管理',
+  '21 DevTools订阅与受管流'
 ];
 const COMPARISON_DIR = '10 CEF3还是EdgeView';
 

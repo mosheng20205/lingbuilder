@@ -3,19 +3,19 @@
   "id": "lingbuilder.skill-kit",
   "name": "灵码 AI 客户端接入指引",
   "version": "0.1.0",
-  "sequence": 1,
+  "sequence": 2,
   "channel": "stable",
   "license": "Apache-2.0",
   "transport": "stdio-mcp",
   "entrypoint": "SKILL.md",
   "minIdeVersion": "0.7.6",
-  "updatedAt": "2026-09-19T00:00:00.000Z",
+  "updatedAt": "2026-09-21T00:00:00.000Z",
   "installPromptTemplate": "请读取 {skillPath} 这份指引，按其中的步骤把 LingBuilder 的 AI Bridge 能力安装到你自己的配置中；完成后回读校验一次连接，并把你要写入的配置块原样给我确认。",
   "files": [
     {
       "path": "SKILL.md",
-      "bytes": 7727,
-      "sha256": "fe939d5e169ab0bf7f0177f6e26f4120943e5bae86f77bc4a23005a4640ff219"
+      "bytes": 11659,
+      "sha256": "6539687811455fe66581a28a6c993d1696691928959561dc0d5557ba8c2918a5"
     }
   ]
 }

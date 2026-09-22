@@ -149,6 +149,8 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   const [notice, setNotice] = useState<{ text: string; duration: number } | null>(null);
   const [configCopied, setConfigCopied] = useState(false);
   const [logsCopied, setLogsCopied] = useState(false);
+  const [installPromptCopied, setInstallPromptCopied] = useState(false);
+  const [settingsSaveState, setSettingsSaveState] = useState<'idle' | 'pending' | 'saved'>('idle');
   const logsRef = useRef<HTMLPreElement>(null);
   const bridgeRef = useRef<BridgeSnapshot>(EMPTY_BRIDGE);
   const settingsReadyRef = useRef(false);
@@ -268,26 +270,29 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
   }, [desktopApi, open, refreshCodexDesktop]);
 
   // 停止态编辑即防抖持久化；无效端口/Token 不落盘，由字段内联提示引导修正。
+  // 保存状态直接以 Token 字段旁的内联徽标呈现（pending=保存中/saved=已保存），不再依赖底部一闪而过的提示。
   useEffect(() => {
     if (!open || !desktopApi?.saveStartSettings) return undefined;
     if (running || transitioning || !settingsReadyRef.current) return undefined;
-    if (!isPortValid(port)) return undefined;
     const token = customToken.trim();
-    if (token && !isTokenValid(token)) return undefined;
+    if (!isPortValid(port) || (token && !isTokenValid(token))) { setSettingsSaveState('idle'); return undefined; }
     const pending = { port, permission, token, externalModuleAccess };
     const saved = lastSavedSettingsRef.current;
-    if (saved && saved.port === pending.port && saved.permission === pending.permission && saved.token === pending.token
-      && saved.externalModuleAccess === pending.externalModuleAccess) return undefined;
+    const matches = !!saved && saved.port === pending.port && saved.permission === pending.permission
+      && saved.token === pending.token && saved.externalModuleAccess === pending.externalModuleAccess;
+    setSettingsSaveState(matches ? 'saved' : 'pending');
+    if (matches) return undefined;
     const timer = window.setTimeout(() => {
       void desktopApi.saveStartSettings!({ ...pending, lifecycle: 'workspace' }).then(result => {
         setLocalAuth(result.localAuthorization ?? null);
         if (result.ok) {
           lastSavedSettingsRef.current = pending;
-          setNotice({ text: '启动设置已保存到本机加密存储。', duration: 2_000 });
+          setSettingsSaveState('saved');
         } else {
+          setSettingsSaveState('idle');
           setError(`启动设置保存失败：${result.error || '未知原因'}`);
         }
-      }).catch(() => undefined);
+      }).catch(() => { setSettingsSaveState('idle'); });
     }, 600);
     return () => window.clearTimeout(timer);
   }, [customToken, desktopApi, externalModuleAccess, open, permission, port, running, transitioning]);
@@ -436,6 +441,13 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
     await copyText(bridge.logs.join('\n'));
     setLogsCopied(true);
     window.setTimeout(() => setLogsCopied(false), 1500);
+  };
+
+  const copyInstallPrompt = async () => {
+    if (!skillKit?.installPrompt) return;
+    await copyText(skillKit.installPrompt);
+    setInstallPromptCopied(true);
+    window.setTimeout(() => setInstallPromptCopied(false), 1500);
   };
 
   const rotateToken = async () => { await runAction('rotate', async () => {
@@ -597,6 +609,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
                 {clientsProbe.phase !== 'error' && !clients.length && (clientsProbe.phase === 'loading'
                   ? <div role="status" className={`rounded border p-4 text-[11px] ${card}`}><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />正在检测外部 AI CLI…</div>
                   : <div className={`rounded border p-4 text-[11px] ${card}`}>未检测到外部 AI CLI。安装 Codex CLI、Claude Code 或 Gemini CLI 后点击“重新检测”。</div>)}
+                <p className={`text-[11px] leading-5 ${muted}`}>{'「打开 Bridge 终端」会把当前 Token 注入该终端的 LINGBUILDER_AI_BRIDGE_TOKEN 环境变量：从该终端启动的客户端可直接使用 ${LINGBUILDER_AI_BRIDGE_TOKEN} 占位符完成鉴权；不经该终端直接双击打开的客户端读不到该变量，需改用自定义 Token 并自行配置环境。'}</p>
               </div>
             </section>
 
@@ -606,7 +619,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
               <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500 [&::-webkit-details-marker]:hidden"><Settings2 className="h-4 w-4 shrink-0 text-cyan-500" aria-hidden="true" />手动连接（高级）<span className={`ml-auto text-right text-[11px] font-normal ${muted}`}>自定义 Token · 通用 MCP 配置 · 灵码 Skill 正文</span></summary>
               <div className="mt-3 space-y-5">
                 <fieldset disabled={running || transitioning || Boolean(busyAction)} className="space-y-4 disabled:opacity-60">
-                  <label className="block text-[11px] font-medium">自定义 Token（可选）<input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} aria-invalid={tokenInvalid} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${tokenInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${tokenInvalid ? 'text-rose-400' : muted}`}>{tokenInvalid ? '自定义 Token 必须是 24–256 个不含空白的可见 ASCII 字符（不能含中文或空格）。' : '停止态修改即时保存到本机加密存储；清空则每次启动生成临时 Token。要求 24–256 个不含空白的可见 ASCII 字符。'}</span></label>
+                  <label className="block text-[11px] font-medium"><span className="flex items-center justify-between gap-2"><span>自定义 Token（可选）</span>{settingsSaveState !== 'idle' && <span aria-live="polite" className={`flex shrink-0 items-center gap-1 text-[10px] font-normal ${settingsSaveState === 'saved' ? 'text-emerald-500' : muted}`}>{settingsSaveState === 'saved' ? <><Check className="h-3 w-3" />已保存到本机加密存储</> : <><LoaderCircle className="h-3 w-3 animate-spin" />正在保存…</>}</span>}</span><input type="password" autoComplete="off" value={customToken} onChange={event => setCustomToken(event.target.value)} aria-invalid={tokenInvalid} placeholder="留空则生成高强度临时 Token" className={`mt-1 min-h-11 w-full rounded border px-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 ${field} ${tokenInvalid ? 'border-rose-500/60' : ''}`} /><span className={`mt-1 block text-[10px] font-normal ${tokenInvalid ? 'text-rose-400' : muted}`}>{tokenInvalid ? '自定义 Token 必须是 24–256 个不含空白的可见 ASCII 字符（不能含中文或空格）。' : '停止态修改即时保存到本机加密存储；清空则每次启动生成临时 Token。要求 24–256 个不含空白的可见 ASCII 字符。'}</span></label>
                 </fieldset>
                 <section>
                   <h4 className="text-xs font-semibold">连接配置</h4><p className={`mb-2 mt-1 text-[11px] leading-5 ${muted}`}>供不在快捷客户端列表中的 MCP 或 HTTP 客户端使用。</p>
@@ -622,7 +635,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose, onOpenTermin
                     <span className={`font-mono ${muted}`}>{skillKit ? `v${skillKit.version || '—'} · sequence ${skillKit.sequence} · ${skillKit.fileCount} 个文件` : '—'}</span>
                     <button type="button" className="min-h-11 rounded border border-current/15 px-3 hover:border-cyan-500/40" disabled={skillKitBusy} onClick={() => void loadSkillKit(false)}>刷新状态</button>
                     <button type="button" className="min-h-11 rounded border border-cyan-500/40 px-3 text-cyan-500 hover:bg-cyan-500/10" disabled={skillKitBusy} onClick={() => void loadSkillKit(true)}>{skillKitBusy ? '正在检查…' : '检查更新'}</button>
-                    <button type="button" className="min-h-11 rounded border border-current/15 px-3 hover:border-cyan-500/40" disabled={!skillKit?.installPrompt} onClick={() => void copyText(skillKit.installPrompt)}>复制安装指令</button>
+                    <button type="button" className="flex min-h-11 items-center gap-1 rounded border border-current/15 px-3 hover:border-cyan-500/40" disabled={!skillKit?.installPrompt} onClick={() => void copyInstallPrompt()} aria-live="polite">{installPromptCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : null}{installPromptCopied ? '已复制' : '复制安装指令'}</button>
                   </div>
                   {skillKit?.entrypointPath && <p className={`mt-2 break-all font-mono text-[10px] ${muted}`}>{skillKit.entrypointPath}</p>}
                   {skillKit?.problem && <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-5 text-amber-400">{skillKit.problem}</p>}

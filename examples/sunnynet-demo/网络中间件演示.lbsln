@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "网络中间件演示",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "sunnynet-demo",
+  "startupProjectIds": [
+    "sunnynet-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "sunnynet-demo",
+      "name": "网络中间件演示",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

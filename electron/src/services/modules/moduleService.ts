@@ -89,10 +89,24 @@ export class ModuleService {
     const installRoot = this.installedModulesDir();
     const entries = await safeReadDir(installRoot);
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      // Windows 目录联接（mklink /J）的 readdir dirent 报 isSymbolicLink 而非 isDirectory；
+      // 「把模块目录联接进 .lingbuilder/modules 省磁盘」是自然用法，必须与真实目录同语义，
+      // 不得静默跳过（静默跳过会让已启用模块在构建时报「尚未启用」，用户无从自查）。
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
       if (PROJECT_RESOURCE_MODULE_IDS.has(entry.name)) continue;
       if (linkedModuleIds.has(entry.name)) continue;
       const installPath = path.join(installRoot, entry.name);
+      if (entry.isSymbolicLink() && !(await isRealDirectory(installPath))) {
+        // 失效联接/文件链接：给出中文诊断，不静默跳过。
+        modules.push({
+          manifest: createInvalidManifest(entry.name),
+          installPath,
+          isInstalled: true,
+          isEnabledForProject: false,
+          diagnostics: [`模块目录「${entry.name}」是符号链接/目录联接，但链接目标不存在或不是目录；请恢复链接目标，或删除该链接后用真实目录或开发源链接重新接入模块。`]
+        });
+        continue;
+      }
       const loaded = await this.loadInstalledModuleFromDir(installPath, entry.name, projectRefs.enabledModuleIds);
       // 链接优先：目录名与清单 ID 不一致时（如手工改名的目录），清单 ID 命中链接表也要跳过。
       if (loaded.manifest && linkedModuleIds.has(loaded.manifest.id)) continue;
@@ -1169,6 +1183,15 @@ async function safeReadDir(dir: string) {
     return await fs.readdir(dir, { withFileTypes: true });
   } catch {
     return [];
+  }
+}
+
+/** 跟随符号链接/目录联接的 stat：目标存在且是目录才返回 true（Windows 联接的 dirent 不报 isDirectory）。 */
+async function isRealDirectory(target: string): Promise<boolean> {
+  try {
+    return (await fs.stat(target)).isDirectory();
+  } catch {
+    return false;
   }
 }
 

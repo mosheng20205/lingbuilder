@@ -1,0 +1,26 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "cron-timer-demo",
+    "name": "定时任务演示",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "CronTimerDemo.xml",
+        "className": "定时任务演示窗口",
+        "title": "LingBuilder 定时任务验证",
+        "width": 560,
+        "height": 300,
+        "background": "#14141C",
+        "description": "验证定时任务模块 cron 表达式调度、提交线程、crontab 表、守护进程、开机自启与 MAILTO 配置。",
+        "events": {
+          "Loaded": "_定时任务演示窗口_创建完毕"
+        },
+        "controls": []
+      }
+    ]
+  },
+  "lingCppSourceCode": "",
+  "run": false,
+  "approved": true
+}

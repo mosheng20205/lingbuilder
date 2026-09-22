@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { LingBuilderSolutionProject } from '../solution/solutionService';
+import type { TextFileSnapshot } from '../files/types';
+import type { LingWindowProject } from './types';
 import {
   EMBEDDED_RESOURCE_MAX_FILE_BYTES,
   isEmbeddableResourceSourceFile,
@@ -364,6 +366,24 @@ export class DesignerAssetService {
     return { bytes: await fs.readFile(resolved), mimeType: imageMimeType(resolved) };
   }
 
+  /**
+   * 删除项目 assets 目录中的一张图片资源。
+   * 复用 resolveProjectImage 的全部校验（归属项目 assets 根、扩展名、工作区边界、普通文件），
+   * 文件缺失等异常统一转成中文诊断；调用方负责先做引用扫描与用户确认。
+   */
+  async deleteProjectImage(project: LingBuilderSolutionProject, relativePath: string): Promise<void> {
+    let target: string;
+    try {
+      target = await this.resolveProjectImage(project, relativePath);
+    } catch (error) {
+      if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error('图片资源不存在或已被删除。');
+      }
+      throw error;
+    }
+    await fs.rm(target, { force: true });
+  }
+
   async listProjectImages(project: LingBuilderSolutionProject): Promise<ImportedDesignerImage[]> {
     const assetRoot = this.getProjectAssetRoot(project);
     const sourceRoot = this.resolveWorkspacePath(assetRoot);
@@ -427,6 +447,94 @@ export class DesignerAssetService {
     if (!isWithin(root, target)) throw new Error('图片资源路径越过工作区。');
     return target;
   }
+}
+
+/** 一处图片资源引用：designer = 窗口设计器模型；source = 项目源码文件。 */
+export interface DesignerImageReferenceHit {
+  source: 'designer' | 'source';
+  /** 中文位置描述，如「窗口「主窗口」的控件「图片框1」」或「src/Main.lcpp:12」。 */
+  location: string;
+  /** 命中明细：图标路径、属性名或源码行文本（已截断）。 */
+  detail: string;
+}
+
+export interface DesignerImageReferenceScan {
+  hits: DesignerImageReferenceHit[];
+  /** 超出展示上限、未逐条列出的引用条数。 */
+  truncated: number;
+}
+
+const DESIGNER_IMAGE_REFERENCE_LIMIT = 50;
+
+/**
+ * 删除前引用扫描：在窗口设计器模型（图标、控件内容与属性）和项目源码快照中
+ * 查找指向该 assets 相对路径的引用。匹配大小写不敏感，正斜杠与反斜杠写法等价；
+ * 源码文件清单必须来自 SolutionService.readProjectFileSnapshots（项目归属隔离出口）。
+ */
+export function findDesignerImageReferences(options: {
+  designerProject?: LingWindowProject | null;
+  sourceFiles: Record<string, TextFileSnapshot>;
+  relativePath: string;
+}): DesignerImageReferenceScan {
+  const forward = String(options.relativePath || '').trim().replace(/\\/gu, '/');
+  if (!forward) return { hits: [], truncated: 0 };
+  const backward = forward.includes('/') ? forward.replace(/\//gu, '\\') : forward;
+  const lowerForward = forward.toLowerCase();
+  const lowerBackward = backward.toLowerCase();
+  const matchesReference = (text: string) => {
+    const lowered = text.toLowerCase();
+    return lowered.includes(lowerForward) || lowered.includes(lowerBackward);
+  };
+
+  const hits: DesignerImageReferenceHit[] = [];
+  let truncated = 0;
+  const push = (hit: DesignerImageReferenceHit) => {
+    if (hits.length >= DESIGNER_IMAGE_REFERENCE_LIMIT) {
+      truncated += 1;
+      return;
+    }
+    hits.push(hit);
+  };
+
+  const designer = options.designerProject;
+  if (designer) {
+    for (const window of designer.windows) {
+      const windowLabel = `窗口「${window.title || window.className}」`;
+      if (window.iconPath && matchesReference(window.iconPath)) {
+        push({ source: 'designer', location: `${windowLabel}的图标`, detail: window.iconPath });
+      }
+      for (const control of window.controls || []) {
+        if (!matchesReference(JSON.stringify(control))) continue;
+        if (matchesReference(control.content || '')) {
+          push({ source: 'designer', location: `${windowLabel}的控件「${control.name}」`, detail: `控件内容 ${control.content}` });
+          continue;
+        }
+        const matchedProperties = Object.entries(control.properties || {})
+          .filter(([, value]) => matchesReference(JSON.stringify(value)))
+          .map(([key]) => key);
+        push({
+          source: 'designer',
+          location: `${windowLabel}的控件「${control.name}」`,
+          detail: matchedProperties.length ? `属性 ${matchedProperties.join('、')}` : ''
+        });
+      }
+    }
+  }
+
+  for (const [filePath, snapshot] of Object.entries(options.sourceFiles)) {
+    if (!snapshot?.content) continue;
+    const lines = snapshot.content.split(/\r?\n/u);
+    for (let index = 0; index < lines.length; index += 1) {
+      if (!matchesReference(lines[index])) continue;
+      push({
+        source: 'source',
+        location: `${filePath}:${index + 1}`,
+        detail: lines[index].trim().slice(0, 160)
+      });
+    }
+  }
+
+  return { hits, truncated };
 }
 
 export function createDesignerAssetService(workspaceRoot: string): DesignerAssetService {

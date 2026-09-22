@@ -38,9 +38,12 @@ export interface AiBridgeHealth {
 export interface AiBridgeTreeEntry {
   path: string;
   name: string;
-  type: 'file' | 'directory';
+  /** 'workspace' 是 listWorkspaceTree 返回数组首项的合成根条目，用于外部 AI 自查当前工作区。 */
+  type: 'file' | 'directory' | 'workspace';
   size?: number;
   children?: AiBridgeTreeEntry[];
+  /** 仅合成根条目携带：当前 Bridge 工作区根绝对路径。 */
+  workspaceRoot?: string;
 }
 
 export interface AiBridgeReadFileRequest {

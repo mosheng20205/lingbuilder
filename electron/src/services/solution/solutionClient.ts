@@ -53,6 +53,8 @@ export interface SolutionCommandResult {
   stage?: string;
   compilerDiagnostics?: any[];
   results?: Array<{ compilerDiagnostics?: any[] }>;
+  /** 生成/清理/重新生成走任务链路时返回：日志行以任务轮询通道为准，响应侧不重复播报。 */
+  taskId?: string;
   /** 创建位置为工作区外的绝对路径时返回：新创建的独立项目工作区目录。 */
   workspacePath?: string;
 }
@@ -233,7 +235,8 @@ async function parseCommandResponse(response: Response): Promise<SolutionCommand
     return {
       ok: false,
       error: result.error || result.stage || '操作失败',
-      logs: result.logs || []
+      logs: result.logs || [],
+      taskId: typeof result.taskId === 'string' ? result.taskId : undefined
     };
   }
   return result as SolutionCommandResult;

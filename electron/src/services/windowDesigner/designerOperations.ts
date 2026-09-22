@@ -253,6 +253,8 @@ function reorderSiblings(
   return result;
 }
 
+export type DesignerHistoryAvailability = { canUndo: boolean; canRedo: boolean };
+
 export class DesignerHistory {
   private past: LingWindowProject[] = [];
   private future: LingWindowProject[] = [];

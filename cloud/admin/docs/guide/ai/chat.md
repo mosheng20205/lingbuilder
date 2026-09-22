@@ -35,7 +35,7 @@ title: AI 对话式改代码
    - **输入区**：在底部输入中文描述，按 `Enter` 发送
 
 > [!NOTE]
-> 首次使用前需要先完成配置。可在 [AI Bridge 配置](/guide/ai/bridge-config) 中绑定模型服务；也可以在 **AI 助手面板** 上方的 **AI 对接设置** 中选择内置云端服务。
+> 首次使用前需要先完成配置：在 **AI 助手面板** 上方的 **AI 对接设置** 中登录使用内置云端服务，或切换到自定义 API 填写自有模型服务。
 
 ## 2. 用中文描述需求
 
@@ -79,7 +79,7 @@ AI 对话服务按请求消耗 **点数**（credits）。在 AI 助手面板底�
 
 1. 打开 **AI 助手面板** 上方的 **AI 对接设置**。
 2. 在 **模型服务** 区域选择 **使用自有 API Key（BYOK）**。
-3. 点击 **配置**，填入服务商地址与密钥（详见 [AI Bridge 配置](/guide/ai/bridge-config)）。
+3. 点击 **配置**，填入服务商地址与密钥。
 4. 点击 **测试连接**，验证通过后点击 **保存**。
 
 > [!TIP]
@@ -100,6 +100,6 @@ AI 对话服务按请求消耗 **点数**（credits）。在 AI 助手面板底�
 
 ## 下一步
 
-- 配置自己的模型服务：[AI Bridge 配置](/guide/ai/bridge-config)
+- 连接外部 AI 客户端（Claude Code、Codex CLI 等）：[AI Bridge 连接配置](/guide/ai/bridge-config)
 - 了解 MCP 工具协议：[MCP 工具接入](/guide/ai/mcp)
 - 浏览 DeepSeek 接入说明：[DeepSeek 集成参考](/guide/ai/deepseek-integration)

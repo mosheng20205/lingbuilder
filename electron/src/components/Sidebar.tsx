@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { requestWorkbenchPrompt } from '../services/workbench/workbenchConfirmService';
+import { requestWorkbenchConfirm, requestWorkbenchPrompt } from '../services/workbench/workbenchConfirmService';
 import {
   Folder,
   FileCode,
@@ -22,7 +22,7 @@ import {
   RotateCcw,
   FileText,
   Terminal,
-  Copy,
+    Copy,
   Info,
   Sliders,
   X,
@@ -34,10 +34,11 @@ import {
   Package,
   GitBranch,
   Link,
+  Hash,
   Image as ImageIcon,
   FolderOutput
 } from 'lucide-react';
-import { CppFile, SourceControlStatus } from '../types';
+import { CppFile, ExtractedString, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
 import {
   createBlankWindow,
@@ -52,10 +53,13 @@ import type { LingWindowModel } from '../services/windowDesigner/types';
 import {
   fetchDesignerImagePreviewBlob,
   listDesignerImageResources,
+  type DesignerImageDeleteResult,
   type DesignerImageImportResult,
+  type DesignerImageReferenceInfo,
   type DesignerImageResource
 } from '../services/windowDesigner/designerAssetClient';
 import type { InstalledModule, ModuleHintContent, ModuleTargetContribution } from '../services/modules/types';
+import { setModulePageActive } from '../services/modules/moduleDetailView';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
 import { formatModulePublicType, formatModulePublicTypeSource, getModulePublicTypeKind } from '../services/modules/modulePublicTypeService';
 import {
@@ -95,7 +99,7 @@ type ModuleContextMenu = { x: number; y: number; module: InstalledModule };
 type SolutionContextMenu =
   | { x: number; y: number; target: 'solution' }
   | { x: number; y: number; target: 'project'; project: SolutionProject };
-type ResourceContextMenu = { x: number; y: number; resource: DesignerImageResource };
+type ResourceContextMenu = { x: number; y: number; resource: DesignerImageResource; project: SolutionProject };
 /** 内嵌资源条目右键菜单：携带逻辑名与源文件，供命令直接使用。 */
 type EmbeddedResourceContextMenu = { x: number; y: number; name: string; file: string };
 type ResourcePreview = { projectId: string; resource: DesignerImageResource };
@@ -103,21 +107,22 @@ type SolutionTreeItem =
   | { kind: 'folder'; folder: SolutionFolder }
   | { kind: 'project'; project: SolutionProject };
 
-interface ModuleParameterDoc {
-  name: string;
-  type: string;
-  example: string;
-  description: string;
-}
-
 type ModuleCppRow = {
   label: string;
   values: Array<{ id: string; value: string }>;
 };
 
+async function fetchJson(url: string): Promise<any> {
+  const response = await fetch(url);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('模块服务暂未返回 JSON');
+  }
+  return response.json();
+}
+
 /** 判断项目源码根下是否已创建固定声明文件（路径规范化后比较，容忍前导斜杠与 ./ 前缀差异）。 */
 function projectDeclarationFileExists(files: CppFile[], sourceRoot: string, fileName: string): boolean {
-
   const root = `/${sourceRoot.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '').replace(/^\/+/u, '').toLowerCase()}`;
   return files.some(file => {
     const normalized = `/${file.path.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/^\/+/u, '').toLowerCase()}`;
@@ -216,6 +221,7 @@ interface SidebarProps {
   onAddProjectResource?: (projectId: string) => Promise<DesignerImageImportResult>;
   onExportLcppSourcePackage?: (projectId: string) => void | Promise<void>;
   onCopyProjectResourcePath?: (relativePath: string) => Promise<boolean>;
+  onDeleteProjectResource?: (projectId: string, relativePath: string, confirmed: boolean) => Promise<DesignerImageDeleteResult>;
   activeModuleHintId?: string;
   onShowModuleHint?: (hint: ModuleHintContent) => void;
 }
@@ -268,11 +274,16 @@ export default function Sidebar({
   onAddProjectResource,
   onExportLcppSourcePackage,
   onCopyProjectResourcePath,
+  onDeleteProjectResource,
   activeModuleHintId,
   onShowModuleHint
 }: SidebarProps) {
   // Activity views: solution explorer, tools, modules and Git changes.
   const [activeTab, setActiveTab] = useState<'explorer' | 'properties' | 'assistant' | 'actions' | 'outline' | 'git'>('explorer');
+  // 模块页激活状态广播：主区据此在浏览模块列表时显示占位页而非编辑器/设计器（详情页签打开除外）。
+  useEffect(() => {
+    setModulePageActive(activeTab === 'outline');
+  }, [activeTab]);
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Record<string, boolean>>({});
   const [expandedSolutionFolderIds, setExpandedSolutionFolderIds] = useState<Record<string, boolean>>({});
@@ -285,6 +296,10 @@ export default function Sidebar({
   const [resourceContextMenu, setResourceContextMenu] = useState<ResourceContextMenu | null>(null);
   const [embeddedResourceContextMenu, setEmbeddedResourceContextMenu] = useState<EmbeddedResourceContextMenu | null>(null);
   const [resourcePreview, setResourcePreview] = useState<ResourcePreview | null>(null);
+  const [resourceDeleteTarget, setResourceDeleteTarget] = useState<{ project: SolutionProject; resource: DesignerImageResource } | null>(null);
+  const [resourceDeleteReferences, setResourceDeleteReferences] = useState<DesignerImageReferenceInfo[]>([]);
+  const [resourceDeleteTruncated, setResourceDeleteTruncated] = useState(0);
+  const [resourceDeleteBusy, setResourceDeleteBusy] = useState(false);
   const [designerState, setDesignerState] = useState(() => readWindowDesignerState());
 
   useEffect(() => {
@@ -705,6 +720,7 @@ export default function Sidebar({
     setPlaceholderErrors([]);
   };
 
+  // --- Quick Action: Apply Glossary Terms directly ---
 
   // Copy translated code shortcut
   const handleCopyCode = () => {
@@ -801,6 +817,48 @@ export default function Sidebar({
     }, 6000);
   };
 
+  // 解决方案树模块节点右键「从项目中禁用」：与模块管理页的禁用开关共用同一接口和级联禁用语义。
+  const disableProjectModuleFromTree = async (module: InstalledModule) => {
+    const projectId = moduleProjectIdRef.current;
+    if (module.manifest.id === 'lingbuilder.win32.basic') {
+      triggerError('Win32窗口基础模块是普通项目的默认基础能力，不能禁用。');
+      return;
+    }
+    try {
+      const planResponse = await fetch('/api/modules/project/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, moduleId: module.manifest.id, action: 'disable' })
+      });
+      const planResult = await planResponse.json();
+      if (!planResult.ok) throw new Error(planResult.error || '模块依赖计划生成失败');
+      const dependentModuleIds: string[] = planResult.plan?.dependentModuleIds || [];
+      const cascade = dependentModuleIds.length > 0;
+      if (cascade && !await requestWorkbenchConfirm({
+        title: '级联禁用确认',
+        description: `以下模块依赖“${module.manifest.name}”，必须一并禁用：\n${dependentModuleIds.join('\n')}\n\n是否级联禁用？`,
+        confirmLabel: '级联禁用',
+        cancelLabel: '取消'
+      })) return;
+      const response = await fetch('/api/modules/project/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, moduleId: module.manifest.id, cascade })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || '禁用模块失败');
+      triggerSuccess(cascade
+        ? `已从项目禁用 ${module.manifest.name}，并级联禁用：${dependentModuleIds.join('、')}。`
+        : `已从项目禁用 ${module.manifest.name}。`);
+      window.dispatchEvent(new CustomEvent('lingbuilder-modules-changed', {
+        detail: { projectId, moduleId: module.manifest.id, scope: 'project' }
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      triggerError(`从项目禁用模块失败：${message}`);
+    }
+  };
+
   const refreshProjectImageResources = useCallback(async (projectId: string): Promise<boolean> => {
     const requestedWorkspaceKey = workspaceKey;
     setProjectResourceStatus(previous => ({ ...previous, [projectId]: 'loading' }));
@@ -823,6 +881,10 @@ export default function Sidebar({
     setExpandedResourceProjectIds({});
     setResourceContextMenu(null);
     setResourcePreview(null);
+    setResourceDeleteTarget(null);
+    setResourceDeleteReferences([]);
+    setResourceDeleteTruncated(0);
+    setResourceDeleteBusy(false);
   }, [workspaceKey]);
 
   useEffect(() => {
@@ -852,6 +914,66 @@ export default function Sidebar({
       triggerError(error instanceof Error ? error.message : '添加图片资源失败。');
     } finally {
       setResourceImportingProjectId(null);
+    }
+  };
+
+  // 删除图片资源：先不带 confirmed 发一次拿引用清单，有引用时弹确认框让用户二次确认。
+  const startResourceDelete = async (projectId: string, resource: DesignerImageResource) => {
+    if (resourceDeleteBusy) return;
+    const project = solution?.projects.find(candidate => candidate.id === projectId);
+    if (!project) {
+      triggerError('未找到图片资源所属项目。');
+      return;
+    }
+    if (!onDeleteProjectResource) {
+      triggerError('当前工作台未提供图片资源删除命令。');
+      return;
+    }
+    setResourceContextMenu(null);
+    setResourceDeleteBusy(true);
+    try {
+      const result = await onDeleteProjectResource(projectId, resource.relativePath, false);
+      if (result.status === 'error') {
+        triggerError(result.error);
+        return;
+      }
+      if (result.status === 'needs-confirmation') {
+        setResourceDeleteReferences(result.references);
+        setResourceDeleteTruncated(result.truncated);
+      } else {
+        setResourceDeleteReferences([]);
+        setResourceDeleteTruncated(0);
+      }
+      setResourceDeleteTarget({ project, resource });
+    } catch (error) {
+      triggerError(error instanceof Error ? error.message : '图片资源删除失败。');
+    } finally {
+      setResourceDeleteBusy(false);
+    }
+  };
+
+  const confirmResourceDelete = async () => {
+    const target = resourceDeleteTarget;
+    if (!target || resourceDeleteBusy || !onDeleteProjectResource) return;
+    setResourceDeleteBusy(true);
+    try {
+      const result = await onDeleteProjectResource(target.project.id, target.resource.relativePath, true);
+      if (result.status === 'error') {
+        triggerError(result.error);
+        return;
+      }
+      setResourceDeleteTarget(null);
+      setResourceDeleteReferences([]);
+      setResourceDeleteTruncated(0);
+      if (resourcePreview?.projectId === target.project.id && resourcePreview.resource.relativePath === target.resource.relativePath) {
+        setResourcePreview(null);
+      }
+      await refreshProjectImageResources(target.project.id);
+      triggerSuccess(`已删除图片资源：${target.resource.relativePath}`);
+    } catch (error) {
+      triggerError(error instanceof Error ? error.message : '图片资源删除失败。');
+    } finally {
+      setResourceDeleteBusy(false);
     }
   };
 
@@ -1392,6 +1514,17 @@ export default function Sidebar({
           <Copy className="w-3.5 h-3.5 text-sky-400" />
           <span>复制相对路径</span>
         </div>
+        <div
+          className="px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 hover:bg-rose-500 hover:text-white"
+          onClick={() => {
+            const project = resourceContextMenu.project;
+            const resource = resourceContextMenu.resource;
+            void startResourceDelete(project.id, resource);
+          }}
+        >
+          <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+          <span>删除图片资源</span>
+        </div>
       </div>
     );
   };
@@ -1456,6 +1589,21 @@ export default function Sidebar({
           <Copy className="w-3.5 h-3.5 text-emerald-400" />
           <span>复制模块 ID (C)</span>
         </div>
+        {module.manifest.id !== 'lingbuilder.win32.basic' && (
+          <>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div
+              className="px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 hover:bg-rose-500 hover:text-white"
+              onClick={() => {
+                void disableProjectModuleFromTree(module);
+                setModuleContextMenu(null);
+              }}
+            >
+              <X className="w-3.5 h-3.5 text-rose-400" />
+              <span>从项目中禁用</span>
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -1965,6 +2113,7 @@ export default function Sidebar({
                                 return (
                                   <div key={moduleId} className="min-w-0">
                                     <div
+                                      onClick={() => toggleModuleInterface(moduleId)}
                                       onContextMenu={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
@@ -1972,14 +2121,14 @@ export default function Sidebar({
                                         setWindowContextMenu(null);
                                         setModuleContextMenu({ x: event.clientX, y: event.clientY, module });
                                       }}
-                                      className={`group w-[calc(100%-4px)] flex items-center gap-1.5 px-1.5 py-1.5 ml-1 rounded text-[13px] font-sans text-left transition-colors ${
+                                      className={`group w-[calc(100%-4px)] flex items-center gap-1.5 px-1.5 py-1.5 ml-1 rounded text-[13px] font-sans text-left cursor-pointer transition-colors ${
                                         isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
                                       }`}
-                                      title={`${module.manifest.name} ${module.manifest.version}\n展开查看模块接口树，点击名称打开完整能力面板。\n${module.manifest.description}`}
+                                      title={`${module.manifest.name} ${module.manifest.version}\n${isModuleExpanded ? '点击折叠模块接口树' : '点击展开模块接口树'}；右键打开模块菜单。\n${module.manifest.description}`}
                                     >
                                       <button
                                         type="button"
-                                        onClick={() => toggleModuleInterface(moduleId)}
+                                        onClick={event => { event.stopPropagation(); toggleModuleInterface(moduleId); }}
                                         className={`shrink-0 rounded p-0.5 ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-slate-200'}`}
                                         title={isModuleExpanded ? '折叠模块接口' : '展开模块接口'}
                                       >
@@ -1988,9 +2137,9 @@ export default function Sidebar({
                                       <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                                       <button
                                         type="button"
-                                        onClick={event => event.stopPropagation()}
-                                        className="min-w-0 flex-1 truncate text-left"
-                                        title="单击不切换模块页；右键可定位到模块页当前模块"
+                                        onClick={event => { event.stopPropagation(); toggleModuleInterface(moduleId); }}
+                                        className="min-w-0 flex-1 truncate text-left cursor-pointer"
+                                        title={isModuleExpanded ? '点击折叠模块接口树；右键打开模块菜单' : '点击展开模块接口树；右键打开模块菜单'}
                                       >
                                         {module.manifest.name}
                                       </button>
@@ -2006,7 +2155,6 @@ export default function Sidebar({
                                         isDarkMode={isDarkMode}
                                         expandedGroups={expandedModuleGroups}
                                         onToggleGroup={toggleModuleGroup}
-                                        onOpenModule={() => openModuleInspector(moduleId)}
                                         activeHintId={activeModuleHintId}
                                         onShowHint={onShowModuleHint}
                                       />
@@ -2115,14 +2263,14 @@ export default function Sidebar({
                                     setWindowContextMenu(null);
                                     setModuleContextMenu(null);
                                     setSolutionContextMenu(null);
-                                    setResourceContextMenu({ x: event.clientX, y: event.clientY, resource });
+                                    setResourceContextMenu({ x: event.clientX, y: event.clientY, resource, project });
                                   }}
                                   className={`group w-full flex items-center gap-2 py-1.5 px-3 pl-7 text-[13px] cursor-pointer transition-colors font-sans ${
                                     resourcePreview?.projectId === project.id && resourcePreview.resource.relativePath === resource.relativePath
                                       ? isDarkMode ? 'bg-cyan-500/10 text-cyan-200' : 'bg-cyan-50 text-cyan-800'
                                       : isDarkMode ? 'text-[#CCCCCC] hover:bg-[#2A2D2E] hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
                                   }`}
-                                  title={`${resource.relativePath}\n单击预览，右键复制相对路径`}
+                                  title={`${resource.relativePath}\n单击预览，右键可复制相对路径或删除`}
                                 >
                                   <ImageIcon className="w-4 h-4 shrink-0 text-cyan-400" />
                                   <span className="min-w-0 flex-1 truncate">{resource.fileName}</span>
@@ -2544,6 +2692,25 @@ export default function Sidebar({
             if (success) triggerSuccess(`已复制相对路径：${relativePath}`);
             else triggerError('复制图片资源相对路径失败。');
           }}
+          onDelete={() => {
+            const current = resourcePreview;
+            if (current) void startResourceDelete(current.projectId, current.resource);
+          }}
+        />
+      )}
+      {resourceDeleteTarget && (
+        <ResourceDeleteConfirmDialog
+          target={resourceDeleteTarget}
+          references={resourceDeleteReferences}
+          truncated={resourceDeleteTruncated}
+          busy={resourceDeleteBusy}
+          isDarkMode={isDarkMode}
+          onCancel={() => {
+            setResourceDeleteTarget(null);
+            setResourceDeleteReferences([]);
+            setResourceDeleteTruncated(0);
+          }}
+          onConfirm={() => { void confirmResourceDelete(); }}
         />
       )}
     </div>
@@ -2554,12 +2721,14 @@ function ImageResourcePreviewDialog({
   preview,
   isDarkMode,
   onClose,
-  onCopyPath
+  onCopyPath,
+  onDelete
 }: {
   preview: ResourcePreview;
   isDarkMode: boolean;
   onClose: () => void;
   onCopyPath: (relativePath: string) => void | Promise<void>;
+  onDelete: () => void;
 }) {
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -2681,6 +2850,120 @@ function ImageResourcePreviewDialog({
             <Copy className="h-3.5 w-3.5" />
             <span>复制相对路径</span>
           </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex items-center gap-1.5 rounded-md bg-rose-500/10 px-2.5 py-1.5 font-medium text-rose-400 transition-colors hover:bg-rose-500/20"
+            title="删除这张图片资源；仍被引用时会先列出引用位置"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>删除</span>
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ResourceDeleteConfirmDialog({
+  target,
+  references,
+  truncated,
+  busy,
+  isDarkMode,
+  onCancel,
+  onConfirm
+}: {
+  target: { project: SolutionProject; resource: DesignerImageResource };
+  references: DesignerImageReferenceInfo[];
+  truncated: number;
+  busy: boolean;
+  isDarkMode: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 p-3 font-sans sm:p-6"
+      role="presentation"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <section
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={`删除图片资源：${target.resource.fileName}`}
+        className={`w-full max-w-lg overflow-hidden rounded-xl border shadow-2xl ${
+          isDarkMode ? 'border-slate-700 bg-[#1E1E24] text-slate-100' : 'border-slate-200 bg-white text-slate-900'
+        }`}
+      >
+        <header className={`flex items-center gap-3 border-b px-4 py-3 ${isDarkMode ? 'border-slate-700/80' : 'border-slate-200'}`}>
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-semibold">删除图片资源</h2>
+            <p className={`truncate text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{target.resource.relativePath}</p>
+          </div>
+        </header>
+        <div className="px-4 py-3 text-[13px]">
+          {references.length > 0 ? (
+            <>
+              <p>
+                该图片仍被 {references.length + truncated} 处引用，删除后这些位置将无法再显示它：
+              </p>
+              <ul className={`mt-2 max-h-44 overflow-auto rounded-md border p-2 text-[12px] ${isDarkMode ? 'border-slate-700 bg-black/20' : 'border-slate-200 bg-slate-50'}`}>
+                {references.map((reference, index) => (
+                  <li key={`${reference.location}-${index}`} className="flex items-start gap-1.5 py-0.5">
+                    <span className={`mt-0.5 shrink-0 rounded px-1 text-[10px] font-medium ${
+                      reference.source === 'designer'
+                        ? 'bg-cyan-500/15 text-cyan-400'
+                        : 'bg-violet-500/15 text-violet-400'
+                    }`}>
+                      {reference.source === 'designer' ? '设计器' : '源码'}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{reference.location}</span>
+                      {reference.detail && (
+                        <span className={`block truncate text-[11px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{reference.detail}</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+                {truncated > 0 && <li className="py-0.5 text-slate-400">…还有 {truncated} 处引用未逐条列出</li>}
+              </ul>
+            </>
+          ) : (
+            <p>未发现设计器窗口或项目源码仍在引用该图片。</p>
+          )}
+          <p className={`mt-2 text-[12px] ${isDarkMode ? 'text-rose-300' : 'text-rose-600'}`}>删除后不可恢复，确定要删除吗？</p>
+        </div>
+        <footer className={`flex items-center justify-end gap-2 border-t px-4 py-3 ${isDarkMode ? 'border-slate-700/80' : 'border-slate-200'}`}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className={`rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
+              isDarkMode ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-md bg-rose-600 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? '正在删除…' : '删除'}
+          </button>
         </footer>
       </section>
     </div>
@@ -2698,7 +2981,6 @@ function ModuleInterfaceTree({
   isDarkMode,
   expandedGroups,
   onToggleGroup,
-  onOpenModule,
   activeHintId,
   onShowHint
 }: {
@@ -2706,7 +2988,6 @@ function ModuleInterfaceTree({
   isDarkMode: boolean;
   expandedGroups: Record<string, boolean>;
   onToggleGroup: (groupId: string) => void;
-  onOpenModule: () => void;
   activeHintId?: string;
   onShowHint?: (hint: ModuleHintContent) => void;
 }) {
@@ -2734,11 +3015,11 @@ function ModuleInterfaceTree({
     <div className="ml-8 border-l border-slate-750/30 pl-1.5 py-0.5 font-sans">
       <button
         type="button"
-        onClick={onOpenModule}
+        onClick={() => { void window.lingBuilder?.modules?.openInfo(module); }}
         className={`mb-0.5 flex w-[calc(100%-4px)] items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-[10px] ${
           isDarkMode ? 'text-violet-300 hover:bg-violet-500/10' : 'text-violet-700 hover:bg-violet-50'
         }`}
-        title="打开完整模块能力面板"
+        title="在独立窗口查看完整接口说明"
       >
         <Info className="h-3 w-3 shrink-0" />
         <span className="truncate">查看完整接口说明</span>
@@ -3040,880 +3321,17 @@ function getModuleCapabilityCount(module: InstalledModule): number {
   const targets = module.manifest.targets || [];
   return (contributes.commands || []).length
     + (contributes.types || []).length
+    + (contributes.constants || []).length
     + (contributes.snippets || []).length
     + (contributes.designerControls || []).length
     + (contributes.docs || []).length
+    + (contributes.examples || []).length
     + targets.reduce((sum, target) => sum
       + (target.headers || []).length
       + (target.sources || []).length
       + (target.libs || []).length
       + (target.runtimeFiles || []).length, 0)
     + (module.manifest.bindings?.commands || []).length;
-}
-
-function getModuleCommandParameterDocs(command: { name: string; signature: string; description: string }): ModuleParameterDoc[] {
-  const match = (command.signature || '').match(/^[^(（]+[（(](.*)[）)]/u);
-  if (!match || !match[1].trim()) return [];
-  return match[1]
-    .split(/[，,]/u)
-    .map(part => part.trim())
-    .filter(Boolean)
-    .map(part => {
-      const [rawName, rawType] = part.split(/[:：]/u).map(value => value.trim());
-      const name = rawName || part;
-      const builtin = getBuiltinCommandParameterDoc(command.name, name);
-      return {
-        name,
-        type: rawType || builtin.type,
-        example: builtin.example,
-        description: builtin.description
-      };
-    });
-}
-
-function getBuiltinCommandParameterDoc(commandName: string, parameterName: string): Omit<ModuleParameterDoc, 'name'> {
-  const key = `${commandName}:${parameterName}`;
-  const docs: Record<string, Omit<ModuleParameterDoc, 'name'>> = {
-    '信息框:内容': {
-      type: '文本',
-      example: '"保存成功"',
-      description: '消息框正文内容，通常用于提示用户发生了什么。'
-    },
-    '信息框:标志': {
-      type: '整数',
-      example: '64',
-      description: 'Win32 MessageBox 标志值，用于控制图标和按钮。常见值：64 表示信息图标，48 表示警告，16 表示错误。'
-    },
-    '信息框:标题': {
-      type: '文本',
-      example: '"提示"',
-      description: '消息框标题栏文字。'
-    },
-    '调试输出:内容': {
-      type: '文本',
-      example: '"当前状态：已启动"',
-      description: '要输出到调试窗口和控制台的文本。'
-    }
-  };
-  if (docs[key]) return docs[key];
-  if (/内容|文本|标题|名称|路径|消息|说明/u.test(parameterName)) {
-    return { type: '文本', example: `"${parameterName}"`, description: `传入${parameterName}文本。` };
-  }
-  if (/标志|宽度|高度|坐标|数量|编号|ID|id|x|y|w|h/u.test(parameterName)) {
-    return { type: '整数', example: '0', description: `传入${parameterName}数值。` };
-  }
-  if (/是否|启用|显示|公开/u.test(parameterName)) {
-    return { type: '逻辑值', example: '真', description: `传入${parameterName}开关。` };
-  }
-  return { type: '参数', example: parameterName, description: '模块未提供该参数的详细说明，请结合命令签名和模块文档使用。' };
-}
-
-export function ModuleInfoDialog({
-  module,
-  isDarkMode,
-  standalone = false,
-  onClose
-}: {
-  module: InstalledModule;
-  isDarkMode: boolean;
-  standalone?: boolean;
-  onClose: () => void;
-}) {
-  const [searchText, setSearchText] = useState('');
-  const [isNavCollapsed, setIsNavCollapsed] = useState(false);
-  const [navWidth, setNavWidth] = useState(260);
-  const [selectedInfoNodeId, setSelectedInfoNodeId] = useState<string | null>(null);
-  const [expandedInfoGroups, setExpandedInfoGroups] = useState<Record<string, boolean>>({
-    types: true,
-    commands: true,
-    designerControls: true
-  });
-  const manifest = module.manifest;
-  const contributes = manifest.contributes || {};
-  const commands = contributes.commands || [];
-  const types = contributes.types || [];
-  const snippets = contributes.snippets || [];
-  const designerControls = contributes.designerControls || [];
-  const docs = contributes.docs || [];
-  const targets = manifest.targets || [];
-  const bindings = manifest.bindings?.commands || [];
-  const normalizedSearch = searchText.trim().toLowerCase();
-  const matchesSearch = (...values: Array<string | undefined>) => (
-    !normalizedSearch || values.some(value => value?.toLowerCase().includes(normalizedSearch))
-  );
-  const filteredTypes = types.filter(type => matchesSearch(
-    type.name,
-    type.description,
-    type.cppType,
-    type.elementType,
-    ...(type.fields || []).flatMap(field => [field.name, field.type, field.description])
-  ));
-  const filteredCommands = commands.filter(command => matchesSearch(
-    command.name,
-    command.signature,
-    command.description,
-    command.returnType,
-    bindings.find(binding => binding.command === command.name)?.runtimeName
-  ));
-  const filteredControls = designerControls.filter(control => matchesSearch(
-    control.label,
-    control.type,
-    ...(control.events || []).flatMap(event => [event.label, event.handlerPattern])
-  ));
-  const filteredSnippets = snippets.filter(snippet => matchesSearch(snippet.label, snippet.description, snippet.insertText));
-  const filteredDocs = docs.filter(doc => matchesSearch(doc.title, doc.path));
-  const cppRows = buildModuleCppRows(targets, bindings, docs)
-    .map(row => ({ ...row, values: row.values.filter(item => matchesSearch(row.label, item.value)) }))
-    .filter(row => row.values.length > 0);
-  const totalVisible = filteredTypes.length
-    + filteredCommands.length
-    + filteredControls.length
-    + filteredSnippets.length
-    + filteredDocs.length
-    + cppRows.reduce((total, row) => total + row.values.length, 0);
-  const panelClass = isDarkMode ? 'bg-[#1f1f1f] text-slate-100' : 'bg-white text-slate-900';
-  const borderClass = isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200';
-  const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
-  const sectionClass = isDarkMode ? 'border-[#333] bg-[#252526]' : 'border-slate-200 bg-slate-50';
-  const resizeHandleClass = isDarkMode ? 'bg-[#2a2a2a] hover:bg-sky-500/60' : 'bg-slate-200 hover:bg-sky-500/60';
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  const copyText = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
-  const toggleInfoGroup = (groupId: string) => {
-    setExpandedInfoGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
-  };
-
-  const handleNavResizeStart = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = navWidth;
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const nextWidth = Math.min(420, Math.max(180, startWidth + moveEvent.clientX - startX));
-      setNavWidth(nextWidth);
-    };
-    const handleMouseUp = () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const selectedInfoDetail = (() => {
-    if (!selectedInfoNodeId) return null;
-    const selectedType = types.find(type => selectedInfoNodeId === `type:${type.name}`);
-    if (selectedType) {
-      return {
-        kind: '类型/类',
-        title: selectedType.name,
-        declaration: formatModulePublicTypeSource(selectedType),
-        description: selectedType.description,
-        badge: getModulePublicTypeKind(selectedType) === 'record' ? '公开记录' : getModulePublicTypeKind(selectedType) === 'array' ? '公开数组' : '不透明类型'
-      };
-    }
-    const selectedCommand = commands.find(command => selectedInfoNodeId === `command:${command.name}:${command.signature}`);
-    if (selectedCommand) {
-      const selectedBinding = bindings.find(binding => binding.command === selectedCommand.name);
-      return {
-        kind: '命令接口',
-        title: selectedCommand.name,
-        declaration: selectedCommand.signature,
-        description: selectedCommand.description,
-        badge: selectedCommand.returnType || '空',
-        extra: selectedBinding ? `C++ 运行时：${selectedBinding.runtimeName}` : undefined,
-        parameters: getModuleCommandParameterDocs(selectedCommand),
-        example: selectedCommand.insertText || selectedCommand.signature,
-        copyText: selectedCommand.insertText || selectedCommand.signature
-      };
-    }
-    const selectedControl = designerControls.find(control => selectedInfoNodeId === `control:${control.type}`);
-    if (selectedControl) {
-      return {
-        kind: '设计器控件',
-        title: selectedControl.label,
-        declaration: selectedControl.type,
-        description: (selectedControl.events || []).map(event => `${event.label}：${event.handlerPattern}`).join('；') || '该控件未声明事件。',
-        badge: '控件'
-      };
-    }
-    const selectedSnippet = snippets.find(snippet => selectedInfoNodeId === `snippet:${snippet.label}`);
-    if (selectedSnippet) {
-      return {
-        kind: '代码片段',
-        title: selectedSnippet.label,
-        declaration: selectedSnippet.insertText,
-        description: selectedSnippet.description,
-        badge: '片段',
-        copyText: selectedSnippet.insertText
-      };
-    }
-    const selectedDoc = docs.find(doc => selectedInfoNodeId === `doc:${doc.path}`);
-    if (selectedDoc) {
-      return {
-        kind: '文档',
-        title: selectedDoc.title,
-        declaration: selectedDoc.path,
-        description: '模块随包文档路径。',
-        badge: '文档',
-        copyText: selectedDoc.path
-      };
-    }
-    for (const row of cppRows) {
-      const item = row.values.find(value => selectedInfoNodeId === `cpp:${value.id}`);
-      if (item) {
-        return {
-          kind: 'C++ 依赖',
-          title: item.value,
-          declaration: item.value,
-          description: row.label,
-          badge: row.label,
-          copyText: item.value
-        };
-      }
-    }
-    return null;
-  })();
-
-  return (
-    <div className={standalone ? 'flex h-screen w-screen min-h-0 min-w-0 font-sans' : 'fixed inset-0 z-[9998] flex items-center justify-center bg-black/45 p-4 font-sans'} role="dialog" aria-modal="true">
-      <div className={`flex ${standalone ? 'h-full w-full rounded-none shadow-none' : 'h-[min(760px,92vh)] w-[min(1120px,96vw)] rounded shadow-2xl'} min-w-0 flex-col overflow-hidden border ${panelClass} ${borderClass}`}>
-        <div className={`flex min-w-0 items-center gap-3 border-b px-3 py-2 ${borderClass}`}>
-          <Package className="h-4 w-4 shrink-0 text-violet-400" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">模块公开信息 - {manifest.name}</div>
-            <div className={`truncate text-[11px] ${subtleClass}`}>{manifest.id} · v{manifest.version} · {manifest.category}</div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className={`rounded p-1 transition-colors ${isDarkMode ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
-            title="关闭"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="flex min-h-0 flex-1">
-          <aside
-            className={`relative min-h-0 shrink-0 overflow-y-auto border-r ${isNavCollapsed ? 'p-1.5' : 'p-3'} ${borderClass}`}
-            style={{ width: isNavCollapsed ? 44 : navWidth }}
-          >
-            <button
-              type="button"
-              onClick={() => setIsNavCollapsed(prev => !prev)}
-              className={`mb-2 flex h-7 w-full items-center justify-center rounded transition-colors ${isDarkMode ? 'text-slate-300 hover:bg-white/10' : 'text-slate-600 hover:bg-slate-100'}`}
-              title={isNavCollapsed ? '展开左侧模块导航' : '折叠左侧模块导航'}
-            >
-              {isNavCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </button>
-
-            {isNavCollapsed ? (
-              <div className="space-y-1">
-                <ModuleInfoNavIcon icon={<Package className="h-3.5 w-3.5 text-violet-400" />} value={totalVisible} title={manifest.name} isDarkMode={isDarkMode} />
-                <ModuleInfoNavIcon icon={<BookOpen className="h-3.5 w-3.5 text-amber-400" />} value={filteredTypes.length} title="类型/类" isDarkMode={isDarkMode} />
-                <ModuleInfoNavIcon icon={<Wrench className="h-3.5 w-3.5 text-cyan-400" />} value={filteredCommands.length} title="命令接口" isDarkMode={isDarkMode} />
-                <ModuleInfoNavIcon icon={<Monitor className="h-3.5 w-3.5 text-violet-300" />} value={filteredControls.length} title="设计器控件" isDarkMode={isDarkMode} />
-                <ModuleInfoNavIcon icon={<FileText className="h-3.5 w-3.5 text-emerald-400" />} value={filteredSnippets.length} title="代码片段" isDarkMode={isDarkMode} />
-                <ModuleInfoNavIcon icon={<FileCode className="h-3.5 w-3.5 text-slate-400" />} value={cppRows.reduce((total, row) => total + row.values.length, 0)} title="C++依赖" isDarkMode={isDarkMode} />
-              </div>
-            ) : (
-              <>
-                <div className={`flex h-8 min-w-0 items-center gap-2 rounded border px-2 ${borderClass} ${isDarkMode ? 'bg-[#181818]' : 'bg-white'}`}>
-                  <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                  <input
-                    value={searchText}
-                    onChange={event => {
-                      setSearchText(event.target.value);
-                      setSelectedInfoNodeId(null);
-                    }}
-                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
-                    placeholder="搜索命令、类型、备注..."
-                  />
-                </div>
-                <label className={`mt-2 flex items-center gap-2 text-[11px] ${subtleClass}`}>
-                  <input type="checkbox" checked readOnly className="h-3.5 w-3.5" />
-                  搜索命令
-                </label>
-                <label className={`mt-1 flex items-center gap-2 text-[11px] ${subtleClass}`}>
-                  <input type="checkbox" checked readOnly className="h-3.5 w-3.5" />
-                  搜索备注
-                </label>
-
-                <div className="mt-3 space-y-0.5 text-xs">
-                  <ModuleInfoNavRow
-                    icon={<Package className="h-3.5 w-3.5 text-violet-400" />}
-                    label={manifest.name}
-                    value={totalVisible}
-                    isDarkMode={isDarkMode}
-                    onClick={() => setSelectedInfoNodeId(null)}
-                  />
-                  <ModuleInfoTreeGroup
-                    id="types"
-                    icon={<BookOpen className="h-3.5 w-3.5 text-amber-400" />}
-                    label="类型/类"
-                    value={filteredTypes.length}
-                    isOpen={Boolean(expandedInfoGroups.types)}
-                    isDarkMode={isDarkMode}
-                    onToggle={toggleInfoGroup}
-                  >
-                    {filteredTypes.map(type => (
-                      <ModuleInfoTreeLeaf
-                        key={`type:${type.name}`}
-                        icon={<BookOpen className="h-3 w-3 text-amber-300" />}
-                        label={type.name}
-                        detail={formatModulePublicType(type)}
-                        isDarkMode={isDarkMode}
-                        selected={selectedInfoNodeId === `type:${type.name}`}
-                        onClick={() => setSelectedInfoNodeId(`type:${type.name}`)}
-                      />
-                    ))}
-                  </ModuleInfoTreeGroup>
-                  <ModuleInfoTreeGroup
-                    id="commands"
-                    icon={<Wrench className="h-3.5 w-3.5 text-cyan-400" />}
-                    label="命令接口"
-                    value={filteredCommands.length}
-                    isOpen={Boolean(expandedInfoGroups.commands)}
-                    isDarkMode={isDarkMode}
-                    onToggle={toggleInfoGroup}
-                  >
-                    {filteredCommands.slice(0, 160).map(command => (
-                      <ModuleInfoTreeLeaf
-                        key={`command:${command.name}:${command.signature}`}
-                        icon={<FileCode className="h-3 w-3 text-cyan-300" />}
-                        label={command.name}
-                        detail={command.signature}
-                        isDarkMode={isDarkMode}
-                        selected={selectedInfoNodeId === `command:${command.name}:${command.signature}`}
-                        onClick={() => setSelectedInfoNodeId(`command:${command.name}:${command.signature}`)}
-                      />
-                    ))}
-                  </ModuleInfoTreeGroup>
-                  <ModuleInfoTreeGroup
-                    id="designerControls"
-                    icon={<Monitor className="h-3.5 w-3.5 text-violet-300" />}
-                    label="设计器控件"
-                    value={filteredControls.length}
-                    isOpen={Boolean(expandedInfoGroups.designerControls)}
-                    isDarkMode={isDarkMode}
-                    onToggle={toggleInfoGroup}
-                  >
-                    {filteredControls.map(control => (
-                      <ModuleInfoTreeLeaf
-                        key={`control:${control.type}`}
-                        icon={<Monitor className="h-3 w-3 text-violet-300" />}
-                        label={control.label}
-                        detail={control.type}
-                        isDarkMode={isDarkMode}
-                        selected={selectedInfoNodeId === `control:${control.type}`}
-                        onClick={() => setSelectedInfoNodeId(`control:${control.type}`)}
-                      />
-                    ))}
-                  </ModuleInfoTreeGroup>
-                  <ModuleInfoTreeGroup
-                    id="snippets"
-                    icon={<FileText className="h-3.5 w-3.5 text-emerald-400" />}
-                    label="代码片段"
-                    value={filteredSnippets.length}
-                    isOpen={Boolean(expandedInfoGroups.snippets)}
-                    isDarkMode={isDarkMode}
-                    onToggle={toggleInfoGroup}
-                  >
-                    {filteredSnippets.map(snippet => (
-                      <ModuleInfoTreeLeaf
-                        key={`snippet:${snippet.label}`}
-                        icon={<FileText className="h-3 w-3 text-emerald-300" />}
-                        label={snippet.label}
-                        detail={snippet.description}
-                        isDarkMode={isDarkMode}
-                        selected={selectedInfoNodeId === `snippet:${snippet.label}`}
-                        onClick={() => setSelectedInfoNodeId(`snippet:${snippet.label}`)}
-                      />
-                    ))}
-                  </ModuleInfoTreeGroup>
-                  <ModuleInfoTreeGroup
-                    id="cpp"
-                    icon={<FileCode className="h-3.5 w-3.5 text-slate-400" />}
-                    label="C++依赖"
-                    value={cppRows.reduce((total, row) => total + row.values.length, 0)}
-                    isOpen={Boolean(expandedInfoGroups.cpp)}
-                    isDarkMode={isDarkMode}
-                    onToggle={toggleInfoGroup}
-                  >
-                    {cppRows.flatMap(row => row.values.map(item => (
-                      <ModuleInfoTreeLeaf
-                        key={`cpp:${item.id}`}
-                        icon={<FileText className="h-3 w-3 text-slate-400" />}
-                        label={item.value}
-                        detail={row.label}
-                        isDarkMode={isDarkMode}
-                        selected={selectedInfoNodeId === `cpp:${item.id}`}
-                        onClick={() => setSelectedInfoNodeId(`cpp:${item.id}`)}
-                      />
-                    )))}
-                  </ModuleInfoTreeGroup>
-                  <ModuleInfoTreeGroup
-                    id="docs"
-                    icon={<Info className="h-3.5 w-3.5 text-sky-400" />}
-                    label="文档"
-                    value={filteredDocs.length}
-                    isOpen={Boolean(expandedInfoGroups.docs)}
-                    isDarkMode={isDarkMode}
-                    onToggle={toggleInfoGroup}
-                  >
-                    {filteredDocs.map(doc => (
-                      <ModuleInfoTreeLeaf
-                        key={`doc:${doc.path}`}
-                        icon={<Info className="h-3 w-3 text-sky-400" />}
-                        label={doc.title}
-                        detail={doc.path}
-                        isDarkMode={isDarkMode}
-                        selected={selectedInfoNodeId === `doc:${doc.path}`}
-                        onClick={() => setSelectedInfoNodeId(`doc:${doc.path}`)}
-                      />
-                    ))}
-                  </ModuleInfoTreeGroup>
-                </div>
-
-                <div className={`mt-4 rounded border p-2 text-[11px] leading-5 ${sectionClass}`}>
-                  <div className="font-semibold">模块说明</div>
-                  <div className={`mt-1 break-words ${subtleClass}`}>{manifest.description}</div>
-                  <div className={`mt-2 break-all ${subtleClass}`}>安装位置：{module.installPath}</div>
-                  {module.diagnostics.length > 0 && (
-                    <div className="mt-2 text-amber-300">{module.diagnostics.join('；')}</div>
-                  )}
-                </div>
-                <div
-                  onMouseDown={handleNavResizeStart}
-                  onDoubleClick={() => setNavWidth(260)}
-                  className={`absolute right-[-3px] top-0 h-full w-1.5 cursor-col-resize transition-colors ${resizeHandleClass}`}
-                  title="拖动调整左侧宽度，双击恢复默认宽度"
-                />
-              </>
-            )}
-          </aside>
-
-          <main className="min-w-0 flex-1 overflow-y-auto p-4">
-            {selectedInfoDetail ? (
-              <ModuleSelectedInfoPanel
-                detail={selectedInfoDetail}
-                isDarkMode={isDarkMode}
-                onCopy={copyText}
-              />
-            ) : (
-              <>
-                <ModuleInfoSection title="插入到 LingBuilder" isDarkMode={isDarkMode}>
-                  <ModuleInfoTable
-                    headers={['名称', '声明/内容', '公开', '备注']}
-                    rows={[
-                      ...filteredTypes.map(type => [type.name, formatModulePublicType(type), '✓', type.description]),
-                      ...filteredCommands.map(command => [command.name, command.signature, '✓', command.description]),
-                      ...filteredControls.map(control => [
-                        control.label,
-                        control.type,
-                        '✓',
-                        (control.events || []).map(event => `${event.label}(${event.handlerPattern})`).join('；') || '设计器控件'
-                      ]),
-                      ...filteredSnippets.map(snippet => [snippet.label, snippet.insertText, '✓', snippet.description])
-                    ]}
-                    isDarkMode={isDarkMode}
-                    onCopy={copyText}
-                  />
-                </ModuleInfoSection>
-
-                <ModuleInfoSection title={`命令接口 ${filteredCommands.length}/${commands.length}`} isDarkMode={isDarkMode}>
-                  {filteredCommands.length === 0 ? (
-                    <ModuleInfoEmpty text="没有匹配的命令接口。" />
-                  ) : (
-                    <div className="space-y-2">
-                      {filteredCommands.map(command => (
-                        <div key={`${command.name}:${command.signature}`} className={`rounded border p-2 ${sectionClass}`}>
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="min-w-0 flex-1 break-all text-sm font-semibold text-cyan-300">{command.name}</span>
-                            {command.returnType && <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300">{command.returnType}</span>}
-                            <button type="button" onClick={() => copyText(command.insertText || command.signature)} className={`shrink-0 rounded px-2 py-1 text-[10px] ${isDarkMode ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-slate-200 text-slate-700'}`}>
-                              复制声明代码
-                            </button>
-                          </div>
-                          <div className="mt-1 break-all font-mono text-[11px] text-slate-400">{command.signature}</div>
-                          <div className={`mt-1 break-words text-[11px] leading-5 ${subtleClass}`}>{command.description}</div>
-                          {bindings.find(binding => binding.command === command.name) && (
-                            <div className={`mt-1 break-all text-[10px] ${subtleClass}`}>
-                              C++ 运行时：{bindings.find(binding => binding.command === command.name)?.runtimeName}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ModuleInfoSection>
-
-                <ModuleInfoSection title={`类型/类 ${filteredTypes.length}/${types.length}`} isDarkMode={isDarkMode}>
-                  <ModuleInfoTable
-                    headers={['类型名称', '类型声明', '公开', '备注']}
-                    rows={filteredTypes.map(type => [type.name, formatModulePublicType(type), '✓', type.description])}
-                    isDarkMode={isDarkMode}
-                    onCopy={copyText}
-                    emptyText="没有匹配的类型/类。"
-                  />
-                </ModuleInfoSection>
-
-                <ModuleInfoSection title={`设计器控件 ${filteredControls.length}/${designerControls.length}`} isDarkMode={isDarkMode}>
-                  <ModuleInfoTable
-                    headers={['控件名称', '控件类型', '公开', '事件/备注']}
-                    rows={filteredControls.map(control => [
-                      control.label,
-                      control.type,
-                      '✓',
-                      (control.events || []).map(event => `${event.label}：${event.handlerPattern}`).join('；') || '未声明事件'
-                    ])}
-                    isDarkMode={isDarkMode}
-                    onCopy={copyText}
-                    emptyText="没有匹配的设计器控件。"
-                  />
-                </ModuleInfoSection>
-
-                <ModuleInfoSection title="C++ 依赖与文档" isDarkMode={isDarkMode}>
-                  {cppRows.length === 0 && filteredDocs.length === 0 ? (
-                    <ModuleInfoEmpty text="没有匹配的 C++ 依赖或文档。" />
-                  ) : (
-                    <div className="space-y-3">
-                      {cppRows.map(row => (
-                        <div key={row.label}>
-                          <div className={`mb-1 text-xs font-semibold ${subtleClass}`}>{row.label}</div>
-                          <ModuleInfoTable
-                            headers={['项目', '路径/值']}
-                            rows={row.values.map(item => [row.label, item.value])}
-                            isDarkMode={isDarkMode}
-                            onCopy={copyText}
-                          />
-                        </div>
-                      ))}
-                      {filteredDocs.length > 0 && (
-                        <ModuleInfoTable
-                          headers={['文档', '路径']}
-                          rows={filteredDocs.map(doc => [doc.title, doc.path])}
-                          isDarkMode={isDarkMode}
-                          onCopy={copyText}
-                        />
-                      )}
-                    </div>
-                  )}
-                </ModuleInfoSection>
-              </>
-            )}
-          </main>
-        </div>
-
-        <div className={`flex items-center justify-between border-t px-3 py-1.5 text-[11px] ${borderClass} ${subtleClass}`}>
-          <span>状态：{searchText.trim() ? `已筛选 ${totalVisible} 项` : `共 ${getModuleCapabilityCount(module)} 项公开能力`}</span>
-          <span>{module.isEnabledForProject ? '当前项目已引用' : '当前项目未引用'}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ModuleInfoNavRow({
-  icon,
-  label,
-  value,
-  isDarkMode,
-  onClick
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  isDarkMode: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full min-w-0 items-center gap-2 rounded px-2 py-1 text-left ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-100'}`}
-    >
-      {icon}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className={isDarkMode ? 'text-slate-500' : 'text-slate-400'}>{value}</span>
-    </button>
-  );
-}
-
-function ModuleInfoNavIcon({
-  icon,
-  value,
-  title,
-  isDarkMode
-}: {
-  icon: React.ReactNode;
-  value: number;
-  title: string;
-  isDarkMode: boolean;
-}) {
-  return (
-    <div
-      className={`relative flex h-8 items-center justify-center rounded ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}
-      title={`${title}：${value}`}
-    >
-      {icon}
-      {value > 0 && (
-        <span className={`absolute -right-0.5 -top-0.5 rounded px-1 text-[8px] leading-3 ${isDarkMode ? 'bg-slate-700 text-slate-200' : 'bg-slate-200 text-slate-700'}`}>
-          {value > 99 ? '99+' : value}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function ModuleSelectedInfoPanel({
-  detail,
-  isDarkMode,
-  onCopy
-}: {
-  detail: {
-    kind: string;
-    title: string;
-    declaration: string;
-    description: string;
-    badge?: string;
-    extra?: string;
-    parameters?: ModuleParameterDoc[];
-    example?: string;
-    copyText?: string;
-  };
-  isDarkMode: boolean;
-  onCopy: (text: string) => void;
-}) {
-  return (
-    <section className={`mb-4 rounded border p-3 ${isDarkMode ? 'border-sky-500/30 bg-sky-500/5' : 'border-sky-200 bg-sky-50'}`}>
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-sky-500/15 text-sky-200' : 'bg-sky-100 text-sky-800'}`}>{detail.kind}</span>
-            {detail.badge && (
-              <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-emerald-500/15 text-emerald-200' : 'bg-emerald-100 text-emerald-800'}`}>{detail.badge}</span>
-            )}
-          </div>
-          <div className="mt-2 break-words text-base font-semibold text-cyan-300">{detail.title}</div>
-          <div className={`mt-1 break-all font-mono text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{detail.declaration}</div>
-          <div className={`mt-2 break-words text-xs leading-5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{detail.description}</div>
-          {detail.extra && <div className={`mt-1 break-all text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{detail.extra}</div>}
-          {detail.parameters && detail.parameters.length > 0 && (
-            <div className="mt-4">
-              <div className={`mb-2 text-xs font-semibold ${isDarkMode ? 'text-sky-200' : 'text-sky-800'}`}>参数说明</div>
-              <div className={`overflow-hidden rounded border ${isDarkMode ? 'border-sky-500/20' : 'border-sky-200'}`}>
-                <table className="w-full table-fixed border-collapse text-left text-xs">
-                  <thead className={isDarkMode ? 'bg-white/5 text-slate-200' : 'bg-white text-slate-800'}>
-                    <tr>
-                      <th className="w-[18%] px-2 py-1.5">参数</th>
-                      <th className="w-[18%] px-2 py-1.5">类型</th>
-                      <th className="w-[24%] px-2 py-1.5">示例值</th>
-                      <th className="px-2 py-1.5">说明</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.parameters.map(parameter => (
-                      <tr key={parameter.name} className={isDarkMode ? 'border-t border-sky-500/15' : 'border-t border-sky-100'}>
-                        <td className="px-2 py-1.5 font-semibold text-cyan-300">{parameter.name}</td>
-                        <td className={`px-2 py-1.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{parameter.type}</td>
-                        <td className="break-all px-2 py-1.5 font-mono text-[11px] text-emerald-300">{parameter.example}</td>
-                        <td className={`px-2 py-1.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{parameter.description}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          {detail.example && (
-            <div className="mt-4">
-              <div className={`mb-1 text-xs font-semibold ${isDarkMode ? 'text-sky-200' : 'text-sky-800'}`}>调用示例</div>
-              <pre className={`overflow-x-auto rounded border px-3 py-2 text-xs ${isDarkMode ? 'border-sky-500/20 bg-black/20 text-slate-200' : 'border-sky-200 bg-white text-slate-800'}`}>{detail.example}</pre>
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => onCopy(detail.copyText || detail.declaration)}
-          className={`shrink-0 rounded px-2 py-1 text-[11px] ${isDarkMode ? 'text-slate-200 hover:bg-white/10' : 'text-slate-700 hover:bg-slate-200'}`}
-          title="复制当前项声明"
-        >
-          复制声明代码
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function ModuleInfoTreeGroup({
-  id,
-  icon,
-  label,
-  value,
-  isOpen,
-  isDarkMode,
-  onToggle,
-  children
-}: {
-  id: string;
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  isOpen: boolean;
-  isDarkMode: boolean;
-  onToggle: (id: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <button
-        type="button"
-        onClick={() => onToggle(id)}
-        className={`flex w-full min-w-0 items-center gap-1 rounded px-1.5 py-1 text-left ${
-          isDarkMode ? 'text-slate-200 hover:bg-white/8' : 'text-slate-800 hover:bg-slate-100'
-        }`}
-        title={isOpen ? `折叠${label}` : `展开${label}`}
-      >
-        {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-        <span className="shrink-0">{icon}</span>
-        <span className="min-w-0 flex-1 truncate font-semibold">{label}</span>
-        <span className={isDarkMode ? 'text-slate-500' : 'text-slate-400'}>{value}</span>
-      </button>
-      {isOpen && (
-        <div className="ml-4 border-l border-slate-500/25 pl-1">
-          {React.Children.count(children) > 0 ? children : (
-            <div className="px-2 py-1 text-[11px] text-slate-500">暂无公开项</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModuleInfoTreeLeaf({
-  icon,
-  label,
-  detail,
-  isDarkMode,
-  selected = false,
-  onClick
-}: {
-  key?: React.Key;
-  icon: React.ReactNode;
-  label: string;
-  detail?: string;
-  isDarkMode: boolean;
-  selected?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full min-w-0 items-start gap-1.5 rounded px-1.5 py-0.5 text-left ${
-        selected
-          ? isDarkMode
-            ? 'bg-sky-500/25 text-sky-100'
-            : 'bg-sky-100 text-sky-900'
-          : isDarkMode
-            ? 'text-slate-300 hover:bg-sky-500/15 hover:text-sky-200'
-            : 'text-slate-700 hover:bg-sky-50 hover:text-sky-800'
-      }`}
-      title={[label, detail].filter(Boolean).join('\n')}
-    >
-      <span className="mt-0.5 shrink-0">{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px]">{label}</span>
-        {detail && <span className="block truncate text-[9px] text-slate-500">{detail}</span>}
-      </span>
-    </button>
-  );
-}
-
-function ModuleInfoSection({
-  title,
-  isDarkMode,
-  children
-}: {
-  title: string;
-  isDarkMode: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-4">
-      <div className={`mb-2 text-sm font-semibold ${isDarkMode ? 'text-sky-300' : 'text-sky-700'}`}>{title}</div>
-      {children}
-    </section>
-  );
-}
-
-function ModuleInfoTable({
-  headers,
-  rows,
-  isDarkMode,
-  onCopy,
-  emptyText = '没有可显示的公开信息。'
-}: {
-  headers: string[];
-  rows: string[][];
-  isDarkMode: boolean;
-  onCopy: (text: string) => void;
-  emptyText?: string;
-}) {
-  if (rows.length === 0) return <ModuleInfoEmpty text={emptyText} />;
-  return (
-    <div className={`overflow-hidden rounded border ${isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200'}`}>
-      <table className="w-full table-fixed border-collapse text-left text-xs">
-        <thead className={isDarkMode ? 'bg-[#2d332d] text-slate-200' : 'bg-emerald-50 text-slate-800'}>
-          <tr>
-            {headers.map(header => (
-              <th key={header} className={`border-b px-2 py-1.5 font-semibold ${isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200'}`}>{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr key={`${row.join(':')}:${rowIndex}`} className={isDarkMode ? 'odd:bg-[#1f1f1f] even:bg-[#242424]' : 'odd:bg-white even:bg-slate-50'}>
-              {row.map((cell, cellIndex) => (
-                <td
-                  key={`${rowIndex}:${cellIndex}`}
-                  className={`border-b px-2 py-1.5 align-top ${isDarkMode ? 'border-[#333]' : 'border-slate-200'} ${cellIndex === 0 ? 'text-blue-300' : isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}
-                  title={cell}
-                  onDoubleClick={() => onCopy(cell)}
-                >
-                  <div className="break-words">{cell}</div>
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ModuleInfoEmpty({ text }: { text: string }) {
-  return <div className="rounded border border-dashed border-slate-500/30 p-3 text-xs text-slate-500">{text}</div>;
-}
-
-async function fetchJson(url: string): Promise<any> {
-  const response = await fetch(url);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error('模块服务暂未返回 JSON');
-  }
-  return response.json();
 }
 
 function getFallbackProjectModules(): InstalledModule[] {

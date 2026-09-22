@@ -13,7 +13,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { EPISODES } from './fbro-tutorial/projects.ts';
+import { EPISODES, filterEpisodes } from './fbro-tutorial/projects.ts';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
@@ -122,7 +122,12 @@ async function buildOne(episode: (typeof EPISODES)[number]): Promise<BuildRecord
 }
 
 const records: BuildRecord[] = [];
-for (const episode of EPISODES) {
+const onlyArg = (() => {
+  const index = process.argv.indexOf('--only');
+  return index >= 0 ? process.argv[index + 1] : undefined;
+})();
+const targetEpisodes = filterEpisodes(EPISODES, onlyArg);
+for (const episode of targetEpisodes) {
   process.stdout.write(`构建 ${episode.id} … `);
   const record = await buildOne(episode);
   records.push(record);

@@ -29,7 +29,8 @@ const episodes: EpisodeSpec[] = [
   { episode: '08', workspaceRelative: '08 下载打印查找/示例项目/cef3-ep08-transfer-find', packageName: 'CEF3教程08-下载打印查找.lcpppkg' },
   { episode: '09', workspaceRelative: '09 JavaScript DevTools 异步任务/示例项目/cef3-ep09-automation-devtools', packageName: 'CEF3教程09-JavaScript与DevTools异步任务.lcpppkg' },
   { episode: '11', workspaceRelative: '11 读取资源响应正文/示例项目/cef3-ep11-resource-body', packageName: 'CEF3教程11-读取资源响应正文.lcpppkg' },
-  { episode: '12', workspaceRelative: '12 修改资源响应数据/示例项目/cef3-ep12-replace-response', packageName: 'CEF3教程12-修改资源响应数据.lcpppkg' }
+  { episode: '12', workspaceRelative: '12 修改资源响应数据/示例项目/cef3-ep12-replace-response', packageName: 'CEF3教程12-修改资源响应数据.lcpppkg' },
+  { episode: '13', workspaceRelative: '13 JS交互页面调用原生/示例项目/cef3-ep13-jsquery', packageName: 'CEF3教程13-JS交互页面调用原生.lcpppkg' }
 ];
 
 function builtin(moduleId: string): InstalledModule {
@@ -151,8 +152,13 @@ async function exportAndVerifyPackage(spec: EpisodeSpec, workspaceRoot: string, 
 async function main() {
   const electronPackage = JSON.parse(await fs.readFile(path.join(repositoryRoot, 'electron', 'package.json'), 'utf8')) as { version?: string };
   const ideVersion = electronPackage.version || '0.6.5';
+  // 可选 --episodes=12,13：只重导指定集，避免既有分享包 SHA 发生无关变化。
+  const filterArg = process.argv.find(arg => arg.startsWith('--episodes='));
+  const filter = filterArg ? filterArg.slice('--episodes='.length).split(',').map(item => item.trim()) : [];
+  const specs = filter.length ? episodes.filter(spec => filter.includes(spec.episode)) : episodes;
+  if (filter.length && !specs.length) throw new Error(`--episodes 过滤没有命中任何集：${filter.join('、')}`);
   const results: Array<Record<string, unknown>> = [];
-  for (const spec of episodes) {
+  for (const spec of specs) {
     const workspaceRoot = path.join(collectionRoot, spec.workspaceRelative);
     results.push(await exportAndVerifyPackage(spec, workspaceRoot, ideVersion));
   }

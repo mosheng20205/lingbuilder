@@ -1,4 +1,4 @@
-import { LingCefHeadlessResource, LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { LingCefHeadlessResource, LingClockResource, LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import { createProjectDllDeclarationModule, buildProjectDllMemoryResourceLines, collectProjectDllMissingSystemAliasDiagnostics, getProjectDllMemoryLibrarySpecs } from '../lingCpp/projectDllCommandService';
@@ -52,6 +52,7 @@ import { buildEmbeddedResourceRcLines, getEmbeddedResourceSpecs, getEmbeddedReso
 import { migrateLegacyEmbeddedFiles } from './embeddedResourceMigration';
 import { EMBEDDED_RESOURCE_MODULE_ID, EMBEDDED_RESOURCE_REQUIRED_MODULE_HINT, generateEmbeddedResourceRuntime } from './embeddedResourceRuntime';
 import { generateThreadingRuntime } from './threadingRuntime';
+import { generateCronRuntime } from './cronRuntime';
 import {
   generateHttpClientGlobalMethodDeclarations,
   generateHttpClientGlobalMethods,
@@ -59,6 +60,7 @@ import {
   generateHttpClientWindowMethods
 } from './httpClientRuntime';
 import { generateHttpServerGlobalMethods, generateHttpServerRuntime, generateHttpServerWindowMethods } from './httpServerRuntime';
+import { generateSunnyNetGlobalMethods, generateSunnyNetRuntime, generateSunnyNetWindowMethods } from './sunnyNetRuntime';
 import { generateProtobufRuntime } from './protobufRuntime';
 import { generateAria2Runtime } from './aria2Runtime';
 import { deriveLingWindowBorderStyle, generateWindowBorderHelperCpp, normalizeLingWindowBorderStyle, resolveLingWindowBorder, toWindowBorderCxxValue } from './windowBorderStyle';
@@ -82,9 +84,11 @@ import {
 } from './cdpClientRuntime';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 import {
+  getConventionalControlEventBindings,
   getWin32ControlDefinition,
   getWin32RuntimeControlContracts,
-  WIN32_CONTROL_DEFINITIONS
+  WIN32_CONTROL_DEFINITIONS,
+  type Win32ConventionalControlEventBinding
 } from './win32ControlRegistry';
 import { getWindowEventHandlerName, WINDOW_EVENT_DEFINITIONS } from './windowEventRegistry';
 import {
@@ -403,6 +407,12 @@ export function generateLingCppNativeWin32Project(
   if (fbroHeadlessRequested && outputKind === 'console-application' && fbroHeadlessResources.length > 0) {
     fbroHeadlessConflictDiagnostics.push('控制台项目不创建设计器窗口，「FBro无头浏览器」资源不会被实例化；请在“启动”子程序里调用 FBro_启用无头模式()，并用 FBro_后台创建(地址, 缓存目录, 附加信息JSON) 建立后台浏览器。');
   }
+  // 「时钟」组件依赖设计器窗口的 WM_TIMER；控制台/动态库输出不创建设计器窗口，
+  // 时钟永远不会触发。必须生成前阻断，不能让用户以为时钟还在计时。
+  const clockResources = effectiveProject.resources?.filter((resource): resource is LingClockResource => resource.type === 'Clock') || [];
+  const clockResourceDiagnostics = outputKind !== 'application' && clockResources.length > 0
+    ? [`「时钟」组件只能在窗口程序中计时：当前项目输出类型不创建设计器窗口，${clockResources.map(resource => `「${resource.name}」`).join('、')}永远不会触发；请把项目输出类型改回窗口程序，或改用 延迟调用(毫秒, &处理器) 与多线程模块命令。`]
+    : [];
   if (fbroHeadlessRequested && fbroVisibleControlNames.length > 0 && outputKind !== 'console-application') {
     fbroHeadlessConflictDiagnostics.push(`FBro 无头模式与可见 FBroBrowser 控件进程级互斥：无头开关生效后本进程所有进程内浏览器都不再渲染窗口内容。项目同时声明了无头模式并存在可见控件 ${fbroVisibleControlNames.join('、')}；请删除 FBro_启用无头模式() 调用与「FBro无头浏览器」组件，或把需要界面的浏览器改为独立进程模式并移除无头声明。`);
   }
@@ -576,9 +586,10 @@ export function generateLingCppNativeWin32Project(
       ...projectDllSystemAliasDiagnostics,
       ...embeddedResourceDiagnostics,
       ...embeddedResourceWarnings,
-      ...embeddedResourceBlockingDiagnostics
+      ...embeddedResourceBlockingDiagnostics,
+      ...clockResourceDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics, ...cefHeadlessResourceDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics, ...cefHeadlessResourceDiagnostics, ...clockResourceDiagnostics],
     sourceMap,
     files: [
       {
@@ -2420,12 +2431,14 @@ function generateNewEmojiMainCpp(
     aria2Runtime
   ].filter(Boolean);
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
+  const sunnyNetRuntime = generateSunnyNetRuntime(enabledModules);
   const httpClientGlobalMethodDeclarations = generateHttpClientGlobalMethodDeclarations(enabledModules);
   const httpClientGlobalMethods = generateHttpClientGlobalMethods(enabledModules);
-  const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime || sunnyNetRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
   const sharedTableRuntime = generateSharedTableRuntime(enabledModules.map(module => module.manifest.id));
   const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
   const httpServerGlobalMethods = generateHttpServerGlobalMethods(enabledModules);
+  const sunnyNetGlobalMethods = generateSunnyNetGlobalMethods(enabledModules);
   const webSocketClientRuntime = generateWebSocketClientRuntime(enabledModules);
   const webSocketClientGlobalMethodDeclarations = generateWebSocketClientGlobalMethodDeclarations(enabledModules);
   const webSocketClientGlobalMethods = generateWebSocketClientGlobalMethods(enabledModules);
@@ -2788,7 +2801,7 @@ function generateNewEmojiMainCpp(
     const statements = [body, fallback ? `    ${fallback}` : ''].filter(Boolean).join('\n') || '    // 空方法。';
     return `static ${returnType} ${toCppIdentifier(method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${statements}\n}`;
   }).join('\n\n');
-  const webSocketHandlerMethods = (webSocketClientRuntime || webSocketServerRuntime || httpServerRuntime || httpClientRuntime || cdpClientRuntime)
+  const webSocketHandlerMethods = (webSocketClientRuntime || webSocketServerRuntime || httpServerRuntime || httpClientRuntime || cdpClientRuntime || sunnyNetRuntime)
     ? Array.from(new Map((sourceClass?.methods || [])
       .filter(method => method.parameters.length === 0)
       .map(method => [method.name, method])).values())
@@ -3058,6 +3071,54 @@ ${uiaCleanupLine}
   const httpServerCleanup = httpServerRuntime
     ? '    g_httpServerRuntime.Shutdown();\n    if (g_httpServerEventWindow) { DestroyWindow(g_httpServerEventWindow); g_httpServerEventWindow = nullptr; }'
     : '';
+  const sunnyNetIntegration = sunnyNetRuntime ? `
+static constexpr UINT WM_LINGBUILDER_NE_SUNNYNET_EVENT = WM_APP + 0x5A;
+static HWND g_sunnyNetEventWindow = nullptr;
+static std::vector<unsigned char> g_sunnyNetBytesReturn;
+static LingSunnyNetRuntime g_sunnyNetRuntime([](long long eventId) {
+    return g_sunnyNetEventWindow && PostMessageW(g_sunnyNetEventWindow, WM_LINGBUILDER_NE_SUNNYNET_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
+});
+
+${sunnyNetGlobalMethods}
+
+static void LB_NE_DispatchSunnyNetEvent(const wchar_t* handler) {
+    const std::wstring callback = handler ? handler : L"";
+${webSocketDispatchCases || '    (void)callback;'}
+    调试输出(L"网络中间件事件处理器未绑定：", callback);
+}
+
+static LRESULT CALLBACK LB_NE_SunnyNetEventWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_LINGBUILDER_NE_SUNNYNET_EVENT) {
+        g_sunnyNetRuntime.DispatchPending([](const wchar_t* handler) { LB_NE_DispatchSunnyNetEvent(handler); });
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static HWND LB_NE_CreateSunnyNetEventWindow() {
+    const wchar_t* className = L"LingBuilder.NewEmoji.SunnyNetEventWindow";
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = LB_NE_SunnyNetEventWindowProc;
+    windowClass.lpszClassName = className;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    return CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+}
+` : '';
+  const sunnyNetEventWindowSetup = sunnyNetRuntime ? `    g_sunnyNetEventWindow = LB_NE_CreateSunnyNetEventWindow();
+    if (!g_sunnyNetEventWindow) {
+        MessageBoxW(g_newEmojiWindow, L"网络中间件事件窗口创建失败。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        NE_销毁窗口(g_newEmojiWindow);
+        g_newEmojiWindow = nullptr;
+        LB_NE_ShutdownFbro();
+${uiaCleanupLine}
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 6;
+    }` : '';
+  const sunnyNetCleanup = sunnyNetRuntime
+    ? '    g_sunnyNetRuntime.Shutdown();\n    if (g_sunnyNetEventWindow) { DestroyWindow(g_sunnyNetEventWindow); g_sunnyNetEventWindow = nullptr; }'
+    : '';
 
   return `#ifndef UNICODE
 #define UNICODE
@@ -3169,6 +3230,8 @@ ${projectGlobalsDefinition}
 ${httpClientRuntime}
 
 ${httpServerRuntime}
+
+${sunnyNetRuntime}
 
 ${webSocketClientRuntime}
 
@@ -3867,7 +3930,9 @@ ${webSocketHandlerDeclarations}
 
 ${httpClientIntegration}
 
-${httpServerIntegration}
+${httpServerRuntime}
+
+${sunnyNetIntegration}
 
 ${webSocketClientIntegration}
 
@@ -3929,6 +3994,7 @@ ${cdpClientEventWindowSetup}
 ${httpClientEventWindowSetup}
 ${webSocketEventWindowSetup}
 ${httpServerEventWindowSetup}
+${sunnyNetEventWindowSetup}
 ${iconSetup}
 ${windowFrameSetup}
 ${browserShellThemeSetup}
@@ -3946,6 +4012,7 @@ ${browserShellHitRegionSetup}
     if (!g_newEmojiWindow) {
 ${httpClientCleanup}
 ${httpServerCleanup}
+${sunnyNetCleanup}
 ${webSocketClientCleanup}
 ${cdpClientCleanup}
 ${webSocketCleanup}
@@ -3960,6 +4027,7 @@ ${uiaCleanupLine}
     LB_NE_InvalidateControls();
 ${httpClientCleanup}
 ${httpServerCleanup}
+${sunnyNetCleanup}
 ${webSocketClientCleanup}
 ${cdpClientCleanup}
 ${webSocketCleanup}
@@ -6154,7 +6222,12 @@ static int FBro_设置事件返回文本(const wchar_t* name, const wchar_t* val
 static int FBro_设置事件响应JSON(const wchar_t* name, const wchar_t* value) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->eventResponseJson = value ? value : L"{}"; return 1;
 }
-static std::wstring FBro_取事件对象字段(const wchar_t* name, const wchar_t* fieldName) { return FBro_取事件字段(name, fieldName); }
+static long long FBro_取事件对象字段(const wchar_t* name, const wchar_t* fieldName) {
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !fieldName || !*fieldName) return 0;
+    std::wstring text = LB_NE_ReadFbroJsonField(browser->lastEventJson, fieldName);
+    return text.empty() ? 0 : static_cast<long long>(wcstoll(text.c_str(), nullptr, 10));
+}
 static long long FBro_取事件延续(const wchar_t* name) {
     auto* browser = LB_NE_FindFbro(name);
     return browser ? static_cast<long long>(browser->lastEventContinuation) : 0;
@@ -10077,6 +10150,7 @@ function generateMainCpp(
   const imageListSpecs = generateImageListSpecs(project);
   const propertySheetSpecs = generatePropertySheetSpecs(project);
   const fileDialogSpecs = generateFileDialogSpecs(project);
+  const clockSpecs = generateClockSpecs(project);
   const fbroHeadlessSpecs = generateFbroHeadlessSpecs(project);
   const edgeViewHeadlessSpecs = generateEdgeViewHeadlessSpecs(project);
   const cefHeadlessSpecs = generateCefHeadlessSpecs(project);
@@ -10129,11 +10203,13 @@ function generateMainCpp(
     aria2Runtime
   ].filter(Boolean);
   const threadingRuntime = generateThreadingRuntime(enabledModules);
+  const cronRuntime = generateCronRuntime(enabledModules);
   const comWindowMethods = generateComWindowMethods(enabledModules);
   const comWndProcCase = generateComWndProcCase(enabledModules);
   const comCleanupLine = comWindowMethods ? '        COM_关闭全部();' : '';
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
-  const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const sunnyNetRuntime = generateSunnyNetRuntime(enabledModules);
+  const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime || sunnyNetRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
   const sharedTableRuntime = generateSharedTableRuntime(enabledModules.map(module => module.manifest.id));
   const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
   const httpClientWindowMethods = generateHttpClientWindowMethods(enabledModules);
@@ -10148,6 +10224,12 @@ function generateMainCpp(
     : '';
   const httpServerWindowField = httpServerRuntime ? '    LingHttpServerRuntime httpServerRuntime_;\n    std::wstring httpServerReturnText_;' : '';
   const httpServerShutdown = httpServerRuntime ? '        httpServerRuntime_.Shutdown();' : '';
+  const sunnyNetWindowMethods = generateSunnyNetWindowMethods(enabledModules);
+  const sunnyNetConstructorInitializer = sunnyNetRuntime
+    ? `,\n          sunnyNetRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_SUNNYNET_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
+    : '';
+  const sunnyNetWindowField = sunnyNetRuntime ? '    LingSunnyNetRuntime sunnyNetRuntime_;' : '';
+  const sunnyNetShutdown = sunnyNetRuntime ? '        sunnyNetRuntime_.Shutdown();' : '';
   const webSocketClientRuntime = generateWebSocketClientRuntime(enabledModules);
   const webSocketClientWindowMethods = generateWebSocketClientWindowMethods(enabledModules);
   const webSocketClientConstructorInitializer = webSocketClientRuntime
@@ -10639,6 +10721,11 @@ struct FileDialogSpec {
     int triggerControlId; int dropTargetControlId; bool multiple; bool allowDrop;
     const wchar_t* title; const wchar_t* filter;
 };
+// 「时钟」非可视组件：WM_TIMER 周期计时；periodMilliseconds 为 0 表示创建后不自动计时。
+struct ClockSpec {
+    const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
+    UINT periodMilliseconds; bool startEnabled;
+};
 struct MenuResourceSpec {
     const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
     int targetControlId; bool contextMenu; const wchar_t* items;
@@ -10717,11 +10804,15 @@ static constexpr UINT WM_LINGBUILDER_LAYOUT_DATE_PICKER = WM_APP + 0x4C;
 static constexpr UINT WM_LINGBUILDER_THREAD_UI_UPDATE = WM_APP + 0x4D;
 static constexpr UINT WM_LINGBUILDER_CEF_EVENT = WM_APP + 0x4E;
 static constexpr UINT WM_LINGBUILDER_WEB_ASYNC_COMPLETE = WM_APP + 0x4F;
+static constexpr UINT WM_LINGBUILDER_CRON_UI_UPDATE = WM_APP + 0x5B;
+// cron 调度 tick 定时器：0x4C46 被 5 秒检查占用，0x4C47xxxx 段被控件动画占用，取 0x4C48。
+static constexpr UINT_PTR LINGBUILDER_CRON_TIMER_ID = 0x4C48;
 static constexpr UINT WM_LINGBUILDER_FBRO_EVENT = WM_APP + 0x50;
 static constexpr UINT WM_LINGBUILDER_WSS_EVENT = WM_APP + 0x52;
 static constexpr UINT WM_LINGBUILDER_HTTP_SERVER_REQUEST = WM_APP + 0x53;
 static constexpr UINT WM_LINGBUILDER_WS_CLIENT_EVENT = WM_APP + 0x54;
 static constexpr UINT WM_LINGBUILDER_HTTP_CLIENT_EVENT = WM_APP + 0x55;
+static constexpr UINT WM_LINGBUILDER_SUNNYNET_EVENT = WM_APP + 0x5A;
 static constexpr UINT WM_LINGBUILDER_CDP_CLIENT_EVENT = WM_APP + 0x58;
 
 struct LingCefEventPacket {
@@ -10856,6 +10947,11 @@ struct RuntimeControl {
     int listViewBatchDepth = 0;
     int listViewLastClickedColumn = -1;
     std::shared_ptr<DataGridNativeState> dataGrid;
+    // GroupBox 标题（PaintGroupBox）与自绘 BUTTON 家族标题（PaintOwnerButton）都以 ControlSpec
+    // 固化文本兜底；运行期文本变化（控件_设置文本 → WM_SETTEXT）必须镜像到这里才会出现在画面上，
+    // 原生 STATIC/BUTTON 自绘结果永远不能成为可见外观。
+    bool hasOverrideText = false;
+    std::wstring overrideText;
 };
 
 struct RuntimeTabPage {
@@ -11502,6 +11598,7 @@ static bool LingCefHasDevTools(CefRefPtr<CefBrowser> browser) {
 ${imageListSpecs}
 ${propertySheetSpecs}
 ${fileDialogSpecs}
+${clockSpecs}
 ${fbroHeadlessSpecs}
 ${edgeViewHeadlessSpecs}
 ${cefHeadlessSpecs}
@@ -11515,6 +11612,7 @@ ${windowSpecs}
 
 static const int g_windowCount = static_cast<int>(sizeof(g_windows) / sizeof(g_windows[0]));
 static const int g_startWindowIndex = ${selectedWindowIndex};
+static bool g_lingbuilderCronDaemonMode = false;
 
 static HWND OpenGeneratedWindow(int windowIndex, int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false);
 static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false);
@@ -11962,9 +12060,13 @@ ${builtinLibraryRuntime}
 
 ${threadingRuntime}
 
+${cronRuntime}
+
 ${httpClientRuntime}
 
 ${httpServerRuntime}
+
+${sunnyNetRuntime}
 
 ${webSocketClientRuntime}
 
@@ -11988,7 +12090,7 @@ public:
           menuFont_(nullptr),
           controlLifetimeState_(std::make_shared<LingControlLifetimeState>()),
           dpi_(96),
-          socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${cdpClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer} {
+          socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${cdpClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer}${sunnyNetConstructorInitializer} {
         controlLifetimeState_->owner = this;
         LingBuilder_登记存活实例(this);
     }
@@ -12013,6 +12115,12 @@ ${functionLibraryMethods}
             threadOwnerToken_ = 0;
         }
 #endif
+#ifdef LINGBUILDER_CRON_MODULE
+        if (cronOwnerToken_ != 0) {
+            LingCronRuntime::Instance().ShutdownOwner(cronOwnerToken_);
+            cronOwnerToken_ = 0;
+        }
+#endif
         {
             std::vector<std::thread> tasks;
             { std::lock_guard<std::mutex> lock(asyncWebThreadsMutex_); tasks.swap(asyncWebThreads_); }
@@ -12020,6 +12128,7 @@ ${functionLibraryMethods}
         }
 ${httpClientShutdown}
 ${httpServerShutdown}
+${sunnyNetShutdown}
 ${webSocketClientShutdown}
 ${cdpClientShutdown}
 ${webSocketServerShutdown}
@@ -12252,10 +12361,18 @@ protected:
     wchar_t pendingHighSurrogate_ = 0;
     std::vector<std::wstring> droppedFiles_;
     std::map<std::wstring, std::vector<std::wstring>> fileDialogFiles_;
+    // 「延迟调用」与「时钟」用户级 WM_TIMER：ID 段独立，避免与内部 0x4C46、动画帧 0x4C47xxxx 冲突。
+    static constexpr UINT_PTR kLingDelayedCallTimerBase = 0x4C480000u;
+    static constexpr UINT_PTR kLingDelayedCallTimerMax = 0x4C48FFFFu;
+    static constexpr UINT_PTR kLingClockTimerBase = 0x4C4A0000u;
+    std::map<UINT_PTR, std::function<void()>> delayedCalls_;
+    std::map<std::wstring, UINT> clockPeriodOverrides_;
+    std::map<std::wstring, bool> clockRunning_;
     std::map<std::wstring, std::wstring> lastMenuItems_;
     bool socketsStarted_;
 ${httpClientWindowField}
 ${httpServerWindowField}
+${sunnyNetWindowField}
 ${webSocketClientWindowField}
 ${cdpClientWindowField}
 ${webSocketServerWindowField}
@@ -12278,6 +12395,9 @@ ${webSocketServerWindowField}
     std::mutex asyncWebThreadsMutex_;
 #ifdef LINGBUILDER_THREADING_MODULE
     long long threadOwnerToken_ = 0;
+#endif
+#ifdef LINGBUILDER_CRON_MODULE
+    long long cronOwnerToken_ = 0;
 #endif
     struct AsyncWebResult {
         std::wstring handler;
@@ -12467,7 +12587,7 @@ ${webSocketServerWindowField}
     bool fbroInitialized_ = false;
 ${fbroBrowserManagerRuntime.members}
 
-    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); LingBuilder_CEF3_创建无头资源(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
+    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); LingBuilder_CEF3_创建无头资源(); 时钟_启动默认组件(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
     virtual void WarnUnboundControlEvents() {}
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
@@ -12513,6 +12633,19 @@ ${fbroBrowserManagerRuntime.members}
 
     virtual void DispatchCdpClientEvent(const wchar_t* handler) {
         std::wstring message = L"CDP 客户端事件未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        调试输出(message.c_str());
+    }
+
+    virtual void DispatchCronEvent(const wchar_t* handler, long long taskId) {
+        std::wstring message = L"cron 定时任务到点处理器未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        调试输出(message.c_str());
+        (void)taskId;
+    }
+
+    virtual void DispatchCronWorkerEvent(const wchar_t* handler) {
+        std::wstring message = L"cron 工作处理器未绑定到中文处理器：";
         message += handler ? handler : L"";
         调试输出(message.c_str());
     }
@@ -14910,8 +15043,12 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         if (!instance) return 0;
         instance->eventResponseJson = value ? value : L"{}"; return 1;
     }
-    std::wstring FBro_取事件对象字段(const wchar_t* controlName, const wchar_t* fieldName) {
-        return FBro_取事件字段(controlName, fieldName);
+    long long FBro_取事件对象字段(const wchar_t* controlName, const wchar_t* fieldName) {
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !fieldName || !*fieldName) return 0;
+        // 句柄值从 2^32 起，必须按 64 位解析；int32 截断后查不到对象（恒 -7）。
+        std::wstring text = FBro_读取JSON字段(instance->lastEventJson, fieldName);
+        return text.empty() ? 0 : static_cast<long long>(wcstoll(text.c_str(), nullptr, 10));
     }
     long long FBro_取事件延续(const wchar_t* controlName) {
         auto* instance = FBro_查找实例(controlName);
@@ -17618,12 +17755,18 @@ ${generateFbroVipIndividualRuntime(false)}
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         const auto frame = CEF3_框架句柄(frameHandle);
         if (!frame) return 0;
-        const std::wstring call = std::wstring(CEF3_填表助手脚本())
-            + L"(0," + CEF3_填表拼接字面量(op)
-            + L"," + CEF3_填表拼接字面量(selector)
-            + L"," + std::to_wstring(index < 0 ? 0 : index)
-            + L"," + CEF3_填表拼接字面量(a)
-            + L"," + CEF3_填表拼接字面量(b) + L");";
+        // 包装串必须是单条调用表达式，})() 之后直接跟实参括号调用 lbTianBiao；
+        // 实参用单引号包成 JS 字符串（拼接字面量会转义值内的单引号/反斜杠/换行）。
+        // 旧拼装把脚本声明和 (0,...) 落成两条语句：逗号表达式不会调用助手，且
+        // # 选择器裸插成非法 JS 令整段脚本 SyntaxError，12 条填表命令全部空转
+        // 仍返回成功（ep15 填表演练真机暴露）。
+        const std::wstring call = std::wstring(L"(function(){return ")
+            + CEF3_填表助手脚本() + L"})()"
+            + L"('" + CEF3_填表拼接字面量(op)
+            + L"','" + CEF3_填表拼接字面量(selector)
+            + L"'," + std::to_wstring(index < 0 ? 0 : index)
+            + L",'" + CEF3_填表拼接字面量(a)
+            + L"','" + CEF3_填表拼接字面量(b) + L"');";
         return LB_CEF3_FrameExecuteJavaScript(frame, call.c_str(), L"", 1) == LB_CEF3_OK ? 1 : 0;
 #else
         (void)frameHandle; (void)op; (void)selector; (void)index; (void)a; (void)b;
@@ -22020,6 +22163,118 @@ protected:
         }
         return false;
     }
+
+    // ===== 延时 / 延迟调用 / 时钟：等待与周期触发全程泵送界面消息，不冻结窗口 =====
+    // 延时与易语言「延时/程序_延时」语义一致：同步等待，但等待期间持续处理本线程消息队列。
+    void 延时(int milliseconds) {
+        if (milliseconds <= 0) return;
+        const ULONGLONG deadline = GetTickCount64() + static_cast<ULONGLONG>(milliseconds);
+        MSG message = {};
+        while (GetTickCount64() < deadline) {
+            const DWORD wait = static_cast<DWORD>(deadline - GetTickCount64());
+            const DWORD result = MsgWaitForMultipleObjectsEx(0, nullptr, wait, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            if (result != WAIT_OBJECT_0) break;
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                if (message.message == WM_QUIT) {
+                    PostQuitMessage(static_cast<int>(message.wParam));
+                    return;
+                }
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+        }
+    }
+    // 延迟调用：一次性 WM_TIMER，到期后在界面线程调用处理器；窗口销毁后不再触发。
+    template<class Callback> bool 延迟调用(int milliseconds, Callback&& callback) {
+        if (!hwnd_) return false;
+        if (milliseconds < 0) milliseconds = 0;
+        UINT_PTR timerId = kLingDelayedCallTimerBase;
+        while (timerId <= kLingDelayedCallTimerMax && delayedCalls_.count(timerId)) ++timerId;
+        if (timerId > kLingDelayedCallTimerMax) return false;
+        if (SetTimer(hwnd_, timerId, static_cast<UINT>(milliseconds), nullptr) == 0) return false;
+        delayedCalls_[timerId] = std::function<void()>(std::forward<Callback>(callback));
+        return true;
+    }
+    bool HandleDelayedCallTimer(UINT_PTR timerId) {
+        if (timerId < kLingDelayedCallTimerBase || timerId > kLingDelayedCallTimerMax) return false;
+        const auto found = delayedCalls_.find(timerId);
+        if (found == delayedCalls_.end()) return false;
+        KillTimer(hwnd_, timerId);
+        std::function<void()> callback = std::move(found->second);
+        delayedCalls_.erase(found);
+        if (callback) callback();
+        return true;
+    }
+    const ClockSpec* FindClock(const wchar_t* componentName) const {
+        if (!componentName) return nullptr;
+        for (int index = 0; index < g_clockCount; ++index) {
+            const ClockSpec& clock = g_clocks[index];
+            if (clock.ownerWindowIndex != spec_.index) continue;
+            if (TextEquals(clock.name, componentName) || TextEquals(clock.id, componentName)) return &clock;
+        }
+        return nullptr;
+    }
+    UINT 时钟_当前周期(const ClockSpec& clock) const {
+        const auto clockOverride = clockPeriodOverrides_.find(clock.id);
+        return clockOverride != clockPeriodOverrides_.end() ? clockOverride->second : clock.periodMilliseconds;
+    }
+    bool 时钟_启动(const wchar_t* componentName) {
+        const ClockSpec* clock = FindClock(componentName);
+        if (!clock || !hwnd_) return false;
+        const UINT period = 时钟_当前周期(*clock);
+        if (period == 0) return false;
+        const UINT_PTR timerId = kLingClockTimerBase + static_cast<UINT_PTR>(clock - g_clocks);
+        if (SetTimer(hwnd_, timerId, period, nullptr) == 0) return false;
+        clockRunning_[clock->id] = true;
+        return true;
+    }
+    bool 时钟_停止(const wchar_t* componentName) {
+        const ClockSpec* clock = FindClock(componentName);
+        if (!clock) return false;
+        KillTimer(hwnd_, kLingClockTimerBase + static_cast<UINT_PTR>(clock - g_clocks));
+        clockRunning_[clock->id] = false;
+        return true;
+    }
+    bool 时钟_置周期(const wchar_t* componentName, int periodMilliseconds) {
+        const ClockSpec* clock = FindClock(componentName);
+        if (!clock) return false;
+        const UINT period = periodMilliseconds > 0 ? static_cast<UINT>(periodMilliseconds) : 0;
+        clockPeriodOverrides_[clock->id] = period;
+        const UINT_PTR timerId = kLingClockTimerBase + static_cast<UINT_PTR>(clock - g_clocks);
+        if (period == 0) {
+            KillTimer(hwnd_, timerId);
+            clockRunning_[clock->id] = false;
+            return true;
+        }
+        if (clockRunning_[clock->id]) {
+            if (!hwnd_ || SetTimer(hwnd_, timerId, period, nullptr) == 0) return false;
+        }
+        return true;
+    }
+    int 时钟_取周期(const wchar_t* componentName) const {
+        const ClockSpec* clock = FindClock(componentName);
+        return clock ? static_cast<int>(时钟_当前周期(*clock)) : 0;
+    }
+    bool 时钟_是否已启动(const wchar_t* componentName) {
+        const ClockSpec* clock = FindClock(componentName);
+        if (!clock) return false;
+        const auto found = clockRunning_.find(clock->id);
+        return found != clockRunning_.end() && found->second;
+    }
+    bool HandleClockTimer(UINT_PTR timerId) {
+        if (timerId < kLingClockTimerBase || timerId >= kLingClockTimerBase + static_cast<UINT_PTR>(g_clockCount)) return false;
+        const ClockSpec& clock = g_clocks[timerId - kLingClockTimerBase];
+        if (clock.ownerWindowIndex != spec_.index) return false;
+        DispatchDesignerResourceEvent(clock.id, L"Elapsed");
+        return true;
+    }
+    void 时钟_启动默认组件() {
+        for (int index = 0; index < g_clockCount; ++index) {
+            const ClockSpec& clock = g_clocks[index];
+            if (clock.ownerWindowIndex != spec_.index || !clock.startEnabled) continue;
+            时钟_启动(clock.name);
+        }
+    }
     const MenuResourceSpec* FindMenuResource(const wchar_t* componentName) const {
         if (!componentName) return nullptr;
         for (int index = 0; index < g_menuResourceCount; ++index) {
@@ -22357,6 +22612,49 @@ protected:
     bool 信号量_释放(long long semaphore, int amount) { return LingThreadProjectRuntime::Instance().ReleaseSemaphore(semaphore, amount); }
     int 信号量_取可用数量(long long semaphore) const { return LingThreadProjectRuntime::Instance().SemaphoreAvailable(semaphore); }
     bool 信号量_销毁(long long semaphore) { return LingThreadProjectRuntime::Instance().DestroySemaphore(semaphore); }
+#endif
+
+#ifdef LINGBUILDER_CRON_MODULE
+    // cron_定时_启动/提交线程 是窗口类成员：处理器按名派发必须回到注册窗口，
+    // 到点/完成处理器在该窗口 UI 线程执行，工作处理器经 owner 派发在后台线程执行。
+    long long cron_定时_启动(const wchar_t* expression, const wchar_t* handler) {
+        LingCronEnsureOwner();
+        return LingCronRuntime::Instance().StartHandlerJob(cronOwnerToken_, expression ? expression : L"", handler ? handler : L"");
+    }
+    long long cron_定时_提交线程(const wchar_t* expression, const wchar_t* worker, const wchar_t* completion) {
+        LingCronEnsureOwner();
+        return LingCronRuntime::Instance().StartWorkerJob(cronOwnerToken_, expression ? expression : L"", worker ? worker : L"", completion ? completion : L"");
+    }
+    void LingCronDrainCallbacks() {
+        if (cronOwnerToken_ == 0) return;
+        for (const auto& item : LingCronRuntime::Instance().DrainOwner(cronOwnerToken_)) {
+            DispatchCronEvent(item.handlerName.c_str(), item.taskId);
+        }
+    }
+public:
+    // 控制台/守护模式无窗口：登记无派发 owner，调度/命令/状态族仍可用，工作处理器不派发。
+    void LingBuilder_RegisterHeadlessCronOwner() {
+        LingCronRegisterHeadlessOwnerIfMissing();
+    }
+protected:
+    void LingCronEnsureOwner() {
+        if (cronOwnerToken_ != 0) return;
+        if (!hwnd_) { LingCronRegisterHeadlessOwnerIfMissing(); return; }
+        cronOwnerToken_ = LingCronRuntime::Instance().RegisterOwner(
+            [window = hwnd_](long long ownerId) {
+                const unsigned long long generation = static_cast<unsigned long long>(ownerId);
+                PostMessageW(window, WM_LINGBUILDER_CRON_UI_UPDATE,
+                    static_cast<WPARAM>(generation & 0xffffffffULL),
+                    static_cast<LPARAM>((generation >> 32) & 0xffffffffULL));
+            },
+            [this](const std::wstring& handler) { DispatchCronWorkerEvent(handler.c_str()); });
+    }
+    void LingCronRegisterHeadlessOwnerIfMissing() {
+        if (cronOwnerToken_ == 0) {
+            cronOwnerToken_ = LingCronRuntime::Instance().RegisterOwner(
+                std::function<void(long long)>(), std::function<void(const std::wstring&)>());
+        }
+    }
 #endif
 
 #ifdef LINGBUILDER_WEB_HTTP_MODULE
@@ -22914,6 +23212,8 @@ ${webSocketClientWindowMethods}
 ${cdpClientWindowMethods}
 
 ${httpServerWindowMethods}
+
+${sunnyNetWindowMethods}
 
 ${webSocketServerWindowMethods}
 
@@ -24612,6 +24912,8 @@ private:
         const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
         RuntimeControl* runtime = FindRuntimeControl(static_cast<int>(item->CtlID));
         if (!control || !runtime) return false;
+        // 自绘标题必须消费运行期覆盖文本（控件_设置文本 → WM_SETTEXT 镜像），否则永远画设计器固化文本。
+        const wchar_t* displayText = runtime->hasOverrideText ? runtime->overrideText.c_str() : control->text;
         HFONT oldFont = runtime->font ? reinterpret_cast<HFONT>(SelectObject(item->hDC, runtime->font)) : nullptr;
         bool enabled = IsWindowEnabled(item->hwndItem) != FALSE && !(item->itemState & ODS_DISABLED);
         bool pressed = enabled && (item->itemState & ODS_SELECTED);
@@ -24721,7 +25023,7 @@ private:
             SelectObject(item->hDC, oldBrush); SelectObject(item->hDC, oldPen);
             DeleteObject(boxBrush); DeleteObject(borderPen);
             RECT textRect = item->rcItem; textRect.left = box.right + ScaleForDpi(8, dpi_);
-            DrawTextW(item->hDC, control->text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            DrawTextW(item->hDC, displayText, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         } else {
             HBRUSH cornerBrush = CreateSolidBrush(surrounding);
             FillRect(item->hDC, &item->rcItem, cornerBrush);
@@ -24742,7 +25044,7 @@ private:
             }
             RECT textRect = item->rcItem;
             if (pressed) OffsetRect(&textRect, ScaleForDpi(1, dpi_), ScaleForDpi(1, dpi_));
-            DrawTextW(item->hDC, control->text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            DrawTextW(item->hDC, displayText, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         }
         if (focused && !IsType(*control, L"CheckBox") && !IsType(*control, L"RadioButton")) {
             RECT focusRect = item->rcItem;
@@ -24826,7 +25128,9 @@ private:
                 RECT textRect = item->rcItem;
                 textRect.left += ScaleForDpi(10, dpi_);
                 textRect.right -= ScaleForDpi(8, dpi_);
-                DrawTextW(item->hDC, text.data(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                UINT textFormat = (control->flags & CF_ALIGN_CENTER) ? DT_CENTER
+                    : (control->flags & CF_ALIGN_RIGHT) ? DT_RIGHT : DT_LEFT;
+                DrawTextW(item->hDC, text.data(), -1, &textRect, textFormat | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 if (oldFont) SelectObject(item->hDC, oldFont);
             }
         }
@@ -24840,9 +25144,10 @@ private:
         HBRUSH backgroundBrush = CreateSolidBrush(control.background);
         FillRect(hdc, &clientRect, backgroundBrush);
 
+        const wchar_t* title = runtime.hasOverrideText ? runtime.overrideText.c_str() : control.text;
         HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
         RECT titleRect = { 0, 0, 0, 0 };
-        DrawTextW(hdc, control.text, -1, &titleRect, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
+        DrawTextW(hdc, title, -1, &titleRect, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
         int horizontalPadding = ScaleForDpi(6, dpi_);
         int outerPadding = ScaleForDpi(8, dpi_);
         int titleHeight = std::max(ScaleForDpi(control.fontSize, dpi_), static_cast<int>(titleRect.bottom - titleRect.top));
@@ -24872,14 +25177,14 @@ private:
         titleRect.top = 0;
         titleRect.right = std::min(static_cast<int>(clientRect.right), titleLeft + titleWidth);
         titleRect.bottom = std::min(static_cast<int>(clientRect.bottom), titleHeight);
-        if (control.text && control.text[0]) {
+        if (title && title[0]) {
             FillRect(hdc, &titleRect, backgroundBrush);
             RECT textRect = titleRect;
             textRect.left += horizontalPadding;
             textRect.right -= horizontalPadding;
             SetBkMode(hdc, TRANSPARENT);
             SetTextColor(hdc, IsWindowEnabled(hwnd) ? control.foreground : BlendColor(control.foreground, control.background, 55));
-            DrawTextW(hdc, control.text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            DrawTextW(hdc, title, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         }
         if (oldFont) SelectObject(hdc, oldFont);
         DeleteObject(backgroundBrush);
@@ -26380,6 +26685,18 @@ private:
                 self->LayoutIPAddressFields(hwnd, *control, *runtime);
                 return result;
             }
+            if ((IsType(*control, L"Button") || IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton")) && message == WM_SETTEXT) {
+                // 自绘 BUTTON 家族的可见标题由 PaintOwnerButton 绘制，运行期改文本必须镜像
+                // 到 overrideText 才会出现在画面上；仅改 HWND 文本对自绘控件不可见。
+                const wchar_t* updatedButtonText = reinterpret_cast<const wchar_t*>(lParam);
+                if (updatedButtonText) {
+                    runtime->hasOverrideText = true;
+                    runtime->overrideText = updatedButtonText;
+                }
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return result;
+            }
             if (IsType(*control, L"GroupBox")) {
                 if (message == WM_ERASEBKGND) return 1;
                 if (message == WM_PAINT) {
@@ -26392,6 +26709,21 @@ private:
                 if (message == WM_PRINTCLIENT) {
                     self->PaintGroupBox(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
                     return 0;
+                }
+                if (message == WM_SETTEXT || message == WM_ENABLE) {
+                    if (message == WM_SETTEXT) {
+                        const wchar_t* updated = reinterpret_cast<const wchar_t*>(lParam);
+                        if (updated) {
+                            runtime->hasOverrideText = true;
+                            runtime->overrideText = updated;
+                        }
+                    }
+                    LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                    // The STATIC control repaints itself inside WM_SETTEXT/WM_ENABLE
+                    // with plain styling (no frame, text at the top-left). Force the
+                    // custom GroupBox paint to cover that self-paint immediately.
+                    InvalidateRect(hwnd, nullptr, TRUE);
+                    return result;
                 }
             }
             if (IsType(*control, L"SysLink") && control->backgroundTransparent) {
@@ -27262,6 +27594,16 @@ ${aria2Runtime ? `        case LingAria2::ProgressMessage: {
 #endif
             return 0;
         }
+        case WM_LINGBUILDER_SUNNYNET_EVENT: {
+#ifdef LINGBUILDER_SUNNYNET_MODULE
+            sunnyNetRuntime_.DispatchPending([this](const wchar_t* handler) {
+                DispatchAsyncWebEvent(handler);
+            });
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
         case WM_LINGBUILDER_WSS_EVENT: {
 #ifdef LINGBUILDER_WEBSOCKET_SERVER_MODULE
             wssRuntime_.DispatchEvent(static_cast<long long>(wParam), [this](const wchar_t* handler) {
@@ -27318,6 +27660,16 @@ ${aria2Runtime ? `        case LingAria2::ProgressMessage: {
                 | (static_cast<unsigned long long>(static_cast<unsigned int>(lParam)) << 32);
             const long long ownerId = static_cast<long long>(ownerGeneration);
             if (ownerId == threadOwnerToken_) LingThreadDrainWindowCallbacks(ownerId);
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
+        case WM_LINGBUILDER_CRON_UI_UPDATE: {
+#ifdef LINGBUILDER_CRON_MODULE
+            const unsigned long long cronOwnerGeneration = static_cast<unsigned long long>(static_cast<unsigned int>(wParam))
+                | (static_cast<unsigned long long>(static_cast<unsigned int>(lParam)) << 32);
+            if (static_cast<long long>(cronOwnerGeneration) == cronOwnerToken_) LingCronDrainCallbacks();
 #else
             (void)wParam;
 #endif
@@ -27420,12 +27772,20 @@ ${comWndProcCase}
 #ifdef LINGBUILDER_THREADING_MODULE
                 threadOwnerToken_ = LingThreadRegisterWindowOwner(hwnd_);
 #endif
+#ifdef LINGBUILDER_CRON_MODULE
+                LingCronEnsureOwner();
+                SetTimer(hwnd_, LINGBUILDER_CRON_TIMER_ID, 1000, nullptr);
+#endif
                 return 0;
             }
             windowBrush_ = CreateSolidBrush(spec_.background);
             ++g_openWindowCount;
 #ifdef LINGBUILDER_THREADING_MODULE
             threadOwnerToken_ = LingThreadRegisterWindowOwner(hwnd_);
+#endif
+#ifdef LINGBUILDER_CRON_MODULE
+            LingCronEnsureOwner();
+            SetTimer(hwnd_, LINGBUILDER_CRON_TIMER_ID, 1000, nullptr);
 #endif
             CreateImageLists();
             RebuildControls();
@@ -27605,7 +27965,16 @@ ${comWndProcCase}
                 DestroyWindow(hwnd_);
                 return 0;
             }
+#ifdef LINGBUILDER_CRON_MODULE
+            if (wParam == LINGBUILDER_CRON_TIMER_ID) {
+                // 守护线程未运行时由窗口定时器驱动调度；守护运行中它自己 tick，这里空转成本可忽略。
+                if (!LingCronRuntime::Instance().DaemonRunning()) LingCronRuntime::Instance().Tick();
+                return 0;
+            }
+#endif
             if (AdvanceAnimatedImage(static_cast<UINT_PTR>(wParam))) return 0;
+            if (HandleDelayedCallTimer(static_cast<UINT_PTR>(wParam))) return 0;
+            if (HandleClockTimer(static_cast<UINT_PTR>(wParam))) return 0;
             break;
         case WM_COMMAND: {
             int controlId = LOWORD(wParam);
@@ -27825,6 +28194,13 @@ ${comWndProcCase}
             if (threadOwnerToken_ != 0) {
                 LingThreadProjectRuntime::Instance().ShutdownOwner(threadOwnerToken_);
                 threadOwnerToken_ = 0;
+            }
+#endif
+#ifdef LINGBUILDER_CRON_MODULE
+            KillTimer(hwnd_, LINGBUILDER_CRON_TIMER_ID);
+            if (cronOwnerToken_ != 0) {
+                LingCronRuntime::Instance().ShutdownOwner(cronOwnerToken_);
+                cronOwnerToken_ = 0;
             }
 #endif
             if (!closedDispatched_) {
@@ -28400,6 +28776,9 @@ ${dynamicLibrarySection ? dynamicLibrarySection : consoleEntrySection ? consoleE
 #endif
     g_instance = instance;
     EnableDpiAwareness();
+#ifdef LINGBUILDER_CRON_MODULE
+    g_lingbuilderCronDaemonMode = LingCronCommandLineWantsDaemon();
+#endif
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 #if LINGBUILDER_EMBEDDED_RESOURCE_RUNTIME
     LB_EmbeddedResourceReleaseExtracted();
@@ -28445,8 +28824,12 @@ ${fbroInProcessEnabled ? '' : '        // 仅独立进程模式时主进程不�
 ${fbroInProcessEnabled ? '        LB_FBro_Shutdown();' : ''}
 #endif
         ${uiaCleanupLine} CoUninitialize(); return 0; }
-    HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
-    EnsureStartWindowForeground(startWindow, showCommand);
+    HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, g_lingbuilderCronDaemonMode ? SW_HIDE : showCommand);
+    // 守护模式不抢占前台，窗口保持隐藏，只由 cron 守护线程驱动调度。
+    if (!g_lingbuilderCronDaemonMode) EnsureStartWindowForeground(startWindow, showCommand);
+#ifdef LINGBUILDER_CRON_MODULE
+    if (g_lingbuilderCronDaemonMode && startWindow) cron_定时_守护启动();
+#endif
 
     MSG message;
     while (GetMessageW(&message, nullptr, 0, 0)) {
@@ -29020,10 +29403,12 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const handlers = getWindowHandlers(window);
   const propertySheets = resources.filter((resource): resource is LingPropertySheetResource => resource.type === 'PropertySheet');
   const fileDialogs = resources.filter((resource): resource is LingFileDialogResource => resource.type === 'FileDialog' && resource.ownerWindowId === window.id);
+  const clocks = resources.filter((resource): resource is LingClockResource => resource.type === 'Clock' && resource.ownerWindowId === window.id);
   const menuResources = resources.filter((resource): resource is LingMenuResource => (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') && resource.ownerWindowId === window.id);
   const resourceHandlers = [
     ...propertySheets.filter(resource => resource.appliedHandler?.trim()).map(resource => resource.appliedHandler!.trim()),
     ...fileDialogs.flatMap(resource => [resource.filesSelectedHandler, resource.filesDroppedHandler, resource.cancelledHandler].filter((handler): handler is string => Boolean(handler?.trim())).map(handler => handler.trim())),
+    ...clocks.flatMap(resource => [resource.periodHandler].filter((handler): handler is string => Boolean(handler?.trim())).map(handler => handler.trim())),
     ...menuResources.flatMap(resource => resource.items.map(item => item.selectedHandler).filter((handler): handler is string => Boolean(handler?.trim())).map(handler => handler.trim()))
   ];
   const sourceEventHandlers = (sourceClass?.methods || []).filter(method => method.kind === 'event').map(method => method.name);
@@ -29039,18 +29424,8 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   if (windowCreatedHandler && !windowEventBindings.has('Loaded')) {
     windowEventBindings.set('Loaded', windowCreatedHandler);
   }
-  // 常规命名事件防呆：按钮在 .lcpp 里定义了「_控件名_被单击」但设计器未绑定 Click 时，
-  // 点击按钮不会触发任何处理器（静默失效）。生成启动警告，提示去设计器绑定事件。
-  const unboundConventionalClickControls = (window.controls || [])
-    .filter(control => control.type === 'Button')
-    .filter(control => !String(control.events?.Click || '').trim())
-    .map(control => `_${control.name}_被单击`)
-    .filter(conventional => sourceEventHandlers.includes(conventional));
-  const warnUnboundOverride = unboundConventionalClickControls.length
-    ? `    void WarnUnboundControlEvents() override {\n${unboundConventionalClickControls.map(name =>
-        `        调试输出(L"警告：控件「${escapeWideString(name)}」在源码中定义了事件处理器「${escapeWideString(name)}」，但设计器未绑定 Click 事件，点击按钮不会生效。请在设计器中为该按钮绑定事件。");`
-      ).join('\n')}\n    }\n`
-    : '';
+  // 常规命名事件（「_控件名_事件中文后缀」）已由 generateControlArray 自动并入控件派发表，
+  // 不再需要「源码定义了 _控件名_被单击 但设计器未绑定」的启动警告。
   const dispatchCases = methodHandlers
     .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
     .join('\n') || '        (void)control; (void)eventName;';
@@ -29073,6 +29448,9 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
       resource.filesDroppedHandler?.trim() ? `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"FilesDropped")) { ${toCppIdentifier(resource.filesDroppedHandler.trim())}(); return; }` : '',
       resource.cancelledHandler?.trim() ? `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"Cancelled")) { ${toCppIdentifier(resource.cancelledHandler.trim())}(); return; }` : ''
     ].filter(Boolean)))
+    .concat(clocks.flatMap(resource => resource.periodHandler?.trim()
+      ? [`        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"Elapsed")) { ${toCppIdentifier(resource.periodHandler.trim())}(); return; }`]
+      : []))
     .concat(menuResources.flatMap(resource => resource.items.flatMap(item => item.selectedHandler?.trim()
       ? [`        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"${escapeWideString(item.id)}")) { ${toCppIdentifier(item.selectedHandler.trim())}(); return; }`]
       : [])))
@@ -29100,6 +29478,26 @@ ${comEventHandlers.map(handler => `        if (callback == L"${escapeWideString(
     : '';
   const edgeCallbackMethods = (sourceClass?.methods || []).filter(method => method.parameters.length === 0 && (method.kind === 'event' || method.kind === 'method'));
   const edgeDispatchCases = edgeCallbackMethods
+    .map(method => `        if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`)
+    .join('\n');
+  // cron 到点/完成处理器签名契约是 空 名(定时任务)，但派发按方法实际形参数量生成，
+  // 兼容用户少写参数的「空 名()」形态；工作处理器固定无参数。
+  const cronCandidateMethods = (sourceClass?.methods || []).filter(method => method.parameters.length <= 1 && (method.kind === 'event' || method.kind === 'method'));
+  const cronFireDispatchCases = cronCandidateMethods
+    .map(method => {
+      if (method.parameters.length === 0) {
+        return `        if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`;
+      }
+      // 单形参必须能从 long long 任务 ID 数值转换（整数/长整数/小数/单精度/逻辑/字节）；
+      // 文本型等非数值形参的方法不参与 cron 派发，否则生成 X(lbCronTask) 无法通过编译。
+      const cppParam = toCppType(method.parameters[0]?.type || '', 'parameter', enabledModules, program.dataTypes);
+      if (!/^(?:int|long long|double|float|bool|unsigned char)$/.test(cppParam)) return '';
+      return `        if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(lbCronTask); return; }`;
+    })
+    .filter(Boolean)
+    .join('\n');
+  const cronWorkerDispatchCases = cronCandidateMethods
+    .filter(method => method.parameters.length === 0)
     .map(method => `        if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`)
     .join('\n');
   const publicUserMethods = userMethods.filter(method => method.access === '公开').map(method => generateUserMethod(method, enabledModules, program.dataTypes));
@@ -29160,7 +29558,18 @@ ${edgeDispatchCases || '        (void)callback;'}
 ${edgeDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchCdpClientEvent(handler);
     }
-${warnUnboundOverride}    void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) override {
+    void DispatchCronEvent(const wchar_t* handler, long long taskId) override {
+        std::wstring callback = handler ? handler : L"";
+        long long lbCronTask = taskId;
+${cronFireDispatchCases || '        (void)callback; (void)lbCronTask;'}
+        LingWindowBase::DispatchCronEvent(handler, taskId);
+    }
+    void DispatchCronWorkerEvent(const wchar_t* handler) override {
+        std::wstring callback = handler ? handler : L"";
+${cronWorkerDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchCronWorkerEvent(handler);
+    }
+    void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) override {
         std::wstring handler = ResolveControlEventHandler(control, eventName);
 ${dispatchCases}
         LingWindowBase::DispatchLingEvent(control, eventName);
@@ -30031,8 +30440,16 @@ function translateManagedModuleInvocation(
   translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
 ): string | undefined {
   const invocation = binding.invocation;
-  if (!invocation || invocation.kind !== 'managedTask') return undefined;
+  if (!invocation) return undefined;
   const args = splitCallArguments(raw);
+  // 「延迟调用」式命令：处理器展开为一次性 WM_TIMER 回调 lambda，在界面线程触发。
+  if (invocation.kind === 'delayedCall') {
+    const delayValue = translateLingCppExpression(args[invocation.delayParameterIndex] || '0', enabledModules, translationContext);
+    const handlerName = parseManagedHandlerReference(args[invocation.handlerParameterIndex]);
+    if (!handlerName) return undefined;
+    return `${toCppIdentifier(binding.runtimeName)}(${delayValue}, [this]() { this->${toCppIdentifier(handlerName)}(); })`;
+  }
+  if (invocation.kind !== 'managedTask') return undefined;
   const workerName = parseManagedHandlerReference(args[invocation.workerParameterIndex]);
   if (!workerName) return undefined;
   const valueArgs = args.slice(invocation.variadicParameterIndex);
@@ -30373,6 +30790,10 @@ function toMessageBoxFlagsExpression(flagCode: number): string {
 function generateControlArray(window: LingWindowModel, windowIndex: number, program: LingCppProgram, resources: LingDesignerResource[]): string {
   const visibleControls = [...reconcileRebarBands(getRuntimeControls(window))];
   const controlIds = new Map(visibleControls.map((control, index) => [control.id, index + 1001]));
+  // 源码常规命名「_控件名_事件中文后缀」的自动接线：设计器未绑定但源码已定义的事件
+  // 必须并入控件派发表，运行行为优先服从中文代码编辑器（与 AGENTS 事件语义一致）。
+  const sourceClass = findLingCppClassForWindow(program, window);
+  const sourceEventNames = new Set((sourceClass?.methods || []).filter(method => method.kind === 'event').map(method => method.name));
   const items = ((window as any).menuItems || '')
     .split(',')
     .map((item: string) => item.trim())
@@ -30410,7 +30831,9 @@ function generateControlArray(window: LingWindowModel, windowIndex: number, prog
       const effectiveControl = tooltipResource
         ? { ...control, properties: { ...(control.properties || {}), toolTip: tooltipResource.text, toolTipDelay: tooltipResource.initialDelay } }
         : control;
-      return generateControlSpec(effectiveControl, id, parent ? controlIds.get(parent.id) || 0 : 0, parent, controlIds, window.background);
+      return generateControlSpec(effectiveControl, id, parent ? controlIds.get(parent.id) || 0 : 0, parent, controlIds, window.background,
+        getConventionalControlEventBindings(effectiveControl.type, effectiveControl.name)
+          .filter(candidate => sourceEventNames.has(candidate.handlerName)));
     })
     .join(',\n') || generateControlSpec({
       id: '__empty_control_spec__',
@@ -30466,6 +30889,19 @@ function generateFileDialogSpecs(project: LingWindowProject): string {
   return rows.length > 0
     ? `static FileDialogSpec g_fileDialogs[] = {\n${rows.join(',\n')}\n};\nstatic const int g_fileDialogCount = ${rows.length};`
     : 'static FileDialogSpec g_fileDialogs[] = { { L"", L"", -1, 0, 0, false, false, L"", L"" } };\nstatic const int g_fileDialogCount = 0;';
+}
+
+/** 「时钟」设计器资源表：周期毫秒 0 表示创建后不自动计时；到期事件经 DispatchDesignerResourceEvent 分发。 */
+function generateClockSpecs(project: LingWindowProject): string {
+  const resources = (project.resources || []).filter((resource): resource is LingClockResource => resource.type === 'Clock');
+  const rows = resources.map(resource => {
+    const ownerWindowIndex = project.windows.findIndex(window => window.id === resource.ownerWindowId);
+    const periodMilliseconds = Number.isFinite(resource.periodMilliseconds) ? Math.max(0, Math.floor(resource.periodMilliseconds)) : 0;
+    return `    { L"${escapeWideString(resource.id)}", L"${escapeWideString(resource.name)}", ${ownerWindowIndex}, ${periodMilliseconds}u, ${resource.startEnabled ? 'true' : 'false'} }`;
+  });
+  return rows.length > 0
+    ? `static ClockSpec g_clocks[] = {\n${rows.join(',\n')}\n};\nstatic const int g_clockCount = ${rows.length};`
+    : 'static ClockSpec g_clocks[] = { { L"", L"", -1, 0u, false } };\nstatic const int g_clockCount = 0;';
 }
 
 /** 「FBro无头浏览器」设计器资源表：owner 窗口创建期以 LB_FBro_CreateBackground 建后台实例。 */
@@ -30558,8 +30994,12 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
   if (!effectiveEvents.Loaded) {
     const defaultLoaded = getWindowEventHandlerName(window.className, 'Loaded');
     const legacyLoaded = `${window.className}_创建完毕`;
+    const sourceClass = findLingCppClassForWindow(program, window);
+    const hasBareCreated = (sourceClass?.methods || [])
+      .some(method => method.kind === 'event' && method.name === '创建完毕');
     if (findLingCppMethod(program, defaultLoaded)) effectiveEvents.Loaded = defaultLoaded;
     else if (findLingCppMethod(program, legacyLoaded)) effectiveEvents.Loaded = legacyLoaded;
+    else if (hasBareCreated) effectiveEvents.Loaded = '创建完毕';
   }
   const events = Object.entries(effectiveEvents)
     .filter(([, handler]) => handler.trim())
@@ -30575,10 +31015,17 @@ function generateControlSpec(
   parentId = 0,
   parent?: LingControl,
   controlIds: Map<string, number> = new Map(),
-  windowBackground = '#1E1E24'
+  windowBackground = '#1E1E24',
+  conventionalEventBindings: Win32ConventionalControlEventBinding[] = []
 ): string {
-  const events = Object.entries(control.events || {})
-    .filter(([, handler]) => handler.trim())
+  // 设计器绑定优先；源码常规命名事件（调用方已按源码定义过滤）补位未绑定的事件。
+  const eventEntries = Object.entries(control.events || {}).filter(([, handler]) => handler.trim());
+  conventionalEventBindings.forEach(candidate => {
+    if (!eventEntries.some(([eventName]) => eventName === candidate.eventName)) {
+      eventEntries.push([candidate.eventName, candidate.handlerName]);
+    }
+  });
+  const events = eventEntries
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
   // 控件取色必须容忍缺省字段：手写/由 AI 生成的精简设计器模型不带 background/foreground，
@@ -30699,7 +31146,13 @@ function findWindowCreatedHandler(window: LingWindowModel, program: LingCppProgr
     `${window.className}_创建完毕`
   ].filter((candidate): candidate is string => Boolean(candidate));
 
-  return candidates.find(candidate => Boolean(findLingCppMethod(program, candidate)));
+  const conventional = candidates.find(candidate => Boolean(findLingCppMethod(program, candidate)));
+  if (conventional) return conventional;
+  // 新建项目模板使用裸「创建完毕」；按窗口自身源码类精确解析，避免多窗口同名事件互相误绑。
+  const sourceClass = findLingCppClassForWindow(program, window);
+  const hasBareCreated = (sourceClass?.methods || [])
+    .some(method => method.kind === 'event' && method.name === '创建完毕');
+  return hasBareCreated ? '创建完毕' : undefined;
 }
 
 function getRuntimeControls(window: LingWindowModel): LingControl[] {

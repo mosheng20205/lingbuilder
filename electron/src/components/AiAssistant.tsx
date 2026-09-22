@@ -1,35 +1,13 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2, Copy, Eye, EyeOff } from 'lucide-react';
+import { Brain, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, X, Plus, Trash2, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AppliedWorkspaceFile, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
-import { LingCppModuleContext } from '../services/modules/types';
-import { readPreferredCloudModelAlias, writePreferredCloudModelAlias } from '../services/ai/cloudModelPreference';
-import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
-import { requestCloudAccountRecharge } from '../services/workbench/cloudAccountRechargeService';
-import {
-  getCloudAccountSessionState,
-  refreshCloudAccountSession,
-  signOutCloudAccount,
-  subscribeCloudAccountSession,
-  type CloudAccountSessionState
-} from '../services/workbench/cloudAccountSessionStore';
 import type { LingWindowProject } from '../services/windowDesigner/types';
 import type { ProjectMutationOwner } from '../services/workspace/projectMutationOwner';
-import {
-  aiConnectionSession,
-  type AiConnectionMode
-} from '../services/ai/aiConnectionSessionService';
 import type { AiConversationStore } from '../services/ai/aiConversationService';
 import { MAX_REASONING_CHARS } from '../services/ai/aiConversationService';
 import type { CommandService } from '../services/commands/commandService';
-import {
-  runAiModuleGeneration,
-  type AiModuleGenerationOutcome
-} from '../services/modules/aiModuleGenerationFlow';
-import { deriveAiNewFileAllowance, type AiNewFileAllowance } from '../services/ai/aiEditFileScope';
-
-const AI_CONFIG_STORAGE_KEY = 'lingbuilder.aiConnectionConfig.v1';
 
 /** 面板里「本机 Agent」模型通道的表单形态（与主进程 AgentProviderSettings 字段一致）。 */
 type AgentProviderForm = {
@@ -56,22 +34,6 @@ type AgentProviderView = {
 type AgentRuntimeView = { ok: boolean; snapshot?: { provider?: string; model?: string }; error?: string };
 type AgentProbeView = { ok: boolean; result?: unknown; error?: string };
 
-interface AiConnectionConfig {
-  baseUrl: string;
-  apiKey: string;
-  modelName: string;
-  presetId?: string;
-  provider?: 'gemini' | 'openai' | 'anthropic' | 'deepseek';
-}
-
-const DEFAULT_AI_CONFIG: AiConnectionConfig = {
-  baseUrl: '',
-  apiKey: '',
-  modelName: 'gemini-2.5-flash',
-  presetId: 'gemini-2.5-flash',
-  provider: 'gemini'
-};
-
 const COLLAPSED_MESSAGE_HEIGHT = 224;
 
 // 聊天输入框高度：自动模式跟随内容（含两行占位提示）完整显示，拖拽模式允许用户拉大。
@@ -79,125 +41,40 @@ const AI_CHAT_INPUT_AUTO_MAX_HEIGHT = 128;
 const AI_CHAT_INPUT_MANUAL_MAX_HEIGHT = 320;
 const AI_CHAT_INPUT_MIN_HEIGHT = 36;
 
-const AI_MODEL_PRESETS = [
-  { id: 'custom', label: '自定义模型', baseUrl: '', modelName: '', provider: 'openai' },
-  { id: 'claude-sonnet', label: 'Claude - Sonnet', baseUrl: 'https://api.anthropic.com/v1', modelName: 'claude-sonnet-4-5', provider: 'anthropic' },
-  { id: 'claude-haiku', label: 'Claude - Haiku', baseUrl: 'https://api.anthropic.com/v1', modelName: 'claude-haiku-4-5', provider: 'anthropic' },
-  { id: 'chatgpt-gpt41', label: 'ChatGPT - GPT-4.1', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4.1', provider: 'openai' },
-  { id: 'chatgpt-gpt4o', label: 'ChatGPT - GPT-4o', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4o', provider: 'openai' },
-  { id: 'gemini-2.5-flash', label: 'Gemini - 2.5 Flash', baseUrl: 'https://generativelanguage.googleapis.com', modelName: 'gemini-2.5-flash', provider: 'gemini' },
-  { id: 'gemini-2.5-pro', label: 'Gemini - 2.5 Pro', baseUrl: 'https://generativelanguage.googleapis.com', modelName: 'gemini-2.5-pro', provider: 'gemini' },
-  { id: 'deepseek-v4-flash', label: 'DeepSeek - V4 Flash', baseUrl: 'https://api.deepseek.com', modelName: 'deepseek-v4-flash', provider: 'deepseek' },
-  { id: 'deepseek-v4-pro', label: 'DeepSeek - V4 Pro', baseUrl: 'https://api.deepseek.com', modelName: 'deepseek-v4-pro', provider: 'deepseek' },
-  { id: 'qwen-plus', label: '阿里通义 - Qwen Plus', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelName: 'qwen-plus', provider: 'openai' },
-  { id: 'qwen-max', label: '阿里通义 - Qwen Max', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelName: 'qwen-max', provider: 'openai' },
-  { id: 'doubao-seed', label: '豆包 - Seed', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', modelName: 'doubao-seed-1-6', provider: 'openai' },
-  { id: 'minimax-m1', label: 'MiniMax - M1', baseUrl: 'https://api.minimax.io/v1', modelName: 'MiniMax-M1', provider: 'openai' },
-  { id: 'kimi-k2', label: 'Kimi - K2', baseUrl: 'https://api.moonshot.cn/v1', modelName: 'kimi-k2-0711-preview', provider: 'openai' },
-  { id: 'kimi-latest', label: 'Kimi - Latest', baseUrl: 'https://api.moonshot.cn/v1', modelName: 'moonshot-v1-auto', provider: 'openai' }
-] as const;
 
-// 自定义模型可选的接口协议；value 与 AiConnectionConfig.provider 及服务端协议分派一一对应。
-const AI_PROVIDER_OPTIONS = [
-  { value: 'openai', label: 'OpenAI Compatible' },
-  { value: 'anthropic', label: 'Anthropic Compatible' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'gemini', label: 'Google Gemini' }
-] as const;
-
-type AiProviderOption = (typeof AI_PROVIDER_OPTIONS)[number]['value'];
-
-function loadAiConfig(): AiConnectionConfig {
-  try {
-    const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
-    if (!raw) return DEFAULT_AI_CONFIG;
-    const parsed = JSON.parse(raw);
-    const preset = AI_MODEL_PRESETS.find(item => item.id === parsed.presetId);
-    return {
-      baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
-      apiKey: '',
-      modelName: typeof parsed.modelName === 'string' && parsed.modelName.trim() ? parsed.modelName : DEFAULT_AI_CONFIG.modelName,
-      presetId: typeof parsed.presetId === 'string' ? parsed.presetId : DEFAULT_AI_CONFIG.presetId,
-      provider: preset && preset.id !== 'custom'
-        ? preset.provider
-        : ['gemini', 'openai', 'anthropic', 'deepseek'].includes(parsed.provider)
-          ? parsed.provider
-          : DEFAULT_AI_CONFIG.provider
-    };
-  } catch {
-    return DEFAULT_AI_CONFIG;
-  }
-}
-
-function loadAiMode(): AiConnectionMode {
-  try {
-    const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
-    if (!raw) return 'system';
-    const value = JSON.parse(raw)?.aiMode;
-    return value === 'byok' ? 'byok' : 'system';
-  } catch {
-    return 'system';
-  }
+/** 提案结果播报：如实区分「布局已改（应用后画布立即重绘）」与「界面未变（仅源码改动）」。 */
+export function describeEditProposalOutcome(proposal: WorkspaceEditProposal): string {
+  const outcome = proposal.designerProject
+    ? '本次涉及窗口设计器布局改动，应用后界面设计器会立即重绘。'
+    : proposal.designerUnchanged
+      ? '界面布局未发生变化（本次仅源码改动）；如需改外观或布局，请点名要调整的控件与属性。'
+      : '';
+  return `本次涉及 ${proposal.changes.length} 个文件${outcome ? `；${outcome}` : ''}`;
 }
 
 /**
- * Layout edits must not depend on the active editor language. A project can
- * have an `.ini`, `.cpp`, or other file open while the request still targets
- * the current window designer model.
+ * dsh 的 tool/call 把 callId 放在 data 顶层，tool/result 却只放在
+ * `data.message.source.callId` / `content[].toolCallId` 里；只认顶层会让每次调用都停在未完成态。
  */
-export function isLikelyDesignerEditInstruction(instruction: string): boolean {
-  const normalized = instruction.trim();
-  if (!normalized) return false;
-  const hasDesignerTarget = /窗口|窗体|控件|布局|界面|按钮|文本框|输入框|标签|进度条|设计器|标题栏|面板|列表|菜单/u.test(normalized);
-  const hasDesignerMutation = /增加|新增|添加|删除|移除|去掉|移动|调整|修改|设置|美化|美观|好看|太乱|整洁|优化|显示|隐藏|颜色|字体|圆角|间距|宽度|高度|尺寸|位置|对齐|重排/u.test(normalized);
-  return hasDesignerTarget && hasDesignerMutation;
-}
-
-/** Only enter the edit-preview flow when the user explicitly asks for a change. */
-export function isLikelyCodeEditInstruction(instruction: string): boolean {
-  const normalized = instruction.trim();
-  if (!normalized) return false;
-  return /修改|改写|重写|重构|修复|纠正|补全|新增|删除|移除|替换|调整|优化|生成代码|写代码|实现|添加功能|rename|refactor|rewrite|fix|change|update|remove|delete|add|implement/iu.test(normalized);
-}
-
-/** Keep the active source and at least one design-relevant `.lcpp` file in
- * the bounded system-AI context, even when the active editor is `config.ini`.
- */
-export function getAiWorkspaceFilesForEdit(
-  workspaceFiles: WorkspaceFileSnapshot[],
-  activeFilePath: string,
-  activeSourceCode: string
-): WorkspaceFileSnapshot[] {
-  const normalizePath = (value: string) => value.replaceAll('\\', '/').toLowerCase();
-  const activePath = normalizePath(activeFilePath);
-  const activeSnapshot = workspaceFiles.find(file => normalizePath(file.filePath) === activePath);
-  const currentActiveFile: WorkspaceFileSnapshot = activeSnapshot
-    ? { ...activeSnapshot, sourceCode: activeSourceCode }
-    : { filePath: activeFilePath, sourceCode: activeSourceCode };
-  const prioritized = [
-    currentActiveFile,
-    ...workspaceFiles.filter(file => normalizePath(file.filePath) !== activePath && /\.lcpp$/iu.test(file.filePath)),
-    ...workspaceFiles
-  ];
-  const seen = new Set<string>();
-  return prioritized.filter(file => {
-    const key = normalizePath(file.filePath);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, 5);
+export function agentToolEventCallId(data: Record<string, unknown> | undefined): string {
+  const message = data?.message as { source?: { callId?: unknown }; content?: Array<{ toolCallId?: unknown }> } | undefined;
+  const direct = [data?.callId, message?.source?.callId].find(value => typeof value === 'string' && value);
+  if (typeof direct === 'string') return direct;
+  const nested = message?.content?.find(item => typeof item?.toolCallId === 'string' && item.toolCallId);
+  return typeof nested?.toolCallId === 'string' ? nested.toolCallId : '';
 }
 
 interface AiAssistantProps {
-  onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending', owner?: ProjectMutationOwner) => void;
   filePath: string;
   sourceCode: string;
   activeLanguage: string;
   projectId?: string;
   projectMutationOwner: ProjectMutationOwner;
-  moduleContext?: LingCppModuleContext;
   designerProject?: LingWindowProject;
   workspaceFiles: WorkspaceFileSnapshot[];
+  /** 工作台转交的「交给本机 Agent」需求（模块面板 AI 生成模块）；消费后由 onAgentRequestHandled 认领。 */
+  agentRequest?: { id: number; prompt: string; origin?: string } | null;
+  onAgentRequestHandled?: (id: number) => void;
   onApplyWorkspaceEdit?: (
     proposal: WorkspaceEditProposal,
     appliedFiles: AppliedWorkspaceFile[],
@@ -269,77 +146,23 @@ const WELCOME_MESSAGE: Message = {
   createdAt: ''
 };
 
-/**
- * dsh 的 tool/call 把 callId 放在 data 顶层，tool/result 却只放在
- * `data.message.source.callId` / `content[].toolCallId` 里；只认顶层会让每次调用都停在未完成态。
- */
-export function agentToolEventCallId(data: Record<string, unknown> | undefined): string {
-  const message = data?.message as { source?: { callId?: unknown }; content?: Array<{ toolCallId?: unknown }> } | undefined;
-  const direct = [data?.callId, message?.source?.callId].find(value => typeof value === 'string' && value);
-  if (typeof direct === 'string') return direct;
-  const nested = message?.content?.find(item => typeof item?.toolCallId === 'string' && item.toolCallId);
-  return typeof nested?.toolCallId === 'string' ? nested.toolCallId : '';
-}
-
 export default function AiAssistant({
-  onSetStatus,
   filePath,
   sourceCode,
   activeLanguage,
   projectId,
   projectMutationOwner,
-  moduleContext,
   designerProject,
   workspaceFiles,
+  agentRequest,
+  onAgentRequestHandled,
   onApplyWorkspaceEdit,
   precheckApplyWorkspaceEdit,
   commandService,
   isDarkMode = true
 }: AiAssistantProps) {
-  const [aiMode, setAiMode] = useState<AiConnectionMode>(() => {
-    // Web 预览没有云端账号 IPC；初始即落回自定义 API，避免渲染出不可用的登录表单。
-    const stored = aiConnectionSession.getMode() || loadAiMode();
-    return stored === 'system' && !window.lingBuilder?.cloudAccount ? 'byok' : stored;
-  });
-  const [cloudSession, setCloudSession] = useState<CloudAccountSessionState>(getCloudAccountSessionState);
-  const [cloudModels, setCloudModels] = useState<Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }>>([]);
-  const [cloudModelAlias, setCloudModelAlias] = useState(() => readPreferredCloudModelAlias());
-  // 登录态与点数一律来自 cloudAccountSessionStore，面板不再自持一份会话副本。
-  useEffect(() => subscribeCloudAccountSession(() => setCloudSession(getCloudAccountSessionState())), []);
-  const loadCloudModels = async () => {
-    const cloudAccount = window.lingBuilder?.cloudAccount;
-    if (!cloudAccount) return;
-    const result = await cloudAccount.models().catch(() => null);
-    const modelList = result?.models || [];
-    setCloudModels(modelList);
-    setCloudModelAlias(current => {
-      const aliases = modelList.map(model => model.alias);
-      if (current && aliases.includes(current)) return current;
-      const preferred = readPreferredCloudModelAlias();
-      if (preferred && aliases.includes(preferred)) return preferred;
-      return aliases[0] || '';
-    });
-  };
-  const [aiConfig, setAiConfig] = useState<AiConnectionConfig>(loadAiConfig);
-  const [isAiCredentialReady, setIsAiCredentialReady] = useState(
-    () => !window.lingBuilder?.credentials
-  );
-  const [isAiConfigExpanded, setIsAiConfigExpanded] = useState(true);
-  // 自定义 API 自动检测：配置变更去抖后真实 ping 一次供应商，内联展示结果；成功等同连接成功（不写聊天气泡）。
-  const [autoCheckState, setAutoCheckState] = useState<{ status: 'checking' | 'ok' | 'fail'; message: string } | null>(null);
-  const autoCheckGenerationRef = useRef(0);
-  const lastAutoCheckSignatureRef = useRef<string | null>(null);
-  const autoCheckConfigEditedRef = useRef(false);
-  // 密钥明文切换与「获取模型列表」：列表仅在地址/密钥/协议变更时失效，模型名编辑不清空。
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [modelOptions, setModelOptions] = useState<string[]>([]);
-  const [isFetchingModels, setIsFetchingModels] = useState(false);
-  const [modelFetchError, setModelFetchError] = useState('');
-  const [isConnectingAi, setIsConnectingAi] = useState(false);
-  const [aiConnectedSignature, setAiConnectedSignature] = useState<string | null>(
-    () => aiConnectionSession.getConnectedSignature()
-  );
   const [chatInput, setChatInput] = useState('');
+  const [isAiConfigExpanded, setIsAiConfigExpanded] = useState(true);
   // null 表示高度自动跟随内容；用户拖拽顶部分隔条后为固定像素高度，双击分隔条恢复自动。
   const [chatInputHeight, setChatInputHeight] = useState<number | null>(null);
   const [conversationStore, setConversationStore] = useState<AiConversationStore | null>(null);
@@ -370,20 +193,9 @@ export default function AiAssistant({
   const [editProposal, setEditProposal] = useState<WorkspaceEditProposal | null>(null);
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; text: string } | null>(null);
   const isLingCppFile = activeLanguage === 'lingcpp' || filePath.endsWith('.lcpp');
-  // Web 预览没有 window.lingBuilder.cloudAccount：系统 AI 标签禁用，避免出现点击无反应的登录表单。
-  const isCloudAccountAvailable = Boolean(window.lingBuilder?.cloudAccount);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const messageContentRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const chatAbortRef = useRef<AbortController | null>(null);
-  const stopRequestedRef = useRef(false);
-  const cloudRequestRef = useRef<string | null>(null);
-  // Older cloud API versions did not include `instruction` in edit_draft.
-  // Keep the user prompt locally so the renderer can still apply the same
-  // designer fallback and validation rules while those servers are rolling out.
-  const cloudInstructionRef = useRef<Map<string, string>>(new Map());
-  const cloudKindRef = useRef<Map<string, 'chat' | 'edit'>>(new Map());
-  const pendingCloudInstructionRef = useRef<string | null>(null);
   const conversationSaveTimerRef = useRef<number | undefined>(undefined);
   const chatHistoryRef = useRef<Message[]>(chatHistory);
   chatHistoryRef.current = chatHistory;
@@ -392,8 +204,6 @@ export default function AiAssistant({
   projectIdRef.current = projectId;
   const activeConversationRef = useRef(activeConversation);
   activeConversationRef.current = activeConversation;
-  const aiEditContextRef = useRef({ filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles });
-  aiEditContextRef.current = { filePath, sourceCode, projectId, moduleContext, designerProject, workspaceFiles };
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   // 空输入时的自适应高度，即完整显示占位提示所需的最小高度，作为拖拽下限防止文字再次被裁。
   const chatInputAutoHeightRef = useRef(AI_CHAT_INPUT_MIN_HEIGHT);
@@ -401,17 +211,6 @@ export default function AiAssistant({
   const chatAutoScrollRef = useRef(true);
   const confirmActionRef = useRef<{ kind: 'remove' | 'clear'; conversationId?: string; expiresAt: number } | null>(null);
   const confirmActionTimerRef = useRef<number | undefined>(undefined);
-  const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
-  const effectiveProvider: AiProviderOption = aiConfig.provider || DEFAULT_AI_CONFIG.provider;
-  const isCustomPreset = (aiConfig.presetId || 'custom') === 'custom';
-  const aiConnectionSignature = [
-    aiConfig.provider || DEFAULT_AI_CONFIG.provider,
-    aiConfig.baseUrl.trim(),
-    aiConfig.apiKey.trim(),
-    effectiveModelName
-  ].join('|');
-  const isAiConnected = aiConnectionSession.isConnected(aiConnectionSignature)
-    && aiConnectedSignature === aiConnectionSignature;
 
   const applyConversationStore = (store: AiConversationStore) => {
     setConversationStore(store);
@@ -618,100 +417,6 @@ export default function AiAssistant({
     setMessageContextMenu(null);
   };
 
-  const updateAiConfig = (patch: Partial<AiConnectionConfig>) => {
-    aiConnectionSession.clear();
-    autoCheckConfigEditedRef.current = true;
-    if ('provider' in patch || 'baseUrl' in patch || 'apiKey' in patch) {
-      setModelOptions([]);
-      setModelFetchError('');
-    }
-    setAiConnectedSignature(null);
-    setAiConfig(current => ({
-      ...current,
-      ...patch
-    }));
-  };
-
-  const handleFetchModels = async () => {
-    if (isFetchingModels) return;
-    setIsFetchingModels(true);
-    setModelFetchError('');
-    try {
-      const response = await fetch('/api/ai/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aiConfig: { ...aiConfig, modelName: effectiveModelName } })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.ok === false) {
-        throw new Error(data.details || data.error || '获取模型列表失败');
-      }
-      const models: string[] = Array.isArray(data.models) ? data.models.filter((item: unknown) => typeof item === 'string') : [];
-      if (!models.length) {
-        throw new Error('服务端未返回任何可用模型');
-      }
-      setModelOptions(models);
-    } catch (error: any) {
-      setModelOptions([]);
-      setModelFetchError(String(error?.message || '获取模型列表失败').slice(0, 200));
-    } finally {
-      setIsFetchingModels(false);
-    }
-  };
-
-  const handleAiModeChange = (mode: AiConnectionMode) => {
-    aiConnectionSession.setMode(mode);
-    setAiMode(mode);
-  };
-
-  const handlePresetChange = (presetId: string) => {
-    const preset = AI_MODEL_PRESETS.find(item => item.id === presetId);
-    if (!preset || preset.id === 'custom') {
-      updateAiConfig({ presetId });
-      return;
-    }
-    updateAiConfig({
-      presetId,
-      baseUrl: preset.baseUrl,
-      modelName: preset.modelName,
-      provider: preset.provider
-    });
-  };
-
-  const handleConnectAi = async () => {
-    setIsConnectingAi(true);
-    lastAutoCheckSignatureRef.current = aiConnectionSignature;
-    setAutoCheckState(null);
-    try {
-      const response = await fetch('/api/ai/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          aiConfig: { ...aiConfig, modelName: effectiveModelName }
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.ok === false) {
-        throw new Error(data.details || data.error || 'AI 连接失败');
-      }
-      aiConnectionSession.markConnected(aiConnectionSignature);
-      setAiConnectedSignature(aiConnectionSignature);
-      updateChatHistory(prev => [
-        ...prev,
-        createChatMessage('ai', `AI 已连接：${effectiveModelName}`, { contextExcluded: true })
-      ]);
-    } catch (error: any) {
-      aiConnectionSession.clear();
-      setAiConnectedSignature(null);
-      updateChatHistory(prev => [
-        ...prev,
-        createChatMessage('ai', `AI 连接失败：${error?.message || '请检查 Base URL、API Key 和 Model Name。'}`, { contextExcluded: true })
-      ]);
-    } finally {
-      setIsConnectingAi(false);
-    }
-  };
-
   useEffect(() => {
     const scrollPanel = chatScrollRef.current;
     if (!scrollPanel || !chatAutoScrollRef.current) return;
@@ -759,232 +464,8 @@ export default function AiAssistant({
   }, [chatHistory]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
-        ...aiConfig,
-        aiMode,
-        apiKey: undefined,
-        modelName: effectiveModelName
-      }));
-      if (isAiCredentialReady) {
-        void window.lingBuilder?.credentials?.setAiApiKey(aiConfig.apiKey);
-      }
-    } catch {
-      // AI settings remain usable for the current session even if storage fails.
-    }
-  }, [aiConfig, aiMode, effectiveModelName, isAiCredentialReady]);
-
-  useEffect(() => {
-    if (aiMode !== 'byok') return;
-    if (!autoCheckConfigEditedRef.current) return;
-    if (!aiConfig.apiKey.trim() || !effectiveModelName) return;
-    if (lastAutoCheckSignatureRef.current === aiConnectionSignature) return;
-    const generation = ++autoCheckGenerationRef.current;
-    const requestConfig = { ...aiConfig, modelName: effectiveModelName };
-    const timer = window.setTimeout(async () => {
-      // 手动「连接到 AI」已覆盖当前签名时跳过，避免重复 ping 供应商。
-      if (lastAutoCheckSignatureRef.current === aiConnectionSignature) return;
-      lastAutoCheckSignatureRef.current = aiConnectionSignature;
-      setAutoCheckState({ status: 'checking', message: '' });
-      try {
-        const response = await fetch('/api/ai/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ aiConfig: requestConfig })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (generation !== autoCheckGenerationRef.current) return;
-        if (!response.ok || data.ok === false) {
-          setAutoCheckState({ status: 'fail', message: String(data.details || data.error || 'AI 连接失败').slice(0, 200) });
-          return;
-        }
-        setAutoCheckState({ status: 'ok', message: effectiveModelName });
-        aiConnectionSession.markConnected(aiConnectionSignature);
-        setAiConnectedSignature(aiConnectionSignature);
-      } catch (error: any) {
-        if (generation !== autoCheckGenerationRef.current) return;
-        setAutoCheckState({ status: 'fail', message: String(error?.message || 'AI 连接失败').slice(0, 200) });
-      }
-    }, 1000);
-    return () => window.clearTimeout(timer);
-  }, [aiConnectionSignature, aiMode, aiConfig, effectiveModelName]);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.apiKey) {
-          delete parsed.apiKey;
-          window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(parsed));
-        }
-      }
-    } catch {
-      // Ignore legacy cleanup failures.
-    }
-
-    const credentials = window.lingBuilder?.credentials;
-    if (!credentials) {
-      setIsAiCredentialReady(true);
-      return;
-    }
-
-    void credentials.getAiApiKey()
-      .then(apiKey => {
-        if (apiKey) setAiConfig(current => ({ ...current, apiKey }));
-      })
-      .catch(() => undefined)
-      .finally(() => setIsAiCredentialReady(true));
-  }, []);
-
-  useEffect(() => {
     setEditProposal(null);
   }, [filePath, projectMutationOwner.loadGeneration, projectMutationOwner.projectId]);
-
-  // Web 预览没有云端账号 IPC：仅在挂载时同步一次回退模式，不再随编辑器输入反复切换。
-  useEffect(() => {
-    if (!window.lingBuilder?.cloudAccount) handleAiModeChange('byok');
-  }, []);
-
-  // 云端会话与流式事件只订阅一次：旧的依赖 sourceCode/workspaceFiles 会导致每次按键都
-  // 重新请求 /v1/me 与余额接口，并在流式期间反复重挂监听器。
-  useEffect(() => {
-    const cloudAccount = window.lingBuilder?.cloudAccount;
-    if (!cloudAccount) return;
-    let active = true;
-    void refreshCloudAccountSession().then(session => {
-      if (active && session.authenticated) void loadCloudModels();
-    });
-    const unsubscribe = window.lingBuilder?.cloudAi?.onEvent((requestKey, event) => {
-      if (requestKey !== cloudRequestRef.current) return;
-      if (event.type === 'delta' && event.text) {
-        if (cloudKindRef.current.get(requestKey) === 'edit') {
-          updateChatHistory(previous => {
-            const id = `cloud-${requestKey}`;
-            const status = 'AI 正在生成可确认的修改方案（含源码与设计器），请稍候…';
-            const existing = previous.find(message => message.id === id);
-            if (existing) return previous.map(message => message.id === id ? { ...message, text: status } : message);
-            return [...previous, { ...createChatMessage('ai', status, { id }), contextExcluded: true }];
-          });
-          return;
-        }
-        updateChatHistory(previous => {
-          const id = `cloud-${requestKey}`;
-          const existing = previous.find(message => message.id === id);
-          if (existing) return previous.map(message => message.id === id ? { ...message, text: message.text + event.text } : message);
-          return [...previous, createChatMessage('ai', event.text, { id })];
-        });
-      }
-      if (event.type === 'reasoning' && event.text) {
-        // 推理型模型的思考过程与正文分离，只在折叠块里展示，不再混入回复正文。
-        updateChatHistory(previous => {
-          const id = `cloud-${requestKey}`;
-          const existing = previous.find(message => message.id === id);
-          if (existing) return previous.map(message => message.id === id ? { ...message, reasoningText: (message.reasoningText || '') + event.text } : message);
-          return [...previous, { ...createChatMessage('ai', '', { id }), reasoningText: event.text }];
-        });
-      }
-      if (event.type === 'edit_draft' && Array.isArray(event.files)) {
-        const instruction = typeof event.instruction === 'string' && event.instruction.trim()
-          ? event.instruction
-          : cloudInstructionRef.current.get(requestKey)
-            || pendingCloudInstructionRef.current
-            || '系统 AI 工作区编辑';
-        const editContext = aiEditContextRef.current;
-        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath: editContext.filePath, sourceCode: editContext.sourceCode, instruction, projectId: editContext.projectId, moduleContext: editContext.moduleContext, currentDesignerProject: editContext.designerProject, designerProject: event.designerProject, workspaceFiles: editContext.workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); }).catch(error => updateChatHistory(previous => [...previous, createChatMessage('ai', error instanceof Error ? error.message : String(error), { contextExcluded: true })]));
-      }
-      if (event.type === 'usage') {
-        updateChatHistory(previous => [...previous, createChatMessage('ai', `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, { contextExcluded: true })]);
-        void refreshCloudAccountSession();
-      }
-      if (event.type === 'completed' || event.type === 'error') {
-        if (event.type === 'completed') {
-          // 模型只输出思考过程时，把思考内容提升为正文，避免用户看到空白回复。
-          updateChatHistory(previous => previous.map(message => message.id === `cloud-${requestKey}` && !message.text.trim() && message.reasoningText
-            ? { ...message, text: promoteReasoningText(message.reasoningText), reasoningText: undefined }
-            : message), true);
-        }
-        if (event.type === 'error') updateChatHistory(previous => [...previous, createChatMessage('ai', event.message || '系统 AI 请求失败。', { contextExcluded: true })], true);
-        cloudInstructionRef.current.delete(requestKey);
-        if (cloudRequestRef.current === requestKey) pendingCloudInstructionRef.current = null;
-        cloudRequestRef.current = null; setIsAiResponding(false);
-      }
-    });
-    return () => {
-      active = false;
-      if (confirmActionTimerRef.current) window.clearTimeout(confirmActionTimerRef.current);
-      unsubscribe?.();
-    };
-  }, []);
-
-  // 登录/注册/找回密码统一走顶层账号对话框（全 IDE 唯一表单），面板只负责刷新模型列表。
-  const openAccountDialog = async (initialMode: 'login' | 'register' | 'reset') => {
-    if (!window.lingBuilder?.cloudAccount) return;
-    const result = await requestCloudAccountLogin({ initialMode });
-    if (!result.authenticated) return;
-    await refreshCloudAccountSession();
-    void loadCloudModels();
-  };
-
-
-  // 聊天面板内直接驱动「AI 生成模块」共享流：多阶段生成 → 契约解析 → 导入 module-build。
-  // 与模块面板共用 aiModuleGenerationFlow 唯一实现；结果以聊天消息汇报，不进入编辑提案链。
-  const runModuleGenerationInChat = async (requirement: string) => {
-    const channel: 'system' | 'byok' = aiMode === 'system' ? 'system' : 'byok';
-    const statusId = `module-gen-${Date.now()}`;
-    const upsertStatus = (text: string) => updateChatHistory(previous => {
-      const existing = previous.find(message => message.id === statusId);
-      if (existing) return previous.map(message => message.id === statusId ? { ...message, text } : message);
-      return [...previous, { ...createChatMessage('ai', text, { id: statusId }), contextExcluded: true }];
-    }, true);
-    try {
-      upsertStatus(channel === 'system'
-        ? '正在按《LingBuilder 模块 AI 开发规范》生成模块（清单 → 文件 → 导入），请稍候……'
-        : '正在通过自定义 API 生成模块并导入 module-build，请稍候……');
-      let outcome: AiModuleGenerationOutcome;
-      try {
-        outcome = await runAiModuleGeneration(requirement, channel, {
-          onStage: (_stage, message) => upsertStatus(message),
-          onRequestKey: key => { moduleGenerationRequestRef.current = key; }
-        }, { ...aiConfig, modelName: effectiveModelName });
-      } catch (error) {
-        outcome = { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
-      if (stopRequestedRef.current) return;
-      if (!outcome.ok || !outcome.imported) {
-        updateChatHistory(previous => [...previous, createChatMessage('ai', `AI 模块生成失败：${outcome.error || '未知错误'}${outcome.rawOutput ? '\n\n可打开「模块 → 开发工具 → AI 生成模块」的手动模式，把 AI 原始回复粘贴进文本框完成导入。' : ''}`)]);
-        return;
-      }
-      const imported = outcome.imported;
-      const summaryLines = [
-        `已${imported.overwrittenExisting ? '重新生成并覆盖导入' : '生成并导入'}模块「${imported.moduleName}」（${imported.moduleId}）到 ${imported.outDir}，共 ${imported.fileCount} 个文件。`,
-        imported.diagnostics.length > 0 ? `导入校验未完全通过：${imported.diagnostics.join('；')}` : '导入后校验通过。',
-        '下一步：打开「模块」页 → 开发工具 →「模块包制作」，校验并导出 .lbmod 后安装启用；在项目里启用模块后即可调用其中文命令。'
-      ];
-      updateChatHistory(previous => [...previous, createChatMessage('ai', summaryLines.filter(Boolean).join('\n'))]);
-    } finally {
-      moduleGenerationRequestRef.current = null;
-      setIsAiResponding(false);
-    }
-  };
-
-  // BYOK 发送前解析凭据 Key（2026-09-22 编辑提案链 401 根治的一环）：
-  // aiConfig.apiKey 在挂载时由凭据库异步回填，编辑提案/聊天若赶在回填前发出，
-  // 会带着空 Key 打服务端——旧版服务端会用启动时固化的 GEMINI_* 环境变量旧值顶替，
-  // 造成「Key 尾缀与当前一致却被上游 401」的假象。这里在每次发送前保证 Key 已从
-  // 凭据库取到最新值；仍取不到就直接给中文错误，不发注定失败的请求。
-  const resolveByokAiConfig = async (): Promise<AiConnectionConfig> => {
-    let apiKey = aiConfig.apiKey;
-    if (!apiKey.trim() && window.lingBuilder?.credentials) {
-      try {
-        apiKey = (await window.lingBuilder.credentials.getAiApiKey()) || '';
-      } catch {
-        apiKey = '';
-      }
-      if (apiKey) setAiConfig(current => ({ ...current, apiKey }));
-    }
-    return { ...aiConfig, apiKey, modelName: effectiveModelName };
-  };
 
   // 本机 Agent 引擎（内嵌 DeepSeek Harness）：跨轮复用的会话与已接手的提案 ID。
   const agentSessionRef = useRef('');
@@ -1160,153 +641,55 @@ export default function AiAssistant({
       if (proposal?.id && !handledAgentProposalsRef.current.has(proposal.id)) {
         handledAgentProposalsRef.current.add(proposal.id);
         setEditProposal(proposal);
-        pushAgentNotice(`已生成可预览的编辑提案：${proposal.summary || proposal.id}。请在上方差异预览后点击「应用提案」。`);
+        pushAgentNotice(`已生成可预览的编辑提案：${proposal.summary || proposal.id}
+${describeEditProposalOutcome(proposal)}
+请在上方差异预览后点击「应用提案」。`);
       }
     } catch {
       pushAgentNotice('未读取到内嵌 Agent 的提案交接内容（/api/lingcpp/edit/agent-proposal 不可用）。');
     }
   };
 
-  // Conversational translation query
-  const submitChatMessage = async () => {
-    if (isAiResponding) return;
-    if (!chatInput.trim()) return;
-
-    const userMsg: Message = createChatMessage('user', chatInput);
-    // 纯问答先判掉：既不进模块生成流，也不进编辑提案链。
-    const askingOnlyInstruction = isLikelyAskingOnlyInstruction(userMsg.text);
-
-    // 本机 Agent 引擎：整轮交给内嵌运行时，不走系统 AI / BYOK 的本地 planner 链。
-    if (aiMode === 'agent') {
-      updateChatHistory(prev => [...prev, userMsg]);
-      setChatInput('');
-      setIsAiResponding(true);
-      try {
-        await runAgentTurn(userMsg.text);
-      } catch (error) {
-        pushAgentNotice(`内嵌 Agent 出错：${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        setIsAiResponding(false);
-      }
-      return;
-    }
-
+  // 单引擎提交：需求整体交给内嵌 Agent，面板不再本地判定「这是问答/编辑还是模块生成」。
+  // 分类与工具选择由 Agent 自己决定；写盘与构建仍只在用户确认提案后由 IDE 代执行。
+  const runChatTurn = async (rawText: string) => {
+    const instruction = rawText.trim();
+    if (!instruction || isAiResponding) return false;
+    const userMsg: Message = createChatMessage('user', instruction);
     updateChatHistory(prev => [...prev, userMsg]);
-    setChatInput('');
     setIsAiResponding(true);
-    stopRequestedRef.current = false;
-    const controller = new AbortController(); chatAbortRef.current?.abort(); chatAbortRef.current = controller;
-    let isManagedByCloudStream = false;
-
     try {
-      if (aiMode === 'system') {
-        if (!cloudSession.authenticated || !window.lingBuilder?.cloudAi || !cloudModelAlias) throw new Error('请先登录系统 AI 并选择可用模型。');
-        pendingCloudInstructionRef.current = userMsg.text;
-        const messages = [...chatHistoryRef.current.filter(message => message.id !== 'welcome' && !message.contextExcluded && message.id !== userMsg.id).slice(-18).map(message => ({ role: message.sender === 'ai' ? 'assistant' as const : 'user' as const, content: message.text })), { role: 'user' as const, content: userMsg.text }];
-        const rulebookVersion = 'lingbuilder-rulebook-v1';
-        const shouldUseEditFlow = (isLingCppFile && isLikelyCodeEditInstruction(userMsg.text)) || Boolean(
-          designerProject && isLikelyDesignerEditInstruction(userMsg.text)
-        );
-        const payload = shouldUseEditFlow ? {
-          modelAlias: cloudModelAlias, messages, rulebookVersion, activeFilePath: filePath, instruction: userMsg.text,
-          files: await Promise.all(getAiWorkspaceFilesForEdit(workspaceFiles, filePath, sourceCode).map(async file => ({ filePath: file.filePath, content: file.sourceCode.slice(0, 24_000), language: file.language, sha256: await sha256(file.sourceCode) }))),
-          ...(designerProject ? { designerProject } : {})
-        } : { modelAlias: cloudModelAlias, messages, rulebookVersion };
-        const requestKey = await window.lingBuilder.cloudAi.start(shouldUseEditFlow ? 'edit' : 'chat', payload);
-        cloudKindRef.current.set(requestKey, shouldUseEditFlow ? 'edit' : 'chat');
-        cloudInstructionRef.current.set(requestKey, userMsg.text);
-        cloudRequestRef.current = requestKey;
-        isManagedByCloudStream = true;
-        if (chatAbortRef.current === controller) chatAbortRef.current = null;
-        if (stopRequestedRef.current) {
-          await window.lingBuilder.cloudAi.cancel(requestKey);
-          cloudKindRef.current.delete(requestKey);
-          cloudInstructionRef.current.delete(requestKey);
-          cloudRequestRef.current = null;
-          pendingCloudInstructionRef.current = null;
-          setIsAiResponding(false);
-        }
-        return;
-      }
-      const shouldUseEditFlow = (isLingCppFile && isLikelyCodeEditInstruction(userMsg.text)) || Boolean(
-        designerProject && isLikelyDesignerEditInstruction(userMsg.text)
-      );
-      if (shouldUseEditFlow) {
-        const response = await fetch('/api/lingcpp/edit/propose', {
-          signal: controller.signal,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filePath,
-            sourceCode,
-            instruction: userMsg.text,
-            projectId,
-            moduleContext,
-            aiConfig: { ...aiConfig, modelName: effectiveModelName },
-            workspaceFiles,
-            designerProject
-          })
-        });
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || data.ok === false) {
-          throw new Error(data.error || `中文 C++ 编辑提案生成失败（HTTP ${response.status}）。`);
-        }
-
-        const proposal = data.proposal as WorkspaceEditProposal;
-        setEditProposal(proposal);
-        updateChatHistory(prev => [
-          ...prev,
-          createChatMessage('ai', `已生成一份可预览的工作区编辑提案：${proposal.summary}\n\n本次涉及 ${proposal.changes.length} 个文件${proposal.designerProject ? '，并同步修改窗口设计器模型' : ''}，请在下方预览差异后选择“应用提案”或“拒绝提案”。`)
-        ]);
-        return;
-      }
-
-      // Build a contextual prompt about the current file's strings
-      const fileContext = strings.slice(0, 10).map(s => `- ID: ${s.id}, 原文: "${s.original}"`).join('\n');
-      // 自定义 API 模式同样携带最近对话：追问（如“再详细一点”）才能命中上文。
-      const historyMessages = chatHistoryRef.current
-        .filter(message => message.id !== 'welcome' && message.id !== userMsg.id && !message.contextExcluded)
-        .slice(-8);
-      const historyBlock = historyMessages.length > 0
-        ? `以下是此前的对话记录（最近 ${historyMessages.length} 条，供上下文参考，回答需与最新问题连贯）：\n${historyMessages.map(message => `${message.sender === 'user' ? '用户' : '助手'}：${message.text.length > 2000 ? `${message.text.slice(0, 2000)}…` : message.text}`).join('\n')}\n\n`
-        : '';
-      const prompt = `您是 C++ 编程与代码映射专家。以下是当前文件 ${filePath} 中提取的部分字符串（仅供参考）：\n${fileContext}\n\n${historyBlock}用户提问：${userMsg.text}\n\n请针对用户的中文代码映射或 C++ 语法问题，结合此前对话进行连贯的专业解答。如果涉及代码，请用 Markdown 代码块返回，以便用户拷贝。`;
-
-      const response = await fetch('/api/translate', {
-        signal: controller.signal,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          strings: [{ id: 'chat_query', original: prompt, type: 'string', context: 'User Chat Interaction' }]
-          ,
-          aiConfig: { ...aiConfig, modelName: effectiveModelName }
-        })
-      });
-
-      if (!response.ok) {
-        // 透传服务端 error/details（如 fetch failed / 缺少 API Key），不再只报通用失败。
-        const failure = await response.json().catch(() => ({} as { error?: string; details?: string }));
-        throw new Error([failure.error, failure.details].filter(Boolean).join('：') || `AI 助手响应失败（HTTP ${response.status}）`);
-      }
-
-      const data = await response.json();
-      const aiReplyText = data.translations?.[0]?.translated || 'AI 助手当前不可用，请检查 API 密钥设置。';
-
-      updateChatHistory(prev => [
-        ...prev,
-        createChatMessage('ai', aiReplyText)
-      ]);
-    } catch (err: any) {
-      if (controller.signal.aborted || stopRequestedRef.current) return;
-      updateChatHistory(prev => [
-        ...prev,
-        createChatMessage('ai', `抱歉，在尝试回应您时发生错误：${err.message || '请检查 API 连接状况。'}`, { contextExcluded: true })
-      ]);
+      await runAgentTurn(instruction);
+    } catch (error) {
+      pushAgentNotice(`内嵌 Agent 出错：${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      if (chatAbortRef.current === controller) chatAbortRef.current = null;
-      if (!isManagedByCloudStream) setIsAiResponding(false);
+      setIsAiResponding(false);
     }
+    return true;
+  };
+
+  const runChatTurnRef = useRef(runChatTurn);
+  runChatTurnRef.current = runChatTurn;
+  const onAgentRequestHandledRef = useRef(onAgentRequestHandled);
+  onAgentRequestHandledRef.current = onAgentRequestHandled;
+
+  // 模块面板「AI 生成模块」把需求交给本机 Agent：工作台负责展开侧栏并把需求送进来，
+  // 本面板是唯一执行入口，禁止任何面板再自建第二套编排或写盘路径。
+  useEffect(() => {
+    const request = agentRequest;
+    if (!request) return;
+    onAgentRequestHandledRef.current?.(request.id);
+    void runChatTurnRef.current(request.prompt).then(accepted => {
+      if (accepted) return;
+      pushAgentNotice(`本机 Agent 正在执行上一条需求，「${request.origin || '模块面板'}」这次投来的需求已丢弃；请等本轮结束后重试。`);
+    });
+  }, [agentRequest]);
+
+  const submitChatMessage = async () => {
+    if (!chatInput.trim()) return;
+    const instruction = chatInput;
+    setChatInput('');
+    await runChatTurn(instruction);
   };
 
   const handleSendChat = (e: React.FormEvent) => {
@@ -1379,22 +762,14 @@ export default function AiAssistant({
     void submitChatMessage();
   };
 
+  // 内嵌 Agent 的单轮请求是同步 await 的，没有「中途取消」协议；
+  // 停止即回收运行时（下一条需求会自动重启），并丢弃本轮会话上下文。
   const stopAiResponse = () => {
     if (!isAiResponding) return;
-    stopRequestedRef.current = true;
-    const requestKey = cloudRequestRef.current;
-    if (aiMode === 'system' && requestKey) {
-      cloudRequestRef.current = null;
-      pendingCloudInstructionRef.current = null;
-      cloudKindRef.current.delete(requestKey);
-      cloudInstructionRef.current.delete(requestKey);
-      void window.lingBuilder?.cloudAi?.cancel(requestKey);
-    } else {
-      chatAbortRef.current?.abort();
-      chatAbortRef.current = null;
-    }
+    agentSessionRef.current = '';
+    void stopAgentRuntime();
     setIsAiResponding(false);
-    updateChatHistory(previous => [...previous, createChatMessage('ai', '已停止本次 AI 回复。', { contextExcluded: true })]);
+    updateChatHistory(previous => [...previous, createChatMessage('ai', '已停止本次 Agent 执行，内嵌运行时已回收；再次发送需求会自动重启。', { contextExcluded: true })]);
   };
 
   const handleApplyProposal = async () => {
@@ -1519,7 +894,7 @@ export default function AiAssistant({
         {conversationError && <div role="alert" className="mt-1 text-[11px] leading-relaxed text-rose-400">{conversationError}</div>}
       </div>
 
-      {/* Batch Translation Controller */}
+      {/* AI 引擎与模型通道设置 */}
       <div 
         className={`p-3.5 border-b shrink-0 ${
           isDarkMode ? 'border-[#2d2d34] bg-[#1a1a20]/30' : 'border-slate-200 bg-slate-50'
@@ -1540,13 +915,7 @@ export default function AiAssistant({
             </button>
           </div>
           {isAiConfigExpanded && (
-            <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${isDarkMode ? 'border-[#343442] bg-[#18181c]' : 'border-slate-200 bg-slate-100'}`} role="tablist" aria-label="AI 使用模式">
-              <button type="button" role="tab" aria-selected={aiMode === 'system'} onClick={() => handleAiModeChange('system')} disabled={!isCloudAccountAvailable} title={isCloudAccountAvailable ? '使用 LingBuilder 云端系统 AI' : '系统 AI 需要在 LingBuilder 桌面版中使用'} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${aiMode === 'system' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}><Cloud className="h-3 w-3"/>系统 AI</button>
-              <button type="button" role="tab" aria-selected={aiMode === 'byok'} onClick={() => handleAiModeChange('byok')} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'byok' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><KeyRound className="h-3 w-3"/>自定义 API</button>
-              <button type="button" role="tab" aria-selected={aiMode === 'agent'} onClick={() => handleAiModeChange('agent')} disabled={!window.lingBuilder?.agentRuntime} title={window.lingBuilder?.agentRuntime ? '使用本机内嵌 Agent 运行时（DeepSeek Harness，经 LingBuilder MCP 干活；写盘与构建由你确认后代执行）' : '本机 Agent 只在 LingBuilder 桌面版可用'} className={`flex min-h-7 items-center justify-center gap-1 rounded px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${aiMode === 'agent' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}><Brain className="h-3 w-3"/>本机 Agent</button>
-            </div>
-          )}
-          {aiMode === 'agent' && isAiConfigExpanded && (
+            <>
             <div className={`flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] ${isDarkMode ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50'}`}>
               <span className={`inline-flex min-h-5 items-center gap-1 rounded px-1.5 font-semibold ${agentRuntimeStatus?.state === 'failed' ? 'bg-rose-600 text-white' : agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy' ? 'bg-emerald-600 text-white' : 'bg-slate-500/20 text-slate-500'}`}>
                 <Brain className="h-3 w-3" />
@@ -1680,172 +1049,6 @@ export default function AiAssistant({
             </div>
             </>
           )}
-          {aiMode === 'system' && isAiConfigExpanded && (
-            <div className={`space-y-2 rounded border p-2.5 ${isDarkMode ? 'border-violet-500/20 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>
-              {cloudSession.authenticated ? <>
-                <div className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate text-slate-400">{cloudSession.email}</span><button type="button" aria-label="退出系统 AI 账号" className="flex min-h-7 items-center gap-1 text-rose-400" onClick={() => void signOutCloudAccount()}><LogOut className="h-3 w-3"/>退出</button></div>
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-1 items-center gap-2 rounded bg-black/10 px-2 py-1.5 text-[10px]"><Coins className="h-3.5 w-3.5 text-amber-400"/><span>可用点数</span><strong className="ml-auto tabular-nums">{cloudSession.balance?.available || '0'}</strong></div>
-                  <button type="button" aria-label="打开点数充值" onClick={() => void requestCloudAccountRecharge()} className="min-h-7 rounded bg-amber-500/90 px-2 text-[10px] font-semibold text-white hover:bg-amber-500">充值</button>
-                </div>
-                <label className="block text-[10px] text-slate-500" htmlFor="system-ai-model">系统模型</label>
-                <select id="system-ai-model" value={cloudModelAlias} onChange={event => { setCloudModelAlias(event.target.value); writePreferredCloudModelAlias(event.target.value); }} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}>{cloudModels.map(model => <option key={model.alias} value={model.alias}>{model.displayName}</option>)}</select>
-              </> : <>
-                <p className={`text-[10px] leading-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>系统 AI 按点数计费，需先登录 LingBuilder 账号；同一账号也用于收费模块权益与体验计划。</p>
-                <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => void openAccountDialog('login')} className="min-h-9 rounded bg-violet-600 text-[10px] font-semibold text-white">登录</button><button type="button" onClick={() => void openAccountDialog('register')} className="min-h-9 rounded border border-violet-500/40 text-[10px] text-violet-400">注册</button></div>
-                <button type="button" onClick={() => void openAccountDialog('reset')} className={`text-left text-[10px] underline-offset-2 hover:underline cursor-pointer ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>忘记密码？通过邮箱重置</button>
-                {cloudSession.error && <div role="status" className="text-[10px] text-amber-400">{cloudSession.error}</div>}
-              </>}
-            </div>
-          )}
-          {aiMode === 'byok' && isAiConfigExpanded && (
-            <>
-              <div>
-                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>预设</span>
-                <select
-                  value={aiConfig.presetId || 'custom'}
-                  onChange={event => handlePresetChange(event.target.value)}
-                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 cursor-pointer ${
-                    isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
-                  }`}
-                >
-                  {AI_MODEL_PRESETS.map(preset => (
-                    <option key={preset.id} value={preset.id} className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>接口协议</span>
-                <select
-                  value={effectiveProvider}
-                  onChange={event => updateAiConfig({ provider: event.target.value as AiProviderOption })}
-                  disabled={!isCustomPreset}
-                  title={isCustomPreset ? '自定义模型的调用协议' : '内置预设使用固定协议，选择「自定义模型」后可切换'}
-                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
-                    isCustomPreset ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
-                  } ${isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'}`}
-                >
-                  {AI_PROVIDER_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value} className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>API 地址</span>
-                <input
-                  value={aiConfig.baseUrl}
-                  onChange={event => updateAiConfig({ baseUrl: event.target.value, presetId: 'custom' })}
-                  placeholder="https://api.openai.com/v1"
-                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
-                    isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
-                  }`}
-                />
-              </div>
-              <div>
-                <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>密钥</span>
-                <div className="relative">
-                  <input
-                    value={aiConfig.apiKey}
-                    onChange={event => updateAiConfig({ apiKey: event.target.value })}
-                    placeholder="留空使用服务端环境变量"
-                    type={showApiKey ? 'text' : 'password'}
-                    className={`w-full border rounded px-2.5 py-1.5 pr-9 text-xs focus:outline-none focus:border-purple-500 ${
-                      isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(value => !value)}
-                    title={showApiKey ? '隐藏密钥' : '显示密钥'}
-                    aria-label={showApiKey ? '隐藏密钥' : '显示密钥'}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
-                  >
-                    {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between">
-                  <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>模型 ID</span>
-                  <button
-                    type="button"
-                    onClick={handleFetchModels}
-                    disabled={isFetchingModels || !aiConfig.apiKey.trim()}
-                    title="从服务商拉取当前密钥可用的模型列表"
-                    className="text-[11px] text-purple-500 hover:text-purple-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
-                  >
-                    {isFetchingModels ? '获取中…' : '获取模型列表'}
-                  </button>
-                </div>
-                <input
-                  value={aiConfig.modelName}
-                  onChange={event => updateAiConfig({ modelName: event.target.value, presetId: 'custom' })}
-                  placeholder="选择常用模型后自动填充，也可手动输入"
-                  list="ai-byok-model-options"
-                  className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
-                    isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
-                  }`}
-                />
-                <datalist id="ai-byok-model-options">
-                  {modelOptions.map(option => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
-                {modelFetchError && (
-                  <div className={`mt-1 text-[11px] leading-4 break-all ${isDarkMode ? 'text-rose-400' : 'text-rose-600'}`}>获取失败：{modelFetchError}</div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={handleConnectAi}
-                disabled={isConnectingAi || !isAiCredentialReady || !effectiveModelName || isAiConnected}
-                className={`w-full flex items-center justify-center gap-2 text-white font-bold py-2 rounded text-xs transition-all select-none shadow-md ${
-                  isAiConnected
-                    ? 'bg-emerald-600/80 cursor-default'
-                    : 'bg-[#2563eb] hover:bg-blue-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
-                }`}
-              >
-                {isConnectingAi ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>正在连接 AI...</span>
-                  </>
-                ) : isAiConnected ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>已连接 AI</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300/20" />
-                    <span>连接到 AI</span>
-                  </>
-                )}
-              </button>
-              {autoCheckState && (
-                <div
-                  role="status"
-                  className={`text-[11px] leading-4 break-all ${
-                    autoCheckState.status === 'checking'
-                      ? 'text-slate-500'
-                      : autoCheckState.status === 'ok'
-                        ? isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
-                        : isDarkMode ? 'text-rose-400' : 'text-rose-600'
-                  }`}
-                >
-                  {autoCheckState.status === 'checking'
-                    ? '正在自动检测接口可用性…'
-                    : autoCheckState.status === 'ok'
-                      ? `接口可用：${autoCheckState.message || effectiveModelName}`
-                      : `接口不可用：${autoCheckState.message || '请检查 Base URL、API Key 和 Model Name'}`}
-                </div>
-              )}
-            </>
-          )}
         </div>
       </div>
 
@@ -1903,7 +1106,7 @@ export default function AiAssistant({
       <div className="flex-1 flex flex-col min-h-0">
         {/* Chat History scroll panel */}
         <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
-          {aiMode === 'agent' && agentSteps.length > 0 && (
+          {agentSteps.length > 0 && (
             <div className={`rounded border p-2 text-[10px] ${isDarkMode ? 'border-[#2a3240] bg-[#11131a]' : 'border-slate-200 bg-slate-50'}`}>
               <button
                 type="button"

@@ -3,7 +3,9 @@ import { requestWorkbenchAlert, requestWorkbenchConfirm } from '../services/work
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
 import QRCode from 'qrcode';
 import {
+  AlertTriangle,
   Archive,
+  ArrowLeft,
   BookOpen,
   Bot,
   Check,
@@ -16,8 +18,8 @@ import {
   Info,
   Layers,
   Link2,
-  Loader2,
   LockKeyhole,
+  MoreHorizontal,
   Package,
   RefreshCw,
   Search,
@@ -52,33 +54,16 @@ import {
   type AiModuleImportResultForClipboard
 } from '../services/modules/aiModuleImportParser';
 import { isLocalModulePackagePath } from '../services/modules/modulePackageIntakeService';
-import { buildModuleManifestPhaseMessages, buildModuleFilesPhaseMessages, buildModuleMissingFilesPhaseMessages } from '../services/modules/aiModuleGeneration';
+import { importAiModuleFilesToWorkspace, type AiModuleImportOutcome } from '../services/modules/aiModuleGenerationFlow';
+import { requestAiAgentTurn } from '../services/ai/agentRequestBus';
+import {
+  MODULE_DETAIL_ACTION_EVENT,
+  openModuleDetailView,
+  type ModuleDetailActionRequest
+} from '../services/modules/moduleDetailView';
 
-function collectRegisteredRelativePaths(manifestContent: string): string[] {
-  try {
-    const manifest = JSON.parse(manifestContent) as {
-      targets?: Array<{ includeDirs?: unknown; headers?: unknown; sources?: unknown; libs?: unknown; runtimeFiles?: unknown }>;
-      contributes?: { docs?: Array<{ path?: unknown }>; examples?: Array<{ path?: unknown }> };
-    };
-    const paths: string[] = [];
-    const pushAll = (value: unknown) => { if (Array.isArray(value)) for (const item of value) if (typeof item === 'string') paths.push(item); };
-    for (const target of manifest.targets || []) {
-      pushAll(target.headers);
-      pushAll(target.sources);
-      pushAll(target.libs);
-      pushAll(target.runtimeFiles);
-    }
-    for (const doc of manifest.contributes?.docs || []) if (typeof doc.path === 'string') paths.push(doc.path);
-    for (const example of manifest.contributes?.examples || []) if (typeof example.path === 'string') paths.push(example.path);
-    return [...new Set(paths.map(p => p.replace(/\\/gu, '/').replace(/^\.\//u, '')))];
-  } catch {
-    return [];
-  }
-}
-import { readPreferredCloudModelAlias } from '../services/ai/cloudModelPreference';
-import ModulePublicInfoDialog from './ModulePublicInfoDialog';
-
-type ModuleSectionId = 'installed' | 'aiGenerate' | 'packageInstall' | 'packageExport' | 'developer' | 'market' | 'history';
+/** 侧栏「…」菜单收纳的开发工具子视图；主列表只保留模块浏览与快操作（VS Code Extensions 式）。 */
+type ModuleSubViewId = 'aiGenerate' | 'packageInstall' | 'packageExport' | 'developer' | 'market' | 'history';
 
 interface ModuleInspectorProps {
   onAddLog: (log: string) => void;
@@ -155,8 +140,14 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [paymentQr, setPaymentQr] = useState<{ provider: 'wechat'|'alipay'; url: string; dataUrl: string; expiresAt?: string } | null>(null);
   const [validateResult, setValidateResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isDragOverPackage, setIsDragOverPackage] = useState(false);
-  const [installStage, setInstallStage] = useState<'idle' | 'reading' | 'validating' | 'preview' | 'installing' | 'success' | 'error'>('idle');
   const [showWorkspaceChoice, setShowWorkspaceChoice] = useState(false);
+  const [subView, setSubView] = useState<ModuleSubViewId | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isCloudExpanded, setIsCloudExpanded] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<'enabled' | 'installed', boolean>>({
+    enabled: false,
+    installed: false
+  });
   const [aiGuideCopyState, setAiGuideCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   const aiGuideCopyTimerRef = useRef<number | null>(null);
   const [aiModulePasteText, setAiModulePasteText] = useState('');
@@ -164,21 +155,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [aiImportCopyState, setAiImportCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   const aiImportCopyTimerRef = useRef<number | null>(null);
   const [aiRequirement, setAiRequirement] = useState('');
-  const [aiGenerateChannel, setAiGenerateChannel] = useState<'system' | 'byok'>('system');
-  const [aiGenerateStage, setAiGenerateStage] = useState<'idle' | 'generating' | 'importing'>('idle');
-  const [aiGenerateDiagnostics, setAiGenerateDiagnostics] = useState<string[]>([]);
-  const aiGenerateRequestRef = useRef<string | null>(null);
-  const [cloudAuthenticated, setCloudAuthenticated] = useState(false);
   const [enableAfterInstall, setEnableAfterInstall] = useState(true);
-  const [expandedSections, setExpandedSections] = useState<Record<ModuleSectionId, boolean>>({
-    installed: true,
-    aiGenerate: false,
-    packageInstall: false,
-    packageExport: false,
-    developer: false,
-    market: false,
-    history: false
-  });
   const onAddLogRef = useRef(onAddLog);
   const refreshRequestIdRef = useRef(0);
 
@@ -203,7 +180,8 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const iconHoverClass = isDarkMode ? 'hover:bg-white/10 hover:text-white' : 'hover:bg-slate-200 hover:text-slate-900';
   const fieldIdPrefix = useId();
 
-  const refresh = useCallback(async () => {
+  /** 刷新模块索引；返回最新模块列表供动作事件处理器在索引过期时取用。 */
+  const refresh = useCallback(async (): Promise<InstalledModule[]> => {
     const requestId = ++refreshRequestIdRef.current;
     setIsLoading(true);
     setStatusText(`正在读取项目 ${projectId} 的模块引用和市场索引...`);
@@ -213,9 +191,10 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
         fetch(`/api/modules/market?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()),
         fetch(`/api/modules/history?projectId=${encodeURIComponent(projectId)}`).then(res => res.json())
       ]);
-      if (requestId !== refreshRequestIdRef.current) return;
+      if (requestId !== refreshRequestIdRef.current) return [];
       if (!installedRes.ok) throw new Error(installedRes.error || '项目模块读取失败');
-      setInstalledModules(Array.isArray(installedRes.modules) ? installedRes.modules : []);
+      const modules: InstalledModule[] = Array.isArray(installedRes.modules) ? installedRes.modules : [];
+      setInstalledModules(modules);
       setMarketModules(Array.isArray(marketRes.modules) ? marketRes.modules : []);
       setHistory(Array.isArray(historyRes.history) ? historyRes.history : []);
       if (window.lingBuilder?.cloudAccount?.moduleCatalog) {
@@ -224,9 +203,11 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       }
       setStatusText('模块索引已刷新。');
       onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块】已刷新模块索引。`);
+      return modules;
     } catch (error) {
-      if (requestId !== refreshRequestIdRef.current) return;
+      if (requestId !== refreshRequestIdRef.current) return [];
       setStatusText(`模块刷新失败：${formatModuleOperationError(error)}`);
+      return [];
     } finally {
       if (requestId === refreshRequestIdRef.current) setIsLoading(false);
     }
@@ -238,7 +219,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     setHistory([]);
     setInstallPreview(null);
     setSelectedModuleId(null);
-    refresh();
+    void refresh();
   }, [projectId, refresh]);
 
   const moduleFamilyStates = useMemo<ModuleFamilyState[]>(() => MODULE_FAMILIES.map(definition => {
@@ -287,22 +268,9 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     });
   }, [marketModules, searchText, categoryFilter]);
 
-  const selectedModule = useMemo(() => {
-    if (!selectedModuleId) return null;
-    const family = getModuleFamilyDefinition(selectedModuleId);
-    if (family) return installedModules.find(module => module.manifest.id === family.rootModuleId) || null;
-    return installedModules.find(module => module.manifest.id === selectedModuleId) || null;
-  }, [installedModules, selectedModuleId]);
-  const selectedModuleFamilyState = selectedModule
-    ? moduleFamilyStateByRootId.get(selectedModule.manifest.id)
-    : undefined;
-
-  const inspectModule = useCallback((moduleId: string) => {
+  const openModuleDetail = useCallback((moduleId: string) => {
     setSelectedModuleId(moduleId);
-  }, []);
-
-  const toggleSection = useCallback((sectionId: ModuleSectionId) => {
-    setExpandedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+    openModuleDetailView(moduleId);
   }, []);
 
   const resolvePackageInputPath = async (rawValue: string): Promise<string | null> => {
@@ -335,10 +303,8 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     const resolvedPath = await resolvePackageInputPath(pathValue);
     if (!resolvedPath) return;
     setIsLoading(true);
-    setInstallStage('reading');
     try {
       setStatusText('正在读取模块包……');
-      setInstallStage('validating');
       setStatusText('正在检查模块清单……\n正在检查压缩包路径……\n正在检查平台依赖……');
       const response = await fetch('/api/modules/package/preview', {
         method: 'POST',
@@ -348,11 +314,9 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块包预览失败');
       setInstallPreview(result.preview);
-      setInstallStage('preview');
       setStatusText(result.preview.canInstall ? '模块包预览通过，等待确认安装。' : '模块包预览未通过，请查看诊断。');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块包】已完成安装预览：${resolvedPath}`);
     } catch (error) {
-      setInstallStage('error');
       setStatusText(`模块包预览失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
@@ -362,7 +326,6 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const installPreviewPackage = async () => {
     if (!installPreview) return;
     setIsLoading(true);
-    setInstallStage('installing');
     setStatusText('正在复制模块文件……\n正在写入模块清单……\n正在刷新模块索引……');
     try {
       const response = await fetch('/api/modules/package/install', {
@@ -380,13 +343,11 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       setPackagePath('');
       const compatibilityMessage = Array.isArray(result.messages) ? result.messages.join('；') : '';
       setStatusText(`模块 ${result.result.moduleName} 已安装。${compatibilityMessage ? ` ${compatibilityMessage}` : ''}`);
-      setInstallStage('success');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已安装 ${result.result.moduleName}。`);
       if (compatibilityMessage) onAddLog(`> [${new Date().toLocaleTimeString()}] 【构建配置】${compatibilityMessage}`);
       dispatchModulesChanged(projectId, result.result.moduleId, 'project');
       await refresh();
     } catch (error) {
-      setInstallStage('error');
       setStatusText(`模块安装失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
@@ -524,7 +485,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || `${definition.displayName} 标准功能启用失败`);
       const addedModuleIds: string[] = result.plan?.addedModuleIds || [];
-      setStatusText(`${definition.displayName} 标准功能已启用；高级功能可在“接口”详情中按需开启。`);
+      setStatusText(`${definition.displayName} 标准功能已启用；高级功能可在详情页的“接口”分区按需开启。`);
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【${definition.displayName}】已原子启用标准功能：${addedModuleIds.join('、') || '无需新增引用'}。`);
       const compatibilityMessage = Array.isArray(result.messages) ? result.messages.join('；') : '';
       if (compatibilityMessage) onAddLog(`> [${new Date().toLocaleTimeString()}] 【构建配置】${compatibilityMessage}`);
@@ -916,226 +877,48 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     && parsedAiFiles.files.some(file => file.path === AI_MODULE_MANIFEST_FILE)
     && parsedAiFiles.diagnostics.length === 0;
 
-  useEffect(() => {
-    const cloudAccount = window.lingBuilder?.cloudAccount;
-    if (!cloudAccount) return;
-    let active = true;
-    void cloudAccount.session().then(session => {
-      if (!active) return;
-      setCloudAuthenticated(session?.authenticated === true);
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
-
-  const applyAiModuleImportResult = (result: { result?: unknown }): string[] => {
-    if (!result.result || typeof result.result !== 'object') throw new Error('服务未返回有效的 AI 模块导入结果。');
-    const payload = result.result as { moduleId?: unknown; moduleName?: unknown; outDir?: unknown; fileCount?: unknown; overwrittenExisting?: unknown; diagnostics?: unknown };
-    if (typeof payload.moduleId !== 'string'
-      || typeof payload.moduleName !== 'string'
-      || typeof payload.outDir !== 'string'
-      || !Number.isInteger(payload.fileCount)
-      || (payload.fileCount as number) < 0) {
-      throw new Error('服务返回的 AI 模块导入结果不完整。');
-    }
-    const moduleDir: string = payload.outDir;
-    const diagnostics: string[] = Array.isArray(payload.diagnostics)
-      ? payload.diagnostics.filter((item: unknown): item is string => typeof item === 'string')
-      : [];
-    const overwrittenExisting = payload.overwrittenExisting === true;
+  // 手动粘贴导入是「AI 生成模块」的降级入口：解析「### 文件：」契约 → 写入 module-build → 校验。
+  // 一键生成已改由本机 Agent 承担（见下方 sendRequirementToAgent），本组件不再自带模型通道。
+  const applyAiModuleImportOutcome = (imported: AiModuleImportOutcome): string[] => {
+    const moduleDir: string = imported.outDir;
+    const diagnostics: string[] = imported.diagnostics;
     const importSucceeded = diagnostics.length === 0;
     setAiImportResult({
       ok: importSucceeded,
       moduleDir,
       diagnostics,
-      message: `${importSucceeded ? '已导入' : 'AI 模块导入未通过'} ${payload.moduleName}（${payload.moduleId}）到 ${moduleDir}，共 ${payload.fileCount} 个文件。${importSucceeded ? '导入后校验通过。' : '导入后校验未通过，请查看诊断。'}${overwrittenExisting ? '目标目录原本已存在，本次覆盖了同名文件；旧目录中多余的文件未删除。' : ''}`
+      message: `${importSucceeded ? '已导入' : 'AI 模块导入未通过'} ${imported.moduleName}（${imported.moduleId}）到 ${moduleDir}，共 ${imported.fileCount} 个文件。${importSucceeded ? '导入后校验通过。' : '导入后校验未通过，请查看诊断。'}${imported.overwrittenExisting ? '目标目录原本已存在，本次覆盖了同名文件；旧目录中多余的文件未删除。' : ''}`
     });
     if (importSucceeded) {
       setDeveloperValidatePath(moduleDir);
       setExportModuleDir(moduleDir);
-      setStatusText(`${overwrittenExisting ? 'AI 模块已导入并覆盖同名文件' : 'AI 模块已导入'}到 ${moduleDir}；“模块包制作”和“校验模块”路径已自动填好。`);
-      onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】已从 AI 输出导入 ${payload.moduleId} 到 ${moduleDir}（${payload.fileCount} 个文件）。`);
+      setStatusText(`${imported.overwrittenExisting ? 'AI 模块已导入并覆盖同名文件' : 'AI 模块已导入'}到 ${moduleDir}；“模块包制作”和“校验模块”路径已自动填好。`);
+      onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】已从 AI 输出导入 ${imported.moduleId} 到 ${moduleDir}（${imported.fileCount} 个文件）。`);
     } else {
       setStatusText(`AI 模块导入未通过：${diagnostics.join('；')}`);
     }
     return diagnostics;
   };
 
-  const collectSystemAiOutput = async (messages: { systemPrompt: string; userPrompt: string }): Promise<string> => {
-    const cloudAi = window.lingBuilder?.cloudAi;
-    if (!cloudAi) throw new Error('当前运行环境不支持系统 AI；请安装 LingBuilder 桌面版，或切换到自定义 API 通道。');
-    const cloudAccount = window.lingBuilder?.cloudAccount;
-    if (!cloudAccount) throw new Error('当前运行环境不支持系统 AI 账号；请安装 LingBuilder 桌面版，或切换到自定义 API 通道。');
-    // 登录态在点击时实时解析；模型直接使用 AI 面板保存的偏好——
-    // models() 等普通请求不会自动刷新过期 access token，不能作为是否可用的判据（流式请求会自行刷新）。
-    const session = await cloudAccount.session().catch(() => null);
-    if (!session?.authenticated) throw new Error('请先在 AI 助手面板登录系统 AI，或切换到自定义 API 通道。');
-    const modelAlias = readPreferredCloudModelAlias();
-    if (!modelAlias) throw new Error('系统 AI 尚未选择可用模型，请在 AI 助手面板选择模型后重试。');
-    const chunks: string[] = [];
-    return await new Promise<string>((resolve, reject) => {
-      let requestKey = '';
-      let settled = false;
-      let unsubscribe: () => void = () => undefined;
-      const finish = (error?: Error) => {
-        if (settled) return;
-        settled = true;
-        unsubscribe();
-        if (error) reject(error);
-        else resolve(chunks.join(''));
-      };
-      unsubscribe = cloudAi.onEvent((key, event) => {
-        if (key !== requestKey) return;
-        if (event.type === 'delta' && typeof event.text === 'string') chunks.push(event.text);
-        else if (event.type === 'completed') finish();
-        else if (event.type === 'error') finish(new Error(event.message || '系统 AI 请求失败。'));
-      });
-      void cloudAi.start('chat', {
-        modelAlias,
-        maxOutputTokens: 16384,
-        thinking: 'disabled',
-        rulebookVersion: 'lingbuilder-rulebook-v1',
-        messages: [{ role: 'user' as const, content: `${messages.systemPrompt}\n\n${messages.userPrompt}` }]
-      }).then(key => {
-        requestKey = key;
-        aiGenerateRequestRef.current = key;
-      }).catch(error => finish(error instanceof Error ? error : new Error(String(error))));
-    });
-  };
-
-  // 系统 AI 模型输出上限较小（如 4096 tokens），单轮装不下完整模块，因此拆成
-  // 「清单 → 其余文件」两个阶段，每阶段输出都控制在预算内。
-  const collectSystemAiPhaseFiles = async (
-    buildMessages: () => { systemPrompt: string; userPrompt: string },
-    phaseLabel: string
-  ): Promise<Array<{ path: string; content: string }>> => {
-    let raw = await collectSystemAiOutput(buildMessages());
-    let parsed = parseAiModuleOutputText(raw);
-    if (parsed.files.length === 0) {
-      const retryMessages = buildMessages();
-      retryMessages.userPrompt += `\n\n【重试要求】上一轮回复未通过输出契约解析（${parsed.diagnostics[0] || '未识别到「### 文件：」标题'}）。请重新生成本轮内容：除「### 文件：<相对路径>」标题与围栏代码块外不得输出任何文字，所有代码块必须完整闭合。`;
-      raw = await collectSystemAiOutput(retryMessages);
-      parsed = parseAiModuleOutputText(raw);
-      if (parsed.files.length === 0) {
-        setAiModulePasteText(raw);
-        throw new Error(`${phaseLabel}解析失败：${parsed.diagnostics.join('；') || '未识别到「### 文件：」标题'}。AI 原始回复已填入下方手动模式文本框。`);
-      }
-    }
-    return parsed.files;
-  };
-
-  const generateSystemAiModuleFiles = async (requirementText: string, guideText: string): Promise<Array<{ path: string; content: string }>> => {
-    const manifestFiles = await collectSystemAiPhaseFiles(
-      () => buildModuleManifestPhaseMessages(requirementText, guideText),
-      '清单阶段'
-    );
-    const manifestFile = manifestFiles.find(file => file.path.replace(/\\/gu, '/').replace(/^\.\//u, '') === AI_MODULE_MANIFEST_FILE);
-    if (!manifestFile) {
-      throw new Error('清单阶段没有输出 lingbuilder.module.json，无法继续生成其余文件；请重试。');
-    }
-    let restFiles = await collectSystemAiPhaseFiles(
-      () => buildModuleFilesPhaseMessages(requirementText, manifestFile.content, guideText),
-      '文件阶段'
-    );
-    // 兜底：文件阶段若把清单也输出了，以清单阶段结果为准。
-    const normalizePath = (p: string) => p.replace(/\\/gu, '/').replace(/^\.\//u, '');
-    restFiles = restFiles.filter(file => normalizePath(file.path) !== AI_MODULE_MANIFEST_FILE);
-    // 收敛补全：比对清单登记的文件与实际产出，缺什么定向补什么（一轮）。
-    const missing = collectRegisteredRelativePaths(manifestFile.content).filter(p => !restFiles.some(file => normalizePath(file.path) === p));
-    if (missing.length > 0) {
-      const patchFiles = await collectSystemAiPhaseFiles(
-        () => buildModuleMissingFilesPhaseMessages(requirementText, manifestFile.content, missing, guideText),
-        '补全阶段'
-      );
-      const delivered = new Set(restFiles.map(file => normalizePath(file.path)));
-      for (const file of patchFiles) {
-        const key = normalizePath(file.path);
-        if (!delivered.has(key)) {
-          restFiles.push(file);
-          delivered.add(key);
-        }
-      }
-    }
-    return [manifestFile, ...restFiles];
-  };
-
-  const importGeneratedModuleFiles = async (files: Array<{ path: string; content: string }>): Promise<string[]> => {
-    setAiGenerateStage('importing');
-    const response = await fetch('/api/modules/developer/import-ai-files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, files })
-    });
-    const result = await response.json().catch(() => null);
-    if (!result || typeof result.ok !== 'boolean') {
-      throw new Error(response.status === 404
-        ? '当前开发服务未包含导入接口，请重启 LingBuilder 开发服务或使用最新安装包后重试。'
-        : `服务返回了无效响应（HTTP ${response.status}）。`);
-    }
-    if (!result.ok) throw new Error(result.error || 'AI 模块导入失败');
-    return applyAiModuleImportResult(result);
-  };
-
-  const runAiModuleGeneration = async (requirementOverride?: string) => {
-    const requirementText = (requirementOverride ?? aiRequirement).trim();
+  // 「AI 生成模块」不再自带模型通道：需求整体交给本机 Agent（内嵌 DeepSeek Harness）。
+  // AI 助手侧栏是唯一执行入口；Agent 经 AI Bridge 的模块封装链写 module-build，
+  // 导出 .lbmod 与安装仍由本面板承担，禁止在这里复制第二套编排。
+  const sendRequirementToAgent = () => {
+    const requirementText = aiRequirement.trim();
     if (!requirementText) {
       setStatusText('请先用中文描述你想生成的模块需求。');
       return;
     }
-    if (aiGenerateStage !== 'idle') return;
-    setIsLoading(true);
-    setAiGenerateStage('generating');
-    setAiGenerateDiagnostics([]);
-    try {
-      if (aiGenerateChannel === 'byok') {
-        const response = await fetch('/api/modules/ai-generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requirement: requirementText })
-        });
-        const result = await response.json().catch(() => null);
-        if (!result || typeof result.ok !== 'boolean') {
-          throw new Error(`服务返回了无效响应（HTTP ${response.status}）。`);
-        }
-        if (!result.ok) {
-          if (typeof result.rawOutput === 'string' && result.rawOutput.trim()) setAiModulePasteText(result.rawOutput);
-          throw new Error(`${result.error || 'AI 模块生成失败'}${result.details ? `（${result.details}）` : ''}`);
-        }
-        const diagnostics = applyAiModuleImportResult(result);
-        if (diagnostics.length > 0) setAiGenerateDiagnostics(diagnostics);
-        return;
-      }
-      const docsApi = window.lingBuilder?.docs;
-      if (!docsApi?.readAiModuleGuide) throw new Error('网页版暂不支持读取模块开发规范；请使用桌面版或改用自定义 API 通道。');
-      const guideText = await docsApi.readAiModuleGuide();
-      if (!guideText) throw new Error('未读取到 AI 模块开发规范内容。');
-      const generatedFiles = await generateSystemAiModuleFiles(requirementText, guideText);
-      const diagnostics = await importGeneratedModuleFiles(generatedFiles);
-      if (diagnostics.length > 0) setAiGenerateDiagnostics(diagnostics);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setStatusText(`AI 模块生成失败：${message}`);
-      onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】AI 生成模块失败：${message}`);
-    } finally {
-      setAiGenerateStage('idle');
-      setIsLoading(false);
-      aiGenerateRequestRef.current = null;
-    }
-  };
+    requestAiAgentTurn({
+      origin: '模块 → AI 生成模块',
+      prompt: `请把下面的需求封装成一个可安装的 .lbmod 模块（清单 v2）：
 
-  const cancelAiModuleGeneration = async () => {
-    const requestKey = aiGenerateRequestRef.current;
-    if (!requestKey) return;
-    try {
-      await window.lingBuilder?.cloudAi?.cancel(requestKey);
-    } catch {
-      // 取消失败时忽略，流结束后状态会自动复位。
-    }
-  };
+${requirementText}
 
-  const retryAiModuleGenerationWithDiagnostics = () => {
-    if (aiGenerateDiagnostics.length === 0) return;
-    const requirementWithDiagnostics = `${aiRequirement.trim()}\n\n上一轮生成的模块存在以下校验问题，请修正后重新输出完整模块文件（仍须严格遵守输出契约）：\n${aiGenerateDiagnostics.map(item => `- ${item}`).join('\n')}`;
-    void runAiModuleGeneration(requirementWithDiagnostics);
+按模块封装链执行：module.scaffold 建骨架 → module.writeFiles 写清单与源码/文档 → module.validate 校验；校验不通过就修正后重新校验，直到通过为止。中文命令必须同时登记 contributes.commands 与 bindings.commands，并随包附带 Markdown 文档。完成后用中文汇报模块 ID、module-build 目录与命令清单；不要打包安装，导出与安装由我在模块面板确认。`
+    });
+    setStatusText('已把模块需求交给本机 Agent；AI 助手侧栏会展开并显示它的执行过程。');
+    onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】已把模块需求交给本机 Agent（${requirementText.slice(0, 40)}）。`);
   };
 
   const importAiFilesFromPaste = async () => {
@@ -1150,19 +933,9 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     setIsLoading(true);
     setAiImportCopyState('idle');
     try {
-      const response = await fetch('/api/modules/developer/import-ai-files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, files: parsedAiFiles.files })
-      });
-      const result = await response.json().catch(() => null);
-      if (!result || typeof result.ok !== 'boolean') {
-        throw new Error(response.status === 404
-          ? '当前开发服务未包含导入接口，请重启 LingBuilder 开发服务或使用最新安装包后重试。'
-          : `服务返回了无效响应（HTTP ${response.status}）。`);
-      }
-      if (!result.ok) throw new Error(result.error || 'AI 模块导入失败');
-      applyAiModuleImportResult(result);
+      const outcome = await importAiModuleFilesToWorkspace(parsedAiFiles.files);
+      if (!outcome.ok) throw new Error(outcome.error);
+      applyAiModuleImportOutcome(outcome.imported);
     } catch (error) {
       const message = `AI 模块导入失败：${error instanceof Error ? error.message : String(error)}`;
       setAiImportResult({ ok: false, diagnostics: [], message });
@@ -1193,11 +966,117 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
 
   useEffect(() => {
     const unsubscribe = window.lingBuilder?.modules?.onInstallRequest(request => {
-      if (request.packagePath) { setPackagePath(request.packagePath); void previewPackage(request.packagePath); }
+      if (request.packagePath) { setSubView('packageInstall'); setPackagePath(request.packagePath); void previewPackage(request.packagePath); }
       else if (request.error) { setStatusText(request.error); if (request.error.includes('工作区')) setShowWorkspaceChoice(true); }
     });
     return unsubscribe;
   }, [projectId]);
+
+  // 模块详情页（主区页签）发来的动作请求：启停/卸载/修复/购买等流程单一出口仍在本组件。
+  const detailActionsRef = useRef({
+    installedModules,
+    moduleFamilyStateByRootId,
+    toggleProjectModule,
+    toggleModuleFamily,
+    uninstallModule,
+    unlinkDevSource,
+    repairBundledModule,
+    downloadModule,
+    purchaseModule
+  });
+  detailActionsRef.current = {
+    installedModules,
+    moduleFamilyStateByRootId,
+    toggleProjectModule,
+    toggleModuleFamily,
+    uninstallModule,
+    unlinkDevSource,
+    repairBundledModule,
+    downloadModule,
+    purchaseModule
+  };
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const request = (event as CustomEvent<ModuleDetailActionRequest>).detail;
+      if (!request?.moduleId) return;
+      const actions = detailActionsRef.current;
+      const run = (module: InstalledModule) => {
+        switch (request.type) {
+          case 'toggle': {
+            const familyState = actions.moduleFamilyStateByRootId.get(module.manifest.id);
+            if (familyState) void actions.toggleModuleFamily(familyState);
+            else void actions.toggleProjectModule(module);
+            break;
+          }
+          case 'uninstall': void actions.uninstallModule(module); break;
+          case 'unlink': void actions.unlinkDevSource(module); break;
+          case 'repair': void actions.repairBundledModule(module); break;
+          case 'download': void actions.downloadModule(module.manifest.id); break;
+          case 'purchase': void actions.purchaseModule(module.manifest.id, request.provider || 'wechat'); break;
+        }
+      };
+      const target = actions.installedModules.find(item => item.manifest.id === request.moduleId);
+      if (target) { run(target); return; }
+      // 索引里暂时找不到（刚安装/刚刷新）：先刷新再执行一次。
+      void refresh().then(modules => {
+        const fresh = modules.find(item => item.manifest.id === request.moduleId);
+        if (fresh) run(fresh);
+        else setStatusText(`未找到模块 ${request.moduleId}，请刷新模块索引后重试。`);
+      });
+    };
+    window.addEventListener(MODULE_DETAIL_ACTION_EVENT, handler);
+    return () => window.removeEventListener(MODULE_DETAIL_ACTION_EVENT, handler);
+  }, [refresh]);
+
+  const isModuleEffectivelyEnabled = useCallback((module: InstalledModule) => {
+    const familyState = moduleFamilyStateByRootId.get(module.manifest.id);
+    return Boolean(familyState?.standardEnabled || module.isEnabledForProject || module.manifest.id === 'lingbuilder.win32.basic');
+  }, [moduleFamilyStateByRootId]);
+
+  const enabledInstalledModules = useMemo(
+    () => filteredInstalledModules.filter(module => isModuleEffectivelyEnabled(module)),
+    [filteredInstalledModules, isModuleEffectivelyEnabled]
+  );
+  const disabledInstalledModules = useMemo(
+    () => filteredInstalledModules.filter(module => !isModuleEffectivelyEnabled(module)),
+    [filteredInstalledModules, isModuleEffectivelyEnabled]
+  );
+
+  const subViewMeta: Record<ModuleSubViewId, { title: string; desc: string; icon: React.ReactNode }> = {
+    aiGenerate: { title: 'AI 生成模块', desc: '把需求交给面板内嵌的本机 Agent（DeepSeek Harness）按模块封装链创作；也支持复制规范给任意外部 AI 的手动流程。', icon: <Bot size={16} /> },
+    packageInstall: { title: '安装 .lbmod', desc: '拖入 .lbmod 文件，或填写本机绝对路径 / 工作区相对路径预览安装（桌面版自动把外部包复制进工作区）。', icon: <FileArchive size={16} /> },
+    packageExport: { title: '模块包制作', desc: '把校验通过的模块目录打包为可分发的 .lbmod。', icon: <Archive size={16} /> },
+    developer: { title: '模块开发者中心', desc: '面向会 C++ 的模块作者：模板、校验、迁移和本地市场索引。', icon: <Upload size={16} /> },
+    market: { title: '模块市场', desc: '从本地、官方或企业市场源读取模块索引；安装仍走同一套预览确认流程。', icon: <Store size={16} /> },
+    history: { title: '操作历史', desc: '记录安装、卸载、启用、禁用和导出动作。', icon: <History size={16} /> }
+  };
+
+  const backToModuleList = useCallback(() => setSubView(null), []);
+
+  const renderModuleRow = (module: InstalledModule) => {
+    const familyState = moduleFamilyStateByRootId.get(module.manifest.id);
+    return (
+      <ModuleRow
+        key={module.manifest.id}
+        module={module}
+        isDarkMode={isDarkMode}
+        isSelected={selectedModuleId === module.manifest.id}
+        statusLabel={familyState
+          ? familyState.standardEnabled ? '标准功能已启用' : familyState.anyFeatureEnabled ? '部分功能已启用' : undefined
+          : undefined}
+        capabilityText={familyState
+          ? `${countModuleCommands(familyState.modules)} 条命令 · ${familyState.definition.features.length} 个功能域`
+          : undefined}
+        descriptionOverride={familyState?.definition.managerDescription}
+        toggleLabel={familyState && !familyState.standardEnabled && familyState.anyFeatureEnabled ? '补全启用' : undefined}
+        onToggle={() => familyState ? toggleModuleFamily(familyState) : toggleProjectModule(module)}
+        onUninstall={() => uninstallModule(module)}
+        onUnlinkDevSource={() => unlinkDevSource(module)}
+        onOpen={() => openModuleDetail(module.manifest.id)}
+      />
+    );
+  };
 
   return (
     <div
@@ -1214,14 +1093,54 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
               <div className={`text-xs leading-4 line-clamp-3 break-words ${subtleClass}`}>{statusText}</div>
             </div>
           </div>
-          <button
-            onClick={refresh}
-            disabled={isLoading}
-            className={`h-8 shrink-0 whitespace-nowrap px-2.5 inline-flex items-center gap-1.5 rounded border border-sky-500/40 text-sky-300 hover:bg-sky-500/10 hover:text-white ${actionButtonClass}`}
-          >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-            刷新
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              onClick={refresh}
+              disabled={isLoading}
+              className={`h-8 w-8 inline-flex items-center justify-center rounded border border-sky-500/40 text-sky-300 hover:bg-sky-500/10 hover:text-white ${actionButtonClass}`}
+              title="刷新模块索引"
+              aria-label="刷新模块索引"
+            >
+              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen(open => !open)}
+                disabled={subView !== null}
+                className={`h-8 w-8 inline-flex items-center justify-center rounded border ${isDarkMode ? 'border-white/10 text-slate-300' : 'border-slate-300 text-slate-600'} hover:bg-white/10 hover:text-white disabled:opacity-40 ${actionButtonClass}`}
+                title="更多模块工具"
+                aria-label="更多模块工具"
+                aria-expanded={isMenuOpen}
+                aria-haspopup="menu"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {isMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" role="presentation" onClick={() => setIsMenuOpen(false)} />
+                  <div
+                    role="menu"
+                    aria-label="模块工具菜单"
+                    className={`absolute right-0 top-9 z-50 w-56 overflow-hidden rounded-md border py-1 shadow-xl ${cardClass}`}
+                  >
+                    {(Object.keys(subViewMeta) as ModuleSubViewId[]).map(viewId => (
+                      <button
+                        key={viewId}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setIsMenuOpen(false); setSubView(viewId); }}
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}
+                      >
+                        <span className="shrink-0 text-sky-400">{subViewMeta[viewId].icon}</span>
+                        <span className="min-w-0 flex-1 truncate">{subViewMeta[viewId].title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
@@ -1234,541 +1153,467 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
             }} />
             显示底层高级 API（NE_EU_*）
           </label>
-          <div className={`h-8 min-w-0 px-2 flex items-center gap-2 rounded border ${inputClass}`}>
-            <Search size={14} />
-            <input
-              value={searchText}
-              onChange={event => setSearchText(event.target.value)}
-              className="min-w-0 flex-1 bg-transparent outline-none text-xs"
-              placeholder="搜索模块、说明、标签..."
-            />
+          <div className="flex gap-2">
+            <div className={`h-8 min-w-0 flex-1 px-2 flex items-center gap-2 rounded border ${inputClass}`}>
+              <Search size={14} />
+              <input
+                value={searchText}
+                onChange={event => setSearchText(event.target.value)}
+                className="min-w-0 flex-1 bg-transparent outline-none text-xs"
+                placeholder="搜索模块、说明、标签..."
+              />
+            </div>
+            <select
+              value={categoryFilter}
+              onChange={event => setCategoryFilter(event.target.value)}
+              className={`h-8 rounded border px-1.5 text-xs outline-none ${inputClass}`}
+              aria-label="按分类筛选模块"
+            >
+              {['全部', '界面', '系统', '网络', '数据库', '图像', 'AI', '构建', '其他'].map(category => (
+                <option key={category}>{category}</option>
+              ))}
+            </select>
           </div>
-          <select
-            value={categoryFilter}
-            onChange={event => setCategoryFilter(event.target.value)}
-            className={`h-8 rounded border px-2 text-xs outline-none ${inputClass}`}
-          >
-            {['全部', '界面', '系统', '网络', '数据库', '图像', 'AI', '构建', '其他'].map(category => (
-              <option key={category}>{category}</option>
-            ))}
-          </select>
         </div>
       </div>
 
       <div className="min-w-0 flex-1 overflow-auto p-3 space-y-3">
-        <CollapsibleSection
-          className={cardClass}
-          icon={<Package size={16} />}
-          title="本地模块"
-          desc={`${visibleInstalledModules.length} 个用户模块入口，内部依赖和只读 SDK 已自动收起。`}
-          isOpen={expandedSections.installed}
-          onToggle={() => toggleSection('installed')}
-          isDarkMode={isDarkMode}
-        >
-          {commerceProducts.length > 0 && <div className={`border-b bg-sky-500/5 p-3 space-y-2 ${borderSubtleClass}`} aria-label="账号收费模块">
-            <div className="text-[11px] font-semibold text-sky-300">账号收费模块</div>
-            {commerceProducts.map(product => {
-              const installed = installedModules.find(item => item.manifest.id === product.moduleId);
-              const offer = product.offers?.[0];
-              const marketEntry = marketModules.find(item => item.id === product.moduleId);
-              const installedVersion = installed?.manifest.version || '';
-              const latestVersion = typeof marketEntry?.version === 'string' ? marketEntry.version : '';
-              const hasUpdate = Boolean(installed && installedVersion && latestVersion && compareModuleVersion(latestVersion, installedVersion) > 0);
-              return <div key={product.moduleId} className={`rounded border p-2.5 text-xs ${borderSubtleClass}`}>
-                <div className="flex flex-wrap items-center gap-2"><strong>{product.name}</strong><span className="text-[10px] text-slate-400">{product.moduleId}</span>{product.access?.allowed && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">账号已授权</span>}</div>
-                <div className="mt-1 text-[11px] leading-4 text-slate-400">{product.description}</div>
-                {installed && <div className="mt-1 text-[10px] text-slate-400">已安装 v{installedVersion}{hasUpdate ? `，最新版本 v${latestVersion}` : ''}</div>}
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {product.access?.allowed ? (installed && !hasUpdate
-                    ? <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className={`col-span-2 h-8 rounded border text-[11px] inline-flex items-center justify-center gap-1.5 ${isDarkMode ? 'border-slate-500/40 text-slate-300 hover:bg-slate-500/10' : 'border-slate-300 text-slate-700 hover:bg-slate-500/10'} ${actionButtonClass}`} title={`当前已是最新版本 v${installedVersion}；如需覆盖重装可重新下载`}><Download size={14}/>重新下载安装</button>
-                    : <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className={`col-span-2 h-8 rounded bg-sky-600 text-white inline-flex items-center justify-center gap-1.5 hover:bg-sky-500 ${actionButtonClass}`}><Download size={14}/>{installed && hasUpdate ? `下载更新 v${installedVersion} → v${latestVersion} 并预览安装` : '下载并预览安装'}</button>) : <>
-                    <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'wechat')} className={`h-8 rounded border text-xs inline-flex items-center justify-center gap-1 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10' : 'border-emerald-500/50 text-emerald-700 hover:bg-emerald-500/10'} ${actionButtonClass}`}>微信支付{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
-                    <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'alipay')} className={`h-8 rounded border text-xs inline-flex items-center justify-center gap-1 ${isDarkMode ? 'border-sky-500/40 text-sky-300 hover:bg-sky-500/10' : 'border-sky-500/50 text-sky-700 hover:bg-sky-500/10'} ${actionButtonClass}`}>支付宝{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
-                  </>}
+        {subView === null ? (
+          <>
+            <CollapsibleSection
+              className={cardClass}
+              icon={<LockKeyhole size={16} />}
+              title="云端模块"
+              desc={`${commerceProducts.length} 个账号授权的收费模块；购买、下载更新与限时免费都在这里。`}
+              isOpen={isCloudExpanded}
+              onToggle={() => setIsCloudExpanded(expanded => !expanded)}
+              isDarkMode={isDarkMode}
+            >
+              {commerceProducts.length === 0 ? (
+                <div className="p-3 text-xs text-slate-500">登录 LingBuilder 账号并刷新后，这里会显示可购买的收费模块。</div>
+              ) : (
+                <div className="border-b bg-sky-500/5 p-3 space-y-2" aria-label="账号收费模块">
+                  {commerceProducts.map(product => {
+                    const installed = installedModules.find(item => item.manifest.id === product.moduleId);
+                    const offer = product.offers?.[0];
+                    const marketEntry = marketModules.find(item => item.id === product.moduleId);
+                    const installedVersion = installed?.manifest.version || '';
+                    const latestVersion = typeof marketEntry?.version === 'string' ? marketEntry.version : '';
+                    const hasUpdate = Boolean(installed && installedVersion && latestVersion && compareModuleVersion(latestVersion, installedVersion) > 0);
+                    return <div key={product.moduleId} className={`rounded border p-2.5 text-xs ${borderSubtleClass}`}>
+                      <div className="flex flex-wrap items-center gap-2"><strong>{product.name}</strong><span className="text-[10px] text-slate-400">{product.moduleId}</span>{product.access?.allowed && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">账号已授权</span>}</div>
+                      <div className="mt-1 text-[11px] leading-4 text-slate-400">{product.description}</div>
+                      {installed && <div className="mt-1 text-[10px] text-slate-400">已安装 v{installedVersion}{hasUpdate ? `，最新版本 v${latestVersion}` : ''}</div>}
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        {product.access?.allowed ? (installed && !hasUpdate
+                          ? <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className={`col-span-2 h-8 rounded border text-[11px] inline-flex items-center justify-center gap-1.5 ${isDarkMode ? 'border-slate-500/40 text-slate-300 hover:bg-slate-500/10' : 'border-slate-300 text-slate-700 hover:bg-slate-500/10'} ${actionButtonClass}`} title={`当前已是最新版本 v${installedVersion}；如需覆盖重装可重新下载`}><Download size={14}/>重新下载安装</button>
+                          : <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className={`col-span-2 h-8 rounded bg-sky-600 text-white inline-flex items-center justify-center gap-1.5 hover:bg-sky-500 ${actionButtonClass}`}><Download size={14}/>{installed && hasUpdate ? `下载更新 v${installedVersion} → v${latestVersion} 并预览安装` : '下载并预览安装'}</button>) : <>
+                          <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'wechat')} className={`h-8 rounded border text-xs inline-flex items-center justify-center gap-1 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10' : 'border-emerald-500/50 text-emerald-700 hover:bg-emerald-500/10'} ${actionButtonClass}`}>微信支付{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
+                          <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'alipay')} className={`h-8 rounded border text-xs inline-flex items-center justify-center gap-1 ${isDarkMode ? 'border-sky-500/40 text-sky-300 hover:bg-sky-500/10' : 'border-sky-500/50 text-sky-700 hover:bg-sky-500/10'} ${actionButtonClass}`}>支付宝{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
+                        </>}
+                      </div>
+                    </div>;
+                  })}
                 </div>
-              </div>;
-            })}
-          </div>}
-          <div className={`divide-y ${divideClass}`}>
-            {filteredInstalledModules.length === 0 ? (
-              <Empty text="没有匹配的本地模块。" />
-            ) : filteredInstalledModules.map(module => {
-              const familyState = moduleFamilyStateByRootId.get(module.manifest.id);
-              return (
-                <ModuleRow
-                  key={module.manifest.id}
-                  module={module}
-                  isDarkMode={isDarkMode}
-                  enabledOverride={familyState?.standardEnabled}
-                  statusLabel={familyState
-                    ? familyState.standardEnabled ? '标准功能已启用' : familyState.anyFeatureEnabled ? '部分功能已启用' : undefined
-                    : undefined}
-                  capabilityText={familyState
-                    ? `${countModuleCommands(familyState.modules)} 条命令 · ${familyState.definition.features.length} 个功能域`
-                    : undefined}
-                  descriptionOverride={familyState?.definition.managerDescription}
-                  toggleLabel={familyState && !familyState.standardEnabled && familyState.anyFeatureEnabled ? '补全启用' : undefined}
-                  onToggle={() => familyState ? toggleModuleFamily(familyState) : toggleProjectModule(module)}
-                  onUninstall={() => uninstallModule(module)}
-                  onUnlinkDevSource={() => unlinkDevSource(module)}
-                  onRepair={() => repairBundledModule(module)}
-                  onInspect={() => inspectModule(module.manifest.id)}
-                  commerce={commerceProducts.find(product => product.moduleId === module.manifest.id)}
-                  onPurchase={provider => purchaseModule(module.manifest.id, provider)}
-                />
-              );
-            })}
-          </div>
-          <div className={`border-t p-3 space-y-2 ${borderSubtleClass}`} role="group" aria-label="链接模块开发源">
-            <p className={`text-[11px] leading-4 ${subtleClass}`}>
-              链接开发源（自建模块开发期）：填入工作区内模块源码目录（如 <code>.lingbuilder/module-build/my.module</code>）后，该模块的补全、诊断与 F5 构建直接消费源目录——改完清单或重编 DLL 即生效，无需重新打包安装；分发给他人的正式版仍走 .lbmod 安装。
-            </p>
-            <div className="flex gap-2">
-              <input
-                value={devSourcePath}
-                onChange={event => setDevSourcePath(event.target.value)}
-                placeholder=".lingbuilder/module-build/my.module"
-                className={`min-w-0 flex-1 rounded border px-2 py-1.5 text-xs outline-none ${inputClass}`}
-                aria-label="开发源目录（工作区相对路径）"
-              />
-              <button
-                type="button"
-                onClick={() => void linkDevSource()}
-                disabled={isLoading || !devSourcePath.trim()}
-                className={`h-8 shrink-0 rounded border border-amber-500/40 px-3 text-xs text-amber-300 inline-flex items-center gap-1.5 transition-colors hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40 ${actionButtonClass}`}
-              >
-                <Link2 size={14} aria-hidden="true" />
-                链接开发源
-              </button>
-            </div>
-          </div>
-        </CollapsibleSection>
+              )}
+            </CollapsibleSection>
 
-        <CollapsibleSection
-          className={cardClass}
-          icon={<Bot size={16} />}
-          title="AI 生成模块"
-          desc="内置 AI 一键生成并导入；也支持复制规范给任意外部 AI 的手动流程。"
-          isOpen={expandedSections.aiGenerate}
-          onToggle={() => toggleSection('aiGenerate')}
-          isDarkMode={isDarkMode}
-        >
-          <div className="p-3 grid gap-2.5">
-            <div
-              role="group"
-              aria-label="AI 一键生成模块"
-              className={`rounded border p-2.5 ${isDarkMode ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-emerald-500/30 bg-emerald-500/5'}`}
+            <ModuleListSection
+              title="已启用"
+              count={enabledInstalledModules.length}
+              desc="已引用到当前项目的模块。"
+              isOpen={!collapsedSections.enabled}
+              onToggle={() => setCollapsedSections(previous => ({ ...previous, enabled: !previous.enabled }))}
+              isDarkMode={isDarkMode}
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <Bot size={14} className="shrink-0 text-emerald-400" aria-hidden="true" />
-                <span className="text-xs font-semibold">一键生成（内置 AI 直接生成并导入）</span>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700'}`}>推荐</span>
+              <div className={`divide-y ${divideClass}`}>
+                {enabledInstalledModules.length === 0
+                  ? <Empty text="没有已启用的模块；在下方「已安装」里点击启用开关。" />
+                  : enabledInstalledModules.map(renderModuleRow)}
               </div>
-              <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
-                用中文描述需求，IDE 会把《AI 模块开发规范》连同需求一起发给 AI，生成后自动解析、导入到 module-build 并校验。
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="选择 AI 通道">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={aiGenerateChannel === 'system'}
-                  onClick={() => setAiGenerateChannel('system')}
-                  className={`rounded px-2 py-1 text-[10px] border ${aiGenerateChannel === 'system' ? 'border-emerald-500 bg-emerald-500/15 text-emerald-500' : isDarkMode ? 'border-white/15 text-slate-300' : 'border-slate-300 text-slate-600'}`}
-                >
-                  系统 AI
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={aiGenerateChannel === 'byok'}
-                  onClick={() => setAiGenerateChannel('byok')}
-                  className={`rounded px-2 py-1 text-[10px] border ${aiGenerateChannel === 'byok' ? 'border-emerald-500 bg-emerald-500/15 text-emerald-500' : isDarkMode ? 'border-white/15 text-slate-300' : 'border-slate-300 text-slate-600'}`}
-                >
-                  自定义 API
-                </button>
-              </div>
-              <textarea
-                id={`${fieldIdPrefix}-ai-requirement`}
-                value={aiRequirement}
-                onChange={event => setAiRequirement(event.target.value)}
-                placeholder="例如：做一个字符串工具模块，提供“取文本长度”“替换文本”“分割文本到列表”三个中文命令……"
-                className={`mt-2 min-h-20 w-full rounded border px-3 py-2 text-xs outline-none ${inputClass}`}
-                aria-label="模块需求描述"
-              />
-              <div className="mt-2 grid grid-cols-1 gap-2">
-                <button
-                  type="button"
-                  onClick={() => void runAiModuleGeneration()}
-                  disabled={aiGenerateStage !== 'idle' || isLoading || !aiRequirement.trim()}
-                  className={`h-9 w-full rounded bg-emerald-600 px-3 text-xs text-white inline-flex items-center justify-center gap-2 hover:bg-emerald-500 disabled:opacity-50 ${actionButtonClass}`}
-                >
-                  {aiGenerateStage === 'idle' ? <Bot size={14} /> : <Loader2 size={14} className="animate-spin" />}
-                  {aiGenerateStage === 'generating' ? '正在生成模块……' : aiGenerateStage === 'importing' ? '正在解析并导入……' : '生成并导入到 module-build'}
-                </button>
-                {aiGenerateStage === 'generating' && aiGenerateChannel === 'system' && (
-                  <button type="button" onClick={() => void cancelAiModuleGeneration()} className={`h-8 w-full rounded border text-xs ${actionButtonClass}`}>
-                    取消生成
-                  </button>
-                )}
-                {aiGenerateStage === 'idle' && aiGenerateDiagnostics.length > 0 && (
-                  <button type="button" onClick={retryAiModuleGenerationWithDiagnostics} className={`h-8 w-full rounded border text-xs text-emerald-500 ${actionButtonClass}`}>
-                    把校验问题发回 AI 修正并重试
-                  </button>
-                )}
-              </div>
-              {aiGenerateChannel === 'system' && !cloudAuthenticated && (
-                <p className={`mt-1.5 text-[10px] leading-4 ${subtleClass}`}>系统 AI 需要先登录；未登录时可切换到“自定义 API”通道（需在 AI 助手面板配置）。</p>
-              )}
-            </div>
-            <div
-              role="group"
-              aria-label="AI 生成模块入口"
-              className={`rounded border p-2.5 ${isDarkMode ? 'border-sky-500/25 bg-sky-500/5' : 'border-sky-500/30 bg-sky-500/5'}`}
+            </ModuleListSection>
+
+            <ModuleListSection
+              title="已安装"
+              count={disabledInstalledModules.length}
+              desc="未引用到当前项目；内部依赖和只读 SDK 已自动收起。点击模块行在主区打开详情页。"
+              isOpen={!collapsedSections.installed}
+              onToggle={() => setCollapsedSections(previous => ({ ...previous, installed: !previous.installed }))}
+              isDarkMode={isDarkMode}
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <Bot size={14} className="shrink-0 text-sky-400" aria-hidden="true" />
-                <span className="text-xs font-semibold">手动模式：复制规范给任意外部 AI</span>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-500/10 text-sky-700'}`}>复制粘贴降级</span>
+              <div className={`divide-y ${divideClass}`}>
+                {disabledInstalledModules.length === 0
+                  ? <Empty text="没有匹配的本地模块。" />
+                  : disabledInstalledModules.map(renderModuleRow)}
               </div>
-              <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
-                一键生成不可用时的备选方案：复制规范粘贴给 ChatGPT、Claude、Cursor 等任意 AI，再用中文描述需求，最后把 AI 回复粘贴回下方导入。
-              </p>
-              <div className="mt-2 grid grid-cols-1 gap-2">
-                <button
-                  onClick={copyAiModuleGuide}
-                  disabled={aiGuideCopyState === 'copying'}
-                  className={`h-9 w-full px-3 rounded text-xs inline-flex items-center justify-center gap-2 ${
-                    aiGuideCopyState === 'copied'
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-500'
-                      : 'bg-sky-600 text-white hover:bg-sky-500'
-                  } ${actionButtonClass}`}
-                >
-                  {aiGuideCopyState === 'copied' ? <Check size={14} /> : <Copy size={14} />}
-                  {aiGuideCopyState === 'copying' ? '正在复制…' : aiGuideCopyState === 'copied' ? '已复制，粘贴给 AI 即可' : aiGuideCopyState === 'failed' ? '复制失败，可打开文档手动复制' : '复制 AI 开发规范'}
-                </button>
-                <button onClick={openAiModuleGuide} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 ${actionButtonClass}`}>
-                  <BookOpen size={14} />
-                  打开规范文档
-                </button>
-              </div>
-            </div>
-            <div className={`rounded border p-2.5 ${isDarkMode ? 'border-white/15' : 'border-slate-300'}`}>
-              <div className="flex flex-wrap items-center gap-2">
-                <Download size={14} className="shrink-0 text-sky-400" aria-hidden="true" />
-                <span className="text-xs font-semibold">导入 AI 生成的文件</span>
-                {aiModulePasteText.trim() && (
-                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${canImportAiFiles
-                    ? isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700'
-                    : isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`}>
-                    已识别 {parsedAiFiles.files.length} 个文件
-                  </span>
-                )}
-              </div>
-              <Field id={`${fieldIdPrefix}-ai-paste`} label="粘贴 AI 回复内容" hint="把 AI 输出的完整回复粘到这里（包含“### 文件：相对路径”标题和代码块），导入后会自动校验。" isDarkMode={isDarkMode}>
-                <textarea
-                  id={`${fieldIdPrefix}-ai-paste`}
-                  value={aiModulePasteText}
-                  onChange={event => { setAiModulePasteText(event.target.value); setAiImportResult(null); setAiImportCopyState('idle'); }}
-                  className={`min-h-28 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`}
-                  placeholder={`### 文件：lingbuilder.module.json\n\`\`\`json\n…\n\`\`\`\n\n### 文件：include/xxx_bridge.h\n\`\`\`cpp\n…\n\`\`\`}`}
-                  aria-label="粘贴 AI 回复内容"
-                />
-              </Field>
-              {aiModulePasteText.trim() && parsedAiFiles.files.length > 0 && (
-                <div className={`mt-1 break-all text-[10px] leading-4 ${subtleClass}`}>
-                  {parsedAiFiles.files.slice(0, 6).map(file => file.path).join('、')}
-                  {parsedAiFiles.files.length > 6 ? ` 等 ${parsedAiFiles.files.length} 个文件` : ''}
-                </div>
-              )}
-              {aiModulePasteText.trim() && parsedAiFiles.diagnostics.length > 0 && (
-                <div className={`mt-1 text-[10px] leading-4 whitespace-pre-wrap ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                  <div>{parsedAiFiles.diagnostics.join('\n')}</div>
-                  <button
-                    type="button"
-                    onClick={() => void copyAiImportDiagnostics()}
-                    disabled={aiImportCopyState === 'copying'}
-                    className={`mt-1 inline-flex h-7 items-center gap-1.5 rounded border px-2 text-[10px] ${
-                      aiImportCopyState === 'copied'
-                        ? 'border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10'
-                        : 'border-amber-400/50 text-amber-200 hover:bg-amber-500/10'
-                    } ${actionButtonClass}`}
-                    aria-label="复制 AI 模块解析诊断"
-                  >
-                    {aiImportCopyState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
-                    {aiImportCopyState === 'copying' ? '正在复制…' : aiImportCopyState === 'copied' ? '已复制解析诊断' : aiImportCopyState === 'failed' ? '复制失败，请手动复制' : '复制解析诊断'}
-                  </button>
-                </div>
-              )}
-              <button
-                onClick={importAiFilesFromPaste}
-                disabled={!canImportAiFiles || isLoading}
-                className={`mt-2 h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}
-              >
-                <Upload size={14} />
-                导入到 module-build
-              </button>
-              {aiImportResult && (
+            </ModuleListSection>
+          </>
+        ) : (
+          <SubViewShell
+            icon={subViewMeta[subView].icon}
+            title={subViewMeta[subView].title}
+            desc={subViewMeta[subView].desc}
+            onBack={backToModuleList}
+            isDarkMode={isDarkMode}
+          >
+            {subView === 'aiGenerate' && (
+              <div className="p-3 grid gap-2.5">
                 <div
-                  role="status"
-                  className={`mt-2 rounded border p-2 text-[11px] leading-4 whitespace-pre-wrap ${
-                    aiImportResult.ok
-                      ? isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'
-                      : isDarkMode ? 'border-red-500/40 text-red-300' : 'border-red-400 text-red-600'
-                  }`}
+                  role="group"
+                  aria-label="AI 一键生成模块"
+                  className={`rounded border p-2.5 ${isDarkMode ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-emerald-500/30 bg-emerald-500/5'}`}
                 >
-                  {formatAiModuleImportResultForClipboard(aiImportResult)}
-                  {!aiImportResult.ok && (
-                    <div className="mt-2 flex justify-end">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Bot size={14} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                    <span className="text-xs font-semibold">交给本机 Agent 生成（内嵌 DeepSeek Harness）</span>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700'}`}>推荐</span>
+                  </div>
+                  <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
+                    用中文描述需求，IDE 会展开 AI 助手侧栏并把需求交给本机 Agent：它按「模块骨架 → 写文件 → 校验」链路在 module-build 里创作，校验通过后你再回到本页导出与安装。
+                  </p>
+                  <textarea
+                    id={`${fieldIdPrefix}-ai-requirement`}
+                    value={aiRequirement}
+                    onChange={event => setAiRequirement(event.target.value)}
+                    placeholder="例如：做一个字符串工具模块，提供“取文本长度”“替换文本”“分割文本到列表”三个中文命令……"
+                    className={`mt-2 min-h-20 w-full rounded border px-3 py-2 text-xs outline-none ${inputClass}`}
+                    aria-label="模块需求描述"
+                  />
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={sendRequirementToAgent}
+                      disabled={!aiRequirement.trim()}
+                      className={`h-9 w-full rounded bg-emerald-600 px-3 text-xs text-white inline-flex items-center justify-center gap-2 hover:bg-emerald-500 disabled:opacity-50 ${actionButtonClass}`}
+                    >
+                      <Bot size={14} />
+                      交给本机 Agent 生成模块
+                    </button>
+                  </div>
+                </div>
+                <div
+                  role="group"
+                  aria-label="AI 生成模块入口"
+                  className={`rounded border p-2.5 ${isDarkMode ? 'border-sky-500/25 bg-sky-500/5' : 'border-sky-500/30 bg-sky-500/5'}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Bot size={14} className="shrink-0 text-sky-400" aria-hidden="true" />
+                    <span className="text-xs font-semibold">手动模式：复制规范给任意外部 AI</span>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-500/10 text-sky-700'}`}>复制粘贴降级</span>
+                  </div>
+                  <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
+                    一键生成不可用时的备选方案：复制规范粘贴给 ChatGPT、Claude、Cursor 等任意 AI，再用中文描述需求，最后把 AI 回复粘贴回下方导入。
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <button
+                      onClick={copyAiModuleGuide}
+                      disabled={aiGuideCopyState === 'copying'}
+                      className={`h-9 w-full px-3 rounded text-xs inline-flex items-center justify-center gap-2 ${
+                        aiGuideCopyState === 'copied'
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                          : 'bg-sky-600 text-white hover:bg-sky-500'
+                      } ${actionButtonClass}`}
+                    >
+                      {aiGuideCopyState === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                      {aiGuideCopyState === 'copying' ? '正在复制…' : aiGuideCopyState === 'copied' ? '已复制，粘贴给 AI 即可' : aiGuideCopyState === 'failed' ? '复制失败，可打开文档手动复制' : '复制 AI 开发规范'}
+                    </button>
+                    <button onClick={openAiModuleGuide} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 ${actionButtonClass}`}>
+                      <BookOpen size={14} />
+                      打开规范文档
+                    </button>
+                  </div>
+                </div>
+                <div className={`rounded border p-2.5 ${isDarkMode ? 'border-white/15' : 'border-slate-300'}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Download size={14} className="shrink-0 text-sky-400" aria-hidden="true" />
+                    <span className="text-xs font-semibold">导入 AI 生成的文件</span>
+                    {aiModulePasteText.trim() && (
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${canImportAiFiles
+                        ? isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700'
+                        : isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`}>
+                        已识别 {parsedAiFiles.files.length} 个文件
+                      </span>
+                    )}
+                  </div>
+                  <Field id={`${fieldIdPrefix}-ai-paste`} label="粘贴 AI 回复内容" hint="把 AI 输出的完整回复粘到这里（包含“### 文件：相对路径”标题和代码块），导入后会自动校验。" isDarkMode={isDarkMode}>
+                    <textarea
+                      id={`${fieldIdPrefix}-ai-paste`}
+                      value={aiModulePasteText}
+                      onChange={event => { setAiModulePasteText(event.target.value); setAiImportResult(null); setAiImportCopyState('idle'); }}
+                      className={`min-h-28 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`}
+                      placeholder={`### 文件：lingbuilder.module.json\n\`\`\`json\n…\n\`\`\`\n\n### 文件：include/xxx_bridge.h\n\`\`\`cpp\n…\n\`\`\`}`}
+                      aria-label="粘贴 AI 回复内容"
+                    />
+                  </Field>
+                  {aiModulePasteText.trim() && parsedAiFiles.files.length > 0 && (
+                    <div className={`mt-1 break-all text-[10px] leading-4 ${subtleClass}`}>
+                      {parsedAiFiles.files.slice(0, 6).map(file => file.path).join('、')}
+                      {parsedAiFiles.files.length > 6 ? ` 等 ${parsedAiFiles.files.length} 个文件` : ''}
+                    </div>
+                  )}
+                  {aiModulePasteText.trim() && parsedAiFiles.diagnostics.length > 0 && (
+                    <div className={`mt-1 text-[10px] leading-4 whitespace-pre-wrap ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                      <div>{parsedAiFiles.diagnostics.join('\n')}</div>
                       <button
                         type="button"
-                        onClick={() => void copyAiImportResult()}
+                        onClick={() => void copyAiImportDiagnostics()}
                         disabled={aiImportCopyState === 'copying'}
-                        className={`inline-flex h-7 items-center gap-1.5 rounded border px-2 text-[10px] ${
+                        className={`mt-1 inline-flex h-7 items-center gap-1.5 rounded border px-2 text-[10px] ${
                           aiImportCopyState === 'copied'
                             ? 'border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10'
-                            : 'border-red-400/50 text-red-200 hover:bg-red-500/10'
+                            : 'border-amber-400/50 text-amber-200 hover:bg-amber-500/10'
                         } ${actionButtonClass}`}
-                        aria-label="复制 AI 模块错误详情"
+                        aria-label="复制 AI 模块解析诊断"
                       >
                         {aiImportCopyState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
-                        {aiImportCopyState === 'copying' ? '正在复制…' : aiImportCopyState === 'copied' ? '已复制错误详情' : aiImportCopyState === 'failed' ? '复制失败，请手动复制' : '复制错误详情'}
+                        {aiImportCopyState === 'copying' ? '正在复制…' : aiImportCopyState === 'copied' ? '已复制解析诊断' : aiImportCopyState === 'failed' ? '复制失败，请手动复制' : '复制解析诊断'}
                       </button>
                     </div>
                   )}
+                  <button
+                    onClick={importAiFilesFromPaste}
+                    disabled={!canImportAiFiles || isLoading}
+                    className={`mt-2 h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}
+                  >
+                    <Upload size={14} />
+                    导入到 module-build
+                  </button>
+                  {aiImportResult && (
+                    <div
+                      role="status"
+                      className={`mt-2 rounded border p-2 text-[11px] leading-4 whitespace-pre-wrap ${
+                        aiImportResult.ok
+                          ? isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'
+                          : isDarkMode ? 'border-red-500/40 text-red-300' : 'border-red-400 text-red-600'
+                      }`}
+                    >
+                      {formatAiModuleImportResultForClipboard(aiImportResult)}
+                      {!aiImportResult.ok && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => void copyAiImportResult()}
+                            disabled={aiImportCopyState === 'copying'}
+                            className={`inline-flex h-7 items-center gap-1.5 rounded border px-2 text-[10px] ${
+                              aiImportCopyState === 'copied'
+                                ? 'border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10'
+                                : 'border-red-400/50 text-red-200 hover:bg-red-500/10'
+                            } ${actionButtonClass}`}
+                            aria-label="复制 AI 模块错误详情"
+                          >
+                            {aiImportCopyState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+                            {aiImportCopyState === 'copying' ? '正在复制…' : aiImportCopyState === 'copied' ? '已复制错误详情' : aiImportCopyState === 'failed' ? '复制失败，请手动复制' : '复制错误详情'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="grid gap-1">
-              <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>使用步骤</span>
-              <ol className={`grid gap-1 text-[10px] leading-4 ${subtleClass}`}>
-                <li>1.（推荐）在“一键生成”里用中文描述需求，选择系统 AI 或自定义 API，点击生成——IDE 会自动完成规范注入、解析、导入和校验。</li>
-                <li>2.（手动）点击“复制 AI 开发规范”，粘贴给任意 AI 并用中文描述模块；把 AI 回复完整粘贴到“导入 AI 生成的文件”后点击导入，也可以手动保存到 .lingbuilder/module-build/&lt;模块ID&gt;/。</li>
-                <li>3. 校验通过后在“模块包制作”导出并安装（导入成功后路径会自动填好）；也可以通过 AI Bridge MCP 工具让 Claude Code / Codex 等直接生成、打包并安装。</li>
-              </ol>
-            </div>
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          className={cardClass}
-          icon={<FileArchive size={16} />}
-          title="安装 .lbmod"
-          desc="拖入 .lbmod 文件，或填写本机绝对路径 / 工作区相对路径预览安装（桌面版自动把外部包复制进工作区）。"
-          isOpen={expandedSections.packageInstall}
-          onToggle={() => toggleSection('packageInstall')}
-          isDarkMode={isDarkMode}
-        >
-          <div
-            onDragOver={event => { event.preventDefault(); setIsDragOverPackage(true); }}
-            onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragOverPackage(false); }}
-            onDrop={() => setIsDragOverPackage(false)}
-            aria-label="模块包拖放安装区"
-            className={`m-3 grid min-w-0 grid-cols-1 gap-2 rounded border border-dashed p-3 transition-colors ${
-              isDragOverPackage
-                ? 'border-sky-400 bg-sky-500/10'
-                : isDarkMode ? 'border-white/15' : 'border-slate-300'
-            }`}
-          >
-            <div className={`flex items-start gap-1.5 text-[10px] leading-4 ${subtleClass}`}>
-              <Download size={12} className="mt-0.5 shrink-0 text-sky-400" aria-hidden="true" />
-              <span>把 .lbmod 文件拖到这里，桌面版会自动复制进工作区；也可以直接填写下方路径。</span>
-            </div>
-            <Field id={`${fieldIdPrefix}-package-path`} label="模块包路径" hint="支持 .lingbuilder/module-packages 下的工作区相对路径；桌面版也可填写本机绝对路径，预览时自动复制到该目录。" isDarkMode={isDarkMode}>
-              <input
-                id={`${fieldIdPrefix}-package-path`}
-                value={packagePath}
-                onChange={event => setPackagePath(event.target.value)}
-                className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`}
-                placeholder=".lingbuilder/module-packages/demo.lbmod"
-              />
-            </Field>
-            <button onClick={() => previewPackage(packagePath)} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
-              <ShieldCheck size={14} />
-              预览安装
-            </button>
-            <button onClick={selectPackage} className={`h-9 w-full px-3 rounded border text-xs ${actionButtonClass}`}>选择 .lbmod 文件</button>
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          className={cardClass}
-          icon={<Archive size={16} />}
-          title="模块包制作"
-          desc="把校验通过的模块目录打包为可分发的 .lbmod。"
-          isOpen={expandedSections.packageExport}
-          onToggle={() => toggleSection('packageExport')}
-          isDarkMode={isDarkMode}
-        >
-          <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
-            <Field id={`${fieldIdPrefix}-export-module-dir`} label="模块目录" hint="包含 lingbuilder.module.json 的目录，位于 .lingbuilder/module-build 下。" isDarkMode={isDarkMode}>
-              <input id={`${fieldIdPrefix}-export-module-dir`} value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
-            </Field>
-            <Field id={`${fieldIdPrefix}-export-target-path`} label="导出路径" hint="导出的 .lbmod 文件路径，位于 .lingbuilder/module-packages 下。" isDarkMode={isDarkMode}>
-              <input id={`${fieldIdPrefix}-export-target-path`} value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-packages/demo.lbmod" />
-            </Field>
-            <button onClick={exportModulePackage} className={`h-9 w-full px-3 rounded bg-emerald-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-emerald-500 ${actionButtonClass}`}>
-              <Upload size={14} />
-              导出 .lbmod
-            </button>
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          className={cardClass}
-          icon={<Upload size={16} />}
-          title="模块开发者中心"
-          desc="面向会 C++ 的模块作者：模板、校验、迁移和本地市场索引。"
-          isOpen={expandedSections.developer}
-          onToggle={() => toggleSection('developer')}
-          isDarkMode={isDarkMode}
-        >
-          <div className={`border-b bg-sky-500/5 px-3 py-2.5 ${borderSubtleClass}`}>
-            <div className={`flex items-start gap-1.5 text-[10px] leading-4 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-              <Info size={12} className="mt-0.5 shrink-0 text-sky-400" aria-hidden="true" />
-              <span className="min-w-0 break-words">开发流程：① 创建模板 → ② 编写 C++ 与清单 → ③ 校验 → ④ 在上方“模块包制作”导出 .lbmod → ⑤ 生成市场索引分发。</span>
-            </div>
-          </div>
-          <DeveloperStep step={1} title="创建模块模板" desc="生成含 lingbuilder.module.json 的 v2 模块骨架。" isDarkMode={isDarkMode}>
-            <Field id={`${fieldIdPrefix}-developer-template`} label="模板类型" hint="cpp-source：C++ 源码模块；ui-control：设计器控件；dll-lib：DLL 封装；command-only：纯命令；empty：空模块。" isDarkMode={isDarkMode}>
-              <select id={`${fieldIdPrefix}-developer-template`} value={developerTemplate} onChange={event => setDeveloperTemplate(event.target.value)} className={`h-9 rounded border px-2 text-xs outline-none ${inputClass}`}>
-                {['cpp-source', 'dll-lib', 'ui-control', 'command-only', 'empty'].map(item => <option key={item}>{item}</option>)}
-              </select>
-            </Field>
-            <Field id={`${fieldIdPrefix}-developer-out-dir`} label="输出目录" hint="位于 .lingbuilder/module-build 下的工作区相对路径。" isDarkMode={isDarkMode}>
-              <input id={`${fieldIdPrefix}-developer-out-dir`} value={developerOutDir} onChange={event => setDeveloperOutDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
-            </Field>
-            <button onClick={createDeveloperTemplate} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
-              <Package size={14} />
-              创建模板
-            </button>
-          </DeveloperStep>
-          <DeveloperStep step={2} title="编写 C++ 与清单" desc="在生成的目录里实现 C++ 逻辑、bindings.commands 命令映射和 contributes 中文补全，并按手册登记中文文档。" isDarkMode={isDarkMode}>
-            <button onClick={openDeveloperManual} className={`h-9 w-full px-3 rounded border border-amber-500/50 text-amber-200 text-xs inline-flex items-center justify-center gap-2 hover:bg-amber-500/10 hover:text-amber-100 ${actionButtonClass}`}>
-              <BookOpen size={14} />
-              打开模块开发手册
-            </button>
-          </DeveloperStep>
-          <DeveloperStep step={3} title="校验模块" desc="导出前检查 manifest v2、命令绑定、文档与平台 target。" isDarkMode={isDarkMode}>
-            <Field id={`${fieldIdPrefix}-developer-validate`} label="模块目录" hint="支持 lingbuilder.module.json 所在目录，位于 .lingbuilder/module-build 下。" isDarkMode={isDarkMode}>
-              <input id={`${fieldIdPrefix}-developer-validate`} value={developerValidatePath} onChange={event => setDeveloperValidatePath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
-            </Field>
-            <button onClick={validateDeveloperModule} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'} hover:bg-emerald-500/10 ${actionButtonClass}`}>
-              <ShieldCheck size={14} />
-              校验模块
-            </button>
-            {validateResult && (
-              <div
-                role="status"
-                className={`rounded border p-2 text-[11px] leading-4 whitespace-pre-wrap ${
-                  validateResult.ok
-                    ? isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'
-                    : isDarkMode ? 'border-red-500/40 text-red-300' : 'border-red-400 text-red-600'
-                }`}
-              >
-                {validateResult.message}
+                <div className="grid gap-1">
+                  <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>使用步骤</span>
+                  <ol className={`grid gap-1 text-[10px] leading-4 ${subtleClass}`}>
+                    <li>1.（推荐）在“一键生成”里用中文描述需求，选择系统 AI 或自定义 API，点击生成——IDE 会自动完成规范注入、解析、导入和校验。</li>
+                    <li>2.（手动）点击“复制 AI 开发规范”，粘贴给任意 AI 并用中文描述模块；把 AI 回复完整粘贴到“导入 AI 生成的文件”后点击导入，也可以手动保存到 .lingbuilder/module-build/&lt;模块ID&gt;/。</li>
+                    <li>3. 校验通过后在“模块包制作”导出并安装（导入成功后路径会自动填好）；也可以通过 AI Bridge MCP 工具让 Claude Code / Codex 等直接生成、打包并安装。</li>
+                  </ol>
+                </div>
               </div>
             )}
-          </DeveloperStep>
-          <DeveloperStep step={4} title="导出 .lbmod" desc="校验通过后，在上方“模块包制作”区块填写模块目录和导出路径生成 .lbmod 包。" isDarkMode={isDarkMode}>
-            <div className={`rounded border border-dashed p-2.5 text-[11px] leading-4 ${isDarkMode ? 'border-white/15 text-slate-400' : 'border-slate-300 text-slate-500'}`}>
-              导出后会写入 .lingbuilder/module-packages，可直接在“安装 .lbmod”或“模块市场”中分发安装。
-            </div>
-          </DeveloperStep>
-          <DeveloperStep step={5} title="迁移已有 C++ 库" desc="把现有 C++ 库按迁移配置生成为 v2 模块目录。" isDarkMode={isDarkMode}>
-            <Field id={`${fieldIdPrefix}-developer-migrate-config`} label="迁移配置" hint="描述头文件、源码与命令映射的 JSON 配置，工作区相对路径。" isDarkMode={isDarkMode}>
-              <input id={`${fieldIdPrefix}-developer-migrate-config`} value={developerMigrateConfig} onChange={event => setDeveloperMigrateConfig(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="config/module-migration.json" />
-            </Field>
-            <Field id={`${fieldIdPrefix}-developer-migrate-out`} label="输出目录" hint="迁移结果目录，位于 .lingbuilder/module-build 下。" isDarkMode={isDarkMode}>
-              <input id={`${fieldIdPrefix}-developer-migrate-out`} value={developerMigrateOut} onChange={event => setDeveloperMigrateOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
-            </Field>
-            <button onClick={migrateDeveloperCpp} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 ${actionButtonClass}`}>
-              <FileArchive size={14} />
-              迁移 C++ 库
-            </button>
-          </DeveloperStep>
-          <DeveloperStep step={6} title="生成市场索引" desc="把多个 .lbmod 登记为本地市场索引，供“模块市场”读取。" isDarkMode={isDarkMode}>
-            <Field id={`${fieldIdPrefix}-developer-market-packages`} label=".lbmod 路径列表" hint="每行一个路径，必须位于 .lingbuilder/module-packages 下。" isDarkMode={isDarkMode}>
-              <textarea id={`${fieldIdPrefix}-developer-market-packages`} value={developerMarketPackages} onChange={event => setDeveloperMarketPackages(event.target.value)} className={`min-h-20 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`} placeholder="每行一个 .lingbuilder/module-packages/*.lbmod" />
-            </Field>
-            <Field id={`${fieldIdPrefix}-developer-market-out`} label="索引输出路径" hint=".lingbuilder 下的 JSON 文件，例如 .lingbuilder/module-market.json。" isDarkMode={isDarkMode}>
-              <input id={`${fieldIdPrefix}-developer-market-out`} value={developerMarketOut} onChange={event => setDeveloperMarketOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-market.json" />
-            </Field>
-            <button onClick={createDeveloperMarketIndex} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 ${actionButtonClass}`}>
-              <Store size={14} />
-              生成市场索引
-            </button>
-          </DeveloperStep>
-        </CollapsibleSection>
 
-        <CollapsibleSection
-          className={cardClass}
-          icon={<Store size={16} />}
-          title="模块市场"
-          desc="从本地、官方或企业市场源读取模块索引；安装仍走同一套预览确认流程。"
-          isOpen={expandedSections.market}
-          onToggle={() => toggleSection('market')}
-          isDarkMode={isDarkMode}
-        >
-          <div className={`divide-y ${divideClass}`}>
-            {filteredMarketModules.length === 0 ? (
-              <Empty text="未发现市场模块。可在 .lingbuilder/module-market.json 中添加本地索引。" />
-            ) : filteredMarketModules.map(module => (
-              <div key={`${module.sourceId}-${module.id}`} className="min-w-0 p-3 flex flex-col gap-3">
-                <div className="min-w-0">
-                  <div className="break-words text-sm font-semibold leading-5">{module.name}</div>
-                  <div className={`break-all text-[11px] leading-4 ${subtleClass}`}>{module.id} · {module.version} · {module.category}</div>
-                  <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{module.description}</div>
+            {subView === 'packageInstall' && (
+              <div
+                onDragOver={event => { event.preventDefault(); setIsDragOverPackage(true); }}
+                onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragOverPackage(false); }}
+                onDrop={() => setIsDragOverPackage(false)}
+                aria-label="模块包拖放安装区"
+                className={`m-3 grid min-w-0 grid-cols-1 gap-2 rounded border border-dashed p-3 transition-colors ${
+                  isDragOverPackage
+                    ? 'border-sky-400 bg-sky-500/10'
+                    : isDarkMode ? 'border-white/15' : 'border-slate-300'
+                }`}
+              >
+                <div className={`flex items-start gap-1.5 text-[10px] leading-4 ${subtleClass}`}>
+                  <Download size={12} className="mt-0.5 shrink-0 text-sky-400" aria-hidden="true" />
+                  <span>把 .lbmod 文件拖到这里，桌面版会自动复制进工作区；也可以直接填写下方路径。</span>
                 </div>
-                <button
-                  disabled={!module.packagePath}
-                  onClick={() => module.packagePath && previewPackage(module.packagePath)}
-                  className={`h-8 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300 hover:text-emerald-100' : 'border-emerald-500/50 text-emerald-700'} hover:bg-emerald-500/10 ${actionButtonClass}`}
-                >
-                  <Download size={14} />
-                  {module.installedVersion ? '重新安装' : '安装'}
+                <Field id={`${fieldIdPrefix}-package-path`} label="模块包路径" hint="支持 .lingbuilder/module-packages 下的工作区相对路径；桌面版也可填写本机绝对路径，预览时自动复制到该目录。" isDarkMode={isDarkMode}>
+                  <input
+                    id={`${fieldIdPrefix}-package-path`}
+                    value={packagePath}
+                    onChange={event => setPackagePath(event.target.value)}
+                    className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`}
+                    placeholder=".lingbuilder/module-packages/demo.lbmod"
+                  />
+                </Field>
+                <button onClick={() => previewPackage(packagePath)} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
+                  <ShieldCheck size={14} />
+                  预览安装
+                </button>
+                <button onClick={selectPackage} className={`h-9 w-full px-3 rounded border text-xs ${actionButtonClass}`}>选择 .lbmod 文件</button>
+              </div>
+            )}
+
+            {subView === 'packageExport' && (
+              <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
+                <Field id={`${fieldIdPrefix}-export-module-dir`} label="模块目录" hint="包含 lingbuilder.module.json 的目录，位于 .lingbuilder/module-build 下。" isDarkMode={isDarkMode}>
+                  <input id={`${fieldIdPrefix}-export-module-dir`} value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
+                </Field>
+                <Field id={`${fieldIdPrefix}-export-target-path`} label="导出路径" hint="导出的 .lbmod 文件路径，位于 .lingbuilder/module-packages 下。" isDarkMode={isDarkMode}>
+                  <input id={`${fieldIdPrefix}-export-target-path`} value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-packages/demo.lbmod" />
+                </Field>
+                <button onClick={exportModulePackage} className={`h-9 w-full px-3 rounded bg-emerald-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-emerald-500 ${actionButtonClass}`}>
+                  <Upload size={14} />
+                  导出 .lbmod
                 </button>
               </div>
-            ))}
-          </div>
-        </CollapsibleSection>
+            )}
 
-        <CollapsibleSection
-          className={cardClass}
-          icon={<History size={16} />}
-          title="操作历史"
-          desc="记录安装、卸载、启用、禁用和导出动作。"
-          isOpen={expandedSections.history}
-          onToggle={() => toggleSection('history')}
-          isDarkMode={isDarkMode}
-        >
-          <div className={`divide-y ${divideClass}`}>
-            {history.length === 0 ? (
-              <Empty text="暂无模块操作历史。" />
-            ) : history.slice(0, 12).map(item => (
-              <div key={item.id} className="p-3">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <span className="break-words text-xs font-semibold">{item.summary}</span>
-                  <span className={`text-[10px] ${subtleClass}`}>{new Date(item.time).toLocaleString()}</span>
+            {subView === 'developer' && (
+              <div>
+                <div className={`m-3 rounded border p-3 space-y-2 ${borderSubtleClass}`} role="group" aria-label="链接模块开发源">
+                  <p className={`text-[11px] leading-4 ${subtleClass}`}>
+                    链接开发源（自建模块开发期）：填入工作区内模块源码目录（如 <code>.lingbuilder/module-build/my.module</code>）后，该模块的补全、诊断与 F5 构建直接消费源目录——改完清单或重编 DLL 即生效，无需重新打包安装；分发给他人的正式版仍走 .lbmod 安装。
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      value={devSourcePath}
+                      onChange={event => setDevSourcePath(event.target.value)}
+                      placeholder=".lingbuilder/module-build/my.module"
+                      className={`min-w-0 flex-1 rounded border px-2 py-1.5 text-xs outline-none ${inputClass}`}
+                      aria-label="开发源目录（工作区相对路径）"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void linkDevSource()}
+                      disabled={isLoading || !devSourcePath.trim()}
+                      className={`h-8 shrink-0 rounded border border-amber-500/40 px-3 text-xs text-amber-300 inline-flex items-center gap-1.5 transition-colors hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40 ${actionButtonClass}`}
+                    >
+                      <Link2 size={14} aria-hidden="true" />
+                      链接开发源
+                    </button>
+                  </div>
                 </div>
-                <div className={`mt-1 text-[11px] whitespace-pre-wrap ${subtleClass}`}>{item.details}</div>
+                <div className={`border-b bg-sky-500/5 px-3 py-2.5 ${borderSubtleClass}`}>
+                  <div className={`flex items-start gap-1.5 text-[10px] leading-4 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                    <Info size={12} className="mt-0.5 shrink-0 text-sky-400" aria-hidden="true" />
+                    <span className="min-w-0 break-words">开发流程：① 创建模板 → ② 编写 C++ 与清单 → ③ 校验 → ④ 在“模块包制作”导出 .lbmod → ⑤ 生成市场索引分发。</span>
+                  </div>
+                </div>
+                <DeveloperStep step={1} title="创建模块模板" desc="生成含 lingbuilder.module.json 的 v2 模块骨架。" isDarkMode={isDarkMode}>
+                  <Field id={`${fieldIdPrefix}-developer-template`} label="模板类型" hint="cpp-source：C++ 源码模块；ui-control：设计器控件；dll-lib：DLL 封装；command-only：纯命令；empty：空模块。" isDarkMode={isDarkMode}>
+                    <select id={`${fieldIdPrefix}-developer-template`} value={developerTemplate} onChange={event => setDeveloperTemplate(event.target.value)} className={`h-9 rounded border px-2 text-xs outline-none ${inputClass}`}>
+                      {['cpp-source', 'dll-lib', 'ui-control', 'command-only', 'empty'].map(item => <option key={item}>{item}</option>)}
+                    </select>
+                  </Field>
+                  <Field id={`${fieldIdPrefix}-developer-out-dir`} label="输出目录" hint="位于 .lingbuilder/module-build 下的工作区相对路径。" isDarkMode={isDarkMode}>
+                    <input id={`${fieldIdPrefix}-developer-out-dir`} value={developerOutDir} onChange={event => setDeveloperOutDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
+                  </Field>
+                  <button onClick={createDeveloperTemplate} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
+                    <Package size={14} />
+                    创建模板
+                  </button>
+                </DeveloperStep>
+                <DeveloperStep step={2} title="编写 C++ 与清单" desc="在生成的目录里实现 C++ 逻辑、bindings.commands 命令映射和 contributes 中文补全，并按手册登记中文文档。" isDarkMode={isDarkMode}>
+                  <button onClick={openDeveloperManual} className={`h-9 w-full px-3 rounded border border-amber-500/50 text-amber-200 text-xs inline-flex items-center justify-center gap-2 hover:bg-amber-500/10 hover:text-amber-100 ${actionButtonClass}`}>
+                    <BookOpen size={14} />
+                    打开模块开发手册
+                  </button>
+                </DeveloperStep>
+                <DeveloperStep step={3} title="校验模块" desc="导出前检查 manifest v2、命令绑定、文档与平台 target。" isDarkMode={isDarkMode}>
+                  <Field id={`${fieldIdPrefix}-developer-validate`} label="模块目录" hint="支持 lingbuilder.module.json 所在目录，位于 .lingbuilder/module-build 下。" isDarkMode={isDarkMode}>
+                    <input id={`${fieldIdPrefix}-developer-validate`} value={developerValidatePath} onChange={event => setDeveloperValidatePath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
+                  </Field>
+                  <button onClick={validateDeveloperModule} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'} hover:bg-emerald-500/10 ${actionButtonClass}`}>
+                    <ShieldCheck size={14} />
+                    校验模块
+                  </button>
+                  {validateResult && (
+                    <div
+                      role="status"
+                      className={`rounded border p-2 text-[11px] leading-4 whitespace-pre-wrap ${
+                        validateResult.ok
+                          ? isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'
+                          : isDarkMode ? 'border-red-500/40 text-red-300' : 'border-red-400 text-red-600'
+                      }`}
+                    >
+                      {validateResult.message}
+                    </div>
+                  )}
+                </DeveloperStep>
+                <DeveloperStep step={4} title="导出 .lbmod" desc="校验通过后，在“模块包制作”分区填写模块目录和导出路径生成 .lbmod 包。" isDarkMode={isDarkMode}>
+                  <div className={`rounded border border-dashed p-2.5 text-[11px] leading-4 ${isDarkMode ? 'border-white/15 text-slate-400' : 'border-slate-300 text-slate-500'}`}>
+                    导出后会写入 .lingbuilder/module-packages，可直接在“安装 .lbmod”或“模块市场”中分发安装。
+                  </div>
+                </DeveloperStep>
+                <DeveloperStep step={5} title="迁移已有 C++ 库" desc="把现有 C++ 库按迁移配置生成为 v2 模块目录。" isDarkMode={isDarkMode}>
+                  <Field id={`${fieldIdPrefix}-developer-migrate-config`} label="迁移配置" hint="描述头文件、源码与命令映射的 JSON 配置，工作区相对路径。" isDarkMode={isDarkMode}>
+                    <input id={`${fieldIdPrefix}-developer-migrate-config`} value={developerMigrateConfig} onChange={event => setDeveloperMigrateConfig(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="config/module-migration.json" />
+                  </Field>
+                  <Field id={`${fieldIdPrefix}-developer-migrate-out`} label="输出目录" hint="迁移结果目录，位于 .lingbuilder/module-build 下。" isDarkMode={isDarkMode}>
+                    <input id={`${fieldIdPrefix}-developer-migrate-out`} value={developerMigrateOut} onChange={event => setDeveloperMigrateOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
+                  </Field>
+                  <button onClick={migrateDeveloperCpp} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 ${actionButtonClass}`}>
+                    <FileArchive size={14} />
+                    迁移 C++ 库
+                  </button>
+                </DeveloperStep>
+                <DeveloperStep step={6} title="生成市场索引" desc="把多个 .lbmod 登记为本地市场索引，供“模块市场”读取。" isDarkMode={isDarkMode}>
+                  <Field id={`${fieldIdPrefix}-developer-market-packages`} label=".lbmod 路径列表" hint="每行一个路径，必须位于 .lingbuilder/module-packages 下。" isDarkMode={isDarkMode}>
+                    <textarea id={`${fieldIdPrefix}-developer-market-packages`} value={developerMarketPackages} onChange={event => setDeveloperMarketPackages(event.target.value)} className={`min-h-20 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`} placeholder="每行一个 .lingbuilder/module-packages/*.lbmod" />
+                  </Field>
+                  <Field id={`${fieldIdPrefix}-developer-market-out`} label="索引输出路径" hint=".lingbuilder 下的 JSON 文件，例如 .lingbuilder/module-market.json。" isDarkMode={isDarkMode}>
+                    <input id={`${fieldIdPrefix}-developer-market-out`} value={developerMarketOut} onChange={event => setDeveloperMarketOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-market.json" />
+                  </Field>
+                  <button onClick={createDeveloperMarketIndex} className={`h-9 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 ${actionButtonClass}`}>
+                    <Store size={14} />
+                    生成市场索引
+                  </button>
+                </DeveloperStep>
               </div>
-            ))}
-          </div>
-        </CollapsibleSection>
-      </div>
+            )}
 
-      {selectedModule && (
-        <ModulePublicInfoDialog
-          module={selectedModule}
-          familyDefinition={selectedModuleFamilyState?.definition}
-          familyModules={selectedModuleFamilyState?.modules}
-          familyFeatures={selectedModuleFamilyState?.definition.features}
-          isDarkMode={isDarkMode}
-          isChangingFeature={isLoading}
-          onToggleFeature={toggleProjectModule}
-          onClose={() => setSelectedModuleId(null)}
-        />
-      )}
+            {subView === 'market' && (
+              <div className={`divide-y ${divideClass}`}>
+                {filteredMarketModules.length === 0 ? (
+                  <Empty text="未发现市场模块。可在 .lingbuilder/module-market.json 中添加本地索引。" />
+                ) : filteredMarketModules.map(module => (
+                  <div key={`${module.sourceId}-${module.id}`} className="min-w-0 p-3 flex flex-col gap-3">
+                    <div className="min-w-0">
+                      <div className="break-words text-sm font-semibold leading-5">{module.name}</div>
+                      <div className={`break-all text-[11px] leading-4 ${subtleClass}`}>{module.id} · {module.version} · {module.category}</div>
+                      <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{module.description}</div>
+                    </div>
+                    <button
+                      disabled={!module.packagePath}
+                      onClick={() => module.packagePath && previewPackage(module.packagePath)}
+                      className={`h-8 w-full px-3 rounded border text-xs inline-flex items-center justify-center gap-2 ${isDarkMode ? 'border-emerald-500/40 text-emerald-300 hover:text-emerald-100' : 'border-emerald-500/50 text-emerald-700'} hover:bg-emerald-500/10 ${actionButtonClass}`}
+                    >
+                      <Download size={14} />
+                      {module.installedVersion ? '重新安装' : '安装'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {subView === 'history' && (
+              <div className={`divide-y ${divideClass}`}>
+                {history.length === 0 ? (
+                  <Empty text="暂无模块操作历史。" />
+                ) : history.slice(0, 12).map(item => (
+                  <div key={item.id} className="p-3">
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="break-words text-xs font-semibold">{item.summary}</span>
+                      <span className={`text-[10px] ${subtleClass}`}>{new Date(item.time).toLocaleString()}</span>
+                    </div>
+                    <div className={`mt-1 text-[11px] whitespace-pre-wrap ${subtleClass}`}>{item.details}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SubViewShell>
+        )}
+      </div>
 
       {installPreview && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
@@ -1896,6 +1741,88 @@ function CollapsibleSection({
   );
 }
 
+/** VS Code Extensions 式列表分组头：折叠箭头 + 标题 + 计数徽标。 */
+function ModuleListSection({
+  title,
+  count,
+  desc,
+  isOpen,
+  onToggle,
+  isDarkMode = true,
+  children
+}: {
+  title: string;
+  count: number;
+  desc?: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  isDarkMode?: boolean;
+  children: React.ReactNode;
+}) {
+  const dividerClass = isDarkMode ? 'border-white/10' : 'border-slate-200';
+  const hoverClass = isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-500/5';
+  return (
+    <section className={`min-w-0 rounded-md border ${isDarkMode ? 'border-white/10 bg-[#252526] text-slate-200' : 'border-slate-200 bg-white text-slate-800'}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full min-w-0 px-3 py-2 flex items-center gap-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-inset ${hoverClass} ${isOpen ? `border-b ${dividerClass}` : ''}`}
+        aria-expanded={isOpen}
+        title={isOpen ? `折叠${title}` : `展开${title}`}
+      >
+        <span className={`shrink-0 text-slate-400 transition-transform duration-200 ease-out motion-reduce:transition-none ${isOpen ? 'rotate-90' : ''}`}>
+          <ChevronRight size={14} aria-hidden="true" />
+        </span>
+        <span className="min-w-0 text-xs font-semibold uppercase tracking-wide">{title}</span>
+        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-white/10 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>{count}</span>
+        {desc && <span className="ml-1 hidden min-w-0 flex-1 truncate text-[10px] text-slate-500 sm:block" title={desc}>{desc}</span>}
+      </button>
+      {isOpen && <div className="min-h-0">{children}</div>}
+    </section>
+  );
+}
+
+/** 「…」菜单子视图的外壳：返回按钮 + 标题描述 + 内容。 */
+function SubViewShell({
+  icon,
+  title,
+  desc,
+  onBack,
+  isDarkMode = true,
+  children
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  onBack: () => void;
+  isDarkMode?: boolean;
+  children: React.ReactNode;
+}) {
+  const borderClass = isDarkMode ? 'border-white/10' : 'border-slate-200';
+  const hoverClass = isDarkMode ? 'hover:bg-white/10 hover:text-white' : 'hover:bg-slate-200 hover:text-slate-900';
+  return (
+    <section className={`min-w-0 rounded-md border ${isDarkMode ? 'border-white/10 bg-[#252526] text-slate-200' : 'border-slate-200 bg-white text-slate-800'}`}>
+      <div className={`flex items-start gap-2 border-b p-3 ${borderClass}`}>
+        <button
+          type="button"
+          onClick={onBack}
+          className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded border ${borderClass} transition-colors ${hoverClass}`}
+          title="返回模块列表"
+          aria-label="返回模块列表"
+        >
+          <ArrowLeft size={14} />
+        </button>
+        <span className="mt-1 shrink-0 text-sky-400">{icon}</span>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="text-[11px] leading-4 text-slate-500">{desc}</div>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function Field({ id, label, hint, isDarkMode, children }: {
   id: string;
   label: string;
@@ -1935,11 +1862,10 @@ function DeveloperStep({ step, title, desc, isDarkMode, children }: {
   );
 }
 
-function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onUnlinkDevSource, onRepair, onInspect, commerce, onPurchase }: {
-  key?: React.Key;
+function ModuleRow({ module, isDarkMode, isSelected, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onUnlinkDevSource, onOpen }: {
   module: InstalledModule;
   isDarkMode: boolean;
-  enabledOverride?: boolean;
+  isSelected?: boolean;
   statusLabel?: string;
   capabilityText?: string;
   descriptionOverride?: string;
@@ -1947,67 +1873,55 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
   onToggle: () => void;
   onUninstall: () => void;
   onUnlinkDevSource: () => void;
-  onRepair: () => void;
-  onInspect: () => void;
-  commerce?: any;
-  onPurchase: (provider: 'wechat'|'alipay') => void;
+  onOpen: () => void;
 }) {
   const manifest = module.manifest;
   const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const categoryBadgeClass = isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-500/10 text-sky-700';
   const builtinBadgeClass = isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700';
   const statusBadgeClass = isDarkMode ? 'bg-violet-500/15 text-violet-300' : 'bg-violet-500/10 text-violet-700';
-  const commerceBadgeClass = isDarkMode ? 'bg-rose-500/15 text-rose-300' : 'bg-rose-500/10 text-rose-700';
-  const diagnosticsClass = isDarkMode ? 'text-red-300' : 'text-red-600';
-  const rowHoverTextClass = isDarkMode ? 'hover:text-white' : 'hover:text-slate-900';
   const isBasicModule = manifest.id === 'lingbuilder.win32.basic';
-  const isEnabled = enabledOverride ?? Boolean(module.isEnabledForProject);
+  const isEnabled = Boolean(module.isEnabledForProject);
   const capabilityCount = (manifest.contributes?.commands?.length || 0)
     + (manifest.contributes?.types?.length || 0)
     + (manifest.contributes?.designerControls?.length || 0);
   const hasDiagnostics = module.diagnostics.length > 0;
-  const [expanded, setExpanded] = useState(hasDiagnostics);
   const description = descriptionOverride || manifest.description;
   const capabilityTextFinal = capabilityText || `能力 ${capabilityCount} 项`;
   const rowHoverBgClass = isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-500/5';
+  const rowSelectedBgClass = isDarkMode ? 'bg-sky-500/10' : 'bg-sky-500/5';
   const compactButtonBase = 'h-6 w-6 shrink-0 rounded border text-xs inline-flex items-center justify-center cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-40';
 
-  const toggleExpanded = () => setExpanded(value => !value);
-
   return (
-    <div className="min-w-0 p-2 flex flex-col gap-1">
+    <div className={`min-w-0 p-2 ${isSelected ? rowSelectedBgClass : ''}`}>
       <div
         role="button"
         tabIndex={0}
-        aria-expanded={expanded}
-        aria-label={`模块 ${manifest.name}，${expanded ? '收起' : '展开'}详情`}
-        onClick={toggleExpanded}
+        aria-label={`打开模块详情：${manifest.name}`}
+        onClick={onOpen}
         onKeyDown={event => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            toggleExpanded();
+            onOpen();
           }
         }}
         className={`min-w-0 cursor-pointer select-none rounded outline-none focus-visible:ring-1 focus-visible:ring-sky-500/60 ${rowHoverBgClass}`}
+        title={`打开「${manifest.name}」详情页`}
       >
         <div className="flex items-center gap-1.5 min-w-0">
-          <ChevronRight size={12} className={`shrink-0 opacity-60 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
           <span className="min-w-0 truncate text-[13px] font-semibold leading-5" title={manifest.name}>{manifest.name}</span>
+          {hasDiagnostics && <AlertTriangle size={12} className="shrink-0 text-amber-400" aria-label="模块存在诊断信息" />}
           <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${categoryBadgeClass}`}>{manifest.category}</span>
           {module.isBuiltin && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${builtinBadgeClass}`}>内置</span>}
           {module.isDevLink && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`} title={`开发源 · 实时生效\n${module.installPath}`}>开发源</span>}
-          {(statusLabel || isEnabled) && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${statusBadgeClass}`}>{statusLabel || '已引用'}</span>}
-          {commerce && <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${commerceBadgeClass}`}><LockKeyhole size={10} className="mr-1 inline" aria-hidden="true" />{commerce.access?.allowed ? '已授权' : commerce.freeWindow ? '限时免费' : `¥${((Number(commerce.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>}
+          {statusLabel && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${statusBadgeClass}`}>{statusLabel}</span>}
           <span className="ml-auto shrink-0 flex items-center gap-1" onClick={event => event.stopPropagation()}>
-            <button onClick={onInspect} title="查看接口" aria-label={`查看 ${manifest.name} 接口`} className={`${compactButtonBase} border-violet-500/40 text-violet-300 hover:bg-violet-500/10 ${rowHoverTextClass}`}>
-              <Search size={12} />
-            </button>
             <button
               onClick={onToggle}
               disabled={isBasicModule}
               title={isBasicModule ? 'Win32窗口基础模块是普通项目的默认基础能力，不能禁用。' : toggleLabel || (isEnabled ? '禁用' : '启用')}
               aria-label={`${isEnabled && !isBasicModule ? '禁用' : '启用'} ${manifest.name}`}
-              className={`${compactButtonBase} border-sky-500/40 text-sky-300 hover:bg-sky-500/10 ${rowHoverTextClass}`}
+              className={`${compactButtonBase} border-sky-500/40 text-sky-300 hover:bg-sky-500/10 ${isDarkMode ? 'hover:text-white' : 'hover:text-slate-900'}`}
             >
               {isBasicModule || !isEnabled ? <Check size={12} /> : <X size={12} />}
             </button>
@@ -2022,38 +1936,11 @@ function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilit
             )}
           </span>
         </div>
-        <div className="flex items-center gap-2 min-w-0 pl-[18px]">
+        <div className="flex items-center gap-2 min-w-0 pl-0">
           <span className={`min-w-0 truncate text-[11px] leading-4 ${subtleClass}`} title={description}>{description}</span>
           <span className={`ml-auto shrink-0 whitespace-nowrap text-[10px] leading-4 ${subtleClass}`}>{manifest.version} · {capabilityTextFinal}</span>
         </div>
       </div>
-      {expanded && (
-        <div className="min-w-0 pl-[18px] flex flex-col gap-1.5">
-          <div className={`break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id}</div>
-          <div className={`break-words text-xs leading-5 ${subtleClass}`}>{description}</div>
-          {hasDiagnostics && (
-            <div className={`text-[11px] whitespace-pre-wrap ${diagnosticsClass}`}>{module.diagnostics.join('\n')}</div>
-          )}
-          {hasDiagnostics && module.bundledRepairable && (
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                onClick={onRepair}
-                className={`self-start h-7 rounded border px-2 text-[11px] ${isDarkMode ? 'border-amber-500/40 text-amber-300' : 'border-amber-500/50 text-amber-700'} hover:bg-amber-500/10 cursor-pointer transition-colors`}
-              >
-                修复重装
-              </button>
-              <span className={`text-[10px] leading-4 ${subtleClass}`}>用安装包随附的模块副本整体重建本模块目录，修复清单损坏或版本过旧导致的加载失败。</span>
-            </div>
-          )}
-          {commerce && !commerce.access?.allowed && Array.isArray(commerce.offers) && commerce.offers.length > 0 && (
-            <div className="grid grid-cols-2 gap-2" aria-label="购买模块授权">
-              <button type="button" onClick={() => onPurchase('wechat')} className={`h-7 rounded border px-2 text-[11px] ${isDarkMode ? 'border-emerald-500/40 text-emerald-300' : 'border-emerald-500/50 text-emerald-700'} hover:bg-emerald-500/10 cursor-pointer transition-colors`}>微信支付</button>
-              <button type="button" onClick={() => onPurchase('alipay')} className={`h-7 rounded border px-2 text-[11px] ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10 cursor-pointer transition-colors`}>支付宝</button>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -2110,4 +1997,3 @@ function compareModuleVersion(left: string, right: string): number {
   if (leftPrerelease === rightPrerelease) return 0;
   return leftPrerelease ? -1 : 1;
 }
-

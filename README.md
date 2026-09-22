@@ -9,8 +9,8 @@ LingBuilder 是面向中文用户的中文 C++ / `.lcpp` 集成开发环境：�
 - **中文编程体验**：`.lcpp` 中文语法、中文命令 / 补全 / 诊断；新手模式与专业 Monaco 编辑器双形态。
 - **确定性生成真实 C++**：窗口设计器模型 + `.lcpp` 源码确定性翻译为可编译的 C++/Win32 与 Visual Studio 工程；IDE 内运行结果与导出工程行为一致。
 - **窗口设计器**：拖拽布局、属性/事件面板、`Ctrl+点击` 控件跳转、类型化 `controlRef` 控件引用语义。
-- **模块生态**：`.lbmod` v2 模块标准（清单 / binding / 文档 / 市场索引），内置 Win32 控件、网络（HTTP/WebSocket/CDP）、多线程等官方模块；**AI 一键生成模块**（系统 AI / 自定义 API 双通道，多阶段生成 + 自动校验导入），或通过 AI Bridge MCP 工具（scaffold / writeFiles / validate / pack / installPreview / install）让外部 AI 端到端封装模块。
-- **AI 辅助**：系统 AI（账号 + 点数计费）或自带 API Key（BYOK）双通道；代码生成、错误解释与修复建议；本地 AI Bridge 通过 MCP 接入 Codex CLI、Claude Code、Gemini CLI。
+- **模块生态**：`.lbmod` v2 模块标准（清单 / binding / 文档 / 市场索引），内置 Win32 控件、网络（HTTP/WebSocket/CDP）、多线程等官方模块；**AI 生成模块**（把需求交给面板内嵌的本机 Agent 按模块封装链创作，或让外部 AI 经 AI Bridge MCP 工具（scaffold / writeFiles / validate / pack / installPreview / install）端到端封装）。
+- **AI 辅助**：AI 面板只有一个引擎——**本机 Agent**（内嵌 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，可配 DeepSeek 官方 Key 或自定义 OpenAI 兼容网关）；代码生成、错误解释与修复建议、模块封装都由它承接；本地 AI Bridge 另通过 MCP 接入 Codex CLI、Claude Code、Gemini CLI。
 - **专业工作台**：活动栏 / 多编辑器组 / 面板 / 状态栏、命令面板、快捷键体系、Git 源代码管理、调试适配器（DAP）、PTY 终端。
 - **云端能力（可选自建）**：账号体系、AI 点数计费、模型路由、系统 AI Gateway 与运营管理后台。
 
@@ -104,18 +104,20 @@ npm run package:win
 
 云端服务不会替代本地确定性规则。系统 AI 只能返回文本或完整文件编辑草稿，最终诊断、Diff、确认和写入仍由本地 IDE 完成。
 
-## 🤖 系统 AI 与 BYOK
+## 🤖 云端系统 AI 与点数
 
-IDE 的 AI 面板提供两种互相隔离的模式：
+IDE 的 AI 面板自 2026-09-22 起只保留**本机 Agent**一个引擎（见下方专节）。下列云端能力本身保留，但不再在面板里提供切换入口：
 
-- 系统 AI：登录 LingBuilder 账号，使用管理员发布的逻辑模型和 AI 点数。
-- 自定义 API：继续使用用户自己的 API Key、Base URL 和模型。
+- 系统 AI：登录 LingBuilder 账号，使用管理员发布的逻辑模型和 AI 点数，细节见下文；现由本地服务、CLI 与云端消费。
+- 自定义 API（BYOK）：用户自己的 API Key、Base URL 和模型，作为本地服务端点保留；面板内的对应能力由本机 Agent 的「自定义 API（OpenAI 兼容网关）」模型通道接替。
+
+云端账号、点数、充值与收费模块权益入口保留在标题栏、设置「账号」、欢迎页与帮助菜单；AI 面板自身不再承载账号 UI（本机 Agent 用不到账号系统，也不消耗云端点数）。
 
 系统 AI 默认零保留：源码和提示词只在请求内存中处理，不进入数据库、用量表或日志。云端只记录模型别名、Token、点数、成本、状态和错误码。
 
 OpenAI-compatible 思考模型会分别解析推理增量和最终回答；聊天可流式显示推理内容，编辑草稿只解析最终回答。重复幂等键在 SSE 建连前返回 HTTP 409；取消请求按包含规则手册的完整上下文估算 Token、点数和供应商成本，中文/CJK 与 ASCII 使用不同的保守估算比例。
 
-模块一键生成等结构化输出场景可在请求中携带 `thinking: 'disabled'`：网关会对上游供应商显式关闭思考过程，避免推理文本挤占输出预算；配合按模型配置的输出预算（模型级 `maxOutputTokens` 已开至 DeepSeek 上限 393216 tokens）保证完整模块不被截断。聊天回复因 `length` 被截断时会收到中文截断提示；正文与思考均为空时收到明确的中文错误而不是空白回复。点数预冻结按有界输出估算（16,384）计算，结算按供应商实际用量补收或退还。
+结构化输出场景（如历史上的云端模块一键生成）可在请求中携带 `thinking: 'disabled'`：网关会对上游供应商显式关闭思考过程，避免推理文本挤占输出预算；配合按模型配置的输出预算（模型级 `maxOutputTokens` 已开至 DeepSeek 上限 393216 tokens）保证完整模块不被截断。聊天回复因 `length` 被截断时会收到中文截断提示；正文与思考均为空时收到明确的中文错误而不是空白回复。点数预冻结按有界输出估算（16,384）计算，结算按供应商实际用量补收或退还。
 
 ### 本机 Agent：内嵌 DeepSeek Harness 运行时
 

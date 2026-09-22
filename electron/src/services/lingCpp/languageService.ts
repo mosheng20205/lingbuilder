@@ -44,7 +44,7 @@ import {
   LingCppStructureNode
 } from './types';
 import { applyLingCppAstEdit } from './astEditService';
-import { LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
+import { LingClockResource, LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { LingCppModuleContext, ModuleCommandBinding } from '../modules/types';
 import { THREADING_LEGACY_COMMANDS } from '../modules/threadingModule';
 import {
@@ -53,7 +53,7 @@ import {
   getWindowEventHandlerName,
   WINDOW_EVENT_DEFINITIONS
 } from '../windowDesigner/windowEventRegistry';
-import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
+import { getConventionalControlEventBindings, getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
 import { areLingCppTypesCompatible, inferLingCppExpressionType, type LingCppModuleTypeCategories } from './expressionTypeService';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from './parameterTypeService';
 import { parseLingCppControlFlowLine } from './controlFlow';
@@ -305,6 +305,7 @@ export function getLingCppSemanticDiagnostics(
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
   diagnostics.push(...getConstantReferenceDiagnostics(source, effectiveConstants, moduleContext));
   diagnostics.push(...getThreadingDiagnostics(source, parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
+  diagnostics.push(...getCronDiagnostics(source, parsed.program, moduleContext, effectiveGlobals));
   diagnostics.push(...getArrayCommandDiagnostics(parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getVariableDiagnostics([
     ...parsed.program.classes,
@@ -1908,10 +1909,22 @@ export function getLingCppDesignerBindings(
     const controlExists = currentWindows.some(win =>
       win.controls.some(control => normalizeIdentifier(control.name) === normalizeIdentifier(inferredControlName))
     ) || (designerProject.resources || []).some(resource => (
-      resource.type === 'FileDialog'
+      (resource.type === 'FileDialog' || resource.type === 'Clock')
       && currentWindows.some(win => win.id === resource.ownerWindowId)
       && normalizeIdentifier(resource.name) === normalizeIdentifier(inferredControlName)
     ));
+
+    // 常规命名「_控件名_事件中文后缀」已由生成器自动接线（未绑定也参与运行期派发），
+    // 不再提示「尚未在设计器中绑定」；命名不匹配常规规则的事件仍按未绑定提示。
+    if (controlExists && inferredControlName) {
+      const autoWired = currentWindows.some(win => win.controls.some(control => (
+        normalizeIdentifier(control.name) === normalizeIdentifier(inferredControlName)
+        && getConventionalControlEventBindings(control.type, control.name).some(candidate => (
+          normalizeIdentifier(candidate.handlerName) === normalizeIdentifier(event.handlerName)
+        ))
+      )));
+      if (autoWired) return;
+    }
 
     hints.push({
       status: controlExists || !inferredControlName ? 'unbound-source' : 'missing-control',
@@ -2247,11 +2260,15 @@ function getDesignerControlCompletionItemsForWindow(
     });
     getDesignerControlEventEntries(control, moduleContext).forEach(({ eventName, eventLabel, handlerName, parameters }) => {
       const parameterPlaceholders = parameters.map((_, index) => `$${index + 1}`).join(', ');
+      // 设计器未绑定时：常规命名（生成器自动接线）与非常规命名的提示措辞不同，不能都写「尚未绑定」。
+      const conventionalAutoWired = !control.events?.[eventName]?.trim()
+        && getConventionalControlEventBindings(control.type, control.name)
+          .some(candidate => candidate.eventName === eventName && candidate.handlerName === handlerName);
       items.push(createLingCppCatalogItem({
         label: `${control.name}.${eventLabel}事件`,
         kind: 'event',
         insertText: `${handlerName}(${parameterPlaceholders})`,
-        detail: `${detail} · ${eventLabel}事件处理器${control.events?.[eventName]?.trim() ? '' : '（尚未绑定）'}`,
+        detail: `${detail} · ${eventLabel}事件处理器${control.events?.[eventName]?.trim() ? '' : conventionalAutoWired ? '（源码定义后自动接线）' : '（尚未绑定）'}`,
         documentation: `控件事件：${eventLabel} (${eventName})\n处理器：${handlerName}\n可在设计器事件面板绑定；候选可用于调用对应处理器。`,
         aliases: [control.name, control.type, eventName, eventLabel, handlerName, '控件事件'],
         category: 'designer',
@@ -2264,7 +2281,7 @@ function getDesignerControlCompletionItemsForWindow(
   });
 }
 
-interface DesignerControlCommandCompletion {
+export interface DesignerControlCommandCompletion {
   methodName: string;
   commandName: string;
   insertText: string;
@@ -2309,10 +2326,10 @@ function getDesignerControlEventEntries(
   return [...registered, ...custom];
 }
 
-function getDesignerControlCommandCompletions(
+export function getDesignerControlCommandCompletions(
   control: LingWindowModel['controls'][number]
 ): DesignerControlCommandCompletion[] {
-  const name = control.name.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
+  const name = control.name;
   const command = (
     methodName: string,
     commandName: string,
@@ -2321,7 +2338,8 @@ function getDesignerControlCommandCompletions(
   ): DesignerControlCommandCompletion => ({
     methodName,
     commandName,
-    insertText: `${commandName}("${name}"${argumentsText ? `, ${argumentsText}` : ''})`,
+    // 首参数是 controlRef，按契约必须插裸控件名；带引号会触发 lingcpp-control-reference-quoted 阻断。
+    insertText: `${commandName}(${name}${argumentsText ? `, ${argumentsText}` : ''})`,
     description
   });
   const commands = [
@@ -3118,6 +3136,67 @@ const THREADING_LEGACY_MIGRATIONS: Record<(typeof THREADING_LEGACY_COMMANDS)[num
   线程_批量启动: '改为自定义线程池 + 工作/进度/完成处理器，并由进度处理器更新 UI。'
 };
 
+function getCronDiagnostics(
+  source: string,
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  globals: LingCppGlobalVariable[]
+): LingCppDiagnostic[] {
+  const cronModule = (moduleContext?.enabledModules || []).find(module => module.manifest.id === 'lingbuilder.cron');
+  if (!cronModule) return [];
+  const diagnostics: LingCppDiagnostic[] = [];
+  const sourceLines = splitLines(source);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(sourceLines), sourceLines.length);
+  const controlRefCommands = getEnabledLingCppModuleContributions(moduleContext).flatMap(module => {
+    const aliases = new Map((module.manifest.contributes?.commands || []).map(command => [command.name, command.aliases || []]));
+    return (module.manifest.bindings?.commands || [])
+      .filter(binding => (binding.parameters || []).some(parameter => parameter.type === 'controlRef'))
+      .flatMap(binding => [binding.command, ...(aliases.get(binding.command) || [])]);
+  });
+  const globalTypes = new Map(globals.map(global => [normalizeIdentifier(global.name), global.type]));
+
+  program.classes.forEach(cls => {
+    const handlers = new Map(cls.methods.map(method => [normalizeIdentifier(method.name), method]));
+    const workerHandlers = new Set<string>();
+    cls.methods.forEach(caller => {
+      caller.statements.forEach(statement => {
+        if (isLingCppCommentLine(statement.text) || statement.endLine) return;
+        if (opaqueLines.has(statement.line)) return;
+        extractCommandInvocationArguments(statement.text, 'cron_定时_提交线程').forEach(args => {
+          const reference = args[1]?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
+          if (reference) workerHandlers.add(normalizeIdentifier(reference));
+        });
+      });
+    });
+    if (workerHandlers.size === 0) return;
+    const memberNames = new Set(cls.members.map(member => normalizeIdentifier(member.name)));
+    handlers.forEach((handler, handlerKey) => {
+      if (!workerHandlers.has(handlerKey)) return;
+      const usesMutex = handler.statements.some(statement => containsCommandInvocation(statement.text.split('\n')[0] || '', '互斥锁_执行') || containsCommandInvocation(statement.text.split('\n')[0] || '', '互斥锁_尝试执行'));
+      const workerExpressions = [
+        ...handler.statements,
+        ...(handler.locals || []).filter(local => local.initialValue).map(local => ({
+          line: local.line,
+          text: sourceLines[local.line - 1] || local.initialValue || ''
+        }))
+      ];
+      workerExpressions.forEach(expression => {
+        if (isLingCppCommentLine(expression.text)) return;
+        const uiCall = controlRefCommands.find(command => containsCommandInvocation(expression.text, command))
+          || expression.text.match(/(?:^|[^\p{L}\p{N}_])((?:控件|窗口|列表视图|表格|树形框|选项卡|信息框|文件对话框|菜单|EdgeView|CEF3|FBro)_[\p{L}\p{N}_]+|信息框)\s*[（(]/u)?.[1];
+        if (uiCall) diagnostics.push(createDiagnostic('error', expression.line, expression.text, `cron 工作处理器 ${handler.name} 在后台线程执行，不能调用 UI/controlRef 命令 ${uiCall}。`, '把界面操作移动到完成处理器；它在注册窗口 UI 线程执行。'));
+      });
+      handler.statements.forEach(statement => {
+        if (isLingCppCommentLine(statement.text) || statement.endLine) return;
+        const assignment = statement.text.match(/^\s*([\p{L}_][\p{L}\p{N}_]*)\s*[=＝](?!=)/u)?.[1];
+        const writesShared = assignment && (memberNames.has(normalizeIdentifier(assignment)) || globalTypes.has(normalizeIdentifier(assignment)));
+        if (writesShared && !usesMutex) diagnostics.push(createDiagnostic('warning', statement.line, statement.text, `cron 工作处理器 ${handler.name} 写入共享值 ${assignment}，但未检测到互斥锁保护。`, '请使用 互斥锁_执行/互斥锁_尝试执行，或改用线程原子整数。'));
+      });
+    });
+  });
+  return diagnostics;
+}
+
 function getThreadingDiagnostics(
   source: string,
   program: LingCppProgram,
@@ -3216,7 +3295,8 @@ function validateThreadingManagedInvocation(
   structuredTypes: Set<string>,
   diagnostics: LingCppDiagnostic[]
 ): void {
-  const invocation = binding.invocation!;
+  if (binding.invocation?.kind !== 'managedTask') return;
+  const invocation = binding.invocation;
   const requiredCount = invocation.variadicParameterIndex;
   if (args.length < requiredCount) {
     diagnostics.push(createDiagnostic('error', statement.line, statement.text, `${binding.command} 缺少处理器或固定参数。`, `请按 ${binding.command} 的补全签名填写参数。`));
@@ -3294,9 +3374,12 @@ function isVoidType(type: string | undefined): boolean { return !type || /^(?:�
 function isTaskType(type: string | undefined): boolean { return Boolean(type && /^(?:线程任务|长整数型|长整数)$/u.test(type.trim())); }
 
 function isThreadWorkerHandler(source: string, handlerName: string, bindings: ModuleCommandBinding[]): boolean {
-  return bindings.some(binding => binding.invocation?.operation === 'submit'
-    && [binding.command].some(command => extractCommandInvocationArguments(source, command)
-      .some(args => args[binding.invocation!.workerParameterIndex]?.trim() === `&${handlerName}`)));
+  return bindings.some(binding => {
+    const invocation = binding.invocation;
+    if (invocation?.kind !== 'managedTask' || invocation.operation !== 'submit') return false;
+    return [binding.command].some(command => extractCommandInvocationArguments(source, command)
+      .some(args => args[invocation.workerParameterIndex]?.trim() === `&${handlerName}`));
+  });
 }
 
 function getModuleHandlerDiagnostics(source: string, program: LingCppProgram, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
@@ -3887,6 +3970,20 @@ function collectDesignerEventBindings(windows: LingWindowModel[], resources: Lin
         windowId: ownerWindow.id
       }] : []);
     });
+  const clockBindings = resources
+    .filter((resource): resource is LingClockResource => resource.type === 'Clock' && windowIds.has(resource.ownerWindowId))
+    .flatMap(resource => {
+      const ownerWindow = windows.find(window => window.id === resource.ownerWindowId);
+      if (!ownerWindow) return [];
+      return resource.periodHandler?.trim() ? [{
+        handlerName: resource.periodHandler.trim(),
+        className: ownerWindow.className,
+        controlName: resource.name,
+        controlId: resource.id,
+        eventName: 'Elapsed',
+        windowId: ownerWindow.id
+      }] : [];
+    });
   const menuResourceBindings = resources
     .filter((resource): resource is LingMenuResource => (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') && windowIds.has(resource.ownerWindowId))
     .flatMap(resource => {
@@ -3952,7 +4049,7 @@ function collectDesignerEventBindings(windows: LingWindowModel[], resources: Lin
         }));
       return [...controlBindings, ...menuBindings, ...windowBindings];
     });
-  return [...windowBindings, ...resourceBindings, ...menuResourceBindings, ...propertySheetBindings];
+  return [...windowBindings, ...resourceBindings, ...clockBindings, ...menuResourceBindings, ...propertySheetBindings];
 }
 
 function extractAssociatedDesignerFile(source: string): string | undefined {

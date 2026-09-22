@@ -9,6 +9,7 @@ export const SOLUTION_EMBEDDED_RESOURCE_CONTEXT_MENU = 'solution/embeddedResourc
 export const LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU = 'lingcpp/control-reference/context';
 export const LINGCPP_BEGINNER_CONTEXT_MENU = 'lingcpp/beginner/context';
 export const LINGCPP_DLL_COMMANDS_CONTEXT_MENU = 'lingcpp/dll-commands/context';
+export const TERMINAL_CONTEXT_MENU = 'terminal/context';
 
 export type MenuContributionSource = 'builtin' | 'module' | 'extension';
 

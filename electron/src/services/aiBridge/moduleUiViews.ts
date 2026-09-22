@@ -21,13 +21,51 @@ const DEMO_CATALOG_MAX_BYTES = 24 * 1024 * 1024;
 const DEMO_EXAMPLE_MAX_CHARS = 320;
 const UI_RECIPE_ROOT = 'examples/ui-recipes';
 const COMPONENT_GUIDE_INDEX = path.join('docs', 'lingbuilder-components', 'index.json');
-/** 单张组件卡内联上限；命中多个控件时只给路径，不批量塞正文。 */
-export const COMPONENT_GUIDE_MAX_CHARS = 8000;
+/** 单张组件卡内联上限；命中多个控件时只给路径，不批量塞正文。实测最大卡 ~17KB 字节，20K 字符不截断。 */
+export const COMPONENT_GUIDE_MAX_CHARS = 20000;
 
 export interface ComponentGuideEntry {
   documentation: string;
   nativeDocumentation: string;
   hasHumanNotes: boolean;
+}
+
+export interface ComponentGuideContent {
+  /** 卡片完整正文；红线缺失时「待补」占位段整段移除，绝不以散文冒充红线。 */
+  content: string;
+  /** hasHumanNotes=true 时内联的「惯用要点与红线」段正文（机器可判，勿再让 AI 二次读文件）。 */
+  humanNotes: string;
+  /** missing=该卡没有人工红线正文（索引标记缺失或段落只有「待补」占位）。 */
+  humanNotesStatus: 'present' | 'missing';
+  truncated: boolean;
+  absolutePath: string;
+}
+
+/** 「惯用要点与红线」段标题；由组件卡生成器固定输出。 */
+const HUMAN_NOTES_HEADING = '## 惯用要点与红线';
+/** 生成器在无人工 overlay 时写入的占位行前缀；出现即视为「无红线」，整段不进入响应。 */
+const HUMAN_NOTES_PLACEHOLDER_PREFIX = '待补：';
+
+function splitHumanNotesSection(content: string): { before: string; body: string; after: string; found: boolean } {
+  const normalized = content.replace(/\r\n/g, '\n');
+  const headingIndex = normalized.indexOf(`\n${HUMAN_NOTES_HEADING}`);
+  if (headingIndex < 0) {
+    // 标题恰好在文件头（理论不发生，生成器固定有前置段落）。
+    if (normalized.startsWith(`${HUMAN_NOTES_HEADING}\n`)) {
+      const rest = normalized.slice(HUMAN_NOTES_HEADING.length + 1);
+      const nextHeading = rest.indexOf('\n## ');
+      return nextHeading < 0
+        ? { before: '', body: rest, after: '', found: true }
+        : { before: '', body: rest.slice(0, nextHeading), after: rest.slice(nextHeading + 1), found: true };
+    }
+    return { before: normalized, body: '', after: '', found: false };
+  }
+  const bodyStart = headingIndex + 1 + HUMAN_NOTES_HEADING.length;
+  const rest = normalized.slice(bodyStart).replace(/^\n/, '');
+  const nextHeading = rest.indexOf('\n## ');
+  const body = nextHeading < 0 ? rest : rest.slice(0, nextHeading);
+  const after = nextHeading < 0 ? '' : rest.slice(nextHeading + 1);
+  return { before: normalized.slice(0, headingIndex), body, after, found: true };
 }
 
 let componentGuideCache: { key: string; entries: Record<string, ComponentGuideEntry> } | null = null;
@@ -63,8 +101,11 @@ export async function loadComponentGuides(module: InstalledModule): Promise<Reco
   return entries;
 }
 
-export async function readComponentGuide(module: InstalledModule, documentationPath: string):
-  Promise<{ content: string; truncated: boolean; absolutePath: string } | null> {
+export async function readComponentGuide(
+  module: InstalledModule,
+  documentationPath: string,
+  hasHumanNotes = false
+): Promise<ComponentGuideContent | null> {
   const resolved = await resolveInsideRoot(path.resolve(module.installPath, 'docs'), documentationPath.replace(/^docs\//u, ''));
   if (!resolved) return null;
   const bytes = await fs.readFile(resolved);
@@ -74,8 +115,25 @@ export async function readComponentGuide(module: InstalledModule, documentationP
   } catch {
     return null;
   }
-  const truncated = content.length > COMPONENT_GUIDE_MAX_CHARS;
-  return { content: truncated ? content.slice(0, COMPONENT_GUIDE_MAX_CHARS) : content, truncated, absolutePath: resolved };
+  // 红线段与占位符在此判定（P5）：有真红线 → 内联正文；缺失 → 整段不输出 + 机器可判字段，
+  // 禁止把「待补」散文留在看起来像红线的段落里误导外部 AI。
+  const section = splitHumanNotesSection(content);
+  const bodyLines = section.body.split('\n').map(line => line.trim()).filter(Boolean);
+  const placeholderOnly = bodyLines.length > 0 && bodyLines.every(line => line.startsWith(HUMAN_NOTES_PLACEHOLDER_PREFIX));
+  const hasNotes = section.found && bodyLines.length > 0 && !placeholderOnly;
+  let effectiveContent = content;
+  if (section.found && !hasNotes) {
+    // 红线缺失：把整段（含标题与占位）从正文里移除。
+    effectiveContent = `${section.before}${section.after ? `\n${section.after}` : ''}`.replace(/\n{3,}/gu, '\n\n').replace(/\s+$/u, '\n');
+  }
+  const truncated = effectiveContent.length > COMPONENT_GUIDE_MAX_CHARS;
+  return {
+    content: truncated ? effectiveContent.slice(0, COMPONENT_GUIDE_MAX_CHARS) : effectiveContent,
+    humanNotes: hasNotes ? section.body.trim() : '',
+    humanNotesStatus: hasNotes ? 'present' : 'missing',
+    truncated,
+    absolutePath: resolved
+  };
 }
 
 export interface DesignerControlSummary {

@@ -147,6 +147,25 @@ function MenuLevel({
   );
 }
 
+export const SUBMENU_CLOSE_DELAY_MS = 250;
+const SUBMENU_VIEWPORT_MARGIN = 4;
+
+export function computeSubmenuPosition(
+  anchor: { top: number; right: number },
+  submenu: { width: number; height: number },
+  viewport: { width: number; height: number }
+): { left: '100%' | '-100%'; top: number } {
+  const bottomOverflow = anchor.top + submenu.height + SUBMENU_VIEWPORT_MARGIN - viewport.height;
+  const shiftUp = Math.min(
+    Math.max(0, bottomOverflow),
+    Math.max(0, anchor.top - SUBMENU_VIEWPORT_MARGIN)
+  );
+  return {
+    left: anchor.right + submenu.width > viewport.width ? '-100%' : '100%',
+    top: shiftUp > 0 ? -shiftUp : 0
+  };
+}
+
 function SubmenuRow({ item, index, buttonRef, active, isDarkMode, onOpen, onClose, onExecute, onCloseMenu }: {
   item: ResolvedSubmenuItem;
   index: number;
@@ -159,18 +178,48 @@ function SubmenuRow({ item, index, buttonRef, active, isDarkMode, onOpen, onClos
   onCloseMenu: () => void;
 }) {
   const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const submenuRef = useRef<HTMLDivElement | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const [position, setPosition] = useState({ left: '100%', top: 0 });
-  useLayoutEffect(() => {
-    if (!active || !anchorRef.current) return;
-    const rect = anchorRef.current.getBoundingClientRect();
-    const estimatedWidth = 240;
-    setPosition({
-      left: rect.right + estimatedWidth > window.innerWidth ? '-100%' : '100%',
-      top: Math.max(-rect.top + 4, Math.min(0, window.innerHeight - rect.top - 320))
-    });
+
+  const cancelPendingClose = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const scheduleClose = () => {
+    cancelPendingClose();
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      onClose();
+    }, SUBMENU_CLOSE_DELAY_MS);
+  };
+
+  useEffect(() => cancelPendingClose, []);
+
+  useEffect(() => {
+    if (!active) cancelPendingClose();
   }, [active]);
+
+  useLayoutEffect(() => {
+    if (!active || !anchorRef.current || !submenuRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const submenuRect = submenuRef.current.getBoundingClientRect();
+    setPosition(computeSubmenuPosition(
+      { top: rect.top, right: rect.right },
+      { width: submenuRect.width, height: submenuRect.height },
+      { width: window.innerWidth, height: window.innerHeight }
+    ));
+  }, [active]);
+
   return (
-    <div className="relative" onMouseEnter={onOpen} onMouseLeave={onClose}>
+    <div
+      className="relative"
+      onMouseEnter={() => { cancelPendingClose(); onOpen(); }}
+      onMouseLeave={scheduleClose}
+    >
       <button
         ref={element => { anchorRef.current = element; buttonRef(element); }}
         type="button"
@@ -193,7 +242,7 @@ function SubmenuRow({ item, index, buttonRef, active, isDarkMode, onOpen, onClos
         <ChevronRight className="h-3.5 w-3.5 opacity-60" />
       </button>
       {active && (
-        <div className="absolute z-[410]" style={position}>
+        <div ref={submenuRef} className="absolute z-[410]" style={position}>
           <MenuLevel
             items={item.items}
             isDarkMode={isDarkMode}

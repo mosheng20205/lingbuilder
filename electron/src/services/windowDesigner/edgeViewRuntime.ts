@@ -105,10 +105,13 @@ export const EDGEVIEW_SAFE_API_NATIVE_MEMBERS = String.raw`
     long long nextEdgeViewManagedObjectId_ = 1;
 #endif
 
+    static constexpr const wchar_t* LINGBUILDER_EDGEVIEW_RUNTIME_DOWNLOAD_HINT =
+        L"请安装 WebView2 Runtime 150 或更高版本后重新运行。x64 离线安装包：https://go.microsoft.com/fwlink/p/?LinkId=2124701 ；官方下载页（含 x86/ARM64/固定版本）：https://developer.microsoft.com/microsoft-edge/webview2";
     void EdgeView_报告接口缺失(const wchar_t* command) {
         std::wstring message = L"EdgeView 命令不可用：";
         message += command ? command : L"未知命令";
         message += L"。当前 WebView2 Runtime 版本不足；v1 最低需要 141，v2 完整能力需要 150。";
+        message += LINGBUILDER_EDGEVIEW_RUNTIME_DOWNLOAD_HINT;
         调试输出(message.c_str());
     }
 
@@ -130,7 +133,7 @@ export const EDGEVIEW_SAFE_API_NATIVE_MEMBERS = String.raw`
         const HRESULT result = GetAvailableCoreWebView2BrowserVersionString(nullptr, &version);
         const long major = SUCCEEDED(result) && version ? wcstol(version, nullptr, 10) : 0; if (version) CoTaskMemFree(version);
         if (major >= LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR) return true;
-        std::wstring message = L"EdgeView 启动被阻止：源码使用的 API 至少需要 WebView2 Runtime "; message += std::to_wstring(LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR); message += L"，当前 Runtime 为 "; message += major > 0 ? std::to_wstring(major) : L"未知"; message += L"。"; 调试输出(message.c_str()); return false;
+        std::wstring message = L"EdgeView 启动被阻止：源码使用的 API 至少需要 WebView2 Runtime "; message += std::to_wstring(LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR); message += L"，当前 Runtime 为 "; message += major > 0 ? std::to_wstring(major) : L"未知"; message += L"。"; message += LINGBUILDER_EDGEVIEW_RUNTIME_DOWNLOAD_HINT; 调试输出(message.c_str()); return false;
     }
     std::shared_ptr<EdgeViewTaskState> EdgeView任务_新建(EdgeViewInstance* instance, const wchar_t* handler) {
         if (!instance || instance->closed) return {};
@@ -720,6 +723,7 @@ ${printSettingsWrappers()}
         std::wstring output;
         for (wchar_t ch : value) {
             if (ch == static_cast<wchar_t>(92)) { output += L"\\"; }
+            else if (ch == static_cast<wchar_t>(34)) { output += L"\\\""; }
             else if (ch == static_cast<wchar_t>(39)) { output += L"\'"; }
             else if (ch == static_cast<wchar_t>(10)) { output += L"\n"; }
             else if (ch == static_cast<wchar_t>(13)) { output += L"\r"; }
@@ -732,13 +736,17 @@ ${printSettingsWrappers()}
     long long EdgeView_填表执行(const wchar_t* controlName, long long frameId, const wchar_t* op,
                                    const std::wstring& selector, int index,
                                    const std::wstring& a, const std::wstring& b, const wchar_t* handler) {
+        // 包装串必须是单条调用表达式，})() 之后直接跟实参括号调用 lbTianBiao。
+        // op/selector/a/b 是 JS 字符串实参，用单引号包住（拼接字面量会把值内的
+        // 单引号/反斜杠/换行转义成 JS 串安全序列）；裸插标识符会 ReferenceError，
+        // 22 条填表命令全部空转回 null（ep16 示例真机暴露）。
         const std::wstring call = std::wstring(L"(function(){return ")
-            + EdgeView_填表助手脚本() + L"})();"
-            + L"(" + EdgeView_填表拼接字面量(op)
-            + L"," + EdgeView_填表拼接字面量(selector)
-            + L"," + std::to_wstring(index < 0 ? 0 : index)
-            + L"," + EdgeView_填表拼接字面量(a)
-            + L"," + EdgeView_填表拼接字面量(b) + L");";
+            + EdgeView_填表助手脚本() + L"})()"
+            + L"('" + EdgeView_填表拼接字面量(op)
+            + L"','" + EdgeView_填表拼接字面量(selector)
+            + L"'," + std::to_wstring(index < 0 ? 0 : index)
+            + L",'" + EdgeView_填表拼接字面量(a)
+            + L"','" + EdgeView_填表拼接字面量(b) + L"');";
         return EdgeView框架_执行脚本异步(controlName, frameId, call.c_str(), handler);
     }
 

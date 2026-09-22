@@ -16,6 +16,7 @@ interface EpisodeSpec {
   episode: string;
   workspaceRelative: string;
   packageName: string;
+  outputKind?: 'console-application';
 }
 
 const episodes: EpisodeSpec[] = [
@@ -31,7 +32,11 @@ const episodes: EpisodeSpec[] = [
   { episode: '09', workspaceRelative: '09/示例项目', packageName: 'EdgeView教程09-下载与页内查找.lcpppkg' },
   { episode: '10', workspaceRelative: '10/示例项目', packageName: 'EdgeView教程10-打印截图与开发者工具.lcpppkg' },
   { episode: '11', workspaceRelative: '11/示例项目', packageName: 'EdgeView教程11-会话权限与安全边界.lcpppkg' },
-  { episode: '12', workspaceRelative: '12/示例项目', packageName: 'EdgeView教程12-综合项目.lcpppkg' }
+  { episode: '12', workspaceRelative: '12/示例项目', packageName: 'EdgeView教程12-综合项目.lcpppkg' },
+  { episode: '13', workspaceRelative: '13/示例项目', packageName: 'EdgeView教程13-JS交互页面调用原生.lcpppkg' },
+  { episode: '14', workspaceRelative: '14 多店铺弹窗浏览器/示例项目', packageName: 'EdgeView教程14-多店铺弹窗浏览器.lcpppkg' },
+  // 15 集为 windows-console 控制台工程：LCPP 源码包服务当前只支持可视 C++ 项目，暂不能导出 .lcpppkg（见 docs/FUTURE_OPTIMIZATIONS.md 2026-09-21 节）。
+  { episode: '16', workspaceRelative: '16 填表族网页自动化/示例项目', packageName: 'EdgeView教程16-填表族网页自动化.lcpppkg' }
 ];
 
 function builtin(moduleId: string): InstalledModule {
@@ -76,7 +81,7 @@ interface SolutionProject {
   designerPath: string;
 }
 
-async function validateWorkspace(workspaceRoot: string) {
+async function validateWorkspace(workspaceRoot: string, spec: EpisodeSpec) {
   const solutionText = await fs.readFile(path.join(workspaceRoot, '.lingbuilder', 'solution.json'), 'utf8');
   const solution = JSON.parse(solutionText) as { startupProjectId: string; projects: SolutionProject[] };
   const project = solution.projects.find(item => item.id === solution.startupProjectId);
@@ -99,7 +104,8 @@ async function validateWorkspace(workspaceRoot: string) {
   const generated = generateLingCppNativeWin32Project(designerProject, {
     activeWindowId: designerProject.windows[0]?.id,
     lingCppSources,
-    enabledModules
+    enabledModules,
+    ...(spec.outputKind ? { outputKind: spec.outputKind } : {})
   });
   if (generated.blockingDiagnostics.length > 0) {
     throw new Error(`项目 ${project.name} 存在阻断诊断：\n${generated.blockingDiagnostics.join('\n')}`);
@@ -113,7 +119,7 @@ async function validateWorkspace(workspaceRoot: string) {
 }
 
 async function exportAndVerifyPackage(spec: EpisodeSpec, workspaceRoot: string, ideVersion: string) {
-  const validation = await validateWorkspace(workspaceRoot);
+  const validation = await validateWorkspace(workspaceRoot, spec);
   const exportPath = path.join(outputRoot, spec.packageName);
   await fs.mkdir(outputRoot, { recursive: true });
   const service = createLcppSourcePackageService(workspaceRoot);

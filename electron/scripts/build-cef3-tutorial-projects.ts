@@ -31,7 +31,15 @@ const EPISODE_DIRS = [
   '06 获取网页资源响应',
   '07 资源加载生命周期',
   '08 下载打印查找',
-  '09 JavaScript DevTools 异步任务'
+  '09 JavaScript DevTools 异步任务',
+  '14 无头浏览器抓取',
+  '15 自动填表',
+  '16 网页框架操作',
+  '17 多实例与多店铺',
+  '18 Cookie与会话管理',
+  '19 模拟输入与用户代理',
+  '20 弹窗管理',
+  '21 DevTools订阅与受管流'
 ];
 
 /** 构建产物里必须出现的 CEF 运行时文件，缺一个都不能拿去录制。 */
@@ -67,6 +75,16 @@ async function smoke(binDir: string): Promise<{ aliveSeconds: number; processes:
 }
 
 const exists = (file: string) => fs.access(file).then(() => true, () => false);
+
+/** 兼容两种产物布局：新构建路径服务带 x64/Debug 子目录，旧布局平铺 bin/。 */
+async function findBinDir(stagedDir: string, projectId: string): Promise<string | null> {
+  const buildRoot = path.join(stagedDir, '.lingbuilder-build', projectId);
+  const candidates = [path.join(buildRoot, 'bin'), path.join(buildRoot, 'x64', 'Debug', 'bin'), path.join(buildRoot, 'x64', 'Release', 'bin')];
+  for (const dir of candidates) {
+    if (await exists(path.join(dir, 'LingBuilderPreview.exe'))) return dir;
+  }
+  return null;
+}
 
 /** --smoke-only：复用已有暂存副本，只重跑运行冒烟。 */
 async function reuseStage(episodeDir: string): Promise<{ projectId: string; dir: string }> {
@@ -110,17 +128,24 @@ async function buildOne(episodeDir: string, skipBuild: boolean): Promise<BuildRe
   try {
     const staged = skipBuild ? await reuseStage(episodeDir) : await stage(episodeDir);
     projectId = staged.projectId;
-    if (!skipBuild) await execFileAsync(process.execPath, [
-      cli, 'project', 'build',
-      '--request', path.join(staged.dir, 'build-request.json'),
-      '--workspace', staged.dir,
-      '--yes', '--json'
-    ], { maxBuffer: 64 * 1024 * 1024, cwd: path.join(repoRoot, 'electron') });
+    let buildLog = '';
+    if (!skipBuild) {
+      const buildResult = await execFileAsync(process.execPath, [
+        cli, 'project', 'build',
+        '--request', path.join(staged.dir, 'build-request.json'),
+        '--workspace', staged.dir,
+        '--yes', '--json'
+      ], { maxBuffer: 64 * 1024 * 1024, cwd: path.join(repoRoot, 'electron') });
+      buildLog = `${buildResult.stdout}\n${buildResult.stderr}`;
+    }
 
-
-    const binDir = path.join(staged.dir, '.lingbuilder-build', projectId, 'bin');
+    const binDir = await findBinDir(staged.dir, projectId);
+    if (!binDir) {
+      const logs = JSON.stringify(buildLog).match(/"logs":\s*\[[\s\S]*?\]/)?.[0];
+      const compileFail = buildLog.match(/error C\d+:[^\\n]*|LCPP[^\n"]*错误[^\n"]*|阻止构建[^\n"]*/g)?.slice(0, 8).join('\n');
+      throw new Error(`构建结束但未生成 LingBuilderPreview.exe\n${compileFail || logs || buildLog.slice(-800)}`);
+    }
     const exe = path.join(binDir, 'LingBuilderPreview.exe');
-    if (!await exists(exe)) throw new Error('构建结束但未生成 LingBuilderPreview.exe');
     const runtimeFiles = await fs.readdir(binDir);
     const missingRuntime = REQUIRED_RUNTIME.filter(name => !runtimeFiles.includes(name));
     if (missingRuntime.length) throw new Error(`缺少 CEF 运行时文件：${missingRuntime.join('、')}`);
@@ -145,8 +170,15 @@ async function main(): Promise<void> {
   await fs.mkdir(stageRoot, { recursive: true });
 
   const skipBuild = process.argv.includes('--smoke-only');
+  // 可选位置参数：只构建集号前缀匹配的子集，例如 `--episodes 14,15,16`。
+  const episodeFilterArg = process.argv.find(arg => arg.startsWith('--episodes='));
+  const episodeFilter = episodeFilterArg ? episodeFilterArg.slice('--episodes='.length).split(',').map(item => item.trim()) : [];
+  const targetDirs = episodeFilter.length
+    ? EPISODE_DIRS.filter(dir => episodeFilter.some(prefix => dir.startsWith(prefix)))
+    : EPISODE_DIRS;
+  if (episodeFilter.length && !targetDirs.length) throw new Error(`--episodes 过滤没有命中任何集目录：${episodeFilter.join('、')}`);
   const records: BuildRecord[] = [];
-  for (const episodeDir of EPISODE_DIRS) {
+  for (const episodeDir of targetDirs) {
     const record = await buildOne(episodeDir, skipBuild);
     records.push(record);
     console.error(`${record.episode} ${record.ok ? 'OK' : 'FAIL'}${record.ok ? ` exe=${record.exeBytes} smoke=${record.smokeAliveSeconds}s/${record.smokeProcesses}进程` : ''}`);

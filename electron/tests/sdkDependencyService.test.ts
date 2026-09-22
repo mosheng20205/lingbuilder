@@ -51,12 +51,15 @@ import {
 } from '../src/services/sdkDependencies/sdkDependencyCatalog';
 
 test('SDK 资源清单固定使用 HTTPS、精确大小和 SHA-256', () => {
-  assert.deepEqual(SDK_DEPENDENCY_RESOURCES.map(item => item.id), ['cef3', 'fbro']);
+  // 2026-09-21 写回：新增 sunnynet（网络中间件 SDK 1.5.1，31MB——远小于 CEF3/FBro 的
+  // 100MB+ 归档，归档大小下限从 100MB 放宽到 10MB；其关键文件仅 3 个，criticalFiles
+  // 下限从 7 放宽到 3）。
+  assert.deepEqual(SDK_DEPENDENCY_RESOURCES.map(item => item.id), ['cef3', 'fbro', 'sunnynet']);
   for (const resource of SDK_DEPENDENCY_RESOURCES) {
     assert.match(resource.downloadUrl, /^https:\/\//u);
-    assert.ok(resource.archiveBytes > 100 * 1024 * 1024);
+    assert.ok(resource.archiveBytes > 10 * 1024 * 1024);
     assert.match(resource.sha256, /^[a-f0-9]{64}$/u);
-    assert.ok(resource.criticalFiles.length >= 7);
+    assert.ok(resource.criticalFiles.length >= 3);
   }
   assert.deepEqual(getRequiredSdkDependencyIds(['lingbuilder.win32.basic']), []);
   assert.deepEqual(getRequiredSdkDependencyIds(['lingbuilder.cef3.browser']), ['cef3']);
@@ -334,10 +337,29 @@ test('FBro runtime 的受控最小体积不会超过已签名归档中的 libcef
 });
 
 test('实际上传 ZIP 的中央目录与受控资源清单一致', async () => {
-  const packageRoot = path.resolve(import.meta.dirname, '../../output/cloud-sdk-packages-2026-08-13');
   for (const resource of SDK_DEPENDENCY_RESOURCES) {
-    const inventory = await inspectZipArchive(path.join(packageRoot, resource.archiveName));
-    assert.deepEqual(inventory.roots, [resource.moduleId]);
+    const candidates = [
+      path.resolve(import.meta.dirname, '../release', resource.archiveName),
+      path.resolve(import.meta.dirname, '../../.lingbuilder-build', resource.archiveName)
+    ];
+    let archivePath = '';
+    for (const candidate of candidates) {
+      if (await fs.stat(candidate).then(() => true, () => false)) {
+        archivePath = candidate;
+        break;
+      }
+    }
+    if (!archivePath) {
+      throw new Error(`未找到已发布归档（已搜索：${candidates.join('；')}）`);
+    }
+    const inventory = await inspectZipArchive(archivePath);
+    // CEF3/SunnyNet 归档是「清单+README+sdk/」平铺布局（安装期归一化），FBro 归档按模块目录包裹。
+    // 2026-09-21 写回：新增 sunnynet（SunnyNet SDK 1.5.1），随 CEF3 走平铺布局。
+    const expectedRoots = resource.id === 'fbro'
+      ? [resource.moduleId]
+      : ['lingbuilder.module.json', 'README.md', 'sdk'];
+    // 根目录集合按集合语义比较：zip 中央目录顺序取决于打包工具，不代表布局差异。
+    assert.deepEqual([...inventory.roots].sort(), [...expectedRoots].sort());
     assert.equal(inventory.fileCount, resource.fileCount);
     assert.equal(inventory.expandedBytes, resource.expandedBytes);
   }

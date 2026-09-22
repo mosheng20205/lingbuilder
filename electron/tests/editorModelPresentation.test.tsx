@@ -27,6 +27,15 @@ test('editor history presentation exposes per-surface Chinese disabled reasons',
   const native = getEditorHistoryPresentation(status({ surface: 'native:main.cpp', readOnly: true }));
   assert.equal(native.redoDisabled, true);
   assert.match(native.redoTitle, /只读/u);
+
+  // 界面设计 surface 不再按“只读”压死撤销按钮：只读恒为 false，禁用仅由真实历史可用性决定。
+  const designerIdle = getEditorHistoryPresentation(status({ surface: 'designer', readOnly: false, canUndo: false, canRedo: false }));
+  assert.equal(designerIdle.undoDisabled, true);
+  assert.match(designerIdle.undoTitle, /界面设计没有可撤销的设计操作/u);
+  const designerBusy = getEditorHistoryPresentation(status({ surface: 'designer', readOnly: false, canUndo: true, canRedo: true }));
+  assert.equal(designerBusy.undoDisabled, false);
+  assert.equal(designerBusy.redoDisabled, false);
+  assert.match(designerBusy.undoTitle, /撤销当前文件的上一步编辑/u);
 });
 
 test('editor position status renders line, column, selection, and accessible label', () => {

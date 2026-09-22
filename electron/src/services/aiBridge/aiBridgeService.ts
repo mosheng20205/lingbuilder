@@ -71,6 +71,7 @@ import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath, 
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
 import { resolveExecutableNameParts } from '../solution/externalProjectService';
 import { resolveProjectBuildDirectories } from '../tasks/buildPathService';
+import { describeBuildOutputDirectory } from '../tasks/buildOutputLabel';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
 import { SdkDependencyService } from '../sdkDependencies/sdkDependencyService';
 import { resolveSdkCacheRoot } from '../sdkDependencies/sdkDependencyCatalog';
@@ -164,6 +165,21 @@ const SEARCH_TOTAL_LIMIT = 64 * 1024 * 1024;
 const SEARCH_FILE_COUNT_LIMIT = 20_000;
 const TREE_NODE_LIMIT = 10_000;
 
+/**
+ * 工作区错位是外部 AI 首次接入最常见的失败（P2，2026-09-21）：stdio 宿主的工作区=客户端启动目录，
+ * 指错后所有相对路径都会 ENOENT。这里把裸 ENOENT 翻译成「当前工作区在哪 + 两种修法」，不再让 AI 从
+ * 系统错误码反推。非 ENOENT（如符号链接拒绝）已有精确中文诊断，原样透出。
+ */
+export function wrapWorkspaceUnreachableError(error: unknown, target: string, workspaceRoot: string): unknown {
+  if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') return error;
+  // 保留 code='ENOENT'：内部调用方（如 edit.propose 把基准为空的文件当新文件）按同一错误码分支。
+  return Object.assign(new Error(
+    `工作区中不存在「${target}」。当前 AI Bridge 工作区是 ${workspaceRoot}。`
+    + '两种可能：① 相对路径写错或文件尚未创建——请先调 lingbuilder.workspace.list 读首项（type="workspace"）确认工作区根，再核对相对路径；'
+    + '② MCP 宿主启动目录（--workspace）指错——若上面的工作区路径不是用户项目所在目录，请让客户端切换到正确目录后重启 MCP 宿主（重连即可生效）。'
+  ), { code: 'ENOENT' });
+}
+
 export type AiBridgeCompilerInfo = {
   kind: 'msvc' | 'g++' | 'clang++';
   command: string;
@@ -196,7 +212,8 @@ export interface AiBridgeServiceDependencies {
     outputType?: 'exe' | 'dll',
     requireAdministrator?: boolean
   ) => Promise<AiBridgeCompileResult>;
-  assertModuleAccess?: (moduleIds: readonly string[]) => void;
+  /** 收费模块权益门禁；实现可异步（cli 侧会在失败路径上惰性重取本机授权，见 moduleAccessGate）。 */
+  assertModuleAccess?: (moduleIds: readonly string[]) => void | Promise<void>;
   buildPipelineService?: BuildPipelineService;
   requireSdkDependencies?: (moduleIds: readonly string[]) => Promise<void>;
 }
@@ -295,8 +312,12 @@ export class AiBridgeService {
   }
 
   async listWorkspaceTree(): Promise<AiBridgeTreeEntry[]> {
+    // 首项是合成的 workspace 根条目：外部 AI 开始工作前先读它确认自己连到的工作区，
+    // 「--workspace . 落错目录」在第一次调用就能自查出来，不必等某条 ENOENT 间接暴露。
+    const realRoot = await this.pathPolicy.getRealWorkspaceRoot();
     try {
-      return await this.readDirectoryTree(await this.pathPolicy.getRealWorkspaceRoot(), 0, { nodes: 0 });
+      const tree = await this.readDirectoryTree(realRoot, 0, { nodes: 0 });
+      return [{ path: '.', name: path.basename(realRoot), type: 'workspace', workspaceRoot: realRoot }, ...tree];
     } catch (error) {
       await this.auditFailure('read', 'workspace.list', '.', error);
       throw error;
@@ -314,7 +335,7 @@ export class AiBridgeService {
       };
     } catch (error) {
       await this.auditFailure('read', 'file.read', filePath, error);
-      throw error;
+      throw wrapWorkspaceUnreachableError(error, filePath, this.workspaceRoot);
     }
   }
 
@@ -355,7 +376,11 @@ export class AiBridgeService {
     let projectGlobals;
     let projectTypes;
     const projectSources = request.projectId
-      ? await this.resolveLingCppProjectSources(request.projectId)
+      ? await this.resolveLingCppProjectSources(request.projectId).catch(error => {
+          // 项目源码目录整棵缺失是「工作区错位」的典型症状（磁盘上连 src/<id> 都没有），
+          // 报错必须给出当前工作区与修法，而不是裸 ENOENT。
+          throw wrapWorkspaceUnreachableError(error, `项目「${request.projectId}」的源码目录`, this.workspaceRoot);
+        })
       : [];
     const effectiveSources: LingCppProjectSourceFile[] = [
       ...projectSources.filter(source => normalizeFilePath(source.filePath) !== normalizedRequestPath),
@@ -562,7 +587,7 @@ export class AiBridgeService {
       this.moduleService.getEnabledProjectModules(projectId),
       this.moduleService.getHistory()
     ]);
-    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
+    await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     const enabledIds = new Set(enabledModules.map(module => module.manifest.id));
     // 完整 manifest（new_emoji 一家就有 4000+ 条命令、6MB+ JSON）绝不整体返回；
     // 未启用模块只用一行紧凑字符串列出（id + 名称 + 版本 + 命令数），
@@ -608,6 +633,17 @@ export class AiBridgeService {
       throw new Error(`未找到模块「${moduleId}」。${candidates.length ? `相近模块：${candidates.join('、')}。` : '请先用 lingbuilder.modules.list 查看可用模块。'}`);
     }
     const manifest = found.manifest;
+    // P6（2026-09-21）：enabled/installPath 必须自带作用域，禁止返回「指向其他位置却未标注」的误导字段。
+    const installPathOutsideWorkspace = await (async () => {
+      if (found.isBuiltin === true || !path.isAbsolute(found.installPath)) return false;
+      const relative = path.relative(this.workspaceRoot, found.installPath);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) return true;
+      // 目录联接会把物理上在工作区外的目录接进 .lingbuilder/modules：按真实路径再判一次。
+      const real = await fs.realpath(found.installPath).catch(() => undefined);
+      if (!real) return false;
+      const realRelative = path.relative(this.workspaceRoot, real);
+      return realRelative.startsWith('..') || path.isAbsolute(realRelative);
+    })();
     const query = request.query?.trim().toLowerCase() || '';
     const filteredCommands = (manifest.contributes?.commands || [])
       .filter(command => command.visibility !== 'internal')
@@ -652,7 +688,7 @@ export class AiBridgeService {
     const controlDetails = controlFilter ? buildDesignerControlDetails(manifest, controlFilter, componentGuides) : null;
     const singleControl = controlDetails && controlDetails.matched === 1 ? controlDetails.details[0] : undefined;
     const controlGuide = singleControl?.documentation
-      ? await readComponentGuide(found, singleControl.documentation)
+      ? await readComponentGuide(found, singleControl.documentation, singleControl.hasHumanNotes === true)
       : null;
     if (controlFilter && controlDetails && controlDetails.matched === 0) {
       const available = designerControls.slice(0, 12).map(control => control.label).join('、');
@@ -667,8 +703,17 @@ export class AiBridgeService {
       category: manifest.category,
       tags: manifest.tags,
       isBuiltin: found.isBuiltin === true,
+      // enabled 只是「enabledForProject 指定项目」的启用状态；未传 projectId 时按默认项目（lingbuilder-ui-project）计。
       enabled: found.isEnabledForProject === true,
+      enabledForProject: projectId,
+      enabledScopeNote: 'enabled 只表示该模块在 enabledForProject 项目中的启用状态；要查其他项目请传 projectId。当前数据扫描自 scannedWorkspaceRoot。',
       installPath: found.installPath,
+      installPathScope: found.isBuiltin === true ? 'builtin' : (found.isDevLink === true ? 'dev-link' : 'workspace'),
+      scannedWorkspaceRoot: this.workspaceRoot,
+      ...(installPathOutsideWorkspace ? {
+        installPathOutsideWorkspace: true,
+        installPathNote: 'installPath 的实际内容位于当前 Bridge 工作区之外（开发源链接或目录联接指向的外部目录）；模块内容以该目录为准，lingbuilder.file.read 无法直接读取该路径。'
+      } : {}),
       diagnostics: found.diagnostics,
       targets: (manifest.targets || []).map(target => ({
         id: target.id, platform: target.platform, arch: target.arch, toolchain: target.toolchain
@@ -701,6 +746,9 @@ export class AiBridgeService {
           nativePath: singleControl?.nativeDocumentation || '',
           absolutePath: controlGuide.absolutePath,
           truncated: controlGuide.truncated,
+          // 有人工红线时直接内联红线正文（一次调用拿全），缺失时给机器可判字段而不是「待补」散文。
+          humanNotes: controlGuide.humanNotes,
+          humanNotesStatus: controlGuide.humanNotesStatus,
           content: controlGuide.content
         }
       } : {}),
@@ -893,7 +941,7 @@ export class AiBridgeService {
     this.solutionService.getProject(solution, projectId);
     const preview = this.moduleService.getPackageInstallPreview(previewId);
     if (!preview?.manifest) throw new Error('安装预览不存在或已经失效，请重新调用 lingbuilder.module.installPreview。');
-    this.assertModuleAccess([preview.manifest.id]);
+    await this.assertModuleAccess([preview.manifest.id]);
     await this.requireWriteWithAudit('module.install', `${preview.manifest.id}@${preview.manifest.version}`, request.approved);
     const result = await this.moduleService.installPackage(previewId);
     const enableForProject = request.enableForProject !== false;
@@ -926,7 +974,7 @@ export class AiBridgeService {
       ...preview.modules.requestedModuleIds,
       ...preview.modules.dependencyModuleIds
     ];
-    this.assertModuleAccess(moduleIds);
+    await this.assertModuleAccess(moduleIds);
     if (request.approved !== true) {
       return { ok: true as const, applied: false as const, preview };
     }
@@ -1092,7 +1140,7 @@ export class AiBridgeService {
       this.resolveLingCppProjectSources(projectId, request.lingCppSources)
     ]);
     await this.assertControlReferencesInDesigner({ projectId, designerProject: request.project, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
-    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
+    await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
     // 与 executeBuildRun 同口径：预览产物跟随解决方案项目记录的输出形态（窗口应用缺省 / dll / 控制台）。
     const previewOutputKind = await this.resolveProjectOutputKind(projectId);
@@ -1400,7 +1448,9 @@ export class AiBridgeService {
       if (explicitSources?.length) throw error;
       return [];
     }
-    const sourceRoot = normalizeFilePath(projectRef.sourceRoot).replace(/\/+$/u, '');
+    // sourceRoot 为空串或 '.' 都表示源码就在项目根（与 resolveAssetProject 的 `|| '.'` 口径统一）：
+    // 前缀校验与相对路径计算按无前缀处理，不能退化成「要求路径以 / 开头」或「必须带 ./」。
+    const sourceRoot = normalizeFilePath(projectRef.sourceRoot || '.').replace(/\/+$/u, '').replace(/^\.$/u, '');
     const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(path.resolve(this.workspaceRoot, sourceRoot));
     if (Array.isArray(explicitSources) && explicitSources.length > 0) {
       let totalSize = 0;
@@ -1409,8 +1459,13 @@ export class AiBridgeService {
         if (!source || typeof source.filePath !== 'string' || typeof source.sourceCode !== 'string') throw new Error('项目源码集合包含无效条目。');
         const filePath = normalizeFilePath(source.filePath).replace(/^\.\//u, '');
         if (!filePath.toLocaleLowerCase().endsWith('.lcpp') || filePath.split('/').includes('..') || path.isAbsolute(filePath)) throw new Error(`项目源码路径不安全：${source.filePath}`);
-        if (!filePath.startsWith(`${sourceRoot}/`)) throw new Error(`项目源码路径不属于当前项目源码目录：${source.filePath}`);
-        const sourceRelativePath = filePath.slice(sourceRoot.length + 1);
+        if (sourceRoot && !filePath.startsWith(`${sourceRoot}/`)) {
+          throw new Error(
+            `项目源码路径不属于当前项目源码目录：${source.filePath}（本项目 sourceRoot = ${sourceRoot}）。`
+            + `若源码就在项目根目录，请把解决方案里该项目的 sourceRoot 设为 '.'；否则把 .lcpp 源码移入 ${sourceRoot}/ 子目录后再提交。`
+          );
+        }
+        const sourceRelativePath = sourceRoot ? filePath.slice(sourceRoot.length + 1) : filePath;
         if (isProjectBuildArtifactRelativePath(sourceRelativePath)) continue;
         if (isNestedWorkspaceArtifactRelativePath(sourceRelativePath, nestedWorkspacePlan)) continue;
         totalSize += Buffer.byteLength(source.sourceCode, 'utf8');
@@ -1422,8 +1477,8 @@ export class AiBridgeService {
     const files = await this.solutionService.readProjectFiles(projectRef);
     return Object.entries(files)
       .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith('.lcpp')
-        && normalizeFilePath(filePath).startsWith(`${sourceRoot}/`)
-        && !isProjectBuildArtifactRelativePath(normalizeFilePath(filePath).slice(sourceRoot.length + 1)))
+        && (!sourceRoot || normalizeFilePath(filePath).startsWith(`${sourceRoot}/`))
+        && !isProjectBuildArtifactRelativePath(normalizeFilePath(filePath).slice(sourceRoot ? sourceRoot.length + 1 : 0)))
       .map(([filePath, sourceCode]) => ({ filePath: normalizeFilePath(filePath), sourceCode: String(sourceCode || '') }));
   }
 
@@ -1445,7 +1500,7 @@ export class AiBridgeService {
       this.moduleService.getEnabledProjectModules(sourceProjectId),
       this.resolveLingCppProjectSources(sourceProjectId, request.lingCppSources)
     ]);
-    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
+    await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
     // 项目级 DLL 命令声明：扫描全部源码解析声明库（虚拟模块由生成器内部合成，这里准备物化数据）。
     const projectDllLibraries = lingCppSources.flatMap(source => parseLingCpp(source.sourceCode).program.dllLibraries || []);
@@ -1777,10 +1832,10 @@ export class AiBridgeService {
     const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, executableResourcePath, buildLease.signal, outputType, requireAdministrator);
     const logs = [
       ...baseLogs,
-      `exe 输出目录：${binDir}`,
+      `${describeBuildOutputDirectory(outputKind)}：${binDir}`,
       `中间文件目录：${objDir}`,
       `编译器：${compiler.kind} (${compiler.command})`,
-      executableNameParts.fileName !== 'LingBuilderPreview.exe' ? `项目自定义 EXE 文件名：${executableNameParts.fileName}` : '',
+      executableNameParts.fileName !== 'LingBuilderPreview.exe' ? `项目自定义输出文件名：${executableNameParts.fileName}` : '',
       moduleNativePlan.runtimeFiles.length ? `已复制模块运行时文件：${moduleNativePlan.runtimeFiles.map(file => path.basename(file)).join(', ')}` : '',
       ...compileResult.logs
     ].filter(Boolean);
@@ -2242,7 +2297,7 @@ export class AiBridgeService {
       this.moduleService.scanInstalledModules(projectId),
       this.moduleService.getEnabledProjectModules(projectId)
     ]);
-    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
+    await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     // 项目级 DLL 命令声明：合成虚拟模块并入上下文，使诊断/补全/AI 描述覆盖声明命令。
     const sources = await this.resolveLingCppProjectSources(projectId);
     const projectDllModule = createProjectDllDeclarationModuleFromSources(sources, projectId);
@@ -2649,7 +2704,7 @@ async function compileWin32Preview(
     if (error instanceof WindowsExecutableResourceCompileError) {
       return { ok: false, logs: error.logs };
     }
-    return { ok: false, logs: ['EXE 图标资源编译失败。', error instanceof Error ? error.message : String(error)] };
+    return { ok: false, logs: ['资源脚本编译失败。', error instanceof Error ? error.message : String(error)] };
   }
 
   const objectPath = path.join(objDir, 'main.obj');

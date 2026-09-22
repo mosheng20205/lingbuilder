@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import {
@@ -10,6 +10,7 @@ import {
   CircleDot,
   Clapperboard,
   Copy,
+  Clock,
   FileCode,
   FileText,
   FolderOpen,
@@ -54,6 +55,10 @@ import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './L
 import DataGridEditorDialog from './DataGridEditorDialog';
 import FbroJsQueryEditorDialog, { parseFbroJsQueryChannels } from './FbroJsQueryEditorDialog';
 import NewEmojiTableEditorDialog, { getNewEmojiTableEditorData, isNewEmojiTableDataProperty } from './NewEmojiTableEditorDialog';
+import NewEmojiRichListEditorDialog from './NewEmojiRichListEditorDialog';
+import NewEmojiTreeDataEditorDialog from './NewEmojiTreeDataEditorDialog';
+import NewEmojiLinesPropertyEditor from './NewEmojiLinesPropertyEditor';
+import { getNewEmojiDialogSpec, getNewEmojiLinesSpec, getRichListEditorSummary, getTreeEditorSummary, type NewEmojiDialogKind, type NewEmojiDialogSpec } from '../services/windowDesigner/newEmojiDataFormats';
 import ToolbarButtonsDialog from './ToolbarButtonsDialog';
 import StatusBarPartsDialog from './StatusBarPartsDialog';
 import TabControlPagesDialog from './TabControlPagesDialog';
@@ -102,6 +107,7 @@ import {
   LingControlType,
   LingDesignerResource,
   LingEmbeddedResource,
+  LingClockResource,
   LingFileDialogResource,
   LingEdgeViewHeadlessResource,
   LingCefHeadlessResource,
@@ -141,7 +147,7 @@ import {
   orderControlsForDesignerPainting,
   reparentControls
 } from '../services/windowDesigner/controlHierarchy';
-import { applyDesignerLayout, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, reorderDesignerControls, updateControlWithDescendants, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
+import { applyDesignerLayout, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, reorderDesignerControls, updateControlWithDescendants, type DesignerHistoryAvailability, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
 import { CommandService, createCommandService } from '../services/commands/commandService';
 import type { CommandContext } from '../services/commands/types';
 import { DESIGNER_CANVAS_CONTEXT_MENU, DESIGNER_CONTROL_CONTEXT_MENU, DESIGNER_RESOURCE_CONTEXT_MENU, getMenuService, type ResolvedMenuCommandItem } from '../services/menus';
@@ -288,6 +294,16 @@ interface DesignerContextMenuState {
 
 type EdgeControlPreviewState = { status: 'idle' | 'preparing' | 'compiling' | 'running' | 'failed' | 'stopping'; message?: string; pid?: number };
 
+/** 设计器撤销/重做历史的可用性快照，随 commit/undo/redo/历史重置实时更新。 */
+export type { DesignerHistoryAvailability as WpfDesignerHistoryAvailability };
+
+export interface WpfDesignerHandle {
+  /** 撤销上一步设计操作；没有可撤销的历史时返回 false。 */
+  undo: () => boolean;
+  /** 重做刚撤销的设计操作；没有可重做的历史时返回 false。 */
+  redo: () => boolean;
+}
+
 export interface WpfDesignerProps {
   isDarkMode: boolean;
   activeFile?: any;
@@ -296,6 +312,7 @@ export interface WpfDesignerProps {
   authoritativeActiveWindowId?: string;
   onProjectChange?: (state: PersistedWindowDesignerState) => void;
   onDirtyChange?: (detail: WindowDesignerDirtyStateDetail) => void;
+  onHistoryStateChange?: (availability: DesignerHistoryAvailability) => void;
   commandService?: CommandService;
   getCommandContext?: () => CommandContext;
   toolboxHost?: HTMLElement | null;
@@ -304,6 +321,7 @@ export interface WpfDesignerProps {
 export const CREATABLE_DESIGNER_CONTROL_TYPES: LingControlType[] = [
   ...getCreatableWin32ControlDefinitions().filter(definition => definition.isVisual !== false).map(definition => definition.type as LingControlType),
   'FileDialog',
+  'Clock',
   'ContextMenu',
   'PopupMenu',
   'FBroHeadlessBrowser',
@@ -341,6 +359,7 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   Upload: <Upload className="w-3.5 h-3.5 text-sky-400" />,
   DragUpload: <FileUp className="w-3.5 h-3.5 text-fuchsia-400" />,
   FileDialog: <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />,
+  Clock: <Clock className="w-3.5 h-3.5 text-amber-400" />,
   FBroHeadlessBrowser: <Fingerprint className="w-3.5 h-3.5 text-sky-400" />,
   EdgeViewHeadlessBrowser: <Globe className="w-3.5 h-3.5 text-cyan-400" />,
   CefHeadlessBrowser: <Globe className="w-3.5 h-3.5 text-blue-400" />,
@@ -368,7 +387,7 @@ const WINDOW_OPEN_PLACEMENT_OPTIONS: { value: LingWindowOpenPlacement; label: st
   { value: 'custom', label: '自定义坐标' }
 ];
 
-export default function WpfDesigner({
+const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(function WpfDesigner({
   isDarkMode,
   activeFile,
   projectId,
@@ -376,10 +395,11 @@ export default function WpfDesigner({
   authoritativeActiveWindowId,
   onProjectChange,
   onDirtyChange,
+  onHistoryStateChange,
   commandService,
   getCommandContext,
   toolboxHost,
-}: WpfDesignerProps) {
+}, ref) {
   const fallbackCommandServiceRef = useRef<CommandService | null>(null);
   if (!fallbackCommandServiceRef.current) fallbackCommandServiceRef.current = createCommandService();
   const designerCommandService = commandService || fallbackCommandServiceRef.current;
@@ -518,6 +538,17 @@ export default function WpfDesigner({
   }, []);
   const designerHistoryRef = useRef(new DesignerHistory(initialDesignerState.project));
   const applyingHistoryRef = useRef(false);
+  // 历史可用性镜像成 state 上报给宿主（工作台撤销按钮/命令上下文）。
+  // commit 有 250ms 去抖，pending 期间也要把 canUndo 报成 true，否则编辑后瞬间点撤销会被禁用态吞掉。
+  const [historyAvailability, setHistoryAvailability] = useState<DesignerHistoryAvailability>({ canUndo: false, canRedo: false });
+  const historyCommitPendingRef = useRef(false);
+  const historySeenProjectRef = useRef(initialDesignerState.project);
+  const syncHistoryAvailability = useCallback(() => {
+    setHistoryAvailability({
+      canUndo: designerHistoryRef.current.canUndo || historyCommitPendingRef.current,
+      canRedo: designerHistoryRef.current.canRedo
+    });
+  }, []);
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('properties');
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const [controlContextMenu, setControlContextMenu] = useState<DesignerContextMenuState | null>(null);
@@ -572,13 +603,16 @@ export default function WpfDesigner({
       setSelectedControlId(nextState.selectedControlId);
       setSelectedControlIds(nextState.selectedControlId ? [nextState.selectedControlId] : []);
       designerHistoryRef.current = new DesignerHistory(nextState.project);
+      historyCommitPendingRef.current = false;
+      historySeenProjectRef.current = nextState.project;
+      syncHistoryAvailability();
     };
 
     window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
     return () => {
       window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
     };
-  }, [projectId]);
+  }, [projectId, syncHistoryAvailability]);
 
   useEffect(() => {
     if (!authoritativeProject || authoritativeProject.id !== projectId) return;
@@ -598,8 +632,11 @@ export default function WpfDesigner({
     setSelectedControlId(nextState.selectedControlId);
     setSelectedControlIds(nextState.selectedControlId ? [nextState.selectedControlId] : []);
     designerHistoryRef.current = new DesignerHistory(nextState.project);
+    historyCommitPendingRef.current = false;
+    historySeenProjectRef.current = nextState.project;
+    syncHistoryAvailability();
     saveWindowDesignerState(nextState, { notify: false });
-  }, [authoritativeActiveWindowId, authoritativeProject, projectId]);
+  }, [authoritativeActiveWindowId, authoritativeProject, projectId, syncHistoryAvailability]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -699,6 +736,16 @@ export default function WpfDesigner({
   const selectedFileDialog = useMemo(
     () => activeFileDialogs.find(resource => resource.id === selectedResourceId) || null,
     [activeFileDialogs, selectedResourceId]
+  );
+  const activeClocks = useMemo(
+    () => (project.resources || []).filter((resource): resource is LingClockResource => (
+      resource.type === 'Clock' && resource.ownerWindowId === activeWindow.id
+    )),
+    [activeWindow.id, project.resources]
+  );
+  const selectedClock = useMemo(
+    () => activeClocks.find(resource => resource.id === selectedResourceId) || null,
+    [activeClocks, selectedResourceId]
   );
   const activeMenuResources = useMemo(
     () => (project.resources || []).filter((resource): resource is LingMenuResource => (
@@ -2051,10 +2098,46 @@ export default function WpfDesigner({
     }));
   };
 
-  useEffect(() => { if (applyingHistoryRef.current) { applyingHistoryRef.current = false; return; } const timer = setTimeout(() => { designerHistoryRef.current.commit(project); }, 250); return () => clearTimeout(timer); }, [project]);
+  useEffect(() => {
+    if (historySeenProjectRef.current === project) return;
+    historySeenProjectRef.current = project;
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false;
+      historyCommitPendingRef.current = false;
+      syncHistoryAvailability();
+      return;
+    }
+    historyCommitPendingRef.current = true;
+    syncHistoryAvailability();
+    const timer = setTimeout(() => {
+      designerHistoryRef.current.commit(project);
+      historyCommitPendingRef.current = false;
+      syncHistoryAvailability();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [project, syncHistoryAvailability]);
   const applyHistoryValue = (value: LingWindowProject | null) => { if (!value) return; applyingHistoryRef.current = true; setProject(value); };
-  const undoDesigner = () => { designerHistoryRef.current.commit(project); applyHistoryValue(designerHistoryRef.current.undo()); };
-  const redoDesigner = () => applyHistoryValue(designerHistoryRef.current.redo());
+  const undoDesigner = () => {
+    designerHistoryRef.current.commit(project);
+    historyCommitPendingRef.current = false;
+    const previous = designerHistoryRef.current.undo();
+    applyHistoryValue(previous);
+    syncHistoryAvailability();
+    return previous !== null;
+  };
+  const redoDesigner = () => {
+    const next = designerHistoryRef.current.redo();
+    applyHistoryValue(next);
+    syncHistoryAvailability();
+    return next !== null;
+  };
+  useEffect(() => {
+    onHistoryStateChange?.(historyAvailability);
+  }, [historyAvailability, onHistoryStateChange]);
+  useImperativeHandle(ref, () => ({
+    undo: () => undoDesigner(),
+    redo: () => redoDesigner()
+  }));
   // 布局与微移的校验计算必须在 setState updater 外执行：React 19 会吞掉 updater
   // 在 eager 计算中抛出的异常并照常入队，渲染阶段重新抛出会卸载整棵组件树（黑屏）。
   const applyLayoutOperation = (operation: DesignerLayoutOperation) => {
@@ -2149,6 +2232,27 @@ export default function WpfDesigner({
       setSelectedResourceId(resource.id);
       setActiveInspectorTab('properties');
       addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}；请绑定打开触发控件和拖放目标。`);
+      return;
+    }
+    if (type === 'Clock') {
+      const existing = (project.resources || []).filter((resource): resource is LingClockResource => resource.type === 'Clock');
+      let suffix = existing.length + 1;
+      while ((project.resources || []).some(resource => resource.id === `clock-${suffix}`)) suffix += 1;
+      const resource: LingClockResource = {
+        id: `clock-${suffix}`,
+        type: 'Clock',
+        name: `时钟${suffix}`,
+        designerX: 15 + (((activeFileDialogs.length + activeClocks.length) % 4) * 145),
+        designerY: Math.max(0, activeWindow.height - windowContentOffset - 55),
+        ownerWindowId: activeWindow.id,
+        periodMilliseconds: 1000,
+        startEnabled: false
+      };
+      setProject(previous => ({ ...previous, resources: [...(previous.resources || []), resource] }));
+      selectOnlyControl(null);
+      setSelectedResourceId(resource.id);
+      setActiveInspectorTab('properties');
+      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}；请在事件面板绑定「周期到期」处理器，或用 时钟_启动() 控制计时。`);
       return;
     }
     if (type === 'ContextMenu' || type === 'PopupMenu') {
@@ -2607,6 +2711,37 @@ export default function WpfDesigner({
     y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor(index / 4) * 50))
   });
 
+  const getClockDesignerPosition = (resource: LingClockResource, index: number) => ({
+    x: resource.designerX ?? 15 + (((activeFileDialogs.length + index) % 4) * 145),
+    y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor((activeFileDialogs.length + index) / 4) * 50))
+  });
+
+  const handleClockMouseDown = (event: React.MouseEvent, resource: LingClockResource, index: number) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (
+      isDragging
+      || isResizing
+      || draggingResourceId
+      || controlInteractionPreviewRef.current
+      || windowInteractionPreviewRef.current
+      || resourceInteractionPreviewRef.current
+    ) {
+      finishPointerInteraction();
+    }
+    const position = getClockDesignerPosition(resource, index);
+    setSelectedControlId(null);
+    setSelectedControlIds([]);
+    setSelectedResourceId(resource.id);
+    setActiveInspectorTab('properties');
+    setDraggingResourceId(resource.id);
+    setResourceDragOffset({
+      x: event.clientX - position.x * canvasScale,
+      y: event.clientY - position.y * canvasScale
+    });
+  };
+
   const getMenuResourceDesignerPosition = (resource: LingMenuResource, index: number) => ({
     x: resource.designerX ?? 15 + (((activeFileDialogs.length + index) % 4) * 145),
     y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor((activeFileDialogs.length + index) / 4) * 50))
@@ -2800,6 +2935,11 @@ export default function WpfDesigner({
     ...(getCommandContext?.() || {}),
     'editor.surface': 'designer',
     'editor.readOnly': false,
+    // 设计器历史是撤销/重做可用性的唯一权威。getCommandContext() 展开进来的是
+    // 派发时刻的快照，会把过期的 editor.canUndo/canRedo 冻结在这里，若不在此处
+    // 用实时值覆盖，工作台撤销/重做命令会被旧值判成禁用（点击被静默吞掉）。
+    'editor.canUndo': historyAvailability.canUndo,
+    'editor.canRedo': historyAvailability.canRedo,
     'designer.active': true,
     'designer.projectId': project.id,
     'designer.windowId': activeWindow.id,
@@ -2835,7 +2975,7 @@ export default function WpfDesigner({
     return () => {
       window.dispatchEvent(new CustomEvent<CommandContext>('lingbuilder-designer-command-context', { detail: { 'designer.active': false } }));
     };
-  }, [activeWindow.id, contextAnyLocked, controlContextMenu?.menuId, project.id, selectedControlId, selectedControlIds, selectedResourceId]);
+  }, [activeWindow.id, contextAnyLocked, controlContextMenu?.menuId, historyAvailability, project.id, selectedControlId, selectedControlIds, selectedResourceId]);
 
   designerActionsRef.current = {
     openDefaultEvent: () => {
@@ -3647,6 +3787,58 @@ export default function WpfDesigner({
                 </div>
               );
             })}
+            {activeClocks.map((resource, index) => {
+              const position = getDisplayedResourcePosition(resource, getClockDesignerPosition(resource, index));
+              const selected = selectedResourceId === resource.id;
+              return (
+                <div
+                  key={resource.id}
+                  ref={registerDesignerNavigationTarget('resource', resource.id)}
+                  data-designer-resource-id={resource.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`时钟占位：${resource.name}`}
+                  aria-pressed={selected}
+                  onContextMenu={event => openResourceContextMenu(event, resource.id)}
+                  onMouseDown={event => handleClockMouseDown(event, resource, index)}
+                  onClick={event => {
+                    event.stopPropagation();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  className={`absolute z-30 flex cursor-move items-center gap-2 rounded border border-dashed px-2 shadow-md select-none ${
+                    selected
+                      ? 'border-amber-300 bg-amber-500/25 ring-2 ring-amber-400'
+                      : isDarkMode
+                        ? 'border-amber-500/70 bg-[#372f12] hover:bg-amber-500/20'
+                        : 'border-amber-600 bg-amber-50 hover:bg-amber-100'
+                  }`}
+                  style={{
+                    left: `${position.x}px`,
+                    top: `${position.y + windowContentOffset}px`,
+                    width: '135px',
+                    height: '42px'
+                  }}
+                  title="设计期非可视组件：单击编辑属性，拖拽移动占位"
+                >
+                  <Clock className="h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />
+                  <span className="min-w-0 leading-tight">
+                    <span className={`block truncate text-[10px] font-semibold ${isDarkMode ? 'text-amber-100' : 'text-amber-900'}`}>{resource.name}</span>
+                    <span className={`block text-[8px] ${isDarkMode ? 'text-amber-300/75' : 'text-amber-700'}`}>{resource.startEnabled ? `时钟 · ${resource.periodMilliseconds}ms` : '时钟 · 未启动'}</span>
+                  </span>
+                </div>
+              );
+            })}
             {activeMenuResources.map((resource, index) => {
               const position = getDisplayedResourcePosition(resource, getMenuResourceDesignerPosition(resource, index));
               const selected = selectedResourceId === resource.id;
@@ -3965,6 +4157,22 @@ export default function WpfDesigner({
                     setSelectedResourceId(null);
                   }}
                 />
+              ) : selectedClock ? (
+                <ClockProperties
+                  resource={selectedClock}
+                  windows={project.windows}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedClock.id && resource.type === 'Clock'
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                  onDelete={() => {
+                    setProject(previous => ({ ...previous, resources: (previous.resources || []).filter(resource => resource.id !== selectedClock.id) }));
+                    setSelectedResourceId(null);
+                  }}
+                />
               ) : selectedMenuResource ? (
                 <MenuResourceProperties
                   resource={selectedMenuResource}
@@ -4060,6 +4268,18 @@ export default function WpfDesigner({
                       : resource)
                   }))}
                 />
+              ) : selectedClock ? (
+                <ClockEvents
+                  resource={selectedClock}
+                  windowModel={activeWindow}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedClock.id && resource.type === 'Clock'
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                />
               ) : selectedMenuResource ? (
                 <MenuResourceEvents
                   resource={selectedMenuResource}
@@ -4130,7 +4350,9 @@ export default function WpfDesigner({
       )}
     </div>
   );
-}
+});
+
+export default WpfDesigner;
 
 interface DesignerControlToolboxProps {
   isDarkMode: boolean;
@@ -4953,6 +5175,7 @@ function renderControl(
           const itemHeight = Math.max(16, Math.min(96, Number(control.properties?.itemHeight ?? 28)));
           const itemSpacing = Math.max(0, Math.min(24, Number(control.properties?.itemSpacing ?? 0)));
           const contentPadding = Math.max(0, Math.min(24, Number(control.properties?.contentPadding ?? 4)));
+          const textAlign = String(control.properties?.textAlign ?? 'left');
           const scrollBarVisibility = String(control.properties?.scrollBarVisibility ?? 'auto');
           const scrollBarWidth = Math.max(4, Math.min(24, Number(control.properties?.scrollBarWidth ?? 8)));
           const scrollBarTrackColor = String(control.properties?.scrollBarTrackColor ?? '#172033');
@@ -4988,7 +5211,7 @@ function renderControl(
                 {sortedItems.length > 0 ? sortedItems.map((item, index) => (
                   <div
                     key={`${item}-${index}`}
-                    className="flex shrink-0 items-center truncate border px-2"
+                    className={`flex shrink-0 items-center truncate border px-2 ${textAlign === 'center' ? 'justify-center' : textAlign === 'right' ? 'justify-end' : 'justify-start'}`}
                     style={index === selectedIndex ? {
                       height: `${itemHeight}px`,
                       marginBottom: index < sortedItems.length - 1 ? `${itemSpacing}px` : undefined,
@@ -6413,6 +6636,76 @@ function FileDialogEvents({ resource, windowModel, isDarkMode, onChange }: { res
   );
 }
 
+function ClockProperties({
+  resource,
+  windows,
+  isDarkMode,
+  onChange,
+  onDelete
+}: {
+  resource: LingClockResource;
+  windows: LingWindowModel[];
+  isDarkMode: boolean;
+  onChange: (fields: Partial<LingClockResource>) => void;
+  onDelete: () => void;
+}) {
+  const inputClass = `w-full rounded border px-1.5 py-1 text-[10px] ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`;
+  return (
+    <div className="space-y-3" aria-label={`时钟属性：${resource.name}`}>
+      <div className={`flex items-center gap-2 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}>
+        <Clock className="h-4 w-4 text-amber-500" />
+        <span className="font-semibold">时钟：{resource.name}</span>
+        <span className="ml-auto rounded border border-amber-500/30 px-1.5 py-0.5 text-[8px] text-amber-500">非可视</span>
+      </div>
+      <PropertyGroup title="外观与位置" isDarkMode={isDarkMode}>
+        <PropertyRow label="名称" isDarkMode={isDarkMode}><input aria-label="时钟组件名称" value={resource.name} onChange={event => onChange({ name: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="左" isDarkMode={isDarkMode}><input aria-label="时钟左坐标" type="number" min={0} value={resource.designerX ?? 0} onChange={event => onChange({ designerX: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="顶" isDarkMode={isDarkMode}><input aria-label="时钟顶坐标" type="number" min={0} value={resource.designerY ?? 0} onChange={event => onChange({ designerY: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+      </PropertyGroup>
+      <PropertyGroup title="计时" isDarkMode={isDarkMode}>
+        <PropertyRow label="所属窗口" isDarkMode={isDarkMode}><select aria-label="时钟所属窗口" value={resource.ownerWindowId} onChange={event => onChange({ ownerWindowId: event.target.value })} className={inputClass}>{windows.map(window => <option key={window.id} value={window.id}>{window.title}</option>)}</select></PropertyRow>
+        <PropertyRow label="周期毫秒" isDarkMode={isDarkMode}><input aria-label="时钟周期毫秒" type="number" min={0} step={50} value={resource.periodMilliseconds} onChange={event => onChange({ periodMilliseconds: Math.max(0, Math.floor(Number(event.target.value) || 0)) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="选项" isDarkMode={isDarkMode}><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={resource.startEnabled} onChange={event => onChange({ startEnabled: event.target.checked })} />窗口创建后自动计时</label></PropertyRow>
+      </PropertyGroup>
+      <div className="text-[9px] leading-4 text-slate-500">运行时不绘制占位外观。代码可调用：时钟_启动(&quot;{resource.name}&quot;)、时钟_停止、时钟_置周期；周期为 0 表示停止计时。</div>
+      <button type="button" onClick={onDelete} className="flex w-full items-center justify-center gap-1 rounded border border-red-500/30 py-1.5 text-[10px] text-red-400 hover:bg-red-500/10"><Trash2 className="h-3 w-3" />删除时钟</button>
+    </div>
+  );
+}
+
+function ClockEvents({ resource, windowModel, isDarkMode, onChange }: { resource: LingClockResource; windowModel: LingWindowModel; isDarkMode: boolean; onChange: (fields: Partial<LingClockResource>) => void }) {
+  const definition = { field: 'periodHandler' as const, eventName: 'Elapsed', label: '周期到期', description: '时钟每次计时周期到期后触发（界面线程）。', suffix: '周期到期' };
+  const openEventCode = () => {
+    const current = resource[definition.field] || '';
+    const handlerName = current.trim() || `_${resource.name}_${definition.suffix}`;
+    onChange({ [definition.field]: handlerName });
+    const detail: OpenControlEventCodeDetail = {
+      controlId: resource.id,
+      controlName: resource.name,
+      controlContent: `${resource.periodMilliseconds}ms`,
+      controlType: 'Clock',
+      eventName: definition.eventName,
+      handlerName,
+      windowFileName: windowModel.fileName,
+      windowClassName: windowModel.className,
+      windowTitle: windowModel.title
+    };
+    globalThis.window.dispatchEvent(new CustomEvent<OpenControlEventCodeDetail>('open-control-event-code', { detail }));
+  };
+  const current = resource[definition.field] || '';
+  const isBound = Boolean(current.trim());
+  const handlerName = current.trim() || `_${resource.name}_${definition.suffix}`;
+  return (
+    <div className="space-y-3" aria-label={`时钟事件：${resource.name}`}>
+      <div className={`flex items-center gap-1.5 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}><Zap className="h-3.5 w-3.5 text-amber-500" /><span className="font-semibold">事件绑定：{resource.name}</span></div>
+      <button type="button" onClick={openEventCode} aria-label={`${isBound ? '打开' : '创建并打开'}${definition.label}事件处理器 ${handlerName}`} className={`group w-full rounded border p-2.5 text-left ${isDarkMode ? 'border-slate-800/70 bg-slate-900/40 hover:border-amber-500/45' : 'border-slate-200 bg-white hover:border-amber-400'}`}>
+        <div className="flex items-start justify-between gap-2"><span><span className={`block text-[11px] font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{definition.label}</span><span className="mt-0.5 block text-[9.5px] text-slate-500">{definition.description}</span></span><span className={`shrink-0 rounded border px-1.5 py-0.5 text-[8px] ${isBound ? 'border-emerald-500/25 text-emerald-400' : 'border-amber-500/25 text-amber-500'}`}>{isBound ? '已绑定' : '未绑定'}</span></div>
+        <div className={`mt-2 flex min-h-7 items-center gap-2 rounded border px-2 py-1 ${isDarkMode ? 'border-[#2d2d34] bg-[#1b1b20]' : 'border-slate-200 bg-slate-50'}`}><FileCode className={`h-3.5 w-3.5 ${isBound ? 'text-emerald-400' : 'text-amber-500'}`} /><span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-slate-500">{handlerName}</span><span className="text-[9px] font-semibold text-slate-500">{isBound ? '打开代码' : '生成并打开'}</span></div>
+      </button>
+    </div>
+  );
+}
+
 function createMenuResourceItem(items: LingMenuResourceItem[]): LingMenuResourceItem {
   let suffix = items.length + 1;
   while (items.some(item => item.id === `item-${suffix}`)) suffix += 1;
@@ -6663,6 +6956,7 @@ function ControlProperties({
   const [fbroJsQueryEditorOpen, setFbroJsQueryEditorOpen] = useState(false);
   const [cef3JsQueryEditorOpen, setCef3JsQueryEditorOpen] = useState(false);
   const [newEmojiTableEditorOpen, setNewEmojiTableEditorOpen] = useState(false);
+  const [newEmojiDialogKind, setNewEmojiDialogKind] = useState<NewEmojiDialogKind | null>(null);
   const [headerColumnsEditorOpen, setHeaderColumnsEditorOpen] = useState(false);
   const [toolbarButtonsEditorOpen, setToolbarButtonsEditorOpen] = useState(false);
   const [statusBarPartsEditorOpen, setStatusBarPartsEditorOpen] = useState(false);
@@ -6813,6 +7107,16 @@ function ControlProperties({
   const newEmojiTableEditorData = control.designerType?.endsWith('/Table')
     ? getNewEmojiTableEditorData(control)
     : { columns: 0, rows: 0 };
+  const newEmojiDialogSpec = getNewEmojiDialogSpec(control.designerType);
+  const newEmojiDialogReady = newEmojiDialogSpec ? (newEmojiDialogSpec.kind === 'richList'
+    ? getRichListEditorSummary(control.properties).parseOk
+    : getTreeEditorSummary(control.properties).parseOk)
+    : false;
+  const newEmojiDialogSummary = newEmojiDialogSpec?.kind === 'richList'
+    ? (() => { const summary = getRichListEditorSummary(control.properties); return `${summary.nodes} 个模板节点 · ${summary.items} 个项目 · 选中 ${summary.selected}`; })()
+    : newEmojiDialogSpec?.kind === 'treeData'
+      ? `${getTreeEditorSummary(control.properties).nodes} 个节点`
+      : '';
 
   return (
     <div className="space-y-2">
@@ -6995,6 +7299,10 @@ function ControlProperties({
           newEmojiTableColumnCount={newEmojiTableEditorData.columns}
           newEmojiTableRowCount={newEmojiTableEditorData.rows}
           onEditNewEmojiTable={() => setNewEmojiTableEditorOpen(true)}
+          newEmojiDialogSpec={newEmojiDialogSpec}
+          newEmojiDialogReady={newEmojiDialogReady}
+          newEmojiDialogSummary={newEmojiDialogSummary}
+          onEditNewEmojiDialog={() => setNewEmojiDialogKind(newEmojiDialogSpec?.kind ?? null)}
         />
       )}
 
@@ -7272,6 +7580,28 @@ function ControlProperties({
             setNewEmojiTableEditorOpen(false);
           }}
           onClose={() => setNewEmojiTableEditorOpen(false)}
+        />
+      )}
+      {newEmojiDialogKind === 'richList' && (
+        <NewEmojiRichListEditorDialog
+          control={control}
+          isDarkMode={isDarkMode}
+          onSave={properties => {
+            onChange({ properties: { ...(control.properties || {}), ...properties } });
+            setNewEmojiDialogKind(null);
+          }}
+          onClose={() => setNewEmojiDialogKind(null)}
+        />
+      )}
+      {newEmojiDialogKind === 'treeData' && (
+        <NewEmojiTreeDataEditorDialog
+          control={control}
+          isDarkMode={isDarkMode}
+          onSave={properties => {
+            onChange({ properties: { ...(control.properties || {}), ...properties } });
+            setNewEmojiDialogKind(null);
+          }}
+          onClose={() => setNewEmojiDialogKind(null)}
         />
       )}
       {control.type === 'Header' && headerColumnsEditorOpen && (
@@ -7668,7 +7998,7 @@ function RecordListPropertyEditor({
   );
 }
 
-function ModuleControlProperties({ control, definition, controls, imageLists, projectId, isDarkMode, search, showAdvanced, onSearchChange, onShowAdvancedChange, onPropertyChange, onEditTabPages, newEmojiTableColumnCount, newEmojiTableRowCount, onEditNewEmojiTable }: {
+function ModuleControlProperties({ control, definition, controls, imageLists, projectId, isDarkMode, search, showAdvanced, onSearchChange, onShowAdvancedChange, onPropertyChange, onEditTabPages, newEmojiTableColumnCount, newEmojiTableRowCount, onEditNewEmojiTable, newEmojiDialogSpec, newEmojiDialogReady, newEmojiDialogSummary, onEditNewEmojiDialog }: {
   control: LingControl;
   definition: ModuleDesignerControlContribution;
   controls: LingControl[];
@@ -7684,13 +8014,24 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
   newEmojiTableColumnCount: number;
   newEmojiTableRowCount: number;
   onEditNewEmojiTable: () => void;
+  newEmojiDialogSpec: NewEmojiDialogSpec | undefined;
+  newEmojiDialogReady: boolean;
+  newEmojiDialogSummary: string;
+  onEditNewEmojiDialog: () => void;
 }) {
   const isNewEmojiTable = control.designerType?.endsWith('/Table') === true;
   const normalizedSearch = search.trim().toLocaleLowerCase('zh-CN');
-  const matched = (definition.properties || []).filter(property => (showAdvanced || property.level !== 'advanced') && (!normalizedSearch || [property.label, property.key, property.group, property.description].filter(Boolean).join(' ').toLocaleLowerCase('zh-CN').includes(normalizedSearch)));
+  const isDialogOwned = (key: string) => newEmojiDialogReady && newEmojiDialogSpec?.propertyKeys.includes(key) === true;
+  const matched = (definition.properties || []).filter(property => (showAdvanced || property.level !== 'advanced') && (isDialogOwned(property.key) || (!normalizedSearch || [property.label, property.key, property.group, property.description].filter(Boolean).join(' ').toLocaleLowerCase('zh-CN').includes(normalizedSearch))));
   const visible = matched.filter(property => Boolean(property.runtimeCommand));
   const unsupported = matched.filter(property => !property.runtimeCommand);
-  const groups = [...new Set(visible.map(property => property.group || '组件属性'))];
+  const dialogAnchorKey = newEmojiDialogReady && newEmojiDialogSpec
+    ? visible.find(property => newEmojiDialogSpec.propertyKeys.includes(property.key))?.key ?? ''
+    : '';
+  const groupSource = newEmojiDialogReady && newEmojiDialogSpec
+    ? visible.filter(property => !newEmojiDialogSpec.propertyKeys.includes(property.key) || property.key === dialogAnchorKey)
+    : visible;
+  const groups = [...new Set(groupSource.map(property => property.group || '组件属性'))];
   return <div className="space-y-2">
     <PropertyGroup title="模块 / 属性筛选" isDarkMode={isDarkMode}>
       <PropertyRow label="所属模块" isDarkMode={isDarkMode}><span className="truncate text-[10px] text-fuchsia-400">lingbuilder.new_emoji.ui</span></PropertyRow>
@@ -7700,6 +8041,25 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
     </PropertyGroup>
     {groups.map(group => <PropertyGroup key={group} title={`new_emoji / ${group}`} isDarkMode={isDarkMode}>
       {visible.filter(property => (property.group || '组件属性') === group).map(property => {
+        if (newEmojiDialogReady && newEmojiDialogSpec && newEmojiDialogSpec.propertyKeys.includes(property.key)) {
+          if (property.key !== dialogAnchorKey) return null;
+          return (
+            <PropertyRow key={newEmojiDialogSpec.buttonLabel} label={newEmojiDialogSpec.buttonLabel} isDarkMode={isDarkMode}>
+              <button
+                type="button"
+                onClick={onEditNewEmojiDialog}
+                className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                  isDarkMode
+                    ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                    : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                }`}
+              >
+                <span>{newEmojiDialogSummary}</span>
+                <span className="font-semibold text-cyan-500">{newEmojiDialogSpec.buttonLabel}</span>
+              </button>
+            </PropertyRow>
+          );
+        }
         if (isNewEmojiTable && isNewEmojiTableDataProperty(property.key) && property.key !== 'columns') return null;
         return <div key={property.key} className="group relative">
         {isNewEmojiTable && property.key === 'columns' ? (
@@ -7749,6 +8109,7 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
             imageLists={imageLists}
             isDarkMode={isDarkMode}
             projectId={projectId}
+            moduleDesignerType={control.designerType}
             onChange={value => onPropertyChange(property.key, value)}
           />
         )}
@@ -7783,6 +8144,7 @@ function ControlPropertyField({
   imageLists,
   isDarkMode,
   projectId,
+  moduleDesignerType,
   onChange
 }: {
   key?: React.Key;
@@ -7794,6 +8156,7 @@ function ControlPropertyField({
   imageLists: LingImageListResource[];
   isDarkMode: boolean;
   projectId: string;
+  moduleDesignerType?: string;
   onChange: (value: Win32ControlPropertyValue) => void;
 }) {
   const complex = ['columns', 'tabs'].includes(definition.type);
@@ -8060,6 +8423,14 @@ function ControlPropertyField({
     );
   }
   if (definition.type === 'stringList') {
+    const linesSpec = getNewEmojiLinesSpec(moduleDesignerType, definition.key);
+    if (linesSpec) {
+      return (
+        <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+          <NewEmojiLinesPropertyEditor value={value} spec={linesSpec} isDarkMode={isDarkMode} onChange={onChange} />
+        </PropertyRow>
+      );
+    }
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
         <StringListPropertyEditor value={value} isDarkMode={isDarkMode} onChange={onChange} />

@@ -69,3 +69,36 @@ test('Rebar add-band action binds the next child or returns actionable Chinese g
   assert.equal(complete.band, undefined);
   assert.match(complete.message, /都已经绑定/u);
 });
+
+test('designer history is wired into the workbench undo/redo surface (top toolbar routes to DesignerHistory)', () => {
+  const designerSource = fs.readFileSync(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const diffViewerSource = fs.readFileSync(path.resolve(import.meta.dirname, '../src/components/DiffViewer.tsx'), 'utf8');
+
+  // WpfDesigner 以 forwardRef 暴露 undo/redo 句柄，并把历史可用性上报给宿主。
+  assert.match(designerSource, /React\.forwardRef<WpfDesignerHandle, WpfDesignerProps>/u);
+  assert.match(designerSource, /export interface WpfDesignerHandle \{[\s\S]*?undo: \(\) => boolean;[\s\S]*?redo: \(\) => boolean;[\s\S]*?\}/u);
+  assert.match(designerSource, /useImperativeHandle\(ref, \(\) => \(\{\s*undo: \(\) => undoDesigner\(\),\s*redo: \(\) => redoDesigner\(\)\s*\}\)\)/u);
+  assert.match(designerSource, /onHistoryStateChange\?\.\(historyAvailability\)/u);
+
+  // commit 去抖窗口内保持乐观 canUndo（编辑后立刻点撤销不能被禁用态吞掉），应用历史时清除 pending。
+  assert.match(designerSource, /canUndo: designerHistoryRef\.current\.canUndo \|\| historyCommitPendingRef\.current/u);
+  assert.match(designerSource, /if \(applyingHistoryRef\.current\) \{\s*applyingHistoryRef\.current = false;\s*historyCommitPendingRef\.current = false;/u);
+  // 两处外部替换（事件回传 / authoritativeProject 回流）都重建历史并同步可用性。
+  assert.equal(designerSource.match(/new DesignerHistory\(nextState\.project\);\s*historyCommitPendingRef\.current = false;/gu)?.length, 2);
+
+  // undo/redo 必须先同步提交未落栈的编辑再撤销，保证去抖窗口内撤销立即生效。
+  assert.match(designerSource, /const undoDesigner = \(\) => \{\s*designerHistoryRef\.current\.commit\(project\);/u);
+
+  // 设计器命令上下文必须携带实时 canUndo/canRedo 覆盖 getCommandContext 快照：
+  // 快照里的 editor.canUndo=false 会被 App 合并回命令上下文，把 workbench 撤销命令
+  // 永久判成禁用（按钮显示可用、点击被「命令已禁用」静默吞掉），派发依赖须含 historyAvailability。
+  assert.match(designerSource, /'editor\.canUndo': historyAvailability\.canUndo/u);
+  assert.match(designerSource, /'editor\.canRedo': historyAvailability\.canRedo/u);
+  assert.match(designerSource, /contextAnyLocked, controlContextMenu\?\.menuId, historyAvailability, project\.id/u);
+
+  // DiffViewer：设计器视图下撤销/重做转发到设计器历史，surface 不再按只读压死按钮。
+  assert.match(diffViewerSource, /if \(viewType === 'designer'\) return designerHistoryHandleRef\.current\?\.(undo|redo)\(\) \|\| false;/u);
+  assert.match(diffViewerSource, /if \(viewType === 'designer'\) \{\s*surface = 'designer';\s*surfaceReadOnly = false;/u);
+  assert.match(diffViewerSource, /canUndo: surface === 'designer'\s*\? designerHistoryAvailability\.canUndo/u);
+  assert.match(diffViewerSource, /onHistoryStateChange=\{handleDesignerHistoryStateChange\}/u);
+});

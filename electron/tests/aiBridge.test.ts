@@ -145,10 +145,25 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /CEF3平台_添加跨域白名单/u, 'instructions 必须给出 CEF3 逐条跨域白名单命令（不存在全局关闭安全命令）');
     assert.match(String(client.getInstructions() || ''), /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/u, 'instructions 必须写明 EdgeView 安全类开关要走环境变量通道才生效');
     assert.match(String(client.getInstructions() || ''), /channelIndex/u, 'instructions 必须告知 CEF3 cefQuery 已多通道且事件带 channelIndex');
+    assert.match(String(client.getInstructions() || ''), /返回\(表达式\)/u, 'instructions 必须告知返回语句统一括号形态 返回(表达式)（外部 AI 生成 .lcpp 的写法口径）');
+    assert.match(String(client.getInstructions() || ''), /提前结束写 `返回\(\)`/u, 'instructions 必须告知无值提前结束写 返回()');
+    assert.match(String(client.getInstructions() || ''), /延时\(等待毫秒\)/u, 'instructions 必须告知不冻结界面的同步延时命令');
+    assert.match(String(client.getInstructions() || ''), /延迟调用\(等待毫秒, &处理器\)/u, 'instructions 必须告知一次性延迟调用命令（&处理器 引用语法）');
+    assert.match(String(client.getInstructions() || ''), /时钟_置周期\(组件, 0\)/u, 'instructions 必须告知时钟组件周期语义（0=停止）');
+    assert.match(String(client.getInstructions() || ''), /线程_协作等待 \/ 线程_等待（两者在界面线程调用会冻结窗口/u, 'instructions 必须告知线程等待命令不能在界面线程使用');
+    assert.match(String(client.getInstructions() || ''), /cron_定时_启动\(表达式, &处理器\)/u, 'instructions 必须给出 cron 定时任务处理器型启动签名');
+    assert.match(String(client.getInstructions() || ''), /禁止调用任何 UI\/controlRef 命令/u, 'instructions 必须声明 cron 工作处理器禁 UI 的红线');
+    assert.match(String(client.getInstructions() || ''), /cron_定时_守护启动\(\)/u, 'instructions 必须告知 cron 守护入口与单进程持有语义');
+    assert.match(String(client.getInstructions() || ''), /--lingbuilder-cron-daemon/u, 'instructions 必须说明开机自启守护以专用参数隐藏拉起');
+    assert.match(String(client.getInstructions() || ''), /cron_定时_邮件配置/u, 'instructions 必须告知 MAILTO 依赖真实 SMTP 配置');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.module.info')?.description || ''), /公开常量/u, 'module.info 工具描述必须声明返回模块公开常量 constants[]');
     assert.match(String(client.getInstructions() || ''), /HTTP_添加静态路由/u, 'instructions 必须引导外部 AI 服务端项目优先静态路由');
     assert.match(String(client.getInstructions() || ''), /HTTP_设置连接轮转/u, 'instructions 必须告知外部 AI 连接轮转可配（高负载放宽强制关闭阈值）');
     assert.match(String(client.getInstructions() || ''), /HTTP客户端_请求置Cookie/u, 'instructions 必须告知外部 AI http-client 2.1 的 Cookie 注入口（区别于自动罐开关）');
+    assert.match(String(client.getInstructions() || ''), /workspace\.list 的返回首项/u, 'instructions 必须教外部 AI 先自省工作区（P2 工作区错位自查）');
+    assert.match(String(client.getInstructions() || ''), /workspaceRoot 字段即当前 Bridge 工作区根绝对路径/u, 'instructions 必须说明首项 workspaceRoot 的语义');
+    assert.match(String(client.getInstructions() || ''), /宿主先于开关启动的时序问题，不是未购买/u, 'instructions 必须解释收费门禁「启动早于授权开关」的时序语义（P1）');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.workspace.list')?.description || ''), /workspaceRoot/u, 'workspace.list 工具描述必须声明首项含工作区根绝对路径');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /功能代码/u, 'edit.propose 必须声明功能代码=功能库文件，避免降级成本地函数');
     const diagnosticsToolMeta = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
     assert.match(String(diagnosticsToolMeta?.description || ''), /designerInventory/u, 'diagnostics 工具描述必须声明组件表视图');
@@ -553,7 +568,13 @@ test('AI Bridge project creation inherits the workspace module manifest when omi
   });
   const explicitPath = path.join(workspaceRoot, '.lingbuilder', 'projects', 'explicit-basic', 'project-modules.json');
   const explicitSaved = JSON.parse(await fs.readFile(explicitPath, 'utf8')) as { enabledModuleIds: string[] };
-  assert.deepEqual(explicitSaved.enabledModuleIds, ['lingbuilder.win32.basic']);
+  // 显式空清单仍会补默认启用模块（DEFAULT_ENABLED_MODULE_IDS + 内置依赖自动带上），
+  // 参见 moduleService「默认启用模块补齐」；进程内存依赖缓冲区模块。
+  assert.deepEqual(explicitSaved.enabledModuleIds, [
+    'lingbuilder.win32.basic',
+    'lingbuilder.advanced.process-memory',
+    'lingbuilder.std.buffer'
+  ]);
   assert.equal(explicitBasic.result?.modules.selection, 'explicit');
   await writeService.undoProjectCreate(explicitBasic.result!.receipt.receiptId, true);
   assert.equal(await exists(explicitPath), false);
@@ -1651,6 +1672,87 @@ test('AI Bridge rejects a designer model changed after proposal creation', async
   await service.shutdown();
 });
 
+test('AI Bridge applies panel proposals whose canvas is ahead of disk and rejects stale canvas', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/demo/Main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  // 磁盘上是建项目时的空模板（controls 为空）；画布上已设计控件且从未落盘——
+  // 面板「只在画布上设计过」项目的真实形态。apply 客户端守卫必须与提案基线比对，
+  // 不能拿画布模型与磁盘比对（否则必然报「与磁盘版本不一致」且永远无法应用）。
+  const diskModel: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '画布领先项目',
+    resources: [],
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 420, height: 280, background: '#ffffff', description: '', controls: [] }]
+  };
+  const canvasModel: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '画布领先项目',
+    resources: [],
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 420, height: 280,
+      background: '#ffffff', description: '', controls: [{
+        id: 'progress', type: 'ProgressBar', name: '加载进度', content: '25', width: 260, height: 20,
+        x: 20, y: 30, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { minimum: 0, maximum: 100, value: 25, marquee: false }
+      }]
+    }]
+  };
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(diskModel, null, 2) + '\n', 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '画布领先项目' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const nextDesignerProject = JSON.parse(JSON.stringify(canvasModel)) as LingWindowProject;
+  nextDesignerProject.windows[0].controls[0].content = '75';
+  nextDesignerProject.windows[0].controls[0].properties.value = 75;
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '把加载进度改为 75%',
+    designerProject: canvasModel,
+    updatedDesignerProject: nextDesignerProject,
+    workspaceFiles: [{ filePath: sourcePath, sourceCode }],
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` }]
+  });
+  // apply 提交 propose 时的画布模型（≠磁盘）→ 必须成功，不得报「与磁盘版本不一致」。
+  const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true, designerProject: canvasModel });
+  assert.equal(applied.ok, true);
+  assert.equal(JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8')).windows[0].controls[0].properties.value, 75);
+
+  // 第二轮：画布在提案生成后又被修改（进度条移动位置）→ 客户端一致性守卫必须拒绝。
+  const secondProposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '把加载进度改为 90%',
+    designerProject: canvasModel,
+    updatedDesignerProject: (() => {
+      const model = JSON.parse(JSON.stringify(canvasModel)) as LingWindowProject;
+      model.windows[0].controls[0].content = '90';
+      model.windows[0].controls[0].properties.value = 90;
+      return model;
+    })(),
+    workspaceFiles: [{ filePath: sourcePath, sourceCode: `${sourceCode}// 已同步\n` }],
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n// 第二轮\n` }]
+  });
+  const staleCanvas = JSON.parse(JSON.stringify(canvasModel)) as LingWindowProject;
+  staleCanvas.windows[0].controls[0].x = 55;
+  await assert.rejects(
+    () => service.applyEdit({ proposalId: secondProposal.proposal.id, approved: true, designerProject: staleCanvas }),
+    /与提案生成时的画布模型不一致/u
+  );
+  // 画布未变时第二轮正常应用。
+  const applied2 = await service.applyEdit({ proposalId: secondProposal.proposal.id, approved: true, designerProject: canvasModel });
+  assert.equal(applied2.ok, true);
+  assert.equal(JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8')).windows[0].controls[0].properties.value, 90);
+  await service.shutdown();
+});
+
 test('AI Bridge gates apply and preview when source references controls missing from the designer model', async () => {
   const workspaceRoot = await createTempWorkspace();
   const projectId = 'gate-project';
@@ -1745,6 +1847,76 @@ test('AI Bridge diagnostics and modules use LingCpp module context', async () =>
   assert.ok(Array.isArray(modules.availableModules));
 });
 
+test('AI Bridge workspace.list 首项返回工作区根绝对路径（外部 AI 自查工作区错位）', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  await fs.writeFile(path.join(workspaceRoot, 'README.md'), 'root', 'utf8');
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    const tree = await service.listWorkspaceTree();
+    const root = tree[0];
+    assert.equal(root.type, 'workspace', '首项必须是合成的 workspace 根条目');
+    assert.equal(root.path, '.');
+    assert.equal(path.resolve(String(root.workspaceRoot)).toLowerCase(), path.resolve(workspaceRoot).toLowerCase());
+    assert.equal(tree.slice(1).some(entry => entry.type === 'workspace'), false, '合成根条目只允许出现一次');
+    assert.ok(tree.some(entry => entry.type === 'file' && entry.name === 'README.md'), '根条目之后仍是常规文件树');
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge 文件不存在时报错给出当前工作区与修法（工作区错位自查）', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    await assert.rejects(
+      () => service.readFile('不存在.md'),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        assert.match(message, /工作区中不存在/u);
+        assert.match(message, /当前 AI Bridge 工作区是/u);
+        assert.match(message, /重启 MCP 宿主/u, '必须给出工作区错位时的修复动作');
+        return true;
+      }
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge sourceRoot 为 "." 时接受项目根源码；错误文案含 sourceRoot 与两种修法', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  await registerSolutionProject(workspaceRoot, { id: 'root-project', sourceRoot: '.' });
+  await registerSolutionProject(workspaceRoot, { id: 'src-project', sourceRoot: 'src/src-project' });
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    const resolveSources = (projectId: string, files: Array<{ filePath: string; sourceCode: string }>) =>
+      (service as unknown as {
+        resolveLingCppProjectSources(projectId: string, files?: unknown[]): Promise<Array<{ filePath: string }>>;
+      }).resolveLingCppProjectSources(projectId, files);
+    const source = '类 Main\n结束类\n';
+    // sourceRoot '.' + 带前导 ./ 的路径（历史写法）仍通过。
+    assert.equal((await resolveSources('root-project', [{ filePath: './MainWindow.lcpp', sourceCode: source }])).length, 1);
+    // sourceRoot '.' + 无前导 ./ 的路径（此前被硬前缀拒绝的场景）现在必须通过。
+    assert.equal((await resolveSources('root-project', [{ filePath: 'MainWindow.lcpp', sourceCode: source }])).length, 1);
+    // 普通子目录项目的既有行为不变。
+    assert.equal((await resolveSources('src-project', [{ filePath: 'src/src-project/MainWindow.lcpp', sourceCode: source }])).length, 1);
+    // 真正越界的路径仍拒绝，且文案给出当前 sourceRoot 与两种修法。
+    await assert.rejects(
+      () => resolveSources('src-project', [{ filePath: 'MainWindow.lcpp', sourceCode: source }]),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        assert.match(message, /不属于当前项目源码目录/u);
+        assert.match(message, /sourceRoot = src\/src-project/u);
+        assert.match(message, /设为 '\.'/u, '修法一：源码在项目根时把 sourceRoot 设为 .');
+        assert.match(message, /移入 src\/src-project\//u, '修法二：把源码移入 sourceRoot 子目录');
+        return true;
+      }
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
 test('AI Bridge modules.list returns slim summaries and module.info returns full command docs', async () => {
   const workspaceRoot = await createTempWorkspace();
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
@@ -1795,7 +1967,7 @@ interface ModuleInfoUiViews {
     documentation?: string;
     nativeDocumentation?: string;
   }>;
-  componentGuide?: { path: string; nativePath: string; absolutePath: string; truncated: boolean; content: string };
+  componentGuide?: { path: string; nativePath: string; absolutePath: string; truncated: boolean; content: string; humanNotes: string; humanNotesStatus: 'present' | 'missing' };
   designerControlMatched: number;
   designerControlDetails: Array<{
     type: string;
@@ -1873,6 +2045,22 @@ test('lingbuilder.module.info exposes designer control palette, demo invocations
     assert.equal(single.componentGuide!.truncated, false);
     assert.equal(single.componentGuide!.path, 'lingbuilder-components/button.md');
     assert.match(single.componentGuide!.nativePath, /^components\/button\.md$/u);
+    // P5：有人工红线的卡必须一次调用内联红线正文，不再让外部 AI 二次读文件。
+    assert.equal(single.componentGuide!.humanNotesStatus, 'present');
+    assert.match(single.componentGuide!.humanNotes, /NE按钮_绑定被点击/u, '红线正文必须随 componentGuide 一起返回');
+
+    // P5：无人工红线的卡不得返回任何看起来像红线的内容（「待补」占位整段移除 + 机器可判字段）。
+    const noNotes = await service.getModuleInfo({
+      moduleId: 'lingbuilder.new_emoji.ui',
+      control: 'Dialog'
+    }) as unknown as ModuleInfoUiViews;
+    assert.equal(noNotes.designerControlMatched, 1, 'Dialog 应唯一命中');
+    assert.ok(noNotes.componentGuide, '唯一命中仍返回卡片客观契约正文');
+    assert.equal(noNotes.componentGuide!.humanNotesStatus, 'missing');
+    assert.equal(noNotes.componentGuide!.humanNotes, '');
+    assert.doesNotMatch(noNotes.componentGuide!.content, /待补/u, '「待补」占位不得出现在红线样式的正文里');
+    // 卡片前言会提到段名，因此锚定「## 惯用要点与红线」标题形态：红线缺失时整段（含标题）不输出。
+    assert.doesNotMatch(noNotes.componentGuide!.content, /## 惯用要点与红线/u, '红线缺失时整段不输出');
 
     const multi = await service.getModuleInfo({
       moduleId: 'lingbuilder.new_emoji.ui',

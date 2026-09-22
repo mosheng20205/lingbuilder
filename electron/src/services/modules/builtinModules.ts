@@ -18,7 +18,9 @@ import { CEF3_SUBMODULES } from './cef3Modules';
 import { OPENCV_MODULE } from './opencvModules';
 import { EMBEDDED_RESOURCE_MODULE } from './resourceEmbedModule';
 import { THREADING_MODULE } from './threadingModule';
+import { CRON_MODULE } from './cronModule';
 import { HTTP_SERVER_MODULE } from './httpServerModule';
+import { SUNNYNET_MODULE } from './sunnyNetModule';
 import { WEBSOCKET_CLIENT_MODULE } from './webSocketClientModule';
 import { WEBSOCKET_SERVER_MODULE } from './webSocketServerModule';
 
@@ -480,7 +482,8 @@ function normalizeBuiltinControlParameter(
   const converted = normalizeHandlerParameter(parameter);
   if (converted.type !== 'controlRef') return converted;
   const resourceTypes = command.startsWith('文件对话框_') ? ['FileDialog']
-    : command.startsWith('上下文菜单_') ? ['ContextMenu']
+    : command.startsWith('时钟_') ? ['Clock']
+      : command.startsWith('上下文菜单_') ? ['ContextMenu']
       : command.startsWith('弹出菜单_') ? ['PopupMenu']
         : command === '菜单_取最后项目' ? ['ContextMenu', 'PopupMenu']
           : command.startsWith('属性页_') ? ['PropertySheet']
@@ -566,6 +569,13 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           insertText: '结束()',
           returnType: '空'
         },
+        { name: '延时', signature: '延时(等待毫秒)', description: '同步等待指定毫秒；等待期间持续泵送本线程消息队列，窗口不冻结、控件仍可点击（与易语言「延时/程序_延时」一致）。等待期间触发的事件处理器会先执行，之后才继续执行本行后面的代码。', insertText: '延时($1)', returnType: '空' },
+        { name: '延迟调用', signature: '延迟调用(等待毫秒, &处理器)', description: '一次性延迟调用：等待指定毫秒后在界面线程调用 &处理器（无参数子程序），等待期间界面不冻结；到期只触发一次，窗口销毁后不再触发。需要周期性触发请用「时钟」组件。', insertText: '延迟调用(1000, &$1)', returnType: '逻辑型' },
+        { name: '时钟_启动', signature: '时钟_启动(组件名)', description: '启动设计器「时钟」组件的周期计时，周期由组件属性或 时钟_置周期 决定；周期为 0 时无法启动。每次周期到期触发「周期到期」事件。', insertText: '时钟_启动($1)', returnType: '逻辑型' },
+        { name: '时钟_停止', signature: '时钟_停止(组件名)', description: '停止「时钟」组件的周期计时；未启动的时钟返回真。', insertText: '时钟_停止($1)', returnType: '逻辑型' },
+        { name: '时钟_置周期', signature: '时钟_置周期(组件名, 周期毫秒)', description: '设置「时钟」组件的计时周期；正在计时且周期大于 0 时立即按新周期重新计时，周期为 0 表示停止计时（与易语言时钟周期语义一致）。', insertText: '时钟_置周期($1, $2)', returnType: '逻辑型' },
+        { name: '时钟_取周期', signature: '时钟_取周期(组件名)', description: '返回「时钟」组件当前的计时周期毫秒数；未单独设置过时返回组件属性里的默认周期。', insertText: '时钟_取周期($1)', returnType: '整数型' },
+        { name: '时钟_是否已启动', signature: '时钟_是否已启动(组件名)', description: '判断「时钟」组件当前是否正在按周期计时。', insertText: '时钟_是否已启动($1)', returnType: '逻辑型' },
         { name: '到文本', signature: '到文本(值)', description: '把整数、长整数、小数、逻辑值或文本确定性转换为文本；逻辑值返回“真”或“假”。', insertText: '到文本($1)', returnType: '文本型' },
         { name: '格式化文本', signature: '格式化文本(格式模板, 参数...)', description: '按顺序用参数替换格式模板中的 {}；使用 {{ 和 }} 输出字面量花括号。参数不足时保留未替换的 {}，多余参数忽略。', insertText: '格式化文本("$1：{}", $2)', returnType: '文本型' },
         { name: '到整数', signature: '到整数(文本)', description: '把文本转换为整数；空文本或无法转换的内容返回 0。', insertText: '到整数("$1")', returnType: '整数型' },
@@ -655,6 +665,24 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           returnType: 'void',
           example: '结束()'
         },
+        { command: '延时', runtimeName: '延时', parameters: [{ name: '等待毫秒', type: 'int', description: '要等待的毫秒数；0 或负数直接返回，等待期间泵送界面消息不冻结窗口。' }], returnType: 'void', encoding: 'wide', example: '延时(500)' },
+        {
+          command: '延迟调用',
+          runtimeName: '延迟调用',
+          parameters: [
+            { name: '等待毫秒', type: 'int', description: '延迟毫秒数；0 表示尽快在界面线程触发，负数按 0 处理。' },
+            { name: '处理器', type: 'handler', description: '到期后在界面线程调用一次的无参处理器，必须使用 &处理器名 引用语法。', handlerSignature: { parameterTypes: [], returnType: '空' } }
+          ],
+          returnType: 'bool',
+          encoding: 'wide',
+          example: '延迟调用(1000, &延迟完成后)',
+          invocation: { kind: 'delayedCall', delayParameterIndex: 0, handlerParameterIndex: 1 }
+        },
+        { command: '时钟_启动', runtimeName: '时钟_启动', parameters: [{ name: '组件名', type: 'controlRef', description: '设计器中的「时钟」非可视组件。', controlTypes: ['Clock'], controlKinds: ['resource'], scope: 'project' }], returnType: 'bool', encoding: 'wide', example: '时钟_启动(时钟1)' },
+        { command: '时钟_停止', runtimeName: '时钟_停止', parameters: [{ name: '组件名', type: 'controlRef', description: '设计器中的「时钟」非可视组件。', controlTypes: ['Clock'], controlKinds: ['resource'], scope: 'project' }], returnType: 'bool', encoding: 'wide', example: '时钟_停止(时钟1)' },
+        { command: '时钟_置周期', runtimeName: '时钟_置周期', parameters: [{ name: '组件名', type: 'controlRef', description: '设计器中的「时钟」非可视组件。', controlTypes: ['Clock'], controlKinds: ['resource'], scope: 'project' }, { name: '周期毫秒', type: 'int', description: '新的计时周期毫秒数；0 表示停止计时，正在计时的时钟会立即按新周期重新计时。' }], returnType: 'bool', encoding: 'wide', example: '时钟_置周期(时钟1, 500)' },
+        { command: '时钟_取周期', runtimeName: '时钟_取周期', parameters: [{ name: '组件名', type: 'controlRef', description: '设计器中的「时钟」非可视组件。', controlTypes: ['Clock'], controlKinds: ['resource'], scope: 'project' }], returnType: 'int', encoding: 'wide', example: '时钟_取周期(时钟1)' },
+        { command: '时钟_是否已启动', runtimeName: '时钟_是否已启动', parameters: [{ name: '组件名', type: 'controlRef', description: '设计器中的「时钟」非可视组件。', controlTypes: ['Clock'], controlKinds: ['resource'], scope: 'project' }], returnType: 'bool', encoding: 'wide', example: '时钟_是否已启动(时钟1)' },
         { command: '到文本', runtimeName: '到文本', parameters: [{ name: '值', type: 'raw' }], returnType: 'wideString', encoding: 'wide', example: '到文本(123)' },
         { command: '格式化文本', runtimeName: '格式化文本', parameters: [{ name: '格式模板', type: 'wideString' }, { name: '参数', type: 'lingValue', variadic: true, description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'wideString', encoding: 'wide', example: '格式化文本("姓名：{}，年龄：{}", "小林", 18)' },
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
@@ -1724,9 +1752,11 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   },
   ...FBRO_SUBMODULES,
   THREADING_MODULE,
+  CRON_MODULE,
   WEBSOCKET_CLIENT_MODULE,
   HTTP_SERVER_MODULE,
-  WEBSOCKET_SERVER_MODULE
+  WEBSOCKET_SERVER_MODULE,
+  SUNNYNET_MODULE
 ].map(normalizeBuiltinControlReferences).map(ensureBuiltinX64Target).map(assertBuiltinParameterDescriptions);
 
 /**

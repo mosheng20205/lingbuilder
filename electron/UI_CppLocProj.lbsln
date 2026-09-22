@@ -23,6 +23,13 @@
       "type": "visual-cpp",
       "sourceRoot": "src/emoji",
       "references": []
+    },
+    {
+      "id": "emoji-2",
+      "name": "emoji富文本框",
+      "type": "visual-cpp",
+      "sourceRoot": "src/emoji-2",
+      "references": []
     }
   ]
 }

@@ -570,7 +570,9 @@ test('F5 后台启动的普通 Win32 启动窗口在消息循环前执行一次�
     lingCppSourceCode: '类 主窗口\n结束类\n'
   }).files.find(file => file.relativePath === 'main.cpp')!.content;
   const winMainStart = cpp.indexOf('int WINAPI wWinMain');
-  const createCall = cpp.indexOf('OpenGeneratedWindow(g_startWindowIndex, showCommand)', winMainStart);
+  // cron 守护模式（--lingbuilder-cron-daemon）下启动窗口以 SW_HIDE 创建且不抢前台；
+  // 普通启动路径仍是 OpenGeneratedWindow(...) → EnsureStartWindowForeground(...) → 消息循环 的顺序。
+  const createCall = cpp.indexOf('OpenGeneratedWindow(g_startWindowIndex, g_lingbuilderCronDaemonMode ? SW_HIDE : showCommand)', winMainStart);
   const activationCall = cpp.indexOf('EnsureStartWindowForeground(startWindow, showCommand);', winMainStart);
   const messageLoop = cpp.indexOf('while (GetMessageW', winMainStart);
 
@@ -1265,12 +1267,13 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
   assert.ok(listBoxDefinition);
   const listBoxProperties = new Map(listBoxDefinition.properties.map(property => [property.key, property.defaultValue]));
   assert.deepEqual(
-    ['itemHeight', 'itemSpacing', 'contentPadding', 'scrollBarVisibility', 'scrollBarWidth', 'scrollBarTrackColor', 'scrollBarThumbColor', 'showBorder', 'borderWidth', 'borderColor', 'selectionStartColor', 'selectionEndColor', 'selectionBorderColor', 'selectionCornerRadius']
+    ['itemHeight', 'itemSpacing', 'contentPadding', 'textAlign', 'scrollBarVisibility', 'scrollBarWidth', 'scrollBarTrackColor', 'scrollBarThumbColor', 'showBorder', 'borderWidth', 'borderColor', 'selectionStartColor', 'selectionEndColor', 'selectionBorderColor', 'selectionCornerRadius']
       .map(key => [key, listBoxProperties.get(key)]),
     [
       ['itemHeight', 28],
       ['itemSpacing', 0],
       ['contentPadding', 4],
+      ['textAlign', 'left'],
       ['scrollBarVisibility', 'auto'],
       ['scrollBarWidth', 8],
       ['scrollBarTrackColor', '#172033'],
@@ -1287,6 +1290,10 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
   assert.deepEqual(
     listBoxDefinition.properties.find(property => property.key === 'scrollBarVisibility')?.options?.map(option => [option.value, option.label]),
     [['auto', '自动'], ['visible', '始终显示'], ['hidden', '隐藏']]
+  );
+  assert.deepEqual(
+    listBoxDefinition.properties.find(property => property.key === 'textAlign')?.options?.map(option => [option.value, option.label]),
+    [['left', '左对齐'], ['center', '居中'], ['right', '右对齐']]
   );
   const listBox = {
     ...createControl('list-box', undefined, 'ListBox'),
@@ -1337,6 +1344,25 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
   assert.match(cpp, /LB_SETTOPINDEX/u);
   assert.match(cpp, /L'\\0'/u);
   assert.equal(cpp.includes('\0'), false, '生成的 C++ 源码不能包含 NUL 字节');
+
+  const paintOwnerListBoxBody = cpp.slice(cpp.indexOf('bool PaintOwnerListBox('));
+  assert.ok(paintOwnerListBoxBody.includes('CF_ALIGN_CENTER'), '列表框自绘必须消费居中对齐标志');
+  assert.ok(paintOwnerListBoxBody.includes('CF_ALIGN_RIGHT'), '列表框自绘必须消费右对齐标志');
+  assert.ok(paintOwnerListBoxBody.includes('textFormat | DT_VCENTER'), '列表框表项文字必须按对齐标志选择绘制格式');
+  const generateWithTextAlign = (textAlign: string, alignFlag: number) => {
+    const alignCpp = generateLingCppNativeWin32Project({
+      ...project,
+      windows: [{ ...project.windows[0], controls: [{
+        ...listBox,
+        properties: { ...listBox.properties, textAlign }
+      }] }]
+    }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+    const expectedFlags = alignFlag | (1 << 25);
+    assert.match(alignCpp, new RegExp(`L"ListBox"[^\\n]+, ${expectedFlags}, L"`), `textAlign=${textAlign} 应产出运行时标志位 ${expectedFlags}`);
+  };
+  generateWithTextAlign('center', 1 << 20);
+  generateWithTextAlign('right', 1 << 21);
+  assert.doesNotMatch(cpp, /L"ListBox"[^\n]+, (?:1048576|2097152), L"/u, '未设置对齐时不得误带居中/右对齐标志');
 
   const borderlessCpp = generateLingCppNativeWin32Project({
     ...project,
@@ -3985,7 +4011,9 @@ test('标签页中的透明标签在 Win32 运行时继承实际父容器背景'
   }).files.find(file => file.relativePath === 'main.cpp')!.content;
 
   assert.match(cpp, /bool backgroundTransparent;/u);
-  assert.match(cpp, /L"Label", L"标签2", L"新文本标签"[^\n]+RGB\(30, 30, 36\), true, RGB\(0, 0, 0\), true/u);
+  // ControlSpec 行自 6ae729c 起在 foreground 与 enabled 之间新增 selectedColor/selectedMarkColor 两个颜色字段；
+  // 断言语义不变：background=父容器解析色 RGB(30,30,36)、backgroundTransparent、foreground=RGB(0,0,0)、enabled。
+  assert.match(cpp, /L"Label", L"标签2", L"新文本标签"[^\n]+RGB\(30, 30, 36\), true, RGB\(0, 0, 0\), RGB\(\d+, \d+, \d+\), RGB\(\d+, \d+, \d+\), true/u);
   assert.match(cpp, /HBRUSH ResolveControlSurroundingBrush\(const ControlSpec& control, HWND controlHwnd\) const/u);
   assert.match(cpp, /const RuntimeControl\* FindRuntimeControl\(int id\) const/u);
   assert.match(cpp, /const RuntimeControl\* parent = FindRuntimeControl\(control\.parentId\);/u);

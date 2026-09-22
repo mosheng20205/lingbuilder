@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { BottomPanelTabType, CommandHintContent, ExtractedString, ProblemItem } from '../types';
 import type { ModuleHintContent } from '../services/modules/types';
+import type { CommandService } from '../services/commands/commandService';
 import TerminalPanel from './TerminalPanel';
 import DebugInspector from './DebugInspector';
 import TestExplorer from './TestExplorer';
@@ -48,6 +49,7 @@ interface BottomPanelProps {
   commandHint: CommandHintContent | null;
   height: number;
   onClearLogs?: (tab: string) => void;
+  commandService?: CommandService;
 }
 
 export default function BottomPanel({
@@ -66,7 +68,8 @@ export default function BottomPanel({
   moduleHint,
   commandHint,
   height,
-  onClearLogs
+  onClearLogs,
+  commandService
 }: BottomPanelProps) {
   const [filterType, setFilterType] = useState<'all' | 'string' | 'comment'>('all');
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -834,7 +837,7 @@ export default function BottomPanel({
           </div>
         )}
 
-        {activeTab === 'terminal' && <TerminalPanel isDarkMode={isDarkMode} />}
+        {activeTab === 'terminal' && <TerminalPanel isDarkMode={isDarkMode} commandService={commandService} />}
         {activeTab === 'tests' && <TestExplorer isDarkMode={isDarkMode} />}
 
         {activeTab === 'debug_logs' && (

@@ -2719,13 +2719,16 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
                            CefRefPtr<CefContextMenuParams> params,
                            CefRefPtr<CefMenuModel> model) override {
     if (!model || !params) return;
-    // 菜单与参数只在本回调期有效：注册为当前线程限定句柄，派发完成后立即回收。
+    // 菜单与参数只在本回调期有效：注册为不受线程限定的事件期句柄（与下载/响应句柄同口径），
+    // 派发完成后立即回收；.lcpp 处理器与注册线程不同，限定线程会拿到 -7。
     const LB_FBRO_OBJECT_HANDLE menu_handle = RegisterCefObject(
-        LB_FBRO_OBJECT_MENU_MODEL, model, &ObjectState::menu_model, 0, GetCurrentThreadId());
+        LB_FBRO_OBJECT_MENU_MODEL, model, &ObjectState::menu_model);
     const LB_FBRO_OBJECT_HANDLE params_handle = RegisterCefObject(
-        LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, params, &ObjectState::context_menu_params, 0,
-        GetCurrentThreadId());
+        LB_FBRO_OBJECT_CONTEXT_MENU_PARAMS, params, &ObjectState::context_menu_params);
     std::wstring response;
+    // 事件期句柄必须在处理器运行期间存活：带 SYNCHRONOUS 标志让运行时以
+    // SendMessage 阻塞派发（处理器同步执行并回传菜单操作应答），
+    // 否则 PostMessage 异步派发会在处理器读取前就 EraseObjectTree（-7）。
     DispatchGeneratedBrowserEvent(handle_,
         L"fbro.event.fbrohsbroevent.onbeforecontextmenu.32288e654974",
         L"OnBeforeContextMenu", L"上下文菜单显示前",
@@ -2735,10 +2738,9 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
             {L"paramsHandle", std::to_wstring(params_handle)},
             {L"x", std::to_wstring(FBroHsContextMenuParams_pGetXCoord(params))},
             {L"y", std::to_wstring(FBroHsContextMenuParams_pGetYCoord(params))}}),
-        0, 0, &response);
+        LB_FBRO_EVENT_FLAG_SYNCHRONOUS, 0, &response);
     if (!response.empty()) ApplyMenuModelOperations(model, response);
-    EraseObjectTree(menu_handle);
-    EraseObjectTree(params_handle);
+
   }
 
   bool RunContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,

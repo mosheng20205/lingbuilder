@@ -155,6 +155,7 @@ import type {
   WorkbenchConfigurationSnapshot
 } from './services/configuration';
 import { getWorkbenchConfigurationMutationTarget } from './services/configuration';
+import { onAiAgentRequest } from './services/ai/agentRequestBus';
 import {
   LEGACY_EDITOR_EXPERIENCE_MODE_KEY,
   LEGACY_EDITOR_FONT_SIZE_KEY,
@@ -190,7 +191,9 @@ import {
   upgradeLegacyControlEventHandlerSignature
 } from './services/windowDesigner/controlEventCodeService';
 import {
+  deleteDesignerImageResource,
   selectAndImportDesignerImage,
+  type DesignerImageDeleteResult,
   type DesignerImageImportResult
 } from './services/windowDesigner/designerAssetClient';
 import { sourceControlService, type SourceControlMutation } from './services/lingCpp/sourceControlService';
@@ -280,6 +283,7 @@ import {
   workbenchTextModelService
 } from './services/textModel';
 import { LINGBUILDER_DISPLAY_VERSION, LINGBUILDER_OFFICIAL_SITE_URL } from './services/product/productInfo';
+import BuildStampLabel from './components/BuildStampLabel';
 
 const LINGBUILDER_QQ_GROUP_URL = 'https://qm.qq.com/q/q2VNHZXLXy';
 // Web 模式下创建独立项目工作区并整页刷新后，跳过欢迎页直接进入工作台的一次性标记。
@@ -1943,6 +1947,17 @@ export default function App() {
     configurationMutationRef.current('workbench.aiPanel.visible', !showRightPanel, 'user')
   ), [showRightPanel]);
 
+  const [pendingAgentRequest, setPendingAgentRequest] = useState<{ id: number; prompt: string; origin?: string } | null>(null);
+  const agentRequestSeqRef = useRef(0);
+  const handleAgentRequestHandled = useCallback((id: number) => {
+    setPendingAgentRequest(current => (current && current.id === id ? null : current));
+  }, []);
+  useEffect(() => onAiAgentRequest(request => {
+    agentRequestSeqRef.current += 1;
+    setPendingAgentRequest({ id: agentRequestSeqRef.current, prompt: request.prompt, origin: request.origin });
+    if (!showRightPanel) void configurationMutationRef.current('workbench.aiPanel.visible', true, 'user');
+  }), [showRightPanel]);
+
   const toggleWorkbenchTheme = useCallback(async (): Promise<boolean> => (
     configurationMutationRef.current('workbench.colorTheme', isDarkMode ? 'light' : 'dark', 'user')
   ), [isDarkMode]);
@@ -2380,7 +2395,6 @@ void DisplayStatus() {
     void refreshSourceControlStatus();
   }, [hasEnteredWorkbench, refreshSourceControlStatus]);
 
-
   // Update translation for a single extracted string
   const handleUpdateStringTranslation = (id: string, value: string) => {
     if (!projectFilesReadyRef.current) return;
@@ -2708,8 +2722,9 @@ void DisplayStatus() {
     // 写盘后的守卫只比对项目身份，不再比对 loadGeneration：服务端 applyEdit 已原子写盘，
     // 文件监视器随之重载会推进代次号，严格相等会把“本次写入自己”误拒（UI 报失败但磁盘已改）。
     // 内容一致性与跨项目漂移由服务端 applyEdit 的磁盘双重比对兜底。
+    // 纯布局提案（源码一字未改）返回 0 个文件是正常结果，不能当成写入失败报「内存未同步」。
     if (
-      !appliedFiles.length ||
+      (!appliedFiles.length && !proposal.designerProject) ||
       !projectFilesReadyRef.current ||
       requestOwner.projectId !== activeProjectIdRef.current ||
       requestOwner.projectId !== loadedProjectIdRef.current
@@ -3167,10 +3182,21 @@ void DisplayStatus() {
           if (data.designerProject.id !== projectId) {
             throw new Error(`项目 ${projectId} 返回了不匹配的设计器模型 ${data.designerProject.id}。`);
           }
+          // 重载会重建画布状态：仍存在的窗口/选中控件必须保留，否则 AI 应用一次改动
+          // 就把用户从多窗口设计器里踢回第一个窗口，看起来像「界面被重置」而不是「被更新」。
+          const previousDesignerState = readWindowDesignerState(activeProjectId);
+          const keepsActiveWindow = Boolean(previousDesignerState.activeWindowId)
+            && data.designerProject.windows?.some((win: { id: string }) => win.id === previousDesignerState.activeWindowId);
+          const keepsSelectedControl = Boolean(previousDesignerState.selectedControlId)
+            && data.designerProject.windows?.some((win: { controls?: Array<{ id: string }> }) => win.controls?.some(
+              (control: { id: string }) => control.id === previousDesignerState.selectedControlId
+            ));
           const nextDesignerState = saveWindowDesignerState({
             project: data.designerProject,
-            activeWindowId: data.designerProject.windows?.[0]?.id || 'main-window',
-            selectedControlId: data.designerProject.windows?.[0]?.controls?.[0]?.id || null
+            activeWindowId: keepsActiveWindow
+              ? previousDesignerState.activeWindowId
+              : data.designerProject.windows?.[0]?.id || 'main-window',
+            selectedControlId: keepsSelectedControl ? previousDesignerState.selectedControlId : null
           });
           designerSavedSnapshotRef.current = JSON.stringify(nextDesignerState.project);
           designerDirtyRef.current = false;
@@ -3686,23 +3712,6 @@ void DisplayStatus() {
           ...s,
           status,
           translated: status === 'skipped' ? '' : s.translated
-        };
-      }
-      return s;
-    });
-    triggerReconstruction(activeFile, updatedStrings, owner);
-  };
-
-    owner: ProjectMutationOwner = captureProjectMutationOwner()
-  ) => {
-    if (!isCurrentProjectMutationOwner(owner)) return;
-    const translationsMap = new Map(translations.map(t => [t.id, t.translated]));
-    const updatedStrings = activeFile.strings.map(s => {
-      if (translationsMap.has(s.id)) {
-        return {
-          ...s,
-          translated: translationsMap.get(s.id)!,
-          status: 'translated' as const
         };
       }
       return s;
@@ -4435,15 +4444,19 @@ void DisplayStatus() {
     }
   };
 
-  const appendSolutionLogs = useCallback((title: string, result: { ok: boolean; logs?: string[]; error?: string; stage?: string; compilerDiagnostics?: any[]; results?: Array<{ compilerDiagnostics?: any[] }> }) => {
+  // 生成/清理/重新生成的日志行统一由任务轮询通道进输出面板（成功、失败都覆盖：失败时
+  // 任务服务会把错误消息写进 task.logs）。此前响应通道把 result.logs 再追加一遍，同一批
+  // 行在面板里出现两次。这里只兜底「任务未创建」的失败响应（无 taskId），并派发编译诊断事件。
+  const appendSolutionLogs = useCallback((title: string, result: { ok: boolean; taskId?: string; logs?: string[]; error?: string; stage?: string; compilerDiagnostics?: any[]; results?: Array<{ compilerDiagnostics?: any[] }> }) => {
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
-    setBuildLogs(prev => [
-      ...prev,
-      `> [${new Date().toLocaleTimeString()}] 【${title}】${result.ok ? '完成' : '失败'}`,
-      ...(result.logs || []).map(line => `> [${new Date().toLocaleTimeString()}] ${line}`),
-      ...(!result.ok ? [`> [${new Date().toLocaleTimeString()}] 错误：${result.error || result.stage || '未知错误'}`] : [])
-    ]);
+    if (!result.taskId && !result.ok) {
+      setBuildLogs(prev => [
+        ...prev,
+        `> [${new Date().toLocaleTimeString()}] 【${title}】失败`,
+        `> [${new Date().toLocaleTimeString()}] 错误：${result.error || result.stage || '未知错误'}`
+      ]);
+    }
     const diagnostics = [...(result.compilerDiagnostics || []), ...(result.results || []).flatMap(item => item.compilerDiagnostics || [])];
     window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', { detail: { diagnostics } }));
   }, []);
@@ -5485,6 +5498,12 @@ void DisplayStatus() {
       await navigator.clipboard.writeText(relativePath);
       return true;
     },
+    deleteProjectResource: async (requestedProjectId?: unknown, requestedPath?: unknown, requestedConfirmed?: unknown): Promise<DesignerImageDeleteResult> => {
+      const projectId = typeof requestedProjectId === 'string' ? requestedProjectId.trim() : '';
+      const relativePath = typeof requestedPath === 'string' ? requestedPath.trim() : '';
+      if (!projectId || !relativePath) return { status: 'error', error: '缺少项目或图片资源路径。' };
+      return deleteDesignerImageResource(projectId, relativePath, requestedConfirmed === true);
+    },
     diffEdit: () => showDiffViewMode('chinese'),
     diffSplit: () => showDiffViewMode('split'),
     diffUnified: () => showDiffViewMode('unified'),
@@ -5886,6 +5905,18 @@ void DisplayStatus() {
         when: 'workspace.open && !workbench.modalOpen',
         order: 14,
         handler: (_context, relativePath) => workbenchCommandHandlersRef.current.copyProjectResourcePath(relativePath)
+      },
+      {
+        id: 'workbench.action.project.deleteImageResource',
+        title: '项目：删除图片资源',
+        aliases: ['Delete Image Resource', 'Delete Asset'],
+        category: '文件',
+        description: '删除项目 assets 目录中的图片资源；仍被设计器或源码引用时会先列出引用并要求确认。',
+        when: 'workspace.open && !workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 14,
+        handler: (_context, projectId, relativePath, confirmed) =>
+          workbenchCommandHandlersRef.current.deleteProjectResource(projectId, relativePath, confirmed)
       },
       {
         id: 'workbench.action.project.adaptNativeCpp',
@@ -6348,6 +6379,24 @@ void DisplayStatus() {
     }
   }, []);
 
+  const handleDeleteProjectResource = useCallback(async (
+    projectId: string,
+    relativePath: string,
+    confirmed: boolean
+  ): Promise<DesignerImageDeleteResult> => {
+    try {
+      return await commandServiceRef.current.executeCommand<DesignerImageDeleteResult>(
+        'workbench.action.project.deleteImageResource',
+        commandContextRef.current,
+        projectId,
+        relativePath,
+        confirmed
+      );
+    } catch (error) {
+      return { status: 'error', error: error instanceof Error ? error.message : '图片资源删除失败。' };
+    }
+  }, []);
+
   const commandPaletteContext = createCommandPaletteContext(commandContextRef.current);
   const executeCommandFromPalette = useCallback(async (commandId: string): Promise<boolean> => {
     try {
@@ -6669,9 +6718,9 @@ void DisplayStatus() {
     );
   }
 
+  // 模块面板等处把一句需求「交给本机 Agent」：工作台只负责展开 AI 助手侧栏并转交需求。
   const renderAiAssistant = () => (
     <AiAssistant
-      onSetStatus={handleSetStatus}
       filePath={activeFile.path}
       sourceCode={activeFile.translatedContent || activeFile.originalContent}
       activeLanguage={activeFile.language}
@@ -6680,7 +6729,8 @@ void DisplayStatus() {
         activeProjectId,
         projectFileLoadGenerationRef.current
       )}
-      moduleContext={moduleContext}
+      agentRequest={pendingAgentRequest}
+      onAgentRequestHandled={handleAgentRequestHandled}
       designerProject={activeProjectHasWindowDesigner ? windowDesignerState.project : undefined}
       workspaceFiles={files.map(file => ({
         filePath: file.path,
@@ -6721,6 +6771,7 @@ void DisplayStatus() {
             />
             <div className="truncate text-[#007ACC] font-bold tracking-wide">
               C++ LocMaster (LingBuilder) <span className="text-cyan-400/80">{LINGBUILDER_DISPLAY_VERSION}</span>
+              <BuildStampLabel />
             </div>
             <AiBridgeTitleBarBadge onOpen={() => setShowCliGuide(true)} isDarkMode={isDarkMode} />
             {updateBadgePayload && (
@@ -6840,7 +6891,6 @@ void DisplayStatus() {
                   <button onClick={() => { setShowCustomModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>添加自定义文件</span>
                   </button>
-                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { setShowCloseConfirmModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-rose-600 hover:text-white text-rose-500' : 'hover:bg-rose-600 hover:text-white text-rose-600 font-semibold'}`}>
                     <span>安全退出 IDE</span>
                     <span className="opacity-50 text-[10px]">Alt+F4</span>
@@ -6858,6 +6908,7 @@ void DisplayStatus() {
                 编辑(E)
               </span>
               {activeDropdown === 'edit' && (
+                <div className={`absolute left-0 top-6 w-48 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
                   <button disabled={isSaving || isBuilding} onClick={() => { void executeWorkbenchCommand('workbench.action.findInFiles'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-45 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>在文件中查找</span>
                     <span className="opacity-50 text-[10px]">Ctrl+Shift+F</span>
@@ -7548,6 +7599,7 @@ void DisplayStatus() {
           onAddProjectResource={handleAddProjectResource}
           onExportLcppSourcePackage={projectId => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', projectId); }}
           onCopyProjectResourcePath={handleCopyProjectResourcePath}
+          onDeleteProjectResource={handleDeleteProjectResource}
           activeModuleHintId={moduleHint?.itemId}
           onShowModuleHint={handleShowModuleHint}
         />
@@ -7782,6 +7834,7 @@ void DisplayStatus() {
               moduleHint={moduleHint}
               commandHint={commandHint}
               height={bottomHeight}
+              commandService={commandServiceRef.current}
             />
           )}
         </div>

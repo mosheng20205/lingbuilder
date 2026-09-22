@@ -169,9 +169,11 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口） | 198 |
 | 已封装 | `lingbuilder.new_emoji.fbro-shell` | new_emoji FBro x64 多标签浏览器外壳模块 | 50 |
  已有 | `lingbuilder.threading` | 多线程模块 | 66 |
+ 已有 | `lingbuilder.cron` | 定时任务模块 | 29 |
 | 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
 | 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.1（受管多连接 HTTP/1.1、动态/静态路由、连接轮转与完整请求/响应） | 51 |
 | 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |
+| 已完整封装 | `lingbuilder.sunnynet` | 网络中间件模块 1.0（SunnyNet 抓包改写：HTTP/HTTPS/WS/TCP/UDP、根证书解密、进程代理/SOCKS 按进程/上游代理（全局与按请求、socks5 可带账密）/系统代理；驱动常驻免重启） | 69 |
 
 除 EdgeView 原本已有 x64 target 外，其余仅声明 Win32 的内置系统模块现在会从同一份内置 manifest 自动生成等价 x64 target。外部 `.lbmod` 不使用此自动补齐规则，仍必须自行提供精确架构产物。
 

@@ -534,6 +534,13 @@ function shutdownAndExit(code: number): Promise<void> {
       console.error(error);
     }
     try {
+      // 内嵌 Agent 运行器是 dsh 子进程 + 它自己拉起的 MCP 子进程，退出必须回收。
+      await agentRuntime?.dispose();
+    } catch (error) {
+      exitCode = 1;
+      console.error(error);
+    }
+    try {
       // 退出必须撤掉本机授权代理并删除发现文件，避免陈旧端口被后来者误用。
       await localAuthorization?.stop();
       localAuthorization = null;
@@ -686,6 +693,16 @@ async function createMainWindow(): Promise<void> {
     mainWindow.webContents.send(MODULE_INSTALL_EVENT, { packagePath });
   }
   if (smokeTest) await writePackagedSmokeProgress('load-url:done');
+  // 消费构建自愈标记：上一次退出是「旧构建让位给新构建」，这里读掉并留痕，
+  // 标题栏的构建时间戳（欢迎页/工作台顶栏）即用户可见的新旧判据。
+  try {
+    const markerPath = path.join(app.getPath('userData'), 'build-self-heal-marker.json');
+    const markerRaw = await fs.readFile(markerPath, 'utf8');
+    await fs.rm(markerPath, { force: true });
+    console.info('[build-self-heal] 已从旧构建自动切换到当前安装的构建：', markerRaw.slice(0, 400));
+  } catch {
+    // 无标记（常规启动）属常态。
+  }
   if (!app.isPackaged && process.env.LINGBUILDER_OPEN_DEVTOOLS === 'true') {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
@@ -856,6 +873,7 @@ async function writePackagedSmokeProgress(stage: string): Promise<void> {
 async function switchWorkspace(workspacePath: string): Promise<void> {
   const candidateWorkspace = await workspaceService.validateWorkspace(workspacePath);
   if (aiBridgeManager?.snapshot().state !== 'stopped') await aiBridgeManager.stop('工作区即将切换');
+  if (agentRuntime && agentRuntime.snapshot().state !== 'stopped') await agentRuntime.dispose().catch(() => undefined);
   const result = await requestRendererApi('/api/workspace/switch', {
     method: 'POST',
     body: JSON.stringify({ workspacePath: candidateWorkspace })
@@ -1726,10 +1744,27 @@ if (process.env.LINGBUILDER_REC_USER_DATA) {
 }
 
 const singleInstanceLock = app.requestSingleInstanceLock();
+// 构建身份：本进程启动时的构建（asar 内 dist/build-meta.json）。second-instance 到来时
+// 重读磁盘比对，不一致（升级或同版本重装）即自愈重启——否则单实例委托会让用户双击
+// 新包图标却永远落在旧实例的旧渲染层（2026-09-20 修复）。
+const runningBuildMeta = readBuildMetaFile(resolveBuildMetaPath(__dirname));
 if (!singleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
+    // 构建自愈优先于工作区/文件委托：安装目录已不是本进程的构建时，旧实例自动让位。
+    const diskBuildMeta = readBuildMetaFile(resolveBuildMetaPath(__dirname));
+    if (diskBuildDiffersFromRunning(diskBuildMeta, runningBuildMeta)) {
+      const markerPath = path.join(app.getPath('userData'), 'build-self-heal-marker.json');
+      void fs.writeFile(markerPath, JSON.stringify({
+        from: runningBuildMeta,
+        to: diskBuildMeta,
+        at: new Date().toISOString()
+      }, null, 2) + '\n', 'utf8').catch(() => undefined);
+      app.relaunch();
+      app.exit(0);
+      return;
+    }
     const modulePath = findLbmodArgument(argv);
     if (modulePath) {
       void importModulePackage(modulePath).then(result => {

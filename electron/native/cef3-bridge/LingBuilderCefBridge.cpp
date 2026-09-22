@@ -961,7 +961,11 @@ bool IsPathAllowed(const wchar_t* value, std::filesystem::path& resolved) {
     return false;
   }
   std::error_code error;
-  resolved = std::filesystem::weakly_canonical(std::filesystem::path(value), error);
+  // weakly_canonical 不会把相对路径补全成绝对路径（MSVC 实测原样返回），
+  // 相对路径必须先按进程当前目录解析，否则与绝对根目录的前缀比较必然失败。
+  std::filesystem::path input(value);
+  if (input.is_relative()) input = std::filesystem::current_path(error) / input;
+  resolved = std::filesystem::weakly_canonical(input, error);
   if (error) {
     Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"无法解析文件路径");
     return false;

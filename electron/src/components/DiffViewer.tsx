@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useImperativeHandle, startTransition } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
-import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink, GripHorizontal, ArrowUp, ArrowDown, Scissors, ClipboardPaste } from 'lucide-react';
+import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink, GripHorizontal, ArrowUp, ArrowDown, Scissors, ClipboardPaste, Package } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
   if (fileName.endsWith('.lcpp')) {
@@ -33,12 +33,28 @@ function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
         : 'bg-slate-200/50 border-transparent text-slate-600 hover:text-slate-800'
   }`;
 }
+
+/** 模块页浏览态的主区占位：不显示编辑器/设计器，引导在左侧选择模块。 */
+function ModulePageEmptyState({ isDarkMode }: { isDarkMode: boolean }) {
+  return (
+    <div className={`flex-1 flex flex-col items-center justify-center gap-3 select-none ${isDarkMode ? 'bg-[#141418] text-slate-500' : 'bg-white text-slate-400'}`}>
+      <Package className="w-10 h-10 opacity-40" aria-hidden="true" />
+      <div className="text-sm font-semibold">模块生态</div>
+      <div className="max-w-xs text-center text-xs leading-5">
+        在左侧列表选择一个模块，将在主区打开模块详情页；
+        切换回「文件」页即可继续编辑代码与界面设计。
+      </div>
+    </div>
+  );
+}
 import { CommandHintContent, DiffLine, DiffResult, ExtractedString, ProblemItem } from '../types';
-import WpfDesigner from './WpfDesigner';
+import WpfDesigner, { type WpfDesignerHandle, type WpfDesignerHistoryAvailability } from './WpfDesigner';
 import DesignerErrorBoundary from './DesignerErrorBoundary';
 import type { CommandService } from '../services/commands/commandService';
 import { keyboardEventToKeybinding } from '../services/commands/keybindingService';
 import { describeModuleBindingParameterType } from '../services/modules/bindingValueType';
+import { MODULE_DETAIL_OPEN_EVENT, MODULE_PAGE_ACTIVE_EVENT } from '../services/modules/moduleDetailView';
+import ModuleDetailPage from './ModuleDetailPage';
 import type { CommandContext } from '../services/commands/types';
 import MonacoCodeEditor, {
   MonacoContentChange,
@@ -1536,7 +1552,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   commandService,
   getCommandContext
 }: DiffViewerProps, ref) {
-  const [viewType, setViewType] = useState<'code' | 'designer'>('code');
+  const [viewType, setViewType] = useState<'code' | 'designer' | 'module'>('code');
+  const [moduleDetailModuleId, setModuleDetailModuleId] = useState<string | null>(null);
+  const moduleDetailOpenCountRef = useRef(0);
+
+  useEffect(() => {
+    // 侧栏模块列表点击 → 主区打开「模块详情」页签（与 force-code-view 同一套事件模式）。
+    const handleOpenModuleDetail = (event: Event) => {
+      const detail = (event as CustomEvent<{ moduleId?: string }>).detail;
+      if (!detail?.moduleId) return;
+      moduleDetailOpenCountRef.current += 1;
+      setModuleDetailModuleId(detail.moduleId);
+      setViewType('module');
+    };
+    window.addEventListener(MODULE_DETAIL_OPEN_EVENT, handleOpenModuleDetail);
+    return () => window.removeEventListener(MODULE_DETAIL_OPEN_EVENT, handleOpenModuleDetail);
+  }, []);
+
   const [beginnerCommandTargetId] = useState(() => `lingcpp-beginner-editor-${++diffViewerCommandTargetSerial}`);
   const beginnerCommandHandlerRef = useRef<{
     addSubprogram?: (target?: LingCppBeginnerMethodTarget) => unknown;
@@ -1552,12 +1584,24 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
   useEffect(() => {
     const handleForceCodeView = () => {
+      setModulePageActive(false);
       setViewType('code');
     };
     window.addEventListener('force-code-view', handleForceCodeView);
     return () => {
       window.removeEventListener('force-code-view', handleForceCodeView);
     };
+  }, []);
+
+  // 模块侧栏页激活时主区显示占位页（隐藏编辑器/设计器）；打开模块详情页签后由详情页接管。
+  const [modulePageActive, setModulePageActive] = useState(false);
+  useEffect(() => {
+    const handleModulePageActive = (event: Event) => {
+      const detail = (event as CustomEvent<{ active?: boolean }>).detail;
+      setModulePageActive(detail?.active === true);
+    };
+    window.addEventListener(MODULE_PAGE_ACTIVE_EVENT, handleModulePageActive);
+    return () => window.removeEventListener(MODULE_PAGE_ACTIVE_EVENT, handleModulePageActive);
   }, []);
 
 
@@ -1580,6 +1624,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   useEffect(() => {
     if (!designerProject && viewType === 'designer') setViewType('code');
   }, [designerProject, viewType]);
+
+  const closeModuleDetailTab = useCallback(() => {
+    setModuleDetailModuleId(null);
+    if (viewType === 'module') setViewType('code');
+  }, [viewType]);
 
   useEffect(() => {
     const isDesignerActive = viewType === 'designer' && Boolean(designerProject);
@@ -2245,6 +2294,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       applyProfessionalHistoryValue(value);
     },
     undo: async () => {
+      if (viewType === 'designer') return designerHistoryHandleRef.current?.undo() || false;
       if (viewType !== 'code' || viewMode !== 'chinese') return false;
       if (activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner') {
         const flushResult = flushBeginnerDrafts(true);
@@ -2263,6 +2313,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       return true;
     },
     redo: async () => {
+      if (viewType === 'designer') return designerHistoryHandleRef.current?.redo() || false;
       if (viewType !== 'code' || viewMode !== 'chinese') return false;
       if (activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner') {
         const flushResult = flushBeginnerDrafts(true);
@@ -2453,12 +2504,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
 
+  // 设计器撤销/重做：WpfDesigner 持有 DesignerHistory，这里持其 handle 与可用性镜像，
+  // 让工作台顶部撤销/重做按钮与命令上下文在设计器视图下跟随真实历史状态。
+  const designerHistoryHandleRef = useRef<WpfDesignerHandle>(null);
+  const [designerHistoryAvailability, setDesignerHistoryAvailability] = useState<WpfDesignerHistoryAvailability>({ canUndo: false, canRedo: false });
+  const handleDesignerHistoryStateChange = useCallback((availability: WpfDesignerHistoryAvailability) => {
+    setDesignerHistoryAvailability(previous => (
+      previous.canUndo === availability.canUndo && previous.canRedo === availability.canRedo ? previous : availability
+    ));
+  }, []);
+
   useEffect(() => {
     let surface: string | null = null;
     let surfaceReadOnly = false;
     if (viewType === 'designer') {
       surface = 'designer';
-      surfaceReadOnly = true;
+      surfaceReadOnly = false;
     } else if (viewMode !== 'chinese') {
       surface = `diff:${viewMode}`;
       surfaceReadOnly = true;
@@ -2481,12 +2542,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       line: cursorPosition.line,
       column: cursorPosition.column,
       selectionLength: preciseBeginnerState?.selectionLength || 0,
-      canUndo: surface === 'beginner'
-        ? textEditHistory.canUndo() || Object.keys(beginnerCodeDrafts).length > 0
-        : false,
-      canRedo: surface === 'beginner'
-        ? textEditHistory.canRedo() && Object.keys(beginnerCodeDrafts).length === 0
-        : false,
+      canUndo: surface === 'designer'
+        ? designerHistoryAvailability.canUndo
+        : surface === 'beginner'
+          ? textEditHistory.canUndo() || Object.keys(beginnerCodeDrafts).length > 0
+          : false,
+      canRedo: surface === 'designer'
+        ? designerHistoryAvailability.canRedo
+        : surface === 'beginner'
+          ? textEditHistory.canRedo() && Object.keys(beginnerCodeDrafts).length === 0
+          : false,
       readOnly: surfaceReadOnly,
       positionAvailable: surface === 'beginner' || surface === 'native'
     };
@@ -2496,6 +2561,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   }, [
     cursorPosition.column,
     cursorPosition.line,
+    designerHistoryAvailability,
     beginnerCodeDrafts,
     isLingCppBeginnerStructureMode,
     isLingCppNativeMode,
@@ -11024,6 +11090,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       isDarkMode ? 'bg-[#141418]' : 'bg-white'
     }`}>
       {/* File Tabs Bar */}
+      {!(modulePageActive && !moduleDetailModuleId) && (
       <div className={`flex px-2 pt-1 select-none items-center justify-between border-b ${
         isDarkMode ? 'bg-[#181820] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
       }`}>
@@ -11048,6 +11115,35 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             </div>
           )}
 
+          {moduleDetailModuleId && (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setViewType('module')}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') setViewType('module');
+              }}
+              className={getEditorTabClassName(viewType === 'module', isDarkMode)}
+              title={`模块详情：${moduleDetailModuleId}`}
+              aria-label={`模块详情页签：${moduleDetailModuleId}`}
+              aria-current={viewType === 'module' ? 'page' : undefined}
+            >
+              <Package className="w-3.5 h-3.5 text-violet-400" />
+              <span className="whitespace-nowrap">模块详情</span>
+              <button
+                onClick={event => {
+                  event.stopPropagation();
+                  closeModuleDetailTab();
+                }}
+                onKeyDown={event => event.stopPropagation()}
+                aria-label="关闭模块详情页签"
+                className="w-3.5 h-3.5 shrink-0 rounded-full hover:bg-slate-400/20 flex items-center justify-center text-slate-500 hover:text-red-500 opacity-60 group-hover:opacity-100"
+              >
+                <X className="w-2 h-2" />
+              </button>
+            </div>
+          )}
+
           {openTabs.map(tabPath => {
             const fileName = tabPath.split('/').pop() || tabPath;
             const isActive = viewType === 'code' && tabPath === activeTabPath;
@@ -11062,9 +11158,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 data-editor-tab-path={tabPath}
                 aria-current={isActive ? 'page' : undefined}
                 aria-label={`打开文件标签：${fileName}`}
-                onClick={() => onSelectTab(file)}
+                onClick={() => { if (viewType !== 'code') setViewType('code'); onSelectTab(file); }}
                 onKeyDown={event => {
-                  if (event.key === 'Enter' || event.key === ' ') void onSelectTab(file);
+                  if (event.key === 'Enter' || event.key === ' ') { if (viewType !== 'code') setViewType('code'); void onSelectTab(file); }
                 }}
                 className={getEditorTabClassName(isActive, isDarkMode)}
               >
@@ -11137,11 +11233,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           )}
         </div>
       </div>
+      )}
       {/* Main Comparative Frame */}
-      {viewType === 'designer' && designerProject ? (
+      {viewType === 'module' && moduleDetailModuleId ? (
+        <ModuleDetailPage
+          key={`module-detail:${moduleDetailModuleId}`}
+          moduleId={moduleDetailModuleId}
+          projectId={textModelProjectId}
+          isDarkMode={isDarkMode}
+          onClose={closeModuleDetailTab}
+        />
+      ) : modulePageActive && !moduleDetailModuleId ? (
+        <ModulePageEmptyState isDarkMode={isDarkMode} />
+      ) : viewType === 'designer' && designerProject ? (
         <DesignerErrorBoundary resetKey={`designer:${textModelProjectId}`} isDarkMode={isDarkMode}>
           <WpfDesigner
             key={`designer:${textModelProjectId}`}
+            ref={designerHistoryHandleRef}
             projectId={textModelProjectId}
             authoritativeProject={designerProject}
             authoritativeActiveWindowId={activeWindowId}
@@ -11150,6 +11258,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             commandService={commandService}
             getCommandContext={getCommandContext}
             toolboxHost={designerToolboxHost}
+            onHistoryStateChange={handleDesignerHistoryStateChange}
           />
         </DesignerErrorBoundary>
       ) : (

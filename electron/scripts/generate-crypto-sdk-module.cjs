@@ -2,10 +2,11 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { execFile } = require('node:child_process');
+const { execFile, exec } = require('node:child_process');
 const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 const MODULE_ID = 'lingbuilder.crypto.sdk';
 const BOTAN_VERSION = '3.12.0';
 const BOTAN_SHA256 = '5370f98dc15f8c222ee1ce52cd61c8756a53be0dc57cc4c1b0714d5a09ad74fb';
@@ -118,16 +119,28 @@ async function buildBotan(root, vsDevCmd, arch, cpu, buildDir, rebuild) {
 }
 
 async function findVsDevCmd() {
+  const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
+  if (await exists(vswhere)) {
+    try {
+      const installation = (await execFileAsync(vswhere, ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true })).stdout.trim();
+      if (installation) {
+        const discovered = path.join(installation, 'Common7', 'Tools', 'VsDevCmd.bat');
+        if (await exists(discovered)) return discovered;
+      }
+    } catch {
+      // vswhere 失败时继续探测固定安装路径。
+    }
+  }
   const candidates = [
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\VsDevCmd.bat',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools\\VsDevCmd.bat',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\Tools\\VsDevCmd.bat'
   ];
   for (const candidate of candidates) if (await exists(candidate)) return candidate;
-  throw new Error('未找到 Visual Studio 2022 C++ 工具链，无法生成双架构密码学 SDK。');
+  throw new Error('未找到 Visual Studio C++ 工具链（VsDevCmd），无法生成双架构密码学 SDK。');
 }
 
-async function runCmd(command, timeout) { await execFileAsync('cmd.exe', ['/d', '/c', command], { windowsHide: true, timeout, maxBuffer: 64 * 1024 * 1024 }); }
+async function runCmd(command, timeout) { await execAsync(command, { windowsHide: true, timeout, maxBuffer: 64 * 1024 * 1024 }); }
 async function download(url, target) {
   const response = await fetch(url); if (!response.ok || !response.body) throw new Error(`下载失败：${url} / HTTP ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer()); await fs.writeFile(target, bytes);

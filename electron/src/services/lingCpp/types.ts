@@ -251,10 +251,16 @@ export interface WorkspaceEditProposal {
   explanation: string;
   /** AI 对窗口设计器的完整模型替换；缺省表示本次没有设计器改动。 */
   designerProject?: LingWindowProject;
-  /** 生成提案时的设计器快照，用于应用前检测外部修改。 */
+  /** 生成提案时的设计器磁盘快照，用于应用前检测磁盘被外部修改。 */
   designerProjectOriginal?: LingWindowProject;
+  /** 提案生成时 planner 实际看到的设计器模型（画布/调用方模型）。面板画布通常尚未落盘，
+   *  apply 的客户端一致性守卫必须与它比对；磁盘漂移由 designerProjectOriginal 守卫负责。 */
+  designerCallerBaseline?: LingWindowProject;
   /** 提案生成时校验通过的允许控件类型集合；应用侧复用同一集合，避免模块贡献类型被默认集合误拒。 */
   designerAllowedControlTypes?: string[];
+  /** 需求命中窗口/控件词、但 AI 最终没有产生任何布局变化（回传等价模型或省略模型）。
+   * 此时按纯源码提案受理，界面必须如实播报「布局未变化」，不得让用户误以为界面已改。 */
+  designerUnchanged?: boolean;
 }
 
 export interface LingCppWorkspaceFile {
