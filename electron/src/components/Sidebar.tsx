@@ -22,7 +22,6 @@ import {
   RotateCcw,
   FileText,
   Terminal,
-  Brain,
   Copy,
   Info,
   Sliders,
@@ -38,7 +37,7 @@ import {
   Image as ImageIcon,
   FolderOutput
 } from 'lucide-react';
-import { CppFile, ExtractedString, GlossaryTerm, SourceControlStatus } from '../types';
+import { CppFile, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
 import {
   createBlankWindow,
@@ -183,9 +182,7 @@ interface SidebarProps {
   onDesignerToolboxHostChange?: (host: HTMLElement | null) => void;
   showDesignerAssistant?: boolean;
   assistantContent?: React.ReactNode;
-  onBatchTranslate?: (translations: { id: string; translated: string }[]) => void;
   onSetStatus?: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
-  glossary?: GlossaryTerm[];
   drawerWidth?: number;
   onDeleteFile?: (file: CppFile) => boolean | Promise<boolean>;
   onRenameFile?: (file: CppFile, newName: string) => boolean | Promise<boolean>;
@@ -237,9 +234,7 @@ export default function Sidebar({
   onDesignerToolboxHostChange,
   showDesignerAssistant = false,
   assistantContent,
-  onBatchTranslate,
   onSetStatus,
-  glossary = [],
   drawerWidth = 264,
   onDeleteFile,
   onRenameFile,
@@ -333,7 +328,6 @@ export default function Sidebar({
   const [fileSearch, setFileSearch] = useState('');
 
   // States for Quick Actions panel
-  const [isTranslating, setIsTranslating] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [resourceImportingProjectId, setResourceImportingProjectId] = useState<string | null>(null);
@@ -663,84 +657,6 @@ export default function Sidebar({
     }, 4000);
   };
 
-  // --- Quick Action: Smart Auto Translate Active File ---
-  const handleSmartTranslate = async () => {
-    if (isTranslating) return;
-    setIsTranslating(true);
-    setHasCheckedPlaceholders(false);
-
-    // Dynamic timeout to simulate compilation/AI thinking
-    setTimeout(() => {
-      const pendingStrings = activeFile.strings.filter(s => s.status === 'pending');
-      if (pendingStrings.length === 0) {
-        setIsTranslating(false);
-        triggerSuccess('当前文件已全部切换为中文代码编写，无需再次配置！');
-        return;
-      }
-
-      // Dictionary of standard translations for our test app files
-      const dictionary: Record<string, string> = {
-        'My Awesome Game Client v1.0': '我的超级游戏客户端 v1.0 Pro',
-        'Starting initialization of game engine...': '正在启动游戏引擎初始化程序...',
-        'Critical Error: Engine failed to initialize! Please check configuration.': '致命错误：引擎初始化失败！请检查配置文件。',
-        'Initialization Failure': '初始化失败',
-        'Render engine active. Entering message loop.': '渲染引擎已激活。正在进入窗口消息循环。',
-        'Window creation failed with error code: ': '窗口创建失败，错误代码: ',
-        'Welcome to the game world! Press Space to jump.': '欢迎来到游戏世界！按下空格键可以跳跃。',
-        'Are you sure you want to quit?': '你确定要退出游戏吗？',
-        'Quit Game': '退出游戏',
-        'Global Variables:': '全局变量声明:',
-        'Forward declarations of functions included in this code module:': '本代码模块中包含的函数前向声明:',
-        'Initialize global strings': '初始化全局字符串',
-        'TODO: Add initialization code here.': '待办：在此处添加初始化代码。',
-        'Main message loop:': '主消息循环:',
-        'Store instance handle in our global variable': '将实例句柄存储在我们的全局变量中',
-        'TODO: Add any drawing code that uses hdc here...': '待办：在此处添加任何使用 hdc 的绘图代码...',
-        'Parse the menu selections:': '解析菜单项选择:',
-        'IDS_APP_TITLE': '空间探险客户端',
-        'IDS_ERROR_CONNECT': '网络连接建立失败。请重试。',
-        'IDS_STATUS_CONNECTED': '核心引擎网络连通成功。',
-        'Space Adventure Game Client': '《星际探险》官方中文客户端',
-        'File(F)': '文件(F)',
-        'Help(H)': '帮助(H)',
-        'Connection Failed': '服务器连接失败',
-        'Engine Core Online': '引擎核心上线',
-        'IDD_ABOUTBOX': '关于对话框',
-        'Space Adventure Client': '星际探险客户端',
-        'Database connection is offline!': '数据库连接处于离线状态！'
-      };
-
-      const translationsToApply = activeFile.strings.map(s => {
-        if (s.status === 'pending') {
-          // Check glossary terms first
-          const glossaryMatch = glossary.find(g => s.original.toLowerCase().includes(g.english.toLowerCase()));
-          let trText = dictionary[s.original] || s.translated;
-          
-          if (!trText && glossaryMatch) {
-            // Simple replace
-            trText = s.original.replace(new RegExp(glossaryMatch.english, 'gi'), glossaryMatch.chinese);
-          }
-
-          if (!trText) {
-            // Default placeholder if none found
-            trText = `[中文代码] ${s.original}`;
-          }
-
-          return { id: s.id, translated: trText };
-        }
-        return { id: s.id, translated: s.translated };
-      }).filter(t => t.translated !== '');
-
-      if (onBatchTranslate) {
-        onBatchTranslate(translationsToApply);
-        triggerSuccess(`成功通过智能编译器配置了 ${pendingStrings.length} 处中文代码！`);
-      } else {
-        triggerSuccess('编译器本地化模块未挂载，已启用模拟映射！');
-      }
-
-      setIsTranslating(false);
-    }, 1200);
-  };
 
   // --- Quick Action: Format Specifier Integrity Check ---
   const handleCheckPlaceholders = () => {
@@ -789,35 +705,6 @@ export default function Sidebar({
     setPlaceholderErrors([]);
   };
 
-  // --- Quick Action: Apply Glossary Terms directly ---
-  const handleApplyGlossary = () => {
-    let count = 0;
-    const appliedTranslations = activeFile.strings.map(s => {
-      let currentTranslated = s.translated || s.original;
-      let isChanged = false;
-      
-      glossary.forEach(g => {
-        const regex = new RegExp(`\\b${g.english}\\b`, 'gi');
-        if (regex.test(currentTranslated)) {
-          currentTranslated = currentTranslated.replace(regex, g.chinese);
-          isChanged = true;
-        }
-      });
-
-      if (isChanged) {
-        count++;
-        return { id: s.id, translated: currentTranslated };
-      }
-      return null;
-    }).filter(Boolean) as { id: string; translated: string }[];
-
-    if (appliedTranslations.length > 0 && onBatchTranslate) {
-      onBatchTranslate(appliedTranslations);
-      triggerSuccess(`术语规范器：在当前文件中应用了 ${count} 处专业术语转换！`);
-    } else {
-      triggerSuccess('未找到符合术语表中规则的英文文本，无需转换。');
-    }
-  };
 
   // Copy translated code shortcut
   const handleCopyCode = () => {
@@ -2456,45 +2343,6 @@ export default function Sidebar({
 
                 <div className="border-t" style={{ borderColor: isDarkMode ? '#2d2d34' : '#e2e8f0' }} />
 
-                {/* 1. Batch Smart AI Translation */}
-                <div className={`p-2.5 rounded border space-y-2 ${
-                  isDarkMode ? 'bg-[#1E1E1E]/50 border-slate-800/40' : 'bg-slate-100/60 border-slate-200'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-emerald-500 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      <span>智能中文代码映射器</span>
-                    </span>
-                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950/40 text-emerald-300 rounded border border-emerald-500/10">
-                      Gemini Core
-                    </span>
-                  </div>
-                  <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                    一键分析当前 C++ 代码上下文，批量生成对应的中文代码层，并保护原有格式与占位符。
-                  </p>
-                  <button
-                    onClick={handleSmartTranslate}
-                    disabled={isTranslating}
-                    className={`w-full py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-                      isDarkMode 
-                        ? 'bg-[#1E3A1E] hover:bg-emerald-800 text-[#73C991] hover:text-white border border-emerald-500/30' 
-                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm'
-                    }`}
-                  >
-                    {isTranslating ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>AI 智能代码映射生成中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Brain className="w-3.5 h-3.5" />
-                        <span>一键智能编写中文代码</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
                 {/* 2. Format integrity checker */}
                 <div className={`p-2.5 rounded border space-y-2 ${
                   isDarkMode ? 'bg-[#1E1E1E]/50 border-slate-800/40' : 'bg-slate-100/60 border-slate-200'
@@ -2553,30 +2401,6 @@ export default function Sidebar({
                       )}
                     </div>
                   )}
-                </div>
-
-                {/* 3. Batch apply glossary terms */}
-                <div className={`p-2.5 rounded border space-y-2 ${
-                  isDarkMode ? 'bg-[#1E1E1E]/50 border-slate-800/40' : 'bg-slate-100/60 border-slate-200'
-                }`}>
-                  <span className="text-[11px] font-bold text-amber-500 flex items-center gap-1">
-                    <BookOpen className="w-3 h-3 text-amber-500" />
-                    <span>术语规范器 (Glossary Sync)</span>
-                  </span>
-                  <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                    一键扫描并应用“中文编程术语映射”中的全部中文规则，保证中文代码命名标识符百分百一致。
-                  </p>
-                  <button
-                    onClick={handleApplyGlossary}
-                    className={`w-full py-1.5 rounded text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      isDarkMode 
-                        ? 'bg-[#37373D] hover:bg-[#3E3E40] text-amber-400 hover:text-white border-amber-500/10' 
-                        : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 shadow-sm'
-                    }`}
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
-                    <span>应用专业术语映射</span>
-                  </button>
                 </div>
 
                 {/* 4. Output Copying & Testing */}

@@ -8,11 +8,6 @@ export interface ExtractedString {
   context?: string; // Surrounding C++ code context
 }
 
-export interface GlossaryTerm {
-  english: string;
-  chinese: string;
-  description?: string;
-}
 
 export interface CppFile {
   path: string;

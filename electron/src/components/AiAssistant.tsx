@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Brain, Sparkles, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, AlertTriangle, Cloud, KeyRound, Coins, LogOut, X, Plus, Trash2, Copy, Eye, EyeOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
+import { AppliedWorkspaceFile, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
 import { readPreferredCloudModelAlias, writePreferredCloudModelAlias } from '../services/ai/cloudModelPreference';
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
@@ -159,9 +159,6 @@ export function getAiWorkspaceFilesForEdit(
 }
 
 interface AiAssistantProps {
-  strings: ExtractedString[];
-  glossary: GlossaryTerm[];
-  onBatchTranslate: (translations: { id: string; translated: string }[], owner?: ProjectMutationOwner) => void;
   onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending', owner?: ProjectMutationOwner) => void;
   filePath: string;
   sourceCode: string;
@@ -255,9 +252,6 @@ export function agentToolEventCallId(data: Record<string, unknown> | undefined):
 }
 
 export default function AiAssistant({
-  strings,
-  glossary,
-  onBatchTranslate,
   onSetStatus,
   filePath,
   sourceCode,
@@ -300,8 +294,6 @@ export default function AiAssistant({
   const [isAiCredentialReady, setIsAiCredentialReady] = useState(
     () => !window.lingBuilder?.credentials
   );
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [translationProgress, setTranslationProgress] = useState(0);
   const [isAiConfigExpanded, setIsAiConfigExpanded] = useState(true);
   // 自定义 API 自动检测：配置变更去抖后真实 ping 一次供应商，内联展示结果；成功等同连接成功（不写聊天气泡）。
   const [autoCheckState, setAutoCheckState] = useState<{ status: 'checking' | 'ok' | 'fail'; message: string } | null>(null);
@@ -904,67 +896,6 @@ export default function AiAssistant({
     void loadCloudModels();
   };
 
-  // Handle one-click AI translation
-  const handleBatchAiTranslate = async () => {
-    if (strings.length === 0) return;
-    setIsTranslating(true);
-    setTranslationProgress(10);
-
-    try {
-      // 1. Get strings that are pending
-      const pendingStrings = strings.filter(s => s.status === 'pending');
-      if (pendingStrings.length === 0) {
-        setTranslationProgress(100);
-        setTimeout(() => {
-          setIsTranslating(false);
-          setTranslationProgress(0);
-        }, 1000);
-        return;
-      }
-
-      setTranslationProgress(30);
-
-      // Call Express server-side translate endpoint
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          strings: pendingStrings,
-          glossary,
-          aiConfig: { ...aiConfig, modelName: effectiveModelName }
-        })
-      });
-
-      setTranslationProgress(70);
-
-      if (!response.ok) {
-        throw new Error('网络请求错误，请确认已配置 API Key、Base URL 和模型名称');
-      }
-
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      if (data.translations && Array.isArray(data.translations)) {
-        onBatchTranslate(data.translations, projectMutationOwner);
-        setTranslationProgress(100);
-      } else {
-        throw new Error('未返回有效的代码生成数据结构');
-      }
-    } catch (error: any) {
-      console.error(error);
-      updateChatHistory(prev => [
-        ...prev,
-        createChatMessage('ai', `⚠️ 批量代码生成失败：${error.message || '请确认 API Key、Base URL 和模型名称可以正常连接。'}`, { contextExcluded: true })
-      ]);
-    } finally {
-      setTimeout(() => {
-        setIsTranslating(false);
-        setTranslationProgress(0);
-      }, 1000);
-    }
-  };
 
   // 聊天面板内直接驱动「AI 生成模块」共享流：多阶段生成 → 契约解析 → 导入 module-build。
   // 与模块面板共用 aiModuleGenerationFlow 唯一实现；结果以聊天消息汇报，不进入编辑提案链。
@@ -1679,12 +1610,6 @@ export default function AiAssistant({
             </>
           )}
         </div>
-
-        {isTranslating && (
-          <div className={`w-full h-1 rounded-full overflow-hidden mt-2 ${isDarkMode ? 'bg-slate-850' : 'bg-slate-200'}`}>
-            <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${translationProgress}%` }}></div>
-          </div>
-        )}
       </div>
 
       {editProposal && (

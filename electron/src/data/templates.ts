@@ -1,17 +1,4 @@
-import { CppFile, GlossaryTerm, ProblemItem } from '../types';
-
-export const defaultGlossary: GlossaryTerm[] = [
-  { english: 'initialize', chinese: '初始化', description: 'Setup variables or subsystem' },
-  { english: 'render', chinese: '渲染', description: 'Draw graphical elements' },
-  { english: 'buffer', chinese: '缓冲区', description: 'Temporary memory block' },
-  { english: 'callback', chinese: '回调函数', description: 'Function passed to another to be executed' },
-  { english: 'dialog', chinese: '对话框', description: 'Pop-up window for user interaction' },
-  { english: 'configuration', chinese: '配置', description: 'System or application settings' },
-  { english: 'error', chinese: '错误', description: 'Exceptional condition or failure' },
-  { english: 'success', chinese: '成功', description: 'Normal completion of task' },
-  { english: 'pointer', chinese: '指针', description: 'Address reference' },
-  { english: 'thread', chinese: '线程', description: 'Execution context' }
-];
+import { CppFile, ProblemItem } from '../types';
 
 export const initialFiles: CppFile[] = [
   {

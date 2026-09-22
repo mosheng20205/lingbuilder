@@ -48,13 +48,12 @@ import {
   CommandHintContent,
   CppFile,
   ExtractedString,
-  GlossaryTerm,
   ProblemItem,
   DiffResult,
   SourceControlStatus,
   WorkspaceEditProposal
 } from './types';
-import { initialFiles, defaultGlossary, localTranslations } from './data/templates';
+import { initialFiles } from './data/templates';
 import { computeDiff } from './utils/diff';
 
 // Components
@@ -1206,7 +1205,6 @@ export default function App() {
       ? moveEditorTab(previous, previous.groups[1].id, previous.groups[0].id, filePath)
       : previous);
   }, [handleSelectFile]);
-  const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [compilerProblems, setCompilerProblems] = useState<ProblemItem[]>([]);
   const [qualityProblems, setQualityProblems] = useState<ProblemItem[]>([]);
@@ -1726,17 +1724,6 @@ export default function App() {
     }
   };
 
-  const handleImportDictionary = (name: string, terms: GlossaryTerm[]) => {
-    setGlossary(prev => {
-      const existingEngs = new Set(prev.map(g => g.english));
-      const newTerms = terms.filter(t => !existingEngs.has(t.english));
-      return [...prev, ...newTerms];
-    });
-    setBuildLogs(prev => [
-      ...prev,
-      `> [${new Date().toLocaleTimeString()}] 📚 成功导入翻译字典库：'${name}' (已集成该词典的本地化映射词条)。`
-    ]);
-  };
 
   // Workspace layout toggles
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
@@ -2181,8 +2168,6 @@ export default function App() {
   useEffect(() => () => {
     environmentCheckRequestGateRef.current.cancel();
   }, []);
-  const [isAutoTranslating, setIsAutoTranslating] = useState(false);
-  const autoTranslateOwnerRef = useRef<ProjectMutationOwner | null>(null);
 
   // Custom File Modal
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -2395,24 +2380,6 @@ void DisplayStatus() {
     void refreshSourceControlStatus();
   }, [hasEnteredWorkbench, refreshSourceControlStatus]);
 
-  useEffect(() => {
-    if (!hasEnteredWorkbench) return;
-    // Populate translated contents with fallbacks or mock dictionary translations
-    files.forEach(f => {
-      const initialTranslations = f.strings.map(s => {
-        const matchedLocal = localTranslations[s.original];
-        if (matchedLocal) {
-          return {
-            ...s,
-            translated: matchedLocal,
-            status: 'translated' as const
-          };
-        }
-        return s;
-      });
-      triggerReconstruction(f, initialTranslations);
-    });
-  }, [hasEnteredWorkbench]);
 
   // Update translation for a single extracted string
   const handleUpdateStringTranslation = (id: string, value: string) => {
@@ -3726,9 +3693,6 @@ void DisplayStatus() {
     triggerReconstruction(activeFile, updatedStrings, owner);
   };
 
-  // Handle batch AI translations from AiAssistant
-  const handleBatchTranslate = (
-    translations: { id: string; translated: string }[],
     owner: ProjectMutationOwner = captureProjectMutationOwner()
   ) => {
     if (!isCurrentProjectMutationOwner(owner)) return;
@@ -3746,102 +3710,6 @@ void DisplayStatus() {
     triggerReconstruction(activeFile, updatedStrings, owner);
   };
 
-  // Perform one-click batch AI translation for all pending strings in active file
-  const handleAutoTranslateAll = async () => {
-    const requestOwner = captureProjectMutationOwner();
-    if (!isCurrentProjectMutationOwner(requestOwner)) return;
-    const pendingStrings = activeFile.strings.filter(s => s.status === 'pending' || !s.translated);
-    if (pendingStrings.length === 0) {
-      setShowBottomPanel(true);
-      setActiveTabInBottom('output');
-    setDebugLogs([]);
-      setBuildLogs(prev => [
-        ...prev,
-        `> [${new Date().toLocaleTimeString()}] 【一键智能汉化】当前文件没有任何待处理的翻译字段。`
-      ]);
-      return;
-    }
-
-    autoTranslateOwnerRef.current = requestOwner;
-    setIsAutoTranslating(true);
-    setShowBottomPanel(true);
-    setActiveTabInBottom('output');
-    setBuildLogs(prev => [
-      ...prev,
-      `> [${new Date().toLocaleTimeString()}] 【一键智能汉化】开始处理当前文件：${activeFile.name} (待处理: ${pendingStrings.length} 项)...`,
-      `> [AI] 正在分析上下文、关联词典及 C++ 语法结构进行智能化文本映射...`
-    ]);
-
-    try {
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          strings: pendingStrings,
-          glossary,
-          style: 'casual'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('未检测到有效的 API 密钥或网络异常');
-      }
-
-      const data = await response.json();
-      if (!isCurrentProjectMutationOwner(requestOwner)) return;
-      if (data.translations && Array.isArray(data.translations)) {
-        handleBatchTranslate(data.translations, requestOwner);
-        setBuildLogs(prev => [
-          ...prev,
-          `> [${new Date().toLocaleTimeString()}] 【一键智能汉化】成功！已生成并注入 ${data.translations.length} 项精准中文字段。`,
-          `> [AI] 新代码重构生成就绪。`
-        ]);
-      } else {
-        throw new Error('未返回预期的翻译结果格式');
-      }
-    } catch (err: any) {
-      if (!isCurrentProjectMutationOwner(requestOwner)) return;
-      console.warn('一键智能汉化使用本地词典/模拟汉化降级处理:', err);
-      // Fallback: translate using mock dictionary matching / local rules so it works perfectly offline too!
-      const fallbackTranslations = pendingStrings.map(s => {
-        const matchedLocal = localTranslations[s.original];
-        if (matchedLocal) {
-          return { id: s.id, translated: matchedLocal };
-        }
-        // General smart translation rules based on keywords
-        let mockTrans = s.original.replace(/["']/g, '');
-        if (mockTrans.toLowerCase().includes('database')) mockTrans = '数据库';
-        else if (mockTrans.toLowerCase().includes('connection')) mockTrans = '连接';
-        else if (mockTrans.toLowerCase().includes('offline')) mockTrans = '离线';
-        else if (mockTrans.toLowerCase().includes('loading')) mockTrans = '正在加载';
-        else if (mockTrans.toLowerCase().includes('system')) mockTrans = '系统';
-        else if (mockTrans.toLowerCase().includes('plugins')) mockTrans = '插件';
-        else if (mockTrans.toLowerCase().includes('critical')) mockTrans = '严重';
-        else if (mockTrans.toLowerCase().includes('warning')) mockTrans = '警告';
-        else if (mockTrans.toLowerCase().includes('adventure')) mockTrans = '冒险';
-        else if (mockTrans.toLowerCase().includes('client')) mockTrans = '客户端';
-        else if (mockTrans.toLowerCase().includes('success')) mockTrans = '成功';
-        else if (mockTrans.toLowerCase().includes('loading')) mockTrans = '载入中';
-        else if (mockTrans.toLowerCase().includes('operation')) mockTrans = '操作';
-        else mockTrans = `${mockTrans} (汉化版)`;
-        return { id: s.id, translated: mockTrans };
-      });
-
-      handleBatchTranslate(fallbackTranslations, requestOwner);
-      setBuildLogs(prev => [
-        ...prev,
-        `> [${new Date().toLocaleTimeString()}] 【一键智能汉化】已应用本地翻译词典机制！成功翻译填充了 ${fallbackTranslations.length} 项汉化字段。`,
-        `> [AI] 建议配置 GEMINI_API_KEY 以开启完全上下文智能 C++ 原生宏替换功能。`
-      ]);
-    } finally {
-      const activeRequestOwner = autoTranslateOwnerRef.current;
-      if (activeRequestOwner?.projectId === requestOwner.projectId
-        && activeRequestOwner.loadGeneration === requestOwner.loadGeneration) {
-        autoTranslateOwnerRef.current = null;
-        setIsAutoTranslating(false);
-      }
-    }
-  };
 
   const saveWorkspaceCore = async (
     reason = '保存',
@@ -6803,9 +6671,6 @@ void DisplayStatus() {
 
   const renderAiAssistant = () => (
     <AiAssistant
-      strings={activeFile.strings}
-      glossary={glossary}
-      onBatchTranslate={handleBatchTranslate}
       onSetStatus={handleSetStatus}
       filePath={activeFile.path}
       sourceCode={activeFile.translatedContent || activeFile.originalContent}
@@ -6975,15 +6840,6 @@ void DisplayStatus() {
                   <button onClick={() => { setShowCustomModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>添加自定义文件</span>
                   </button>
-                  <button onClick={() => { 
-                    handleImportDictionary("精选本地化词典", [
-                      { english: "Welcome", chinese: "欢迎使用", description: "UI 欢迎词" },
-                      { english: "Status", chinese: "运行状态", description: "系统运行状态" }
-                    ]); 
-                    setActiveDropdown(null); 
-                  }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>导入翻译词典</span>
-                  </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { setShowCloseConfirmModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-rose-600 hover:text-white text-rose-500' : 'hover:bg-rose-600 hover:text-white text-rose-600 font-semibold'}`}>
                     <span>安全退出 IDE</span>
@@ -7002,12 +6858,6 @@ void DisplayStatus() {
                 编辑(E)
               </span>
               {activeDropdown === 'edit' && (
-                <div className={`absolute left-0 top-6 w-48 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-                  <button onClick={() => { handleAutoTranslateAll(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center gap-1.5 text-[11px] font-semibold text-emerald-500 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    <span>一键智能汉化</span>
-                  </button>
-                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button disabled={isSaving || isBuilding} onClick={() => { void executeWorkbenchCommand('workbench.action.findInFiles'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-45 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>在文件中查找</span>
                     <span className="opacity-50 text-[10px]">Ctrl+Shift+F</span>
@@ -7154,13 +7004,6 @@ void DisplayStatus() {
                   <button onClick={() => { setBuildLogs([`> [${new Date().toLocaleTimeString()}] 【系统】编译输出终端已清空。`]); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>清空输出终端日志</span>
                     <span className="opacity-50 text-[10px]">清空</span>
-                  </button>
-                  <button onClick={() => { 
-                    setBuildLogs(prev => [...prev, `> [系统] 翻译风格已强制切换为：【专业严谨汉化模式】。`]);
-                    setActiveDropdown(null); 
-                  }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>翻译风格切换：严谨型</span>
-                    <span className="opacity-50 text-[10px]">模式</span>
                   </button>
                 </div>
               )}
@@ -7671,9 +7514,7 @@ void DisplayStatus() {
           setShowLeftSidebar={setShowLeftSidebar}
           showDesignerToolbox={isDesignerViewActive}
           onDesignerToolboxHostChange={setDesignerToolboxHost}
-          onBatchTranslate={handleBatchTranslate}
           onSetStatus={handleSetStatus}
-          glossary={glossary}
           drawerWidth={leftWidth}
           onDeleteFile={handleDeleteFile}
           onRenameFile={handleRenameFile}
