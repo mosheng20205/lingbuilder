@@ -191,10 +191,16 @@ test('AI Bridge agent toolset hides write/execute tools so only the panel can ap
   const tools = await client.listTools();
   const names = tools.tools.map(tool => tool.name);
   assert.equal(names.length, 23 - AGENT_MASKED_TOOLS.size, 'agent 工具集必须恰好摘掉遮蔽清单里的工具');
-  for (const masked of ['lingbuilder.edit.apply', 'lingbuilder.build.run', 'lingbuilder.native.export', 'lingbuilder.native.preview', 'lingbuilder.project.create', 'lingbuilder.project.create.undo', 'lingbuilder.module.writeFiles', 'lingbuilder.module.pack', 'lingbuilder.module.install']) {
+  for (const masked of ['lingbuilder.edit.apply', 'lingbuilder.build.run', 'lingbuilder.native.export', 'lingbuilder.native.preview', 'lingbuilder.project.create', 'lingbuilder.project.create.undo']) {
     assert.ok(!names.includes(masked), `${masked} 不得出现在内嵌 Agent 工具集`);
   }
-  for (const kept of ['lingbuilder.edit.propose', 'lingbuilder.lingcpp.diagnostics', 'lingbuilder.module.info', 'lingbuilder.file.read', 'lingbuilder.workspace.list']) {
+  // 模块封装链只写两个暂存目录、安装仍有预览与权益门禁，因此对 Agent 开放（用户拍板 2B）。
+  for (const kept of [
+    'lingbuilder.edit.propose', 'lingbuilder.lingcpp.diagnostics', 'lingbuilder.module.info',
+    'lingbuilder.file.read', 'lingbuilder.workspace.list',
+    'lingbuilder.module.scaffold', 'lingbuilder.module.writeFiles', 'lingbuilder.module.validate',
+    'lingbuilder.module.pack', 'lingbuilder.module.installPreview', 'lingbuilder.module.install'
+  ]) {
     assert.ok(names.includes(kept), `${kept} 必须保留给内嵌 Agent`);
   }
 
@@ -209,6 +215,8 @@ test('AI Bridge agent toolset hides write/execute tools so only the panel can ap
   assert.match(JSON.stringify(denied), /由 LingBuilder 面板在用户确认提案后代执行/u, '拒绝原因必须是中文可指导文案');
   const deniedBuild = await client.callTool({ name: 'lingbuilder.build.run', arguments: { projectId: 'x', approved: true } });
   assert.equal(deniedBuild.isError, true, 'build.run 同样不得被内嵌 Agent 直接触发');
+  assert.match(instructions, /模块封装链例外可用/u, 'instructions 必须写清模块链可直接执行，否则 Agent 会停在提案上空转');
+  assert.ok(!instructions.includes('module.writeFiles / module.pack / module.install）在本会话不可用'), '口径不得再把模块链算进不可用清单');
 
   await client.close();
   await service.shutdown();

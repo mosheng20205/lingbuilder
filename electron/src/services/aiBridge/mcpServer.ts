@@ -46,7 +46,7 @@ const TOOLS = [
   { name: 'lingbuilder.project.create.undo', description: '撤销尚未被用户修改的 AI 项目创建事务，受权限模式控制。', inputSchema: objectSchema({ receiptId: { type: 'string', minLength: 16, maxLength: 80 }, approved: { type: 'boolean' } }, ['receiptId']) },
   { name: 'lingbuilder.build.run', description: '执行受控构建/运行请求，受权限模式控制。推荐只传 projectId（project.create 返回的 result.project.id），服务端自动读取该项目的磁盘设计器模型；仅当需要试跑尚未落盘的修改模型时才传完整 project（二者至少其一）。传入模型与磁盘设计器版本不一致时会在日志中给出中文告警。', inputSchema: objectSchema({ projectId: { type: 'string', maxLength: 128, description: '解决方案中已注册的项目 ID；与 project 二选一，推荐本参数。' }, project: { type: 'object', description: '可选；完整 designerProject（至少包含 id、windows 和控件布局），必须是 object；缺省时按 projectId 从磁盘读取。' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema, run: { type: 'boolean' }, approved: { type: 'boolean' } }) },
   { name: 'lingbuilder.modules.list', description: '按摘要列出模块与指定项目启用模块（不含完整命令清单，避免超长响应）；需要完整命令签名时改用 lingbuilder.module.info。新建项目必须传 project.create 返回的 project.id。', inputSchema: objectSchema({ projectId: { type: 'string', maxLength: 128 } }) },
-  { name: 'lingbuilder.module.info', description: '查询单个模块的完整信息：全部命令的签名、参数类型与中文说明、返回值、示例（demoExample 是演示语料里的真实调用行，参数顺序可直接照抄）、公开类型、公开常量（constants，源码中以 #常量名 引用）、平台目标、文档路径，以及两块界面开发所需的只读视图：designerControls（该模块贡献到设计器的控件概览：类型/中文名/是否容器/代码创建命令 控件_创建NE*/lingCppType/父子约束）、uiExamples（可复制的界面配方索引）、demoProject（该模块全量逐命令演示项目的位置，需要成段源码时用 file.read 按需读取）与组件卡（docs/lingbuilder-components/<slug>.md 中文契约 + docs/components/<slug>.md 上游 EU_* API 文档）。query 按命令名/描述过滤；control 按控件类型或中文名取某个控件的完整属性表、事件与处理器命名、默认属性和代码创建参数契约，唯一命中时直接内联该控件的组件卡正文 componentGuide；example 按标题/路径/序号直接取回一条界面配方正文。带 control 或 example 时不再返回命令表。默认不返回 visibility=advanced 的高级命令，需要时传 includeAdvanced=true。', inputSchema: objectSchema({ moduleId: { type: 'string', minLength: 2, maxLength: 128, description: '模块 ID，如 lingbuilder.database.sqlite。' }, projectId: { type: 'string', maxLength: 128, description: '可选；用于标注该模块在指定项目中的启用状态。' }, query: { type: 'string', maxLength: 128, description: '可选；按命令名或描述过滤，中文或英文子串。' }, includeAdvanced: { type: 'boolean', description: '可选；true 时同时返回 visibility=advanced 的高级命令（如 new_emoji 的 NE_EU_* 底层入口）。' }, control: { type: 'string', maxLength: 128, description: '可选；按设计器控件类型（Button/Input/Table/Tabs）或中文名（按钮/输入框/表格/标签页）过滤，返回 designerControlDetails 完整属性、事件与代码创建契约；唯一命中时额外内联该控件的组件卡 componentGuide（含可粘贴骨架与人工红线）。' }, example: { type: 'string', maxLength: 128, description: '可选；按标题、路径或 uiExamples 序号命中一条界面配方，返回其 .lcpp 正文（超长截断并给出 absolutePath）。' } }, ['moduleId']) },
+  { name: 'lingbuilder.module.info', description: '查询单个模块的完整信息：全部命令的签名、参数类型与中文说明、返回值、示例（demoExample 是演示语料里的真实调用行，参数顺序可直接照抄）、公开类型、公开常量（constants，源码中以 #常量名 引用）、平台目标、文档路径，以及两块界面开发所需的只读视图：designerControls（该模块贡献到设计器的控件概览：类型/中文名/是否容器/代码创建命令 控件_创建NE*/lingCppType/父子约束）、uiExamples（可复制的界面配方索引）、demoProject（该模块全量逐命令演示项目的位置，需要成段源码时用 file.read 按需读取）与组件卡（docs/lingbuilder-components/<slug>.md 中文契约 + docs/components/<slug>.md 上游 EU_* API 文档）。query 按命令名/描述过滤；control 按控件类型或中文名取某个控件的完整属性表、事件与处理器命名、默认属性和代码创建参数契约，唯一命中时直接内联该控件的组件卡正文 componentGuide；example 按标题/路径/序号直接取回一条界面配方正文。带 control 或 example 时不再返回命令表。默认不返回 visibility=advanced 的高级命令，需要时传 includeAdvanced=true。响应自带作用域标注：enabledForProject/enabledScopeNote 说明 enabled 按哪个项目计算，scannedWorkspaceRoot 说明数据扫描自哪个工作区（先与 workspace.list 首项核对），installPathScope（workspace/dev-link/builtin）+ installPathOutsideWorkspace 说明安装路径来源；componentGuide 带 humanNotes 与 humanNotesStatus——missing 表示该控件卡没有人工红线正文（不要把属性表当红线，也不要建议用户阅读「待补」段落）。', inputSchema: objectSchema({ moduleId: { type: 'string', minLength: 2, maxLength: 128, description: '模块 ID，如 lingbuilder.database.sqlite。' }, projectId: { type: 'string', maxLength: 128, description: '可选；用于标注该模块在指定项目中的启用状态。' }, query: { type: 'string', maxLength: 128, description: '可选；按命令名或描述过滤，中文或英文子串。' }, includeAdvanced: { type: 'boolean', description: '可选；true 时同时返回 visibility=advanced 的高级命令（如 new_emoji 的 NE_EU_* 底层入口）。' }, control: { type: 'string', maxLength: 128, description: '可选；按设计器控件类型（Button/Input/Table/Tabs）或中文名（按钮/输入框/表格/标签页）过滤，返回 designerControlDetails 完整属性、事件与代码创建契约；唯一命中时额外内联该控件的组件卡 componentGuide（含可粘贴骨架与人工红线正文）。' }, example: { type: 'string', maxLength: 128, description: '可选；按标题、路径或 uiExamples 序号命中一条界面配方，返回其 .lcpp 正文（超长截断并给出 absolutePath）。' } }, ['moduleId']) },
   { name: 'lingbuilder.native.preview', description: '预览生成 C++ 工程文件并写入受控临时目录，不写入 generated/cpp 导出目录。推荐只传 projectId（服务端读取磁盘设计器模型）；仅试跑未落盘模型时传完整 project（二者至少其一）。传入模型与磁盘设计器版本不一致时会在日志中给出中文告警。', inputSchema: objectSchema({ projectId: { type: 'string', maxLength: 128, description: '解决方案中已注册的项目 ID；与 project 二选一，推荐本参数。' }, project: { type: 'object', description: '可选；完整 designerProject（必须为 object），缺省时按 projectId 从磁盘读取。' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema }) },
   { name: 'lingbuilder.native.export', description: '导出 C++ 工程，受权限模式控制。推荐只传 projectId（服务端读取磁盘设计器模型）；仅导出尚未落盘的修改模型时传完整 project（二者至少其一）。', inputSchema: objectSchema({ projectId: { type: 'string', maxLength: 128, description: '解决方案中已注册的项目 ID；与 project 二选一，推荐本参数。' }, project: { type: 'object', description: '可选；完整 designerProject（必须为 object），缺省时按 projectId 从磁盘读取。' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema, approved: { type: 'boolean' } }) },
   { name: 'lingbuilder.module.scaffold', description: '在 .lingbuilder/module-build 下创建 .lbmod 模块项目骨架（manifest v2 + C++ 源码模板），与用户在欢迎页「新建模块」使用同一骨架生成器；可选 category/description 会写进清单，category 只允许 界面/系统/网络/数据库/图像/AI/构建/其他。受权限模式控制（preview 模式需 approved=true）。', inputSchema: objectSchema({ id: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]{2,80}$', maxLength: 81, description: '模块 ID，小写字母/数字开头，可含点、下划线、中划线。' }, name: { type: 'string', maxLength: 100 }, category: { type: 'string', enum: ['界面', '系统', '网络', '数据库', '图像', 'AI', '构建', '其他'], description: '可选，模块分类；缺省按模板推导。' }, description: { type: 'string', maxLength: 300, description: '可选，模块中文说明；缺省为 SDK 模板说明。' }, template: { type: 'string', enum: ['cpp-source'] }, outDir: { type: 'string', maxLength: 512, description: '可选，默认 .lingbuilder/module-build/<id>。' }, approved: { type: 'boolean' } }, ['id']) },
@@ -97,9 +97,11 @@ type ObserveActivity = (activity: Omit<AiBridgeMcpActivity, 'id' | 'timestamp'>)
 export type AiBridgeMcpToolset = 'full' | 'agent';
 
 /**
- * 内嵌 Agent 会话一律不暴露的写盘与执行工具。权限模式管不住它们：preview 下
- * 模型自己传 approved=true 就能落盘，所以「可预览、可确认、可撤销」只能靠把这
- * 些工具从可见面上摘掉、由 IDE 面板在用户点「应用提案」后代执行来保证。
+ * 内嵌 Agent 会话不暴露的「用户项目侧」写盘与执行工具。权限模式管不住它们：preview 下
+ * 模型自己传 approved=true 就能落盘，所以项目源码/设计器/构建的「可预览、可确认、可撤销」
+ * 只能靠把这些工具从可见面上摘掉、由 IDE 面板在用户点「应用提案」后代执行来保证。
+ * 模块封装链不在其列：它只写 .lingbuilder/module-build 与 .lingbuilder/module-packages
+ * 两个暂存目录，安装必须经 installPreview 预览 ID 与收费权益门禁，开放它不削弱上述防线。
  */
 export const AGENT_MASKED_TOOLS: ReadonlySet<string> = new Set([
   'lingbuilder.edit.apply',
@@ -107,18 +109,16 @@ export const AGENT_MASKED_TOOLS: ReadonlySet<string> = new Set([
   'lingbuilder.native.preview',
   'lingbuilder.native.export',
   'lingbuilder.project.create',
-  'lingbuilder.project.create.undo',
-  'lingbuilder.module.writeFiles',
-  'lingbuilder.module.pack',
-  'lingbuilder.module.install'
+  'lingbuilder.project.create.undo'
 ]);
 
 /** agent 工具集下追加到 instructions 的口径说明，避免模型按完整工作流空转。 */
 export const AGENT_TOOLSET_NOTICE = [
-  '【本会话为 LingBuilder 面板内嵌 Agent 工具集】写盘与执行类工具（edit.apply / build.run / native.preview / native.export / project.create / project.create.undo / module.writeFiles / module.pack / module.install）在本会话不可用，也无需你调用：',
-  '你负责读现状、诊断与生成 edit.propose 提案；提案由 LingBuilder 面板展示给用户，用户点「应用提案」后由 IDE 代为落盘、构建和运行。',
-  '因此工作流调整为：lingcpp.diagnostics 读现状 → module.info 查命令契约 → edit.propose 生成提案（必须带完整改动，涉及布局时带 updatedDesignerProject）→ 在回复里说明预期变化并等待用户在界面确认。',
-  '不要为了「验证能编译」而反复尝试调用被遮蔽的工具；需要构建反馈时，明确告诉用户请在面板点击应用提案后再继续。'
+  '【本会话为 LingBuilder 面板内嵌 Agent 工具集】用户项目侧的写盘与执行工具（edit.apply / build.run / native.preview / native.export / project.create / project.create.undo）在本会话不可用，也无需你调用：',
+  '你负责读现状、诊断与生成 edit.propose 提案；提案由 LingBuilder 面板展示给用户，用户点「应用提案」后由 IDE 代为落盘，构建与运行由用户在 IDE 内发起。',
+  '因此项目改造工作流为：lingcpp.diagnostics 读现状 → module.info 查命令契约 → edit.propose 生成提案（必须带完整改动，涉及布局时带 updatedDesignerProject）→ 在回复里说明预期变化并等待用户在界面确认。',
+  '不要为了「验证能编译」而反复尝试调用被遮蔽的工具；需要构建反馈时，明确告诉用户请在面板点击应用提案后再继续。',
+  '模块封装链例外可用：module.scaffold → module.writeFiles → module.validate → module.pack → module.installPreview → module.install 允许你直接执行（只写 .lingbuilder/module-build 与 .lingbuilder/module-packages 两个暂存目录，安装仍需 installPreview 预览 ID 与权益门禁）；但把模块命令接进用户项目源码时，仍然只能 edit.propose + 用户确认。'
 ].join('\n');
 
 function createProtocolServer(
