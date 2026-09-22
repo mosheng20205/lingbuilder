@@ -421,12 +421,27 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 取实例代理 共 +4 命令、+2 参数；代理认证两条因 CEF 150 不投递代理 407（真机二分）本轮不登记。
       // 基线 2026-09-20 再写回（lingbuilder.cef3.osr 首批）：新增 1 模块、5 条按浏览器句柄寻址的 OSR 命令、+9 参数；另补 CEF3无头_等待出帧 +1 命令、+2 参数；
       // 句柄是 longLong 而非 controlRef，控件引用计数同样不变。
-      modules: 99,
-      commands: 3816,
-      parameters: 6765,
-      controlReferences: 1340,
-      commandDigest: '13dcb3f0',
-      parameterDigest: 'c9aff182'
+      // 基线 2026-09-21 再写回（网络中间件模块 lingbuilder.sunnynet 1.0 新增）：SunnyNet 抓包改写
+      // 63 命令 60 参数（生命周期 7、证书 7、事件绑定 4、当前事件上下文 12、HTTP 请求 9、
+      // HTTP 响应 9、连接收发 6、进程代理 7、系统代理 2；全部依赖 lingbuilder.sunnynet.sdk 按需下载），
+      // 句柄/消息ID/模式全是 longLong/int/文本/字节集，无 controlRef，控件引用计数不变。
+      // 基线 2026-09-21 再写回（不冻结界面的延时/定时命令批次）：lingbuilder.win32.basic 新增
+      // 延时(1 参数)、延迟调用(2 参数：int + handler，invocation delayedCall)与
+      // 时钟_启动/停止/置周期/取周期/是否已启动（共 5 命令 6 参数，组件名全部 controlRef Clock 资源）；
+      // 另新增「时钟」非可视设计器控件贡献（不进 bindings，不入本审计）。合计 +7 命令 +9 参数 +5 controlRef。
+      // 基线 2026-09-21 合并写回（sunnynet 1.1 SOCKS 族，与上一条延时/时钟批次并行落位）：
+      // lingbuilder.sunnynet 新增 添加SOCKS用户/删除SOCKS用户/开启SOCKS用户校验 +3 命令 +7 参数，无 controlRef。
+      // 基线 2026-09-21 再写回（sunnynet 上游代理批次 A+B）：新增 设置上游代理(3 参数)/
+      // 取消上游代理(1 参数)/设请求代理(3 参数) +3 命令 +7 参数，无 controlRef。
+      // 基线 2026-09-22 写回（当前窗口自身批次）：lingbuilder.win32.basic 新增
+      // 窗口_取自身句柄(0 参数)、窗口_取自身标题(0 参数)、窗口_设置自身标题(1 参数) +3 命令
+      // +1 参数；根治「纯 Win32 窗口项目没有任何命令能取得自身 HWND」，无 controlRef。
+      modules: 101,
+      commands: 3924,
+      parameters: 6882,
+      controlReferences: 1345,
+      commandDigest: 'bfedd0db',
+      parameterDigest: 'd4925a9e'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -844,12 +859,19 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-09-18 写回（进程内存扫描批次）：BUILTIN + 本机 5 份磁盘模块清单
       //（cef3.sdk / fbro.sdk / new_emoji.ui / demo.mathdll / demo.projectdll）实算；
       // 内置部分 98/3640/6301（见上一用例），磁盘部分含并行会话装入的 demo 模块两份。
-      modules: 103,
-      commands: 7657,
-      parameters: 18422,
-      controlReferences: 5061,
-      commandDigest: '7a01207c',
-      parameterDigest: '945b01db'
+      // 基线 2026-09-21 再写回（延时/定时命令批次 + 磁盘模块更新）：内置部分 101/3915/6866
+      //（见上一用例，含并行会话的 lingbuilder.cron 定时调度模块），磁盘 8 份
+      //（cef3.sdk / fbro.sdk / new_emoji.ui / crypto.sdk / opencv.sdk / sunnynet.sdk /
+      // demo.mathdll / demo.projectdll）。
+      // 基线 2026-09-22 再写回：内置部分 +3 命令 +1 参数（当前窗口自身批次，见上一用例），
+      // 其余 +6 命令 +15 参数来自本机磁盘已装模块清单被并行会话更新，非本会话产物；
+      // 本用例按本机实算，换机需重装模块后重跑。
+      modules: 109,
+      commands: 7941,
+      parameters: 19003,
+      controlReferences: 5103,
+      commandDigest: '8cedc10a',
+      parameterDigest: 'a1d88372'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -2138,7 +2160,8 @@ test('Win32基础模块贡献窗口事件上下文命令和确定性绑定', () 
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
   const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
   const bindingNames = new Set(manifest.bindings?.commands?.map(binding => binding.command));
-  ['窗口_取消关闭', '窗口_取事件宽度', '窗口_取事件字符', '窗口_标记按键已处理', '窗口_取事件DPI', '窗口_取拖入文件'].forEach(name => {
+  ['窗口_取消关闭', '窗口_取事件宽度', '窗口_取事件字符', '窗口_标记按键已处理', '窗口_取事件DPI', '窗口_取拖入文件',
+    '窗口_取自身句柄', '窗口_取自身标题', '窗口_设置自身标题'].forEach(name => {
     assert.ok(commandNames.has(name), `${name} 应提供中文补全`);
     assert.ok(bindingNames.has(name), `${name} 应提供确定性 C++ binding`);
   });
@@ -2157,6 +2180,7 @@ test('Win32基础模块贡献窗口事件上下文命令和确定性绑定', () 
   );
   assert.ok(completions.some(item => item.label === '窗口_取消关闭'));
   assert.ok(completions.some(item => item.label === '窗口_取拖入文件'));
+  assert.ok(completions.some(item => item.label === '窗口_设置自身标题'));
 
   const parameterDiagnostics = getLingCppSemanticDiagnostics(
     '类 MainWindow\n    事件 _MainWindow_关闭前(整数型 原因)\n    结束\n结束类',
@@ -2175,6 +2199,8 @@ test('Win32基础模块贡献窗口事件上下文命令和确定性绑定', () 
       '    结束',
       '    事件 _MainWindow_文件被拖入()',
       '        调试输出(窗口_取拖入文件(0))',
+      '        窗口_设置自身标题(格式化文本("拖入 {} 个", 窗口_取拖入文件数量()))',
+      '        调试输出(窗口_取自身标题())',
       '    结束',
       '结束类'
     ].join('\n'),
@@ -2183,6 +2209,11 @@ test('Win32基础模块贡献窗口事件上下文命令和确定性绑定', () 
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(mainCpp, /窗口_取消关闭\(\);/u);
   assert.match(mainCpp, /调试输出\(窗口_取拖入文件\(0\)\);/u);
+  // 当前窗口自身三条必须有真实运行时符号，不得只有补全和 binding。
+  assert.match(mainCpp, /long long 窗口_取自身句柄\(\) const/u);
+  assert.match(mainCpp, /std::wstring 窗口_取自身标题\(\) const/u);
+  assert.match(mainCpp, /bool 窗口_设置自身标题\(const wchar_t\* title\)/u);
+  assert.match(mainCpp, /窗口_设置自身标题\(LingCppWideArg\(格式化文本\(L"拖入 \{\} 个", 窗口_取拖入文件数量\(\)\)\)\);/u);
 });
 
 test('module project references stay isolated and unknown project writes are rejected', async () => {

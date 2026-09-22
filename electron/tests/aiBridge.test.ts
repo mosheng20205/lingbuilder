@@ -128,6 +128,9 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /截图未开放/u, 'instructions 必须声明 CEF3 无头一期截图未开放');
     assert.doesNotMatch(String(client.getInstructions() || ''), /隐藏窗口|移出桌面|后台窗口/u, 'instructions 禁止出现「建真窗口再藏」类话术');
     assert.match(String(client.getInstructions() || ''), /#常量名/u, 'instructions 必须告知模块公开常量用 #常量名 引用（contributes.constants 消费链）');
+    assert.match(String(client.getInstructions() || ''), /窗口_取自身句柄/u, 'instructions 必须告知纯 Win32 窗口项目取自身 HWND 的唯一入口');
+    assert.match(String(client.getInstructions() || ''), /窗口_设置自身标题/u, 'instructions 必须给出免句柄的当前窗口标题读写命令');
+    assert.match(String(client.getInstructions() || ''), /禁止用 窗口_按标题查找/u, 'instructions 必须钉住「不得按设计器标题反查自身句柄」红线');
     assert.match(String(client.getInstructions() || ''), /FBro_创建区域/u, 'instructions 必须给出三内核动态内嵌区域选型（FBro_创建区域 走普通 Win32 模块，不依赖 new_emoji）');
     assert.match(String(client.getInstructions() || ''), /CEF3_创建区域/u, 'instructions 必须列出 CEF3_创建区域 内嵌选型');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建区域/u, 'instructions 必须列出 EdgeView_创建区域 内嵌选型');

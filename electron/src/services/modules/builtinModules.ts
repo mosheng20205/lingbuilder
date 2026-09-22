@@ -269,6 +269,7 @@ const CEF3_HEADLESS_COMMAND_NAMES = [
 const BUILTIN_PARAM_DOCS: ParamDocTable = {
   内容: '对话框正文或要写入的文本内容。',
   标题: '对话框或窗口标题文本。',
+  '窗口_设置自身标题::标题': '要写入当前窗口标题栏的完整文本；传空文本清空标题栏文字。',
   标志: '信息框类型值：按钮与图标组合，可相加（0 确定、1 确定/取消、4 是/否、16 错误图标、32 询问图标、48 警告图标、64 信息图标）。',
   值: '要写入或转换的值。',
   '到文本::值': '要转换成文本的任意值。',
@@ -603,7 +604,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '窗口_标记按键已处理', signature: '窗口_标记按键已处理()', description: '在窗口键盘事件中阻止消息继续交给子控件或默认窗口过程。', insertText: '窗口_标记按键已处理()', returnType: '逻辑型' },
         { name: '窗口_取事件DPI', signature: '窗口_取事件DPI()', description: '返回最近 DPI 改变事件中的新 DPI。', insertText: '窗口_取事件DPI()', returnType: '整数型' },
         { name: '窗口_取拖入文件数量', signature: '窗口_取拖入文件数量()', description: '返回最近文件拖入事件中的文件和目录数量。', insertText: '窗口_取拖入文件数量()', returnType: '整数型' },
-        { name: '窗口_取拖入文件', signature: '窗口_取拖入文件(索引)', description: '按从 0 开始的索引返回最近拖入的 Unicode 路径，越界返回空文本。', insertText: '窗口_取拖入文件(0)', returnType: '文本型' }
+        { name: '窗口_取拖入文件', signature: '窗口_取拖入文件(索引)', description: '按从 0 开始的索引返回最近拖入的 Unicode 路径，越界返回空文本。', insertText: '窗口_取拖入文件(0)', returnType: '文本型' },
+        { name: '窗口_取自身句柄', signature: '窗口_取自身句柄()', description: '返回当前窗口自己的 HWND（长整数），窗口尚未创建时返回 0；用于给 窗口_设置标题、窗口_移动 等以 HWND 为首参的窗口操作命令提供句柄，纯 Win32 项目取自身句柄只有这一条入口。', insertText: '窗口_取自身句柄()', returnType: '长整数型' },
+        { name: '窗口_取自身标题', signature: '窗口_取自身标题()', description: '返回当前窗口标题栏文本，窗口尚未创建时返回空文本。', insertText: '窗口_取自身标题()', returnType: '文本型' },
+        { name: '窗口_设置自身标题', signature: '窗口_设置自身标题(标题)', description: '直接修改当前窗口标题栏文本，无需先取句柄；传空文本清空标题，成功返回真。', insertText: '窗口_设置自身标题("$1")', returnType: '逻辑型' }
       ],
       types: [
         { name: '窗口', description: 'Win32 窗口基类。', cppType: 'LingWindowBase' },
@@ -689,7 +693,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '窗口_标记按键已处理', runtimeName: '窗口_标记按键已处理', parameters: [], returnType: 'bool' },
         { command: '窗口_取事件DPI', runtimeName: '窗口_取事件DPI', parameters: [], returnType: 'int' },
         { command: '窗口_取拖入文件数量', runtimeName: '窗口_取拖入文件数量', parameters: [], returnType: 'int' },
-        { command: '窗口_取拖入文件', runtimeName: '窗口_取拖入文件', parameters: [{ name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+        { command: '窗口_取拖入文件', runtimeName: '窗口_取拖入文件', parameters: [{ name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '窗口_取自身句柄', runtimeName: '窗口_取自身句柄', parameters: [], returnType: 'longLong' },
+        { command: '窗口_取自身标题', runtimeName: '窗口_取自身标题', parameters: [], returnType: 'wideString', encoding: 'wide' },
+        { command: '窗口_设置自身标题', runtimeName: '窗口_设置自身标题', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
       ]
     }
   },

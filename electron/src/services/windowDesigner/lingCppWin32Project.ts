@@ -4250,6 +4250,18 @@ static const wchar_t* 窗口_取拖入文件(int index) {
     return index >= 0 && index < static_cast<int>(g_neWindowDroppedFiles.size())
         ? g_neWindowDroppedFiles[static_cast<size_t>(index)].c_str() : L"";
 }
+// 当前窗口自身：与 Win32 后端同名同语义，宿主窗口句柄取 g_newEmojiWindow。
+static long long 窗口_取自身句柄() { return reinterpret_cast<long long>(g_newEmojiWindow); }
+static std::wstring 窗口_取自身标题() {
+    if (!g_newEmojiWindow) return std::wstring();
+    int length = GetWindowTextLengthW(g_newEmojiWindow); std::wstring value(static_cast<size_t>(length + 1), L'\\0');
+    GetWindowTextW(g_newEmojiWindow, value.data(), length + 1);
+    value.resize(static_cast<size_t>(length));
+    return value;
+}
+static bool 窗口_设置自身标题(const wchar_t* title) {
+    return g_newEmojiWindow && SetWindowTextW(g_newEmojiWindow, title ? title : L"") != FALSE;
+}
 
 static void LB_NE_DispatchWindowEvent(const wchar_t* eventName) {
     if (!eventName) return;
@@ -22957,6 +22969,18 @@ ${comWindowMethods}
         return index >= 0 && index < static_cast<int>(droppedFiles_.size())
             ? droppedFiles_[static_cast<size_t>(index)].c_str()
             : L"";
+    }
+    // 当前窗口自身：句柄供窗口操作族命令使用，标题读写免句柄直调。
+    long long 窗口_取自身句柄() const { return reinterpret_cast<long long>(hwnd_); }
+    std::wstring 窗口_取自身标题() const {
+        if (!hwnd_) return std::wstring();
+        int length = GetWindowTextLengthW(hwnd_); std::wstring value(static_cast<size_t>(length + 1), L'\\0');
+        GetWindowTextW(hwnd_, value.data(), length + 1);
+        value.resize(static_cast<size_t>(length));
+        return value;
+    }
+    bool 窗口_设置自身标题(const wchar_t* title) {
+        return hwnd_ && SetWindowTextW(hwnd_, title ? title : L"") != FALSE;
     }
 
     struct LingCppTextValue : std::wstring {

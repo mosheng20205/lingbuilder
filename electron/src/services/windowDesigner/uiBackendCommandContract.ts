@@ -92,7 +92,10 @@ export const NEW_EMOJI_WIN32_BASIC_COMMANDS = new Set([
   '窗口_标记按键已处理',
   '窗口_取事件DPI',
   '窗口_取拖入文件数量',
-  '窗口_取拖入文件'
+  '窗口_取拖入文件',
+  '窗口_取自身句柄',
+  '窗口_取自身标题',
+  '窗口_设置自身标题'
 ]);
 
 export const NEW_EMOJI_WIN32_MENU_COMMANDS = new Set([
