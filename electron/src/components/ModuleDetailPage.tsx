@@ -41,6 +41,11 @@ import {
   type PublicInfoItem
 } from '../services/modules/modulePublicInfo';
 import { normalizeModulePublicInfoSearchText } from '../services/modules/modulePublicInfoSearch';
+import {
+  fetchBundledDemoModuleIds,
+  isModuleDemoOpenSupported,
+  openModuleDemoInNewInstance
+} from '../services/modules/moduleDemoService';
 import { requestModuleDetailAction } from '../services/modules/moduleDetailView';
 import {
   isModuleFavorite,
@@ -99,6 +104,28 @@ export default function ModuleDetailPage({
     setIsFavorite(isModuleFavorite(moduleId));
     return subscribeModuleFavorites(() => setIsFavorite(isModuleFavorite(moduleId)));
   }, [moduleId]);
+
+  // 随包例程：进程内缓存一次枚举结果；有例程的模块在「示例」页签补可运行例程卡片。
+  const [bundledDemoModuleIds, setBundledDemoModuleIds] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [demoOpenState, setDemoOpenState] = useState<{ moduleId: string; status: 'opening' | 'ok' | 'error'; message?: string } | null>(null);
+  useEffect(() => {
+    if (!isModuleDemoOpenSupported()) return;
+    let cancelled = false;
+    void fetchBundledDemoModuleIds().then(ids => {
+      if (!cancelled) setBundledDemoModuleIds(ids);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  // 打开例程是「新开工作区」类动作（无模块启停/购买门禁），嵌入与独立两种模式
+  // 统一经 moduleDemoService 直接执行并就地反馈，不走 ModuleInspector 模块动作出口。
+  const handleOpenModuleDemo = useCallback((demoModuleId: string) => {
+    setDemoOpenState({ moduleId: demoModuleId, status: 'opening' });
+    void openModuleDemoInNewInstance(demoModuleId).then(result => {
+      setDemoOpenState(result.ok
+        ? { moduleId: demoModuleId, status: 'ok', message: result.workspacePath }
+        : { moduleId: demoModuleId, status: 'error', message: result.error });
+    });
+  }, []);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
@@ -160,8 +187,8 @@ export default function ModuleDetailPage({
     [infoModules]
   );
   const allItems = useMemo(
-    () => infoModules.flatMap(item => collectPublicInfoItems(item)),
-    [infoModules]
+    () => infoModules.flatMap(item => collectPublicInfoItems(item, { bundledDemoModuleIds })),
+    [infoModules, bundledDemoModuleIds]
   );
   const isFamilyView = Boolean(familyFeatures?.length && projectId);
   const familyDisplayName = familyDefinition?.displayName || module?.manifest.name || moduleId;
@@ -390,12 +417,16 @@ export default function ModuleDetailPage({
             familyModuleById={familyModuleById}
             isDarkMode={isDarkMode}
             onToggleFeature={featureModule => requestModuleDetailAction({ type: 'toggle', moduleId: featureModule.manifest.id })}
+            onOpenDemo={handleOpenModuleDemo}
+            demoOpenState={demoOpenState}
           />
         )}
         {(activeTab === 'docs' || activeTab === 'examples') && (
           <ModuleDocumentTab
             items={allItems.filter(item => item.groupId === (activeTab === 'docs' ? 'docs' : 'examples'))}
             isDarkMode={isDarkMode}
+            onOpenDemo={handleOpenModuleDemo}
+            demoOpenState={demoOpenState}
           />
         )}
         {activeTab === 'history' && !standalone && (
@@ -609,7 +640,9 @@ function ModuleInterfaceTab({
   familyFeatures,
   familyModuleById,
   isDarkMode,
-  onToggleFeature
+  onToggleFeature,
+  onOpenDemo,
+  demoOpenState
 }: {
   module: InstalledModule;
   allItems: PublicInfoItem[];
@@ -620,6 +653,8 @@ function ModuleInterfaceTab({
   familyModuleById: ReadonlyMap<string, InstalledModule>;
   isDarkMode: boolean;
   onToggleFeature: (module: InstalledModule) => void;
+  onOpenDemo: (demoModuleId: string) => void;
+  demoOpenState: { moduleId: string; status: 'opening' | 'ok' | 'error'; message?: string } | null;
 }) {
   const [searchText, setSearchText] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -773,8 +808,10 @@ function ModuleInterfaceTab({
         {selectedItem ? (
           <PublicInfoDetail
             item={selectedItem}
-            documentItems={allItems.filter(item => item.groupId === 'docs' || item.groupId === 'examples')}
+            documentItems={allItems.filter(item => (item.groupId === 'docs' || item.groupId === 'examples') && !item.demoModuleId)}
             isDarkMode={isDarkMode}
+            onOpenDemo={onOpenDemo}
+            demoOpenState={demoOpenState}
             onOpenDocument={(sourceModuleId, documentPath) => {
               const target = allItems.find(item => (
                 (item.groupId === 'docs' || item.groupId === 'examples')
@@ -817,10 +854,14 @@ function ModuleInterfaceTab({
 
 function ModuleDocumentTab({
   items,
-  isDarkMode
+  isDarkMode,
+  onOpenDemo,
+  demoOpenState
 }: {
   items: PublicInfoItem[];
   isDarkMode: boolean;
+  onOpenDemo: (demoModuleId: string) => void;
+  demoOpenState: { moduleId: string; status: 'opening' | 'ok' | 'error'; message?: string } | null;
 }) {
   const [selected, setSelected] = useState<PublicInfoItem | null>(null);
   const borderClass = isDarkMode ? 'border-white/10' : 'border-slate-200';
@@ -831,6 +872,30 @@ function ModuleDocumentTab({
   if (items.length === 0) {
     return (
       <div className={`flex h-full items-center justify-center text-xs ${subtleClass}`}>该模块没有登记此类内容。</div>
+    );
+  }
+  if (selected && selected.demoModuleId) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className={`flex shrink-0 items-center gap-2 border-b px-3 py-1.5 ${borderClass}`}>
+          <button
+            type="button"
+            onClick={() => setSelected(null)}
+            className={`rounded border px-2 py-1 text-[11px] ${isDarkMode ? 'border-white/15 text-slate-300 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'}`}
+          >
+            返回列表
+          </button>
+          <span className="truncate text-xs font-semibold">{selected.name}</span>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          <ModuleDemoDetailCard
+            item={selected}
+            isDarkMode={isDarkMode}
+            onOpenDemo={onOpenDemo}
+            demoOpenState={demoOpenState}
+          />
+        </div>
+      </div>
     );
   }
   if (selected) {
@@ -858,7 +923,7 @@ function ModuleDocumentTab({
               title={selected.name}
               documentPath={selected.declaration}
               declaredDocuments={items
-                .filter(candidate => candidate.sourceModuleId === selected.sourceModuleId)
+                .filter(candidate => !candidate.demoModuleId && candidate.sourceModuleId === selected.sourceModuleId)
                 .map(candidate => ({ title: candidate.name, path: candidate.declaration }))}
               isDarkMode={isDarkMode}
               onOpenDocument={documentPath => {
@@ -882,16 +947,77 @@ function ModuleDocumentTab({
             className={`group rounded border p-3 text-left transition-colors hover:border-sky-500/40 hover:bg-sky-500/5 ${borderClass} ${isDarkMode ? 'bg-[#222226]' : 'bg-white'}`}
           >
             <div className="flex min-w-0 items-center gap-2">
-              {item.groupId === 'docs' ? <FileText size={14} className="shrink-0 text-sky-400" /> : <Code2 size={14} className="shrink-0 text-lime-300" />}
+              {item.demoModuleId
+                ? <Monitor size={14} className="shrink-0 text-emerald-400" />
+                : item.groupId === 'docs' ? <FileText size={14} className="shrink-0 text-sky-400" /> : <Code2 size={14} className="shrink-0 text-lime-300" />}
               <span className="min-w-0 flex-1 truncate text-xs font-semibold">{item.name}</span>
+              {item.demoModuleId && (
+                <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">可运行</span>
+              )}
               <ArrowUpRight size={13} className="shrink-0 text-slate-500 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
             </div>
-            <div className={`mt-1 truncate font-mono text-[10px] ${subtleClass}`}>{item.declaration}</div>
+            <div className={`mt-1 truncate font-mono text-[10px] ${subtleClass}`}>{item.demoModuleId ? '随 IDE 分发的例程工作区' : item.declaration}</div>
             <div className={`mt-1 line-clamp-2 break-words text-[11px] leading-4 ${subtleClass}`}>{item.description}</div>
           </button>
         ))}
       </div>
     </div>
+  );
+}
+
+/** 随包例程详情卡：与文档阅读器不同，例程是可运行工作区，主操作是「在新 IDE 窗口打开」。 */
+function ModuleDemoDetailCard({
+  item,
+  isDarkMode,
+  onOpenDemo,
+  demoOpenState
+}: {
+  item: PublicInfoItem;
+  isDarkMode: boolean;
+  onOpenDemo: (demoModuleId: string) => void;
+  demoOpenState: { moduleId: string; status: 'opening' | 'ok' | 'error'; message?: string } | null;
+}) {
+  const borderClass = isDarkMode ? 'border-white/10' : 'border-slate-200';
+  const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  const demoModuleId = item.demoModuleId || '';
+  const state = demoOpenState && demoOpenState.moduleId === demoModuleId ? demoOpenState : null;
+  return (
+    <section className={`mx-auto max-w-2xl rounded border p-4 ${isDarkMode ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50'}`}>
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="rounded bg-emerald-500/15 px-2 py-1 text-[11px] font-semibold text-emerald-300">可运行例程</span>
+          <h3 className="mt-3 break-words text-lg font-semibold text-cyan-300">{item.name}</h3>
+          <p className={`mt-3 break-words text-sm leading-6 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+            {item.description}
+          </p>
+          {state?.status === 'ok' && state.message && (
+            <p className="mt-3 break-all text-xs text-emerald-300">已在新 IDE 窗口打开例程工作区：{state.message}</p>
+          )}
+          {state?.status === 'error' && (
+            <p className="mt-3 flex items-start gap-1.5 break-all text-xs text-amber-300">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              {state.message || '打开例程失败。'}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={state?.status === 'opening'}
+          onClick={() => onOpenDemo(demoModuleId)}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${isDarkMode
+            ? 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10'
+            : 'border-emerald-400 text-emerald-700 hover:bg-emerald-100'}`}
+        >
+          {state?.status === 'opening' && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
+          {state?.status === 'ok' && <Check size={13} aria-hidden="true" />}
+          {state?.status === 'error' && <AlertTriangle size={13} aria-hidden="true" />}
+          {state?.status === 'opening' ? '正在打开...' : state?.status === 'ok' ? '再次打开' : '在新 IDE 窗口打开'}
+        </button>
+      </div>
+      <p className={`mt-4 border-t pt-3 text-[11px] leading-5 ${borderClass} ${subtleClass}`}>
+        例程会先复制到「文档\LingBuilder 例程\{demoModuleId}」再打开；目录已存在时保留你的改动。例程 IDE 使用独立的界面状态，不影响当前窗口。
+      </p>
+    </section>
   );
 }
 
@@ -1203,13 +1329,27 @@ function PublicInfoDetail({
   item,
   documentItems,
   isDarkMode,
+  onOpenDemo,
+  demoOpenState,
   onOpenDocument
 }: {
   item: PublicInfoItem;
   documentItems: PublicInfoItem[];
   isDarkMode: boolean;
+  onOpenDemo: (demoModuleId: string) => void;
+  demoOpenState: { moduleId: string; status: 'opening' | 'ok' | 'error'; message?: string } | null;
   onOpenDocument: (moduleId: string, documentPath: string) => void;
 }) {
+  if (item.demoModuleId) {
+    return (
+      <ModuleDemoDetailCard
+        item={item}
+        isDarkMode={isDarkMode}
+        onOpenDemo={onOpenDemo}
+        demoOpenState={demoOpenState}
+      />
+    );
+  }
   if (item.groupId === 'docs' || item.groupId === 'examples') {
     return (
       <React.Suspense fallback={(

@@ -1,3 +1,5 @@
+import { collectLingCppStringLiteralRegions } from '../lingCpp/stringLiteralRegions';
+
 export interface EplMessageBoxRule {
   text: string;
   title: string;
@@ -99,23 +101,20 @@ export function splitEplBinaryExpression(expression: string): { left: string; op
     ['*', '/', '%']
   ];
 
+  // 字符串字面量区间（含引号字符）由公共工具正向标定：`\"` 转义与连续反斜杠的奇偶
+  // 配对都正确处理。此前这里从后往前扫描时只判断 `char === quote`，被转义的引号被
+  // 误判为字符串结束、引号奇偶翻转，顶层运算符找不到，整句表达式掉进生成端兜底被
+  // 原样吐进 C++。
+  const mask = new Uint8Array(expression.length);
+  for (const region of collectLingCppStringLiteralRegions(expression)) {
+    mask.fill(1, region.start, region.end);
+  }
+
   for (const operators of precedenceGroups) {
     let depth = 0;
-    let quote: '"' | '“' | null = null;
     for (let index = expression.length - 1; index >= 0; index -= 1) {
+      if (mask[index]) continue;
       const char = expression[index];
-      if (quote) {
-        if ((quote === '"' && char === '"') || (quote === '“' && char === '“')) quote = null;
-        continue;
-      }
-      if (char === '"') {
-        quote = '"';
-        continue;
-      }
-      if (char === '”') {
-        quote = '“';
-        continue;
-      }
       if (char === ')' || char === '）') {
         depth += 1;
         continue;
@@ -143,6 +142,24 @@ export function splitEplBinaryExpression(expression: string): { left: string; op
   }
 
   return undefined;
+}
+
+// 允许原样透传给 C++ 的表达式字符：ASCII 结构符号 + 各语言标识符字符（中文标识符
+// 在生成 C++ 中合法）。引号（任何未走字符串翻译分支的残留）、反斜杠、分号与全角
+// 标点一律不允许透传——它们要么是 .lcpp 专属形态，要么必然生成坏代码。
+const CPP_PLAUSIBLE_PASSTHROUGH_PATTERN = /^[\p{L}\p{N}_ \t+\-*/%<>=!&|^~?:.,()[\]]+$/u;
+
+/**
+ * 生成端兜底透传判定：表达式里没有任何字符串字面量，且字符全部是标识符字符或
+ * C++ 表达式安全符号时，才允许原样透传（如 `arr[0]`、`-1` 这类 .lcpp 未专门建模、
+ * 但透传后就是合法 C++ 的形态）。其余形态必须走「无法翻译」降级，绝不能把含引号、
+ * 全角标点或中文引号的原文当 C++ 吐出去。
+ */
+export function isPlausibleCppPassthroughExpression(expression: string): boolean {
+  const trimmed = expression.trim();
+  if (!trimmed) return false;
+  if (collectLingCppStringLiteralRegions(trimmed).length > 0) return false;
+  return CPP_PLAUSIBLE_PASSTHROUGH_PATTERN.test(trimmed);
 }
 
 export function parseEplRuntimeEventRules(sourceCode: string | undefined): EplRuntimeEventRuleMap {

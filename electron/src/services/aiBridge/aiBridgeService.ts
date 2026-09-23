@@ -7,6 +7,7 @@ import { applyWorkspaceEditToFiles, areCanvasDesignerProjectsEquivalent, areDesi
 import { resolveIdeVersion } from './ideVersion';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissionBlock } from '../lingCpp/controlReferenceAdmission';
+import { collectArgumentTypeAdmissionProblems, formatArgumentTypeAdmissionBlock } from '../lingCpp/argumentTypeAdmission';
 import { deleteAgentProposal, persistAgentProposal, readAgentProposal } from '../lingCpp/agentProposalStore';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
@@ -1110,6 +1111,23 @@ export class AiBridgeService {
     }
   }
 
+  /**
+   * 模块命令实参类型门禁（build/preview 共用，export 经 preview 继承）：
+   * 字节集等已知类型传给文本型等不相容形参时在生成前阻断，给出中文诊断与转换建议，
+   * 不让 MSVC 的 C2665/C2660 错误恢复级联外泄。控制台/DLL 项目同样生效（不依赖设计器模型）。
+   */
+  private async assertModuleCommandArgumentTypes(request: {
+    projectId: string;
+    sources: Array<{ filePath: string; sourceCode: string }>;
+    actionLabel: string;
+  }): Promise<void> {
+    const moduleContext = await this.getModuleContext(request.projectId);
+    const problems = collectArgumentTypeAdmissionProblems({ sources: request.sources, moduleContext });
+    if (problems.length > 0) {
+      throw new Error(formatArgumentTypeAdmissionBlock(request.actionLabel, problems));
+    }
+  }
+
   /** edit.apply 门禁上下文：按提案模型 ID 或变更 .lcpp 的 sourceRoot 最长前缀解析窗口项目，并合并「磁盘 + 提案后」最终源码。解析不出窗口项目则跳过门禁。 */
   private async resolveWindowProjectForApply(
     proposal: NonNullable<ReturnType<typeof getWorkspaceEditProposal>>,
@@ -1185,6 +1203,7 @@ export class AiBridgeService {
       this.resolveLingCppProjectSources(projectId, request.lingCppSources)
     ]);
     await this.assertControlReferencesInDesigner({ projectId, designerProject: request.project, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
+    await this.assertModuleCommandArgumentTypes({ projectId, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
     await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
     // 与 executeBuildRun 同口径：预览产物跟随解决方案项目记录的输出形态（窗口应用缺省 / dll / 控制台）。
@@ -1327,10 +1346,16 @@ export class AiBridgeService {
         this.shuttingDown ? 'AI Bridge 正在关闭。' : 'AI Bridge 正在停止受控运行任务。'
       );
     }
+    const buildGateSources = await this.resolveLingCppProjectSources(request.project.id || projectId, request.lingCppSources);
     await this.assertControlReferencesInDesigner({
       projectId: request.project.id || projectId,
       designerProject: request.project,
-      sources: await this.resolveLingCppProjectSources(request.project.id || projectId, request.lingCppSources),
+      sources: buildGateSources,
+      actionLabel: 'lingbuilder.build.run'
+    });
+    await this.assertModuleCommandArgumentTypes({
+      projectId: request.project.id || projectId,
+      sources: buildGateSources,
       actionLabel: 'lingbuilder.build.run'
     });
 

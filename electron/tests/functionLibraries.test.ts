@@ -269,3 +269,16 @@ test('new_emoji 后端的功能库声明在前、定义排在命令包装之后'
   assert.ok(declarationIndex < wrapperDefinitionIndex, '功能库声明必须早于命令包装，事件分发才能调用');
   assert.ok(definitionIndex > wrapperDefinitionIndex, '功能库定义必须晚于命令包装，否则包装不可见（C3861）');
 });
+
+test('功能库名称与文件名比较忽略 ASCII 大小写，真不一致仍然告警', () => {
+  const source = ['功能库 Cookie导出', '公开:', '  文本型 拼接(文本型 左值, 文本型 右值)', '    返回(左值 + 右值)', '  结束', '结束功能库', ''].join(String.fromCharCode(10));
+  const context = createProjectFunctionContext([{ filePath: 'src/Cookie导出.lcpp', sourceCode: source, language: 'lingcpp' }]);
+  const messagesOf = (filePath: string) => getFunctionLibraryDiagnostics(source, filePath, context).map(item => item.message);
+
+  // 磁盘大小写一致、或路径在链路上被折叠成小写，都不得报「名称与文件名不一致」。
+  assert.equal(messagesOf('src/Cookie导出.lcpp').some(message => message.includes('不一致')), false);
+  assert.equal(messagesOf('src/cookie导出.lcpp').some(message => message.includes('不一致')), false);
+  assert.equal(messagesOf('src/COOKIE导出.lcpp').some(message => message.includes('不一致')), false);
+  // 中文部分真的不一致时必须继续告警，不能把比较放宽成永远相等。
+  assert.equal(messagesOf('src/别的名字.lcpp').some(message => message.includes('不一致')), true);
+});

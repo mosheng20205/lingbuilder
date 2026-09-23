@@ -146,10 +146,23 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /FBro_创建区域/u, 'instructions 必须给出三内核动态内嵌区域选型（FBro_创建区域 走普通 Win32 模块，不依赖 new_emoji）');
     assert.match(String(client.getInstructions() || ''), /CEF3_创建区域/u, 'instructions 必须列出 CEF3_创建区域 内嵌选型');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建区域/u, 'instructions 必须列出 EdgeView_创建区域 内嵌选型');
+    assert.match(String(client.getInstructions() || ''), /EdgeView_置区域位置/u, 'instructions 必须给出留边距区域用 置区域位置 在「大小被改变」同步几何的口径');
+    assert.match(String(client.getInstructions() || ''), /窗口_取事件宽度\/高度 在普通 Win32 窗口项目返回设计器逻辑坐标/u, 'instructions 必须写明事件尺寸的坐标口径（逻辑 DIP，防双重缩放）');
+    assert.match(String(client.getInstructions() || ''), /铺满整个窗口的区域实例才随窗口自动拉伸/u, 'instructions 必须写明 EdgeView 区域实例的 autoStretch 判定（缩放白屏修复口径）');
     assert.match(String(client.getInstructions() || ''), /outputType="dll"/u, 'instructions 必须给出 DLL 输出的 project.create outputType 路径');
     assert.match(String(client.getInstructions() || ''), /windows-dll.*获取接口版本|获取接口版本.*windows-dll/u, 'instructions 必须说明 windows-dll 模板的能力边界（仅获取接口版本映射）');
     assert.match(String(client.getInstructions() || ''), /禁止再调 run\.wait/u, 'instructions 必须钉住 DLL 项目没有运行入口的红线');
     assert.match(String(client.getInstructions() || ''), /LINGBUILDER_MSBUILD_PATH/u, 'instructions 必须告知 MSBuild 缺失时的环境变量修法');
+    assert.ok(String(client.getInstructions() || '').includes('零内嵌 C++'), 'instructions 必须给出零内嵌 C++ 的文本与文件能力口径');
+    assert.match(String(client.getInstructions() || ''), /文本_填充右边/u, 'instructions 必须列出定宽填充族命令');
+    assert.match(String(client.getInstructions() || ''), /显示列数/u, 'instructions 必须写明定宽填充的目标宽度是显示列数（全角 2 列）');
+    assert.match(String(client.getInstructions() || ''), /文本_连接/u, 'instructions 必须给出数组合并命令');
+    assert.match(String(client.getInstructions() || ''), /忽略末尾空段/u, 'instructions 必须写明文本_分割 的末尾空段语义与开关');
+    assert.match(String(client.getInstructions() || ''), /文件_取最新文件/u, 'instructions 必须给出取最新文件的命令入口');
+    assert.match(String(client.getInstructions() || ''), /文件_取错误/u, 'instructions 必须告知文件时间失败原因用 文件_取错误 读取');
+    assert.match(String(client.getInstructions() || ''), /全局 文本型 名称/u, 'instructions 必须给出功能库缓存的项目全局变量写法');
+    assert.match(String(client.getInstructions() || ''), /字节集_到十六进制文本/u, 'instructions 必须给出字节集一步转十六进制文本的命令');
+    assert.match(String(client.getInstructions() || ''), /字节集_到十六进制字节集/u, 'instructions 必须写明十六进制编码命令的新名与「返回字节集不是文本」红线');
     assert.match(String(client.getInstructions() || ''), /navigator.userAgent/u, 'instructions 必须写明 EdgeView/FBro 区域 UA 只改 navigator.userAgent、不改出站 HTTP 头的红线');
     assert.match(String(client.getInstructions() || ''), /FBroHsCommandLine_EnableCrossFrame/u, 'instructions 必须写明 FBro 跨域走官方包装，不得手写 Chromium 开关拼串');
     assert.match(String(client.getInstructions() || ''), /disable-site-isolation-trials/u, 'instructions 必须带 enableCrossFrame 实测写入的开关，作为真机回读口径');
@@ -1292,7 +1305,9 @@ test('renderer server enforces auth and exposes safe modules, files, process, an
     assert.equal(typeof environmentResult.ready, 'boolean');
     assert.equal(typeof environmentResult.cppCompilerAvailable, 'boolean');
     assert.equal(typeof environmentResult.msvcBuildReady, 'boolean');
-    assert.equal(environmentResult.checks.length, 8);
+    // 2026-09-24 对齐：环境检查新增第 9 项「WebView2 SDK（EdgeView 构建）」（compile 期 SDK 定位批次），
+    // 与 tests/environmentCheck.test.ts 同口径。
+    assert.equal(environmentResult.checks.length, 9);
     for (const check of environmentResult.checks) {
       assert.equal(typeof check.id, 'string');
       assert.equal(typeof check.label, 'string');
@@ -1859,6 +1874,55 @@ test('AI Bridge gates apply and preview when source references controls missing 
     const persisted = JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'));
     assert.equal(persisted.windows[0].controls.some((control: { name: string }) => control.name === '输出结果'), true);
     // 补齐后预览不再被门禁阻断
+    const preview = await service.nativePreview({ projectId });
+    assert.equal(preview.ok, true);
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge blocks build and preview when a module command argument type mismatches', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'arg-type-gate';
+  const sourcePath = `src/${projectId}/Main.lcpp`;
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  const badSource = [
+    '功能库 参数测试',
+    '公开:',
+    '  文本型 类型不匹配()',
+    '    局部 字节集 数据',
+    '    局部 文本型 拼串',
+    '    数据 = 字节集_从文本("ab")',
+    '    拼串 = "addr=" + 文本_取左边(字节集_十六进制编码(数据), 40) + "|end"',
+    '    返回 (拼串)',
+    '  结束',
+    '结束功能库'
+  ].join('\n');
+  const fixedSource = badSource.replace(
+    '文本_取左边(字节集_十六进制编码(数据), 40)',
+    '文本_取左边(字节集_到十六进制文本(数据), 40)'
+  );
+  const designerModel = createDesignerFallbackProject(projectId, '实参类型门禁');
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), badSource, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(designerModel, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, '.lingbuilder', 'projects', projectId, 'project-modules.json'), JSON.stringify({
+    schemaVersion: 1,
+    enabledModuleIds: ['lingbuilder.std.text', 'lingbuilder.std.bytes', 'lingbuilder.std.encoding']
+  }, null, 2), 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '实参类型门禁' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'arg-type-gate-token'));
+  try {
+    // preview/build 在生成前被中文诊断阻断：指出形参要求的类型、实参实际类型与转换建议，
+    // 不再让 MSVC 层的 C2665/C2660 错误恢复级联外泄（构建根本不会启动）。
+    await assert.rejects(
+      () => service.nativePreview({ projectId }),
+      /lingbuilder\.native\.preview 被阻止[\s\S]*实参类型不符[\s\S]*形参「文本」要求 文本型，实参是 字节集/u
+    );
+    // 修复为直接取十六进制文本后放行。
+    await fs.writeFile(path.join(workspaceRoot, sourcePath), fixedSource, 'utf8');
     const preview = await service.nativePreview({ projectId });
     assert.equal(preview.ok, true);
   } finally {

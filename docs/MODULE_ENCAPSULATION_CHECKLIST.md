@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-09-18
+更新时间：2026-09-24
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **101 个内置模块、3924 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **101 个内置模块、3940 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -14,10 +14,10 @@
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
- 已封装 | `lingbuilder.std.text` | 文本处理模块 | 24 |
+ 已封装 | `lingbuilder.std.text` | 文本处理模块 | 29 |
 | 已封装 | `lingbuilder.std.array` | 数组操作模块 | 13 |
- 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 25 |
-| 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 32 |
+ 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 26 |
+已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 32 |
 | 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 18 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 22 |
 | 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 10 |
@@ -37,7 +37,7 @@ JSON 数据模块 2.0 提供受管 `JSON值`、严格 RFC 8259 解析与创建�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已封装 | `lingbuilder.fs.core` | 文件目录模块 | 36 |
+| 已封装 | `lingbuilder.fs.core` | 文件目录模块 | 41 |
 | 已封装 | `lingbuilder.fs.path` | 路径处理模块 | 7 |
 | 已封装 | `lingbuilder.config.ini` | INI 配置模块 | 6 |
 | 已封装 | `lingbuilder.config.registry` | 用户注册表模块 | 6 |
@@ -145,9 +145,9 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 216 |
+| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 220 |
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 550 |
-| 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 274 |
+| 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 321 |
 | 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
 | 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |
 | 3.0预览 | `lingbuilder.cef3.objects` | CEF3受管对象、Menu、证书与导航历史模块 | 183 |

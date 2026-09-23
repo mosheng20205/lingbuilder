@@ -35,9 +35,9 @@ const regexSeparatorArg = '拼接各匹配结果之间插入的文本，允许�
 const textModule = createStandardModule({
   id: 'lingbuilder.std.text',
   name: '文本处理模块',
-  version: '1.1.0',
+  version: '1.2.0',
   category: '其他',
-  description: '提供 Unicode 文本查找、截取、替换、修剪和大小写转换能力。索引统一从 0 开始。',
+  description: '提供 Unicode 文本查找、截取、替换、修剪、大小写转换、定宽填充（按显示列数）与数组合并能力。索引统一从 0 开始。',
   tags: ['文本', 'Unicode'],
   commands: [
     { name: '文本_取长度', signature: '文本_取长度(文本)', description: '返回 Unicode 文本的字符数量。', insertText: '文本_取长度("$1")', parameters: [{ name: '文本', type: 'wideString', description: srcText}], returnType: 'int', example: '文本_取长度("LingBuilder")' },
@@ -51,7 +51,7 @@ const textModule = createStandardModule({
     { name: '文本_转大写', signature: '文本_转大写(文本)', description: '把文本转换为大写。', insertText: '文本_转大写("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要转换的源文本；仅对有大写形式的字符生效，其余字符原样保留。'}], returnType: 'wideString' },
     { name: '文本_转小写', signature: '文本_转小写(文本)', description: '把文本转换为小写。', insertText: '文本_转小写("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要转换的源文本；仅对有小写形式的字符生效，其余字符原样保留。'}], returnType: 'wideString' }
 ,
-    { name: '文本_分割', signature: '文本_分割(文本, 分隔符, 结果数组)', description: '把文本按分隔符拆分写入文本数组，返回分段数量；分隔符为空时整段作为一条返回。', insertText: '文本_分割($1, "$2", $3)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged},{ name: '分隔符', type: 'wideString', description: '分段依据，按完整子文本匹配；连续分隔符会产生空分段，空分隔符时整段作为唯一分段返回。'},{ name: '结果数组', type: 'array', description: '接收分段结果的文本型数组变量，调用前会先清空原有内容。'}], returnType: 'int' },
+    { name: '文本_分割', signature: '文本_分割(文本, 分隔符, 结果数组, 忽略末尾空段)', description: '把文本按分隔符拆分写入文本数组，返回分段数量；分隔符为空时整段作为一条返回。文本以分隔符结尾时默认会多出一段空文本（"a|b|" 得 3 段），累积拼接场景请传 真 忽略它。', insertText: '文本_分割($1, "$2", $3)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged},{ name: '分隔符', type: 'wideString', description: '分段依据，按完整子文本匹配；连续分隔符会产生空分段，空分隔符时整段作为唯一分段返回。'},{ name: '结果数组', type: 'array', description: '接收分段结果的文本型数组变量，调用前会先清空原有内容。'}, { name: '忽略末尾空段', type: 'bool', optional: true, defaultValue: false, description: '传 假（省略时）保留尾部空段："a|b|" 拆成 "a"、"b"、"" 三段；传 真 丢弃末尾连续的空分段："a|b|" 拆成 "a"、"b" 两段。中间的空分段（"a||b"）不受影响，两种取值都保留。累积拼接串（串 = 串 + 字段 + "|"）应传真，否则段数比实际记录多 1。'}], returnType: 'int' },
     { name: '文本_倒找', signature: '文本_倒找(文本, 目标)', description: '从末尾向开头查找目标文本首次出现的位置（从 0 起）；未找到返回 -1。', insertText: '文本_倒找("$1", "$2")', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged},{ name: '目标', type: 'wideString', description: '要查找的子文本，区分大小写；空文本时返回文本末尾位置。'}], returnType: 'int' },
     { name: '文本_替换子文本', signature: '文本_替换子文本(文本, 查找内容, 替换内容, 起始位置, 次数)', description: '从起始位置（从 0 起）开始替换查找内容；次数小于等于 0 表示全部替换；起始位置越界或查找内容为空时原样返回。', insertText: '文本_替换子文本("$1", "$2", "$3", 0, 0)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged},{ name: '查找内容', type: 'wideString', description: '要被替换掉的子文本，区分大小写；空文本时原样返回。'},{ name: '替换内容', type: 'wideString', description: replaceText},{ name: '起始位置', type: 'int', description: '开始替换的字符索引，从 0 起；为负或不小于文本长度时原样返回。'},{ name: '次数', type: 'int', description: '最多替换的匹配个数；小于等于 0 表示从起始位置起全部替换。'}], returnType: 'wideString' },
     { name: '文本_删全部空白', signature: '文本_删全部空白(文本)', description: '删除文本中全部空白字符（含首尾与中间）。', insertText: '文本_删全部空白("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要去空白的源文本；首尾与中间符合 iswspace 判定的空白字符全部删除。'}], returnType: 'wideString' },
@@ -65,13 +65,21 @@ const textModule = createStandardModule({
     { name: '文本_码点转字符', signature: '文本_码点转字符(码点)', description: '返回 Unicode 码点对应的字符；超过 0xFFFF 的码点自动生成代理对。', insertText: '文本_码点转字符(0)', parameters: [{ name: '码点', type: 'int', description: 'Unicode 码点，0 到 1114111；代理区（55296～57343）或超出上限时返回空文本，65536 以上自动编码为 UTF-16 代理对。'}], returnType: 'wideString', example: '文本_码点转字符(20320)' },
     { name: '文本_取码点', signature: '文本_取码点(文本, 位置)', description: '返回文本中指定位置（从 0 起）字符的 Unicode 码点；越界返回 0。', insertText: '文本_取码点("$1", 0)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '位置', type: 'int', description: '字符位置索引，从 0 起；越界返回 0。若该位置是代理对的高半部分且后继合法，返回合成后的完整码点。'}], returnType: 'int', example: '文本_取码点("你", 0)' },
     { name: '文本_删首空白', signature: '文本_删首空白(文本)', description: '删除文本首部的空白字符。', insertText: '文本_删首空白("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要修剪的源文本；首部符合 iswspace 判定的空白（含空格、全角空格、制表符和换行）全部删除，其余不变。'}], returnType: 'wideString', example: '文本_删首空白("  你好")' },
-    { name: '文本_删尾空白', signature: '文本_删尾空白(文本)', description: '删除文本尾部的空白字符。', insertText: '文本_删尾空白("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要修剪的源文本；尾部符合 iswspace 判定的空白（含空格、全角空格、制表符和换行）全部删除，其余不变。'}], returnType: 'wideString', example: '文本_删尾空白("你好  ")' }  ]
+    { name: '文本_删尾空白', signature: '文本_删尾空白(文本)', description: '删除文本尾部的空白字符。', insertText: '文本_删尾空白("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要修剪的源文本；尾部符合 iswspace 判定的空白（含空格、全角空格、制表符和换行）全部删除，其余不变。'}], returnType: 'wideString', example: '文本_删尾空白("你好  ")' }
+,
+    // 定宽填充族：目标宽度一律是「显示列数」而不是字符数，中日韩全角字符按 2 列计算，
+    // 否则中英文混排的报告表格必然错位（这是本族的红线，说明文本与规则手册同步维护）。
+    { name: '文本_填充右边', signature: '文本_填充右边(文本, 目标显示宽度, 填充字符)', description: '左对齐补齐：按显示宽度在右侧补到目标宽度，已够宽时原样返回且不截断，表格排版用它对齐每一列。', insertText: '文本_填充右边("$1", 10)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '目标显示宽度', type: 'int', description: '目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列（例如"莫生网店"是 8 列）；文本当前显示宽度已达到或超过该值时原样返回。'}, { name: '填充字符', type: 'wideString', optional: true, defaultValue: ' ', description: '补在右侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次（结果不会超过目标宽度）。'}], returnType: 'wideString', example: '调试输出("[" + 文本_填充右边("莫生网店", 12) + "]")' },
+    { name: '文本_填充左边', signature: '文本_填充左边(文本, 目标显示宽度, 填充字符)', description: '右对齐补齐：按显示宽度在左侧补到目标宽度（数字列常用），已够宽时原样返回且不截断。', insertText: '文本_填充左边("$1", 10)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '目标显示宽度', type: 'int', description: '目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列；文本当前显示宽度已达到或超过该值时原样返回。'}, { name: '填充字符', type: 'wideString', optional: true, defaultValue: ' ', description: '补在左侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次（结果不会超过目标宽度）。'}], returnType: 'wideString', example: '调试输出("[" + 文本_填充左边("999", 8) + "]")' },
+    { name: '文本_居中', signature: '文本_居中(文本, 目标显示宽度, 填充字符)', description: '居中补齐：按显示宽度在两侧补到目标宽度，左侧分到多余的半列（左侧宽度取剩余列数的一半向下取整），已够宽时原样返回。', insertText: '文本_居中("$1", 10)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '目标显示宽度', type: 'int', description: '目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列；文本当前显示宽度已达到或超过该值时原样返回。'}, { name: '填充字符', type: 'wideString', optional: true, defaultValue: ' ', description: '补在两侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次。'}], returnType: 'wideString', example: '调试输出("[" + 文本_居中("标题", 12) + "]")' },
+    { name: '文本_取显示宽度', signature: '文本_取显示宽度(文本, 中日韩按 2 列)', description: '返回文本在等宽字体下占用的显示列数（不是字符数）；制表符和换行等控制字符按 0 列计算。', insertText: '文本_取显示宽度("$1")', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '中日韩按 2 列', type: 'bool', optional: true, defaultValue: true, description: '传真（省略时）按终端惯例计算：中日韩全角字符 2 列、组合符号 0 列、其余 1 列；传假时每个字符一律算 1 列（等价于 文本_取长度，用于只按字符数对齐的场合）。'}], returnType: 'int', example: '调试输出(文本_取显示宽度("莫生网店"))' },
+    { name: '文本_连接', signature: '文本_连接(文本数组, 分隔符, 起始下标, 数量)', description: '用分隔符把数组区间内的成员依次连成一段文本（文本_分割 的反向操作），拼接 JSON/CSV 记录时不必再手写「首个元素不加逗号」的累加逻辑。', insertText: '文本_连接($1, "$2")', parameters: [{ name: '文本数组', type: 'array', description: arrayArg}, { name: '分隔符', type: 'wideString', description: '连接各成员时插入的文本，允许空文本；分隔符不参与成员内容。'}, { name: '起始下标', type: 'int', optional: true, defaultValue: 0, description: '从哪个成员开始连接，索引从 0 起；省略或小于 0 时按 0 处理，不小于成员数时返回空文本。'}, { name: '数量', type: 'int', optional: true, defaultValue: -1, description: '最多连接的成员个数；省略或小于等于 0 表示从起始下标一直连到末尾，超出时只连到末尾。'}], returnType: 'wideString', example: '局部 文本型 名单[]\n数组_加入成员(名单, "a")\n调试输出(文本_连接(名单, ","))' }  ]
 });
 
 const bytesModule = createStandardModule({
   id: 'lingbuilder.std.bytes',
   name: '字节与十六进制模块',
-  version: '1.1.0',
+  version: '1.2.0',
   category: '其他',
   description: '通过安全文本接口提供 UTF-8 字节长度、十六进制编解码和数值进制文本转换。',
   tags: ['字节', '十六进制'],
@@ -102,7 +110,8 @@ const byteArrayOperationsModule = createStandardModule({
     { name: '字节集_置字节', signature: '字节集_置字节(数据, 位置, 数值)', description: '写入一个字节，位置或数值无效时返回假。', insertText: '字节集_置字节($1, 0, 0)', parameters: [{ name: '数据', type: 'bytes', description: '要修改的字节集；只改动指定位置，长度不变。'}, { name: '位置', type: 'int', description: '要写入的字节位置，从 0 起；越界返回假且不改动数据。'}, { name: '数值', type: 'int', description: '写入的字节值，必须在 0 到 255 之间；超范围返回假。'}], returnType: 'bool' },
     { name: '字节集_Base64编码', signature: '字节集_Base64编码(数据)', description: '把字节集编码为 Base64 文本。', insertText: '字节集_Base64编码($1)', parameters: [{ name: '数据', type: 'bytes', description: '要编码的原始字节集；输出标准 Base64 字母表并以等号补齐。'}], returnType: 'wideString' },
     { name: '字节集_Base64解码', signature: '字节集_Base64解码(Base64文本)', description: '把 Base64 文本解码为字节集，格式错误返回空字节集。', insertText: '字节集_Base64解码("$1")', parameters: [{ name: 'Base64文本', type: 'wideString', description: '标准 Base64 文本，长度必须是 4 的倍数，只含字母表字符和末尾补齐等号；格式错误返回空字节集。'}], returnType: 'bytes' },
-    { name: '字节集_十六进制编码', signature: '字节集_十六进制编码(数据)', description: '把字节集编码为 ASCII 十六进制字节集。', insertText: '字节集_十六进制编码($1)', parameters: [{ name: '数据', type: 'bytes', description: '要编码的字节集；输出由大写十六进制字符组成的 ASCII 字节集。'}], returnType: 'bytes' },
+    { name: '字节集_到十六进制字节集', signature: '字节集_到十六进制字节集(数据)', description: '把字节集编码为 ASCII 十六进制字节集。⚠️ 返回的是字节集而不是文本：要直接得到可显示的十六进制文本请用 字节集_到十六进制文本，或对结果再调 编码_字节集转文本(结果, "ANSI")。', insertText: '字节集_到十六进制字节集($1)', parameters: [{ name: '数据', type: 'bytes', description: '要编码的字节集；输出由大写十六进制字符组成的 ASCII 字节集。'}], returnType: 'bytes', aliases: ['字节集_十六进制编码'] },
+    { name: '字节集_到十六进制文本', signature: '字节集_到十六进制文本(数据)', description: '把字节集编码为大写十六进制并直接返回文本（字节集_到十六进制字节集 的文本版），一步得到可直接显示或拼接的结果。', insertText: '字节集_到十六进制文本($1)', parameters: [{ name: '数据', type: 'bytes', description: '要编码的字节集；输出由大写十六进制字符组成的文本，空字节集返回空文本。'}], returnType: 'wideString', example: '调试输出(字节集_到十六进制文本(字节集_从文本("Ling")))' },
     { name: '字节集_十六进制解码', signature: '字节集_十六进制解码(十六进制)', description: '把十六进制文本解码为字节集。', insertText: '字节集_十六进制解码("$1")', parameters: [{ name: '十六进制', type: 'wideString', description: '十六进制字节文本；长度必须为偶数且逐字符合法，否则返回空字节集。'}], returnType: 'bytes' }
 ,
     { name: '字节集_寻找', signature: '字节集_寻找(数据, 欲寻找, 起始位置)', description: '从起始位置（从 0 起）向后查找字节集首次出现的位置；未找到、欲寻找为空或起始位置越界返回 -1。', insertText: '字节集_寻找($1, $2, 0)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '欲寻找', type: 'bytes', description: bytesSearchTarget}, { name: '起始位置', type: 'int', description: bytesStartIndex}], returnType: 'int' },
@@ -286,7 +295,8 @@ const regexModule = createStandardModule({
     { name: '正则_取分组', signature: '正则_取分组(文本, 表达式, 组序号)', description: '返回首个匹配中第 N 个分组的文本（0 表示整个匹配）；分组未参与匹配、越界或表达式非法时返回空文本。', insertText: '正则_取分组("$1", "$2", 1)', parameters: [{ name: '文本', type: 'wideString', description: regexTextArg}, { name: '表达式', type: 'wideString', description: '带捕获分组的正则表达式；表达式非法或无匹配时返回空文本。'}, { name: '组序号', type: 'int', description: '捕获分组编号，0 表示整个匹配；为负、超出分组数量或该分组未参与匹配时返回空文本。'}], returnType: 'wideString', example: '正则_取分组("2026-09-13", "([0-9]+)-([0-9]+)-([0-9]+)", 2)' },
     { name: '正则_取所有分组', signature: '正则_取所有分组(文本, 表达式, 组序号, 分隔符)', description: '把每个匹配中第 N 个分组的文本（0 表示整个匹配）按分隔符依次拼接；无匹配或表达式非法时返回空文本。', insertText: '正则_取所有分组("$1", "$2", 1, "$4")', parameters: [{ name: '文本', type: 'wideString', description: regexTextArg}, { name: '表达式', type: 'wideString', description: '带捕获分组的正则表达式；表达式非法时返回空文本。'}, { name: '组序号', type: 'int', description: '捕获分组编号，0 表示整个匹配；未参与匹配的分组会被跳过。'}, { name: '分隔符', type: 'wideString', description: regexSeparatorArg}], returnType: 'wideString', example: '正则_取所有分组("a1b22c333", "([0-9]+)", 1, ",")' },
     { name: '正则_取匹配位置', signature: '正则_取匹配位置(文本, 表达式, 序号)', description: '返回第 N 个匹配的起始位置（从 0 起，按字符计）；无匹配、越界或表达式非法时返回 -1。', insertText: '正则_取匹配位置("$1", "$2", 0)', parameters: [{ name: '文本', type: 'wideString', description: regexTextArg}, { name: '表达式', type: 'wideString', description: '要定位的正则表达式；表达式非法时返回 -1。'}, { name: '序号', type: 'int', description: '要定位第几个匹配，从 0 起；为负或超过匹配总数时返回 -1。'}], returnType: 'int', example: '正则_取匹配位置("a1b22c333", "[0-9]+", 1)' }
-  ]
+  ],
+  docs: [{ title: '正则表达式模块使用说明', path: 'docs/modules/std-regex/README.md' }]
 });
 
 

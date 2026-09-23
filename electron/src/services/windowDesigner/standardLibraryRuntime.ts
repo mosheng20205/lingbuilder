@@ -17,6 +17,17 @@ static std::wstring LB_Wide(const wchar_t* value) {
     return value ? value : L"";
 }
 
+// 「日期时间」名义类型的 64 位打包：year<<26 | month<<22 | day<<17 | hour<<12 | minute<<6 | second，
+// 0 表示无效时间。必须与 std.datetime 的 LB_PackDateTime 同布局——文件时间（文件_取修改时间 等）
+// 与 时间_取间隔/时间_增减/时间_取年份 直接互通就靠这一点，改动其一必须同时改另一处。
+static long long LB_PackLocalDateTime(int year, int month, int day, int hour, int minute, int second) {
+    if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31
+        || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return 0;
+    return (static_cast<long long>(year) << 26) | (static_cast<long long>(month) << 22)
+        | (static_cast<long long>(day) << 17) | (static_cast<long long>(hour) << 12)
+        | (static_cast<long long>(minute) << 6) | static_cast<long long>(second);
+}
+
 static std::string LB_WideToUtf8(const wchar_t* value) {
     if (!value || !value[0]) return {};
     int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value, -1, nullptr, 0, nullptr, nullptr);
@@ -163,6 +174,91 @@ const wchar_t* 文本_重复(const wchar_t* text, int count) {
     return LB_ReturnText(std::move(result));
 }
 
+// ---------- 显示宽度与定宽填充 ----------
+// 目标宽度一律是「显示列数」而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列。
+// 区间对照 Unicode EastAsianWidth 的 W/F 类；不用它算宽度，中英文混排的报告表格一定错位。
+static int LB_CodePointWidth(unsigned int code, bool cjkWide) {
+    if (!cjkWide) return 1;
+    if (code < 0x20 || code == 0x7F) return 0;
+    if ((code >= 0x0300 && code <= 0x036F) || (code >= 0x200B && code <= 0x200F)
+        || (code >= 0x2060 && code <= 0x2064) || (code >= 0xFE00 && code <= 0xFE0F)
+        || (code >= 0xFE20 && code <= 0xFE2F) || (code >= 0x1AB0 && code <= 0x1AFF)
+        || (code >= 0x1DC0 && code <= 0x1DFF)) return 0;
+    if ((code >= 0x1100 && code <= 0x115F) || (code >= 0x2E80 && code <= 0x303E)
+        || (code >= 0x3041 && code <= 0x33FF) || (code >= 0x3400 && code <= 0x4DBF)
+        || (code >= 0x4E00 && code <= 0x9FFF) || (code >= 0xA000 && code <= 0xA4CF)
+        || (code >= 0xA960 && code <= 0xA97F) || (code >= 0xAC00 && code <= 0xD7A3)
+        || (code >= 0xF900 && code <= 0xFAFF) || (code >= 0xFE10 && code <= 0xFE19)
+        || (code >= 0xFE30 && code <= 0xFE6F) || (code >= 0xFF00 && code <= 0xFF60)
+        || (code >= 0xFFE0 && code <= 0xFFE6) || (code >= 0x1F300 && code <= 0x1F64F)
+        || (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x20000 && code <= 0x3FFFD)) return 2;
+    return 1;
+}
+
+static int LB_DisplayWidth(const std::wstring& value, bool cjkWide) {
+    int width = 0;
+    for (size_t index = 0; index < value.size(); ++index) {
+        unsigned int code = static_cast<unsigned int>(static_cast<uint16_t>(value[index]));
+        if (code >= 0xD800 && code <= 0xDBFF && index + 1 < value.size()) {
+            const unsigned int low = static_cast<unsigned int>(static_cast<uint16_t>(value[index + 1]));
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                code = 0x10000u + ((code - 0xD800u) << 10) + (low - 0xDC00u);
+                ++index;
+            }
+        }
+        width += LB_CodePointWidth(code, cjkWide);
+    }
+    return width;
+}
+
+// 取出填充用的首个字符（可能是代理对），仅按完整字符重复。
+static std::wstring LB_FirstCharacter(const std::wstring& value) {
+    if (value.empty()) return std::wstring();
+    const wchar_t first = value[0];
+    if (first >= 0xD800 && first <= 0xDBFF && value.size() >= 2
+        && value[1] >= 0xDC00 && value[1] <= 0xDFFF) return value.substr(0, 2);
+    return value.substr(0, 1);
+}
+
+// leftColumns 小于 0 表示居中（左侧取剩余列数的一半向下取整）；填充字符宽度为 0 时原样返回。
+static std::wstring LB_PadToDisplayWidth(
+    const std::wstring& value, int targetWidth, const std::wstring& fill, bool cjkWide, int leftColumns
+) {
+    if (fill.empty()) return value;
+    const int current = LB_DisplayWidth(value, cjkWide);
+    if (current >= targetWidth) return value;
+    const std::wstring pad = LB_FirstCharacter(fill);
+    const int padWidth = LB_DisplayWidth(pad, cjkWide);
+    if (padWidth <= 0) return value;
+    const int remaining = targetWidth - current;
+    const int totalRepeats = remaining / padWidth;
+    int leftRepeats = leftColumns < 0 ? totalRepeats / 2 : leftColumns / padWidth;
+    if (leftRepeats > totalRepeats) leftRepeats = totalRepeats;
+    if (leftRepeats < 0) leftRepeats = 0;
+    std::wstring result;
+    result.reserve(value.size() + pad.size() * static_cast<size_t>(totalRepeats));
+    for (int index = 0; index < leftRepeats; ++index) result += pad;
+    result += value;
+    for (int index = leftRepeats; index < totalRepeats; ++index) result += pad;
+    return result;
+}
+
+const wchar_t* 文本_填充右边(const wchar_t* text, int targetWidth, const wchar_t* fill = L" ") {
+    return LB_ReturnText(LB_PadToDisplayWidth(LB_Wide(text), targetWidth, LB_Wide(fill), true, 0));
+}
+
+const wchar_t* 文本_填充左边(const wchar_t* text, int targetWidth, const wchar_t* fill = L" ") {
+    return LB_ReturnText(LB_PadToDisplayWidth(LB_Wide(text), targetWidth, LB_Wide(fill), true, targetWidth));
+}
+
+const wchar_t* 文本_居中(const wchar_t* text, int targetWidth, const wchar_t* fill = L" ") {
+    return LB_ReturnText(LB_PadToDisplayWidth(LB_Wide(text), targetWidth, LB_Wide(fill), true, -1));
+}
+
+int 文本_取显示宽度(const wchar_t* text, bool cjkWide = true) {
+    return LB_DisplayWidth(LB_Wide(text), cjkWide);
+}
+
 const wchar_t* 文本_插入(const wchar_t* text, int position, const wchar_t* insertion) {
     std::wstring value = LB_Wide(text);
     if (position < 0 || static_cast<size_t>(position) > value.size()) return LB_ReturnText(std::move(value));
@@ -170,7 +266,7 @@ const wchar_t* 文本_插入(const wchar_t* text, int position, const wchar_t* i
     return LB_ReturnText(std::move(value));
 }
 
-long long 文本_分割(const wchar_t* text, const wchar_t* separator, std::vector<std::wstring>& out) {
+long long 文本_分割(const wchar_t* text, const wchar_t* separator, std::vector<std::wstring>& out, bool ignoreTrailingEmpty = false) {
     out.clear();
     const std::wstring value = LB_Wide(text);
     const std::wstring sep = LB_Wide(separator);
@@ -182,6 +278,9 @@ long long 文本_分割(const wchar_t* text, const wchar_t* separator, std::vect
         out.push_back(value.substr(start, position - start));
         start = position + sep.size();
     }
+    // 累积拼接串（串 = 串 + 字段 + "|"）必然以分隔符结尾，默认会多出一个空分段；
+    // 只有末尾的连续空分段被丢弃，中间空分段（"a||b"）无论开关都保留。
+    while (ignoreTrailingEmpty && !out.empty() && out.back().empty()) out.pop_back();
     return static_cast<long long>(out.size());
 }
 
@@ -240,6 +339,33 @@ const wchar_t* 文本_删尾空白(const wchar_t* text) {
     while (last > 0 && iswspace(value[last - 1])) --last;
     return LB_ReturnText(value.substr(0, last));
 }
+
+// 连接成员时的文本化规则与 到文本 一致（真/假、十进制定点、双精度 15 位有效数字）；
+// 本运行时片段先于 到文本 的定义出现，所以在这里自带一份重载集，避免依赖声明顺序。
+static std::wstring LB_JoinElement(const std::wstring& value) { return value; }
+static std::wstring LB_JoinElement(const wchar_t* value) { return LB_Wide(value); }
+static std::wstring LB_JoinElement(bool value) { return value ? L"真" : L"假"; }
+static std::wstring LB_JoinElement(int value) { return std::to_wstring(value); }
+static std::wstring LB_JoinElement(long long value) { return std::to_wstring(value); }
+static std::wstring LB_JoinElement(float value) { std::wostringstream stream; stream.precision(7); stream << value; return stream.str(); }
+static std::wstring LB_JoinElement(double value) { std::wostringstream stream; stream.precision(15); stream << value; return stream.str(); }
+
+// 文本_分割 的反向操作：把 [startIndex, startIndex + count) 区间内的成员用 separator 连成一段文本。
+template <typename T> const wchar_t* 文本_连接(const std::vector<T>& items, const wchar_t* separator, int startIndex = 0, int count = -1) {
+    const std::wstring sep = LB_Wide(separator);
+    if (startIndex < 0) startIndex = 0;
+    if (static_cast<size_t>(startIndex) >= items.size()) return LB_ReturnText(L"");
+    size_t end = items.size();
+    if (count > 0 && static_cast<size_t>(count) < end - static_cast<size_t>(startIndex)) {
+        end = static_cast<size_t>(startIndex) + static_cast<size_t>(count);
+    }
+    std::wstring result;
+    for (size_t index = static_cast<size_t>(startIndex); index < end; ++index) {
+        if (index > static_cast<size_t>(startIndex)) result += sep;
+        result += LB_JoinElement(items[index]);
+    }
+    return LB_ReturnText(std::move(result));
+}
 `;
 
 const ARRAY_RUNTIME = String.raw`
@@ -249,9 +375,11 @@ template <typename T> struct LB_ArrayEquatable<T, std::void_t<decltype(std::decl
 template <typename T, typename = void> struct LB_ArrayOrderable : std::false_type {};
 template <typename T> struct LB_ArrayOrderable<T, std::void_t<decltype(std::declval<const T&>() < std::declval<const T&>())>> : std::true_type {};
 
-// 文本成员沿用标准库统一的 const wchar_t* 返回约定，其余元素类型按值返回。
+// 文本成员返回 std::wstring 值：此前沿用 const wchar_t* 裸指针约定，两处中招——
+// ① 「数组_取成员(a,0) + "x" + 数组_取成员(a,1)」只要有一处没被生成器归一就是指针加法（C2110）；
+// ② 返回值是指向 16 槽轮转缓冲区的指针，同一表达式里取超过 16 次文本成员会互相覆盖。
+// 需要 const wchar_t* 的实参位置由生成器的 LingCppWideArg(...) 统一归一，不依赖返回值本身是指针。
 template <typename T> struct LB_ArrayMemberResult { using type = T; };
-template <> struct LB_ArrayMemberResult<std::wstring> { using type = const wchar_t*; };
 
 static bool LB_ArrayIndexValid(size_t count, int index) {
     return index >= 0 && static_cast<size_t>(index) < count;
@@ -264,7 +392,7 @@ template <typename T> bool 数组_是否为空(const std::vector<T>& items) { re
 template <typename T> typename LB_ArrayMemberResult<T>::type 数组_取成员(const std::vector<T>& items, int index) {
     const bool valid = LB_ArrayIndexValid(items.size(), index);
     if constexpr (std::is_same_v<T, std::wstring>) {
-        return LB_ReturnText(valid ? items[static_cast<size_t>(index)] : std::wstring());
+        return valid ? items[static_cast<size_t>(index)] : std::wstring();
     } else {
         return valid ? items[static_cast<size_t>(index)] : T{};
     }
@@ -436,11 +564,18 @@ std::vector<unsigned char> 字节集_Base64解码(const wchar_t* text) {
     return result;
 }
 
-std::vector<unsigned char> 字节集_十六进制编码(const std::vector<unsigned char>& bytes) {
+std::vector<unsigned char> 字节集_到十六进制字节集(const std::vector<unsigned char>& bytes) {
     std::vector<unsigned char> result; result.reserve(bytes.size() * 2);
     static constexpr unsigned char digits[] = "0123456789ABCDEF";
     for (unsigned char byte : bytes) { result.push_back(digits[(byte >> 4) & 0x0f]); result.push_back(digits[byte & 0x0f]); }
     return result;
+}
+
+const wchar_t* 字节集_到十六进制文本(const std::vector<unsigned char>& bytes) {
+    std::wstring result; result.reserve(bytes.size() * 2);
+    static constexpr unsigned char digits[] = "0123456789ABCDEF";
+    for (unsigned char byte : bytes) { result.push_back(digits[(byte >> 4) & 0x0f]); result.push_back(digits[byte & 0x0f]); }
+    return LB_ReturnText(result);
 }
 
 std::vector<unsigned char> 字节集_十六进制解码(const wchar_t* hex) {

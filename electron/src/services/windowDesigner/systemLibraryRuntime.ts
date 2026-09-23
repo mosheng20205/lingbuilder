@@ -2051,6 +2051,93 @@ long long 目录_枚举(const wchar_t* directory, bool recursive, std::vector<st
     LB_EnumWalk(root, L"", recursive, 1, 0, out);
     return static_cast<long long>(out.size());
 }
+
+// ---------- 文件时间 ----------
+// 返回的「日期时间」是本地时区的 64 位打包值，与 std.datetime 的 时间_取现行/时间_取间隔/时间_增减
+// 是同一表示，可直接比大小、算间隔；失败返回 0（无效时间），原因用 文件_取错误 读取。
+static thread_local std::wstring g_lbFileLastError;
+
+const wchar_t* 文件_取错误() {
+    return LB_ReturnText(g_lbFileLastError);
+}
+
+// kind 0/1/2 对应创建/访问/修改时间；不写错误状态，供 文件_取最新文件 内部复用。
+static long long LB_FileTimeValue(const wchar_t* path, int kind) {
+    const std::wstring value = LB_Wide(path);
+    if (value.empty()) return 0;
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(value.c_str(), GetFileExInfoStandard, &data)) return 0;
+    if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) return 0;
+    const FILETIME* source = kind == 0 ? &data.ftCreationTime : kind == 1 ? &data.ftLastAccessTime : &data.ftLastWriteTime;
+    FILETIME local;
+    if (!FileTimeToLocalFileTime(source, &local)) return 0;
+    SYSTEMTIME parts;
+    if (!FileTimeToSystemTime(&local, &parts)) return 0;
+    if (parts.wYear < 1 || parts.wYear > 9999) return 0;
+    return LB_PackLocalDateTime(parts.wYear, parts.wMonth, parts.wDay, parts.wHour, parts.wMinute, parts.wSecond);
+}
+
+static long long LB_FileTimeCommand(const wchar_t* path, int kind, const wchar_t* label) {
+    g_lbFileLastError.clear();
+    const std::wstring value = LB_Wide(path);
+    if (value.empty()) {
+        g_lbFileLastError = std::wstring(L"路径为空，无法取") + label + L"。";
+        return 0;
+    }
+    const long long packed = LB_FileTimeValue(value.c_str(), kind);
+    if (packed == 0) {
+        g_lbFileLastError = std::wstring(L"取") + label + L"失败：" + value
+            + L"（文件不存在、不是普通文件或不可访问，系统错误码 "
+            + std::to_wstring(static_cast<long long>(GetLastError())) + L"）。";
+        return 0;
+    }
+    return packed;
+}
+
+long long 文件_取修改时间(const wchar_t* path) { return LB_FileTimeCommand(path, 2, L"修改时间"); }
+
+long long 文件_取创建时间(const wchar_t* path) { return LB_FileTimeCommand(path, 0, L"创建时间"); }
+
+long long 文件_取访问时间(const wchar_t* path) { return LB_FileTimeCommand(path, 1, L"访问时间"); }
+
+// 枚举 目录 下匹配 通配符 的普通文件，把「修改时间最新」的一个完整路径写入结果数组（只写 1 条），
+// 返回写入数量（1 成功 / 0 失败）。并列时保留先枚举到的那个，结果是确定的。
+long long 文件_取最新文件(const wchar_t* directory, const wchar_t* pattern, std::vector<std::wstring>& out) {
+    out.clear();
+    g_lbFileLastError.clear();
+    const std::wstring directoryText = LB_Wide(directory);
+    if (directoryText.empty()) {
+        g_lbFileLastError = L"目录为空，无法挑出最新文件。";
+        return 0;
+    }
+    std::error_code error;
+    if (!std::filesystem::is_directory(std::filesystem::path(directoryText), error)) {
+        g_lbFileLastError = L"目录不存在或不是目录：" + directoryText + L"。";
+        return 0;
+    }
+    std::vector<std::wstring> matches;
+    LB_EnumWalk(std::filesystem::path(directoryText), LB_Wide(pattern), false, 0, 0, matches);
+    if (matches.empty()) {
+        g_lbFileLastError = L"目录 " + directoryText + L" 下没有匹配 " + LB_Wide(pattern) + L" 的文件。";
+        return 0;
+    }
+    long long newestTime = 0;
+    size_t newestIndex = matches.size();
+    for (size_t index = 0; index < matches.size(); ++index) {
+        const long long time = LB_FileTimeValue(matches[index].c_str(), 2);
+        if (time == 0) continue;
+        if (newestIndex == matches.size() || time > newestTime) {
+            newestIndex = index;
+            newestTime = time;
+        }
+    }
+    if (newestIndex == matches.size()) {
+        g_lbFileLastError = L"目录 " + directoryText + L" 下匹配到的文件都读不到修改时间。";
+        return 0;
+    }
+    out.push_back(matches[newestIndex]);
+    return 1;
+}
 `;
 
 

@@ -7,6 +7,8 @@ import { parseLingCpp } from '../src/services/lingCpp/parser';
 import { createProjectGlobalContext, findProjectGlobalDefinition, getProjectGlobalDiagnostics, renameProjectGlobalAcrossSources } from '../src/services/lingCpp/projectGlobalService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
+import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import type { InstalledModule } from '../src/services/modules/types';
 
 const globalPath = 'src/demo/项目全局变量.lcpp';
 
@@ -125,4 +127,23 @@ test('错误文件位置、重复类名和重复全局名阻止多源码生成',
   ] });
   assert.ok(generated.blockingDiagnostics.some(message => /只能声明/u.test(message)));
   assert.ok(generated.blockingDiagnostics.some(message => /重复/u.test(message)));
+});
+
+test('项目全局变量文件里缺少“全局”关键字的声明会被中文拦截而不是静默忽略', () => {
+  const modules: InstalledModule[] = [{
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  const moduleContext = { availableModules: modules, enabledModules: modules };
+  const badSource = ['文本型 缓存的用户代理 = ""', ''].join(String.fromCharCode(10));
+  const badDiagnostics = getProjectGlobalDiagnostics(badSource, 'src/项目全局变量.lcpp', moduleContext, []);
+  assert.ok(
+    badDiagnostics.some(diagnostic => diagnostic.level === 'error' && diagnostic.message.includes('缺少“全局”关键字') && diagnostic.suggestion?.includes('全局 文本型 缓存的用户代理 = 初值')),
+    '缺关键字的声明必须给出中文原因与逐字修法'
+  );
+  // 正确写法不得被误伤；非类型开头的普通语句也不报。
+  const goodSource = ['全局 文本型 缓存的用户代理 = ""', '// 注释行', ''].join(String.fromCharCode(10));
+  assert.deepEqual(getProjectGlobalDiagnostics(goodSource, 'src/项目全局变量.lcpp', moduleContext, []), []);
+  const statementSource = ['缓存的用户代理 = "Mozilla/5.0"', ''].join(String.fromCharCode(10));
+  assert.deepEqual(getProjectGlobalDiagnostics(statementSource, 'src/项目全局变量.lcpp', moduleContext, []), []);
 });

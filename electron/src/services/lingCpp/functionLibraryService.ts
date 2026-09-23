@@ -67,7 +67,9 @@ export function getFunctionLibraryDiagnostics(
   }
   currentLibraries.forEach(library => {
     const baseName = getFileBaseName(filePath);
-    if (baseName && normalizeIdentifier(baseName) !== normalizeIdentifier(library.name)) {
+    // 只比较 ASCII 大小写差异：库名 `Cookie导出` 与磁盘文件 `Cookie导出.lcpp` 必须判为一致，
+    // 否则路径在传递链路上被折叠成小写就会刷出「功能库名称与文件名不一致」的假告警。
+    if (baseName && normalizeIdentifier(baseName).toLocaleLowerCase() !== normalizeIdentifier(library.name).toLocaleLowerCase()) {
       diagnostics.push(diagnostic(
         'warning', library.line, library.name,
         `功能库名称“${library.name}”与文件名“${baseName}.lcpp”不一致。`,

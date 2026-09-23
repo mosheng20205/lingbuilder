@@ -758,6 +758,7 @@ app.get("/api/environment/check", async (_req, res) => {
       gpp: { label: "GNU g++", required: false },
       clangpp: { label: "Clang++", required: false },
       webView2: { label: "WebView2 Runtime", required: false },
+      webView2Sdk: { label: "WebView2 SDK（EdgeView 构建）", required: false },
       platform: { label: "Windows 运行平台", required: true }
     };
     const checks = Object.entries(result.checks).map(([id, item]) => ({

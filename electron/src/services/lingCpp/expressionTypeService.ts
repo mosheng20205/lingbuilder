@@ -32,7 +32,9 @@ export function normalizeLingCppValueType(type: string | undefined): string | un
     const elementType = normalizeLingCppValueType(getLingCppParameterElementType(trimmed));
     return elementType ? `${elementType}[]` : undefined;
   }
-  return MODULE_VALUE_TYPE_ALIASES[normalized] || trimmed;
+  // normalizeIdentifier 不做大小写折叠，而别名表键是小写英文：wideString/longLong 这类
+  // binding 层类型名必须经 toLowerCase 回退才能归一到中文类型标签。
+  return MODULE_VALUE_TYPE_ALIASES[normalized] || MODULE_VALUE_TYPE_ALIASES[normalized.toLowerCase()] || trimmed;
 }
 
 export function inferLingCppExpressionType(
@@ -151,7 +153,7 @@ export function areLingCppTypesCompatible(
   return expectedCategory === actualCategory || (expectedCategory === 'decimal' && actualCategory === 'integer');
 }
 
-function lingCppTypeCategory(type: string, moduleTypeCategories?: LingCppModuleTypeCategories): string {
+export function lingCppTypeCategory(type: string, moduleTypeCategories?: LingCppModuleTypeCategories): string {
   const bare = type.replace(/(?:\[\]|［］)$/u, '');
   if (moduleTypeCategories) {
     const mapped = moduleTypeCategories.get(normalizeIdentifier(bare));

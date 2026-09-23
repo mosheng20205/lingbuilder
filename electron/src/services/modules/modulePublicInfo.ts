@@ -25,9 +25,16 @@ export interface PublicInfoItem {
   commandCategory?: string;
   capabilityKind?: 'single' | 'aggregate' | 'managed' | 'secureReplacement';
   officialCapability?: boolean;
+  /** 随 IDE 分发的可运行例程：值为模块 ID，详情区据此渲染「在新 IDE 窗口打开」卡片而不是文档阅读器。 */
+  demoModuleId?: string;
 }
 
-export function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
+export interface CollectPublicInfoItemsOptions {
+  /** 随包例程模块 ID 集合（主进程枚举 module-demos）；命中时在「示例」分组补一条可运行例程条目。 */
+  bundledDemoModuleIds?: ReadonlySet<string>;
+}
+
+export function collectPublicInfoItems(module: InstalledModule, options?: CollectPublicInfoItemsOptions): PublicInfoItem[] {
   const manifest = module.manifest;
   const contributes = manifest.contributes || {};
   const bindings = manifest.bindings?.commands || [];
@@ -174,6 +181,20 @@ export function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[
       declaration: example.path,
       description: example.description || '模块随包示例源码，可直接查看引用写法。',
       copyText: example.path
+    }));
+  }
+  // 随 IDE 分发的完整例程工作区：示例页签因此不再依赖模块清单逐家声明；
+  // 已声明 contributes.examples 的模块两者共存（清单示例=引用写法，例程=可运行工程）。
+  if (options?.bundledDemoModuleIds?.has(manifest.id)) {
+    items.push(createItem({
+      id: `${manifest.id}:bundled-demo`,
+      sourceModuleId: manifest.id,
+      groupId: 'examples',
+      kind: '示例',
+      name: `${manifest.name} 例程`,
+      declaration: manifest.id,
+      description: '随 IDE 分发的完整例程工作区，可在新的 IDE 窗口中直接打开、编译和运行；目录已存在时保留你的改动。',
+      demoModuleId: manifest.id
     }));
   }
   return items;

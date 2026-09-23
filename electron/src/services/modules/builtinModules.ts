@@ -275,6 +275,10 @@ const BUILTIN_PARAM_DOCS: ParamDocTable = {
   标志: '信息框类型值：按钮与图标组合，可相加（0 确定、1 确定/取消、4 是/否、16 错误图标、32 询问图标、48 警告图标、64 信息图标）。',
   值: '要写入或转换的值。',
   '到文本::值': '要转换成文本的任意值。',
+  '到长整数::文本': '要转换成 64 位整数的文本；可带符号与前导空白，转换失败按 0 处理。',
+  '到小数::文本': '要转换成小数的文本；忽略首尾空白，转换失败按 0 处理。',
+  '到单精度小数::文本': '要转换成单精度小数的文本；忽略首尾空白，转换失败按 0 处理。',
+  '到逻辑::文本': '要转换成逻辑值的文本；空文本、“0”、“假” 为假，其余按非零即真判断。',
   'CEF3_设置崩溃键值::值': '崩溃键对应的值文本。',
   格式模板: '格式模板文本；用 {} 占位并按顺序填充后续参数。',
   文本: '要写入或查找的文本内容。',
@@ -363,7 +367,7 @@ const BUILTIN_PARAM_DOCS: ParamDocTable = {
   宽: '宽度（像素或 DIP，视命令而定）。',
   高: '高度（像素或 DIP，视命令而定）。',
   // EdgeView 几何命令运行时统一按逻辑坐标（DIP）接收并按窗口 DPI 缩放（与 win32.basic 控件口径一致），显式声明口径避免「像素或 DIP」歧义。
-  ...Object.fromEntries(['EdgeView_创建弹窗浏览器', 'EdgeView_创建弹窗浏览器代理', 'EdgeView_创建弹窗浏览器初始隐藏', 'EdgeView_创建弹窗浏览器初始隐藏代理', 'EdgeView_创建区域', 'EdgeView_创建区域代理', 'EdgeView_置实例大小'].flatMap(command => Object.entries({
+  ...Object.fromEntries(['EdgeView_创建弹窗浏览器', 'EdgeView_创建弹窗浏览器代理', 'EdgeView_创建弹窗浏览器初始隐藏', 'EdgeView_创建弹窗浏览器初始隐藏代理', 'EdgeView_创建区域', 'EdgeView_创建区域代理', 'EdgeView_置实例大小', 'EdgeView_置区域位置'].flatMap(command => Object.entries({
     左: '左边界 X 坐标（逻辑坐标/DIP，运行时按窗口 DPI 缩放）。',
     顶: '顶边界 Y 坐标（逻辑坐标/DIP，运行时按窗口 DPI 缩放）。',
     宽: '宽度（逻辑坐标/DIP，运行时按窗口 DPI 缩放）。',
@@ -579,6 +583,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '到文本', signature: '到文本(值)', description: '把整数、长整数、小数、逻辑值或文本确定性转换为文本；逻辑值返回“真”或“假”。', insertText: '到文本($1)', returnType: '文本型' },
         { name: '格式化文本', signature: '格式化文本(格式模板, 参数...)', description: '按顺序用参数替换格式模板中的 {}；使用 {{ 和 }} 输出字面量花括号。参数不足时保留未替换的 {}，多余参数忽略。', insertText: '格式化文本("$1：{}", $2)', returnType: '文本型' },
         { name: '到整数', signature: '到整数(文本)', description: '把文本转换为整数；空文本或无法转换的内容返回 0。', insertText: '到整数("$1")', returnType: '整数型' },
+        { name: '到长整数', signature: '到长整数(文本)', description: '把文本转换为长整数（64 位整数）；空文本或无法转换的内容返回 0。与 到整数 用法一致，但不做 32 位截断，适合转换时间戳、文件大小、内存地址等大数值。', insertText: '到长整数("$1")', returnType: '长整数型' },
+        { name: '到小数', signature: '到小数(文本)', description: '把文本转换为小数（双精度）；忽略首尾空白，空文本或无法转换的内容返回 0。', insertText: '到小数("$1")', returnType: '小数型' },
+        { name: '到单精度小数', signature: '到单精度小数(文本)', description: '把文本转换为单精度小数；忽略首尾空白，空文本或无法转换的内容返回 0。需要与单精度小数型变量或单精度参数对接时用它，精度低于 到小数。', insertText: '到单精度小数("$1")', returnType: '单精度小数型' },
+        { name: '到逻辑', signature: '到逻辑(文本)', description: '把文本转换为逻辑值：空文本、“0”、“假”返回假，非零数值与“真”返回真，其余非空文本（如“是”“yes”）也返回真。', insertText: '到逻辑("$1")', returnType: '逻辑型' },
         { name: '取鼠标水平位置', signature: '取鼠标水平位置()', description: '返回鼠标指针当前相对于屏幕左边的水平位置，单位为像素点。初级命令。', insertText: '取鼠标水平位置()', returnType: '整数型' },
         { name: '取鼠标垂直位置', signature: '取鼠标垂直位置()', description: '返回鼠标指针当前相对于屏幕顶边的垂直位置，单位为像素点。初级命令。', insertText: '取鼠标垂直位置()', returnType: '整数型' },
         { name: '控件_设置文本', signature: '控件_设置文本(控件名, 文本)', description: '设置当前窗口中指定控件的文本。', insertText: '控件_设置文本($1, "$2")', returnType: '逻辑型' },
@@ -599,8 +607,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ...createRuntimeControlCommandContributions('lingbuilder.win32.basic'),
         ...createRuntimeControlEventCommandContributions('lingbuilder.win32.basic'),
         { name: '窗口_取消关闭', signature: '窗口_取消关闭()', description: '在窗口“关闭前”事件中取消本次关闭请求。', insertText: '窗口_取消关闭()', returnType: '逻辑型' },
-        { name: '窗口_取事件宽度', signature: '窗口_取事件宽度()', description: '返回最近窗口大小事件中的客户区宽度。', insertText: '窗口_取事件宽度()', returnType: '整数型' },
-        { name: '窗口_取事件高度', signature: '窗口_取事件高度()', description: '返回最近窗口大小事件中的客户区高度。', insertText: '窗口_取事件高度()', returnType: '整数型' },
+        { name: '窗口_取事件宽度', signature: '窗口_取事件宽度()', description: '返回最近窗口大小事件中的客户区宽度。普通 Win32 窗口项目返回设计器逻辑坐标（DIP，已按窗口 DPI 还原），可直接喂给 控件_设置位置大小、EdgeView_置区域位置 等逻辑坐标命令；new_emoji 后端返回物理像素，需按 窗口_取事件DPI 自行换算。', insertText: '窗口_取事件宽度()', returnType: '整数型' },
+        { name: '窗口_取事件高度', signature: '窗口_取事件高度()', description: '返回最近窗口大小事件中的客户区高度。普通 Win32 窗口项目返回设计器逻辑坐标（DIP，已按窗口 DPI 还原），可直接喂给 控件_设置位置大小、EdgeView_置区域位置 等逻辑坐标命令；new_emoji 后端返回物理像素，需按 窗口_取事件DPI 自行换算。', insertText: '窗口_取事件高度()', returnType: '整数型' },
         { name: '窗口_取事件横坐标', signature: '窗口_取事件横坐标()', description: '返回最近窗口移动事件中的屏幕横坐标。', insertText: '窗口_取事件横坐标()', returnType: '整数型' },
         { name: '窗口_取事件纵坐标', signature: '窗口_取事件纵坐标()', description: '返回最近窗口移动事件中的屏幕纵坐标。', insertText: '窗口_取事件纵坐标()', returnType: '整数型' },
         { name: '窗口_取是否激活', signature: '窗口_取是否激活()', description: '返回当前窗口是否为活动窗口。', insertText: '窗口_取是否激活()', returnType: '逻辑型' },
@@ -686,6 +694,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '到文本', runtimeName: '到文本', parameters: [{ name: '值', type: 'raw' }], returnType: 'wideString', encoding: 'wide', example: '到文本(123)' },
         { command: '格式化文本', runtimeName: '格式化文本', parameters: [{ name: '格式模板', type: 'wideString' }, { name: '参数', type: 'lingValue', variadic: true, description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'wideString', encoding: 'wide', example: '格式化文本("姓名：{}，年龄：{}", "小林", 18)' },
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '到长整数', runtimeName: '到长整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'longLong', encoding: 'wide' },
+        { command: '到小数', runtimeName: '到小数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'double', encoding: 'wide' },
+        { command: '到单精度小数', runtimeName: '到单精度小数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'float', encoding: 'wide' },
+        { command: '到逻辑', runtimeName: '到逻辑', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '取鼠标水平位置', runtimeName: '取鼠标水平位置', parameters: [], returnType: 'int' },
         { command: '取鼠标垂直位置', runtimeName: '取鼠标垂直位置', parameters: [], returnType: 'int' },
         { command: '控件_设置文本', runtimeName: '控件_设置文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
@@ -900,7 +912,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.edgeview',
     name: 'EdgeView 浏览器模块',
-    version: '1.5.1',
+    version: '1.6.0',
     minLingBuilderVersion: '0.2.7',
     category: '界面',
     description: '基于 Microsoft Edge WebView2，把浏览器嵌入任意 Win32 窗口组件句柄，并提供导航、网页消息、浏览器事件和 JavaScript 返回值。',
@@ -958,6 +970,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView_枚举实例JSON', signature: 'EdgeView_枚举实例JSON()', description: '返回当前全部 EdgeView 实例的 JSON 数组，每项含 实例编号/窗口标题/地址/缓存目录/代理/是否弹窗/是否无头/是否有效，供调用方自省与列表展示。', insertText: 'EdgeView_枚举实例JSON()', returnType: '文本型' }
         ,{ name: 'EdgeView_置实例可见', signature: 'EdgeView_置实例可见(实例编号, 可见)', description: '按实例编号显示或隐藏：弹窗实例连带顶层窗口显隐，区域/控件实例调整控制器可见性。', insertText: 'EdgeView_置实例可见(1, 1)', returnType: '整数型' }
         ,{ name: 'EdgeView_置实例大小', signature: 'EdgeView_置实例大小(实例编号, 宽, 高)', description: '按实例编号设置浏览器尺寸；弹窗实例调整顶层窗口客户区并自适应，区域/控件实例设置控制器边界。', insertText: 'EdgeView_置实例大小(1, 1200, 800)', returnType: '整数型' }
+        ,{ name: 'EdgeView_置区域位置', signature: 'EdgeView_置区域位置(实例编号, 左, 顶, 宽, 高)', description: '按实例编号移动并缩放 EdgeView_创建区域 的承载区域（窗口内逻辑坐标，按 DPI 自动缩放），并把网页内容对齐到新矩形。顶部留导航条/边距的区域浏览器必须在窗口「大小被改变」事件里调用本命令同步区域，窗口缩放才跟手且不会白屏；创建时铺满整个窗口的区域会自动跟随窗口缩放，无需调用。弹窗实例请用 EdgeView_置实例大小。成功返回 1。', insertText: 'EdgeView_置区域位置(1, 0, 54, 800, 546)', returnType: '整数型' }
         ,{ name: 'EdgeView_取实例大小JSON', signature: 'EdgeView_取实例大小JSON(实例编号)', description: '按实例编号返回当前客户区尺寸 JSON：{"宽":..,"高":..}。', insertText: 'EdgeView_取实例大小JSON(1)', returnType: '文本型' }
         ,{ name: 'EdgeView_置实例标题', signature: 'EdgeView_置实例标题(实例编号, 标题)', description: '按实例编号设置弹窗顶层窗口标题，便于人工识别店铺。', insertText: 'EdgeView_置实例标题(1, "店铺B")', returnType: '整数型' }
         ,{ name: 'EdgeView设置_置用户代理实例', signature: 'EdgeView设置_置用户代理实例(实例编号, 用户代理)', description: '按实例编号设置 User-Agent；建议用 EdgeView_创建弹窗浏览器 的 用户代理 参数在首次导航前设定，运行时再改首个请求已带旧 UA。', insertText: 'EdgeView设置_置用户代理实例(1, "Mozilla/5.0")', returnType: '整数型' }
@@ -969,10 +982,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView会话_清理全部浏览数据实例异步', signature: 'EdgeView会话_清理全部浏览数据实例异步(实例编号, &完成处理器)', description: '按实例编号异步清理该实例 Profile 的全部浏览数据。', insertText: 'EdgeView会话_清理全部浏览数据实例异步(1, &$1)', returnType: '长整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
-      snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }, { label: 'EdgeView 动态内嵌多店铺区域', insertText: 'EdgeView_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".edgeview/store-a")\nEdgeView_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".edgeview/store-b")\n调试输出(EdgeView_枚举实例JSON())\nEdgeView_关闭全部实例()', description: '在窗口客户区两个矩形各内嵌一个独立 EdgeView 实例（各自独立缓存目录=独立浏览器进程），EdgeView_枚举实例JSON 枚举、EdgeView_关闭全部实例 回收；每店铺独立出口 IP 用 EdgeView_创建区域代理。' }],
+      snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }, { label: 'EdgeView 动态内嵌多店铺区域', insertText: 'EdgeView_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".edgeview/store-a")\nEdgeView_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".edgeview/store-b")\n调试输出(EdgeView_枚举实例JSON())\nEdgeView_关闭全部实例()', description: '在窗口客户区两个矩形各内嵌一个独立 EdgeView 实例（各自独立缓存目录=独立浏览器进程），EdgeView_枚举实例JSON 枚举、EdgeView_关闭全部实例 回收；每店铺独立出口 IP 用 EdgeView_创建区域代理。' }, { label: 'EdgeView 带导航条的区域浏览器随窗口缩放', insertText: '事件 _MainWindow_大小被改变()\n    EdgeView_置区域位置(1, 0, 54, 窗口_取事件宽度(), 窗口_取事件高度() - 54)\n结束', description: '顶部留 54 像素导航条的区域浏览器：创建区域时让浏览器区域从 y=54 开始（不要铺满窗口，铺满会自动跟随窗口缩放），再在「大小被改变」事件里用 EdgeView_置区域位置 同步区域几何，拖拽缩放跟手且不会白屏；「大小被改变」按 _窗口类名_大小被改变 命名即可自动接线。' }],
       docs: [
         { title: 'EdgeView 事件参考', path: 'docs/modules/edgeview/README.md' },
-        { title: 'EdgeView 完整 API 参考（289 条）', path: 'docs/modules/edgeview/API.md' }
+        { title: 'EdgeView 完整 API 参考（321 条）', path: 'docs/modules/edgeview/API.md' }
       ]
     },
     targets: [
@@ -1029,6 +1042,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ,{ command: 'EdgeView_枚举实例JSON', runtimeName: 'EdgeView_枚举实例JSON', parameters: [], returnType: 'wideString', encoding: 'wide' }
       ,{ command: 'EdgeView_置实例可见', runtimeName: 'EdgeView_置实例可见', parameters: [{ name: '实例编号', type: 'int' }, { name: '可见', type: 'bool' }], returnType: 'int' }
       ,{ command: 'EdgeView_置实例大小', runtimeName: 'EdgeView_置实例大小', parameters: [{ name: '实例编号', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }], returnType: 'int' }
+      ,{ command: 'EdgeView_置区域位置', runtimeName: 'EdgeView_置区域位置', parameters: [{ name: '实例编号', type: 'int' }, { name: '左', type: 'int' }, { name: '顶', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }], returnType: 'int' }
       ,{ command: 'EdgeView_取实例大小JSON', runtimeName: 'EdgeView_取实例大小JSON', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
       ,{ command: 'EdgeView_置实例标题', runtimeName: 'EdgeView_置实例标题', parameters: [{ name: '实例编号', type: 'int' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
       ,{ command: 'EdgeView设置_置用户代理实例', runtimeName: 'EdgeView设置_置用户代理实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide' }

@@ -4575,7 +4575,7 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
     事件 _主窗口_创建完毕()
         控件_设置文本("保存按钮", "立即保存")
         控件_设置文本("保存按钮", 到文本(123))
-        控件_设置文本("保存按钮", 格式化文本("姓名：{}，年龄：{}，状态：{}", "小林", 18, 真))
+  assert.match(cpp, /控件_设置文本\(L"保存按钮", LingCppWideArg\(格式化文本\(L"姓名：\{\}，年龄：\{\}，状态：\{\}", L"小林", 18, true\)\)\)/u);
         调试输出(格式化文本("花括号：{{}}，缺少：{} {}", "已替换"))
         编辑框_表头.内容 = "1"
         控件_设置启用("保存按钮", 真)
@@ -4589,16 +4589,16 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
 结束类`;
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /控件_设置文本\(L"保存按钮", L"立即保存"\)/u);
-  assert.match(cpp, /控件_设置文本\(L"保存按钮", 到文本\(123\)\)/u);
-  assert.match(cpp, /LingCppTextValue 到文本\(int value\) const/u);
-  assert.match(cpp, /LingCppTextValue 到文本\(bool value\) const/u);
-  assert.match(cpp, /控件_设置文本\(L"保存按钮", 格式化文本\(L"姓名：\{\}，年龄：\{\}，状态：\{\}", L"小林", 18, true\)\)/u);
+  assert.match(cpp, /控件_设置文本\(L"保存按钮", LingCppWideArg\(到文本\(123\)\)\)/u);
+  assert.match(cpp, /std::wstring 到文本\(int value\) const/u);
+  assert.match(cpp, /std::wstring 到文本\(bool value\) const/u);
+  assert.match(cpp, /控件_设置文本\(L"保存按钮", LingCppWideArg\(格式化文本\(L"姓名：\{\}，年龄：\{\}，状态：\{\}", L"小林", 18, true\)\)\)/u);
   assert.match(cpp, /调试输出\(格式化文本\(L"花括号：\{\{\}\}，缺少：\{\} \{\}", L"已替换"\)\)/u);
   assert.match(cpp, /template <typename\.\.\. Args> LingCppTextValue 格式化文本\(const std::wstring& format, const Args&\.\.\. args\) const/u);
   assert.match(cpp, /else output \+= L"\{\}"/u);
   assert.match(cpp, /控件_设置文本\(L"编辑框_表头", L"1"\)/u);
   assert.match(cpp, /控件_设置启用\(L"保存按钮", true\)/u);
-  assert.match(cpp, /控件_设置选择项\(L"页面选项卡", 到整数\(控件_取文本\(L"编辑框_表头"\)\)\)/u);
+  assert.match(cpp, /控件_设置选择项\(L"页面选项卡", 到整数\(LingCppWideArg\(控件_取文本\(L"编辑框_表头"\)\)\)\)/u);
   assert.match(cpp, /int 到整数\(const std::wstring& value\) const/u);
   assert.match(cpp, /列表视图_添加行\(L"数据列表", L"服务/u);
   assert.match(cpp, /树形框_添加节点\(L"数据树", L"", L"根节点"\)/u);
@@ -4609,6 +4609,103 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
   assert.match(cpp, /TabCtrl_AdjustRect\(runtime->hwnd, FALSE, &pageRect\)/u);
   assert.match(cpp, /const wchar_t\* name;/);
   assert.match(cpp, /return DefWindowProcW\(hwnd, message, wParam, lParam\);/);
+});
+
+test('文本类型转换命令族在 Win32 与 new_emoji 两后端确定性生成真实 C++', () => {
+  const basicModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const textBox = (id: string, name: string, y: number): LingControl => ({
+    id,
+    type: 'TextBox',
+    name,
+    content: '',
+    width: 100,
+    height: 24,
+    x: 10,
+    y,
+    fontSize: 12,
+    background: 'transparent',
+    foreground: '#ffffff',
+    isEnabled: true,
+    visibility: 'Visible'
+  });
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'type-conversion',
+    name: '类型转换',
+    resources: [],
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', events: { Loaded: '_主窗口_创建完毕' },
+      controls: [textBox('size-input', '编辑框_大小', 10), textBox('ratio-input', '编辑框_比率', 40), textBox('enabled-input', '编辑框_启用', 70)]
+    }]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        局部 长整数型 大小 = 到长整数(编辑框_大小.内容)',
+    '        局部 小数型 折扣 = 到小数(" 0.85 ")',
+    '        局部 单精度小数型 比率 = 到单精度小数(编辑框_比率.内容)',
+    '        局部 逻辑型 启用 = 到逻辑(编辑框_启用.内容)',
+    '        调试输出(大小, 折扣, 比率, 启用)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  // 四条命令必须与 到整数 同级：类型推断、设计器控件属性读写与生成链路全绿。
+  assert.deepEqual(getLingCppSemanticDiagnostics(source, project), []);
+
+  const win32 = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [basicModule] });
+  assert.deepEqual(win32.blockingDiagnostics, []);
+  const win32Cpp = win32.files.find(file => file.relativePath === 'main.cpp')!.content;
+  // 控件属性表达式按控件名确定性翻译，字面量走 L"..."；非文本实参不会被自动补 到文本（与 到整数 一致）。
+  assert.match(win32Cpp, /long long 大小 = 到长整数\(LingCppWideArg\(控件_取文本\(L"编辑框_大小"\)\)\);/u);
+  assert.match(win32Cpp, /double 折扣 = 到小数\(L" 0\.85 "\);/u);
+  assert.match(win32Cpp, /float 比率 = 到单精度小数\(LingCppWideArg\(控件_取文本\(L"编辑框_比率"\)\)\);/u);
+  assert.match(win32Cpp, /bool 启用 = 到逻辑\(LingCppWideArg\(控件_取文本\(L"编辑框_启用"\)\)\);/u);
+  // 普通 Win32 运行时的类成员实现：返回值与 到整数 的降级语义必须逐条落在代码里。
+  assert.match(win32Cpp, /static std::wstring TrimConversionText\(const std::wstring& value\) \{/u);
+  assert.match(win32Cpp, /while \(start < end && iswspace\(value\[start\]\)\) \+\+start;/u);
+  assert.match(win32Cpp, /long long 到长整数\(const std::wstring& value\) const \{\r?\n        if \(value\.empty\(\)\) return 0;\r?\n        wchar_t\* end = nullptr;\r?\n        const long long converted = std::wcstoll\(value\.c_str\(\), &end, 10\);\r?\n        return end == value\.c_str\(\) \? 0 : converted;/u);
+  assert.match(win32Cpp, /double 到小数\(const std::wstring& value\) const \{\r?\n        const std::wstring trimmed = TrimConversionText\(value\);\r?\n        if \(trimmed\.empty\(\)\) return 0;\r?\n        wchar_t\* end = nullptr;\r?\n        const double converted = std::wcstod\(trimmed\.c_str\(\), &end\);\r?\n        return end == trimmed\.c_str\(\) \? 0 : converted;/u);
+  assert.match(win32Cpp, /float 到单精度小数\(const std::wstring& value\) const \{\r?\n        const std::wstring trimmed = TrimConversionText\(value\);\r?\n        if \(trimmed\.empty\(\)\) return 0;\r?\n        wchar_t\* end = nullptr;\r?\n        const float converted = std::wcstof\(trimmed\.c_str\(\), &end\);\r?\n        return end == trimmed\.c_str\(\) \? 0 : converted;/u);
+  assert.match(win32Cpp, /bool 到逻辑\(const std::wstring& value\) const \{\r?\n        const std::wstring trimmed = TrimConversionText\(value\);\r?\n        if \(trimmed\.empty\(\)\) return false;\r?\n        if \(trimmed == L"假"\) return false;\r?\n        if \(trimmed == L"真"\) return true;\r?\n        wchar_t\* end = nullptr;\r?\n        const double converted = std::wcstod\(trimmed\.c_str\(\), &end\);\r?\n        return end == trimmed\.c_str\(\) \? true : converted != 0;/u);
+
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2, id: 'lingbuilder.new_emoji.ui', name: 'new_emoji 原生界面库', version: '1.0.0',
+      category: '界面', description: '测试模块',
+      targets: [{ id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  // new_emoji 是独立窗口后端，用另一套自由函数运行时；缺这一处另一条生成路径就是假成功。
+  const newEmoji = generateLingCppNativeWin32Project(
+    { ...project, windows: [{ ...project.windows[0]!, designerBackend: 'new-emoji' }] },
+    { lingCppSourceCode: source, enabledModules: [basicModule, newEmojiModule] }
+  );
+  assert.deepEqual(newEmoji.blockingDiagnostics, []);
+  const newEmojiCpp = newEmoji.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(newEmojiCpp, /static long long 到长整数\(const std::wstring& text\) \{/u);
+  assert.match(newEmojiCpp, /static double 到小数\(const std::wstring& text\) \{/u);
+  assert.match(newEmojiCpp, /static float 到单精度小数\(const std::wstring& text\) \{/u);
+  assert.match(newEmojiCpp, /static bool 到逻辑\(const std::wstring& text\) \{/u);
+  assert.match(newEmojiCpp, /static std::wstring LB_NE_TrimConversionText\(const std::wstring& text\) \{/u);
+  assert.match(newEmojiCpp, /long long 大小 = 到长整数\(LingCppWideArg\(控件_取文本\(L"编辑框_大小"\)\)\);/u);
+  assert.match(newEmojiCpp, /bool 启用 = 到逻辑\(LingCppWideArg\(控件_取文本\(L"编辑框_启用"\)\)\);/u);
+
+  // 后端契约：四条命令必须同时进 new_emoji 白名单，否则生成前就被中文阻断诊断拦下。
+  for (const commandName of ['到长整数', '到小数', '到单精度小数', '到逻辑']) {
+    assert.ok(NEW_EMOJI_WIN32_BASIC_COMMANDS.has(commandName), `new_emoji 契约缺少 ${commandName}`);
+  }
 });
 
 test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定性生成', () => {
@@ -4698,7 +4795,7 @@ test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定
   assert.match(cpp, /列表视图_设置虚拟行\(L"虚拟列表", 1, 列表视图_创建行\(L"2", L"数组行", 64, true\)\)/u);
   assert.match(cpp, /列表视图_添加行\(const wchar_t\* controlName, const std::vector<std::wstring>& cells\)/u);
   assert.match(cpp, /列表视图_批量添加行\(const wchar_t\* controlName, const std::vector<std::vector<std::wstring>>& rows\)/u);
-  assert.match(cpp, /LingCppTextValue operator\+\(const wchar_t\* value\) const/u);
+  assert.match(cpp, /using LingCppTextValue = std::wstring;/u);
   assert.match(cpp, /列表视图_添加行\(const wchar_t\* controlName, const std::wstring& tabSeparatedCells\)/u);
   assert.match(cpp, /列表视图_添加行\(L"普通列表", 文本序号\+L"\\t代码段\\t128\\t5"\)/u);
   for (const advanced of LIST_VIEW_ADVANCED_API) assert.ok(cpp.includes(`${advanced.name}(`), `运行时缺少 ${advanced.name}`);

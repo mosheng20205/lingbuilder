@@ -108,12 +108,14 @@ import { EDGEVIEW_SAFE_API_NATIVE_MEMBERS } from './edgeViewRuntime';
 import { generateFbroVipIndividualRuntime } from '../modules/fbroVipApiCatalog';
 import { getControlTabSlot, getTabControlPages, isNewEmojiTabsControl } from './tabControlModel';
 import {
+  isPlausibleCppPassthroughExpression,
   parseEplControlMemberAssignmentRule,
   parseEplControlMemberRule,
   parseEplControlMethodCallRule,
   resolveEplRuntimeCallName,
   splitEplBinaryExpression
 } from './eplToCppRules';
+import { buildLingCppStringLiteralMask } from '../lingCpp/stringLiteralRegions';
 import { generateWindowsExecutableResourceFile, getSafeCustomWindowIconPath, getWindowEmbeddedSiteHost, getWindowEmbeddedSiteResourceSpecs, type WindowsEmbeddedSiteResourceSpec } from './windowsExecutableIconService';
 import { generateFbroBrowserManagerRuntime } from './fbroBrowserManagerRuntime';
 
@@ -437,6 +439,7 @@ export function generateLingCppNativeWin32Project(
     ? []
     : [`UI 后端“${selectedBackendId}”尚未注册原生 C++ 布局生成器，已阻止回退到错误的 Win32 实现。`];
   const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, aggregate.program, sourceFilePath, aggregate.classSourceFiles, aggregate.functionLibrarySourceFiles, aggregate.globalSourceFile, aggregate.dataTypeSourceFile, enabledModules);
+  const untranslatableExpressionDiagnostics = collectUntranslatableExpressionDiagnostics(mainCppContent, sourceMap, sourceFilePath);
   const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap, edgeViewApiUsage);
   const moduleTargetDiagnostics = enabledModules
     .filter(module => !module.isBuiltin)
@@ -587,9 +590,10 @@ export function generateLingCppNativeWin32Project(
       ...embeddedResourceDiagnostics,
       ...embeddedResourceWarnings,
       ...embeddedResourceBlockingDiagnostics,
-      ...clockResourceDiagnostics
+      ...clockResourceDiagnostics,
+      ...untranslatableExpressionDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics, ...cefHeadlessResourceDiagnostics, ...clockResourceDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics, ...cefHeadlessResourceDiagnostics, ...clockResourceDiagnostics, ...untranslatableExpressionDiagnostics],
     sourceMap,
     files: [
       {
@@ -3625,26 +3629,22 @@ ${newEmojiRuntimeEventCpp.declarations}
 
 ${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson([window], false, programFbroStartupSwitchDeclarations(program.source).switches), collectFbroJsQueryFunctions([window])) : ''}
 
-struct LingCppTextValue : std::wstring {
-    using std::wstring::wstring;
-    LingCppTextValue(const std::wstring& value) : std::wstring(value) {}
-    operator const wchar_t*() const { return c_str(); }
-    LingCppTextValue operator+(const std::wstring& value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + value); }
-    LingCppTextValue operator+(const wchar_t* value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + (value ? value : L"")); }
-    friend LingCppTextValue operator+(const std::wstring& left, const LingCppTextValue& right) { return LingCppTextValue(left + static_cast<const std::wstring&>(right)); }
-    friend LingCppTextValue operator+(const wchar_t* left, const LingCppTextValue& right) { return LingCppTextValue(std::wstring(left ? left : L"") + static_cast<const std::wstring&>(right)); }
-};
+// 到文本 等命令的文本结果类型：历史上是 std::wstring 的派生类型（另带隐式 const wchar_t* 转换），
+// 那份隐式转换会与 std::operator+ 叠加成「转换相似」的重载二义——只要表达式里出现
+// 「到文本(值) + 文本变量」「到文本(值) + 功能库.取文本()」这类组合，MSVC 就报 C2666。
+// 现在直接别名到 std::wstring：拼接一律走标准库重载，宽字符实参归一仍由 LingCppWideArg 负责。
+using LingCppTextValue = std::wstring;
 
 static const wchar_t* LingCppWideArg(const wchar_t* value) { return value ? value : L""; }
 static const wchar_t* LingCppWideArg(const std::wstring& value) { return value.c_str(); }
 
-static LingCppTextValue 到文本(const wchar_t* value) { return LingCppTextValue(value ? value : L""); }
-static LingCppTextValue 到文本(const std::wstring& value) { return LingCppTextValue(value); }
-static LingCppTextValue 到文本(bool value) { return LingCppTextValue(value ? L"真" : L"假"); }
-static LingCppTextValue 到文本(int value) { return LingCppTextValue(std::to_wstring(value)); }
-static LingCppTextValue 到文本(long long value) { return LingCppTextValue(std::to_wstring(value)); }
-static LingCppTextValue 到文本(float value) { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
-static LingCppTextValue 到文本(double value) { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
+static std::wstring 到文本(const wchar_t* value) { return LingCppTextValue(value ? value : L""); }
+static std::wstring 到文本(const std::wstring& value) { return LingCppTextValue(value); }
+static std::wstring 到文本(bool value) { return LingCppTextValue(value ? L"真" : L"假"); }
+static std::wstring 到文本(int value) { return LingCppTextValue(std::to_wstring(value)); }
+static std::wstring 到文本(long long value) { return LingCppTextValue(std::to_wstring(value)); }
+static std::wstring 到文本(float value) { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
+static std::wstring 到文本(double value) { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
 
 static LingCppTextValue LB_NE_应用格式模板(const std::wstring& format, const std::vector<std::wstring>& values) {
     std::wstring output;
@@ -3683,6 +3683,47 @@ static int 到整数(const std::wstring& text) {
     if (value > INT_MAX) return INT_MAX;
     if (value < INT_MIN) return INT_MIN;
     return static_cast<int>(value);
+}
+
+static std::wstring LB_NE_TrimConversionText(const std::wstring& text) {
+    size_t start = 0;
+    size_t end = text.size();
+    while (start < end && iswspace(text[start])) ++start;
+    while (end > start && iswspace(text[end - 1])) --end;
+    return text.substr(start, end - start);
+}
+
+static long long 到长整数(const std::wstring& text) {
+    if (text.empty()) return 0;
+    wchar_t* end = nullptr;
+    const long long value = std::wcstoll(text.c_str(), &end, 10);
+    return end == text.c_str() ? 0 : value;
+}
+
+static double 到小数(const std::wstring& text) {
+    const std::wstring trimmed = LB_NE_TrimConversionText(text);
+    if (trimmed.empty()) return 0;
+    wchar_t* end = nullptr;
+    const double value = std::wcstod(trimmed.c_str(), &end);
+    return end == trimmed.c_str() ? 0 : value;
+}
+
+static float 到单精度小数(const std::wstring& text) {
+    const std::wstring trimmed = LB_NE_TrimConversionText(text);
+    if (trimmed.empty()) return 0;
+    wchar_t* end = nullptr;
+    const float value = std::wcstof(trimmed.c_str(), &end);
+    return end == trimmed.c_str() ? 0 : value;
+}
+
+static bool 到逻辑(const std::wstring& text) {
+    const std::wstring trimmed = LB_NE_TrimConversionText(text);
+    if (trimmed.empty()) return false;
+    if (trimmed == L"假") return false;
+    if (trimmed == L"真") return true;
+    wchar_t* end = nullptr;
+    const double value = std::wcstod(trimmed.c_str(), &end);
+    return end == trimmed.c_str() ? true : value != 0;
 }
 
 static int 取鼠标水平位置() { POINT point = {}; return GetCursorPos(&point) ? point.x : 0; }
@@ -11665,6 +11706,25 @@ static bool IsType(const ControlSpec& control, const wchar_t* type) {
     return std::wcscmp(control.type, type) == 0;
 }
 
+// 多行编辑类控件（标准 EDIT 与 RichEdit）只认 CRLF 换行：把只带 LF 的文本直接交给
+// SetWindowTextW，整段日志会挤成一行。文本块与字符串转义都只产出 LF，因此在这里统一补上 CR。
+static bool IsMultilineTextControl(const ControlSpec& control) {
+    return (control.flags & CF_MULTILINE) != 0 && (IsType(control, L"TextBox") || IsType(control, L"RichEdit"));
+}
+
+static std::wstring ToCrlfNewlines(const std::wstring& text) {
+    const wchar_t lineFeed = static_cast<wchar_t>(10);
+    const wchar_t carriageReturn = static_cast<wchar_t>(13);
+    std::wstring result;
+    result.reserve(text.size() + 8);
+    for (size_t index = 0; index < text.size(); ++index) {
+        const wchar_t character = text[index];
+        if (character == lineFeed && (index == 0 || text[index - 1] != carriageReturn)) result.push_back(carriageReturn);
+        result.push_back(character);
+    }
+    return result;
+}
+
 static std::wstring GetCef3DesignerEventId(const wchar_t* eventName) {
 ${cef3EventIdCases}
     return eventName ? eventName : L"";
@@ -12436,6 +12496,9 @@ ${webSocketServerWindowField}
         bool ownsHost = false;
         bool isPopup = false;
         bool headless = false;
+        // 创建区域时是否铺满整个窗口：只有铺满的区域才随 WM_SIZE 自动拉伸；
+        // 留了导航条/边距的局部布局保持调用方设定的几何，由 EdgeView_置区域位置 同步。
+        bool autoStretch = true;
         std::wstring title;
         std::wstring userAgent;
         std::wstring cacheDirectory;
@@ -13170,10 +13233,16 @@ ${edgeViewEventIdCases}
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
         if (width <= 0 || height <= 0) { 调试输出(L"EdgeView 创建失败：区域宽高必须大于零。"); return 0; }
         EdgeView_关闭实例(instanceId);
+        // 记录创建时是否铺满窗口：铺满的区域随窗口缩放，留了边距/工具栏的区域由 EdgeView_置区域位置 同步。
+        RECT windowClient = {};
+        const bool hasWindowClient = GetClientRect(hwnd_, &windowClient) != FALSE;
+        const bool autoStretch = x == 0 && y == 0
+            && (!hasWindowClient || (ScaleForDpi(width, dpi_) >= windowClient.right && ScaleForDpi(height, dpi_) >= windowClient.bottom));
         HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
             ScaleForDpi(x, dpi_), ScaleForDpi(y, dpi_), ScaleForDpi(width, dpi_), ScaleForDpi(height, dpi_), hwnd_, nullptr, g_instance, nullptr);
         if (!host) { 调试输出(L"EdgeView 创建失败：无法创建浏览器承载组件。"); return 0; }
         if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, edgeViewGlobalProxy_.c_str())) { DestroyWindow(host); return 0; }
+        if (EdgeViewInstance* created = EdgeView_查找(instanceId)) created->autoStretch = autoStretch;
         return 1;
 #else
         (void)instanceId; (void)x; (void)y; (void)width; (void)height; (void)address; (void)cacheDirectory;
@@ -13185,10 +13254,15 @@ ${edgeViewEventIdCases}
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
         if (width <= 0 || height <= 0) return 0;
         EdgeView_关闭实例(instanceId);
+        RECT windowClient = {};
+        const bool hasWindowClient = GetClientRect(hwnd_, &windowClient) != FALSE;
+        const bool autoStretch = x == 0 && y == 0
+            && (!hasWindowClient || (ScaleForDpi(width, dpi_) >= windowClient.right && ScaleForDpi(height, dpi_) >= windowClient.bottom));
         HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
             ScaleForDpi(x, dpi_), ScaleForDpi(y, dpi_), ScaleForDpi(width, dpi_), ScaleForDpi(height, dpi_), hwnd_, nullptr, g_instance, nullptr);
         if (!host) return 0;
         if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, proxyServer)) { DestroyWindow(host); return 0; }
+        if (EdgeViewInstance* created = EdgeView_查找(instanceId)) created->autoStretch = autoStretch;
         return 1;
 #else
         (void)instanceId; (void)x; (void)y; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)proxyServer; return 0;
@@ -13394,6 +13468,24 @@ ${edgeViewEventIdCases}
         }
 #endif
         return 0;
+    }
+
+    int EdgeView_置区域位置(int instanceId, int x, int y, int width, int height) {
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance) { 调试输出(L"EdgeView 置区域位置失败：实例不存在。"); return 0; }
+        if (instance->isPopup) { 调试输出(L"EdgeView 置区域位置失败：弹窗实例的顶层窗口请用 EdgeView_置实例大小 调整。"); return 0; }
+        if (!instance->host || !IsWindow(instance->host)) return 0;
+        if (width <= 0 || height <= 0) { 调试输出(L"EdgeView 置区域位置失败：宽高必须大于零。"); return 0; }
+        // 移动/缩放创建区域 的承载 host（窗口内逻辑坐标），随后把网页控制器对齐到新客户区；
+        // 留边距的区域在「大小被改变」事件里调用本命令即可随窗口跟手缩放。
+        const UINT hostDpi = GetDpiForWindow(instance->host);
+        const UINT effectiveDpi = hostDpi ? hostDpi : dpi_;
+        if (!SetWindowPos(instance->host, nullptr, ScaleForDpi(x, effectiveDpi), ScaleForDpi(y, effectiveDpi),
+            ScaleForDpi(width, effectiveDpi), ScaleForDpi(height, effectiveDpi), SWP_NOZORDER | SWP_NOACTIVATE)) return 0;
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeView_调整大小(*instance);
+#endif
+        return 1;
     }
 
     std::wstring EdgeView_取实例大小JSON(int instanceId) {
@@ -13774,7 +13866,17 @@ ${edgeViewEventIdCases}
         // 无头实例宿主永远不可见，但控制器必须保持可见以维持页面布局与脚本执行。
         instance.controller->put_IsVisible(instance.headless ? TRUE : (IsWindowVisible(instance.host) ? TRUE : FALSE));
     }
-    void EdgeView_调整全部大小() { for (auto& item : edgeViews_) EdgeView_调整大小(*item.second); }
+    void EdgeView_调整全部大小() {
+        for (auto& item : edgeViews_) {
+            EdgeViewInstance* instance = item.second.get();
+            if (!instance) continue;
+            // 弹窗有自己的顶层窗口 WM_SIZE 跟随；区域实例只在“创建时铺满窗口”时才随窗口缩放
+            //（与 EdgeView_随窗口调整设计器控件 同一条规则），留了导航条/边距的局部布局
+            // 保持调用方设定的边界，需要跟手缩放时在「大小被改变」里调用 EdgeView_置区域位置。
+            if (instance->isPopup || !instance->autoStretch) continue;
+            EdgeView_调整大小(*instance);
+        }
+    }
     void EdgeView_随窗口调整设计器控件() {
         RECT client = {};
         if (!GetClientRect(hwnd_, &client) || client.right <= 0 || client.bottom <= 0) return;
@@ -23247,8 +23349,10 @@ ${comWindowMethods}
         closingCancelled_ = true;
         return true;
     }
-    int 窗口_取事件宽度() const { return eventWidth_; }
-    int 窗口_取事件高度() const { return eventHeight_; }
+    // 窗口事件尺寸对外按设计器逻辑坐标（DIP）返回：WM_SIZE 的 lParam 是物理像素，
+    // 直接喂给 置区域位置/控件_设置位置大小 这类逻辑坐标几何命令会在 >96 DPI 机器上二次缩放。
+    int 窗口_取事件宽度() const { return MulDiv(eventWidth_, 96, static_cast<int>(dpi_ ? dpi_ : 96)); }
+    int 窗口_取事件高度() const { return MulDiv(eventHeight_, 96, static_cast<int>(dpi_ ? dpi_ : 96)); }
     int 窗口_取事件横坐标() const { return eventX_; }
     int 窗口_取事件纵坐标() const { return eventY_; }
     bool 窗口_取是否激活() const { return active_; }
@@ -23284,26 +23388,22 @@ ${comWindowMethods}
         return hwnd_ && SetWindowTextW(hwnd_, title ? title : L"") != FALSE;
     }
 
-    struct LingCppTextValue : std::wstring {
-        using std::wstring::wstring;
-        LingCppTextValue(const std::wstring& value) : std::wstring(value) {}
-        operator const wchar_t*() const { return c_str(); }
-        LingCppTextValue operator+(const std::wstring& value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + value); }
-        LingCppTextValue operator+(const wchar_t* value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + (value ? value : L"")); }
-        friend LingCppTextValue operator+(const std::wstring& left, const LingCppTextValue& right) { return LingCppTextValue(left + static_cast<const std::wstring&>(right)); }
-        friend LingCppTextValue operator+(const wchar_t* left, const LingCppTextValue& right) { return LingCppTextValue(std::wstring(left ? left : L"") + static_cast<const std::wstring&>(right)); }
-    };
+    // 到文本 等命令的文本结果类型：历史上是 std::wstring 的派生类型（另带隐式 const wchar_t* 转换），
+    // 那份隐式转换会与 std::operator+ 叠加成「转换相似」的重载二义——只要表达式里出现
+    // 「到文本(值) + 文本变量」「到文本(值) + 功能库.取文本()」这类组合，MSVC 就报 C2666。
+    // 现在直接别名到 std::wstring：拼接一律走标准库重载，宽字符实参归一仍由 LingCppWideArg 负责。
+    using LingCppTextValue = std::wstring;
 
     static const wchar_t* LingCppWideArg(const wchar_t* value) { return value ? value : L""; }
     static const wchar_t* LingCppWideArg(const std::wstring& value) { return value.c_str(); }
 
-    LingCppTextValue 到文本(const wchar_t* value) const { return LingCppTextValue(value ? value : L""); }
-    LingCppTextValue 到文本(const std::wstring& value) const { return LingCppTextValue(value); }
-    LingCppTextValue 到文本(bool value) const { return LingCppTextValue(value ? L"真" : L"假"); }
-    LingCppTextValue 到文本(int value) const { return LingCppTextValue(std::to_wstring(value)); }
-    LingCppTextValue 到文本(long long value) const { return LingCppTextValue(std::to_wstring(value)); }
-    LingCppTextValue 到文本(float value) const { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
-    LingCppTextValue 到文本(double value) const { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
+    std::wstring 到文本(const wchar_t* value) const { return LingCppTextValue(value ? value : L""); }
+    std::wstring 到文本(const std::wstring& value) const { return LingCppTextValue(value); }
+    std::wstring 到文本(bool value) const { return LingCppTextValue(value ? L"真" : L"假"); }
+    std::wstring 到文本(int value) const { return LingCppTextValue(std::to_wstring(value)); }
+    std::wstring 到文本(long long value) const { return LingCppTextValue(std::to_wstring(value)); }
+    std::wstring 到文本(float value) const { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
+    std::wstring 到文本(double value) const { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
 
     static LingCppTextValue ApplyFormatTemplate(const std::wstring& format, const std::vector<std::wstring>& values) {
         std::wstring output;
@@ -23339,6 +23439,47 @@ ${comWindowMethods}
         wchar_t* end = nullptr;
         long converted = wcstol(value.c_str(), &end, 10);
         return end == value.c_str() ? 0 : static_cast<int>(converted);
+    }
+
+    static std::wstring TrimConversionText(const std::wstring& value) {
+        size_t start = 0;
+        size_t end = value.size();
+        while (start < end && iswspace(value[start])) ++start;
+        while (end > start && iswspace(value[end - 1])) --end;
+        return value.substr(start, end - start);
+    }
+
+    long long 到长整数(const std::wstring& value) const {
+        if (value.empty()) return 0;
+        wchar_t* end = nullptr;
+        const long long converted = std::wcstoll(value.c_str(), &end, 10);
+        return end == value.c_str() ? 0 : converted;
+    }
+
+    double 到小数(const std::wstring& value) const {
+        const std::wstring trimmed = TrimConversionText(value);
+        if (trimmed.empty()) return 0;
+        wchar_t* end = nullptr;
+        const double converted = std::wcstod(trimmed.c_str(), &end);
+        return end == trimmed.c_str() ? 0 : converted;
+    }
+
+    float 到单精度小数(const std::wstring& value) const {
+        const std::wstring trimmed = TrimConversionText(value);
+        if (trimmed.empty()) return 0;
+        wchar_t* end = nullptr;
+        const float converted = std::wcstof(trimmed.c_str(), &end);
+        return end == trimmed.c_str() ? 0 : converted;
+    }
+
+    bool 到逻辑(const std::wstring& value) const {
+        const std::wstring trimmed = TrimConversionText(value);
+        if (trimmed.empty()) return false;
+        if (trimmed == L"假") return false;
+        if (trimmed == L"真") return true;
+        wchar_t* end = nullptr;
+        const double converted = std::wcstod(trimmed.c_str(), &end);
+        return end == trimmed.c_str() ? true : converted != 0;
     }
 
     int 取鼠标水平位置() const {
@@ -23560,7 +23701,9 @@ ${comWindowMethods}
     bool 控件_设置文本(const wchar_t* controlName, const std::wstring& text) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
         const ControlSpec* control = FindControl(runtime->id);
-        const BOOL updated = SetWindowTextW(runtime->hwnd, text.c_str());
+        const bool multilineText = control && IsMultilineTextControl(*control);
+        const std::wstring normalized = multilineText ? ToCrlfNewlines(text) : text;
+        const BOOL updated = SetWindowTextW(runtime->hwnd, normalized.c_str());
         if (updated && control && IsType(*control, L"TextBox") && (control->flags & CF_MULTILINE)) {
             SendMessageW(runtime->hwnd, EM_SETSEL, static_cast<WPARAM>(-1), static_cast<LPARAM>(-1));
             SendMessageW(runtime->hwnd, EM_SCROLLCARET, 0, 0);
@@ -29422,6 +29565,24 @@ function generateModuleDependencyReport(enabledModules: InstalledModule[]): stri
   }).join('\n\n');
 }
 
+// 窗口事件接线统一出口：设计器 window.events 优先，源码里按「_类名_事件中文后缀」
+// 常规命名（如 _BrowserWindow_大小被改变）且方法真实存在的事件自动补接线。
+// 只认带类名限定的常规名——裸名（如 创建完毕/大小被改变）在多窗口下会互相覆盖，不在此自动接线。
+// 必须同时喂给 WindowSpec 事件串（GetWindowEventHandler 查询侧）和窗口类派发表（调用侧），
+// 两处任何一处单独接线都会出现「查得到处理器但没有派发分支」的死接线。
+function resolveWindowEventBindings(window: LingWindowModel, program: LingCppProgram): Map<string, string> {
+  const bindings = new Map<string, string>();
+  Object.entries(window.events || {}).forEach(([eventName, handler]) => {
+    if (handler.trim()) bindings.set(eventName, handler.trim());
+  });
+  WINDOW_EVENT_DEFINITIONS.forEach(definition => {
+    if (bindings.has(definition.name)) return;
+    const conventionalName = getWindowEventHandlerName(window.className, definition.name);
+    if (findLingCppMethod(program, conventionalName)) bindings.set(definition.name, conventionalName);
+  });
+  return bindings;
+}
+
 function generateWindowClass(window: LingWindowModel, windowIndex: number, program: LingCppProgram, enabledModules: InstalledModule[], resources: LingDesignerResource[]): string {
   const className = toCppIdentifier(window.className);
   const sourceClass = findLingCppClassForWindow(program, window);
@@ -29442,10 +29603,7 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const methodHandlers = windowCreatedHandler
     ? [windowCreatedHandler, ...allEventHandlers.filter(handler => handler !== windowCreatedHandler)]
     : allEventHandlers;
-  const windowEventBindings = new Map<string, string>();
-  Object.entries(window.events || {}).forEach(([eventName, handler]) => {
-    if (handler.trim()) windowEventBindings.set(eventName, handler.trim());
-  });
+  const windowEventBindings = resolveWindowEventBindings(window, program);
   if (windowCreatedHandler && !windowEventBindings.has('Loaded')) {
     windowEventBindings.set('Loaded', windowCreatedHandler);
   }
@@ -30445,8 +30603,8 @@ function translateModuleCallArguments(
       // 由语言服务参数类型诊断负责，不在此处放行。
       if (parameterType === 'wideString' && (
         /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())
-        || parseCallStatement(argument.trim()) !== undefined
         || isDefinitelyWideStringExpression(argument, enabledModules, translationContext)
+        || isWideStringArgumentExpression(argument, enabledModules, translationContext)
       )) {
         return `LingCppWideArg(${translated})`;
       }
@@ -30518,22 +30676,13 @@ function splitCallArguments(raw: string): string[] {
   const args: string[] = [];
   let current = '';
   let depth = 0;
-  let quote: '"' | '“' | null = null;
-  let escaped = false;
+  // 字符串字面量区间由公共工具标定（`\"` 转义、连续反斜杠奇偶、中文引号都正确处理），
+  // 逗号只在字符串与括号之外拆分；区间内字符（含引号）原样保留。
+  const mask = buildLingCppStringLiteralMask(raw);
 
-  for (const char of raw) {
-    if (quote) {
-      current += char;
-      if (quote === '"' && char === '\\' && !escaped) {
-        escaped = true;
-        continue;
-      }
-      if (((quote === '"' && char === '"') || (quote === '“' && char === '”')) && !escaped) quote = null;
-      escaped = false;
-      continue;
-    }
-    if (char === '"' || char === '“') {
-      quote = char;
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (mask[index]) {
       current += char;
       continue;
     }
@@ -30636,6 +30785,13 @@ function translateLingCppExpression(
   // 文本块误用兜底（未闭合、声明初值、实参位等）：解析层已出中文诊断，这里按空文本降级，
   // 绝不把含三引号的原文吐进 C++ 产生坏代码。
   if (trimmed.includes('"""')) return 'L"" /* 多行文本块用法有误，已按空文本降级 */';
+  // 兜底不许静默吐中文：无法翻译的表达式（含引号残留、全角标点、中文引号等必然生成
+  // 坏代码的形态）一律按空文本降级，并由此产生构建期中文阻断诊断（见
+  // collectUntranslatableExpressionDiagnostics）；只有透传后就是合法 C++ 的形态
+  // （arr[0]、-1 等）才保持原样透传。
+  if (!isPlausibleCppPassthroughExpression(trimmed)) {
+    return `L"" /* ${UNTRANSLATABLE_EXPRESSION_COMMENT_PREFIX_TEXT}${escapeCppComment(trimmed)} */`;
+  }
   return trimmed;
 }
 
@@ -30647,6 +30803,43 @@ function translateControlReferenceOperand(
     return `LingCppControlWideName(${toCppIdentifier(controlName)})`;
   }
   return `L"${escapeWideString(controlName)}"`;
+}
+
+/** 无法翻译表达式的生成端降级标记：注释前缀同时是 collectUntranslatableExpressionDiagnostics 的扫描锚点。 */
+const UNTRANSLATABLE_EXPRESSION_COMMENT_PREFIX_TEXT = '无法翻译的表达式：';
+
+/**
+ * 生成完成后反查「无法翻译已降级」的表达式，产出带中文源码文件与行号的阻断诊断。
+ * 兜底降级保证了生成代码可编译，但 `L""` 会静默改变程序行为，所以必须在编译前阻断，
+ * 让用户看到中文原因（文件 + 行号 + 原文），而不是 MSVC 的 C2065 或更糟的静默错误行为。
+ */
+function collectUntranslatableExpressionDiagnostics(
+  mainCppContent: string,
+  sourceMap: LingCppNativeSourceMapEntry[],
+  fallbackSourceFile: string
+): string[] {
+  const marker = `/* ${UNTRANSLATABLE_EXPRESSION_COMMENT_PREFIX_TEXT}`;
+  if (!mainCppContent.includes(marker)) return [];
+  const messages: string[] = [];
+  mainCppContent.split('\n').forEach((line, lineIndex) => {
+    const markerIndex = line.indexOf(marker);
+    if (markerIndex < 0) return;
+    const commentStart = markerIndex + marker.length;
+    const commentEnd = line.indexOf('*/', commentStart);
+    const original = (commentEnd >= 0 ? line.slice(commentStart, commentEnd) : line.slice(commentStart)).trim();
+    const generatedLine = lineIndex + 1;
+    // 取「生成行之前起点最近」的条目：语句条目存在时最精确；个别事件名边界匹配不准导致
+    // 语句条目缺失时，退而取所在事件/类条目，保证诊断始终落在正确源码文件与就近行号上。
+    let owner: LingCppNativeSourceMapEntry | undefined;
+    for (const entry of sourceMap) {
+      if (entry.generatedFile !== 'main.cpp' || entry.generatedStartLine > generatedLine) continue;
+      if (!owner || entry.generatedStartLine >= owner.generatedStartLine) owner = entry;
+    }
+    const sourceFile = owner?.sourceFile || fallbackSourceFile;
+    const sourceLine = owner?.sourceStartLine || generatedLine;
+    messages.push(`${sourceFile} 第 ${sourceLine} 行：表达式「${original}」无法翻译成 C++，已按空文本降级；请把该表达式改写成已支持的形态（或改用等价模块命令）后重新构建。`);
+  });
+  return messages;
 }
 
 function isDefinitelyWideStringExpression(
@@ -30672,6 +30865,40 @@ function isDefinitelyWideStringExpression(
   if (arrayParameterIndex < 0) return false;
   const arrayArgument = splitCallArguments(call.argumentsText)[arrayParameterIndex]?.trim();
   return Boolean(arrayArgument && translationContext.wideStringArrayVariables.has(normalizeIdentifier(arrayArgument)));
+}
+
+/** 已知非文本 ABI 的 binding 返回类型：这类调用结果包 LingCppWideArg 必然 C2665（vector/数值塞不进 const wchar_t*），一律不再包装。 */
+const KNOWN_NON_TEXT_BINDING_RETURN_TYPES = new Set(['bytes', 'int', 'longLong', 'double', 'float', 'bool', 'handle', 'void']);
+
+/**
+ * 实参位置上的宽字符表达式判定：在 isDefinitelyWideStringExpression 之外补齐两种形态——
+ * ① 括号包裹的调用（(功能库.取文本())、(到文本(个数))）此前不算「调用形态」，会被裸传给
+ *    const wchar_t* 形参（C2664：无法从 std::wstring 转换）；
+ * ② 拼接结果（库.取文本() + " 后缀"）同理。
+ * 只认「文本字面量 / 调用 / 控件成员文本 / 文本变量」这几类已知产文本的形态；
+ * 返回类型已知为字节集/数值/逻辑/句柄的命令调用不再是「调用即文本」，不再生成 LingCppWideArg 包装，
+ * 类型不相容由语言服务实参类型诊断与构建门禁给出中文报告。
+ */
+function isWideStringArgumentExpression(
+  expression: string,
+  enabledModules: InstalledModule[],
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+): boolean {
+  const trimmed = expression.trim();
+  if (!trimmed) return false;
+  if (isDefinitelyWideStringExpression(trimmed, enabledModules, translationContext)) return true;
+  const parenthesized = unwrapParenthesizedExpression(trimmed);
+  if (parenthesized !== undefined) return isWideStringArgumentExpression(parenthesized, enabledModules, translationContext);
+  const binaryExpression = splitEplBinaryExpression(trimmed);
+  if (binaryExpression?.operator === '+') {
+    return isWideStringArgumentExpression(binaryExpression.left, enabledModules, translationContext)
+      || isWideStringArgumentExpression(binaryExpression.right, enabledModules, translationContext);
+  }
+  const call = parseCallStatement(trimmed);
+  if (!call) return false;
+  const binding = findModuleCommandBinding(call.name, enabledModules);
+  if (binding && KNOWN_NON_TEXT_BINDING_RETURN_TYPES.has(binding.returnType || '')) return false;
+  return true;
 }
 
 /** 该表达式的生成结果是否为 const wchar_t* 裸指针（区别于 std::wstring 对象）：指针+指针会编译成指针加法。 */
@@ -31026,18 +31253,16 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
     fontItalic: window.menuFontItalic,
     fontUnderline: window.menuFontUnderline
   });
-  const effectiveEvents = { ...(window.events || {}) };
-  if (!effectiveEvents.Loaded) {
-    const defaultLoaded = getWindowEventHandlerName(window.className, 'Loaded');
+  const effectiveEvents = resolveWindowEventBindings(window, program);
+  if (!effectiveEvents.has('Loaded')) {
     const legacyLoaded = `${window.className}_创建完毕`;
     const sourceClass = findLingCppClassForWindow(program, window);
     const hasBareCreated = (sourceClass?.methods || [])
       .some(method => method.kind === 'event' && method.name === '创建完毕');
-    if (findLingCppMethod(program, defaultLoaded)) effectiveEvents.Loaded = defaultLoaded;
-    else if (findLingCppMethod(program, legacyLoaded)) effectiveEvents.Loaded = legacyLoaded;
-    else if (hasBareCreated) effectiveEvents.Loaded = '创建完毕';
+    if (findLingCppMethod(program, legacyLoaded)) effectiveEvents.set('Loaded', legacyLoaded);
+    else if (hasBareCreated) effectiveEvents.set('Loaded', '创建完毕');
   }
-  const events = Object.entries(effectiveEvents)
+  const events = [...effectiveEvents.entries()]
     .filter(([, handler]) => handler.trim())
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');

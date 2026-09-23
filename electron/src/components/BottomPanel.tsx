@@ -722,7 +722,7 @@ export default function BottomPanel({
             {problems.length === 0 ? (
               <div className={`text-center py-10 flex flex-col items-center gap-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
                 <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-                <span className="font-sans mt-2">错误列表未检测到任何编译障碍。C++ WPF 中文逻辑符合国家级易语言通用编译器规范。</span>
+                <span className="font-sans mt-2">未检测到编译障碍。中文源码已通过语法与语义检查，可执行生成与构建。</span>
               </div>
             ) : (
               problems.map(prob => (

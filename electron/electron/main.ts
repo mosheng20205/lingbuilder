@@ -43,6 +43,7 @@ import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
 import { restoreModulePermits } from './modulePermitRestoreService';
 import { ModuleInfoWindowService } from './moduleInfoWindowService';
+import { listModuleDemoIds, openModuleDemoInNewInstance, type ModuleDemoServiceOptions } from './moduleDemoService';
 import {
   createLcppSourcePackageService,
   isLcppSourcePackagePath,
@@ -168,6 +169,27 @@ function aiModuleGuidePath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'docs', 'AI模块开发规范.md')
     : path.join(repoRoot(), 'docs', 'AI模块开发规范.md');
+}
+
+/**
+ * 随 IDE 分发的模块例程库（module-demos 演示工作区）。打包后经 electron-builder
+ * extraResources 落在 resources/module-demos（已剔除 AI 语料 JSON 等非工作区文件）；
+ * 开发态直接用仓库 examples 目录，例程面板入口与打包版同一套链路。
+ */
+function moduleDemoSourceRoot(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'module-demos')
+    : path.join(repoRoot(), 'examples', 'module-demos');
+}
+
+function moduleDemoServiceOptions(): ModuleDemoServiceOptions {
+  return {
+    demoSourceRoot: moduleDemoSourceRoot(),
+    documentsPath: app.getPath('documents'),
+    // 例程实例的独立 userData 放在主实例 userData 下：与主实例不竞争单实例锁、
+    // 不共享设置，也不在用户目录另起炉灶（卸载残留可控）。
+    demoUserDataRoot: path.join(app.getPath('userData'), 'module-demo-runtime')
+  };
 }
 
 async function findCurrentSolutionEntryPath(workspaceRoot: string, solutionName: string): Promise<string> {
@@ -1416,6 +1438,25 @@ function registerIpcHandlers(): void {
   ipcMain.handle('modules:open-info', async (_event, module: unknown) => {
     if (!module || typeof module !== 'object') throw new Error('模块信息无效。');
     await moduleInfoWindow.open(module as Record<string, unknown>);
+  });
+  ipcMain.handle('modules:list-demos', async () => {
+    try {
+      const moduleIds = await listModuleDemoIds(moduleDemoServiceOptions());
+      return { ok: true, moduleIds };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('modules:open-demo', async (_event, moduleId: string) => {
+    try {
+      return await openModuleDemoInNewInstance(moduleDemoServiceOptions(), String(moduleId || ''), {
+        isPackaged: app.isPackaged,
+        execPath: process.execPath,
+        appPath: app.getAppPath()
+      });
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
   ipcMain.handle('source-packages:export-project', async (_event, projectId: string, suggestedName?: string) => {
     try {

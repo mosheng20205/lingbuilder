@@ -33,6 +33,7 @@ import {
   matchLingCppTextBlockOpening,
   scanLingCppTextBlockRanges
 } from './textBlock';
+import { buildLingCppStringLiteralMask } from './stringLiteralRegions';
 
 export const LING_CPP_KEYWORDS = [
   '包',
@@ -1226,17 +1227,14 @@ function parseParameters(raw: string, notes: Map<string, string> = new Map()): L
 function splitParameterParts(raw: string): string[] {
   const parts: string[] = [];
   let current = '';
-  let quote: string | null = null;
   let depth = 0;
+  // 字符串区间（含引号）由公共工具标定：形参默认值里的 `\"`、`'` 字符量不再被误判为
+  // 字符串结束，逗号只在字符串与括号之外拆分。
+  const mask = buildLingCppStringLiteralMask(raw, { recognizeSingleQuotes: true });
 
-  for (const char of raw) {
-    if (quote) {
-      current += char;
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (mask[index]) {
       current += char;
       continue;
     }
@@ -1263,19 +1261,12 @@ function splitParameterParts(raw: string): string[] {
 }
 
 function splitParameterDefault(part: string): { definition: string; defaultValue?: string } {
-  let quote: string | null = null;
+  const mask = buildLingCppStringLiteralMask(part, { recognizeSingleQuotes: true });
   let depth = 0;
 
   for (let index = 0; index < part.length; index += 1) {
     const char = part[index];
-    if (quote) {
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
+    if (mask[index]) continue;
     if (char === '(' || char === '（') {
       depth += 1;
       continue;

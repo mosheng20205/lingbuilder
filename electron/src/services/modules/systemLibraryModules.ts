@@ -57,14 +57,21 @@ function command(
 }
 
 const fsCore = createStandardModule({
-  id: 'lingbuilder.fs.core', name: '文件目录模块', version: '1.1.0', category: '系统',
-  description: '提供 UTF-8 文本文件、常用文件目录操作、句柄式文件流读写和文件目录枚举，所有路径均使用 Unicode。',
+  id: 'lingbuilder.fs.core', name: '文件目录模块', version: '1.2.0', category: '系统',
+  description: '提供 UTF-8 文本文件、常用文件目录操作、句柄式文件流读写、文件目录枚举和文件时间读取，所有路径均使用 Unicode。',
   tags: ['文件', '目录'],
-  types: [{
-    name: '文件号',
-    description: '文件_打开 返回的文件流句柄（64 位、进程内不复用），0 表示打开失败；用 文件_关闭 或 文件_关闭全部 释放。',
-    cppType: 'long long'
-  }],
+  types: [
+    {
+      name: '文件号',
+      description: '文件_打开 返回的文件流句柄（64 位、进程内不复用），0 表示打开失败；用 文件_关闭 或 文件_关闭全部 释放。',
+      cppType: 'long long'
+    },
+    {
+      name: '日期时间',
+      description: '64 位打包的本地日期时间值（年月日时分秒），与 日期时间模块 同一编码；文件_取修改时间 等命令返回它，0 表示无效时间。',
+      cppType: 'long long'
+    }
+  ],
   commands: [
     command('文件_是否存在', [{ name: '路径', type: 'wideString', description: '要判断的 Unicode 路径；只有普通文件返回真，目录、不存在或非法路径都返回假。'}], 'bool', '判断指定路径是否为普通文件。', '文件_是否存在("配置.json")'),
     command('目录_是否存在', [{ name: '路径', type: 'wideString', description: '要判断的 Unicode 路径；只有真实目录返回真，文件和不存在路径返回假。'}], 'bool', '判断指定路径是否为目录。'),
@@ -162,6 +169,16 @@ const fsCore = createStandardModule({
       { name: '含子目录', type: 'bool', description: '传真时递归枚举全部下级子目录，传假只枚举当前一层的直接子目录。'},
       { name: '结果数组', type: 'array', description: '接收子目录完整路径的文本数组变量，调用前会先清空原有内容；结果不保证排序。'}
     ], 'int', '枚举目录下的子目录，返回命中数量。', '局部 文本型 名单[]\n目录_枚举("工作目录", 假, 名单)', { insertText: '目录_枚举("$1", 假, $3)' })
+,
+    command('文件_取修改时间', [{ name: '路径', type: 'wideString', description: '要读取时间的文件路径；目录、不存在或不可访问时返回 0，原因用 文件_取错误 读取。'}], 'longLong', '返回文件最后修改时间（本地时区）；失败返回 0。', '局部 日期时间 改动时间\n改动时间 = 文件_取修改时间("配置.json")', { returnLabel: '日期时间' }),
+    command('文件_取创建时间', [{ name: '路径', type: 'wideString', description: '要读取时间的文件路径；目录、不存在或不可访问时返回 0，原因用 文件_取错误 读取。'}], 'longLong', '返回文件创建时间（本地时区）；失败返回 0。', '局部 日期时间 建立时间\n建立时间 = 文件_取创建时间("配置.json")', { returnLabel: '日期时间' }),
+    command('文件_取访问时间', [{ name: '路径', type: 'wideString', description: '要读取时间的文件路径；目录、不存在或不可访问时返回 0，原因用 文件_取错误 读取。'}], 'longLong', '返回文件最后访问时间（本地时区）；失败返回 0。', '局部 日期时间 访问时间\n访问时间 = 文件_取访问时间("配置.json")', { returnLabel: '日期时间' }),
+    command('文件_取最新文件', [
+      { name: '目录', type: 'wideString', description: '要枚举的目录路径（只枚举本层，不含子目录）；目录不存在时返回 0。'},
+      { name: '通配符', type: 'wideString', description: '文件名匹配模式，支持 * 和 ? 通配符，例如 "*.json" 或 "Cookies"；空文本匹配全部文件。只按文件名匹配。'},
+      { name: '结果数组', type: 'array', description: '接收最新文件完整路径的文本数组变量，只会写入 1 条（先清空原有内容），便于直接用 数组_取成员 或 枚举循环首 读取。'}
+    ], 'int', '枚举目录下匹配通配符的文件，挑出最后修改时间最新的一个写入结果数组，返回写入数量（1 成功、0 失败）。', '局部 文本型 命中[]\n如果真 (文件_取最新文件("缓存目录", "*.json", 命中) = 1)\n    调试输出(数组_取成员(命中, 0))\n结束如果', { insertText: '文件_取最新文件("$1", "*.*", $3)' }),
+    command('文件_取错误', [], 'wideString', '返回最近一次文件时间命令（文件_取修改时间/创建时间/访问时间/最新文件）失败的中文原因；成功调用会清空它。', '局部 文本型 名单[]\n如果真 (文件_取最新文件("不存在的目录", "*.*", 名单) = 0)\n    调试输出(文件_取错误())\n结束如果', { insertText: '文件_取错误()' })
   ]
 });
 

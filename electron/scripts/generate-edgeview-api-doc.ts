@@ -14,7 +14,7 @@ if (!manifest) throw new Error('找不到 lingbuilder.edgeview 模块清单。')
 const commands = manifest.contributes?.commands ?? [];
 const bindings = new Map((manifest.bindings?.commands ?? []).map((item) => [item.command, item]));
 const catalog = new Map(EDGEVIEW_SAFE_API_CATALOG.map((item) => [item.command.name, item]));
-if (commands.length !== 320) throw new Error(`EdgeView 命令数异常：${commands.length}，预期 320。`);
+if (commands.length !== 321) throw new Error(`EdgeView 命令数异常：${commands.length}，预期 321。`);
 
 const familyOf = (name: string) => {
   const match = name.match(/^EdgeView([^_]+)_/u);
@@ -47,7 +47,7 @@ const commandRows = commands.map((command: ModuleCommandContribution, index) => 
 const content = `<!-- 此文件由 electron/scripts/generate-edgeview-api-doc.ts 生成，请修改 edgeViewApiCatalog.ts 或 builtinModules.ts 后运行 npm run module:edgeview-api-docs。 -->
 # EdgeView 浏览器模块完整 API 参考
 
-EdgeView 模块版本 **${manifest.version}**，当前公开 **320 条中文命令**：263 条安全 API、57 条基础与实例命令（含独立顶层弹窗、初始隐藏弹窗、无头实例（离屏隐窗宿主）、弹窗独立代理、实例级会话/Cookie/UA、实例枚举与生命周期、泵消息）。本文由模块清单和 binding 自动生成，命令签名、参数类型、返回类型和说明不得在本文件中手工维护。
+EdgeView 模块版本 **${manifest.version}**，当前公开 **321 条中文命令**：263 条安全 API、58 条基础与实例命令（含独立顶层弹窗、初始隐藏弹窗、无头实例（离屏隐窗宿主）、弹窗独立代理、实例级会话/Cookie/UA、实例枚举与生命周期、泵消息）。本文由模块清单和 binding 自动生成，命令签名、参数类型、返回类型和说明不得在本文件中手工维护。
 
 ## 使用约定
 

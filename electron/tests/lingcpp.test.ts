@@ -6203,3 +6203,180 @@ test('设计器等价比较把「值为 undefined 的键」与「键缺失」视
     { id: 'demo', windows: [{ id: 'w', controls: [{ name: '按钮', x: undefined }] }] }
   ), false);
 });
+
+test('零内嵌 C++ 能力批次：到文本/数组成员/定宽填充/连接/分割/文件时间生成与运行时契约', () => {
+  const moduleIds = [
+    'lingbuilder.win32.basic', 'lingbuilder.std.text', 'lingbuilder.std.array',
+    'lingbuilder.fs.core', 'lingbuilder.std.datetime'
+  ];
+  const modules: InstalledModule[] = moduleIds.map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: sampleProject.windows.map((window, index) => index === 0 ? {
+      ...window,
+      controls: [...window.controls, {
+        id: 'edit-1', type: 'TextBox', name: '结果框', content: '', width: 320, height: 180, x: 24, y: 300,
+        fontSize: 13, background: '#FFFFFF', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { multiline: true }
+      }]
+    } : window)
+  };
+  const librarySource = [
+    '功能库 店铺弹窗',
+    '公开:',
+    '  文本型 用户代理串()',
+    '    返回("Mozilla/5.0")',
+    '  结束',
+    '结束功能库',
+    ''
+  ].join(String.fromCharCode(10));
+  const windowSource = [
+    '类 游戏主窗体 : 公开 窗体',
+    '公开:',
+    '    事件 创建完毕()',
+    '        局部 整数型 个数 = 3',
+    '        局部 文本型 显示',
+    '        局部 文本型 名单[]',
+    '        局部 整数型 段数',
+    '        局部 日期时间 最新时间',
+    '        数组_加入成员(名单, "甲")',
+    '        数组_加入成员(名单, "乙")',
+    '        显示 = "共 " + 到文本(个数) + " 条"',
+    '        显示 = 到文本(个数) + 显示',
+    '        显示 = 数组_取成员(名单, 0) + "  （" + 数组_取成员(名单, 1) + "）"',
+    '        显示 = 文本_填充右边("莫生网店", 12) + 文本_填充右边(到文本(个数), 4) + 文本_填充左边("999", 8) + 文本_居中("标题", 12)',
+    '        显示 = 文本_连接(名单, ",") + 到文本(文本_取显示宽度("莫生网店A店"))',
+    '        段数 = 文本_分割("a|b|", "|", 名单, 真)',
+    '        文件_写入文本("out.txt", 店铺弹窗.用户代理串())',
+    '        文件_写入文本("out.txt", (店铺弹窗.用户代理串()))',
+    '        最新时间 = 文件_取修改时间("out.txt")',
+    '        个数 = 文件_取最新文件("缓存", "*.json", 名单)',
+    '        控件_设置文本(结果框, "第一行\\n第二行")',
+    '    结束',
+    '结束类'
+  ].join(String.fromCharCode(10));
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: windowSource,
+    lingCppSources: [
+      { filePath: 'src/MainWindow.lcpp', sourceCode: windowSource },
+      { filePath: 'src/店铺弹窗.lcpp', sourceCode: librarySource }
+    ],
+    enabledModules: modules
+  });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join(String.fromCharCode(10)));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // P0-1：到文本 直接返回 std::wstring，文本结果类型不再是带隐式 const wchar_t* 转换的派生类型，
+  // 「到文本(个数) + 文本变量」「到文本(a) + 到文本(b)」不再触发 C2666 重载二义。
+  assert.match(cpp, /using LingCppTextValue = std::wstring;/u);
+  assert.doesNotMatch(cpp, /struct LingCppTextValue/u);
+  // Win32 后端的 到文本 是 LingWindowBase 成员函数（文件级 static 版本只在新后端出现）。
+  assert.match(cpp, /std::wstring 到文本\(int value\) const/u);
+  assert.match(cpp, /std::wstring 到文本\(double value\) const/u);
+  assert.ok(cpp.includes('显示 = (std::wstring(LingCppWideArg(L"共 ")) + LingCppWideArg(到文本(个数)))+L" 条";'), '文本字面量与命令结果拼接仍先经 LingCppWideArg 归一');
+
+  // P1-5：文本数组元素返回值改为 std::wstring，指针加法（C2110）与轮转缓冲区别名一并消失。
+  assert.equal(cpp.includes('LB_ArrayMemberResult<std::wstring> { using type = const wchar_t*; }'), false, '文本数组元素不再返回裸指针');
+  assert.ok(cpp.includes('template <typename T> typename LB_ArrayMemberResult<T>::type 数组_取成员(const std::vector<T>& items, int index) {'), '文本成员按值返回 std::wstring');
+  assert.ok(cpp.includes('(std::wstring(LingCppWideArg(数组_取成员(名单, 0))) + LingCppWideArg(L"  （"))'), '文本数组成员与字面量拼接仍需先经 LingCppWideArg 归一');
+  assert.equal(cpp.includes('数组_取成员(名单, 0)+L"  （"'), false, '数组成员与字面量不得裸拼接');
+
+  // P1-4：括号包裹的功能库调用同样按文本实参归一（此前只有裸调用形态会包装）。
+  assert.ok(cpp.includes('文件_写入文本(L"out.txt", LingCppWideArg(LBFL_店铺弹窗_用户代理串()))'), '功能库取文本方法的调用实参必须包装');
+  assert.ok(cpp.includes('文件_写入文本(L"out.txt", LingCppWideArg((LBFL_店铺弹窗_用户代理串())))'), '括号包裹的功能库调用实参同样必须包装');
+
+  // B-2/B-3/C-4：定宽填充族、数组合并、分割的忽略末尾空段都是确定性生成，可选实参照写照传。
+  assert.ok(cpp.includes('文本_填充右边(L"莫生网店", 12)'), '填充命令必须确定性生成');
+  assert.ok(cpp.includes('文本_填充右边(LingCppWideArg(到文本(个数)), 4)'), '填充命令的文本实参同样归一');
+  assert.ok(cpp.includes('文本_填充左边(L"999", 8)') && cpp.includes('文本_居中(L"标题", 12)'), '左填充与居中命令必须生成');
+  assert.ok(cpp.includes('文本_连接(名单, L",")'), '数组合并命令使用逗号分隔符');
+  assert.ok(cpp.includes('文本_取显示宽度(L"莫生网店A店")'), '显示宽度命令必须生成');
+  assert.ok(cpp.includes('段数 = 文本_分割(L"a|b|", L"|", 名单, true);'), '忽略末尾空段开关按字面传参');
+  assert.ok(cpp.includes('const wchar_t* 文本_填充右边(const wchar_t* text, int targetWidth, const wchar_t* fill = L" ")'), '可选填充字符必须在 C++ 侧带默认值，省略实参仍可编译');
+
+  // B-1：文件时间族返回「日期时间」并与 std.datetime 同布局。
+  assert.ok(cpp.includes('最新时间 = 文件_取修改时间(L"out.txt");'), '文件时间命令必须生成');
+  assert.ok(cpp.includes('个数 = 文件_取最新文件(L"缓存", L"*.json", 名单);'), '取最新文件命令必须生成');
+  assert.ok(cpp.includes('static long long LB_PackLocalDateTime(int year, int month, int day, int hour, int minute, int second)'), '日期时间打包与 std.datetime 同布局');
+  assert.ok(cpp.includes('long long 文件_取修改时间(const wchar_t* path) { return LB_FileTimeCommand(path, 2, L"修改时间"); }'), '文件时间命令走统一的中文错误通道');
+
+  // C-5：多行编辑框写入前把 LF 补成 CRLF，字符串转义在生成 C++ 中保持转义序列。
+  assert.ok(cpp.includes(String.raw`控件_设置文本(L"结果框", L"第一行\n第二行");`), '字符串转义必须在生成 C++ 中保持为转义序列');
+  assert.ok(cpp.includes('static bool IsMultilineTextControl(const ControlSpec& control)'), '多行编辑控件判定必须随生成代码下发');
+  assert.ok(cpp.includes('static std::wstring ToCrlfNewlines(const std::wstring& text)'), 'LF 到 CRLF 归一函数必须随生成代码下发');
+  assert.ok(cpp.includes('const std::wstring normalized = multilineText ? ToCrlfNewlines(text) : text;'), '控件_设置文本 写入前必须归一换行');
+});
+
+test('模块命令实参类型不符给出行列中文诊断，正确转换写法不误报也不生成宽字符包装', () => {
+  const enabledIds = ['lingbuilder.std.text', 'lingbuilder.std.bytes', 'lingbuilder.std.encoding', 'lingbuilder.fs.core', 'lingbuilder.win32.window-utils'];
+  const modules: InstalledModule[] = enabledIds.map(id => {
+    const manifest = BUILTIN_MODULES.find(item => item.id === id)!;
+    return { manifest, installPath: `builtin://${id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  });
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const source = [
+    '功能库 参数测试',
+    '公开:',
+    '  文本型 类型不匹配()',
+    '    局部 字节集 数据',
+    '    局部 文本型 拼串',
+    '    数据 = 字节集_从文本("ab")',
+    '    拼串 = "addr=" + 文本_取左边(字节集_十六进制编码(数据), 40) + "|end"',
+    '    返回 (拼串)',
+    '  结束',
+    '',
+    '  逻辑型 追加(文本型 路径)',
+    '    局部 字节集 数据',
+    '    数据 = 字节集_从文本("ab")',
+    '    返回 (文件_追加文本(路径, "addr=" + 文本_取左边(字节集_十六进制编码(数据), 40) + "|end"))',
+    '  结束',
+    '',
+    '  文本型 正确写法一()',
+    '    局部 字节集 数据',
+    '    局部 文本型 拼串',
+    '    数据 = 字节集_从文本("ab")',
+    '    拼串 = "addr=" + 字节_文本转十六进制("ab") + "|end"',
+    '    返回 (拼串)',
+    '  结束',
+    '',
+    '  文本型 正确写法二()',
+    '    局部 字节集 数据',
+    '    局部 文本型 十六进制',
+    '    局部 文本型 拼串',
+    '    数据 = 字节集_从文本("ab")',
+    '    十六进制 = 编码_字节集转文本(字节集_十六进制编码(数据), "ANSI")',
+    '    拼串 = "addr=" + 文本_取左边(十六进制, 40) + "|end"',
+    '    返回 (拼串)',
+    '  结束',
+    '',
+    '  逻辑型 句柄写法()',
+    '    返回 (窗口_句柄是否有效(窗口_取自身句柄()))',
+    '  结束',
+    '结束功能库'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, 'src/repro/参数类型检查复现.lcpp', moduleContext);
+  const mismatches = diagnostics.filter(item => item.id.startsWith('lingcpp-argument-type-'));
+  // 类型不匹配 与 追加 两个方法各报一条；正确写法一/二、句柄写法零误报。
+  assert.equal(mismatches.length, 2);
+  assert.equal(mismatches[0].line, 7);
+  assert.equal(mismatches[0].range?.startColumn, source.split('\n')[6].indexOf('文本_取左边') + 1);
+  assert.match(mismatches[0].message, /命令 文本_取左边 第 1 个实参类型不符：形参「文本」要求 文本型，实参是 字节集。/u);
+  assert.match(mismatches[0].suggestion, /编码_字节集转文本/u);
+  assert.equal(mismatches[1].line, 14);
+  assert.match(mismatches[1].message, /命令 文本_取左边 第 1 个实参类型不符/u);
+  const errorsAfterCorrectMethods = diagnostics.filter(item => item.level === 'error' && item.line > 15);
+  assert.deepEqual(errorsAfterCorrectMethods, []);
+
+  // 生成器不再对已知非文本返回值套 LingCppWideArg：类型诊断在前，必坏的宽字符包装不得生成。
+  // 旧名 字节集_十六进制编码 是别名，生成 C++ 恒用新主名。
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: modules,
+    lingCppSourceCode: source
+  });
+  const cpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
+  assert.ok(cpp.includes('文本_取左边(字节集_到十六进制字节集(数据), 40)'), '已知非文本调用不再生成 LingCppWideArg 包装');
+  assert.doesNotMatch(cpp, /LingCppWideArg\(字节集_到十六进制字节集\(数据\)\)/u);
+});

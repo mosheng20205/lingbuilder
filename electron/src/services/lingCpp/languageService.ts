@@ -1,4 +1,5 @@
 import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { collectLingCppStringLiteralRegions } from './stringLiteralRegions';
 import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import { LIST_VIEW_ADVANCED_API } from '../modules/listViewApiCatalog';
 import { DATA_GRID_API } from '../modules/dataGridApiCatalog';
@@ -33,6 +34,7 @@ import {
   LingCppProjectTypeContext,
   LingCppQuickAction,
   LingCppHover,
+  LingCppParseResult,
   LingCppReadableActionSummary,
   LingCppReadableBlock,
   LingCppReadableBlockKind,
@@ -54,7 +56,7 @@ import {
   WINDOW_EVENT_DEFINITIONS
 } from '../windowDesigner/windowEventRegistry';
 import { getConventionalControlEventBindings, getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
-import { areLingCppTypesCompatible, inferLingCppExpressionType, type LingCppModuleTypeCategories } from './expressionTypeService';
+import { areLingCppTypesCompatible, inferLingCppExpressionType, lingCppTypeCategory, normalizeLingCppValueType, type LingCppModuleTypeCategories } from './expressionTypeService';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from './parameterTypeService';
 import { parseLingCppControlFlowLine } from './controlFlow';
 import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
@@ -307,6 +309,8 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getThreadingDiagnostics(source, parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getCronDiagnostics(source, parsed.program, moduleContext, effectiveGlobals));
   diagnostics.push(...getArrayCommandDiagnostics(parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
+  diagnostics.push(...getModuleCommandArgumentTypeDiagnostics(parsed.program, moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes, splitLines(source)));
+  diagnostics.push(...getUnterminatedStringLiteralDiagnostics(parsed));
   diagnostics.push(...getVariableDiagnostics([
     ...parsed.program.classes,
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
@@ -377,6 +381,45 @@ export function getLingCppSemanticDiagnostics(
   }
 
   return dedupeDiagnostics(diagnostics);
+}
+
+/**
+ * 字符串字面量完整性检查：未闭合的 `"` / `“` / `'` 会让 C++ 生成器把残缺字面量
+ * 原样透传或吞掉后续代码。区间扫描复用 stringLiteralRegions 公共工具（`\"` 转义与
+ * 连续反斜杠奇偶都正确处理）；多行文本块（endLine）与 `@` 内嵌 C++ 行整体跳过。
+ */
+function getUnterminatedStringLiteralDiagnostics(parsed: LingCppParseResult): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const methods: LingCppMethod[] = [
+    ...parsed.program.classes.flatMap(cls => cls.methods),
+    ...parsed.program.functionLibraries.flatMap(library => library.methods)
+  ];
+  methods.forEach(method => {
+    (method.statements || []).forEach(statement => {
+      const trimmed = statement.text.trim();
+      if (!trimmed || isLingCppCommentLine(statement.text) || statement.endLine) return;
+      if (trimmed.startsWith('@')) return;
+      const unterminated = collectLingCppStringLiteralRegions(statement.text, { recognizeSingleQuotes: true })
+        .find(region => !region.closed);
+      if (!unterminated) return;
+      const quoteLabel = unterminated.quote === "'" ? '单引号' : unterminated.quote === '“' ? '中文引号“' : '双引号';
+      diagnostics.push({
+        id: `lingcpp-string-unterminated-${statement.line}`,
+        line: statement.line,
+        range: {
+          startLine: statement.line,
+          startColumn: statement.indent.length + unterminated.start + 1,
+          endLine: statement.line,
+          endColumn: statement.indent.length + statement.text.length + 1
+        },
+        level: 'error',
+        message: `字符串字面量缺少收尾引号（${quoteLabel}未闭合），无法生成正确的 C++。`,
+        codeSnippet: trimmed,
+        suggestion: '请在该行字符串末尾补上收尾引号；若要在字符串里包含引号本身，请写成 \\" 转义。'
+      });
+    });
+  });
+  return diagnostics;
 }
 
 export function buildLingCppLanguageContext(
@@ -3759,10 +3802,17 @@ function validateArrayCommandInvocation(
 ): LingCppDiagnostic[] {
   const parameters = binding.parameters || [];
   const signature = `${commandName}(${parameters.map(parameter => parameter.name).join(', ')})`;
-  if (args.length !== parameters.length) {
+  // 可选参数可以省略（C++ 运行时侧有默认值），变参命令不设上限：只校验实参个数落在合法区间内。
+  const requiredParameterCount = parameters.filter(parameter => !parameter.optional && parameter.variadic !== true).length;
+  const variadicParameter = parameters.find(parameter => parameter.variadic === true);
+  const maxParameterCount = variadicParameter ? Number.POSITIVE_INFINITY : parameters.length;
+  if (args.length < requiredParameterCount || args.length > maxParameterCount) {
+    const expectedText = maxParameterCount === Number.POSITIVE_INFINITY
+      ? `至少 ${requiredParameterCount} 个`
+      : requiredParameterCount === maxParameterCount ? `${parameters.length} 个` : `${requiredParameterCount} 到 ${parameters.length} 个`;
     return [createDiagnostic(
       'error', expression.line, expression.text,
-      `命令 ${commandName} 需要 ${parameters.length} 个参数，实际传入 ${args.length} 个。`,
+      `命令 ${commandName} 需要 ${expectedText}参数（可选参数可以省略），实际传入 ${args.length} 个。`,
       `请按 ${signature} 的签名调用。`
     )];
   }
@@ -3805,6 +3855,127 @@ function validateArrayCommandInvocation(
       `${arrayArgument} 的成员类型是 ${elementType}，参数 ${parameter.name} 不能使用 ${actualType}。`,
       `请传入 ${elementType} 值，或修改 ${arrayArgument} 的元素类型。`
     ));
+  });
+  return diagnostics;
+}
+
+/** 需要做实参类型比对的 binding 标量参数类型；控件引用/处理器/数组族/任意值/原始值各有专属语义与专属诊断，不在本检查范围。 */
+const ARGUMENT_TYPE_CHECKED_PARAMETER_TYPES = new Set(['wideString', 'utf8String', 'int', 'longLong', 'double', 'float', 'bool', 'bytes', 'handle']);
+
+/** 已知互不相容的常见实参类别 → 中文转换建议（与命令名、参数名一起拼进诊断）。 */
+function getArgumentTypeConversionSuggestion(expected: string, actual: string, argumentText: string): string {
+  if (expected === '文本型' && actual === '字节集') {
+    return `先把字节集转成文本，例如 编码_字节集转文本(${argumentText}, "ANSI")；若该实参来自 字节集_到十六进制字节集(...)，直接改用 字节集_到十六进制文本(...) 一步得到文本。`;
+  }
+  if (expected === '字节集' && actual === '文本型') {
+    return `先把文本编码成字节集，例如 字节集_从文本(${argumentText}) 或 编码_文本转字节集(${argumentText}, "UTF-8")。`;
+  }
+  if (expected === '文本型') {
+    return `先转成文本再传入，例如 格式化文本("{}", ${argumentText})。`;
+  }
+  return `请传入 ${expected} 的实参，或先用对应转换命令把 ${actual} 转换过来。`;
+}
+
+/**
+ * 模块命令实参类型诊断：形参声明类型与实参推导类型都已知且不相容时报 error，
+ * 中文消息精确到命令、实参序号与形参名，range 精确到命令名所在的行列。
+ * 生成器对文本型形参套 LingCppWideArg 之前依赖本诊断兜底：字节集等非文本实参
+ * 必须在这里被拦下，而不是落到 MSVC 层报 C2665/C2660 错误恢复级联。
+ */
+function getModuleCommandArgumentTypeDiagnostics(
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  constants: LingCppConstant[],
+  globals: LingCppGlobalVariable[],
+  projectTypes?: LingCppProjectTypeContext,
+  sourceLines: string[] = []
+): LingCppDiagnostic[] {
+  const commandBindings = new Map<string, ModuleCommandBinding>();
+  getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
+    (module.manifest.bindings?.commands || []).forEach(binding => {
+      if (!(binding.parameters || []).some(parameter => ARGUMENT_TYPE_CHECKED_PARAMETER_TYPES.has(parameter.type))) return;
+      const contribution = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command);
+      [binding.command, ...(contribution?.aliases || [])].forEach(name => {
+        const key = normalizeIdentifier(name);
+        if (!commandBindings.has(key)) commandBindings.set(key, binding);
+      });
+    });
+  });
+  if (commandBindings.size === 0) return [];
+
+  const moduleTypeCategories = buildModuleTypeCategories(moduleContext);
+  const moduleTypeNames = new Set<string>(
+    (moduleContext?.enabledModules || []).flatMap(module => (module.manifest.contributes?.types || []).map(type => normalizeIdentifier(type.name)))
+  );
+  const globalTypes = projectSymbolTypes(constants, globals);
+  const owners: Array<{ members: LingCppClass['members']; methods: LingCppClass['methods'] }> = [
+    ...program.classes.map(cls => ({ members: cls.members, methods: cls.methods })),
+    ...program.functionLibraries.map(library => ({ members: [], methods: library.methods }))
+  ];
+
+  const diagnostics: LingCppDiagnostic[] = [];
+  owners.forEach(owner => {
+    owner.methods.forEach(method => {
+      const baseScopeTypes = new Map<string, string>(globalTypes);
+      owner.members.forEach(member => baseScopeTypes.set(
+        normalizeIdentifier(member.name),
+        member.isArray ? `${member.type}[]` : member.type
+      ));
+      method.parameters.forEach(parameter => baseScopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
+      const orderedLocals = [...(method.locals || [])].sort((left, right) => left.line - right.line);
+      // 多行文本块内容不透明、@ 行是内嵌 C++：两者都不是 .lcpp 调用，先豁免再扫描。
+      const expressions = [
+        ...method.statements.filter(statement => !isLingCppCommentLine(statement.text) && !statement.endLine && !statement.text.trim().startsWith('@')),
+        ...(method.locals || [])
+          .filter(local => local.initialValue && !local.initialValue.trim().startsWith('@'))
+          .map(local => ({ line: local.line, text: local.initialValue || '' }))
+      ];
+      expressions.forEach(expression => {
+        const scopeTypes = new Map<string, string>(baseScopeTypes);
+        orderedLocals
+          .filter(local => local.line < expression.line)
+          .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type));
+        // 列号必须基于原始行（含缩进）计算：statement.text 去掉了行首空白，直接扫描会偏移列号。
+        const scanText = sourceLines[expression.line - 1] ?? expression.text;
+        collectLineInvocations(scanText).forEach(invocation => {
+          const binding = commandBindings.get(normalizeIdentifier(invocation.name));
+          if (!binding) return;
+          (binding.parameters || []).forEach((parameter, index) => {
+            if (!ARGUMENT_TYPE_CHECKED_PARAMETER_TYPES.has(parameter.type)) return;
+            const argumentText = (invocation.args[index] || '').trim();
+            if (!argumentText) return;
+            const expectedType = normalizeLingCppValueType(parameter.type);
+            if (!expectedType) return;
+            const actualType = inferLingCppExpressionType(argumentText, scopeTypes, moduleContext, new Map(), projectTypes);
+            // 「当前窗口」等设计器伪类型与未知类型一律跳过：生成器对它们有专属处理，不能凭中文类型表下结论。
+            if (!actualType || actualType === '控件容器') return;
+            const actualCategory = lingCppTypeCategory(actualType, moduleTypeCategories);
+            // 句柄/整数形参的 ABI 是标量：整数类实参（窗口_取自身句柄() 结果）与模块公开类型实参
+            // （线程任务、SQLite连接 等句柄值）都是既有合法写法，不按中文类型名误报。
+            if (
+              (parameter.type === 'handle' || parameter.type === 'longLong' || parameter.type === 'int')
+              && (actualCategory === 'integer' || moduleTypeNames.has(normalizeIdentifier(actualType)))
+            ) return;
+            if (areLingCppTypesCompatible(expectedType, actualType, moduleTypeCategories)) return;
+            const snippet = scanText.slice(invocation.start, invocation.end) || expression.text;
+            diagnostics.push({
+              id: `lingcpp-argument-type-${invocation.name}-${expression.line}-${index}`,
+              line: expression.line,
+              range: {
+                startLine: expression.line,
+                startColumn: invocation.start + 1,
+                endLine: expression.line,
+                endColumn: invocation.start + invocation.name.length + 1
+              },
+              level: 'error',
+              message: `命令 ${invocation.name} 第 ${index + 1} 个实参类型不符：形参「${parameter.name}」要求 ${expectedType}，实参是 ${actualType}。`,
+              codeSnippet: snippet,
+              suggestion: getArgumentTypeConversionSuggestion(expectedType, actualType, argumentText)
+            });
+          });
+        });
+      });
+    });
   });
   return diagnostics;
 }

@@ -50,7 +50,8 @@ test('environment check reports versions and paths for a complete Windows toolch
     nodeVersion: '22.14.0',
     nodePath: 'C:\\Node\\node.exe',
     environment: { SystemRoot: 'C:\\Windows', 'ProgramFiles(x86)': 'C:\\Program Files (x86)' },
-    now: () => new Date('2026-07-10T08:00:00.000Z')
+    now: () => new Date('2026-07-10T08:00:00.000Z'),
+    webView2SdkLocator: () => ({ packageRoot: 'C:\\Users\\dev\\.nuget\\packages\\microsoft.web.webview2\\1.0.4078.44', source: 'nuget-cache' })
   }).check();
 
   assert.equal(result.ready, true);
@@ -75,6 +76,13 @@ test('environment check reports versions and paths for a complete Windows toolch
     result.checks.webView2.path,
     'C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\126.0.2592.113\\msedgewebview2.exe'
   );
+  assert.equal(result.checks.webView2Sdk.available, true);
+  assert.equal(result.checks.webView2Sdk.version, '1.0.4078.44');
+  assert.equal(
+    result.checks.webView2Sdk.path,
+    'C:\\Users\\dev\\.nuget\\packages\\microsoft.web.webview2\\1.0.4078.44'
+  );
+  assert.match(result.checks.webView2Sdk.detail, /NuGet 全局缓存/u);
   assert.equal(result.checks.platform.path, 'C:\\Windows');
 });
 
@@ -252,10 +260,30 @@ test('unsupported platform and missing compilers make the environment not ready'
   assert.equal(result.checks.msvc.available, false);
   assert.equal(result.checks.windowsSdk.available, false);
   assert.equal(result.checks.webView2.available, false);
+  assert.equal(result.checks.webView2Sdk.available, false);
   assert.ok(result.warnings.some(warning => warning.includes('不是 Windows')));
   assert.ok(result.warnings.some(warning => warning.includes('Node.js')));
   assert.ok(result.warnings.some(warning => warning.includes('C++ 编译器')));
   assert.equal(commandCount, 3, '非 Windows 平台仅应探测三个跨平台工具');
+});
+
+test('a Windows machine without the WebView2 SDK keeps the Runtime verdict but warns about EdgeView builds', async () => {
+  const runner = createRunner(() => missing());
+  const result = await new EnvironmentCheckService({
+    commandRunner: runner,
+    platform: 'win32',
+    architecture: 'x64',
+    osRelease: '10.0.26100',
+    nodeVersion: '22.14.0',
+    nodePath: 'C:\\Node\\node.exe',
+    environment: { SystemRoot: 'C:\\Windows' },
+    webView2SdkLocator: () => null
+  }).check();
+
+  assert.equal(result.checks.webView2Sdk.available, false);
+  assert.equal(result.checks.webView2Sdk.version, null);
+  assert.match(result.checks.webView2Sdk.detail, /Microsoft\.Web\.WebView2 1\.0\.4078\.44/u);
+  assert.ok(result.warnings.some(warning => warning.includes('WebView2 SDK') && warning.includes('阻止构建')));
 });
 
 test('environment check enforces one overall timeout and observes late command failures', async () => {

@@ -49,6 +49,32 @@ export function getProjectGlobalDiagnostics(
   }
   if (!isGlobalFile) return diagnostics;
 
+  // 项目全局变量的声明语法是「全局 类型 名称 = 初值」。少了「全局」关键字的一行会被解析器当成普通语句忽略，
+  // 编辑者却以为变量已声明（功能库随后引用它只会得到「尚未声明」，非常难定位）。这里显式拦截并给出修法。
+  const declaredGlobalLines = new Set(parsed.program.globals.map(global => global.line));
+  const knownTypeNames = new Set([
+    ...LING_CPP_TYPES.map(type => normalizeIdentifier(type)),
+    ...PROJECT_CONSTANT_TYPES.map(type => normalizeIdentifier(type)),
+    ...projectTypeNames.map(name => normalizeIdentifier(name)),
+    ...(moduleContext?.enabledModules || []).flatMap(module => (module.manifest.contributes?.types || []).map(type => normalizeIdentifier(type.name)))
+  ]);
+  sourceCode.split(/\r?\n/u).forEach((line, index) => {
+    const lineNumber = index + 1;
+    if (declaredGlobalLines.has(lineNumber)) return;
+    const text = line.trim();
+    if (!text || text.startsWith('//') || /^(?:常量|全局|公开|私有|局部|类|功能库)\b/u.test(text)) return;
+    const match = text.match(/^([\p{L}_][\p{L}\p{N}_]*)\s*(?:\[\]|［］)?\s+([\p{L}_][\p{L}\p{N}_]*)\s*(?:[=＝].*)?$/u);
+    if (!match) return;
+    const typeName = match[1] || '';
+    const variableName = match[2] || '';
+    if (!knownTypeNames.has(normalizeIdentifier(typeName))) return;
+    diagnostics.push(createDiagnostic(
+      'error', lineNumber, text,
+      `项目全局变量 ${variableName} 缺少“全局”关键字，写成 ${typeName} ${variableName} 会被忽略。`,
+      `请写成 全局 ${typeName} ${variableName} = 初值（数组写 全局 ${typeName} ${variableName}[]），功能库与窗口源码才能引用它。`
+    ));
+  });
+
   parsed.program.classes.forEach(cls => diagnostics.push(createDiagnostic(
     'error', cls.line, `类 ${cls.name}`, '项目变量与常量文件不能声明类。', '请把类移动到普通 .lcpp 源文件。'
   )));

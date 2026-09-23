@@ -113,6 +113,8 @@ contextBridge.exposeInMainWorld('lingBuilder', {
       return () => ipcRenderer.removeListener('lingbuilder:install-module-package', handler);
     },
     openInfo: (module: unknown) => ipcRenderer.invoke('modules:open-info', module),
+    listDemos: () => ipcRenderer.invoke('modules:list-demos'),
+    openDemo: (moduleId: string) => ipcRenderer.invoke('modules:open-demo', moduleId),
     onInfo: (listener: (module: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, module: unknown) => listener(module);
       ipcRenderer.on('module-info:set', handler);

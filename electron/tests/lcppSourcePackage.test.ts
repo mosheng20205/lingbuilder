@@ -59,7 +59,8 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   const service = createLcppSourcePackageService(workspace);
   const exported = await service.exportProject(DEFAULT_PROJECT_ID, packagePath, '0.2.0-test');
   assert.equal(exported.ok, true);
-  assert.equal(exported.lcppFileCount, 3);
+  // 默认项目模板自身带 3 个 .lcpp（项目DLL命令 / 项目全局变量 / 项目数据类型），加上本用例写入的 MainWindow.lcpp 共 4 个。
+  assert.equal(exported.lcppFileCount, 4);
   assert.ok(exported.manifest.excludedSensitiveFiles.includes('src/.env'));
   assert.ok(exported.manifest.excludedSensitiveFiles.includes('config/current-cookies.json'));
   assert.ok(!exported.manifest.files.some(file => file.path.includes('/profiles/')));
@@ -257,7 +258,8 @@ test('LCPP 源码包和项目构建会排除源码目录中误创建的嵌套工
   const packagePath = path.join(root, 'nested-filtered.lcpppkg');
   const service = createLcppSourcePackageService(workspace);
   const exported = await service.exportProject(DEFAULT_PROJECT_ID, packagePath);
-  assert.equal(exported.lcppFileCount, 3);
+  // 默认项目模板自身带 3 个 .lcpp（项目DLL命令 / 项目全局变量 / 项目数据类型），加上本用例写入的 MainWindow.lcpp 共 4 个。
+  assert.equal(exported.lcppFileCount, 4);
   assert.ok(exported.warnings.some(warning => warning.includes('嵌套 LingBuilder 工作区')));
   assert.ok(!exported.manifest.files.some(file => file.path.startsWith('src/src/')));
   assert.ok(!exported.manifest.files.some(file => file.path.startsWith('src/.lingbuilder/')));

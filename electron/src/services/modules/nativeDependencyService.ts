@@ -19,6 +19,9 @@ import {
   getSdkRootCandidates,
   resolveSdkCacheRoot
 } from '../sdkDependencies/sdkDependencyCatalog';
+import { EDGEVIEW_WEBVIEW2_SDK_VERSION, locateWebView2SdkPackage } from './webView2SdkModule';
+
+export { EDGEVIEW_WEBVIEW2_SDK_VERSION };
 
 const FBRO_SDK_VERSION = '135.0.21';
 const FBRO_BRIDGE_VERSION = '2.9.0';
@@ -1493,12 +1496,15 @@ async function materializeEdgeViewSdk(
   layout: ModuleNativeDependencyLayout,
   plan: ModuleNativeDependencyPlan
 ): Promise<void> {
-  const packageRoot = await findWebView2Package(EDGEVIEW_WEBVIEW2_SDK_VERSION);
-  if (!packageRoot) {
-    plan.diagnostics.push(`EdgeView 模块缺少固定版本 Microsoft.Web.WebView2 ${EDGEVIEW_WEBVIEW2_SDK_VERSION}。请恢复该 NuGet 包；构建不会自动改用其它缓存版本。`);
+  const located = locateWebView2SdkPackage();
+  if (!located) {
+    // 缺 SDK 必须阻断：静默继续会编出 LINGBUILDER_EDGEVIEW_AVAILABLE=0 的空实现 exe，
+    // 运行期再误报「WebView2 Runtime 版本不足」误导用户去装 Runtime（实踩 2026-09-23）。
+    addBlockingDiagnostic(plan, `EdgeView 模块缺少固定版本 Microsoft.Web.WebView2 ${EDGEVIEW_WEBVIEW2_SDK_VERSION}（已检查 LINGBUILDER_WEBVIEW2_SDK_ROOT、随包副本与 NuGet 全局缓存）。请恢复该 NuGet 包，或从可信机器复制 microsoft.web.webview2 缓存目录；缺少该 SDK 时构建会被阻止，不会生成 EdgeView 空实现程序。`);
     plan.requiresMsvc = true;
     return;
   }
+  const packageRoot = located.packageRoot;
   const moduleRoot = path.join('modules', 'lingbuilder.edgeview');
   const includeSource = path.join(packageRoot, 'build', 'native', 'include');
   const architecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'x86';
@@ -1533,7 +1539,7 @@ async function materializeEdgeViewSdk(
     plan.libFiles.push(path.join(layout.buildDir, moduleRoot, 'lib', architecture, 'WebView2LoaderStatic.lib'));
     plan.requiresMsvc = true;
   } catch (error) {
-    plan.diagnostics.push(`准备 EdgeView WebView2 SDK 失败：${errorMessage(error)}`);
+    addBlockingDiagnostic(plan, `准备 EdgeView WebView2 SDK 失败：${errorMessage(error)}`);
   }
 }
 
@@ -1804,23 +1810,6 @@ async function copyDirectoryRecursive(source: string, target: string): Promise<v
   }
 }
 
-async function findWebView2Package(version: string): Promise<string | null> {
-  const candidates = unique([
-    process.env.NUGET_PACKAGES ? path.join(process.env.NUGET_PACKAGES, 'microsoft.web.webview2') : '',
-    process.env.USERPROFILE ? path.join(process.env.USERPROFILE, '.nuget', 'packages', 'microsoft.web.webview2') : ''
-  ].filter(Boolean));
-  for (const root of candidates) {
-    try {
-      const packageRoot = path.join(root, version);
-      await fs.access(path.join(packageRoot, 'build', 'native', 'include', 'WebView2.h'));
-      return packageRoot;
-    } catch {
-      // Try the next configured NuGet package root.
-    }
-  }
-  return null;
-}
-
 function normalizeRelativePath(value: string): string {
   return value.replace(/\\/g, '/');
 }
@@ -1857,5 +1846,4 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-export const EDGEVIEW_WEBVIEW2_SDK_VERSION = '1.0.4078.44';
 const EDGEVIEW_WEBVIEW2_HEADER_SHA256 = 'dff1e3181ec7ec203a34ef6efa966590e0ef0ba1a5c3fe3b69da6508c2f8a02e';

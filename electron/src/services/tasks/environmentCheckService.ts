@@ -2,6 +2,13 @@ import { execFile } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
+import {
+  describeWebView2SdkSource,
+  EDGEVIEW_WEBVIEW2_SDK_VERSION,
+  locateWebView2SdkPackage,
+  type WebView2SdkLocator
+} from '../modules/webView2SdkModule';
+
 export type EnvironmentCheckId =
   | 'node'
   | 'msvc'
@@ -10,6 +17,7 @@ export type EnvironmentCheckId =
   | 'gpp'
   | 'clangpp'
   | 'webView2'
+  | 'webView2Sdk'
   | 'platform';
 
 export interface EnvironmentCheckItem {
@@ -60,6 +68,7 @@ export interface EnvironmentCheckDependencies {
   nodePath?: string;
   now?: () => Date;
   overallTimeoutMs?: number;
+  webView2SdkLocator?: WebView2SdkLocator;
 }
 
 interface ResolvedDependencies {
@@ -72,6 +81,7 @@ interface ResolvedDependencies {
   nodePath: string;
   now: () => Date;
   overallTimeoutMs: number;
+  webView2SdkLocator: WebView2SdkLocator;
 }
 
 interface MsvcDetection {
@@ -98,7 +108,8 @@ export class EnvironmentCheckService {
       nodeVersion: dependencies.nodeVersion ?? process.versions.node,
       nodePath: dependencies.nodePath ?? process.execPath,
       now: dependencies.now || (() => new Date()),
-      overallTimeoutMs: normalizeOverallTimeout(dependencies.overallTimeoutMs)
+      overallTimeoutMs: normalizeOverallTimeout(dependencies.overallTimeoutMs),
+      webView2SdkLocator: dependencies.webView2SdkLocator || locateWebView2SdkPackage
     };
   }
 
@@ -111,12 +122,13 @@ export class EnvironmentCheckService {
     const node = this.detectNode();
     const platformInfo = this.detectPlatform();
 
-    const [msvcDetection, cmake, gpp, clangpp, webView2] = await Promise.all([
+    const [msvcDetection, cmake, gpp, clangpp, webView2, webView2Sdk] = await Promise.all([
       this.detectMsvc(),
       this.detectCmake(),
       this.detectVersionedTool('g++', ['--version'], parseGppVersion, '未检测到 GNU C++ 编译器。'),
       this.detectVersionedTool('clang++', ['--version'], parseClangVersion, '未检测到 Clang C++ 编译器。'),
-      this.detectWebView2()
+      this.detectWebView2(),
+      this.detectWebView2Sdk()
     ]);
     const windowsSdk = await this.detectWindowsSdk(msvcDetection.setupBatch);
     const msvc = msvcDetection.item;
@@ -129,6 +141,7 @@ export class EnvironmentCheckService {
       gpp,
       clangpp,
       webView2,
+      webView2Sdk,
       platform: platformInfo
     };
     const warnings = buildWarnings(checks);
@@ -435,6 +448,26 @@ export class EnvironmentCheckService {
     return unavailable('未在 Microsoft EdgeUpdate 注册表中检测到 WebView2 Runtime。');
   }
 
+  /**
+   * EdgeView 构建所需的 WebView2 SDK（Microsoft.Web.WebView2，编译期头文件 + 静态库）。
+   * 与上面的 Runtime 检测相互独立：Runtime 就绪不代表 SDK 就绪，缺 SDK 时 EdgeView 项目构建会被阻止。
+   */
+  private detectWebView2Sdk(): EnvironmentCheckItem {
+    if (this.dependencies.platform !== 'win32') {
+      return unavailable('WebView2 SDK 仅在 Windows 上检测。');
+    }
+    const located = this.dependencies.webView2SdkLocator({ environment: this.dependencies.environment });
+    if (!located) {
+      return unavailable(`未找到 EdgeView 构建所需的 WebView2 SDK（Microsoft.Web.WebView2 ${EDGEVIEW_WEBVIEW2_SDK_VERSION}）；已检查 LINGBUILDER_WEBVIEW2_SDK_ROOT、LingBuilder 随包副本与 NuGet 全局缓存，缺少时 EdgeView 浏览器模块项目将被阻止构建。`);
+    }
+    return {
+      available: true,
+      version: EDGEVIEW_WEBVIEW2_SDK_VERSION,
+      path: located.packageRoot,
+      detail: `已从${describeWebView2SdkSource(located.source)}找到 WebView2 SDK，EdgeView 浏览器模块可正常构建。`
+    };
+  }
+
   private inferWebView2Path(version: string): string | null {
     const programFilesX86 = this.dependencies.environment['ProgramFiles(x86)'];
     if (!programFilesX86) return null;
@@ -526,6 +559,7 @@ function buildWarnings(checks: EnvironmentChecks): string[] {
   if (!checks.windowsSdk.available) warnings.push('未检测到 Windows SDK rc.exe，资源文件编译不可用。');
   if (!checks.cmake.available) warnings.push('未检测到 CMake，CMake 项目功能不可用。');
   if (!checks.webView2.available) warnings.push('未检测到 WebView2 Runtime，需要 WebView2 的原生预览功能可能不可用。');
+  if (!checks.webView2Sdk.available) warnings.push(`未检测到 EdgeView 构建所需的 WebView2 SDK（Microsoft.Web.WebView2 ${EDGEVIEW_WEBVIEW2_SDK_VERSION}），EdgeView 浏览器模块项目将被阻止构建。`);
   return warnings;
 }
 

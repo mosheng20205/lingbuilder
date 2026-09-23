@@ -279,6 +279,8 @@ declare global {
         onInstallRequest: (listener: (request: { packagePath: string; error?: string }) => void) => () => void;
         openInfo: (module: unknown) => Promise<void>;
         onInfo: (listener: (module: unknown) => void) => () => void;
+        listDemos: () => Promise<{ ok: boolean; moduleIds?: string[]; error?: string }>;
+        openDemo: (moduleId: string) => Promise<{ ok: boolean; workspacePath?: string; error?: string }>;
       };
       sourcePackages?: {
         exportProject: (projectId: string, suggestedName?: string) => Promise<{

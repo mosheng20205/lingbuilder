@@ -1,5 +1,6 @@
 import { EDGEVIEW_SAFE_API_CATALOG } from '../modules/edgeViewApiCatalog';
 import { isWideStringAbiBindingType } from '../modules/bindingValueType';
+import { EDGEVIEW_WEBVIEW2_SDK_VERSION } from '../modules/webView2SdkModule';
 
 const SETTING_MEMBERS: Array<[string, string, number]> = [
   ['脚本执行', 'IsScriptEnabled', 1], ['网页消息', 'IsWebMessageEnabled', 1], ['脚本对话框', 'AreDefaultScriptDialogsEnabled', 1],
@@ -67,7 +68,7 @@ function unavailableStubs(): string {
         : entry.binding.returnType === 'double' ? 'double' : 'int';
     const fallback = returnType === 'void' ? '' : returnType === 'std::wstring' ? 'return L"";'
       : returnType === 'double' ? 'return 0.0;' : 'return 0;';
-    return `    ${returnType} ${entry.runtimeSymbol}(${parameters}) { ${unused} EdgeView_报告接口缺失(L"${entry.runtimeSymbol}"); ${fallback} }`;
+    return `    ${returnType} ${entry.runtimeSymbol}(${parameters}) { ${unused} EdgeView_报告未编译(L"${entry.runtimeSymbol}"); ${fallback} }`;
   }).join('\n');
 }
 
@@ -951,6 +952,15 @@ ${printSettingsWrappers()}
         return 1;
     }
 #else
+    static constexpr const wchar_t* LINGBUILDER_EDGEVIEW_SDK_MISSING_HINT =
+        L"本程序构建时缺少 WebView2 SDK（Microsoft.Web.WebView2 ${EDGEVIEW_WEBVIEW2_SDK_VERSION}），EdgeView 命令被编译为空实现；这与电脑已安装的 WebView2 Runtime 版本无关，安装 Runtime 无法解决。请在 LingBuilder 环境检测中确认「WebView2 SDK」就绪并重新构建本程序。";
+    void EdgeView_报告未编译(const wchar_t* command) {
+        std::wstring message = L"EdgeView 命令未编译进本程序：";
+        message += command ? command : L"未知命令";
+        message += L"。";
+        message += LINGBUILDER_EDGEVIEW_SDK_MISSING_HINT;
+        调试输出(message.c_str());
+    }
 ${unavailableStubs()}
 #endif
 `;

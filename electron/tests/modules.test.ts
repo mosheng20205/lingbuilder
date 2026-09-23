@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
+import { areLingCppTypesCompatible, inferLingCppExpressionType } from '../src/services/lingCpp/expressionTypeService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { ARIA2_COMMAND_SPECS, ARIA2_MODULE, ARIA2_MODULE_ID } from '../src/services/modules/aria2Module';
 import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
@@ -58,6 +59,7 @@ import {
 } from '../src/services/modules/moduleContextAdapters';
 import { InstalledModule, ModuleManagedTaskInvocation } from '../src/services/modules/types';
 import { EDGEVIEW_WEBVIEW2_SDK_VERSION, exportModuleNativeDependencies, inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies, peExportProbe } from '../src/services/modules/nativeDependencyService';
+import { locateWebView2SdkPackage } from '../src/services/modules/webView2SdkModule';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { createControlToolboxGroups } from '../src/services/windowDesigner/controlToolboxModel';
@@ -438,12 +440,26 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-09-22 写回（当前窗口自身批次）：lingbuilder.win32.basic 新增
       // 窗口_取自身句柄(0 参数)、窗口_取自身标题(0 参数)、窗口_设置自身标题(1 参数) +3 命令
       // +1 参数；根治「纯 Win32 窗口项目没有任何命令能取得自身 HWND」，无 controlRef。
+      // 基线 2026-09-23 写回（易语言类型转换初级命令批次 1）：lingbuilder.win32.basic 新增
+      // 到长整数/到小数/到单精度小数/到逻辑（各 1 个 wideString 参数、0 controlRef），
+      // 合计 +4 命令 +4 参数；四条同时登记 new_emoji 后端契约并补两套 C++ 运行时。
+      // 基线 2026-09-23 再写回（零内嵌 C++ 能力批次）：lingbuilder.std.text 1.1.0→1.2.0 新增
+      // 文本_填充右边/填充左边/居中（各 3 参数，含可选填充字符）、文本_取显示宽度（2 参数，含可选
+      // 中日韩按 2 列）、文本_连接（4 参数，含可选起始下标/数量），文本_分割 补可选 忽略末尾空段；
+      // lingbuilder.fs.core 1.1.0→1.2.0 新增 文件_取修改时间/创建时间/访问时间（各 1 参数）、
+      // 文件_取最新文件（3 参数）、文件_取错误（0 参数）并公开「日期时间」名义类型。
+      // 合计 +10 命令 +22 参数，全部按文本/整数/布尔与数组变量寻址，无新增 controlRef。
+      // 基线 2026-09-23 再写回（实参类型门禁与十六进制命令批次）：lingbuilder.std.bytes 1.1.0→1.2.0
+      // 把 字节集_十六进制编码 改名 字节集_到十六进制字节集（旧名保留为别名，命令数不变），
+      // 新增 字节集_到十六进制文本（1 个 bytes 参数）。合计 +1 命令 +1 参数，无 controlRef。
+      // 基线 2026-09-24 写回（EdgeView 区域缩放修复批次）：lingbuilder.edgeview 1.5.1→1.6.0 新增
+      // EdgeView_置区域位置（5 个 int 参数，0 controlRef，区域留边距缩放白屏修复）。
       modules: 101,
-      commands: 3924,
-      parameters: 6882,
+      commands: 3940,
+      parameters: 6914,
       controlReferences: 1345,
-      commandDigest: 'bfedd0db',
-      parameterDigest: 'd4925a9e'
+      commandDigest: '3241e3bd',
+      parameterDigest: '1128aad0'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -580,7 +596,9 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 2026-09-21 写回 57→60：网络中间件功能新增 sunnyNetModule.ts，并行会话新增 moduleDetailView.ts、
   // modulePublicInfo.ts（已重新确认全量字面量扫描 0 违规）。
   // 2026-09-21 写回 60→61：新增 lingbuilder.cron 定时任务模块 cronModule.ts（已重新确认全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 61, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-09-24 写回 61→64：模块例程功能新增 moduleDemoService.ts（0 违规）；另含并行会话在途新增的
+  // 两个模块源文件，按当前工作区内容实算写回（全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 64, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -871,17 +889,22 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-09-22 再写回：内置部分 +3 命令 +1 参数（当前窗口自身批次，见上一用例），
       // 其余 +6 命令 +15 参数来自本机磁盘已装模块清单被并行会话更新，非本会话产物；
       // 本用例按本机实算，换机需重装模块后重跑。
+      // 基线 2026-09-23 再写回：内置部分 +4 命令 +4 参数（类型转换初级命令批次 1，见上一用例）；本机磁盘仍为 8 份清单，磁盘侧 0 漂移。
+      // 基线 2026-09-23 再写回（零内嵌 C++ 能力批次）：内置部分 +10 命令 +22 参数（std.text 填充族/
+      // 文本_连接 与 fs.core 文件时间族，见上一用例），无新增 controlRef；本机磁盘仍为 8 份清单。
+      // 基线 2026-09-23 再写回（实参类型门禁与十六进制命令批次）：内置部分 +1 命令 +1 参数
+      //（std.bytes 字节集_到十六进制文本；改名别名不减命令数，见上一用例）；本机磁盘仍为 8 份清单。
+      // 基线 2026-09-24 再写回（EdgeView 区域缩放修复批次）：内置部分 +1 命令 +5 参数
+      //（EdgeView_置区域位置，见上一用例）；本机磁盘仍为 8 份清单，磁盘侧 0 漂移。
       modules: 109,
-      commands: 7941,
-      parameters: 19003,
+      commands: 7957,
+      parameters: 19035,
       controlReferences: 5103,
-      commandDigest: '8cedc10a',
-      parameterDigest: 'a1d88372'
+      commandDigest: '2f3d22d4',
+      parameterDigest: '5a01e9ec'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
-});
-
-test('OpenCV 模块公开完整中文 API、真实 binding 和 x64-only target', () => {
-  const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID);
+  // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
+  const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
   assert.ok(manifest);
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
   assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
@@ -922,6 +945,44 @@ test('编码转换模块公开完整的文本安全字符编码、BOM 与通用�
   requiredCommands.forEach(command => assert.ok(commandNames.has(command), `编码模块缺少命令：${command}`));
   assert.match(manifest.contributes?.commands?.find(command => command.name === '编码_文本转UTF8')?.description || '', /十六进制/u);
   assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+});
+
+test('字节集十六进制编码改名带别名，并提供一步到位的十六进制文本命令', () => {
+  const manifest = STANDARD_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.std.bytes')!;
+  const renamed = manifest.contributes?.commands?.find(command => command.name === '字节集_到十六进制字节集');
+  assert.ok(renamed, '字节集_到十六进制字节集 主命令必须存在');
+  assert.deepEqual(renamed.aliases, ['字节集_十六进制编码'], '旧名必须保留为别名以兼容既有工程');
+  assert.match(renamed.description, /字节集而不是文本/u, '描述必须警示返回类型是字节集不是文本');
+  assert.match(renamed.description, /字节集_到十六进制文本/u, '描述必须指向一步到位的文本版命令');
+  const textVersion = manifest.contributes?.commands?.find(command => command.name === '字节集_到十六进制文本');
+  assert.equal(textVersion?.returnType, '文本型', '文本版命令必须直接返回文本');
+  const binding = manifest.bindings?.commands?.find(item => item.command === '字节集_到十六进制文本');
+  assert.equal(binding?.returnType, 'wideString');
+  assert.deepEqual(
+    manifest.bindings?.commands?.map(item => item.command),
+    manifest.contributes?.commands?.map(item => item.name)
+  );
+
+  // 旧名调用经别名解析生成新名函数；新命令一步得到十六进制文本。
+  const module: InstalledModule = { manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [module],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 字节集 数据',
+      '        局部 字节集 编码结果',
+      '        数据 = 字节集_从文本("ab")',
+      '        编码结果 = 字节集_十六进制编码(数据)',
+      '        调试输出(字节集_到十六进制文本(数据))',
+      '    结束',
+      '结束类'
+    ].join('\n')
+  });
+  const cpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
+  assert.ok(cpp.includes('编码结果 = 字节集_到十六进制字节集(数据);'), '旧名别名调用必须生成新名 C++ 函数');
+  assert.ok(cpp.includes('调试输出(字节集_到十六进制文本(数据));'), '一步十六进制文本命令必须确定性生成');
+  assert.ok(cpp.includes('const wchar_t* 字节集_到十六进制文本(const std::vector<unsigned char>& bytes)'), '运行时必须随包下发文本版实现');
 });
 
 test('数组操作模块对元素类型透明地提供成员数、增删改查、排序和重定义', async () => {
@@ -2155,7 +2216,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 216/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 220/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
@@ -3512,6 +3573,71 @@ test('中文模块命令支持拼音首字母、全拼和中文拼音混合补�
   ).some(item => item.label === '格式化文本'));
 });
 
+test('文本类型转换命令族登记完整的清单、binding、返回类型推断与关键词补全', () => {
+  const basicModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const moduleContext = { enabledModules: [basicModule], availableModules: [basicModule] };
+  const manifest = basicModule.manifest;
+  // 期望表即易语言初级转换命令的对外契约：签名、C++ 返回类型与中文类型名必须同时成立。
+  const conversions = [
+    { name: '到长整数', signature: '到长整数(文本)', bindingReturnType: 'longLong', lingCppReturnType: '长整数型' },
+    { name: '到小数', signature: '到小数(文本)', bindingReturnType: 'double', lingCppReturnType: '小数型' },
+    { name: '到单精度小数', signature: '到单精度小数(文本)', bindingReturnType: 'float', lingCppReturnType: '单精度小数型' },
+    { name: '到逻辑', signature: '到逻辑(文本)', bindingReturnType: 'bool', lingCppReturnType: '逻辑型' }
+  ];
+
+  for (const conversion of conversions) {
+    const contribution = (manifest.contributes?.commands || []).find(command => command.name === conversion.name);
+    const binding = (manifest.bindings?.commands || []).find(item => item.command === conversion.name);
+    assert.ok(contribution, `缺少命令清单：${conversion.name}`);
+    assert.ok(binding, `缺少 binding：${conversion.name}`);
+    assert.equal(contribution.signature, conversion.signature);
+    assert.equal(contribution.returnType, conversion.lingCppReturnType);
+    assert.equal(binding.returnType, conversion.bindingReturnType);
+    // 入参口径与 到整数 完全一致：单个 wideString，既不做控件引用也不做数值重载。
+    assert.deepEqual(binding.parameters?.map(parameter => parameter.type), ['wideString']);
+    assert.equal(binding.parameters?.[0]?.name, '文本');
+    assert.ok((binding.parameters?.[0]?.description || '').trim(), `${conversion.name} 参数缺少中文说明`);
+    // 失败降级语义必须写进中文 description，不能只靠运行时行为。
+    assert.match(contribution.description, /(空文本|无法转换)/u, `${conversion.name} 未说明失败降级语义`);
+    assert.match(contribution.description, /返回 0|返回假/u, `${conversion.name} 未说明返回值`);
+    // 类型系统按 binding 推断返回类型，保证 "局部 长整数型 值 = 到长整数(文本)" 这类赋值不被误判。
+    assert.equal(
+      inferLingCppExpressionType(`${conversion.name}("")`, new Map(), moduleContext),
+      conversion.lingCppReturnType
+    );
+  }
+
+  // 到逻辑 的两条分支必须在说明里写清，避免 AI 与用户按 到整数 的 "非零数值" 直觉误用。
+  const logicDescription = (manifest.contributes?.commands || []).find(command => command.name === '到逻辑')!.description;
+  assert.match(logicDescription, /假/u);
+  assert.match(logicDescription, /真/u);
+  assert.doesNotMatch(logicDescription, /返回 0/u);
+
+  // 补全：四条命令都经统一补全目录生成全拼与拼音首字母检索键，与 到整数 同格式。
+  const labels = getBeginnerModuleCodeCompletions(moduleContext).map(item => item.label);
+  for (const conversion of conversions) {
+    assert.ok(labels.includes(conversion.name), `补全缺少 ${conversion.name}`);
+  }
+  assert.ok(getLingCppCompletions({ source: '', line: 1, column: 4, triggerText: 'dczs' }, moduleContext)
+    .some(item => item.label === '到长整数'));
+  assert.ok(getLingCppCompletions({ source: '', line: 1, column: 4, triggerText: 'dlj' }, moduleContext)
+    .some(item => item.label === '到逻辑'));
+
+  // 返回到数值类型后仍按整数族/小数族/逻辑族参与类型判定，与 到整数 的宽松边界一致；
+  // 但文本参数不接受整数实参（不自动补 到文本），这条边界必须与 到整数 保持同一口径。
+  assert.equal(areLingCppTypesCompatible('长整数型', '整数型'), true);
+  assert.equal(areLingCppTypesCompatible('小数型', '整数型'), true);
+  assert.equal(areLingCppTypesCompatible('文本型', '整数型'), false);
+  assert.equal(areLingCppTypesCompatible('逻辑型', '整数型'), false);
+});
+
 test('generateLingCppNativeWin32Project emits module dependency report', () => {
   const module: InstalledModule = {
     ...createTestModule(),
@@ -4117,7 +4243,7 @@ test('EdgeView 安全 API 目录、binding、处理器补全和运行时符号�
   assert.deepEqual(validateEdgeViewApiCatalog(), []);
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
   assert.ok(manifest);
-  assert.equal(manifest.version, '1.5.0');
+  assert.equal(manifest.version, '1.6.0');
   assert.equal(manifest.minLingBuilderVersion, '0.2.7');
   const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
   const bindings = new Map(manifest.bindings?.commands?.map(binding => [binding.command, binding]));
@@ -4144,7 +4270,7 @@ test('EdgeView 1.4.0 多店铺弹窗与实例编号寻址命令进入清单、�
     'EdgeView_置实例可见', 'EdgeView_置实例大小', 'EdgeView_取实例大小JSON', 'EdgeView_置实例标题',
     'EdgeView设置_置用户代理实例', 'EdgeView设置_取用户代理实例',
     'EdgeView会话_批量置Cookie实例', 'EdgeView会话_置Cookie带属性实例', 'EdgeView会话_删除全部Cookie实例',
-    'EdgeView会话_取Cookie实例异步', 'EdgeView会话_清理全部浏览数据实例异步'
+    'EdgeView会话_取Cookie实例异步', 'EdgeView会话_清理全部浏览数据实例异步', 'EdgeView_置区域位置'
   ];
   for (const name of newCommands) {
     assert.ok(contributions.has(name), `缺少 contribution：${name}`);
@@ -4177,6 +4303,7 @@ test('EdgeView 1.4.0 多店铺弹窗与实例编号寻址命令进入清单、�
       '    EdgeView_置实例大小(1, 1200, 800)',
       '    EdgeView_置实例标题(1, "StoreB")',
       '    EdgeView_关闭全部实例()',
+      '    EdgeView_置区域位置(1, 0, 54, 800, 546)',
       '  结束',
       '结束类'
     ].join('\n')
@@ -4198,6 +4325,36 @@ test('EdgeView 1.4.0 多店铺弹窗与实例编号寻址命令进入清单、�
   assert.ok(mainCpp.includes('EdgeView_创建弹窗浏览器(1, L"StoreA", 1000, 720, L"https://example.com", L".edgeview/cache-1", L"Mozilla/5.0");'));
   assert.ok(mainCpp.includes('EdgeView_创建弹窗浏览器代理(2, L"StoreB", 1000, 720, L"https://example.org", L".edgeview/cache-2", L"Mozilla/5.0", L"http://127.0.0.1:7890");'));
   assert.ok(mainCpp.includes('EdgeView_关闭全部实例();'));
+  assert.ok(mainCpp.includes('int EdgeView_置区域位置(int instanceId'), '缺少 置区域位置 运行时定义');
+  assert.ok(mainCpp.includes('EdgeView_置区域位置(1, 0, 54,'), '缺少 置区域位置 调用点');
+  // 区域缩放白屏修复：窗口 WM_SIZE 只自动拉伸创建时铺满窗口的区域实例。
+  assert.ok(mainCpp.includes('!instance->autoStretch'), '调整全部大小 缺少 autoStretch 过滤');
+  assert.ok(mainCpp.includes('created->autoStretch'), '创建区域 未登记创建时是否铺满窗口');
+});
+
+test('窗口级事件按 _类名_事件 常规命名自动接线（大小被改变驱动区域缩放）', () => {
+  const edgeview = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+  const basic = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic');
+  assert.ok(edgeview && basic);
+  const toInstalled = (manifest: typeof edgeview): InstalledModule => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] });
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [toInstalled(edgeview), toInstalled(basic)],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '  事件 _MainWindow_创建完毕()',
+      '    EdgeView_创建区域(1, 0, 54, 800, 546, "https://example.com", ".edgeview/cache-1")',
+      '  结束',
+      '  事件 _MainWindow_大小被改变()',
+      '    EdgeView_置区域位置(1, 0, 54, 窗口_取事件宽度(), 窗口_取事件高度() - 54)',
+      '  结束',
+      '结束类'
+    ].join('\n')
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // 事件表（GetWindowEventHandler 查询侧）与派发表（调用侧）必须同时接线，缺一处就是死接线。
+  assert.ok(mainCpp.includes('SizeChanged=_MainWindow_大小被改变'), '窗口事件表缺少 SizeChanged 常规命名接线');
+  assert.ok(mainCpp.includes('if (handler == L"_MainWindow_大小被改变")'), '窗口事件派发表缺少常规命名分支');
+  assert.ok(mainCpp.includes('窗口_取事件宽度()'), '大小被改变 处理器体未被生成');
 });
 
 test('CEF3 与 FBro 多店铺能力：弹窗/枚举/关闭全部/实例代理进入清单、绑定与生成 C++', () => {
@@ -4292,6 +4449,11 @@ test('EdgeView 导出路径、响应正文时效、回调内同步等待与控�
   assert.match(runtime, /https:\/\/go\.microsoft\.com\/fwlink\/p\/\?LinkId=2124701/u);
   assert.match(runtime, /https:\/\/developer\.microsoft\.com\/microsoft-edge\/webview2/u);
   assert.equal((runtime.match(/LINGBUILDER_EDGEVIEW_RUNTIME_DOWNLOAD_HINT/gu) || []).length, 3, '下载地址常量定义一次，命令不可用与启动被阻止两处提示都要消费');
+  // 缺 SDK 的空实现（#else 桩）必须与「Runtime 版本不足」区分开：装 Runtime 解决不了缺 SDK（实踩 2026-09-23）。
+  assert.match(runtime, /EdgeView 命令未编译进本程序：/u);
+  assert.match(runtime, /本程序构建时缺少 WebView2 SDK（Microsoft\.Web\.WebView2 1\.0\.4078\.44）/u);
+  assert.match(runtime, /这与电脑已安装的 WebView2 Runtime 版本无关/u);
+  assert.equal((runtime.match(/EdgeView_报告未编译\(/gu) || []).length, EDGEVIEW_SAFE_API_CATALOG.length + 1, '每个桩命令都要走未编译提示，提示函数定义一次');
 
   const module: InstalledModule = {
     manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
@@ -4712,7 +4874,7 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
   assert.ok(mainCpp.includes('WSS_配置服务(服务, L"127.0.0.1", 18080, 128);'));
   assert.ok(mainCpp.includes('WSS_绑定消息处理器(服务, L"收到消息");'));
   assert.ok(mainCpp.includes('std::wstring(LingCppWideArg(WSS_取当前消息类型()))==LingCppWideArg(L"文本")'));
-  assert.ok(mainCpp.includes('WSS_发送文本给客户端(WSS_取当前客户端(), WSS_取当前文本());'));
+  assert.ok(mainCpp.includes('WSS_发送文本给客户端(WSS_取当前客户端(), LingCppWideArg(WSS_取当前文本()));'), 'wideString 形参的调用实参统一经 LingCppWideArg 归一');
   assert.ok(moduleReport.includes('HTTP 服务端模块'));
   assert.ok(moduleReport.includes('WebSocket 服务端模块'));
   assert.ok(moduleReport.includes('ws2_32.lib'));
@@ -4830,6 +4992,7 @@ test('EdgeView native dependencies reject an arbitrary latest NuGet cache versio
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-edgeview-sdk-'));
   const previousNugetPackages = process.env.NUGET_PACKAGES;
   const previousUserProfile = process.env.USERPROFILE;
+  const previousExplicitSdkRoot = process.env.LINGBUILDER_WEBVIEW2_SDK_ROOT;
   try {
     const packageRoot = path.join(tempRoot, 'packages', 'microsoft.web.webview2', '1.0.9999.1', 'build', 'native');
     await fs.mkdir(path.join(packageRoot, 'include'), { recursive: true });
@@ -4841,6 +5004,7 @@ test('EdgeView native dependencies reject an arbitrary latest NuGet cache versio
     await fs.writeFile(path.join(packageRoot, 'x64', 'WebView2Loader.dll'), Buffer.from([4, 5, 6, 7]));
     process.env.NUGET_PACKAGES = path.join(tempRoot, 'packages');
     process.env.USERPROFILE = tempRoot;
+    if (previousExplicitSdkRoot === undefined) delete process.env.LINGBUILDER_WEBVIEW2_SDK_ROOT;
     const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
     assert.ok(manifest);
     const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, diagnostics: [] };
@@ -4852,6 +5016,8 @@ test('EdgeView native dependencies reject an arbitrary latest NuGet cache versio
       preferredTargetId: 'windows-msvc-win32'
     });
     assert.ok(plan.diagnostics.some(item => item.includes('固定版本 Microsoft.Web.WebView2 1.0.4078.44')));
+    // 缺 SDK 必须阻断构建，不能静默生成 EdgeView 空实现程序。
+    assert.ok(plan.blockingDiagnostics.some(item => item.includes('固定版本 Microsoft.Web.WebView2 1.0.4078.44')));
     assert.equal(plan.includeDirs.some(item => item.endsWith(path.join('lingbuilder.edgeview', 'include'))), false);
     assert.equal(await exists(path.join(tempRoot, 'bin', 'WebView2Loader.dll')), false);
   } finally {
@@ -4859,6 +5025,43 @@ test('EdgeView native dependencies reject an arbitrary latest NuGet cache versio
     else process.env.NUGET_PACKAGES = previousNugetPackages;
     if (previousUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = previousUserProfile;
+    if (previousExplicitSdkRoot === undefined) delete process.env.LINGBUILDER_WEBVIEW2_SDK_ROOT;
+    else process.env.LINGBUILDER_WEBVIEW2_SDK_ROOT = previousExplicitSdkRoot;
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('WebView2 SDK locator resolves environment root, packaged copy, then NuGet cache', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-webview2-locator-'));
+  try {
+    const makePackage = async (root: string) => {
+      const header = path.join(root, 'microsoft.web.webview2', EDGEVIEW_WEBVIEW2_SDK_VERSION, 'build', 'native', 'include');
+      await fs.mkdir(header, { recursive: true });
+      await fs.writeFile(path.join(header, 'WebView2.h'), '// header', 'utf8');
+    };
+    const resourcesRoot = path.join(tempRoot, 'resources');
+    const packagedRoot = path.join(resourcesRoot, 'third_party', 'webview2');
+    const nugetRoot = path.join(tempRoot, 'nuget');
+    await makePackage(packagedRoot);
+    await makePackage(nugetRoot);
+
+    assert.equal(locateWebView2SdkPackage({ environment: {}, resourcesPath: null }), null);
+
+    const packaged = locateWebView2SdkPackage({ environment: {}, resourcesPath: resourcesRoot });
+    assert.ok(packaged);
+    assert.equal(packaged.source, 'packaged');
+    assert.equal(packaged.packageRoot, path.join(packagedRoot, 'microsoft.web.webview2', EDGEVIEW_WEBVIEW2_SDK_VERSION));
+
+    const explicit = locateWebView2SdkPackage({ environment: { LINGBUILDER_WEBVIEW2_SDK_ROOT: nugetRoot }, resourcesPath: resourcesRoot });
+    assert.ok(explicit);
+    assert.equal(explicit.source, 'environment');
+    assert.equal(explicit.packageRoot, path.join(nugetRoot, 'microsoft.web.webview2', EDGEVIEW_WEBVIEW2_SDK_VERSION));
+
+    const cache = locateWebView2SdkPackage({ environment: { NUGET_PACKAGES: nugetRoot }, resourcesPath: null });
+    assert.ok(cache);
+    assert.equal(cache.source, 'nuget-cache');
+    assert.equal(cache.packageRoot, path.join(nugetRoot, 'microsoft.web.webview2', EDGEVIEW_WEBVIEW2_SDK_VERSION));
+  } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
@@ -7640,6 +7843,13 @@ test('module manager opens the viewport-level module detail page shared by the s
   assert.match(publicInfoSource, /\{ id: 'constants', label: '常量' \}/u);
   assert.match(publicInfoSource, /contributes\.examples \|\| \[\]/u);
   assert.match(publicInfoSource, /\{ id: 'examples', label: '示例' \}/u);
+  // 随包例程（module-demos）在「示例」分组补可运行例程条目：清单 examples 与例程共存。
+  assert.match(publicInfoSource, /bundledDemoModuleIds\?\.has\(manifest\.id\)/u);
+  assert.match(publicInfoSource, /demoModuleId: manifest\.id/u);
+  assert.match(detailPageSource, /fetchBundledDemoModuleIds/u);
+  assert.match(detailPageSource, /function ModuleDemoDetailCard/u);
+  assert.match(detailPageSource, /在新 IDE 窗口打开/u);
+  assert.match(detailPageSource, /item\.demoModuleId \? '随 IDE 分发的例程工作区'/u);
   // 详情页必须保留家族功能域面板、接口树与文档预览（与旧弹窗同一交互能力）。
   assert.match(detailPageSource, /\{family\?\.displayName \|\| '模块'\} 功能范围/u);
   assert.match(detailPageSource, /禁用\$\{feature\.label\}/u);
