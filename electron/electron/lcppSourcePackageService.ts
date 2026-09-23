@@ -203,6 +203,9 @@ export class LcppSourcePackageService {
         }
         await this.copyRequiredProjectPath(project.configRoot, stagedWorkspace, budget, false);
         await this.copyRequiredProjectPath(project.designerPath, stagedWorkspace, budget, false);
+        for (const embeddedFile of await readDesignerEmbeddedSiteFiles(this.workspaceRoot, project.designerPath)) {
+          await this.copyRequiredProjectPath(embeddedFile, stagedWorkspace, budget, true);
+        }
         const assetRoot = project.isDefault ? 'assets' : `assets/${safePathSegment(project.id)}`;
         await this.copyRequiredProjectPath(assetRoot, stagedWorkspace, budget, false);
 
@@ -598,6 +601,36 @@ async function copyTree(
   budget.copiedPaths.set(relativeDestination.toLowerCase(), source);
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.copyFile(source, destination);
+}
+
+// 内嵌站点（embeddedSite）引用的网页文件位于源码目录之外，不随包分发会导致
+// 收包方构建报「内嵌站点文件不存在」；按设计器模型清单逐个带上。
+async function readDesignerEmbeddedSiteFiles(workspaceRoot: string, designerPath: string): Promise<string[]> {
+  const designerLocation = resolveWithin(workspaceRoot, normalizeRelativePath(designerPath));
+  let designerContent: string;
+  try {
+    designerContent = await fs.readFile(designerLocation, 'utf8');
+  } catch {
+    return [];
+  }
+  let designer: { windows?: Array<{ embeddedSite?: { entry?: unknown; files?: unknown } }> };
+  try {
+    designer = JSON.parse(designerContent);
+  } catch {
+    return [];
+  }
+  const files = new Set<string>();
+  for (const window of Array.isArray(designer?.windows) ? designer.windows : []) {
+    const site = window?.embeddedSite;
+    if (!site || typeof site !== 'object') continue;
+    if (typeof site.entry === 'string' && site.entry.trim()) files.add(normalizeRelativePath(site.entry));
+    if (Array.isArray(site.files)) {
+      for (const file of site.files) {
+        if (typeof file === 'string' && file.trim()) files.add(normalizeRelativePath(file));
+      }
+    }
+  }
+  return [...files];
 }
 
 async function describeFiles(root: string): Promise<LcppSourcePackageFile[]> {

@@ -203,7 +203,7 @@ interface SidebarProps {
   onSetStartupProject?: (projectId: string) => void | Promise<void>;
   onConfigureProjectReferences?: (projectId: string) => void | Promise<void>;
   onToggleMultiStartupProject?: (projectId: string) => void | Promise<void>;
-  onConfigureExternalProject?: (projectId: string) => void | Promise<void>;
+  onConfigureBuildProperties?: (projectId: string) => void | Promise<void>;
   onConfigureBuildPaths?: (projectId: string) => void | Promise<void>;
   onConfigureEmbeddedResources?: (projectId: string) => void | Promise<void>;
   onDeleteProject?: (projectId: string, deleteFiles: boolean) => void | Promise<void>;
@@ -256,7 +256,7 @@ export default function Sidebar({
   onSetStartupProject,
   onConfigureProjectReferences,
   onToggleMultiStartupProject,
-  onConfigureExternalProject,
+  onConfigureBuildProperties,
   onConfigureBuildPaths,
   onConfigureEmbeddedResources,
   onDeleteProject,
@@ -1334,10 +1334,10 @@ export default function Sidebar({
               <Link className="w-3.5 h-3.5 text-violet-400" />
               <span>配置项目引用…</span>
             </div>
-            {project.type !== 'visual-cpp' && <div className={menuItemClass} onClick={() => void onConfigureExternalProject?.(project.id)}>
+            <div className={menuItemClass} onClick={() => void onConfigureBuildProperties?.(project.id)}>
               <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
               <span>构建属性…</span>
-            </div>}
+            </div>
             <div className={menuItemClass} onClick={() => void onConfigureBuildPaths?.(project.id)}>
               <FolderOutput className="w-3.5 h-3.5 text-emerald-400" />
               <span>构建目录…</span>

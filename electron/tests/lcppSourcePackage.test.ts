@@ -91,6 +91,34 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   assert.ok(await exists(imported.solutionEntryPath));
 });
 
+test('LCPP 源码包会随包携带内嵌站点（embeddedSite）网页文件', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lcpp-embedded-site-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), '包 内嵌站点示例\n使用 Win32窗口基础模块\n\n类 MainWindow : 窗口\n  事件 _MainWindow_创建完毕()\n    调试输出("内嵌站点")\n  结束\n结束类\n', 'utf8');
+  const designerPath = path.join(workspace, '.lingbuilder', 'window-designer.json');
+  const designer = JSON.parse(await fs.readFile(designerPath, 'utf8'));
+  designer.windows = [{
+    ...(Array.isArray(designer.windows) && designer.windows[0] ? designer.windows[0] : { id: 'main-window', className: 'MainWindow', title: '内嵌站点示例' }),
+    embeddedSite: { host: 'demo.local', entry: 'www/index.html', files: ['www/index.html'] }
+  }];
+  await fs.writeFile(designerPath, JSON.stringify(designer, null, 2), 'utf8');
+  const pageSource = '<!DOCTYPE html><html lang="zh-CN"><body>内嵌站点页面</body></html>';
+  await fs.mkdir(path.join(workspace, 'www'), { recursive: true });
+  await fs.writeFile(path.join(workspace, 'www', 'index.html'), pageSource, 'utf8');
+
+  const packagePath = path.join(root, '内嵌站点示例.lcpppkg');
+  const service = createLcppSourcePackageService(workspace);
+  const exported = await service.exportProject(DEFAULT_PROJECT_ID, packagePath, '0.2.0-test');
+  assert.equal(exported.ok, true);
+  assert.ok(exported.manifest.files.some(file => file.path === 'www/index.html'), '导出清单应包含 www/index.html');
+
+  const imported = await service.importPackage(packagePath, path.join(root, 'imports'));
+  assert.equal(await fs.readFile(path.join(imported.workspacePath, 'www', 'index.html'), 'utf8'), pageSource);
+});
+
 test('LCPP 源码包会记录 ListView 高级 API 所需生成器能力', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lcpp-capability-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

@@ -1,0 +1,135 @@
+{
+ "dir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\EdgeView 浏览器模块合集\\21 下载·打印·查找收尾\\示例项目",
+ "id": "edgeview-ep21-download-print-find",
+ "title": "EdgeView 下载·打印·查找收尾",
+ "lbsln": "EdgeView下载打印查找示例.lbsln",
+ "pageH": 880,
+ "buttons": [
+  {
+   "id": "b1",
+   "name": "开始下载按钮",
+   "content": "1 开始下载",
+   "row": 0,
+   "col": 0,
+   "bg": "blue",
+   "event": "_开始下载按钮_被单击"
+  },
+  {
+   "id": "b2",
+   "name": "暂停按钮",
+   "content": "2 下载暂停",
+   "row": 0,
+   "col": 1,
+   "bg": "blue",
+   "event": "_暂停按钮_被单击"
+  },
+  {
+   "id": "b3",
+   "name": "恢复按钮",
+   "content": "3 下载恢复",
+   "row": 1,
+   "col": 0,
+   "bg": "blue",
+   "event": "_恢复按钮_被单击"
+  },
+  {
+   "id": "b4",
+   "name": "取消下载按钮",
+   "content": "4 下载取消",
+   "row": 1,
+   "col": 1,
+   "bg": "red",
+   "event": "_取消下载按钮_被单击"
+  },
+  {
+   "id": "b5",
+   "name": "下载状态按钮",
+   "content": "5 下载状态JSON",
+   "row": 2,
+   "col": 0,
+   "bg": "teal",
+   "event": "_下载状态按钮_被单击"
+  },
+  {
+   "id": "b6",
+   "name": "显示窗口按钮",
+   "content": "6 显示默认窗口",
+   "row": 2,
+   "col": 1,
+   "bg": "blue",
+   "event": "_显示窗口按钮_被单击"
+  },
+  {
+   "id": "b7",
+   "name": "关闭窗口按钮",
+   "content": "7 关闭默认窗口",
+   "row": 3,
+   "col": 0,
+   "bg": "blue",
+   "event": "_关闭窗口按钮_被单击"
+  },
+  {
+   "id": "b8",
+   "name": "窗口边距按钮",
+   "content": "8 窗口边距 置/取",
+   "row": 3,
+   "col": 1,
+   "bg": "blue",
+   "event": "_窗口边距按钮_被单击"
+  },
+  {
+   "id": "b9",
+   "name": "角对齐按钮",
+   "content": "9 角对齐 置/取",
+   "row": 4,
+   "col": 0,
+   "bg": "blue",
+   "event": "_角对齐按钮_被单击"
+  },
+  {
+   "id": "b10",
+   "name": "打印按钮",
+   "content": "10 静默打印",
+   "row": 4,
+   "col": 1,
+   "bg": "violet",
+   "event": "_打印按钮_被单击"
+  },
+  {
+   "id": "b11",
+   "name": "PDF流按钮",
+   "content": "11 PDF流到文件",
+   "row": 5,
+   "col": 0,
+   "bg": "violet",
+   "event": "_PDF流按钮_被单击"
+  },
+  {
+   "id": "b12",
+   "name": "查找上一项按钮",
+   "content": "12 查找「下载」+上一项",
+   "row": 5,
+   "col": 1,
+   "bg": "gray",
+   "event": "_查找上一项按钮_被单击"
+  },
+  {
+   "id": "b13",
+   "name": "全屏音频按钮",
+   "content": "13 全屏/音频状态",
+   "row": 6,
+   "col": 0,
+   "bg": "gray",
+   "event": "_全屏音频按钮_被单击"
+  },
+  {
+   "id": "b14",
+   "name": "取消任务按钮",
+   "content": "14 任务取消演示",
+   "row": 6,
+   "col": 1,
+   "bg": "gray",
+   "event": "_取消任务按钮_被单击"
+  }
+ ]
+}

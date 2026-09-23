@@ -66,6 +66,7 @@ import BottomPanel from './components/BottomPanel';
 import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
 import ProjectBuildPathsDialog, { type ProjectBuildPathsDialogValue } from './components/ProjectBuildPathsDialog';
+import ProjectBuildPropertiesDialog, { type ProjectBuildPropertiesDialogValue } from './components/ProjectBuildPropertiesDialog';
 import EmbeddedResourcesDialog from './components/EmbeddedResourcesDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
@@ -577,7 +578,8 @@ export default function App() {
   const activeProjectHasWindowDesigner = activeSolutionProject.type === 'visual-cpp';
   const activeProjectId = activeSolutionProject.id;
   // 动态库输出项目没有运行入口：F5「生成并运行」禁用，编译走「生成」/「生成解决方案」。
-  const activeProjectIsDllOutput = activeSolutionProject.buildProperties?.outputType === 'dll';
+  // 兼容两种来源：windows-dll 模板项目（旧版本创建时未写 outputType）与显式 outputType: 'dll' 的项目。
+  const activeProjectIsDllOutput = activeSolutionProject.type === 'windows-dll' || activeSolutionProject.buildProperties?.outputType === 'dll';
   const textModelWorkspaceId = solution.id || DEFAULT_SOLUTION.id;
   const textModelIdentity = (projectId: string, filePath: string): TextModelIdentity => ({
     workspaceId: textModelWorkspaceId,
@@ -1287,6 +1289,15 @@ export default function App() {
   const [embeddedResourcesDialog, setEmbeddedResourcesDialog] = useState<{ projectId: string; projectName: string } | null>(null);
   const [projectBuildPathsBusy, setProjectBuildPathsBusy] = useState(false);
   const [projectBuildPathsError, setProjectBuildPathsError] = useState<string>('');
+  // 「构建属性…」对话框：展示项目类型（EXE/DLL/控制台/模块/外部工程），非窗口项目可改构建配置。
+  const [projectBuildPropertiesState, setProjectBuildPropertiesState] = useState<{
+    projectId: string; projectName: string; projectType: string;
+    outputType?: 'exe' | 'dll'; editable: boolean; workspaceEffectiveLabel?: string;
+    linkedModule?: { id: string; name: string };
+    initialValue: ProjectBuildPropertiesDialogValue;
+  } | null>(null);
+  const [projectBuildPropertiesBusy, setProjectBuildPropertiesBusy] = useState(false);
+  const [projectBuildPropertiesError, setProjectBuildPropertiesError] = useState<string>('');
   const [showEnvironmentRepairCenter, setShowEnvironmentRepairCenter] = useState(false);
   const [showCliGuide, setShowCliGuide] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
@@ -5008,6 +5019,9 @@ void DisplayStatus() {
         configuration: existingProperties?.configuration || buildConfiguration.mode,
         architecture: existingProperties?.architecture || buildConfiguration.architecture,
         additionalArguments: existingProperties?.additionalArguments || [],
+        // buildProperties 是整体替换：重述全部既有字段，避免「构建目录」保存一次抹掉它们。
+        ...(existingProperties?.outputType ? { outputType: existingProperties.outputType } : {}),
+        ...(existingProperties?.requireAdministrator !== undefined ? { requireAdministrator: existingProperties.requireAdministrator } : {}),
         ...(value.projectBuildDirectory.trim() ? { buildDirectory: value.projectBuildDirectory.trim() } : {}),
         ...(value.projectGeneratedSourceDirectory.trim() ? { generatedSourceDirectory: value.projectGeneratedSourceDirectory.trim() } : {}),
         ...(value.projectExecutableName.trim() ? { executableName: value.projectExecutableName.trim() } : {})
@@ -5024,26 +5038,69 @@ void DisplayStatus() {
     }
   }, [appendSolutionLogs, buildConfiguration, projectBuildPathsState, solution]);
 
-  const handleConfigureExternalProject = useCallback(async (projectId: string) => {
-    const project = solution.projects.find(item => item.id === projectId); if (!project?.buildProperties) return;
-    const mode = await requestWorkbenchPrompt({ title: '构建模式', description: 'Debug 或 Release', inputLabel: '构建模式', inputValue: project.buildProperties.configuration });
-    if (mode !== 'Debug' && mode !== 'Release') return;
-    const architecture = await requestWorkbenchPrompt({ title: '构建架构', description: 'Win32 或 x64', inputLabel: '构建架构', inputValue: project.buildProperties.architecture });
-    if (architecture !== 'Win32' && architecture !== 'x64') return;
-    const args = await requestWorkbenchPrompt({ title: '附加参数', description: '用空格分隔，可留空', inputLabel: '附加参数', inputValue: project.buildProperties.additionalArguments.join(' ') });
-    if (args === null) return;
-    const result = await configureSolutionProject(projectId, {
-      buildProperties: {
-        configuration: mode,
-        architecture,
-        additionalArguments: args.split(/\s+/u).filter(Boolean),
-        // 保留在「构建目录…」对话框里设置的目录覆盖，避免旧入口保存时把它们清掉。
-        buildDirectory: project.buildProperties.buildDirectory,
-        generatedSourceDirectory: project.buildProperties.generatedSourceDirectory
+  /** 「构建属性…」对话框：所有项目类型可查看类型说明（EXE/DLL/控制台/模块/外部工程）；非窗口项目可改构建配置。 */
+  const openProjectBuildPropertiesDialog = useCallback((projectId?: string) => {
+    const targetId = projectId || solution.startupProjectIds?.[0] || solution.startupProjectId || solution.projects[0]?.id;
+    const project = solution.projects.find(item => item.id === targetId);
+    if (!project) return;
+    // 窗口项目（visual-cpp）的模式/架构由工作区构建配置统一决定，对话框只读展示；其余项目写入自身 buildProperties。
+    const editable = project.type !== 'visual-cpp';
+    let linkedModule: { id: string; name: string } | undefined;
+    if (currentWorkspacePath) {
+      const projectDirName = getSolutionProjectDirectory(project);
+      const projectDirAbsolute = projectDirName && projectDirName !== '.'
+        ? `${currentWorkspacePath.replace(/[\\/]+$/g, '')}/${projectDirName}`.replace(/\\/gu, '/')
+        : currentWorkspacePath;
+      const devLinkModule = serverModuleContext.availableModules.find(module =>
+        module.isDevLink && module.installPath && isPathInsideWorkspace(module.installPath, projectDirAbsolute));
+      if (devLinkModule) linkedModule = { id: devLinkModule.manifest.id, name: devLinkModule.manifest.name };
+    }
+    setProjectBuildPropertiesError('');
+    setProjectBuildPropertiesState({
+      projectId: project.id,
+      projectName: project.name,
+      projectType: project.type,
+      outputType: project.buildProperties?.outputType,
+      editable,
+      workspaceEffectiveLabel: `${buildConfiguration.mode} · ${buildConfiguration.architecture}（跟随工作区构建配置）`,
+      linkedModule,
+      initialValue: {
+        configuration: project.buildProperties?.configuration || buildConfiguration.mode,
+        architecture: project.buildProperties?.architecture || buildConfiguration.architecture,
+        additionalArgumentsText: (project.buildProperties?.additionalArguments || []).join(' ')
       }
     });
-    appendSolutionLogs('更新外部工程属性', result); if (result.solution) setSolution(result.solution);
-  }, [appendSolutionLogs, solution]);
+  }, [buildConfiguration, currentWorkspacePath, serverModuleContext, solution]);
+
+  const handleSaveProjectBuildProperties = useCallback(async (value: ProjectBuildPropertiesDialogValue) => {
+    if (!projectBuildPropertiesState?.editable) return;
+    setProjectBuildPropertiesBusy(true);
+    setProjectBuildPropertiesError('');
+    try {
+      const project = solution.projects.find(item => item.id === projectBuildPropertiesState.projectId);
+      const existing = project?.buildProperties;
+      const nextProperties = {
+        configuration: value.configuration,
+        architecture: value.architecture,
+        additionalArguments: value.additionalArgumentsText.split(/\s+/u).filter(Boolean),
+        // buildProperties 是整体替换：必须重述其它入口维护的字段，保存一次不能抹掉它们。
+        ...(existing?.outputType ? { outputType: existing.outputType } : {}),
+        ...(existing?.executableName ? { executableName: existing.executableName } : {}),
+        ...(existing?.requireAdministrator !== undefined ? { requireAdministrator: existing.requireAdministrator } : {}),
+        ...(existing?.buildDirectory ? { buildDirectory: existing.buildDirectory } : {}),
+        ...(existing?.generatedSourceDirectory ? { generatedSourceDirectory: existing.generatedSourceDirectory } : {})
+      };
+      const result = await configureSolutionProject(projectBuildPropertiesState.projectId, { buildProperties: nextProperties });
+      if (!result.ok) throw new Error(result.error || '保存项目构建属性失败。');
+      if (result.solution) setSolution(result.solution);
+      appendSolutionLogs('更新项目构建属性', result);
+      setProjectBuildPropertiesState(null);
+    } catch (error) {
+      setProjectBuildPropertiesError(error instanceof Error ? error.message : '保存项目构建属性失败。');
+    } finally {
+      setProjectBuildPropertiesBusy(false);
+    }
+  }, [appendSolutionLogs, projectBuildPropertiesState, solution]);
 
   const handleToggleMultiStartupProject = useCallback(async (projectId: string) => {
     const current = solution.startupProjectIds || [solution.startupProjectId];
@@ -5537,7 +5594,7 @@ void DisplayStatus() {
     'workbench.workspaceSearchOpen': Boolean(workspaceSearchMode),
     'editor.multipleGroups': editorGroupLayout.groups.length > 1,
     'workbench.blockingDialogOpen': blockingDialogOpen,
-    'workbench.modalOpen': showCommandPalette || showSettingsDialog || Boolean(projectBuildPathsState) || Boolean(embeddedResourcesDialog) || blockingDialogOpen,
+    'workbench.modalOpen': showCommandPalette || showSettingsDialog || Boolean(projectBuildPathsState) || Boolean(projectBuildPropertiesState) || Boolean(embeddedResourcesDialog) || blockingDialogOpen,
     'operation.saving': isSaving,
     'operation.building': isBuilding,
     'operation.busy': Boolean(editorOperationRef.current) || projectFilesLoading,
@@ -7581,7 +7638,7 @@ void DisplayStatus() {
           onSetStartupProject={handleSetStartupProject}
           onConfigureProjectReferences={handleConfigureProjectReferences}
           onToggleMultiStartupProject={handleToggleMultiStartupProject}
-          onConfigureExternalProject={handleConfigureExternalProject}
+          onConfigureBuildProperties={openProjectBuildPropertiesDialog}
           onConfigureBuildPaths={projectId => openProjectBuildPathsDialog(projectId)}
           onConfigureEmbeddedResources={projectId => { void executeWorkbenchCommand('workbench.action.project.configureEmbeddedResources', projectId); }}
           onDeleteProject={handleDeleteSolutionProject}
@@ -8021,6 +8078,22 @@ void DisplayStatus() {
         configuration={buildConfiguration.mode}
         onConfirm={handleSaveProjectBuildPaths}
         onClose={() => setProjectBuildPathsState(null)}
+      />
+
+      <ProjectBuildPropertiesDialog
+        open={Boolean(projectBuildPropertiesState)}
+        isDarkMode={isDarkMode}
+        busy={projectBuildPropertiesBusy}
+        error={projectBuildPropertiesError || undefined}
+        projectName={projectBuildPropertiesState?.projectName || ''}
+        projectType={projectBuildPropertiesState?.projectType || ''}
+        outputType={projectBuildPropertiesState?.outputType}
+        editable={projectBuildPropertiesState?.editable ?? false}
+        workspaceEffectiveLabel={projectBuildPropertiesState?.workspaceEffectiveLabel}
+        linkedModule={projectBuildPropertiesState?.linkedModule}
+        initialValue={projectBuildPropertiesState?.initialValue || { configuration: buildConfiguration.mode, architecture: buildConfiguration.architecture, additionalArgumentsText: '' }}
+        onConfirm={handleSaveProjectBuildProperties}
+        onClose={() => setProjectBuildPropertiesState(null)}
       />
 
       <EmbeddedResourcesDialog

@@ -61,6 +61,12 @@ export interface CreateSolutionProjectRequest {
   solutionName?: string;
   /** 项目源码目录，支持工作区相对路径或工作区内绝对路径；缺省为 src/<projectId>。 */
   projectDirectory?: string;
+  /**
+   * 可选：项目产物类型（exe 缺省 / dll）。仅窗口模板（kind windows-ui）接受 dll——把「公开」子程序
+   * 导出为 DLL 接口；windows-dll 模板本身就是动态库（显式传 exe 报错），控制台模板固定控制台程序、
+   * new_emoji 模板后端不支持 DLL 输出，两者传 dll 都会在创建前被中文报错拒绝。
+   */
+  outputType?: 'exe' | 'dll';
 }
 
 export type SolutionProjectTemplateId = 'blank-window' | 'hello-window' | 'sqlite-crud-window' | 'new-emoji-fbro-browser-shell' | 'windows-dll' | 'windows-console';
@@ -226,6 +232,7 @@ export class SolutionService {
       : '未命名解决方案';
     const projectName = validateProjectDisplayName((request.name || '新建项目').trim() || '新建项目', DEFAULT_PROJECT_ID, []);
     const template = getSolutionProjectTemplate(request.templateId);
+    const outputType = resolveCreatedProjectOutputType(template, request.outputType);
     const project: LingBuilderSolutionProject = {
       id: DEFAULT_PROJECT_ID,
       name: projectName,
@@ -235,8 +242,14 @@ export class SolutionService {
       designerPath: '.lingbuilder/window-designer.json',
       references: [],
       ...(template.kind === 'windows-dll' ? { projectFile: `src/${DEFAULT_PROJECT_ID}.vcxproj` } : {}),
-      ...(template.architecture ? {
-        buildProperties: { configuration: 'Debug', architecture: template.architecture, additionalArguments: [] }
+      ...(template.architecture || outputType ? {
+        buildProperties: {
+          configuration: 'Debug' as const,
+          architecture: template.architecture || 'Win32',
+          additionalArguments: [],
+          // DLL 项目创建即带 dll 输出类型：IDE 的 F5 禁用、「生成动态库」入口与服务端运行守卫都读它。
+          ...(outputType ? { outputType } : {})
+        }
       } : {})
     };
     const designerProject = template.kind === 'windows-dll'
@@ -720,6 +733,7 @@ export class SolutionService {
     const projectId = this.createUniqueProjectId(request.projectId || baseName, solution);
     const sourceRoot = this.resolveProjectSourceDirectory(request.projectDirectory, projectId);
     const template = getSolutionProjectTemplate(request.templateId);
+    const outputType = resolveCreatedProjectOutputType(template, request.outputType);
     const project: LingBuilderSolutionProject = {
       id: projectId,
       name: baseName,
@@ -729,8 +743,14 @@ export class SolutionService {
       designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
       references: [],
       ...(template.kind === 'windows-dll' ? { projectFile: path.posix.join(sourceRoot, `${projectId}.vcxproj`) } : {}),
-      ...(template.architecture ? {
-        buildProperties: { configuration: 'Debug', architecture: template.architecture, additionalArguments: [] }
+      ...(template.architecture || outputType ? {
+        buildProperties: {
+          configuration: 'Debug' as const,
+          architecture: template.architecture || 'Win32',
+          additionalArguments: [],
+          // 与独立工作区创建路径（createProjectWorkspace）保持同一口径：DLL 项目创建即带 dll 输出类型。
+          ...(outputType ? { outputType } : {})
+        }
       } : {})
     };
     const designerProject = template.kind === 'windows-dll'
@@ -807,6 +827,16 @@ export class SolutionService {
     const targetPath = this.solutionPath();
     if (!(await exists(targetPath))) return null;
     return JSON.parse(await fs.readFile(targetPath, 'utf8')) as LingBuilderSolution;
+  }
+
+  /**
+   * 只读读取解决方案：无 solution.json 时返回 null，绝不物化默认项目。
+   * workspace.list 的 projects[] 视图与单项目 projectHint 用它——那些是读接口，
+   * 走 getSolution() 会在空工作区悄悄创建 src/config 与默认项目。
+   */
+  async peekSolution(): Promise<LingBuilderSolution | null> {
+    const existing = await this.readSolutionFile();
+    return existing ? this.normalizeSolution(existing) : null;
   }
 
   private normalizeSolution(solution: LingBuilderSolution): LingBuilderSolution {
@@ -1764,6 +1794,22 @@ function getSolutionProjectTemplate(templateId?: string): SolutionProjectTemplat
   const template = SOLUTION_PROJECT_TEMPLATES.find(item => item.id === normalized);
   if (!template) throw new Error(`不支持的项目模板：${normalized}`);
   return template;
+}
+
+/**
+ * 校验创建请求的 outputType 与模板组合，返回应写入 buildProperties 的产物类型（undefined=缺省 exe）。
+ * 只有窗口模板接受 dll（把「公开」子程序导出为 DLL 接口）；windows-dll 模板本身即动态库，
+ * 控制台模板固定命令行程序、new_emoji 后端不支持 DLL 输出，冲突组合在创建前中文报错。
+ */
+function resolveCreatedProjectOutputType(template: SolutionProjectTemplate, outputType: 'exe' | 'dll' | undefined): 'dll' | undefined {
+  if (template.kind === 'windows-dll') {
+    if (outputType === 'exe') throw new Error('windows-dll 模板本身就是动态链接库，不能指定 outputType=exe；如需 EXE 应用请改用窗口或控制台模板。');
+    return 'dll';
+  }
+  if (outputType === undefined || outputType === 'exe') return undefined;
+  if (template.kind === 'windows-console') throw new Error('控制台项目不支持 DLL 输出：控制台模板固定编译为命令行可执行文件。');
+  if (template.id === 'new-emoji-fbro-browser-shell') throw new Error('new_emoji 原生界面后端不支持 DLL 输出，请改用普通 Win32 窗口模板再指定 outputType=dll。');
+  return 'dll';
 }
 
 function normalizeWindowTitle(value: string | undefined, fallback: string): string {

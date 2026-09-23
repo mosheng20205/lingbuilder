@@ -2600,7 +2600,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     try {
       const solutionForRunGuard = await getSolutionService().getSolution();
       const recordForRunGuard = solutionForRunGuard.projects.find(item => item.id === requestedProjectId);
-      if (recordForRunGuard?.buildProperties?.outputType === "dll") {
+      // 旧版本创建的 windows-dll 模板项目可能没有 outputType 字段，按项目类型一并拦截。
+      if (recordForRunGuard && (recordForRunGuard.type === "windows-dll" || recordForRunGuard.buildProperties?.outputType === "dll")) {
         return res.status(200).json({
           ok: false,
           stage: "run-unsupported",

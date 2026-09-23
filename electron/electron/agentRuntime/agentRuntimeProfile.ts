@@ -233,6 +233,12 @@ export async function writeAgentProfilePatch(profileDirectory: string, patchYaml
   const digest = crypto.createHash('sha256').update(patchYaml).digest('hex').slice(0, 12);
   const patchPath = path.join(profileDirectory, `lingbuilder-agent-${digest}.cordis.yml`);
   await fs.writeFile(patchPath, patchYaml.replace(/\n/gu, '\r\n'), 'utf8');
+  // 旧指纹的 overlay 只被「当时启动的那个 dsh 进程」在启动期读一次，留着就是永久垃圾；
+  // 全部清掉，只保留刚写入的这份。
+  const entries = await fs.readdir(profileDirectory).catch(() => [] as string[]);
+  await Promise.all(entries
+    .filter(name => name !== path.basename(patchPath) && /^lingbuilder-agent-[0-9a-f]{12}\.cordis\.yml$/iu.test(name))
+    .map(name => fs.rm(path.join(profileDirectory, name), { force: true }).catch(() => undefined)));
   return patchPath;
 }
 

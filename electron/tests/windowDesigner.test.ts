@@ -5361,6 +5361,74 @@ test('精简设计器模型缺少控件颜色字段时也能生成（手写/AI �
   assert.match(cpp, /RGB\(32, 32, 40\), false, RGB\(0, 0, 0\)/u);
 });
 
+test('归一化补齐 AI/外部工具生成控件缺失的注册表外观默认值（透明按钮回归）', () => {
+  // 回归：内嵌 Agent 生成的最小控件模型缺 background 等顶层键，画布把按钮整块画成透明。
+  // 归一化必须按 win32 注册表 defaultProps 补齐缺失键，与工具箱插入同语义。
+  const minimal = {
+    schemaVersion: 2 as const,
+    id: 'agent-minimal-model',
+    name: '智能体演示',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 900, height: 560, background: '#1f2937', description: '',
+      controls: [
+        // 完全没有外观键：background/foreground/content 全缺 → 补注册表默认。
+        { id: 'button1', name: '按钮1', type: 'Button', x: 40, y: 40, width: 120, height: 35, enabled: true, visible: true },
+        // 显式值不许被覆盖；空串文本是显式取值，不得回填「新按钮」。
+        { id: 'button2', name: '按钮2', type: 'Button', x: 40, y: 90, width: 120, height: 35, content: '', background: '#123456' }
+      ] as unknown as LingControl[]
+    }]
+  } satisfies LingWindowProject;
+  const state = normalizeWindowDesignerState({ project: minimal, activeWindowId: 'main-window' });
+  const controls = state.project.windows[0].controls;
+  const first = controls.find(control => control.id === 'button1') as unknown as Record<string, unknown>;
+  const second = controls.find(control => control.id === 'button2') as unknown as Record<string, unknown>;
+  assert.equal(first.background, '#007ACC', '缺失的 background 必须补注册表默认色（否则画布透明）');
+  assert.equal(first.foreground, '#FFFFFF', '缺失的 foreground 与 createControl 同口径补白');
+  assert.equal(first.isEnabled, true, 'Agent 模型的 enabled:true 必须映射为规范 isEnabled');
+  assert.equal(first.visibility, 'Visible', 'Agent 模型的 visible:true 必须映射为规范 visibility');
+  assert.equal(first.content, '新按钮');
+  assert.equal(second.background, '#123456', '显式颜色绝不覆盖');
+  assert.equal(second.content, '', '空串文本是显式取值，不得回填默认文本');
+
+  // 已经完整的模型不得被标记迁移（归一化幂等、不产生无谓写盘）。
+  const full = normalizeWindowDesignerState({ project: state.project, activeWindowId: 'main-window' });
+  assert.deepEqual(full.project, state.project);
+});
+
+test('常规命名事件两种写法都接线：无下划线的 按钮1_被单击 不再是死事件', () => {
+  // 回归：设计器自动命名惯例是 _控件名_被单击，但 AI/手写源码常写 控件名_被单击。
+  // 旧口径只认带下划线形态，导致点击事件静默丢失（exe 编译通过但点击无响应）。
+  const buildProject = (handlerName: string) => {
+    const project = {
+      schemaVersion: 2 as const,
+      id: 'conventional-wiring',
+      name: '接线口径',
+      windows: [{
+        id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+        width: 640, height: 480, background: '#202028', description: '',
+        controls: [
+          { id: 'button1', name: '按钮1', type: 'Button', x: 16, y: 48, width: 120, height: 32, content: '点我试试' }
+        ] as unknown as LingControl[]
+      }]
+    } satisfies LingWindowProject;
+    return generateLingCppNativeWin32Project(project, {
+      lingCppSourceCode: `类 MainWindow
+    整数型 点击次数 = 0
+    事件 ${handlerName}()
+        点击次数 = 点击次数+1
+    结束
+结束类
+`
+    }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  };
+
+  // 无下划线（AI/手写自然写法）必须接线。
+  assert.match(buildProject('按钮1_被单击'), /Click=按钮1_被单击/u);
+  // 带下划线（设计器自动命名惯例）继续接线。
+  assert.match(buildProject('_按钮1_被单击'), /Click=_按钮1_被单击/u);
+});
+
 test('事件代码定位优先选「声明窗口类的文件」，同名处理器散落多文件也不会跳错', () => {
   // 回归（2026-09-17 实测）：组件总览六标签页 工程里 MainWindow.lcpp 与 组件总览六标签页.lcpp
   // 都声明了 事件 创建完毕，而窗口类 演示窗口 只在后者中声明；旧顺序（处理器优先）会跳到

@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "未命名解决方案",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "dll-consumer-demo",
+  "startupProjectIds": [
+    "dll-consumer-demo"
+  ],
+  "folders": [
+    {
+      "id": "module-complete-demos",
+      "name": "模块完整演示"
+    }
+  ],
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "新建项目",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    },
+    {
+      "id": "dll-module-demo",
+      "name": "DLL模块演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/dll-module-demo/src",
+      "references": []
+    },
+    {
+      "id": "dll-lib-demo",
+      "name": "项目动态库演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/dll-lib-demo/src",
+      "references": []
+    },
+    {
+      "id": "dll-consumer-demo",
+      "name": "调用项目动态库演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/dll-consumer-demo/src",
+      "references": []
+    },
+    {
+      "id": "ne-table-align-demo",
+      "name": "NE表格设计器对齐验证",
+      "type": "visual-cpp",
+      "sourceRoot": "src/ne-table-align-demo",
+      "references": []
+    },
+    {
+      "id": "std-algo-wave1-demo",
+      "name": "标准算法第一波演示",
+      "type": "windows-console",
+      "sourceRoot": "examples/std-algo-wave1-demo/src",
+      "references": []
+    },
+    {
+      "id": "std-console-io-demo",
+      "name": "控制台模块演示",
+      "type": "windows-console",
+      "sourceRoot": "examples/std-console-io-demo/src",
+      "references": []
+    },
+    {
+      "id": "hotkey-printer-demo",
+      "name": "全局热键与打印机演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/hotkey-printer-demo/src",
+      "references": []
+    },
+    {
+      "id": "system-net-demo",
+      "name": "进程网络系统演示",
+      "type": "windows-console",
+      "sourceRoot": "examples/system-net-demo/src",
+      "references": []
+    },
+    {
+      "id": "mail-transport-demo",
+      "name": "邮件传输演示",
+      "type": "windows-console",
+      "sourceRoot": "examples/mail-transport-demo/src",
+      "references": []
+    },
+    {
+      "id": "emoji-tabs-gallery",
+      "name": "组件总览六标签页",
+      "type": "visual-cpp",
+      "sourceRoot": "AI 视频自主生产/进阶方案/组件总览六标签页/src",
+      "references": []
+    },
+    {
+      "id": "process-memory-scan-demo",
+      "name": "进程内存扫描演示",
+      "type": "windows-console",
+      "sourceRoot": "examples/process-memory-scan-demo/src",
+      "references": []
+    },
+    {
+      "id": "cef3-window-probe",
+      "name": "窗口探针",
+      "type": "visual-cpp",
+      "sourceRoot": "src/cef3-window-probe",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.http.server",
+      "name": "HTTP 服务端模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.http.server/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    }
+  ]
+}

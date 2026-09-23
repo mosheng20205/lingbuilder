@@ -81,7 +81,7 @@ import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getL
 import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppProjectGlobalContext, LingCppProjectTypeContext, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { getBeginnerLibraryCallAtCursor, getBeginnerProcedureCallAtCursor, resolveBeginnerFunctionLibraryDefinition, resolveBeginnerProcedureDefinition } from '../services/lingCpp/beginnerDefinitionNavigation';
-import { getBeginnerTextareaOffsetAtPoint } from '../services/lingCpp/beginnerTextPosition';
+import { getBeginnerTextareaOffsetAtPoint, getBeginnerIdentifierSpanAtOffset } from '../services/lingCpp/beginnerTextPosition';
 import {
   type BeginnerFlowGuideRow,
   type BeginnerCrossSegmentFlowFold,
@@ -412,6 +412,8 @@ interface BeginnerCompletionState {
   targetKey: string;
   segmentId: string;
   token: string;
+  /** 弹出/刷新补全时的光标偏移；上屏前校验光标与 token 是否仍然对应。 */
+  cursor: number;
   items: BeginnerCodeCompletion[];
   selectedIndex: number;
   position: BeginnerCompletionPosition;
@@ -5415,6 +5417,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         targetKey,
         segmentId,
         token,
+        cursor: input.selectionStart,
         items,
         selectedIndex: 0,
         position: getBeginnerCompletionPanelPosition(input, token, items.length),
@@ -5484,10 +5487,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
       completion: BeginnerCodeCompletion,
-      segmentContext?: BeginnerCodeSegmentContext
+      segmentContext?: BeginnerCodeSegmentContext,
+      completionState?: BeginnerCompletionState | null
     ) => {
       const cursor = input.selectionStart;
       const token = getBeginnerCompletionToken(input.value, cursor);
+      // 面板弹出后光标可能已被鼠标/方向键移动（如粘贴后点击括号右侧再按回车）：
+      // token 与光标任一不再对应面板状态时上屏，会把候选插到无关位置（变量名在括号外重复）。
+      // 此时只关闭面板不上屏，返回 false 让按键继续走普通分支。
+      if (!completionState || completionState.token !== token || completionState.cursor !== cursor) {
+        closeBeginnerCompletion(target);
+        return false;
+      }
       const tokenStart = cursor - token.length;
       const rawNextValue = `${input.value.slice(0, tokenStart)}${completion.insertText}${input.value.slice(input.selectionEnd)}`;
       const cursorOffset = completion.cursorOffset ?? completion.insertText.length;
@@ -5517,6 +5528,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         captureBeginnerTextareaView(fresh);
       });
       closeBeginnerCompletion(target);
+      return true;
     };
     const flashBeginnerJumpLine = (targetKey: string, line: number, label: string) => {
       if (beginnerJumpHighlightTimerRef.current !== null) {
@@ -6026,8 +6038,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault();
           const completion = activeCompletion.items[activeCompletion.selectedIndex] || activeCompletion.items[0];
-          if (completion) applyBeginnerCompletion(target, input, completion, segmentContext);
-          return;
+          if (!completion) return;
+          // 上屏被拒绝（光标已移动、token 失配）时面板已关闭，回车/Tab 继续走普通分支。
+          if (applyBeginnerCompletion(target, input, completion, segmentContext, activeCompletion)) return;
         }
         if (event.key === 'Escape') {
           event.preventDefault();
@@ -6122,7 +6135,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 onMouseDown={event => {
                   event.preventDefault();
                   const editor = findBeginnerCodeTextareaByViewKey(state.viewKey);
-                  if (editor) applyBeginnerCompletion(state.target, editor, item, state.segmentContext);
+                  if (editor) applyBeginnerCompletion(state.target, editor, item, state.segmentContext, state);
                 }}
                 className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] ${
                   index === state.selectedIndex
@@ -6821,11 +6834,28 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       closeBeginnerCompletion();
       return true;
     };
+    // 双击选中完整标识符（变量名/命令名）：中文没有空格分词，浏览器原生双击
+    // 按词典只选中一段（缓冲区句柄 → 缓冲区），这里按标识符边界整段选中。
+    const handleBeginnerCodeDoubleClick = (
+      target: BeginnerCodeTarget,
+      event: React.MouseEvent<HTMLTextAreaElement>
+    ) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      const input = event.currentTarget;
+      const offset = getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY);
+      const span = getBeginnerIdentifierSpanAtOffset(input.value, offset);
+      if (!span || span.end <= span.start) return;
+      input.setSelectionRange(span.start, span.end);
+      scheduleBeginnerPointerSync(target, input);
+    };
     const handleBeginnerCodeClick = (
       target: BeginnerCodeTarget,
       event: React.MouseEvent<HTMLTextAreaElement>
     ) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
+        // 普通点击会移动光标：补全面板对应的 token 随即失效，直接关闭，
+        // 避免面板残留后在错误位置上屏（曾致「粘贴后点括号右侧按回车」在括号外重复变量名）。
+        closeBeginnerCompletion(target);
         scheduleBeginnerPointerSync(target, event.currentTarget);
         return;
       }
@@ -7664,6 +7694,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 onBlur={event => handleBeginnerCodeBlur(target, bodyText, event)}
                 onFocus={event => scheduleBeginnerPointerSync(target, event.currentTarget)}
                 onClick={event => handleBeginnerCodeClick(target, event)}
+                onDoubleClick={event => handleBeginnerCodeDoubleClick(target, event)}
                 onContextMenu={event => openBeginnerContextMenu(event, target, event.currentTarget)}
                 onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
                 onKeyUp={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
@@ -8987,6 +9018,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             data-beginner-local-name={field === 'name' ? local.name : undefined}
             data-beginner-local-type={field === 'type' ? local.name : undefined}
             defaultValue={value}
+            onDoubleClick={field === 'name' ? event => {
+              // 中文变量名无分词边界，原生双击只选中词典片段（如 缓冲区句柄 → 缓冲区）；
+              // 名称列的值就是完整标识符，双击按标识符边界整段选中。
+              const input = event.currentTarget;
+              const span = getBeginnerIdentifierSpanAtOffset(input.value, input.selectionStart ?? input.value.length);
+              if (span) input.setSelectionRange(span.start, span.end);
+            } : undefined}
             placeholder={placeholder}
             aria-label={`局部${local.isConstant ? '常量' : '变量'} ${local.name} ${fieldLabel}`}
             autoComplete="off"
@@ -9872,6 +9910,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 updateActiveBeginnerFlowLine(event.currentTarget);
                 handleBeginnerCodeClick(target, event);
               }}
+              onDoubleClick={event => handleBeginnerCodeDoubleClick(target, event)}
               onContextMenu={event => openBeginnerContextMenu(event, target, event.currentTarget)}
               onKeyDown={event => handleBeginnerCodeKeyDown(target, event, segmentContext)}
               onKeyUp={event => {

@@ -1,0 +1,126 @@
+{
+ "dir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\EdgeView 浏览器模块合集\\22 框架通信与共享缓冲\\示例项目",
+ "id": "edgeview-ep22-frame-buffer",
+ "title": "EdgeView 框架通信与共享缓冲",
+ "lbsln": "EdgeView框架通信示例.lbsln",
+ "pageH": 880,
+ "buttons": [
+  {
+   "id": "b1",
+   "name": "枚举框架按钮",
+   "content": "1 枚举框架",
+   "row": 0,
+   "col": 0,
+   "bg": "blue",
+   "event": "_枚举框架按钮_被单击"
+  },
+  {
+   "id": "b2",
+   "name": "框架信息按钮",
+   "content": "2 框架信息JSON",
+   "row": 0,
+   "col": 1,
+   "bg": "blue",
+   "event": "_框架信息按钮_被单击"
+  },
+  {
+   "id": "b3",
+   "name": "框架脚本按钮",
+   "content": "3 框架执行脚本",
+   "row": 1,
+   "col": 0,
+   "bg": "blue",
+   "event": "_框架脚本按钮_被单击"
+  },
+  {
+   "id": "b4",
+   "name": "框架发字符串按钮",
+   "content": "4 框架发字符串",
+   "row": 1,
+   "col": 1,
+   "bg": "blue",
+   "event": "_框架发字符串按钮_被单击"
+  },
+  {
+   "id": "b5",
+   "name": "框架发JSON按钮",
+   "content": "5 框架发JSON",
+   "row": 2,
+   "col": 0,
+   "bg": "blue",
+   "event": "_框架发JSON按钮_被单击"
+  },
+  {
+   "id": "b6",
+   "name": "缓冲写入按钮",
+   "content": "6 缓冲创建+写入",
+   "row": 2,
+   "col": 1,
+   "bg": "violet",
+   "event": "_缓冲写入按钮_被单击"
+  },
+  {
+   "id": "b7",
+   "name": "缓冲发送按钮",
+   "content": "7 发送到网页",
+   "row": 3,
+   "col": 0,
+   "bg": "violet",
+   "event": "_缓冲发送按钮_被单击"
+  },
+  {
+   "id": "b8",
+   "name": "缓冲读回按钮",
+   "content": "8 缓冲读十六进制",
+   "row": 3,
+   "col": 1,
+   "bg": "violet",
+   "event": "_缓冲读回按钮_被单击"
+  },
+  {
+   "id": "b9",
+   "name": "文件句柄按钮",
+   "content": "9 文件系统句柄",
+   "row": 4,
+   "col": 0,
+   "bg": "teal",
+   "event": "_文件句柄按钮_被单击"
+  },
+  {
+   "id": "b10",
+   "name": "对象状态按钮",
+   "content": "10 对象状态JSON",
+   "row": 4,
+   "col": 1,
+   "bg": "teal",
+   "event": "_对象状态按钮_被单击"
+  },
+  {
+   "id": "b11",
+   "name": "脚本执行按钮",
+   "content": "11 脚本_执行异步",
+   "row": 5,
+   "col": 0,
+   "bg": "gray",
+   "event": "_脚本执行按钮_被单击"
+  },
+  {
+   "id": "b12",
+   "name": "附加对象按钮",
+   "content": "12 发送附加对象",
+   "row": 5,
+   "col": 1,
+   "bg": "gray",
+   "event": "_附加对象按钮_被单击"
+  },
+  {
+   "id": "b13",
+   "name": "移除预注入按钮",
+   "content": "13 移除文档预注入",
+   "row": 6,
+   "col": 0,
+   "bg": "gray",
+   "event": "_移除预注入按钮_被单击"
+  }
+ ]
+}

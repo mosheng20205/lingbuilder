@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -9,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import { AiBridgeService, type AiBridgeProcessManager } from '../src/services/aiBridge/aiBridgeService';
+import { IDE_VERSION_ENV, IDE_VERSION_UNKNOWN, resolveIdeVersion, resetIdeVersionCacheForTest } from '../src/services/aiBridge/ideVersion';
 import { createProjectBuildCoordinator } from '../src/services/tasks/projectBuildCoordinator';
 import { createAiBridgeRouter } from '../src/services/aiBridge/httpRoutes';
 import { createAiBridgeMcpHttpGateway, createAiBridgeMcpProtocolServer, AGENT_MASKED_TOOLS } from '../src/services/aiBridge/mcpServer';
@@ -49,9 +51,10 @@ test('AI Bridge HTTP rejects missing or invalid token', async () => {
       headers: { authorization: 'Bearer secret-token' }
     });
     assert.equal(authorized.status, 200);
-    const body = await authorized.json() as { ok: boolean; permission: string };
+    const body = await authorized.json() as { ok: boolean; permission: string; ideVersion: string };
     assert.equal(body.ok, true);
     assert.equal(body.permission, 'preview');
+    assert.equal(body.ideVersion, resolveIdeVersion(), 'health 必须回报 IDE 版本（外部 AI 兼容性判断与问题报告的依据）');
   } finally {
     await server.close();
   }
@@ -90,6 +93,10 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
       requestInit: { headers: { Authorization: 'Bearer shared-mcp-secret-token' } }
     });
     await client.connect(transport);
+    const serverInfo = client.getServerVersion();
+    assert.equal(serverInfo?.name, 'lingbuilder-ai-bridge');
+    assert.equal(serverInfo?.version, resolveIdeVersion(), 'MCP serverInfo 必须动态回报 IDE 版本，不得停留在硬编码旧值');
+    assert.notEqual(serverInfo?.version, '0.6.6', '历史上硬编码的 0.6.6 已废弃，出现它说明版本解析退化了');
     const tools = await client.listTools();
     assert.equal(tools.tools.length, 23);
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
@@ -109,6 +116,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     const projectCreateTool = tools.tools.find(tool => tool.name === 'lingbuilder.project.create');
     assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('new-emoji-fbro-browser-shell'));
     assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('sqlite-crud-window'));
+    assert.deepEqual((projectCreateTool?.inputSchema as any)?.properties?.outputType?.enum, ['exe', 'dll'], 'project.create 必须暴露 outputType（外部 AI 创建 DLL 输出项目的唯一入口）');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.module.info'), '缺少 lingbuilder.module.info 工具');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.build.stop'), '缺少 lingbuilder.build.stop 工具');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.run.wait'), '缺少 lingbuilder.run.wait 工具');
@@ -138,6 +146,10 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /FBro_创建区域/u, 'instructions 必须给出三内核动态内嵌区域选型（FBro_创建区域 走普通 Win32 模块，不依赖 new_emoji）');
     assert.match(String(client.getInstructions() || ''), /CEF3_创建区域/u, 'instructions 必须列出 CEF3_创建区域 内嵌选型');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建区域/u, 'instructions 必须列出 EdgeView_创建区域 内嵌选型');
+    assert.match(String(client.getInstructions() || ''), /outputType="dll"/u, 'instructions 必须给出 DLL 输出的 project.create outputType 路径');
+    assert.match(String(client.getInstructions() || ''), /windows-dll.*获取接口版本|获取接口版本.*windows-dll/u, 'instructions 必须说明 windows-dll 模板的能力边界（仅获取接口版本映射）');
+    assert.match(String(client.getInstructions() || ''), /禁止再调 run\.wait/u, 'instructions 必须钉住 DLL 项目没有运行入口的红线');
+    assert.match(String(client.getInstructions() || ''), /LINGBUILDER_MSBUILD_PATH/u, 'instructions 必须告知 MSBuild 缺失时的环境变量修法');
     assert.match(String(client.getInstructions() || ''), /navigator.userAgent/u, 'instructions 必须写明 EdgeView/FBro 区域 UA 只改 navigator.userAgent、不改出站 HTTP 头的红线');
     assert.match(String(client.getInstructions() || ''), /FBroHsCommandLine_EnableCrossFrame/u, 'instructions 必须写明 FBro 跨域走官方包装，不得手写 Chromium 开关拼串');
     assert.match(String(client.getInstructions() || ''), /disable-site-isolation-trials/u, 'instructions 必须带 enableCrossFrame 实测写入的开关，作为真机回读口径');
@@ -146,6 +158,10 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/u, 'instructions 必须写明 EdgeView 安全类开关要走环境变量通道才生效');
     assert.match(String(client.getInstructions() || ''), /channelIndex/u, 'instructions 必须告知 CEF3 cefQuery 已多通道且事件带 channelIndex');
     assert.match(String(client.getInstructions() || ''), /返回\(表达式\)/u, 'instructions 必须告知返回语句统一括号形态 返回(表达式)（外部 AI 生成 .lcpp 的写法口径）');
+    assert.match(String(client.getInstructions() || ''), /projects\[\]/u, 'instructions 必须引导外部 AI 用 workspace.list 首项 projects[] 确定目标项目');
+    assert.match(String(client.getInstructions() || ''), /禁止按目录名猜/u, 'instructions 必须禁止多项目工作区按目录名猜项目');
+    assert.match(String(client.getInstructions() || ''), /projectHint/u, 'instructions 必须告知单项目工作区的 projectHint 消歧字段');
+    assert.match(String(client.getInstructions() || ''), /solution\.json/u, 'instructions 必须给出 projects[] 缺失时的项目注册表读取路径');
     assert.match(String(client.getInstructions() || ''), /提前结束写 `返回\(\)`/u, 'instructions 必须告知无值提前结束写 返回()');
     assert.match(String(client.getInstructions() || ''), /延时\(等待毫秒\)/u, 'instructions 必须告知不冻结界面的同步延时命令');
     assert.match(String(client.getInstructions() || ''), /延迟调用\(等待毫秒, &处理器\)/u, 'instructions 必须告知一次性延迟调用命令（&处理器 引用语法）');
@@ -162,8 +178,12 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /HTTP客户端_请求置Cookie/u, 'instructions 必须告知外部 AI http-client 2.1 的 Cookie 注入口（区别于自动罐开关）');
     assert.match(String(client.getInstructions() || ''), /workspace\.list 的返回首项/u, 'instructions 必须教外部 AI 先自省工作区（P2 工作区错位自查）');
     assert.match(String(client.getInstructions() || ''), /workspaceRoot 字段即当前 Bridge 工作区根绝对路径/u, 'instructions 必须说明首项 workspaceRoot 的语义');
+    assert.match(String(client.getInstructions() || ''), /ideVersion 字段即当前 LingBuilder IDE 版本/u, 'instructions 必须说明首项 ideVersion 的语义');
     assert.match(String(client.getInstructions() || ''), /宿主先于开关启动的时序问题，不是未购买/u, 'instructions 必须解释收费门禁「启动早于授权开关」的时序语义（P1）');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.workspace.list')?.description || ''), /workspaceRoot/u, 'workspace.list 工具描述必须声明首项含工作区根绝对路径');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.workspace.list')?.description || ''), /projects\[\]/u, 'workspace.list 工具描述必须声明首项 projects[] 项目注册表视图（外部 AI 项目消歧）');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /必须显式传 projectId/u, 'edit.propose 工具描述必须要求多项目工作区显式传 projectId');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.workspace.list')?.description || ''), /ideVersion/u, 'workspace.list 工具描述必须声明首项含 IDE 版本');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /功能代码/u, 'edit.propose 必须声明功能代码=功能库文件，避免降级成本地函数');
     const diagnosticsToolMeta = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
     assert.match(String(diagnosticsToolMeta?.description || ''), /designerInventory/u, 'diagnostics 工具描述必须声明组件表视图');
@@ -480,6 +500,49 @@ test('AI Bridge 模块工具支持生成→写入→校验→打包→预览→�
   } finally {
     await service.shutdown();
   }
+});
+
+test('AI Bridge project creation supports outputType dll and rejects conflicting template combinations', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService({ ...createOptions(workspaceRoot, 'yolo'), token: 'output-type-test-token' });
+
+  const dllPreview = await service.createProject({
+    name: 'AI 数学库',
+    projectId: 'ai-math-dll',
+    templateId: 'hello-window',
+    outputType: 'dll',
+    openInWorkbench: false
+  });
+  assert.equal(dllPreview.preview.project.buildProperties?.outputType, 'dll', '窗口模板 + outputType=dll 必须写入项目属性');
+
+  const dllCreated = await service.createProject({
+    name: 'AI 数学库',
+    projectId: 'ai-math-dll',
+    templateId: 'hello-window',
+    outputType: 'dll',
+    openInWorkbench: false,
+    approved: true
+  });
+  assert.equal(dllCreated.applied, true);
+  assert.equal(dllCreated.result?.project.buildProperties?.outputType, 'dll');
+
+  await assert.rejects(
+    () => service.createProject({ name: '控制台DLL', projectId: 'console-dll', templateId: 'windows-console', outputType: 'dll', openInWorkbench: false }),
+    /控制台项目不支持 DLL 输出/u,
+    '控制台模板 + dll 必须拒绝'
+  );
+  await assert.rejects(
+    () => service.createProject({ name: 'EmojiDLL', projectId: 'emoji-dll', templateId: 'new-emoji-fbro-browser-shell', outputType: 'dll', openInWorkbench: false }),
+    /new_emoji 原生界面后端不支持 DLL 输出/u,
+    'new_emoji 模板 + dll 必须拒绝'
+  );
+  await assert.rejects(
+    () => service.createProject({ name: 'DLL转EXE', projectId: 'dll-exe', templateId: 'windows-dll', outputType: 'exe', openInWorkbench: false }),
+    /windows-dll 模板本身就是动态链接库/u,
+    'windows-dll 模板 + exe 必须拒绝'
+  );
+
+  await service.shutdown();
 });
 
 test('AI Bridge project creation previews, enables modules, writes navigation, and supports guarded undo', async () => {
@@ -1857,11 +1920,90 @@ test('AI Bridge workspace.list 首项返回工作区根绝对路径（外部 AI 
     assert.equal(root.type, 'workspace', '首项必须是合成的 workspace 根条目');
     assert.equal(root.path, '.');
     assert.equal(path.resolve(String(root.workspaceRoot)).toLowerCase(), path.resolve(workspaceRoot).toLowerCase());
+    assert.equal(root.ideVersion, resolveIdeVersion(), '根条目必须携带 IDE 版本');
     assert.equal(tree.slice(1).some(entry => entry.type === 'workspace'), false, '合成根条目只允许出现一次');
     assert.ok(tree.some(entry => entry.type === 'file' && entry.name === 'README.md'), '根条目之后仍是常规文件树');
+    // 空工作区：projects 是真实的空数组；只读接口不得有写副作用（getSolution 会物化默认项目，必须走 peekSolution）。
+    assert.deepEqual(root.projects, [], '无 solution.json 时 projects 必须是空数组而不是 undefined');
+    assert.equal(root.startupProjectId ?? '', '', '无 solution.json 时不得编造启动项目');
+    assert.ok(!existsSync(path.join(workspaceRoot, '.lingbuilder', 'solution.json')), 'workspace.list 不得物化默认项目（读接口的写副作用禁止）');
   } finally {
     await service.shutdown();
   }
+});
+
+test('AI Bridge workspace.list 首项 projects[] 列出注册项目，单项目响应携带 projectHint（外部 AI 项目消歧）', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    const solutionDir = path.join(workspaceRoot, '.lingbuilder');
+    await fs.mkdir(solutionDir, { recursive: true });
+    const solution = {
+      schemaVersion: 2,
+      id: 'solution-1',
+      name: '消歧测试解决方案',
+      startupProjectId: 'proj-b',
+      startupProjectIds: ['proj-b'],
+      folders: [],
+      projects: [
+        { id: 'proj-a', name: '窗口项目A', type: 'visual-cpp', sourceRoot: 'src/proj-a', configRoot: 'config/proj-a', designerPath: '.lingbuilder/projects/proj-a/window-designer.json' },
+        { id: 'proj-b', name: '动态库B', type: 'windows-dll', sourceRoot: 'src/proj-b', configRoot: 'config/proj-b', designerPath: '.lingbuilder/projects/proj-b/window-designer.json' }
+      ]
+    };
+    await fs.writeFile(path.join(solutionDir, 'solution.json'), JSON.stringify(solution), 'utf8');
+    const tree = await service.listWorkspaceTree();
+    const root = tree[0];
+    assert.equal(root.projects?.length, 2, 'projects[] 必须列出全部注册项目');
+    const projA = root.projects?.find(project => project.id === 'proj-a');
+    const projB = root.projects?.find(project => project.id === 'proj-b');
+    assert.equal(projA?.isWindowProject, true, 'visual-cpp 类型必须标为窗口项目');
+    assert.equal(projA?.sourceRoot, 'src/proj-a');
+    assert.equal(projB?.isWindowProject, false, 'windows-dll 类型不是窗口项目');
+    assert.equal(root.startupProjectId, 'proj-b', 'startupProjectId 必须来自解决方案');
+    // 多项目工作区不出 projectHint（没有唯一答案就不给假答案）。
+    const diagnosticsMulti = await service.getLingCppDiagnostics({ filePath: 'src/proj-a/MainWindow.lcpp', sourceCode: '类 MainWindow' });
+    assert.equal(diagnosticsMulti.projectHint, undefined, '多项目工作区不得给 projectHint');
+
+    // 单项目工作区：diagnostics 响应回显唯一项目的 projectId/sourceRoot。
+    await fs.writeFile(path.join(solutionDir, 'solution.json'), JSON.stringify({
+      ...solution, startupProjectId: 'proj-a', startupProjectIds: ['proj-a'],
+      projects: solution.projects.slice(0, 1)
+    }), 'utf8');
+    const diagnosticsSingle = await service.getLingCppDiagnostics({ filePath: 'src/proj-a/MainWindow.lcpp', sourceCode: '类 MainWindow' });
+    assert.equal(diagnosticsSingle.projectHint?.projectId, 'proj-a', '单项目工作区 diagnostics 必须回显 projectHint.projectId');
+    assert.match(String(diagnosticsSingle.projectHint?.note || ''), /projectId=proj-a/u, 'projectHint 必须带可直接引用的中文说明');
+    const propose = await service.proposeEdit({
+      filePath: 'src/proj-a/MainWindow.lcpp',
+      instruction: '测试单项目 projectHint 回显',
+      sourceCode: '类 MainWindow',
+      files: [{ filePath: 'src/proj-a/演示功能库.lcpp', updatedSource: '功能库 演示\n结束功能库' }]
+    });
+    assert.equal(propose.projectHint?.projectId, 'proj-a', '单项目工作区 edit.propose 必须回显 projectHint.projectId');
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('IDE 版本解析：环境变量优先、就近 package.json 回退、显式未知兜底（2026-09-23）', async () => {
+  const { fileURLToPath } = await import('node:url');
+  // 环境变量优先：即使 startDir 一棵 package.json 都找不到也以注入值为准。
+  assert.equal(
+    resolveIdeVersion({ environment: { [IDE_VERSION_ENV]: '1.2.3-test' }, startDir: path.parse(process.cwd()).root }),
+    '1.2.3-test',
+    '主进程注入的 LINGBUILDER_IDE_VERSION 必须最优先'
+  );
+  // package.json 回退：从源码目录向上必命中 electron/package.json。
+  resetIdeVersionCacheForTest();
+  const fromSource = resolveIdeVersion({
+    startDir: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'services', 'aiBridge')
+  });
+  assert.match(fromSource, /^\d+\.\d+\.\d+$/u, '源码树必须能回退到 package.json 的语义化版本');
+  assert.notEqual(fromSource, '0.6.6', '历史上硬编码的 0.6.6 已废弃');
+  // 环境与 package.json 都拿不到时给显式未知，而不是 undefined 或空串。
+  resetIdeVersionCacheForTest();
+  assert.equal(resolveIdeVersion({ environment: {}, startDir: path.parse(process.cwd()).root }), IDE_VERSION_UNKNOWN, '拿不到版本时必须是显式未知兜底');
+  // 还原缓存，避免影响其他用例对 resolveIdeVersion() 的取值一致性。
+  resetIdeVersionCacheForTest();
 });
 
 test('AI Bridge 文件不存在时报错给出当前工作区与修法（工作区错位自查）', async () => {

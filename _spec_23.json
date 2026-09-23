@@ -1,0 +1,99 @@
+{
+ "dir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\EdgeView 浏览器模块合集\\23 事件决策·菜单·通知·证书\\示例项目",
+ "id": "edgeview-ep23-event-decisions",
+ "title": "EdgeView 事件决策·菜单·通知·证书",
+ "lbsln": "EdgeView事件决策示例.lbsln",
+ "pageH": 880,
+ "buttons": [
+  {
+   "id": "b1",
+   "name": "授权通知按钮",
+   "content": "1 授权通知权限",
+   "row": 0,
+   "col": 0,
+   "bg": "blue",
+   "event": "_授权通知按钮_被单击"
+  },
+  {
+   "id": "b2",
+   "name": "发通知按钮",
+   "content": "2 页面发通知",
+   "row": 0,
+   "col": 1,
+   "bg": "blue",
+   "event": "_发通知按钮_被单击"
+  },
+  {
+   "id": "b3",
+   "name": "通知单击按钮",
+   "content": "3 通知报告单击",
+   "row": 1,
+   "col": 0,
+   "bg": "blue",
+   "event": "_通知单击按钮_被单击"
+  },
+  {
+   "id": "b4",
+   "name": "通知关闭按钮",
+   "content": "4 通知报告关闭",
+   "row": 1,
+   "col": 1,
+   "bg": "blue",
+   "event": "_通知关闭按钮_被单击"
+  },
+  {
+   "id": "b5",
+   "name": "右键菜单按钮",
+   "content": "5 页面右键(去页面操作)",
+   "row": 2,
+   "col": 0,
+   "bg": "teal",
+   "event": "_右键菜单按钮_被单击"
+  },
+  {
+   "id": "b6",
+   "name": "屏蔽新窗口按钮",
+   "content": "6 屏蔽新窗口开关",
+   "row": 2,
+   "col": 1,
+   "bg": "blue",
+   "event": "_屏蔽新窗口按钮_被单击"
+  },
+  {
+   "id": "b7",
+   "name": "新窗口链接按钮",
+   "content": "7 点target=_blank链接",
+   "row": 3,
+   "col": 0,
+   "bg": "teal",
+   "event": "_新窗口链接按钮_被单击"
+  },
+  {
+   "id": "b8",
+   "name": "对话框按钮",
+   "content": "8 页面confirm(原生接管)",
+   "row": 3,
+   "col": 1,
+   "bg": "teal",
+   "event": "_对话框按钮_被单击"
+  },
+  {
+   "id": "b9",
+   "name": "另存为按钮",
+   "content": "9 显示另存为界面",
+   "row": 4,
+   "col": 0,
+   "bg": "violet",
+   "event": "_另存为按钮_被单击"
+  },
+  {
+   "id": "b10",
+   "name": "清除证书按钮",
+   "content": "10 清除证书错误决策",
+   "row": 4,
+   "col": 1,
+   "bg": "violet",
+   "event": "_清除证书按钮_被单击"
+  }
+ ]
+}

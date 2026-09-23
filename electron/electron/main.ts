@@ -1835,6 +1835,8 @@ app.whenReady().then(async () => {
     cliEntryPath: cliEntryPath(),
     environment: {
       ...process.env,
+      // Bridge 子进程据此在 health / workspace.list / MCP serverInfo 上回报 IDE 版本。
+      LINGBUILDER_IDE_VERSION: app.getVersion(),
       LINGBUILDER_SDK_CACHE_ROOT: path.join(app.getPath('userData'), 'sdk-cache')
     }
   });
@@ -1851,7 +1853,7 @@ app.whenReady().then(async () => {
     bridgeCommand: process.execPath,
     cliEntryPath: cliEntryPath(),
     profileDirectory: path.join(app.getPath('userData'), 'agent-runtime'),
-    environment: process.env,
+    environment: { ...process.env, LINGBUILDER_IDE_VERSION: app.getVersion() },
     providerSettings: () => agentProviderCache
   });
   agentRuntime.subscribe(snapshot => {

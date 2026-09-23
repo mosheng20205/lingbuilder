@@ -750,6 +750,30 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     const controls = normalizedTags.controls.map(control => {
       const font = normalizeControlFont(control);
       let properties = control.properties || createDefaultControlProperties(control.type, control.content);
+      // AI/外部工具生成的最小控件模型常缺颜色与尺寸等顶层外观属性（缺 background 画布整块透明）：
+      // 与工具箱插入（createControl）同语义，按注册表 defaultProps 补齐缺失键，
+      // 前景缺省白、背景缺省透明兜底；绝不覆盖已显式设置的值。
+      const controlDefinitionForAppearance = control.designerType?.startsWith(NEW_EMOJI_DESIGNER_TYPE_PREFIX)
+        ? undefined
+        : getWin32ControlDefinition(control.type);
+      const appearanceDefaults = controlDefinitionForAppearance
+        ? {
+            ...controlDefinitionForAppearance.defaultProps,
+            background: controlDefinitionForAppearance.defaultProps.background || 'transparent',
+            foreground: controlDefinitionForAppearance.defaultProps.foreground || '#FFFFFF'
+          }
+        : undefined;
+      // 只补「键缺失」：空串是用户/Agent 的显式取值（例如清空按钮文本），不得回填默认值。
+      const missingAppearanceKeys = appearanceDefaults
+        ? Object.keys(appearanceDefaults).filter(key => (control as unknown as Record<string, unknown>)[key] === undefined)
+        : [];
+      const appearanceMissing = missingAppearanceKeys.length > 0;
+      // AI 生成的模型常带非规范标志位（enabled/visible），画布只认 isEnabled/visibility，
+      // 对不上会按「禁用」渲染（opacity 0.5）。归一化时映射到规范字段；两者都缺省按可见可用。
+      const legacyFlags = control as unknown as Record<string, unknown>;
+      const missingEnabledFlag = legacyFlags.isEnabled === undefined;
+      const missingVisibilityFlag = legacyFlags.visibility === undefined;
+      const flagsMissing = missingEnabledFlag || missingVisibilityFlag;
       let dataGridMigrated = false;
       if (control.type === 'DataGrid') {
         const model = normalizeDataGridModel({
@@ -781,6 +805,8 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       const usesLegacyMonthCalendarSize = control.type === 'MonthCalendar' && control.width === 250 && control.height === 190;
       const requiresMigration = !control.properties
         || dataGridMigrated
+        || appearanceMissing
+        || flagsMissing
         || missingComboBoxExDropDownHeight
         || missingDateTimePickerCalendarHeight
         || usesLegacyDateTimePickerHeight
@@ -796,8 +822,13 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       const normalizedEvents = control.type === 'FBroBrowser' && control.events
         ? Object.fromEntries(Object.entries(control.events).map(([name, handler]) => [normalizeFbroEventId(name), handler]))
         : control.events;
+      const appearancePatch: Record<string, unknown> = {};
+      for (const key of missingAppearanceKeys) appearancePatch[key] = appearanceDefaults?.[key];
       return {
         ...control,
+        ...appearancePatch,
+        ...(missingEnabledFlag ? { isEnabled: legacyFlags.enabled !== false } : {}),
+        ...(missingVisibilityFlag ? { visibility: legacyFlags.visible === false ? 'Collapsed' as const : 'Visible' as const } : {}),
         fontFamily: font.family,
         fontSize: font.size,
         fontBold: font.bold,

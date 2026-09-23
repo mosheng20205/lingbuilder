@@ -1,0 +1,126 @@
+{
+ "dir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\EdgeView 浏览器模块合集\\20 运行期设置全集\\示例项目",
+ "id": "edgeview-ep20-runtime-settings",
+ "title": "EdgeView 运行期设置全集",
+ "lbsln": "EdgeView运行期设置示例.lbsln",
+ "pageH": 900,
+ "buttons": [
+  {
+   "id": "b1",
+   "name": "边界按钮",
+   "content": "1 置边界+取边界JSON",
+   "row": 0,
+   "col": 0,
+   "bg": "blue",
+   "event": "_边界按钮_被单击"
+  },
+  {
+   "id": "b2",
+   "name": "边界模式按钮",
+   "content": "2 边界模式 置/取",
+   "row": 0,
+   "col": 1,
+   "bg": "blue",
+   "event": "_边界模式按钮_被单击"
+  },
+  {
+   "id": "b3",
+   "name": "页面背景按钮",
+   "content": "3 置背景色",
+   "row": 1,
+   "col": 0,
+   "bg": "blue",
+   "event": "_页面背景按钮_被单击"
+  },
+  {
+   "id": "b4",
+   "name": "缩放按钮",
+   "content": "4 缩放1.5 置/取",
+   "row": 1,
+   "col": 1,
+   "bg": "blue",
+   "event": "_缩放按钮_被单击"
+  },
+  {
+   "id": "b5",
+   "name": "光栅化按钮",
+   "content": "5 光栅化缩放 置/取",
+   "row": 2,
+   "col": 0,
+   "bg": "blue",
+   "event": "_光栅化按钮_被单击"
+  },
+  {
+   "id": "b6",
+   "name": "内存按钮",
+   "content": "6 内存目标级别 置/取",
+   "row": 2,
+   "col": 1,
+   "bg": "blue",
+   "event": "_内存按钮_被单击"
+  },
+  {
+   "id": "b7",
+   "name": "信誉按钮",
+   "content": "7 信誉检查 置/取",
+   "row": 3,
+   "col": 0,
+   "bg": "blue",
+   "event": "_信誉按钮_被单击"
+  },
+  {
+   "id": "b8",
+   "name": "拖放按钮",
+   "content": "8 允许外部拖放 置/取",
+   "row": 3,
+   "col": 1,
+   "bg": "blue",
+   "event": "_拖放按钮_被单击"
+  },
+  {
+   "id": "b9",
+   "name": "PDF工具栏按钮",
+   "content": "9 PDF工具栏隐藏 置/取",
+   "row": 4,
+   "col": 0,
+   "bg": "blue",
+   "event": "_PDF工具栏按钮_被单击"
+  },
+  {
+   "id": "b10",
+   "name": "显示器缩放按钮",
+   "content": "10 自动检测缩放 置/取",
+   "row": 4,
+   "col": 1,
+   "bg": "blue",
+   "event": "_显示器缩放按钮_被单击"
+  },
+  {
+   "id": "b11",
+   "name": "可见按钮",
+   "content": "11 可见 置/取",
+   "row": 5,
+   "col": 0,
+   "bg": "blue",
+   "event": "_可见按钮_被单击"
+  },
+  {
+   "id": "b12",
+   "name": "静音按钮",
+   "content": "12 静音 置/取",
+   "row": 5,
+   "col": 1,
+   "bg": "blue",
+   "event": "_静音按钮_被单击"
+  },
+  {
+   "id": "b13",
+   "name": "读UA按钮",
+   "content": "13 取用户代理",
+   "row": 6,
+   "col": 0,
+   "bg": "teal",
+   "event": "_读UA按钮_被单击"
+  }
+ ]
+}

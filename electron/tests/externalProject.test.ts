@@ -3,7 +3,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { ExternalProjectService, resolveExecutableNameParts, validateProperties } from '../src/services/solution/externalProjectService';
+import {
+  describeExternalCommandNotFound,
+  ExternalProjectService,
+  resolveExecutableNameParts,
+  resolveMsBuildCommandAsync,
+  validateProperties
+} from '../src/services/solution/externalProjectService';
 
 test('external project inspection recognizes CMake and MSBuild metadata inside the workspace', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-import-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -94,4 +100,27 @@ test('validateProperties accepts an optional executableName and rejects illegal 
   validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: '' });
   assert.throws(() => validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: 'bad<name' }), /可执行文件名不合法/u);
   assert.throws(() => validateProperties({ configuration: 'Debug', architecture: 'Win32', additionalArguments: [], executableName: 42 as unknown as string }), /项目可执行文件名无效/u);
+});
+
+test('missing external build commands produce Chinese repair guidance instead of raw ENOENT', () => {
+  const msbuildMessage = describeExternalCommandNotFound('msbuild');
+  assert.match(msbuildMessage, /未找到 MSBuild\.exe/u);
+  assert.match(msbuildMessage, /LINGBUILDER_MSBUILD_PATH/u);
+  const cmakeMessage = describeExternalCommandNotFound('cmake');
+  assert.match(cmakeMessage, /未找到 cmake/u);
+  assert.match(describeExternalCommandNotFound('C:\\tools\\custom.exe'), /custom\.exe/u);
+});
+
+test('msbuild resolution honors LINGBUILDER_MSBUILD_PATH before any filesystem scan', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-msbuild-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const fakeMsBuild = path.join(root, 'MSBuild.exe');
+  await fs.writeFile(fakeMsBuild, 'stub');
+  const previous = process.env.LINGBUILDER_MSBUILD_PATH;
+  process.env.LINGBUILDER_MSBUILD_PATH = fakeMsBuild;
+  t.after(() => {
+    if (previous === undefined) delete process.env.LINGBUILDER_MSBUILD_PATH;
+    else process.env.LINGBUILDER_MSBUILD_PATH = previous;
+  });
+  assert.equal(await resolveMsBuildCommandAsync(), fakeMsBuild);
 });

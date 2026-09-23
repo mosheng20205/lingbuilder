@@ -12,10 +12,13 @@ export interface ShellWorkspaceCandidates {
 }
 
 export function selectShellWorkspaceRoot(candidates: ShellWorkspaceCandidates): string {
+  // activeWorkspace 必须优先于 configured（进程 env）：工作区切换后 env 是过期值，
+  // 若 env 优先，内嵌 Agent 运行时会拿着旧 --workspace 启动（真机踩实：切到 ep9
+  // 工作区后 Agent 仍在 ep13 工作区里 edit.propose）。env 只作冷启动兜底。
   return [
     candidates.rendererWorkspaceRoot,
-    candidates.configuredWorkspaceRoot,
-    candidates.activeWorkspace
+    candidates.activeWorkspace,
+    candidates.configuredWorkspaceRoot
   ].find(candidate => Boolean(candidate?.trim()))?.trim() || '';
 }
 

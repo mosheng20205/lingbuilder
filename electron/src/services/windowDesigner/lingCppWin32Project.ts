@@ -12327,6 +12327,7 @@ protected:
     HICON largeWindowIcon_ = nullptr;
     HICON smallWindowIcon_ = nullptr;
     bool ownsWindowIcons_ = false;
+    bool cornerRegionFallback_ = false;
     UINT dpi_;
     bool closingEventActive_ = false;
     bool closingCancelled_ = false;
@@ -25732,7 +25733,14 @@ private:
                 setAttribute(hwnd_, textColor, &spec_.titleBarForeground, sizeof(spec_.titleBarForeground));
             }
             if (spec_.cornerPreference >= 0) {
-                setAttribute(hwnd_, cornerPreference, &spec_.cornerPreference, sizeof(spec_.cornerPreference));
+                // DWMWA_WINDOW_CORNER_PREFERENCE 仅 Windows 11 生效，旧系统返回失败；
+                // 无边框窗口回退为 SetWindowRgn 圆角区域裁剪（随 WM_SIZE 重算）
+                if (setAttribute(hwnd_, cornerPreference, &spec_.cornerPreference, sizeof(spec_.cornerPreference)) == S_OK) {
+                    cornerRegionFallback_ = false;
+                } else if (spec_.borderStyle == 0 && (spec_.cornerPreference == 2 || spec_.cornerPreference == 3)) {
+                    cornerRegionFallback_ = true;
+                    ApplyWindowCornerRegion();
+                }
             }
         }
         if (TextEquals(spec_.iconStyle, L"none")) return;
@@ -25750,6 +25758,22 @@ private:
         }
         if (largeWindowIcon_) SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(largeWindowIcon_));
         if (smallWindowIcon_) SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallWindowIcon_));
+    }
+
+    void ApplyWindowCornerRegion() {
+        if (!hwnd_ || !cornerRegionFallback_ || IsIconic(hwnd_)) return;
+        if (IsZoomed(hwnd_)) {
+            SetWindowRgn(hwnd_, nullptr, TRUE);
+            return;
+        }
+        RECT rect = {};
+        if (!GetWindowRect(hwnd_, &rect)) return;
+        int width = std::max(1, static_cast<int>(rect.right - rect.left));
+        int height = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int radius = std::max(ScaleForDpi(spec_.cornerPreference == 3 ? 8 : 16, dpi_), 4);
+        HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius, radius);
+        if (!region) return;
+        if (SetWindowRgn(hwnd_, region, TRUE) == 0) DeleteObject(region);
     }
 
     void DestroyWindowIcons() {
@@ -27872,6 +27896,7 @@ ${comWndProcCase}
                 sizeBaselineReady_ = true;
                 windowStateBaselineReady_ = true;
             }
+            ApplyWindowCornerRegion();
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_随窗口调整设计器控件();
             EdgeView_调整全部大小();
@@ -30833,7 +30858,18 @@ function generateControlArray(window: LingWindowModel, windowIndex: number, prog
         : control;
       return generateControlSpec(effectiveControl, id, parent ? controlIds.get(parent.id) || 0 : 0, parent, controlIds, window.background,
         getConventionalControlEventBindings(effectiveControl.type, effectiveControl.name)
-          .filter(candidate => sourceEventNames.has(candidate.handlerName)));
+          .map(candidate => {
+            // 源码存在两种等价惯例名：设计器自动命名为 `_控件名_事件`，AI/手写常写 `控件名_事件`。
+            // 任一形态在源码里有定义都要接线，处理器名取源码实际定义的那个——
+            // 否则「按钮1_被单击」这类无下划线写法会静默变成死事件（点击无响应）。
+            if (sourceEventNames.has(candidate.handlerName)) return candidate;
+            const withoutUnderscore = candidate.handlerName.replace(/^_/u, '');
+            if (sourceEventNames.has(withoutUnderscore)) return { ...candidate, handlerName: withoutUnderscore };
+            const withUnderscore = `_${candidate.handlerName}`;
+            if (sourceEventNames.has(withUnderscore)) return { ...candidate, handlerName: withUnderscore };
+            return undefined;
+          })
+          .filter((candidate): candidate is Win32ConventionalControlEventBinding => Boolean(candidate)));
     })
     .join(',\n') || generateControlSpec({
       id: '__empty_control_spec__',

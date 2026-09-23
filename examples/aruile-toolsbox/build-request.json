@@ -1,0 +1,70 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "aruile-toolsbox",
+    "name": "Aruile工具箱",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "aruile-toolsbox.xml",
+        "className": "工具箱窗体",
+        "title": "Aruile Tools Box",
+        "width": 920,
+        "height": 620,
+        "background": "#0B1626",
+        "openPlacement": "center",
+        "description": "EdgeView（WebView2）全幅网页 UI 无边框工具箱（内嵌站点零释放内存服务 + postMessage/reqId 桥 + 窗口操作模块）",
+        "borderStyle": "none",
+        "resizable": true,
+        "cornerStyle": "rounded",
+        "events": {
+          "Loaded": "_工具箱窗体_创建完毕"
+        },
+        "controls": [
+          {
+            "id": "edge-1",
+            "parentId": "",
+            "type": "EdgeBrowser",
+            "name": "浏览器控件",
+            "content": "Edge 浏览器",
+            "x": 0,
+            "y": 0,
+            "width": 920,
+            "height": 620,
+            "fontSize": 12,
+            "fontFamily": "Microsoft YaHei UI",
+            "background": "#0B1626",
+            "foreground": "#E9EFF8",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "properties": {
+              "url": "https://aruile.local/index.html",
+              "cacheDir": ".edgeview/aruile",
+              "proxyMode": "system",
+              "enableScript": true,
+              "enableWebMessage": true,
+              "enableDevTools": true,
+              "enableContextMenu": false,
+              "enableStatusBar": false,
+              "zoomFactor": 100,
+              "language": "zh-CN"
+            },
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "events": {}
+          }
+        ],
+        "embeddedSite": {
+          "host": "aruile.local",
+          "entry": "www/index.html",
+          "files": [
+            "www/index.html"
+          ]
+        }
+      }
+    ]
+  },
+  "run": false,
+  "approved": true
+}

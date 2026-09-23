@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-import { agentToolEventCallId, describeEditProposalOutcome } from '../src/components/AiAssistant';
+import { AGENT_PROPOSAL_TTL_MS, agentToolEventCallId, describeEditProposalOutcome, isAgentProposalStale } from '../src/components/AiAssistant';
+import { buildProposalLineDiff } from '../src/services/ai/proposalPreviewDiff';
+import { buildAgentTurnContextPrompt, deriveProjectDirectory } from '../src/services/ai/agentTurnContext';
 import { deriveAiNewFileAllowance, isPathAllowedByNewFileAllowance, parseAiNewFileAllowance } from '../src/services/ai/aiEditFileScope';
 
 const read = (relative: string) => fs.readFileSync(new URL(relative, import.meta.url), 'utf8');
@@ -138,4 +140,98 @@ test('新建文件白名单：校验、匹配与指令推导', () => {
   assert.deepEqual(unnamed?.extensions, ['.lcpp']);
   // 与新建无关的指令不改变既有语义。
   assert.equal(deriveAiNewFileAllowance('请修复这个编译错误', 'src/MainWindow.lcpp'), undefined);
+});
+
+test('提案预览行级 diff：增删计数、相同行折叠省略与超长截断', () => {
+  // 单行替换：相同上下文保留，增删各 1 行。
+  const edit = buildProposalLineDiff('如果真\n按钮.标题 = 1\n调试输出(1)', '如果真\n按钮.标题 = 2\n调试输出(1)');
+  assert.equal(edit.addedCount, 1);
+  assert.equal(edit.removedCount, 1);
+  assert.equal(edit.lines.filter(line => line.kind === 'same').length, 2);
+  assert.ok(edit.lines.some(line => line.kind === 'removed' && line.text.includes('标题 = 1')));
+  assert.ok(edit.lines.some(line => line.kind === 'added' && line.text.includes('标题 = 2')));
+
+  // 新建文件：全部是新增行。
+  const fresh = buildProposalLineDiff('', '变量 x = 1\n变量 y = 2');
+  assert.equal(fresh.addedCount, 2);
+  assert.equal(fresh.removedCount, 0);
+
+  // 长相同段折叠：只保留首尾各 3 行 + 省略标记，不再整段平铺。
+  const longSame = Array.from({ length: 20 }, () => 'k');
+  const fold = buildProposalLineDiff([...longSame, 'z'].join('\n'), [...longSame, 'Z'].join('\n'));
+  assert.ok(fold.lines.some(line => line.kind === 'elided'), '超过 6 行的相同段必须折叠省略');
+  assert.equal(fold.lines.filter(line => line.kind === 'same').length, 6);
+
+  // 超长截断：最多 400 行并如实标注。
+  const big = buildProposalLineDiff(
+    Array.from({ length: 500 }, (_, index) => `旧${index}`).join('\n'),
+    Array.from({ length: 500 }, (_, index) => `新${index}`).join('\n')
+  );
+  assert.equal(big.truncated, true);
+  assert.equal(big.lines.length, 400);
+});
+
+test('过期提案预警：超过 30 分钟判过期，createdAt 非法不得误判', () => {
+  assert.equal(AGENT_PROPOSAL_TTL_MS, 30 * 60_000);
+  const now = Date.now();
+  assert.equal(isAgentProposalStale({ createdAt: new Date(now - 10 * 60_000).toISOString() }), false);
+  assert.equal(isAgentProposalStale({ createdAt: new Date(now - 31 * 60_000).toISOString() }), true);
+  assert.equal(isAgentProposalStale({ createdAt: '' }), false);
+  assert.equal(isAgentProposalStale({ createdAt: '不是时间' }), false);
+});
+
+test('Agent 轮次注入当前项目上下文：多项目工作区不再误取占位项目', () => {
+  // 推导项目目录：取第一个文件路径的目录段，容错反斜杠。
+  assert.equal(deriveProjectDirectory(['agent-demo\\MainWindow.lcpp', 'agent-demo\\项目DLL命令.lcpp']), 'agent-demo');
+  assert.equal(deriveProjectDirectory(['MainWindow.lcpp']), '');
+  assert.equal(deriveProjectDirectory([]), '');
+  assert.equal(deriveProjectDirectory(undefined), '');
+
+  const prompt = buildAgentTurnContextPrompt({
+    projectId: 'lingbuilder-project',
+    filePath: 'agent-demo\\MainWindow.lcpp',
+    hasDesigner: true,
+    workspaceFilePaths: ['agent-demo/MainWindow.lcpp', 'agent-demo/项目DLL命令.lcpp']
+  }, '把按钮文本改成「点我试试」');
+  assert.match(prompt, /当前打开项目 ID：lingbuilder-project/u);
+  assert.match(prompt, /项目源码目录：agent-demo\//u);
+  assert.match(prompt, /活动文件：agent-demo\/MainWindow\.lcpp/u);
+  assert.match(prompt, /窗口项目/u);
+  assert.match(prompt, /不要改动其它项目的文件/u);
+  assert.ok(prompt.endsWith('把按钮文本改成「点我试试」'), '指令原文必须完整附在上下文之后');
+
+  // 没有任何事实（网页版无 IPC）时不注入，原样返回。
+  assert.equal(buildAgentTurnContextPrompt({}, '你好'), '你好');
+});
+
+test('面板修复批：会话映射、停止静默、凭据门检、提案门检与常驻状态行', () => {
+  const assistant = read('../src/components/AiAssistant.tsx');
+
+  // 面板会话 ↔ dsh 会话一一映射：清除上下文/停止/重启必须作废映射，否则旧上下文
+  // 静默泄漏进新会话，「清除上下文」就只剩清 UI 的假动作。
+  assert.match(assistant, /agentSessionsRef = useRef<Map<string, string>>/u);
+  assert.match(assistant, /agentSessionsRef\.current\.delete\(activeConversation\.id\)/u);
+  assert.match(assistant, /agentSessionsRef\.current\.clear\(\)/u);
+
+  // 主动停止导致的 in-flight 拒绝必须静默，不得再追加「内嵌 Agent 出错」误导报错。
+  assert.match(assistant, /agentStopRequestedRef/u);
+
+  // 启动前凭据门检（自定义通道缺 Key 硬拦截）与零响应诊断文案。
+  assert.match(assistant, /checkAgentCredential/u);
+  assert.match(assistant, /没有留下文字说明/u);
+  assert.match(assistant, /可点上方「测试连通」验证/u);
+
+  // 提案取回必须以本轮真的调用过 edit.propose 为前提，且过期时禁用「应用提案」。
+  assert.match(assistant, /edit_propose/iu);
+  assert.match(assistant, /isAgentProposalStale/u);
+  assert.match(assistant, /buildProposalLineDiff/u);
+
+  // 运行状态行必须常驻：其 JSX 出现在配置折叠区（isAiConfigExpanded &&）之前。
+  const statusRow = assistant.indexOf('运行状态行常驻');
+  const collapsedForm = assistant.indexOf('{isAiConfigExpanded && (');
+  assert.ok(statusRow >= 0, '必须保留常驻状态行注释锚点');
+  assert.ok(collapsedForm > statusRow, '状态行必须渲染在配置折叠区之前');
+
+  // 一轮执行中禁止会话切换/新建/清除（防止把本轮结果写进切换后的会话）。
+  assert.match(assistant, /const activateConversation = async \(conversationId: string\) => \{\n    if \(isAiResponding\) return;/u);
 });

@@ -1,0 +1,126 @@
+{
+ "dir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\EdgeView 浏览器模块合集\\24 浏览器扩展·ServiceWorker·DevTools\\示例项目",
+ "id": "edgeview-ep24-extensions-devtools",
+ "title": "EdgeView 浏览器扩展·ServiceWorker·DevTools",
+ "lbsln": "EdgeView扩展DevTools示例.lbsln",
+ "pageH": 900,
+ "buttons": [
+  {
+   "id": "b1",
+   "name": "安装扩展按钮",
+   "content": "1 安装扩展(解包目录)",
+   "row": 0,
+   "col": 0,
+   "bg": "blue",
+   "event": "_安装扩展按钮_被单击"
+  },
+  {
+   "id": "b2",
+   "name": "枚举扩展按钮",
+   "content": "2 枚举扩展",
+   "row": 0,
+   "col": 1,
+   "bg": "blue",
+   "event": "_枚举扩展按钮_被单击"
+  },
+  {
+   "id": "b3",
+   "name": "禁用扩展按钮",
+   "content": "3 禁用扩展",
+   "row": 1,
+   "col": 0,
+   "bg": "blue",
+   "event": "_禁用扩展按钮_被单击"
+  },
+  {
+   "id": "b4",
+   "name": "启用扩展按钮",
+   "content": "4 启用扩展",
+   "row": 1,
+   "col": 1,
+   "bg": "blue",
+   "event": "_启用扩展按钮_被单击"
+  },
+  {
+   "id": "b5",
+   "name": "删除扩展按钮",
+   "content": "5 删除扩展",
+   "row": 2,
+   "col": 0,
+   "bg": "red",
+   "event": "_删除扩展按钮_被单击"
+  },
+  {
+   "id": "b6",
+   "name": "打开SW页按钮",
+   "content": "6 打开SW演示页",
+   "row": 2,
+   "col": 1,
+   "bg": "teal",
+   "event": "_打开SW页按钮_被单击"
+  },
+  {
+   "id": "b7",
+   "name": "枚举SW按钮",
+   "content": "7 枚举ServiceWorker",
+   "row": 3,
+   "col": 0,
+   "bg": "teal",
+   "event": "_枚举SW按钮_被单击"
+  },
+  {
+   "id": "b8",
+   "name": "枚举Shared按钮",
+   "content": "8 枚举SharedWorker",
+   "row": 3,
+   "col": 1,
+   "bg": "teal",
+   "event": "_枚举Shared按钮_被单击"
+  },
+  {
+   "id": "b9",
+   "name": "SW信息按钮",
+   "content": "9 工作线程信息JSON",
+   "row": 4,
+   "col": 0,
+   "bg": "teal",
+   "event": "_SW信息按钮_被单击"
+  },
+  {
+   "id": "b10",
+   "name": "SW发消息按钮",
+   "content": "10 工作线程发JSON",
+   "row": 4,
+   "col": 1,
+   "bg": "teal",
+   "event": "_SW发消息按钮_被单击"
+  },
+  {
+   "id": "b11",
+   "name": "SW脚本API按钮",
+   "content": "11 SW脚本API 置/取",
+   "row": 5,
+   "col": 0,
+   "bg": "teal",
+   "event": "_SW脚本API按钮_被单击"
+  },
+  {
+   "id": "b12",
+   "name": "DevTools调用按钮",
+   "content": "12 DevTools调用2+2",
+   "row": 5,
+   "col": 1,
+   "bg": "violet",
+   "event": "_DevTools调用按钮_被单击"
+  },
+  {
+   "id": "b13",
+   "name": "任务管理器按钮",
+   "content": "13 打开任务管理器",
+   "row": 6,
+   "col": 0,
+   "bg": "violet",
+   "event": "_任务管理器按钮_被单击"
+  }
+ ]
+}

@@ -5,18 +5,27 @@ import path from 'node:path';
 import test from 'node:test';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from '../electron/shellPathService';
 
-test('renderer/configured workspace takes precedence over a stale desktop workspace', () => {
+test('renderer/active workspace takes precedence; configured env 只作冷启动兜底', () => {
+  // 回归（2026-09-23）：工作区切换后 env 仍是旧值，若 configured 优先于 activeWorkspace，
+  // 内嵌 Agent 运行时会拿旧 --workspace 启动，提案落进错误工作区（真机踩实）。
   assert.equal(selectShellWorkspaceRoot({
     rendererWorkspaceRoot: '',
-    configuredWorkspaceRoot: 'C:\\workspace',
+    configuredWorkspaceRoot: 'C:\\stale-environment',
     activeWorkspace: 'C:\\workspace\\electron'
-  }), 'C:\\workspace');
+  }), 'C:\\workspace\\electron');
 
   assert.equal(selectShellWorkspaceRoot({
     rendererWorkspaceRoot: 'C:\\packaged-workspace',
     configuredWorkspaceRoot: 'C:\\stale-environment',
     activeWorkspace: 'C:\\stale-desktop-state'
   }), 'C:\\packaged-workspace');
+
+  // 冷启动：renderer 与 activeWorkspace 都为空时才用 env。
+  assert.equal(selectShellWorkspaceRoot({
+    rendererWorkspaceRoot: '',
+    configuredWorkspaceRoot: 'C:\\cold-start',
+    activeWorkspace: ''
+  }), 'C:\\cold-start');
 });
 
 test('directory open falls back to Explorer reveal when Electron returns an error', async () => {

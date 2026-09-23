@@ -21,6 +21,7 @@ import {
   Package,
   Search,
   ShieldCheck,
+  Star,
   Trash2,
   Wrench,
   X
@@ -41,6 +42,11 @@ import {
 } from '../services/modules/modulePublicInfo';
 import { normalizeModulePublicInfoSearchText } from '../services/modules/modulePublicInfoSearch';
 import { requestModuleDetailAction } from '../services/modules/moduleDetailView';
+import {
+  isModuleFavorite,
+  subscribeModuleFavorites,
+  toggleModuleFavorite
+} from '../services/modules/moduleFavorites';
 import type { InstalledModule, ModuleHistoryEntry } from '../services/modules/types';
 
 /**
@@ -85,6 +91,14 @@ export default function ModuleDetailPage({
   const [commerceProducts, setCommerceProducts] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<DetailTabId>('overview');
   const [isLoading, setIsLoading] = useState(!standaloneModule);
+  // 常用模块收藏是纯本机偏好（不属启停/购买等模块 API 动作），详情页直接经 moduleFavorites 服务读写；
+  // standalone 独立窗口同样可用，跨窗口经 storage 事件同步回模块面板。
+  const [isFavorite, setIsFavorite] = useState(() => isModuleFavorite(moduleId));
+
+  useEffect(() => {
+    setIsFavorite(isModuleFavorite(moduleId));
+    return subscribeModuleFavorites(() => setIsFavorite(isModuleFavorite(moduleId)));
+  }, [moduleId]);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
@@ -212,6 +226,20 @@ export default function ModuleDetailPage({
               <p className={`mt-1 line-clamp-2 break-words text-xs leading-5 ${subtleClass}`} title={manifest.description}>{manifest.description}</p>
             )}
           </div>
+          {standalone && (
+            <button
+              type="button"
+              onClick={() => setIsFavorite(toggleModuleFavorite(moduleId))}
+              title={isFavorite ? '从常用模块移除' : '加入常用模块；可在模块面板顶部「常用模块」分组快速找到'}
+              aria-label={isFavorite ? '从常用模块移除' : '加入常用模块'}
+              aria-pressed={isFavorite}
+              className={`shrink-0 rounded p-1.5 transition-colors ${isFavorite
+                ? 'text-amber-300 hover:bg-amber-500/10'
+                : `${isDarkMode ? 'text-slate-400 hover:bg-white/10 hover:text-amber-200' : 'text-slate-500 hover:bg-slate-100 hover:text-amber-700'}`} ${actionButtonClass}`}
+            >
+              <Star size={18} className={isFavorite ? 'fill-amber-300' : ''} />
+            </button>
+          )}
           {onClose && (
             <button
               type="button"
@@ -238,6 +266,18 @@ export default function ModuleDetailPage({
             >
               {isBasicModule || !isEnabled ? <Check size={14} /> : <X size={14} />}
               {isBasicModule ? '基础能力（始终启用）' : isEnabled ? '禁用' : '启用'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFavorite(toggleModuleFavorite(moduleId))}
+              title={isFavorite ? '从常用模块移除' : '加入常用模块；可在模块面板顶部「常用模块」分组快速找到'}
+              aria-pressed={isFavorite}
+              className={`inline-flex h-8 items-center gap-1.5 rounded border px-3 text-xs ${isFavorite
+                ? 'border-amber-500/40 text-amber-300 hover:bg-amber-500/10'
+                : `${isDarkMode ? 'border-slate-500/40 text-slate-300 hover:bg-slate-500/10' : 'border-slate-300 text-slate-700 hover:bg-slate-500/10'}`} ${actionButtonClass}`}
+            >
+              <Star size={14} className={isFavorite ? 'fill-amber-300' : ''} />
+              {isFavorite ? '已收藏' : '加入常用'}
             </button>
             {module.isDevLink ? (
               <button

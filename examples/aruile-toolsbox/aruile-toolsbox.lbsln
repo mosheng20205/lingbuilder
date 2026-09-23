@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "Aruile工具箱",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "aruile-toolsbox",
+  "startupProjectIds": [
+    "aruile-toolsbox"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "aruile-toolsbox",
+      "name": "Aruile工具箱",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

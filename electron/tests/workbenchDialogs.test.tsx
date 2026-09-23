@@ -6,6 +6,7 @@ import CommandPalette from '../src/components/CommandPalette';
 import SettingsDialog from '../src/components/SettingsDialog';
 import ProjectNameDialog from '../src/components/ProjectNameDialog';
 import ProjectTypeDialog from '../src/components/ProjectTypeDialog';
+import ProjectBuildPropertiesDialog, { resolveProjectBuildKindInfo } from '../src/components/ProjectBuildPropertiesDialog';
 import WorkbenchConfirmDialog from '../src/components/WorkbenchConfirmDialog';
 import type { CommandPresentation, RegisteredCommand } from '../src/services/commands';
 import {
@@ -372,4 +373,62 @@ test('settings dialog renders Chinese loading and failure states', () => {
   assert.match(failed, /role="alert"/u);
   assert.match(failed, /模拟读取失败/u);
   assert.match(failed, /重试/u);
+});
+
+test('project build properties dialog names the project kind (EXE / DLL / console / module)', () => {
+  assert.match(resolveProjectBuildKindInfo('visual-cpp').title, /Windows 界面程序（EXE）/u);
+  assert.match(resolveProjectBuildKindInfo('visual-cpp', 'dll').title, /动态链接库（DLL）/u);
+  assert.match(resolveProjectBuildKindInfo('windows-dll', 'dll').title, /动态链接库（DLL）/u);
+  assert.match(resolveProjectBuildKindInfo('windows-console').title, /控制台程序（EXE）/u);
+  assert.match(resolveProjectBuildKindInfo('external-msbuild').title, /MSBuild 外部工程（EXE）/u);
+  assert.match(resolveProjectBuildKindInfo('external-cmake', 'dll').title, /CMake 外部工程（DLL）/u);
+});
+
+test('build properties dialog shows the type box and editable configuration for DLL projects', () => {
+  const markup = renderToStaticMarkup(
+    <ProjectBuildPropertiesDialog
+      open
+      isDarkMode
+      projectName="DLL项目2"
+      projectType="windows-dll"
+      outputType="dll"
+      editable
+      initialValue={{ configuration: 'Debug', architecture: 'Win32', additionalArgumentsText: '' }}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+
+  assert.match(markup, /role="dialog"/u);
+  assert.match(markup, /data-role="project-kind"/u);
+  assert.match(markup, /动态链接库（DLL）/u);
+  assert.match(markup, /aria-label="构建模式"/u);
+  assert.match(markup, /aria-label="构建架构"/u);
+  assert.match(markup, /aria-label="附加参数"/u);
+  assert.match(markup, /保存/u);
+});
+
+test('build properties dialog is read-only for window projects and flags module dev sources', () => {
+  const markup = renderToStaticMarkup(
+    <ProjectBuildPropertiesDialog
+      open
+      isDarkMode
+      projectName="问候项目"
+      projectType="visual-cpp"
+      editable={false}
+      workspaceEffectiveLabel="Debug · Win32（跟随工作区构建配置）"
+      linkedModule={{ id: 'lingbuilder.demo.greeter', name: '问候模块' }}
+      initialValue={{ configuration: 'Debug', architecture: 'Win32', additionalArgumentsText: '' }}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+
+  assert.match(markup, /Windows 界面程序（EXE）/u);
+  assert.match(markup, /Debug · Win32（跟随工作区构建配置）/u);
+  assert.match(markup, /data-role="linked-module"/u);
+  assert.match(markup, /lingbuilder\.demo\.greeter/u);
+  assert.match(markup, /模块项目/u);
+  assert.doesNotMatch(markup, /aria-label="构建模式"/u);
+  assert.match(markup, /关闭/u);
 });

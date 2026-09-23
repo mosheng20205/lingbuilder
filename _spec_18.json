@@ -1,0 +1,135 @@
+{
+ "dir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\EdgeView 浏览器模块合集\\18 会话与隐私深水区\\示例项目",
+ "id": "edgeview-ep18-session-privacy",
+ "title": "EdgeView 会话与隐私深水区",
+ "lbsln": "EdgeView会话隐私示例.lbsln",
+ "pageH": 860,
+ "buttons": [
+  {
+   "id": "b1",
+   "name": "带属性Cookie按钮",
+   "content": "1 置Cookie带属性",
+   "row": 0,
+   "col": 0,
+   "bg": "blue",
+   "event": "_带属性Cookie按钮_被单击"
+  },
+  {
+   "id": "b2",
+   "name": "批量Cookie按钮",
+   "content": "2 批量置Cookie",
+   "row": 0,
+   "col": 1,
+   "bg": "blue",
+   "event": "_批量Cookie按钮_被单击"
+  },
+  {
+   "id": "b3",
+   "name": "删除Cookie按钮",
+   "content": "3 删除Cookie",
+   "row": 1,
+   "col": 0,
+   "bg": "blue",
+   "event": "_删除Cookie按钮_被单击"
+  },
+  {
+   "id": "b4",
+   "name": "读回Cookie按钮",
+   "content": "4 读回全部Cookie",
+   "row": 1,
+   "col": 1,
+   "bg": "teal",
+   "event": "_读回Cookie按钮_被单击"
+  },
+  {
+   "id": "b5",
+   "name": "清空Cookie按钮",
+   "content": "5 删除全部Cookie",
+   "row": 2,
+   "col": 0,
+   "bg": "blue",
+   "event": "_清空Cookie按钮_被单击"
+  },
+  {
+   "id": "b6",
+   "name": "清理数据按钮",
+   "content": "6 清理浏览数据",
+   "row": 2,
+   "col": 1,
+   "bg": "teal",
+   "event": "_清理数据按钮_被单击"
+  },
+  {
+   "id": "b7",
+   "name": "按时间清理按钮",
+   "content": "7 按时间清理",
+   "row": 3,
+   "col": 0,
+   "bg": "teal",
+   "event": "_按时间清理按钮_被单击"
+  },
+  {
+   "id": "b8",
+   "name": "Profile按钮",
+   "content": "8 取ProfileJSON",
+   "row": 3,
+   "col": 1,
+   "bg": "violet",
+   "event": "_Profile按钮_被单击"
+  },
+  {
+   "id": "b9",
+   "name": "下载目录按钮",
+   "content": "9 置/取下载目录",
+   "row": 4,
+   "col": 0,
+   "bg": "violet",
+   "event": "_下载目录按钮_被单击"
+  },
+  {
+   "id": "b10",
+   "name": "密码保存按钮",
+   "content": "10 密码保存 置/取",
+   "row": 4,
+   "col": 1,
+   "bg": "violet",
+   "event": "_密码保存按钮_被单击"
+  },
+  {
+   "id": "b11",
+   "name": "自动填充按钮",
+   "content": "11 自动填充 置/取",
+   "row": 5,
+   "col": 0,
+   "bg": "violet",
+   "event": "_自动填充按钮_被单击"
+  },
+  {
+   "id": "b12",
+   "name": "配色方案按钮",
+   "content": "12 配色方案 置/取",
+   "row": 5,
+   "col": 1,
+   "bg": "violet",
+   "event": "_配色方案按钮_被单击"
+  },
+  {
+   "id": "b13",
+   "name": "跟踪保护按钮",
+   "content": "13 跟踪保护 置/取",
+   "row": 6,
+   "col": 0,
+   "bg": "violet",
+   "event": "_跟踪保护按钮_被单击"
+  },
+  {
+   "id": "b14",
+   "name": "刷新页按钮",
+   "content": "14 重新加载页面",
+   "row": 6,
+   "col": 1,
+   "bg": "red",
+   "event": "_刷新页按钮_被单击"
+  }
+ ]
+}

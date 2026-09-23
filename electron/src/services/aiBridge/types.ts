@@ -30,9 +30,31 @@ export interface AiBridgeHealth {
   ok: true;
   service: 'LingBuilder AI Bridge';
   version: 1;
+  /** 当前 LingBuilder IDE 版本（health.version 是响应结构版本，别混用）。 */
+  ideVersion: string;
   workspaceRoot: string;
   permission: AiBridgePermissionMode;
   mcp: boolean;
+}
+
+/** 已注册项目的只读摘要：workspace.list 首项 projects[] 视图的条目，外部 AI 据此确定目标项目，不再按目录名猜。 */
+export interface AiBridgeWorkspaceProjectSummary {
+  id: string;
+  name: string;
+  type: 'visual-cpp' | 'windows-dll' | 'windows-console' | 'external-msbuild' | 'external-cmake';
+  sourceRoot: string;
+  /** visual-cpp = 可视化窗口设计器项目。 */
+  isWindowProject: boolean;
+  isDefault?: boolean;
+}
+
+/** 单项目工作区的消歧回显：diagnostics / edit.propose 响应携带，外部 AI 可直接引用其中的 projectId。 */
+export interface AiBridgeProjectHint {
+  projectId: string;
+  name: string;
+  type: AiBridgeWorkspaceProjectSummary['type'];
+  sourceRoot: string;
+  note: string;
 }
 
 export interface AiBridgeTreeEntry {
@@ -44,6 +66,12 @@ export interface AiBridgeTreeEntry {
   children?: AiBridgeTreeEntry[];
   /** 仅合成根条目携带：当前 Bridge 工作区根绝对路径。 */
   workspaceRoot?: string;
+  /** 仅合成根条目携带：当前 LingBuilder IDE 版本，供外部 AI 做兼容性判断与问题报告。 */
+  ideVersion?: string;
+  /** 仅合成根条目携带：解决方案中全部已注册项目的只读视图（solution.json 不可读时为空数组）。 */
+  projects?: AiBridgeWorkspaceProjectSummary[];
+  /** 仅合成根条目携带：当前启动项目（F5 构建运行的目标），多项目工作区用它消歧。 */
+  startupProjectId?: string;
 }
 
 export interface AiBridgeReadFileRequest {

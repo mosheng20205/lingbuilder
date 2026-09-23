@@ -61,15 +61,39 @@ export class HarnessSdkClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private readonly pending = new Map<number, Pending>();
   private readonly notificationHandlers = new Set<(notification: HarnessNotification) => void>();
+  private readonly exitListeners = new Set<(reason: string) => void>();
   private nextId = 1;
   private stdoutBuffer = '';
   private stderrTail = '';
   private closed = false;
+  private exited = false;
+  private exitReason = '';
 
   constructor(private readonly options: HarnessSdkClientOptions) {}
 
   get running(): boolean {
     return !!this.child && !this.closed;
+  }
+
+  /** 进程是否仍然存活；崩溃（close/error）后为 false，与「主动 close 过」区分开。 */
+  get alive(): boolean {
+    return !!this.child && !this.closed && !this.exited;
+  }
+
+  /** 进程退出（含主动 close）回调：服务层据此把快照从 running 修正为 failed，避免僵尸「待命」。 */
+  onExit(listener: (reason: string) => void): () => void {
+    this.exitListeners.add(listener);
+    return () => this.exitListeners.delete(listener);
+  }
+
+  /**
+   * 进程退出时 resolve（带退出原因）。服务层用整轮等待与它做 race：
+   * session/prompt 的 ack 很早就完成了，进程半路死亡不会拒绝任何 pending 请求，
+   * 不做 race 的话整轮要干等到整轮超时（最长 15 分钟）。
+   */
+  waitForExit(): Promise<string> {
+    if (!this.alive) return Promise.resolve(this.exitReason || '内嵌 Agent 运行器已退出。');
+    return new Promise(resolve => this.exitListeners.add(reason => resolve(reason)));
   }
 
   get pid(): number | null {
@@ -102,8 +126,8 @@ export class HarnessSdkClient {
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => this.consumeStdout(String(chunk)));
     child.stderr.on('data', chunk => this.consumeStderr(String(chunk)));
-    child.on('error', error => this.failAll(`内嵌 Agent 运行器进程错误：${error.message}`));
-    child.on('close', code => this.failAll(`内嵌 Agent 运行器已退出（退出码 ${code ?? '未知'}）`));
+    child.on('error', error => this.handleExit(`内嵌 Agent 运行器进程错误：${error.message}`));
+    child.on('close', code => this.handleExit(`内嵌 Agent 运行器已退出（退出码 ${code ?? '未知'}）`));
 
     const params: HarnessInitializeParams = {
       cwd: this.options.cwd,
@@ -123,10 +147,12 @@ export class HarnessSdkClient {
   }
 
   async prompt(sessionId: string, content: string): Promise<{ messageId: string }> {
+    // 确认超时只覆盖「dsh 接收需求」这一步（正常毫秒级回 messageId）；放宽到 2 分钟，
+    // 避免网关冷启动时误报失败而 dsh 其实仍在后台跑（那会导致两轮交错）。
     return this.request<{ messageId: string }>(HARNESS_SDK_PROMPT, {
       sessionId,
       contentBlocks: [{ type: 'text', text: content }]
-    }, this.options.requestTimeoutMs ?? 30_000);
+    }, this.options.requestTimeoutMs ?? 120_000);
   }
 
   async request<T>(method: string, params: unknown, timeoutMs: number): Promise<T> {
@@ -153,24 +179,48 @@ export class HarnessSdkClient {
     });
   }
 
-  /** 优雅收尾：协议 shutdown → stdin EOF → SIGTERM → SIGKILL。 */
+  /** 优雅收尾：协议 shutdown → stdin EOF → SIGTERM → SIGKILL，最后销毁 stdio 管道。 */
   async close(): Promise<void> {
     const child = this.child;
-    this.closed = true;
-    if (!child) return;
+    if (!child) {
+      this.closed = true;
+      this.exited = true;
+      return;
+    }
     this.notificationHandlers.clear();
     try {
+      // shutdown 必须在标记 closed 之前发送：request() 对已关闭的客户端直接拒绝，
+      // 先置位会让协议 shutdown 永远发不出去，每次都退化成 stdin EOF 慢路径。
       await this.request(HARNESS_SDK_SHUTDOWN, {}, 3_000).catch(() => undefined);
     } finally {
+      this.closed = true;
+      this.exited = true;
+      this.exitReason = this.exitReason || '内嵌 Agent 运行器已关闭。';
       this.failAll('内嵌 Agent 运行器已关闭。');
     }
-    if (await waitForExit(child, 4_000)) return;
+    if (await waitForExit(child, 4_000)) {
+      this.destroyStdio(child);
+      return;
+    }
     child.stdin.end();
-    if (await waitForExit(child, 2_000)) return;
+    if (await waitForExit(child, 2_000)) {
+      this.destroyStdio(child);
+      return;
+    }
     child.kill('SIGTERM');
-    if (await waitForExit(child, 2_000)) return;
+    if (await waitForExit(child, 2_000)) {
+      this.destroyStdio(child);
+      return;
+    }
     child.kill('SIGKILL');
     await waitForExit(child, 2_000);
+    this.destroyStdio(child);
+  }
+
+  /** 进程退出后必须显式销毁 stdio 管道：残留的 Socket 句柄会一直占住事件循环（node --test 不退出就是它）。 */
+  private destroyStdio(child: ChildProcessWithoutNullStreams): void {
+    try { child.stdout.destroy(); } catch { /* 已销毁 */ }
+    try { child.stderr.destroy(); } catch { /* 已销毁 */ }
   }
 
   private initializeOverrides(): Partial<HarnessInitializeParams> {
@@ -179,6 +229,13 @@ export class HarnessSdkClient {
 
   private consumeStderr(chunk: string): void {
     this.stderrTail = (this.stderrTail + chunk).slice(-MAX_STDERR_CHARS);
+  }
+
+  private handleExit(reason: string): void {
+    this.exited = true;
+    this.exitReason = this.exitReason || reason;
+    this.failAll(reason);
+    for (const listener of [...this.exitListeners]) listener(reason);
   }
 
   private consumeStdout(chunk: string): void {
@@ -257,17 +314,43 @@ function waitForExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): 
  * 一轮对话：投递 prompt，收集该会话的事件，直到整代理回到 idle。
  * dsh 不给 prompt 指派 assistant message / turn/end，所以「结束」只能以
  * session.status=idle 为准，且必须先看到事件，避免把上一轮的 idle 当成本轮结果。
+ *
+ * 唯一例外：开场即失败（凭据缺失、网关拒绝）可能一条事件都不发就回到 idle；
+ * 这种情况若也等事件就会挂满整轮超时。所以在「零事件 + 从未进入运行态」时
+ * 给一个短宽限（idleGraceMs），宽限内没有任何事件到达就按已完成处理，
+ * 由调用方据 events/finalText 全空给出诊断文案。
  */
 export async function runHarnessTurn(input: {
   client: HarnessSdkClient;
   sessionId: string;
   prompt: string;
   timeoutMs?: number;
+  /** 零事件 idle 的宽限时长；宽限内出现任何事件即回到「必须见事件」的严格判定。 */
+  idleGraceMs?: number;
   onEvent?: (event: Record<string, unknown>) => void;
 }): Promise<{ events: Record<string, unknown>[]; finalText: string }> {
   const events: Record<string, unknown>[] = [];
   let resolveIdle: () => void = () => undefined;
   const idle = new Promise<void>(resolve => { resolveIdle = resolve; });
+  let rejectTurn: (error: HarnessSdkTransportError) => void = () => undefined;
+  // 进程退出必须立即可见地终结本轮：否则 race 被别处赢走后，这里挂着的整轮超时
+  // 定时器会钉住事件循环（node --test 不退出），服务层也无法及时进入停机自愈。
+  const exited = new Promise<never>((_, reject) => {
+    rejectTurn = reject;
+  });
+  const exitUnsubscribe = input.client.onExit(reason => rejectTurn(
+    new HarnessSdkTransportError(`内嵌 Agent 在本轮执行期间退出：${reason}`, input.client.processStderrTail)
+  ));
+  let idleSettled = false;
+  let sawActiveStatus = false;
+  let graceTimer: NodeJS.Timeout | undefined;
+  const settleIdle = () => {
+    if (idleSettled) return;
+    idleSettled = true;
+    if (graceTimer) clearTimeout(graceTimer);
+    graceTimer = undefined;
+    resolveIdle();
+  };
   const unsubscribe = input.client.onNotification(notification => {
     if (String(notification.params?.sessionId || '') !== input.sessionId) return;
     if (notification.method === 'session.event') {
@@ -276,23 +359,34 @@ export async function runHarnessTurn(input: {
       input.onEvent?.(event);
       return;
     }
-    if (notification.method === 'session.status' && notification.params?.status === 'idle' && events.length > 0) {
-      resolveIdle();
+    if (notification.method !== 'session.status') return;
+    const status = String(notification.params?.status || '');
+    if (status && status !== 'idle') {
+      sawActiveStatus = true;
+      if (graceTimer) { clearTimeout(graceTimer); graceTimer = undefined; }
+      return;
+    }
+    if (status !== 'idle') return;
+    if (events.length > 0 || sawActiveStatus) settleIdle();
+    else if (!graceTimer) {
+      graceTimer = setTimeout(settleIdle, input.idleGraceMs ?? 5_000);
     }
   });
   const timeoutMs = input.timeoutMs ?? 15 * 60_000;
   let timeoutTimer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutTimer = setTimeout(() => reject(new HarnessSdkTransportError(
-      `内嵌 Agent 本轮执行超过 ${Math.round(timeoutMs / 60000)} 分钟未回到空闲状态。`,
+      `内嵌 Agent 本轮执行超过 ${Math.round(timeoutMs / 60000)} 分钟未回到空闲状态（已收到 ${events.length} 个事件）。`,
       input.client.processStderrTail
     )), timeoutMs);
   });
   try {
     await input.client.prompt(input.sessionId, input.prompt);
-    await Promise.race([idle, timeout]);
+    await Promise.race([idle, exited, timeout]);
   } finally {
     if (timeoutTimer) clearTimeout(timeoutTimer);
+    if (graceTimer) clearTimeout(graceTimer);
+    exitUnsubscribe();
     unsubscribe();
   }
   return { events, finalText: lastAssistantText(events) };

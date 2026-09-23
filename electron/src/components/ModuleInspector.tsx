@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Star,
   Store,
   Trash2,
   Upload,
@@ -54,6 +55,11 @@ import {
   type AiModuleImportResultForClipboard
 } from '../services/modules/aiModuleImportParser';
 import { isLocalModulePackagePath } from '../services/modules/modulePackageIntakeService';
+import {
+  getModuleFavoriteIds,
+  subscribeModuleFavorites,
+  toggleModuleFavorite as toggleModuleFavoriteById
+} from '../services/modules/moduleFavorites';
 import { importAiModuleFilesToWorkspace, type AiModuleImportOutcome } from '../services/modules/aiModuleGenerationFlow';
 import { requestAiAgentTurn } from '../services/ai/agentRequestBus';
 import {
@@ -144,7 +150,9 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [subView, setSubView] = useState<ModuleSubViewId | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCloudExpanded, setIsCloudExpanded] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState<Record<'enabled' | 'installed', boolean>>({
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => getModuleFavoriteIds());
+  const [collapsedSections, setCollapsedSections] = useState<Record<'favorites' | 'enabled' | 'installed', boolean>>({
+    favorites: false,
     enabled: false,
     installed: false
   });
@@ -166,6 +174,10 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   useEffect(() => {
     setSelectedModuleId(externalSelectedModuleId);
   }, [externalSelectedModuleId]);
+
+  // 常用模块收藏是用户级偏好：本面板、详情页与独立信息窗口都经 moduleFavorites 服务读写，
+  // 同窗口走 CustomEvent、跨窗口（独立信息窗口）走 localStorage storage 事件。
+  useEffect(() => subscribeModuleFavorites(() => setFavoriteIds(getModuleFavoriteIds())), []);
 
   const cardClass = isDarkMode
     ? 'bg-[#252526] border-white/10 text-slate-200'
@@ -1043,6 +1055,22 @@ ${requirementText}
     [filteredInstalledModules, isModuleEffectivelyEnabled]
   );
 
+  /** 常用模块 = 收藏 ID 顺序（新收藏在前）∩ 当前可见模块；随搜索/分类过滤一致收敛。 */
+  const favoriteModules = useMemo(() => {
+    if (favoriteIds.length === 0) return [];
+    const filteredById = new Map(filteredInstalledModules.map(module => [module.manifest.id, module]));
+    return favoriteIds
+      .map(moduleId => filteredById.get(moduleId))
+      .filter((module): module is InstalledModule => Boolean(module));
+  }, [favoriteIds, filteredInstalledModules]);
+
+  const toggleFavoriteModule = (module: InstalledModule) => {
+    const favorite = toggleModuleFavoriteById(module.manifest.id);
+    setStatusText(favorite
+      ? `已把「${module.manifest.name}」加入常用模块，可在「常用模块」分组快速找到。`
+      : `已把「${module.manifest.name}」从常用模块移除。`);
+  };
+
   const subViewMeta: Record<ModuleSubViewId, { title: string; desc: string; icon: React.ReactNode }> = {
     aiGenerate: { title: 'AI 生成模块', desc: '把需求交给面板内嵌的本机 Agent（DeepSeek Harness）按模块封装链创作；也支持复制规范给任意外部 AI 的手动流程。', icon: <Bot size={16} /> },
     packageInstall: { title: '安装 .lbmod', desc: '拖入 .lbmod 文件，或填写本机绝对路径 / 工作区相对路径预览安装（桌面版自动把外部包复制进工作区）。', icon: <FileArchive size={16} /> },
@@ -1073,6 +1101,8 @@ ${requirementText}
         onToggle={() => familyState ? toggleModuleFamily(familyState) : toggleProjectModule(module)}
         onUninstall={() => uninstallModule(module)}
         onUnlinkDevSource={() => unlinkDevSource(module)}
+        isFavorite={favoriteIds.includes(module.manifest.id)}
+        onToggleFavorite={() => toggleFavoriteModule(module)}
         onOpen={() => openModuleDetail(module.manifest.id)}
       />
     );
@@ -1217,6 +1247,21 @@ ${requirementText}
                 </div>
               )}
             </CollapsibleSection>
+
+            <ModuleListSection
+              title="常用模块"
+              count={favoriteModules.length}
+              desc="自己收藏的常用模块与自封装模块；点模块行的 ★ 收藏。"
+              isOpen={!collapsedSections.favorites}
+              onToggle={() => setCollapsedSections(previous => ({ ...previous, favorites: !previous.favorites }))}
+              isDarkMode={isDarkMode}
+            >
+              <div className={`divide-y ${divideClass}`}>
+                {favoriteModules.length === 0
+                  ? <Empty text="还没有常用模块；点击模块行右侧的 ★，把常用或自己封装的模块置顶到这里。" />
+                  : favoriteModules.map(renderModuleRow)}
+              </div>
+            </ModuleListSection>
 
             <ModuleListSection
               title="已启用"
@@ -1862,7 +1907,7 @@ function DeveloperStep({ step, title, desc, isDarkMode, children }: {
   );
 }
 
-function ModuleRow({ module, isDarkMode, isSelected, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onUnlinkDevSource, onOpen }: {
+function ModuleRow({ module, isDarkMode, isSelected, statusLabel, capabilityText, descriptionOverride, toggleLabel, isFavorite, onToggleFavorite, onToggle, onUninstall, onUnlinkDevSource, onOpen }: {
   module: InstalledModule;
   isDarkMode: boolean;
   isSelected?: boolean;
@@ -1870,6 +1915,8 @@ function ModuleRow({ module, isDarkMode, isSelected, statusLabel, capabilityText
   capabilityText?: string;
   descriptionOverride?: string;
   toggleLabel?: string;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
   onToggle: () => void;
   onUninstall: () => void;
   onUnlinkDevSource: () => void;
@@ -1916,6 +1963,17 @@ function ModuleRow({ module, isDarkMode, isSelected, statusLabel, capabilityText
           {module.isDevLink && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`} title={`开发源 · 实时生效\n${module.installPath}`}>开发源</span>}
           {statusLabel && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${statusBadgeClass}`}>{statusLabel}</span>}
           <span className="ml-auto shrink-0 flex items-center gap-1" onClick={event => event.stopPropagation()}>
+            <button
+              onClick={onToggleFavorite}
+              title={isFavorite ? '从常用模块移除' : '加入常用模块'}
+              aria-label={`${isFavorite ? '从常用模块移除' : '加入常用模块'}：${manifest.name}`}
+              aria-pressed={isFavorite}
+              className={`${compactButtonBase} ${isFavorite
+                ? `border-amber-500/40 text-amber-300 hover:bg-amber-500/10 ${isDarkMode ? 'hover:text-amber-100' : 'hover:text-amber-700'}`
+                : `${isDarkMode ? 'border-white/10 text-slate-400 hover:bg-white/10 hover:text-amber-200' : 'border-slate-300 text-slate-500 hover:bg-slate-200 hover:text-amber-700'}`}`}
+            >
+              <Star size={12} className={isFavorite ? 'fill-amber-300' : ''} />
+            </button>
             <button
               onClick={onToggle}
               disabled={isBasicModule}

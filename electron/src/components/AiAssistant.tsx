@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Brain, Send, Square, ChevronDown, ChevronUp, RefreshCw, Check, X, Plus, Trash2, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AppliedWorkspaceFile, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
+import { AppliedWorkspaceFile, WorkspaceEditChange, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
+import { buildProposalLineDiff, type ProposalPreviewLine } from '../services/ai/proposalPreviewDiff';
+import { buildAgentTurnContextPrompt } from '../services/ai/agentTurnContext';
 import type { LingWindowProject } from '../services/windowDesigner/types';
 import type { ProjectMutationOwner } from '../services/workspace/projectMutationOwner';
 import type { AiConversationStore } from '../services/ai/aiConversationService';
@@ -62,6 +64,15 @@ export function agentToolEventCallId(data: Record<string, unknown> | undefined):
   if (typeof direct === 'string') return direct;
   const nested = message?.content?.find(item => typeof item?.toolCallId === 'string' && item.toolCallId);
   return typeof nested?.toolCallId === 'string' ? nested.toolCallId : '';
+}
+
+/** 提案交接目录的过期时长（与 agentProposalStore.ts 的 30 分钟同口径）。 */
+export const AGENT_PROPOSAL_TTL_MS = 30 * 60_000;
+
+/** 提案是否已超过交接有效期；过期后应用必然 404，界面必须提前说明而不是让用户点下去才报错。 */
+export function isAgentProposalStale(proposal: Pick<WorkspaceEditProposal, 'createdAt'>): boolean {
+  const created = Date.parse(String(proposal.createdAt || ''));
+  return Number.isFinite(created) && Date.now() - created > AGENT_PROPOSAL_TTL_MS;
 }
 
 interface AiAssistantProps {
@@ -273,6 +284,9 @@ export default function AiAssistant({
   }, [projectId]);
 
   const createConversation = async () => {
+    // 一轮执行中禁止会话操作：dsh 会话与面板会话一一对应，中途切换会把本轮结果
+    // 写进切换后的会话（以完成时刻的活动会话为准），也让「新建会话」语义失真。
+    if (isAiResponding) return;
     if (!projectId) return;
     try {
       const response = await fetch('/api/ai/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId }) });
@@ -284,6 +298,7 @@ export default function AiAssistant({
   };
 
   const activateConversation = async (conversationId: string) => {
+    if (isAiResponding) return;
     if (!projectId || conversationId === activeConversation?.id) return;
     try {
       const response = await fetch(`/api/ai/conversations/${encodeURIComponent(conversationId)}/activate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId }) });
@@ -306,6 +321,7 @@ export default function AiAssistant({
   };
 
   const clearCurrentConversation = async () => {
+    if (isAiResponding) return;
     if (!projectId || !activeConversation) return;
     stopAiResponse();
     try {
@@ -315,6 +331,9 @@ export default function AiAssistant({
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || '清除当前上下文失败。');
+      // 清上下文必须同时作废该会话的 dsh 会话：否则聊天区空了，模型仍记得全部历史，
+      // 「清除上下文」就只剩清 UI 的假动作。
+      agentSessionsRef.current.delete(activeConversation.id);
       applyConversationStore(result.store as AiConversationStore);
       setEditProposal(null);
       setExpandedMessageIds(new Set());
@@ -467,9 +486,14 @@ export default function AiAssistant({
     setEditProposal(null);
   }, [filePath, projectMutationOwner.loadGeneration, projectMutationOwner.projectId]);
 
-  // 本机 Agent 引擎（内嵌 DeepSeek Harness）：跨轮复用的会话与已接手的提案 ID。
-  const agentSessionRef = useRef('');
+  // 本机 Agent 引擎（内嵌 DeepSeek Harness）：「面板会话 → dsh 会话」一一映射。
+  // 新建/切换面板会话各自对应独立 dsh 会话；运行时停止、重启或崩溃后 dsh 会话
+  // 全部消失，映射必须随之清空，防止把旧上下文静默带进新会话。
+  const agentSessionsRef = useRef<Map<string, string>>(new Map());
   const handledAgentProposalsRef = useRef<Set<string>>(new Set());
+  // 主动停止标记：stop 会拒绝 in-flight 的 prompt 请求，失败播报必须据此静默，
+  // 否则「已停止本次执行」后面永远跟着一条「内嵌 Agent 出错：运行器已关闭」的误导报错。
+  const agentStopRequestedRef = useRef(false);
   /** 本轮工具调用轨迹：只活在内存里，随会话切换丢弃（不写进会话存储，避免把工具结果正文持久化）。 */
   const [agentSteps, setAgentSteps] = useState<Array<{ callId: string; tool: string; done: boolean }>>([]);
   const [agentRuntimeStatus, setAgentRuntimeStatus] = useState<{
@@ -481,7 +505,13 @@ export default function AiAssistant({
     const runtime = window.lingBuilder?.agentRuntime;
     if (!runtime) return undefined;
     void runtime.status().then(snapshot => { if (snapshot) setAgentRuntimeStatus(snapshot); }).catch(() => undefined);
-    const offStatus = runtime.onStatusChanged(snapshot => setAgentRuntimeStatus(snapshot));
+    const offStatus = runtime.onStatusChanged(snapshot => {
+      setAgentRuntimeStatus(snapshot);
+      if (snapshot?.state === 'failed' || snapshot?.state === 'stopped') {
+        // dsh 进程已死或被回收：它持有的所有会话随之消失，旧映射必须作废。
+        agentSessionsRef.current.clear();
+      }
+    });
     const offEvent = runtime.onEvent(({ event }) => {
       const data = (event.data || {}) as Record<string, unknown>;
       if (event.type === 'tool/call') {
@@ -500,15 +530,41 @@ export default function AiAssistant({
     return () => { offStatus(); offEvent(); };
   }, []);
 
+  /**
+   * 启动前的模型凭据检查。自定义通道的密钥只由 LingBuilder 注入运行时，缺 Key 必然
+   * 调不到模型 → 硬拦截；官方通道留空表示沿用本机 dsh（~/.dsh）已有凭据，本机无法
+   * 判定 → 只给引导不拦启动。避免新用户一路「待命 → 毫无回应」却不知道先填 Key。
+   */
+  const checkAgentCredential = async (): Promise<{ block?: string; advisory?: string }> => {
+    const runtime = window.lingBuilder?.agentRuntime;
+    if (!runtime?.getProviderSettings) return {};
+    const view = await runtime.getProviderSettings().catch(() => undefined);
+    if (!view?.ok || !view.settings || view.hasApiKey) return {};
+    if (view.settings.kind === 'custom-openai') {
+      return { block: '自定义 API 通道还没有保存 API Key：请在上方「AI 对接设置」填写并点「保存配置」。该通道的密钥只由 LingBuilder 注入运行时，不保存就无法调用模型。' };
+    }
+    return { advisory: '未在面板保存 DeepSeek API Key：将继续尝试使用你本机 dsh 已有凭据（~/.dsh）。如果启动后模型毫无回应，请在上方填写 API Key 并保存后重试。' };
+  };
+
   const startAgentRuntime = async () => {
     const runtime = window.lingBuilder?.agentRuntime;
     if (!runtime) return;
+    // 启动前做凭据门检：自定义通道缺 Key 必然失败，硬拦截；官方通道缺 Key 只给引导
+    // （可能沿用本机 dsh 凭据），不拦启动。
+    const credential = await checkAgentCredential();
+    if (credential.block) {
+      setAgentProviderMessage({ tone: 'error', text: credential.block });
+      return;
+    }
+    if (credential.advisory) pushAgentNotice(credential.advisory);
     const result = await runtime.start({});
     if (!result.ok) pushAgentNotice(`内嵌 Agent 启动失败：${result.error || '未知原因'}`);
   };
 
   const stopAgentRuntime = async () => {
+    agentStopRequestedRef.current = true;
     await window.lingBuilder?.agentRuntime?.stop();
+    agentSessionsRef.current.clear();
     setAgentSteps([]);
   };
 
@@ -561,8 +617,9 @@ export default function AiAssistant({
     setAgentProviderSaved({ hasApiKey: Boolean(result.hasApiKey), keyUnavailable: false });
     setAgentProvider(previous => ({ ...previous, apiKey: '' }));
     const running = agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy';
+    // 「密钥未能保存」是失败结果，必须用错误语气展示，不能混在绿色的「已保存」里。
     setAgentProviderMessage({
-      tone: 'ok',
+      tone: result.problem ? 'error' : 'ok',
       text: result.problem || (running ? '已保存。当前运行中的 Agent 仍在使用旧配置，点「重启生效」切换。' : '已保存，下次启动运行时生效。')
     });
   };
@@ -574,9 +631,16 @@ export default function AiAssistant({
     const result: AgentRuntimeView = await runtime.restart()
       .catch((error): AgentRuntimeView => ({ ok: false, error: String(error?.message || error) }));
     setAgentProviderBusy('');
-    setAgentProviderMessage(result.ok
-      ? { tone: 'ok', text: `已按新配置重启运行时（${result.snapshot?.provider || ''} / ${result.snapshot?.model || ''}）。` }
-      : { tone: 'error', text: result.error || '运行时重启失败。' });
+    if (result.ok) {
+      // 重启 = 换了一棵 dsh 进程树，旧会话全部作废；不清映射的话下一条需求会拿到死会话。
+      agentSessionsRef.current.clear();
+      setAgentProviderMessage({
+        tone: 'ok',
+        text: `已按新配置重启运行时（${result.snapshot?.provider || ''} / ${result.snapshot?.model || ''}）；Agent 上下文已重新开始。`
+      });
+    } else {
+      setAgentProviderMessage({ tone: 'error', text: result.error || '运行时重启失败。' });
+    }
   };
 
   const probeAgentProvider = async (action: 'models' | 'connect') => {
@@ -616,25 +680,64 @@ export default function AiAssistant({
       pushAgentNotice('本机 Agent 引擎只在 LingBuilder 桌面版可用（需要 IDE 主进程托管内嵌运行时）。');
       return;
     }
-    const status = await runtime.status();
-    if (status && status.state !== 'running' && status.state !== 'busy') {
+    agentStopRequestedRef.current = false;
+    let status = await runtime.status().catch(() => null);
+    // 启动/停止进行中不立刻判失败：轮询等它切换完成，避免把「正在切换状态」当成启动失败。
+    const settleDeadline = Date.now() + 25_000;
+    while (status && (status.state === 'starting' || status.state === 'stopping') && Date.now() < settleDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      status = await runtime.status().catch(() => null);
+    }
+    if (!status || (status.state !== 'running' && status.state !== 'busy')) {
+      const credential = await checkAgentCredential();
+      if (credential.block) {
+        pushAgentNotice(credential.block);
+        return;
+      }
       const started = await runtime.start({});
       if (!started.ok) {
         pushAgentNotice(`内嵌 Agent 启动失败：${started.error || '未知原因'}`);
         return;
       }
+      if (credential.advisory) pushAgentNotice(credential.advisory);
       pushAgentNotice(`内嵌 Agent 已启动（Node ${started.snapshot?.nodeVersion || '未知版本'}，模型 ${started.snapshot?.model || '未知模型'}）。它只能生成提案，落盘与构建由你确认后执行。`);
     }
     setAgentSteps([]);
     setAgentStepsExpanded(true);
-    const turn = await runtime.prompt({ prompt: instruction, sessionId: agentSessionRef.current || undefined });
+    const conversationKey = activeConversationRef.current?.id || 'default';
+    let turn: Awaited<ReturnType<typeof runtime.prompt>>;
+    try {
+      // 注入当前项目上下文：Agent 经 MCP 只看得见工作区，多项目解决方案里窗口全叫
+      // 「主窗口」，没有这条事实它会猜错项目（真机实测出在了默认占位项目上）。
+      const prompt = buildAgentTurnContextPrompt({
+        projectId,
+        filePath,
+        hasDesigner: Boolean(designerProject),
+        workspaceFilePaths: workspaceFiles.map(file => file.filePath)
+      }, instruction);
+      turn = await runtime.prompt({ prompt, sessionId: agentSessionsRef.current.get(conversationKey) || undefined });
+    } catch (error) {
+      // 主动停止导致的请求拒绝已经播报过「已停止」，不再追加「内嵌 Agent 出错」误导报错。
+      if (agentStopRequestedRef.current) return;
+      throw error;
+    }
     if (!turn.ok) {
       pushAgentNotice(`本轮失败：${turn.error || '内嵌 Agent 未返回结果'}`);
       return;
     }
-    if (turn.sessionId) agentSessionRef.current = turn.sessionId;
-    const toolCalls = (turn.events || []).filter(event => event.type === 'tool/call').length;
-    pushAgentNotice(turn.finalText?.trim() || `（本轮调用了 ${toolCalls} 个 LingBuilder 工具，没有留下文字说明）`);
+    if (turn.sessionId) agentSessionsRef.current.set(conversationKey, turn.sessionId);
+    const events = turn.events || [];
+    const toolCalls = events.filter(event => event.type === 'tool/call').length;
+    const finalText = turn.finalText?.trim();
+    if (finalText) pushAgentNotice(finalText);
+    else if (toolCalls > 0) pushAgentNotice(`（本轮调用了 ${toolCalls} 个 LingBuilder 工具，没有留下文字说明）`);
+    else pushAgentNotice('本轮模型没有返回任何文字，也没有调用任何工具。常见原因：API Key 未配置或已失效、网络不通、模型通道配置错误；可点上方「测试连通」验证，修正后重发需求。');
+    // 只有本轮真的调用过 edit.propose 才去取回交接提案：纯问答轮取「最新未应用提案」
+    // 会把旧会话的遗留提案错误归因成本轮产出。
+    const sawEditPropose = events.some(event =>
+      event.type === 'tool/call' && /edit_propose/iu.test(String((event.data as { name?: unknown })?.name || ''))
+    );
+    if (!sawEditPropose) return;
     try {
       const fetched = await fetch('/api/lingcpp/edit/agent-proposal').then(response => response.json());
       const proposal = fetched?.proposal;
@@ -766,7 +869,6 @@ ${describeEditProposalOutcome(proposal)}
   // 停止即回收运行时（下一条需求会自动重启），并丢弃本轮会话上下文。
   const stopAiResponse = () => {
     if (!isAiResponding) return;
-    agentSessionRef.current = '';
     void stopAgentRuntime();
     setIsAiResponding(false);
     updateChatHistory(previous => [...previous, createChatMessage('ai', '已停止本次 Agent 执行，内嵌运行时已回收；再次发送需求会自动重启。', { contextExcluded: true })]);
@@ -774,6 +876,14 @@ ${describeEditProposalOutcome(proposal)}
 
   const handleApplyProposal = async () => {
     if (!editProposal || !onApplyWorkspaceEdit) return;
+    if (isAgentProposalStale(editProposal)) {
+      updateChatHistory(prev => [
+        ...prev,
+        createChatMessage('ai', '该提案已超过 30 分钟交接有效期，无法应用；请让 Agent 重新生成。', { contextExcluded: true })
+      ]);
+      setEditProposal(null);
+      return;
+    }
     const precheckBlock = precheckApplyWorkspaceEdit ? precheckApplyWorkspaceEdit() : '';
     if (precheckBlock) {
       updateChatHistory(prev => [
@@ -864,8 +974,8 @@ ${describeEditProposalOutcome(proposal)}
         <div className="mb-1 flex items-center justify-between gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">当前项目会话</span>
           <div className="flex items-center gap-1">
-            <button type="button" onClick={requestClearCurrentConversation} className={`flex h-6 w-6 items-center justify-center rounded border ${confirmAction?.kind === 'clear' ? 'border-rose-500/60 bg-rose-500/20 text-rose-400' : 'border-amber-500/40 text-amber-400 hover:bg-amber-500/10'}`} title={confirmAction?.kind === 'clear' ? '再次点击确认清除当前上下文' : '清除当前上下文'} aria-label={confirmAction?.kind === 'clear' ? '确认清除当前上下文' : '清除当前上下文'}><X className="h-3.5 w-3.5" /></button>
-            <button type="button" onClick={() => void createConversation()} className="flex h-6 w-6 items-center justify-center rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10" title="新建 AI 会话" aria-label="新建 AI 会话"><Plus className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={requestClearCurrentConversation} disabled={isAiResponding} className={`flex h-6 w-6 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${confirmAction?.kind === 'clear' ? 'border-rose-500/60 bg-rose-500/20 text-rose-400' : 'border-amber-500/40 text-amber-400 hover:bg-amber-500/10'}`} title={confirmAction?.kind === 'clear' ? '再次点击确认清除当前上下文' : isAiResponding ? '本轮执行中，暂不能清除上下文' : '清除当前上下文'} aria-label={confirmAction?.kind === 'clear' ? '确认清除当前上下文' : '清除当前上下文'}><X className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => void createConversation()} disabled={isAiResponding} className={`flex h-6 w-6 items-center justify-center rounded border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-40`} title={isAiResponding ? '本轮执行中，暂不能新建会话' : '新建 AI 会话'} aria-label="新建 AI 会话"><Plus className="h-3.5 w-3.5" /></button>
           </div>
         </div>
         <div className="flex gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label="AI 会话列表">
@@ -885,7 +995,7 @@ ${describeEditProposalOutcome(proposal)}
                   className="w-24 rounded border border-blue-500/50 bg-transparent px-1.5 py-1 text-[10px] text-slate-200 focus:outline-none"
                 />
               ) : (
-                <button type="button" role="tab" aria-selected={conversation.id === activeConversation?.id} onClick={() => void activateConversation(conversation.id)} onDoubleClick={() => beginRenameConversation(conversation)} className="min-w-0 truncate px-2 py-1 text-[10px] text-slate-300" title={`${conversation.title}（双击重命名）`}>{conversation.title}</button>
+                <button type="button" role="tab" aria-selected={conversation.id === activeConversation?.id} disabled={isAiResponding} onClick={() => void activateConversation(conversation.id)} onDoubleClick={() => beginRenameConversation(conversation)} className={`min-w-0 truncate px-2 py-1 text-[10px] text-slate-300 disabled:cursor-not-allowed disabled:opacity-40`} title={isAiResponding ? '本轮执行中，暂不能切换会话' : `${conversation.title}（双击重命名）`}>{conversation.title}</button>
               )}
               <button type="button" onClick={() => requestRemoveConversation(conversation.id)} className={`mr-1 rounded p-0.5 ${confirmAction?.kind === 'remove' && confirmAction.conversationId === conversation.id ? 'bg-rose-500/20 text-rose-400' : 'text-slate-500 hover:text-rose-400'}`} title={confirmAction?.kind === 'remove' && confirmAction.conversationId === conversation.id ? '再次点击确认删除' : '删除会话'} aria-label={confirmAction?.kind === 'remove' && confirmAction.conversationId === conversation.id ? `确认删除会话：${conversation.title}` : `删除会话：${conversation.title}`}><Trash2 className="h-3 w-3" /></button>
             </div>
@@ -900,8 +1010,25 @@ ${describeEditProposalOutcome(proposal)}
           isDarkMode ? 'border-[#2d2d34] bg-[#1a1a20]/30' : 'border-slate-200 bg-slate-50'
         }`}
       >
+        {/* 运行状态行常驻：不随「AI 对接设置」折叠。启动失败原因、执行中状态、启停入口必须始终可见。 */}
+        <div className={`flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] ${isDarkMode ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50'}`}>
+          <span className={`inline-flex min-h-5 items-center gap-1 rounded px-1.5 font-semibold ${agentRuntimeStatus?.state === 'failed' ? 'bg-rose-600 text-white' : agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy' ? 'bg-emerald-600 text-white' : 'bg-slate-500/20 text-slate-500'}`}>
+            <Brain className="h-3 w-3" />
+            {{ stopped: '未启动', starting: '启动中', running: '待命', busy: '执行中', stopping: '停止中', failed: '启动失败' }[agentRuntimeStatus?.state || 'stopped'] || agentRuntimeStatus?.state}
+          </span>
+          <span className="truncate text-slate-400" title={agentRuntimeStatus?.problem || undefined}>
+            {agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy'
+              ? `Node ${agentRuntimeStatus.nodeVersion || '?'} · ${agentRuntimeStatus.model || '?'} · PID ${agentRuntimeStatus.pid ?? '?'}`
+              : (agentRuntimeStatus?.problem || '内嵌 DeepSeek Harness 运行时，经 LingBuilder MCP 干活；写盘与构建由你确认后代执行。')}
+          </span>
+          {agentRuntimeStatus?.state === 'stopped' || agentRuntimeStatus?.state === 'failed' ? (
+            <button type="button" onClick={() => void startAgentRuntime()} className="ml-auto min-h-6 shrink-0 rounded bg-emerald-600 px-2 font-semibold text-white hover:bg-emerald-500">启动</button>
+          ) : (
+            <button type="button" onClick={() => void stopAgentRuntime()} className="ml-auto min-h-6 shrink-0 rounded bg-slate-500/20 px-2 font-semibold text-slate-500 hover:bg-slate-500/30">停止</button>
+          )}
+        </div>
         {/* AI connection config */}
-        <div className="mb-3 space-y-2">
+        <div className="mb-3 mt-2 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">AI 对接设置</label>
             <button
@@ -915,24 +1042,8 @@ ${describeEditProposalOutcome(proposal)}
             </button>
           </div>
           {isAiConfigExpanded && (
-            <>
-            <div className={`flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] ${isDarkMode ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50'}`}>
-              <span className={`inline-flex min-h-5 items-center gap-1 rounded px-1.5 font-semibold ${agentRuntimeStatus?.state === 'failed' ? 'bg-rose-600 text-white' : agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy' ? 'bg-emerald-600 text-white' : 'bg-slate-500/20 text-slate-500'}`}>
-                <Brain className="h-3 w-3" />
-                {{ stopped: '未启动', starting: '启动中', running: '待命', busy: '执行中', stopping: '停止中', failed: '启动失败' }[agentRuntimeStatus?.state || 'stopped'] || agentRuntimeStatus?.state}
-              </span>
-              <span className="truncate text-slate-400">
-                {agentRuntimeStatus?.state === 'running' || agentRuntimeStatus?.state === 'busy'
-                  ? `Node ${agentRuntimeStatus.nodeVersion || '?'} · ${agentRuntimeStatus.model || '?'} · PID ${agentRuntimeStatus.pid ?? '?'}`
-                  : (agentRuntimeStatus?.problem || '内嵌 DeepSeek Harness 运行时，经 LingBuilder MCP 干活；写盘与构建由你确认后代执行。')}
-              </span>
-              {agentRuntimeStatus?.state === 'stopped' || agentRuntimeStatus?.state === 'failed' ? (
-                <button type="button" onClick={() => void startAgentRuntime()} className="ml-auto min-h-6 shrink-0 rounded bg-emerald-600 px-2 font-semibold text-white hover:bg-emerald-500">启动</button>
-              ) : (
-                <button type="button" onClick={() => void stopAgentRuntime()} className="ml-auto min-h-6 shrink-0 rounded bg-slate-500/20 px-2 font-semibold text-slate-500 hover:bg-slate-500/30">停止</button>
-              )}
-            </div>
-            <div className="mt-2 space-y-2">
+            <div className="space-y-2">
+            <div>
               <div>
                 <span className={`mb-1 block text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>模型通道</span>
                 <select
@@ -1047,7 +1158,7 @@ ${describeEditProposalOutcome(proposal)}
                 >官方仓库</a>
               </p>
             </div>
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -1064,7 +1175,9 @@ ${describeEditProposalOutcome(proposal)}
             <div className="flex gap-2">
               <button
                 onClick={handleApplyProposal}
-                className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-500"
+                disabled={isAgentProposalStale(editProposal)}
+                title={isAgentProposalStale(editProposal) ? '提案已超过 30 分钟交接有效期，请让 Agent 重新生成' : undefined}
+                className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 应用提案
               </button>
@@ -1078,24 +1191,18 @@ ${describeEditProposalOutcome(proposal)}
               </button>
             </div>
           </div>
+          {isAgentProposalStale(editProposal) && (
+            <div className="mb-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500">
+              该提案已超过 30 分钟交接有效期，交接内容已过期；「应用提案」已停用，请让 Agent 重新生成。
+            </div>
+          )}
           <div className={`rounded border p-2 text-[10px] font-mono whitespace-pre-wrap ${
             isDarkMode ? 'border-[#343442] bg-[#11131a] text-slate-300' : 'border-slate-200 bg-white text-slate-700'
           }`}>
-            <div className="text-slate-400 mb-2">{editProposal.explanation}</div>
+            <div className="text-slate-400 mb-2 font-sans">{editProposal.explanation}</div>
             <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
               {editProposal.changes.map((change, index) => (
-                <div
-                  key={`${change.filePath}-${index}`}
-                  className={`rounded border p-2 ${
-                    isDarkMode ? 'border-[#2a3240] bg-[#151821]' : 'border-slate-200 bg-slate-50/80'
-                  }`}
-                >
-                  <div className="text-[10px] text-blue-400 mb-2">{change.filePath}</div>
-                  <div className="text-amber-500 mb-1">原文</div>
-                  <div>{change.originalText || '(空)'}</div>
-                  <div className="text-emerald-500 mt-3 mb-1">新文</div>
-                  <div>{change.newText || '(空)'}</div>
-                </div>
+                <ProposalChangeDiff key={`${change.filePath}-${index}`} change={change} isDarkMode={isDarkMode} />
               ))}
             </div>
           </div>
@@ -1354,7 +1461,53 @@ function ChatMarkdown({ text, isDarkMode }: { text: string; isDarkMode: boolean 
   );
 }
 
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+/**
+ * 提案预览的单个文件变更：行级 diff（相同行折叠省略）+ 增删行计数 + 复制新文。
+ * 替代旧的「原文/新文」两段全文并排——Agent 整段重写时那是无法审阅的一面墙。
+ */
+function ProposalChangeDiff({ change, isDarkMode }: { change: WorkspaceEditChange; isDarkMode: boolean }) {
+  const diff = useMemo(() => buildProposalLineDiff(change.originalText, change.newText), [change.originalText, change.newText]);
+  const [copied, setCopied] = useState(false);
+  const copyNewText = async () => {
+    try {
+      await navigator.clipboard.writeText(change.newText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // 剪贴板不可用时保持沉默；用户仍可在预览里选中复制。
+    }
+  };
+  const lineClass = (kind: ProposalPreviewLine['kind']): string => {
+    if (kind === 'added') return 'bg-emerald-500/10 text-emerald-300';
+    if (kind === 'removed') return 'bg-rose-500/10 text-rose-300';
+    if (kind === 'elided') return 'text-slate-600 italic';
+    return 'text-slate-500';
+  };
+  return (
+    <div className={`rounded border p-2 ${isDarkMode ? 'border-[#2a3240] bg-[#151821]' : 'border-slate-200 bg-slate-50/80'}`}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="truncate font-mono text-[10px] text-blue-400" title={change.filePath}>{change.filePath}</span>
+        <span className="flex shrink-0 items-center gap-1.5 font-sans">
+          <span className="text-emerald-500">+{diff.addedCount}</span>
+          <span className="text-rose-500">-{diff.removedCount}</span>
+          <button
+            type="button"
+            onClick={() => void copyNewText()}
+            className="flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-blue-500/20"
+            aria-label="复制修改后的完整内容"
+          >{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}{copied ? '已复制' : '复制新文'}</button>
+        </span>
+      </div>
+      <div className="overflow-x-auto whitespace-pre font-mono text-[10px] leading-relaxed">
+        {diff.lines.map((line, index) => (
+          <div key={index} className={`px-1 ${lineClass(line.kind)}`}>
+            <span className="select-none pr-1 opacity-70">{line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}</span>
+            {line.text || ' '}
+          </div>
+        ))}
+        {diff.truncated && <div className="px-1 text-slate-600 italic">……（差异过长，仅显示前 400 行）</div>}
+        {diff.addedCount === 0 && diff.removedCount === 0 && <div className="px-1 text-slate-500">（此文件没有实际内容变化）</div>}
+      </div>
+    </div>
+  );
 }

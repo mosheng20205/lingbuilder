@@ -12,8 +12,10 @@ import {
   nodeHostCandidates,
   parseNodeVersion,
   resolveDshRuntime,
-  satisfiesNodeRequirement
+  satisfiesNodeRequirement,
+  writeAgentProfilePatch
 } from '../electron/agentRuntime/agentRuntimeProfile';
+import { AgentRuntimeService } from '../electron/agentRuntime/agentRuntimeService';
 import { HarnessSdkClient, lastAssistantText, runHarnessTurn } from '../electron/agentRuntime/harnessSdkClient';
 
 /** 假 dsh 运行器：按换行分隔 JSON-RPC 说 initialize / session/prompt / shutdown。 */
@@ -43,15 +45,99 @@ rl.on('line', (line) => {
 });
 `;
 
+/** 可变形假运行器：boot 在启动期执行一次；turn 行为决定一轮怎么收场。 */
+function harnessScript(options: { boot?: string; turn?: 'full' | 'idle-only' | 'silent' | 'crash' } = {}): string {
+  const turn = options.turn === 'full'
+    ? `send({ jsonrpc: '2.0', method: 'session.status', params: { sessionId, status: 'running' } });
+       send({ jsonrpc: '2.0', method: 'session.event', params: { sessionId, event: { type: 'assistant/message', data: { message: { role: 'assistant', content: [{ type: 'text', text: '完成' }] } } } } });
+       send({ jsonrpc: '2.0', method: 'session.status', params: { sessionId, status: 'idle' } });`
+    : options.turn === 'idle-only'
+      ? `send({ jsonrpc: '2.0', method: 'session.status', params: { sessionId, status: 'idle' } });`
+      : options.turn === 'crash'
+        ? `setTimeout(() => process.exit(2), 20);`
+        : '';
+  return `
+const readline = require('node:readline');
+const rl = readline.createInterface({ input: process.stdin });
+const send = (frame) => process.stdout.write(JSON.stringify(frame) + '\\n');
+${options.boot || ''}
+rl.on('line', (line) => {
+  let msg; try { msg = JSON.parse(line); } catch { return; }
+  if (msg.method === 'initialize') {
+    send({ jsonrpc: '2.0', id: msg.id, result: { serverInfo: { name: 'deepseek-harness-sdk-runtime', version: 'fake' } } });
+    return;
+  }
+  if (msg.method === 'session/prompt') {
+    const sessionId = msg.params.sessionId;
+    send({ jsonrpc: '2.0', id: msg.id, result: { messageId: 'msg-1' } });
+    ${turn}
+    return;
+  }
+  if (msg.method === 'shutdown') {
+    send({ jsonrpc: '2.0', id: msg.id, result: {} });
+    process.exit(0);
+  }
+});
+`;
+}
+
+function delayed(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** 服务失败路径的 close 是 fire-and-forget：目录清理要容忍子进程尚未完全退出的 EBUSY。 */
+async function removeTempDir(target: string): Promise<void> {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await fs.rm(target, { recursive: true, force: true }).catch(() => undefined);
+    try {
+      await fs.access(target);
+    } catch {
+      return;
+    }
+    await delayed(500);
+  }
+}
+
 async function createTempDir(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `lingbuilder-${prefix}-`));
 }
 
-function fakeHarnessSpawn(): typeof spawn {
+function fakeHarnessSpawn(script: string = FAKE_HARNESS): typeof spawn {
   return ((...args: any[]) => {
     const options = args[2] || {};
-    return spawn(process.execPath, ['-e', FAKE_HARNESS], { ...options, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }) as any;
+    return spawn(process.execPath, ['-e', script], { ...options, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }) as any;
   }) as any;
+}
+
+/**
+ * 服务级测试脚手架：LINGBUILDER_DSH_NODE/BIN 指向真实存在且可探测的候选，
+ * spawnProcess 把 `--version` 探测与真正的运行器分开应答。
+ */
+async function createTestService(options: { boot?: string; turn?: 'full' | 'idle-only' | 'silent' | 'crash'; turnTimeoutMs?: number; extraEnv?: Record<string, string> } = {}): Promise<{ service: AgentRuntimeService; root: string }> {
+  const root = await createTempDir('agent-service');
+  const dshBin = path.join(root, 'dsh-bin.js');
+  await fs.writeFile(dshBin, '// fake dsh entry\n', 'utf8');
+  const script = harnessScript(options);
+  const spawnProcess = ((_command: string, args: string[], spawnOptions: any) => {
+    if (Array.isArray(args) && args[0] === '--version') {
+      return spawn(process.execPath, ['-e', 'console.log("v24.20.0")'], { ...spawnOptions, windowsHide: true });
+    }
+    return spawn(process.execPath, ['-e', script], { ...spawnOptions, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  }) as typeof spawn;
+  const service = new AgentRuntimeService({
+    bridgeCommand: process.execPath,
+    cliEntryPath: path.join(root, 'dist', 'cli.cjs'),
+    profileDirectory: path.join(root, 'profiles'),
+    // 在真实 env 上只覆盖解析变量：dsh 子进程的 env 必须带 SystemRoot/PATH 等
+    // Windows 必需项（生产环境注入的就是完整 process.env），否则 spawn 直接 ENOENT。
+    environment: { ...process.env, LINGBUILDER_DSH_NODE: process.execPath, LINGBUILDER_DSH_BIN: dshBin, ...(options.extraEnv || {}) },
+    resourcesPath: '',
+    homeDirectory: '',
+    globalNodeModules: '',
+    spawnProcess,
+    turnTimeoutMs: options.turnTimeoutMs
+  });
+  return { service, root };
 }
 
 test('agent profile overlay 只挂 lingbuilder MCP 并整行禁用本地工具', () => {
@@ -76,6 +162,28 @@ test('agent profile overlay 只挂 lingbuilder MCP 并整行禁用本地工具',
   }
   assert.ok(yaml.includes('tool-fs') && yaml.includes('tool-pwsh') && yaml.includes('tool-bash'));
   assert.equal(MASKED_DSH_TOOL_ROWS.length, 15);
+});
+
+test('IDE 版本经环境变量写进 overlay env 块，MCP 宿主据此回报版本（2026-09-23）', async () => {
+  const { service, root } = await createTestService({ turn: 'full', extraEnv: { LINGBUILDER_IDE_VERSION: '9.9.9-test' } });
+  try {
+    await service.start({ workspaceRoot: root });
+    const profiles = await fs.readdir(path.join(root, 'profiles'));
+    const overlay = await fs.readFile(path.join(root, 'profiles', profiles.find(name => name.endsWith('.cordis.yml')) || ''), 'utf8');
+    assert.match(overlay, /LINGBUILDER_IDE_VERSION: '9\.9\.9-test'/u, 'overlay env 必须携带 IDE 版本，供 MCP 宿主的 health / workspace.list / serverInfo 消费');
+    assert.doesNotMatch(overlay, /apiKey|sk-/u, 'env 块仍不得夹带密钥');
+  } finally {
+    await service.stop().catch(() => undefined);
+    await removeTempDir(root);
+  }
+});
+
+test('LINGBUILDER_IDE_VERSION 常量在两棵编译树逐字一致（rootDir 边界只允许镜像+测试把关）', async () => {
+  const { fileURLToPath } = await import('node:url');
+  const bridgeSource = await fs.readFile(fileURLToPath(new URL('../src/services/aiBridge/ideVersion.ts', import.meta.url)), 'utf8');
+  const runtimeSource = await fs.readFile(fileURLToPath(new URL('../electron/agentRuntime/agentRuntimeService.ts', import.meta.url)), 'utf8');
+  assert.match(bridgeSource, /'LINGBUILDER_IDE_VERSION'/u, 'bridge 侧必须定义 IDE_VERSION_ENV');
+  assert.match(runtimeSource, /'LINGBUILDER_IDE_VERSION'/u, 'agentRuntime 侧必须镜像同名环境变量');
 });
 
 test('agent profile overlay 对同一输入完全确定（内容指纹即文件名）', async () => {
@@ -229,11 +337,13 @@ test('随包 Agent 运行时：打包链携带 node/dsh 并裁剪无关体积包
     build?: { extraResources?: Array<{ from: string; to: string }> };
   };
   const extra = pkg.build?.extraResources ?? [];
-  const resource = (to: string) => extra.find(entry => entry.to === to);
-  // 解析器只认 resources/node 与 resources/dsh，打包链必须原样带上这三项，否则安装版永远降级。
-  assert.equal(resource('node')?.from, 'agent-runtime/node');
-  assert.equal(resource('dsh')?.from, 'agent-runtime/dsh');
-  assert.equal(resource('agent-runtime.json')?.from, 'agent-runtime/agent-runtime.json');
+  const resource = (from: string) => extra.find(entry => entry.from === from);
+  // electron-builder 会硬编码排除复制源根下的 node_modules（app-builder-lib util/filter.js createFilter），
+  // dsh 的依赖树经 node/dsh 两条目录映射必被清空，必须用整目录映射 agent-runtime → resources 根携带。
+  // 解析器只认 resources/node 与 resources/dsh，产物布局须保持 node/ dsh/ agent-runtime.json 三项。
+  const runtime = resource('agent-runtime');
+  assert.ok(runtime, 'extraResources 缺少 agent-runtime 整目录映射');
+  assert.equal(runtime?.to, '.');
   for (const script of ['package:win', 'package:dir']) {
     assert.match(pkg.scripts[script] ?? '', /prepare:agent-runtime/u);
     assert.match(pkg.scripts[script] ?? '', /verify:agent-runtime:unpacked/u);
@@ -360,4 +470,81 @@ test('密钥留空保存沿用已存的那份，显式 clearApiKey 才作废', a
   assert.equal(mergeAgentProviderKey({ ...blank, apiKey: 'sk-new' }, saved).apiKey, 'sk-new');
   assert.equal(mergeAgentProviderKey(blank, saved, true).apiKey, '', '显式清除才作废');
   assert.equal(mergeAgentProviderKey(blank, undefined).apiKey, '');
+});
+
+// ---------- 运行时状态机（2026-09-23 修复批） ----------
+
+test('运行器进程崩溃后快照必须从 running 修正为 failed，不得僵尸「待命」', async () => {
+  const { service, root } = await createTestService({ turn: 'crash' });
+  const started = await service.start({ workspaceRoot: root });
+  assert.equal(started.state, 'running');
+  await assert.rejects(() => service.prompt('干活', 'conv-1'), /退出码 2/u);
+  const snapshot = service.snapshot();
+  assert.equal(snapshot.state, 'failed', 'dsh 进程已死，状态不得停留在 running/待命');
+  assert.match(snapshot.problem, /退出码 2/u);
+  assert.equal(snapshot.pid, null);
+  await service.stop().catch(() => undefined);
+  await removeTempDir(root);
+});
+
+test('本轮失败（整轮超时）后运行时必须停机置 failed，杜绝两轮交错', async () => {
+  const { service, root } = await createTestService({ turn: 'silent', turnTimeoutMs: 600 });
+  await service.start({ workspaceRoot: root });
+  await assert.rejects(() => service.prompt('慢慢想', 'conv-1'), /未回到空闲状态/u);
+  const snapshot = service.snapshot();
+  assert.equal(snapshot.state, 'failed', '请求失败后无法信任状态流，必须停机而不是回到 running');
+  assert.match(snapshot.problem, /未回到空闲状态/u);
+  assert.equal(snapshot.pid, null);
+  await service.stop().catch(() => undefined);
+  await removeTempDir(root);
+});
+
+test('主动停止打断本轮时状态由 stop() 收尾为 stopped，不得改写 failed', async () => {
+  const { service, root } = await createTestService({ turn: 'silent' });
+  await service.start({ workspaceRoot: root });
+  const turnPromise = service.prompt('停我', 'conv-1');
+  await delayed(150);
+  await service.stop();
+  await assert.rejects(() => turnPromise, /已退出|已关闭/u);
+  assert.equal(service.snapshot().state, 'stopped');
+  await removeTempDir(root);
+});
+
+test('dsh 会话由调用方按面板会话显式指定，未传时必须开新会话（不得继承上一轮）', async () => {
+  const { service, root } = await createTestService({ turn: 'full' });
+  await service.start({ workspaceRoot: root });
+  const first = await service.prompt('第一轮', 'conv-A');
+  assert.equal(first.sessionId, 'conv-A');
+  const second = await service.prompt('第二轮');
+  assert.match(second.sessionId, /^lb-panel-/u);
+  assert.notEqual(second.sessionId, 'conv-A', '未传 sessionId 不得复用上一轮会话，否则跨面板会话泄漏上下文');
+  await service.stop().catch(() => undefined);
+  await removeTempDir(root);
+});
+
+test('零事件 idle（开场即失败，如凭据缺失）在宽限后立即结束，不得挂满整轮超时', async () => {
+  const client = new HarnessSdkClient({
+    command: 'ignored',
+    args: [],
+    cwd: process.cwd(),
+    env: {},
+    spawnProcess: fakeHarnessSpawn(harnessScript({ turn: 'idle-only' }))
+  });
+  await client.start();
+  const startedAt = Date.now();
+  const turn = await runHarnessTurn({ client, sessionId: 's-9', prompt: 'x', timeoutMs: 30_000, idleGraceMs: 300 });
+  assert.ok(Date.now() - startedAt < 5_000, '零事件 idle 必须在宽限内结束，而不是等满整轮超时');
+  assert.equal(turn.events.length, 0);
+  assert.equal(turn.finalText, '');
+  await client.close();
+});
+
+test('profile overlay 更新后必须清掉旧指纹文件，userData 不堆积垃圾', async () => {
+  const dir = await createTempDir('agent-overlay-prune');
+  const first = await writeAgentProfilePatch(dir, 'a: 1\n');
+  const second = await writeAgentProfilePatch(dir, 'a: 2\n');
+  assert.notEqual(first, second);
+  const entries = await fs.readdir(dir);
+  assert.deepEqual(entries, [path.basename(second)], '旧指纹 overlay 必须被清理，只保留当前这份');
+  await fs.rm(dir, { recursive: true, force: true });
 });

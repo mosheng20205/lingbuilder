@@ -573,7 +573,10 @@ export function applyWorkspaceEditToFiles(
     const currentSource = sourceMap.get(normalizedPath.toLocaleLowerCase()) || '';
     const currentText = getTextForRange(currentSource, change.range);
     if (currentText !== change.originalText) {
-      throw new Error(`文件 ${change.filePath} 在 AI 提案生成后已发生变化，请重新生成提案。`);
+      // 面板/内嵌 Agent 链路里提案基于磁盘内容生成，而这里以编辑器内容为应用基准：
+      // 最常见原因是编辑器有未保存修改（自动保存落盘前就发了需求）或文件被并行改动。
+      // 只说「重新生成提案」会误导——未保存内容落盘前重新生成一样失败。
+      throw new Error(`文件 ${change.filePath} 与提案生成时的内容不一致：提案基于磁盘内容生成，编辑器可能有未保存修改，或文件已被其他改动更新。请等待自动保存（或手动保存）后让 AI 重新生成提案，再应用。`);
     }
     const nextSource = replaceRange(currentSource, change.range, change.newText);
     sourceMap.set(normalizedPath.toLocaleLowerCase(), nextSource);

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.electron",
+  "name": "com.example.electron 模块",
+  "version": "1.0.0",
+  "category": "系统",
+  "description": "由 LingBuilder 模块 SDK 创建的模块模板。",
+  "author": "LingBuilder Module Author",
+  "tags": [
+    "模板",
+    "cpp-source"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "name": "示例命令",
+        "signature": "示例命令()",
+        "description": "模块模板生成的示例命令。",
+        "insertText": "示例命令()",
+        "returnType": "整数型"
+      }
+    ],
+    "constants": [
+      {
+        "name": "示例常量",
+        "type": "整数型",
+        "value": 1,
+        "description": "模块模板示例常量；.lcpp 源码中用 #示例常量 引用。"
+      }
+    ],
+    "docs": [
+      {
+        "title": "使用说明",
+        "path": "docs/usage.md"
+      }
+    ],
+    "examples": [
+      {
+        "title": "最小示例",
+        "path": "examples/最小示例.lcpp"
+      }
+    ]
+  },
+  "targets": [
+    {
+      "id": "windows-msvc-win32",
+      "platform": "windows",
+      "arch": "win32",
+      "toolchain": "msvc",
+      "includeDirs": [
+        "include"
+      ],
+      "headers": [
+        "include/module_bridge.h"
+      ],
+      "sources": [
+        "src/module_bridge.cpp"
+      ]
+    }
+  ],
+  "bindings": {
+    "commands": [
+      {
+        "command": "示例命令",
+        "runtimeName": "示例命令",
+        "parameters": [],
+        "returnType": "int",
+        "example": "示例命令()"
+      }
+    ]
+  }
+}

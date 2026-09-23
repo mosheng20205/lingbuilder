@@ -8035,3 +8035,91 @@ test('修复重装拒绝：无随包副本、随包清单损坏、路径穿越�
   await service.linkModuleDevSource('.lingbuilder/module-build/linked-src');
   await assert.rejects(() => service.repairBundledModule('com.example.linked'), /取消开发源链接/);
 });
+
+test('module favorites service persists user-level favorite ids with newest-first order', async () => {
+  const {
+    getModuleFavoriteIds,
+    isModuleFavorite,
+    setModuleFavorite,
+    toggleModuleFavorite,
+    MAX_FAVORITE_MODULES,
+    resetModuleFavoritesForTests,
+    setModuleFavoriteStorageForTests
+  } = await import('../src/services/modules/moduleFavorites');
+
+  // 存储通道替换为内存 map，保证测试确定性（服务在无 window 的 Node 环境也能工作）。
+  const store = new Map<string, string>();
+  setModuleFavoriteStorageForTests({
+    getItem: key => store.has(key) ? store.get(key)! : null,
+    setItem: (key, value) => void store.set(key, value),
+    removeItem: key => void store.delete(key)
+  });
+  resetModuleFavoritesForTests();
+
+  assert.deepEqual(getModuleFavoriteIds(), [], '初始状态没有收藏');
+  assert.equal(isModuleFavorite('com.demo.alpha'), false);
+
+  // 新收藏排在最前，方便刚收藏的模块立刻在「常用模块」分组可见；重复设置幂等。
+  assert.equal(setModuleFavorite('com.demo.alpha', true), true);
+  assert.equal(setModuleFavorite('com.demo.beta', true), true);
+  assert.equal(setModuleFavorite('com.demo.alpha', true), false, '重复收藏不产生变化');
+  assert.deepEqual(getModuleFavoriteIds(), ['com.demo.beta', 'com.demo.alpha']);
+  assert.equal(isModuleFavorite('com.demo.alpha'), true);
+
+  // toggle 返回切换后的状态。
+  assert.equal(toggleModuleFavorite('com.demo.alpha'), false);
+  assert.deepEqual(getModuleFavoriteIds(), ['com.demo.beta']);
+  assert.equal(toggleModuleFavorite('com.demo.alpha'), true);
+  assert.deepEqual(getModuleFavoriteIds(), ['com.demo.alpha', 'com.demo.beta']);
+
+  // 非法输入直接忽略；收藏列表有上限，最旧的被淘汰。
+  assert.equal(setModuleFavorite('   ', true), false);
+  for (let index = 0; index < MAX_FAVORITE_MODULES + 10; index += 1) {
+    setModuleFavorite(`com.demo.flood-${index}`, true);
+  }
+  const flooded = getModuleFavoriteIds();
+  assert.equal(flooded.length, MAX_FAVORITE_MODULES);
+  assert.equal(flooded.includes('com.demo.flood-0'), false, '超限后最旧收藏被淘汰');
+  assert.equal(isModuleFavorite('com.demo.beta'), false, '早期收藏同样按上限淘汰');
+
+  // 取消收藏与持久化往返：重新读取走同一存储通道。
+  assert.equal(setModuleFavorite('com.demo.flood-25', false), true);
+  assert.deepEqual(JSON.parse(store.get('lingbuilder.modules.favoriteIds')!), getModuleFavoriteIds());
+
+  // 全部移除后存储清空；恢复默认存储探测避免影响其他用例。
+  for (const id of getModuleFavoriteIds()) setModuleFavorite(id, false);
+  assert.deepEqual(getModuleFavoriteIds(), []);
+  assert.equal(store.get('lingbuilder.modules.favoriteIds'), undefined);
+  setModuleFavoriteStorageForTests(undefined);
+  resetModuleFavoritesForTests();
+});
+
+test('module panel exposes the favorite (常用模块) section wired to the favorites service', async () => {
+  const inspectorSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleInspector.tsx'), 'utf8');
+  const detailPageSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleDetailPage.tsx'), 'utf8');
+  const favoritesServiceSource = await fs.readFile(path.join(process.cwd(), 'src', 'services', 'modules', 'moduleFavorites.ts'), 'utf8');
+
+  // 面板：「常用模块」分组位于「已启用」之前，空态给引导文案，收藏列表按 ID 顺序 ∩ 可见模块。
+  assert.match(inspectorSource, /title="常用模块"/u);
+  assert.match(inspectorSource, /还没有常用模块；点击模块行右侧的 ★/u);
+  assert.match(inspectorSource, /favoriteIds\s*\n?\s*\.map\(moduleId => filteredById\.get\(moduleId\)\)/u);
+  assert.match(inspectorSource, /subscribeModuleFavorites\(\(\) => setFavoriteIds\(getModuleFavoriteIds\(\)\)\)/u);
+  // 模块行 ★ 按钮：收藏态用实心星，未收藏态可加入；与启停/卸载按钮同一行内操作区。
+  assert.match(inspectorSource, /aria-pressed=\{isFavorite\}/u);
+  assert.match(inspectorSource, /isFavorite \? '从常用模块移除' : '加入常用模块'/u);
+  assert.match(inspectorSource, /<Star size=\{12\} className=\{isFavorite \? 'fill-amber-300' : ''\} \/>/u);
+  // 收藏切换只改本机偏好状态文案，绝不调用模块启停/卸载 API。
+  assert.match(inspectorSource, /toggleModuleFavoriteById\(module\.manifest\.id\)/u);
+
+  // 详情页（嵌入 + standalone 双模式）都有收藏入口，直接走 moduleFavorites 服务（纯 UI 偏好，无需回单一出口）。
+  assert.match(detailPageSource, /from '..\/services\/modules\/moduleFavorites'/u);
+  assert.match(detailPageSource, /setIsFavorite\(toggleModuleFavorite\(moduleId\)\)/u);
+  assert.match(detailPageSource, /standalone && \(\n\s*<button/u);
+  assert.match(detailPageSource, /加入常用模块；可在模块面板顶部「常用模块」分组快速找到/u);
+
+  // 服务契约：用户级 localStorage 键、变化事件、跨窗口 storage 同步、上限淘汰。
+  assert.match(favoritesServiceSource, /lingbuilder\.modules\.favoriteIds/u);
+  assert.match(favoritesServiceSource, /lingbuilder-module-favorites-changed/u);
+  assert.match(favoritesServiceSource, /window\.addEventListener\('storage', onStorage\)/u);
+  assert.match(favoritesServiceSource, /MAX_FAVORITE_MODULES = \d+/u);
+});

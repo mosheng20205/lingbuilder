@@ -1,0 +1,53 @@
+{
+  "ok": false,
+  "stage": "compile",
+  "buildDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug",
+  "sourceDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src",
+  "binDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\bin",
+  "objDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\obj",
+  "exePath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\bin\\LingBuilderPreview.exe",
+  "compiler": {
+    "kind": "msvc",
+    "command": "cl",
+    "setupBatch": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat",
+    "arch": "x64"
+  },
+  "exportDir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo",
+  "visualStudioProject": {
+    "projectName": "adv-dll-declare-demo",
+    "solutionPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\adv-dll-declare-demo.sln",
+    "projectPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\adv-dll-declare-demo.vcxproj",
+    "filtersPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\adv-dll-declare-demo.vcxproj.filters",
+    "files": [
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\adv-dll-declare-demo.sln",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\adv-dll-declare-demo.vcxproj",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\adv-dll-declare-demo.vcxproj.filters"
+    ]
+  },
+  "exportVisualStudioProject": {
+    "projectName": "adv-dll-declare-demo",
+    "solutionPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo\\adv-dll-declare-demo.sln",
+    "projectPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo\\adv-dll-declare-demo.vcxproj",
+    "filtersPath": "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo\\adv-dll-declare-demo.vcxproj.filters",
+    "files": [
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo\\adv-dll-declare-demo.sln",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo\\adv-dll-declare-demo.vcxproj",
+      "T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo\\adv-dll-declare-demo.vcxproj.filters"
+    ]
+  },
+  "logs": [
+    "警告：传入的窗口设计器模型与磁盘版本（.lingbuilder/projects/adv-dll-declare-demo/window-designer.json）不一致，生成结果可能与 IDE 设计器脱节；请重新读取最新设计器模型后重试，或先通过 lingbuilder.edit.apply 同步磁盘。",
+    "AI Bridge 已生成 Win32 C++ 工程：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug",
+    "C++ 源码目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src",
+    "可复制生成目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo",
+    "Visual Studio 解决方案：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\adv-dll-declare-demo.sln",
+    "可复制 Visual Studio 解决方案：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\generated\\cpp\\adv-dll-declare-demo\\adv-dll-declare-demo.sln",
+    "src/DLL命令声明演示.lcpp 第 40 行：源码事件 _提示音按钮_被单击 指向的控件不存在。",
+    "exe 输出目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\bin",
+    "中间文件目录：T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\obj",
+    "编译器：msvc (cl)",
+    "编译失败。",
+    "stdout:\nmain.cpp\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): error C2664: “void 声明演示窗口::追加日志(std::wstring)”: 无法将参数 1 从“__int64”转换为“std::wstring”\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): note: “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string”: 没有重载函数可以转换所有参数类型\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\include\\xstring(818): note: 可能是“std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(const _Elem *const )”\r\n        with\r\n        [\r\n            _Elem=wchar_t\r\n        ]\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): note: “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(const _Elem *const )”: 无法将参数 1 从“__int64”转换为“const _Elem *const ”\r\n        with\r\n        [\r\n            _Elem=wchar_t\r\n        ]\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): note: 从整型类型转换为指针类型需要 reinterpret_cast、C 样式转换或带圆括号的函数样式强制转换\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\include\\xstring(1390): note: 或    “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(std::initializer_list<_Elem>,const _Alloc &)”\r\n        with\r\n        [\r\n            _Elem=wchar_t,\r\n            _Alloc=std::allocator<wchar_t>\r\n        ]\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): note: “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(std::initializer_list<_Elem>,const _Alloc &)”: 无法将参数 1 从“__int64”转换为“std::initializer_list<_Elem>”\r\n        with\r\n        [\r\n            _Elem=wchar_t,\r\n            _Alloc=std::allocator<wchar_t>\r\n        ]\r\n        and\r\n        [\r\n            _Elem=wchar_t\r\n        ]\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): note: 转换要求第二个用户定义的转换运算符或构造函数\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\include\\xstring(1207): note: 或    “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(const _Ty &,const unsigned __int64,const unsigned __int64,const _Alloc &)”\r\n        with\r\n        [\r\n            _Alloc=std::allocator<wchar_t>\r\n        ]\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\include\\xstring(848): note: 或    “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(_Iter,_Iter,const _Alloc &)”\r\n        with\r\n        [\r\n            _Alloc=std::allocator<wchar_t>\r\n        ]\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\include\\xstring(842): note: 或    “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(const unsigned __int64,const _Elem,const _Alloc &)”\r\n        with\r\n        [\r\n            _Elem=wchar_t,\r\n            _Alloc=std::allocator<wchar_t>\r\n        ]\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\include\\xstring(825): note: 或    “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(const _Elem *const ,const _Alloc &)”\r\n        with\r\n        [\r\n            _Elem=wchar_t,\r\n            _Alloc=std::allocator<wchar_t>\r\n        ]\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\include\\xstring(812): note: 或    “std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>::basic_string(const _Elem *const ,const unsigned __int64,const _Alloc &)”\r\n        with\r\n        [\r\n            _Elem=wchar_t,\r\n            _Alloc=std::allocator<wchar_t>\r\n        ]\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): note: 尝试匹配参数列表“(__int64)”时\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24770): note: 参见“声明演示窗口::追加日志”的声明\r\nT:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp(24673): note: 尝试匹配参数列表“(__int64)”时",
+    "错误：Command failed: cmd.exe /d /c call \"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" >nul && cl \"/nologo\" \"/EHsc\" \"/std:c++17\" \"/utf-8\" \"/DUNICODE\" \"/D_UNICODE\" \"T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\src\\main.cpp\" \"/Fo:T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\obj\\main.obj\" \"/Fe:T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\bin\\LingBuilderPreview.exe\" \"user32.lib\" \"gdi32.lib\" \"comctl32.lib\" \"ole32.lib\" \"T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\obj\\lingbuilder-app.res\" \"T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\modules\\lingbuilder.project.dll\\lib\\x64\\AdvancedMathDll.lib\" \"user32.lib\" \"T:\\electron\\lingbuilder\\AI 视频自主生产\\进阶方案\\DLL命令声明演示\\.lingbuilder-build\\adv-dll-declare-demo\\Win32\\Debug\\modules\\lingbuilder.project.dll\\lib\\x64\\填充探针.lib\" \"kernel32.lib\" \"/link\" \"/MANIFEST:EMBED\"\n"
+  ]
+}

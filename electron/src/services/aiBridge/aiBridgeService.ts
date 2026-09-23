@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { applyWorkspaceEditToFiles, areCanvasDesignerProjectsEquivalent, areDesignerProjectsEquivalent, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit, validateDesignerProjectEdit } from '../lingCpp/aiEditService';
+import { resolveIdeVersion } from './ideVersion';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissionBlock } from '../lingCpp/controlReferenceAdmission';
 import { deleteAgentProposal, persistAgentProposal, readAgentProposal } from '../lingCpp/agentProposalStore';
@@ -96,10 +97,12 @@ import {
   AiBridgeModuleValidateRequest,
   AiBridgeModuleWriteFilesRequest,
   AiBridgeNativeRequest,
+  AiBridgeProjectHint,
   AiBridgeSearchMatch,
   AiBridgeSearchRequest,
   AiBridgeServerOptions,
-  AiBridgeTreeEntry
+  AiBridgeTreeEntry,
+  AiBridgeWorkspaceProjectSummary
 } from './types';
 import { LINGBUILDER_MODULE_CATEGORIES, type ModuleCommandBinding, type ModuleCommandContribution } from '../modules/types';
 import { describeModuleBindingParameterType } from '../modules/bindingValueType';
@@ -305,6 +308,7 @@ export class AiBridgeService {
       ok: true,
       service: 'LingBuilder AI Bridge',
       version: 1,
+      ideVersion: resolveIdeVersion(),
       workspaceRoot: this.workspaceRoot,
       permission: this.options.permission,
       mcp: this.options.enableMcp
@@ -315,13 +319,52 @@ export class AiBridgeService {
     // 首项是合成的 workspace 根条目：外部 AI 开始工作前先读它确认自己连到的工作区，
     // 「--workspace . 落错目录」在第一次调用就能自查出来，不必等某条 ENOENT 间接暴露。
     const realRoot = await this.pathPolicy.getRealWorkspaceRoot();
+    // ① 只读项目注册表视图挂首项：外部 AI 靠 projects[] 枚举项目（id/sourceRoot），不再按目录名猜。
+    // 必须走 peekSolution：getSolution 在空工作区会物化默认项目，那是写副作用，只读接口做不得。
+    const { projects, startupProjectId } = await this.describeWorkspaceProjects();
     try {
       const tree = await this.readDirectoryTree(realRoot, 0, { nodes: 0 });
-      return [{ path: '.', name: path.basename(realRoot), type: 'workspace', workspaceRoot: realRoot }, ...tree];
+      return [{
+        path: '.', name: path.basename(realRoot), type: 'workspace',
+        workspaceRoot: realRoot, ideVersion: resolveIdeVersion(),
+        projects,
+        ...(startupProjectId ? { startupProjectId } : {})
+      }, ...tree];
     } catch (error) {
       await this.auditFailure('read', 'workspace.list', '.', error);
       throw error;
     }
+  }
+
+  /** workspace.list 首项的只读项目注册表视图：外部 AI 靠 projects[] 枚举项目（id/sourceRoot），不再按目录名猜。 */
+  private async describeWorkspaceProjects(): Promise<{ projects: AiBridgeWorkspaceProjectSummary[]; startupProjectId: string }> {
+    const solution = await this.solutionService.peekSolution().catch(() => null);
+    return {
+      projects: (solution?.projects ?? []).map(project => ({
+        id: project.id,
+        name: project.name,
+        type: project.type,
+        sourceRoot: normalizeFilePath(project.sourceRoot || '.'),
+        isWindowProject: project.type === 'visual-cpp',
+        ...(project.isDefault ? { isDefault: true } : {})
+      })),
+      startupProjectId: String(solution?.startupProjectId || '')
+    };
+  }
+
+  /** 单项目工作区消歧：diagnostics / edit.propose 响应回显唯一注册项目，外部 AI 可直接引用其 projectId。 */
+  private async singleProjectHint(): Promise<AiBridgeProjectHint | undefined> {
+    const solution = await this.solutionService.peekSolution().catch(() => null);
+    if (!solution || solution.projects.length !== 1) return undefined;
+    const project = solution.projects[0];
+    const sourceRoot = normalizeFilePath(project.sourceRoot || '.');
+    return {
+      projectId: project.id,
+      name: project.name,
+      type: project.type,
+      sourceRoot,
+      note: `当前工作区仅注册了一个项目「${project.name}」（projectId=${project.id}，sourceRoot=${sourceRoot}）；lingcpp.diagnostics / edit.propose / build.run 可直接引用该 projectId。`
+    };
   }
 
   async readFile(filePath: string): Promise<{ filePath: string; content: string; format: TextFileFormat }> {
@@ -422,7 +465,8 @@ export class AiBridgeService {
       designerContext: this.describeDesignerContext(designerContext),
       designerInventory,
       codeOrganization,
-      moduleContextSummary: describeLingCppModuleContextForAi(moduleContext)
+      moduleContextSummary: describeLingCppModuleContextForAi(moduleContext),
+      projectHint: await this.singleProjectHint()
     };
   }
 
@@ -464,6 +508,7 @@ export class AiBridgeService {
     // 响应瘦身：草稿全文不回传（服务端已留存，apply 只需 proposalId）。
     return {
       ok: true,
+      projectHint: await this.singleProjectHint(),
       proposal: {
         id: proposal.id,
         title: proposal.title,

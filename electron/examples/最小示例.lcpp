@@ -1,0 +1,9 @@
+包 com.example.electron
+使用 com.example.electron 模块
+
+类 主窗口 : 窗口
+公开
+  事件 _主窗口_创建完毕()
+    示例命令()
+  结束
+结束类

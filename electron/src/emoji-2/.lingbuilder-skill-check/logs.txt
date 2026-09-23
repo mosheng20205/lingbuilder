@@ -1,0 +1,16 @@
+﻿AI Bridge 已生成 Win32 C++ 工程：T:\electron\lingbuilder\electron\src\emoji-2\.lingbuilder-build\emoji-2\x64\Debug
+C++ 源码目录：T:\electron\lingbuilder\electron\src\emoji-2\.lingbuilder-build\emoji-2\x64\Debug\src
+可复制生成目录：T:\electron\lingbuilder\electron\src\emoji-2\generated\cpp\emoji-2
+Visual Studio 解决方案：T:\electron\lingbuilder\electron\src\emoji-2\.lingbuilder-build\emoji-2\x64\Debug\emoji-2.sln
+可复制 Visual Studio 解决方案：T:\electron\lingbuilder\electron\src\emoji-2\generated\cpp\emoji-2\emoji-2.sln
+已内嵌 new_emoji 运行时 DLL（延迟解压）：modules\lingbuilder.new_emoji.ui\bin\x64\new_emoji.dll
+exe 输出目录：T:\electron\lingbuilder\electron\src\emoji-2\.lingbuilder-build\emoji-2\x64\Debug\bin
+中间文件目录：T:\electron\lingbuilder\electron\src\emoji-2\.lingbuilder-build\emoji-2\x64\Debug\obj
+编译器：msvc (cl)
+已复制模块运行时文件：new_emoji.dll, lingbuilder-newemoji-window.ico
+编译成功。
+已编译资源脚本：lingbuilder-app.rc
+stdout:
+main.cpp
+stdout:
+new_emoji_bridge.cpp

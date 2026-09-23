@@ -57,6 +57,8 @@ export interface AgentRuntimeOptions {
   globalNodeModules?: string;
   spawnProcess?: typeof spawn;
   profileOverrides?: Partial<AgentRuntimeProfileOptions>;
+  /** 单轮整体超时（含全部工具调用）；默认 15 分钟。回归测试用短超时驱动失败路径。 */
+  turnTimeoutMs?: number;
   /**
    * 面板配置的模型通道（DeepSeek 官方 / 自定义 OpenAI 兼容网关）。用取值函数而不是快照传入：
    * 用户可能在运行时不重启的情况下改配置，下一次 start 必须读到最新值。
@@ -149,7 +151,11 @@ export class AgentRuntimeService {
       workspaceRoot,
       cliEntryPath: this.options.cliEntryPath,
       bridgeCommand: this.options.bridgeCommand,
-      bridgeEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      // MCP 宿主据此在 health / workspace.list / serverInfo 上回报 IDE 版本（overlay env 是它的可靠通道）。
+      bridgeEnv: {
+        ELECTRON_RUN_AS_NODE: '1',
+        ...pickIdeVersionEnv(profileOptions.environment)
+      },
       resolution: this.resolution,
       profileDirectory: this.options.profileDirectory,
       dshHome: this.options.dshHome,
@@ -176,6 +182,17 @@ export class AgentRuntimeService {
     });
     try {
       const info = await client.start();
+      // dsh 崩溃/被杀时必须把快照从 running 修正为 failed：否则状态行永远显示「待命」，
+      // 用户每一轮只会看到「运行器未运行」却不知道要先重启（真机踩过的僵尸态）。
+      client.onExit(reason => {
+        if (this.client !== client) return;
+        this.client = null;
+        this.snapshotValue = {
+          ...this.snapshotValue, state: 'failed', pid: null, problem: reason,
+          logs: [...this.snapshotValue.logs, reason].slice(-MAX_LOGS)
+        };
+        this.emit();
+      });
       this.client = client;
       this.snapshotValue = {
         ...this.snapshotValue,
@@ -206,7 +223,9 @@ export class AgentRuntimeService {
     if (this.turnInFlight) throw new Error('上一轮还在执行中，请等待完成或先停止。');
     const text = String(prompt || '').trim();
     if (!text) throw new Error('请输入要交给内嵌 Agent 的需求。');
-    const activeSession = String(sessionId || this.snapshotValue.sessionId || `lb-panel-${Date.now()}`);
+    // 面板按「会话 ID → dsh 会话」映射显式传 sessionId；调用方没传就必须开新会话，
+    // 不得复用上一轮的会话——那会把上一个面板会话的上下文静默带进新会话。
+    const activeSession = String(sessionId || '').trim() || `lb-panel-${Date.now()}`;
 
     this.turnInFlight = true;
     this.snapshotValue = {
@@ -215,10 +234,14 @@ export class AgentRuntimeService {
     };
     this.emit();
     try {
+      // runHarnessTurn 自带「进程退出 → 本轮失败」分支：session/prompt 的 ack 在提交
+      // 时就完成了，dsh 带轮崩溃不会拒绝任何 pending 请求，必须由退出回调终结本轮，
+      // 否则整轮要干等到超时，失败后也无法及时停机自愈。
       const result = await runHarnessTurn({
         client: this.client,
         sessionId: activeSession,
         prompt: text,
+        timeoutMs: this.options.turnTimeoutMs,
         onEvent: event => {
           for (const listener of [...this.eventListeners]) listener({ sessionId: activeSession, event });
         }
@@ -232,12 +255,20 @@ export class AgentRuntimeService {
       this.emit();
       return { sessionId: activeSession, finalText: result.finalText, events: result.events };
     } catch (error) {
-      const message = errorMessage(error);
-      this.snapshotValue = {
-        ...this.snapshotValue, state: 'running', problem: message,
-        logs: [...this.snapshotValue.logs, `本轮失败：${message}`].slice(-MAX_LOGS)
-      };
-      this.emit();
+      // 主动停止（state 已是 stopping）由 stop() 收尾，这里不得改写状态。
+      if (this.snapshotValue.state !== 'stopping' && this.client) {
+        const dead = this.client;
+        this.client = null;
+        const message = errorMessage(error);
+        // 请求失败后无法再信任这棵运行器的状态流（ack 超时时 dsh 可能仍在跑本轮）：
+        // 直接停机置 failed，下一条需求会自动重启，从结构上杜绝两轮交错。
+        this.snapshotValue = {
+          ...this.snapshotValue, state: 'failed', pid: null, problem: message,
+          logs: [...this.snapshotValue.logs, `本轮失败：${message}`].slice(-MAX_LOGS)
+        };
+        this.emit();
+        void dead.close().catch(() => undefined);
+      }
       throw error;
     } finally {
       this.turnInFlight = false;
@@ -296,6 +327,18 @@ export class AgentRuntimeService {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 环境变量名与 src/services/aiBridge/ideVersion.ts 的 IDE_VERSION_ENV 必须逐字一致
+ * （主进程树受 tsconfig rootDir 约束不能 import ../src，只能镜像常量，由测试把关）。
+ */
+const IDE_VERSION_ENV_NAME = 'LINGBUILDER_IDE_VERSION';
+
+/** 环境里有 IDE 版本就透传给 MCP 宿主；没有就不写 overlay，由宿主侧 package.json 回退兜底。 */
+function pickIdeVersionEnv(environment: NodeJS.ProcessEnv | undefined): Record<string, string> {
+  const version = String(environment?.[IDE_VERSION_ENV_NAME] || '').trim();
+  return version ? { [IDE_VERSION_ENV_NAME]: version } : {};
 }
 
 /** 读 `node --version`；主进程里不阻塞事件循环，用异步 spawn。 */

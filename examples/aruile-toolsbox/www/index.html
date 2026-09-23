@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Aruile Tools Box</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --text: #e9eff8;
+    --text-dim: #9db0c9;
+    --text-faint: #6d8098;
+    --panel: rgba(4, 10, 20, 0.45);
+    --card-bg: rgba(255, 255, 255, 0.045);
+    --card-border: rgba(255, 255, 255, 0.075);
+    --chip-bg: rgba(255, 255, 255, 0.10);
+    --chip-border: rgba(255, 255, 255, 0.10);
+  }
+
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+
+  body {
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    background: #0a1524;
+    user-select: none;
+  }
+
+  /* ===== 窗口背景：深蓝渐变 + 光斑（页面即窗口，铺满边框） ===== */
+  .bg {
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(1100px 700px at 88% 108%, rgba(74, 88, 190, 0.38), transparent 62%),
+      radial-gradient(900px 620px at -8% 102%, rgba(18, 118, 122, 0.26), transparent 60%),
+      radial-gradient(700px 500px at 104% -10%, rgba(40, 70, 130, 0.30), transparent 60%),
+      linear-gradient(158deg, #0d1a31 0%, #0a1424 48%, #0e1c30 100%);
+  }
+  .bg i {
+    position: absolute; border-radius: 50%;
+    background: radial-gradient(circle, rgba(150, 195, 255, 0.32), rgba(150, 195, 255, 0) 70%);
+  }
+
+  .app { position: relative; z-index: 1; display: flex; flex-direction: column; width: 100%; height: 100%; }
+
+  /* ===== 标题栏：自绘，按住空白处拖拽窗口 ===== */
+  .titlebar {
+    height: 46px; flex: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px 0 16px;
+  }
+  .traffic { display: flex; align-items: center; gap: 9px; }
+  .dot {
+    width: 13px; height: 13px; border-radius: 50%; border: none; cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+  .dot.red    { background: #ff5f57; }
+  .dot.yellow { background: #febc2e; }
+  .dot.green  { background: #28c840; }
+  .dot:hover { filter: brightness(1.15); }
+
+  .titlebar-actions { display: flex; align-items: center; gap: 8px; }
+  .chip {
+    width: 36px; height: 27px; border-radius: 7px; cursor: pointer;
+    background: var(--chip-bg); border: 1px solid var(--chip-border);
+    display: grid; place-items: center; color: var(--text);
+    font-size: 13px; font-weight: 600;
+  }
+  .chip:hover { background: rgba(255, 255, 255, 0.17); }
+
+  /* ===== 主体布局 ===== */
+  .layout { flex: 1; display: flex; min-height: 0; }
+
+  /* 侧栏 */
+  .sidebar {
+    width: 200px; flex: none;
+    background: var(--panel);
+    display: flex; flex-direction: column;
+    padding: 14px 0 16px;
+  }
+  .nav { flex: 1; overflow-y: auto; }
+  .nav-group { margin-bottom: 2px; }
+  .nav-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px; cursor: pointer;
+    color: var(--text-dim); font-size: 13px;
+    transition: color .15s;
+  }
+  .nav-header:hover { color: var(--text); }
+  .nav-arrow {
+    width: 0; height: 0; flex: none;
+    border-left: 5px solid rgba(160, 180, 205, 0.75);
+    border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+    transition: transform .18s ease;
+  }
+  .nav-group.open .nav-arrow { transform: rotate(90deg); }
+  .nav-children { display: none; padding: 2px 0 4px; }
+  .nav-group.open .nav-children { display: block; }
+  .nav-child {
+    padding: 7px 14px 7px 34px; cursor: pointer;
+    color: var(--text-dim); font-size: 13px;
+    transition: background .15s, color .15s;
+  }
+  .nav-child:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+  .nav-child.active { color: var(--text); background: rgba(90, 140, 220, 0.18); }
+
+  .sidebar-footer { flex: none; padding: 12px 14px 0; }
+  .net-label { display: block; font-size: 11px; color: var(--text-faint); margin-bottom: 5px; }
+  .net-ip { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); font-family: Consolas, monospace; }
+  .net-dot { width: 6px; height: 6px; border-radius: 50%; background: #2ecc71; box-shadow: 0 0 6px rgba(46, 204, 113, 0.8); }
+
+  .brand { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .brand-logo {
+    width: 24px; height: 24px; border-radius: 50%; flex: none;
+    background: linear-gradient(135deg, #2fd968, #1ea94e);
+    display: grid; place-items: center;
+    font-size: 13px; font-weight: 700; color: #fff;
+    box-shadow: 0 0 10px rgba(40, 200, 100, 0.45);
+  }
+  .brand-name { font-size: 13px; font-weight: 700; color: var(--text); }
+
+  /* 主区 */
+  .main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 36px 26px 40px; }
+  .page-title { font-size: 26px; font-weight: 700; letter-spacing: 1px; margin-bottom: 20px; }
+
+  .card-list { max-width: 640px; }
+  .card {
+    display: flex; align-items: center; gap: 16px;
+    padding: 13px 18px; margin-bottom: 13px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 15px;
+    backdrop-filter: blur(8px);
+    transition: background .15s, transform .15s, border-color .15s;
+  }
+  .card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.14);
+    transform: translateY(-1px);
+  }
+  .card-icon {
+    width: 46px; height: 46px; border-radius: 12px; flex: none;
+    display: grid; place-items: center;
+    background: var(--accent);
+    font-size: 20px; font-weight: 700; color: #fff;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .card-meta { flex: 1; min-width: 0; }
+  .card-name { font-size: 15px; font-weight: 600; }
+  .card-url { font-size: 12px; color: var(--text-dim); margin-top: 5px; font-family: Consolas, monospace; }
+  .btn-open {
+    flex: none; padding: 8px 24px;
+    border: none; border-radius: 9px; cursor: pointer;
+    background: var(--accent);
+    color: #fff; font-size: 13px; font-weight: 600;
+    font-family: inherit;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+    transition: filter .15s, transform .1s;
+  }
+  .btn-open:hover { filter: brightness(1.12); }
+  .btn-open:active { transform: scale(0.96); }
+
+  .empty {
+    max-width: 640px; padding: 46px 0; text-align: center;
+    color: var(--text-faint); font-size: 13px;
+    border: 1px dashed rgba(255, 255, 255, 0.14);
+    border-radius: 15px;
+  }
+
+  /* 自绘滚动条（替换系统默认样式） */
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.26); }
+
+  /* 提示气泡 */
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    background: rgba(16, 28, 46, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 9px; padding: 9px 18px;
+    font-size: 12px; color: var(--text);
+    opacity: 0; pointer-events: none;
+    transition: opacity .22s;
+    z-index: 99; max-width: 80%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <div class="bg">
+    <i style="left:6%;  top:18%; width:14px; height:14px;"></i>
+    <i style="left:24%; top:8%;  width:8px;  height:8px;  opacity:.7"></i>
+    <i style="left:38%; top:26%; width:10px; height:10px; opacity:.6"></i>
+    <i style="left:55%; top:12%; width:16px; height:16px; opacity:.55"></i>
+    <i style="left:70%; top:30%; width:9px;  height:9px;  opacity:.7"></i>
+    <i style="left:86%; top:16%; width:12px; height:12px; opacity:.6"></i>
+    <i style="left:93%; top:44%; width:9px;  height:9px;  opacity:.75"></i>
+    <i style="left:47%; top:58%; width:8px;  height:8px;  opacity:.5"></i>
+    <i style="left:12%; top:64%; width:11px; height:11px; opacity:.5"></i>
+    <i style="left:66%; top:78%; width:13px; height:13px; opacity:.5"></i>
+  </div>
+
+  <div class="app">
+    <!-- 标题栏：窗口控制（红=关闭 黄=最小化 绿=最大化）+ 右侧功能位 -->
+    <header class="titlebar" id="titlebar">
+      <div class="traffic">
+        <button class="dot red"    data-win="close" title="关闭"></button>
+        <button class="dot yellow" data-win="min"   title="最小化"></button>
+        <button class="dot green"  data-win="max"   title="最大化/还原"></button>
+      </div>
+      <div class="titlebar-actions">
+        <button class="chip" title="主题外观">
+          <svg width="16" height="16" viewBox="0 0 16 16">
+            <path d="M2 11a6 6 0 0 1 12 0" fill="none" stroke="#ff5f57" stroke-width="2" stroke-linecap="round"/>
+            <path d="M4.5 11a3.5 3.5 0 0 1 7 0" fill="none" stroke="#febc2e" stroke-width="2" stroke-linecap="round"/>
+            <path d="M7 11a1 1 0 0 1 2 0" fill="none" stroke="#28c840" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="chip" title="亮色模式">
+          <svg width="15" height="15" viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+              <line x1="8" y1="1" x2="8" y2="2.6"/><line x1="8" y1="13.4" x2="8" y2="15"/>
+              <line x1="1" y1="8" x2="2.6" y2="8"/><line x1="13.4" y1="8" x2="15" y2="8"/>
+              <line x1="3" y1="3" x2="4.1" y2="4.1"/><line x1="11.9" y1="11.9" x2="13" y2="13"/>
+              <line x1="13" y1="3" x2="11.9" y2="4.1"/><line x1="4.1" y1="11.9" x2="3" y2="13"/>
+            </g>
+          </svg>
+        </button>
+        <button class="chip" title="显示模式">A</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- 侧栏 -->
+      <aside class="sidebar">
+        <nav class="nav" id="nav"></nav>
+        <div class="sidebar-footer">
+          <span class="net-label">网络状态</span>
+          <span class="net-ip"><i class="net-dot"></i><span id="netIp">192.168.5.104</span></span>
+          <div class="brand">
+            <span class="brand-logo">A</span>
+            <span class="brand-name">Aruile Tools Box</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 主区 -->
+      <main class="main" id="main">
+        <h1 class="page-title" id="pageTitle">播放器类</h1>
+        <div class="card-list" id="cardList"></div>
+        <div class="empty" id="emptyState" hidden>该分类暂无内容</div>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ======================================================================
+ * 一、灵码 EdgeView 桥接（reqId 协议）
+ * 页面 postMessage(JSON字符串{reqId,action,...})
+ *   → 原生 EdgeView事件 取 message 字段分派
+ *   → 原生 EdgeView脚本_发送JSON消息 回 {reqId,ok,...}
+ *   → 页面 message 事件收到的 e.data 是解析后的对象
+ * ====================================================================== */
+const HOST = (window.chrome && window.chrome.webview) ? window.chrome.webview : null;
+let reqSeq = 0;
+const pending = new Map();
+
+function hostSend(action, data) {
+  if (!HOST) return Promise.resolve({ ok: false, reason: 'preview' });
+  const reqId = ++reqSeq;
+  return new Promise(function (resolve) {
+    pending.set(reqId, resolve);
+    const msg = Object.assign({ reqId: reqId, action: action }, data || {});
+    HOST.postMessage(JSON.stringify(msg));
+    setTimeout(function () {
+      if (pending.has(reqId)) { pending.delete(reqId); resolve({ ok: false, reason: 'timeout' }); }
+    }, 5000);
+  });
+}
+
+window.addEventListener('message', function (e) {
+  const d = e.data;
+  if (!d || typeof d !== 'object') return;
+  if (d.reqId && pending.has(d.reqId)) {          // 桥回包
+    pending.get(d.reqId)(d);
+    pending.delete(d.reqId);
+    return;
+  }
+  if (d.action === 'net' && d.ip) {               // 原生主动推送：网络状态
+    document.getElementById('netIp').textContent = d.ip;
+  }
+});
+
+/* 打开网址：宿主模式交给原生（系统默认浏览器），预览模式气泡提示 */
+function openUrl(url) {
+  hostSend('openUrl', { url: url }).then(function (r) {
+    if (!r.ok) toast('预览模式：打开 ' + url);
+    else if (r.opened === false) toast('打开失败：' + url);
+  });
+}
+
+/* 窗口控制与拖拽（无边框壳） */
+document.querySelectorAll('.dot[data-win]').forEach(function (btn) {
+  btn.addEventListener('click', function () { hostSend('win.' + btn.dataset.win); });
+});
+document.getElementById('titlebar').addEventListener('mousedown', function (e) {
+  if (e.target.closest('button')) return;
+  hostSend('win.drag');
+});
+
+/* ======================================================================
+ * 二、数据
+ * ====================================================================== */
+const NAV = [
+  { label: '系统工具', children: [{ id: 'disk', label: '磁盘工具' }, { id: 'clean', label: '系统清理' }] },
+  { label: '调试工具', children: [{ id: 'capture', label: '抓包工具' }, { id: 'decompile', label: '反编译工具' }] },
+  { label: '常用软件', children: [{ id: 'players', label: '播放器类' }, { id: 'im', label: '聊天工具' }, { id: 'browser', label: '浏览器' }] },
+  { label: '直链下载', children: [{ id: 'directdl', label: '直链下载' }] },
+  { label: '更多',     children: [{ id: 'about', label: '关于本工具' }] }
+];
+
+const PAGES = {
+  players: {
+    title: '播放器类',
+    items: [
+      { name: '酷狗音乐',   url: 'https://www.kugou.com',  glyph: '酷', color: '#1e88e5' },
+      { name: '全民K歌',   url: 'https://kg.qq.com',      glyph: '全', color: '#26c281' },
+      { name: 'QQ音乐',    url: 'https://y.qq.com',       glyph: 'Q',  color: '#f57c00' },
+      { name: '网易云音乐', url: 'https://music.163.com',  glyph: '网', color: '#e5384e' },
+      { name: '酷我音乐',   url: 'https://www.kuwo.cn',    glyph: '酷', color: '#9b51e0' },
+      { name: '咪咕音乐',   url: 'https://music.migu.cn',  glyph: '咪', color: '#4054b2' }
+    ]
+  }
+};
+
+/* ======================================================================
+ * 三、渲染与交互
+ * ====================================================================== */
+const navEl = document.getElementById('nav');
+const pageTitle = document.getElementById('pageTitle');
+const cardList = document.getElementById('cardList');
+const emptyState = document.getElementById('emptyState');
+
+NAV.forEach(function (group) {
+  const g = document.createElement('div');
+  g.className = 'nav-group';
+  const header = document.createElement('div');
+  header.className = 'nav-header';
+  header.innerHTML = '<span class="nav-arrow"></span>';
+  header.appendChild(document.createTextNode(group.label));
+  header.addEventListener('click', function () { g.classList.toggle('open'); });
+  const children = document.createElement('div');
+  children.className = 'nav-children';
+  group.children.forEach(function (child) {
+    const c = document.createElement('div');
+    c.className = 'nav-child';
+    c.dataset.page = child.id;
+    c.textContent = child.label;
+    c.addEventListener('click', function () {
+      g.classList.add('open');
+      selectPage(child.id);
+    });
+    children.appendChild(c);
+  });
+  g.appendChild(header);
+  g.appendChild(children);
+  navEl.appendChild(g);
+});
+
+function selectPage(id) {
+  document.querySelectorAll('.nav-child').forEach(function (el) {
+    el.classList.toggle('active', el.dataset.page === id);
+  });
+  const page = PAGES[id];
+  cardList.innerHTML = '';
+  if (!page || !page.items || !page.items.length) {
+    pageTitle.textContent = findLabel(id) || '';
+    emptyState.hidden = false;
+    return;
+  }
+  pageTitle.textContent = page.title;
+  emptyState.hidden = true;
+  page.items.forEach(function (item) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.setProperty('--accent', item.color);
+    card.innerHTML =
+      '<div class="card-icon"></div>' +
+      '<div class="card-meta"><div class="card-name"></div><div class="card-url"></div></div>';
+    card.querySelector('.card-icon').textContent = item.glyph;
+    card.querySelector('.card-name').textContent = item.name;
+    card.querySelector('.card-url').textContent = item.url;
+    const btn = document.createElement('button');
+    btn.className = 'btn-open';
+    btn.textContent = '打开';
+    btn.addEventListener('click', function () { openUrl(item.url); });
+    card.appendChild(btn);
+    cardList.appendChild(card);
+  });
+}
+
+function findLabel(id) {
+  for (let i = 0; i < NAV.length; i++) {
+    for (let j = 0; j < NAV[i].children.length; j++) {
+      if (NAV[i].children[j].id === id) return NAV[i].children[j].label;
+    }
+  }
+  return '';
+}
+
+/* 提示气泡 */
+let toastTimer = null;
+function toast(text) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+}
+
+/* 标题栏右侧功能位（占位） */
+document.querySelectorAll('.titlebar-actions .chip').forEach(function (chip) {
+  chip.addEventListener('click', function () { toast('演示占位：' + chip.title); });
+});
+
+selectPage('players');
+</script>
+</body>
+</html>

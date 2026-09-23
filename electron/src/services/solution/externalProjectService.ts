@@ -150,7 +150,7 @@ export class ExternalProjectService {
       if (configured.exitCode !== 0) return { ok: false, command, args: configure, cwd, stdout: configured.stdout, stderr: configured.stderr, outputDir };
       args = ['--build', outputDir, '--config', project.buildProperties.configuration];
     } else {
-      command = resolveMsBuildCommand();
+      command = await resolveMsBuildCommandAsync();
       // 钉定 OutDir（结尾必须是路径分隔符），避免各工程自定义输出目录导致产物定位不稳定。
       args = [projectFile, '/m', `/p:Configuration=${project.buildProperties.configuration}`, `/p:Platform=${project.buildProperties.architecture}`, `/p:OutDir=${outputDir}${path.sep}`, ...project.buildProperties.additionalArguments];
     }
@@ -343,23 +343,100 @@ function fileExistsSync(filePath: string): boolean {
   }
 }
 
-function resolveMsBuildCommand(): string {
+/** msbuild 文件系统扫描结果按进程缓存，避免每次构建都重复跑 vswhere 子进程。 */
+let scannedMsBuildCommand: string | undefined;
+
+/**
+ * 解析本机 MSBuild.exe：LINGBUILDER_MSBUILD_PATH 优先，其次 vswhere 探测的最新
+ * Visual Studio 安装（内部版本号不限），再次常见安装路径扫描；都落空时退回 PATH 上的 msbuild。
+ */
+export async function resolveMsBuildCommandAsync(): Promise<string> {
   const configured = process.env.LINGBUILDER_MSBUILD_PATH;
   if (configured && fileExistsSync(configured)) return configured;
+  if (scannedMsBuildCommand === undefined) scannedMsBuildCommand = await scanForMsBuildCommand();
+  return scannedMsBuildCommand || 'msbuild';
+}
+
+async function scanForMsBuildCommand(): Promise<string> {
+  const installationPath = await locateLatestVisualStudioInstallation();
+  if (installationPath) {
+    const candidate = path.join(installationPath, 'MSBuild', 'Current', 'Bin', 'MSBuild.exe');
+    if (fileExistsSync(candidate)) return candidate;
+    const amd64 = path.join(installationPath, 'MSBuild', 'Current', 'Bin', 'amd64', 'MSBuild.exe');
+    if (fileExistsSync(amd64)) return amd64;
+  }
+  return findMsBuildCommandInDefaultInstalls();
+}
+
+function findMsBuildCommandInDefaultInstalls(): string {
   const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
   const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-  const candidates = [programFiles, programFilesX86].flatMap(root => [2022, 2019].flatMap(year =>
-    ['Community', 'Professional', 'Enterprise', 'BuildTools'].flatMap(edition => [
-      path.join(root, 'Microsoft Visual Studio', String(year), edition, 'MSBuild', 'Current', 'Bin', 'amd64', 'MSBuild.exe'),
-      path.join(root, 'Microsoft Visual Studio', String(year), edition, 'MSBuild', 'Current', 'Bin', 'MSBuild.exe')
+  // Visual Studio 目录名按内部版本号递增（2026 为 "18"），不能只枚举年份。
+  const installRoots = [programFiles, programFilesX86];
+  const versions = ['18', '2022', '2019'];
+  const editions = ['Community', 'Professional', 'Enterprise', 'BuildTools'];
+  const candidates = installRoots.flatMap(root => versions.flatMap(version =>
+    editions.flatMap(edition => [
+      path.join(root, 'Microsoft Visual Studio', version, edition, 'MSBuild', 'Current', 'Bin', 'amd64', 'MSBuild.exe'),
+      path.join(root, 'Microsoft Visual Studio', version, edition, 'MSBuild', 'Current', 'Bin', 'MSBuild.exe')
     ])
   ));
-  return candidates.find(fileExistsSync) || 'msbuild';
+  return candidates.find(fileExistsSync) || '';
+}
+
+async function locateLatestVisualStudioInstallation(): Promise<string | null> {
+  const vswhere = await locateVsWhereExecutable();
+  if (!vswhere) return null;
+  for (const query of [
+    ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'],
+    // 兜底：不限定 C++ 工作负载，纯 MSBuild 工程（如托管项目）也允许解析出 MSBuild。
+    ['-latest', '-products', '*', '-property', 'installationPath']
+  ]) {
+    try {
+      const result = await execFileAsync(vswhere, query, { timeout: 8_000, windowsHide: true });
+      const installationPath = result.stdout.split(/\r?\n/u).map(line => line.trim())
+        .find(line => /^[A-Za-z]:[\\/]/u.test(line) || line.startsWith('\\\\'));
+      if (installationPath) return installationPath;
+    } catch { /* 尝试下一组查询 */ }
+  }
+  return null;
+}
+
+async function locateVsWhereExecutable(): Promise<string | null> {
+  const programFilesX86 = process.env['ProgramFiles(x86)'];
+  if (programFilesX86) {
+    const candidate = path.join(programFilesX86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
+    if (fileExistsSync(candidate)) return candidate;
+  }
+  try {
+    const lookup = await execFileAsync('where.exe', ['vswhere.exe'], { timeout: 5_000, windowsHide: true });
+    const found = lookup.stdout.split(/\r?\n/u).map(line => line.trim())
+      .find(line => line.toLowerCase().endsWith('vswhere.exe'));
+    return found || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 外部构建命令 spawn 失败（ENOENT）时的中文诊断：直接给出安装与配置修法，不暴露英文 ENOENT。 */
+export function describeExternalCommandNotFound(command: string): string {
+  const tool = path.basename(command).toLowerCase();
+  if (tool.includes('msbuild')) {
+    return '未找到 MSBuild.exe，无法生成 DLL 工程。请安装 Visual Studio 2019/2022/2026 或 Build Tools 并勾选“使用 C++ 的桌面开发”工作负载；'
+      + '也可在环境变量 LINGBUILDER_MSBUILD_PATH 中填写 MSBuild.exe 完整路径后重启 IDE。';
+  }
+  if (tool.includes('cmake')) {
+    return '未找到 cmake，无法生成 CMake 工程。请安装 CMake 并加入 PATH 后重试。';
+  }
+  return `未找到可执行程序 ${command}。请确认它已安装并加入 PATH 后重试。`;
 }
 
 const runCommand: ExternalCommandRunner = async (command, args, cwd, signal) => {
   try { const result = await execFileAsync(command, [...args], { cwd, windowsHide: true, timeout: 120_000, maxBuffer: 8 * 1024 * 1024, signal }); return { exitCode: 0, stdout: result.stdout, stderr: result.stderr }; }
-  catch (error: any) { return { exitCode: typeof error.code === 'number' ? error.code : 1, stdout: String(error.stdout || ''), stderr: String(error.stderr || error.message || '') }; }
+  catch (error: any) {
+    if (error?.code === 'ENOENT') return { exitCode: 1, stdout: '', stderr: describeExternalCommandNotFound(command) };
+    return { exitCode: typeof error.code === 'number' ? error.code : 1, stdout: String(error.stdout || ''), stderr: String(error.stderr || error.message || '') };
+  }
 };
 const safeId = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_.-]+/gu, '-').replace(/^-+|-+$/gu, '') || 'external-project';
 

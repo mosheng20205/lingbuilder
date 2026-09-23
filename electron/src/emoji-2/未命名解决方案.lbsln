@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "未命名解决方案",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "emoji-2",
+  "startupProjectIds": [
+    "emoji-2"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "emoji-2",
+      "name": "清理工具列表演示",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

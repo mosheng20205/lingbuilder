@@ -163,6 +163,8 @@ test('Windows DLL template creates a C ABI library project and DynamicLibrary Vi
   assert.equal(preview.project.type, 'windows-dll');
   assert.equal(preview.project.projectFile, 'src/network-library/network-library.vcxproj');
   assert.equal(preview.project.buildProperties?.architecture, 'Win32');
+  // DLL 模板必须创建即带 dll 输出类型：IDE 的 F5 禁用与「生成动态库」入口都读该字段。
+  assert.equal(preview.project.buildProperties?.outputType, 'dll');
   assert.equal(await exists(path.join(root, 'src', 'network-library')), false);
   const previewFiles = new Map(preview.files.map(file => [file.relativePath, file.content]));
   assert.match(previewFiles.get('src/network-library/DllMain.cpp') || '', /LINGBUILDER_DLL_API/u);
@@ -181,6 +183,7 @@ test('Windows DLL template creates a C ABI library project and DynamicLibrary Vi
 
   const created = await service.createProject({ name: '网络工具库', projectId: 'network-library', templateId: 'windows-dll' });
   assert.equal(created.project.type, 'windows-dll');
+  assert.equal(created.project.buildProperties?.outputType, 'dll');
   assert.ok(await exists(path.join(root, 'src', 'network-library', 'network-library.vcxproj')));
   assert.ok(await exists(path.join(root, 'src', 'network-library', 'DllMain.cpp')));
   assert.ok(await exists(path.join(root, 'src', 'network-library', 'include', 'DllExports.h')));

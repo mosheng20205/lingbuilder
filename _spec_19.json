@@ -1,0 +1,135 @@
+{
+ "dir": "T:\\electron\\lingbuilder\\AI 视频自主生产\\EdgeView 浏览器模块合集\\19 创建选项全集\\示例项目",
+ "id": "edgeview-ep19-create-options",
+ "title": "EdgeView 创建选项全集",
+ "lbsln": "EdgeView创建选项示例.lbsln",
+ "pageH": 900,
+ "buttons": [
+  {
+   "id": "b1",
+   "name": "背景色按钮",
+   "content": "1 默认背景色 置/取",
+   "row": 0,
+   "col": 0,
+   "bg": "blue",
+   "event": "_背景色按钮_被单击"
+  },
+  {
+   "id": "b2",
+   "name": "滚动条按钮",
+   "content": "2 滚动条样式 置/取",
+   "row": 0,
+   "col": 1,
+   "bg": "blue",
+   "event": "_滚动条按钮_被单击"
+  },
+  {
+   "id": "b3",
+   "name": "脚本区域按钮",
+   "content": "3 脚本区域 置/取",
+   "row": 1,
+   "col": 0,
+   "bg": "blue",
+   "event": "_脚本区域按钮_被单击"
+  },
+  {
+   "id": "b4",
+   "name": "附加参数按钮",
+   "content": "4 附加参数 置/取",
+   "row": 1,
+   "col": 1,
+   "bg": "blue",
+   "event": "_附加参数按钮_被单击"
+  },
+  {
+   "id": "b5",
+   "name": "发布通道按钮",
+   "content": "5 发布通道 置/取",
+   "row": 2,
+   "col": 0,
+   "bg": "blue",
+   "event": "_发布通道按钮_被单击"
+  },
+  {
+   "id": "b6",
+   "name": "通道搜索按钮",
+   "content": "6 通道搜索方式 置/取",
+   "row": 2,
+   "col": 1,
+   "bg": "blue",
+   "event": "_通道搜索按钮_被单击"
+  },
+  {
+   "id": "b7",
+   "name": "宿主输入按钮",
+   "content": "7 宿主输入处理 置/取",
+   "row": 3,
+   "col": 0,
+   "bg": "blue",
+   "event": "_宿主输入按钮_被单击"
+  },
+  {
+   "id": "b8",
+   "name": "扩展开关按钮",
+   "content": "8 浏览器扩展 置/取",
+   "row": 3,
+   "col": 1,
+   "bg": "blue",
+   "event": "_扩展开关按钮_被单击"
+  },
+  {
+   "id": "b9",
+   "name": "崩溃报告按钮",
+   "content": "9 崩溃报告 置/取",
+   "row": 4,
+   "col": 0,
+   "bg": "blue",
+   "event": "_崩溃报告按钮_被单击"
+  },
+  {
+   "id": "b10",
+   "name": "选项跟踪保护按钮",
+   "content": "10 跟踪保护 置/取",
+   "row": 4,
+   "col": 1,
+   "bg": "blue",
+   "event": "_选项跟踪保护按钮_被单击"
+  },
+  {
+   "id": "b11",
+   "name": "跨域按钮",
+   "content": "11 跨域限制关闭 置/取",
+   "row": 5,
+   "col": 0,
+   "bg": "blue",
+   "event": "_跨域按钮_被单击"
+  },
+  {
+   "id": "b12",
+   "name": "独占目录按钮",
+   "content": "12 独占用户目录 置/取",
+   "row": 5,
+   "col": 1,
+   "bg": "blue",
+   "event": "_独占目录按钮_被单击"
+  },
+  {
+   "id": "b13",
+   "name": "自定义协议按钮",
+   "content": "13 添加/清除自定义协议",
+   "row": 6,
+   "col": 0,
+   "bg": "teal",
+   "event": "_自定义协议按钮_被单击"
+  },
+  {
+   "id": "b14",
+   "name": "重建按钮",
+   "content": "14 重建控件(应用选项)",
+   "row": 6,
+   "col": 1,
+   "bg": "red",
+   "event": "_重建按钮_被单击"
+  }
+ ]
+}

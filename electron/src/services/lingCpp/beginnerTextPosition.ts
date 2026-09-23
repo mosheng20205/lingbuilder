@@ -63,3 +63,33 @@ export function getBeginnerTextareaOffsetAtPoint(
     measureText: text => context?.measureText(text).width ?? text.length * (Number.parseFloat(style.fontSize) || 14)
   });
 }
+
+const BEGINNER_IDENTIFIER_CHAR = /[A-Za-z0-9_\u3400-\u9fff]/u;
+
+/**
+ * 双击选中完整标识符（变量名、命令名）：中文标识符没有空格分词，
+ * 浏览器原生双击按词典只选中一段（如 缓冲区句柄 → 缓冲区），
+ * 这里按字符边界向两侧扩展出完整标识符区间。
+ * 命中位置不是标识符字符（运算符、括号、空白）时返回 null，保留原生行为。
+ */
+export function getBeginnerIdentifierSpanAtOffset(
+  value: string,
+  offset: number
+): { start: number; end: number } | null {
+  const safeOffset = Math.max(0, Math.min(offset, value.length));
+  const isIdentifierChar = (char: string | undefined) => Boolean(char && BEGINNER_IDENTIFIER_CHAR.test(char));
+
+  let start = safeOffset;
+  let end = safeOffset;
+  if (isIdentifierChar(value[safeOffset])) {
+    end = safeOffset + 1;
+  } else if (isIdentifierChar(value[safeOffset - 1])) {
+    // 命中点落在标识符右侧边界（如紧邻右括号），扩展左侧的标识符。
+    start = safeOffset - 1;
+  } else {
+    return null;
+  }
+  while (start > 0 && isIdentifierChar(value[start - 1])) start -= 1;
+  while (end < value.length && isIdentifierChar(value[end])) end += 1;
+  return { start, end };
+}
