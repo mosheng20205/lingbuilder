@@ -92,9 +92,11 @@ export function validateBuildConfiguration(value: any): BuildConfiguration {
 
 export function getBuildCompilerFlags(configuration: BuildConfiguration, compiler: 'msvc' | 'g++' | 'clang++'): string[] {
   const debug = configuration.mode === 'Debug';
+  // /bigobj 常开：x64 Debug（/Zi + /RTC1）下约 2MB 的 main.cpp 会产生超过 COFF 65,535 节
+  // 上限的展开信息（C1128），该开关只提高节数上限，不影响语义、优化与调试信息。
   if (compiler === 'msvc') return debug
-    ? ['/Od', '/Zi', '/D_DEBUG', '/RTC1', '/MDd']
-    : ['/O2', '/DNDEBUG', '/GL', '/MD'];
+    ? ['/Od', '/Zi', '/D_DEBUG', '/RTC1', '/MDd', '/bigobj']
+    : ['/O2', '/DNDEBUG', '/GL', '/MD', '/bigobj'];
   const architecture = configuration.architecture === 'x64' ? '-m64' : '-m32';
   return debug ? [architecture, '-O0', '-g', '-D_DEBUG'] : [architecture, '-O2', '-DNDEBUG'];
 }

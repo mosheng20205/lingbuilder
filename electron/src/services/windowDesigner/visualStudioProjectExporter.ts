@@ -426,7 +426,7 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}
       <AdditionalIncludeDirectories>${additionalIncludeDirectories}</AdditionalIncludeDirectories>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>${subSystem}</SubSystem>${uacSettings}
@@ -444,7 +444,7 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}
       <AdditionalIncludeDirectories>${additionalIncludeDirectories}</AdditionalIncludeDirectories>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>${subSystem}</SubSystem>${uacSettings}
@@ -454,8 +454,8 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
       <AdditionalDependencies>${xmlEscape(additionalDependencies)};%(AdditionalDependencies)</AdditionalDependencies>
     </Link>${postBuild}
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
 ${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('ResourceCompile', options.resourceFiles)}${generateFileItems('None', options.noneFiles)}
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

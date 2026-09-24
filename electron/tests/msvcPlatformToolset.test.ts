@@ -179,6 +179,12 @@ test('导出内容把显式工具集钉入全部四个配置', () => {
   assert.ok(!vcxproj.includes('v143'));
 });
 
+test('导出内容在全部四个配置的编译选项常开 /bigobj（C1128 节数上限）', () => {
+  const vcxproj = extractVcxprojContent({});
+  const options = [...vcxproj.matchAll(/<AdditionalOptions>([^<]+)<\/AdditionalOptions>/gu)].map(match => match[1]);
+  assert.deepEqual(options, Array(4).fill('/utf-8 /bigobj %(AdditionalOptions)'));
+});
+
 test('未指定工具集时保持 v143 兼容行为', () => {
   const vcxproj = extractVcxprojContent({});
   const toolsets = [...vcxproj.matchAll(/<PlatformToolset>([^<]+)<\/PlatformToolset>/gu)].map(match => match[1]);
