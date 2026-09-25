@@ -169,6 +169,10 @@ Var LingBuilderKillTries
   RMDir /r "$INSTDIR\resources\default-workspace\.lingbuilder\modules\lingbuilder.cef3.sdk\sdk"
   RMDir /r "$INSTDIR\resources\default-workspace\.lingbuilder\modules\lingbuilder.fbro.sdk\sdk"
 
+  ; 0.7.9 首包曾在这里 RMDir /r 老版本的 resources\dsh\resources\node（约 2.6 万个文件），
+  ; 结果被杀软逐个拦截、进度条在尾部冻结数分钟（真机实测）。该清理已移到应用侧后台：
+  ; 应用启动后由 agentRuntimeBundle.removeLegacyBundledRuntimeTrees 异步删除，安装器零等待。
+
   ; WebView2 是 EdgeView 原生项目的运行依赖。仅在注册表未检测到时执行随包冻结的微软 Evergreen Bootstrapper。
   ReadRegStr $0 HKLM "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
   ${If} $0 == ""

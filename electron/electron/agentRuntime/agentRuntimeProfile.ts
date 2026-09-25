@@ -55,6 +55,11 @@ export interface AgentRuntimeProfileOptions {
   nodeOverride?: string;
   /** 覆盖 dsh CLI 入口。 */
   dshBinOverride?: string;
+  /**
+   * 随包运行时释放目录（agentRuntimeBundle 首启释放产物，内含 node/ 与 dsh/）。
+   * 候选顺序在环境变量覆盖之后、旧版 resources 解压树之前。
+   */
+  bundledRuntimeRoot?: string;
   /** 独立 Harness home；缺省沿用用户本机 dsh 配置（复用其 provider 与凭据）。 */
   dshHome?: string;
   environment?: NodeJS.ProcessEnv;
@@ -68,13 +73,14 @@ function nodeExecutableName(platform: NodeJS.Platform): string {
   return platform === 'win32' ? 'node.exe' : 'node';
 }
 
-/** 依次给出：环境变量覆盖 → 随包 Node → PATH 上的 node。 */
+/** 依次给出：环境变量覆盖 → 随包释放目录 → 旧版 resources 解压树 → PATH 上的 node。 */
 export function nodeHostCandidates(options: AgentRuntimeProfileOptions = {}): string[] {
   const platform = options.platform || process.platform;
   const environment = options.environment || process.env;
   const candidates: string[] = [];
   const override = String(environment.LINGBUILDER_DSH_NODE || options.nodeOverride || '').trim();
   if (override) candidates.push(override);
+  if (options.bundledRuntimeRoot) candidates.push(path.join(options.bundledRuntimeRoot, 'node', nodeExecutableName(platform)));
   const resources = String(options.resourcesPath || process.resourcesPath || '').trim();
   if (resources) candidates.push(path.join(resources, 'node', nodeExecutableName(platform)));
   const systemNode = String(environment.PATH || environment.Path || '')
@@ -86,12 +92,16 @@ export function nodeHostCandidates(options: AgentRuntimeProfileOptions = {}): st
   return candidates;
 }
 
-/** dsh CLI 入口候选：环境变量 → 随包 resources/dsh → 全局 npm 安装 → 本机 Harness home。 */
+/** dsh CLI 入口候选：环境变量 → 随包释放目录 → 旧版 resources 树 → 全局 npm 安装 → 本机 Harness home。 */
 export function dshBinCandidates(options: AgentRuntimeProfileOptions = {}): string[] {
   const environment = options.environment || process.env;
   const candidates: string[] = [];
   const override = String(environment.LINGBUILDER_DSH_BIN || options.dshBinOverride || '').trim();
   if (override) candidates.push(override);
+  if (options.bundledRuntimeRoot) {
+    candidates.push(path.join(options.bundledRuntimeRoot, 'dsh', 'bin.js'));
+    candidates.push(path.join(options.bundledRuntimeRoot, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'));
+  }
   const resources = String(options.resourcesPath || process.resourcesPath || '').trim();
   if (resources) {
     candidates.push(path.join(resources, 'dsh', 'bin.js'));

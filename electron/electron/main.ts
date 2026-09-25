@@ -25,6 +25,7 @@ import { checkLatestVersion, type VersionCheckResult } from './versionCheckServi
 import { UpdateDownloadService } from './updateDownloadService';
 import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
+import { removeLegacyBundledRuntimeTrees } from './agentRuntime/agentRuntimeBundle';
 import { AgentRuntimeService } from './agentRuntime/agentRuntimeService';
 import {
   defaultAgentProviderSettings,
@@ -1894,6 +1895,9 @@ app.whenReady().then(async () => {
     bridgeCommand: process.execPath,
     cliEntryPath: cliEntryPath(),
     profileDirectory: path.join(app.getPath('userData'), 'agent-runtime'),
+    // 随包运行时归档优先释放到安装目录（当前用户可写且演示实例共享），不可写回落 userData。
+    installDirectory: app.isPackaged ? path.dirname(process.resourcesPath) : '',
+    userDataDirectory: app.getPath('userData'),
     environment: { ...process.env, LINGBUILDER_IDE_VERSION: app.getVersion() },
     providerSettings: () => agentProviderCache
   });
@@ -1905,6 +1909,17 @@ app.whenReady().then(async () => {
   });
   // 外部 AI 授权开关是持久化设置，IDE 启动即按上次选择恢复监听状态。
   await syncLocalAuthorizationService();
+
+  // 老版随包运行时散文件树（≤0.7.9 首包形态，约 2.6 万个文件）后台清理：在安装器里删
+  // 会被杀软逐个拦截、把「正在安装」进度条冻结在尾部数分钟（0.7.9 首包真机实测），
+  // 移到应用启动 30 秒后异步删则完全无感；无 agent-runtime.json 的目录不是本产品布局，不误删。
+  void removeLegacyBundledRuntimeTrees({
+    resourcesPath: app.isPackaged ? process.resourcesPath : '',
+    delayMs: 30_000
+  }).then(result => {
+    if (result.removed.length) console.log(`[agent-runtime] 已清理旧版随包运行时残留：${result.removed.join('、')}`);
+    if (result.problem) console.warn(`[agent-runtime] ${result.problem}`);
+  }).catch(() => undefined);
 
   const managedDevelopmentServer = !app.isPackaged && process.argv.includes('--managed-dev-server');
   if (app.isPackaged || managedDevelopmentServer) {

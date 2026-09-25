@@ -10,8 +10,9 @@
  * 此时运行时解析回落到 PATH 上的 Node，解析不到面板只给中文诊断。
  * 下载/安装失败不阻断打包：整体回落到占位目录并在 manifest 记 bundleProblem，
  * 因为内嵌 Agent 是增强能力，不能把它变成整个 IDE 出包的硬依赖。
- *   resources/node/  ← nodejs.org 官方 win-x64 发行包（按 SHASUMS256 校验）
- *   resources/dsh/   ← npm 固定版本安装（无 postinstall、无原生依赖、无 os/cpu 限制）
+ * 随包形态（0.7.9 起）：agent-runtime.tar 单文件归档（node/ + dsh/ 两棵树）+
+ * agent-runtime.json manifest；安装包不再直接携带散文件树，首次启动由主进程
+ * 释放到安装目录（详见 electron/electron/agentRuntime/agentRuntimeBundle.ts）。
  */
 'use strict';
 
@@ -38,6 +39,15 @@ const RESOURCE_ROOT = path.join(__dirname, '..', 'agent-runtime');
 const NODE_TARGET = path.join(RESOURCE_ROOT, 'node');
 const DSH_TARGET = path.join(RESOURCE_ROOT, 'dsh');
 const MANIFEST_PATH = path.join(RESOURCE_ROOT, 'agent-runtime.json');
+/**
+ * 随包形态是「单文件归档 + 安装后首次启动释放」，不再把两棵树直接打进安装包：
+ * NSIS 安装是「解压到临时目录 + 整目录复制」两趟，2.6 万个小文件逐个落地再被杀软
+ * 逐个扫描，安装进度会长时间停在 50% 附近（0.7.8/0.7.9 真机实测）。用未压缩 tar：
+ * NSIS 固实 LZMA 压 tar 的比率与压散文件一致（安装包体积不变），释放用 Windows 10+
+ * 自带的 bsdtar（与本脚本的 Node zip 解压同一依赖），零新增运行时依赖。
+ */
+const ARCHIVE_FILE = 'agent-runtime.tar';
+const ARCHIVE_PATH = path.join(RESOURCE_ROOT, ARCHIVE_FILE);
 const BUNDLE = process.env.LINGBUILDER_AGENT_RUNTIME_BUNDLE !== '0';
 /**
  * 安装后裁剪掉的 dsh 传递依赖：`dsh-office-to-pdf → libreoffice-kit → 平台原生包`，
@@ -215,6 +225,26 @@ function installDsh() {
   };
 }
 
+/** 把 node/dsh 两棵树打成单文件未压缩 tar（释放端用系统 bsdtar -xf 原样解开）。 */
+function buildArchive() {
+  fs.rmSync(ARCHIVE_PATH, { force: true });
+  execFileSync(systemTar(), ['--create', `--file=${ARCHIVE_PATH}`, '--directory', RESOURCE_ROOT, 'node', 'dsh'], { stdio: 'inherit' });
+  const bytes = fs.statSync(ARCHIVE_PATH).size;
+  if (!bytes) fail(`归档产物为空：${ARCHIVE_PATH}`);
+  return { file: ARCHIVE_FILE, sha256: sha256File(ARCHIVE_PATH), bytes };
+}
+
+/** 归档已存在且与 manifest 记录一致时复用（重跑打包链不必每次重打 376MB tar）。 */
+function archiveUpToDate(manifest) {
+  try {
+    return manifest?.archive?.file === ARCHIVE_FILE
+      && manifest?.archive?.sha256 === sha256File(ARCHIVE_PATH)
+      && fs.statSync(ARCHIVE_PATH).size === manifest?.archive?.bytes;
+  } catch {
+    return false;
+  }
+}
+
 function readManifest() {
   try {
     return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
@@ -232,14 +262,21 @@ async function main() {
     && fs.existsSync(path.join(NODE_TARGET, 'node.exe'))
     && fs.existsSync(path.join(DSH_TARGET, 'node_modules'));
   if (BUNDLE && alreadyBundled) {
-    // 已随包但裁剪步骤是后加的（或裁剪清单变化）：补裁剪并刷新 manifest，不重跑下载。
+    // 已随包但裁剪/归档步骤是后加的（或清单变化）：补裁剪、补归档并刷新 manifest，不重跑下载。
+    let changed = false;
     if (DSH_PRUNED_PACKAGES.some(pkg => !existing.dsh.pruned?.includes(pkg))) {
       pruneDshPackages();
       existing.dsh.pruned = DSH_PRUNED_PACKAGES.filter(pkg => !fs.existsSync(path.join(DSH_TARGET, 'node_modules', ...pkg.split('/'))));
       existing.dsh.fileCount = countFiles(DSH_TARGET);
       existing.dsh.bytes = dirBytes(DSH_TARGET);
-      fs.writeFileSync(MANIFEST_PATH, JSON.stringify(existing, null, 2) + '\n', 'utf8');
+      changed = true;
     }
+    if (!archiveUpToDate(existing)) {
+      existing.archive = buildArchive();
+      changed = true;
+      log(`已重打随包归档 ${(existing.archive.bytes / 1048576).toFixed(1)}MB（sha256 ${existing.archive.sha256.slice(0, 16)}…）`);
+    }
+    if (changed) fs.writeFileSync(MANIFEST_PATH, JSON.stringify(existing, null, 2) + '\n', 'utf8');
     log(`已随包（Node ${NODE_VERSION} / dsh ${DSH_VERSION}），跳过重复下载`);
     return;
   }
@@ -250,22 +287,24 @@ async function main() {
   let manifest;
   try {
     manifest = { bundled: true, generatedAt: new Date().toISOString(), node: await installNode(), dsh: installDsh() };
+    manifest.archive = buildArchive();
   } catch (error) {
-    // 内嵌 Agent 是增强能力：取不到运行时只降级为占位目录 + 中文告警，不得让打包整链失败。
+    // 内嵌 Agent 是增强能力：取不到运行时或归档失败只降级为占位目录 + 中文告警，不得让打包整链失败。
     const problem = error instanceof Error ? error.message : String(error);
     process.stderr.write(`[agent-runtime] 警告：随包运行时准备失败，安装包将不携带内嵌 Agent 运行时（面板会提示「未找到可用的 Node 运行时」）：${problem}\n`);
     writeStubManifest(problem);
     return;
   }
   fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-  log(`完成：Node ${manifest.node.fileCount} 个文件 ${(manifest.node.bytes / 1048576).toFixed(1)}MB，dsh ${manifest.dsh.fileCount} 个文件 ${(manifest.dsh.bytes / 1048576).toFixed(1)}MB`);
+  log(`完成：Node ${manifest.node.fileCount} 个文件 ${(manifest.node.bytes / 1048576).toFixed(1)}MB，dsh ${manifest.dsh.fileCount} 个文件 ${(manifest.dsh.bytes / 1048576).toFixed(1)}MB，归档 ${(manifest.archive.bytes / 1048576).toFixed(1)}MB`);
 }
 
-/** 写占位目录与 bundled=false 的 manifest（清理真实运行时，避免体积与 manifest 不一致）。 */
+/** 写占位目录与 bundled=false 的 manifest（清理真实运行时与归档，避免体积与 manifest 不一致）。 */
 function writeStubManifest(problem) {
   for (const dir of [NODE_TARGET, DSH_TARGET]) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+  fs.rmSync(ARCHIVE_PATH, { force: true });
   writeStub(NODE_TARGET, 'LingBuilder 内嵌 Agent 运行时的随包 Node 目录（当前未随包）。');
   writeStub(DSH_TARGET, 'LingBuilder 内嵌 Agent 运行时的随包 dsh 目录（当前未随包）。');
   fs.writeFileSync(MANIFEST_PATH, JSON.stringify({

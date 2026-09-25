@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +16,7 @@ import {
   satisfiesNodeRequirement,
   writeAgentProfilePatch
 } from '../electron/agentRuntime/agentRuntimeProfile';
+import { ensureAgentRuntimeBundle, removeLegacyBundledRuntimeTrees } from '../electron/agentRuntime/agentRuntimeBundle';
 import { AgentRuntimeService } from '../electron/agentRuntime/agentRuntimeService';
 import { HarnessSdkClient, lastAssistantText, runHarnessTurn } from '../electron/agentRuntime/harnessSdkClient';
 
@@ -330,20 +332,21 @@ test('lastAssistantText 只取正文文本，忽略 reasoning 与工具块', () 
   assert.equal(lastAssistantText([]), '');
 });
 
-test('随包 Agent 运行时：打包链携带 node/dsh 并裁剪无关体积包', async () => {
+test('随包 Agent 运行时：打包链携带单文件归档并裁剪无关体积包', async () => {
   const electronRoot = path.resolve(import.meta.dirname, '..');
   const pkg = JSON.parse(await fs.readFile(path.join(electronRoot, 'package.json'), 'utf8')) as {
     scripts: Record<string, string>;
-    build?: { extraResources?: Array<{ from: string; to: string }> };
+    build?: { extraResources?: Array<{ from: string; to: string; filter?: string[] }> };
   };
   const extra = pkg.build?.extraResources ?? [];
-  const resource = (from: string) => extra.find(entry => entry.from === from);
   // electron-builder 会硬编码排除复制源根下的 node_modules（app-builder-lib util/filter.js createFilter），
-  // dsh 的依赖树经 node/dsh 两条目录映射必被清空，必须用整目录映射 agent-runtime → resources 根携带。
-  // 解析器只认 resources/node 与 resources/dsh，产物布局须保持 node/ dsh/ agent-runtime.json 三项。
-  const runtime = resource('agent-runtime');
+  // 且 2.6 万个散文件直接随包会让 NSIS 安装在 50% 附近停顿数分钟（0.7.8/0.7.9 真机实测）：
+  // 0.7.9 起随包形态 = 未压缩 tar 单文件归档（首启由 agentRuntimeBundle 释放），filter 只放行 tar + manifest。
+  const runtime = extra.find(entry => entry.from === 'agent-runtime');
   assert.ok(runtime, 'extraResources 缺少 agent-runtime 整目录映射');
   assert.equal(runtime?.to, '.');
+  assert.ok(runtime?.filter?.includes('agent-runtime.tar'), '归档必须随包');
+  assert.ok(runtime?.filter?.includes('agent-runtime.json'), 'manifest 必须随包');
   for (const script of ['package:win', 'package:dir']) {
     assert.match(pkg.scripts[script] ?? '', /prepare:agent-runtime/u);
     assert.match(pkg.scripts[script] ?? '', /verify:agent-runtime:unpacked/u);
@@ -355,9 +358,171 @@ test('随包 Agent 运行时：打包链携带 node/dsh 并裁剪无关体积包
   // 随包是默认形态，且下载失败只能降级为占位目录，不得把内嵌 Agent 变成出包的硬依赖。
   assert.match(prepareSource, /LINGBUILDER_AGENT_RUNTIME_BUNDLE !== '0'/u);
   assert.match(prepareSource, /writeStubManifest\(problem\)/u);
+  // 单文件归档是安装提速的结构性前提：必须用系统 bsdtar 打包、重跑打包链要复用已有归档。
+  assert.match(prepareSource, /agent-runtime\.tar/u);
+  assert.match(prepareSource, /--create/u);
+  assert.match(prepareSource, /archiveUpToDate/u);
 
   const verifySource = await fs.readFile(path.join(electronRoot, 'scripts', 'verify-agent-runtime-package.cjs'), 'utf8');
   assert.match(verifySource, /--version/u);
+  // 解包门禁必须核对归档 SHA-256、拒绝旧版散文件树随包，并把归档解到临时目录真跑一次。
+  assert.match(verifySource, /agent-runtime\.tar/u);
+  assert.match(verifySource, /-xf/u);
+  assert.match(verifySource, /旧版散文件树/u);
+});
+
+test('随包运行时候选顺序：释放目录排在旧版 resources 树之前', () => {
+  const node = nodeHostCandidates({ bundledRuntimeRoot: 'R:\\bundle', resourcesPath: 'R:\\resources', platform: 'win32' });
+  const dsh = dshBinCandidates({ bundledRuntimeRoot: 'R:\\bundle', resourcesPath: 'R:\\resources', platform: 'win32' });
+  assert.ok(node.indexOf(path.join('R:\\bundle', 'node', 'node.exe')) < node.indexOf(path.join('R:\\resources', 'node', 'node.exe')));
+  const bundledDsh = dsh.indexOf(path.join('R:\\bundle', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'));
+  const legacyDsh = dsh.indexOf(path.join('R:\\resources', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'));
+  assert.ok(bundledDsh >= 0 && legacyDsh >= 0 && bundledDsh < legacyDsh);
+});
+
+/** 假 tar：不真解包，直接在释放目标里造出 node.exe 与 dsh 入口的最小可解析树。 */
+function fakeTarSpawn(counter: { value: number }): typeof spawn {
+  return ((command: unknown, args: unknown) => {
+    counter.value += 1;
+    const dest = String((args as string[])[3]);
+    return spawn(process.execPath, ['-e', `
+      const fs = require('node:fs');
+      const dest = process.argv[1];
+      fs.mkdirSync(dest + '/node', { recursive: true });
+      fs.writeFileSync(dest + '/node/node.exe', 'node');
+      fs.mkdirSync(dest + '/dsh/node_modules/@deepseek-ai/dsh/lib', { recursive: true });
+      fs.writeFileSync(dest + '/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js', 'dsh');
+    `, dest], { windowsHide: true, stdio: 'ignore' });
+  }) as typeof spawn;
+}
+
+async function writeBundleFixture(workspace: string, archiveBytes: string): Promise<string> {
+  const resources = path.join(workspace, 'resources');
+  await fs.mkdir(resources, { recursive: true });
+  await fs.writeFile(path.join(resources, 'agent-runtime.tar'), archiveBytes);
+  await fs.writeFile(path.join(resources, 'agent-runtime.json'), JSON.stringify({
+    bundled: true,
+    node: { version: '24.20.0', executable: 'node.exe' },
+    dsh: { version: '0.1.6-alpha.2', entry: 'node_modules/@deepseek-ai/dsh/lib/bin.js' },
+    archive: { file: 'agent-runtime.tar', sha256: createHash('sha256').update(archiveBytes).digest('hex'), bytes: archiveBytes.length }
+  }), 'utf8');
+  return resources;
+}
+
+test('agentRuntimeBundle：首次释放写 marker，marker 命中后不再重复释放', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-bundle-'));
+  try {
+    const resources = await writeBundleFixture(workspace, 'tar-bytes');
+    const counter = { value: 0 };
+    const fakeTar = fakeTarSpawn(counter);
+    const logs: string[] = [];
+    const first = await ensureAgentRuntimeBundle({
+      resourcesPath: resources,
+      installDirectory: path.join(workspace, 'install'),
+      userDataDirectory: path.join(workspace, 'userdata'),
+      spawnProcess: fakeTar,
+      onLog: line => logs.push(line)
+    });
+    assert.equal(first.ok, true);
+    assert.ok(first.root.startsWith(path.join(workspace, 'install')), `释放目录应在安装目录下：${first.root}`);
+    assert.equal(spawnsValue(counter), 1);
+    assert.ok(logs.some(line => line.includes('释放')));
+    const marker = JSON.parse(await fs.readFile(path.join(first.root, 'agent-runtime-marker.json'), 'utf8')) as { archiveSha256: string };
+    assert.equal(marker.archiveSha256, createHash('sha256').update('tar-bytes').digest('hex'));
+    const second = await ensureAgentRuntimeBundle({
+      resourcesPath: resources,
+      installDirectory: path.join(workspace, 'install'),
+      userDataDirectory: path.join(workspace, 'userdata'),
+      spawnProcess: fakeTar
+    });
+    assert.equal(second.ok, true);
+    assert.equal(second.root, first.root);
+    assert.equal(spawnsValue(counter), 1, 'marker 命中后不得重新释放');
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+function spawnsValue(counter: { value: number }): number {
+  return counter.value;
+}
+
+test('agentRuntimeBundle：旧版散文件树后台清理只在产品布局存在时动手', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-cleanup-'));
+  const dirExists = async (target: string) => {
+    try {
+      return (await fs.stat(target)).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  try {
+    const resources = path.join(workspace, 'resources');
+    await fs.mkdir(path.join(resources, 'dsh'), { recursive: true });
+    await fs.mkdir(path.join(resources, 'node'), { recursive: true });
+    await fs.writeFile(path.join(resources, 'dsh', 'x.js'), 'x');
+    await fs.writeFile(path.join(resources, 'node', 'node.exe'), 'n');
+    // 无 agent-runtime.json（非本产品布局）不得误删同名目录。
+    const untouched = await removeLegacyBundledRuntimeTrees({ resourcesPath: resources });
+    assert.equal(untouched.ok, true);
+    assert.equal(untouched.removed.length, 0);
+    assert.ok(await dirExists(path.join(resources, 'dsh')));
+    assert.ok(await dirExists(path.join(resources, 'node')));
+    // 有 manifest 即本产品布局：两棵旧树整体清掉。
+    await fs.writeFile(path.join(resources, 'agent-runtime.json'), JSON.stringify({ bundled: true }), 'utf8');
+    const result = await removeLegacyBundledRuntimeTrees({ resourcesPath: resources });
+    assert.equal(result.ok, true);
+    assert.equal(result.removed.length, 2);
+    assert.equal(await dirExists(path.join(resources, 'dsh')), false);
+    assert.equal(await dirExists(path.join(resources, 'node')), false);
+    // 幂等：第二次无事可做。
+    const again = await removeLegacyBundledRuntimeTrees({ resourcesPath: resources });
+    assert.equal(again.ok, true);
+    assert.equal(again.removed.length, 0);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('agentRuntimeBundle：归档 SHA-256 不匹配给中文诊断；未随包静默跳过；安装目录不可写回落 userData', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-bundle-'));
+  try {
+    // ① 归档与 manifest 记录不一致（下载/落包损坏）必须报校验失败而不是照常释放。
+    const badResources = await writeBundleFixture(path.join(workspace, 'bad'), 'tar-bytes');
+    await fs.writeFile(path.join(badResources, 'agent-runtime.tar'), 'tampered');
+    const bad = await ensureAgentRuntimeBundle({
+      resourcesPath: badResources,
+      installDirectory: path.join(workspace, 'install-bad'),
+      userDataDirectory: path.join(workspace, 'userdata')
+    });
+    assert.equal(bad.ok, false);
+    assert.match(bad.problem, /校验失败/u);
+
+    // ② 未随包（bundled=false）属允许形态：静默跳过，不得报错。
+    const stubResources = path.join(workspace, 'stub', 'resources');
+    await fs.mkdir(stubResources, { recursive: true });
+    await fs.writeFile(path.join(stubResources, 'agent-runtime.json'), JSON.stringify({ bundled: false }));
+    const stub = await ensureAgentRuntimeBundle({ resourcesPath: stubResources, installDirectory: path.join(workspace, 'install-stub') });
+    assert.equal(stub.ok, true);
+    assert.equal(stub.skipped, true);
+    assert.equal(stub.root, '');
+
+    // ③ 安装目录不可写（传入的是文件路径）时回落 userData\agent-runtime-bundle。
+    const notADirectory = path.join(workspace, 'not-a-dir');
+    await fs.writeFile(notADirectory, 'x');
+    const goodResources = await writeBundleFixture(path.join(workspace, 'good'), 'good-tar');
+    const counter = { value: 0 };
+    const fallback = await ensureAgentRuntimeBundle({
+      resourcesPath: goodResources,
+      installDirectory: notADirectory,
+      userDataDirectory: path.join(workspace, 'userdata'),
+      spawnProcess: fakeTarSpawn(counter)
+    });
+    assert.equal(fallback.ok, true);
+    assert.ok(fallback.root.startsWith(path.join(workspace, 'userdata', 'agent-runtime-bundle')), `应回落 userData：${fallback.root}`);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
 });
 
 // ---------- 面板 Provider 配置（第 4 条） ----------

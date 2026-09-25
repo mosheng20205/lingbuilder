@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import { ensureAgentRuntimeBundle } from './agentRuntimeBundle';
 import {
   createAgentLaunchPlan,
   resolveDshRuntime,
@@ -50,6 +51,10 @@ export interface AgentRuntimeOptions {
   cliEntryPath: string;
   /** 内嵌 Agent 生成的 profile overlay 落盘目录（userData 下）。 */
   profileDirectory: string;
+  /** 安装目录（resources 的上一级）：随包运行时归档优先释放到 <install>/agent-runtime。 */
+  installDirectory?: string;
+  /** 安装目录不可写时的释放回落根目录（userData）。 */
+  userDataDirectory?: string;
   environment?: NodeJS.ProcessEnv;
   resourcesPath?: string;
   dshHome?: string;
@@ -141,6 +146,23 @@ export class AgentRuntimeService {
       globalNodeModules: this.options.globalNodeModules,
       ...this.options.profileOverrides
     };
+    // 随包运行时是单文件归档，首次用到才释放（安装提速的关键路径）；未随包或释放
+    // 失败都不致命——继续走解析器候选（环境变量覆盖 / 旧版 resources 树 / PATH），
+    // 失败原因经日志透出，解析也失败时最终诊断里可见。
+    const bundle = await ensureAgentRuntimeBundle({
+      resourcesPath: profileOptions.resourcesPath,
+      installDirectory: this.options.installDirectory,
+      userDataDirectory: this.options.userDataDirectory,
+      environment: profileOptions.environment,
+      spawnProcess: this.options.spawnProcess,
+      onLog: line => this.pushLog(line)
+    }).catch(error => ({ ok: false, root: '', skipped: false, problem: errorMessage(error) }));
+    if (bundle.root) {
+      profileOptions.bundledRuntimeRoot = bundle.root;
+      this.pushLog(`随包运行时已就绪：${bundle.root}`);
+    } else if (!bundle.skipped && bundle.problem) {
+      this.pushLog(`随包运行时未就绪，将尝试本机回退：${bundle.problem}`);
+    }
     this.resolution = await resolveDshRuntime(profileOptions, options => probeNodeVersion(options, this.options.spawnProcess));
     if (!this.resolution.ok) {
       return this.fail(this.resolution.problem || '内嵌 Agent 运行时依赖未就绪。');
