@@ -42,6 +42,8 @@ static constexpr UINT WM_LINGBUILDER_FBRO_PROCESS_EVENT = WM_APP + 0x5D;
 static constexpr int LINGBUILDER_FBRO_HOST_NOT_REQUESTED = INT_MIN;
 static constexpr int LINGBUILDER_FBRO_PROCESS_PROTOCOL_VERSION = 1;
 static constexpr UINT_PTR LINGBUILDER_FBRO_EXTENSION_TIMEOUT_TIMER = 0x4C42;
+// 独立顶层窗口模式：owner embedded browser 派生 Chrome UI 窗口的兜底超时。
+static constexpr UINT_PTR LINGBUILDER_FBRO_CHROME_UI_TIMEOUT_TIMER = 0x4C43;
 
 enum LingFbroProcessMode {
     LING_FBRO_PROCESS_IN_PROCESS = 0,
@@ -281,6 +283,13 @@ public:
     }
 
     int Start(const LingFbroProcessConfig& config, bool waitUntilReady = true) {
+        // 首次运行时新复制的 LingBuilderFbroHost.exe 会被 Defender 实时扫描挂起几十秒，
+        // 连子进程自己的兜底 timer 都没机会跑；宿主超时后主动 Close（内部 3 秒优雅 +
+        // Terminate）再重试一轮，扫描完成后的第二次启动通常秒级就绪。
+        return StartWithRetry(config, waitUntilReady, 2);
+    }
+
+    int StartWithRetry(const LingFbroProcessConfig& config, bool waitUntilReady, int retriesLeft) {
         if (config.instanceId.empty() || !config.eventWindow || !IsWindow(config.eventWindow)
             || !config.hostWindow || !IsWindow(config.hostWindow)
             || (config.mode != LING_FBRO_PROCESS_EMBEDDED && config.mode != LING_FBRO_PROCESS_WINDOW)) return 0;
@@ -321,16 +330,33 @@ public:
         }
         if (needsLaunch && !Launch(instance)) return 0;
         if (!waitUntilReady) return 1;
+        // 独立顶层窗口模式要串联 owner embedded browser 与派生的 Chrome UI 窗口两层创建，
+        // 冷启动（首启解压 runtime + CEF 初始化）会超过嵌入式模式的 15 秒，放宽到 40 秒。
+        const int readyTimeoutSeconds = normalized.mode == LING_FBRO_PROCESS_WINDOW ? 20 : 15;
         std::unique_lock<std::mutex> waitLock(instance->mutex);
-        instance->stateChanged.wait_for(waitLock, std::chrono::seconds(15), [&] {
+        instance->stateChanged.wait_for(waitLock, std::chrono::seconds(readyTimeoutSeconds), [&] {
             return instance->status == L"就绪" || instance->status == L"故障"
                 || instance->status == L"已关闭";
         });
         if (instance->status != L"就绪") {
+            if (retriesLeft > 0 && instance->status == L"启动中") {
+                StartWithRetryCleanup(config.instanceId);
+                return StartWithRetry(config, waitUntilReady, retriesLeft - 1);
+            }
             if (instance->lastError.empty()) instance->lastError = L"等待 FBro 独立进程就绪超时。";
             return 0;
         }
         return 1;
+    }
+
+    void StartWithRetryCleanup(const std::wstring& instanceId) {
+        auto instance = Find(instanceId);
+        if (!instance) return;
+        {
+            std::lock_guard<std::mutex> lock(instance->mutex);
+            instance->intentionalClose = true;
+        }
+        Close(instanceId);
     }
 
     int Close(const std::wstring& instanceId) {
@@ -977,6 +1003,16 @@ private:
             }
             return 0;
         }
+        if (message == WM_TIMER && wParam == LINGBUILDER_FBRO_CHROME_UI_TIMEOUT_TIMER) {
+            KillTimer(window, LINGBUILDER_FBRO_CHROME_UI_TIMEOUT_TIMER);
+            // 兜底：owner 一直没派生出 Chrome UI 窗口（CEF 卡死或 CreateChromeUi 失败），
+            // 报错并退出，避免宿主 Start() 永远等不到 ready。
+            if (self->mode_ == LING_FBRO_PROCESS_WINDOW && !self->chromeBrowser_) {
+                self->SendError(L"FBro Host 等待 Chrome UI 浏览器窗口创建超时。");
+                PostMessageW(window, WM_CLOSE, 0, 0);
+            }
+            return 0;
+        }
         if (message == WM_HOST_DISCONNECTED || message == WM_CLOSE) {
             DestroyWindow(window);
             return 0;
@@ -1001,6 +1037,11 @@ private:
         return DefWindowProcW(window, message, wParam, lParam);
     }
 
+    void HostTrace(const wchar_t* message) const {
+        std::wstring line = L"[FbroHost][" + instanceId_ + L"] " + message;
+        OutputDebugStringW(line.c_str());
+    }
+
     void HandleProtocol(const std::wstring& text) {
         const Json message = lingbuilder_fbro_process_detail::ParseJson(text);
         if (!message.is_object() || message.value("protocol", "") != "lingbuilder.fbro.host"
@@ -1018,6 +1059,7 @@ private:
         const int width = (std::max)(1, config.value("width", 1));
         const int height = (std::max)(1, config.value("height", 1));
         const bool visible = config.value("visible", true);
+        (void)visible;
         const unsigned int flags = config.value("flags", 0U);
         const uintptr_t parentValue = static_cast<uintptr_t>(std::strtoull(config.value("parentHwnd", "0").c_str(), nullptr, 10));
         const uintptr_t ownerValue = static_cast<uintptr_t>(std::strtoull(config.value("ownerHwnd", "0").c_str(), nullptr, 10));
@@ -1058,7 +1100,9 @@ private:
         if (!browserWindow_) { SendError(L"FBro Host 创建浏览器窗口失败。"); return; }
         // Embedded browser visibility follows its controller-owned parent HWND. Keeping the
         // cross-process child visible avoids a synchronous parent/child show deadlock.
-        if (visible || mode == LING_FBRO_PROCESS_EMBEDDED) {
+        // 独立顶层窗口模式的自建窗口只是 owner（隐藏承载），用户可见窗口是派生的 Chrome UI，
+        // 因此永不显示 browserWindow_。
+        if (mode == LING_FBRO_PROCESS_EMBEDDED) {
             SetWindowPos(browserWindow_, HWND_TOP, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
@@ -1134,17 +1178,38 @@ private:
         if (extensionStatus_ == L"插件加载中") {
             SetTimer(commandWindow_, LINGBUILDER_FBRO_EXTENSION_TIMEOUT_TIMER, 20000, nullptr);
         }
-        browser_ = LB_FBro_CreateEx2(browserWindow_, url.c_str(), requestContextProfile.c_str(), userAgent.c_str(),
-            extension.c_str(), flags, BrowserEvent, this);
+        // 独立顶层窗口模式：browser_ 是隐藏 owner（about:blank 承载，提供 request context），
+        // 目标 URL 由派生的 Chrome UI 窗口加载；ready 延迟到 Chrome UI 创建完成再发，
+        // 宿主在 Start() 里等待就绪，保证后续导航/指纹/JS 命令一定能命中 chromeBrowser_。
+        const bool chromeUiWindow = mode == LING_FBRO_PROCESS_WINDOW;
+        const std::wstring ownerUrl = chromeUiWindow ? std::wstring(L"about:blank") : url;
+        pendingChromeUrl_ = chromeUiWindow ? url : std::wstring();
+        configuredWidth_ = width;
+        configuredHeight_ = height;
+        if (chromeUiWindow) {
+            // owner 用无窗口后台实例：Chrome UI 只需要它的 request context 与就绪证明；
+            // 挂隐藏承载窗口的 windowed owner 会受 CEF 可见性初始化拖累（冷启动长时间
+            // 收不到 Created），background 路径事件照常分发且无窗口可竞争。
+            browser_ = LB_FBro_CreateBackground(ownerUrl.c_str(), requestContextProfile.c_str(), nullptr, BrowserEvent, this);
+        } else {
+            browser_ = LB_FBro_CreateEx2(browserWindow_, ownerUrl.c_str(), requestContextProfile.c_str(), userAgent.c_str(),
+                extension.c_str(), flags, BrowserEvent, this);
+        }
         if (!browser_) {
             SendError(L"FBro Host 创建浏览器实例失败。");
             PostMessageW(commandWindow_, WM_CLOSE, 0, 0);
             return;
         }
+        HostTrace(chromeUiWindow ? L"owner browser created (chrome-ui window mode)" : L"browser created");
         const std::wstring proxy = lingbuilder_fbro_process_detail::JsonWide(config, "proxyServer");
         const std::wstring fingerprint = lingbuilder_fbro_process_detail::JsonWide(config, "fingerprintJson");
         if (!proxy.empty()) LB_FBro_SetProxy(browser_, proxy.c_str(), L"", L"");
         if (!fingerprint.empty()) LB_FBro_ApplyFingerprintJson(browser_, fingerprint.c_str());
+        if (chromeUiWindow) {
+            SetTimer(commandWindow_, LINGBUILDER_FBRO_CHROME_UI_TIMEOUT_TIMER, 18000, nullptr);
+            SendExtensionState(extensionStatus_, extensionError_);
+            return;
+        }
         Json ready = Envelope("ready");
         ready["debuggingPort"] = debuggingPort_;
         ready["hostHwnd"] = std::to_string(reinterpret_cast<uintptr_t>(browserWindow_));
@@ -1153,9 +1218,59 @@ private:
         SendExtensionState(extensionStatus_, extensionError_);
     }
 
-    static void __stdcall BrowserEvent(LB_FBRO_HANDLE, int eventCode, const wchar_t* data, void* userData) {
+    // 独立顶层窗口：owner browser 就绪后派生 Chrome UI 顶层窗口（Chrome Runtime 原生界面）。
+    // 运行在 bridge 事件回调线程；不碰 SetTimer/KillTimer（它们必须由 commandWindow_ 所属线程调用），
+    // 兜底超时由 Configure 里挂的 timer 在 WM_TIMER 处理里检查 chromeBrowser_ 是否就位。
+    void LaunchChromeUiWindow() {
+        chromeBrowser_ = LB_FBro_CreateChromeUi(browser_, pendingChromeUrl_.c_str(), BrowserEvent, this);
+        pendingChromeUrl_.clear();
+        if (!chromeBrowser_) {
+            SendError(L"FBro Host 创建 Chrome UI 浏览器窗口失败。");
+            PostMessageW(commandWindow_, WM_CLOSE, 0, 0);
+        }
+    }
+
+    void SendReadyEnvelope() {
+        Json ready = Envelope("ready");
+        ready["debuggingPort"] = debuggingPort_;
+        ready["hostHwnd"] = std::to_string(reinterpret_cast<uintptr_t>(
+            chromeWindow_ ? chromeWindow_ : browserWindow_));
+        ready["extensionStatus"] = lingbuilder_fbro_process_detail::JsonUtf8(extensionStatus_);
+        Send(ready);
+        SendExtensionState(extensionStatus_, extensionError_);
+    }
+
+    static void __stdcall BrowserEvent(LB_FBRO_HANDLE source, int eventCode, const wchar_t* data, void* userData) {
         auto* self = static_cast<LingFbroHostRuntime*>(userData);
         if (!self) return;
+        // 独立顶层窗口：owner 的 Created 只用来派生 Chrome UI 窗口；
+        // Chrome UI 的 Created 记录窗口句柄、按设计器配置定尺寸并回 ready。
+        if (source == self->browser_ && eventCode == LB_FBRO_EVENT_CREATED
+            && self->mode_ == LING_FBRO_PROCESS_WINDOW && !self->chromeBrowser_
+            && !self->pendingChromeUrl_.empty()) {
+            self->HostTrace(L"owner Created -> LaunchChromeUiWindow");
+            self->LaunchChromeUiWindow();
+            self->HostTrace(self->chromeBrowser_ ? L"CreateChromeUi returned handle" : L"CreateChromeUi returned 0");
+            return;
+        }
+        if (source == self->chromeBrowser_ && eventCode == LB_FBRO_EVENT_CREATED) {
+            self->HostTrace(L"chrome UI Created -> ready");
+            int64_t hwndValue = 0;
+            if (LB_FBro_GetWindowHandle(self->chromeBrowser_, &hwndValue) > 0 && hwndValue) {
+                self->chromeWindow_ = reinterpret_cast<HWND>(static_cast<uintptr_t>(hwndValue));
+                if (self->configuredWidth_ > 0 && self->configuredHeight_ > 0) {
+                    SetWindowPos(self->chromeWindow_, nullptr, 0, 0, self->configuredWidth_, self->configuredHeight_,
+                        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+            }
+            self->SendReadyEnvelope();
+            return;
+        }
+        // 独立顶层窗口：owner 只是隐藏承载，运行期事件不外发（Error/VIP 生命周期除外）。
+        if (self->mode_ == LING_FBRO_PROCESS_WINDOW && source == self->browser_
+            && eventCode != LB_FBRO_EVENT_ERROR && eventCode != LB_FBRO_EVENT_VIP_LIFECYCLE) {
+            return;
+        }
         const Json fields = lingbuilder_fbro_process_detail::ParseJson(data ? data : L"");
         const char* valueField = eventCode == LB_FBRO_EVENT_ADDRESS_CHANGED
             || eventCode == LB_FBRO_EVENT_BEFORE_POPUP ? "url"
@@ -1220,70 +1335,75 @@ private:
         const bool notification = request.value("notification", false);
         const Json payload = request.value("payload", Json::object());
         Json result = Json::object();
-        bool ok = browser_ != 0;
+        // 独立顶层窗口：命令一律作用于用户可见的 Chrome UI 实例（owner 只是隐藏承载）。
+        const LB_FBRO_HANDLE target = (mode_ == LING_FBRO_PROCESS_WINDOW && chromeBrowser_) ? chromeBrowser_ : browser_;
+        bool ok = target != 0;
         std::wstring error;
         if (method == L"close") {
             ok = true;
-        } else if (!browser_) {
+        } else if (!target) {
             error = L"FBro 浏览器尚未创建。";
+        } else if (mode_ == LING_FBRO_PROCESS_WINDOW && !chromeBrowser_) {
+            ok = false;
+            error = L"FBro Chrome UI 窗口尚未就绪。";
         } else if (method == L"navigate") {
-            ok = LB_FBro_Navigate(browser_, lingbuilder_fbro_process_detail::JsonWide(payload, "url").c_str()) > 0;
-        } else if (method == L"back") ok = LB_FBro_GoBack(browser_) > 0;
-        else if (method == L"forward") ok = LB_FBro_GoForward(browser_) > 0;
-        else if (method == L"reload") ok = LB_FBro_Reload(browser_) > 0;
-        else if (method == L"reloadIgnoreCache") ok = LB_FBro_ReloadIgnoreCache(browser_) > 0;
-        else if (method == L"stop") ok = LB_FBro_Stop(browser_) > 0;
+            ok = LB_FBro_Navigate(target, lingbuilder_fbro_process_detail::JsonWide(payload, "url").c_str()) > 0;
+        } else if (method == L"back") ok = LB_FBro_GoBack(target) > 0;
+        else if (method == L"forward") ok = LB_FBro_GoForward(target) > 0;
+        else if (method == L"reload") ok = LB_FBro_Reload(target) > 0;
+        else if (method == L"reloadIgnoreCache") ok = LB_FBro_ReloadIgnoreCache(target) > 0;
+        else if (method == L"stop") ok = LB_FBro_Stop(target) > 0;
         else if (method == L"sendMouseClick") {
-            ok = LB_FBro_SendMouseClickEvent(browser_, payload.value("button", 0),
+            ok = LB_FBro_SendMouseClickEvent(target, payload.value("button", 0),
                 payload.value("x", 0), payload.value("y", 0),
                 payload.value("modifiers", static_cast<long long>(0)),
                 payload.value("up", false) ? 1 : 0, payload.value("count", 1)) > 0;
         } else if (method == L"sendMouseMove") {
-            ok = LB_FBro_SendMouseMoveEvent(browser_, payload.value("x", 0), payload.value("y", 0),
+            ok = LB_FBro_SendMouseMoveEvent(target, payload.value("x", 0), payload.value("y", 0),
                 payload.value("modifiers", static_cast<long long>(0)),
                 payload.value("leave", false) ? 1 : 0) > 0;
         } else if (method == L"sendMouseWheel") {
-            ok = LB_FBro_SendMouseWheelEvent(browser_, payload.value("x", 0), payload.value("y", 0),
+            ok = LB_FBro_SendMouseWheelEvent(target, payload.value("x", 0), payload.value("y", 0),
                 payload.value("modifiers", static_cast<long long>(0)),
                 payload.value("deltaX", 0), payload.value("deltaY", 0)) > 0;
         } else if (method == L"sendKey") {
-            ok = LB_FBro_SendKeyEvent(browser_, payload.value("type", 0),
+            ok = LB_FBro_SendKeyEvent(target, payload.value("type", 0),
                 payload.value("modifiers", static_cast<long long>(0)),
                 payload.value("keyCode", 0), payload.value("nativeKeyCode", 0),
                 payload.value("systemKey", false) ? 1 : 0,
                 payload.value("character", 0), payload.value("unmodifiedCharacter", 0),
                 payload.value("focusEditable", false) ? 1 : 0) > 0;
         } else if (method == L"sendTouch") {
-            ok = LB_FBro_SendTouchEvent(browser_, payload.value("type", 0),
+            ok = LB_FBro_SendTouchEvent(target, payload.value("type", 0),
                 payload.value("modifiers", static_cast<long long>(0)),
                 payload.value("pointerType", 0), payload.value("id", 0),
                 payload.value("x", 0.0), payload.value("y", 0.0),
                 payload.value("radiusX", 0.0), payload.value("radiusY", 0.0),
                 payload.value("rotation", 0.0), payload.value("pressure", 0.0)) > 0;
-        } else if (method == L"canGoBack") result["value"] = LB_FBro_CanGoBack(browser_) > 0;
-        else if (method == L"canGoForward") result["value"] = LB_FBro_CanGoForward(browser_) > 0;
-        else if (method == L"isLoading") result["value"] = LB_FBro_IsLoading(browser_) > 0;
+        } else if (method == L"canGoBack") result["value"] = LB_FBro_CanGoBack(target) > 0;
+        else if (method == L"canGoForward") result["value"] = LB_FBro_CanGoForward(target) > 0;
+        else if (method == L"isLoading") result["value"] = LB_FBro_IsLoading(target) > 0;
         else if (method == L"getTitle" || method == L"getUrl") {
             std::vector<wchar_t> buffer(65536, L'\0');
-            ok = (method == L"getTitle" ? LB_FBro_GetTitle(browser_, buffer.data(), buffer.size())
-                                         : LB_FBro_GetUrl(browser_, buffer.data(), buffer.size())) > 0;
+            ok = (method == L"getTitle" ? LB_FBro_GetTitle(target, buffer.data(), buffer.size())
+                                         : LB_FBro_GetUrl(target, buffer.data(), buffer.size())) > 0;
             result["value"] = lingbuilder_fbro_process_detail::JsonUtf8(buffer.data());
         } else if (method == L"executeJavaScript") {
             std::vector<wchar_t> buffer(1024 * 1024, L'\0');
-            ok = LB_FBro_ExecuteJs(browser_, lingbuilder_fbro_process_detail::JsonWide(payload, "script").c_str(),
+            ok = LB_FBro_ExecuteJs(target, lingbuilder_fbro_process_detail::JsonWide(payload, "script").c_str(),
                 buffer.data(), buffer.size()) > 0;
             result["value"] = lingbuilder_fbro_process_detail::JsonUtf8(buffer.data());
         } else if (method == L"getCookies") {
             std::vector<wchar_t> buffer(1024 * 1024, L'\0');
-            ok = LB_FBro_GetCookies(browser_, lingbuilder_fbro_process_detail::JsonWide(payload, "url").c_str(),
+            ok = LB_FBro_GetCookies(target, lingbuilder_fbro_process_detail::JsonWide(payload, "url").c_str(),
                 buffer.data(), buffer.size()) > 0;
             result["value"] = lingbuilder_fbro_process_detail::JsonUtf8(buffer.data());
         } else if (method == L"visitCookies") {
             const bool allSites = payload.value("allSites", false);
             const std::wstring url = lingbuilder_fbro_process_detail::JsonWide(payload, "url");
             const LB_FBRO_TASK_HANDLE task = allSites
-                ? LB_FBro_CookieVisitAllAsync(browser_, nullptr, nullptr)
-                : LB_FBro_CookieVisitUrlAsync(browser_, url.c_str(), 1, nullptr, nullptr);
+                ? LB_FBro_CookieVisitAllAsync(target, nullptr, nullptr)
+                : LB_FBro_CookieVisitUrlAsync(target, url.c_str(), 1, nullptr, nullptr);
             const int waitResult = task ? LB_FBro_TaskWait(task, 30000) : LB_FBRO_ERROR_OPERATION_FAILED;
             std::vector<wchar_t> buffer(4 * 1024 * 1024, L'\0');
             ok = task && waitResult == LB_FBRO_OK && LB_FBro_TaskGetResult(task, buffer.data(), buffer.size()) > 0;
@@ -1306,7 +1426,7 @@ private:
                 error = L"Cookie 地址或结构化记录无效。";
             } else {
                 const std::wstring cookieJson = lingbuilder_fbro_process_detail::JsonText(cookie);
-                const LB_FBRO_TASK_HANDLE task = LB_FBro_CookieSetJsonAsync(browser_, url.c_str(), cookieJson.c_str(), nullptr, nullptr);
+                const LB_FBRO_TASK_HANDLE task = LB_FBro_CookieSetJsonAsync(target, url.c_str(), cookieJson.c_str(), nullptr, nullptr);
                 ok = task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_OK;
                 if (!ok && task) {
                     std::vector<wchar_t> taskError(32768, L'\0');
@@ -1318,7 +1438,7 @@ private:
         } else if (method == L"clearCache") {
             const uint32_t removeFlags = payload.value("includeCookies", false)
                 ? 0xFFFFFFFFU : (0xFFFFFFFFU & ~2U);
-            const LB_FBRO_TASK_HANDLE task = LB_FBro_ClearCacheAsync(browser_, L"", removeFlags, 0xFFFFFFFFU, nullptr, nullptr);
+            const LB_FBRO_TASK_HANDLE task = LB_FBro_ClearCacheAsync(target, L"", removeFlags, 0xFFFFFFFFU, nullptr, nullptr);
             ok = task && LB_FBro_TaskWait(task, 60000) == LB_FBRO_OK;
             if (!ok && task) {
                 std::vector<wchar_t> taskError(32768, L'\0');
@@ -1336,7 +1456,7 @@ private:
                 ok = false;
                 error = L"Cookie 地址和名称不能为空。";
             } else {
-                const LB_FBRO_TASK_HANDLE task = LB_FBro_CookieSetAsync(browser_, url.c_str(), name.c_str(), value.c_str(),
+                const LB_FBRO_TASK_HANDLE task = LB_FBro_CookieSetAsync(target, url.c_str(), name.c_str(), value.c_str(),
                     domain.c_str(), path.empty() ? L"/" : path.c_str(),
                     payload.value("secure", false) ? 1 : 0,
                     payload.value("httpOnly", false) ? 1 : 0, nullptr, nullptr);
@@ -1350,7 +1470,7 @@ private:
                 }
                 if (task) LB_FBro_TaskRelease(task);
                 if (ok) {
-                    const LB_FBRO_TASK_HANDLE flushTask = LB_FBro_CookieFlushAsync(browser_, nullptr, nullptr);
+                    const LB_FBRO_TASK_HANDLE flushTask = LB_FBro_CookieFlushAsync(target, nullptr, nullptr);
                     const int flushResult = flushTask ? LB_FBro_TaskWait(flushTask, 30000) : LB_FBRO_ERROR_OPERATION_FAILED;
                     ok = flushTask && flushResult == LB_FBRO_OK;
                     if (!ok && flushTask) {
@@ -1367,7 +1487,7 @@ private:
                     const auto verifyDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
                     while (std::chrono::steady_clock::now() < verifyDeadline && !verified) {
                         std::fill(cookieBuffer.begin(), cookieBuffer.end(), L'\0');
-                        if (LB_FBro_GetCookies(browser_, url.c_str(), cookieBuffer.data(), cookieBuffer.size()) > 0) {
+                        if (LB_FBro_GetCookies(target, url.c_str(), cookieBuffer.data(), cookieBuffer.size()) > 0) {
                             const std::wstring cookies(cookieBuffer.data());
                             size_t start = 0;
                             while (start <= cookies.size() && !verified) {
@@ -1392,38 +1512,41 @@ private:
                 result["value"] = ok;
             }
         } else if (method == L"getZoom") {
-            double value = 0; ok = LB_FBro_GetZoomLevel(browser_, &value) > 0; result["value"] = value;
-        } else if (method == L"setZoom") ok = LB_FBro_SetZoomLevel(browser_, payload.value("value", 0.0)) > 0;
-        else if (method == L"isMuted") result["value"] = LB_FBro_IsAudioMuted(browser_) > 0;
-        else if (method == L"setMuted") ok = LB_FBro_SetAudioMuted(browser_, payload.value("value", false) ? 1 : 0) > 0;
-        else if (method == L"focus") ok = LB_FBro_SetFocus(browser_, payload.value("value", true) ? 1 : 0) > 0;
-        else if (method == L"setProxy") ok = LB_FBro_SetProxy(browser_, lingbuilder_fbro_process_detail::JsonWide(payload, "value").c_str(), L"", L"") > 0;
-        else if (method == L"setUserAgent") ok = LB_FBro_SetUserAgent(browser_, lingbuilder_fbro_process_detail::JsonWide(payload, "value").c_str()) > 0;
-        else if (method == L"applyFingerprint") ok = LB_FBro_ApplyFingerprintJson(browser_, lingbuilder_fbro_process_detail::JsonWide(payload, "value").c_str()) > 0;
+            double value = 0; ok = LB_FBro_GetZoomLevel(target, &value) > 0; result["value"] = value;
+        } else if (method == L"setZoom") ok = LB_FBro_SetZoomLevel(target, payload.value("value", 0.0)) > 0;
+        else if (method == L"isMuted") result["value"] = LB_FBro_IsAudioMuted(target) > 0;
+        else if (method == L"setMuted") ok = LB_FBro_SetAudioMuted(target, payload.value("value", false) ? 1 : 0) > 0;
+        else if (method == L"focus") ok = LB_FBro_SetFocus(target, payload.value("value", true) ? 1 : 0) > 0;
+        else if (method == L"setProxy") ok = LB_FBro_SetProxy(target, lingbuilder_fbro_process_detail::JsonWide(payload, "value").c_str(), L"", L"") > 0;
+        else if (method == L"setUserAgent") ok = LB_FBro_SetUserAgent(target, lingbuilder_fbro_process_detail::JsonWide(payload, "value").c_str()) > 0;
+        else if (method == L"applyFingerprint") ok = LB_FBro_ApplyFingerprintJson(target, lingbuilder_fbro_process_detail::JsonWide(payload, "value").c_str()) > 0;
         else if (method == L"show") {
-            ok = SetWindowPos(browserWindow_, HWND_TOP, 0, 0, 0, 0,
+            const HWND windowHandle = (mode_ == LING_FBRO_PROCESS_WINDOW && chromeWindow_) ? chromeWindow_ : browserWindow_;
+            ok = windowHandle && SetWindowPos(windowHandle, HWND_TOP, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
-            if (ok) LB_FBro_Resize(browser_);
+            if (ok) LB_FBro_Resize(target);
         }
         else if (method == L"hide") {
-            ok = SetWindowPos(browserWindow_, nullptr, 0, 0, 0, 0,
+            const HWND windowHandle = (mode_ == LING_FBRO_PROCESS_WINDOW && chromeWindow_) ? chromeWindow_ : browserWindow_;
+            ok = windowHandle && SetWindowPos(windowHandle, nullptr, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW) != FALSE;
         }
         else if (method == L"resize") {
             const int width = (std::max)(1, payload.value("width", 1));
             const int height = (std::max)(1, payload.value("height", 1));
+            const HWND windowHandle = (mode_ == LING_FBRO_PROCESS_WINDOW && chromeWindow_) ? chromeWindow_ : browserWindow_;
             int windowWidth = width;
             int windowHeight = height;
-            if (mode_ == LING_FBRO_PROCESS_WINDOW) {
+            if (mode_ == LING_FBRO_PROCESS_WINDOW && windowHandle) {
                 RECT adjusted{0, 0, width, height};
-                AdjustWindowRectEx(&adjusted, static_cast<DWORD>(GetWindowLongPtrW(browserWindow_, GWL_STYLE)), FALSE,
-                    static_cast<DWORD>(GetWindowLongPtrW(browserWindow_, GWL_EXSTYLE)));
+                AdjustWindowRectEx(&adjusted, static_cast<DWORD>(GetWindowLongPtrW(windowHandle, GWL_STYLE)), FALSE,
+                    static_cast<DWORD>(GetWindowLongPtrW(windowHandle, GWL_EXSTYLE)));
                 windowWidth = adjusted.right - adjusted.left;
                 windowHeight = adjusted.bottom - adjusted.top;
             }
-            ok = SetWindowPos(browserWindow_, nullptr, 0, 0, windowWidth, windowHeight,
+            ok = windowHandle && SetWindowPos(windowHandle, nullptr, 0, 0, windowWidth, windowHeight,
                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE;
-            if (ok) LB_FBro_Resize(browser_);
+            if (ok) LB_FBro_Resize(target);
         } else if (method == L"screenshotToFile") {
             const std::wstring path = lingbuilder_fbro_process_detail::JsonWide(payload, "path");
             const std::wstring format = lingbuilder_fbro_process_detail::JsonWide(payload, "format", L"png");
@@ -1434,7 +1557,7 @@ private:
             if (!parentDirectory.empty()) std::filesystem::create_directories(parentDirectory, directoryError);
             if (directoryError) error = L"无法创建截图输出目录。";
             const LB_FBRO_TASK_HANDLE task = error.empty()
-                ? LB_FBro_CaptureScreenshotAsync(browser_, format.c_str(), quality,
+                ? LB_FBro_CaptureScreenshotAsync(target, format.c_str(), quality,
                     0, 0, 0, 0, 1, 1, 1, nullptr, nullptr)
                 : 0;
             ok = error.empty() && task && LB_FBro_TaskWait(task, 30000) == LB_FBRO_TASK_COMPLETED;
@@ -1457,15 +1580,17 @@ private:
         response["error"] = lingbuilder_fbro_process_detail::JsonUtf8(error);
         if (!notification) Send(response);
         if (method == L"close") {
-            if (browser_) { LB_FBro_Close(browser_); browser_ = 0; }
+            if (chromeBrowser_) { LB_FBro_Close(chromeBrowser_); chromeBrowser_ = 0; chromeWindow_ = nullptr; }
+            if (browser_) { LB_FBro_Close(target); browser_ = 0; }
             PostMessageW(commandWindow_, WM_CLOSE, 0, 0);
         }
     }
 
     std::wstring ReadBridgeError() const {
-        if (!browser_) return L"FBro 浏览器句柄无效。";
+        const LB_FBRO_HANDLE errorSource = (mode_ == LING_FBRO_PROCESS_WINDOW && chromeBrowser_) ? chromeBrowser_ : browser_;
+        if (!errorSource) return L"FBro 浏览器句柄无效。";
         std::vector<wchar_t> buffer(32768, L'\0');
-        return LB_FBro_GetLastError(browser_, buffer.data(), buffer.size()) > 0
+        return LB_FBro_GetLastError(errorSource, buffer.data(), buffer.size()) > 0
             ? std::wstring(buffer.data()) : L"FBro 命令执行失败。";
     }
 
@@ -1573,6 +1698,7 @@ private:
     }
 
     void Shutdown() {
+        if (chromeBrowser_) { LB_FBro_Close(chromeBrowser_); chromeBrowser_ = 0; chromeWindow_ = nullptr; }
         if (browser_) { LB_FBro_Close(browser_); browser_ = 0; }
         if (initialized_) { LB_FBro_Shutdown(); initialized_ = false; }
         client_.Shutdown();
@@ -1590,6 +1716,13 @@ private:
     int mode_ = LING_FBRO_PROCESS_EMBEDDED;
     bool initialized_ = false;
     LB_FBRO_HANDLE browser_ = 0;
+    // 独立顶层窗口模式：browser_ 只是隐藏的 owner（提供 profile/request context 与 CEF 就绪证明），
+    // 用户可见窗口是 chromeBrowser_（Chrome Runtime 原生顶层窗口）。
+    LB_FBRO_HANDLE chromeBrowser_ = 0;
+    HWND chromeWindow_ = nullptr;
+    std::wstring pendingChromeUrl_;
+    int configuredWidth_ = 1;
+    int configuredHeight_ = 1;
     LingWebSocketClientRuntime client_;
     long long connection_ = 0;
     std::wstring endpoint_;

@@ -516,11 +516,19 @@ export function generateLingCppNativeWin32Project(
       }
       return `窗口“${window.title}”声明了内嵌站点，但项目未启用任何受支持的浏览器模块（EdgeView 浏览器模块 / FBro浏览器模块）；内嵌站点页面无法加载。请启用其一后重新构建。`;
     });
+  // 内嵌站点窗口里的“独立进程”FBro 控件：只有控件 URL 真正指向内嵌站点 host 时才阻断
+  // （独立子进程拿不到宿主进程的内存站点规则，加载必然失败）；URL 指向外部地址的槽位
+  // 与内嵌站点无关（如 Cloak 的指纹浏览器槽位），允许独立进程/独立顶层窗口模式。
+  const fbroControlUrlTargetsEmbeddedSite = (control: { properties?: Record<string, unknown> }, host: string): boolean => {
+    const url = typeof control.properties?.url === 'string' ? control.properties.url.trim().toLowerCase() : '';
+    return !!host && !!url && url.includes(host.toLowerCase());
+  };
   const embeddedSiteFbroProcessDiagnostics = project.windows
     .filter(window => window.embeddedSite)
     .flatMap(window => window.controls
-      .filter(control => control.type === 'FBroBrowser' && control.properties?.processMode && control.properties.processMode !== 'in-process')
-      .map(control => `窗口“${window.title}”的内嵌站点暂不支持“独立进程”FBro 浏览器控件（${control.name}）；请把控件的进程模式改回“进程内嵌入”后重新构建。`));
+      .filter(control => control.type === 'FBroBrowser' && control.properties?.processMode && control.properties.processMode !== 'in-process'
+        && fbroControlUrlTargetsEmbeddedSite(control, window.embeddedSite?.host || ''))
+      .map(control => `窗口“${window.title}”的 FBro 控件（${control.name}）URL 指向内嵌站点 ${window.embeddedSite?.host}，暂不支持“独立进程”模式（独立子进程无法访问宿主的内存站点）；请把控件的进程模式改回“进程内嵌入”，或把控件 URL 改为外部地址后重新构建。`));
   const embeddedSiteNewEmojiDiagnostics = usesNewEmojiDesigner && selectedWindow.embeddedSite
     ? [`窗口“${selectedWindow.title}”声明了内嵌站点；new_emoji 原生后端暂不支持内嵌站点，请改用标准 Win32 后端的 EdgeBrowser / CefBrowser / FBroBrowser 控件。`]
     : [];
@@ -6188,10 +6196,11 @@ static int FBro_重启进程(const wchar_t* name) {
 }
 static int FBro_显示(const wchar_t* name) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0;
-    if (browser->host) ShowWindow(browser->host, SW_SHOW);
+    // 独立顶层窗口模式的“显示”只作用于子进程浏览器窗口，不改宿主内承载控件的可见性。
     if (LB_NE_IsFbroProcess(browser) && browser->processMode == LING_FBRO_PROCESS_WINDOW) {
         return LB_NE_FbroProcessNotify(browser, L"show") ? 1 : 0;
     }
+    if (browser->host) ShowWindow(browser->host, SW_SHOW);
     return browser->host ? 1 : 0;
 }
 static int FBro_隐藏(const wchar_t* name) {
@@ -8571,7 +8580,7 @@ static void 浏览器外壳_销毁() {
 
 static void FBro_关闭(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) LingFbroProcessController::Instance().Close(browser->processInstanceId); else if (browser && browser->handle) LB_FBro_Close(browser->handle);
+    auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) LingFbroProcessController::Instance().Close(browser->processInstanceId); else if (browser && browser->handle) { LB_FBro_Close(browser->handle); browser->handle = 0; }
 #else
     (void)name;
 #endif
@@ -12617,6 +12626,9 @@ ${webSocketServerWindowField}
         std::wstring processInstanceId;
         int processMode = 0;
         bool closed = false;
+        // 懒创建：设计器属性 lazyCreate=true 的槽位跳过 OnWindowCreated 自动批次，
+        // 由代码按需以控件名显式 FBro_创建（此时才应用缓存目录/代理/指纹）。
+        bool lazyCreate = false;
         std::wstring url;
         std::wstring profileDirectory;
         std::wstring userAgent;
@@ -14359,8 +14371,13 @@ ${fbroBrowserManagerRuntime.methods}
             const ControlSpec& control = spec_.controls[i];
             if (!IsType(control, L"FBroBrowser")) continue;
             if (controlName && controlName[0] && !TextEquals(control.name, controlName)) continue;
+            // 懒创建：隐藏（Collapsed）的 FBroBrowser 不随窗口自动实例化，
+            // 由代码按需以控件名显式创建（运行期“启动”时），此时才应用缓存目录/代理/指纹。
+            if ((!controlName || !controlName[0]) && (control.flags & CF_HIDDEN) != 0) continue;
             RuntimeControl* runtime = FindRuntimeControl(control.id);
             FbroBrowserInstance* instance = FBro_确保实例(control.id);
+            // 懒创建槽位（designer 属性 lazyCreate=true）：不进自动批次，等待代码显式 FBro_创建("控件名")。
+            if ((!controlName || !controlName[0]) && instance->lazyCreate) continue;
             if (!runtime || !runtime->hwnd || instance->handle) continue;
             instance->host = runtime->hwnd;
             if (instance->url.empty()) instance->url = control.data && control.data[0] ? control.data : L"about:blank";
@@ -15063,10 +15080,12 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
     }
     int FBro_显示(const wchar_t* controlName) {
         auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
-        if (instance->host) ShowWindow(instance->host, SW_SHOW);
+        // 独立顶层窗口模式的“显示”只作用于子进程浏览器窗口；宿主内的承载控件保持
+        // 设计器可见性，避免把隐藏槽位（Collapsed）顶上来盖住嵌入布局。
 #if LINGBUILDER_FBRO_AVAILABLE
         if (FBro_是独立进程(instance) && instance->processMode == LING_FBRO_PROCESS_WINDOW) return FBro_进程通知(instance, L"show") ? 1 : 0;
 #endif
+        if (instance->host) ShowWindow(instance->host, SW_SHOW);
         return instance->host ? 1 : 0;
     }
     int FBro_隐藏(const wchar_t* controlName) {
@@ -15873,7 +15892,8 @@ ${generateFbroVipIndividualRuntime(false)}
 #if LINGBUILDER_FBRO_AVAILABLE
         auto* instance = FBro_查找实例(controlName);
         if (FBro_是独立进程(instance)) LingFbroProcessController::Instance().Close(instance->processInstanceId);
-        else if (instance && instance->handle) LB_FBro_Close(instance->handle);
+        // LB_FBRO_HANDLE 是整型句柄（不是指针），关闭后归零以便按需重建。
+        else if (instance && instance->handle) { LB_FBro_Close(instance->handle); instance->handle = 0; }
 #else
         (void)controlName;
 #endif
@@ -16046,15 +16066,38 @@ ${generateFbroVipIndividualRuntime(false)}
             if (packet.eventName == L"Created") instance.closed = false;
             if (packet.eventName == L"Closed") instance.closed = true;
             if (packet.eventName == L"Error") instance.lastError = instance.lastEventData;
+            // 子进程回投的是英文 legacy 事件名；FBro_绑定事件 的 handlers 键与设计器事件绑定
+            // 用的是中文事件名（与进程内路径 bridge 的 ChineseEventName 同表）。先翻译成中文，
+            // 两个键都查，派发名也用中文，保证同一份 .lcpp 在两种宿主模式下事件行为一致。
+            const wchar_t* chineseName =
+                packet.eventName == L"Created" ? L"浏览器创建完成"
+                : packet.eventName == L"LoadEnd" ? L"加载完成"
+                : packet.eventName == L"AddressChanged" ? L"地址被改变"
+                : packet.eventName == L"TitleChanged" ? L"标题被改变"
+                : packet.eventName == L"Closed" ? L"浏览器即将关闭"
+                : packet.eventName == L"Error" ? L"加载失败"
+                : packet.eventName == L"BeforePopup" ? L"新窗口打开前"
+                : packet.eventName == L"CertificateError" ? L"证书错误"
+                : packet.eventName == L"DragEnter" ? L"拖入浏览器"
+                : packet.eventName == L"OnBeforeDownload" ? L"下载开始"
+                : packet.eventName == L"OnDownloadUpdated" ? L"下载进度更新"
+                : nullptr;
             auto handler = instance.handlers.find(packet.eventName);
+            if (handler == instance.handlers.end() && chineseName) handler = instance.handlers.find(chineseName);
             if (handler != instance.handlers.end()) {
                 DispatchFbroBrowserEvent(handler->second.c_str(), instance.controlId, 0,
-                    instance.lastEvent.c_str(), instance.lastEventData.c_str());
+                    chineseName ? chineseName : instance.lastEvent.c_str(), instance.lastEventData.c_str());
                 return;
             }
             const std::wstring designerHandler = GetEventHandler(*control, packet.eventName.c_str());
             if (!designerHandler.empty()) DispatchFbroBrowserEvent(designerHandler.c_str(), instance.controlId, 0,
                 instance.lastEvent.c_str(), instance.lastEventData.c_str());
+            else if (chineseName) {
+                const std::wstring designerHandlerZh = GetEventHandler(*control, chineseName);
+                if (!designerHandlerZh.empty()) DispatchFbroBrowserEvent(designerHandlerZh.c_str(), instance.controlId, 0,
+                    chineseName, instance.lastEventData.c_str());
+                else DispatchLingEvent(*control, chineseName);
+            }
             else DispatchLingEvent(*control, instance.lastEvent.c_str());
             return;
         }
@@ -27627,6 +27670,7 @@ private:
                     if (fields.size() > 4) instance->fingerprintJson = fields[4];
                     if (fields.size() > 5) instance->processMode = fields[5] == L"independent-embedded"
                         ? 1 : fields[5] == L"independent-window" ? 2 : 0;
+                    if (fields.size() > 6 && fields[6] == L"lazy") instance->lazyCreate = true;
                 }
             }
         }
@@ -31604,7 +31648,9 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
     const fingerprintProfile = typeof properties.fingerprintProfile === 'string' ? properties.fingerprintProfile : '';
     const processMode = typeof properties.processMode === 'string' ? properties.processMode : 'in-process';
-    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, fingerprintProfile, processMode])];
+    // 第 7 字段：'lazy' = 懒创建槽位，不随窗口自动实例化，由代码按需 FBro_创建。
+    const lazyCreate = properties.lazyCreate === true;
+    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, fingerprintProfile, processMode, lazyCreate ? 'lazy' : ''])];
   }
   if (control.type === 'EdgeBrowser') {
     const url = typeof properties.url === 'string' ? properties.url : '';

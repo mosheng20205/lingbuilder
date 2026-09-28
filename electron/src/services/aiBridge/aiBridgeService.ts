@@ -2925,9 +2925,38 @@ async function compileMsvcPreviewWithModules(
     `/std:c++${requiredCppStandard}`,
     useDynamicCrt ? '/MD' : '/MT',
     buildDynamicLibrary ? '/LD' : '',
+    buildMode,
     ...extraDefineArgs,
     ...includeArgs
   ].join('\u0000');
+  // include 目录下的头文件内容也必须参与指纹：#include 的 SDK 头（如 FBro 的
+  // LingBuilderFbroProcessRuntime.hpp）可以独立于生成源码变化（手工同步替换 SDK include），
+  // 源文件文本不变时缺了这一项会让 obj 缓存跨头文件版本错误复用旧产物（2026-09-28 实踩：
+  // hpp 加入冷启动重试逻辑后 main.cpp 未变，旧 obj 直接复用，运行行为停留在旧版）。
+  const headerEntries: string[] = [];
+  for (const includeArg of includeArgs.filter(arg => arg.startsWith('/I'))) {
+    const includeRoot = includeArg.slice(2);
+    const walkHeaders = async (directory: string): Promise<void> => {
+      let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
+      try {
+        entries = (await fs.readdir(directory, { withFileTypes: true })) as unknown as Array<{ name: string; isDirectory: () => boolean }>;
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const full = path.join(directory, entry.name);
+        if (entry.isDirectory()) await walkHeaders(full);
+        else if (/\.(h|hpp)$/iu.test(entry.name)) {
+          const digest = crypto.createHash('sha256').update(await fs.readFile(full)).digest('hex');
+          headerEntries.push(`${normalizeFilePath(full).toLocaleLowerCase()}:${digest}`);
+        }
+      }
+    };
+    await walkHeaders(includeRoot);
+  }
+  const headersFingerprint = crypto.createHash('sha256')
+    .update(headerEntries.sort().join('\u0000'))
+    .digest('hex');
   // obj 名按源码路径哈希稳定命名：源码列表顺序变化不会错误复用旧 obj。
   const compilePlans = sources.map(source => {
     const isMain = source === sourcePath;
@@ -2952,7 +2981,7 @@ async function compileMsvcPreviewWithModules(
   let reusedCount = 0;
   for (const plan of compilePlans) {
     const sourceHash = crypto.createHash('sha256').update(await fs.readFile(plan.source)).digest('hex');
-    const expectedKey = crypto.createHash('sha256').update(`${fingerprint}\u0000${plan.source}\u0000${sourceHash}`).digest('hex');
+    const expectedKey = crypto.createHash('sha256').update(`${fingerprint}\u0000${headersFingerprint}\u0000${plan.source}\u0000${sourceHash}`).digest('hex');
     let cached = false;
     try {
       const [recordedKey, objectStat] = await Promise.all([

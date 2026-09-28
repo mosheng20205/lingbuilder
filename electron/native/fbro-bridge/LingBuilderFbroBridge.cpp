@@ -2932,6 +2932,11 @@ bool StartBrowser(BrowserState& state) {
   }
   if (state.background) {
     // 后台创建：无窗口信息，事件仍通过 state.event 正常分发。
+    // SetLastError(0)：chromium 在 CreateWindowExW 成功后仍用 GetLastError 走
+    // CheckWindowCreated（hwnd_util.cc CrashOther LOG(FATAL)），该值只在失败时有
+    // 意义；同线程前置操作（WebView2/COM 调用等）常把线程 last-error 留成 1400
+    // 等残留，成功创建也会被误判崩溃。创建前清零避免误报。
+    ::SetLastError(ERROR_SUCCESS);
     if (!FBroHsCreateBackground(CefString(state.url.empty() ? L"about:blank" : state.url),
                                 &settings, state.request_context, extra, state.event,
                                 nullptr, CefString(std::to_wstring(state.handle)))) {
@@ -2941,6 +2946,7 @@ bool StartBrowser(BrowserState& state) {
     }
     return true;
   }
+  ::SetLastError(ERROR_SUCCESS);
   if (!FBroHsCreate(CefString(state.url.empty() ? L"about:blank" : state.url), &window,
                     &settings, state.request_context, extra, state.event, nullptr,
                     CefString(std::to_wstring(state.handle)))) {
@@ -3258,6 +3264,13 @@ class BridgeInitEvent final : public FBroHsInitEvent {
       g_startup_command_line = FromFbroString(FBroHsCommandLine_GetString(command_line));
     }
     if (command_line && g_extension_plus_requested) {
+      command_line->AppendSwitch("enable-chrome-runtime");
+    }
+    if (command_line && process_type.empty()) {
+      // chrome-ui 独立顶层窗口（FBro_打开谷歌原生UI浏览器 → CEF_RUNTIME_STYLE_CHROME）
+      // 依赖 chrome 运行时；嵌入式/后台窗口在 StartBrowser 里显式请求 ALLOY 样式，
+      // 不受该开关影响。此前只在请求 VIP 插件时打开，未加载插件的工程弹原生UI必崩
+      // （CEF 创建 CHROME 样式窗口时 hwnd_util.cc GetDPIScale CHECK 失败）。
       command_line->AppendSwitch("enable-chrome-runtime");
     }
     if (command_line && !g_vip_proxy_url.empty()) {
