@@ -118,14 +118,15 @@ test('门禁：启动时已拿到授权状态（env）但模块缺凭据时，�
 });
 
 test('门禁：过期/签名无效等既有精确诊断原样透出，不伪装成未购买或时序问题', async () => {
-  const expired = Object.assign(new Error('模块限时免费活动已经结束。'), { code: 'MODULE_FREE_WINDOW_ENDED' });
+  // 夹具文案与 ModuleAccessService 的如实口径保持一致（过期的是本地离线授权，不代表活动已结束）。
+  const expired = Object.assign(new Error('本地限时免费授权已于 2026-09-29 10:00:00 过期（限免活动可能仍在进行）。登录 LingBuilder 账号后 IDE 会自动换发授权。'), { code: 'MODULE_FREE_WINDOW_ENDED' });
   const gate = createModuleAccessGate({
     authorizer: { assertAccess: () => { throw expired; }, sync: () => undefined },
     bootstrap: 'env',
     requestExchange: async () => ({ ok: false, value: '', message: 'x' }),
     retryCooldownMs: 0
   });
-  await assert.rejects(() => gate.assert([PAID_MODULE]), /限时免费活动已经结束/u);
+  await assert.rejects(() => gate.assert([PAID_MODULE]), /本地限时免费授权已于/u);
 });
 
 test('门禁：换取结果非法（非 JSON 数组）时不得放行，按启动时序给出指引', async () => {

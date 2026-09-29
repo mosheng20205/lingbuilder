@@ -35,14 +35,18 @@ test('收费模块授权失败只向界面返回可操作的中文错误', () =>
 test('启用收费模块未登录时弹出全局登录框并在登录后自动继续授权', () => {
   const inspector = fs.readFileSync(new URL('../src/components/ModuleInspector.tsx', import.meta.url), 'utf8');
   const loginService = fs.readFileSync(new URL('../src/services/workbench/cloudAccountLoginService.ts', import.meta.url), 'utf8');
+  const recovery = fs.readFileSync(new URL('../src/services/modules/paidModuleAccessRecovery.ts', import.meta.url), 'utf8');
   const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-  // 门禁收敛为 ensurePaidModuleAccess：先查 session，未登录弹全局登录框，取消则中止启用。
+  // 门禁收敛为共享恢复流：ensurePaidModuleAccess 调 recoverPaidModuleAccess（唯一出口），
+  // 未登录由共享流弹全局登录框，登录后自动 authorizeModule 换发授权并继续。
   assert.match(inspector, /const ensurePaidModuleAccess = async \(module: InstalledModule\)/u);
-  assert.match(inspector, /await cloudModules\.session\(\)\.catch\(\(\) => null\)/u);
-  assert.match(inspector, /if \(!session\?\.authenticated\) \{\s*const login = await requestCloudAccountLogin/u);
+  assert.match(inspector, /await recoverPaidModuleAccess\(module\.manifest\.id/u);
   assert.match(inspector, /已取消登录，未启用/u);
-  // 登录成功后同一次点击流程内自动重跑授权并继续启用（不再有旧的纯 throw 状态文字门禁）。
-  assert.match(inspector, /正在校验「\$\{module\.manifest\.name\}」授权/u);
+  assert.match(recovery, /const session = await bridge\.session\(\)\.catch\(\(\) => null\)/u);
+  assert.match(recovery, /const login = await requestCloudAccountLogin/u);
+  assert.match(recovery, /const authorization = await bridge\.authorizeModule\(moduleId\)\.catch\(\(\) => null\)/u);
+  // 登录成功后同一次流程内自动换发授权并继续（不再有旧的纯 throw 状态文字门禁）。
+  assert.match(recovery, /if \(authorization\.status\?\.allowed\) return \{ recovered: true/u);
   assert.match(inspector, /if \(!enabled && isPaidModule\(module\.manifest\.id\) && !await ensurePaidModuleAccess\(module\)\) return;/u);
   assert.doesNotMatch(inspector, /if \(!authorization\?\.status\?\.allowed\) throw new Error\(authorization\?\.status\?\.reason/u);
   // 已登录但无权益时给出购买引导而不是只写状态文字。

@@ -1,6 +1,6 @@
 ﻿import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { requestWorkbenchAlert, requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
-import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
+import { recoverPaidModuleAccess } from '../services/modules/paidModuleAccessRecovery';
 import QRCode from 'qrcode';
 import {
   AlertTriangle,
@@ -369,46 +369,39 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const isPaidModule = (moduleId: string) =>
     moduleId === 'lingbuilder.new_emoji.ui' || commerceProducts.some(product => product.moduleId === moduleId);
 
-  /** 收费模块启用前的授权门禁：未登录弹登录框（成功即继续），无权益给购买引导；返回 false 表示中止启用。 */
+  /** 收费模块启用前的授权门禁：未登录弹登录框（成功即继续），无权益给购买引导；返回 false 表示中止启用。
+   *  登录+换发授权走共享恢复流 recoverPaidModuleAccess（F5 构建链路同源），这里只保留购买引导。 */
   const ensurePaidModuleAccess = async (module: InstalledModule): Promise<boolean> => {
-    const cloudModules = window.lingBuilder?.cloudAccount;
-    if (!cloudModules?.authorizeModule) {
+    if (!window.lingBuilder?.cloudAccount?.authorizeModule) {
       setStatusText('收费模块必须在 LingBuilder 桌面端登录后使用。');
       return false;
     }
-    const session = await cloudModules.session().catch(() => null);
-    if (!session?.authenticated) {
-      const login = await requestCloudAccountLogin({
-        description: `启用「${module.manifest.name}」需要先登录 LingBuilder 账号；模块购买与限时免费活动也依赖账号权益。`
-      });
-      if (!login.authenticated) {
-        setStatusText(`已取消登录，未启用「${module.manifest.name}」。登录后可再次点击启用。`);
-        return false;
-      }
-      setStatusText(`已登录 ${login.email || 'LingBuilder 账号'}，正在校验「${module.manifest.name}」授权…`);
-    }
-    const authorization = await cloudModules.authorizeModule(module.manifest.id);
-    if (!authorization?.ok) throw new Error((authorization as { error?: string })?.error || '模块授权检查失败，请稍后重试。');
-    if (!authorization?.status?.allowed) {
-      const reason = authorization?.status?.reason || '当前账号没有该模块的有效权益。';
-      const offer = commerceProducts.find(product => product.moduleId === module.manifest.id)?.offers?.[0];
-      if (offer) {
-        const purchaseConfirmed = await requestWorkbenchConfirm({
-          title: '需要模块授权',
-          description: `${reason}\n\n是否立即创建微信支付订单（${offer.name || '标准授权'} ¥${(Number(offer.priceMinor) / 100).toFixed(2)}）？付款完成后回到本页重新点击启用。`,
-          confirmLabel: '去购买',
-          cancelLabel: '稍后再说'
-        });
-        if (purchaseConfirmed) await purchaseModule(module.manifest.id, 'wechat');
-      } else {
-        await requestWorkbenchAlert({
-          title: '需要模块授权',
-          description: `${reason}\n\n该模块暂未配置在线购买渠道，请在“本地模块”列表该模块条目下查看授权说明，或联系模块作者获取权益。`
-        });
-      }
+    const outcome = await recoverPaidModuleAccess(module.manifest.id, { moduleName: module.manifest.name });
+    if (outcome.cancelled) {
+      setStatusText(`已取消登录，未启用「${module.manifest.name}」。登录后可再次点击启用。`);
       return false;
     }
-    return true;
+    if (outcome.recovered) {
+      setStatusText(`「${module.manifest.name}」模块授权已就绪。`);
+      return true;
+    }
+    const reason = outcome.message || '当前账号没有该模块的有效权益。';
+    const offer = commerceProducts.find(product => product.moduleId === module.manifest.id)?.offers?.[0];
+    if (offer) {
+      const purchaseConfirmed = await requestWorkbenchConfirm({
+        title: '需要模块授权',
+        description: `${reason}\n\n是否立即创建微信支付订单（${offer.name || '标准授权'} ¥${(Number(offer.priceMinor) / 100).toFixed(2)}）？付款完成后回到本页重新点击启用。`,
+        confirmLabel: '去购买',
+        cancelLabel: '稍后再说'
+      });
+      if (purchaseConfirmed) await purchaseModule(module.manifest.id, 'wechat');
+    } else {
+      await requestWorkbenchAlert({
+        title: '需要模块授权',
+        description: `${reason}\n\n该模块暂未配置在线购买渠道，请在“本地模块”列表该模块条目下查看授权说明，或联系模块作者获取权益。`
+      });
+    }
+    return false;
   };
 
   const toggleProjectModule = async (module: InstalledModule) => {

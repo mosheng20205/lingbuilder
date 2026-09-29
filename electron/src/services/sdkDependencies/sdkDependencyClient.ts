@@ -2,6 +2,7 @@ import type {
   SdkDependencyJobSnapshot,
   SdkDependencyStatus
 } from './sdkDependencyService';
+import { isPaidModuleAccessErrorCode, recoverPaidModuleAccess } from '../modules/paidModuleAccessRecovery';
 
 export interface SdkDependencyPromptSnapshot {
   open: boolean;
@@ -134,6 +135,11 @@ export class SdkDependencyPromptCoordinator {
 
 export const sdkDependencyPromptCoordinator = new SdkDependencyPromptCoordinator();
 
+/**
+ * 构建类请求的统一恢复包装器：SDK 依赖缺失与收费模块权益失败（402）都在这里拦截——
+ * 前者弹 SDK 安装引导，后者走 recoverPaidModuleAccess（未登录弹全局登录框，登录后换发授权），
+ * 恢复成功自动重试一次原请求；这是构建链路 402 的唯一处理出口，禁止在各调用点再写一套。
+ */
 export async function fetchWithSdkDependencies(
   request: () => Promise<Response>,
   options: { retryLimit?: number } = {}
@@ -144,10 +150,21 @@ export async function fetchWithSdkDependencies(
     const payload = await response.clone().json().catch(() => ({})) as {
       code?: string;
       dependencies?: SdkDependencyStatus[];
+      moduleId?: unknown;
     };
-    if (payload.code !== 'SDK_DEPENDENCY_REQUIRED' || !payload.dependencies?.length) return response;
-    await sdkDependencyPromptCoordinator.requestInstall(payload.dependencies);
-    response = await request();
+    if (payload.code === 'SDK_DEPENDENCY_REQUIRED' && payload.dependencies?.length) {
+      await sdkDependencyPromptCoordinator.requestInstall(payload.dependencies);
+      response = await request();
+      continue;
+    }
+    if (isPaidModuleAccessErrorCode(payload.code) && typeof payload.moduleId === 'string' && payload.moduleId.trim()) {
+      const recovery = await recoverPaidModuleAccess(payload.moduleId.trim());
+      if (recovery.recovered) {
+        response = await request();
+        continue;
+      }
+    }
+    return response;
   }
   return response;
 }

@@ -1080,6 +1080,9 @@ app.post("/api/module-access/clear", (_req, res) => {
 
 app.get("/api/module-access/status", (req, res) => {
   const moduleId = String(req.query.moduleId || "");
+  // 不带 moduleId 时返回全部已缓存 Permit 的权益状态：渲染层启动检查用，
+  // 把过期授权在构建前就显性化（输出面板提示），而不是埋到 F5 被 402 拦下才发现。
+  if (!moduleId) return res.json({ ok: true, modules: moduleAccessService.listStatuses() });
   res.json({ ok: true, status: moduleAccessService.status(moduleId) });
 });
 
@@ -1529,9 +1532,10 @@ app.post("/api/solution/build", async (req, res) => {
     res.json({ ...await task.result, taskId: task.id });
   } catch (error: any) {
     // 任务已创建时 taskId 必须随失败响应回传：日志行已进任务通道，前端据此不再重复播报。
-    const failureBody: Record<string, unknown> = { ok: false, stage: "server", error: error?.message || "生成解决方案失败" };
+    // 收费模块权益失败（402）必须把 code/moduleId 一起回传：渲染层据此走共享授权恢复流后重试。
+    const failureBody: Record<string, unknown> = { ok: false, stage: "server", code: error?.code, moduleId: error?.moduleId, error: error?.message || "生成解决方案失败" };
     if (createdTaskId) failureBody.taskId = createdTaskId;
-    res.status(500).json(failureBody);
+    res.status(error?.status || 500).json(failureBody);
   }
 });
 
@@ -1544,9 +1548,9 @@ app.post("/api/solution/rebuild", async (req, res) => {
     createdTaskId = task.id;
     res.json({ ...await task.result, taskId: task.id });
   } catch (error: any) {
-    const failureBody: Record<string, unknown> = { ok: false, stage: "server", error: error?.message || "重新生成解决方案失败" };
+    const failureBody: Record<string, unknown> = { ok: false, stage: "server", code: error?.code, moduleId: error?.moduleId, error: error?.message || "重新生成解决方案失败" };
     if (createdTaskId) failureBody.taskId = createdTaskId;
-    res.status(500).json(failureBody);
+    res.status(error?.status || 500).json(failureBody);
   }
 });
 
@@ -2999,6 +3003,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     return res.status(error?.status || (expectedConflict ? 409 : 500)).json({
       ok: false,
       code: error?.code,
+      moduleId: error?.moduleId,
       ...createSdkDependencyErrorPayload(error),
       stage: error instanceof ProjectBuildBusyError
         ? "busy"

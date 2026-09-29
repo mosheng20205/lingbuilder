@@ -90,7 +90,52 @@ test('签名正确但过期的 Permit 保留明确过期诊断', () => {
   assert.equal(status?.allowed, false);
   assert.equal(status?.code, 'MODULE_ENTITLEMENT_EXPIRED');
   assert.match(status?.reason || '', /离线授权已过期/u);
-  assert.throws(() => access.assertAccess('lingbuilder.new_emoji.ui'), /离线授权已过期/u);
+  // 修法指引必须随文案一起给出（构建链路 402 直显这段文本）。
+  assert.match(status?.reason || '', /模块面板重新启用|重新构建/u);
+  try {
+    access.assertAccess('lingbuilder.new_emoji.ui');
+    assert.fail('assertAccess 应当抛出');
+  } catch (error) {
+    const thrown = error as Error & { moduleId?: string; status?: number; code?: string };
+    assert.match(thrown.message, /离线授权已过期/u);
+    // 构建端点依赖 moduleId 走共享授权恢复流（F5 402 → 登录/换发 → 重试）。
+    assert.equal(thrown.moduleId, 'lingbuilder.new_emoji.ui');
+    assert.equal(thrown.status, 402);
+    assert.equal(thrown.code, 'MODULE_ENTITLEMENT_EXPIRED');
+  }
+});
+
+test('listStatuses 返回全部已缓存 Permit 的状态（含过期），未同步模块不出现', () => {
+  const signed = signedPermit('lingbuilder.new_emoji.ui', -60_000);
+  const access = new ModuleAccessService(signed.anchors);
+  assert.deepEqual(access.listStatuses(), []);
+  access.sync(signed);
+  const statuses = access.listStatuses();
+  assert.equal(statuses.length, 1);
+  assert.equal(statuses[0]?.moduleId, 'lingbuilder.new_emoji.ui');
+  assert.equal(statuses[0]?.allowed, false);
+  assert.equal(statuses[0]?.code, 'MODULE_ENTITLEMENT_EXPIRED');
+});
+
+test('限时免费来源的过期 Permit 如实报本地授权过期（不断言活动已结束）并指引登录自动换发', () => {
+  const signed = signedPermit('lingbuilder.new_emoji.ui', -60_000);
+  const permit = structuredClone(signed.permit);
+  permit.payload.source = 'free_window';
+  const pair = crypto.generateKeyPairSync('ed25519');
+  // 重新签名：改 source 后必须用测试自签密钥重签才能通过签名校验。
+  const keyId = crypto.createHash('sha256').update(pair.publicKey.export({ type: 'spki', format: 'der' })).digest('hex').slice(0, 16);
+  permit.payload.keyId = keyId;
+  const signature = crypto.sign(null, Buffer.from(JSON.stringify(permit.payload)), pair.privateKey).toString('base64url');
+  const access = new ModuleAccessService([{ keyId, publicKeyPem: pair.publicKey.export({ type: 'spki', format: 'pem' }).toString() }]);
+  const status = access.sync({ permit: { ...permit, signature }, key: { keyId, algorithm: 'Ed25519', publicKeyPem: pair.publicKey.export({ type: 'spki', format: 'pem' }).toString() } });
+  assert.equal(status?.code, 'MODULE_FREE_WINDOW_ENDED');
+  assert.match(status?.reason || '', /本地限时免费授权已于/u);
+  // 过期时间必须如实呈现（限免活动可能仍在进行，过期的是本地这份离线授权）。
+  assert.ok((status?.reason || '').includes(new Date(permit.payload.expiresAt).toLocaleString()));
+  assert.match(status?.reason || '', /限免活动可能仍在进行/u);
+  assert.match(status?.reason || '', /登录 LingBuilder 账号后 IDE 会自动换发授权/u);
+  // 与限免活动实况可能矛盾的表述禁止回归。
+  assert.doesNotMatch(status?.reason || '', /活动已经结束/u);
 });
 
 test('paidModuleIds 仍随同步合并进收费清单', () => {

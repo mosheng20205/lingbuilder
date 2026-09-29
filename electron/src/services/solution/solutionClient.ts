@@ -1,3 +1,5 @@
+import { isPaidModuleAccessErrorCode, recoverPaidModuleAccess } from '../modules/paidModuleAccessRecovery';
+
 export interface SolutionProject {
   id: string;
   name: string;
@@ -51,6 +53,9 @@ export interface SolutionCommandResult {
   warnings?: string[];
   error?: string;
   stage?: string;
+  /** 收费模块权益失败（402）时回传错误码与模块 ID：构建链路据此走共享授权恢复流后重试。 */
+  code?: string;
+  moduleId?: string;
   compilerDiagnostics?: any[];
   results?: Array<{ compilerDiagnostics?: any[] }>;
   /** 生成/清理/重新生成走任务链路时返回：日志行以任务轮询通道为准，响应侧不重复播报。 */
@@ -179,7 +184,7 @@ export async function deleteSolutionProject(projectId: string, deleteFiles: bool
 }
 
 export async function buildSolution(projectId?: string, run = false): Promise<SolutionCommandResult> {
-  return postJson('/api/solution/build', projectId ? { projectId, run } : { run });
+  return postJsonWithPaidModuleAccessRecovery('/api/solution/build', projectId ? { projectId, run } : { run });
 }
 
 export async function cleanSolution(projectId?: string): Promise<SolutionCommandResult> {
@@ -187,7 +192,16 @@ export async function cleanSolution(projectId?: string): Promise<SolutionCommand
 }
 
 export async function rebuildSolution(projectId?: string): Promise<SolutionCommandResult> {
-  return postJson('/api/solution/rebuild', projectId ? { projectId, run: false } : { run: false });
+  return postJsonWithPaidModuleAccessRecovery('/api/solution/rebuild', projectId ? { projectId, run: false } : { run: false });
+}
+
+/** 生成/重新生成遇到收费模块权益 402 时走共享授权恢复流（登录/换发授权），恢复成功自动重试一次。 */
+async function postJsonWithPaidModuleAccessRecovery(url: string, body: unknown): Promise<SolutionCommandResult> {
+  const first = await postJson(url, body);
+  if (first.ok || !isPaidModuleAccessErrorCode(first.code) || !first.moduleId) return first;
+  const recovery = await recoverPaidModuleAccess(first.moduleId);
+  if (!recovery.recovered) return first;
+  return postJson(url, body);
 }
 
 export function getSolutionProjectDirectory(project: SolutionProject): string {
@@ -236,6 +250,8 @@ async function parseCommandResponse(response: Response): Promise<SolutionCommand
       ok: false,
       error: result.error || result.stage || '操作失败',
       logs: result.logs || [],
+      code: typeof result.code === 'string' ? result.code : undefined,
+      moduleId: typeof result.moduleId === 'string' ? result.moduleId : undefined,
       taskId: typeof result.taskId === 'string' ? result.taskId : undefined
     };
   }

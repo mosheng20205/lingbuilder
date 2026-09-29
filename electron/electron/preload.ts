@@ -165,6 +165,12 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     createRechargeOrder: (value: { packageId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-credits:create-order', value),
     rechargeOrder: (orderId: string) => ipcRenderer.invoke('cloud-credits:order', orderId),
     downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => ipcRenderer.invoke('cloud-modules:download', value),
+    notifyNetworkRestored: () => ipcRenderer.invoke('cloud-modules:network-restored'),
+    onModuleAccessNotice: (listener: (message: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, message: string) => listener(message);
+      ipcRenderer.on('module-access:notice', handler);
+      return () => ipcRenderer.removeListener('module-access:notice', handler);
+    },
   },
   updates: {
     check: (payload?: { channel?: 'stable' | 'preview' }) => ipcRenderer.invoke('app:check-update', payload),

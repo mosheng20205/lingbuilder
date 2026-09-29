@@ -335,6 +335,10 @@ declare global {
         createRechargeOrder: (value: { packageId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => Promise<{ ok: boolean; order: { id: string; status: string; points: string; packageName: string; paymentUrl?: string; paymentForm?: string | null; expiresAt: string } }>;
         rechargeOrder: (orderId: string) => Promise<{ ok: boolean; order: { id: string; status: string; points: string; packageName: string; paymentUrl?: string; paidAt?: string; expiresAt: string } }>;
         downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => Promise<{ ok: boolean; relativePath: string; artifact: { id: string; moduleId: string; version: string; arch: string; sha256: string } }>;
+        /** 网络恢复在线时通知主进程立即巡检一次模块授权续期（未登录/无到期时主进程自行跳过）。 */
+        notifyNetworkRestored: () => Promise<{ ok: boolean }>;
+        /** 主进程自动续期把某模块授权从「不可用」翻转为「可用」时推送的输出面板提示。 */
+        onModuleAccessNotice: (listener: (message: string) => void) => () => void;
       };
       cloudAi?: {
         start: (kind: 'chat' | 'edit', payload: unknown) => Promise<string>;

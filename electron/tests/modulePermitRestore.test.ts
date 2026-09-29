@@ -6,6 +6,30 @@ function authorization(moduleId: string, generation: number): CachedModuleAuthor
   return { permit: { payload: { moduleId } }, generation };
 }
 
+function expiredAuthorization(moduleId: string, source: 'free_window' | 'purchase'): CachedModuleAuthorization {
+  return {
+    permit: {
+      payload: {
+        moduleId,
+        source,
+        expiresAt: new Date(Date.now() - 60_000).toISOString()
+      }
+    }
+  };
+}
+
+function validAuthorization(moduleId: string, source: 'free_window' | 'purchase'): CachedModuleAuthorization {
+  return {
+    permit: {
+      payload: {
+        moduleId,
+        source,
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      }
+    }
+  };
+}
+
 test('Permit 恢复会等待本地服务并重试缓存同步', async () => {
   const cached = [authorization('lingbuilder.new_emoji.ui', 1)];
   const requests: string[] = [];
@@ -69,4 +93,55 @@ test('本地服务持续不可用时给出中文失败并且不丢缓存', async
   assert.equal(result.synchronizedCount, 0);
   assert.equal(writeCalled, false);
   assert.match(result.failures[0] || '', /尚未同步/u);
+});
+
+test('未登录（无换发通道）时过期 Permit 同步后直接给显性化提示', async () => {
+  const cached = [
+    expiredAuthorization('lingbuilder.new_emoji.ui', 'free_window'),
+    validAuthorization('lingbuilder.fbro.browser', 'purchase')
+  ];
+  const result = await restoreModulePermits({
+    readCache: async () => cached,
+    writeCache: async () => assert.fail('未登录恢复不应改写缓存'),
+    requestRendererApi: async () => ({ ok: true }),
+    retryDelayMs: 0,
+    sleep: async () => undefined
+  });
+  assert.equal(result.synchronizedCount, 2);
+  assert.equal(result.staleNotices.length, 1);
+  assert.match(result.staleNotices[0] || '', /lingbuilder\.new_emoji\.ui/u);
+  assert.match(result.staleNotices[0] || '', /限时免费授权/u);
+  assert.match(result.staleNotices[0] || '', /模块面板重新启用/u);
+});
+
+test('已登录换发失败时，过期 Permit 的提示带换发失败原因；有效 Permit 不提示', async () => {
+  const cached = [
+    expiredAuthorization('lingbuilder.new_emoji.ui', 'free_window'),
+    validAuthorization('lingbuilder.fbro.browser', 'purchase')
+  ];
+  const result = await restoreModulePermits({
+    readCache: async () => cached,
+    writeCache: async () => undefined,
+    requestRendererApi: async () => ({ ok: true }),
+    refreshAuthorization: async () => { throw new Error('HTTP 402'); },
+    retryDelayMs: 0,
+    sleep: async () => undefined
+  });
+  assert.equal(result.staleNotices.length, 1);
+  assert.match(result.staleNotices[0] || '', /限时免费授权/u);
+  assert.match(result.staleNotices[0] || '', /联网换发失败：HTTP 402/u);
+});
+
+test('已登录换发成功时过期 Permit 不再提示', async () => {
+  const cached = [expiredAuthorization('lingbuilder.new_emoji.ui', 'free_window')];
+  const result = await restoreModulePermits({
+    readCache: async () => cached,
+    writeCache: async () => undefined,
+    requestRendererApi: async () => ({ ok: true }),
+    refreshAuthorization: async moduleId => validAuthorization(moduleId, 'purchase'),
+    retryDelayMs: 0,
+    sleep: async () => undefined
+  });
+  assert.equal(result.refreshedCount, 1);
+  assert.equal(result.staleNotices.length, 0);
 });

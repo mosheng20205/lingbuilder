@@ -2133,6 +2133,44 @@ export default function App() {
       .then(response => response.json())
       .then(payload => payload.configuration && setBuildConfiguration(payload.configuration));
   }, [currentWorkspacePath, hasEnteredWorkbench]);
+
+  // 收费模块授权启动检查：把已过期/未换发的缓存 Permit 在构建前就显性化到输出面板，
+  // 用户不必等到 F5 被 402 拦下才知道模块授权过期；恢复入口见 F5/生成链路的共享恢复流。
+  useEffect(() => {
+    if (!hasEnteredWorkbench) return;
+    let disposed = false;
+    void fetch('/api/module-access/status', { cache: 'no-store' })
+      .then(response => response.json())
+      .then((payload: { ok?: boolean; modules?: Array<{ moduleId?: string; allowed?: boolean; reason?: string }> }) => {
+        if (disposed || !payload?.ok || !Array.isArray(payload.modules)) return;
+        const stale = payload.modules.filter(item => item.allowed === false);
+        if (stale.length === 0) return;
+        setBuildLogs(previous => [...previous, ...stale.map(item =>
+          `> [${new Date().toLocaleTimeString()}] 【模块授权】${item.reason || '收费模块授权无效。'}（模块：${item.moduleId || '未知'}）`
+        )]);
+      })
+      .catch(() => undefined);
+    return () => { disposed = true; };
+  }, [hasEnteredWorkbench]);
+
+  // 模块授权运行期自动续期的用户可见反馈：主进程把某模块授权从「不可用」翻转为「可用」时推送提示。
+  useEffect(() => {
+    const bridge = window.lingBuilder?.cloudAccount;
+    if (!bridge?.onModuleAccessNotice) return;
+    return bridge.onModuleAccessNotice(message => {
+      setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] ${message}`]);
+    });
+  }, []);
+
+  // 网络恢复在线时通知主进程立即巡检一次模块授权续期（未登录/无到期时主进程自行跳过）。
+  useEffect(() => {
+    const bridge = window.lingBuilder?.cloudAccount;
+    if (!bridge?.notifyNetworkRestored) return;
+    const handler = () => { void bridge.notifyNetworkRestored().catch(() => undefined); };
+    window.addEventListener('online', handler);
+    return () => window.removeEventListener('online', handler);
+  }, []);
+
   const updateBuildConfiguration = useCallback(async (patch: { mode?: BuildMode; architecture?: BuildArchitecture }) => {
     const next = { ...buildConfiguration, ...patch };
     const response = await fetch('/api/build-configuration', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });

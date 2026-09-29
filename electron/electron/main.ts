@@ -43,6 +43,7 @@ import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiCli
 import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
 import { restoreModulePermits } from './modulePermitRestoreService';
+import { ModulePermitMaintenanceService, type ModulePermitMaintenanceSweepResult } from './modulePermitMaintenanceService';
 import { ModuleInfoWindowService } from './moduleInfoWindowService';
 import { listModuleDemoIds, openModuleDemoInNewInstance, type ModuleDemoServiceOptions } from './moduleDemoService';
 import {
@@ -97,6 +98,7 @@ let agentProviderCache: AgentProviderSettings = defaultAgentProviderSettings();
 let agentProviderKeyUnavailable = false;
 let localAuthorization: LocalAuthorizationService | null = null;
 let moduleInfoWindow: ModuleInfoWindowService;
+let modulePermitMaintenance: ModulePermitMaintenanceService | undefined;
 const rendererConfirmedClose = new WeakSet<BrowserWindow>();
 
 /** 黑屏取证诊断日志（userData/logs），仅记录生命周期事件，不写用户代码内容。 */
@@ -551,6 +553,7 @@ function shutdownAndExit(code: number): Promise<void> {
   shutdownPromise = (async () => {
     let exitCode = code;
     try {
+      modulePermitMaintenance?.stop();
       await aiBridgeManager?.stop('LingBuilder 正在退出');
     } catch (error) {
       exitCode = 1;
@@ -614,6 +617,42 @@ async function requestRendererApi(apiPath: string, init: RequestInit): Promise<u
     throw new Error(typeof result.details === 'string' && result.details ? `${reason}：${result.details}` : reason);
   }
   return result;
+}
+
+/** 模块授权运行期续期的用户可见出口：只有状态从「不可用」翻转为「可用」才发输出面板提示并重启 AI Bridge，其余静默。 */
+async function handlePermitMaintenanceSweep(result: ModulePermitMaintenanceSweepResult): Promise<void> {
+  const restored = result.renewed.filter(item => item.restored);
+  for (const item of restored) {
+    const message = `【模块授权】${item.message}`;
+    console.info(`[module-access] ${message}`);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('module-access:notice', message);
+  }
+  if (restored.length === 0) return;
+  if (aiBridgeManager?.snapshot().state === 'running') await restartAiBridgeAfterPermitRenewal();
+}
+
+/** 与 cloud-modules:authorize 既有语义同源：Bridge 只在 spawn 时拿 Permit 快照，授权刷新后必须重启才能生效。 */
+async function restartAiBridgeAfterPermitRenewal(): Promise<void> {
+  const snapshot = aiBridgeManager.snapshot();
+  try {
+    await aiBridgeManager.stop('模块授权已自动续期，正在重启 AI Bridge 同步授权');
+    let token: string | undefined;
+    try {
+      token = (await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage))?.token || undefined;
+    } catch {
+      token = undefined;
+    }
+    await aiBridgeManager.start({
+      workspaceRoot: snapshot.workspaceRoot,
+      port: snapshot.port,
+      permission: snapshot.permission,
+      lifecycle: snapshot.lifecycle,
+      token,
+      moduleAccessState: Buffer.from(JSON.stringify(await readModulePermitCache()), 'utf8').toString('base64url')
+    });
+  } catch (error) {
+    console.warn(`[module-access] 模块授权续期后重启 AI Bridge 失败：${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** 渲染进程崩溃重载防循环：60 秒窗口内连续崩溃达到 3 次后停止自动重载，只留日志。 */
@@ -1629,8 +1668,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cloud-account:verify-email', (_event, token: string) => cloudAccountService.verifyEmail(String(token || '')));
   ipcMain.handle('cloud-account:forgot-password', (_event, value: any) => cloudAccountService.forgotPassword(String(value?.email || '')));
   ipcMain.handle('cloud-account:reset-password', (_event, value: any) => cloudAccountService.resetPassword(String(value?.token || ''), String(value?.password || '')));
-  ipcMain.handle('cloud-account:login', (_event, value: any) => cloudAccountService.login(String(value?.email || ''), String(value?.password || '')));
-  ipcMain.handle('cloud-account:logout', async () => { const result = await cloudAccountService.logout(); await writeModulePermitCache([]); await requestRendererApi('/api/module-access/clear', { method: 'POST', body: '{}' }).catch(() => undefined); if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('账号已退出，正在撤销收费模块授权'); return result; });
+  ipcMain.handle('cloud-account:login', async (_event, value: any) => {
+    const result = await cloudAccountService.login(String(value?.email || ''), String(value?.password || ''));
+    // 登录成功即接管运行期续期，并立即换发一轮（覆盖启动时未登录留下的过期/临期 Permit）。
+    if (result?.authenticated) {
+      modulePermitMaintenance?.start();
+      void modulePermitMaintenance?.triggerSweep('登录成功');
+    }
+    return result;
+  });
+  ipcMain.handle('cloud-account:logout', async () => { modulePermitMaintenance?.stop(); const result = await cloudAccountService.logout(); await writeModulePermitCache([]); await requestRendererApi('/api/module-access/clear', { method: 'POST', body: '{}' }).catch(() => undefined); if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('账号已退出，正在撤销收费模块授权'); return result; });
   ipcMain.handle('cloud-account:session', () => cloudAccountService.snapshot());
   ipcMain.handle('cloud-account:models', () => cloudAccountService.models());
   ipcMain.handle('cloud-account:balance', () => cloudAccountService.balance());
@@ -1654,6 +1701,11 @@ function registerIpcHandlers(): void {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, error: /[\u3400-\u9fff]/u.test(message) ? message : '模块授权检查失败，请确认云端服务已启动并重新登录后再试。' };
     }
+  });
+  ipcMain.handle('cloud-modules:network-restored', async () => {
+    // 渲染层网络恢复在线（window online 事件）时立即巡检一轮；未登录/无到期时服务自行跳过。
+    await modulePermitMaintenance?.triggerSweep('网络恢复在线');
+    return { ok: true };
   });
   ipcMain.handle('cloud-ai:start', async (event, kind: 'chat'|'edit', payload: unknown) => cloudAccountService.startAi(kind, payload, (requestKey, streamEvent) => event.sender.send('cloud-ai:event', requestKey, streamEvent)));
   ipcMain.handle('cloud-ai:cancel', (_event, requestKey: string) => cloudAccountService.cancel(requestKey));
@@ -1933,7 +1985,7 @@ app.whenReady().then(async () => {
 
   await cloudAccountService.initialize().catch(error => console.warn(`系统 AI 账号恢复失败：${error instanceof Error ? error.message : String(error)}`));
   const cloudSession = await cloudAccountService.snapshot();
-  await restoreModulePermits({
+  const permitRestoreResult = await restoreModulePermits({
     readCache: readModulePermitCache,
     writeCache: writeModulePermitCache,
     requestRendererApi,
@@ -1944,6 +1996,25 @@ app.whenReady().then(async () => {
       ? console.warn(`[module-access] ${message}`)
       : console.info(`[module-access] ${message}`)
   });
+  // 过期且本次未能换发的 Permit：主进程日志留档；用户可见的显性化由渲染层启动检查
+  // （GET /api/module-access/status → 输出面板【模块授权】提示）与 F5/生成的共享授权恢复流承担。
+  for (const notice of permitRestoreResult.staleNotices) console.warn(`[module-access] ${notice}`);
+  // 收费模块 Permit 运行期自动续期：长驻会话中 Permit 过期不再依赖重启/F5。
+  // 30 分钟巡检临期（<12h）或已过期的缓存 Permit，换发出口与启动恢复流同为 cloudAccountService.modulePermit。
+  modulePermitMaintenance = new ModulePermitMaintenanceService({
+    readCache: readModulePermitCache,
+    writeCache: writeModulePermitCache,
+    requestRendererApi,
+    isAuthenticated: async () => (await cloudAccountService.snapshot()).authenticated,
+    refreshAuthorization: moduleId => cloudAccountService.modulePermit(moduleId),
+    onSweep: result => {
+      void handlePermitMaintenanceSweep(result);
+    },
+    log: (level, message) => level === 'warn'
+      ? console.warn(`[module-access] ${message}`)
+      : console.info(`[module-access] ${message}`)
+  });
+  if (cloudSession.authenticated) modulePermitMaintenance.start();
   registerIpcHandlers();
   moduleInfoWindow = new ModuleInfoWindowService({
     preloadPath: path.join(__dirname, 'preload.cjs'),

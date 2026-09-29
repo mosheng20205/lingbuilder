@@ -72,15 +72,20 @@ export class ModuleAccessService {
   status(moduleId: string): ModuleAccessStatus {
     if (!this.paidModuleIds.has(moduleId)) return { moduleId, paid: false, allowed: true, source: 'unmetered' };
     const permit = this.permits.get(moduleId);
-    if (!permit) return { moduleId, paid: true, allowed: false, code: 'MODULE_PAYMENT_REQUIRED', reason: '请先登录并购买该模块，或等待限时免费活动开始。' };
+    if (!permit) return { moduleId, paid: true, allowed: false, code: 'MODULE_PAYMENT_REQUIRED', reason: '请先登录 LingBuilder 账号并购买该模块（登录后重新构建会自动尝试换发授权），或等待限时免费活动开始。' };
     try { this.verify(permit); }
     catch (error: any) { return { moduleId, paid: true, allowed: false, code: error?.code || 'MODULE_PERMIT_INVALID', reason: error instanceof Error ? error.message : String(error) }; }
     return { moduleId, paid: true, allowed: true, source: permit.payload.source, expiresAt: permit.payload.expiresAt };
   }
 
+  /** 全部已缓存 Permit 的权益状态：渲染层启动检查用，用于把过期授权在构建前就显性化。 */
+  listStatuses(): ModuleAccessStatus[] {
+    return [...new Set(this.permits.keys())].map(moduleId => this.status(moduleId));
+  }
+
   assertAccess(moduleId: string): void {
     const status = this.status(moduleId);
-    if (!status.allowed) throw Object.assign(new Error(status.reason || '收费模块授权无效。'), { status: 402, code: status.code || 'MODULE_PAYMENT_REQUIRED' });
+    if (!status.allowed) throw Object.assign(new Error(status.reason || '收费模块授权无效。'), { status: 402, code: status.code || 'MODULE_PAYMENT_REQUIRED', moduleId });
   }
 
   private verify(permit: LocalModuleAccessPermit, allowExpired = false): void {
@@ -99,6 +104,10 @@ export class ModuleAccessService {
     const valid = crypto.verify(null, Buffer.from(JSON.stringify(payload)), key, Buffer.from(permit.signature, 'base64url'));
     if (!valid) throw Object.assign(new Error('模块 Permit 签名无效。'), { code: 'MODULE_PERMIT_INVALID' });
     if (this.lastServerTime && now + 5 * 60_000 < this.lastServerTime) throw new Error('检测到系统时间明显回拨，请联网重新校验模块授权。');
-    if (!allowExpired && now >= expiresAt) throw Object.assign(new Error(payload.source === 'free_window' ? '模块限时免费活动已经结束。' : '模块离线授权已过期，请联网重新校验。'), { code: payload.source === 'free_window' ? 'MODULE_FREE_WINDOW_ENDED' : 'MODULE_ENTITLEMENT_EXPIRED' });
+    if (!allowExpired && now >= expiresAt) throw Object.assign(new Error(payload.source === 'free_window'
+      // 如实口径：过期的是本地缓存的这份离线授权，不代表限免活动已结束（活动实况只有云端知道）；
+      // 登录后 IDE 的运行期自动续期（modulePermitMaintenanceService）会立即换发，不再要求重启或重新启用。
+      ? `本地限时免费授权已于 ${new Date(expiresAt).toLocaleString()} 过期（限免活动可能仍在进行）。登录 LingBuilder 账号后 IDE 会自动换发授权；也可在模块面板重新启用该模块。`
+      : '模块离线授权已过期：请联网后重新构建，IDE 会自动尝试换发授权；也可在模块面板重新启用该模块刷新。'), { code: payload.source === 'free_window' ? 'MODULE_FREE_WINDOW_ENDED' : 'MODULE_ENTITLEMENT_EXPIRED' });
   }
 }
