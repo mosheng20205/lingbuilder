@@ -200,6 +200,31 @@ async function runWorkspaceInspect(rest: string[]) {
   printValue({ ok: true, workspaceRoot, tree: await service.listWorkspaceTree() }, args.json === true);
 }
 
+// --request 历史上只接受 JSON 文件路径；外部 AI 常把内联 JSON 直接传进来，
+// 裸抛 ENOENT 让人无从排查。现在：以 { 开头按内联 JSON 解析，否则按文件路径读取并给中文指引。
+async function loadProjectRequest(requestValue: string): Promise<any> {
+  const trimmed = requestValue.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      throw new Error(`--request 以 { 开头，已按内联 JSON 解析但失败：${error instanceof Error ? error.message : String(error)}。请检查 JSON 是否完整，或把请求体写入 .json 文件后传文件路径。`);
+    }
+  }
+  const requestPath = path.resolve(requestValue);
+  let content: string;
+  try {
+    content = await fs.readFile(requestPath, 'utf8');
+  } catch {
+    throw new Error(`--request 必须是受控项目请求的 JSON 文件路径（不是内联 JSON）：无法读取文件 ${requestPath}。请把请求体写入 .json 文件后再传路径，例如 --request request.json。`);
+  }
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    throw new Error(`--request 指向的文件不是合法 JSON：${requestPath}（${error instanceof Error ? error.message : String(error)}）。`);
+  }
+}
+
 async function runProjectCommand(subcommand: string | undefined, rest: string[]) {
   const args = parseArgs(rest); const workspaceRoot = path.resolve(getStringArg(args.workspace) || process.cwd()); const requestFile = getStringArg(args.request);
   const approved = args.yes === true;
@@ -211,7 +236,7 @@ async function runProjectCommand(subcommand: string | undefined, rest: string[])
   try {
     if (subcommand === 'templates') { printValue(await service.listProjectTemplates(), args.json === true); return; }
     if (!requestFile) throw new Error('project 命令需要 --request <受控项目请求.json>。');
-    const request = JSON.parse(await fs.readFile(path.resolve(requestFile), 'utf8'));
+    const request = await loadProjectRequest(requestFile);
     // 受控项目请求通常只携带工作区相对的源码路径。CLI 需要像桌面端一样
     // 读取该文件并传入生成器，否则事件实现会被当作缺失而生成占位函数。
     if (request && typeof request === 'object' && !request.lingCppSourceCode && typeof request.lingCppSourceFilePath === 'string') {

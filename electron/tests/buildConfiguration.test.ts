@@ -61,7 +61,7 @@ test('build configuration changes compiler flags, output paths, and module targe
   const debug = { schemaVersion: 1, mode: 'Debug', architecture: 'Win32' } as const;
   const release = { schemaVersion: 1, mode: 'Release', architecture: 'x64' } as const;
   assert.deepEqual(getBuildCompilerFlags(debug, 'msvc'), ['/Od', '/Zi', '/D_DEBUG', '/RTC1', '/MDd', '/bigobj']);
-  assert.deepEqual(getBuildCompilerFlags(release, 'msvc'), ['/O2', '/DNDEBUG', '/GL', '/MD', '/bigobj']);
+  assert.deepEqual(getBuildCompilerFlags(release, 'msvc'), ['/O2', '/Gy', '/DNDEBUG', '/GL', '/MD', '/bigobj']);
   assert.deepEqual(getBuildCompilerFlags(release, 'g++'), ['-m64', '-O2', '-DNDEBUG']);
   assert.deepEqual(getBuildCompilerFlags(debug, 'clang++'), ['-m32', '-O0', '-g', '-D_DEBUG']);
   assert.equal(getBuildOutputSegment(release), path.join('x64', 'Release'));

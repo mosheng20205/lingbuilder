@@ -96,7 +96,9 @@ export function getBuildCompilerFlags(configuration: BuildConfiguration, compile
   // 上限的展开信息（C1128），该开关只提高节数上限，不影响语义、优化与调试信息。
   if (compiler === 'msvc') return debug
     ? ['/Od', '/Zi', '/D_DEBUG', '/RTC1', '/MDd', '/bigobj']
-    : ['/O2', '/DNDEBUG', '/GL', '/MD', '/bigobj'];
+    // /Gy 显式化：/O2 虽隐含函数级 COMDAT，但显式写出保证显式 /OPT:REF /OPT:ICF
+    // 链接参数在 /O 被单独调整时仍能按函数剔除无引用运行时（体积瘦身依赖此组合）。
+    : ['/O2', '/Gy', '/DNDEBUG', '/GL', '/MD', '/bigobj'];
   const architecture = configuration.architecture === 'x64' ? '-m64' : '-m32';
   return debug ? [architecture, '-O0', '-g', '-D_DEBUG'] : [architecture, '-O2', '-DNDEBUG'];
 }

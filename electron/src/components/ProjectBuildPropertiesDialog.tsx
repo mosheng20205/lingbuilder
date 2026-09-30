@@ -157,7 +157,13 @@ export default function ProjectBuildPropertiesDialog({
             )}
           </div>
 
-          {editable ? (
+          {editable && projectType === 'windows-dll' ? (
+            <div className={sectionClassName}>
+              <div className="mb-2 text-xs font-medium">构建配置</div>
+              <p className="text-xs">动态库项目的构建模式与架构由工作区构建配置统一决定（状态栏「构建: 模式 | 架构」，菜单「生成 → 配置」可切换），生成由「生成动态库」按钮完成。</p>
+              <p className={hintClassName}>产物文件名与输出目录在「构建目录…」对话框设置。</p>
+            </div>
+          ) : editable ? (
             <div className={sectionClassName}>
               <div className="mb-2 text-xs font-medium">构建配置（仅 {projectName}）</div>
               <label htmlFor="project-build-configuration" className={labelClassName}>构建模式</label>

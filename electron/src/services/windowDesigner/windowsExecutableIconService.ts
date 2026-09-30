@@ -202,10 +202,14 @@ export function getWindowEmbeddedSiteHost(window: LingWindowModel): string {
  */
 export function generateWindowsExecutableResourceFile(
   window: LingWindowModel,
-  extraResourceLines: readonly string[] = []
+  extraResourceLines: readonly string[] = [],
+  options: { excludeWindowIcon?: boolean } = {}
 ): { relativePath: string; content: string } | undefined {
   const iconStyle = window.iconStyle || 'lingbuilder';
-  const iconEnabled = iconStyle === 'lingbuilder' || (iconStyle === 'custom' && Boolean(getSafeCustomWindowIconPath(window)));
+  // excludeWindowIcon：纯逻辑动态库不嵌入窗口图标（DLL 图标在资源管理器中不显示，
+  // 一个 93KB 的 ICO 会占掉整个产物的 77%）。内嵌文件/内存 DLL 资源行不受影响。
+  const iconEnabled = !options.excludeWindowIcon
+    && (iconStyle === 'lingbuilder' || (iconStyle === 'custom' && Boolean(getSafeCustomWindowIconPath(window))));
   // 内嵌文件与窗口图标是否显示无关：图标选「不显示」时也必须照常生成 RCDATA 行，
   // 否则声明的内嵌文件会被静默丢弃（rc 里没有资源，运行期才缺文件）。
   const embeddedSpecs = getWindowEmbeddedResourceSpecs(window);
@@ -405,7 +409,14 @@ export class WindowsExecutableIconService {
         // Try the next development or packaged resource location.
       }
     }
-    throw new Error('LingBuilder 默认窗口图标资源缺失，已阻止生成无图标的产物。请修复安装资源后重试。');
+    // 报错必须自带修法：外部 AI / CLI 独立运行时没有主进程注入的 LINGBUILDER_RESOURCE_ROOT，
+    // 历史上只报「修复安装资源」让调用方无从下手（实踩）。
+    throw new Error(
+      'LingBuilder 默认窗口图标资源缺失，已阻止生成无图标的产物。请按任一方式修复后重试：' +
+      '① 设置环境变量 LINGBUILDER_RESOURCE_ROOT 指向安装目录的 resources 目录（其下需有 assets\\lingbuilder-window.ico）；' +
+      '② 在项目窗口属性中改用自定义图标。' +
+      `已尝试的候选路径：${candidates.join(' ； ') || '（无）'}`
+    );
   }
 
   private async removeStaleIcons(destinationRoots: readonly string[]): Promise<void> {

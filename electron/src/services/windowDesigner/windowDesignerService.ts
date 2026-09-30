@@ -723,8 +723,11 @@ function resolveNormalizedWindowDesignerState(
 }
 
 export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesignerState> | null): PersistedWindowDesignerState {
+  // windows: [] 是合法状态（无窗口 DLL 项目）：必须原样保留，不得替换成默认窗口——
+  // 否则纯接口 DLL 项目在渲染层永远被偷换成「有一个默认窗口」，且默认项目 id（lingbuilder-ui-project）
+  // 会写进全局会话键，引发「未找到项目：lingbuilder-ui-project」类串项目错误。
   const fallbackProject = createDefaultWindowProject();
-  const sourceProject = state?.project && Array.isArray(state.project.windows) && state.project.windows.length > 0
+  const sourceProject = state?.project && Array.isArray(state.project.windows)
     ? state.project
     : fallbackProject;
   const cachedProject = normalizedProjectCache.get(sourceProject);

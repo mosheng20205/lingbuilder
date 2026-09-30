@@ -2199,7 +2199,9 @@ export default function Sidebar({
                           <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
                             {designerWindows.length === 0 ? (
                               <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">
-                                {designerStateMatchesActiveProject ? '未找到匹配窗口' : '正在载入当前项目窗口…'}
+                                {designerStateMatchesActiveProject
+                                  ? '该项目没有窗口（无窗口 DLL 项目）'
+                                  : '正在载入当前项目窗口…'}
                               </div>
                             ) : (
                               designerWindows.map(windowModel => renderWindowRow(project.id, windowModel))
@@ -2317,8 +2319,14 @@ export default function Sidebar({
                             {projectEmbeddedResources.length === 0 ? (
                               <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">
                                 {designerStateMatchesActiveProject
-                                  ? (normalizedFileSearch ? '未找到匹配资源' : '暂无内嵌资源，点上方「配置项目内嵌资源」添加')
-                                  : '正在载入当前项目资源…'}
+                                  ? (normalizedFileSearch
+                                      ? '未找到匹配资源'
+                                      : activeEmbeddedResources.length === 0 && designerWindows.length === 0
+                                        ? '该项目没有窗口，无内嵌资源（无窗口 DLL 项目）'
+                                        : '暂无内嵌资源，点上方「配置项目内嵌资源」添加')
+                                  : activeSolutionProject?.type === 'windows-dll'
+                                    ? '无窗口 DLL 项目没有内嵌资源'
+                                    : '正在载入当前项目资源…'}
                               </div>
                             ) : (
                               projectEmbeddedResources.map(resource => {
@@ -2390,7 +2398,7 @@ export default function Sidebar({
                         >
                           {isSrcOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                           <Folder className="w-4 h-4 text-blue-500 fill-blue-500/10" />
-                          <span>游戏源码与头文件 (src)</span>
+                          <span>源码与头文件 (src)</span>
                         </div>
                         {isSrcOpen && (
                           <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">

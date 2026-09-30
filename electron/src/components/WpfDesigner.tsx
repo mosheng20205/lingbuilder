@@ -197,7 +197,10 @@ import {
 import {
   createControlToolboxGroups,
   getControlToolboxModuleDisabledMessage,
+  getDesignerModuleDisplayName,
+  getModuleControlOwningModuleId,
   readControlToolboxExpansionState,
+  resolveDesignerControlAddGate,
   saveControlToolboxExpansionState,
   type ControlToolboxExpansionState,
   type ControlToolboxGroup,
@@ -1519,6 +1522,12 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
   const addLog = useCallback((message: string) => {
     window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message } }));
   }, []);
+  // 添加控件被拦截时的唯一出口：写设计器日志 + 通知工作台弹开底部输出面板。
+  // 只写日志用户感知不到（面板常被折叠），历史上表现为「点击控件没反应」（2026-09-25）。
+  const showAddControlBlockedNotice = useCallback((tag: string, message: string) => {
+    addLog(`> [${new Date().toLocaleTimeString()}] 【${tag}】${message}`);
+    window.dispatchEvent(new CustomEvent('lingbuilder-designer-add-blocked', { detail: { message } }));
+  }, [addLog]);
 
   const previewSelectedEdgeControl = useCallback(async () => {
     const currentProject = currentProjectRef.current;
@@ -2204,9 +2213,12 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
       }
     }
     if (!activeWindow) return;
-    const definition = getWin32ControlDefinition(type);
-    if (definition && !enabledDesignerModules.has(definition.moduleId)) {
-      addLog(`> [${new Date().toLocaleTimeString()}] 【模块】${definition.label} 需要先启用 Win32高级控件模块。`);
+    // 模块贡献控件的真实依赖是提供它的模块；previewType 只是画布预览替身，其 Win32 归属模块
+    // （列表视图/选项卡/树形视图 → 高级控件模块）不得拦截添加，否则只启用 new_emoji 的项目
+    // 点表格/富列表/标签页/描述列表/树会静默无效（2026-09-25 实机定位）。
+    const addGate = resolveDesignerControlAddGate({ type, moduleControl, enabledDesignerModules });
+    if (!addGate.allowed) {
+      showAddControlBlockedNotice('模块', addGate.reason);
       return;
     }
     if (type === 'FileDialog') {
@@ -2369,7 +2381,13 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
     const selectedParentTabOffset = selectedParent && isTabContainerControl(selectedParent)
       ? getTabContainerContentOffset(selectedParent)
       : { x: 0, y: 0 };
-    const createdControl = createControl(type, typeIndex);
+    let createdControl: LingControl;
+    try {
+      createdControl = createControl(type, typeIndex);
+    } catch (error) {
+      showAddControlBlockedNotice('可视化设计', `${moduleControl?.label || CONTROL_LABELS[type] || type} 添加失败：${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     const moduleDefaults = moduleControl?.defaultProps || {};
     const newControl: LingControl = {
       ...createdControl,
@@ -3527,7 +3545,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                 contain: 'layout paint size',
                 transform: `scale(${canvasScale})`,
                 transformOrigin: 'top left',
-                backgroundColor: useNewEmojiDesigner ? newEmojiThemePreview.panelBackground : activeWindow.background,
+                backgroundColor: activeWindow.background,
                 backgroundImage: useNewEmojiDesigner
                   ? `radial-gradient(circle at 1px 1px, ${newEmojiThemePreview.mode === 'dark' ? 'rgba(148,163,184,0.18)' : 'rgba(71,85,105,0.16)'} 0.8px, transparent 0.9px)`
                   : isDarkMode
@@ -3566,12 +3584,8 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
               title="双击标题栏或窗口空白处：定位本窗口的「创建完毕」事件代码"
               className={`${canvasBorder.captionKind === 'thin' ? 'h-5' /* thin=DESIGNER_THIN_TITLE_BAR_HEIGHT(20px) */ : 'h-7'} flex items-center justify-between px-3 border-b border-black/25 select-none canvas-title-bar`}
               style={{
-                backgroundColor: useNewEmojiDesigner
-                  ? newEmojiThemePreview.titleBarBackground
-                  : activeWindow.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
-                color: useNewEmojiDesigner
-                  ? newEmojiThemePreview.titleBarForeground
-                  : activeWindow.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND
+                backgroundColor: activeWindow.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
+                color: activeWindow.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND
               }}
             >
               <div className="flex items-center gap-1.5 text-[11px] font-sans font-medium min-w-0">
@@ -4453,13 +4467,17 @@ function DesignerControlToolbox({
                 }`}>
                   {moduleControls.length > 0 ? moduleControls.map(control => {
                     const previewType = (control.previewType || control.type) as LingControlType;
+                    const owningModuleId = getModuleControlOwningModuleId(control);
+                    const moduleEnabled = enabledDesignerModules.has(owningModuleId);
+                    const disabledReason = `添加 ${control.label} 需要先在当前项目中启用 ${getDesignerModuleDisplayName(owningModuleId)}`;
                     return <button
                       key={control.namespacedType || control.type}
                       type="button"
                       onClick={() => { void onAddControl(previewType, control); }}
-                      title={`添加 ${control.label}`}
-                      aria-label={`添加 ${control.label}`}
-                      className={`flex items-center gap-2 rounded border border-transparent px-2 py-1.5 text-left text-[11px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-fuchsia-500 ${isDarkMode ? 'text-slate-300 hover:border-[#3c3c44] hover:bg-[#25252b]/80 hover:text-white' : 'text-slate-700 hover:border-slate-200 hover:bg-slate-100'}`}
+                      disabled={!moduleEnabled}
+                      title={moduleEnabled ? `添加 ${control.label}` : disabledReason}
+                      aria-label={moduleEnabled ? `添加 ${control.label}` : disabledReason}
+                      className={`flex items-center gap-2 rounded border border-transparent px-2 py-1.5 text-left text-[11px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-fuchsia-500 ${moduleEnabled ? '' : 'cursor-not-allowed opacity-45 '}${isDarkMode ? 'text-slate-300 hover:border-[#3c3c44] hover:bg-[#25252b]/80 hover:text-white' : 'text-slate-700 hover:border-slate-200 hover:bg-slate-100'}`}
                     >
                       {getControlIcon(previewType)}
                       <span className="min-w-0 flex-1 truncate">{control.label}</span>

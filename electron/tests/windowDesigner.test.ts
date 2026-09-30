@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import './dataGrid.test';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -63,10 +64,17 @@ import { findControlTagConflict, normalizeControlTagInteger, normalizeControlTag
 import {
   createControlToolboxGroups,
   getControlToolboxModuleDisabledMessage,
+  getDesignerModuleDisplayName,
+  getModuleControlOwningModuleId,
   readControlToolboxExpansionState,
+  resolveDesignerControlAddGate,
   saveControlToolboxExpansionState
 } from '../src/services/windowDesigner/controlToolboxModel';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+
+// new_emoji 真实清单在开发机仓库根 .lingbuilder/modules 下（与 newEmojiComponentCards.test.ts 同源）；
+// 缺失时清单审计用例自动跳过，门禁单元用例不依赖它。
+const REAL_NEW_EMOJI_MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
 import { LIST_VIEW_ADVANCED_API } from '../src/services/modules/listViewApiCatalog';
 import { EDGEVIEW_BROWSER_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import type { InstalledModule } from '../src/services/modules/types';
@@ -1425,6 +1433,19 @@ test('Win32 分组框沿用文字颜色并支持标题对齐和边框外观', ()
   assert.match(cpp, /if \(IsType\(\*control, L"GroupBox"\)\)/u);
   assert.match(cpp, /IsType\(control, L"GroupBox"\)[\s\S]+className = L"STATIC";[\s\S]+style \|= SS_NOTIFY \| WS_CLIPCHILDREN \| WS_CLIPSIBLINGS;[\s\S]+exStyle \|= WS_EX_CONTROLPARENT;/u);
   assert.doesNotMatch(cpp, /style \|= BS_GROUPBOX/u);
+  // 分组框是纯视觉容器：必须显式维护「创建序 = 叠放序」，并把与其矩形相交的更高
+  // 控件从自绘 DC 排除，否则 STATIC(CS_PARENTDC) 的填充会盖住 TextBox/ListBox 等控件。
+  assert.match(cpp, /void ExcludeOverlappingControlsFromPaintDC\(HWND container, HDC hdc, int painterOrder\)/u);
+  assert.match(cpp, /void InvalidateOverlappingControls\(HWND container, int painterOrder\)/u);
+  assert.match(cpp, /int RuntimeControlPaintOrder\(HWND window\) const/u);
+  assert.match(cpp, /ExcludeOverlappingControlsFromPaintDC\(hwnd, hdc, RuntimeControlPaintOrder\(hwnd\)\)/u);
+  assert.match(cpp, /self->InvalidateOverlappingControls\(hwnd, self->RuntimeControlPaintOrder\(hwnd\)\)/u);
+  assert.match(cpp, /SetWindowPos\(control\.hwnd, HWND_TOP, 0, 0, 0, 0,\s*SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE\)/u);
+  // CS_PARENTDC 子窗口配 SetWindowRgn 会破坏可见区域计算：外框不得再设窗口区域。
+  assert.doesNotMatch(cpp, /void ApplyTextBoxFrameRegion\([\s\S]{0,400}?SetWindowRgn/u);
+  // 外框更新区域被容器吞掉时（BeginPaint 空裁剪），必须回退 GetDC 自绘。
+  assert.match(cpp, /const bool emptyPaint = !hdc \|\| \(paint\.rcPaint\.right <= paint\.rcPaint\.left/u);
+  assert.match(cpp, /drawDc = GetDC\(hwnd\);/u);
 });
 
 test('分组框转发嵌套组合框的自绘、颜色和选择消息', () => {
@@ -1669,9 +1690,63 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.ok(cpp.indexOf('NE_设置元素焦点') < cpp.indexOf('new_emoji 已创建'), '初始焦点应在创建完毕处理器之前设置，处理器仍可覆盖焦点');
   assert.ok(cpp.indexOf('new_emoji 已创建') < cpp.indexOf('NE_显示并激活窗口'), '创建完毕处理器执行完成后才应显示并激活窗口');
   assert.ok(cpp.indexOf('NE_显示并激活窗口') < cpp.indexOf('NE_运行消息循环'), '窗口必须在进入消息循环前显示并激活');
+  // 窗口外观字段必须经主题令牌下发：NE_创建窗口/深色窗口 不接收颜色参数，
+  // 且随包引擎 EU_CreateWindow 从不设置浅色主题（WindowState 默认 DARK）。
+  assert.ok(
+    cpp.indexOf('NE_创建深色窗口') < cpp.indexOf('EU_SetThemeMode(g_newEmojiWindow, 1);'),
+    '主题模式应在窗口创建成功并判空之后设置'
+  );
+  assert.match(cpp, /lbSetWindowThemeToken\("panel_bg", 0xFF111827u\);/u);
+  assert.match(cpp, /lbSetWindowThemeToken\("titlebar_bg", 0xFF2D2D30u\);/u);
+  assert.match(cpp, /lbSetWindowThemeToken\("titlebar_text", 0xFFCBD5E1u\);/u);
+  assert.ok(
+    cpp.indexOf('lbSetWindowThemeToken("panel_bg"') < cpp.indexOf('ne_element_1'),
+    '主题令牌应在创建控件之前下发，控件创建即读到最终配色'
+  );
   assert.doesNotMatch(cpp, /class LingWindowBase/);
   assert.ok(generated.diagnostics.some(item => item.includes('旧下拉框') && item.includes('暂不支持')));
   assert.ok(generated.diagnostics.some(item => item.includes('说明文本') && item.includes('仅支持字体名称和字号')));
+});
+
+test('new_emoji 浅色窗口显式切浅色主题并逐字下发外观颜色令牌', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-light-project',
+    name: 'new_emoji 浅色项目',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '浅色主窗口',
+      width: 720, height: 480, background: '#EFEAFC', description: '',
+      titleBarBackground: '#FFFFFF', titleBarForeground: '#0F172A',
+      controls: [
+        { ...createControl('label', undefined, 'Label'), name: '说明文本', content: '浅色窗口', x: 40, y: 40 }
+      ]
+    }]
+  };
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2, id: 'lingbuilder.new_emoji.ui', name: 'new_emoji 原生界面库', version: '1.0.0',
+      category: '界面', description: '测试模块',
+      targets: [
+        { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/Win32/new_emoji.lib'] },
+        { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/x64/new_emoji.lib'] }
+      ]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui', isInstalled: true, isEnabledForProject: true, diagnostics: []
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 MainWindow\n    事件 创建完毕()\n        调试输出("就绪")\n    结束\n结束类',
+    enabledModules: [newEmojiModule]
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  // 浅色背景必须走 NE_创建窗口 并显式 EU_SetThemeMode(LIGHT)：
+  // 随包引擎的浅色创建路径从不设置主题，缺这行运行窗口永远深色。
+  assert.match(cpp, /NE_创建窗口\(L"浅色主窗口"/u);
+  assert.doesNotMatch(cpp, /NE_创建深色窗口/);
+  assert.match(cpp, /EU_SetThemeMode\(g_newEmojiWindow, 0\);/u);
+  assert.match(cpp, /lbSetWindowThemeToken\("panel_bg", 0xFFEFEAFCu\);/u);
+  assert.match(cpp, /lbSetWindowThemeToken\("titlebar_bg", 0xFFFFFFFFu\);/u);
+  assert.match(cpp, /lbSetWindowThemeToken\("titlebar_text", 0xFF0F172Au\);/u);
 });
 
 test('new_emoji 目录编辑框在创建后应用设计器显示内容', () => {
@@ -5558,4 +5633,138 @@ test('事件代码定位在缺少窗口类声明时退回「声明处理器的�
   assert.equal(conventional?.path, 'src/主窗口.lcpp');
 
   assert.equal(selectControlEventTargetFile([], { windowClassName: '主窗口', handlerName: '创建完毕' }), undefined);
+});
+
+
+// ===== 「点击控件添加到画布」模块门禁（2026-09-25 回归） =====
+// 背景：只启用 new_emoji 的项目里，表格/富列表/标签页/描述列表/树因 previewType（列表视图/选项卡/
+// 树形视图）归属 Win32高级控件模块被静默拦截，表现为「点击控件没反应」。修复后模块贡献控件只
+// 校验其真实归属模块，不再看 previewType 的 Win32 归属。
+
+test('模块贡献控件添加门禁：previewType 的 Win32 归属模块不再拦截 new_emoji 控件', () => {
+  const enabled = new Set(['lingbuilder.win32.basic', 'lingbuilder.new_emoji.ui', 'lingbuilder.system.shell']);
+  const cases: Array<{ previewType: string; namespacedType: string; label: string }> = [
+    { previewType: 'ListView', namespacedType: 'lingbuilder.new_emoji.ui/Table', label: '表格 Table' },
+    { previewType: 'ListView', namespacedType: 'lingbuilder.new_emoji.ui/RichList', label: '富列表 RichList' },
+    { previewType: 'TabControl', namespacedType: 'lingbuilder.new_emoji.ui/Tabs', label: '标签页 Tabs' },
+    { previewType: 'ListView', namespacedType: 'lingbuilder.new_emoji.ui/Descriptions', label: '描述列表 Descriptions' },
+    { previewType: 'TreeView', namespacedType: 'lingbuilder.new_emoji.ui/Tree', label: '树 Tree' }
+  ];
+  for (const item of cases) {
+    const gate = resolveDesignerControlAddGate({ type: item.previewType as never, moduleControl: item, enabledDesignerModules: enabled });
+    assert.equal(gate.allowed, true, `${item.label} 应可添加：${gate.reason}`);
+  }
+});
+
+test('模块贡献控件添加门禁：所属模块未启用时给出中文拦截原因', () => {
+  const gate = resolveDesignerControlAddGate({
+    type: 'Button',
+    moduleControl: { namespacedType: 'lingbuilder.new_emoji.ui/Button', label: '按钮 Button' },
+    enabledDesignerModules: new Set(['lingbuilder.win32.basic'])
+  });
+  assert.equal(gate.allowed, false);
+  assert.match(gate.reason, /New_Emoji 模块/);
+  assert.match(gate.reason, /配置项目所使用模块/);
+});
+
+test('普通 Win32 控件添加门禁：归属模块未启用仍拦截且原因可读', () => {
+  const blocked = resolveDesignerControlAddGate({ type: 'ListView', enabledDesignerModules: new Set(['lingbuilder.win32.basic']) });
+  assert.equal(blocked.allowed, false);
+  assert.match(blocked.reason, /列表视图/);
+  assert.match(blocked.reason, /Win32高级控件模块/);
+  const allowed = resolveDesignerControlAddGate({ type: 'Button', enabledDesignerModules: new Set(['lingbuilder.win32.basic']) });
+  assert.equal(allowed.allowed, true);
+});
+
+test('模块贡献控件归属模块推导：namespacedType 前缀优先，缺省回落 new_emoji', () => {
+  assert.equal(getModuleControlOwningModuleId({ namespacedType: 'lingbuilder.new_emoji.ui/Table' }), 'lingbuilder.new_emoji.ui');
+  assert.equal(getModuleControlOwningModuleId({ type: 'Table' }), 'lingbuilder.new_emoji.ui');
+  assert.equal(getDesignerModuleDisplayName('lingbuilder.win32.common-controls'), 'Win32高级控件模块');
+  assert.equal(getDesignerModuleDisplayName('lingbuilder.new_emoji.ui'), 'New_Emoji 模块');
+});
+
+test('new_emoji 真实清单审计：仅启用 new_emoji 时全部 designerControls 都可添加', { skip: !fsSync.existsSync(REAL_NEW_EMOJI_MANIFEST_PATH) }, () => {
+  const manifest = JSON.parse(fsSync.readFileSync(REAL_NEW_EMOJI_MANIFEST_PATH, 'utf8')) as {
+    contributes?: { designerControls?: Array<{ type: string; label: string; namespacedType?: string; previewType?: string }> };
+  };
+  const controls = manifest.contributes?.designerControls || [];
+  assert.ok(controls.length >= 90, `new_emoji designerControls 应在 90+（实际 ${controls.length}）`);
+  const enabled = new Set(['lingbuilder.win32.basic', 'lingbuilder.new_emoji.ui']);
+  const blocked = controls.filter(control => {
+    const previewType = (control.previewType || control.type) as never;
+    return !resolveDesignerControlAddGate({ type: previewType, moduleControl: control, enabledDesignerModules: enabled }).allowed;
+  });
+  assert.deepEqual(blocked.map(control => control.label), [], '只启用 new_emoji 时不应有任何 designerControl 被门禁拦截');
+});
+
+test('事件处理器先于子程序定义调用保持合法，且不得生成类内前向声明（MSVC C2535 红线）', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'forward-declaration-order',
+    name: '前向声明顺序',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        换行()',
+    '    结束',
+    '    文本型 换行()',
+    '        返回("ok")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  // 事件处理器调用后置子程序：类内联成员函数体是 complete-class context，顺序与编译解耦。
+  assert.match(cpp, /换行\(\);/u);
+  assert.match(cpp, /换行\(\)\s*\{/u);
+  // 红线：类内「声明 + 定义」在 MSVC 下报 C2535（GCC/Clang 接受），因此禁止再生成类内前向声明；
+  // 若引入声明必须同时把成员定义移出类外。成员级声明形如「4 空格缩进 + 类型 + 名();」。
+  assert.doesNotMatch(cpp, /^ {4}\S[^\n{]*换行\(\);\s*$/mu);
+});
+
+test('Loaded 派发（创建完毕返回）之后补一次 WireCompositeControls，选项卡页随动态内容点亮', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'tab-refresh-after-loaded',
+    name: '创建完毕后刷新选项卡',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        调试输出("created")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /DispatchWindowEvent\(L"Loaded"\); WireCompositeControls\(\);/u);
+});
+
+test('TextBox 占位提示走 EM_SETCUEBANNER，content 保持控件真实文本', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'textbox-placeholder-cue',
+    name: '编辑框占位提示',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '',
+      controls: [{
+        id: 'name-input', type: 'TextBox', name: '输入_昵称', content: '', x: 10, y: 10, width: 160, height: 34,
+        fontSize: 12, background: '#2D2D30', foreground: '#E2E8F0', isEnabled: true, visibility: 'Visible',
+        properties: { placeholder: '请输入昵称' }, events: {}
+      }]
+    }]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        调试输出(控件_取文本("输入_昵称"))',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /EM_SETCUEBANNER/u);
+  assert.match(cpp, /L"请输入昵称"/u);
+  // 占位提示进 data 槽，不是窗口文本：控件初始文本仍为空。
+  assert.match(cpp, /L"输入_昵称"/u);
 });

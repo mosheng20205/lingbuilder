@@ -1,5 +1,15 @@
 import { LingCefHeadlessResource, LingClockResource, LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
-import { getLingWindowSourceFileName, normalizeLingWindowFrame } from './windowDesignerService';
+import {
+  getLingWindowSourceFileName,
+  normalizeLingWindowFrame,
+  DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
+  DEFAULT_WINDOW_TITLE_BAR_FOREGROUND
+} from './windowDesignerService';
+import { STANDARD_LIBRARY_MODULE_IDS } from '../modules/standardLibraryModules';
+import { SYSTEM_LIBRARY_MODULE_IDS } from '../modules/systemLibraryModules';
+import { NETWORK_LIBRARY_MODULES } from '../modules/networkLibraryModules';
+import { DATA_MEDIA_MODULES } from '../modules/dataMediaModules';
+import { PLATFORM_ADVANCED_MODULES } from '../modules/platformAdvancedModules';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import { createProjectDllDeclarationModule, buildProjectDllMemoryResourceLines, collectProjectDllMissingSystemAliasDiagnostics, getProjectDllMemoryLibrarySpecs } from '../lingCpp/projectDllCommandService';
 import {
@@ -351,13 +361,20 @@ export function generateLingCppNativeWin32Project(
   const consoleStartup = options.outputKind === 'console-application'
     ? resolveConsoleStartupEntry(projectSources.map(source => source.sourceCode))
     : undefined;
-  const effectiveProject = consoleStartup?.entry
+  const consoleAlignedProject = consoleStartup?.entry
     ? withConsoleStartupWindow(project, consoleStartup.entry.className)
     : project;
-  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, effectiveProject);
+  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, consoleAlignedProject);
   // 项目级 DLL 命令声明：合成虚拟模块并入启用模块，诊断/补全/C++ 生成/构建自动复用模块链路。
   const projectDllModule = createProjectDllDeclarationModule(aggregate.program.dllLibraries || [], project.id);
   if (projectDllModule) enabledModules = [...enabledModules, projectDllModule];
+  // 动态库模式：设计器模型缺失或为零窗口（windows-dll 模板项目按设计无窗口）时，合成一个
+  // 无控件的名义宿主窗口，类名对准源码第一个类——DLL 导出面正是从「设计器窗口类名 ↔ 源码类」
+  // 匹配产生的，零窗口会静默导出空表。与 withConsoleStartupWindow 同口径：只调整本次生成的
+  // 内存模型，不改写设计器持久化数据。
+  const effectiveProject = options.outputKind === 'dynamic-library'
+    ? withNominalLibraryWindow(consoleAlignedProject, aggregate.program)
+    : consoleAlignedProject;
   const selectedWindow = resolveNativeWindowForSource(effectiveProject, options, aggregate.program);
   const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
   const newEmojiModuleEnabled = enabledModules.some(module => module.manifest.id === NEW_EMOJI_MODULE_ID);
@@ -371,15 +388,25 @@ export function generateLingCppNativeWin32Project(
   const outputKind: 'application' | 'dynamic-library' | 'console-application' = consoleStartup
     ? 'console-application'
     : dynamicLibraryRequested && !usesNewEmojiDesigner ? 'dynamic-library' : 'application';
+  // 纯逻辑动态库判定（窗口型/纯逻辑双形态，详见 resolvePureLogicDllEligibility）。
+  const pureLogicDllEligibility = outputKind === 'dynamic-library'
+    ? resolvePureLogicDllEligibility(effectiveProject, aggregate.program, enabledModules)
+    : { eligible: false, reason: '' };
+  const pureLogicDll = pureLogicDllEligibility.eligible;
+  const pureLogicDllDiagnostics: string[] = [];
+  if (outputKind === 'dynamic-library' && !pureLogicDll && pureLogicDllEligibility.reason) {
+    // 窗口型 DLL：保留完整基座；判定原因进诊断便于理解为何未启用精简形态。
+    pureLogicDllDiagnostics.push(`动态库窗口运行时：${pureLogicDllEligibility.reason}，已生成完整窗口基座（纯逻辑精简未启用）。`);
+  }
   const dynamicLibraryEntry = outputKind === 'dynamic-library'
-    ? generateDynamicLibraryEntrySection(effectiveProject, aggregate.program, enabledModules)
+    ? generateDynamicLibraryEntrySection(effectiveProject, aggregate.program, enabledModules, pureLogicDll)
     : undefined;
   const consoleEntry = outputKind === 'console-application' && consoleStartup?.entry
     ? generateConsoleEntrySection(effectiveProject, aggregate.program, { ...consoleStartup, entry: consoleStartup.entry })
     : undefined;
   const mainCppContent = usesNewEmojiDesigner
     ? generateNewEmojiMainCpp(effectiveProject, selectedWindow, aggregate.program, enabledModules)
-    : generateMainCpp(effectiveProject, selectedWindow, { ...aggregate.baseAst, program: aggregate.program }, enabledModules, dynamicLibraryEntry?.section, consoleEntry);
+    : generateMainCpp(effectiveProject, selectedWindow, { ...aggregate.baseAst, program: aggregate.program }, enabledModules, dynamicLibraryEntry?.section, consoleEntry, pureLogicDll);
   const backendModuleDiagnostics = usesNewEmojiDesigner && !newEmojiModuleEnabled
     ? ['当前窗口使用 new_emoji 后端，但项目尚未启用 lingbuilder.new_emoji.ui 模块。']
     : [];
@@ -561,7 +588,12 @@ export function generateLingCppNativeWin32Project(
   // 旧「内嵌文件」清单已弃用：迁移说明只提示（不阻断），命名冲突才阻断并给出中文修复指引。
   const embeddedResourceWarnings = [...legacyEmbeddedMigration.deprecation];
   const embeddedResourceBlockingDiagnostics = [...legacyEmbeddedMigration.diagnostics];
-  const executableResourceFile = generateWindowsExecutableResourceFile(selectedWindow, [...projectDllMemoryResourceLines, ...buildEmbeddedResourceRcLines(embeddedResourceSpecs)]);
+  const executableResourceFile = generateWindowsExecutableResourceFile(
+    selectedWindow,
+    [...projectDllMemoryResourceLines, ...buildEmbeddedResourceRcLines(embeddedResourceSpecs)],
+    // 纯逻辑动态库不嵌窗口图标：DLL 图标无处显示，93KB 的 ICO 占掉产物大头。
+    { excludeWindowIcon: pureLogicDll }
+  );
 
   return {
     selectedWindow,
@@ -586,6 +618,7 @@ export function generateLingCppNativeWin32Project(
       ...newEmojiControlReferenceDiagnostics,
       ...resourceDiagnostics,
       ...(dynamicLibraryEntry?.diagnostics ?? []),
+      ...pureLogicDllDiagnostics,
       ...dynamicLibraryMismatchDiagnostics,
       ...projectDllBackendDiagnostics,
       ...embeddedSiteModelDiagnostics,
@@ -698,7 +731,7 @@ function aggregateLingCppProjectSources(
       diagnostics.push(message);
       if (diagnostic.level === 'error') blockingDiagnostics.push(message);
     });
-    getLingCppSemanticDiagnostics(source.sourceCode, designerProject, source.filePath, { availableModules: enabledModules, enabledModules }, projectGlobals, projectTypes, projectFunctions)
+    getLingCppSemanticDiagnostics(source.sourceCode, designerProject, source.filePath, { availableModules: enabledModules, enabledModules }, projectGlobals, projectTypes, projectFunctions, { enableUnknownCommandAdmission: true })
       .forEach(diagnostic => {
         const message = `${source.filePath} 第 ${diagnostic.line} 行：${diagnostic.message}`;
         diagnostics.push(message);
@@ -791,6 +824,9 @@ function getNewEmojiRuntimeControlContributions(enabledModules: InstalledModule[
   return enabledModules
     .filter(module => module.manifest.id === NEW_EMOJI_MODULE_ID)
     .flatMap(module => module.manifest.contributes?.designerControls || [])
+    // 同一模块可能同时存在于 工作区模块目录 与 打包/开发副本 两处（同 id 不同 installPath）。
+    // 不去重会让每个控件的运行时包装函数发射两遍，MSVC 报 C2084 函数已有主体。
+    .filter((control, index, all) => all.findIndex(item => item.type === control.type) === index)
     .filter(control => control.isVisual !== false && Boolean(control.runtime?.createCommand) && Boolean(control.runtimeControl));
 }
 
@@ -1328,11 +1364,16 @@ function generateNewEmojiRuntimeEventCpp(
 function generateNewEmojiPropertyBridgeCpp(program: LingCppProgram, enabledModules: InstalledModule[]): string {
   const bindings = new Map<string, ModuleCommandBinding>();
   const descriptors: Array<{ controlType: string; descriptor: NewEmojiPropertyCommandDescriptor; binding: ModuleCommandBinding }> = [];
+  // 同一模块可能同时存在于 工作区模块目录 与 打包/开发副本（同 id 不同 installPath）。
+  // 不按命令名去重会让每条属性桥接助手发射两遍，MSVC 报 C2084 函数已有主体。
+  const seenBridgeCommands = new Set<string>();
   enabledModules.forEach(module => {
     (module.manifest.contributes?.designerControls || []).forEach(control => {
       for (const descriptor of control.runtime?.propertyBridgeCommands || []) {
         const binding = module.manifest.bindings?.commands?.find(item => item.command === descriptor.command);
         if (!binding) continue;
+        if (seenBridgeCommands.has(descriptor.command)) continue;
+        seenBridgeCommands.add(descriptor.command);
         bindings.set(descriptor.command, binding);
         if (program.source.includes(descriptor.command)) {
           descriptors.push({ controlType: control.type, descriptor, binding });
@@ -1389,6 +1430,8 @@ interface NewEmojiPropertyCommandDescriptor {
 // 禁止从 .lcpp 直接调用 NE_EU_* 版本；由生成模板提供宽字符版助手。
 const NEW_EMOJI_DATA_BRIDGE_COMMANDS = [
   'NE表格_设置列', 'NE表格_设置行数据', 'NE表格_添加行', 'NE表格_插入行',
+  'NE元素_设置鼠标光标', 'NE按钮_设置鼠标光标', 'NE按钮_设置悬停三态色',
+  'NE表格_设置悬停行颜色', 'NE表格_设置悬停列',
   'NE富列表_设置模板', 'NE富列表_设置条目', 'NE富列表_添加条目', 'NE富列表_设置选中键',
   'NE富列表_设置倒计时', 'NE富列表_设置倒计时状态',
   'NE菜单_设置项目', 'NE菜单_设置项目图标', 'NE菜单_设置项目快捷键', 'NE菜单_设置项目元数据',
@@ -1509,6 +1552,46 @@ static int NE表格_插入行(const wchar_t* controlName, int rowIndex, const st
     if (!element) return -1;
     const std::string utf8 = LB_NE_ToUtf8(rowJson.c_str());
     return EU_InsertTableRow(g_newEmojiWindow, element->id, rowIndex, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+}
+
+static bool NE元素_设置鼠标光标(const wchar_t* controlName, int cursorKind) {
+    const LB_NE_ElementRef* element = LB_NE_FindElement(controlName);
+    if (!element) return false;
+    EU_SetElementCursor(g_newEmojiWindow, element->id, cursorKind);
+    return true;
+}
+
+static bool NE按钮_设置鼠标光标(const wchar_t* controlName, int cursorKind) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Button" });
+    if (!element) return false;
+    EU_SetElementCursor(g_newEmojiWindow, element->id, cursorKind);
+    return true;
+}
+
+static bool NE按钮_设置悬停三态色(const wchar_t* controlName, int hoverBg, int hoverBorder, int hoverFg,
+                                 int pressedBg, int pressedBorder, int pressedFg) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Button" });
+    if (!element) return false;
+    EU_SetButtonStateColors(g_newEmojiWindow, element->id,
+        static_cast<unsigned int>(hoverBg), static_cast<unsigned int>(hoverBorder), static_cast<unsigned int>(hoverFg),
+        static_cast<unsigned int>(pressedBg), static_cast<unsigned int>(pressedBorder), static_cast<unsigned int>(pressedFg));
+    return true;
+}
+
+static bool NE表格_设置悬停行颜色(const wchar_t* controlName, bool enable, int hoverBg, int hoverFg) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    EU_SetTableRowHover(g_newEmojiWindow, element->id, enable ? 1 : 0,
+        static_cast<unsigned int>(hoverBg), static_cast<unsigned int>(hoverFg));
+    return true;
+}
+
+static bool NE表格_设置悬停列(const wchar_t* controlName, int col, bool enable, int hoverBg, int hoverFg, int cursorKind) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Table" });
+    if (!element) return false;
+    EU_SetTableColumnHover(g_newEmojiWindow, element->id, col, enable ? 1 : 0,
+        static_cast<unsigned int>(hoverBg), static_cast<unsigned int>(hoverFg), cursorKind);
+    return true;
 }
 
 static int NE富列表_设置模板(const wchar_t* controlName, const std::wstring& templateJson) {
@@ -2752,6 +2835,18 @@ function generateNewEmojiMainCpp(
   const browserShellHitRegionSetup = windowFrame.preset === 'browserShell'
     ? '    LB_NE_UpdateBrowserShellHitRegions();'
     : '';
+  // 引擎随包 DLL 的 EU_CreateWindow 从不设置浅色主题（WindowState 默认 DARK），
+  // 且 NE_创建窗口 不接收任何颜色参数；窗口三个外观字段必须经主题令牌在创建后下发，
+  // 否则设计器所选背景/标题栏颜色在运行时完全不生效。
+  const windowThemeSetup = windowFrame.preset === 'browserShell' ? '' : [
+    `    EU_SetThemeMode(g_newEmojiWindow, ${darkWindow ? 1 : 0});`,
+    `    const auto lbSetWindowThemeToken = [](const char* token, unsigned int value) {`,
+    `        EU_SetThemeToken(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(token), static_cast<int>(std::strlen(token)), value);`,
+    `    };`,
+    `    lbSetWindowThemeToken("panel_bg", ${toNewEmojiColor(window.background, darkWindow ? 0xff1e1e2e : 0xffeff1f5)});`,
+    `    lbSetWindowThemeToken("titlebar_bg", ${toNewEmojiColor(window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND, 0xff2d2d30)});`,
+    `    lbSetWindowThemeToken("titlebar_text", ${toNewEmojiColor(window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND, 0xffcbd5e1)});`
+  ].join('\n');
   const browserShellThemeSetup = windowFrame.preset !== 'browserShell' ? '' : [
     '    EU_SetChromeThemePreset(g_newEmojiWindow, 1);',
     '    const auto lbSetChromeThemeToken = [](const char* token, unsigned int value) {',
@@ -3736,6 +3831,7 @@ static bool 到逻辑(const std::wstring& text) {
 
 static int 取鼠标水平位置() { POINT point = {}; return GetCursorPos(&point) ? point.x : 0; }
 static int 取鼠标垂直位置() { POINT point = {}; return GetCursorPos(&point) ? point.y : 0; }
+static bool 设置鼠标位置(int x, int y) { return SetCursorPos(x, y) != 0; }
 
 static std::wstring 控件_取文本(const wchar_t* controlName) {
     const LB_NE_ElementRef* element = LB_NE_FindElement(controlName);
@@ -4046,6 +4142,7 @@ ${httpServerEventWindowSetup}
 ${sunnyNetEventWindowSetup}
 ${iconSetup}
 ${windowFrameSetup}
+${windowThemeSetup}
 ${browserShellThemeSetup}
 ${newEmojiWindowEventRuntime.setup}
 ${createLines.join('\n')}
@@ -4695,6 +4792,17 @@ function generateFbroObjectRuntime(availabilityMacro: string, staticFunctions: b
 
   addInt('FBro异步请求_取状态', 'LB_FBro_UrlRequestGetStatus', 'long long object', handle);
   addHandleResult('FBro异步请求_取原请求', 'LB_FBro_UrlRequestGetRequestObject', 'long long object', handle);
+  addHandleResult('FBro异步请求_取响应对象', 'LB_FBro_UrlRequestGetResponse', 'long long object', handle);
+  addInt('FBro异步请求_取消', 'LB_FBro_UrlRequestCancel', 'long long object', handle);
+  // 纯协议请求响应读取：领取/预约模型。事件任务结果 {"kind":"downloadData","size":N}，
+  // 缓冲从任务一次性取回；排空循环以「FBro任务_取状态 <> 2」收尾。
+  add('long long', 'FBro网络_取下载数据事件', 'long long task',
+    'LB_FBRO_TASK_HANDLE next = 0; if (LB_FBro_UrlRequestNextDownloadData(static_cast<LB_FBRO_TASK_HANDLE>(task), &next) != LB_FBRO_OK) return 0; return static_cast<long long>(next);');
+  add('long long', 'FBro网络_取下载块', 'long long task',
+    'LB_FBRO_BUFFER_HANDLE buffer = 0; if (LB_FBro_TaskTakeUrlRequestBufferResult(static_cast<LB_FBRO_TASK_HANDLE>(task), &buffer) != LB_FBRO_OK) return 0; return static_cast<long long>(buffer);');
+  // 控制台/纯代码入口：FBro_后台创建 的实例句柄不进设计器实例表，按句柄直发（与 FBro异步请求_发起 共用桥导出）。
+  add('long long', 'FBro网络_实例发起请求', 'long long browserHandle, long long request',
+    `return static_cast<long long>(LB_FBro_UrlRequestStartAsync(static_cast<LB_FBRO_HANDLE>(browserHandle), static_cast<LB_FBRO_OBJECT_HANDLE>(request), nullptr, nullptr));`);
   addInt('FBro填表_点击元素', 'LB_FBro_FrameTianBiaoClick', 'long long object, const std::wstring& selector, int index', `${handle}, selector.c_str(), index`);
   addInt('FBro填表_滚动到元素', 'LB_FBro_FrameTianBiaoScrollIntoView', 'long long object, const std::wstring& selector, int index, bool toTop', `${handle}, selector.c_str(), index, toTop ? 1 : 0`);
   addInt('FBro填表_聚焦元素', 'LB_FBro_FrameTianBiaoSetFocus', 'long long object, const std::wstring& selector, int index, bool focus', `${handle}, selector.c_str(), index, focus ? 1 : 0`);
@@ -5030,6 +5138,7 @@ struct LB_NE_FbroBrowserInstance {
     int requestedViewportHeight = 0;
 };
 static std::vector<LB_NE_FbroBrowserInstance> g_newEmojiFbroBrowsers;
+static std::vector<LB_FBRO_HANDLE> g_lingFbroStandaloneChromeUiPopups;
 static bool g_newEmojiFbroInitialized = false;
 static constexpr UINT WM_LINGBUILDER_NE_FBRO_EVENT = WM_APP + 0x51;
 static constexpr UINT WM_LINGBUILDER_NE_FBRO_RESTORE_VISIBILITY = WM_APP + 0x57;
@@ -5608,6 +5717,80 @@ static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const wchar_t
 #endif
 }
 static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const std::wstring& address) { return FBro_打开谷歌原生UI浏览器(name, address.c_str()); }
+// 纯代码原生UI：以 FBro_后台创建 的后台实例句柄为会话来源弹 Chrome Runtime 独立顶层窗口；
+// 返回弹窗句柄，可继续用 FBro_实例导航 / FBro_实例关闭 操作，退出时经 LB_NE_ShutdownFbro 回收。
+static long long FBro_实例打开原生UI(long long instanceId, const wchar_t* address) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    const LB_FBRO_HANDLE owner = static_cast<LB_FBRO_HANDLE>(instanceId);
+    if (!owner || !LB_FBro_IsInstanceAlive(owner)) return 0;
+    LB_FBRO_HANDLE popup = LB_FBro_CreateChromeUi(owner,
+        address && address[0] ? address : L"about:blank", LB_NE_FbroEvent, nullptr);
+    if (popup) {
+        g_lingFbroStandaloneChromeUiPopups.push_back(popup);
+        LB_FBro_SetEventCallbackV2(popup, LB_NE_FbroEventV2, nullptr);
+        LB_FBro_SetEventCallbackV3(popup, LB_NE_FbroEventV3, nullptr);
+    }
+    return static_cast<long long>(popup);
+#else
+    (void)instanceId; (void)address; return 0;
+#endif
+}
+// 区域实例族只注入标准 Win32 后端窗口类（含控制台项目复用的同一窗口类）；new_emoji 后端
+// 没有对应运行时，这里提供可解析的降级实现：调用时输出中文提示而不是编译失败。
+static int FBroVIP_实例设置新窗口转标签页(long long instanceId, int enabled) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return instanceId > 0 ? LB_FBro_SetPopupToTab(static_cast<LB_FBRO_HANDLE>(instanceId), enabled) : 0;
+#else
+    (void)instanceId; (void)enabled; return 0;
+#endif
+}
+static int FBro_实例设置代理(long long instanceId, const wchar_t* proxy) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return instanceId > 0 && proxy ? LB_FBro_SetProxy(static_cast<LB_FBRO_HANDLE>(instanceId), proxy, L"", L"") : 0;
+#else
+    (void)instanceId; (void)proxy; return 0;
+#endif
+}
+static std::wstring FBro_实例取Cookie(long long instanceId, const wchar_t* url) {
+    wchar_t result[32768] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+    if (handle && LB_FBro_GetCookies(handle, url && url[0] ? url : L"", result, 32768) >= 1) return result;
+#else
+    (void)instanceId; (void)url;
+#endif
+    return L"";
+}
+static int FBroVIP_实例应用指纹JSON(long long instanceId, const wchar_t* json) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return instanceId > 0 && json ? LB_FBro_ApplyFingerprintJson(static_cast<LB_FBRO_HANDLE>(instanceId), json) : -1;
+#else
+    (void)instanceId; (void)json; return -1;
+#endif
+}
+static int FBro_区域提示不可用() {
+    调试输出(L"FBro 区域命令不支持 new_emoji 后端：请改用标准 Win32 窗口项目。");
+    return 0;
+}
+static std::wstring FBro_区域提示文本不可用() {
+    调试输出(L"FBro 区域命令不支持 new_emoji 后端：请改用标准 Win32 窗口项目。");
+    return L"";
+}
+static int FBro_创建区域(int, int, int, int, int, const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*) { return FBro_区域提示不可用(); }
+static std::wstring FBro_取区域实例JSON() { return FBro_区域提示文本不可用(); }
+static int FBro_关闭全部区域() { return FBro_区域提示不可用(); }
+static int FBro_区域是否存活(int) { return FBro_区域提示不可用(); }
+static int FBro_区域导航(int, const wchar_t*) { return FBro_区域提示不可用(); }
+static int FBro_区域后退(int) { return FBro_区域提示不可用(); }
+static int FBro_区域前进(int) { return FBro_区域提示不可用(); }
+static int FBro_区域刷新(int) { return FBro_区域提示不可用(); }
+static int FBro_区域停止(int) { return FBro_区域提示不可用(); }
+static std::wstring FBro_区域执行JS(int, const wchar_t*) { return FBro_区域提示文本不可用(); }
+static std::wstring FBro_区域取标题(int) { return FBro_区域提示文本不可用(); }
+static std::wstring FBro_区域取地址(int) { return FBro_区域提示文本不可用(); }
+static int FBro_区域调整(int, int, int, int, int) { return FBro_区域提示不可用(); }
+static int FBro_关闭区域(int) { return FBro_区域提示不可用(); }
+
 static void FBro_刷新(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     auto* browser = LB_NE_FindFbro(name); if (LB_NE_IsFbroProcess(browser)) LB_NE_FbroProcessBool(browser, L"reload"); else if (browser && browser->handle) LB_FBro_Reload(browser->handle);
@@ -8598,6 +8781,10 @@ static void LB_NE_ShutdownFbro() {
         if (browser.handle) LB_FBro_Close(browser.handle);
         if (browser.host && IsWindow(browser.host)) DestroyWindow(browser.host);
     }
+    for (const LB_FBRO_HANDLE popup : g_lingFbroStandaloneChromeUiPopups) {
+        if (popup && LB_FBro_IsInstanceAlive(popup)) LB_FBro_Close(popup);
+    }
+    g_lingFbroStandaloneChromeUiPopups.clear();
     if (g_newEmojiFbroInitialized) LB_FBro_Shutdown();
 #endif
     LingFbroProcessController::Instance().Shutdown();
@@ -9069,6 +9256,20 @@ function shouldGenerateNewEmojiCatalogPropertySetter(control: LingControl, comma
   }
   if (control.designerType?.endsWith('/RichList') && command === 'EU_SetRichListVirtualItemCount') {
     return Number(readNewEmojiCatalogProperty(control, 'virtualItemCount')) > 0;
+  }
+  // 鼠标光标与悬停高亮（2026-09-29）：属性只承载设计期初值，全部缺省时不发射，
+  // 保持历史工程生成结果不变；运行期换肤重设仍走 NE元素_设置鼠标光标 等命令。
+  if (command === 'EU_SetTableRowHover') {
+    const enabled = readNewEmojiCatalogProperty(control, 'rowHoverEnabled');
+    return enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+  }
+  if (command === 'EU_SetTableColumnHover') {
+    const column = Number(readNewEmojiCatalogProperty(control, 'hoverColumnIndex'));
+    return Number.isFinite(column) && column >= 0;
+  }
+  if (command === 'EU_SetElementCursor') {
+    const cursor = Number(readNewEmojiCatalogProperty(control, 'cursorShape'));
+    return Number.isFinite(cursor) && cursor >= 0;
   }
   if (!control.designerType?.endsWith('/ListBox')) return true;
   if (command === 'EU_SetListBoxItemsEx') {
@@ -9905,10 +10106,237 @@ ${tableLines}
 `;
 }
 
-function generateDynamicLibraryEntrySection(
+// ===== 纯逻辑动态库（LINGBUILDER_PURE_LOGIC_DLL）判定 =====
+// 动态库输出有两种生成形态，每次构建按当前源码实时判定（不是一次性裁死）：
+// - 窗口型 DLL：启用浏览器/事件窗口类模块，或子程序体引用了窗口运行时命令 → 生成完整
+//   LingWindowBase + 窗口工厂 + 消息泵基础设施（与旧行为一致）。这是「DLL 里创建窗口程序」
+//   后期路线的落点：用户在公开子程序里写窗口/控件命令，判定自动回到全基座。
+// - 纯逻辑 DLL：全部启用模块的运行时都是自由函数、方法体只调用安全命令 → 用户类不继承
+//   LingWindowBase，跳过基座/工厂/GDI+ 初始化，只保留运行时 + DllMain + 导出。
+// 判定保守方向是「多保留基座」（行为与旧版一致）；只有完全命不中窗口能力才精简。
+const PURE_LOGIC_DLL_EVENT_WINDOW_MODULE_IDS: ReadonlySet<string> = new Set([
+  'lingbuilder.net.http-client', // HTTP 客户端事件经窗口 PostMessage 派发
+  'lingbuilder.cdp.client',      // CDP 客户端事件窗口
+  'lingbuilder.web.http',        // 内置网页访问含事件窗口集成
+  'lingbuilder.win32.menu',      // 上下文/弹出菜单依赖窗口消息
+  'lingbuilder.win32.tray',      // 托盘图标依赖隐藏窗口接收消息
+  'lingbuilder.win32.accessibility', // UIA 清理挂靠窗口运行时
+  'lingbuilder.advanced.hook',   // 低级钩子要求宿主线程消息泵
+  'lingbuilder.advanced.com'     // COM 事件经窗口派发
+]);
+
+// 运行时全部为自由函数（不依赖 LingWindowBase）的模块：五个 map 型运行时文件覆盖的模块，
+// 减去需要事件窗口的成员。新增模块时：运行时落在这五个文件的默认安全；带窗口集成/浏览器
+// 子进程/消息泵依赖的必须加入排除集，否则对应 DLL 项目会被误判为纯逻辑（编译期即报错）。
+// win32.basic 特例：启用它不会拼接任何守卫外的增量运行时（其自由函数在模板固定前段、
+// 成员命令在 LingWindowBase 内），因此「启用」安全；但其命令默认走窗口运行时（见下）。
+const PURE_LOGIC_DLL_SAFE_RUNTIME_MODULE_IDS: ReadonlySet<string> = new Set([
+  ...STANDARD_LIBRARY_MODULE_IDS,
+  ...SYSTEM_LIBRARY_MODULE_IDS,
+  ...NETWORK_LIBRARY_MODULES.map(module => module.id).filter(id => !PURE_LOGIC_DLL_EVENT_WINDOW_MODULE_IDS.has(id)),
+  ...DATA_MEDIA_MODULES.map(module => module.id),
+  ...PLATFORM_ADVANCED_MODULES.map(module => module.id).filter(id => !PURE_LOGIC_DLL_EVENT_WINDOW_MODULE_IDS.has(id)),
+  'lingbuilder.win32.basic'
+]);
+
+// 命令安全集合：只有这些模块的命令允许出现在纯逻辑 DLL 的方法体里（运行时为自由函数）。
+// win32.basic 故意不进本集合：它的命令（信息框/控件_*/到整数/打印机族等）要么是 LingWindowBase
+// 成员、要么在判定上保守回退窗口型，确保兜底完整——方法体任何其他中文调用都会触发窗口型。
+const PURE_LOGIC_DLL_SAFE_COMMAND_MODULE_IDS: ReadonlySet<string> = new Set([
+  ...STANDARD_LIBRARY_MODULE_IDS,
+  ...SYSTEM_LIBRARY_MODULE_IDS,
+  ...NETWORK_LIBRARY_MODULES.map(module => module.id).filter(id => !PURE_LOGIC_DLL_EVENT_WINDOW_MODULE_IDS.has(id)),
+  ...DATA_MEDIA_MODULES.map(module => module.id),
+  ...PLATFORM_ADVANCED_MODULES.map(module => module.id).filter(id => !PURE_LOGIC_DLL_EVENT_WINDOW_MODULE_IDS.has(id))
+]);
+
+// 带括号的中文流程关键词（如果(x)/返回(x)/计次循环(x)），不是命令调用。
+const PURE_LOGIC_DLL_KEYWORD_CALL_NAMES: ReadonlySet<string> = new Set([
+  '如果', '否则', '否则如果', '判断', '计次循环', '计次循环首', '变量循环', '变量循环首', '到循环', '判断循环', '返回'
+]);
+
+interface PureLogicDllEligibility {
+  eligible: boolean;
+  /** 不合格原因（中文，可直接进构建日志/诊断）；合格时为空。 */
+  reason: string;
+}
+
+function resolvePureLogicDllEligibility(
   project: LingWindowProject,
   program: LingCppProgram,
   enabledModules: InstalledModule[]
+): PureLogicDllEligibility {
+  for (const module of enabledModules) {
+    if (!PURE_LOGIC_DLL_SAFE_RUNTIME_MODULE_IDS.has(module.manifest.id)) {
+      return { eligible: false, reason: `模块「${module.manifest.name}」的运行时依赖窗口基座或事件窗口` };
+    }
+  }
+  if ((project.resources || []).length > 0) {
+    return { eligible: false, reason: '项目包含设计器资源（时钟/菜单/属性页等），依赖窗口运行时' };
+  }
+  // 安全命令集：命令安全模块的全部公开命令名与别名（运行时为守卫外自由函数）。
+  const safeCommandNames = new Set<string>();
+  for (const module of enabledModules) {
+    if (!PURE_LOGIC_DLL_SAFE_COMMAND_MODULE_IDS.has(module.manifest.id)) continue;
+    for (const command of module.manifest.contributes?.commands || []) {
+      safeCommandNames.add(command.name);
+      for (const alias of command.aliases || []) safeCommandNames.add(alias);
+    }
+  }
+  const userMethodNames = new Set(program.classes.flatMap(cls => cls.methods.map(method => method.name)));
+  for (const cls of program.classes) {
+    for (const method of cls.methods) {
+      // 事件处理器在纯逻辑 DLL 中降级为注释（动态库不创建窗口、事件不会触发），不参与判定。
+      if (method.kind === 'event') continue;
+      for (const statement of method.statements) {
+        if (statement.endLine) continue; // 多行文本块内容不透明，字符串里的括号不是调用
+        for (const match of statement.text.matchAll(/(?<![\p{L}\p{N}_.])([\u4e00-\u9fff][\u4e00-\u9fff\p{N}_]*)\s*[（(]/gu)) {
+          const name = match[1];
+          if (PURE_LOGIC_DLL_KEYWORD_CALL_NAMES.has(name)) continue;
+          if (userMethodNames.has(name)) continue;
+          if (safeCommandNames.has(name)) continue;
+          // 未知中文调用（信息框/控件_*/到整数 等窗口运行时成员命令，或清单遗漏的新命令）：
+          // 保守回到完整窗口基座，绝不生成无法编译的纯逻辑形态。
+          return { eligible: false, reason: `子程序「${method.name}」调用了窗口运行时命令「${name}」` };
+        }
+      }
+    }
+  }
+  return { eligible: true, reason: '' };
+}
+
+/**
+ * 收集纯逻辑 DLL 用户代码实际引用的运行时函数名（种子集合）：
+ * 扫描聚合源码全部语句（含 @ 内嵌 C++ 行、全局变量初始化、事件体），把命中的模块命令
+ * 反查为 binding.runtimeName（生成的 C++ 函数名，内置模块为中文恒等映射）。
+ */
+function collectPureLogicDllUsedRuntimeNames(
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): Set<string> {
+  const used = new Set<string>();
+  if (!program.source.trim()) return used;
+  const sourceLines = program.source.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(sourceLines), sourceLines.length);
+  const callPattern = /(?<![\p{L}\p{N}_.])([\p{L}_][\p{L}\p{N}_]*)\s*[（(]/gu;
+  sourceLines.forEach((line, index) => {
+    if (opaqueLines.has(index)) return;
+    for (const match of line.matchAll(callPattern)) {
+      const binding = findModuleCommandBinding(match[1], enabledModules);
+      if (binding?.runtimeName) used.add(binding.runtimeName);
+    }
+  });
+  return used;
+}
+
+interface LingCppRuntimeUnit {
+  /** 函数名（无名为空 = 非函数单元，始终保留）。 */
+  name: string;
+  /** 顶格定义起点行在本单元文本中的索引归属（文本含前置注释/空行）。 */
+  lines: string[];
+}
+
+/** 字符串/字符/行注释感知的行内花括号增量（用于切分配平校验）。 */
+function countRuntimeBraceDelta(line: string): number {
+  let depth = 0;
+  let inString = false;
+  let inChar = false;
+  let escaped = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (escaped) { escaped = false; continue; }
+    if (character === '\\') { escaped = true; continue; }
+    if (inString) { if (character === '"') inString = false; continue; }
+    if (inChar) { if (character === "'") inChar = false; continue; }
+    if (character === '"') { inString = true; continue; }
+    if (character === "'") { inChar = true; continue; }
+    if (character === '/' && line[index + 1] === '/') break;
+    if (character === '{') depth += 1;
+    if (character === '}') depth -= 1;
+  }
+  return depth;
+}
+
+const RUNTIME_UNIT_CONTROL_KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'else', 'return', 'catch', 'do', 'try']);
+
+/** 从顶格定义行提取函数名：优先中文名，回退形参列表前最后一个 ASCII 标识符。 */
+function extractRuntimeUnitName(line: string): string {
+  const leading = line.trimEnd();
+  if (/^(?:struct|class|namespace|enum|union)\b/.test(leading)) return '';
+  const cjkMatch = leading.match(/([\u4e00-\u9fff][\u4e00-\u9fff\w]*)\s*\(/u);
+  if (cjkMatch) return cjkMatch[1];
+  const asciiMatches = [...leading.matchAll(/([A-Za-z_]\w*)\s*\(/gu)]
+    .map(match => match[1])
+    .filter(name => !RUNTIME_UNIT_CONTROL_KEYWORDS.has(name));
+  return asciiMatches.length ? asciiMatches[asciiMatches.length - 1] : '';
+}
+
+/**
+ * 把运行时文本按顶格定义切分为单元并按调用闭包裁剪。
+ * 保守红线：任何切分异常（括号不平衡、无起点）都原样返回整块文本——裁剪失败绝不产生坏 C++。
+ */
+function pruneRuntimeUnitsForPureLogicDll(runtimeText: string, seedNames: Set<string>): string {
+  if (!runtimeText.trim()) return runtimeText;
+  const lines = runtimeText.split('\n');
+  const units: LingCppRuntimeUnit[] = [];
+  const headerLines: string[] = [];
+  let current: LingCppRuntimeUnit | null = null;
+  let depth = 0;
+  for (const line of lines) {
+    const startsUnit = depth === 0
+      && /^\S/.test(line)
+      && !/^\s*(?:\/\/|#|using\b)/.test(line)
+      && (line.includes('(') || /^(?:struct|class|namespace|enum|union)\b/.test(line))
+      && !/;\s*$/.test(line);
+    if (startsUnit) {
+      current = { name: extractRuntimeUnitName(line), lines: [line] };
+      units.push(current);
+    } else if (current) {
+      current.lines.push(line);
+    } else {
+      headerLines.push(line); // 首个单元之前的注释/空行/杂项，重组时保持原序置顶
+    }
+    depth += countRuntimeBraceDelta(line);
+    if (depth < 0) return runtimeText; // 括号不平衡：放弃裁剪
+  }
+  if (depth !== 0 || units.length === 0) return runtimeText;
+
+  const unitByName = new Map<string, LingCppRuntimeUnit>();
+  for (const unit of units) {
+    if (unit.name) {
+      if (unitByName.has(unit.name)) return runtimeText; // 重名（重载）：放弃裁剪，避免误裁
+      unitByName.set(unit.name, unit);
+    }
+  }
+  const keep = new Set<string>();
+  const queue: string[] = [];
+  for (const name of seedNames) {
+    if (unitByName.has(name) && !keep.has(name)) { keep.add(name); queue.push(name); }
+  }
+  const referencePattern = /(?<![\w])((?:[\u4e00-\u9fff][\u4e00-\u9fff\w]*|[A-Za-z_]\w*))\s*\(/gu;
+  while (queue.length > 0) {
+    const unit = unitByName.get(queue.shift()!);
+    if (!unit) continue;
+    for (const match of unit.lines.join('\n').matchAll(referencePattern)) {
+      const name = match[1];
+      if (!RUNTIME_UNIT_CONTROL_KEYWORDS.has(name) && unitByName.has(name) && !keep.has(name)) {
+        keep.add(name);
+        queue.push(name);
+      }
+    }
+  }
+  return [headerLines.join('\n'), ...units
+    .filter(unit => !unit.name || keep.has(unit.name))
+    .map(unit => unit.lines.join('\n'))]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function generateDynamicLibraryEntrySection(
+  project: LingWindowProject,
+  program: LingCppProgram,
+  enabledModules: InstalledModule[],
+  pureLogicDll = false
 ): DynamicLibraryEntrySection {
   const blockingDiagnostics: string[] = [];
   const diagnostics: string[] = [];
@@ -9948,8 +10376,9 @@ function generateDynamicLibraryEntrySection(
   }
   const singletonItems = [...new Map(exported.map(item => [`${item.classNameCpp}#${item.windowIndex}`, item])).values()];
   const singletonAccessors = singletonItems.map(item => (
+    // 纯逻辑形态：用户类不继承 LingWindowBase，单例无参构造；窗口型保留 WindowSpec 形态。
 `static ${item.classNameCpp}& LingBuilder_应用单例_${item.classNameCpp}() {
-    static ${item.classNameCpp} instance(g_windows[${item.windowIndex}]);
+    static ${item.classNameCpp} instance${pureLogicDll ? '' : `(g_windows[${item.windowIndex}])`};
     return instance;
 }`
   )).join('\n\n');
@@ -9980,7 +10409,10 @@ ${body}
   }).join('\n\n');
   const section = `
 // ===== LingBuilder 动态库模式：入口、运行时初始化与“公开”子程序导出 =====
-// 动态库不创建窗口、不进入消息循环；首次导出调用时惰性完成 COM/GDI+/通用控件
+${pureLogicDll ? `// 纯逻辑动态库（LINGBUILDER_PURE_LOGIC_DLL）：项目未使用任何窗口运行时能力，不生成
+// LingWindowBase 与窗口工厂；后期在公开子程序中加入窗口/控件命令即可自动恢复完整基座。
+static void LingBuilder_EnsureRuntimeInitialized() {
+}` : `// 动态库不创建窗口、不进入消息循环；首次导出调用时惰性完成 COM/GDI+/通用控件
 // 与生成窗口类注册，初始化内容与 EXE 模式 wWinMain 保持一致（不含媒体循环）。
 static HINSTANCE g_LingBuilderDllInstance = nullptr;
 static ULONG_PTR g_LingBuilderDllGdiplusToken = 0;
@@ -10011,7 +10443,7 @@ static void LingBuilder_EnsureRuntimeInitialized() {
         windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
         RegisterClassExW(&windowClass);
     });
-}
+}`}
 
 // 不在 DLL_PROCESS_DETACH 中做任何清理：进程退出由操作系统回收，
 // 避免在加载器锁内销毁 GDI+/COM 资源导致宿主进程不稳定。
@@ -10019,7 +10451,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(instance);
-        g_LingBuilderDllInstance = instance;
+${pureLogicDll ? '        (void)instance;' : '        g_LingBuilderDllInstance = instance;'}
     }
     return TRUE;
 }
@@ -10075,6 +10507,29 @@ function withConsoleStartupWindow(project: LingWindowProject, startupClassName: 
   const baseWindow = project.windows[0];
   if (!baseWindow) return project;
   return { ...project, windows: [{ ...baseWindow, className: startupClassName }, ...project.windows.slice(1)] };
+}
+
+/** 动态库模式：为设计器缺失/零窗口的项目合成无控件的名义宿主窗口，类名对准源码第一个类。 */
+function withNominalLibraryWindow(project: LingWindowProject, program: LingCppProgram): LingWindowProject {
+  if (project.windows.length > 0) return project;
+  const className = program.classes[0]?.name || project.id;
+  return {
+    ...project,
+    windows: [
+      {
+        id: 'main-window',
+        fileName: `${className}.xml`,
+        className,
+        title: project.name || project.id,
+        width: 800,
+        height: 600,
+        background: '#1f2937',
+        description: `${project.name || project.id} 动态库宿主窗口（无界面）`,
+        designerBackend: WIN32_UI_BACKEND_ID,
+        controls: []
+      }
+    ]
+  };
 }
 
 /**
@@ -10187,7 +10642,8 @@ function generateMainCpp(
   ast: LingCppAst,
   enabledModules: InstalledModule[] = [],
   dynamicLibrarySection?: string,
-  consoleEntrySection?: string
+  consoleEntrySection?: string,
+  pureLogicDll = false
 ): string {
   const program = ast.program;
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
@@ -10209,7 +10665,7 @@ function generateMainCpp(
     .map((window, index) => generateWindowSpec(window, index, program))
     .join(',\n');
   const classDefinitions = project.windows
-    .map((window, index) => generateWindowClass(window, index, program, enabledModules, project.resources || []))
+    .map((window, index) => generateWindowClass(window, index, program, enabledModules, project.resources || [], pureLogicDll))
     .join('\n\n');
   const factoryCases = project.windows
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
@@ -10259,9 +10715,28 @@ function generateMainCpp(
   const comCleanupLine = comWindowMethods ? '        COM_关闭全部();' : '';
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
   const sunnyNetRuntime = generateSunnyNetRuntime(enabledModules);
-  const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime || sunnyNetRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const builtinLibraryCommonRuntimeRaw = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime || sunnyNetRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
   const sharedTableRuntime = generateSharedTableRuntime(enabledModules.map(module => module.manifest.id));
-  const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
+  // 纯逻辑动态库：按「用户代码实际引用的命令 → 运行时函数调用闭包」裁剪自由函数运行时
+  // （BUILTIN_LIBRARY_COMMON_RUNTIME 一并参与闭包；sharedTable/项目数据类型/全局变量的
+  // 引用并入种子，避免它们的依赖被误裁）。裁剪器对任何异常保守回退整块文本，绝不生成
+  // 坏 C++；窗口型/EXE/控制台不裁剪，行为零变化。
+  const pureLogicPrunableRuntimeText = `${builtinLibraryCommonRuntimeRaw}\n${builtinLibraryFragments.join('\n')}`;
+  const pureLogicRuntimeExternalReferenceText = [sharedTableRuntime, projectDataTypesDefinition, projectGlobalsDefinition].join('\n');
+  // 纯逻辑下公共运行时已并入裁剪文本，原插值必须置空防双重注入（C2086 重定义）。
+  const builtinLibraryCommonRuntime = pureLogicDll ? '' : builtinLibraryCommonRuntimeRaw;
+  const builtinLibraryRuntime = pureLogicDll
+    ? pruneRuntimeUnitsForPureLogicDll(
+        pureLogicPrunableRuntimeText,
+        (() => {
+          const seeds = collectPureLogicDllUsedRuntimeNames(program, enabledModules);
+          for (const match of pureLogicRuntimeExternalReferenceText.matchAll(/(?<![\w])((?:[\u4e00-\u9fff][\u4e00-\u9fff\w]*|[A-Za-z_]\w*))\s*\(/gu)) {
+            seeds.add(match[1]);
+          }
+          return seeds;
+        })()
+      )
+    : builtinLibraryFragments.join('\n');
   const httpClientWindowMethods = generateHttpClientWindowMethods(enabledModules);
   const httpClientConstructorInitializer = httpClientRuntime
     ? `,\n          httpClientRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_HTTP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
@@ -10317,6 +10792,11 @@ function generateMainCpp(
       : '',
     enabledModules.some(module => module.manifest.id === 'lingbuilder.data.protobuf')
       ? '#ifndef LINGBUILDER_PROTOBUF_MODULE\n#define LINGBUILDER_PROTOBUF_MODULE\n#endif'
+      : '',
+    // 纯逻辑动态库：用预处理器跳过窗口基座/工厂/消息泵文本（编译器不生成对应代码，
+    // 产物体积与编译时间同时受益）；窗口型 DLL 与 EXE/控制台不定义该宏，路径零变化。
+    pureLogicDll
+      ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL\n#define LINGBUILDER_PURE_LOGIC_DLL 1\n#endif'
       : ''
   ].filter(Boolean).join('\n');
   const cef3EventIdCases = CEF3_BROWSER_EVENTS.map(event =>
@@ -10582,6 +11062,15 @@ bool 打印机_是否在线(const wchar_t* name) {
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(linker, "/manifestdependency:\\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\\"")
 ${moduleCppPreamble}
+
+static HINSTANCE g_instance = nullptr;
+
+// 生成器辅助实参转换函数：纯逻辑动态库的用户类不继承 LingWindowBase，必须位于
+// 窗口基座守卫之外。窗口型下 LingWindowBase 的同名成员版本会在类内名字查找中隐藏全局版，
+// 两者并存不产生二义。
+static const wchar_t* LingCppWideArg(const wchar_t* value) { return value ? value : L""; }
+static const wchar_t* LingCppWideArg(const std::wstring& value) { return value.c_str(); }
+${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 static Gdiplus::Color ToGdiPlusColor(COLORREF color) {
     return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
@@ -11333,7 +11822,6 @@ static bool ShowModernColorPickerDialog(HWND owner, const wchar_t* title, COLORR
     return state.accepted;
 }
 
-static HINSTANCE g_instance = nullptr;
 static int g_openWindowCount = 0;
 static const wchar_t* GENERATED_WINDOW_CLASS = L"LingBuilderChineseCppWindowClass";
 // 窗口创建完成事件的延迟派发消息：OnWindowCreated 会同步创建 FBro/CEF3 等浏览器控件，
@@ -12119,6 +12607,8 @@ static void ResolveWindowPlacement(
     }
 }
 
+${pureLogicDll ? '#endif // LINGBUILDER_PURE_LOGIC_DLL' : ''}
+
 ${builtinLibraryCommonRuntime}
 
 ${sharedTableRuntime}
@@ -12148,6 +12638,7 @@ ${fbroProcessRuntime}
 ${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEnabled, collectFbroStartupSwitchesJson(project.windows, fbroHeadlessBaked, fbroDeclaredStartupSwitches), collectFbroJsQueryFunctions(project.windows), fbroHeadlessBaked) : ''}
 
 ${projectGlobalsDefinition}
+${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 class LingWindowBase {
 public:
@@ -12661,9 +13152,14 @@ ${webSocketServerWindowField}
     };
     std::map<int, std::unique_ptr<FbroBrowserInstance>> fbroBrowsers_;
     bool fbroInitialized_ = false;
+    // FBro_实例打开原生UI 弹出的 Chrome UI 顶层窗口句柄登记表：退出时逐个回收。
+    std::vector<LB_FBRO_HANDLE> fbroStandaloneChromeUiPopups_;
 ${fbroBrowserManagerRuntime.members}
 
-    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); LingBuilder_CEF3_创建无头资源(); 时钟_启动默认组件(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); }
+    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); LingBuilder_CEF3_创建无头资源(); 时钟_启动默认组件(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); WireCompositeControls(); }
+    // WireCompositeControls 补一次的原因：WM_CREATE 里那次跑在「创建完毕」之前，用户在
+    // 创建完毕 里动态加页/调整选项卡后页窗口不会亮（实踩：TabControl 启动空白，点一次页签才出现）。
+    // 该函数幂等（重连 UpDown buddy + UpdateTabChildren），在 Loaded 派发后重跑是安全的。
     virtual void WarnUnboundControlEvents() {}
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
@@ -13278,6 +13774,26 @@ ${edgeViewEventIdCases}
         return 1;
 #else
         (void)instanceId; (void)x; (void)y; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)proxyServer; return 0;
+#endif
+    }
+
+    int EdgeView_创建区域代理UA(int instanceId, int x, int y, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer, const wchar_t* userAgent) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (width <= 0 || height <= 0) return 0;
+        EdgeView_关闭实例(instanceId);
+        RECT windowClient = {};
+        const bool hasWindowClient = GetClientRect(hwnd_, &windowClient) != FALSE;
+        const bool autoStretch = x == 0 && y == 0
+            && (!hasWindowClient || (ScaleForDpi(width, dpi_) >= windowClient.right && ScaleForDpi(height, dpi_) >= windowClient.bottom));
+        HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+            ScaleForDpi(x, dpi_), ScaleForDpi(y, dpi_), ScaleForDpi(width, dpi_), ScaleForDpi(height, dpi_), hwnd_, nullptr, g_instance, nullptr);
+        if (!host) return 0;
+        // 用户代理在首次导航前经 创建核心 应用（与弹窗/无头变体同一语义），避免首请求带旧 UA。
+        if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, proxyServer, nullptr, nullptr, false, nullptr, userAgent)) { DestroyWindow(host); return 0; }
+        if (EdgeViewInstance* created = EdgeView_查找(instanceId)) created->autoStretch = autoStretch;
+        return 1;
+#else
+        (void)instanceId; (void)x; (void)y; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)proxyServer; (void)userAgent; return 0;
 #endif
     }
 
@@ -14573,6 +15089,31 @@ ${fbroBrowserManagerRuntime.methods}
     int FBro_打开谷歌原生UI浏览器(const wchar_t* controlName, const std::wstring& address) {
         return FBro_打开谷歌原生UI浏览器(controlName, address.c_str());
     }
+    // 纯代码原生UI：以 FBro_后台创建 的后台实例句柄为会话来源弹 Chrome Runtime 独立顶层窗口，
+    // 不依赖任何设计器控件；返回弹窗句柄，可继续用 FBro_实例导航 / FBro_实例关闭 操作。
+    long long FBro_实例打开原生UI(long long instanceId, const wchar_t* address) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        const LB_FBRO_HANDLE owner = static_cast<LB_FBRO_HANDLE>(instanceId);
+        if (!owner || !LB_FBro_IsInstanceAlive(owner)) {
+            调试输出(L"FBro 实例打开原生UI失败：实例句柄无效或已关闭，请先用 FBro_后台创建 获取句柄。");
+            return 0;
+        }
+        const LB_FBRO_HANDLE popup = LB_FBro_CreateChromeUi(owner,
+            address && address[0] ? address : L"about:blank", FBro_桥接事件, this);
+        if (!popup) {
+            调试输出(L"FBro 实例打开原生UI失败：Chrome UI 窗口创建未成功，后台实例可能尚未就绪。");
+            return 0;
+        }
+        fbroStandaloneChromeUiPopups_.push_back(popup);
+        LB_FBro_SetEventCallbackV2(popup, FBro_桥接事件V2, this);
+        LB_FBro_SetEventCallbackV3(popup, FBro_桥接事件V3, this);
+        return static_cast<long long>(popup);
+#else
+        (void)instanceId; (void)address;
+        调试输出(L"FBro 不可用：无法创建谷歌原生UI浏览器。");
+        return 0;
+#endif
+    }
     int FBro_后退(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
         auto* instance = FBro_查找实例(controlName); if (FBro_是独立进程(instance)) return FBro_进程逻辑(instance, L"back"); return instance && instance->handle ? LB_FBro_GoBack(instance->handle) : 0;
@@ -15313,6 +15854,37 @@ ${embeddedSiteFbroSection}
         (void)instanceId;
 #endif
     }
+    int FBroVIP_实例设置新窗口转标签页(long long instanceId, int enabled) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instanceId > 0 ? LB_FBro_SetPopupToTab(static_cast<LB_FBRO_HANDLE>(instanceId), enabled) : 0;
+#else
+        (void)instanceId; (void)enabled; return 0;
+#endif
+    }
+    int FBro_实例设置代理(long long instanceId, const wchar_t* proxy) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instanceId > 0 && proxy ? LB_FBro_SetProxy(static_cast<LB_FBRO_HANDLE>(instanceId), proxy, L"", L"") : 0;
+#else
+        (void)instanceId; (void)proxy; return 0;
+#endif
+    }
+    std::wstring FBro_实例取Cookie(long long instanceId, const wchar_t* url) {
+        wchar_t result[32768] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+        if (handle && LB_FBro_GetCookies(handle, url && url[0] ? url : L"", result, 32768) >= 1) return result;
+#else
+        (void)instanceId; (void)url;
+#endif
+        return L"";
+    }
+    int FBroVIP_实例应用指纹JSON(long long instanceId, const wchar_t* json) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instanceId > 0 && json ? LB_FBro_ApplyFingerprintJson(static_cast<LB_FBRO_HANDLE>(instanceId), json) : -1;
+#else
+        (void)instanceId; (void)json; return -1;
+#endif
+    }
     std::wstring FBro_读取文本(const wchar_t* controlName, int kind) {
         wchar_t result[8192] = {};
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -15939,6 +16511,10 @@ ${generateFbroVipIndividualRuntime(false)}
             for (const auto& popup : item.second->chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
             if (item.second->handle && !item.second->closed) { hasInProcessBrowser = true; LB_FBro_Close(item.second->handle); }
         }
+        for (const LB_FBRO_HANDLE popup : fbroStandaloneChromeUiPopups_) {
+            if (popup && LB_FBro_IsInstanceAlive(popup)) LB_FBro_Close(popup);
+        }
+        fbroStandaloneChromeUiPopups_.clear();
         if (hasInProcessBrowser) LB_FBro_Shutdown();
 #endif
     }
@@ -15953,6 +16529,10 @@ ${generateFbroVipIndividualRuntime(false)}
             for (const auto& popup : item.second->chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
             if (item.second->handle) LB_FBro_Close(item.second->handle);
         }
+        for (const LB_FBRO_HANDLE popup : fbroStandaloneChromeUiPopups_) {
+            if (popup && LB_FBro_IsInstanceAlive(popup)) LB_FBro_Close(popup);
+        }
+        fbroStandaloneChromeUiPopups_.clear();
         LingFbroProcessController::Instance().Shutdown();
 #endif
         fbroBrowsers_.clear();
@@ -16266,6 +16846,231 @@ ${generateFbroVipIndividualRuntime(false)}
         return result;
     }
 #endif
+
+    // ================= CEF3网络_ 纯协议 URL 请求族（CefURLRequest 直连，无需浏览器实例） =================
+    // 这些包装是「CEF3网络_*」命令的生成期实现：桥接层的出参（句柄/状态/任务）在这里解包成
+    // 单返回值，.lcpp 侧只看到句柄或文本。事件采用领取/预约队列模型：取事件命令返回任务句柄，
+    // 用 CEF3任务_取状态 轮询，读完后释放。注意本模板是普通反引号模板，以下代码严禁出现
+    // 反斜杠转义（一律用数字字符码），避免被 TS 模板吞掉。
+    static std::wstring CEF3网络_读响应头文本(LB_CEF3_HANDLE response,
+        int (LB_CEF3_CALL* getter)(LB_CEF3_HANDLE, const wchar_t*, wchar_t*, size_t, size_t*),
+        const wchar_t* name) {
+        if (!response || !getter || !name) return L"";
+        size_t required = 0;
+        getter(response, name, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> value(required, static_cast<wchar_t>(0));
+        return getter(response, name, value.data(), value.size(), &required) == LB_CEF3_OK
+            ? std::wstring(value.data()) : L"";
+    }
+
+    static int CEF3网络_设置请求头(long long request, const wchar_t* name, const wchar_t* value) {
+        if (!request || !name) return -1;
+        return LB_CEF3_RequestSetHeaderByName(static_cast<LB_CEF3_HANDLE>(request),
+            name, value ? value : L"", 1);
+    }
+
+    static int CEF3网络_设置请求正文(long long request, const std::vector<unsigned char>& body) {
+        if (!request) return -1;
+        if (body.size() > 64ull * 1024ull * 1024ull) return -1;
+        const LB_CEF3_HANDLE post = LB_CEF3_PostDataCreate();
+        if (!post) return -1;
+        LB_CEF3_HANDLE element = LB_CEF3_PostDataElementCreate();
+        LB_CEF3_BUFFER_HANDLE source = 0;
+        int status = element ? LB_CEF3_OK : -1;
+        if (status == LB_CEF3_OK) {
+            if (body.empty()) {
+                status = LB_CEF3_PostDataElementSetToEmpty(element);
+            } else {
+                source = LB_CEF3_BufferCreate(body.data(), body.size());
+                status = source
+                    ? LB_CEF3_PostDataElementSetToBytes(element, source, 0,
+                        static_cast<uint64_t>(body.size()))
+                    : -1;
+            }
+        }
+        if (status == LB_CEF3_OK) status = LB_CEF3_PostDataAddElement(post, element);
+        if (status == LB_CEF3_OK) {
+            status = LB_CEF3_RequestSetPostData(static_cast<LB_CEF3_HANDLE>(request), post);
+        }
+        if (source) LB_CEF3_BufferRelease(source);
+        if (element) LB_CEF3_HandleRelease(element);
+        LB_CEF3_HandleRelease(post);
+        return status == LB_CEF3_OK ? 1 : 0;
+    }
+
+    static long long CEF3网络_发起请求(long long request, long long client, long long requestContext) {
+        LB_CEF3_HANDLE created = 0;
+        if (LB_CEF3_UrlRequestCreate(static_cast<LB_CEF3_HANDLE>(request),
+                static_cast<LB_CEF3_HANDLE>(client),
+                static_cast<LB_CEF3_HANDLE>(requestContext), &created) != LB_CEF3_OK) {
+            return 0;
+        }
+        return static_cast<long long>(created);
+    }
+
+    static long long CEF3网络_取请求状态(long long urlRequest) {
+        int32_t status = 0;
+        if (LB_CEF3_UrlRequestGetRequestStatus(static_cast<LB_CEF3_HANDLE>(urlRequest), &status) != LB_CEF3_OK) {
+            return -1;
+        }
+        return static_cast<long long>(status);
+    }
+
+    static long long CEF3网络_取请求错误(long long urlRequest) {
+        int32_t error = 0;
+        if (LB_CEF3_UrlRequestGetRequestError(static_cast<LB_CEF3_HANDLE>(urlRequest), &error) != LB_CEF3_OK) {
+            return 0;
+        }
+        return static_cast<long long>(error);
+    }
+
+    static long long CEF3网络_取响应对象(long long urlRequest) {
+        LB_CEF3_HANDLE response = 0;
+        if (LB_CEF3_UrlRequestGetResponse(static_cast<LB_CEF3_HANDLE>(urlRequest), &response) != LB_CEF3_OK) {
+            return 0;
+        }
+        return static_cast<long long>(response);
+    }
+
+    static std::wstring CEF3网络_取响应头(long long response, const wchar_t* name) {
+        return CEF3网络_读响应头文本(static_cast<LB_CEF3_HANDLE>(response),
+            LB_CEF3_ResponseGetHeaderByName, name);
+    }
+
+    static std::wstring CEF3网络_取响应MIME类型(long long response) {
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(response), LB_CEF3_ResponseGetMimeType);
+    }
+
+    static std::wstring CEF3网络_取响应地址(long long response) {
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(response), LB_CEF3_ResponseGetUrl);
+    }
+
+    static std::wstring CEF3网络_取响应头映射JSON(long long response) {
+        const LB_CEF3_HANDLE list = LB_CEF3_ResponseGetHeaderMap(static_cast<LB_CEF3_HANDLE>(response));
+        if (!list) return L"[]";
+        const std::wstring json = CEF3_Bridge读取文本(list, LB_CEF3_ListToJson);
+        LB_CEF3_ListRelease(list);
+        return json.empty() ? std::wstring(L"[]") : json;
+    }
+
+    static long long CEF3网络_取完成事件(long long client) {
+        LB_CEF3_TASK_HANDLE task = 0;
+        if (LB_CEF3_UrlRequestClientNextRequestComplete(static_cast<LB_CEF3_HANDLE>(client), &task) != LB_CEF3_OK) {
+            return 0;
+        }
+        return static_cast<long long>(task);
+    }
+
+    static long long CEF3网络_取下载数据事件(long long client) {
+        LB_CEF3_TASK_HANDLE task = 0;
+        if (LB_CEF3_UrlRequestClientNextDownloadData(static_cast<LB_CEF3_HANDLE>(client), &task) != LB_CEF3_OK) {
+            return 0;
+        }
+        return static_cast<long long>(task);
+    }
+
+    static long long CEF3网络_取认证事件(long long client) {
+        LB_CEF3_TASK_HANDLE task = 0;
+        if (LB_CEF3_UrlRequestClientNextAuthCredentials(static_cast<LB_CEF3_HANDLE>(client), &task) != LB_CEF3_OK) {
+            return 0;
+        }
+        return static_cast<long long>(task);
+    }
+
+    static long long CEF3网络_取下载块(long long task) {
+        LB_CEF3_BUFFER_HANDLE buffer = 0;
+        if (LB_CEF3_TaskTakeUrlRequestBufferResult(static_cast<LB_CEF3_TASK_HANDLE>(task), &buffer) != LB_CEF3_OK) {
+            return 0;
+        }
+        return static_cast<long long>(buffer);
+    }
+
+    static std::wstring CEF3网络_下载块转文本(long long buffer, const wchar_t* encoding) {
+        if (!buffer) return L"";
+        // BufferCopy 的容量探测调用按设计返回 BUFFER_TOO_SMALL 但会把真实大小写入 required，
+        // 与 CEF3_Bridge读取文本 的探测模式一致：只看 required，不要求探测返回 LB_CEF3_OK。
+        size_t required = 0;
+        LB_CEF3_BufferCopy(static_cast<LB_CEF3_BUFFER_HANDLE>(buffer), nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<unsigned char> bytes(required, static_cast<unsigned char>(0));
+        if (LB_CEF3_BufferCopy(static_cast<LB_CEF3_BUFFER_HANDLE>(buffer), bytes.data(),
+                bytes.size(), &required) != LB_CEF3_OK || bytes.empty()) {
+            return L"";
+        }
+        const std::wstring requested = encoding ? encoding : L"";
+        const bool isGbk = requested == L"gbk" || requested == L"GBK" || requested == L"936";
+        const bool isGb18030 = requested == L"gb18030" || requested == L"GB18030" || requested == L"54936";
+        if (isGbk || isGb18030) {
+            const UINT codePage = isGbk ? 936u : 54936u;
+            const int wideLength = MultiByteToWideChar(codePage, 0,
+                reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), nullptr, 0);
+            if (wideLength <= 0) return L"";
+            std::wstring result(static_cast<size_t>(wideLength), static_cast<wchar_t>(0));
+            MultiByteToWideChar(codePage, 0, reinterpret_cast<const char*>(bytes.data()),
+                static_cast<int>(bytes.size()), result.data(), wideLength);
+            return result;
+        }
+        UINT usedCodePage = CP_UTF8;
+        DWORD decodeFlags = MB_ERR_INVALID_CHARS;
+        int wideLength = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+            reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), nullptr, 0);
+        if (wideLength <= 0) {
+            usedCodePage = 54936u;
+            decodeFlags = 0;
+            wideLength = MultiByteToWideChar(usedCodePage, 0,
+                reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), nullptr, 0);
+            if (wideLength <= 0) return L"";
+        }
+        std::wstring result(static_cast<size_t>(wideLength), static_cast<wchar_t>(0));
+        MultiByteToWideChar(usedCodePage, decodeFlags, reinterpret_cast<const char*>(bytes.data()),
+            static_cast<int>(bytes.size()), result.data(), wideLength);
+        return result;
+    }
+
+    static std::wstring CEF3网络_认证JSON转义(const std::wstring& value) {
+        std::wstring escaped;
+        escaped.reserve(value.size() + 8);
+        for (const wchar_t ch : value) {
+            if (ch == static_cast<wchar_t>(34)) {
+                escaped += static_cast<wchar_t>(92);
+                escaped += static_cast<wchar_t>(34);
+            } else if (ch == static_cast<wchar_t>(92)) {
+                escaped += static_cast<wchar_t>(92);
+                escaped += static_cast<wchar_t>(92);
+            } else if (ch == static_cast<wchar_t>(13)) {
+                escaped += static_cast<wchar_t>(114);
+            } else if (ch == static_cast<wchar_t>(10)) {
+                escaped += static_cast<wchar_t>(110);
+            } else if (ch == static_cast<wchar_t>(9)) {
+                escaped += static_cast<wchar_t>(116);
+            } else {
+                escaped += ch;
+            }
+        }
+        return escaped;
+    }
+
+    static int CEF3网络_回复认证(long long task, const wchar_t* username, const wchar_t* password) {
+        if (!task) return -1;
+        LB_CEF3_CONTINUATION_HANDLE continuation = 0;
+        if (LB_CEF3_TaskTakeUrlRequestAuthContinuationResult(
+                static_cast<LB_CEF3_TASK_HANDLE>(task), &continuation) != LB_CEF3_OK) {
+            return -1;
+        }
+        if (!continuation) return 0;
+        int status = 0;
+        if (!username || !username[0]) {
+            status = LB_CEF3_ContinuationCancelV4(continuation) == LB_CEF3_OK ? 0 : -1;
+        } else {
+            const std::wstring payload = L"{\\\"username\\\":\\\""
+                + CEF3网络_认证JSON转义(username) + L"\\\",\\\"password\\\":\\\""
+                + CEF3网络_认证JSON转义(password ? password : L"") + L"\\\"}";
+            status = LB_CEF3_ContinuationCompleteV4(continuation, 1, payload.c_str()) == LB_CEF3_OK ? 1 : -1;
+        }
+        LB_CEF3_ContinuationReleaseV4(continuation);
+        return status;
+    }
 
     static std::map<std::wstring, std::wstring> CEF3_解析Bridge事件字段(const wchar_t* json) {
         std::map<std::wstring, std::wstring> fields;
@@ -23535,6 +24340,10 @@ ${comWindowMethods}
         return GetCursorPos(&point) ? point.y : 0;
     }
 
+    bool 设置鼠标位置(int x, int y) const {
+        return SetCursorPos(x, y) != 0;
+    }
+
     void ReleaseAnimatedBuffer(RuntimeControl& runtime) {
         if (runtime.animatedBufferDc) {
             if (runtime.animatedBufferPrevious) {
@@ -24725,6 +25534,7 @@ private:
         RuntimeControl* tabRuntime = page ? FindRuntimeControl(page->tabControlId) : nullptr;
         RECT clientRect = {};
         GetClientRect(hwnd, &clientRect);
+        ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, tabRuntime ? RuntimeControlPaintOrder(tabRuntime->hwnd) : -1);
         HBRUSH brush = control && !control->backgroundTransparent
             ? CreateSolidBrush(control->background)
             : GetSysColorBrush(COLOR_WINDOW);
@@ -24753,6 +25563,9 @@ private:
             HDC hdc = BeginPaint(hwnd, &paint);
             self->PaintTabPage(hwnd, hdc);
             EndPaint(hwnd, &paint);
+            RuntimeTabPage* paintedPage = self->FindTabPageByHwnd(hwnd);
+            RuntimeControl* paintedTab = paintedPage ? self->FindRuntimeControl(paintedPage->tabControlId) : nullptr;
+            self->InvalidateOverlappingControls(hwnd, paintedTab ? self->RuntimeControlPaintOrder(paintedTab->hwnd) : -1);
             return 0;
         }
         if (self && (
@@ -25324,10 +26137,79 @@ private:
         return true;
     }
 
+    // STATIC 类窗口带 CS_PARENTDC：BeginPaint 借用的是父窗口客户区 DC，本窗口的
+    // WS_CLIPCHILDREN 不会生效。分组框在设计器里是纯视觉容器，编辑框/列表框等控件
+    // 与它是同父兄弟窗口，按矩形叠放在分组框内部——容器自绘填充会把它们整块盖掉
+    // （设计器 TextBox/ListBox/ListView/TreeView/IPAddress 外框不可见的根因）。
+    // 容器自绘前必须按矩形相交排除所有 z 序更高的控件窗口（含其外框）。
+    // runtimeControls_ 的创建顺序即设计器叠放顺序：后面的画在上面。
+    int RuntimeControlPaintOrder(HWND window) const {
+        if (!window) return -1;
+        for (size_t index = 0; index < runtimeControls_.size(); ++index) {
+            if (runtimeControls_[index].hwnd == window || runtimeControls_[index].frameHwnd == window) {
+                return static_cast<int>(index);
+            }
+        }
+        return -1;
+    }
+
+    void ExcludeOverlappingControlsFromPaintDC(HWND container, HDC hdc, int painterOrder) {
+        if (!container || !hdc) return;
+        RECT containerRect = {};
+        if (!GetClientRect(container, &containerRect)) return;
+        for (size_t index = 0; index < runtimeControls_.size(); ++index) {
+            if (painterOrder >= 0 && index < static_cast<size_t>(painterOrder)) continue;
+            const HWND windows[2] = { runtimeControls_[index].hwnd, runtimeControls_[index].frameHwnd };
+            for (int slot = 0; slot < 2; ++slot) {
+                HWND window = windows[slot];
+                if (!window || window == container || !IsWindowVisible(window)) continue;
+                RECT windowRect = {};
+                if (!GetWindowRect(window, &windowRect)) continue;
+                POINT topLeft = { windowRect.left, windowRect.top };
+                POINT bottomRight = { windowRect.right, windowRect.bottom };
+                ScreenToClient(container, &topLeft);
+                ScreenToClient(container, &bottomRight);
+                RECT clipped = {};
+                const RECT windowClientRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
+                if (!IntersectRect(&clipped, &containerRect, &windowClientRect)) continue;
+                ExcludeClipRect(hdc, topLeft.x, topLeft.y, bottomRight.x, bottomRight.y);
+            }
+        }
+    }
+
+    // CS_PARENTDC 容器的绘制校验会连带清空被其矩形覆盖的兄弟控件自己的更新区域
+    // （这些控件此后收到 NULLREGION 的 WM_PAINT，自绘全部落空）。容器画完后重新
+    // 失效 z 序更高的相交控件，保证它们拿到真实更新区域完成重绘。只看更高 z 序，
+    // 避免容器与外框互相失效造成重绘风暴。
+    void InvalidateOverlappingControls(HWND container, int painterOrder) {
+        if (!container) return;
+        RECT containerRect = {};
+        if (!GetClientRect(container, &containerRect)) return;
+        for (size_t index = 0; index < runtimeControls_.size(); ++index) {
+            if (painterOrder >= 0 && index < static_cast<size_t>(painterOrder)) continue;
+            const HWND windows[2] = { runtimeControls_[index].hwnd, runtimeControls_[index].frameHwnd };
+            for (int slot = 0; slot < 2; ++slot) {
+                HWND window = windows[slot];
+                if (!window || window == container || !IsWindowVisible(window)) continue;
+                RECT windowRect = {};
+                if (!GetWindowRect(window, &windowRect)) continue;
+                POINT topLeft = { windowRect.left, windowRect.top };
+                POINT bottomRight = { windowRect.right, windowRect.bottom };
+                ScreenToClient(container, &topLeft);
+                ScreenToClient(container, &bottomRight);
+                RECT clipped = {};
+                const RECT windowClientRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
+                if (!IntersectRect(&clipped, &containerRect, &windowClientRect)) continue;
+                RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE);
+            }
+        }
+    }
+
     void PaintGroupBox(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
         if (!hwnd || !hdc) return;
         RECT clientRect = {};
         GetClientRect(hwnd, &clientRect);
+        ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, RuntimeControlPaintOrder(hwnd));
         HBRUSH backgroundBrush = CreateSolidBrush(control.background);
         FillRect(hdc, &clientRect, backgroundBrush);
 
@@ -25992,15 +26874,11 @@ private:
         return found == imageLists_.end() ? nullptr : found->second;
     }
 
+    // 注意：不要给外框 SetWindowRgn。外框是 STATIC（CS_PARENTDC）子窗口，窗口区域
+    // 会破坏该子树可见区域的计算，导致外框与内部控件的 WM_PAINT 全部被裁成空区域
+    // （设计器 TextBox/ListBox 外框不可见的根因之一）。圆角外观由 WM_PAINT 手绘。
     void ApplyTextBoxFrameRegion(HWND frameHwnd) {
         if (!frameHwnd) return;
-        RECT rect = {}; GetClientRect(frameHwnd, &rect);
-        int width = std::max(1, static_cast<int>(rect.right - rect.left));
-        int height = std::max(1, static_cast<int>(rect.bottom - rect.top));
-        int cornerDiameter = std::max(ScaleForDpi(8, dpi_), 4);
-        HRGN region = CreateRoundRectRgn(0, 0, width, height, cornerDiameter, cornerDiameter);
-        if (!region) return;
-        if (SetWindowRgn(frameHwnd, region, TRUE) == 0) DeleteObject(region);
     }
 
     void LayoutTextBoxControl(const ControlSpec& control, RuntimeControl& runtime) {
@@ -26042,11 +26920,27 @@ private:
         if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
         if (message == WM_ERASEBKGND) return 1;
         if (message == WM_PAINT) {
+            const int paintOrder = self->RuntimeControlPaintOrder(hwnd);
             PAINTSTRUCT paint = {};
             HDC hdc = BeginPaint(hwnd, &paint);
-            if (hdc) {
+            // CS_PARENTDC 容器（分组框）的绘制校验会吞掉兄弟外框的更新区域，此时
+            // BeginPaint 的 DC 裁剪为空、画不出任何像素；改用 GetDC 自绘并自行校验。
+            const bool emptyPaint = !hdc || (paint.rcPaint.right <= paint.rcPaint.left
+                && paint.rcPaint.bottom <= paint.rcPaint.top);
+            HDC drawDc = hdc;
+            if (emptyPaint) {
+                if (hdc) EndPaint(hwnd, &paint);
+                drawDc = GetDC(hwnd);
+                if (drawDc) self->ExcludeOverlappingControlsFromPaintDC(hwnd, drawDc, paintOrder);
+            } else {
+                self->ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, paintOrder);
+            }
+            if (drawDc) {
                 RECT rect = {}; GetClientRect(hwnd, &rect);
                 int cornerDiameter = std::max(ScaleForDpi(8, self->dpi_), 4);
+                // 窗口区域已移除（CS_PARENTDC 子窗口 + 区域会破坏可见区域计算），圆角外的
+                // 四个角落改由周围底色补齐，避免留下未绘制的白色角块。
+                FillRect(drawDc, &rect, self->ResolveControlSurroundingBrush(*control, hwnd));
                 COLORREF borderColor = GetFocus() == runtime->hwnd
                     ? RGB(14, 165, 233)
                     : IsWindowEnabled(runtime->hwnd) ? RGB(51, 65, 85) : RGB(63, 63, 70);
@@ -26055,7 +26949,7 @@ private:
                     rect.left, rect.top, rect.right, rect.bottom,
                     cornerDiameter, cornerDiameter
                 );
-                if (borderBrush && outerRegion) FillRgn(hdc, outerRegion, borderBrush);
+                if (borderBrush && outerRegion) FillRgn(drawDc, outerRegion, borderBrush);
                 int borderWidth = 1;
                 if (rect.right - rect.left > borderWidth * 2 && rect.bottom - rect.top > borderWidth * 2) {
                     HRGN innerRegion = CreateRoundRectRgn(
@@ -26065,14 +26959,22 @@ private:
                         std::max(2, cornerDiameter - borderWidth * 2)
                     );
                     if (innerRegion) {
-                        if (runtime->brush) FillRgn(hdc, innerRegion, runtime->brush);
+                        if (runtime->brush) FillRgn(drawDc, innerRegion, runtime->brush);
                         DeleteObject(innerRegion);
                     }
                 }
                 if (outerRegion) DeleteObject(outerRegion);
                 if (borderBrush) DeleteObject(borderBrush);
-                EndPaint(hwnd, &paint);
+                if (emptyPaint) {
+                    ReleaseDC(hwnd, drawDc);
+                    ValidateRect(hwnd, nullptr);
+                } else {
+                    EndPaint(hwnd, &paint);
+                }
             }
+            self->InvalidateOverlappingControls(hwnd, paintOrder);
+            // 自绘后同步重绘子控件：子控件的更新区域可能同样被吞，陈旧像素无法自愈。
+            if (runtime->hwnd) RedrawWindow(runtime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
             return 0;
         }
         if (message == WM_SIZE) {
@@ -26237,18 +27139,39 @@ private:
         if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
         if (message == WM_ERASEBKGND) return 1;
         if (message == WM_PAINT) {
+            const int paintOrder = self->RuntimeControlPaintOrder(hwnd);
             PAINTSTRUCT paint = {};
             HDC hdc = BeginPaint(hwnd, &paint);
-            if (hdc) {
+            // CS_PARENTDC 容器（分组框）的绘制校验会吞掉兄弟外框的更新区域，此时
+            // BeginPaint 的 DC 裁剪为空、画不出任何像素；改用 GetDC 自绘并自行校验。
+            const bool emptyPaint = !hdc || (paint.rcPaint.right <= paint.rcPaint.left
+                && paint.rcPaint.bottom <= paint.rcPaint.top);
+            HDC drawDc = hdc;
+            if (emptyPaint) {
+                if (hdc) EndPaint(hwnd, &paint);
+                drawDc = GetDC(hwnd);
+                if (drawDc) self->ExcludeOverlappingControlsFromPaintDC(hwnd, drawDc, paintOrder);
+            } else {
+                self->ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, paintOrder);
+            }
+            if (drawDc) {
                 RECT rect = {}; GetClientRect(hwnd, &rect);
                 int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
                     std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
                 HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
-                FillRect(hdc, &rect, borderBrush);
+                FillRect(drawDc, &rect, borderBrush);
                 DeleteObject(borderBrush);
-                if (borderWidth == 0 && runtime->brush) FillRect(hdc, &rect, runtime->brush);
-                EndPaint(hwnd, &paint);
+                if (borderWidth == 0 && runtime->brush) FillRect(drawDc, &rect, runtime->brush);
+                if (emptyPaint) {
+                    ReleaseDC(hwnd, drawDc);
+                    ValidateRect(hwnd, nullptr);
+                } else {
+                    EndPaint(hwnd, &paint);
+                }
             }
+            self->InvalidateOverlappingControls(hwnd, paintOrder);
+            // 自绘后同步重绘子控件：子控件的更新区域可能同样被吞，陈旧像素无法自愈。
+            if (runtime->hwnd) RedrawWindow(runtime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
             return 0;
         }
         if (message == WM_SIZE) {
@@ -26307,22 +27230,43 @@ private:
         if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
         if (message == WM_ERASEBKGND) return 1;
         if (message == WM_PAINT) {
+            const int paintOrder = self->RuntimeControlPaintOrder(hwnd);
             PAINTSTRUCT paint = {};
             HDC hdc = BeginPaint(hwnd, &paint);
-            if (hdc) {
+            // CS_PARENTDC 容器（分组框）的绘制校验会吞掉兄弟外框的更新区域，此时
+            // BeginPaint 的 DC 裁剪为空、画不出任何像素；改用 GetDC 自绘并自行校验。
+            const bool emptyPaint = !hdc || (paint.rcPaint.right <= paint.rcPaint.left
+                && paint.rcPaint.bottom <= paint.rcPaint.top);
+            HDC drawDc = hdc;
+            if (emptyPaint) {
+                if (hdc) EndPaint(hwnd, &paint);
+                drawDc = GetDC(hwnd);
+                if (drawDc) self->ExcludeOverlappingControlsFromPaintDC(hwnd, drawDc, paintOrder);
+            } else {
+                self->ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, paintOrder);
+            }
+            if (drawDc) {
                 RECT rect = {}; GetClientRect(hwnd, &rect);
                 int borderWidth = std::clamp(ScaleForDpi(control->treeBorderWidth, self->dpi_), 0,
                     std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
                 HBRUSH borderBrush = CreateSolidBrush(control->treeBorderColor);
-                FillRect(hdc, &rect, borderBrush);
+                FillRect(drawDc, &rect, borderBrush);
                 DeleteObject(borderBrush);
                 RECT contentRect = rect;
                 InflateRect(&contentRect, -borderWidth, -borderWidth);
                 if (runtime->brush && contentRect.right > contentRect.left && contentRect.bottom > contentRect.top) {
-                    FillRect(hdc, &contentRect, runtime->brush);
+                    FillRect(drawDc, &contentRect, runtime->brush);
                 }
-                EndPaint(hwnd, &paint);
+                if (emptyPaint) {
+                    ReleaseDC(hwnd, drawDc);
+                    ValidateRect(hwnd, nullptr);
+                } else {
+                    EndPaint(hwnd, &paint);
+                }
             }
+            self->InvalidateOverlappingControls(hwnd, paintOrder);
+            // 自绘后同步重绘子控件：子控件的更新区域可能同样被吞，陈旧像素无法自愈。
+            if (runtime->hwnd) RedrawWindow(runtime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
             return 0;
         }
         if (message == WM_SIZE) {
@@ -26391,27 +27335,48 @@ private:
         if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
         if (message == WM_ERASEBKGND) return 1;
         if (message == WM_PAINT) {
+            const int paintOrder = self->RuntimeControlPaintOrder(hwnd);
             PAINTSTRUCT paint = {};
             HDC hdc = BeginPaint(hwnd, &paint);
-            if (hdc) {
+            // CS_PARENTDC 容器（分组框）的绘制校验会吞掉兄弟外框的更新区域，此时
+            // BeginPaint 的 DC 裁剪为空、画不出任何像素；改用 GetDC 自绘并自行校验。
+            const bool emptyPaint = !hdc || (paint.rcPaint.right <= paint.rcPaint.left
+                && paint.rcPaint.bottom <= paint.rcPaint.top);
+            HDC drawDc = hdc;
+            if (emptyPaint) {
+                if (hdc) EndPaint(hwnd, &paint);
+                drawDc = GetDC(hwnd);
+                if (drawDc) self->ExcludeOverlappingControlsFromPaintDC(hwnd, drawDc, paintOrder);
+            } else {
+                self->ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, paintOrder);
+            }
+            if (drawDc) {
                 RECT rect = {}; GetClientRect(hwnd, &rect);
                 int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
                     std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
                 HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
-                FillRect(hdc, &rect, borderBrush);
+                FillRect(drawDc, &rect, borderBrush);
                 DeleteObject(borderBrush);
                 if (borderWidth == 0) {
-                    if (runtime->brush) FillRect(hdc, &rect, runtime->brush);
+                    if (runtime->brush) FillRect(drawDc, &rect, runtime->brush);
                 } else {
                     RECT contentRect = rect;
                     InflateRect(&contentRect, -borderWidth, -borderWidth);
                     if (contentRect.right > contentRect.left && contentRect.bottom > contentRect.top && runtime->brush) {
-                        FillRect(hdc, &contentRect, runtime->brush);
+                        FillRect(drawDc, &contentRect, runtime->brush);
                     }
                 }
-                self->PaintListBoxScrollBar(hdc, *control, *runtime);
-                EndPaint(hwnd, &paint);
+                self->PaintListBoxScrollBar(drawDc, *control, *runtime);
+                if (emptyPaint) {
+                    ReleaseDC(hwnd, drawDc);
+                    ValidateRect(hwnd, nullptr);
+                } else {
+                    EndPaint(hwnd, &paint);
+                }
             }
+            self->InvalidateOverlappingControls(hwnd, paintOrder);
+            // 自绘后同步重绘子控件：子控件的更新区域可能同样被吞，陈旧像素无法自愈。
+            if (runtime->hwnd) RedrawWindow(runtime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
             return 0;
         }
         if (message == WM_SIZE) {
@@ -26590,25 +27555,46 @@ private:
         if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
         if (message == WM_ERASEBKGND) return 1;
         if (message == WM_PAINT) {
+            const int paintOrder = self->RuntimeControlPaintOrder(hwnd);
             PAINTSTRUCT paint = {};
             HDC hdc = BeginPaint(hwnd, &paint);
-            if (hdc) {
+            // CS_PARENTDC 容器（分组框）的绘制校验会吞掉兄弟外框的更新区域，此时
+            // BeginPaint 的 DC 裁剪为空、画不出任何像素；改用 GetDC 自绘并自行校验。
+            const bool emptyPaint = !hdc || (paint.rcPaint.right <= paint.rcPaint.left
+                && paint.rcPaint.bottom <= paint.rcPaint.top);
+            HDC drawDc = hdc;
+            if (emptyPaint) {
+                if (hdc) EndPaint(hwnd, &paint);
+                drawDc = GetDC(hwnd);
+                if (drawDc) self->ExcludeOverlappingControlsFromPaintDC(hwnd, drawDc, paintOrder);
+            } else {
+                self->ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, paintOrder);
+            }
+            if (drawDc) {
                 RECT rect = {};
                 GetClientRect(hwnd, &rect);
                 int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
                     std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
                 HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
-                FillRect(hdc, &rect, borderWidth > 0 ? borderBrush : (runtime->brush ? runtime->brush : self->windowBrush_));
+                FillRect(drawDc, &rect, borderWidth > 0 ? borderBrush : (runtime->brush ? runtime->brush : self->windowBrush_));
                 DeleteObject(borderBrush);
                 if (borderWidth > 0) {
                     RECT contentRect = rect;
                     InflateRect(&contentRect, -borderWidth, -borderWidth);
                     if (contentRect.right > contentRect.left && contentRect.bottom > contentRect.top) {
-                        FillRect(hdc, &contentRect, runtime->brush ? runtime->brush : self->windowBrush_);
+                        FillRect(drawDc, &contentRect, runtime->brush ? runtime->brush : self->windowBrush_);
                     }
                 }
-                EndPaint(hwnd, &paint);
+                if (emptyPaint) {
+                    ReleaseDC(hwnd, drawDc);
+                    ValidateRect(hwnd, nullptr);
+                } else {
+                    EndPaint(hwnd, &paint);
+                }
             }
+            self->InvalidateOverlappingControls(hwnd, paintOrder);
+            // 自绘后同步重绘子控件：子控件的更新区域可能同样被吞，陈旧像素无法自愈。
+            if (runtime->hwnd) RedrawWindow(runtime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
             return 0;
         }
         if (message == WM_SIZE) {
@@ -26914,6 +27900,7 @@ private:
                     HDC hdc = BeginPaint(hwnd, &paint);
                     self->PaintGroupBox(hwnd, hdc, *control, *runtime);
                     EndPaint(hwnd, &paint);
+                    self->InvalidateOverlappingControls(hwnd, self->RuntimeControlPaintOrder(hwnd));
                     return 0;
                 }
                 if (message == WM_PRINTCLIENT) {
@@ -27344,6 +28331,11 @@ private:
             InvalidateRect(child, nullptr, FALSE);
         } else if (IsType(control, L"TextBox")) {
             SendMessageW(child, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(ScaleForDpi(10, dpi_), ScaleForDpi(10, dpi_)));
+            // 占位提示走 EM_SETCUEBANNER（placeholder 属性经 data 槽传入），不与控件真实文本混用；
+            // cue banner 仅单行 EDIT 支持（多行自动忽略），需 ComCtl32 v6（模板已内嵌 manifestdependency）。
+            if (!(control.flags & CF_MULTILINE) && control.data && control.data[0]) {
+                SendMessageW(child, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(control.data));
+            }
             RuntimeControl& runtime = runtimeControls_.back();
             ApplyTextBoxFrameRegion(frameHwnd);
             LayoutTextBoxControl(control, runtime);
@@ -27660,7 +28652,8 @@ private:
                 + L":" + std::to_wstring(control.id);
             instance->url = control.data && control.data[0] ? control.data : L"about:blank";
             if (control.data2 && control.data2[0]) {
-                auto records = DecodeControlRecords(control.data2, 6);
+                auto records = DecodeControlRecords(control.data2, 7);
+                if (records.empty()) records = DecodeControlRecords(control.data2, 6);
                 if (records.empty()) records = DecodeControlRecords(control.data2, 5);
                 if (!records.empty()) {
                     const auto& fields = records[0];
@@ -27700,6 +28693,15 @@ private:
             }
         }
         WireCompositeControls();
+        // 设计器叠放顺序 = 创建顺序（后面的控件画在上面）。分组框是纯视觉容器，
+        // 必须保证它位于其矩形内其它控件之下，否则不透明填充会把它们整块盖住
+        // （设计器 TextBox/ListBox/ListView/TreeView/IPAddress 不可见的根因）。
+        for (auto& control : runtimeControls_) {
+            if (control.hwnd) SetWindowPos(control.hwnd, HWND_TOP, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            if (control.frameHwnd) SetWindowPos(control.frameHwnd, HWND_TOP, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
     }
 
     void DestroyControls() {
@@ -28896,8 +29898,10 @@ CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId) {
     return new LingCefClient(owner, controlId);
 }
 #endif
+${pureLogicDll ? '#endif // LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 ${classDefinitions}
+${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 static LingWindowBase* CreateWindowObject(int windowIndex) {
     switch (windowIndex) {
@@ -28970,6 +29974,7 @@ static void EnsureStartWindowForeground(HWND hwnd, int showCommand) {
         AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
     }
 }
+${pureLogicDll ? '#endif // LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 ${dynamicLibrarySection ? dynamicLibrarySection : consoleEntrySection ? consoleEntrySection : `int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -29627,9 +30632,12 @@ function resolveWindowEventBindings(window: LingWindowModel, program: LingCppPro
   return bindings;
 }
 
-function generateWindowClass(window: LingWindowModel, windowIndex: number, program: LingCppProgram, enabledModules: InstalledModule[], resources: LingDesignerResource[]): string {
+function generateWindowClass(window: LingWindowModel, windowIndex: number, program: LingCppProgram, enabledModules: InstalledModule[], resources: LingDesignerResource[], pureLogicDll = false): string {
   const className = toCppIdentifier(window.className);
   const sourceClass = findLingCppClassForWindow(program, window);
+  if (pureLogicDll) {
+    return generatePureLogicLibraryClass(className, sourceClass, program, enabledModules);
+  }
   const handlers = getWindowHandlers(window);
   const propertySheets = resources.filter((resource): resource is LingPropertySheetResource => resource.type === 'PropertySheet');
   const fileDialogs = resources.filter((resource): resource is LingFileDialogResource => resource.type === 'FileDialog' && resource.ownerWindowId === window.id);
@@ -29736,7 +30744,24 @@ ${comEventHandlers.map(handler => `        if (callback == L"${escapeWideString(
   const publicUserMethodBlock = publicUserMethods.length ? `\n${publicUserMethods.join('\n\n')}\n` : '';
   const protectedUserMethodBlock = protectedUserMethods.length ? `\n${protectedUserMethods.join('\n\n')}\n` : '';
   const privateMethods = [...eventMethods, ...privateUserMethods].join('\n\n') || '    // 当前窗口暂无绑定事件。';
+  // 类内成员函数体本就是 complete-class context，可调用后声明的成员，书写顺序与编译天然解耦。
+  // 红线（2026-09-26 实测）：不得为类内定义的成员再生成类内前向声明——「声明 + 类内定义」
+  // 在 MSVC 下直接 C2535（GCC/Clang 接受但 MSVC 不接受，微样例已复现）。若未来把成员定义
+  // 移到类外，再按同一 signature 集合恢复前向声明（声明不带默认实参，默认实参只在定义处给一次）。
+  const forwardDeclarationLines: string[] = [];
+  const forwardDeclarationSeen = new Set<string>();
+  const declareForward = (signature: string) => {
+    if (signature && !forwardDeclarationSeen.has(signature)) {
+      forwardDeclarationSeen.add(signature);
+      forwardDeclarationLines.push(`    ${signature};`);
+    }
+  };
+  void declareForward;
+  void methodHandlers;
+  void userMethods;
+  const forwardDeclarations = forwardDeclarationLines.join('\n');
   return `class ${className} : public LingWindowBase {
+${forwardDeclarations}
 public:
     explicit ${className}(const WindowSpec& spec) : LingWindowBase(spec) {}
 ${publicMembers.join('\n')}
@@ -29828,6 +30853,39 @@ function findLingCppClassForWindow(program: LingCppProgram, window: LingWindowMo
   const direct = program.classes.find(cls => cls.name === window.className);
   if (direct) return direct;
   return program.classes.find(cls => toCppIdentifier(cls.name) === toCppIdentifier(window.className));
+}
+
+/**
+ * 纯逻辑动态库的用户类形态：不继承 LingWindowBase、无 WindowSpec 构造、无事件派发体系，
+ * 只保留用户子程序与成员变量；事件处理器降级为中文注释（动态库不创建窗口、事件不会触发）。
+ * 前提由 resolvePureLogicDllEligibility 保证：方法体只调用自由函数运行时命令。
+ */
+function generatePureLogicLibraryClass(
+  className: string,
+  sourceClass: LingCppClass | undefined,
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): string {
+  const methods = sourceClass?.methods || [];
+  const userMethods = methods.filter(method => method.kind === 'method');
+  const eventMethods = methods.filter(method => method.kind === 'event');
+  const publicUserMethods = userMethods.filter(method => method.access === '公开').map(method => generateUserMethod(method, enabledModules, program.dataTypes));
+  const protectedUserMethods = userMethods.filter(method => method.access === '保护').map(method => generateUserMethod(method, enabledModules, program.dataTypes));
+  const privateUserMethods = userMethods.filter(method => method.access !== '公开' && method.access !== '保护').map(method => generateUserMethod(method, enabledModules, program.dataTypes));
+  const publicMembers = (sourceClass?.members || []).filter(member => member.access === '公开').map(member => generateMemberDeclaration(member, enabledModules, program.dataTypes));
+  const protectedMembers = (sourceClass?.members || []).filter(member => member.access === '保护').map(member => generateMemberDeclaration(member, enabledModules, program.dataTypes));
+  const privateMembers = (sourceClass?.members || []).filter(member => member.access !== '公开' && member.access !== '保护').map(member => generateMemberDeclaration(member, enabledModules, program.dataTypes));
+  const eventCommentBlock = eventMethods.length
+    ? eventMethods.map(method => `    // 事件处理器「${method.name}」在纯逻辑动态库中不生成：动态库不创建窗口、事件不会触发。\n    // 为项目加入窗口能力（调用窗口/控件类命令）后重新构建，将自动恢复完整窗口运行时。`).join('\n')
+    : '';
+  const publicBlock = [...publicMembers, ...publicUserMethods].join('\n\n');
+  const protectedBlock = protectedMembers.join('\n\n');
+  const privateBlock = [eventCommentBlock, ...privateMembers, ...privateUserMethods].filter(Boolean).join('\n\n');
+  return `class ${className} {
+
+public:
+    ${className}() {}
+${publicBlock ? `\n${publicBlock}\n` : ''}${protectedBlock ? `\nprotected:\n${protectedBlock}\n` : ''}${privateBlock ? `\nprivate:\n${privateBlock}\n` : ''}};`;
 }
 
 function getAria2ProgressHandlerNames(sourceClass: LingCppClass | undefined): string[] {
@@ -30436,7 +31494,10 @@ function translateStatement(
     return `${controlMethodCall.runtimeName}(${translateControlReferenceOperand(controlMethodCall.controlName, translationContext)}, ${translateCallArguments(controlMethodCall.argumentsText, enabledModules, translationContext)});`;
   }
 
-  if (/^结束\s*[（(]?\s*[）)]?/.test(statement)) {
+  // 退出语句只允许三种形态：结束 / 结束() / 结束（），可带分号收尾。
+  // 禁止前缀匹配：`结束毫秒 = 起始 + 100` 这类以「结束」开头的赋值语句曾被当成退出
+  // 翻译成 结束()，赋值被静默吞掉（2026-09-27 内嵌 C++ 清零批次 A/B 对拍抓到）。
+  if (/^结束\s*(?:[（(]\s*[）)])?\s*;?\s*$/u.test(statement)) {
     return '结束();';
   }
 
@@ -30975,6 +32036,11 @@ function translateLingCppCallName(name: string): string {
 }
 
 function normalizeLingCppLogicalExpression(expression: string): string {
+  // 且/或/非 既是逻辑连词，也是中文命令名的常见用字（位_或、位_异或、位_取非…）。
+  // 只有当连词两侧都不贴着标识符字符时才按连词翻译；贴着标识符时按普通字符保留，
+  // 与语言服务解析器的标识符原子扫描同口径——否则 位_异或(甲,乙) 会被拆成 位_异||(…)。
+  // 因此逻辑连词与标识符之间必须留空格（甲 或 乙）；连写 甲或乙 视为单个标识符。
+  const isIdentifierChar = (ch: string | undefined) => (ch ? /[\p{L}\p{N}_]/u.test(ch) : false);
   let result = '';
   let quote: '"' | '“' | null = null;
   for (let index = 0; index < expression.length;) {
@@ -30996,17 +32062,29 @@ function normalizeLingCppLogicalExpression(expression: string): string {
       index += 1;
       continue;
     }
-    if (expression.startsWith('并且', index)) {
+    if (expression.startsWith('并且', index) && !isIdentifierChar(expression[index - 1]) && !isIdentifierChar(expression[index + 2])) {
       result += '&&';
       index += 2;
       continue;
     }
-    if (expression.startsWith('或者', index)) {
+    if (expression.startsWith('或者', index) && !isIdentifierChar(expression[index - 1]) && !isIdentifierChar(expression[index + 2])) {
       result += '||';
       index += 2;
       continue;
     }
-    if (character === '非') {
+    // 易语言短记号 且/或（必须排在 并且/或者 之后：或者 以 或 开头）。
+    // 与长记号同一语义：局部变量取名「且/或」不受支持，这类名字是保留运算符。
+    if (expression.startsWith('且', index) && !isIdentifierChar(expression[index - 1]) && !isIdentifierChar(expression[index + 1])) {
+      result += '&&';
+      index += 1;
+      continue;
+    }
+    if (expression.startsWith('或', index) && !isIdentifierChar(expression[index - 1]) && !isIdentifierChar(expression[index + 1])) {
+      result += '||';
+      index += 1;
+      continue;
+    }
+    if (character === '非' && !isIdentifierChar(expression[index - 1])) {
       result += '!';
       index += 1;
       continue;
@@ -31500,7 +32578,8 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
   const numberOf = (value: unknown, fallback = 0) => typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : fallback;
 
   if (control.type === 'TextBox') {
-    return ['', typeof properties.verticalAlign === 'string' ? properties.verticalAlign : 'center'];
+    // data 槽 0 = 占位提示（EM_SETCUEBANNER），槽 1 = 垂直对齐；content 仍是控件真实文本。
+    return [typeof properties.placeholder === 'string' ? properties.placeholder : '', typeof properties.verticalAlign === 'string' ? properties.verticalAlign : 'center'];
   }
   if (control.type === 'DateTimePicker') {
     const value = typeof properties.value === 'string' ? properties.value : '';
