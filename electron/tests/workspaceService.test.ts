@@ -267,44 +267,51 @@ test('双击 .lcpppkg 冷启动会记为文件关联来源，目录参数不会'
   assert.equal(explicit.lastInitialWorkspaceSource, 'argument');
 });
 
-test('bundled protobuf SDK is provisioned into the workspace without clobbering user files', async t => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-protobuf-'));
+test('工作区不再铺设 Protobuf 工具链：模板/种子/新建都跳过 toolchains 子树', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-no-toolchain-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const bundledSource = path.join(root, 'resources', 'default-workspace', '.lingbuilder', 'toolchains', 'protobuf');
-  await fs.mkdir(path.join(bundledSource, 'bin', 'x64'), { recursive: true });
-  await fs.mkdir(path.join(bundledSource, 'include', 'google', 'protobuf'), { recursive: true });
-  await fs.writeFile(path.join(bundledSource, 'runtime-manifest.json'), '{"sdkVersion":"27.3.0"}', 'utf8');
-  await fs.writeFile(path.join(bundledSource, 'bin', 'protoc.exe'), 'protoc', 'utf8');
-  await fs.writeFile(path.join(bundledSource, 'bin', 'x64', 'libprotobuf.dll'), 'dll', 'utf8');
-  await fs.writeFile(path.join(bundledSource, 'include', 'google', 'protobuf', 'descriptor.h'), 'header', 'utf8');
+  const bundledSource = path.join(root, 'resources', 'default-workspace');
+  await fs.mkdir(path.join(bundledSource, '.lingbuilder', 'toolchains', 'protobuf', 'bin', 'x64'), { recursive: true });
+  await fs.mkdir(path.join(bundledSource, 'src'), { recursive: true });
+  await fs.writeFile(path.join(bundledSource, '.lingbuilder', 'toolchains', 'protobuf', 'runtime-manifest.json'), '{"sdkVersion":"27.3.0"}', 'utf8');
+  await fs.writeFile(path.join(bundledSource, '.lingbuilder', 'toolchains', 'protobuf', 'bin', 'protoc.exe'), 'protoc', 'utf8');
+  await fs.writeFile(path.join(bundledSource, 'src', 'Main.lcpp'), '初始内容', 'utf8');
 
+  // 种子工作区：模板里的 toolchains 整树跳过，普通模板文件照常复制。
+  const documents = path.join(root, 'Documents');
+  const seedService = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe'],
+    documentsPath: documents,
+    userDataPath: path.join(root, 'UserDataSeed'),
+    defaultWorkspaceSource: bundledSource
+  });
+  const seeded = await seedService.resolveInitialWorkspace();
+  assert.equal(await fs.readFile(path.join(seeded, 'src', 'Main.lcpp'), 'utf8'), '初始内容');
+  assert.equal(await exists(path.join(seeded, '.lingbuilder', 'toolchains')), false);
+
+  // 新建工作区（关闭解决方案入口）：同样不带工具链。
+  const freshService = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe'],
+    documentsPath: documents,
+    userDataPath: path.join(root, 'UserDataFresh'),
+    defaultWorkspaceSource: bundledSource,
+    profile: 'packaged'
+  });
+  const fresh = await freshService.createFreshWorkspace();
+  assert.equal(await exists(path.join(fresh, '.lingbuilder', 'toolchains')), false);
+  assert.equal(await exists(path.join(fresh, 'src', 'Main.lcpp')), true);
+
+  // 已有工作区里的既有副本（用户自备/老版本铺设）不删除、不动内容。
   const workspace = path.join(root, '现有工作区');
-  await fs.mkdir(workspace, { recursive: true });
-  const service = new DesktopWorkspaceService({
+  const legacyToolchain = path.join(workspace, '.lingbuilder', 'toolchains', 'protobuf');
+  await fs.mkdir(path.join(legacyToolchain, 'bin'), { recursive: true });
+  await fs.writeFile(path.join(legacyToolchain, 'bin', 'protoc.exe'), 'user-sdk', 'utf8');
+  await new DesktopWorkspaceService({
     argv: ['LingBuilder.exe', '--workspace', workspace],
-    documentsPath: path.join(root, 'Documents'),
-    userDataPath: path.join(root, 'UserData'),
-    bundledProtobufSdkSource: bundledSource
-  });
-  await service.resolveInitialWorkspace();
-  const toolchain = path.join(workspace, '.lingbuilder', 'toolchains', 'protobuf');
-  assert.equal(await fs.readFile(path.join(toolchain, 'runtime-manifest.json'), 'utf8'), '{"sdkVersion":"27.3.0"}');
-  assert.equal(await fs.readFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'utf8'), 'dll');
-  assert.equal(await fs.readFile(path.join(toolchain, 'include', 'google', 'protobuf', 'descriptor.h'), 'utf8'), 'header');
-
-  // 用户自备文件不得被覆盖；bundled 源缺失时也不抛错。
-  await fs.writeFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'user-sdk', 'utf8');
-  await fs.writeFile(path.join(bundledSource, 'bin', 'x64', 'libprotobuf.dll'), 'newer', 'utf8');
-  const withoutBundled = new DesktopWorkspaceService({
-    argv: ['LingBuilder.exe', '--workspace', workspace],
-    documentsPath: path.join(root, 'Documents'),
-    userDataPath: path.join(root, 'UserData')
-  });
-  await withoutBundled.resolveInitialWorkspace();
-  assert.equal(await fs.readFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'utf8'), 'user-sdk');
-
-  await service.rememberWorkspace(workspace);
-  assert.equal(await fs.readFile(path.join(toolchain, 'bin', 'x64', 'libprotobuf.dll'), 'utf8'), 'user-sdk');
+    documentsPath: documents,
+    userDataPath: path.join(root, 'UserDataExisting')
+  }).resolveInitialWorkspace();
+  assert.equal(await fs.readFile(path.join(legacyToolchain, 'bin', 'protoc.exe'), 'utf8'), 'user-sdk');
 });
 
 test('bundled default-workspace modules are provisioned into existing workspaces without clobbering', async t => {

@@ -56,6 +56,10 @@ const IDLE_REPAIR: EnvironmentRepairSnapshot = {
   requiresRestart: false
 };
 
+const DOCS_INSTALL_URL = 'https://lingbuilder.com/docs/guide/user/install';
+const MSVC_MANUAL_DOCS_URL = `${DOCS_INSTALL_URL}#方式二-手动下载安装-微软官网`;
+const WEBVIEW2_MANUAL_DOCS_URL = `${DOCS_INSTALL_URL}#webview2-runtime-手动安装-edgeview-模块需要`;
+
 export default function EnvironmentRepairCenter({
   open,
   isDarkMode,
@@ -245,6 +249,7 @@ export default function EnvironmentRepairCenter({
               actionLabel={nativeBuildReady ? '原生构建已就绪' : '一键安装核心构建环境'}
               disabled={repair.active || loading || nativeBuildReady}
               onAction={() => setConfirmTarget('cppBuildTools')}
+              docsUrl={MSVC_MANUAL_DOCS_URL}
             />
             <CapabilityCard
               title="WebView2 Runtime"
@@ -256,6 +261,7 @@ export default function EnvironmentRepairCenter({
               actionLabel={webView2?.available ? '已就绪' : '安装 WebView2 Runtime'}
               disabled={repair.active || loading || Boolean(webView2?.available)}
               onAction={() => setConfirmTarget('webView2')}
+              docsUrl={WEBVIEW2_MANUAL_DOCS_URL}
             />
           </div>
 
@@ -320,11 +326,13 @@ function CapabilityCard({
   title,
   description,
   ready,
+  isDarkMode,
   items,
   actionLabel,
   disabled,
   onAction,
-  cardClass
+  cardClass,
+  docsUrl
 }: {
   title: string;
   description: string;
@@ -335,6 +343,7 @@ function CapabilityCard({
   disabled: boolean;
   onAction: () => void;
   cardClass: string;
+  docsUrl: string;
 }) {
   return (
     <section className={`flex min-h-52 flex-col rounded border p-3 ${cardClass}`}>
@@ -359,6 +368,16 @@ function CapabilityCard({
         <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
         {actionLabel}
       </button>
+      {!ready && (
+        <button
+          type="button"
+          onClick={() => window.open(docsUrl, '_blank', 'noopener,noreferrer')}
+          className={`mt-1 inline-flex min-h-7 w-full items-center justify-center text-[11px] underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+          title="在系统浏览器中打开文档中心"
+        >
+          安装失败？前往文档中心查看手动安装教程
+        </button>
+      )}
     </section>
   );
 }

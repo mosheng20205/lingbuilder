@@ -153,7 +153,13 @@ import { attachTerminalWebSocketServer, createTerminalWebSocketTicket, type Term
 import { NativeDebugService } from "./src/services/debug/nativeDebugService";
 import type { LingCppNativeSourceMapEntry } from "./src/services/lingCpp/types";
 import { mapSourceBreakpointsForDebug } from "./src/services/debug/sourceBreakpointMapper";
-import { decodeTextFile, encodeTextFile } from "./src/services/files/textFileService";
+import {
+  decodeTextFile,
+  detectTextFileEol,
+  encodeTextFile,
+  resolveTextFileEol
+} from "./src/services/files/textFileService";
+import { convertProjectFileBytesToUtf8 } from "./src/services/files/encodingConversion";
 import {
   createProjectFilePersistenceService,
   createProjectFileVersion,
@@ -163,6 +169,7 @@ import {
 import { HotExitRecoveryService } from "./src/services/files/hotExitRecoveryService";
 import {
   TextFileFormatError,
+  type ProjectFileReadProblem,
   type TextFileFormat
 } from "./src/services/files/types";
 import {
@@ -2076,7 +2083,7 @@ app.post("/api/window-designer/assets/delete", async (req, res) => {
     const solutionService = getSolutionService();
     const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
     const [designerProject, sourceFiles] = await Promise.all([
-      solutionService.readDesignerProject(projectRef).catch(() => null),
+      solutionService.readDesignerProjectRaw(projectRef).catch(() => null),
       solutionService.readProjectFileSnapshots(projectRef)
     ]);
     const scan = findDesignerImageReferences({ designerProject, sourceFiles, relativePath: relativePath.trim() });
@@ -3126,7 +3133,11 @@ async function buildSolutionProjects(options: {  projectId?: string;
   for (const [batchIndex, batch] of batches.entries()) {
     logs.push(`开始构建阶段 ${batchIndex + 1}/${batches.length}：${batch.map(project => project.name).join("、")}`);
     const batchResults = await Promise.all(batch.map(async projectRef => {
-    if (projectRef.type === "external-cmake" || projectRef.type === "external-msbuild" || projectRef.type === "windows-dll") {
+    // windows-dll 项目不再走外部 msbuild 简化翻译（那条路只支持「获取接口版本」级映射），
+    // 统一落入下方生成器构建分支：零窗口设计器 + outputType=dll 由生成器按源码第一个类
+    // 合成名义宿主窗口，任意「公开」子程序确定性导出，产物为纯逻辑精简形态，
+    // 且构建配置跟随全局状态栏（Release/x64），与 visual-cpp 项目同口径。
+    if (projectRef.type === "external-cmake" || projectRef.type === "external-msbuild") {
       const lease = projectBuildCoordinator.begin(projectRef.id, options.admission);
       try {
         const externalResult = await externalProjectService.build(projectRef as any, lease.signal);
@@ -3147,7 +3158,6 @@ async function buildSolutionProjects(options: {  projectId?: string;
           } catch { /* 保持原值 */ }
         }
         const externalLogs = [
-          ...(projectRef.type === "windows-dll" ? [`${describeBuildOutputDirectory("dynamic-library")}：${externalResult.outputDir}`, ...(externalResult.artifacts || []).map(file => `产物：${file}`)] : []),
           externalResult.stdout,
           externalResult.stderr
         ].filter(Boolean);
@@ -3158,8 +3168,8 @@ async function buildSolutionProjects(options: {  projectId?: string;
         if (!externalResult.ok) {
           return { projectId: projectRef.id, projectName: projectRef.name, stage: "external-build", logs: externalLogs, compilerDiagnostics, ...externalResult };
         }
-        // E1：外部工程作为运行目标时，构建成功后定位可执行文件并托管启动；DLL 工程没有可运行产物。
-        const shouldRun = options.run && runProjectIds.has(projectRef.id) && projectRef.type !== "windows-dll";
+        // E1：外部工程作为运行目标时，构建成功后定位可执行文件并托管启动。
+        const shouldRun = options.run && runProjectIds.has(projectRef.id);
         if (!shouldRun) {
           return { projectId: projectRef.id, projectName: projectRef.name, stage: "external-build", logs: externalLogs, compilerDiagnostics, ...externalResult };
         }
@@ -3185,7 +3195,14 @@ async function buildSolutionProjects(options: {  projectId?: string;
         }
       } finally { lease.finish(); }
     }
-    const project = await solutionService.readDesignerProject(projectRef);
+    const designerSnapshot = await solutionService.readDesignerProjectSnapshot(projectRef);
+    let project = designerSnapshot.project;
+    if (!designerSnapshot.persisted && (projectRef.type === "windows-dll" || projectRef.buildProperties?.outputType === "dll")) {
+      // 无窗口动态库项目（含由窗口模板转成无窗口的存量项目）：设计器零窗口/缺失时
+      // readDesignerProject 返回的是合成默认窗口模型（类名与源码类失配会导致导出面为空），
+      // 这里清空窗口，让生成器按动态库输出按源码第一个类合成名义宿主窗口。
+      project = { ...project, windows: [] };
+    }
     const files = await solutionService.readProjectFiles(projectRef);
     const source = resolveProjectLingCppSource(projectRef, project, files);
     logs.push(`正在生成项目 ${projectRef.name} (${projectRef.id})...`);
@@ -3813,7 +3830,9 @@ app.get("/api/window-designer/files", async (req, res) => {
     const solutionService = getSolutionService();
     const solution = await solutionService.getSolution();
     const projectRef = solutionService.getProject(solution, projectId);
-    const snapshots = await solutionService.readProjectFileSnapshots(projectRef);
+    // 读取问题（非 UTF-8 编码、被占用等）随响应下发：单个坏文件只跳过并报告，不再整体 400。
+    const readProblems: ProjectFileReadProblem[] = [];
+    const snapshots = await solutionService.readProjectFileSnapshots(projectRef, readProblems);
     const files = Object.fromEntries(
       Object.entries(snapshots).map(([filePath, snapshot]) => [filePath, snapshot.content])
     );
@@ -3825,8 +3844,10 @@ app.get("/api/window-designer/files", async (req, res) => {
       Object.keys(snapshots)
     );
     const isWindowDesignerProject = projectRef.type === "visual-cpp";
+    // 原样下发磁盘设计器模型（含零窗口）：无窗口 DLL 项目的磁盘事实就是没有窗口，
+    // 不得替换成合成默认窗口——那会让 IDE 把无窗口项目呈现成有一个窗口。
     const designerProject = isWindowDesignerProject
-      ? await solutionService.readDesignerProject(projectRef)
+      ? await solutionService.readDesignerProjectRaw(projectRef)
       : undefined;
     const designerRelativePath = isWindowDesignerProject
       ? projectRef.designerPath.replace(/\\/g, "/")
@@ -3844,6 +3865,7 @@ app.get("/api/window-designer/files", async (req, res) => {
       files,
       fileFormats,
       fileVersions,
+      ...(readProblems.length ? { problems: readProblems } : {}),
       ...(designerRelativePath ? { designerPath: designerRelativePath } : {}),
       ...(designerProject ? { designerProject } : {})
     });
@@ -3946,8 +3968,9 @@ app.post("/api/window-designer/files", async (req, res) => {
       const designerRelativePath = isWindowDesignerProject
         ? projectRef.designerPath.replace(/\\/g, "/")
         : undefined;
+      // 原样下发磁盘设计器模型（含零窗口）：同项目文件读取 API 的无窗口口径。
       const designerProject = isWindowDesignerProject
-        ? await solutionService.readDesignerProject(projectRef)
+        ? await solutionService.readDesignerProjectRaw(projectRef)
         : undefined;
       const conflictFileVersions = await readProjectFileVersionsFromDisk(
         getRepoWorkspaceRoot(),
@@ -3979,6 +4002,56 @@ app.post("/api/window-designer/files", async (req, res) => {
       ? 400
       : 500;
     res.status(status).json({ ok: false, error: err.message });
+  }
+});
+
+// 把按旧代码页（GBK/GB18030，中文 Windows 记事本/VS 的默认 ANSI）保存的项目文本文件
+// 转存为 UTF-8。与保存路由同一套路径白名单与工作区写入校验；已是合法 UTF-8/UTF-16
+// 的文件拒绝转换（防止误转二次损坏），解码失败不动磁盘。
+app.post("/api/window-designer/files/convert-encoding", async (req, res) => {
+  const { projectId, filePath, sourceEncoding } = req.body as {
+    projectId?: string;
+    filePath?: string;
+    sourceEncoding?: string;
+  };
+  if (!projectId || !filePath) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId 或 filePath" });
+  }
+  const encoding = sourceEncoding === "gb18030" ? "gb18030" : "gbk";
+
+  try {
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const projectRef = solutionService.getProject(solution, projectId);
+    const normalizedPath = filePath.replace(/\\/g, "/");
+    if (!isAllowedProjectTextPath(normalizedPath)) {
+      throw new ProjectFileSaveValidationError(`不支持转换该项目文件类型：${filePath}`);
+    }
+    if (normalizedPath.split("/").includes("..")) {
+      throw new ProjectFileSaveValidationError(`项目文件路径不能越过工作区：${filePath}`);
+    }
+    if (
+      !normalizedPath.startsWith(`${projectRef.sourceRoot}/`)
+      && !normalizedPath.startsWith(`${projectRef.configRoot}/`)
+      && !(projectRef.isDefault && (normalizedPath.startsWith("src/") || normalizedPath.startsWith("config/")))
+    ) {
+      throw new ProjectFileSaveValidationError(`项目文件不在当前项目源码或配置目录内：${filePath}`);
+    }
+    const targetPath = await workspacePathPolicy.resolveForWrite(normalizedPath);
+    const bytes = await fs.readFile(targetPath);
+    const conversion = convertProjectFileBytesToUtf8(bytes, encoding);
+    if (!conversion.ok || !conversion.bytes) {
+      return res.status(400).json({ ok: false, error: `文件 ${normalizedPath} ${conversion.message || "无法转存为 UTF-8。"}` });
+    }
+    await projectFilePersistenceService.writeAll([{ targetPath, bytes: conversion.bytes }]);
+    res.json({ ok: true, message: `已把 ${normalizedPath} 按 ${encoding.toUpperCase()} 读取并转存为 UTF-8。` });
+  } catch (err: any) {
+    const status = err instanceof TextFileFormatError
+      || err instanceof ProjectFileSaveValidationError
+      || err instanceof WorkspacePathPolicyError
+      ? 400
+      : 500;
+    res.status(status).json({ ok: false, error: err?.message || "编码转存失败。" });
   }
 });
 
@@ -4712,12 +4785,15 @@ async function compileWin32Preview(
         "/Fe:" + exePath,
         ...msvcLinkLibraries,
         ...(resourceOutputPath ? [resourceOutputPath] : []),
-        // /link 区段只允许开启一次：Debug 已带 /link 时 UAC 参数直接并入该区段。
+        // /link 区段只允许开启一次：Debug/Release 分支均已开启，UAC 参数直接并入。
+        // Release：按函数剔除无引用运行时并折叠等价 COMDAT（与 VS 导出工程
+        // Release 的 OptimizeReferences/EnableCOMDATFolding 同口径）；不改动
+        // manifest 行为（保持既有默认），Debug 链接参数不变。
         ...(buildConfiguration.mode === "Debug"
           ? ["/link", "/DEBUG", "/INCREMENTAL:NO", "/MANIFEST:EMBED"]
-          : []),
+          : ["/link", "/OPT:REF", "/OPT:ICF"]),
         ...(requireAdministrator && compiler.kind === "msvc"
-          ? [...(buildConfiguration.mode === "Debug" ? [] : ["/link"]), "/MANIFEST:EMBED", ...REQUIRE_ADMINISTRATOR_LINK_ARGS]
+          ? ["/MANIFEST:EMBED", ...REQUIRE_ADMINISTRATOR_LINK_ARGS]
           : [])
       ]
     : [
@@ -4844,7 +4920,9 @@ async function compileMsvcPreviewWithModules(
     "/Fe:" + exePath,
     ...linkLibraries,
     ...(resourceOutputPath ? [resourceOutputPath] : []),
-    ...(buildConfiguration.mode === "Debug" ? ["/DEBUG", "/INCREMENTAL:NO"] : []),
+    // Release 的 /OPT:REF /OPT:ICF 必须带 /link 前缀（cl 会以 D9002 静默忽略
+    // /link 区段外的链接器选项）；Debug 链接参数保持现状不变。
+    ...(buildConfiguration.mode === "Debug" ? ["/DEBUG", "/INCREMENTAL:NO"] : ["/link", "/OPT:REF", "/OPT:ICF"]),
     ...(requireAdministrator ? ["/MANIFEST:EMBED", ...REQUIRE_ADMINISTRATOR_LINK_ARGS] : [])
   ];
 

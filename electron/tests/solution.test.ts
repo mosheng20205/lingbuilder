@@ -7,6 +7,33 @@ import path from 'node:path';
 import { createSolutionService, DEFAULT_PROJECT_ID, SOLUTION_PROJECT_TEMPLATES } from '../src/services/solution/solutionService';
 import { getSolutionProjectDirectory } from '../src/services/solution/solutionClient';
 import { normalizeStartupProjects, topologicalProjectOrder } from '../src/services/solution/projectDependencyGraph';
+import type { ProjectFileReadProblem } from '../src/services/files/types';
+
+test('非 UTF-8 项目文件只跳过并记入读取问题，不再毒死整个项目载入', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  const solution = await service.getSolution();
+  const defaultProject = solution.projects.find(project => project.id === DEFAULT_PROJECT_ID)!;
+  await fs.writeFile(path.join(root, 'src/ok.lcpp'), '类 演示\n结束类\n', 'utf8');
+  // 「中文」的 GBK 字节（D6D0 CEC4）：无 BOM，严格 UTF-8 解码必然失败
+  await fs.writeFile(path.join(root, 'src/broken.cpp'), Buffer.from([0xd6, 0xd0, 0x0d, 0x0a, 0xce, 0xc4]));
+  await fs.writeFile(path.join(root, 'config/config.ini'), '[默认]\n', 'utf8');
+
+  const problems: ProjectFileReadProblem[] = [];
+  const snapshots = await service.readProjectFileSnapshots(defaultProject, problems);
+  assert.ok(snapshots['src/ok.lcpp'], '正常文件必须照常载入');
+  assert.ok(snapshots['config/config.ini'], '正常配置文件必须照常载入');
+  assert.equal(snapshots['src/broken.cpp'], undefined, '非 UTF-8 文件应被跳过而不是阻断整个载入');
+  assert.equal(problems.length, 1);
+  assert.equal(problems[0].path, 'src/broken.cpp');
+  assert.equal(problems[0].code, 'INVALID_UTF8');
+  assert.ok(problems[0].message.includes('src/broken.cpp'), '问题消息必须带文件路径');
+  assert.ok(problems[0].message.includes('UTF-8'));
+
+  const files = await service.readProjectFiles(defaultProject);
+  assert.equal(files['src/broken.cpp'], undefined);
+  assert.ok(files['src/ok.lcpp'], 'readProjectFiles 同样不抛错、只跳过坏文件');
+});
 
 test('nested project file enumeration is isolated by project ownership (no duplicate lcpp/config in tree)', async () => {
   const root = await createTempWorkspace();

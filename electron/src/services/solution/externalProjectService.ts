@@ -31,6 +31,14 @@ export interface ExternalProjectProperties {
    * IDE 内编译与 Visual Studio 导出工程共用同一份 main.cpp，两条链路行为一致。
    */
   requireAdministrator?: boolean;
+  /**
+   * 可选：开启后 build.run / native.preview（native.export 经 preview 继承）对未豁免的
+   * 内嵌 C++（@ 行）做中文阻断（2026-09-27 批⑥）。缺省假＝不限制，与历史项目行为一致；
+   * edit.propose / edit.apply 不受它约束（与实参类型门禁同一取舍：生成期才把关）。
+   */
+  forbidInlineCpp?: boolean;
+  /** 可选：forbidInlineCpp 的整文件豁免清单（工作区相对路径，正斜杠或反斜杠均可）。 */
+  inlineCppAllowFiles?: string[];
 }
 export interface ImportedExternalProject {
   id: string; name: string; type: ExternalProjectKind; projectFile: string; sourceRoot: string; configRoot: string;
@@ -316,6 +324,8 @@ export function validateProperties(value: ExternalProjectProperties): void {
   if (!value || !['Debug', 'Release'].includes(value.configuration) || !['Win32', 'x64'].includes(value.architecture)) throw new Error('外部工程配置无效。');
   if (value.outputType !== undefined && value.outputType !== 'exe' && value.outputType !== 'dll') throw new Error('项目输出类型无效：只支持 exe 或 dll。');
   if (value.requireAdministrator !== undefined && typeof value.requireAdministrator !== 'boolean') throw new Error('项目管理员权限设置无效：requireAdministrator 只能是 true 或 false。');
+  if (value.forbidInlineCpp !== undefined && typeof value.forbidInlineCpp !== 'boolean') throw new Error('项目禁止内嵌 C++ 设置无效：forbidInlineCpp 只能是 true 或 false。');
+  if (value.inlineCppAllowFiles !== undefined && (!Array.isArray(value.inlineCppAllowFiles) || value.inlineCppAllowFiles.some(item => typeof item !== 'string' || item.trim().length === 0 || item.length > 260))) throw new Error('项目内嵌 C++ 豁免清单无效：inlineCppAllowFiles 必须是非空文本数组（工作区相对路径）。');
   if (!Array.isArray(value.additionalArguments) || value.additionalArguments.some(argument => typeof argument !== 'string' || argument.length > 200 || /[\r\n\0]/u.test(argument))) throw new Error('外部工程附加参数无效。');
   if (value.buildDirectory !== undefined) {
     if (typeof value.buildDirectory !== 'string') throw new Error('项目构建目录模板无效。');

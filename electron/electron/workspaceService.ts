@@ -18,8 +18,6 @@ export interface DesktopWorkspaceServiceOptions {
   documentsPath: string;
   userDataPath: string;
   defaultWorkspaceSource?: string;
-  /** 安装包随附的固定版本 Protobuf SDK 根目录；工作区缺失时自动铺设。 */
-  bundledProtobufSdkSource?: string;
   seedVersion?: string;
   profile?: WorkspaceState['profile'];
 }
@@ -72,9 +70,6 @@ export class DesktopWorkspaceService {
     if (state?.lastWorkspace && await isDirectory(state.lastWorkspace)) {
       this.initialWorkspaceSource = 'state';
       const remembered = path.resolve(state.lastWorkspace);
-      // 这条路径不经过 rememberWorkspace，也要补齐随附工具链，否则老工作区第一次
-      // 用到 Protobuf 模块仍会因缺 SDK 阻断构建。
-      await this.ensureBundledToolchains(remembered);
       await this.ensureBundledModules(remembered);
       return remembered;
     }
@@ -93,7 +88,6 @@ export class DesktopWorkspaceService {
     const resolved = path.resolve(workspacePath);
     await fs.mkdir(resolved, { recursive: true });
     await this.assertWorkspaceDirectory(resolved);
-    await this.ensureBundledToolchains(resolved);
     await this.ensureBundledModules(resolved);
     await fs.mkdir(path.dirname(this.statePath), { recursive: true });
     const previous = await this.readState();
@@ -135,7 +129,7 @@ export class DesktopWorkspaceService {
     }
     await fs.mkdir(target, { recursive: true });
     if (this.options.defaultWorkspaceSource && await isDirectory(this.options.defaultWorkspaceSource)) {
-      await copyMissingFiles(this.options.defaultWorkspaceSource, target);
+      await copyMissingFiles(this.options.defaultWorkspaceSource, target, TEMPLATE_SKIP_SUBTREES);
     }
     return target;
   }
@@ -175,7 +169,7 @@ export class DesktopWorkspaceService {
     const target = path.join(this.options.documentsPath, 'LingBuilder', '起始工作区');
     await fs.mkdir(target, { recursive: true });
     if (this.options.defaultWorkspaceSource && await isDirectory(this.options.defaultWorkspaceSource)) {
-      await copyMissingFiles(this.options.defaultWorkspaceSource, target);
+      await copyMissingFiles(this.options.defaultWorkspaceSource, target, TEMPLATE_SKIP_SUBTREES);
     }
 
     const markerDir = path.join(target, '.lingbuilder');
@@ -189,23 +183,6 @@ export class DesktopWorkspaceService {
   }
 
   /**
-   * 把安装包随附的固定版本工具链（当前只有 Protobuf SDK）铺进工作区。
-   * 只补缺失文件、绝不覆盖用户已有内容（包括用户自备的同版本 SDK）；
-   * 每次打开工作区都补一次，可以自愈上次中断留下的半份拷贝。失败不阻断
-   * 打开工作区——真正用到时构建链路会给出明确的中文 SDK 校验诊断。
-   */
-  async ensureBundledToolchains(workspacePath: string): Promise<void> {
-    const source = this.options.bundledProtobufSdkSource;
-    if (!source || !await isDirectory(source)) return;
-    const target = path.join(workspacePath, '.lingbuilder', 'toolchains', 'protobuf');
-    try {
-      await copyMissingFiles(source, target);
-    } catch (error) {
-      console.warn(`铺设 Protobuf 工具链失败（构建时会给出明确诊断）：${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  /**
    * 把安装包随附的 default-workspace 模块（当前为 lingbuilder.new_emoji.ui 等）
    * 同步进工作区。随包模块是 IDE 托管的版本化内容，不是用户内容：清单损坏、
    * 版本低于随包副本、或与随包副本同版本但内容漂移时，整个模块目录以随包为准
@@ -214,6 +191,8 @@ export class DesktopWorkspaceService {
    * 工作区自动拿到新模块，也能自愈历史遗留的旧清单（例如 cb 回调参数仍为 raw
    * 的 pre-2.0 生成物，会被新版清单校验整卡拒绝）。开发态没有 default-workspace
    * 时自动跳过。失败不阻断打开工作区——模块面板仍有「修复重装」入口。
+   * 注意：Protobuf 工具链不在此列（2026-09-28 起不再向工作区铺设任何工具链），
+   * 构建期经 protobufSdkLocation 按需回退 IDE 随包源。
    */
   async ensureBundledModules(workspacePath: string): Promise<void> {
     const source = this.options.defaultWorkspaceSource
@@ -399,21 +378,33 @@ function compareModuleVersions(a: string, b: string): number {
   return 0;
 }
 
-async function copyMissingFiles(sourceRoot: string, targetRoot: string): Promise<void> {
-  await fs.mkdir(targetRoot, { recursive: true });
-  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue;
-    const sourcePath = path.join(sourceRoot, entry.name);
-    const targetPath = path.join(targetRoot, entry.name);
-    if (entry.isDirectory()) {
-      await copyMissingFiles(sourcePath, targetPath);
-      continue;
+/**
+ * default-workspace 模板里整树跳过的相对目录（'/' 分隔）：工具链（Protobuf SDK，
+ * 约 154M）不进任何工作区——构建期经 protobufSdkLocation 按需只读使用 IDE 随包源。
+ */
+const TEMPLATE_SKIP_SUBTREES = ['.lingbuilder/toolchains'];
+
+async function copyMissingFiles(sourceRoot: string, targetRoot: string, skipSubtrees: readonly string[] = []): Promise<void> {
+  // 跳过前缀始终相对模板根（sourceRoot）计算，递归进入子目录后依然有效。
+  const copyDirectory = async (currentSource: string, currentTarget: string): Promise<void> => {
+    await fs.mkdir(currentTarget, { recursive: true });
+    const entries = await fs.readdir(currentSource, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const sourcePath = path.join(currentSource, entry.name);
+      const targetPath = path.join(currentTarget, entry.name);
+      const relative = path.relative(sourceRoot, sourcePath).split(path.sep).join('/');
+      if (skipSubtrees.some(prefix => relative === prefix || relative.startsWith(`${prefix}/`))) continue;
+      if (entry.isDirectory()) {
+        await copyDirectory(sourcePath, targetPath);
+        continue;
+      }
+      if (!entry.isFile() || await pathExists(targetPath)) continue;
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.copyFile(sourcePath, targetPath);
     }
-    if (!entry.isFile() || await pathExists(targetPath)) continue;
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.copyFile(sourcePath, targetPath);
-  }
+  };
+  await copyDirectory(sourceRoot, targetRoot);
 }
 
 async function isDirectory(value: string): Promise<boolean> {

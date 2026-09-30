@@ -49,3 +49,14 @@ export class TextFileFormatError extends Error {
     this.name = 'TextFileFormatError';
   }
 }
+
+/**
+ * 项目文件载入时单个文件读取/解码失败的问题记录。载入链路对这类文件是
+ * 「跳过并继续」，不再让一个坏文件毒死整个项目的编辑能力。
+ */
+export interface ProjectFileReadProblem {
+  /** 工作区相对路径（正斜杠分隔）。 */
+  path: string;
+  code: TextFileFormatErrorCode | 'READ_ERROR';
+  message: string;
+}

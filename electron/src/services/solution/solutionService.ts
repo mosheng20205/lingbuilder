@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { decodeTextFile } from '../files/textFileService';
-import type { TextFileSnapshot } from '../files/types';
+import { TextFileFormatError, type ProjectFileReadProblem, type TextFileSnapshot } from '../files/types';
 import { LingWindowProject, type LingControl } from '../windowDesigner/types';
 import { normalizeStartupProjects, topologicalProjectOrder, validateProjectDependencies } from './projectDependencyGraph';
 import { ExternalProjectService, validateProperties, type ExternalProjectProperties } from './externalProjectService';
@@ -248,7 +248,9 @@ export class SolutionService {
           architecture: template.architecture || 'Win32',
           additionalArguments: [],
           // DLL 项目创建即带 dll 输出类型：IDE 的 F5 禁用、「生成动态库」入口与服务端运行守卫都读它。
-          ...(outputType ? { outputType } : {})
+          ...(outputType ? { outputType } : {}),
+          // windows-dll 产物名跟随项目显示名（否则回退默认 LingBuilderPreview.dll）。
+          ...(template.kind === 'windows-dll' ? { executableName: projectName } : {})
         }
       } : {})
     };
@@ -560,11 +562,39 @@ export class SolutionService {
     return (await this.readDesignerProjectSnapshot(project)).project;
   }
 
+  /**
+   * 读取设计器模型的「原样磁盘内容」：文件存在即原样返回（含零窗口模型，如无窗口 DLL 项目），
+   * 不替换成合成默认窗口——供项目文件读取 API 下发给渲染层，避免 IDE 把无窗口项目呈现成有一个窗口。
+   * 文件缺失或不是合法 JSON 时返回 undefined（调用方自行决定降级）。
+   */
+  async readDesignerProjectRaw(project: LingBuilderSolutionProject): Promise<LingWindowProject | undefined> {
+    const designerPath = this.resolveWorkspacePath(project.designerPath);
+    if (!(await exists(designerPath))) return undefined;
+    try {
+      const parsed = JSON.parse(await fs.readFile(designerPath, 'utf8')) as LingWindowProject;
+      if (parsed && Array.isArray(parsed.windows)) {
+        return { ...parsed, id: parsed.id || project.id, name: parsed.name || project.name };
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** 读取设计器模型并标注是否真实落盘：persisted=false 表示文件缺失或无效，返回的是兜底空模型。 */
   async readDesignerProjectSnapshot(project: LingBuilderSolutionProject): Promise<{ project: LingWindowProject; persisted: boolean }> {
     const designerPath = this.resolveWorkspacePath(project.designerPath);
     if (await exists(designerPath)) {
-      const parsed = JSON.parse(await fs.readFile(designerPath, 'utf8')) as LingWindowProject;
+      let parsed: LingWindowProject;
+      try {
+        parsed = JSON.parse(await fs.readFile(designerPath, 'utf8')) as LingWindowProject;
+      } catch (error) {
+        // 中文乱码/编码损坏最常见的表现就是 JSON 解析失败；报错必须点名文件，否则无法定位。
+        throw new Error(
+          `设计器模型文件 ${project.designerPath} 不是合法 JSON：${error instanceof Error ? error.message : String(error)}。`
+          + '常见原因是该文件被外部工具按非 UTF-8 编码保存或内容损坏，请先把该文件转为 UTF-8 或从备份恢复后重新载入。'
+        );
+      }
       if (parsed && Array.isArray(parsed.windows) && parsed.windows.length > 0) {
         return { project: { ...parsed, id: parsed.id || project.id, name: parsed.name || project.name }, persisted: true };
       }
@@ -572,20 +602,36 @@ export class SolutionService {
     return { project: createDesignerProject(project.id, project.name), persisted: false };
   }
 
-  async readProjectFiles(project: LingBuilderSolutionProject): Promise<Record<string, string>> {
-    const snapshots = await this.readProjectFileSnapshots(project);
+  async readProjectFiles(project: LingBuilderSolutionProject, problems?: ProjectFileReadProblem[]): Promise<Record<string, string>> {
+    const snapshots = await this.readProjectFileSnapshots(project, problems);
     return Object.fromEntries(
       Object.entries(snapshots).map(([filePath, snapshot]) => [filePath, snapshot.content])
     );
   }
 
-  async readProjectFileSnapshots(project: LingBuilderSolutionProject): Promise<Record<string, TextFileSnapshot>> {
+  /**
+   * 单个文件读取/解码失败（GBK 等非 UTF-8 编码、被占用等）只记入 problems 并跳过，
+   * 不再让一个坏文件毒死整个项目的载入；不传 problems 时同样跳过（保持载入可用）。
+   */
+  /** windows-dll 项目里由构建器管理的生成文件：构建时随 DllApi.lcpp 自动再生成，树里不显示、不需要用户编辑。 */
+  private static readonly WINDOWS_DLL_MANAGED_FILE_NAMES = new Set(['dllmain.cpp', 'dllexports.h', 'lingbuilder.dll.json', 'exports.def']);
+
+  async readProjectFileSnapshots(project: LingBuilderSolutionProject, problems?: ProjectFileReadProblem[]): Promise<Record<string, TextFileSnapshot>> {
     const files: Record<string, TextFileSnapshot> = {};
     const sourceRoot = this.resolveWorkspacePath(project.sourceRoot);
     const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(sourceRoot);
     const foreignRoots = await this.foreignProjectRoots(project);
-    await collectTextFiles(this.workspaceRoot, sourceRoot, files, nestedWorkspacePlan, foreignRoots);
-    await collectTextFiles(this.workspaceRoot, this.resolveWorkspacePath(project.configRoot), files, undefined, foreignRoots);
+    await collectTextFiles(this.workspaceRoot, sourceRoot, files, nestedWorkspacePlan, foreignRoots, problems);
+    await collectTextFiles(this.workspaceRoot, this.resolveWorkspacePath(project.configRoot), files, undefined, foreignRoots, problems);
+    if (project.type === 'windows-dll') {
+      const sourceRootKey = normalizeWorkspaceRelative(project.sourceRoot).replace(/\/+$/u, '').toLowerCase();
+      for (const key of Object.keys(files)) {
+        const normalizedKey = key.replace(/\\/g, '/').toLowerCase();
+        const withinSourceRoot = !sourceRootKey || normalizedKey === sourceRootKey || normalizedKey.startsWith(`${sourceRootKey}/`);
+        const fileName = normalizedKey.split('/').pop() || '';
+        if (withinSourceRoot && SolutionService.WINDOWS_DLL_MANAGED_FILE_NAMES.has(fileName)) delete files[key];
+      }
+    }
     return files;
   }
 
@@ -749,7 +795,9 @@ export class SolutionService {
           architecture: template.architecture || 'Win32',
           additionalArguments: [],
           // 与独立工作区创建路径（createProjectWorkspace）保持同一口径：DLL 项目创建即带 dll 输出类型。
-          ...(outputType ? { outputType } : {})
+          ...(outputType ? { outputType } : {}),
+          // windows-dll 产物名跟随项目显示名（否则回退默认 LingBuilderPreview.dll）。
+          ...(template.kind === 'windows-dll' ? { executableName: baseName } : {})
         }
       } : {})
     };
@@ -1824,7 +1872,8 @@ async function collectTextFiles(
   directory: string,
   files: Record<string, TextFileSnapshot>,
   nestedWorkspacePlan?: NestedWorkspaceArtifactPlan,
-  foreignRoots?: readonly string[]
+  foreignRoots?: readonly string[],
+  problems?: ProjectFileReadProblem[]
 ): Promise<void> {
   if (nestedWorkspacePlan && isNestedWorkspaceArtifactPath(directory, nestedWorkspacePlan)) return;
   const relativeDirectory = path.relative(workspaceRoot, directory).replace(/\\/g, '/');
@@ -1839,7 +1888,7 @@ async function collectTextFiles(
     if (entry.isSymbolicLink()) continue;
     const targetPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      await collectTextFiles(workspaceRoot, targetPath, files, nestedWorkspacePlan, foreignRoots);
+      await collectTextFiles(workspaceRoot, targetPath, files, nestedWorkspacePlan, foreignRoots, problems);
       continue;
     }
     const relativePath = path.relative(workspaceRoot, targetPath).replace(/\\/g, '/');
@@ -1847,7 +1896,19 @@ async function collectTextFiles(
     // 文本类扩展名白名单：txt/csv/md 让「内嵌资源」里的文本素材在解决方案树里可见、可打开编辑
     // （二进制资源如 png/zip 仍不进文本模型，由项目的「内嵌资源」组展示）。
     if (!/\.(cpp|h|rc|ini|lcpp|e|xml|json|txt|csv|md)$/i.test(entry.name)) continue;
-    files[relativePath] = decodeTextFile(await fs.readFile(targetPath));
+    // 单个文件读取/解码失败（GBK 等非 UTF-8 编码、被占用等）只记入问题清单并跳过，
+    // 不得让一个坏文件毒死整个项目的载入；报错必须带相对路径，否则无法定位问题文件。
+    try {
+      files[relativePath] = decodeTextFile(await fs.readFile(targetPath));
+    } catch (error) {
+      problems?.push({
+        path: relativePath,
+        code: error instanceof TextFileFormatError ? error.code : 'READ_ERROR',
+        message: error instanceof TextFileFormatError
+          ? `文件 ${relativePath} ${error.message.replace(/^文件/u, '')}`
+          : `文件 ${relativePath} 读取失败：${error instanceof Error ? error.message : String(error)}`
+      });
+    }
   }
 }
 

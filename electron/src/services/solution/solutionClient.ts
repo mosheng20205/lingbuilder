@@ -24,6 +24,10 @@ export interface SolutionProject {
     outputType?: 'exe' | 'dll';
     /** 传真时生成的 exe 启动时请求管理员权限（UAC requireAdministrator）；缺省假＝asInvoker。与服务端 ExternalProjectProperties 一致。 */
     requireAdministrator?: boolean;
+    /** 传真时 build.run / native.preview 阻断未豁免的内嵌 C++（@ 行）；缺省假＝不限制。 */
+    forbidInlineCpp?: boolean;
+    /** forbidInlineCpp 的整文件豁免清单（工作区相对路径）。 */
+    inlineCppAllowFiles?: string[];
   };
   solutionFolderId?: string;
 }
