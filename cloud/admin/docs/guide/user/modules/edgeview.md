@@ -95,6 +95,9 @@ EdgeView 基于 Microsoft Edge WebView2，把完整的 Edge 浏览器嵌入你�
 
 「内嵌站点」可以把一个纯前端项目的构建产物（Vite / React / Vue 打包出的静态文件）**直接编进 EXE**：浏览器对页面的所有请求都在进程内从内存应答，运行期不会向磁盘（包括 %TEMP%）释放任何 HTML/JS/CSS 文件。配合 WebView2 Loader 静态链接，最终交付物就是**一个 exe 文件**，双击即可运行（无需安装任何东西，目标机保留系统自带的 WebView2 Runtime 即可）。
 
+> [!TIP]
+> 「内嵌站点」不是内嵌文件进 EXE 的唯一方式：携带 DLL、图片、数据包等附件请用[内嵌资源](/guide/user/advanced/embedded-resource)。两者怎么选见[内嵌站点 vs 内嵌资源（选型指南）](/guide/user/advanced/embedded-choices)。
+
 ### 操作步骤
 
 1. 构建 your web 项目（如 `npm run build` 得到 `dist/`），把产物复制到项目内某个目录（例如 `www/`）；
@@ -136,7 +139,7 @@ EdgeView 基于 Microsoft Edge WebView2，把完整的 Edge 浏览器嵌入你�
 > [!NOTE]
 > 主窗句柄可用 `窗口_按标题查找("窗口标题")` 获取（标题即窗口属性里的窗口标题）。拖拽/缩放的模态循环期间网页收不到松开事件属正常现象，页面不应依赖拖拽的应答。
 
-完整可运行的参考工程见仓库 `AI 视频自主生产/进阶方案/` 下的 `AI智能助手-EdgeView/`、`Cat小助手-EdgeView/`、`抖音助手-EdgeView/`（三个单文件 exe 样例：内嵌站点 + 无边框网页壳 + 网页拖拽/窗口控制）。
+完整可运行的参考工程：仓库 `examples/aruile-toolsbox/`（网页工具箱：内嵌站点 + 无边框窗口壳 + 圆角 + 网页桥打开网址/窗口控制，仓库内可直接复制打开）；`AI 视频自主生产/进阶方案/` 下的 `AI智能助手-EdgeView/`、`Cat小助手-EdgeView/`、`抖音助手-EdgeView/`（三个单文件 exe 样例，不入仓库）。
 
 ## 事件
 

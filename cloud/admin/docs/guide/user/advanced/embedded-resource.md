@@ -23,7 +23,7 @@ title: 内嵌资源（把文件打进 EXE）
 | 单文件分发 | 把图标、说明文件、配置 JSON 内嵌进 exe |
 | 交给只吃字节集的接口 | `内存DLL_加载(资源_取字节集("dll/mylib.dll"), "mylib.dll")` |
 | 交给只吃磁盘路径的老库 | 声明 `extract: true`，或运行期 `资源_释放到临时目录(...)` |
-| 内嵌网页资源 | 用「内嵌站点」机制配 EdgeView/FBro 浏览器控件（见窗口设计器 → 内嵌站点） |
+| 内嵌网页资源 | 用「内嵌站点」机制配 EdgeView/FBro 浏览器控件（两者怎么选见[内嵌站点 vs 内嵌资源](/guide/user/advanced/embedded-choices)） |
 
 ## 2. 在设计器里维护清单
 
@@ -128,5 +128,5 @@ title: 内嵌资源（把文件打进 EXE）
 ## 下一步
 
 - 想内嵌 DLL 并直接调用导出函数：[调用 C++ DLL](/guide/user/modules/dll-module)
-- 想内嵌整个网页站点：[窗口设计器](/guide/user/window-designer) → 内嵌站点
+- 想内嵌整个网页站点：[窗口设计器](/guide/user/window-designer) → 内嵌站点，步骤见 [EdgeView 浏览器模块](/guide/user/modules/edgeview)；两种内嵌机制的区别与选型见[内嵌站点 vs 内嵌资源](/guide/user/advanced/embedded-choices)
 - 回到[进阶主题索引](/guide/user/advanced/)

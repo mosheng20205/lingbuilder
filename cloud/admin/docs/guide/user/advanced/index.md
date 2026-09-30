@@ -14,6 +14,7 @@ title: 进阶主题
 |---|---|
 | [外部 API 调用](/guide/user/advanced/external-apis) | 通过 `network-http` 模块调用 RESTful 接口 |
 | [内嵌资源（打进 EXE）](/guide/user/advanced/embedded-resource) | 把图片、文本、zip、DLL 字节打进单文件 exe |
+| [内嵌站点 vs 内嵌资源（选型）](/guide/user/advanced/embedded-choices) | 两套内嵌机制的差异对比与选型建议 |
 | [性能优化](/guide/user/advanced/performance) | 界面卡顿、内存、构建优化 |
 
 ## 技术参考（迁移自 doc/）

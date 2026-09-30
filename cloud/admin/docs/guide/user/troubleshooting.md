@@ -34,6 +34,9 @@ title: 问题排查
 | 缺少 Visual C++ 运行库 | 官方网站下载并安装 Redistributable |
 | 杀毒软件误报 | 将安装目录加入白名单 |
 | 权限不足 | 以管理员身份运行 |
+| 找到了 Visual Studio C++ 工具集，但 vcvars/VS 开发环境初始化失败 | 已装的 Build Tools 不完整或损坏，用 **Visual Studio Installer** 的 **修复** 处理，详见[安装与启动 · 安装失败排查](/guide/user/install#安装失败排查) |
+| 未检测到 Windows SDK 关键工具 rc.exe | 在 Visual Studio Installer 中补勾「使用 C++ 的桌面开发」工作负载，详见[安装与启动 · 安装失败排查](/guide/user/install#安装失败排查) |
+| 未在注册表中检测到 WebView2 Runtime | 手动安装微软官方 Evergreen 运行时，详见[安装与启动 · WebView2 Runtime 手动安装](/guide/user/install#webview2-runtime-手动安装-edgeview-模块需要) |
 
 ## 4. 获取帮助
 

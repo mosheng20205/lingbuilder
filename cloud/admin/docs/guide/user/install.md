@@ -85,15 +85,41 @@ g++ / clang++ 虽然也能被识别，但 LingBuilder 默认 Win32 构建以及�
 3. 点击 **一键安装核心构建环境**，LingBuilder 会自动从微软官方下载并运行 Visual Studio Build Tools 安装器（已自动勾选 MSVC、Windows SDK 与 CMake）。
 4. 按系统提示授权 UAC，等待安装完成后，环境修复中心会自动重新检测。
 
-### 方式二：手动安装
+### 方式二：手动下载安装（微软官网）
 
-1. 访问 [Visual Studio 下载页](https://visualstudio.microsoft.com/zh-hans/downloads/)，在「生成工具」区域下载 **Visual Studio Build Tools 2022**。
-2. 运行安装器，勾选 **使用 C++ 的桌面开发** 工作负载（默认已包含 MSVC 与 Windows SDK）。
-3. 点击 **安装**，等待完成（约需 6–8 GB 磁盘空间，耗时视网络而定）。
-4. 重启 LingBuilder，再次执行 **工具：打开环境修复中心** 确认检测通过。
+一键安装失败或网络受限时，可手动从微软官网下载安装：
+
+1. 访问 [Visual Studio 下载页](https://visualstudio.microsoft.com/zh-hans/downloads/)，在「生成工具」区域下载 **Visual Studio Build Tools 2022**；也可以直接下载官方引导程序 [vs_BuildTools.exe](https://aka.ms/vs/17/release/vs_BuildTools.exe)（与环境修复中心一键安装使用的地址相同）。
+2. 运行 `vs_BuildTools.exe`，在安装器的 **工作负载** 页勾选 **使用 C++ 的桌面开发**（Desktop development with C++）。该工作负载默认已包含：
+   - **MSVC v143 x86/x64 生成工具**：编译器（环境修复中心里的「MSVC C++ 编译器」）。
+   - **Windows 10/11 SDK**：Windows 头文件与库，含资源编译器 `rc.exe`（环境修复中心里的「Windows SDK / rc.exe」）。
+3. 确认右下角「安装详细信息」中的推荐可选项保持勾选（含 CMake），点击 **安装**，等待完成（约需 6–8 GB 磁盘空间，耗时视网络而定）。
+4. 安装完成后重启 LingBuilder，再次执行 **工具：打开环境修复中心**，确认 **MSVC C++ 编译器** 与 **Windows SDK / rc.exe** 均显示 ✓。
 
 > [!NOTE]
 > 安装完成后无需配置任何环境变量，LingBuilder 会通过 `vswhere` 自动定位 MSVC 与 Windows SDK。
+
+### WebView2 Runtime 手动安装（EdgeView 模块需要）
+
+WebView2 Runtime 用于 EdgeView 模块生成的原生浏览器界面，Windows 10/11 一般已内置。当环境修复中心提示「未在 Microsoft EdgeUpdate 注册表中检测到 WebView2 Runtime」时，按以下步骤手动安装：
+
+1. 从微软官网下载安装包（任选其一）：
+   - **在线安装引导程序**：[go.microsoft.com/fwlink/p/?LinkId=2124703](https://go.microsoft.com/fwlink/p/?LinkId=2124703)（与环境修复中心一键安装使用的地址相同，安装时需联网）。
+   - **x64 离线独立安装包**：[go.microsoft.com/fwlink/p/?LinkId=2124701](https://go.microsoft.com/fwlink/p/?LinkId=2124701)（推荐网络不稳定时使用，无需联网即可安装）。
+   - **官方下载页**：[developer.microsoft.com/microsoft-edge/webview2](https://developer.microsoft.com/microsoft-edge/webview2)（含 x86、ARM64 与固定版本）。
+2. 运行下载的安装程序（如 `MicrosoftEdgeWebview2Setup.exe`），等待安装完成。
+3. 重启 LingBuilder，打开 **环境修复中心**，确认 **WebView2 Runtime** 显示 ✓。
+
+### 安装失败排查
+
+环境修复中心检测项或一键安装失败时，按下表对症处理：
+
+| 环境修复中心提示 | 原因与处理 |
+|---|---|
+| 找到了 Visual Studio C++ 工具集，但 vcvars/VS 开发环境初始化失败 | 已安装的 Build Tools / Visual Studio 不完整或损坏。打开 **Visual Studio Installer**（开始菜单搜索），找到 **Visual Studio Build Tools 2022**，点击 **修复**，完成后重启 LingBuilder 重新检测；若安装器列表中没有 Build Tools，按 [方式二](#方式二-手动下载安装-微软官网) 重新安装。 |
+| 未检测到 Windows SDK 关键工具 rc.exe | 只安装了 MSVC 编译器、缺少 Windows SDK。打开 **Visual Studio Installer** → Build Tools 2022 → **修改**，勾选 **使用 C++ 的桌面开发** 工作负载（或至少勾选「Windows 10/11 SDK」单个组件）后安装。 |
+| 未在 Microsoft EdgeUpdate 注册表中检测到 WebView2 Runtime | 按 [WebView2 Runtime 手动安装](#webview2-runtime-手动安装-edgeview-模块需要) 小节安装官方运行时后重启 LingBuilder。 |
+| 一键安装下载失败或中途被拦截 | 安装器来自 `aka.ms` / `go.microsoft.com` 微软官方地址，请检查网络连通性，并将 LingBuilder 加入杀毒软件白名单后重试；或改用上方手动方式下载安装。 |
 
 ## 6. 验证安装是否成功
 

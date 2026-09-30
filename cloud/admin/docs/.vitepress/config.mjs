@@ -68,6 +68,7 @@ export default defineConfig({
             { text: '问题排查', link: '/guide/user/troubleshooting' },
             { text: '外部 API 调用', link: '/guide/user/advanced/external-apis' },
             { text: '内嵌资源（打进 EXE）', link: '/guide/user/advanced/embedded-resource' },
+            { text: '内嵌站点 vs 内嵌资源（选型）', link: '/guide/user/advanced/embedded-choices' },
             { text: 'SDK 按需下载与离线安装', link: '/guide/user/advanced/sdk-download' },
             { text: '性能优化', link: '/guide/user/advanced/performance' },
             { text: '安全指南', link: '/guide/user/advanced/security' },
