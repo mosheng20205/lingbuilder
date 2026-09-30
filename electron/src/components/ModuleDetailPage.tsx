@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -852,6 +852,11 @@ function ModuleInterfaceTab({
   );
 }
 
+/** 单文档模块自动进入阅读器：仅「文档」分组恰好登记 1 篇时生效，多文档与「示例」页签保持列表优先。 */
+function pickSingleAutoOpenDocument(items: PublicInfoItem[]): PublicInfoItem | null {
+  return items.length === 1 && items[0].groupId === 'docs' ? items[0] : null;
+}
+
 function ModuleDocumentTab({
   items,
   isDarkMode,
@@ -863,12 +868,22 @@ function ModuleDocumentTab({
   onOpenDemo: (demoModuleId: string) => void;
   demoOpenState: { moduleId: string; status: 'opening' | 'ok' | 'error'; message?: string } | null;
 }) {
-  const [selected, setSelected] = useState<PublicInfoItem | null>(null);
+  const [selected, setSelected] = useState<PublicInfoItem | null>(() => pickSingleAutoOpenDocument(items));
   const borderClass = isDarkMode ? 'border-white/10' : 'border-slate-200';
   const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  // 上层每次渲染都会经 filter 重建 items 数组，自动选中只能按条目 id 集合变化触发：
+  // 否则「返回列表」后任意一次父级重渲染都会把用户重新拽进阅读器。
+  const itemsKey = useMemo(() => items.map(item => item.id).join('\n'), [items]);
+  const itemsRef = useRef(items);
   useEffect(() => {
-    setSelected(current => (current && items.some(item => item.id === current.id) ? current : null));
-  }, [items]);
+    itemsRef.current = items;
+  });
+  useEffect(() => {
+    setSelected(current => {
+      if (current && itemsRef.current.some(item => item.id === current.id)) return current;
+      return pickSingleAutoOpenDocument(itemsRef.current);
+    });
+  }, [itemsKey]);
   if (items.length === 0) {
     return (
       <div className={`flex h-full items-center justify-center text-xs ${subtleClass}`}>该模块没有登记此类内容。</div>
