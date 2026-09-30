@@ -68,15 +68,24 @@ test('检查更新结果携带官网回退与安装包直链，App 命令描述�
   assert.match(dialogSource, /info\.websiteUrl \|\| OFFICIAL_SITE_URL/u);
 });
 
-test('标题栏升级徽标：静默检查驱动徽标与悬浮更新说明，点击接入应用内更新', async () => {
+test('标题栏更新徽标：静默检查驱动黄色徽标与悬浮更新日志，点击直接发起下载', async () => {
   const appSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
-  // 徽标状态与点击动作：保存检查载荷，点击复用现有更新对话框。
+  // 徽标状态与点击动作：保存检查载荷，点击打开进度对话框并直接发起应用内下载（幂等）。
   assert.match(appSource, /const \[updateBadgePayload, setUpdateBadgePayload\]/u);
   assert.match(appSource, /setUpdateCheckState\(createUpdateDialogInfo\(updateBadgePayload\)\)/u);
-  // 徽标与悬浮面板渲染在标题栏：排除窗口拖拽区，悬浮面板展示版本号与更新说明。
+  assert.match(appSource, /const startDownload = window\.lingBuilder\?\.updates\?\.download;/u);
+  assert.match(appSource, /if \(startDownload\) void startDownload\(\)\.catch/u);
+  // 黄色「更新」徽标渲染在标题栏：排除窗口拖拽区，悬浮面板为「v版本 更新日志」+ 发布日期 + 条目列表。
   assert.match(appSource, /window-no-drag relative flex shrink-0 items-center/u);
-  assert.match(appSource, /发现新版本 v'\}\{updateBadgePayload\.latestVersion/u);
-  assert.match(appSource, /\{updateBadgePayload\.releaseNotes \|\|/u);
+  assert.match(appSource, /bg-amber-400\/15/u);
+  assert.match(appSource, /更新\s*<\/button>/u);
+  assert.match(appSource, /发现新版本 v\$\{updateBadgePayload\.latestVersion/u);
+  assert.match(appSource, /v\{updateBadgePayload\.latestVersion \?\? ''\} 更新日志/u);
+  assert.match(appSource, /formatUpdateDate\(updateBadgePayload\.publishedAt\)/u);
+  assert.match(appSource, /splitUpdateNoteLines\(updateBadgePayload\.releaseNotes\)/u);
+  // 悬浮面板随鼠标移入/移出自动显示与消失。
+  assert.match(appSource, /onMouseEnter=\{\(\) => setShowUpdateBadgePanel\(true\)\}/u);
+  assert.match(appSource, /onMouseLeave=\{\(\) => setShowUpdateBadgePanel\(false\)\}/u);
   // 启动静默检查保留首启弹窗，并增加周期复查只刷新徽标。
   assert.match(appSource, /runSilentUpdateCheck\(true\), 5000\)/u);
   assert.match(appSource, /runSilentUpdateCheck\(false\), 30 \* 60 \* 1000\)/u);

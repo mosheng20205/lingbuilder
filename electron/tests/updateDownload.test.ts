@@ -593,3 +593,51 @@ test('download recovers via copy fallback when a real file lock blocks the renam
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('安装器拉起不隐藏窗口，启动后非零秒退时报手动运行指引而不静默退出', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-updater-install-'));
+  const updatesDir = path.join(dir, 'updates');
+  await fs.mkdir(updatesDir, { recursive: true });
+  const payload = crypto.randomBytes(1024);
+  const digest = crypto.createHash('sha256').update(payload).digest('hex');
+  await fs.writeFile(path.join(updatesDir, 'LingBuilder-9.9.9-x64.exe'), payload);
+  const fetchImpl = (async () => { throw new Error('install test must not fetch'); }) as unknown as typeof fetch;
+  try {
+    // 正常路径：spawn 选项必须是 detached + 无 windowsHide（GUI 安装器收 STARTUPINFO SW_HIDE 会整窗不可见）。
+    let capturedOptions: { detached?: boolean; windowsHide?: boolean; stdio?: unknown } | null = null;
+    const okSpawn = ((_command: string, _args: string[], options: { detached?: boolean; windowsHide?: boolean; stdio?: unknown }) => {
+      capturedOptions = options;
+      return new FakeChild() as unknown as UpdaterChildProcess;
+    }) as unknown as typeof spawn;
+    const okService = new UpdateDownloadService({
+      updatesDir, isPackaged: true,
+      fetchImpl, spawnImpl: okSpawn,
+      execFileImpl: async () => { throw new Error('no reg'); }
+    });
+    await okService.download(checkResult({ sha256: digest }));
+    const okResult = await okService.install();
+    assert.equal(okResult.ok, true);
+    assert.equal(okService.status().state, 'launching');
+    assert.equal(capturedOptions?.detached, true);
+    assert.equal(capturedOptions?.windowsHide, undefined);
+
+    // 异常路径：安装器在探测窗口内非零退出（如被安全软件拦截）→ 保持 error 态并给出手动运行指引。
+    const failSpawn = ((_command: string, _args: string[], _options: unknown) => {
+      const child = new FakeChild();
+      setTimeout(() => child.emitClose(1), 30);
+      return child as unknown as UpdaterChildProcess;
+    }) as unknown as typeof spawn;
+    const failService = new UpdateDownloadService({
+      updatesDir, isPackaged: true,
+      fetchImpl, spawnImpl: failSpawn,
+      execFileImpl: async () => { throw new Error('no reg'); }
+    });
+    await failService.download(checkResult({ sha256: digest }));
+    const failResult = await failService.install();
+    assert.equal(failResult.ok, false);
+    assert.match(failResult.error || '', /退出码 1.*请手动运行/u);
+    assert.equal(failService.status().state, 'error');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

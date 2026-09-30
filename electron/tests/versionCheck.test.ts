@@ -33,7 +33,7 @@ test('checkLatestVersion surfaces installer direct link and checksum when cloud 
     ok: true, available: true, version: '1.2.0', title: '新版本', channel: 'stable',
     downloadUrl: 'https://dl.lingbuilder.com/LingBuilder-1.2.0-x64.exe',
     sha256: 'ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789',
-    fileSize: '85 MB', releaseNotes: '修复若干问题。'
+    fileSize: '85 MB', releaseNotes: '修复若干问题。', publishedAt: '2026-09-16T00:00:00.000Z'
   }), { status: 200 })) as never;
   try {
     const result = await checkLatestVersion('https://api.example.com', '1.0.0');
@@ -42,7 +42,20 @@ test('checkLatestVersion surfaces installer direct link and checksum when cloud 
     assert.equal(result.sha256, 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789');
     assert.equal(result.fileSize, '85 MB');
     assert.equal(result.releaseNotes, '修复若干问题。');
+    assert.equal(result.publishedAt, '2026-09-16T00:00:00.000Z');
     assert.equal(result.channel, 'stable');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('checkLatestVersion keeps publishedAt null for legacy cloud responses without a release date', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ ok: true, available: true, version: '9.9.9', title: 'Legacy', publishedAt: '  ' }), { status: 200 })) as never;
+  try {
+    const result = await checkLatestVersion('https://api.example.com', '0.5.0');
+    assert.equal(result.hasUpdate, true);
+    assert.equal(result.publishedAt, null);
   } finally {
     globalThis.fetch = originalFetch;
   }

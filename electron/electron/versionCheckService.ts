@@ -13,6 +13,8 @@ export interface VersionCheckResult {
   sha256?: string | null;
   fileSize?: string | null;
   releaseNotes?: string | null;
+  /** 云端发布时间（ISO 字符串）：更新日志悬浮面板展示用；云端缺省时为 null。 */
+  publishedAt?: string | null;
   channel?: string | null;
   error?: string;
 }
@@ -78,6 +80,7 @@ export async function checkLatestVersion(origin: string, currentVersion: string,
       sha256: optionalSha256(value.sha256),
       fileSize: optionalText(value.fileSize),
       releaseNotes: optionalText(value.releaseNotes),
+      publishedAt: optionalText(value.publishedAt),
       channel: optionalText(value.channel)
     };
   } catch (error) {

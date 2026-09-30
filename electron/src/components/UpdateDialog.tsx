@@ -14,6 +14,8 @@ export interface UpdateDialogInfo {
   sha256?: string | null;
   fileSize?: string | null;
   releaseNotes?: string | null;
+  /** 云端发布时间（ISO 字符串）：更新日志与下载窗口展示发布日期。 */
+  publishedAt?: string | null;
   channel?: string | null;
 }
 
@@ -126,7 +128,7 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
 
   const title = phase === 'checking' ? '正在检查更新…'
     : phase === 'latest' ? '已是最新版本'
-    : phase === 'downloading' ? `正在下载更新 ${versionLabel}`
+    : phase === 'downloading' ? `正在下载 ${versionLabel}`
     : phase === 'verifying' ? '正在校验安装包完整性'
     : phase === 'ready' ? `${versionLabel || '更新包'}已通过完整性校验`
     : phase === 'launching' ? '正在启动安装程序'
@@ -138,6 +140,7 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div className={`w-[26rem] max-w-full rounded-lg border p-5 shadow-2xl ${surface}`}>
         <h2 id={titleId} className="text-sm font-semibold">{title}</h2>
+        {formatUpdateDate(info.publishedAt) && <p className={`mt-1 text-[11px] ${muted}`}>{formatUpdateDate(info.publishedAt)}</p>}
 
         {phase === 'checking' && <p className="mt-3 text-xs leading-5 text-slate-400">正在连接 LingBuilder 云端查询最新版本。</p>}
         {phase === 'latest' && <p className="mt-3 text-xs leading-5 text-slate-400">当前 {currentVersionLabel} 已是最新版本。</p>}
@@ -168,10 +171,15 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
 
         {(phase === 'downloading' || phase === 'verifying') && (
           <>
-            <div className="mt-3 rounded border border-blue-500/35 bg-blue-500/10 p-3" aria-live="polite">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="min-w-0 truncate">{phase === 'verifying' ? '正在校验安装包完整性…' : progress?.message || '正在下载更新包…'}</span>
-                {phase === 'downloading' && percent !== null && <span className="shrink-0 tabular-nums">{percent}%</span>}
+            {/* 下载进度排版对齐参考样式：左侧「下载进度」标签，右侧已下载/总大小，下方进度条与速度明细。 */}
+            <div className="mt-3" aria-live="polite">
+              <div className="flex items-baseline justify-between gap-3 text-xs">
+                <span className="shrink-0">{phase === 'verifying' ? '正在校验安装包完整性…' : '下载进度'}</span>
+                {phase === 'downloading' && (
+                  <span className="min-w-0 truncate text-right tabular-nums">
+                    {formatBytes(progress?.downloadedBytes ?? 0)}{progress?.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ''}
+                  </span>
+                )}
               </div>
               {phase === 'downloading' && (
                 <div className="mt-2 h-1.5 overflow-hidden rounded bg-black/15" role="progressbar" aria-label={`更新包 ${versionLabel} 下载进度`} aria-valuenow={percent ?? undefined}>
@@ -179,11 +187,15 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
                 </div>
               )}
               {phase === 'downloading' && (
-                <div className={`mt-2 flex flex-wrap justify-between gap-2 text-[10px] ${muted}`}>
-                  <span className="tabular-nums">{formatBytes(progress?.downloadedBytes ?? 0)}{progress?.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ''}</span>
-                  <span className="tabular-nums">{progress?.bytesPerSecond ? `${formatBytes(progress.bytesPerSecond)}/秒` : ''}</span>
+                <div className={`mt-2 flex items-center justify-between gap-2 text-[10px] ${muted}`}>
+                  <span className="min-w-0 truncate">{progress?.message || '正在下载更新包…'}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {percent !== null ? `${percent}%` : ''}
+                    {progress?.bytesPerSecond ? `${percent !== null ? ' · ' : ''}${formatBytes(progress.bytesPerSecond)}/秒` : ''}
+                  </span>
                 </div>
               )}
+              {phase === 'verifying' && <div className={`mt-2 text-[10px] ${muted}`}>{progress?.message || '校验通过后将自动开始安装。'}</div>}
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={onClose} className={secondaryButton}>后台下载</button>
@@ -238,6 +250,14 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
       </div>
     </div>
   );
+}
+
+/** 把云端发布时间（ISO 或日期字符串）格式化成「2026年9月16日」；无法解析时原样返回。 */
+export function formatUpdateDate(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
 function formatBytes(value: number): string {

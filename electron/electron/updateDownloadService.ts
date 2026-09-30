@@ -19,7 +19,8 @@ const UPDATER_RENAME_RETRY_ATTEMPTS = 6;
 const UPDATER_RENAME_RETRY_BASE_DELAY_MS = 250;
 const UPDATER_PROGRESS_INTERVAL_MS = 500;
 const UPDATER_TERMINATION_GRACE_MS = 2_000;
-const UPDATER_SPAWN_PROBE_MS = 500;
+/** 安装器启动探测窗口：GUI 安装器若被安全软件拦截会在数百毫秒内非零退出，窗口必须盖过这一情形。 */
+const UPDATER_SPAWN_PROBE_MS = 3_000;
 const UPDATER_PROBE_TIMEOUT_MS = 15_000;
 
 export type AppUpdateState = 'idle' | 'downloading' | 'verifying' | 'ready' | 'launching' | 'error';
@@ -434,8 +435,16 @@ export class UpdateDownloadService {
     this.emitState({ state: 'launching', message: '正在启动安装程序，LingBuilder 即将退出…' });
     const spawnImpl = this.options.spawnImpl || spawn;
     let spawnError: Error | null = null;
-    const child = spawnImpl(installerPath, [], { detached: true, stdio: 'ignore', windowsHide: true }) as unknown as UpdaterChildProcess;
+    // 安装器是 GUI 程序：禁止 windowsHide（STARTUPINFO SW_HIDE 会传给子进程，曾导致安装器界面不出现、
+    // 应用退出后用户彻底失联）；与官方 electron-updater 拉 NSIS 的方式一致，只保留 detached + stdio ignore。
+    let earlyExitCode: number | null = null;
+    let earlyExitSignal: NodeJS.Signals | null = null;
+    const child = spawnImpl(installerPath, [], { detached: true, stdio: 'ignore' }) as unknown as UpdaterChildProcess;
     child.once('error', error => { spawnError = error; });
+    child.once('close', (code, signal) => {
+      earlyExitCode = code;
+      earlyExitSignal = signal;
+    });
     try { child.unref(); } catch { /* 平台不支持 unref 时忽略 */ }
     const failure = await new Promise<Error | null>(resolve => {
       const timer = setTimeout(() => {
@@ -446,13 +455,21 @@ export class UpdateDownloadService {
         if (spawnError) {
           clearTimeout(timer);
           clearInterval(check);
-          resolve(spawnError);
+          resolve(updaterError(`无法启动安装程序（${spawnError.message}）。请手动运行：${installerPath}`));
+          return;
+        }
+        // 探测窗口内安装器非零退出（常见于安全软件拦截或安装包损坏）：不退出 IDE，直接给出手动运行指引。
+        if (earlyExitCode !== null && earlyExitCode !== 0) {
+          clearTimeout(timer);
+          clearInterval(check);
+          const signalHint = earlyExitSignal ? `，终止信号 ${earlyExitSignal}` : '';
+          resolve(updaterError(`安装程序启动后立即退出（退出码 ${earlyExitCode}${signalHint}），可能被安全软件拦截。请手动运行：${installerPath}`));
         }
       }, 50);
     });
     if (failure) {
-      this.emitState({ state: 'error', error: `无法启动安装程序（${failure.message}）。请手动运行：${installerPath}` });
-      return { ok: false, error: `无法启动安装程序（${failure.message}）。请手动运行：${installerPath}` };
+      this.emitState({ state: 'error', error: failure.message });
+      return { ok: false, error: failure.message };
     }
     return { ok: true };
   }
