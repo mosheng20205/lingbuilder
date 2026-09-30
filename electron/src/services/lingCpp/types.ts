@@ -382,6 +382,11 @@ export interface LingCppEditContext {
   aiConfig?: AiConnectionConfig;
   designerProject?: LingWindowProject;
   /**
+   * 目标项目类型本身不携带设计器模型（windows-dll 模板项目无窗口）。
+   * 为 true 时设计器校验允许零窗口模型，桥接层不因磁盘无设计器快照而阻断构建。
+   */
+  designerOptional?: boolean;
+  /**
    * 提案生成时磁盘上的设计器快照（仅 AI Bridge 外部 AI 路径在 caller 显式传入
    * designerProject 时填充）。apply 阶段的「提案后漂移检测」以它为基准；
    * 缺省时退回 designerProject（系统 AI planner 路径两者一致）。
