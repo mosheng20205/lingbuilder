@@ -527,6 +527,12 @@ private:
     static const int LB_CURL_OPT_WRITEDATA = 10001;
     static const int LB_CURL_OPT_HEADERDATA = 10029;
     static const int LB_CURL_OPT_CAINFO = 10065;
+    // CA 包主路径走内存 BLOB 形态（CURLOPT_CAINFO_BLOB = CURLOPTTYPE_BLOB + 309 = 40309，curl.h 逐字核对）。
+    // 红线：CAINFO 路径形态只能作 BLOB 不可用时的兜底，且必须经 keepAnsiPath（8.3 短路径/ACP）转换、
+    // 禁止 keepUtf8 直传——BoringSSL 按 ANSI fopen 打开 CAfile，程序目录含非 ASCII（真机实锤：
+    // T:\逆向\蓝奏云\...，rc=77 "error adding trust anchors from locations"）时 UTF-8 字节路径必打不开；
+    // blob 结构与 CURL_BLOB_COPY=1/NOCOPY=0 见随包 curl/easy.h；curl 侧 BLOB 优先于 CAINFO。
+    static const int LB_CURL_OPT_CAINFO_BLOB = 40309;
     static const int LB_CURL_INFO_RESPONSE_CODE = 2097154;
     static const int LB_CURL_INFO_EFFECTIVE_URL = 1048577;
 
@@ -624,6 +630,9 @@ private:
         return result;
     }
 
+    // 与随包 curl/easy.h 的 curl_blob 逐字同形（CURL_BLOB_COPY=1 / CURL_BLOB_NOCOPY=0）。
+    struct LBCurlBlob { void* data; size_t len; unsigned int flags; };
+
     struct CurlTransferBuffer {
         std::vector<unsigned char> body;
         std::string headers;
@@ -664,6 +673,7 @@ private:
             case 55: return L"TLS 指纹请求：发送失败。";
             case 56: return L"TLS 指纹请求：接收失败。";
             case 60: return L"TLS 指纹请求：对端证书校验失败。";
+            case 77: return L"TLS 指纹请求：CA 证书包无法加载。";
             default: return L"TLS 指纹请求失败（libcurl 错误码见系统错误码）。";
         }
     }
@@ -746,8 +756,30 @@ private:
         bool certificatePinned = false;
         // 指针保活：curl 只保存 slist 指针，全部字符串必须活到 perform 结束。
         std::vector<std::string> stringStorage;
+        // CA 证书包保活：BLOB 指针必须活到 perform 结束。
+        std::vector<unsigned char> caBlobStorage;
+        LBCurlBlob caBlob = { nullptr, 0, 1 };
+        std::vector<std::string> stringStorage;
         const auto keepUtf8 = [&](const std::wstring& value) -> const char* {
             stringStorage.push_back(LB_WideToUtf8(value.c_str()));
+            return stringStorage.back().c_str();
+        };
+        // 文件路径类选项（CAINFO）必须交给 curl 一个 Windows 能真正打开的路径：curl 在 Windows 上按
+        // ANSI(ACP) 而非 UTF-8 打开文件，含中文的目录名（如 T:\逆向\小红书\...）按 UTF-8 传会 fopen 失败，
+        // SSL 信任链缺失 → 请求在第 0 步失败（CAINFO 在 10065 修复后真正生效才暴露）。优先取 8.3 短路径
+        // （纯 ASCII，任何代码页都能打开），退化时按 ACP 编码。
+        const auto keepAnsiPath = [&](const std::wstring& value) -> const char* {
+            std::wstring filePath = value;
+            wchar_t shortPath[MAX_PATH] = {};
+            if (GetShortPathNameW(value.c_str(), shortPath, MAX_PATH) > 0) filePath.assign(shortPath);
+            std::string output;
+            const int size = WideCharToMultiByte(CP_ACP, 0, filePath.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            if (size > 1) {
+                output.resize(static_cast<size_t>(size), '\0');
+                WideCharToMultiByte(CP_ACP, 0, filePath.c_str(), -1, output.data(), size, nullptr, nullptr);
+                output.resize(static_cast<size_t>(size - 1));
+            }
+            stringStorage.push_back(std::move(output));
             return stringStorage.back().c_str();
         };
         // 全部 setopt 返回值必须检查：未知选项号（CAINFO 曾误写 10098）会以返回码 48 被静默丢弃，
@@ -795,7 +827,13 @@ private:
             }
         }
         if (verifyCertificate) {
-            // BoringSSL 无 Windows 证书库集成：把随包 CA 证书包（cacert.pem，位于程序目录）喂给 CURLOPT_CAINFO。
+            // BoringSSL 无 Windows 证书库集成：把随包 CA 证书包（cacert.pem，程序目录）喂给 curl。
+            // 主路径：宽字符 std::ifstream 读入内存走 CURLOPT_CAINFO_BLOB——对非 ASCII 程序目录免疫
+            // （真机实锤：T:\逆向\蓝奏云\... 下路径形态 rc=77 "error adding trust anchors"，
+            // BoringSSL 按 ANSI fopen 打开 CAfile，UTF-8 字节路径必打不开；本地 A/B 探针实证 BLOB 200）。
+            // 兜底：CAINFO 路径形态（keepAnsiPath → 8.3 短路径/ACP），仅在 DLL 不支持 BLOB 时才会被消费；
+            // 禁止 keepUtf8 直传路径。与其它 setopt 不同，本组失败不阻断（不进 rejectedOptions）：
+            // CA 包不可用就退回 DLL 内置默认 CA（该回退真机长期可用），不把「CA 包不可用」升级成「请求失败」。
             wchar_t exePath[MAX_PATH] = {};
             GetModuleFileNameW(nullptr, exePath, MAX_PATH);
             std::wstring exeDirectory(exePath);
@@ -803,7 +841,19 @@ private:
             if (slash != std::wstring::npos) exeDirectory.resize(slash + 1);
             const std::wstring caBundle = exeDirectory + L"cacert.pem";
             if (GetFileAttributesW(caBundle.c_str()) != INVALID_FILE_ATTRIBUTES) {
-                setoptChecked(LB_CURL_OPT_CAINFO, L"CAINFO", keepUtf8(caBundle));
+                setoptChecked(LB_CURL_OPT_CAINFO, L"CAINFO", keepAnsiPath(caBundle));
+            }
+            std::ifstream caStream(std::filesystem::path(caBundle), std::ios::binary);
+            if (caStream) {
+                caStream.seekg(0, std::ios::end);
+                const std::streamsize caSize = caStream.tellg();
+                if (caSize > 0) {
+                    caStream.seekg(0, std::ios::beg);
+                    caBlobStorage.resize(static_cast<size_t>(caSize));
+                    caStream.read(reinterpret_cast<char*>(caBlobStorage.data()), caSize);
+                    caBlob.data = caBlobStorage.data();
+                    caBlob.len = caBlobStorage.size();
+                    api.easySetopt(handle, LB_CURL_OPT_CAINFO_BLOB, &caBlob);
             }
         }
         if (!proxyText.empty()) {

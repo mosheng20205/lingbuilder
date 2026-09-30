@@ -162,6 +162,12 @@ test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理�
   assert.ok(mainCpp.includes("if (ch == L'.') { normalized.push_back(L'_'); continue; }"));
   assert.ok(mainCpp.includes('L"safari17_2_ios"'));
   assert.ok(mainCpp.includes('当前 libcurl-impersonate.dll 实测可用档案'));
+  // 2026-09-30 晚补：CA 包主路径改走 CAINFO_BLOB 内存形态（非 ASCII 程序目录下 CAINFO 路径形态
+  // 被 BoringSSL 按 ANSI fopen 打开必失败，rc=77 "error adding trust anchors"，换网络 D 实验真机实锤，
+  // 本地 A/B 探针实证 BLOB 200）；keepAnsiPath 路径形态保留为 BLOB 不可用时的兜底。
+  assert.ok(mainCpp.includes('LB_CURL_OPT_CAINFO_BLOB = 40309'));
+  assert.ok(mainCpp.includes('error adding trust anchors from locations'));
+  assert.ok(mainCpp.includes('caBlobStorage'));
 });
 
 test('断点续传：设置续传文件生成追加落盘运行时且文件流不占响应体内存上限', () => {
