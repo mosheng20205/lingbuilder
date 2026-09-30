@@ -48,3 +48,21 @@ function createDiagnostic(tool: CompilerDiagnostic['tool'], raw: string, severit
 function sameGeneratedFile(mapped: string, actual: string): boolean { const left = mapped.replace(/\\/gu, '/').toLowerCase(); const right = actual.toLowerCase(); return right.endsWith(left) || path.posix.basename(right) === path.posix.basename(left); }
 function toRelative(filePath: string, root?: string): string { if (!root) return filePath; const relative = path.relative(root, filePath).replace(/\\/gu, '/'); return relative.startsWith('../') ? filePath : relative; }
 function hash(value: string): string { let result = 2166136261; for (let index = 0; index < value.length; index += 1) result = Math.imul(result ^ value.charCodeAt(index), 16777619); return (result >>> 0).toString(16); }
+
+/** 折叠 MSVC note 行（候选重载/参见声明刷屏的源头）：逐行剔除后以一行摘要收尾，返回折后文本与数量。 */
+export function foldMsvcNoteLines(output: string): { text: string; foldedNotes: number } {
+  if (!output.trim()) return { text: output, foldedNotes: 0 };
+  const lines = output.split(/\r?\n/u);
+  const kept: string[] = [];
+  let foldedNotes = 0;
+  for (const line of lines) {
+    if (/:\s*note:\s/u.test(line)) {
+      foldedNotes += 1;
+      continue;
+    }
+    kept.push(line);
+  }
+  if (foldedNotes === 0) return { text: output, foldedNotes: 0 };
+  const trimmed = kept.join('\n').replace(/\n{3,}/gu, '\n\n');
+  return { text: `${trimmed}\n（另有 ${foldedNotes} 条 note 备注/候选行已折叠，结构化诊断见 compilerDiagnostics 字段。）`, foldedNotes };
+}
