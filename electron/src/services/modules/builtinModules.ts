@@ -1,6 +1,7 @@
 import { LingBuilderModuleManifest, ModuleCommandBinding, ModuleCommandBindingParameter } from './types';
 import { normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, normalizeControlReferenceSnippet, normalizeHandlerParameter, type ParamDocTable } from './bindingValueType';
 import { getWin32ControlsForModule, getWin32RuntimeControlContract, getWin32RuntimeControlContracts, Win32ControlModuleId, Win32RuntimeControlParameterRole } from '../windowDesigner/win32ControlRegistry';
+import { BUILTIN_MODULE_DOCUMENT_PATHS } from './builtinModuleDocuments';
 import { STANDARD_LIBRARY_MODULES } from './standardLibraryModules';
 import { PROTOBUF_MODULE } from './protobufModule';
 import { ARIA2_MODULE } from './aria2Module';
@@ -531,6 +532,24 @@ function normalizeBuiltinSnippetCalls(value: string, bindings: readonly ModuleCo
   return normalizeControlReferenceSnippet(value, bindings) || value;
 }
 
+/**
+ * 内置模块文档集中注入（登记表见 ./builtinModuleDocuments.ts）：
+ * 只对 contributes.docs 为空的清单合并 `{ 模块名 + 使用说明, 登记路径 }`，
+ * 已内联 docs 的模块（手工维护）原样返回，登记表不再参与。
+ */
+function applyBuiltinModuleDocuments(manifest: LingBuilderModuleManifest): LingBuilderModuleManifest {
+  if (manifest.contributes?.docs?.length) return manifest;
+  const documentPath = BUILTIN_MODULE_DOCUMENT_PATHS[manifest.id];
+  if (!documentPath) return manifest;
+  return {
+    ...manifest,
+    contributes: {
+      ...manifest.contributes,
+      docs: [{ title: `${manifest.name}使用说明`, path: documentPath }]
+    }
+  };
+}
+
 export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   ...STANDARD_LIBRARY_MODULES,
   ARIA2_MODULE,
@@ -545,7 +564,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.win32.basic',
     name: 'Win32窗口基础模块',
-    version: '1.0.0',
+    version: '1.1.0',
     category: '界面',
     description: '提供窗口、基础控件、信息框、调试输出和结束等中文 C++ 基础能力。',
     author: 'LingBuilder',
@@ -589,6 +608,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '到逻辑', signature: '到逻辑(文本)', description: '把文本转换为逻辑值：空文本、“0”、“假”返回假，非零数值与“真”返回真，其余非空文本（如“是”“yes”）也返回真。', insertText: '到逻辑("$1")', returnType: '逻辑型' },
         { name: '取鼠标水平位置', signature: '取鼠标水平位置()', description: '返回鼠标指针当前相对于屏幕左边的水平位置，单位为像素点。初级命令。', insertText: '取鼠标水平位置()', returnType: '整数型' },
         { name: '取鼠标垂直位置', signature: '取鼠标垂直位置()', description: '返回鼠标指针当前相对于屏幕顶边的垂直位置，单位为像素点。初级命令。', insertText: '取鼠标垂直位置()', returnType: '整数型' },
+        { name: '设置鼠标位置', signature: '设置鼠标位置(横, 纵)', description: '把鼠标指针移动到指定的屏幕坐标（SetCursorPos 语义），成功返回真；坐标单位为像素点，与 取鼠标水平位置/取鼠标垂直位置 对应。初级命令。', insertText: '设置鼠标位置($1, $2)', returnType: '逻辑型' },
         { name: '控件_设置文本', signature: '控件_设置文本(控件名, 文本)', description: '设置当前窗口中指定控件的文本。', insertText: '控件_设置文本($1, "$2")', returnType: '逻辑型' },
         { name: '控件_设置图片', signature: '控件_设置图片(控件名, 图片路径)', description: '设置图片框显示的本地图片；支持项目 assets 相对路径或本地完整路径，空路径清空图片。', insertText: '控件_设置图片($1, "assets/$2")', returnType: '逻辑型' },
         { name: '控件_取文本', signature: '控件_取文本(控件名)', description: '读取指定控件的当前文本。', insertText: '控件_取文本($1)', returnType: '文本型' },
@@ -700,6 +720,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '到逻辑', runtimeName: '到逻辑', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '取鼠标水平位置', runtimeName: '取鼠标水平位置', parameters: [], returnType: 'int' },
         { command: '取鼠标垂直位置', runtimeName: '取鼠标垂直位置', parameters: [], returnType: 'int' },
+        { command: '设置鼠标位置', runtimeName: '设置鼠标位置', parameters: [{ name: '横', type: 'int', description: '目标屏幕横坐标，单位为像素点，相对屏幕左边。' }, { name: '纵', type: 'int', description: '目标屏幕纵坐标，单位为像素点，相对屏幕顶边。' }], returnType: 'bool' },
         { command: '控件_设置文本', runtimeName: '控件_设置文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置图片', runtimeName: '控件_设置图片', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '图片路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_取文本', runtimeName: '控件_取文本', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
@@ -927,6 +948,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'EdgeView_创建实例代理', signature: 'EdgeView_创建实例代理(实例编号, 父组件句柄, 地址, 独立缓存目录, 代理地址)', description: '创建使用独立代理的 EdgeView 实例；该代理覆盖全局代理。', insertText: 'EdgeView_创建实例代理(1, 0, "https://example.com", ".edgeview/cache-1", "http://127.0.0.1:7890")', returnType: '整数型' },
         { name: 'EdgeView_创建区域', signature: 'EdgeView_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录)', description: '在当前窗口指定区域创建独立承载 HWND 和 EdgeView 实例。', insertText: 'EdgeView_创建区域(1, 10, 10, 480, 500, "https://example.com", ".edgeview/cache-1")', returnType: '整数型' },
         { name: 'EdgeView_创建区域代理', signature: 'EdgeView_创建区域代理(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)', description: '在指定区域创建使用独立代理的 EdgeView 实例。', insertText: 'EdgeView_创建区域代理(1, 10, 10, 480, 500, "https://example.com", ".edgeview/cache-1", "socks5://127.0.0.1:1080")', returnType: '整数型' },
+        { name: 'EdgeView_创建区域代理UA', signature: 'EdgeView_创建区域代理UA(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址, 用户代理)', description: '带独立代理与独立 User-Agent 的区域实例：UA 在首次导航前应用（可让出站请求头完全脱离 WebView2 默认 UA，例如屏蔽 Edg/ 标记的场景），代理语义与 EdgeView_创建区域代理 相同。运行期再改 UA 请用 EdgeView设置_置用户代理实例。', insertText: 'EdgeView_创建区域代理UA(1, 10, 10, 480, 500, "https://example.com", ".edgeview/cache-1", "", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")', returnType: '整数型' },
         { name: 'EdgeView_设置全局代理', signature: 'EdgeView_设置全局代理(代理地址)', description: '设置后续新建 EdgeView 实例默认使用的 HTTP/HTTPS/SOCKS5 代理；现有实例不变。', insertText: 'EdgeView_设置全局代理("http://127.0.0.1:7890")', returnType: '整数型' },
         { name: 'EdgeView_清除全局代理', signature: 'EdgeView_清除全局代理()', description: '清除后续新建实例的全局代理，现有实例不变。', insertText: 'EdgeView_清除全局代理()', returnType: '空' },
         { name: 'EdgeView_取全局代理', signature: 'EdgeView_取全局代理()', description: '返回当前 EdgeView 全局代理设置。', insertText: 'EdgeView_取全局代理()', returnType: '文本型' },
@@ -971,9 +993,11 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView_置实例可见', signature: 'EdgeView_置实例可见(实例编号, 可见)', description: '按实例编号显示或隐藏：弹窗实例连带顶层窗口显隐，区域/控件实例调整控制器可见性。', insertText: 'EdgeView_置实例可见(1, 1)', returnType: '整数型' }
         ,{ name: 'EdgeView_置实例大小', signature: 'EdgeView_置实例大小(实例编号, 宽, 高)', description: '按实例编号设置浏览器尺寸；弹窗实例调整顶层窗口客户区并自适应，区域/控件实例设置控制器边界。', insertText: 'EdgeView_置实例大小(1, 1200, 800)', returnType: '整数型' }
         ,{ name: 'EdgeView_置区域位置', signature: 'EdgeView_置区域位置(实例编号, 左, 顶, 宽, 高)', description: '按实例编号移动并缩放 EdgeView_创建区域 的承载区域（窗口内逻辑坐标，按 DPI 自动缩放），并把网页内容对齐到新矩形。顶部留导航条/边距的区域浏览器必须在窗口「大小被改变」事件里调用本命令同步区域，窗口缩放才跟手且不会白屏；创建时铺满整个窗口的区域会自动跟随窗口缩放，无需调用。弹窗实例请用 EdgeView_置实例大小。成功返回 1。', insertText: 'EdgeView_置区域位置(1, 0, 54, 800, 546)', returnType: '整数型' }
-        ,{ name: 'EdgeView_取实例大小JSON', signature: 'EdgeView_取实例大小JSON(实例编号)', description: '按实例编号返回当前客户区尺寸 JSON：{"宽":..,"高":..}。', insertText: 'EdgeView_取实例大小JSON(1)', returnType: '文本型' }
+        ,{ name: 'EdgeView_取实例大小JSON', signature: 'EdgeView_取实例大小JSON(实例编号)', description: '按实例编号返回当前客户区尺寸 JSON：{"宽":..,"高":..}。数值为物理像素（创建时按窗口 DPI 缩放，150% 缩放下 800 逻辑宽返回 1200）；无头实例同样可用。', insertText: 'EdgeView_取实例大小JSON(1)', returnType: '文本型' }
         ,{ name: 'EdgeView_置实例标题', signature: 'EdgeView_置实例标题(实例编号, 标题)', description: '按实例编号设置弹窗顶层窗口标题，便于人工识别店铺。', insertText: 'EdgeView_置实例标题(1, "店铺B")', returnType: '整数型' }
         ,{ name: 'EdgeView设置_置用户代理实例', signature: 'EdgeView设置_置用户代理实例(实例编号, 用户代理)', description: '按实例编号设置 User-Agent；建议用 EdgeView_创建弹窗浏览器 的 用户代理 参数在首次导航前设定，运行时再改首个请求已带旧 UA。', insertText: 'EdgeView设置_置用户代理实例(1, "Mozilla/5.0")', returnType: '整数型' }
+        ,{ name: 'EdgeView脚本_文档预注入实例异步', signature: 'EdgeView脚本_文档预注入实例异步(实例编号, 脚本, &完成处理器)', description: '按实例编号注册「每个新文档创建前自动执行」的脚本（document-start 语义，先于页面脚本），任务结果为脚本 ID。区域/弹窗/无头实例均可用；设计器 EdgeBrowser 控件请用 EdgeView脚本_文档预注入异步。', insertText: 'EdgeView脚本_文档预注入实例异步(1, "window.__injected = true;", &$1)', returnType: '长整数型' }
+        ,{ name: 'EdgeView脚本_移除文档预注入实例', signature: 'EdgeView脚本_移除文档预注入实例(实例编号, 脚本ID)', description: '按实例编号移除文档预注入脚本；脚本 ID 来自注册任务的结果。', insertText: 'EdgeView脚本_移除文档预注入实例(1, $1)', returnType: '整数型' }
         ,{ name: 'EdgeView设置_取用户代理实例', signature: 'EdgeView设置_取用户代理实例(实例编号)', description: '按实例编号读取当前 User-Agent。', insertText: 'EdgeView设置_取用户代理实例(1)', returnType: '文本型' }
         ,{ name: 'EdgeView会话_批量置Cookie实例', signature: 'EdgeView会话_批量置Cookie实例(实例编号, Cookie列表JSON)', description: '按实例编号批量注入 Cookie，返回成功条数。Cookie列表JSON 为含 name/value/domain/path 的数组，可带 expires（UTC 秒，会话 Cookie 用 -1 或省略）、secure、httpOnly、sameSite（0 None/1 Lax/2 Strict，None 必须同时 secure）。这是注入 HttpOnly Cookie 的正确方式，禁止用 JavaScript document.cookie。', insertText: 'EdgeView会话_批量置Cookie实例(1, "[]")', returnType: '整数型' }
         ,{ name: 'EdgeView会话_置Cookie带属性实例', signature: 'EdgeView会话_置Cookie带属性实例(实例编号, 名称, 值, 域, 路径, 过期时间, 安全, 仅HTTP, 同源策略)', description: '按实例编号创建或更新带完整属性的 Cookie；过期时间为 UTC 秒（会话 Cookie 传 -1），安全/仅HTTP 传 1/0，同源策略 0 None/1 Lax/2 Strict。', insertText: 'EdgeView会话_置Cookie带属性实例(1, "PASS_ID", "值", "example.com", "/", -1, 1, 1, 1)', returnType: '整数型' }
@@ -985,7 +1009,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }, { label: 'EdgeView 动态内嵌多店铺区域', insertText: 'EdgeView_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".edgeview/store-a")\nEdgeView_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".edgeview/store-b")\n调试输出(EdgeView_枚举实例JSON())\nEdgeView_关闭全部实例()', description: '在窗口客户区两个矩形各内嵌一个独立 EdgeView 实例（各自独立缓存目录=独立浏览器进程），EdgeView_枚举实例JSON 枚举、EdgeView_关闭全部实例 回收；每店铺独立出口 IP 用 EdgeView_创建区域代理。' }, { label: 'EdgeView 带导航条的区域浏览器随窗口缩放', insertText: '事件 _MainWindow_大小被改变()\n    EdgeView_置区域位置(1, 0, 54, 窗口_取事件宽度(), 窗口_取事件高度() - 54)\n结束', description: '顶部留 54 像素导航条的区域浏览器：创建区域时让浏览器区域从 y=54 开始（不要铺满窗口，铺满会自动跟随窗口缩放），再在「大小被改变」事件里用 EdgeView_置区域位置 同步区域几何，拖拽缩放跟手且不会白屏；「大小被改变」按 _窗口类名_大小被改变 命名即可自动接线。' }],
       docs: [
         { title: 'EdgeView 事件参考', path: 'docs/modules/edgeview/README.md' },
-        { title: 'EdgeView 完整 API 参考（321 条）', path: 'docs/modules/edgeview/API.md' }
+        { title: 'EdgeView 完整 API 参考（324 条）', path: 'docs/modules/edgeview/API.md' }
       ]
     },
     targets: [
@@ -999,6 +1023,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'EdgeView_创建实例代理', runtimeName: 'EdgeView_创建实例代理', parameters: [{ name: '实例编号', type: 'int' }, { name: '父组件句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_创建区域', runtimeName: 'EdgeView_创建区域', parameters: [{ name: '实例编号', type: 'int' }, { name: '左', type: 'int' }, { name: '顶', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_创建区域代理', runtimeName: 'EdgeView_创建区域代理', parameters: [{ name: '实例编号', type: 'int' }, { name: '左', type: 'int' }, { name: '顶', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'EdgeView_创建区域代理UA', runtimeName: 'EdgeView_创建区域代理UA', parameters: [{ name: '实例编号', type: 'int' }, { name: '左', type: 'int' }, { name: '顶', type: 'int' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_创建弹窗浏览器初始隐藏', runtimeName: 'EdgeView_创建弹窗浏览器初始隐藏', parameters: [{ name: '实例编号', type: 'int' }, { name: '窗口标题', type: 'wideString' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_创建弹窗浏览器初始隐藏代理', runtimeName: 'EdgeView_创建弹窗浏览器初始隐藏代理', parameters: [{ name: '实例编号', type: 'int' }, { name: '窗口标题', type: 'wideString' }, { name: '宽', type: 'int' }, { name: '高', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '用户代理', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_创建无头实例', runtimeName: 'EdgeView_创建无头实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
@@ -1046,6 +1071,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ,{ command: 'EdgeView_取实例大小JSON', runtimeName: 'EdgeView_取实例大小JSON', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
       ,{ command: 'EdgeView_置实例标题', runtimeName: 'EdgeView_置实例标题', parameters: [{ name: '实例编号', type: 'int' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
       ,{ command: 'EdgeView设置_置用户代理实例', runtimeName: 'EdgeView设置_置用户代理实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '用户代理', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView脚本_文档预注入实例异步', runtimeName: 'EdgeView脚本_文档预注入实例异步', parameters: [{ name: '实例编号', type: 'int' }, { name: '脚本', type: 'wideString' }, { name: '完成处理器', type: 'handler', description: '新代码必须使用 &处理器名。' }], returnType: 'longLong', encoding: 'wide' }
+      ,{ command: 'EdgeView脚本_移除文档预注入实例', runtimeName: 'EdgeView脚本_移除文档预注入实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '脚本ID', type: 'wideString', description: '文档预注入脚本的 ID（注册任务返回结果），用于移除脚本。' }], returnType: 'int', encoding: 'wide' }
       ,{ command: 'EdgeView设置_取用户代理实例', runtimeName: 'EdgeView设置_取用户代理实例', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
       ,{ command: 'EdgeView会话_批量置Cookie实例', runtimeName: 'EdgeView会话_批量置Cookie实例', parameters: [{ name: '实例编号', type: 'int' }, { name: 'Cookie列表JSON', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
       ,{ command: 'EdgeView会话_置Cookie带属性实例', runtimeName: 'EdgeView会话_置Cookie带属性实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '名称', type: 'wideString' }, { name: '值', type: 'wideString' }, { name: '域', type: 'wideString' }, { name: '路径', type: 'wideString' }, { name: '过期时间', type: 'double' }, { name: '安全', type: 'bool' }, { name: '仅HTTP', type: 'bool' }, { name: '同源策略', type: 'int' }], returnType: 'int', encoding: 'wide' }
@@ -1308,7 +1335,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.fbro.browser',
     name: 'FBro指纹浏览器模块',
-    version: '2.9.0',
+    version: '2.12.0',
     category: '界面',
     description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。',
     author: 'LingBuilder',
@@ -1399,7 +1426,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'FBro_实例导航', signature: 'FBro_实例导航(实例句柄, 地址)', description: '让 FBro_后台创建 返回的后台实例句柄直接导航，返回桥接成功码；不依赖控件名与消息泵，控制台无头场景可用。', insertText: 'FBro_实例导航($1, "https://www.baidu.com")', returnType: '整数型' },
         { name: 'FBro_实例等待加载超时', signature: 'FBro_实例等待加载超时(实例句柄, 超时毫秒)', description: '轮询等待后台实例加载完成，成功返回 1、超时或句柄无效返回 0；控制台等无消息循环场景同样可用，超时上限 600000 毫秒。', insertText: 'FBro_实例等待加载超时($1, 15000)', returnType: '整数型' },
         { name: 'FBro_实例执行JS', signature: 'FBro_实例执行JS(实例句柄, 脚本)', description: '在后台实例句柄上同步执行 JavaScript 并返回 UTF-16 结果文本；建议先 FBro_实例等待加载超时 再取 document.title、location.href 等。', insertText: 'FBro_实例执行JS($1, "document.title")', returnType: '文本型' },
+        { name: 'FBro_实例取Cookie', signature: 'FBro_实例取Cookie(实例句柄, 地址)', description: '读取后台实例/弹窗句柄上指定地址（域名）的全部 Cookie（含 HttpOnly，如扫码登录后的 sessionid）；同步返回头串（k=v; k=v 形态，可直接交给 Cookie 格式解析）。句柄无效返回空文本。扫码登录收割登录态的标准入口（后台实例没有控件名，FBro_取Cookie 用不了）。', insertText: 'FBro_实例取Cookie($1, "https://www.douyin.com")', returnType: '文本型' },
         { name: 'FBro_实例是否存活', signature: 'FBro_实例是否存活(实例句柄)', description: '返回后台实例句柄是否仍存活；已关闭或句柄无效返回 0。', insertText: 'FBro_实例是否存活($1)', returnType: '整数型' },
+        { name: 'FBro_实例设置代理', signature: 'FBro_实例设置代理(实例句柄, 代理地址)', description: '为后台实例/弹窗句柄设置代理（http://host:port 或 socks5://host:port，传空清除），浏览器就绪后调用生效。建议在 FBro_后台创建 之后、FBro_实例打开原生UI 弹出主页之前调用；弹窗与来源实例是两个浏览器，需要各自设置一次。', insertText: 'FBro_实例设置代理($1, "http://127.0.0.1:7890")', returnType: '整数型' },
         { name: 'FBro_实例关闭', signature: 'FBro_实例关闭(实例句柄)', description: '关闭并销毁 FBro_后台创建 建立的后台实例；这是进程内最后一个浏览器时桥接层会随之收尾。', insertText: 'FBro_实例关闭($1)', returnType: '整数型' },
         { name: 'FBro_实例绑定事件', signature: 'FBro_实例绑定事件(实例句柄, 事件名, &处理器)', description: '窗口程序为后台实例句柄绑定中文事件处理器（事件经属窗消息泵派发）；控制台程序没有消息泵，处理器不会触发，请改用 FBro_实例等待加载超时 与 FBro_实例执行JS 同步读取。', insertText: 'FBro_实例绑定事件($1, "LoadEnd", &$2)', returnType: '整数型' },
         { name: 'FBro_实例取最近事件', signature: 'FBro_实例取最近事件(实例句柄)', description: '返回后台实例句柄最近一次已派发事件的事件名；无事件记录返回空文本。', insertText: 'FBro_实例取最近事件($1)', returnType: '文本型' },
@@ -1443,10 +1472,22 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '浏览器管理器_取运行快照JSON', signature: '浏览器管理器_取运行快照JSON()', description: '返回不含 Cookie 的 ID、Profile、页面 HWND、PID 和插件状态诊断快照。', insertText: '浏览器管理器_取运行快照JSON()', returnType: '文本型' },
         { name: 'FBro_创建区域', signature: 'FBro_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 缓存目录, 代理地址, 用户代理)', description: '在普通 Win32 宿主窗口客户区的指定矩形内动态内嵌一个独立进程 FBro 浏览器（不依赖 new_emoji），每个实例编号拥有独立 Profile/缓存/代理/UA，可多次调用创建任意数量区域。返回 1 表示成功、0 表示失败。实例编号需唯一；左/顶/宽/高为逻辑坐标（按 DPI 自动缩放）；缓存目录留空时自动按编号派生；代理地址与用户代理留空表示使用默认。', insertText: 'FBro_创建区域($1, $2, $3, $4, $5, "https://www.baidu.com", "", "", "")', returnType: '整数型' },
         { name: 'FBro_取区域实例JSON', signature: 'FBro_取区域实例JSON()', description: '返回由 FBro_创建区域 建出的全部动态内嵌区域实例的紧凑 JSON（实例编号、地址、矩形与运行状态），用于枚举当前内嵌浏览器。', insertText: 'FBro_取区域实例JSON()', returnType: '文本型' },
-        { name: 'FBro_关闭全部区域', signature: 'FBro_关闭全部区域()', description: '关闭并销毁全部由 FBro_创建区域 建出的动态内嵌区域实例，返回关闭数量。', insertText: 'FBro_关闭全部区域()', returnType: '整数型' }
+        { name: 'FBro_关闭全部区域', signature: 'FBro_关闭全部区域()', description: '关闭并销毁全部由 FBro_创建区域 建出的动态内嵌区域实例，返回关闭数量。', insertText: 'FBro_关闭全部区域()', returnType: '整数型' },
+        { name: 'FBro_区域是否存活', signature: 'FBro_区域是否存活(实例编号)', description: '返回指定区域实例是否仍在运行（承载窗有效且独立进程就绪）；未创建或已关闭返回 0。', insertText: 'FBro_区域是否存活($1)', returnType: '整数型' },
+        { name: 'FBro_区域导航', signature: 'FBro_区域导航(实例编号, 地址)', description: '让指定区域实例单独导航到新地址，不影响其他区域；实例未创建或已关闭返回 0。', insertText: 'FBro_区域导航($1, "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'FBro_区域后退', signature: 'FBro_区域后退(实例编号)', description: '让指定区域实例后退一页，不影响其他区域。', insertText: 'FBro_区域后退($1)', returnType: '整数型' },
+        { name: 'FBro_区域前进', signature: 'FBro_区域前进(实例编号)', description: '让指定区域实例前进一页，不影响其他区域。', insertText: 'FBro_区域前进($1)', returnType: '整数型' },
+        { name: 'FBro_区域刷新', signature: 'FBro_区域刷新(实例编号)', description: '重新加载指定区域实例的当前页面，不影响其他区域。', insertText: 'FBro_区域刷新($1)', returnType: '整数型' },
+        { name: 'FBro_区域停止', signature: 'FBro_区域停止(实例编号)', description: '停止指定区域实例正在进行的加载，不影响其他区域。', insertText: 'FBro_区域停止($1)', returnType: '整数型' },
+        { name: 'FBro_区域执行JS', signature: 'FBro_区域执行JS(实例编号, 脚本)', description: '在指定区域实例内执行 JavaScript 并返回结果值文本（受页面同源策略限制）；实例未创建或执行失败返回空文本。', insertText: 'FBro_区域执行JS($1, "document.title")', returnType: '文本型' },
+        { name: 'FBro_区域取标题', signature: 'FBro_区域取标题(实例编号)', description: '返回指定区域实例当前页面的标题；实例未创建或尚未加载返回空文本。', insertText: 'FBro_区域取标题($1)', returnType: '文本型' },
+        { name: 'FBro_区域取地址', signature: 'FBro_区域取地址(实例编号)', description: '返回指定区域实例当前页面的地址；实例未创建返回空文本。', insertText: 'FBro_区域取地址($1)', returnType: '文本型' },
+        { name: 'FBro_区域调整', signature: 'FBro_区域调整(实例编号, 左, 顶, 宽, 高)', description: '按实例编号移动并缩放区域承载矩形（窗口内逻辑坐标，按 DPI 自动缩放，随窗口缩放语义与 FBro_创建区域 一致）；宽高必须大于 0，返回 1 成功、0 实例不存在。', insertText: 'FBro_区域调整($1, $2, $3, $4, $5)', returnType: '整数型' },
+        { name: 'FBro_关闭区域', signature: 'FBro_关闭区域(实例编号)', description: '单独关闭并销毁指定区域实例（独立进程优雅退出后销毁承载窗），不影响其他区域；返回 1 表示已关闭、0 表示实例不存在。', insertText: 'FBro_关闭区域($1)', returnType: '整数型' },
+        { name: 'FBro_实例打开原生UI', signature: 'FBro_实例打开原生UI(实例句柄, 地址)', description: '以 FBro_后台创建 返回的后台实例句柄为会话来源，弹出 Chrome Runtime 独立顶层浏览器（谷歌原生 UI，不嵌入 LingBuilder 窗口，不需要任何设计器控件）；返回弹窗句柄（长整数型），可用 FBro_实例导航 / FBro_实例关闭 继续操作；弹窗与来源实例共用缓存目录=同一指纹档案；实例句柄无效或已关闭返回 0。', insertText: 'FBro_实例打开原生UI($1, "https://www.baidu.com")', returnType: '长整数型' }
       ],
       types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
-      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }, { label: 'FBro 无头后台抓取（控制台/窗口通用）', insertText: 'FBro_启用无头模式()\n局部 长整数型 实例\n实例 = FBro_后台创建("https://www.baidu.com", "", "")\n调试输出("加载完成=", FBro_实例等待加载超时(实例, 15000))\n调试输出("标题=", FBro_实例执行JS(实例, "document.title"))\nFBro_实例关闭(实例)', description: '声明进程级无头模式后用后台实例句柄同步抓取页面（控制台无消息泵时的标准取数链路）；无头模式与进程内可见 FBroBrowser 控件互斥，设计器场景改用「FBro无头浏览器」组件。' }, { label: 'FBro 跨域前置开关与命令行回读', insertText: 'FBro_设置启动开关JSON("{\\"enableCrossFrame\\":true}")\nFBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://example.com")\n调试输出("命令行=", FBro_取启动命令行())', description: '跨源 iframe 读取前置：开关文本必须是调用处的字面 JSON（生成期烘焙进初始化，仅进程内模式生效），放开后本进程所有进程内实例都不再受同源限制，只在受控内网或自有页面使用；用 FBro_取启动命令行 回读实际生效命令行做正反对照，取值/填表走 FBro框架_* 与 FBro填表_*。' }, { label: 'FBro 动态内嵌多店铺区域', insertText: 'FBro_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".fbro-region/store-a", "", "")\nFBro_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".fbro-region/store-b", "http://127.0.0.1:7890", "")\n调试输出(FBro_取区域实例JSON())\nFBro_关闭全部区域()', description: '在普通 Win32 窗口客户区两个矩形各内嵌一个独立进程 FBro 浏览器（各自独立缓存/代理，不依赖 new_emoji），用 FBro_取区域实例JSON 枚举、FBro_关闭全部区域 回收。注意：用户代理参数只改 navigator.userAgent，不改出站 HTTP 头。' }],
+      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }, { label: 'FBro 无头后台抓取（控制台/窗口通用）', insertText: 'FBro_启用无头模式()\n局部 长整数型 实例\n实例 = FBro_后台创建("https://www.baidu.com", "", "")\n调试输出("加载完成=", FBro_实例等待加载超时(实例, 15000))\n调试输出("标题=", FBro_实例执行JS(实例, "document.title"))\nFBro_实例关闭(实例)', description: '声明进程级无头模式后用后台实例句柄同步抓取页面（控制台无消息泵时的标准取数链路）；无头模式与进程内可见 FBroBrowser 控件互斥，设计器场景改用「FBro无头浏览器」组件。' }, { label: 'FBro 跨域前置开关与命令行回读', insertText: 'FBro_设置启动开关JSON("{\\"enableCrossFrame\\":true}")\nFBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://example.com")\n调试输出("命令行=", FBro_取启动命令行())', description: '跨源 iframe 读取前置：开关文本必须是调用处的字面 JSON（生成期烘焙进初始化，仅进程内模式生效），放开后本进程所有进程内实例都不再受同源限制，只在受控内网或自有页面使用；用 FBro_取启动命令行 回读实际生效命令行做正反对照，取值/填表走 FBro框架_* 与 FBro填表_*。' }, { label: 'FBro 动态内嵌多店铺区域', insertText: 'FBro_创建区域(1, 10, 60, 600, 500, "https://www.example.com", ".fbro-region/store-a", "", "")\nFBro_创建区域(2, 630, 60, 600, 500, "https://www.example.com", ".fbro-region/store-b", "http://127.0.0.1:7890", "")\n调试输出(FBro_取区域实例JSON())\nFBro_区域导航(1, "https://www.example.com/list")\n调试输出("实例1标题=", FBro_区域取标题(1))\nFBro_关闭区域(2)', description: '在普通 Win32 窗口客户区两个矩形各内嵌一个独立进程 FBro 浏览器（各自独立缓存/代理，不依赖 new_emoji 与设计器控件），按实例编号单独导航/取标题/关闭（FBro_区域导航、FBro_区域取标题、FBro_关闭区域），FBro_取区域实例JSON 枚举、FBro_关闭全部区域 一键回收。注意：用户代理参数只改 navigator.userAgent，不改出站 HTTP 头。' }, { label: 'FBro 纯代码谷歌原生UI浏览器', insertText: '局部 长整数型 实例\n实例 = FBro_后台创建("https://www.baidu.com", ".fbro/ui-profile", "")\n局部 长整数型 弹窗\n弹窗 = FBro_实例打开原生UI(实例, "https://www.baidu.com")\n调试输出("弹窗句柄=", 弹窗)', description: '零设计器控件弹出 Chrome 原生 UI 独立顶层浏览器：FBro_后台建立独立指纹会话（独立缓存目录），FBro_实例打开原生UI 基于该会话弹窗并返回弹窗句柄，可用 FBro_实例导航/FBro_实例关闭 继续操作。' }],
       docs: [
         { title: 'FBro 事件与接口参考', path: 'docs/modules/fbro/README.md' },
         { title: 'FBro SDK 安装与环境检查', path: 'docs/modules/fbro/installation.md' },
@@ -1544,7 +1585,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'FBro_实例导航', runtimeName: 'FBro_实例导航', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_实例等待加载超时', runtimeName: 'FBro_实例等待加载超时', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '超时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_实例执行JS', runtimeName: 'FBro_实例执行JS', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_实例取Cookie', runtimeName: 'FBro_实例取Cookie', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '地址', type: 'wideString', description: '按此地址（通常给到 https://域名 即可）过滤 Cookie；空文本返回全部。' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'FBro_实例是否存活', runtimeName: 'FBro_实例是否存活', parameters: [{ name: '实例句柄', type: 'longLong' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_实例设置代理', runtimeName: 'FBro_实例设置代理', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '代理地址', type: 'wideString', description: 'http://host:port 或 socks5://host:port；传空文本清除代理。' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_实例关闭', runtimeName: 'FBro_实例关闭', parameters: [{ name: '实例句柄', type: 'longLong' }], returnType: 'void', encoding: 'wide' },
       { command: 'FBro_实例绑定事件', runtimeName: 'FBro_实例绑定事件', parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_实例取最近事件', runtimeName: 'FBro_实例取最近事件', parameters: [{ name: '实例句柄', type: 'longLong' }], returnType: 'wideString', encoding: 'wide' },
@@ -1597,7 +1640,19 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: '浏览器管理器_取运行快照JSON', runtimeName: '浏览器管理器_取运行快照JSON', parameters: [], returnType: 'wideString', encoding: 'wide' },
       { command: 'FBro_创建区域', runtimeName: 'FBro_创建区域', parameters: [{ name: '实例编号', type: 'int', description: '区域实例唯一编号，重复编号会拒绝创建。' }, { name: '左', type: 'int', description: '承载矩形相对宿主窗口客户区的逻辑横坐标，按 DPI 自动缩放。' }, { name: '顶', type: 'int', description: '承载矩形相对宿主窗口客户区的逻辑纵坐标，按 DPI 自动缩放。' }, { name: '宽', type: 'int', description: '承载矩形逻辑宽度，必须大于 0。' }, { name: '高', type: 'int', description: '承载矩形逻辑高度，必须大于 0。' }, { name: '地址', type: 'wideString', description: '初始导航地址，留空按 about:blank。' }, { name: '缓存目录', type: 'wideString', description: '独立 Profile/缓存目录，留空按实例编号自动派生。' }, { name: '代理地址', type: 'wideString', description: '该实例独立代理，留空表示不使用代理。' }, { name: '用户代理', type: 'wideString', description: '该实例独立 UA，留空表示使用默认。' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_取区域实例JSON', runtimeName: 'FBro_取区域实例JSON', parameters: [], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro_关闭全部区域', runtimeName: 'FBro_关闭全部区域', parameters: [], returnType: 'int', encoding: 'wide' }
+      { command: 'FBro_关闭全部区域', runtimeName: 'FBro_关闭全部区域', parameters: [], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_区域是否存活', runtimeName: 'FBro_区域是否存活', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_区域导航', runtimeName: 'FBro_区域导航', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }, { name: '地址', type: 'wideString', description: '完整 URL 或本地文件路径。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_区域后退', runtimeName: 'FBro_区域后退', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_区域前进', runtimeName: 'FBro_区域前进', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_区域刷新', runtimeName: 'FBro_区域刷新', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_区域停止', runtimeName: 'FBro_区域停止', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_区域执行JS', runtimeName: 'FBro_区域执行JS', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }, { name: '脚本', type: 'wideString', description: '要执行的 JavaScript 代码。' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_区域取标题', runtimeName: 'FBro_区域取标题', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_区域取地址', runtimeName: 'FBro_区域取地址', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_区域调整', runtimeName: 'FBro_区域调整', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }, { name: '左', type: 'int', description: '承载矩形相对宿主窗口客户区的逻辑横坐标，按 DPI 自动缩放。' }, { name: '顶', type: 'int', description: '承载矩形相对宿主窗口客户区的逻辑纵坐标，按 DPI 自动缩放。' }, { name: '宽', type: 'int', description: '承载矩形逻辑宽度，必须大于 0。' }, { name: '高', type: 'int', description: '承载矩形逻辑高度，必须大于 0。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_关闭区域', runtimeName: 'FBro_关闭区域', parameters: [{ name: '实例编号', type: 'int', description: 'FBro_创建区域 时传入的区域实例编号。' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_实例打开原生UI', runtimeName: 'FBro_实例打开原生UI', parameters: [{ name: '实例句柄', type: 'longLong', description: 'FBro_后台创建 返回的后台浏览器实例句柄；无效或已关闭返回 0。' }, { name: '地址', type: 'wideString', description: '弹窗加载的初始地址，留空按 about:blank。' }], returnType: 'longLong', encoding: 'wide' }
     ] }
   },
   {
@@ -1771,7 +1826,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   HTTP_SERVER_MODULE,
   WEBSOCKET_SERVER_MODULE,
   SUNNYNET_MODULE
-].map(normalizeBuiltinControlReferences).map(ensureBuiltinX64Target).map(assertBuiltinParameterDescriptions);
+].map(normalizeBuiltinControlReferences).map(ensureBuiltinX64Target).map(assertBuiltinParameterDescriptions).map(applyBuiltinModuleDocuments);
 
 /**
  * 无头命令成对门禁（加载期抛错，与参数说明门禁同一口径）：

@@ -454,12 +454,54 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 新增 字节集_到十六进制文本（1 个 bytes 参数）。合计 +1 命令 +1 参数，无 controlRef。
       // 基线 2026-09-24 写回（EdgeView 区域缩放修复批次）：lingbuilder.edgeview 1.5.1→1.6.0 新增
       // EdgeView_置区域位置（5 个 int 参数，0 controlRef，区域留边距缩放白屏修复）。
+      // 基线 2026-09-26 写回（局域网快传能力批次）：lingbuilder.net.udp 新增
+      // UDP_允许广播（1 参数，SO_BROADCAST 广播开关）与 UDP_允许端口复用（1 参数，
+      // SO_REUSEADDR 本机多开联调）；lingbuilder.net.http-client 新增 HTTP客户端_设置续传文件
+      // （2 参数，断点续传追加落盘）。合计 +3 命令 +4 参数，无 controlRef。
+      // 基线 2026-09-26 写回（外部 AI 缺口批次）：lingbuilder.edgeview 新增
+      // EdgeView_创建区域代理UA（9 参数）、EdgeView脚本_文档预注入实例异步（3 参数，
+      // 含 &处理器）、EdgeView脚本_移除文档预注入实例（2 参数）三条实例级命令。
+      // 基线 2026-09-27 写回（内嵌 C++ 清零批次）：std.math 1.2.0 新增位运算族 10 条（19 参数）、
+      // lingbuilder.data.protobuf 1.1.0 新增无 schema wire 命令 11 条（26 参数，含 PB_导出Proto草稿）、
+      // lingbuilder.crypto.hash 1.1.0 新增 哈希_算法字节集 7 条（7 参数）、
+      // lingbuilder.advanced.process-memory 1.2.0 新增 进程内存_写字节集（3 参数）、
+      // lingbuilder.win32.basic 1.1.0 新增 设置鼠标位置（2 参数）。
+      // 合计 +30 命令 +57 参数，无 controlRef（实算摘要 21649ed3/525054e9）。
+      // 基线 2026-09-29 写回（FBro 区域实例精细化批次）：lingbuilder.fbro.browser 2.9.0→2.10.0 新增
+      // FBro_区域是否存活/导航/后退/前进/刷新/停止/执行JS/取标题/取地址/调整/关闭区域 11 条（17 参数，
+      // 按实例编号寻址、走跨进程控制器已有 RPC）与 FBro_实例打开原生UI（2 参数，纯代码弹
+      // Chrome 原生UI独立顶层窗口，返回弹窗句柄），无 controlRef。
+      // 合计 +12 命令 +19 参数（实算摘要 2a9c4c4e/c97cd7d0）。
+      // 基线 2026-09-29 写回（VIP 新窗口转标签页批次）：lingbuilder.fbro.vip 2.1.0→2.2.0 新增
+      // FBroVIP_实例设置新窗口转标签页（2 参数，LB_FBro_SetPopupToTab：Chrome 原生UI 的新窗口
+      // 自动转本窗口新标签页，等价官方 C# OnBeforePopup+AddTabAt 示例），无 controlRef。
+      // 合计 +1 命令 +2 参数（实算摘要 bec80e29/d89c6f6d）。
+      // 基线 2026-09-29 写回（cloak 纯代码实例池批次）：lingbuilder.fbro.browser 2.10.0→2.11.0 新增
+      // FBro_实例设置代理（2 参数，LB_FBro_SetProxy 直连）；lingbuilder.fbro.vip 2.2.0→2.3.0 新增
+      // FBroVIP_实例应用指纹JSON（2 参数，与 FBroVIP_应用指纹JSON 共用 LB_FBro_ApplyFingerprintJson，
+      // 对后台实例/弹窗句柄应用指纹；别名唯一性门禁下不登记别名），均无 controlRef。
+      // 合计 +2 命令 +4 参数（实算摘要 a8e9a6d8/abd676d2）。
+      // 基线 2026-09-29 写回（CEF3 纯协议请求族批次）：lingbuilder.cef3.network 3.0.0-alpha.3→alpha.4
+      // 新增 CEF3网络_ 纯协议 URL 请求族 24 条（创建请求客户端/请求、设置头/正文、发起、状态/错误/响应、
+      // 头映射JSON、事件领取、下载块、认证回复等，包装已导出的 LB_CEF3_* UrlRequest ABI，无新增 controlRef）；
+      // lingbuilder.net.http-client 2.1.0→2.2.0 新增 HTTP客户端_解析跳转链（3 参数）、
+      // HTTP客户端请求_设置代理（2 参数）、HTTP客户端请求_设置代理凭据（3 参数）。
+      // 合计 +27 命令 +45 参数（实算摘要 7cde89bc/50a9d5b1）。
+      // 基线 2026-09-29 四写回（FBro 纯协议响应读取批次）：lingbuilder.fbro.network 2.1.0→2.2.0
+      // 新增 FBro异步请求_取响应对象 / FBro异步请求_取消 / FBro网络_取下载数据事件 / FBro网络_取下载块
+      // FBro网络_实例发起请求 与 FBro异步请求_发起 共用 LB_FBro_UrlRequestStartAsync、
+      // 按 FBro_后台创建 句柄直发，是控制台/纯代码入口；FBro异步请求_发起 描述补全四条红线不改参数。
+      // 合计 +5 命令 +6 参数（实算摘要 fe74cfd3/8a160ca3）。
+      // 基线 2026-09-29 五写回（引擎扫码登录批次）：lingbuilder.fbro.browser 2.11.0→2.12.0
+      // 新增 FBro_实例取Cookie(实例句柄, 地址)（后台实例/弹窗句柄读含 HttpOnly 的域名 Cookie，
+      // 桥导出 LB_FBro_GetCookies 本就收句柄，补清单/绑定/两处生成期运行时）。
+      // 合计 +1 命令 +2 参数（实算摘要 57f4e987/3d2bbff2）。
       modules: 101,
-      commands: 3940,
-      parameters: 6914,
+      commands: 4026,
+      parameters: 7066,
       controlReferences: 1345,
-      commandDigest: '3241e3bd',
-      parameterDigest: '1128aad0'
+      commandDigest: '57f4e987',
+      parameterDigest: '3d2bbff2'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -598,7 +640,9 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 2026-09-21 写回 60→61：新增 lingbuilder.cron 定时任务模块 cronModule.ts（已重新确认全量字面量扫描 0 违规）。
   // 2026-09-24 写回 61→64：模块例程功能新增 moduleDemoService.ts（0 违规）；另含并行会话在途新增的
   // 两个模块源文件，按当前工作区内容实算写回（全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 64, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-09-29 写回 64→67：并行会话在途新增 moduleAccessService.ts / paidModuleAccessRecovery.ts 等
+  // 模块源文件，按当前工作区内容实算写回（全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 67, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -896,12 +940,36 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       //（std.bytes 字节集_到十六进制文本；改名别名不减命令数，见上一用例）；本机磁盘仍为 8 份清单。
       // 基线 2026-09-24 再写回（EdgeView 区域缩放修复批次）：内置部分 +1 命令 +5 参数
       //（EdgeView_置区域位置，见上一用例）；本机磁盘仍为 8 份清单，磁盘侧 0 漂移。
+      // 基线 2026-09-26 再写回（局域网快传能力批次）：内置部分 +3 命令 +4 参数
+      //（UDP_允许广播/UDP_允许端口复用/HTTP客户端_设置续传文件，见上一用例）；
+      // 本机磁盘仍为 8 份清单，磁盘侧 0 漂移。
+      // 基线 2026-09-26 三写（外部 AI 缺口批次）：内置部分 +3 命令 +14 参数
+      //（EdgeView_创建区域代理UA / EdgeView脚本_文档预注入实例异步 /
+      // EdgeView脚本_移除文档预注入实例，见上一用例）；本机磁盘仍为 8 份清单。
+      // 基线 2026-09-27 再写回（内嵌 C++ 清零批次）：内置部分 +30 命令 +57 参数
+      //（std.math 位运算族 / protobuf 无 schema wire 命令 / crypto.hash 字节集族 /
+      // 进程内存_写字节集 / 设置鼠标位置，见上一用例）；本机磁盘仍为 8 份清单，磁盘侧 0 漂移。
+      // 基线 2026-09-29 再写回（new_emoji 鼠标光标与悬停批次）：磁盘清单 lingbuilder.new_emoji.ui
+      // 2.0.0 重装 +8 命令 +36 参数 +8 controlRef（NE元素_设置鼠标光标 / NE按钮_设置鼠标光标 /
+      // NE按钮_设置悬停三态色 / NE表格_设置悬停行颜色 / NE表格_设置悬停列 五条高级命令
+      // + EU_SetElementCursor/EU_SetTableRowHover/EU_SetTableColumnHover 三条 NE_EU_ 直调），
+      // 内置部分不变；本机磁盘仍为 8 份清单。
+      // 基线 2026-09-29 再写回（cloak 纯代码实例池批次）：内置部分 +2 命令 +4 参数
+      //（fbro.browser FBro_实例设置代理 / fbro.vip FBroVIP_实例应用指纹JSON，见上一用例）；
+      // 磁盘侧另有并行会话在途漂移，本行按本机实算（8 份磁盘清单）。
+      // 基线 2026-09-29 三写回（CEF3 纯协议请求族批次）：内置 +27 命令 +45 参数
+      //（cef3.network 24 条 + http-client 3 条，见上一用例）。
+      // 基线 2026-09-29 四写回（FBro 纯协议响应读取批次）：内置 +5 命令 +6 参数
+      //（fbro.network 取响应对象/取消/取下载数据事件/取下载块/实例发起请求，见上一用例）；
+      // 基线 2026-09-29 五写回（curl-impersonate 批次，并行会话）：内置 +2 命令 +3 参数（见上）；
+      // 本机磁盘仍为 8 份清单，磁盘侧 0 漂移，本行按当前工作区实算。
+      // 基线 2026-09-29 六写回（FBro 实例取 Cookie 批次）：内置 +1 命令 +2 参数（见上）。
       modules: 109,
-      commands: 7957,
-      parameters: 19035,
-      controlReferences: 5103,
-      commandDigest: '2f3d22d4',
-      parameterDigest: '5a01e9ec'
+      commands: 8051,
+      parameters: 19223,
+      controlReferences: 5111,
+      commandDigest: '906af887',
+      parameterDigest: '8f704983'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -1192,10 +1260,12 @@ test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () 
   assert.match(mainCpp, /bool JSON_是否有效\(const wchar_t\* json\)/u);
   assert.match(mainCpp, /调试输出\(文本_转大写\(L"LingBuilder"\)\);/u);
   assert.match(mainCpp, /调试输出\(编码_Base64解码\(L"5L2g5aW9"\)\);/u);
-  assert.match(mainCpp, /调试输出\(编码_UTF8转文本\(编码_文本转UTF8\(L"你好"\)\)\);/u);
-  assert.match(mainCpp, /调试输出\(编码_文本转UTF8\(到文本\(123\)\)\);/u);
+  // 2026-09-29 补账：wideString 实参编组改为 LingCppWideArg 包裹非字面量表达式（生成器辅助转换，
+  // 兼容纯逻辑 DLL 全局形态），嵌套中文调用的期望同步到实算输出。
+  assert.match(mainCpp, /调试输出\(编码_UTF8转文本\(LingCppWideArg\(编码_文本转UTF8\(L"你好"\)\)\)\);/u);
+  assert.match(mainCpp, /调试输出\(编码_文本转UTF8\(LingCppWideArg\(到文本\(123\)\)\)\);/u);
   assert.match(mainCpp, /编码_转换\(L"E4BDA0E5A5BD", L"UTF-8", L"UTF-16LE"\)/u);
-  assert.match(mainCpp, /编码_检测BOM\(编码_添加BOM\(L"E4BDA0E5A5BD", L"UTF-8"\)\)/u);
+  assert.match(mainCpp, /编码_检测BOM\(LingCppWideArg\(编码_添加BOM\(L"E4BDA0E5A5BD", L"UTF-8"\)\)\)/u);
   assert.match(mainCpp, /JSON_是否有效\(L"\{\}"\);/u);
 });
 
@@ -1604,6 +1674,10 @@ test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.match(mainCpp, /bool HTTP客户端_请求\(const wchar_t\* method/u);
   assert.match(mainCpp, /bool TCP_连接\(const wchar_t\* host/u);
   assert.match(mainCpp, /bool UDP_绑定\(int port\)/u);
+  assert.match(mainCpp, /bool UDP_允许广播\(bool allowed\)/u);
+  assert.match(mainCpp, /bool UDP_允许端口复用\(bool allowed\)/u);
+  assert.match(mainCpp, /SO_BROADCAST/u);
+  assert.match(mainCpp, /SO_REUSEADDR/u);
   assert.match(mainCpp, /const wchar_t\* DNS_解析首个地址/u);
   assert.match(mainCpp, /static LB_UrlParts LB_ParseUrl/u);
   assert.match(mainCpp, /const wchar_t\* Cookie_设置/u);
@@ -2090,11 +2164,11 @@ test('平台扩展和高风险模块保持独立启用并具有确定性运行�
 test('进程内存扫描族命令登记清单与 binding，并生成真实运行时符号', () => {
   const manifest = PLATFORM_ADVANCED_MODULES.find(item => item.id === 'lingbuilder.advanced.process-memory');
   assert.ok(manifest);
-  assert.equal(manifest.version, '1.1.0');
+  assert.equal(manifest.version, '1.2.0');
   assert.ok(manifest.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.std.buffer'), '进程内存模块必须声明缓冲区模块依赖');
   assert.ok(!manifest.description.includes('不默认启用'), '模块描述必须与默认启用语义一致');
   const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
-  ['进程内存_打开', '进程内存_读整数', '进程内存_写整数', '进程内存_读字节集', '进程内存_读到缓冲区', '进程内存_枚举区域JSON', '进程内存_扫描字节集', '进程内存_扫描字节集JSON', '进程内存_取错误码', '进程内存_取错误', '进程内存_关闭'].forEach(name => {
+  ['进程内存_打开', '进程内存_读整数', '进程内存_写整数', '进程内存_写字节集', '进程内存_读字节集', '进程内存_读到缓冲区', '进程内存_枚举区域JSON', '进程内存_扫描字节集', '进程内存_扫描字节集JSON', '进程内存_取错误码', '进程内存_取错误', '进程内存_关闭'].forEach(name => {
     assert.ok(commandNames.has(name), `缺少命令 ${name}`);
   });
   const scan = manifest.bindings?.commands?.find(binding => binding.command === '进程内存_扫描字节集');
@@ -2216,7 +2290,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 220/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 221/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
@@ -2407,8 +2481,13 @@ test('FBro browser 2.5 keeps 2.1 submodules compatible with the v3 event core', 
     'lingbuilder.fbro.network',
     'lingbuilder.fbro.vip'
   ]));
-  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.9.0');
-  assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module => module.version === '2.1.0'));
+  // 基线 2026-09-29 写回：fbro.browser 2.10.0（区域实例精细化）→ 2.11.0（实例级代理）；
+  // 子模块除 vip 2.2.0（新窗口转标签页）→ 2.3.0（实例级指纹应用）、
+  // network 2.1.0→2.2.0（纯协议响应读取族）外仍为 2.1.0。
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.12.0');
+  assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser' && module.id !== 'lingbuilder.fbro.vip' && module.id !== 'lingbuilder.fbro.network').every(module => module.version === '2.1.0'));
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.vip')?.version, '2.3.0');
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.network')?.version, '2.2.0');
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module =>
     module.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.fbro.browser'
       && dependency.minimumVersion === '2.1.0')));
@@ -2423,7 +2502,10 @@ test('FBro module family exposes one manager entry and atomically enables the st
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
   // 基线 2026-09-20 写回：FBro 批次4 新增 FBro_设置启动开关JSON（跨域/禁用代理等 9 键白名单）。
-  assert.equal(countModuleCommands(family), 692);
+  // 基线 2026-09-29 写回：区域族+原生UI（692→705）与实例级代理/实例级指纹应用（705→707）。
+  // 基线 2026-09-29 再写回：纯协议响应读取族（707→712，fbro.network +5，取响应对象/取消也归 network）。
+  // 2026-09-29 六写回：FBro_实例取Cookie（fbro.browser 2.12.0，后台实例收割登录态 Cookie）。
+  assert.equal(countModuleCommands(family), 713);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -2592,9 +2674,13 @@ test('FBro VIP 188 项逐项公开并通过安全 C ABI、模块 binding 与双�
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.vip');
   assert.ok(manifest);
   assert.equal(FBRO_VIP_API_CATALOG.length, 188);
-  assert.equal(manifest.contributes?.commands?.length, 198);
+  // 2026-09-29：2.2.0 新增 LingBuilder 扩展命令 FBroVIP_实例设置新窗口转标签页（非官方 188 项，
+  // LB_FBro_SetPopupToTab：Chrome 原生UI 的新窗口自动转本窗口新标签页），总数 198→199。
+  // 2026-09-29：2.3.0 新增 FBroVIP_实例应用指纹JSON（共用 LB_FBro_ApplyFingerprintJson，对后台
+  // 实例/弹窗句柄应用指纹，不登记别名），总数 199→200。
+  assert.equal(manifest.contributes?.commands?.length, 200);
   assert.equal(manifest.contributes?.commands?.filter(item => item.officialCapability).length, 188);
-  assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'single').length, 179);
+  assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'single').length, 181);
   assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'managed').length, 6);
   assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'secureReplacement').length, 3);
   assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'aggregate').length, 10);
@@ -4060,7 +4146,10 @@ test('CEF3 user documentation covers the unified event catalog and every public 
   // CEF3 无头浏览器（Task 6）再公开 17 条实例编号命令，451 → 468；
   // CEF3 代理缺口补齐再公开 6 条（全局代理三件 + 代理认证两件 + 取实例代理），468 → 472。
   // 2026-09-20 再写回：lingbuilder.cef3.osr 首批 5 条按句柄寻址的 OSR 命令（重绘/帧率读写/两个订阅位），472 → 478。
-  assert.equal(publicCommands.length, 478);
+  // 2026-09-29 再写回：lingbuilder.cef3.network 纯协议 URL 请求族 24 条（CefURLRequest 直连：
+  // 创建请求客户端/请求、设置地址/方法/头/正文、发起、状态/错误/响应对象、响应头映射JSON、
+  // 事件领取、下载块取回/转文本、认证事件与回复、取消/缓存/释放），478 → 502。
+  assert.equal(publicCommands.length, 502);
   const threadEntries = CEF3_SAFE_API_CATALOG.filter(entry => entry.functionId.includes('.cef_thread_capi.'));
   assert.equal(threadEntries.length, 5);
   assert.ok(threadEntries.every(entry => entry.implementationStatus === 'implemented'));
@@ -4219,7 +4308,11 @@ test('FBro user documentation covers public events, classified slots and public 
   assert.equal(new Set(FBRO_EVENT_CATALOG.map(event => event.eventToken)).size, 158);
   assert.equal(FBRO_PUBLIC_BROWSER_EVENTS.length, 102);
   // 基线 2026-09-20 写回：FBro 批次4 公开命令 682 → 683（新增 FBro_设置启动开关JSON）。
-  assert.equal(publicCommands.length, 683);
+  // 基线 2026-09-29 写回：公开命令 683 → 698（区域族 11+原生UI 1、实例设置新窗口转标签页、
+  // FBro_实例设置代理、FBroVIP_实例应用指纹JSON，均随 fbro README 命令表同步）。
+  // 基线 2026-09-29 再写回：698 → 703（纯协议响应读取族 fbro.network +5）。
+  // 基线 2026-09-29 三写回：703 → 704（FBro_实例取Cookie，后台实例收割登录态 Cookie）。
+  assert.equal(publicCommands.length, 704);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(
@@ -6694,7 +6787,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.9.0', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.9.3', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -6803,7 +6896,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.9.0',
+      bridgeVersion: '2.9.3',
       files: fbroFiles
     })),
     writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),
@@ -6943,7 +7036,9 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     assert.ok(manifest.bindings.commands.some((binding: any) => binding.command === contract.lookupByTagTextCommand));
     assert.ok(manifest.bindings.commands.some((binding: any) => binding.command === contract.lookupByTagIntegerCommand));
   }
-  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1618);
+  // 2026-09-29 鼠标光标与悬停批次：.def 新增 EU_SetElementCursor / EU_SetTableRowHover /
+  // EU_SetTableColumnHover 三条导出，advanced 直调命令 1618 → 1621。
+  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1621);
   assert.ok(manifest.contributes.designerControls.every((control: any) => (
     control.namespacedType?.startsWith('lingbuilder.new_emoji.ui/')
     && control.backend === 'new-emoji'
@@ -8332,4 +8427,55 @@ test('module panel exposes the favorite (常用模块) section wired to the favo
   assert.match(favoritesServiceSource, /lingbuilder-module-favorites-changed/u);
   assert.match(favoritesServiceSource, /window\.addEventListener\('storage', onStorage\)/u);
   assert.match(favoritesServiceSource, /MAX_FAVORITE_MODULES = \d+/u);
+});
+
+test('EdgeView 实例级文档预注入与区域独立 UA 命令具备清单、绑定与生成期运行时', () => {
+  const edgeviewManifest = BUILTIN_MODULES.find(manifest => manifest.id === 'lingbuilder.edgeview');
+  const commandNames = ['EdgeView_创建区域代理UA', 'EdgeView脚本_文档预注入实例异步', 'EdgeView脚本_移除文档预注入实例'];
+  assert.ok(edgeviewManifest, 'lingbuilder.edgeview 必须存在');
+  commandNames.forEach(name => {
+    assert.ok((edgeviewManifest.contributes?.commands || []).some(command => command.name === name), `清单缺少命令 ${name}`);
+    const binding = (edgeviewManifest.bindings?.commands || []).find(item => item.command === name);
+    assert.ok(binding, `binding 缺少命令 ${name}`);
+    assert.ok((binding.parameters || []).every(parameter => parameter.description), `${name} 的每个参数都必须有中文说明`);
+  });
+  const preinject = (edgeviewManifest.bindings?.commands || []).find(item => item.command === 'EdgeView脚本_文档预注入实例异步');
+  assert.equal(preinject?.parameters?.[2]?.type, 'handler', '文档预注入实例异步的完成处理器必须是 handler 类型');
+
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [],
+      events: {}
+    }]
+  };
+  const source = [
+    '类 MainWindow : 窗口',
+    '公开',
+    '    事件 创建完毕()',
+    '        调试输出("edgeview runtime probe")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: source,
+    enabledModules: [{ manifest: edgeviewManifest, installPath: '', isInstalled: true, diagnostics: [] }]
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(cpp.includes('EdgeView_创建区域代理UA('), '生成运行时缺少区域独立 UA 变体');
+  assert.ok(cpp.includes('EdgeView脚本_文档预注入实例异步('), '生成运行时缺少实例级文档预注入');
+  assert.ok(cpp.includes('EdgeView脚本_移除文档预注入实例('), '生成运行时缺少实例级文档预注入移除');
+});
+
+test('内置模块文档门禁：每个模块至少一篇登记文档、登记文件存在、生成文档与清单同步', async () => {
+  const { auditBuiltinModuleDocs } = await import('../scripts/generate-builtin-module-docs');
+  const result = auditBuiltinModuleDocs({ checkGenerated: true, electronRoot: process.cwd() });
+  assert.equal(
+    result.ok,
+    true,
+    `内置模块文档审计未通过（共 ${result.problems.length} 项）：\n${result.problems.join('\n')}`
+  );
+  const withDocs = BUILTIN_MODULES.filter(module => (module.contributes?.docs?.length || 0) > 0);
+  assert.equal(withDocs.length, BUILTIN_MODULES.length, '每个内置模块都必须至少登记一篇文档（详情页「文档」页签不允许空模块）');
 });

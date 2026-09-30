@@ -1,7 +1,7 @@
 <!-- 此文件由 electron/scripts/generate-cef3-fbro-event-docs.ts 生成。请修改 CEF3 事件目录或模块 manifest 后运行 npm run module:cef3-docs。 -->
 # CEF3 模块事件与接口参考
 
-本参考从 LingBuilder 的统一事件目录和实际模块 manifest 自动生成。CEF3 模块族当前包含 11 个模块、98 项可绑定事件名称和 478 条面向用户的中文接口。
+本参考从 LingBuilder 的统一事件目录和实际模块 manifest 自动生成。CEF3 模块族当前包含 11 个模块、98 项可绑定事件名称和 502 条面向用户的中文接口。
 
 > 事件进入统一目录表示名称、分类和绑定契约已经确定，不代表对应 CEF 原生回调已经接通。`planned` 回调不能视为可调用能力；运行状态以当前版本的模块覆盖门禁和构建诊断为准。
 
@@ -145,7 +145,7 @@
 | CEF3事件模块 | `lingbuilder.cef3.events` | 6 |
 | CEF3受管对象模块 | `lingbuilder.cef3.objects` | 183 |
 | CEF3会话模块 | `lingbuilder.cef3.session` | 19 |
-| CEF3网络模块 | `lingbuilder.cef3.network` | 2 |
+| CEF3网络模块 | `lingbuilder.cef3.network` | 26 |
 | CEF3传输模块 | `lingbuilder.cef3.transfer` | 34 |
 | CEF3自动化模块 | `lingbuilder.cef3.automation` | 43 |
 | CEF3开发者工具模块 | `lingbuilder.cef3.devtools` | 8 |
@@ -153,7 +153,7 @@
 | CEF3无头渲染模块 | `lingbuilder.cef3.osr` | 5 |
 | CEF3平台工具模块 | `lingbuilder.cef3.platform` | 75 |
 
-以下 478 条接口来自当前模块 manifest。模块详情、补全、诊断和 C++ binding 使用同一份清单。
+以下 502 条接口来自当前模块 manifest。模块详情、补全、诊断和 C++ binding 使用同一份清单。
 
 
 ### 1. CEF3浏览器模块
@@ -496,12 +496,36 @@
 
 ### 5. CEF3网络模块
 
-提供实例级代理及后续请求/响应扩展入口。 模块 ID：`lingbuilder.cef3.network`；本节共 2 条用户接口。
+提供实例级代理与基于Chromium网络栈的纯协议HTTP请求族（自定义头/正文、响应头全量读取、代理认证）。 模块 ID：`lingbuilder.cef3.network`；本节共 26 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
 | 1 | `CEF3网络_设置代理` | `CEF3网络_设置代理(控件名, 代理地址)` | 整数型 | 高级 | `LB_CEF3_SetProxy` | 在浏览器创建前设置实例RequestContext代理；空文本表示直连。 |
 | 2 | `CEF3网络_证书状态是否错误` | `CEF3网络_证书状态是否错误(证书状态)` | 整数型 | 高级 | `cef_is_cert_status_error` | 判断CEF证书状态位掩码是否包含错误；0表示CERT_STATUS_NONE。 |
+| 3 | `CEF3网络_创建请求客户端` | `CEF3网络_创建请求客户端()` | 长整数型 | 常用 | `LB_CEF3_UrlRequestClientCreate` | 创建URL请求回调队列客户端并返回受管句柄；配合 CEF3网络_发起请求 与各取事件命令使用。前置条件：进程内已初始化CEF（CEF3_初始化、创建窗口浏览器或无头浏览器均可）。 |
+| 4 | `CEF3网络_创建请求` | `CEF3网络_创建请求()` | 长整数型 | 常用 | `LB_CEF3_RequestCreate` | 创建受管HTTP请求对象；用 CEF3网络_设置请求地址/设置请求方法/设置请求头/设置请求正文 组装后交给 CEF3网络_发起请求。 |
+| 5 | `CEF3网络_设置请求地址` | `CEF3网络_设置请求地址(请求, 地址)` | 整数型 | 常用 | `LB_CEF3_RequestSetUrl` | 设置请求完整URL。 |
+| 6 | `CEF3网络_设置请求方法` | `CEF3网络_设置请求方法(请求, 方法)` | 整数型 | 常用 | `LB_CEF3_RequestSetMethod` | 设置HTTP方法，如 GET、POST，建议大写。 |
+| 7 | `CEF3网络_设置请求头` | `CEF3网络_设置请求头(请求, 名称, 值)` | 整数型 | 常用 | `LB_CEF3_RequestSetHeaderByName` | 按名称设置请求头并覆盖同名头；不同名头自动累积，可多次调用。签名类协议按此逐条设置请求头。 |
+| 8 | `CEF3网络_设置请求正文` | `CEF3网络_设置请求正文(请求, 字节集)` | 整数型 | 常用 | `CefPostData` | 把字节集设为请求正文（POST/PUT 用）；内部复制字节，单次不超过 64 MiB。重复调用会替换全部正文。 |
+| 9 | `CEF3网络_发起请求` | `CEF3网络_发起请求(请求, 请求客户端, 请求上下文)` | 长整数型 | 常用 | `LB_CEF3_UrlRequestCreate` | 在Chromium网络栈中发起请求（TLS/HTTP2 指纹与内核浏览器一致，适合直连协议接口），返回URL请求句柄；0表示失败。请求上下文传 0 使用默认全局上下文。 |
+| 10 | `CEF3网络_取请求状态` | `CEF3网络_取请求状态(URL请求)` | 整数型 | 常用 | `CefURLRequest::GetRequestStatus` | 读取请求状态：0=未知 1=成功 2=进行中 3=已取消 4=失败；-1表示查询失败。轮询到 1 或 4 后再取响应。 |
+| 11 | `CEF3网络_取请求错误` | `CEF3网络_取请求错误(URL请求)` | 整数型 | 常用 | `CefURLRequest::GetRequestError` | 请求失败时读取CEF网络错误码（有符号，如 -21 网络变更、-201 证书错误）；成功或未完成时为 0。 |
+| 12 | `CEF3网络_取响应对象` | `CEF3网络_取响应对象(URL请求)` | 长整数型 | 常用 | `CefURLRequest::GetResponse` | 取得响应对象句柄；请求未完成或无响应时返回 0。用完 CEF3网络_释放对象 释放。 |
+| 13 | `CEF3网络_取响应状态码` | `CEF3网络_取响应状态码(响应)` | 整数型 | 常用 | `LB_CEF3_ResponseGetStatus` | 读取HTTP状态码，如 200、404。 |
+| 14 | `CEF3网络_取响应头` | `CEF3网络_取响应头(响应, 名称)` | 文本型 | 常用 | `CefResponse::GetHeaderByName` | 按名称读取响应头值；不存在返回空文本。多值头（如 Set-Cookie）请改用 CEF3网络_取响应头映射JSON。 |
+| 15 | `CEF3网络_取响应头映射JSON` | `CEF3网络_取响应头映射JSON(响应)` | 文本型 | 常用 | `CefResponse::GetHeaderMap` | 读取全部响应头，返回 [{"name":"...","value":"..."}] JSON数组；保持服务端顺序，多值头会出现多个同名条目。 |
+| 16 | `CEF3网络_取响应MIME类型` | `CEF3网络_取响应MIME类型(响应)` | 文本型 | 常用 | `CefResponse::GetMimeType` | 读取响应MIME类型，如 application/json。 |
+| 17 | `CEF3网络_取响应地址` | `CEF3网络_取响应地址(响应)` | 文本型 | 常用 | `CefResponse::GetURL` | 读取响应最终地址（跟随重定向后的实际URL）。 |
+| 18 | `CEF3网络_是否来自缓存` | `CEF3网络_是否来自缓存(URL请求)` | 整数型 | 高级 | `LB_CEF3_UrlRequestResponseWasCached` | 判断响应是否来自本地缓存。 |
+| 19 | `CEF3网络_取消请求` | `CEF3网络_取消请求(URL请求)` | 整数型 | 常用 | `LB_CEF3_UrlRequestCancel` | 取消进行中的请求。 |
+| 20 | `CEF3网络_取完成事件` | `CEF3网络_取完成事件(请求客户端)` | 长整数型 | 常用 | `CefURLRequestClient::OnRequestComplete` | 领取（或预约）请求完成事件任务句柄；无事件时返回进行中的预约任务。用 CEF3任务_取状态 轮询（0=进行中 2=成功 3=失败），读取后用 CEF3任务_释放 释放。 |
+| 21 | `CEF3网络_取下载数据事件` | `CEF3网络_取下载数据事件(请求客户端)` | 长整数型 | 常用 | `CefURLRequestClient::OnDownloadData` | 领取下一个下载块事件任务；任务结果为 {"kind":"downloadData","size":N}，再用 CEF3网络_取下载块 取回字节缓冲。 |
+| 22 | `CEF3网络_取下载块` | `CEF3网络_取下载块(任务)` | 长整数型 | 常用 | `CefURLRequestClient 下载块取回` | 从下载块事件任务取回受管字节缓冲（一次性，取后任务内不再保留）；配合 CEF3网络_下载块转文本 或 CEF3缓冲_保存文件 使用，用 CEF3缓冲_释放 释放。 |
+| 23 | `CEF3网络_下载块转文本` | `CEF3网络_下载块转文本(缓冲, 编码)` | 文本型 | 常用 | `CefURLRequestClient 下载块解码` | 把下载块缓冲按指定字符集解码为文本；编码用 "utf-8"/"gbk"/"gb18030"，空文本或未知按 utf-8 处理。二进制正文请改用 CEF3缓冲_保存文件。 |
+| 24 | `CEF3网络_取认证事件` | `CEF3网络_取认证事件(请求客户端)` | 长整数型 | 高级 | `CefURLRequestClient::GetAuthCredentials` | 领取（或预约）代理/HTTP认证事件任务；要完成账号密码认证必须在 CEF3网络_发起请求 之前先调用本命令预约，否则认证会被放弃。任务结果JSON含 isProxy/host/port/realm。 |
+| 25 | `CEF3网络_回复认证` | `CEF3网络_回复认证(任务, 用户名, 密码)` | 整数型 | 常用 | `CefAuthCallback::Continue` | 回答认证事件：用户名传空文本表示放弃（请求按 401/407 失败）。返回 1=已提交 0=已放弃 -1=失败。 |
+| 26 | `CEF3网络_释放对象` | `CEF3网络_释放对象(句柄)` | 整数型 | 常用 | `LB_CEF3_HandleRelease` | 释放请求、响应等受管对象句柄；重复释放返回稳定错误码。 |
 
 ### 6. CEF3传输模块
 
@@ -748,5 +772,5 @@ CEF3 DevTools Observer 的四个官方回调、订阅生命周期和动态协议
 | 离屏渲染 OSR | `lingbuilder.cef3.osr` | 54 | `osr.md` |
 | 平台与工具 | `lingbuilder.cef3.platform` | 324 | `platform.md` |
 
-目录项数：98；模块数：11；用户接口数：478。
+目录项数：98；模块数：11；用户接口数：502。
 

@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-09-24
+更新时间：2026-09-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **101 个内置模块、3940 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **101 个内置模块、4026 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -18,7 +18,7 @@
 | 已封装 | `lingbuilder.std.array` | 数组操作模块 | 13 |
  已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 26 |
 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 32 |
-| 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 18 |
+| 已封装（1.2.0 位运算族） | `lingbuilder.std.math` | 数学与随机模块 | 28 | 64 位补码位模式位运算 10 条（与/或/异或/取反/左右移/算术右移/循环左移32/取字节/位测试），移位位数对 64 取模 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 22 |
 | 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 10 |
  已封装 | `lingbuilder.std.buffer` | 缓冲区模块 | 17 |
@@ -72,10 +72,10 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已完整封装 | `lingbuilder.net.http-client` | HTTP 客户端模块 2.0（受管 WinHTTP、异步回调与双 UI 后端） | 74 |
+| 已完整封装 | `lingbuilder.net.http-client` | HTTP 客户端模块 2.1（受管 WinHTTP、异步回调与双 UI 后端，含断点续传响应落盘） | 79 |
 | 阶段 3 实施中 | `lingbuilder.cdp.client` | CDP 客户端模块 3.0（多连接、Target/Session、binding、Debugger、Storage 与严格证书裁决地基） | 144 |
 | 已封装 | `lingbuilder.net.tcp` | TCP 通信模块 | 6 |
-| 已封装 | `lingbuilder.net.udp` | UDP 通信模块 | 7 |
+| 已封装 | `lingbuilder.net.udp` | UDP 通信模块（含广播/端口复用开关，支撑局域网自动发现） | 9 |
 | 已封装 | `lingbuilder.net.dns` | DNS 与 IP 模块 | 5 |
 | 已封装 | `lingbuilder.net.url` | URL 解析模块 | 6 |
 | 已封装 | `lingbuilder.net.cookie` | Cookie 文本模块 | 8 |
@@ -91,8 +91,8 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
 | 已封装 | `lingbuilder.data.csv` | CSV数据模块 | 18 |
-| 已封装 | `lingbuilder.data.protobuf` | Protocol Buffers 模块 | 9 |
-| 已封装 | `lingbuilder.crypto.hash` | 哈希摘要模块 | 15 |
+| 已封装（1.1.0 无 schema wire） | `lingbuilder.data.protobuf` | Protocol Buffers 模块 | 20 | 反射命令 9 条 + 无 schema wire 编解码 11 条（写字段族/取字段族/字段信息JSON/文本树/导出Proto草稿，不依赖 SDK） |
+| 已封装（1.1.0 字节集族） | `lingbuilder.crypto.hash` | 哈希摘要模块 | 22 | 七算法各 文本/字节集/文件 三形态 + 安全随机十六进制 |
 | 已封装 | `lingbuilder.crypto.password` | 密码哈希与派生模块 | 9 |
 | 已封装 | `lingbuilder.crypto.symmetric` | 对称加密模块 | 30 |
 | 已封装 | `lingbuilder.crypto.asymmetric` | 非对称加密模块 | 27 |
@@ -134,7 +134,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已封装 | `lingbuilder.advanced.memorydll` | 内存加载DLL模块 | 7 | DLL 字节手工 PE 映射到内存（不落盘），配合「项目 DLL 命令声明 · 加载方式 = 内存」使用 |
 | 已封装 | `lingbuilder.resource.embed` | 内嵌资源模块 | 8 | 任意格式文件构建期打进 EXE，运行期按逻辑名取字节集/文本（不落盘） |
 | 已封装 | `lingbuilder.advanced.hook` | 键盘 Hook 模块 | 4 | 只读取低级键盘状态，不注入代码 |
-| 已封装（1.1.0 扫描族） | `lingbuilder.advanced.process-memory` | 进程内存模块 | 11 | 显式 PID 和句柄；字节集读取、区域枚举与特征扫描；默认随新项目启用（可按项目禁用，依赖缓冲区模块） |
+| 已封装（1.2.0 扫描族+写字节集） | `lingbuilder.advanced.process-memory` | 进程内存模块 | 12 | 显式 PID 和句柄；字节集读取、区域枚举与特征扫描；默认随新项目启用（可按项目禁用，依赖缓冲区模块） |
 | 已封装（2.0.0 句柄制） | `lingbuilder.advanced.com` | COM 自动化模块 | 27 | 注册/免注册创建 IDispatch、OCX 窗口宿主、事件挂接映射、类型化属性与带参方法、接口信息；纯 C++ 双架构 |
 | 已封装 | `lingbuilder.advanced.assembly` | CPU 指令能力模块 | 5 | 只提供 CPUID 和受控位运算，不执行机器码 |
 | 已封装 | `lingbuilder.advanced.driver` | 设备驱动通信模块 | 4 | 不安装驱动、不提权，只打开显式设备路径 |
@@ -145,7 +145,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 220 |
+| 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 221 |
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 550 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 321 |
 | 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
@@ -159,14 +159,14 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 3.0预览 | `lingbuilder.cef3.views` | CEF3 Chrome Runtime视图模块 | 1 |
 | 3.0预览 | `lingbuilder.cef3.osr` | CEF3无头渲染（OSR）重绘、帧率与回调订阅模块 | 5 |
 | 3.0预览 | `lingbuilder.cef3.platform` | CEF3版本、MIME、命令行与Chrome Variations工具模块 | 72 |
-| 已封装 | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v3，兼容 v1/v2） | 50 |
+| 已封装（2.11.0 实例级代理） | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v3，兼容 v1/v2） | 141 |
 | 已封装 | `lingbuilder.fbro.events` | FBro 174 槽位事件目录、同步/延迟决策与受管事件对象模块 | 12 |
 | 已封装 | `lingbuilder.fbro.session` | FBro会话、Cookie 与代理认证模块 | 10 |
 | 已封装 | `lingbuilder.fbro.transfer` | FBro下载、打印、PDF、文件对话框与截图模块 | 5 |
 | 已封装 | `lingbuilder.fbro.automation` | FBro受管异步及 Frame 自动化模块 | 25 |
 | 已封装 | `lingbuilder.fbro.objects` | FBro任务、缓冲及 Value/Dictionary/List/Stream/Image/Certificate/DragData 受管对象模块 | 132 |
-| 已封装 | `lingbuilder.fbro.network` | FBro高级网络模块 | 2 |
-| 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口） | 198 |
+| 已封装（2.2.0 纯协议响应读取） | `lingbuilder.fbro.network` | FBro高级网络模块（代理/认证 + Chromium 网络栈纯协议请求响应读取） | 23 |
+| 已封装（2.3.0 实例级指纹应用） | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口 + LingBuilder 扩展命令） | 200 |
 | 已封装 | `lingbuilder.new_emoji.fbro-shell` | new_emoji FBro x64 多标签浏览器外壳模块 | 50 |
  已有 | `lingbuilder.threading` | 多线程模块 | 66 |
  已有 | `lingbuilder.cron` | 定时任务模块 | 29 |
