@@ -58,7 +58,7 @@ HTTP客户端_开始请求(请求)
 - 设了指纹的客户端，其全部请求（含响应头/正文/Cookie/重定向/资源上限语义）与 WinHTTP 路径共用同一套命令；正文按 `Accept-Encoding` 自动解压（gzip/br/zstd），不会再遇到原始 gzip 字节。WinHTTP 的 `执行同步/等待请求`、文件上传正文、断点续传落盘与运行中取消暂不支持（调用时给中文阻断诊断）；「系统默认代理」按环境变量语义（`http_proxy/https_proxy`），固定代理与逐请求代理照常可用。
 - 运行时要求：x64 构建 + 程序目录有 `libcurl-impersonate.dll`（LingBuilder 随包分发，SHA-256 钉死校验，来源与许可证见 `LICENSE-curl-impersonate`/`LICENSE-BoringSSL`）。DLL 缺失时「设置TLS指纹」与请求都会给中文修法诊断。
 - **`HTTP客户端_取TLS指纹(客户端)`**：返回当前档案名（如 `chrome131`），未设置返回空文本。
-- **运行时可靠性（2026-09-30 收尾批）**：选项常量与随包 `curl/curl.h` 逐字核对（`CAINFO=10065`，历史上误写 10098 导致随包 `cacert.pem` 从未生效，已修）；仿真路径全部 `setopt` 返回值落检查，未知选项号在请求发出前给中文阻断诊断（列出选项名/选项号/返回码），不再静默丢弃。CA 包主路径走 `CURLOPT_CAINFO_BLOB`（40309）内存形态——非 ASCII 程序目录（如 `T:\逆向\蓝奏云\...`）下 CAINFO 路径形态被 BoringSSL 按 ANSI fopen 打开必失败（rc=77 `error adding trust anchors`，换出口 D 实验真机实锤、本地 A/B 探针实证 BLOB 200）；`keepAnsiPath`（8.3 短路径/ACP）路径形态保留为 BLOB 不可用时的兜底。
+- **运行时可靠性（2026-09-30 收尾批）**：选项常量与随包 `curl/curl.h` 逐字核对（`CAINFO=10065`，历史上误写 10098 导致随包 `cacert.pem` 从未生效，已修）；仿真路径全部 `setopt` 返回值落检查，未知选项号在请求发出前给中文阻断诊断（列出选项名/选项号/返回码），不再静默丢弃。CA 包主路径走 `CURLOPT_CAINFO_BLOB`（40309）内存形态——非 ASCII 程序目录（如 `T:\逆向\蓝奏云\...`）下 CAINFO 路径形态被 BoringSSL 按 ANSI fopen 打开必失败（rc=77 `error adding trust anchors`，换出口 D 实验真机实锤、本地 A/B 探针实证 BLOB 200）；`keepAnsiPath`（8.3 短路径/ACP）路径形态保留为 BLOB 不可用时的兜底。指纹路径此前漏回填 `contentType`（`HTTP客户端_取内容类型` 在指纹路径恒为空，WinHTTP 路径无此问题），已从响应头回填修复——依赖内容类型判路的场景（如「非 html 即直出文件」）此前在指纹路径永远走错分支。
 
 ## 跳转链解析与逐请求代理（2.2 新增）
 

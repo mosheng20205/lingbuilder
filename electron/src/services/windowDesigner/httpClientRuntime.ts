@@ -937,6 +937,10 @@ private:
             request->responseSize = static_cast<long long>(responseBytes.size());
             request->downloadedBytes = static_cast<long long>(responseBytes.size());
             ParseResponseHeaders(*request);
+            // 指纹路径此前漏回填 contentType（WinHTTP 路径由 QueryResponse 设置），「取内容类型」在指纹路径恒空——
+            // 蓝奏云 [D] 的「内容类型非 html = 直出文件」判路被它废掉，文件本体被误当验证中间页解析（真机 19:54 实锤：
+            // COS 直出 200 空文本 + 内容类型空 → 误入中间页分支）。
+            for (const auto& item : request->headerItems) { if (Lower(item.first) == L"content-type") { request->contentType = item.second; break; } }
         }
         if (!request->responsePath.empty()) {
             bool allowOverwrite = false;

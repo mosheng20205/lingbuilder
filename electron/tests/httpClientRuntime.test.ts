@@ -168,6 +168,8 @@ test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理�
   assert.ok(mainCpp.includes('LB_CURL_OPT_CAINFO_BLOB = 40309'));
   assert.ok(mainCpp.includes('error adding trust anchors from locations'));
   assert.ok(mainCpp.includes('caBlobStorage'));
+  // 2026-09-30 晚补②：指纹路径回填 contentType（此前「取内容类型」在指纹路径恒空，直出文件判路失效）。
+  assert.ok(mainCpp.includes("Lower(item.first) == L\"content-type\""));
 });
 
 test('断点续传：设置续传文件生成追加落盘运行时且文件流不占响应体内存上限', () => {
