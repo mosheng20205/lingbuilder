@@ -42,6 +42,8 @@ interface ProjectGlobalVariableEditorProps {
   onChange: (sourceCode: string) => void;
   onProjectSourcesChange?: (sources: Array<{ filePath: string; sourceCode: string }>) => void;
   focusConstantName?: string;
+  /** 跳转到项目全局变量声明：定位「项目变量」页签的具体行并短暂行闪（来自代码区 Ctrl+单击/右键转到定义）。 */
+  focusVariableName?: string;
 }
 
 interface NewGlobalDraft { name: string; type: string; initialValue: string; isArray: boolean; note: string }
@@ -60,7 +62,8 @@ export default function ProjectGlobalVariableEditor({
   readOnly,
   onChange,
   onProjectSourcesChange,
-  focusConstantName
+  focusConstantName,
+  focusVariableName
 }: ProjectGlobalVariableEditorProps) {
   const [activeTab, setActiveTab] = useState<'globals' | 'constants'>(focusConstantName ? 'constants' : 'globals');
   const [globalDraft, setGlobalDraft] = useState<NewGlobalDraft>(EMPTY_GLOBAL_DRAFT);
@@ -150,9 +153,34 @@ export default function ProjectGlobalVariableEditor({
     tableColumnWidthOverrides['project-constants'],
     tableContainerWidth
   );
+  // 跳转聚焦：切到对应页签、把目标行滚入视口并短暂行闪（背景+描边走行内样式，避免同类 bg 类冲突）。
+  const [flashRow, setFlashRow] = useState<{ kind: 'global' | 'constant'; name: string } | null>(null);
+  const flashRowTimerRef = useRef<number | null>(null);
+  const focusRow = (kind: 'global' | 'constant', name: string) => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-project-${kind}-row="${CSS.escape(name)}"]`)
+        ?.scrollIntoView({ block: 'center' });
+    }));
+    if (flashRowTimerRef.current !== null) window.clearTimeout(flashRowTimerRef.current);
+    setFlashRow({ kind, name });
+    flashRowTimerRef.current = window.setTimeout(() => {
+      setFlashRow(null);
+      flashRowTimerRef.current = null;
+    }, 1400);
+  };
+  useEffect(() => () => {
+    if (flashRowTimerRef.current !== null) window.clearTimeout(flashRowTimerRef.current);
+  }, []);
   useEffect(() => {
-    if (focusConstantName) setActiveTab('constants');
+    if (!focusConstantName) return;
+    setActiveTab('constants');
+    focusRow('constant', focusConstantName);
   }, [focusConstantName]);
+  useEffect(() => {
+    if (!focusVariableName) return;
+    setActiveTab('globals');
+    focusRow('global', focusVariableName);
+  }, [focusVariableName]);
   useEffect(() => {
     const handleCommand = (event: Event) => {
       const action = (event as CustomEvent<{ action?: string }>).detail?.action;
@@ -301,9 +329,9 @@ export default function ProjectGlobalVariableEditor({
       {(feedback || diagnostics.length > 0) && <div className={`mx-4 mt-3 rounded border px-3 py-2 text-xs ${isDarkMode ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{feedback || diagnostics[0]?.message}</div>}
       <div ref={tableScrollRef} className="min-h-0 flex-1 overflow-auto p-4">
         {activeTab === 'globals' ? (
-          <GlobalTable parsed={parsed.program.globals} sourceCode={sourceCode} draft={globalDraft} setDraft={setGlobalDraft} updateGlobal={updateGlobal} addGlobal={addGlobal} runEdit={runEdit} inputClass={inputClass} rowBorder={rowBorder} typeCatalog={globalTypeCatalog} readOnly={readOnly} isDarkMode={isDarkMode} widths={globalTableWidths} beginResize={beginTableColumnResize} resetWidth={resetTableColumnWidth} />
+          <GlobalTable parsed={parsed.program.globals} sourceCode={sourceCode} draft={globalDraft} setDraft={setGlobalDraft} updateGlobal={updateGlobal} addGlobal={addGlobal} runEdit={runEdit} inputClass={inputClass} rowBorder={rowBorder} typeCatalog={globalTypeCatalog} readOnly={readOnly} isDarkMode={isDarkMode} widths={globalTableWidths} beginResize={beginTableColumnResize} resetWidth={resetTableColumnWidth} flashName={flashRow?.kind === 'global' ? flashRow.name : undefined} />
         ) : (
-          <ConstantTable parsed={parsed.program.constants} sourceCode={sourceCode} draft={constantDraft} setDraft={setConstantDraft} updateConstant={updateConstant} addConstant={addConstant} deleteConstant={deleteConstant} showReferences={showReferences} inputClass={inputClass} rowBorder={rowBorder} typeCatalog={constantTypeCatalog} readOnly={readOnly} isDarkMode={isDarkMode} widths={constantTableWidths} beginResize={beginTableColumnResize} resetWidth={resetTableColumnWidth} />
+          <ConstantTable parsed={parsed.program.constants} sourceCode={sourceCode} draft={constantDraft} setDraft={setConstantDraft} updateConstant={updateConstant} addConstant={addConstant} deleteConstant={deleteConstant} showReferences={showReferences} inputClass={inputClass} rowBorder={rowBorder} typeCatalog={constantTypeCatalog} readOnly={readOnly} isDarkMode={isDarkMode} widths={constantTableWidths} beginResize={beginTableColumnResize} resetWidth={resetTableColumnWidth} flashName={flashRow?.kind === 'constant' ? flashRow.name : undefined} />
         )}
         {references.length > 0 && <div className={`mt-4 rounded border p-3 text-xs ${rowBorder}`}><div className="mb-2 font-semibold">常量引用</div>{references.slice(0, 20).map(reference => <div key={`${reference.filePath}:${reference.line}:${reference.column}`} className="truncate py-0.5" title={reference.text}>{reference.filePath} 第 {reference.line} 行：{reference.text.trim()}</div>)}</div>}
       </div>
@@ -325,11 +353,11 @@ const PROJECT_CONSTANT_FLEX_COLUMN_INDEXES: ReadonlySet<number> = new Set([0, 1,
 // 备注列文字与新手模式注释同色：消费 --lingcpp-comment-color 令牌（由组件根节点注入）。
 const NOTE_INPUT_STYLE: React.CSSProperties = { color: 'var(--lingcpp-comment-color)' };
 
-function GlobalTable({ parsed, sourceCode, draft, setDraft, updateGlobal, addGlobal, runEdit, inputClass, rowBorder, typeCatalog, readOnly, isDarkMode, widths, beginResize, resetWidth }: any) {
+function GlobalTable({ parsed, sourceCode, draft, setDraft, updateGlobal, addGlobal, runEdit, inputClass, rowBorder, typeCatalog, readOnly, isDarkMode, widths, beginResize, resetWidth, flashName }: any) {
   const tableKey: BeginnerTableKey = 'project-globals';
   const tableWidth = PROJECT_GLOBAL_TABLE_DEFAULT_WIDTHS.reduce((sum: number, width: number) => sum + width, 0);
   return <><table className="w-full table-fixed border-collapse text-left text-xs" style={{ minWidth: `${tableWidth}px` }}><thead><tr className={`border-b ${rowBorder} text-slate-500`}>{PROJECT_GLOBAL_TABLE_LABELS.map((label, index) => <th key={label} className="relative select-none px-2 py-2 font-semibold" style={{ width: widths[index] }}>{label}{PROJECT_GLOBAL_FLEX_COLUMN_INDEXES.has(index) ? <span role="separator" aria-orientation="vertical" aria-label={`调整「${label}」列宽`} title="拖动调整列宽，双击恢复默认" onPointerDown={(event: ReactPointerEvent<HTMLSpanElement>) => beginResize(event, tableKey, index, widths[index])} onDoubleClick={() => resetWidth(tableKey, index)} className="absolute inset-y-0 right-0 z-10 w-[7px] cursor-col-resize touch-none after:absolute after:inset-y-[3px] after:right-0 after:w-[2px] after:rounded-full after:bg-transparent hover:after:bg-cyan-500/70" /> : null}</th>)}</tr></thead><tbody>
-    {parsed.map((global: LingCppGlobalVariable) => <tr key={`${global.line}:${global.name}`} className={`border-b ${rowBorder}`}>
+    {parsed.map((global: LingCppGlobalVariable) => <tr key={`${global.line}:${global.name}`} data-project-global-row={global.name} title={flashName === global.name ? `已跳转到：${global.name}` : undefined} style={flashName === global.name ? { backgroundColor: isDarkMode ? 'rgba(34,211,238,0.12)' : 'rgba(207,250,254,0.7)', boxShadow: `inset 0 0 0 1px ${isDarkMode ? 'rgba(34,211,238,0.55)' : 'rgba(8,145,178,0.5)'}` } : undefined} className={`border-b ${rowBorder}`}>
       <td className="px-2 py-2"><input className={inputClass} defaultValue={global.name} onBlur={event => event.target.value !== global.name && updateGlobal(global, { name: event.target.value })} disabled={readOnly} /></td>
       <td className="px-2 py-2"><SearchableTypeSelect value={global.type} items={typeCatalog} inputClassName={inputClass} rootClassName="relative w-full min-w-0" isDarkMode={isDarkMode} disabled={readOnly} ariaLabel={`${global.name} 的类型`} onCommit={value => value !== global.type && updateGlobal(global, { type: value })} /></td>
       <td className="px-2 py-2"><input className={inputClass} defaultValue={global.initialValue || ''} placeholder={global.isArray ? '数组首版仅支持空值' : '可选'} onBlur={event => event.target.value !== (global.initialValue || '') && updateGlobal(global, { initialValue: event.target.value })} disabled={readOnly || global.isArray} /></td>
@@ -341,11 +369,11 @@ function GlobalTable({ parsed, sourceCode, draft, setDraft, updateGlobal, addGlo
   </tbody></table>{parsed.length === 0 && !draft.name && <div className="mt-5 text-center text-xs text-slate-500">暂无项目变量。请在末尾新增一行。</div>}</>;
 }
 
-function ConstantTable({ parsed, sourceCode, draft, setDraft, updateConstant, addConstant, deleteConstant, showReferences, inputClass, rowBorder, typeCatalog, readOnly, isDarkMode, widths, beginResize, resetWidth }: any) {
+function ConstantTable({ parsed, sourceCode, draft, setDraft, updateConstant, addConstant, deleteConstant, showReferences, inputClass, rowBorder, typeCatalog, readOnly, isDarkMode, widths, beginResize, resetWidth, flashName }: any) {
   const tableKey: BeginnerTableKey = 'project-constants';
   const tableWidth = PROJECT_CONSTANT_TABLE_DEFAULT_WIDTHS.reduce((sum: number, width: number) => sum + width, 0);
   return <><table className="w-full table-fixed border-collapse text-left text-xs" style={{ minWidth: `${tableWidth}px` }}><thead><tr className={`border-b ${rowBorder} text-slate-500`}>{PROJECT_CONSTANT_TABLE_LABELS.map((label, index) => <th key={label} className="relative select-none px-2 py-2 font-semibold" style={{ width: widths[index] }}>{label}{PROJECT_CONSTANT_FLEX_COLUMN_INDEXES.has(index) ? <span role="separator" aria-orientation="vertical" aria-label={`调整「${label}」列宽`} title="拖动调整列宽，双击恢复默认" onPointerDown={(event: ReactPointerEvent<HTMLSpanElement>) => beginResize(event, tableKey, index, widths[index])} onDoubleClick={() => resetWidth(tableKey, index)} className="absolute inset-y-0 right-0 z-10 w-[7px] cursor-col-resize touch-none after:absolute after:inset-y-[3px] after:right-0 after:w-[2px] after:rounded-full after:bg-transparent hover:after:bg-cyan-500/70" /> : null}</th>)}</tr></thead><tbody>
-    {parsed.map((constant: LingCppConstant) => <tr key={`${constant.line}:${constant.name}`} className={`border-b ${rowBorder}`}>
+    {parsed.map((constant: LingCppConstant) => <tr key={`${constant.line}:${constant.name}`} data-project-constant-row={constant.name} title={flashName === constant.name ? `已跳转到：${constant.name}` : undefined} style={flashName === constant.name ? { backgroundColor: isDarkMode ? 'rgba(34,211,238,0.12)' : 'rgba(207,250,254,0.7)', boxShadow: `inset 0 0 0 1px ${isDarkMode ? 'rgba(34,211,238,0.55)' : 'rgba(8,145,178,0.5)'}` } : undefined} className={`border-b ${rowBorder}`}>
       <td className="px-2 py-2"><input className={inputClass} defaultValue={constant.name} onBlur={event => event.target.value !== constant.name && updateConstant(constant, { name: event.target.value })} disabled={readOnly} /></td>
       <td className="px-2 py-2"><SearchableTypeSelect value={constant.type} items={typeCatalog} inputClassName={inputClass} rootClassName="relative w-full min-w-0" isDarkMode={isDarkMode} disabled={readOnly} ariaLabel={`${constant.name} 的类型`} onCommit={value => value !== constant.type && updateConstant(constant, { type: value })} /></td>
       <td className="px-2 py-2"><input className={inputClass} defaultValue={constant.initialValue} placeholder="必填" onBlur={event => event.target.value !== constant.initialValue && updateConstant(constant, { initialValue: event.target.value })} disabled={readOnly} /></td>

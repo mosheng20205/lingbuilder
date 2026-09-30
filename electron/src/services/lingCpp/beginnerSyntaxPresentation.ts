@@ -46,7 +46,7 @@ const LING_CPP_KEYWORDS = /^(局部常量|局部|常量|如果真|如果真结�
 const LING_CPP_TYPES = /^(文本型|整数型|逻辑型|小数型|单精度小数型|长整数型|双精度小数型|字节集|日期时间型)$/u;
 const CPP_KEYWORDS = /^(alignas|alignof|asm|auto|break|case|catch|class|const|constexpr|continue|default|delete|do|else|enum|explicit|export|extern|for|friend|goto|if|inline|mutable|namespace|new|noexcept|nullptr|operator|private|protected|public|register|reinterpret_cast|return|sizeof|static|struct|switch|template|this|throw|try|typedef|typename|union|using|virtual|volatile|while)$/u;
 const CPP_TYPES = /^(bool|char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|string|unsigned|void|wchar_t|wstring)$/u;
-const OPERATORS = /^(并且|或者|非|::|&&|\|\||[!＝=＋+\-*/（）(),，:;.<>\[\]{}])$/u;
+const OPERATORS = /^(并且|或者|且|或|非|::|&&|\|\||[!＝=＋+\-*/（）(),，:;.<>\[\]{}])$/u;
 
 export function tokenizeLingCppPresentationCode(code: string): string[] {
   return code.split(TOKEN_PATTERN).filter(token => token !== '');

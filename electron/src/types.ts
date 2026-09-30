@@ -91,7 +91,8 @@ export type BottomPanelTabType =
   | 'terminal'
   | 'tests'
   | 'debug_locals'
-  | 'debug_logs';
+  | 'debug_logs'
+  | 'find_results';
 
 export interface WorkspaceEditRange {
   startLine: number;

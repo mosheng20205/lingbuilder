@@ -27,6 +27,15 @@ export interface BeginnerFunctionLibraryDefinition {
   method: LingCppMethod;
 }
 
+export interface BeginnerLocalDeclarationHint {
+  name: string;
+  /** 声明所在源码行：参数取所在子程序头行。 */
+  line: number;
+  kind: 'local' | 'parameter' | 'constant';
+}
+
+export interface BeginnerLocalReference extends BeginnerLocalDeclarationHint {}
+
 const PROCEDURE_IDENTIFIER_PATTERN = /[A-Za-z_\u3400-\u9fff][A-Za-z0-9_\u3400-\u9fff]*/gu;
 // 「库名.功能名(」限定调用：光标落在库名或功能名任一段都应能识别。
 const LIBRARY_QUALIFIED_CALL_PATTERN = /([A-Za-z_\u3400-\u9fff][A-Za-z0-9_\u3400-\u9fff]*)\s*\.\s*([A-Za-z_\u3400-\u9fff][A-Za-z0-9_\u3400-\u9fff]*)\s*[（(]/gu;
@@ -181,4 +190,37 @@ export function resolveBeginnerFunctionLibraryDefinition(
   );
   if (!library || !method) return undefined;
   return { libraryName: library.name, filePath: library.filePath, method };
+}
+
+/** 识别光标处的局部变量/参数/局部常量引用：命中返回声明信息，供 Ctrl+单击与右键「转到定义」共用。
+ * 与其它跳转识别同一口径：`@` 内嵌 C++ 行与多行文本块内不识别，字符串/注释内不命中。 */
+export function getBeginnerLocalReferenceAtCursor(
+  value: string,
+  cursor: number,
+  declarations: ReadonlyArray<BeginnerLocalDeclarationHint>
+): BeginnerLocalReference | null {
+  const byName = new Map<string, BeginnerLocalDeclarationHint>();
+  declarations.forEach(declaration => {
+    const normalizedName = normalizeIdentifier(declaration.name);
+    if (normalizedName && !byName.has(normalizedName)) byName.set(normalizedName, declaration);
+  });
+  if (byName.size === 0) return null;
+
+  const { line, lineStart } = readCursorLine(value, cursor);
+  if (line.trimStart().startsWith('@')) return null;
+  if (isCursorLineInTextBlock(value, lineStart)) return null;
+
+  const column = cursor - lineStart;
+  for (const match of line.matchAll(PROCEDURE_IDENTIFIER_PATTERN)) {
+    const columnStart = match.index ?? 0;
+    const name = match[0];
+    const columnEnd = columnStart + name.length;
+    if (column < columnStart || column > columnEnd) continue;
+    const declaration = byName.get(normalizeIdentifier(name));
+    if (!declaration) return null;
+    const prefixSyntax = scanBeginnerCodePrefix(line.slice(0, columnStart));
+    if (prefixSyntax.isInsideString || prefixSyntax.isInsideComment) return null;
+    return { name: declaration.name, line: declaration.line, kind: declaration.kind };
+  }
+  return null;
 }

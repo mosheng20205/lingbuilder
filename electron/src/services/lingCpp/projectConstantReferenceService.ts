@@ -73,11 +73,14 @@ export function createProjectConstantRenameProposal(
   };
 }
 
-export function getProjectConstantNameAtCursor(
+/** 光标处裸标识符与给定项目符号名集合的匹配：字符串/注释/多行文本块/成员访问/调用位置不命中。
+ * 项目常量与项目全局变量的 Ctrl+单击「转到定义」共用同一套边界口径。 */
+function matchProjectSymbolNameAtCursor(
   source: string,
   cursor: number,
-  constantNames: string[]
+  symbolNames: string[]
 ): string | undefined {
+  if (symbolNames.length === 0) return undefined;
   const safeCursor = Math.max(0, Math.min(cursor, source.length));
   const lineStart = source.lastIndexOf('\n', Math.max(0, safeCursor - 1)) + 1;
   const lineEndCandidate = source.indexOf('\n', safeCursor);
@@ -88,7 +91,7 @@ export function getProjectConstantNameAtCursor(
   if (collectLingCppTextBlockOpaqueLines(
     scanLingCppTextBlockRanges(blockLines),
     blockLines.length
-  ).has(source.slice(0, lineStart).split('\n').length)) return undefined; // 文本块内容不算常量引用
+  ).has(source.slice(0, lineStart).split('\n').length)) return undefined; // 文本块内容不算符号引用
   if (!line.trim() || line.trimStart().startsWith('//') || line.trimStart().startsWith('注释 ')) return undefined;
   const stringRanges = collectStringRanges(line);
   for (const match of line.matchAll(IDENTIFIER_PATTERN)) {
@@ -100,9 +103,26 @@ export function getProjectConstantNameAtCursor(
     const after = line.slice(start + value.length).trimStart();
     if (/[.&]$/u.test(before) || /^[（(]/u.test(after)) return undefined;
     const normalizedValue = normalizeIdentifier(value);
-    return constantNames.find(name => normalizeIdentifier(name) === normalizedValue);
+    return symbolNames.find(name => normalizeIdentifier(name) === normalizedValue);
   }
   return undefined;
+}
+
+export function getProjectConstantNameAtCursor(
+  source: string,
+  cursor: number,
+  constantNames: string[]
+): string | undefined {
+  return matchProjectSymbolNameAtCursor(source, cursor, constantNames);
+}
+
+/** 光标处是否引用了给定项目全局变量：命中返回变量名，供跳转到「项目全局变量.lcpp」声明行使用。 */
+export function getProjectGlobalNameAtCursor(
+  source: string,
+  cursor: number,
+  globalNames: string[]
+): string | undefined {
+  return matchProjectSymbolNameAtCursor(source, cursor, globalNames);
 }
 
 function scanFile(file: LingCppWorkspaceFile, normalizedName: string): ProjectConstantReference[] {

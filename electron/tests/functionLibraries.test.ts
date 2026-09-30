@@ -282,3 +282,22 @@ test('功能库名称与文件名比较忽略 ASCII 大小写，真不一致仍�
   // 中文部分真的不一致时必须继续告警，不能把比较放宽成永远相等。
   assert.equal(messagesOf('src/别的名字.lcpp').some(message => message.includes('不一致')), true);
 });
+
+test('功能库内字符串字面量中的 &x 不再误判为处理器实参', () => {
+  // 生成 C++ 里 L"AT&T"、L"a=1&&b=2" 本就合法；&处理器 门禁扫描必须先掩码字符串字面量。
+  const source = [
+    '功能库 Cookie导出',
+    '公开:',
+    '  空 报告(文本型 名字)',
+    '    调试输出("AT&T " + 名字)',
+    '    调试输出("https://a.com/?a_bogus=1&&b=2")',
+    '    局部 文本型 组合 = "Tom &Jerry"',
+    '  结束',
+    '结束功能库',
+    ''
+  ].join(String.fromCharCode(10));
+  const context = createProjectFunctionContext([{ filePath: 'src/Cookie导出.lcpp', sourceCode: source, language: 'lingcpp' }]);
+  const diagnostics = getFunctionLibraryDiagnostics(source, 'src/Cookie导出.lcpp', context);
+  const handlerFalsePositives = diagnostics.filter(item => item.message.includes('&处理器'));
+  assert.deepEqual(handlerFalsePositives.map(item => [item.line, item.message]), []);
+});

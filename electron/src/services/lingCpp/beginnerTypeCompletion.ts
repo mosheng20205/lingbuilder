@@ -38,19 +38,28 @@ export function buildBeginnerTypeCompletionCatalog(types: string[]): BeginnerTyp
   });
 }
 
+/**
+ * 补全匹配前的输入归一化：NFKC 把全角字母数字（ｚｓ、ＺＳ、１２３）折成半角，
+ * 再统一小写并去掉空白/下划线。中文 IME 用户很容易把全角字符带进类型格，
+ * 不归一化会让「ＺＳ」匹配不到任何别名，弹窗空列表或直接不出现。
+ */
+export function normalizeBeginnerTypeToken(token: string): string {
+  return token.normalize('NFKC').trim().toLowerCase().replace(/[\s_]+/g, '');
+}
+
 export function filterBeginnerTypeCompletions(
   items: BeginnerTypeCompletionItem[],
   token: string,
   includeAll = false
 ): BeginnerTypeCompletionItem[] {
-  const normalizedToken = token.trim().toLowerCase();
+  const normalizedToken = normalizeBeginnerTypeToken(token);
   if (!normalizedToken && !includeAll) return [];
   if (!normalizedToken) return items;
 
   return items
     .map(item => {
-      const values = item.aliases.map(alias => alias.toLowerCase());
-      const label = item.label.toLowerCase();
+      const values = item.aliases.map(alias => normalizeBeginnerTypeToken(alias));
+      const label = normalizeBeginnerTypeToken(item.label);
       const exactMatch = values.some(value => value === normalizedToken);
       const labelStartsWith = label.startsWith(normalizedToken);
       const aliasStartsWith = values.some(value => value.startsWith(normalizedToken));
@@ -69,9 +78,9 @@ export function resolveBeginnerTypeAlias(
   items: BeginnerTypeCompletionItem[],
   rawValue: string
 ): string {
-  const normalizedValue = rawValue.trim().toLowerCase();
+  const normalizedValue = normalizeBeginnerTypeToken(rawValue);
   const exactAlias = items.find(item =>
-    item.aliases.some(alias => alias.toLowerCase() === normalizedValue)
+    item.aliases.some(alias => normalizeBeginnerTypeToken(alias) === normalizedValue)
   );
   return exactAlias?.label || rawValue.trim();
 }

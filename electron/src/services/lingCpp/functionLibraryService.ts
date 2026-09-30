@@ -87,7 +87,9 @@ export function getFunctionLibraryDiagnostics(
         diagnostics.push(diagnostic('error', method.line, method.name, '首版功能库不支持默认参数。', '请删除参数默认值，并在调用处显式传入。'));
       }
       if (method.isStatic) diagnostics.push(diagnostic('error', method.line, method.name, '功能库功能无需也不支持“静态”修饰。', '请删除“静态”；功能库本身就是无状态的。'));
-      method.statements.filter(statement => !isLingCppNativeLine(statement.text) && /&[\p{L}_][\p{L}\p{N}_]*/u.test(stripLineComment(statement.text))).forEach(statement => {
+      // 与下方调用扫描同口径：先剥注释再掩码字符串字面量。字符串内容里的 "&a_bogus="、"&&"
+      // 生成 L"..." 本就合法，不得当成 &处理器 实参误拦（其余扫描都掩码，唯独此处曾漏）。
+      method.statements.filter(statement => !isLingCppNativeLine(statement.text) && /&[\p{L}_][\p{L}\p{N}_]*/u.test(maskStringLiterals(stripLineComment(statement.text)))).forEach(statement => {
         diagnostics.push(diagnostic('error', statement.line, statement.text, '首版功能库不能把窗口事件处理器作为 &处理器参数传递。', '请在窗口事件中完成回调绑定，或把普通数据传给功能库。'));
       });
     });

@@ -1,8 +1,9 @@
 import { LingCppModuleContext } from '../modules/types';
 import { inferLingCppExpressionType } from './expressionTypeService';
+import { isProjectDataTypesFilePath, createProjectTypeContext } from './projectDataTypeService';
 import { LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
 import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
-import { LingCppConstant, LingCppDiagnostic, LingCppGlobalVariable, LingCppProjectGlobalContext } from './types';
+import { LingCppConstant, LingCppDiagnostic, LingCppGlobalVariable, LingCppProjectGlobalContext, LingCppProjectTypeContext } from './types';
 
 export const PROJECT_GLOBALS_FILE_NAME = '项目全局变量.lcpp';
 export const EMPTY_PROJECT_GLOBALS_SOURCE = '// 项目级常量与全局变量：可在当前项目的全部 .lcpp 源码中直接使用。\n';
@@ -19,6 +20,52 @@ export function createProjectGlobalContext(filePath: string, sourceCode: string)
     sourceCode,
     constants: parseLingCpp(sourceCode).program.constants,
     globals: parseLingCpp(sourceCode).program.globals
+  };
+}
+
+/** 编辑器文件快照里推导项目声明上下文所需的最小形状（工作台 CppFile 的结构子集）。 */
+export interface LingCppEditorFileSnapshot {
+  path?: string;
+  name?: string;
+  translatedContent?: string;
+  originalContent?: string;
+}
+
+export interface ProjectDeclarationContexts {
+  projectGlobals?: LingCppProjectGlobalContext;
+  projectTypes?: LingCppProjectTypeContext;
+}
+
+/** 从工作区文件列表推导「项目全局变量 / 项目数据类型」声明上下文。
+ * 唯一实现，供 DiffViewer（结构画布）与 App（错误列表 getLingCppProblems）共用：
+ * 活动文件本身是声明文件时用它的最新草稿内容，否则用文件缓存内容——
+ * 任何消费方不得再各写一份同逻辑的 useMemo，否则错误列表与画布/构建的符号表会分叉
+ * （曾致错误列表对项目全局变量赋值全量假报「尚未声明」）。 */
+export function collectProjectDeclarationContexts(
+  files: ReadonlyArray<LingCppEditorFileSnapshot>,
+  activeFilePath: string | undefined,
+  activeFileSource: string | undefined
+): ProjectDeclarationContexts {
+  const readDeclarationFile = (
+    predicate: (filePath: string) => boolean
+  ): { filePath: string; sourceCode: string } | undefined => {
+    const declarationFile = files.find(file => predicate(String(file.path || file.name || '')));
+    if (!declarationFile) return undefined;
+    const filePath = String(declarationFile.path || declarationFile.name || '');
+    const sourceCode = activeFilePath === filePath
+      ? (activeFileSource || '')
+      : String(declarationFile.translatedContent || declarationFile.originalContent || '');
+    return { filePath, sourceCode };
+  };
+  const globalsSource = readDeclarationFile(filePath => isProjectGlobalsFilePath(filePath));
+  const dataTypesSource = readDeclarationFile(filePath => isProjectDataTypesFilePath(filePath));
+  return {
+    projectGlobals: globalsSource
+      ? createProjectGlobalContext(globalsSource.filePath, globalsSource.sourceCode)
+      : undefined,
+    projectTypes: dataTypesSource
+      ? createProjectTypeContext(dataTypesSource.filePath, dataTypesSource.sourceCode)
+      : undefined
   };
 }
 

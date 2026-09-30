@@ -346,7 +346,7 @@ declare global {
         onEvent: (listener: (requestKey: string, event: any) => void) => () => void;
       };
       updates?: {
-        check: (payload?: { channel?: 'stable' | 'preview' }) => Promise<{ ok: boolean; currentVersion: string; latestVersion?: string; releaseTitle?: string; hasUpdate: boolean; websiteUrl: string; downloadUrl?: string | null; sha256?: string | null; fileSize?: string | null; releaseNotes?: string | null; channel?: string | null; error?: string }>;
+        check: (payload?: { channel?: 'stable' | 'preview' }) => Promise<{ ok: boolean; currentVersion: string; latestVersion?: string; releaseTitle?: string; hasUpdate: boolean; websiteUrl: string; downloadUrl?: string | null; sha256?: string | null; fileSize?: string | null; releaseNotes?: string | null; publishedAt?: string | null; channel?: string | null; error?: string }>;
         download: () => Promise<{ ok: boolean; alreadyRunning?: boolean; alreadyDownloaded?: boolean; error?: string }>;
         cancel: () => Promise<{ ok: boolean }>;
         status: () => Promise<AppUpdateProgressSnapshot | null>;

@@ -1,6 +1,7 @@
-import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_LOGICAL_OPERATOR_NAMES, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
 import { collectLingCppStringLiteralRegions } from './stringLiteralRegions';
 import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
+import { collectInlineCppLines, collectInlineCppReplacementHints, isInlineCppLineExempt } from './inlineCppKnowledge';
 import { LIST_VIEW_ADVANCED_API } from '../modules/listViewApiCatalog';
 import { DATA_GRID_API } from '../modules/dataGridApiCatalog';
 import {
@@ -47,7 +48,9 @@ import {
 } from './types';
 import { applyLingCppAstEdit } from './astEditService';
 import { LingClockResource, LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
-import { LingCppModuleContext, ModuleCommandBinding } from '../modules/types';
+import { LingCppModuleContext, ModuleCommandBinding, type InstalledModule } from '../modules/types';
+import { CORE_RUNTIME_CALL_NAMES } from './coreRuntimeCallNames';
+import { NEW_EMOJI_WIN32_BASIC_COMMANDS } from '../windowDesigner/uiBackendCommandContract';
 import { THREADING_LEGACY_COMMANDS } from '../modules/threadingModule';
 import {
   formatWindowEventParameters,
@@ -273,6 +276,12 @@ export function getLingCppFoldingRanges(source: string): LingCppFoldingRange[] {
 export interface LingCppSemanticDiagnosticOptions {
   /** 无设计器上下文时跳过依赖设计器符号的控件引用诊断（见 controlReferenceService 同名选项）。 */
   suppressDesignerControlDiagnostics?: boolean;
+  /**
+   * 未知命令准入：对调用名做「启用模块命令 ∪ 生成器运行时符号 ∪ 本类子程序」白名单校验，
+   * 未知名报 error（经生成器 blockingDiagnostics 阻断构建）。仅生成/构建/诊断工具链路开启；
+   * 编辑器路径暂不开启——编辑器模块上下文尚未统一并入项目 DLL 虚拟模块，会误报。
+   */
+  enableUnknownCommandAdmission?: boolean;
 }
 
 export function getLingCppSemanticDiagnostics(
@@ -310,6 +319,7 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getCronDiagnostics(source, parsed.program, moduleContext, effectiveGlobals));
   diagnostics.push(...getArrayCommandDiagnostics(parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getModuleCommandArgumentTypeDiagnostics(parsed.program, moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes, splitLines(source)));
+  diagnostics.push(...getUnknownCommandDiagnostics(parsed.program, moduleContext, projectFunctions, splitLines(source), options));
   diagnostics.push(...getUnterminatedStringLiteralDiagnostics(parsed));
   diagnostics.push(...getVariableDiagnostics([
     ...parsed.program.classes,
@@ -380,15 +390,63 @@ export function getLingCppSemanticDiagnostics(
     });
   }
 
+  diagnostics.push(...getInlineCppReplacementDiagnostics(source));
+
   return dedupeDiagnostics(diagnostics);
+}
+
+/**
+ * 内嵌 C++ 替代建议诊断（2026-09-27 批②）：@ 行调用了已有中文命令覆盖的 Win32 API / C 函数时给
+ * warning 级提示，永不阻断构建（同 codeOrganization 处方口径）。豁免行（// 允许:）不再提示。
+ * 知识表唯一来源 inlineCppKnowledge.ts；编辑器波浪线与 MCP lingcpp.diagnostics 同源。
+ */
+export function getInlineCppReplacementDiagnostics(source: string): LingCppDiagnostic[] {
+  const lines = collectInlineCppLines(source);
+  if (lines.length === 0) return [];
+  const diagnostics: LingCppDiagnostic[] = [];
+  const matched = new Map<string, { api: string; commands: readonly string[]; moduleId?: string; note?: string; lines: number[]; hidden: number }>();
+  for (const line of lines) {
+    if (isInlineCppLineExempt(line.text)) continue;
+    for (const hint of collectInlineCppReplacementHints(line.text)) {
+      const existing = matched.get(hint.api);
+      if (existing) {
+        if (existing.lines.length < 5) existing.lines.push(line.line);
+        else existing.hidden += 1;
+        continue;
+      }
+      matched.set(hint.api, {
+        api: hint.api,
+        commands: hint.commands,
+        ...(hint.moduleId ? { moduleId: hint.moduleId } : {}),
+        ...(hint.note ? { note: hint.note } : {}),
+        lines: [line.line],
+        hidden: 0
+      });
+    }
+  }
+  let index = 0;
+  for (const entry of matched.values()) {
+    const lineLabel = entry.lines.join('、') + (entry.hidden > 0 ? ` 等 ${entry.lines.length + entry.hidden} 处` : '');
+    const commandText = entry.commands.length > 0 ? entry.commands.join(' / ') : '';
+    const moduleText = entry.moduleId ? `（模块 ${entry.moduleId}）` : '';
+    diagnostics.push({
+      id: `lingcpp-inline-cpp-replaceable-${index}`,
+      line: entry.lines[0] ?? 1,
+      level: 'warning',
+      message: `第 ${lineLabel} 行的内嵌 C++ 用到了 ${entry.api}${moduleText}${commandText ? `，已有中文命令：${commandText}` : ''}${entry.note ? `。${entry.note}` : ''}。`,
+      codeSnippet: '',
+      suggestion: '请改用中文命令把这一段 @ 内嵌 C++ 重写掉（完整对照见 docs/modules/内嵌C++替代对照表.md 或规则手册外部 AI 节）；确实没有替代命令时，可在该行行尾加“// 允许: 原因”显式豁免。'
+    });
+    index += 1;
+  }
+  return diagnostics;
 }
 
 /**
  * 字符串字面量完整性检查：未闭合的 `"` / `“` / `'` 会让 C++ 生成器把残缺字面量
  * 原样透传或吞掉后续代码。区间扫描复用 stringLiteralRegions 公共工具（`\"` 转义与
  * 连续反斜杠奇偶都正确处理）；多行文本块（endLine）与 `@` 内嵌 C++ 行整体跳过。
- */
-function getUnterminatedStringLiteralDiagnostics(parsed: LingCppParseResult): LingCppDiagnostic[] {
+ */function getUnterminatedStringLiteralDiagnostics(parsed: LingCppParseResult): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
   const methods: LingCppMethod[] = [
     ...parsed.program.classes.flatMap(cls => cls.methods),
@@ -1025,9 +1083,11 @@ export function getLingCppProblems(
   source: string,
   designerProject?: LingWindowProject,
   filePath = 'src/未命名.lcpp',
-  moduleContext?: LingCppModuleContext
+  moduleContext?: LingCppModuleContext,
+  projectGlobals?: LingCppProjectGlobalContext,
+  projectTypes?: LingCppProjectTypeContext
 ): LingCppProblem[] {
-  const parseDiagnostics = getLingCppSemanticDiagnostics(source, designerProject, filePath, moduleContext);
+  const parseDiagnostics = getLingCppSemanticDiagnostics(source, designerProject, filePath, moduleContext, projectGlobals, projectTypes);
   const parserProblems = parseDiagnostics
     .filter(diagnostic => !diagnostic.id.startsWith('lingcpp-designer-'))
     .map(diagnostic => ({
@@ -3972,6 +4032,180 @@ function getModuleCommandArgumentTypeDiagnostics(
               codeSnippet: snippet,
               suggestion: getArgumentTypeConversionSuggestion(expectedType, actualType, argumentText)
             });
+          });
+        });
+      });
+    });
+  });
+  return diagnostics;
+}
+
+/** 未知命令白名单查找键：与别名表同口径（ASCII 折叠小写，中文原样）。 */
+function unknownCommandKey(name: string): string {
+  return normalizeIdentifier(name).toLocaleLowerCase();
+}
+
+/** 近似命令名建议：编辑距离 ≤2 的最近已知命令（「文本_取左」→「文本_取左边」级别）。 */
+function nearestKnownCommandName(name: string, knownNames: readonly string[]): string | undefined {
+  let best: string | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const target = Array.from(name);
+  for (const candidate of knownNames) {
+    if (Math.abs(candidate.length - name.length) > 2) continue;
+    const source = Array.from(candidate);
+    const previous = new Array<number>(source.length + 1);
+    const current = new Array<number>(source.length + 1);
+    for (let j = 0; j <= source.length; j += 1) previous[j] = j;
+    for (let i = 1; i <= target.length; i += 1) {
+      current[0] = i;
+      for (let j = 1; j <= source.length; j += 1) {
+        current[j] = Math.min(
+          previous[j]! + 1,
+          current[j - 1]! + 1,
+          previous[j - 1]! + (target[i - 1] === source[j - 1] ? 0 : 1)
+        );
+      }
+      for (let j = 0; j <= source.length; j += 1) previous[j] = current[j]!;
+    }
+    const distance = previous[source.length]!;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+  return bestDistance <= 2 ? best : undefined;
+}
+
+/**
+ * 未知命令准入（options.enableUnknownCommandAdmission）：调用名不在「启用模块命令 ∪
+ * 生成器运行时符号 ∪ 本窗口类子程序」白名单内时报 error——生成器会把它原样输出成裸 C++ 调用，
+ * MSVC 必然报 C3861，必须在生成期给出中文诊断与修法（实踩：文本_取左 静默生成裸调用）。
+ * 仅报告含中文的命令名：纯 ASCII 调用视为 C++ 互操作（@ 行与系统 API），放行以免误拦。
+ * 限定调用（功能库.功能 / 控件名.成员）由前置点号识别后跳过，归功能库既有诊断负责。
+ */
+function getUnknownCommandDiagnostics(
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  projectFunctions: LingCppProjectFunctionContext | undefined,
+  sourceLines: string[],
+  options?: LingCppSemanticDiagnosticOptions
+): LingCppDiagnostic[] {
+  if (!moduleContext || !options?.enableUnknownCommandAdmission) return [];
+  const enabledModules = getEnabledLingCppModuleContributions(moduleContext);
+  const knownCommands = new Set<string>();
+  const commandOwnerModules = new Map<string, string>();
+  const collectModuleCommands = (module: InstalledModule, toKnown: boolean, recordOwner: boolean) => {
+    (module.manifest.contributes?.commands || []).forEach(command => {
+      [command.name, ...(command.aliases || [])].forEach(alias => {
+        const key = unknownCommandKey(alias);
+        if (toKnown) knownCommands.add(key);
+        if (recordOwner && !commandOwnerModules.has(key)) {
+          commandOwnerModules.set(key, module.manifest.name || module.manifest.id);
+        }
+      });
+    });
+  };
+  enabledModules.forEach(module => collectModuleCommands(module, true, false));
+  (moduleContext.availableModules || []).forEach(module => {
+    const isEnabled = enabledModules.some(enabled => enabled.manifest.id === module.manifest.id);
+    if (!isEnabled) collectModuleCommands(module, false, true);
+  });
+  CORE_RUNTIME_CALL_NAMES.forEach(name => knownCommands.add(unknownCommandKey(name)));
+  // 控件_*/窗口_* 事件上下文命令与 到文本/格式化文本 等核心语言命令经 UI 后端契约通道解析，
+  // 不依赖启用模块（自绘按钮镜像用例：enabledModules 为空时 控件_设置文本 仍生成 SetWindowTextW）。
+  NEW_EMOJI_WIN32_BASIC_COMMANDS.forEach(name => knownCommands.add(unknownCommandKey(name)));
+
+  const classMethodNames = new Map<string, Set<string>>(
+    program.classes.map(cls => [normalizeIdentifier(cls.name), new Set(cls.methods.map(method => normalizeIdentifier(method.name)))])
+  );
+  const libraryEntries = new Map<string, { name: string; methods: Set<string> }>();
+  const registerLibrary = (name: string, methods: Array<{ name: string }>) => {
+    const key = normalizeIdentifier(name);
+    const entry = libraryEntries.get(key) || { name, methods: new Set<string>() };
+    methods.forEach(method => entry.methods.add(normalizeIdentifier(method.name)));
+    libraryEntries.set(key, entry);
+  };
+  (projectFunctions?.libraries || []).forEach(library => registerLibrary(library.name, library.methods || []));
+  program.functionLibraries.forEach(library => registerLibrary(library.name, library.methods));
+
+  const knownNameList = [...knownCommands];
+  const diagnostics: LingCppDiagnostic[] = [];
+  const reported = new Set<string>();
+  const owners: Array<{ className?: string; libraryName?: string; methods: LingCppMethod[] }> = [
+    ...program.classes.map(cls => ({ className: cls.name, methods: cls.methods })),
+    ...program.functionLibraries.map(library => ({ libraryName: library.name, methods: library.methods }))
+  ];
+  owners.forEach(owner => {
+    owner.methods.forEach(method => {
+      // 与实参类型诊断同口径：跳过注释行、多行文本块（不透明）与 @ 内嵌 C++ 行。
+      const expressions = [
+        ...method.statements.filter(statement => !isLingCppCommentLine(statement.text) && !statement.endLine && !statement.text.trim().startsWith('@')),
+        ...(method.locals || [])
+          .filter(local => local.initialValue && !local.initialValue.trim().startsWith('@'))
+          .map(local => ({ line: local.line, text: local.initialValue || '' }))
+      ];
+      expressions.forEach(expression => {
+        // 列号基于原始行（含缩进），与实参类型诊断同一取法。
+        const scanText = sourceLines[expression.line - 1] ?? expression.text;
+        collectLineInvocations(scanText).forEach(invocation => {
+          const name = invocation.name;
+          if (!name || !/[\u4e00-\u9fff]/u.test(name)) return;
+          if (LING_CPP_KEYWORDS.includes(name)) return;
+          // 条件连词后跟「(」是合法形态（`值 != "" 且 (计时刻) > 4000`、`非(表达式)`）：
+          // 生成端按二元运算符拆分翻译，不能当成未知命令调用阻断（曾误拦 douyin-toolbox）。
+          if (LING_CPP_LOGICAL_OPERATOR_NAMES.includes(name)) return;
+          if (scanText.slice(Math.max(0, invocation.start - 1), invocation.start) === '.') return;
+          const key = unknownCommandKey(name);
+          if (knownCommands.has(key)) return;
+          if (owner.className && classMethodNames.get(normalizeIdentifier(owner.className))?.has(normalizeIdentifier(name))) return;
+          const dedupeKey = `${expression.line}:${key}`;
+          if (reported.has(dedupeKey)) return;
+          reported.add(dedupeKey);
+          const nearest = nearestKnownCommandName(name, knownNameList);
+          const nearHint = nearest ? `是否想用「${nearest}」？` : '';
+          const libraryOwner = [...libraryEntries.values()].find(entry => entry.methods.has(normalizeIdentifier(name)));
+          if (libraryOwner) {
+            diagnostics.push({
+              id: `lingcpp-unknown-command-${key}-${expression.line}`,
+              line: expression.line,
+              level: 'error',
+              message: `「${name}」是功能库「${libraryOwner.name}」的功能，必须以「${libraryOwner.name}.${name}(...)」限定调用。`,
+              codeSnippet: scanText.slice(invocation.start, invocation.end) || expression.text,
+              suggestion: `请改为 ${libraryOwner.name}.${name}(...)；不加限定会生成裸 C++ 调用并报 C3861 找不到标识符。${nearHint}`
+            });
+            return;
+          }
+          const classOwner = program.classes.find(cls => cls.name !== owner.className && classMethodNames.get(normalizeIdentifier(cls.name))?.has(normalizeIdentifier(name)));
+          if (classOwner) {
+            diagnostics.push({
+              id: `lingcpp-unknown-command-${key}-${expression.line}`,
+              line: expression.line,
+              level: 'error',
+              message: `「${name}」是窗口类「${classOwner.name}」的成员，不能从${owner.className ? `窗口类「${owner.className}」` : '功能库'}内调用。`,
+              codeSnippet: scanText.slice(invocation.start, invocation.end) || expression.text,
+              suggestion: `跨窗口类调用生成的 C++ 无法编译；请把共用逻辑下沉到功能库，再以「功能库名.功能(...)」形式调用。${nearHint}`
+            });
+            return;
+          }
+          const ownerModule = commandOwnerModules.get(key);
+          if (ownerModule) {
+            diagnostics.push({
+              id: `lingcpp-unknown-command-${key}-${expression.line}`,
+              line: expression.line,
+              level: 'error',
+              message: `未知的命令「${name}」：它属于模块「${ownerModule}」，但该模块在当前项目未启用。`,
+              codeSnippet: scanText.slice(invocation.start, invocation.end) || expression.text,
+              suggestion: `请在解决方案树或模块面板启用「${ownerModule}」后重试。${nearHint}`
+            });
+            return;
+          }
+          diagnostics.push({
+            id: `lingcpp-unknown-command-${key}-${expression.line}`,
+            line: expression.line,
+            level: 'error',
+            message: `未知的命令「${name}」：生成器会把它原样输出为 C++ 裸调用，编译必然报 C3861 找不到标识符。`,
+            codeSnippet: scanText.slice(invocation.start, invocation.end) || expression.text,
+            suggestion: `${nearHint}请核对命令名拼写（可用 lingbuilder.module.info 查询模块命令表）；自定义逻辑请定义为本窗口子程序或功能库功能。`
           });
         });
       });

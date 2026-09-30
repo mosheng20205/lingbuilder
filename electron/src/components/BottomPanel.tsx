@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { 
-  Terminal, 
-  AlertTriangle, 
-  Info, 
-  ListCollapse, 
-  CheckCircle2, 
-  ChevronRight, 
+import {
+  Terminal,
+  AlertTriangle,
+  Info,
+  ListCollapse,
+  CheckCircle2,
+  ChevronRight,
   CornerDownRight,
   Play,
+  Search,
   Square,
   RefreshCw,
   Bug,
@@ -21,6 +22,9 @@ import type { CommandService } from '../services/commands/commandService';
 import TerminalPanel from './TerminalPanel';
 import DebugInspector from './DebugInspector';
 import TestExplorer from './TestExplorer';
+import FindResultsPanel from './FindResultsPanel';
+import type { BeginnerFindResultEntry } from '../services/lingCpp/beginnerFind';
+import type { FindResultsData } from '../services/lingCpp/beginnerFindEvents';
 import { countErrorListProblems, formatProblemsForClipboard } from '../services/problems/problemClipboard';
 
 type LogContextMenuTab = 'problems' | 'output' | 'debug_logs';
@@ -50,6 +54,8 @@ interface BottomPanelProps {
   height: number;
   onClearLogs?: (tab: string) => void;
   commandService?: CommandService;
+  findResults?: FindResultsData | null;
+  onFindResultJump?: (entry: BeginnerFindResultEntry) => void;
 }
 
 export default function BottomPanel({
@@ -69,7 +75,9 @@ export default function BottomPanel({
   commandHint,
   height,
   onClearLogs,
-  commandService
+  commandService,
+  findResults,
+  onFindResultJump
 }: BottomPanelProps) {
   const [filterType, setFilterType] = useState<'all' | 'string' | 'comment'>('all');
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -333,6 +341,22 @@ export default function BottomPanel({
           </button>
 
           <button onClick={() => onActiveTabChange('tests')} className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${activeTab === 'tests' ? isDarkMode ? 'text-white bg-[#1E1E1E] border-[#2d2d30]' : 'text-slate-900 bg-white border-slate-300' : isDarkMode ? 'text-slate-400 hover:text-slate-200 border-transparent' : 'text-slate-600 hover:text-slate-800 border-transparent'}`}><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /><span>测试</span></button>
+
+          <button
+            onClick={() => onActiveTabChange('find_results')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+              activeTab === 'find_results'
+                ? isDarkMode
+                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                : isDarkMode
+                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+            }`}
+          >
+            <Search className="w-3.5 h-3.5 text-violet-400" />
+            <span>查找结果{findResults?.query ? `（${findResults.results.length}）` : ''}</span>
+          </button>
 
           <button
             onClick={() => onActiveTabChange('debug_logs')}
@@ -839,6 +863,17 @@ export default function BottomPanel({
 
         {activeTab === 'terminal' && <TerminalPanel isDarkMode={isDarkMode} commandService={commandService} />}
         {activeTab === 'tests' && <TestExplorer isDarkMode={isDarkMode} />}
+
+        {activeTab === 'find_results' && findResults && onFindResultJump && (
+          <FindResultsPanel
+            query={findResults.query}
+            results={findResults.results}
+            truncated={findResults.truncated}
+            scope={findResults.scope}
+            isDarkMode={isDarkMode}
+            onJump={onFindResultJump}
+          />
+        )}
 
         {activeTab === 'debug_logs' && (
           // ================= RUNTIME DEBUG LOGS PANEL =================

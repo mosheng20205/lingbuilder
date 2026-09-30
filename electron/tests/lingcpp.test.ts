@@ -3,7 +3,7 @@ import './functionLibraries.test';
 import './projectDataTypes.test';
 import './projectDataTypesUi.test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -46,8 +46,8 @@ import {
   lingCppLanguageService
 } from '../src/services/lingCpp/languageService';
 import { applyLingCppAstEdit, getLingCppMethodBlock } from '../src/services/lingCpp/astEditService';
-import { createProjectGlobalContext, getProjectGlobalDiagnostics } from '../src/services/lingCpp/projectGlobalService';
-import { createProjectConstantRenameProposal, findProjectConstantReferences, getProjectConstantNameAtCursor } from '../src/services/lingCpp/projectConstantReferenceService';
+import { collectProjectDeclarationContexts, createProjectGlobalContext, getProjectGlobalDiagnostics } from '../src/services/lingCpp/projectGlobalService';
+import { createProjectConstantRenameProposal, findProjectConstantReferences, getProjectConstantNameAtCursor, getProjectGlobalNameAtCursor } from '../src/services/lingCpp/projectConstantReferenceService';
 import {
   getBeginnerLocalInsertShortcutKind,
   getBeginnerLocalInsertStatementIndex,
@@ -71,7 +71,8 @@ import { toggleBeginnerLineComment } from '../src/services/lingCpp/beginnerLineC
 import { getBeginnerCompletionContext, shouldShowBeginnerCompletion } from '../src/services/lingCpp/beginnerCompletionContext';
 import { createLingCppMonarchLanguage } from '../src/services/lingCpp/monacoTokens';
 import { renameProjectGlobalAcrossSources } from '../src/services/lingCpp/projectGlobalService';
-import { findFunctionLibraryReferences } from '../src/services/lingCpp/functionLibraryService';
+import { createProjectFunctionContext, findFunctionLibraryReferences } from '../src/services/lingCpp/functionLibraryService';
+import { CORE_RUNTIME_CALL_NAMES } from '../src/services/lingCpp/coreRuntimeCallNames';
 import { collectLingCppCommandCalls } from '../src/services/windowDesigner/uiBackendCommandContract';
 import {
   collectLingCppTextBlockLines,
@@ -3656,8 +3657,16 @@ test('beginner local variable type completion resolves Chinese pinyin abbreviati
   assert.equal(filterBeginnerTypeCompletions(catalog, 'zs')[0]?.label, '整数型');
   assert.equal(filterBeginnerTypeCompletions(catalog, 'string')[0]?.label, '文本型');
   assert.equal(filterBeginnerTypeCompletions(catalog, 'int')[0]?.label, '整数型');
+  // 全角/大写/带空白输入必须归一化后命中（中文 IME 用户极易带入全角字符）。
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'ｚｓ')[0]?.label, '整数型');
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'ＺＳ')[0]?.label, '整数型');
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'ZS')[0]?.label, '整数型');
+  assert.equal(filterBeginnerTypeCompletions(catalog, ' zs ')[0]?.label, '整数型');
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'ＷＢ')[0]?.label, '文本型');
   assert.equal(resolveBeginnerTypeAlias(catalog, 'wb'), '文本型');
   assert.equal(resolveBeginnerTypeAlias(catalog, 'zs'), '整数型');
+  assert.equal(resolveBeginnerTypeAlias(catalog, 'ｚｓ'), '整数型');
+  assert.equal(resolveBeginnerTypeAlias(catalog, 'ＺＳ'), '整数型');
   assert.equal(resolveBeginnerTypeAlias(catalog, '自定义类型'), '自定义类型');
 });
 
@@ -3903,7 +3912,9 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('TextBoxFrameSubclassProc'));
   assert.ok(mainCpp.includes('LayoutTextBoxControl'));
   assert.ok(mainCpp.includes('GetTextMetricsW(hdc, &metrics)'));
-  assert.ok(mainCpp.includes('FillRgn(hdc, outerRegion, borderBrush)'));
+  assert.ok(mainCpp.includes('FillRgn(drawDc, outerRegion, borderBrush)'));
+  // 分组框(CS_PARENTDC)的绘制校验会吞掉兄弟外框的更新区域：外框必须带 GetDC 空裁剪回退。
+  assert.ok(mainCpp.includes('drawDc = GetDC(hwnd);'));
   assert.ok(mainCpp.includes('GetFocus() == runtime->hwnd'));
   assert.ok(mainCpp.includes('RGB(14, 165, 233)'));
   assert.ok(mainCpp.includes('RGB(51, 65, 85)'));
@@ -6379,4 +6390,277 @@ test('模块命令实参类型不符给出行列中文诊断，正确转换写�
   const cpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
   assert.ok(cpp.includes('文本_取左边(字节集_到十六进制字节集(数据), 40)'), '已知非文本调用不再生成 LingCppWideArg 包装');
   assert.doesNotMatch(cpp, /LingCppWideArg\(字节集_到十六进制字节集\(数据\)\)/u);
+});
+
+test('未知命令准入：未知名报 error 并给出最近命令建议（文本_取左→文本_取左边）', () => {
+  const installed: InstalledModule[] = BUILTIN_MODULES.map(manifest => ({ manifest, installPath: '', isInstalled: true, diagnostics: [] }));
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        局部 文本型 结果 = 文本_取左("abc", 1)',
+    '        调试输出(结果)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/MainWindow.lcpp',
+    { enabledModules: installed, availableModules: installed },
+    undefined, undefined, undefined,
+    { enableUnknownCommandAdmission: true }
+  );
+  const unknown = diagnostics.filter(item => item.level === 'error' && item.id.startsWith('lingcpp-unknown-command'));
+  assert.equal(unknown.length, 1, JSON.stringify(unknown));
+  assert.match(unknown[0].message, /未知的命令「文本_取左」/u);
+  assert.match(unknown[0].suggestion || '', /文本_取左边/u);
+});
+
+test('未知命令准入：控制流、核心命令、字符串内 &、本类子程序先后互调不误报', () => {
+  const installed: InstalledModule[] = BUILTIN_MODULES.map(manifest => ({ manifest, installPath: '', isInstalled: true, diagnostics: [] }));
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        如果 (1 > 0)',
+    '            调试输出("AT&T && a_bogus=1")',
+    '        如果结束',
+    '        计次循环首 (3, 序号)',
+    '            换行()',
+    '        计次循环尾',
+    '        局部 文本型 页面 = 到文本(123)',
+    '        返回()',
+    '    结束',
+    '    子程序 换行()',
+    '        调试输出("x")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/MainWindow.lcpp',
+    { enabledModules: installed, availableModules: installed },
+    undefined, undefined, undefined,
+    { enableUnknownCommandAdmission: true }
+  );
+  const unknown = diagnostics.filter(item => item.level === 'error' && item.id.startsWith('lingcpp-unknown-command'));
+  assert.deepEqual(unknown.map(item => item.message), []);
+});
+
+test('未知命令准入：功能库功能未限定调用与跨窗口类调用给出定向中文诊断', () => {
+  const installed: InstalledModule[] = BUILTIN_MODULES.map(manifest => ({ manifest, installPath: '', isInstalled: true, diagnostics: [] }));
+  const source = [
+    '类 A窗口',
+    '    事件 _A窗口_创建完毕()',
+    '        报告生成()',
+    '        清理缓存()',
+    '    结束',
+    '结束类',
+    '类 B窗口',
+    '    子程序 清理缓存()',
+    '        调试输出("清理")',
+    '    结束',
+    '结束类',
+    '功能库 报告',
+    '公开:',
+    '  文本型 报告生成()',
+    '    返回("r")',
+    '  结束',
+    '结束功能库'
+  ].join('\n');
+  const projectFunctions = createProjectFunctionContext([{ filePath: 'src/A窗口.lcpp', sourceCode: source, language: 'lingcpp' }]);
+  const diagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/A窗口.lcpp',
+    { enabledModules: installed, availableModules: installed },
+    undefined, undefined, projectFunctions,
+    { enableUnknownCommandAdmission: true }
+  ).filter(item => item.level === 'error' && item.id.startsWith('lingcpp-unknown-command'));
+  assert.equal(diagnostics.length, 2, JSON.stringify(diagnostics.map(item => item.message)));
+  assert.ok(diagnostics.some(item => /「报告生成」是功能库「报告」的功能，必须以「报告.报告生成\(\.\.\.\)」限定调用/u.test(item.message)));
+  assert.ok(diagnostics.some(item => /「清理缓存」是窗口类「B窗口」的成员，不能从窗口类「A窗口」内调用/u.test(item.message)));
+});
+
+test('未知命令准入：已安装未启用模块命令给出启用路径', () => {
+  const installed: InstalledModule[] = BUILTIN_MODULES.map(manifest => ({ manifest, installPath: '', isInstalled: true, diagnostics: [] }));
+  const reduced = installed.filter(item => item.manifest.id !== 'lingbuilder.std.text');
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        调试输出(文本_取左边("abc", 1))',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/MainWindow.lcpp',
+    { enabledModules: reduced, availableModules: installed },
+    undefined, undefined, undefined,
+    { enableUnknownCommandAdmission: true }
+  ).filter(item => item.level === 'error' && item.id.startsWith('lingcpp-unknown-command'));
+  assert.equal(diagnostics.length, 1, JSON.stringify(diagnostics.map(item => item.message)));
+  assert.match(diagnostics[0].message, /属于模块「[^」]+」，但该模块在当前项目未启用/u);
+});
+
+test('未知命令准入：未开启选项时保持旧行为（编辑器路径零影响）', () => {
+  const installed: InstalledModule[] = BUILTIN_MODULES.map(manifest => ({ manifest, installPath: '', isInstalled: true, diagnostics: [] }));
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        不存在的命令("x")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/MainWindow.lcpp',
+    { enabledModules: installed, availableModules: installed }
+  );
+  assert.equal(diagnostics.filter(item => item.id.startsWith('lingcpp-unknown-command')).length, 0);
+});
+
+test('核心运行时白名单防漂移：每个条目仍出现在生成器或运行时合并源码中', () => {
+  // 白名单来自模板与 windowDesigner 下各 *Runtime.ts 合并段的并集；守卫只做「条目失效」提醒，
+  // 不追求完备：多出的条目只会放行（退回 MSVC 兜底），不会误拦合法构建。
+  const sources = [resolve('src/services/windowDesigner/lingCppWin32Project.ts')];
+  for (const entry of readdirSync('src/services/windowDesigner')) {
+    if (/Runtime\.ts$/u.test(entry)) sources.push(resolve('src/services/windowDesigner', entry));
+  }
+  const merged = sources.map(filePath => readFileSync(filePath, 'utf8')).join('\n');
+  const stale = [...CORE_RUNTIME_CALL_NAMES].filter(name => !merged.includes(name));
+  assert.deepEqual(stale, [], '以下白名单条目已不在生成器/运行时源码中，请从 coreRuntimeCallNames.ts 移除或确认');
+});
+
+test('错误列表诊断携带项目声明上下文：赋值项目全局变量不再假报尚未声明', () => {
+  // 根因回归：App 错误列表（getLingCppProblems）此前不传 projectGlobals，
+  // 对项目全局变量的赋值语句会被 getVariableDiagnostics 全量误报「变量尚未声明」；
+  // 真实构建门禁一直传该表，所以只有面板报错、F5 能过。
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 创建完毕()',
+    '        待开店铺名 = ""',
+    '        调试输出(待开店铺名)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const projectGlobals = createProjectGlobalContext('src/项目全局变量.lcpp', '全局 文本型 待开店铺名 = ""\n');
+
+  const withGlobals = getLingCppProblems(source, undefined, 'src/MainWindow.lcpp', undefined, projectGlobals);
+  assert.equal(
+    withGlobals.filter(problem => problem.level === 'error' && /尚未声明/u.test(problem.message)).length,
+    0,
+    '传入项目全局变量表后不应再报「尚未声明」'
+  );
+
+  const withoutGlobals = getLingCppProblems(source, undefined, 'src/MainWindow.lcpp');
+  assert.ok(
+    withoutGlobals.some(problem => problem.level === 'error' && /待开店铺名 尚未声明/u.test(problem.message)),
+    '不传项目全局变量表时维持既有误报口径（这也是该回归存在的原因）'
+  );
+});
+
+test('项目全局变量光标识别：命中返回变量名，字符串、注释、调用位置不命中', () => {
+  const source = [
+    '    待开店铺名 = ""',
+    '    调试输出(待开店铺名 + "待开店铺名")',
+    '    // 待开店铺名 注释里不算',
+    '    店铺弹窗.登记弹窗(待开店铺名)'
+  ].join('\n');
+  const globalNames = ['待开店铺名', '待开实例编号'];
+
+  const writeCursor = source.indexOf('待开店铺名 =') + 1;
+  assert.equal(getProjectGlobalNameAtCursor(source, writeCursor, globalNames), '待开店铺名');
+
+  const readCursor = source.indexOf('调试输出(待开店铺名') + '调试输出('.length + 1;
+  assert.equal(getProjectGlobalNameAtCursor(source, readCursor, globalNames), '待开店铺名');
+
+  const inStringCursor = source.indexOf('"待开店铺名"') + 2;
+  assert.equal(getProjectGlobalNameAtCursor(source, inStringCursor, globalNames), undefined);
+
+  const inCommentCursor = source.indexOf('// 待开店铺名') + 5;
+  assert.equal(getProjectGlobalNameAtCursor(source, inCommentCursor, globalNames), undefined);
+
+  // 标识符后面紧跟「(」视为调用位置，不是变量引用
+  const callLikeSource = '    待开店铺名(1)';
+  assert.equal(getProjectGlobalNameAtCursor(callLikeSource, callLikeSource.indexOf('待开店铺名') + 1, globalNames), undefined);
+
+  assert.equal(getProjectGlobalNameAtCursor(source, 1, []), undefined);
+});
+
+test('collectProjectDeclarationContexts：活动文件是声明文件时用草稿内容，否则用文件缓存', () => {
+  const files = [
+    { path: 'src/MainWindow.lcpp', translatedContent: '类 MainWindow\n结束类', originalContent: '' },
+    { path: 'src/项目全局变量.lcpp', translatedContent: '全局 整数型 旧值 = 0\n', originalContent: '全局 整数型 旧值 = 0\n' },
+    { path: 'src/项目数据类型.lcpp', translatedContent: '', originalContent: '' }
+  ];
+
+  const activeGlobalsDraft = collectProjectDeclarationContexts(files, 'src/项目全局变量.lcpp', '全局 整数型 新值 = 1\n');
+  assert.ok(activeGlobalsDraft.projectGlobals);
+  assert.deepEqual(activeGlobalsDraft.projectGlobals.globals.map(global => global.name), ['新值']);
+
+  const inactive = collectProjectDeclarationContexts(files, 'src/MainWindow.lcpp', '类 MainWindow\n结束类');
+  assert.ok(inactive.projectGlobals);
+  assert.deepEqual(inactive.projectGlobals.globals.map(global => global.name), ['旧值']);
+
+  const missing = collectProjectDeclarationContexts(files.filter(file => file.path === 'src/MainWindow.lcpp'), 'src/MainWindow.lcpp', '');
+  assert.equal(missing.projectGlobals, undefined);
+  assert.equal(missing.projectTypes, undefined);
+});
+
+test('未知命令准入：条件连词 且/或 后跟括号不误判为命令调用', () => {
+  // douyin-toolbox 实测：`如果 (状态 != "" 且 (计时刻) > 4000)` 的「且 (」被当成
+  // 命令调用阻断构建；生成端二元拆分本就支持 且/或，准入必须放行连词。
+  const installed: InstalledModule[] = BUILTIN_MODULES.map(manifest => ({ manifest, installPath: '', isInstalled: true, diagnostics: [] }));
+  const source = [
+    '类 主窗口',
+    '    事件 _主窗口_创建完毕()',
+    '        局部 文本型 状态 = ""',
+    '        局部 长整数型 起点 = 0',
+    '        如果 (状态 != "" 且 (起点 - 起点) > 4000 或 状态 == "x")',
+    '            调试输出("ok")',
+    '        如果结束',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/MainWindow.lcpp',
+    { enabledModules: installed, availableModules: installed },
+    undefined, undefined, undefined,
+    { enableUnknownCommandAdmission: true }
+  );
+  const unknown = diagnostics.filter(item => item.level === 'error' && item.id.startsWith('lingcpp-unknown-command'));
+  assert.deepEqual(unknown.map(item => item.message), []);
+});
+
+test('条件连词短记号 且/或 生成 && 与 ||', () => {
+  const project = {
+    schemaVersion: 2 as const,
+    id: 'logical-operator-short-forms',
+    name: '连词短记号',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        局部 文本型 状态 = ""',
+    '        局部 长整数型 起点 = 0',
+    '        如果 (状态 != "" 且 (起点 - 起点) > 4000 或 状态 == "x")',
+    '            调试输出("ok")',
+    '        如果结束',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source });
+  assert.deepEqual(generated.blockingDiagnostics, [], generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const ifLine = cpp.split('\n').find(line => line.includes('4000') && line.includes('起点') && line.trimStart().startsWith('if'));
+  assert.ok(ifLine, '应生成包含 4000 的 if 行');
+  assert.match(ifLine, /&&/u, `if 行缺少 &&：${ifLine}`);
+  assert.match(ifLine, /\|\|/u, `if 行缺少 ||：${ifLine}`);
+  assert.ok(!ifLine.includes('且') && !ifLine.includes('或'), `if 行残留中文连词：${ifLine}`);
 });

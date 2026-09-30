@@ -8,6 +8,9 @@ export interface FlushPendingEditsResult {
   changed: boolean;
   diagnostics: string[];
   appliedDraftCount: number;
+  /** 本次结果所属的文件路径（由编辑器层附上）：调用方必须校验它与自己要写入的文件一致，
+   * 否则文件切换瞬间的陈旧闭包会把 A 文件的整份源码写进 B 文件（串写事故）。 */
+  filePath?: string;
 }
 
 export type BeginnerCodeDrafts = Record<string, string>;

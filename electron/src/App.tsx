@@ -74,7 +74,7 @@ import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDia
 import CliGuideDialog from './components/CliGuideDialog';
 import AiBridgeTitleBarBadge from './components/AiBridgeTitleBarBadge';
 import AboutDialog from './components/AboutDialog';
-import UpdateDialog, { type UpdateDialogInfo } from './components/UpdateDialog';
+import UpdateDialog, { formatUpdateDate, type UpdateDialogInfo } from './components/UpdateDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
 import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
@@ -124,6 +124,7 @@ import {
 import {
   TEXT_FILE_ENCODINGS,
   TEXT_FILE_EOLS,
+  type ProjectFileReadProblem,
   type TextFileEncoding,
   type TextFileEol,
   type TextFileFormat
@@ -232,6 +233,8 @@ import type {
   WorkspaceSearchQueryRequest,
   WorkspaceSearchQueryResponse
 } from './services/workspace/workspaceSearchTypes';
+import type { BeginnerFindResultEntry } from './services/lingCpp/beginnerFind';
+import { LINGCPP_FIND_RESULTS_EVENT, type FindResultsData } from './services/lingCpp/beginnerFindEvents';
 import { formatEnvironmentCheckOutput } from './services/tasks/environmentCheckPresentation';
 import { createEnvironmentCheckRequestGate } from './services/tasks/environmentCheckRequestGate';
 import { fetchWithSdkDependencies } from './services/sdkDependencies/sdkDependencyClient';
@@ -241,9 +244,9 @@ import type { BuildArchitecture, BuildConfiguration, BuildMode } from './service
 import { closeEditorGroupTab, collapseEditorGroups, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
-import { parseLingCpp } from './services/lingCpp/parser';
+import { normalizeIdentifier, parseLingCpp } from './services/lingCpp/parser';
 import { areDesignerProjectsEquivalent } from './services/lingCpp/aiEditService';
-import { EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';
+import { collectProjectDeclarationContexts, EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';
 import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';
 import { createProjectDllDeclarationModuleFromSources, EMPTY_PROJECT_DLL_COMMANDS_SOURCE, isProjectDllCommandsFilePath, PROJECT_DLL_COMMANDS_FILE_NAME, PROJECT_DLL_MODULE_ID } from './services/lingCpp/projectDllCommandService';
@@ -301,6 +304,7 @@ interface UpdateCheckPayload {
   sha256?: string | null;
   fileSize?: string | null;
   releaseNotes?: string | null;
+  publishedAt?: string | null;
   channel?: string | null;
   error?: string;
 }
@@ -315,9 +319,14 @@ const createUpdateDialogInfo = (result: UpdateCheckPayload, silent = false): Upd
   sha256: result.sha256 ?? null,
   fileSize: result.fileSize ?? null,
   releaseNotes: result.releaseNotes ?? null,
+  publishedAt: result.publishedAt ?? null,
   channel: result.channel ?? null,
   ...(silent ? { silent: true } : {})
 });
+
+/** 把多行更新说明拆成非空行列表，供悬浮更新日志逐条渲染为条目。 */
+const splitUpdateNoteLines = (notes?: string | null): string[] =>
+  (notes || '').split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
@@ -506,6 +515,35 @@ const areInstalledModuleListsEquivalent = (left: InstalledModule[] | undefined, 
 const getCurrentWindowDesignerProject = (projectId?: string) => readWindowDesignerState(projectId).project;
 const getCurrentWindowDesignerProjectId = (projectId?: string) => getCurrentWindowDesignerProject(projectId).id || projectId || 'lingbuilder-ui-project';
 
+interface WindowDesignerProjectShape {
+  windows: Array<{ className: string; fileName: string; title?: string }>;
+}
+
+/** 设计器窗口源码串写检测：文件是某设计器窗口的绑定源码、内容却声明了「另一个窗口」的类
+ * 且未声明自己的类——即整文件被其它窗口源码覆盖的串写特征（lingbuilder-ui-project 实测：
+ * MainWindow.lcpp 被写入 BrowserWindow 整文件内容，F5 构建前保存静默落盘后构建报类名重复）。
+ * 返回中文串写描述；正常内容返回 null。 */
+const describeWindowSourceClobber = (
+  project: WindowDesignerProjectShape | undefined,
+  sourceRoot: string,
+  filePath: string,
+  content: string
+): string | null => {
+  if (!project || project.windows.length === 0) return null;
+  const normalizedPath = filePath.replace(/\\/gu, '/').toLocaleLowerCase();
+  const boundWindow = project.windows.find(win => (
+    getLingWindowSourceFilePath(sourceRoot, win.fileName, win.className)
+      .replace(/\\/gu, '/').toLocaleLowerCase() === normalizedPath
+  ));
+  if (!boundWindow) return null;
+  const declaredClasses = parseLingCpp(content).program.classes.map(cls => normalizeIdentifier(cls.name));
+  if (declaredClasses.includes(normalizeIdentifier(boundWindow.className))) return null;
+  const windowByClassName = new Map(project.windows.map(win => [normalizeIdentifier(win.className), win]));
+  const foreignWindow = declaredClasses.map(className => windowByClassName.get(className)).find(Boolean);
+  if (!foreignWindow) return null;
+  return `${filePath} 的内容是窗口「${foreignWindow.title || foreignWindow.className}」（类 ${foreignWindow.className}）的源码，而不是它绑定的窗口「${boundWindow.title || boundWindow.className}」`;
+};
+
 const inferFileLanguage = (filePath: string): CppFile['language'] => {
   const normalizedPath = filePath.toLowerCase();
   if (normalizedPath.endsWith('.lcpp')) return 'lingcpp';
@@ -553,6 +591,13 @@ const isStringRecord = (value: unknown): value is Record<string, string> => Bool
 
 const STALE_PROJECT_MUTATION_MESSAGE = '项目已切换或重新载入，已忽略旧项目的异步响应。';
 
+/** 内部竞态守卫文案不得原样泄漏给用户：转成可操作的中文提示，其余诊断原样透出。 */
+const describeProjectMutationBlockerMessage = (rawMessage: string | undefined, fallback: string): string => (
+  rawMessage === STALE_PROJECT_MUTATION_MESSAGE
+    ? '项目文件正在切换或重新载入，本次操作未执行；请稍后重试，若持续出现请重新载入解决方案。'
+    : rawMessage || fallback
+);
+
 const getWorkbenchCommandKeybindings = (
   commandId: string,
   defaults: readonly string[],
@@ -575,6 +620,8 @@ export default function App() {
   const designerDirtyRef = useRef(false);
   const designerSavedSnapshotRef = useRef(JSON.stringify(windowDesignerState.project));
   const activeSolutionProject = solution.projects.find(project => project.id === solution.startupProjectId) || solution.projects[0] || DEFAULT_SOLUTION.projects[0];
+  const activeSolutionProjectRef = useRef(activeSolutionProject);
+  activeSolutionProjectRef.current = activeSolutionProject;
   const activeProjectHasWindowDesigner = activeSolutionProject.type === 'visual-cpp';
   const activeProjectId = activeSolutionProject.id;
   // 动态库输出项目没有运行入口：F5「生成并运行」禁用，编译走「生成」/「生成解决方案」。
@@ -592,6 +639,9 @@ export default function App() {
   const loadedProjectIdRef = useRef(loadedProjectId);
   loadedProjectIdRef.current = loadedProjectId;
   const [projectFileLoadState, setProjectFileLoadState] = useState(() => createProjectFileLoadState(activeProjectId));
+  // 单个文件读取/解码失败（GBK 等非 UTF-8 编码）的问题清单：项目其余文件照常可用，
+  // 由编辑器上方提示条展示并提供「按 GBK 转存为 UTF-8」动作。
+  const [projectFileLoadProblems, setProjectFileLoadProblems] = useState<ProjectFileReadProblem[]>([]);
   const [projectFileReloadToken, setProjectFileReloadToken] = useState(0);
   const projectFileLoadGenerationRef = useRef(0);
   const projectFileLoadKeyRef = useRef('');
@@ -774,7 +824,29 @@ export default function App() {
       return { ok: false, files: filesRef.current, diagnostics: result.diagnostics };
     }
 
+    // 文件身份校验（串写根治）：编辑器返回的草稿属于哪个文件就只允许写回哪个文件。
+    // 文件切换瞬间的陈旧闭包会让编辑器仍返回上一个文件（如 BrowserWindow.lcpp）的
+    // 整份源码，此前直接写进新的活动文件，造成 MainWindow.lcpp 被 BrowserWindow 内容
+    // 整文件覆盖的串写事故。身份不一致时丢弃本次草稿（缓冲保持原样）。
+    if (result.filePath && currentFile.path !== result.filePath) {
+      appendEditorTransactionLog(
+        `【串写拦截·草稿提交·跨文件】编辑器挂起草稿属于 ${result.filePath}，当前文件是 ${currentFile.path}；已丢弃本次草稿合并。`
+      );
+      return { ok: true, files: filesRef.current, diagnostics: [] };
+    }
+
     if (result.sourceCode === getCurrentFileContent(currentFile)) {
+      return { ok: true, files: filesRef.current, diagnostics: [] };
+    }
+
+    const flushClobber = describeWindowSourceClobber(
+      getCurrentWindowDesignerProject(activeProjectIdRef.current),
+      activeSolutionProjectRef.current.sourceRoot,
+      currentFile.path,
+      result.sourceCode
+    );
+    if (flushClobber) {
+      appendEditorTransactionLog(`【串写拦截·草稿提交】${flushClobber}；已忽略本次草稿合并。`);
       return { ok: true, files: filesRef.current, diagnostics: [] };
     }
 
@@ -1548,6 +1620,26 @@ export default function App() {
   }, [hasEnteredWorkbench]);
 
   useEffect(() => { const receive = (event: Event) => { const diagnostics = (event as CustomEvent<{ diagnostics?: any[] }>).detail?.diagnostics || []; const next: ProblemItem[] = diagnostics.map((item, index) => ({ id: `quality:${item.source}:${index}:${item.filePath || ''}:${item.line || 0}`, filePath: item.filePath || '质量分析', line: item.line || 1, column: item.column, code: item.code, source: item.source, level: item.severity, message: item.message, codeSnippet: item.message, suggestion: item.source === 'sarif' ? '请根据静态分析规则修正代码后重新生成报告。' : '请根据 Sanitizer 调用栈修复内存或未定义行为问题。' })); setQualityProblems(next); if (next.length) { setShowBottomPanel(true); setActiveTabInBottom('problems'); } }; window.addEventListener('lingbuilder-quality-diagnostics', receive); return () => window.removeEventListener('lingbuilder-quality-diagnostics', receive); }, []);
+  // 窗口设计器「添加控件」被模块门禁拦截时，把拦截原因送到用户眼前：自动弹开底部输出面板。
+  // 设计器侧只写日志的话输出面板常被折叠，历史上表现为「点击控件没反应」（2026-09-25）。
+  useEffect(() => {
+    const receive = () => { setShowBottomPanel(true); setActiveTabInBottom('output'); };
+    window.addEventListener('lingbuilder-designer-add-blocked', receive);
+    return () => window.removeEventListener('lingbuilder-designer-add-blocked', receive);
+  }, []);
+
+  // 新手查找「查找全部」（当前文件/当前项目/整个解决方案）：结果送到底部「查找结果」页签。
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<FindResultsData>).detail;
+      if (!detail) return;
+      setFindResultsData(detail);
+      setShowBottomPanel(true);
+      setActiveTabInBottom('find_results');
+    };
+    window.addEventListener(LINGCPP_FIND_RESULTS_EVENT, receive);
+    return () => window.removeEventListener(LINGCPP_FIND_RESULTS_EVENT, receive);
+  }, []);
 
   useEffect(() => {
     const receiveDiagnostics = (event: Event) => {
@@ -1616,11 +1708,16 @@ export default function App() {
     // 专业模式每个键都改 translatedContent，同步重算会把输入拖到每键数百毫秒。
     const timer = window.setTimeout(() => {
       const sourceCode = activeFile.translatedContent || activeFile.originalContent || '';
+      // 项目声明上下文与结构画布/真实构建同源（共享 helper）：缺了它，
+      // 赋值给项目全局变量的语句会在错误列表全量假报「变量尚未声明」。
+      const { projectGlobals, projectTypes } = collectProjectDeclarationContexts(files, activeFile.path, sourceCode);
       const nextProblems = getLingCppProblems(
         sourceCode,
         activeProjectHasWindowDesigner ? windowDesignerState.project : undefined,
         activeFile.path,
-        moduleContext
+        moduleContext,
+        projectGlobals,
+        projectTypes
       ).map(problem => {
         const beginner = adaptProblemForBeginner(problem);
         return {
@@ -1643,7 +1740,7 @@ export default function App() {
       setProblems(nextProblems);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, activeProjectHasWindowDesigner, editorExperienceMode, moduleContext, windowDesignerState.project]);
+  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, activeProjectHasWindowDesigner, editorExperienceMode, files, moduleContext, windowDesignerState.project]);
 
   const setEditorExperienceMode = useCallback(async (mode: EditorExperienceMode): Promise<boolean> => {
     const target = getWorkbenchConfigurationMutationTarget(
@@ -1747,6 +1844,8 @@ export default function App() {
   const [designerToolboxHost, setDesignerToolboxHost] = useState<HTMLElement | null>(null);
   const [showBottomPanel, setShowBottomPanel] = useState(false);
   const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('output');
+  // 新手查找「查找全部」的结果（文件/项目/解决方案范围），由 DiffViewer 派发事件送入。
+  const [findResultsData, setFindResultsData] = useState<FindResultsData | null>(null);
 
   const applyConfigurationSnapshot = useCallback((snapshot: WorkbenchConfigurationSnapshot) => {
     setConfigurationSnapshot(snapshot);
@@ -2691,6 +2790,16 @@ void DisplayStatus() {
 
   const handleUpdateSourceContent = (content: string) => {
     if (!projectFilesReadyRef.current) return;
+    const clobber = describeWindowSourceClobber(
+      getCurrentWindowDesignerProject(activeProjectIdRef.current),
+      activeSolutionProjectRef.current.sourceRoot,
+      activeFile.path,
+      content
+    );
+    if (clobber) {
+      appendEditorTransactionLog(`【串写拦截·编辑器回调】${clobber}；已忽略本次写入。`);
+      return;
+    }
     const updatedFile: CppFile = {
       ...activeFile,
       translatedContent: content,
@@ -2710,7 +2819,20 @@ void DisplayStatus() {
 
   const handleUpdateProjectSources = useCallback((sources: Array<{ filePath: string; sourceCode: string }>) => {
     if (!projectFilesReadyRef.current || sources.length === 0) return;
-    const updates = new Map(sources.map(source => [source.filePath.replace(/\\/gu, '/'), source.sourceCode]));
+    const rejectedClobbers = sources
+      .map(source => ({ source, clobber: describeWindowSourceClobber(
+        getCurrentWindowDesignerProject(activeProjectIdRef.current),
+        activeSolutionProjectRef.current.sourceRoot,
+        source.filePath,
+        source.sourceCode
+      ) }))
+      .filter(item => item.clobber);
+    rejectedClobbers.forEach(item => {
+      appendEditorTransactionLog(`【串写拦截·批量源码】${item.clobber}；已忽略本次写入。`);
+    });
+    const updates = new Map(sources
+      .filter(source => !rejectedClobbers.some(item => item.source === source))
+      .map(source => [source.filePath.replace(/\\/gu, '/'), source.sourceCode]));
     const nextFiles = filesRef.current.map(file => {
       const sourceCode = updates.get(file.path.replace(/\\/gu, '/'));
       return sourceCode === undefined ? file : {
@@ -3204,6 +3326,7 @@ void DisplayStatus() {
       controller.abort();
     }, 15_000);
     setProjectFileLoadState(createProjectFileLoadState(activeProjectId, 'loading'));
+    setProjectFileLoadProblems([]);
     setEditorState(createInactiveTextEditorStatus('loading-project'));
     const loadSavedFiles = async () => {
       try {
@@ -3227,6 +3350,7 @@ void DisplayStatus() {
           return;
         }
         if (!isCurrentLoad(projectId)) return;
+        const readProblems: ProjectFileReadProblem[] = Array.isArray(data?.problems) ? data.problems : [];
         if (data?.designerProject) {
           if (data.designerProject.id !== projectId) {
             throw new Error(`项目 ${projectId} 返回了不匹配的设计器模型 ${data.designerProject.id}。`);
@@ -3328,6 +3452,14 @@ void DisplayStatus() {
           loadedProjectIdRef.current = projectId;
           setLoadedProjectId(projectId);
           setProjectFileLoadState(createProjectFileLoadState(projectId, 'ready'));
+          setProjectFileLoadProblems(readProblems);
+          if (readProblems.length > 0) {
+            setBuildLogs(previous => [
+              ...previous,
+              ...readProblems.map(problem => `> [${new Date().toLocaleTimeString()}] 【文件读取错误】${problem.message}`),
+              `> [${new Date().toLocaleTimeString()}] 【文件读取提示】已跳过 ${readProblems.length} 个无法读取的文件，其余项目文件照常载入；可在编辑器上方提示条中把 GBK 文件转存为 UTF-8 后重试。`
+            ]);
+          }
           filesRef.current = nextFiles;
           setFiles(nextFiles);
           try {
@@ -3376,7 +3508,9 @@ void DisplayStatus() {
           }
           void refreshSourceControlStatus();
         } else {
-          const message = '项目文件服务没有返回有效的文件列表。';
+          const message = readProblems.length > 0
+            ? `项目文件全部无法读取（共 ${readProblems.length} 个，见下方明细）。`
+            : '项目文件服务没有返回有效的文件列表。';
           setProjectFileLoadState(createProjectFileLoadState(projectId, 'error', message));
           const missingPath = pendingWorkspaceSearchRevealRef.current?.filePath;
           pendingWorkspaceSearchRevealRef.current = null;
@@ -3385,6 +3519,8 @@ void DisplayStatus() {
           setBuildLogs(previous => [
             ...previous,
             `> [${new Date().toLocaleTimeString()}] 【文件读取错误】${message}`,
+            ...readProblems.map(problem => `> [${new Date().toLocaleTimeString()}] 【文件读取错误】${problem.message}`),
+            ...(readProblems.length > 0 ? [`> [${new Date().toLocaleTimeString()}] 【文件读取提示】这些文件可能被外部工具按 GBK/ANSI 编码保存，请转为 UTF-8 后重试载入。`] : []),
             ...(missingPath ? [`> [${new Date().toLocaleTimeString()}] 【搜索结果跳转错误】无法打开 ${missingPath}。`] : [])
           ]);
         }
@@ -3809,6 +3945,29 @@ void DisplayStatus() {
         projectFileFormats[file.path] = format;
         savedStateByPath.set(file.path, { content, format });
       });
+      // 设计器窗口源码串写保护：每个设计器窗口绑定的 .lcpp 必须声明自己的窗口类。
+      // 若某文件的内容声明的是「另一个设计器窗口」的类，说明发生了窗口源码串写
+      // （lingbuilder-ui-project 实测：MainWindow.lcpp 被写入 BrowserWindow 整文件内容，
+      // 构建前保存静默落盘，F5 报类名重复）——拒绝写入磁盘，保护磁盘上的正确内容。
+      if (designerProject) {
+        const windowByClassName = new Map(designerProject.windows.map(win => [normalizeIdentifier(win.className), win]));
+        for (const [filePath, content] of Object.entries(projectFiles)) {
+          if (!filePath.toLocaleLowerCase().endsWith('.lcpp')) continue;
+          const declaredClasses = parseLingCpp(content).program.classes.map(cls => normalizeIdentifier(cls.name));
+          const foreignWindow = declaredClasses
+            .map(className => windowByClassName.get(className))
+            .find(win => win && getLingWindowSourceFilePath(
+              activeSolutionProject.sourceRoot, win.fileName, win.className
+            ).replace(/\\/gu, '/').toLocaleLowerCase() !== filePath.replace(/\\/gu, '/').toLocaleLowerCase());
+          if (foreignWindow) {
+            appendEditorTransactionLog(
+              `【${reason}】检测到 ${filePath} 的内容是窗口「${foreignWindow.title || foreignWindow.className}」（类 ${foreignWindow.className}）的源码，而不是它绑定的窗口；已阻止写入磁盘。`
+              + '请关闭并重新打开该项目（或重启 IDE）让编辑器缓冲回到磁盘内容；该串写源头若再次出现，请把此提示发给开发者。'
+            );
+            return false;
+          }
+        }
+      }
       saveEchoSnapshotId = ++inFlightSaveSequenceRef.current;
       inFlightSaveSnapshotsRef.current.set(saveEchoSnapshotId, {
         projectId,
@@ -3846,7 +4005,7 @@ void DisplayStatus() {
           cancelLabel: '保留本地'
         });
         if (reloadDisk) {
-          projectFileVersionsRef.current = payload.fileVersions || {};
+          projectFileVersionsRef.current = { ...projectFileVersionsRef.current, ...payload.fileVersions };
           void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
           setProjectFileReloadToken(token => token + 1);
         }
@@ -3859,7 +4018,9 @@ void DisplayStatus() {
         throw new Error(payload?.error || `保存服务请求失败（HTTP ${response.status}）。请检查开发服务是否正在运行。`);
       }
       requireCurrentProjectMutationOwner(requestOwner);
-      projectFileVersionsRef.current = payload.fileVersions || projectFileVersionsRef.current;
+      // 合并而非整体替换：保存响应只携带当前项目文件的版本，整体替换会把
+      // 其它项目的基线清空，令这些项目在下一次保存时失去 409 外部修改冲突保护。
+      projectFileVersionsRef.current = { ...projectFileVersionsRef.current, ...payload.fileVersions };
       if (designerProject) {
         designerSavedSnapshotRef.current = savedDesignerSnapshot;
          const currentDesignerSnapshot = JSON.stringify(readWindowDesignerState(activeProjectId).project);
@@ -4100,6 +4261,21 @@ void DisplayStatus() {
     setSolution(result.solution);
   };
 
+  /** 查找结果面板双击/回车：跳到对应文件与代码行（复用工作区搜索的跨文件跳转链路）。 */
+  const handleFindResultJump = (entry: BeginnerFindResultEntry) => {
+    const match: WorkspaceSearchMatch = {
+      id: `find:${entry.filePath}:${entry.line}:${entry.column}`,
+      filePath: entry.filePath,
+      line: entry.line,
+      column: entry.column,
+      endLine: entry.line,
+      endColumn: entry.column + entry.length,
+      matchText: entry.lineText.slice(entry.column - 1, entry.column - 1 + entry.length),
+      preview: entry.lineText
+    };
+    void handleWorkspaceSearchReveal(match);
+  };
+
   useEffect(() => {
     if (!hasEnteredWorkbench) return;
     const navigation = pendingAiWorkbenchNavigationRef.current;
@@ -4293,7 +4469,7 @@ void DisplayStatus() {
     }
     const flushState = await flushCurrentEditorDrafts();
     if (!flushState.ok) {
-      appendEditorTransactionLog(`【关闭解决方案错误】${flushState.diagnostics[0] || '当前编辑内容无法安全提交。'}`);
+      appendEditorTransactionLog(`【关闭解决方案错误】${describeProjectMutationBlockerMessage(flushState.diagnostics[0], '当前编辑内容无法安全提交。')}`);
       return false;
     }
     if ((flushState.files.some(isEditorFileDirty) || designerDirtyRef.current)
@@ -4534,6 +4710,33 @@ void DisplayStatus() {
     openCreateSolutionProjectDialog(projectType);
   }, [openCreateSolutionProjectDialog]);
 
+  // 把 GBK 等旧编码的项目文件转存为 UTF-8：转存成功后按「重试载入」同一路径重读项目文件。
+  const handleConvertProjectFileEncoding = useCallback(async (problem: ProjectFileReadProblem) => {
+    const projectId = activeProjectIdRef.current;
+    try {
+      const response = await fetch('/api/window-designer/files/convert-encoding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, filePath: problem.path, sourceEncoding: 'gbk' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) {
+        const message = data?.error || '编码转存失败。';
+        setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【编码转存失败】${message}`]);
+        return;
+      }
+      setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【编码转存】${data?.message || '已转存为 UTF-8。'}`]);
+      setProjectFileLoadState(createProjectFileLoadState(projectId, 'loading'));
+      setEditorState(createInactiveTextEditorStatus('loading-project'));
+      setProjectFileReloadToken(token => token + 1);
+    } catch (error) {
+      setBuildLogs(previous => [
+        ...previous,
+        `> [${new Date().toLocaleTimeString()}] 【编码转存失败】${error instanceof Error ? error.message : String(error)}`
+      ]);
+    }
+  }, []);
+
   const handleCreateSolutionProject = useCallback(async (
     name: string,
     templateId: 'blank-window' | 'windows-dll' | 'windows-console' = createProjectTemplateId,
@@ -4541,9 +4744,18 @@ void DisplayStatus() {
     signal?: AbortSignal
   ): Promise<{ ok: boolean; workspacePath?: string }> => {
     if (!name.trim()) return { ok: false };
+    // 项目文件载入失败/未就绪时必须给可操作的中文原因，不能把内部竞态守卫文案泄漏进对话框。
+    if (projectFileEditorAvailability !== 'ready') {
+      const message = projectFileEditorAvailability === 'error'
+        ? `当前项目文件载入失败，无法新建项目。${projectFileLoadState.error ? `原因：${projectFileLoadState.error} ` : ''}请先重试载入或处理文件问题后再试。`
+        : '项目文件正在载入，请等待载入完成后再新建项目。';
+      appendEditorTransactionLog(`【新建项目错误】${message}`);
+      setCreateProjectError(message);
+      return { ok: false };
+    }
     const flushState = await flushCurrentEditorDrafts();
     if (!flushState.ok) {
-      const message = flushState.diagnostics[0] || '新手代码提交失败，未切换项目。';
+      const message = describeProjectMutationBlockerMessage(flushState.diagnostics[0], '新手代码提交失败，未切换项目。');
       appendEditorTransactionLog(`【新建项目错误】${message}`);
       setCreateProjectError(message);
       return { ok: false };
@@ -4571,7 +4783,7 @@ void DisplayStatus() {
       setSolution(nextSolution);
     }
     return { ok: true };
-  }, [appendSolutionLogs, createProjectTemplateId, flushCurrentEditorDrafts, refreshSolution]);
+  }, [appendSolutionLogs, createProjectTemplateId, flushCurrentEditorDrafts, projectFileEditorAvailability, projectFileLoadState.error, refreshSolution]);
 
   const switchToStandaloneProjectWorkspace = async (workspacePath: string): Promise<boolean> => {
     const workspaceApi = window.lingBuilder?.workspace;
@@ -4735,7 +4947,7 @@ void DisplayStatus() {
     try {
       const flushState = await flushCurrentEditorDrafts();
       if (!flushState.ok) {
-        appendEditorTransactionLog(`【切换项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
+        appendEditorTransactionLog(`【切换项目错误】${describeProjectMutationBlockerMessage(flushState.diagnostics[0], '新手代码提交失败，未切换项目。')}`);
         return;
       }
       if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
@@ -6878,35 +7090,47 @@ void DisplayStatus() {
               >
                 <button
                   type="button"
-                  aria-label={`发现${updateBadgePayload.channel === 'preview' ? '预览版' : '新版本'} v${updateBadgePayload.latestVersion ?? ''}，悬浮查看更新说明，点击立即更新`}
+                  aria-label={`发现新版本 v${updateBadgePayload.latestVersion ?? ''}，悬浮查看更新日志，点击立即下载更新`}
                   onClick={event => {
                     event.stopPropagation();
                     setShowUpdateBadgePanel(false);
                     setUpdateCheckState(createUpdateDialogInfo(updateBadgePayload));
+                    // 点击「更新」即直接发起应用内下载（同版本重复调用幂等），对话框打开后展示实时进度，校验通过自动安装。
+                    const startDownload = window.lingBuilder?.updates?.download;
+                    if (startDownload) void startDownload().catch(() => undefined);
                   }}
-                  className="rounded-full bg-emerald-500/15 px-1.5 py-px text-[10px] font-semibold leading-4 text-emerald-500 ring-1 ring-emerald-500/40 transition-colors hover:bg-emerald-500/30"
+                  className="rounded-full bg-amber-400/15 px-1.5 py-px text-[10px] font-semibold leading-4 text-amber-500 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/30"
                 >
-                  {updateBadgePayload.channel === 'preview' ? '体验' : '升级'}
+                  更新
                 </button>
                 {showUpdateBadgePanel && (
                   <div
                     role="note"
-                    aria-label={`${updateBadgePayload.channel === 'preview' ? '预览版' : '新版本'} v${updateBadgePayload.latestVersion ?? ''} 更新说明`}
-                    className={`absolute right-0 top-full z-[90] mt-2 w-80 max-w-[min(20rem,90vw)] rounded-md border p-3 text-left shadow-2xl ${
-                      isDarkMode ? 'border-[#3b3b43] bg-[#1e1e24] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
+                    aria-label={`${updateBadgePayload.channel === 'preview' ? '预览版' : '新版本'} v${updateBadgePayload.latestVersion ?? ''} 更新日志`}
+                    className="absolute left-0 top-full z-[90] pt-1.5"
                   >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-xs font-semibold">{updateBadgePayload.channel === 'preview' ? '抢先体验 v' : '发现新版本 v'}{updateBadgePayload.latestVersion ?? ''}{updateBadgePayload.channel === 'preview' ? '（预览版）' : ''}</span>
-                      <span className={isDarkMode ? 'text-[10px] text-slate-400' : 'text-[10px] text-slate-500'}>当前 {LINGBUILDER_DISPLAY_VERSION}</span>
+                    <div className={`w-80 max-w-[min(20rem,90vw)] rounded-md border p-3 text-left shadow-2xl ${
+                      isDarkMode ? 'border-[#3b3b43] bg-[#1e1e24] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                    }`}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-xs font-semibold">v{updateBadgePayload.latestVersion ?? ''} 更新日志{updateBadgePayload.channel === 'preview' ? '（预览版）' : ''}</span>
+                        <span className={isDarkMode ? 'text-[10px] text-slate-400' : 'text-[10px] text-slate-500'}>当前 {LINGBUILDER_DISPLAY_VERSION}</span>
+                      </div>
+                      {formatUpdateDate(updateBadgePayload.publishedAt) && (
+                        <div className={`mt-1 text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{formatUpdateDate(updateBadgePayload.publishedAt)}</div>
+                      )}
+                      <div className={`mt-2 max-h-56 space-y-1.5 overflow-y-auto text-[11px] leading-5 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                        {splitUpdateNoteLines(updateBadgePayload.releaseNotes).length > 0
+                          ? splitUpdateNoteLines(updateBadgePayload.releaseNotes).map((line, index) => (
+                            <div key={index} className="flex gap-1.5">
+                              <span aria-hidden="true" className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-current opacity-60" />
+                              <span className="min-w-0">{line.replace(/^[-•·*]\s*/u, '')}</span>
+                            </div>
+                          ))
+                          : <div>{updateBadgePayload.releaseTitle ? `${updateBadgePayload.releaseTitle}。` : '暂无更新说明，点击「更新」立即下载。'}</div>}
+                      </div>
+                      <div className={`mt-2 text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>点击「更新」按钮立即下载，下载完成后自动安装。</div>
                     </div>
-                    {updateBadgePayload.fileSize && (
-                      <div className={`mt-1 text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>安装包大小：{updateBadgePayload.fileSize}</div>
-                    )}
-                    <div className={`mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap text-[11px] leading-5 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                      {updateBadgePayload.releaseNotes || (updateBadgePayload.releaseTitle ? `${updateBadgePayload.releaseTitle}。` : '暂无更新说明，点击「升级」查看详情。')}
-                    </div>
-                    <div className={`mt-2 text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>点击「升级」按钮可直接在 IDE 内下载并安装。</div>
                   </div>
                 )}
               </div>
@@ -7742,7 +7966,39 @@ void DisplayStatus() {
               className="flex min-h-0 min-w-0 flex-1 flex-col"
               onFocusCapture={() => activateEditorGroup('primary')}
               onMouseDownCapture={() => activateEditorGroup('primary')}
-            ><DiffViewer
+            >
+              {projectFileLoadProblems.length > 0 && (
+                <div
+                  className={`shrink-0 border-b px-3 py-2 text-xs ${isDarkMode ? 'border-[#3a3a2c] bg-[#2a2416] text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-900'}`}
+                  role="alert"
+                  data-testid="project-file-encoding-problems"
+                >
+                  <div className="font-medium">
+                    {projectFileLoadProblems.length} 个项目文件无法按 UTF-8 读取，已跳过（其余文件照常可用）：
+                  </div>
+                  <div className="mt-1 space-y-1">
+                    {projectFileLoadProblems.map(problem => (
+                      <div key={problem.path} className="flex flex-wrap items-center gap-2">
+                        <span className="break-all">{problem.message}</span>
+                        {problem.code === 'INVALID_UTF8' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleConvertProjectFileEncoding(problem)}
+                            className={`shrink-0 rounded border px-2 py-0.5 font-medium ${
+                              isDarkMode
+                                ? 'border-amber-500/50 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
+                                : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
+                            }`}
+                          >
+                            按 GBK 转存为 UTF-8
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <DiffViewer
               ref={diffViewerRef}
               diffResult={diffResult}
               strings={activeFile.strings}
@@ -7765,6 +8021,7 @@ void DisplayStatus() {
               onSelectTab={handleSelectFile}
               onCloseTab={handleCloseTab}
               allFiles={files}
+              activeProjectSourceRoot={activeSolutionProject.sourceRoot}
               designerProject={activeProjectHasWindowDesigner ? windowDesignerState.project : undefined}
               designerToolboxHost={designerToolboxHost}
               onDesignerViewActiveChange={setIsDesignerViewActive}
@@ -7930,6 +8187,8 @@ void DisplayStatus() {
               commandHint={commandHint}
               height={bottomHeight}
               commandService={commandServiceRef.current}
+              findResults={findResultsData}
+              onFindResultJump={handleFindResultJump}
             />
           )}
         </div>

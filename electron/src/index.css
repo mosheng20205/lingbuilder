@@ -103,3 +103,10 @@ textarea {
   min-width: 0;
   min-height: 0;
 }
+
+/* 新手结构画布：按住 Ctrl 进入「跳转点击」模式时代码区显示手型光标。
+   挂在画布根类名上而不是逐块 style：块内容有 blockRevision 记忆化，
+   类名开关走 CSS 即时生效，不触发任何块重渲。 */
+.lingcpp-beginner-ctrl-nav textarea {
+  cursor: pointer;
+}

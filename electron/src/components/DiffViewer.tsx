@@ -77,10 +77,14 @@ import {
   type BeginnerTableKey
 } from '../services/editor/beginnerTableColumnWidths';
 import BeginnerVirtualCanvas, { type BeginnerCanvasItem, type BeginnerVirtualCanvasHandle } from './beginner/BeginnerVirtualCanvas';
-import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppSourceDefinitionAtPosition, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
-import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppProjectGlobalContext, LingCppProjectTypeContext, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
+import BeginnerFindBar, { type BeginnerFindScope } from './beginner/BeginnerFindBar';
+import { collectBeginnerFindMatches, collectBeginnerFindFileResults, type BeginnerFindMatch, type BeginnerFindFileInput } from '../services/lingCpp/beginnerFind';
+import { LINGCPP_FIND_RESULTS_EVENT, type FindResultsData } from '../services/lingCpp/beginnerFindEvents';
+import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
+import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
-import { getBeginnerLibraryCallAtCursor, getBeginnerProcedureCallAtCursor, resolveBeginnerFunctionLibraryDefinition, resolveBeginnerProcedureDefinition } from '../services/lingCpp/beginnerDefinitionNavigation';
+import { createBeginnerLibraryFunctionCompletions, getBeginnerDefaultArgument } from '../services/lingCpp/beginnerLibraryCompletion';
+import { getBeginnerLibraryCallAtCursor, getBeginnerLocalReferenceAtCursor, getBeginnerProcedureCallAtCursor, resolveBeginnerFunctionLibraryDefinition, resolveBeginnerProcedureDefinition } from '../services/lingCpp/beginnerDefinitionNavigation';
 import { getBeginnerTextareaOffsetAtPoint, getBeginnerIdentifierSpanAtOffset } from '../services/lingCpp/beginnerTextPosition';
 import {
   type BeginnerFlowGuideRow,
@@ -130,13 +134,13 @@ import { EditorExperienceMode } from '../services/lingCpp/beginnerService';
 import { importNativeCppToLingBuilder } from '../services/windowDesigner/nativeCppImportService';
 import { saveWindowDesignerState } from '../services/windowDesigner/windowDesignerService';
 import { normalizeIdentifier, parseLingCpp } from '../services/lingCpp/parser';
-import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
-import { createProjectTypeContext, isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
+import { collectProjectDeclarationContexts, isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
+import { isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
 import { isProjectDllCommandsFilePath } from '../services/lingCpp/projectDllCommandService';
 import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
 import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
 import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCppArrayParameterType } from '../services/lingCpp/parameterTypeService';
-import { getProjectConstantNameAtCursor } from '../services/lingCpp/projectConstantReferenceService';
+import { getProjectConstantNameAtCursor, getProjectGlobalNameAtCursor } from '../services/lingCpp/projectConstantReferenceService';
 import {
   classifyLingCppPresentationCode,
   extractLingCppNativeVariableNames,
@@ -286,6 +290,7 @@ interface DiffViewerProps {
   onSelectTab: (file: any) => void;
   onCloseTab: (tabPath: string, event: React.MouseEvent) => void;
   allFiles: any[];
+  activeProjectSourceRoot?: string;
   designerProject?: LingWindowProject;
   designerToolboxHost?: HTMLElement | null;
   onDesignerViewActiveChange?: (active: boolean) => void;
@@ -453,6 +458,8 @@ interface BeginnerContextMenuState {
   definitionName?: string;
   libraryCall?: { libraryName: string; functionName: string };
   controlReference?: LingCppControlReference;
+  localReference?: { name: string; line: number; kind: 'local' | 'parameter' | 'constant' };
+  globalVariableName?: string;
 }
 
 interface BeginnerJumpHighlightState {
@@ -471,8 +478,16 @@ interface BeginnerTypeCompletionState {
 }
 
 interface BeginnerInitialValueEditorState {
-  target: BeginnerCodeTarget;
-  local: LingCppLocalVariable;
+  target?: BeginnerCodeTarget;
+  local?: LingCppLocalVariable;
+  // 程序集变量复用同一个初始值编辑器：member 命中时按成员行走 update-member 写回。
+  member?: {
+    className: string;
+    name: string;
+    type: string;
+    initialValue?: string;
+    line: number;
+  };
   onSave: (value: string) => boolean;
 }
 
@@ -944,6 +959,44 @@ const findBeginnerCodeTextareaByViewKey = (viewKey: string): HTMLTextAreaElement
 const resolveBeginnerCodeTextarea = (input: HTMLTextAreaElement): HTMLTextAreaElement | null =>
   input.isConnected ? input : findBeginnerCodeTextareaByViewKey(input.dataset.textModelViewKey || '');
 
+/**
+ * 查找条导航：收集某个代码目标当前挂载的全部 textarea。
+ * 结构视图的 view key 是 targetKey 本体，分段/连续视图会追加 `:段id` 后缀，两者都算命中。
+ */
+const collectBeginnerFindTextareas = (targetKey: string): HTMLTextAreaElement[] => {
+  if (!targetKey) return [];
+  const escaped = CSS.escape(targetKey);
+  return Array.from(document.querySelectorAll<HTMLTextAreaElement>(
+    `textarea[data-text-model-view-key="${escaped}"], textarea[data-text-model-view-key^="${escaped}:"]`
+  )).filter(input => input.isConnected);
+};
+
+/** 在候选 textarea 中优先选出行映射表包含目标源码行的那个；都没有时取映射最近的那块（分段视图一段一块）。 */
+const pickBeginnerFindTextareaForLine = (
+  inputs: readonly HTMLTextAreaElement[],
+  sourceLine: number
+): HTMLTextAreaElement | undefined => {
+  if (inputs.length === 0) return undefined;
+  if (inputs.length === 1 || !(sourceLine > 0)) return inputs[0];
+  let nearest: HTMLTextAreaElement | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const input of inputs) {
+    const mapped = (input.dataset.sourceLineMap || '')
+      .split(',')
+      .map(value => Number(value))
+      .filter(value => Number.isInteger(value) && value > 0);
+    if (mapped.includes(sourceLine)) return input;
+    for (const value of mapped) {
+      const distance = Math.abs(value - sourceLine);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = input;
+      }
+    }
+  }
+  return nearest || inputs[0];
+};
+
 const getBeginnerCompletionPanelPosition = (
   input: HTMLTextAreaElement,
   token: string,
@@ -1289,6 +1342,12 @@ function readSerializableObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function readStringArrayFromOpaque(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
 interface BeginnerInitialValueEditorProps {
   variableName: string;
   variableType: string;
@@ -1539,6 +1598,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   onSelectTab,
   onCloseTab,
   allFiles,
+  activeProjectSourceRoot,
   designerProject,
   designerToolboxHost,
   onDesignerViewActiveChange,
@@ -1664,6 +1724,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   selectedBeginnerHandlerRef.current = selectedBeginnerHandler;
   const [selectedBeginnerCodeTarget, setSelectedBeginnerCodeTarget] = useState<{ className?: string; methodName: string } | null>(null);
   const [pendingProjectConstantFocus, setPendingProjectConstantFocus] = useState<string>();
+  // 跳转到项目全局变量：声明在「项目全局变量.lcpp」，跨文件切页签后由该聚焦 prop 定位并行闪。
+  const [pendingProjectGlobalFocus, setPendingProjectGlobalFocus] = useState<string>();
   const [collapsedVolcanoSections, setCollapsedVolcanoSections] = useState<string[]>([]);
   const [readingMode, setReadingMode] = useState<LingCppReadingMode>(editorExperienceMode === 'beginner' ? 'beginner' : 'off');
   const [focusedReadableBlockId, setFocusedReadableBlockId] = useState<string | undefined>();
@@ -1681,6 +1743,29 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [collapsedBeginnerLocalGroupKeys, setCollapsedBeginnerLocalGroupKeys] = useState<string[]>([]);
   const [isBeginnerMemberTableCollapsed, setIsBeginnerMemberTableCollapsed] = useState(false);
   const [collapsedBeginnerFlowBlockKeys, setCollapsedBeginnerFlowBlockKeys] = useState<string[]>([]);
+  // 折叠状态要写进新手视图状态的 opaque 包按文件持久化；save 侧经 ref 读当前值，
+  // 避免把这四个 state 加进 saveBeginnerViewState 依赖、导致每次折叠都重跑恢复 effect。
+  const collapsedBeginnerProcessTargetKeysRef = useRef<string[]>([]);
+  collapsedBeginnerProcessTargetKeysRef.current = collapsedBeginnerProcessTargetKeys;
+  const collapsedBeginnerLocalGroupKeysRef = useRef<string[]>([]);
+  collapsedBeginnerLocalGroupKeysRef.current = collapsedBeginnerLocalGroupKeys;
+  const isBeginnerMemberTableCollapsedRef = useRef(false);
+  isBeginnerMemberTableCollapsedRef.current = isBeginnerMemberTableCollapsed;
+  const collapsedBeginnerFlowBlockKeysRef = useRef<string[]>([]);
+  collapsedBeginnerFlowBlockKeysRef.current = collapsedBeginnerFlowBlockKeys;
+  // Ctrl 跳转点击模式的可视反馈：active 是画布根类名开关（CSS 手型光标，方案A）；
+  // hoverSpan 是 Ctrl 悬停命中的可跳转标识符区间（覆盖层画下划线，方案B）。
+  // hoverSpan 只进 interactionSlice 按块切片，避免鼠标划过时全画布重渲；
+  // 块闭包有记忆化，因此块内 mousemove 经 beginnerCtrlNavActiveRef 读 Ctrl 状态。
+  const [beginnerCtrlNavActive, setBeginnerCtrlNavActive] = useState(false);
+  const beginnerCtrlNavActiveRef = useRef(false);
+  beginnerCtrlNavActiveRef.current = beginnerCtrlNavActive;
+  const [beginnerCtrlHoverSpan, setBeginnerCtrlHoverSpan] = useState<{
+    targetKey: string;
+    segmentId: string;
+    start: number;
+    end: number;
+  } | null>(null);
   const [hoveredBeginnerFlowLine, setHoveredBeginnerFlowLine] = useState<BeginnerFlowLineTarget | null>(null);
   const [activeBeginnerFlowLine, setActiveBeginnerFlowLine] = useState<BeginnerFlowLineTarget | null>(null);
   const [expandedBeginnerCommand, setExpandedBeginnerCommand] = useState<string | null>(null);
@@ -1733,6 +1818,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     _setBeginnerAutoLocalTypeState(resolved);
   }, []);
   const [beginnerJumpHighlight, setBeginnerJumpHighlight] = useState<BeginnerJumpHighlightState | null>(null);
+  // 双击标识符后的「同名出现位置高亮」（对齐火山体验）：双击局部变量/参数时，
+  // 当前子程序内所有同名令牌与声明表名称单元格同步染色。
+  const [beginnerOccurrenceHighlight, setBeginnerOccurrenceHighlight] = useState<{ targetKey: string; name: string } | null>(null);
+  // 跳转到局部声明行后的行级闪高亮：声明表是整块画布项，行号列的 beginnerJumpHighlight 覆盖不到。
+  const [beginnerLocalJumpHighlight, setBeginnerLocalJumpHighlight] = useState<{ targetKey: string; line: number } | null>(null);
+  // 新手画布内查找（Ctrl+F）：状态放组件层，查找条渲染在画布 children 的 sticky 浮层里。
+  const [beginnerFindOpen, setBeginnerFindOpen] = useState(false);
+  const [beginnerFindQuery, setBeginnerFindQuery] = useState('');
+  const [beginnerFindMatchCase, setBeginnerFindMatchCase] = useState(false);
+  const [beginnerFindActiveIndex, setBeginnerFindActiveIndex] = useState(0);
+  const beginnerFindInputRef = useRef<HTMLInputElement | null>(null);
+  const beginnerFindRevealTimerRef = useRef<number | null>(null);
+  // 定时揭示走 ref 读匹配结果：定时器触发时 matches memo 已随最新渲染更新完毕。
+  const beginnerFindMatchesRef = useRef<BeginnerFindMatch[]>([]);
+  // 导航不抢焦点：当前命中在画布内容层的高亮框坐标（相对 data-beginner-canvas-content）。
+  const [beginnerFindCodeHighlight, setBeginnerFindCodeHighlight] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const beginnerFindOpenRef = useRef(false);
+  const beginnerFindLastCodeTargetKeyRef = useRef<string>('');
+  // 查找范围：当前文件（画布内循环导航）/ 当前项目 / 整个解决方案（结果送底部面板）。
+  const [beginnerFindScope, setBeginnerFindScope] = useState<BeginnerFindScope>('file');
+  const [beginnerFindCrossSummary, setBeginnerFindCrossSummary] = useState<{
+    matches: number; files: number; truncated: boolean; searching: boolean;
+  } | null>(null);
+  const beginnerFindCrossTimerRef = useRef<number | null>(null);
   const [beginnerCodeDrafts, setBeginnerCodeDrafts] = useState<Record<string, string>>({});
   const beginnerCodeDraftsRef = useRef<Record<string, string>>({});
   /** 连续输入的去抖同步定时器：见 updateBeginnerCodeDraft 的说明。 */
@@ -1812,10 +1921,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   }, [persistBeginnerColumnWidthOverrides, setBeginnerColumnWidthOverride]);
 
   useEffect(() => {
-    setCollapsedBeginnerProcessTargetKeys([]);
-    setCollapsedBeginnerLocalGroupKeys([]);
-    setIsBeginnerMemberTableCollapsed(false);
-    setCollapsedBeginnerFlowBlockKeys([]);
+    // 折叠状态（子程序/局部声明组/程序集变量表/流程块）不再随切文件清空：
+    // 它们已进新手视图状态 opaque 包，由恢复 effect 按文件灌回。
     setHoveredBeginnerFlowLine(null);
     setActiveBeginnerFlowLine(null);
     setExpandedBeginnerCommand(null);
@@ -1880,7 +1987,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     setBeginnerCodeDrafts({});
     setBeginnerContextMenu(null);
     setBeginnerTypeCompletionState(null);
-    setCollapsedBeginnerFlowBlockKeys([]);
     setHoveredBeginnerFlowLine(null);
     setActiveBeginnerFlowLine(null);
     setExpandedBeginnerCommand(null);
@@ -1903,6 +2009,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   // 新手结构画布的窗口化句柄：跳转到行时先让目标块进入视口，再定位到具体行。
   const beginnerCanvasHandleRef = useRef<BeginnerVirtualCanvasHandle | null>(null);
   const beginnerJumpHighlightTimerRef = useRef<number | null>(null);
+  const beginnerLocalJumpTimerRef = useRef<number | null>(null);
   const beginnerPointerSyncFramesRef = useRef<{ first: number | null; second: number | null }>({
     first: null,
     second: null
@@ -1926,6 +2033,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   useEffect(() => () => {
     if (beginnerJumpHighlightTimerRef.current !== null) {
       window.clearTimeout(beginnerJumpHighlightTimerRef.current);
+    }
+    if (beginnerLocalJumpTimerRef.current !== null) {
+      window.clearTimeout(beginnerLocalJumpTimerRef.current);
     }
     const pointerFrames = beginnerPointerSyncFramesRef.current;
     if (pointerFrames.first !== null) window.cancelAnimationFrame(pointerFrames.first);
@@ -2085,7 +2195,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           selectionEnd: storedTextarea?.selectionEnd || 0,
           selectionDirection: storedTextarea?.selectionDirection || 'none',
           textareaScrollTop: storedTextarea?.scrollTop || 0,
-          textareaScrollLeft: storedTextarea?.scrollLeft || 0
+          textareaScrollLeft: storedTextarea?.scrollLeft || 0,
+          collapsedProcessKeys: [...collapsedBeginnerProcessTargetKeysRef.current],
+          collapsedLocalGroupKeys: [...collapsedBeginnerLocalGroupKeysRef.current],
+          collapsedFlowBlockKeys: [...collapsedBeginnerFlowBlockKeysRef.current],
+          memberTableCollapsed: isBeginnerMemberTableCollapsedRef.current
         }
       }
     );
@@ -2108,22 +2222,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     sourceModelRecord.modelId,
     textEditHistory
   ]);
-  const projectGlobals = useMemo<LingCppProjectGlobalContext | undefined>(() => {
-    const globalFile = allFiles.find(file => isProjectGlobalsFilePath(String(file.path || file.name || '')));
-    if (!globalFile) return undefined;
-    const sourceCode = activeFile?.path === globalFile.path
-      ? normalizedSourceCode
-      : String(globalFile.translatedContent || globalFile.originalContent || '');
-    return createProjectGlobalContext(String(globalFile.path || globalFile.name || ''), sourceCode);
-  }, [activeFile?.path, allFiles, moduleContext, normalizedSourceCode]);
-  const projectTypes = useMemo<LingCppProjectTypeContext | undefined>(() => {
-    const typeFile = allFiles.find(file => isProjectDataTypesFilePath(String(file.path || file.name || '')));
-    if (!typeFile) return undefined;
-    const sourceCode = activeFile?.path === typeFile.path
-      ? normalizedSourceCode
-      : String(typeFile.translatedContent || typeFile.originalContent || '');
-    return createProjectTypeContext(String(typeFile.path || typeFile.name || ''), sourceCode);
-  }, [activeFile?.path, allFiles, normalizedSourceCode]);
+  // 项目声明上下文（项目全局变量/项目数据类型）唯一从共享 helper 推导，
+  // 与 App 错误列表（getLingCppProblems）同源，禁止各写一份同逻辑推导。
+  const { projectGlobals, projectTypes } = useMemo(
+    () => collectProjectDeclarationContexts(allFiles, activeFile?.path, normalizedSourceCode),
+    [activeFile?.path, allFiles, normalizedSourceCode]
+  );
   const isActiveProjectDllCommandsFile = Boolean(activeFile?.path && isProjectDllCommandsFilePath(String(activeFile.path)));
   const lingCppProjectSources = useMemo(() => allFiles
     .filter(file => file.language === 'lingcpp' || String(file.path || '').toLocaleLowerCase().endsWith('.lcpp'))
@@ -2154,6 +2258,88 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       : null,
     [activeFile?.language, activeFile?.path, designerProject, lingCppProjectSources, moduleContext, normalizedSourceCode, projectGlobals, projectTypes]
   );
+  // 查找条语料：方法体按「画布实际显示的文本」搜索（草稿优先），其余源码行走源码段；
+  // 代码块显示行覆盖到的源码行在服务里去重，避免同处内容双计。
+  const beginnerFindCodeBlocks = useMemo(() => {
+    const program = lingCppLanguageContext?.program;
+    if (!program) return [];
+    const blocks: Array<{ targetKey: string; bodyText: string; sourceLineMap: number[] }> = [];
+    const owners = [...program.classes, ...program.functionLibraries];
+    for (const owner of owners) {
+      for (const method of owner.methods) {
+        if (method.kind === 'destructor') continue;
+        const targetKey = createBeginnerCodeDraftKey(owner.name, method.kind, method.name);
+        const statements = method.statements || [];
+        blocks.push({
+          targetKey,
+          bodyText: beginnerCodeDrafts[targetKey]
+            ?? `${statements.map(statement => statement.text).join('\n').replace(/\s+$/u, '')}`,
+          sourceLineMap: getBeginnerBodySourceLines(statements)
+        });
+      }
+    }
+    return blocks;
+  }, [beginnerCodeDrafts, lingCppLanguageContext]);
+  const beginnerFindMatches = useMemo(() => {
+    if (!beginnerFindOpen) return [];
+    return collectBeginnerFindMatches({
+      sourceText: normalizedSourceCode,
+      codeBlocks: beginnerFindCodeBlocks,
+      query: beginnerFindQuery,
+      matchCase: beginnerFindMatchCase
+    });
+  }, [beginnerFindCodeBlocks, beginnerFindMatchCase, beginnerFindOpen, beginnerFindQuery, normalizedSourceCode]);
+  useEffect(() => {
+    beginnerFindMatchesRef.current = beginnerFindMatches;
+    setBeginnerFindActiveIndex(current => {
+      if (beginnerFindMatches.length === 0) return 0;
+      return Math.min(current, beginnerFindMatches.length - 1);
+    });
+  }, [beginnerFindMatches]);
+  useEffect(() => {
+    beginnerFindOpenRef.current = beginnerFindOpen;
+  }, [beginnerFindOpen]);
+  // 跨文件范围（当前项目 / 整个解决方案）的搜索语料：活动文件用编辑器实时内容，
+  // 其余文件用已加载快照；「当前项目」按活动项目的源码根过滤。
+  const beginnerFindCrossFiles = useMemo<BeginnerFindFileInput[]>(() => {
+    if (beginnerFindScope === 'file') return [];
+    const root = activeProjectSourceRoot
+      ? activeProjectSourceRoot.replace(/\\/gu, '/').replace(/^\/+|\/+$/gu, '')
+      : '';
+    const files: BeginnerFindFileInput[] = [];
+    for (const file of allFiles) {
+      const filePath = String(file.path || file.name || '');
+      if (!filePath) continue;
+      if (beginnerFindScope === 'project' && root && !(filePath === root || filePath.startsWith(`${root}/`))) continue;
+      const sourceText = filePath === activeFile?.path
+        ? normalizedSourceCode
+        : String(file.translatedContent || file.originalContent || '');
+      if (!sourceText) continue;
+      files.push({
+        filePath,
+        fileName: String(file.name || filePath.split('/').pop() || filePath),
+        sourceText
+      });
+    }
+    return files;
+  }, [activeFile?.path, activeProjectSourceRoot, allFiles, beginnerFindScope, normalizedSourceCode]);
+  const computeBeginnerFindCross = useCallback(() => {
+    if (!beginnerFindQuery) {
+      setBeginnerFindCrossSummary(null);
+      return;
+    }
+    const outcome = collectBeginnerFindFileResults({
+      files: beginnerFindCrossFiles,
+      query: beginnerFindQuery,
+      matchCase: beginnerFindMatchCase
+    });
+    setBeginnerFindCrossSummary({
+      matches: outcome.results.length,
+      files: outcome.fileCount,
+      truncated: outcome.truncated,
+      searching: false
+    });
+  }, [beginnerFindCrossFiles, beginnerFindMatchCase, beginnerFindQuery]);
   const revealControlReference = useCallback((reference: LingCppControlReference) => {
     if (!reference.symbol) return;
     const request = {
@@ -2282,11 +2468,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           sourceCode: currentSourceCode,
           changed: false,
           diagnostics: [],
-          appliedDraftCount: 0
+          appliedDraftCount: 0,
+          filePath: activeFile?.path
         };
       }
 
-      return flushBeginnerDrafts(false);
+      return { ...flushBeginnerDrafts(false), filePath: activeFile?.path };
     },
     applyExternalSourceCode: (value: string) => {
       if (activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner') {
@@ -2504,6 +2691,31 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     ? `打开窗口设计器：界面设计（${activeDesignerWindow.title || activeDesignerWindow.fileName}）`
     : '打开窗口设计器：界面设计';
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
+
+  // Ctrl（/Cmd）按住即进入跳转点击模式：全局键监听只切换类名与清下划线态，
+  // 不参与任何输入处理；窗口失焦收不到 keyup 时靠 blur 兜底复位。
+  useEffect(() => {
+    if (!isLingCppBeginnerStructureMode) return undefined;
+    const syncFromEvent = (event: KeyboardEvent) => {
+      const active = event.ctrlKey || event.metaKey;
+      setBeginnerCtrlNavActive(active);
+      if (!active) setBeginnerCtrlHoverSpan(null);
+    };
+    const clearAll = () => {
+      setBeginnerCtrlNavActive(false);
+      setBeginnerCtrlHoverSpan(null);
+    };
+    window.addEventListener('keydown', syncFromEvent);
+    window.addEventListener('keyup', syncFromEvent);
+    window.addEventListener('blur', clearAll);
+    return () => {
+      window.removeEventListener('keydown', syncFromEvent);
+      window.removeEventListener('keyup', syncFromEvent);
+      window.removeEventListener('blur', clearAll);
+      setBeginnerCtrlNavActive(false);
+      setBeginnerCtrlHoverSpan(null);
+    };
+  }, [isLingCppBeginnerStructureMode]);
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
 
   // 设计器撤销/重做：WpfDesigner 持有 DesignerHistory，这里持其 handle 与可用性镜像，
@@ -2587,6 +2799,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       setSelectedBeginnerHandler(typeof opaque.selectedHandler === 'string' && opaque.selectedHandler
         ? opaque.selectedHandler
         : null);
+      // 折叠状态与光标/滚动一样按文件恢复：切页签往返后收缩的子程序、
+      // 局部声明组、流程块、程序集变量表保持原样。
+      setCollapsedBeginnerProcessTargetKeys(readStringArrayFromOpaque(opaque.collapsedProcessKeys));
+      setCollapsedBeginnerLocalGroupKeys(readStringArrayFromOpaque(opaque.collapsedLocalGroupKeys));
+      setCollapsedBeginnerFlowBlockKeys(readStringArrayFromOpaque(opaque.collapsedFlowBlockKeys));
+      setIsBeginnerMemberTableCollapsed(opaque.memberTableCollapsed === true);
       restoreFrame = window.requestAnimationFrame(() => {
         const root = beginnerStructureScrollRef.current;
         if (!root) return;
@@ -2616,6 +2834,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     } else {
       setCursorPosition({ line: 1, column: 1 });
       setSelectedBeginnerHandler(null);
+      setCollapsedBeginnerProcessTargetKeys([]);
+      setCollapsedBeginnerLocalGroupKeys([]);
+      setCollapsedBeginnerFlowBlockKeys([]);
+      setIsBeginnerMemberTableCollapsed(false);
       restoreFrame = window.requestAnimationFrame(() => {
         const root = beginnerStructureScrollRef.current;
         if (!root) return;
@@ -3157,12 +3379,66 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const row = document.querySelector<HTMLElement>(`[data-structured-line="${structuredRevealLine}"]`);
       if (row) {
         scrollElementInsideBeginnerEditor(row, 'center');
+        // 跳转标识：目标行整行色带（结果面板双击/转到行/大纲跳转共用），约 2s 后消退。
+        const contentRoot = row.closest('[data-beginner-structure-scroll]')?.querySelector(':scope > [data-beginner-canvas-content]');
+        if (contentRoot instanceof HTMLElement) {
+          const contentRect = contentRoot.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          setBeginnerFindCodeHighlight({
+            top: rowRect.top - contentRect.top,
+            left: rowRect.left - contentRect.left,
+            width: rowRect.width,
+            height: rowRect.height
+          });
+          window.setTimeout(() => {
+            setBeginnerFindCodeHighlight(null);
+          }, 2000);
+        }
         setStructuredRevealLine(null);
         return;
       }
       if (attempts === 1) beginnerCanvasHandleRef.current?.scrollToSourceLine(structuredRevealLine);
-      if (attempts < 12) window.setTimeout(run, 60);
-      else setStructuredRevealLine(null);
+      if (attempts < 12) {
+        window.setTimeout(run, 60);
+        return;
+      }
+      // 兜底：代码正文行在结构视图里没有独立行锚点（藏在 textarea 内），
+      // 按 textarea 自身的 data-source-line-map 找到承载该行的编辑框，画整行色带。
+      for (const input of document.querySelectorAll<HTMLTextAreaElement>('textarea[data-text-model-view-key]')) {
+        const lineMap = (input.dataset.sourceLineMap || '')
+          .split(',')
+          .map(value => Number(value))
+          .filter(value => Number.isInteger(value) && value > 0);
+        const mappedIndex = lineMap.indexOf(structuredRevealLine);
+        if (mappedIndex < 0 || mappedIndex >= input.value.split('\n').length) continue;
+        const computedStyle = window.getComputedStyle(input);
+        const computedLineHeight = Number.parseFloat(computedStyle.lineHeight);
+        const lineHeight = Number.isFinite(computedLineHeight) ? computedLineHeight : 20;
+        const scrollRoot = input.closest('[data-beginner-structure-scroll]');
+        const canvasContent = scrollRoot instanceof HTMLElement
+          ? scrollRoot.querySelector(':scope > [data-beginner-canvas-content]')
+          : null;
+        if (!(canvasContent instanceof HTMLElement)) break;
+        const contentRect = canvasContent.getBoundingClientRect();
+        const inputRect = input.getBoundingClientRect();
+        const paddingTop = Number.parseFloat(computedStyle.paddingTop) || 0;
+        const paddingLeft = Number.parseFloat(computedStyle.paddingLeft) || 0;
+        const paddingRight = Number.parseFloat(computedStyle.paddingRight) || 0;
+        input.scrollTop = Math.max(0, mappedIndex * lineHeight - input.clientHeight / 2 + lineHeight);
+        const lineNumberColumn = input.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-line-numbers]');
+        if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = input.scrollTop;
+        setBeginnerFindCodeHighlight({
+          top: inputRect.top - contentRect.top + paddingTop + mappedIndex * lineHeight - input.scrollTop,
+          left: inputRect.left - contentRect.left + paddingLeft,
+          width: Math.max(inputRect.width - paddingLeft - paddingRight, 40),
+          height: lineHeight
+        });
+        window.setTimeout(() => {
+          setBeginnerFindCodeHighlight(null);
+        }, 2000);
+        break;
+      }
+      setStructuredRevealLine(null);
     };
     const timer = window.setTimeout(run, 60);
     return () => {
@@ -3200,8 +3476,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
     if (activeFile?.language === 'lingcpp') {
       const normalizedHandlerName = normalizeIdentifier(focusHandlerName);
-      const target = lingCppLanguageContext?.program.classes.flatMap(cls =>
-        cls.methods.map(method => ({ className: cls.name, method }))
+      // 功能库文件解析不出 classes（只有 functionLibraries）：跳转落点把功能库方法
+      // 一并纳入候选，类在前保持同名时的既有优先级；展开键按 method.kind 分支，
+      // 否则跨文件跳到功能库后只能靠 structuredReadingRows 兜底（不选中、不展开）。
+      const candidateOwners = [
+        ...(lingCppLanguageContext?.program.classes || []).map(cls => ({ className: cls.name, methods: cls.methods })),
+        ...(lingCppLanguageContext?.program.functionLibraries || []).map(library => ({ className: library.name, methods: library.methods }))
+      ];
+      const target = candidateOwners.flatMap(owner =>
+        owner.methods.map(method => ({ className: owner.className, method }))
       ).find(item => {
         const methodName = normalizeIdentifier(item.method.name);
         const classPrefixedName = normalizeIdentifier(`${item.className}_${item.method.name}`);
@@ -3210,9 +3493,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
       if (target) {
         onExperienceModeChange?.('beginner');
-        setSelectedBeginnerHandler(target.method.name);
         setSelectedBeginnerCodeTarget({ className: target.className, methodName: target.method.name });
-        setExpandedBeginnerEventTargetKey(`${target.className}:${target.method.kind}:${target.method.name}`);
+        const definitionKey = `${target.className}:${target.method.kind}:${target.method.name}`;
+        if (target.method.kind === 'event') {
+          setSelectedBeginnerHandler(target.method.name);
+          setExpandedBeginnerEventTargetKey(definitionKey);
+        } else if (target.method.kind === 'method') {
+          setExpandedBeginnerFunctionTargetKey(definitionKey);
+        }
         setCursorPosition({ line: target.method.line, column: 1 });
         setStructuredRevealLine(target.method.line);
         setPendingHandlerFocus(null);
@@ -3664,6 +3952,310 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     }));
   };
 
+  // ===== 新手画布内查找（Ctrl+F）：打开/关闭、导航与定位 =====
+
+  const openBeginnerFind = () => {
+    setBeginnerFindOpen(true);
+    // 已打开时再次 Ctrl+F 把焦点拉回输入框并全选，便于直接换词。
+    window.setTimeout(() => {
+      const input = beginnerFindInputRef.current;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 0);
+  };
+
+  const closeBeginnerFind = () => {
+    setBeginnerFindOpen(false);
+    setBeginnerFindActiveIndex(0);
+    setBeginnerFindCodeHighlight(null);
+    beginnerFindInputRef.current?.blur();
+    const lastCodeTargetKey = beginnerFindLastCodeTargetKeyRef.current;
+    if (lastCodeTargetKey) {
+      // Esc 后把焦点交还代码编辑框（选区已停在最后命中处）；推迟到按键派发结束，
+      // 避免 Chromium 把按键默认动作应用到新聚焦元素。
+      window.setTimeout(() => {
+        const input = collectBeginnerFindTextareas(lastCodeTargetKey)[0];
+        if (input instanceof HTMLTextAreaElement) input.focus();
+      }, 0);
+    }
+  };
+
+  /** 代码块行号列的闪高亮：与 flashBeginnerJumpLine 同一状态，画布渲染层直接消费。 */
+  const flashBeginnerFindJumpLine = (targetKey: string, line: number, label: string) => {
+    if (beginnerJumpHighlightTimerRef.current !== null) {
+      window.clearTimeout(beginnerJumpHighlightTimerRef.current);
+    }
+    setBeginnerJumpHighlight({ targetKey, line, label });
+    beginnerJumpHighlightTimerRef.current = window.setTimeout(() => {
+      setBeginnerJumpHighlight(current =>
+        current?.targetKey === targetKey && current.line === line ? null : current
+      );
+      beginnerJumpHighlightTimerRef.current = null;
+    }, 1200);
+  };
+
+  /** 结构行（声明表/方法头等）的行闪：数据锚点是 data-structured-line，等画布把行滚入视口后染色。 */
+  const flashBeginnerFindRow = (line: number) => {
+    let attempts = 0;
+    const run = () => {
+      const row = document.querySelector<HTMLElement>(`[data-structured-line="${line}"]`);
+      if (row instanceof HTMLElement) {
+        row.style.backgroundColor = 'rgba(245, 158, 11, 0.28)';
+        window.setTimeout(() => {
+          row.style.removeProperty('background-color');
+        }, 1200);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 10) window.setTimeout(run, 80);
+    };
+    run();
+  };
+
+  /** 代码块命中：滚入所在块 → 光标压在匹配文本上并选中（不抢焦点）→ 行闪 + 内容层高亮框。 */
+  const revealBeginnerFindCodeMatch = (match: BeginnerFindMatch) => {
+    const placeCaret = (input: HTMLTextAreaElement) => {
+      const lines = input.value.split('\n');
+      // 分段/连续视图的 textarea 只承载方法体的一段：优先按该节点自己的
+      // data-source-line-map 把源码行换算成局部行号；映射表没有该行时取最近邻
+      // 映射行按行距推算，仍不行再退回整块行号。
+      let line = 0;
+      const lineMap = (input.dataset.sourceLineMap || '')
+        .split(',')
+        .map(value => Number(value))
+        .filter(value => Number.isInteger(value) && value > 0);
+      if (match.sourceLine > 0 && lineMap.length === lines.length) {
+        const mappedIndex = lineMap.indexOf(match.sourceLine);
+        if (mappedIndex >= 0) {
+          line = mappedIndex + 1;
+        } else {
+          let nearestIndex = -1;
+          let nearestDistance = Number.POSITIVE_INFINITY;
+          lineMap.forEach((value, index) => {
+            const distance = Math.abs(value - match.sourceLine);
+            if (distance < nearestDistance) {
+              nearestDistance = distance;
+              nearestIndex = index;
+            }
+          });
+          if (nearestIndex >= 0) {
+            line = Math.max(1, Math.min(
+              nearestIndex + 1 + (match.sourceLine - lineMap[nearestIndex]),
+              lines.length
+            ));
+          }
+        }
+      }
+      if (line === 0) line = Math.max(1, Math.min(match.line, lines.length));
+      const displayLine = lines[line - 1] || '';
+      // 搜索语料行与显示行可能相差缩进或声明行裁剪：按命中文本重新对齐列。
+      let column = match.column;
+      if (match.lineText && displayLine !== match.lineText) {
+        if (displayLine.endsWith(match.lineText)) {
+          column += displayLine.length - match.lineText.length;
+        } else if (displayLine.includes(match.lineText)) {
+          let searchFrom = 0;
+          let bestIndex = -1;
+          for (;;) {
+            const found = displayLine.indexOf(match.lineText, searchFrom);
+            if (found < 0) break;
+            if (bestIndex < 0 || Math.abs(found + 1 - match.column) < Math.abs(bestIndex + 1 - match.column)) {
+              bestIndex = found;
+            }
+            searchFrom = found + 1;
+          }
+          if (bestIndex >= 0) column = bestIndex + 1;
+        }
+      }
+      const start = getBeginnerLineOffset(lines, line);
+      const safeColumn = Math.max(1, Math.min(column, displayLine.length + 1));
+      const caret = start + safeColumn - 1;
+      const selectionEnd = Math.min(start + displayLine.length, caret + Math.max(1, match.length));
+      const computedStyle = window.getComputedStyle(input);
+      const computedLineHeight = Number.parseFloat(computedStyle.lineHeight);
+      const lineHeight = Number.isFinite(computedLineHeight) ? computedLineHeight : 20;
+      const nextScrollTop = Math.max(0, (line - 1) * lineHeight - input.clientHeight / 2 + lineHeight);
+      // 不抢焦点：查找框保持输入焦点，代码编辑框只更新选区与滚动位置，回车可以继续导航。
+      input.scrollTop = nextScrollTop;
+      const editorRoot = input.closest('[data-beginner-editor-root]');
+      const lineNumberColumn = editorRoot?.querySelector('[data-beginner-line-numbers]');
+      const flowGuideColumn = editorRoot?.querySelector('[data-beginner-flow-guide]');
+      if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = nextScrollTop;
+      if (flowGuideColumn instanceof HTMLElement) flowGuideColumn.scrollTop = nextScrollTop;
+      input.setSelectionRange(caret, selectionEnd);
+      flashBeginnerFindJumpLine(match.targetKey, line, '查找');
+      // 在画布内容层画当前命中的整行色带（未聚焦的 textarea 选区不可见）。
+      // 只做垂直定位（行号 × 行高），不做逐字符横向测量——textarea 与 canvas 的
+      // 字形推进存在亚像素差，会导致高亮框肉眼可见的偏移；整行色带无此问题。
+      const scrollRoot = input.closest('[data-beginner-structure-scroll]');
+      const canvasContent = scrollRoot instanceof HTMLElement
+        ? scrollRoot.querySelector(':scope > [data-beginner-canvas-content]')
+        : null;
+      if (!(canvasContent instanceof HTMLElement)) {
+        setBeginnerFindCodeHighlight(null);
+        return;
+      }
+      const contentRect = canvasContent.getBoundingClientRect();
+      const inputRect = input.getBoundingClientRect();
+      const paddingTop = Number.parseFloat(computedStyle.paddingTop) || 0;
+      const paddingLeft = Number.parseFloat(computedStyle.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(computedStyle.paddingRight) || 0;
+      setBeginnerFindCodeHighlight({
+        top: inputRect.top - contentRect.top + paddingTop + (line - 1) * lineHeight - input.scrollTop,
+        left: inputRect.left - contentRect.left + paddingLeft,
+        width: Math.max(inputRect.width - paddingLeft - paddingRight, 40),
+        height: lineHeight
+      });
+      beginnerFindLastCodeTargetKeyRef.current = match.targetKey;
+    };
+    // 画布窗口化时目标块可能尚未挂载：先滚块入视口，再小步重试等 textarea 出现。
+    if (match.sourceLine > 0) beginnerCanvasHandleRef.current?.scrollToSourceLine(match.sourceLine);
+    // 整个落点推迟到 keydown 派发完全结束后：Chromium 会在派发期间跟随焦点变化
+    // 应用按键默认动作，同步处理会让查找框里的回车误伤代码编辑框。
+    let attempts = 0;
+    const run = (retryScroll: boolean) => {
+      if (!beginnerFindOpenRef.current) return;
+      const inputs = collectBeginnerFindTextareas(match.targetKey);
+      const input = pickBeginnerFindTextareaForLine(inputs, match.sourceLine);
+      if (input) {
+        placeCaret(input);
+        return;
+      }
+      if (retryScroll && match.sourceLine > 0) {
+        beginnerCanvasHandleRef.current?.scrollToSourceLine(match.sourceLine);
+      }
+      attempts += 1;
+      if (attempts < 8) window.setTimeout(() => run(false), 60);
+      else if (match.sourceLine > 0) revealLingCppLine(match.sourceLine);
+    };
+    window.setTimeout(() => run(true), 0);
+  };
+
+  const revealBeginnerFindMatch = (match: BeginnerFindMatch | undefined) => {
+    if (!match) return;
+    if (match.kind === 'code' && match.targetKey) {
+      revealBeginnerFindCodeMatch(match);
+      return;
+    }
+    setBeginnerFindCodeHighlight(null);
+    if (match.sourceLine > 0) {
+      revealLingCppLine(match.sourceLine);
+      flashBeginnerFindRow(match.sourceLine);
+    }
+  };
+
+  const scheduleBeginnerFindReveal = (index: number) => {
+    if (beginnerFindRevealTimerRef.current !== null) {
+      window.clearTimeout(beginnerFindRevealTimerRef.current);
+    }
+    beginnerFindRevealTimerRef.current = window.setTimeout(() => {
+      beginnerFindRevealTimerRef.current = null;
+      revealBeginnerFindMatch(beginnerFindMatchesRef.current[index]);
+    }, 140);
+  };
+
+  const scheduleBeginnerFindCrossCompute = () => {
+    if (beginnerFindScope === 'file') return;
+    if (beginnerFindCrossTimerRef.current !== null) {
+      window.clearTimeout(beginnerFindCrossTimerRef.current);
+    }
+    setBeginnerFindCrossSummary({ matches: 0, files: 0, truncated: false, searching: true });
+    beginnerFindCrossTimerRef.current = window.setTimeout(() => {
+      beginnerFindCrossTimerRef.current = null;
+      computeBeginnerFindCross();
+    }, 450);
+  };
+
+  /** 查找全部：当前文件 → 画布内命中列表；项目/解决方案 → 跨文件搜索并送底部结果面板。 */
+  const handleBeginnerFindAll = () => {
+    const query = beginnerFindQuery;
+    if (!query) return;
+    if (beginnerFindScope === 'file') {
+      const filePath = activeFile?.path || '';
+      const fileName = activeFile?.name || filePath;
+      const entries = beginnerFindMatchesRef.current.map(match => ({
+        filePath,
+        fileName,
+        line: match.kind === 'source' ? match.line : (match.sourceLine || match.line),
+        column: match.column,
+        length: match.length,
+        lineText: match.lineText
+      }));
+      const detail: FindResultsData = { query, scope: 'file', results: entries, truncated: false };
+      window.dispatchEvent(new CustomEvent<FindResultsData>(LINGCPP_FIND_RESULTS_EVENT, { detail }));
+      return;
+    }
+    if (beginnerFindCrossTimerRef.current !== null) {
+      window.clearTimeout(beginnerFindCrossTimerRef.current);
+      beginnerFindCrossTimerRef.current = null;
+    }
+    computeBeginnerFindCross();
+    const outcome = collectBeginnerFindFileResults({
+      files: beginnerFindCrossFiles,
+      query,
+      matchCase: beginnerFindMatchCase
+    });
+    setBeginnerFindCrossSummary({
+      matches: outcome.results.length,
+      files: outcome.fileCount,
+      truncated: outcome.truncated,
+      searching: false
+    });
+    const detail: FindResultsData = {
+      query,
+      scope: beginnerFindScope,
+      results: outcome.results,
+      truncated: outcome.truncated
+    };
+    window.dispatchEvent(new CustomEvent<FindResultsData>(LINGCPP_FIND_RESULTS_EVENT, { detail }));
+  };
+
+  const handleBeginnerFindScopeChange = (scope: BeginnerFindScope) => {
+    setBeginnerFindScope(scope);
+    setBeginnerFindCrossSummary(null);
+    if (scope !== 'file') {
+      setBeginnerFindCodeHighlight(null);
+      scheduleBeginnerFindCrossCompute();
+    } else {
+      scheduleBeginnerFindReveal(0);
+    }
+  };
+
+  const handleBeginnerFindQueryChange = (value: string) => {
+    setBeginnerFindQuery(value);
+    setBeginnerFindActiveIndex(0);
+    setBeginnerFindCodeHighlight(null);
+    if (beginnerFindScope === 'file') {
+      scheduleBeginnerFindReveal(0);
+    } else {
+      scheduleBeginnerFindCrossCompute();
+    }
+  };
+
+  const handleBeginnerFindToggleMatchCase = () => {
+    setBeginnerFindMatchCase(current => !current);
+    setBeginnerFindActiveIndex(0);
+    setBeginnerFindCodeHighlight(null);
+    if (beginnerFindScope === 'file') {
+      scheduleBeginnerFindReveal(0);
+    } else {
+      scheduleBeginnerFindCrossCompute();
+    }
+  };
+
+  const navigateBeginnerFind = (direction: 'next' | 'previous') => {
+    const matches = beginnerFindMatchesRef.current;
+    if (matches.length === 0) return;
+    const currentIndex = Math.min(Math.max(beginnerFindActiveIndex, 0), matches.length - 1);
+    const nextIndex = direction === 'next'
+      ? (currentIndex + 1) % matches.length
+      : (currentIndex - 1 + matches.length) % matches.length;
+    setBeginnerFindActiveIndex(nextIndex);
+    revealBeginnerFindMatch(matches[nextIndex]);
+  };
+
   const revealReadableBlock = (block: LingCppReadableBlock) => {
     setFocusedReadableBlockId(block.id);
     if (block.handlerName) setSelectedBeginnerHandler(block.handlerName);
@@ -4065,6 +4657,42 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const booleanCellValue = (checked?: boolean) => checked ? '真' : '假';
   const parseBooleanCellValue = (value: string) => /^(真|是|1|true|yes)$/i.test(value.trim());
 
+  type MemberStructureField =
+    | 'member-name'
+    | 'member-type'
+    | 'member-initial'
+    | 'member-static'
+    | 'member-array'
+    | 'member-note';
+
+  // 程序集变量行统一走这一处 update-member 组装：紧凑表、阅读表和回车追加共用，
+  // 类型变化时初始值自动适配新类型（对齐局部声明表方案A），显式改初始值时尊重输入。
+  const createMemberUpdateEdit = (
+    row: LingCppStructuredReadingRow,
+    field: MemberStructureField,
+    nextValue: string
+  ): LingCppAstEdit => {
+    const memberName = row.targetName || row.name;
+    const adaptedInitialValue = field === 'member-type'
+      ? adaptBeginnerInitialValueForType({ previousType: row.type || '', nextType: nextValue })
+      : undefined;
+    return {
+      kind: 'update-member',
+      className: row.className,
+      memberName,
+      newName: field === 'member-name' ? nextValue : memberName,
+      type: field === 'member-type' ? nextValue : row.type || '对象',
+      initialValue: field === 'member-initial'
+        ? (nextValue || undefined)
+        : field === 'member-type'
+          ? (adaptedInitialValue === undefined ? row.initialValue || undefined : (adaptedInitialValue || undefined))
+          : row.initialValue || undefined,
+      isStatic: field === 'member-static' ? parseBooleanCellValue(nextValue) : row.isStatic,
+      isArray: field === 'member-array' ? parseBooleanCellValue(nextValue) : row.isArray,
+      note: field === 'member-note' ? nextValue : undefined
+    };
+  };
+
   const commitDirectStructureValue = (
     row: LingCppStructuredReadingRow,
     field: DirectStructureField,
@@ -4118,17 +4746,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               baseClass: field === 'class-base' ? nextValue || undefined : row.value || undefined
             }
           : row.editKind === 'member'
-            ? {
-                kind: 'update-member',
-                className: row.className,
-                memberName: row.targetName || row.name,
-                newName: field === 'member-name' ? nextValue : row.targetName || row.name,
-                type: field === 'member-type' ? nextValue : row.type || '对象',
-                initialValue: field === 'member-initial' ? nextValue || undefined : row.initialValue || undefined,
-                isStatic: field === 'member-static' ? parseBooleanCellValue(nextValue) : row.isStatic,
-                isArray: field === 'member-array' ? parseBooleanCellValue(nextValue) : row.isArray,
-                note: field === 'member-note' ? nextValue : undefined
-              }
+            ? createMemberUpdateEdit(row, field as MemberStructureField, nextValue)
             : row.editKind === 'method'
               ? {
                   kind: 'update-method-signature',
@@ -4224,38 +4842,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const resetNewMemberDraft = () => {
     setNewMemberDraft({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
     setStructureEditError(null);
-  };
-
-  const commitNewMemberDraft = () => {
-    const draft = newMemberDraft;
-    const name = draft.name.trim();
-    const type = draft.type.trim();
-    if (!name) {
-      setStructureEditError('新增成员需要填写名称。');
-      return;
-    }
-    if (!type) {
-      setStructureEditError('新增成员需要填写类型。');
-      return;
-    }
-    if (!primaryLingCppClass) {
-      setStructureEditError('当前源码里还没有类，无法新增成员。');
-      return;
-    }
-
-    const applied = applyStructureAstEdits([{
-      kind: 'add-member',
-      className: primaryLingCppClass.name,
-      member: {
-        name,
-        type,
-        initialValue: draft.initialValue.trim() || undefined,
-        isStatic: draft.isStatic,
-        isArray: draft.isArray,
-        note: draft.note.trim() || undefined
-      }
-    }]);
-    if (applied) resetNewMemberDraft();
   };
 
   const resetNewEventDraft = () => {
@@ -5058,7 +5644,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const typeCompletion = beginnerTypeCompletionState?.inputKey === inputKey
         ? beginnerTypeCompletionState
         : null;
-      if (!typeCompletion) return null;
+      // 兜底：任何路径都不允许渲染出「只有表头的空弹窗」（用户实测出现过，
+      // 观感就是“没有补全”）；零选项时与 state 为 null 同等处理。
+      if (!typeCompletion || typeCompletion.items.length === 0) return null;
       return (
         <div className={`absolute left-0 z-[90] w-64 max-w-[calc(100vw_-_24px)] overflow-hidden rounded border text-[11px] shadow-xl ${
           typeCompletion.placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
@@ -5102,16 +5690,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         </div>
       );
     };
-    const defaultCodeArgument = (parameter: LingCppParameter) => {
-      const defaultValue = parameter.defaultValue?.trim();
-      if (defaultValue) return defaultValue;
-      if (/文本/u.test(parameter.type)) return '"文本"';
-      if (/逻辑/u.test(parameter.type)) return '真';
-      if (/小数|双精度/u.test(parameter.type)) return '0.0';
-      if (/整数|长整数/u.test(parameter.type)) return '0';
-      return parameter.name || parameter.type || '参数';
-    };
-    // 目录输入指纹：模块清单/常量/项目全局/程序集成员/子程序签名（含局部变量名与类型）/类型表/设计器窗口。
+    // 目录输入指纹：模块清单/常量/项目全局/程序集成员/子程序签名（含局部变量名与类型）/类型表/设计器窗口/跨文件功能库。
     // 输入未变时（连续输入、光标同步、补全状态变化）直接复用缓存目录，不重建数千条的 Map。
     const completionCatalogFingerprint = [
       beginnerModuleCodeCompletions.length,
@@ -5122,6 +5701,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       (projectGlobals?.globals || []).map(global => `${global.name}:${global.type}`).join(','),
       memberRows.map(row => `${row.targetName || row.name}:${row.type || ''}`).join(','),
       codeTargets.map(target => `${target.className}.${target.method.kind}.${target.method.name}(${target.method.parameters.map(parameter => parameter.type).join('/')})=${target.method.returnType || '空'}:locals=${(target.method.locals || []).map(local => `${local.name}:${local.type}`).join('/')}`).join(','),
+      (lingCppLanguageContext?.projectFunctions?.libraries || []).map(library => `${library.name}@${library.filePath}:${library.methods.map(method => `${method.name}/${method.access}/${method.returnType || ''}/${method.parameters.map(parameter => parameter.type).join('+')}`).join('|')}`).join(','),
       typeSuggestions.join(','),
       (designerProject?.windows || []).map(window => `${window.className || ''}|${window.title || ''}|${window.fileName || ''}`).join(',')
     ].join('\u0002');
@@ -5176,7 +5756,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   .map(target => ({
                     label: functionCallName(target),
                     detail: `${target.method.returnType || '空'} 子程序调用`,
-                    insertText: `${functionCallName(target)}(${target.method.parameters.map(defaultCodeArgument).join(', ')})`,
+                    insertText: `${functionCallName(target)}(${target.method.parameters.map(getBeginnerDefaultArgument).join(', ')})`,
                     aliases: Array.from(new Set([
                       target.method.name,
                       '子程序', '功能', '调用',
@@ -5185,6 +5765,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     ])),
                     kind: '子程序' as BeginnerCodeCompletion['kind']
                   })),
+                // 独立功能代码文件（功能库）的公开功能：`库名.功能名` 限定名形态。
+                // token 含 `.`（token 字符集包含点号）时按 label 前缀命中；手打裸名时经别名（含功能名）包含命中。
+                // 当前文件自己的功能库由上面 codeTargets 提供（含私有功能），这里按库名排除避免重复。
+                ...createBeginnerLibraryFunctionCompletions(
+                  lingCppLanguageContext?.projectFunctions?.libraries,
+                  (lingCppLanguageContext?.program.functionLibraries || []).map(library => library.name)
+                ),
                 ...typeSuggestions.map(type => ({
                   label: type,
                   detail: '类型名称',
@@ -5540,6 +6127,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           current?.targetKey === targetKey && current.line === line ? null : current
         );
         beginnerJumpHighlightTimerRef.current = null;
+      }, 1200);
+    };
+    const flashBeginnerLocalRow = (targetKey: string, line: number) => {
+      if (beginnerLocalJumpTimerRef.current !== null) {
+        window.clearTimeout(beginnerLocalJumpTimerRef.current);
+      }
+      setBeginnerLocalJumpHighlight({ targetKey, line });
+      beginnerLocalJumpTimerRef.current = window.setTimeout(() => {
+        setBeginnerLocalJumpHighlight(current =>
+          current?.targetKey === targetKey && current.line === line ? null : current
+        );
+        beginnerLocalJumpTimerRef.current = null;
       }, 1200);
     };
     const moveBeginnerEditorCaretToLine = (
@@ -6047,6 +6646,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           closeBeginnerCompletion(target);
           return;
         }
+      }
+
+      // 双击同名高亮的 Esc 清除：补全面板/自动局部类型面板开着时走上面的分支先关面板。
+      // 用 updater 形式读当前值：textarea 位于按 revision 记忆化的块内，渲染闭包可能陈旧。
+      if (event.key === 'Escape') {
+        setBeginnerOccurrenceHighlight(current =>
+          current && current.targetKey === targetKey ? null : current
+        );
       }
 
       if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
@@ -6830,12 +7437,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const globalFile = allFiles.find(file => isProjectGlobalsFilePath(String(file.path || file.name || '')));
       if (!globalFile) return false;
       setPendingProjectConstantFocus(constantName);
-      onSelectTab(globalFile);
+      if (globalFile.path !== activeFile?.path) onSelectTab(globalFile);
+      closeBeginnerCompletion();
+      return true;
+    };
+    // 跳转到项目全局变量声明：切到「项目全局变量.lcpp」页签，由 focusVariableName 定位并行闪该行。
+    const revealProjectGlobalDefinition = (globalName: string) => {
+      const globalFile = allFiles.find(file => isProjectGlobalsFilePath(String(file.path || file.name || '')));
+      if (!globalFile) return false;
+      setPendingProjectGlobalFocus(globalName);
+      if (globalFile.path !== activeFile?.path) onSelectTab(globalFile);
       closeBeginnerCompletion();
       return true;
     };
     // 双击选中完整标识符（变量名/命令名）：中文没有空格分词，浏览器原生双击
     // 按词典只选中一段（缓冲区句柄 → 缓冲区），这里按标识符边界整段选中。
+    // 命中局部变量/参数时同时点亮「同名出现位置高亮」（对齐火山：双击窗口信息后
+    // 声明与所有引用同步变色），普通单击或 Esc 清除。
     const handleBeginnerCodeDoubleClick = (
       target: BeginnerCodeTarget,
       event: React.MouseEvent<HTMLTextAreaElement>
@@ -6846,7 +7464,38 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const span = getBeginnerIdentifierSpanAtOffset(input.value, offset);
       if (!span || span.end <= span.start) return;
       input.setSelectionRange(span.start, span.end);
+      const targetKey = codeTargetKey(target);
+      const name = input.value.slice(span.start, span.end);
+      const declarations = getBeginnerLocalDeclarationHints(target);
+      const isLocalName = getBeginnerLocalReferenceAtCursor(input.value, span.start, declarations)?.name === name;
+      setBeginnerOccurrenceHighlight(isLocalName ? { targetKey, name } : null);
       scheduleBeginnerPointerSync(target, input);
+    };
+    const getBeginnerLocalDeclarationHints = (target: BeginnerCodeTarget) => [
+      ...(target.method.parameters || []).map(parameter => ({
+        name: parameter.name,
+        line: target.method.line,
+        kind: 'parameter' as const
+      })),
+      ...(target.method.locals || []).map(local => ({
+        name: local.name,
+        line: local.line,
+        kind: (local.isConstant ? 'constant' : 'local') as 'constant' | 'local'
+      }))
+    ];
+    const getBeginnerLocalReferenceFromInput = (
+      input: HTMLTextAreaElement,
+      cursor: number,
+      target: BeginnerCodeTarget
+    ) => getBeginnerLocalReferenceAtCursor(input.value, cursor, getBeginnerLocalDeclarationHints(target));
+    // 跳转到局部变量/参数声明：滚动到声明表具体行（每行都挂了 data-structured-line 锚点）
+    // 并短暂高亮该行——此前只锚定声明表首行，段数及之后的变量跳转一律静默失效。
+    const revealBeginnerLocalDefinition = (target: BeginnerCodeTarget, declarationLine: number) => {
+      const targetKey = codeTargetKey(target);
+      closeBeginnerCompletion();
+      setStructuredRevealLine(declarationLine);
+      flashBeginnerLocalRow(targetKey, declarationLine);
+      return true;
     };
     const handleBeginnerCodeClick = (
       target: BeginnerCodeTarget,
@@ -6856,6 +7505,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         // 普通点击会移动光标：补全面板对应的 token 随即失效，直接关闭，
         // 避免面板残留后在错误位置上屏（曾致「粘贴后点括号右侧按回车」在括号外重复变量名）。
         closeBeginnerCompletion(target);
+        setBeginnerOccurrenceHighlight(current =>
+          current && current.targetKey === codeTargetKey(target) ? null : current
+        );
         scheduleBeginnerPointerSync(target, event.currentTarget);
         return;
       }
@@ -6875,30 +7527,104 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
       const call = getProcedureCallFromInput(event.currentTarget, cursor);
       const libraryCall = getLibraryCallFromInput(event.currentTarget, cursor);
-      const sourceDefinition = getLingCppSourceDefinitionAtPosition(
-        normalizedSourceCode,
-        sourcePosition.line,
-        sourcePosition.column
-      );
+      const localReference = getBeginnerLocalReferenceFromInput(event.currentTarget, cursor, target);
       const constantName = getProjectConstantNameAtCursor(
         event.currentTarget.value,
         cursor,
         projectGlobals?.constants.map(constant => constant.name) || []
       );
+      const globalVariableName = getProjectGlobalNameAtCursor(
+        event.currentTarget.value,
+        cursor,
+        projectGlobals?.globals.map(global => global.name) || []
+      );
+      // 「库名.功能名(」限定调用必须先于普通子程序调用判定：功能库方法也在 codeTargets 里，
+      // 点功能名段会先被普通匹配器命中，但子程序解析只认 program.classes，
+      // 先判子程序会让库文件内部的限定调用静默失效（无回退）。
       const revealed = controlReference?.symbol
         ? (revealControlReference(controlReference), true)
-        : sourceDefinition && (sourceDefinition.kind === 'local' || sourceDefinition.kind === 'parameter')
-          ? (setCursorPosition({ line: sourceDefinition.range.startLine, column: sourceDefinition.range.startColumn }), setStructuredRevealLine(sourceDefinition.range.startLine), true)
-        : call
-          ? revealBeginnerProcedureDefinition(target.className, call.name)
+        : localReference
+          ? revealBeginnerLocalDefinition(target, localReference.line)
         : libraryCall
           ? revealFunctionLibraryDefinition(libraryCall.libraryName, libraryCall.functionName)
+        : call
+          ? revealBeginnerProcedureDefinition(target.className, call.name)
         : constantName
           ? revealProjectConstantDefinition(constantName)
+        : globalVariableName
+          ? revealProjectGlobalDefinition(globalVariableName)
           : false;
       if (!revealed) return;
       event.preventDefault();
       event.stopPropagation();
+    };
+    // 方案B：Ctrl 悬停命中测试——与 Ctrl+单击同一套识别器、同一优先级，命中才画下划线。
+    // 控件引用解析最重，放最后兜底；仅在 Ctrl 按住时被 mousemove 调用。
+    const resolveBeginnerCtrlHoverSpan = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      clientX: number,
+      clientY: number
+    ): { start: number; end: number } | null => {
+      const offset = getBeginnerTextareaOffsetAtPoint(input, clientX, clientY);
+      const identifierSpan = getBeginnerIdentifierSpanAtOffset(input.value, offset);
+      if (!identifierSpan || identifierSpan.end <= identifierSpan.start) return null;
+      const libraryCall = getLibraryCallFromInput(input, offset);
+      if (libraryCall) {
+        // 识别器区间含结尾的调用括号，下划线只画到「库名.功能名」为止。
+        let callTextEnd = libraryCall.end;
+        while (callTextEnd > libraryCall.start && /[（(\s]/u.test(input.value[callTextEnd - 1])) callTextEnd -= 1;
+        return { start: libraryCall.start, end: callTextEnd };
+      }
+      if (getBeginnerLocalReferenceFromInput(input, offset, target)) return identifierSpan;
+      if (getProcedureCallFromInput(input, offset)) return identifierSpan;
+      const identifier = input.value.slice(identifierSpan.start, identifierSpan.end);
+      if (projectGlobals?.constants.some(constant => constant.name === identifier)) return identifierSpan;
+      if (projectGlobals?.globals.some(global => global.name === identifier)) return identifierSpan;
+      const sourcePosition = beginnerSourcePositionAtOffset(input, identifierSpan.start);
+      if (sourcePosition) {
+        const controlReference = getLingCppControlReferenceAtPosition(
+          normalizedSourceCode,
+          sourcePosition.line,
+          sourcePosition.column,
+          designerProject,
+          moduleContext,
+          activeFile?.path
+        );
+        if (controlReference?.symbol) return identifierSpan;
+      }
+      return null;
+    };
+    const updateBeginnerCtrlHoverSpan = (
+      hoverTargetKey: string,
+      hoverSegmentId: string,
+      hoverTarget: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      clientX: number,
+      clientY: number
+    ) => {
+      if (!beginnerCtrlNavActiveRef.current) {
+        setBeginnerCtrlHoverSpan(current =>
+          current?.targetKey === hoverTargetKey && current.segmentId === hoverSegmentId ? null : current
+        );
+        return;
+      }
+      const span = resolveBeginnerCtrlHoverSpan(hoverTarget, input, clientX, clientY);
+      setBeginnerCtrlHoverSpan(current => {
+        if (!span) {
+          return current?.targetKey === hoverTargetKey && current.segmentId === hoverSegmentId ? null : current;
+        }
+        if (current?.targetKey === hoverTargetKey && current.segmentId === hoverSegmentId
+          && current.start === span.start && current.end === span.end) {
+          return current;
+        }
+        return { targetKey: hoverTargetKey, segmentId: hoverSegmentId, start: span.start, end: span.end };
+      });
+    };
+    const clearBeginnerCtrlHoverSpan = (hoverTargetKey: string, hoverSegmentId: string) => {
+      setBeginnerCtrlHoverSpan(current =>
+        current?.targetKey === hoverTargetKey && current.segmentId === hoverSegmentId ? null : current
+      );
     };
     const openBeginnerContextMenu = (
       event: React.MouseEvent,
@@ -6934,6 +7660,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             activeFile?.path
           )
         : undefined;
+      const localReference = effectiveTarget && input && contextCursor !== undefined
+        ? getBeginnerLocalReferenceFromInput(input, contextCursor, effectiveTarget)
+        : null;
+      const globalVariableName = input && contextCursor !== undefined
+        ? getProjectGlobalNameAtCursor(input.value, contextCursor, projectGlobals?.globals.map(global => global.name) || [])
+        : undefined;
       if (effectiveTarget) {
         setSelectedBeginnerCodeTarget({ className: effectiveTarget.className, methodName: effectiveTarget.method.name });
         if (effectiveTarget.method.kind === 'event') setSelectedBeginnerHandler(effectiveTarget.method.name);
@@ -6943,9 +7675,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         y: event.clientY,
         className: effectiveTarget?.className,
         methodName: effectiveTarget?.method.name,
-        definitionName: procedureCall?.name,
+        // definitionName 与 libraryCall 互斥记录：「转到定义」点击处理里 definitionName 优先
+        // 且直接 return，二者同记时库限定调用永远轮不到库跳转（与 Ctrl+单击同一根因）。
+        definitionName: libraryCall ? undefined : procedureCall?.name,
         libraryCall: libraryCall ? { libraryName: libraryCall.libraryName, functionName: libraryCall.functionName } : undefined,
-        controlReference
+        controlReference,
+        localReference: localReference
+          ? { name: localReference.name, line: localReference.line, kind: localReference.kind }
+          : undefined,
+        globalVariableName: globalVariableName || undefined
       });
     };
     const parameterExampleText = (parameter: LingCppParameter) =>
@@ -7208,7 +7946,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             className={`${directInputClasses(tone)} w-full whitespace-nowrap`}
             title={field === 'returnType' ? '支持中文、英文、拼音输入，例如 int、string、void' : value}
           />
-          {typeCompletion && (
+          {(typeCompletion && typeCompletion.items.length > 0) && (
             <div className={`absolute left-0 z-[90] w-64 overflow-hidden rounded border text-[11px] shadow-xl ${
               typeCompletion.placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
             } ${
@@ -7709,7 +8447,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   captureBeginnerTextareaView(event.currentTarget);
                 }}
                 onWheel={handleEditorFontWheel}
-                title="Ctrl+单击局部控件变量、项目子程序调用或 &处理器名可转到定义"
+                title="Ctrl+单击局部变量、参数、项目变量、局部控件引用、子程序调用或 &处理器名可转到定义；双击变量名高亮全部同名位置"
                 style={editorTextStyle}
                 className={`relative z-10 ${editorHeightClass} w-full resize-y overflow-x-auto overflow-y-hidden whitespace-pre border-0 bg-transparent px-3 py-2 font-mono outline-none ${
                   isDarkMode
@@ -8398,7 +9136,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       ...codeTargets.flatMap(item => (item.method.locals || []).map(local => local.name))
     ].filter(Boolean));
 
-    const renderBeginnerCodeToken = (token: string, kind: LingCppPresentationTokenKind, index: number) => {
+    const renderBeginnerCodeToken = (
+      token: string,
+      kind: LingCppPresentationTokenKind,
+      index: number,
+      isOccurrence = false,
+      isCtrlHoverJumpable = false
+    ) => {
       if (!token) return null;
       const className = {
         string: isDarkMode ? 'text-[#d7c5a1]' : 'text-amber-700',
@@ -8429,7 +9173,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           style={{
             ...BEGINNER_CODE_OVERLAY_TOKEN_STYLE,
             ...(kind === 'control-reference' ? { color: getLingCppControlReferenceTokenColor(isDarkMode), fontWeight: 600 } : {}),
-            ...(kind === 'constant' ? { color: getLingCppConstantTokenColor(isDarkMode) } : {})
+            ...(kind === 'constant' ? { color: getLingCppConstantTokenColor(isDarkMode) } : {}),
+            // 双击高亮只叠底色不改字形度量（outline 不参与布局），否则透明 textarea 的
+            // 光标会与可见文字错位（见 BEGINNER_CODE_OVERLAY_TOKEN_STYLE 的注释）。
+            // Ctrl 悬停的跳转下划线同理：text-decoration 只参与绘制，不动度量。
+            ...(isOccurrence
+              ? {
+                  backgroundColor: isDarkMode ? 'rgba(202,138,4,0.38)' : 'rgba(253,224,71,0.6)',
+                  outline: isDarkMode ? '1px solid rgba(234,179,8,0.35)' : '1px solid rgba(202,138,4,0.3)'
+                }
+              : {}),
+            ...(isCtrlHoverJumpable ? { textDecorationLine: 'underline' as const, textUnderlineOffset: '3px' } : {})
           }}
         >
           {token}
@@ -8437,7 +9191,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
     };
 
-    const renderBeginnerCodeLine = (line: string, target?: BeginnerCodeTarget, isTextBlockLine = false) => {
+    const renderBeginnerCodeLine = (
+      line: string,
+      target?: BeginnerCodeTarget,
+      isTextBlockLine = false,
+      underlineRange: { start: number; end: number } | null = null
+    ) => {
       if (!line) return <span>&nbsp;</span>;
       if (isTextBlockLine) {
         // 多行文本块内容行：整行按字符串着色，不做注释切分与命令 token 化。
@@ -8467,6 +9226,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const leadingSpace = code.match(/^\s*/u)?.[0] || '';
       const body = code.slice(leadingSpace.length);
       const isNativeCpp = body.trimStart().startsWith('@');
+      const occurrenceName = target && beginnerOccurrenceHighlight?.targetKey === codeTargetKey(target)
+        ? beginnerOccurrenceHighlight.name
+        : null;
       const tokens = classifyLingCppPresentationCode(body, {
         isNativeCpp,
         moduleCommands: beginnerModuleCommands,
@@ -8483,7 +9245,25 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       return (
         <>
           <span>{leadingSpace}</span>
-          {tokens.map((token, index) => renderBeginnerCodeToken(token.text, token.kind, index))}
+          {(() => {
+            // token 文本首尾相接等于 body，按累计偏移判断与悬停区间是否相交。
+            let tokenStart = leadingSpace.length;
+            return tokens.map((token, index) => {
+              const tokenEnd = tokenStart + token.text.length;
+              const underlined = underlineRange !== null
+                && tokenStart < underlineRange.end
+                && tokenEnd > underlineRange.start;
+              const node = renderBeginnerCodeToken(
+                token.text,
+                token.kind,
+                index,
+                occurrenceName !== null && token.kind === 'local' && token.text === occurrenceName,
+                underlined
+              );
+              tokenStart = tokenEnd;
+              return node;
+            });
+          })()}
           {comment && (
             <span style={{ color: getLingCppCommentTokenColor(isDarkMode) }}>{comment}</span>
           )}
@@ -8782,6 +9562,260 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
     };
 
+    const focusBeginnerMemberNameInput = (memberName: string) => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        const root = beginnerStructureScrollRef.current;
+        const input = root?.querySelector(
+          `[data-beginner-member-name="${CSS.escape(memberName)}"]`
+        );
+        if (input instanceof HTMLInputElement) {
+          input.focus({ preventScroll: true });
+          input.select();
+        }
+      }));
+    };
+
+    // 对齐局部声明表的追加交互：先提交当前格（含类型适配），再在成员表尾追加一行
+    // （复制当前行类型/静态/数组），自动唯一命名后把焦点落到新行名称格。
+    const appendBeginnerMemberFromTable = (
+      row: LingCppStructuredReadingRow,
+      field: 'member-name' | 'member-type' | 'member-initial' | 'member-note',
+      rawValue: string
+    ) => {
+      if (!onUpdateSourceContent) return false;
+      const value = field === 'member-type' ? resolveBeginnerTypeInput(rawValue.trim()) : rawValue.trim();
+      if ((field === 'member-name' || field === 'member-type') && !value) {
+        setStructureEditError(`程序集变量${field === 'member-name' ? '名称' : '类型'}不能为空。`);
+        return false;
+      }
+
+      const currentValue = field === 'member-name' ? row.targetName || row.name
+        : field === 'member-type' ? row.type || ''
+        : field === 'member-initial' ? row.initialValue || ''
+        : row.note || '';
+      let nextSource = normalizedSourceCode;
+      if (value !== currentValue) {
+        const updated = applyLingCppAstEdit(nextSource, createMemberUpdateEdit(row, field, value));
+        if (!updated.success) {
+          setStructureEditError(updated.error || updated.diagnostics[0]?.message || '程序集变量写回失败。');
+          return false;
+        }
+        nextSource = updated.sourceCode;
+      }
+
+      const className = row.className || primaryLingCppClass?.name || '';
+      const parsed = parseLingCpp(nextSource);
+      const existingNames = parsed.program.classes
+        .find(cls => cls.name === className)?.members.map(member => member.name) || [];
+      const nextName = uniqueBeginnerName('变量', existingNames);
+      const added = applyLingCppAstEdit(nextSource, {
+        kind: 'add-member',
+        className,
+        member: {
+          name: nextName,
+          type: field === 'member-type' ? value : (row.type || '文本型'),
+          isStatic: Boolean(row.isStatic),
+          isArray: Boolean(row.isArray)
+        }
+      });
+      if (!added.success) {
+        setStructureEditError(added.error || added.diagnostics[0]?.message || '新增程序集变量失败。');
+        return false;
+      }
+      updateSourceCode(added.sourceCode);
+      setStructureEditError(null);
+      focusBeginnerMemberNameInput(nextName);
+      return true;
+    };
+
+    // 空表与幽灵行的追加入口：默认 文本型 + 自动唯一名，落点同样是成员表尾。
+    const appendBeginnerMemberRow = () => {
+      if (!onUpdateSourceContent || !primaryLingCppClass) return false;
+      const className = primaryLingCppClass.name;
+      const parsed = parseLingCpp(normalizedSourceCode);
+      const existingNames = parsed.program.classes
+        .find(cls => cls.name === className)?.members.map(member => member.name) || [];
+      const nextName = uniqueBeginnerName('变量', existingNames);
+      const added = applyLingCppAstEdit(normalizedSourceCode, {
+        kind: 'add-member',
+        className,
+        member: { name: nextName, type: '文本型' }
+      });
+      if (!added.success) {
+        setStructureEditError(added.error || added.diagnostics[0]?.message || '新增程序集变量失败。');
+        return false;
+      }
+      updateSourceCode(added.sourceCode);
+      setStructureEditError(null);
+      focusBeginnerMemberNameInput(nextName);
+      return true;
+    };
+
+    const renderMemberRowInput = (
+      row: LingCppStructuredReadingRow,
+      field: 'member-name' | 'member-type' | 'member-note',
+      value: string,
+      placeholder: string,
+      tone: StructureInputTone,
+      isLastRow = false
+    ) => {
+      const inputKey = `member:${row.id}:${field}`;
+      const fieldLabel = field === 'member-name' ? '名称' : field === 'member-type' ? '类型' : '备注';
+      const typeCompletion = field === 'member-type' && beginnerTypeCompletionState?.inputKey === inputKey
+        ? beginnerTypeCompletionState
+        : null;
+      const applyTypeCompletion = (item: BeginnerTypeCompletionItem, input: HTMLInputElement | null) => {
+        if (input) {
+          input.value = item.label;
+          input.dataset.beginnerTypeApplied = 'true';
+        }
+        setBeginnerTypeCompletionState(null);
+        commitDirectStructureValue(row, 'member-type', item.label);
+      };
+
+      return (
+        <div className="relative min-w-0" data-beginner-type-wrap={field === 'member-type' ? inputKey : undefined}>
+          <input
+            key={`${row.id}:${field}:${value}`}
+            data-beginner-member-name={field === 'member-name' ? row.targetName || row.name : undefined}
+            defaultValue={value}
+            placeholder={placeholder}
+            list={field === 'member-name' ? 'beginner-member-name-suggestions' : undefined}
+            aria-label={`程序集变量 ${row.targetName || row.name} ${fieldLabel}`}
+            autoComplete="off"
+            readOnly={!onUpdateSourceContent || !row.editable}
+            onChange={event => {
+              if (field === 'member-type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
+            }}
+            onBlur={event => {
+              if (field === 'member-type') closeBeginnerTypeCompletionLater(inputKey);
+              if (event.currentTarget.dataset.beginnerTypeApplied === 'true') {
+                delete event.currentTarget.dataset.beginnerTypeApplied;
+                return;
+              }
+              const rawValue = event.currentTarget.value.trim();
+              const nextValue = field === 'member-type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
+              if (nextValue === value) return;
+              event.currentTarget.value = nextValue;
+              commitDirectStructureValue(row, field, nextValue);
+            }}
+            onKeyDown={event => {
+              if (field === 'member-type' && typeCompletion) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  moveBeginnerTypeCompletion(inputKey, event.key === 'ArrowDown' ? 1 : -1);
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  const item = typeCompletion.items[typeCompletion.selectedIndex];
+                  if (item) {
+                    event.preventDefault();
+                    applyTypeCompletion(item, event.currentTarget);
+                    event.currentTarget.blur();
+                    return;
+                  }
+                }
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                if (isLastRow && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+                  const rawValue = field === 'member-type'
+                    ? resolveBeginnerTypeInput(event.currentTarget.value.trim())
+                    : event.currentTarget.value.trim();
+                  event.currentTarget.value = rawValue;
+                  appendBeginnerMemberFromTable(row, field, rawValue);
+                  return;
+                }
+                event.currentTarget.blur();
+              }
+              if (event.key === 'Escape') {
+                setBeginnerTypeCompletionState(null);
+                event.currentTarget.value = value;
+                event.currentTarget.blur();
+              }
+            }}
+            className={directInputClasses(tone)}
+            title={field === 'member-type'
+              ? '支持中文、英文和拼音简写，例如 wb、zs、string、int'
+              : '直接输入，回车或离开单元格后写回源码；最后一行按回车追加新变量'}
+          />
+          {field === 'member-type' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
+        </div>
+      );
+    };
+
+    const renderMemberInitialValueCell = (row: LingCppStructuredReadingRow, isLastRow = false) => {
+      const memberName = row.targetName || row.name;
+      return (
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <input
+              key={`${row.id}:member-initial:${row.initialValue || ''}`}
+              defaultValue={row.initialValue || ''}
+              placeholder="可留空"
+              aria-label={`程序集变量 ${memberName} 初始值`}
+              autoComplete="off"
+              readOnly={!onUpdateSourceContent || !row.editable}
+              onBlur={event => {
+                const nextValue = event.currentTarget.value.trim();
+                if (nextValue === (row.initialValue || '')) return;
+                event.currentTarget.value = nextValue;
+                commitDirectStructureValue(row, 'member-initial', nextValue);
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  const nextValue = event.currentTarget.value.trim();
+                  if (isLastRow && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+                    event.currentTarget.value = nextValue;
+                    appendBeginnerMemberFromTable(row, 'member-initial', nextValue);
+                    return;
+                  }
+                  event.currentTarget.blur();
+                }
+                if (event.key === 'Escape') {
+                  event.currentTarget.value = row.initialValue || '';
+                  event.currentTarget.blur();
+                }
+              }}
+              className={directInputClasses('value')}
+              title="直接输入，回车或离开单元格后写回源码；最后一行按回车追加新变量"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation();
+              setBeginnerInitialValueEditor({
+                member: {
+                  className: row.className || primaryLingCppClass?.name || '',
+                  name: memberName,
+                  type: row.type || '',
+                  initialValue: row.initialValue || '',
+                  line: row.line
+                },
+                onSave: value => applyStructureAstEdits([{
+                  kind: 'update-member',
+                  className: row.className,
+                  memberName,
+                  initialValue: value.trim() || undefined
+                }], row.line)
+              });
+            }}
+            aria-label={`打开程序集变量 ${memberName} 的初始值编辑器`}
+            title="打开初始值编辑器"
+            className={`flex h-[var(--beginner-input-height)] w-7 shrink-0 items-center justify-center rounded border transition-colors ${
+              isDarkMode
+                ? 'border-[#3b3c46] text-cyan-300 hover:border-cyan-500/60 hover:bg-cyan-500/10'
+                : 'border-slate-200 text-cyan-700 hover:border-cyan-300 hover:bg-cyan-50'
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      );
+    };
+
     const renderMemberCanvas = (visualLineStart: number) => {
       const rows = memberRows;
       if (rows.length === 0 && !primaryLingCppClass) return null;
@@ -8840,17 +9874,21 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               { label: '类 型', width: 96 },
               { label: '静 态', width: 56 },
               { label: '数 组', width: 56 },
+              { label: '初始值', width: 150 },
               { label: '备 注', width: 140 },
               { label: '操 作', width: 88 }
             ],
             [
-              ...(memberCollapsed ? [] : rows.map(row => (
+              ...(memberCollapsed ? [] : rows.map((row, index) => {
+                const isLastRow = index === rows.length - 1;
+                return (
                 <tr key={`${row.id}:${row.line}`} className={rowChrome(row)}>
-                  <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '变量名', 'variable')}</td>
-                  <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-type', row.type || '', '类型', 'type')}</td>
+                  <td className={compactCellClass}>{renderMemberRowInput(row, 'member-name', row.targetName || row.name, '变量名', 'variable', isLastRow)}</td>
+                  <td className={compactCellClass}>{renderMemberRowInput(row, 'member-type', row.type || '', '类型', 'type', isLastRow)}</td>
                   <td className={compactCellClass}>{renderMemberBooleanSwitch(row, 'member-static', Boolean(row.isStatic), '切换程序集变量静态')}</td>
                   <td className={compactCellClass}>{renderMemberBooleanSwitch(row, 'member-array', Boolean(row.isArray), '切换程序集变量数组')}</td>
-                  <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-note', row.note || '', '备注', 'plain')}</td>
+                  <td className={compactCellClass}>{renderMemberInitialValueCell(row, isLastRow)}</td>
+                  <td className={compactCellClass}>{renderMemberRowInput(row, 'member-note', row.note || '', '备注', 'plain', isLastRow)}</td>
                   <td className={compactCellClass}>
                     <button
                       type="button"
@@ -8868,50 +9906,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     </button>
                   </td>
                 </tr>
-              ))),
+                );
+              })),
               !memberCollapsed && primaryLingCppClass ? (
                 <tr key="new-member" className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
-                  <td className={compactCellClass}>{renderNewMemberInput('name', '输入变量名', 'variable')}</td>
-                  <td className={compactCellClass}>{renderNewMemberInput('type', '类型', 'type')}</td>
-                  <td className={compactEmptyCellClass}>{renderNewMemberBooleanSwitch('isStatic', '新程序集变量 · 静态')}</td>
-                  <td className={compactEmptyCellClass}>{renderNewMemberBooleanSwitch('isArray', '新程序集变量 · 数组')}</td>
-                  <td className={compactCellClass}>{renderNewMemberInput('note', '备注', 'plain')}</td>
-                  <td className={compactCellClass}>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={commitNewMemberDraft}
-                        disabled={!onUpdateSourceContent || !newMemberDraft.name.trim() || !newMemberDraft.type.trim()}
-                        className={`inline-flex h-[var(--beginner-input-height)] flex-1 items-center justify-center gap-1 rounded border px-1.5 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-                          isDarkMode
-                            ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
-                            : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                        }`}
-                        title="确认新增变量"
-                      >
-                        <Check className="h-3 w-3" />
-                        新增
-                      </button>
-                      <button
-                        type="button"
-                        onClick={resetNewMemberDraft}
-                        disabled={!newMemberDraft.name && !newMemberDraft.note && !newMemberDraft.initialValue && !newMemberDraft.isStatic && !newMemberDraft.isArray && newMemberDraft.type === '文本型'}
-                        aria-label="取消新增变量"
-                        className={`inline-flex h-[var(--beginner-input-height)] w-7 items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-                          isDarkMode
-                            ? 'border-slate-600 text-slate-400 hover:bg-slate-700/50'
-                            : 'border-slate-200 text-slate-500 hover:bg-slate-100'
-                        }`}
-                        title="取消并清空新增变量表单"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
+                  <td colSpan={7} className={compactCellClass}>
+                    <button
+                      type="button"
+                      onClick={() => { appendBeginnerMemberRow(); }}
+                      disabled={!onUpdateSourceContent}
+                      className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center gap-1 rounded border border-dashed px-2 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                        isDarkMode
+                          ? 'border-slate-600 text-slate-300 hover:border-cyan-500/60 hover:bg-cyan-500/10 hover:text-cyan-200'
+                          : 'border-slate-300 text-slate-600 hover:border-cyan-400 hover:bg-cyan-50 hover:text-cyan-800'
+                      }`}
+                      title="在表尾新增一个程序集变量（名称自动编号）；也可以在最后一行的单元格按回车追加"
+                    >
+                      <Plus className="h-3 w-3" />
+                      新增变量
+                    </button>
                   </td>
                 </tr>
               ) : null
             ].filter(Boolean) as React.ReactNode[],
-            612
+            762
           )}
           </div>
         </section>
@@ -9024,6 +10042,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               const input = event.currentTarget;
               const span = getBeginnerIdentifierSpanAtOffset(input.value, input.selectionStart ?? input.value.length);
               if (span) input.setSelectionRange(span.start, span.end);
+              // 双击声明表名称与双击代码里的引用同一语义：点亮全部同名出现位置。
+              const spanName = input.value.slice(span?.start ?? 0, span?.end ?? 0);
+              setBeginnerOccurrenceHighlight(spanName
+                ? { targetKey: codeTargetKey(target), name: spanName }
+                : null);
             } : undefined}
             placeholder={placeholder}
             aria-label={`局部${local.isConstant ? '常量' : '变量'} ${local.name} ${fieldLabel}`}
@@ -9136,6 +10159,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const sourceLine = locals[0]?.line || target.method.line + 1;
       const localGroupKey = `${codeTargetKey(target)}:${groupId}`;
       const collapsed = collapsedBeginnerLocalGroupKeys.includes(localGroupKey);
+      // 双击同名高亮与「跳转到声明」行闪：声明表名称单元格与具体声明行都要有反馈，
+      // 否则跳转只滚动到整块表格顶部，用户看不出落在哪一行。
+      const targetKey = codeTargetKey(target);
+      const occurrenceName = beginnerOccurrenceHighlight?.targetKey === targetKey ? beginnerOccurrenceHighlight.name : null;
+      const localJumpLine = beginnerLocalJumpHighlight?.targetKey === targetKey ? beginnerLocalJumpHighlight.line : null;
       // A 局部声明 inside a 如果/循环 block used to render as a full-width banner
       // between the block header and its body, splitting the flow tree. Instead,
       // align the table with the declaration's own source indent and continue the
@@ -9179,8 +10207,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             ],
             locals.map((local, index) => {
               const isLastInGroup = index === locals.length - 1;
+              const isJumpRow = localJumpLine !== null && localJumpLine === local.line;
               return (
-              <tr key={`${codeTargetKey(target)}:local:${local.line}:${local.name}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
+              <tr
+                key={`${codeTargetKey(target)}:local:${local.line}:${local.name}`}
+                data-structured-line={local.line}
+                title={isJumpRow ? `已跳转到：${occurrenceName || local.name || '局部声明'}` : undefined}
+                // 行闪的背景走行内样式：与基础行底色是同类 bg 类，靠 className 无法保证覆盖顺序。
+                style={isJumpRow
+                  ? { backgroundColor: isDarkMode ? 'rgba(34,211,238,0.10)' : 'rgba(207,250,254,0.7)', boxShadow: isDarkMode ? 'inset 0 0 0 1px rgba(34,211,238,0.55)' : 'inset 0 0 0 1px rgba(8,145,178,0.5)' }
+                  : undefined}
+                className={`transition-colors duration-150 ${isDarkMode ? 'bg-[#18191f]' : 'bg-white'}`}
+              >
                   <td className={compactCellClass}>
                     <select
                       value={local.isConstant ? 'constant' : 'variable'}
@@ -9195,7 +10233,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       <option value="constant">常量</option>
                     </select>
                   </td>
-                  <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'name', local.name, '变量名', 'variable', isLastInGroup)}</td>
+                  <td
+                    className={compactCellClass}
+                    style={occurrenceName !== null && occurrenceName === local.name
+                      ? { backgroundColor: isDarkMode ? 'rgba(202,138,4,0.22)' : 'rgba(253,224,71,0.45)' }
+                      : undefined}
+                  >{renderLocalVariableInput(target, local, 'name', local.name, '变量名', 'variable', isLastInGroup)}</td>
                   <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'type', local.type, '类型', 'type', isLastInGroup)}</td>
                   <td className={compactCellClass}>
                     <label className="inline-flex h-[var(--beginner-input-height)] w-full cursor-pointer items-center justify-center">
@@ -9775,7 +10818,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           className={`relative grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] ${editorCanvasBg}`}
           data-beginner-editor-root
           onContextMenu={event => openBeginnerContextMenu(event, target)}
-          onMouseLeave={clearHoveredBeginnerFlowLine}
+          onMouseLeave={() => {
+            clearHoveredBeginnerFlowLine();
+            clearBeginnerCtrlHoverSpan(targetKey, segmentId);
+          }}
           onWheel={handleEditorFontWheel}
         >
           <div data-beginner-line-numbers className={`select-none overflow-hidden border-r px-2 py-2 text-right text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`} style={editorTextStyle}>
@@ -9851,16 +10897,31 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 font-mono font-normal not-italic tracking-normal"
               style={{ fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, tabSize: 4 }}
             >
-              {bodyLines.map((line, index) => (
-                <div
-                  key={`${targetKey}:highlight:${index}`}
-                  className="relative whitespace-pre"
-                  style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
-                >
-                  {renderBeginnerNestedFlowTracks(flowGuideRows[index], `${targetKey}:highlight:${index}`, lineHeight)}
-                  <span className="relative z-10">{renderBeginnerCodeLine(line, target, textBlockLines.has(index + 1))}</span>
-                </div>
-              ))}
+              {bodyLines.map((line, index) => {
+                // Ctrl 悬停下划线（方案B）：把显示文本绝对区间换算到本行内，只让相交的 token 画下划线。
+                const lineBase = bodyLines.slice(0, index).join('\n').length + index;
+                const hoverSpan = beginnerCtrlHoverSpan?.targetKey === targetKey
+                  && beginnerCtrlHoverSpan.segmentId === segmentId
+                  && beginnerCtrlHoverSpan.start < lineBase + line.length
+                  && beginnerCtrlHoverSpan.end > lineBase
+                  ? {
+                      start: Math.max(0, beginnerCtrlHoverSpan.start - lineBase),
+                      end: Math.min(line.length, beginnerCtrlHoverSpan.end - lineBase)
+                    }
+                  : null;
+                return (
+                  <div
+                    key={`${targetKey}:highlight:${index}`}
+                    className="relative whitespace-pre"
+                    style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
+                  >
+                    {renderBeginnerNestedFlowTracks(flowGuideRows[index], `${targetKey}:highlight:${index}`, lineHeight)}
+                    <span className="relative z-10">
+                      {renderBeginnerCodeLine(line, target, textBlockLines.has(index + 1), hoverSpan)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             <div className="pointer-events-none absolute inset-0 z-20 py-2">
               {bodyLines.map((line, index) => {
@@ -9922,7 +10983,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 scheduleBeginnerPointerSync(target, event.currentTarget);
                 updateActiveBeginnerFlowLine(event.currentTarget);
               }}
-              onMouseMove={event => updateHoveredBeginnerFlowLine(event.currentTarget, event.clientY)}
+              onMouseMove={event => {
+                updateHoveredBeginnerFlowLine(event.currentTarget, event.clientY);
+                updateBeginnerCtrlHoverSpan(targetKey, segmentId, target, event.currentTarget, event.clientX, event.clientY);
+              }}
               onScroll={event => {
                 const root = event.currentTarget.closest('[data-beginner-editor-root]');
                 const lineNumberColumn = root?.querySelector('[data-beginner-line-numbers]');
@@ -9938,7 +11002,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 captureBeginnerTextareaView(event.currentTarget);
               }}
               onWheel={handleEditorFontWheel}
-              title="Ctrl+单击局部控件变量、项目子程序调用或 &处理器名可转到定义"
+              title="Ctrl+单击局部变量、参数、项目变量、局部控件引用、子程序调用或 &处理器名可转到定义；双击变量名高亮全部同名位置"
               style={editorTextStyle}
               className={`relative z-10 w-full resize-none overflow-x-auto overflow-y-hidden whitespace-pre border-0 bg-transparent px-3 py-2 font-mono font-normal not-italic tracking-normal text-transparent outline-none selection:bg-cyan-500/30 [&::-webkit-scrollbar]:h-2 ${
                 isDarkMode ? 'caret-cyan-200 placeholder:text-slate-600' : 'caret-cyan-700 placeholder:text-slate-400'
@@ -9968,6 +11032,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       activeBeginnerHandler || '',
       selectedBeginnerCodeTarget ? `${selectedBeginnerCodeTarget.className || ''}.${selectedBeginnerCodeTarget.methodName}` : '',
       beginnerJumpHighlight ? `${beginnerJumpHighlight.targetKey}:${beginnerJumpHighlight.line}:${beginnerJumpHighlight.label}` : '',
+      // 双击同名高亮与声明行闪高亮都画在块内（token 底色 / 声明表行），必须进指纹，
+      // 否则窗口化渲染的记忆化外壳会继续展示旧画面。
+      beginnerOccurrenceHighlight ? `${beginnerOccurrenceHighlight.targetKey}:${beginnerOccurrenceHighlight.name}` : '',
+      beginnerLocalJumpHighlight ? `${beginnerLocalJumpHighlight.targetKey}:${beginnerLocalJumpHighlight.line}` : '',
       beginnerParameterFocus ? `${beginnerParameterFocus.targetKey}:${beginnerParameterFocus.parameterName}` : '',
       structureEditDraft ? JSON.stringify(structureEditDraft) : '',
       isBeginnerMemberTableCollapsed ? '1' : '0',
@@ -10011,7 +11079,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         : '';
       const draft = beginnerCodeDraftsRef.current[targetKey];
       const draftLength = draft !== undefined ? String(draft.length) : '';
-      return `|h:${hovered}|a:${active}|c:${completion}|l:${autoLocal}|d:${draftLength}`;
+      const ctrlHoverSpan = beginnerCtrlHoverSpan?.targetKey === targetKey
+        ? `${beginnerCtrlHoverSpan.segmentId}:${beginnerCtrlHoverSpan.start}:${beginnerCtrlHoverSpan.end}`
+        : '';
+      return `|h:${hovered}|a:${active}|c:${completion}|l:${autoLocal}|d:${draftLength}|u:${ctrlHoverSpan}`;
     };
     const pushCanvasItem = (
       key: string,
@@ -10233,11 +11304,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           beginnerContextMenu.libraryCall.functionName
         )
       : undefined;
+    const contextLocalReferenceLabel = (local: NonNullable<BeginnerContextMenuState['localReference']>) =>
+      `转到定义：${local.name}（${local.kind === 'parameter' ? '参数' : local.kind === 'constant' ? '局部常量' : '局部变量'}）`;
     const contextDefinitionLabel = beginnerContextMenu?.definitionName
       ? `转到定义：${beginnerContextMenu.definitionName}`
       : beginnerContextMenu?.libraryCall
         ? `转到定义：${beginnerContextMenu.libraryCall.libraryName}.${beginnerContextMenu.libraryCall.functionName}`
-        : '转到定义';
+        : beginnerContextMenu?.localReference
+          ? contextLocalReferenceLabel(beginnerContextMenu.localReference)
+          : beginnerContextMenu?.globalVariableName
+            ? `转到定义：${beginnerContextMenu.globalVariableName}（项目变量）`
+            : '转到定义';
     const contextControlMenuItem = beginnerContextMenu?.controlReference?.symbol && commandService
       ? getMenuService(commandService).resolveMenu(
           LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU,
@@ -10309,7 +11386,21 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       ));
     };
     const handleBeginnerCreationShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!commandService || event.defaultPrevented) return;
+      if (event.defaultPrevented) return;
+      // Ctrl+F：新手画布内查找。普通输入框（变量名/初始值/查找条自身）不打断，避免影响输入手感；
+      // 代码编辑区与画布空白处按 Ctrl+F 都进入查找。
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && (event.key === 'f' || event.key === 'F')) {
+        const target = event.target;
+        const isFormInput = target instanceof HTMLInputElement
+          || target instanceof HTMLSelectElement
+          || (target instanceof HTMLElement && target.isContentEditable);
+        if (isFormInput) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openBeginnerFind();
+        return;
+      }
+      if (!commandService) return;
       const keybinding = keyboardEventToKeybinding(event.nativeEvent);
       if (!keybinding) return;
       const context = getBeginnerCommandContext(activeCanvasTarget);
@@ -10396,11 +11487,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   beginnerContextMenu.libraryCall.libraryName,
                   beginnerContextMenu.libraryCall.functionName
                 );
+                return;
+              }
+              if (beginnerContextMenu.localReference && contextTarget) {
+                revealBeginnerLocalDefinition(contextTarget, beginnerContextMenu.localReference.line);
+                return;
+              }
+              if (beginnerContextMenu.globalVariableName) {
+                revealProjectGlobalDefinition(beginnerContextMenu.globalVariableName);
               }
             },
             <ExternalLink className="h-3.5 w-3.5" />,
             false,
-            !contextDefinition && !contextLibraryDefinition
+            !contextDefinition && !contextLibraryDefinition && !beginnerContextMenu?.localReference && !beginnerContextMenu?.globalVariableName
           )}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {beginnerCreationMenuItems.map(item => item.kind === 'command' && (
@@ -10483,7 +11582,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         items={canvasItems}
         scrollRef={beginnerStructureScrollRef}
         handleRef={beginnerCanvasHandleRef}
-        className={`h-full min-h-0 overflow-auto ${editorCanvasBg}`}
+        className={`h-full min-h-0 overflow-auto ${editorCanvasBg} ${beginnerCtrlNavActive ? 'lingcpp-beginner-ctrl-nav' : ''}`}
         onFocusCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
         onPointerDownCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
         onKeyDown={handleBeginnerCreationShortcut}
@@ -10491,6 +11590,20 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
         overlay={(
           <>
+            {beginnerFindCodeHighlight && (
+              /* 当前命中/跳转目标的整行色带：与补全面板同一内容坐标系，随内容滚动；不进块 revision。 */
+              <div
+                data-beginner-find-highlight
+                aria-hidden="true"
+                className="pointer-events-none absolute z-[70] rounded-r-[3px] border-l-4 border-amber-400 bg-amber-400/15"
+                style={{
+                  top: `${beginnerFindCodeHighlight.top}px`,
+                  left: `${beginnerFindCodeHighlight.left}px`,
+                  width: `${beginnerFindCodeHighlight.width}px`,
+                  height: `${beginnerFindCodeHighlight.height}px`
+                }}
+              />
+            )}
             {renderHoistedBeginnerCompletionPanel()}
             {renderHoistedBeginnerAutoLocalTypePanel()}
           </>
@@ -10499,6 +11612,31 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <div aria-hidden="true" className="h-[50vh] min-h-[160px] max-h-[360px]" data-beginner-scroll-tail />
         ) : null}
       >
+        {beginnerFindOpen && (
+          /* sticky + h-0：吸附在画布滚动视口顶部，不占布局高度、不随内容滚动；
+             内层 w-max + ml-auto 把查找条收缩成内容宽并贴右侧。 */
+          <div className="pointer-events-none sticky top-2 z-[85] h-0">
+            <div className="ml-auto mr-3 w-max max-w-full">
+              <BeginnerFindBar
+                query={beginnerFindQuery}
+                matchCase={beginnerFindMatchCase}
+                activeIndex={beginnerFindActiveIndex}
+                totalCount={beginnerFindMatches.length}
+                isDarkMode={isDarkMode}
+                inputRef={beginnerFindInputRef}
+                onQueryChange={handleBeginnerFindQueryChange}
+                onToggleMatchCase={handleBeginnerFindToggleMatchCase}
+                onScopeChange={handleBeginnerFindScopeChange}
+                scope={beginnerFindScope}
+                crossSummary={beginnerFindCrossSummary}
+                onPrevious={() => navigateBeginnerFind('previous')}
+                onNext={() => navigateBeginnerFind('next')}
+                onFindAll={handleBeginnerFindAll}
+                onClose={closeBeginnerFind}
+              />
+            </div>
+          </div>
+        )}
         <datalist id="beginner-member-name-suggestions">
           {memberNameSuggestions.map(item => <option key={item} value={item} />)}
         </datalist>
@@ -11463,6 +12601,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   projectSources={lingCppProjectSources}
                   onProjectSourcesChange={onUpdateProjectSources}
                   focusConstantName={pendingProjectConstantFocus}
+                  focusVariableName={pendingProjectGlobalFocus}
                 />
               ) : isLingCppBeginnerStructureMode ? (
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -11764,11 +12903,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       )}
       {beginnerInitialValueEditor && (
         <BeginnerInitialValueEditor
-          key={`${beginnerInitialValueEditor.target.className}:${beginnerInitialValueEditor.target.method.name}:${beginnerInitialValueEditor.local.line}:${beginnerInitialValueEditor.local.name}`}
-          variableName={beginnerInitialValueEditor.local.name}
-          variableType={beginnerInitialValueEditor.local.type}
-          value={beginnerInitialValueEditor.local.initialValue || ''}
-          isConstant={Boolean(beginnerInitialValueEditor.local.isConstant)}
+          key={beginnerInitialValueEditor.local
+            ? `${beginnerInitialValueEditor.target?.className}:${beginnerInitialValueEditor.target?.method.name}:${beginnerInitialValueEditor.local.line}:${beginnerInitialValueEditor.local.name}`
+            : `member:${beginnerInitialValueEditor.member?.className}:${beginnerInitialValueEditor.member?.line}:${beginnerInitialValueEditor.member?.name}`}
+          variableName={beginnerInitialValueEditor.local?.name || beginnerInitialValueEditor.member?.name || ''}
+          variableType={beginnerInitialValueEditor.local?.type || beginnerInitialValueEditor.member?.type || ''}
+          value={beginnerInitialValueEditor.local?.initialValue || beginnerInitialValueEditor.member?.initialValue || ''}
+          isConstant={Boolean(beginnerInitialValueEditor.local?.isConstant)}
           isDarkMode={isDarkMode}
           readOnly={!onUpdateSourceContent}
           onClose={() => setBeginnerInitialValueEditor(null)}
