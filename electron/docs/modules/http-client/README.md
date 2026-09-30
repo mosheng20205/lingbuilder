@@ -54,10 +54,11 @@ HTTP客户端_开始请求(请求)
 
 ## TLS 指纹仿真（2.3 新增，纯协议不依赖浏览器）
 
-- **`HTTP客户端_设置TLS指纹(客户端, 指纹档案)`**：把客户端整体切换到 curl-impersonate（BoringSSL + Chrome H2 补丁）仿真网络栈——TLS ClientHello、HTTP/2 SETTINGS、浏览器默认头与目标浏览器一致，这是**不依赖浏览器进程的纯协议**路径。指纹档案写 `chrome-131` 等常见写法（内部规范化），支持 chrome99～chrome150、chrome133a、edge99/101、safari 系列、firefox133+ 等，以随附 `libcurl-impersonate.dll` 支持为准；设置时用一次性句柄实测校验，未知档案给中文诊断。空文本恢复 WinHTTP 直连。
+- **`HTTP客户端_设置TLS指纹(客户端, 指纹档案)`**：把客户端整体切换到 curl-impersonate（BoringSSL + Chrome H2 补丁）仿真网络栈——TLS ClientHello、HTTP/2 SETTINGS、浏览器默认头与目标浏览器一致，这是**不依赖浏览器进程的纯协议**路径。指纹档案写 `chrome-131` 等常见写法（内部规范化：小写、去连字符与空格、点号映射为下划线，下划线保留），支持 chrome99～chrome150、chrome133a、chrome136、chrome142、edge99/101、safari15_3/15_5/17_0/17_2_ios/18_0/18_4_ios、firefox133/135 等，以随附 `libcurl-impersonate.dll` 支持为准（注意桌面版 `safari17_2` 在随包 DLL 不存在，iOS 形态应写 `safari17_2_ios`）；设置时用一次性句柄实测校验，未知档案给中文诊断并列出当前 DLL 逐个实测可用的全部档案名。空文本恢复 WinHTTP 直连。
 - 设了指纹的客户端，其全部请求（含响应头/正文/Cookie/重定向/资源上限语义）与 WinHTTP 路径共用同一套命令；正文按 `Accept-Encoding` 自动解压（gzip/br/zstd），不会再遇到原始 gzip 字节。WinHTTP 的 `执行同步/等待请求`、文件上传正文、断点续传落盘与运行中取消暂不支持（调用时给中文阻断诊断）；「系统默认代理」按环境变量语义（`http_proxy/https_proxy`），固定代理与逐请求代理照常可用。
 - 运行时要求：x64 构建 + 程序目录有 `libcurl-impersonate.dll`（LingBuilder 随包分发，SHA-256 钉死校验，来源与许可证见 `LICENSE-curl-impersonate`/`LICENSE-BoringSSL`）。DLL 缺失时「设置TLS指纹」与请求都会给中文修法诊断。
 - **`HTTP客户端_取TLS指纹(客户端)`**：返回当前档案名（如 `chrome131`），未设置返回空文本。
+- **运行时可靠性（2026-09-30 收尾批）**：选项常量与随包 `curl/curl.h` 逐字核对（`CAINFO=10065`，历史上误写 10098 导致随包 `cacert.pem` 从未生效，已修）；仿真路径全部 `setopt` 返回值落检查，未知选项号在请求发出前给中文阻断诊断（列出选项名/选项号/返回码），不再静默丢弃。
 
 ## 跳转链解析与逐请求代理（2.2 新增）
 

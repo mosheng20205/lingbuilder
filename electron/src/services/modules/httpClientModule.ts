@@ -90,8 +90,8 @@ const specs: HttpClientCommandSpec[] = [
     parameters: [...request, parameter('用户名', 'wideString', '代理认证用户名；空文本清除本请求的代理凭据覆盖。'), parameter('密码', 'wideString', '代理认证密码。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
-    name: 'HTTP客户端_设置TLS指纹', signature: 'HTTP客户端_设置TLS指纹(客户端, 指纹档案)', description: '把客户端切换到 curl-impersonate 仿真网络栈：TLS ClientHello、HTTP/2 指纹与浏览器默认头与目标浏览器一致（纯协议、不依赖浏览器进程）；空文本恢复 WinHTTP。仅 x64 构建；需随附 libcurl-impersonate.dll。',
-    parameters: [...client, parameter('指纹档案', 'wideString', '仿真目标：chrome99～chrome150、chrome133a、edge99/101、safari 系列或 firefox133+ 等（以 libcurl-impersonate.dll 支持为准，可写 chrome-131 等常见写法）；空文本恢复 WinHTTP 直连。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全',
+    name: 'HTTP客户端_设置TLS指纹', signature: 'HTTP客户端_设置TLS指纹(客户端, 指纹档案)', description: '把客户端切换到 curl-impersonate 仿真网络栈：TLS ClientHello、HTTP/2 指纹与浏览器默认头与目标浏览器一致（纯协议、不依赖浏览器进程）；档案名归一化保留下划线并把点号映射为下划线（chrome-131、safari17_2、safari-17.2_ios 等写法等价），未知档案的中文诊断会列出当前 DLL 实测可用的全部档案名；空文本恢复 WinHTTP。仅 x64 构建；需随附 libcurl-impersonate.dll。',
+    parameters: [...client, parameter('指纹档案', 'wideString', '仿真目标：chrome99～chrome150、chrome133a、edge99/101、safari 系列或 firefox133+ 等（以 libcurl-impersonate.dll 支持为准，可写 chrome-131 等常见写法；注意桌面版 safari17_2 在随包 DLL 中不存在，应写 safari17_2_ios）；空文本恢复 WinHTTP 直连。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全',
     insertText: 'HTTP客户端_设置TLS指纹($1, "chrome-131")'
   },
   {

@@ -137,12 +137,15 @@ public:
 
     // 设置 TLS 指纹仿真目标（curl-impersonate）：设好后该客户端全部请求改走 Chromium/BoringSSL 仿真网络栈，
     // TLS ClientHello、HTTP/2 SETTINGS 与浏览器默认头与目标浏览器一致；空文本恢复 WinHTTP 直连。
-    // 指纹名规范化（去 -/_、小写）后用一次性句柄实测，未知档案立即给中文诊断。
+    // 指纹名规范化（小写、去连字符与空格、点号映射为下划线，下划线保留——safari17_2_ios 等真档案名含下划线，
+    // 历史版本连 _ 一起删导致 safari-17.2 形态永远被误判未知）后用一次性句柄实测；
+    // 未知档案立即给中文诊断，并列出当前 DLL 逐个实测可用的档案名清单（纯本地句柄校验，零网络）。
     bool SetImpersonateTarget(long long id, const wchar_t* target) {
         const std::wstring raw = target ? target : L"";
         std::wstring normalized;
         for (wchar_t ch : raw) {
-            if (ch == L'-' || ch == L'_' || ch == L' ') continue;
+            if (ch == L'-' || ch == L' ') continue;
+            if (ch == L'.') { normalized.push_back(L'_'); continue; }
             normalized.push_back(static_cast<wchar_t>(towlower(ch)));
         }
         CurlImpersonateApi& api = CurlImpersonate();
@@ -150,7 +153,20 @@ public:
         if (!normalized.empty()) {
             const int probe = api.impersonateProbe(normalized);
             if (probe != 0) {
-                return ClientFailLastError(L"TLS 指纹档案「" + normalized + L"」不受支持（libcurl-impersonate 返回码 " + std::to_wstring(probe) + L"）；支持 chrome99～chrome150、edge99/101、safari/ios、firefox133+ 等档案，随 libcurl-impersonate.dll 版本更新。");
+                std::wstring available;
+                int availableCount = 0;
+                for (const std::wstring& candidate : ImpersonateTargetCandidates()) {
+                    if (api.impersonateProbe(candidate) != 0) continue;
+                    if (availableCount < 24) { if (availableCount > 0) available += L"、"; available += candidate; }
+                    availableCount += 1;
+                }
+                std::wstring message = L"TLS 指纹档案「" + normalized + L"」不受支持（libcurl-impersonate 返回码 " + std::to_wstring(probe) + L"）。";
+                if (availableCount > 0) {
+                    message += L"当前 libcurl-impersonate.dll 实测可用档案 " + std::to_wstring(availableCount) + L" 个：" + available + (availableCount > 24 ? L" 等。" : L"。");
+                } else {
+                    message += L"当前 libcurl-impersonate.dll 未实测出任何可用档案，文件可能损坏，请重装 LingBuilder。";
+                }
+                return ClientFailLastError(message);
             }
         }
         return UpdateClient(id, [&](Client& client) {
@@ -476,7 +492,16 @@ private:
     // ================= curl-impersonate 仿真后端（TLS 指纹客户端专用，动态加载） =================
     // 客户端设置了 TLS 指纹后，该客户端的全部请求改走 libcurl-impersonate（BoringSSL + Chrome H2）：
     // ClientHello、HTTP/2 SETTINGS、浏览器默认头与目标档案一致，正文按 Accept-Encoding 自动解压。
-    // 选项常量与随包 include/curl/curl.h（libcurl 8.22）逐一核对，升级 DLL 时必须重核。
+    // 选项常量必须与随包 include/curl/curl.h（libcurl 8.22）逐一核对，升级 DLL 时必须重核。
+    // 2026-09-30 实锤：CAINFO 曾误写 10098——curl.h 不存在该选项号，setopt 返回 48 被静默丢弃，
+    // 随包 cacert.pem 从未生效；正确值 = CURLOPTTYPE_STRINGPOINT + 65 = 10065。
+    // 已核对（对照 .lingbuilder-build/curl-impersonate/include/curl/curl.h 逐字）：
+    //   URL=10002 ERRORBUFFER=10010 WRITEFUNCTION=20011 HEADERFUNCTION=20079 WRITEDATA=10001
+    //   HEADERDATA=10029 NOPROGRESS=43 ACCEPT_ENCODING=10102 FOLLOWLOCATION=52 MAXREDIRS=68
+    //   TIMEOUT_MS=155 CONNECTTIMEOUT_MS=156 SSL_VERIFYPEER=64 SSL_VERIFYHOST=81 CAINFO=10065
+    //   PINNEDPUBLICKEY=10230 USERAGENT=10018 HTTPHEADER=10023 POSTFIELDS=10015
+    //   POSTFIELDSIZE_LARGE=30120 CUSTOMREQUEST=10036 PROXY=10004 PROXYUSERPWD=10006
+    //   USERPWD=10005 COOKIE=10022 INFO_RESPONSE_CODE=2097154 INFO_EFFECTIVE_URL=1048577
     static const int LB_CURL_OPT_URL = 10002;
     static const int LB_CURL_OPT_ERRORBUFFER = 10010;
     static const int LB_CURL_OPT_USERAGENT = 10018;
@@ -501,7 +526,7 @@ private:
     static const int LB_CURL_OPT_HEADERFUNCTION = 20079;
     static const int LB_CURL_OPT_WRITEDATA = 10001;
     static const int LB_CURL_OPT_HEADERDATA = 10029;
-    static const int LB_CURL_OPT_CAINFO = 10098;
+    static const int LB_CURL_OPT_CAINFO = 10065;
     static const int LB_CURL_INFO_RESPONSE_CODE = 2097154;
     static const int LB_CURL_INFO_EFFECTIVE_URL = 1048577;
 
@@ -531,6 +556,18 @@ private:
             return result;
         }
     };
+
+    // 候选表 = 2026-09-30 对随包 libcurl-impersonate.dll（lexiforest v2.2.3）逐个实测通过的档案全集
+    //（桌面版 safari17_2 在该构建不存在，只有 safari17_2_ios）；仅用于「未知档案名」诊断展示，
+    // 升级 DLL 后以实测为准。
+    static std::vector<std::wstring> ImpersonateTargetCandidates() {
+        return {
+            L"chrome99", L"chrome100", L"chrome101", L"chrome104", L"chrome107", L"chrome110", L"chrome116",
+            L"chrome119", L"chrome120", L"chrome123", L"chrome124", L"chrome131", L"chrome133a", L"chrome136",
+            L"chrome142", L"chrome150", L"edge99", L"edge101", L"safari15_3", L"safari15_5", L"safari17_0",
+            L"safari17_2_ios", L"safari18_0", L"safari18_4_ios", L"firefox133", L"firefox135",
+        };
+    }
 
     static CurlImpersonateApi& CurlImpersonate() {
         static CurlImpersonateApi api;
@@ -713,22 +750,30 @@ private:
             stringStorage.push_back(LB_WideToUtf8(value.c_str()));
             return stringStorage.back().c_str();
         };
-        api.easySetopt(handle, LB_CURL_OPT_ERRORBUFFER, errorBuffer.data());
-        api.easySetopt(handle, LB_CURL_OPT_URL, keepUtf8(url));
-        api.easySetopt(handle, LB_CURL_OPT_WRITEFUNCTION, reinterpret_cast<void*>(&LB_CURL_WRITE_CALLBACK));
-        api.easySetopt(handle, LB_CURL_OPT_HEADERFUNCTION, reinterpret_cast<void*>(&LB_CURL_HEADER_CALLBACK));
-        api.easySetopt(handle, LB_CURL_OPT_WRITEDATA, static_cast<void*>(&transfer));
-        api.easySetopt(handle, LB_CURL_OPT_HEADERDATA, static_cast<void*>(&transfer));
-        api.easySetopt(handle, LB_CURL_OPT_NOPROGRESS, static_cast<long>(1));
+        // 全部 setopt 返回值必须检查：未知选项号（CAINFO 曾误写 10098）会以返回码 48 被静默丢弃，
+        // 配置看似生效实则从未应用；失败项汇总后在 perform 前给中文阻断诊断，不外发请求。
+        std::vector<std::wstring> rejectedOptions;
+        const auto setoptChecked = [&](int option, const wchar_t* label, auto value) -> bool {
+            const int result = api.easySetopt(handle, option, value);
+            if (result != 0) rejectedOptions.push_back(std::wstring(label) + L"(CURLOPT " + std::to_wstring(option) + L"，返回码 " + std::to_wstring(result) + L")");
+            return result == 0;
+        };
+        setoptChecked(LB_CURL_OPT_ERRORBUFFER, L"ERRORBUFFER", errorBuffer.data());
+        setoptChecked(LB_CURL_OPT_URL, L"URL", keepUtf8(url));
+        setoptChecked(LB_CURL_OPT_WRITEFUNCTION, L"WRITEFUNCTION", reinterpret_cast<void*>(&LB_CURL_WRITE_CALLBACK));
+        setoptChecked(LB_CURL_OPT_HEADERFUNCTION, L"HEADERFUNCTION", reinterpret_cast<void*>(&LB_CURL_HEADER_CALLBACK));
+        setoptChecked(LB_CURL_OPT_WRITEDATA, L"WRITEDATA", static_cast<void*>(&transfer));
+        setoptChecked(LB_CURL_OPT_HEADERDATA, L"HEADERDATA", static_cast<void*>(&transfer));
+        setoptChecked(LB_CURL_OPT_NOPROGRESS, L"NOPROGRESS", static_cast<long>(1));
         // Accept-Encoding 置空串 = 用 libcurl 支持的全部压缩并自动解压响应正文
         // （impersonate 默认头只是声明协商能力，不解压；不设此项会拿到原始压缩字节）。
-        api.easySetopt(handle, LB_CURL_OPT_ACCEPT_ENCODING, "");
-        api.easySetopt(handle, LB_CURL_OPT_FOLLOWLOCATION, static_cast<long>(allowRedirects ? 1 : 0));
-        api.easySetopt(handle, LB_CURL_OPT_MAXREDIRS, static_cast<long>(maxRedirects));
-        api.easySetopt(handle, LB_CURL_OPT_CONNECTTIMEOUT_MS, static_cast<long>(connectTimeoutMs));
-        api.easySetopt(handle, LB_CURL_OPT_TIMEOUT_MS, static_cast<long>(receiveTimeoutMs));
-        api.easySetopt(handle, LB_CURL_OPT_SSL_VERIFYPEER, static_cast<long>(verifyCertificate ? 1 : 0));
-        api.easySetopt(handle, LB_CURL_OPT_SSL_VERIFYHOST, static_cast<long>(verifyCertificate ? 2 : 0));
+        setoptChecked(LB_CURL_OPT_ACCEPT_ENCODING, L"ACCEPT_ENCODING", "");
+        setoptChecked(LB_CURL_OPT_FOLLOWLOCATION, L"FOLLOWLOCATION", static_cast<long>(allowRedirects ? 1 : 0));
+        setoptChecked(LB_CURL_OPT_MAXREDIRS, L"MAXREDIRS", static_cast<long>(maxRedirects));
+        setoptChecked(LB_CURL_OPT_CONNECTTIMEOUT_MS, L"CONNECTTIMEOUT_MS", static_cast<long>(connectTimeoutMs));
+        setoptChecked(LB_CURL_OPT_TIMEOUT_MS, L"TIMEOUT_MS", static_cast<long>(receiveTimeoutMs));
+        setoptChecked(LB_CURL_OPT_SSL_VERIFYPEER, L"SSL_VERIFYPEER", static_cast<long>(verifyCertificate ? 1 : 0));
+        setoptChecked(LB_CURL_OPT_SSL_VERIFYHOST, L"SSL_VERIFYHOST", static_cast<long>(verifyCertificate ? 2 : 0));
         if (certificatePin.size() == 64) {
             std::vector<unsigned char> pinBytes;
             bool pinHexValid = true;
@@ -746,7 +791,7 @@ private:
             }
             if (pinHexValid && pinBytes.size() == 32) {
                 const std::string pinned = "sha256//" + LBCurlUtf8ToHexBase64(pinBytes);
-                if (api.easySetopt(handle, LB_CURL_OPT_PINNEDPUBLICKEY, pinned.c_str()) == 0) certificatePinned = true;
+                if (setoptChecked(LB_CURL_OPT_PINNEDPUBLICKEY, L"PINNEDPUBLICKEY", pinned.c_str())) certificatePinned = true;
             }
         }
         if (verifyCertificate) {
@@ -758,18 +803,18 @@ private:
             if (slash != std::wstring::npos) exeDirectory.resize(slash + 1);
             const std::wstring caBundle = exeDirectory + L"cacert.pem";
             if (GetFileAttributesW(caBundle.c_str()) != INVALID_FILE_ATTRIBUTES) {
-                api.easySetopt(handle, LB_CURL_OPT_CAINFO, keepUtf8(caBundle));
+                setoptChecked(LB_CURL_OPT_CAINFO, L"CAINFO", keepUtf8(caBundle));
             }
         }
         if (!proxyText.empty()) {
-            api.easySetopt(handle, LB_CURL_OPT_PROXY, keepUtf8(proxyText));
-            if (!proxyCredentials.empty()) api.easySetopt(handle, LB_CURL_OPT_PROXYUSERPWD, keepUtf8(proxyCredentials));
+            setoptChecked(LB_CURL_OPT_PROXY, L"PROXY", keepUtf8(proxyText));
+            if (!proxyCredentials.empty()) setoptChecked(LB_CURL_OPT_PROXYUSERPWD, L"PROXYUSERPWD", keepUtf8(proxyCredentials));
         } else if (forceNoProxy) {
-            api.easySetopt(handle, LB_CURL_OPT_PROXY, "");
+            setoptChecked(LB_CURL_OPT_PROXY, L"PROXY", "");
         }
         // 头顺序 = 仿真目标默认头（UA/sec-ch-ua/Accept-Encoding 等，libcurl 内部 base 头，IMPERSONATE "目标:yes" 启用）
         // 之后按用户设置顺序追加；同名头以用户头为准。显式 UA 覆盖目标默认 UA。
-        if (!explicitUserAgent.empty()) api.easySetopt(handle, LB_CURL_OPT_USERAGENT, keepUtf8(explicitUserAgent));
+        if (!explicitUserAgent.empty()) setoptChecked(LB_CURL_OPT_USERAGENT, L"USERAGENT", keepUtf8(explicitUserAgent));
         std::vector<std::string> headerStorage;
         void* headerSlist = nullptr;
         const auto appendHeader = [&](const std::wstring& name, const std::wstring& value) {
@@ -778,7 +823,7 @@ private:
         };
         for (const auto& item : headerList) appendHeader(item.first, item.second);
         if (!cookieLine.empty()) appendHeader(L"Cookie", cookieLine);
-        if (headerSlist) api.easySetopt(handle, LB_CURL_OPT_HTTPHEADER, headerSlist);
+        if (headerSlist) setoptChecked(LB_CURL_OPT_HTTPHEADER, L"HTTPHEADER", headerSlist);
         if (api.easyImpersonate(handle, keepUtf8(impersonateTarget), 1) != 0) {
             const std::wstring impersonateError = L"TLS 指纹档案「" + impersonateTarget + L"」未被 libcurl-impersonate.dll 接受，请升级 LingBuilder 或改用已支持档案。";
             RequestFail(*request, impersonateError.c_str(), ERROR_NOT_SUPPORTED);
@@ -787,14 +832,22 @@ private:
             return;
         }
         if (!body.empty() && method == L"POST") {
-            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDS, reinterpret_cast<void*>(const_cast<unsigned char*>(body.data())));
-            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDSIZE_LARGE, static_cast<long long>(body.size()));
+            setoptChecked(LB_CURL_OPT_POSTFIELDS, L"POSTFIELDS", reinterpret_cast<void*>(const_cast<unsigned char*>(body.data())));
+            setoptChecked(LB_CURL_OPT_POSTFIELDSIZE_LARGE, L"POSTFIELDSIZE_LARGE", static_cast<long long>(body.size()));
         } else if (!body.empty()) {
-            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDS, reinterpret_cast<void*>(const_cast<unsigned char*>(body.data())));
-            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDSIZE_LARGE, static_cast<long long>(body.size()));
-            api.easySetopt(handle, LB_CURL_OPT_CUSTOMREQUEST, keepUtf8(method));
+            setoptChecked(LB_CURL_OPT_POSTFIELDS, L"POSTFIELDS", reinterpret_cast<void*>(const_cast<unsigned char*>(body.data())));
+            setoptChecked(LB_CURL_OPT_POSTFIELDSIZE_LARGE, L"POSTFIELDSIZE_LARGE", static_cast<long long>(body.size()));
+            setoptChecked(LB_CURL_OPT_CUSTOMREQUEST, L"CUSTOMREQUEST", keepUtf8(method));
         } else if (method != L"GET" && method != L"POST") {
-            api.easySetopt(handle, LB_CURL_OPT_CUSTOMREQUEST, keepUtf8(method));
+            setoptChecked(LB_CURL_OPT_CUSTOMREQUEST, L"CUSTOMREQUEST", keepUtf8(method));
+        }
+        if (!rejectedOptions.empty()) {
+            std::wstring detail;
+            for (const auto& item : rejectedOptions) { if (!detail.empty()) detail += L"、"; detail += item; }
+            RequestFail(*request, (L"TLS 指纹请求初始化失败：以下 curl 选项被随包 libcurl-impersonate.dll 拒绝：" + detail + L"。多为选项常量与 DLL 版本不匹配，请升级或重装 LingBuilder。").c_str(), ERROR_NOT_SUPPORTED);
+            api.easyCleanup(handle);
+            if (headerSlist) api.slistFreeAll(headerSlist);
+            return;
         }
 
         const int performResult = api.easyPerform(handle);

@@ -152,9 +152,16 @@ test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理�
   assert.ok(mainCpp.includes('const wchar_t* HTTP客户端_解析跳转链(long long client, const wchar_t* url, int maxHops)'));
   assert.ok(mainCpp.includes('bool SetImpersonateTarget(long long id, const wchar_t* target)'));
   assert.ok(mainCpp.includes('easyImpersonate(handle, keepUtf8(impersonateTarget), 1)'));
-  assert.ok(mainCpp.includes('LB_CURL_OPT_CAINFO = 10098'));
+  assert.ok(mainCpp.includes('LB_CURL_OPT_CAINFO = 10065'));
   assert.ok(mainCpp.includes('ExecuteWithImpersonation'));
   assert.ok(mainCpp.includes('int HTTP客户端_设置TLS指纹(long long client, const wchar_t* target)'));
+  // 2026-09-30 收尾批：CAINFO=10065 实锤修复 + 全量 setopt 返回值检查（未知选项号中文阻断不静默）
+  // + 档案名归一化保留 _、点号映射 _，未知档案诊断列出当前 DLL 实测可用档案清单。
+  assert.ok(mainCpp.includes('rejectedOptions'));
+  assert.ok(mainCpp.includes('TLS 指纹请求初始化失败：以下 curl 选项被随包 libcurl-impersonate.dll 拒绝'));
+  assert.ok(mainCpp.includes("if (ch == L'.') { normalized.push_back(L'_'); continue; }"));
+  assert.ok(mainCpp.includes('L"safari17_2_ios"'));
+  assert.ok(mainCpp.includes('当前 libcurl-impersonate.dll 实测可用档案'));
 });
 
 test('断点续传：设置续传文件生成追加落盘运行时且文件流不占响应体内存上限', () => {
